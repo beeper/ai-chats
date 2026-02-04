@@ -11,7 +11,7 @@ import (
 )
 
 type matrixEphemeralSender interface {
-	SendEphemeral(ctx context.Context, roomID id.RoomID, eventType event.Type, content *event.Content, txnID string) (*mautrix.RespSendEvent, error)
+	SendEphemeralEvent(ctx context.Context, roomID id.RoomID, eventType event.Type, content *event.Content, txnID string) (*mautrix.RespSendEvent, error)
 }
 
 // emitStreamEvent sends an AI SDK UIMessageChunk streaming event to the room (ephemeral).
@@ -69,7 +69,7 @@ func (oc *AIClient) emitStreamEvent(
 	eventContent := &event.Content{Raw: content}
 
 	txnID := buildStreamEventTxnID(state.turnID, seq)
-	if _, err := ephemeralSender.SendEphemeral(ctx, portal.MXID, StreamEventMessageType, eventContent, txnID); err != nil {
+	if _, err := ephemeralSender.SendEphemeralEvent(ctx, portal.MXID, StreamEventMessageType, eventContent, txnID); err != nil {
 		partType, _ := part["type"].(string)
 		oc.log.Warn().Err(err).
 			Str("part_type", partType).
