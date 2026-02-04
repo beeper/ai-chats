@@ -177,8 +177,13 @@ func (m *OpenAIRemoteMessage) ConvertMessage(ctx context.Context, portal *bridge
 		}
 	}
 
+	turnID := ""
+	if m.Metadata != nil {
+		turnID = m.Metadata.TurnID
+	}
+
 	uiMessage := map[string]any{
-		"id":       m.Metadata.TurnID,
+		"id":       turnID,
 		"role":     "assistant",
 		"metadata": uiMetadata,
 		"parts":    uiParts,

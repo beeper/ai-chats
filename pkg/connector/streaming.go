@@ -67,6 +67,9 @@ type streamingState struct {
 	uiStepOpen    bool
 	uiStepCount   int
 	uiToolStarted map[string]bool
+
+	// Avoid logging repeated missing-ephemeral warnings.
+	streamEphemeralUnsupported bool
 }
 
 // newStreamingState creates a new streaming state with initialized fields
@@ -741,8 +744,12 @@ func (oc *AIClient) streamingResponse(
 					oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
 					state.initialEventID = oc.sendInitialStreamMessage(ctx, portal, state.accumulated.String(), state.turnID, state.sourceEventID)
 					if state.initialEventID == "" {
+						errText := "failed to send initial streaming message"
 						log.Error().Msg("Failed to send initial streaming message")
-						return false, nil, &PreDeltaError{Err: fmt.Errorf("failed to send initial streaming message")}
+						state.finishReason = "error"
+						oc.emitUIError(ctx, portal, state, errText)
+						oc.emitUIFinish(ctx, portal, state, meta)
+						return false, nil, &PreDeltaError{Err: fmt.Errorf(errText)}
 					}
 				}
 			}
@@ -762,8 +769,12 @@ func (oc *AIClient) streamingResponse(
 					// Send empty initial message - will be replaced with content later
 					state.initialEventID = oc.sendInitialStreamMessage(ctx, portal, "...", state.turnID, state.sourceEventID)
 					if state.initialEventID == "" {
+						errText := "failed to send initial streaming message"
 						log.Error().Msg("Failed to send initial streaming message")
-						return false, nil, &PreDeltaError{Err: fmt.Errorf("failed to send initial streaming message")}
+						state.finishReason = "error"
+						oc.emitUIError(ctx, portal, state, errText)
+						oc.emitUIFinish(ctx, portal, state, meta)
+						return false, nil, &PreDeltaError{Err: fmt.Errorf(errText)}
 					}
 				}
 			}
@@ -1231,8 +1242,12 @@ func (oc *AIClient) streamingResponse(
 						oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
 						state.initialEventID = oc.sendInitialStreamMessage(ctx, portal, state.accumulated.String(), state.turnID, state.sourceEventID)
 						if state.initialEventID == "" {
+							errText := "failed to send initial streaming message (continuation)"
 							log.Error().Msg("Failed to send initial streaming message (continuation)")
-							return false, nil, &PreDeltaError{Err: fmt.Errorf("failed to send initial streaming message (continuation)")}
+							state.finishReason = "error"
+							oc.emitUIError(ctx, portal, state, errText)
+							oc.emitUIFinish(ctx, portal, state, meta)
+							return false, nil, &PreDeltaError{Err: fmt.Errorf(errText)}
 						}
 					}
 				}
@@ -1248,8 +1263,12 @@ func (oc *AIClient) streamingResponse(
 						oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
 						state.initialEventID = oc.sendInitialStreamMessage(ctx, portal, "...", state.turnID, state.sourceEventID)
 						if state.initialEventID == "" {
+							errText := "failed to send initial streaming message (continuation)"
 							log.Error().Msg("Failed to send initial streaming message (continuation)")
-							return false, nil, &PreDeltaError{Err: fmt.Errorf("failed to send initial streaming message (continuation)")}
+							state.finishReason = "error"
+							oc.emitUIError(ctx, portal, state, errText)
+							oc.emitUIFinish(ctx, portal, state, meta)
+							return false, nil, &PreDeltaError{Err: fmt.Errorf(errText)}
 						}
 					}
 				}
@@ -1765,8 +1784,12 @@ func (oc *AIClient) streamChatCompletions(
 						oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
 						state.initialEventID = oc.sendInitialStreamMessage(ctx, portal, state.accumulated.String(), state.turnID, state.sourceEventID)
 						if state.initialEventID == "" {
+							errText := "failed to send initial streaming message"
 							log.Error().Msg("Failed to send initial streaming message")
-							return false, nil, &PreDeltaError{Err: fmt.Errorf("failed to send initial streaming message")}
+							state.finishReason = "error"
+							oc.emitUIError(ctx, portal, state, errText)
+							oc.emitUIFinish(ctx, portal, state, meta)
+							return false, nil, &PreDeltaError{Err: fmt.Errorf(errText)}
 						}
 					}
 				}

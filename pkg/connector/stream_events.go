@@ -14,7 +14,7 @@ type matrixEphemeralSender interface {
 	SendEphemeral(ctx context.Context, roomID id.RoomID, eventType event.Type, content *event.Content, txnID string) (*mautrix.RespSendEvent, error)
 }
 
-// emitStreamEvent sends an AI SDK UIMessageChunk streaming event to the room.
+// emitStreamEvent sends an AI SDK UIMessageChunk streaming event to the room (ephemeral).
 func (oc *AIClient) emitStreamEvent(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -32,6 +32,18 @@ func (oc *AIClient) emitStreamEvent(
 	}
 	intent := oc.getModelIntent(ctx, portal)
 	if intent == nil {
+		return
+	}
+
+	ephemeralSender, ok := intent.(matrixEphemeralSender)
+	if !ok {
+		if !state.streamEphemeralUnsupported {
+			state.streamEphemeralUnsupported = true
+			partType, _ := part["type"].(string)
+			oc.log.Warn().
+				Str("part_type", partType).
+				Msg("Matrix intent does not support ephemeral events; stream updates will be dropped")
+		}
 		return
 	}
 
@@ -55,15 +67,6 @@ func (oc *AIClient) emitStreamEvent(
 	}
 
 	eventContent := &event.Content{Raw: content}
-	ephemeralSender, ok := intent.(matrixEphemeralSender)
-	if !ok {
-		partType, _ := part["type"].(string)
-		oc.log.Warn().
-			Str("part_type", partType).
-			Int("seq", seq).
-			Msg("Matrix intent does not support ephemeral events; dropping stream event")
-		return
-	}
 
 	txnID := buildStreamEventTxnID(state.turnID, seq)
 	if _, err := ephemeralSender.SendEphemeral(ctx, portal.MXID, StreamEventMessageType, eventContent, txnID); err != nil {

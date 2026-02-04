@@ -2,6 +2,7 @@ package connector
 
 import (
 	"mime"
+	"net/url"
 	"path/filepath"
 	"strings"
 )
@@ -27,12 +28,21 @@ func extractURLCitation(annotation any) (sourceCitation, bool) {
 	if typ != "url_citation" {
 		return sourceCitation{}, false
 	}
-	url, ok := readStringArg(raw, "url")
+	urlStr, ok := readStringArg(raw, "url")
 	if !ok {
 		return sourceCitation{}, false
 	}
+	parsed, err := url.Parse(urlStr)
+	if err != nil {
+		return sourceCitation{}, false
+	}
+	switch parsed.Scheme {
+	case "http", "https":
+	default:
+		return sourceCitation{}, false
+	}
 	title, _ := readStringArg(raw, "title")
-	return sourceCitation{URL: url, Title: title}, true
+	return sourceCitation{URL: urlStr, Title: title}, true
 }
 
 func extractDocumentCitation(annotation any) (sourceDocument, bool) {
