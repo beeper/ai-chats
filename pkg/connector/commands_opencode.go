@@ -2,6 +2,7 @@ package connector
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2/commands"
@@ -10,6 +11,16 @@ import (
 	"github.com/beeper/ai-bridge/pkg/opencode"
 	"github.com/beeper/ai-bridge/pkg/opencodebridge"
 )
+
+// CommandOpenCode handles the !ai opencode command.
+var CommandOpenCode = registerAICommand(commandregistry.Definition{
+	Name:          "opencode",
+	Description:   "Manage OpenCode connections",
+	Args:          "<add|list|remove> [args]",
+	Section:       HelpSectionAI,
+	RequiresLogin: true,
+	Handler:       fnOpenCodeCommand,
+})
 
 // CommandOpenCodeConnect handles the !ai opencode-connect command.
 var CommandOpenCodeConnect = registerAICommand(commandregistry.Definition{
@@ -31,6 +42,32 @@ var CommandOpenCodeNew = registerAICommand(commandregistry.Definition{
 	Handler:       fnOpenCodeNew,
 })
 
+func fnOpenCodeCommand(ce *commands.Event) {
+	if len(ce.Args) == 0 {
+		ce.Reply("Usage: `!ai opencode add [http_url] [password] [username]` | `!ai opencode list` | `!ai opencode remove <instance_id_or_url>`.")
+		return
+	}
+	sub := strings.ToLower(strings.TrimSpace(ce.Args[0]))
+	switch sub {
+	case "add", "connect":
+		ce.Args = ce.Args[1:]
+		fnOpenCodeConnect(ce)
+		return
+	case "list", "ls":
+		fnOpenCodeList(ce)
+		return
+	case "remove", "rm", "delete", "disconnect":
+		fnOpenCodeRemove(ce)
+		return
+	case "new":
+		ce.Args = ce.Args[1:]
+		fnOpenCodeNew(ce)
+		return
+	default:
+		ce.Reply("Usage: `!ai opencode add [http_url] [password] [username]` | `!ai opencode list` | `!ai opencode remove <instance_id_or_url>`.")
+	}
+}
+
 func fnOpenCodeConnect(ce *commands.Event) {
 	client, ok := requireClient(ce)
 	if !ok {
@@ -42,7 +79,7 @@ func fnOpenCodeConnect(ce *commands.Event) {
 		url = strings.TrimSpace(ce.Args[0])
 	}
 	if url == "" {
-		ce.Reply("Usage: !ai opencode-connect [http_url] [password] [username]\nDefault http_url: http://127.0.0.1:4096")
+		ce.Reply("Usage: `!ai opencode add [http_url] [password] [username]` (or `!ai opencode-connect ...`). Default http_url: http://127.0.0.1:4096")
 		return
 	}
 
@@ -90,7 +127,7 @@ func fnOpenCodeNew(ce *commands.Event) {
 
 	instances := loginMetadata(client.UserLogin)
 	if instances == nil || len(instances.OpenCodeInstances) == 0 {
-		ce.Reply("No OpenCode instances are connected. Use `!ai opencode-connect` first.")
+		ce.Reply("No OpenCode instances are connected. Use `!ai opencode add` (or `!ai opencode-connect`) first.")
 		return
 	}
 
@@ -150,6 +187,84 @@ func fnOpenCodeNew(ce *commands.Event) {
 		return
 	}
 	ce.Reply("Created new OpenCode session.")
+}
+
+func fnOpenCodeList(ce *commands.Event) {
+	client, ok := requireClient(ce)
+	if !ok {
+		return
+	}
+
+	meta := loginMetadata(client.UserLogin)
+	if meta == nil || len(meta.OpenCodeInstances) == 0 {
+		ce.Reply("No OpenCode instances are connected. Use `!ai opencode add` first.")
+		return
+	}
+
+	ids := make([]string, 0, len(meta.OpenCodeInstances))
+	for id := range meta.OpenCodeInstances {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	lines := make([]string, 0, len(ids))
+	for _, id := range ids {
+		cfg := meta.OpenCodeInstances[id]
+		if cfg == nil {
+			continue
+		}
+		status := "disconnected"
+		if client.opencodeBridge != nil && client.opencodeBridge.IsConnected(id) {
+			status = "connected"
+		}
+		line := fmt.Sprintf("- %s: %s", id, status)
+		if cfg.URL != "" || cfg.Username != "" {
+			label := strings.TrimSpace(cfg.URL)
+			if cfg.Username != "" {
+				if label != "" {
+					label = fmt.Sprintf("%s as %s", label, cfg.Username)
+				} else {
+					label = fmt.Sprintf("as %s", cfg.Username)
+				}
+			}
+			if label != "" {
+				line = fmt.Sprintf("%s (%s)", line, label)
+			}
+		}
+		lines = append(lines, line)
+	}
+
+	ce.Reply("OpenCode instances:\n%s", strings.Join(lines, "\n"))
+}
+
+func fnOpenCodeRemove(ce *commands.Event) {
+	client, ok := requireClient(ce)
+	if !ok {
+		return
+	}
+	if len(ce.Args) < 2 {
+		ce.Reply("Usage: `!ai opencode remove <instance_id_or_url>`.")
+		return
+	}
+	candidate := strings.TrimSpace(strings.Join(ce.Args[1:], " "))
+	if candidate == "" {
+		ce.Reply("Usage: `!ai opencode remove <instance_id_or_url>`.")
+		return
+	}
+	instanceID, ok := resolveOpenCodeInstanceArg(client, candidate)
+	if !ok {
+		ce.Reply("Unknown OpenCode instance. Provide an instance ID or URL.")
+		return
+	}
+	if client.opencodeBridge == nil {
+		ce.Reply("OpenCode integration is not available.")
+		return
+	}
+	if err := client.opencodeBridge.RemoveInstance(ce.Ctx, instanceID); err != nil {
+		ce.Reply("Failed to remove OpenCode instance: %v", err)
+		return
+	}
+	ce.Reply("OpenCode instance removed: %s", instanceID)
 }
 
 func resolveOpenCodeInstanceArg(client *AIClient, candidate string) (string, bool) {

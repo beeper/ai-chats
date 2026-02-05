@@ -769,15 +769,32 @@ func (oc *AIClient) streamingResponse(
 
 	// Create typing controller with TTL and automatic refresh
 	var typingCtrl *TypingController
+	var typingSignals *TypingSignaler
 	touchTyping := func() {}
-	if !state.suppressSend && state.heartbeat == nil {
-		typingCtrl = NewTypingController(oc, ctx, portal)
-		typingCtrl.Start()
-		defer typingCtrl.Stop()
-		touchTyping = func() {
-			typingCtrl.RefreshTTL()
+	isHeartbeat := state.heartbeat != nil
+	if !state.suppressSend && !isHeartbeat {
+		mode := oc.resolveTypingMode(meta, typingContextFromContext(ctx), isHeartbeat)
+		interval := oc.resolveTypingInterval(meta)
+		if interval > 0 && mode != TypingModeNever {
+			typingCtrl = NewTypingController(oc, ctx, portal, TypingControllerOptions{
+				Interval: interval,
+				TTL:      typingTTL,
+			})
+			typingSignals = NewTypingSignaler(typingCtrl, mode, isHeartbeat)
+			touchTyping = func() {
+				typingCtrl.RefreshTTL()
+			}
 		}
 	}
+	if typingSignals != nil {
+		typingSignals.SignalRunStart()
+	}
+	defer func() {
+		if typingCtrl != nil {
+			typingCtrl.MarkRunComplete()
+			typingCtrl.MarkDispatchIdle()
+		}
+	}()
 
 	// Apply proactive context pruning if enabled
 	messages = oc.applyProactivePruning(ctx, messages, meta)
@@ -827,6 +844,9 @@ func (oc *AIClient) streamingResponse(
 			if parsed != nil {
 				oc.applyStreamingReplyTarget(state, parsed)
 				cleaned := parsed.Text
+				if typingSignals != nil {
+					typingSignals.SignalTextDelta(cleaned)
+				}
 				if cleaned != "" {
 					state.visibleAccumulated.WriteString(cleaned)
 					// First token - send initial message synchronously to capture event_id
@@ -853,6 +873,9 @@ func (oc *AIClient) streamingResponse(
 
 		case "response.reasoning_text.delta":
 			touchTyping()
+			if typingSignals != nil {
+				typingSignals.SignalReasoningDelta()
+			}
 			state.reasoning.WriteString(streamEvent.Delta)
 
 			// Check if this is first content (reasoning before text)
@@ -878,10 +901,16 @@ func (oc *AIClient) streamingResponse(
 
 		case "response.refusal.delta":
 			touchTyping()
+			if typingSignals != nil {
+				typingSignals.SignalTextDelta(streamEvent.Delta)
+			}
 			oc.emitUITextDelta(ctx, portal, state, streamEvent.Delta)
 
 		case "response.function_call_arguments.delta":
 			touchTyping()
+			if typingSignals != nil {
+				typingSignals.SignalToolStart()
+			}
 			// Get or create active tool call
 			tool, exists := activeTools[streamEvent.ItemID]
 			if !exists {
@@ -910,6 +939,9 @@ func (oc *AIClient) streamingResponse(
 
 		case "response.function_call_arguments.done":
 			touchTyping()
+			if typingSignals != nil {
+				typingSignals.SignalToolStart()
+			}
 			// Function call complete - execute the tool and send result
 			tool, exists := activeTools[streamEvent.ItemID]
 			if !exists {
@@ -981,13 +1013,14 @@ func (oc *AIClient) streamingResponse(
 					displayResult = "Error: failed to decode TTS audio"
 					resultStatus = ResultStatusError
 				} else {
+					mimeType := detectAudioMime(audioData, "audio/mpeg")
 					// Send audio message
-					if _, mediaURL, err := oc.sendGeneratedAudio(ctx, portal, audioData, "audio/mpeg", state.turnID); err != nil {
+					if _, mediaURL, err := oc.sendGeneratedAudio(ctx, portal, audioData, mimeType, state.turnID); err != nil {
 						log.Warn().Err(err).Msg("Failed to send TTS audio")
 						displayResult = "Error: failed to send TTS audio"
 						resultStatus = ResultStatusError
 					} else {
-						recordGeneratedFile(state, mediaURL, "audio/mpeg")
+						recordGeneratedFile(state, mediaURL, mimeType)
 						displayResult = "Audio message sent successfully"
 					}
 				}
@@ -1089,6 +1122,9 @@ func (oc *AIClient) streamingResponse(
 
 		case "response.web_search_call.searching", "response.web_search_call.in_progress":
 			touchTyping()
+			if typingSignals != nil {
+				typingSignals.SignalToolStart()
+			}
 			// Web search starting
 			callID := streamEvent.ItemID
 			if strings.TrimSpace(callID) == "" {
@@ -1135,6 +1171,9 @@ func (oc *AIClient) streamingResponse(
 
 		case "response.image_generation_call.in_progress", "response.image_generation_call.generating":
 			touchTyping()
+			if typingSignals != nil {
+				typingSignals.SignalToolStart()
+			}
 			// Image generation in progress
 			tool, exists := activeTools[streamEvent.ItemID]
 			if !exists {
@@ -1161,6 +1200,9 @@ func (oc *AIClient) streamingResponse(
 
 		case "response.image_generation_call.completed":
 			touchTyping()
+			if typingSignals != nil {
+				typingSignals.SignalToolStart()
+			}
 			// Image generation completed - the actual image data will be in response.completed
 			tool, exists := activeTools[streamEvent.ItemID]
 			callID := ""
@@ -1187,6 +1229,9 @@ func (oc *AIClient) streamingResponse(
 
 		case "response.image_generation_call.partial_image":
 			touchTyping()
+			if typingSignals != nil {
+				typingSignals.SignalToolStart()
+			}
 			oc.emitStreamEvent(ctx, portal, state, map[string]any{
 				"type":      "data-image_generation_partial",
 				"data":      map[string]any{"item_id": streamEvent.ItemID, "index": streamEvent.PartialImageIndex, "image_b64": streamEvent.PartialImageB64},
@@ -1337,6 +1382,9 @@ func (oc *AIClient) streamingResponse(
 				if parsed != nil {
 					oc.applyStreamingReplyTarget(state, parsed)
 					cleaned := parsed.Text
+					if typingSignals != nil {
+						typingSignals.SignalTextDelta(cleaned)
+					}
 					if cleaned != "" {
 						state.visibleAccumulated.WriteString(cleaned)
 						if state.firstToken && state.visibleAccumulated.Len() > 0 {
@@ -1361,6 +1409,9 @@ func (oc *AIClient) streamingResponse(
 
 			case "response.reasoning_text.delta":
 				touchTyping()
+				if typingSignals != nil {
+					typingSignals.SignalReasoningDelta()
+				}
 				state.reasoning.WriteString(streamEvent.Delta)
 				if state.firstToken && state.reasoning.Len() > 0 {
 					state.firstToken = false
@@ -1382,6 +1433,9 @@ func (oc *AIClient) streamingResponse(
 
 			case "response.refusal.delta":
 				touchTyping()
+				if typingSignals != nil {
+					typingSignals.SignalTextDelta(streamEvent.Delta)
+				}
 				oc.emitUITextDelta(ctx, portal, state, streamEvent.Delta)
 
 			case "response.output_text.annotation.added":
@@ -1399,6 +1453,9 @@ func (oc *AIClient) streamingResponse(
 
 			case "response.function_call_arguments.delta":
 				touchTyping()
+				if typingSignals != nil {
+					typingSignals.SignalToolStart()
+				}
 				tool, exists := activeTools[streamEvent.ItemID]
 				if !exists {
 					callID := streamEvent.ItemID
@@ -1421,6 +1478,9 @@ func (oc *AIClient) streamingResponse(
 
 			case "response.function_call_arguments.done":
 				touchTyping()
+				if typingSignals != nil {
+					typingSignals.SignalToolStart()
+				}
 				tool, exists := activeTools[streamEvent.ItemID]
 				if !exists {
 					callID := streamEvent.ItemID
@@ -1487,12 +1547,13 @@ func (oc *AIClient) streamingResponse(
 						displayResult = "Error: failed to decode TTS audio"
 						resultStatus = ResultStatusError
 					} else {
-						if _, mediaURL, err := oc.sendGeneratedAudio(ctx, portal, audioData, "audio/mpeg", state.turnID); err != nil {
+						mimeType := detectAudioMime(audioData, "audio/mpeg")
+						if _, mediaURL, err := oc.sendGeneratedAudio(ctx, portal, audioData, mimeType, state.turnID); err != nil {
 							log.Warn().Err(err).Msg("Failed to send TTS audio (continuation)")
 							displayResult = "Error: failed to send TTS audio"
 							resultStatus = ResultStatusError
 						} else {
-							recordGeneratedFile(state, mediaURL, "audio/mpeg")
+							recordGeneratedFile(state, mediaURL, mimeType)
 							displayResult = "Audio message sent successfully"
 						}
 					}
@@ -1625,10 +1686,6 @@ func (oc *AIClient) streamingResponse(
 			oc.emitUIFinish(ctx, portal, state, meta)
 			break
 		}
-	}
-
-	if typingCtrl != nil {
-		typingCtrl.MarkRunComplete()
 	}
 
 	if state.finishReason == "" {
@@ -1849,15 +1906,32 @@ func (oc *AIClient) streamChatCompletions(
 
 	// Create typing controller with TTL and automatic refresh
 	var typingCtrl *TypingController
+	var typingSignals *TypingSignaler
 	touchTyping := func() {}
-	if !state.suppressSend && state.heartbeat == nil {
-		typingCtrl = NewTypingController(oc, ctx, portal)
-		typingCtrl.Start()
-		defer typingCtrl.Stop()
-		touchTyping = func() {
-			typingCtrl.RefreshTTL()
+	isHeartbeat := state.heartbeat != nil
+	if !state.suppressSend && !isHeartbeat {
+		mode := oc.resolveTypingMode(meta, typingContextFromContext(ctx), isHeartbeat)
+		interval := oc.resolveTypingInterval(meta)
+		if interval > 0 && mode != TypingModeNever {
+			typingCtrl = NewTypingController(oc, ctx, portal, TypingControllerOptions{
+				Interval: interval,
+				TTL:      typingTTL,
+			})
+			typingSignals = NewTypingSignaler(typingCtrl, mode, isHeartbeat)
+			touchTyping = func() {
+				typingCtrl.RefreshTTL()
+			}
 		}
 	}
+	if typingSignals != nil {
+		typingSignals.SignalRunStart()
+	}
+	defer func() {
+		if typingCtrl != nil {
+			typingCtrl.MarkRunComplete()
+			typingCtrl.MarkDispatchIdle()
+		}
+	}()
 
 	// Apply proactive context pruning if enabled
 	messages = oc.applyProactivePruning(ctx, messages, meta)
@@ -1949,6 +2023,9 @@ func (oc *AIClient) streamChatCompletions(
 					if parsed != nil {
 						oc.applyStreamingReplyTarget(state, parsed)
 						cleaned := parsed.Text
+						if typingSignals != nil {
+							typingSignals.SignalTextDelta(cleaned)
+						}
 						if cleaned != "" {
 							state.visibleAccumulated.WriteString(cleaned)
 							if state.firstToken && state.visibleAccumulated.Len() > 0 {
@@ -1974,12 +2051,18 @@ func (oc *AIClient) streamChatCompletions(
 
 				if choice.Delta.Refusal != "" {
 					touchTyping()
+					if typingSignals != nil {
+						typingSignals.SignalTextDelta(choice.Delta.Refusal)
+					}
 					oc.emitUITextDelta(ctx, portal, state, choice.Delta.Refusal)
 				}
 
 				// Handle tool calls from Chat Completions API
 				for _, toolDelta := range choice.Delta.ToolCalls {
 					touchTyping()
+					if typingSignals != nil {
+						typingSignals.SignalToolStart()
+					}
 					toolIdx := int(toolDelta.Index)
 					tool, exists := activeTools[toolIdx]
 					if !exists {
@@ -2088,6 +2171,9 @@ func (oc *AIClient) streamChatCompletions(
 				})
 
 				touchTyping()
+				if typingSignals != nil {
+					typingSignals.SignalToolStart()
+				}
 				// Wrap context with bridge info for tools that need it (e.g., channel-edit, react)
 				toolCtx := WithBridgeToolContext(ctx, &BridgeToolContext{
 					Client:        oc,
@@ -2120,12 +2206,13 @@ func (oc *AIClient) streamChatCompletions(
 							result = "Error: failed to decode TTS audio"
 							resultStatus = ResultStatusError
 						} else {
-							if _, mediaURL, sendErr := oc.sendGeneratedAudio(ctx, portal, audioData, "audio/mpeg", state.turnID); sendErr != nil {
+							mimeType := detectAudioMime(audioData, "audio/mpeg")
+							if _, mediaURL, sendErr := oc.sendGeneratedAudio(ctx, portal, audioData, mimeType, state.turnID); sendErr != nil {
 								log.Warn().Err(sendErr).Msg("Failed to send TTS audio (Chat Completions)")
 								result = "Error: failed to send TTS audio"
 								resultStatus = ResultStatusError
 							} else {
-								recordGeneratedFile(state, mediaURL, "audio/mpeg")
+								recordGeneratedFile(state, mediaURL, mimeType)
 								result = "Audio message sent successfully"
 							}
 						}
@@ -2259,10 +2346,6 @@ func (oc *AIClient) streamChatCompletions(
 		}
 
 		break
-	}
-
-	if typingCtrl != nil {
-		typingCtrl.MarkRunComplete()
 	}
 
 	state.completedAtMs = time.Now().UnixMilli()

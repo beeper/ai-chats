@@ -1213,35 +1213,46 @@ func isTTSMacOSAvailable() bool {
 
 // callMacOSSay uses macOS 'say' command to generate speech.
 func callMacOSSay(ctx context.Context, text, voice string) (string, error) {
-	// Create temp file for output
-	tmpFile, err := os.CreateTemp("", "tts-*.aiff")
+	audioData, err := runMacOSSay(ctx, text, voice, ".m4a", []string{"--file-format=m4af", "--data-format=aac"})
 	if err != nil {
-		return "", fmt.Errorf("failed to create temp file: %w", err)
+		audioData, err = runMacOSSay(ctx, text, voice, ".aiff", nil)
+		if err != nil {
+			return "", fmt.Errorf("say command failed: %w", err)
+		}
+	}
+
+	return base64.StdEncoding.EncodeToString(audioData), nil
+}
+
+func runMacOSSay(ctx context.Context, text, voice, suffix string, formatArgs []string) ([]byte, error) {
+	tmpFile, err := os.CreateTemp("", "tts-*"+suffix)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
 	}
 	tmpPath := tmpFile.Name()
 	tmpFile.Close()
 	defer os.Remove(tmpPath)
 
-	// Run say command
-	args := []string{"-o", tmpPath}
+	args := []string{}
 	if voice != "" {
 		args = append(args, "-v", voice)
+	}
+	args = append(args, "-o", tmpPath)
+	if len(formatArgs) > 0 {
+		args = append(args, formatArgs...)
 	}
 	args = append(args, text)
 
 	cmd := exec.CommandContext(ctx, "say", args...)
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("say command failed: %w", err)
+		return nil, err
 	}
 
-	// Read the generated audio file
 	audioData, err := os.ReadFile(tmpPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to read audio file: %w", err)
+		return nil, fmt.Errorf("failed to read audio file: %w", err)
 	}
-
-	// Return as base64
-	return base64.StdEncoding.EncodeToString(audioData), nil
+	return audioData, nil
 }
 
 // callOpenAITTS calls OpenAI's /v1/audio/speech endpoint

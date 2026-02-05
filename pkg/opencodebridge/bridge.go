@@ -45,6 +45,7 @@ type PortalMeta struct {
 	Title          string
 	TitleGenerated bool
 	DefaultAgentID string
+	VerboseLevel   string
 }
 
 // OpenCodeInstance stores connection details for an OpenCode server.
@@ -66,6 +67,9 @@ func NewBridge(host Host) *Bridge {
 		return nil
 	}
 	bridge := &Bridge{host: host}
+	if log := host.Log(); log != nil {
+		log.Info().Msg("Initializing OpenCode bridge")
+	}
 	bridge.manager = NewOpenCodeManager(bridge)
 	return bridge
 }
@@ -139,6 +143,13 @@ func (b *Bridge) Connect(ctx context.Context, baseURL, password, username string
 		return nil, count, err
 	}
 	return &inst.cfg, count, err
+}
+
+func (b *Bridge) RemoveInstance(ctx context.Context, instanceID string) error {
+	if b == nil || b.manager == nil {
+		return ErrUnavailable
+	}
+	return b.manager.RemoveInstance(ctx, instanceID)
 }
 
 var (

@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -39,6 +40,65 @@ func (oc *AIClient) handleInboundCommand(
 			return inboundCommandResult{handled: true, response: oc.buildToolsStatusText(meta)}
 		}
 		return inboundCommandResult{handled: true, response: "Usage:\n• /tools - Show current tool status\n• /tools list - List available tools\nTool toggles are managed by tool policy."}
+	case "typing":
+		args := strings.TrimSpace(cmd.Args)
+		if args == "" {
+			mode := oc.resolveTypingMode(meta, &TypingContext{IsGroup: isGroup, WasMentioned: !isGroup}, false)
+			interval := oc.resolveTypingInterval(meta)
+			response := fmt.Sprintf("Typing: mode=%s interval=%s", mode, formatTypingInterval(interval))
+			if meta.TypingMode != "" || meta.TypingIntervalSeconds != nil {
+				overrideMode := "default"
+				if meta.TypingMode != "" {
+					overrideMode = meta.TypingMode
+				}
+				overrideInterval := "default"
+				if meta.TypingIntervalSeconds != nil {
+					overrideInterval = fmt.Sprintf("%ds", *meta.TypingIntervalSeconds)
+				}
+				response = fmt.Sprintf("%s (session override: mode=%s interval=%s)", response, overrideMode, overrideInterval)
+			}
+			return inboundCommandResult{handled: true, response: response}
+		}
+
+		token, rest := splitCommandArgs(args)
+		token = strings.ToLower(strings.TrimSpace(token))
+		rest = strings.TrimSpace(rest)
+
+		switch token {
+		case "reset", "default":
+			meta.TypingMode = ""
+			meta.TypingIntervalSeconds = nil
+			oc.savePortalQuiet(ctx, portal, "typing reset")
+			return inboundCommandResult{handled: true, response: "Typing settings reset to defaults."}
+		case "off":
+			meta.TypingMode = string(TypingModeNever)
+			oc.savePortalQuiet(ctx, portal, "typing mode")
+			if rest == "" {
+				return inboundCommandResult{handled: true, response: "Typing disabled for this session."}
+			}
+			return inboundCommandResult{newBody: rest}
+		case "interval":
+			if rest == "" {
+				return inboundCommandResult{handled: true, response: "Usage: /typing interval <seconds>"}
+			}
+			seconds, err := parsePositiveInt(rest)
+			if err != nil || seconds <= 0 {
+				return inboundCommandResult{handled: true, response: "Interval must be a positive integer (seconds)."}
+			}
+			meta.TypingIntervalSeconds = &seconds
+			oc.savePortalQuiet(ctx, portal, "typing interval")
+			return inboundCommandResult{handled: true, response: fmt.Sprintf("Typing interval set to %ds.", seconds)}
+		default:
+			if mode, ok := normalizeTypingMode(token); ok {
+				meta.TypingMode = string(mode)
+				oc.savePortalQuiet(ctx, portal, "typing mode")
+				if rest == "" {
+					return inboundCommandResult{handled: true, response: fmt.Sprintf("Typing mode set to %s.", mode)}
+				}
+				return inboundCommandResult{newBody: rest}
+			}
+		}
+		return inboundCommandResult{handled: true, response: "Usage: /typing <never|instant|thinking|message>\n• /typing interval <seconds>\n• /typing off\n• /typing reset"}
 	case "model":
 		modelToken, rest := splitCommandArgs(cmd.Args)
 		if modelToken == "" {
@@ -262,4 +322,15 @@ func (oc *AIClient) handleInboundCommand(
 	}
 
 	return inboundCommandResult{}
+}
+
+func parsePositiveInt(raw string) (int, error) {
+	value, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return 0, err
+	}
+	if value <= 0 {
+		return 0, fmt.Errorf("value must be positive")
+	}
+	return value, nil
 }

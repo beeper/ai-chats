@@ -145,7 +145,39 @@ func (oc *AIClient) buildStatusText(
 	}
 	sb.WriteString(queueLine + "\n")
 
+	typingCtx := &TypingContext{IsGroup: isGroup, WasMentioned: !isGroup}
+	typingMode := oc.resolveTypingMode(meta, typingCtx, false)
+	typingInterval := oc.resolveTypingInterval(meta)
+	typingLine := fmt.Sprintf(
+		"Typing: mode=%s interval=%s",
+		typingMode,
+		formatTypingInterval(typingInterval),
+	)
+	if meta.TypingMode != "" || meta.TypingIntervalSeconds != nil {
+		overrideMode := "default"
+		if meta.TypingMode != "" {
+			overrideMode = meta.TypingMode
+		}
+		overrideInterval := "default"
+		if meta.TypingIntervalSeconds != nil {
+			overrideInterval = fmt.Sprintf("%ds", *meta.TypingIntervalSeconds)
+		}
+		typingLine = fmt.Sprintf("%s (session override: mode=%s interval=%s)", typingLine, overrideMode, overrideInterval)
+	}
+	sb.WriteString(typingLine + "\n")
+
 	return strings.TrimSpace(sb.String())
+}
+
+func formatTypingInterval(interval time.Duration) string {
+	if interval <= 0 {
+		return "off"
+	}
+	seconds := int(interval.Seconds())
+	if seconds <= 0 {
+		seconds = 1
+	}
+	return fmt.Sprintf("%ds", seconds)
 }
 
 func (oc *AIClient) buildContextStatus(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) string {

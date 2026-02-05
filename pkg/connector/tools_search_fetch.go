@@ -212,6 +212,11 @@ func applyLoginTokensToSearchConfig(cfg *search.Config, meta *UserLoginMetadata,
 		cfg.OpenRouter.BaseURL = services[serviceOpenRouter].BaseURL
 	}
 
+	if shouldForceExaSearchProvider(meta) {
+		forceSearchProviderExa(cfg)
+		applyExaProxyDefaults(cfg, meta, connector)
+	}
+
 	return cfg
 }
 
@@ -231,7 +236,87 @@ func applyLoginTokensToFetchConfig(cfg *fetch.Config, meta *UserLoginMetadata, c
 		cfg.Exa.BaseURL = services[serviceExa].BaseURL
 	}
 
+	if shouldForceExaSearchProvider(meta) {
+		applyFetchExaProxyDefaults(cfg, meta, connector)
+	}
+
 	return cfg
+}
+
+func shouldForceExaSearchProvider(meta *UserLoginMetadata) bool {
+	if meta == nil {
+		return false
+	}
+	switch meta.Provider {
+	case ProviderBeeper, ProviderOpenAI, ProviderOpenRouter:
+		return true
+	default:
+		return false
+	}
+}
+
+func forceSearchProviderExa(cfg *search.Config) {
+	if cfg == nil {
+		return
+	}
+	cfg.Provider = search.ProviderExa
+}
+
+func applyExaProxyDefaults(cfg *search.Config, meta *UserLoginMetadata, connector *OpenAIConnector) {
+	if cfg == nil || connector == nil {
+		return
+	}
+	proxyRoot := connector.resolveProxyRoot(meta)
+	if proxyRoot == "" {
+		return
+	}
+	if isRelativePath(cfg.Exa.BaseURL) {
+		cfg.Exa.BaseURL = joinProxyPath(proxyRoot, cfg.Exa.BaseURL)
+	} else if shouldUseExaProxyBase(cfg.Exa.BaseURL) {
+		if proxyBase := connector.resolveExaProxyBaseURL(meta); proxyBase != "" {
+			cfg.Exa.BaseURL = proxyBase
+		}
+	}
+	if cfg.Exa.APIKey == "" {
+		if token := connector.resolveBeeperToken(meta); token != "" {
+			cfg.Exa.APIKey = token
+		}
+	}
+}
+
+func applyFetchExaProxyDefaults(cfg *fetch.Config, meta *UserLoginMetadata, connector *OpenAIConnector) {
+	if cfg == nil || connector == nil {
+		return
+	}
+	proxyRoot := connector.resolveProxyRoot(meta)
+	if proxyRoot == "" {
+		return
+	}
+	if isRelativePath(cfg.Exa.BaseURL) {
+		cfg.Exa.BaseURL = joinProxyPath(proxyRoot, cfg.Exa.BaseURL)
+	} else if shouldUseExaProxyBase(cfg.Exa.BaseURL) {
+		if proxyBase := connector.resolveExaProxyBaseURL(meta); proxyBase != "" {
+			cfg.Exa.BaseURL = proxyBase
+		}
+	}
+	if cfg.Exa.APIKey == "" {
+		if token := connector.resolveBeeperToken(meta); token != "" {
+			cfg.Exa.APIKey = token
+		}
+	}
+}
+
+func shouldUseExaProxyBase(baseURL string) bool {
+	trimmed := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if trimmed == "" {
+		return true
+	}
+	return strings.EqualFold(trimmed, "https://api.exa.ai")
+}
+
+func isRelativePath(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	return strings.HasPrefix(trimmed, "/")
 }
 
 func mapSearchConfig(src *SearchConfig) *search.Config {

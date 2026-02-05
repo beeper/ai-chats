@@ -75,6 +75,70 @@ func normalizeMagicProxyBaseURL(raw string) string {
 	return scheme + "://" + host
 }
 
+func normalizeProxyBaseURL(raw string) string {
+	base := strings.TrimSpace(raw)
+	if base == "" {
+		return ""
+	}
+	if !strings.Contains(base, "://") {
+		base = "https://" + base
+	}
+	parsed, err := url.Parse(base)
+	if err != nil {
+		return ""
+	}
+	host := strings.TrimRight(parsed.Host, "/")
+	if host == "" {
+		return ""
+	}
+	scheme := parsed.Scheme
+	if scheme == "" {
+		scheme = "https"
+	}
+	path := strings.TrimRight(parsed.Path, "/")
+	if path == "" || path == "/" {
+		return scheme + "://" + host
+	}
+	return scheme + "://" + host + path
+}
+
+func joinProxyPath(base, suffix string) string {
+	base = strings.TrimRight(strings.TrimSpace(base), "/")
+	if base == "" {
+		return ""
+	}
+	suffix = strings.TrimSpace(suffix)
+	if suffix == "" {
+		return base
+	}
+	if !strings.HasPrefix(suffix, "/") {
+		suffix = "/" + suffix
+	}
+	if strings.HasSuffix(base, suffix) {
+		return base
+	}
+	return base + suffix
+}
+
+func (oc *OpenAIConnector) resolveProxyRoot(meta *UserLoginMetadata) string {
+	if oc == nil {
+		return ""
+	}
+	raw := strings.TrimSpace(oc.Config.Beeper.BaseURL)
+	if raw == "" && meta != nil {
+		raw = strings.TrimSpace(meta.BaseURL)
+	}
+	return normalizeProxyBaseURL(raw)
+}
+
+func (oc *OpenAIConnector) resolveExaProxyBaseURL(meta *UserLoginMetadata) string {
+	root := oc.resolveProxyRoot(meta)
+	if root == "" {
+		return ""
+	}
+	return joinProxyPath(root, "/exa")
+}
+
 func (oc *OpenAIConnector) resolveOpenAIBaseURL() string {
 	base := strings.TrimSpace(oc.Config.Providers.OpenAI.BaseURL)
 	if base == "" {
@@ -122,7 +186,6 @@ func (oc *OpenAIConnector) resolveServiceConfig(meta *UserLoginMetadata) Service
 		if base != "" {
 			base = strings.TrimRight(base, "/")
 			token := oc.resolveBeeperToken(meta)
-			// Exa proxy routing is temporarily disabled; rely on explicit Exa settings.
 			services[serviceOpenRouter] = ServiceConfig{
 				BaseURL: base + "/openrouter/v1",
 				APIKey:  token,
@@ -134,6 +197,12 @@ func (oc *OpenAIConnector) resolveServiceConfig(meta *UserLoginMetadata) Service
 			services[servicePerplexity] = ServiceConfig{
 				BaseURL: base + "/openrouter/v1",
 				APIKey:  token,
+			}
+		}
+		if proxyBase := oc.resolveExaProxyBaseURL(meta); proxyBase != "" {
+			services[serviceExa] = ServiceConfig{
+				BaseURL: proxyBase,
+				APIKey:  oc.resolveBeeperToken(meta),
 			}
 		}
 		return services

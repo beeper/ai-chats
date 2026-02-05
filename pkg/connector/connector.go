@@ -343,9 +343,9 @@ func (oc *OpenAIConnector) LoadUserLogin(ctx context.Context, login *bridgev2.Us
 // Package-level flow definitions (use Provider* constants as flow IDs)
 func (oc *OpenAIConnector) GetLoginFlows() []bridgev2.LoginFlow {
 	return []bridgev2.LoginFlow{
-		{ID: ProviderBeeper, Name: "Beeper AI", Description: "Connect via Beeper AI (recommended)."},
+		{ID: ProviderBeeper, Name: "Beeper AI"},
 		{ID: ProviderMagicProxy, Name: "Magic Proxy"},
-		{ID: FlowCustom, Name: "Custom", Description: "Use your own API keys and services."},
+		{ID: FlowCustom, Name: "Manual"},
 	}
 }
 

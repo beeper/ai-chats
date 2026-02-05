@@ -186,6 +186,7 @@ func (oc *AIClient) PortalMeta(portal *bridgev2.Portal) *opencodebridge.PortalMe
 		Title:          meta.Title,
 		TitleGenerated: meta.TitleGenerated,
 		DefaultAgentID: meta.DefaultAgentID,
+		VerboseLevel:   meta.VerboseLevel,
 	}
 }
 
@@ -207,6 +208,9 @@ func (oc *AIClient) SetPortalMeta(portal *bridgev2.Portal, meta *opencodebridge.
 		existing.TitleGenerated = meta.TitleGenerated
 		if meta.DefaultAgentID != "" {
 			existing.DefaultAgentID = meta.DefaultAgentID
+		}
+		if meta.VerboseLevel != "" {
+			existing.VerboseLevel = meta.VerboseLevel
 		}
 	}
 	portal.Metadata = existing

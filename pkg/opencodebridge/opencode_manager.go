@@ -183,6 +183,47 @@ func (m *OpenCodeManager) Connect(ctx context.Context, baseURL, password, userna
 	return inst, count, syncErr
 }
 
+func (m *OpenCodeManager) RemoveInstance(ctx context.Context, instanceID string) error {
+	if m == nil || m.bridge == nil || m.bridge.host == nil {
+		return fmt.Errorf("opencode manager unavailable")
+	}
+	id := strings.TrimSpace(instanceID)
+	if id == "" {
+		return fmt.Errorf("instance id is required")
+	}
+
+	hadInstance := false
+	m.mu.Lock()
+	if inst := m.instances[id]; inst != nil {
+		hadInstance = true
+		if inst.cancel != nil {
+			inst.cancel()
+		}
+		delete(m.instances, id)
+	}
+	m.mu.Unlock()
+
+	meta := m.bridge.host.OpenCodeInstances()
+	if meta != nil {
+		if _, ok := meta[id]; ok {
+			hadInstance = true
+		}
+		delete(meta, id)
+		if len(meta) == 0 {
+			meta = nil
+		}
+	}
+
+	if !hadInstance {
+		return ErrInstanceNotFound
+	}
+
+	if err := m.bridge.host.SaveOpenCodeInstances(ctx, meta); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (m *OpenCodeManager) SendMessage(ctx context.Context, instanceID, sessionID string, parts []opencode.PartInput, eventID id.EventID) (*opencode.MessageWithParts, error) {
 	inst := m.getInstance(instanceID)
 	if inst == nil {

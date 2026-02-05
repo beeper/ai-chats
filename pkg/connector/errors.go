@@ -226,15 +226,25 @@ func IsModelNotFound(err error) bool {
 func IsToolSchemaError(err error) bool {
 	var apiErr *openai.Error
 	if errors.As(err, &apiErr) {
+		lowerMsg := strings.ToLower(apiErr.Message)
 		if strings.EqualFold(apiErr.Code, "invalid_function_parameters") {
 			return true
 		}
 		if strings.Contains(apiErr.Message, "Invalid schema for function") {
 			return true
 		}
+		if strings.Contains(lowerMsg, "input_schema") &&
+			(strings.Contains(lowerMsg, "oneof") || strings.Contains(lowerMsg, "allof") || strings.Contains(lowerMsg, "anyof")) {
+			return true
+		}
 		raw := apiErr.RawJSON()
 		if raw != "" {
+			lowerRaw := strings.ToLower(raw)
 			if strings.Contains(raw, "invalid_function_parameters") || strings.Contains(raw, "Invalid schema for function") {
+				return true
+			}
+			if strings.Contains(lowerRaw, "input_schema") &&
+				(strings.Contains(lowerRaw, "oneof") || strings.Contains(lowerRaw, "allof") || strings.Contains(lowerRaw, "anyof")) {
 				return true
 			}
 		}

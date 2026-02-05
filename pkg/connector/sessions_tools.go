@@ -45,6 +45,15 @@ func (oc *AIClient) executeSessionsList(ctx context.Context, portal *bridgev2.Po
 			messageLimit = 20
 		}
 	}
+	trace := traceEnabled(portalMeta(portal))
+	if trace {
+		oc.log.Debug().
+			Int("limit", limit).
+			Int("active_minutes", activeMinutes).
+			Int("message_limit", messageLimit).
+			Int("kind_filters", len(allowedKinds)).
+			Msg("Sessions list requested")
+	}
 
 	portals, err := oc.listAllChatPortals(ctx)
 	if err != nil {
@@ -168,6 +177,9 @@ func (oc *AIClient) executeSessionsList(ctx context.Context, portal *bridgev2.Po
 	for _, entry := range entries {
 		result = append(result, entry.data)
 	}
+	if trace {
+		oc.log.Debug().Int("count", len(result)).Msg("Sessions list completed")
+	}
 
 	return tools.JSONResult(map[string]any{
 		"sessions": result,
@@ -187,8 +199,15 @@ func (oc *AIClient) executeSessionsHistory(ctx context.Context, portal *bridgev2
 	if v, err := tools.ReadInt(args, "limit", false); err == nil && v > 0 {
 		limit = v
 	}
+	trace := traceEnabled(portalMeta(portal))
+	if trace {
+		oc.log.Debug().Str("session_key", sessionKey).Int("limit", limit).Msg("Sessions history requested")
+	}
 
 	if instance, chatID, ok := parseDesktopSessionKey(sessionKey); ok {
+		if trace {
+			oc.log.Debug().Str("instance", instance).Str("chat_id", chatID).Msg("Fetching desktop session history")
+		}
 		client, clientErr := oc.desktopAPIClient(instance)
 		if clientErr != nil || client == nil {
 			if clientErr == nil {
@@ -289,6 +308,9 @@ func (oc *AIClient) executeSessionsHistory(ctx context.Context, portal *bridgev2
 			"error":  err.Error(),
 		}), nil
 	}
+	if trace {
+		oc.log.Debug().Int("count", len(messages)).Msg("Sessions history fetched from Matrix")
+	}
 
 	includeTools := false
 	if raw, ok := args["includeTools"]; ok {
@@ -311,6 +333,20 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 			"error":  "message is required",
 		}), nil
 	}
+	meta := portalMeta(portal)
+	trace := traceEnabled(meta)
+	traceFull := traceFull(meta)
+	if trace {
+		if portal != nil {
+			oc.log.Debug().Stringer("portal", portal.PortalKey).Msg("Sessions send requested")
+		} else {
+			oc.log.Debug().Msg("Sessions send requested")
+		}
+		oc.log.Debug().Int("message_len", len(strings.TrimSpace(message))).Msg("Sessions send message length")
+	}
+	if traceFull {
+		oc.log.Debug().Str("message", strings.TrimSpace(message)).Msg("Sessions send body")
+	}
 	sessionKey := tools.ReadStringDefault(args, "sessionKey", "")
 	label := tools.ReadStringDefault(args, "label", "")
 	agentID := tools.ReadStringDefault(args, "agentId", "")
@@ -323,6 +359,9 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 	}
 
 	if instance, chatID, ok := parseDesktopSessionKey(sessionKey); ok {
+		if trace {
+			oc.log.Debug().Str("instance", instance).Str("chat_id", chatID).Msg("Sending to desktop session by key")
+		}
 		pendingID, sendErr := oc.sendDesktopMessage(ctx, instance, chatID, message)
 		if sendErr != nil {
 			return tools.JSONResult(map[string]any{
@@ -360,6 +399,9 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 		}
 		targetPortal = target
 		displayKey = display
+		if trace {
+			oc.log.Debug().Stringer("portal", targetPortal.PortalKey).Msg("Resolved session key to Matrix portal")
+		}
 	} else {
 		if strings.TrimSpace(label) == "" {
 			return tools.JSONResult(map[string]any{
@@ -380,6 +422,9 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 				desktopInstance, chatID, desktopKey, desktopErr = oc.resolveDesktopSessionByLabelAnyInstance(ctx, label)
 			}
 			if desktopErr == nil {
+				if trace {
+					oc.log.Debug().Str("instance", desktopInstance).Str("chat_id", chatID).Msg("Sending to desktop session by label")
+				}
 				pendingID, sendErr := oc.sendDesktopMessage(ctx, desktopInstance, chatID, message)
 				if sendErr != nil {
 					return tools.JSONResult(map[string]any{
@@ -417,6 +462,9 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 		}
 		targetPortal = target
 		displayKey = display
+		if trace {
+			oc.log.Debug().Stringer("portal", targetPortal.PortalKey).Msg("Resolved session label to Matrix portal")
+		}
 	}
 
 	if targetPortal == nil {
@@ -434,6 +482,9 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 		}), nil
 	} else {
 		queued = queuedFlag
+	}
+	if trace {
+		oc.log.Debug().Bool("queued", queued).Msg("Sessions send dispatched")
 	}
 
 	status := "ok"

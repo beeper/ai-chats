@@ -21,22 +21,40 @@ type TypingController struct {
 	client *AIClient
 	portal *bridgev2.Portal
 	ctx    context.Context
+	interval time.Duration
+	ttl      time.Duration
 
 	mu          sync.Mutex
 	active      bool
 	sealed      bool // Once sealed, typing cannot be restarted
 	runComplete bool
+	dispatchIdle bool
 	ticker      *time.Ticker
 	ttlTimer    *time.Timer
 	stopChan    chan struct{}
 }
 
+type TypingControllerOptions struct {
+	Interval time.Duration
+	TTL      time.Duration
+}
+
 // NewTypingController creates a new typing controller.
-func NewTypingController(client *AIClient, ctx context.Context, portal *bridgev2.Portal) *TypingController {
+func NewTypingController(client *AIClient, ctx context.Context, portal *bridgev2.Portal, opts TypingControllerOptions) *TypingController {
+	interval := opts.Interval
+	if interval == 0 {
+		interval = typingRefreshInterval
+	}
+	ttl := opts.TTL
+	if ttl == 0 {
+		ttl = typingTTL
+	}
 	return &TypingController{
 		client:   client,
 		portal:   portal,
 		ctx:      ctx,
+		interval: interval,
+		ttl:      ttl,
 		stopChan: make(chan struct{}),
 	}
 }
@@ -49,6 +67,9 @@ func (tc *TypingController) Start() {
 	if tc.sealed || tc.active {
 		return
 	}
+	if tc.interval <= 0 {
+		return
+	}
 
 	tc.active = true
 
@@ -56,14 +77,16 @@ func (tc *TypingController) Start() {
 	tc.client.setModelTyping(tc.ctx, tc.portal, true)
 
 	// Start refresh ticker
-	tc.ticker = time.NewTicker(typingRefreshInterval)
+	tc.ticker = time.NewTicker(tc.interval)
 	tickerChan := tc.ticker.C // Capture before goroutine starts to avoid race
 
 	// Start TTL timer
-	tc.ttlTimer = time.AfterFunc(typingTTL, func() {
-		tc.client.log.Debug().Msg("Typing TTL reached, stopping typing indicator")
-		tc.Stop()
-	})
+	if tc.ttl > 0 {
+		tc.ttlTimer = time.AfterFunc(tc.ttl, func() {
+			tc.client.log.Debug().Msg("Typing TTL reached, stopping typing indicator")
+			tc.Stop()
+		})
+	}
 
 	// Start refresh loop with captured channel
 	go tc.refreshLoop(tickerChan)
@@ -98,7 +121,7 @@ func (tc *TypingController) RefreshTTL() {
 		return
 	}
 
-	tc.ttlTimer.Reset(typingTTL)
+	tc.ttlTimer.Reset(tc.ttl)
 }
 
 // MarkRunComplete marks the AI run as complete.
@@ -112,6 +135,16 @@ func (tc *TypingController) MarkRunComplete() {
 	tc.maybeStop()
 }
 
+// MarkDispatchIdle marks the dispatcher as idle.
+func (tc *TypingController) MarkDispatchIdle() {
+	tc.mu.Lock()
+	tc.dispatchIdle = true
+	tc.mu.Unlock()
+
+	// Check if we should stop
+	tc.maybeStop()
+}
+
 // maybeStop stops typing if conditions are met.
 func (tc *TypingController) maybeStop() {
 	tc.mu.Lock()
@@ -119,7 +152,7 @@ func (tc *TypingController) maybeStop() {
 		tc.mu.Unlock()
 		return
 	}
-	if tc.runComplete {
+	if tc.runComplete && tc.dispatchIdle {
 		tc.mu.Unlock()
 		tc.Stop()
 	} else {

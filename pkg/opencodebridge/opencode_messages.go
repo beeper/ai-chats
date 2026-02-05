@@ -21,8 +21,25 @@ func (b *Bridge) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 	if msg.Content == nil || msg.Event == nil {
 		return nil, errMissingMessageContent
 	}
+	trace := traceEnabled(meta)
+	traceFull := traceFull(meta)
+	if trace {
+		if log := b.host.Log(); log != nil {
+			logger := log.With().
+				Stringer("event_id", msg.Event.ID).
+				Stringer("portal", portal.PortalKey).
+				Str("msg_type", string(msg.Content.MsgType)).
+				Logger()
+			logger.Debug().Msg("OpenCode inbound message received")
+		}
+	}
 	if msg.Content.RelatesTo != nil && msg.Content.RelatesTo.GetReplaceID() != "" {
 		// Ignore edits from Matrix to avoid echo loops; OpenCode updates via SSE.
+		if trace {
+			if log := b.host.Log(); log != nil {
+				log.Debug().Msg("OpenCode edit ignored")
+			}
+		}
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 	if b == nil || b.manager == nil {
@@ -52,6 +69,16 @@ func (b *Bridge) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 		body = strings.TrimSpace(msg.Content.Body)
 		if body == "" {
 			return nil, errEmptyMessage
+		}
+		if trace {
+			if log := b.host.Log(); log != nil {
+				log.Debug().Int("body_len", len(body)).Msg("OpenCode text message")
+			}
+		}
+		if traceFull {
+			if log := b.host.Log(); log != nil {
+				log.Debug().Str("body", body).Msg("OpenCode text body")
+			}
 		}
 		parts = append(parts, opencode.PartInput{Type: "text", Text: body})
 		titleCandidate = body
@@ -96,6 +123,20 @@ func (b *Bridge) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 		if caption != "" {
 			parts = append(parts, opencode.PartInput{Type: "text", Text: caption})
 		}
+		if trace {
+			if log := b.host.Log(); log != nil {
+				log.Debug().
+					Str("mime_type", mimeType).
+					Str("filename", filename).
+					Bool("has_caption", caption != "").
+					Msg("OpenCode media message")
+			}
+		}
+		if traceFull && caption != "" {
+			if log := b.host.Log(); log != nil {
+				log.Debug().Str("caption", caption).Msg("OpenCode media caption")
+			}
+		}
 		titleCandidate = caption
 		if titleCandidate == "" {
 			titleCandidate = filename
@@ -105,13 +146,28 @@ func (b *Bridge) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 	}
 
 	b.host.SendPendingStatus(ctx, portal, msg.Event, "Sending to OpenCode...")
+	if trace {
+		if log := b.host.Log(); log != nil {
+			log.Debug().Msg("OpenCode send queued")
+		}
+	}
 
 	runCtx := b.host.BackgroundContext(ctx)
 	go func() {
 		response, err := b.manager.SendMessage(runCtx, meta.InstanceID, meta.SessionID, parts, msg.Event.ID)
 		if err != nil {
+			if trace {
+				if log := b.host.Log(); log != nil {
+					log.Warn().Err(err).Msg("OpenCode send failed")
+				}
+			}
 			b.host.SendSystemNotice(runCtx, portal, "OpenCode send failed: "+err.Error())
 			return
+		}
+		if trace {
+			if log := b.host.Log(); log != nil {
+				log.Debug().Msg("OpenCode send completed")
+			}
 		}
 		b.maybeFinalizeOpenCodeTitle(runCtx, portal, meta, titleCandidate)
 		b.host.SendSuccessStatus(runCtx, portal, msg.Event)

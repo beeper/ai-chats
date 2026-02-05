@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 )
 
 type rawRecord map[string]any
@@ -54,6 +55,14 @@ func normalizeCronJobInputRaw(raw any, applyDefaults bool) rawRecord {
 			next["schedule"] = coerceScheduleMap(schedMap)
 		}
 	}
+	if deliveryRaw, ok := base["delivery"]; ok {
+		if deliveryMap, ok := deliveryRaw.(map[string]any); ok {
+			next["delivery"] = coerceDeliveryMap(deliveryMap)
+		}
+	}
+	if _, ok := base["isolation"]; ok {
+		delete(next, "isolation")
+	}
 
 	if applyDefaults {
 		if _, ok := next["wakeMode"]; !ok {
@@ -69,6 +78,21 @@ func normalizeCronJobInputRaw(raw any, applyDefaults bool) rawRecord {
 						next["sessionTarget"] = string(CronSessionIsolated)
 					}
 				}
+			}
+		}
+		if payloadMap, ok := next["payload"].(map[string]any); ok {
+			payloadKind := ""
+			if kind, ok := payloadMap["kind"].(string); ok {
+				payloadKind = strings.ToLower(strings.TrimSpace(kind))
+			}
+			sessionTarget := ""
+			if target, ok := next["sessionTarget"].(string); ok {
+				sessionTarget = strings.ToLower(strings.TrimSpace(target))
+			}
+			isIsolatedAgentTurn := sessionTarget == "isolated" || (sessionTarget == "" && payloadKind == "agentturn")
+			_, hasDelivery := next["delivery"]
+			if !hasDelivery && isIsolatedAgentTurn && payloadKind == "agentturn" {
+				next["delivery"] = map[string]any{"mode": "announce"}
 			}
 		}
 	}
@@ -100,6 +124,53 @@ func coerceScheduleMap(schedule map[string]any) map[string]any {
 			next["kind"] = "every"
 		} else if schedule["expr"] != nil {
 			next["kind"] = "cron"
+		}
+	}
+
+	if rawAt, ok := schedule["at"].(string); ok {
+		trimmed := strings.TrimSpace(rawAt)
+		if trimmed != "" {
+			if ts, ok := parseAbsoluteTimeMs(trimmed); ok {
+				next["at"] = formatIsoMillis(ts)
+			} else {
+				next["at"] = trimmed
+			}
+		}
+	}
+	return next
+}
+
+func formatIsoMillis(ts int64) string {
+	return time.UnixMilli(ts).UTC().Format("2006-01-02T15:04:05.000Z")
+}
+
+func coerceDeliveryMap(delivery map[string]any) map[string]any {
+	next := map[string]any{}
+	for k, v := range delivery {
+		next[k] = v
+	}
+	if rawMode, ok := delivery["mode"].(string); ok {
+		mode := strings.ToLower(strings.TrimSpace(rawMode))
+		if mode != "" {
+			next["mode"] = mode
+		} else {
+			delete(next, "mode")
+		}
+	}
+	if rawChannel, ok := delivery["channel"].(string); ok {
+		channel := strings.ToLower(strings.TrimSpace(rawChannel))
+		if channel != "" {
+			next["channel"] = channel
+		} else {
+			delete(next, "channel")
+		}
+	}
+	if rawTo, ok := delivery["to"].(string); ok {
+		to := strings.TrimSpace(rawTo)
+		if to != "" {
+			next["to"] = to
+		} else {
+			delete(next, "to")
 		}
 	}
 	return next

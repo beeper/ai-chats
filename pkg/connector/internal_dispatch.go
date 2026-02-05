@@ -30,15 +30,29 @@ func (oc *AIClient) dispatchInternalMessage(
 			return "", false, fmt.Errorf("missing portal metadata")
 		}
 	}
+	trace := traceEnabled(meta)
+	traceFull := traceFull(meta)
+	if trace {
+		oc.log.Debug().
+			Stringer("portal", portal.PortalKey).
+			Str("source", strings.TrimSpace(source)).
+			Msg("Dispatching internal message")
+	}
 	if meta.IsOpenCodeRoom {
 		if oc.opencodeBridge == nil {
 			return "", false, fmt.Errorf("OpenCode integration is not available")
+		}
+		if trace {
+			oc.log.Debug().Stringer("portal", portal.PortalKey).Msg("Routing internal message to OpenCode")
 		}
 		return oc.opencodeBridge.DispatchInternalMessage(ctx, portal, oc.PortalMeta(portal), body)
 	}
 	trimmed := strings.TrimSpace(body)
 	if trimmed == "" {
 		return "", false, fmt.Errorf("message body is required")
+	}
+	if traceFull {
+		oc.log.Debug().Stringer("portal", portal.PortalKey).Str("body", trimmed).Msg("Internal message body")
 	}
 
 	prefix := "internal"
@@ -71,11 +85,16 @@ func (oc *AIClient) dispatchInternalMessage(
 		oc.log.Warn().Err(err).Msg("Failed to save internal message to database")
 	}
 
+	isGroup := oc.isGroupChat(ctx, portal)
 	pending := pendingMessage{
 		Portal:      portal,
 		Meta:        meta,
 		Type:        pendingTypeText,
 		MessageBody: trimmed,
+		Typing: &TypingContext{
+			IsGroup:      isGroup,
+			WasMentioned: true,
+		},
 	}
 	queueItem := pendingQueueItem{
 		pending:     pending,
@@ -88,6 +107,7 @@ func (oc *AIClient) dispatchInternalMessage(
 	if oc.acquireRoom(portal.MXID) {
 		metaSnapshot := clonePortalMetadata(meta)
 		runCtx := oc.attachRoomRun(oc.backgroundContext(ctx), portal.MXID)
+		runCtx = WithTypingContext(runCtx, pending.Typing)
 		go func(metaSnapshot *PortalMetadata) {
 			defer func() {
 				oc.releaseRoom(portal.MXID)
@@ -111,12 +131,18 @@ func (oc *AIClient) dispatchInternalMessage(
 		}
 		if oc.enqueueSteerQueue(portal.MXID, queueItem) {
 			if queueSettings.Mode != QueueModeSteerBacklog {
+				if trace {
+					oc.log.Debug().Stringer("portal", portal.PortalKey).Msg("Steered internal message into active run")
+				}
 				return eventID, true, nil
 			}
 		}
 	}
 	if queueSettings.Mode == QueueModeSteerBacklog {
 		queueItem.backlogAfter = true
+	}
+	if trace {
+		oc.log.Debug().Stringer("portal", portal.PortalKey).Msg("Queued internal message")
 	}
 	oc.queuePendingMessage(portal.MXID, queueItem, queueSettings)
 	oc.notifySessionMemoryChange(ctx, portal, meta, false)

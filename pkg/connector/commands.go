@@ -391,6 +391,17 @@ var CommandListDesktopAPIInstances = registerAICommand(commandregistry.Definitio
 	Handler:        fnListDesktopAPIInstances,
 })
 
+// CommandDesktopAPI handles the !ai desktop-api command
+var CommandDesktopAPI = registerAICommand(commandregistry.Definition{
+	Name:           "desktop-api",
+	Description:    "Manage Beeper Desktop API instances",
+	Args:           "<add|list|remove> [args]",
+	Section:        HelpSectionAI,
+	RequiresPortal: false,
+	RequiresLogin:  true,
+	Handler:        fnDesktopAPI,
+})
+
 func fnConfig(ce *commands.Event) {
 	client, meta, ok := requireClientMeta(ce)
 	if !ok {
@@ -616,6 +627,46 @@ func fnListDesktopAPIInstances(ce *commands.Event) {
 		}
 	}
 	ce.Reply("Desktop API instances:\n%s", strings.Join(lines, "\n"))
+}
+
+func fnDesktopAPI(ce *commands.Event) {
+	if len(ce.Args) == 0 {
+		ce.Reply("Usage: `!ai desktop-api list` | `!ai desktop-api add <token> [baseURL]` | `!ai desktop-api add <name> <token> [baseURL]` | `!ai desktop-api remove <name>`.")
+		return
+	}
+
+	sub := strings.ToLower(strings.TrimSpace(ce.Args[0]))
+	switch sub {
+	case "list", "ls":
+		ce.Args = ce.Args[1:]
+		fnListDesktopAPIInstances(ce)
+		return
+	case "add", "set":
+		switch len(ce.Args) {
+		case 2:
+			ce.Args = ce.Args[1:]
+			fnSetDesktopAPIToken(ce)
+			return
+		default:
+			if len(ce.Args) >= 3 {
+				ce.Args = ce.Args[1:]
+				fnAddDesktopAPIInstance(ce)
+				return
+			}
+		}
+		ce.Reply("Usage: `!ai desktop-api add <token> [baseURL]` or `!ai desktop-api add <name> <token> [baseURL]`.")
+		return
+	case "remove", "rm", "delete":
+		if len(ce.Args) < 2 {
+			ce.Reply("Usage: `!ai desktop-api remove <name>`.")
+			return
+		}
+		ce.Args = ce.Args[1:]
+		fnRemoveDesktopAPIInstance(ce)
+		return
+	default:
+		ce.Reply("Usage: `!ai desktop-api list` | `!ai desktop-api add <token> [baseURL]` | `!ai desktop-api add <name> <token> [baseURL]` | `!ai desktop-api remove <name>`.")
+	}
 }
 
 // CommandDebounce handles the !ai debounce command

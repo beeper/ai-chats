@@ -142,6 +142,7 @@ type PortalMetadata struct {
 	Title               string            `json:"title,omitempty"`
 	TitleGenerated      bool              `json:"title_generated,omitempty"` // True if title was auto-generated
 	WelcomeSent         bool              `json:"welcome_sent,omitempty"`
+	AutoGreetingSent    bool              `json:"auto_greeting_sent,omitempty"`
 	Capabilities        ModelCapabilities `json:"capabilities,omitempty"`
 	LastRoomStateSync   int64             `json:"last_room_state_sync,omitempty"` // Track when we've synced room state
 	PDFConfig           *PDFConfig        `json:"pdf_config,omitempty"`           // Per-room PDF processing configuration
@@ -191,6 +192,10 @@ type PortalMetadata struct {
 
 	// Debounce configuration (0 = use default, -1 = disabled)
 	DebounceMs int `json:"debounce_ms,omitempty"`
+
+	// Per-session typing overrides (OpenClaw-style).
+	TypingMode            string `json:"typing_mode,omitempty"`             // never|instant|thinking|message
+	TypingIntervalSeconds *int   `json:"typing_interval_seconds,omitempty"` // Optional per-session override
 }
 
 func clonePortalMetadata(src *PortalMetadata) *PortalMetadata {
@@ -205,6 +210,8 @@ func clonePortalMetadata(src *PortalMetadata) *PortalMetadata {
 	clone.OpenCodeInstanceID = src.OpenCodeInstanceID
 	clone.OpenCodeSessionID = src.OpenCodeSessionID
 	clone.OpenCodeReadOnly = src.OpenCodeReadOnly
+	clone.TypingMode = src.TypingMode
+	clone.TypingIntervalSeconds = src.TypingIntervalSeconds
 
 	if src.PDFConfig != nil {
 		pdf := *src.PDFConfig

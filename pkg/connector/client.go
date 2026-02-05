@@ -43,6 +43,7 @@ var (
 	_ bridgev2.ReactionHandlingNetworkAPI       = (*AIClient)(nil)
 	_ bridgev2.RedactionHandlingNetworkAPI      = (*AIClient)(nil)
 	_ bridgev2.DisappearTimerChangingNetworkAPI = (*AIClient)(nil)
+	_ bridgev2.TypingHandlingNetworkAPI         = (*AIClient)(nil)
 )
 
 var rejectAllMediaFileFeatures = &event.FileFeatures{
@@ -297,6 +298,14 @@ type AIClient struct {
 	// Message debouncer for combining rapid messages
 	inboundDebouncer *Debouncer
 
+	// Matrix typing state (per room)
+	userTypingMu    sync.Mutex
+	userTypingState map[id.RoomID]userTypingState
+
+	// Typing indicator while messages are queued (per room)
+	queueTypingMu sync.Mutex
+	queueTyping   map[id.RoomID]*TypingController
+
 	// OpenCode bridge (optional)
 	opencodeBridge *opencodebridge.Bridge
 
@@ -345,6 +354,7 @@ type pendingMessage struct {
 	PendingSent     bool                     // Whether a pending status was already sent for this event
 	RawEventContent map[string]any           // Raw Matrix event content for link previews
 	AckEventIDs     []id.EventID             // Ack reactions to remove after completion
+	Typing          *TypingContext
 }
 
 func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey string) (*AIClient, error) {
@@ -356,6 +366,7 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 	// Get per-user credentials from login metadata
 	meta := login.Metadata.(*UserLoginMetadata)
 	log := login.Log.With().Str("component", "ai-network").Str("provider", meta.Provider).Logger()
+	log.Info().Msg("Initializing AI client")
 
 	// Create base client struct
 	oc := &AIClient{
@@ -368,12 +379,19 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 		activeRoomRuns:      make(map[id.RoomID]*roomRunState),
 		subagentRuns:        make(map[string]*subagentRun),
 		groupHistoryBuffers: make(map[id.RoomID]*groupHistoryBuffer),
+		userTypingState:     make(map[id.RoomID]userTypingState),
+		queueTyping:         make(map[id.RoomID]*TypingController),
 	}
 
 	// Initialize inbound message processing with config values
 	inboundCfg := connector.Config.Inbound.WithDefaults()
 	oc.inboundDedupeCache = NewDedupeCache(inboundCfg.DedupeTTL, inboundCfg.DedupeMaxSize)
 	debounceMs := oc.resolveInboundDebounceMs("matrix")
+	log.Info().
+		Dur("dedupe_ttl", inboundCfg.DedupeTTL).
+		Int("dedupe_max", inboundCfg.DedupeMaxSize).
+		Int("debounce_ms", debounceMs).
+		Msg("Inbound processing configured")
 	oc.inboundDebouncer = NewDebouncer(debounceMs, oc.handleDebouncedMessages, func(err error, entries []DebounceEntry) {
 		log.Warn().Err(err).Int("entries", len(entries)).Msg("Debounce flush failed")
 	})
@@ -507,10 +525,13 @@ func (oc *AIClient) queuePendingMessage(roomID id.RoomID, item pendingQueueItem,
 		if snapshot != nil {
 			queued = len(snapshot.items)
 		}
-		oc.log.Debug().
-			Str("room_id", roomID.String()).
-			Int("queue_length", queued).
-			Msg("Message queued for later processing")
+		if traceEnabled(item.pending.Meta) {
+			oc.log.Debug().
+				Str("room_id", roomID.String()).
+				Int("queue_length", queued).
+				Msg("Message queued for later processing")
+		}
+		oc.startQueueTyping(oc.backgroundContext(context.Background()), item.pending.Portal, item.pending.Meta, item.pending.Typing)
 	}
 	return enqueued
 }
@@ -532,11 +553,24 @@ func (oc *AIClient) dispatchOrQueue(
 	roomID := portal.MXID
 	shouldSteer := queueSettings.Mode == QueueModeSteer || queueSettings.Mode == QueueModeSteerBacklog
 	shouldFollowup := queueSettings.Mode == QueueModeFollowup || queueSettings.Mode == QueueModeCollect || queueSettings.Mode == QueueModeSteerBacklog
+	trace := traceEnabled(meta)
+	if trace {
+		oc.log.Debug().
+			Str("room_id", roomID.String()).
+			Str("queue_mode", string(queueSettings.Mode)).
+			Str("pending_type", string(queueItem.pending.Type)).
+			Bool("has_event", evt != nil).
+			Msg("Dispatching inbound message")
+	}
 	if queueSettings.Mode == QueueModeInterrupt {
 		oc.cancelRoomRun(roomID)
 		oc.clearPendingQueue(roomID)
 	}
 	if oc.acquireRoom(roomID) {
+		if trace {
+			oc.log.Debug().Str("room_id", roomID.String()).Msg("Room acquired; dispatching immediately")
+		}
+		oc.stopQueueTyping(roomID)
 		// Save user message to database - we must do this ourselves since we return Pending=true.
 		if userMessage != nil && evt != nil {
 			userMessage.MXID = evt.ID
@@ -552,6 +586,9 @@ func (oc *AIClient) dispatchOrQueue(
 			queueItem.pending.PendingSent = true
 		}
 		runCtx := withStatusEvents(oc.backgroundContext(ctx), queueItem.pending.StatusEvents)
+		if queueItem.pending.Typing != nil {
+			runCtx = WithTypingContext(runCtx, queueItem.pending.Typing)
+		}
 		runCtx = oc.attachRoomRun(runCtx, roomID)
 		metaSnapshot := clonePortalMetadata(meta)
 		go func(metaSnapshot *PortalMetadata) {
@@ -577,6 +614,12 @@ func (oc *AIClient) dispatchOrQueue(
 		}
 		steered := oc.enqueueSteerQueue(roomID, queueItem)
 		if steered {
+			if trace {
+				oc.log.Debug().
+					Str("room_id", roomID.String()).
+					Bool("followup", shouldFollowup).
+					Msg("Steering message into active run")
+			}
 			if userMessage != nil {
 				if evt != nil {
 					userMessage.MXID = evt.ID
@@ -589,8 +632,9 @@ func (oc *AIClient) dispatchOrQueue(
 				}
 			}
 			if !shouldFollowup {
-				if evt != nil {
+				if evt != nil && !queueItem.pending.PendingSent {
 					oc.sendPendingStatus(ctx, portal, evt, "Processing...")
+					queueItem.pending.PendingSent = true
 					pendingSent = true
 				}
 				oc.notifySessionMemoryChange(ctx, portal, meta, false)
@@ -614,6 +658,9 @@ func (oc *AIClient) dispatchOrQueue(
 	if queueSettings.Mode == QueueModeSteerBacklog {
 		queueItem.backlogAfter = true
 	}
+	if trace {
+		oc.log.Debug().Str("room_id", roomID.String()).Msg("Room busy; queued message")
+	}
 	oc.queuePendingMessage(roomID, queueItem, queueSettings)
 	if evt != nil && !pendingSent {
 		oc.sendPendingStatus(ctx, portal, evt, "Waiting for previous response")
@@ -636,12 +683,28 @@ func (oc *AIClient) dispatchOrQueueWithStatus(
 	roomID := portal.MXID
 	shouldSteer := queueSettings.Mode == QueueModeSteer || queueSettings.Mode == QueueModeSteerBacklog
 	shouldFollowup := queueSettings.Mode == QueueModeFollowup || queueSettings.Mode == QueueModeCollect || queueSettings.Mode == QueueModeSteerBacklog
+	trace := traceEnabled(meta)
+	if trace {
+		oc.log.Debug().
+			Str("room_id", roomID.String()).
+			Str("queue_mode", string(queueSettings.Mode)).
+			Str("pending_type", string(queueItem.pending.Type)).
+			Bool("has_event", evt != nil).
+			Msg("Dispatching inbound message with status")
+	}
 	if queueSettings.Mode == QueueModeInterrupt {
 		oc.cancelRoomRun(roomID)
 		oc.clearPendingQueue(roomID)
 	}
 	if oc.acquireRoom(roomID) {
+		if trace {
+			oc.log.Debug().Str("room_id", roomID.String()).Msg("Room acquired; dispatching immediately")
+		}
+		oc.stopQueueTyping(roomID)
 		runCtx := withStatusEvents(oc.backgroundContext(ctx), queueItem.pending.StatusEvents)
+		if queueItem.pending.Typing != nil {
+			runCtx = WithTypingContext(runCtx, queueItem.pending.Typing)
+		}
 		runCtx = oc.attachRoomRun(runCtx, roomID)
 		metaSnapshot := clonePortalMetadata(meta)
 		go func(metaSnapshot *PortalMetadata) {
@@ -662,8 +725,15 @@ func (oc *AIClient) dispatchOrQueueWithStatus(
 		}
 		steered := oc.enqueueSteerQueue(roomID, queueItem)
 		if steered && !shouldFollowup {
-			if evt != nil {
+			if trace {
+				oc.log.Debug().
+					Str("room_id", roomID.String()).
+					Bool("followup", shouldFollowup).
+					Msg("Steering message into active run")
+			}
+			if evt != nil && !queueItem.pending.PendingSent {
 				oc.sendPendingStatus(ctx, portal, evt, "Processing...")
+				queueItem.pending.PendingSent = true
 				pendingSent = true
 			}
 			return
@@ -672,6 +742,9 @@ func (oc *AIClient) dispatchOrQueueWithStatus(
 
 	if queueSettings.Mode == QueueModeSteerBacklog {
 		queueItem.backlogAfter = true
+	}
+	if trace {
+		oc.log.Debug().Str("room_id", roomID.String()).Msg("Room busy; queued message")
 	}
 	oc.queuePendingMessage(roomID, queueItem, queueSettings)
 	if evt != nil && !pendingSent {
@@ -693,6 +766,22 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 		snapshot := oc.getQueueSnapshot(roomID)
 		if snapshot == nil || (len(snapshot.items) == 0 && snapshot.droppedCount == 0) {
 			return
+		}
+		traceMeta := (*PortalMetadata)(nil)
+		if len(snapshot.items) > 0 {
+			traceMeta = snapshot.items[0].pending.Meta
+		}
+		trace := traceEnabled(traceMeta)
+		traceFull := traceFull(traceMeta)
+		logCtx := zerolog.Nop()
+		if trace {
+			logCtx = oc.log.With().Str("room_id", roomID.String()).Logger()
+			logCtx.Debug().
+				Str("queue_mode", string(snapshot.mode)).
+				Int("queued_items", len(snapshot.items)).
+				Int("dropped_count", snapshot.droppedCount).
+				Int("debounce_ms", snapshot.debounceMs).
+				Msg("Processing pending queue")
 		}
 		// Wait for debounce window to pass since last enqueue.
 		if snapshot.debounceMs > 0 {
@@ -716,6 +805,7 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 		if !oc.acquireRoom(roomID) {
 			return
 		}
+		oc.stopQueueTyping(roomID)
 
 		actionSnapshot := oc.getQueueSnapshot(roomID)
 		if actionSnapshot == nil || (len(actionSnapshot.items) == 0 && actionSnapshot.droppedCount == 0) {
@@ -743,6 +833,9 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 				oc.releaseRoom(roomID)
 				return
 			}
+			if trace {
+				logCtx.Debug().Int("collect_count", len(items)).Msg("Collecting queued items")
+			}
 			ackIDs := make([]id.EventID, 0, len(items))
 			summary := oc.takeQueueSummary(roomID, "message")
 			for idx := range items {
@@ -762,11 +855,20 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 				item.pending.AckEventIDs = ackIDs
 			}
 			combined := buildCollectPrompt("[Queued messages while agent was busy]", items, summary)
+			if traceFull && strings.TrimSpace(combined) != "" {
+				logCtx.Debug().Str("body", combined).Msg("Collect prompt body")
+			}
 			metaSnapshot := clonePortalMetadata(item.pending.Meta)
 			promptMessages, err = oc.buildPromptWithLinkContext(ctx, item.pending.Portal, metaSnapshot, combined, nil, "")
 		} else {
 			summaryPrompt := oc.takeQueueSummary(roomID, "message")
 			if summaryPrompt != "" {
+				if trace {
+					logCtx.Debug().Msg("Using queue summary prompt")
+				}
+				if traceFull {
+					logCtx.Debug().Str("body", summaryPrompt).Msg("Queue summary prompt body")
+				}
 				if actionSnapshot.lastItem != nil {
 					item = *actionSnapshot.lastItem
 				} else {
@@ -789,6 +891,12 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 			eventID := id.EventID("")
 			if item.pending.Event != nil {
 				eventID = item.pending.Event.ID
+			}
+			if trace {
+				logCtx.Debug().
+					Str("pending_type", string(item.pending.Type)).
+					Bool("has_event", item.pending.Event != nil).
+					Msg("Building prompt for queued item")
 			}
 			switch item.pending.Type {
 			case pendingTypeText:
@@ -815,6 +923,9 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 			return
 		}
 
+		if trace {
+			logCtx.Debug().Int("prompt_messages", len(promptMessages)).Msg("Dispatching queued prompt")
+		}
 		oc.dispatchQueuedPrompt(ctx, item, promptMessages)
 	}()
 }
@@ -2353,6 +2464,18 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 	}
 
 	last := entries[len(entries)-1]
+	trace := traceEnabled(last.Meta)
+	traceFull := traceFull(last.Meta)
+	logCtx := zerolog.Nop()
+	if trace {
+		logCtx = oc.log.With().
+			Stringer("portal", last.Portal.PortalKey).
+			Logger()
+		if last.Event != nil {
+			logCtx = logCtx.With().Stringer("event_id", last.Event.ID).Logger()
+		}
+		logCtx.Debug().Int("entry_count", len(entries)).Msg("Debounce flush triggered")
+	}
 	ctx := oc.backgroundContext(context.Background())
 	if last.Meta != nil {
 		if override := oc.effectiveModel(last.Meta); strings.TrimSpace(override) != "" {
@@ -2363,7 +2486,10 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 	// Combine raw bodies if multiple
 	combinedRaw, count := CombineDebounceEntries(entries)
 	if count > 1 {
-		oc.log.Info().Int("count", count).Msg("Combined debounced messages")
+		logCtx.Debug().Int("combined_count", count).Msg("Combined debounced messages")
+	}
+	if traceFull && strings.TrimSpace(combinedRaw) != "" {
+		logCtx.Debug().Str("body", combinedRaw).Msg("Combined debounce body")
 	}
 
 	combinedBody := oc.buildMatrixInboundBody(ctx, last.Portal, last.Meta, last.Event, combinedRaw, last.SenderName, last.RoomName, last.IsGroup)
@@ -2391,6 +2517,9 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 			oc.removeAckReactionByID(statusCtx, last.Portal, entries[0].AckEventID)
 		}
 		return
+	}
+	if trace {
+		logCtx.Debug().Int("prompt_messages", len(promptMessages)).Msg("Built prompt for debounced messages")
 	}
 
 	// Create user message for database
@@ -2435,6 +2564,10 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 		PendingSent:     last.PendingSent,
 		RawEventContent: rawEventContent,
 		AckEventIDs:     ackRemoveIDs,
+		Typing: &TypingContext{
+			IsGroup:      last.IsGroup,
+			WasMentioned: last.WasMentioned,
+		},
 	}
 	queueItem := pendingQueueItem{
 		pending:         pending,

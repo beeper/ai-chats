@@ -62,12 +62,16 @@ type AgentDefaultsConfig struct {
 	EnvelopeTimezone  string                 `yaml:"envelopeTimezone"`  // local|utc|user|IANA
 	EnvelopeTimestamp string                 `yaml:"envelopeTimestamp"` // on|off
 	EnvelopeElapsed   string                 `yaml:"envelopeElapsed"`   // on|off
+	TypingMode        string                 `yaml:"typingMode"`        // never|instant|thinking|message
+	TypingIntervalSec *int                   `yaml:"typingIntervalSeconds"`
 }
 
 // AgentEntryConfig defines per-agent overrides (OpenClaw-style).
 type AgentEntryConfig struct {
-	ID        string           `yaml:"id"`
-	Heartbeat *HeartbeatConfig `yaml:"heartbeat"`
+	ID                string           `yaml:"id"`
+	Heartbeat         *HeartbeatConfig `yaml:"heartbeat"`
+	TypingMode        string           `yaml:"typingMode"` // never|instant|thinking|message
+	TypingIntervalSec *int             `yaml:"typingIntervalSeconds"`
 }
 
 // HeartbeatConfig configures periodic heartbeat runs (OpenClaw-style).

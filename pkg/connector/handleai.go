@@ -6,14 +6,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/openai/openai-go/v3/shared"
 	"github.com/rs/zerolog"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
 )
@@ -66,7 +64,7 @@ func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev
 		})
 	}
 
-	if portal == nil || portal.Bridge == nil || evt == nil {
+	if portal == nil || portal.Bridge == nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to send message via OpenAI")
 		return
 	}
@@ -74,21 +72,26 @@ func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev
 	// Use FormatUserFacingError for consistent, user-friendly error messages
 	errorMessage := FormatUserFacingError(err)
 
-	status := messageStatusForError(err)
-	reason := messageStatusReasonForError(err)
+	if evt != nil {
+		status := messageStatusForError(err)
+		reason := messageStatusReasonForError(err)
 
-	msgStatus := bridgev2.WrapErrorInStatus(err).
-		WithStatus(status).
-		WithErrorReason(reason).
-		WithMessage(errorMessage).
-		WithIsCertain(true).
-		WithSendNotice(true)
-	portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, bridgev2.StatusEventInfoFromEvent(evt))
-	for _, extra := range statusEventsFromContext(ctx) {
-		if extra != nil {
-			portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, bridgev2.StatusEventInfoFromEvent(extra))
+		msgStatus := bridgev2.WrapErrorInStatus(err).
+			WithStatus(status).
+			WithErrorReason(reason).
+			WithMessage(errorMessage).
+			WithIsCertain(true).
+			WithSendNotice(true)
+		portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, bridgev2.StatusEventInfoFromEvent(evt))
+		for _, extra := range statusEventsFromContext(ctx) {
+			if extra != nil {
+				portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, bridgev2.StatusEventInfoFromEvent(extra))
+			}
 		}
 	}
+
+	// Some clients don't surface message status errors, so also send a notice.
+	oc.sendSystemNotice(ctx, portal, fmt.Sprintf("Request failed: %s", errorMessage))
 }
 
 // setModelTyping sets the typing indicator for the current model's ghost user
@@ -136,8 +139,116 @@ func (oc *AIClient) sendSuccessStatus(ctx context.Context, portal *bridgev2.Port
 	portal.Bridge.Matrix.SendMessageStatus(ctx, &status, bridgev2.StatusEventInfoFromEvent(evt))
 }
 
-// sendWelcomeMessage sends a welcome message when a new chat is created.
-// The message is excluded from LLM history so it doesn't affect conversation context.
+const autoGreetingDelay = 5 * time.Second
+
+func (oc *AIClient) resolveWelcomeDisplayName(ctx context.Context, meta *PortalMetadata) (displayName, agentID, modelID string) {
+	agentID = resolveAgentID(meta)
+	modelID = oc.effectiveModel(meta)
+	if agentID != "" {
+		store := NewAgentStoreAdapter(oc)
+		if agent, err := store.GetAgentByID(ctx, agentID); err == nil && agent != nil {
+			agentName := oc.resolveAgentDisplayName(ctx, agent)
+			displayName = oc.agentModelDisplayName(agentName, modelID)
+			oc.ensureAgentGhostDisplayName(ctx, agentID, modelID, agentName)
+		} else {
+			displayName = agentID
+		}
+		return displayName, agentID, modelID
+	}
+
+	displayName = modelContactName(modelID, oc.findModelInfo(modelID))
+	oc.ensureGhostDisplayName(ctx, modelID)
+	return displayName, agentID, modelID
+}
+
+func (oc *AIClient) hasPortalMessages(ctx context.Context, portal *bridgev2.Portal) bool {
+	if oc == nil || portal == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil {
+		return true
+	}
+	history, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, 1)
+	if err != nil {
+		oc.log.Warn().Err(err).Msg("Failed to check portal message history")
+		return true
+	}
+	return len(history) > 0
+}
+
+func (oc *AIClient) scheduleAutoGreeting(ctx context.Context, portal *bridgev2.Portal) {
+	if oc == nil || portal == nil || portal.MXID == "" {
+		return
+	}
+	meta := portalMeta(portal)
+	if meta == nil || meta.AutoGreetingSent {
+		return
+	}
+	if meta.IsBuilderRoom || meta.IsCronRoom || meta.IsAgentDataRoom || meta.IsGlobalMemoryRoom || meta.IsOpenCodeRoom {
+		return
+	}
+	if normalizeSendPolicyMode(meta.SendPolicy) == "deny" {
+		return
+	}
+	if resolveAgentID(meta) == "" {
+		return
+	}
+	if oc.hasPortalMessages(ctx, portal) {
+		return
+	}
+
+	portalKey := portal.PortalKey
+	roomID := portal.MXID
+	go func() {
+		bgCtx := oc.backgroundContext(ctx)
+		for {
+			delay := autoGreetingDelay
+			if roomID != "" {
+				if state, ok := oc.getUserTypingState(roomID); ok && !state.lastActivity.IsZero() {
+					if since := time.Since(state.lastActivity); since < autoGreetingDelay {
+						delay = autoGreetingDelay - since
+					}
+				}
+			}
+			timer := time.NewTimer(delay)
+			<-timer.C
+			timer.Stop()
+
+			current, err := oc.UserLogin.Bridge.GetPortalByKey(bgCtx, portalKey)
+			if err != nil || current == nil {
+				return
+			}
+			currentMeta := portalMeta(current)
+			if currentMeta == nil || currentMeta.AutoGreetingSent {
+				return
+			}
+			if currentMeta.IsBuilderRoom || currentMeta.IsCronRoom || currentMeta.IsAgentDataRoom || currentMeta.IsGlobalMemoryRoom || currentMeta.IsOpenCodeRoom {
+				return
+			}
+			if normalizeSendPolicyMode(currentMeta.SendPolicy) == "deny" {
+				return
+			}
+			if resolveAgentID(currentMeta) == "" {
+				return
+			}
+			if oc.hasPortalMessages(bgCtx, current) {
+				return
+			}
+			if oc.isUserTyping(current.MXID) || !oc.userIdleFor(current.MXID, autoGreetingDelay) {
+				continue
+			}
+
+			currentMeta.AutoGreetingSent = true
+			if err := current.Save(bgCtx); err != nil {
+				oc.log.Warn().Err(err).Msg("Failed to persist auto greeting state")
+				return
+			}
+			if _, _, err := oc.dispatchInternalMessage(bgCtx, current, currentMeta, autoGreetingPrompt, "auto-greeting", true); err != nil {
+				oc.log.Warn().Err(err).Msg("Failed to dispatch auto greeting")
+			}
+			return
+		}
+	}()
+}
+
+// sendWelcomeMessage sends a system notice when a new chat is created and schedules an auto-greeting.
 func (oc *AIClient) sendWelcomeMessage(ctx context.Context, portal *bridgev2.Portal) {
 	meta := portalMeta(portal)
 	if meta.WelcomeSent {
@@ -151,62 +262,8 @@ func (oc *AIClient) sendWelcomeMessage(ctx context.Context, portal *bridgev2.Por
 		return // Don't send if we can't persist state
 	}
 
-	// Use portal.OtherUserID as authoritative source for sender
-	// This ensures welcome message sender always matches the room's configured ghost
-	senderID := portal.OtherUserID
-	var displayName string
-
-	agentID := resolveAgentID(meta)
-
-	// Fallback: compute sender if portal.OtherUserID is not set
-	if senderID == "" {
-		modelID := oc.effectiveModel(meta)
-		if agentID != "" {
-			senderID = agentUserID(agentID)
-		} else {
-			senderID = modelUserID(modelID)
-		}
-	}
-
-	// Determine display name based on whether this is an agent room
-	if agentID != "" {
-		// Agent room - get agent display name
-		modelID := oc.effectiveModel(meta)
-		store := NewAgentStoreAdapter(oc)
-		if agent, err := store.GetAgentByID(ctx, agentID); err == nil && agent != nil {
-			agentName := oc.resolveAgentDisplayName(ctx, agent)
-			displayName = oc.agentModelDisplayName(agentName, modelID)
-			oc.ensureAgentGhostDisplayName(ctx, agentID, modelID, agentName)
-		} else {
-			displayName = agentID // Fallback to agent ID
-		}
-	} else {
-		// Model room - get model display name
-		modelID := oc.effectiveModel(meta)
-		displayName = modelContactName(modelID, oc.findModelInfo(modelID))
-		oc.ensureGhostDisplayName(ctx, modelID)
-	}
-
-	body := fmt.Sprintf("Hello! I'm %s. Send a message to start our conversation.", displayName)
-
-	event := &OpenAIRemoteMessage{
-		PortalKey: portal.PortalKey,
-		ID:        networkid.MessageID(fmt.Sprintf("openai:welcome:%s", uuid.NewString())),
-		Sender: bridgev2.EventSender{
-			Sender:      senderID,
-			ForceDMUser: true,
-			SenderLogin: oc.UserLogin.ID,
-			IsFromMe:    false,
-		},
-		Content:   body,
-		Timestamp: time.Now(),
-		Metadata: &MessageMetadata{
-			Role:               "assistant",
-			Body:               body,
-			ExcludeFromHistory: true, // Don't include in LLM context
-		},
-	}
-	oc.UserLogin.QueueRemoteEvent(event)
+	oc.sendSystemNotice(ctx, portal, "Welcome to your chat with Beep")
+	oc.scheduleAutoGreeting(ctx, portal)
 }
 
 // maybeGenerateTitle generates a title for the room after the first exchange

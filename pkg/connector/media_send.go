@@ -18,6 +18,7 @@ func (oc *AIClient) sendGeneratedMedia(
 	msgType event.MessageType,
 	fileName string,
 	metadataKey string,
+	asVoice bool,
 ) (id.EventID, string, error) {
 	intent := oc.getModelIntent(ctx, portal)
 	if intent == nil {
@@ -29,19 +30,36 @@ func (oc *AIClient) sendGeneratedMedia(
 		return "", "", fmt.Errorf("upload failed: %w", err)
 	}
 
+	info := map[string]any{
+		"mimetype": mimeType,
+		"size":     len(data),
+	}
+
 	rawContent := map[string]any{
 		"msgtype": msgType,
 		"body":    fileName,
-		"info": map[string]any{
-			"mimetype": mimeType,
-			"size":     len(data),
-		},
+		"info":    info,
 	}
 
 	if file != nil {
 		rawContent["file"] = file
 	} else {
 		rawContent["url"] = string(uri)
+	}
+
+	if msgType == event.MsgAudio {
+		if durationMs, waveform := analyzeAudio(data, mimeType); durationMs > 0 || len(waveform) > 0 {
+			if durationMs > 0 {
+				info["duration"] = durationMs
+			}
+			rawContent["org.matrix.msc1767.audio"] = map[string]any{
+				"duration": durationMs,
+				"waveform": waveform,
+			}
+		}
+		if asVoice {
+			rawContent["org.matrix.msc3245.voice"] = map[string]any{}
+		}
 	}
 
 	if turnID != "" && metadataKey != "" {

@@ -64,8 +64,12 @@ func (oc *AIClient) getPendingQueue(roomID id.RoomID, settings QueueSettings) *p
 
 func (oc *AIClient) clearPendingQueue(roomID id.RoomID) {
 	oc.pendingQueuesMu.Lock()
-	defer oc.pendingQueuesMu.Unlock()
+	_, existed := oc.pendingQueues[roomID]
 	delete(oc.pendingQueues, roomID)
+	oc.pendingQueuesMu.Unlock()
+	if existed {
+		oc.stopQueueTyping(roomID)
+	}
 }
 
 func (oc *AIClient) enqueuePendingItem(roomID id.RoomID, item pendingQueueItem, settings QueueSettings) bool {
@@ -197,6 +201,9 @@ func (oc *AIClient) dispatchQueuedPrompt(
 		roomID = item.pending.Portal.MXID
 	}
 	runCtx := oc.attachRoomRun(ctx, roomID)
+	if item.pending.Typing != nil {
+		runCtx = WithTypingContext(runCtx, item.pending.Typing)
+	}
 	metaSnapshot := clonePortalMetadata(item.pending.Meta)
 	go func() {
 		defer func() {

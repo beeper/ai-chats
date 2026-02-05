@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/openai/openai-go/v3"
+	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -64,6 +65,22 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	if msg.Event == nil {
 		return nil, fmt.Errorf("missing message event")
 	}
+	oc.noteUserActivity(portal.MXID)
+
+	trace := traceEnabled(meta)
+	traceFull := traceFull(meta)
+	logCtx := zerolog.Nop()
+	if trace {
+		logCtx = oc.log.With().
+			Stringer("event_id", msg.Event.ID).
+			Stringer("sender", msg.Event.Sender).
+			Stringer("portal", portal.PortalKey).
+			Logger()
+		logCtx.Debug().
+			Str("msg_type", string(msg.Content.MsgType)).
+			Str("event_type", msg.Event.Type.Type).
+			Msg("Inbound matrix message received")
+	}
 
 	// Track last active room per agent for heartbeat routing
 	oc.recordAgentActivity(ctx, portal, meta)
@@ -72,17 +89,19 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	if msg.Event != nil && oc.inboundDedupeCache != nil {
 		dedupeKey := oc.buildDedupeKey(portal.MXID, msg.Event.ID)
 		if oc.inboundDedupeCache.Check(dedupeKey) {
-			oc.log.Debug().Stringer("event_id", msg.Event.ID).Msg("Skipping duplicate message")
+			logCtx.Debug().Msg("Skipping duplicate message")
 			return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 		}
 	}
 
 	if oc.isMatrixBotUser(ctx, msg.Event.Sender) {
+		logCtx.Debug().Msg("Ignoring bot message")
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 
 	// Route OpenCode rooms to the OpenCode handler (no AI tools or prompt building).
 	if meta.IsOpenCodeRoom {
+		logCtx.Debug().Msg("Routing message to OpenCode handler")
 		if oc.opencodeBridge == nil {
 			oc.sendSystemNotice(ctx, portal, "OpenCode integration is not available.")
 			return &bridgev2.MatrixMessageResponse{Pending: false}, nil
@@ -107,18 +126,26 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	// Handle media messages based on type (media is never debounced)
 	switch msgType {
 	case event.MsgImage, event.MsgVideo, event.MsgAudio, event.MsgFile:
+		logCtx.Debug().Str("media_type", string(msgType)).Msg("Handling media message")
 		// Flush any pending debounced messages for this room+sender before processing media
 		if oc.inboundDebouncer != nil {
 			debounceKey := BuildDebounceKey(portal.MXID, msg.Event.Sender)
 			oc.inboundDebouncer.FlushKey(debounceKey)
 		}
-		return oc.handleMediaMessage(ctx, msg, portal, meta, msgType)
+		pendingSent := false
+		if msg.Event != nil {
+			oc.sendPendingStatus(ctx, portal, msg.Event, "Processing...")
+			pendingSent = true
+		}
+		return oc.handleMediaMessage(ctx, msg, portal, meta, msgType, pendingSent)
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
 		// Continue to text handling below
 	default:
+		logCtx.Debug().Str("msg_type", string(msgType)).Msg("Unsupported message type")
 		return nil, unsupportedMessageStatus(fmt.Errorf("%s messages are not supported", msgType))
 	}
 	if msg.Content.RelatesTo != nil && msg.Content.RelatesTo.GetReplaceID() != "" {
+		logCtx.Debug().Msg("Ignoring edit event in HandleMatrixMessage")
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 	rawBody := strings.TrimSpace(msg.Content.Body)
@@ -129,6 +156,9 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		}
 	}
 	rawBodyOriginal := rawBody
+	if traceFull && rawBodyOriginal != "" {
+		logCtx.Debug().Str("body", rawBodyOriginal).Msg("Inbound message body")
+	}
 	commandAuthorized := oc.isCommandAuthorizedSender(msg.Event.Sender)
 
 	isGroup := oc.isGroupChat(ctx, portal)
@@ -137,6 +167,11 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		roomName = oc.matrixRoomDisplayName(ctx, portal)
 	}
 	senderName := oc.matrixDisplayName(ctx, portal.MXID, msg.Event.Sender)
+	logCtx.Debug().
+		Bool("is_group", isGroup).
+		Bool("command_authorized", commandAuthorized).
+		Int("raw_len", len(rawBodyOriginal)).
+		Msg("Inbound message metadata resolved")
 
 	var agentDef *agents.AgentDefinition
 	if agentID := resolveAgentID(meta); agentID != "" {
@@ -152,6 +187,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		commandBody = stripMentionPatterns(commandBody, mentionRegexes)
 	}
 	if !commandAuthorized && isControlCommandMessage(commandBody) {
+		logCtx.Debug().Msg("Ignoring control command from unauthorized sender")
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 
@@ -166,6 +202,12 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		directiveBody = stripMentionPatterns(directiveBody, mentionRegexes)
 	}
 	directiveOnly := commandAuthorized && inlineDirs.hasAnyDirective() && strings.TrimSpace(directiveBody) == ""
+	if inlineDirs.hasAnyDirective() {
+		logCtx.Debug().
+			Bool("directive_only", directiveOnly).
+			Bool("has_status", inlineDirs.hasStatus).
+			Msg("Parsed inline directives")
+	}
 
 	queueDirective := inlineDirs.queue
 	if !commandAuthorized {
@@ -484,10 +526,12 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	}
 	if commandAuthorized {
 		if cmd, ok := parseInboundCommand(commandBody); ok {
+			logCtx.Debug().Str("command", cmd.Name).Bool("has_args", strings.TrimSpace(cmd.Args) != "").Msg("Inbound command parsed")
 			switch cmd.Name {
 			case "stop", "abort", "interrupt", "exit", "wait", "esc":
 				stopped := oc.abortRoom(ctx, portal, meta)
 				oc.sendSystemNotice(ctx, portal, formatAbortNotice(stopped))
+				logCtx.Debug().Str("command", cmd.Name).Msg("Abort command handled")
 				return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 			default:
 				result := oc.handleInboundCommand(ctx, portal, meta, isGroup, queueSettings, cmd)
@@ -495,6 +539,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 					if strings.TrimSpace(result.response) != "" {
 						oc.sendSystemNotice(ctx, portal, result.response)
 					}
+					logCtx.Debug().Str("command", cmd.Name).Msg("Inbound command handled")
 					return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 				}
 				if strings.TrimSpace(result.newBody) != "" {
@@ -504,6 +549,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		} else if isAbortTrigger(commandBody) {
 			stopped := oc.abortRoom(ctx, portal, meta)
 			oc.sendSystemNotice(ctx, portal, formatAbortNotice(stopped))
+			logCtx.Debug().Msg("Abort trigger handled")
 			return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 		}
 	}
@@ -522,7 +568,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		}
 		rawBody = strings.TrimSpace(cleaned)
 		if foundHelp || foundCommands {
-			helpText := "Commands: /status, /context, /model, /think, /verbose, /reasoning, /elevated, /activation, /send, /queue, /tools, /new, /reset, /stop"
+			helpText := "Commands: /status, /context, /model, /think, /verbose, /reasoning, /elevated, /activation, /send, /queue, /tools, /typing, /new, /reset, /stop"
 			inlineResponses = append(inlineResponses, helpText)
 		}
 		if foundWhoami {
@@ -563,12 +609,23 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	canDetectMention := len(mentionRegexes) > 0 || hasExplicit
 	shouldBypassMention := groupActivation == "always"
 	if isGroup && requireMention && !wasMentioned && !shouldBypassMention {
+		logCtx.Debug().
+			Bool("require_mention", requireMention).
+			Bool("was_mentioned", wasMentioned).
+			Str("activation", groupActivation).
+			Msg("Ignoring group message without mention")
 		historyLimit := oc.resolveGroupHistoryLimit()
 		if historyLimit > 0 {
 			historyBody := oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, rawBodyOriginal, senderName, roomName, isGroup)
 			oc.recordPendingGroupHistory(portal.MXID, historyBody, historyLimit)
 		}
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
+	}
+
+	pendingSent := false
+	if msg.Event != nil {
+		oc.sendPendingStatus(ctx, portal, msg.Event, "Processing...")
+		pendingSent = true
 	}
 
 	// Ack reaction (OpenClaw-style scope gating)
@@ -602,6 +659,13 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	if ackReactionEventID != "" && removeAckAfter {
 		oc.storeAckReaction(portal.MXID, msg.Event.ID, ackReactionEventID)
 	}
+	if trace {
+		logCtx.Debug().
+			Str("ack_reaction", ackReaction).
+			Bool("sent", ackReactionEventID != "").
+			Bool("remove_after", removeAckAfter).
+			Msg("Ack reaction evaluated")
+	}
 
 	body := oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, rawBody, senderName, roomName, isGroup)
 	if isGroup && requireMention {
@@ -620,18 +684,21 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	}
 
 	if shouldDebounce {
+		logCtx.Debug().Int("debounce_ms", debounceDelay).Msg("Debouncing inbound message")
 		entry := DebounceEntry{
-			Event:      msg.Event,
-			Portal:     portal,
-			Meta:       runMeta,
-			RawBody:    rawBody,
-			SenderName: senderName,
-			RoomName:   roomName,
-			IsGroup:    isGroup,
-			AckEventID: ackReactionEventID,
+			Event:        msg.Event,
+			Portal:       portal,
+			Meta:         runMeta,
+			RawBody:      rawBody,
+			SenderName:   senderName,
+			RoomName:     roomName,
+			IsGroup:      isGroup,
+			WasMentioned: wasMentioned,
+			AckEventID:   ackReactionEventID,
+			PendingSent:  pendingSent,
 		}
 		// Let the client know the message is pending due to debounce.
-		if debounceDelay >= 0 {
+		if debounceDelay >= 0 && !pendingSent {
 			oc.sendPendingStatus(ctx, portal, msg.Event, "Combining messages...")
 			entry.PendingSent = true
 		}
@@ -659,6 +726,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	if err != nil {
 		return nil, messageSendStatusError(err, "Failed to prepare message. Please try again.", "")
 	}
+	logCtx.Debug().Int("prompt_messages", len(promptMessages)).Msg("Built prompt for inbound message")
 	userMessage := &database.Message{
 		ID:       networkid.MessageID(fmt.Sprintf("mx:%s", string(eventID))),
 		MXID:     eventID,
@@ -682,6 +750,11 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		MessageBody:     body,
 		RawEventContent: rawEventContent,
 		AckEventIDs:     []id.EventID{msg.Event.ID},
+		PendingSent:     pendingSent,
+		Typing: &TypingContext{
+			IsGroup:      isGroup,
+			WasMentioned: wasMentioned,
+		},
 	}
 	queueItem := pendingQueueItem{
 		pending:         pending,
@@ -698,6 +771,18 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	}, nil
 }
 
+// HandleMatrixTyping tracks local user typing state for auto-greeting delays.
+func (oc *AIClient) HandleMatrixTyping(ctx context.Context, typing *bridgev2.MatrixTyping) error {
+	if typing == nil || typing.Portal == nil {
+		return nil
+	}
+	if typing.Portal.MXID == "" {
+		return nil
+	}
+	oc.setUserTyping(typing.Portal.MXID, typing.IsTyping)
+	return nil
+}
+
 // HandleMatrixEdit handles edits to previously sent messages
 func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixEdit) error {
 	if edit.Content == nil || edit.EditTarget == nil {
@@ -709,14 +794,31 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 		return fmt.Errorf("portal is nil")
 	}
 	meta := portalMeta(portal)
+	trace := traceEnabled(meta)
+	traceFull := traceFull(meta)
+	logCtx := zerolog.Nop()
+	if trace {
+		logCtx = oc.log.With().
+			Stringer("portal", portal.PortalKey).
+			Logger()
+		if edit.Event != nil {
+			logCtx = logCtx.With().Stringer("event_id", edit.Event.ID).Logger()
+		}
+		logCtx.Debug().Msg("Inbound edit received")
+	}
 	if meta != nil && meta.IsOpenCodeRoom {
+		logCtx.Debug().Msg("Edit ignored for OpenCode room")
 		return fmt.Errorf("editing is not supported for OpenCode rooms")
 	}
 
 	// Get the new message body
 	newBody := strings.TrimSpace(edit.Content.Body)
 	if newBody == "" {
+		logCtx.Debug().Msg("Edit body is empty")
 		return fmt.Errorf("empty edit body")
+	}
+	if traceFull {
+		logCtx.Debug().Str("body", newBody).Msg("Edited message body")
 	}
 
 	// Update the message metadata with the new content
@@ -736,12 +838,13 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 	// Only regenerate if this was a user message
 	if msgMeta.Role != "user" {
 		// Just update the content, don't regenerate
+		logCtx.Debug().Str("role", msgMeta.Role).Msg("Edit did not target user message; skipping regeneration")
 		return nil
 	}
 
 	oc.log.Info().
 		Str("message_id", string(edit.EditTarget.ID)).
-		Str("new_body", newBody).
+		Int("new_body_len", len(newBody)).
 		Msg("User edited message, regenerating response")
 
 	// Find the assistant response that came after this message
@@ -822,6 +925,7 @@ func (oc *AIClient) regenerateFromEdit(
 	}
 
 	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", QueueInlineOptions{})
+	isGroup := oc.isGroupChat(ctx, portal)
 	pending := pendingMessage{
 		Event:       evt,
 		Portal:      portal,
@@ -829,6 +933,10 @@ func (oc *AIClient) regenerateFromEdit(
 		Type:        pendingTypeEditRegenerate,
 		MessageBody: newBody,
 		TargetMsgID: editedMessage.ID,
+		Typing: &TypingContext{
+			IsGroup:      isGroup,
+			WasMentioned: true,
+		},
 	}
 	queueItem := pendingQueueItem{
 		pending:     pending,
@@ -893,9 +1001,20 @@ func (oc *AIClient) handleMediaMessage(
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
 	msgType event.MessageType,
+	pendingSent bool,
 ) (*bridgev2.MatrixMessageResponse, error) {
 	if msg.Event == nil {
 		return nil, fmt.Errorf("missing message event")
+	}
+	trace := traceEnabled(meta)
+	traceFull := traceFull(meta)
+	logCtx := zerolog.Nop()
+	if trace {
+		logCtx = oc.log.With().
+			Stringer("event_id", msg.Event.ID).
+			Stringer("portal", portal.PortalKey).
+			Logger()
+		logCtx.Debug().Str("msg_type", string(msgType)).Msg("Handling media message")
 	}
 	isGroup := oc.isGroupChat(ctx, portal)
 	roomName := ""
@@ -934,21 +1053,35 @@ func (oc *AIClient) handleMediaMessage(
 			if !oc.canUseMediaUnderstanding(meta) {
 				return nil, unsupportedMessageStatus(fmt.Errorf("text file understanding is only available when an agent is assigned and raw mode is off"))
 			}
-			return oc.handleTextFileMessage(ctx, msg, portal, meta, string(mediaURL), mimeType)
+			return oc.handleTextFileMessage(ctx, msg, portal, meta, string(mediaURL), mimeType, pendingSent)
 		case mimeType == "" || mimeType == "application/octet-stream":
 			if !oc.canUseMediaUnderstanding(meta) {
 				return nil, unsupportedMessageStatus(fmt.Errorf("text file understanding is only available when an agent is assigned and raw mode is off"))
 			}
-			return oc.handleTextFileMessage(ctx, msg, portal, meta, string(mediaURL), mimeType)
+			return oc.handleTextFileMessage(ctx, msg, portal, meta, string(mediaURL), mimeType, pendingSent)
 		}
 	}
 
 	if !ok {
+		logCtx.Debug().Str("msg_type", string(msgType)).Msg("Unsupported media type")
 		return nil, unsupportedMessageStatus(fmt.Errorf("unsupported media type: %s", msgType))
 	}
 
 	if mimeType == "" {
 		mimeType = config.defaultMimeType
+	}
+	if trace {
+		logCtx.Debug().
+			Str("mime_type", mimeType).
+			Bool("is_pdf", isPDF).
+			Str("capability", config.capabilityName).
+			Msg("Resolved media metadata")
+	}
+	if traceFull {
+		caption := strings.TrimSpace(msg.Content.Body)
+		if caption != "" {
+			logCtx.Debug().Str("caption", caption).Msg("Media caption")
+		}
 	}
 
 	eventID := id.EventID("")
@@ -962,6 +1095,9 @@ func (oc *AIClient) handleMediaMessage(
 	if isPDF && !supportsMedia && oc.isOpenRouterProvider() {
 		supportsMedia = true // OpenRouter supports PDF via file-parser plugin
 	}
+	if trace {
+		logCtx.Debug().Bool("supports_media", supportsMedia).Msg("Media capability check")
+	}
 	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", QueueInlineOptions{})
 
 	// Get caption (body is usually the filename or caption)
@@ -974,6 +1110,30 @@ func (oc *AIClient) handleMediaMessage(
 	if !hasUserCaption {
 		caption = config.defaultCaption
 	}
+
+	agentDef := (*agents.AgentDefinition)(nil)
+	if agentID := resolveAgentID(meta); agentID != "" {
+		store := NewAgentStoreAdapter(oc)
+		if agent, err := store.GetAgentByID(ctx, agentID); err == nil {
+			agentDef = agent
+		}
+	}
+	mentionRegexes := buildMentionRegexes(&oc.connector.Config, agentDef)
+	replyCtx := extractInboundReplyContext(msg.Event)
+	botMXID := oc.resolveBotMXID(ctx, portal, meta)
+	explicitMention := false
+	if msg.Content.Mentions != nil {
+		if msg.Content.Mentions.Room || (botMXID != "" && msg.Content.Mentions.Has(botMXID)) {
+			explicitMention = true
+		}
+	}
+	if !explicitMention && replyCtx.ReplyTo != "" {
+		if oc.isReplyToBot(ctx, portal, replyCtx.ReplyTo) {
+			explicitMention = true
+		}
+	}
+	wasMentioned := explicitMention || matchesMentionPatterns(rawCaption, mentionRegexes)
+	typingCtx := &TypingContext{IsGroup: isGroup, WasMentioned: wasMentioned}
 
 	// Get encrypted file info if present (for E2EE rooms)
 	var encryptedFile *event.EncryptedFileInfo
@@ -1007,6 +1167,8 @@ func (oc *AIClient) handleMediaMessage(
 			Meta:        meta,
 			Type:        pendingTypeText,
 			MessageBody: body,
+			PendingSent: pendingSent,
+			Typing:      typingCtx,
 		}
 		queueItem := pendingQueueItem{
 			pending:     pending,
@@ -1127,6 +1289,8 @@ func (oc *AIClient) handleMediaMessage(
 		MediaURL:      string(mediaURL),
 		MimeType:      mimeType,
 		EncryptedFile: encryptedFile,
+		PendingSent:   pendingSent,
+		Typing:        typingCtx,
 	}
 	queueItem := pendingQueueItem{
 		pending:     pending,
@@ -1149,6 +1313,7 @@ func (oc *AIClient) handleTextFileMessage(
 	meta *PortalMetadata,
 	mediaURL string,
 	mimeType string,
+	pendingSent bool,
 ) (*bridgev2.MatrixMessageResponse, error) {
 	if msg == nil || msg.Event == nil {
 		return nil, fmt.Errorf("missing matrix event for text file message")
@@ -1169,6 +1334,31 @@ func (oc *AIClient) handleTextFileMessage(
 	if !hasUserCaption {
 		caption = "Please analyze this text file."
 	}
+
+	isGroup := oc.isGroupChat(ctx, portal)
+	agentDef := (*agents.AgentDefinition)(nil)
+	if agentID := resolveAgentID(meta); agentID != "" {
+		store := NewAgentStoreAdapter(oc)
+		if agent, err := store.GetAgentByID(ctx, agentID); err == nil {
+			agentDef = agent
+		}
+	}
+	mentionRegexes := buildMentionRegexes(&oc.connector.Config, agentDef)
+	replyCtx := extractInboundReplyContext(msg.Event)
+	botMXID := oc.resolveBotMXID(ctx, portal, meta)
+	explicitMention := false
+	if msg.Content.Mentions != nil {
+		if msg.Content.Mentions.Room || (botMXID != "" && msg.Content.Mentions.Has(botMXID)) {
+			explicitMention = true
+		}
+	}
+	if !explicitMention && replyCtx.ReplyTo != "" {
+		if oc.isReplyToBot(ctx, portal, replyCtx.ReplyTo) {
+			explicitMention = true
+		}
+	}
+	wasMentioned := explicitMention || matchesMentionPatterns(rawCaption, mentionRegexes)
+	typingCtx := &TypingContext{IsGroup: isGroup, WasMentioned: wasMentioned}
 
 	var encryptedFile *event.EncryptedFileInfo
 	if msg.Content.File != nil {
@@ -1217,6 +1407,8 @@ func (oc *AIClient) handleTextFileMessage(
 		Meta:        meta,
 		Type:        pendingTypeText,
 		MessageBody: combined,
+		PendingSent: pendingSent,
+		Typing:      typingCtx,
 	}
 	queueItem := pendingQueueItem{
 		pending:     pending,
@@ -1464,6 +1656,7 @@ func (oc *AIClient) handleRegenerate(
 	}
 
 	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(runCtx, portal, meta, "", QueueInlineOptions{})
+	isGroup := oc.isGroupChat(runCtx, portal)
 	pending := pendingMessage{
 		Event:         evt,
 		Portal:        portal,
@@ -1471,6 +1664,10 @@ func (oc *AIClient) handleRegenerate(
 		Type:          pendingTypeRegenerate,
 		MessageBody:   userMeta.Body,
 		SourceEventID: lastUserMessage.MXID,
+		Typing: &TypingContext{
+			IsGroup:      isGroup,
+			WasMentioned: true,
+		},
 	}
 	queueItem := pendingQueueItem{
 		pending:     pending,

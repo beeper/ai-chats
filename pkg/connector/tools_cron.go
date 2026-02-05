@@ -63,8 +63,14 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 			"jobs": jobs,
 		}).Text(), nil
 	case "add":
-		normalizedArgs := coerceCronArgs(args)
-		jobInput, err := cron.NormalizeCronJobCreateRaw(normalizedArgs)
+		jobRaw := readCronJobInput(args)
+		if jobRaw == nil {
+			return agenttools.JSONResult(map[string]any{
+				"status": "error",
+				"error":  "job required",
+			}).Text(), nil
+		}
+		jobInput, err := cron.NormalizeCronJobCreateRaw(jobRaw)
 		if err != nil {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
@@ -76,6 +82,12 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
 				"error":  "payload.kind is required",
+			}).Text(), nil
+		}
+		if result := cron.ValidateScheduleTimestamp(jobInput.Schedule, time.Now().UnixMilli()); !result.Ok {
+			return agenttools.JSONResult(map[string]any{
+				"status": "error",
+				"error":  result.Message,
 			}).Text(), nil
 		}
 		contextMessages := agenttools.ReadIntDefault(args, "contextMessages", 0)
@@ -95,16 +107,30 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 		if jobID == "" {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
-				"error":  "id is required",
+				"error":  "jobId required",
 			}).Text(), nil
 		}
 		rawPatch := selectCronPatch(args)
+		if rawPatch == nil {
+			return agenttools.JSONResult(map[string]any{
+				"status": "error",
+				"error":  "patch required",
+			}).Text(), nil
+		}
 		patch, err := cron.NormalizeCronJobPatchRaw(rawPatch)
 		if err != nil {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
 				"error":  err.Error(),
 			}).Text(), nil
+		}
+		if patch.Schedule != nil {
+			if result := cron.ValidateScheduleTimestamp(*patch.Schedule, time.Now().UnixMilli()); !result.Ok {
+				return agenttools.JSONResult(map[string]any{
+					"status": "error",
+					"error":  result.Message,
+				}).Text(), nil
+			}
 		}
 		job, err := client.cronService.Update(jobID, patch)
 		if err != nil {
@@ -119,7 +145,7 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 		if jobID == "" {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
-				"error":  "id is required",
+				"error":  "jobId required",
 			}).Text(), nil
 		}
 		removed, err := client.cronService.Remove(jobID)
@@ -138,14 +164,10 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 		if jobID == "" {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
-				"error":  "id is required",
+				"error":  "jobId required",
 			}).Text(), nil
 		}
-		mode := strings.ToLower(strings.TrimSpace(agenttools.ReadStringDefault(args, "mode", "")))
-		if mode == "" && agenttools.ReadBool(args, "force", false) {
-			mode = "force"
-		}
-		ran, reason, err := client.cronService.Run(jobID, mode)
+		ran, reason, err := client.cronService.Run(jobID, "")
 		if err != nil {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
@@ -165,7 +187,7 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 		if jobID == "" {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
-				"error":  "id is required",
+				"error":  "jobId required",
 			}).Text(), nil
 		}
 		limit := agenttools.ReadIntDefault(args, "limit", 200)
@@ -181,7 +203,7 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 		}
 		return agenttools.JSONResult(out).Text(), nil
 	case "wake":
-		text := strings.TrimSpace(firstNonEmptyString(args["text"], args["message"]))
+		text := strings.TrimSpace(agenttools.ReadStringDefault(args, "text", ""))
 		if text == "" {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
@@ -189,7 +211,7 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 			}).Text(), nil
 		}
 		mode := strings.ToLower(strings.TrimSpace(agenttools.ReadStringDefault(args, "mode", "")))
-		if mode == "" {
+		if mode != "now" && mode != "next-heartbeat" {
 			mode = "next-heartbeat"
 		}
 		_, err := client.cronService.Wake(mode, text)
@@ -214,9 +236,6 @@ func readCronJobID(args map[string]any) string {
 	if args == nil {
 		return ""
 	}
-	if val := strings.TrimSpace(agenttools.ReadStringDefault(args, "id", "")); val != "" {
-		return val
-	}
 	if val := strings.TrimSpace(agenttools.ReadStringDefault(args, "jobId", "")); val != "" {
 		return val
 	}
@@ -225,56 +244,24 @@ func readCronJobID(args map[string]any) string {
 
 func selectCronPatch(args map[string]any) any {
 	if args == nil {
-		return args
+		return nil
 	}
 	if raw, ok := args["patch"]; ok {
 		if _, ok := raw.(map[string]any); ok {
 			return raw
 		}
 	}
-	return coerceCronArgs(args)
+	return nil
 }
 
-func coerceCronArgs(args map[string]any) map[string]any {
+func readCronJobInput(args map[string]any) map[string]any {
 	if args == nil {
 		return nil
 	}
-	clone := map[string]any{}
-	for k, v := range args {
-		clone[k] = v
+	if raw, ok := args["job"].(map[string]any); ok {
+		return raw
 	}
-	schedule := extractScheduleFields(clone)
-	if len(schedule) > 0 {
-		if raw, ok := clone["job"].(map[string]any); ok {
-			jobCopy := map[string]any{}
-			for k, v := range raw {
-				jobCopy[k] = v
-			}
-			if _, ok := jobCopy["schedule"]; !ok {
-				jobCopy["schedule"] = schedule
-			}
-			clone["job"] = jobCopy
-		} else if _, ok := clone["schedule"]; !ok {
-			clone["schedule"] = schedule
-		}
-	}
-	return clone
-}
-
-func extractScheduleFields(args map[string]any) map[string]any {
-	if args == nil {
-		return nil
-	}
-	schedule := map[string]any{}
-	for _, key := range []string{"kind", "at", "everyMs", "anchorMs", "expr", "tz"} {
-		if val, ok := args[key]; ok {
-			schedule[key] = val
-		}
-	}
-	if len(schedule) == 0 {
-		return nil
-	}
-	return schedule
+	return nil
 }
 
 func injectCronContext(job *cron.CronJobCreate, btc *BridgeToolContext) {
