@@ -15,6 +15,12 @@ func (oc *AIClient) PreHandleMatrixReaction(ctx context.Context, msg *bridgev2.M
 	if msg == nil || msg.Event == nil || msg.Content == nil {
 		return bridgev2.MatrixReactionPreResponse{}, bridgev2.ErrReactionsNotSupported
 	}
+	if msg.Portal != nil {
+		meta := portalMeta(msg.Portal)
+		if meta != nil && meta.IsOpenCodeRoom {
+			return bridgev2.MatrixReactionPreResponse{}, bridgev2.ErrReactionsNotSupported
+		}
+	}
 
 	emoji := variationselector.Remove(msg.Content.RelatesTo.Key)
 	return bridgev2.MatrixReactionPreResponse{

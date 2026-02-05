@@ -12,6 +12,7 @@ import (
 
 	"github.com/beeper/ai-bridge/pkg/agents"
 	"github.com/beeper/ai-bridge/pkg/agents/tools"
+	"github.com/beeper/ai-bridge/pkg/opencodebridge"
 	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -231,6 +232,40 @@ func (oc *AIClient) GetContactList(ctx context.Context) ([]*bridgev2.ResolveIden
 		}
 	}
 
+	// Add contacts for connected OpenCode instances
+	meta := loginMetadata(oc.UserLogin)
+	if meta != nil && len(meta.OpenCodeInstances) > 0 {
+		for instanceID := range meta.OpenCodeInstances {
+			if instanceID == "" {
+				continue
+			}
+			ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, opencodebridge.OpenCodeUserID(instanceID))
+			if err != nil {
+				oc.log.Warn().Err(err).Str("instance", instanceID).Msg("Failed to get ghost for OpenCode instance")
+				continue
+			}
+			if oc.opencodeBridge != nil {
+				oc.opencodeBridge.EnsureGhostDisplayName(ctx, instanceID)
+			}
+			displayName := ""
+			if oc.opencodeBridge != nil {
+				displayName = oc.opencodeBridge.DisplayName(instanceID)
+			}
+			if displayName == "" {
+				displayName = "OpenCode"
+			}
+			contacts = append(contacts, &bridgev2.ResolveIdentifierResponse{
+				UserID: opencodebridge.OpenCodeUserID(instanceID),
+				UserInfo: &bridgev2.UserInfo{
+					Name:        ptr.Ptr(displayName),
+					IsBot:       ptr.Ptr(true),
+					Identifiers: []string{"opencode:" + instanceID},
+				},
+				Ghost: ghost,
+			})
+		}
+	}
+
 	oc.log.Info().Int("count", len(contacts)).Msg("Returning contact list")
 	return contacts, nil
 }
@@ -241,6 +276,11 @@ func (oc *AIClient) ResolveIdentifier(ctx context.Context, identifier string, cr
 	id := strings.TrimSpace(identifier)
 	if id == "" {
 		return nil, fmt.Errorf("identifier is required")
+	}
+
+	// OpenCode instance identifiers (opencode:<instance-id> or opencode- ghost IDs)
+	if instanceID, ok := opencodebridge.ParseOpenCodeIdentifier(id); ok {
+		return oc.resolveOpenCodeIdentifier(ctx, instanceID, createChat)
 	}
 
 	store := NewAgentStoreAdapter(oc)
@@ -340,6 +380,60 @@ func (oc *AIClient) resolveModelIdentifier(ctx context.Context, modelID string, 
 			Name:        ptr.Ptr(modelContactName(modelID, info)),
 			IsBot:       ptr.Ptr(false),
 			Identifiers: modelContactIdentifiers(modelID, info),
+		},
+		Ghost: ghost,
+		Chat:  chatResp,
+	}, nil
+}
+
+func (oc *AIClient) resolveOpenCodeIdentifier(ctx context.Context, instanceID string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
+	if oc == nil || oc.UserLogin == nil {
+		return nil, fmt.Errorf("login unavailable")
+	}
+	if strings.TrimSpace(instanceID) == "" {
+		return nil, fmt.Errorf("OpenCode instance ID is required")
+	}
+	if oc.opencodeBridge == nil {
+		return nil, fmt.Errorf("OpenCode integration is not available")
+	}
+	cfg := oc.opencodeBridge.InstanceConfig(instanceID)
+	if cfg == nil {
+		return nil, fmt.Errorf("OpenCode instance not found")
+	}
+
+	userID := opencodebridge.OpenCodeUserID(instanceID)
+	ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get OpenCode ghost: %w", err)
+	}
+	if oc.opencodeBridge != nil {
+		oc.opencodeBridge.EnsureGhostDisplayName(ctx, instanceID)
+	}
+
+	var chatResp *bridgev2.CreateChatResponse
+	if createChat {
+		if oc.opencodeBridge == nil {
+			return nil, fmt.Errorf("OpenCode integration is not available")
+		}
+		chatResp, err = oc.opencodeBridge.CreateSessionChat(ctx, instanceID, "", true)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create OpenCode chat: %w", err)
+		}
+	}
+
+	displayName := ""
+	if oc.opencodeBridge != nil {
+		displayName = oc.opencodeBridge.DisplayName(instanceID)
+	}
+	if displayName == "" {
+		displayName = "OpenCode"
+	}
+	return &bridgev2.ResolveIdentifierResponse{
+		UserID: userID,
+		UserInfo: &bridgev2.UserInfo{
+			Name:        ptr.Ptr(displayName),
+			IsBot:       ptr.Ptr(true),
+			Identifiers: []string{"opencode:" + instanceID},
 		},
 		Ghost: ghost,
 		Chat:  chatResp,
@@ -1629,6 +1723,13 @@ func (oc *AIClient) bootstrap(ctx context.Context) {
 	if err := oc.ensureDefaultChat(logCtx); err != nil {
 		oc.log.Warn().Err(err).Msg("Failed to ensure default chat")
 		// Continue anyway - default chat is optional
+	}
+
+	// Restore any OpenCode connections and sync sessions.
+	if oc.opencodeBridge != nil {
+		if err := oc.opencodeBridge.RestoreConnections(logCtx); err != nil {
+			oc.log.Warn().Err(err).Msg("Failed to restore OpenCode connections")
+		}
 	}
 
 	// Mark bootstrap as complete only after successful completion

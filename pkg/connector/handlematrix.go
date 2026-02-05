@@ -58,6 +58,15 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 
+	// Route OpenCode rooms to the OpenCode handler (no AI tools or prompt building).
+	if meta.IsOpenCodeRoom {
+		if oc.opencodeBridge == nil {
+			oc.sendSystemNotice(ctx, portal, "OpenCode integration is not available.")
+			return &bridgev2.MatrixMessageResponse{Pending: false}, nil
+		}
+		return oc.opencodeBridge.HandleMatrixMessage(ctx, msg, portal, oc.PortalMeta(portal))
+	}
+
 	// Normalize sticker events to image handling
 	msgType := msg.Content.MsgType
 	if msg.Event != nil && msg.Event.Type == event.EventSticker {
@@ -255,6 +264,9 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 		return fmt.Errorf("portal is nil")
 	}
 	meta := portalMeta(portal)
+	if meta != nil && meta.IsOpenCodeRoom {
+		return fmt.Errorf("editing is not supported for OpenCode rooms")
+	}
 
 	// Get the new message body
 	newBody := strings.TrimSpace(edit.Content.Body)

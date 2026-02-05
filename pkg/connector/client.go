@@ -31,6 +31,7 @@ import (
 
 	"github.com/beeper/ai-bridge/pkg/agents"
 	"github.com/beeper/ai-bridge/pkg/cron"
+	"github.com/beeper/ai-bridge/pkg/opencodebridge"
 )
 
 var (
@@ -53,6 +54,17 @@ var rejectAllMediaFileFeatures = &event.FileFeatures{
 
 func cloneRejectAllMediaFeatures() *event.FileFeatures {
 	return rejectAllMediaFileFeatures.Clone()
+}
+
+func openCodeFileFeatures() *event.FileFeatures {
+	return &event.FileFeatures{
+		MimeTypes: map[string]event.CapabilitySupportLevel{
+			"*/*": event.CapLevelFullySupported,
+		},
+		Caption:          event.CapLevelFullySupported,
+		MaxCaptionLength: AIMaxTextLength,
+		MaxSize:          50 * 1024 * 1024,
+	}
 }
 
 // AI bridge capability constants
@@ -277,6 +289,9 @@ type AIClient struct {
 	// Message debouncer for combining rapid messages
 	inboundDebouncer *Debouncer
 
+	// OpenCode bridge (optional)
+	opencodeBridge *opencodebridge.Bridge
+
 	// Cron + heartbeat
 	cronService     *cron.CronService
 	heartbeatRunner *HeartbeatRunner
@@ -346,6 +361,9 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 	oc.inboundDebouncer = NewDebouncer(debounceMs, oc.handleDebouncedMessages, func(err error, entries []DebounceEntry) {
 		log.Warn().Err(err).Int("entries", len(entries)).Msg("Debounce flush failed")
 	})
+
+	// Initialize optional OpenCode bridge
+	oc.opencodeBridge = opencodebridge.NewBridge(oc)
 
 	// Initialize provider based on login metadata
 	// All providers use the OpenAI SDK with different base URLs
@@ -739,6 +757,24 @@ func (oc *AIClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*br
 		}, nil
 	}
 
+	// Parse OpenCode instance from ghost ID (format: "opencode-{instance-id}")
+	if instanceID, ok := opencodebridge.ParseOpenCodeGhostID(ghostID); ok {
+		displayName := ""
+		if oc.opencodeBridge != nil {
+			displayName = oc.opencodeBridge.DisplayName(instanceID)
+		}
+		if displayName == "" {
+			displayName = "OpenCode"
+		}
+		identifiers := []string{"opencode:" + instanceID}
+		return &bridgev2.UserInfo{
+			Name:         ptr.Ptr(displayName),
+			IsBot:        ptr.Ptr(true),
+			Identifiers:  identifiers,
+			ExtraUpdates: updateGhostLastSync,
+		}, nil
+	}
+
 	// Fallback for unknown ghost types
 	return &bridgev2.UserInfo{
 		Name:  ptr.Ptr("AI Assistant"),
@@ -761,6 +797,22 @@ func updateGhostLastSync(_ context.Context, ghost *bridgev2.Ghost) bool {
 
 func (oc *AIClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
 	meta := portalMeta(portal)
+	if meta != nil && meta.IsOpenCodeRoom {
+		caps := ptr.Clone(aiBaseCaps)
+		caps.File[event.MsgImage] = openCodeFileFeatures()
+		caps.File[event.MsgVideo] = openCodeFileFeatures()
+		caps.File[event.MsgAudio] = openCodeFileFeatures()
+		caps.File[event.MsgFile] = openCodeFileFeatures()
+		caps.File[event.CapMsgVoice] = openCodeFileFeatures()
+		caps.File[event.CapMsgGIF] = openCodeFileFeatures()
+		caps.File[event.CapMsgSticker] = openCodeFileFeatures()
+		caps.Reaction = event.CapLevelRejected
+		caps.ReactionCount = 0
+		caps.Edit = event.CapLevelRejected
+		caps.EditMaxCount = 0
+		caps.Delete = event.CapLevelRejected
+		return caps
+	}
 
 	// Always recompute effective room capabilities to ensure they're up-to-date
 	// (includes image-understanding union for agent rooms)

@@ -109,6 +109,15 @@ func (oc *AIClient) executeSessionsList(ctx context.Context, portal *bridgev2.Po
 			if model != "" {
 				entry["model"] = model
 			}
+			if meta.IsOpenCodeRoom {
+				entry["source"] = "opencode"
+				if meta.OpenCodeInstanceID != "" {
+					entry["opencodeInstanceID"] = meta.OpenCodeInstanceID
+				}
+				if meta.OpenCodeSessionID != "" {
+					entry["opencodeSessionID"] = meta.OpenCodeSessionID
+				}
+			}
 		}
 		entry["sessionId"] = string(candidate.PortalKey.ID)
 

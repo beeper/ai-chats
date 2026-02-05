@@ -5,6 +5,8 @@ import (
 	"go.mau.fi/util/random"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+
+	"github.com/beeper/ai-bridge/pkg/opencodebridge"
 )
 
 // ModelCache stores available models (cached in UserLoginMetadata)
@@ -95,6 +97,9 @@ type UserLoginMetadata struct {
 
 	// Global Memory room for shared agent memories
 	GlobalMemoryRoomID networkid.PortalID `json:"global_memory_room_id,omitempty"`
+
+	// OpenCode instances connected for this login (keyed by instance ID).
+	OpenCodeInstances map[string]*opencodebridge.OpenCodeInstance `json:"opencode_instances,omitempty"`
 }
 
 // HeartbeatState tracks last heartbeat delivery for dedupe.
@@ -155,6 +160,13 @@ type PortalMetadata struct {
 	CronJobID            string `json:"cron_job_id,omitempty"`             // Cron job ID for cron rooms
 	SubagentParentRoomID string `json:"subagent_parent_room_id,omitempty"` // Parent room ID for subagent sessions
 
+	// OpenCode session metadata
+	IsOpenCodeRoom       bool   `json:"is_opencode_room,omitempty"`
+	OpenCodeInstanceID   string `json:"opencode_instance_id,omitempty"`
+	OpenCodeSessionID    string `json:"opencode_session_id,omitempty"`
+	OpenCodeReadOnly     bool   `json:"opencode_read_only,omitempty"`
+	OpenCodeTitlePending bool   `json:"opencode_title_pending,omitempty"`
+
 	// Ack reaction config - similar to OpenClaw's ack reactions
 	AckReactionEmoji       string `json:"ack_reaction_emoji,omitempty"`        // Emoji to react with when message received (e.g., "👀", "🤔"). Empty = disabled.
 	AckReactionRemoveAfter bool   `json:"ack_reaction_remove_after,omitempty"` // Remove the ack reaction after replying
@@ -169,6 +181,12 @@ func clonePortalMetadata(src *PortalMetadata) *PortalMetadata {
 	}
 
 	clone := *src
+
+	// Ensure OpenCode metadata is copied.
+	clone.IsOpenCodeRoom = src.IsOpenCodeRoom
+	clone.OpenCodeInstanceID = src.OpenCodeInstanceID
+	clone.OpenCodeSessionID = src.OpenCodeSessionID
+	clone.OpenCodeReadOnly = src.OpenCodeReadOnly
 
 	if src.PDFConfig != nil {
 		pdf := *src.PDFConfig

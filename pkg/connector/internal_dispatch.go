@@ -30,6 +30,12 @@ func (oc *AIClient) dispatchInternalMessage(
 			return "", false, fmt.Errorf("missing portal metadata")
 		}
 	}
+	if meta.IsOpenCodeRoom {
+		if oc.opencodeBridge == nil {
+			return "", false, fmt.Errorf("OpenCode integration is not available")
+		}
+		return oc.opencodeBridge.DispatchInternalMessage(ctx, portal, oc.PortalMeta(portal), body)
+	}
 	trimmed := strings.TrimSpace(body)
 	if trimmed == "" {
 		return "", false, fmt.Errorf("message body is required")
