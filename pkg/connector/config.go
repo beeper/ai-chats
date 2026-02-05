@@ -57,6 +57,10 @@ type AgentDefaultsConfig struct {
 	BootstrapMaxChars int                    `yaml:"bootstrap_max_chars"`
 	SoulEvil          *agents.SoulEvilConfig `yaml:"soul_evil"`
 	Heartbeat         *HeartbeatConfig       `yaml:"heartbeat"`
+	UserTimezone      string                 `yaml:"userTimezone"`
+	EnvelopeTimezone  string                 `yaml:"envelopeTimezone"`  // local|utc|user|IANA
+	EnvelopeTimestamp string                 `yaml:"envelopeTimestamp"` // on|off
+	EnvelopeElapsed   string                 `yaml:"envelopeElapsed"`   // on|off
 }
 
 // AgentEntryConfig defines per-agent overrides (OpenClaw-style).
@@ -113,7 +117,23 @@ type ChannelHeartbeatVisibilityConfig struct {
 
 // MessagesConfig defines message rendering settings (OpenClaw-style).
 type MessagesConfig struct {
-	ResponsePrefix string `yaml:"responsePrefix"`
+	ResponsePrefix    string               `yaml:"responsePrefix"`
+	AckReaction       string               `yaml:"ackReaction"`
+	AckReactionScope  string               `yaml:"ackReactionScope"`  // group-mentions|group-all|direct|all|off|none
+	RemoveAckAfter    bool                 `yaml:"removeAckAfterReply"`
+	GroupChat         *GroupChatConfig     `yaml:"groupChat"`
+	InboundDebounce   *InboundDebounceConfig `yaml:"inbound"`
+}
+
+// GroupChatConfig mirrors OpenClaw's group chat settings.
+type GroupChatConfig struct {
+	MentionPatterns []string `yaml:"mentionPatterns"`
+}
+
+// InboundDebounceConfig mirrors OpenClaw's inbound debounce config.
+type InboundDebounceConfig struct {
+	DebounceMs int            `yaml:"debounceMs"`
+	ByChannel  map[string]int `yaml:"byChannel"`
 }
 
 // SessionConfig configures session store behavior (OpenClaw-style).

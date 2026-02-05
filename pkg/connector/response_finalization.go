@@ -109,6 +109,12 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 
 	// Use cleaned content (directives stripped)
 	cleanedContent := stripMessageIDHintLines(directives.Text)
+	responsePrefix := resolveResponsePrefixForReply(oc, &oc.connector.Config, meta)
+	if responsePrefix != "" && strings.TrimSpace(cleanedContent) != "" {
+		if !strings.HasPrefix(cleanedContent, responsePrefix) {
+			cleanedContent = responsePrefix + " " + cleanedContent
+		}
+	}
 	rendered := format.RenderMarkdown(cleanedContent, true, true)
 
 	// Build AI SDK UIMessage payload

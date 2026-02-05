@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/beeper/ai-bridge/pkg/agents"
 	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -52,16 +53,8 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		}
 	}
 
-	// Send ack reaction if configured (like OpenClaw's ack reactions)
-	// This provides immediate visual feedback before AI processes the message
-	var ackReactionEventID id.EventID
-	if meta.AckReactionEmoji != "" && msg.Event != nil {
-		ackReactionEventID = oc.sendAckReaction(ctx, portal, msg.Event.ID, meta.AckReactionEmoji)
-	}
-
-	// Store ack reaction info for potential removal after reply
-	if ackReactionEventID != "" && meta.AckReactionRemoveAfter {
-		oc.storeAckReaction(portal.MXID, msg.Event.ID, ackReactionEventID)
+	if oc.isMatrixBotUser(ctx, msg.Event.Sender) {
+		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 
 	// Normalize sticker events to image handling
@@ -92,24 +85,118 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	default:
 		return nil, unsupportedMessageStatus(fmt.Errorf("%s messages are not supported", msgType))
 	}
+<<<<<<< ours
 	body := strings.TrimSpace(msg.Content.Body)
 	if body == "" {
 		return nil, unsupportedMessageStatus(fmt.Errorf("empty messages are not supported"))
+=======
+	if msg.Content.RelatesTo != nil && msg.Content.RelatesTo.GetReplaceID() != "" {
+		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
+	}
+	rawBody := strings.TrimSpace(msg.Content.Body)
+	if msg.Content.MsgType == event.MsgLocation && strings.TrimSpace(msg.Content.GeoURI) != "" {
+		rawMap := msg.Event.Content.Raw
+		if loc := resolveMatrixLocation(rawMap); loc != nil && strings.TrimSpace(loc.Text) != "" {
+			rawBody = loc.Text
+		}
+	}
+	if rawBody == "" {
+		return nil, fmt.Errorf("empty messages are not supported")
+>>>>>>> theirs
 	}
 
+	isGroup := oc.isGroupChat(ctx, portal)
+	roomName := ""
+	if isGroup {
+		roomName = oc.matrixRoomDisplayName(ctx, portal)
+	}
+	senderName := oc.matrixDisplayName(ctx, portal.MXID, msg.Event.Sender)
+
+	// Mention detection (OpenClaw-style)
+	botMXID := oc.resolveBotMXID(ctx, portal, meta)
+	explicitMention := false
+	hasExplicit := false
+	if msg.Content.Mentions != nil {
+		hasExplicit = true
+		if msg.Content.Mentions.Room || (botMXID != "" && msg.Content.Mentions.Has(botMXID)) {
+			explicitMention = true
+		}
+	}
+	var agentDef *agents.AgentDefinition
+	if agentID := resolveAgentID(meta); agentID != "" {
+		store := NewAgentStoreAdapter(oc)
+		if agent, err := store.GetAgentByID(ctx, agentID); err == nil {
+			agentDef = agent
+		}
+	}
+	mentionRegexes := buildMentionRegexes(&oc.connector.Config, agentDef)
+	wasMentioned := explicitMention || matchesMentionPatterns(rawBody, mentionRegexes)
+	requireMention := isGroup
+	canDetectMention := len(mentionRegexes) > 0 || hasExplicit
+	shouldBypassMention := false
+	if isGroup && requireMention && !wasMentioned && !shouldBypassMention {
+		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
+	}
+
+	// Ack reaction (OpenClaw-style scope gating)
+	ackReaction := strings.TrimSpace(meta.AckReactionEmoji)
+	if ackReaction == "" && oc.connector != nil && oc.connector.Config.Messages != nil {
+		ackReaction = strings.TrimSpace(oc.connector.Config.Messages.AckReaction)
+	}
+	ackScope := AckScopeGroupMention
+	if oc.connector != nil && oc.connector.Config.Messages != nil {
+		ackScope = normalizeAckScope(oc.connector.Config.Messages.AckReactionScope)
+	}
+	removeAckAfter := meta.AckReactionRemoveAfter
+	if !removeAckAfter && oc.connector != nil && oc.connector.Config.Messages != nil && oc.connector.Config.Messages.RemoveAckAfter {
+		removeAckAfter = true
+	}
+	meta.AckReactionRemoveAfter = removeAckAfter
+
+	var ackReactionEventID id.EventID
+	if ackReaction != "" && shouldAckReaction(AckReactionGateParams{
+		Scope:              ackScope,
+		IsDirect:           !isGroup,
+		IsGroup:            isGroup,
+		IsMentionableGroup: isGroup,
+		RequireMention:     requireMention,
+		CanDetectMention:   canDetectMention,
+		EffectiveMention:   wasMentioned || shouldBypassMention,
+		ShouldBypass:       shouldBypassMention,
+	}) {
+		ackReactionEventID = oc.sendAckReaction(ctx, portal, msg.Event.ID, ackReaction)
+	}
+	if ackReactionEventID != "" && removeAckAfter {
+		oc.storeAckReaction(portal.MXID, msg.Event.ID, ackReactionEventID)
+	}
+
+	body := oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, rawBody, senderName, roomName, isGroup)
+
 	// Check if this message should be debounced
-	shouldDebounce := oc.inboundDebouncer != nil && ShouldDebounce(msg.Event, body)
+	debounceDelay := meta.DebounceMs
+	if debounceDelay == 0 {
+		debounceDelay = oc.resolveInboundDebounceMs("matrix")
+	}
+	shouldDebounce := oc.inboundDebouncer != nil && ShouldDebounce(msg.Event, rawBody) && debounceDelay > 0
+	debounceKey := ""
+	if oc.inboundDebouncer != nil {
+		debounceKey = BuildDebounceKey(portal.MXID, msg.Event.Sender)
+	}
 
 	if shouldDebounce {
-		// Build debounce entry
 		entry := DebounceEntry{
 			Event:      msg.Event,
 			Portal:     portal,
 			Meta:       meta,
-			Body:       body,
+			RawBody:    rawBody,
+			SenderName: senderName,
+			RoomName:   roomName,
+			IsGroup:    isGroup,
 			AckEventID: ackReactionEventID,
 		}
+		oc.inboundDebouncer.EnqueueWithDelay(debounceKey, entry, true, debounceDelay)
 
+<<<<<<< ours
 		// Enqueue to debouncer - processing happens after delay
 		// Use per-room debounce delay if configured (0 = default, -1 = disabled)
 		debounceKey := BuildDebounceKey(portal.MXID, msg.Event.Sender)
@@ -125,6 +212,13 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		return &bridgev2.MatrixMessageResponse{
 			Pending: true,
 		}, nil
+=======
+		return &bridgev2.MatrixMessageResponse{Pending: true}, nil
+	}
+	if debounceKey != "" {
+		// Flush any pending debounced messages for this room+sender before immediate processing
+		oc.inboundDebouncer.FlushKey(debounceKey)
+>>>>>>> theirs
 	}
 
 	// Not debouncing - process immediately
@@ -357,6 +451,12 @@ func (oc *AIClient) handleMediaMessage(
 	if msg.Event == nil {
 		return nil, fmt.Errorf("missing message event")
 	}
+	isGroup := oc.isGroupChat(ctx, portal)
+	roomName := ""
+	if isGroup {
+		roomName = oc.matrixRoomDisplayName(ctx, portal)
+	}
+	senderName := oc.matrixDisplayName(ctx, portal.MXID, msg.Event.Sender)
 
 	// Get config for this media type
 	config, ok := mediaConfigs[msgType]
@@ -436,7 +536,8 @@ func (oc *AIClient) handleMediaMessage(
 		encryptedFile = msg.Content.File
 	}
 
-	dispatchTextOnly := func(body string) (*bridgev2.MatrixMessageResponse, error) {
+	dispatchTextOnly := func(rawBody string) (*bridgev2.MatrixMessageResponse, error) {
+		body := oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, rawBody, senderName, roomName, isGroup)
 		promptMessages, err := oc.buildPrompt(ctx, portal, meta, body, eventID)
 		if err != nil {
 			return nil, err
@@ -539,14 +640,15 @@ func (oc *AIClient) handleMediaMessage(
 	}
 
 	// Build prompt with media
-	promptMessages, err := oc.buildPromptWithMedia(ctx, portal, meta, caption, string(mediaURL), mimeType, encryptedFile, config.msgType, eventID)
+	captionForPrompt := oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, caption, senderName, roomName, isGroup)
+	promptMessages, err := oc.buildPromptWithMedia(ctx, portal, meta, captionForPrompt, string(mediaURL), mimeType, encryptedFile, config.msgType, eventID)
 	if err != nil {
 		return nil, err
 	}
 
 	userMeta := &MessageMetadata{
 		Role: "user",
-		Body: buildMediaMetadataBody(caption, config.bodySuffix, understanding),
+		Body: oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, buildMediaMetadataBody(caption, config.bodySuffix, understanding), senderName, roomName, isGroup),
 	}
 	if understanding != nil {
 		userMeta.MediaUnderstanding = understanding.Outputs
@@ -568,7 +670,7 @@ func (oc *AIClient) handleMediaMessage(
 		Portal:        portal,
 		Meta:          meta,
 		Type:          config.msgType,
-		MessageBody:   caption,
+		MessageBody:   captionForPrompt,
 		MediaURL:      string(mediaURL),
 		MimeType:      mimeType,
 		EncryptedFile: encryptedFile,

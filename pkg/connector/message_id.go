@@ -9,6 +9,7 @@ import (
 
 var messageIDLineRE = regexp.MustCompile(`(?i)^\s*\[message_id:\s*([^\]]+)\]\s*$`)
 var messageIDInlineRE = regexp.MustCompile(`(?i)\[message_id:\s*([^\]]+)\]`)
+var matrixEventIDLineRE = regexp.MustCompile(`(?i)^\s*\[matrix event id:\s*([^\]\s]+)(?:\s+room:\s*[^\]]+)?\]\s*$`)
 
 // stripMessageIDHintLines removes full-line [message_id: ...] hints.
 // Mirrors OpenClaw's gateway chat sanitization behavior.
@@ -20,7 +21,7 @@ func stripMessageIDHintLines(text string) string {
 	changed := false
 	filtered := make([]string, 0, len(lines))
 	for _, line := range lines {
-		if messageIDLineRE.MatchString(line) {
+		if messageIDLineRE.MatchString(line) || matrixEventIDLineRE.MatchString(line) {
 			changed = true
 			continue
 		}
@@ -41,6 +42,9 @@ func normalizeMessageID(value string) string {
 	if match := messageIDLineRE.FindStringSubmatch(trimmed); len(match) > 1 {
 		return strings.TrimSpace(match[1])
 	}
+	if match := matrixEventIDLineRE.FindStringSubmatch(trimmed); len(match) > 1 {
+		return strings.TrimSpace(match[1])
+	}
 	if match := messageIDInlineRE.FindStringSubmatch(trimmed); len(match) > 1 {
 		return strings.TrimSpace(match[1])
 	}
@@ -56,6 +60,9 @@ func appendMessageIDHint(body string, mxid id.EventID) string {
 	body = stripMessageIDHintLines(body)
 	trimmed := strings.TrimRight(body, " \t\r\n")
 	if trimmed == "" {
+		return body
+	}
+	if strings.Contains(strings.ToLower(body), "[matrix event id:") {
 		return body
 	}
 

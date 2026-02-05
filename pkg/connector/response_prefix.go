@@ -74,3 +74,20 @@ func resolveResponsePrefixForHeartbeat(oc *AIClient, cfg *Config, agentID string
 	ctx := buildResponsePrefixContext(oc, agentID, meta)
 	return resolveResponsePrefixTemplate(raw, ctx)
 }
+
+func resolveResponsePrefixForReply(oc *AIClient, cfg *Config, meta *PortalMetadata) string {
+	raw := resolveResponsePrefixRaw(cfg)
+	if raw == "" {
+		return ""
+	}
+	agentID := resolveAgentID(meta)
+	if strings.EqualFold(raw, "auto") {
+		name := resolveIdentityNameForPrefix(oc, agentID)
+		if name == "" {
+			return ""
+		}
+		return "[" + name + "]"
+	}
+	ctx := buildResponsePrefixContext(oc, agentID, meta)
+	return resolveResponsePrefixTemplate(raw, ctx)
+}

@@ -12,16 +12,27 @@ import (
 )
 
 // DefaultDebounceMs is the default debounce delay in milliseconds.
-const DefaultDebounceMs = 500
+const DefaultDebounceMs = 0
 
 // DebounceEntry represents a buffered message waiting to be processed.
 type DebounceEntry struct {
+<<<<<<< ours
 	Event       *event.Event
 	Portal      *bridgev2.Portal
 	Meta        *PortalMetadata
 	Body        string
 	AckEventID  id.EventID // Track ack reaction for removal after flush
 	PendingSent bool       // Whether a pending status was already sent for this event
+=======
+	Event      *event.Event
+	Portal     *bridgev2.Portal
+	Meta       *PortalMetadata
+	RawBody    string
+	SenderName string
+	RoomName   string
+	IsGroup    bool
+	AckEventID id.EventID // Track ack reaction for removal after flush
+>>>>>>> theirs
 }
 
 // DebounceBuffer holds pending messages for a key.
@@ -42,8 +53,8 @@ type Debouncer struct {
 
 // NewDebouncer creates a new debouncer with the given delay and callbacks.
 func NewDebouncer(delayMs int, onFlush func([]DebounceEntry), onError func(error, []DebounceEntry)) *Debouncer {
-	if delayMs <= 0 {
-		delayMs = DefaultDebounceMs
+	if delayMs < 0 {
+		delayMs = 0
 	}
 	return &Debouncer{
 		buffers: make(map[string]*DebounceBuffer),
@@ -67,15 +78,17 @@ func (d *Debouncer) Enqueue(key string, entry DebounceEntry, shouldDebounce bool
 // EnqueueWithDelay adds a message with a custom debounce delay.
 // delayMs: 0 = use default, -1 = immediate (no debounce), >0 = custom delay
 func (d *Debouncer) EnqueueWithDelay(key string, entry DebounceEntry, shouldDebounce bool, delayMs int) {
-	if key == "" || !shouldDebounce || delayMs < 0 {
-		// Process immediately
-		d.onFlush([]DebounceEntry{entry})
-		return
-	}
-
 	// Use default delay if not specified
 	if delayMs == 0 {
 		delayMs = d.delayMs
+	}
+	if key == "" || !shouldDebounce || delayMs <= 0 {
+		// Flush pending buffer for this key before immediate processing.
+		if key != "" {
+			d.flush(key)
+		}
+		d.onFlush([]DebounceEntry{entry})
+		return
 	}
 
 	d.mu.Lock()
@@ -159,9 +172,9 @@ func ShouldDebounce(evt *event.Event, body string) bool {
 		return false
 	}
 
-	// Don't debounce commands (starting with !)
+	// Don't debounce commands (starting with ! or /)
 	trimmed := strings.TrimSpace(body)
-	if strings.HasPrefix(trimmed, "!") {
+	if strings.HasPrefix(trimmed, "!") || strings.HasPrefix(trimmed, "/") {
 		return false
 	}
 
@@ -180,13 +193,13 @@ func CombineDebounceEntries(entries []DebounceEntry) (string, int) {
 		return "", 0
 	}
 	if len(entries) == 1 {
-		return entries[0].Body, 1
+		return entries[0].RawBody, 1
 	}
 
 	var bodies []string
 	for _, e := range entries {
-		if e.Body != "" {
-			bodies = append(bodies, e.Body)
+		if e.RawBody != "" {
+			bodies = append(bodies, e.RawBody)
 		}
 	}
 	return strings.Join(bodies, "\n"), len(entries)

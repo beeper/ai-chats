@@ -342,7 +342,8 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 	// Initialize inbound message processing with config values
 	inboundCfg := connector.Config.Inbound.WithDefaults()
 	oc.inboundDedupeCache = NewDedupeCache(inboundCfg.DedupeTTL, inboundCfg.DedupeMaxSize)
-	oc.inboundDebouncer = NewDebouncer(inboundCfg.DefaultDebounceMs, oc.handleDebouncedMessages, func(err error, entries []DebounceEntry) {
+	debounceMs := oc.resolveInboundDebounceMs("matrix")
+	oc.inboundDebouncer = NewDebouncer(debounceMs, oc.handleDebouncedMessages, func(err error, entries []DebounceEntry) {
 		log.Warn().Err(err).Int("entries", len(entries)).Msg("Debounce flush failed")
 	})
 
@@ -2072,12 +2073,13 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 	last := entries[len(entries)-1]
 	ctx := oc.backgroundContext(context.Background())
 
-	// Combine message bodies if multiple
-	combinedBody, count := CombineDebounceEntries(entries)
+	// Combine raw bodies if multiple
+	combinedRaw, count := CombineDebounceEntries(entries)
 	if count > 1 {
 		oc.log.Info().Int("count", count).Msg("Combined debounced messages")
 	}
 
+<<<<<<< ours
 	extraStatusEvents := make([]*event.Event, 0, len(entries)-1)
 	if len(entries) > 1 {
 		for _, entry := range entries[:len(entries)-1] {
@@ -2090,6 +2092,16 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 
 	// Build prompt with combined body
 	promptMessages, err := oc.buildPromptWithLinkContext(statusCtx, last.Portal, last.Meta, combinedBody, nil, last.Event.ID)
+=======
+	combinedBody := oc.buildMatrixInboundBody(ctx, last.Portal, last.Meta, last.Event, combinedRaw, last.SenderName, last.RoomName, last.IsGroup)
+	rawEventContent := map[string]any(nil)
+	if last.Event != nil && last.Event.Content.Raw != nil {
+		rawEventContent = last.Event.Content.Raw
+	}
+
+	// Build prompt with combined body
+	promptMessages, err := oc.buildPromptWithLinkContext(ctx, last.Portal, last.Meta, combinedBody, rawEventContent, last.Event.ID)
+>>>>>>> theirs
 	if err != nil {
 		oc.log.Err(err).Msg("Failed to build prompt for debounced messages")
 		oc.notifyMatrixSendFailure(statusCtx, last.Portal, last.Event, err)

@@ -19,7 +19,7 @@ func TestDebouncer_ImmediateFlush(t *testing.T) {
 		mu.Unlock()
 	}, nil)
 
-	entry := DebounceEntry{Body: "test"}
+	entry := DebounceEntry{RawBody: "test"}
 
 	// shouldDebounce=false should flush immediately
 	debouncer.Enqueue("key1", entry, false)
@@ -28,7 +28,7 @@ func TestDebouncer_ImmediateFlush(t *testing.T) {
 	if len(flushed) != 1 {
 		t.Errorf("Expected 1 flush, got %d", len(flushed))
 	}
-	if len(flushed[0]) != 1 || flushed[0][0].Body != "test" {
+	if len(flushed[0]) != 1 || flushed[0][0].RawBody != "test" {
 		t.Error("Expected single entry with body 'test'")
 	}
 	mu.Unlock()
@@ -44,7 +44,7 @@ func TestDebouncer_EmptyKey(t *testing.T) {
 		mu.Unlock()
 	}, nil)
 
-	entry := DebounceEntry{Body: "test"}
+	entry := DebounceEntry{RawBody: "test"}
 
 	// Empty key should flush immediately
 	debouncer.Enqueue("", entry, true)
@@ -66,7 +66,7 @@ func TestDebouncer_DelayedFlush(t *testing.T) {
 		mu.Unlock()
 	}, nil)
 
-	entry := DebounceEntry{Body: "test"}
+	entry := DebounceEntry{RawBody: "test"}
 	debouncer.Enqueue("key1", entry, true)
 
 	// Should not be flushed immediately
@@ -97,9 +97,9 @@ func TestDebouncer_CombineMessages(t *testing.T) {
 	}, nil)
 
 	// Send 3 messages rapidly
-	debouncer.Enqueue("key1", DebounceEntry{Body: "msg1"}, true)
-	debouncer.Enqueue("key1", DebounceEntry{Body: "msg2"}, true)
-	debouncer.Enqueue("key1", DebounceEntry{Body: "msg3"}, true)
+	debouncer.Enqueue("key1", DebounceEntry{RawBody: "msg1"}, true)
+	debouncer.Enqueue("key1", DebounceEntry{RawBody: "msg2"}, true)
+	debouncer.Enqueue("key1", DebounceEntry{RawBody: "msg3"}, true)
 
 	// Wait for debounce timer
 	time.Sleep(100 * time.Millisecond)
@@ -125,8 +125,8 @@ func TestDebouncer_SeparateKeys(t *testing.T) {
 	}, nil)
 
 	// Send messages to different keys
-	debouncer.Enqueue("key1", DebounceEntry{Body: "msg1"}, true)
-	debouncer.Enqueue("key2", DebounceEntry{Body: "msg2"}, true)
+	debouncer.Enqueue("key1", DebounceEntry{RawBody: "msg1"}, true)
+	debouncer.Enqueue("key2", DebounceEntry{RawBody: "msg2"}, true)
 
 	// Wait for debounce timer
 	time.Sleep(100 * time.Millisecond)
@@ -148,7 +148,7 @@ func TestDebouncer_FlushKey(t *testing.T) {
 		mu.Unlock()
 	}, nil)
 
-	debouncer.Enqueue("key1", DebounceEntry{Body: "msg1"}, true)
+	debouncer.Enqueue("key1", DebounceEntry{RawBody: "msg1"}, true)
 
 	// Manually flush before timer
 	debouncer.FlushKey("key1")
@@ -170,8 +170,8 @@ func TestDebouncer_FlushAll(t *testing.T) {
 		mu.Unlock()
 	}, nil)
 
-	debouncer.Enqueue("key1", DebounceEntry{Body: "msg1"}, true)
-	debouncer.Enqueue("key2", DebounceEntry{Body: "msg2"}, true)
+	debouncer.Enqueue("key1", DebounceEntry{RawBody: "msg1"}, true)
+	debouncer.Enqueue("key2", DebounceEntry{RawBody: "msg2"}, true)
 
 	debouncer.FlushAll()
 
@@ -189,8 +189,8 @@ func TestDebouncer_PendingCount(t *testing.T) {
 		t.Error("Expected 0 pending initially")
 	}
 
-	debouncer.Enqueue("key1", DebounceEntry{Body: "msg1"}, true)
-	debouncer.Enqueue("key2", DebounceEntry{Body: "msg2"}, true)
+	debouncer.Enqueue("key1", DebounceEntry{RawBody: "msg1"}, true)
+	debouncer.Enqueue("key2", DebounceEntry{RawBody: "msg2"}, true)
 
 	if debouncer.PendingCount() != 2 {
 		t.Errorf("Expected 2 pending, got %d", debouncer.PendingCount())
@@ -264,6 +264,12 @@ func TestShouldDebounce_Command(t *testing.T) {
 	if ShouldDebounce(evt, "  !command") {
 		t.Error("Commands with leading whitespace should not be debounced")
 	}
+	if ShouldDebounce(evt, "/status") {
+		t.Error("Slash commands should not be debounced")
+	}
+	if ShouldDebounce(evt, "  /command") {
+		t.Error("Slash commands with leading whitespace should not be debounced")
+	}
 }
 
 func TestShouldDebounce_EmptyMessage(t *testing.T) {
@@ -304,7 +310,7 @@ func TestCombineDebounceEntries_Empty(t *testing.T) {
 }
 
 func TestCombineDebounceEntries_Single(t *testing.T) {
-	entries := []DebounceEntry{{Body: "hello"}}
+	entries := []DebounceEntry{{RawBody: "hello"}}
 	body, count := CombineDebounceEntries(entries)
 	if body != "hello" || count != 1 {
 		t.Errorf("Expected 'hello' and 1, got %q and %d", body, count)
@@ -313,9 +319,9 @@ func TestCombineDebounceEntries_Single(t *testing.T) {
 
 func TestCombineDebounceEntries_Multiple(t *testing.T) {
 	entries := []DebounceEntry{
-		{Body: "line1"},
-		{Body: "line2"},
-		{Body: "line3"},
+		{RawBody: "line1"},
+		{RawBody: "line2"},
+		{RawBody: "line3"},
 	}
 	body, count := CombineDebounceEntries(entries)
 	expected := "line1\nline2\nline3"
@@ -326,9 +332,9 @@ func TestCombineDebounceEntries_Multiple(t *testing.T) {
 
 func TestCombineDebounceEntries_SkipsEmpty(t *testing.T) {
 	entries := []DebounceEntry{
-		{Body: "line1"},
-		{Body: ""},
-		{Body: "line3"},
+		{RawBody: "line1"},
+		{RawBody: ""},
+		{RawBody: "line3"},
 	}
 	body, count := CombineDebounceEntries(entries)
 	expected := "line1\nline3"
@@ -350,7 +356,7 @@ func TestDebouncer_EnqueueWithDelay_CustomDelay(t *testing.T) {
 		mu.Unlock()
 	}, nil)
 
-	entry := DebounceEntry{Body: "test"}
+	entry := DebounceEntry{RawBody: "test"}
 
 	// Use custom 50ms delay instead of default 1s
 	debouncer.EnqueueWithDelay("key1", entry, true, 50)
@@ -382,7 +388,7 @@ func TestDebouncer_EnqueueWithDelay_DisabledDelay(t *testing.T) {
 		mu.Unlock()
 	}, nil)
 
-	entry := DebounceEntry{Body: "test"}
+	entry := DebounceEntry{RawBody: "test"}
 
 	// Negative delay = immediate (disabled)
 	debouncer.EnqueueWithDelay("key1", entry, true, -1)
@@ -404,7 +410,7 @@ func TestDebouncer_EnqueueWithDelay_ZeroUsesDefault(t *testing.T) {
 		mu.Unlock()
 	}, nil)
 
-	entry := DebounceEntry{Body: "test"}
+	entry := DebounceEntry{RawBody: "test"}
 
 	// Zero delay = use default
 	debouncer.EnqueueWithDelay("key1", entry, true, 0)
