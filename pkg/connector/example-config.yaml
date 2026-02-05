@@ -233,8 +233,8 @@ memory_search:
   #       allowAgents: ["*"]
   #     skip_bootstrap: false
   #     bootstrap_max_chars: 20000
-  #     typingMode: "instant" # never|instant|thinking|message
-  #     typingIntervalSeconds: 6 # refresh cadence, not start time
+  #     typingMode: "instant" # never|instant|thinking|message (message ignores NO_REPLY)
+  #     typingIntervalSeconds: 6 # refresh cadence, not start time (heartbeats never show typing)
   #     soul_evil:
   #       file: "SOUL_EVIL.md"
   #       chance: 0.1

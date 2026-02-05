@@ -230,6 +230,8 @@ default_system_prompt: |
   #     subagents:
   #       model: "anthropic/claude-sonnet-4.5"
   #       allowAgents: ["*"]
+  #     typingMode: "instant" # never|instant|thinking|message (message ignores NO_REPLY)
+  #     typingIntervalSeconds: 6 # refresh cadence, not start time (heartbeats never show typing)
 
   # Context pruning configuration (OpenClaw-style).
   # Reduces token usage by intelligently truncating old tool results.

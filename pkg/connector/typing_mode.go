@@ -109,7 +109,6 @@ type TypingSignaler struct {
 	shouldStartImmediate bool
 	shouldStartOnText    bool
 	shouldStartOnReason  bool
-	hasRenderableText    bool
 }
 
 func NewTypingSignaler(typing *TypingController, mode TypingMode, isHeartbeat bool) *TypingSignaler {
@@ -119,7 +118,7 @@ func NewTypingSignaler(typing *TypingController, mode TypingMode, isHeartbeat bo
 		typing:               typing,
 		disabled:             disabled,
 		shouldStartImmediate: mode == TypingModeInstant,
-		shouldStartOnText:    mode == TypingModeMessage || mode == TypingModeInstant,
+		shouldStartOnText:    mode == TypingModeMessage,
 		shouldStartOnReason:  mode == TypingModeThinking,
 	}
 }
@@ -139,31 +138,21 @@ func (ts *TypingSignaler) SignalTextDelta(text string) {
 	if trimmed == "" {
 		return
 	}
-	renderable := !isSilentReplyText(trimmed)
-	if renderable {
-		ts.hasRenderableText = true
-	} else {
-		return
-	}
-
 	if ts.shouldStartOnText {
+		if isSilentReplyText(trimmed) {
+			return
+		}
 		ts.typing.Start()
 		ts.typing.RefreshTTL()
 		return
 	}
-	if ts.shouldStartOnReason {
-		if !ts.typing.IsActive() {
-			ts.typing.Start()
-		}
+	if ts.typing.IsActive() {
 		ts.typing.RefreshTTL()
 	}
 }
 
 func (ts *TypingSignaler) SignalReasoningDelta() {
 	if ts == nil || ts.disabled || !ts.shouldStartOnReason {
-		return
-	}
-	if !ts.hasRenderableText {
 		return
 	}
 	ts.typing.Start()
@@ -174,7 +163,11 @@ func (ts *TypingSignaler) SignalToolStart() {
 	if ts == nil || ts.disabled {
 		return
 	}
-	if !ts.typing.IsActive() {
+	if ts.typing.IsActive() {
+		ts.typing.RefreshTTL()
+		return
+	}
+	if ts.shouldStartImmediate {
 		ts.typing.Start()
 	}
 	ts.typing.RefreshTTL()

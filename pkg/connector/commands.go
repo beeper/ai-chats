@@ -726,6 +726,82 @@ func fnDebounce(ce *commands.Event) {
 	}
 }
 
+// CommandTyping handles the !ai typing command
+var CommandTyping = registerAICommand(commandregistry.Definition{
+	Name:           "typing",
+	Description:    "Get or set typing indicator behavior for this chat",
+	Args:           "[never|instant|thinking|message|off|reset|interval <seconds>]",
+	Section:        HelpSectionAI,
+	RequiresPortal: true,
+	RequiresLogin:  true,
+	Handler:        fnTyping,
+})
+
+func fnTyping(ce *commands.Event) {
+	client, meta, ok := requireClientMeta(ce)
+	if !ok {
+		return
+	}
+
+	isGroup := client.isGroupChat(ce.Ctx, ce.Portal)
+	if len(ce.Args) == 0 {
+		mode := client.resolveTypingMode(meta, &TypingContext{IsGroup: isGroup, WasMentioned: !isGroup}, false)
+		interval := client.resolveTypingInterval(meta)
+		response := fmt.Sprintf("Typing: mode=%s interval=%s", mode, formatTypingInterval(interval))
+		if meta.TypingMode != "" || meta.TypingIntervalSeconds != nil {
+			overrideMode := "default"
+			if meta.TypingMode != "" {
+				overrideMode = meta.TypingMode
+			}
+			overrideInterval := "default"
+			if meta.TypingIntervalSeconds != nil {
+				overrideInterval = fmt.Sprintf("%ds", *meta.TypingIntervalSeconds)
+			}
+			response = fmt.Sprintf("%s (session override: mode=%s interval=%s)", response, overrideMode, overrideInterval)
+		}
+		ce.Reply(response)
+		return
+	}
+
+	token := strings.ToLower(strings.TrimSpace(ce.Args[0]))
+	switch token {
+	case "reset", "default":
+		meta.TypingMode = ""
+		meta.TypingIntervalSeconds = nil
+		client.savePortalQuiet(ce.Ctx, ce.Portal, "typing reset")
+		ce.Reply("Typing settings reset to defaults.")
+		return
+	case "off":
+		meta.TypingMode = string(TypingModeNever)
+		client.savePortalQuiet(ce.Ctx, ce.Portal, "typing mode")
+		ce.Reply("Typing disabled for this session.")
+		return
+	case "interval":
+		if len(ce.Args) < 2 {
+			ce.Reply("Usage: `!ai typing interval <seconds>`")
+			return
+		}
+		seconds, err := parsePositiveInt(ce.Args[1])
+		if err != nil || seconds <= 0 {
+			ce.Reply("Interval must be a positive integer (seconds).")
+			return
+		}
+		meta.TypingIntervalSeconds = &seconds
+		client.savePortalQuiet(ce.Ctx, ce.Portal, "typing interval")
+		ce.Reply("Typing interval set to %ds.", seconds)
+		return
+	default:
+		if mode, ok := normalizeTypingMode(token); ok {
+			meta.TypingMode = string(mode)
+			client.savePortalQuiet(ce.Ctx, ce.Portal, "typing mode")
+			ce.Reply("Typing mode set to %s.", mode)
+			return
+		}
+	}
+
+	ce.Reply("Usage: `!ai typing <never|instant|thinking|message>` | `!ai typing interval <seconds>` | `!ai typing off` | `!ai typing reset`")
+}
+
 // CommandTools handles the !ai tools command
 var CommandTools = registerAICommand(commandregistry.Definition{
 	Name:           "tools",
