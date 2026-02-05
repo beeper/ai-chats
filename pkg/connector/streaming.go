@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -767,7 +768,7 @@ func (oc *AIClient) streamingResponse(
 						state.finishReason = "error"
 						oc.emitUIError(ctx, portal, state, errText)
 						oc.emitUIFinish(ctx, portal, state, meta)
-						return false, nil, &PreDeltaError{Err: fmt.Errorf(errText)}
+						return false, nil, &PreDeltaError{Err: errors.New(errText)}
 					}
 				}
 			}
@@ -792,7 +793,7 @@ func (oc *AIClient) streamingResponse(
 						state.finishReason = "error"
 						oc.emitUIError(ctx, portal, state, errText)
 						oc.emitUIFinish(ctx, portal, state, meta)
-						return false, nil, &PreDeltaError{Err: fmt.Errorf(errText)}
+						return false, nil, &PreDeltaError{Err: errors.New(errText)}
 					}
 				}
 			}
@@ -1265,7 +1266,7 @@ func (oc *AIClient) streamingResponse(
 							state.finishReason = "error"
 							oc.emitUIError(ctx, portal, state, errText)
 							oc.emitUIFinish(ctx, portal, state, meta)
-							return false, nil, &PreDeltaError{Err: fmt.Errorf(errText)}
+							return false, nil, &PreDeltaError{Err: errors.New(errText)}
 						}
 					}
 				}
@@ -1286,7 +1287,7 @@ func (oc *AIClient) streamingResponse(
 							state.finishReason = "error"
 							oc.emitUIError(ctx, portal, state, errText)
 							oc.emitUIFinish(ctx, portal, state, meta)
-							return false, nil, &PreDeltaError{Err: fmt.Errorf(errText)}
+							return false, nil, &PreDeltaError{Err: errors.New(errText)}
 						}
 					}
 				}
@@ -1808,7 +1809,7 @@ func (oc *AIClient) streamChatCompletions(
 							state.finishReason = "error"
 							oc.emitUIError(ctx, portal, state, errText)
 							oc.emitUIFinish(ctx, portal, state, meta)
-							return false, nil, &PreDeltaError{Err: fmt.Errorf(errText)}
+							return false, nil, &PreDeltaError{Err: errors.New(errText)}
 						}
 					}
 				}
@@ -1845,12 +1846,7 @@ func (oc *AIClient) streamChatCompletions(
 
 				// Update tool name if provided in this delta
 				if toolDelta.Function.Name != "" {
-					wasUnnamed := tool.toolName == ""
 					tool.toolName = toolDelta.Function.Name
-
-					if wasUnnamed {
-						// Tool name resolved; stream tool input when arguments arrive
-					}
 				}
 
 				// Accumulate arguments

@@ -45,9 +45,9 @@ network:
     token: ""     # Beeper AI key (requires Beeper Plus)
 
   # Per-provider default models
-providers:
-  beeper:
-    default_model: "anthropic/claude-opus-4.5"
+  providers:
+    beeper:
+      default_model: "anthropic/claude-opus-4.5"
       # PDF processing engine for OpenRouter's file-parser plugin.
       # Options: pdf-text (free), mistral-ocr (OCR, paid, default), native
       default_pdf_engine: "mistral-ocr"
@@ -57,15 +57,15 @@ providers:
       # Optional. Defaults to https://api.openai.com/v1
       base_url: "https://api.openai.com/v1"
       default_model: "openai/gpt-5.2"
-  openrouter:
-    # Optional. If set, overrides login-provided key.
-    api_key: ""
-    # Optional. Defaults to https://openrouter.ai/api/v1
-    base_url: "https://openrouter.ai/api/v1"
-    default_model: "anthropic/claude-opus-4.5"
-    # PDF processing engine for OpenRouter's file-parser plugin.
-    # Options: pdf-text (free), mistral-ocr (OCR, paid, default), native
-    default_pdf_engine: "mistral-ocr"
+    openrouter:
+      # Optional. If set, overrides login-provided key.
+      api_key: ""
+      # Optional. Defaults to https://openrouter.ai/api/v1
+      base_url: "https://openrouter.ai/api/v1"
+      default_model: "anthropic/claude-opus-4.5"
+      # PDF processing engine for OpenRouter's file-parser plugin.
+      # Options: pdf-text (free), mistral-ocr (OCR, paid, default), native
+      default_pdf_engine: "mistral-ocr"
 
 # Optional model catalog seeding (OpenClaw-style).
 # models:

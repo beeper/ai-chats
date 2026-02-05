@@ -92,14 +92,14 @@ func (oc *AIClient) buildMatrixInboundBody(
 	}
 	prev, hasPrev := oc.lastPortalMessageTime(ctx, portal)
 	enveloped := formatAgentEnvelope(struct {
-		Channel          string
-		From             string
-		Body             string
-		Timestamp        time.Time
-		HasTimestamp     bool
-		PreviousTime     time.Time
-		HasPreviousTime  bool
-		Envelope         EnvelopeFormatOptions
+		Channel         string
+		From            string
+		Body            string
+		Timestamp       time.Time
+		HasTimestamp    bool
+		PreviousTime    time.Time
+		HasPreviousTime bool
+		Envelope        EnvelopeFormatOptions
 	}{
 		Channel:         "Matrix",
 		From:            from,

@@ -117,12 +117,12 @@ type ChannelHeartbeatVisibilityConfig struct {
 
 // MessagesConfig defines message rendering settings (OpenClaw-style).
 type MessagesConfig struct {
-	ResponsePrefix    string               `yaml:"responsePrefix"`
-	AckReaction       string               `yaml:"ackReaction"`
-	AckReactionScope  string               `yaml:"ackReactionScope"`  // group-mentions|group-all|direct|all|off|none
-	RemoveAckAfter    bool                 `yaml:"removeAckAfterReply"`
-	GroupChat         *GroupChatConfig     `yaml:"groupChat"`
-	InboundDebounce   *InboundDebounceConfig `yaml:"inbound"`
+	ResponsePrefix   string                 `yaml:"responsePrefix"`
+	AckReaction      string                 `yaml:"ackReaction"`
+	AckReactionScope string                 `yaml:"ackReactionScope"` // group-mentions|group-all|direct|all|off|none
+	RemoveAckAfter   bool                   `yaml:"removeAckAfterReply"`
+	GroupChat        *GroupChatConfig       `yaml:"groupChat"`
+	InboundDebounce  *InboundDebounceConfig `yaml:"inbound"`
 }
 
 // GroupChatConfig mirrors OpenClaw's group chat settings.

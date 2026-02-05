@@ -8,13 +8,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/beeper/ai-bridge/pkg/agents"
 	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/ai-bridge/pkg/agents"
 )
 
 func unsupportedMessageStatus(err error) error {

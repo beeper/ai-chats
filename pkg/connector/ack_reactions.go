@@ -14,14 +14,14 @@ const (
 )
 
 type AckReactionGateParams struct {
-	Scope             AckReactionScope
-	IsDirect          bool
-	IsGroup           bool
+	Scope              AckReactionScope
+	IsDirect           bool
+	IsGroup            bool
 	IsMentionableGroup bool
-	RequireMention    bool
-	CanDetectMention  bool
-	EffectiveMention  bool
-	ShouldBypass      bool
+	RequireMention     bool
+	CanDetectMention   bool
+	EffectiveMention   bool
+	ShouldBypass       bool
 }
 
 func normalizeAckScope(raw string) AckReactionScope {

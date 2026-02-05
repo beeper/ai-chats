@@ -8,7 +8,7 @@ import (
 )
 
 type EnvelopeFormatOptions struct {
-	Timezone        string
+	Timezone         string
 	IncludeTimestamp bool
 	IncludeElapsed   bool
 	UserTimezone     string
@@ -21,7 +21,7 @@ type envelopeTimezone struct {
 
 func (oc *AIClient) resolveEnvelopeFormatOptions() EnvelopeFormatOptions {
 	opts := EnvelopeFormatOptions{
-		Timezone:        "local",
+		Timezone:         "local",
 		IncludeTimestamp: true,
 		IncludeElapsed:   true,
 	}
@@ -109,14 +109,14 @@ func formatElapsedTime(current, previous time.Time) string {
 }
 
 func formatAgentEnvelope(params struct {
-	Channel          string
-	From             string
-	Body             string
-	Timestamp        time.Time
-	HasTimestamp     bool
-	PreviousTime     time.Time
-	HasPreviousTime  bool
-	Envelope         EnvelopeFormatOptions
+	Channel         string
+	From            string
+	Body            string
+	Timestamp       time.Time
+	HasTimestamp    bool
+	PreviousTime    time.Time
+	HasPreviousTime bool
+	Envelope        EnvelopeFormatOptions
 }) string {
 	channel := strings.TrimSpace(params.Channel)
 	if channel == "" {
