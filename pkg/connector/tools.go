@@ -113,13 +113,13 @@ const (
 )
 
 type memorySearchOutput struct {
-	Results  []memory.SearchResult  `json:"results"`
-	Provider string                 `json:"provider,omitempty"`
-	Model    string                 `json:"model,omitempty"`
-	Fallback *memory.FallbackStatus `json:"fallback,omitempty"`
-	Citations string                `json:"citations,omitempty"`
-	Disabled bool                   `json:"disabled,omitempty"`
-	Error    string                 `json:"error,omitempty"`
+	Results   []memory.SearchResult  `json:"results"`
+	Provider  string                 `json:"provider,omitempty"`
+	Model     string                 `json:"model,omitempty"`
+	Fallback  *memory.FallbackStatus `json:"fallback,omitempty"`
+	Citations string                 `json:"citations,omitempty"`
+	Disabled  bool                   `json:"disabled,omitempty"`
+	Error     string                 `json:"error,omitempty"`
 }
 
 type memoryGetOutput struct {

@@ -7,10 +7,13 @@ import (
 	"strings"
 )
 
+//lint:ignore U1000 reserved for upcoming cron duration parsing
 var durationRe = regexp.MustCompile(`^(\\d+(?:\\.\\d+)?)(ms|s|m|h|d)?$`)
 
 // parseDurationMs parses a duration string into milliseconds.
 // Supports ms, s, m, h, d units. Defaults to defaultUnit when missing.
+//
+//lint:ignore U1000 reserved for upcoming cron duration parsing
 func parseDurationMs(raw string, defaultUnit string) (int64, error) {
 	trimmed := strings.TrimSpace(strings.ToLower(raw))
 	if trimmed == "" {

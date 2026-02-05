@@ -20,6 +20,7 @@ func derefInt64(v *int64) int64 {
 	return *v
 }
 
+//lint:ignore U1000 reserved for upcoming cron scheduling helpers
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {

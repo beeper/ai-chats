@@ -32,6 +32,7 @@ type streamingState struct {
 	startedAtMs    int64
 	firstTokenAtMs int64
 	completedAtMs  int64
+	roomID         id.RoomID
 
 	promptTokens     int64
 	completionTokens int64
@@ -40,6 +41,7 @@ type streamingState struct {
 
 	baseInput              responses.ResponseInputParam
 	accumulated            strings.Builder
+	visibleAccumulated     strings.Builder
 	reasoning              strings.Builder
 	toolCalls              []ToolCallMetadata
 	pendingImages          []generatedImage
@@ -53,11 +55,13 @@ type streamingState struct {
 	sequenceNum            int
 	firstToken             bool
 	statusSent             bool
+	statusSentIDs          map[id.EventID]bool
 
 	// Directive processing
-	sourceEventID id.EventID // The triggering user message event ID (for [[reply_to_current]])
-	senderID      string     // The triggering sender ID (for owner-only tool gating)
-	replyTarget   ReplyTarget
+	sourceEventID    id.EventID // The triggering user message event ID (for [[reply_to_current]])
+	senderID         string     // The triggering sender ID (for owner-only tool gating)
+	replyTarget      ReplyTarget
+	replyAccumulator *streamingDirectiveAccumulator
 
 	// Heartbeat handling
 	heartbeat         *HeartbeatRunConfig
@@ -78,19 +82,22 @@ type streamingState struct {
 }
 
 // newStreamingState creates a new streaming state with initialized fields
-func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID id.EventID, senderID string) *streamingState {
+func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID id.EventID, senderID string, roomID id.RoomID) *streamingState {
 	agentID := ""
 	if meta != nil {
 		agentID = meta.DefaultAgentID
 	}
 	state := &streamingState{
-		turnID:        NewTurnID(),
-		agentID:       agentID,
-		startedAtMs:   time.Now().UnixMilli(),
-		firstToken:    true,
-		sourceEventID: sourceEventID,
-		senderID:      senderID,
-		uiToolStarted: make(map[string]bool),
+		turnID:           NewTurnID(),
+		agentID:          agentID,
+		startedAtMs:      time.Now().UnixMilli(),
+		firstToken:       true,
+		sourceEventID:    sourceEventID,
+		senderID:         senderID,
+		roomID:           roomID,
+		statusSentIDs:    make(map[id.EventID]bool),
+		replyAccumulator: newStreamingDirectiveAccumulator(),
+		uiToolStarted:    make(map[string]bool),
 	}
 	if meta != nil && normalizeSendPolicyMode(meta.SendPolicy) == "deny" {
 		state.suppressSend = true
@@ -108,17 +115,49 @@ func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID 
 	return state
 }
 
-func (oc *AIClient) markMessageSendSuccess(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, state *streamingState) {
-	if state == nil || state.statusSent || state.suppressSend {
+func (oc *AIClient) applyStreamingReplyTarget(state *streamingState, parsed *streamingDirectiveResult) {
+	if oc == nil || state == nil || parsed == nil || !parsed.HasReplyTag {
 		return
 	}
-	state.statusSent = true
+	if oc.resolveMatrixReplyToMode() == "off" {
+		return
+	}
+	if parsed.ReplyToExplicitID != "" {
+		state.replyTarget.ReplyTo = id.EventID(parsed.ReplyToExplicitID)
+		return
+	}
+	if parsed.ReplyToCurrent && state.sourceEventID != "" {
+		state.replyTarget.ReplyTo = state.sourceEventID
+	}
+}
 
-	oc.sendSuccessStatus(ctx, portal, evt)
-	for _, extra := range statusEventsFromContext(ctx) {
-		if extra != nil {
-			oc.sendSuccessStatus(ctx, portal, extra)
+func (oc *AIClient) markMessageSendSuccess(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, state *streamingState) {
+	if state == nil || state.suppressSend {
+		return
+	}
+	if state.statusSentIDs == nil {
+		state.statusSentIDs = make(map[id.EventID]bool)
+	}
+	events := make([]*event.Event, 0, 4)
+	if evt != nil {
+		events = append(events, evt)
+	}
+	events = append(events, statusEventsFromContext(ctx)...)
+	if portal != nil && portal.MXID != "" {
+		events = append(events, oc.roomRunStatusEvents(portal.MXID)...)
+	}
+	for _, extra := range events {
+		if extra == nil || extra.ID == "" {
+			continue
 		}
+		if state.statusSentIDs[extra.ID] {
+			continue
+		}
+		oc.sendSuccessStatus(ctx, portal, extra)
+		state.statusSentIDs[extra.ID] = true
+	}
+	if len(state.statusSentIDs) > 0 {
+		state.statusSent = true
 	}
 }
 
@@ -691,8 +730,12 @@ func (oc *AIClient) streamingResponse(
 	meta *PortalMetadata,
 	messages []openai.ChatCompletionMessageParamUnion,
 ) (bool, *ContextLengthError, error) {
+	portalID := ""
+	if portal != nil {
+		portalID = string(portal.ID)
+	}
 	log := zerolog.Ctx(ctx).With().
-		Str("portal_id", string(portal.ID)).
+		Str("portal_id", portalID).
 		Logger()
 
 	// Initialize streaming state with turn tracking
@@ -705,8 +748,16 @@ func (oc *AIClient) streamingResponse(
 			senderID = evt.Sender.String()
 		}
 	}
-	state := newStreamingState(ctx, meta, sourceEventID, senderID)
+	roomID := id.RoomID("")
+	if portal != nil {
+		roomID = portal.MXID
+	}
+	state := newStreamingState(ctx, meta, sourceEventID, senderID, roomID)
 	state.replyTarget = oc.resolveInitialReplyTarget(evt)
+	if state.roomID != "" {
+		oc.markRoomRunStreaming(state.roomID, true)
+		defer oc.markRoomRunStreaming(state.roomID, false)
+	}
 
 	// Ensure model ghost is in the room before any operations
 	if !state.suppressSend {
@@ -769,27 +820,36 @@ func (oc *AIClient) streamingResponse(
 		case "response.output_text.delta":
 			touchTyping()
 			state.accumulated.WriteString(streamEvent.Delta)
-
-			// First token - send initial message synchronously to capture event_id
-			if state.firstToken && state.accumulated.Len() > 0 {
-				state.firstToken = false
-				state.firstTokenAtMs = time.Now().UnixMilli()
-				if !state.suppressSend {
-					// Ensure ghost display name is set before sending the first message
-					oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
-					state.initialEventID = oc.sendInitialStreamMessage(ctx, portal, state.accumulated.String(), state.turnID, state.replyTarget)
-					if state.initialEventID == "" {
-						errText := "failed to send initial streaming message"
-						log.Error().Msg("Failed to send initial streaming message")
-						state.finishReason = "error"
-						oc.emitUIError(ctx, portal, state, errText)
-						oc.emitUIFinish(ctx, portal, state, meta)
-						return false, nil, &PreDeltaError{Err: errors.New(errText)}
+			parsed := (*streamingDirectiveResult)(nil)
+			if state.replyAccumulator != nil {
+				parsed = state.replyAccumulator.Consume(streamEvent.Delta, false)
+			}
+			if parsed != nil {
+				oc.applyStreamingReplyTarget(state, parsed)
+				cleaned := parsed.Text
+				if cleaned != "" {
+					state.visibleAccumulated.WriteString(cleaned)
+					// First token - send initial message synchronously to capture event_id
+					if state.firstToken && state.visibleAccumulated.Len() > 0 {
+						state.firstToken = false
+						state.firstTokenAtMs = time.Now().UnixMilli()
+						if !state.suppressSend {
+							// Ensure ghost display name is set before sending the first message
+							oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
+							state.initialEventID = oc.sendInitialStreamMessage(ctx, portal, state.visibleAccumulated.String(), state.turnID, state.replyTarget)
+							if state.initialEventID == "" {
+								errText := "failed to send initial streaming message"
+								log.Error().Msg("Failed to send initial streaming message")
+								state.finishReason = "error"
+								oc.emitUIError(ctx, portal, state, errText)
+								oc.emitUIFinish(ctx, portal, state, meta)
+								return false, nil, &PreDeltaError{Err: errors.New(errText)}
+							}
+						}
 					}
+					oc.emitUITextDelta(ctx, portal, state, cleaned)
 				}
 			}
-
-			oc.emitUITextDelta(ctx, portal, state, streamEvent.Delta)
 
 		case "response.reasoning_text.delta":
 			touchTyping()
@@ -1270,24 +1330,34 @@ func (oc *AIClient) streamingResponse(
 			case "response.output_text.delta":
 				touchTyping()
 				state.accumulated.WriteString(streamEvent.Delta)
-
-				if state.firstToken && state.accumulated.Len() > 0 {
-					state.firstToken = false
-					state.firstTokenAtMs = time.Now().UnixMilli()
-					if !state.suppressSend {
-						oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
-						state.initialEventID = oc.sendInitialStreamMessage(ctx, portal, state.accumulated.String(), state.turnID, state.replyTarget)
-						if state.initialEventID == "" {
-							errText := "failed to send initial streaming message (continuation)"
-							log.Error().Msg("Failed to send initial streaming message (continuation)")
-							state.finishReason = "error"
-							oc.emitUIError(ctx, portal, state, errText)
-							oc.emitUIFinish(ctx, portal, state, meta)
-							return false, nil, &PreDeltaError{Err: errors.New(errText)}
+				parsed := (*streamingDirectiveResult)(nil)
+				if state.replyAccumulator != nil {
+					parsed = state.replyAccumulator.Consume(streamEvent.Delta, false)
+				}
+				if parsed != nil {
+					oc.applyStreamingReplyTarget(state, parsed)
+					cleaned := parsed.Text
+					if cleaned != "" {
+						state.visibleAccumulated.WriteString(cleaned)
+						if state.firstToken && state.visibleAccumulated.Len() > 0 {
+							state.firstToken = false
+							state.firstTokenAtMs = time.Now().UnixMilli()
+							if !state.suppressSend {
+								oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
+								state.initialEventID = oc.sendInitialStreamMessage(ctx, portal, state.visibleAccumulated.String(), state.turnID, state.replyTarget)
+								if state.initialEventID == "" {
+									errText := "failed to send initial streaming message (continuation)"
+									log.Error().Msg("Failed to send initial streaming message (continuation)")
+									state.finishReason = "error"
+									oc.emitUIError(ctx, portal, state, errText)
+									oc.emitUIFinish(ctx, portal, state, meta)
+									return false, nil, &PreDeltaError{Err: errors.New(errText)}
+								}
+							}
 						}
+						oc.emitUITextDelta(ctx, portal, state, cleaned)
 					}
 				}
-				oc.emitUITextDelta(ctx, portal, state, streamEvent.Delta)
 
 			case "response.reasoning_text.delta":
 				touchTyping()
@@ -1638,6 +1708,16 @@ func (oc *AIClient) buildContinuationParams(state *streamingState, meta *PortalM
 		}
 		input = append(input, buildFunctionCallOutputItem(output.callID, output.output, isOpenRouter))
 	}
+	steerItems := oc.drainSteerQueue(state.roomID)
+	if len(steerItems) > 0 {
+		steerInput := oc.buildSteerInputItems(steerItems, meta)
+		if len(steerInput) > 0 {
+			input = append(input, steerInput...)
+			if isOpenRouter && len(state.baseInput) > 0 {
+				state.baseInput = append(state.baseInput, steerInput...)
+			}
+		}
+	}
 	params.Input = responses.ResponseNewParamsInputUnion{
 		OfInputItemList: input,
 	}
@@ -1698,6 +1778,32 @@ func (oc *AIClient) buildContinuationParams(state *streamingState, meta *PortalM
 	return params
 }
 
+func (oc *AIClient) buildSteerInputItems(items []pendingQueueItem, meta *PortalMetadata) responses.ResponseInputParam {
+	if oc == nil || len(items) == 0 {
+		return nil
+	}
+	var input responses.ResponseInputParam
+	for _, item := range items {
+		if item.pending.Type != pendingTypeText {
+			continue
+		}
+		prompt := strings.TrimSpace(item.prompt)
+		if prompt == "" {
+			prompt = item.pending.MessageBody
+			if item.pending.Event != nil {
+				prompt = appendMessageIDHint(prompt, item.pending.Event.ID)
+			}
+		}
+		prompt = strings.TrimSpace(prompt)
+		if prompt == "" {
+			continue
+		}
+		messages := []openai.ChatCompletionMessageParamUnion{openai.UserMessage(prompt)}
+		input = append(input, oc.convertToResponsesInput(messages, meta)...)
+	}
+	return input
+}
+
 // streamChatCompletions handles streaming using Chat Completions API (for audio support)
 // This is used as a fallback when the prompt contains audio content, since
 // SDK v3.16.0 has ResponseInputAudioParam defined but NOT wired into ResponseInputContentUnionParam.
@@ -1708,9 +1814,13 @@ func (oc *AIClient) streamChatCompletions(
 	meta *PortalMetadata,
 	messages []openai.ChatCompletionMessageParamUnion,
 ) (bool, *ContextLengthError, error) {
+	portalID := ""
+	if portal != nil {
+		portalID = string(portal.ID)
+	}
 	log := zerolog.Ctx(ctx).With().
 		Str("action", "stream_chat_completions").
-		Str("portal", string(portal.ID)).
+		Str("portal", portalID).
 		Logger()
 
 	// Initialize streaming state with source event ID for [[reply_to_current]] support
@@ -1722,7 +1832,12 @@ func (oc *AIClient) streamChatCompletions(
 			senderID = evt.Sender.String()
 		}
 	}
-	state := newStreamingState(ctx, meta, sourceEventID, senderID)
+	roomID := id.RoomID("")
+	if portal != nil {
+		roomID = portal.MXID
+	}
+	state := newStreamingState(ctx, meta, sourceEventID, senderID, roomID)
+	state.replyTarget = oc.resolveInitialReplyTarget(evt)
 
 	// Ensure model ghost is in the room before any operations
 	if !state.suppressSend {
@@ -1827,23 +1942,34 @@ func (oc *AIClient) streamChatCompletions(
 					state.accumulated.WriteString(choice.Delta.Content)
 					roundContent.WriteString(choice.Delta.Content)
 
-					if state.firstToken && state.accumulated.Len() > 0 {
-						state.firstToken = false
-						state.firstTokenAtMs = time.Now().UnixMilli()
-						if !state.suppressSend {
-							oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
-							state.initialEventID = oc.sendInitialStreamMessage(ctx, portal, state.accumulated.String(), state.turnID, state.replyTarget)
-							if state.initialEventID == "" {
-								errText := "failed to send initial streaming message"
-								log.Error().Msg("Failed to send initial streaming message")
-								state.finishReason = "error"
-								oc.emitUIError(ctx, portal, state, errText)
-								oc.emitUIFinish(ctx, portal, state, meta)
-								return false, nil, &PreDeltaError{Err: errors.New(errText)}
+					parsed := (*streamingDirectiveResult)(nil)
+					if state.replyAccumulator != nil {
+						parsed = state.replyAccumulator.Consume(choice.Delta.Content, false)
+					}
+					if parsed != nil {
+						oc.applyStreamingReplyTarget(state, parsed)
+						cleaned := parsed.Text
+						if cleaned != "" {
+							state.visibleAccumulated.WriteString(cleaned)
+							if state.firstToken && state.visibleAccumulated.Len() > 0 {
+								state.firstToken = false
+								state.firstTokenAtMs = time.Now().UnixMilli()
+								if !state.suppressSend {
+									oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
+									state.initialEventID = oc.sendInitialStreamMessage(ctx, portal, state.visibleAccumulated.String(), state.turnID, state.replyTarget)
+									if state.initialEventID == "" {
+										errText := "failed to send initial streaming message"
+										log.Error().Msg("Failed to send initial streaming message")
+										state.finishReason = "error"
+										oc.emitUIError(ctx, portal, state, errText)
+										oc.emitUIFinish(ctx, portal, state, meta)
+										return false, nil, &PreDeltaError{Err: errors.New(errText)}
+									}
+								}
 							}
+							oc.emitUITextDelta(ctx, portal, state, cleaned)
 						}
 					}
-					oc.emitUITextDelta(ctx, portal, state, choice.Delta.Content)
 				}
 
 				if choice.Delta.Refusal != "" {
@@ -2109,6 +2235,25 @@ func (oc *AIClient) streamChatCompletions(
 			currentMessages = append(currentMessages, openai.ChatCompletionMessageParamUnion{OfAssistant: &assistantMsg})
 			for _, result := range toolResults {
 				currentMessages = append(currentMessages, openai.ToolMessage(result.output, result.callID))
+			}
+			if steerItems := oc.drainSteerQueue(state.roomID); len(steerItems) > 0 {
+				for _, item := range steerItems {
+					if item.pending.Type != pendingTypeText {
+						continue
+					}
+					prompt := strings.TrimSpace(item.prompt)
+					if prompt == "" {
+						prompt = item.pending.MessageBody
+						if item.pending.Event != nil {
+							prompt = appendMessageIDHint(prompt, item.pending.Event.ID)
+						}
+					}
+					prompt = strings.TrimSpace(prompt)
+					if prompt == "" {
+						continue
+					}
+					currentMessages = append(currentMessages, openai.UserMessage(prompt))
+				}
 			}
 			continue
 		}

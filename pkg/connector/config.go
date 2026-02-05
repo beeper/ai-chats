@@ -104,14 +104,14 @@ type ChannelsConfig struct {
 
 type ChannelDefaultsConfig struct {
 	Heartbeat      *ChannelHeartbeatVisibilityConfig `yaml:"heartbeat"`
-	ResponsePrefix string                           `yaml:"responsePrefix"`
+	ResponsePrefix string                            `yaml:"responsePrefix"`
 }
 
 type ChannelConfig struct {
 	Heartbeat      *ChannelHeartbeatVisibilityConfig `yaml:"heartbeat"`
-	ResponsePrefix string                           `yaml:"responsePrefix"`
-	ReplyToMode   string                            `yaml:"replyToMode"`   // off|first|all (Matrix)
-	ThreadReplies string                            `yaml:"threadReplies"` // off|inbound|always (Matrix)
+	ResponsePrefix string                            `yaml:"responsePrefix"`
+	ReplyToMode    string                            `yaml:"replyToMode"`   // off|first|all (Matrix)
+	ThreadReplies  string                            `yaml:"threadReplies"` // off|inbound|always (Matrix)
 }
 
 type ChannelHeartbeatVisibilityConfig struct {

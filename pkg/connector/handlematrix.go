@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -31,7 +32,7 @@ func messageSendStatusError(err error, message string, reason event.MessageStatu
 		if message == "" {
 			err = fmt.Errorf("message send failed")
 		} else {
-			err = fmt.Errorf(message)
+			err = errors.New(message)
 		}
 	}
 	status := bridgev2.WrapErrorInStatus(err).WithSendNotice(true)
@@ -931,12 +932,12 @@ func (oc *AIClient) handleMediaMessage(
 			ok = true
 		case isTextFileMime(mimeType):
 			if !oc.canUseMediaUnderstanding(meta) {
-				return nil, unsupportedMessageStatus(fmt.Errorf("Text file understanding is only available when an agent is assigned and raw mode is off."))
+				return nil, unsupportedMessageStatus(fmt.Errorf("text file understanding is only available when an agent is assigned and raw mode is off"))
 			}
 			return oc.handleTextFileMessage(ctx, msg, portal, meta, string(mediaURL), mimeType)
 		case mimeType == "" || mimeType == "application/octet-stream":
 			if !oc.canUseMediaUnderstanding(meta) {
-				return nil, unsupportedMessageStatus(fmt.Errorf("Text file understanding is only available when an agent is assigned and raw mode is off."))
+				return nil, unsupportedMessageStatus(fmt.Errorf("text file understanding is only available when an agent is assigned and raw mode is off"))
 			}
 			return oc.handleTextFileMessage(ctx, msg, portal, meta, string(mediaURL), mimeType)
 		}
@@ -1083,7 +1084,7 @@ func (oc *AIClient) handleMediaMessage(
 		}
 
 		return nil, unsupportedMessageStatus(fmt.Errorf(
-			"The current model (%s) does not support %s. Please switch to a capable model using /model.",
+			"current model (%s) does not support %s; switch to a capable model using /model",
 			oc.effectiveModel(meta), config.capabilityName,
 		))
 	}

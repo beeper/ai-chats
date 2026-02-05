@@ -103,8 +103,17 @@ func (oc *AIClient) dispatchInternalMessage(
 	if queueSettings.Mode == QueueModeInterrupt {
 		oc.cancelRoomRun(portal.MXID)
 		oc.clearPendingQueue(portal.MXID)
-	} else if shouldSteer {
-		oc.cancelRoomRun(portal.MXID)
+	}
+	if shouldSteer && pending.Type == pendingTypeText {
+		queueItem.prompt = pending.MessageBody
+		if pending.Event != nil {
+			queueItem.prompt = appendMessageIDHint(queueItem.prompt, pending.Event.ID)
+		}
+		if oc.enqueueSteerQueue(portal.MXID, queueItem) {
+			if queueSettings.Mode != QueueModeSteerBacklog {
+				return eventID, true, nil
+			}
+		}
 	}
 	if queueSettings.Mode == QueueModeSteerBacklog {
 		queueItem.backlogAfter = true

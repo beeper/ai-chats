@@ -275,9 +275,9 @@ type AIClient struct {
 	pendingQueues   map[id.RoomID]*pendingQueue
 	pendingQueuesMu sync.Mutex
 
-	// Active room run cancellation (for interrupt/steer).
-	activeRoomCancels   map[id.RoomID]context.CancelFunc
-	activeRoomCancelsMu sync.Mutex
+	// Active room runs (for interrupt/steer and tool-boundary steering).
+	activeRoomRuns   map[id.RoomID]*roomRunState
+	activeRoomRunsMu sync.Mutex
 
 	// Pending group history buffers (mention-gated group context).
 	groupHistoryBuffers map[id.RoomID]*groupHistoryBuffer
@@ -365,7 +365,7 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 		log:                 log,
 		activeRooms:         make(map[id.RoomID]bool),
 		pendingQueues:       make(map[id.RoomID]*pendingQueue),
-		activeRoomCancels:   make(map[id.RoomID]context.CancelFunc),
+		activeRoomRuns:      make(map[id.RoomID]*roomRunState),
 		subagentRuns:        make(map[string]*subagentRun),
 		groupHistoryBuffers: make(map[id.RoomID]*groupHistoryBuffer),
 	}
@@ -531,11 +531,10 @@ func (oc *AIClient) dispatchOrQueue(
 ) (dbMessage *database.Message, isPending bool) {
 	roomID := portal.MXID
 	shouldSteer := queueSettings.Mode == QueueModeSteer || queueSettings.Mode == QueueModeSteerBacklog
+	shouldFollowup := queueSettings.Mode == QueueModeFollowup || queueSettings.Mode == QueueModeCollect || queueSettings.Mode == QueueModeSteerBacklog
 	if queueSettings.Mode == QueueModeInterrupt {
 		oc.cancelRoomRun(roomID)
 		oc.clearPendingQueue(roomID)
-	} else if shouldSteer {
-		oc.cancelRoomRun(roomID)
 	}
 	if oc.acquireRoom(roomID) {
 		// Save user message to database - we must do this ourselves since we return Pending=true.
@@ -570,6 +569,36 @@ func (oc *AIClient) dispatchOrQueue(
 		return userMessage, true
 	}
 
+	pendingSent := false
+	if shouldSteer && queueItem.pending.Type == pendingTypeText {
+		queueItem.prompt = queueItem.pending.MessageBody
+		if queueItem.pending.Event != nil {
+			queueItem.prompt = appendMessageIDHint(queueItem.prompt, queueItem.pending.Event.ID)
+		}
+		steered := oc.enqueueSteerQueue(roomID, queueItem)
+		if steered {
+			if userMessage != nil {
+				if evt != nil {
+					userMessage.MXID = evt.ID
+				}
+				if _, err := oc.UserLogin.Bridge.GetGhostByID(ctx, userMessage.SenderID); err != nil {
+					oc.log.Warn().Err(err).Msg("Failed to ensure user ghost before saving steered message")
+				}
+				if err := oc.UserLogin.Bridge.DB.Message.Insert(ctx, userMessage); err != nil {
+					oc.log.Err(err).Msg("Failed to save steered message to database")
+				}
+			}
+			if !shouldFollowup {
+				if evt != nil {
+					oc.sendPendingStatus(ctx, portal, evt, "Processing...")
+					pendingSent = true
+				}
+				oc.notifySessionMemoryChange(ctx, portal, meta, false)
+				return userMessage, true
+			}
+		}
+	}
+
 	// Room busy - save message ourselves and queue for later
 	if userMessage != nil {
 		userMessage.MXID = evt.ID
@@ -586,7 +615,9 @@ func (oc *AIClient) dispatchOrQueue(
 		queueItem.backlogAfter = true
 	}
 	oc.queuePendingMessage(roomID, queueItem, queueSettings)
-	oc.sendPendingStatus(ctx, portal, evt, "Waiting for previous response")
+	if evt != nil && !pendingSent {
+		oc.sendPendingStatus(ctx, portal, evt, "Waiting for previous response")
+	}
 	oc.notifySessionMemoryChange(ctx, portal, meta, false)
 	return userMessage, true
 }
@@ -604,11 +635,10 @@ func (oc *AIClient) dispatchOrQueueWithStatus(
 ) {
 	roomID := portal.MXID
 	shouldSteer := queueSettings.Mode == QueueModeSteer || queueSettings.Mode == QueueModeSteerBacklog
+	shouldFollowup := queueSettings.Mode == QueueModeFollowup || queueSettings.Mode == QueueModeCollect || queueSettings.Mode == QueueModeSteerBacklog
 	if queueSettings.Mode == QueueModeInterrupt {
 		oc.cancelRoomRun(roomID)
 		oc.clearPendingQueue(roomID)
-	} else if shouldSteer {
-		oc.cancelRoomRun(roomID)
 	}
 	if oc.acquireRoom(roomID) {
 		runCtx := withStatusEvents(oc.backgroundContext(ctx), queueItem.pending.StatusEvents)
@@ -624,11 +654,29 @@ func (oc *AIClient) dispatchOrQueueWithStatus(
 		return
 	}
 
+	pendingSent := false
+	if shouldSteer && queueItem.pending.Type == pendingTypeText {
+		queueItem.prompt = queueItem.pending.MessageBody
+		if queueItem.pending.Event != nil {
+			queueItem.prompt = appendMessageIDHint(queueItem.prompt, queueItem.pending.Event.ID)
+		}
+		steered := oc.enqueueSteerQueue(roomID, queueItem)
+		if steered && !shouldFollowup {
+			if evt != nil {
+				oc.sendPendingStatus(ctx, portal, evt, "Processing...")
+				pendingSent = true
+			}
+			return
+		}
+	}
+
 	if queueSettings.Mode == QueueModeSteerBacklog {
 		queueItem.backlogAfter = true
 	}
 	oc.queuePendingMessage(roomID, queueItem, queueSettings)
-	oc.sendPendingStatus(ctx, portal, evt, "Waiting for previous response")
+	if evt != nil && !pendingSent {
+		oc.sendPendingStatus(ctx, portal, evt, "Waiting for previous response")
+	}
 }
 
 // processPendingQueue processes queued messages for a room.
