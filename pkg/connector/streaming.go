@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -1725,297 +1726,370 @@ func (oc *AIClient) streamChatCompletions(
 	// Apply proactive context pruning if enabled
 	messages = oc.applyProactivePruning(ctx, messages, meta)
 
-	params := openai.ChatCompletionNewParams{
-		Model:    oc.effectiveModelForAPI(meta),
-		Messages: messages,
-	}
-	params.StreamOptions = openai.ChatCompletionStreamOptionsParam{
-		IncludeUsage: param.NewOpt(true),
-	}
-	if maxTokens := oc.effectiveMaxTokens(meta); maxTokens > 0 {
-		params.MaxCompletionTokens = openai.Int(int64(maxTokens))
-	}
-	if temp := oc.effectiveTemperature(meta); temp > 0 {
-		params.Temperature = openai.Float(temp)
-	}
-	if meta.Capabilities.SupportsToolCalling {
-		enabledTools := GetEnabledBuiltinTools(func(name string) bool {
-			return oc.isToolEnabled(meta, name)
-		})
-		if len(enabledTools) > 0 {
-			params.Tools = append(params.Tools, ToOpenAIChatTools(enabledTools, &oc.log)...)
-		}
-		if !oc.isBuilderRoom(portal) {
-			var enabledSessions []*tools.Tool
-			for _, tool := range tools.SessionTools() {
-				if oc.isToolEnabled(meta, tool.Name) {
-					enabledSessions = append(enabledSessions, tool)
-				}
-			}
-			if len(enabledSessions) > 0 {
-				params.Tools = append(params.Tools, bossToolsToChatTools(enabledSessions, &oc.log)...)
-			}
-		}
-		if hasBossAgent(meta) || oc.isBuilderRoom(portal) {
-			var enabledBoss []*tools.Tool
-			for _, tool := range tools.BossTools() {
-				if oc.isToolEnabled(meta, tool.Name) {
-					enabledBoss = append(enabledBoss, tool)
-				}
-			}
-			params.Tools = append(params.Tools, bossToolsToChatTools(enabledBoss, &oc.log)...)
-		}
-		params.Tools = dedupeChatToolParams(params.Tools)
-	}
-
-	stream := oc.api.Chat.Completions.NewStreaming(ctx, params)
-	if stream == nil {
-		initErr := fmt.Errorf("chat completions streaming not available")
-		logChatCompletionsFailure(log, initErr, params, meta, messages, "stream_init")
-		return false, nil, &PreDeltaError{Err: initErr}
-	}
-
-	// Track active tool calls by index
-	activeTools := make(map[int]*activeToolCall)
+	currentMessages := messages
+	maxToolRounds := 3
 
 	oc.emitUIStart(ctx, portal, state, meta)
-	oc.emitUIStepStart(ctx, portal, state)
 
-	for stream.Next() {
-		chunk := stream.Current()
-		oc.markMessageSendSuccess(ctx, portal, evt, state)
-
-		if chunk.Usage.TotalTokens > 0 || chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 {
-			state.promptTokens = chunk.Usage.PromptTokens
-			state.completionTokens = chunk.Usage.CompletionTokens
-			state.reasoningTokens = chunk.Usage.CompletionTokensDetails.ReasoningTokens
-			state.totalTokens = chunk.Usage.TotalTokens
+	for round := 0; ; round++ {
+		params := openai.ChatCompletionNewParams{
+			Model:    oc.effectiveModelForAPI(meta),
+			Messages: currentMessages,
 		}
-
-		for _, choice := range chunk.Choices {
-			if choice.Delta.Content != "" {
-				touchTyping()
-				state.accumulated.WriteString(choice.Delta.Content)
-
-				if state.firstToken && state.accumulated.Len() > 0 {
-					state.firstToken = false
-					state.firstTokenAtMs = time.Now().UnixMilli()
-					if !state.suppressSend {
-						oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
-						state.initialEventID = oc.sendInitialStreamMessage(ctx, portal, state.accumulated.String(), state.turnID, state.sourceEventID)
-						if state.initialEventID == "" {
-							errText := "failed to send initial streaming message"
-							log.Error().Msg("Failed to send initial streaming message")
-							state.finishReason = "error"
-							oc.emitUIError(ctx, portal, state, errText)
-							oc.emitUIFinish(ctx, portal, state, meta)
-							return false, nil, &PreDeltaError{Err: errors.New(errText)}
-						}
-					}
-				}
-				oc.emitUITextDelta(ctx, portal, state, choice.Delta.Content)
-			}
-
-			if choice.Delta.Refusal != "" {
-				touchTyping()
-				oc.emitUITextDelta(ctx, portal, state, choice.Delta.Refusal)
-			}
-
-			// Handle tool calls from Chat Completions API
-			for _, toolDelta := range choice.Delta.ToolCalls {
-				touchTyping()
-				toolIdx := int(toolDelta.Index)
-				tool, exists := activeTools[toolIdx]
-				if !exists {
-					callID := toolDelta.ID
-					if strings.TrimSpace(callID) == "" {
-						callID = NewCallID()
-					}
-					tool = &activeToolCall{
-						callID:      callID,
-						toolType:    ToolTypeFunction,
-						startedAtMs: time.Now().UnixMilli(),
-					}
-					activeTools[toolIdx] = tool
-				}
-
-				// Capture tool ID if provided (used by OpenAI for tracking)
-				if toolDelta.ID != "" && tool.callID == "" {
-					tool.callID = toolDelta.ID
-				}
-
-				// Update tool name if provided in this delta
-				if toolDelta.Function.Name != "" {
-					tool.toolName = toolDelta.Function.Name
-				}
-
-				// Accumulate arguments
-				if toolDelta.Function.Arguments != "" {
-					tool.input.WriteString(toolDelta.Function.Arguments)
-					oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, toolDelta.Function.Arguments, false)
-				}
-			}
-
-			if choice.FinishReason != "" {
-				state.finishReason = string(choice.FinishReason)
-				if choice.FinishReason == "tool_calls" {
-					for _, tool := range activeTools {
-						args := strings.TrimSpace(tool.input.String())
-						if args == "" {
-							args = "{}"
-						}
-						var input any
-						if err := json.Unmarshal([]byte(args), &input); err != nil {
-							input = args
-						}
-						oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, input, false)
-					}
-				}
-			}
+		params.StreamOptions = openai.ChatCompletionStreamOptionsParam{
+			IncludeUsage: param.NewOpt(true),
 		}
-
-	}
-
-	oc.emitUIStepFinish(ctx, portal, state)
-
-	if err := stream.Err(); err != nil {
-		if cle := ParseContextLengthError(err); cle != nil {
-			return false, cle, nil
+		if maxTokens := oc.effectiveMaxTokens(meta); maxTokens > 0 {
+			params.MaxCompletionTokens = openai.Int(int64(maxTokens))
 		}
-		logChatCompletionsFailure(log, err, params, meta, messages, "stream_err")
-		state.finishReason = "error"
-		oc.emitUIError(ctx, portal, state, err.Error())
-		oc.emitUIFinish(ctx, portal, state, meta)
-		if state.initialEventID != "" {
-			return false, nil, &NonFallbackError{Err: err}
+		if temp := oc.effectiveTemperature(meta); temp > 0 {
+			params.Temperature = openai.Float(temp)
 		}
-		return false, nil, &PreDeltaError{Err: err}
-	}
-
-	// Execute any accumulated tool calls
-	for _, tool := range activeTools {
-		if tool.toolName != "" && oc.isToolEnabled(meta, tool.toolName) {
-			touchTyping()
-			// Wrap context with bridge info for tools that need it (e.g., channel-edit, react)
-			toolCtx := WithBridgeToolContext(ctx, &BridgeToolContext{
-				Client:        oc,
-				Portal:        portal,
-				Meta:          meta,
-				SourceEventID: state.sourceEventID,
+		if meta.Capabilities.SupportsToolCalling {
+			enabledTools := GetEnabledBuiltinTools(func(name string) bool {
+				return oc.isToolEnabled(meta, name)
 			})
-			argsJSON := normalizeToolArgsJSON(tool.input.String())
-			result, err := oc.executeBuiltinTool(toolCtx, portal, tool.toolName, argsJSON)
-			resultStatus := ResultStatusSuccess
-			if err != nil {
-				log.Warn().Err(err).Str("tool", tool.toolName).Msg("Tool execution failed (Chat Completions)")
-				result = fmt.Sprintf("Error: %s", err.Error())
-				resultStatus = ResultStatusError
+			if len(enabledTools) > 0 {
+				params.Tools = append(params.Tools, ToOpenAIChatTools(enabledTools, &oc.log)...)
+			}
+			if !oc.isBuilderRoom(portal) {
+				var enabledSessions []*tools.Tool
+				for _, tool := range tools.SessionTools() {
+					if oc.isToolEnabled(meta, tool.Name) {
+						enabledSessions = append(enabledSessions, tool)
+					}
+				}
+				if len(enabledSessions) > 0 {
+					params.Tools = append(params.Tools, bossToolsToChatTools(enabledSessions, &oc.log)...)
+				}
+			}
+			if hasBossAgent(meta) || oc.isBuilderRoom(portal) {
+				var enabledBoss []*tools.Tool
+				for _, tool := range tools.BossTools() {
+					if oc.isToolEnabled(meta, tool.Name) {
+						enabledBoss = append(enabledBoss, tool)
+					}
+				}
+				params.Tools = append(params.Tools, bossToolsToChatTools(enabledBoss, &oc.log)...)
+			}
+			params.Tools = dedupeChatToolParams(params.Tools)
+		}
+
+		stream := oc.api.Chat.Completions.NewStreaming(ctx, params)
+		if stream == nil {
+			initErr := fmt.Errorf("chat completions streaming not available")
+			logChatCompletionsFailure(log, initErr, params, meta, currentMessages, "stream_init")
+			return false, nil, &PreDeltaError{Err: initErr}
+		}
+
+		// Track active tool calls by index
+		activeTools := make(map[int]*activeToolCall)
+		var roundContent strings.Builder
+		state.finishReason = ""
+
+		oc.emitUIStepStart(ctx, portal, state)
+
+		for stream.Next() {
+			chunk := stream.Current()
+			oc.markMessageSendSuccess(ctx, portal, evt, state)
+
+			if chunk.Usage.TotalTokens > 0 || chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 {
+				state.promptTokens = chunk.Usage.PromptTokens
+				state.completionTokens = chunk.Usage.CompletionTokens
+				state.reasoningTokens = chunk.Usage.CompletionTokensDetails.ReasoningTokens
+				state.totalTokens = chunk.Usage.TotalTokens
 			}
 
-			// Check for TTS audio result (AUDIO: prefix)
-			if strings.HasPrefix(result, TTSResultPrefix) {
-				audioB64 := strings.TrimPrefix(result, TTSResultPrefix)
-				audioData, decodeErr := base64.StdEncoding.DecodeString(audioB64)
-				if decodeErr != nil {
-					log.Warn().Err(decodeErr).Msg("Failed to decode TTS audio (Chat Completions)")
-					result = "Error: failed to decode TTS audio"
-					resultStatus = ResultStatusError
-				} else {
-					if _, mediaURL, sendErr := oc.sendGeneratedAudio(ctx, portal, audioData, "audio/mpeg", state.turnID); sendErr != nil {
-						log.Warn().Err(sendErr).Msg("Failed to send TTS audio (Chat Completions)")
-						result = "Error: failed to send TTS audio"
-						resultStatus = ResultStatusError
-					} else {
-						recordGeneratedFile(state, mediaURL, "audio/mpeg")
-						result = "Audio message sent successfully"
+			for _, choice := range chunk.Choices {
+				if choice.Delta.Content != "" {
+					touchTyping()
+					state.accumulated.WriteString(choice.Delta.Content)
+					roundContent.WriteString(choice.Delta.Content)
+
+					if state.firstToken && state.accumulated.Len() > 0 {
+						state.firstToken = false
+						state.firstTokenAtMs = time.Now().UnixMilli()
+						if !state.suppressSend {
+							oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
+							state.initialEventID = oc.sendInitialStreamMessage(ctx, portal, state.accumulated.String(), state.turnID, state.sourceEventID)
+							if state.initialEventID == "" {
+								errText := "failed to send initial streaming message"
+								log.Error().Msg("Failed to send initial streaming message")
+								state.finishReason = "error"
+								oc.emitUIError(ctx, portal, state, errText)
+								oc.emitUIFinish(ctx, portal, state, meta)
+								return false, nil, &PreDeltaError{Err: errors.New(errText)}
+							}
+						}
+					}
+					oc.emitUITextDelta(ctx, portal, state, choice.Delta.Content)
+				}
+
+				if choice.Delta.Refusal != "" {
+					touchTyping()
+					oc.emitUITextDelta(ctx, portal, state, choice.Delta.Refusal)
+				}
+
+				// Handle tool calls from Chat Completions API
+				for _, toolDelta := range choice.Delta.ToolCalls {
+					touchTyping()
+					toolIdx := int(toolDelta.Index)
+					tool, exists := activeTools[toolIdx]
+					if !exists {
+						callID := toolDelta.ID
+						if strings.TrimSpace(callID) == "" {
+							callID = NewCallID()
+						}
+						tool = &activeToolCall{
+							callID:      callID,
+							toolType:    ToolTypeFunction,
+							startedAtMs: time.Now().UnixMilli(),
+						}
+						activeTools[toolIdx] = tool
+					}
+
+					// Capture tool ID if provided (used by OpenAI for tracking)
+					if toolDelta.ID != "" && tool.callID == "" {
+						tool.callID = toolDelta.ID
+					}
+
+					// Update tool name if provided in this delta
+					if toolDelta.Function.Name != "" {
+						tool.toolName = toolDelta.Function.Name
+					}
+
+					// Accumulate arguments
+					if toolDelta.Function.Arguments != "" {
+						tool.input.WriteString(toolDelta.Function.Arguments)
+						oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, toolDelta.Function.Arguments, false)
+					}
+				}
+
+				if choice.FinishReason != "" {
+					state.finishReason = string(choice.FinishReason)
+					if choice.FinishReason == "tool_calls" {
+						for _, tool := range activeTools {
+							args := strings.TrimSpace(tool.input.String())
+							if args == "" {
+								args = "{}"
+							}
+							var input any
+							if err := json.Unmarshal([]byte(args), &input); err != nil {
+								input = args
+							}
+							oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, input, false)
+						}
 					}
 				}
 			}
 
-			// Check for image generation result (IMAGE: / IMAGES: prefix)
-			if strings.HasPrefix(result, ImagesResultPrefix) {
-				payload := strings.TrimPrefix(result, ImagesResultPrefix)
-				var images []string
-				if err := json.Unmarshal([]byte(payload), &images); err != nil {
-					log.Warn().Err(err).Msg("Failed to parse generated images payload (Chat Completions)")
-					result = "Error: failed to parse generated images"
+		}
+
+		oc.emitUIStepFinish(ctx, portal, state)
+
+		if err := stream.Err(); err != nil {
+			if cle := ParseContextLengthError(err); cle != nil {
+				return false, cle, nil
+			}
+			logChatCompletionsFailure(log, err, params, meta, currentMessages, "stream_err")
+			state.finishReason = "error"
+			oc.emitUIError(ctx, portal, state, err.Error())
+			oc.emitUIFinish(ctx, portal, state, meta)
+			if state.initialEventID != "" {
+				return false, nil, &NonFallbackError{Err: err}
+			}
+			return false, nil, &PreDeltaError{Err: err}
+		}
+
+		// Execute any accumulated tool calls
+		type chatToolResult struct {
+			callID string
+			output string
+		}
+		toolCallParams := make([]openai.ChatCompletionMessageToolCallParam, 0, len(activeTools))
+		toolResults := make([]chatToolResult, 0, len(activeTools))
+
+		if len(activeTools) > 0 {
+			keys := make([]int, 0, len(activeTools))
+			for key := range activeTools {
+				keys = append(keys, key)
+			}
+			sort.Ints(keys)
+			for _, key := range keys {
+				tool := activeTools[key]
+				if tool == nil {
+					continue
+				}
+				if tool.callID == "" {
+					tool.callID = NewCallID()
+				}
+				toolName := strings.TrimSpace(tool.toolName)
+				if toolName == "" {
+					toolName = "unknown_tool"
+				}
+
+				argsJSON := normalizeToolArgsJSON(tool.input.String())
+				toolCallParams = append(toolCallParams, openai.ChatCompletionMessageToolCallParam{
+					ID: tool.callID,
+					Function: openai.ChatCompletionMessageToolCallFunctionParam{
+						Name:      toolName,
+						Arguments: argsJSON,
+					},
+					Type: constant.ValueOf[constant.Function](),
+				})
+
+				touchTyping()
+				// Wrap context with bridge info for tools that need it (e.g., channel-edit, react)
+				toolCtx := WithBridgeToolContext(ctx, &BridgeToolContext{
+					Client:        oc,
+					Portal:        portal,
+					Meta:          meta,
+					SourceEventID: state.sourceEventID,
+				})
+
+				result := ""
+				resultStatus := ResultStatusSuccess
+				if !oc.isToolEnabled(meta, toolName) {
+					result = fmt.Sprintf("Error: tool %s is not enabled", toolName)
 					resultStatus = ResultStatusError
 				} else {
-					success := 0
-					for _, imageB64 := range images {
+					var err error
+					result, err = oc.executeBuiltinTool(toolCtx, portal, toolName, argsJSON)
+					if err != nil {
+						log.Warn().Err(err).Str("tool", toolName).Msg("Tool execution failed (Chat Completions)")
+						result = fmt.Sprintf("Error: %s", err.Error())
+						resultStatus = ResultStatusError
+					}
+
+					// Check for TTS audio result (AUDIO: prefix)
+					if strings.HasPrefix(result, TTSResultPrefix) {
+						audioB64 := strings.TrimPrefix(result, TTSResultPrefix)
+						audioData, decodeErr := base64.StdEncoding.DecodeString(audioB64)
+						if decodeErr != nil {
+							log.Warn().Err(decodeErr).Msg("Failed to decode TTS audio (Chat Completions)")
+							result = "Error: failed to decode TTS audio"
+							resultStatus = ResultStatusError
+						} else {
+							if _, mediaURL, sendErr := oc.sendGeneratedAudio(ctx, portal, audioData, "audio/mpeg", state.turnID); sendErr != nil {
+								log.Warn().Err(sendErr).Msg("Failed to send TTS audio (Chat Completions)")
+								result = "Error: failed to send TTS audio"
+								resultStatus = ResultStatusError
+							} else {
+								recordGeneratedFile(state, mediaURL, "audio/mpeg")
+								result = "Audio message sent successfully"
+							}
+						}
+					}
+
+					// Check for image generation result (IMAGE: / IMAGES: prefix)
+					if strings.HasPrefix(result, ImagesResultPrefix) {
+						payload := strings.TrimPrefix(result, ImagesResultPrefix)
+						var images []string
+						if err := json.Unmarshal([]byte(payload), &images); err != nil {
+							log.Warn().Err(err).Msg("Failed to parse generated images payload (Chat Completions)")
+							result = "Error: failed to parse generated images"
+							resultStatus = ResultStatusError
+						} else {
+							success := 0
+							for _, imageB64 := range images {
+								imageData, mimeType, decodeErr := decodeBase64Image(imageB64)
+								if decodeErr != nil {
+									log.Warn().Err(decodeErr).Msg("Failed to decode generated image (Chat Completions)")
+									continue
+								}
+								_, mediaURL, err := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turnID)
+								if err != nil {
+									log.Warn().Err(err).Msg("Failed to send generated image (Chat Completions)")
+									continue
+								}
+								recordGeneratedFile(state, mediaURL, mimeType)
+								success++
+							}
+							if success == len(images) && success > 0 {
+								result = fmt.Sprintf("Images generated and sent successfully (%d)", success)
+							} else if success > 0 {
+								result = fmt.Sprintf("Images generated with %d/%d sent successfully", success, len(images))
+								resultStatus = ResultStatusError
+							} else {
+								result = "Error: failed to send generated images"
+								resultStatus = ResultStatusError
+							}
+						}
+					} else if strings.HasPrefix(result, ImageResultPrefix) {
+						imageB64 := strings.TrimPrefix(result, ImageResultPrefix)
 						imageData, mimeType, decodeErr := decodeBase64Image(imageB64)
 						if decodeErr != nil {
 							log.Warn().Err(decodeErr).Msg("Failed to decode generated image (Chat Completions)")
-							continue
+							result = "Error: failed to decode generated image"
+							resultStatus = ResultStatusError
+						} else {
+							if _, mediaURL, sendErr := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turnID); sendErr != nil {
+								log.Warn().Err(sendErr).Msg("Failed to send generated image (Chat Completions)")
+								result = "Error: failed to send generated image"
+								resultStatus = ResultStatusError
+							} else {
+								recordGeneratedFile(state, mediaURL, mimeType)
+								result = "Image generated and sent successfully"
+							}
 						}
-						_, mediaURL, err := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turnID)
-						if err != nil {
-							log.Warn().Err(err).Msg("Failed to send generated image (Chat Completions)")
-							continue
-						}
-						recordGeneratedFile(state, mediaURL, mimeType)
-						success++
-					}
-					if success == len(images) && success > 0 {
-						result = fmt.Sprintf("Images generated and sent successfully (%d)", success)
-					} else if success > 0 {
-						result = fmt.Sprintf("Images generated with %d/%d sent successfully", success, len(images))
-						resultStatus = ResultStatusError
-					} else {
-						result = "Error: failed to send generated images"
-						resultStatus = ResultStatusError
 					}
 				}
-			} else if strings.HasPrefix(result, ImageResultPrefix) {
-				imageB64 := strings.TrimPrefix(result, ImageResultPrefix)
-				imageData, mimeType, decodeErr := decodeBase64Image(imageB64)
-				if decodeErr != nil {
-					log.Warn().Err(decodeErr).Msg("Failed to decode generated image (Chat Completions)")
-					result = "Error: failed to decode generated image"
-					resultStatus = ResultStatusError
+
+				// Normalize input for storage
+				var inputMap any
+				if err := json.Unmarshal([]byte(argsJSON), &inputMap); err != nil {
+					inputMap = argsJSON
+				}
+				inputMapForMeta := map[string]any{}
+				if parsed, ok := inputMap.(map[string]any); ok {
+					inputMapForMeta = parsed
+				} else if raw, ok := inputMap.(string); ok && raw != "" {
+					inputMapForMeta = map[string]any{"_raw": raw}
+				}
+
+				// Track tool call in metadata
+				state.toolCalls = append(state.toolCalls, ToolCallMetadata{
+					CallID:        tool.callID,
+					ToolName:      toolName,
+					ToolType:      string(tool.toolType),
+					Input:         inputMapForMeta,
+					Output:        map[string]any{"result": result},
+					Status:        string(ToolStatusCompleted),
+					ResultStatus:  string(resultStatus),
+					StartedAtMs:   tool.startedAtMs,
+					CompletedAtMs: time.Now().UnixMilli(),
+				})
+
+				if resultStatus == ResultStatusSuccess {
+					oc.emitUIToolOutputAvailable(ctx, portal, state, tool.callID, result, tool.toolType == ToolTypeProvider, false)
 				} else {
-					if _, mediaURL, sendErr := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turnID); sendErr != nil {
-						log.Warn().Err(sendErr).Msg("Failed to send generated image (Chat Completions)")
-						result = "Error: failed to send generated image"
-						resultStatus = ResultStatusError
-					} else {
-						recordGeneratedFile(state, mediaURL, mimeType)
-						result = "Image generated and sent successfully"
-					}
+					oc.emitUIToolOutputError(ctx, portal, state, tool.callID, result, tool.toolType == ToolTypeProvider)
 				}
-			}
 
-			// Normalize input for storage
-			var inputMap any
-			if err := json.Unmarshal([]byte(argsJSON), &inputMap); err != nil {
-				inputMap = argsJSON
-			}
-			inputMapForMeta := map[string]any{}
-			if parsed, ok := inputMap.(map[string]any); ok {
-				inputMapForMeta = parsed
-			} else if raw, ok := inputMap.(string); ok && raw != "" {
-				inputMapForMeta = map[string]any{"_raw": raw}
-			}
-
-			// Track tool call in metadata
-			state.toolCalls = append(state.toolCalls, ToolCallMetadata{
-				CallID:        tool.callID,
-				ToolName:      tool.toolName,
-				ToolType:      string(tool.toolType),
-				Input:         inputMapForMeta,
-				Output:        map[string]any{"result": result},
-				Status:        string(ToolStatusCompleted),
-				ResultStatus:  string(resultStatus),
-				StartedAtMs:   tool.startedAtMs,
-				CompletedAtMs: time.Now().UnixMilli(),
-			})
-
-			if resultStatus == ResultStatusSuccess {
-				oc.emitUIToolOutputAvailable(ctx, portal, state, tool.callID, result, tool.toolType == ToolTypeProvider, false)
-			} else {
-				oc.emitUIToolOutputError(ctx, portal, state, tool.callID, result, tool.toolType == ToolTypeProvider)
+				toolResults = append(toolResults, chatToolResult{callID: tool.callID, output: result})
 			}
 		}
+
+		// Continue if tools were requested.
+		if state.finishReason == "tool_calls" && len(toolCallParams) > 0 {
+			if round >= maxToolRounds {
+				log.Warn().Int("rounds", round+1).Msg("Max tool call rounds reached; stopping chat completions continuation")
+				break
+			}
+			assistantMsg := openai.ChatCompletionAssistantMessageParam{
+				ToolCalls: toolCallParams,
+			}
+			if content := strings.TrimSpace(roundContent.String()); content != "" {
+				assistantMsg.Content.OfString = param.NewOpt(content)
+			}
+			currentMessages = append(currentMessages, openai.ChatCompletionMessageParamUnion{OfAssistant: &assistantMsg})
+			for _, result := range toolResults {
+				currentMessages = append(currentMessages, openai.ToolMessage(result.output, result.callID))
+			}
+			continue
+		}
+
+		break
 	}
 
 	if typingCtrl != nil {
