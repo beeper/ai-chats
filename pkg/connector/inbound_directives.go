@@ -134,7 +134,7 @@ func matchLevelDirective(body string, names []string) *directiveMatch {
 		return nil
 	}
 	namePattern := strings.Join(escapeDirectiveNames(names), "|")
-	re := regexp.MustCompile(`(?i)(?:^|\s)/(?:` + namePattern + `)(?=$|\s|:)`)
+	re := regexp.MustCompile(`(?i)(?:^|\s)/(?:` + namePattern + `)(?:$|\s|:)`)
 	loc := re.FindStringIndex(body)
 	if loc == nil {
 		return nil
@@ -172,7 +172,7 @@ func extractSimpleDirective(body string, names []string) (out struct {
 		return out
 	}
 	namePattern := strings.Join(escapeDirectiveNames(names), "|")
-	re := regexp.MustCompile(`(?i)(?:^|\s)/(?:` + namePattern + `)(?=$|\s|:)(?:\s*:\s*)?`)
+	re := regexp.MustCompile(`(?i)(?:^|\s)/(?:` + namePattern + `)(?:$|\s|:)(?:\s*:\s*)?`)
 	loc := re.FindStringIndex(body)
 	if loc == nil {
 		out.cleaned = strings.TrimSpace(body)
@@ -208,7 +208,7 @@ func extractModelDirective(body string) modelDirective {
 
 func matchModelDirective(body string) *directiveMatch {
 	namePattern := strings.Join(escapeDirectiveNames([]string{"model"}), "|")
-	re := regexp.MustCompile(`(?i)(?:^|\s)/(?:` + namePattern + `)(?=$|\s|:)`)
+	re := regexp.MustCompile(`(?i)(?:^|\s)/(?:` + namePattern + `)(?:$|\s|:)`)
 	loc := re.FindStringIndex(body)
 	if loc == nil {
 		return nil
