@@ -55,6 +55,12 @@ model_cache_duration: 6h
 messages:
   # Prefix applied to outbound replies (and heartbeat ok acks).
   responsePrefix: ""
+  # History defaults for prompt construction.
+  # Set 0 to disable, or override per-room with !ai context.
+  directChat:
+    historyLimit: 20
+  groupChat:
+    historyLimit: 50
   # Queue behavior while the agent is busy (OpenClaw-style).
   queue:
     # Modes: collect, followup, steer, steer-backlog, interrupt

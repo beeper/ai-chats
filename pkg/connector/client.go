@@ -1546,23 +1546,50 @@ func (oc *AIClient) effectiveAgentPrompt(ctx context.Context, portal *bridgev2.P
 	params.ReasoningTagHint = meta.Capabilities.SupportsReasoning && meta.EmitThinking
 	params.ReasoningLevel = resolvePromptReasoningLevel(meta, oc.effectiveReasoningEffort(meta))
 
-	// Default thinking level (OpenClaw prompt expects this value)
-	params.DefaultThinkLevel = "off"
+	// Default thinking level (OpenClaw-style): low for reasoning-capable models, otherwise off.
+	params.DefaultThinkLevel = oc.defaultThinkLevel(meta)
 
 	return agents.BuildSystemPrompt(params)
 }
 
-// effectiveTemperature returns the temperature to use
-// Priority: Room → User → Default (0.4)
+// effectiveTemperature returns the temperature to use.
+// Priority: Room → User → Default (unset / provider default).
 func (oc *AIClient) effectiveTemperature(meta *PortalMetadata) float64 {
 	if meta != nil && meta.Temperature > 0 {
 		return meta.Temperature
 	}
-	loginMeta := loginMetadata(oc.UserLogin)
-	if loginMeta.Defaults != nil && loginMeta.Defaults.Temperature != nil {
+	var loginMeta *UserLoginMetadata
+	if oc != nil && oc.UserLogin != nil {
+		loginMeta = loginMetadata(oc.UserLogin)
+	}
+	if loginMeta != nil && loginMeta.Defaults != nil && loginMeta.Defaults.Temperature != nil {
 		return *loginMeta.Defaults.Temperature
 	}
 	return defaultTemperature
+}
+
+// defaultThinkLevel resolves the default /think level in an OpenClaw-compatible way:
+// low for reasoning-capable models, off otherwise.
+func (oc *AIClient) defaultThinkLevel(meta *PortalMetadata) string {
+	if meta != nil {
+		level := strings.ToLower(strings.TrimSpace(meta.ThinkingLevel))
+		if level != "" {
+			return level
+		}
+	}
+	switch effort := strings.ToLower(strings.TrimSpace(oc.effectiveReasoningEffort(meta))); effort {
+	case "off", "none":
+		return "off"
+	case "low", "medium", "high", "xhigh", "minimal":
+		if effort == "minimal" {
+			return "low"
+		}
+		return effort
+	}
+	if meta != nil && meta.Capabilities.SupportsReasoning {
+		return "low"
+	}
+	return "off"
 }
 
 // effectiveReasoningEffort returns the reasoning effort to use
@@ -1574,8 +1601,11 @@ func (oc *AIClient) effectiveReasoningEffort(meta *PortalMetadata) string {
 	if meta != nil && meta.ReasoningEffort != "" {
 		return meta.ReasoningEffort
 	}
-	loginMeta := loginMetadata(oc.UserLogin)
-	if loginMeta.Defaults != nil && loginMeta.Defaults.ReasoningEffort != "" {
+	var loginMeta *UserLoginMetadata
+	if oc != nil && oc.UserLogin != nil {
+		loginMeta = loginMetadata(oc.UserLogin)
+	}
+	if loginMeta != nil && loginMeta.Defaults != nil && loginMeta.Defaults.ReasoningEffort != "" {
 		return loginMeta.Defaults.ReasoningEffort
 	}
 	if meta != nil && meta.Capabilities.SupportsReasoning {
@@ -1584,9 +1614,25 @@ func (oc *AIClient) effectiveReasoningEffort(meta *PortalMetadata) string {
 	return ""
 }
 
-func (oc *AIClient) historyLimit(meta *PortalMetadata) int {
+func (oc *AIClient) historyLimit(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) int {
 	if meta != nil && meta.MaxContextMessages > 0 {
 		return meta.MaxContextMessages
+	}
+
+	isGroup := portal != nil && oc.isGroupChat(ctx, portal)
+	if oc != nil && oc.connector != nil && oc.connector.Config.Messages != nil {
+		if isGroup {
+			if cfg := oc.connector.Config.Messages.GroupChat; cfg != nil && cfg.HistoryLimit >= 0 {
+				return cfg.HistoryLimit
+			}
+			return defaultGroupContextMessages
+		}
+		if cfg := oc.connector.Config.Messages.DirectChat; cfg != nil && cfg.HistoryLimit >= 0 {
+			return cfg.HistoryLimit
+		}
+	}
+	if isGroup {
+		return defaultGroupContextMessages
 	}
 	return defaultMaxContextMessages
 }
@@ -1896,7 +1942,7 @@ func (oc *AIClient) buildBasePrompt(
 	prompt = append(prompt, oc.buildAdditionalSystemPrompts(ctx, portal, meta)...)
 
 	// Add history
-	historyLimit := oc.historyLimit(meta)
+	historyLimit := oc.historyLimit(ctx, portal, meta)
 	resetAt := int64(0)
 	if meta != nil {
 		resetAt = meta.SessionResetAt
@@ -2210,7 +2256,7 @@ func (oc *AIClient) buildPromptUpToMessage(
 	prompt = append(prompt, oc.buildAdditionalSystemPrompts(ctx, portal, meta)...)
 
 	// Get history
-	historyLimit := oc.historyLimit(meta)
+	historyLimit := oc.historyLimit(ctx, portal, meta)
 	resetAt := int64(0)
 	if meta != nil {
 		resetAt = meta.SessionResetAt

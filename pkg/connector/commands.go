@@ -178,7 +178,11 @@ func fnTemp(ce *commands.Event) {
 	}
 
 	if len(ce.Args) == 0 {
-		ce.Reply("Current temperature: %.2f", client.effectiveTemperature(meta))
+		if temp := client.effectiveTemperature(meta); temp > 0 {
+			ce.Reply("Current temperature: %.2f", temp)
+		} else {
+			ce.Reply("Current temperature: provider default (unset)")
+		}
 		return
 	}
 
@@ -194,7 +198,11 @@ func fnTemp(ce *commands.Event) {
 
 	meta.Temperature = temp
 	client.savePortalQuiet(ce.Ctx, ce.Portal, "temperature change")
-	ce.Reply("Temperature set to: %.2f", temp)
+	if temp > 0 {
+		ce.Reply("Temperature set to: %.2f", temp)
+	} else {
+		ce.Reply("Temperature reset to provider default (unset).")
+	}
 }
 
 // CommandSystemPrompt handles the !ai system-prompt command
@@ -260,7 +268,7 @@ func fnContext(ce *commands.Event) {
 	}
 
 	if len(ce.Args) == 0 {
-		ce.Reply("Current context limit: %d messages", client.historyLimit(meta))
+		ce.Reply("Current context limit: %d messages", client.historyLimit(ce.Ctx, ce.Portal, meta))
 		return
 	}
 
@@ -390,9 +398,13 @@ func fnConfig(ce *commands.Event) {
 	}
 
 	roomCaps := client.getRoomCapabilities(ce.Ctx, meta)
+	tempLabel := "provider default"
+	if temp := client.effectiveTemperature(meta); temp > 0 {
+		tempLabel = fmt.Sprintf("%.2f", temp)
+	}
 	config := fmt.Sprintf(
-		"Current configuration:\n• Model: %s\n• Temperature: %.2f\n• Context: %d messages\n• Max tokens: %d\n• Vision: %v\n• Mode: %s",
-		client.effectiveModel(meta), client.effectiveTemperature(meta), client.historyLimit(meta),
+		"Current configuration:\n• Model: %s\n• Temperature: %s\n• Context: %d messages\n• Max tokens: %d\n• Vision: %v\n• Mode: %s",
+		client.effectiveModel(meta), tempLabel, client.historyLimit(ce.Ctx, ce.Portal, meta),
 		client.effectiveMaxTokens(meta), roomCaps.SupportsVision, mode)
 	ce.Reply(config)
 }

@@ -21,10 +21,11 @@ import (
 )
 
 const (
-	defaultTemperature        = 0.4
-	defaultMaxContextMessages = 20
-	defaultMaxTokens          = 512
-	defaultReasoningEffort    = "low"
+	defaultTemperature          = 0.0 // Unset by default; provider/model default is used.
+	defaultMaxContextMessages   = 20
+	defaultGroupContextMessages = 50
+	defaultMaxTokens            = 512
+	defaultReasoningEffort      = "low"
 )
 
 var (

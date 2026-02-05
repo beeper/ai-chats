@@ -1550,7 +1550,7 @@ func (oc *AIClient) getTempWithSource(meta *PortalMetadata, loginMeta *UserLogin
 	if loginMeta.Defaults != nil && loginMeta.Defaults.Temperature != nil {
 		return SettingExplanation{Value: *loginMeta.Defaults.Temperature, Source: SourceUserDefault}
 	}
-	return SettingExplanation{Value: defaultTemperature, Source: SourceGlobalDefault}
+	return SettingExplanation{Value: nil, Source: SourceGlobalDefault, Reason: "provider/model default (unset)"}
 }
 
 func (oc *AIClient) getReasoningWithSource(meta *PortalMetadata, loginMeta *UserLoginMetadata) SettingExplanation {

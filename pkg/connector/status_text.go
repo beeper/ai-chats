@@ -78,14 +78,7 @@ func (oc *AIClient) buildStatusText(
 		sb.WriteString(fmt.Sprintf("Group activation: %s\n", activation))
 	}
 
-	thinking := meta.ThinkingLevel
-	if thinking == "" {
-		if meta.EmitThinking {
-			thinking = "on"
-		} else {
-			thinking = "off"
-		}
-	}
+	thinking := oc.defaultThinkLevel(meta)
 	reasoning := strings.TrimSpace(meta.ReasoningEffort)
 	if reasoning == "" {
 		if meta.EmitThinking {
@@ -220,7 +213,7 @@ func (oc *AIClient) buildContextStatus(ctx context.Context, portal *bridgev2.Por
 		sb.WriteString(sysLine + "\n")
 	}
 
-	historyLimit := oc.historyLimit(meta)
+	historyLimit := oc.historyLimit(ctx, portal, meta)
 	historyCount := 0
 	if historyLimit > 0 {
 		if history, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, historyLimit); err == nil {

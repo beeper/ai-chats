@@ -145,14 +145,7 @@ func (oc *AIClient) handleInboundCommand(
 	case "think":
 		levelToken, rest := splitCommandArgs(cmd.Args)
 		if levelToken == "" {
-			current := meta.ThinkingLevel
-			if current == "" {
-				if meta.EmitThinking {
-					current = "on"
-				} else {
-					current = "off"
-				}
-			}
+			current := oc.defaultThinkLevel(meta)
 			return inboundCommandResult{handled: true, response: fmt.Sprintf("Thinking: %s", current)}
 		}
 		level, ok := normalizeThinkLevel(levelToken)

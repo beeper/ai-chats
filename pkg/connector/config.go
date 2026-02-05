@@ -131,6 +131,7 @@ type MessagesConfig struct {
 	AckReactionScope string                 `yaml:"ackReactionScope"` // group-mentions|group-all|direct|all|off|none
 	RemoveAckAfter   bool                   `yaml:"removeAckAfterReply"`
 	GroupChat        *GroupChatConfig       `yaml:"groupChat"`
+	DirectChat       *DirectChatConfig      `yaml:"directChat"`
 	Queue            *QueueConfig           `yaml:"queue"`
 	InboundDebounce  *InboundDebounceConfig `yaml:"inbound"`
 }
@@ -145,6 +146,11 @@ type GroupChatConfig struct {
 	MentionPatterns []string `yaml:"mentionPatterns"`
 	Activation      string   `yaml:"activation"` // mention|always
 	HistoryLimit    int      `yaml:"historyLimit"`
+}
+
+// DirectChatConfig defines direct message defaults.
+type DirectChatConfig struct {
+	HistoryLimit int `yaml:"historyLimit"`
 }
 
 // InboundDebounceConfig mirrors OpenClaw's inbound debounce config.

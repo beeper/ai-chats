@@ -71,6 +71,7 @@ type streamingState struct {
 
 	// AI SDK UIMessage stream tracking
 	uiStarted     bool
+	uiFinished    bool
 	uiTextID      string
 	uiReasoningID string
 	uiStepOpen    bool
@@ -417,6 +418,10 @@ func (oc *AIClient) emitUIError(ctx context.Context, portal *bridgev2.Portal, st
 }
 
 func (oc *AIClient) emitUIFinish(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata) {
+	if state.uiFinished {
+		return
+	}
+	state.uiFinished = true
 	if state.uiTextID != "" {
 		oc.emitStreamEvent(ctx, portal, state, map[string]any{
 			"type": "text-end",
@@ -754,6 +759,7 @@ func (oc *AIClient) streamingResponse(
 	log := zerolog.Ctx(ctx).With().
 		Str("portal_id", portalID).
 		Logger()
+	maxToolRounds := 3
 
 	// Initialize streaming state with turn tracking
 	// Pass source event ID for [[reply_to_current]] directive support
@@ -1346,7 +1352,20 @@ func (oc *AIClient) streamingResponse(
 
 	// If there are pending function outputs, send them back to the API for continuation
 	// This loop continues until the model generates a response without tool calls
+	continuationRound := 0
 	for len(state.pendingFunctionOutputs) > 0 && state.responseID != "" {
+		continuationRound++
+		if continuationRound > maxToolRounds {
+			err := fmt.Errorf("max responses tool call rounds reached (%d)", maxToolRounds)
+			log.Warn().Err(err).Int("pending_outputs", len(state.pendingFunctionOutputs)).Msg("Stopping responses continuation loop")
+			state.finishReason = "error"
+			oc.emitUIError(ctx, portal, state, err.Error())
+			oc.emitUIFinish(ctx, portal, state, meta)
+			if state.initialEventID != "" {
+				return false, nil, &NonFallbackError{Err: err}
+			}
+			return false, nil, &PreDeltaError{Err: err}
+		}
 		log.Debug().
 			Int("pending_outputs", len(state.pendingFunctionOutputs)).
 			Str("previous_response_id", state.responseID).
@@ -1354,10 +1373,11 @@ func (oc *AIClient) streamingResponse(
 
 		// Build continuation request with function call outputs
 		continuationParams := oc.buildContinuationParams(state, meta)
+		pendingOutputs := append([]functionCallOutput(nil), state.pendingFunctionOutputs...)
 
 		// OpenRouter Responses API is stateless; persist tool calls in base input.
 		if oc.isOpenRouterProvider() && len(state.baseInput) > 0 {
-			for _, output := range state.pendingFunctionOutputs {
+			for _, output := range pendingOutputs {
 				if output.name != "" {
 					args := output.arguments
 					if strings.TrimSpace(args) == "" {
@@ -1369,9 +1389,6 @@ func (oc *AIClient) streamingResponse(
 			}
 		}
 
-		// Clear pending outputs (they're being sent)
-		state.pendingFunctionOutputs = nil
-
 		// Reset active tools for new iteration
 		activeTools = make(map[string]*activeToolCall)
 
@@ -1380,8 +1397,16 @@ func (oc *AIClient) streamingResponse(
 		if stream == nil {
 			initErr := fmt.Errorf("continuation streaming not available")
 			logResponsesFailure(log, initErr, continuationParams, meta, messages, "continuation_init")
-			break
+			state.finishReason = "error"
+			oc.emitUIError(ctx, portal, state, initErr.Error())
+			oc.emitUIFinish(ctx, portal, state, meta)
+			if state.initialEventID != "" {
+				return false, nil, &NonFallbackError{Err: initErr}
+			}
+			return false, nil, &PreDeltaError{Err: initErr}
 		}
+		// Clear pending outputs only once continuation stream has actually started.
+		state.pendingFunctionOutputs = nil
 		oc.emitUIStepStart(ctx, portal, state)
 
 		// Process continuation stream events
@@ -1689,6 +1714,10 @@ func (oc *AIClient) streamingResponse(
 				oc.emitUIError(ctx, portal, state, streamEvent.Message)
 				oc.emitUIFinish(ctx, portal, state, meta)
 				logResponsesFailure(log, apiErr, continuationParams, meta, messages, "continuation_event_error")
+				if state.initialEventID != "" {
+					return false, nil, &NonFallbackError{Err: apiErr}
+				}
+				return false, nil, &PreDeltaError{Err: apiErr}
 			default:
 				// Ignore unknown events
 			}
@@ -1701,7 +1730,10 @@ func (oc *AIClient) streamingResponse(
 			state.finishReason = "error"
 			oc.emitUIError(ctx, portal, state, err.Error())
 			oc.emitUIFinish(ctx, portal, state, meta)
-			break
+			if state.initialEventID != "" {
+				return false, nil, &NonFallbackError{Err: err}
+			}
+			return false, nil, &PreDeltaError{Err: err}
 		}
 	}
 

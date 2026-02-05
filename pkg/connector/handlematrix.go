@@ -273,14 +273,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		}
 		if inlineDirs.hasThink {
 			if inlineDirs.thinkLevel == "" {
-				current := meta.ThinkingLevel
-				if current == "" {
-					if meta.EmitThinking {
-						current = "on"
-					} else {
-						current = "off"
-					}
-				}
+				current := oc.defaultThinkLevel(meta)
 				responseLines = append(responseLines, fmt.Sprintf("Thinking: %s", current))
 			} else {
 				applyThinkingLevel(meta, inlineDirs.thinkLevel)
@@ -1769,7 +1762,7 @@ func (oc *AIClient) buildPromptForRegenerate(
 	}
 	prompt = append(prompt, oc.buildAdditionalSystemPrompts(ctx, portal, meta)...)
 
-	historyLimit := oc.historyLimit(meta)
+	historyLimit := oc.historyLimit(ctx, portal, meta)
 	resetAt := int64(0)
 	if meta != nil {
 		resetAt = meta.SessionResetAt
