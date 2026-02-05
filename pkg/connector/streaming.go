@@ -2143,6 +2143,22 @@ func (oc *AIClient) convertToResponsesInput(messages []openai.ChatCompletionMess
 	var input responses.ResponseInputParam
 
 	for _, msg := range messages {
+		if msg.OfTool != nil {
+			toolCallID := strings.TrimSpace(msg.OfTool.ToolCallID)
+			content := strings.TrimSpace(extractToolContent(msg.OfTool.Content))
+			if toolCallID != "" && content != "" {
+				input = append(input, responses.ResponseInputItemUnionParam{
+					OfFunctionCallOutput: &responses.ResponseInputItemFunctionCallOutputParam{
+						CallID: toolCallID,
+						Output: responses.ResponseInputItemFunctionCallOutputOutputUnionParam{
+							OfString: openai.String(content),
+						},
+					},
+				})
+			}
+			continue
+		}
+
 		if msg.OfUser != nil {
 			var contentParts responses.ResponseInputMessageContentListParam
 			hasMultimodal := false
@@ -2176,12 +2192,26 @@ func (oc *AIClient) convertToResponsesInput(messages []openai.ChatCompletionMess
 							},
 						})
 					}
-					if part.OfFile != nil && part.OfFile.File.FileData.Value != "" {
+					if part.OfFile != nil {
+						fileData := part.OfFile.File.FileData.Value
+						fileID := part.OfFile.File.FileID.Value
+						filename := part.OfFile.File.Filename.Value
+						if fileData == "" && fileID == "" {
+							continue
+						}
 						hasMultimodal = true
+						fileParam := &responses.ResponseInputFileParam{}
+						if fileData != "" {
+							fileParam.FileData = openai.String(fileData)
+						}
+						if fileID != "" {
+							fileParam.FileID = openai.String(fileID)
+						}
+						if filename != "" {
+							fileParam.Filename = openai.String(filename)
+						}
 						contentParts = append(contentParts, responses.ResponseInputContentUnionParam{
-							OfInputFile: &responses.ResponseInputFileParam{
-								FileData: openai.String(part.OfFile.File.FileData.Value),
-							},
+							OfInputFile: fileParam,
 						})
 					}
 					// Note: Audio handled by Chat Completions fallback, skip here
@@ -2228,10 +2258,14 @@ func (oc *AIClient) convertToResponsesInput(messages []openai.ChatCompletionMess
 		switch role {
 		case "system":
 			responsesRole = responses.EasyInputMessageRoleSystem
+		case "developer":
+			responsesRole = responses.EasyInputMessageRoleDeveloper
 		case "assistant":
 			responsesRole = responses.EasyInputMessageRoleAssistant
-		default:
+		case "user":
 			responsesRole = responses.EasyInputMessageRoleUser
+		default:
+			continue
 		}
 
 		input = append(input, responses.ResponseInputItemUnionParam{

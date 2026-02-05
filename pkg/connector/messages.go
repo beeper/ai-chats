@@ -104,7 +104,9 @@ func NewImageMessage(role MessageRole, imageURL, mimeType string) UnifiedMessage
 	}
 }
 
-// ToOpenAIResponsesInput converts unified messages to OpenAI Responses API format
+// ToOpenAIResponsesInput converts unified messages to OpenAI Responses API format.
+// Supports text + image/PDF inputs for user messages; audio/video are intentionally
+// excluded (caller should fall back to Chat Completions for those).
 func ToOpenAIResponsesInput(messages []UnifiedMessage) responses.ResponseInputParam {
 	var result responses.ResponseInputParam
 
@@ -120,14 +122,88 @@ func ToOpenAIResponsesInput(messages []UnifiedMessage) responses.ResponseInputPa
 				},
 			})
 		case RoleUser:
-			result = append(result, responses.ResponseInputItemUnionParam{
-				OfMessage: &responses.EasyInputMessageParam{
-					Role: responses.EasyInputMessageRoleUser,
-					Content: responses.EasyInputMessageContentUnionParam{
-						OfString: openai.String(msg.Text()),
+			var contentParts responses.ResponseInputMessageContentListParam
+			hasMultimodal := false
+			textContent := ""
+
+			for _, part := range msg.Content {
+				switch part.Type {
+				case ContentTypeText:
+					if strings.TrimSpace(part.Text) == "" {
+						continue
+					}
+					if textContent != "" {
+						textContent += "\n"
+					}
+					textContent += part.Text
+				case ContentTypeImage:
+					imageURL := strings.TrimSpace(part.ImageURL)
+					if imageURL == "" && part.ImageB64 != "" {
+						mimeType := part.MimeType
+						if mimeType == "" {
+							mimeType = "image/jpeg"
+						}
+						imageURL = buildDataURL(mimeType, part.ImageB64)
+					}
+					if imageURL == "" {
+						continue
+					}
+					hasMultimodal = true
+					contentParts = append(contentParts, responses.ResponseInputContentUnionParam{
+						OfInputImage: &responses.ResponseInputImageParam{
+							ImageURL: openai.String(imageURL),
+							Detail:   responses.ResponseInputImageDetailAuto,
+						},
+					})
+				case ContentTypePDF:
+					fileData := strings.TrimSpace(part.PDFB64)
+					fileURL := strings.TrimSpace(part.PDFURL)
+					if fileData == "" && fileURL == "" {
+						continue
+					}
+					hasMultimodal = true
+					fileParam := &responses.ResponseInputFileParam{}
+					if fileData != "" {
+						fileParam.FileData = openai.String(fileData)
+					}
+					if fileURL != "" {
+						fileParam.FileURL = openai.String(fileURL)
+					}
+					fileParam.Filename = openai.String("document.pdf")
+					contentParts = append(contentParts, responses.ResponseInputContentUnionParam{
+						OfInputFile: fileParam,
+					})
+				case ContentTypeAudio, ContentTypeVideo:
+					// Unsupported in Responses API; caller should fall back.
+				}
+			}
+
+			if textContent != "" {
+				textPart := responses.ResponseInputContentUnionParam{
+					OfInputText: &responses.ResponseInputTextParam{Text: textContent},
+				}
+				contentParts = append([]responses.ResponseInputContentUnionParam{textPart}, contentParts...)
+			}
+
+			if hasMultimodal && len(contentParts) > 0 {
+				result = append(result, responses.ResponseInputItemUnionParam{
+					OfMessage: &responses.EasyInputMessageParam{
+						Role: responses.EasyInputMessageRoleUser,
+						Content: responses.EasyInputMessageContentUnionParam{
+							OfInputItemContentList: contentParts,
+						},
 					},
-				},
-			})
+				})
+			} else if textContent != "" {
+				result = append(result, responses.ResponseInputItemUnionParam{
+					OfMessage: &responses.EasyInputMessageParam{
+						Role: responses.EasyInputMessageRoleUser,
+						Content: responses.EasyInputMessageContentUnionParam{
+							OfString: openai.String(textContent),
+						},
+					},
+				})
+			}
 		case RoleAssistant:
 			result = append(result, responses.ResponseInputItemUnionParam{
 				OfMessage: &responses.EasyInputMessageParam{

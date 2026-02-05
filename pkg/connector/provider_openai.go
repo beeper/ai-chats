@@ -297,9 +297,9 @@ func (o *OpenAIProvider) GenerateStream(ctx context.Context, params GeneratePara
 
 // Generate performs a non-streaming generation using Responses API
 func (o *OpenAIProvider) Generate(ctx context.Context, params GenerateParams) (*GenerateResponse, error) {
-	// Responses input conversion currently drops multimodal content (audio/image/pdf/video),
-	// so force Chat Completions whenever multimodal input is present.
-	if hasMultimodalUnifiedMessages(params.Messages) {
+	// Responses input supports images and PDFs but not audio/video, so fall back to
+	// Chat Completions when unsupported media is present.
+	if hasUnsupportedResponsesUnifiedMessages(params.Messages) {
 		return o.generateChatCompletions(ctx, params)
 	}
 
@@ -822,10 +822,13 @@ func ToOpenAIChatTools(tools []ToolDefinition, log *zerolog.Logger) []openai.Cha
 	return result
 }
 
-func hasMultimodalUnifiedMessages(messages []UnifiedMessage) bool {
+func hasUnsupportedResponsesUnifiedMessages(messages []UnifiedMessage) bool {
 	for _, msg := range messages {
-		if msg.HasMultimodalContent() {
-			return true
+		for _, part := range msg.Content {
+			switch part.Type {
+			case ContentTypeAudio, ContentTypeVideo:
+				return true
+			}
 		}
 	}
 	return false
