@@ -192,24 +192,12 @@ func applyLoginTokensToSearchConfig(cfg *search.Config, meta *UserLoginMetadata,
 		return cfg
 	}
 
-	if meta.Provider == ProviderBeeper {
-		services := connector.resolveServiceConfig(meta)
-		if svc, ok := services[serviceProxy]; ok && svc.BaseURL != "" {
-			cfg.Provider = search.ProviderProxy
-			cfg.Fallbacks = []string{search.ProviderProxy}
-			cfg.Proxy.BaseURL = strings.TrimRight(svc.BaseURL, "/")
-			cfg.Proxy.SearchPath = "/search"
-			cfg.Proxy.APIKey = svc.APIKey
-		}
-		return cfg
-	}
-
 	services := connector.resolveServiceConfig(meta)
-	if cfg.Proxy.APIKey == "" {
-		cfg.Proxy.APIKey = services[serviceProxy].APIKey
-	}
 	if cfg.Exa.APIKey == "" {
 		cfg.Exa.APIKey = services[serviceExa].APIKey
+	}
+	if cfg.Exa.BaseURL == "" {
+		cfg.Exa.BaseURL = services[serviceExa].BaseURL
 	}
 	if cfg.Brave.APIKey == "" {
 		cfg.Brave.APIKey = services[serviceBrave].APIKey
@@ -235,22 +223,7 @@ func applyLoginTokensToFetchConfig(cfg *fetch.Config, meta *UserLoginMetadata, c
 		return cfg
 	}
 
-	if meta.Provider == ProviderBeeper {
-		services := connector.resolveServiceConfig(meta)
-		if svc, ok := services[serviceProxy]; ok && svc.BaseURL != "" {
-			cfg.Provider = fetch.ProviderProxy
-			cfg.Fallbacks = []string{fetch.ProviderProxy}
-			cfg.Proxy.BaseURL = strings.TrimRight(svc.BaseURL, "/")
-			cfg.Proxy.ContentsPath = "/contents"
-			cfg.Proxy.APIKey = svc.APIKey
-		}
-		return cfg
-	}
-
 	services := connector.resolveServiceConfig(meta)
-	if cfg.Proxy.APIKey == "" {
-		cfg.Proxy.APIKey = services[serviceProxy].APIKey
-	}
 	if cfg.Exa.APIKey == "" {
 		cfg.Exa.APIKey = services[serviceExa].APIKey
 	}
@@ -268,15 +241,6 @@ func mapSearchConfig(src *SearchConfig) *search.Config {
 	return &search.Config{
 		Provider:  src.Provider,
 		Fallbacks: src.Fallbacks,
-		Proxy: search.ProxyConfig{
-			Enabled:       src.Proxy.Enabled,
-			BaseURL:       src.Proxy.BaseURL,
-			APIKey:        src.Proxy.APIKey,
-			SearchPath:    src.Proxy.SearchPath,
-			TimeoutSecs:   src.Proxy.TimeoutSecs,
-			CacheTtlSecs:  src.Proxy.CacheTtlSecs,
-			ForwardHeader: src.Proxy.ForwardHeader,
-		},
 		Exa: search.ExaConfig{
 			Enabled:           src.Exa.Enabled,
 			BaseURL:           src.Exa.BaseURL,
@@ -329,13 +293,6 @@ func mapFetchConfig(src *FetchConfig) *fetch.Config {
 	return &fetch.Config{
 		Provider:  src.Provider,
 		Fallbacks: src.Fallbacks,
-		Proxy: fetch.ProxyConfig{
-			Enabled:      src.Proxy.Enabled,
-			BaseURL:      src.Proxy.BaseURL,
-			APIKey:       src.Proxy.APIKey,
-			ContentsPath: src.Proxy.ContentsPath,
-			TimeoutSecs:  src.Proxy.TimeoutSecs,
-		},
 		Exa: fetch.ExaConfig{
 			Enabled:           src.Exa.Enabled,
 			BaseURL:           src.Exa.BaseURL,

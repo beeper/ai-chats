@@ -93,8 +93,6 @@ func registerProviders(registry *Registry, cfg *Config) {
 		return
 	}
 
-	if p := newProxyProvider(cfg); p != nil {
-		registry.Register(p)
 	}
 	if p := newExaProvider(cfg); p != nil {
 		registry.Register(p)

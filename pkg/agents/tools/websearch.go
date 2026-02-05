@@ -25,7 +25,7 @@ var WebSearch = &Tool{
 	Execute: executeWebSearch,
 }
 
-// executeWebSearch performs a web search using DuckDuckGo.
+// executeWebSearch performs a web search using the configured providers.
 func executeWebSearch(ctx context.Context, args map[string]any) (*Result, error) {
 	query, err := ReadString(args, "query", true)
 	if err != nil {

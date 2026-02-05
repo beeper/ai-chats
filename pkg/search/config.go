@@ -3,7 +3,6 @@ package search
 import "strings"
 
 const (
-	ProviderProxy       = "proxy"
 	ProviderExa         = "exa"
 	ProviderBrave       = "brave"
 	ProviderPerplexity  = "perplexity"
@@ -16,10 +15,10 @@ const (
 )
 
 var DefaultFallbackOrder = []string{
+	ProviderOpenRouter,
 	ProviderExa,
 	ProviderBrave,
 	ProviderPerplexity,
-	ProviderOpenRouter,
 	ProviderDuckDuckGo,
 }
 
@@ -28,22 +27,11 @@ type Config struct {
 	Provider  string   `yaml:"provider"`
 	Fallbacks []string `yaml:"fallbacks"`
 
-	Proxy      ProxyConfig      `yaml:"proxy"`
 	Exa        ExaConfig        `yaml:"exa"`
 	Brave      BraveConfig      `yaml:"brave"`
 	Perplexity PerplexityConfig `yaml:"perplexity"`
 	OpenRouter OpenRouterConfig `yaml:"openrouter"`
 	DDG        DDGConfig        `yaml:"ddg"`
-}
-
-type ProxyConfig struct {
-	Enabled       *bool  `yaml:"enabled"`
-	BaseURL       string `yaml:"base_url"`
-	APIKey        string `yaml:"api_key"`
-	SearchPath    string `yaml:"search_path"`
-	TimeoutSecs   int    `yaml:"timeout_seconds"`
-	CacheTtlSecs  int    `yaml:"cache_ttl_seconds"`
-	ForwardHeader bool   `yaml:"forward_header"`
 }
 
 type ExaConfig struct {
@@ -98,30 +86,20 @@ func (c *Config) WithDefaults() *Config {
 		c = &Config{}
 	}
 	if strings.TrimSpace(c.Provider) == "" {
-		c.Provider = ProviderProxy
+		if strings.TrimSpace(c.Exa.APIKey) != "" {
+			c.Provider = ProviderExa
+		} else {
+			c.Provider = ProviderOpenRouter
+		}
 	}
 	if len(c.Fallbacks) == 0 {
 		c.Fallbacks = append([]string{}, DefaultFallbackOrder...)
 	}
-	c.Proxy = c.Proxy.withDefaults()
 	c.Exa = c.Exa.withDefaults()
 	c.Brave = c.Brave.withDefaults()
 	c.Perplexity = c.Perplexity.withDefaults()
 	c.OpenRouter = c.OpenRouter.withDefaults()
 	c.DDG = c.DDG.withDefaults()
-	return c
-}
-
-func (c ProxyConfig) withDefaults() ProxyConfig {
-	if c.SearchPath == "" {
-		c.SearchPath = "/search"
-	}
-	if c.TimeoutSecs <= 0 {
-		c.TimeoutSecs = DefaultTimeoutSecs
-	}
-	if c.CacheTtlSecs <= 0 {
-		c.CacheTtlSecs = DefaultCacheTtlSecs
-	}
 	return c
 }
 

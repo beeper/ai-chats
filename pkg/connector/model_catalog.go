@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"strings"
 
 	"github.com/beeper/ai-bridge/pkg/textfs"
@@ -14,13 +15,16 @@ const (
 	modelCatalogStoreAlt = "models/catalog.json"
 )
 
+const defaultModelCatalogMode = "merge"
+
 type ModelCatalogEntry struct {
-	ID            string   `json:"id"`
-	Name          string   `json:"name,omitempty"`
-	Provider      string   `json:"provider"`
-	ContextWindow int      `json:"contextWindow,omitempty"`
-	Reasoning     bool     `json:"reasoning,omitempty"`
-	Input         []string `json:"input,omitempty"`
+	ID              string   `json:"id"`
+	Name            string   `json:"name,omitempty"`
+	Provider        string   `json:"provider"`
+	ContextWindow   int      `json:"contextWindow,omitempty"`
+	MaxOutputTokens int      `json:"maxTokens,omitempty"`
+	Reasoning       bool     `json:"reasoning,omitempty"`
+	Input           []string `json:"input,omitempty"`
 }
 
 func (oc *AIClient) modelCatalogStore() (*textfs.Store, error) {
@@ -31,6 +35,258 @@ func (oc *AIClient) modelCatalogStore() (*textfs.Store, error) {
 	loginID := string(oc.UserLogin.ID)
 	agentID := normalizeAgentID(strings.TrimSpace(modelCatalogAgentID))
 	return textfs.NewStore(oc.UserLogin.Bridge.DB.Database, bridgeID, loginID, agentID), nil
+}
+
+func (oc *AIClient) ensureModelCatalogVFS(ctx context.Context) (bool, error) {
+	if oc == nil || oc.UserLogin == nil {
+		return false, nil
+	}
+	loginMeta := loginMetadata(oc.UserLogin)
+	if loginMeta == nil {
+		return false, nil
+	}
+
+	implicit := oc.implicitModelCatalogEntries(loginMeta)
+	explicit := explicitModelCatalogEntries(oc.connector.Config.Models)
+	if len(implicit) == 0 && len(explicit) == 0 {
+		return false, nil
+	}
+
+	mode := defaultModelCatalogMode
+	if oc.connector.Config.Models != nil {
+		if trimmed := strings.ToLower(strings.TrimSpace(oc.connector.Config.Models.Mode)); trimmed != "" {
+			switch trimmed {
+			case "replace":
+				mode = "replace"
+			case "merge":
+				mode = defaultModelCatalogMode
+			}
+		}
+	}
+
+	var existing []ModelCatalogEntry
+	if mode == defaultModelCatalogMode {
+		existing = oc.loadModelCatalog(ctx, false)
+	}
+
+	merged := mergeCatalogEntries(existing, implicit, explicit)
+	if len(merged) == 0 {
+		return false, nil
+	}
+
+	payload := struct {
+		Models []ModelCatalogEntry `json:"models"`
+	}{
+		Models: merged,
+	}
+	raw, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return false, err
+	}
+	content := string(raw) + "\n"
+
+	store, err := oc.modelCatalogStore()
+	if err != nil || store == nil {
+		return false, err
+	}
+	if entry, found, err := store.Read(ctx, modelCatalogStoreRef); err == nil && found {
+		if entry.Content == content {
+			return false, nil
+		}
+	}
+
+	if _, err := store.Write(ctx, modelCatalogStoreRef, content); err != nil {
+		return false, err
+	}
+
+	oc.modelCatalogMu.Lock()
+	oc.modelCatalogLoaded = false
+	oc.modelCatalogCache = nil
+	oc.modelCatalogMu.Unlock()
+
+	return true, nil
+}
+
+func mergeCatalogEntries(existing []ModelCatalogEntry, implicit []ModelCatalogEntry, explicit []ModelCatalogEntry) []ModelCatalogEntry {
+	merged := map[string]ModelCatalogEntry{}
+	for _, entry := range existing {
+		if key := modelCatalogKey(entry.Provider, entry.ID); key != "" {
+			merged[key] = entry
+		}
+	}
+	for _, entry := range implicit {
+		if key := modelCatalogKey(entry.Provider, entry.ID); key != "" {
+			merged[key] = entry
+		}
+	}
+	for _, entry := range explicit {
+		if key := modelCatalogKey(entry.Provider, entry.ID); key != "" {
+			merged[key] = entry
+		}
+	}
+
+	out := make([]ModelCatalogEntry, 0, len(merged))
+	for _, entry := range merged {
+		out = append(out, entry)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Provider == out[j].Provider {
+			return out[i].ID < out[j].ID
+		}
+		return out[i].Provider < out[j].Provider
+	})
+	return out
+}
+
+func modelCatalogKey(provider string, id string) string {
+	p := strings.ToLower(strings.TrimSpace(provider))
+	m := strings.ToLower(strings.TrimSpace(id))
+	if p == "" || m == "" {
+		return ""
+	}
+	return p + "::" + m
+}
+
+func (oc *AIClient) implicitModelCatalogEntries(meta *UserLoginMetadata) []ModelCatalogEntry {
+	if meta == nil {
+		return nil
+	}
+	switch meta.Provider {
+	case ProviderOpenRouter:
+		if strings.TrimSpace(oc.connector.resolveOpenRouterAPIKey(meta)) == "" {
+			return nil
+		}
+		return modelCatalogEntriesFromManifest(nil)
+	case ProviderBeeper:
+		if strings.TrimSpace(oc.connector.resolveBeeperToken(meta)) == "" {
+			return nil
+		}
+		return modelCatalogEntriesFromManifest(nil)
+	case ProviderOpenAI:
+		if strings.TrimSpace(oc.connector.resolveOpenAIAPIKey(meta)) == "" {
+			return nil
+		}
+		return modelCatalogEntriesFromManifest(func(provider string) bool {
+			return provider == ProviderOpenAI
+		})
+	default:
+		return nil
+	}
+}
+
+func modelCatalogEntriesFromManifest(filter func(provider string) bool) []ModelCatalogEntry {
+	out := make([]ModelCatalogEntry, 0, len(ModelManifest.Models))
+	for _, info := range ModelManifest.Models {
+		provider, modelID := splitModelProvider(info.ID)
+		if provider == "" || modelID == "" {
+			continue
+		}
+		if filter != nil && !filter(provider) {
+			continue
+		}
+		name := strings.TrimSpace(info.Name)
+		if name == "" {
+			name = modelID
+		}
+		entry := ModelCatalogEntry{
+			ID:              modelID,
+			Name:            name,
+			Provider:        provider,
+			ContextWindow:   info.ContextWindow,
+			MaxOutputTokens: info.MaxOutputTokens,
+			Reasoning:       info.SupportsReasoning,
+			Input: normalizeCatalogInput(nil, map[string]bool{
+				"image": info.SupportsVision,
+				"audio": info.SupportsAudio,
+				"video": info.SupportsVideo,
+				"pdf":   info.SupportsPDF,
+			}),
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+func explicitModelCatalogEntries(cfg *ModelsConfig) []ModelCatalogEntry {
+	if cfg == nil || len(cfg.Providers) == 0 {
+		return nil
+	}
+	out := make([]ModelCatalogEntry, 0)
+	for providerKey, provider := range cfg.Providers {
+		baseProviderID := strings.ToLower(strings.TrimSpace(providerKey))
+		for _, model := range provider.Models {
+			providerID := baseProviderID
+			id := strings.TrimSpace(model.ID)
+			if id == "" {
+				continue
+			}
+			if providerID == "" {
+				if parsedProvider, parsedID := splitModelProvider(id); parsedProvider != "" && parsedID != "" {
+					providerID = parsedProvider
+					id = parsedID
+				}
+			} else if providerID != ProviderOpenRouter && providerID != ProviderBeeper {
+				if parsedProvider, parsedID := splitModelProvider(id); parsedProvider != "" && parsedID != "" && parsedProvider == providerID {
+					id = parsedID
+				}
+			}
+			if providerID == "" || id == "" {
+				continue
+			}
+			name := strings.TrimSpace(model.Name)
+			if name == "" {
+				name = id
+			}
+			out = append(out, ModelCatalogEntry{
+				ID:              id,
+				Name:            name,
+				Provider:        providerID,
+				ContextWindow:   model.ContextWindow,
+				MaxOutputTokens: model.MaxTokens,
+				Reasoning:       model.Reasoning,
+				Input:           normalizeCatalogInput(model.Input, nil),
+			})
+		}
+	}
+	return out
+}
+
+func normalizeCatalogInput(input []string, extra map[string]bool) []string {
+	seen := map[string]bool{}
+	add := func(value string) {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		if normalized == "" || seen[normalized] {
+			return
+		}
+		seen[normalized] = true
+	}
+	add("text")
+	for _, value := range input {
+		add(value)
+	}
+	for key, enabled := range extra {
+		if enabled {
+			add(key)
+		}
+	}
+	if len(seen) == 0 {
+		return nil
+	}
+	ordered := []string{}
+	if seen["text"] {
+		ordered = append(ordered, "text")
+		delete(seen, "text")
+	}
+	if seen["image"] {
+		ordered = append(ordered, "image")
+		delete(seen, "image")
+	}
+	rest := make([]string, 0, len(seen))
+	for key := range seen {
+		rest = append(rest, key)
+	}
+	sort.Strings(rest)
+	return append(ordered, rest...)
 }
 
 func (oc *AIClient) loadModelCatalog(ctx context.Context, useCache bool) []ModelCatalogEntry {
@@ -113,15 +369,25 @@ func coerceModelEntries(items []any) []ModelCatalogEntry {
 			name = id
 		}
 		out = append(out, ModelCatalogEntry{
-			ID:            id,
-			Name:          name,
-			Provider:      provider,
-			ContextWindow: asInt(entryMap["contextWindow"]),
-			Reasoning:     asBool(entryMap["reasoning"]),
-			Input:         asStringSlice(entryMap["input"]),
+			ID:              id,
+			Name:            name,
+			Provider:        provider,
+			ContextWindow:   asInt(entryMap["contextWindow"]),
+			MaxOutputTokens: asInt(valueOr(entryMap, "maxTokens", "max_output_tokens")),
+			Reasoning:       asBool(entryMap["reasoning"]),
+			Input:           asStringSlice(entryMap["input"]),
 		})
 	}
 	return out
+}
+
+func valueOr(m map[string]any, keys ...string) any {
+	for _, key := range keys {
+		if value, ok := m[key]; ok {
+			return value
+		}
+	}
+	return nil
 }
 
 func asString(value any) string {
@@ -274,6 +540,7 @@ func (oc *AIClient) loadModelCatalogModels(ctx context.Context) []ModelInfo {
 			SupportsToolCalling: true,
 			SupportsReasoning:   entry.Reasoning,
 			ContextWindow:       entry.ContextWindow,
+			MaxOutputTokens:     entry.MaxOutputTokens,
 		}
 		if info.Name == "" {
 			info.Name = normalizedID
@@ -311,6 +578,7 @@ func (oc *AIClient) findModelInfoInCatalog(modelID string) *ModelInfo {
 				SupportsToolCalling: true,
 				SupportsReasoning:   entry.Reasoning,
 				ContextWindow:       entry.ContextWindow,
+				MaxOutputTokens:     entry.MaxOutputTokens,
 			}
 			if info.Name == "" {
 				info.Name = normalizedID

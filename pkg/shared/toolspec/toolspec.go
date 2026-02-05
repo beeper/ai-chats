@@ -7,7 +7,7 @@ const (
 	CalculatorDescription = "Perform basic arithmetic calculations. Supports addition, subtraction, multiplication, division, and modulo operations."
 
 	WebSearchName        = "web_search"
-	WebSearchDescription = "Search the web using Brave Search API. Supports region-specific and localized search via country and language parameters. Returns titles, URLs, and snippets for fast research."
+	WebSearchDescription = "Search the web using the best available provider (OpenRouter web search when configured). Supports region-specific and localized search via country and language parameters. Returns titles, URLs, and snippets for fast research."
 
 	WebFetchName        = "web_fetch"
 	WebFetchDescription = "Fetch and extract readable content from a URL (HTML \u2192 markdown/text). Use for lightweight page access without browser automation."

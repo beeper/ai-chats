@@ -274,7 +274,7 @@ func BuildSystemPrompt(params SystemPromptParams) string {
 		"ls":               "List directory contents",
 		"exec":             "Run shell commands (pty available for TTY-required CLIs)",
 		"process":          "Manage background exec sessions",
-		"web_search":       "Search the web (Brave API)",
+		"web_search":       "Search the web (best available provider)",
 		"web_fetch":        "Fetch and extract readable content from a URL",
 		"browser":          "Control web browser",
 		"canvas":           "Present/eval/snapshot the Canvas",

@@ -65,7 +65,7 @@ func DefaultModelForProvider(provider string) string {
 	case ProviderBeeper:
 		return DefaultModelBeeper
 	default:
-		return DefaultModelOpenAI
+		return DefaultModelOpenRouter
 	}
 }
 

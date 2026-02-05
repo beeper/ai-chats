@@ -18,6 +18,7 @@ var exampleNetworkConfig string
 type Config struct {
 	Beeper     BeeperConfig                       `yaml:"beeper"`
 	Providers  ProvidersConfig                    `yaml:"providers"`
+	Models     *ModelsConfig                      `yaml:"models"`
 	Bridge     BridgeConfig                       `yaml:"bridge"`
 	Tools      ToolProvidersConfig                `yaml:"tools"`
 	ToolPolicy *toolpolicy.GlobalToolPolicyConfig `yaml:"tool_policy"`
@@ -310,7 +311,6 @@ type SearchConfig struct {
 	Provider  string   `yaml:"provider"`
 	Fallbacks []string `yaml:"fallbacks"`
 
-	Proxy      ProviderProxyConfig      `yaml:"proxy"`
 	Exa        ProviderExaConfig        `yaml:"exa"`
 	Brave      ProviderBraveConfig      `yaml:"brave"`
 	Perplexity ProviderPerplexityConfig `yaml:"perplexity"`
@@ -322,20 +322,8 @@ type FetchConfig struct {
 	Provider  string   `yaml:"provider"`
 	Fallbacks []string `yaml:"fallbacks"`
 
-	Proxy  ProviderProxyConfig  `yaml:"proxy"`
 	Exa    ProviderExaConfig    `yaml:"exa"`
 	Direct ProviderDirectConfig `yaml:"direct"`
-}
-
-type ProviderProxyConfig struct {
-	Enabled       *bool  `yaml:"enabled"`
-	BaseURL       string `yaml:"base_url"`
-	APIKey        string `yaml:"api_key"`
-	SearchPath    string `yaml:"search_path"`
-	ContentsPath  string `yaml:"contents_path"`
-	TimeoutSecs   int    `yaml:"timeout_seconds"`
-	CacheTtlSecs  int    `yaml:"cache_ttl_seconds"`
-	ForwardHeader bool   `yaml:"forward_header"`
 }
 
 type ProviderExaConfig struct {
@@ -445,6 +433,27 @@ type ProvidersConfig struct {
 	OpenRouter ProviderConfig `yaml:"openrouter"`
 }
 
+// ModelsConfig configures model catalog seeding (OpenClaw-style).
+type ModelsConfig struct {
+	Mode      string                         `yaml:"mode"` // merge | replace
+	Providers map[string]ModelProviderConfig `yaml:"providers"`
+}
+
+// ModelProviderConfig describes models for a specific provider.
+type ModelProviderConfig struct {
+	Models []ModelDefinitionConfig `yaml:"models"`
+}
+
+// ModelDefinitionConfig defines a model entry for catalog seeding.
+type ModelDefinitionConfig struct {
+	ID            string   `yaml:"id"`
+	Name          string   `yaml:"name"`
+	Reasoning     bool     `yaml:"reasoning"`
+	Input         []string `yaml:"input"`
+	ContextWindow int      `yaml:"context_window"`
+	MaxTokens     int      `yaml:"max_tokens"`
+}
+
 // BridgeConfig tweaks Matrix-side behaviour for the AI bridge.
 type BridgeConfig struct {
 	CommandPrefix string `yaml:"command_prefix"`
@@ -550,12 +559,6 @@ func upgradeConfig(helper configupgrade.Helper) {
 	// Tools (search + fetch)
 	helper.Copy(configupgrade.Str, "tools", "search", "provider")
 	helper.Copy(configupgrade.List, "tools", "search", "fallbacks")
-	helper.Copy(configupgrade.Bool, "tools", "search", "proxy", "enabled")
-	helper.Copy(configupgrade.Str, "tools", "search", "proxy", "base_url")
-	helper.Copy(configupgrade.Str, "tools", "search", "proxy", "api_key")
-	helper.Copy(configupgrade.Str, "tools", "search", "proxy", "search_path")
-	helper.Copy(configupgrade.Int, "tools", "search", "proxy", "timeout_seconds")
-	helper.Copy(configupgrade.Int, "tools", "search", "proxy", "cache_ttl_seconds")
 	helper.Copy(configupgrade.Bool, "tools", "search", "exa", "enabled")
 	helper.Copy(configupgrade.Str, "tools", "search", "exa", "base_url")
 	helper.Copy(configupgrade.Str, "tools", "search", "exa", "api_key")
@@ -591,11 +594,6 @@ func upgradeConfig(helper configupgrade.Helper) {
 
 	helper.Copy(configupgrade.Str, "tools", "fetch", "provider")
 	helper.Copy(configupgrade.List, "tools", "fetch", "fallbacks")
-	helper.Copy(configupgrade.Bool, "tools", "fetch", "proxy", "enabled")
-	helper.Copy(configupgrade.Str, "tools", "fetch", "proxy", "base_url")
-	helper.Copy(configupgrade.Str, "tools", "fetch", "proxy", "api_key")
-	helper.Copy(configupgrade.Str, "tools", "fetch", "proxy", "contents_path")
-	helper.Copy(configupgrade.Int, "tools", "fetch", "proxy", "timeout_seconds")
 	helper.Copy(configupgrade.Bool, "tools", "fetch", "exa", "enabled")
 	helper.Copy(configupgrade.Str, "tools", "fetch", "exa", "base_url")
 	helper.Copy(configupgrade.Str, "tools", "fetch", "exa", "api_key")

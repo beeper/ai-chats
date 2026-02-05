@@ -50,6 +50,7 @@ type streamingState struct {
 	responseID             string
 	sequenceNum            int
 	firstToken             bool
+	statusSent             bool
 
 	// Directive processing
 	sourceEventID id.EventID // The triggering user message event ID (for [[reply_to_current]])
@@ -93,6 +94,20 @@ func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID 
 		}
 	}
 	return state
+}
+
+func (oc *AIClient) markMessageSendSuccess(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, state *streamingState) {
+	if state == nil || state.statusSent || state.suppressSend {
+		return
+	}
+	state.statusSent = true
+
+	oc.sendSuccessStatus(ctx, portal, evt)
+	for _, extra := range statusEventsFromContext(ctx) {
+		if extra != nil {
+			oc.sendSuccessStatus(ctx, portal, extra)
+		}
+	}
 }
 
 // generatedImage tracks a pending image from image generation
@@ -729,6 +744,9 @@ func (oc *AIClient) streamingResponse(
 	// Process stream events - no debouncing, stream every delta immediately
 	for stream.Next() {
 		streamEvent := stream.Current()
+		if streamEvent.Type != "error" {
+			oc.markMessageSendSuccess(ctx, portal, evt, state)
+		}
 
 		switch streamEvent.Type {
 		case "response.output_text.delta":
@@ -1764,6 +1782,7 @@ func (oc *AIClient) streamChatCompletions(
 
 	for stream.Next() {
 		chunk := stream.Current()
+		oc.markMessageSendSuccess(ctx, portal, evt, state)
 
 		if chunk.Usage.TotalTokens > 0 || chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 {
 			state.promptTokens = chunk.Usage.PromptTokens

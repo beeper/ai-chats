@@ -7,7 +7,7 @@ import (
 
 // ConfigFromEnv builds a search config using environment variables.
 func ConfigFromEnv() *Config {
-	cfg := (&Config{}).WithDefaults()
+	cfg := &Config{}
 
 	if provider := strings.TrimSpace(os.Getenv("SEARCH_PROVIDER")); provider != "" {
 		cfg.Provider = provider
@@ -15,10 +15,6 @@ func ConfigFromEnv() *Config {
 	if fallbacks := strings.TrimSpace(os.Getenv("SEARCH_FALLBACKS")); fallbacks != "" {
 		cfg.Fallbacks = splitCSV(fallbacks)
 	}
-
-	cfg.Proxy.BaseURL = envOr(cfg.Proxy.BaseURL, os.Getenv("HUNGRYSERV_PROXY_BASE_URL"))
-	cfg.Proxy.APIKey = envOr(cfg.Proxy.APIKey, os.Getenv("HUNGRYSERV_PROXY_API_KEY"))
-
 	cfg.Exa.APIKey = envOr(cfg.Exa.APIKey, os.Getenv("EXA_API_KEY"))
 	cfg.Exa.BaseURL = envOr(cfg.Exa.BaseURL, os.Getenv("EXA_BASE_URL"))
 
@@ -33,7 +29,7 @@ func ConfigFromEnv() *Config {
 	cfg.OpenRouter.BaseURL = envOr(cfg.OpenRouter.BaseURL, os.Getenv("OPENROUTER_BASE_URL"))
 	cfg.OpenRouter.Model = envOr(cfg.OpenRouter.Model, os.Getenv("OPENROUTER_MODEL"))
 
-	return cfg
+	return cfg.WithDefaults()
 }
 
 // ApplyEnvDefaults fills empty config fields from environment variables.
@@ -41,6 +37,7 @@ func ApplyEnvDefaults(cfg *Config) *Config {
 	if cfg == nil {
 		return ConfigFromEnv()
 	}
+	providerSet := strings.TrimSpace(cfg.Provider) != ""
 	current := cfg.WithDefaults()
 	envCfg := ConfigFromEnv()
 
@@ -49,13 +46,6 @@ func ApplyEnvDefaults(cfg *Config) *Config {
 	}
 	if len(current.Fallbacks) == 0 {
 		current.Fallbacks = envCfg.Fallbacks
-	}
-
-	if current.Proxy.BaseURL == "" {
-		current.Proxy.BaseURL = envCfg.Proxy.BaseURL
-	}
-	if current.Proxy.APIKey == "" {
-		current.Proxy.APIKey = envCfg.Proxy.APIKey
 	}
 
 	if current.Exa.APIKey == "" {
@@ -90,6 +80,10 @@ func ApplyEnvDefaults(cfg *Config) *Config {
 	}
 	if current.OpenRouter.Model == "" {
 		current.OpenRouter.Model = envCfg.OpenRouter.Model
+	}
+
+	if !providerSet && strings.TrimSpace(current.Exa.APIKey) != "" {
+		current.Provider = ProviderExa
 	}
 
 	return current

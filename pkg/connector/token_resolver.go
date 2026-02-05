@@ -11,7 +11,6 @@ const (
 	serviceExa        = "exa"
 	serviceBrave      = "brave"
 	servicePerplexity = "perplexity"
-	serviceProxy      = "proxy"
 )
 
 const (
@@ -100,14 +99,7 @@ func (oc *OpenAIConnector) resolveServiceConfig(meta *UserLoginMetadata) Service
 		if base != "" {
 			base = strings.TrimRight(base, "/")
 			token := oc.resolveBeeperToken(meta)
-			services[serviceProxy] = ServiceConfig{
-				BaseURL: base + "/exa",
-				APIKey:  token,
-			}
-			services[serviceExa] = ServiceConfig{
-				BaseURL: base + "/exa",
-				APIKey:  token,
-			}
+			// Exa proxy routing is temporarily disabled; rely on explicit Exa settings.
 			services[serviceOpenRouter] = ServiceConfig{
 				BaseURL: base + "/openrouter/v1",
 				APIKey:  token,
@@ -131,9 +123,6 @@ func (oc *OpenAIConnector) resolveServiceConfig(meta *UserLoginMetadata) Service
 	services[serviceOpenRouter] = ServiceConfig{
 		BaseURL: oc.resolveOpenRouterBaseURL(),
 		APIKey:  oc.resolveOpenRouterAPIKey(meta),
-	}
-	services[serviceProxy] = ServiceConfig{
-		APIKey: loginTokenForService(meta, serviceProxy),
 	}
 	services[serviceExa] = ServiceConfig{
 		APIKey: loginTokenForService(meta, serviceExa),
@@ -250,10 +239,6 @@ func loginTokenForService(meta *UserLoginMetadata, service string) string {
 	case servicePerplexity:
 		if meta.ServiceTokens != nil {
 			return trimToken(meta.ServiceTokens.Perplexity)
-		}
-	case serviceProxy:
-		if meta.ServiceTokens != nil {
-			return trimToken(meta.ServiceTokens.Proxy)
 		}
 	}
 	return ""

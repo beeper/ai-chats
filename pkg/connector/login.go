@@ -135,14 +135,6 @@ func (ol *OpenAILogin) credentialsStep() *bridgev2.LoginStep {
 				Description: "Optional if you use OpenRouter instead. Generate one at https://platform.openai.com/account/api-keys",
 			})
 		}
-		if !ol.configHasProxyKey() {
-			fields = append(fields, bridgev2.LoginInputDataField{
-				Type:        bridgev2.LoginInputFieldTypeToken,
-				ID:          "proxy_api_key",
-				Name:        "Proxy API Key",
-				Description: "Optional. Used for Hungryserv proxy (search/fetch).",
-			})
-		}
 		if !ol.configHasExaKey() {
 			fields = append(fields, bridgev2.LoginInputDataField{
 				Type:        bridgev2.LoginInputFieldTypeToken,
@@ -271,9 +263,6 @@ func (ol *OpenAILogin) resolveCustomLogin(input map[string]string) (string, stri
 		serviceTokens.OpenRouter = openrouterInput
 	}
 
-	if !ol.configHasProxyKey() {
-		serviceTokens.Proxy = strings.TrimSpace(input["proxy_api_key"])
-	}
 	if !ol.configHasExaKey() {
 		serviceTokens.Exa = strings.TrimSpace(input["exa_api_key"])
 	}
@@ -295,8 +284,7 @@ func serviceTokensEmpty(tokens *ServiceTokens) bool {
 		strings.TrimSpace(tokens.OpenRouter) == "" &&
 		strings.TrimSpace(tokens.Exa) == "" &&
 		strings.TrimSpace(tokens.Brave) == "" &&
-		strings.TrimSpace(tokens.Perplexity) == "" &&
-		strings.TrimSpace(tokens.Proxy) == ""
+		strings.TrimSpace(tokens.Perplexity) == ""
 }
 
 func beeperBaseURLFromDomain(domain string) string {
@@ -323,16 +311,6 @@ func (ol *OpenAILogin) configHasExaKey() bool {
 		return true
 	}
 	if ol.Connector.Config.Tools.Fetch != nil && strings.TrimSpace(ol.Connector.Config.Tools.Fetch.Exa.APIKey) != "" {
-		return true
-	}
-	return false
-}
-
-func (ol *OpenAILogin) configHasProxyKey() bool {
-	if ol.Connector.Config.Tools.Search != nil && strings.TrimSpace(ol.Connector.Config.Tools.Search.Proxy.APIKey) != "" {
-		return true
-	}
-	if ol.Connector.Config.Tools.Fetch != nil && strings.TrimSpace(ol.Connector.Config.Tools.Fetch.Proxy.APIKey) != "" {
 		return true
 	}
 	return false

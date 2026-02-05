@@ -3,7 +3,6 @@ package fetch
 import "strings"
 
 const (
-	ProviderProxy      = "proxy"
 	ProviderExa        = "exa"
 	ProviderDirect     = "direct"
 	DefaultTimeoutSecs = 30
@@ -20,17 +19,8 @@ type Config struct {
 	Provider  string   `yaml:"provider"`
 	Fallbacks []string `yaml:"fallbacks"`
 
-	Proxy  ProxyConfig  `yaml:"proxy"`
 	Exa    ExaConfig    `yaml:"exa"`
 	Direct DirectConfig `yaml:"direct"`
-}
-
-type ProxyConfig struct {
-	Enabled      *bool  `yaml:"enabled"`
-	BaseURL      string `yaml:"base_url"`
-	APIKey       string `yaml:"api_key"`
-	ContentsPath string `yaml:"contents_path"`
-	TimeoutSecs  int    `yaml:"timeout_seconds"`
 }
 
 type ExaConfig struct {
@@ -56,24 +46,13 @@ func (c *Config) WithDefaults() *Config {
 		c = &Config{}
 	}
 	if strings.TrimSpace(c.Provider) == "" {
-		c.Provider = ProviderProxy
+		c.Provider = ProviderExa
 	}
 	if len(c.Fallbacks) == 0 {
 		c.Fallbacks = append([]string{}, DefaultFallbackOrder...)
 	}
-	c.Proxy = c.Proxy.withDefaults()
 	c.Exa = c.Exa.withDefaults()
 	c.Direct = c.Direct.withDefaults()
-	return c
-}
-
-func (c ProxyConfig) withDefaults() ProxyConfig {
-	if c.ContentsPath == "" {
-		c.ContentsPath = "/contents"
-	}
-	if c.TimeoutSecs <= 0 {
-		c.TimeoutSecs = DefaultTimeoutSecs
-	}
 	return c
 }
 

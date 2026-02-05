@@ -315,6 +315,7 @@ type pendingMessage struct {
 	TargetMsgID   networkid.MessageID      // For edit_regenerate
 	SourceEventID id.EventID               // For regenerate (original user message ID)
 	StatusEvents  []*event.Event           // Extra events to mark sent when processing starts
+	PendingSent   bool                     // Whether a pending status was already sent for this event
 }
 
 func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey string) (*AIClient, error) {
@@ -467,9 +468,9 @@ func (oc *AIClient) popNextPending(roomID id.RoomID) *pendingMessage {
 }
 
 // dispatchOrQueue handles the common room acquisition pattern for message processing.
-// If the room is available, it dispatches the completion immediately and returns the userMessage for DB.
+// If the room is available, it dispatches the completion immediately and returns Pending=true
+// so message status can be flipped to SUCCESS on first response bytes.
 // If the room is busy, it queues the message and sends a PENDING status.
-// Returns (shouldReturnDBMessage, isPending).
 func (oc *AIClient) dispatchOrQueue(
 	ctx context.Context,
 	evt *event.Event,
@@ -480,10 +481,19 @@ func (oc *AIClient) dispatchOrQueue(
 	promptMessages []openai.ChatCompletionMessageParamUnion,
 ) (dbMessage *database.Message, isPending bool) {
 	if oc.acquireRoom(portal.MXID) {
-		// Message accepted for processing - mark sent immediately.
-		oc.sendSuccessStatus(ctx, portal, evt)
-		for _, extra := range pending.StatusEvents {
-			oc.sendSuccessStatus(ctx, portal, extra)
+		// Save user message to database - we must do this ourselves since we return Pending=true.
+		if userMessage != nil && evt != nil {
+			userMessage.MXID = evt.ID
+			if _, err := oc.UserLogin.Bridge.GetGhostByID(ctx, userMessage.SenderID); err != nil {
+				oc.log.Warn().Err(err).Msg("Failed to ensure user ghost before saving message")
+			}
+			if err := oc.UserLogin.Bridge.DB.Message.Insert(ctx, userMessage); err != nil {
+				oc.log.Err(err).Msg("Failed to save user message to database")
+			}
+		}
+		if !pending.PendingSent {
+			oc.sendPendingStatus(ctx, portal, evt, "Processing...")
+			pending.PendingSent = true
 		}
 		runCtx := withStatusEvents(ctx, pending.StatusEvents)
 		metaSnapshot := clonePortalMetadata(meta)
@@ -499,25 +509,29 @@ func (oc *AIClient) dispatchOrQueue(
 			oc.dispatchCompletionInternal(runCtx, evt, portal, metaSnapshot, promptMessages)
 		}(metaSnapshot)
 		oc.notifySessionMemoryChange(ctx, portal, meta, false)
-		return userMessage, false
+		return userMessage, true
 	}
 
 	// Room busy - save message ourselves and queue for later
 	if userMessage != nil {
 		userMessage.MXID = evt.ID
+		if _, err := oc.UserLogin.Bridge.GetGhostByID(ctx, userMessage.SenderID); err != nil {
+			oc.log.Warn().Err(err).Msg("Failed to ensure user ghost before saving queued message")
+		}
 		if err := oc.UserLogin.Bridge.DB.Message.Insert(ctx, userMessage); err != nil {
 			oc.log.Err(err).Msg("Failed to save queued message to database")
 		}
 	}
 
+	pending.PendingSent = true
 	oc.queuePendingMessage(portal.MXID, pending)
 	oc.sendPendingStatus(ctx, portal, evt, "Waiting for previous response")
 	oc.notifySessionMemoryChange(ctx, portal, meta, false)
-	return nil, true
+	return userMessage, true
 }
 
-// dispatchOrQueueWithStatus is like dispatchOrQueue but sends SUCCESS status when room is acquired.
-// Used for regenerate/edit operations where we need to acknowledge the command.
+// dispatchOrQueueWithStatus is like dispatchOrQueue but does not return a DB message.
+// Used for regenerate/edit operations.
 func (oc *AIClient) dispatchOrQueueWithStatus(
 	ctx context.Context,
 	evt *event.Event,
@@ -527,10 +541,6 @@ func (oc *AIClient) dispatchOrQueueWithStatus(
 	promptMessages []openai.ChatCompletionMessageParamUnion,
 ) {
 	if oc.acquireRoom(portal.MXID) {
-		oc.sendSuccessStatus(ctx, portal, evt)
-		for _, extra := range pending.StatusEvents {
-			oc.sendSuccessStatus(ctx, portal, extra)
-		}
 		runCtx := withStatusEvents(ctx, pending.StatusEvents)
 		metaSnapshot := clonePortalMetadata(meta)
 		go func(metaSnapshot *PortalMetadata) {
@@ -575,37 +585,39 @@ func (oc *AIClient) processNextPending(ctx context.Context, roomID id.RoomID) {
 	}
 
 	metaSnapshot := clonePortalMetadata(pending.Meta)
+	runCtx := withStatusEvents(ctx, pending.StatusEvents)
 
 	switch pending.Type {
 	case pendingTypeText:
-		promptMessages, err = oc.buildPrompt(ctx, pending.Portal, metaSnapshot, pending.MessageBody, eventID)
+		promptMessages, err = oc.buildPrompt(runCtx, pending.Portal, metaSnapshot, pending.MessageBody, eventID)
 	case pendingTypeImage, pendingTypePDF, pendingTypeAudio, pendingTypeVideo:
-		promptMessages, err = oc.buildPromptWithMedia(ctx, pending.Portal, metaSnapshot, pending.MessageBody, pending.MediaURL, pending.MimeType, pending.EncryptedFile, pending.Type, eventID)
+		promptMessages, err = oc.buildPromptWithMedia(runCtx, pending.Portal, metaSnapshot, pending.MessageBody, pending.MediaURL, pending.MimeType, pending.EncryptedFile, pending.Type, eventID)
 	case pendingTypeRegenerate:
-		promptMessages, err = oc.buildPromptForRegenerate(ctx, pending.Portal, metaSnapshot, pending.MessageBody, pending.SourceEventID)
+		promptMessages, err = oc.buildPromptForRegenerate(runCtx, pending.Portal, metaSnapshot, pending.MessageBody, pending.SourceEventID)
 	case pendingTypeEditRegenerate:
-		promptMessages, err = oc.buildPromptUpToMessage(ctx, pending.Portal, metaSnapshot, pending.TargetMsgID, pending.MessageBody)
+		promptMessages, err = oc.buildPromptUpToMessage(runCtx, pending.Portal, metaSnapshot, pending.TargetMsgID, pending.MessageBody)
 	default:
 		err = fmt.Errorf("unknown pending message type: %s", pending.Type)
 	}
 
 	if err != nil {
 		oc.log.Err(err).Str("type", string(pending.Type)).Msg("Failed to build prompt for pending message")
+		oc.notifyMatrixSendFailure(runCtx, pending.Portal, pending.Event, err)
+		if metaSnapshot != nil && metaSnapshot.AckReactionRemoveAfter && pending.Event != nil {
+			oc.removeAckReaction(runCtx, pending.Portal, pending.Event.ID)
+		}
 		oc.releaseRoom(roomID)
 		oc.processNextPending(oc.backgroundContext(ctx), roomID)
 		return
 	}
 
-	// Send SUCCESS status synchronously - message is now being processed
-	oc.sendSuccessStatus(ctx, pending.Portal, pending.Event)
-	for _, extra := range pending.StatusEvents {
-		oc.sendSuccessStatus(ctx, pending.Portal, extra)
-	}
-
 	// Process in background, will release room when done
-	runCtx := withStatusEvents(ctx, pending.StatusEvents)
 	go func() {
 		defer func() {
+			// Remove ack reaction after response is complete (if configured)
+			if metaSnapshot != nil && metaSnapshot.AckReactionRemoveAfter && pending.Event != nil {
+				oc.removeAckReaction(oc.backgroundContext(ctx), pending.Portal, pending.Event.ID)
+			}
 			oc.releaseRoom(roomID)
 			// Check for more pending messages
 			oc.processNextPending(oc.backgroundContext(ctx), roomID)
@@ -929,7 +941,7 @@ func (oc *AIClient) defaultModelForProvider() string {
 		}
 		return DefaultModelBeeper
 	default:
-		return DefaultModelOpenAI
+		return DefaultModelOpenRouter
 	}
 }
 
@@ -1315,6 +1327,9 @@ func (oc *AIClient) listAvailableModels(ctx context.Context, forceRefresh bool) 
 	}
 
 	oc.log.Debug().Msg("Loading model catalog from VFS")
+	if _, err := oc.ensureModelCatalogVFS(ctx); err != nil {
+		oc.log.Warn().Err(err).Msg("Failed to seed model catalog")
+	}
 	allModels := oc.loadModelCatalogModels(ctx)
 
 	// Update cache
@@ -2063,10 +2078,24 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 		oc.log.Info().Int("count", count).Msg("Combined debounced messages")
 	}
 
+	extraStatusEvents := make([]*event.Event, 0, len(entries)-1)
+	if len(entries) > 1 {
+		for _, entry := range entries[:len(entries)-1] {
+			if entry.Event != nil {
+				extraStatusEvents = append(extraStatusEvents, entry.Event)
+			}
+		}
+	}
+	statusCtx := withStatusEvents(ctx, extraStatusEvents)
+
 	// Build prompt with combined body
-	promptMessages, err := oc.buildPromptWithLinkContext(ctx, last.Portal, last.Meta, combinedBody, nil, last.Event.ID)
+	promptMessages, err := oc.buildPromptWithLinkContext(statusCtx, last.Portal, last.Meta, combinedBody, nil, last.Event.ID)
 	if err != nil {
 		oc.log.Err(err).Msg("Failed to build prompt for debounced messages")
+		oc.notifyMatrixSendFailure(statusCtx, last.Portal, last.Event, err)
+		if last.Meta.AckReactionRemoveAfter && entries[0].AckEventID != "" {
+			oc.removeAckReactionByID(statusCtx, last.Portal, entries[0].AckEventID)
+		}
 		return
 	}
 
@@ -2095,15 +2124,7 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 
 	// Dispatch using existing flow (handles room lock + status)
 	// Pass nil for userMessage since we already saved it above
-	extraStatusEvents := make([]*event.Event, 0, len(entries)-1)
-	if len(entries) > 1 {
-		for _, entry := range entries[:len(entries)-1] {
-			if entry.Event != nil {
-				extraStatusEvents = append(extraStatusEvents, entry.Event)
-			}
-		}
-	}
-	_, _ = oc.dispatchOrQueue(ctx, last.Event, last.Portal, last.Meta, nil,
+	_, _ = oc.dispatchOrQueue(statusCtx, last.Event, last.Portal, last.Meta, nil,
 		pendingMessage{
 			Event:        last.Event,
 			Portal:       last.Portal,
@@ -2111,11 +2132,12 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 			Type:         pendingTypeText,
 			MessageBody:  combinedBody,
 			StatusEvents: extraStatusEvents,
+			PendingSent:  last.PendingSent,
 		}, promptMessages)
 
 	// Remove ack reaction from first entry if configured
 	if last.Meta.AckReactionRemoveAfter && entries[0].AckEventID != "" {
-		oc.removeAckReactionByID(ctx, last.Portal, entries[0].AckEventID)
+		oc.removeAckReactionByID(statusCtx, last.Portal, entries[0].AckEventID)
 	}
 }
 

@@ -45,9 +45,9 @@ network:
     token: ""     # Beeper AI key (requires Beeper Plus)
 
   # Per-provider default models
-  providers:
-    beeper:
-      default_model: "anthropic/claude-opus-4.5"
+providers:
+  beeper:
+    default_model: "anthropic/claude-opus-4.5"
       # PDF processing engine for OpenRouter's file-parser plugin.
       # Options: pdf-text (free), mistral-ocr (OCR, paid, default), native
       default_pdf_engine: "mistral-ocr"
@@ -57,33 +57,41 @@ network:
       # Optional. Defaults to https://api.openai.com/v1
       base_url: "https://api.openai.com/v1"
       default_model: "openai/gpt-5.2"
-    openrouter:
-      # Optional. If set, overrides login-provided key.
-      api_key: ""
-      # Optional. Defaults to https://openrouter.ai/api/v1
-      base_url: "https://openrouter.ai/api/v1"
-      default_model: "anthropic/claude-opus-4.5"
-      # PDF processing engine for OpenRouter's file-parser plugin.
-      # Options: pdf-text (free), mistral-ocr (OCR, paid, default), native
-      default_pdf_engine: "mistral-ocr"
+  openrouter:
+    # Optional. If set, overrides login-provided key.
+    api_key: ""
+    # Optional. Defaults to https://openrouter.ai/api/v1
+    base_url: "https://openrouter.ai/api/v1"
+    default_model: "anthropic/claude-opus-4.5"
+    # PDF processing engine for OpenRouter's file-parser plugin.
+    # Options: pdf-text (free), mistral-ocr (OCR, paid, default), native
+    default_pdf_engine: "mistral-ocr"
 
-  # Global settings
-  default_system_prompt: |
-    You are a helpful, concise assistant.
+# Optional model catalog seeding (OpenClaw-style).
+# models:
+#   mode: "merge" # merge | replace
+#   providers:
+#     openai:
+#       models:
+#         - id: "gpt-5.2"
+#           name: "GPT-5.2"
+#           reasoning: true
+#           input: ["text", "image"]
+#           context_window: 128000
+#           max_tokens: 8192
+
+# Global settings
+default_system_prompt: |
+  You are a helpful, concise assistant.
     Ask clarifying questions when needed.
     Follow the user's intent and be accurate.
   model_cache_duration: 6h
 
-  # External tool providers (search + fetch). Proxy is recommended.
+  # External tool providers (search + fetch). Proxy is optional.
   tools:
     search:
-      provider: "proxy"
-      fallbacks: ["exa", "brave", "perplexity", "openrouter", "ddg"]
-      proxy:
-        base_url: "https://hungryserv.yourdomain"
-        api_key: ""
-        search_path: "/search"
-        timeout_seconds: 30
+      provider: "openrouter"
+      fallbacks: ["exa", "brave", "perplexity", "ddg"]
       exa:
         api_key: ""
         base_url: "https://api.exa.ai"
@@ -106,13 +114,8 @@ network:
         enabled: true
 
     fetch:
-      provider: "proxy"
-      fallbacks: ["exa", "direct"]
-      proxy:
-        base_url: "https://hungryserv.yourdomain"
-        api_key: ""
-        contents_path: "/contents"
-        timeout_seconds: 30
+      provider: "exa"
+      fallbacks: ["direct"]
       exa:
         api_key: ""
         base_url: "https://api.exa.ai"

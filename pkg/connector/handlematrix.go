@@ -16,6 +16,15 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
+func unsupportedMessageStatus(err error) error {
+	return bridgev2.WrapErrorInStatus(err).
+		WithStatus(event.MessageStatusFail).
+		WithErrorReason(event.MessageStatusUnsupported).
+		WithIsCertain(true).
+		WithSendNotice(true).
+		WithErrorAsMessage()
+}
+
 // HandleMatrixMessage processes incoming Matrix messages and dispatches them to the AI
 func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
 	if msg.Content == nil {
@@ -81,11 +90,11 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
 		// Continue to text handling below
 	default:
-		return nil, fmt.Errorf("%s messages are not supported", msgType)
+		return nil, unsupportedMessageStatus(fmt.Errorf("%s messages are not supported", msgType))
 	}
 	body := strings.TrimSpace(msg.Content.Body)
 	if body == "" {
-		return nil, fmt.Errorf("empty messages are not supported")
+		return nil, unsupportedMessageStatus(fmt.Errorf("empty messages are not supported"))
 	}
 
 	// Check if this message should be debounced
@@ -109,6 +118,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		// Let the client know the message is pending due to debounce.
 		if meta.DebounceMs >= 0 {
 			oc.sendPendingStatus(ctx, portal, msg.Event, "Combining messages...")
+			entry.PendingSent = true
 		}
 
 		// Return Pending=true since we're handling this asynchronously
@@ -358,7 +368,7 @@ func (oc *AIClient) handleMediaMessage(
 		mediaURL = msg.Content.File.URL
 	}
 	if mediaURL == "" {
-		return nil, fmt.Errorf("%s message has no URL", msgType)
+		return nil, unsupportedMessageStatus(fmt.Errorf("%s message has no URL", msgType))
 	}
 
 	// Get MIME type
@@ -390,7 +400,7 @@ func (oc *AIClient) handleMediaMessage(
 	}
 
 	if !ok {
-		return nil, fmt.Errorf("unsupported media type: %s", msgType)
+		return nil, unsupportedMessageStatus(fmt.Errorf("unsupported media type: %s", msgType))
 	}
 
 	if mimeType == "" {
