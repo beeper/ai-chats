@@ -407,6 +407,17 @@ func (oc *AIClient) emitUIToolOutputError(ctx context.Context, portal *bridgev2.
 	})
 }
 
+func collectToolOutputCitations(state *streamingState, toolName, output string) {
+	if state == nil {
+		return
+	}
+	citations := extractWebSearchCitationsFromToolOutput(toolName, output)
+	if len(citations) == 0 {
+		return
+	}
+	state.sourceCitations = mergeSourceCitations(state.sourceCitations, citations)
+}
+
 func (oc *AIClient) emitUIError(ctx context.Context, portal *bridgev2.Portal, state *streamingState, errText string) {
 	if errText == "" {
 		errText = "Unknown error"
@@ -1108,6 +1119,7 @@ func (oc *AIClient) streamingResponse(
 
 			// Store result for API continuation
 			tool.result = result
+			collectToolOutputCitations(state, toolName, result)
 			args := argsJSON
 			state.pendingFunctionOutputs = append(state.pendingFunctionOutputs, functionCallOutput{
 				callID:    streamEvent.ItemID,
@@ -1658,6 +1670,7 @@ func (oc *AIClient) streamingResponse(
 				}
 
 				tool.result = result
+				collectToolOutputCitations(state, toolName, result)
 				state.pendingFunctionOutputs = append(state.pendingFunctionOutputs, functionCallOutput{
 					callID:    streamEvent.ItemID,
 					name:      toolName,
@@ -2335,6 +2348,7 @@ func (oc *AIClient) streamChatCompletions(
 				})
 
 				if resultStatus == ResultStatusSuccess {
+					collectToolOutputCitations(state, toolName, result)
 					oc.emitUIToolOutputAvailable(ctx, portal, state, tool.callID, result, tool.toolType == ToolTypeProvider, false)
 				} else {
 					oc.emitUIToolOutputError(ctx, portal, state, tool.callID, result, tool.toolType == ToolTypeProvider)

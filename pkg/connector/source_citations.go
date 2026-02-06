@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"encoding/json"
 	"mime"
 	"net/url"
 	"path/filepath"
@@ -79,4 +80,79 @@ func extractDocumentCitation(annotation any) (sourceDocument, bool) {
 		Filename:  filename,
 		MediaType: mediaType,
 	}, true
+}
+
+func extractWebSearchCitationsFromToolOutput(toolName, output string) []sourceCitation {
+	if normalizeToolAlias(strings.TrimSpace(toolName)) != ToolNameWebSearch {
+		return nil
+	}
+	output = strings.TrimSpace(output)
+	if output == "" || !strings.HasPrefix(output, "{") {
+		return nil
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(output), &payload); err != nil {
+		return nil
+	}
+
+	rawResults, ok := payload["results"].([]any)
+	if !ok || len(rawResults) == 0 {
+		return nil
+	}
+
+	citations := make([]sourceCitation, 0, len(rawResults))
+	for _, rawResult := range rawResults {
+		entry, ok := rawResult.(map[string]any)
+		if !ok {
+			continue
+		}
+		urlStr, ok := readStringArg(entry, "url")
+		if !ok {
+			continue
+		}
+		parsed, err := url.Parse(urlStr)
+		if err != nil {
+			continue
+		}
+		switch parsed.Scheme {
+		case "http", "https":
+		default:
+			continue
+		}
+		title, _ := readStringArg(entry, "title")
+		citations = append(citations, sourceCitation{URL: urlStr, Title: title})
+	}
+	return citations
+}
+
+func mergeSourceCitations(existing, incoming []sourceCitation) []sourceCitation {
+	if len(incoming) == 0 {
+		return existing
+	}
+	seen := make(map[string]struct{}, len(existing)+len(incoming))
+	merged := make([]sourceCitation, 0, len(existing)+len(incoming))
+	for _, citation := range existing {
+		urlStr := strings.TrimSpace(citation.URL)
+		if urlStr == "" {
+			continue
+		}
+		if _, ok := seen[urlStr]; ok {
+			continue
+		}
+		seen[urlStr] = struct{}{}
+		merged = append(merged, citation)
+	}
+	for _, citation := range incoming {
+		urlStr := strings.TrimSpace(citation.URL)
+		if urlStr == "" {
+			continue
+		}
+		if _, ok := seen[urlStr]; ok {
+			continue
+		}
+		seen[urlStr] = struct{}{}
+		merged = append(merged, citation)
+	}
+	return merged
 }
