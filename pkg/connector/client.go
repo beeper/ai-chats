@@ -648,7 +648,7 @@ func (oc *AIClient) dispatchOrQueue(
 	}
 	if oc.acquireRoom(roomID) {
 		if trace {
-			oc.loggerForContext(ctx).Debug().Str("room_id", roomID.String()).Msg("Room acquired; dispatching immediately")
+			oc.loggerForContext(ctx).Debug().Stringer("room_id", roomID).Msg("Room acquired; dispatching immediately")
 		}
 		oc.stopQueueTyping(roomID)
 		// Save user message to database - we must do this ourselves since we return Pending=true.
@@ -738,12 +738,12 @@ func (oc *AIClient) dispatchOrQueue(
 		queueItem.backlogAfter = true
 	}
 	if trace {
-		oc.loggerForContext(ctx).Debug().Str("room_id", roomID.String()).Msg("Room busy; queued message")
+		oc.loggerForContext(ctx).Debug().Stringer("room_id", roomID).Msg("Room busy; queued message")
 	}
 	enqueued := oc.queuePendingMessage(roomID, queueItem, queueSettings)
 	if !enqueued {
 		if trace {
-			oc.loggerForContext(ctx).Warn().Str("room_id", roomID.String()).Msg("Room busy queue rejected message")
+			oc.loggerForContext(ctx).Warn().Stringer("room_id", roomID).Msg("Room busy queue rejected message")
 		}
 		oc.sendQueueRejectedStatus(ctx, portal, evt, queueItem.pending.StatusEvents, "Request was not accepted by queue. Please retry.")
 		return userMessage, false
@@ -784,7 +784,7 @@ func (oc *AIClient) dispatchOrQueueWithStatus(
 	}
 	if oc.acquireRoom(roomID) {
 		if trace {
-			oc.loggerForContext(ctx).Debug().Str("room_id", roomID.String()).Msg("Room acquired; dispatching immediately")
+			oc.loggerForContext(ctx).Debug().Stringer("room_id", roomID).Msg("Room acquired; dispatching immediately")
 		}
 		oc.stopQueueTyping(roomID)
 		runCtx := withStatusEvents(oc.backgroundContext(ctx), queueItem.pending.StatusEvents)
@@ -830,12 +830,12 @@ func (oc *AIClient) dispatchOrQueueWithStatus(
 		queueItem.backlogAfter = true
 	}
 	if trace {
-		oc.loggerForContext(ctx).Debug().Str("room_id", roomID.String()).Msg("Room busy; queued message")
+		oc.loggerForContext(ctx).Debug().Stringer("room_id", roomID).Msg("Room busy; queued message")
 	}
 	enqueued := oc.queuePendingMessage(roomID, queueItem, queueSettings)
 	if !enqueued {
 		if trace {
-			oc.loggerForContext(ctx).Warn().Str("room_id", roomID.String()).Msg("Room busy queue rejected message")
+			oc.loggerForContext(ctx).Warn().Stringer("room_id", roomID).Msg("Room busy queue rejected message")
 		}
 		oc.sendQueueRejectedStatus(ctx, portal, evt, queueItem.pending.StatusEvents, "Request was not accepted by queue. Please retry.")
 		return
@@ -868,7 +868,7 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 		traceFull := traceFull(traceMeta)
 		logCtx := zerolog.Nop()
 		if trace {
-			logCtx = oc.loggerForContext(ctx).With().Str("room_id", roomID.String()).Logger()
+			logCtx = oc.loggerForContext(ctx).With().Stringer("room_id", roomID).Logger()
 			logCtx.Debug().
 				Str("queue_mode", string(snapshot.mode)).
 				Int("queued_items", len(snapshot.items)).
