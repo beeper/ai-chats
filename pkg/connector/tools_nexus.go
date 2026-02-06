@@ -48,13 +48,6 @@ func makeNexusExecutor(route string) toolExecutor {
 	}
 }
 
-func (oc *AIClient) isNexusConfigured() bool {
-	if oc == nil {
-		return false
-	}
-	return len(oc.activeNexusMCPServers()) > 0
-}
-
 func nexusConfigured(cfg *NexusToolsConfig) bool {
 	if cfg == nil {
 		return false

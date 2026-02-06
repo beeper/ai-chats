@@ -542,7 +542,7 @@ func (oc *AIClient) resolveDesktopSessionByLabelWithOptions(ctx context.Context,
 			}
 			suggestions = append(suggestions, describeDesktopChatForLabel(chat, accounts[strings.TrimSpace(chat.AccountID)]))
 		}
-		return "", "", fmt.Errorf("%w: no exact session found for label '%s'. Top matches: %s. Use sessionKey from sessions_list for deterministic targeting.", errDesktopLabelNotFound, trimmed, strings.Join(suggestions, ", "))
+		return "", "", fmt.Errorf("%w: no exact session found for label '%s'. Top matches: %s. Use sessionKey from sessions_list for deterministic targeting", errDesktopLabelNotFound, trimmed, strings.Join(suggestions, ", "))
 	}
 	if strings.TrimSpace(opts.AccountID) != "" || strings.TrimSpace(opts.Network) != "" {
 		filterParts := []string{}
@@ -552,9 +552,9 @@ func (oc *AIClient) resolveDesktopSessionByLabelWithOptions(ctx context.Context,
 		if v := strings.TrimSpace(opts.Network); v != "" {
 			filterParts = append(filterParts, "network="+v)
 		}
-		return "", "", fmt.Errorf("%w: no session found for label '%s' with filters (%s). Use sessionKey from sessions_list.", errDesktopLabelNotFound, trimmed, strings.Join(filterParts, ", "))
+		return "", "", fmt.Errorf("%w: no session found for label '%s' with filters (%s). Use sessionKey from sessions_list", errDesktopLabelNotFound, trimmed, strings.Join(filterParts, ", "))
 	}
-	return "", "", fmt.Errorf("%w: no session found for label '%s'. Use sessionKey from sessions_list.", errDesktopLabelNotFound, trimmed)
+	return "", "", fmt.Errorf("%w: no session found for label '%s'. Use sessionKey from sessions_list", errDesktopLabelNotFound, trimmed)
 }
 
 func (oc *AIClient) resolveDesktopSessionByLabel(ctx context.Context, instance, label string) (string, string, error) {

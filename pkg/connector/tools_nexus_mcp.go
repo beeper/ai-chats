@@ -417,10 +417,6 @@ func (oc *AIClient) isNexusScopedMCPTool(name string) bool {
 	return normalizeMCPServerKind(server.Config.Kind) == mcpServerKindNexus
 }
 
-func (oc *AIClient) isNexusMCPToolName(name string) bool {
-	return oc.isMCPToolName(name)
-}
-
 func (oc *AIClient) shouldUseNexusMCPTool(ctx context.Context, toolName string) bool {
 	toolName = strings.TrimSpace(toolName)
 	if toolName == "" || !oc.isMCPConfigured() {
