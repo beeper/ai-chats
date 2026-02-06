@@ -70,13 +70,20 @@ type streamingState struct {
 	suppressSend      bool
 
 	// AI SDK UIMessage stream tracking
-	uiStarted     bool
-	uiFinished    bool
-	uiTextID      string
-	uiReasoningID string
-	uiStepOpen    bool
-	uiStepCount   int
-	uiToolStarted map[string]bool
+	uiStarted              bool
+	uiFinished             bool
+	uiTextID               string
+	uiReasoningID          string
+	uiStepOpen             bool
+	uiStepCount            int
+	uiToolStarted          map[string]bool
+	uiSourceURLSeen        map[string]bool
+	uiSourceDocumentSeen   map[string]bool
+	uiFileSeen             map[string]bool
+	uiToolCallIDByApproval map[string]string
+	uiToolNameByToolCallID map[string]string
+	uiToolTypeByToolCallID map[string]ToolType
+	uiToolOutputFinalized  map[string]bool
 
 	// Avoid logging repeated missing-ephemeral warnings.
 	streamEphemeralUnsupported bool
@@ -89,16 +96,23 @@ func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID 
 		agentID = meta.DefaultAgentID
 	}
 	state := &streamingState{
-		turnID:           NewTurnID(),
-		agentID:          agentID,
-		startedAtMs:      time.Now().UnixMilli(),
-		firstToken:       true,
-		sourceEventID:    sourceEventID,
-		senderID:         senderID,
-		roomID:           roomID,
-		statusSentIDs:    make(map[id.EventID]bool),
-		replyAccumulator: newStreamingDirectiveAccumulator(),
-		uiToolStarted:    make(map[string]bool),
+		turnID:                 NewTurnID(),
+		agentID:                agentID,
+		startedAtMs:            time.Now().UnixMilli(),
+		firstToken:             true,
+		sourceEventID:          sourceEventID,
+		senderID:               senderID,
+		roomID:                 roomID,
+		statusSentIDs:          make(map[id.EventID]bool),
+		replyAccumulator:       newStreamingDirectiveAccumulator(),
+		uiToolStarted:          make(map[string]bool),
+		uiSourceURLSeen:        make(map[string]bool),
+		uiSourceDocumentSeen:   make(map[string]bool),
+		uiFileSeen:             make(map[string]bool),
+		uiToolCallIDByApproval: make(map[string]string),
+		uiToolNameByToolCallID: make(map[string]string),
+		uiToolTypeByToolCallID: make(map[string]ToolType),
+		uiToolOutputFinalized:  make(map[string]bool),
 	}
 	if meta != nil && normalizeSendPolicyMode(meta.SendPolicy) == "deny" {
 		state.suppressSend = true
@@ -271,6 +285,325 @@ func shouldContinueChatToolLoop(finishReason string, toolCallCount int) bool {
 	}
 }
 
+func mergeMaps(base map[string]any, extra map[string]any) map[string]any {
+	out := make(map[string]any, len(base)+len(extra))
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range extra {
+		out[k] = v
+	}
+	return out
+}
+
+func toJSONObject(value any) map[string]any {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		return nil
+	}
+	return decoded
+}
+
+func parseJSONOrRaw(input string) any {
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" {
+		return map[string]any{}
+	}
+	var parsed any
+	if err := json.Unmarshal([]byte(trimmed), &parsed); err != nil {
+		return trimmed
+	}
+	return parsed
+}
+
+func stringifyJSONValue(value any) string {
+	if value == nil {
+		return ""
+	}
+	if s, ok := value.(string); ok {
+		return strings.TrimSpace(s)
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(encoded))
+}
+
+func responseOutputItemToMap(item responses.ResponseOutputItemUnion) map[string]any {
+	return toJSONObject(item)
+}
+
+type responseToolDescriptor struct {
+	itemID           string
+	callID           string
+	toolName         string
+	toolType         ToolType
+	input            any
+	providerExecuted bool
+	dynamic          bool
+	ok               bool
+}
+
+func deriveToolDescriptorForOutputItem(item responses.ResponseOutputItemUnion, state *streamingState) responseToolDescriptor {
+	desc := responseToolDescriptor{
+		itemID: item.ID,
+		callID: item.ID,
+	}
+	switch item.Type {
+	case "function_call":
+		desc.callID = strings.TrimSpace(item.CallID)
+		if desc.callID == "" {
+			desc.callID = item.ID
+		}
+		desc.toolName = strings.TrimSpace(item.Name)
+		desc.toolType = ToolTypeFunction
+		desc.providerExecuted = false
+		desc.dynamic = false
+		desc.input = parseJSONOrRaw(item.Arguments)
+		desc.ok = desc.toolName != ""
+	case "web_search_call":
+		desc.toolName = ToolNameWebSearch
+		desc.toolType = ToolTypeProvider
+		desc.providerExecuted = true
+		desc.input = map[string]any{}
+		desc.ok = true
+	case "file_search_call":
+		desc.toolName = "file_search"
+		desc.toolType = ToolTypeProvider
+		desc.providerExecuted = true
+		desc.input = map[string]any{}
+		desc.ok = true
+	case "image_generation_call":
+		desc.toolName = "image_generation"
+		desc.toolType = ToolTypeProvider
+		desc.providerExecuted = true
+		desc.input = map[string]any{}
+		desc.ok = true
+	case "code_interpreter_call":
+		desc.toolName = "code_interpreter"
+		desc.toolType = ToolTypeProvider
+		desc.providerExecuted = true
+		desc.input = map[string]any{
+			"containerId": item.ContainerID,
+			"code":        item.Code,
+		}
+		desc.ok = true
+	case "computer_call":
+		desc.toolName = "computer_use"
+		desc.toolType = ToolTypeProvider
+		desc.providerExecuted = true
+		desc.input = map[string]any{}
+		desc.ok = true
+	case "local_shell_call":
+		desc.callID = strings.TrimSpace(item.CallID)
+		if desc.callID == "" {
+			desc.callID = item.ID
+		}
+		desc.toolName = "local_shell"
+		desc.toolType = ToolTypeProvider
+		desc.providerExecuted = true
+		desc.dynamic = true
+		desc.input = responseOutputItemToMap(item)
+		desc.ok = true
+	case "shell_call":
+		desc.callID = strings.TrimSpace(item.CallID)
+		if desc.callID == "" {
+			desc.callID = item.ID
+		}
+		desc.toolName = "shell"
+		desc.toolType = ToolTypeProvider
+		desc.providerExecuted = true
+		desc.dynamic = true
+		desc.input = responseOutputItemToMap(item)
+		desc.ok = true
+	case "apply_patch_call":
+		desc.callID = strings.TrimSpace(item.CallID)
+		if desc.callID == "" {
+			desc.callID = item.ID
+		}
+		desc.toolName = "apply_patch"
+		desc.toolType = ToolTypeProvider
+		desc.providerExecuted = true
+		desc.dynamic = true
+		desc.input = responseOutputItemToMap(item)
+		desc.ok = true
+	case "custom_tool_call":
+		desc.callID = strings.TrimSpace(item.CallID)
+		if desc.callID == "" {
+			desc.callID = item.ID
+		}
+		desc.toolName = strings.TrimSpace(item.Name)
+		desc.toolType = ToolTypeFunction
+		desc.providerExecuted = false
+		desc.dynamic = true
+		desc.input = parseJSONOrRaw(item.Input)
+		desc.ok = desc.toolName != ""
+	case "mcp_call":
+		desc.toolName = "mcp." + strings.TrimSpace(item.Name)
+		desc.toolType = ToolTypeMCP
+		desc.providerExecuted = true
+		desc.dynamic = true
+		if approvalID := strings.TrimSpace(item.ApprovalRequestID); approvalID != "" && state != nil {
+			if mapped := strings.TrimSpace(state.uiToolCallIDByApproval[approvalID]); mapped != "" {
+				desc.callID = mapped
+			}
+		}
+		desc.input = parseJSONOrRaw(item.Arguments)
+		desc.ok = strings.TrimSpace(item.Name) != ""
+	case "mcp_list_tools":
+		desc.toolName = "mcp.list_tools"
+		desc.toolType = ToolTypeMCP
+		desc.providerExecuted = true
+		desc.dynamic = true
+		desc.input = map[string]any{}
+		desc.ok = true
+	case "mcp_approval_request":
+		desc.toolName = "mcp." + strings.TrimSpace(item.Name)
+		desc.toolType = ToolTypeMCP
+		desc.providerExecuted = true
+		desc.dynamic = true
+		desc.callID = NewCallID()
+		desc.input = parseJSONOrRaw(item.Arguments)
+		desc.ok = strings.TrimSpace(item.Name) != ""
+	default:
+		desc.ok = false
+	}
+	if strings.TrimSpace(desc.callID) == "" {
+		desc.callID = NewCallID()
+	}
+	if desc.itemID == "" {
+		desc.itemID = desc.callID
+	}
+	return desc
+}
+
+func outputItemLooksDenied(item responses.ResponseOutputItemUnion) bool {
+	errorText := strings.ToLower(strings.TrimSpace(item.Error))
+	if strings.Contains(errorText, "denied") || strings.Contains(errorText, "rejected") {
+		return true
+	}
+	status := strings.ToLower(strings.TrimSpace(item.Status))
+	return status == "denied" || status == "rejected"
+}
+
+func responseOutputItemResultPayload(item responses.ResponseOutputItemUnion) any {
+	switch item.Type {
+	case "web_search_call":
+		result := map[string]any{
+			"status": item.Status,
+		}
+		if action := toJSONObject(item.Action); len(action) > 0 {
+			result["action"] = action
+		}
+		return result
+	case "file_search_call":
+		return map[string]any{
+			"queries": item.Queries,
+			"results": item.Results,
+			"status":  item.Status,
+		}
+	case "code_interpreter_call":
+		return map[string]any{
+			"outputs":     item.Outputs,
+			"status":      item.Status,
+			"containerId": item.ContainerID,
+		}
+	case "image_generation_call":
+		return map[string]any{
+			"status": item.Status,
+			"result": item.Result,
+		}
+	case "mcp_call":
+		result := map[string]any{
+			"type":        "call",
+			"serverLabel": item.ServerLabel,
+			"name":        item.Name,
+			"arguments":   item.Arguments,
+			"status":      item.Status,
+		}
+		if output := strings.TrimSpace(item.Output.OfString); output != "" {
+			result["output"] = parseJSONOrRaw(output)
+		}
+		if strings.TrimSpace(item.Error) != "" {
+			result["error"] = item.Error
+		}
+		return result
+	case "mcp_list_tools":
+		result := map[string]any{
+			"serverLabel": item.ServerLabel,
+			"tools":       item.Tools,
+		}
+		if strings.TrimSpace(item.Error) != "" {
+			result["error"] = item.Error
+		}
+		return result
+	case "shell_call_output":
+		if output := item.Output.OfResponseFunctionShellToolCallOutputOutputArray; len(output) > 0 {
+			return map[string]any{"output": output}
+		}
+		if output := strings.TrimSpace(item.Output.OfString); output != "" {
+			return parseJSONOrRaw(output)
+		}
+		return responseOutputItemToMap(item)
+	default:
+		if mapped := responseOutputItemToMap(item); len(mapped) > 0 {
+			return mapped
+		}
+		return map[string]any{"status": item.Status}
+	}
+}
+
+func codeInterpreterFileParts(item responses.ResponseOutputItemUnion) []generatedFilePart {
+	if item.Type != "code_interpreter_call" || len(item.Outputs) == 0 {
+		return nil
+	}
+	files := make([]generatedFilePart, 0, len(item.Outputs))
+	for _, output := range item.Outputs {
+		image := output.AsImage()
+		if strings.TrimSpace(image.URL) == "" {
+			continue
+		}
+		files = append(files, generatedFilePart{
+			url:       strings.TrimSpace(image.URL),
+			mediaType: "image/png",
+		})
+	}
+	return files
+}
+
+func responseMetadataDeltaFromResponse(resp responses.Response) map[string]any {
+	metadata := map[string]any{}
+	if strings.TrimSpace(resp.ID) != "" {
+		metadata["response_id"] = resp.ID
+	}
+	if strings.TrimSpace(string(resp.Status)) != "" {
+		metadata["response_status"] = string(resp.Status)
+	}
+	if strings.TrimSpace(string(resp.Model)) != "" {
+		metadata["model"] = string(resp.Model)
+	}
+	return metadata
+}
+
+func (oc *AIClient) emitUIRuntimeMetadata(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	meta *PortalMetadata,
+	extra map[string]any,
+) {
+	base := oc.buildUIMessageMetadata(state, meta, false)
+	if len(extra) > 0 {
+		base = mergeMaps(base, extra)
+	}
+	oc.emitUIMessageMetadata(ctx, portal, state, base)
+}
+
 func (oc *AIClient) emitUIStart(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata) {
 	if state.uiStarted {
 		return
@@ -281,6 +614,26 @@ func (oc *AIClient) emitUIStart(ctx context.Context, portal *bridgev2.Portal, st
 		"messageId":       state.turnID,
 		"messageMetadata": oc.buildUIMessageMetadata(state, meta, false),
 	})
+}
+
+func (oc *AIClient) emitUIMessageMetadata(ctx context.Context, portal *bridgev2.Portal, state *streamingState, metadata map[string]any) {
+	if len(metadata) == 0 {
+		return
+	}
+	oc.emitStreamEvent(ctx, portal, state, map[string]any{
+		"type":            "message-metadata",
+		"messageMetadata": metadata,
+	})
+}
+
+func (oc *AIClient) emitUIAbort(ctx context.Context, portal *bridgev2.Portal, state *streamingState, reason string) {
+	part := map[string]any{
+		"type": "abort",
+	}
+	if strings.TrimSpace(reason) != "" {
+		part["reason"] = reason
+	}
+	oc.emitStreamEvent(ctx, portal, state, part)
 }
 
 func (oc *AIClient) emitUIStepStart(ctx context.Context, portal *bridgev2.Portal, state *streamingState) {
@@ -344,19 +697,52 @@ func (oc *AIClient) emitUIReasoningDelta(ctx context.Context, portal *bridgev2.P
 	})
 }
 
-func (oc *AIClient) emitUIToolInputDelta(ctx context.Context, portal *bridgev2.Portal, state *streamingState, toolCallID, toolName, delta string, providerExecuted bool) {
+func (oc *AIClient) ensureUIToolInputStart(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	toolCallID string,
+	toolName string,
+	providerExecuted bool,
+	dynamic bool,
+	title string,
+	providerMetadata map[string]any,
+) {
 	if toolCallID == "" {
 		return
 	}
 	if !state.uiToolStarted[toolCallID] {
 		state.uiToolStarted[toolCallID] = true
-		oc.emitStreamEvent(ctx, portal, state, map[string]any{
+		if strings.TrimSpace(toolName) != "" {
+			state.uiToolNameByToolCallID[toolCallID] = toolName
+		}
+		part := map[string]any{
 			"type":             "tool-input-start",
 			"toolCallId":       toolCallID,
 			"toolName":         toolName,
 			"providerExecuted": providerExecuted,
-		})
+		}
+		if dynamic {
+			part["dynamic"] = true
+		}
+		if strings.TrimSpace(title) != "" {
+			part["title"] = title
+		}
+		if len(providerMetadata) > 0 {
+			part["providerMetadata"] = providerMetadata
+		}
+		oc.emitStreamEvent(ctx, portal, state, part)
 	}
+	if strings.TrimSpace(toolName) != "" {
+		state.uiToolNameByToolCallID[toolCallID] = toolName
+	}
+}
+
+func (oc *AIClient) emitUIToolInputDelta(ctx context.Context, portal *bridgev2.Portal, state *streamingState, toolCallID, toolName, delta string, providerExecuted bool) {
+	if toolCallID == "" {
+		return
+	}
+	oc.ensureUIToolInputStart(ctx, portal, state, toolCallID, toolName, providerExecuted, false, "", nil)
 	if delta != "" {
 		oc.emitStreamEvent(ctx, portal, state, map[string]any{
 			"type":           "tool-input-delta",
@@ -370,6 +756,7 @@ func (oc *AIClient) emitUIToolInputAvailable(ctx context.Context, portal *bridge
 	if toolCallID == "" {
 		return
 	}
+	oc.ensureUIToolInputStart(ctx, portal, state, toolCallID, toolName, providerExecuted, false, "", nil)
 	oc.emitStreamEvent(ctx, portal, state, map[string]any{
 		"type":             "tool-input-available",
 		"toolCallId":       toolCallID,
@@ -379,9 +766,61 @@ func (oc *AIClient) emitUIToolInputAvailable(ctx context.Context, portal *bridge
 	})
 }
 
+func (oc *AIClient) emitUIToolInputError(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	toolCallID, toolName string,
+	input any,
+	errorText string,
+	providerExecuted bool,
+	dynamic bool,
+) {
+	if toolCallID == "" {
+		return
+	}
+	oc.ensureUIToolInputStart(ctx, portal, state, toolCallID, toolName, providerExecuted, dynamic, "", nil)
+	part := map[string]any{
+		"type":             "tool-input-error",
+		"toolCallId":       toolCallID,
+		"toolName":         toolName,
+		"input":            input,
+		"errorText":        errorText,
+		"providerExecuted": providerExecuted,
+	}
+	if dynamic {
+		part["dynamic"] = true
+	}
+	oc.emitStreamEvent(ctx, portal, state, part)
+}
+
+func (oc *AIClient) emitUIToolApprovalRequest(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	approvalID string,
+	toolCallID string,
+) {
+	if strings.TrimSpace(approvalID) == "" || strings.TrimSpace(toolCallID) == "" {
+		return
+	}
+	state.uiToolCallIDByApproval[approvalID] = toolCallID
+	oc.emitStreamEvent(ctx, portal, state, map[string]any{
+		"type":       "tool-approval-request",
+		"approvalId": approvalID,
+		"toolCallId": toolCallID,
+	})
+}
+
 func (oc *AIClient) emitUIToolOutputAvailable(ctx context.Context, portal *bridgev2.Portal, state *streamingState, toolCallID string, output any, providerExecuted bool, preliminary bool) {
 	if toolCallID == "" {
 		return
+	}
+	if state != nil && !preliminary {
+		if state.uiToolOutputFinalized[toolCallID] {
+			return
+		}
+		state.uiToolOutputFinalized[toolCallID] = true
 	}
 	part := map[string]any{
 		"type":             "tool-output-available",
@@ -395,15 +834,318 @@ func (oc *AIClient) emitUIToolOutputAvailable(ctx context.Context, portal *bridg
 	oc.emitStreamEvent(ctx, portal, state, part)
 }
 
+func (oc *AIClient) emitUIToolOutputDenied(ctx context.Context, portal *bridgev2.Portal, state *streamingState, toolCallID string) {
+	if strings.TrimSpace(toolCallID) == "" {
+		return
+	}
+	if state != nil {
+		if state.uiToolOutputFinalized[toolCallID] {
+			return
+		}
+		state.uiToolOutputFinalized[toolCallID] = true
+	}
+	oc.emitStreamEvent(ctx, portal, state, map[string]any{
+		"type":       "tool-output-denied",
+		"toolCallId": toolCallID,
+	})
+}
+
 func (oc *AIClient) emitUIToolOutputError(ctx context.Context, portal *bridgev2.Portal, state *streamingState, toolCallID, errorText string, providerExecuted bool) {
 	if toolCallID == "" {
 		return
+	}
+	if state != nil {
+		if state.uiToolOutputFinalized[toolCallID] {
+			return
+		}
+		state.uiToolOutputFinalized[toolCallID] = true
 	}
 	oc.emitStreamEvent(ctx, portal, state, map[string]any{
 		"type":             "tool-output-error",
 		"toolCallId":       toolCallID,
 		"errorText":        errorText,
 		"providerExecuted": providerExecuted,
+	})
+}
+
+func (oc *AIClient) emitUISourceURL(ctx context.Context, portal *bridgev2.Portal, state *streamingState, citation sourceCitation) {
+	if state == nil {
+		return
+	}
+	url := strings.TrimSpace(citation.URL)
+	if url == "" {
+		return
+	}
+	if state.uiSourceURLSeen[url] {
+		return
+	}
+	state.uiSourceURLSeen[url] = true
+	part := map[string]any{
+		"type":     "source-url",
+		"sourceId": fmt.Sprintf("source-url-%d", len(state.uiSourceURLSeen)),
+		"url":      url,
+	}
+	if title := strings.TrimSpace(citation.Title); title != "" {
+		part["title"] = title
+	}
+	providerMeta := map[string]any{}
+	if desc := strings.TrimSpace(citation.Description); desc != "" {
+		providerMeta["description"] = desc
+	}
+	if published := strings.TrimSpace(citation.Published); published != "" {
+		providerMeta["published"] = published
+	}
+	if site := strings.TrimSpace(citation.SiteName); site != "" {
+		providerMeta["site_name"] = site
+	}
+	if author := strings.TrimSpace(citation.Author); author != "" {
+		providerMeta["author"] = author
+	}
+	if image := strings.TrimSpace(citation.Image); image != "" {
+		providerMeta["image"] = image
+	}
+	if favicon := strings.TrimSpace(citation.Favicon); favicon != "" {
+		providerMeta["favicon"] = favicon
+	}
+	if len(providerMeta) > 0 {
+		part["providerMetadata"] = providerMeta
+	}
+	oc.emitStreamEvent(ctx, portal, state, part)
+}
+
+func (oc *AIClient) emitUISourceDocument(ctx context.Context, portal *bridgev2.Portal, state *streamingState, doc sourceDocument) {
+	if state == nil {
+		return
+	}
+	key := strings.TrimSpace(doc.ID)
+	if key == "" {
+		key = strings.TrimSpace(doc.Filename)
+	}
+	if key == "" {
+		key = strings.TrimSpace(doc.Title)
+	}
+	if key == "" {
+		return
+	}
+	if state.uiSourceDocumentSeen[key] {
+		return
+	}
+	state.uiSourceDocumentSeen[key] = true
+	part := map[string]any{
+		"type":      "source-document",
+		"sourceId":  fmt.Sprintf("source-doc-%d", len(state.uiSourceDocumentSeen)),
+		"mediaType": strings.TrimSpace(doc.MediaType),
+		"title":     strings.TrimSpace(doc.Title),
+	}
+	if part["mediaType"] == "" {
+		part["mediaType"] = "application/octet-stream"
+	}
+	if title, _ := part["title"].(string); title == "" {
+		part["title"] = key
+	}
+	if filename := strings.TrimSpace(doc.Filename); filename != "" {
+		part["filename"] = filename
+	}
+	oc.emitStreamEvent(ctx, portal, state, part)
+}
+
+func (oc *AIClient) emitUIFile(ctx context.Context, portal *bridgev2.Portal, state *streamingState, fileURL, mediaType string) {
+	if state == nil {
+		return
+	}
+	fileURL = strings.TrimSpace(fileURL)
+	if fileURL == "" {
+		return
+	}
+	if state.uiFileSeen[fileURL] {
+		return
+	}
+	state.uiFileSeen[fileURL] = true
+	if strings.TrimSpace(mediaType) == "" {
+		mediaType = "application/octet-stream"
+	}
+	oc.emitStreamEvent(ctx, portal, state, map[string]any{
+		"type":      "file",
+		"url":       fileURL,
+		"mediaType": mediaType,
+	})
+}
+
+func (oc *AIClient) upsertActiveToolFromDescriptor(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	activeTools map[string]*activeToolCall,
+	desc responseToolDescriptor,
+) *activeToolCall {
+	if activeTools == nil || strings.TrimSpace(desc.itemID) == "" || strings.TrimSpace(desc.callID) == "" {
+		return nil
+	}
+	tool, ok := activeTools[desc.itemID]
+	if !ok || tool == nil {
+		tool = &activeToolCall{
+			callID:      desc.callID,
+			toolName:    desc.toolName,
+			toolType:    desc.toolType,
+			startedAtMs: time.Now().UnixMilli(),
+			itemID:      desc.itemID,
+		}
+		activeTools[desc.itemID] = tool
+	}
+	if strings.TrimSpace(desc.callID) != "" {
+		tool.callID = desc.callID
+	}
+	if strings.TrimSpace(desc.toolName) != "" {
+		tool.toolName = desc.toolName
+	}
+	if desc.toolType != "" {
+		tool.toolType = desc.toolType
+	}
+	state.uiToolNameByToolCallID[tool.callID] = tool.toolName
+	state.uiToolTypeByToolCallID[tool.callID] = tool.toolType
+
+	if tool.eventID == "" && strings.TrimSpace(tool.toolName) != "" {
+		tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
+	}
+	oc.ensureUIToolInputStart(ctx, portal, state, tool.callID, tool.toolName, desc.providerExecuted, desc.dynamic, "", nil)
+	return tool
+}
+
+func (oc *AIClient) handleResponseOutputItemAdded(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	activeTools map[string]*activeToolCall,
+	item responses.ResponseOutputItemUnion,
+) {
+	desc := deriveToolDescriptorForOutputItem(item, state)
+	if !desc.ok {
+		return
+	}
+	// Keep legacy handlers for function/web/image to avoid duplicate tool events.
+	switch item.Type {
+	case "function_call", "web_search_call", "image_generation_call":
+		return
+	}
+	tool := oc.upsertActiveToolFromDescriptor(ctx, portal, state, activeTools, desc)
+	if tool == nil {
+		return
+	}
+	if state != nil && state.uiToolOutputFinalized[tool.callID] {
+		return
+	}
+
+	if item.Type == "mcp_approval_request" {
+		approvalID := strings.TrimSpace(item.ID)
+		if approvalID == "" {
+			approvalID = NewCallID()
+		}
+		state.uiToolCallIDByApproval[approvalID] = tool.callID
+		if tool.input.Len() == 0 {
+			tool.input.WriteString(stringifyJSONValue(desc.input))
+		}
+		oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, desc.input, true)
+		oc.emitUIToolApprovalRequest(ctx, portal, state, approvalID, tool.callID)
+		return
+	}
+
+	if desc.input != nil {
+		if tool.input.Len() == 0 {
+			tool.input.WriteString(stringifyJSONValue(desc.input))
+		}
+		oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, desc.input, desc.providerExecuted)
+	}
+}
+
+func (oc *AIClient) handleResponseOutputItemDone(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	activeTools map[string]*activeToolCall,
+	item responses.ResponseOutputItemUnion,
+) {
+	desc := deriveToolDescriptorForOutputItem(item, state)
+	if !desc.ok {
+		return
+	}
+	// Keep legacy handlers for function/web/image to avoid duplicate tool events.
+	switch item.Type {
+	case "function_call", "web_search_call", "image_generation_call":
+		return
+	}
+	tool := oc.upsertActiveToolFromDescriptor(ctx, portal, state, activeTools, desc)
+	if tool == nil {
+		return
+	}
+
+	if item.Type == "mcp_approval_request" {
+		approvalID := strings.TrimSpace(item.ID)
+		if approvalID == "" {
+			approvalID = NewCallID()
+		}
+		state.uiToolCallIDByApproval[approvalID] = tool.callID
+		if tool.input.Len() == 0 {
+			tool.input.WriteString(stringifyJSONValue(desc.input))
+		}
+		oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, desc.input, true)
+		oc.emitUIToolApprovalRequest(ctx, portal, state, approvalID, tool.callID)
+		return
+	}
+
+	if desc.input != nil {
+		if tool.input.Len() == 0 {
+			tool.input.WriteString(stringifyJSONValue(desc.input))
+		}
+		oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, desc.input, desc.providerExecuted)
+	}
+
+	if files := codeInterpreterFileParts(item); len(files) > 0 {
+		for _, file := range files {
+			recordGeneratedFile(state, file.url, file.mediaType)
+			oc.emitUIFile(ctx, portal, state, file.url, file.mediaType)
+		}
+	}
+
+	result := responseOutputItemResultPayload(item)
+	resultStatus := ResultStatusSuccess
+	statusText := strings.ToLower(strings.TrimSpace(item.Status))
+	errorText := strings.TrimSpace(item.Error)
+	switch {
+	case outputItemLooksDenied(item):
+		oc.emitUIToolOutputDenied(ctx, portal, state, tool.callID)
+		resultStatus = ResultStatusError
+	case statusText == "failed" || statusText == "incomplete" || errorText != "":
+		if errorText == "" {
+			errorText = fmt.Sprintf("%s failed", tool.toolName)
+		}
+		oc.emitUIToolOutputError(ctx, portal, state, tool.callID, errorText, true)
+		resultStatus = ResultStatusError
+	default:
+		oc.emitUIToolOutputAvailable(ctx, portal, state, tool.callID, result, true, false)
+	}
+
+	resultJSON, _ := json.Marshal(result)
+	resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, string(resultJSON), resultStatus)
+	outputMap := map[string]any{}
+	if converted := toJSONObject(result); len(converted) > 0 {
+		outputMap = converted
+	} else if result != nil {
+		outputMap = map[string]any{"result": result}
+	}
+
+	state.toolCalls = append(state.toolCalls, ToolCallMetadata{
+		CallID:        tool.callID,
+		ToolName:      tool.toolName,
+		ToolType:      string(tool.toolType),
+		Input:         parseToolInputPayload(tool.input.String()),
+		Output:        outputMap,
+		Status:        string(ToolStatusCompleted),
+		ResultStatus:  string(resultStatus),
+		ErrorMessage:  errorText,
+		StartedAtMs:   tool.startedAtMs,
+		CompletedAtMs: time.Now().UnixMilli(),
+		CallEventID:   string(tool.eventID),
+		ResultEventID: string(resultEventID),
 	})
 }
 
@@ -471,18 +1213,20 @@ func (oc *AIClient) saveAssistantMessage(
 		MXID:      state.initialEventID,
 		Timestamp: time.Now(),
 		Metadata: &MessageMetadata{
-			Role:           "assistant",
-			Body:           state.accumulated.String(),
-			CompletionID:   state.responseID,
-			FinishReason:   state.finishReason,
-			Model:          modelID,
-			TurnID:         state.turnID,
-			AgentID:        state.agentID,
-			ToolCalls:      state.toolCalls,
-			StartedAtMs:    state.startedAtMs,
-			FirstTokenAtMs: state.firstTokenAtMs,
-			CompletedAtMs:  state.completedAtMs,
-			HasToolCalls:   len(state.toolCalls) > 0,
+			Role:               "assistant",
+			Body:               state.accumulated.String(),
+			CompletionID:       state.responseID,
+			FinishReason:       state.finishReason,
+			Model:              modelID,
+			TurnID:             state.turnID,
+			AgentID:            state.agentID,
+			ToolCalls:          state.toolCalls,
+			StartedAtMs:        state.startedAtMs,
+			FirstTokenAtMs:     state.firstTokenAtMs,
+			CompletedAtMs:      state.completedAtMs,
+			HasToolCalls:       len(state.toolCalls) > 0,
+			CanonicalSchema:    "ai-sdk-ui-message-v1",
+			CanonicalUIMessage: oc.buildCanonicalUIMessage(state, meta),
 			// Reasoning fields (only populated by Responses API)
 			ThinkingContent:    state.reasoning.String(),
 			ThinkingTokenCount: len(strings.Fields(state.reasoning.String())),
@@ -505,6 +1249,108 @@ func (oc *AIClient) saveAssistantMessage(
 			log.Warn().Err(err).Msg("Failed to save portal after storing response ID")
 		}
 	}
+}
+
+func (oc *AIClient) buildCanonicalUIMessage(state *streamingState, meta *PortalMetadata) map[string]any {
+	if state == nil {
+		return nil
+	}
+
+	parts := make([]map[string]any, 0, 2+len(state.toolCalls))
+	reasoningText := strings.TrimSpace(state.reasoning.String())
+	if reasoningText != "" {
+		parts = append(parts, map[string]any{
+			"type":  "reasoning",
+			"text":  reasoningText,
+			"state": "done",
+		})
+	}
+	text := state.accumulated.String()
+	if text != "" {
+		parts = append(parts, map[string]any{
+			"type":  "text",
+			"text":  text,
+			"state": "done",
+		})
+	}
+	for _, tc := range state.toolCalls {
+		toolPart := map[string]any{
+			"type":       "dynamic-tool",
+			"toolName":   tc.ToolName,
+			"toolCallId": tc.CallID,
+			"input":      tc.Input,
+		}
+		if tc.ToolType == string(ToolTypeProvider) {
+			toolPart["providerExecuted"] = true
+		}
+		if tc.ResultStatus == string(ResultStatusSuccess) {
+			toolPart["state"] = "output-available"
+			toolPart["output"] = tc.Output
+		} else {
+			toolPart["state"] = "output-error"
+			if tc.ErrorMessage != "" {
+				toolPart["errorText"] = tc.ErrorMessage
+			} else if result, ok := tc.Output["result"].(string); ok && result != "" {
+				toolPart["errorText"] = result
+			}
+		}
+		parts = append(parts, toolPart)
+	}
+	if sourceParts := buildSourceParts(state.sourceCitations, state.sourceDocuments, nil); len(sourceParts) > 0 {
+		parts = append(parts, sourceParts...)
+	}
+	if fileParts := generatedFilesToParts(state.generatedFiles); len(fileParts) > 0 {
+		parts = append(parts, fileParts...)
+	}
+
+	messageID := state.turnID
+	if strings.TrimSpace(messageID) == "" && state.initialEventID != "" {
+		messageID = state.initialEventID.String()
+	}
+
+	metadata := map[string]any{}
+	if state.turnID != "" {
+		metadata["turn_id"] = state.turnID
+	}
+	if state.agentID != "" {
+		metadata["agent_id"] = state.agentID
+	}
+	if model := oc.effectiveModel(meta); model != "" {
+		metadata["model"] = model
+	}
+	if state.finishReason != "" {
+		metadata["finish_reason"] = mapFinishReason(state.finishReason)
+	}
+	if state.promptTokens > 0 || state.completionTokens > 0 || state.reasoningTokens > 0 {
+		metadata["usage"] = map[string]any{
+			"prompt_tokens":     state.promptTokens,
+			"completion_tokens": state.completionTokens,
+			"reasoning_tokens":  state.reasoningTokens,
+		}
+	}
+	timing := map[string]any{}
+	if state.startedAtMs > 0 {
+		timing["started_at"] = state.startedAtMs
+	}
+	if state.firstTokenAtMs > 0 {
+		timing["first_token_at"] = state.firstTokenAtMs
+	}
+	if state.completedAtMs > 0 {
+		timing["completed_at"] = state.completedAtMs
+	}
+	if len(timing) > 0 {
+		metadata["timing"] = timing
+	}
+
+	uiMessage := map[string]any{
+		"id":    messageID,
+		"role":  "assistant",
+		"parts": parts,
+	}
+	if len(metadata) > 0 {
+		uiMessage["metadata"] = metadata
+	}
+	return uiMessage
 }
 
 // buildResponsesAPIParams creates common Responses API parameters for both streaming and non-streaming paths
@@ -559,9 +1405,7 @@ func (oc *AIClient) buildResponsesAPIParams(ctx context.Context, portal *bridgev
 
 	// Add builtin function tools if model supports tool calling
 	if meta.Capabilities.SupportsToolCalling {
-		enabledTools := GetEnabledBuiltinTools(func(name string) bool {
-			return oc.isToolEnabled(meta, name)
-		})
+		enabledTools := oc.enabledBuiltinToolsForModel(ctx, meta)
 		if len(enabledTools) > 0 {
 			strictMode := resolveToolStrictMode(oc.isOpenRouterProvider())
 			params.Tools = append(params.Tools, ToOpenAITools(enabledTools, strictMode, &oc.log)...)
@@ -868,6 +1712,142 @@ func (oc *AIClient) streamingResponse(
 		}
 
 		switch streamEvent.Type {
+		case "response.created", "response.queued", "response.in_progress":
+			if strings.TrimSpace(streamEvent.Response.ID) != "" {
+				state.responseID = streamEvent.Response.ID
+			}
+			oc.emitUIRuntimeMetadata(ctx, portal, state, meta, responseMetadataDeltaFromResponse(streamEvent.Response))
+
+		case "response.failed":
+			state.finishReason = "error"
+			if strings.TrimSpace(streamEvent.Response.ID) != "" {
+				state.responseID = streamEvent.Response.ID
+			}
+			oc.emitUIRuntimeMetadata(ctx, portal, state, meta, responseMetadataDeltaFromResponse(streamEvent.Response))
+			if msg := strings.TrimSpace(streamEvent.Response.Error.Message); msg != "" {
+				oc.emitUIError(ctx, portal, state, msg)
+			}
+
+		case "response.incomplete":
+			state.finishReason = strings.TrimSpace(string(streamEvent.Response.IncompleteDetails.Reason))
+			if strings.TrimSpace(state.finishReason) == "" {
+				state.finishReason = "other"
+			}
+			if strings.TrimSpace(streamEvent.Response.ID) != "" {
+				state.responseID = streamEvent.Response.ID
+			}
+			oc.emitUIRuntimeMetadata(ctx, portal, state, meta, responseMetadataDeltaFromResponse(streamEvent.Response))
+
+		case "response.output_item.added":
+			oc.handleResponseOutputItemAdded(ctx, portal, state, activeTools, streamEvent.Item)
+
+		case "response.output_item.done":
+			oc.handleResponseOutputItemDone(ctx, portal, state, activeTools, streamEvent.Item)
+
+		case "response.custom_tool_call_input.delta":
+			tool, exists := activeTools[streamEvent.ItemID]
+			if !exists {
+				itemDesc := deriveToolDescriptorForOutputItem(streamEvent.Item, state)
+				if itemDesc.ok {
+					tool = oc.upsertActiveToolFromDescriptor(ctx, portal, state, activeTools, itemDesc)
+				}
+			}
+			if tool != nil {
+				tool.input.WriteString(streamEvent.Delta)
+				oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, streamEvent.Delta, tool.toolType == ToolTypeProvider)
+			}
+
+		case "response.custom_tool_call_input.done":
+			tool, exists := activeTools[streamEvent.ItemID]
+			if !exists {
+				itemDesc := deriveToolDescriptorForOutputItem(streamEvent.Item, state)
+				if itemDesc.ok {
+					tool = oc.upsertActiveToolFromDescriptor(ctx, portal, state, activeTools, itemDesc)
+				}
+			}
+			if tool != nil {
+				if tool.input.Len() == 0 && strings.TrimSpace(streamEvent.Input) != "" {
+					tool.input.WriteString(streamEvent.Input)
+				}
+				oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, parseJSONOrRaw(tool.input.String()), tool.toolType == ToolTypeProvider)
+			}
+
+		case "response.code_interpreter_call_code.delta":
+			tool, exists := activeTools[streamEvent.ItemID]
+			if !exists {
+				itemDesc := deriveToolDescriptorForOutputItem(streamEvent.Item, state)
+				if itemDesc.ok {
+					tool = oc.upsertActiveToolFromDescriptor(ctx, portal, state, activeTools, itemDesc)
+				}
+			}
+			if tool != nil {
+				tool.input.WriteString(streamEvent.Delta)
+				oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, streamEvent.Delta, true)
+			}
+
+		case "response.code_interpreter_call_code.done":
+			tool, exists := activeTools[streamEvent.ItemID]
+			if !exists {
+				itemDesc := deriveToolDescriptorForOutputItem(streamEvent.Item, state)
+				if itemDesc.ok {
+					tool = oc.upsertActiveToolFromDescriptor(ctx, portal, state, activeTools, itemDesc)
+				}
+			}
+			if tool != nil {
+				if tool.input.Len() == 0 && strings.TrimSpace(streamEvent.Code) != "" {
+					tool.input.WriteString(streamEvent.Code)
+				}
+				oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, parseJSONOrRaw(tool.input.String()), true)
+			}
+
+		case "response.mcp_call_arguments.delta":
+			tool, exists := activeTools[streamEvent.ItemID]
+			if !exists {
+				itemDesc := deriveToolDescriptorForOutputItem(streamEvent.Item, state)
+				if itemDesc.ok {
+					tool = oc.upsertActiveToolFromDescriptor(ctx, portal, state, activeTools, itemDesc)
+				}
+			}
+			if tool != nil {
+				tool.input.WriteString(streamEvent.Delta)
+				oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, streamEvent.Delta, true)
+			}
+
+		case "response.mcp_call_arguments.done":
+			tool, exists := activeTools[streamEvent.ItemID]
+			if !exists {
+				itemDesc := deriveToolDescriptorForOutputItem(streamEvent.Item, state)
+				if itemDesc.ok {
+					tool = oc.upsertActiveToolFromDescriptor(ctx, portal, state, activeTools, itemDesc)
+				}
+			}
+			if tool != nil {
+				if tool.input.Len() == 0 && strings.TrimSpace(streamEvent.Arguments) != "" {
+					tool.input.WriteString(streamEvent.Arguments)
+				}
+				oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, parseJSONOrRaw(tool.input.String()), true)
+			}
+
+		case "response.mcp_call.failed":
+			tool, exists := activeTools[streamEvent.ItemID]
+			if !exists {
+				itemDesc := deriveToolDescriptorForOutputItem(streamEvent.Item, state)
+				if itemDesc.ok {
+					tool = oc.upsertActiveToolFromDescriptor(ctx, portal, state, activeTools, itemDesc)
+				}
+			}
+			if tool != nil {
+				errorText := strings.TrimSpace(streamEvent.Item.Error)
+				if errorText == "" {
+					errorText = "MCP tool call failed"
+				}
+				if outputItemLooksDenied(streamEvent.Item) {
+					oc.emitUIToolOutputDenied(ctx, portal, state, tool.callID)
+				} else {
+					oc.emitUIToolOutputError(ctx, portal, state, tool.callID, errorText, true)
+				}
+			}
+
 		case "response.output_text.delta":
 			touchTyping()
 			state.accumulated.WriteString(streamEvent.Delta)
@@ -933,12 +1913,32 @@ func (oc *AIClient) streamingResponse(
 
 			oc.emitUIReasoningDelta(ctx, portal, state, streamEvent.Delta)
 
+		case "response.reasoning_summary_text.delta":
+			if strings.TrimSpace(streamEvent.Delta) != "" {
+				state.reasoning.WriteString(streamEvent.Delta)
+				oc.emitUIReasoningDelta(ctx, portal, state, streamEvent.Delta)
+			}
+
+		case "response.reasoning_text.done", "response.reasoning_summary_text.done":
+			if strings.TrimSpace(streamEvent.Text) != "" {
+				state.reasoning.WriteString(streamEvent.Text)
+				oc.emitUIReasoningDelta(ctx, portal, state, streamEvent.Text)
+			}
+
 		case "response.refusal.delta":
 			touchTyping()
 			if typingSignals != nil {
 				typingSignals.SignalTextDelta(streamEvent.Delta)
 			}
 			oc.emitUITextDelta(ctx, portal, state, streamEvent.Delta)
+
+		case "response.refusal.done":
+			if strings.TrimSpace(streamEvent.Refusal) != "" {
+				oc.emitUITextDelta(ctx, portal, state, streamEvent.Refusal)
+			}
+
+		case "response.output_text.done":
+			// text-end is emitted from emitUIFinish to keep one contiguous part.
 
 		case "response.function_call_arguments.delta":
 			touchTyping()
@@ -963,6 +1963,9 @@ func (oc *AIClient) streamingResponse(
 
 				if state.initialEventID == "" && !state.suppressSend {
 					oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
+				}
+				if strings.TrimSpace(tool.toolName) != "" {
+					tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
 				}
 			}
 
@@ -1002,6 +2005,9 @@ func (oc *AIClient) streamingResponse(
 				toolName = strings.TrimSpace(streamEvent.Name)
 			}
 			tool.toolName = toolName
+			if tool.eventID == "" {
+				tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
+			}
 			argsJSON := strings.TrimSpace(tool.input.String())
 			if argsJSON == "" {
 				argsJSON = strings.TrimSpace(streamEvent.Arguments)
@@ -1011,6 +2017,7 @@ func (oc *AIClient) streamingResponse(
 			var inputMap any
 			if err := json.Unmarshal([]byte(argsJSON), &inputMap); err != nil {
 				inputMap = argsJSON
+				oc.emitUIToolInputError(ctx, portal, state, tool.callID, toolName, argsJSON, "Invalid JSON tool input", tool.toolType == ToolTypeProvider, false)
 			}
 			oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, toolName, inputMap, tool.toolType == ToolTypeProvider)
 
@@ -1055,6 +2062,7 @@ func (oc *AIClient) streamingResponse(
 						resultStatus = ResultStatusError
 					} else {
 						recordGeneratedFile(state, mediaURL, mimeType)
+						oc.emitUIFile(ctx, portal, state, mediaURL, mimeType)
 						displayResult = "Audio message sent successfully"
 					}
 				}
@@ -1083,6 +2091,7 @@ func (oc *AIClient) streamingResponse(
 							continue
 						}
 						recordGeneratedFile(state, mediaURL, mimeType)
+						oc.emitUIFile(ctx, portal, state, mediaURL, mimeType)
 						success++
 					}
 					if success == len(images) && success > 0 {
@@ -1111,6 +2120,7 @@ func (oc *AIClient) streamingResponse(
 						resultStatus = ResultStatusError
 					} else {
 						recordGeneratedFile(state, mediaURL, mimeType)
+						oc.emitUIFile(ctx, portal, state, mediaURL, mimeType)
 						displayResult = "Image generated and sent successfully"
 					}
 				}
@@ -1137,6 +2147,8 @@ func (oc *AIClient) streamingResponse(
 			}
 
 			// Track tool call in metadata
+			completedAt := time.Now().UnixMilli()
+			resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, result, resultStatus)
 			state.toolCalls = append(state.toolCalls, ToolCallMetadata{
 				CallID:        tool.callID,
 				ToolName:      toolName,
@@ -1146,7 +2158,9 @@ func (oc *AIClient) streamingResponse(
 				Status:        string(ToolStatusCompleted),
 				ResultStatus:  string(resultStatus),
 				StartedAtMs:   tool.startedAtMs,
-				CompletedAtMs: time.Now().UnixMilli(),
+				CompletedAtMs: completedAt,
+				CallEventID:   string(tool.eventID),
+				ResultEventID: string(resultEventID),
 			})
 
 			if resultStatus == ResultStatusSuccess {
@@ -1154,6 +2168,137 @@ func (oc *AIClient) streamingResponse(
 			} else {
 				oc.emitUIToolOutputError(ctx, portal, state, tool.callID, result, tool.toolType == ToolTypeProvider)
 			}
+
+		case "response.file_search_call.searching", "response.file_search_call.in_progress":
+			callID := strings.TrimSpace(streamEvent.ItemID)
+			if callID == "" {
+				callID = NewCallID()
+			}
+			tool, exists := activeTools[streamEvent.ItemID]
+			if !exists {
+				tool = &activeToolCall{
+					callID:      callID,
+					toolName:    "file_search",
+					toolType:    ToolTypeProvider,
+					startedAtMs: time.Now().UnixMilli(),
+					itemID:      streamEvent.ItemID,
+				}
+				activeTools[streamEvent.ItemID] = tool
+				tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
+			}
+			oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, "", true)
+
+		case "response.file_search_call.completed":
+			tool, exists := activeTools[streamEvent.ItemID]
+			callID := strings.TrimSpace(streamEvent.ItemID)
+			if callID == "" {
+				callID = NewCallID()
+			}
+			if exists && tool != nil {
+				callID = tool.callID
+			}
+			oc.emitUIToolOutputAvailable(ctx, portal, state, callID, map[string]any{"status": "completed"}, true, false)
+
+		case "response.code_interpreter_call.in_progress", "response.code_interpreter_call.interpreting":
+			callID := strings.TrimSpace(streamEvent.ItemID)
+			if callID == "" {
+				callID = NewCallID()
+			}
+			tool, exists := activeTools[streamEvent.ItemID]
+			if !exists {
+				tool = &activeToolCall{
+					callID:      callID,
+					toolName:    "code_interpreter",
+					toolType:    ToolTypeProvider,
+					startedAtMs: time.Now().UnixMilli(),
+					itemID:      streamEvent.ItemID,
+				}
+				activeTools[streamEvent.ItemID] = tool
+				tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
+			}
+			oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, "", true)
+
+		case "response.code_interpreter_call.completed":
+			tool, exists := activeTools[streamEvent.ItemID]
+			callID := strings.TrimSpace(streamEvent.ItemID)
+			if callID == "" {
+				callID = NewCallID()
+			}
+			if exists && tool != nil {
+				callID = tool.callID
+			}
+			oc.emitUIToolOutputAvailable(ctx, portal, state, callID, map[string]any{"status": "completed"}, true, false)
+
+		case "response.mcp_list_tools.in_progress":
+			callID := strings.TrimSpace(streamEvent.ItemID)
+			if callID == "" {
+				callID = NewCallID()
+			}
+			tool, exists := activeTools[streamEvent.ItemID]
+			if !exists {
+				tool = &activeToolCall{
+					callID:      callID,
+					toolName:    "mcp.list_tools",
+					toolType:    ToolTypeMCP,
+					startedAtMs: time.Now().UnixMilli(),
+					itemID:      streamEvent.ItemID,
+				}
+				activeTools[streamEvent.ItemID] = tool
+				tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
+			}
+			oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, "", true)
+
+		case "response.mcp_list_tools.completed":
+			tool, exists := activeTools[streamEvent.ItemID]
+			callID := strings.TrimSpace(streamEvent.ItemID)
+			if callID == "" {
+				callID = NewCallID()
+			}
+			if exists && tool != nil {
+				callID = tool.callID
+			}
+			oc.emitUIToolOutputAvailable(ctx, portal, state, callID, map[string]any{"status": "completed"}, true, false)
+
+		case "response.mcp_list_tools.failed":
+			tool, exists := activeTools[streamEvent.ItemID]
+			callID := strings.TrimSpace(streamEvent.ItemID)
+			if callID == "" {
+				callID = NewCallID()
+			}
+			if exists && tool != nil {
+				callID = tool.callID
+			}
+			oc.emitUIToolOutputError(ctx, portal, state, callID, "MCP list tools failed", true)
+
+		case "response.mcp_call.in_progress":
+			callID := strings.TrimSpace(streamEvent.ItemID)
+			if callID == "" {
+				callID = NewCallID()
+			}
+			tool, exists := activeTools[streamEvent.ItemID]
+			if !exists {
+				tool = &activeToolCall{
+					callID:      callID,
+					toolName:    "mcp.call",
+					toolType:    ToolTypeMCP,
+					startedAtMs: time.Now().UnixMilli(),
+					itemID:      streamEvent.ItemID,
+				}
+				activeTools[streamEvent.ItemID] = tool
+				tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
+			}
+			oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, "", true)
+
+		case "response.mcp_call.completed":
+			tool, exists := activeTools[streamEvent.ItemID]
+			callID := strings.TrimSpace(streamEvent.ItemID)
+			if callID == "" {
+				callID = NewCallID()
+			}
+			if exists && tool != nil {
+				callID = tool.callID
+			}
+			oc.emitUIToolOutputAvailable(ctx, portal, state, callID, map[string]any{"status": "completed"}, true, false)
 
 		case "response.web_search_call.searching", "response.web_search_call.in_progress":
 			touchTyping()
@@ -1172,6 +2317,7 @@ func (oc *AIClient) streamingResponse(
 				startedAtMs: time.Now().UnixMilli(),
 				itemID:      streamEvent.ItemID,
 			}
+			tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
 			activeTools[streamEvent.ItemID] = tool
 
 			if state.initialEventID == "" && !state.suppressSend {
@@ -1192,14 +2338,20 @@ func (oc *AIClient) streamingResponse(
 			}
 			if exists {
 				// Track tool call
+				output := map[string]any{"status": "completed"}
+				resultJSON, _ := json.Marshal(output)
+				resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, string(resultJSON), ResultStatusSuccess)
 				state.toolCalls = append(state.toolCalls, ToolCallMetadata{
 					CallID:        callID,
 					ToolName:      "web_search",
 					ToolType:      string(tool.toolType),
+					Output:        output,
 					Status:        string(ToolStatusCompleted),
 					ResultStatus:  string(ResultStatusSuccess),
 					StartedAtMs:   tool.startedAtMs,
 					CompletedAtMs: time.Now().UnixMilli(),
+					CallEventID:   string(tool.eventID),
+					ResultEventID: string(resultEventID),
 				})
 			}
 			oc.emitUIToolOutputAvailable(ctx, portal, state, callID, map[string]any{"status": "completed"}, true, false)
@@ -1223,6 +2375,7 @@ func (oc *AIClient) streamingResponse(
 					startedAtMs: time.Now().UnixMilli(),
 					itemID:      streamEvent.ItemID,
 				}
+				tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
 				activeTools[streamEvent.ItemID] = tool
 
 				if state.initialEventID == "" && !state.suppressSend {
@@ -1249,14 +2402,20 @@ func (oc *AIClient) streamingResponse(
 			}
 			if exists {
 				// Track tool call
+				output := map[string]any{"status": "completed"}
+				resultJSON, _ := json.Marshal(output)
+				resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, string(resultJSON), ResultStatusSuccess)
 				state.toolCalls = append(state.toolCalls, ToolCallMetadata{
 					CallID:        callID,
 					ToolName:      "image_generation",
 					ToolType:      string(tool.toolType),
+					Output:        output,
 					Status:        string(ToolStatusCompleted),
 					ResultStatus:  string(ResultStatusSuccess),
 					StartedAtMs:   tool.startedAtMs,
 					CompletedAtMs: time.Now().UnixMilli(),
+					CallEventID:   string(tool.eventID),
+					ResultEventID: string(resultEventID),
 				})
 			}
 			log.Info().Str("item_id", streamEvent.ItemID).Msg("Image generation completed")
@@ -1275,10 +2434,12 @@ func (oc *AIClient) streamingResponse(
 
 		case "response.output_text.annotation.added":
 			if citation, ok := extractURLCitation(streamEvent.Annotation); ok {
-				state.sourceCitations = append(state.sourceCitations, citation)
+				state.sourceCitations = mergeSourceCitations(state.sourceCitations, []sourceCitation{citation})
+				oc.emitUISourceURL(ctx, portal, state, citation)
 			}
 			if document, ok := extractDocumentCitation(streamEvent.Annotation); ok {
 				state.sourceDocuments = append(state.sourceDocuments, document)
+				oc.emitUISourceDocument(ctx, portal, state, document)
 			}
 			oc.emitStreamEvent(ctx, portal, state, map[string]any{
 				"type":      "data-annotation",
@@ -1305,6 +2466,7 @@ func (oc *AIClient) streamingResponse(
 			if streamEvent.Response.ID != "" {
 				state.responseID = streamEvent.Response.ID
 			}
+			oc.emitUIMessageMetadata(ctx, portal, state, oc.buildUIMessageMetadata(state, meta, true))
 
 			// Extract any generated images from response output
 			for _, output := range streamEvent.Response.Output {
@@ -1349,6 +2511,15 @@ func (oc *AIClient) streamingResponse(
 	// Check for stream errors
 	if err := stream.Err(); err != nil {
 		logResponsesFailure(log, err, params, meta, messages, "stream_err")
+		if errors.Is(err, context.Canceled) {
+			state.finishReason = "cancelled"
+			oc.emitUIAbort(ctx, portal, state, "cancelled")
+			oc.emitUIFinish(ctx, portal, state, meta)
+			if state.initialEventID != "" {
+				return false, nil, &NonFallbackError{Err: err}
+			}
+			return false, nil, &PreDeltaError{Err: err}
+		}
 		cle := ParseContextLengthError(err)
 		if cle != nil {
 			return false, cle, nil
@@ -1384,7 +2555,7 @@ func (oc *AIClient) streamingResponse(
 			Msg("Continuing response with function call outputs")
 
 		// Build continuation request with function call outputs
-		continuationParams := oc.buildContinuationParams(state, meta)
+		continuationParams := oc.buildContinuationParams(ctx, state, meta)
 		pendingOutputs := append([]functionCallOutput(nil), state.pendingFunctionOutputs...)
 
 		// OpenRouter Responses API is stateless; persist tool calls in base input.
@@ -1426,6 +2597,142 @@ func (oc *AIClient) streamingResponse(
 			streamEvent := stream.Current()
 
 			switch streamEvent.Type {
+			case "response.created", "response.queued", "response.in_progress":
+				if strings.TrimSpace(streamEvent.Response.ID) != "" {
+					state.responseID = streamEvent.Response.ID
+				}
+				oc.emitUIRuntimeMetadata(ctx, portal, state, meta, responseMetadataDeltaFromResponse(streamEvent.Response))
+
+			case "response.failed":
+				state.finishReason = "error"
+				if strings.TrimSpace(streamEvent.Response.ID) != "" {
+					state.responseID = streamEvent.Response.ID
+				}
+				oc.emitUIRuntimeMetadata(ctx, portal, state, meta, responseMetadataDeltaFromResponse(streamEvent.Response))
+				if msg := strings.TrimSpace(streamEvent.Response.Error.Message); msg != "" {
+					oc.emitUIError(ctx, portal, state, msg)
+				}
+
+			case "response.incomplete":
+				state.finishReason = strings.TrimSpace(string(streamEvent.Response.IncompleteDetails.Reason))
+				if strings.TrimSpace(state.finishReason) == "" {
+					state.finishReason = "other"
+				}
+				if strings.TrimSpace(streamEvent.Response.ID) != "" {
+					state.responseID = streamEvent.Response.ID
+				}
+				oc.emitUIRuntimeMetadata(ctx, portal, state, meta, responseMetadataDeltaFromResponse(streamEvent.Response))
+
+			case "response.output_item.added":
+				oc.handleResponseOutputItemAdded(ctx, portal, state, activeTools, streamEvent.Item)
+
+			case "response.output_item.done":
+				oc.handleResponseOutputItemDone(ctx, portal, state, activeTools, streamEvent.Item)
+
+			case "response.custom_tool_call_input.delta":
+				tool, exists := activeTools[streamEvent.ItemID]
+				if !exists {
+					itemDesc := deriveToolDescriptorForOutputItem(streamEvent.Item, state)
+					if itemDesc.ok {
+						tool = oc.upsertActiveToolFromDescriptor(ctx, portal, state, activeTools, itemDesc)
+					}
+				}
+				if tool != nil {
+					tool.input.WriteString(streamEvent.Delta)
+					oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, streamEvent.Delta, tool.toolType == ToolTypeProvider)
+				}
+
+			case "response.custom_tool_call_input.done":
+				tool, exists := activeTools[streamEvent.ItemID]
+				if !exists {
+					itemDesc := deriveToolDescriptorForOutputItem(streamEvent.Item, state)
+					if itemDesc.ok {
+						tool = oc.upsertActiveToolFromDescriptor(ctx, portal, state, activeTools, itemDesc)
+					}
+				}
+				if tool != nil {
+					if tool.input.Len() == 0 && strings.TrimSpace(streamEvent.Input) != "" {
+						tool.input.WriteString(streamEvent.Input)
+					}
+					oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, parseJSONOrRaw(tool.input.String()), tool.toolType == ToolTypeProvider)
+				}
+
+			case "response.code_interpreter_call_code.delta":
+				tool, exists := activeTools[streamEvent.ItemID]
+				if !exists {
+					itemDesc := deriveToolDescriptorForOutputItem(streamEvent.Item, state)
+					if itemDesc.ok {
+						tool = oc.upsertActiveToolFromDescriptor(ctx, portal, state, activeTools, itemDesc)
+					}
+				}
+				if tool != nil {
+					tool.input.WriteString(streamEvent.Delta)
+					oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, streamEvent.Delta, true)
+				}
+
+			case "response.code_interpreter_call_code.done":
+				tool, exists := activeTools[streamEvent.ItemID]
+				if !exists {
+					itemDesc := deriveToolDescriptorForOutputItem(streamEvent.Item, state)
+					if itemDesc.ok {
+						tool = oc.upsertActiveToolFromDescriptor(ctx, portal, state, activeTools, itemDesc)
+					}
+				}
+				if tool != nil {
+					if tool.input.Len() == 0 && strings.TrimSpace(streamEvent.Code) != "" {
+						tool.input.WriteString(streamEvent.Code)
+					}
+					oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, parseJSONOrRaw(tool.input.String()), true)
+				}
+
+			case "response.mcp_call_arguments.delta":
+				tool, exists := activeTools[streamEvent.ItemID]
+				if !exists {
+					itemDesc := deriveToolDescriptorForOutputItem(streamEvent.Item, state)
+					if itemDesc.ok {
+						tool = oc.upsertActiveToolFromDescriptor(ctx, portal, state, activeTools, itemDesc)
+					}
+				}
+				if tool != nil {
+					tool.input.WriteString(streamEvent.Delta)
+					oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, streamEvent.Delta, true)
+				}
+
+			case "response.mcp_call_arguments.done":
+				tool, exists := activeTools[streamEvent.ItemID]
+				if !exists {
+					itemDesc := deriveToolDescriptorForOutputItem(streamEvent.Item, state)
+					if itemDesc.ok {
+						tool = oc.upsertActiveToolFromDescriptor(ctx, portal, state, activeTools, itemDesc)
+					}
+				}
+				if tool != nil {
+					if tool.input.Len() == 0 && strings.TrimSpace(streamEvent.Arguments) != "" {
+						tool.input.WriteString(streamEvent.Arguments)
+					}
+					oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, parseJSONOrRaw(tool.input.String()), true)
+				}
+
+			case "response.mcp_call.failed":
+				tool, exists := activeTools[streamEvent.ItemID]
+				if !exists {
+					itemDesc := deriveToolDescriptorForOutputItem(streamEvent.Item, state)
+					if itemDesc.ok {
+						tool = oc.upsertActiveToolFromDescriptor(ctx, portal, state, activeTools, itemDesc)
+					}
+				}
+				if tool != nil {
+					errorText := strings.TrimSpace(streamEvent.Item.Error)
+					if errorText == "" {
+						errorText = "MCP tool call failed"
+					}
+					if outputItemLooksDenied(streamEvent.Item) {
+						oc.emitUIToolOutputDenied(ctx, portal, state, tool.callID)
+					} else {
+						oc.emitUIToolOutputError(ctx, portal, state, tool.callID, errorText, true)
+					}
+				}
+
 			case "response.output_text.delta":
 				touchTyping()
 				state.accumulated.WriteString(streamEvent.Delta)
@@ -1485,6 +2792,18 @@ func (oc *AIClient) streamingResponse(
 				}
 				oc.emitUIReasoningDelta(ctx, portal, state, streamEvent.Delta)
 
+			case "response.reasoning_summary_text.delta":
+				if strings.TrimSpace(streamEvent.Delta) != "" {
+					state.reasoning.WriteString(streamEvent.Delta)
+					oc.emitUIReasoningDelta(ctx, portal, state, streamEvent.Delta)
+				}
+
+			case "response.reasoning_text.done", "response.reasoning_summary_text.done":
+				if strings.TrimSpace(streamEvent.Text) != "" {
+					state.reasoning.WriteString(streamEvent.Text)
+					oc.emitUIReasoningDelta(ctx, portal, state, streamEvent.Text)
+				}
+
 			case "response.refusal.delta":
 				touchTyping()
 				if typingSignals != nil {
@@ -1492,12 +2811,22 @@ func (oc *AIClient) streamingResponse(
 				}
 				oc.emitUITextDelta(ctx, portal, state, streamEvent.Delta)
 
+			case "response.refusal.done":
+				if strings.TrimSpace(streamEvent.Refusal) != "" {
+					oc.emitUITextDelta(ctx, portal, state, streamEvent.Refusal)
+				}
+
+			case "response.output_text.done":
+				// text-end is emitted from emitUIFinish to keep one contiguous part.
+
 			case "response.output_text.annotation.added":
 				if citation, ok := extractURLCitation(streamEvent.Annotation); ok {
-					state.sourceCitations = append(state.sourceCitations, citation)
+					state.sourceCitations = mergeSourceCitations(state.sourceCitations, []sourceCitation{citation})
+					oc.emitUISourceURL(ctx, portal, state, citation)
 				}
 				if document, ok := extractDocumentCitation(streamEvent.Annotation); ok {
 					state.sourceDocuments = append(state.sourceDocuments, document)
+					oc.emitUISourceDocument(ctx, portal, state, document)
 				}
 				oc.emitStreamEvent(ctx, portal, state, map[string]any{
 					"type":      "data-annotation",
@@ -1525,6 +2854,9 @@ func (oc *AIClient) streamingResponse(
 					activeTools[streamEvent.ItemID] = tool
 					if state.initialEventID == "" && !state.suppressSend {
 						oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
+					}
+					if strings.TrimSpace(tool.toolName) != "" {
+						tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
 					}
 				}
 				tool.input.WriteString(streamEvent.Delta)
@@ -1558,6 +2890,9 @@ func (oc *AIClient) streamingResponse(
 					toolName = strings.TrimSpace(streamEvent.Name)
 				}
 				tool.toolName = toolName
+				if tool.eventID == "" {
+					tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
+				}
 				argsJSON := strings.TrimSpace(tool.input.String())
 				if argsJSON == "" {
 					argsJSON = strings.TrimSpace(streamEvent.Arguments)
@@ -1566,6 +2901,7 @@ func (oc *AIClient) streamingResponse(
 				var inputMap any
 				if err := json.Unmarshal([]byte(argsJSON), &inputMap); err != nil {
 					inputMap = argsJSON
+					oc.emitUIToolInputError(ctx, portal, state, tool.callID, toolName, argsJSON, "Invalid JSON tool input", tool.toolType == ToolTypeProvider, false)
 				}
 				oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, toolName, inputMap, tool.toolType == ToolTypeProvider)
 
@@ -1608,6 +2944,7 @@ func (oc *AIClient) streamingResponse(
 							resultStatus = ResultStatusError
 						} else {
 							recordGeneratedFile(state, mediaURL, mimeType)
+							oc.emitUIFile(ctx, portal, state, mediaURL, mimeType)
 							displayResult = "Audio message sent successfully"
 						}
 					}
@@ -1636,6 +2973,7 @@ func (oc *AIClient) streamingResponse(
 								continue
 							}
 							recordGeneratedFile(state, mediaURL, mimeType)
+							oc.emitUIFile(ctx, portal, state, mediaURL, mimeType)
 							success++
 						}
 						if success == len(images) && success > 0 {
@@ -1663,6 +3001,7 @@ func (oc *AIClient) streamingResponse(
 							resultStatus = ResultStatusError
 						} else {
 							recordGeneratedFile(state, mediaURL, mimeType)
+							oc.emitUIFile(ctx, portal, state, mediaURL, mimeType)
 							displayResult = "Image generated and sent successfully"
 						}
 					}
@@ -1685,6 +3024,8 @@ func (oc *AIClient) streamingResponse(
 					inputMapForMeta = map[string]any{"_raw": raw}
 				}
 
+				completedAt := time.Now().UnixMilli()
+				resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, result, resultStatus)
 				state.toolCalls = append(state.toolCalls, ToolCallMetadata{
 					CallID:        tool.callID,
 					ToolName:      toolName,
@@ -1694,7 +3035,9 @@ func (oc *AIClient) streamingResponse(
 					Status:        string(ToolStatusCompleted),
 					ResultStatus:  string(resultStatus),
 					StartedAtMs:   tool.startedAtMs,
-					CompletedAtMs: time.Now().UnixMilli(),
+					CompletedAtMs: completedAt,
+					CallEventID:   string(tool.eventID),
+					ResultEventID: string(resultEventID),
 				})
 
 				if resultStatus == ResultStatusSuccess {
@@ -1719,6 +3062,7 @@ func (oc *AIClient) streamingResponse(
 				if streamEvent.Response.ID != "" {
 					state.responseID = streamEvent.Response.ID
 				}
+				oc.emitUIMessageMetadata(ctx, portal, state, oc.buildUIMessageMetadata(state, meta, true))
 				log.Debug().Str("reason", state.finishReason).Str("response_id", state.responseID).Msg("Continuation stream completed")
 
 			case "error":
@@ -1740,6 +3084,15 @@ func (oc *AIClient) streamingResponse(
 
 		if err := stream.Err(); err != nil {
 			logResponsesFailure(log, err, continuationParams, meta, messages, "continuation_err")
+			if errors.Is(err, context.Canceled) {
+				state.finishReason = "cancelled"
+				oc.emitUIAbort(ctx, portal, state, "cancelled")
+				oc.emitUIFinish(ctx, portal, state, meta)
+				if state.initialEventID != "" {
+					return false, nil, &NonFallbackError{Err: err}
+				}
+				return false, nil, &PreDeltaError{Err: err}
+			}
 			state.finishReason = "error"
 			oc.emitUIError(ctx, portal, state, err.Error())
 			oc.emitUIFinish(ctx, portal, state, meta)
@@ -1753,7 +3106,6 @@ func (oc *AIClient) streamingResponse(
 	if state.finishReason == "" {
 		state.finishReason = "stop"
 	}
-	oc.emitUIFinish(ctx, portal, state, meta)
 
 	// Send any generated images as separate messages
 	for _, img := range state.pendingImages {
@@ -1768,8 +3120,10 @@ func (oc *AIClient) streamingResponse(
 			continue
 		}
 		recordGeneratedFile(state, mediaURL, mimeType)
+		oc.emitUIFile(ctx, portal, state, mediaURL, mimeType)
 		log.Info().Stringer("event_id", eventID).Str("item_id", img.itemID).Msg("Sent generated image to Matrix")
 	}
+	oc.emitUIFinish(ctx, portal, state, meta)
 
 	// Send final message to persist complete content with metadata (including reasoning)
 	if state.initialEventID != "" || state.heartbeat != nil {
@@ -1796,7 +3150,7 @@ func (oc *AIClient) streamingResponse(
 }
 
 // buildContinuationParams builds params for continuing a response after tool execution
-func (oc *AIClient) buildContinuationParams(state *streamingState, meta *PortalMetadata) responses.ResponseNewParams {
+func (oc *AIClient) buildContinuationParams(ctx context.Context, state *streamingState, meta *PortalMetadata) responses.ResponseNewParams {
 	params := responses.ResponseNewParams{
 		Model:           shared.ResponsesModel(oc.effectiveModelForAPI(meta)),
 		MaxOutputTokens: openai.Int(int64(oc.effectiveMaxTokens(meta))),
@@ -1850,9 +3204,7 @@ func (oc *AIClient) buildContinuationParams(state *streamingState, meta *PortalM
 
 	// OpenRouter's Responses API only supports function-type tools.
 	if meta.Capabilities.SupportsToolCalling {
-		enabledTools := GetEnabledBuiltinTools(func(name string) bool {
-			return oc.isToolEnabled(meta, name)
-		})
+		enabledTools := oc.enabledBuiltinToolsForModel(ctx, meta)
 		if len(enabledTools) > 0 {
 			strictMode := resolveToolStrictMode(oc.isOpenRouterProvider())
 			params.Tools = append(params.Tools, ToOpenAITools(enabledTools, strictMode, &oc.log)...)
@@ -2018,9 +3370,7 @@ func (oc *AIClient) streamChatCompletions(
 			params.Temperature = openai.Float(temp)
 		}
 		if meta.Capabilities.SupportsToolCalling {
-			enabledTools := GetEnabledBuiltinTools(func(name string) bool {
-				return oc.isToolEnabled(meta, name)
-			})
+			enabledTools := oc.enabledBuiltinToolsForModel(ctx, meta)
 			if len(enabledTools) > 0 {
 				params.Tools = append(params.Tools, ToOpenAIChatTools(enabledTools, &oc.log)...)
 			}
@@ -2070,6 +3420,7 @@ func (oc *AIClient) streamChatCompletions(
 				state.completionTokens = chunk.Usage.CompletionTokens
 				state.reasoningTokens = chunk.Usage.CompletionTokensDetails.ReasoningTokens
 				state.totalTokens = chunk.Usage.TotalTokens
+				oc.emitUIMessageMetadata(ctx, portal, state, oc.buildUIMessageMetadata(state, meta, true))
 			}
 
 			for _, choice := range chunk.Choices {
@@ -2148,6 +3499,9 @@ func (oc *AIClient) streamChatCompletions(
 					// Update tool name if provided in this delta
 					if toolDelta.Function.Name != "" {
 						tool.toolName = toolDelta.Function.Name
+						if tool.eventID == "" {
+							tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
+						}
 					}
 
 					// Accumulate arguments
@@ -2167,6 +3521,15 @@ func (oc *AIClient) streamChatCompletions(
 		oc.emitUIStepFinish(ctx, portal, state)
 
 		if err := stream.Err(); err != nil {
+			if errors.Is(err, context.Canceled) {
+				state.finishReason = "cancelled"
+				oc.emitUIAbort(ctx, portal, state, "cancelled")
+				oc.emitUIFinish(ctx, portal, state, meta)
+				if state.initialEventID != "" {
+					return false, nil, &NonFallbackError{Err: err}
+				}
+				return false, nil, &PreDeltaError{Err: err}
+			}
 			if cle := ParseContextLengthError(err); cle != nil {
 				return false, cle, nil
 			}
@@ -2205,6 +3568,10 @@ func (oc *AIClient) streamChatCompletions(
 				toolName := strings.TrimSpace(tool.toolName)
 				if toolName == "" {
 					toolName = "unknown_tool"
+				}
+				if tool.eventID == "" {
+					tool.toolName = toolName
+					tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
 				}
 
 				argsJSON := normalizeToolArgsJSON(tool.input.String())
@@ -2262,6 +3629,7 @@ func (oc *AIClient) streamChatCompletions(
 								resultStatus = ResultStatusError
 							} else {
 								recordGeneratedFile(state, mediaURL, mimeType)
+								oc.emitUIFile(ctx, portal, state, mediaURL, mimeType)
 								result = "Audio message sent successfully"
 							}
 						}
@@ -2289,6 +3657,7 @@ func (oc *AIClient) streamChatCompletions(
 									continue
 								}
 								recordGeneratedFile(state, mediaURL, mimeType)
+								oc.emitUIFile(ctx, portal, state, mediaURL, mimeType)
 								success++
 							}
 							if success == len(images) && success > 0 {
@@ -2315,6 +3684,7 @@ func (oc *AIClient) streamChatCompletions(
 								resultStatus = ResultStatusError
 							} else {
 								recordGeneratedFile(state, mediaURL, mimeType)
+								oc.emitUIFile(ctx, portal, state, mediaURL, mimeType)
 								result = "Image generated and sent successfully"
 							}
 						}
@@ -2325,6 +3695,7 @@ func (oc *AIClient) streamChatCompletions(
 				var inputMap any
 				if err := json.Unmarshal([]byte(argsJSON), &inputMap); err != nil {
 					inputMap = argsJSON
+					oc.emitUIToolInputError(ctx, portal, state, tool.callID, toolName, argsJSON, "Invalid JSON tool input", false, false)
 				}
 				inputMapForMeta := map[string]any{}
 				if parsed, ok := inputMap.(map[string]any); ok {
@@ -2335,6 +3706,8 @@ func (oc *AIClient) streamChatCompletions(
 				oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, toolName, inputMap, false)
 
 				// Track tool call in metadata
+				completedAt := time.Now().UnixMilli()
+				resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, result, resultStatus)
 				state.toolCalls = append(state.toolCalls, ToolCallMetadata{
 					CallID:        tool.callID,
 					ToolName:      toolName,
@@ -2344,7 +3717,9 @@ func (oc *AIClient) streamChatCompletions(
 					Status:        string(ToolStatusCompleted),
 					ResultStatus:  string(resultStatus),
 					StartedAtMs:   tool.startedAtMs,
-					CompletedAtMs: time.Now().UnixMilli(),
+					CompletedAtMs: completedAt,
+					CallEventID:   string(tool.eventID),
+					ResultEventID: string(resultEventID),
 				})
 
 				if resultStatus == ResultStatusSuccess {

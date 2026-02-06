@@ -21,6 +21,7 @@ const (
 var PresetAgents = []*AgentDefinition{
 	BeeperAIAgent,
 	BeeperSearchAgent,
+	NexusAIAgent,
 	PlaygroundAgent,
 }
 

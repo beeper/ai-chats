@@ -6,6 +6,13 @@ import "github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
 // It provides a simple, clean AI experience with sensible defaults.
 const DefaultAgentAvatarMXC = "mxc://beeper.com/51a668657dd9e0132cc823ad9402c6c2d0fc3321"
 
+const BeeperDelegationPrompt = `When a request is primarily about Clay contacts, relationships, groups, reminders, events, or contact interaction history, delegate to the Nexus agent instead of attempting direct tool work.
+Use the session tools to do this:
+- Prefer spawning Nexus with sessions_spawn using agentId "nexus" and a clear task.
+- If a Nexus session already exists and you can identify it, use sessions_send.
+After Nexus responds, return the answer to the user in this chat.
+Do not claim you directly executed Nexus-only tools.`
+
 var BeeperAIAgent = &AgentDefinition{
 	ID:          "beeper",
 	Name:        "Beep",
@@ -19,8 +26,11 @@ var BeeperAIAgent = &AgentDefinition{
 			ModelZAIGLM47,
 		},
 	},
-	Tools:        &toolpolicy.ToolPolicyConfig{Profile: toolpolicy.ProfileFull},
-	SystemPrompt: "",
+	Tools: &toolpolicy.ToolPolicyConfig{Profile: toolpolicy.ProfileFull},
+	Subagents: &SubagentConfig{
+		AllowAgents: []string{"nexus"},
+	},
+	SystemPrompt: BeeperDelegationPrompt,
 	PromptMode:   PromptModeFull,
 	IsPreset:     true,
 	CreatedAt:    0,

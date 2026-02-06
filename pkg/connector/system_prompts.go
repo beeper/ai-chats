@@ -51,12 +51,9 @@ func (oc *AIClient) buildAdditionalSystemPrompts(
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
 ) []openai.ChatCompletionMessageParamUnion {
-	if meta == nil {
-		return nil
-	}
 	out := []openai.ChatCompletionMessageParamUnion{}
 
-	if portal != nil && oc.isGroupChat(ctx, portal) {
+	if meta != nil && portal != nil && oc.isGroupChat(ctx, portal) {
 		activation := oc.resolveGroupActivation(meta)
 		shouldIntro := !meta.GroupIntroSent || meta.GroupActivationNeedsIntro
 		if shouldIntro {
@@ -70,8 +67,14 @@ func (oc *AIClient) buildAdditionalSystemPrompts(
 		}
 	}
 
-	if verboseHint := buildVerboseSystemHint(meta); verboseHint != "" {
-		out = append(out, openai.SystemMessage(verboseHint))
+	if meta != nil {
+		if verboseHint := buildVerboseSystemHint(meta); verboseHint != "" {
+			out = append(out, openai.SystemMessage(verboseHint))
+		}
+	}
+
+	if accountHint := oc.buildDesktopAccountHintPrompt(ctx); accountHint != "" {
+		out = append(out, openai.SystemMessage(accountHint))
 	}
 
 	return out

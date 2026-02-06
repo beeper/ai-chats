@@ -29,6 +29,7 @@ type desktopSessionListOptions struct {
 	AllowedKinds  map[string]struct{}
 	AccountIDs    map[string]struct{}
 	Networks      map[string]struct{}
+	MultiInstance bool
 }
 
 type desktopFocusParams struct {
@@ -239,22 +240,7 @@ func (oc *AIClient) listDesktopSessions(ctx context.Context, instance string, op
 		}
 	}
 
-	previewsByChatID := map[string]shared.Message{}
-	if listedChats, listErr := oc.listDesktopChats(ctx, instance, limit); listErr == nil {
-		for _, listed := range listedChats {
-			chatID := strings.TrimSpace(listed.ID)
-			if chatID == "" {
-				continue
-			}
-			previewsByChatID[chatID] = listed.Preview
-		}
-	}
-
 	entries := make([]sessionListEntry, 0, len(chats))
-	baseURL := ""
-	if config, ok := oc.desktopAPIInstanceConfig(instance); ok {
-		baseURL = strings.TrimSpace(config.BaseURL)
-	}
 	for _, chat := range chats {
 		accountID := strings.TrimSpace(chat.AccountID)
 		if len(opts.AccountIDs) > 0 {
@@ -263,9 +249,11 @@ func (oc *AIClient) listDesktopSessions(ctx context.Context, instance string, op
 			}
 		}
 		account := accounts[accountID]
-		normalizedNetwork := strings.ToLower(strings.TrimSpace(account.Network))
+		if strings.TrimSpace(account.AccountID) == "" && accountID != "" {
+			account.AccountID = accountID
+		}
 		if len(opts.Networks) > 0 {
-			if _, ok := opts.Networks[normalizedNetwork]; !ok {
+			if !desktopNetworkFilterMatches(opts.Networks, account.Network) {
 				continue
 			}
 		}
@@ -285,17 +273,12 @@ func (oc *AIClient) listDesktopSessions(ctx context.Context, instance string, op
 		}
 
 		sessionKey := normalizeDesktopSessionKeyWithInstance(instance, chat.ID)
+		channelName := desktopSessionChannelForNetwork(account.Network)
 		entry := map[string]any{
 			"key":       sessionKey,
 			"kind":      kind,
-			"channel":   channelDesktopAPI,
+			"channel":   channelName,
 			"sessionId": sessionKey,
-			"chatId":    chat.ID,
-			"instance":  instance,
-			"chat":      chat,
-		}
-		if baseURL != "" {
-			entry["baseUrl"] = baseURL
 		}
 		if title := strings.TrimSpace(chat.Title); title != "" {
 			entry["label"] = title
@@ -304,33 +287,15 @@ func (oc *AIClient) listDesktopSessions(ctx context.Context, instance string, op
 		if updatedAt > 0 {
 			entry["updatedAt"] = updatedAt
 		}
-		if accountID != "" {
-			entry["accountId"] = accountID
-			if account, ok := accounts[accountID]; ok {
-				entry["account"] = account
-				if network := strings.TrimSpace(account.Network); network != "" {
-					entry["network"] = network
-				}
-				entry["accountUser"] = account.User
-			}
-		}
-		if aliases := desktopChatLabelCandidates(chat, account); len(aliases) > 0 {
-			entry["aliases"] = aliases
-		}
-		if preview, ok := previewsByChatID[strings.TrimSpace(chat.ID)]; ok && !preview.Timestamp.IsZero() {
-			entry["preview"] = preview
-		}
-		if chat.Type != "" {
-			entry["chatType"] = string(chat.Type)
+		if desktopAccountID := desktopSessionAccountID(opts.MultiInstance, instance, account); desktopAccountID != "" {
+			entry["accountId"] = desktopAccountID
 		}
 
 		if opts.MessageLimit > 0 {
 			messages, msgErr := oc.listDesktopMessages(ctx, client, chat.ID, opts.MessageLimit)
 			if msgErr == nil && len(messages) > 0 {
-				entry["messages"] = buildDesktopSessionMessages(messages, desktopMessageBuildOptions{
+				entry["messages"] = buildOpenClawDesktopSessionMessages(messages, desktopMessageBuildOptions{
 					IsGroup:  chat.Type == beeperdesktopapi.ChatTypeGroup,
-					Instance: instance,
-					BaseURL:  baseURL,
 					Accounts: accounts,
 				})
 			}
@@ -382,18 +347,62 @@ func (oc *AIClient) listDesktopMessages(ctx context.Context, client *beeperdeskt
 	return items, nil
 }
 
+func renderDesktopSessionMessageText(msg shared.Message, isGroup bool) (string, bool) {
+	content := strings.TrimSpace(msg.Text)
+	if content == "" {
+		if len(msg.Attachments) == 0 {
+			return "", false
+		}
+		attachmentType := strings.ToLower(strings.TrimSpace(string(msg.Attachments[0].Type)))
+		if attachmentType == "" {
+			attachmentType = "unknown"
+		}
+		content = fmt.Sprintf("[attachment: %s]", attachmentType)
+	}
+	if isGroup && !msg.IsSender {
+		senderName := strings.TrimSpace(msg.SenderName)
+		if senderName != "" {
+			content = senderName + ": " + content
+		}
+	}
+	return content, true
+}
+
+func buildOpenClawDesktopSessionMessages(messages []shared.Message, opts desktopMessageBuildOptions) []map[string]any {
+	result := make([]map[string]any, 0, len(messages))
+	for _, msg := range messages {
+		contentText, ok := renderDesktopSessionMessageText(msg, opts.IsGroup)
+		if !ok {
+			continue
+		}
+		role := "user"
+		if msg.IsSender {
+			role = "assistant"
+		}
+		entry := map[string]any{
+			"role": role,
+			"content": []map[string]any{
+				{
+					"type": "text",
+					"text": contentText,
+				},
+			},
+			"timestamp": msg.Timestamp.UnixMilli(),
+		}
+		if msg.ID != "" {
+			entry["id"] = msg.ID
+		}
+		result = append(result, entry)
+	}
+	return result
+}
+
 func buildDesktopSessionMessages(messages []shared.Message, opts desktopMessageBuildOptions) []map[string]any {
 	result := make([]map[string]any, 0, len(messages))
 	for _, msg := range messages {
-		content := strings.TrimSpace(msg.Text)
-		if content == "" {
-			if len(msg.Attachments) == 0 {
-				continue
-			}
-			content = fmt.Sprintf("[attachment: %s]", strings.ToLower(string(msg.Attachments[0].Type)))
-		}
-		if opts.IsGroup && !msg.IsSender && msg.SenderName != "" {
-			content = msg.SenderName + ": " + content
+		content, ok := renderDesktopSessionMessageText(msg, opts.IsGroup)
+		if !ok {
+			continue
 		}
 		role := "user"
 		if msg.IsSender {
@@ -531,8 +540,8 @@ func (oc *AIClient) resolveDesktopSessionByLabelWithOptions(ctx context.Context,
 			if i >= 5 {
 				break
 			}
-				suggestions = append(suggestions, describeDesktopChatForLabel(chat, accounts[strings.TrimSpace(chat.AccountID)]))
-			}
+			suggestions = append(suggestions, describeDesktopChatForLabel(chat, accounts[strings.TrimSpace(chat.AccountID)]))
+		}
 		return "", "", fmt.Errorf("%w: no exact session found for label '%s'. Top matches: %s. Use sessionKey from sessions_list for deterministic targeting.", errDesktopLabelNotFound, trimmed, strings.Join(suggestions, ", "))
 	}
 	if strings.TrimSpace(opts.AccountID) != "" || strings.TrimSpace(opts.Network) != "" {
@@ -941,9 +950,13 @@ func matchDesktopChatsByLabel(chats []beeperdesktopapi.Chat, label string, accou
 
 func filterDesktopChatsByResolveOptions(chats []beeperdesktopapi.Chat, accounts map[string]beeperdesktopapi.Account, opts desktopLabelResolveOptions) []beeperdesktopapi.Chat {
 	accountID := strings.TrimSpace(opts.AccountID)
-	network := strings.ToLower(strings.TrimSpace(opts.Network))
+	network := strings.TrimSpace(opts.Network)
 	if accountID == "" && network == "" {
 		return chats
+	}
+	networkFilter := map[string]struct{}{}
+	if network != "" {
+		networkFilter[network] = struct{}{}
 	}
 	filtered := make([]beeperdesktopapi.Chat, 0, len(chats))
 	for _, chat := range chats {
@@ -953,7 +966,7 @@ func filterDesktopChatsByResolveOptions(chats []beeperdesktopapi.Chat, accounts 
 		}
 		if network != "" {
 			account := accounts[chatAccountID]
-			if strings.ToLower(strings.TrimSpace(account.Network)) != network {
+			if !desktopNetworkFilterMatches(networkFilter, account.Network) {
 				continue
 			}
 		}
@@ -968,7 +981,8 @@ func desktopChatLabelCandidates(chat beeperdesktopapi.Chat, account beeperdeskto
 		return nil
 	}
 	accountID := strings.TrimSpace(chat.AccountID)
-	network := strings.ToLower(strings.TrimSpace(account.Network))
+	network := canonicalDesktopNetwork(account.Network)
+	rawNetwork := normalizeDesktopNetworkToken(account.Network)
 	candidates := []string{title}
 	if accountID != "" {
 		candidates = append(candidates, accountID+":"+title, accountID+"/"+title)
@@ -976,8 +990,14 @@ func desktopChatLabelCandidates(chat beeperdesktopapi.Chat, account beeperdeskto
 	if network != "" {
 		candidates = append(candidates, network+":"+title)
 	}
+	if rawNetwork != "" && rawNetwork != network {
+		candidates = append(candidates, rawNetwork+":"+title)
+	}
 	if network != "" && accountID != "" {
 		candidates = append(candidates, network+"/"+accountID+":"+title)
+	}
+	if rawNetwork != "" && rawNetwork != network && accountID != "" {
+		candidates = append(candidates, rawNetwork+"/"+accountID+":"+title)
 	}
 	return uniqueNonEmptyStrings(candidates)
 }
@@ -1018,6 +1038,14 @@ func uniqueNonEmptyStrings(values []string) []string {
 		out = append(out, trimmed)
 	}
 	return out
+}
+
+func desktopSessionAccountID(areThereMultipleDesktopInstances bool, instance string, account beeperdesktopapi.Account) string {
+	rawAccountID := strings.TrimSpace(account.AccountID)
+	if rawAccountID == "" {
+		return ""
+	}
+	return formatDesktopAccountID(areThereMultipleDesktopInstances, instance, account.Network, rawAccountID)
 }
 
 func (oc *AIClient) focusDesktop(ctx context.Context, instance string, params desktopFocusParams) (*beeperdesktopapi.FocusResponse, error) {

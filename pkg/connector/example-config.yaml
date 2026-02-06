@@ -129,6 +129,17 @@ tools:
       max_chars: 50000
       max_redirects: 3
 
+  # Nexus tool bridge (optional).
+  # Points to a clay-nexus backend and exposes its contact/group tools in ai-bridge.
+  nexus:
+    enabled: false
+    base_url: "https://nexum.clay.earth"
+    # Optional explicit MCP endpoint override. Defaults to "<base_url>/mcp".
+    mcp_endpoint: ""
+    token: ""
+    auth_type: "bearer" # bearer | apikey
+    timeout_seconds: 30
+
   # Media understanding/transcription (OpenClaw-style).
   # Supports provider/CLI entries and per-capability defaults.
   media:

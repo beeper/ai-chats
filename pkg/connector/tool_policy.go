@@ -5,9 +5,17 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/beeper/ai-bridge/pkg/agents"
 	"github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
 	agenttools "github.com/beeper/ai-bridge/pkg/agents/tools"
 )
+
+func canUseNexusToolsForAgent(meta *PortalMetadata) bool {
+	if meta == nil {
+		return false
+	}
+	return agents.IsNexusAI(normalizeAgentID(resolveAgentID(meta)))
+}
 
 func (oc *AIClient) resolveToolPolicyModelContext(meta *PortalMetadata) (provider string, modelID string) {
 	modelID = oc.effectiveModel(meta)
@@ -64,6 +72,14 @@ func (oc *AIClient) isToolAvailable(meta *PortalMetadata, toolName string) (bool
 			return false, SourceModelLimit, "No vision-capable model available"
 		}
 	}
+	if oc.isNexusMCPToolName(toolName) {
+		if !canUseNexusToolsForAgent(meta) {
+			return false, SourceAgentPolicy, "Nexus tools are restricted to the Nexus agent"
+		}
+		if !oc.isNexusConfigured() {
+			return false, SourceProviderLimit, "Nexus MCP tool bridge is not configured"
+		}
+	}
 
 	return true, SourceGlobalDefault, ""
 }
@@ -99,6 +115,13 @@ func (oc *AIClient) toolNamesForPortal(meta *PortalMetadata) []string {
 		for _, tool := range agenttools.BossTools() {
 			nameSet[tool.Name] = struct{}{}
 		}
+	}
+	if oc != nil && oc.isNexusConfigured() {
+		discoveryCtx, cancel := context.WithTimeout(context.Background(), nexusMCPDiscoveryTimeout)
+		for _, name := range oc.nexusDiscoveredToolNames(discoveryCtx) {
+			nameSet[name] = struct{}{}
+		}
+		cancel()
 	}
 	names := make([]string, 0, len(nameSet))
 	for name := range nameSet {

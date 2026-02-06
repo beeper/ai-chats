@@ -10,7 +10,6 @@ import (
 	beeperdesktopapi "github.com/beeper/desktop-api-go"
 	"github.com/google/uuid"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/agents/tools"
@@ -19,6 +18,16 @@ import (
 type sessionListEntry struct {
 	updatedAt int64
 	data      map[string]any
+}
+
+func shouldExcludeModelVisiblePortal(meta *PortalMetadata) bool {
+	if meta == nil {
+		return false
+	}
+	if meta.IsAgentDataRoom || meta.IsGlobalMemoryRoom || meta.IsCronRoom || meta.IsBuilderRoom || meta.IsOpenCodeRoom {
+		return true
+	}
+	return strings.TrimSpace(meta.SubagentParentRoomID) != ""
 }
 
 func (oc *AIClient) executeSessionsList(ctx context.Context, portal *bridgev2.Portal, args map[string]any) (*tools.Result, error) {
@@ -45,17 +54,6 @@ func (oc *AIClient) executeSessionsList(ctx context.Context, portal *bridgev2.Po
 			messageLimit = 20
 		}
 	}
-	channelFilter := strings.ToLower(strings.TrimSpace(tools.ReadStringDefault(args, "channel", "")))
-	accountIDFilter := strings.TrimSpace(tools.ReadStringDefault(args, "accountId", ""))
-	networkFilter := strings.ToLower(strings.TrimSpace(tools.ReadStringDefault(args, "network", "")))
-	desktopAccountIDs := map[string]struct{}{}
-	if accountIDFilter != "" {
-		desktopAccountIDs[accountIDFilter] = struct{}{}
-	}
-	desktopNetworks := map[string]struct{}{}
-	if networkFilter != "" {
-		desktopNetworks[networkFilter] = struct{}{}
-	}
 	trace := traceEnabled(portalMeta(portal))
 	if trace {
 		oc.log.Debug().
@@ -80,86 +78,89 @@ func (oc *AIClient) executeSessionsList(ctx context.Context, portal *bridgev2.Po
 	}
 
 	entries := make([]sessionListEntry, 0, len(portals))
-	if channelFilter == "" || channelFilter == "matrix" {
-		for _, candidate := range portals {
-			if candidate == nil || candidate.MXID == "" {
+	for _, candidate := range portals {
+		if candidate == nil || candidate.MXID == "" {
+			continue
+		}
+		meta := portalMeta(candidate)
+		if shouldExcludeModelVisiblePortal(meta) {
+			continue
+		}
+		kind := resolveSessionKind(currentRoomID, candidate, meta)
+		if len(allowedKinds) > 0 {
+			if _, ok := allowedKinds[kind]; !ok {
 				continue
 			}
-			meta := portalMeta(candidate)
-			if meta != nil && (meta.IsAgentDataRoom || meta.IsGlobalMemoryRoom || meta.IsCronRoom) {
-				continue
+		}
+
+		updatedAt := int64(0)
+		if activeMinutes > 0 || messageLimit > 0 {
+			if last := oc.lastMessageTimestamp(ctx, candidate); last > 0 {
+				updatedAt = last
 			}
-			kind := resolveSessionKind(currentRoomID, candidate, meta)
-			if len(allowedKinds) > 0 {
-				if _, ok := allowedKinds[kind]; !ok {
+			if activeMinutes > 0 {
+				cutoff := time.Now().Add(-time.Duration(activeMinutes) * time.Minute).UnixMilli()
+				if updatedAt == 0 || updatedAt < cutoff {
 					continue
 				}
 			}
-
-			updatedAt := int64(0)
-			if activeMinutes > 0 || messageLimit > 0 {
-				if last := oc.lastMessageTimestamp(ctx, candidate); last > 0 {
-					updatedAt = last
-				}
-				if activeMinutes > 0 {
-					cutoff := time.Now().Add(-time.Duration(activeMinutes) * time.Minute).UnixMilli()
-					if updatedAt == 0 || updatedAt < cutoff {
-						continue
-					}
-				}
-			}
-
-			sessionKey := candidate.MXID.String()
-			entry := map[string]any{
-				"key":     sessionKey,
-				"kind":    kind,
-				"channel": "matrix",
-			}
-			if label := resolveSessionLabel(candidate, meta); label != "" {
-				entry["label"] = label
-			}
-			if displayName := resolveSessionDisplayName(candidate, meta); displayName != "" {
-				entry["displayName"] = displayName
-			}
-			if updatedAt > 0 {
-				entry["updatedAt"] = updatedAt
-			}
-			if meta != nil {
-				model := meta.Model
-				if strings.TrimSpace(model) == "" {
-					model = oc.effectiveModel(meta)
-				}
-				if model != "" {
-					entry["model"] = model
-				}
-				if meta.IsOpenCodeRoom {
-					entry["source"] = "opencode"
-					if meta.OpenCodeInstanceID != "" {
-						entry["opencodeInstanceID"] = meta.OpenCodeInstanceID
-					}
-					if meta.OpenCodeSessionID != "" {
-						entry["opencodeSessionID"] = meta.OpenCodeSessionID
-					}
-				}
-			}
-			entry["sessionId"] = sessionKey
-			if portalID := string(candidate.PortalKey.ID); portalID != "" && portalID != sessionKey {
-				entry["portalId"] = portalID
-			}
-
-			if messageLimit > 0 {
-				messages, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, candidate.PortalKey, messageLimit)
-				if err == nil && len(messages) > 0 {
-					entry["messages"] = buildSessionMessages(messages, false)
-				}
-			}
-
-			entries = append(entries, sessionListEntry{updatedAt: updatedAt, data: entry})
 		}
+
+		sessionKey := candidate.MXID.String()
+		entry := map[string]any{
+			"key":     sessionKey,
+			"kind":    kind,
+			"channel": "matrix",
+		}
+		if label := resolveSessionLabel(candidate, meta); label != "" {
+			entry["label"] = label
+		}
+		if displayName := resolveSessionDisplayName(candidate, meta); displayName != "" {
+			entry["displayName"] = displayName
+		}
+		if updatedAt > 0 {
+			entry["updatedAt"] = updatedAt
+		}
+		if meta != nil {
+			model := meta.Model
+			if strings.TrimSpace(model) == "" {
+				model = oc.effectiveModel(meta)
+			}
+			if model != "" {
+				entry["model"] = model
+			}
+			if meta.IsOpenCodeRoom {
+				entry["source"] = "opencode"
+				if meta.OpenCodeInstanceID != "" {
+					entry["opencodeInstanceID"] = meta.OpenCodeInstanceID
+				}
+				if meta.OpenCodeSessionID != "" {
+					entry["opencodeSessionID"] = meta.OpenCodeSessionID
+				}
+			}
+		}
+		entry["sessionId"] = sessionKey
+		if portalID := string(candidate.PortalKey.ID); portalID != "" && portalID != sessionKey {
+			entry["portalId"] = portalID
+		}
+
+		if messageLimit > 0 {
+			messages, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, candidate.PortalKey, messageLimit)
+			if err == nil && len(messages) > 0 {
+				openClawMessages := buildOpenClawSessionMessages(messages, false)
+				if len(openClawMessages) > messageLimit {
+					openClawMessages = openClawMessages[len(openClawMessages)-messageLimit:]
+				}
+				entry["messages"] = openClawMessages
+			}
+		}
+
+		entries = append(entries, sessionListEntry{updatedAt: updatedAt, data: entry})
 	}
 
-	if oc != nil && (channelFilter == "" || channelFilter == channelDesktopAPI) {
+	if oc != nil {
 		instances := oc.desktopAPIInstanceNames()
+		hasMultipleDesktopInstances := len(instances) > 1
 		for _, instance := range instances {
 			accounts := map[string]beeperdesktopapi.Account{}
 			if accountMap, err := oc.listDesktopAccounts(ctx, instance); err == nil && accountMap != nil {
@@ -167,14 +168,13 @@ func (oc *AIClient) executeSessionsList(ctx context.Context, portal *bridgev2.Po
 			} else if err != nil {
 				oc.log.Warn().Err(err).Str("instance", instance).Msg("Desktop API account listing failed")
 			}
-				desktopEntries, err := oc.listDesktopSessions(ctx, instance, desktopSessionListOptions{
-					Limit:         limit,
-					ActiveMinutes: activeMinutes,
-					MessageLimit:  messageLimit,
-					AllowedKinds:  allowedKinds,
-					AccountIDs:    desktopAccountIDs,
-					Networks:      desktopNetworks,
-				}, accounts)
+			desktopEntries, err := oc.listDesktopSessions(ctx, instance, desktopSessionListOptions{
+				Limit:         limit,
+				ActiveMinutes: activeMinutes,
+				MessageLimit:  messageLimit,
+				AllowedKinds:  allowedKinds,
+				MultiInstance: hasMultipleDesktopInstances,
+			}, accounts)
 			if err == nil {
 				if len(desktopEntries) > 0 {
 					entries = append(entries, desktopEntries...)
@@ -214,9 +214,16 @@ func (oc *AIClient) executeSessionsHistory(ctx context.Context, portal *bridgev2
 			"error":  "sessionKey is required",
 		}), nil
 	}
-	limit := 50
+	rawLimit := 0
 	if v, err := tools.ReadInt(args, "limit", false); err == nil && v > 0 {
-		limit = v
+		rawLimit = v
+	}
+	limit := normalizeOpenClawHistoryLimit(rawLimit)
+	includeTools := false
+	if raw, ok := args["includeTools"]; ok {
+		if value, ok := raw.(bool); ok {
+			includeTools = value
+		}
 	}
 	trace := traceEnabled(portalMeta(portal))
 	if trace {
@@ -254,62 +261,26 @@ func (oc *AIClient) executeSessionsHistory(ctx context.Context, portal *bridgev2
 				"error":  msgErr.Error(),
 			}), nil
 		}
-		baseURL := ""
-		if config, ok := oc.desktopAPIInstanceConfig(instance); ok {
-			baseURL = strings.TrimSpace(config.BaseURL)
-		}
 		isGroup := true
 		if chat != nil && chat.Type == beeperdesktopapi.ChatTypeSingle {
 			isGroup = false
 		}
-		payload := map[string]any{
+		openClawMessages := buildOpenClawDesktopSessionMessages(messages, desktopMessageBuildOptions{
+			IsGroup:  isGroup,
+			Instance: instance,
+			Accounts: accounts,
+		})
+		if len(openClawMessages) > limit {
+			openClawMessages = openClawMessages[len(openClawMessages)-limit:]
+		}
+		openClawMessages = capOpenClawHistoryByJSONBytes(openClawMessages, openClawMaxHistoryBytes)
+		if !includeTools {
+			openClawMessages = stripOpenClawToolResults(openClawMessages)
+		}
+		return tools.JSONResult(map[string]any{
 			"sessionKey": normalizeDesktopSessionKeyWithInstance(instance, chatID),
-			"messages": buildDesktopSessionMessages(messages, desktopMessageBuildOptions{
-				IsGroup:  isGroup,
-				Instance: instance,
-				BaseURL:  baseURL,
-				Accounts: accounts,
-			}),
-			"channel":  channelDesktopAPI,
-			"instance": instance,
-			"chatId":   chatID,
-		}
-		if baseURL != "" {
-			payload["baseUrl"] = baseURL
-		}
-		if chat != nil {
-			payload["chat"] = chat
-			if title := strings.TrimSpace(chat.Title); title != "" {
-				payload["label"] = title
-				payload["displayName"] = title
-			}
-			if accountID := strings.TrimSpace(chat.AccountID); accountID != "" {
-				payload["accountId"] = accountID
-				if account, ok := accounts[accountID]; ok {
-					payload["account"] = account
-					if network := strings.TrimSpace(account.Network); network != "" {
-						payload["network"] = network
-					}
-					payload["accountUser"] = account.User
-				}
-			}
-			if chat.Type != "" {
-				payload["chatType"] = string(chat.Type)
-			}
-		} else if len(messages) > 0 {
-			accountID := strings.TrimSpace(messages[len(messages)-1].AccountID)
-			if accountID != "" {
-				payload["accountId"] = accountID
-				if account, ok := accounts[accountID]; ok {
-					payload["account"] = account
-					if network := strings.TrimSpace(account.Network); network != "" {
-						payload["network"] = network
-					}
-					payload["accountUser"] = account.User
-				}
-			}
-		}
-		return tools.JSONResult(payload), nil
+			"messages":   openClawMessages,
+		}), nil
 	}
 
 	resolvedPortal, displayKey, resolveErr := oc.resolveSessionPortal(ctx, portal, sessionKey)
@@ -331,16 +302,18 @@ func (oc *AIClient) executeSessionsHistory(ctx context.Context, portal *bridgev2
 		oc.log.Debug().Int("count", len(messages)).Msg("Sessions history fetched from Matrix")
 	}
 
-	includeTools := false
-	if raw, ok := args["includeTools"]; ok {
-		if value, ok := raw.(bool); ok {
-			includeTools = value
-		}
+	openClawMessages := buildOpenClawSessionMessages(messages, true)
+	if len(openClawMessages) > limit {
+		openClawMessages = openClawMessages[len(openClawMessages)-limit:]
+	}
+	openClawMessages = capOpenClawHistoryByJSONBytes(openClawMessages, openClawMaxHistoryBytes)
+	if !includeTools {
+		openClawMessages = stripOpenClawToolResults(openClawMessages)
 	}
 
 	return tools.JSONResult(map[string]any{
 		"sessionKey": displayKey,
-		"messages":   buildSessionMessages(messages, includeTools),
+		"messages":   openClawMessages,
 	}), nil
 }
 
@@ -370,10 +343,14 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 	label := tools.ReadStringDefault(args, "label", "")
 	agentID := tools.ReadStringDefault(args, "agentId", "")
 	instance := tools.ReadStringDefault(args, "instance", "")
-	accountID := tools.ReadStringDefault(args, "accountId", "")
-	network := tools.ReadStringDefault(args, "network", "")
+	timeoutSeconds := 30
+	if v, err := tools.ReadInt(args, "timeoutSeconds", false); err == nil && v >= 0 {
+		timeoutSeconds = v
+	}
+	runID := uuid.NewString()
 	if sessionKey != "" && label != "" {
 		return tools.JSONResult(map[string]any{
+			"runId":  runID,
 			"status": "error",
 			"error":  "Provide either sessionKey or label (not both).",
 		}), nil
@@ -383,36 +360,29 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 		if trace {
 			oc.log.Debug().Str("instance", instance).Str("chat_id", chatID).Msg("Sending to desktop session by key")
 		}
-			pendingID, sendErr := oc.sendDesktopMessage(ctx, instance, chatID, desktopSendMessageRequest{
-				Text: message,
-			})
+		_, sendErr := oc.sendDesktopMessage(ctx, instance, chatID, desktopSendMessageRequest{
+			Text: message,
+		})
 		if sendErr != nil {
 			return tools.JSONResult(map[string]any{
 				"status": "error",
 				"error":  sendErr.Error(),
 			}), nil
 		}
-		baseURL := ""
-		if config, ok := oc.desktopAPIInstanceConfig(instance); ok {
-			baseURL = strings.TrimSpace(config.BaseURL)
-		}
 		result := map[string]any{
-			"runId":            uuid.NewString(),
-			"status":           "ok",
-			"sessionKey":       normalizeDesktopSessionKeyWithInstance(instance, chatID),
-			"pendingMessageId": pendingID,
-			"instance":         instance,
-			"chatId":           chatID,
-		}
-		if baseURL != "" {
-			result["baseUrl"] = baseURL
+			"runId":      runID,
+			"status":     "accepted",
+			"sessionKey": normalizeDesktopSessionKeyWithInstance(instance, chatID),
+			"delivery": map[string]any{
+				"status": "pending",
+				"mode":   "announce",
+			},
 		}
 		return tools.JSONResult(result), nil
 	}
 
 	var targetPortal *bridgev2.Portal
 	var displayKey string
-	resolvedFromLabel := false
 	if sessionKey != "" {
 		target, display, resolveErr := oc.resolveSessionPortal(ctx, portal, sessionKey)
 		if resolveErr != nil {
@@ -426,62 +396,47 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 		if trace {
 			oc.log.Debug().Stringer("portal", targetPortal.PortalKey).Msg("Resolved session key to Matrix portal")
 		}
-		} else {
-			if strings.TrimSpace(label) == "" {
+	} else {
+		if strings.TrimSpace(label) == "" {
 			return tools.JSONResult(map[string]any{
 				"status": "error",
 				"error":  "sessionKey or label is required",
 			}), nil
 		}
-			target, display, resolveErr := oc.resolveSessionPortalByLabel(ctx, label, agentID)
-			if resolveErr != nil {
-				var desktopInstance string
-				var chatID string
-				var desktopKey string
-				var desktopErr error
-				resolveOpts := desktopLabelResolveOptions{
-					AccountID: strings.TrimSpace(accountID),
-					Network:   strings.TrimSpace(network),
+		target, display, resolveErr := oc.resolveSessionPortalByLabel(ctx, label, agentID)
+		if resolveErr != nil {
+			var desktopInstance string
+			var chatID string
+			var desktopKey string
+			var desktopErr error
+			if strings.TrimSpace(instance) != "" {
+				chatID, desktopKey, desktopErr = oc.resolveDesktopSessionByLabel(ctx, instance, label)
+				desktopInstance = instance
+			} else {
+				desktopInstance, chatID, desktopKey, desktopErr = oc.resolveDesktopSessionByLabelAnyInstance(ctx, label)
+			}
+			if desktopErr == nil {
+				if trace {
+					oc.log.Debug().Str("instance", desktopInstance).Str("chat_id", chatID).Msg("Sending to desktop session by label")
 				}
-				if strings.TrimSpace(instance) != "" {
-					chatID, desktopKey, desktopErr = oc.resolveDesktopSessionByLabelWithOptions(ctx, instance, label, resolveOpts)
-					desktopInstance = instance
-				} else {
-					desktopInstance, chatID, desktopKey, desktopErr = oc.resolveDesktopSessionByLabelAnyInstanceWithOptions(ctx, label, resolveOpts)
-				}
-				if desktopErr == nil {
-					resolvedFromLabel = true
-					if trace {
-						oc.log.Debug().Str("instance", desktopInstance).Str("chat_id", chatID).Msg("Sending to desktop session by label")
-					}
-					pendingID, sendErr := oc.sendDesktopMessage(ctx, desktopInstance, chatID, desktopSendMessageRequest{
-						Text: message,
-					})
+				_, sendErr := oc.sendDesktopMessage(ctx, desktopInstance, chatID, desktopSendMessageRequest{
+					Text: message,
+				})
 				if sendErr != nil {
 					return tools.JSONResult(map[string]any{
 						"status": "error",
 						"error":  sendErr.Error(),
 					}), nil
 				}
-				baseURL := ""
-				if config, ok := oc.desktopAPIInstanceConfig(desktopInstance); ok {
-					baseURL = strings.TrimSpace(config.BaseURL)
+				result := map[string]any{
+					"runId":      runID,
+					"status":     "accepted",
+					"sessionKey": desktopKey,
+					"delivery": map[string]any{
+						"status": "pending",
+						"mode":   "announce",
+					},
 				}
-					result := map[string]any{
-						"runId":            uuid.NewString(),
-						"status":           "ok",
-						"sessionKey":       desktopKey,
-						"pendingMessageId": pendingID,
-						"instance":         desktopInstance,
-						"chatId":           chatID,
-					}
-					if resolvedFromLabel {
-						result["resolvedFromLabel"] = true
-						result["hint"] = "Prefer using this sessionKey directly next time (from sessions_list)."
-					}
-					if baseURL != "" {
-						result["baseUrl"] = baseURL
-					}
 				return tools.JSONResult(result), nil
 			}
 			if desktopErr != nil {
@@ -495,48 +450,80 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 				"error":  resolveErr.Error(),
 			}), nil
 		}
-			targetPortal = target
-			displayKey = display
-			resolvedFromLabel = true
-			if trace {
-				oc.log.Debug().Stringer("portal", targetPortal.PortalKey).Msg("Resolved session label to Matrix portal")
-			}
+		targetPortal = target
+		displayKey = display
+		if trace {
+			oc.log.Debug().Stringer("portal", targetPortal.PortalKey).Msg("Resolved session label to Matrix portal")
 		}
+	}
 
 	if targetPortal == nil {
 		return tools.JSONResult(map[string]any{
+			"runId":  runID,
 			"status": "error",
 			"error":  "session not found",
 		}), nil
 	}
 
+	lastAssistantID, lastAssistantTimestamp := oc.lastAssistantMessageInfo(ctx, targetPortal)
 	queued := false
-	if _, queuedFlag, dispatchErr := oc.dispatchInternalMessage(ctx, targetPortal, portalMeta(targetPortal), message, "sessions-send", false); dispatchErr != nil {
+	if dispatchEventID, queuedFlag, dispatchErr := oc.dispatchInternalMessage(ctx, targetPortal, portalMeta(targetPortal), message, "sessions-send", false); dispatchErr != nil {
+		status := "error"
+		if isForbiddenSessionSendError(dispatchErr.Error()) {
+			status = "forbidden"
+		}
 		return tools.JSONResult(map[string]any{
-			"status": "error",
+			"runId":  runID,
+			"status": status,
 			"error":  dispatchErr.Error(),
 		}), nil
 	} else {
+		if dispatchEventID != "" {
+			runID = dispatchEventID.String()
+		}
 		queued = queuedFlag
 	}
 	if trace {
 		oc.log.Debug().Bool("queued", queued).Msg("Sessions send dispatched")
 	}
 
-	status := "ok"
-	if queued {
-		status = "accepted"
+	delivery := map[string]any{
+		"status": "pending",
+		"mode":   "announce",
+	}
+	result := map[string]any{
+		"runId":      runID,
+		"status":     "accepted",
+		"sessionKey": displayKey,
+		"delivery":   delivery,
+	}
+	if timeoutSeconds == 0 {
+		return tools.JSONResult(result), nil
 	}
 
-	result := map[string]any{
-		"runId":      uuid.NewString(),
-		"status":     status,
-		"sessionKey": displayKey,
+	timeout := time.Duration(timeoutSeconds) * time.Second
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		assistantMsg, found := oc.waitForNewAssistantMessage(ctx, targetPortal, lastAssistantID, lastAssistantTimestamp)
+		if found {
+			reply := ""
+			if assistantMsg != nil {
+				if assistantMeta := messageMeta(assistantMsg); assistantMeta != nil {
+					reply = strings.TrimSpace(assistantMeta.Body)
+				}
+			}
+			result["status"] = "ok"
+			result["reply"] = reply
+			return tools.JSONResult(result), nil
+		}
+		time.Sleep(250 * time.Millisecond)
 	}
-	if resolvedFromLabel {
-		result["resolvedFromLabel"] = true
-		result["hint"] = "Prefer using this sessionKey directly next time (from sessions_list)."
+
+	if trace {
+		oc.log.Debug().Bool("queued", queued).Str("session_key", displayKey).Msg("Sessions send timed out waiting for assistant reply")
 	}
+	result["status"] = "timeout"
+	result["error"] = "timeout waiting for assistant reply"
 	return tools.JSONResult(result), nil
 }
 
@@ -556,6 +543,17 @@ func resolveSessionKind(current id.RoomID, portal *bridgev2.Portal, meta *Portal
 		}
 	}
 	return "group"
+}
+
+func isForbiddenSessionSendError(errText string) bool {
+	text := strings.ToLower(strings.TrimSpace(errText))
+	if text == "" {
+		return false
+	}
+	return strings.Contains(text, "forbidden") ||
+		strings.Contains(text, "not allowed") ||
+		strings.Contains(text, "permission denied") ||
+		strings.Contains(text, "restricted")
 }
 
 func resolveSessionLabel(portal *bridgev2.Portal, meta *PortalMetadata) string {
@@ -633,6 +631,9 @@ func (oc *AIClient) resolveSessionPortalByLabel(ctx context.Context, label strin
 			continue
 		}
 		meta := portalMeta(candidate)
+		if shouldExcludeModelVisiblePortal(meta) {
+			continue
+		}
 		if filterAgent != "" {
 			agent := normalizeAgentID(resolveAgentID(meta))
 			if agent != filterAgent {
@@ -667,30 +668,4 @@ func (oc *AIClient) lastMessageTimestamp(ctx context.Context, portal *bridgev2.P
 		return 0
 	}
 	return messages[len(messages)-1].Timestamp.UnixMilli()
-}
-
-func buildSessionMessages(messages []*database.Message, includeTools bool) []map[string]any {
-	result := make([]map[string]any, 0, len(messages))
-	for _, msg := range messages {
-		meta := messageMeta(msg)
-		if meta == nil {
-			continue
-		}
-		if !includeTools && meta.Role != "assistant" && meta.Role != "user" {
-			continue
-		}
-		if includeTools && meta.Role != "assistant" && meta.Role != "user" && meta.Role != "tool" {
-			continue
-		}
-		entry := map[string]any{
-			"role":      meta.Role,
-			"content":   meta.Body,
-			"timestamp": msg.Timestamp.UnixMilli(),
-		}
-		if msg.MXID != "" {
-			entry["id"] = msg.MXID.String()
-		}
-		result = append(result, entry)
-	}
-	return result
 }

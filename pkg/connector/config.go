@@ -280,6 +280,17 @@ type ToolProvidersConfig struct {
 	Search *SearchConfig     `yaml:"search"`
 	Fetch  *FetchConfig      `yaml:"fetch"`
 	Media  *MediaToolsConfig `yaml:"media"`
+	Nexus  *NexusToolsConfig `yaml:"nexus"`
+}
+
+// NexusToolsConfig configures Nexus tool bridging to a clay-nexus backend.
+type NexusToolsConfig struct {
+	Enabled        *bool  `yaml:"enabled"`
+	BaseURL        string `yaml:"base_url"`
+	MCPEndpoint    string `yaml:"mcp_endpoint"`
+	Token          string `yaml:"token"`
+	AuthType       string `yaml:"auth_type"` // bearer | apikey
+	TimeoutSeconds int    `yaml:"timeout_seconds"`
 }
 
 // MediaUnderstandingScopeMatch defines match criteria for media understanding scope rules.
@@ -667,6 +678,12 @@ func upgradeConfig(helper configupgrade.Helper) {
 	helper.Copy(configupgrade.Int, "tools", "fetch", "direct", "max_chars")
 	helper.Copy(configupgrade.Int, "tools", "fetch", "direct", "max_redirects")
 	helper.Copy(configupgrade.Int, "tools", "fetch", "direct", "cache_ttl_seconds")
+	helper.Copy(configupgrade.Bool, "tools", "nexus", "enabled")
+	helper.Copy(configupgrade.Str, "tools", "nexus", "base_url")
+	helper.Copy(configupgrade.Str, "tools", "nexus", "mcp_endpoint")
+	helper.Copy(configupgrade.Str, "tools", "nexus", "token")
+	helper.Copy(configupgrade.Str, "tools", "nexus", "auth_type")
+	helper.Copy(configupgrade.Int, "tools", "nexus", "timeout_seconds")
 
 	// Memory search configuration
 	helper.Copy(configupgrade.Bool, "memory_search", "enabled")

@@ -59,11 +59,23 @@ type ServiceTokens struct {
 	Perplexity          string                        `json:"perplexity,omitempty"`
 	DesktopAPI          string                        `json:"desktop_api,omitempty"`
 	DesktopAPIInstances map[string]DesktopAPIInstance `json:"desktop_api_instances,omitempty"`
+	MCPServers          map[string]MCPServerConfig    `json:"mcp_servers,omitempty"`
 }
 
 type DesktopAPIInstance struct {
 	Token   string `json:"token,omitempty"`
 	BaseURL string `json:"base_url,omitempty"`
+}
+
+// MCPServerConfig stores one MCP server connection for a login.
+// The map key in ServiceTokens.MCPServers is the server name.
+type MCPServerConfig struct {
+	Endpoint  string `json:"endpoint,omitempty"`
+	AuthType  string `json:"auth_type,omitempty"` // bearer|apikey|none
+	Token     string `json:"token,omitempty"`
+	AuthURL   string `json:"auth_url,omitempty"` // Optional browser auth URL for manual token retrieval.
+	Connected bool   `json:"connected,omitempty"`
+	Kind      string `json:"kind,omitempty"` // nexus (default)
 }
 
 // UserLoginMetadata is stored on each login row to keep per-user settings.
@@ -250,6 +262,10 @@ type MessageMetadata struct {
 	// Tool call tracking
 	ToolCalls []ToolCallMetadata `json:"tool_calls,omitempty"` // List of tool calls in this turn
 
+	// Canonical internal schema payload (AI SDK compatible).
+	CanonicalSchema    string         `json:"canonical_schema,omitempty"`     // e.g. ai-sdk-ui-message-v1
+	CanonicalUIMessage map[string]any `json:"canonical_ui_message,omitempty"` // AI SDK UIMessage-compatible payload
+
 	// Timing information
 	StartedAtMs    int64 `json:"started_at_ms,omitempty"`     // Unix ms when generation started
 	FirstTokenAtMs int64 `json:"first_token_at_ms,omitempty"` // Unix ms of first token
@@ -329,6 +345,12 @@ func (mm *MessageMetadata) CopyFrom(other any) {
 	}
 	if len(src.ToolCalls) > 0 {
 		mm.ToolCalls = src.ToolCalls
+	}
+	if src.CanonicalSchema != "" {
+		mm.CanonicalSchema = src.CanonicalSchema
+	}
+	if len(src.CanonicalUIMessage) > 0 {
+		mm.CanonicalUIMessage = src.CanonicalUIMessage
 	}
 	if src.StartedAtMs != 0 {
 		mm.StartedAtMs = src.StartedAtMs

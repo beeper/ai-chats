@@ -59,3 +59,60 @@ func TestShouldContinueChatToolLoop(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildCanonicalUIMessage_IncludesSourceAndFileParts(t *testing.T) {
+	oc := &AIClient{}
+	state := &streamingState{
+		turnID: "turn-1",
+		sourceCitations: []sourceCitation{{
+			URL:   "https://example.com",
+			Title: "Example",
+		}},
+		sourceDocuments: []sourceDocument{{
+			ID:        "doc-1",
+			Title:     "Doc",
+			Filename:  "doc.txt",
+			MediaType: "text/plain",
+		}},
+		generatedFiles: []generatedFilePart{{
+			url:       "mxc://example/file",
+			mediaType: "image/png",
+		}},
+	}
+
+	ui := oc.buildCanonicalUIMessage(state, &PortalMetadata{Model: "gpt-4o"})
+	if ui == nil {
+		t.Fatalf("expected canonical message")
+	}
+	partsRaw, ok := ui["parts"].([]map[string]any)
+	if !ok {
+		partsAny, okAny := ui["parts"].([]any)
+		if !okAny {
+			t.Fatalf("expected parts array, got %T", ui["parts"])
+		}
+		partsRaw = make([]map[string]any, 0, len(partsAny))
+		for _, partAny := range partsAny {
+			part, okPart := partAny.(map[string]any)
+			if okPart {
+				partsRaw = append(partsRaw, part)
+			}
+		}
+	}
+
+	foundSourceURL := false
+	foundSourceDocument := false
+	foundFile := false
+	for _, part := range partsRaw {
+		switch part["type"] {
+		case "source-url":
+			foundSourceURL = true
+		case "source-document":
+			foundSourceDocument = true
+		case "file":
+			foundFile = true
+		}
+	}
+	if !foundSourceURL || !foundSourceDocument || !foundFile {
+		t.Fatalf("missing expected part types (source-url=%v source-document=%v file=%v)", foundSourceURL, foundSourceDocument, foundFile)
+	}
+}

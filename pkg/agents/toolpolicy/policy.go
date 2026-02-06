@@ -32,6 +32,7 @@ const (
 	GroupStatus     = "group:status"
 	GroupOpenClaw   = "group:openclaw"
 	GroupFS         = "group:fs"
+	GroupNexus      = "group:nexus"
 )
 
 // ToolGroups maps group names to tool names for policy composition.
@@ -50,6 +51,28 @@ var ToolGroups = map[string][]string{
 	GroupStatus:     {"session_status"},
 	GroupOpenClaw:   {"message", "agents_list", "list_models", "list_tools", "modify_room", "sessions_list", "sessions_history", "sessions_send", "sessions_spawn", "session_status", "memory_search", "memory_get", "web_search", "web_fetch", "image", "gravatar_fetch"},
 	GroupFS:         {"read", "write", "edit", "apply_patch", "stat", "ls", "find", "grep"},
+	GroupNexus: {
+		"get_user_information",
+		"searchContacts",
+		"getContact",
+		"createContact",
+		"updateContact",
+		"archive_contact",
+		"restore_contact",
+		"createNote",
+		"getGroups",
+		"createGroup",
+		"updateGroup",
+		"getNotes",
+		"getEvents",
+		"getUpcomingEvents",
+		"getEmails",
+		"getRecentEmails",
+		"getRecentReminders",
+		"getUpcomingReminders",
+		"find_duplicates",
+		"merge_contacts",
+	},
 }
 
 var ownerOnlyToolNames = map[string]struct{}{

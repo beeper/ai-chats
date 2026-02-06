@@ -378,6 +378,18 @@ func serviceTokensEmpty(tokens *ServiceTokens) bool {
 			}
 		}
 	}
+	if len(tokens.MCPServers) > 0 {
+		for _, server := range tokens.MCPServers {
+			if strings.TrimSpace(server.Endpoint) != "" ||
+				strings.TrimSpace(server.Token) != "" ||
+				strings.TrimSpace(server.AuthURL) != "" ||
+				strings.TrimSpace(server.AuthType) != "" ||
+				strings.TrimSpace(server.Kind) != "" ||
+				server.Connected {
+				return false
+			}
+		}
+	}
 	return strings.TrimSpace(tokens.OpenAI) == "" &&
 		strings.TrimSpace(tokens.OpenRouter) == "" &&
 		strings.TrimSpace(tokens.Exa) == "" &&

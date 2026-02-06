@@ -95,12 +95,19 @@ func (oc *AIClient) buildToolPolicyContext(meta *PortalMetadata) toolPolicyConte
 	toolList := make([]*agenttools.Tool, 0, len(names))
 	for _, name := range names {
 		tool := agenttools.GetTool(name)
+		normalizedName := toolpolicy.NormalizeToolName(name)
 		if tool == nil {
+			if normalizedName != "" {
+				coreTools[normalizedName] = struct{}{}
+			}
 			continue
 		}
 		toolList = append(toolList, tool)
-		if !agenttools.IsPluginTool(tool) {
-			coreTools[toolpolicy.NormalizeToolName(tool.Name)] = struct{}{}
+		if agenttools.IsPluginTool(tool) {
+			continue
+		}
+		if normalizedName != "" {
+			coreTools[normalizedName] = struct{}{}
 		}
 	}
 

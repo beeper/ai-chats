@@ -388,14 +388,10 @@ var SessionsListTool = &Tool{
 		Annotations: &mcp.ToolAnnotations{Title: "List Sessions"},
 		InputSchema: map[string]any{
 			"type": "object",
-				"properties": map[string]any{
-					"channel": map[string]any{
-						"type":        "string",
-						"description": "Optional channel filter (matrix or desktop-api)",
-					},
-					"kinds": map[string]any{
-						"type":  "array",
-						"items": map[string]any{"type": "string"},
+			"properties": map[string]any{
+				"kinds": map[string]any{
+					"type":  "array",
+					"items": map[string]any{"type": "string"},
 				},
 				"limit": map[string]any{
 					"type":        "number",
@@ -405,21 +401,13 @@ var SessionsListTool = &Tool{
 					"type":        "number",
 					"description": "Only include sessions active within this many minutes",
 				},
-					"messageLimit": map[string]any{
-						"type":        "number",
-						"description": "Include the last N messages for each session",
-					},
-					"accountId": map[string]any{
-						"type":        "string",
-						"description": "For desktop-api channel: filter sessions by account ID",
-					},
-					"network": map[string]any{
-						"type":        "string",
-						"description": "For desktop-api channel: filter sessions by network (e.g. whatsapp, instagram)",
-					},
+				"messageLimit": map[string]any{
+					"type":        "number",
+					"description": "Include the last N messages for each session",
 				},
 			},
 		},
+	},
 	Type:  ToolTypeBuiltin,
 	Group: GroupSessions,
 }
@@ -433,13 +421,13 @@ var SessionsHistoryTool = &Tool{
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-					"sessionKey": map[string]any{
-						"type":        "string",
-						"description": "Full session key from sessions_list (preferred canonical target)",
-					},
+				"sessionKey": map[string]any{
+					"type":        "string",
+					"description": "Full session key from sessions_list (preferred canonical target)",
+				},
 				"limit": map[string]any{
 					"type":        "number",
-					"description": "Maximum number of messages to return (default: 50)",
+					"description": "Maximum number of messages to return (default: 200)",
 				},
 				"includeTools": map[string]any{
 					"type":        "boolean",
@@ -462,29 +450,17 @@ var SessionsSendTool = &Tool{
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-					"sessionKey": map[string]any{
-						"type":        "string",
-						"description": "Full session key from sessions_list (preferred canonical target)",
-					},
-					"label": map[string]any{
-						"type":        "string",
-						"description": "Session label fallback (can be ambiguous; sessionKey is preferred)",
-					},
-					"instance": map[string]any{
-						"type":        "string",
-						"description": "Desktop API instance name when targeting a desktop label",
-					},
-					"accountId": map[string]any{
-						"type":        "string",
-						"description": "For desktop label targeting: narrow to a specific Desktop account ID",
-					},
-					"network": map[string]any{
-						"type":        "string",
-						"description": "For desktop label targeting: narrow to a specific network (e.g. whatsapp, instagram)",
-					},
-					"agentId": map[string]any{
-						"type":        "string",
-						"description": "Agent id filter for label lookups",
+				"sessionKey": map[string]any{
+					"type":        "string",
+					"description": "Full session key from sessions_list (preferred canonical target)",
+				},
+				"label": map[string]any{
+					"type":        "string",
+					"description": "Session label fallback (can be ambiguous; sessionKey is preferred)",
+				},
+				"agentId": map[string]any{
+					"type":        "string",
+					"description": "Agent id filter for label lookups",
 				},
 				"message": map[string]any{
 					"type":        "string",

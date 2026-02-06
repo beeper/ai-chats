@@ -331,6 +331,12 @@ type AIClient struct {
 	modelCatalogMu     sync.Mutex
 	modelCatalogLoaded bool
 	modelCatalogCache  []ModelCatalogEntry
+
+	// Nexus MCP tool cache
+	nexusMCPToolsMu        sync.Mutex
+	nexusMCPTools          []ToolDefinition
+	nexusMCPToolSet        map[string]struct{}
+	nexusMCPToolsFetchedAt time.Time
 }
 
 // pendingMessageType indicates what kind of pending message this is

@@ -25,11 +25,12 @@ const (
 	GroupStatus    = toolpolicy.GroupStatus
 	GroupOpenClaw  = toolpolicy.GroupOpenClaw
 	GroupFS        = toolpolicy.GroupFS
+	GroupNexus     = toolpolicy.GroupNexus
 )
 
 // BuiltinTools returns all locally-executable builtin tools.
 func BuiltinTools() []*Tool {
-	return []*Tool{
+	tools := []*Tool{
 		Calculator,
 		WebSearch,
 		MessageTool,
@@ -51,6 +52,8 @@ func BuiltinTools() []*Tool {
 		FindTool,
 		GrepTool,
 	}
+	tools = append(tools, NexusTools()...)
+	return tools
 }
 
 // AllTools returns all tools (builtin + provider markers).

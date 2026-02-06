@@ -35,6 +35,36 @@ func normalizeToolArgsJSON(argsJSON string) string {
 	return trimmed
 }
 
+func parseToolInputPayload(argsJSON string) map[string]any {
+	trimmed := strings.TrimSpace(argsJSON)
+	if trimmed == "" {
+		return nil
+	}
+	var parsed any
+	if err := json.Unmarshal([]byte(trimmed), &parsed); err != nil {
+		return map[string]any{"_raw": trimmed}
+	}
+	if m, ok := parsed.(map[string]any); ok {
+		return m
+	}
+	return map[string]any{"value": parsed}
+}
+
+func parseToolOutputPayload(result string) map[string]any {
+	trimmed := strings.TrimSpace(result)
+	if trimmed == "" {
+		return nil
+	}
+	var parsed any
+	if err := json.Unmarshal([]byte(trimmed), &parsed); err != nil {
+		return map[string]any{"result": result}
+	}
+	if m, ok := parsed.(map[string]any); ok {
+		return m
+	}
+	return map[string]any{"result": parsed}
+}
+
 // emitToolProgress sends a tool progress update event
 func (oc *AIClient) emitToolProgress(ctx context.Context, portal *bridgev2.Portal, state *streamingState, tool *activeToolCall, status ToolStatus, message string, percent int) {
 	if state == nil || tool == nil {
@@ -148,6 +178,9 @@ func (oc *AIClient) sendToolCallEvent(ctx context.Context, portal *bridgev2.Port
 			"started_at": tool.startedAtMs,
 		},
 	}
+	if input := parseToolInputPayload(tool.input.String()); len(input) > 0 {
+		toolCallData["input"] = input
+	}
 
 	if state.agentID != "" {
 		toolCallData["agent_id"] = state.agentID
@@ -229,9 +262,8 @@ func (oc *AIClient) sendToolResultEvent(ctx context.Context, portal *bridgev2.Po
 		toolResultData["agent_id"] = state.agentID
 	}
 
-	if result != "" {
-		// Keep the output shape stable: { output: { result: "<string payload>" } }
-		toolResultData["output"] = map[string]any{"result": result}
+	if output := parseToolOutputPayload(result); len(output) > 0 {
+		toolResultData["output"] = output
 	}
 
 	eventRaw := map[string]any{
@@ -293,6 +325,18 @@ func (oc *AIClient) executeBuiltinTool(ctx context.Context, portal *bridgev2.Por
 	var meta *PortalMetadata
 	if portal != nil {
 		meta = portalMeta(portal)
+	}
+
+	if isNexusToolName(toolName) && !canUseNexusToolsForAgent(meta) {
+		return "", fmt.Errorf("tool %s is restricted to the Nexus agent", toolName)
+	}
+
+	// Route Nexus tools through MCP when configured.
+	if oc.shouldUseNexusMCPTool(ctx, toolName) {
+		if !canUseNexusToolsForAgent(meta) {
+			return "", fmt.Errorf("tool %s is restricted to the Nexus agent", toolName)
+		}
+		return oc.executeNexusMCPTool(ctx, toolName, args)
 	}
 	// Check if this is a Boss room or a session tool - use boss tool executor
 	if (meta != nil && hasBossAgent(meta)) || oc.isBuilderRoom(portal) || tools.IsSessionTool(toolName) || tools.IsBossTool(toolName) {
