@@ -22,9 +22,7 @@ const (
 	embeddingRetryBaseDelay      = 500 * time.Millisecond
 	embeddingRetryMaxDelay       = 8 * time.Second
 	embeddingQueryTimeoutRemote  = 60 * time.Second
-	embeddingQueryTimeoutLocal   = 5 * time.Minute
 	embeddingBatchTimeoutRemote  = 2 * time.Minute
-	embeddingBatchTimeoutLocal   = 10 * time.Minute
 )
 
 var retryableEmbeddingRE = regexp.MustCompile(`(?i)(rate[_ ]limit|too many requests|429|resource has been exhausted|5\\d\\d|cloudflare)`)
@@ -177,15 +175,8 @@ func (m *MemorySearchManager) isRetryableEmbeddingError(message string) bool {
 }
 
 func (m *MemorySearchManager) resolveEmbeddingTimeout(kind string) time.Duration {
-	isLocal := m.status.Provider == "local"
 	if kind == "query" {
-		if isLocal {
-			return embeddingQueryTimeoutLocal
-		}
 		return embeddingQueryTimeoutRemote
-	}
-	if isLocal {
-		return embeddingBatchTimeoutLocal
 	}
 	return embeddingBatchTimeoutRemote
 }

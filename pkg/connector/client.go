@@ -2256,7 +2256,7 @@ func (oc *AIClient) buildPromptUpToMessage(
 	var prompt []openai.ChatCompletionMessageParamUnion
 
 	// Add system prompt - agent prompt takes priority, then room override, then config default
-	systemPrompt := oc.effectiveAgentPrompt(ctx, meta)
+	systemPrompt := oc.effectiveAgentPrompt(ctx, portal, meta)
 	if systemPrompt == "" {
 		systemPrompt = oc.effectivePrompt(meta)
 	}

@@ -509,55 +509,6 @@ func (oc *AIClient) createAgentChatWithModel(ctx context.Context, agent *agents.
 	}, nil
 }
 
-// createAgentChat creates a new chat room for an agent
-func (oc *AIClient) createAgentChat(ctx context.Context, agent *agents.AgentDefinition) (*bridgev2.CreateChatResponse, error) {
-	// Determine model from agent config or use default
-	modelID := agent.Model.Primary
-	if modelID == "" {
-		modelID = oc.effectiveModel(nil)
-	}
-
-	portal, chatInfo, err := oc.initPortalForChat(ctx, PortalInitOpts{
-		ModelID:      modelID,
-		Title:        fmt.Sprintf("Chat with %s", agent.Name),
-		SystemPrompt: agent.SystemPrompt,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// Set agent-specific metadata
-	pm := portalMeta(portal)
-	pm.AgentID = agent.ID
-	pm.DefaultAgentID = agent.ID
-	if agent.SystemPrompt != "" {
-		pm.SystemPrompt = agent.SystemPrompt
-	}
-
-	// Update the OtherUserID to be the agent ghost
-	portal.OtherUserID = agentUserID(agent.ID)
-
-	if err := portal.Save(ctx); err != nil {
-		return nil, fmt.Errorf("failed to save portal with agent config: %w", err)
-	}
-
-	// Update chat info members to use agent ghost
-	chatInfo.Members = &bridgev2.ChatMemberList{
-		MemberMap: map[networkid.UserID]bridgev2.ChatMember{
-			humanUserID(oc.UserLogin.ID): {EventSender: bridgev2.EventSender{Sender: humanUserID(oc.UserLogin.ID)}},
-			agentUserID(agent.ID):        {EventSender: bridgev2.EventSender{Sender: agentUserID(agent.ID)}},
-		},
-	}
-
-	return &bridgev2.CreateChatResponse{
-		PortalKey: portal.PortalKey,
-		PortalInfo: &bridgev2.ChatInfo{
-			Name:    chatInfo.Name,
-			Members: chatInfo.Members,
-		},
-	}, nil
-}
-
 // createNewChat creates a new portal for a specific model
 func (oc *AIClient) createNewChat(ctx context.Context, modelID string) (*bridgev2.CreateChatResponse, error) {
 	portal, chatInfo, err := oc.initPortalForChat(ctx, PortalInitOpts{

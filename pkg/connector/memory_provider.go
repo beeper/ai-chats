@@ -38,21 +38,6 @@ func buildMemoryProvider(client *AIClient, cfg *memory.ResolvedConfig) (*memoryP
 
 	createProvider := func(kind string) (*providerConfig, error) {
 		switch kind {
-		case "local":
-			baseURL := strings.TrimSpace(cfg.Local.BaseURL)
-			apiKey := strings.TrimSpace(cfg.Local.APIKey)
-			provider, err := embedding.NewLocalProvider(baseURL, apiKey, cfg.Model, nil)
-			if err != nil {
-				return nil, err
-			}
-			return &providerConfig{
-				provider: provider,
-				status: memory.ProviderStatus{
-					Provider: provider.ID(),
-					Model:    provider.Model(),
-				},
-				baseURL: baseURL,
-			}, nil
 		case "gemini":
 			apiKey, baseURL, headers := resolveGeminiEmbeddingConfig(client, cfg)
 			provider, err := embedding.NewGeminiProvider(apiKey, baseURL, cfg.Model, headers)
@@ -89,11 +74,6 @@ func buildMemoryProvider(client *AIClient, cfg *memory.ResolvedConfig) (*memoryP
 	}
 
 	if requested == "auto" {
-		if strings.TrimSpace(cfg.Local.BaseURL) != "" {
-			if provider, err := createProvider("local"); err == nil {
-				return finalizeProvider(cfg, provider), nil
-			}
-		}
 		if hasOpenAIEmbeddingConfig(client, cfg) {
 			if provider, err := createProvider("openai"); err == nil {
 				return finalizeProvider(cfg, provider), nil

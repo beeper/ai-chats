@@ -238,16 +238,6 @@ func ToAgentDefinitionContent(agent *agents.AgentDefinition) *AgentDefinitionCon
 		content.IdentityPersona = agent.Identity.Persona
 	}
 
-	// Convert memory config
-	if agent.Memory != nil {
-		content.MemoryConfig = &AgentMemoryConfig{
-			Enabled:      agent.Memory.Enabled,
-			Sources:      agent.Memory.Sources,
-			EnableGlobal: agent.Memory.EnableGlobal,
-			MaxResults:   agent.Memory.MaxResults,
-			MinScore:     agent.Memory.MinScore,
-		}
-	}
 	if agent.MemorySearch != nil {
 		content.MemorySearch = agent.MemorySearch
 	}
@@ -285,16 +275,6 @@ func FromAgentDefinitionContent(content *AgentDefinitionContent) *agents.AgentDe
 		}
 	}
 
-	// Restore memory config if present
-	if content.MemoryConfig != nil {
-		def.Memory = &agents.MemoryConfig{
-			Enabled:      content.MemoryConfig.Enabled,
-			Sources:      content.MemoryConfig.Sources,
-			EnableGlobal: content.MemoryConfig.EnableGlobal,
-			MaxResults:   content.MemoryConfig.MaxResults,
-			MinScore:     content.MemoryConfig.MinScore,
-		}
-	}
 	if content.MemorySearch != nil {
 		def.MemorySearch = content.MemorySearch
 	}

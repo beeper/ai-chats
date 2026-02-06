@@ -10,7 +10,6 @@ type ResolvedConfig struct {
 	Model        string
 	Fallback     string
 	Remote       RemoteConfig
-	Local        LocalConfig
 	Store        StoreConfig
 	Chunking     ChunkingConfig
 	Sync         SyncConfig
@@ -32,13 +31,6 @@ type BatchConfig struct {
 	Concurrency    int
 	PollIntervalMs int
 	TimeoutMinutes int
-}
-
-type LocalConfig struct {
-	BaseURL       string
-	APIKey        string
-	ModelPath     string
-	ModelCacheDir string
 }
 
 type StoreConfig struct {

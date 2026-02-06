@@ -181,7 +181,7 @@ memory_search:
   enabled: true
   sources: ["memory"]
   extra_paths: []
-  provider: "auto" # auto | openai | gemini | local
+  provider: "auto" # auto | openai | gemini
   model: ""
   fallback: "none"
   remote:
@@ -194,11 +194,6 @@ memory_search:
       concurrency: 2
       poll_interval_ms: 2000
       timeout_minutes: 60
-  local:
-    model_path: ""
-    model_cache_dir: ""
-    base_url: ""
-    api_key: ""
   store:
     driver: "sqlite"
     path: ""

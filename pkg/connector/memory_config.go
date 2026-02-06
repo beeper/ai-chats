@@ -16,18 +16,16 @@ func resolveMemorySearchConfig(client *AIClient, agentID string) (*memory.Resolv
 	}
 	defaults := client.connector.Config.MemorySearch
 	var overrides *agents.MemorySearchConfig
-	var legacy *agents.MemoryConfig
 
 	if agentID != "" {
 		store := NewAgentStoreAdapter(client)
 		agent, err := store.GetAgentByID(client.backgroundContext(context.TODO()), agentID)
 		if err == nil && agent != nil {
 			overrides = agent.MemorySearch
-			legacy = agent.Memory
 		}
 	}
 
-	resolved := mergeMemorySearchConfig(defaults, overrides, legacy, agentID)
+	resolved := mergeMemorySearchConfig(defaults, overrides)
 	if resolved == nil {
 		return nil, fmt.Errorf("memory search disabled")
 	}
@@ -37,8 +35,6 @@ func resolveMemorySearchConfig(client *AIClient, agentID string) (*memory.Resolv
 func mergeMemorySearchConfig(
 	defaults *MemorySearchConfig,
 	overrides *agents.MemorySearchConfig,
-	legacy *agents.MemoryConfig,
-	agentID string,
 ) *memory.ResolvedConfig {
 	enabled := pickBool(overridesEnabled(overrides), defaultsEnabled(defaults), true)
 	sessionMemory := pickBool(overridesSessionMemory(overrides), defaultsSessionMemory(defaults), false)
@@ -71,13 +67,6 @@ func mergeMemorySearchConfig(
 	}
 	model := pickString(overridesModel(overrides), defaultsModel(defaults), modelDefault)
 
-	local := memory.LocalConfig{
-		ModelPath:     pickString(overridesLocalModelPath(overrides), defaultsLocalModelPath(defaults), ""),
-		ModelCacheDir: pickString(overridesLocalModelCacheDir(overrides), defaultsLocalModelCacheDir(defaults), ""),
-		BaseURL:       pickString(overridesLocalBaseURL(overrides), defaultsLocalBaseURL(defaults), ""),
-		APIKey:        pickString(overridesLocalAPIKey(overrides), defaultsLocalAPIKey(defaults), ""),
-	}
-
 	rawSources := mergeStringSlices(defaultsSources(defaults), overridesSources(overrides))
 	sources := normalizeSources(rawSources, sessionMemory)
 
@@ -90,8 +79,8 @@ func mergeMemorySearchConfig(
 	}
 
 	store := memory.StoreConfig{
-		Driver: pickString(overridesStoreDriver(overrides), defaultsStoreDriver(defaults), "sqlite"),
-		Path:   pickString(overridesStorePath(overrides), defaultsStorePath(defaults), ""),
+		Driver: "sqlite",
+		Path:   "",
 		Vector: vector,
 	}
 
@@ -163,28 +152,12 @@ func mergeMemorySearchConfig(
 		Model:        model,
 		Fallback:     fallback,
 		Remote:       remote,
-		Local:        local,
 		Store:        store,
 		Chunking:     memory.ChunkingConfig{Tokens: chunkTokens, Overlap: chunkOverlap},
 		Sync:         sync,
 		Query:        query,
 		Cache:        cache,
 		Experimental: experimental,
-	}
-
-	if legacy != nil {
-		if legacy.Enabled != nil {
-			resolved.Enabled = *legacy.Enabled
-		}
-		if len(legacy.Sources) > 0 {
-			resolved.Sources = normalizeSources(legacy.Sources, sessionMemory)
-		}
-		if legacy.MaxResults > 0 {
-			resolved.Query.MaxResults = legacy.MaxResults
-		}
-		if legacy.MinScore > 0 {
-			resolved.Query.MinScore = clampFloat(legacy.MinScore, 0, 1)
-		}
 	}
 
 	if !resolved.Enabled {
@@ -376,62 +349,6 @@ func defaultsModel(cfg *MemorySearchConfig) string {
 	return cfg.Model
 }
 
-func overridesLocalModelPath(cfg *agents.MemorySearchConfig) string {
-	if cfg == nil || cfg.Local == nil {
-		return ""
-	}
-	return cfg.Local.ModelPath
-}
-
-func defaultsLocalModelPath(cfg *MemorySearchConfig) string {
-	if cfg == nil || cfg.Local == nil {
-		return ""
-	}
-	return cfg.Local.ModelPath
-}
-
-func overridesLocalModelCacheDir(cfg *agents.MemorySearchConfig) string {
-	if cfg == nil || cfg.Local == nil {
-		return ""
-	}
-	return cfg.Local.ModelCacheDir
-}
-
-func defaultsLocalModelCacheDir(cfg *MemorySearchConfig) string {
-	if cfg == nil || cfg.Local == nil {
-		return ""
-	}
-	return cfg.Local.ModelCacheDir
-}
-
-func overridesLocalBaseURL(cfg *agents.MemorySearchConfig) string {
-	if cfg == nil || cfg.Local == nil {
-		return ""
-	}
-	return cfg.Local.BaseURL
-}
-
-func defaultsLocalBaseURL(cfg *MemorySearchConfig) string {
-	if cfg == nil || cfg.Local == nil {
-		return ""
-	}
-	return cfg.Local.BaseURL
-}
-
-func overridesLocalAPIKey(cfg *agents.MemorySearchConfig) string {
-	if cfg == nil || cfg.Local == nil {
-		return ""
-	}
-	return cfg.Local.APIKey
-}
-
-func defaultsLocalAPIKey(cfg *MemorySearchConfig) string {
-	if cfg == nil || cfg.Local == nil {
-		return ""
-	}
-	return cfg.Local.APIKey
-}
-
 func overridesSources(cfg *agents.MemorySearchConfig) []string {
 	if cfg == nil {
 		return nil
@@ -486,34 +403,6 @@ func defaultsVectorExtension(cfg *MemorySearchConfig) string {
 		return ""
 	}
 	return cfg.Store.Vector.ExtensionPath
-}
-
-func overridesStoreDriver(cfg *agents.MemorySearchConfig) string {
-	if cfg == nil || cfg.Store == nil {
-		return ""
-	}
-	return cfg.Store.Driver
-}
-
-func defaultsStoreDriver(cfg *MemorySearchConfig) string {
-	if cfg == nil || cfg.Store == nil {
-		return ""
-	}
-	return cfg.Store.Driver
-}
-
-func overridesStorePath(cfg *agents.MemorySearchConfig) string {
-	if cfg == nil || cfg.Store == nil {
-		return ""
-	}
-	return cfg.Store.Path
-}
-
-func defaultsStorePath(cfg *MemorySearchConfig) string {
-	if cfg == nil || cfg.Store == nil {
-		return ""
-	}
-	return cfg.Store.Path
 }
 
 func overridesChunkTokens(cfg *agents.MemorySearchConfig) int {

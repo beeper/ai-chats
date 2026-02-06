@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -538,10 +537,7 @@ func memoryManagerCacheKey(bridgeID, loginID, agentID string, cfg *memory.Resolv
 			"poll":           cfg.Remote.Batch.PollIntervalMs,
 			"timeoutMinutes": cfg.Remote.Batch.TimeoutMinutes,
 		},
-		"localBase":  cfg.Local.BaseURL,
-		"localModel": cfg.Local.ModelPath,
-		"localKey":   hashString(cfg.Local.APIKey),
-		"remoteKey":  hashString(cfg.Remote.APIKey),
+		"remoteKey": hashString(cfg.Remote.APIKey),
 		"store": map[string]any{
 			"driver":        cfg.Store.Driver,
 			"path":          cfg.Store.Path,
@@ -702,18 +698,6 @@ func resolveStatusExtraPaths(paths []string, workspaceDir string) []string {
 	return out
 }
 
-func resolveMemoryDBPath(cfg *memory.ResolvedConfig, agentID string) string {
-	if cfg != nil {
-		if strings.TrimSpace(cfg.Store.Path) != "" {
-			return cfg.Store.Path
-		}
-	}
-	if strings.TrimSpace(agentID) == "" {
-		agentID = "main"
-	}
-	home, err := os.UserHomeDir()
-	if err != nil || strings.TrimSpace(home) == "" {
-		return filepath.Join("/tmp", "openclaw", "memory", agentID+".sqlite")
-	}
-	return filepath.Join(home, ".openclaw", "memory", agentID+".sqlite")
+func resolveMemoryDBPath(_ *memory.ResolvedConfig, _ string) string {
+	return "bridge.sqlite (vfs)"
 }

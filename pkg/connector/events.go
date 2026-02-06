@@ -746,20 +746,10 @@ type AgentDefinitionContent struct {
 	IdentityName    string                       `json:"identity_name,omitempty"`
 	IdentityPersona string                       `json:"identity_persona,omitempty"`
 	IsPreset        bool                         `json:"is_preset,omitempty"`
-	MemoryConfig    *AgentMemoryConfig           `json:"memory_config,omitempty"` // Memory configuration (matches OpenClaw)
 	MemorySearch    *agents.MemorySearchConfig   `json:"memory_search,omitempty"`
 	HeartbeatPrompt string                       `json:"heartbeat_prompt,omitempty"`
 	CreatedAt       int64                        `json:"created_at"`
 	UpdatedAt       int64                        `json:"updated_at"`
-}
-
-// AgentMemoryConfig configures memory behavior for an agent (matches OpenClaw memorySearch config)
-type AgentMemoryConfig struct {
-	Enabled      *bool    `json:"enabled,omitempty"`       // nil = true (enabled by default)
-	Sources      []string `json:"sources,omitempty"`       // ["memory", "sessions"]
-	EnableGlobal *bool    `json:"enable_global,omitempty"` // nil = true (access global memory)
-	MaxResults   int      `json:"max_results,omitempty"`   // default: 6
-	MinScore     float64  `json:"min_score,omitempty"`     // default: 0.35
 }
 
 // MemoryFactContent stores a memory fact in a timeline event

@@ -192,7 +192,6 @@ type MemorySearchConfig struct {
 	Model        string                          `yaml:"model"`
 	Remote       *MemorySearchRemoteConfig       `yaml:"remote"`
 	Fallback     string                          `yaml:"fallback"`
-	Local        *MemorySearchLocalConfig        `yaml:"local"`
 	Store        *MemorySearchStoreConfig        `yaml:"store"`
 	Chunking     *MemorySearchChunkingConfig     `yaml:"chunking"`
 	Sync         *MemorySearchSyncConfig         `yaml:"sync"`
@@ -214,13 +213,6 @@ type MemorySearchBatchConfig struct {
 	Concurrency    int   `yaml:"concurrency"`
 	PollIntervalMs int   `yaml:"poll_interval_ms"`
 	TimeoutMinutes int   `yaml:"timeout_minutes"`
-}
-
-type MemorySearchLocalConfig struct {
-	ModelPath     string `yaml:"model_path"`
-	ModelCacheDir string `yaml:"model_cache_dir"`
-	BaseURL       string `yaml:"base_url"`
-	APIKey        string `yaml:"api_key"`
 }
 
 type MemorySearchStoreConfig struct {
@@ -707,10 +699,6 @@ func upgradeConfig(helper configupgrade.Helper) {
 	helper.Copy(configupgrade.Int, "memory_search", "remote", "batch", "concurrency")
 	helper.Copy(configupgrade.Int, "memory_search", "remote", "batch", "poll_interval_ms")
 	helper.Copy(configupgrade.Int, "memory_search", "remote", "batch", "timeout_minutes")
-	helper.Copy(configupgrade.Str, "memory_search", "local", "model_path")
-	helper.Copy(configupgrade.Str, "memory_search", "local", "model_cache_dir")
-	helper.Copy(configupgrade.Str, "memory_search", "local", "base_url")
-	helper.Copy(configupgrade.Str, "memory_search", "local", "api_key")
 	helper.Copy(configupgrade.Str, "memory_search", "store", "driver")
 	helper.Copy(configupgrade.Str, "memory_search", "store", "path")
 	helper.Copy(configupgrade.Bool, "memory_search", "store", "vector", "enabled")

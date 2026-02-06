@@ -36,8 +36,6 @@ type AgentDefinition struct {
 	Identity        *Identity    `json:"identity,omitempty"`         // custom identity for prompt
 	HeartbeatPrompt string       `json:"heartbeat_prompt,omitempty"` // prompt for heartbeat polling (clawdbot parity)
 
-	// Memory configuration (optional, uses defaults if nil)
-	Memory *MemoryConfig `json:"memory,omitempty"`
 	// Memory search configuration override (OpenClaw-style)
 	MemorySearch *MemorySearchConfig `json:"memory_search,omitempty"`
 
@@ -83,15 +81,6 @@ type Identity struct {
 	Persona string `json:"persona,omitempty"`
 }
 
-// MemoryConfig configures memory behavior for an agent (matches OpenClaw memorySearch config).
-type MemoryConfig struct {
-	Enabled      *bool    `json:"enabled,omitempty"`       // nil = true (enabled by default)
-	Sources      []string `json:"sources,omitempty"`       // ["memory", "sessions"]
-	EnableGlobal *bool    `json:"enable_global,omitempty"` // nil = true (access global memory)
-	MaxResults   int      `json:"max_results,omitempty"`   // default: 6
-	MinScore     float64  `json:"min_score,omitempty"`     // default: 0.35
-}
-
 // SubagentConfig configures default subagent behavior for an agent.
 type SubagentConfig struct {
 	Model       string   `json:"model,omitempty"`
@@ -108,7 +97,6 @@ type MemorySearchConfig struct {
 	Model        string                          `json:"model,omitempty"`
 	Remote       *MemorySearchRemoteConfig       `json:"remote,omitempty"`
 	Fallback     string                          `json:"fallback,omitempty"`
-	Local        *MemorySearchLocalConfig        `json:"local,omitempty"`
 	Store        *MemorySearchStoreConfig        `json:"store,omitempty"`
 	Chunking     *MemorySearchChunkingConfig     `json:"chunking,omitempty"`
 	Sync         *MemorySearchSyncConfig         `json:"sync,omitempty"`
@@ -130,13 +118,6 @@ type MemorySearchBatchConfig struct {
 	Concurrency    int   `json:"concurrency,omitempty"`
 	PollIntervalMs int   `json:"poll_interval_ms,omitempty"`
 	TimeoutMinutes int   `json:"timeout_minutes,omitempty"`
-}
-
-type MemorySearchLocalConfig struct {
-	ModelPath     string `json:"model_path,omitempty"`
-	ModelCacheDir string `json:"model_cache_dir,omitempty"`
-	BaseURL       string `json:"base_url,omitempty"`
-	APIKey        string `json:"api_key,omitempty"`
 }
 
 type MemorySearchStoreConfig struct {
@@ -191,30 +172,6 @@ type MemorySearchExperimentalConfig struct {
 	SessionMemory *bool `json:"session_memory,omitempty"`
 }
 
-// Clone creates a deep copy of the memory config.
-func (m *MemoryConfig) Clone() *MemoryConfig {
-	if m == nil {
-		return nil
-	}
-	clone := &MemoryConfig{
-		MaxResults: m.MaxResults,
-		MinScore:   m.MinScore,
-	}
-	if m.Enabled != nil {
-		enabled := *m.Enabled
-		clone.Enabled = &enabled
-	}
-	if m.EnableGlobal != nil {
-		enableGlobal := *m.EnableGlobal
-		clone.EnableGlobal = &enableGlobal
-	}
-	if m.Sources != nil {
-		clone.Sources = make([]string, len(m.Sources))
-		copy(clone.Sources, m.Sources)
-	}
-	return clone
-}
-
 // ModelInfo provides metadata about an available model.
 type ModelInfo struct {
 	ID          string `json:"id"`
@@ -265,9 +222,6 @@ func (a *AgentDefinition) Clone() *AgentDefinition {
 		}
 	}
 
-	if a.Memory != nil {
-		clone.Memory = a.Memory.Clone()
-	}
 	if a.MemorySearch != nil {
 		copyBytes, _ := json.Marshal(a.MemorySearch)
 		var ms MemorySearchConfig
