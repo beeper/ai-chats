@@ -13,6 +13,14 @@ func TestNormalizeMagicProxyBaseURLPreservesPath(t *testing.T) {
 	}
 }
 
+func TestNormalizeMagicProxyBaseURLStripsServicePath(t *testing.T) {
+	got := normalizeMagicProxyBaseURL("https://bai.bt.hn/team/proxy/openrouter/v1#token")
+	want := "https://bai.bt.hn/team/proxy"
+	if got != want {
+		t.Fatalf("unexpected normalized URL: got %q want %q", got, want)
+	}
+}
+
 func TestParseMagicProxyLinkPreservesPath(t *testing.T) {
 	baseURL, token, err := parseMagicProxyLink("https://bai.bt.hn/team/proxy?foo=bar#abc123")
 	if err != nil {
@@ -60,5 +68,25 @@ func TestResolveServiceConfigMagicProxyNoDuplicateOpenRouterPath(t *testing.T) {
 	base := services[serviceOpenRouter].BaseURL
 	if strings.Count(base, "/openrouter/v1") != 1 {
 		t.Fatalf("openrouter path duplicated: %q", base)
+	}
+	if got := services[serviceExa].BaseURL; got != "https://bai.bt.hn/team/proxy/exa" {
+		t.Fatalf("unexpected exa base URL: %q", got)
+	}
+}
+
+func TestResolveExaProxyBaseURLMagicProxyPrefersLoginBase(t *testing.T) {
+	oc := &OpenAIConnector{
+		Config: Config{
+			Beeper: BeeperConfig{
+				BaseURL: "https://matrix.example.com",
+			},
+		},
+	}
+	meta := &UserLoginMetadata{
+		Provider: ProviderMagicProxy,
+		BaseURL:  "https://ai.bt.hn/",
+	}
+	if got := oc.resolveExaProxyBaseURL(meta); got != "https://ai.bt.hn/exa" {
+		t.Fatalf("unexpected exa proxy base: %q", got)
 	}
 }

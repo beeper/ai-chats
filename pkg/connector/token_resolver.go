@@ -77,10 +77,32 @@ func normalizeProxyBaseURL(raw string) string {
 		scheme = "https"
 	}
 	path := strings.TrimRight(parsed.Path, "/")
+	path = stripProxyServiceSuffix(path)
 	if path == "" || path == "/" {
 		return scheme + "://" + host
 	}
 	return scheme + "://" + host + path
+}
+
+func stripProxyServiceSuffix(path string) string {
+	trimmed := strings.TrimRight(strings.TrimSpace(path), "/")
+	if trimmed == "" {
+		return ""
+	}
+	for {
+		changed := false
+		for _, suffix := range []string{"/openrouter/v1", "/openai/v1", "/exa"} {
+			if strings.HasSuffix(trimmed, suffix) {
+				trimmed = strings.TrimRight(strings.TrimSuffix(trimmed, suffix), "/")
+				changed = true
+				break
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+	return trimmed
 }
 
 func joinProxyPath(base, suffix string) string {
@@ -104,6 +126,11 @@ func joinProxyPath(base, suffix string) string {
 func (oc *OpenAIConnector) resolveProxyRoot(meta *UserLoginMetadata) string {
 	if oc == nil {
 		return ""
+	}
+	if meta != nil && meta.Provider == ProviderMagicProxy {
+		if raw := strings.TrimSpace(meta.BaseURL); raw != "" {
+			return normalizeProxyBaseURL(raw)
+		}
 	}
 	raw := strings.TrimSpace(oc.Config.Beeper.BaseURL)
 	if raw == "" && meta != nil {
