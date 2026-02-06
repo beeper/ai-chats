@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -56,6 +57,14 @@ func normalizeDesktopSessionKeyWithInstance(instance, chatID string) string {
 	}
 	inst := normalizeDesktopInstanceName(instance)
 	return desktopSessionKeyPrefix + inst + ":" + trimmedChat
+}
+
+func escapeDesktopPathSegment(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+	return url.PathEscape(trimmed)
 }
 
 func parseDesktopSessionKey(sessionKey string) (string, string, bool) {
@@ -291,7 +300,7 @@ func (oc *AIClient) listDesktopMessages(ctx context.Context, client *beeperdeskt
 		return nil, nil
 	}
 
-	page, err := client.Messages.List(ctx, trimmed, beeperdesktopapi.MessageListParams{})
+	page, err := client.Messages.List(ctx, escapeDesktopPathSegment(trimmed), beeperdesktopapi.MessageListParams{})
 	if err != nil || page == nil {
 		return nil, err
 	}
@@ -469,7 +478,7 @@ func (oc *AIClient) sendDesktopMessage(ctx context.Context, instance, chatID str
 	if body == "" {
 		return "", errors.New("message is required")
 	}
-	resp, err := client.Messages.Send(ctx, trimmed, beeperdesktopapi.MessageSendParams{Text: beeperdesktopapi.String(body)})
+	resp, err := client.Messages.Send(ctx, escapeDesktopPathSegment(trimmed), beeperdesktopapi.MessageSendParams{Text: beeperdesktopapi.String(body)})
 	if err != nil {
 		return "", err
 	}

@@ -222,7 +222,7 @@ func (oc *AIClient) executeSessionsHistory(ctx context.Context, portal *bridgev2
 				"error":  clientErr.Error(),
 			}), nil
 		}
-		chat, chatErr := client.Chats.Get(ctx, chatID, beeperdesktopapi.ChatGetParams{})
+		chat, chatErr := client.Chats.Get(ctx, escapeDesktopPathSegment(chatID), beeperdesktopapi.ChatGetParams{})
 		if chatErr != nil {
 			oc.log.Warn().Err(chatErr).Str("instance", instance).Msg("Desktop API chat lookup failed")
 		}
