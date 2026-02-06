@@ -887,7 +887,7 @@ func (oc *AIClient) streamingResponse(
 					if state.firstToken && state.visibleAccumulated.Len() > 0 {
 						state.firstToken = false
 						state.firstTokenAtMs = time.Now().UnixMilli()
-						if !state.suppressSend {
+						if !state.suppressSend && !isHeartbeat {
 							// Ensure ghost display name is set before sending the first message
 							oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
 							state.initialEventID = oc.sendInitialStreamMessage(ctx, portal, state.visibleAccumulated.String(), state.turnID, state.replyTarget)
@@ -916,7 +916,7 @@ func (oc *AIClient) streamingResponse(
 			if state.firstToken && state.reasoning.Len() > 0 {
 				state.firstToken = false
 				state.firstTokenAtMs = time.Now().UnixMilli()
-				if !state.suppressSend {
+				if !state.suppressSend && !isHeartbeat {
 					oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
 					// Send empty initial message - will be replaced with content later
 					state.initialEventID = oc.sendInitialStreamMessage(ctx, portal, "...", state.turnID, state.replyTarget)
@@ -1444,7 +1444,7 @@ func (oc *AIClient) streamingResponse(
 						if state.firstToken && state.visibleAccumulated.Len() > 0 {
 							state.firstToken = false
 							state.firstTokenAtMs = time.Now().UnixMilli()
-							if !state.suppressSend {
+							if !state.suppressSend && !isHeartbeat {
 								oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
 								state.initialEventID = oc.sendInitialStreamMessage(ctx, portal, state.visibleAccumulated.String(), state.turnID, state.replyTarget)
 								if state.initialEventID == "" {
@@ -1470,7 +1470,7 @@ func (oc *AIClient) streamingResponse(
 				if state.firstToken && state.reasoning.Len() > 0 {
 					state.firstToken = false
 					state.firstTokenAtMs = time.Now().UnixMilli()
-					if !state.suppressSend {
+					if !state.suppressSend && !isHeartbeat {
 						oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
 						state.initialEventID = oc.sendInitialStreamMessage(ctx, portal, "...", state.turnID, state.replyTarget)
 						if state.initialEventID == "" {
@@ -2093,7 +2093,7 @@ func (oc *AIClient) streamChatCompletions(
 							if state.firstToken && state.visibleAccumulated.Len() > 0 {
 								state.firstToken = false
 								state.firstTokenAtMs = time.Now().UnixMilli()
-								if !state.suppressSend {
+								if !state.suppressSend && !isHeartbeat {
 									oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
 									state.initialEventID = oc.sendInitialStreamMessage(ctx, portal, state.visibleAccumulated.String(), state.turnID, state.replyTarget)
 									if state.initialEventID == "" {
