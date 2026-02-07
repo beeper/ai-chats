@@ -44,7 +44,7 @@ func (oc *AIClient) PreHandleMatrixReaction(ctx context.Context, msg *bridgev2.M
 }
 
 func (oc *AIClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (*database.Reaction, error) {
-	if msg == nil || msg.Event == nil || msg.Portal == nil || msg.TargetMessage == nil {
+	if msg == nil || msg.Event == nil || msg.Portal == nil || msg.Content == nil {
 		return &database.Reaction{}, nil
 	}
 	if oc.isMatrixBotUser(ctx, msg.Event.Sender) {
@@ -59,11 +59,18 @@ func (oc *AIClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Matr
 		emoji = variationselector.Remove(msg.Content.RelatesTo.Key)
 	}
 
+	targetEventID := id.EventID("")
+	if msg.TargetMessage != nil && msg.TargetMessage.MXID != "" {
+		targetEventID = msg.TargetMessage.MXID
+	} else if msg.Content != nil && msg.Content.RelatesTo.EventID != "" {
+		targetEventID = msg.Content.RelatesTo.EventID
+	}
+
 	// Owner-only tool approvals via reactions on tool-call timeline messages.
 	// If the reaction matches a pending approval, resolve and do not enqueue as feedback.
 	if oc != nil && oc.UserLogin != nil && msg.Event.Sender == oc.UserLogin.UserMXID {
-		if approve, always, ok := toolApprovalDecisionFromEmoji(emoji); ok && msg.TargetMessage.MXID != "" {
-			err := oc.resolveToolApprovalByTargetEvent(msg.Portal.MXID, msg.TargetMessage.MXID, ToolApprovalDecision{
+		if approve, always, ok := toolApprovalDecisionFromEmoji(emoji); ok && targetEventID != "" {
+			err := oc.resolveToolApprovalByTargetEvent(msg.Portal.MXID, targetEventID, ToolApprovalDecision{
 				Approve:   approve,
 				Always:    always,
 				DecidedAt: time.Now(),
@@ -75,11 +82,18 @@ func (oc *AIClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Matr
 		}
 	}
 
+	messageID := ""
+	if msg.TargetMessage != nil && msg.TargetMessage.MXID != "" {
+		messageID = msg.TargetMessage.MXID.String()
+	} else if targetEventID != "" {
+		messageID = targetEventID.String()
+	}
+
 	feedback := ReactionFeedback{
 		Emoji:     emoji,
 		Timestamp: time.UnixMilli(msg.Event.Timestamp),
 		Sender:    oc.matrixDisplayName(ctx, msg.Portal.MXID, msg.Event.Sender),
-		MessageID: msg.TargetMessage.MXID.String(),
+		MessageID: messageID,
 		RoomName:  portalRoomName(msg.Portal),
 		Action:    "added",
 	}

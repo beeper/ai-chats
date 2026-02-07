@@ -1182,7 +1182,7 @@ func (cc *CodexClient) ensureRPC(ctx context.Context) error {
 	}
 	rpc, err := codexrpc.StartProcess(ctx, codexrpc.ProcessConfig{
 		Command: cmd,
-		Args:    []string{"app-server", "--listen", "stdio://"},
+		Args:    []string{"app-server"},
 		Env:     []string{"CODEX_HOME=" + codexHome},
 	})
 	if err != nil {

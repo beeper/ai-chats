@@ -160,7 +160,7 @@ func (cl *CodexLogin) SubmitUserInput(ctx context.Context, input map[string]stri
 	}
 	rpc, err := codexrpc.StartProcess(procCtx, codexrpc.ProcessConfig{
 		Command: cmd,
-		Args:    []string{"app-server", "--listen", "stdio://"},
+		Args:    []string{"app-server"},
 		Env:     []string{"CODEX_HOME=" + codexHome},
 		OnStderr: func(line string) {
 			log.Debug().Str("codex_home", codexHome).Str("stderr", line).Msg("Codex stderr")
