@@ -2,7 +2,7 @@ package connector
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"time"
 
 	"go.mau.fi/util/variationselector"
@@ -38,7 +38,7 @@ func listMatrixReactions(ctx context.Context, btc *BridgeToolContext, eventID id
 		return nil, err
 	}
 	if targetPart == nil {
-		return nil, fmt.Errorf("target message not found")
+		return nil, errors.New("target message not found")
 	}
 
 	receiver := btc.Portal.Receiver
@@ -95,7 +95,7 @@ func removeMatrixReactions(ctx context.Context, btc *BridgeToolContext, eventID 
 
 	intent := btc.Client.getModelIntent(ctx, btc.Portal)
 	if intent == nil {
-		return 0, fmt.Errorf("failed to get model intent")
+		return 0, errors.New("failed to get model intent")
 	}
 
 	targetPart, err := btc.Client.UserLogin.Bridge.DB.Message.GetPartByMXID(ctx, eventID)
@@ -103,12 +103,12 @@ func removeMatrixReactions(ctx context.Context, btc *BridgeToolContext, eventID 
 		return 0, err
 	}
 	if targetPart == nil {
-		return 0, fmt.Errorf("target message not found")
+		return 0, errors.New("target message not found")
 	}
 
 	senderID := btc.Client.reactionSenderID(ctx, btc.Portal)
 	if senderID == "" {
-		return 0, fmt.Errorf("failed to resolve reaction sender")
+		return 0, errors.New("failed to resolve reaction sender")
 	}
 
 	receiver := btc.Portal.Receiver

@@ -77,7 +77,7 @@ func normalizeDesktopInstanceName(name string) string {
 
 func resolveDesktopInstanceName(instances map[string]DesktopAPIInstance, requested string) (string, error) {
 	if len(instances) == 0 {
-		return "", fmt.Errorf("desktop API token is not set")
+		return "", errors.New("desktop API token is not set")
 	}
 
 	req := normalizeDesktopInstanceName(requested)
@@ -197,7 +197,7 @@ func (oc *AIClient) desktopAPIInstanceConfig(instance string) (DesktopAPIInstanc
 func (oc *AIClient) desktopAPIClient(instance string) (*beeperdesktopapi.Client, error) {
 	config, ok := oc.desktopAPIInstanceConfig(instance)
 	if !ok || strings.TrimSpace(config.Token) == "" {
-		return nil, fmt.Errorf("desktop API token is not set")
+		return nil, errors.New("desktop API token is not set")
 	}
 	options := []option.RequestOption{option.WithAccessToken(strings.TrimSpace(config.Token))}
 	if baseURL := strings.TrimSpace(config.BaseURL); baseURL != "" {
@@ -594,7 +594,7 @@ func (oc *AIClient) resolveDesktopSessionByLabel(ctx context.Context, instance, 
 func (oc *AIClient) resolveDesktopSessionByLabelAnyInstanceWithOptions(ctx context.Context, label string, opts desktopLabelResolveOptions) (string, string, string, error) {
 	instances := oc.desktopAPIInstanceNames()
 	if len(instances) == 0 {
-		return "", "", "", fmt.Errorf("desktop API token is not set")
+		return "", "", "", errors.New("desktop API token is not set")
 	}
 	var (
 		lastErr       error
@@ -791,7 +791,7 @@ func (oc *AIClient) editDesktopMessage(ctx context.Context, instance, chatID, me
 		return err
 	}
 	if strings.TrimSpace(chatID) == "" || strings.TrimSpace(messageID) == "" {
-		return fmt.Errorf("chat ID and message ID are required")
+		return errors.New("chat ID and message ID are required")
 	}
 	_, err = client.Messages.Update(ctx, strings.TrimSpace(messageID), beeperdesktopapi.MessageUpdateParams{
 		ChatID: strings.TrimSpace(chatID),
@@ -807,7 +807,7 @@ func (oc *AIClient) createDesktopChat(ctx context.Context, instance, accountID s
 	}
 	trimmedAccount := strings.TrimSpace(accountID)
 	if trimmedAccount == "" {
-		return "", fmt.Errorf("accountId is required")
+		return "", errors.New("accountId is required")
 	}
 	cleanParticipants := make([]string, 0, len(participantIDs))
 	for _, id := range participantIDs {
@@ -816,7 +816,7 @@ func (oc *AIClient) createDesktopChat(ctx context.Context, instance, accountID s
 		}
 	}
 	if len(cleanParticipants) == 0 {
-		return "", fmt.Errorf("participantIds is required")
+		return "", errors.New("participantIds is required")
 	}
 	kind := strings.ToLower(strings.TrimSpace(chatType))
 	if kind == "" {
@@ -1058,7 +1058,7 @@ func (oc *AIClient) focusDesktop(ctx context.Context, instance string, params de
 		return nil, err
 	}
 	if client == nil {
-		return nil, fmt.Errorf("desktop API token is not set")
+		return nil, errors.New("desktop API token is not set")
 	}
 
 	body := beeperdesktopapi.FocusParams{}

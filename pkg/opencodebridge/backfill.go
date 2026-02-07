@@ -2,7 +2,7 @@ package opencodebridge
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"sort"
 	"strconv"
 	"strings"
@@ -33,10 +33,10 @@ func (b *Bridge) FetchMessages(ctx context.Context, params bridgev2.FetchMessage
 	}
 	inst := b.manager.getInstance(meta.InstanceID)
 	if inst == nil {
-		return nil, fmt.Errorf("OpenCode instance not connected")
+		return nil, errors.New("OpenCode instance not connected")
 	}
 	if strings.TrimSpace(meta.SessionID) == "" {
-		return nil, fmt.Errorf("OpenCode session ID is required")
+		return nil, errors.New("OpenCode session ID is required")
 	}
 	messages, err := inst.listMessagesForBackfill(ctx, meta.SessionID, params.Forward, params.Count)
 	if err != nil {

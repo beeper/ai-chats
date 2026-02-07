@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -58,7 +59,7 @@ func getAIClient(ce *commands.Event) *AIClient {
 
 	login := resolveLoginForCommand(ce.Ctx, ce.Portal, defaultLogin, func(ctx context.Context, id networkid.UserLoginID) (*bridgev2.UserLogin, error) {
 		if br == nil {
-			return nil, fmt.Errorf("missing bridge")
+			return nil, errors.New("missing bridge")
 		}
 		return br.GetExistingUserLoginByID(ctx, id)
 	})
@@ -138,7 +139,7 @@ func splitQuotedArgs(input string) ([]string, error) {
 	}
 
 	if quote != 0 {
-		return nil, fmt.Errorf("unterminated quote")
+		return nil, errors.New("unterminated quote")
 	}
 	if escaped {
 		current.WriteRune('\\')
@@ -721,7 +722,7 @@ func fnDesktopAPI(ce *commands.Event) {
 
 func parseDesktopAPIAddArgs(args []string) (name, token, baseURL string, err error) {
 	if len(args) == 0 {
-		return "", "", "", fmt.Errorf("missing args")
+		return "", "", "", errors.New("missing args")
 	}
 
 	trimmed := make([]string, 0, len(args))
@@ -732,7 +733,7 @@ func parseDesktopAPIAddArgs(args []string) (name, token, baseURL string, err err
 		}
 	}
 	if len(trimmed) == 0 {
-		return "", "", "", fmt.Errorf("missing args")
+		return "", "", "", errors.New("missing args")
 	}
 
 	switch len(trimmed) {
@@ -748,7 +749,7 @@ func parseDesktopAPIAddArgs(args []string) (name, token, baseURL string, err err
 		token = trimmed[1]
 		baseURL = strings.TrimSpace(strings.Join(trimmed[2:], " "))
 		if token == "" {
-			return "", "", "", fmt.Errorf("missing token")
+			return "", "", "", errors.New("missing token")
 		}
 		return name, token, baseURL, nil
 	}

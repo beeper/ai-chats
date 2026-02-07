@@ -493,7 +493,7 @@ func submitOpenAIBatch(
 		return "", "", err
 	}
 	if fileResp.ID == "" {
-		return "", "", fmt.Errorf("openai batch file upload failed: missing file id")
+		return "", "", errors.New("openai batch file upload failed: missing file id")
 	}
 
 	batchBody := map[string]any{
@@ -527,7 +527,7 @@ func submitOpenAIBatch(
 		return "", "", err
 	}
 	if batchStatus.ID == "" {
-		return "", "", fmt.Errorf("openai batch create failed: missing batch id")
+		return "", "", errors.New("openai batch create failed: missing batch id")
 	}
 	if batchStatus.Status == "completed" {
 		return batchStatus.ID, batchStatus.OutputFile, nil
@@ -769,7 +769,7 @@ func submitGeminiBatch(
 		fileID = fileResp.File.Name
 	}
 	if fileID == "" {
-		return "", "", fmt.Errorf("gemini batch file upload failed: missing file id")
+		return "", "", errors.New("gemini batch file upload failed: missing file id")
 	}
 
 	modelPath := geminiModelPath(params.Model)
@@ -798,7 +798,7 @@ func submitGeminiBatch(
 	payload, _ = io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		if resp.StatusCode == 404 {
-			return "", "", fmt.Errorf("gemini batch create failed: 404 (asyncBatchEmbedContent not available)")
+			return "", "", errors.New("gemini batch create failed: 404 (asyncBatchEmbedContent not available)")
 		}
 		return "", "", fmt.Errorf("gemini batch create failed: %s %s", resp.Status, string(payload))
 	}
@@ -807,7 +807,7 @@ func submitGeminiBatch(
 		return "", "", err
 	}
 	if status.Name == "" {
-		return "", "", fmt.Errorf("gemini batch create failed: missing batch name")
+		return "", "", errors.New("gemini batch create failed: missing batch name")
 	}
 	if isGeminiBatchComplete(status.State) {
 		output := resolveGeminiOutput(&status)

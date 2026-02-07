@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path"
 	"regexp"
@@ -51,7 +52,7 @@ func executeFind(ctx context.Context, args map[string]any) (string, error) {
 	defer cancel()
 	patternRaw, ok := args["pattern"].(string)
 	if !ok || strings.TrimSpace(patternRaw) == "" {
-		return "", fmt.Errorf("missing or invalid 'pattern' argument")
+		return "", errors.New("missing or invalid 'pattern' argument")
 	}
 	pattern := strings.TrimSpace(patternRaw)
 	base := ""
@@ -100,7 +101,7 @@ func executeGrep(ctx context.Context, args map[string]any) (string, error) {
 	defer cancel()
 	patternRaw, ok := args["pattern"].(string)
 	if !ok || strings.TrimSpace(patternRaw) == "" {
-		return "", fmt.Errorf("missing or invalid 'pattern' argument")
+		return "", errors.New("missing or invalid 'pattern' argument")
 	}
 	pattern := patternRaw
 	pathArg := ""

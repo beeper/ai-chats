@@ -11,7 +11,7 @@ import (
 // Fetch executes a fetch using the configured provider chain.
 func Fetch(ctx context.Context, req Request, cfg *Config) (*Response, error) {
 	if strings.TrimSpace(req.URL) == "" {
-		return nil, fmt.Errorf("missing url")
+		return nil, errors.New("missing url")
 	}
 	cfg = cfg.WithDefaults()
 	req = normalizeRequest(req, cfg)

@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -206,7 +207,7 @@ func (oc *AIClient) analyzeImageWithModel(
 	prompt string,
 ) (string, error) {
 	if strings.TrimSpace(modelID) == "" {
-		return "", fmt.Errorf("missing model for image analysis")
+		return "", errors.New("missing model for image analysis")
 	}
 	if strings.TrimSpace(prompt) == "" {
 		prompt = defaultImageUnderstandingPrompt
@@ -266,7 +267,7 @@ func (oc *AIClient) analyzeAudioWithModel(
 	prompt string,
 ) (string, error) {
 	if strings.TrimSpace(modelID) == "" {
-		return "", fmt.Errorf("missing model for audio analysis")
+		return "", errors.New("missing model for audio analysis")
 	}
 	if strings.TrimSpace(prompt) == "" {
 		prompt = defaultAudioUnderstandingPrompt

@@ -75,7 +75,7 @@ func unsupportedMessageStatus(err error) error {
 func messageSendStatusError(err error, message string, reason event.MessageStatusReason) error {
 	if err == nil {
 		if message == "" {
-			err = fmt.Errorf("message send failed")
+			err = errors.New("message send failed")
 		} else {
 			err = errors.New(message)
 		}
@@ -105,16 +105,16 @@ func matrixEventTimestamp(evt *event.Event) time.Time {
 // HandleMatrixMessage processes incoming Matrix messages and dispatches them to the AI
 func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
 	if msg.Content == nil {
-		return nil, fmt.Errorf("missing message content")
+		return nil, errors.New("missing message content")
 	}
 
 	portal := msg.Portal
 	if portal == nil {
-		return nil, fmt.Errorf("portal is nil")
+		return nil, errors.New("portal is nil")
 	}
 	meta := portalMeta(portal)
 	if msg.Event == nil {
-		return nil, fmt.Errorf("missing message event")
+		return nil, errors.New("missing message event")
 	}
 	oc.noteUserActivity(portal.MXID)
 
@@ -640,7 +640,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		if len(inlineResponses) > 0 {
 			return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 		}
-		return nil, unsupportedMessageStatus(fmt.Errorf("empty messages are not supported"))
+		return nil, unsupportedMessageStatus(errors.New("empty messages are not supported"))
 	}
 
 	// Mention detection (OpenClaw-style)
@@ -838,12 +838,12 @@ func (oc *AIClient) HandleMatrixTyping(ctx context.Context, typing *bridgev2.Mat
 // HandleMatrixEdit handles edits to previously sent messages
 func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixEdit) error {
 	if edit.Content == nil || edit.EditTarget == nil {
-		return fmt.Errorf("invalid edit: missing content or target")
+		return errors.New("invalid edit: missing content or target")
 	}
 
 	portal := edit.Portal
 	if portal == nil {
-		return fmt.Errorf("portal is nil")
+		return errors.New("portal is nil")
 	}
 	meta := portalMeta(portal)
 	trace := traceEnabled(meta)
@@ -860,14 +860,14 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 	}
 	if meta != nil && meta.IsOpenCodeRoom {
 		logCtx.Debug().Msg("Edit ignored for OpenCode room")
-		return fmt.Errorf("editing is not supported for OpenCode rooms")
+		return errors.New("editing is not supported for OpenCode rooms")
 	}
 
 	// Get the new message body
 	newBody := strings.TrimSpace(edit.Content.Body)
 	if newBody == "" {
 		logCtx.Debug().Msg("Edit body is empty")
-		return fmt.Errorf("empty edit body")
+		return errors.New("empty edit body")
 	}
 	if traceFull {
 		logCtx.Debug().Str("body", newBody).Msg("Edited message body")
@@ -1100,12 +1100,12 @@ func (oc *AIClient) handleMediaMessage(
 			ok = true
 		case isTextFileMime(mimeType):
 			if !oc.canUseMediaUnderstanding(meta) {
-				return nil, unsupportedMessageStatus(fmt.Errorf("text file understanding is only available when an agent is assigned and raw mode is off"))
+				return nil, unsupportedMessageStatus(errors.New("text file understanding is only available when an agent is assigned and raw mode is off"))
 			}
 			return oc.handleTextFileMessage(ctx, msg, portal, meta, string(mediaURL), mimeType, pendingSent)
 		case mimeType == "" || mimeType == "application/octet-stream":
 			if !oc.canUseMediaUnderstanding(meta) {
-				return nil, unsupportedMessageStatus(fmt.Errorf("text file understanding is only available when an agent is assigned and raw mode is off"))
+				return nil, unsupportedMessageStatus(errors.New("text file understanding is only available when an agent is assigned and raw mode is off"))
 			}
 			return oc.handleTextFileMessage(ctx, msg, portal, meta, string(mediaURL), mimeType, pendingSent)
 		}
@@ -1269,7 +1269,7 @@ func (oc *AIClient) handleMediaMessage(
 
 				combined := buildImageUnderstandingMessage(caption, hasUserCaption, description)
 				if combined == "" {
-					return nil, messageSendStatusError(fmt.Errorf("image understanding produced empty result"), "Image understanding failed. Please try again or switch to a vision-capable model using /model.", "")
+					return nil, messageSendStatusError(errors.New("image understanding produced empty result"), "Image understanding failed. Please try again or switch to a vision-capable model using /model.", "")
 				}
 				return dispatchTextOnly(combined)
 			}
@@ -1288,7 +1288,7 @@ func (oc *AIClient) handleMediaMessage(
 
 				combined := buildAudioUnderstandingMessage(caption, hasUserCaption, transcript)
 				if combined == "" {
-					return nil, messageSendStatusError(fmt.Errorf("audio understanding produced empty result"), "Audio understanding failed. Please try again or switch to an audio-capable model using /model.", "")
+					return nil, messageSendStatusError(errors.New("audio understanding produced empty result"), "Audio understanding failed. Please try again or switch to an audio-capable model using /model.", "")
 				}
 				return dispatchTextOnly(combined)
 			}
@@ -1365,7 +1365,7 @@ func (oc *AIClient) handleTextFileMessage(
 	pendingSent bool,
 ) (*bridgev2.MatrixMessageResponse, error) {
 	if msg == nil {
-		return nil, fmt.Errorf("missing matrix event for text file message")
+		return nil, errors.New("missing matrix event for text file message")
 	}
 	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", QueueInlineOptions{})
 
@@ -1422,7 +1422,7 @@ func (oc *AIClient) handleTextFileMessage(
 
 	combined := buildTextFileMessage(caption, hasUserCaption, fileName, mimeType, content, truncated)
 	if combined == "" {
-		return nil, messageSendStatusError(fmt.Errorf("text file understanding produced empty result"), "Text file understanding failed. Please upload a UTF-8 text file under 5 MB.", "")
+		return nil, messageSendStatusError(errors.New("text file understanding produced empty result"), "Text file understanding failed. Please upload a UTF-8 text file under 5 MB.", "")
 	}
 
 	eventID := id.EventID("")

@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	agenttools "github.com/beeper/ai-bridge/pkg/agents/tools"
@@ -15,7 +16,7 @@ type Executor struct {
 
 func (e *Executor) Execute(ctx context.Context, toolName string, input map[string]any) (*agenttools.Result, error) {
 	if e == nil || e.Registry == nil {
-		return nil, fmt.Errorf("missing tool registry")
+		return nil, errors.New("missing tool registry")
 	}
 	t := e.Registry.Get(toolName)
 	if t == nil {

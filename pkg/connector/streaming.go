@@ -1920,7 +1920,7 @@ func (oc *AIClient) streamingResponse(
 
 	stream := oc.api.Responses.NewStreaming(ctx, params)
 	if stream == nil {
-		initErr := fmt.Errorf("responses streaming not available")
+		initErr := errors.New("responses streaming not available")
 		logResponsesFailure(log, initErr, params, meta, messages, "stream_init")
 		return false, nil, &PreDeltaError{Err: initErr}
 	}
@@ -3127,7 +3127,7 @@ func (oc *AIClient) streamingResponse(
 		// Start continuation stream
 		stream = oc.api.Responses.NewStreaming(ctx, continuationParams)
 		if stream == nil {
-			initErr := fmt.Errorf("continuation streaming not available")
+			initErr := errors.New("continuation streaming not available")
 			logResponsesFailure(log, initErr, continuationParams, meta, messages, "continuation_init")
 			state.finishReason = "error"
 			oc.emitUIError(ctx, portal, state, initErr.Error())
@@ -4037,7 +4037,7 @@ func (oc *AIClient) streamChatCompletions(
 
 		stream := oc.api.Chat.Completions.NewStreaming(ctx, params)
 		if stream == nil {
-			initErr := fmt.Errorf("chat completions streaming not available")
+			initErr := errors.New("chat completions streaming not available")
 			logChatCompletionsFailure(log, initErr, params, meta, currentMessages, "stream_init")
 			return false, nil, &PreDeltaError{Err: initErr}
 		}

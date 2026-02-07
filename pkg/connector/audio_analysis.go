@@ -3,6 +3,7 @@ package connector
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -73,7 +74,7 @@ func decodePCMWithFFmpeg(data []byte) ([]int16, int, error) {
 		return nil, 0, err
 	}
 	if len(out) < 2 {
-		return nil, 0, fmt.Errorf("ffmpeg returned no PCM data")
+		return nil, 0, errors.New("ffmpeg returned no PCM data")
 	}
 
 	samples := bytesToInt16LE(out)
@@ -132,7 +133,7 @@ func buildWaveform(samples []int16, sampleRate int) (int, []int) {
 
 func parseWavPCM(data []byte) ([]int16, int, error) {
 	if len(data) < 12 || string(data[0:4]) != "RIFF" || string(data[8:12]) != "WAVE" {
-		return nil, 0, fmt.Errorf("not a WAV file")
+		return nil, 0, errors.New("not a WAV file")
 	}
 
 	var (
@@ -155,7 +156,7 @@ func parseWavPCM(data []byte) ([]int16, int, error) {
 		switch chunkID {
 		case "fmt ":
 			if chunkSize < 16 {
-				return nil, 0, fmt.Errorf("invalid wav fmt chunk")
+				return nil, 0, errors.New("invalid wav fmt chunk")
 			}
 			audioFormat = binary.LittleEndian.Uint16(data[offset : offset+2])
 			channels = binary.LittleEndian.Uint16(data[offset+2 : offset+4])
@@ -172,10 +173,10 @@ func parseWavPCM(data []byte) ([]int16, int, error) {
 	}
 
 	if dataChunk == nil || channels == 0 || sampleRate == 0 {
-		return nil, 0, fmt.Errorf("missing wav data")
+		return nil, 0, errors.New("missing wav data")
 	}
 	if audioFormat != 1 && audioFormat != 3 {
-		return nil, 0, fmt.Errorf("unsupported wav format")
+		return nil, 0, errors.New("unsupported wav format")
 	}
 
 	switch bitsPerSample {
@@ -184,17 +185,17 @@ func parseWavPCM(data []byte) ([]int16, int, error) {
 	case 16:
 		return pcm16leToInt16(dataChunk, int(channels)), int(sampleRate), nil
 	default:
-		return nil, 0, fmt.Errorf("unsupported wav bit depth")
+		return nil, 0, errors.New("unsupported wav bit depth")
 	}
 }
 
 func parseAiffPCM(data []byte) ([]int16, int, error) {
 	if len(data) < 12 || string(data[0:4]) != "FORM" {
-		return nil, 0, fmt.Errorf("not an AIFF file")
+		return nil, 0, errors.New("not an AIFF file")
 	}
 	formType := string(data[8:12])
 	if formType != "AIFF" && formType != "AIFC" {
-		return nil, 0, fmt.Errorf("unsupported AIFF type")
+		return nil, 0, errors.New("unsupported AIFF type")
 	}
 
 	var (
@@ -216,19 +217,19 @@ func parseAiffPCM(data []byte) ([]int16, int, error) {
 		switch chunkID {
 		case "COMM":
 			if chunkSize < 18 {
-				return nil, 0, fmt.Errorf("invalid AIFF COMM chunk")
+				return nil, 0, errors.New("invalid AIFF COMM chunk")
 			}
 			channels = binary.BigEndian.Uint16(data[offset : offset+2])
 			sampleSize = binary.BigEndian.Uint16(data[offset+6 : offset+8])
 			sampleRate = parseExtended80(data[offset+8 : offset+18])
 		case "SSND":
 			if chunkSize < 8 {
-				return nil, 0, fmt.Errorf("invalid AIFF SSND chunk")
+				return nil, 0, errors.New("invalid AIFF SSND chunk")
 			}
 			dataOffset := int(binary.BigEndian.Uint32(data[offset : offset+4]))
 			start := offset + 8 + dataOffset
 			if start > offset+chunkSize {
-				return nil, 0, fmt.Errorf("invalid AIFF SSND offset")
+				return nil, 0, errors.New("invalid AIFF SSND offset")
 			}
 			dataChunk = data[start : offset+chunkSize]
 		}
@@ -240,7 +241,7 @@ func parseAiffPCM(data []byte) ([]int16, int, error) {
 	}
 
 	if dataChunk == nil || channels == 0 || sampleRate <= 0 {
-		return nil, 0, fmt.Errorf("missing AIFF data")
+		return nil, 0, errors.New("missing AIFF data")
 	}
 
 	switch sampleSize {
@@ -249,7 +250,7 @@ func parseAiffPCM(data []byte) ([]int16, int, error) {
 	case 16:
 		return pcm16beToInt16(dataChunk, int(channels)), int(sampleRate), nil
 	default:
-		return nil, 0, fmt.Errorf("unsupported AIFF bit depth")
+		return nil, 0, errors.New("unsupported AIFF bit depth")
 	}
 }
 

@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -164,7 +165,7 @@ func (oc *AIClient) runMemoryFlushToolLoop(
 	messages []openai.ChatCompletionMessageParamUnion,
 ) error {
 	if oc == nil {
-		return fmt.Errorf("memory flush unavailable")
+		return errors.New("memory flush unavailable")
 	}
 	tools := memoryFlushTools()
 	if len(tools) == 0 {
@@ -209,7 +210,7 @@ func (oc *AIClient) runMemoryFlushToolLoop(
 			result := ""
 			var execErr error
 			if name == "" {
-				execErr = fmt.Errorf("missing tool name")
+				execErr = errors.New("missing tool name")
 			} else if meta != nil && !oc.isToolEnabled(meta, name) {
 				execErr = fmt.Errorf("tool %s is disabled", name)
 			} else {

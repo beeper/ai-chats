@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -282,7 +283,7 @@ func (oc *AIClient) ResolveIdentifier(ctx context.Context, identifier string, cr
 	// Identifier can be an agent ID (e.g., "beeper", "boss") or model ID for backwards compatibility
 	id := strings.TrimSpace(identifier)
 	if id == "" {
-		return nil, fmt.Errorf("identifier is required")
+		return nil, errors.New("identifier is required")
 	}
 
 	// OpenCode instance identifiers (opencode:<instance-id> or opencode- ghost IDs)
@@ -395,17 +396,17 @@ func (oc *AIClient) resolveModelIdentifier(ctx context.Context, modelID string, 
 
 func (oc *AIClient) resolveOpenCodeIdentifier(ctx context.Context, instanceID string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
 	if oc == nil || oc.UserLogin == nil {
-		return nil, fmt.Errorf("login unavailable")
+		return nil, errors.New("login unavailable")
 	}
 	if strings.TrimSpace(instanceID) == "" {
-		return nil, fmt.Errorf("OpenCode instance ID is required")
+		return nil, errors.New("OpenCode instance ID is required")
 	}
 	if oc.opencodeBridge == nil {
-		return nil, fmt.Errorf("OpenCode integration is not available")
+		return nil, errors.New("OpenCode integration is not available")
 	}
 	cfg := oc.opencodeBridge.InstanceConfig(instanceID)
 	if cfg == nil {
-		return nil, fmt.Errorf("OpenCode instance not found")
+		return nil, errors.New("OpenCode instance not found")
 	}
 
 	userID := opencodebridge.OpenCodeUserID(instanceID)
@@ -846,7 +847,7 @@ func (oc *AIClient) resolveAgentModelForNewChat(ctx context.Context, agent *agen
 	if preferredModel != "" {
 		return "", fmt.Errorf("invalid model: %s", preferredModel)
 	}
-	return "", fmt.Errorf("no valid model available")
+	return "", errors.New("no valid model available")
 }
 
 func (oc *AIClient) createAndOpenAgentChat(ctx context.Context, portal *bridgev2.Portal, agent *agents.AgentDefinition, modelID string, modelOverride bool) {
@@ -1540,7 +1541,7 @@ func (oc *AIClient) getReasoningWithSource(meta *PortalMetadata, loginMeta *User
 // This event is protected by power levels (100) so only the bridge bot can modify
 func (oc *AIClient) broadcastCapabilities(ctx context.Context, portal *bridgev2.Portal) error {
 	if portal.MXID == "" {
-		return fmt.Errorf("portal has no Matrix room ID")
+		return errors.New("portal has no Matrix room ID")
 	}
 
 	meta := portalMeta(portal)
@@ -1596,7 +1597,7 @@ func (oc *AIClient) broadcastCapabilities(ctx context.Context, portal *bridgev2.
 // This event uses normal power levels (0) so users can modify
 func (oc *AIClient) broadcastSettings(ctx context.Context, portal *bridgev2.Portal) error {
 	if portal.MXID == "" {
-		return fmt.Errorf("portal has no Matrix room ID")
+		return errors.New("portal has no Matrix room ID")
 	}
 
 	meta := portalMeta(portal)
@@ -1842,7 +1843,7 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 	// Create default chat with Beep agent
 	beeperAgent := agents.GetBeeperAI()
 	if beeperAgent == nil {
-		return fmt.Errorf("beeper AI agent not found")
+		return errors.New("beeper AI agent not found")
 	}
 
 	// Determine model from agent config or use default

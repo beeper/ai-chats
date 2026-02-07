@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -84,14 +85,14 @@ type CodexClient struct {
 
 func newCodexClient(login *bridgev2.UserLogin, connector *OpenAIConnector) (*CodexClient, error) {
 	if login == nil {
-		return nil, fmt.Errorf("missing login")
+		return nil, errors.New("missing login")
 	}
 	meta := loginMetadata(login)
 	if !strings.EqualFold(strings.TrimSpace(meta.Provider), ProviderCodex) {
 		return nil, fmt.Errorf("invalid provider for CodexClient: %s", meta.Provider)
 	}
 	if strings.TrimSpace(meta.CodexHome) == "" {
-		return nil, fmt.Errorf("missing codex_home in login metadata")
+		return nil, errors.New("missing codex_home in login metadata")
 	}
 	log := login.Log.With().Str("component", "codex").Logger()
 	return &CodexClient{
@@ -328,12 +329,12 @@ func (cc *CodexClient) GetCapabilities(ctx context.Context, portal *bridgev2.Por
 
 func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
 	if msg == nil || msg.Content == nil || msg.Portal == nil || msg.Event == nil {
-		return nil, fmt.Errorf("invalid message")
+		return nil, errors.New("invalid message")
 	}
 	portal := msg.Portal
 	meta := portalMeta(portal)
 	if meta == nil || !meta.IsCodexRoom {
-		return nil, unsupportedMessageStatus(fmt.Errorf("not a Codex room"))
+		return nil, unsupportedMessageStatus(errors.New("not a Codex room"))
 	}
 	if cc.isMatrixBotUser(ctx, msg.Event.Sender) {
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
@@ -426,11 +427,11 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 
 	roomID := portal.MXID
 	if roomID == "" {
-		return nil, fmt.Errorf("portal has no room id")
+		return nil, errors.New("portal has no room id")
 	}
 
 	if !cc.acquireRoom(roomID) {
-		return nil, messageSendStatusError(fmt.Errorf("busy"), "Codex is busy in this room; please retry.", event.MessageStatusGenericError)
+		return nil, messageSendStatusError(errors.New("busy"), "Codex is busy in this room; please retry.", event.MessageStatusGenericError)
 	}
 
 	// Save user message immediately; we return Pending=true.
@@ -1182,7 +1183,7 @@ func (cc *CodexClient) ensureRPC(ctx context.Context) error {
 	}
 	codexHome := strings.TrimSpace(meta.CodexHome)
 	if codexHome == "" {
-		return fmt.Errorf("missing CODEX_HOME")
+		return errors.New("missing CODEX_HOME")
 	}
 	if err := os.MkdirAll(codexHome, 0o700); err != nil {
 		return err
@@ -1426,7 +1427,7 @@ func (cc *CodexClient) composeCodexChatInfo(title string) *bridgev2.ChatInfo {
 
 func (cc *CodexClient) ensureCodexThread(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) error {
 	if meta == nil || portal == nil {
-		return fmt.Errorf("missing portal/meta")
+		return errors.New("missing portal/meta")
 	}
 	if strings.TrimSpace(meta.CodexCwd) == "" {
 		cwd, err := os.MkdirTemp("", "ai-bridge-codex-*")
@@ -1471,7 +1472,7 @@ func (cc *CodexClient) ensureCodexThread(ctx context.Context, portal *bridgev2.P
 	}
 	meta.CodexThreadID = strings.TrimSpace(resp.Thread.ID)
 	if meta.CodexThreadID == "" {
-		return fmt.Errorf("codex returned empty thread id")
+		return errors.New("codex returned empty thread id")
 	}
 	if err := portal.Save(ctx); err != nil {
 		return err
@@ -1484,7 +1485,7 @@ func (cc *CodexClient) ensureCodexThread(ctx context.Context, portal *bridgev2.P
 
 func (cc *CodexClient) resetThread(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) error {
 	if meta == nil {
-		return fmt.Errorf("missing metadata")
+		return errors.New("missing metadata")
 	}
 	// Best-effort archive the existing thread and remove the temp cwd.
 	if err := cc.ensureRPC(ctx); err == nil && cc.rpc != nil {
@@ -1510,11 +1511,11 @@ func (cc *CodexClient) resetThread(ctx context.Context, portal *bridgev2.Portal,
 
 func (cc *CodexClient) ensureCodexThreadLoaded(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) error {
 	if cc == nil || meta == nil {
-		return fmt.Errorf("missing metadata")
+		return errors.New("missing metadata")
 	}
 	threadID := strings.TrimSpace(meta.CodexThreadID)
 	if threadID == "" {
-		return fmt.Errorf("missing thread id")
+		return errors.New("missing thread id")
 	}
 	cc.loadedMu.Lock()
 	loaded := cc.loadedThreads[threadID]
@@ -2077,7 +2078,7 @@ func (cc *CodexClient) registerToolApproval(approvalID, toolCallID, toolName str
 func (cc *CodexClient) resolveToolApproval(approvalID string, decision ToolApprovalDecisionCodex) error {
 	approvalID = strings.TrimSpace(approvalID)
 	if approvalID == "" {
-		return fmt.Errorf("missing approval id")
+		return errors.New("missing approval id")
 	}
 	cc.toolApprovalsMu.Lock()
 	p := cc.toolApprovals[approvalID]

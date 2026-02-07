@@ -2,7 +2,7 @@ package cron
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"maps"
 	"strings"
 	"time"
@@ -213,7 +213,7 @@ func coerceDeliveryMap(delivery map[string]any) map[string]any {
 func NormalizeCronJobCreateRaw(raw any) (CronJobCreate, error) {
 	normalized := normalizeCronJobInputRaw(raw, true)
 	if normalized == nil {
-		return CronJobCreate{}, fmt.Errorf("invalid cron job")
+		return CronJobCreate{}, errors.New("invalid cron job")
 	}
 	data, err := json.Marshal(normalized)
 	if err != nil {
@@ -230,7 +230,7 @@ func NormalizeCronJobCreateRaw(raw any) (CronJobCreate, error) {
 func NormalizeCronJobPatchRaw(raw any) (CronJobPatch, error) {
 	normalized := normalizeCronJobInputRaw(raw, false)
 	if normalized == nil {
-		return CronJobPatch{}, fmt.Errorf("invalid cron patch")
+		return CronJobPatch{}, errors.New("invalid cron patch")
 	}
 	agentIDPresent := false
 	agentIDNil := false

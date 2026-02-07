@@ -582,7 +582,7 @@ func (c *CronService) ensureLoaded() error {
 		return nil
 	}
 	if c.deps.Store == nil {
-		return fmt.Errorf("cron store backend not configured")
+		return errors.New("cron store backend not configured")
 	}
 	store, err := LoadCronStore(context.Background(), c.deps.Store, c.deps.StorePath)
 	if err != nil {
@@ -620,7 +620,7 @@ func (c *CronService) persist() error {
 		return nil
 	}
 	if c.deps.Store == nil {
-		return fmt.Errorf("cron store backend not configured")
+		return errors.New("cron store backend not configured")
 	}
 	err := SaveCronStore(context.Background(), c.deps.Store, c.deps.StorePath, *c.store)
 	if err == nil {

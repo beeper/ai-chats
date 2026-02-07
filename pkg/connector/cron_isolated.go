@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -20,7 +21,7 @@ const (
 
 func (oc *AIClient) runCronIsolatedAgentJob(job cron.CronJob, message string) (status string, summary string, outputText string, err error) {
 	if oc == nil || oc.UserLogin == nil {
-		return "error", "", "", fmt.Errorf("missing client")
+		return "error", "", "", errors.New("missing client")
 	}
 	ctx := oc.backgroundContext(context.Background())
 	agentID := resolveCronAgentID(job.AgentID, &oc.connector.Config)
@@ -102,7 +103,7 @@ func (oc *AIClient) runCronIsolatedAgentJob(job cron.CronJob, message string) (s
 		time.Sleep(250 * time.Millisecond)
 	}
 	if outputText == "" {
-		return "error", "", "", fmt.Errorf("cron job timed out")
+		return "error", "", "", errors.New("cron job timed out")
 	}
 
 	delivery := job.Delivery

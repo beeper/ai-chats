@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -12,7 +13,7 @@ import (
 func (b *BossStoreAdapter) resolvePortalByRoomID(ctx context.Context, roomID string) (*bridgev2.Portal, error) {
 	trimmed := strings.TrimSpace(roomID)
 	if trimmed == "" {
-		return nil, fmt.Errorf("room_id is required")
+		return nil, errors.New("room_id is required")
 	}
 
 	if strings.HasPrefix(trimmed, "!") {

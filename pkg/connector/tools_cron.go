@@ -3,6 +3,7 @@ package connector
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -16,11 +17,11 @@ import (
 func executeCron(ctx context.Context, args map[string]any) (string, error) {
 	btc := GetBridgeToolContext(ctx)
 	if btc == nil || btc.Client == nil {
-		return "", fmt.Errorf("cron tool requires bridge context")
+		return "", errors.New("cron tool requires bridge context")
 	}
 	client := btc.Client
 	if client.cronService == nil {
-		return "", fmt.Errorf("cron service not available")
+		return "", errors.New("cron service not available")
 	}
 
 	action := strings.ToLower(strings.TrimSpace(agenttools.ReadStringDefault(args, "action", "")))
@@ -417,7 +418,7 @@ func truncateContextText(input string, maxLen int) string {
 
 func (oc *AIClient) readCronRuns(jobID string, limit int) ([]cron.CronRunLogEntry, error) {
 	if oc == nil || oc.cronService == nil {
-		return nil, fmt.Errorf("cron service not available")
+		return nil, errors.New("cron service not available")
 	}
 	if limit <= 0 {
 		limit = 200
@@ -428,7 +429,7 @@ func (oc *AIClient) readCronRuns(jobID string, limit int) ([]cron.CronRunLogEntr
 	}
 	backend := oc.cronStoreBackend()
 	if backend == nil {
-		return nil, fmt.Errorf("cron store not available")
+		return nil, errors.New("cron store not available")
 	}
 	trimmed := strings.TrimSpace(jobID)
 	if trimmed != "" {

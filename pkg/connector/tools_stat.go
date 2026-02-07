@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -26,7 +27,7 @@ func executeStat(ctx context.Context, args map[string]any) (string, error) {
 	defer cancel()
 	raw, ok := args["path"].(string)
 	if !ok || strings.TrimSpace(raw) == "" {
-		return "", fmt.Errorf("missing or invalid 'path' argument")
+		return "", errors.New("missing or invalid 'path' argument")
 	}
 	entry, err := store.Stat(opCtx, raw)
 	if err != nil {

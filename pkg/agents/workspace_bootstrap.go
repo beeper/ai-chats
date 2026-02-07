@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -63,7 +64,7 @@ type WorkspaceBootstrapFile struct {
 // Returns true if this looks like a brand-new workspace.
 func EnsureBootstrapFiles(ctx context.Context, store *textfs.Store) (bool, error) {
 	if store == nil {
-		return false, fmt.Errorf("textfs store is required")
+		return false, errors.New("textfs store is required")
 	}
 	brandNew := true
 	for _, name := range coreBootstrapFiles {
@@ -102,7 +103,7 @@ func EnsureBootstrapFiles(ctx context.Context, store *textfs.Store) (bool, error
 // LoadBootstrapFiles loads the default workspace files from the virtual FS.
 func LoadBootstrapFiles(ctx context.Context, store *textfs.Store) ([]WorkspaceBootstrapFile, error) {
 	if store == nil {
-		return nil, fmt.Errorf("textfs store is required")
+		return nil, errors.New("textfs store is required")
 	}
 	files := make([]WorkspaceBootstrapFile, 0, len(baseBootstrapFiles)+2)
 	for _, name := range baseBootstrapFiles {

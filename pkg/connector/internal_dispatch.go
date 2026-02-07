@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -22,12 +23,12 @@ func (oc *AIClient) dispatchInternalMessage(
 	excludeFromHistory bool,
 ) (id.EventID, bool, error) {
 	if oc == nil || portal == nil || portal.MXID == "" {
-		return "", false, fmt.Errorf("missing portal context")
+		return "", false, errors.New("missing portal context")
 	}
 	if meta == nil {
 		meta = portalMeta(portal)
 		if meta == nil {
-			return "", false, fmt.Errorf("missing portal metadata")
+			return "", false, errors.New("missing portal metadata")
 		}
 	}
 	trace := traceEnabled(meta)
@@ -40,7 +41,7 @@ func (oc *AIClient) dispatchInternalMessage(
 	}
 	if meta.IsOpenCodeRoom {
 		if oc.opencodeBridge == nil {
-			return "", false, fmt.Errorf("OpenCode integration is not available")
+			return "", false, errors.New("OpenCode integration is not available")
 		}
 		if trace {
 			oc.loggerForContext(ctx).Debug().Stringer("portal", portal.PortalKey).Msg("Routing internal message to OpenCode")
@@ -49,7 +50,7 @@ func (oc *AIClient) dispatchInternalMessage(
 	}
 	trimmed := strings.TrimSpace(body)
 	if trimmed == "" {
-		return "", false, fmt.Errorf("message body is required")
+		return "", false, errors.New("message body is required")
 	}
 	if traceFull {
 		oc.loggerForContext(ctx).Debug().Stringer("portal", portal.PortalKey).Str("body", trimmed).Msg("Internal message body")

@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -25,7 +26,7 @@ type providerConfig struct {
 
 func buildMemoryProvider(client *AIClient, cfg *memory.ResolvedConfig) (*memoryProviderResult, error) {
 	if client == nil || cfg == nil {
-		return nil, fmt.Errorf("memory provider requires client and config")
+		return nil, errors.New("memory provider requires client and config")
 	}
 	requested := strings.TrimSpace(cfg.Provider)
 	if requested == "" {
@@ -84,7 +85,7 @@ func buildMemoryProvider(client *AIClient, cfg *memory.ResolvedConfig) (*memoryP
 				return finalizeProvider(cfg, provider), nil
 			}
 		}
-		return nil, fmt.Errorf("no embeddings provider available")
+		return nil, errors.New("no embeddings provider available")
 	}
 
 	primary, err := createProvider(requested)

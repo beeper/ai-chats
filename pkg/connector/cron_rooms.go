@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -12,7 +13,7 @@ import (
 
 func (oc *AIClient) getOrCreateCronRoom(ctx context.Context, agentID, jobID, jobName string) (*bridgev2.Portal, error) {
 	if oc == nil || oc.UserLogin == nil {
-		return nil, fmt.Errorf("missing login")
+		return nil, errors.New("missing login")
 	}
 	trimmedAgent := strings.TrimSpace(agentID)
 	if trimmedAgent == "" {
@@ -20,7 +21,7 @@ func (oc *AIClient) getOrCreateCronRoom(ctx context.Context, agentID, jobID, job
 	}
 	trimmedJob := strings.TrimSpace(jobID)
 	if trimmedJob == "" {
-		return nil, fmt.Errorf("jobID required")
+		return nil, errors.New("jobID required")
 	}
 	portalKey := cronPortalKey(oc.UserLogin.ID, trimmedAgent, trimmedJob)
 	portal, err := oc.UserLogin.Bridge.GetPortalByKey(ctx, portalKey)

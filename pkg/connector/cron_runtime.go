@@ -2,7 +2,7 @@ package connector
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"strings"
 	"time"
 
@@ -62,7 +62,7 @@ func (oc *AIClient) buildCronService() *cron.CronService {
 
 func (oc *AIClient) enqueueCronSystemEvent(text string, agentID string) error {
 	if oc == nil {
-		return fmt.Errorf("missing client")
+		return errors.New("missing client")
 	}
 	agentID = resolveCronAgentID(agentID, &oc.connector.Config)
 	hb := resolveHeartbeatConfig(&oc.connector.Config, agentID)

@@ -3,7 +3,7 @@ package cron
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"path"
 	"slices"
 	"strings"
@@ -62,7 +62,7 @@ func cronRunLogLock(path string) *sync.Mutex {
 // AppendCronRunLog appends a log entry and prunes if too large.
 func AppendCronRunLog(ctx context.Context, backend StoreBackend, path string, entry CronRunLogEntry, maxBytes int64, keepLines int) error {
 	if backend == nil {
-		return fmt.Errorf("cron store backend not configured")
+		return errors.New("cron store backend not configured")
 	}
 	if maxBytes <= 0 {
 		maxBytes = 2_000_000
@@ -156,7 +156,7 @@ func ParseCronRunLogEntries(raw string, limit int, jobID string) []CronRunLogEnt
 // ReadCronRunLogEntries reads recent entries from a jsonl log.
 func ReadCronRunLogEntries(ctx context.Context, backend StoreBackend, path string, limit int, jobID string) ([]CronRunLogEntry, error) {
 	if backend == nil {
-		return []CronRunLogEntry{}, fmt.Errorf("cron store backend not configured")
+		return []CronRunLogEntry{}, errors.New("cron store backend not configured")
 	}
 	data, found, err := backend.Read(ctx, path)
 	if err != nil || !found {

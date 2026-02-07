@@ -2,7 +2,7 @@ package connector
 
 import (
 	"context"
-	"fmt"
+	"errors"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
@@ -130,7 +130,7 @@ func (oc *AIClient) nextOpenCodeStreamSeq(turnID string) int {
 
 func (oc *AIClient) DownloadAndEncodeMedia(ctx context.Context, mediaURL string, file *event.EncryptedFileInfo, maxMB int) (string, string, error) {
 	if oc == nil {
-		return "", "", fmt.Errorf("missing message content")
+		return "", "", errors.New("missing message content")
 	}
 	return oc.downloadAndEncodeMedia(ctx, mediaURL, file, maxMB)
 }

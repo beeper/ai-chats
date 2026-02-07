@@ -1,6 +1,7 @@
 package cron
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -10,7 +11,7 @@ import (
 func normalizeRequiredName(raw string) (string, error) {
 	name := strings.TrimSpace(raw)
 	if name == "" {
-		return "", fmt.Errorf("cron job name is required")
+		return "", errors.New("cron job name is required")
 	}
 	return name, nil
 }

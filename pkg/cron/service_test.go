@@ -2,7 +2,7 @@ package cron
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -17,7 +17,7 @@ type failingStoreBackend struct {
 
 func (b *failingStoreBackend) Read(ctx context.Context, path string) ([]byte, bool, error) {
 	if b.failReads.Load() {
-		return nil, false, fmt.Errorf("injected read error")
+		return nil, false, errors.New("injected read error")
 	}
 	return b.inner.Read(ctx, path)
 }

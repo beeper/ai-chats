@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -284,7 +285,7 @@ func (o *OpenAIProvider) GenerateStream(ctx context.Context, params GeneratePara
 		if stream == nil {
 			events <- StreamEvent{
 				Type:  StreamEventError,
-				Error: fmt.Errorf("failed to create streaming request"),
+				Error: errors.New("failed to create streaming request"),
 			}
 			return
 		}
@@ -438,7 +439,7 @@ func (o *OpenAIProvider) Generate(ctx context.Context, params GenerateParams) (*
 func (o *OpenAIProvider) generateChatCompletions(ctx context.Context, params GenerateParams) (*GenerateResponse, error) {
 	chatMessages := toChatCompletionMessages(params.Messages, isOpenRouterBaseURL(o.baseURL))
 	if len(chatMessages) == 0 {
-		return nil, fmt.Errorf("no chat messages for completion")
+		return nil, errors.New("no chat messages for completion")
 	}
 
 	req := openai.ChatCompletionNewParams{

@@ -6,7 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"strings"
 	"time"
 
@@ -26,7 +26,7 @@ type sessionPortal struct {
 
 func (m *MemorySearchManager) syncSessions(ctx context.Context, force bool, sessionKey, generation string) error {
 	if m == nil || m.client == nil {
-		return fmt.Errorf("memory search unavailable")
+		return errors.New("memory search unavailable")
 	}
 	// For shared portals (portal.Receiver == ""), only index sessions for portals that this login is
 	// actually in. Otherwise a login could accidentally index unrelated shared portals.

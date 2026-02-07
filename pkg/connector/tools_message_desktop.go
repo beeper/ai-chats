@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -42,16 +43,16 @@ func resolveDesktopMessageTarget(ctx context.Context, client *AIClient, args map
 	}
 
 	if sessionKey != "" && label != "" {
-		return "", "", "", true, fmt.Errorf("provide only one of 'sessionKey' or 'label'")
+		return "", "", "", true, errors.New("provide only one of 'sessionKey' or 'label'")
 	}
 	if chatID != "" && (sessionKey != "" || label != "") {
-		return "", "", "", true, fmt.Errorf("provide only one of 'chatId', 'sessionKey', or 'label'")
+		return "", "", "", true, errors.New("provide only one of 'chatId', 'sessionKey', or 'label'")
 	}
 
 	if sessionKey != "" {
 		parsedInstance, parsedChatID, ok := parseDesktopSessionKey(sessionKey)
 		if !ok {
-			return "", "", "", true, fmt.Errorf("sessionKey must be a desktop-api session")
+			return "", "", "", true, errors.New("sessionKey must be a desktop-api session")
 		}
 		resolvedInstance, resolveErr := client.resolveDesktopInstanceName(parsedInstance)
 		if resolveErr != nil {
@@ -94,7 +95,7 @@ func resolveDesktopMessageTarget(ctx context.Context, client *AIClient, args map
 		}
 		return resolvedInstance, "", "", true, nil
 	}
-	return "", "", "", true, fmt.Errorf("desktop action requires chatId, label, or sessionKey")
+	return "", "", "", true, errors.New("desktop action requires chatId, label, or sessionKey")
 }
 
 func maybeExecuteMessageSendDesktop(ctx context.Context, args map[string]any, btc *BridgeToolContext) (bool, string, error) {
@@ -130,7 +131,7 @@ func maybeExecuteMessageSendDesktop(ctx context.Context, args map[string]any, bt
 			return true, "", fmt.Errorf("failed to upload desktop asset: %w", uploadErr)
 		}
 		if uploadResp == nil || strings.TrimSpace(uploadResp.UploadID) == "" {
-			return true, "", fmt.Errorf("desktop asset upload did not return an upload ID")
+			return true, "", errors.New("desktop asset upload did not return an upload ID")
 		}
 		attachmentUploadID = strings.TrimSpace(uploadResp.UploadID)
 	}
@@ -183,11 +184,11 @@ func maybeExecuteMessageEditDesktop(ctx context.Context, args map[string]any, bt
 	}
 	messageID := firstNonEmptyString(args["message_id"])
 	if messageID == "" {
-		return true, "", fmt.Errorf("action=edit requires 'message_id'")
+		return true, "", errors.New("action=edit requires 'message_id'")
 	}
 	message := firstNonEmptyString(args["message"])
 	if message == "" {
-		return true, "", fmt.Errorf("action=edit requires 'message'")
+		return true, "", errors.New("action=edit requires 'message'")
 	}
 	if err := btc.Client.editDesktopMessage(ctx, instance, chatID, messageID, message); err != nil {
 		return true, "", err
@@ -219,11 +220,11 @@ func maybeExecuteMessageReplyDesktop(ctx context.Context, args map[string]any, b
 	}
 	replyTo := firstNonEmptyString(args["message_id"])
 	if replyTo == "" {
-		return true, "", fmt.Errorf("action=reply requires 'message_id'")
+		return true, "", errors.New("action=reply requires 'message_id'")
 	}
 	text := firstNonEmptyString(args["message"])
 	if text == "" {
-		return true, "", fmt.Errorf("action=reply requires 'message'")
+		return true, "", errors.New("action=reply requires 'message'")
 	}
 	pendingID, sendErr := btc.Client.sendDesktopMessage(ctx, instance, chatID, desktopSendMessageRequest{
 		Text:             text,
@@ -253,7 +254,7 @@ func maybeExecuteMessageSearchDesktop(ctx context.Context, args map[string]any, 
 	}
 	query := strings.TrimSpace(firstNonEmptyString(args["query"]))
 	if query == "" {
-		return true, "", fmt.Errorf("action=search requires 'query'")
+		return true, "", errors.New("action=search requires 'query'")
 	}
 	instance, chatID, _, resolved, err := resolveDesktopMessageTarget(ctx, btc.Client, args, false)
 	if !resolved {
@@ -321,7 +322,7 @@ func executeMessageDesktopListChats(ctx context.Context, args map[string]any, bt
 func executeMessageDesktopSearchChats(ctx context.Context, args map[string]any, btc *BridgeToolContext) (string, error) {
 	query := strings.TrimSpace(firstNonEmptyString(args["query"]))
 	if query == "" {
-		return "", fmt.Errorf("action=desktop-search-chats requires 'query'")
+		return "", errors.New("action=desktop-search-chats requires 'query'")
 	}
 	instance := firstNonEmptyString(args["instance"])
 	resolvedInstance, err := btc.Client.resolveDesktopInstanceName(instance)
@@ -350,7 +351,7 @@ func executeMessageDesktopSearchChats(ctx context.Context, args map[string]any, 
 func executeMessageDesktopSearchMessages(ctx context.Context, args map[string]any, btc *BridgeToolContext) (string, error) {
 	query := strings.TrimSpace(firstNonEmptyString(args["query"]))
 	if query == "" {
-		return "", fmt.Errorf("action=desktop-search-messages requires 'query'")
+		return "", errors.New("action=desktop-search-messages requires 'query'")
 	}
 	instance, chatID, key, resolved, err := resolveDesktopMessageTarget(ctx, btc.Client, args, false)
 	if err != nil {
@@ -403,7 +404,7 @@ func executeMessageDesktopCreateChat(ctx context.Context, args map[string]any, b
 	instance = resolvedInstance
 	accountID := firstNonEmptyString(args["accountId"])
 	if accountID == "" {
-		return "", fmt.Errorf("action=desktop-create-chat requires 'accountId'")
+		return "", errors.New("action=desktop-create-chat requires 'accountId'")
 	}
 	rawParticipants, ok := args["participantIds"].([]any)
 	if !ok || len(rawParticipants) == 0 {
@@ -415,7 +416,7 @@ func executeMessageDesktopCreateChat(ctx context.Context, args map[string]any, b
 		}
 	}
 	if len(rawParticipants) == 0 {
-		return "", fmt.Errorf("action=desktop-create-chat requires 'participantIds'")
+		return "", errors.New("action=desktop-create-chat requires 'participantIds'")
 	}
 	participantIDs := make([]string, 0, len(rawParticipants))
 	for _, raw := range rawParticipants {
@@ -424,7 +425,7 @@ func executeMessageDesktopCreateChat(ctx context.Context, args map[string]any, b
 		}
 	}
 	if len(participantIDs) == 0 {
-		return "", fmt.Errorf("participantIds must contain non-empty strings")
+		return "", errors.New("participantIds must contain non-empty strings")
 	}
 	chatID, err := btc.Client.createDesktopChat(
 		ctx,
@@ -476,7 +477,7 @@ func executeMessageDesktopSetReminder(ctx context.Context, args map[string]any, 
 	}
 	rawRemindAt, ok := args["remindAtMs"].(float64)
 	if !ok || rawRemindAt <= 0 {
-		return "", fmt.Errorf("action=desktop-set-reminder requires numeric 'remindAtMs'")
+		return "", errors.New("action=desktop-set-reminder requires numeric 'remindAtMs'")
 	}
 	dismiss := false
 	if raw, ok := args["dismissOnIncomingMessage"].(bool); ok {
@@ -523,7 +524,7 @@ func executeMessageDesktopUploadAsset(ctx context.Context, args map[string]any, 
 	bufferInput := firstNonEmptyString(args["buffer"])
 	mediaInput := firstNonEmptyString(args["media"], args["path"])
 	if bufferInput == "" && mediaInput == "" {
-		return "", fmt.Errorf("action=desktop-upload-asset requires 'buffer' or 'media'")
+		return "", errors.New("action=desktop-upload-asset requires 'buffer' or 'media'")
 	}
 	data, detectedMime, err := resolveMessageMedia(ctx, btc, bufferInput, mediaInput)
 	if err != nil {
@@ -552,7 +553,7 @@ func executeMessageDesktopDownloadAsset(ctx context.Context, args map[string]any
 	instance = resolvedInstance
 	rawURL := firstNonEmptyString(args["url"])
 	if rawURL == "" {
-		return "", fmt.Errorf("action=desktop-download-asset requires 'url'")
+		return "", errors.New("action=desktop-download-asset requires 'url'")
 	}
 	download, err := btc.Client.downloadDesktopAsset(ctx, instance, rawURL)
 	if err != nil {

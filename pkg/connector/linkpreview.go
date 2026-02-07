@@ -3,6 +3,7 @@ package connector
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	_ "image/gif"
@@ -142,7 +143,7 @@ func NewLinkPreviewer(config LinkPreviewConfig) *LinkPreviewer {
 			Timeout: config.FetchTimeout,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				if len(via) >= 5 {
-					return fmt.Errorf("too many redirects")
+					return errors.New("too many redirects")
 				}
 				return nil
 			},

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"path/filepath"
@@ -217,7 +218,7 @@ func (m *MemorySearchManager) ProbeEmbeddingAvailability(ctx context.Context) (b
 
 func (m *MemorySearchManager) StatusDetails(ctx context.Context) (*MemorySearchStatus, error) {
 	if m == nil {
-		return nil, fmt.Errorf("memory search unavailable")
+		return nil, errors.New("memory search unavailable")
 	}
 	workspaceDir := resolvePromptWorkspaceDir()
 	status := &MemorySearchStatus{
@@ -352,7 +353,7 @@ func buildSourceCounts(ctx context.Context, m *MemorySearchManager) []MemorySear
 
 func (m *MemorySearchManager) Search(ctx context.Context, query string, opts memory.SearchOptions) ([]memory.SearchResult, error) {
 	if m == nil {
-		return nil, fmt.Errorf("memory search unavailable")
+		return nil, errors.New("memory search unavailable")
 	}
 	m.warmSession(ctx, opts.SessionKey)
 	if m.cfg.Sync.OnSearch {
@@ -436,17 +437,17 @@ func (m *MemorySearchManager) Search(ctx context.Context, query string, opts mem
 
 func (m *MemorySearchManager) ReadFile(ctx context.Context, relPath string, from, lines *int) (map[string]any, error) {
 	if m == nil {
-		return nil, fmt.Errorf("memory search unavailable")
+		return nil, errors.New("memory search unavailable")
 	}
 	path, err := textfs.NormalizePath(relPath)
 	if err != nil {
-		return nil, fmt.Errorf("path required")
+		return nil, errors.New("path required")
 	}
 	if !strings.HasSuffix(strings.ToLower(path), ".md") {
-		return nil, fmt.Errorf("path required")
+		return nil, errors.New("path required")
 	}
 	if !isAllowedMemoryPath(path, m.cfg.ExtraPaths) {
-		return nil, fmt.Errorf("path required")
+		return nil, errors.New("path required")
 	}
 
 	store := textfs.NewStore(m.db, m.bridgeID, m.loginID, m.agentID)
@@ -455,7 +456,7 @@ func (m *MemorySearchManager) ReadFile(ctx context.Context, relPath string, from
 		return nil, err
 	}
 	if !found {
-		return nil, fmt.Errorf("file not found")
+		return nil, errors.New("file not found")
 	}
 
 	content := normalizeNewlines(entry.Content)

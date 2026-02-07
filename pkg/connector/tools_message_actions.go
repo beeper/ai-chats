@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -19,7 +20,7 @@ func executeMessageRead(ctx context.Context, args map[string]any, btc *BridgeToo
 	}
 
 	if targetEventID == "" {
-		return "", fmt.Errorf("action=read requires 'message_id' parameter (no triggering message available)")
+		return "", errors.New("action=read requires 'message_id' parameter (no triggering message available)")
 	}
 
 	err := sendMatrixReadReceipt(ctx, btc, targetEventID)
@@ -41,7 +42,7 @@ func executeMessageChannelInfo(ctx context.Context, _ map[string]any, btc *Bridg
 	}
 
 	if info == nil {
-		return "", fmt.Errorf("room info not available")
+		return "", errors.New("room info not available")
 	}
 
 	return jsonActionResult("channel-info", map[string]any{
@@ -59,7 +60,7 @@ func executeMessageChannelEdit(ctx context.Context, args map[string]any, btc *Br
 		if s, ok := raw.(string); ok {
 			title = strings.TrimSpace(s)
 		} else {
-			return "", fmt.Errorf("action=channel-edit requires 'name' to be a string")
+			return "", errors.New("action=channel-edit requires 'name' to be a string")
 		}
 	}
 
@@ -70,22 +71,22 @@ func executeMessageChannelEdit(ctx context.Context, args map[string]any, btc *Br
 		if s, ok := raw.(string); ok {
 			description = strings.TrimSpace(s)
 		} else {
-			return "", fmt.Errorf("action=channel-edit requires 'topic' to be a string")
+			return "", errors.New("action=channel-edit requires 'topic' to be a string")
 		}
 	}
 
 	if title == "" && !descProvided {
-		return "", fmt.Errorf("action=channel-edit requires 'name' or 'topic'")
+		return "", errors.New("action=channel-edit requires 'name' or 'topic'")
 	}
 
 	if btc == nil {
 		btc = GetBridgeToolContext(ctx)
 	}
 	if btc == nil {
-		return "", fmt.Errorf("bridge context not available")
+		return "", errors.New("bridge context not available")
 	}
 	if btc.Portal == nil {
-		return "", fmt.Errorf("portal not available")
+		return "", errors.New("portal not available")
 	}
 
 	updates := make([]string, 0, 2)
@@ -124,7 +125,7 @@ func executeMessageChannelEdit(ctx context.Context, args map[string]any, btc *Br
 func executeMessageMemberInfo(ctx context.Context, args map[string]any, btc *BridgeToolContext) (string, error) {
 	userIDStr, ok := args["user_id"].(string)
 	if !ok || userIDStr == "" {
-		return "", fmt.Errorf("action=member-info requires 'user_id' parameter")
+		return "", errors.New("action=member-info requires 'user_id' parameter")
 	}
 
 	userID := id.UserID(userIDStr)
@@ -134,7 +135,7 @@ func executeMessageMemberInfo(ctx context.Context, args map[string]any, btc *Bri
 	}
 
 	if profile == nil {
-		return "", fmt.Errorf("user profile not available")
+		return "", errors.New("user profile not available")
 	}
 
 	result := map[string]any{
@@ -173,7 +174,7 @@ func executeMessageReactions(ctx context.Context, args map[string]any, btc *Brid
 	// Get target message ID (required for listing reactions)
 	msgID, ok := args["message_id"].(string)
 	if !ok || msgID == "" {
-		return "", fmt.Errorf("action=reactions requires 'message_id' parameter")
+		return "", errors.New("action=reactions requires 'message_id' parameter")
 	}
 	targetEventID := id.EventID(msgID)
 
@@ -200,7 +201,7 @@ func executeMessageReactRemove(ctx context.Context, args map[string]any, btc *Br
 	}
 
 	if targetEventID == "" {
-		return "", fmt.Errorf("action=react with remove requires 'message_id' parameter")
+		return "", errors.New("action=react with remove requires 'message_id' parameter")
 	}
 
 	// Get emoji to remove (empty means all)
@@ -222,7 +223,7 @@ func executeMessageReactRemove(ctx context.Context, args map[string]any, btc *Br
 // executeMessageFocus handles the focus action - focuses the desktop app and optionally a chat/message.
 func executeMessageFocus(ctx context.Context, args map[string]any, btc *BridgeToolContext) (string, error) {
 	if btc == nil || btc.Client == nil {
-		return "", fmt.Errorf("bridge context not available")
+		return "", errors.New("bridge context not available")
 	}
 
 	sessionKey := firstNonEmptyString(args["sessionKey"])
@@ -234,16 +235,16 @@ func executeMessageFocus(ctx context.Context, args map[string]any, btc *BridgeTo
 	draftAttachmentPath := firstNonEmptyString(args["draftAttachmentPath"])
 
 	if sessionKey != "" && label != "" {
-		return "", fmt.Errorf("action=focus requires only one of 'sessionKey' or 'label'")
+		return "", errors.New("action=focus requires only one of 'sessionKey' or 'label'")
 	}
 	if chatID != "" && (sessionKey != "" || label != "") {
-		return "", fmt.Errorf("action=focus requires only one of 'chatId', 'sessionKey', or 'label'")
+		return "", errors.New("action=focus requires only one of 'chatId', 'sessionKey', or 'label'")
 	}
 
 	if sessionKey != "" {
 		parsedInstance, parsedChatID, ok := parseDesktopSessionKey(sessionKey)
 		if !ok {
-			return "", fmt.Errorf("action=focus requires a desktop-api sessionKey")
+			return "", errors.New("action=focus requires a desktop-api sessionKey")
 		}
 		chatID = parsedChatID
 		instance = parsedInstance
@@ -272,7 +273,7 @@ func executeMessageFocus(ctx context.Context, args map[string]any, btc *BridgeTo
 	}
 
 	if messageID != "" && chatID == "" {
-		return "", fmt.Errorf("action=focus requires chatId or sessionKey when message_id is set")
+		return "", errors.New("action=focus requires chatId or sessionKey when message_id is set")
 	}
 
 	if draftAttachmentPath != "" {

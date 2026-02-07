@@ -1,7 +1,7 @@
 package agents
 
 import (
-	"fmt"
+	"errors"
 	"math"
 	"math/rand/v2"
 	"regexp"
@@ -91,7 +91,7 @@ func parsePurgeAt(raw string) (int, bool) {
 func parseDurationWithDefaultUnit(raw string) (time.Duration, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
-		return 0, fmt.Errorf("empty duration")
+		return 0, errors.New("empty duration")
 	}
 	if _, err := strconv.Atoi(trimmed); err == nil {
 		trimmed = trimmed + "m"

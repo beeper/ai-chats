@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"maunium.net/go/mautrix/event"
@@ -12,7 +13,7 @@ import (
 func sendFormattedMessage(ctx context.Context, btc *BridgeToolContext, message string, relatesTo map[string]any, errorPrefix string) (id.EventID, error) {
 	intent := btc.Client.getModelIntent(ctx, btc.Portal)
 	if intent == nil {
-		return "", fmt.Errorf("failed to get model intent")
+		return "", errors.New("failed to get model intent")
 	}
 
 	rendered := format.RenderMarkdown(message, true, true)

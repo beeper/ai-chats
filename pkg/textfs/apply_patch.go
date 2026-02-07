@@ -2,6 +2,7 @@ package textfs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -64,7 +65,7 @@ type ApplyPatchResult struct {
 
 func ApplyPatch(ctx context.Context, store *Store, input string) (*ApplyPatchResult, error) {
 	if store == nil {
-		return nil, fmt.Errorf("store required")
+		return nil, errors.New("store required")
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -74,7 +75,7 @@ func ApplyPatch(ctx context.Context, store *Store, input string) (*ApplyPatchRes
 		return nil, err
 	}
 	if len(parsed.hunks) == 0 {
-		return nil, fmt.Errorf("no files were modified")
+		return nil, errors.New("no files were modified")
 	}
 
 	summary := ApplyPatchSummary{}
@@ -167,7 +168,7 @@ func ApplyPatch(ctx context.Context, store *Store, input string) (*ApplyPatchRes
 				record("modified", path)
 			}
 		default:
-			return nil, fmt.Errorf("unsupported patch hunk")
+			return nil, errors.New("unsupported patch hunk")
 		}
 	}
 
@@ -184,7 +185,7 @@ type parsedPatch struct {
 func parsePatchText(input string) (*parsedPatch, error) {
 	trimmed := strings.TrimSpace(input)
 	if trimmed == "" {
-		return nil, fmt.Errorf("invalid patch: input is empty")
+		return nil, errors.New("invalid patch: input is empty")
 	}
 	normalized := strings.ReplaceAll(trimmed, "\r\n", "\n")
 	lines := strings.Split(normalized, "\n")
@@ -193,7 +194,7 @@ func parsePatchText(input string) (*parsedPatch, error) {
 		return nil, err
 	}
 	if len(validated) < 2 {
-		return nil, fmt.Errorf("invalid patch: empty")
+		return nil, errors.New("invalid patch: empty")
 	}
 	lastLineIndex := len(validated) - 1
 	remaining := validated[1:lastLineIndex]
@@ -232,7 +233,7 @@ func checkPatchBoundariesLenient(lines []string) ([]string, error) {
 
 func checkPatchBoundariesStrict(lines []string) error {
 	if len(lines) == 0 {
-		return fmt.Errorf("invalid patch: input is empty")
+		return errors.New("invalid patch: input is empty")
 	}
 	first := strings.TrimSpace(lines[0])
 	last := strings.TrimSpace(lines[len(lines)-1])

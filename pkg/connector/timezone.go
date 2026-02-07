@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -12,7 +13,7 @@ const defaultTimezone = "UTC"
 func normalizeTimezone(raw string) (string, *time.Location, error) {
 	tz := strings.TrimSpace(raw)
 	if tz == "" {
-		return "", nil, fmt.Errorf("empty timezone")
+		return "", nil, errors.New("empty timezone")
 	}
 	if strings.EqualFold(tz, "utc") {
 		tz = "UTC"

@@ -2,7 +2,7 @@ package cron
 
 import (
 	"cmp"
-	"fmt"
+	"errors"
 	"slices"
 	"strings"
 
@@ -67,7 +67,7 @@ func createJob(nowMs int64, input CronJobCreate) (CronJob, error) {
 
 func applyJobPatch(job *CronJob, patch CronJobPatch) error {
 	if job == nil {
-		return fmt.Errorf("job required")
+		return errors.New("job required")
 	}
 	if patch.Name != nil {
 		name, err := normalizeRequiredName(*patch.Name)
@@ -181,7 +181,7 @@ func buildPayloadFromPatch(patch CronPayloadPatch) (CronPayload, error) {
 			text = *patch.Text
 		}
 		if strings.TrimSpace(text) == "" {
-			return CronPayload{}, fmt.Errorf("cron.update payload.kind=systemEvent requires text")
+			return CronPayload{}, errors.New("cron.update payload.kind=systemEvent requires text")
 		}
 		return CronPayload{Kind: "systemEvent", Text: text}, nil
 	}
@@ -190,7 +190,7 @@ func buildPayloadFromPatch(patch CronPayloadPatch) (CronPayload, error) {
 		msg = *patch.Message
 	}
 	if strings.TrimSpace(msg) == "" {
-		return CronPayload{}, fmt.Errorf("cron.update payload.kind=agentTurn requires message")
+		return CronPayload{}, errors.New("cron.update payload.kind=agentTurn requires message")
 	}
 	return CronPayload{
 		Kind:                "agentTurn",
@@ -235,17 +235,17 @@ func derefString(ptr *string) string {
 
 func assertSupportedJobSpec(target CronSessionTarget, payload CronPayload) error {
 	if target == CronSessionMain && !strings.EqualFold(payload.Kind, "systemEvent") {
-		return fmt.Errorf("main cron jobs require payload.kind=systemEvent")
+		return errors.New("main cron jobs require payload.kind=systemEvent")
 	}
 	if target == CronSessionIsolated && !strings.EqualFold(payload.Kind, "agentTurn") {
-		return fmt.Errorf("isolated cron jobs require payload.kind=agentTurn")
+		return errors.New("isolated cron jobs require payload.kind=agentTurn")
 	}
 	return nil
 }
 
 func assertDeliverySupport(target CronSessionTarget, delivery *CronDelivery) error {
 	if delivery != nil && target != CronSessionIsolated {
-		return fmt.Errorf("cron delivery config is only supported for sessionTarget=isolated")
+		return errors.New("cron delivery config is only supported for sessionTarget=isolated")
 	}
 	return nil
 }

@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -120,17 +121,17 @@ func (oc *AIClient) setApprovalSnapshotEvent(approvalID string, eventID id.Event
 
 func (oc *AIClient) resolveToolApproval(roomID id.RoomID, approvalID string, decision ToolApprovalDecision) error {
 	if oc == nil || oc.UserLogin == nil {
-		return fmt.Errorf("bridge not available")
+		return errors.New("bridge not available")
 	}
 	approvalID = strings.TrimSpace(approvalID)
 	if approvalID == "" {
-		return fmt.Errorf("missing approval id")
+		return errors.New("missing approval id")
 	}
 	if strings.TrimSpace(roomID.String()) == "" {
-		return fmt.Errorf("missing room id")
+		return errors.New("missing room id")
 	}
 	if decision.DecidedBy == "" || decision.DecidedBy != oc.UserLogin.UserMXID {
-		return fmt.Errorf("only the owner can approve")
+		return errors.New("only the owner can approve")
 	}
 
 	oc.toolApprovalsMu.Lock()
@@ -140,7 +141,7 @@ func (oc *AIClient) resolveToolApproval(roomID id.RoomID, approvalID string, dec
 		return fmt.Errorf("unknown or expired approval id: %s", approvalID)
 	}
 	if p.RoomID != roomID {
-		return fmt.Errorf("approval id does not belong to this room")
+		return errors.New("approval id does not belong to this room")
 	}
 	if time.Now().After(p.ExpiresAt) {
 		oc.dropToolApprovalLocked(approvalID)

@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -276,7 +277,7 @@ func (cl *CodexLogin) submitStep2Credentials(ctx context.Context, input map[stri
 	}
 	apiKey := strings.TrimSpace(input["api_key"])
 	if apiKey == "" {
-		return nil, fmt.Errorf("api_key is required")
+		return nil, errors.New("api_key is required")
 	}
 	return cl.spawnAndStartLogin(ctx, log, apiKey, "apiKey")
 }
@@ -445,7 +446,7 @@ func (cl *CodexLogin) spawnAndStartLogin(ctx context.Context, log *zerolog.Logge
 		cl.loginID = strings.TrimSpace(loginResp.LoginID)
 		cl.authURL = strings.TrimSpace(loginResp.AuthURL)
 		if cl.authURL == "" || cl.loginID == "" {
-			startErr = fmt.Errorf("codex returned empty authUrl/loginId")
+			startErr = errors.New("codex returned empty authUrl/loginId")
 			select {
 			case cl.startCh <- startErr:
 			default:
@@ -483,10 +484,10 @@ func (cl *CodexLogin) spawnAndStartLogin(ctx context.Context, log *zerolog.Logge
 func (cl *CodexLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 	log := cl.logger(ctx)
 	if cl.rpc == nil {
-		return nil, fmt.Errorf("login not started")
+		return nil, errors.New("login not started")
 	}
 	if cl.loginDoneCh == nil {
-		return nil, fmt.Errorf("login wait unavailable")
+		return nil, errors.New("login wait unavailable")
 	}
 	if cl.waitUntil.IsZero() {
 		cl.waitUntil = time.Now().Add(10 * time.Minute)
@@ -494,7 +495,7 @@ func (cl *CodexLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 
 	overallTimeout := time.Until(cl.waitUntil)
 	if overallTimeout <= 0 {
-		return nil, fmt.Errorf("timed out waiting for Codex login to complete")
+		return nil, errors.New("timed out waiting for Codex login to complete")
 	}
 	deadline := time.NewTimer(overallTimeout)
 	defer deadline.Stop()
@@ -528,7 +529,7 @@ func (cl *CodexLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 			return cl.finishLogin(cl.persistContext(ctx))
 		case <-tick.C:
 			if cl.rpc == nil {
-				return nil, fmt.Errorf("codex login process stopped")
+				return nil, errors.New("codex login process stopped")
 			}
 			readCtx, cancel := context.WithTimeout(cl.persistContext(ctx), 10*time.Second)
 			var resp struct {
@@ -590,7 +591,7 @@ func (cl *CodexLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 			}, nil
 		case <-deadline.C:
 			log.Warn().Str("login_id", cl.loginID).Msg("Codex login timed out")
-			return nil, fmt.Errorf("timed out waiting for Codex login to complete")
+			return nil, errors.New("timed out waiting for Codex login to complete")
 		case <-ctx.Done():
 			// Most callers will have their own HTTP/gRPC deadlines. Returning the same waiting
 			// step allows the client to poll again without the login process being marked as failed.
@@ -631,7 +632,7 @@ func (cl *CodexLogin) persistContext(ctx context.Context) context.Context {
 
 func (cl *CodexLogin) finishLogin(ctx context.Context) (*bridgev2.LoginStep, error) {
 	if cl.User == nil {
-		return nil, fmt.Errorf("missing user")
+		return nil, errors.New("missing user")
 	}
 	persistCtx := cl.persistContext(ctx)
 	log := cl.logger(persistCtx)

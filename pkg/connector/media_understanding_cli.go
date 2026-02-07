@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -19,7 +20,7 @@ func runMediaCLI(
 	mediaPath string,
 ) (string, error) {
 	if strings.TrimSpace(command) == "" {
-		return "", fmt.Errorf("missing cli command")
+		return "", errors.New("missing cli command")
 	}
 
 	outputDir, err := os.MkdirTemp("", "ai-bridge-media-cli-*")

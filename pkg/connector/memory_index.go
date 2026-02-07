@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -53,7 +54,7 @@ func (m *MemorySearchManager) ensureSchema(ctx context.Context) {
 // The progress callback is set before acquiring the sync lock and cleared after.
 func (m *MemorySearchManager) syncWithProgress(ctx context.Context, sessionKey string, force bool, onProgress func(completed, total int, label string)) error {
 	if m == nil {
-		return fmt.Errorf("memory search unavailable")
+		return errors.New("memory search unavailable")
 	}
 	// Safe: syncProgress is only read inside sync() which holds m.mu.
 	// This write happens before sync() acquires the lock, creating a happens-before.
@@ -65,7 +66,7 @@ func (m *MemorySearchManager) syncWithProgress(ctx context.Context, sessionKey s
 
 func (m *MemorySearchManager) sync(ctx context.Context, sessionKey string, force bool) error {
 	if m == nil {
-		return fmt.Errorf("memory search unavailable")
+		return errors.New("memory search unavailable")
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -694,11 +695,11 @@ func (m *MemorySearchManager) embedChunksWithOpenAIBatch(
 	source string,
 ) (map[string][]float64, error) {
 	if m == nil || m.client == nil {
-		return nil, fmt.Errorf("memory search unavailable")
+		return nil, errors.New("memory search unavailable")
 	}
 	apiKey, baseURL, headers := resolveOpenAIEmbeddingConfig(m.client, m.cfg)
 	if strings.TrimSpace(apiKey) == "" {
-		return nil, fmt.Errorf("openai embeddings require api_key")
+		return nil, errors.New("openai embeddings require api_key")
 	}
 	if strings.TrimSpace(baseURL) == "" {
 		baseURL = embedding.DefaultOpenAIBaseURL
@@ -732,11 +733,11 @@ func (m *MemorySearchManager) embedChunksWithGeminiBatch(
 	source string,
 ) (map[string][]float64, error) {
 	if m == nil {
-		return nil, fmt.Errorf("memory search unavailable")
+		return nil, errors.New("memory search unavailable")
 	}
 	apiKey, baseURL, headers := resolveGeminiEmbeddingConfig(m.client, m.cfg)
 	if strings.TrimSpace(apiKey) == "" {
-		return nil, fmt.Errorf("gemini embeddings require api_key")
+		return nil, errors.New("gemini embeddings require api_key")
 	}
 	if strings.TrimSpace(baseURL) == "" {
 		baseURL = embedding.DefaultGeminiBaseURL

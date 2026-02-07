@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	_ "image/gif"
@@ -64,7 +65,7 @@ var imageGenHTTPClient = &http.Client{Timeout: 120 * time.Second}
 func parseImageGenArgs(args map[string]any) (imageGenRequest, error) {
 	prompt, ok := args["prompt"].(string)
 	if !ok || strings.TrimSpace(prompt) == "" {
-		return imageGenRequest{}, fmt.Errorf("missing or invalid 'prompt' argument")
+		return imageGenRequest{}, errors.New("missing or invalid 'prompt' argument")
 	}
 
 	req := imageGenRequest{
@@ -81,16 +82,16 @@ func parseImageGenArgs(args map[string]any) (imageGenRequest, error) {
 	if rawCount, ok := args["count"]; ok {
 		if v, ok := rawCount.(float64); ok {
 			if v < 1 || math.Mod(v, 1) != 0 {
-				return imageGenRequest{}, fmt.Errorf("invalid 'count' argument")
+				return imageGenRequest{}, errors.New("invalid 'count' argument")
 			}
 			req.Count = int(v)
 		} else if v, ok := rawCount.(int); ok {
 			if v < 1 {
-				return imageGenRequest{}, fmt.Errorf("invalid 'count' argument")
+				return imageGenRequest{}, errors.New("invalid 'count' argument")
 			}
 			req.Count = v
 		} else {
-			return imageGenRequest{}, fmt.Errorf("invalid 'count' argument")
+			return imageGenRequest{}, errors.New("invalid 'count' argument")
 		}
 	}
 	if v, ok := args["size"].(string); ok {
@@ -170,17 +171,17 @@ func resolveImageGenProvider(req imageGenRequest, btc *BridgeToolContext) (image
 		switch provider {
 		case "openai":
 			if !supportsOpenAIImageGen(btc) {
-				return "", fmt.Errorf("openai image generation is not available for this login")
+				return "", errors.New("openai image generation is not available for this login")
 			}
 			return imageGenProviderOpenAI, nil
 		case "gemini", "google":
 			if !supportsGeminiImageGen(btc) {
-				return "", fmt.Errorf("gemini image generation is not available for this login")
+				return "", errors.New("gemini image generation is not available for this login")
 			}
 			return imageGenProviderGemini, nil
 		case "openrouter":
 			if !supportsOpenRouterImageGen(btc) {
-				return "", fmt.Errorf("openrouter image generation is not available for this login")
+				return "", errors.New("openrouter image generation is not available for this login")
 			}
 			return imageGenProviderOpenRouter, nil
 		default:
@@ -192,12 +193,12 @@ func resolveImageGenProvider(req imageGenRequest, btc *BridgeToolContext) (image
 	switch loginMeta.Provider {
 	case ProviderOpenAI:
 		if !supportsOpenAIImageGen(btc) {
-			return "", fmt.Errorf("openai image generation is not available for this login")
+			return "", errors.New("openai image generation is not available for this login")
 		}
 		return imageGenProviderOpenAI, nil
 	case ProviderOpenRouter:
 		if !supportsOpenRouterImageGen(btc) {
-			return "", fmt.Errorf("openrouter image generation is not available for this login")
+			return "", errors.New("openrouter image generation is not available for this login")
 		}
 		return imageGenProviderOpenRouter, nil
 	case ProviderMagicProxy:
@@ -208,7 +209,7 @@ func resolveImageGenProvider(req imageGenRequest, btc *BridgeToolContext) (image
 
 		if usesOpenAIParams(req) {
 			if !openAISupported {
-				return "", fmt.Errorf("openai image generation is not available for this login")
+				return "", errors.New("openai image generation is not available for this login")
 			}
 			return imageGenProviderOpenAI, nil
 		}
@@ -221,7 +222,7 @@ func resolveImageGenProvider(req imageGenRequest, btc *BridgeToolContext) (image
 			if openRouterSupported {
 				return imageGenProviderOpenRouter, nil
 			}
-			return "", fmt.Errorf("openai image generation is not available for this login")
+			return "", errors.New("openai image generation is not available for this login")
 		case imageGenProviderOpenRouter:
 			if openRouterSupported {
 				return imageGenProviderOpenRouter, nil
@@ -229,7 +230,7 @@ func resolveImageGenProvider(req imageGenRequest, btc *BridgeToolContext) (image
 			if openAISupported {
 				return imageGenProviderOpenAI, nil
 			}
-			return "", fmt.Errorf("openrouter image generation is not available for this login")
+			return "", errors.New("openrouter image generation is not available for this login")
 		}
 
 		if openRouterSupported {
@@ -238,7 +239,7 @@ func resolveImageGenProvider(req imageGenRequest, btc *BridgeToolContext) (image
 		if openAISupported {
 			return imageGenProviderOpenAI, nil
 		}
-		return "", fmt.Errorf("image generation is not available for this login")
+		return "", errors.New("image generation is not available for this login")
 	case ProviderBeeper:
 		// Beeper: prefer OpenRouter when the request is simple; otherwise use direct adapters.
 		openAISupported := supportsOpenAIImageGen(btc)
@@ -247,13 +248,13 @@ func resolveImageGenProvider(req imageGenRequest, btc *BridgeToolContext) (image
 
 		if usesGeminiParams(req) {
 			if !geminiSupported {
-				return "", fmt.Errorf("gemini image generation is not available for this login")
+				return "", errors.New("gemini image generation is not available for this login")
 			}
 			return imageGenProviderGemini, nil
 		}
 		if usesOpenAIParams(req) {
 			if !openAISupported {
-				return "", fmt.Errorf("openai image generation is not available for this login")
+				return "", errors.New("openai image generation is not available for this login")
 			}
 			return imageGenProviderOpenAI, nil
 		}
@@ -268,7 +269,7 @@ func resolveImageGenProvider(req imageGenRequest, btc *BridgeToolContext) (image
 			if geminiSupported {
 				return imageGenProviderGemini, nil
 			}
-			return "", fmt.Errorf("openai image generation is not available for this login")
+			return "", errors.New("openai image generation is not available for this login")
 		case imageGenProviderGemini:
 			// If no gemini-specific params, OpenRouter is sufficient.
 			if openRouterSupported && req.Count <= 1 {
@@ -280,7 +281,7 @@ func resolveImageGenProvider(req imageGenRequest, btc *BridgeToolContext) (image
 			if openAISupported {
 				return imageGenProviderOpenAI, nil
 			}
-			return "", fmt.Errorf("gemini image generation is not available for this login")
+			return "", errors.New("gemini image generation is not available for this login")
 		case imageGenProviderOpenRouter:
 			if openRouterSupported {
 				return imageGenProviderOpenRouter, nil
@@ -291,7 +292,7 @@ func resolveImageGenProvider(req imageGenRequest, btc *BridgeToolContext) (image
 			if geminiSupported {
 				return imageGenProviderGemini, nil
 			}
-			return "", fmt.Errorf("openrouter image generation is not available for this login")
+			return "", errors.New("openrouter image generation is not available for this login")
 		}
 		if openRouterSupported {
 			return imageGenProviderOpenRouter, nil
@@ -302,9 +303,9 @@ func resolveImageGenProvider(req imageGenRequest, btc *BridgeToolContext) (image
 		if geminiSupported {
 			return imageGenProviderGemini, nil
 		}
-		return "", fmt.Errorf("image generation is not available for this login")
+		return "", errors.New("image generation is not available for this login")
 	default:
-		return "", fmt.Errorf("unsupported provider for image generation")
+		return "", errors.New("unsupported provider for image generation")
 	}
 }
 
@@ -435,10 +436,10 @@ func normalizeOpenAIImageParams(req imageGenRequest) (openAIImageParams, error) 
 		count = 1
 	}
 	if count < 1 {
-		return openAIImageParams{}, fmt.Errorf("count must be >= 1")
+		return openAIImageParams{}, errors.New("count must be >= 1")
 	}
 	if count > 10 {
-		return openAIImageParams{}, fmt.Errorf("count exceeds maximum (10)")
+		return openAIImageParams{}, errors.New("count exceeds maximum (10)")
 	}
 
 	size := strings.TrimSpace(req.Size)
@@ -559,7 +560,7 @@ func buildOpenAIImagesBaseURL(btc *BridgeToolContext) (string, error) {
 	case ProviderBeeper:
 		base := strings.TrimSuffix(strings.TrimSpace(btc.Client.connector.resolveBeeperBaseURL(loginMeta)), "/")
 		if base == "" {
-			return "", fmt.Errorf("beeper base_url is required for image generation")
+			return "", errors.New("beeper base_url is required for image generation")
 		}
 		return base + "/openai/v1", nil
 	case ProviderOpenAI:
@@ -574,11 +575,11 @@ func buildOpenAIImagesBaseURL(btc *BridgeToolContext) (string, error) {
 		}
 		base := normalizeMagicProxyBaseURL(loginMeta.BaseURL)
 		if base == "" {
-			return "", fmt.Errorf("magic proxy base_url is required for image generation")
+			return "", errors.New("magic proxy base_url is required for image generation")
 		}
 		return joinProxyPath(base, "/openai/v1"), nil
 	default:
-		return "", fmt.Errorf("openai image generation not available for this provider")
+		return "", errors.New("openai image generation not available for this provider")
 	}
 }
 
@@ -588,11 +589,11 @@ func buildGeminiBaseURL(btc *BridgeToolContext) (string, error) {
 	case ProviderBeeper:
 		base := strings.TrimSuffix(strings.TrimSpace(btc.Client.connector.resolveBeeperBaseURL(loginMeta)), "/")
 		if base == "" {
-			return "", fmt.Errorf("beeper base_url is required for gemini image generation")
+			return "", errors.New("beeper base_url is required for gemini image generation")
 		}
 		return base + "/gemini/v1beta", nil
 	default:
-		return "", fmt.Errorf("gemini image generation not available for this provider")
+		return "", errors.New("gemini image generation not available for this provider")
 	}
 }
 
@@ -615,7 +616,7 @@ func generateImagesForRequest(ctx context.Context, btc *BridgeToolContext, req i
 		return callOpenAIImageGen(ctx, btc.Client.apiKey, baseURL, params)
 	case imageGenProviderGemini:
 		if req.Count > 1 {
-			return nil, fmt.Errorf("gemini image generation currently supports count=1")
+			return nil, errors.New("gemini image generation currently supports count=1")
 		}
 		model := normalizeGeminiModel(req.Model)
 		baseURL, err := buildGeminiBaseURL(btc)
@@ -625,19 +626,19 @@ func generateImagesForRequest(ctx context.Context, btc *BridgeToolContext, req i
 		return callGeminiImageGen(ctx, btc, baseURL, model, req)
 	case imageGenProviderOpenRouter:
 		if req.Count > 1 {
-			return nil, fmt.Errorf("openrouter image generation supports count=1")
+			return nil, errors.New("openrouter image generation supports count=1")
 		}
 		if usesOpenAIParams(req) || usesGeminiParams(req) {
-			return nil, fmt.Errorf("openrouter image generation only supports prompt+model; use provider=openai or provider=gemini for advanced controls")
+			return nil, errors.New("openrouter image generation only supports prompt+model; use provider=openai or provider=gemini for advanced controls")
 		}
 		model := normalizeOpenRouterModel(req.Model)
 		provider, ok := btc.Client.provider.(*OpenAIProvider)
 		if !ok {
-			return nil, fmt.Errorf("image generation requires OpenAI-compatible provider")
+			return nil, errors.New("image generation requires OpenAI-compatible provider")
 		}
 		return callOpenRouterImageGen(ctx, btc.Client.apiKey, provider.baseURL, req.Prompt, model)
 	default:
-		return nil, fmt.Errorf("unsupported image generation provider")
+		return nil, errors.New("unsupported image generation provider")
 	}
 }
 
@@ -703,7 +704,7 @@ func callOpenAIImageGen(ctx context.Context, apiKey, baseURL string, params open
 	}
 
 	if len(result.Data) == 0 {
-		return nil, fmt.Errorf("no image data in response")
+		return nil, errors.New("no image data in response")
 	}
 
 	images := make([]string, 0, len(result.Data))
@@ -722,7 +723,7 @@ func callOpenAIImageGen(ctx context.Context, apiKey, baseURL string, params open
 	}
 
 	if len(images) == 0 {
-		return nil, fmt.Errorf("no image data in response")
+		return nil, errors.New("no image data in response")
 	}
 	return images, nil
 }
@@ -838,7 +839,7 @@ func callGeminiImageGen(ctx context.Context, btc *BridgeToolContext, baseURL, mo
 	}
 
 	if len(images) == 0 {
-		return nil, fmt.Errorf("no image data in response")
+		return nil, errors.New("no image data in response")
 	}
 
 	return images, nil
@@ -887,7 +888,7 @@ func loadGeminiInputs(ctx context.Context, btc *BridgeToolContext, refs []string
 
 func loadInputImageBase64(ctx context.Context, btc *BridgeToolContext, ref string) (string, string, error) {
 	if strings.TrimSpace(ref) == "" {
-		return "", "", fmt.Errorf("empty image reference")
+		return "", "", errors.New("empty image reference")
 	}
 
 	ref = strings.TrimSpace(ref)
@@ -963,15 +964,15 @@ func validateExternalImageURL(ctx context.Context, rawURL string) error {
 
 	host := strings.ToLower(parsed.Hostname())
 	if host == "" {
-		return fmt.Errorf("image URL missing host")
+		return errors.New("image URL missing host")
 	}
 	if host == "localhost" {
-		return fmt.Errorf("image URL host is not allowed")
+		return errors.New("image URL host is not allowed")
 	}
 
 	if ip := net.ParseIP(host); ip != nil {
 		if isDisallowedImageIP(ip) {
-			return fmt.Errorf("image URL host is not allowed")
+			return errors.New("image URL host is not allowed")
 		}
 		return nil
 	}
@@ -981,11 +982,11 @@ func validateExternalImageURL(ctx context.Context, rawURL string) error {
 		return fmt.Errorf("failed to resolve image URL host: %w", err)
 	}
 	if len(ips) == 0 {
-		return fmt.Errorf("failed to resolve image URL host")
+		return errors.New("failed to resolve image URL host")
 	}
 	for _, ip := range ips {
 		if isDisallowedImageIP(ip.IP) {
-			return fmt.Errorf("image URL host is not allowed")
+			return errors.New("image URL host is not allowed")
 		}
 	}
 
@@ -1051,7 +1052,7 @@ func resolveLocalImagePath(ref string) (string, error) {
 		return "", err
 	}
 	if !pathWithinAllowedDirs(resolved, allowedDirs) {
-		return "", fmt.Errorf("local image path is not within allowed directories")
+		return "", errors.New("local image path is not within allowed directories")
 	}
 
 	info, err := os.Stat(resolved)
@@ -1059,10 +1060,10 @@ func resolveLocalImagePath(ref string) (string, error) {
 		return "", fmt.Errorf("failed to stat local image path: %w", err)
 	}
 	if !info.Mode().IsRegular() {
-		return "", fmt.Errorf("local image path is not a regular file")
+		return "", errors.New("local image path is not a regular file")
 	}
 	if info.Mode().Perm()&0o444 == 0 {
-		return "", fmt.Errorf("local image path is not readable")
+		return "", errors.New("local image path is not readable")
 	}
 
 	return resolved, nil
@@ -1087,7 +1088,7 @@ func fileURLToPath(ref string) (string, error) {
 		pathValue = unescaped
 	}
 	if pathValue == "" {
-		return "", fmt.Errorf("file URL missing path")
+		return "", errors.New("file URL missing path")
 	}
 	return pathValue, nil
 }
@@ -1095,7 +1096,7 @@ func fileURLToPath(ref string) (string, error) {
 func resolvePermittedImageInputDirs() ([]string, error) {
 	rawDirs := permittedImageInputDirs()
 	if len(rawDirs) == 0 {
-		return nil, fmt.Errorf("no permitted directories available for local image access")
+		return nil, errors.New("no permitted directories available for local image access")
 	}
 	dirs := make([]string, 0, len(rawDirs))
 	for _, dir := range rawDirs {
@@ -1115,7 +1116,7 @@ func resolvePermittedImageInputDirs() ([]string, error) {
 		dirs = append(dirs, resolved)
 	}
 	if len(dirs) == 0 {
-		return nil, fmt.Errorf("no permitted directories available for local image access")
+		return nil, errors.New("no permitted directories available for local image access")
 	}
 	return dirs, nil
 }

@@ -3,6 +3,7 @@ package fetch
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -32,14 +33,14 @@ func (p *directProvider) Name() string {
 
 func (p *directProvider) Fetch(ctx context.Context, req Request) (*Response, error) {
 	if !isAllowedURL(req.URL) {
-		return nil, fmt.Errorf("url not allowed")
+		return nil, errors.New("url not allowed")
 	}
 	parsedURL, err := url.Parse(req.URL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid url: %w", err)
 	}
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return nil, fmt.Errorf("url must use http or https")
+		return nil, errors.New("url must use http or https")
 	}
 
 	client := &http.Client{Timeout: time.Duration(p.cfg.TimeoutSecs) * time.Second}

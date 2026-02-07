@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -150,7 +151,7 @@ func parseMCPAddArgs(args []string, allowStdio bool) (name string, cfg MCPServer
 		}
 	}
 	if len(trimmed) == 0 {
-		return "", MCPServerConfig{}, fmt.Errorf("missing args")
+		return "", MCPServerConfig{}, errors.New("missing args")
 	}
 
 	name = mcpImplicitServerName
@@ -158,24 +159,24 @@ func parseMCPAddArgs(args []string, allowStdio bool) (name string, cfg MCPServer
 	firstToken := strings.TrimSpace(trimmed[0])
 	if !isLikelyHTTPURL(firstToken) && !isMCPTransportToken(firstToken) {
 		if len(trimmed) < 2 {
-			return "", MCPServerConfig{}, fmt.Errorf("missing target")
+			return "", MCPServerConfig{}, errors.New("missing target")
 		}
 		name = normalizeMCPServerName(firstToken)
 		targetIndex = 1
 	}
 
 	if targetIndex >= len(trimmed) {
-		return "", MCPServerConfig{}, fmt.Errorf("missing target")
+		return "", MCPServerConfig{}, errors.New("missing target")
 	}
 
 	rawTransportOrTarget := strings.TrimSpace(trimmed[targetIndex])
 	normalizedTransport := normalizeMCPServerTransport(rawTransportOrTarget)
 	if normalizedTransport == mcpTransportStdio {
 		if !allowStdio {
-			return "", MCPServerConfig{}, fmt.Errorf("stdio disabled")
+			return "", MCPServerConfig{}, errors.New("stdio disabled")
 		}
 		if len(trimmed) <= targetIndex+1 {
-			return "", MCPServerConfig{}, fmt.Errorf("missing command")
+			return "", MCPServerConfig{}, errors.New("missing command")
 		}
 		cfg = normalizeMCPServerConfig(MCPServerConfig{
 			Transport: mcpTransportStdio,
@@ -186,7 +187,7 @@ func parseMCPAddArgs(args []string, allowStdio bool) (name string, cfg MCPServer
 			Kind:      mcpServerKindGeneric,
 		})
 		if cfg.Command == "" {
-			return "", MCPServerConfig{}, fmt.Errorf("missing command")
+			return "", MCPServerConfig{}, errors.New("missing command")
 		}
 		return name, cfg, nil
 	}
@@ -195,13 +196,13 @@ func parseMCPAddArgs(args []string, allowStdio bool) (name string, cfg MCPServer
 	rest := trimmed[targetIndex+1:]
 	if normalizedTransport == mcpTransportStreamableHTTP {
 		if len(trimmed) <= targetIndex+1 {
-			return "", MCPServerConfig{}, fmt.Errorf("missing endpoint")
+			return "", MCPServerConfig{}, errors.New("missing endpoint")
 		}
 		endpoint = strings.TrimSpace(trimmed[targetIndex+1])
 		rest = trimmed[targetIndex+2:]
 	}
 	if !isLikelyHTTPURL(endpoint) {
-		return "", MCPServerConfig{}, fmt.Errorf("invalid endpoint")
+		return "", MCPServerConfig{}, errors.New("invalid endpoint")
 	}
 	token, authType, authURL := parseMCPHTTPAuthArgs(rest)
 	cfg = normalizeMCPServerConfig(MCPServerConfig{
@@ -258,14 +259,14 @@ func fnMCPAdd(ce *commands.Event, client *AIClient) {
 func resolveMCPServerArg(client *AIClient, args []string) (namedMCPServer, string, error) {
 	servers := client.configuredMCPServers()
 	if len(servers) == 0 {
-		return namedMCPServer{}, "", fmt.Errorf("none configured")
+		return namedMCPServer{}, "", errors.New("none configured")
 	}
 
 	if len(args) == 0 {
 		if len(servers) == 1 {
 			return servers[0], "", nil
 		}
-		return namedMCPServer{}, "", fmt.Errorf("ambiguous")
+		return namedMCPServer{}, "", errors.New("ambiguous")
 	}
 
 	candidate := strings.TrimSpace(args[0])
@@ -282,7 +283,7 @@ func resolveMCPServerArg(client *AIClient, args []string) (namedMCPServer, strin
 		// Allow `!ai mcp connect <token>` when only one server exists.
 		return servers[0], strings.TrimSpace(args[0]), nil
 	}
-	return namedMCPServer{}, "", fmt.Errorf("not found")
+	return namedMCPServer{}, "", errors.New("not found")
 }
 
 func sendMCPAuthURLNotice(client *AIClient, ce *commands.Event, server namedMCPServer) {

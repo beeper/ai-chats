@@ -37,7 +37,7 @@ func (e *APIError) Error() string {
 func NormalizeBaseURL(raw string) (string, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
-		return "", fmt.Errorf("base url is required")
+		return "", errors.New("base url is required")
 	}
 	if !strings.Contains(trimmed, "://") {
 		trimmed = "http://" + trimmed
@@ -47,7 +47,7 @@ func NormalizeBaseURL(raw string) (string, error) {
 		return "", err
 	}
 	if parsed.Scheme == "" || parsed.Host == "" {
-		return "", fmt.Errorf("invalid base url")
+		return "", errors.New("invalid base url")
 	}
 	parsed.Path = strings.TrimRight(parsed.Path, "/")
 	return parsed.String(), nil
@@ -157,7 +157,7 @@ func (c *Client) CreateSession(ctx context.Context, title string) (*Session, err
 // DeleteSession deletes an OpenCode session.
 func (c *Client) DeleteSession(ctx context.Context, sessionID string) error {
 	if strings.TrimSpace(sessionID) == "" {
-		return fmt.Errorf("session id is required")
+		return errors.New("session id is required")
 	}
 	req, err := c.newRequest(ctx, http.MethodDelete, "/session/"+url.PathEscape(sessionID), nil)
 	if err != nil {
@@ -169,7 +169,7 @@ func (c *Client) DeleteSession(ctx context.Context, sessionID string) error {
 // UpdateSessionTitle updates the title of an OpenCode session.
 func (c *Client) UpdateSessionTitle(ctx context.Context, sessionID, title string) (*Session, error) {
 	if strings.TrimSpace(sessionID) == "" {
-		return nil, fmt.Errorf("session id is required")
+		return nil, errors.New("session id is required")
 	}
 	payload := map[string]any{
 		"title": strings.TrimSpace(title),
@@ -189,7 +189,7 @@ func (c *Client) UpdateSessionTitle(ctx context.Context, sessionID, title string
 // GetMessage fetches a single message and its parts.
 func (c *Client) GetMessage(ctx context.Context, sessionID, messageID string) (*MessageWithParts, error) {
 	if strings.TrimSpace(sessionID) == "" || strings.TrimSpace(messageID) == "" {
-		return nil, fmt.Errorf("session id and message id are required")
+		return nil, errors.New("session id and message id are required")
 	}
 	path := fmt.Sprintf("/session/%s/message/%s", url.PathEscape(sessionID), url.PathEscape(messageID))
 	req, err := c.newRequest(ctx, http.MethodGet, path, nil)
@@ -206,7 +206,7 @@ func (c *Client) GetMessage(ctx context.Context, sessionID, messageID string) (*
 // ListMessages lists recent messages in a session.
 func (c *Client) ListMessages(ctx context.Context, sessionID string, limit int) ([]MessageWithParts, error) {
 	if strings.TrimSpace(sessionID) == "" {
-		return nil, fmt.Errorf("session id is required")
+		return nil, errors.New("session id is required")
 	}
 	query := ""
 	if limit > 0 {
@@ -227,10 +227,10 @@ func (c *Client) ListMessages(ctx context.Context, sessionID string, limit int) 
 // SendMessage sends a message to a session and waits for the assistant response.
 func (c *Client) SendMessage(ctx context.Context, sessionID, messageID string, parts []PartInput) (*MessageWithParts, error) {
 	if strings.TrimSpace(sessionID) == "" {
-		return nil, fmt.Errorf("session id is required")
+		return nil, errors.New("session id is required")
 	}
 	if len(parts) == 0 {
-		return nil, fmt.Errorf("message parts are required")
+		return nil, errors.New("message parts are required")
 	}
 	payload := map[string]any{
 		"parts": parts,

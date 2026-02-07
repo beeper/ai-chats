@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -22,7 +23,7 @@ func (oc *AIClient) sendGeneratedMedia(
 ) (id.EventID, string, error) {
 	intent := oc.getModelIntent(ctx, portal)
 	if intent == nil {
-		return "", "", fmt.Errorf("failed to get model intent")
+		return "", "", errors.New("failed to get model intent")
 	}
 
 	uri, file, err := intent.UploadMedia(ctx, portal.MXID, data, fileName, mimeType)

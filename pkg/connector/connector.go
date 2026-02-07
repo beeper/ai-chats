@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"strings"
@@ -400,7 +401,7 @@ func (oc *OpenAIConnector) LoadUserLogin(ctx context.Context, login *bridgev2.Us
 	if strings.EqualFold(strings.TrimSpace(meta.Provider), ProviderCodex) {
 		// Codex uses its own auth/tokens stored under CODEX_HOME. No OpenAI API key is required here.
 		if oc.Config.Codex != nil && oc.Config.Codex.Enabled != nil && !*oc.Config.Codex.Enabled {
-			return fmt.Errorf("codex integration is disabled in config")
+			return errors.New("codex integration is disabled in config")
 		}
 
 		oc.clientsMu.Lock()
@@ -430,7 +431,7 @@ func (oc *OpenAIConnector) LoadUserLogin(ctx context.Context, login *bridgev2.Us
 
 	key := strings.TrimSpace(oc.resolveProviderAPIKey(meta))
 	if key == "" {
-		return fmt.Errorf("no API key available for this login; please login again")
+		return errors.New("no API key available for this login; please login again")
 	}
 	oc.clientsMu.Lock()
 	if existingAPI := oc.clients[login.ID]; existingAPI != nil {

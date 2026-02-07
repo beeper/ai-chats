@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -404,7 +405,7 @@ func (oc *AIClient) resolveHeartbeatSessionPortal(agentID string, heartbeat *Hea
 		if portal := oc.lastActivePortal(agentID); portal != nil {
 			return portal, portal.MXID.String(), nil
 		}
-		return nil, "", fmt.Errorf("no session")
+		return nil, "", errors.New("no session")
 	}
 	if strings.EqualFold(session, "main") || strings.EqualFold(session, "global") || (mainKey != "" && strings.EqualFold(session, mainKey)) {
 		if portal := oc.defaultChatPortal(); portal != nil {
@@ -425,7 +426,7 @@ func (oc *AIClient) resolveHeartbeatSessionPortal(agentID string, heartbeat *Hea
 	if portal := oc.lastActivePortal(agentID); portal != nil {
 		return portal, portal.MXID.String(), nil
 	}
-	return nil, "", fmt.Errorf("no session")
+	return nil, "", errors.New("no session")
 }
 
 func (oc *AIClient) shouldRunHeartbeatForFile(agentID string, reason string) bool {

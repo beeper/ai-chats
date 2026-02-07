@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -367,7 +368,7 @@ func parsePositiveInt(raw string) (int, error) {
 		return 0, err
 	}
 	if value <= 0 {
-		return 0, fmt.Errorf("value must be positive")
+		return 0, errors.New("value must be positive")
 	}
 	return value, nil
 }

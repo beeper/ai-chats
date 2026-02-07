@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -348,10 +349,10 @@ func (b *BossStoreAdapter) ListAvailableTools(ctx context.Context) ([]tools.Tool
 func (b *BossStoreAdapter) RunInternalCommand(ctx context.Context, roomID string, command string) (string, error) {
 	command = strings.TrimSpace(command)
 	if command == "" {
-		return "", fmt.Errorf("command is required")
+		return "", errors.New("command is required")
 	}
 	if roomID == "" {
-		return "", fmt.Errorf("room_id is required")
+		return "", errors.New("room_id is required")
 	}
 
 	prefix := b.store.client.connector.br.Config.CommandPrefix
@@ -360,12 +361,12 @@ func (b *BossStoreAdapter) RunInternalCommand(ctx context.Context, roomID string
 	}
 	command = strings.TrimSpace(command)
 	if command == "" {
-		return "", fmt.Errorf("command is empty after trimming prefix")
+		return "", errors.New("command is empty after trimming prefix")
 	}
 
 	args := strings.Fields(command)
 	if len(args) == 0 {
-		return "", fmt.Errorf("command is empty")
+		return "", errors.New("command is empty")
 	}
 	cmdName := strings.ToLower(args[0])
 	rawArgs := strings.TrimLeft(strings.TrimPrefix(command, args[0]), " ")

@@ -2,7 +2,7 @@ package connector
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"strings"
 
 	"github.com/beeper/ai-bridge/pkg/textfs"
@@ -15,7 +15,7 @@ func executeApplyPatch(ctx context.Context, args map[string]any) (string, error)
 	}
 	input, ok := args["input"].(string)
 	if !ok || strings.TrimSpace(input) == "" {
-		return "", fmt.Errorf("missing or invalid 'input' argument")
+		return "", errors.New("missing or invalid 'input' argument")
 	}
 
 	patchCtx, cancel := context.WithTimeout(ctx, textFSToolTimeout)

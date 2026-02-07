@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -34,11 +35,11 @@ func executeWebSearchWithProviders(ctx context.Context, args map[string]any) (st
 func executeWebFetchWithProviders(ctx context.Context, args map[string]any) (string, error) {
 	urlStr, ok := args["url"].(string)
 	if !ok {
-		return "", fmt.Errorf("missing or invalid 'url' argument")
+		return "", errors.New("missing or invalid 'url' argument")
 	}
 	urlStr = strings.TrimSpace(urlStr)
 	if urlStr == "" {
-		return "", fmt.Errorf("missing or invalid 'url' argument")
+		return "", errors.New("missing or invalid 'url' argument")
 	}
 
 	extractMode := "markdown"
@@ -96,11 +97,11 @@ func executeWebFetchWithProviders(ctx context.Context, args map[string]any) (str
 func searchRequestFromArgs(args map[string]any) (search.Request, error) {
 	query, ok := args["query"].(string)
 	if !ok {
-		return search.Request{}, fmt.Errorf("missing or invalid 'query' argument")
+		return search.Request{}, errors.New("missing or invalid 'query' argument")
 	}
 	query = strings.TrimSpace(query)
 	if query == "" {
-		return search.Request{}, fmt.Errorf("missing or invalid 'query' argument")
+		return search.Request{}, errors.New("missing or invalid 'query' argument")
 	}
 	count, _ := websearch.ParseCountAndIgnoredOptions(args)
 	country, _ := args["country"].(string)

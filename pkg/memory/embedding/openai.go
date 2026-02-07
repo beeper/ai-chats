@@ -2,7 +2,7 @@ package embedding
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"strings"
 
 	"github.com/openai/openai-go/v3"
@@ -29,7 +29,7 @@ func NormalizeOpenAIModel(model string) string {
 
 func NewOpenAIProvider(apiKey, baseURL, model string, headers map[string]string) (*Provider, error) {
 	if strings.TrimSpace(apiKey) == "" {
-		return nil, fmt.Errorf("openai embeddings require api_key")
+		return nil, errors.New("openai embeddings require api_key")
 	}
 	if strings.TrimSpace(baseURL) == "" {
 		baseURL = DefaultOpenAIBaseURL

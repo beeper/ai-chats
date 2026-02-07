@@ -1,7 +1,7 @@
 package textfs
 
 import (
-	"fmt"
+	"errors"
 	"path"
 	"strings"
 )
@@ -10,7 +10,7 @@ import (
 func NormalizePath(raw string) (string, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
-		return "", fmt.Errorf("path is required")
+		return "", errors.New("path is required")
 	}
 	cleaned := strings.ReplaceAll(trimmed, "\\", "/")
 	cleaned = strings.TrimPrefix(cleaned, "file://")
@@ -18,10 +18,10 @@ func NormalizePath(raw string) (string, error) {
 	cleaned = strings.TrimPrefix(cleaned, "./")
 	cleaned = path.Clean(cleaned)
 	if cleaned == "." || cleaned == "" {
-		return "", fmt.Errorf("path is required")
+		return "", errors.New("path is required")
 	}
 	if strings.HasPrefix(cleaned, "..") || strings.Contains(cleaned, "/..") {
-		return "", fmt.Errorf("path escapes virtual root")
+		return "", errors.New("path escapes virtual root")
 	}
 	cleaned = strings.TrimSuffix(cleaned, "/")
 	return cleaned, nil

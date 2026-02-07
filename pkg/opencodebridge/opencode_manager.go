@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"strings"
 	"sync"
 	"time"
@@ -134,10 +134,10 @@ func (m *OpenCodeManager) RestoreConnections(ctx context.Context) error {
 
 func (m *OpenCodeManager) Connect(ctx context.Context, baseURL, password, username string) (*openCodeInstance, int, error) {
 	if m == nil || m.bridge == nil || m.bridge.host == nil {
-		return nil, 0, fmt.Errorf("opencode manager unavailable")
+		return nil, 0, errors.New("opencode manager unavailable")
 	}
 	if strings.TrimSpace(baseURL) == "" {
-		return nil, 0, fmt.Errorf("url is required")
+		return nil, 0, errors.New("url is required")
 	}
 	user := strings.TrimSpace(username)
 	if user == "" {
@@ -206,11 +206,11 @@ func (m *OpenCodeManager) Connect(ctx context.Context, baseURL, password, userna
 
 func (m *OpenCodeManager) RemoveInstance(ctx context.Context, instanceID string) error {
 	if m == nil || m.bridge == nil || m.bridge.host == nil {
-		return fmt.Errorf("opencode manager unavailable")
+		return errors.New("opencode manager unavailable")
 	}
 	id := strings.TrimSpace(instanceID)
 	if id == "" {
-		return fmt.Errorf("instance id is required")
+		return errors.New("instance id is required")
 	}
 
 	hadInstance := false
@@ -248,16 +248,16 @@ func (m *OpenCodeManager) RemoveInstance(ctx context.Context, instanceID string)
 func (m *OpenCodeManager) SendMessage(ctx context.Context, instanceID, sessionID string, parts []opencode.PartInput, eventID id.EventID) (*opencode.MessageWithParts, error) {
 	inst := m.getInstance(instanceID)
 	if inst == nil {
-		return nil, fmt.Errorf("unknown OpenCode instance")
+		return nil, errors.New("unknown OpenCode instance")
 	}
 	if !inst.connected {
-		return nil, fmt.Errorf("OpenCode instance disconnected")
+		return nil, errors.New("OpenCode instance disconnected")
 	}
 	if strings.TrimSpace(sessionID) == "" {
-		return nil, fmt.Errorf("session id is required")
+		return nil, errors.New("session id is required")
 	}
 	if len(parts) == 0 {
-		return nil, fmt.Errorf("message parts are required")
+		return nil, errors.New("message parts are required")
 	}
 
 	msgID := opencodeMessageIDForEvent(eventID)
@@ -281,7 +281,7 @@ func (m *OpenCodeManager) SendMessage(ctx context.Context, instanceID, sessionID
 func (m *OpenCodeManager) DeleteSession(ctx context.Context, instanceID, sessionID string) error {
 	inst := m.getInstance(instanceID)
 	if inst == nil {
-		return fmt.Errorf("unknown OpenCode instance")
+		return errors.New("unknown OpenCode instance")
 	}
 	return inst.client.DeleteSession(ctx, sessionID)
 }
@@ -289,10 +289,10 @@ func (m *OpenCodeManager) DeleteSession(ctx context.Context, instanceID, session
 func (m *OpenCodeManager) CreateSession(ctx context.Context, instanceID, title string) (*opencode.Session, error) {
 	inst := m.getInstance(instanceID)
 	if inst == nil {
-		return nil, fmt.Errorf("unknown OpenCode instance")
+		return nil, errors.New("unknown OpenCode instance")
 	}
 	if !inst.connected {
-		return nil, fmt.Errorf("OpenCode instance disconnected")
+		return nil, errors.New("OpenCode instance disconnected")
 	}
 	session, err := inst.client.CreateSession(ctx, title)
 	if err != nil {
@@ -307,10 +307,10 @@ func (m *OpenCodeManager) CreateSession(ctx context.Context, instanceID, title s
 func (m *OpenCodeManager) UpdateSessionTitle(ctx context.Context, instanceID, sessionID, title string) (*opencode.Session, error) {
 	inst := m.getInstance(instanceID)
 	if inst == nil {
-		return nil, fmt.Errorf("unknown OpenCode instance")
+		return nil, errors.New("unknown OpenCode instance")
 	}
 	if !inst.connected {
-		return nil, fmt.Errorf("OpenCode instance disconnected")
+		return nil, errors.New("OpenCode instance disconnected")
 	}
 	session, err := inst.client.UpdateSessionTitle(ctx, sessionID, title)
 	if err != nil {

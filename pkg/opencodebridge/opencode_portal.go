@@ -2,7 +2,7 @@ package opencodebridge
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"strings"
 
 	"go.mau.fi/util/ptr"
@@ -179,18 +179,18 @@ func (b *Bridge) composeOpenCodeChatInfo(title, instanceID string) *bridgev2.Cha
 
 func (b *Bridge) createOpenCodeSessionChat(ctx context.Context, instanceID, title string, pendingTitle bool) (*bridgev2.CreateChatResponse, error) {
 	if b == nil || b.host == nil {
-		return nil, fmt.Errorf("login unavailable")
+		return nil, errors.New("login unavailable")
 	}
 	login := b.host.Login()
 	if login == nil {
-		return nil, fmt.Errorf("login unavailable")
+		return nil, errors.New("login unavailable")
 	}
 	if b.manager == nil {
-		return nil, fmt.Errorf("OpenCode integration is not available")
+		return nil, errors.New("OpenCode integration is not available")
 	}
 	inst := b.manager.getInstance(instanceID)
 	if inst == nil {
-		return nil, fmt.Errorf("OpenCode instance not connected")
+		return nil, errors.New("OpenCode instance not connected")
 	}
 
 	session, err := b.manager.CreateSession(ctx, instanceID, title)
@@ -198,7 +198,7 @@ func (b *Bridge) createOpenCodeSessionChat(ctx context.Context, instanceID, titl
 		return nil, err
 	}
 	if session == nil {
-		return nil, fmt.Errorf("OpenCode session creation failed")
+		return nil, errors.New("OpenCode session creation failed")
 	}
 
 	if err := b.ensureOpenCodeSessionPortalWithRoom(ctx, inst, *session, false); err != nil {
@@ -206,7 +206,7 @@ func (b *Bridge) createOpenCodeSessionChat(ctx context.Context, instanceID, titl
 	}
 	portal := b.findOpenCodePortal(ctx, instanceID, session.ID)
 	if portal == nil {
-		return nil, fmt.Errorf("failed to load OpenCode portal")
+		return nil, errors.New("failed to load OpenCode portal")
 	}
 	meta := b.portalMeta(portal)
 	if meta != nil {

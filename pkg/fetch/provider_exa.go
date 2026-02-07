@@ -3,6 +3,7 @@ package fetch
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -81,7 +82,7 @@ func (p *exaProvider) Fetch(ctx context.Context, req Request) (*Response, error)
 		if statusErr != "" {
 			return nil, fmt.Errorf("exa contents status error: %s", statusErr)
 		}
-		return nil, fmt.Errorf("exa contents returned no results")
+		return nil, errors.New("exa contents returned no results")
 	}
 	entry := resp.Results[0]
 	text := entry.Text

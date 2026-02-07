@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"math"
 )
@@ -117,7 +118,7 @@ func (m *MemorySearchManager) execVector(ctx context.Context, query string, args
 	conn := m.vectorConn
 	m.mu.Unlock()
 	if conn == nil {
-		return nil, fmt.Errorf("vector extension unavailable")
+		return nil, errors.New("vector extension unavailable")
 	}
 	return conn.ExecContext(ctx, query, args...)
 }
@@ -127,7 +128,7 @@ func (m *MemorySearchManager) queryVector(ctx context.Context, query string, arg
 	conn := m.vectorConn
 	m.mu.Unlock()
 	if conn == nil {
-		return nil, fmt.Errorf("vector extension unavailable")
+		return nil, errors.New("vector extension unavailable")
 	}
 	return conn.QueryContext(ctx, query, args...)
 }

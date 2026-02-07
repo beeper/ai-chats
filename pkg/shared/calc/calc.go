@@ -1,6 +1,7 @@
 package calc
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -12,7 +13,7 @@ import (
 func EvalExpression(expr string) (float64, error) {
 	expr = strings.ReplaceAll(expr, " ", "")
 	if expr == "" {
-		return 0, fmt.Errorf("empty expression")
+		return 0, errors.New("empty expression")
 	}
 
 	// Simple recursive descent parser for basic arithmetic.
@@ -66,12 +67,12 @@ func parseTerm(expr string, pos *int) (float64, error) {
 			result *= right
 		case '/':
 			if right == 0 {
-				return 0, fmt.Errorf("division by zero")
+				return 0, errors.New("division by zero")
 			}
 			result /= right
 		case '%':
 			if right == 0 {
-				return 0, fmt.Errorf("modulo by zero")
+				return 0, errors.New("modulo by zero")
 			}
 			result = math.Mod(result, right)
 		}
@@ -81,7 +82,7 @@ func parseTerm(expr string, pos *int) (float64, error) {
 
 func parseFactor(expr string, pos *int) (float64, error) {
 	if *pos >= len(expr) {
-		return 0, fmt.Errorf("unexpected end of expression")
+		return 0, errors.New("unexpected end of expression")
 	}
 
 	// Handle parentheses.
@@ -92,7 +93,7 @@ func parseFactor(expr string, pos *int) (float64, error) {
 			return 0, err
 		}
 		if *pos >= len(expr) || expr[*pos] != ')' {
-			return 0, fmt.Errorf("missing closing parenthesis")
+			return 0, errors.New("missing closing parenthesis")
 		}
 		*pos++
 		return result, nil

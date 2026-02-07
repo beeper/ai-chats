@@ -4,6 +4,7 @@ package connector
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -325,7 +326,7 @@ func (oc *AIClient) executeBuiltinTool(ctx context.Context, portal *bridgev2.Por
 			senderID = btc.SenderID
 		}
 		if !isOwnerAllowed(&oc.connector.Config, senderID) {
-			return "", fmt.Errorf("tool restricted to owner senders")
+			return "", errors.New("tool restricted to owner senders")
 		}
 	}
 

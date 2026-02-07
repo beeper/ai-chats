@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -398,7 +399,7 @@ func (oc *AIClient) getTitleGenerationModel() string {
 func (oc *AIClient) generateRoomTitle(ctx context.Context, userMessage, assistantResponse string) (string, error) {
 	model := oc.getTitleGenerationModel()
 	if model == "" {
-		return "", fmt.Errorf("title generation disabled for this provider")
+		return "", errors.New("title generation disabled for this provider")
 	}
 
 	oc.loggerForContext(ctx).Debug().Str("model", model).Msg("Generating room title")
@@ -441,7 +442,7 @@ func (oc *AIClient) generateRoomTitle(ctx context.Context, userMessage, assistan
 			Int("output_items", len(resp.Output)).
 			Str("status", string(resp.Status)).
 			Msg("Title generation returned no content")
-		return "", fmt.Errorf("no response from model")
+		return "", errors.New("no response from model")
 	}
 
 	title = strings.TrimSpace(title)
@@ -503,7 +504,7 @@ func (oc *AIClient) setRoomNameNoSave(ctx context.Context, portal *bridgev2.Port
 
 func (oc *AIClient) setRoomNameInternal(ctx context.Context, portal *bridgev2.Portal, name string, save bool) error {
 	if portal.MXID == "" {
-		return fmt.Errorf("portal has no Matrix room ID")
+		return errors.New("portal has no Matrix room ID")
 	}
 
 	bot := oc.UserLogin.Bridge.Bot
@@ -532,7 +533,7 @@ func (oc *AIClient) setRoomNameInternal(ctx context.Context, portal *bridgev2.Po
 // setRoomTopic sets the Matrix room topic via m.room.topic state event
 func (oc *AIClient) setRoomTopic(ctx context.Context, portal *bridgev2.Portal, topic string) error {
 	if portal.MXID == "" {
-		return fmt.Errorf("portal has no Matrix room ID")
+		return errors.New("portal has no Matrix room ID")
 	}
 
 	bot := oc.UserLogin.Bridge.Bot
@@ -588,7 +589,7 @@ func (oc *AIClient) setRoomSystemPromptNoSave(ctx context.Context, portal *bridg
 
 func (oc *AIClient) setRoomSystemPromptInternal(ctx context.Context, portal *bridgev2.Portal, prompt string, save bool) error {
 	if portal.MXID == "" {
-		return fmt.Errorf("portal has no Matrix room ID")
+		return errors.New("portal has no Matrix room ID")
 	}
 
 	meta := portalMeta(portal)

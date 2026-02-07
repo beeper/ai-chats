@@ -125,7 +125,7 @@ func (oc *AIClient) mcpHTTPClientForServer(server namedMCPServer) (*http.Client,
 
 func (oc *AIClient) newNexusMCPSession(ctx context.Context, server namedMCPServer) (*mcp.ClientSession, error) {
 	if oc == nil {
-		return nil, fmt.Errorf("mcp requires bridge context")
+		return nil, errors.New("mcp requires bridge context")
 	}
 	server.Config = normalizeMCPServerConfig(server.Config)
 	if !mcpServerHasTarget(server.Config) {
@@ -498,7 +498,7 @@ func (oc *AIClient) notifyMCPAuthURL(ctx context.Context, server namedMCPServer)
 
 func (oc *AIClient) executeNexusMCPTool(ctx context.Context, toolName string, args map[string]any) (string, error) {
 	if !oc.isMCPConfigured() {
-		return "", fmt.Errorf("MCP tools are not configured (add an MCP server with !ai mcp add/connect)")
+		return "", errors.New("MCP tools are not configured (add an MCP server with !ai mcp add/connect)")
 	}
 	if ctx == nil {
 		ctx = context.Background()

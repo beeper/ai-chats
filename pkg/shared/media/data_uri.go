@@ -2,6 +2,7 @@ package media
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -11,20 +12,20 @@ import (
 func ParseDataURI(dataURI string) (string, string, error) {
 	// Format: data:[<mediatype>][;base64],<data>
 	if !strings.HasPrefix(dataURI, "data:") {
-		return "", "", fmt.Errorf("not a data URI")
+		return "", "", errors.New("not a data URI")
 	}
 
 	rest := dataURI[5:]
 	commaIdx := strings.Index(rest, ",")
 	if commaIdx == -1 {
-		return "", "", fmt.Errorf("invalid data URI: no comma separator")
+		return "", "", errors.New("invalid data URI: no comma separator")
 	}
 
 	metadata := rest[:commaIdx]
 	data := rest[commaIdx+1:]
 
 	if !strings.Contains(metadata, ";base64") {
-		return "", "", fmt.Errorf("only base64 data URIs are supported")
+		return "", "", errors.New("only base64 data URIs are supported")
 	}
 
 	mimeType := strings.Split(metadata, ";")[0]
@@ -42,7 +43,7 @@ func DecodeBase64(b64Data string) ([]byte, string, error) {
 	if after, found := strings.CutPrefix(b64Data, "data:"); found {
 		prefix, data, hasComma := strings.Cut(after, ",")
 		if !hasComma {
-			return nil, "", fmt.Errorf("invalid data URL: no comma found")
+			return nil, "", errors.New("invalid data URL: no comma found")
 		}
 		if mime, _, hasBase64 := strings.Cut(prefix, ";base64"); hasBase64 {
 			mimeType = mime

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -167,7 +168,7 @@ func transcribeOpenAICompatibleAudio(ctx context.Context, params mediaAudioReque
 		model = defaultAudioModelsByProvider[params.Provider]
 	}
 	if model == "" {
-		return "", fmt.Errorf("missing transcription model")
+		return "", errors.New("missing transcription model")
 	}
 
 	body := &bytes.Buffer{}
@@ -221,7 +222,7 @@ func transcribeOpenAICompatibleAudio(ctx context.Context, params mediaAudioReque
 	}
 	text := strings.TrimSpace(payload.Text)
 	if text == "" {
-		return "", fmt.Errorf("audio transcription response missing text")
+		return "", errors.New("audio transcription response missing text")
 	}
 	return text, nil
 }
@@ -233,7 +234,7 @@ func transcribeDeepgramAudio(ctx context.Context, params mediaAudioRequest, quer
 		model = defaultAudioModelsByProvider["deepgram"]
 	}
 	if model == "" {
-		return "", fmt.Errorf("missing transcription model")
+		return "", errors.New("missing transcription model")
 	}
 
 	endpoint, err := url.Parse(baseURL + "/listen")
@@ -295,11 +296,11 @@ func transcribeDeepgramAudio(ctx context.Context, params mediaAudioRequest, quer
 		return "", err
 	}
 	if len(payload.Results.Channels) == 0 || len(payload.Results.Channels[0].Alternatives) == 0 {
-		return "", fmt.Errorf("audio transcription response missing transcript")
+		return "", errors.New("audio transcription response missing transcript")
 	}
 	text := strings.TrimSpace(payload.Results.Channels[0].Alternatives[0].Transcript)
 	if text == "" {
-		return "", fmt.Errorf("audio transcription response missing transcript")
+		return "", errors.New("audio transcription response missing transcript")
 	}
 	return text, nil
 }
@@ -376,7 +377,7 @@ func transcribeGeminiAudio(ctx context.Context, params mediaAudioRequest) (strin
 		return "", err
 	}
 	if len(payloadResp.Candidates) == 0 {
-		return "", fmt.Errorf("audio transcription response missing text")
+		return "", errors.New("audio transcription response missing text")
 	}
 	var parts []string
 	for _, part := range payloadResp.Candidates[0].Content.Parts {
@@ -385,7 +386,7 @@ func transcribeGeminiAudio(ctx context.Context, params mediaAudioRequest) (strin
 		}
 	}
 	if len(parts) == 0 {
-		return "", fmt.Errorf("audio transcription response missing text")
+		return "", errors.New("audio transcription response missing text")
 	}
 	return strings.Join(parts, "\n"), nil
 }
@@ -462,7 +463,7 @@ func describeGeminiVideo(ctx context.Context, params mediaVideoRequest) (string,
 		return "", err
 	}
 	if len(payloadResp.Candidates) == 0 {
-		return "", fmt.Errorf("video description response missing text")
+		return "", errors.New("video description response missing text")
 	}
 	var parts []string
 	for _, part := range payloadResp.Candidates[0].Content.Parts {
@@ -471,7 +472,7 @@ func describeGeminiVideo(ctx context.Context, params mediaVideoRequest) (string,
 		}
 	}
 	if len(parts) == 0 {
-		return "", fmt.Errorf("video description response missing text")
+		return "", errors.New("video description response missing text")
 	}
 	return strings.Join(parts, "\n"), nil
 }
@@ -548,7 +549,7 @@ func describeGeminiImage(ctx context.Context, params mediaImageRequest) (string,
 		return "", err
 	}
 	if len(payloadResp.Candidates) == 0 {
-		return "", fmt.Errorf("image description response missing text")
+		return "", errors.New("image description response missing text")
 	}
 	var parts []string
 	for _, part := range payloadResp.Candidates[0].Content.Parts {
@@ -557,7 +558,7 @@ func describeGeminiImage(ctx context.Context, params mediaImageRequest) (string,
 		}
 	}
 	if len(parts) == 0 {
-		return "", fmt.Errorf("image description response missing text")
+		return "", errors.New("image description response missing text")
 	}
 	return strings.Join(parts, "\n"), nil
 }

@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -62,7 +63,7 @@ func (oc *AIClient) downloadMediaBytes(
 
 	if strings.HasPrefix(downloadURL, "mxc://") {
 		if oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.Bot == nil {
-			return nil, "", fmt.Errorf("matrix API unavailable for MXC media download")
+			return nil, "", errors.New("matrix API unavailable for MXC media download")
 		}
 		data, err := oc.UserLogin.Bridge.Bot.DownloadMedia(ctx, id.ContentURIString(downloadURL), encryptedFile)
 		if err != nil {

@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -506,7 +507,7 @@ Be concise but preserve critical context. Format the summary as bullet points.`
 	// Extract summary from response
 	summary := extractSummaryFromResponse(resp)
 	if summary == "" {
-		return "", fmt.Errorf("summarization returned empty response")
+		return "", errors.New("summarization returned empty response")
 	}
 
 	return summary, nil

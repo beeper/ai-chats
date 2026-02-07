@@ -3,6 +3,7 @@ package connector
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -270,7 +271,7 @@ func (oc *AIClient) executeSessionsHistory(ctx context.Context, portal *bridgev2
 		client, clientErr := oc.desktopAPIClient(instance)
 		if clientErr != nil || client == nil {
 			if clientErr == nil {
-				clientErr = fmt.Errorf("desktop API token is not set")
+				clientErr = errors.New("desktop API token is not set")
 			}
 			return tools.JSONResult(map[string]any{
 				"status": "error",
@@ -629,11 +630,11 @@ func resolveSessionDisplayName(portal *bridgev2.Portal, meta *PortalMetadata) st
 func (oc *AIClient) resolveSessionPortal(ctx context.Context, portal *bridgev2.Portal, sessionKey string) (*bridgev2.Portal, string, error) {
 	trimmed := strings.TrimSpace(sessionKey)
 	if trimmed == "" {
-		return nil, "", fmt.Errorf("sessionKey is required")
+		return nil, "", errors.New("sessionKey is required")
 	}
 	if trimmed == "main" {
 		if portal == nil || portal.MXID == "" {
-			return nil, "", fmt.Errorf("main session not available")
+			return nil, "", errors.New("main session not available")
 		}
 		return portal, "main", nil
 	}
@@ -664,7 +665,7 @@ func (oc *AIClient) resolveSessionPortal(ctx context.Context, portal *bridgev2.P
 func (oc *AIClient) resolveSessionPortalByLabel(ctx context.Context, label string, agentID string) (*bridgev2.Portal, string, error) {
 	trimmed := strings.TrimSpace(label)
 	if trimmed == "" {
-		return nil, "", fmt.Errorf("label is required")
+		return nil, "", errors.New("label is required")
 	}
 	needle := strings.ToLower(trimmed)
 	filterAgent := normalizeAgentID(agentID)

@@ -2,6 +2,7 @@ package textfs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -24,7 +25,7 @@ type StatEntry struct {
 func (s *Store) Stat(ctx context.Context, relPath string) (*StatEntry, error) {
 	trimmed := strings.TrimSpace(relPath)
 	if trimmed == "" {
-		return nil, fmt.Errorf("path is required")
+		return nil, errors.New("path is required")
 	}
 	forceDir := strings.HasSuffix(trimmed, "/") || strings.HasSuffix(trimmed, "\\")
 

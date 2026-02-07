@@ -3,6 +3,7 @@ package search
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -34,7 +35,7 @@ func (p *braveProvider) Name() string {
 
 func (p *braveProvider) Search(ctx context.Context, req Request) (*Response, error) {
 	if p.cfg.BaseURL == "" {
-		return nil, fmt.Errorf("brave base_url is empty")
+		return nil, errors.New("brave base_url is empty")
 	}
 	searchURL, err := url.Parse(p.cfg.BaseURL)
 	if err != nil {

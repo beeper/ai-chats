@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -688,7 +689,7 @@ func (oc *AIClient) describeImageWithEntry(
 ) (*MediaUnderstandingOutput, error) {
 	modelID := strings.TrimSpace(entry.Model)
 	if modelID == "" {
-		return nil, fmt.Errorf("image understanding requires model id")
+		return nil, errors.New("image understanding requires model id")
 	}
 	entryProvider := normalizeMediaProviderID(entry.Provider)
 	if entryProvider != "" {
@@ -709,7 +710,7 @@ func (oc *AIClient) describeImageWithEntry(
 		headers := mergeMediaHeaders(capCfg, entry)
 		apiKey := oc.resolveMediaProviderAPIKey("google", entry.Profile, entry.PreferredProfile)
 		if apiKey == "" && !hasProviderAuthHeader("google", headers) {
-			return nil, fmt.Errorf("missing API key for google image understanding")
+			return nil, errors.New("missing API key for google image understanding")
 		}
 		request := mediaImageRequest{
 			APIKey:   apiKey,
@@ -796,7 +797,7 @@ func (oc *AIClient) transcribeAudioWithEntry(
 ) (*MediaUnderstandingOutput, error) {
 	providerID := normalizeMediaProviderID(entry.Provider)
 	if providerID == "" {
-		return nil, fmt.Errorf("missing audio provider")
+		return nil, errors.New("missing audio provider")
 	}
 	data, actualMime, err := oc.downloadMediaBytes(ctx, mediaURL, encryptedFile, maxBytes, mimeType)
 	if err != nil {
@@ -867,12 +868,12 @@ func (oc *AIClient) describeVideoWithEntry(
 ) (*MediaUnderstandingOutput, error) {
 	providerID := normalizeMediaProviderID(entry.Provider)
 	if providerID == "" {
-		return nil, fmt.Errorf("missing video provider")
+		return nil, errors.New("missing video provider")
 	}
 	if providerID == "openrouter" {
 		modelID := strings.TrimSpace(entry.Model)
 		if modelID == "" {
-			return nil, fmt.Errorf("video understanding requires model id")
+			return nil, errors.New("video understanding requires model id")
 		}
 
 		data, actualMime, err := oc.downloadMediaBytes(ctx, mediaURL, encryptedFile, maxBytes, mimeType)
@@ -892,7 +893,7 @@ func (oc *AIClient) describeVideoWithEntry(
 				Int("base64_bytes", base64Size).
 				Int("limit_bytes", maxBase64).
 				Msg("OpenRouter video payload exceeds base64 limit")
-			return nil, fmt.Errorf("video payload exceeds base64 limit")
+			return nil, errors.New("video payload exceeds base64 limit")
 		}
 		videoB64 := base64.StdEncoding.EncodeToString(data)
 
@@ -951,7 +952,7 @@ func (oc *AIClient) describeVideoWithEntry(
 			Int("base64_bytes", base64Size).
 			Int("limit_bytes", maxBase64).
 			Msg("Google video payload exceeds base64 limit")
-		return nil, fmt.Errorf("video payload exceeds base64 limit")
+		return nil, errors.New("video payload exceeds base64 limit")
 	}
 
 	headers := mergeMediaHeaders(capCfg, entry)
@@ -987,11 +988,11 @@ func (oc *AIClient) generateWithOpenRouter(
 	messages []UnifiedMessage,
 ) (*GenerateResponse, error) {
 	if oc == nil || oc.connector == nil {
-		return nil, fmt.Errorf("missing connector")
+		return nil, errors.New("missing connector")
 	}
 	apiKey := strings.TrimSpace(oc.resolveMediaProviderAPIKey("openrouter", "", ""))
 	if apiKey == "" {
-		return nil, fmt.Errorf("missing API key for openrouter")
+		return nil, errors.New("missing API key for openrouter")
 	}
 	baseURL := resolveOpenRouterMediaBaseURL(oc)
 	headers := openRouterHeaders()

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -282,7 +283,7 @@ func waitForOpenCodeServer(ctx context.Context, baseURL, username, password stri
 	deadline := time.Now().Add(timeout)
 	for {
 		if time.Now().After(deadline) {
-			return fmt.Errorf("opencode server did not become ready")
+			return errors.New("opencode server did not become ready")
 		}
 		callCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		client, err := opencode.NewClient(baseURL, username, password)
@@ -310,7 +311,7 @@ func pickFreeTCPPort(host string) (int, error) {
 	defer ln.Close()
 	tcp, ok := ln.Addr().(*net.TCPAddr)
 	if !ok || tcp == nil || tcp.Port == 0 {
-		return 0, fmt.Errorf("failed to allocate port")
+		return 0, errors.New("failed to allocate port")
 	}
 	return tcp.Port, nil
 }

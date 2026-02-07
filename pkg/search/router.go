@@ -11,7 +11,7 @@ import (
 // Search executes a search using the configured provider chain.
 func Search(ctx context.Context, req Request, cfg *Config) (*Response, error) {
 	if strings.TrimSpace(req.Query) == "" {
-		return nil, fmt.Errorf("missing query")
+		return nil, errors.New("missing query")
 	}
 	cfg = cfg.WithDefaults()
 	req = normalizeRequest(req)

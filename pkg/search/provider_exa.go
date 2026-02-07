@@ -3,7 +3,7 @@ package search
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"net/url"
 	"strings"
 	"time"
@@ -37,7 +37,7 @@ func (p *exaProvider) Name() string {
 func (p *exaProvider) Search(ctx context.Context, req Request) (*Response, error) {
 	endpoint := resolveEndpoint(p.cfg.BaseURL, "/search")
 	if endpoint == "" {
-		return nil, fmt.Errorf("exa base_url is empty")
+		return nil, errors.New("exa base_url is empty")
 	}
 	numResults := p.cfg.NumResults
 	if req.Count > 0 {

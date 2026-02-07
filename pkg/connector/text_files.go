@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -200,7 +201,7 @@ func decodeTextBytes(data []byte) (string, error) {
 	if isMostlyPrintable(text) {
 		return text, nil
 	}
-	return "", fmt.Errorf("file is not valid text")
+	return "", errors.New("file is not valid text")
 }
 
 func (oc *AIClient) downloadTextFile(ctx context.Context, mediaURL string, encryptedFile *event.EncryptedFileInfo, mimeType string) (string, bool, error) {

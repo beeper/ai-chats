@@ -3,7 +3,7 @@ package connector
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"strings"
 	"sync"
 	"time"
@@ -90,7 +90,7 @@ func resolveSessionStorePath(cfg *Config, agentID string) string {
 
 func (oc *AIClient) sessionTextFSStore(agentID string) (*textfs.Store, error) {
 	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil {
-		return nil, fmt.Errorf("session store not available")
+		return nil, errors.New("session store not available")
 	}
 	bridgeID := string(oc.UserLogin.Bridge.DB.BridgeID)
 	loginID := string(oc.UserLogin.ID)

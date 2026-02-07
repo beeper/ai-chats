@@ -2,7 +2,7 @@ package connector
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"maps"
 	"slices"
 	"strings"
@@ -14,7 +14,7 @@ import (
 
 func resolveMemorySearchConfig(client *AIClient, agentID string) (*memory.ResolvedConfig, error) {
 	if client == nil || client.connector == nil {
-		return nil, fmt.Errorf("missing connector")
+		return nil, errors.New("missing connector")
 	}
 	defaults := client.connector.Config.MemorySearch
 	var overrides *agents.MemorySearchConfig
@@ -29,7 +29,7 @@ func resolveMemorySearchConfig(client *AIClient, agentID string) (*memory.Resolv
 
 	resolved := mergeMemorySearchConfig(defaults, overrides)
 	if resolved == nil {
-		return nil, fmt.Errorf("memory search disabled")
+		return nil, errors.New("memory search disabled")
 	}
 	return resolved, nil
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -55,7 +56,7 @@ func buildGeminiModelPath(model string) string {
 
 func NewGeminiProvider(apiKey, baseURL, model string, headers map[string]string) (*Provider, error) {
 	if strings.TrimSpace(apiKey) == "" {
-		return nil, fmt.Errorf("gemini embeddings require api_key")
+		return nil, errors.New("gemini embeddings require api_key")
 	}
 	if strings.TrimSpace(baseURL) == "" {
 		baseURL = DefaultGeminiBaseURL

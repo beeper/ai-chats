@@ -3,6 +3,7 @@ package cron
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -46,7 +47,7 @@ func ResolveCronStorePath(storePath string) string {
 // On parse failure, it attempts to load from the .bak file.
 func LoadCronStore(ctx context.Context, backend StoreBackend, storePath string) (CronStoreFile, error) {
 	if backend == nil {
-		return CronStoreFile{Version: 1, Jobs: []CronJob{}}, fmt.Errorf("cron store backend not configured")
+		return CronStoreFile{Version: 1, Jobs: []CronJob{}}, errors.New("cron store backend not configured")
 	}
 	data, found, err := backend.Read(ctx, storePath)
 	if err != nil {
@@ -111,7 +112,7 @@ func parseCronStoreData(data []byte) (CronStoreFile, error) {
 // SaveCronStore writes the JSON store and keeps a .bak copy in virtual storage.
 func SaveCronStore(ctx context.Context, backend StoreBackend, storePath string, store CronStoreFile) error {
 	if backend == nil {
-		return fmt.Errorf("cron store backend not configured")
+		return errors.New("cron store backend not configured")
 	}
 	if store.Version == 0 {
 		store.Version = 1

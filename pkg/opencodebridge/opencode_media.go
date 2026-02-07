@@ -3,6 +3,7 @@ package opencodebridge
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -22,11 +23,11 @@ import (
 
 func (b *Bridge) buildOpenCodeFileContent(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, part opencode.Part) (*event.MessageEventContent, error) {
 	if portal == nil || intent == nil {
-		return nil, fmt.Errorf("matrix API unavailable")
+		return nil, errors.New("matrix API unavailable")
 	}
 	fileURL := strings.TrimSpace(part.URL)
 	if fileURL == "" {
-		return nil, fmt.Errorf("missing file URL")
+		return nil, errors.New("missing file URL")
 	}
 	data, mimeType, err := downloadOpenCodeFile(ctx, fileURL, part.Mime, openCodeMaxMediaMB)
 	if err != nil {
@@ -72,7 +73,7 @@ func (b *Bridge) buildOpenCodeFileContent(ctx context.Context, portal *bridgev2.
 func downloadOpenCodeFile(ctx context.Context, fileURL, fallbackMime string, maxSizeMB int) ([]byte, string, error) {
 	fileURL = strings.TrimSpace(fileURL)
 	if fileURL == "" {
-		return nil, "", fmt.Errorf("missing file URL")
+		return nil, "", errors.New("missing file URL")
 	}
 	if strings.HasPrefix(fileURL, "data:") {
 		data, mimeType, err := decodeOpenCodeDataURL(fileURL)
@@ -166,11 +167,11 @@ func downloadOpenCodeFile(ctx context.Context, fileURL, fallbackMime string, max
 
 func decodeOpenCodeDataURL(raw string) ([]byte, string, error) {
 	if !strings.HasPrefix(raw, "data:") {
-		return nil, "", fmt.Errorf("not a data URL")
+		return nil, "", errors.New("not a data URL")
 	}
 	comma := strings.IndexByte(raw, ',')
 	if comma < 0 {
-		return nil, "", fmt.Errorf("invalid data URL")
+		return nil, "", errors.New("invalid data URL")
 	}
 	meta := raw[len("data:"):comma]
 	payload := raw[comma+1:]

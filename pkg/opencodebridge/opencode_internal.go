@@ -2,6 +2,7 @@ package opencodebridge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -19,14 +20,14 @@ func (b *Bridge) DispatchInternalMessage(
 	body string,
 ) (id.EventID, bool, error) {
 	if b == nil || b.manager == nil {
-		return "", false, fmt.Errorf("OpenCode integration is not available")
+		return "", false, errors.New("OpenCode integration is not available")
 	}
 	trimmed := strings.TrimSpace(body)
 	if trimmed == "" {
-		return "", false, fmt.Errorf("message body is required")
+		return "", false, errors.New("message body is required")
 	}
 	if meta == nil || meta.ReadOnly || !b.manager.IsConnected(meta.InstanceID) {
-		return "", false, fmt.Errorf("OpenCode is disconnected")
+		return "", false, errors.New("OpenCode is disconnected")
 	}
 
 	eventID := id.EventID(fmt.Sprintf("$opencode-internal-%s", uuid.NewString()))

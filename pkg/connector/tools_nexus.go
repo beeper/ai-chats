@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -64,11 +65,11 @@ func nexusConfigured(cfg *NexusToolsConfig) bool {
 func executeNexusRoute(ctx context.Context, route string, args map[string]any) (string, error) {
 	btc := GetBridgeToolContext(ctx)
 	if btc == nil || btc.Client == nil || btc.Client.connector == nil {
-		return "", fmt.Errorf("nexus tool requires bridge context")
+		return "", errors.New("nexus tool requires bridge context")
 	}
 	cfg := btc.Client.connector.Config.Tools.Nexus
 	if !nexusConfigured(cfg) {
-		return "", fmt.Errorf("nexus tools are not configured (set network.tools.nexus.base_url or mcp_endpoint and token)")
+		return "", errors.New("nexus tools are not configured (set network.tools.nexus.base_url or mcp_endpoint and token)")
 	}
 
 	baseURL := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
@@ -78,7 +79,7 @@ func executeNexusRoute(ctx context.Context, route string, args map[string]any) (
 		baseURL = strings.TrimRight(baseURL, "/")
 	}
 	if baseURL == "" {
-		return "", fmt.Errorf("nexus tools require network.tools.nexus.base_url")
+		return "", errors.New("nexus tools require network.tools.nexus.base_url")
 	}
 	endpoint := baseURL + "/tools/v2" + route
 

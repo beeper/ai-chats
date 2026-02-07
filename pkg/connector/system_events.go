@@ -2,7 +2,7 @@
 package connector
 
 import (
-	"fmt"
+	"errors"
 	"strings"
 	"sync"
 	"time"
@@ -29,7 +29,7 @@ const maxSystemEvents = 20
 func requireSessionKey(key string) (string, error) {
 	trimmed := strings.TrimSpace(key)
 	if trimmed == "" {
-		return "", fmt.Errorf("system events require a session key")
+		return "", errors.New("system events require a session key")
 	}
 	return trimmed, nil
 }

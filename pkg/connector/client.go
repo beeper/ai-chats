@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -383,7 +384,7 @@ type pendingMessage struct {
 func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey string) (*AIClient, error) {
 	key := strings.TrimSpace(apiKey)
 	if key == "" {
-		return nil, fmt.Errorf("missing API key")
+		return nil, errors.New("missing API key")
 	}
 
 	// Get per-user credentials from login metadata
@@ -429,7 +430,7 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 	case ProviderBeeper:
 		beeperBaseURL := connector.resolveBeeperBaseURL(meta)
 		if beeperBaseURL == "" {
-			return nil, fmt.Errorf("beeper base_url is required for Beeper provider")
+			return nil, errors.New("beeper base_url is required for Beeper provider")
 		}
 		pdfEngine := connector.Config.Providers.Beeper.DefaultPDFEngine
 		provider, err := initOpenRouterProvider(key, beeperBaseURL+"/openrouter/v1", login.User.MXID.String(), pdfEngine, ProviderBeeper, log)
@@ -452,7 +453,7 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 	case ProviderMagicProxy:
 		baseURL := normalizeMagicProxyBaseURL(meta.BaseURL)
 		if baseURL == "" {
-			return nil, fmt.Errorf("magic proxy base_url is required")
+			return nil, errors.New("magic proxy base_url is required")
 		}
 		pdfEngine := connector.Config.Providers.OpenRouter.DefaultPDFEngine
 		provider, err := initOpenRouterProvider(key, joinProxyPath(baseURL, "/openrouter/v1"), "", pdfEngine, ProviderMagicProxy, log)
@@ -1328,7 +1329,7 @@ func (oc *AIClient) agentModelOverride(agentID string) string {
 //lint:ignore U1000 Staged for future agent model override wiring.
 func (oc *AIClient) setAgentModelOverride(ctx context.Context, agentID, modelID string) error {
 	if agentID == "" || oc.UserLogin == nil {
-		return fmt.Errorf("missing agent ID")
+		return errors.New("missing agent ID")
 	}
 	loginMeta := loginMetadata(oc.UserLogin)
 	if loginMeta.AgentModelOverrides == nil {
@@ -2412,7 +2413,7 @@ func (oc *AIClient) downloadAndEncodeMedia(ctx context.Context, mxcURL string, e
 
 	if strings.HasPrefix(downloadURL, "mxc://") {
 		if oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.Bot == nil {
-			return "", "", fmt.Errorf("matrix API unavailable for MXC media download")
+			return "", "", errors.New("matrix API unavailable for MXC media download")
 		}
 		data, err := oc.UserLogin.Bridge.Bot.DownloadMedia(ctx, id.ContentURIString(downloadURL), encryptedFile)
 		if err != nil {
@@ -2634,11 +2635,11 @@ func (oc *AIClient) getModelIntent(ctx context.Context, portal *bridgev2.Portal)
 // (typing indicators, sending messages, etc.) to handle race conditions with model switching.
 func (oc *AIClient) ensureModelInRoom(ctx context.Context, portal *bridgev2.Portal) error {
 	if portal == nil || portal.MXID == "" {
-		return fmt.Errorf("invalid portal")
+		return errors.New("invalid portal")
 	}
 	intent := oc.getModelIntent(ctx, portal)
 	if intent == nil {
-		return fmt.Errorf("failed to get model intent")
+		return errors.New("failed to get model intent")
 	}
 	return intent.EnsureJoined(ctx, portal.MXID)
 }

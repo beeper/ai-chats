@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -262,7 +263,7 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 				_, valErr := aiClient.listAvailableModels(valCtx, true)
 				valCancel()
 				if valErr != nil && IsAuthError(valErr) {
-					return nil, fmt.Errorf("invalid API key: authentication failed")
+					return nil, errors.New("invalid API key: authentication failed")
 				}
 			}
 
@@ -309,7 +310,7 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 		_, valErr := aiClient.listAvailableModels(valCtx, true)
 		valCancel()
 		if valErr != nil && IsAuthError(valErr) {
-			return nil, fmt.Errorf("invalid API key: authentication failed")
+			return nil, errors.New("invalid API key: authentication failed")
 		}
 		// Non-auth errors (network, timeout) are acceptable - the key may still be valid
 	}

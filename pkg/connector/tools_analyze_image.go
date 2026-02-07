@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"path/filepath"
@@ -21,7 +22,7 @@ func executeAnalyzeImage(ctx context.Context, args map[string]any) (string, erro
 		imageURL = strings.TrimSpace(v)
 	}
 	if imageURL == "" {
-		return "", fmt.Errorf("missing or invalid 'image' argument")
+		return "", errors.New("missing or invalid 'image' argument")
 	}
 
 	prompt := ""
@@ -34,15 +35,15 @@ func executeAnalyzeImage(ctx context.Context, args map[string]any) (string, erro
 
 	btc := GetBridgeToolContext(ctx)
 	if btc == nil {
-		return "", fmt.Errorf("image requires bridge context")
+		return "", errors.New("image requires bridge context")
 	}
 
 	if btc.Meta == nil {
-		return "", fmt.Errorf("missing room metadata for image analysis")
+		return "", errors.New("missing room metadata for image analysis")
 	}
 	modelID, _ := btc.Client.resolveVisionModelForImage(ctx, btc.Meta)
 	if modelID == "" {
-		return "", fmt.Errorf("no vision-capable model available for image analysis")
+		return "", errors.New("no vision-capable model available for image analysis")
 	}
 
 	// Get image data based on URL type
@@ -75,7 +76,7 @@ func executeAnalyzeImage(ctx context.Context, args map[string]any) (string, erro
 		// Infer mime type from URL or default to jpeg
 		mimeType = inferMimeTypeFromURL(imageURL)
 	} else {
-		return "", fmt.Errorf("unsupported URL scheme, must be http://, https://, mxc://, or data URL")
+		return "", errors.New("unsupported URL scheme, must be http://, https://, mxc://, or data URL")
 	}
 
 	// Build vision request with image and prompt

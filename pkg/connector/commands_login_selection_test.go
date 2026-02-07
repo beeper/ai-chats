@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -50,7 +51,7 @@ func TestResolveLoginForCommand_FallsBackToDefaultOnLookupError(t *testing.T) {
 	portal := &bridgev2.Portal{Portal: &database.Portal{PortalKey: networkid.PortalKey{Receiver: networkid.UserLoginID("receiver")}}}
 
 	got := resolveLoginForCommand(ctx, portal, defaultLogin, func(context.Context, networkid.UserLoginID) (*bridgev2.UserLogin, error) {
-		return nil, fmt.Errorf("boom")
+		return nil, errors.New("boom")
 	})
 	if got != defaultLogin {
 		t.Fatalf("expected default login, got %+v", got)

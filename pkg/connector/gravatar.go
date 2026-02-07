@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -20,10 +21,10 @@ const (
 func normalizeGravatarEmail(email string) (string, error) {
 	normalized := strings.TrimSpace(strings.ToLower(email))
 	if normalized == "" {
-		return "", fmt.Errorf("email is required")
+		return "", errors.New("email is required")
 	}
 	if !strings.Contains(normalized, "@") {
-		return "", fmt.Errorf("invalid email address")
+		return "", errors.New("invalid email address")
 	}
 	return normalized, nil
 }

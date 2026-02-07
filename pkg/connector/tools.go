@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -211,11 +212,11 @@ func resolveMessageMedia(ctx context.Context, btc *BridgeToolContext, bufferInpu
 		return media.DecodeBase64(bufferInput)
 	}
 	if mediaInput == "" {
-		return nil, "", fmt.Errorf("missing media input")
+		return nil, "", errors.New("missing media input")
 	}
 	trimmed := strings.TrimSpace(mediaInput)
 	if strings.HasPrefix(trimmed, "data:") {
-		return nil, "", fmt.Errorf("data URLs are not supported for media; use buffer instead")
+		return nil, "", errors.New("data URLs are not supported for media; use buffer instead")
 	}
 
 	resolved, err := resolveSandboxedMediaPath(trimmed)
@@ -237,13 +238,13 @@ func resolveMessageMedia(ctx context.Context, btc *BridgeToolContext, bufferInpu
 func resolveSandboxedMediaPath(raw string) (string, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
-		return "", fmt.Errorf("missing media input")
+		return "", errors.New("missing media input")
 	}
 	if strings.HasPrefix(trimmed, "http://") || strings.HasPrefix(trimmed, "https://") || strings.HasPrefix(trimmed, "mxc://") {
 		return trimmed, nil
 	}
 	if strings.HasPrefix(trimmed, "~") {
-		return "", fmt.Errorf("media path must be relative to the workspace (no ~)")
+		return "", errors.New("media path must be relative to the workspace (no ~)")
 	}
 
 	pathValue := trimmed
@@ -257,7 +258,7 @@ func resolveSandboxedMediaPath(raw string) (string, error) {
 
 	workspaceRoot := resolvePromptWorkspaceDir()
 	if strings.TrimSpace(workspaceRoot) == "" {
-		return "", fmt.Errorf("workspace root is not configured for local media access")
+		return "", errors.New("workspace root is not configured for local media access")
 	}
 	rootAbs, err := filepath.Abs(workspaceRoot)
 	if err != nil {
@@ -277,7 +278,7 @@ func resolveSandboxedMediaPath(raw string) (string, error) {
 
 	rel, err := filepath.Rel(rootAbs, resolved)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("media path must be within the workspace")
+		return "", errors.New("media path must be within the workspace")
 	}
 	return resolved, nil
 }
@@ -355,17 +356,17 @@ func expandUserPath(value string) string {
 func executeMessage(ctx context.Context, args map[string]any) (string, error) {
 	action, ok := args["action"].(string)
 	if !ok || action == "" {
-		return "", fmt.Errorf("missing or invalid 'action' argument")
+		return "", errors.New("missing or invalid 'action' argument")
 	}
 
 	btc := GetBridgeToolContext(ctx)
 	if btc == nil {
-		return "", fmt.Errorf("message tool requires bridge context")
+		return "", errors.New("message tool requires bridge context")
 	}
 
 	action = normalizeMessageAction(action)
 	if action == "" {
-		return "", fmt.Errorf("missing or invalid 'action' argument")
+		return "", errors.New("missing or invalid 'action' argument")
 	}
 	normalizeMessageArgs(args)
 
@@ -447,7 +448,7 @@ func executeMessageReact(ctx context.Context, args map[string]any, btc *BridgeTo
 
 	// If no target available, return error
 	if targetEventID == "" {
-		return "", fmt.Errorf("action=react requires 'message_id' parameter (no triggering message available)")
+		return "", errors.New("action=react requires 'message_id' parameter (no triggering message available)")
 	}
 
 	// Send reaction
@@ -497,7 +498,7 @@ func executeMessageSend(ctx context.Context, args map[string]any, btc *BridgeToo
 
 	if bufferInput == "" && mediaInput == "" {
 		if message == "" {
-			return "", fmt.Errorf("action=send requires 'message' parameter")
+			return "", errors.New("action=send requires 'message' parameter")
 		}
 		respID, err := sendFormattedMessage(ctx, btc, message, relatesTo, "failed to send message")
 		if err != nil {
@@ -537,7 +538,7 @@ func executeMessageSend(ctx context.Context, args map[string]any, btc *BridgeToo
 
 	intent := btc.Client.getModelIntent(ctx, btc.Portal)
 	if intent == nil {
-		return "", fmt.Errorf("failed to get model intent")
+		return "", errors.New("failed to get model intent")
 	}
 
 	uri, file, err := intent.UploadMedia(ctx, btc.Portal.MXID, data, fileName, mimeType)
@@ -599,16 +600,16 @@ func executeMessageEdit(ctx context.Context, args map[string]any, btc *BridgeToo
 
 	messageID, ok := args["message_id"].(string)
 	if !ok || messageID == "" {
-		return "", fmt.Errorf("action=edit requires 'message_id' parameter")
+		return "", errors.New("action=edit requires 'message_id' parameter")
 	}
 	message, ok := args["message"].(string)
 	if !ok || message == "" {
-		return "", fmt.Errorf("action=edit requires 'message' parameter")
+		return "", errors.New("action=edit requires 'message' parameter")
 	}
 
 	intent := btc.Client.getModelIntent(ctx, btc.Portal)
 	if intent == nil {
-		return "", fmt.Errorf("failed to get model intent")
+		return "", errors.New("failed to get model intent")
 	}
 
 	targetEventID := id.EventID(messageID)
@@ -650,12 +651,12 @@ func executeMessageEdit(ctx context.Context, args map[string]any, btc *BridgeToo
 func executeMessageDelete(ctx context.Context, args map[string]any, btc *BridgeToolContext) (string, error) {
 	messageID, ok := args["message_id"].(string)
 	if !ok || messageID == "" {
-		return "", fmt.Errorf("action=delete requires 'message_id' parameter")
+		return "", errors.New("action=delete requires 'message_id' parameter")
 	}
 
 	intent := btc.Client.getModelIntent(ctx, btc.Portal)
 	if intent == nil {
-		return "", fmt.Errorf("failed to get model intent")
+		return "", errors.New("failed to get model intent")
 	}
 
 	targetEventID := id.EventID(messageID)
@@ -684,11 +685,11 @@ func executeMessageReply(ctx context.Context, args map[string]any, btc *BridgeTo
 
 	messageID, ok := args["message_id"].(string)
 	if !ok || messageID == "" {
-		return "", fmt.Errorf("action=reply requires 'message_id' parameter")
+		return "", errors.New("action=reply requires 'message_id' parameter")
 	}
 	message, ok := args["message"].(string)
 	if !ok || message == "" {
-		return "", fmt.Errorf("action=reply requires 'message' parameter")
+		return "", errors.New("action=reply requires 'message' parameter")
 	}
 
 	targetEventID := id.EventID(messageID)
@@ -791,12 +792,12 @@ func executeMessageThreadReply(ctx context.Context, args map[string]any, btc *Br
 		// Fall back to message_id for thread root
 		threadID, ok = args["message_id"].(string)
 		if !ok || threadID == "" {
-			return "", fmt.Errorf("action=thread-reply requires 'thread_id' or 'message_id' parameter")
+			return "", errors.New("action=thread-reply requires 'thread_id' or 'message_id' parameter")
 		}
 	}
 	message, ok := args["message"].(string)
 	if !ok || message == "" {
-		return "", fmt.Errorf("action=thread-reply requires 'message' parameter")
+		return "", errors.New("action=thread-reply requires 'message' parameter")
 	}
 
 	threadRootID := id.EventID(threadID)
@@ -823,7 +824,7 @@ func executeMessageSearch(ctx context.Context, args map[string]any, btc *BridgeT
 
 	query, ok := args["query"].(string)
 	if !ok || query == "" {
-		return "", fmt.Errorf("action=search requires 'query' parameter")
+		return "", errors.New("action=search requires 'query' parameter")
 	}
 
 	// Get limit (default 20)
@@ -888,7 +889,7 @@ func executeWebFetch(ctx context.Context, args map[string]any) (string, error) {
 func executeImageGeneration(ctx context.Context, args map[string]any) (string, error) {
 	btc := GetBridgeToolContext(ctx)
 	if btc == nil {
-		return "", fmt.Errorf("image generation requires bridge context")
+		return "", errors.New("image generation requires bridge context")
 	}
 
 	req, err := parseImageGenArgs(args)
@@ -1066,7 +1067,7 @@ func callOpenRouterImageGen(ctx context.Context, apiKey, baseURL, prompt, model 
 	}
 
 	if len(images) == 0 {
-		return nil, fmt.Errorf("no image data in response")
+		return nil, errors.New("no image data in response")
 	}
 
 	return images, nil
@@ -1126,7 +1127,7 @@ func fetchImageAsBase64WithType(ctx context.Context, imageURL string) (string, s
 func executeTTS(ctx context.Context, args map[string]any) (string, error) {
 	text, ok := args["text"].(string)
 	if !ok || text == "" {
-		return "", fmt.Errorf("missing or invalid 'text' argument")
+		return "", errors.New("missing or invalid 'text' argument")
 	}
 
 	// Limit text length
@@ -1210,7 +1211,7 @@ func executeTTS(ctx context.Context, args map[string]any) (string, error) {
 		return TTSResultPrefix + audioData, nil
 	}
 
-	return "", fmt.Errorf("TTS not available: requires Beeper/OpenAI provider or macOS")
+	return "", errors.New("TTS not available: requires Beeper/OpenAI provider or macOS")
 }
 
 func resolveOpenAITTSBaseURL(btc *BridgeToolContext, providerBaseURL string) (string, bool) {
@@ -1378,7 +1379,7 @@ func callOpenAITTS(ctx context.Context, apiKey, baseURL, text, model, voice stri
 func executeCalculator(ctx context.Context, args map[string]any) (string, error) {
 	expr, ok := args["expression"].(string)
 	if !ok {
-		return "", fmt.Errorf("missing or invalid 'expression' argument")
+		return "", errors.New("missing or invalid 'expression' argument")
 	}
 
 	result, err := calc.EvalExpression(expr)
@@ -1399,12 +1400,12 @@ func executeWebSearch(ctx context.Context, args map[string]any) (string, error) 
 func executeSessionStatus(ctx context.Context, args map[string]any) (string, error) {
 	btc := GetBridgeToolContext(ctx)
 	if btc == nil {
-		return "", fmt.Errorf("session_status tool requires bridge context")
+		return "", errors.New("session_status tool requires bridge context")
 	}
 
 	meta := portalMeta(btc.Portal)
 	if meta == nil {
-		return "", fmt.Errorf("failed to get portal metadata")
+		return "", errors.New("failed to get portal metadata")
 	}
 
 	// Get current time info
@@ -1543,7 +1544,7 @@ const (
 func textFSStore(ctx context.Context) (*textfs.Store, error) {
 	btc := GetBridgeToolContext(ctx)
 	if btc == nil {
-		return nil, fmt.Errorf("file tool requires bridge context")
+		return nil, errors.New("file tool requires bridge context")
 	}
 	meta := portalMeta(btc.Portal)
 	agentID := resolveAgentID(meta)
@@ -1606,7 +1607,7 @@ func executeReadFile(ctx context.Context, args map[string]any) (string, error) {
 	}
 	path, ok := readStringArg(args, "path", "file_path")
 	if !ok {
-		return "", fmt.Errorf("missing or invalid 'path' argument")
+		return "", errors.New("missing or invalid 'path' argument")
 	}
 	offset, _ := readIntArg(args, "offset")
 	limit, _ := readIntArg(args, "limit")
@@ -1668,11 +1669,11 @@ func executeWriteFile(ctx context.Context, args map[string]any) (string, error) 
 	}
 	path, ok := readStringArg(args, "path", "file_path")
 	if !ok {
-		return "", fmt.Errorf("missing or invalid 'path' argument")
+		return "", errors.New("missing or invalid 'path' argument")
 	}
 	content, ok := args["content"].(string)
 	if !ok {
-		return "", fmt.Errorf("missing or invalid 'content' argument")
+		return "", errors.New("missing or invalid 'content' argument")
 	}
 	if len(content) > textFSMaxBytes {
 		return "", fmt.Errorf("content exceeds %s limit", textfs.FormatSize(textFSMaxBytes))
@@ -1703,15 +1704,15 @@ func executeEditFile(ctx context.Context, args map[string]any) (string, error) {
 	}
 	path, ok := readStringArg(args, "path", "file_path")
 	if !ok {
-		return "", fmt.Errorf("missing or invalid 'path' argument")
+		return "", errors.New("missing or invalid 'path' argument")
 	}
 	oldText, ok := readStringArg(args, "oldText", "old_string")
 	if !ok {
-		return "", fmt.Errorf("missing or invalid 'oldText' argument")
+		return "", errors.New("missing or invalid 'oldText' argument")
 	}
 	newText, ok := readStringArg(args, "newText", "new_string")
 	if !ok {
-		return "", fmt.Errorf("missing or invalid 'newText' argument")
+		return "", errors.New("missing or invalid 'newText' argument")
 	}
 
 	readCtx, cancel := context.WithTimeout(ctx, textFSToolTimeout)
@@ -1733,7 +1734,7 @@ func executeEditFile(ctx context.Context, args map[string]any) (string, error) {
 	newNormalized = strings.ReplaceAll(newNormalized, "\r", "\n")
 
 	if oldNormalized == "" {
-		return "", fmt.Errorf("oldText must not be empty")
+		return "", errors.New("oldText must not be empty")
 	}
 	count := strings.Count(normalized, oldNormalized)
 	if count == 0 {
@@ -1792,13 +1793,13 @@ func GetEnabledBuiltinTools(isToolEnabled func(string) bool) []ToolDefinition {
 func executeMemorySearch(ctx context.Context, args map[string]any) (string, error) {
 	btc := GetBridgeToolContext(ctx)
 	if btc == nil {
-		return "", fmt.Errorf("memory_search requires bridge context")
+		return "", errors.New("memory_search requires bridge context")
 	}
 
 	queryRaw, ok := args["query"].(string)
 	query := strings.TrimSpace(queryRaw)
 	if !ok || query == "" {
-		return "", fmt.Errorf("query required")
+		return "", errors.New("query required")
 	}
 	var maxResults *int
 	var minScore *float64
@@ -1872,13 +1873,13 @@ func executeMemorySearch(ctx context.Context, args map[string]any) (string, erro
 func executeMemoryGet(ctx context.Context, args map[string]any) (string, error) {
 	btc := GetBridgeToolContext(ctx)
 	if btc == nil {
-		return "", fmt.Errorf("memory_get requires bridge context")
+		return "", errors.New("memory_get requires bridge context")
 	}
 
 	pathRaw, ok := args["path"].(string)
 	path := strings.TrimSpace(pathRaw)
 	if !ok || path == "" {
-		return "", fmt.Errorf("path required")
+		return "", errors.New("path required")
 	}
 
 	meta := portalMeta(btc.Portal)
@@ -2024,7 +2025,7 @@ func readNumberArg(raw any) (float64, bool) {
 func executeGravatarFetch(ctx context.Context, args map[string]any) (string, error) {
 	btc := GetBridgeToolContext(ctx)
 	if btc == nil || btc.Client == nil || btc.Meta == nil {
-		return "", fmt.Errorf("bridge context not available")
+		return "", errors.New("bridge context not available")
 	}
 
 	email := ""
@@ -2038,7 +2039,7 @@ func executeGravatarFetch(ctx context.Context, args map[string]any) (string, err
 		}
 	}
 	if email == "" {
-		return "", fmt.Errorf("email is required")
+		return "", errors.New("email is required")
 	}
 
 	profile, err := fetchGravatarProfile(ctx, email)
@@ -2051,12 +2052,12 @@ func executeGravatarFetch(ctx context.Context, args map[string]any) (string, err
 func executeGravatarSet(ctx context.Context, args map[string]any) (string, error) {
 	btc := GetBridgeToolContext(ctx)
 	if btc == nil || btc.Client == nil || btc.Meta == nil {
-		return "", fmt.Errorf("bridge context not available")
+		return "", errors.New("bridge context not available")
 	}
 
 	email, ok := args["email"].(string)
 	if !ok || strings.TrimSpace(email) == "" {
-		return "", fmt.Errorf("email is required")
+		return "", errors.New("email is required")
 	}
 
 	profile, err := fetchGravatarProfile(ctx, email)

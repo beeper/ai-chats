@@ -2,7 +2,7 @@ package connector
 
 import (
 	"context"
-	"fmt"
+	"errors"
 
 	"github.com/beeper/ai-bridge/pkg/cron"
 	"github.com/beeper/ai-bridge/pkg/textfs"
@@ -16,7 +16,7 @@ type cronTextFSBackend struct {
 
 func (b *cronTextFSBackend) Read(ctx context.Context, path string) ([]byte, bool, error) {
 	if b == nil || b.store == nil {
-		return nil, false, fmt.Errorf("cron store not available")
+		return nil, false, errors.New("cron store not available")
 	}
 	entry, found, err := b.store.Read(ctx, path)
 	if err != nil || !found {
@@ -27,7 +27,7 @@ func (b *cronTextFSBackend) Read(ctx context.Context, path string) ([]byte, bool
 
 func (b *cronTextFSBackend) Write(ctx context.Context, path string, data []byte) error {
 	if b == nil || b.store == nil {
-		return fmt.Errorf("cron store not available")
+		return errors.New("cron store not available")
 	}
 	_, err := b.store.Write(ctx, path, string(data))
 	return err
@@ -35,7 +35,7 @@ func (b *cronTextFSBackend) Write(ctx context.Context, path string, data []byte)
 
 func (oc *AIClient) cronTextFSStore() (*textfs.Store, error) {
 	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil {
-		return nil, fmt.Errorf("cron store not available")
+		return nil, errors.New("cron store not available")
 	}
 	bridgeID := string(oc.UserLogin.Bridge.DB.BridgeID)
 	loginID := string(oc.UserLogin.ID)

@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"regexp"
@@ -12,7 +13,7 @@ var durationRe = regexp.MustCompile(`^(\d+(?:\.\d+)?)(ms|s|m|h|d)?$`)
 func parseDurationMs(raw string, defaultUnit string) (int64, error) {
 	trimmed := strings.TrimSpace(strings.ToLower(raw))
 	if trimmed == "" {
-		return 0, fmt.Errorf("invalid duration (empty)")
+		return 0, errors.New("invalid duration (empty)")
 	}
 	matches := durationRe.FindStringSubmatch(trimmed)
 	if matches == nil {
