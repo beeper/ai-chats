@@ -535,15 +535,15 @@ func normalizeOpenAIImageParams(req imageGenRequest) (openAIImageParams, error) 
 }
 
 var (
-	allowedDalle3Sizes      = map[string]bool{"1024x1024": true, "1792x1024": true, "1024x1792": true}
-	allowedDalle3Qualities  = map[string]bool{"standard": true, "hd": true}
-	allowedDalle3Styles     = map[string]bool{"vivid": true, "natural": true}
-	allowedDalle2Sizes      = map[string]bool{"256x256": true, "512x512": true, "1024x1024": true}
-	allowedGPTImageSizes    = map[string]bool{"1024x1024": true, "1536x1024": true, "1024x1536": true, "auto": true}
-	allowedGPTImageQualities = map[string]bool{"auto": true, "high": true, "medium": true, "low": true}
+	allowedDalle3Sizes         = map[string]bool{"1024x1024": true, "1792x1024": true, "1024x1792": true}
+	allowedDalle3Qualities     = map[string]bool{"standard": true, "hd": true}
+	allowedDalle3Styles        = map[string]bool{"vivid": true, "natural": true}
+	allowedDalle2Sizes         = map[string]bool{"256x256": true, "512x512": true, "1024x1024": true}
+	allowedGPTImageSizes       = map[string]bool{"1024x1024": true, "1536x1024": true, "1024x1536": true, "auto": true}
+	allowedGPTImageQualities   = map[string]bool{"auto": true, "high": true, "medium": true, "low": true}
 	allowedGPTImageBackgrounds = map[string]bool{"auto": true, "transparent": true, "opaque": true}
-	allowedGPTImageFormats  = map[string]bool{"png": true, "jpeg": true, "webp": true}
-	allowedGeminiResolutions = map[string]bool{"1k": true, "2k": true, "4k": true}
+	allowedGPTImageFormats     = map[string]bool{"png": true, "jpeg": true, "webp": true}
+	allowedGeminiResolutions   = map[string]bool{"1k": true, "2k": true, "4k": true}
 )
 
 func isAllowedValue(value string, allowed map[string]bool) bool {

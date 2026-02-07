@@ -1,12 +1,12 @@
 package connector
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"math"
-	"cmp"
 	"net/http"
 	"slices"
 	"strings"

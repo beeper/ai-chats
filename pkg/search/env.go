@@ -98,4 +98,3 @@ func envOr(existing, value string) string {
 	}
 	return value
 }
-

@@ -65,10 +65,10 @@ type SessionSyncConfig struct {
 }
 
 type QueryConfig struct {
-	MaxResults      int
-	MinScore        float64
+	MaxResults       int
+	MinScore         float64
 	MaxInjectedChars int
-	Hybrid          HybridConfig
+	Hybrid           HybridConfig
 }
 
 type HybridConfig struct {

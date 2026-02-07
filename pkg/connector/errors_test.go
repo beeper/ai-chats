@@ -301,4 +301,3 @@ func TestHasContextLengthSignal_NewPatterns(t *testing.T) {
 		}
 	}
 }
-

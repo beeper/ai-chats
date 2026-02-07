@@ -446,5 +446,3 @@ func generateJSONFile(apiModels map[string]OpenRouterModel, outputPath string) e
 
 	return os.WriteFile(outputPath, data, 0644)
 }
-
-

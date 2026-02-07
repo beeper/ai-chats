@@ -135,4 +135,3 @@ type CronJobPatch struct {
 	Delivery       *CronDeliveryPatch `json:"delivery,omitempty"`
 	State          *CronJobState      `json:"state,omitempty"`
 }
-

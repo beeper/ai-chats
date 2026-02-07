@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/beeper/ai-bridge/pkg/shared/httputil"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
+
+	"github.com/beeper/ai-bridge/pkg/shared/httputil"
 )
 
 const (
@@ -77,4 +78,3 @@ func NewOpenAIProvider(apiKey, baseURL, model string, headers map[string]string)
 		embedBatch: embedBatch,
 	}, nil
 }
-

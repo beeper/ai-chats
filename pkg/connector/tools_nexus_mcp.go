@@ -1,13 +1,13 @@
 package connector
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
-	"maps"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
-	"cmp"
 	"os/exec"
 	"slices"
 	"strings"

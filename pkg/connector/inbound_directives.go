@@ -268,17 +268,17 @@ func extractInlineShortcut(body string, names []string) (string, bool) {
 }
 
 var levelDirectiveREs = map[string]*regexp.Regexp{
-	"thinking,think,t":    thinkDirectiveRE,
-	"verbose,v":           verboseDirectiveRE,
-	"reasoning,reason":    reasoningDirectiveRE,
-	"elevated,elev":       elevatedDirectiveRE,
+	"thinking,think,t": thinkDirectiveRE,
+	"verbose,v":        verboseDirectiveRE,
+	"reasoning,reason": reasoningDirectiveRE,
+	"elevated,elev":    elevatedDirectiveRE,
 }
 
 var simpleDirectiveREs = map[string]*regexp.Regexp{
-	"status":      statusDirectiveRE,
-	"help":        helpDirectiveRE,
-	"commands":    commandsDirectiveRE,
-	"whoami,id":   whoamiDirectiveRE,
+	"status":    statusDirectiveRE,
+	"help":      helpDirectiveRE,
+	"commands":  commandsDirectiveRE,
+	"whoami,id": whoamiDirectiveRE,
 }
 
 func directiveREForNames(names []string) *regexp.Regexp {

@@ -4,4 +4,3 @@ package tools
 func IsProviderTool(t *Tool) bool {
 	return t.Type == ToolTypeProvider || t.Type == ToolTypePlugin
 }
-

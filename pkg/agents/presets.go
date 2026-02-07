@@ -36,4 +36,3 @@ func IsPreset(agentID string) bool {
 	}
 	return false
 }
-

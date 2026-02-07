@@ -6,8 +6,8 @@ import (
 )
 
 var (
-	silentReplyPrefixRE   = regexp.MustCompile(`(?i)^\s*` + regexp.QuoteMeta(SilentReplyToken) + `(?:$|\W)`)
-	silentReplySuffixRE   = regexp.MustCompile(`(?i)\b` + regexp.QuoteMeta(SilentReplyToken) + `\W*$`)
+	silentReplyPrefixRE    = regexp.MustCompile(`(?i)^\s*` + regexp.QuoteMeta(SilentReplyToken) + `(?:$|\W)`)
+	silentReplySuffixRE    = regexp.MustCompile(`(?i)\b` + regexp.QuoteMeta(SilentReplyToken) + `\W*$`)
 	heartbeatReplyPrefixRE = regexp.MustCompile(`(?i)^\s*` + regexp.QuoteMeta(HeartbeatToken) + `(?:$|\W)`)
 	heartbeatReplySuffixRE = regexp.MustCompile(`(?i)\b` + regexp.QuoteMeta(HeartbeatToken) + `\W*$`)
 )
