@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
@@ -311,6 +312,14 @@ func (c *Client) writeLoop() {
 		// Perform the write in a goroutine so we can enforce context cancellation.
 		writeDone := make(chan error, 1)
 		go func(b []byte) {
+			defer func() {
+				if r := recover(); r != nil {
+					select {
+					case writeDone <- fmt.Errorf("rpc write panic: %v", r):
+					default:
+					}
+				}
+			}()
 			_, err := c.stdin.Write(b)
 			writeDone <- err
 		}(req.data)
@@ -364,6 +373,7 @@ func (c *Client) readLoop() {
 		// Probe JSON shape.
 		var probe map[string]json.RawMessage
 		if err := json.Unmarshal(line, &probe); err != nil {
+			slog.Warn("codexrpc: failed to parse JSON line from process", "error", err)
 			continue
 		}
 		if _, hasMethod := probe["method"]; hasMethod {
@@ -386,6 +396,7 @@ func (c *Client) readLoop() {
 		if _, hasID := probe["id"]; hasID {
 			var resp Response
 			if err := json.Unmarshal(line, &resp); err != nil {
+				slog.Warn("codexrpc: failed to parse response JSON", "error", err)
 				continue
 			}
 			if chAny, ok := c.pending.Load(idKey(resp.ID)); ok {
@@ -393,6 +404,7 @@ func (c *Client) readLoop() {
 				select {
 				case ch <- resp:
 				default:
+					slog.Warn("codexrpc: dropped response (channel full)", "id", string(resp.ID))
 				}
 			}
 			continue

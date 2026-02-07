@@ -1075,6 +1075,12 @@ func (oc *AIClient) Disconnect() {
 	if oc.heartbeatRunner != nil {
 		oc.heartbeatRunner.Stop()
 	}
+
+	// Report disconnected state to Matrix clients
+	oc.UserLogin.BridgeState.Send(status.BridgeState{
+		StateEvent: status.StateTransientDisconnect,
+		Message:    "Disconnected",
+	})
 }
 
 func (oc *AIClient) IsLoggedIn() bool {

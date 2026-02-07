@@ -52,8 +52,18 @@ func (oc *OpenAIConnector) Init(bridge *bridgev2.Bridge) {
 }
 
 func (oc *OpenAIConnector) Stop(ctx context.Context) {
-	// Future: cleanup background tasks if needed
-	// For now, OpenAI connector has no background loops to stop
+	oc.clientsMu.Lock()
+	clients := make(map[networkid.UserLoginID]bridgev2.NetworkAPI, len(oc.clients))
+	for k, v := range oc.clients {
+		clients[k] = v
+	}
+	oc.clientsMu.Unlock()
+
+	for _, client := range clients {
+		if dc, ok := client.(interface{ Disconnect() }); ok {
+			dc.Disconnect()
+		}
+	}
 }
 
 func (oc *OpenAIConnector) Start(ctx context.Context) error {

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -30,7 +31,9 @@ type CodexLogin struct {
 	Connector *OpenAIConnector
 	FlowID    string
 
+	mu         sync.Mutex // protects rpc and cancel
 	rpc        *codexrpc.Client
+	cancel     context.CancelFunc // cancels the background goroutine
 	codexHome  string
 	instanceID string
 	authMode   string
@@ -109,8 +112,15 @@ func (cl *CodexLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 }
 
 func (cl *CodexLogin) Cancel() {
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
+	if cl.cancel != nil {
+		cl.cancel()
+		cl.cancel = nil
+	}
 	if cl.rpc != nil {
 		_ = cl.rpc.Close()
+		cl.rpc = nil
 	}
 }
 
@@ -181,10 +191,18 @@ func (cl *CodexLogin) SubmitUserInput(ctx context.Context, input map[string]stri
 	cl.loginDoneCh = make(chan codexLoginDone, 1)
 	cl.startCh = make(chan error, 1)
 
+	// Create a cancellable context for the background goroutine so Cancel() can stop it.
+	bgCtx, bgCancel := context.WithCancel(procCtx)
+	cl.mu.Lock()
+	cl.cancel = bgCancel
+	cl.mu.Unlock()
+
 	// Make SubmitUserInput return quickly: initialize + login/start can be slow and can freeze provisioning.
 	go func() {
+		defer bgCancel() // ensure context is cancelled when goroutine exits
+
 		// Initialize first (some Codex builds won't accept login/start before initialize).
-		initCtx, cancelInit := context.WithTimeout(procCtx, 45*time.Second)
+		initCtx, cancelInit := context.WithTimeout(bgCtx, 45*time.Second)
 		_, initErr := rpc.Initialize(initCtx, codexrpc.ClientInfo{
 			Name:    cl.Connector.Config.Codex.ClientInfo.Name,
 			Title:   cl.Connector.Config.Codex.ClientInfo.Title,
@@ -194,7 +212,9 @@ func (cl *CodexLogin) SubmitUserInput(ctx context.Context, input map[string]stri
 		if initErr != nil {
 			log.Warn().Err(initErr).Msg("Codex initialize failed")
 			_ = rpc.Close()
+			cl.mu.Lock()
 			cl.rpc = nil
+			cl.mu.Unlock()
 			select {
 			case cl.startCh <- initErr:
 			default:
@@ -240,7 +260,7 @@ func (cl *CodexLogin) SubmitUserInput(ctx context.Context, input map[string]stri
 		})
 
 		if mode == "apiKey" {
-			startCtx, cancel := context.WithTimeout(procCtx, 60*time.Second)
+			startCtx, cancel := context.WithTimeout(bgCtx, 60*time.Second)
 			startErr := rpc.Call(startCtx, "account/login/start", map[string]any{"type": "apiKey", "apiKey": apiKey}, &struct{}{})
 			cancel()
 			if startErr != nil {
@@ -263,7 +283,7 @@ func (cl *CodexLogin) SubmitUserInput(ctx context.Context, input map[string]stri
 			LoginID string `json:"loginId"`
 			AuthURL string `json:"authUrl"`
 		}
-		startCtx, cancel := context.WithTimeout(procCtx, 60*time.Second)
+		startCtx, cancel := context.WithTimeout(bgCtx, 60*time.Second)
 		startErr := rpc.Call(startCtx, "account/login/start", map[string]any{"type": "chatgpt"}, &loginResp)
 		cancel()
 		if startErr != nil {
