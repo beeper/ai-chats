@@ -28,6 +28,24 @@ func (m *MemorySearchManager) syncSessions(ctx context.Context, force bool, sess
 	if m == nil || m.client == nil {
 		return fmt.Errorf("memory search unavailable")
 	}
+	// For shared portals (portal.Receiver == ""), only index sessions for portals that this login is
+	// actually in. Otherwise a login could accidentally index unrelated shared portals.
+	allowedShared := map[string]struct{}{}
+	if m.client.UserLogin != nil && m.client.UserLogin.Bridge != nil && m.client.UserLogin.Bridge.DB != nil {
+		if ups, err := m.client.UserLogin.Bridge.DB.UserPortal.GetAllForLogin(ctx, m.client.UserLogin.UserLogin); err == nil {
+			for _, up := range ups {
+				if up == nil {
+					continue
+				}
+				if up.Portal.Receiver != "" {
+					// Private portal keys are already scoped by receiver.
+					continue
+				}
+				allowedShared[up.Portal.String()] = struct{}{}
+			}
+		}
+	}
+
 	portals, err := m.client.UserLogin.Bridge.DB.Portal.GetAll(ctx)
 	if err != nil {
 		return err
@@ -43,6 +61,11 @@ func (m *MemorySearchManager) syncSessions(ctx context.Context, force bool, sess
 		}
 		if portal.Receiver != "" && string(portal.Receiver) != m.loginID {
 			continue
+		}
+		if portal.Receiver == "" && len(allowedShared) > 0 {
+			if _, ok := allowedShared[portal.PortalKey.String()]; !ok {
+				continue
+			}
 		}
 		meta, ok := portal.Metadata.(*PortalMetadata)
 		if !ok || meta == nil {
