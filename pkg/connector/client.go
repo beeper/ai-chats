@@ -342,9 +342,8 @@ type AIClient struct {
 	nexusMCPToolsFetchedAt time.Time
 
 	// Tool approvals (e.g. OpenAI MCP approval requests)
-	toolApprovalsMu          sync.Mutex
-	toolApprovals            map[string]*pendingToolApproval // approvalID -> pending approval
-	toolApprovalsByTargetEvt map[id.EventID]string           // target event ID -> approvalID
+	toolApprovalsMu sync.Mutex
+	toolApprovals   map[string]*pendingToolApproval // approvalID -> pending approval
 }
 
 // pendingMessageType indicates what kind of pending message this is
@@ -393,19 +392,18 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 
 	// Create base client struct
 	oc := &AIClient{
-		UserLogin:                login,
-		connector:                connector,
-		apiKey:                   key,
-		log:                      log,
-		activeRooms:              make(map[id.RoomID]bool),
-		pendingQueues:            make(map[id.RoomID]*pendingQueue),
-		activeRoomRuns:           make(map[id.RoomID]*roomRunState),
-		subagentRuns:             make(map[string]*subagentRun),
-		groupHistoryBuffers:      make(map[id.RoomID]*groupHistoryBuffer),
-		userTypingState:          make(map[id.RoomID]userTypingState),
-		queueTyping:              make(map[id.RoomID]*TypingController),
-		toolApprovals:            make(map[string]*pendingToolApproval),
-		toolApprovalsByTargetEvt: make(map[id.EventID]string),
+		UserLogin:           login,
+		connector:           connector,
+		apiKey:              key,
+		log:                 log,
+		activeRooms:         make(map[id.RoomID]bool),
+		pendingQueues:       make(map[id.RoomID]*pendingQueue),
+		activeRoomRuns:      make(map[id.RoomID]*roomRunState),
+		subagentRuns:        make(map[string]*subagentRun),
+		groupHistoryBuffers: make(map[id.RoomID]*groupHistoryBuffer),
+		userTypingState:     make(map[id.RoomID]userTypingState),
+		queueTyping:         make(map[id.RoomID]*TypingController),
+		toolApprovals:       make(map[string]*pendingToolApproval),
 	}
 
 	// Initialize inbound message processing with config values

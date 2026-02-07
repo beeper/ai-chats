@@ -231,9 +231,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 		_, allowed := allowSet[targetAgentID]
 		if !allowAny && !allowed {
 			allowedText := "none"
-			if allowAny {
-				allowedText = "*"
-			} else if len(allowSet) > 0 {
+			if len(allowSet) > 0 {
 				ids := make([]string, 0, len(allowSet))
 				for id := range allowSet {
 					ids = append(ids, id)

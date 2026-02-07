@@ -1192,7 +1192,6 @@ func (oc *AIClient) handleResponseOutputItemAdded(
 				RuleToolName string
 				ServerLabel  string
 				Action       string
-				TargetEvent  id.EventID
 
 				TTL time.Duration
 			}{
@@ -1204,7 +1203,6 @@ func (oc *AIClient) handleResponseOutputItemAdded(
 				ToolKind:     ToolApprovalKindMCP,
 				RuleToolName: mcpToolName,
 				ServerLabel:  serverLabel,
-				TargetEvent:  tool.eventID,
 				TTL:          ttl,
 			})
 
@@ -1296,7 +1294,6 @@ func (oc *AIClient) handleResponseOutputItemDone(
 				RuleToolName string
 				ServerLabel  string
 				Action       string
-				TargetEvent  id.EventID
 
 				TTL time.Duration
 			}{
@@ -1308,7 +1305,6 @@ func (oc *AIClient) handleResponseOutputItemDone(
 				ToolKind:     ToolApprovalKindMCP,
 				RuleToolName: mcpToolName,
 				ServerLabel:  serverLabel,
-				TargetEvent:  tool.eventID,
 				TTL:          ttl,
 			})
 
@@ -2314,7 +2310,6 @@ func (oc *AIClient) streamingResponse(
 							RuleToolName string
 							ServerLabel  string
 							Action       string
-							TargetEvent  id.EventID
 
 							TTL time.Duration
 						}{
@@ -2326,7 +2321,6 @@ func (oc *AIClient) streamingResponse(
 							ToolKind:     ToolApprovalKindBuiltin,
 							RuleToolName: toolName,
 							Action:       action,
-							TargetEvent:  tool.eventID,
 							TTL:          ttl,
 						})
 						oc.emitUIToolApprovalRequest(ctx, portal, state, approvalID, tool.callID, toolName, tool.eventID, oc.toolApprovalsTTLSeconds())
@@ -2359,7 +2353,6 @@ func (oc *AIClient) streamingResponse(
 							RuleToolName string
 							ServerLabel  string
 							Action       string
-							TargetEvent  id.EventID
 							TTL          time.Duration
 						}{
 							ApprovalID:   approvalID,
@@ -2370,7 +2363,6 @@ func (oc *AIClient) streamingResponse(
 							ToolKind:     ToolApprovalKindBuiltin,
 							RuleToolName: toolName,
 							Action:       action,
-							TargetEvent:  tool.eventID,
 							TTL:          ttl,
 						})
 						oc.emitUIToolApprovalRequest(ctx, portal, state, approvalID, tool.callID, toolName, tool.eventID, oc.toolApprovalsTTLSeconds())
@@ -3517,7 +3509,6 @@ func (oc *AIClient) streamingResponse(
 							RuleToolName string
 							ServerLabel  string
 							Action       string
-							TargetEvent  id.EventID
 							TTL          time.Duration
 						}{
 							ApprovalID:   approvalID,
@@ -3528,7 +3519,6 @@ func (oc *AIClient) streamingResponse(
 							ToolKind:     ToolApprovalKindBuiltin,
 							RuleToolName: toolName,
 							Action:       action,
-							TargetEvent:  tool.eventID,
 							TTL:          ttl,
 						})
 						oc.emitUIToolApprovalRequest(ctx, portal, state, approvalID, tool.callID, toolName, tool.eventID, oc.toolApprovalsTTLSeconds())
@@ -4276,7 +4266,6 @@ func (oc *AIClient) streamChatCompletions(
 							RuleToolName string
 							ServerLabel  string
 							Action       string
-							TargetEvent  id.EventID
 							TTL          time.Duration
 						}{
 							ApprovalID:   approvalID,
@@ -4287,7 +4276,6 @@ func (oc *AIClient) streamChatCompletions(
 							ToolKind:     ToolApprovalKindBuiltin,
 							RuleToolName: toolName,
 							Action:       action,
-							TargetEvent:  tool.eventID,
 							TTL:          ttl,
 						})
 						oc.emitUIToolApprovalRequest(ctx, portal, state, approvalID, tool.callID, toolName, tool.eventID, oc.toolApprovalsTTLSeconds())

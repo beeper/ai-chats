@@ -17,16 +17,14 @@ func newTestAIClient(owner id.UserID) *AIClient {
 		Metadata: &UserLoginMetadata{},
 	}
 	return &AIClient{
-		UserLogin:                ul,
-		toolApprovals:            make(map[string]*pendingToolApproval),
-		toolApprovalsByTargetEvt: make(map[id.EventID]string),
+		UserLogin:     ul,
+		toolApprovals: make(map[string]*pendingToolApproval),
 	}
 }
 
-func TestToolApprovals_ResolveByTargetEvent(t *testing.T) {
+func TestToolApprovals_Resolve(t *testing.T) {
 	owner := id.UserID("@owner:example.com")
 	roomID := id.RoomID("!room:example.com")
-	targetEvent := id.EventID("$toolcall:example.com")
 
 	oc := newTestAIClient(owner)
 
@@ -43,7 +41,6 @@ func TestToolApprovals_ResolveByTargetEvent(t *testing.T) {
 		RuleToolName string
 		ServerLabel  string
 		Action       string
-		TargetEvent  id.EventID
 
 		TTL time.Duration
 	}{
@@ -55,16 +52,15 @@ func TestToolApprovals_ResolveByTargetEvent(t *testing.T) {
 		ToolKind:     ToolApprovalKindBuiltin,
 		RuleToolName: "message",
 		Action:       "send",
-		TargetEvent:  targetEvent,
 		TTL:          2 * time.Second,
 	})
 
-	if err := oc.resolveToolApprovalByTargetEvent(roomID, targetEvent, ToolApprovalDecision{
+	if err := oc.resolveToolApproval(roomID, approvalID, ToolApprovalDecision{
 		Approve:   true,
 		Always:    false,
 		DecidedBy: owner,
 	}); err != nil {
-		t.Fatalf("resolve by target event failed: %v", err)
+		t.Fatalf("resolve failed: %v", err)
 	}
 
 	decision, _, ok := oc.waitToolApproval(context.Background(), approvalID)
@@ -79,7 +75,6 @@ func TestToolApprovals_ResolveByTargetEvent(t *testing.T) {
 func TestToolApprovals_RejectNonOwner(t *testing.T) {
 	owner := id.UserID("@owner:example.com")
 	roomID := id.RoomID("!room:example.com")
-	targetEvent := id.EventID("$toolcall:example.com")
 
 	oc := newTestAIClient(owner)
 	approvalID := "approval-1"
@@ -95,7 +90,6 @@ func TestToolApprovals_RejectNonOwner(t *testing.T) {
 		RuleToolName string
 		ServerLabel  string
 		Action       string
-		TargetEvent  id.EventID
 
 		TTL time.Duration
 	}{
@@ -107,11 +101,10 @@ func TestToolApprovals_RejectNonOwner(t *testing.T) {
 		ToolKind:     ToolApprovalKindBuiltin,
 		RuleToolName: "message",
 		Action:       "send",
-		TargetEvent:  targetEvent,
 		TTL:          2 * time.Second,
 	})
 
-	err := oc.resolveToolApprovalByTargetEvent(roomID, targetEvent, ToolApprovalDecision{
+	err := oc.resolveToolApproval(roomID, approvalID, ToolApprovalDecision{
 		Approve:   true,
 		Always:    false,
 		DecidedBy: id.UserID("@attacker:example.com"),
@@ -125,7 +118,6 @@ func TestToolApprovals_RejectCrossRoom(t *testing.T) {
 	owner := id.UserID("@owner:example.com")
 	roomID := id.RoomID("!room1:example.com")
 	otherRoom := id.RoomID("!room2:example.com")
-	targetEvent := id.EventID("$toolcall:example.com")
 
 	oc := newTestAIClient(owner)
 	approvalID := "approval-1"
@@ -141,7 +133,6 @@ func TestToolApprovals_RejectCrossRoom(t *testing.T) {
 		RuleToolName string
 		ServerLabel  string
 		Action       string
-		TargetEvent  id.EventID
 
 		TTL time.Duration
 	}{
@@ -153,11 +144,10 @@ func TestToolApprovals_RejectCrossRoom(t *testing.T) {
 		ToolKind:     ToolApprovalKindBuiltin,
 		RuleToolName: "message",
 		Action:       "send",
-		TargetEvent:  targetEvent,
 		TTL:          2 * time.Second,
 	})
 
-	if err := oc.resolveToolApprovalByTargetEvent(otherRoom, targetEvent, ToolApprovalDecision{
+	if err := oc.resolveToolApproval(otherRoom, approvalID, ToolApprovalDecision{
 		Approve:   true,
 		Always:    false,
 		DecidedBy: owner,
@@ -184,7 +174,6 @@ func TestToolApprovals_TimeoutAutoDeny(t *testing.T) {
 		RuleToolName string
 		ServerLabel  string
 		Action       string
-		TargetEvent  id.EventID
 
 		TTL time.Duration
 	}{

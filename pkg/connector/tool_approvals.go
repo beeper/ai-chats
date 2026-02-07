@@ -38,8 +38,6 @@ type pendingToolApproval struct {
 	RuleToolName string // normalized for matching/persistence (e.g. "message" or raw MCP tool name without "mcp.")
 	ServerLabel  string // MCP only
 	Action       string // builtin only (optional)
-
-	TargetEventID id.EventID // Matrix event ID to react to (tool call timeline event)
 	// ApprovalEventID tracks the timeline message used for durable approval UI (for edits).
 	ApprovalEventID id.EventID
 	// ApprovalEventUseBot records whether the approval message was sent as the bridge bot.
@@ -63,7 +61,6 @@ func (oc *AIClient) registerToolApproval(params struct {
 	RuleToolName string
 	ServerLabel  string
 	Action       string
-	TargetEvent  id.EventID
 
 	TTL time.Duration
 }) (*pendingToolApproval, bool) {
@@ -88,27 +85,20 @@ func (oc *AIClient) registerToolApproval(params struct {
 
 	now := time.Now()
 	p := &pendingToolApproval{
-		ApprovalID:    approvalID,
-		RoomID:        params.RoomID,
-		TurnID:        params.TurnID,
-		ToolCallID:    strings.TrimSpace(params.ToolCallID),
-		ToolName:      strings.TrimSpace(params.ToolName),
-		ToolKind:      params.ToolKind,
-		RuleToolName:  strings.TrimSpace(params.RuleToolName),
-		ServerLabel:   strings.TrimSpace(params.ServerLabel),
-		Action:        strings.TrimSpace(params.Action),
-		TargetEventID: params.TargetEvent,
-		RequestedAt:   now,
-		ExpiresAt:     now.Add(ttl),
-		decisionCh:    make(chan ToolApprovalDecision, 1),
+		ApprovalID:   approvalID,
+		RoomID:       params.RoomID,
+		TurnID:       params.TurnID,
+		ToolCallID:   strings.TrimSpace(params.ToolCallID),
+		ToolName:     strings.TrimSpace(params.ToolName),
+		ToolKind:     params.ToolKind,
+		RuleToolName: strings.TrimSpace(params.RuleToolName),
+		ServerLabel:  strings.TrimSpace(params.ServerLabel),
+		Action:       strings.TrimSpace(params.Action),
+		RequestedAt:  now,
+		ExpiresAt:    now.Add(ttl),
+		decisionCh:   make(chan ToolApprovalDecision, 1),
 	}
 	oc.toolApprovals[approvalID] = p
-	if p.TargetEventID != "" {
-		// Best-effort: later approvals for the same target message should not override.
-		if _, exists := oc.toolApprovalsByTargetEvt[p.TargetEventID]; !exists {
-			oc.toolApprovalsByTargetEvt[p.TargetEventID] = approvalID
-		}
-	}
 	return p, true
 }
 
@@ -168,23 +158,6 @@ func (oc *AIClient) resolveToolApproval(roomID id.RoomID, approvalID string, dec
 	default:
 		return fmt.Errorf("approval already resolved: %s", approvalID)
 	}
-}
-
-func (oc *AIClient) resolveToolApprovalByTargetEvent(roomID id.RoomID, targetEventID id.EventID, decision ToolApprovalDecision) error {
-	if oc == nil {
-		return fmt.Errorf("bridge not available")
-	}
-	targetEventID = id.EventID(strings.TrimSpace(string(targetEventID)))
-	if targetEventID == "" {
-		return fmt.Errorf("missing target event id")
-	}
-	oc.toolApprovalsMu.Lock()
-	approvalID := oc.toolApprovalsByTargetEvt[targetEventID]
-	oc.toolApprovalsMu.Unlock()
-	if strings.TrimSpace(approvalID) == "" {
-		return fmt.Errorf("no pending approval for that message")
-	}
-	return oc.resolveToolApproval(roomID, approvalID, decision)
 }
 
 func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (ToolApprovalDecision, *pendingToolApproval, bool) {
@@ -321,36 +294,5 @@ func (oc *AIClient) dropToolApprovalLocked(approvalID string) {
 	}
 	oc.toolApprovalsMu.Lock()
 	delete(oc.toolApprovals, approvalID)
-	// Clean up any target-event mappings pointing at this approval (tool call event, fallback notice, etc).
-	// This keeps behavior correct even if multiple event IDs were mapped to the same approval.
-	for evtID, mapped := range oc.toolApprovalsByTargetEvt {
-		if mapped == approvalID {
-			delete(oc.toolApprovalsByTargetEvt, evtID)
-		}
-	}
 	oc.toolApprovalsMu.Unlock()
-}
-
-// addToolApprovalTargetEvent maps an additional Matrix event ID to an existing pending approval.
-// This enables reaction-based approvals on fallback timeline notices (and other correlated events).
-func (oc *AIClient) addToolApprovalTargetEvent(approvalID string, targetEventID id.EventID) {
-	if oc == nil {
-		return
-	}
-	approvalID = strings.TrimSpace(approvalID)
-	targetEventID = id.EventID(strings.TrimSpace(string(targetEventID)))
-	if approvalID == "" || targetEventID == "" {
-		return
-	}
-
-	oc.toolApprovalsMu.Lock()
-	defer oc.toolApprovalsMu.Unlock()
-
-	if oc.toolApprovals[approvalID] == nil {
-		return
-	}
-	// Best-effort: do not override an existing mapping for this target message.
-	if _, exists := oc.toolApprovalsByTargetEvt[targetEventID]; !exists {
-		oc.toolApprovalsByTargetEvt[targetEventID] = approvalID
-	}
 }

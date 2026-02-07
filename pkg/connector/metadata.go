@@ -1,6 +1,8 @@
 package connector
 
 import (
+	"maps"
+
 	"go.mau.fi/util/jsontime"
 	"go.mau.fi/util/random"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -259,17 +261,13 @@ func clonePortalMetadata(src *PortalMetadata) *PortalMetadata {
 
 	clone := *src
 
-	// Ensure OpenCode metadata is copied.
-	clone.IsOpenCodeRoom = src.IsOpenCodeRoom
-	clone.OpenCodeInstanceID = src.OpenCodeInstanceID
-	clone.OpenCodeSessionID = src.OpenCodeSessionID
-	clone.OpenCodeReadOnly = src.OpenCodeReadOnly
-	clone.TypingMode = src.TypingMode
-	clone.TypingIntervalSeconds = src.TypingIntervalSeconds
-
 	if src.PDFConfig != nil {
 		pdf := *src.PDFConfig
 		clone.PDFConfig = &pdf
+	}
+
+	if src.SessionBootstrapByAgent != nil {
+		clone.SessionBootstrapByAgent = maps.Clone(src.SessionBootstrapByAgent)
 	}
 
 	return &clone

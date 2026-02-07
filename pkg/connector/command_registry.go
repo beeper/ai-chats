@@ -20,28 +20,28 @@ func (oc *OpenAIConnector) registerCommands(proc *commands.Processor) {
 	if len(handlers) > 0 {
 		commandHandlers := make([]commands.CommandHandler, 0, len(handlers))
 		for _, handler := range handlers {
-			if handler != nil && handler.Func != nil {
-				original := handler.Func
-				handler.Func = func(ce *commands.Event) {
-					// Codex rooms are intentionally isolated from the normal command surface.
-					if ce != nil && ce.Portal != nil && ce.Portal.Metadata != nil {
-						if pm, ok := ce.Portal.Metadata.(*PortalMetadata); ok && pm != nil && pm.IsCodexRoom {
-							ce.Reply("This is a Codex room. `!ai` commands are not supported here. Use `/status`, `/new`, or `/approve`.")
-							return
-						}
-					}
-					senderID := ""
-					if ce != nil && ce.User != nil {
-						senderID = ce.User.MXID.String()
-					}
-					if !isOwnerAllowed(&oc.Config, senderID) {
-						if ce != nil {
-							ce.Reply("That command is restricted to configured owners.")
-						}
+			if handler == nil || handler.Func == nil {
+				continue
+			}
+			original := handler.Func
+			handler.Func = func(ce *commands.Event) {
+				if ce != nil && ce.Portal != nil && ce.Portal.Metadata != nil {
+					if pm, ok := ce.Portal.Metadata.(*PortalMetadata); ok && pm != nil && pm.IsCodexRoom {
+						ce.Reply("This is a Codex room. `!ai` commands are not supported here. Use `/status`, `/new`, or `/approve`.")
 						return
 					}
-					original(ce)
 				}
+				senderID := ""
+				if ce != nil && ce.User != nil {
+					senderID = ce.User.MXID.String()
+				}
+				if !isOwnerAllowed(&oc.Config, senderID) {
+					if ce != nil {
+						ce.Reply("That command is restricted to configured owners.")
+					}
+					return
+				}
+				original(ce)
 			}
 			commandHandlers = append(commandHandlers, handler)
 		}

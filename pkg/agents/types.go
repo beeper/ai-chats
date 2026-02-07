@@ -210,6 +210,8 @@ func (a *AgentDefinition) Clone() *AgentDefinition {
 		Subagents:       cloneSubagentConfig(a.Subagents),
 		Temperature:     a.Temperature,
 		ReasoningEffort: a.ReasoningEffort,
+		ResponseMode:    a.ResponseMode,
+		HeartbeatPrompt: a.HeartbeatPrompt,
 		IsPreset:        a.IsPreset,
 		CreatedAt:       a.CreatedAt,
 		UpdatedAt:       a.UpdatedAt,
@@ -238,7 +240,8 @@ func cloneSubagentConfig(cfg *SubagentConfig) *SubagentConfig {
 		return nil
 	}
 	out := &SubagentConfig{
-		Model: cfg.Model,
+		Model:    cfg.Model,
+		Thinking: cfg.Thinking,
 	}
 	if len(cfg.AllowAgents) > 0 {
 		out.AllowAgents = append([]string{}, cfg.AllowAgents...)
