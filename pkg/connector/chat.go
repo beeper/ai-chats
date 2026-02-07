@@ -148,7 +148,7 @@ func (oc *AIClient) SearchUsers(ctx context.Context, query string) ([]*bridgev2.
 			continue
 		}
 
-		displayName := oc.agentModelDisplayName(agentName, modelID)
+		displayName := agentName
 		oc.ensureAgentGhostDisplayName(ctx, agent.ID, modelID, agentName)
 
 		results = append(results, &bridgev2.ResolveIdentifierResponse{
@@ -193,7 +193,7 @@ func (oc *AIClient) GetContactList(ctx context.Context) ([]*bridgev2.ResolveIden
 
 		// Update ghost display name
 		agentName := oc.resolveAgentDisplayName(ctx, agent)
-		displayName := oc.agentModelDisplayName(agentName, modelID)
+		displayName := agentName
 		oc.ensureAgentGhostDisplayName(ctx, agent.ID, modelID, agentName)
 
 		contacts = append(contacts, &bridgev2.ResolveIdentifierResponse{
@@ -335,7 +335,7 @@ func (oc *AIClient) resolveAgentIdentifierWithModel(ctx context.Context, agent *
 	}
 
 	agentName := oc.resolveAgentDisplayName(ctx, agent)
-	displayName := oc.agentModelDisplayName(agentName, modelID)
+	displayName := agentName
 	oc.ensureAgentGhostDisplayName(ctx, agent.ID, modelID, agentName)
 
 	var chatResp *bridgev2.CreateChatResponse
@@ -878,7 +878,7 @@ func (oc *AIClient) createAndOpenAgentChat(ctx context.Context, portal *bridgev2
 	roomLink := fmt.Sprintf("https://matrix.to/#/%s", newPortal.MXID)
 	oc.sendSystemNotice(ctx, portal, fmt.Sprintf(
 		"Created new %s chat.\nOpen: %s",
-		oc.agentModelDisplayName(agentName, modelID), roomLink,
+		agentName, roomLink,
 	))
 }
 
@@ -1140,7 +1140,7 @@ func (oc *AIClient) applyAgentChatInfo(chatInfo *bridgev2.ChatInfo, agentID, age
 	}
 
 	agentGhostID := agentUserID(agentID)
-	agentDisplayName := oc.agentModelDisplayName(agentName, modelID)
+	agentDisplayName := agentName
 
 	members := chatInfo.Members
 	if members == nil {
@@ -1362,7 +1362,7 @@ func (oc *AIClient) handleAgentModelSwitch(ctx context.Context, portal *bridgev2
 
 	ghostID := agentUserID(agentID)
 	agentName := oc.resolveAgentDisplayName(ctx, agent)
-	displayName := oc.agentModelDisplayName(agentName, newModel)
+	displayName := agentName
 	oldModelName := modelContactName(oldModel, oc.findModelInfo(oldModel))
 	newModelName := modelContactName(newModel, oc.findModelInfo(newModel))
 	oldGhostID := portal.OtherUserID

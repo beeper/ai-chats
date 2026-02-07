@@ -2534,7 +2534,7 @@ func (oc *AIClient) ensureAgentGhostDisplayName(ctx context.Context, agentID, mo
 	if err != nil || ghost == nil {
 		return
 	}
-	displayName := oc.agentModelDisplayName(agentName, modelID)
+	displayName := agentName
 	var avatar *bridgev2.Avatar
 	if agentID != "" {
 		store := NewAgentStoreAdapter(oc)

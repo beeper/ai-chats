@@ -99,7 +99,7 @@ func (oc *AIClient) createBuilderRoom(ctx context.Context) (*bridgev2.Portal, *b
 		modelID = oc.effectiveModel(nil)
 	}
 	bossGhostID := agentUserID(bossAgent.ID)
-	bossDisplayName := oc.agentModelDisplayName(oc.resolveAgentDisplayName(ctx, bossAgent), modelID)
+	bossDisplayName := oc.resolveAgentDisplayName(ctx, modelID)
 	portal.OtherUserID = bossGhostID
 
 	if chatInfo != nil && chatInfo.Members != nil {

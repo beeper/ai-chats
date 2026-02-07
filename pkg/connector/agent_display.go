@@ -8,12 +8,6 @@ import (
 	"github.com/beeper/ai-bridge/pkg/textfs"
 )
 
-// agentModelDisplayName returns a display name for an agent.
-// Example: "Beep"
-func (oc *AIClient) agentModelDisplayName(agentName, modelID string) string {
-	return agentName
-}
-
 func (oc *AIClient) resolveAgentDisplayName(ctx context.Context, agent *agents.AgentDefinition) string {
 	if agent == nil {
 		return ""
