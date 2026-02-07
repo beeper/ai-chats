@@ -105,25 +105,13 @@ func resolveDesktopInstanceName(instances map[string]DesktopAPIInstance, request
 	}
 	sort.Strings(names)
 	return "", fmt.Errorf(
-		"multiple desktop API instances configured (%s). Provide instance or use full sessionKey (desktop-api:<instance>:<chatId>) from sessions_list, or set a default with !ai desktop-api add <token> [baseURL].",
+		"multiple desktop API instances configured (%s). Provide instance or use full sessionKey (desktop-api:<instance>:<chatId>) from sessions_list, or set a default with !ai desktop-api add <token> [baseURL]",
 		strings.Join(names, ", "),
 	)
 }
 
 func (oc *AIClient) resolveDesktopInstanceName(requested string) (string, error) {
 	return resolveDesktopInstanceName(oc.desktopAPIInstances(), requested)
-}
-
-// desktopInstance resolves an optional instance name (may be empty/"default") to a configured instance key.
-// Prefer this from call sites to keep things consistent and reduce repeated normalization logic.
-func (oc *AIClient) desktopInstance(requested string) (string, error) {
-	return oc.resolveDesktopInstanceName(requested)
-}
-
-// desktopClient resolves an optional instance name and returns a Desktop API client bound to it.
-// It also returns the resolved instance key.
-func (oc *AIClient) desktopClient(requestedInstance string) (*beeperdesktopapi.Client, string, error) {
-	return oc.desktopAPIClientResolved(requestedInstance)
 }
 
 func normalizeDesktopSessionKeyWithInstance(instance, chatID string) string {
@@ -217,23 +205,6 @@ func (oc *AIClient) desktopAPIClient(instance string) (*beeperdesktopapi.Client,
 	}
 	client := beeperdesktopapi.NewClient(options...)
 	return &client, nil
-}
-
-func (oc *AIClient) desktopAPIClientResolved(requestedInstance string) (*beeperdesktopapi.Client, string, error) {
-	instance, err := oc.resolveDesktopInstanceName(requestedInstance)
-	if err != nil {
-		return nil, "", err
-	}
-	config, ok := oc.desktopAPIInstanceConfig(instance)
-	if !ok || strings.TrimSpace(config.Token) == "" {
-		return nil, instance, fmt.Errorf("desktop API token is not set")
-	}
-	options := []option.RequestOption{option.WithAccessToken(strings.TrimSpace(config.Token))}
-	if baseURL := strings.TrimSpace(config.BaseURL); baseURL != "" {
-		options = append(options, option.WithBaseURL(baseURL))
-	}
-	client := beeperdesktopapi.NewClient(options...)
-	return &client, instance, nil
 }
 
 func (oc *AIClient) desktopAPIInstanceNames() []string {
