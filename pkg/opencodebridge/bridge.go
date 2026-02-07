@@ -134,6 +134,13 @@ func (b *Bridge) RestoreConnections(ctx context.Context) error {
 	return b.manager.RestoreConnections(ctx)
 }
 
+func (b *Bridge) DisconnectAll() {
+	if b == nil || b.manager == nil {
+		return
+	}
+	b.manager.DisconnectAll()
+}
+
 func (b *Bridge) Connect(ctx context.Context, baseURL, password, username string) (*OpenCodeInstance, int, error) {
 	if b == nil || b.manager == nil {
 		return nil, 0, ErrUnavailable

@@ -20,6 +20,23 @@ codex:
     title: "AI Bridge (Matrix)"
     version: "0.1.0"
 
+# Optional OpenCode integration (local `opencode serve` + session backfill/streaming).
+opencode:
+  enabled: true
+  # When enabled, the bridge will start a local `opencode serve` and auto-connect to it.
+  # This is optional; you can still connect manually with `!ai opencode add`.
+  auto_start: false
+  command: "opencode"
+  hostname: "127.0.0.1"
+  # Port 0 chooses a free port on first start and persists it per login.
+  port: 0
+  username: "opencode"
+  # If empty, a password is generated per login and stored in login metadata.
+  password: ""
+  # If true, runs OpenCode with isolated XDG directories (may require copying your OpenCode config/plugins).
+  isolate_xdg: false
+  home_base_dir: "~/.local/share/ai-bridge/opencode"
+
 # Per-provider default models and settings.
 # These are used when a room doesn't have a specific model configured.
 providers:
@@ -96,7 +113,7 @@ tool_approvals:
   ttlSeconds: 600
   requireForMcp: true
   # List of builtin tool names that require approval (subject to per-tool action allowlists).
-  requireForTools: ["message", "write", "edit", "apply_patch", "cron", "gravatar_set", "create_agent", "fork_agent", "edit_agent", "delete_agent", "modify_room", "sessions_send", "sessions_spawn", "run_internal_command"]
+  requireForTools: ["message", "cron", "gravatar_set", "create_agent", "fork_agent", "edit_agent", "delete_agent", "modify_room", "sessions_send", "sessions_spawn", "run_internal_command"]
 
 # Optional per-channel overrides.
 channels:
@@ -165,6 +182,12 @@ tools:
   mcp:
     # Disabled by default for safety. Enable explicitly to allow local stdio MCP servers.
     enable_stdio: false
+
+  # Virtual filesystem tools.
+  vfs:
+    apply_patch:
+      enabled: false
+      allow_models: []
 
   # Media understanding/transcription (OpenClaw-style).
   # Supports provider/CLI entries and per-capability defaults.

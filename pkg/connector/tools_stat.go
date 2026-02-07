@@ -22,11 +22,13 @@ func executeStat(ctx context.Context, args map[string]any) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	opCtx, cancel := context.WithTimeout(ctx, textFSToolTimeout)
+	defer cancel()
 	raw, ok := args["path"].(string)
 	if !ok || strings.TrimSpace(raw) == "" {
 		return "", fmt.Errorf("missing or invalid 'path' argument")
 	}
-	entry, err := store.Stat(ctx, raw)
+	entry, err := store.Stat(opCtx, raw)
 	if err != nil {
 		return "", err
 	}

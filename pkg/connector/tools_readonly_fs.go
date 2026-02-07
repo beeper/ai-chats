@@ -13,13 +13,15 @@ func executeLS(ctx context.Context, args map[string]any) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	opCtx, cancel := context.WithTimeout(ctx, textFSToolTimeout)
+	defer cancel()
 	dir := ""
 	if raw, ok := args["path"]; ok {
 		if s, ok := raw.(string); ok {
 			dir = strings.TrimSpace(s)
 		}
 	}
-	entries, err := store.ListWithPrefix(ctx, dir)
+	entries, err := store.ListWithPrefix(opCtx, dir)
 	if err != nil {
 		return "", err
 	}
@@ -29,7 +31,7 @@ func executeLS(ctx context.Context, args map[string]any) (string, error) {
 	}
 	if len(names) == 0 && dir != "" {
 		// Check if it's a file
-		if _, found, _ := store.Read(ctx, dir); found {
+		if _, found, _ := store.Read(opCtx, dir); found {
 			return dir, nil
 		}
 		return "", fmt.Errorf("path not found: %s", dir)
@@ -45,6 +47,8 @@ func executeFind(ctx context.Context, args map[string]any) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	opCtx, cancel := context.WithTimeout(ctx, textFSToolTimeout)
+	defer cancel()
 	patternRaw, ok := args["pattern"].(string)
 	if !ok || strings.TrimSpace(patternRaw) == "" {
 		return "", fmt.Errorf("missing or invalid 'pattern' argument")
@@ -56,7 +60,7 @@ func executeFind(ctx context.Context, args map[string]any) (string, error) {
 			base = strings.Trim(strings.TrimSpace(s), "/")
 		}
 	}
-	entries, err := store.ListWithPrefix(ctx, base)
+	entries, err := store.ListWithPrefix(opCtx, base)
 	if err != nil {
 		return "", err
 	}
@@ -92,6 +96,8 @@ func executeGrep(ctx context.Context, args map[string]any) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	opCtx, cancel := context.WithTimeout(ctx, textFSToolTimeout)
+	defer cancel()
 	patternRaw, ok := args["pattern"].(string)
 	if !ok || strings.TrimSpace(patternRaw) == "" {
 		return "", fmt.Errorf("missing or invalid 'pattern' argument")
@@ -135,7 +141,7 @@ func executeGrep(ctx context.Context, args map[string]any) (string, error) {
 		}
 	}
 
-	entries, err := store.ListWithPrefix(ctx, pathArg)
+	entries, err := store.ListWithPrefix(opCtx, pathArg)
 	if err != nil {
 		return "", err
 	}

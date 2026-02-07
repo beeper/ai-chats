@@ -91,6 +91,27 @@ func (m *OpenCodeManager) IsConnected(instanceID string) bool {
 	return inst.connected
 }
 
+// DisconnectAll stops all in-memory OpenCode connections/event loops without
+// modifying persisted instance metadata. Connections will be restored on next login connect.
+func (m *OpenCodeManager) DisconnectAll() {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, inst := range m.instances {
+		if inst == nil {
+			continue
+		}
+		if inst.cancel != nil {
+			inst.cancel()
+		}
+		inst.cancel = nil
+		inst.connected = false
+	}
+	m.instances = make(map[string]*openCodeInstance)
+}
+
 func (m *OpenCodeManager) RestoreConnections(ctx context.Context) error {
 	if m == nil || m.bridge == nil || m.bridge.host == nil {
 		return nil

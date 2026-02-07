@@ -18,6 +18,7 @@ var exampleNetworkConfig string
 type Config struct {
 	Beeper        BeeperConfig                       `yaml:"beeper"`
 	Codex         *CodexConfig                       `yaml:"codex"`
+	OpenCode      *OpenCodeConfig                    `yaml:"opencode"`
 	Providers     ProvidersConfig                    `yaml:"providers"`
 	Models        *ModelsConfig                      `yaml:"models"`
 	Bridge        BridgeConfig                       `yaml:"bridge"`
@@ -72,9 +73,6 @@ func (c *ToolApprovalsRuntimeConfig) WithDefaults() *ToolApprovalsRuntimeConfig 
 	if len(c.RequireForTools) == 0 {
 		c.RequireForTools = []string{
 			"message",
-			"write",
-			"edit",
-			"apply_patch",
 			"cron",
 			"gravatar_set",
 
@@ -108,6 +106,19 @@ type CodexClientInfo struct {
 	Name    string `yaml:"name"`
 	Title   string `yaml:"title"`
 	Version string `yaml:"version"`
+}
+
+// OpenCodeConfig configures optional OpenCode local server autostart/restore.
+type OpenCodeConfig struct {
+	Enabled     *bool  `yaml:"enabled"`
+	AutoStart   *bool  `yaml:"auto_start"`
+	Command     string `yaml:"command"`
+	Hostname    string `yaml:"hostname"`
+	Port        int    `yaml:"port"`
+	Username    string `yaml:"username"`
+	Password    string `yaml:"password"`
+	IsolateXDG  *bool  `yaml:"isolate_xdg"`
+	HomeBaseDir string `yaml:"home_base_dir"`
 }
 
 // AgentsConfig configures agent defaults (OpenClaw-style).
@@ -339,6 +350,7 @@ type ToolProvidersConfig struct {
 	Media  *MediaToolsConfig `yaml:"media"`
 	Nexus  *NexusToolsConfig `yaml:"nexus"`
 	MCP    *MCPToolsConfig   `yaml:"mcp"`
+	VFS    *VFSToolsConfig   `yaml:"vfs"`
 }
 
 // NexusToolsConfig configures Nexus tool bridging to a clay-nexus backend.
@@ -354,6 +366,17 @@ type NexusToolsConfig struct {
 // MCPToolsConfig configures generic MCP behavior.
 type MCPToolsConfig struct {
 	EnableStdio bool `yaml:"enable_stdio"`
+}
+
+// VFSToolsConfig configures virtual filesystem tools.
+type VFSToolsConfig struct {
+	ApplyPatch *ApplyPatchToolsConfig `yaml:"apply_patch"`
+}
+
+// ApplyPatchToolsConfig configures apply_patch availability.
+type ApplyPatchToolsConfig struct {
+	Enabled     *bool    `yaml:"enabled"`
+	AllowModels []string `yaml:"allow_models"`
 }
 
 // MediaUnderstandingScopeMatch defines match criteria for media understanding scope rules.

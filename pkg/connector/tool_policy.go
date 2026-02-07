@@ -62,6 +62,12 @@ func (oc *AIClient) isToolAvailable(meta *PortalMetadata, toolName string) (bool
 	if toolName == ToolNameImageGenerate && !oc.canUseImageGeneration() {
 		return false, SourceProviderLimit, "Image generation not available for this provider"
 	}
+	if toolName == ToolNameApplyPatch {
+		available, source, reason := oc.applyPatchAvailability(meta)
+		if !available {
+			return false, source, reason
+		}
+	}
 	if toolName == ToolNameImage {
 		if model, _ := oc.resolveVisionModelForImage(context.Background(), meta); model == "" {
 			return false, SourceModelLimit, "No vision-capable model available"
@@ -80,6 +86,69 @@ func (oc *AIClient) isToolAvailable(meta *PortalMetadata, toolName string) (bool
 		return false, SourceAgentPolicy, "Nexus tools are restricted to the Nexus agent"
 	}
 	return true, SourceGlobalDefault, ""
+}
+
+func (oc *AIClient) applyPatchAvailability(meta *PortalMetadata) (bool, SettingSource, string) {
+	if oc == nil || oc.connector == nil {
+		return false, SourceGlobalDefault, "apply_patch disabled by config"
+	}
+	cfg := oc.connector.Config.Tools.VFS
+	if cfg == nil || cfg.ApplyPatch == nil || cfg.ApplyPatch.Enabled == nil || !*cfg.ApplyPatch.Enabled {
+		return false, SourceGlobalDefault, "apply_patch disabled by config"
+	}
+	if len(cfg.ApplyPatch.AllowModels) == 0 {
+		return true, SourceGlobalDefault, ""
+	}
+	modelID := strings.TrimSpace(oc.effectiveModel(meta))
+	if modelID == "" {
+		return false, SourceModelLimit, "apply_patch model unavailable"
+	}
+	provider, _ := oc.resolveToolPolicyModelContext(meta)
+	if !applyPatchModelAllowed(cfg.ApplyPatch.AllowModels, modelID, provider) {
+		return false, SourceModelLimit, "apply_patch not enabled for model"
+	}
+	return true, SourceGlobalDefault, ""
+}
+
+func applyPatchModelAllowed(allow []string, modelID string, provider string) bool {
+	modelID = strings.TrimSpace(modelID)
+	if modelID == "" {
+		return false
+	}
+	normalizedProvider := strings.ToLower(strings.TrimSpace(provider))
+	backend, actual := ParseModelPrefix(modelID)
+	_ = backend
+	normalizedFull := strings.ToLower(strings.TrimSpace(modelID))
+	normalizedActual := strings.ToLower(strings.TrimSpace(actual))
+
+	candidates := map[string]struct{}{}
+	if normalizedFull != "" {
+		candidates[normalizedFull] = struct{}{}
+	}
+	if normalizedActual != "" {
+		candidates[normalizedActual] = struct{}{}
+	}
+	if normalizedActual != "" {
+		if parts := strings.SplitN(normalizedActual, "/", 2); len(parts) == 2 {
+			candidates[parts[1]] = struct{}{}
+			if normalizedProvider != "" {
+				candidates[normalizedProvider+"/"+parts[1]] = struct{}{}
+			}
+		} else if normalizedProvider != "" {
+			candidates[normalizedProvider+"/"+normalizedActual] = struct{}{}
+		}
+	}
+
+	for _, raw := range allow {
+		entry := strings.ToLower(strings.TrimSpace(raw))
+		if entry == "" {
+			continue
+		}
+		if _, ok := candidates[entry]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // isToolEnabled checks if a specific tool is enabled (policy + availability).

@@ -112,6 +112,25 @@ func (oc *OpenAIConnector) applyRuntimeDefaults() {
 	if strings.TrimSpace(oc.Config.Codex.ClientInfo.Version) == "" {
 		oc.Config.Codex.ClientInfo.Version = "0.1.0"
 	}
+	if oc.Config.OpenCode != nil {
+		if oc.Config.OpenCode.Enabled == nil {
+			v := true
+			oc.Config.OpenCode.Enabled = &v
+		}
+		if oc.Config.OpenCode.AutoStart == nil {
+			v := false
+			oc.Config.OpenCode.AutoStart = &v
+		}
+		if strings.TrimSpace(oc.Config.OpenCode.Command) == "" {
+			oc.Config.OpenCode.Command = "opencode"
+		}
+		if strings.TrimSpace(oc.Config.OpenCode.Hostname) == "" {
+			oc.Config.OpenCode.Hostname = "127.0.0.1"
+		}
+		if strings.TrimSpace(oc.Config.OpenCode.Username) == "" {
+			oc.Config.OpenCode.Username = "opencode"
+		}
+	}
 	if oc.Config.Pruning == nil {
 		oc.Config.Pruning = DefaultPruningConfig()
 	} else {

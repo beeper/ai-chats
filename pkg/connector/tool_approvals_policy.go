@@ -1,10 +1,6 @@
 package connector
 
-import (
-	"strings"
-
-	"github.com/beeper/ai-bridge/pkg/textfs"
-)
+import "strings"
 
 func readStringArgAny(args map[string]any, key string) string {
 	if args == nil {
@@ -38,15 +34,17 @@ func (oc *AIClient) builtinToolApprovalRequirement(toolName string, args map[str
 		default:
 			return true, action
 		}
-	case normalizeApprovalToken(ToolNameWrite), normalizeApprovalToken(ToolNameEdit):
-		// Virtual FS writes to MEMORY.md/memory/* are low-risk and a core workflow.
-		// Keep approvals for non-memory paths.
-		p := readStringArgAny(args, "path")
-		if p == "" {
-			p = readStringArgAny(args, "file_path")
-		}
-		if normalized, err := textfs.NormalizePath(p); err == nil && textfs.IsMemoryPath(normalized) {
+	case normalizeApprovalToken(ToolNameWrite),
+		normalizeApprovalToken(ToolNameEdit),
+		normalizeApprovalToken(ToolNameApplyPatch):
+		path := strings.ToLower(readStringArgAny(args, "path"))
+		// Memory writes/edits are lower-risk (bridge-local notes/state), so allow without approval.
+		if path == "memory.md" || strings.HasPrefix(path, "memory/") {
 			return false, "memory"
+		}
+		// If we don't know the path (e.g. apply_patch), default to requiring approval.
+		if path == "" {
+			return true, "workspace"
 		}
 		return true, "workspace"
 	case normalizeApprovalToken(ToolNameCron):

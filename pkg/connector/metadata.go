@@ -150,6 +150,11 @@ type UserLoginMetadata struct {
 
 	// OpenCode instances connected for this login (keyed by instance ID).
 	OpenCodeInstances map[string]*opencodebridge.OpenCodeInstance `json:"opencode_instances,omitempty"`
+
+	// OpenCode managed local server (optional).
+	OpenCodeLocalPort     int    `json:"opencode_local_port,omitempty"`
+	OpenCodeLocalUsername string `json:"opencode_local_username,omitempty"`
+	OpenCodeLocalPassword string `json:"opencode_local_password,omitempty"`
 }
 
 // HeartbeatState tracks last heartbeat delivery for dedupe.

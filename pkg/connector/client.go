@@ -316,7 +316,9 @@ type AIClient struct {
 	queueTyping   map[id.RoomID]*TypingController
 
 	// OpenCode bridge (optional)
-	opencodeBridge *opencodebridge.Bridge
+	opencodeBridge  *opencodebridge.Bridge
+	opencodeLocalMu sync.Mutex
+	opencodeLocal   *openCodeLocalServer
 
 	// OpenCode stream event sequencing
 	openCodeStreamMu  sync.Mutex
@@ -1039,6 +1041,11 @@ func (oc *AIClient) Connect(ctx context.Context) {
 		Message:    "Connected",
 	})
 
+	// Restore optional integrations in the background.
+	if oc.opencodeBridge != nil {
+		go oc.bootstrapOpenCode(oc.backgroundContext(ctx))
+	}
+
 	if oc.heartbeatRunner != nil {
 		oc.heartbeatRunner.Start()
 	}
@@ -1056,6 +1063,11 @@ func (oc *AIClient) Disconnect() {
 		oc.inboundDebouncer.FlushAll()
 	}
 	oc.loggedIn.Store(false)
+
+	if oc.opencodeBridge != nil {
+		oc.opencodeBridge.DisconnectAll()
+	}
+	oc.stopOpenCodeLocalServer()
 
 	if oc.cronService != nil {
 		oc.cronService.Stop()

@@ -57,6 +57,23 @@ network:
       title: "AI Bridge (Matrix)"
       version: "0.1.0"
 
+  # Optional OpenCode integration (local `opencode serve` + session backfill/streaming).
+  opencode:
+    enabled: true
+    # When enabled, the bridge will start a local `opencode serve` and auto-connect to it.
+    # This is optional; you can still connect manually with `!ai opencode add`.
+    auto_start: false
+    command: "opencode"
+    hostname: "127.0.0.1"
+    # Port 0 chooses a free port on first start and persists it per login.
+    port: 0
+    username: "opencode"
+    # If empty, a password is generated per login and stored in login metadata.
+    password: ""
+    # If true, runs OpenCode with isolated XDG directories (may require copying your OpenCode config/plugins).
+    isolate_xdg: false
+    home_base_dir: "~/.local/share/ai-bridge/opencode"
+
   # Per-provider default models
   providers:
     beeper:
