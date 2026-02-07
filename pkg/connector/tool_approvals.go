@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
 
@@ -39,6 +40,10 @@ type pendingToolApproval struct {
 	Action       string // builtin only (optional)
 
 	TargetEventID id.EventID // Matrix event ID to react to (tool call timeline event)
+	// ApprovalEventID tracks the timeline message used for durable approval UI (for edits).
+	ApprovalEventID id.EventID
+	// ApprovalEventUseBot records whether the approval message was sent as the bridge bot.
+	ApprovalEventUseBot bool
 
 	RequestedAt time.Time
 	ExpiresAt   time.Time
@@ -107,6 +112,22 @@ func (oc *AIClient) registerToolApproval(params struct {
 	return p, true
 }
 
+func (oc *AIClient) setApprovalSnapshotEvent(approvalID string, eventID id.EventID, useBot bool) {
+	if oc == nil {
+		return
+	}
+	approvalID = strings.TrimSpace(approvalID)
+	if approvalID == "" || eventID == "" {
+		return
+	}
+	oc.toolApprovalsMu.Lock()
+	if p := oc.toolApprovals[approvalID]; p != nil {
+		p.ApprovalEventID = eventID
+		p.ApprovalEventUseBot = useBot
+	}
+	oc.toolApprovalsMu.Unlock()
+}
+
 func (oc *AIClient) resolveToolApproval(roomID id.RoomID, approvalID string, decision ToolApprovalDecision) error {
 	if oc == nil || oc.UserLogin == nil {
 		return fmt.Errorf("bridge not available")
@@ -142,6 +163,7 @@ func (oc *AIClient) resolveToolApproval(roomID id.RoomID, approvalID string, dec
 	}
 	select {
 	case p.decisionCh <- decision:
+		go oc.emitApprovalSnapshotDecision(approvalID, decision)
 		return nil
 	default:
 		return fmt.Errorf("approval already resolved: %s", approvalID)
@@ -203,6 +225,89 @@ func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (To
 	case <-ctx.Done():
 		oc.dropToolApprovalLocked(approvalID)
 		return ToolApprovalDecision{}, p, false
+	}
+}
+
+func (oc *AIClient) emitApprovalSnapshotDecision(approvalID string, decision ToolApprovalDecision) {
+	if oc == nil || oc.UserLogin == nil {
+		return
+	}
+	approvalID = strings.TrimSpace(approvalID)
+	if approvalID == "" {
+		return
+	}
+	oc.toolApprovalsMu.Lock()
+	p := oc.toolApprovals[approvalID]
+	oc.toolApprovalsMu.Unlock()
+	if p == nil || p.ApprovalEventID == "" {
+		return
+	}
+
+	ctx := oc.backgroundContext(context.Background())
+	portal, err := oc.UserLogin.Bridge.GetPortalByMXID(ctx, p.RoomID)
+	if err != nil || portal == nil || portal.MXID == "" {
+		return
+	}
+
+	toolName := strings.TrimSpace(p.ToolName)
+	if toolName == "" {
+		toolName = "tool"
+	}
+
+	state := "output-denied"
+	body := fmt.Sprintf("Approval denied for %s.", toolName)
+	toolPart := map[string]any{
+		"type":       "dynamic-tool",
+		"toolName":   toolName,
+		"toolCallId": p.ToolCallID,
+		"state":      state,
+	}
+	if decision.Approve {
+		state = "output-available"
+		body = fmt.Sprintf("Approved %s.", toolName)
+		toolPart["state"] = state
+		toolPart["output"] = map[string]any{"message": "Approved"}
+	} else {
+		reason := strings.TrimSpace(decision.Reason)
+		if reason == "" {
+			reason = "Denied"
+		}
+		toolPart["errorText"] = reason
+	}
+
+	uiMessage := map[string]any{
+		"id":       "approval:" + approvalID,
+		"role":     "assistant",
+		"metadata": map[string]any{"turn_id": p.TurnID},
+		"parts":    []map[string]any{toolPart},
+	}
+
+	eventRaw := map[string]any{
+		"msgtype": event.MsgNotice,
+		"body":    "* " + body,
+		"m.new_content": map[string]any{
+			"msgtype": event.MsgNotice,
+			"body":    body,
+		},
+		"m.relates_to": map[string]any{
+			"rel_type": RelReplace,
+			"event_id": p.ApprovalEventID.String(),
+		},
+		BeeperAIKey:                     uiMessage,
+		"com.beeper.dont_render_edited": true,
+	}
+	eventContent := &event.Content{Raw: eventRaw}
+
+	sendWithBot := p.ApprovalEventUseBot
+	if !sendWithBot {
+		if intent := oc.getModelIntent(ctx, portal); intent != nil {
+			if _, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, eventContent, nil); err == nil {
+				return
+			}
+		}
+	}
+	if oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.Bot != nil {
+		_, _ = oc.UserLogin.Bridge.Bot.SendMessage(ctx, portal.MXID, event.EventMessage, eventContent, nil)
 	}
 }
 

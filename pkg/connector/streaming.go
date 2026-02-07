@@ -873,15 +873,37 @@ func (oc *AIClient) emitUIToolApprovalRequest(
 		expires = fmt.Sprintf(" Expires in %d min.", mins)
 	}
 	body := fmt.Sprintf(
-		"Approval required to run %s. React 👍 to allow, ⭐ to always allow, or 👎 to deny. Or type /approve %s allow|always|deny.%s",
+		"Approval required to run %s. Type /approve %s allow|always|deny.%s",
 		toolName,
 		approvalID,
 		expires,
 	)
 
+	uiMessage := map[string]any{
+		"id":   "approval:" + approvalID,
+		"role": "assistant",
+		"metadata": map[string]any{
+			"turn_id":      state.turnID,
+			"approval_id":  approvalID,
+			"tool_call_id": toolCallID,
+		},
+		"parts": []map[string]any{
+			{
+				"type":       "dynamic-tool",
+				"toolName":   toolName,
+				"toolCallId": toolCallID,
+				"state":      "approval-requested",
+				"approval": map[string]any{
+					"id": approvalID,
+				},
+			},
+		},
+	}
+
 	raw := map[string]any{
-		"body":    body,
-		"msgtype": event.MsgNotice,
+		"body":      body,
+		"msgtype":   event.MsgNotice,
+		BeeperAIKey: uiMessage,
 	}
 	if targetEventID != "" {
 		raw["m.relates_to"] = map[string]any{
@@ -895,9 +917,8 @@ func (oc *AIClient) emitUIToolApprovalRequest(
 	// reads as part of the assistant's flow), but fall back to the bridge bot.
 	if intent := oc.getModelIntent(ctx, portal); intent != nil {
 		if resp, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, content, nil); err == nil {
-			// Allow reacting on this fallback notice message itself to approve.
 			if resp != nil && resp.EventID != "" {
-				oc.addToolApprovalTargetEvent(approvalID, resp.EventID)
+				oc.setApprovalSnapshotEvent(approvalID, resp.EventID, false)
 			}
 			return
 		}
@@ -905,7 +926,7 @@ func (oc *AIClient) emitUIToolApprovalRequest(
 	if oc != nil && oc.UserLogin != nil && oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.Bot != nil {
 		if resp, err := oc.UserLogin.Bridge.Bot.SendMessage(ctx, portal.MXID, event.EventMessage, content, nil); err == nil {
 			if resp != nil && resp.EventID != "" {
-				oc.addToolApprovalTargetEvent(approvalID, resp.EventID)
+				oc.setApprovalSnapshotEvent(approvalID, resp.EventID, true)
 			}
 		}
 	}
