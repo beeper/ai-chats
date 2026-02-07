@@ -49,7 +49,10 @@ func LoadCronStore(ctx context.Context, backend StoreBackend, storePath string) 
 		return CronStoreFile{Version: 1, Jobs: []CronJob{}}, fmt.Errorf("cron store backend not configured")
 	}
 	data, found, err := backend.Read(ctx, storePath)
-	if err != nil || !found {
+	if err != nil {
+		return CronStoreFile{Version: 1, Jobs: []CronJob{}}, fmt.Errorf("cron store read: %w", err)
+	}
+	if !found {
 		return CronStoreFile{Version: 1, Jobs: []CronJob{}}, nil
 	}
 	if parsed, parseErr := parseCronStoreData(data); parseErr == nil {
