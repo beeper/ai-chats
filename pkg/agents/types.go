@@ -5,6 +5,7 @@ package agents
 
 import (
 	"encoding/json"
+	"slices"
 
 	"github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
 )
@@ -244,7 +245,7 @@ func cloneSubagentConfig(cfg *SubagentConfig) *SubagentConfig {
 		Thinking: cfg.Thinking,
 	}
 	if len(cfg.AllowAgents) > 0 {
-		out.AllowAgents = append([]string{}, cfg.AllowAgents...)
+		out.AllowAgents = slices.Clone(cfg.AllowAgents)
 	}
 	return out
 }

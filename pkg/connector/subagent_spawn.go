@@ -3,7 +3,7 @@ package connector
 import (
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -236,7 +236,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 				for id := range allowSet {
 					ids = append(ids, id)
 				}
-				sort.Strings(ids)
+				slices.Sort(ids)
 				allowedText = strings.Join(ids, ", ")
 			}
 			return tools.JSONResult(map[string]any{

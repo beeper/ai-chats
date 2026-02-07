@@ -133,13 +133,13 @@ func (c *ToolPolicyConfig) Clone() *ToolPolicyConfig {
 		Profile: c.Profile,
 	}
 	if len(c.Allow) > 0 {
-		out.Allow = append([]string{}, c.Allow...)
+		out.Allow = slices.Clone(c.Allow)
 	}
 	if len(c.AlsoAllow) > 0 {
-		out.AlsoAllow = append([]string{}, c.AlsoAllow...)
+		out.AlsoAllow = slices.Clone(c.AlsoAllow)
 	}
 	if len(c.Deny) > 0 {
-		out.Deny = append([]string{}, c.Deny...)
+		out.Deny = slices.Clone(c.Deny)
 	}
 	if len(c.ByProvider) > 0 {
 		out.ByProvider = make(map[string]ToolPolicyConfig, len(c.ByProvider))

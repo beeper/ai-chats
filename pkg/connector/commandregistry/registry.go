@@ -1,7 +1,8 @@
 package commandregistry
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 	"sync"
 
 	"maunium.net/go/mautrix/bridgev2/commands"
@@ -93,8 +94,8 @@ func (r *Registry) All() []*commands.FullHandler {
 		handlers = append(handlers, handler)
 	}
 
-	sort.Slice(handlers, func(i, j int) bool {
-		return handlers[i].Name < handlers[j].Name
+	slices.SortFunc(handlers, func(a, b *commands.FullHandler) int {
+		return cmp.Compare(a.Name, b.Name)
 	})
 	return handlers
 }
@@ -108,6 +109,6 @@ func (r *Registry) Names() []string {
 	for name := range r.handlers {
 		names = append(names, name)
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	return names
 }

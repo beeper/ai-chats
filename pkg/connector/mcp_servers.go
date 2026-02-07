@@ -1,7 +1,8 @@
 package connector
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -218,14 +219,14 @@ func (oc *AIClient) configNexusMCPServer() (MCPServerConfig, bool) {
 }
 
 func sortNamedMCPServers(servers []namedMCPServer) {
-	sort.Slice(servers, func(i, j int) bool {
-		if servers[i].Name == mcpDefaultServerName && servers[j].Name != mcpDefaultServerName {
-			return true
+	slices.SortFunc(servers, func(a, b namedMCPServer) int {
+		if a.Name == mcpDefaultServerName && b.Name != mcpDefaultServerName {
+			return -1
 		}
-		if servers[j].Name == mcpDefaultServerName && servers[i].Name != mcpDefaultServerName {
-			return false
+		if b.Name == mcpDefaultServerName && a.Name != mcpDefaultServerName {
+			return 1
 		}
-		return servers[i].Name < servers[j].Name
+		return cmp.Compare(a.Name, b.Name)
 	})
 }
 

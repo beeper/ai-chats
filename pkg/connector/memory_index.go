@@ -6,8 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"cmp"
 	"net/http"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -849,8 +850,8 @@ func (m *MemorySearchManager) searchVector(ctx context.Context, queryVec []float
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	sort.Slice(scoredResults, func(i, j int) bool {
-		return scoredResults[i].score > scoredResults[j].score
+	slices.SortFunc(scoredResults, func(a, b scored) int {
+		return cmp.Compare(b.score, a.score)
 	})
 	if len(scoredResults) > limit {
 		scoredResults = scoredResults[:limit]

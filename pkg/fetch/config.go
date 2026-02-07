@@ -1,6 +1,9 @@
 package fetch
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 const (
 	ProviderExa        = "exa"
@@ -49,7 +52,7 @@ func (c *Config) WithDefaults() *Config {
 		c.Provider = ProviderExa
 	}
 	if len(c.Fallbacks) == 0 {
-		c.Fallbacks = append([]string{}, DefaultFallbackOrder...)
+		c.Fallbacks = slices.Clone(DefaultFallbackOrder)
 	}
 	c.Exa = c.Exa.withDefaults()
 	c.Direct = c.Direct.withDefaults()

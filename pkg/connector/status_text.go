@@ -1,9 +1,10 @@
 package connector
 
 import (
+	"cmp"
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -342,8 +343,8 @@ func (oc *AIClient) buildToolsStatusText(meta *PortalMetadata) string {
 	sb.WriteString("Tool Status:\n\n")
 
 	toolsList := oc.buildAvailableTools(meta)
-	sort.Slice(toolsList, func(i, j int) bool {
-		return toolsList[i].Name < toolsList[j].Name
+	slices.SortFunc(toolsList, func(a, b ToolInfo) int {
+		return cmp.Compare(a.Name, b.Name)
 	})
 
 	sb.WriteString("Tools:\n")

@@ -1,9 +1,10 @@
 package connector
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/beeper/ai-bridge/pkg/textfs"
@@ -129,11 +130,11 @@ func mergeCatalogEntries(existing []ModelCatalogEntry, implicit []ModelCatalogEn
 	for _, entry := range merged {
 		out = append(out, entry)
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Provider == out[j].Provider {
-			return out[i].ID < out[j].ID
+	slices.SortFunc(out, func(a, b ModelCatalogEntry) int {
+		if c := cmp.Compare(a.Provider, b.Provider); c != 0 {
+			return c
 		}
-		return out[i].Provider < out[j].Provider
+		return cmp.Compare(a.ID, b.ID)
 	})
 	return out
 }
@@ -285,7 +286,7 @@ func normalizeCatalogInput(input []string, extra map[string]bool) []string {
 	for key := range seen {
 		rest = append(rest, key)
 	}
-	sort.Strings(rest)
+	slices.Sort(rest)
 	return append(ordered, rest...)
 }
 

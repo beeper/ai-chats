@@ -2,7 +2,7 @@ package connector
 
 import (
 	"context"
-	"sort"
+	"slices"
 
 	"maunium.net/go/mautrix/bridgev2"
 
@@ -56,7 +56,7 @@ func (oc *AIClient) executeAgentsList(ctx context.Context, portal *bridgev2.Port
 			ordered = append(ordered, id)
 		}
 	}
-	sort.Strings(ordered)
+	slices.Sort(ordered)
 	if requesterAgentID != "" {
 		ordered = append([]string{requesterAgentID}, ordered...)
 	}

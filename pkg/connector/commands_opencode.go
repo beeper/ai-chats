@@ -2,7 +2,7 @@ package connector
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2/commands"
@@ -190,7 +190,7 @@ func fnOpenCodeList(ce *commands.Event) {
 	for id := range meta.OpenCodeInstances {
 		ids = append(ids, id)
 	}
-	sort.Strings(ids)
+	slices.Sort(ids)
 
 	lines := make([]string, 0, len(ids))
 	for _, id := range ids {

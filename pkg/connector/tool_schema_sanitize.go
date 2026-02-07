@@ -2,7 +2,7 @@ package connector
 
 import (
 	"reflect"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/rs/zerolog"
@@ -64,7 +64,7 @@ func (r *schemaSanitizeReport) list() []string {
 	for key := range r.stripped {
 		out = append(out, key)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 

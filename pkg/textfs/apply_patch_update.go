@@ -2,6 +2,7 @@ package textfs
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"unicode"
 )
@@ -47,8 +48,8 @@ func computeReplacements(originalLines []string, filePath string, chunks []updat
 			replacements = append(replacements, replacement{start: insertionIndex, oldLen: 0, newLines: chunk.newLines})
 			continue
 		}
-		pattern := append([]string{}, chunk.oldLines...)
-		newSlice := append([]string{}, chunk.newLines...)
+		pattern := slices.Clone(chunk.oldLines)
+		newSlice := slices.Clone(chunk.newLines)
 		found := seekSequence(originalLines, pattern, lineIndex, chunk.isEndOfFile)
 		if found == nil && len(pattern) > 0 && pattern[len(pattern)-1] == "" {
 			pattern = pattern[:len(pattern)-1]
@@ -81,7 +82,7 @@ func sortReplacements(replacements []replacement) {
 }
 
 func applyReplacements(lines []string, replacements []replacement) []string {
-	result := append([]string{}, lines...)
+	result := slices.Clone(lines)
 	for i := len(replacements) - 1; i >= 0; i-- {
 		rep := replacements[i]
 		start := rep.start
@@ -91,8 +92,8 @@ func applyReplacements(lines []string, replacements []replacement) []string {
 			}
 		}
 		if len(rep.newLines) > 0 {
-			before := append([]string{}, result[:start]...)
-			after := append([]string{}, result[start:]...)
+			before := slices.Clone(result[:start])
+			after := slices.Clone(result[start:])
 			result = append(before, append(rep.newLines, after...)...)
 		}
 	}

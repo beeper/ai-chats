@@ -2,7 +2,7 @@ package connector
 
 import (
 	"context"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/beeper/ai-bridge/pkg/agents"
@@ -187,6 +187,6 @@ func (oc *AIClient) toolNamesForPortal(meta *PortalMetadata) []string {
 	for name := range nameSet {
 		names = append(names, name)
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	return names
 }

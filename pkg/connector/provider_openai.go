@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -745,7 +745,7 @@ func MakeToolDedupMiddleware(log zerolog.Logger) option.Middleware {
 			}
 		}
 		if len(toolNames) > 0 {
-			sort.Strings(toolNames)
+			slices.Sort(toolNames)
 			log.Debug().Int("tool_count", len(toolsRaw)).Strs("tools", toolNames).Msg("Outgoing tools payload")
 		}
 
@@ -785,7 +785,7 @@ func MakeToolDedupMiddleware(log zerolog.Logger) option.Middleware {
 					dupes = append(dupes, fmt.Sprintf("%s(%d)", name, count))
 				}
 			}
-			sort.Strings(dupes)
+			slices.Sort(dupes)
 			log.Warn().Strs("dupes", dupes).Msg("Deduped tool names in request payload")
 
 			body["tools"] = deduped
@@ -1089,7 +1089,7 @@ func logToolParamDuplicates(log *zerolog.Logger, tools []responses.ToolUnionPara
 		}
 	}
 	if len(dupes) > 0 {
-		sort.Strings(dupes)
+		slices.Sort(dupes)
 		log.Warn().Strs("dupes", dupes).Msg("Duplicate tool names detected for request")
 	}
 }

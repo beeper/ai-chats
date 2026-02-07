@@ -1,6 +1,9 @@
 package search
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 const (
 	ProviderExa         = "exa"
@@ -85,7 +88,7 @@ func (c *Config) WithDefaults() *Config {
 		}
 	}
 	if len(c.Fallbacks) == 0 {
-		c.Fallbacks = append([]string{}, DefaultFallbackOrder...)
+		c.Fallbacks = slices.Clone(DefaultFallbackOrder)
 	}
 	c.Exa = c.Exa.withDefaults()
 	c.Brave = c.Brave.withDefaults()

@@ -1,9 +1,10 @@
 package connector
 
 import (
+	"cmp"
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -456,8 +457,8 @@ func (oc *AIClient) readCronRuns(jobID string, limit int) ([]cron.CronRunLogEntr
 			entries = append(entries, list...)
 		}
 	}
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].TS < entries[j].TS
+	slices.SortFunc(entries, func(a, b cron.CronRunLogEntry) int {
+		return cmp.Compare(a.TS, b.TS)
 	})
 	if len(entries) > limit {
 		entries = entries[len(entries)-limit:]

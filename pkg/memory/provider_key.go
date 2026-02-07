@@ -4,7 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -17,7 +17,7 @@ func ComputeProviderKey(providerID, model, baseURL string, headers map[string]st
 		}
 		headerNames = append(headerNames, normalized)
 	}
-	sort.Strings(headerNames)
+	slices.Sort(headerNames)
 	payload := map[string]any{
 		"provider": providerID,
 		"model":    model,

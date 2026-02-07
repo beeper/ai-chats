@@ -6,8 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"cmp"
 	"os/exec"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -219,8 +220,8 @@ func (oc *AIClient) fetchNexusMCPToolDefinitionsForServer(ctx context.Context, s
 		})
 	}
 
-	sort.Slice(defs, func(i, j int) bool {
-		return defs[i].Name < defs[j].Name
+	slices.SortFunc(defs, func(a, b ToolDefinition) int {
+		return cmp.Compare(a.Name, b.Name)
 	})
 
 	return defs, nil
@@ -281,8 +282,8 @@ func (oc *AIClient) nexusMCPToolDefinitions(ctx context.Context) ([]ToolDefiniti
 		}
 	}
 
-	sort.Slice(combined, func(i, j int) bool {
-		return combined[i].Name < combined[j].Name
+	slices.SortFunc(combined, func(a, b ToolDefinition) int {
+		return cmp.Compare(a.Name, b.Name)
 	})
 
 	oc.nexusMCPToolsMu.Lock()

@@ -2,7 +2,7 @@ package connector
 
 import (
 	"errors"
-	"sort"
+	"slices"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/responses"
@@ -174,7 +174,7 @@ func responsesToolNames(tools []responses.ToolUnionParam) []string {
 			names = append(names, "apply_patch")
 		}
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	return names
 }
 
@@ -188,6 +188,6 @@ func chatToolNames(tools []openai.ChatCompletionToolUnionParam) []string {
 			names = append(names, tool.OfFunction.Function.Name)
 		}
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	return names
 }
