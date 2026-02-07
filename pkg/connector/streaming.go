@@ -3699,6 +3699,9 @@ func (oc *AIClient) streamingResponse(
 			logResponsesFailure(log, err, continuationParams, meta, messages, "continuation_err")
 			if errors.Is(err, context.Canceled) {
 				state.finishReason = "cancelled"
+				if state.initialEventID != "" && state.accumulated.Len() > 0 {
+					oc.flushPartialStreamingMessage(context.Background(), portal, state, meta)
+				}
 				oc.emitUIAbort(ctx, portal, state, "cancelled")
 				oc.emitUIFinish(ctx, portal, state, meta)
 				if state.initialEventID != "" {
@@ -4147,6 +4150,9 @@ func (oc *AIClient) streamChatCompletions(
 		if err := stream.Err(); err != nil {
 			if errors.Is(err, context.Canceled) {
 				state.finishReason = "cancelled"
+				if state.initialEventID != "" && state.accumulated.Len() > 0 {
+					oc.flushPartialStreamingMessage(context.Background(), portal, state, meta)
+				}
 				oc.emitUIAbort(ctx, portal, state, "cancelled")
 				oc.emitUIFinish(ctx, portal, state, meta)
 				if state.initialEventID != "" {

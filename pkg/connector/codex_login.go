@@ -176,7 +176,9 @@ func (cl *CodexLogin) SubmitUserInput(ctx context.Context, input map[string]stri
 	if err != nil {
 		return nil, err
 	}
+	cl.mu.Lock()
 	cl.rpc = rpc
+	cl.mu.Unlock()
 	cl.codexHome = codexHome
 	cl.instanceID = instanceID
 	cl.authMode = mode
