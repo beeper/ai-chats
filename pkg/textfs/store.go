@@ -155,10 +155,14 @@ func (s *Store) List(ctx context.Context) ([]FileEntry, error) {
 }
 
 func (s *Store) ListWithPrefix(ctx context.Context, dir string) ([]FileEntry, error) {
-	if dir == "" {
+	normalizedDir, err := NormalizeDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	if normalizedDir == "" {
 		return s.List(ctx)
 	}
-	prefix := strings.TrimSuffix(dir, "/")
+	prefix := strings.TrimSuffix(normalizedDir, "/")
 	rows, err := s.db.Query(ctx,
 		`SELECT path, content, hash, source, updated_at
          FROM ai_memory_files

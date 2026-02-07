@@ -12,6 +12,9 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+
+	"github.com/beeper/ai-bridge/pkg/agents"
+	"github.com/beeper/ai-bridge/pkg/textfs"
 )
 
 func setupBootstrapDB(t *testing.T) *database.Database {
@@ -72,5 +75,54 @@ func TestBuildBootstrapContextFiles(t *testing.T) {
 	}
 	if !foundSoul {
 		t.Fatal("expected SOUL.md to be injected")
+	}
+}
+
+func TestBootstrapFileIsOptionalAndAutoDeleted(t *testing.T) {
+	ctx := context.Background()
+	db := setupBootstrapDB(t)
+	bridge := &bridgev2.Bridge{DB: db}
+	login := &database.UserLogin{ID: networkid.UserLoginID("login")}
+	userLogin := &bridgev2.UserLogin{UserLogin: login, Bridge: bridge, Log: zerolog.Nop()}
+	oc := &AIClient{
+		UserLogin: userLogin,
+		connector: &OpenAIConnector{Config: Config{}},
+		log:       zerolog.Nop(),
+	}
+
+	agentID := "beeper"
+	store := textfs.NewStore(
+		oc.UserLogin.Bridge.DB.Database,
+		string(oc.UserLogin.Bridge.DB.BridgeID),
+		string(oc.UserLogin.ID),
+		agentID,
+	)
+
+	// Seed defaults (including BOOTSTRAP.md on brand new workspaces).
+	if _, err := agents.EnsureBootstrapFiles(ctx, store); err != nil {
+		t.Fatalf("ensure bootstrap: %v", err)
+	}
+	if _, found, err := store.Read(ctx, agents.DefaultBootstrapFilename); err != nil || !found {
+		t.Fatalf("expected BOOTSTRAP.md to exist after ensure (err=%v found=%v)", err, found)
+	}
+
+	// Mark identity as filled-in; this should trigger auto-deletion.
+	_, err := store.Write(ctx, agents.DefaultIdentityFilename, "- **Name:** Testy\n- **Emoji:** :)\n")
+	if err != nil {
+		t.Fatalf("write IDENTITY.md: %v", err)
+	}
+
+	files := oc.buildBootstrapContextFiles(ctx, agentID, nil)
+	for _, file := range files {
+		if strings.EqualFold(file.Path, agents.DefaultBootstrapFilename) {
+			t.Fatalf("expected BOOTSTRAP.md to not be injected after auto-delete, but it was present")
+		}
+		if strings.EqualFold(file.Path, agents.DefaultBootstrapFilename) && strings.Contains(file.Content, "[MISSING]") {
+			t.Fatalf("expected no missing placeholder for BOOTSTRAP.md")
+		}
+	}
+
+	if _, found, err := store.Read(ctx, agents.DefaultBootstrapFilename); err != nil || found {
+		t.Fatalf("expected BOOTSTRAP.md to be deleted (err=%v found=%v)", err, found)
 	}
 }

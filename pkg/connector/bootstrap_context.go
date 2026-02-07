@@ -34,6 +34,10 @@ func (oc *AIClient) buildBootstrapContextFiles(ctx context.Context, agentID stri
 		}
 	}
 
+	// Auto-cleanup BOOTSTRAP.md once the workspace is no longer "first run".
+	// This prevents stale bootstrap instructions and avoids injecting missing placeholders.
+	oc.maybeAutoDeleteBootstrap(ctx, store)
+
 	files, err := agents.LoadBootstrapFiles(ctx, store)
 	if err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("failed to load workspace bootstrap files")
@@ -55,6 +59,74 @@ func (oc *AIClient) buildBootstrapContextFiles(ctx context.Context, agentID stri
 	}
 	contextFiles := agents.BuildBootstrapContextFiles(files, maxChars, warn)
 	return oc.applySoulEvilToContextFiles(ctx, store, contextFiles, maxChars)
+}
+
+func userMdHasValues(content string) bool {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return false
+	}
+	labels := []string{
+		"name:",
+		"what to call them:",
+		"pronouns:",
+		"timezone:",
+		"notes:",
+	}
+	for _, rawLine := range strings.Split(trimmed, "\n") {
+		line := strings.TrimSpace(rawLine)
+		if line == "" {
+			continue
+		}
+		// Ignore headings.
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		lower := strings.ToLower(line)
+		for _, label := range labels {
+			idx := strings.Index(lower, label)
+			if idx == -1 {
+				continue
+			}
+			after := strings.TrimSpace(line[idx+len(label):])
+			after = strings.Trim(after, "*_")
+			if after != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (oc *AIClient) maybeAutoDeleteBootstrap(ctx context.Context, store *textfs.Store) {
+	if oc == nil || store == nil {
+		return
+	}
+	entry, found, err := store.Read(ctx, agents.DefaultBootstrapFilename)
+	if err != nil || !found || entry == nil {
+		return
+	}
+
+	// If the agent has filled in identity values, assume first-run is complete.
+	if identityEntry, found, err := store.Read(ctx, agents.DefaultIdentityFilename); err == nil && found && identityEntry != nil {
+		identity := agents.ParseIdentityMarkdown(identityEntry.Content)
+		if agents.IdentityHasValues(identity) {
+			if err := store.Delete(ctx, agents.DefaultBootstrapFilename); err != nil {
+				oc.loggerForContext(ctx).Warn().Err(err).Msg("failed to delete BOOTSTRAP.md")
+			}
+			return
+		}
+	}
+
+	// Fall back: if USER.md has any filled-in fields, treat bootstrap as done.
+	if userEntry, found, err := store.Read(ctx, agents.DefaultUserFilename); err == nil && found && userEntry != nil {
+		if userMdHasValues(userEntry.Content) {
+			if err := store.Delete(ctx, agents.DefaultBootstrapFilename); err != nil {
+				oc.loggerForContext(ctx).Warn().Err(err).Msg("failed to delete BOOTSTRAP.md")
+			}
+			return
+		}
+	}
 }
 
 func (oc *AIClient) applySoulEvilToContextFiles(

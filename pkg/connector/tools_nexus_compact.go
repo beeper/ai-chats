@@ -19,20 +19,20 @@ type nexusDispatchTarget struct {
 
 var nexusContactsActionTargets = map[string]nexusDispatchTarget{
 	// Canonical compact actions.
-	"search": {toolName: toolspec.NexusSearchContactsName, route: nexusToolRoutes[toolspec.NexusSearchContactsName]},
-	"get":    {toolName: toolspec.NexusGetContactName, route: nexusToolRoutes[toolspec.NexusGetContactName]},
-	"create": {toolName: toolspec.NexusCreateContactName, route: nexusToolRoutes[toolspec.NexusCreateContactName]},
-	"update": {toolName: toolspec.NexusUpdateContactName, route: nexusToolRoutes[toolspec.NexusUpdateContactName]},
-	"note":    {toolName: toolspec.NexusCreateNoteName, route: nexusToolRoutes[toolspec.NexusCreateNoteName]},
+	"search":          {toolName: toolspec.NexusSearchContactsName, route: nexusToolRoutes[toolspec.NexusSearchContactsName]},
+	"get":             {toolName: toolspec.NexusGetContactName, route: nexusToolRoutes[toolspec.NexusGetContactName]},
+	"create":          {toolName: toolspec.NexusCreateContactName, route: nexusToolRoutes[toolspec.NexusCreateContactName]},
+	"update":          {toolName: toolspec.NexusUpdateContactName, route: nexusToolRoutes[toolspec.NexusUpdateContactName]},
+	"note":            {toolName: toolspec.NexusCreateNoteName, route: nexusToolRoutes[toolspec.NexusCreateNoteName]},
 	"find_duplicates": {toolName: toolspec.NexusFindDuplicatesName, route: nexusToolRoutes[toolspec.NexusFindDuplicatesName]},
 
 	// Accept underlying tool names as actions too (handy during transition).
-	"searchcontacts":  {toolName: toolspec.NexusSearchContactsName, route: nexusToolRoutes[toolspec.NexusSearchContactsName]},
-	"getcontact":      {toolName: toolspec.NexusGetContactName, route: nexusToolRoutes[toolspec.NexusGetContactName]},
-	"createcontact":   {toolName: toolspec.NexusCreateContactName, route: nexusToolRoutes[toolspec.NexusCreateContactName]},
-	"updatecontact":   {toolName: toolspec.NexusUpdateContactName, route: nexusToolRoutes[toolspec.NexusUpdateContactName]},
-	"createnote":      {toolName: toolspec.NexusCreateNoteName, route: nexusToolRoutes[toolspec.NexusCreateNoteName]},
-	"findduplicates":  {toolName: toolspec.NexusFindDuplicatesName, route: nexusToolRoutes[toolspec.NexusFindDuplicatesName]},
+	"searchcontacts": {toolName: toolspec.NexusSearchContactsName, route: nexusToolRoutes[toolspec.NexusSearchContactsName]},
+	"getcontact":     {toolName: toolspec.NexusGetContactName, route: nexusToolRoutes[toolspec.NexusGetContactName]},
+	"createcontact":  {toolName: toolspec.NexusCreateContactName, route: nexusToolRoutes[toolspec.NexusCreateContactName]},
+	"updatecontact":  {toolName: toolspec.NexusUpdateContactName, route: nexusToolRoutes[toolspec.NexusUpdateContactName]},
+	"createnote":     {toolName: toolspec.NexusCreateNoteName, route: nexusToolRoutes[toolspec.NexusCreateNoteName]},
+	"findduplicates": {toolName: toolspec.NexusFindDuplicatesName, route: nexusToolRoutes[toolspec.NexusFindDuplicatesName]},
 }
 
 func executeNexusContacts(ctx context.Context, args map[string]any) (string, error) {

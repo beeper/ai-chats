@@ -44,7 +44,6 @@ var baseBootstrapFiles = []string{
 	DefaultIdentityFilename,
 	DefaultUserFilename,
 	DefaultHeartbeatFilename,
-	DefaultBootstrapFilename,
 }
 
 var subagentBootstrapAllowlist = map[string]struct{}{
@@ -117,6 +116,20 @@ func LoadBootstrapFiles(ctx context.Context, store *textfs.Store) ([]WorkspaceBo
 		}
 		files = append(files, file)
 	}
+
+	// BOOTSTRAP.md is meant to be deleted after first-run. Treat it as optional:
+	// include it only when it exists so we don't inject a perpetual [MISSING] stub.
+	if entry, found, err := store.Read(ctx, DefaultBootstrapFilename); err != nil {
+		return nil, err
+	} else if found && entry != nil {
+		files = append(files, WorkspaceBootstrapFile{
+			Name:    DefaultBootstrapFilename,
+			Path:    DefaultBootstrapFilename,
+			Content: entry.Content,
+			Missing: false,
+		})
+	}
+
 	memoryEntries, err := loadMemoryBootstrapEntries(ctx, store)
 	if err != nil {
 		return nil, err

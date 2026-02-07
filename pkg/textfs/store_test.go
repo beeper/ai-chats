@@ -169,6 +169,35 @@ func TestStoreDirEntries(t *testing.T) {
 	}
 }
 
+func TestStoreListWithPrefixNormalizesDir(t *testing.T) {
+	ctx := context.Background()
+	db := setupTextfsDB(t)
+	store := NewStore(db, "bridge", "login", "agent")
+
+	if _, err := store.Write(ctx, "memory/2026-02-07.md", "hello"); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if _, err := store.Write(ctx, "notes/todo.md", "todo"); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	entries, err := store.ListWithPrefix(ctx, "/memory/")
+	if err != nil {
+		t.Fatalf("list with prefix: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Path != "memory/2026-02-07.md" {
+		t.Fatalf("unexpected entries for /memory/: %+v", entries)
+	}
+
+	entries, err = store.ListWithPrefix(ctx, "./notes")
+	if err != nil {
+		t.Fatalf("list with prefix: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Path != "notes/todo.md" {
+		t.Fatalf("unexpected entries for ./notes: %+v", entries)
+	}
+}
+
 func TestNormalizePathAndDir(t *testing.T) {
 	if _, err := NormalizePath(""); err == nil {
 		t.Fatal("expected error for empty path")

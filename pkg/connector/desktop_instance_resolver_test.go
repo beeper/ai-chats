@@ -94,4 +94,3 @@ func TestResolveDesktopInstanceName(t *testing.T) {
 		}
 	})
 }
-

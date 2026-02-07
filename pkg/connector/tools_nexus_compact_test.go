@@ -19,4 +19,3 @@ func TestNexusContactsDisablesArchiveRestoreMerge(t *testing.T) {
 		}
 	}
 }
-

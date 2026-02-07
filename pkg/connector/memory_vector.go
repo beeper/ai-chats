@@ -9,6 +9,13 @@ import (
 
 const memoryVectorTable = "ai_memory_chunks_vec"
 
+// loadExtensionEnabler matches github.com/mattn/go-sqlite3's (*SQLiteConn).EnableLoadExtension.
+// Declared as an interface to avoid importing the sqlite3 package (and forcing CGO in builds
+// that might not need the SQLite driver).
+type loadExtensionEnabler interface {
+	EnableLoadExtension(enable bool) error
+}
+
 func (m *MemorySearchManager) ensureVectorConn(ctx context.Context) {
 	if m == nil || m.cfg == nil || !m.cfg.Store.Vector.Enabled {
 		return
@@ -29,6 +36,15 @@ func (m *MemorySearchManager) ensureVectorConn(ctx context.Context) {
 	}
 
 	if path := m.cfg.Store.Vector.ExtensionPath; path != "" {
+		// Best-effort: enable extension loading for SQLite connections that support it.
+		// If the driver doesn't support enabling extensions, the subsequent load may fail and
+		// we surface that error normally.
+		_ = conn.Raw(func(driverConn any) error {
+			if enabler, ok := driverConn.(loadExtensionEnabler); ok {
+				return enabler.EnableLoadExtension(true)
+			}
+			return nil
+		})
 		if _, err := conn.ExecContext(ctx, "SELECT load_extension(?)", path); err != nil {
 			_ = conn.Close()
 			m.mu.Lock()
@@ -36,9 +52,22 @@ func (m *MemorySearchManager) ensureVectorConn(ctx context.Context) {
 			m.mu.Unlock()
 			return
 		}
+		_ = conn.Raw(func(driverConn any) error {
+			if enabler, ok := driverConn.(loadExtensionEnabler); ok {
+				return enabler.EnableLoadExtension(false)
+			}
+			return nil
+		})
 	}
 
 	m.mu.Lock()
+	// Another goroutine may have initialized the connection while we were opening/loading.
+	// Prefer the first connection and close this one to avoid leaking *sql.Conn.
+	if m.vectorConn != nil || m.vectorError != "" {
+		m.mu.Unlock()
+		_ = conn.Close()
+		return
+	}
 	m.vectorConn = conn
 	m.vectorReady = true
 	m.mu.Unlock()
