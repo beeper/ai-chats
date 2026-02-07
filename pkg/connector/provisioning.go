@@ -133,10 +133,20 @@ func (api *ProvisioningAPI) handleSetDefaults(w http.ResponseWriter, r *http.Req
 		meta.Defaults.SystemPrompt = *req.SystemPrompt
 	}
 	if req.Temperature != nil {
+		if *req.Temperature < 0 || *req.Temperature > 2 {
+			mautrix.MInvalidParam.WithMessage("temperature must be between 0 and 2").Write(w)
+			return
+		}
 		meta.Defaults.Temperature = req.Temperature
 	}
 	if req.ReasoningEffort != nil {
-		meta.Defaults.ReasoningEffort = *req.ReasoningEffort
+		switch *req.ReasoningEffort {
+		case "", "none", "low", "medium", "high", "xhigh":
+			meta.Defaults.ReasoningEffort = *req.ReasoningEffort
+		default:
+			mautrix.MInvalidParam.WithMessage("reasoning_effort must be one of: none, low, medium, high, xhigh").Write(w)
+			return
+		}
 	}
 	if err := login.Save(r.Context()); err != nil {
 		mautrix.MUnknown.WithMessage("failed to save: %v", err).Write(w)

@@ -155,6 +155,10 @@ type UserLoginMetadata struct {
 	OpenCodeLocalPort     int    `json:"opencode_local_port,omitempty"`
 	OpenCodeLocalUsername string `json:"opencode_local_username,omitempty"`
 	OpenCodeLocalPassword string `json:"opencode_local_password,omitempty"`
+
+	// Provider health tracking
+	ConsecutiveErrors int   `json:"consecutive_errors,omitempty"`
+	LastErrorAt       int64 `json:"last_error_at,omitempty"` // Unix timestamp
 }
 
 // HeartbeatState tracks last heartbeat delivery for dedupe.

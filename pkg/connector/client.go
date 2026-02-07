@@ -1076,6 +1076,23 @@ func (oc *AIClient) Disconnect() {
 		oc.heartbeatRunner.Stop()
 	}
 
+	// Clean up per-room maps to prevent unbounded growth
+	oc.activeRoomsMu.Lock()
+	clear(oc.activeRooms)
+	oc.activeRoomsMu.Unlock()
+
+	oc.pendingQueuesMu.Lock()
+	clear(oc.pendingQueues)
+	oc.pendingQueuesMu.Unlock()
+
+	oc.activeRoomRunsMu.Lock()
+	clear(oc.activeRoomRuns)
+	oc.activeRoomRunsMu.Unlock()
+
+	oc.subagentRunsMu.Lock()
+	clear(oc.subagentRuns)
+	oc.subagentRunsMu.Unlock()
+
 	// Report disconnected state to Matrix clients
 	oc.UserLogin.BridgeState.Send(status.BridgeState{
 		StateEvent: status.StateTransientDisconnect,

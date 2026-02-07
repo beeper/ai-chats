@@ -66,6 +66,23 @@ func (oc *AIClient) sendInitialStreamMessage(ctx context.Context, portal *bridge
 	return resp.EventID
 }
 
+// flushPartialStreamingMessage saves the partially accumulated assistant message on context cancellation.
+// This ensures that content already streamed to Matrix is persisted in the database.
+func (oc *AIClient) flushPartialStreamingMessage(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata) {
+	if state == nil || state.initialEventID == "" || state.accumulated.Len() == 0 {
+		return
+	}
+	state.completedAtMs = time.Now().UnixMilli()
+	if !state.suppressSave {
+		log := *oc.loggerForContext(ctx)
+		log.Info().
+			Str("event_id", state.initialEventID.String()).
+			Int("accumulated_len", state.accumulated.Len()).
+			Msg("Flushing partial streaming message on cancellation")
+		oc.saveAssistantMessage(ctx, log, portal, state, meta)
+	}
+}
+
 // sendFinalAssistantTurn sends an edit event with the complete assistant turn data.
 // It processes response directives (reply tags, silent replies) before sending when in natural mode.
 // Matches OpenClaw's directive processing behavior.

@@ -91,6 +91,47 @@ func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev
 
 	// Some clients don't surface message status errors, so also send a notice.
 	oc.sendSystemNotice(ctx, portal, fmt.Sprintf("Request failed: %s", errorMessage))
+
+	// Track consecutive failures for provider health monitoring
+	oc.recordProviderError(ctx)
+}
+
+// recordProviderError increments the consecutive error counter and escalates to a
+// bridge state warning after repeated failures.
+func (oc *AIClient) recordProviderError(ctx context.Context) {
+	meta := loginMetadata(oc.UserLogin)
+	meta.ConsecutiveErrors++
+	meta.LastErrorAt = time.Now().Unix()
+	_ = oc.UserLogin.Save(ctx)
+
+	const healthWarningThreshold = 5
+	if meta.ConsecutiveErrors >= healthWarningThreshold {
+		oc.UserLogin.BridgeState.Send(status.BridgeState{
+			StateEvent: status.StateTransientDisconnect,
+			Error:      AIProviderError,
+			Message:    fmt.Sprintf("AI provider has failed %d consecutive requests", meta.ConsecutiveErrors),
+		})
+	}
+}
+
+// recordProviderSuccess resets the consecutive error counter on a successful request.
+func (oc *AIClient) recordProviderSuccess(ctx context.Context) {
+	meta := loginMetadata(oc.UserLogin)
+	if meta.ConsecutiveErrors == 0 {
+		return
+	}
+	wasUnhealthy := meta.ConsecutiveErrors >= 5
+	meta.ConsecutiveErrors = 0
+	meta.LastErrorAt = 0
+	_ = oc.UserLogin.Save(ctx)
+
+	// Restore connected state if we were in a degraded state
+	if wasUnhealthy && oc.loggedIn.Load() {
+		oc.UserLogin.BridgeState.Send(status.BridgeState{
+			StateEvent: status.StateConnected,
+			Message:    "Connected",
+		})
+	}
 }
 
 // setModelTyping sets the typing indicator for the current model's ghost user

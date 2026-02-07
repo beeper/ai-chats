@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -255,6 +256,16 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 				return nil, fmt.Errorf("failed to load client: %w", err)
 			}
 
+			// Validate API key by attempting to list models (lightweight check)
+			if aiClient, ok := existing.Client.(*AIClient); ok {
+				valCtx, valCancel := context.WithTimeout(ctx, 5*time.Second)
+				_, valErr := aiClient.listAvailableModels(valCtx, true)
+				valCancel()
+				if valErr != nil && IsAuthError(valErr) {
+					return nil, fmt.Errorf("invalid API key: authentication failed")
+				}
+			}
+
 			// Trigger connection in background with a long-lived context
 			// (the request context gets cancelled after login returns)
 			go existing.Client.Connect(existing.Log.WithContext(context.Background()))
@@ -290,6 +301,17 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 	err = ol.Connector.LoadUserLogin(ctx, login)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load client: %w", err)
+	}
+
+	// Validate API key by attempting to list models (lightweight check)
+	if aiClient, ok := login.Client.(*AIClient); ok {
+		valCtx, valCancel := context.WithTimeout(ctx, 5*time.Second)
+		_, valErr := aiClient.listAvailableModels(valCtx, true)
+		valCancel()
+		if valErr != nil && IsAuthError(valErr) {
+			return nil, fmt.Errorf("invalid API key: authentication failed")
+		}
+		// Non-auth errors (network, timeout) are acceptable - the key may still be valid
 	}
 
 	// Trigger connection in background with a long-lived context

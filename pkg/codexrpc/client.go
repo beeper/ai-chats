@@ -72,6 +72,10 @@ type Client struct {
 	closed    atomic.Bool
 	failOnce  sync.Once
 	closeOnce sync.Once
+
+	waitOnce sync.Once
+	waitErr  error
+	waitDone chan struct{} // closed when cmd.Wait() completes
 }
 
 type writeReq struct {
@@ -112,6 +116,7 @@ func StartProcess(ctx context.Context, cfg ProcessConfig) (*Client, error) {
 		requestRoutes: make(map[string]func(ctx context.Context, req Request) (any, *RPCError)),
 		onStderr:      cfg.OnStderr,
 		onProcessExit: cfg.OnProcessExit,
+		waitDone:      make(chan struct{}),
 	}
 	c.nextID.Store(1)
 	go c.writeLoop()
@@ -121,7 +126,7 @@ func StartProcess(ctx context.Context, cfg ProcessConfig) (*Client, error) {
 	}
 	// Monitor process exit in a separate goroutine.
 	go func() {
-		waitErr := cmd.Wait()
+		waitErr := c.waitForProcess()
 		if c.onProcessExit != nil {
 			c.onProcessExit(waitErr)
 		}
@@ -129,6 +134,18 @@ func StartProcess(ctx context.Context, cfg ProcessConfig) (*Client, error) {
 		_ = c.Close()
 	}()
 	return c, nil
+}
+
+// waitForProcess calls cmd.Wait() exactly once and caches the result.
+func (c *Client) waitForProcess() error {
+	c.waitOnce.Do(func() {
+		if c.cmd != nil {
+			c.waitErr = c.cmd.Wait()
+		}
+		close(c.waitDone)
+	})
+	<-c.waitDone
+	return c.waitErr
 }
 
 func (c *Client) Close() error {
@@ -148,9 +165,8 @@ func (c *Client) Close() error {
 	if c.cmd != nil && c.cmd.Process != nil {
 		_ = c.cmd.Process.Kill()
 	}
-	if c.cmd != nil {
-		_ = c.cmd.Wait()
-	}
+	// Wait for process exit (uses sync.Once to avoid double cmd.Wait())
+	_ = c.waitForProcess()
 	return nil
 }
 
@@ -163,6 +179,7 @@ func (c *Client) failAllPending() {
 		c.pending.Range(func(key, value any) bool {
 			ch, ok := value.(chan Response)
 			if !ok || ch == nil {
+				c.pending.Delete(key)
 				return true
 			}
 			keyStr, _ := key.(string)
@@ -171,6 +188,7 @@ func (c *Client) failAllPending() {
 			case ch <- Response{ID: idRaw, Error: rpcErr}:
 			default:
 			}
+			c.pending.Delete(key)
 			return true
 		})
 	})

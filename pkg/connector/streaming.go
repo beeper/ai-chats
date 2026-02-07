@@ -3004,6 +3004,10 @@ func (oc *AIClient) streamingResponse(
 		logResponsesFailure(log, err, params, meta, messages, "stream_err")
 		if errors.Is(err, context.Canceled) {
 			state.finishReason = "cancelled"
+			// Flush partial content if we already sent some deltas
+			if state.initialEventID != "" && state.accumulated.Len() > 0 {
+				oc.flushPartialStreamingMessage(context.Background(), portal, state, meta)
+			}
 			oc.emitUIAbort(ctx, portal, state, "cancelled")
 			oc.emitUIFinish(ctx, portal, state, meta)
 			if state.initialEventID != "" {
@@ -3028,6 +3032,20 @@ func (oc *AIClient) streamingResponse(
 	// This loop continues until the model generates a response without additional tool actions.
 	continuationRound := 0
 	for (len(state.pendingFunctionOutputs) > 0 || len(state.pendingMcpApprovals) > 0) && state.responseID != "" {
+		// Check for context cancellation before starting a new continuation round
+		if ctx.Err() != nil {
+			state.finishReason = "cancelled"
+			if state.initialEventID != "" && state.accumulated.Len() > 0 {
+				oc.flushPartialStreamingMessage(context.Background(), portal, state, meta)
+			}
+			oc.emitUIAbort(ctx, portal, state, "cancelled")
+			oc.emitUIFinish(ctx, portal, state, meta)
+			if state.initialEventID != "" {
+				return false, nil, &NonFallbackError{Err: ctx.Err()}
+			}
+			return false, nil, &PreDeltaError{Err: ctx.Err()}
+		}
+
 		continuationRound++
 		if continuationRound > maxToolRounds {
 			err := fmt.Errorf("max responses tool call rounds reached (%d)", maxToolRounds)
@@ -3741,6 +3759,7 @@ func (oc *AIClient) streamingResponse(
 	// Generate room title after first response
 	oc.maybeGenerateTitle(ctx, portal, state.accumulated.String())
 
+	oc.recordProviderSuccess(ctx)
 	return true, nil, nil
 }
 
@@ -4451,6 +4470,7 @@ func (oc *AIClient) streamChatCompletions(
 		Msg("Chat Completions streaming finished")
 
 	oc.maybeGenerateTitle(ctx, portal, state.accumulated.String())
+	oc.recordProviderSuccess(ctx)
 	return true, nil, nil
 }
 
