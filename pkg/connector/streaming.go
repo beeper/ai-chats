@@ -92,6 +92,12 @@ type streamingState struct {
 
 	// Avoid logging repeated missing-ephemeral warnings.
 	streamEphemeralUnsupported bool
+
+	// Codex (app-server) specific streaming helpers.
+	// Only used by CodexClient; kept here to reuse the existing AI SDK chunk plumbing.
+	codexToolOutputBuffers    map[string]*strings.Builder // toolCallId -> accumulated output
+	codexLatestDiff           string                      // last turn/diff/updated diff snapshot
+	codexReasoningSummarySeen bool                        // whether summary reasoning deltas have been seen
 }
 
 type mcpApprovalRequest struct {
