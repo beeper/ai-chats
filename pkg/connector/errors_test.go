@@ -2,6 +2,7 @@ package connector
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/openai/openai-go/v3"
@@ -277,6 +278,184 @@ func TestStripThinkTags(t *testing.T) {
 		if got := stripThinkTags(tt.input); got != tt.want {
 			t.Errorf("stripThinkTags(%q) = %q, want %q", tt.input, got, tt.want)
 		}
+	}
+}
+
+func TestIsCompactionFailureError(t *testing.T) {
+	tests := []struct {
+		msg  string
+		want bool
+	}{
+		{"context_length_exceeded: compaction failed due to overflow", true},
+		{"prompt is too long: auto-compaction exceeded limits", true},
+		{"prompt is too long: summarization failed for session", true},
+		{"context_length_exceeded: normal overflow", false}, // "compaction" not present
+		{"compaction failed but not a context error", false}, // no context signal
+		{"just a normal error", false},
+	}
+	for _, tt := range tests {
+		if got := IsCompactionFailureError(errors.New(tt.msg)); got != tt.want {
+			t.Errorf("IsCompactionFailureError(%q) = %v, want %v", tt.msg, got, tt.want)
+		}
+	}
+}
+
+func TestIsBillingError_ResourceHasBeenExhausted(t *testing.T) {
+	err := errors.New("resource has been exhausted for project XYZ")
+	if !IsBillingError(err) {
+		t.Fatal("expected 'resource has been exhausted' to be classified as billing error")
+	}
+}
+
+func TestIsOverloadedError_JSONOverloadedError(t *testing.T) {
+	err := errors.New(`{"type":"overloaded_error","message":"server is overloaded"}`)
+	if !IsOverloadedError(err) {
+		t.Fatal("expected JSON overloaded_error to be classified as overloaded")
+	}
+}
+
+func TestIsAuthError_StringFallback(t *testing.T) {
+	tests := []struct {
+		msg  string
+		want bool
+	}{
+		{"invalid api key provided", true},
+		{"invalid_api_key: check your credentials", true},
+		{"incorrect api key", true},
+		{"invalid token for endpoint", true},
+		{"unauthorized access", true},
+		{"forbidden: insufficient permissions", true},
+		{"access denied for resource", true},
+		{"token has expired, please refresh", true},
+		{"no credentials found in request", true},
+		{"no api key found", true},
+		{"please re-authenticate", true},
+		{"oauth token refresh failed", true},
+		{"just a normal error", false},
+	}
+	for _, tt := range tests {
+		if got := IsAuthError(errors.New(tt.msg)); got != tt.want {
+			t.Errorf("IsAuthError(%q) = %v, want %v", tt.msg, got, tt.want)
+		}
+	}
+}
+
+func TestParseImageDimensionError(t *testing.T) {
+	err := errors.New("image dimensions exceed maximum: image exceeds 2000 px limit")
+	result := ParseImageDimensionError(err)
+	if result == nil {
+		t.Fatal("expected image dimension error")
+	}
+	if result.MaxDimensionPx != 2000 {
+		t.Fatalf("expected 2000px, got %d", result.MaxDimensionPx)
+	}
+}
+
+func TestParseImageDimensionError_NotImageError(t *testing.T) {
+	err := errors.New("some random error with 2000 px")
+	if ParseImageDimensionError(err) != nil {
+		t.Fatal("expected nil for non-image error")
+	}
+}
+
+func TestParseImageSizeError(t *testing.T) {
+	err := errors.New("image too large: max allowed size is 20 MB")
+	result := ParseImageSizeError(err)
+	if result == nil {
+		t.Fatal("expected image size error")
+	}
+	if result.MaxMB != 20 {
+		t.Fatalf("expected 20MB, got %f", result.MaxMB)
+	}
+}
+
+func TestParseImageSizeError_NotImageError(t *testing.T) {
+	err := errors.New("file is 20 MB")
+	if ParseImageSizeError(err) != nil {
+		t.Fatal("expected nil for non-image error")
+	}
+}
+
+func TestCollapseConsecutiveDuplicateBlocks(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"single block", "single block"},
+		{"block1\n\nblock2", "block1\n\nblock2"},
+		{"same\n\nsame", "same"},
+		{"a\n\na\n\nb\n\nb\n\nc", "a\n\nb\n\nc"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		if got := collapseConsecutiveDuplicateBlocks(tt.input); got != tt.want {
+			t.Errorf("collapseConsecutiveDuplicateBlocks(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestFormatUserFacingError_ImageDimensionLimit(t *testing.T) {
+	err := errors.New("image dimensions exceed maximum: image exceeds 4096 pixels resolution limit")
+	msg := FormatUserFacingError(err)
+	if msg != "Image exceeds 4096px dimension limit. Please resize the image and try again." {
+		t.Fatalf("unexpected message: %s", msg)
+	}
+}
+
+func TestFormatUserFacingError_ImageSizeLimit(t *testing.T) {
+	err := errors.New("image too large: max allowed size is 10 MB")
+	msg := FormatUserFacingError(err)
+	if msg != "Image exceeds 10MB size limit. Please use a smaller image." {
+		t.Fatalf("unexpected message: %s", msg)
+	}
+}
+
+func TestClassifyFailoverReason(t *testing.T) {
+	tests := []struct {
+		name   string
+		err    error
+		expect FailoverReason
+	}{
+		{"nil", nil, FailoverUnknown},
+		{"auth", errors.New("unauthorized access"), FailoverAuth},
+		{"billing", errors.New("payment required"), FailoverBilling},
+		{"rate_limit", errors.New("resource_exhausted: rate limit hit"), FailoverRateLimit},
+		{"timeout", errors.New("context deadline exceeded"), FailoverTimeout},
+		{"overloaded", errors.New("service unavailable 503"), FailoverOverload},
+		{"server", errors.New("500 internal server error"), FailoverServer},
+		{"unknown", errors.New("something random"), FailoverUnknown},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ClassifyFailoverReason(tt.err); got != tt.expect {
+				t.Errorf("ClassifyFailoverReason() = %q, want %q", got, tt.expect)
+			}
+		})
+	}
+}
+
+func TestSanitizeHistoryImages(t *testing.T) {
+	// Small image should be preserved
+	smallB64 := "data:image/png;base64," + strings.Repeat("A", 200)
+	if got := sanitizeHistoryImages(smallB64); got != smallB64 {
+		t.Error("expected small image to be preserved")
+	}
+
+	// Large image (over 1MB decoded) should be stripped
+	// 1MB base64 = ~1.37M chars
+	largeB64 := "data:image/png;base64," + strings.Repeat("A", 1500000)
+	got := sanitizeHistoryImages(largeB64)
+	if strings.Contains(got, "AAAA") {
+		t.Error("expected large image to be stripped")
+	}
+	if got != "[image removed: too large for history]" {
+		t.Errorf("unexpected replacement: %q", got[:50])
+	}
+
+	// Text without images should be unchanged
+	plain := "hello world, no images here"
+	if sanitizeHistoryImages(plain) != plain {
+		t.Error("expected plain text to be unchanged")
 	}
 }
 

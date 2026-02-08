@@ -38,7 +38,7 @@ func normalizeCronJobInputRaw(raw any, applyDefaults bool) rawRecord {
 		case bool:
 			next["enabled"] = v
 		case string:
-			trimmed := strings.ToLower(strings.TrimSpace(v))
+			trimmed := normalizeString(v)
 			if trimmed == "true" {
 				next["enabled"] = true
 			} else if trimmed == "false" {
@@ -74,7 +74,7 @@ func normalizeCronJobInputRaw(raw any, applyDefaults bool) rawRecord {
 		if _, ok := next["sessionTarget"]; !ok {
 			if payloadMap, ok := next["payload"].(map[string]any); ok {
 				if kind, ok := payloadMap["kind"].(string); ok {
-					switch strings.ToLower(strings.TrimSpace(kind)) {
+					switch normalizeString(kind) {
 					case "systemevent":
 						next["sessionTarget"] = string(CronSessionMain)
 					case "agentturn":
@@ -86,11 +86,11 @@ func normalizeCronJobInputRaw(raw any, applyDefaults bool) rawRecord {
 		if payloadMap, ok := next["payload"].(map[string]any); ok {
 			payloadKind := ""
 			if kind, ok := payloadMap["kind"].(string); ok {
-				payloadKind = strings.ToLower(strings.TrimSpace(kind))
+				payloadKind = normalizeString(kind)
 			}
 			sessionTarget := ""
 			if target, ok := next["sessionTarget"].(string); ok {
-				sessionTarget = strings.ToLower(strings.TrimSpace(target))
+				sessionTarget = normalizeString(target)
 			}
 			isIsolatedAgentTurn := sessionTarget == "isolated" || (sessionTarget == "" && payloadKind == "agentturn")
 			_, hasDelivery := next["delivery"]
@@ -183,7 +183,7 @@ func formatIsoMillis(ts int64) string {
 func coerceDeliveryMap(delivery map[string]any) map[string]any {
 	next := maps.Clone(delivery)
 	if rawMode, ok := delivery["mode"].(string); ok {
-		mode := strings.ToLower(strings.TrimSpace(rawMode))
+		mode := normalizeString(rawMode)
 		if mode != "" {
 			next["mode"] = mode
 		} else {
@@ -191,7 +191,7 @@ func coerceDeliveryMap(delivery map[string]any) map[string]any {
 		}
 	}
 	if rawChannel, ok := delivery["channel"].(string); ok {
-		channel := strings.ToLower(strings.TrimSpace(rawChannel))
+		channel := normalizeString(rawChannel)
 		if channel != "" {
 			next["channel"] = channel
 		} else {

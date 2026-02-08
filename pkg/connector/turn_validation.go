@@ -129,8 +129,8 @@ func chatMessageRole(msg openai.ChatCompletionMessageParamUnion) string {
 // chatMessageBody extracts the text body from a ChatCompletionMessageParamUnion.
 func chatMessageBody(msg openai.ChatCompletionMessageParamUnion) string {
 	c := msg.GetContent()
-	if c.OfString != nil {
-		return *c.OfString
+	if s, ok := c.AsAny().(*string); ok && s != nil {
+		return *s
 	}
 	return ""
 }

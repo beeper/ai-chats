@@ -20,7 +20,7 @@ func normalizeCronJobInput(raw CronJobCreate, opts normalizeOptions) CronJobCrea
 			next.WakeMode = CronWakeNextHeartbeat
 		}
 		if next.SessionTarget == "" {
-			kind := strings.ToLower(strings.TrimSpace(next.Payload.Kind))
+			kind := normalizeString(next.Payload.Kind)
 			if kind == "systemevent" {
 				next.SessionTarget = CronSessionMain
 			} else if kind == "agentturn" {
@@ -32,7 +32,7 @@ func normalizeCronJobInput(raw CronJobCreate, opts normalizeOptions) CronJobCrea
 			next.DeleteAfterRun = &deleteAfter
 		}
 		if next.Delivery == nil {
-			payloadKind := strings.ToLower(strings.TrimSpace(next.Payload.Kind))
+			payloadKind := normalizeString(next.Payload.Kind)
 			if next.SessionTarget == CronSessionIsolated || (next.SessionTarget == "" && payloadKind == "agentturn") {
 				next.Delivery = &CronDelivery{Mode: CronDeliveryAnnounce}
 			}

@@ -1945,6 +1945,31 @@ catalogFallback:
 	return oc.findModelInfoInCatalog(modelID)
 }
 
+// maxBase64ImageBytes is the maximum size of inline base64 image data allowed in
+// historical message bodies. Images larger than this are stripped to save tokens.
+const maxBase64ImageBytes = 1 * 1024 * 1024 // 1MB
+
+var base64DataURIPattern = regexp.MustCompile(`data:image/[^;]+;base64,[A-Za-z0-9+/=]{100,}`)
+
+// sanitizeHistoryImages strips oversized base64-encoded images from a message body.
+// Images that exceed maxBase64ImageBytes are replaced with a placeholder.
+func sanitizeHistoryImages(body string) string {
+	return base64DataURIPattern.ReplaceAllStringFunc(body, func(match string) string {
+		// Extract just the base64 portion after "base64,"
+		idx := strings.Index(match, "base64,")
+		if idx == -1 {
+			return match
+		}
+		b64Data := match[idx+7:]
+		// base64 encodes 3 bytes per 4 chars, so decoded size ≈ len*3/4
+		decodedSize := len(b64Data) * 3 / 4
+		if decodedSize > maxBase64ImageBytes {
+			return "[image removed: too large for history]"
+		}
+		return match
+	})
+}
+
 // buildBasePrompt builds the system prompt and history portion of a prompt.
 // This is the common pattern used by buildPrompt and buildPromptWithImage.
 // thinkTagPattern matches <think>...</think> blocks (including multiline) in assistant messages.
@@ -1995,9 +2020,9 @@ func (oc *AIClient) buildBasePrompt(
 			}
 			// Include message ID so the AI can reference specific messages for reactions/replies.
 			// Format: message body + "\n[message_id: $eventId]" (matches clawdbot pattern).
-			body := msgMeta.Body
+			body := sanitizeHistoryImages(msgMeta.Body)
 			if history[i].MXID != "" {
-				body = appendMessageIDHint(msgMeta.Body, history[i].MXID)
+				body = appendMessageIDHint(body, history[i].MXID)
 			}
 			switch msgMeta.Role {
 			case "assistant":
@@ -2009,9 +2034,16 @@ func (oc *AIClient) buildBasePrompt(
 				}
 				prompt = append(prompt, openai.AssistantMessage(body))
 			default:
+				// Strip envelope prefixes from historical user messages to reduce noise
+				body = StripEnvelope(body)
 				prompt = append(prompt, openai.UserMessage(body))
 			}
 		}
+	}
+
+	// Sanitize turn ordering for Google/Gemini models which require strict alternation
+	if meta != nil && IsGoogleModel(oc.effectiveModel(meta)) {
+		prompt = SanitizeGoogleTurnOrdering(prompt)
 	}
 
 	return prompt, nil

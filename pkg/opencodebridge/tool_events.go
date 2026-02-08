@@ -6,12 +6,6 @@ import (
 	"github.com/beeper/ai-bridge/pkg/matrixevents"
 )
 
-// ToolCallEventType represents a tool invocation.
-var ToolCallEventType = matrixevents.ToolCallEventType
-
-// ToolResultEventType represents a tool execution result.
-var ToolResultEventType = matrixevents.ToolResultEventType
-
 const (
 	BeeperAIToolCallKey   = matrixevents.BeeperAIToolCallKey
 	BeeperAIToolResultKey = matrixevents.BeeperAIToolResultKey

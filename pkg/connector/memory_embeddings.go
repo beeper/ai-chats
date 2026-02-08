@@ -133,7 +133,7 @@ func (m *MemorySearchManager) embedBatchWithRetry(ctx context.Context, texts []s
 		timeout := m.resolveEmbeddingTimeout("batch")
 		m.log.Debug().Str("provider", m.status.Provider).Int("items", len(texts)).Int64("timeoutMs", timeout.Milliseconds()).
 			Msg("memory embeddings: batch start")
-		result, err := m.withTimeoutBatch(ctx, timeout, fmt.Sprintf(
+		result, err := withTimeout(ctx, timeout, fmt.Sprintf(
 			"memory embeddings batch timed out after %ds",
 			int(math.Round(float64(timeout.Milliseconds())/1000.0)),
 		), func(ctx context.Context) ([][]float64, error) {
@@ -161,13 +161,12 @@ func (m *MemorySearchManager) embedQueryWithTimeout(ctx context.Context, text st
 	timeout := m.resolveEmbeddingTimeout("query")
 	m.log.Debug().Str("provider", m.status.Provider).Int64("timeoutMs", timeout.Milliseconds()).
 		Msg("memory embeddings: query start")
-	result, err := m.withTimeoutQuery(ctx, timeout, fmt.Sprintf(
+	return withTimeout(ctx, timeout, fmt.Sprintf(
 		"memory embeddings query timed out after %ds",
 		int(math.Round(float64(timeout.Milliseconds())/1000.0)),
 	), func(ctx context.Context) ([]float64, error) {
 		return m.provider.EmbedQuery(ctx, text)
 	})
-	return result, err
 }
 
 func (m *MemorySearchManager) isRetryableEmbeddingError(message string) bool {
@@ -181,7 +180,7 @@ func (m *MemorySearchManager) resolveEmbeddingTimeout(kind string) time.Duration
 	return embeddingBatchTimeoutRemote
 }
 
-func (m *MemorySearchManager) withTimeoutBatch(ctx context.Context, timeout time.Duration, message string, fn func(ctx context.Context) ([][]float64, error)) ([][]float64, error) {
+func withTimeout[T any](ctx context.Context, timeout time.Duration, message string, fn func(context.Context) (T, error)) (T, error) {
 	if timeout <= 0 {
 		return fn(ctx)
 	}
@@ -192,25 +191,11 @@ func (m *MemorySearchManager) withTimeoutBatch(ctx context.Context, timeout time
 		return result, nil
 	}
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return nil, errors.New(message)
+		var zero T
+		return zero, errors.New(message)
 	}
-	return nil, err
-}
-
-func (m *MemorySearchManager) withTimeoutQuery(ctx context.Context, timeout time.Duration, message string, fn func(ctx context.Context) ([]float64, error)) ([]float64, error) {
-	if timeout <= 0 {
-		return fn(ctx)
-	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	result, err := fn(ctx)
-	if err == nil {
-		return result, nil
-	}
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return nil, errors.New(message)
-	}
-	return nil, err
+	var zero T
+	return zero, err
 }
 
 func (m *MemorySearchManager) loadEmbeddingCache(ctx context.Context, chunks []memory.Chunk) map[string][]float64 {

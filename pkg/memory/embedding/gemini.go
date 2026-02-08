@@ -1,13 +1,9 @@
 package embedding
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
-	"net/http"
 	"strings"
 
 	"github.com/beeper/ai-bridge/pkg/shared/httputil"
@@ -150,32 +146,6 @@ func (c *geminiClient) batchURL() string {
 }
 
 func (c *geminiClient) post(ctx context.Context, url string, payload map[string]any) ([]byte, error) {
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	for key, value := range c.headers {
-		if strings.TrimSpace(value) == "" {
-			continue
-		}
-		req.Header.Set(key, value)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("gemini embeddings failed: %s %s", resp.Status, string(data))
-	}
-	return data, nil
+	data, _, err := httputil.PostJSON(ctx, url, c.headers, payload, 60)
+	return data, err
 }

@@ -12,6 +12,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 	"maunium.net/go/mautrix/event"
 
+	"github.com/beeper/ai-bridge/pkg/matrixevents"
 	"github.com/beeper/ai-bridge/pkg/opencode"
 )
 
@@ -170,7 +171,7 @@ func (b *Bridge) buildOpenCodeConvertedPart(ctx context.Context, portal *bridgev
 		content, extra := buildOpenCodeToolCallContent(part, data.Status)
 		return &bridgev2.ConvertedMessagePart{
 			ID:      networkid.PartID("0"),
-			Type:    ToolCallEventType,
+			Type:    matrixevents.ToolCallEventType,
 			Content: content,
 			Extra:   extra,
 		}, nil
@@ -178,7 +179,7 @@ func (b *Bridge) buildOpenCodeConvertedPart(ctx context.Context, portal *bridgev
 		content, extra := buildOpenCodeToolResultContent(part, data.Status)
 		return &bridgev2.ConvertedMessagePart{
 			ID:      networkid.PartID("0"),
-			Type:    ToolResultEventType,
+			Type:    matrixevents.ToolResultEventType,
 			Content: content,
 			Extra:   extra,
 		}, nil
