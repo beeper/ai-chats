@@ -1065,6 +1065,25 @@ func (oc *AIClient) Disconnect() {
 	clear(oc.subagentRuns)
 	oc.subagentRunsMu.Unlock()
 
+	oc.groupHistoryMu.Lock()
+	clear(oc.groupHistoryBuffers)
+	oc.groupHistoryMu.Unlock()
+
+	oc.userTypingMu.Lock()
+	clear(oc.userTypingState)
+	oc.userTypingMu.Unlock()
+
+	oc.queueTypingMu.Lock()
+	for _, tc := range oc.queueTyping {
+		tc.Stop()
+	}
+	clear(oc.queueTyping)
+	oc.queueTypingMu.Unlock()
+
+	oc.openCodeStreamMu.Lock()
+	clear(oc.openCodeStreamSeq)
+	oc.openCodeStreamMu.Unlock()
+
 	// Report disconnected state to Matrix clients
 	oc.UserLogin.BridgeState.Send(status.BridgeState{
 		StateEvent: status.StateTransientDisconnect,
@@ -1083,6 +1102,13 @@ func (oc *AIClient) LogoutRemote(ctx context.Context) {
 	}
 
 	oc.Disconnect()
+
+	if oc.connector != nil {
+		oc.connector.clientsMu.Lock()
+		delete(oc.connector.clients, oc.UserLogin.ID)
+		oc.connector.clientsMu.Unlock()
+	}
+
 	oc.UserLogin.BridgeState.Send(status.BridgeState{
 		StateEvent: status.StateLoggedOut,
 		Message:    "Disconnected by user",

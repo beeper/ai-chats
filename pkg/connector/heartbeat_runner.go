@@ -398,32 +398,46 @@ func (oc *AIClient) resolveHeartbeatSessionPortal(agentID string, heartbeat *Hea
 	if oc != nil && oc.connector != nil && oc.connector.Config.Session != nil {
 		mainKey = strings.TrimSpace(oc.connector.Config.Session.MainKey)
 	}
-	if session == "" {
-		if portal := oc.defaultChatPortal(); portal != nil {
-			return portal, portal.MXID.String(), nil
+	if session == "" || strings.EqualFold(session, "main") || strings.EqualFold(session, "global") || (mainKey != "" && strings.EqualFold(session, mainKey)) {
+		// Match resolveCronDeliveryTarget priority: session LastTo → lastActivePortal → defaultChatPortal
+		hbSession := oc.resolveHeartbeatSession(agentID, heartbeat)
+		if hbSession.Entry != nil {
+			lastChannel := strings.TrimSpace(hbSession.Entry.LastChannel)
+			lastTo := strings.TrimSpace(hbSession.Entry.LastTo)
+			if lastTo != "" && strings.HasPrefix(lastTo, "!") && (lastChannel == "" || strings.EqualFold(lastChannel, "matrix")) {
+				if portal := oc.portalByRoomID(context.Background(), id.RoomID(lastTo)); portal != nil {
+					return portal, portal.MXID.String(), nil
+				}
+			}
 		}
 		if portal := oc.lastActivePortal(agentID); portal != nil {
+			return portal, portal.MXID.String(), nil
+		}
+		if portal := oc.defaultChatPortal(); portal != nil {
 			return portal, portal.MXID.String(), nil
 		}
 		return nil, "", errors.New("no session")
-	}
-	if strings.EqualFold(session, "main") || strings.EqualFold(session, "global") || (mainKey != "" && strings.EqualFold(session, mainKey)) {
-		if portal := oc.defaultChatPortal(); portal != nil {
-			return portal, portal.MXID.String(), nil
-		}
-		if portal := oc.lastActivePortal(agentID); portal != nil {
-			return portal, portal.MXID.String(), nil
-		}
 	}
 	if strings.HasPrefix(session, "!") {
 		if portal := oc.portalByRoomID(context.Background(), id.RoomID(session)); portal != nil {
 			return portal, portal.MXID.String(), nil
 		}
 	}
-	if portal := oc.defaultChatPortal(); portal != nil {
-		return portal, portal.MXID.String(), nil
+	// Final fallback: same priority as above
+	hbSession := oc.resolveHeartbeatSession(agentID, heartbeat)
+	if hbSession.Entry != nil {
+		lastChannel := strings.TrimSpace(hbSession.Entry.LastChannel)
+		lastTo := strings.TrimSpace(hbSession.Entry.LastTo)
+		if lastTo != "" && strings.HasPrefix(lastTo, "!") && (lastChannel == "" || strings.EqualFold(lastChannel, "matrix")) {
+			if portal := oc.portalByRoomID(context.Background(), id.RoomID(lastTo)); portal != nil {
+				return portal, portal.MXID.String(), nil
+			}
+		}
 	}
 	if portal := oc.lastActivePortal(agentID); portal != nil {
+		return portal, portal.MXID.String(), nil
+	}
+	if portal := oc.defaultChatPortal(); portal != nil {
 		return portal, portal.MXID.String(), nil
 	}
 	return nil, "", errors.New("no session")

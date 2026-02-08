@@ -205,6 +205,13 @@ func (cc *CodexClient) LogoutRemote(ctx context.Context) {
 	}
 
 	cc.Disconnect()
+
+	if cc.connector != nil {
+		cc.connector.clientsMu.Lock()
+		delete(cc.connector.clients, cc.UserLogin.ID)
+		cc.connector.clientsMu.Unlock()
+	}
+
 	cc.UserLogin.BridgeState.Send(status.BridgeState{
 		StateEvent: status.StateLoggedOut,
 		Message:    "Disconnected by user",
