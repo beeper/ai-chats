@@ -1,7 +1,7 @@
 # Matrix AI Transport Spec v1
 
+> [!WARNING]
 > Status: *Unreleased*, proposed v1.
->
 > This is a highly experimental profile.
 > It requires homeserver and client support (custom event types + ephemeral events + rendering/consumption).
 > Beeper is building experimental support for this profile, and it might never get a public release.
@@ -59,8 +59,10 @@ Source of truth in this repo:
 - `seq`: Per-turn monotonic sequence number for stream events.
 - `target_event`: Matrix event ID that a stream relates to (typically the placeholder timeline event).
 - `call_id` / `toolCallId`: Tool invocation identifier.
-- "timeline": persisted Matrix events.
-- "ephemeral": non-persisted events (dropped by servers/clients that don't support them).
+- `timeline`: persisted Matrix events.
+- `ephemeral`: non-persisted events (dropped by servers/clients that don't support them).
+- `m.reference`: relation used to link events to a target event ID.
+- `m.replace`: relation used to edit/replace an earlier timeline message.
 
 <a id="inventory"></a>
 ## Inventory
@@ -208,11 +210,15 @@ This bridge emits some `data-*` chunks in `part` for UI coordination. Clients th
 Per turn:
 - `seq` MUST be strictly increasing.
 - Duplicate/stale events (`seq <= last_applied_seq`) MUST be ignored.
+- Out-of-order events SHOULD be buffered briefly and applied in `seq` order.
 
 Recommended lifecycle:
 1. Send initial placeholder `m.room.message` with seed `com.beeper.ai`.
 2. Emit `com.beeper.ai.stream_event` chunks (monotonic `seq`).
 3. Emit final timeline edit (`m.replace`) containing final fallback text + full final `com.beeper.ai`.
+
+Terminal chunks:
+- The stream SHOULD end with one of: `finish`, `abort`, `error`.
 
 Mermaid (conceptual):
 ```mermaid
@@ -259,12 +265,14 @@ Schema (event content):
   - `agent_id?: string`
   - `tool_name: string`
   - `tool_type: "builtin"|"provider"|"function"|"mcp"`
-  - `status: string` (for example `running`)
+  - `status: "pending"|"running"|"completed"|"failed"|"timeout"|"cancelled"`
   - `input?: object`
-  - `display?: object`
-  - `timing?: object`
+  - `display?: { title?: string, icon?: string, collapsed?: boolean }`
+  - `timing?: { started_at?: number, first_token_at?: number, completed_at?: number }` (unix ms)
+  - `result_event?: string` (Matrix event ID, optional)
+  - `mcp_server?: string` (optional)
   - `requires_approval?: boolean`
-  - `approval?: object`
+  - `approval?: { reason?: string, actions?: string[] }`
 
 Relations:
 - SHOULD include `m.relates_to = { rel_type: "m.reference", event_id: <turn placeholder> }` when applicable.
@@ -294,6 +302,8 @@ A timeline-visible projection of the tool result.
 Schema (event content):
 - `body: string` (fallback)
 - `msgtype: "m.notice"` (fallback)
+- `format?: "org.matrix.custom.html"` (optional)
+- `formatted_body?: string` (optional)
 - `com.beeper.ai.tool_result: object`
   - `call_id: string`
   - `turn_id: string`
@@ -301,8 +311,8 @@ Schema (event content):
   - `tool_name: string`
   - `status: "success"|"error"|"partial"`
   - `output?: object`
-  - `artifacts?: array`
-  - `display?: object`
+  - `artifacts?: { type: "file"|"image", mxc_uri?: string, filename?: string, mimetype?: string, size?: number }[]`
+  - `display?: { format?: string, expandable?: boolean, default_expanded?: boolean, show_stdout?: boolean, show_artifacts?: boolean }`
 
 Relations:
 - SHOULD reference the tool call event via `m.relates_to = { rel_type: "m.reference", event_id: <tool_call_event_id> }`.
@@ -688,6 +698,7 @@ To keep the main spec terse, the schemas below are collapsed. They are defined i
 ## Implementation Notes
 - Desktop consumes `com.beeper.ai.stream_event.part` as an AI SDK `UIMessageChunk` and reconstructs a live `UIMessage`.
 - Matrix envelope concerns (`turn_id`, `seq`, `target_event`) remain bridge/client responsibilities.
+- Consumers should prefer AI SDK-compatible chunk semantics (metadata merge, tool partial JSON handling, step boundaries).
 
 <a id="forward-compat"></a>
 ## Forward Compatibility
