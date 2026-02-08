@@ -1078,7 +1078,9 @@ func (oc *AIClient) IsLoggedIn() bool {
 
 func (oc *AIClient) LogoutRemote(ctx context.Context) {
 	// Best-effort: remove per-login data not covered by bridgev2's user_login/portal/message cleanup.
-	purgeLoginDataBestEffort(ctx, oc.UserLogin)
+	if oc != nil && oc.UserLogin != nil {
+		purgeLoginDataBestEffort(ctx, oc.UserLogin)
+	}
 
 	oc.Disconnect()
 	oc.UserLogin.BridgeState.Send(status.BridgeState{
@@ -1662,10 +1664,25 @@ func (oc *AIClient) historyLimit(ctx context.Context, portal *bridgev2.Portal, m
 }
 
 func (oc *AIClient) effectiveMaxTokens(meta *PortalMetadata) int {
+	var maxTokens int
+	// 1. Per-room override (highest priority)
 	if meta != nil && meta.MaxCompletionTokens > 0 {
-		return meta.MaxCompletionTokens
+		maxTokens = meta.MaxCompletionTokens
+	} else {
+		// 2. Model catalog MaxOutputTokens
+		modelID := oc.effectiveModel(meta)
+		if info := oc.findModelInfo(modelID); info != nil && info.MaxOutputTokens > 0 {
+			maxTokens = info.MaxOutputTokens
+		} else {
+			// 3. Hardcoded fallback
+			maxTokens = defaultMaxTokens
+		}
 	}
-	return defaultMaxTokens
+	// Cap at context window to prevent impossible requests
+	if cw := oc.getModelContextWindow(meta); cw > 0 && maxTokens > cw {
+		maxTokens = cw
+	}
+	return maxTokens
 }
 
 // isOpenRouterProvider checks if the current provider is OpenRouter or Beeper (which uses OpenRouter)
@@ -2678,6 +2695,12 @@ func (oc *AIClient) ensureModelInRoom(ctx context.Context, portal *bridgev2.Port
 
 func (oc *AIClient) loggerForContext(ctx context.Context) *zerolog.Logger {
 	return loggerFromContext(ctx, &oc.log)
+}
+
+// logEphemeralVerbose returns true when per-event ephemeral logging is enabled via config.
+func (oc *AIClient) logEphemeralVerbose() bool {
+	cfg := oc.connector.Config.Bridge.LogEphemeralEvents
+	return cfg != nil && *cfg
 }
 
 func (oc *AIClient) backgroundContext(ctx context.Context) context.Context {

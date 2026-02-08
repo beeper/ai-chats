@@ -3,7 +3,6 @@ package connector
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"maps"
 	"strings"
@@ -25,7 +24,7 @@ const (
 	defaultTemperature          = 0.0 // Unset by default; provider/model default is used.
 	defaultMaxContextMessages   = 20
 	defaultGroupContextMessages = 20
-	defaultMaxTokens            = 512
+	defaultMaxTokens            = 16384
 	defaultReasoningEffort      = "low"
 )
 
@@ -67,6 +66,11 @@ func (oc *OpenAIConnector) Stop(ctx context.Context) {
 func (oc *OpenAIConnector) Start(ctx context.Context) error {
 	oc.applyRuntimeDefaults()
 
+	// Ensure all stored logins are loaded into the in-memory cache early.
+	// bridgev2's provisioning logout endpoint uses GetCachedUserLoginByID, so if logins
+	// haven't been loaded yet, clients may be unable to remove accounts.
+	oc.primeUserLoginCache(ctx)
+
 	// Register AI commands with the command processor
 	if proc, ok := oc.br.Commands.(*commands.Processor); ok {
 		oc.registerCommands(proc)
@@ -82,6 +86,21 @@ func (oc *OpenAIConnector) Start(ctx context.Context) error {
 	oc.initProvisioning()
 
 	return nil
+}
+
+func (oc *OpenAIConnector) primeUserLoginCache(ctx context.Context) {
+	if oc == nil || oc.br == nil || oc.br.DB == nil || oc.br.DB.UserLogin == nil {
+		return
+	}
+	userIDs, err := oc.br.DB.UserLogin.GetAllUserIDsWithLogins(ctx)
+	if err != nil {
+		oc.br.Log.Warn().Err(err).Msg("Failed to list users with logins for cache priming")
+		return
+	}
+	for _, mxid := range userIDs {
+		// Loading the user loads and caches their logins.
+		_, _ = oc.br.GetUserByMXID(ctx, mxid)
+	}
 }
 
 func (oc *OpenAIConnector) applyRuntimeDefaults() {
@@ -434,7 +453,8 @@ func (oc *OpenAIConnector) LoadUserLogin(ctx context.Context, login *bridgev2.Us
 	if strings.EqualFold(strings.TrimSpace(meta.Provider), ProviderCodex) {
 		// Codex uses its own auth/tokens stored under CODEX_HOME. No OpenAI API key is required here.
 		if oc.Config.Codex != nil && oc.Config.Codex.Enabled != nil && !*oc.Config.Codex.Enabled {
-			return errors.New("codex integration is disabled in the configuration")
+			login.Client = &brokenLoginClient{UserLogin: login, Reason: "Codex integration is disabled in the configuration."}
+			return nil
 		}
 
 		oc.clientsMu.Lock()
@@ -453,7 +473,8 @@ func (oc *OpenAIConnector) LoadUserLogin(ctx context.Context, login *bridgev2.Us
 
 		client, err := newCodexClient(login, oc)
 		if err != nil {
-			return err
+			login.Client = &brokenLoginClient{UserLogin: login, Reason: "Couldn't initialize Codex for this login. Remove and re-add the account."}
+			return nil
 		}
 		oc.clientsMu.Lock()
 		oc.clients[login.ID] = client
@@ -464,7 +485,8 @@ func (oc *OpenAIConnector) LoadUserLogin(ctx context.Context, login *bridgev2.Us
 
 	key := strings.TrimSpace(oc.resolveProviderAPIKey(meta))
 	if key == "" {
-		return errors.New("no API key available for this login; sign in again")
+		login.Client = &brokenLoginClient{UserLogin: login, Reason: "No API key available for this login. Sign in again or remove this account."}
+		return nil
 	}
 	oc.clientsMu.Lock()
 	if existingAPI := oc.clients[login.ID]; existingAPI != nil {
@@ -475,7 +497,8 @@ func (oc *OpenAIConnector) LoadUserLogin(ctx context.Context, login *bridgev2.Us
 			oc.clientsMu.Unlock()
 			client, err := newAIClient(login, oc, key)
 			if err != nil {
-				return err
+				login.Client = &brokenLoginClient{UserLogin: login, Reason: "Couldn't initialize this login. Remove and re-add the account."}
+				return nil
 			}
 			oc.clientsMu.Lock()
 			oc.clients[login.ID] = client
@@ -495,7 +518,12 @@ func (oc *OpenAIConnector) LoadUserLogin(ctx context.Context, login *bridgev2.Us
 			oc.clientsMu.Unlock()
 			client, err := newAIClient(login, oc, key)
 			if err != nil {
-				return err
+				// Keep the existing client if it's already in-memory; allow the login to stay cached/deletable.
+				oc.clientsMu.Lock()
+				existing.UserLogin = login
+				login.Client = existing
+				oc.clientsMu.Unlock()
+				return nil
 			}
 			oc.clientsMu.Lock()
 			oc.clients[login.ID] = client
@@ -515,7 +543,8 @@ func (oc *OpenAIConnector) LoadUserLogin(ctx context.Context, login *bridgev2.Us
 
 	client, err := newAIClient(login, oc, key)
 	if err != nil {
-		return err
+		login.Client = &brokenLoginClient{UserLogin: login, Reason: "Couldn't initialize this login. Remove and re-add the account."}
+		return nil
 	}
 	oc.clientsMu.Lock()
 	oc.clients[login.ID] = client
@@ -532,7 +561,7 @@ func (oc *OpenAIConnector) GetLoginFlows() []bridgev2.LoginFlow {
 		{ID: ProviderMagicProxy, Name: "Magic Proxy"},
 		{ID: FlowCustom, Name: "Manual"},
 	}
-	if oc.Config.Codex != nil && oc.Config.Codex.Enabled != nil && *oc.Config.Codex.Enabled {
+	if oc.Config.Codex != nil && (oc.Config.Codex.Enabled == nil || *oc.Config.Codex.Enabled) {
 		flows = append(flows, bridgev2.LoginFlow{
 			ID:          ProviderCodex,
 			Name:        "Codex",
@@ -548,6 +577,11 @@ func (oc *OpenAIConnector) CreateLogin(ctx context.Context, user *bridgev2.User,
 			return nil, fmt.Errorf("login flow %s is not available", flowID)
 		}
 		return &CodexLogin{User: user, Connector: oc, FlowID: flowID}, nil
+	}
+	// Compatibility aliases: some clients may still request these historic flow IDs even though
+	// we intentionally keep the UI limited to Beeper AI, Magic Proxy, Custom, Codex.
+	if flowID == ProviderOpenAI || flowID == ProviderOpenRouter {
+		flowID = FlowCustom
 	}
 	// Validate by checking if flowID is in available flows
 	flows := oc.GetLoginFlows()

@@ -69,6 +69,20 @@ func (oc *AIClient) runCronIsolatedAgentJob(job cron.CronJob, message string) (s
 		cronMessage = wrapSafeExternalPrompt(cronMessage)
 	}
 
+	// Resolve delivery mode early so we can disable the message tool when
+	// delivery is planned (the cron runner handles delivery itself).
+	delivery := job.Delivery
+	deliveryMode := cron.CronDeliveryAnnounce
+	if delivery != nil && strings.TrimSpace(string(delivery.Mode)) != "" {
+		deliveryMode = delivery.Mode
+	}
+	if delivery == nil {
+		delivery = &cron.CronDelivery{Mode: deliveryMode}
+	}
+	if deliveryMode == cron.CronDeliveryAnnounce {
+		metaSnapshot.DisabledTools = []string{ToolNameMessage}
+	}
+
 	// Capture last assistant message before dispatch.
 	lastID, lastTimestamp := oc.lastAssistantMessageInfo(ctx, portal)
 
@@ -108,14 +122,6 @@ func (oc *AIClient) runCronIsolatedAgentJob(job cron.CronJob, message string) (s
 		return "error", "", "", errors.New("cron job timed out")
 	}
 
-	delivery := job.Delivery
-	deliveryMode := cron.CronDeliveryAnnounce
-	if delivery != nil && strings.TrimSpace(string(delivery.Mode)) != "" {
-		deliveryMode = delivery.Mode
-	}
-	if delivery == nil {
-		delivery = &cron.CronDelivery{Mode: deliveryMode}
-	}
 	deliveryRequested := deliveryMode == cron.CronDeliveryAnnounce
 	bestEffort := delivery != nil && delivery.BestEffort != nil && *delivery.BestEffort
 

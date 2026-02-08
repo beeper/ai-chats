@@ -149,7 +149,21 @@ func shouldIncludeInHistory(meta *MessageMetadata) bool {
 }
 
 func loginMetadata(login *bridgev2.UserLogin) *UserLoginMetadata {
-	return login.Metadata.(*UserLoginMetadata)
+	if login == nil {
+		return &UserLoginMetadata{}
+	}
+	if login.Metadata == nil {
+		meta := &UserLoginMetadata{}
+		login.Metadata = meta
+		return meta
+	}
+	meta, ok := login.Metadata.(*UserLoginMetadata)
+	if !ok || meta == nil {
+		// Don't crash on schema mismatches; allow logout/deletion to proceed.
+		meta = &UserLoginMetadata{}
+		login.Metadata = meta
+	}
+	return meta
 }
 
 func formatChatSlug(index int) string {

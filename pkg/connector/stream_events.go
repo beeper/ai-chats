@@ -45,18 +45,26 @@ func (oc *AIClient) emitStreamEvent(
 	state *streamingState,
 	part map[string]any,
 ) {
+	verbose := oc.logEphemeralVerbose()
+
 	if portal == nil || portal.MXID == "" {
-		oc.loggerForContext(ctx).Debug().Msg("Stream event skipped: missing portal/room")
+		if verbose {
+			oc.loggerForContext(ctx).Debug().Msg("Stream event skipped: missing portal/room")
+		}
 		return
 	}
 	if state == nil {
-		oc.loggerForContext(ctx).Debug().Msg("Stream event skipped: missing state")
+		if verbose {
+			oc.loggerForContext(ctx).Debug().Msg("Stream event skipped: missing state")
+		}
 		return
 	}
 	if state.suppressSend {
-		oc.loggerForContext(ctx).Debug().
-			Str("turn_id", strings.TrimSpace(state.turnID)).
-			Msg("Stream event suppressed (suppressSend)")
+		if verbose {
+			oc.loggerForContext(ctx).Debug().
+				Str("turn_id", strings.TrimSpace(state.turnID)).
+				Msg("Stream event suppressed (suppressSend)")
+		}
 		return
 	}
 	intent := oc.getModelIntent(ctx, portal)
@@ -86,15 +94,26 @@ func (oc *AIClient) emitStreamEvent(
 		return
 	}
 
+	// Debounced start summary: log once per turn when verbose is off.
+	if !state.loggedStreamStart {
+		state.loggedStreamStart = true
+		oc.loggerForContext(ctx).Info().
+			Stringer("room_id", portal.MXID).
+			Str("turn_id", turnID).
+			Msg("Streaming ephemeral events")
+	}
+
 	eventContent := &event.Content{Raw: content}
 
 	txnID := buildStreamEventTxnID(turnID, seq)
-	oc.loggerForContext(ctx).Debug().
-		Stringer("room_id", portal.MXID).
-		Str("turn_id", turnID).
-		Int("seq", seq).
-		Str("part_type", partType).
-		Msg("Sending stream event (ephemeral)")
+	if verbose {
+		oc.loggerForContext(ctx).Debug().
+			Stringer("room_id", portal.MXID).
+			Str("turn_id", turnID).
+			Int("seq", seq).
+			Str("part_type", partType).
+			Msg("Sending stream event (ephemeral)")
+	}
 	_, err := ephemeralSender.SendEphemeralEvent(ctx, portal.MXID, StreamEventMessageType, eventContent, txnID)
 	if err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).

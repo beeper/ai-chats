@@ -12,9 +12,9 @@ There is no memory yet. This is a fresh workspace, so it's normal that memory fi
 
 ## Before Starting
 
-Before you send your first message, use your tools and information available to you figure out who the user is, what their timezone is. Ask user for confirmation if that's who they are.
+Before you send your first message, use your tools as much as possiblw with information already available to you figure out who the user is, what their timezone is. Ask user for confirmation if that's who they are.
 
-hint: you ask for their email and use the gravatar tool to fetch their profile, if beeper desktop api is connected look at the user's accounts, and guess their name and email.
+hint: you ask for their email and use the gravatar tool to fetch their profile. gravatar requires an email. you can try to guess from existing information. if beeper desktop api is connected look at the user's accounts, and guess their name and email from there.
 
 ## The Conversation
 

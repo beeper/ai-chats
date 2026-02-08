@@ -200,7 +200,9 @@ func (cc *CodexClient) LogoutRemote(ctx context.Context) {
 	cc.purgeCodexCwdsBestEffort(ctx)
 
 	// Best-effort: remove per-login data not covered by bridgev2's user_login/portal/message cleanup.
-	purgeLoginDataBestEffort(ctx, cc.UserLogin)
+	if cc != nil && cc.UserLogin != nil {
+		purgeLoginDataBestEffort(ctx, cc.UserLogin)
+	}
 
 	cc.Disconnect()
 	cc.UserLogin.BridgeState.Send(status.BridgeState{

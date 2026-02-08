@@ -56,6 +56,7 @@ type ToolApprovalsRuntimeConfig struct {
 	TTLSeconds      int      `yaml:"ttlSeconds"`
 	RequireForMCP   *bool    `yaml:"requireForMcp"`
 	RequireForTools []string `yaml:"requireForTools"`
+	AskFallback     string   `yaml:"askFallback"` // "deny" (default) | "allow"
 }
 
 func (c *ToolApprovalsRuntimeConfig) WithDefaults() *ToolApprovalsRuntimeConfig {
@@ -603,7 +604,8 @@ type ModelDefinitionConfig struct {
 
 // BridgeConfig tweaks Matrix-side behaviour for the AI bridge.
 type BridgeConfig struct {
-	CommandPrefix string `yaml:"command_prefix"`
+	CommandPrefix      string `yaml:"command_prefix"`
+	LogEphemeralEvents *bool  `yaml:"log_ephemeral_events"`
 }
 
 func upgradeConfig(helper configupgrade.Helper) {
@@ -633,6 +635,7 @@ func upgradeConfig(helper configupgrade.Helper) {
 
 	// Bridge-specific configuration
 	helper.Copy(configupgrade.Str, "bridge", "command_prefix")
+	helper.Copy(configupgrade.Bool, "bridge", "log_ephemeral_events")
 
 	// Context pruning configuration
 	helper.Copy(configupgrade.Str, "pruning", "mode")

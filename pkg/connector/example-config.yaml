@@ -81,6 +81,12 @@ default_system_prompt: |
   Follow the user's intent and be accurate.
 model_cache_duration: 6h
 
+# Bridge-specific behaviour tweaks.
+bridge:
+  # Log every individual ephemeral event (stream chunks, typing refreshes).
+  # Default false — only logs debounced start/stop summaries.
+  log_ephemeral_events: false
+
 # Optional message rendering settings (OpenClaw-style).
 messages:
   # Prefix applied to outbound replies (and heartbeat ok acks).
@@ -114,6 +120,9 @@ tool_approvals:
   requireForMcp: true
   # List of builtin tool names that require approval (subject to per-tool action allowlists).
   requireForTools: ["message", "cron", "gravatar_set", "create_agent", "fork_agent", "edit_agent", "delete_agent", "modify_room", "sessions_send", "sessions_spawn", "run_internal_command"]
+  # Fallback when approval times out: "deny" (default) | "allow".
+  # Set to "allow" for cron/automated contexts where no human can respond.
+  askFallback: "deny"
 
 # Optional per-channel overrides.
 channels:

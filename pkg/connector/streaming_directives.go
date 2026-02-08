@@ -3,8 +3,9 @@ package connector
 import "strings"
 
 type streamingDirectiveAccumulator struct {
-	pendingTail  string
-	pendingReply streamingPendingReplyState
+	pendingTail       string
+	pendingReply      streamingPendingReplyState
+	pendingWhitespace string
 }
 
 type streamingPendingReplyState struct {
@@ -32,6 +33,7 @@ func (acc *streamingDirectiveAccumulator) Reset() {
 		return
 	}
 	acc.pendingTail = ""
+	acc.pendingWhitespace = ""
 	acc.pendingReply = streamingPendingReplyState{}
 }
 
@@ -69,6 +71,7 @@ func (acc *streamingDirectiveAccumulator) Consume(raw string, final bool) *strea
 	}
 
 	if !hasRenderableStreamingContent(result) {
+		acc.pendingWhitespace += result.Text
 		if hasTag {
 			acc.pendingReply = streamingPendingReplyState{
 				explicitID: explicitID,
@@ -77,6 +80,11 @@ func (acc *streamingDirectiveAccumulator) Consume(raw string, final bool) *strea
 			}
 		}
 		return nil
+	}
+
+	if acc.pendingWhitespace != "" {
+		result.Text = acc.pendingWhitespace + result.Text
+		acc.pendingWhitespace = ""
 	}
 
 	acc.pendingReply = streamingPendingReplyState{}

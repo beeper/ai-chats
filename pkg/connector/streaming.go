@@ -93,6 +93,9 @@ type streamingState struct {
 	// Avoid logging repeated missing-ephemeral warnings.
 	streamEphemeralUnsupported bool
 
+	// Debounced ephemeral logging: true once the "Streaming started" summary has been logged.
+	loggedStreamStart bool
+
 	// Codex (app-server) specific streaming helpers.
 	// Only used by CodexClient; kept here to reuse the existing AI SDK chunk plumbing.
 	codexToolOutputBuffers    map[string]*strings.Builder // toolCallId -> accumulated output
@@ -283,7 +286,7 @@ func mapFinishReason(reason string) string {
 		return "stop"
 	case "end_turn", "end-turn":
 		return "stop"
-	case "length":
+	case "length", "max_output_tokens":
 		return "length"
 	case "content_filter", "content-filter":
 		return "content-filter"
@@ -1432,11 +1435,27 @@ func (oc *AIClient) emitUIFinish(ctx context.Context, portal *bridgev2.Portal, s
 		state.uiReasoningID = ""
 	}
 	oc.emitUIStepFinish(ctx, portal, state)
+	// Finalize any un-finished tool calls before sending finish.
+	// If a stream ends (error, cancel, timeout) while a tool is mid-execution,
+	// these tools would otherwise stay in a non-terminal state forever.
+	for toolCallID := range state.uiToolStarted {
+		if !state.uiToolOutputFinalized[toolCallID] {
+			oc.emitUIToolOutputError(ctx, portal, state, toolCallID, "cancelled", false)
+		}
+	}
 	oc.emitStreamEvent(ctx, portal, state, map[string]any{
 		"type":            "finish",
 		"finishReason":    mapFinishReason(state.finishReason),
 		"messageMetadata": oc.buildUIMessageMetadata(state, meta, true),
 	})
+
+	// Debounced done summary: always log the finish with event count.
+	if state.loggedStreamStart {
+		oc.loggerForContext(ctx).Info().
+			Str("turn_id", strings.TrimSpace(state.turnID)).
+			Int("events_sent", state.sequenceNum).
+			Msg("Finished streaming ephemeral events")
+	}
 }
 
 // saveAssistantMessage saves the completed assistant message to the database
@@ -2335,7 +2354,11 @@ func (oc *AIClient) streamingResponse(
 						oc.emitUIToolApprovalRequest(ctx, portal, state, approvalID, tool.callID, toolName, tool.eventID, oc.toolApprovalsTTLSeconds())
 						decision, _, ok := oc.waitToolApproval(ctx, approvalID)
 						if !ok {
-							decision = ToolApprovalDecision{Approve: false, Reason: "timeout"}
+							if oc.toolApprovalsAskFallback() == "allow" {
+								decision = ToolApprovalDecision{Approve: true, Reason: "fallback"}
+							} else {
+								decision = ToolApprovalDecision{Approve: false, Reason: "timeout"}
+							}
 						}
 						if !decision.Approve {
 							resultStatus = ResultStatusError
@@ -2377,7 +2400,11 @@ func (oc *AIClient) streamingResponse(
 						oc.emitUIToolApprovalRequest(ctx, portal, state, approvalID, tool.callID, toolName, tool.eventID, oc.toolApprovalsTTLSeconds())
 						decision, _, ok := oc.waitToolApproval(ctx, approvalID)
 						if !ok {
-							decision = ToolApprovalDecision{Approve: false, Reason: "timeout"}
+							if oc.toolApprovalsAskFallback() == "allow" {
+								decision = ToolApprovalDecision{Approve: true, Reason: "fallback"}
+							} else {
+								decision = ToolApprovalDecision{Approve: false, Reason: "timeout"}
+							}
 						}
 						if !decision.Approve {
 							resultStatus = ResultStatusError
@@ -2501,6 +2528,14 @@ func (oc *AIClient) streamingResponse(
 				output:    result,
 			})
 
+			// Emit UI tool output immediately so the desktop sees the tool
+			// as completed without waiting for the timeline event send.
+			if resultStatus == ResultStatusSuccess {
+				oc.emitUIToolOutputAvailable(ctx, portal, state, tool.callID, result, tool.toolType == ToolTypeProvider, false)
+			} else {
+				oc.emitUIToolOutputError(ctx, portal, state, tool.callID, result, tool.toolType == ToolTypeProvider)
+			}
+
 			// Normalize input for storage
 			inputMapForMeta := map[string]any{}
 			if parsed, ok := inputMap.(map[string]any); ok {
@@ -2509,7 +2544,8 @@ func (oc *AIClient) streamingResponse(
 				inputMapForMeta = map[string]any{"_raw": raw}
 			}
 
-			// Track tool call in metadata
+			// Track tool call in metadata (sendToolResultEvent is a blocking
+			// Matrix API call, but the UI update was already emitted above).
 			completedAt := time.Now().UnixMilli()
 			resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, result, resultStatus)
 			state.toolCalls = append(state.toolCalls, ToolCallMetadata{
@@ -2525,12 +2561,6 @@ func (oc *AIClient) streamingResponse(
 				CallEventID:   string(tool.eventID),
 				ResultEventID: string(resultEventID),
 			})
-
-			if resultStatus == ResultStatusSuccess {
-				oc.emitUIToolOutputAvailable(ctx, portal, state, tool.callID, result, tool.toolType == ToolTypeProvider, false)
-			} else {
-				oc.emitUIToolOutputError(ctx, portal, state, tool.callID, result, tool.toolType == ToolTypeProvider)
-			}
 
 		case "response.file_search_call.searching", "response.file_search_call.in_progress":
 			callID := strings.TrimSpace(streamEvent.ItemID)
@@ -3093,9 +3123,10 @@ func (oc *AIClient) streamingResponse(
 		for _, approval := range pendingApprovals {
 			decision, _, ok := oc.waitToolApproval(ctx, approval.approvalID)
 			if !ok {
-				decision = ToolApprovalDecision{
-					Approve: false,
-					Reason:  "timeout",
+				if oc.toolApprovalsAskFallback() == "allow" {
+					decision = ToolApprovalDecision{Approve: true, Reason: "fallback"}
+				} else {
+					decision = ToolApprovalDecision{Approve: false, Reason: "timeout"}
 				}
 			}
 			item := responses.ResponseInputItemParamOfMcpApprovalResponse(approval.approvalID, decision.Approve)
@@ -3533,7 +3564,11 @@ func (oc *AIClient) streamingResponse(
 						oc.emitUIToolApprovalRequest(ctx, portal, state, approvalID, tool.callID, toolName, tool.eventID, oc.toolApprovalsTTLSeconds())
 						decision, _, ok := oc.waitToolApproval(ctx, approvalID)
 						if !ok {
-							decision = ToolApprovalDecision{Approve: false, Reason: "timeout"}
+							if oc.toolApprovalsAskFallback() == "allow" {
+								decision = ToolApprovalDecision{Approve: true, Reason: "fallback"}
+							} else {
+								decision = ToolApprovalDecision{Approve: false, Reason: "timeout"}
+							}
 						}
 						if !decision.Approve {
 							resultStatus = ResultStatusError
@@ -3650,6 +3685,14 @@ func (oc *AIClient) streamingResponse(
 					output:    result,
 				})
 
+				// Emit UI tool output immediately so the desktop sees the tool
+				// as completed without waiting for the timeline event send.
+				if resultStatus == ResultStatusSuccess {
+					oc.emitUIToolOutputAvailable(ctx, portal, state, tool.callID, result, tool.toolType == ToolTypeProvider, false)
+				} else {
+					oc.emitUIToolOutputError(ctx, portal, state, tool.callID, result, tool.toolType == ToolTypeProvider)
+				}
+
 				inputMapForMeta := map[string]any{}
 				if parsed, ok := inputMap.(map[string]any); ok {
 					inputMapForMeta = parsed
@@ -3657,6 +3700,8 @@ func (oc *AIClient) streamingResponse(
 					inputMapForMeta = map[string]any{"_raw": raw}
 				}
 
+				// Track tool call in metadata (sendToolResultEvent is a blocking
+				// Matrix API call, but the UI update was already emitted above).
 				completedAt := time.Now().UnixMilli()
 				resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, result, resultStatus)
 				state.toolCalls = append(state.toolCalls, ToolCallMetadata{
@@ -3672,12 +3717,6 @@ func (oc *AIClient) streamingResponse(
 					CallEventID:   string(tool.eventID),
 					ResultEventID: string(resultEventID),
 				})
-
-				if resultStatus == ResultStatusSuccess {
-					oc.emitUIToolOutputAvailable(ctx, portal, state, tool.callID, result, tool.toolType == ToolTypeProvider, false)
-				} else {
-					oc.emitUIToolOutputError(ctx, portal, state, tool.callID, result, tool.toolType == ToolTypeProvider)
-				}
 
 			case "response.completed":
 				state.completedAtMs = time.Now().UnixMilli()
@@ -4290,7 +4329,11 @@ func (oc *AIClient) streamChatCompletions(
 						oc.emitUIToolApprovalRequest(ctx, portal, state, approvalID, tool.callID, toolName, tool.eventID, oc.toolApprovalsTTLSeconds())
 						decision, _, ok := oc.waitToolApproval(ctx, approvalID)
 						if !ok {
-							decision = ToolApprovalDecision{Approve: false, Reason: "timeout"}
+							if oc.toolApprovalsAskFallback() == "allow" {
+								decision = ToolApprovalDecision{Approve: true, Reason: "fallback"}
+							} else {
+								decision = ToolApprovalDecision{Approve: false, Reason: "timeout"}
+							}
 						}
 						if !decision.Approve {
 							resultStatus = ResultStatusError

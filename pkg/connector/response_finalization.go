@@ -14,6 +14,45 @@ import (
 	"github.com/beeper/ai-bridge/pkg/agents"
 )
 
+const maxMatrixEventBodyBytes = 60000 // Safety margin below Matrix's ~65KB limit
+
+// splitAtMarkdownBoundary splits text at a paragraph or line boundary near maxBytes.
+// Returns (first, rest). If text fits, rest is empty.
+func splitAtMarkdownBoundary(text string, maxBytes int) (string, string) {
+	if len(text) <= maxBytes {
+		return text, ""
+	}
+	// Search backwards from maxBytes for a paragraph break (\n\n)
+	cutoff := text[:maxBytes]
+	if idx := strings.LastIndex(cutoff, "\n\n"); idx > maxBytes/2 {
+		return text[:idx], text[idx:]
+	}
+	// Fall back to last newline
+	if idx := strings.LastIndex(cutoff, "\n"); idx > maxBytes/2 {
+		return text[:idx], text[idx:]
+	}
+	// Hard break at limit
+	return cutoff, text[maxBytes:]
+}
+
+// sendContinuationMessage sends overflow text as a new (non-edit) message from the bot.
+func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, body string) {
+	rendered := format.RenderMarkdown(body, true, true)
+	raw := map[string]any{
+		"msgtype":                event.MsgText,
+		"body":                  rendered.Body,
+		"format":                rendered.Format,
+		"formatted_body":        rendered.FormattedBody,
+		"com.beeper.continuation": true,
+	}
+	eventContent := &event.Content{Raw: raw}
+	if _, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, eventContent, nil); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to send continuation message")
+	} else {
+		oc.loggerForContext(ctx).Debug().Int("body_len", len(body)).Msg("Sent continuation message for oversized response")
+	}
+}
+
 // sendInitialStreamMessage sends the first message in a streaming session and returns its event ID
 func (oc *AIClient) sendInitialStreamMessage(ctx context.Context, portal *bridgev2.Portal, content string, turnID string, replyTarget ReplyTarget) id.EventID {
 	intent := oc.getModelIntent(ctx, portal)
@@ -157,6 +196,14 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 	}
 	rendered := format.RenderMarkdown(cleanedContent, true, true)
 
+	// Safety-split oversized responses into multiple Matrix events
+	var continuationBody string
+	if len(rendered.Body) > maxMatrixEventBodyBytes {
+		firstBody, rest := splitAtMarkdownBoundary(rendered.Body, maxMatrixEventBodyBytes)
+		continuationBody = rest
+		rendered = format.RenderMarkdown(firstBody, true, true)
+	}
+
 	// Build AI SDK UIMessage payload
 	parts := make([]map[string]any, 0, 2+len(state.toolCalls))
 	if state.reasoning.Len() > 0 {
@@ -263,6 +310,13 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 			Bool("has_reply", directives.ReplyToEventID != "").
 			Int("link_previews", len(linkPreviews)).
 			Msg("Sent final assistant turn with metadata")
+	}
+
+	// Send continuation messages for overflow
+	for continuationBody != "" {
+		var chunk string
+		chunk, continuationBody = splitAtMarkdownBoundary(continuationBody, maxMatrixEventBodyBytes)
+		oc.sendContinuationMessage(ctx, portal, intent, chunk)
 	}
 }
 
@@ -646,6 +700,14 @@ func generatedFilesToParts(files []generatedFilePart) []map[string]any {
 
 // sendFinalAssistantTurnContent is a helper for raw mode that sends content without directive processing.
 func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata, intent bridgev2.MatrixAPI, rendered event.MessageEventContent, replyToEventID *id.EventID) {
+	// Safety-split oversized responses into multiple Matrix events
+	var continuationBody string
+	if len(rendered.Body) > maxMatrixEventBodyBytes {
+		firstBody, rest := splitAtMarkdownBoundary(rendered.Body, maxMatrixEventBodyBytes)
+		continuationBody = rest
+		rendered = format.RenderMarkdown(firstBody, true, true)
+	}
+
 	// Build AI metadata
 	parts := make([]map[string]any, 0, 2+len(state.toolCalls))
 	if state.reasoning.Len() > 0 {
@@ -742,6 +804,13 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 			Str("mode", "raw").
 			Int("link_previews", len(linkPreviews)).
 			Msg("Sent final assistant turn (raw mode)")
+	}
+
+	// Send continuation messages for overflow
+	for continuationBody != "" {
+		var chunk string
+		chunk, continuationBody = splitAtMarkdownBoundary(continuationBody, maxMatrixEventBodyBytes)
+		oc.sendContinuationMessage(ctx, portal, intent, chunk)
 	}
 }
 

@@ -246,6 +246,9 @@ type PortalMetadata struct {
 	AckReactionEmoji       string `json:"ack_reaction_emoji,omitempty"`        // Emoji to react with when message received (e.g., "👀", "🤔"). Empty = disabled.
 	AckReactionRemoveAfter bool   `json:"ack_reaction_remove_after,omitempty"` // Remove the ack reaction after replying
 
+	// Runtime-only overrides (not persisted)
+	DisabledTools []string `json:"-"`
+
 	// Debounce configuration (0 = use default, -1 = disabled)
 	DebounceMs int `json:"debounce_ms,omitempty"`
 
@@ -271,6 +274,10 @@ func clonePortalMetadata(src *PortalMetadata) *PortalMetadata {
 
 	if src.SessionBootstrapByAgent != nil {
 		clone.SessionBootstrapByAgent = maps.Clone(src.SessionBootstrapByAgent)
+	}
+
+	if len(src.DisabledTools) > 0 {
+		clone.DisabledTools = append([]string(nil), src.DisabledTools...)
 	}
 
 	return &clone

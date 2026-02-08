@@ -151,6 +151,10 @@ func applyPatchModelAllowed(allow []string, modelID string, provider string) boo
 func (oc *AIClient) isToolEnabled(meta *PortalMetadata, toolName string) bool {
 	toolName = normalizeToolAlias(toolName)
 
+	if meta != nil && slices.Contains(meta.DisabledTools, toolName) {
+		return false
+	}
+
 	available, _, _ := oc.isToolAvailable(meta, toolName)
 	if !available {
 		return false
