@@ -609,6 +609,20 @@ func readSubagentConfig(input map[string]any) (*SubagentConfig, error) {
 	return &cfg, nil
 }
 
+// loadAgent loads all agents and looks up the one with the given ID.
+// On failure it returns an ErrorResult that the caller can return directly.
+func (e *BossToolExecutor) loadAgent(ctx context.Context, toolName, agentID string) (AgentData, *Result, error) {
+	agents, err := e.store.LoadAgents(ctx)
+	if err != nil {
+		return AgentData{}, ErrorResult(toolName, fmt.Sprintf("failed to load agents: %v", err)), nil
+	}
+	agent, ok := agents[agentID]
+	if !ok {
+		return AgentData{}, ErrorResult(toolName, fmt.Sprintf("agent '%s' not found", agentID)), nil
+	}
+	return agent, nil, nil
+}
+
 // ExecuteCreateAgent handles the create_agent tool.
 func (e *BossToolExecutor) ExecuteCreateAgent(ctx context.Context, input map[string]any) (*Result, error) {
 	name, err := ReadString(input, "name", true)
@@ -666,14 +680,9 @@ func (e *BossToolExecutor) ExecuteForkAgent(ctx context.Context, input map[strin
 		return ErrorResult("fork_agent", err.Error()), nil
 	}
 
-	agents, err := e.store.LoadAgents(ctx)
-	if err != nil {
-		return ErrorResult("fork_agent", fmt.Sprintf("failed to load agents: %v", err)), nil
-	}
-
-	source, ok := agents[sourceID]
-	if !ok {
-		return ErrorResult("fork_agent", fmt.Sprintf("agent '%s' not found", sourceID)), nil
+	source, errResult, err := e.loadAgent(ctx, "fork_agent", sourceID)
+	if errResult != nil || err != nil {
+		return errResult, err
 	}
 
 	newName := ReadStringDefault(input, "new_name", fmt.Sprintf("%s (Fork)", source.Name))
@@ -715,14 +724,9 @@ func (e *BossToolExecutor) ExecuteEditAgent(ctx context.Context, input map[strin
 		return ErrorResult("edit_agent", err.Error()), nil
 	}
 
-	agents, err := e.store.LoadAgents(ctx)
-	if err != nil {
-		return ErrorResult("edit_agent", fmt.Sprintf("failed to load agents: %v", err)), nil
-	}
-
-	agent, ok := agents[agentID]
-	if !ok {
-		return ErrorResult("edit_agent", fmt.Sprintf("agent '%s' not found", agentID)), nil
+	agent, errResult, err := e.loadAgent(ctx, "edit_agent", agentID)
+	if errResult != nil || err != nil {
+		return errResult, err
 	}
 
 	if agent.IsPreset {
@@ -773,14 +777,9 @@ func (e *BossToolExecutor) ExecuteDeleteAgent(ctx context.Context, input map[str
 		return ErrorResult("delete_agent", err.Error()), nil
 	}
 
-	agents, err := e.store.LoadAgents(ctx)
-	if err != nil {
-		return ErrorResult("delete_agent", fmt.Sprintf("failed to load agents: %v", err)), nil
-	}
-
-	agent, ok := agents[agentID]
-	if !ok {
-		return ErrorResult("delete_agent", fmt.Sprintf("agent '%s' not found", agentID)), nil
+	agent, errResult, err := e.loadAgent(ctx, "delete_agent", agentID)
+	if errResult != nil || err != nil {
+		return errResult, err
 	}
 
 	if agent.IsPreset {

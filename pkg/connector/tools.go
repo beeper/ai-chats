@@ -70,10 +70,7 @@ func WithBridgeToolContext(ctx context.Context, btc *BridgeToolContext) context.
 
 // GetBridgeToolContext retrieves bridge context from a context
 func GetBridgeToolContext(ctx context.Context) *BridgeToolContext {
-	if v := ctx.Value(bridgeToolContextKey{}); v != nil {
-		return v.(*BridgeToolContext)
-	}
-	return nil
+	return contextValue[*BridgeToolContext](ctx, bridgeToolContextKey{})
 }
 
 // BuiltinTools returns the list of available builtin tools

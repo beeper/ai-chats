@@ -1,6 +1,10 @@
 package fetch
 
-import "context"
+import (
+	"context"
+
+	"github.com/beeper/ai-bridge/pkg/shared/registry"
+)
 
 // Provider fetches readable content for a given backend.
 type Provider interface {
@@ -8,31 +12,10 @@ type Provider interface {
 	Fetch(ctx context.Context, req Request) (*Response, error)
 }
 
-// Registry stores named providers.
-type Registry struct {
-	providers map[string]Provider
-}
+// Registry is an alias for a generic registry of fetch providers.
+type Registry = registry.Registry[Provider]
 
 // NewRegistry creates an empty registry.
 func NewRegistry() *Registry {
-	return &Registry{providers: make(map[string]Provider)}
-}
-
-// Register adds or replaces a provider by name.
-func (r *Registry) Register(provider Provider) {
-	if r == nil || provider == nil {
-		return
-	}
-	if r.providers == nil {
-		r.providers = make(map[string]Provider)
-	}
-	r.providers[provider.Name()] = provider
-}
-
-// Get returns a provider by name.
-func (r *Registry) Get(name string) Provider {
-	if r == nil {
-		return nil
-	}
-	return r.providers[name]
+	return registry.New[Provider]()
 }

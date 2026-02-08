@@ -19,13 +19,5 @@ func WithTypingContext(ctx context.Context, typing *TypingContext) context.Conte
 }
 
 func typingContextFromContext(ctx context.Context) *TypingContext {
-	if ctx == nil {
-		return nil
-	}
-	if val := ctx.Value(typingContextKey{}); val != nil {
-		if typing, ok := val.(*TypingContext); ok {
-			return typing
-		}
-	}
-	return nil
+	return contextValue[*TypingContext](ctx, typingContextKey{})
 }

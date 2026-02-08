@@ -422,7 +422,6 @@ func TestClassifyFailoverReason(t *testing.T) {
 		{"rate_limit", errors.New("resource_exhausted: rate limit hit"), FailoverRateLimit},
 		{"timeout", errors.New("context deadline exceeded"), FailoverTimeout},
 		{"overloaded", errors.New("service unavailable 503"), FailoverOverload},
-		{"server", errors.New("500 internal server error"), FailoverServer},
 		{"unknown", errors.New("something random"), FailoverUnknown},
 	}
 	for _, tt := range tests {

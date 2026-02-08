@@ -49,15 +49,5 @@ func withHeartbeatRun(ctx context.Context, cfg *HeartbeatRunConfig, ch chan Hear
 }
 
 func heartbeatRunFromContext(ctx context.Context) *heartbeatRunContext {
-	if ctx == nil {
-		return nil
-	}
-	raw := ctx.Value(heartbeatContextKey{})
-	if raw == nil {
-		return nil
-	}
-	if val, ok := raw.(*heartbeatRunContext); ok {
-		return val
-	}
-	return nil
+	return contextValue[*heartbeatRunContext](ctx, heartbeatContextKey{})
 }

@@ -22,8 +22,8 @@ func Fetch(ctx context.Context, req Request, cfg *Config) (*Response, error) {
 
 	var lastErr error
 	for _, name := range order {
-		provider := registry.Get(name)
-		if provider == nil {
+		provider, ok := registry.Get(name)
+		if !ok {
 			continue
 		}
 		resp, err := provider.Fetch(ctx, req)

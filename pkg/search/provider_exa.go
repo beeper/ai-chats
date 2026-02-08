@@ -16,21 +16,6 @@ type exaProvider struct {
 	cfg ExaConfig
 }
 
-func newExaProvider(cfg *Config) Provider {
-	if cfg == nil {
-		return nil
-	}
-	enabled := isEnabled(cfg.Exa.Enabled, true)
-	if !enabled {
-		return nil
-	}
-	apiKey := strings.TrimSpace(cfg.Exa.APIKey)
-	if apiKey == "" {
-		return nil
-	}
-	return &exaProvider{cfg: cfg.Exa}
-}
-
 func (p *exaProvider) Name() string {
 	return ProviderExa
 }

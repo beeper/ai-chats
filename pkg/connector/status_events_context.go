@@ -17,15 +17,7 @@ func withStatusEvents(ctx context.Context, events []*event.Event) context.Contex
 }
 
 func statusEventsFromContext(ctx context.Context) []*event.Event {
-	if ctx == nil {
-		return nil
-	}
-	if raw := ctx.Value(statusEventsKey{}); raw != nil {
-		if events, ok := raw.([]*event.Event); ok {
-			return events
-		}
-	}
-	return nil
+	return contextValue[[]*event.Event](ctx, statusEventsKey{})
 }
 
 func withQueueAcceptedStatus(ctx context.Context) context.Context {
@@ -33,10 +25,5 @@ func withQueueAcceptedStatus(ctx context.Context) context.Context {
 }
 
 func queueAcceptedStatusFromContext(ctx context.Context) bool {
-	if ctx == nil {
-		return false
-	}
-	raw := ctx.Value(queueAcceptedStatusKey{})
-	accepted, ok := raw.(bool)
-	return ok && accepted
+	return contextValue[bool](ctx, queueAcceptedStatusKey{})
 }

@@ -14,21 +14,6 @@ type perplexityProvider struct {
 	cfg PerplexityConfig
 }
 
-func newPerplexityProvider(cfg *Config) Provider {
-	if cfg == nil {
-		return nil
-	}
-	enabled := isEnabled(cfg.Perplexity.Enabled, true)
-	if !enabled {
-		return nil
-	}
-	apiKey := strings.TrimSpace(cfg.Perplexity.APIKey)
-	if apiKey == "" {
-		return nil
-	}
-	return &perplexityProvider{cfg: cfg.Perplexity}
-}
-
 func (p *perplexityProvider) Name() string {
 	return ProviderPerplexity
 }

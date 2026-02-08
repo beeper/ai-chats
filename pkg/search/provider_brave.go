@@ -16,21 +16,6 @@ type braveProvider struct {
 	cfg BraveConfig
 }
 
-func newBraveProvider(cfg *Config) Provider {
-	if cfg == nil {
-		return nil
-	}
-	enabled := isEnabled(cfg.Brave.Enabled, true)
-	if !enabled {
-		return nil
-	}
-	apiKey := strings.TrimSpace(cfg.Brave.APIKey)
-	if apiKey == "" {
-		return nil
-	}
-	return &braveProvider{cfg: cfg.Brave}
-}
-
 func (p *braveProvider) Name() string {
 	return ProviderBrave
 }

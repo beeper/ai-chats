@@ -104,10 +104,9 @@ func mergeConsecutiveSameRole(msgs []openai.ChatCompletionMessageParamUnion) []o
 }
 
 // chatMessageRole extracts the role string from a ChatCompletionMessageParamUnion.
+// GetRole() returns empty strings at construction time (constant types marshal lazily),
+// so we check which Of* field is populated instead.
 func chatMessageRole(msg openai.ChatCompletionMessageParamUnion) string {
-	if r := msg.GetRole(); r != nil {
-		return *r
-	}
 	if !param.IsOmitted(msg.OfSystem) {
 		return "system"
 	}

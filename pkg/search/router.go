@@ -22,8 +22,8 @@ func Search(ctx context.Context, req Request, cfg *Config) (*Response, error) {
 
 	var lastErr error
 	for _, name := range order {
-		provider := registry.Get(name)
-		if provider == nil {
+		provider, ok := registry.Get(name)
+		if !ok {
 			continue
 		}
 		resp, err := provider.Search(ctx, req)
@@ -94,16 +94,29 @@ func registerProviders(registry *Registry, cfg *Config) {
 		return
 	}
 
-	if p := newExaProvider(cfg); p != nil {
+	if p := newProviderIfEnabled(cfg.Exa.Enabled, cfg.Exa.APIKey, func() Provider { return &exaProvider{cfg: cfg.Exa} }); p != nil {
 		registry.Register(p)
 	}
-	if p := newBraveProvider(cfg); p != nil {
+	if p := newProviderIfEnabled(cfg.Brave.Enabled, cfg.Brave.APIKey, func() Provider { return &braveProvider{cfg: cfg.Brave} }); p != nil {
 		registry.Register(p)
 	}
-	if p := newPerplexityProvider(cfg); p != nil {
+	if p := newProviderIfEnabled(cfg.Perplexity.Enabled, cfg.Perplexity.APIKey, func() Provider { return &perplexityProvider{cfg: cfg.Perplexity} }); p != nil {
 		registry.Register(p)
 	}
-	if p := newOpenRouterProvider(cfg); p != nil {
+	if p := newProviderIfEnabled(cfg.OpenRouter.Enabled, cfg.OpenRouter.APIKey, func() Provider { return &openRouterProvider{cfg: cfg.OpenRouter} }); p != nil {
 		registry.Register(p)
 	}
+}
+
+// newProviderIfEnabled returns a Provider when the feature flag is on and the
+// API key is non-empty. It returns nil otherwise, centralising the common
+// validation that every provider constructor previously duplicated.
+func newProviderIfEnabled(enabled *bool, apiKey string, create func() Provider) Provider {
+	if !isEnabled(enabled, true) {
+		return nil
+	}
+	if strings.TrimSpace(apiKey) == "" {
+		return nil
+	}
+	return create()
 }

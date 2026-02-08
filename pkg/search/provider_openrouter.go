@@ -26,21 +26,6 @@ type openRouterAnnotation struct {
 	} `json:"url_citation"`
 }
 
-func newOpenRouterProvider(cfg *Config) Provider {
-	if cfg == nil {
-		return nil
-	}
-	enabled := isEnabled(cfg.OpenRouter.Enabled, true)
-	if !enabled {
-		return nil
-	}
-	apiKey := strings.TrimSpace(cfg.OpenRouter.APIKey)
-	if apiKey == "" {
-		return nil
-	}
-	return &openRouterProvider{cfg: cfg.OpenRouter}
-}
-
 func (p *openRouterProvider) Name() string {
 	return ProviderOpenRouter
 }

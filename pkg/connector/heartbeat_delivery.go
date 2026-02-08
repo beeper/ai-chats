@@ -4,24 +4,16 @@ import (
 	"context"
 	"strings"
 
-	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
 )
 
-type heartbeatDeliveryTarget struct {
-	Portal  *bridgev2.Portal
-	RoomID  id.RoomID
-	Channel string
-	Reason  string
-}
-
-func (oc *AIClient) resolveHeartbeatDeliveryTarget(agentID string, heartbeat *HeartbeatConfig, entry *sessionEntry) heartbeatDeliveryTarget {
+func (oc *AIClient) resolveHeartbeatDeliveryTarget(agentID string, heartbeat *HeartbeatConfig, entry *sessionEntry) deliveryTarget {
 	if oc == nil || oc.UserLogin == nil {
-		return heartbeatDeliveryTarget{Reason: "no-target"}
+		return deliveryTarget{Reason: "no-target"}
 	}
 	if heartbeat != nil && heartbeat.Target != nil {
 		if strings.EqualFold(strings.TrimSpace(*heartbeat.Target), "none") {
-			return heartbeatDeliveryTarget{Reason: "target-none"}
+			return deliveryTarget{Reason: "target-none"}
 		}
 	}
 
@@ -47,22 +39,22 @@ func (oc *AIClient) resolveHeartbeatDeliveryTarget(agentID string, heartbeat *He
 		}
 	}
 
-	return heartbeatDeliveryTarget{Reason: "no-target"}
+	return deliveryTarget{Reason: "no-target"}
 }
 
-func (oc *AIClient) resolveHeartbeatDeliveryRoom(raw string) heartbeatDeliveryTarget {
+func (oc *AIClient) resolveHeartbeatDeliveryRoom(raw string) deliveryTarget {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
-		return heartbeatDeliveryTarget{Reason: "no-target"}
+		return deliveryTarget{Reason: "no-target"}
 	}
 	if !strings.HasPrefix(trimmed, "!") {
-		return heartbeatDeliveryTarget{Reason: "no-target"}
+		return deliveryTarget{Reason: "no-target"}
 	}
 	portal, err := oc.UserLogin.Bridge.GetPortalByMXID(context.Background(), id.RoomID(trimmed))
 	if err != nil || portal == nil || portal.MXID == "" {
-		return heartbeatDeliveryTarget{Reason: "no-target"}
+		return deliveryTarget{Reason: "no-target"}
 	}
-	return heartbeatDeliveryTarget{
+	return deliveryTarget{
 		Portal:  portal,
 		RoomID:  portal.MXID,
 		Channel: "matrix",

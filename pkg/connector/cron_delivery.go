@@ -4,22 +4,14 @@ import (
 	"context"
 	"strings"
 
-	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/cron"
 )
 
-type cronDeliveryTarget struct {
-	Portal  *bridgev2.Portal
-	RoomID  id.RoomID
-	Channel string
-	Reason  string
-}
-
-func (oc *AIClient) resolveCronDeliveryTarget(agentID string, delivery *cron.CronDelivery) cronDeliveryTarget {
+func (oc *AIClient) resolveCronDeliveryTarget(agentID string, delivery *cron.CronDelivery) deliveryTarget {
 	if delivery == nil {
-		return cronDeliveryTarget{Reason: "no-delivery"}
+		return deliveryTarget{Reason: "no-delivery"}
 	}
 
 	channel := strings.TrimSpace(delivery.Channel)
@@ -28,7 +20,7 @@ func (oc *AIClient) resolveCronDeliveryTarget(agentID string, delivery *cron.Cro
 	}
 	lowered := strings.ToLower(channel)
 	if lowered != "last" && lowered != "matrix" {
-		return cronDeliveryTarget{Channel: lowered, Reason: "unsupported-channel"}
+		return deliveryTarget{Channel: lowered, Reason: "unsupported-channel"}
 	}
 
 	target := strings.TrimSpace(delivery.To)
@@ -52,16 +44,16 @@ func (oc *AIClient) resolveCronDeliveryTarget(agentID string, delivery *cron.Cro
 		}
 	}
 	if target == "" {
-		return cronDeliveryTarget{Channel: "matrix", Reason: "no-target"}
+		return deliveryTarget{Channel: "matrix", Reason: "no-target"}
 	}
 	if !strings.HasPrefix(target, "!") {
-		return cronDeliveryTarget{Channel: "matrix", Reason: "invalid-target"}
+		return deliveryTarget{Channel: "matrix", Reason: "invalid-target"}
 	}
 	if portal, err := oc.UserLogin.Bridge.GetPortalByMXID(context.Background(), id.RoomID(target)); err == nil && portal != nil {
 		if !oc.IsLoggedIn() {
-			return cronDeliveryTarget{Channel: "matrix", Reason: "channel-not-ready"}
+			return deliveryTarget{Channel: "matrix", Reason: "channel-not-ready"}
 		}
-		return cronDeliveryTarget{Portal: portal, RoomID: portal.MXID, Channel: "matrix"}
+		return deliveryTarget{Portal: portal, RoomID: portal.MXID, Channel: "matrix"}
 	}
-	return cronDeliveryTarget{Channel: "matrix", Reason: "no-target"}
+	return deliveryTarget{Channel: "matrix", Reason: "no-target"}
 }
