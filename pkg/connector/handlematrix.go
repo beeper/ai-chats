@@ -625,7 +625,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		}
 		rawBody = strings.TrimSpace(cleaned)
 		if foundHelp || foundCommands {
-			helpText := "Commands: /status, /context, /model, /think, /verbose, /reasoning, /elevated, /activation, /send, /queue, /tools, /typing, /new, /reset, /stop"
+			helpText := "Commands: /status, /context, /tools, /cron, /typing, /model, /think, /verbose, /reasoning, /elevated, /activation, /send, /queue, /new, /reset, /stop"
 			inlineResponses = append(inlineResponses, helpText)
 		}
 		if foundWhoami {

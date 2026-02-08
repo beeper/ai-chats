@@ -427,7 +427,7 @@ func (oc *AIClient) readCronRuns(jobID string, limit int) ([]cron.CronRunLogEntr
 	if err != nil {
 		return nil, err
 	}
-	backend := oc.cronStoreBackend()
+	backend := oc.bridgeStateBackend()
 	if backend == nil {
 		return nil, errors.New("cron store not available")
 	}

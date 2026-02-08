@@ -89,6 +89,87 @@ func (oc *AIClient) handleInboundCommand(
 			return inboundCommandResult{handled: true, response: oc.buildToolsStatusText(meta)}
 		}
 		return inboundCommandResult{handled: true, response: "Usage:\n• /tools - Show current tool status\n• /tools list - List available tools\nTool toggles are managed by tool policy."}
+	case "cron":
+		if oc == nil || oc.cronService == nil {
+			return inboundCommandResult{handled: true, response: formatSystemAck("Cron service not available.")}
+		}
+		action, rest := splitCommandArgs(cmd.Args)
+		action = strings.ToLower(strings.TrimSpace(action))
+		rest = strings.TrimSpace(rest)
+		if action == "" {
+			action = "status"
+		}
+		switch action {
+		case "status":
+			enabled, storePath, jobCount, nextWake, err := oc.cronService.Status()
+			if err != nil {
+				return inboundCommandResult{handled: true, response: formatSystemAck(err.Error())}
+			}
+			return inboundCommandResult{handled: true, response: formatCronStatusText(enabled, storePath, jobCount, nextWake)}
+		case "list":
+			includeDisabled := false
+			if strings.EqualFold(rest, "all") || strings.EqualFold(rest, "--all") {
+				includeDisabled = true
+			}
+			jobs, err := oc.cronService.List(includeDisabled)
+			if err != nil {
+				return inboundCommandResult{handled: true, response: formatSystemAck(err.Error())}
+			}
+			return inboundCommandResult{handled: true, response: formatCronJobListText(jobs)}
+		case "runs":
+			jobID, rest2 := splitCommandArgs(rest)
+			jobID = strings.TrimSpace(jobID)
+			if jobID == "" {
+				return inboundCommandResult{handled: true, response: "Usage: /cron runs <jobId> [limit]"}
+			}
+			limit := 50
+			if strings.TrimSpace(rest2) != "" {
+				if n, err := strconv.Atoi(strings.TrimSpace(rest2)); err == nil && n > 0 {
+					limit = n
+				}
+			}
+			entries, err := oc.readCronRuns(jobID, limit)
+			if err != nil {
+				return inboundCommandResult{handled: true, response: formatSystemAck(err.Error())}
+			}
+			return inboundCommandResult{handled: true, response: formatCronRunsText(jobID, entries)}
+		case "remove", "rm", "delete":
+			jobID := strings.TrimSpace(rest)
+			if jobID == "" {
+				return inboundCommandResult{handled: true, response: "Usage: /cron remove <jobId>"}
+			}
+			removed, err := oc.cronService.Remove(jobID)
+			if err != nil {
+				return inboundCommandResult{handled: true, response: formatSystemAck(err.Error())}
+			}
+			if removed {
+				return inboundCommandResult{handled: true, response: formatSystemAck("Removed.")}
+			}
+			return inboundCommandResult{handled: true, response: formatSystemAck("No such job (already removed?).")}
+		case "run":
+			jobID, rest2 := splitCommandArgs(rest)
+			jobID = strings.TrimSpace(jobID)
+			if jobID == "" {
+				return inboundCommandResult{handled: true, response: "Usage: /cron run <jobId> [force]"}
+			}
+			mode := ""
+			if strings.EqualFold(strings.TrimSpace(rest2), "force") {
+				mode = "force"
+			}
+			ran, reason, err := oc.cronService.Run(jobID, mode)
+			if err != nil {
+				return inboundCommandResult{handled: true, response: formatSystemAck(err.Error())}
+			}
+			if ran {
+				return inboundCommandResult{handled: true, response: formatSystemAck("Triggered.")}
+			}
+			if strings.TrimSpace(reason) == "" {
+				reason = "not-due"
+			}
+			return inboundCommandResult{handled: true, response: formatSystemAck("Not run (" + reason + ").")}
+		default:
+			return inboundCommandResult{handled: true, response: "Usage:\n• /cron status\n• /cron list [all]\n• /cron runs <jobId> [limit]\n• /cron run <jobId> [force]\n• /cron remove <jobId>"}
+		}
 	case "typing":
 		args := strings.TrimSpace(cmd.Args)
 		if args == "" {

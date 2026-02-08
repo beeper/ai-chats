@@ -3928,8 +3928,8 @@ func (oc *AIClient) buildContinuationParams(
 		params.Tools = append(params.Tools, bossToolsToOpenAI(enabledBoss, strictMode, &oc.log)...)
 	}
 
-	// Add session tools for non-boss rooms (needed for multi-turn tool use)
-	if meta.Capabilities.SupportsToolCalling && !(hasBossAgent(meta) || agents.IsBossAgent(agentID)) {
+	// Add session tools for non-boss agent rooms (needed for multi-turn tool use)
+	if meta.Capabilities.SupportsToolCalling && agentID != "" && !(hasBossAgent(meta) || agents.IsBossAgent(agentID)) {
 		var enabledSessions []*tools.Tool
 		for _, tool := range tools.SessionTools() {
 			if oc.isToolEnabled(meta, tool.Name) {
@@ -4073,7 +4073,10 @@ func (oc *AIClient) streamChatCompletions(
 		if temp := oc.effectiveTemperature(meta); temp > 0 {
 			params.Temperature = openai.Float(temp)
 		}
-		if meta.Capabilities.SupportsToolCalling {
+		// Add tools only for agent chats that support tool calling.
+		// Model-only chats use a simple prompt without tools to avoid context overflow on small models.
+		chatHasAgent := resolveAgentID(meta) != ""
+		if meta.Capabilities.SupportsToolCalling && chatHasAgent {
 			enabledTools := oc.enabledBuiltinToolsForModel(ctx, meta)
 			if len(enabledTools) > 0 {
 				params.Tools = append(params.Tools, ToOpenAIChatTools(enabledTools, &oc.log)...)

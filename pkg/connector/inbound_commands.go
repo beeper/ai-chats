@@ -171,6 +171,7 @@ var controlCommandNames = map[string]struct{}{
 	"status":     {},
 	"context":    {},
 	"tools":      {},
+	"cron":       {},
 	"model":      {},
 	"think":      {},
 	"verbose":    {},

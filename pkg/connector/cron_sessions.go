@@ -35,7 +35,7 @@ func cronSessionKey(agentID, jobID string) string {
 }
 
 func (oc *AIClient) loadCronSessionStore(ctx context.Context) (cronSessionStore, error) {
-	backend := oc.cronStoreBackend()
+	backend := oc.bridgeStateBackend()
 	if backend == nil {
 		return cronSessionStore{Sessions: map[string]cronSessionEntry{}}, nil
 	}
@@ -61,7 +61,7 @@ func (oc *AIClient) saveCronSessionStore(ctx context.Context, store cronSessionS
 	if err != nil {
 		return err
 	}
-	backend := oc.cronStoreBackend()
+	backend := oc.bridgeStateBackend()
 	if backend == nil {
 		return nil
 	}

@@ -342,7 +342,7 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 	systemEvents := formatSystemEvents(drainHeartbeatSystemEvents(sessionKey, storeKey))
 	if systemEvents != "" {
 		prompt = systemEvents + "\n\n" + prompt
-		persistSystemEventsSnapshot(oc.cronStoreBackend())
+		persistSystemEventsSnapshot(oc.bridgeStateBackend())
 	}
 
 	promptMessages, err := oc.buildPromptWithHeartbeat(context.Background(), sessionPortal, promptMeta, prompt)

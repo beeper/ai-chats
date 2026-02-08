@@ -40,6 +40,12 @@ func purgeLoginDataBestEffort(ctx context.Context, login *bridgev2.UserLogin) {
 	purgeVectorRowsBestEffort(ctx, login, bridgeID, loginID)
 
 	purgeAIMemoryTablesBestEffort(ctx, db, bridgeID, loginID)
+
+	// Bridge-internal KV state (cron state, model catalog, etc.)
+	bestEffortExec(ctx, db,
+		`DELETE FROM ai_bridge_state WHERE bridge_id=$1 AND login_id=$2`,
+		bridgeID, loginID,
+	)
 }
 
 func loadMemoryChunkIDsByAgentBestEffort(ctx context.Context, db *dbutil.Database, bridgeID, loginID string) map[string][]string {

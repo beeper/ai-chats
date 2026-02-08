@@ -39,7 +39,7 @@ func (oc *AIClient) buildCronService() *cron.CronService {
 		return nil
 	}
 	storePath := resolveCronStorePath(&oc.connector.Config)
-	storeBackend := oc.cronStoreBackend()
+	storeBackend := oc.bridgeStateBackend()
 	if storeBackend == nil {
 		oc.loggerForContext(context.Background()).Warn().Msg("cron: missing virtual store backend")
 		return nil
@@ -78,7 +78,7 @@ func (oc *AIClient) enqueueCronSystemEvent(text string, agentID string) error {
 		}
 	}
 	enqueueSystemEvent(sessionKey, text, agentID)
-	persistSystemEventsSnapshot(oc.cronStoreBackend())
+	persistSystemEventsSnapshot(oc.bridgeStateBackend())
 	return nil
 }
 
@@ -106,7 +106,7 @@ func (oc *AIClient) onCronEvent(evt cron.CronEvent) {
 	storePath := resolveCronStorePath(&oc.connector.Config)
 	path := cron.ResolveCronRunLogPath(storePath, evt.JobID)
 	entry := cronRunLogEntryFromEvent(evt)
-	backend := oc.cronStoreBackend()
+	backend := oc.bridgeStateBackend()
 	if backend == nil {
 		return
 	}

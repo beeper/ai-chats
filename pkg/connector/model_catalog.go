@@ -6,14 +6,11 @@ import (
 	"encoding/json"
 	"slices"
 	"strings"
-
-	"github.com/beeper/ai-bridge/pkg/textfs"
 )
 
 const (
-	modelCatalogAgentID  = "__models__"
-	modelCatalogStoreRef = "models.json"
-	modelCatalogStoreAlt = "models/catalog.json"
+	modelCatalogStoreKey    = "models/catalog.json"
+	modelCatalogStoreKeyAlt = "models.json"
 )
 
 const defaultModelCatalogMode = "merge"
@@ -26,16 +23,6 @@ type ModelCatalogEntry struct {
 	MaxOutputTokens int      `json:"maxTokens,omitempty"`
 	Reasoning       bool     `json:"reasoning,omitempty"`
 	Input           []string `json:"input,omitempty"`
-}
-
-func (oc *AIClient) modelCatalogStore() (*textfs.Store, error) {
-	if oc == nil || oc.UserLogin == nil {
-		return nil, nil
-	}
-	bridgeID := string(oc.UserLogin.Bridge.DB.BridgeID)
-	loginID := string(oc.UserLogin.ID)
-	agentID := normalizeAgentID(strings.TrimSpace(modelCatalogAgentID))
-	return textfs.NewStore(oc.UserLogin.Bridge.DB.Database, bridgeID, loginID, agentID), nil
 }
 
 func (oc *AIClient) ensureModelCatalogVFS(ctx context.Context) (bool, error) {
@@ -86,17 +73,17 @@ func (oc *AIClient) ensureModelCatalogVFS(ctx context.Context) (bool, error) {
 	}
 	content := string(raw) + "\n"
 
-	store, err := oc.modelCatalogStore()
-	if err != nil || store == nil {
-		return false, err
+	backend := oc.bridgeStateBackend()
+	if backend == nil {
+		return false, nil
 	}
-	if entry, found, err := store.Read(ctx, modelCatalogStoreRef); err == nil && found {
-		if entry.Content == content {
+	if existing, found, err := backend.Read(ctx, modelCatalogStoreKey); err == nil && found {
+		if string(existing) == content {
 			return false, nil
 		}
 	}
 
-	if _, err := store.Write(ctx, modelCatalogStoreRef, content); err != nil {
+	if err := backend.Write(ctx, modelCatalogStoreKey, []byte(content)); err != nil {
 		return false, err
 	}
 
@@ -311,13 +298,13 @@ func (oc *AIClient) loadModelCatalog(ctx context.Context, useCache bool) []Model
 		oc.modelCatalogMu.Unlock()
 	}
 
-	store, err := oc.modelCatalogStore()
-	if err != nil || store == nil {
+	backend := oc.bridgeStateBackend()
+	if backend == nil {
 		return nil
 	}
-	entry, found, err := store.Read(ctx, modelCatalogStoreRef)
+	data, found, err := backend.Read(ctx, modelCatalogStoreKey)
 	if err != nil || !found {
-		entry, found, err = store.Read(ctx, modelCatalogStoreAlt)
+		data, found, err = backend.Read(ctx, modelCatalogStoreKeyAlt)
 	}
 	if err != nil || !found {
 		if useCache {
@@ -330,7 +317,7 @@ func (oc *AIClient) loadModelCatalog(ctx context.Context, useCache bool) []Model
 	}
 
 	var raw any
-	if err := json.Unmarshal([]byte(entry.Content), &raw); err != nil {
+	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil
 	}
 	entries := parseModelCatalog(raw)
