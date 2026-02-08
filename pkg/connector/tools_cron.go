@@ -80,6 +80,14 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 			}).Text(), nil
 		}
 		injectCronContext(&jobInput, btc)
+		if jobInput.Delivery != nil && strings.EqualFold(strings.TrimSpace(string(jobInput.Delivery.Mode)), "announce") {
+			if err := validateCronDeliveryTo(jobInput.Delivery.To); err != nil {
+				return agenttools.JSONResult(map[string]any{
+					"status": "error",
+					"error":  err.Error(),
+				}).Text(), nil
+			}
+		}
 		if strings.TrimSpace(jobInput.Payload.Kind) == "" {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
@@ -125,6 +133,14 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 				"status": "error",
 				"error":  err.Error(),
 			}).Text(), nil
+		}
+		if patch.Delivery != nil && patch.Delivery.To != nil {
+			if err := validateCronDeliveryTo(*patch.Delivery.To); err != nil {
+				return agenttools.JSONResult(map[string]any{
+					"status": "error",
+					"error":  err.Error(),
+				}).Text(), nil
+			}
 		}
 		if patch.Schedule != nil {
 			if result := cron.ValidateScheduleTimestamp(*patch.Schedule, time.Now().UnixMilli()); !result.Ok {
@@ -278,9 +294,15 @@ func injectCronContext(job *cron.CronJobCreate, btc *BridgeToolContext) {
 		}
 		job.AgentID = &agentID
 	}
+
+	// Avoid pinning delivery to internal/hidden rooms (cron rooms, builder rooms, etc.).
+	// For those contexts, leave delivery.to empty so runtime routing can fall back to
+	// last activity or the default chat portal.
+	sourceInternal := meta != nil && (meta.IsCronRoom || meta.IsBuilderRoom || meta.IsCodexRoom || meta.IsOpenCodeRoom)
+
 	// For isolated announce jobs created from a room, pin delivery target to that room.
 	// This avoids depending on "last activity" metadata for routing.
-	if btc.Portal != nil && btc.Portal.MXID != "" &&
+	if !sourceInternal && btc.Portal != nil && btc.Portal.MXID != "" &&
 		job.SessionTarget == cron.CronSessionIsolated &&
 		strings.EqualFold(strings.TrimSpace(job.Payload.Kind), "agentTurn") {
 		if job.Delivery == nil {
@@ -299,6 +321,20 @@ func injectCronContext(job *cron.CronJobCreate, btc *BridgeToolContext) {
 			job.Delivery.To = btc.Portal.MXID.String()
 		}
 	}
+}
+
+func validateCronDeliveryTo(to string) error {
+	trimmed := strings.TrimSpace(to)
+	if trimmed == "" {
+		return nil
+	}
+	if strings.HasPrefix(trimmed, "@") {
+		return errors.New("delivery.to must be a Matrix room id like !room:server (not a user id). Omit delivery.to to route to last active room / default chat.")
+	}
+	if !strings.HasPrefix(trimmed, "!") {
+		return errors.New("delivery.to must be a Matrix room id like !room:server")
+	}
+	return nil
 }
 
 const (

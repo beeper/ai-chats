@@ -165,7 +165,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		})
 		if err != nil {
 			logCtx.Warn().Err(err).Str("approval_id", decision.ApprovalID).Msg("Failed to resolve approval decision")
-			oc.sendToast(ctx, portal, approvalErrorToastText(err), aiToastTypeError)
+			oc.sendApprovalRejectionEvent(ctx, portal, decision.ApprovalID, err)
 		}
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}

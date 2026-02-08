@@ -962,11 +962,13 @@ func executeImageGeneration(ctx context.Context, args map[string]any) (string, e
 		btcCopy := *btc
 
 		go func() {
+			client.Log().Debug().Str("prompt", reqCopy.Prompt).Msg("async image generation started")
 			bgctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer cancel()
 
 			images, err := generateImagesForRequest(bgctx, &btcCopy, reqCopy)
 			if err != nil {
+				client.Log().Warn().Err(err).Msg("async image generation failed")
 				client.sendSystemNotice(bgctx, portal, "Image generation failed: "+err.Error())
 				return
 			}
@@ -985,6 +987,7 @@ func executeImageGeneration(ctx context.Context, args map[string]any) (string, e
 			if sent == 0 {
 				client.sendSystemNotice(bgctx, portal, "Image generation finished, but sending failed.")
 			}
+			client.Log().Debug().Int("sent", sent).Int("total", len(images)).Msg("async image generation completed")
 		}()
 
 		return "Image generation started (async). I'll send the image(s) here when ready.", nil
@@ -1298,17 +1301,20 @@ func executeTTS(ctx context.Context, args map[string]any) (string, error) {
 		btcCopy := *btc
 
 		go func() {
+			client.Log().Debug().Str("voice", voiceCopy).Str("model", modelCopy).Msg("async TTS generation started")
 			bgctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer cancel()
 
 			audioB64, err := generateTTSBase64(bgctx, &btcCopy, textCopy, voiceCopy, modelCopy, voiceFromArgsCopy, modelFromArgsCopy)
 			if err != nil {
+				client.Log().Warn().Err(err).Msg("async TTS generation failed")
 				client.sendSystemNotice(bgctx, portal, "TTS failed: "+err.Error())
 				return
 			}
 
 			audioData, err := base64.StdEncoding.DecodeString(audioB64)
 			if err != nil {
+				client.Log().Warn().Err(err).Msg("async TTS decode failed")
 				client.sendSystemNotice(bgctx, portal, "TTS failed: couldn't decode audio data")
 				return
 			}
@@ -1318,6 +1324,7 @@ func executeTTS(ctx context.Context, args map[string]any) (string, error) {
 				client.sendSystemNotice(bgctx, portal, "TTS finished, but sending failed: "+err.Error())
 				return
 			}
+			client.Log().Debug().Msg("async TTS generation completed")
 		}()
 
 		return "TTS started (async). I'll send the audio here when ready.", nil

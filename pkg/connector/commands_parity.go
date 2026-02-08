@@ -572,3 +572,21 @@ func fnSend(ce *commands.Event) {
 	}
 	ce.Reply("%s", formatSystemAck(fmt.Sprintf("Send policy set to %s.", label)))
 }
+
+// CommandWhoami handles the !ai whoami command.
+var CommandWhoami = registerAICommand(commandregistry.Definition{
+	Name:           "whoami",
+	Aliases:        []string{"id"},
+	Description:    "Show your Matrix user ID",
+	Section:        HelpSectionAI,
+	RequiresPortal: false,
+	RequiresLogin:  false,
+	Handler:        fnWhoami,
+})
+
+func fnWhoami(ce *commands.Event) {
+	if ce == nil || ce.User == nil {
+		return
+	}
+	ce.Reply("You are %s.", ce.User.MXID.String())
+}

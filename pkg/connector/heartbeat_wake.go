@@ -5,6 +5,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog"
+
 	"github.com/beeper/ai-bridge/pkg/cron"
 )
 
@@ -17,6 +19,7 @@ type HeartbeatWake struct {
 	scheduled     bool
 	running       bool
 	timer         *time.Timer
+	log           zerolog.Logger
 }
 
 const (
@@ -44,6 +47,7 @@ func (w *HeartbeatWake) Request(reason string, coalesce time.Duration) {
 		w.pendingReason = reason
 	}
 	w.mu.Unlock()
+	w.log.Debug().Str("reason", reason).Dur("coalesce", coalesce).Msg("Heartbeat wake requested")
 	if coalesce <= 0 {
 		coalesce = defaultHeartbeatCoalesce
 	}
@@ -77,9 +81,14 @@ func (w *HeartbeatWake) schedule(delay time.Duration) {
 		w.running = true
 		w.mu.Unlock()
 
+		w.log.Debug().Str("reason", reason).Msg("Heartbeat wake executing handler")
 		res := cron.HeartbeatRunResult{Status: "skipped", Reason: "disabled"}
 		func() {
-			defer func() { _ = recover() }()
+			defer func() {
+				if r := recover(); r != nil {
+					w.log.Error().Interface("panic", r).Str("reason", reason).Msg("Heartbeat wake handler panicked")
+				}
+			}()
 			res = handler(reason)
 		}()
 
@@ -97,6 +106,7 @@ func (w *HeartbeatWake) schedule(delay time.Duration) {
 		w.mu.Unlock()
 
 		if needsRetry {
+			w.log.Debug().Str("reason", reason).Msg("Heartbeat wake retrying: requests in flight")
 			w.schedule(defaultHeartbeatRetry)
 			return
 		}

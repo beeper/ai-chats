@@ -40,11 +40,13 @@ func (oc *AIClient) responseWithRetry(
 			if errors.Is(err, context.Canceled) {
 				return true, nil
 			}
+			oc.loggerForContext(ctx).Warn().Err(err).Int("attempt", attempt+1).Str("log_label", logLabel).Msg("Response attempt failed with error")
 			return false, err
 		}
 
 		// If we got a context length error, try auto-compaction first, then truncation
 		if cle != nil {
+			oc.loggerForContext(ctx).Info().Int("attempt", attempt+1).Int("requested_tokens", cle.RequestedTokens).Int("max_tokens", cle.ModelMaxTokens).Str("log_label", logLabel).Msg("Context length exceeded, attempting recovery")
 			// In Responses conversation mode, previous_response_id can accumulate hidden server-side
 			// context that local truncation cannot affect. Reset it once and retry with local history.
 			if meta != nil && meta.ConversationMode == "responses" && meta.LastResponseID != "" && !oc.isOpenRouterProvider() {

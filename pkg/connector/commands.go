@@ -303,7 +303,7 @@ func fnContext(ce *commands.Event) {
 	}
 
 	if len(ce.Args) == 0 {
-		ce.Reply("Current context limit: %d messages", client.historyLimit(ce.Ctx, ce.Portal, meta))
+		ce.Reply("%s", client.buildContextStatus(ce.Ctx, ce.Portal, meta))
 		return
 	}
 

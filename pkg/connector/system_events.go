@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog"
+
 	"github.com/beeper/ai-bridge/pkg/cron"
 )
 
@@ -158,28 +160,44 @@ func snapshotSystemEvents() persistedSystemEvents {
 	return snap
 }
 
-func persistSystemEventsSnapshot(backend cron.StoreBackend) {
+func persistSystemEventsSnapshot(backend cron.StoreBackend, log *zerolog.Logger) {
 	if backend == nil {
 		return
 	}
 	snap := snapshotSystemEvents()
 	data, err := json.Marshal(snap)
 	if err != nil {
+		if log != nil {
+			log.Warn().Err(err).Msg("system events: marshal failed during persist")
+		}
 		return
 	}
-	_ = backend.Write(context.Background(), systemEventsStorePath, data)
+	if err := backend.Write(context.Background(), systemEventsStorePath, data); err != nil {
+		if log != nil {
+			log.Warn().Err(err).Msg("system events: write failed during persist")
+		}
+	}
 }
 
-func restoreSystemEventsFromDisk(backend cron.StoreBackend) {
+func restoreSystemEventsFromDisk(backend cron.StoreBackend, log *zerolog.Logger) {
 	if backend == nil {
 		return
 	}
 	data, found, err := backend.Read(context.Background(), systemEventsStorePath)
-	if err != nil || !found || len(data) == 0 {
+	if err != nil {
+		if log != nil {
+			log.Warn().Err(err).Msg("system events: read failed during restore")
+		}
+		return
+	}
+	if !found || len(data) == 0 {
 		return
 	}
 	var snap persistedSystemEvents
 	if err := json.Unmarshal(data, &snap); err != nil {
+		if log != nil {
+			log.Warn().Err(err).Msg("system events: unmarshal failed during restore")
+		}
 		return
 	}
 	systemEventsMu.Lock()

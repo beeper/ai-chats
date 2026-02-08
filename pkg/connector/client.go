@@ -422,9 +422,9 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 		Int("dedupe_max", inboundCfg.DedupeMaxSize).
 		Int("debounce_ms", debounceMs).
 		Msg("Inbound processing configured")
-	oc.inboundDebouncer = NewDebouncer(debounceMs, oc.handleDebouncedMessages, func(err error, entries []DebounceEntry) {
+	oc.inboundDebouncer = NewDebouncerWithLogger(debounceMs, oc.handleDebouncedMessages, func(err error, entries []DebounceEntry) {
 		log.Warn().Err(err).Int("entries", len(entries)).Msg("Debounce flush failed")
-	})
+	}, log)
 
 	// Initialize optional OpenCode bridge
 	oc.opencodeBridge = opencodebridge.NewBridge(oc)
@@ -483,7 +483,7 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 		oc.api = provider.Client()
 	}
 
-	oc.heartbeatWake = &HeartbeatWake{}
+	oc.heartbeatWake = &HeartbeatWake{log: oc.log}
 	oc.heartbeatRunner = NewHeartbeatRunner(oc)
 	oc.cronService = oc.buildCronService()
 
@@ -1032,7 +1032,7 @@ func (oc *AIClient) Connect(ctx context.Context) {
 		go oc.bootstrapOpenCode(oc.backgroundContext(ctx))
 	}
 
-	restoreSystemEventsFromDisk(oc.bridgeStateBackend())
+	restoreSystemEventsFromDisk(oc.bridgeStateBackend(), oc.Log())
 
 	if oc.heartbeatRunner != nil {
 		oc.heartbeatRunner.Start()

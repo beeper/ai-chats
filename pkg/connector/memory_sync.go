@@ -29,9 +29,12 @@ func (m *MemorySearchManager) warmSession(ctx context.Context, sessionKey string
 		m.mu.Unlock()
 	}
 
+	m.log.Debug().Str("session", key).Msg("Memory sync warming session")
 	go func() {
 		if err := m.sync(context.Background(), key, false); err != nil {
 			m.log.Warn().Str("session", key).Msg("memory sync failed (session-start): " + err.Error())
+		} else {
+			m.log.Debug().Str("session", key).Msg("Memory sync session warm complete")
 		}
 	}()
 }
@@ -61,6 +64,7 @@ func (m *MemorySearchManager) scheduleWatchSync() {
 	if delay <= 0 {
 		delay = time.Duration(1500) * time.Millisecond
 	}
+	m.log.Debug().Dur("delay", delay).Msg("Memory sync scheduling watch sync")
 	m.mu.Lock()
 	if m.watchTimer != nil {
 		m.watchTimer.Stop()
@@ -71,6 +75,8 @@ func (m *MemorySearchManager) scheduleWatchSync() {
 		m.mu.Unlock()
 		if err := m.sync(context.Background(), "", false); err != nil {
 			m.log.Warn().Msg("memory sync failed (watch): " + err.Error())
+		} else {
+			m.log.Debug().Msg("Memory sync watch complete")
 		}
 	})
 	m.mu.Unlock()
@@ -91,6 +97,7 @@ func (m *MemorySearchManager) ensureIntervalSync() {
 		}
 		stopCh := m.intervalStop
 		m.mu.Unlock()
+		m.log.Debug().Dur("interval", interval).Msg("Memory sync starting interval sync goroutine")
 		go func() {
 			ticker := time.NewTicker(interval)
 			defer ticker.Stop()
@@ -99,6 +106,8 @@ func (m *MemorySearchManager) ensureIntervalSync() {
 				case <-ticker.C:
 					if err := m.sync(context.Background(), "", false); err != nil {
 						m.log.Warn().Msg("memory sync failed (interval): " + err.Error())
+					} else {
+						m.log.Debug().Msg("Memory sync interval complete")
 					}
 				case <-stopCh:
 					return

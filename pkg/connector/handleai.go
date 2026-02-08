@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
 )
@@ -197,10 +198,17 @@ func (oc *AIClient) hasPortalMessages(ctx context.Context, portal *bridgev2.Port
 		return false
 	}
 	for _, msg := range history {
-		// If we don't have our metadata type, assume it's a real message.
 		meta, ok := msg.Metadata.(*MessageMetadata)
 		if !ok || meta == nil {
-			return true
+			// Some bridge-generated events may be stored with nil/unknown metadata (e.g. notices/state echoes).
+			// Only treat them as "conversation has started" if they look like user/assistant messages by sender.
+			if msg.SenderID == humanUserID(oc.UserLogin.ID) {
+				return true
+			}
+			if portal.OtherUserID != "" && msg.SenderID == portal.OtherUserID {
+				return true
+			}
+			continue
 		}
 		if meta.ExcludeFromHistory {
 			continue
@@ -292,9 +300,51 @@ func (oc *AIClient) scheduleAutoGreeting(ctx context.Context, portal *bridgev2.P
 	}()
 }
 
+// scheduleWelcomeMessage waits for a portal to get a Matrix room ID and then sends the
+// welcome notice (and schedules an auto-greeting for agent rooms).
+//
+// This is primarily for rooms created via provisioning (ResolveIdentifier/CreateDM),
+// where the room creation happens in bridgev2 internals and we don't have a direct hook
+// after CreateMatrixRoom succeeds.
+func (oc *AIClient) scheduleWelcomeMessage(ctx context.Context, portalKey networkid.PortalKey) {
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
+		return
+	}
+	if portalKey.ID == "" {
+		return
+	}
+	bgCtx := oc.backgroundContext(ctx)
+	go func() {
+		deadline := time.Now().Add(45 * time.Second)
+		for time.Now().Before(deadline) {
+			current, err := oc.UserLogin.Bridge.GetPortalByKey(bgCtx, portalKey)
+			if err != nil || current == nil {
+				return
+			}
+			meta := portalMeta(current)
+			if meta != nil && meta.WelcomeSent {
+				return
+			}
+			if current.MXID == "" {
+				time.Sleep(150 * time.Millisecond)
+				continue
+			}
+			oc.sendWelcomeMessage(bgCtx, current)
+			return
+		}
+	}()
+}
+
 // sendWelcomeMessage sends a system notice when a new chat is created and schedules an auto-greeting.
 func (oc *AIClient) sendWelcomeMessage(ctx context.Context, portal *bridgev2.Portal) {
 	if oc == nil || portal == nil {
+		return
+	}
+	// We can't send a room notice (or schedule greeting timers) until the Matrix room exists.
+	if portal.MXID == "" {
+		return
+	}
+	if oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.Bot == nil {
 		return
 	}
 	meta := portalMeta(portal)
@@ -321,6 +371,15 @@ func (oc *AIClient) sendWelcomeMessage(ctx context.Context, portal *bridgev2.Por
 	} else {
 		oc.sendSystemNotice(bgCtx, portal, "AI can make mistakes.")
 	}
+
+	// Ensure initial room state exists for clients (model/settings/capabilities).
+	// Only broadcast once on first-room initialization.
+	if meta.LastRoomStateSync == 0 {
+		if err := oc.BroadcastRoomState(bgCtx, portal); err != nil {
+			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to broadcast initial room state")
+		}
+	}
+
 	oc.scheduleAutoGreeting(bgCtx, portal)
 }
 

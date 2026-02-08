@@ -112,6 +112,7 @@ func (oc *AIClient) loadSessionStore(ctx context.Context, ref sessionStoreRef) (
 		return store, nil
 	}
 	if err := json.Unmarshal([]byte(entry.Content), &store); err != nil {
+		oc.Log().Warn().Err(err).Str("path", ref.Path).Msg("session store: JSON unmarshal failed, returning empty store")
 		return sessionStore{Sessions: map[string]sessionEntry{}}, nil
 	}
 	if store.Sessions == nil {
@@ -142,6 +143,7 @@ func (oc *AIClient) getSessionEntry(ctx context.Context, ref sessionStoreRef, se
 	}
 	store, err := oc.loadSessionStore(ctx, ref)
 	if err != nil {
+		oc.Log().Warn().Err(err).Str("session_key", sessionKey).Msg("session store: load failed in getSessionEntry")
 		return sessionEntry{}, false
 	}
 	entry, ok := store.Sessions[sessionKey]
@@ -157,12 +159,15 @@ func (oc *AIClient) updateSessionEntry(ctx context.Context, ref sessionStoreRef,
 	defer lock.Unlock()
 	store, err := oc.loadSessionStore(ctx, ref)
 	if err != nil {
+		oc.Log().Warn().Err(err).Str("session_key", sessionKey).Msg("session store: load failed in updateSessionEntry")
 		return
 	}
 	entry := store.Sessions[sessionKey]
 	entry = updater(entry)
 	store.Sessions[sessionKey] = entry
-	_ = oc.saveSessionStore(ctx, ref, store)
+	if err := oc.saveSessionStore(ctx, ref, store); err != nil {
+		oc.Log().Warn().Err(err).Str("session_key", sessionKey).Msg("session store: save failed in updateSessionEntry")
+	}
 }
 
 func mergeSessionEntry(existing sessionEntry, patch sessionEntry) sessionEntry {

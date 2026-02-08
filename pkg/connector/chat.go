@@ -496,12 +496,16 @@ func (oc *AIClient) createAgentChatWithModel(ctx context.Context, agent *agents.
 	// Update chat info members to use agent ghost only
 	oc.applyAgentChatInfo(chatInfo, agent.ID, agentName, modelID)
 
+	// Rooms created via provisioning (ResolveIdentifier/CreateDM) won't go through our explicit
+	// post-CreateMatrixRoom call sites. Schedule the welcome notice + auto-greeting for when the
+	// Matrix room ID becomes available.
+	oc.scheduleWelcomeMessage(ctx, portal.PortalKey)
+
 	return &bridgev2.CreateChatResponse{
 		PortalKey: portal.PortalKey,
-		PortalInfo: &bridgev2.ChatInfo{
-			Name:    chatInfo.Name,
-			Members: chatInfo.Members,
-		},
+		// Return the full ChatInfo so bridgev2 can apply ExtraUpdates (initial room state,
+		// welcome notice, etc.) when creating the Matrix room via provisioning (CreateDM).
+		PortalInfo: chatInfo,
 	}, nil
 }
 
@@ -523,6 +527,10 @@ func (oc *AIClient) createNewChat(ctx context.Context, modelID string) (*bridgev
 			return nil, fmt.Errorf("failed to save portal raw mode: %w", err)
 		}
 	}
+
+	// Rooms created via provisioning (ResolveIdentifier/CreateDM) won't go through our explicit
+	// post-CreateMatrixRoom call sites. Schedule the welcome notice for when the Matrix room exists.
+	oc.scheduleWelcomeMessage(ctx, portal.PortalKey)
 
 	return &bridgev2.CreateChatResponse{
 		PortalKey:  portal.PortalKey,
@@ -1107,14 +1115,6 @@ func (oc *AIClient) composeChatInfo(title, modelID string) *bridgev2.ChatInfo {
 					RoomSettingsEventType:     0,   // Any user
 				},
 			},
-		},
-		// Broadcast initial room config after room creation so desktop clients
-		// can read the model and other settings from room state
-		ExtraUpdates: func(ctx context.Context, portal *bridgev2.Portal) bool {
-			if err := oc.BroadcastRoomState(ctx, portal); err != nil {
-				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to broadcast initial room state")
-			}
-			return false // no portal changes needed
 		},
 	}
 }

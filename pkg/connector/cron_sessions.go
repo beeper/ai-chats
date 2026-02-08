@@ -45,6 +45,7 @@ func (oc *AIClient) loadCronSessionStore(ctx context.Context) (cronSessionStore,
 	}
 	var parsed cronSessionStore
 	if err := json.Unmarshal(data, &parsed); err != nil {
+		oc.Log().Warn().Err(err).Msg("cron session store: JSON unmarshal failed, returning empty store")
 		return cronSessionStore{Sessions: map[string]cronSessionEntry{}}, nil
 	}
 	if parsed.Sessions == nil {
@@ -74,10 +75,13 @@ func (oc *AIClient) updateCronSessionEntry(ctx context.Context, sessionKey strin
 	}
 	store, err := oc.loadCronSessionStore(ctx)
 	if err != nil {
+		oc.Log().Warn().Err(err).Str("session_key", sessionKey).Msg("cron session store: load failed")
 		return
 	}
 	entry := store.Sessions[sessionKey]
 	entry = updater(entry)
 	store.Sessions[sessionKey] = entry
-	_ = oc.saveCronSessionStore(ctx, store)
+	if err := oc.saveCronSessionStore(ctx, store); err != nil {
+		oc.Log().Warn().Err(err).Str("session_key", sessionKey).Msg("cron session store: save failed")
+	}
 }

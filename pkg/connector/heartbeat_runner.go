@@ -116,6 +116,7 @@ func (r *HeartbeatRunner) updateConfig(cfg *Config) {
 		}
 	}
 	r.agents = next
+	r.client.log.Info().Int("agents", len(next)).Msg("Heartbeat config updated")
 	r.scheduleNextLocked()
 }
 
@@ -153,6 +154,7 @@ func (r *HeartbeatRunner) run(reason string) cron.HeartbeatRunResult {
 	r.mu.Lock()
 	if r.stopped || len(r.agents) == 0 {
 		r.mu.Unlock()
+		r.client.log.Debug().Str("reason", reason).Msg("Heartbeat run skipped: disabled or no agents")
 		return cron.HeartbeatRunResult{Status: "skipped", Reason: "disabled"}
 	}
 	agents := make([]*heartbeatAgentState, 0, len(r.agents))
@@ -161,14 +163,18 @@ func (r *HeartbeatRunner) run(reason string) cron.HeartbeatRunResult {
 	}
 	r.mu.Unlock()
 
+	r.client.log.Info().Str("reason", reason).Int("agents", len(agents)).Msg("Heartbeat run starting")
+
 	now := time.Now().UnixMilli()
 	isInterval := reason == "interval"
 	ran := false
 	for _, agent := range agents {
 		if isInterval && now < agent.nextDueMs {
+			r.client.log.Debug().Str("agent_id", agent.agentID).Int64("next_due_ms", agent.nextDueMs).Msg("Heartbeat agent not yet due")
 			continue
 		}
 		res := r.client.runHeartbeatOnce(agent.agentID, agent.heartbeat, reason)
+		r.client.log.Info().Str("agent_id", agent.agentID).Str("status", res.Status).Str("result_reason", res.Reason).Msg("Heartbeat agent finished")
 		if res.Status == "skipped" && res.Reason == "requests-in-flight" {
 			return res
 		}
@@ -227,18 +233,22 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 	}
 	cfg := &oc.connector.Config
 	if !isHeartbeatEnabledForAgent(cfg, agentID) {
+		oc.log.Debug().Str("agent_id", agentID).Msg("Heartbeat skipped: not enabled for agent")
 		return cron.HeartbeatRunResult{Status: "skipped", Reason: "disabled"}
 	}
 	if resolveHeartbeatIntervalMs(cfg, "", heartbeat) <= 0 {
+		oc.log.Debug().Str("agent_id", agentID).Msg("Heartbeat skipped: interval <= 0")
 		return cron.HeartbeatRunResult{Status: "skipped", Reason: "disabled"}
 	}
 
 	now := time.Now().UnixMilli()
 	if !isWithinActiveHours(oc, heartbeat, now) {
+		oc.log.Debug().Str("agent_id", agentID).Msg("Heartbeat skipped: outside active hours")
 		return cron.HeartbeatRunResult{Status: "skipped", Reason: "quiet-hours"}
 	}
 
 	if oc.hasInflightRequests() {
+		oc.log.Debug().Str("agent_id", agentID).Msg("Heartbeat skipped: requests in flight")
 		return cron.HeartbeatRunResult{Status: "skipped", Reason: "requests-in-flight"}
 	}
 
@@ -247,12 +257,14 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 
 	sessionPortal, sessionKey, err := oc.resolveHeartbeatSessionPortal(agentID, heartbeat)
 	if err != nil || sessionPortal == nil || sessionPortal.MXID == "" {
+		oc.log.Warn().Str("agent_id", agentID).Err(err).Msg("Heartbeat skipped: no session portal")
 		return cron.HeartbeatRunResult{Status: "skipped", Reason: "no-session"}
 	}
 
 	// Skip when HEARTBEAT.md exists but is effectively empty.
 	pendingEvents := hasSystemEvents(sessionKey) || (storeKey != "" && !strings.EqualFold(storeKey, sessionKey) && hasSystemEvents(storeKey))
 	if !oc.shouldRunHeartbeatForFile(agentID, reason) && !pendingEvents {
+		oc.log.Debug().Str("agent_id", agentID).Msg("Heartbeat skipped: empty heartbeat file and no pending events")
 		emitHeartbeatEvent(&HeartbeatEventPayload{
 			TS:     time.Now().UnixMilli(),
 			Status: "skipped",
@@ -277,6 +289,7 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 		visibility = resolveHeartbeatVisibility(cfg, channel)
 	}
 	if !visibility.ShowAlerts && !visibility.ShowOk && !visibility.UseIndicator {
+		oc.log.Debug().Str("agent_id", agentID).Str("channel", channel).Msg("Heartbeat skipped: all visibility flags disabled")
 		emitHeartbeatEvent(&HeartbeatEventPayload{
 			TS:      time.Now().UnixMilli(),
 			Status:  "skipped",
@@ -342,13 +355,24 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 	systemEvents := formatSystemEvents(drainHeartbeatSystemEvents(sessionKey, storeKey))
 	if systemEvents != "" {
 		prompt = systemEvents + "\n\n" + prompt
-		persistSystemEventsSnapshot(oc.bridgeStateBackend())
+		persistSystemEventsSnapshot(oc.bridgeStateBackend(), oc.Log())
 	}
 
 	promptMessages, err := oc.buildPromptWithHeartbeat(context.Background(), sessionPortal, promptMeta, prompt)
 	if err != nil {
+		oc.log.Warn().Str("agent_id", agentID).Str("reason", reason).Err(err).Msg("Heartbeat failed to build prompt")
 		return cron.HeartbeatRunResult{Status: "failed", Reason: err.Error()}
 	}
+
+	oc.log.Info().
+		Str("agent_id", agentID).
+		Str("reason", reason).
+		Str("session_key", sessionKey).
+		Str("channel", channel).
+		Bool("suppress_send", suppressSend).
+		Bool("has_system_events", systemEvents != "").
+		Int("prompt_messages", len(promptMessages)).
+		Msg("Heartbeat executing")
 
 	resultCh := make(chan HeartbeatRunOutcome, 1)
 	runCtx := withHeartbeatRun(oc.backgroundContext(context.Background()), hbCfg, resultCh)
@@ -364,10 +388,13 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 
 	select {
 	case res := <-resultCh:
+		oc.log.Info().Str("agent_id", agentID).Str("status", res.Status).Str("result_reason", res.Reason).Msg("Heartbeat completed")
 		return cron.HeartbeatRunResult{Status: res.Status, Reason: res.Reason}
 	case <-done:
+		oc.log.Warn().Str("agent_id", agentID).Msg("Heartbeat failed: stream completed without outcome")
 		return cron.HeartbeatRunResult{Status: "failed", Reason: "heartbeat failed"}
 	case <-time.After(2 * time.Minute):
+		oc.log.Warn().Str("agent_id", agentID).Msg("Heartbeat timed out after 2 minutes")
 		return cron.HeartbeatRunResult{Status: "failed", Reason: "heartbeat timed out"}
 	}
 }

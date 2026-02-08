@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -42,6 +43,7 @@ type Debouncer struct {
 	delayMs int
 	onFlush func(entries []DebounceEntry)
 	onError func(err error, entries []DebounceEntry)
+	log     zerolog.Logger
 }
 
 // NewDebouncer creates a new debouncer with the given delay and callbacks.
@@ -55,6 +57,13 @@ func NewDebouncer(delayMs int, onFlush func([]DebounceEntry), onError func(error
 		onFlush: onFlush,
 		onError: onError,
 	}
+}
+
+// NewDebouncerWithLogger creates a new debouncer with logging support.
+func NewDebouncerWithLogger(delayMs int, onFlush func([]DebounceEntry), onError func(error, []DebounceEntry), log zerolog.Logger) *Debouncer {
+	d := NewDebouncer(delayMs, onFlush, onError)
+	d.log = log
+	return d
 }
 
 // BuildDebounceKey creates a key for debouncing: room+sender.
@@ -92,6 +101,7 @@ func (d *Debouncer) EnqueueWithDelay(key string, entry DebounceEntry, shouldDebo
 		// Add to existing buffer, reset timer with the new delay
 		buf.entries = append(buf.entries, entry)
 		buf.timer.Reset(time.Duration(delayMs) * time.Millisecond)
+		d.log.Debug().Str("key", key).Int("buffered", len(buf.entries)).Int("delay_ms", delayMs).Msg("Debounce buffering message")
 	} else {
 		// Create new buffer with timer
 		buf = &DebounceBuffer{entries: []DebounceEntry{entry}}
@@ -99,6 +109,7 @@ func (d *Debouncer) EnqueueWithDelay(key string, entry DebounceEntry, shouldDebo
 			d.flush(key)
 		})
 		d.buffers[key] = buf
+		d.log.Debug().Str("key", key).Int("delay_ms", delayMs).Msg("Debounce new buffer created")
 	}
 }
 
@@ -117,6 +128,7 @@ func (d *Debouncer) flush(key string) {
 	delete(d.buffers, key)
 	d.mu.Unlock()
 
+	d.log.Debug().Str("key", key).Int("entries", len(entries)).Msg("Debounce flushing")
 	d.onFlush(entries)
 }
 

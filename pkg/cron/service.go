@@ -106,6 +106,7 @@ func (c *CronService) Start() error {
 
 // Stop stops the scheduler and waits for any in-flight job to complete.
 func (c *CronService) Stop() {
+	c.logInfo("cron: stopping scheduler", nil)
 	c.mu.Lock()
 	c.stopTimerLocked()
 	c.mu.Unlock()
@@ -321,7 +322,9 @@ func (c *CronService) Wake(mode string, text string) (bool, error) {
 	if err := c.deps.EnqueueSystemEvent(trimmed, ""); err != nil {
 		return false, err
 	}
+	c.logDebug("cron: wake event enqueued", map[string]any{"mode": mode, "text": trimmed})
 	if mode == "now" && c.deps.RequestHeartbeatNow != nil {
+		c.logDebug("cron: requesting immediate heartbeat for wake", nil)
 		c.deps.RequestHeartbeatNow("wake")
 	}
 	return true, nil
@@ -344,6 +347,8 @@ func (c *CronService) onTimer() {
 		c.mu.Unlock()
 	}()
 
+	c.logDebug("cron: timer tick fired", nil)
+
 	// Phase 1: load store and find due jobs under store lock.
 	var due []string
 	if err := c.withStoreLock(func() error {
@@ -363,6 +368,8 @@ func (c *CronService) onTimer() {
 		c.mu.Unlock()
 		return
 	}
+
+	c.logInfo("cron: timer tick processing", map[string]any{"due_jobs": len(due), "job_ids": due})
 
 	// Phase 2: execute jobs without store lock (finish() acquires it as needed).
 	for _, jobID := range due {
@@ -419,6 +426,12 @@ func (c *CronService) executeJobLocked(jobID string) (bool, error) {
 		job.State.LastError = ""
 		c.store.Jobs[idx] = job
 		c.emit(CronEvent{JobID: job.ID, Action: "started", RunAtMs: startedAt})
+		c.logInfo("cron: job starting", map[string]any{
+			"jobId":   job.ID,
+			"name":    job.Name,
+			"session": string(job.SessionTarget),
+			"payload": job.Payload.Kind,
+		})
 		if err := c.persistWithStoreLock(); err != nil {
 			c.logWarn("cron: failed to persist started marker", map[string]any{"jobId": job.ID, "error": err.Error()})
 		}
@@ -465,6 +478,13 @@ func (c *CronService) executeJobLocked(jobID string) (bool, error) {
 			Error:       errVal,
 			Summary:     summaryVal,
 			NextRunAtMs: ptr.Val(job.State.NextRunAtMs),
+		})
+		c.logInfo("cron: job finished", map[string]any{
+			"jobId":      job.ID,
+			"name":       job.Name,
+			"status":     statusVal,
+			"error":      errVal,
+			"durationMs": max(0, endedAt-startedAt),
 		})
 
 		if shouldDelete {
@@ -696,6 +716,12 @@ func (c *CronService) emit(evt CronEvent) {
 func (c *CronService) logInfo(msg string, fields map[string]any) {
 	if c.deps.Log != nil {
 		c.deps.Log.Info(msg, fields)
+	}
+}
+
+func (c *CronService) logDebug(msg string, fields map[string]any) {
+	if c.deps.Log != nil {
+		c.deps.Log.Debug(msg, fields)
 	}
 }
 

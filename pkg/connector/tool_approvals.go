@@ -100,6 +100,7 @@ func (oc *AIClient) registerToolApproval(params struct {
 		decisionCh:   make(chan ToolApprovalDecision, 1),
 	}
 	oc.toolApprovals[approvalID] = p
+	oc.Log().Debug().Str("approval_id", approvalID).Str("tool", params.ToolName).Dur("ttl", ttl).Msg("tool approval registered")
 	return p, true
 }
 
@@ -154,6 +155,7 @@ func (oc *AIClient) resolveToolApproval(roomID id.RoomID, approvalID string, dec
 	}
 	select {
 	case p.decisionCh <- decision:
+		oc.Log().Debug().Str("approval_id", approvalID).Str("tool", p.ToolName).Bool("approved", decision.Approve).Msg("tool approval decision delivered")
 		go oc.emitApprovalSnapshotDecision(p, decision)
 		return nil
 	default:
@@ -178,8 +180,11 @@ func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (To
 		return ToolApprovalDecision{}, nil, false
 	}
 
+	oc.Log().Debug().Str("approval_id", approvalID).Str("tool", p.ToolName).Msg("tool approval wait started")
+
 	timeout := time.Until(p.ExpiresAt)
 	if timeout <= 0 {
+		oc.Log().Debug().Str("approval_id", approvalID).Str("tool", p.ToolName).Msg("tool approval already expired")
 		oc.dropToolApproval(approvalID)
 		// Best-effort snapshot update so clients stop showing approval UI.
 		// Pass p directly — the map entry is already dropped, but the pointer is still valid.
@@ -197,6 +202,7 @@ func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (To
 
 	select {
 	case decision := <-p.decisionCh:
+		oc.Log().Debug().Str("approval_id", approvalID).Str("tool", p.ToolName).Bool("approved", decision.Approve).Msg("tool approval decision received")
 		if decision.Approve && decision.Always {
 			if err := oc.persistAlwaysAllow(ctx, p); err != nil {
 				oc.Log().Warn().Err(err).Str("approval_id", approvalID).Msg("Failed to persist always-allow rule")
@@ -205,6 +211,7 @@ func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (To
 		oc.dropToolApproval(approvalID)
 		return decision, p, true
 	case <-timer.C:
+		oc.Log().Debug().Str("approval_id", approvalID).Str("tool", p.ToolName).Msg("tool approval timed out")
 		oc.dropToolApproval(approvalID)
 		// Timeout: update the approval snapshot so the UI can stop showing action buttons,
 		// even if the tool is no longer waiting (e.g. on reconnect).
@@ -216,6 +223,7 @@ func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (To
 		})
 		return ToolApprovalDecision{}, p, false
 	case <-ctx.Done():
+		oc.Log().Debug().Str("approval_id", approvalID).Str("tool", p.ToolName).Msg("tool approval context cancelled")
 		oc.dropToolApproval(approvalID)
 		// Context cancellation: treat as expired for UI purposes.
 		go oc.emitApprovalSnapshotDecision(p, ToolApprovalDecision{
@@ -311,7 +319,9 @@ func (oc *AIClient) emitApprovalSnapshotDecision(p *pendingToolApproval, decisio
 		}
 	}
 	if oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.Bot != nil {
-		_, _ = oc.UserLogin.Bridge.Bot.SendMessage(ctx, portal.MXID, event.EventMessage, eventContent, nil)
+		if _, err := oc.UserLogin.Bridge.Bot.SendMessage(ctx, portal.MXID, event.EventMessage, eventContent, nil); err != nil {
+			oc.Log().Warn().Err(err).Str("approval_id", p.ApprovalID).Msg("tool approval: failed to send snapshot decision via bot")
+		}
 	}
 }
 
@@ -326,4 +336,5 @@ func (oc *AIClient) dropToolApproval(approvalID string) {
 	oc.toolApprovalsMu.Lock()
 	delete(oc.toolApprovals, approvalID)
 	oc.toolApprovalsMu.Unlock()
+	oc.Log().Debug().Str("approval_id", approvalID).Msg("tool approval dropped")
 }

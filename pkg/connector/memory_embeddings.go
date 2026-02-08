@@ -268,11 +268,17 @@ func (m *MemorySearchManager) storeEmbeddingCacheBatch(ctx context.Context, item
 		if idx >= 0 && idx < len(embeddings) {
 			embedding = embeddings[idx]
 		}
-		raw, _ := json.Marshal(embedding)
-		_, _ = m.db.Exec(ctx, stmt,
+		raw, err := json.Marshal(embedding)
+		if err != nil {
+			m.log.Warn().Err(err).Str("hash", item.chunk.Hash).Msg("embedding cache: marshal failed, skipping entry")
+			continue
+		}
+		if _, err := m.db.Exec(ctx, stmt,
 			m.bridgeID, m.loginID, m.agentID, m.status.Provider, m.status.Model, m.providerKey, item.chunk.Hash,
 			string(raw), len(embedding), now,
-		)
+		); err != nil {
+			m.log.Warn().Err(err).Str("hash", item.chunk.Hash).Msg("embedding cache: db write failed")
+		}
 	}
 	maybePruneEmbeddingCache(ctx, m)
 }

@@ -76,7 +76,8 @@ func (oc *AIClient) enqueueCronSystemEvent(text string, agentID string) error {
 		}
 	}
 	enqueueSystemEvent(sessionKey, text, agentID)
-	persistSystemEventsSnapshot(oc.bridgeStateBackend())
+	persistSystemEventsSnapshot(oc.bridgeStateBackend(), oc.Log())
+	oc.log.Debug().Str("session_key", sessionKey).Str("agent_id", agentID).Str("text", text).Msg("Cron system event enqueued")
 	return nil
 }
 
@@ -98,6 +99,7 @@ func (oc *AIClient) onCronEvent(evt cron.CronEvent) {
 	if oc == nil || strings.TrimSpace(evt.JobID) == "" {
 		return
 	}
+	oc.log.Debug().Str("job_id", evt.JobID).Str("action", evt.Action).Str("status", evt.Status).Int64("duration_ms", evt.DurationMs).Msg("Cron event received")
 	if evt.Action != "finished" {
 		return
 	}

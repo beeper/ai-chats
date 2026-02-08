@@ -157,6 +157,10 @@ You are free to edit `HEARTBEAT.md` with a short checklist or reminders. Keep it
 - One-shot reminders ("remind me in 20 minutes")
 - Output should deliver directly to a channel without main session involvement
 
+Notes:
+- `wakeMode` only affects whether a heartbeat is triggered after a job enqueues events. It does not change whether the cron scheduler runs.
+- For isolated `announce` delivery, `delivery.to` should be a Matrix room ID like `!room:server`. Omit `delivery.to` to route to the last active room (fallback: default chat).
+
 **Tip:** Batch similar periodic checks into `HEARTBEAT.md` instead of creating multiple cron jobs. Use cron for precise schedules and standalone tasks.
 
 **Things to check (rotate through these, 2-4 times per day):**

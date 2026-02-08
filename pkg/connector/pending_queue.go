@@ -119,9 +119,11 @@ func (oc *AIClient) enqueuePendingItem(roomID id.RoomID, item pendingQueueItem, 
 	queue.summaryLines = state.SummaryLines
 
 	if !shouldEnqueue {
+		oc.log.Debug().Str("room_id", roomID.String()).Str("message_id", item.messageID).Msg("Pending queue item dropped by policy")
 		return false
 	}
 	queue.items = append(queue.items, item)
+	oc.log.Debug().Str("room_id", roomID.String()).Str("message_id", item.messageID).Int("queue_size", len(queue.items)).Msg("Pending queue item enqueued")
 	return true
 }
 
@@ -200,6 +202,7 @@ func (oc *AIClient) dispatchQueuedPrompt(
 	if item.pending.Portal != nil {
 		roomID = item.pending.Portal.MXID
 	}
+	oc.log.Debug().Str("room_id", roomID.String()).Str("message_id", item.messageID).Int("prompt_len", len(prompt)).Msg("Dispatching queued prompt")
 	runCtx := oc.attachRoomRun(ctx, roomID)
 	runCtx = withQueueAcceptedStatus(runCtx)
 	if item.pending.Typing != nil {
