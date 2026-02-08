@@ -220,12 +220,12 @@ func parseMCPAddArgs(args []string, allowStdio bool) (name string, cfg MCPServer
 func fnMCPAdd(ce *commands.Event, client *AIClient) {
 	login := client.UserLogin
 	if login == nil {
-		ce.Reply("No active login found")
+		ce.Reply("You're not signed in. Sign in and try again.")
 		return
 	}
 	meta := loginMetadata(login)
 	if meta == nil {
-		ce.Reply("Failed to access login metadata")
+		ce.Reply("Couldn't load your settings. Try again.")
 		return
 	}
 
@@ -233,7 +233,7 @@ func fnMCPAdd(ce *commands.Event, client *AIClient) {
 	name, cfg, err := parseMCPAddArgs(ce.Args[1:], allowStdio)
 	if err != nil {
 		if err.Error() == "stdio disabled" {
-			ce.Reply("Stdio MCP servers are disabled by bridge config.")
+			ce.Reply("Stdio MCP servers are disabled by the bridge configuration.")
 			return
 		}
 		ce.Reply("Usage: %s", mcpAddUsage(allowStdio))
@@ -248,12 +248,12 @@ func fnMCPAdd(ce *commands.Event, client *AIClient) {
 	}
 	meta.ServiceTokens.MCPServers[name] = cfg
 	if err := login.Save(ce.Ctx); err != nil {
-		ce.Reply("Failed to save MCP server: %s", err)
+		ce.Reply("Couldn't save the MCP server: %s", err)
 		return
 	}
 	client.invalidateMCPToolCache()
 
-	ce.Reply("MCP server '%s' saved (%s). Run `!ai mcp connect %s` to connect.", name, mcpServerTargetLabel(cfg), name)
+	ce.Reply("Saved MCP server '%s' (%s). Connect with `!ai mcp connect %s`.", name, mcpServerTargetLabel(cfg), name)
 }
 
 func resolveMCPServerArg(client *AIClient, args []string) (namedMCPServer, string, error) {
@@ -290,7 +290,7 @@ func sendMCPAuthURLNotice(client *AIClient, ce *commands.Event, server namedMCPS
 	if strings.TrimSpace(server.Config.AuthURL) == "" {
 		return
 	}
-	message := fmt.Sprintf("MCP authentication required for server '%s'. Open this URL: %s", server.Name, server.Config.AuthURL)
+	message := fmt.Sprintf("Sign in to MCP server '%s': %s", server.Name, server.Config.AuthURL)
 	if ce != nil && ce.Portal != nil {
 		client.sendSystemNotice(ce.Ctx, ce.Portal, message)
 		return
@@ -349,12 +349,12 @@ func clearLoginMCPServer(meta *UserLoginMetadata, name string) {
 func fnMCPConnect(ce *commands.Event, client *AIClient) {
 	login := client.UserLogin
 	if login == nil {
-		ce.Reply("No active login found")
+		ce.Reply("You're not signed in. Sign in and try again.")
 		return
 	}
 	meta := loginMetadata(login)
 	if meta == nil {
-		ce.Reply("Failed to access login metadata")
+		ce.Reply("Couldn't load your settings. Try again.")
 		return
 	}
 
@@ -362,11 +362,11 @@ func fnMCPConnect(ce *commands.Event, client *AIClient) {
 	if err != nil {
 		switch err.Error() {
 		case "none configured":
-			ce.Reply("MCP servers: none configured. Use `!ai mcp add` first.")
+			ce.Reply("No MCP servers are set up yet. Run `!ai mcp add` first.")
 		case "ambiguous":
-			ce.Reply("Multiple MCP servers configured. Provide a server name. Use `!ai mcp list`.")
+			ce.Reply("Multiple MCP servers are set up. Include a server name, or run `!ai mcp list`.")
 		default:
-			ce.Reply("Unknown MCP server. Use `!ai mcp list`.")
+			ce.Reply("Couldn't find that MCP server. Run `!ai mcp list`.")
 		}
 		return
 	}
@@ -379,19 +379,19 @@ func fnMCPConnect(ce *commands.Event, client *AIClient) {
 		}
 	}
 	if !mcpServerHasTarget(cfg) {
-		ce.Reply("MCP server '%s' has no target configured.", target.Name)
+		ce.Reply("MCP server '%s' isn't configured with a target.", target.Name)
 		return
 	}
 	if mcpServerNeedsToken(cfg) && cfg.Token == "" {
 		cfg.Connected = false
 		setLoginMCPServer(meta, target.Name, cfg)
 		if saveErr := login.Save(ce.Ctx); saveErr != nil {
-			ce.Reply("Failed to update MCP server '%s': %s", target.Name, saveErr)
+			ce.Reply("Couldn't update MCP server '%s': %s", target.Name, saveErr)
 			return
 		}
 		client.invalidateMCPToolCache()
 		sendMCPAuthURLNotice(client, ce, namedMCPServer{Name: target.Name, Config: cfg, Source: "login"})
-		ce.Reply("MCP server '%s' is missing a token. Add one and run `!ai mcp connect %s <token>`.", target.Name, target.Name)
+		ce.Reply("MCP server '%s' needs a token. Add one: `!ai mcp connect %s <token>`.", target.Name, target.Name)
 		return
 	}
 
@@ -401,35 +401,35 @@ func fnMCPConnect(ce *commands.Event, client *AIClient) {
 		cfg.Connected = false
 		setLoginMCPServer(meta, target.Name, cfg)
 		if saveErr := login.Save(ce.Ctx); saveErr != nil {
-			ce.Reply("Failed to save MCP server '%s': %s", target.Name, saveErr)
+			ce.Reply("Couldn't save MCP server '%s': %s", target.Name, saveErr)
 			return
 		}
 		client.invalidateMCPToolCache()
 		if mcpCallLikelyAuthError(connectErr) {
 			sendMCPAuthURLNotice(client, ce, namedMCPServer{Name: target.Name, Config: cfg, Source: "login"})
 		}
-		ce.Reply("Failed to connect MCP server '%s': %v", target.Name, connectErr)
+		ce.Reply("Couldn't connect to MCP server '%s': %v", target.Name, connectErr)
 		return
 	}
 
 	setLoginMCPServer(meta, target.Name, cfg)
 	if err := login.Save(ce.Ctx); err != nil {
-		ce.Reply("Failed to save MCP server '%s': %s", target.Name, err)
+		ce.Reply("Couldn't save MCP server '%s': %s", target.Name, err)
 		return
 	}
 	client.invalidateMCPToolCache()
-	ce.Reply("Connected MCP server '%s' (%d tools discovered).", target.Name, count)
+	ce.Reply("Connected to MCP server '%s' (%d tools found).", target.Name, count)
 }
 
 func fnMCPDisconnect(ce *commands.Event, client *AIClient) {
 	login := client.UserLogin
 	if login == nil {
-		ce.Reply("No active login found")
+		ce.Reply("You're not signed in. Sign in and try again.")
 		return
 	}
 	meta := loginMetadata(login)
 	if meta == nil {
-		ce.Reply("Failed to access login metadata")
+		ce.Reply("Couldn't load your settings. Try again.")
 		return
 	}
 
@@ -437,11 +437,11 @@ func fnMCPDisconnect(ce *commands.Event, client *AIClient) {
 	if err != nil {
 		switch err.Error() {
 		case "none configured":
-			ce.Reply("MCP servers: none configured")
+			ce.Reply("No MCP servers are set up yet.")
 		case "ambiguous":
-			ce.Reply("Multiple MCP servers configured. Provide a server name. Use `!ai mcp list`.")
+			ce.Reply("Multiple MCP servers are set up. Include a server name, or run `!ai mcp list`.")
 		default:
-			ce.Reply("Unknown MCP server. Use `!ai mcp list`.")
+			ce.Reply("Couldn't find that MCP server. Run `!ai mcp list`.")
 		}
 		return
 	}
@@ -450,22 +450,22 @@ func fnMCPDisconnect(ce *commands.Event, client *AIClient) {
 	cfg.Connected = false
 	setLoginMCPServer(meta, target.Name, cfg)
 	if err := login.Save(ce.Ctx); err != nil {
-		ce.Reply("Failed to disconnect MCP server '%s': %s", target.Name, err)
+		ce.Reply("Couldn't disconnect MCP server '%s': %s", target.Name, err)
 		return
 	}
 	client.invalidateMCPToolCache()
-	ce.Reply("Disconnected MCP server '%s'.", target.Name)
+	ce.Reply("Disconnected from MCP server '%s'.", target.Name)
 }
 
 func fnMCPRemove(ce *commands.Event, client *AIClient) {
 	login := client.UserLogin
 	if login == nil {
-		ce.Reply("No active login found")
+		ce.Reply("You're not signed in. Sign in and try again.")
 		return
 	}
 	meta := loginMetadata(login)
 	if meta == nil {
-		ce.Reply("Failed to access login metadata")
+		ce.Reply("Couldn't load your settings. Try again.")
 		return
 	}
 
@@ -473,11 +473,11 @@ func fnMCPRemove(ce *commands.Event, client *AIClient) {
 	if err != nil {
 		switch err.Error() {
 		case "none configured":
-			ce.Reply("MCP servers: none configured")
+			ce.Reply("No MCP servers are set up yet.")
 		case "ambiguous":
-			ce.Reply("Multiple MCP servers configured. Provide a server name. Use `!ai mcp list`.")
+			ce.Reply("Multiple MCP servers are set up. Include a server name, or run `!ai mcp list`.")
 		default:
-			ce.Reply("Unknown MCP server. Use `!ai mcp list`.")
+			ce.Reply("Couldn't find that MCP server. Run `!ai mcp list`.")
 		}
 		return
 	}
@@ -490,7 +490,7 @@ func fnMCPRemove(ce *commands.Event, client *AIClient) {
 
 	clearLoginMCPServer(meta, target.Name)
 	if err := login.Save(ce.Ctx); err != nil {
-		ce.Reply("Failed to remove MCP server '%s': %s", target.Name, err)
+		ce.Reply("Couldn't remove MCP server '%s': %s", target.Name, err)
 		return
 	}
 	client.invalidateMCPToolCache()

@@ -177,7 +177,7 @@ func fnModel(ce *commands.Event) {
 	modelID := ce.Args[0]
 	valid, err := client.validateModel(ce.Ctx, modelID)
 	if err != nil || !valid {
-		ce.Reply("Invalid model: %s", modelID)
+		ce.Reply("That model isn't available: %s", modelID)
 		return
 	}
 
@@ -191,7 +191,7 @@ func fnModel(ce *commands.Event) {
 	meta.Capabilities = getModelCapabilities(modelID, client.findModelInfo(modelID))
 	client.savePortalQuiet(ce.Ctx, ce.Portal, "model change")
 	client.ensureGhostDisplayName(ce.Ctx, modelID)
-	ce.Reply("Model changed to: %s", modelID)
+	ce.Reply("Model set to %s.", modelID)
 }
 
 // CommandTemp handles the !ai temp command
@@ -453,12 +453,12 @@ func fnSetDesktopAPIToken(ce *commands.Event) {
 	}
 	login := client.UserLogin
 	if login == nil {
-		ce.Reply("No active login found")
+		ce.Reply("You're not signed in. Sign in and try again.")
 		return
 	}
 	meta := loginMetadata(login)
 	if meta == nil {
-		ce.Reply("Failed to access login metadata")
+		ce.Reply("Couldn't load your settings. Try again.")
 		return
 	}
 
@@ -503,7 +503,7 @@ func fnSetDesktopAPIToken(ce *commands.Event) {
 			delete(meta.ServiceTokens.DesktopAPIInstances, desktopDefaultInstance)
 		}
 		if err := login.Save(ce.Ctx); err != nil {
-			ce.Reply("Failed to clear Desktop API token: %s", err)
+			ce.Reply("Couldn't clear the Desktop API token: %s", err)
 			return
 		}
 		ce.Reply("Desktop API token cleared")
@@ -524,7 +524,7 @@ func fnSetDesktopAPIToken(ce *commands.Event) {
 	}
 	meta.ServiceTokens.DesktopAPIInstances[desktopDefaultInstance] = defaultConfig
 	if err := login.Save(ce.Ctx); err != nil {
-		ce.Reply("Failed to set Desktop API token: %s", err)
+		ce.Reply("Couldn't save the Desktop API token: %s", err)
 		return
 	}
 	if baseURL != "" {
@@ -541,12 +541,12 @@ func fnAddDesktopAPIInstance(ce *commands.Event) {
 	}
 	login := client.UserLogin
 	if login == nil {
-		ce.Reply("No active login found")
+		ce.Reply("You're not signed in. Sign in and try again.")
 		return
 	}
 	meta := loginMetadata(login)
 	if meta == nil {
-		ce.Reply("Failed to access login metadata")
+		ce.Reply("Couldn't load your settings. Try again.")
 		return
 	}
 	if len(ce.Args) < 2 {
@@ -583,7 +583,7 @@ func fnAddDesktopAPIInstance(ce *commands.Event) {
 		meta.ServiceTokens.DesktopAPI = token
 	}
 	if err := login.Save(ce.Ctx); err != nil {
-		ce.Reply("Failed to save Desktop API instance: %s", err)
+		ce.Reply("Couldn't save the Desktop API instance: %s", err)
 		return
 	}
 	if baseURL != "" {
@@ -600,12 +600,12 @@ func fnRemoveDesktopAPIInstance(ce *commands.Event) {
 	}
 	login := client.UserLogin
 	if login == nil {
-		ce.Reply("No active login found")
+		ce.Reply("You're not signed in. Sign in and try again.")
 		return
 	}
 	meta := loginMetadata(login)
 	if meta == nil {
-		ce.Reply("Failed to access login metadata")
+		ce.Reply("Couldn't load your settings. Try again.")
 		return
 	}
 	name := ""
@@ -645,7 +645,7 @@ func fnRemoveDesktopAPIInstance(ce *commands.Event) {
 		meta.ServiceTokens.DesktopAPIInstances = nil
 	}
 	if err := login.Save(ce.Ctx); err != nil {
-		ce.Reply("Failed to remove Desktop API instance: %s", err)
+		ce.Reply("Couldn't remove the Desktop API instance: %s", err)
 		return
 	}
 	ce.Reply("Desktop API instance '%s' removed", name)
@@ -1067,7 +1067,7 @@ func fnModels(ce *commands.Event) {
 
 	models, err := client.listAvailableModels(ce.Ctx, false)
 	if err != nil {
-		ce.Reply("Failed to fetch models")
+		ce.Reply("Couldn't load models. Try again.")
 		return
 	}
 
@@ -1130,7 +1130,7 @@ func fnTimezone(ce *commands.Event) {
 
 	loginMeta := loginMetadata(client.UserLogin)
 	if loginMeta == nil {
-		ce.Reply("Failed to load login metadata")
+		ce.Reply("Couldn't load your settings. Try again.")
 		return
 	}
 
@@ -1149,7 +1149,7 @@ func fnTimezone(ce *commands.Event) {
 	case "reset", "default", "clear":
 		loginMeta.Timezone = ""
 		if err := client.UserLogin.Save(ce.Ctx); err != nil {
-			ce.Reply("Failed to clear timezone: %s", err.Error())
+			ce.Reply("Couldn't clear the timezone: %s", err.Error())
 			return
 		}
 		ce.Reply("Timezone cleared. Falling back to UTC unless TZ is set.")
@@ -1162,10 +1162,10 @@ func fnTimezone(ce *commands.Event) {
 		}
 		loginMeta.Timezone = tz
 		if err := client.UserLogin.Save(ce.Ctx); err != nil {
-			ce.Reply("Failed to save timezone: %s", err.Error())
+			ce.Reply("Couldn't save the timezone: %s", err.Error())
 			return
 		}
-		ce.Reply("Timezone set to: %s", tz)
+		ce.Reply("Timezone set to %s.", tz)
 	}
 }
 
@@ -1215,7 +1215,7 @@ func fnGravatar(ce *commands.Event) {
 		}
 		profile, err := fetchGravatarProfile(ce.Ctx, email)
 		if err != nil {
-			ce.Reply("Failed to fetch Gravatar profile: %s", err.Error())
+			ce.Reply("Couldn't fetch the Gravatar profile: %s", err.Error())
 			return
 		}
 		ce.Reply(formatGravatarMarkdown(profile, "fetched"))
@@ -1227,13 +1227,13 @@ func fnGravatar(ce *commands.Event) {
 		}
 		profile, err := fetchGravatarProfile(ce.Ctx, ce.Args[1])
 		if err != nil {
-			ce.Reply("Failed to fetch Gravatar profile: %s", err.Error())
+			ce.Reply("Couldn't fetch the Gravatar profile: %s", err.Error())
 			return
 		}
 		state := ensureGravatarState(loginMetadata(client.UserLogin))
 		state.Primary = profile
 		if err := client.UserLogin.Save(ce.Ctx); err != nil {
-			ce.Reply("Failed to save Gravatar profile: %s", err.Error())
+			ce.Reply("Couldn't save the Gravatar profile: %s", err.Error())
 			return
 		}
 		ce.Reply(formatGravatarMarkdown(profile, "primary set"))
@@ -1327,7 +1327,7 @@ func fnAgent(ce *commands.Event) {
 	if displayName == "" {
 		displayName = agent.ID
 	}
-	ce.Reply("Agent set to: **%s** (`%s`)", displayName, agent.ID)
+	ce.Reply("Agent set to **%s** (`%s`)", displayName, agent.ID)
 }
 
 // CommandAgents handles the !ai agents command
@@ -1348,7 +1348,7 @@ func fnAgents(ce *commands.Event) {
 	store := NewAgentStoreAdapter(client)
 	agentsMap, err := store.LoadAgents(ce.Ctx)
 	if err != nil {
-		ce.Reply("Failed to load agents: %v", err)
+		ce.Reply("Couldn't load agents: %v", err)
 		return
 	}
 
@@ -1462,7 +1462,7 @@ func fnCreateAgent(ce *commands.Event) {
 	}
 
 	if err := store.SaveAgent(ce.Ctx, newAgent); err != nil {
-		ce.Reply("Failed to create agent: %v", err)
+		ce.Reply("Couldn't create the agent: %v", err)
 		return
 	}
 
@@ -1500,7 +1500,7 @@ func fnDeleteAgent(ce *commands.Event) {
 	}
 
 	if err := store.DeleteAgent(ce.Ctx, agentID); err != nil {
-		ce.Reply("Failed to delete agent: %v", err)
+		ce.Reply("Couldn't delete the agent: %v", err)
 		return
 	}
 

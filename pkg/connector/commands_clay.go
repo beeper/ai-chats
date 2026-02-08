@@ -136,12 +136,12 @@ func fnClayStatus(ce *commands.Event, client *AIClient) {
 func fnClayConnect(ce *commands.Event, client *AIClient, tokenOverride string) {
 	login := client.UserLogin
 	if login == nil {
-		ce.Reply("No active login found")
+		ce.Reply("You're not signed in. Sign in and try again.")
 		return
 	}
 	meta := loginMetadata(login)
 	if meta == nil {
-		ce.Reply("Failed to access login metadata")
+		ce.Reply("Couldn't load your settings. Try again.")
 		return
 	}
 
@@ -154,12 +154,12 @@ func fnClayConnect(ce *commands.Event, client *AIClient, tokenOverride string) {
 		cfg.Connected = false
 		setLoginMCPServer(meta, mcpDefaultServerName, cfg)
 		if err := login.Save(ce.Ctx); err != nil {
-			ce.Reply("Failed to save Clay MCP config: %s", err)
+			ce.Reply("Couldn't save Clay MCP settings: %s", err)
 			return
 		}
 		client.invalidateMCPToolCache()
 		sendMCPAuthURLNotice(client, ce, namedMCPServer{Name: mcpDefaultServerName, Config: cfg, Source: "login"})
-		ce.Reply("Clay MCP needs a token. Run `!ai clay <token>` to connect.")
+		ce.Reply("Clay MCP needs a token. Connect with `!ai clay <token>`.")
 		return
 	}
 
@@ -169,70 +169,70 @@ func fnClayConnect(ce *commands.Event, client *AIClient, tokenOverride string) {
 		cfg.Connected = false
 		setLoginMCPServer(meta, mcpDefaultServerName, cfg)
 		if saveErr := login.Save(ce.Ctx); saveErr != nil {
-			ce.Reply("Failed to save Clay MCP config: %s", saveErr)
+			ce.Reply("Couldn't save Clay MCP settings: %s", saveErr)
 			return
 		}
 		client.invalidateMCPToolCache()
 		if mcpCallLikelyAuthError(connectErr) {
 			sendMCPAuthURLNotice(client, ce, namedMCPServer{Name: mcpDefaultServerName, Config: cfg, Source: "login"})
 		}
-		ce.Reply("Failed to connect Clay MCP: %v", connectErr)
+		ce.Reply("Couldn't connect to Clay MCP: %v", connectErr)
 		return
 	}
 
 	setLoginMCPServer(meta, mcpDefaultServerName, cfg)
 	if err := login.Save(ce.Ctx); err != nil {
-		ce.Reply("Failed to save Clay MCP config: %s", err)
+		ce.Reply("Couldn't save Clay MCP settings: %s", err)
 		return
 	}
 	client.invalidateMCPToolCache()
-	ce.Reply("Clay MCP connected (%d tools discovered). Use `!ai agent nexus` in a room to use Nexus-only tools.", count)
+	ce.Reply("Connected to Clay MCP (%d tools found). Use `!ai agent nexus` in a room to use Nexus-only tools.", count)
 }
 
 func fnClayDisconnect(ce *commands.Event, client *AIClient) {
 	login := client.UserLogin
 	if login == nil {
-		ce.Reply("No active login found")
+		ce.Reply("You're not signed in. Sign in and try again.")
 		return
 	}
 	meta := loginMetadata(login)
 	if meta == nil {
-		ce.Reply("Failed to access login metadata")
+		ce.Reply("Couldn't load your settings. Try again.")
 		return
 	}
 
 	cfg := clayMCPServerConfig(client, "")
 	if !mcpServerHasTarget(cfg) {
-		ce.Reply("Clay MCP is not configured")
+		ce.Reply("Clay MCP isn't set up.")
 		return
 	}
 	cfg.Connected = false
 	setLoginMCPServer(meta, mcpDefaultServerName, cfg)
 	if err := login.Save(ce.Ctx); err != nil {
-		ce.Reply("Failed to disconnect Clay MCP: %s", err)
+		ce.Reply("Couldn't disconnect Clay MCP: %s", err)
 		return
 	}
 	client.invalidateMCPToolCache()
-	ce.Reply("Clay MCP disconnected")
+	ce.Reply("Disconnected from Clay MCP.")
 }
 
 func fnClayRemove(ce *commands.Event, client *AIClient) {
 	login := client.UserLogin
 	if login == nil {
-		ce.Reply("No active login found")
+		ce.Reply("You're not signed in. Sign in and try again.")
 		return
 	}
 	meta := loginMetadata(login)
 	if meta == nil {
-		ce.Reply("Failed to access login metadata")
+		ce.Reply("Couldn't load your settings. Try again.")
 		return
 	}
 
 	clearLoginMCPServer(meta, mcpDefaultServerName)
 	if err := login.Save(ce.Ctx); err != nil {
-		ce.Reply("Failed to remove Clay MCP login override: %s", err)
+		ce.Reply("Couldn't remove the Clay MCP override: %s", err)
 		return
 	}
 	client.invalidateMCPToolCache()
-	ce.Reply("Clay MCP login override removed")
+	ce.Reply("Removed the Clay MCP override.")
 }

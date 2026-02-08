@@ -89,7 +89,7 @@ func fnOpenCodeConnect(ce *commands.Event) {
 
 	inst, count, err := client.opencodeBridge.Connect(ce.Ctx, url, password, username)
 	if err != nil {
-		ce.Reply("Failed to connect to OpenCode: %v", err)
+		ce.Reply("Couldn't connect to OpenCode: %v", err)
 		return
 	}
 
@@ -102,7 +102,7 @@ func fnOpenCodeNew(ce *commands.Event) {
 		return
 	}
 	if client.opencodeBridge == nil {
-		ce.Reply("OpenCode integration is not available.")
+		ce.Reply("OpenCode isn't available on this bridge.")
 		return
 	}
 
@@ -112,7 +112,7 @@ func fnOpenCodeNew(ce *commands.Event) {
 
 	instances := loginMetadata(client.UserLogin)
 	if instances == nil || len(instances.OpenCodeInstances) == 0 {
-		ce.Reply("No OpenCode instances are connected. Use `!ai opencode add` first.")
+		ce.Reply("No OpenCode instances are connected. Run `!ai opencode add` first.")
 		return
 	}
 
@@ -134,7 +134,7 @@ func fnOpenCodeNew(ce *commands.Event) {
 				}
 				title = strings.TrimSpace(strings.Join(ce.Args, " "))
 			} else {
-				ce.Reply("Unknown OpenCode instance. Provide an instance ID or URL.")
+				ce.Reply("Couldn't find that OpenCode instance. Provide an instance ID or URL.")
 				return
 			}
 		} else if len(instances.OpenCodeInstances) == 1 {
@@ -143,7 +143,7 @@ func fnOpenCodeNew(ce *commands.Event) {
 				break
 			}
 		} else {
-			ce.Reply("Multiple OpenCode instances connected. Provide an instance ID or URL.")
+			ce.Reply("Multiple OpenCode instances are connected. Provide an instance ID or URL.")
 			return
 		}
 	}
@@ -151,7 +151,7 @@ func fnOpenCodeNew(ce *commands.Event) {
 	pendingTitle := strings.TrimSpace(title) == ""
 	chatResp, err := client.opencodeBridge.CreateSessionChat(ce.Ctx, instanceID, title, pendingTitle)
 	if err != nil {
-		ce.Reply("Failed to create OpenCode session: %v", err)
+		ce.Reply("Couldn't create an OpenCode session: %v", err)
 		return
 	}
 
@@ -161,17 +161,17 @@ func fnOpenCodeNew(ce *commands.Event) {
 	}
 	if portal != nil && portal.MXID == "" {
 		if err := portal.CreateMatrixRoom(ce.Ctx, client.UserLogin, chatResp.PortalInfo); err != nil {
-			ce.Reply("Failed to create room: %v", err)
+			ce.Reply("Couldn't create the room: %v", err)
 			return
 		}
 	}
 
 	if portal != nil && portal.MXID != "" {
 		roomLink := fmt.Sprintf("https://matrix.to/#/%s", portal.MXID)
-		ce.Reply("Created new OpenCode session.\nOpen: %s", roomLink)
+		ce.Reply("OpenCode session created.\nOpen: %s", roomLink)
 		return
 	}
-	ce.Reply("Created new OpenCode session.")
+	ce.Reply("OpenCode session created.")
 }
 
 func fnOpenCodeList(ce *commands.Event) {
@@ -182,7 +182,7 @@ func fnOpenCodeList(ce *commands.Event) {
 
 	meta := loginMetadata(client.UserLogin)
 	if meta == nil || len(meta.OpenCodeInstances) == 0 {
-		ce.Reply("No OpenCode instances are connected. Use `!ai opencode add` first.")
+		ce.Reply("No OpenCode instances are connected. Run `!ai opencode add` first.")
 		return
 	}
 
@@ -235,11 +235,11 @@ func fnOpenCodeRemove(ce *commands.Event) {
 	if candidate == "" {
 		meta := loginMetadata(client.UserLogin)
 		if meta == nil || len(meta.OpenCodeInstances) == 0 {
-			ce.Reply("No OpenCode instances are connected. Use `!ai opencode add` first.")
+			ce.Reply("No OpenCode instances are connected. Run `!ai opencode add` first.")
 			return
 		}
 		if len(meta.OpenCodeInstances) > 1 {
-			ce.Reply("Multiple OpenCode instances connected. Provide an instance ID or URL. Use `!ai opencode list`.")
+			ce.Reply("Multiple OpenCode instances are connected. Provide an instance ID or URL, or run `!ai opencode list`.")
 			return
 		}
 		for id := range meta.OpenCodeInstances {
@@ -250,19 +250,19 @@ func fnOpenCodeRemove(ce *commands.Event) {
 		var ok bool
 		instanceID, ok = resolveOpenCodeInstanceArg(client, candidate)
 		if !ok {
-			ce.Reply("Unknown OpenCode instance. Provide an instance ID or URL. Use `!ai opencode list`.")
+			ce.Reply("Couldn't find that OpenCode instance. Provide an instance ID or URL, or run `!ai opencode list`.")
 			return
 		}
 	}
 	if client.opencodeBridge == nil {
-		ce.Reply("OpenCode integration is not available.")
+		ce.Reply("OpenCode isn't available on this bridge.")
 		return
 	}
 	if err := client.opencodeBridge.RemoveInstance(ce.Ctx, instanceID); err != nil {
-		ce.Reply("Failed to remove OpenCode instance: %v", err)
+		ce.Reply("Couldn't remove the OpenCode instance: %v", err)
 		return
 	}
-	ce.Reply("OpenCode instance removed: %s", instanceID)
+	ce.Reply("Removed OpenCode instance: %s", instanceID)
 }
 
 func resolveOpenCodeInstanceArg(client *AIClient, candidate string) (string, bool) {

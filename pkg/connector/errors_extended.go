@@ -68,20 +68,20 @@ func FormatProxyError(proxyErr *ProxyError) string {
 
 	switch proxyErr.Code {
 	case "timeout", "connection_timeout":
-		return "Request timed out waiting for AI provider. Please try again."
+		return "The AI provider didn't respond in time. Try again."
 	case "connection_refused":
-		return "Could not connect to AI provider. The service may be down."
+		return "Couldn't connect to the AI provider. It may be down."
 	case "connection_reset", "connection_closed":
-		return "Connection to AI provider was lost. Please try again."
+		return "Connection to the AI provider was lost. Try again."
 	case "dns_error":
-		return "Could not reach AI provider. Please check your connection."
+		return "Couldn't reach the AI provider. Check your connection."
 	case "request_cancelled":
-		return "Request was cancelled."
+		return "Request was canceled."
 	default:
 		if proxyErr.Message != "" {
 			return proxyErr.Message
 		}
-		return "Failed to reach AI provider. Please try again."
+		return "Couldn't reach the AI provider. Try again."
 	}
 }
 
@@ -298,49 +298,49 @@ func collapseConsecutiveDuplicateBlocks(s string) string {
 // Returns a sanitized message suitable for display to end users.
 func FormatUserFacingError(err error) string {
 	if err == nil {
-		return "An unknown error occurred."
+		return "Something went wrong."
 	}
 
 	// Check specific error types and return user-friendly messages
 	if IsBillingError(err) {
-		return "Billing issue with AI provider. Please check your account credits or upgrade your plan."
+		return "There's a billing issue with the AI provider. Check your account or credits."
 	}
 
 	if IsOverloadedError(err) {
-		return "The AI service is temporarily overloaded. Please try again in a moment."
+		return "The AI service is busy right now. Try again in a moment."
 	}
 
 	if IsRateLimitError(err) {
-		return "Rate limited by AI provider. Please wait a moment before retrying."
+		return "You're sending requests too quickly. Wait a moment, then try again."
 	}
 
 	if IsTimeoutError(err) {
-		return "Request timed out. The server took too long to respond. Please try again."
+		return "The request timed out. Try again."
 	}
 
 	if IsAuthError(err) {
-		return "Authentication failed. Please check your API key or re-login."
+		return "Authentication failed. Check your API key or sign in again."
 	}
 
 	if cle := ParseContextLengthError(err); cle != nil {
 		if cle.ModelMaxTokens > 0 {
-			return "Context overflow: prompt too large for the model. Try again with less input or a larger-context model."
+			return "Too much context for this model. Try less input, or switch to a larger-context model."
 		}
-		return "Your message is too long for this model's context window. Please try a shorter message."
+		return "Your message is too long for this model. Try a shorter message."
 	}
 
 	if IsImageError(err) {
 		if dimErr := ParseImageDimensionError(err); dimErr != nil && dimErr.MaxDimensionPx > 0 {
-			return fmt.Sprintf("Image exceeds %dpx dimension limit. Please resize the image and try again.", dimErr.MaxDimensionPx)
+			return fmt.Sprintf("Image exceeds %dpx. Resize it and try again.", dimErr.MaxDimensionPx)
 		}
 		if sizeErr := ParseImageSizeError(err); sizeErr != nil && sizeErr.MaxMB > 0 {
-			return fmt.Sprintf("Image exceeds %.0fMB size limit. Please use a smaller image.", sizeErr.MaxMB)
+			return fmt.Sprintf("Image exceeds %.0fMB. Use a smaller image.", sizeErr.MaxMB)
 		}
-		return "Image is too large or has invalid dimensions. Please resize the image and try again."
+		return "That image is too large or has unsupported dimensions. Resize it and try again."
 	}
 
 	if IsRoleOrderingError(err) {
-		return "Message ordering conflict - please try again. If this persists, start a new conversation."
+		return "Message ordering conflict. Try again. If it keeps happening, start a new conversation."
 	}
 
 	if IsReasoningError(err) {
@@ -348,15 +348,15 @@ func FormatUserFacingError(err error) string {
 	}
 
 	if IsModelNotFound(err) {
-		return "The requested model is not available. Please select a different model."
+		return "That model isn't available. Choose a different model."
 	}
 
 	if IsMissingToolCallInputError(err) {
-		return "Session data is corrupted (missing tool call input). Please start a new conversation to recover."
+		return "Session data is missing required tool input. Start a new conversation to recover."
 	}
 
 	if IsToolUseIDFormatError(err) {
-		return "Tool call ID format error. Please start a new conversation to recover."
+		return "Tool call ID is invalid. Start a new conversation to recover."
 	}
 
 	// Check for structured proxy errors (from hungryserv)
@@ -365,7 +365,7 @@ func FormatUserFacingError(err error) string {
 	}
 
 	if IsServerError(err) {
-		return "The AI provider encountered an error. Please try again later."
+		return "The AI provider returned an error. Try again later."
 	}
 
 	// For unknown errors, try to extract a sensible message
@@ -399,7 +399,7 @@ func FormatUserFacingError(err error) string {
 		if parsed := parseJSONErrorMessage(msg); parsed != "" {
 			return collapseConsecutiveDuplicateBlocks(parsed)
 		}
-		return "The AI provider returned an error. Please try again."
+		return "The AI provider returned an error. Try again."
 	}
 
 	return collapseConsecutiveDuplicateBlocks(msg)

@@ -340,6 +340,25 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 
+	// Structured approval decision (sent by capable clients). Keep this before the
+	// `/approve` command parser so the user doesn't need to emit fallback text.
+	if decision := parseApprovalDecision(msg.Event.Content.Raw); decision != nil {
+		approve, _, ok := approvalDecisionFromString(decision.Decision)
+		if !ok {
+			return &bridgev2.MatrixMessageResponse{Pending: false}, nil
+		}
+		err := cc.resolveToolApproval(decision.ApprovalID, ToolApprovalDecisionCodex{
+			Approve:   approve,
+			Reason:    strings.TrimSpace(decision.Reason),
+			DecidedAt: time.Now(),
+			DecidedBy: msg.Event.Sender,
+		})
+		if err != nil {
+			cc.sendToast(ctx, portal, approvalErrorToastText(err), aiToastTypeError)
+		}
+		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
+	}
+
 	// Only text messages.
 	switch msg.Content.MsgType {
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
@@ -414,7 +433,7 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 	}
 
 	if err := cc.ensureRPC(cc.backgroundContext(ctx)); err != nil {
-		return nil, messageSendStatusError(err, "Codex unavailable. Please re-login.", "")
+		return nil, messageSendStatusError(err, "Codex isn't available. Sign in again.", "")
 	}
 	if strings.TrimSpace(meta.CodexThreadID) == "" || strings.TrimSpace(meta.CodexCwd) == "" {
 		if err := cc.ensureCodexThread(ctx, portal, meta); err != nil {
@@ -1636,6 +1655,32 @@ func (cc *CodexClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Po
 	_, _ = bot.SendMessage(sendCtx, portal.MXID, event.EventMessage, &event.Content{Parsed: content}, nil)
 }
 
+func (cc *CodexClient) sendToast(ctx context.Context, portal *bridgev2.Portal, text string, toastType aiToastType) {
+	if portal == nil || portal.MXID == "" || cc.UserLogin == nil || cc.UserLogin.Bridge == nil {
+		return
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return
+	}
+	bot := cc.UserLogin.Bridge.Bot
+	if bot == nil {
+		return
+	}
+	raw := map[string]any{
+		"msgtype": event.MsgNotice,
+		"body":    text,
+		"com.beeper.ai.toast": map[string]any{
+			"text": text,
+			"type": string(toastType),
+		},
+	}
+	bg := cc.backgroundContext(ctx)
+	sendCtx, cancel := context.WithTimeout(bg, 10*time.Second)
+	defer cancel()
+	_, _ = bot.SendMessage(sendCtx, portal.MXID, event.EventMessage, &event.Content{Raw: raw}, nil)
+}
+
 func (cc *CodexClient) sendPendingStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, message string) {
 	if portal == nil || portal.Bridge == nil || evt == nil {
 		return
@@ -2065,25 +2110,25 @@ func (cc *CodexClient) registerToolApproval(approvalID, toolCallID, toolName str
 func (cc *CodexClient) resolveToolApproval(approvalID string, decision ToolApprovalDecisionCodex) error {
 	approvalID = strings.TrimSpace(approvalID)
 	if approvalID == "" {
-		return errors.New("missing approval id")
+		return ErrApprovalMissingID
 	}
 	cc.toolApprovalsMu.Lock()
 	p := cc.toolApprovals[approvalID]
 	cc.toolApprovalsMu.Unlock()
 	if p == nil {
-		return fmt.Errorf("unknown or expired approval id: %s", approvalID)
+		return fmt.Errorf("%w: %s", ErrApprovalUnknown, approvalID)
 	}
 	if time.Now().After(p.ExpiresAt) {
 		cc.toolApprovalsMu.Lock()
 		delete(cc.toolApprovals, approvalID)
 		cc.toolApprovalsMu.Unlock()
-		return fmt.Errorf("approval expired: %s", approvalID)
+		return fmt.Errorf("%w: %s", ErrApprovalExpired, approvalID)
 	}
 	select {
 	case p.decisionCh <- decision:
 		return nil
 	default:
-		return fmt.Errorf("approval already resolved: %s", approvalID)
+		return fmt.Errorf("%w: %s", ErrApprovalAlreadyHandled, approvalID)
 	}
 }
 

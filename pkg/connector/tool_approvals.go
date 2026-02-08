@@ -125,27 +125,27 @@ func (oc *AIClient) resolveToolApproval(roomID id.RoomID, approvalID string, dec
 	}
 	approvalID = strings.TrimSpace(approvalID)
 	if approvalID == "" {
-		return errors.New("missing approval id")
+		return ErrApprovalMissingID
 	}
 	if strings.TrimSpace(roomID.String()) == "" {
-		return errors.New("missing room id")
+		return ErrApprovalMissingRoom
 	}
 	if decision.DecidedBy == "" || decision.DecidedBy != oc.UserLogin.UserMXID {
-		return errors.New("only the owner can approve")
+		return ErrApprovalOnlyOwner
 	}
 
 	oc.toolApprovalsMu.Lock()
 	p := oc.toolApprovals[approvalID]
 	oc.toolApprovalsMu.Unlock()
 	if p == nil {
-		return fmt.Errorf("unknown or expired approval id: %s", approvalID)
+		return fmt.Errorf("%w: %s", ErrApprovalUnknown, approvalID)
 	}
 	if p.RoomID != roomID {
-		return errors.New("approval id does not belong to this room")
+		return ErrApprovalWrongRoom
 	}
 	if time.Now().After(p.ExpiresAt) {
 		oc.dropToolApprovalLocked(approvalID)
-		return fmt.Errorf("approval expired: %s", approvalID)
+		return fmt.Errorf("%w: %s", ErrApprovalExpired, approvalID)
 	}
 
 	decision.Reason = strings.TrimSpace(decision.Reason)
@@ -157,7 +157,7 @@ func (oc *AIClient) resolveToolApproval(roomID id.RoomID, approvalID string, dec
 		go oc.emitApprovalSnapshotDecision(approvalID, decision)
 		return nil
 	default:
-		return fmt.Errorf("approval already resolved: %s", approvalID)
+		return fmt.Errorf("%w: %s", ErrApprovalAlreadyHandled, approvalID)
 	}
 }
 

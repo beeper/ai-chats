@@ -195,7 +195,7 @@ func (oc *AIClient) notifyContextLengthExceeded(
 	} else {
 		message = fmt.Sprintf(
 			"Your message is too long for this model's context window (%d tokens max). "+
-				"Please try a shorter message or start a new conversation.",
+				"Try a shorter message, or start a new conversation.",
 			cle.ModelMaxTokens,
 		)
 	}

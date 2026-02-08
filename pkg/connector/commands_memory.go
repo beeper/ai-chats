@@ -28,7 +28,7 @@ var CommandMemory = registerAICommand(commandregistry.Definition{
 
 func fnMemory(ce *commands.Event) {
 	if ce.User == nil || !ce.User.Permissions.Admin {
-		ce.Reply("This command is restricted to bridge admins.")
+		ce.Reply("Only bridge admins can use this command.")
 		return
 	}
 	client, meta, ok := requireClientMeta(ce)
@@ -56,7 +56,7 @@ func fnMemory(ce *commands.Event) {
 		}
 		status, err := manager.StatusDetails(ce.Ctx)
 		if err != nil {
-			ce.Reply("Failed to fetch memory status: %v", err)
+			ce.Reply("Couldn't load memory status: %v", err)
 			return
 		}
 		lines := []string{
@@ -134,12 +134,12 @@ func fnMemory(ce *commands.Event) {
 			ce.Reply("Memory search disabled: %s", errMsg)
 			return
 		}
-		ce.Reply("Memory reindex starting...")
+		ce.Reply("Reindexing memory...")
 		onProgress := func(completed, total int, label string) {
 			ce.Reply("Indexing %d/%d: %s", completed+1, total, label)
 		}
 		if err := manager.syncWithProgress(ce.Ctx, "", true, onProgress); err != nil {
-			ce.Reply("Memory reindex failed: %v", err)
+			ce.Reply("Couldn't reindex memory: %v", err)
 			return
 		}
 		ce.Reply("Memory reindex complete.")
@@ -175,11 +175,11 @@ func fnMemory(ce *commands.Event) {
 		}
 		results, err := manager.Search(ce.Ctx, query, opts)
 		if err != nil {
-			ce.Reply("Memory search failed: %v", err)
+			ce.Reply("Couldn't search memory: %v", err)
 			return
 		}
 		if len(results) == 0 {
-			ce.Reply("No matches.")
+			ce.Reply("No matches found.")
 			return
 		}
 		lines := make([]string, 0, len(results)*2)
@@ -223,7 +223,7 @@ func fnMemory(ce *commands.Event) {
 		}
 		result, err := manager.ReadFile(ce.Ctx, path, from, lines)
 		if err != nil {
-			ce.Reply("Memory get failed: %v", err)
+			ce.Reply("Couldn't read memory: %v", err)
 			return
 		}
 		text, _ := result["text"].(string)
@@ -271,7 +271,7 @@ func fnMemory(ce *commands.Event) {
 		}
 		entry, err := store.Write(ce.Ctx, path, content)
 		if err != nil {
-			ce.Reply("Memory write failed: %v", err)
+			ce.Reply("Couldn't write memory: %v", err)
 			return
 		}
 		if entry != nil {
@@ -286,7 +286,7 @@ func fnMemory(ce *commands.Event) {
 		ce.Reply("Memory file updated: %s", path)
 		return
 	default:
-		ce.Reply("Unknown memory subcommand. Use status, reindex, get, set, or append.")
+		ce.Reply("Unknown memory command. Use status, reindex, get, set, or append.")
 		return
 	}
 }

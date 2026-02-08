@@ -9,13 +9,13 @@ import (
 
 func formatAbortNotice(stopped int) string {
 	if stopped <= 0 {
-		return "⚙️ Agent was aborted."
+		return "Agent was aborted."
 	}
 	label := "sub-agents"
 	if stopped == 1 {
 		label = "sub-agent"
 	}
-	return fmt.Sprintf("⚙️ Agent was aborted. Stopped %d %s.", stopped, label)
+	return fmt.Sprintf("Agent was aborted. Stopped %d %s.", stopped, label)
 }
 
 func (oc *AIClient) abortRoom(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) int {

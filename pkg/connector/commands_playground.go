@@ -38,7 +38,7 @@ func fnPlayground(ce *commands.Event) {
 	// Resolve the model (handles aliases, prefixes, etc.)
 	modelID, valid, err := client.resolveModelID(ce.Ctx, modelArg)
 	if err != nil || !valid || modelID == "" {
-		ce.Reply("Invalid model: %s", modelArg)
+		ce.Reply("That model isn't available: %s", modelArg)
 		return
 	}
 
@@ -52,7 +52,7 @@ func fnPlayground(ce *commands.Event) {
 
 		if chatResp != nil && chatResp.Portal != nil && chatResp.Portal.MXID != "" {
 			client.sendSystemNotice(ce.Ctx, ce.Portal,
-				"Created playground room: "+string(chatResp.Portal.MXID))
+				"Playground room created: "+string(chatResp.Portal.MXID))
 		}
 	}()
 

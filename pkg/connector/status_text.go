@@ -20,7 +20,7 @@ func (oc *AIClient) buildStatusText(
 	queueSettings QueueSettings,
 ) string {
 	if meta == nil || portal == nil {
-		return "Status unavailable."
+		return "Status unavailable"
 	}
 	var sb strings.Builder
 	sb.WriteString("Status\n")
@@ -176,7 +176,7 @@ func formatTypingInterval(interval time.Duration) string {
 
 func (oc *AIClient) buildContextStatus(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) string {
 	if meta == nil || portal == nil {
-		return "Context unavailable."
+		return "Context unavailable"
 	}
 	var sb strings.Builder
 	sb.WriteString("Context\n")

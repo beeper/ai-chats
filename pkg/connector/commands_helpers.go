@@ -11,7 +11,7 @@ func requireClientMeta(ce *commands.Event) (*AIClient, *PortalMetadata, bool) {
 	client := getAIClient(ce)
 	meta := getPortalMeta(ce)
 	if client == nil || meta == nil {
-		ce.Reply("Failed to access AI configuration")
+		ce.Reply("Couldn't load AI settings. Try again.")
 		return nil, nil, false
 	}
 	return client, meta, true
@@ -20,7 +20,7 @@ func requireClientMeta(ce *commands.Event) (*AIClient, *PortalMetadata, bool) {
 func requireClient(ce *commands.Event) (*AIClient, bool) {
 	client := getAIClient(ce)
 	if client == nil {
-		ce.Reply("Failed to access AI configuration")
+		ce.Reply("Couldn't load AI settings. Try again.")
 		return nil, false
 	}
 	return client, true
@@ -28,7 +28,7 @@ func requireClient(ce *commands.Event) (*AIClient, bool) {
 
 func requirePortal(ce *commands.Event) (*bridgev2.Portal, bool) {
 	if ce.Portal == nil {
-		ce.Reply("Failed to access AI configuration")
+		ce.Reply("This command can only be used in a room.")
 		return nil, false
 	}
 	return ce.Portal, true

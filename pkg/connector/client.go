@@ -583,7 +583,7 @@ func (oc *AIClient) sendQueueRejectedStatus(ctx context.Context, portal *bridgev
 	}
 	message := strings.TrimSpace(reason)
 	if message == "" {
-		message = "Request was not accepted by queue. Please retry."
+		message = "Couldn't queue the message. Try again."
 	}
 	err := fmt.Errorf("%s", message)
 	msgStatus := bridgev2.WrapErrorInStatus(err).
@@ -726,7 +726,7 @@ func (oc *AIClient) dispatchOrQueue(
 		if trace {
 			oc.loggerForContext(ctx).Warn().Stringer("room_id", roomID).Msg("Room busy queue rejected message")
 		}
-		oc.sendQueueRejectedStatus(ctx, portal, evt, queueItem.pending.StatusEvents, "Request was not accepted by queue. Please retry.")
+		oc.sendQueueRejectedStatus(ctx, portal, evt, queueItem.pending.StatusEvents, "Couldn't queue the message. Try again.")
 		return userMessage, false
 	}
 	if evt != nil && !pendingSent {
@@ -818,7 +818,7 @@ func (oc *AIClient) dispatchOrQueueWithStatus(
 		if trace {
 			oc.loggerForContext(ctx).Warn().Stringer("room_id", roomID).Msg("Room busy queue rejected message")
 		}
-		oc.sendQueueRejectedStatus(ctx, portal, evt, queueItem.pending.StatusEvents, "Request was not accepted by queue. Please retry.")
+		oc.sendQueueRejectedStatus(ctx, portal, evt, queueItem.pending.StatusEvents, "Couldn't queue the message. Try again.")
 		return
 	}
 	if evt != nil && !pendingSent {

@@ -2,14 +2,7 @@ package connector
 
 import "strings"
 
-const systemMark = "⚙️"
-
 func formatSystemAck(text string) string {
-	if text == "" {
-		return text
-	}
-	if strings.HasPrefix(text, systemMark) {
-		return text
-	}
-	return systemMark + " " + text
+	// Keep system notices plain (no emoji prefixes). Trim to avoid awkward leading spaces.
+	return strings.TrimSpace(text)
 }

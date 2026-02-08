@@ -39,7 +39,7 @@ func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev
 		oc.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      AIAuthFailed,
-			Message:    "Authentication failed - please re-login",
+			Message:    "Authentication failed. Sign in again.",
 			Info: map[string]any{
 				"error": err.Error(),
 			},
@@ -51,7 +51,7 @@ func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev
 		oc.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateTransientDisconnect,
 			Error:      AIBillingError,
-			Message:    "Billing issue with AI provider. Please check your account credits.",
+			Message:    "There's a billing issue with the AI provider. Check your account or credits.",
 		})
 	}
 
@@ -60,7 +60,7 @@ func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev
 		oc.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateTransientDisconnect,
 			Error:      AIRateLimited,
-			Message:    "Rate limited by AI provider. Please wait before retrying.",
+			Message:    "You're sending requests too quickly. Wait a moment, then try again.",
 		})
 	}
 
@@ -91,7 +91,7 @@ func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev
 	}
 
 	// Some clients don't surface message status errors, so also send a notice.
-	oc.sendSystemNotice(ctx, portal, fmt.Sprintf("Request failed: %s", errorMessage))
+	oc.sendSystemNotice(ctx, portal, fmt.Sprintf("Couldn't complete the request: %s", errorMessage))
 
 	// Track consecutive failures for provider health monitoring
 	oc.recordProviderError(ctx)
@@ -110,7 +110,7 @@ func (oc *AIClient) recordProviderError(ctx context.Context) {
 		oc.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateTransientDisconnect,
 			Error:      AIProviderError,
-			Message:    fmt.Sprintf("AI provider has failed %d consecutive requests", meta.ConsecutiveErrors),
+			Message:    fmt.Sprintf("The AI provider failed %d requests in a row", meta.ConsecutiveErrors),
 		})
 	}
 }

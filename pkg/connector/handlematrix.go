@@ -165,7 +165,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		})
 		if err != nil {
 			logCtx.Warn().Err(err).Str("approval_id", decision.ApprovalID).Msg("Failed to resolve approval decision")
-			oc.sendSystemNotice(ctx, portal, formatSystemAck(err.Error()))
+			oc.sendToast(ctx, portal, approvalErrorToastText(err), aiToastTypeError)
 		}
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
@@ -777,7 +777,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 
 	promptMessages, err := oc.buildPromptWithLinkContext(runCtx, portal, runMeta, body, rawEventContent, eventID)
 	if err != nil {
-		return nil, messageSendStatusError(err, "Failed to prepare message. Please try again.", "")
+		return nil, messageSendStatusError(err, "Couldn't prepare the message. Try again.", "")
 	}
 	logCtx.Debug().Int("prompt_messages", len(promptMessages)).Msg("Built prompt for inbound message")
 	userMessage := &database.Message{
@@ -905,7 +905,7 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 	err := oc.regenerateFromEdit(ctx, edit.Event, portal, meta, edit.EditTarget, newBody)
 	if err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg("Failed to regenerate response after edit")
-		oc.sendSystemNotice(ctx, portal, fmt.Sprintf("Failed to regenerate response: %v", err))
+			oc.sendSystemNotice(ctx, portal, fmt.Sprintf("Couldn't regenerate the response: %v", err))
 	}
 
 	return nil
@@ -1195,7 +1195,7 @@ func (oc *AIClient) handleMediaMessage(
 		body := oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, rawBody, senderName, roomName, isGroup)
 		promptMessages, err := oc.buildPrompt(ctx, portal, meta, body, eventID)
 		if err != nil {
-			return nil, messageSendStatusError(err, "Failed to prepare message. Please try again.", "")
+			return nil, messageSendStatusError(err, "Couldn't prepare the message. Try again.", "")
 		}
 		userMessage := &database.Message{
 			ID:       networkid.MessageID(fmt.Sprintf("mx:%s", string(eventID))),
@@ -1265,12 +1265,12 @@ func (oc *AIClient) handleMediaMessage(
 				description, err := oc.analyzeImageWithModel(ctx, visionModel, string(mediaURL), mimeType, encryptedFile, analysisPrompt)
 				if err != nil {
 					oc.loggerForContext(ctx).Warn().Err(err).Msg("Image understanding failed")
-					return nil, messageSendStatusError(err, "Image understanding failed. Please try again or switch to a vision-capable model using /model.", "")
+					return nil, messageSendStatusError(err, "Couldn't analyze the image. Try again, or switch to a vision-capable model with /model.", "")
 				}
 
 				combined := buildImageUnderstandingMessage(caption, hasUserCaption, description)
 				if combined == "" {
-					return nil, messageSendStatusError(errors.New("image understanding produced empty result"), "Image understanding failed. Please try again or switch to a vision-capable model using /model.", "")
+					return nil, messageSendStatusError(errors.New("image understanding produced empty result"), "Couldn't analyze the image. Try again, or switch to a vision-capable model with /model.", "")
 				}
 				return dispatchTextOnly(combined)
 			}
@@ -1284,12 +1284,12 @@ func (oc *AIClient) handleMediaMessage(
 				transcript, err := oc.analyzeAudioWithModel(ctx, audioModel, string(mediaURL), mimeType, encryptedFile, analysisPrompt)
 				if err != nil {
 					oc.loggerForContext(ctx).Warn().Err(err).Msg("Audio understanding failed")
-					return nil, messageSendStatusError(err, "Audio understanding failed. Please try again or switch to an audio-capable model using /model.", "")
+					return nil, messageSendStatusError(err, "Couldn't analyze the audio. Try again, or switch to an audio-capable model with /model.", "")
 				}
 
 				combined := buildAudioUnderstandingMessage(caption, hasUserCaption, transcript)
 				if combined == "" {
-					return nil, messageSendStatusError(errors.New("audio understanding produced empty result"), "Audio understanding failed. Please try again or switch to an audio-capable model using /model.", "")
+					return nil, messageSendStatusError(errors.New("audio understanding produced empty result"), "Couldn't analyze the audio. Try again, or switch to an audio-capable model with /model.", "")
 				}
 				return dispatchTextOnly(combined)
 			}
@@ -1305,7 +1305,7 @@ func (oc *AIClient) handleMediaMessage(
 	captionForPrompt := oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, caption, senderName, roomName, isGroup)
 	promptMessages, err := oc.buildPromptWithMedia(ctx, portal, meta, captionForPrompt, string(mediaURL), mimeType, encryptedFile, config.msgType, eventID)
 	if err != nil {
-		return nil, messageSendStatusError(err, "Failed to prepare media message. Please try again.", "")
+		return nil, messageSendStatusError(err, "Couldn't prepare the media message. Try again.", "")
 	}
 
 	userMeta := &MessageMetadata{
@@ -1418,12 +1418,12 @@ func (oc *AIClient) handleTextFileMessage(
 	content, truncated, err := oc.downloadTextFile(ctx, mediaURL, encryptedFile, mimeType)
 	if err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Text file understanding failed")
-		return nil, messageSendStatusError(err, "Text file understanding failed. Please upload a UTF-8 text file under 5 MB.", "")
+		return nil, messageSendStatusError(err, "Couldn't read the text file. Upload a UTF-8 text file under 5 MB.", "")
 	}
 
 	combined := buildTextFileMessage(caption, hasUserCaption, fileName, mimeType, content, truncated)
 	if combined == "" {
-		return nil, messageSendStatusError(errors.New("text file understanding produced empty result"), "Text file understanding failed. Please upload a UTF-8 text file under 5 MB.", "")
+		return nil, messageSendStatusError(errors.New("text file understanding produced empty result"), "Couldn't read the text file. Upload a UTF-8 text file under 5 MB.", "")
 	}
 
 	eventID := id.EventID("")
@@ -1433,7 +1433,7 @@ func (oc *AIClient) handleTextFileMessage(
 
 	promptMessages, err := oc.buildPrompt(ctx, portal, meta, combined, eventID)
 	if err != nil {
-		return nil, messageSendStatusError(err, "Failed to prepare message. Please try again.", "")
+		return nil, messageSendStatusError(err, "Couldn't prepare the message. Try again.", "")
 	}
 
 	userMessage := &database.Message{
@@ -1644,7 +1644,7 @@ func (oc *AIClient) handleToolsCommand(
 	case "list":
 		oc.showToolsStatus(runCtx, portal, meta)
 	case "on", "enable", "true", "1", "off", "disable", "false", "0":
-		oc.sendSystemNotice(runCtx, portal, "Per-tool toggles are no longer supported. Update tool policy in agent settings or the global tool_policy config.")
+		oc.sendSystemNotice(runCtx, portal, "Per-tool toggles aren't supported anymore. Update tool policy in agent settings or the global tool_policy config.")
 	default:
 		oc.sendSystemNotice(runCtx, portal, "Usage:\n"+
 			"• /tools - Show current tool status\n"+
@@ -1691,7 +1691,7 @@ func (oc *AIClient) handleRegenerate(
 
 	userMeta := messageMeta(lastUserMessage)
 	if userMeta == nil || userMeta.Body == "" {
-		oc.sendSystemNotice(runCtx, portal, "Cannot regenerate: message content not available.")
+		oc.sendSystemNotice(runCtx, portal, "Can't regenerate: message content isn't available.")
 		return
 	}
 
@@ -1700,7 +1700,7 @@ func (oc *AIClient) handleRegenerate(
 	// Build prompt excluding the old assistant response
 	prompt, err := oc.buildPromptForRegenerate(runCtx, portal, meta, userMeta.Body, lastUserMessage.MXID)
 	if err != nil {
-		oc.sendSystemNotice(runCtx, portal, "Failed to regenerate: "+err.Error())
+		oc.sendSystemNotice(runCtx, portal, "Couldn't regenerate: "+err.Error())
 		return
 	}
 
@@ -1765,7 +1765,7 @@ func (oc *AIClient) handleRegenerateTitle(
 
 	userMeta := messageMeta(lastUserMessage)
 	if userMeta == nil || userMeta.Body == "" {
-		oc.sendSystemNotice(runCtx, portal, "Cannot generate title: message content not available.")
+		oc.sendSystemNotice(runCtx, portal, "Can't generate a title: message content isn't available.")
 		return
 	}
 
@@ -1781,18 +1781,18 @@ func (oc *AIClient) handleRegenerateTitle(
 
 	title, err := oc.generateRoomTitle(runCtx, userMeta.Body, assistantBody)
 	if err != nil {
-		oc.sendSystemNotice(runCtx, portal, "Failed to generate title: "+err.Error())
+		oc.sendSystemNotice(runCtx, portal, "Couldn't generate a title: "+err.Error())
 		return
 	}
 
 	title = strings.TrimSpace(title)
 	if title == "" {
-		oc.sendSystemNotice(runCtx, portal, "Failed to generate title: empty response.")
+		oc.sendSystemNotice(runCtx, portal, "Couldn't generate a title: empty response.")
 		return
 	}
 
 	if err := oc.setRoomName(runCtx, portal, title); err != nil {
-		oc.sendSystemNotice(runCtx, portal, "Failed to set room title: "+err.Error())
+		oc.sendSystemNotice(runCtx, portal, "Couldn't set the room title: "+err.Error())
 		return
 	}
 

@@ -47,7 +47,7 @@ func (api *ProvisioningAPI) getLogin(w http.ResponseWriter, r *http.Request) *br
 	user := api.prov.GetUser(r)
 	logins := user.GetUserLogins()
 	if len(logins) < 1 {
-		mautrix.MNotFound.WithMessage("no logins found").Write(w)
+		mautrix.MNotFound.WithMessage("No logins found.").Write(w)
 		return nil
 	}
 	return logins[0]
@@ -62,7 +62,7 @@ func (api *ProvisioningAPI) handleListModels(w http.ResponseWriter, r *http.Requ
 	client := login.Client.(*AIClient)
 	models, err := client.listAvailableModels(r.Context(), false)
 	if err != nil {
-		mautrix.MUnknown.WithMessage("failed to list models: %v", err).Write(w)
+		mautrix.MUnknown.WithMessage("Couldn't list models: %v.", err).Write(w)
 		return
 	}
 	exhttp.WriteJSONResponse(w, http.StatusOK, map[string]any{"models": models})
@@ -109,7 +109,7 @@ func (api *ProvisioningAPI) handleSetDefaults(w http.ResponseWriter, r *http.Req
 	}
 	var req ReqSetDefaults
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		mautrix.MBadJSON.WithMessage("invalid JSON: %v", err).Write(w)
+		mautrix.MBadJSON.WithMessage("Invalid JSON: %v.", err).Write(w)
 		return
 	}
 
@@ -122,7 +122,7 @@ func (api *ProvisioningAPI) handleSetDefaults(w http.ResponseWriter, r *http.Req
 	if req.Model != nil {
 		client := login.Client.(*AIClient)
 		if valid, _ := client.validateModel(r.Context(), *req.Model); !valid {
-			mautrix.MInvalidParam.WithMessage("invalid model: %s", *req.Model).Write(w)
+			mautrix.MInvalidParam.WithMessage("Invalid model: %s.", *req.Model).Write(w)
 			return
 		}
 		meta.Defaults.Model = *req.Model
@@ -134,7 +134,7 @@ func (api *ProvisioningAPI) handleSetDefaults(w http.ResponseWriter, r *http.Req
 	}
 	if req.Temperature != nil {
 		if *req.Temperature < 0 || *req.Temperature > 2 {
-			mautrix.MInvalidParam.WithMessage("temperature must be between 0 and 2").Write(w)
+			mautrix.MInvalidParam.WithMessage("Temperature must be between 0 and 2.").Write(w)
 			return
 		}
 		meta.Defaults.Temperature = req.Temperature
@@ -144,12 +144,12 @@ func (api *ProvisioningAPI) handleSetDefaults(w http.ResponseWriter, r *http.Req
 		case "", "none", "low", "medium", "high", "xhigh":
 			meta.Defaults.ReasoningEffort = *req.ReasoningEffort
 		default:
-			mautrix.MInvalidParam.WithMessage("reasoning_effort must be one of: none, low, medium, high, xhigh").Write(w)
+			mautrix.MInvalidParam.WithMessage("reasoning_effort must be one of: none, low, medium, high, xhigh.").Write(w)
 			return
 		}
 	}
 	if err := login.Save(r.Context()); err != nil {
-		mautrix.MUnknown.WithMessage("failed to save: %v", err).Write(w)
+		mautrix.MUnknown.WithMessage("Couldn't save changes: %v.", err).Write(w)
 		return
 	}
 

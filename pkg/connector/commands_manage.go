@@ -41,7 +41,7 @@ func fnManage(ce *commands.Event) {
 
 	// Create Builder room on-demand
 	if err := client.ensureBuilderRoom(ce.Ctx); err != nil {
-		ce.Reply("Failed to create management room: %v", err)
+		ce.Reply("Couldn't create the management room: %v", err)
 		return
 	}
 
@@ -53,7 +53,7 @@ func fnManage(ce *commands.Event) {
 	}
 	portal, err := client.UserLogin.Bridge.GetPortalByKey(ce.Ctx, portalKey)
 	if err != nil || portal == nil || portal.MXID == "" {
-		ce.Reply("Management room created but could not retrieve link")
+		ce.Reply("Management room created, but the link isn't available.")
 		return
 	}
 

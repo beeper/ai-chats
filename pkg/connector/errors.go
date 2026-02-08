@@ -27,15 +27,15 @@ const (
 
 // BridgeStateHumanErrors provides human-readable messages for AI bridge error codes
 var BridgeStateHumanErrors = map[status.BridgeStateErrorCode]string{
-	AIRateLimited:    "Rate limited by AI provider. Please wait before retrying.",
-	AIAuthFailed:     "API key is invalid or has expired.",
-	AIContextTooLong: "Conversation is too long for this model's context window.",
-	AIModelNotFound:  "The requested model is not available.",
-	AIProviderError:  "The AI provider returned an error.",
-	AIBillingError:   "Billing issue with AI provider. Please check your account credits.",
-	AIOverloaded:     "The AI service is temporarily overloaded. Please try again in a moment.",
-	AITimeout:        "Request timed out. Please try again.",
-	AIImageError:     "Image is too large or has invalid dimensions for this model.",
+	AIRateLimited:    "You're sending requests too quickly. Wait a moment, then try again.",
+	AIAuthFailed:     "Authentication failed. Check your API key or sign in again.",
+	AIContextTooLong: "This conversation is too long for this model.",
+	AIModelNotFound:  "That model isn't available.",
+	AIProviderError:  "The AI provider returned an error. Try again later.",
+	AIBillingError:   "There's a billing issue with the AI provider. Check your account or credits.",
+	AIOverloaded:     "The AI service is busy right now. Try again in a moment.",
+	AITimeout:        "The request timed out. Try again.",
+	AIImageError:     "That image is too large or has unsupported dimensions for this model.",
 }
 
 var (
@@ -49,42 +49,42 @@ var (
 var (
 	ErrAPIKeyRequired = bridgev2.RespError{
 		ErrCode:    "IO.AI_BRIDGE.API_KEY_REQUIRED",
-		Err:        "please enter an API key",
+		Err:        "Enter an API key.",
 		StatusCode: http.StatusBadRequest,
 	}
 	ErrBaseURLRequired = bridgev2.RespError{
 		ErrCode:    "IO.AI_BRIDGE.BASE_URL_REQUIRED",
-		Err:        "please enter a base URL",
+		Err:        "Enter a base URL.",
 		StatusCode: http.StatusBadRequest,
 	}
 	ErrOpenAIOrOpenRouterRequired = bridgev2.RespError{
 		ErrCode:    "IO.AI_BRIDGE.OPENAI_OR_OPENROUTER_REQUIRED",
-		Err:        "please enter an OpenAI or OpenRouter API key",
+		Err:        "Enter an OpenAI or OpenRouter API key.",
 		StatusCode: http.StatusBadRequest,
 	}
 	ErrAPIKeyInvalid = bridgev2.RespError{
 		ErrCode:    "IO.AI_BRIDGE.INVALID_API_KEY",
-		Err:        "the provided API key is invalid",
+		Err:        "That API key is invalid.",
 		StatusCode: http.StatusUnauthorized,
 	}
 	ErrProviderUnavailable = bridgev2.RespError{
 		ErrCode:    "IO.AI_BRIDGE.PROVIDER_UNAVAILABLE",
-		Err:        "the AI provider is currently unavailable",
+		Err:        "The AI provider is unavailable.",
 		StatusCode: http.StatusServiceUnavailable,
 	}
 	ErrContextLengthExceeded = bridgev2.RespError{
 		ErrCode:    "IO.AI_BRIDGE.CONTEXT_LENGTH_EXCEEDED",
-		Err:        "message context too long, some messages were truncated",
+		Err:        "Message is too long. Some earlier messages were trimmed.",
 		StatusCode: http.StatusRequestEntityTooLarge,
 	}
 	ErrUnsupportedMediaType = bridgev2.RespError{
 		ErrCode:    "IO.AI_BRIDGE.UNSUPPORTED_MEDIA_TYPE",
-		Err:        "this media type is not supported by the current model",
+		Err:        "This file type isn't supported by the current model.",
 		StatusCode: http.StatusUnsupportedMediaType,
 	}
 	ErrModelNotFound = bridgev2.RespError{
 		ErrCode:    "IO.AI_BRIDGE.MODEL_NOT_FOUND",
-		Err:        "the requested model is not available",
+		Err:        "That model isn't available.",
 		StatusCode: http.StatusNotFound,
 	}
 )
