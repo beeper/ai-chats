@@ -57,6 +57,7 @@ func (oc *AIClient) sendToast(ctx context.Context, portal *bridgev2.Portal, text
 			"text": text,
 			"type": string(toastType),
 		},
+		"m.mentions": map[string]any{},
 	}
 	if _, err := bot.SendMessage(ctx, portal.MXID, event.EventMessage, &event.Content{Raw: raw}, nil); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to send toast")

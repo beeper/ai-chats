@@ -846,6 +846,14 @@ func (oc *AIClient) emitUIToolApprovalRequest(
 		"ttlSeconds": ttlSeconds,
 	})
 
+	// Send a second tool_call timeline event with approval data so the desktop
+	// ToolEventGrouper can render inline approval buttons.
+	approvalExpiresAtMs := int64(0)
+	if ttlSeconds > 0 {
+		approvalExpiresAtMs = time.Now().Add(time.Duration(ttlSeconds) * time.Second).UnixMilli()
+	}
+	oc.sendToolCallApprovalEvent(ctx, portal, state, toolCallID, toolName, approvalID, approvalExpiresAtMs)
+
 	// Back-compat fallback: many clients either don't support or don't render our
 	// ephemeral stream events. If approvals are required, give the user a clear,
 	// timeline-visible way to proceed (/approve or UI card).
@@ -913,9 +921,10 @@ func (oc *AIClient) emitUIToolApprovalRequest(
 	}
 
 	raw := map[string]any{
-		"body":      body,
-		"msgtype":   event.MsgNotice,
-		BeeperAIKey: uiMessage,
+		"body":        body,
+		"msgtype":     event.MsgNotice,
+		BeeperAIKey:   uiMessage,
+		"m.mentions":  map[string]any{},
 	}
 	if targetEventID != "" {
 		raw["m.relates_to"] = map[string]any{

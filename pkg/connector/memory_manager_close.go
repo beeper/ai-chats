@@ -5,8 +5,9 @@ import (
 	"strings"
 )
 
-// Close stops background timers/goroutines and releases any dedicated DB connections.
-// It is safe to call multiple times.
+// Close stops background timers/goroutines. It is safe to call multiple times.
+// Vector connections are no longer held persistently (grab+release per operation),
+// so there is nothing to release here.
 func (m *MemorySearchManager) Close() {
 	if m == nil {
 		return
@@ -22,7 +23,7 @@ func (m *MemorySearchManager) Close() {
 		})
 	}
 
-	// Stop debounced timers and release vector connection.
+	// Stop debounced timers.
 	m.mu.Lock()
 	if m.watchTimer != nil {
 		m.watchTimer.Stop()
@@ -32,14 +33,7 @@ func (m *MemorySearchManager) Close() {
 		m.sessionWatchTimer.Stop()
 		m.sessionWatchTimer = nil
 	}
-	conn := m.vectorConn
-	m.vectorConn = nil
-	m.vectorReady = false
 	m.mu.Unlock()
-
-	if conn != nil {
-		_ = conn.Close()
-	}
 }
 
 func purgeMemoryManagersForLogin(ctx context.Context, bridgeID, loginID string, chunkIDsByAgent map[string][]string) {
@@ -61,7 +55,7 @@ func purgeMemoryManagersForLogin(ctx context.Context, bridgeID, loginID string, 
 	}
 	memoryManagerCache.mu.Unlock()
 
-	// Best-effort: delete vector table rows using any existing vector-enabled managers.
+	// Best-effort: delete vector table rows using the grab+release pattern.
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -69,6 +63,32 @@ func purgeMemoryManagersForLogin(ctx context.Context, bridgeID, loginID string, 
 		if ids := chunkIDsByAgent[mgr.agentID]; len(ids) > 0 {
 			mgr.deleteVectorIDs(ctx, ids)
 		}
+		mgr.Close()
+	}
+}
+
+// stopMemoryManagersForLogin stops all memory managers for a login without deleting vector rows.
+// Used during disconnect to release goroutines and timers.
+func stopMemoryManagersForLogin(bridgeID, loginID string) {
+	if strings.TrimSpace(bridgeID) == "" || strings.TrimSpace(loginID) == "" {
+		return
+	}
+	prefix := bridgeID + ":" + loginID + ":"
+
+	memoryManagerCache.mu.Lock()
+	managers := make([]*MemorySearchManager, 0, len(memoryManagerCache.managers))
+	for key, mgr := range memoryManagerCache.managers {
+		if !strings.HasPrefix(key, prefix) {
+			continue
+		}
+		if mgr != nil {
+			managers = append(managers, mgr)
+		}
+		delete(memoryManagerCache.managers, key)
+	}
+	memoryManagerCache.mu.Unlock()
+
+	for _, mgr := range managers {
 		mgr.Close()
 	}
 }

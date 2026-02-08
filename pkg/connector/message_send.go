@@ -22,6 +22,7 @@ func sendFormattedMessage(ctx context.Context, btc *BridgeToolContext, message s
 		"body":           rendered.Body,
 		"format":         rendered.Format,
 		"formatted_body": rendered.FormattedBody,
+		"m.mentions":     map[string]any{},
 	}
 	if relatesTo != nil {
 		raw["m.relates_to"] = relatesTo

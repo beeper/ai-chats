@@ -1646,8 +1646,9 @@ func (oc *AIClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Porta
 	}
 
 	content := &event.MessageEventContent{
-		MsgType: event.MsgNotice,
-		Body:    message,
+		MsgType:  event.MsgNotice,
+		Body:     message,
+		Mentions: &event.Mentions{},
 	}
 
 	if _, err := bot.SendMessage(ctx, portal.MXID, event.EventMessage, &event.Content{

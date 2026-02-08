@@ -556,9 +556,10 @@ func executeMessageSend(ctx context.Context, args map[string]any, btc *BridgeToo
 	}
 
 	rawContent := map[string]any{
-		"msgtype": msgType,
-		"body":    caption,
-		"info":    info,
+		"msgtype":    msgType,
+		"body":       caption,
+		"info":       info,
+		"m.mentions": map[string]any{},
 	}
 	if relatesTo != nil {
 		rawContent["m.relates_to"] = relatesTo
@@ -652,11 +653,13 @@ func executeMessageEdit(ctx context.Context, args map[string]any, btc *BridgeToo
 				"body":           rendered.Body,
 				"format":         rendered.Format,
 				"formatted_body": rendered.FormattedBody,
+				"m.mentions":     map[string]any{},
 			},
 			"m.relates_to": map[string]any{
 				"rel_type": RelReplace,
 				"event_id": targetEventID.String(),
 			},
+			"m.mentions": map[string]any{},
 		},
 	}
 

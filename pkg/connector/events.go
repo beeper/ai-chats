@@ -103,7 +103,8 @@ const (
 	ToolStatusCompleted ToolStatus = "completed"
 	ToolStatusFailed    ToolStatus = "failed"
 	ToolStatusTimeout   ToolStatus = "timeout"
-	ToolStatusCancelled ToolStatus = "cancelled"
+	ToolStatusCancelled        ToolStatus = "cancelled"
+	ToolStatusApprovalRequired ToolStatus = "approval_required"
 )
 
 // ResultStatus represents the status of a tool result

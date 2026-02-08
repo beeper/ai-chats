@@ -43,10 +43,11 @@ func (oc *AIClient) sendGeneratedMedia(
 	}
 
 	rawContent := map[string]any{
-		"msgtype":  msgType,
-		"body":     body,
-		"filename": fileName,
-		"info":     info,
+		"msgtype":    msgType,
+		"body":       body,
+		"filename":   fileName,
+		"info":       info,
+		"m.mentions": map[string]any{},
 	}
 
 	if file != nil {

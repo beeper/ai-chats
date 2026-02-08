@@ -50,8 +50,7 @@ type MemorySearchManager struct {
 	intervalOnce      sync.Once
 	intervalStop      chan struct{}
 	intervalStopOnce  sync.Once
-	vectorConn        *sql.Conn
-	vectorReady       bool
+	vectorExtOK       *vectorExtStatus
 	vectorError       string
 	batchEnabled      bool
 	batchFailures     int
@@ -198,11 +197,9 @@ func (m *MemorySearchManager) ProbeVectorAvailability(ctx context.Context) bool 
 	if m == nil || m.cfg == nil || !m.cfg.Store.Vector.Enabled {
 		return false
 	}
-	m.ensureVectorConn(ctx)
-	m.mu.Lock()
-	ready := m.vectorReady
-	m.mu.Unlock()
-	return ready
+	// Probe by trying to grab+release a vector connection.
+	err := m.withVectorConn(ctx, func(_ *sql.Conn) error { return nil })
+	return err == nil
 }
 
 func (m *MemorySearchManager) ProbeEmbeddingAvailability(ctx context.Context) (bool, string) {
@@ -285,17 +282,17 @@ func (m *MemorySearchManager) StatusDetails(ctx context.Context) (*MemorySearchS
 		Error:     m.ftsError,
 	}
 
-	vectorAvailable := (*bool)(nil)
-	if m.vectorReady {
+	vectorAvailablePtr := (*bool)(nil)
+	if m.vectorAvailable() {
 		ready := true
-		vectorAvailable = &ready
+		vectorAvailablePtr = &ready
 	} else if m.vectorError != "" {
 		ready := false
-		vectorAvailable = &ready
+		vectorAvailablePtr = &ready
 	}
 	status.Vector = &MemorySearchVectorStatus{
 		Enabled:       m.cfg.Store.Vector.Enabled,
-		Available:     vectorAvailable,
+		Available:     vectorAvailablePtr,
 		ExtensionPath: m.cfg.Store.Vector.ExtensionPath,
 		LoadError:     m.vectorError,
 		Dims:          m.vectorDims,

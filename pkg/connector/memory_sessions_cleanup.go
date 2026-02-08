@@ -9,7 +9,7 @@ func (m *MemorySearchManager) purgeSessionPath(ctx context.Context, path string)
 	if path == "" {
 		return
 	}
-	if m.vectorReady {
+	if m.vectorAvailable() {
 		ids := m.collectChunkIDs(ctx, path, "sessions", m.status.Model, "")
 		m.deleteVectorIDs(ctx, ids)
 	}

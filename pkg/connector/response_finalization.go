@@ -44,6 +44,7 @@ func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev
 		"format":                rendered.Format,
 		"formatted_body":        rendered.FormattedBody,
 		"com.beeper.continuation": true,
+		"m.mentions":            map[string]any{},
 	}
 	eventContent := &event.Content{Raw: raw}
 	if _, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, eventContent, nil); err != nil {
@@ -94,6 +95,7 @@ func (oc *AIClient) sendInitialStreamMessage(ctx context.Context, portal *bridge
 			"body":         content,
 			"m.relates_to": relatesTo,
 			BeeperAIKey:    uiMessage,
+			"m.mentions":   map[string]any{},
 		},
 	}
 	resp, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, eventContent, nil)
@@ -288,10 +290,12 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 			"body":           rendered.Body,
 			"format":         rendered.Format,
 			"formatted_body": rendered.FormattedBody,
+			"m.mentions":     map[string]any{},
 		},
 		"m.relates_to":                  relatesTo,
 		BeeperAIKey:                     uiMessage,
 		"com.beeper.dont_render_edited": true, // Don't show "edited" indicator for streaming updates
+		"m.mentions":                    map[string]any{},
 	}
 
 	// Attach link previews if any were generated
@@ -565,6 +569,7 @@ func (oc *AIClient) sendPlainAssistantMessage(ctx context.Context, portal *bridg
 		"body":           rendered.Body,
 		"format":         rendered.Format,
 		"formatted_body": rendered.FormattedBody,
+		"m.mentions":     map[string]any{},
 	}
 	if _, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, &event.Content{Raw: eventRawContent}, nil); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Stringer("room_id", portal.MXID).Msg("Failed to send plain assistant message")
@@ -794,10 +799,11 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 		"body":                          "* AI response",
 		"format":                        rendered.Format,
 		"formatted_body":                "* AI response",
-		"m.new_content":                 map[string]any{"msgtype": event.MsgText, "body": rendered.Body, "format": rendered.Format, "formatted_body": rendered.FormattedBody},
+		"m.new_content":                 map[string]any{"msgtype": event.MsgText, "body": rendered.Body, "format": rendered.Format, "formatted_body": rendered.FormattedBody, "m.mentions": map[string]any{}},
 		"m.relates_to":                  relatesTo,
 		BeeperAIKey:                     uiMessage,
 		"com.beeper.dont_render_edited": true,
+		"m.mentions":                    map[string]any{},
 	}
 
 	// Attach link previews if any were generated

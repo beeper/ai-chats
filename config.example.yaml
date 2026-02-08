@@ -24,8 +24,10 @@ logging:
   format: json
 
 database:
-  type: sqlite3
-  uri: file:openai-bridge.db?_pragma=busy_timeout=5000
+  type: sqlite3-fk-wal
+  uri: file:openai-bridge.db?_txlock=immediate
+  max_open_conns: 1
+  max_idle_conns: 1
 
 metrics:
   enabled: true

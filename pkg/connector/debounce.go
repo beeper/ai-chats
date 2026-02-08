@@ -166,15 +166,9 @@ func ShouldDebounce(evt *event.Event, body string) bool {
 		return false
 	}
 
-	// Don't debounce commands (starting with ! or /)
+	// Don't debounce commands (starting with !)
 	trimmed := strings.TrimSpace(body)
-	if strings.HasPrefix(trimmed, "!") || strings.HasPrefix(trimmed, "/") {
-		return false
-	}
-	if isAbortTrigger(trimmed) {
-		return false
-	}
-	if inlineCommandTokenRE.MatchString(trimmed) {
+	if strings.HasPrefix(trimmed, "!") {
 		return false
 	}
 
@@ -185,8 +179,6 @@ func ShouldDebounce(evt *event.Event, body string) bool {
 
 	return true
 }
-
-var inlineCommandTokenRE = regexp.MustCompile(`(?i)(^|\s)[/!][a-z]`)
 
 // CombineDebounceEntries combines multiple entries into a single body.
 // Returns the combined body and the count of combined messages.

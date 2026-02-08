@@ -25,12 +25,6 @@ func (oc *OpenAIConnector) registerCommands(proc *commands.Processor) {
 			}
 			original := handler.Func
 			handler.Func = func(ce *commands.Event) {
-				if ce != nil && ce.Portal != nil && ce.Portal.Metadata != nil {
-					if pm, ok := ce.Portal.Metadata.(*PortalMetadata); ok && pm != nil && pm.IsCodexRoom {
-						ce.Reply("This is a Codex room. `!ai` commands aren't supported here. Use `/status`, `/new`, or `/approve`.")
-						return
-					}
-				}
 				senderID := ""
 				if ce != nil && ce.User != nil {
 					senderID = ce.User.MXID.String()

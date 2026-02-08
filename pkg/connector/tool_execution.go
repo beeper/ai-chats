@@ -228,6 +228,87 @@ func (oc *AIClient) sendToolCallEvent(ctx context.Context, portal *bridgev2.Port
 	return resp.EventID
 }
 
+// sendToolCallApprovalEvent sends a second tool_call event with status "approval_required"
+// so that the desktop timeline can show inline approval buttons via ToolEventGrouper.
+func (oc *AIClient) sendToolCallApprovalEvent(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	toolCallID string,
+	toolName string,
+	approvalID string,
+	expiresAtMs int64,
+) id.EventID {
+	if portal == nil || portal.MXID == "" {
+		return ""
+	}
+	if state != nil && state.suppressSend {
+		return ""
+	}
+	intent := oc.getModelIntent(ctx, portal)
+	if intent == nil {
+		return ""
+	}
+
+	displayTitle := toolDisplayTitle(toolName)
+
+	toolType := string(ToolTypeBuiltin)
+	if state != nil {
+		if tt, ok := state.uiToolTypeByToolCallID[toolCallID]; ok {
+			toolType = string(tt)
+		}
+	}
+
+	toolCallData := map[string]any{
+		"call_id":                toolCallID,
+		"turn_id":               state.turnID,
+		"tool_name":             toolName,
+		"tool_type":             toolType,
+		"status":                string(ToolStatusApprovalRequired),
+		"approval_id":           approvalID,
+		"approval_expires_at_ms": expiresAtMs,
+		"display": map[string]any{
+			"title":     displayTitle,
+			"collapsed": false,
+		},
+	}
+	if state.agentID != "" {
+		toolCallData["agent_id"] = state.agentID
+	}
+
+	eventRaw := map[string]any{
+		"body":              fmt.Sprintf("Approval required for %s", displayTitle),
+		"msgtype":           event.MsgNotice,
+		BeeperAIToolCallKey: toolCallData,
+	}
+	if state.initialEventID != "" {
+		eventRaw["m.relates_to"] = map[string]any{
+			"rel_type": RelReference,
+			"event_id": state.initialEventID.String(),
+		}
+	}
+
+	eventContent := &event.Content{Raw: eventRaw}
+
+	resp, err := intent.SendMessage(ctx, portal.MXID, ToolCallEventType, eventContent, nil)
+	if err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).
+			Str("tool", toolName).
+			Str("approval_id", approvalID).
+			Msg("Failed to send tool call approval event")
+		return ""
+	}
+
+	oc.loggerForContext(ctx).Debug().
+		Stringer("event_id", resp.EventID).
+		Str("call_id", toolCallID).
+		Str("tool", toolName).
+		Str("approval_id", approvalID).
+		Msg("Sent tool call approval_required timeline event")
+
+	return resp.EventID
+}
+
 // sendToolResultEvent sends a tool result as a timeline event
 func (oc *AIClient) sendToolResultEvent(ctx context.Context, portal *bridgev2.Portal, state *streamingState, tool *activeToolCall, result string, resultStatus ResultStatus) id.EventID {
 	if portal == nil || portal.MXID == "" {

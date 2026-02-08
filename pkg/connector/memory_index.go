@@ -125,7 +125,7 @@ func (m *MemorySearchManager) syncFullReindex(ctx context.Context, sessionKey, g
 	}
 
 	// Best-effort vector cleanup outside the transaction.
-	if m.vectorReady && len(vectorCleanupIDs) > 0 {
+	if m.vectorAvailable() && len(vectorCleanupIDs) > 0 {
 		m.deleteVectorIDs(ctx, vectorCleanupIDs)
 	}
 	return nil
@@ -464,7 +464,7 @@ func (m *MemorySearchManager) deletePathChunks(ctx context.Context, path, source
 	if len(ids) == 0 {
 		return nil
 	}
-	if m.vectorReady {
+	if m.vectorAvailable() {
 		m.deleteVectorIDs(ctx, ids)
 	}
 	for _, id := range ids {
@@ -512,7 +512,7 @@ func (m *MemorySearchManager) removeStaleMemoryChunks(ctx context.Context, activ
 
 	for _, path := range stalePaths {
 		delGenSQL, delGenArgs := generationFilterSQL(6, generation)
-		if m.vectorReady {
+		if m.vectorAvailable() {
 			ids := m.collectChunkIDs(ctx, path, "memory", m.status.Model, generation)
 			m.deleteVectorIDs(ctx, ids)
 		}
@@ -843,7 +843,8 @@ func (m *MemorySearchManager) searchVector(ctx context.Context, queryVec []float
 		args = append(args, filterArgs...)
 		args = append(args, genArgs...)
 		args = append(args, limit)
-		rows, err := m.queryVector(ctx,
+		var vecResults []memory.HybridVectorResult
+		err := m.queryVectorCollect(ctx,
 			fmt.Sprintf(`SELECT c.id, c.path, c.start_line, c.end_line, c.text, c.source,
                vec_distance_cosine(v.embedding, ?) AS dist
              FROM %s v
@@ -851,36 +852,35 @@ func (m *MemorySearchManager) searchVector(ctx context.Context, queryVec []float
              WHERE c.bridge_id=? AND c.login_id=? AND c.agent_id=? AND c.model=?%s%s
              ORDER BY dist ASC
              LIMIT ?`, memoryVectorTable, filterSQL, genSQL),
+			func(rows *sql.Rows) error {
+				vecResults = make([]memory.HybridVectorResult, 0, limit)
+				for rows.Next() {
+					var id, path, text, source string
+					var startLine, endLine int
+					var dist float64
+					if err := rows.Scan(&id, &path, &startLine, &endLine, &text, &source, &dist); err != nil {
+						return err
+					}
+					vecResults = append(vecResults, memory.HybridVectorResult{
+						ID:          id,
+						Path:        path,
+						StartLine:   startLine,
+						EndLine:     endLine,
+						Source:      source,
+						Snippet:     truncateSnippet(text),
+						VectorScore: 1 - dist,
+					})
+				}
+				return rows.Err()
+			},
 			args...,
 		)
 		if err == nil {
-			defer rows.Close()
-			results := make([]memory.HybridVectorResult, 0, limit)
-			for rows.Next() {
-				var id, path, text, source string
-				var startLine, endLine int
-				var dist float64
-				if err := rows.Scan(&id, &path, &startLine, &endLine, &text, &source, &dist); err != nil {
-					return nil, err
-				}
-				results = append(results, memory.HybridVectorResult{
-					ID:          id,
-					Path:        path,
-					StartLine:   startLine,
-					EndLine:     endLine,
-					Source:      source,
-					Snippet:     truncateSnippet(text),
-					VectorScore: 1 - dist,
-				})
-			}
-			if err := rows.Err(); err == nil {
-				return results, nil
-			}
-		} else {
-			m.mu.Lock()
-			m.vectorError = err.Error()
-			m.mu.Unlock()
+			return vecResults, nil
 		}
+		m.mu.Lock()
+		m.vectorError = err.Error()
+		m.mu.Unlock()
 	}
 
 	baseArgs := []any{m.bridgeID, m.loginID, m.agentID, m.status.Model}

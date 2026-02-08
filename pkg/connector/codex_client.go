@@ -1655,8 +1655,9 @@ func (cc *CodexClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Po
 		return
 	}
 	content := &event.MessageEventContent{
-		MsgType: event.MsgNotice,
-		Body:    strings.TrimSpace(message),
+		MsgType:  event.MsgNotice,
+		Body:     strings.TrimSpace(message),
+		Mentions: &event.Mentions{},
 	}
 	bg := cc.backgroundContext(ctx)
 	sendCtx, cancel := context.WithTimeout(bg, 10*time.Second)
@@ -1683,6 +1684,7 @@ func (cc *CodexClient) sendToast(ctx context.Context, portal *bridgev2.Portal, t
 			"text": text,
 			"type": string(toastType),
 		},
+		"m.mentions": map[string]any{},
 	}
 	bg := cc.backgroundContext(ctx)
 	sendCtx, cancel := context.WithTimeout(bg, 10*time.Second)
@@ -1774,9 +1776,10 @@ func (cc *CodexClient) sendInitialStreamMessage(ctx context.Context, portal *bri
 	}
 	eventContent := &event.Content{
 		Raw: map[string]any{
-			"msgtype":   event.MsgText,
-			"body":      content,
-			BeeperAIKey: uiMessage,
+			"msgtype":     event.MsgText,
+			"body":        content,
+			BeeperAIKey:   uiMessage,
+			"m.mentions":  map[string]any{},
 		},
 	}
 	resp, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, eventContent, nil)
@@ -2028,10 +2031,12 @@ func (cc *CodexClient) sendFinalAssistantTurn(ctx context.Context, portal *bridg
 			"body":           rendered.Body,
 			"format":         rendered.Format,
 			"formatted_body": rendered.FormattedBody,
+			"m.mentions":     map[string]any{},
 		},
 		"m.relates_to":                  relatesTo,
 		BeeperAIKey:                     uiMessage,
 		"com.beeper.dont_render_edited": true,
+		"m.mentions":                    map[string]any{},
 	}
 	_, _ = intent.SendMessage(ctx, portal.MXID, event.EventMessage, &event.Content{Raw: raw}, nil)
 }

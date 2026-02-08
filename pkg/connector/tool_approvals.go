@@ -288,8 +288,9 @@ func (oc *AIClient) emitApprovalSnapshotDecision(p *pendingToolApproval, decisio
 		"msgtype": event.MsgNotice,
 		"body":    "* " + body,
 		"m.new_content": map[string]any{
-			"msgtype": event.MsgNotice,
-			"body":    body,
+			"msgtype":    event.MsgNotice,
+			"body":       body,
+			"m.mentions": map[string]any{},
 		},
 		"m.relates_to": map[string]any{
 			"rel_type": RelReplace,
@@ -297,6 +298,7 @@ func (oc *AIClient) emitApprovalSnapshotDecision(p *pendingToolApproval, decisio
 		},
 		BeeperAIKey:                     uiMessage,
 		"com.beeper.dont_render_edited": true,
+		"m.mentions":                    map[string]any{},
 	}
 	eventContent := &event.Content{Raw: eventRaw}
 
