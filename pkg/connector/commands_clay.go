@@ -110,7 +110,7 @@ func clayMCPServerConfig(client *AIClient, tokenOverride string) MCPServerConfig
 func fnClayStatus(ce *commands.Event, client *AIClient) {
 	server, ok := client.configuredMCPServerByName(mcpDefaultServerName)
 	if !ok {
-		ce.Reply("Clay MCP is not configured. Run `!ai clay <token>` to bootstrap. Usage: %s", clayManageUsage)
+		ce.Reply("Clay MCP isn't set up. Connect with `!ai clay <token>`. Usage: %s", clayManageUsage)
 		return
 	}
 	cfg := normalizeMCPServerConfig(server.Config)

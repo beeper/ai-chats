@@ -154,10 +154,10 @@ func (oc *AIClient) handleInboundCommand(
 			return inboundCommandResult{handled: true, response: fmt.Sprintf("Current model: %s", oc.effectiveModel(meta))}
 		}
 		if agents.IsBossAgent(resolveAgentID(meta)) {
-			return inboundCommandResult{handled: true, response: "Cannot change model in a room managed by the Boss agent."}
+			return inboundCommandResult{handled: true, response: "Can't change the model in a room managed by the Boss agent."}
 		}
 		if agentID := resolveAgentID(meta); agentID != "" {
-			return inboundCommandResult{handled: true, response: "Cannot set room model while an agent is assigned. Edit the agent instead."}
+			return inboundCommandResult{handled: true, response: "Can't set the room model while an agent is assigned. Edit the agent instead."}
 		}
 
 		oldModel := meta.Model
@@ -171,14 +171,14 @@ func (oc *AIClient) handleInboundCommand(
 				oc.handleModelSwitch(ctx, portal, oldModel, newModel)
 			}
 			if rest == "" {
-				return inboundCommandResult{handled: true, response: fmt.Sprintf("Model reset to default: %s", newModel)}
+				return inboundCommandResult{handled: true, response: fmt.Sprintf("Model reset to %s.", newModel)}
 			}
 			return inboundCommandResult{newBody: rest}
 		}
 
 		valid, err := oc.validateModel(ctx, normalized)
 		if err != nil || !valid {
-			return inboundCommandResult{handled: true, response: fmt.Sprintf("Invalid model: %s", normalized)}
+			return inboundCommandResult{handled: true, response: fmt.Sprintf("That model isn't available: %s", normalized)}
 		}
 		meta.Model = normalized
 		meta.Capabilities = getModelCapabilities(normalized, oc.findModelInfo(normalized))
@@ -188,7 +188,7 @@ func (oc *AIClient) handleInboundCommand(
 			oc.handleModelSwitch(ctx, portal, oldModel, normalized)
 		}
 		if rest == "" {
-			return inboundCommandResult{handled: true, response: fmt.Sprintf("Model changed to: %s", normalized)}
+			return inboundCommandResult{handled: true, response: fmt.Sprintf("Model set to %s.", normalized)}
 		}
 		return inboundCommandResult{newBody: rest}
 	case "think":

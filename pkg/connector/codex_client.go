@@ -118,7 +118,7 @@ func (cc *CodexClient) Connect(ctx context.Context) {
 		cc.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateTransientDisconnect,
 			Error:      AIAuthFailed,
-			Message:    fmt.Sprintf("Codex unavailable: %v", err),
+			Message:    fmt.Sprintf("Codex isn't available: %v", err),
 		})
 		return
 	}
@@ -414,9 +414,9 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 
 		case "new", "reset":
 			if err := cc.resetThread(ctx, portal, meta); err != nil {
-				cc.sendSystemNotice(ctx, portal, formatSystemAck("Failed: "+err.Error()))
+				cc.sendSystemNotice(ctx, portal, formatSystemAck("Couldn't start a new Codex thread: "+err.Error()))
 			} else {
-				cc.sendSystemNotice(ctx, portal, formatSystemAck("Started a new Codex thread in a new temp directory."))
+				cc.sendSystemNotice(ctx, portal, formatSystemAck("New Codex thread started."))
 			}
 			return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 
@@ -450,7 +450,7 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 	}
 
 	if !cc.acquireRoom(roomID) {
-		return nil, messageSendStatusError(errors.New("busy"), "Codex is busy in this room; please retry.", event.MessageStatusGenericError)
+		return nil, messageSendStatusError(errors.New("busy"), "Codex is busy in this room. Try again.", event.MessageStatusGenericError)
 	}
 
 	// Save user message immediately; we return Pending=true.

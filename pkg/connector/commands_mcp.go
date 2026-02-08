@@ -72,7 +72,7 @@ func fnMCPCommand(ce *commands.Event) {
 func fnMCPList(ce *commands.Event, client *AIClient) {
 	servers := client.configuredMCPServers()
 	if len(servers) == 0 {
-		ce.Reply("MCP servers: none configured")
+		ce.Reply("No MCP servers are set up yet. Run `!ai mcp add` to add one.")
 		return
 	}
 
@@ -484,7 +484,7 @@ func fnMCPRemove(ce *commands.Event, client *AIClient) {
 
 	loginServers := client.loginMCPServers()
 	if _, ok := loginServers[target.Name]; !ok {
-		ce.Reply("MCP server '%s' comes from bridge config and cannot be removed from login metadata. Use `!ai mcp disconnect %s` to override it for this login.", target.Name, target.Name)
+		ce.Reply("MCP server '%s' is managed by the bridge configuration and can't be removed here. To override it for this login, run `!ai mcp disconnect %s`.", target.Name, target.Name)
 		return
 	}
 

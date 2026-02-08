@@ -170,7 +170,7 @@ func fnModel(ce *commands.Event) {
 		return
 	}
 
-	if rejectBossOverrides(ce, meta, "Cannot change model in a room managed by the Boss agent") {
+	if rejectBossOverrides(ce, meta, "Can't change the model in a room managed by the Boss agent.") {
 		return
 	}
 
@@ -183,7 +183,7 @@ func fnModel(ce *commands.Event) {
 
 	agentID := resolveAgentID(meta)
 	if agentID != "" {
-		ce.Reply("Cannot set room model while an agent is assigned. Edit the agent instead.")
+		ce.Reply("Can't set the room model while an agent is assigned. Edit the agent instead.")
 		return
 	}
 
@@ -221,7 +221,7 @@ func fnTemp(ce *commands.Event) {
 		return
 	}
 
-	if rejectBossOverrides(ce, meta, "Cannot change temperature in a room managed by the Boss agent") {
+	if rejectBossOverrides(ce, meta, "Can't change the temperature in a room managed by the Boss agent.") {
 		return
 	}
 
@@ -234,7 +234,7 @@ func fnTemp(ce *commands.Event) {
 	meta.Temperature = temp
 	client.savePortalQuiet(ce.Ctx, ce.Portal, "temperature change")
 	if temp > 0 {
-		ce.Reply("Temperature set to: %.2f", temp)
+		ce.Reply("Temperature set to %.2f.", temp)
 	} else {
 		ce.Reply("Temperature reset to provider default (unset).")
 	}
@@ -276,7 +276,7 @@ func fnSystemPrompt(ce *commands.Event) {
 		return
 	}
 
-	if rejectBossOverrides(ce, meta, "Cannot change system prompt in a room managed by the Boss agent") {
+	if rejectBossOverrides(ce, meta, "Can't change the system prompt in a room managed by the Boss agent.") {
 		return
 	}
 
@@ -315,7 +315,7 @@ func fnContext(ce *commands.Event) {
 
 	meta.MaxContextMessages = limit
 	client.savePortalQuiet(ce.Ctx, ce.Portal, "context change")
-	ce.Reply("Context limit set to: %d messages", limit)
+	ce.Reply("Context limit set to %d messages.", limit)
 }
 
 // CommandTokens handles the !ai tokens command
@@ -349,7 +349,7 @@ func fnTokens(ce *commands.Event) {
 
 	meta.MaxCompletionTokens = tokens
 	client.savePortalQuiet(ce.Ctx, ce.Portal, "tokens change")
-	ce.Reply("Max tokens set to: %d", tokens)
+	ce.Reply("Max tokens set to %d.", tokens)
 }
 
 // CommandConfig handles the !ai config command
@@ -812,7 +812,7 @@ func fnDebounce(ce *commands.Event) {
 		if delay == 0 {
 			ce.Reply("Message debounce reset to default (%d ms)", DefaultDebounceMs)
 		} else {
-			ce.Reply("Message debounce set to: %d ms", delay)
+			ce.Reply("Message debounce set to %d ms.", delay)
 		}
 	}
 }
@@ -953,7 +953,7 @@ func fnMode(ce *commands.Event) {
 	}
 	client.savePortalQuiet(ce.Ctx, ce.Portal, "mode change")
 	_ = client.BroadcastRoomState(ce.Ctx, ce.Portal)
-	ce.Reply("Conversation mode set to: %s", newMode)
+	ce.Reply("Conversation mode set to %s.", newMode)
 }
 
 // CommandNew handles the !ai new command
@@ -1285,7 +1285,7 @@ func fnAgent(ce *commands.Event) {
 		return
 	}
 
-	if rejectBossOverrides(ce, meta, "Cannot change agent in a room managed by the Boss agent") {
+	if rejectBossOverrides(ce, meta, "Can't change the agent in a room managed by the Boss agent.") {
 		return
 	}
 
@@ -1495,7 +1495,7 @@ func fnDeleteAgent(ce *commands.Event) {
 
 	// Check if it's a preset
 	if agents.IsPreset(agentID) || agents.IsBossAgent(agentID) {
-		ce.Reply("Cannot delete preset agent: %s", agentID)
+		ce.Reply("Can't delete a preset agent: %s", agentID)
 		return
 	}
 

@@ -247,7 +247,7 @@ func (oc *OpenAIConnector) processRoomSettingsContent(
 			log.Warn().Err(err).Str("model", content.Model).Msg("Failed to validate model")
 		} else if !valid {
 			log.Warn().Str("model", content.Model).Msg("Invalid model specified, ignoring")
-			client.sendSystemNotice(ctx, portal, fmt.Sprintf("Invalid model: %s. Configuration not applied.", content.Model))
+			client.sendSystemNotice(ctx, portal, fmt.Sprintf("That model isn't available: %s. Settings weren't applied.", content.Model))
 			return
 		}
 		content.Model = resolved
@@ -401,7 +401,7 @@ func (oc *OpenAIConnector) LoadUserLogin(ctx context.Context, login *bridgev2.Us
 	if strings.EqualFold(strings.TrimSpace(meta.Provider), ProviderCodex) {
 		// Codex uses its own auth/tokens stored under CODEX_HOME. No OpenAI API key is required here.
 		if oc.Config.Codex != nil && oc.Config.Codex.Enabled != nil && !*oc.Config.Codex.Enabled {
-			return errors.New("codex integration is disabled in config")
+			return errors.New("Codex integration is disabled in the configuration.")
 		}
 
 		oc.clientsMu.Lock()
@@ -431,7 +431,7 @@ func (oc *OpenAIConnector) LoadUserLogin(ctx context.Context, login *bridgev2.Us
 
 	key := strings.TrimSpace(oc.resolveProviderAPIKey(meta))
 	if key == "" {
-		return errors.New("no API key available for this login; please login again")
+		return errors.New("No API key available for this login. Sign in again.")
 	}
 	oc.clientsMu.Lock()
 	if existingAPI := oc.clients[login.ID]; existingAPI != nil {

@@ -632,7 +632,7 @@ func (oc *AIClient) handleFork(
 	// 1. Retrieve all messages from current chat
 	messages, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(runCtx, portal.PortalKey, 10000)
 	if err != nil {
-		oc.sendSystemNotice(runCtx, portal, "Failed to retrieve messages: "+err.Error())
+		oc.sendSystemNotice(runCtx, portal, "Couldn't load messages: "+err.Error())
 		return
 	}
 
@@ -669,7 +669,7 @@ func (oc *AIClient) handleFork(
 		}
 
 		if !found {
-			oc.sendSystemNotice(runCtx, portal, fmt.Sprintf("Could not find event: %s", arg))
+			oc.sendSystemNotice(runCtx, portal, fmt.Sprintf("Couldn't find event: %s", arg))
 			return
 		}
 	} else {
@@ -682,13 +682,13 @@ func (oc *AIClient) handleFork(
 	// 3. Create new chat with same configuration
 	newPortal, chatInfo, err := oc.createForkedChat(runCtx, portal, meta)
 	if err != nil {
-		oc.sendSystemNotice(runCtx, portal, "Failed to create forked chat: "+err.Error())
+		oc.sendSystemNotice(runCtx, portal, "Couldn't create the forked chat: "+err.Error())
 		return
 	}
 
 	// 4. Create Matrix room
 	if err := newPortal.CreateMatrixRoom(runCtx, oc.UserLogin, chatInfo); err != nil {
-		oc.sendSystemNotice(runCtx, portal, "Failed to create room: "+err.Error())
+		oc.sendSystemNotice(runCtx, portal, "Couldn't create the room: "+err.Error())
 		return
 	}
 
@@ -769,7 +769,7 @@ func (oc *AIClient) handleNewChat(
 		}
 		modelID, err := oc.resolveExplicitModelID(runCtx, targetID)
 		if err != nil {
-			oc.sendSystemNotice(runCtx, portal, fmt.Sprintf("Invalid model: %s", targetID))
+			oc.sendSystemNotice(runCtx, portal, fmt.Sprintf("That model isn't available: %s", targetID))
 			return
 		}
 		oc.createAndOpenModelChat(runCtx, portal, modelID)
@@ -777,7 +777,7 @@ func (oc *AIClient) handleNewChat(
 	default:
 		// targetType == "current": use current room's agent/model only
 		if meta == nil {
-			oc.sendSystemNotice(runCtx, portal, "Failed to read current room settings.")
+			oc.sendSystemNotice(runCtx, portal, "Couldn't read current room settings.")
 			return
 		}
 		agentID := resolveAgentID(meta)
@@ -804,7 +804,7 @@ func (oc *AIClient) handleNewChat(
 			return
 		}
 		if ok, _ := oc.validateModel(runCtx, modelID); !ok {
-			oc.sendSystemNotice(runCtx, portal, fmt.Sprintf("Invalid model: %s", modelID))
+			oc.sendSystemNotice(runCtx, portal, fmt.Sprintf("That model isn't available: %s", modelID))
 			return
 		}
 		oc.createAndOpenModelChat(runCtx, portal, modelID)
@@ -818,7 +818,7 @@ func (oc *AIClient) resolveExplicitModelID(ctx context.Context, modelID string) 
 		return "", err
 	}
 	if !ok || resolved == "" {
-		return "", fmt.Errorf("invalid model: %s", modelID)
+		return "", fmt.Errorf("That model isn't available: %s", modelID)
 	}
 	return resolved, nil
 }
@@ -845,24 +845,24 @@ func (oc *AIClient) resolveAgentModelForNewChat(ctx context.Context, agent *agen
 	}
 
 	if preferredModel != "" {
-		return "", fmt.Errorf("invalid model: %s", preferredModel)
+		return "", fmt.Errorf("That model isn't available: %s", preferredModel)
 	}
-	return "", errors.New("no valid model available")
+	return "", errors.New("no available model")
 }
 
 func (oc *AIClient) createAndOpenAgentChat(ctx context.Context, portal *bridgev2.Portal, agent *agents.AgentDefinition, modelID string, modelOverride bool) {
 	agentName := oc.resolveAgentDisplayName(ctx, agent)
 	chatResp, err := oc.createAgentChatWithModel(ctx, agent, modelID, modelOverride)
 	if err != nil {
-		oc.sendSystemNotice(ctx, portal, "Failed to create chat: "+err.Error())
+		oc.sendSystemNotice(ctx, portal, "Couldn't create the chat: "+err.Error())
 		return
 	}
 
 	newPortal, err := oc.UserLogin.Bridge.GetPortalByKey(ctx, chatResp.PortalKey)
 	if err != nil || newPortal == nil {
-		msg := "Failed to load new chat."
+		msg := "Couldn't open the new chat."
 		if err != nil {
-			msg = "Failed to load new chat: " + err.Error()
+			msg = "Couldn't open the new chat: " + err.Error()
 		}
 		oc.sendSystemNotice(ctx, portal, msg)
 		return
@@ -870,7 +870,7 @@ func (oc *AIClient) createAndOpenAgentChat(ctx context.Context, portal *bridgev2
 
 	chatInfo := chatResp.PortalInfo
 	if err := newPortal.CreateMatrixRoom(ctx, oc.UserLogin, chatInfo); err != nil {
-		oc.sendSystemNotice(ctx, portal, "Failed to create room: "+err.Error())
+		oc.sendSystemNotice(ctx, portal, "Couldn't create the room: "+err.Error())
 		return
 	}
 
@@ -878,7 +878,7 @@ func (oc *AIClient) createAndOpenAgentChat(ctx context.Context, portal *bridgev2
 
 	roomLink := fmt.Sprintf("https://matrix.to/#/%s", newPortal.MXID)
 	oc.sendSystemNotice(ctx, portal, fmt.Sprintf(
-		"Created new %s chat.\nOpen: %s",
+		"New %s chat created.\nOpen: %s",
 		agentName, roomLink,
 	))
 }
@@ -886,12 +886,12 @@ func (oc *AIClient) createAndOpenAgentChat(ctx context.Context, portal *bridgev2
 func (oc *AIClient) createAndOpenModelChat(ctx context.Context, portal *bridgev2.Portal, modelID string) {
 	newPortal, chatInfo, err := oc.createNewChatWithModel(ctx, modelID)
 	if err != nil {
-		oc.sendSystemNotice(ctx, portal, "Failed to create chat: "+err.Error())
+		oc.sendSystemNotice(ctx, portal, "Couldn't create the chat: "+err.Error())
 		return
 	}
 
 	if err := newPortal.CreateMatrixRoom(ctx, oc.UserLogin, chatInfo); err != nil {
-		oc.sendSystemNotice(ctx, portal, "Failed to create room: "+err.Error())
+		oc.sendSystemNotice(ctx, portal, "Couldn't create the room: "+err.Error())
 		return
 	}
 
@@ -899,7 +899,7 @@ func (oc *AIClient) createAndOpenModelChat(ctx context.Context, portal *bridgev2
 
 	roomLink := fmt.Sprintf("https://matrix.to/#/%s", newPortal.MXID)
 	oc.sendSystemNotice(ctx, portal, fmt.Sprintf(
-		"Created new %s chat.\nOpen: %s",
+		"New %s chat created.\nOpen: %s",
 		modelContactName(modelID, oc.findModelInfo(modelID)), roomLink,
 	))
 }

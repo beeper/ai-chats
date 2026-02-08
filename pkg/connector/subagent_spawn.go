@@ -283,7 +283,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 			resolvedModel = resolved
 			modelApplied = true
 		} else if modelWarning == "" {
-			modelWarning = fmt.Sprintf("invalid model: %s", modelCandidate)
+			modelWarning = fmt.Sprintf("That model isn't available: %s", modelCandidate)
 		}
 	}
 

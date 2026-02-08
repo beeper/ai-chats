@@ -27,7 +27,7 @@ func (oc *OpenAIConnector) registerCommands(proc *commands.Processor) {
 			handler.Func = func(ce *commands.Event) {
 				if ce != nil && ce.Portal != nil && ce.Portal.Metadata != nil {
 					if pm, ok := ce.Portal.Metadata.(*PortalMetadata); ok && pm != nil && pm.IsCodexRoom {
-						ce.Reply("This is a Codex room. `!ai` commands are not supported here. Use `/status`, `/new`, or `/approve`.")
+						ce.Reply("This is a Codex room. `!ai` commands aren't supported here. Use `/status`, `/new`, or `/approve`.")
 						return
 					}
 				}
@@ -37,7 +37,7 @@ func (oc *OpenAIConnector) registerCommands(proc *commands.Processor) {
 				}
 				if !isOwnerAllowed(&oc.Config, senderID) {
 					if ce != nil {
-						ce.Reply("That command is restricted to configured owners.")
+						ce.Reply("Only configured owners can use that command.")
 					}
 					return
 				}

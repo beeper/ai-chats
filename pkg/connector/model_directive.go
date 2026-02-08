@@ -25,10 +25,10 @@ func (oc *AIClient) applyModelDirective(
 		return fmt.Sprintf("Current model: %s", oc.effectiveModel(meta)), false, ""
 	}
 	if agents.IsBossAgent(resolveAgentID(meta)) {
-		return "", false, "Cannot change model in a room managed by the Boss agent."
+		return "", false, "Can't change the model in a room managed by the Boss agent."
 	}
 	if agentID := resolveAgentID(meta); agentID != "" {
-		return "", false, "Cannot set room model while an agent is assigned. Edit the agent instead."
+		return "", false, "Can't set the room model while an agent is assigned. Edit the agent instead."
 	}
 
 	oldModel := meta.Model
@@ -45,12 +45,12 @@ func (oc *AIClient) applyModelDirective(
 		if oldModel != "" && newModel != oldModel {
 			changed = true
 		}
-		return fmt.Sprintf("Model reset to default: %s", newModel), changed, ""
+		return fmt.Sprintf("Model reset to %s.", newModel), changed, ""
 	}
 
 	valid, err := oc.validateModel(ctx, trimmed)
 	if err != nil || !valid {
-		return "", false, fmt.Sprintf("Invalid model: %s", trimmed)
+		return "", false, fmt.Sprintf("That model isn't available: %s", trimmed)
 	}
 	meta.Model = trimmed
 	meta.Capabilities = getModelCapabilities(trimmed, oc.findModelInfo(trimmed))
@@ -64,5 +64,5 @@ func (oc *AIClient) applyModelDirective(
 	if oldModel != "" && trimmed != oldModel {
 		changed = true
 	}
-	return fmt.Sprintf("Model changed to: %s", trimmed), changed, ""
+	return fmt.Sprintf("Model set to %s.", trimmed), changed, ""
 }

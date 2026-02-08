@@ -127,7 +127,7 @@ func ApplyPatch(ctx context.Context, store *Store, input string) (*ApplyPatchRes
 			if _, found, err := store.Read(ctx, path); err != nil {
 				return nil, err
 			} else if !found {
-				return nil, fmt.Errorf("file not found: %s", path)
+				return nil, fmt.Errorf("File not found: %s", path)
 			}
 			if err := store.Delete(ctx, path); err != nil {
 				return nil, err
@@ -143,7 +143,7 @@ func ApplyPatch(ctx context.Context, store *Store, input string) (*ApplyPatchRes
 				return nil, err
 			}
 			if !found {
-				return nil, fmt.Errorf("file not found: %s", path)
+				return nil, fmt.Errorf("File not found: %s", path)
 			}
 			updated, err := applyUpdateHunks(entry.Content, hunk.chunks, path)
 			if err != nil {
@@ -366,7 +366,7 @@ func parseUpdateFileChunk(lines []string, lineNumber int, allowMissingContext bo
 }
 
 func formatPatchSummary(summary ApplyPatchSummary) string {
-	lines := []string{"Success. Updated the following files:"}
+	lines := []string{"Updated files:"}
 	for _, file := range summary.Added {
 		lines = append(lines, "A "+file)
 	}

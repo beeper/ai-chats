@@ -30,7 +30,7 @@ func approvalErrorToastText(err error) string {
 	case errors.Is(err, ErrApprovalAlreadyHandled):
 		return "That approval request was already handled."
 	case errors.Is(err, ErrApprovalMissingID):
-		return "Missing approval id."
+		return "Missing approval ID."
 	default:
 		// Keep some context for debugging, but avoid spammy/emoji system notices.
 		return strings.TrimSpace(err.Error())

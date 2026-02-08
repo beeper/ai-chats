@@ -156,7 +156,7 @@ func TestIsToolUseIDFormatError(t *testing.T) {
 func TestFormatUserFacingError_MissingToolCallInput(t *testing.T) {
 	err := errors.New("tool_call.input is required but was not provided")
 	msg := FormatUserFacingError(err)
-	if msg != "Session data is corrupted (missing tool call input). Please start a new conversation to recover." {
+	if msg != "Session data is missing required tool input. Start a new conversation to recover." {
 		t.Fatalf("unexpected message: %s", msg)
 	}
 }
@@ -164,7 +164,7 @@ func TestFormatUserFacingError_MissingToolCallInput(t *testing.T) {
 func TestFormatUserFacingError_ToolUseIDFormat(t *testing.T) {
 	err := errors.New("invalid tool_use_id format: must be alphanumeric")
 	msg := FormatUserFacingError(err)
-	if msg != "Tool call ID format error. Please start a new conversation to recover." {
+	if msg != "Tool call ID is invalid. Start a new conversation to recover." {
 		t.Fatalf("unexpected message: %s", msg)
 	}
 }
@@ -174,7 +174,7 @@ func TestFormatUserFacingError_JSONPayloadParsing(t *testing.T) {
 	err := errors.New(`{"error":{"type":"invalid_request_error","message":"prompt is too long"}}`)
 	msg := FormatUserFacingError(err)
 	// This should match context length first since "prompt is too long" triggers it
-	if msg == "The AI provider returned an error. Please try again." {
+	if msg == "The AI provider returned an error. Try again." {
 		t.Fatal("expected JSON to be parsed, not treated as generic")
 	}
 }
@@ -397,7 +397,7 @@ func TestCollapseConsecutiveDuplicateBlocks(t *testing.T) {
 func TestFormatUserFacingError_ImageDimensionLimit(t *testing.T) {
 	err := errors.New("image dimensions exceed maximum: image exceeds 4096 pixels resolution limit")
 	msg := FormatUserFacingError(err)
-	if msg != "Image exceeds 4096px dimension limit. Please resize the image and try again." {
+	if msg != "Image exceeds 4096px. Resize it and try again." {
 		t.Fatalf("unexpected message: %s", msg)
 	}
 }
@@ -405,7 +405,7 @@ func TestFormatUserFacingError_ImageDimensionLimit(t *testing.T) {
 func TestFormatUserFacingError_ImageSizeLimit(t *testing.T) {
 	err := errors.New("image too large: max allowed size is 10 MB")
 	msg := FormatUserFacingError(err)
-	if msg != "Image exceeds 10MB size limit. Please use a smaller image." {
+	if msg != "Image exceeds 10MB. Use a smaller image." {
 		t.Fatalf("unexpected message: %s", msg)
 	}
 }
