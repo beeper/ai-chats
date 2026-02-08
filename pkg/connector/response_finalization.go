@@ -169,7 +169,7 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 	if cleanedContent != "" {
 		parts = append(parts, map[string]any{
 			"type":  "text",
-			"text":  cleanedContent,
+			"text":  "", // omitted: full text is in m.new_content.body
 			"state": "done",
 		})
 	}
@@ -227,11 +227,12 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 	}
 
 	// Send edit event with m.replace relation and m.new_content
+	// Outer body/formatted_body use a short fallback — Desktop only reads m.new_content for m.replace events.
 	eventRawContent := map[string]any{
 		"msgtype":        event.MsgText,
-		"body":           "* " + rendered.Body, // Fallback with edit marker
+		"body":           "* AI response",
 		"format":         rendered.Format,
-		"formatted_body": "* " + rendered.FormattedBody,
+		"formatted_body": "* AI response",
 		"m.new_content": map[string]any{
 			"msgtype":        event.MsgText,
 			"body":           rendered.Body,
@@ -657,7 +658,7 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 	if rendered.Body != "" {
 		parts = append(parts, map[string]any{
 			"type":  "text",
-			"text":  rendered.Body,
+			"text":  "", // omitted: full text is in m.new_content.body
 			"state": "done",
 		})
 	}
@@ -712,11 +713,12 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 		"parts":    parts,
 	}
 
+	// Outer body/formatted_body use a short fallback — Desktop only reads m.new_content for m.replace events.
 	rawContent2 := map[string]any{
 		"msgtype":                       event.MsgText,
-		"body":                          "* " + rendered.Body,
+		"body":                          "* AI response",
 		"format":                        rendered.Format,
-		"formatted_body":                "* " + rendered.FormattedBody,
+		"formatted_body":                "* AI response",
 		"m.new_content":                 map[string]any{"msgtype": event.MsgText, "body": rendered.Body, "format": rendered.Format, "formatted_body": rendered.FormattedBody},
 		"m.relates_to":                  relatesTo,
 		BeeperAIKey:                     uiMessage,
