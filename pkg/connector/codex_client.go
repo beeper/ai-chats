@@ -336,7 +336,7 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 	if meta == nil || !meta.IsCodexRoom {
 		return nil, unsupportedMessageStatus(errors.New("not a Codex room"))
 	}
-	if cc.isMatrixBotUser(ctx, msg.Event.Sender) {
+	if isMatrixBotUser(ctx, cc.UserLogin.Bridge, msg.Event.Sender) {
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 
@@ -861,13 +861,13 @@ func codexTurnCompletedStatus(evt codexNotif, threadID, turnID string) (status s
 		} `json:"turn"`
 	}
 	_ = json.Unmarshal(evt.Params, &p)
-	if strings.TrimSpace(p.ThreadID) != "" && strings.TrimSpace(p.ThreadID) != threadID {
+	if tid := strings.TrimSpace(p.ThreadID); tid != "" && tid != threadID {
 		return "", "", false
 	}
-	if strings.TrimSpace(p.TurnID) != "" && strings.TrimSpace(p.TurnID) != turnID {
+	if tid := strings.TrimSpace(p.TurnID); tid != "" && tid != turnID {
 		return "", "", false
 	}
-	if strings.TrimSpace(p.Turn.ID) != "" && strings.TrimSpace(p.Turn.ID) != turnID {
+	if tid := strings.TrimSpace(p.Turn.ID); tid != "" && tid != turnID {
 		return "", "", false
 	}
 	status = strings.TrimSpace(p.Turn.Status)
@@ -1375,10 +1375,7 @@ func (cc *CodexClient) ensureDefaultCodexChat(ctx context.Context) error {
 	}
 
 	// Ensure thread started at a temp dir.
-	if err := cc.ensureCodexThread(ctx, portal, meta); err != nil {
-		return err
-	}
-	return nil
+	return cc.ensureCodexThread(ctx, portal, meta)
 }
 
 func (cc *CodexClient) composeCodexChatInfo(title string) *bridgev2.ChatInfo {
@@ -1585,16 +1582,17 @@ func (cc *CodexClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2
 	}
 
 	// If a turn is in-flight for this thread, try to interrupt it.
+	tid := strings.TrimSpace(meta.CodexThreadID)
 	cc.activeMu.Lock()
 	active := (*codexActiveTurn)(nil)
 	for _, at := range cc.activeTurns {
-		if at != nil && strings.TrimSpace(at.threadID) == strings.TrimSpace(meta.CodexThreadID) {
+		if at != nil && strings.TrimSpace(at.threadID) == tid {
 			active = at
 			break
 		}
 	}
 	cc.activeMu.Unlock()
-	if active != nil && strings.TrimSpace(active.threadID) == strings.TrimSpace(meta.CodexThreadID) {
+	if active != nil && strings.TrimSpace(active.threadID) == tid {
 		callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		_ = cc.rpc.Call(callCtx, "turn/interrupt", map[string]any{
 			"threadId": active.threadID,
@@ -1656,17 +1654,6 @@ func (cc *CodexClient) markMessageSendSuccess(ctx context.Context, portal *bridg
 	}
 	st := bridgev2.MessageStatus{Status: event.MessageStatusSuccess, IsCertain: true}
 	portal.Bridge.Matrix.SendMessageStatus(ctx, &st, bridgev2.StatusEventInfoFromEvent(evt))
-}
-
-func (cc *CodexClient) isMatrixBotUser(ctx context.Context, userID id.UserID) bool {
-	if userID == "" || cc == nil || cc.UserLogin == nil || cc.UserLogin.Bridge == nil {
-		return false
-	}
-	if cc.UserLogin.Bridge.Bot != nil && cc.UserLogin.Bridge.Bot.GetMXID() == userID {
-		return true
-	}
-	ghost, err := cc.UserLogin.Bridge.GetGhostByMXID(ctx, userID)
-	return err == nil && ghost != nil
 }
 
 func (cc *CodexClient) acquireRoom(roomID id.RoomID) bool {

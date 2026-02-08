@@ -85,7 +85,7 @@ func (oc *AIClient) handleInboundCommand(
 	case "context":
 		return inboundCommandResult{handled: true, response: oc.buildContextStatus(ctx, portal, meta)}
 	case "tools":
-		if strings.TrimSpace(cmd.Args) == "" || strings.EqualFold(strings.TrimSpace(cmd.Args), "list") {
+		if args := strings.TrimSpace(cmd.Args); args == "" || strings.EqualFold(args, "list") {
 			return inboundCommandResult{handled: true, response: oc.buildToolsStatusText(meta)}
 		}
 		return inboundCommandResult{handled: true, response: "Usage:\n• /tools - Show current tool status\n• /tools list - List available tools\nTool toggles are managed by tool policy."}

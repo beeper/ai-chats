@@ -239,10 +239,7 @@ func (m *OpenCodeManager) RemoveInstance(ctx context.Context, instanceID string)
 		return ErrInstanceNotFound
 	}
 
-	if err := m.bridge.host.SaveOpenCodeInstances(ctx, meta); err != nil {
-		return err
-	}
-	return nil
+	return m.bridge.host.SaveOpenCodeInstances(ctx, meta)
 }
 
 func (m *OpenCodeManager) SendMessage(ctx context.Context, instanceID, sessionID string, parts []opencode.PartInput, eventID id.EventID) (*opencode.MessageWithParts, error) {

@@ -102,7 +102,7 @@ func pruneCronLogContent(content string, maxBytes int64, keepLines int) string {
 	if int64(len(content)) <= maxBytes {
 		return content
 	}
-	lines := make([]string, 0)
+	var lines []string
 	for _, line := range strings.Split(content, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
@@ -131,7 +131,7 @@ func ParseCronRunLogEntries(raw string, limit int, jobID string) []CronRunLogEnt
 		return []CronRunLogEntry{}
 	}
 	lines := strings.Split(raw, "\n")
-	entries := make([]CronRunLogEntry, 0)
+	var entries []CronRunLogEntry
 	for i := len(lines) - 1; i >= 0 && len(entries) < limit; i-- {
 		line := strings.TrimSpace(lines[i])
 		if line == "" {

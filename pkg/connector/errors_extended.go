@@ -405,6 +405,50 @@ func FormatUserFacingError(err error) string {
 	return collapseConsecutiveDuplicateBlocks(msg)
 }
 
+// FailoverReason is a typed enum for classifying why a model failover happened.
+type FailoverReason string
+
+const (
+	FailoverAuth      FailoverReason = "auth"
+	FailoverBilling   FailoverReason = "billing"
+	FailoverRateLimit FailoverReason = "rate_limit"
+	FailoverTimeout   FailoverReason = "timeout"
+	FailoverFormat    FailoverReason = "format"
+	FailoverOverload  FailoverReason = "overload"
+	FailoverServer    FailoverReason = "server"
+	FailoverUnknown   FailoverReason = "unknown"
+)
+
+// ClassifyFailoverReason returns a structured reason for why a model failover
+// should occur. Wraps the existing Is*Error functions into a single classifier.
+func ClassifyFailoverReason(err error) FailoverReason {
+	if err == nil {
+		return FailoverUnknown
+	}
+	if IsAuthError(err) {
+		return FailoverAuth
+	}
+	if IsBillingError(err) {
+		return FailoverBilling
+	}
+	if IsRateLimitError(err) {
+		return FailoverRateLimit
+	}
+	if IsTimeoutError(err) {
+		return FailoverTimeout
+	}
+	if IsOverloadedError(err) {
+		return FailoverOverload
+	}
+	if IsToolSchemaError(err) || IsRoleOrderingError(err) {
+		return FailoverFormat
+	}
+	if IsServerError(err) {
+		return FailoverServer
+	}
+	return FailoverUnknown
+}
+
 // stripFinalTags removes <final>...</final> tags from text.
 func stripFinalTags(s string) string {
 	for {

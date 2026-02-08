@@ -245,7 +245,7 @@ func (oc *AIClient) nexusMCPToolDefinitions(ctx context.Context) ([]ToolDefiniti
 	}
 
 	servers := oc.activeMCPServers()
-	combined := make([]ToolDefinition, 0)
+	var combined []ToolDefinition
 	toolSet := make(map[string]struct{})
 	toolServer := make(map[string]string)
 	var firstErr error

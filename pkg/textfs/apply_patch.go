@@ -282,7 +282,7 @@ func parseOneHunk(lines []string, lineNumber int) (applyPatchHunk, int, error) {
 				consumed++
 			}
 		}
-		chunks := []updateFileChunk{}
+		var chunks []updateFileChunk
 		for len(remaining) > 0 {
 			if strings.TrimSpace(remaining[0]) == "" {
 				remaining = remaining[1:]

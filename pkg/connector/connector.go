@@ -453,9 +453,11 @@ func (oc *OpenAIConnector) LoadUserLogin(ctx context.Context, login *bridgev2.Us
 		}
 
 		existingMeta := loginMetadata(existing.UserLogin)
+		existingProvider := strings.TrimSpace(existingMeta.Provider)
+		existingBaseURL := strings.TrimRight(strings.TrimSpace(existingMeta.BaseURL), "/")
 		needsRebuild := existing.apiKey != key ||
-			!strings.EqualFold(strings.TrimSpace(existingMeta.Provider), strings.TrimSpace(meta.Provider)) ||
-			strings.TrimRight(strings.TrimSpace(existingMeta.BaseURL), "/") != strings.TrimRight(strings.TrimSpace(meta.BaseURL), "/")
+			!strings.EqualFold(existingProvider, strings.TrimSpace(meta.Provider)) ||
+			existingBaseURL != strings.TrimRight(strings.TrimSpace(meta.BaseURL), "/")
 		if needsRebuild {
 			oc.clientsMu.Unlock()
 			client, err := newAIClient(login, oc, key)

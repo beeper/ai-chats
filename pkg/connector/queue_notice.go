@@ -8,7 +8,7 @@ import (
 const queueDirectiveOptionsHint = "modes steer, followup, collect, steer+backlog, interrupt; debounce:<ms|s|m>, cap:<n>, drop:old|new|summarize"
 
 func buildQueueDirectiveAck(directive QueueDirective) string {
-	parts := []string{}
+	var parts []string
 	if directive.QueueMode != "" {
 		parts = append(parts, formatSystemAck(fmt.Sprintf("Queue mode set to %s.", directive.QueueMode)))
 	} else if directive.QueueReset {

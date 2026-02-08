@@ -586,7 +586,7 @@ func (oc *AIClient) extractMediaFileBlocks(
 			skip[output.AttachmentIndex] = true
 		}
 	}
-	blocks := []string{}
+	var blocks []string
 	for _, attachment := range attachments {
 		if skip[attachment.Index] {
 			continue

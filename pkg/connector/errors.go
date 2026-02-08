@@ -222,7 +222,7 @@ func ParseContextLengthError(err error) *ContextLengthError {
 		return cle
 	}
 
-	sources := []string{}
+	var sources []string
 	if text := safeErrorString(err); text != "" {
 		sources = append(sources, text)
 	}
@@ -297,13 +297,29 @@ func IsServerError(err error) bool {
 	return false
 }
 
-// IsAuthError checks if the error is an authentication error
+// IsAuthError checks if the error is an authentication error.
+// Checks openai.Error status codes first, then falls back to string pattern matching.
 func IsAuthError(err error) bool {
 	var apiErr *openai.Error
 	if errors.As(err, &apiErr) {
-		return apiErr.StatusCode == 401 || apiErr.StatusCode == 403
+		if apiErr.StatusCode == 401 || apiErr.StatusCode == 403 {
+			return true
+		}
 	}
-	return false
+	return containsAnyPattern(err, []string{
+		"invalid api key",
+		"invalid_api_key",
+		"incorrect api key",
+		"invalid token",
+		"unauthorized",
+		"forbidden",
+		"access denied",
+		"token has expired",
+		"no credentials found",
+		"no api key found",
+		"re-authenticate",
+		"oauth token refresh failed",
+	})
 }
 
 // IsModelNotFound checks if the error is a model not found (404) error

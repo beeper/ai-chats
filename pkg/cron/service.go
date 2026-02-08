@@ -158,7 +158,7 @@ func (c *CronService) List(includeDisabled bool) ([]CronJob, error) {
 		if err := c.ensureLoaded(); err != nil {
 			return err
 		}
-		list := make([]CronJob, 0)
+		var list []CronJob
 		for _, job := range c.store.Jobs {
 			if includeDisabled || job.Enabled {
 				list = append(list, job)
@@ -388,7 +388,7 @@ func (c *CronService) dueJobIDsLocked() []string {
 		return nil
 	}
 	now := c.deps.NowMs()
-	due := make([]string, 0)
+	var due []string
 	for _, job := range c.store.Jobs {
 		if !job.Enabled || job.State.RunningAtMs != nil || job.State.NextRunAtMs == nil || now < *job.State.NextRunAtMs {
 			continue

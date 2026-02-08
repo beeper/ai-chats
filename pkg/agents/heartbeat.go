@@ -3,14 +3,13 @@ package agents
 import (
 	"regexp"
 	"strings"
+
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 var (
 	markdownHeaderRE     = regexp.MustCompile(`^#+(\s|$)`)
 	emptyChecklistItemRE = regexp.MustCompile(`^[-*+]\s*(\[[\sXx]?\]\s*)?$`)
-	htmlTagRE            = regexp.MustCompile(`<[^>]*>`)
-	mdEmphasisPrefixRE   = regexp.MustCompile(`^[*\x60~_]+`)
-	mdEmphasisSuffixRE   = regexp.MustCompile(`[*\x60~_]+$`)
 )
 
 // DefaultHeartbeatPrompt is the OpenClaw default heartbeat prompt.
@@ -104,15 +103,7 @@ func StripHeartbeatTokenWithMode(text string, mode StripHeartbeatMode, maxAckCha
 		maxAckChars = 0
 	}
 
-	stripMarkup := func(input string) string {
-		out := htmlTagRE.ReplaceAllString(input, " ")
-		out = strings.ReplaceAll(out, "&nbsp;", " ")
-		out = mdEmphasisPrefixRE.ReplaceAllString(out, "")
-		out = mdEmphasisSuffixRE.ReplaceAllString(out, "")
-		return out
-	}
-
-	normalized := stripMarkup(trimmed)
+	normalized := stringutil.StripMarkup(trimmed)
 	hasToken := strings.Contains(trimmed, HeartbeatToken) || strings.Contains(normalized, HeartbeatToken)
 	if !hasToken {
 		return false, trimmed, false

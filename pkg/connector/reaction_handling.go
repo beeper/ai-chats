@@ -59,7 +59,7 @@ func (oc *AIClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Matr
 	if msg == nil || msg.Event == nil || msg.Portal == nil {
 		return &database.Reaction{}, nil
 	}
-	if oc.isMatrixBotUser(ctx, msg.Event.Sender) {
+	if isMatrixBotUser(ctx, oc.UserLogin.Bridge, msg.Event.Sender) {
 		return &database.Reaction{}, nil
 	}
 
@@ -104,7 +104,7 @@ func (oc *AIClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev
 	if msg == nil || msg.Event == nil || msg.Portal == nil || msg.TargetReaction == nil {
 		return nil
 	}
-	if oc.isMatrixBotUser(ctx, msg.Event.Sender) {
+	if isMatrixBotUser(ctx, oc.UserLogin.Bridge, msg.Event.Sender) {
 		return nil
 	}
 
@@ -161,17 +161,6 @@ func (oc *AIClient) matrixDisplayName(ctx context.Context, roomID id.RoomID, use
 		return member.Displayname
 	}
 	return userID.Localpart()
-}
-
-func (oc *AIClient) isMatrixBotUser(ctx context.Context, userID id.UserID) bool {
-	if userID == "" || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
-		return false
-	}
-	if oc.UserLogin.Bridge.Bot != nil && oc.UserLogin.Bridge.Bot.GetMXID() == userID {
-		return true
-	}
-	ghost, err := oc.UserLogin.Bridge.GetGhostByMXID(ctx, userID)
-	return err == nil && ghost != nil
 }
 
 func portalRoomName(portal *bridgev2.Portal) string {

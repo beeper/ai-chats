@@ -1122,7 +1122,7 @@ func resolvePermittedImageInputDirs() ([]string, error) {
 }
 
 func permittedImageInputDirs() []string {
-	dirs := []string{}
+	var dirs []string
 	if tempDir := os.TempDir(); strings.TrimSpace(tempDir) != "" {
 		dirs = append(dirs, tempDir)
 	}

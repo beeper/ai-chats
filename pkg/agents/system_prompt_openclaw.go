@@ -456,7 +456,7 @@ func BuildSystemPrompt(params SystemPromptParams) string {
 	if runtimeInfo != nil {
 		runtimeChannel = strings.TrimSpace(strings.ToLower(runtimeInfo.Channel))
 	}
-	runtimeCapabilities := []string{}
+	var runtimeCapabilities []string
 	if runtimeInfo != nil {
 		for _, cap := range runtimeInfo.Capabilities {
 			trimmed := strings.TrimSpace(fmt.Sprint(cap))
@@ -769,7 +769,7 @@ func buildRuntimeLine(
 	runtimeCapabilities []string,
 	defaultThinkLevel string,
 ) string {
-	parts := []string{}
+	var parts []string
 	if runtimeInfo != nil {
 		if strings.TrimSpace(runtimeInfo.AgentID) != "" {
 			parts = append(parts, fmt.Sprintf("agent=%s", runtimeInfo.AgentID))

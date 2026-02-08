@@ -145,7 +145,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		}
 	}
 
-	if oc.isMatrixBotUser(ctx, msg.Event.Sender) {
+	if isMatrixBotUser(ctx, oc.UserLogin.Bridge, msg.Event.Sender) {
 		logCtx.Debug().Msg("Ignoring bot message")
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}

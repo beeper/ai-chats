@@ -574,13 +574,15 @@ func (oc *AIClient) resolveDesktopSessionByLabelWithOptions(ctx context.Context,
 		}
 		return "", "", fmt.Errorf("%w: no exact session found for label '%s'. Top matches: %s. Use sessionKey from sessions_list for deterministic targeting", errDesktopLabelNotFound, trimmed, strings.Join(suggestions, ", "))
 	}
-	if strings.TrimSpace(opts.AccountID) != "" || strings.TrimSpace(opts.Network) != "" {
-		filterParts := []string{}
-		if v := strings.TrimSpace(opts.AccountID); v != "" {
-			filterParts = append(filterParts, "accountId="+v)
+	acctID := strings.TrimSpace(opts.AccountID)
+	network := strings.TrimSpace(opts.Network)
+	if acctID != "" || network != "" {
+		var filterParts []string
+		if acctID != "" {
+			filterParts = append(filterParts, "accountId="+acctID)
 		}
-		if v := strings.TrimSpace(opts.Network); v != "" {
-			filterParts = append(filterParts, "network="+v)
+		if network != "" {
+			filterParts = append(filterParts, "network="+network)
 		}
 		return "", "", fmt.Errorf("%w: no session found for label '%s' with filters (%s). Use sessionKey from sessions_list", errDesktopLabelNotFound, trimmed, strings.Join(filterParts, ", "))
 	}

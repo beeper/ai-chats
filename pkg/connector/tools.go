@@ -1301,7 +1301,7 @@ func runMacOSSay(ctx context.Context, text, voice, suffix string, formatArgs []s
 	tmpFile.Close()
 	defer os.Remove(tmpPath)
 
-	args := []string{}
+	var args []string
 	if voice != "" {
 		args = append(args, "-v", voice)
 	}
@@ -1648,7 +1648,7 @@ func executeReadFile(ctx context.Context, args map[string]any) (string, error) {
 	}
 
 	output := trunc.Content
-	notices := []string{}
+	var notices []string
 	if endIdx < totalLines {
 		notices = append(notices, fmt.Sprintf("Showing lines %d-%d of %d. Use offset=%d to continue", startLine, endIdx, totalLines, endIdx+1))
 	}

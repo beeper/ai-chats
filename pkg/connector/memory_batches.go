@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 const (
@@ -671,7 +673,7 @@ func runGeminiBatches(ctx context.Context, params geminiBatchParams) (map[string
 			}
 			var errors []string
 			for _, line := range lines {
-				custom := firstNonEmpty(line.Key, line.CustomID, line.RequestID)
+				custom := stringutil.FirstNonEmpty(line.Key, line.CustomID, line.RequestID)
 				if custom == "" {
 					continue
 				}
@@ -987,13 +989,4 @@ func geminiModelPath(model string) string {
 		return model
 	}
 	return "models/" + model
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
 }

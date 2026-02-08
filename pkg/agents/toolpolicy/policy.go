@@ -431,7 +431,7 @@ func resolveProviderToolPolicy(base any, provider string, modelID string) *ToolP
 		fullModel = normalizedProvider + "/" + rawModel
 	}
 
-	candidates := []string{}
+	var candidates []string
 	if fullModel != "" {
 		candidates = append(candidates, fullModel)
 	}
@@ -604,7 +604,7 @@ type PluginToolGroups struct {
 
 // BuildPluginToolGroups groups tools by plugin id.
 func BuildPluginToolGroups[T any](tools []T, toolName func(T) string, toolMeta func(T) (string, bool)) PluginToolGroups {
-	all := []string{}
+	var all []string
 	byPlugin := make(map[string][]string)
 	for _, tool := range tools {
 		pluginID, ok := toolMeta(tool)
@@ -697,7 +697,7 @@ func StripPluginOnlyAllowlist(policy *ToolPolicy, groups PluginToolGroups, coreT
 		pluginTools[tool] = struct{}{}
 	}
 
-	unknownAllowlist := []string{}
+	var unknownAllowlist []string
 	hasCoreEntry := false
 	for _, entry := range normalized {
 		if entry == "*" {

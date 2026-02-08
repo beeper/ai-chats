@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 	beeperdesktopapi "github.com/beeper/desktop-api-go"
 )
 
@@ -167,7 +168,7 @@ func buildDesktopAccountDisplayFromView(account desktopAccountView) string {
 	network := strings.TrimSpace(account.network)
 	rawAccountID := strings.TrimSpace(account.accountID)
 
-	base := firstNonEmpty(fullName, username, phone, email, userID, rawAccountID)
+	base := stringutil.FirstNonEmpty(fullName, username, phone, email, userID, rawAccountID)
 	if base == "" {
 		base = "Unknown account"
 	}

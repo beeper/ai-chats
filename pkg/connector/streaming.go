@@ -1104,7 +1104,7 @@ func (oc *AIClient) upsertActiveToolFromDescriptor(
 	tool, ok := activeTools[desc.itemID]
 	if !ok || tool == nil {
 		tool = &activeToolCall{
-			callID:      desc.callID,
+			callID:      SanitizeToolCallID(desc.callID, "strict"),
 			toolName:    desc.toolName,
 			toolType:    desc.toolType,
 			startedAtMs: time.Now().UnixMilli(),
@@ -1113,7 +1113,7 @@ func (oc *AIClient) upsertActiveToolFromDescriptor(
 		activeTools[desc.itemID] = tool
 	}
 	if strings.TrimSpace(desc.callID) != "" {
-		tool.callID = desc.callID
+		tool.callID = SanitizeToolCallID(desc.callID, "strict")
 	}
 	if strings.TrimSpace(desc.toolName) != "" {
 		tool.toolName = desc.toolName

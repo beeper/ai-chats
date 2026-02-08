@@ -192,7 +192,7 @@ type heartbeatAgent struct {
 }
 
 func resolveHeartbeatAgents(cfg *Config) []heartbeatAgent {
-	list := []heartbeatAgent{}
+	var list []heartbeatAgent
 	if cfg == nil {
 		return list
 	}
@@ -365,7 +365,7 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 
 func drainHeartbeatSystemEvents(primaryKey string, secondaryKey string) []SystemEvent {
 	entries := drainSystemEventEntries(primaryKey)
-	if strings.TrimSpace(secondaryKey) != "" && !strings.EqualFold(strings.TrimSpace(primaryKey), strings.TrimSpace(secondaryKey)) {
+	if sk := strings.TrimSpace(secondaryKey); sk != "" && !strings.EqualFold(strings.TrimSpace(primaryKey), sk) {
 		entries = append(entries, drainSystemEventEntries(secondaryKey)...)
 	}
 	if len(entries) <= 1 {

@@ -45,7 +45,7 @@ func formatMediaUnderstandingBody(body string, outputs []MediaUnderstandingOutpu
 	}
 
 	userText := extractMediaUserText(body)
-	sections := []string{}
+	var sections []string
 	if userText != "" && len(filtered) > 1 {
 		sections = append(sections, "User text:\n"+userText)
 	}

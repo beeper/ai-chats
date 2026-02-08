@@ -3,13 +3,13 @@ package connector
 import (
 	"context"
 	"errors"
-	"maps"
 	"slices"
 	"strings"
 
 	"github.com/beeper/ai-bridge/pkg/agents"
 	"github.com/beeper/ai-bridge/pkg/memory"
 	"github.com/beeper/ai-bridge/pkg/memory/embedding"
+	"github.com/beeper/ai-bridge/pkg/shared/httputil"
 )
 
 func resolveMemorySearchConfig(client *AIClient, agentID string) (*memory.ResolvedConfig, error) {
@@ -50,7 +50,7 @@ func mergeMemorySearchConfig(
 	if includeRemote {
 		remote.BaseURL = pickString(overridesRemoteBaseURL(overrides), defaultsRemoteBaseURL(defaults), "")
 		remote.APIKey = pickString(overridesRemoteAPIKey(overrides), defaultsRemoteAPIKey(defaults), "")
-		remote.Headers = mergeHeaders(defaultsRemoteHeaders(defaults), overridesRemoteHeaders(overrides))
+		remote.Headers = httputil.MergeHeaders(defaultsRemoteHeaders(defaults), overridesRemoteHeaders(overrides))
 		remote.Batch = memory.BatchConfig{
 			Enabled:        pickBool(overridesBatchEnabled(overrides), defaultsBatchEnabled(defaults), true),
 			Wait:           pickBool(overridesBatchWait(overrides), defaultsBatchWait(defaults), true),
@@ -190,18 +190,6 @@ func normalizeSources(input []string, sessionMemoryEnabled bool) []string {
 	for key := range normalized {
 		out = append(out, key)
 	}
-	return out
-}
-
-func mergeHeaders(base, override map[string]string) map[string]string {
-	if len(base) == 0 && len(override) == 0 {
-		return nil
-	}
-	out := maps.Clone(base)
-	if out == nil {
-		out = make(map[string]string)
-	}
-	maps.Copy(out, override)
 	return out
 }
 

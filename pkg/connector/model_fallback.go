@@ -57,7 +57,7 @@ func (oc *AIClient) modelFallbackChain(ctx context.Context, meta *PortalMetadata
 		store := NewAgentStoreAdapter(oc)
 		agent, err := store.GetAgentByID(ctx, agentID)
 		if err == nil && agent != nil {
-			models := []string{}
+			var models []string
 			if strings.TrimSpace(agent.Model.Primary) != "" {
 				models = append(models, ResolveAlias(agent.Model.Primary))
 			}
@@ -140,6 +140,7 @@ func (oc *AIClient) responseWithModelFallbackDynamic(
 			Err(err).
 			Str("failed_model", modelID).
 			Str("next_model", modelChain[idx+1]).
+			Str("failover_reason", string(ClassifyFailoverReason(err))).
 			Msg("Model failed; falling back to next model")
 	}
 }

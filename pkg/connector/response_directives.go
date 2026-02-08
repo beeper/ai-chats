@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 // SilentReplyToken is the token the agent uses to indicate no response is needed.
@@ -43,13 +45,6 @@ var (
 	// silentSuffixRE matches NO_REPLY at the end (word boundary)
 	// Matches OpenClaw's isSilentReplyText suffix check.
 	silentSuffixRE = regexp.MustCompile(`\b` + regexp.QuoteMeta(SilentReplyToken) + `\b\W*$`)
-
-	// markupRE matches HTML tags for stripping
-	markupTagRE = regexp.MustCompile(`<[^>]*>`)
-	// markupEmphasisPrefixRE matches markdown emphasis at start: *, `, ~, _
-	markupEmphasisPrefixRE = regexp.MustCompile("^[*`~_]+")
-	// markupEmphasisSuffixRE matches markdown emphasis at end
-	markupEmphasisSuffixRE = regexp.MustCompile("[*`~_]+$")
 
 	collapseSpacesRE    = regexp.MustCompile(`[ \t]+`)
 	normalizeNewlinesRE = regexp.MustCompile(`[ \t]*\n[ \t]*`)
@@ -122,7 +117,7 @@ func isSilentReplyText(text string) bool {
 	}
 
 	// Strip markup first (handles **NO_REPLY**, <b>NO_REPLY</b>, etc.)
-	stripped := stripMarkup(text)
+	stripped := stringutil.StripMarkup(text)
 
 	// Exact match after stripping
 	if strings.TrimSpace(stripped) == SilentReplyToken {
@@ -137,20 +132,6 @@ func isSilentReplyText(text string) bool {
 	return silentSuffixRE.MatchString(stripped)
 }
 
-// stripMarkup removes common HTML/markdown formatting that models might wrap tokens in.
-// Based on clawdbot's stripMarkup from heartbeat.ts.
-func stripMarkup(text string) string {
-	// Remove HTML tags
-	text = markupTagRE.ReplaceAllString(text, " ")
-	// Remove &nbsp;
-	text = strings.ReplaceAll(text, "&nbsp;", " ")
-	// Remove leading markdown emphasis
-	text = markupEmphasisPrefixRE.ReplaceAllString(text, "")
-	// Remove trailing markdown emphasis
-	text = markupEmphasisSuffixRE.ReplaceAllString(text, "")
-	return text
-}
-
 // normalizeDirectiveWhitespace cleans up whitespace after directive removal.
 func normalizeDirectiveWhitespace(text string) string {
 	text = collapseSpacesRE.ReplaceAllString(text, " ")
@@ -163,7 +144,7 @@ func normalizeDirectiveWhitespace(text string) string {
 // Returns the cleaned text.
 func StripSilentToken(text string) string {
 	// Strip markup first to handle wrapped tokens
-	stripped := stripMarkup(text)
+	stripped := stringutil.StripMarkup(text)
 	// Remove from start
 	stripped = silentPrefixRE.ReplaceAllString(stripped, "")
 	// Remove from end

@@ -18,8 +18,8 @@ func ConfigFromEnv() *Config {
 		cfg.Fallbacks = stringutil.SplitCSV(fallbacks)
 	}
 
-	cfg.Exa.APIKey = envOr(cfg.Exa.APIKey, os.Getenv("EXA_API_KEY"))
-	cfg.Exa.BaseURL = envOr(cfg.Exa.BaseURL, os.Getenv("EXA_BASE_URL"))
+	cfg.Exa.APIKey = stringutil.EnvOr(cfg.Exa.APIKey, os.Getenv("EXA_API_KEY"))
+	cfg.Exa.BaseURL = stringutil.EnvOr(cfg.Exa.BaseURL, os.Getenv("EXA_BASE_URL"))
 
 	return cfg
 }
@@ -47,12 +47,4 @@ func ApplyEnvDefaults(cfg *Config) *Config {
 	}
 
 	return current
-}
-
-func envOr(existing, value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return existing
-	}
-	return value
 }

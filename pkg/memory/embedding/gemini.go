@@ -7,9 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"net/http"
 	"strings"
+
+	"github.com/beeper/ai-bridge/pkg/shared/httputil"
 )
 
 const (
@@ -64,7 +65,7 @@ func NewGeminiProvider(apiKey, baseURL, model string, headers map[string]string)
 	normalized := NormalizeGeminiModel(model)
 	client := &geminiClient{
 		baseURL:   normalizeGeminiBaseURL(baseURL),
-		headers:   mergeHeaders(map[string]string{"x-goog-api-key": apiKey}, headers),
+		headers:   httputil.MergeHeaders(map[string]string{"x-goog-api-key": apiKey}, headers),
 		model:     normalized,
 		modelPath: buildGeminiModelPath(normalized),
 	}
@@ -177,13 +178,4 @@ func (c *geminiClient) post(ctx context.Context, url string, payload map[string]
 		return nil, fmt.Errorf("gemini embeddings failed: %s %s", resp.Status, string(data))
 	}
 	return data, nil
-}
-
-func mergeHeaders(base map[string]string, overrides map[string]string) map[string]string {
-	out := maps.Clone(base)
-	if out == nil {
-		out = make(map[string]string)
-	}
-	maps.Copy(out, overrides)
-	return out
 }

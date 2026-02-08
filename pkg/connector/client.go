@@ -1483,7 +1483,7 @@ func (oc *AIClient) effectiveAgentPrompt(ctx context.Context, portal *bridgev2.P
 	timezone, _ := oc.resolveUserTimezone()
 
 	workspaceDir := resolvePromptWorkspaceDir()
-	extraParts := []string{}
+	var extraParts []string
 	if strings.TrimSpace(agent.SystemPrompt) != "" {
 		extraParts = append(extraParts, strings.TrimSpace(agent.SystemPrompt))
 	}

@@ -212,7 +212,7 @@ func explicitModelCatalogEntries(cfg *ModelsConfig) []ModelCatalogEntry {
 	if cfg == nil || len(cfg.Providers) == 0 {
 		return nil
 	}
-	out := make([]ModelCatalogEntry, 0)
+	var out []ModelCatalogEntry
 	for providerKey, provider := range cfg.Providers {
 		baseProviderID := strings.ToLower(strings.TrimSpace(providerKey))
 		for _, model := range provider.Models {
@@ -273,7 +273,7 @@ func normalizeCatalogInput(input []string, extra map[string]bool) []string {
 	if len(seen) == 0 {
 		return nil
 	}
-	ordered := []string{}
+	var ordered []string
 	if seen["text"] {
 		ordered = append(ordered, "text")
 		delete(seen, "text")

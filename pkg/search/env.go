@@ -17,19 +17,19 @@ func ConfigFromEnv() *Config {
 	if fallbacks := strings.TrimSpace(os.Getenv("SEARCH_FALLBACKS")); fallbacks != "" {
 		cfg.Fallbacks = stringutil.SplitCSV(fallbacks)
 	}
-	cfg.Exa.APIKey = envOr(cfg.Exa.APIKey, os.Getenv("EXA_API_KEY"))
-	cfg.Exa.BaseURL = envOr(cfg.Exa.BaseURL, os.Getenv("EXA_BASE_URL"))
+	cfg.Exa.APIKey = stringutil.EnvOr(cfg.Exa.APIKey, os.Getenv("EXA_API_KEY"))
+	cfg.Exa.BaseURL = stringutil.EnvOr(cfg.Exa.BaseURL, os.Getenv("EXA_BASE_URL"))
 
-	cfg.Brave.APIKey = envOr(cfg.Brave.APIKey, os.Getenv("BRAVE_API_KEY"))
-	cfg.Brave.BaseURL = envOr(cfg.Brave.BaseURL, os.Getenv("BRAVE_BASE_URL"))
+	cfg.Brave.APIKey = stringutil.EnvOr(cfg.Brave.APIKey, os.Getenv("BRAVE_API_KEY"))
+	cfg.Brave.BaseURL = stringutil.EnvOr(cfg.Brave.BaseURL, os.Getenv("BRAVE_BASE_URL"))
 
-	cfg.Perplexity.APIKey = envOr(cfg.Perplexity.APIKey, os.Getenv("PERPLEXITY_API_KEY"))
-	cfg.Perplexity.BaseURL = envOr(cfg.Perplexity.BaseURL, os.Getenv("PERPLEXITY_BASE_URL"))
-	cfg.Perplexity.Model = envOr(cfg.Perplexity.Model, os.Getenv("PERPLEXITY_MODEL"))
+	cfg.Perplexity.APIKey = stringutil.EnvOr(cfg.Perplexity.APIKey, os.Getenv("PERPLEXITY_API_KEY"))
+	cfg.Perplexity.BaseURL = stringutil.EnvOr(cfg.Perplexity.BaseURL, os.Getenv("PERPLEXITY_BASE_URL"))
+	cfg.Perplexity.Model = stringutil.EnvOr(cfg.Perplexity.Model, os.Getenv("PERPLEXITY_MODEL"))
 
-	cfg.OpenRouter.APIKey = envOr(cfg.OpenRouter.APIKey, os.Getenv("OPENROUTER_API_KEY"))
-	cfg.OpenRouter.BaseURL = envOr(cfg.OpenRouter.BaseURL, os.Getenv("OPENROUTER_BASE_URL"))
-	cfg.OpenRouter.Model = envOr(cfg.OpenRouter.Model, os.Getenv("OPENROUTER_MODEL"))
+	cfg.OpenRouter.APIKey = stringutil.EnvOr(cfg.OpenRouter.APIKey, os.Getenv("OPENROUTER_API_KEY"))
+	cfg.OpenRouter.BaseURL = stringutil.EnvOr(cfg.OpenRouter.BaseURL, os.Getenv("OPENROUTER_BASE_URL"))
+	cfg.OpenRouter.Model = stringutil.EnvOr(cfg.OpenRouter.Model, os.Getenv("OPENROUTER_MODEL"))
 
 	return cfg.WithDefaults()
 }
@@ -89,12 +89,4 @@ func ApplyEnvDefaults(cfg *Config) *Config {
 	}
 
 	return current
-}
-
-func envOr(existing, value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return existing
-	}
-	return value
 }

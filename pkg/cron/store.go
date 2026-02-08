@@ -14,6 +14,8 @@ import (
 	"github.com/beeper/ai-bridge/pkg/textfs"
 )
 
+var emptyCronStore = CronStoreFile{Version: 1, Jobs: []CronJob{}}
+
 const (
 	defaultCronDir       = "cron"
 	defaultCronFileName  = "jobs.json"
@@ -47,14 +49,14 @@ func ResolveCronStorePath(storePath string) string {
 // On parse failure, it attempts to load from the .bak file.
 func LoadCronStore(ctx context.Context, backend StoreBackend, storePath string) (CronStoreFile, error) {
 	if backend == nil {
-		return CronStoreFile{Version: 1, Jobs: []CronJob{}}, errors.New("cron store backend not configured")
+		return emptyCronStore, errors.New("cron store backend not configured")
 	}
 	data, found, err := backend.Read(ctx, storePath)
 	if err != nil {
-		return CronStoreFile{Version: 1, Jobs: []CronJob{}}, fmt.Errorf("cron store read: %w", err)
+		return emptyCronStore, fmt.Errorf("cron store read: %w", err)
 	}
 	if !found {
-		return CronStoreFile{Version: 1, Jobs: []CronJob{}}, nil
+		return emptyCronStore, nil
 	}
 	if parsed, parseErr := parseCronStoreData(data); parseErr == nil {
 		return parsed, nil
@@ -62,12 +64,12 @@ func LoadCronStore(ctx context.Context, backend StoreBackend, storePath string) 
 	// Main file corrupt — try .bak
 	bakData, bakFound, bakErr := backend.Read(ctx, storePath+".bak")
 	if bakErr != nil || !bakFound {
-		return CronStoreFile{Version: 1, Jobs: []CronJob{}}, fmt.Errorf("cron store corrupt and no valid backup: %s", storePath)
+		return emptyCronStore, fmt.Errorf("cron store corrupt and no valid backup: %s", storePath)
 	}
 	if parsed, parseErr := parseCronStoreData(bakData); parseErr == nil {
 		return parsed, nil
 	}
-	return CronStoreFile{Version: 1, Jobs: []CronJob{}}, fmt.Errorf("cron store and backup both corrupt: %s", storePath)
+	return emptyCronStore, fmt.Errorf("cron store and backup both corrupt: %s", storePath)
 }
 
 func parseCronStoreData(data []byte) (CronStoreFile, error) {

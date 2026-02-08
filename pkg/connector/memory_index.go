@@ -147,10 +147,7 @@ func (m *MemorySearchManager) syncIncremental(ctx context.Context, sessionKey, g
 		m.sessionsDirty = false
 	}
 
-	if err := m.updateMeta(ctx, generation); err != nil {
-		return err
-	}
-	return nil
+	return m.updateMeta(ctx, generation)
 }
 
 func (m *MemorySearchManager) needsFullReindex(ctx context.Context, force bool) (bool, error) {
@@ -427,7 +424,7 @@ func (m *MemorySearchManager) deletePathChunks(ctx context.Context, path, source
 	args := []any{m.bridgeID, m.loginID, m.agentID, path, source, m.status.Model}
 	args = append(args, genArgs...)
 	placeholders := ""
-	placeholderArgs := []any{}
+	var placeholderArgs []any
 	if len(keepIDs) > 0 {
 		ids := make([]string, 0, len(keepIDs))
 		for _, id := range keepIDs {

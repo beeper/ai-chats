@@ -3,6 +3,8 @@ package agents
 import (
 	"regexp"
 	"strings"
+
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 var (
@@ -128,7 +130,7 @@ func containsToken(text, token string) bool {
 	if text == "" {
 		return false
 	}
-	stripped := stripMarkup(text)
+	stripped := stringutil.StripMarkup(text)
 	trimmed := strings.TrimSpace(stripped)
 
 	if trimmed == token {
@@ -152,16 +154,6 @@ func containsToken(text, token string) bool {
 		return true
 	}
 	return suffixRE.MatchString(stripped)
-}
-
-// stripMarkup removes common HTML/markdown formatting that models might wrap tokens in.
-// Based on OpenClaw's stripMarkup from heartbeat.ts.
-func stripMarkup(text string) string {
-	text = htmlTagRE.ReplaceAllString(text, " ")
-	text = strings.ReplaceAll(text, "&nbsp;", " ")
-	text = mdEmphasisPrefixRE.ReplaceAllString(text, "")
-	text = mdEmphasisSuffixRE.ReplaceAllString(text, "")
-	return text
 }
 
 // StripHeartbeatToken removes the heartbeat token from text and returns the remaining content.
