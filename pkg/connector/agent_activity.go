@@ -65,11 +65,7 @@ func (oc *AIClient) lastActivePortal(agentID string) *bridgev2.Portal {
 	if room == "" {
 		return nil
 	}
-	portal, err := oc.UserLogin.Bridge.GetPortalByMXID(context.Background(), id.RoomID(room))
-	if err != nil {
-		return nil
-	}
-	return portal
+	return oc.portalByRoomID(context.Background(), id.RoomID(room))
 }
 
 func (oc *AIClient) defaultChatPortal() *bridgev2.Portal {

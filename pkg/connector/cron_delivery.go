@@ -49,11 +49,12 @@ func (oc *AIClient) resolveCronDeliveryTarget(agentID string, delivery *cron.Cro
 	if !strings.HasPrefix(target, "!") {
 		return deliveryTarget{Channel: "matrix", Reason: "invalid-target"}
 	}
-	if portal, err := oc.UserLogin.Bridge.GetPortalByMXID(context.Background(), id.RoomID(target)); err == nil && portal != nil {
-		if !oc.IsLoggedIn() {
-			return deliveryTarget{Channel: "matrix", Reason: "channel-not-ready"}
-		}
-		return deliveryTarget{Portal: portal, RoomID: portal.MXID, Channel: "matrix"}
+	portal := oc.portalByRoomID(context.Background(), id.RoomID(target))
+	if portal == nil {
+		return deliveryTarget{Channel: "matrix", Reason: "no-target"}
 	}
-	return deliveryTarget{Channel: "matrix", Reason: "no-target"}
+	if !oc.IsLoggedIn() {
+		return deliveryTarget{Channel: "matrix", Reason: "channel-not-ready"}
+	}
+	return deliveryTarget{Portal: portal, RoomID: portal.MXID, Channel: "matrix"}
 }

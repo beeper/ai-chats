@@ -35,10 +35,7 @@ type pdfEngineContextKey struct{}
 
 // GetPDFEngineFromContext retrieves the PDF engine override from context
 func GetPDFEngineFromContext(ctx context.Context) string {
-	if engine, ok := ctx.Value(pdfEngineContextKey{}).(string); ok {
-		return engine
-	}
-	return ""
+	return contextValue[string](ctx, pdfEngineContextKey{})
 }
 
 // WithPDFEngine adds a PDF engine override to the context

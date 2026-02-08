@@ -416,7 +416,7 @@ func (oc *AIClient) resolveHeartbeatSessionPortal(agentID string, heartbeat *Hea
 		}
 	}
 	if strings.HasPrefix(session, "!") {
-		if portal, err := oc.UserLogin.Bridge.GetPortalByMXID(context.Background(), id.RoomID(session)); err == nil && portal != nil {
+		if portal := oc.portalByRoomID(context.Background(), id.RoomID(session)); portal != nil {
 			return portal, portal.MXID.String(), nil
 		}
 	}

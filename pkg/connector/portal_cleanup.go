@@ -4,7 +4,18 @@ import (
 	"context"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/id"
 )
+
+// portalByRoomID looks up a portal by its Matrix room ID, returning nil if
+// the lookup fails or the portal does not exist.
+func (oc *AIClient) portalByRoomID(ctx context.Context, roomID id.RoomID) *bridgev2.Portal {
+	portal, err := oc.UserLogin.Bridge.GetPortalByMXID(ctx, roomID)
+	if err != nil || portal == nil {
+		return nil
+	}
+	return portal
+}
 
 func cleanupPortal(ctx context.Context, client *AIClient, portal *bridgev2.Portal, reason string) {
 	if portal == nil || client == nil || client.UserLogin == nil {

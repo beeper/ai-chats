@@ -234,8 +234,8 @@ func (oc *AIClient) runSubagentAndAnnounce(
 		"You can respond with NO_REPLY if no announcement is needed (e.g., internal task with no user-facing result).",
 	}, "\n")
 
-	parentPortal, err := oc.UserLogin.Bridge.GetPortalByMXID(runCtx, id.RoomID(run.ParentRoomID))
-	if err == nil && parentPortal != nil {
+	parentPortal := oc.portalByRoomID(runCtx, id.RoomID(run.ParentRoomID))
+	if parentPortal != nil {
 		parentMeta := portalMeta(parentPortal)
 		if parentMeta != nil {
 			if _, _, err := oc.dispatchInternalMessage(runCtx, parentPortal, parentMeta, triggerMessage, "subagent", true); err != nil {

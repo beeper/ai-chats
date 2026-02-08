@@ -50,8 +50,8 @@ func (oc *AIClient) resolveHeartbeatDeliveryRoom(raw string) deliveryTarget {
 	if !strings.HasPrefix(trimmed, "!") {
 		return deliveryTarget{Reason: "no-target"}
 	}
-	portal, err := oc.UserLogin.Bridge.GetPortalByMXID(context.Background(), id.RoomID(trimmed))
-	if err != nil || portal == nil || portal.MXID == "" {
+	portal := oc.portalByRoomID(context.Background(), id.RoomID(trimmed))
+	if portal == nil || portal.MXID == "" {
 		return deliveryTarget{Reason: "no-target"}
 	}
 	return deliveryTarget{

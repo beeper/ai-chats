@@ -218,8 +218,8 @@ func (oc *AIClient) emitApprovalSnapshotDecision(approvalID string, decision Too
 	}
 
 	ctx := oc.backgroundContext(context.Background())
-	portal, err := oc.UserLogin.Bridge.GetPortalByMXID(ctx, p.RoomID)
-	if err != nil || portal == nil || portal.MXID == "" {
+	portal := oc.portalByRoomID(ctx, p.RoomID)
+	if portal == nil || portal.MXID == "" {
 		return
 	}
 

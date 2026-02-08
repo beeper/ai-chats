@@ -639,7 +639,7 @@ func (oc *AIClient) resolveSessionPortal(ctx context.Context, portal *bridgev2.P
 		return portal, "main", nil
 	}
 	if strings.HasPrefix(trimmed, "!") {
-		if found, err := oc.UserLogin.Bridge.GetPortalByMXID(ctx, id.RoomID(trimmed)); err == nil && found != nil {
+		if found := oc.portalByRoomID(ctx, id.RoomID(trimmed)); found != nil {
 			return found, found.MXID.String(), nil
 		}
 	}

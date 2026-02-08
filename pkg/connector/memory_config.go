@@ -38,25 +38,28 @@ func mergeMemorySearchConfig(
 	defaults *MemorySearchConfig,
 	overrides *agents.MemorySearchConfig,
 ) *memory.ResolvedConfig {
-	enabled := pickBool(overridesEnabled(overrides), defaultsEnabled(defaults), true)
-	sessionMemory := pickBool(overridesSessionMemory(overrides), defaultsSessionMemory(defaults), false)
-	provider := pickString(overridesProvider(overrides), defaultsProvider(defaults), "auto")
-	fallback := pickString(overridesFallback(overrides), defaultsFallback(defaults), "none")
+	o := extractOverrideFields(overrides)
+	d := extractDefaultFields(defaults)
 
-	hasRemoteConfig := hasRemoteDefaults(defaults) || hasRemoteOverrides(overrides)
+	enabled := pickBool(o.enabled, d.enabled, true)
+	sessionMemory := pickBool(o.sessionMemory, d.sessionMemory, false)
+	provider := pickString(o.provider, d.provider, "auto")
+	fallback := pickString(o.fallback, d.fallback, "none")
+
+	hasRemoteConfig := d.hasRemote || o.hasRemote
 	includeRemote := hasRemoteConfig || provider == "openai" || provider == "gemini" || provider == "auto"
 
 	remote := memory.RemoteConfig{}
 	if includeRemote {
-		remote.BaseURL = pickString(overridesRemoteBaseURL(overrides), defaultsRemoteBaseURL(defaults), "")
-		remote.APIKey = pickString(overridesRemoteAPIKey(overrides), defaultsRemoteAPIKey(defaults), "")
-		remote.Headers = httputil.MergeHeaders(defaultsRemoteHeaders(defaults), overridesRemoteHeaders(overrides))
+		remote.BaseURL = pickString(o.remoteBaseURL, d.remoteBaseURL, "")
+		remote.APIKey = pickString(o.remoteAPIKey, d.remoteAPIKey, "")
+		remote.Headers = httputil.MergeHeaders(d.remoteHeaders, o.remoteHeaders)
 		remote.Batch = memory.BatchConfig{
-			Enabled:        pickBool(overridesBatchEnabled(overrides), defaultsBatchEnabled(defaults), true),
-			Wait:           pickBool(overridesBatchWait(overrides), defaultsBatchWait(defaults), true),
-			Concurrency:    max(1, pickInt(overridesBatchConcurrency(overrides), defaultsBatchConcurrency(defaults), 2)),
-			PollIntervalMs: max(100, pickInt(overridesBatchPoll(overrides), defaultsBatchPoll(defaults), 2000)),
-			TimeoutMinutes: max(1, pickInt(overridesBatchTimeout(overrides), defaultsBatchTimeout(defaults), 60)),
+			Enabled:        pickBool(o.batchEnabled, d.batchEnabled, true),
+			Wait:           pickBool(o.batchWait, d.batchWait, true),
+			Concurrency:    max(1, pickInt(o.batchConcurrency, d.batchConcurrency, 2)),
+			PollIntervalMs: max(100, pickInt(o.batchPoll, d.batchPoll, 2000)),
+			TimeoutMinutes: max(1, pickInt(o.batchTimeout, d.batchTimeout, 60)),
 		}
 	}
 
@@ -67,17 +70,17 @@ func mergeMemorySearchConfig(
 	case "openai":
 		modelDefault = embedding.DefaultOpenAIEmbeddingModel
 	}
-	model := pickString(overridesModel(overrides), defaultsModel(defaults), modelDefault)
+	model := pickString(o.model, d.model, modelDefault)
 
-	rawSources := slices.Concat(defaultsSources(defaults), overridesSources(overrides))
+	rawSources := slices.Concat(d.sources, o.sources)
 	sources := normalizeSources(rawSources, sessionMemory)
 
-	rawExtraPaths := slices.Concat(defaultsExtraPaths(defaults), overridesExtraPaths(overrides))
+	rawExtraPaths := slices.Concat(d.extraPaths, o.extraPaths)
 	extraPaths := dedupeStrings(rawExtraPaths)
 
 	vector := memory.VectorConfig{
-		Enabled:       pickBool(overridesVectorEnabled(overrides), defaultsVectorEnabled(defaults), true),
-		ExtensionPath: pickString(overridesVectorExtension(overrides), defaultsVectorExtension(defaults), ""),
+		Enabled:       pickBool(o.vectorEnabled, d.vectorEnabled, true),
+		ExtensionPath: pickString(o.vectorExtension, d.vectorExtension, ""),
 	}
 
 	store := memory.StoreConfig{
@@ -86,8 +89,8 @@ func mergeMemorySearchConfig(
 		Vector: vector,
 	}
 
-	chunkTokens := pickInt(overridesChunkTokens(overrides), defaultsChunkTokens(defaults), memory.DefaultChunkTokens)
-	chunkOverlap := pickInt(overridesChunkOverlap(overrides), defaultsChunkOverlap(defaults), memory.DefaultChunkOverlap)
+	chunkTokens := pickInt(o.chunkTokens, d.chunkTokens, memory.DefaultChunkTokens)
+	chunkOverlap := pickInt(o.chunkOverlap, d.chunkOverlap, memory.DefaultChunkOverlap)
 	if chunkTokens < 1 {
 		chunkTokens = memory.DefaultChunkTokens
 	}
@@ -99,33 +102,33 @@ func mergeMemorySearchConfig(
 	}
 
 	sync := memory.SyncConfig{
-		OnSessionStart:  pickBool(overridesSyncOnStart(overrides), defaultsSyncOnStart(defaults), true),
-		OnSearch:        pickBool(overridesSyncOnSearch(overrides), defaultsSyncOnSearch(defaults), true),
-		Watch:           pickBool(overridesSyncWatch(overrides), defaultsSyncWatch(defaults), true),
-		WatchDebounceMs: pickInt(overridesSyncWatchDebounce(overrides), defaultsSyncWatchDebounce(defaults), memory.DefaultWatchDebounceMs),
-		IntervalMinutes: pickInt(overridesSyncInterval(overrides), defaultsSyncInterval(defaults), 0),
+		OnSessionStart:  pickBool(o.syncOnStart, d.syncOnStart, true),
+		OnSearch:        pickBool(o.syncOnSearch, d.syncOnSearch, true),
+		Watch:           pickBool(o.syncWatch, d.syncWatch, true),
+		WatchDebounceMs: pickInt(o.syncWatchDebounce, d.syncWatchDebounce, memory.DefaultWatchDebounceMs),
+		IntervalMinutes: pickInt(o.syncInterval, d.syncInterval, 0),
 		Sessions: memory.SessionSyncConfig{
-			DeltaBytes:    pickInt(overridesSyncDeltaBytes(overrides), defaultsSyncDeltaBytes(defaults), memory.DefaultSessionDeltaBytes),
-			DeltaMessages: pickInt(overridesSyncDeltaMessages(overrides), defaultsSyncDeltaMessages(defaults), memory.DefaultSessionDeltaMessages),
-			RetentionDays: pickInt(overridesSyncRetentionDays(overrides), defaultsSyncRetentionDays(defaults), 0),
+			DeltaBytes:    pickInt(o.syncDeltaBytes, d.syncDeltaBytes, memory.DefaultSessionDeltaBytes),
+			DeltaMessages: pickInt(o.syncDeltaMessages, d.syncDeltaMessages, memory.DefaultSessionDeltaMessages),
+			RetentionDays: pickInt(o.syncRetentionDays, d.syncRetentionDays, 0),
 		},
 	}
 
 	query := memory.QueryConfig{
-		MaxResults:       pickInt(overridesQueryMaxResults(overrides), defaultsQueryMaxResults(defaults), memory.DefaultMaxResults),
-		MinScore:         pickFloat(overridesQueryMinScore(overrides), defaultsQueryMinScore(defaults), memory.DefaultMinScore),
-		MaxInjectedChars: pickInt(overridesQueryMaxInjectedChars(overrides), defaultsQueryMaxInjectedChars(defaults), 0),
+		MaxResults:       pickInt(o.queryMaxResults, d.queryMaxResults, memory.DefaultMaxResults),
+		MinScore:         pickFloat(o.queryMinScore, d.queryMinScore, memory.DefaultMinScore),
+		MaxInjectedChars: pickInt(o.queryMaxInjectedChars, d.queryMaxInjectedChars, 0),
 		Hybrid: memory.HybridConfig{
-			Enabled:             pickBool(overridesHybridEnabled(overrides), defaultsHybridEnabled(defaults), memory.DefaultHybridEnabled),
-			VectorWeight:        pickFloat(overridesHybridVectorWeight(overrides), defaultsHybridVectorWeight(defaults), memory.DefaultHybridVectorWeight),
-			TextWeight:          pickFloat(overridesHybridTextWeight(overrides), defaultsHybridTextWeight(defaults), memory.DefaultHybridTextWeight),
-			CandidateMultiplier: pickInt(overridesHybridCandidateMultiplier(overrides), defaultsHybridCandidateMultiplier(defaults), memory.DefaultHybridCandidateMultiple),
+			Enabled:             pickBool(o.hybridEnabled, d.hybridEnabled, memory.DefaultHybridEnabled),
+			VectorWeight:        pickFloat(o.hybridVectorWeight, d.hybridVectorWeight, memory.DefaultHybridVectorWeight),
+			TextWeight:          pickFloat(o.hybridTextWeight, d.hybridTextWeight, memory.DefaultHybridTextWeight),
+			CandidateMultiplier: pickInt(o.hybridCandidateMultiplier, d.hybridCandidateMultiplier, memory.DefaultHybridCandidateMultiple),
 		},
 	}
 
 	cache := memory.CacheConfig{
-		Enabled:    pickBool(overridesCacheEnabled(overrides), defaultsCacheEnabled(defaults), memory.DefaultCacheEnabled),
-		MaxEntries: pickInt(overridesCacheMaxEntries(overrides), defaultsCacheMaxEntries(defaults), 0),
+		Enabled:    pickBool(o.cacheEnabled, d.cacheEnabled, memory.DefaultCacheEnabled),
+		MaxEntries: pickInt(o.cacheMaxEntries, d.cacheMaxEntries, 0),
 	}
 
 	query.MinScore = min(max(query.MinScore, 0.0), 1.0)
@@ -233,520 +236,172 @@ func pickFloat(override, fallback, defaultVal float64) float64 {
 	return defaultVal
 }
 
-func overridesEnabled(cfg *agents.MemorySearchConfig) *bool {
+type memSearchFields struct {
+	enabled                   *bool
+	sessionMemory             *bool
+	provider                  string
+	model                     string
+	fallback                  string
+	sources                   []string
+	extraPaths                []string
+	vectorEnabled             *bool
+	vectorExtension           string
+	chunkTokens               int
+	chunkOverlap              int
+	syncOnStart               *bool
+	syncOnSearch              *bool
+	syncWatch                 *bool
+	syncWatchDebounce         int
+	syncInterval              int
+	syncDeltaBytes            int
+	syncDeltaMessages         int
+	syncRetentionDays         int
+	queryMaxResults           int
+	queryMinScore             float64
+	queryMaxInjectedChars     int
+	hybridEnabled             *bool
+	hybridVectorWeight        float64
+	hybridTextWeight          float64
+	hybridCandidateMultiplier int
+	cacheEnabled              *bool
+	cacheMaxEntries           int
+	remoteBaseURL             string
+	remoteAPIKey              string
+	remoteHeaders             map[string]string
+	hasRemote                 bool
+	batchEnabled              *bool
+	batchWait                 *bool
+	batchConcurrency          int
+	batchPoll                 int
+	batchTimeout              int
+}
+
+func extractOverrideFields(cfg *agents.MemorySearchConfig) memSearchFields {
+	var f memSearchFields
 	if cfg == nil {
-		return nil
+		return f
 	}
-	return cfg.Enabled
+	f.enabled = cfg.Enabled
+	f.provider = cfg.Provider
+	f.model = cfg.Model
+	f.fallback = cfg.Fallback
+	f.sources = cfg.Sources
+	f.extraPaths = cfg.ExtraPaths
+	if cfg.Experimental != nil {
+		f.sessionMemory = cfg.Experimental.SessionMemory
+	}
+	if cfg.Store != nil && cfg.Store.Vector != nil {
+		f.vectorEnabled = cfg.Store.Vector.Enabled
+		f.vectorExtension = cfg.Store.Vector.ExtensionPath
+	}
+	if cfg.Chunking != nil {
+		f.chunkTokens = cfg.Chunking.Tokens
+		f.chunkOverlap = cfg.Chunking.Overlap
+	}
+	if cfg.Sync != nil {
+		f.syncOnStart = cfg.Sync.OnSessionStart
+		f.syncOnSearch = cfg.Sync.OnSearch
+		f.syncWatch = cfg.Sync.Watch
+		f.syncWatchDebounce = cfg.Sync.WatchDebounceMs
+		f.syncInterval = cfg.Sync.IntervalMinutes
+		if cfg.Sync.Sessions != nil {
+			f.syncDeltaBytes = cfg.Sync.Sessions.DeltaBytes
+			f.syncDeltaMessages = cfg.Sync.Sessions.DeltaMessages
+			f.syncRetentionDays = cfg.Sync.Sessions.RetentionDays
+		}
+	}
+	if cfg.Query != nil {
+		f.queryMaxResults = cfg.Query.MaxResults
+		f.queryMinScore = cfg.Query.MinScore
+		f.queryMaxInjectedChars = cfg.Query.MaxInjectedChars
+		if cfg.Query.Hybrid != nil {
+			f.hybridEnabled = cfg.Query.Hybrid.Enabled
+			f.hybridVectorWeight = cfg.Query.Hybrid.VectorWeight
+			f.hybridTextWeight = cfg.Query.Hybrid.TextWeight
+			f.hybridCandidateMultiplier = cfg.Query.Hybrid.CandidateMultiplier
+		}
+	}
+	if cfg.Cache != nil {
+		f.cacheEnabled = cfg.Cache.Enabled
+		f.cacheMaxEntries = cfg.Cache.MaxEntries
+	}
+	if cfg.Remote != nil {
+		f.remoteBaseURL = cfg.Remote.BaseURL
+		f.remoteAPIKey = cfg.Remote.APIKey
+		f.remoteHeaders = cfg.Remote.Headers
+		f.hasRemote = cfg.Remote.BaseURL != "" || cfg.Remote.APIKey != "" || len(cfg.Remote.Headers) > 0
+		if cfg.Remote.Batch != nil {
+			f.batchEnabled = cfg.Remote.Batch.Enabled
+			f.batchWait = cfg.Remote.Batch.Wait
+			f.batchConcurrency = cfg.Remote.Batch.Concurrency
+			f.batchPoll = cfg.Remote.Batch.PollIntervalMs
+			f.batchTimeout = cfg.Remote.Batch.TimeoutMinutes
+		}
+	}
+	return f
 }
 
-func defaultsEnabled(cfg *MemorySearchConfig) *bool {
+func extractDefaultFields(cfg *MemorySearchConfig) memSearchFields {
+	var f memSearchFields
 	if cfg == nil {
-		return nil
-	}
-	return cfg.Enabled
-}
-
-func overridesSessionMemory(cfg *agents.MemorySearchConfig) *bool {
-	if cfg == nil || cfg.Experimental == nil {
-		return nil
-	}
-	return cfg.Experimental.SessionMemory
-}
-
-func defaultsSessionMemory(cfg *MemorySearchConfig) *bool {
-	if cfg == nil || cfg.Experimental == nil {
-		return nil
-	}
-	return cfg.Experimental.SessionMemory
-}
-
-func overridesProvider(cfg *agents.MemorySearchConfig) string {
-	if cfg == nil {
-		return ""
-	}
-	return cfg.Provider
-}
-
-func defaultsProvider(cfg *MemorySearchConfig) string {
-	if cfg == nil {
-		return ""
-	}
-	return cfg.Provider
-}
-
-func overridesFallback(cfg *agents.MemorySearchConfig) string {
-	if cfg == nil {
-		return ""
-	}
-	return cfg.Fallback
-}
-
-func defaultsFallback(cfg *MemorySearchConfig) string {
-	if cfg == nil {
-		return ""
-	}
-	return cfg.Fallback
-}
-
-func overridesModel(cfg *agents.MemorySearchConfig) string {
-	if cfg == nil {
-		return ""
-	}
-	return cfg.Model
-}
-
-func defaultsModel(cfg *MemorySearchConfig) string {
-	if cfg == nil {
-		return ""
-	}
-	return cfg.Model
-}
-
-func overridesSources(cfg *agents.MemorySearchConfig) []string {
-	if cfg == nil {
-		return nil
-	}
-	return cfg.Sources
-}
-
-func defaultsSources(cfg *MemorySearchConfig) []string {
-	if cfg == nil {
-		return nil
-	}
-	return cfg.Sources
-}
-
-func overridesExtraPaths(cfg *agents.MemorySearchConfig) []string {
-	if cfg == nil {
-		return nil
-	}
-	return cfg.ExtraPaths
-}
-
-func defaultsExtraPaths(cfg *MemorySearchConfig) []string {
-	if cfg == nil {
-		return nil
-	}
-	return cfg.ExtraPaths
-}
-
-func overridesVectorEnabled(cfg *agents.MemorySearchConfig) *bool {
-	if cfg == nil || cfg.Store == nil || cfg.Store.Vector == nil {
-		return nil
-	}
-	return cfg.Store.Vector.Enabled
-}
-
-func defaultsVectorEnabled(cfg *MemorySearchConfig) *bool {
-	if cfg == nil || cfg.Store == nil || cfg.Store.Vector == nil {
-		return nil
-	}
-	return cfg.Store.Vector.Enabled
-}
-
-func overridesVectorExtension(cfg *agents.MemorySearchConfig) string {
-	if cfg == nil || cfg.Store == nil || cfg.Store.Vector == nil {
-		return ""
-	}
-	return cfg.Store.Vector.ExtensionPath
-}
-
-func defaultsVectorExtension(cfg *MemorySearchConfig) string {
-	if cfg == nil || cfg.Store == nil || cfg.Store.Vector == nil {
-		return ""
-	}
-	return cfg.Store.Vector.ExtensionPath
-}
-
-func overridesChunkTokens(cfg *agents.MemorySearchConfig) int {
-	if cfg == nil || cfg.Chunking == nil {
-		return 0
-	}
-	return cfg.Chunking.Tokens
-}
-
-func defaultsChunkTokens(cfg *MemorySearchConfig) int {
-	if cfg == nil || cfg.Chunking == nil {
-		return 0
-	}
-	return cfg.Chunking.Tokens
-}
-
-func overridesChunkOverlap(cfg *agents.MemorySearchConfig) int {
-	if cfg == nil || cfg.Chunking == nil {
-		return 0
-	}
-	return cfg.Chunking.Overlap
-}
-
-func defaultsChunkOverlap(cfg *MemorySearchConfig) int {
-	if cfg == nil || cfg.Chunking == nil {
-		return 0
-	}
-	return cfg.Chunking.Overlap
-}
-
-func overridesSyncOnStart(cfg *agents.MemorySearchConfig) *bool {
-	if cfg == nil || cfg.Sync == nil {
-		return nil
-	}
-	return cfg.Sync.OnSessionStart
-}
-
-func defaultsSyncOnStart(cfg *MemorySearchConfig) *bool {
-	if cfg == nil || cfg.Sync == nil {
-		return nil
-	}
-	return cfg.Sync.OnSessionStart
-}
-
-func overridesSyncOnSearch(cfg *agents.MemorySearchConfig) *bool {
-	if cfg == nil || cfg.Sync == nil {
-		return nil
-	}
-	return cfg.Sync.OnSearch
-}
-
-func defaultsSyncOnSearch(cfg *MemorySearchConfig) *bool {
-	if cfg == nil || cfg.Sync == nil {
-		return nil
-	}
-	return cfg.Sync.OnSearch
-}
-
-func overridesSyncWatch(cfg *agents.MemorySearchConfig) *bool {
-	if cfg == nil || cfg.Sync == nil {
-		return nil
-	}
-	return cfg.Sync.Watch
-}
-
-func defaultsSyncWatch(cfg *MemorySearchConfig) *bool {
-	if cfg == nil || cfg.Sync == nil {
-		return nil
-	}
-	return cfg.Sync.Watch
-}
-
-func overridesSyncWatchDebounce(cfg *agents.MemorySearchConfig) int {
-	if cfg == nil || cfg.Sync == nil {
-		return 0
-	}
-	return cfg.Sync.WatchDebounceMs
-}
-
-func defaultsSyncWatchDebounce(cfg *MemorySearchConfig) int {
-	if cfg == nil || cfg.Sync == nil {
-		return 0
-	}
-	return cfg.Sync.WatchDebounceMs
-}
-
-func overridesSyncInterval(cfg *agents.MemorySearchConfig) int {
-	if cfg == nil || cfg.Sync == nil {
-		return 0
-	}
-	return cfg.Sync.IntervalMinutes
-}
-
-func defaultsSyncInterval(cfg *MemorySearchConfig) int {
-	if cfg == nil || cfg.Sync == nil {
-		return 0
-	}
-	return cfg.Sync.IntervalMinutes
-}
-
-func overridesSyncDeltaBytes(cfg *agents.MemorySearchConfig) int {
-	if cfg == nil || cfg.Sync == nil || cfg.Sync.Sessions == nil {
-		return 0
-	}
-	return cfg.Sync.Sessions.DeltaBytes
-}
-
-func defaultsSyncDeltaBytes(cfg *MemorySearchConfig) int {
-	if cfg == nil || cfg.Sync == nil || cfg.Sync.Sessions == nil {
-		return 0
-	}
-	return cfg.Sync.Sessions.DeltaBytes
-}
-
-func overridesSyncDeltaMessages(cfg *agents.MemorySearchConfig) int {
-	if cfg == nil || cfg.Sync == nil || cfg.Sync.Sessions == nil {
-		return 0
-	}
-	return cfg.Sync.Sessions.DeltaMessages
-}
-
-func defaultsSyncDeltaMessages(cfg *MemorySearchConfig) int {
-	if cfg == nil || cfg.Sync == nil || cfg.Sync.Sessions == nil {
-		return 0
-	}
-	return cfg.Sync.Sessions.DeltaMessages
-}
-
-func overridesSyncRetentionDays(cfg *agents.MemorySearchConfig) int {
-	if cfg == nil || cfg.Sync == nil || cfg.Sync.Sessions == nil {
-		return 0
-	}
-	return cfg.Sync.Sessions.RetentionDays
-}
-
-func defaultsSyncRetentionDays(cfg *MemorySearchConfig) int {
-	if cfg == nil || cfg.Sync == nil || cfg.Sync.Sessions == nil {
-		return 0
-	}
-	return cfg.Sync.Sessions.RetentionDays
-}
-
-func overridesQueryMaxResults(cfg *agents.MemorySearchConfig) int {
-	if cfg == nil || cfg.Query == nil {
-		return 0
-	}
-	return cfg.Query.MaxResults
-}
-
-func defaultsQueryMaxResults(cfg *MemorySearchConfig) int {
-	if cfg == nil || cfg.Query == nil {
-		return 0
-	}
-	return cfg.Query.MaxResults
-}
-
-func overridesQueryMinScore(cfg *agents.MemorySearchConfig) float64 {
-	if cfg == nil || cfg.Query == nil {
-		return 0
-	}
-	return cfg.Query.MinScore
-}
-
-func defaultsQueryMinScore(cfg *MemorySearchConfig) float64 {
-	if cfg == nil || cfg.Query == nil {
-		return 0
-	}
-	return cfg.Query.MinScore
-}
-
-func overridesQueryMaxInjectedChars(cfg *agents.MemorySearchConfig) int {
-	if cfg == nil || cfg.Query == nil {
-		return 0
-	}
-	return cfg.Query.MaxInjectedChars
-}
-
-func defaultsQueryMaxInjectedChars(cfg *MemorySearchConfig) int {
-	if cfg == nil || cfg.Query == nil {
-		return 0
-	}
-	return cfg.Query.MaxInjectedChars
-}
-
-func overridesHybridEnabled(cfg *agents.MemorySearchConfig) *bool {
-	if cfg == nil || cfg.Query == nil || cfg.Query.Hybrid == nil {
-		return nil
-	}
-	return cfg.Query.Hybrid.Enabled
-}
-
-func defaultsHybridEnabled(cfg *MemorySearchConfig) *bool {
-	if cfg == nil || cfg.Query == nil || cfg.Query.Hybrid == nil {
-		return nil
-	}
-	return cfg.Query.Hybrid.Enabled
-}
-
-func overridesHybridVectorWeight(cfg *agents.MemorySearchConfig) float64 {
-	if cfg == nil || cfg.Query == nil || cfg.Query.Hybrid == nil {
-		return 0
-	}
-	return cfg.Query.Hybrid.VectorWeight
-}
-
-func defaultsHybridVectorWeight(cfg *MemorySearchConfig) float64 {
-	if cfg == nil || cfg.Query == nil || cfg.Query.Hybrid == nil {
-		return 0
-	}
-	return cfg.Query.Hybrid.VectorWeight
-}
-
-func overridesHybridTextWeight(cfg *agents.MemorySearchConfig) float64 {
-	if cfg == nil || cfg.Query == nil || cfg.Query.Hybrid == nil {
-		return 0
-	}
-	return cfg.Query.Hybrid.TextWeight
-}
-
-func defaultsHybridTextWeight(cfg *MemorySearchConfig) float64 {
-	if cfg == nil || cfg.Query == nil || cfg.Query.Hybrid == nil {
-		return 0
-	}
-	return cfg.Query.Hybrid.TextWeight
-}
-
-func overridesHybridCandidateMultiplier(cfg *agents.MemorySearchConfig) int {
-	if cfg == nil || cfg.Query == nil || cfg.Query.Hybrid == nil {
-		return 0
-	}
-	return cfg.Query.Hybrid.CandidateMultiplier
-}
-
-func defaultsHybridCandidateMultiplier(cfg *MemorySearchConfig) int {
-	if cfg == nil || cfg.Query == nil || cfg.Query.Hybrid == nil {
-		return 0
-	}
-	return cfg.Query.Hybrid.CandidateMultiplier
-}
-
-func overridesCacheEnabled(cfg *agents.MemorySearchConfig) *bool {
-	if cfg == nil || cfg.Cache == nil {
-		return nil
-	}
-	return cfg.Cache.Enabled
-}
-
-func defaultsCacheEnabled(cfg *MemorySearchConfig) *bool {
-	if cfg == nil || cfg.Cache == nil {
-		return nil
-	}
-	return cfg.Cache.Enabled
-}
-
-func overridesCacheMaxEntries(cfg *agents.MemorySearchConfig) int {
-	if cfg == nil || cfg.Cache == nil {
-		return 0
-	}
-	return cfg.Cache.MaxEntries
-}
-
-func defaultsCacheMaxEntries(cfg *MemorySearchConfig) int {
-	if cfg == nil || cfg.Cache == nil {
-		return 0
-	}
-	return cfg.Cache.MaxEntries
-}
-
-func overridesRemoteBaseURL(cfg *agents.MemorySearchConfig) string {
-	if cfg == nil || cfg.Remote == nil {
-		return ""
-	}
-	return cfg.Remote.BaseURL
-}
-
-func defaultsRemoteBaseURL(cfg *MemorySearchConfig) string {
-	if cfg == nil || cfg.Remote == nil {
-		return ""
-	}
-	return cfg.Remote.BaseURL
-}
-
-func overridesRemoteAPIKey(cfg *agents.MemorySearchConfig) string {
-	if cfg == nil || cfg.Remote == nil {
-		return ""
-	}
-	return cfg.Remote.APIKey
-}
-
-func defaultsRemoteAPIKey(cfg *MemorySearchConfig) string {
-	if cfg == nil || cfg.Remote == nil {
-		return ""
-	}
-	return cfg.Remote.APIKey
-}
-
-func overridesRemoteHeaders(cfg *agents.MemorySearchConfig) map[string]string {
-	if cfg == nil || cfg.Remote == nil {
-		return nil
-	}
-	return cfg.Remote.Headers
-}
-
-func defaultsRemoteHeaders(cfg *MemorySearchConfig) map[string]string {
-	if cfg == nil || cfg.Remote == nil {
-		return nil
-	}
-	return cfg.Remote.Headers
-}
-
-func hasRemoteOverrides(cfg *agents.MemorySearchConfig) bool {
-	if cfg == nil || cfg.Remote == nil {
-		return false
-	}
-	return cfg.Remote.BaseURL != "" || cfg.Remote.APIKey != "" || len(cfg.Remote.Headers) > 0
-}
-
-func hasRemoteDefaults(cfg *MemorySearchConfig) bool {
-	if cfg == nil || cfg.Remote == nil {
-		return false
-	}
-	return cfg.Remote.BaseURL != "" || cfg.Remote.APIKey != "" || len(cfg.Remote.Headers) > 0
-}
-
-func overridesBatchEnabled(cfg *agents.MemorySearchConfig) *bool {
-	if cfg == nil || cfg.Remote == nil || cfg.Remote.Batch == nil {
-		return nil
-	}
-	return cfg.Remote.Batch.Enabled
-}
-
-func defaultsBatchEnabled(cfg *MemorySearchConfig) *bool {
-	if cfg == nil || cfg.Remote == nil || cfg.Remote.Batch == nil {
-		return nil
-	}
-	return cfg.Remote.Batch.Enabled
-}
-
-func overridesBatchWait(cfg *agents.MemorySearchConfig) *bool {
-	if cfg == nil || cfg.Remote == nil || cfg.Remote.Batch == nil {
-		return nil
-	}
-	return cfg.Remote.Batch.Wait
-}
-
-func defaultsBatchWait(cfg *MemorySearchConfig) *bool {
-	if cfg == nil || cfg.Remote == nil || cfg.Remote.Batch == nil {
-		return nil
-	}
-	return cfg.Remote.Batch.Wait
-}
-
-func overridesBatchConcurrency(cfg *agents.MemorySearchConfig) int {
-	if cfg == nil || cfg.Remote == nil || cfg.Remote.Batch == nil {
-		return 0
-	}
-	return cfg.Remote.Batch.Concurrency
-}
-
-func defaultsBatchConcurrency(cfg *MemorySearchConfig) int {
-	if cfg == nil || cfg.Remote == nil || cfg.Remote.Batch == nil {
-		return 0
-	}
-	return cfg.Remote.Batch.Concurrency
-}
-
-func overridesBatchPoll(cfg *agents.MemorySearchConfig) int {
-	if cfg == nil || cfg.Remote == nil || cfg.Remote.Batch == nil {
-		return 0
-	}
-	return cfg.Remote.Batch.PollIntervalMs
-}
-
-func defaultsBatchPoll(cfg *MemorySearchConfig) int {
-	if cfg == nil || cfg.Remote == nil || cfg.Remote.Batch == nil {
-		return 0
-	}
-	return cfg.Remote.Batch.PollIntervalMs
-}
-
-func overridesBatchTimeout(cfg *agents.MemorySearchConfig) int {
-	if cfg == nil || cfg.Remote == nil || cfg.Remote.Batch == nil {
-		return 0
-	}
-	return cfg.Remote.Batch.TimeoutMinutes
-}
-
-func defaultsBatchTimeout(cfg *MemorySearchConfig) int {
-	if cfg == nil || cfg.Remote == nil || cfg.Remote.Batch == nil {
-		return 0
-	}
-	return cfg.Remote.Batch.TimeoutMinutes
+		return f
+	}
+	f.enabled = cfg.Enabled
+	f.provider = cfg.Provider
+	f.model = cfg.Model
+	f.fallback = cfg.Fallback
+	f.sources = cfg.Sources
+	f.extraPaths = cfg.ExtraPaths
+	if cfg.Experimental != nil {
+		f.sessionMemory = cfg.Experimental.SessionMemory
+	}
+	if cfg.Store != nil && cfg.Store.Vector != nil {
+		f.vectorEnabled = cfg.Store.Vector.Enabled
+		f.vectorExtension = cfg.Store.Vector.ExtensionPath
+	}
+	if cfg.Chunking != nil {
+		f.chunkTokens = cfg.Chunking.Tokens
+		f.chunkOverlap = cfg.Chunking.Overlap
+	}
+	if cfg.Sync != nil {
+		f.syncOnStart = cfg.Sync.OnSessionStart
+		f.syncOnSearch = cfg.Sync.OnSearch
+		f.syncWatch = cfg.Sync.Watch
+		f.syncWatchDebounce = cfg.Sync.WatchDebounceMs
+		f.syncInterval = cfg.Sync.IntervalMinutes
+		if cfg.Sync.Sessions != nil {
+			f.syncDeltaBytes = cfg.Sync.Sessions.DeltaBytes
+			f.syncDeltaMessages = cfg.Sync.Sessions.DeltaMessages
+			f.syncRetentionDays = cfg.Sync.Sessions.RetentionDays
+		}
+	}
+	if cfg.Query != nil {
+		f.queryMaxResults = cfg.Query.MaxResults
+		f.queryMinScore = cfg.Query.MinScore
+		f.queryMaxInjectedChars = cfg.Query.MaxInjectedChars
+		if cfg.Query.Hybrid != nil {
+			f.hybridEnabled = cfg.Query.Hybrid.Enabled
+			f.hybridVectorWeight = cfg.Query.Hybrid.VectorWeight
+			f.hybridTextWeight = cfg.Query.Hybrid.TextWeight
+			f.hybridCandidateMultiplier = cfg.Query.Hybrid.CandidateMultiplier
+		}
+	}
+	if cfg.Cache != nil {
+		f.cacheEnabled = cfg.Cache.Enabled
+		f.cacheMaxEntries = cfg.Cache.MaxEntries
+	}
+	if cfg.Remote != nil {
+		f.remoteBaseURL = cfg.Remote.BaseURL
+		f.remoteAPIKey = cfg.Remote.APIKey
+		f.remoteHeaders = cfg.Remote.Headers
+		f.hasRemote = cfg.Remote.BaseURL != "" || cfg.Remote.APIKey != "" || len(cfg.Remote.Headers) > 0
+		if cfg.Remote.Batch != nil {
+			f.batchEnabled = cfg.Remote.Batch.Enabled
+			f.batchWait = cfg.Remote.Batch.Wait
+			f.batchConcurrency = cfg.Remote.Batch.Concurrency
+			f.batchPoll = cfg.Remote.Batch.PollIntervalMs
+			f.batchTimeout = cfg.Remote.Batch.TimeoutMinutes
+		}
+	}
+	return f
 }
