@@ -179,6 +179,13 @@ func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (To
 
 	timeout := time.Until(p.ExpiresAt)
 	if timeout <= 0 {
+		// Best-effort snapshot update so clients stop showing approval UI.
+		go oc.emitApprovalSnapshotDecision(approvalID, ToolApprovalDecision{
+			Approve:   false,
+			Reason:    "expired",
+			DecidedAt: time.Now(),
+			DecidedBy: oc.UserLogin.UserMXID,
+		})
 		oc.dropToolApprovalLocked(approvalID)
 		return ToolApprovalDecision{}, p, false
 	}
@@ -194,9 +201,24 @@ func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (To
 		oc.dropToolApprovalLocked(approvalID)
 		return decision, p, true
 	case <-timer.C:
+		// Timeout: update the approval snapshot so the UI can stop showing action buttons,
+		// even if the tool is no longer waiting (e.g. on reconnect).
+		go oc.emitApprovalSnapshotDecision(approvalID, ToolApprovalDecision{
+			Approve:   false,
+			Reason:    "timeout",
+			DecidedAt: time.Now(),
+			DecidedBy: oc.UserLogin.UserMXID,
+		})
 		oc.dropToolApprovalLocked(approvalID)
 		return ToolApprovalDecision{}, p, false
 	case <-ctx.Done():
+		// Context cancellation: treat as expired for UI purposes.
+		go oc.emitApprovalSnapshotDecision(approvalID, ToolApprovalDecision{
+			Approve:   false,
+			Reason:    "cancelled",
+			DecidedAt: time.Now(),
+			DecidedBy: oc.UserLogin.UserMXID,
+		})
 		oc.dropToolApprovalLocked(approvalID)
 		return ToolApprovalDecision{}, p, false
 	}
@@ -243,10 +265,16 @@ func (oc *AIClient) emitApprovalSnapshotDecision(approvalID string, decision Too
 		toolPart["output"] = map[string]any{"message": "Approved"}
 	} else {
 		reason := strings.TrimSpace(decision.Reason)
-		if reason == "" {
-			reason = "Denied"
+		switch strings.ToLower(reason) {
+		case "timeout", "expired", "cancelled", "canceled":
+			body = fmt.Sprintf("Approval expired for %s.", toolName)
+			toolPart["errorText"] = "Expired"
+		default:
+			if reason == "" {
+				reason = "Denied"
+			}
+			toolPart["errorText"] = reason
 		}
-		toolPart["errorText"] = reason
 	}
 
 	uiMessage := map[string]any{

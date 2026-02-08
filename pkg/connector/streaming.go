@@ -839,6 +839,8 @@ func (oc *AIClient) emitUIToolApprovalRequest(
 		"type":       "tool-approval-request",
 		"approvalId": approvalID,
 		"toolCallId": toolCallID,
+		"toolName":   toolName,
+		"ttlSeconds": ttlSeconds,
 	})
 
 	// Back-compat fallback: many clients either don't support or don't render our
@@ -878,6 +880,10 @@ func (oc *AIClient) emitUIToolApprovalRequest(
 		approvalID,
 		expires,
 	)
+	expiresAtMs := int64(0)
+	if ttlSeconds > 0 {
+		expiresAtMs = time.Now().Add(time.Duration(ttlSeconds) * time.Second).UnixMilli()
+	}
 
 	uiMessage := map[string]any{
 		"id":   "approval:" + approvalID,
@@ -886,6 +892,8 @@ func (oc *AIClient) emitUIToolApprovalRequest(
 			"turn_id":      state.turnID,
 			"approval_id":  approvalID,
 			"tool_call_id": toolCallID,
+			// Allows clients to disable the UI locally even if the snapshot isn't edited on timeout.
+			"approval_expires_at_ms": expiresAtMs,
 		},
 		"parts": []map[string]any{
 			{
@@ -894,7 +902,8 @@ func (oc *AIClient) emitUIToolApprovalRequest(
 				"toolCallId": toolCallID,
 				"state":      "approval-requested",
 				"approval": map[string]any{
-					"id": approvalID,
+					"id":          approvalID,
+					"expiresAtMs": expiresAtMs,
 				},
 			},
 		},
