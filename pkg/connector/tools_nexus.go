@@ -75,7 +75,7 @@ func executeNexusRoute(ctx context.Context, route string, args map[string]any) (
 	baseURL := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
 	if baseURL == "" {
 		mcpEndpoint := strings.TrimRight(strings.TrimSpace(cfg.MCPEndpoint), "/")
-		baseURL = strings.TrimSuffix(mcpEndpoint, nexusMCPDefaultPath)
+		baseURL = strings.TrimSuffix(mcpEndpoint, mcpDefaultPath)
 		baseURL = strings.TrimRight(baseURL, "/")
 	}
 	if baseURL == "" {

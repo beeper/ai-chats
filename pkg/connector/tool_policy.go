@@ -74,9 +74,6 @@ func (oc *AIClient) isToolAvailable(meta *PortalMetadata, toolName string) (bool
 		}
 	}
 	if oc.isMCPToolName(toolName) {
-		if oc.isNexusScopedMCPTool(toolName) && !canUseNexusToolsForAgent(meta) {
-			return false, SourceAgentPolicy, "Nexus tools are restricted to the Nexus agent"
-		}
 		if !oc.isMCPConfigured() {
 			return false, SourceProviderLimit, "MCP tool bridge is not configured"
 		}
@@ -176,8 +173,8 @@ func (oc *AIClient) toolNamesForPortal(meta *PortalMetadata) []string {
 		}
 	}
 	if oc != nil && oc.isMCPConfigured() {
-		discoveryCtx, cancel := context.WithTimeout(context.Background(), nexusMCPDiscoveryTimeout)
-		for _, name := range oc.nexusDiscoveredToolNames(discoveryCtx) {
+		discoveryCtx, cancel := context.WithTimeout(context.Background(), mcpDiscoveryTimeout)
+		for _, name := range oc.mcpDiscoveredToolNames(discoveryCtx) {
 			nameSet[name] = struct{}{}
 		}
 		cancel()

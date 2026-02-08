@@ -79,10 +79,10 @@ func fnMCPList(ce *commands.Event, client *AIClient) {
 	toolCounts := map[string]int{}
 	ctx, cancel := context.WithTimeout(ce.Ctx, 3*time.Second)
 	defer cancel()
-	defs, err := client.nexusMCPToolDefinitions(ctx)
+	defs, err := client.mcpToolDefinitions(ctx)
 	if err == nil {
 		for _, def := range defs {
-			name := client.cachedNexusMCPServerForTool(def.Name)
+			name := client.cachedMCPServerForTool(def.Name)
 			if name == "" {
 				continue
 			}
@@ -251,7 +251,7 @@ func fnMCPAdd(ce *commands.Event, client *AIClient) {
 		ce.Reply("Failed to save MCP server: %s", err)
 		return
 	}
-	client.invalidateNexusMCPToolCache()
+	client.invalidateMCPToolCache()
 
 	ce.Reply("MCP server '%s' saved (%s). Run `!ai mcp connect %s` to connect.", name, mcpServerTargetLabel(cfg), name)
 }
@@ -307,7 +307,7 @@ func (oc *AIClient) verifyMCPServerConnection(ctx context.Context, server namedM
 	callCtx := ctx
 	var cancel context.CancelFunc
 	if _, hasDeadline := callCtx.Deadline(); !hasDeadline {
-		timeout := oc.nexusRequestTimeout()
+		timeout := oc.mcpRequestTimeout()
 		if timeout > 10*time.Second {
 			timeout = 10 * time.Second
 		}
@@ -316,7 +316,7 @@ func (oc *AIClient) verifyMCPServerConnection(ctx context.Context, server namedM
 	if cancel != nil {
 		defer cancel()
 	}
-	defs, err := oc.fetchNexusMCPToolDefinitionsForServer(callCtx, server)
+	defs, err := oc.fetchMCPToolsForServer(callCtx, server)
 	if err != nil {
 		return 0, err
 	}
@@ -389,7 +389,7 @@ func fnMCPConnect(ce *commands.Event, client *AIClient) {
 			ce.Reply("Failed to update MCP server '%s': %s", target.Name, saveErr)
 			return
 		}
-		client.invalidateNexusMCPToolCache()
+		client.invalidateMCPToolCache()
 		sendMCPAuthURLNotice(client, ce, namedMCPServer{Name: target.Name, Config: cfg, Source: "login"})
 		ce.Reply("MCP server '%s' is missing a token. Add one and run `!ai mcp connect %s <token>`.", target.Name, target.Name)
 		return
@@ -404,7 +404,7 @@ func fnMCPConnect(ce *commands.Event, client *AIClient) {
 			ce.Reply("Failed to save MCP server '%s': %s", target.Name, saveErr)
 			return
 		}
-		client.invalidateNexusMCPToolCache()
+		client.invalidateMCPToolCache()
 		if mcpCallLikelyAuthError(connectErr) {
 			sendMCPAuthURLNotice(client, ce, namedMCPServer{Name: target.Name, Config: cfg, Source: "login"})
 		}
@@ -417,7 +417,7 @@ func fnMCPConnect(ce *commands.Event, client *AIClient) {
 		ce.Reply("Failed to save MCP server '%s': %s", target.Name, err)
 		return
 	}
-	client.invalidateNexusMCPToolCache()
+	client.invalidateMCPToolCache()
 	ce.Reply("Connected MCP server '%s' (%d tools discovered).", target.Name, count)
 }
 
@@ -453,7 +453,7 @@ func fnMCPDisconnect(ce *commands.Event, client *AIClient) {
 		ce.Reply("Failed to disconnect MCP server '%s': %s", target.Name, err)
 		return
 	}
-	client.invalidateNexusMCPToolCache()
+	client.invalidateMCPToolCache()
 	ce.Reply("Disconnected MCP server '%s'.", target.Name)
 }
 
@@ -493,6 +493,6 @@ func fnMCPRemove(ce *commands.Event, client *AIClient) {
 		ce.Reply("Failed to remove MCP server '%s': %s", target.Name, err)
 		return
 	}
-	client.invalidateNexusMCPToolCache()
+	client.invalidateMCPToolCache()
 	ce.Reply("Removed MCP server '%s'.", target.Name)
 }

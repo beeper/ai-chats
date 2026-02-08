@@ -79,7 +79,7 @@ func TestNormalizeMCPServerConfigStdioDefaults(t *testing.T) {
 	}
 }
 
-func TestActiveNexusMCPServersFiltersKinds(t *testing.T) {
+func TestActiveMCPServersIncludesAllKinds(t *testing.T) {
 	oc := testAIClientWithMCPServers(map[string]MCPServerConfig{
 		"nexus": {
 			Endpoint:  "https://nexum.clay.earth/mcp",
@@ -98,48 +98,5 @@ func TestActiveNexusMCPServersFiltersKinds(t *testing.T) {
 	active := oc.activeMCPServers()
 	if len(active) != 2 {
 		t.Fatalf("expected 2 active MCP servers, got %d", len(active))
-	}
-
-	nexus := oc.activeNexusMCPServers()
-	if len(nexus) != 1 {
-		t.Fatalf("expected 1 active nexus MCP server, got %d", len(nexus))
-	}
-	if nexus[0].Name != "nexus" {
-		t.Fatalf("expected nexus server name, got %q", nexus[0].Name)
-	}
-}
-
-func TestIsNexusScopedMCPTool(t *testing.T) {
-	oc := testAIClientWithMCPServers(map[string]MCPServerConfig{
-		"nexus": {
-			Endpoint:  "https://nexum.clay.earth/mcp",
-			AuthType:  "none",
-			Connected: true,
-			Kind:      mcpServerKindNexus,
-		},
-		"docs": {
-			Endpoint:  "https://docs.example.com/mcp",
-			AuthType:  "none",
-			Connected: true,
-			Kind:      mcpServerKindGeneric,
-		},
-	})
-
-	oc.nexusMCPToolsMu.Lock()
-	oc.nexusMCPToolSet = map[string]struct{}{
-		"searchContacts": {},
-		"doc_search":     {},
-	}
-	oc.nexusMCPToolServer = map[string]string{
-		"searchContacts": "nexus",
-		"doc_search":     "docs",
-	}
-	oc.nexusMCPToolsMu.Unlock()
-
-	if !oc.isNexusScopedMCPTool("searchContacts") {
-		t.Fatalf("expected searchContacts to be Nexus-scoped")
-	}
-	if oc.isNexusScopedMCPTool("doc_search") {
-		t.Fatalf("expected doc_search to be generic MCP-scoped")
 	}
 }

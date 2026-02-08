@@ -196,7 +196,7 @@ func (oc *AIClient) loginMCPServers() map[string]MCPServerConfig {
 	return out
 }
 
-func (oc *AIClient) configNexusMCPServer() (MCPServerConfig, bool) {
+func (oc *AIClient) configDefaultMCPServer() (MCPServerConfig, bool) {
 	if oc == nil || oc.connector == nil {
 		return MCPServerConfig{}, false
 	}
@@ -204,7 +204,7 @@ func (oc *AIClient) configNexusMCPServer() (MCPServerConfig, bool) {
 	if !nexusConfigured(cfg) {
 		return MCPServerConfig{}, false
 	}
-	endpoint := nexusMCPEndpoint(cfg)
+	endpoint := mcpEndpointFromNexusConfig(cfg)
 	if endpoint == "" {
 		return MCPServerConfig{}, false
 	}
@@ -237,7 +237,7 @@ func (oc *AIClient) configuredMCPServers() []namedMCPServer {
 		servers = append(servers, namedMCPServer{Name: name, Config: cfg, Source: "login"})
 	}
 	if _, hasNexusOverride := loginServers[mcpDefaultServerName]; !hasNexusOverride {
-		if cfg, ok := oc.configNexusMCPServer(); ok {
+		if cfg, ok := oc.configDefaultMCPServer(); ok {
 			servers = append(servers, namedMCPServer{Name: mcpDefaultServerName, Config: cfg, Source: "config"})
 		}
 	}
@@ -308,26 +308,14 @@ func (oc *AIClient) hasConnectedClayMCP() bool {
 	return true
 }
 
-func (oc *AIClient) activeNexusMCPServers() []namedMCPServer {
-	servers := oc.activeMCPServers()
-	active := make([]namedMCPServer, 0, len(servers))
-	for _, server := range servers {
-		if normalizeMCPServerKind(server.Config.Kind) == mcpServerKindNexus {
-			active = append(active, server)
-		}
-	}
-	sortNamedMCPServers(active)
-	return active
-}
-
-func (oc *AIClient) invalidateNexusMCPToolCache() {
+func (oc *AIClient) invalidateMCPToolCache() {
 	if oc == nil {
 		return
 	}
-	oc.nexusMCPToolsMu.Lock()
-	oc.nexusMCPTools = nil
-	oc.nexusMCPToolSet = nil
-	oc.nexusMCPToolServer = nil
-	oc.nexusMCPToolsFetchedAt = time.Time{}
-	oc.nexusMCPToolsMu.Unlock()
+	oc.mcpToolsMu.Lock()
+	oc.mcpTools = nil
+	oc.mcpToolSet = nil
+	oc.mcpToolServer = nil
+	oc.mcpToolsFetchedAt = time.Time{}
+	oc.mcpToolsMu.Unlock()
 }

@@ -340,11 +340,8 @@ func (oc *AIClient) executeBuiltinTool(ctx context.Context, portal *bridgev2.Por
 	}
 
 	// Route MCP tools through the MCP bridge when configured.
-	if oc.shouldUseNexusMCPTool(ctx, toolName) {
-		if oc.isNexusScopedMCPTool(toolName) && !canUseNexusToolsForAgent(meta) {
-			return "", fmt.Errorf("tool %s is restricted to the Nexus agent", toolName)
-		}
-		return oc.executeNexusMCPTool(ctx, toolName, args)
+	if oc.shouldUseMCPTool(ctx, toolName) {
+		return oc.executeMCPTool(ctx, toolName, args)
 	}
 	// Check if this is a Boss room or a session tool - use boss tool executor
 	if (meta != nil && hasBossAgent(meta)) || oc.isBuilderRoom(portal) || tools.IsSessionTool(toolName) || tools.IsBossTool(toolName) {

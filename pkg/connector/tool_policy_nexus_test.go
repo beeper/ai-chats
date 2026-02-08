@@ -10,7 +10,7 @@ func boolPtr(v bool) *bool {
 	return &v
 }
 
-func TestNexusToolsRestrictedToNexusAgent(t *testing.T) {
+func TestNexusMCPToolsAvailableForAllAgents(t *testing.T) {
 	oc := &AIClient{
 		connector: &OpenAIConnector{
 			Config: Config{
@@ -32,15 +32,10 @@ func TestNexusToolsRestrictedToNexusAgent(t *testing.T) {
 		},
 	}
 
-	available, source, reason := oc.isToolAvailable(meta, "searchContacts")
-	if available {
-		t.Fatalf("expected searchContacts to be unavailable for beeper agent")
-	}
-	if source != SourceAgentPolicy {
-		t.Fatalf("expected SourceAgentPolicy, got %q", source)
-	}
-	if reason == "" {
-		t.Fatalf("expected non-empty reason for restricted tool")
+	// MCP tools are now available to all agents (no scoping).
+	available, _, reason := oc.isToolAvailable(meta, "searchContacts")
+	if !available {
+		t.Fatalf("expected searchContacts to be available for beeper agent (MCP scoping removed), got reason: %s", reason)
 	}
 }
 

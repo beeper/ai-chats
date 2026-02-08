@@ -336,12 +336,12 @@ type AIClient struct {
 	modelCatalogLoaded bool
 	modelCatalogCache  []ModelCatalogEntry
 
-	// Nexus MCP tool cache
-	nexusMCPToolsMu        sync.Mutex
-	nexusMCPTools          []ToolDefinition
-	nexusMCPToolSet        map[string]struct{}
-	nexusMCPToolServer     map[string]string
-	nexusMCPToolsFetchedAt time.Time
+	// MCP tool cache
+	mcpToolsMu        sync.Mutex
+	mcpTools          []ToolDefinition
+	mcpToolSet        map[string]struct{}
+	mcpToolServer     map[string]string
+	mcpToolsFetchedAt time.Time
 
 	// Tool approvals (e.g. OpenAI MCP approval requests)
 	toolApprovalsMu sync.Mutex

@@ -68,7 +68,7 @@ func clayEndpointForClient(client *AIClient) string {
 		}
 	}
 	if client.connector != nil && client.connector.Config.Tools.Nexus != nil {
-		endpoint := strings.TrimSpace(nexusMCPEndpoint(client.connector.Config.Tools.Nexus))
+		endpoint := strings.TrimSpace(mcpEndpointFromNexusConfig(client.connector.Config.Tools.Nexus))
 		if endpoint != "" {
 			return endpoint
 		}
@@ -157,7 +157,7 @@ func fnClayConnect(ce *commands.Event, client *AIClient, tokenOverride string) {
 			ce.Reply("Failed to save Clay MCP config: %s", err)
 			return
 		}
-		client.invalidateNexusMCPToolCache()
+		client.invalidateMCPToolCache()
 		sendMCPAuthURLNotice(client, ce, namedMCPServer{Name: mcpDefaultServerName, Config: cfg, Source: "login"})
 		ce.Reply("Clay MCP needs a token. Run `!ai clay <token>` to connect.")
 		return
@@ -172,7 +172,7 @@ func fnClayConnect(ce *commands.Event, client *AIClient, tokenOverride string) {
 			ce.Reply("Failed to save Clay MCP config: %s", saveErr)
 			return
 		}
-		client.invalidateNexusMCPToolCache()
+		client.invalidateMCPToolCache()
 		if mcpCallLikelyAuthError(connectErr) {
 			sendMCPAuthURLNotice(client, ce, namedMCPServer{Name: mcpDefaultServerName, Config: cfg, Source: "login"})
 		}
@@ -185,7 +185,7 @@ func fnClayConnect(ce *commands.Event, client *AIClient, tokenOverride string) {
 		ce.Reply("Failed to save Clay MCP config: %s", err)
 		return
 	}
-	client.invalidateNexusMCPToolCache()
+	client.invalidateMCPToolCache()
 	ce.Reply("Clay MCP connected (%d tools discovered). Use `!ai agent nexus` in a room to use Nexus-only tools.", count)
 }
 
@@ -212,7 +212,7 @@ func fnClayDisconnect(ce *commands.Event, client *AIClient) {
 		ce.Reply("Failed to disconnect Clay MCP: %s", err)
 		return
 	}
-	client.invalidateNexusMCPToolCache()
+	client.invalidateMCPToolCache()
 	ce.Reply("Clay MCP disconnected")
 }
 
@@ -233,6 +233,6 @@ func fnClayRemove(ce *commands.Event, client *AIClient) {
 		ce.Reply("Failed to remove Clay MCP login override: %s", err)
 		return
 	}
-	client.invalidateNexusMCPToolCache()
+	client.invalidateMCPToolCache()
 	ce.Reply("Clay MCP login override removed")
 }

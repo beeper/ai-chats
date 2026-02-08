@@ -1,53 +1,33 @@
-# Bridge AI chats into Beeper
+# AI Bridge
 
-Highly experimental Matrix ↔︎ AI bridge for Beeper, built on top of [mautrix/bridgev2](https://pkg.go.dev/maunium.net/go/mautrix/bridgev2). Supports any OpenAI-compatible provider, including OpenRouter.
+AI Bridge is a Matrix-ish bridge for Beeper that brings AI Chats into your favorite chat app.
 
-Currently best works with alpha versions of Beeper Desktop. Beeper Plus users can use it without providing their own keys by picking the Beeper AI provider when adding an account.
+Batteries included - one click setup (for [Beeper Plus](https://www.beeper.com/plus)), all models. It also comes with a faithful Go port of [OpenClaw](https://github.com/openclaw/openclaw) (formerly knows as Moltbot (formerly known as Clawdbot)) called Beep.
+
+Coming soon to Beeper Desktop as an experiment. Join the [Developer Community](beeper://connect) on [Matrix](https://matrix.to/#/#beeper-developers:beeper.com?via=beeper.com) for early access.
+
+Connect all your chats with one click and manage your inbox with agents. Supports image generation, reminders, web search, memory, Clay.earth integration. Create basic AI Chats to talk to models with no tools and customizable system prompt.
+
+Made by humans using agentic coding.
+
+## Status
+
+Experimental Matrix ↔ AI bridge for Beeper, built on top of [mautrix/bridgev2](https://pkg.go.dev/maunium.net/go/mautrix/bridgev2). Works best with alpha versions of Beeper Desktop. Supports any OpenAI-compatible provider (including OpenRouter).
 
 ## Highlights
 
-- **Multi-provider routing** with prefixed model IDs (for example `openai/o3-mini`, `openai/gpt-5.2`, `anthropic/claude-sonnet-4.5` via OpenRouter)
-- **Per-model contacts** so each model appears as its own chat contact
-- **Streaming responses** with status updates
-- **Multimodal input** (images, PDFs, audio, video) when the selected model supports it
-- **Per-room settings** for model, temperature, system prompt, context limits, and tools
-- **User-managed keys** via login flow, plus optional Beeper-managed credentials
-- **OpenClaw-style memory search** over `MEMORY.md` + `memory/*.md` stored in the bridge DB
-- **Virtual file tools** (`read`, `write`, `edit`, `ls`, `find`, `grep`) backed by SQLite
+- Multi-provider routing with prefixed model IDs (for example `openai/...`, `anthropic/...`, etc)
+- Per-model chats (each model shows up as its own contact)
+- Streaming responses
+- Multimodal input (images, PDFs, audio, video) when supported by the model
+- Per-room settings (model, temperature, system prompt, context limits, tools)
+- Login flows for Beeper, Magic Proxy, or Custom (BYOK)
+- OpenClaw-style memory search (stored in the bridge DB)
 
-## Memory
+## Docs
 
-Memory is DB-only (SQLite) and modeled after OpenClaw:
-- `memory_search` returns snippet results with path + line ranges.
-- `memory_get` reads line ranges from `MEMORY.md` or `memory/*.md`.
-- Memory files are stored in the bridge DB (not on disk) and are per-agent.
-- Optional session transcript indexing can be enabled via `network.memory_search.experimental.session_memory`.
-
-## Login flows
-
-There are three login flows:
-- **Beeper**: Select a Beeper domain (or set `network.beeper.base_url` in config) and provide a **Beeper AI key** unless it is already in `config.yaml`.
-- **Magic Proxy**: Provide a Magic Proxy link (the token is taken from the URL fragment after `#`).
-- **Custom**: Provide API keys for the services you want to use (OpenRouter/OpenAI plus optional search/fetch providers). Base URLs are configured only in `config.yaml`.
-
-Base URL overrides live in config:
-- `network.providers.openai.base_url`
-- `network.providers.openrouter.base_url`
-
-## When to use what
-
-Common to all methods:
-- **One-click setup** for all Beeper Plus users (uses Beeper AI servers, rate limits apply)
-- **BYOK** for any OpenAI Responses API compatible provider
-  - Supports local LLM providers when running with On-Device or Self-Hosted
-
-| Method | Sync | Where requests run | Local LLMs | Notes |
-| --- | --- | --- | --- | --- |
-| Beeper Cloud | Syncs to all devices | Beeper servers | No | Good default when you want full sync and zero setup |
-| Beeper On-Device | No sync | Your device | Yes | Everything stays on-device; Beeper never sees your messages |
-| Beeper Self-Hosted | Syncs to all devices, encrypted | Your bridge host | Yes* | Beeper never sees your messages |
-
-* Local LLMs require an OpenAI-compatible provider endpoint.
+- `docs/matrix-ai-uimessage-spec-v1.md`: Matrix transport profile for AI SDK `UIMessage` + streaming `UIMessageChunk`s.
+- `docs/matrix-ai-events-and-approvals-spec-v1.md`: `com.beeper.ai.*` event types, content keys, and the tool approval flow.
 
 ## Build
 

@@ -69,8 +69,8 @@ func executeNexusContacts(ctx context.Context, args map[string]any) (string, err
 
 	if btc := GetBridgeToolContext(ctx); btc != nil && btc.Client != nil {
 		// Match legacy behavior: if Nexus MCP is configured, prefer MCP execution.
-		if btc.Client.shouldUseNexusMCPTool(ctx, target.toolName) {
-			return btc.Client.executeNexusMCPTool(ctx, target.toolName, payload)
+		if btc.Client.shouldUseMCPTool(ctx, target.toolName) {
+			return btc.Client.executeMCPTool(ctx, target.toolName, payload)
 		}
 	}
 	if strings.TrimSpace(target.route) == "" {

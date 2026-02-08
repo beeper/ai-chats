@@ -3,6 +3,9 @@
 ## Status
 - Proposed v1 (implementation target)
 - Scope: Matrix transport profile for Vercel AI SDK `UIMessage` and `UIMessageChunk`
+- Requires homeserver and client support (custom ephemeral events + rendering/consumption).
+- Beeper is building experimental support for this profile. It is highly experimental and might never get a public release.
+- See also: `docs/matrix-ai-events-and-approvals-spec-v1.md` for the broader `com.beeper.ai.*` event/approval surface.
 
 ## Upstream Reference
 - Vercel AI SDK source inspected at commit `ff7dd528f3933f67bf4568126db0a81cd4a47a96` (2026-02-06 UTC)
@@ -91,6 +94,30 @@ Consumer requirements:
 - MUST accept and safely handle all valid AI SDK chunk types.
 - MUST ignore unknown future chunk types without failing the turn.
 - MUST NOT persist `data-*` chunks with `transient: true`.
+
+### 4.1 Bridge-specific `data-*` chunks
+
+This bridge emits some `data-*` chunks in `com.beeper.ai.stream_event.part` for UI coordination. Clients that do not recognize them SHOULD ignore them.
+
+- `data-tool-progress` (transient)
+  - `data.call_id: string`
+  - `data.tool_name: string`
+  - `data.status: string`
+  - `data.progress?: { message?: string, percent?: number }`
+  - `transient: true`
+- `data-tool-call-event`
+  - `id: "tool-call-event:<toolCallId>"`
+  - `data.toolCallId: string`
+  - `data.callEventId: string` (Matrix event ID for the `com.beeper.ai.tool_call` projection)
+- `data-image_generation_partial` (transient)
+  - `data.item_id: string` (provider stream item id)
+  - `data.index: number` (partial index)
+  - `data.image_b64: string` (base64 image bytes; may be large)
+  - `transient: true`
+- `data-annotation` (transient)
+  - `data.annotation: any` (provider annotation payload)
+  - `data.index: number`
+  - `transient: true`
 
 ## 5. UIMessage Canonical Shape
 

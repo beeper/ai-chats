@@ -63,8 +63,8 @@ func (oc *AIClient) buildAvailableTools(meta *PortalMetadata) []ToolInfo {
 				toolType = string(metaTool.Type)
 			}
 		} else if oc != nil {
-			lookupCtx, cancel := context.WithTimeout(context.Background(), nexusMCPDiscoveryTimeout)
-			if dynamicTool, ok := oc.lookupNexusMCPToolDefinition(lookupCtx, name); ok {
+			lookupCtx, cancel := context.WithTimeout(context.Background(), mcpDiscoveryTimeout)
+			if dynamicTool, ok := oc.lookupMCPToolDefinition(lookupCtx, name); ok {
 				description = dynamicTool.Description
 				toolType = string(ToolTypeMCP)
 			}
