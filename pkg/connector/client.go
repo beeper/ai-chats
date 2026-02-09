@@ -318,7 +318,7 @@ type AIClient struct {
 	queueTyping   map[id.RoomID]*TypingController
 
 	// OpenCode bridge (optional)
-	opencodeBridge  *opencodebridge.Bridge
+	opencodeBridge   *opencodebridge.Bridge
 	opencodeLocalsMu sync.Mutex
 	opencodeLocals   map[string]*openCodeLocalServer // abs-path → server ("" for config-driven default)
 

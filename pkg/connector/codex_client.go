@@ -106,15 +106,15 @@ func newCodexClient(login *bridgev2.UserLogin, connector *OpenAIConnector) (*Cod
 	}
 	log := login.Log.With().Str("component", "codex").Logger()
 	return &CodexClient{
-		UserLogin:     login,
-		connector:     connector,
-		log:           log,
-		notifCh:       make(chan codexNotif, 4096),
-		notifDone:     make(chan struct{}),
-		toolApprovals: make(map[string]*pendingToolApprovalCodex),
-		loadedThreads: make(map[string]bool),
-		activeTurns:   make(map[string]*codexActiveTurn),
-		turnSubs:      make(map[string]chan codexNotif),
+		UserLogin:       login,
+		connector:       connector,
+		log:             log,
+		notifCh:         make(chan codexNotif, 4096),
+		notifDone:       make(chan struct{}),
+		toolApprovals:   make(map[string]*pendingToolApprovalCodex),
+		loadedThreads:   make(map[string]bool),
+		activeTurns:     make(map[string]*codexActiveTurn),
+		turnSubs:        make(map[string]chan codexNotif),
 		activeRooms:     make(map[id.RoomID]bool),
 		pendingMessages: make(map[id.RoomID]*codexPendingMessage),
 	}, nil
@@ -746,6 +746,49 @@ func (cc *CodexClient) handleNotif(ctx context.Context, portal *bridgev2.Portal,
 		buf := cc.appendCodexToolOutput(state, toolCallID, p.Delta)
 		cc.emitUIToolOutputAvailable(ctx, portal, state, toolCallID, buf, true, true)
 
+	case "item/mcpToolCall/outputDelta":
+		var p struct {
+			Delta  string `json:"delta"`
+			ItemID string `json:"itemId"`
+			Tool   string `json:"tool"`
+			Thread string `json:"threadId"`
+			Turn   string `json:"turnId"`
+		}
+		_ = json.Unmarshal(evt.Params, &p)
+		if p.Thread != threadID || p.Turn != turnID {
+			return
+		}
+		toolCallID := strings.TrimSpace(p.ItemID)
+		toolName := strings.TrimSpace(p.Tool)
+		if toolName == "" {
+			toolName = "mcpToolCall"
+		}
+		if toolCallID == "" {
+			toolCallID = toolName
+		}
+		cc.ensureUIToolInputStart(ctx, portal, state, toolCallID, toolName, true, map[string]any{})
+		buf := cc.appendCodexToolOutput(state, toolCallID, p.Delta)
+		cc.emitUIToolOutputAvailable(ctx, portal, state, toolCallID, buf, true, true)
+
+	case "item/collabToolCall/outputDelta":
+		var p struct {
+			Delta  string `json:"delta"`
+			ItemID string `json:"itemId"`
+			Thread string `json:"threadId"`
+			Turn   string `json:"turnId"`
+		}
+		_ = json.Unmarshal(evt.Params, &p)
+		if p.Thread != threadID || p.Turn != turnID {
+			return
+		}
+		toolCallID := strings.TrimSpace(p.ItemID)
+		if toolCallID == "" {
+			toolCallID = "collabToolCall"
+		}
+		cc.ensureUIToolInputStart(ctx, portal, state, toolCallID, "collabToolCall", true, map[string]any{})
+		buf := cc.appendCodexToolOutput(state, toolCallID, p.Delta)
+		cc.emitUIToolOutputAvailable(ctx, portal, state, toolCallID, buf, true, true)
+
 	case "turn/diff/updated":
 		var p struct {
 			Thread string `json:"threadId"`
@@ -1086,6 +1129,13 @@ func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2
 			StartedAtMs:   time.Now().UnixMilli(),
 			CompletedAtMs: time.Now().UnixMilli(),
 		})
+		// Extract web search citations and emit source-url stream events.
+		if outputJSON, err := json.Marshal(it); err == nil {
+			collectToolOutputCitations(state, "webSearch", string(outputJSON))
+			for _, citation := range state.sourceCitations {
+				cc.emitUISourceURL(ctx, portal, state, citation)
+			}
+		}
 	case "imageView":
 		var it map[string]any
 		_ = json.Unmarshal(raw, &it)
@@ -2072,7 +2122,37 @@ func (cc *CodexClient) emitUIError(ctx context.Context, portal *bridgev2.Portal,
 	})
 }
 
+func (cc *CodexClient) emitUISourceURL(ctx context.Context, portal *bridgev2.Portal, state *streamingState, citation sourceCitation) {
+	if state == nil {
+		return
+	}
+	url := strings.TrimSpace(citation.URL)
+	if url == "" {
+		return
+	}
+	if state.uiSourceURLSeen[url] {
+		return
+	}
+	state.uiSourceURLSeen[url] = true
+	part := map[string]any{
+		"type":     "source-url",
+		"sourceId": fmt.Sprintf("source-url-%d", len(state.uiSourceURLSeen)),
+		"url":      url,
+	}
+	if title := strings.TrimSpace(citation.Title); title != "" {
+		part["title"] = title
+	}
+	if providerMeta := citationProviderMetadata(citation); len(providerMeta) > 0 {
+		part["providerMetadata"] = providerMeta
+	}
+	cc.emitStreamEvent(ctx, portal, state, part)
+}
+
 func (cc *CodexClient) emitUIFinish(ctx context.Context, portal *bridgev2.Portal, state *streamingState, model string, finishReason string) {
+	if state.uiFinished {
+		return
+	}
+	state.uiFinished = true
 	if state.uiTextID != "" {
 		cc.emitStreamEvent(ctx, portal, state, map[string]any{"type": "text-end", "id": state.uiTextID})
 		state.uiTextID = ""
@@ -2082,6 +2162,17 @@ func (cc *CodexClient) emitUIFinish(ctx context.Context, portal *bridgev2.Portal
 		state.uiReasoningID = ""
 	}
 	cc.emitUIStepFinish(ctx, portal, state)
+	// Finalize any un-finished tool calls before sending finish.
+	for toolCallID := range state.uiToolStarted {
+		if !state.uiToolOutputFinalized[toolCallID] {
+			cc.emitStreamEvent(ctx, portal, state, map[string]any{
+				"type":             "tool-output-error",
+				"toolCallId":       toolCallID,
+				"errorText":        "cancelled",
+				"providerExecuted": true,
+			})
+		}
+	}
 	cc.emitStreamEvent(ctx, portal, state, map[string]any{
 		"type":            "finish",
 		"finishReason":    finishReason,
@@ -2099,10 +2190,11 @@ func (cc *CodexClient) buildCanonicalUIMessage(state *streamingState, model stri
 	}
 	for _, tc := range state.toolCalls {
 		part := map[string]any{
-			"type":       "dynamic-tool",
-			"toolName":   tc.ToolName,
-			"toolCallId": tc.CallID,
-			"input":      tc.Input,
+			"type":             "dynamic-tool",
+			"toolName":         tc.ToolName,
+			"toolCallId":       tc.CallID,
+			"input":            tc.Input,
+			"providerExecuted": true,
 		}
 		if tc.ResultStatus == string(ResultStatusSuccess) {
 			part["state"] = "output-available"
@@ -2114,6 +2206,9 @@ func (cc *CodexClient) buildCanonicalUIMessage(state *streamingState, model stri
 			}
 		}
 		parts = append(parts, part)
+	}
+	if sourceParts := buildSourceParts(state.sourceCitations, state.sourceDocuments, nil); len(sourceParts) > 0 {
+		parts = append(parts, sourceParts...)
 	}
 	return map[string]any{
 		"id":       state.turnID,

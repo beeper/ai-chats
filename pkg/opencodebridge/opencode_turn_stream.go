@@ -116,4 +116,5 @@ func (m *OpenCodeManager) emitTurnFinish(ctx context.Context, inst *openCodeInst
 	})
 	m.bridge.finishOpenCodeStream(turnID)
 	state.finished = true
+	inst.removeTurnState(sessionID, messageID)
 }
