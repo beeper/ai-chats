@@ -463,13 +463,13 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 			preview = reasoningText
 		}
 		oc.emitHeartbeatEvent(&HeartbeatEventPayload{
-			TS:       time.Now().UnixMilli(),
-			Status:   "skipped",
-			Reason:   targetReason,
-			To:       hb.TargetRoom.String(),
-			Preview:  preview[:min(len(preview), 200)],
-			Channel:  hb.Channel,
-			HasMedia: hasMedia,
+			TS:         time.Now().UnixMilli(),
+			Status:     "skipped",
+			Reason:     targetReason,
+			To:         hb.TargetRoom.String(),
+			Preview:    preview[:min(len(preview), 200)],
+			Channel:    hb.Channel,
+			HasMedia:   hasMedia,
 			DurationMs: durationMs,
 		})
 		sendOutcome(HeartbeatRunOutcome{Status: "ran", Reason: targetReason, Skipped: true})

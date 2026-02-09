@@ -29,4 +29,3 @@ func TestIsAllowedTextNotePath(t *testing.T) {
 		}
 	}
 }
-

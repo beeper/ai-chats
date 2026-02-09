@@ -4569,13 +4569,13 @@ func (oc *AIClient) streamChatCompletions(
 		// Continue if tools were requested.
 		// Some Anthropic-compatible adapters may emit `tool_use` (or omit finish reason)
 		// even when tool calls are present.
-			if shouldContinueChatToolLoop(state.finishReason, len(toolCallParams)) {
-				// Ensure the next assistant text delta can't get glued to the previous text.
-				state.needsTextSeparator = true
-				if round >= maxToolRounds {
-					log.Warn().Int("rounds", round+1).Msg("Max tool call rounds reached; stopping chat completions continuation")
-					break
-				}
+		if shouldContinueChatToolLoop(state.finishReason, len(toolCallParams)) {
+			// Ensure the next assistant text delta can't get glued to the previous text.
+			state.needsTextSeparator = true
+			if round >= maxToolRounds {
+				log.Warn().Int("rounds", round+1).Msg("Max tool call rounds reached; stopping chat completions continuation")
+				break
+			}
 			assistantMsg := openai.ChatCompletionAssistantMessageParam{
 				ToolCalls: toolCallParams,
 			}

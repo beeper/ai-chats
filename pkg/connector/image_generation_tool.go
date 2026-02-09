@@ -190,9 +190,9 @@ func resolveImageGenProvider(req imageGenRequest, btc *BridgeToolContext) (image
 				return "", errors.New("openrouter image generation is not available for this login")
 			}
 			return imageGenProviderOpenRouter, nil
-			default:
-				return "", fmt.Errorf("unknown image generation provider: %s", provider)
-			}
+		default:
+			return "", fmt.Errorf("unknown image generation provider: %s", provider)
+		}
 	}
 
 	// Prefer OpenRouter image gen whenever it's available (Gemini models support extra controls).
@@ -626,16 +626,16 @@ func generateImagesForRequest(ctx context.Context, btc *BridgeToolContext, req i
 		}
 		sem := make(chan struct{}, concurrency)
 		results := make(chan genResult, count)
-			for i := 0; i < count; i++ {
-				sem <- struct{}{}
-				go func() {
-					defer func() { <-sem }()
-					out, err := callOpenRouterImageGenWithControls(ctx, btc, openRouterAPIKey, openRouterBaseURL, req, model)
-					results <- genResult{images: out, err: err}
-				}()
-			}
-			images := make([]string, 0, count)
-			for i := 0; i < count; i++ {
+		for i := 0; i < count; i++ {
+			sem <- struct{}{}
+			go func() {
+				defer func() { <-sem }()
+				out, err := callOpenRouterImageGenWithControls(ctx, btc, openRouterAPIKey, openRouterBaseURL, req, model)
+				results <- genResult{images: out, err: err}
+			}()
+		}
+		images := make([]string, 0, count)
+		for i := 0; i < count; i++ {
 			r := <-results
 			if r.err != nil {
 				return nil, r.err

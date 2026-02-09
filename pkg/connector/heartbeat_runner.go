@@ -267,9 +267,9 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 	if !oc.shouldRunHeartbeatForFile(agentID, reason) && !pendingEvents {
 		oc.log.Debug().Str("agent_id", agentID).Msg("Heartbeat skipped: empty heartbeat file and no pending events")
 		oc.emitHeartbeatEvent(&HeartbeatEventPayload{
-			TS:     time.Now().UnixMilli(),
-			Status: "skipped",
-			Reason: "empty-heartbeat-file",
+			TS:         time.Now().UnixMilli(),
+			Status:     "skipped",
+			Reason:     "empty-heartbeat-file",
 			DurationMs: time.Now().UnixMilli() - startedAtMs,
 		})
 		return cron.HeartbeatRunResult{Status: "skipped", Reason: "empty-heartbeat-file"}
@@ -293,10 +293,10 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 	if !visibility.ShowAlerts && !visibility.ShowOk && !visibility.UseIndicator {
 		oc.log.Debug().Str("agent_id", agentID).Str("channel", channel).Msg("Heartbeat skipped: all visibility flags disabled")
 		oc.emitHeartbeatEvent(&HeartbeatEventPayload{
-			TS:      time.Now().UnixMilli(),
-			Status:  "skipped",
-			Reason:  "alerts-disabled",
-			Channel: channel,
+			TS:         time.Now().UnixMilli(),
+			Status:     "skipped",
+			Reason:     "alerts-disabled",
+			Channel:    channel,
 			DurationMs: time.Now().UnixMilli() - startedAtMs,
 		})
 		return cron.HeartbeatRunResult{Status: "skipped", Reason: "alerts-disabled"}

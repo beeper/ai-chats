@@ -101,16 +101,16 @@ const ToolNameCron = toolspec.CronName
 
 // Memory tool names (matching OpenClaw interface)
 const (
-	ToolNameMemorySearch  = toolspec.MemorySearchName
-	ToolNameMemoryGet     = toolspec.MemoryGetName
-	ToolNameGravatarFetch = toolspec.GravatarFetchName
-	ToolNameGravatarSet   = toolspec.GravatarSetName
+	ToolNameMemorySearch       = toolspec.MemorySearchName
+	ToolNameMemoryGet          = toolspec.MemoryGetName
+	ToolNameGravatarFetch      = toolspec.GravatarFetchName
+	ToolNameGravatarSet        = toolspec.GravatarSetName
 	ToolNameBeeperDocs         = toolspec.BeeperDocsName
 	ToolNameBeeperSendFeedback = toolspec.BeeperSendFeedbackName
-	ToolNameRead          = toolspec.ReadName
-	ToolNameApplyPatch    = toolspec.ApplyPatchName
-	ToolNameWrite         = toolspec.WriteName
-	ToolNameEdit          = toolspec.EditName
+	ToolNameRead               = toolspec.ReadName
+	ToolNameApplyPatch         = toolspec.ApplyPatchName
+	ToolNameWrite              = toolspec.WriteName
+	ToolNameEdit               = toolspec.EditName
 )
 
 type memorySearchOutput struct {
@@ -947,48 +947,48 @@ func executeImageGeneration(ctx context.Context, args map[string]any) (string, e
 		async = true
 	}
 
-		if async {
-			// Preflight: fail fast on unsupported configs (e.g. advanced controls on OpenRouter).
-			if _, err := resolveImageGenProvider(req, btc); err != nil {
-				return "", fmt.Errorf("image generation failed: %w", err)
+	if async {
+		// Preflight: fail fast on unsupported configs (e.g. advanced controls on OpenRouter).
+		if _, err := resolveImageGenProvider(req, btc); err != nil {
+			return "", fmt.Errorf("image generation failed: %w", err)
 		}
 
 		// Copy minimal data for the background worker.
 		reqCopy := req
-			client := btc.Client
-			portal := btc.Portal
-			btcCopy := *btc
-			baseCtx := client.backgroundContext(ctx)
+		client := btc.Client
+		portal := btc.Portal
+		btcCopy := *btc
+		baseCtx := client.backgroundContext(ctx)
 
-			go func() {
-				client.Log().Debug().Str("prompt", reqCopy.Prompt).Msg("async image generation started")
-				bgctx, cancel := context.WithTimeout(baseCtx, 10*time.Minute)
-				defer cancel()
+		go func() {
+			client.Log().Debug().Str("prompt", reqCopy.Prompt).Msg("async image generation started")
+			bgctx, cancel := context.WithTimeout(baseCtx, 10*time.Minute)
+			defer cancel()
 
-				images, err := generateImagesForRequest(bgctx, &btcCopy, reqCopy)
+			images, err := generateImagesForRequest(bgctx, &btcCopy, reqCopy)
+			if err != nil {
+				client.Log().Warn().Err(err).Msg("async image generation failed")
+				client.sendSystemNotice(bgctx, portal, "Image generation failed: "+err.Error())
+				return
+			}
+
+			sent := 0
+			var genRefs []GeneratedFileRef
+			for idx, imageB64 := range images {
+				imageData, mimeType, err := decodeBase64Image(imageB64)
 				if err != nil {
-					client.Log().Warn().Err(err).Msg("async image generation failed")
-					client.sendSystemNotice(bgctx, portal, "Image generation failed: "+err.Error())
-					return
+					client.Log().Warn().Err(err).Int("idx", idx).Msg("async image generation decode failed")
+					continue
 				}
-
-				sent := 0
-				var genRefs []GeneratedFileRef
-				for idx, imageB64 := range images {
-					imageData, mimeType, err := decodeBase64Image(imageB64)
-					if err != nil {
-						client.Log().Warn().Err(err).Int("idx", idx).Msg("async image generation decode failed")
-						continue
-					}
-					if _, mediaURL, err := client.sendGeneratedImage(bgctx, portal, imageData, mimeType, "", reqCopy.Prompt); err != nil {
-						client.Log().Warn().Err(err).Int("idx", idx).Msg("async image generation send failed")
-						continue
-					} else {
-						genRefs = append(genRefs, GeneratedFileRef{URL: mediaURL, MimeType: mimeType})
-					}
-					sent++
+				if _, mediaURL, err := client.sendGeneratedImage(bgctx, portal, imageData, mimeType, "", reqCopy.Prompt); err != nil {
+					client.Log().Warn().Err(err).Int("idx", idx).Msg("async image generation send failed")
+					continue
+				} else {
+					genRefs = append(genRefs, GeneratedFileRef{URL: mediaURL, MimeType: mimeType})
 				}
-				if sent == 0 {
+				sent++
+			}
+			if sent == 0 {
 				client.sendSystemNotice(bgctx, portal, "Image generation finished, but sending failed.")
 			}
 			// Update the parent assistant message with GeneratedFiles so the model can

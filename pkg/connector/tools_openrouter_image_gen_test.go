@@ -109,4 +109,3 @@ func TestCallOpenRouterImageGen_ParsesContentPartsArray(t *testing.T) {
 		t.Fatalf("unexpected images: %#v", images)
 	}
 }
-

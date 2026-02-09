@@ -40,12 +40,12 @@ const (
 
 // ToolGroups maps group names to tool names for policy composition.
 var ToolGroups = map[string][]string{
-	GroupSearch:     {"web_search"},
-	GroupCalc:       {"calculator"},
-	GroupBuilder:    {"create_agent", "fork_agent", "edit_agent", "delete_agent", "list_agents", "run_internal_command"},
-	GroupMessaging:  {"message"},
+	GroupSearch:    {"web_search"},
+	GroupCalc:      {"calculator"},
+	GroupBuilder:   {"create_agent", "fork_agent", "edit_agent", "delete_agent", "list_agents", "run_internal_command"},
+	GroupMessaging: {"message"},
 	// OpenClaw semantics: session management tools only.
-	GroupSessions: {"sessions_list", "sessions_history", "sessions_send", "sessions_spawn", "session_status"},
+	GroupSessions:   {"sessions_list", "sessions_history", "sessions_send", "sessions_spawn", "session_status"},
 	GroupMemory:     {"memory_search", "memory_get"},
 	GroupRuntime:    {"exec", "process"},
 	GroupWeb:        {"web_search", "web_fetch"},
@@ -76,7 +76,7 @@ var ToolGroups = map[string][]string{
 	},
 	// ai-bridge extras (keep separate so group:openclaw stays portable with OpenClaw configs).
 	GroupAIBridge: {"gravatar_fetch", "gravatar_set", "beeper_docs", "beeper_send_feedback", "image_generate", "tts", "calculator"},
-	GroupFS:         {"read", "write", "edit", "apply_patch"},
+	GroupFS:       {"read", "write", "edit", "apply_patch"},
 	GroupNexus: {
 		"get_user_information",
 		"contacts",
@@ -113,7 +113,7 @@ type toolProfilePolicy struct {
 
 // ToolProfiles define which tool groups each profile allows.
 var ToolProfiles = map[ToolProfileID]toolProfilePolicy{
-	ProfileMinimal:   {Allow: []string{"session_status"}},
+	ProfileMinimal: {Allow: []string{"session_status"}},
 	// OpenClaw semantics: allow workspace tools + runtime + session tooling + memory + image.
 	ProfileCoding: {Allow: []string{GroupFS, GroupRuntime, GroupSessions, GroupMemory, "image"}},
 	// OpenClaw semantics: messaging + limited session inspection/sends.

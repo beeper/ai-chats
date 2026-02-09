@@ -14,4 +14,3 @@ func TestBuildToolPolicyContext_TreatsOpenClawReservedToolsAsCore(t *testing.T) 
 		}
 	}
 }
-

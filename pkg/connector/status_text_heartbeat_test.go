@@ -15,12 +15,12 @@ func TestFormatHeartbeatSummary_None(t *testing.T) {
 func TestFormatHeartbeatSummary_Basic(t *testing.T) {
 	now := int64(1_700_000_000_000)
 	evt := &HeartbeatEventPayload{
-		TS:     now - 60_000,
-		Status: "sent",
-		Channel:"matrix",
-		To:     "!room:example",
-		Reason: "interval",
-		Preview:"line1\nline2",
+		TS:      now - 60_000,
+		Status:  "sent",
+		Channel: "matrix",
+		To:      "!room:example",
+		Reason:  "interval",
+		Preview: "line1\nline2",
 	}
 	out := formatHeartbeatSummary(now, evt)
 	for _, want := range []string{"Heartbeat: sent", "channel=matrix", "to=!room:example", "reason=interval"} {
@@ -32,4 +32,3 @@ func TestFormatHeartbeatSummary_Basic(t *testing.T) {
 		t.Fatalf("expected output to include preview, got %q", out)
 	}
 }
-

@@ -61,4 +61,3 @@ func IsAllowedTextNotePath(relPath string) (ok bool, ext string, reason string) 
 func NoteMaxBytesDefault() int {
 	return noteMaxBytesDefault
 }
-
