@@ -1487,11 +1487,11 @@ func (oc *AIClient) effectivePrompt(meta *PortalMetadata) string {
 }
 
 // getLinkPreviewConfig returns the link preview configuration, with defaults filled in.
-func (oc *AIClient) getLinkPreviewConfig() LinkPreviewConfig {
+func getLinkPreviewConfig(connectorConfig *Config) LinkPreviewConfig {
 	config := DefaultLinkPreviewConfig()
 
-	if oc.connector.Config.LinkPreviews != nil {
-		cfg := oc.connector.Config.LinkPreviews
+	if connectorConfig.LinkPreviews != nil {
+		cfg := connectorConfig.LinkPreviews
 		// Apply explicit settings only if they differ from zero values
 		if !cfg.Enabled {
 			config.Enabled = cfg.Enabled
@@ -2358,7 +2358,7 @@ func (oc *AIClient) buildPromptWithLinkContext(
 
 // buildLinkContext extracts URLs from the message, fetches previews, and returns formatted context.
 func (oc *AIClient) buildLinkContext(ctx context.Context, message string, rawEventContent map[string]any) string {
-	config := oc.getLinkPreviewConfig()
+	config := getLinkPreviewConfig(&oc.connector.Config)
 	if !config.Enabled {
 		return ""
 	}

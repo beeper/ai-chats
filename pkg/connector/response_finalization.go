@@ -263,7 +263,7 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 	}
 
 	// Generate link previews for URLs in the response
-	linkPreviews := oc.generateOutboundLinkPreviews(ctx, cleanedContent, intent, portal, state.sourceCitations)
+	linkPreviews := generateOutboundLinkPreviews(ctx, cleanedContent, intent, portal, state.sourceCitations, getLinkPreviewConfig(&oc.connector.Config))
 	if sourceParts := buildSourceParts(state.sourceCitations, state.sourceDocuments, linkPreviews); len(sourceParts) > 0 {
 		parts = append(parts, sourceParts...)
 	}
@@ -810,7 +810,7 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 	}
 
 	// Generate link previews for URLs in the response
-	linkPreviews := oc.generateOutboundLinkPreviews(ctx, rendered.Body, intent, portal, state.sourceCitations)
+	linkPreviews := generateOutboundLinkPreviews(ctx, rendered.Body, intent, portal, state.sourceCitations, getLinkPreviewConfig(&oc.connector.Config))
 	if sourceParts := buildSourceParts(state.sourceCitations, state.sourceDocuments, linkPreviews); len(sourceParts) > 0 {
 		parts = append(parts, sourceParts...)
 	}
@@ -868,8 +868,7 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 // generateOutboundLinkPreviews extracts URLs from AI response text, generates link previews, and uploads images to Matrix.
 // When citations are provided (e.g. from Exa search results), matching URLs use the citation's
 // image directly instead of fetching the page's HTML.
-func (oc *AIClient) generateOutboundLinkPreviews(ctx context.Context, text string, intent bridgev2.MatrixAPI, portal *bridgev2.Portal, citations []sourceCitation) []*event.BeeperLinkPreview {
-	config := oc.getLinkPreviewConfig()
+func generateOutboundLinkPreviews(ctx context.Context, text string, intent bridgev2.MatrixAPI, portal *bridgev2.Portal, citations []sourceCitation, config LinkPreviewConfig) []*event.BeeperLinkPreview {
 	if !config.Enabled {
 		return nil
 	}
