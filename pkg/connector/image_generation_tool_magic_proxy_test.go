@@ -22,7 +22,7 @@ func TestResolveImageGenProviderMagicProxyPrefersOpenRouterForSimplePrompts(t *t
 	}
 }
 
-func TestResolveImageGenProviderMagicProxyUsesOpenAIWhenCountIsGreaterThanOne(t *testing.T) {
+func TestResolveImageGenProviderMagicProxyStillPrefersOpenRouterWhenCountIsGreaterThanOne(t *testing.T) {
 	meta := &UserLoginMetadata{
 		Provider: ProviderMagicProxy,
 		APIKey:   "tok",
@@ -58,8 +58,8 @@ func TestResolveImageGenProviderMagicProxyProviderOpenAIStillRoutesToOpenRouter(
 	if err != nil {
 		t.Fatalf("resolveImageGenProvider returned error: %v", err)
 	}
-	if got != imageGenProviderOpenRouter {
-		t.Fatalf("expected provider %q, got %q", imageGenProviderOpenRouter, got)
+	if got != imageGenProviderOpenAI {
+		t.Fatalf("expected provider %q, got %q", imageGenProviderOpenAI, got)
 	}
 }
 

@@ -946,42 +946,45 @@ func executeImageGeneration(ctx context.Context, args map[string]any) (string, e
 		async = true
 	}
 
-	if async {
-		// Preflight: fail fast on unsupported configs (e.g. advanced controls on OpenRouter).
-		if _, err := resolveImageGenProvider(req, btc); err != nil {
-			return "", fmt.Errorf("image generation failed: %w", err)
+		if async {
+			// Preflight: fail fast on unsupported configs (e.g. advanced controls on OpenRouter).
+			if _, err := resolveImageGenProvider(req, btc); err != nil {
+				return "", fmt.Errorf("image generation failed: %w", err)
 		}
 
 		// Copy minimal data for the background worker.
 		reqCopy := req
-		client := btc.Client
-		portal := btc.Portal
-		btcCopy := *btc
+			client := btc.Client
+			portal := btc.Portal
+			btcCopy := *btc
+			baseCtx := client.backgroundContext(ctx)
 
-		go func() {
-			client.Log().Debug().Str("prompt", reqCopy.Prompt).Msg("async image generation started")
-			bgctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-			defer cancel()
+			go func() {
+				client.Log().Debug().Str("prompt", reqCopy.Prompt).Msg("async image generation started")
+				bgctx, cancel := context.WithTimeout(baseCtx, 10*time.Minute)
+				defer cancel()
 
-			images, err := generateImagesForRequest(bgctx, &btcCopy, reqCopy)
-			if err != nil {
-				client.Log().Warn().Err(err).Msg("async image generation failed")
-				client.sendSystemNotice(bgctx, portal, "Image generation failed: "+err.Error())
-				return
-			}
-
-			sent := 0
-			for _, imageB64 := range images {
-				imageData, mimeType, err := decodeBase64Image(imageB64)
+				images, err := generateImagesForRequest(bgctx, &btcCopy, reqCopy)
 				if err != nil {
-					continue
+					client.Log().Warn().Err(err).Msg("async image generation failed")
+					client.sendSystemNotice(bgctx, portal, "Image generation failed: "+err.Error())
+					return
 				}
-				if _, _, err := client.sendGeneratedImage(bgctx, portal, imageData, mimeType, ""); err != nil {
-					continue
+
+				sent := 0
+				for idx, imageB64 := range images {
+					imageData, mimeType, err := decodeBase64Image(imageB64)
+					if err != nil {
+						client.Log().Warn().Err(err).Int("idx", idx).Msg("async image generation decode failed")
+						continue
+					}
+					if _, _, err := client.sendGeneratedImage(bgctx, portal, imageData, mimeType, ""); err != nil {
+						client.Log().Warn().Err(err).Int("idx", idx).Msg("async image generation send failed")
+						continue
+					}
+					sent++
 				}
-				sent++
-			}
-			if sent == 0 {
+				if sent == 0 {
 				client.sendSystemNotice(bgctx, portal, "Image generation finished, but sending failed.")
 			}
 			client.Log().Debug().Int("sent", sent).Int("total", len(images)).Msg("async image generation completed")
@@ -1060,108 +1063,159 @@ func callOpenRouterImageGen(ctx context.Context, apiKey, baseURL string, reqBody
 		return nil, fmt.Errorf("API error (%d): %s", resp.StatusCode, string(body))
 	}
 
-	// Parse response to extract image URL or data
-	var result struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-				Images  []struct {
-					ImageURL struct {
-						URL string `json:"url"`
-					} `json:"image_url"`
-					ImageURLAlt struct {
-						URL string `json:"url"`
-					} `json:"imageUrl"`
-				} `json:"images"`
-			} `json:"message"`
-		} `json:"choices"`
-		Data []struct {
-			URL     string `json:"url"`
-			B64JSON string `json:"b64_json"`
-		} `json:"data"`
-	}
-
-	if err := json.Unmarshal(body, &result); err != nil {
+	var parsed any
+	if err := json.Unmarshal(body, &parsed); err != nil {
 		return nil, fmt.Errorf("couldn't parse the response: %w", err)
 	}
-
-	var images []string
-
-	// Check for direct image data (DALL-E style response)
-	if len(result.Data) > 0 {
-		for _, item := range result.Data {
-			if item.B64JSON != "" {
-				images = append(images, item.B64JSON)
-				continue
-			}
-			if item.URL != "" {
-				imgB64, err := fetchImageAsBase64(ctx, item.URL)
-				if err != nil {
-					return nil, err
-				}
-				images = append(images, imgB64)
-			}
-		}
+	images, err := extractOpenRouterImages(ctx, parsed)
+	if err != nil {
+		return nil, err
 	}
-
-	// Check for chat completion response with images array
-	if len(images) == 0 && len(result.Choices) > 0 && len(result.Choices[0].Message.Images) > 0 {
-		for _, img := range result.Choices[0].Message.Images {
-			imageURL := img.ImageURL.URL
-			if imageURL == "" {
-				imageURL = img.ImageURLAlt.URL
-			}
-			if imageURL == "" {
-				continue
-			}
-			if strings.HasPrefix(imageURL, "data:") {
-				imgB64, err := extractBase64FromDataURL(imageURL)
-				if err != nil {
-					return nil, err
-				}
-				images = append(images, imgB64)
-				continue
-			}
-			if strings.HasPrefix(imageURL, "http") {
-				imgB64, err := fetchImageAsBase64(ctx, imageURL)
-				if err != nil {
-					return nil, err
-				}
-				images = append(images, imgB64)
-				continue
-			}
-			return nil, fmt.Errorf("unexpected image URL format: %s", imageURL)
-		}
-	}
-
-	// Check for chat completion response with image URL
-	if len(images) == 0 && len(result.Choices) > 0 && result.Choices[0].Message.Content != "" {
-		content := result.Choices[0].Message.Content
-		// If content looks like a URL, fetch it
-		if strings.HasPrefix(content, "http") {
-			imgB64, err := fetchImageAsBase64(ctx, content)
-			if err != nil {
-				return nil, err
-			}
-			images = append(images, imgB64)
-		} else if strings.HasPrefix(content, "data:") {
-			imgB64, err := extractBase64FromDataURL(content)
-			if err != nil {
-				return nil, err
-			}
-			images = append(images, imgB64)
-		} else if _, err := base64.StdEncoding.DecodeString(content); err == nil {
-			images = append(images, content)
-		} else {
-			return nil, fmt.Errorf("unexpected response format: %s", content[:min(100, len(content))])
-		}
-	}
-
 	if len(images) == 0 {
-		return nil, errors.New("no image data in response")
+		return nil, fmt.Errorf("no image data in response (model=%v base_url=%s): %s", reqBody["model"], baseURL, truncateForError(body, 2048))
+	}
+	return images, nil
+}
+
+func truncateForError(body []byte, max int) string {
+	s := strings.TrimSpace(string(body))
+	if max < 1 || len(s) <= max {
+		return s
+	}
+	return s[:max] + "...(truncated)"
+}
+
+func extractOpenRouterImages(ctx context.Context, parsed any) ([]string, error) {
+	root, ok := parsed.(map[string]any)
+	if !ok {
+		return nil, errors.New("unexpected OpenRouter response type")
 	}
 
-	return images, nil
+	out := make([]string, 0, 1)
+
+	// 1) OpenAI-style `data[]` responses.
+	if dataAny, ok := root["data"].([]any); ok {
+		for _, itemAny := range dataAny {
+			item, ok := itemAny.(map[string]any)
+			if !ok {
+				continue
+			}
+			if b64, _ := item["b64_json"].(string); strings.TrimSpace(b64) != "" {
+				out = append(out, strings.TrimSpace(b64))
+				continue
+			}
+			if urlStr, _ := item["url"].(string); strings.TrimSpace(urlStr) != "" {
+				imgB64, err := normalizeOpenRouterImageRefToB64(ctx, urlStr)
+				if err != nil {
+					return nil, err
+				}
+				out = append(out, imgB64)
+			}
+		}
+	}
+
+	// 2) OpenRouter `choices[].message.images[]` and `choices[].message.content` parts.
+	choicesAny, _ := root["choices"].([]any)
+	for _, choiceAny := range choicesAny {
+		choice, ok := choiceAny.(map[string]any)
+		if !ok {
+			continue
+		}
+		msg, ok := choice["message"].(map[string]any)
+		if !ok {
+			continue
+		}
+
+		if imagesAny, ok := msg["images"].([]any); ok {
+			for _, imgAny := range imagesAny {
+				ref := extractOpenRouterImageRef(imgAny)
+				if strings.TrimSpace(ref) == "" {
+					continue
+				}
+				b64, err := normalizeOpenRouterImageRefToB64(ctx, ref)
+				if err != nil {
+					return nil, err
+				}
+				out = append(out, b64)
+			}
+		}
+
+		// Some providers return image parts in message.content array instead of message.images.
+		if contentAny, ok := msg["content"].([]any); ok {
+			for _, partAny := range contentAny {
+				part, ok := partAny.(map[string]any)
+				if !ok {
+					continue
+				}
+				if typ, _ := part["type"].(string); typ != "image_url" {
+					continue
+				}
+				ref := extractOpenRouterImageRef(part)
+				if strings.TrimSpace(ref) == "" {
+					continue
+				}
+				b64, err := normalizeOpenRouterImageRefToB64(ctx, ref)
+				if err != nil {
+					return nil, err
+				}
+				out = append(out, b64)
+			}
+		} else if contentStr, ok := msg["content"].(string); ok && strings.TrimSpace(contentStr) != "" {
+			b64, err := normalizeOpenRouterImageRefToB64(ctx, contentStr)
+			if err == nil && strings.TrimSpace(b64) != "" {
+				out = append(out, b64)
+			}
+		}
+	}
+
+	return out, nil
+}
+
+// extractOpenRouterImageRef tries to find a usable image reference (data URL or http URL)
+// from common OpenRouter image objects (message.images entries or content parts).
+func extractOpenRouterImageRef(v any) string {
+	switch t := v.(type) {
+	case string:
+		return strings.TrimSpace(t)
+	case map[string]any:
+		// Typical: {"image_url": {"url": "data:image/png;base64,..."}} or {"imageUrl": {"url": "..."}}
+		for _, key := range []string{"image_url", "imageUrl"} {
+			raw, ok := t[key]
+			if !ok || raw == nil {
+				continue
+			}
+			switch val := raw.(type) {
+			case string:
+				return strings.TrimSpace(val)
+			case map[string]any:
+				if urlStr, _ := val["url"].(string); strings.TrimSpace(urlStr) != "" {
+					return strings.TrimSpace(urlStr)
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func normalizeOpenRouterImageRefToB64(ctx context.Context, ref string) (string, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return "", errors.New("empty image reference")
+	}
+	if strings.HasPrefix(ref, "data:") {
+		return extractBase64FromDataURL(ref)
+	}
+	if strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://") {
+		return fetchImageAsBase64(ctx, ref)
+	}
+	if _, err := base64.StdEncoding.DecodeString(ref); err == nil {
+		return ref, nil
+	}
+	// Some providers might return raw base64url.
+	if _, err := base64.URLEncoding.DecodeString(ref); err == nil {
+		return ref, nil
+	}
+	return "", fmt.Errorf("unexpected image reference format: %s", ref[:min(120, len(ref))])
 }
 
 // extractBase64FromDataURL parses a data URL and returns raw base64 data.

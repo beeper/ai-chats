@@ -49,8 +49,51 @@ func TestRawModePrompt_HasSingleSystemPromptWithTimeAndWebSearch(t *testing.T) {
 	if !strings.Contains(systemText, "Current time:") {
 		t.Fatalf("expected system prompt to include current time line, got: %q", systemText)
 	}
+	if strings.Contains(systemText, "web_search") {
+		t.Fatalf("did not expect system prompt to mention web_search when tools are not enabled, got: %q", systemText)
+	}
+}
+
+func TestRawModePrompt_MentionsWebSearchWhenEnabledAndConfigured(t *testing.T) {
+	client := &AIClient{
+		connector: &OpenAIConnector{
+			Config: Config{
+				Messages: &MessagesConfig{
+					DirectChat: &DirectChatConfig{HistoryLimit: 0},
+				},
+				Tools: ToolProvidersConfig{
+					Search: &SearchConfig{
+						Brave: ProviderBraveConfig{APIKey: "test-key"},
+					},
+				},
+			},
+		},
+	}
+
+	meta := &PortalMetadata{
+		IsRawMode: true,
+		Capabilities: ModelCapabilities{
+			SupportsToolCalling: true,
+		},
+	}
+
+	out, err := client.buildPromptWithLinkContext(context.Background(), nil, meta, "hello", nil, "")
+	if err != nil {
+		t.Fatalf("buildPromptWithLinkContext error: %v", err)
+	}
+
+	systemText := ""
+	for _, m := range out {
+		if m.OfSystem != nil && m.OfSystem.Content.OfString.Valid() {
+			systemText = strings.TrimSpace(m.OfSystem.Content.OfString.Value)
+			break
+		}
+	}
+	if systemText == "" {
+		t.Fatalf("expected a system prompt")
+	}
 	if !strings.Contains(systemText, "web_search") {
-		t.Fatalf("expected system prompt to mention web_search, got: %q", systemText)
+		t.Fatalf("expected system prompt to mention web_search when enabled, got: %q", systemText)
 	}
 }
 

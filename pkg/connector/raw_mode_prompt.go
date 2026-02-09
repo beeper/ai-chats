@@ -2,6 +2,8 @@ package connector
 
 import (
 	"strings"
+
+	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
 )
 
 // buildRawModeSystemPrompt returns the system prompt for raw/playground rooms.
@@ -20,7 +22,10 @@ func (oc *AIClient) buildRawModeSystemPrompt(meta *PortalMetadata) string {
 	lines := []string{
 		strings.TrimSpace(base),
 		"Current time: " + now,
-		"Web search: available via web_search.",
+	}
+	// Only advertise tools when they are actually enabled for this portal.
+	if meta != nil && oc != nil && oc.isToolEnabled(meta, toolspec.WebSearchName) {
+		lines = append(lines, "Web search: available via web_search.")
 	}
 	return strings.TrimSpace(strings.Join(lines, "\n"))
 }

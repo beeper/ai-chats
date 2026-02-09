@@ -8,6 +8,7 @@ import (
 	"github.com/beeper/ai-bridge/pkg/agents"
 	"github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
 	agenttools "github.com/beeper/ai-bridge/pkg/agents/tools"
+	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
 )
 
 func canUseNexusToolsForAgent(meta *PortalMetadata) bool {
@@ -57,6 +58,32 @@ func (oc *AIClient) isToolAvailable(meta *PortalMetadata, toolName string) (bool
 
 	if agenttools.IsBossTool(toolName) && !(meta.IsBuilderRoom || hasBossAgent(meta)) {
 		return false, SourceGlobalDefault, "Builder room only"
+	}
+
+	// Tool runtime prerequisites (API keys, services, etc.). These are intentionally
+	// stricter than "tool exists" so we don't expose tools that will always fail.
+	switch strings.TrimSpace(toolName) {
+	case toolspec.WebSearchName:
+		if ok, reason := oc.isWebSearchConfigured(context.Background()); !ok {
+			return false, SourceProviderLimit, reason
+		}
+	case toolspec.WebFetchName:
+		if ok, reason := oc.isWebFetchConfigured(context.Background()); !ok {
+			return false, SourceProviderLimit, reason
+		}
+	case toolspec.TTSName:
+		if ok, reason := oc.isTTSConfigured(); !ok {
+			return false, SourceProviderLimit, reason
+		}
+	case toolspec.CronName:
+		if ok, reason := oc.isCronConfigured(); !ok {
+			return false, SourceProviderLimit, reason
+		}
+	case toolspec.MemorySearchName, toolspec.MemoryGetName:
+		// Only hide when explicitly disabled; other runtime failures are surfaced by the tool.
+		if disabled, reason := oc.isMemorySearchExplicitlyDisabled(meta); disabled {
+			return false, SourceProviderLimit, reason
+		}
 	}
 
 	if toolName == ToolNameImageGenerate && !oc.canUseImageGeneration() {

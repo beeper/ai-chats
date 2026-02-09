@@ -172,22 +172,6 @@ func dedupeStrings(values []string) []string {
 }
 
 func resolveImageGenProvider(req imageGenRequest, btc *BridgeToolContext) (imageGenProvider, error) {
-	// Magic Proxy: always route image generation via OpenRouter (Gemini models) when available.
-	// This avoids OpenRouter rejecting provider-specific "advanced controls".
-	if btc != nil && btc.Client != nil && btc.Client.UserLogin != nil {
-		loginMeta := loginMetadata(btc.Client.UserLogin)
-		if loginMeta.Provider == ProviderMagicProxy {
-			if supportsOpenRouterImageGen(btc) {
-				return imageGenProviderOpenRouter, nil
-			}
-			// Fallback only if OpenRouter isn't configured for this login.
-			if supportsOpenAIImageGen(btc) {
-				return imageGenProviderOpenAI, nil
-			}
-			return "", errors.New("image generation is not available for this login")
-		}
-	}
-
 	provider := strings.ToLower(strings.TrimSpace(req.Provider))
 	if provider != "" {
 		switch provider {
@@ -206,9 +190,14 @@ func resolveImageGenProvider(req imageGenRequest, btc *BridgeToolContext) (image
 				return "", errors.New("openrouter image generation is not available for this login")
 			}
 			return imageGenProviderOpenRouter, nil
-		default:
-			return "", fmt.Errorf("unknown image generation provider: %s", provider)
-		}
+			default:
+				return "", fmt.Errorf("unknown image generation provider: %s", provider)
+			}
+	}
+
+	// Prefer OpenRouter image gen whenever it's available (Gemini models support extra controls).
+	if supportsOpenRouterImageGen(btc) {
+		return imageGenProviderOpenRouter, nil
 	}
 
 	loginMeta := loginMetadata(btc.Client.UserLogin)
@@ -346,19 +335,8 @@ func supportsOpenAIImageGen(btc *BridgeToolContext) bool {
 }
 
 func supportsOpenRouterImageGen(btc *BridgeToolContext) bool {
-	if btc == nil || btc.Client == nil || btc.Client.UserLogin == nil || btc.Client.UserLogin.Metadata == nil {
-		return false
-	}
-	loginMeta := loginMetadata(btc.Client.UserLogin)
-	switch loginMeta.Provider {
-	case ProviderOpenRouter, ProviderBeeper, ProviderMagicProxy:
-		if loginMeta.Provider == ProviderBeeper {
-			return btc.Client.connector.resolveBeeperToken(loginMeta) != ""
-		}
-		return btc.Client.connector.resolveOpenRouterAPIKey(loginMeta) != ""
-	default:
-		return false
-	}
+	_, _, ok := resolveOpenRouterImageGenEndpoint(btc)
+	return ok
 }
 
 func supportsGeminiImageGen(btc *BridgeToolContext) bool {
@@ -624,17 +602,14 @@ func generateImagesForRequest(ctx context.Context, btc *BridgeToolContext, req i
 		req.Background = ""
 		req.OutputFormat = ""
 		model := normalizeOpenRouterModel(req.Model)
-		// Magic Proxy policy: if the request looks like it's targeting an OpenAI image model,
-		// force the OpenRouter default (Gemini) instead.
-		if btc != nil && btc.Client != nil && btc.Client.UserLogin != nil {
-			loginMeta := loginMetadata(btc.Client.UserLogin)
-			if loginMeta.Provider == ProviderMagicProxy && inferProviderFromModel(model) == imageGenProviderOpenAI {
-				model = DefaultImageModel
-			}
+		// If the request looks like it's targeting an OpenAI image model, force the OpenRouter
+		// default (Gemini) instead.
+		if inferProviderFromModel(model) == imageGenProviderOpenAI {
+			model = DefaultImageModel
 		}
-		provider, ok := btc.Client.provider.(*OpenAIProvider)
+		openRouterBaseURL, openRouterAPIKey, ok := resolveOpenRouterImageGenEndpoint(btc)
 		if !ok {
-			return nil, errors.New("image generation requires OpenAI-compatible provider")
+			return nil, errors.New("openrouter image generation is not available for this login")
 		}
 		count := req.Count
 		if count < 1 {
@@ -651,16 +626,16 @@ func generateImagesForRequest(ctx context.Context, btc *BridgeToolContext, req i
 		}
 		sem := make(chan struct{}, concurrency)
 		results := make(chan genResult, count)
-		for i := 0; i < count; i++ {
-			sem <- struct{}{}
-			go func() {
-				defer func() { <-sem }()
-				out, err := callOpenRouterImageGenWithControls(ctx, btc, btc.Client.apiKey, provider.baseURL, req, model)
-				results <- genResult{images: out, err: err}
-			}()
-		}
-		images := make([]string, 0, count)
-		for i := 0; i < count; i++ {
+			for i := 0; i < count; i++ {
+				sem <- struct{}{}
+				go func() {
+					defer func() { <-sem }()
+					out, err := callOpenRouterImageGenWithControls(ctx, btc, openRouterAPIKey, openRouterBaseURL, req, model)
+					results <- genResult{images: out, err: err}
+				}()
+			}
+			images := make([]string, 0, count)
+			for i := 0; i < count; i++ {
 			r := <-results
 			if r.err != nil {
 				return nil, r.err
@@ -674,6 +649,61 @@ func generateImagesForRequest(ctx context.Context, btc *BridgeToolContext, req i
 	default:
 		return nil, errors.New("unsupported image generation provider")
 	}
+}
+
+// resolveOpenRouterImageGenEndpoint returns the OpenRouter base URL + API key for image generation.
+// This is used even when the "primary" provider is not OpenRouter (e.g. Magic Proxy, OpenAI) as
+// long as an OpenRouter token+endpoint are configured.
+func resolveOpenRouterImageGenEndpoint(btc *BridgeToolContext) (baseURL string, apiKey string, ok bool) {
+	if btc == nil || btc.Client == nil || btc.Client.UserLogin == nil || btc.Client.UserLogin.Metadata == nil {
+		return "", "", false
+	}
+	meta := loginMetadata(btc.Client.UserLogin)
+	conn := btc.Client.connector
+
+	trim := func(s string) string { return strings.TrimSpace(s) }
+
+	// Provider-specific per-login endpoints.
+	switch meta.Provider {
+	case ProviderMagicProxy:
+		base := normalizeMagicProxyBaseURL(meta.BaseURL)
+		key := trim(meta.APIKey)
+		if base == "" || key == "" {
+			return "", "", false
+		}
+		return joinProxyPath(base, "/openrouter/v1"), key, true
+	case ProviderBeeper:
+		if conn == nil {
+			return "", "", false
+		}
+		base := strings.TrimSuffix(trim(btc.Client.connector.resolveBeeperBaseURL(meta)), "/")
+		key := trim(btc.Client.connector.resolveBeeperToken(meta))
+		if base == "" || key == "" {
+			return "", "", false
+		}
+		return base + "/openrouter/v1", key, true
+	case ProviderOpenRouter:
+		if conn == nil {
+			return "", "", false
+		}
+		base := trim(conn.resolveOpenRouterBaseURL())
+		key := trim(conn.resolveOpenRouterAPIKey(meta))
+		if base == "" || key == "" {
+			return "", "", false
+		}
+		return strings.TrimSuffix(base, "/"), key, true
+	}
+
+	// Global OpenRouter config (available regardless of primary provider).
+	if conn == nil {
+		return "", "", false
+	}
+	base := trim(conn.resolveOpenRouterBaseURL())
+	key := trim(conn.resolveOpenRouterAPIKey(meta))
+	if base == "" || key == "" {
+		return "", "", false
+	}
+	return strings.TrimSuffix(base, "/"), key, true
 }
 
 func openRouterImageURLForRef(ctx context.Context, btc *BridgeToolContext, ref string) (string, error) {
@@ -746,6 +776,7 @@ func callOpenRouterImageGenWithControls(ctx context.Context, btc *BridgeToolCont
 		"model":      model,
 		"messages":   []map[string]any{msg},
 		"modalities": []string{"image", "text"},
+		"stream":     false,
 		// Keep responses small; images come in the `images` field.
 		"max_tokens": 1,
 	}
