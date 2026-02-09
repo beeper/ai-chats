@@ -235,7 +235,7 @@ func (oc *AIClient) getCompactor() *Compactor {
 
 		// Use a fast model for summarization
 		if oc.isOpenRouterProvider() {
-			oc.compactor.SetSummarizationModel("anthropic/claude-opus-4.5")
+			oc.compactor.SetSummarizationModel("anthropic/claude-opus-4.6")
 		}
 	})
 	return oc.compactor

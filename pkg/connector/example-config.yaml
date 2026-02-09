@@ -41,7 +41,7 @@ opencode:
 # These are used when a room doesn't have a specific model configured.
 providers:
   beeper:
-    default_model: "anthropic/claude-opus-4.5"
+    default_model: "anthropic/claude-opus-4.6"
     # PDF processing engine for OpenRouter's file-parser plugin.
     # Options: pdf-text (free), mistral-ocr (OCR, paid, default), native
     default_pdf_engine: "mistral-ocr"

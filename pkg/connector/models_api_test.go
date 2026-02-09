@@ -4,14 +4,14 @@ import "testing"
 
 func TestResolveAlias_StripsAnthropicDateSuffix(t *testing.T) {
 	got := ResolveAlias("anthropic/claude-opus-4-20250514")
-	if got != "anthropic/claude-opus-4.5" {
+	if got != "anthropic/claude-opus-4.6" {
 		t.Fatalf("unexpected alias resolution: got %q", got)
 	}
 }
 
 func TestResolveAlias_MapsAnthropicBaseIDs(t *testing.T) {
 	got := ResolveAlias("anthropic/claude-opus-4")
-	if got != "anthropic/claude-opus-4.5" {
+	if got != "anthropic/claude-opus-4.6" {
 		t.Fatalf("unexpected alias resolution: got %q", got)
 	}
 }

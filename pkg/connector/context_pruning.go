@@ -73,7 +73,7 @@ type PruningConfig struct {
 	SummarizationEnabled *bool `yaml:"summarization_enabled" json:"summarization_enabled,omitempty"`
 
 	// SummarizationModel is the model to use for generating summaries
-	// Default: "anthropic/claude-opus-4.5"
+	// Default: "anthropic/claude-opus-4.6"
 	SummarizationModel string `yaml:"summarization_model" json:"summarization_model,omitempty"`
 
 	// MaxSummaryTokens is the maximum tokens for generated summaries

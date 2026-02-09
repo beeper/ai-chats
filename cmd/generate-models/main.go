@@ -80,7 +80,7 @@ var modelConfig = struct {
 	},
 	Aliases: map[string]string{
 		// Default alias
-		"beeper/default": "anthropic/claude-opus-4.5",
+		"beeper/default": "anthropic/claude-opus-4.6",
 
 		// Stable aliases that can be remapped
 		"beeper/fast":      "openai/gpt-5-mini",

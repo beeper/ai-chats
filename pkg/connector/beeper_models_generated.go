@@ -607,7 +607,7 @@ var ModelManifest = struct {
 		},
 	},
 	Aliases: map[string]string{
-		"beeper/default":   "anthropic/claude-opus-4.5",
+		"beeper/default":   "anthropic/claude-opus-4.6",
 		"beeper/fast":      "openai/gpt-5-mini",
 		"beeper/reasoning": "openai/gpt-5.2",
 		"beeper/smart":     "openai/gpt-5.2",

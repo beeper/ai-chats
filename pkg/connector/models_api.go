@@ -6,7 +6,7 @@ import "strings"
 // These resolve to canonical model IDs in the local manifest.
 var OpenClawAliases = map[string]string{
 	// OpenClaw built-in shorthands
-	"opus":         "anthropic/claude-opus-4.5",
+	"opus":         "anthropic/claude-opus-4.6",
 	"sonnet":       "anthropic/claude-sonnet-4.5",
 	"haiku":        "anthropic/claude-haiku-4.5",
 	"gpt":          "openai/gpt-5.2",
@@ -16,7 +16,7 @@ var OpenClawAliases = map[string]string{
 
 	// OpenRouter expects the dotted major.minor model IDs. Map base Anthropic
 	// ids (often used in other APIs) to our canonical OpenRouter IDs.
-	"anthropic/claude-opus-4":   "anthropic/claude-opus-4.5",
+	"anthropic/claude-opus-4":   "anthropic/claude-opus-4.6",
 	"anthropic/claude-sonnet-4": "anthropic/claude-sonnet-4.5",
 	"anthropic/claude-haiku-4":  "anthropic/claude-haiku-4.5",
 
