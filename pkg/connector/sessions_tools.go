@@ -110,7 +110,7 @@ func (oc *AIClient) executeSessionsList(ctx context.Context, portal *bridgev2.Po
 
 		sessionKey := candidate.MXID.String()
 		entry := map[string]any{
-			"key":     sessionKey,
+			"sessionKey": sessionKey,
 			"kind":    kind,
 			"channel": "matrix",
 		}
@@ -141,11 +141,6 @@ func (oc *AIClient) executeSessionsList(ctx context.Context, portal *bridgev2.Po
 				}
 			}
 		}
-		entry["sessionId"] = sessionKey
-		if portalID := string(candidate.PortalKey.ID); portalID != "" && portalID != sessionKey {
-			entry["portalId"] = portalID
-		}
-
 		if messageLimit > 0 {
 			messages, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, candidate.PortalKey, messageLimit)
 			if err == nil && len(messages) > 0 {
@@ -659,7 +654,7 @@ func (oc *AIClient) resolveSessionPortal(ctx context.Context, portal *bridgev2.P
 			return candidate, key, nil
 		}
 	}
-	return nil, "", fmt.Errorf("session not found: %s (use the full sessionKey from sessions_list)", trimmed)
+	return nil, "", fmt.Errorf("session not found: %s (use the sessionKey from sessions_list)", trimmed)
 }
 
 func (oc *AIClient) resolveSessionPortalByLabel(ctx context.Context, label string, agentID string) (*bridgev2.Portal, string, error) {
@@ -703,9 +698,9 @@ func (oc *AIClient) resolveSessionPortalByLabel(ctx context.Context, label strin
 		return matches[0], key, nil
 	}
 	if len(matches) > 1 {
-		return nil, "", fmt.Errorf("label '%s' matched multiple sessions; use full sessionKey from sessions_list", trimmed)
+		return nil, "", fmt.Errorf("label '%s' matched multiple sessions; use the sessionKey from sessions_list", trimmed)
 	}
-	return nil, "", fmt.Errorf("no session found for label '%s' (use full sessionKey from sessions_list)", trimmed)
+	return nil, "", fmt.Errorf("no session found for label '%s' (use the sessionKey from sessions_list)", trimmed)
 }
 
 func (oc *AIClient) lastMessageTimestamp(ctx context.Context, portal *bridgev2.Portal) int64 {

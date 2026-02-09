@@ -46,7 +46,7 @@ const (
 	EditDescription  = "Replace exact text in file. Must match exactly including whitespace. Fails if text appears multiple times or not found."
 
 	GravatarFetchName        = "gravatar_fetch"
-	GravatarFetchDescription = "Fetch a Gravatar profile for an email address."
+	GravatarFetchDescription = "Fetch a Gravatar profile for an email address. You must provide an email address."
 	GravatarSetName          = "gravatar_set"
 	GravatarSetDescription   = "Set the primary Gravatar profile for this login."
 )
@@ -330,7 +330,7 @@ func MessageSchema() map[string]any {
 			},
 			"sessionKey": map[string]any{
 				"type":        "string",
-				"description": "Preferred canonical target key (from sessions_list). For desktop: desktop-api:<instance>:<chatId> or desktop-api:<chatId>.",
+				"description": "Preferred canonical target (field 'sessionKey' from sessions_list). For desktop: desktop-api:<instance>:<chatId> or desktop-api:<chatId>.",
 			},
 			"instance": map[string]any{
 				"type":        "string",

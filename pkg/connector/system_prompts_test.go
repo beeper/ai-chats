@@ -20,11 +20,8 @@ func TestBuildSessionIdentityHint_IncludesRoomIDAndPortalID(t *testing.T) {
 	if got == "" {
 		t.Fatalf("expected non-empty hint")
 	}
-	if !strings.Contains(got, "Session: !room:example.org") {
+	if !strings.Contains(got, "sessionKey: !room:example.org") {
 		t.Fatalf("expected hint to include session id, got %q", got)
-	}
-	if !strings.Contains(got, "agentId=beeper") {
-		t.Fatalf("expected hint to include agentId, got %q", got)
 	}
 }
 
@@ -33,7 +30,7 @@ func TestBuildSessionIdentityHint_CronRoomIncludesJobID(t *testing.T) {
 	portal.MXID = id.RoomID("!cron:example.org")
 	meta := &PortalMetadata{IsCronRoom: true, CronJobID: "job-1"}
 	got := buildSessionIdentityHint(portal, meta)
-	if !strings.Contains(got, "cronJobId=job-1") {
-		t.Fatalf("expected cron job id in hint, got %q", got)
+	if !strings.Contains(got, "sessionKey: !cron:example.org") {
+		t.Fatalf("expected sessionKey in hint, got %q", got)
 	}
 }

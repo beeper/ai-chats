@@ -415,14 +415,14 @@ var SessionsListTool = &Tool{
 var SessionsHistoryTool = &Tool{
 	Tool: mcp.Tool{
 		Name:        "sessions_history",
-		Description: "Fetch message history for a session. Use full sessionKey from sessions_list.",
+		Description: "Fetch message history for a session. Use the sessionKey from sessions_list.",
 		Annotations: &mcp.ToolAnnotations{Title: "Session History"},
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"sessionKey": map[string]any{
 					"type":        "string",
-					"description": "Full session key from sessions_list (preferred canonical target)",
+					"description": "Session identifier from sessions_list (preferred canonical target)",
 				},
 				"limit": map[string]any{
 					"type":        "number",
@@ -444,14 +444,14 @@ var SessionsHistoryTool = &Tool{
 var SessionsSendTool = &Tool{
 	Tool: mcp.Tool{
 		Name:        "sessions_send",
-		Description: "Send a message into another session. Prefer full sessionKey from sessions_list; label is fallback only.",
+		Description: "Send a message into another session. Prefer the sessionKey from sessions_list; label is fallback only.",
 		Annotations: &mcp.ToolAnnotations{Title: "Send to Session"},
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"sessionKey": map[string]any{
 					"type":        "string",
-					"description": "Full session key from sessions_list (preferred canonical target)",
+					"description": "Session identifier from sessions_list (preferred canonical target)",
 				},
 				"label": map[string]any{
 					"type":        "string",

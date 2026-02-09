@@ -19,6 +19,7 @@ import (
 const (
 	defaultCronIsolatedTimeoutSeconds = 600
 	noTimeoutMs                       = int64(30 * 24 * 60 * 60 * 1000)
+	cronDeliveryTimeout               = 10 * time.Second
 )
 
 func (oc *AIClient) runCronIsolatedAgentJob(job cron.CronJob, message string) (status string, summary string, outputText string, err error) {
@@ -141,7 +142,16 @@ func (oc *AIClient) runCronIsolatedAgentJob(job cron.CronJob, message string) (s
 			return "error", summary, outputText, fmt.Errorf("cron delivery failed: %s", reason)
 		}
 		if strings.TrimSpace(outputText) != "" {
-			oc.sendPlainAssistantMessage(ctx, target.Portal, outputText)
+			// Bound delivery time. A blocked Matrix send can otherwise wedge the cron scheduler
+			// (which runs jobs inline on the timer goroutine).
+			deliveryCtx, cancel := context.WithTimeout(ctx, cronDeliveryTimeout)
+			defer cancel()
+			if sendErr := oc.sendPlainAssistantMessageWithResult(deliveryCtx, target.Portal, outputText); sendErr != nil {
+				if bestEffort {
+					return "skipped", fmt.Sprintf("Delivery skipped (%s).", sendErr.Error()), outputText, nil
+				}
+				return "error", summary, outputText, fmt.Errorf("cron delivery failed: %w", sendErr)
+			}
 		}
 	}
 
@@ -173,43 +183,70 @@ func (oc *AIClient) lastAssistantMessageInfo(ctx context.Context, portal *bridge
 	if portal == nil {
 		return "", 0
 	}
-	messages, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, 5)
+	// Don't assume DB ordering (some implementations return newest-first).
+	// Scan for the newest assistant message by timestamp.
+	messages, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, 20)
 	if err != nil {
 		return "", 0
 	}
-	for i := len(messages) - 1; i >= 0; i-- {
-		meta := messageMeta(messages[i])
+	bestID := ""
+	bestTS := int64(0)
+	for _, msg := range messages {
+		if msg == nil {
+			continue
+		}
+		meta := messageMeta(msg)
 		if meta == nil || meta.Role != "assistant" {
 			continue
 		}
-		return messages[i].MXID.String(), messages[i].Timestamp.UnixMilli()
+		ts := msg.Timestamp.UnixMilli()
+		if bestID == "" || ts > bestTS {
+			bestID = msg.MXID.String()
+			bestTS = ts
+		}
 	}
-	return "", 0
+	return bestID, bestTS
 }
 
 func (oc *AIClient) waitForNewAssistantMessage(ctx context.Context, portal *bridgev2.Portal, lastID string, lastTimestamp int64) (*database.Message, bool) {
 	if portal == nil {
 		return nil, false
 	}
-	messages, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, 5)
+	// Don't assume DB ordering (some implementations return newest-first).
+	// Pick the newest assistant message that is strictly newer than the last
+	// snapshot, or has a different event ID at the same timestamp.
+	messages, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, 20)
 	if err != nil {
 		return nil, false
 	}
-	for i := len(messages) - 1; i >= 0; i-- {
-		msg := messages[i]
+	var candidate *database.Message
+	candidateTS := lastTimestamp
+	for _, msg := range messages {
+		if msg == nil {
+			continue
+		}
 		meta := messageMeta(msg)
 		if meta == nil || meta.Role != "assistant" {
 			continue
 		}
-		if msg.MXID.String() == lastID {
-			return nil, false
+		idStr := msg.MXID.String()
+		ts := msg.Timestamp.UnixMilli()
+		if ts < lastTimestamp {
+			continue
 		}
-		if msg.Timestamp.UnixMilli() <= lastTimestamp {
-			return nil, false
+		if ts == lastTimestamp && idStr == lastID {
+			continue
 		}
-		return msg, true
+		// Prefer the newest matching assistant message.
+		if candidate == nil || ts > candidateTS {
+			candidate = msg
+			candidateTS = ts
+		}
 	}
-	return nil, false
+	if candidate == nil {
+		return nil, false
+	}
+	return candidate, true
 }
 
 func truncateTextForCronSummary(text string) string {

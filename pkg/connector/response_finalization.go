@@ -551,18 +551,26 @@ func (oc *AIClient) redactInitialStreamingMessage(ctx context.Context, portal *b
 }
 
 func (oc *AIClient) sendPlainAssistantMessage(ctx context.Context, portal *bridgev2.Portal, text string) {
+	_ = oc.sendPlainAssistantMessageWithResult(ctx, portal, text)
+}
+
+// sendPlainAssistantMessageWithResult is used by cron/heartbeat delivery paths where failures should be
+// observable by the caller (e.g. so the cron scheduler doesn't get stuck on a blocked send forever).
+func (oc *AIClient) sendPlainAssistantMessageWithResult(ctx context.Context, portal *bridgev2.Portal, text string) error {
 	if portal == nil || portal.MXID == "" {
-		return
+		return nil
 	}
 	intent := oc.getModelIntent(ctx, portal)
 	if intent == nil {
-		return
+		return fmt.Errorf("missing intent")
 	}
+
 	// Best-effort: cron/heartbeat delivery may target rooms where the ghost isn't currently joined.
 	// EnsureJoined is typically a no-op when already in the room.
 	if err := intent.EnsureJoined(ctx, portal.MXID); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Stringer("room_id", portal.MXID).Msg("Failed to ensure assistant ghost is joined")
 	}
+
 	rendered := format.RenderMarkdown(text, true, true)
 	eventRawContent := map[string]any{
 		"msgtype":        event.MsgText,
@@ -573,9 +581,10 @@ func (oc *AIClient) sendPlainAssistantMessage(ctx context.Context, portal *bridg
 	}
 	if _, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, &event.Content{Raw: eventRawContent}, nil); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Stringer("room_id", portal.MXID).Msg("Failed to send plain assistant message")
-		return
+		return err
 	}
 	oc.recordAgentActivity(ctx, portal, portalMeta(portal))
+	return nil
 }
 
 func buildSourceParts(citations []sourceCitation, documents []sourceDocument, previews []*event.BeeperLinkPreview) []map[string]any {

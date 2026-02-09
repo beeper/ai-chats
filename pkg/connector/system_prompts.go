@@ -52,6 +52,7 @@ func buildSessionIdentityHint(portal *bridgev2.Portal, meta *PortalMetadata) str
 	}
 
 	// Use a single identifier to avoid confusing the model.
+	// This should match what tools call "sessionKey".
 	session := ""
 	if portal.MXID != "" {
 		session = strings.TrimSpace(portal.MXID.String())
@@ -60,25 +61,8 @@ func buildSessionIdentityHint(portal *bridgev2.Portal, meta *PortalMetadata) str
 		return ""
 	}
 
-	parts := make([]string, 0, 5)
-	parts = append(parts, "Session:", session)
-	if meta != nil && strings.TrimSpace(meta.AgentID) != "" {
-		parts = append(parts, "agentId="+strings.TrimSpace(meta.AgentID))
-	}
-	if meta != nil && meta.IsCronRoom {
-		if strings.TrimSpace(meta.CronJobID) != "" {
-			parts = append(parts, "cronJobId="+strings.TrimSpace(meta.CronJobID))
-		} else {
-			parts = append(parts, "cronRoom=true")
-		}
-	}
-
-	if meta != nil && meta.IsCronRoom {
-		parts = append(parts, "Note: this is an internal cron room; the cron runner delivers results to the configured target room.")
-	}
-
-	parts = append(parts, "Use this session id to refer to the current room in tools when needed.")
-	return strings.Join(parts, " ")
+	_ = meta // reserved for future context; keep signature stable
+	return "sessionKey: " + session
 }
 
 func (oc *AIClient) buildAdditionalSystemPrompts(

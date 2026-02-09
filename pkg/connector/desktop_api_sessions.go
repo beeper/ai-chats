@@ -101,7 +101,7 @@ func resolveDesktopInstanceName(instances map[string]DesktopAPIInstance, request
 	}
 	slices.Sort(names)
 	return "", fmt.Errorf(
-		"multiple desktop API instances configured (%s). Provide instance or use full sessionKey (desktop-api:<instance>:<chatId>) from sessions_list, or set a default with !ai desktop-api add <token> [baseURL]",
+		"multiple desktop API instances configured (%s). Provide instance or use the sessionKey from sessions_list (desktop-api:<instance>:<chatId>), or set a default with !ai desktop-api add <token> [baseURL]",
 		strings.Join(names, ", "),
 	)
 }
@@ -305,12 +305,14 @@ func (oc *AIClient) listDesktopSessions(ctx context.Context, instance string, op
 		}
 
 		sessionKey := normalizeDesktopSessionKeyWithInstance(instance, chat.ID)
-		channelName := desktopSessionChannelForNetwork(account.Network)
+		networkName := desktopSessionChannelForNetwork(account.Network)
 		entry := map[string]any{
-			"key":       sessionKey,
-			"kind":      kind,
-			"channel":   channelName,
-			"sessionId": sessionKey,
+			"sessionKey": sessionKey,
+			"kind":    kind,
+			"channel": channelDesktopAPI,
+		}
+		if networkName != "" && networkName != channelDesktopAPI {
+			entry["network"] = networkName
 		}
 		if title := strings.TrimSpace(chat.Title); title != "" {
 			entry["label"] = title
@@ -568,7 +570,7 @@ func (oc *AIClient) resolveDesktopSessionByLabelWithOptions(ctx context.Context,
 			}
 			suggestions = append(suggestions, describeDesktopChatForLabel(chat, accounts[strings.TrimSpace(chat.AccountID)]))
 		}
-		return "", "", fmt.Errorf("%w: no exact session found for label '%s'. Top matches: %s. Use sessionKey from sessions_list for deterministic targeting", errDesktopLabelNotFound, trimmed, strings.Join(suggestions, ", "))
+		return "", "", fmt.Errorf("%w: no exact session found for label '%s'. Top matches: %s. Use the sessionKey from sessions_list for deterministic targeting", errDesktopLabelNotFound, trimmed, strings.Join(suggestions, ", "))
 	}
 	acctID := strings.TrimSpace(opts.AccountID)
 	network := strings.TrimSpace(opts.Network)
@@ -580,9 +582,9 @@ func (oc *AIClient) resolveDesktopSessionByLabelWithOptions(ctx context.Context,
 		if network != "" {
 			filterParts = append(filterParts, "network="+network)
 		}
-		return "", "", fmt.Errorf("%w: no session found for label '%s' with filters (%s). Use sessionKey from sessions_list", errDesktopLabelNotFound, trimmed, strings.Join(filterParts, ", "))
+		return "", "", fmt.Errorf("%w: no session found for label '%s' with filters (%s). Use the sessionKey from sessions_list", errDesktopLabelNotFound, trimmed, strings.Join(filterParts, ", "))
 	}
-	return "", "", fmt.Errorf("%w: no session found for label '%s'. Use sessionKey from sessions_list", errDesktopLabelNotFound, trimmed)
+	return "", "", fmt.Errorf("%w: no session found for label '%s'. Use the sessionKey from sessions_list", errDesktopLabelNotFound, trimmed)
 }
 
 func (oc *AIClient) resolveDesktopSessionByLabel(ctx context.Context, instance, label string) (string, string, error) {
