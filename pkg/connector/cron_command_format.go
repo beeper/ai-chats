@@ -13,7 +13,7 @@ func formatCronStatusText(enabled bool, storePath string, jobCount int, nextWake
 	if nextWakeAtMs != nil && *nextWakeAtMs > 0 {
 		next = fmt.Sprintf("%s (%d)", formatUnixMs(*nextWakeAtMs), *nextWakeAtMs)
 	}
-	return fmt.Sprintf("Cron: enabled=%v jobs=%d store=%s next=%s", enabled, jobCount, strings.TrimSpace(storePath), next)
+	return fmt.Sprintf("Scheduler: enabled=%v jobs=%d store=%s next=%s", enabled, jobCount, strings.TrimSpace(storePath), next)
 }
 
 func formatCronJobListText(jobs []cron.CronJob) string {

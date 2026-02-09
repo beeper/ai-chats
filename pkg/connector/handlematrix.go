@@ -1531,7 +1531,9 @@ func (oc *AIClient) buildPromptForRegenerate(
 				}
 				if injectImages && msgMeta.MediaURL != "" && isImageMimeType(msgMeta.MimeType) {
 					if imgPart := oc.downloadHistoryImage(ctx, msgMeta.MediaURL, msgMeta.MimeType); imgPart != nil {
-						prompt = append(prompt, buildMultimodalUserMessage(body, []openai.ChatCompletionContentPartUnionParam{*imgPart}))
+						// Append the media URL so the model can reference it for editing tools (e.g. input_images).
+						bodyWithURL := body + fmt.Sprintf("\n[media_url: %s]", msgMeta.MediaURL)
+						prompt = append(prompt, buildMultimodalUserMessage(bodyWithURL, []openai.ChatCompletionContentPartUnionParam{*imgPart}))
 						continue
 					}
 				}

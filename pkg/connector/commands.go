@@ -931,7 +931,7 @@ func fnTools(ce *commands.Event) {
 // CommandCron handles the !ai cron command.
 var CommandCron = registerAICommand(commandregistry.Definition{
 	Name:           "cron",
-	Description:    "Inspect/manage cron jobs",
+	Description:    "Inspect/manage scheduled jobs",
 	Args:           "[status|list|runs|run|remove] ...",
 	Section:        HelpSectionAI,
 	RequiresPortal: true,
@@ -945,7 +945,7 @@ func fnCron(ce *commands.Event) {
 		return
 	}
 	if client.cronService == nil {
-		ce.Reply("Cron service not available.")
+		ce.Reply("Scheduler service not available.")
 		return
 	}
 
@@ -957,7 +957,7 @@ func fnCron(ce *commands.Event) {
 	case "status":
 		enabled, storePath, jobCount, nextWake, err := client.cronService.Status()
 		if err != nil {
-			ce.Reply("Cron status failed: %s", err.Error())
+			ce.Reply("Scheduler status failed: %s", err.Error())
 			return
 		}
 		ce.Reply(formatCronStatusText(enabled, storePath, jobCount, nextWake))
@@ -968,7 +968,7 @@ func fnCron(ce *commands.Event) {
 		}
 		jobs, err := client.cronService.List(includeDisabled)
 		if err != nil {
-			ce.Reply("Cron list failed: %s", err.Error())
+			ce.Reply("Scheduler list failed: %s", err.Error())
 			return
 		}
 		ce.Reply(formatCronJobListText(jobs))
@@ -986,7 +986,7 @@ func fnCron(ce *commands.Event) {
 		}
 		entries, err := client.readCronRuns(jobID, limit)
 		if err != nil {
-			ce.Reply("Cron runs failed: %s", err.Error())
+			ce.Reply("Scheduler runs failed: %s", err.Error())
 			return
 		}
 		ce.Reply(formatCronRunsText(jobID, entries))
@@ -998,7 +998,7 @@ func fnCron(ce *commands.Event) {
 		jobID := strings.TrimSpace(ce.Args[1])
 		removed, err := client.cronService.Remove(jobID)
 		if err != nil {
-			ce.Reply("Cron remove failed: %s", err.Error())
+			ce.Reply("Scheduler remove failed: %s", err.Error())
 			return
 		}
 		if removed {
@@ -1018,7 +1018,7 @@ func fnCron(ce *commands.Event) {
 		}
 		ran, reason, err := client.cronService.Run(jobID, mode)
 		if err != nil {
-			ce.Reply("Cron run failed: %s", err.Error())
+			ce.Reply("Scheduler run failed: %s", err.Error())
 			return
 		}
 		if ran {

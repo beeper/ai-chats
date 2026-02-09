@@ -153,6 +153,7 @@ tools:
       num_results: 5
       include_text: false
       text_max_chars: 500
+      highlights: true  # enabled by default; provides description snippets for source cards
     brave:
       api_key: ""
       base_url: "https://api.search.brave.com/res/v1/web/search"

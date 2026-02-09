@@ -777,8 +777,6 @@ func callOpenRouterImageGenWithControls(ctx context.Context, btc *BridgeToolCont
 		"messages":   []map[string]any{msg},
 		"modalities": []string{"image", "text"},
 		"stream":     false,
-		// Keep responses small; images come in the `images` field.
-		"max_tokens": 1,
 	}
 
 	imageCfg := map[string]any{}

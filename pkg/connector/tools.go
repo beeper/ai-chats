@@ -979,7 +979,7 @@ func executeImageGeneration(ctx context.Context, args map[string]any) (string, e
 						client.Log().Warn().Err(err).Int("idx", idx).Msg("async image generation decode failed")
 						continue
 					}
-					if _, _, err := client.sendGeneratedImage(bgctx, portal, imageData, mimeType, ""); err != nil {
+					if _, _, err := client.sendGeneratedImage(bgctx, portal, imageData, mimeType, "", truncateCaption(reqCopy.Prompt, 256)); err != nil {
 						client.Log().Warn().Err(err).Int("idx", idx).Msg("async image generation send failed")
 						continue
 					}
@@ -1162,9 +1162,15 @@ func extractOpenRouterImages(ctx context.Context, parsed any) ([]string, error) 
 				out = append(out, b64)
 			}
 		} else if contentStr, ok := msg["content"].(string); ok && strings.TrimSpace(contentStr) != "" {
-			b64, err := normalizeOpenRouterImageRefToB64(ctx, contentStr)
-			if err == nil && strings.TrimSpace(b64) != "" {
-				out = append(out, b64)
+			// Only interpret the content string as an image reference if it actually
+			// looks like one (data URL or HTTP URL). Arbitrary text strings can
+			// accidentally pass base64 validation and produce tiny garbage "images".
+			trimmed := strings.TrimSpace(contentStr)
+			if strings.HasPrefix(trimmed, "data:") || strings.HasPrefix(trimmed, "http://") || strings.HasPrefix(trimmed, "https://") {
+				b64, err := normalizeOpenRouterImageRefToB64(ctx, trimmed)
+				if err == nil && strings.TrimSpace(b64) != "" {
+					out = append(out, b64)
+				}
 			}
 		}
 	}
@@ -1209,12 +1215,17 @@ func normalizeOpenRouterImageRefToB64(ctx context.Context, ref string) (string, 
 	if strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://") {
 		return fetchImageAsBase64(ctx, ref)
 	}
-	if _, err := base64.StdEncoding.DecodeString(ref); err == nil {
-		return ref, nil
-	}
-	// Some providers might return raw base64url.
-	if _, err := base64.URLEncoding.DecodeString(ref); err == nil {
-		return ref, nil
+	// Only accept raw base64 if it's long enough to be a real image.
+	// Short strings (like text responses) can accidentally pass base64 validation.
+	const minBase64ImageLen = 1000
+	if len(ref) >= minBase64ImageLen {
+		if _, err := base64.StdEncoding.DecodeString(ref); err == nil {
+			return ref, nil
+		}
+		// Some providers might return raw base64url.
+		if _, err := base64.URLEncoding.DecodeString(ref); err == nil {
+			return ref, nil
+		}
 	}
 	return "", fmt.Errorf("unexpected image reference format: %s", ref[:min(120, len(ref))])
 }

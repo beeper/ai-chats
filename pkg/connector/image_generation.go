@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -33,6 +34,7 @@ func (oc *AIClient) sendGeneratedImage(
 	imageData []byte,
 	mimeType string,
 	turnID string,
+	caption string,
 ) (id.EventID, string, error) {
 	// Generate filename based on timestamp and mime type
 	ext := extensionForMIME(mimeType, "png", map[string]string{
@@ -51,6 +53,30 @@ func (oc *AIClient) sendGeneratedImage(
 		fileName,
 		"com.beeper.ai.image_generation",
 		false,
-		"",
+		caption,
 	)
+}
+
+// parseToolArgsPrompt extracts the "prompt" field from tool call arguments JSON.
+func parseToolArgsPrompt(argsJSON string) (string, error) {
+	var args map[string]any
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return "", err
+	}
+	prompt, ok := args["prompt"].(string)
+	if !ok || strings.TrimSpace(prompt) == "" {
+		return "", fmt.Errorf("no prompt field")
+	}
+	return strings.TrimSpace(prompt), nil
+}
+
+// truncateCaption truncates a string to maxLen characters, appending "..." if truncated.
+func truncateCaption(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	if maxLen <= 3 {
+		return s[:maxLen]
+	}
+	return s[:maxLen-3] + "..."
 }

@@ -2226,7 +2226,9 @@ func (oc *AIClient) buildBasePrompt(
 				// Re-inject user-sent images as multimodal content so the model can reference them.
 				if injectImages && msgMeta.MediaURL != "" && isImageMimeType(msgMeta.MimeType) {
 					if imgPart := oc.downloadHistoryImage(ctx, msgMeta.MediaURL, msgMeta.MimeType); imgPart != nil {
-						prompt = append(prompt, buildMultimodalUserMessage(body, []openai.ChatCompletionContentPartUnionParam{*imgPart}))
+						// Append the media URL so the model can reference it for editing tools (e.g. input_images).
+						bodyWithURL := body + fmt.Sprintf("\n[media_url: %s]", msgMeta.MediaURL)
+						prompt = append(prompt, buildMultimodalUserMessage(bodyWithURL, []openai.ChatCompletionContentPartUnionParam{*imgPart}))
 						continue
 					}
 				}
@@ -2617,7 +2619,9 @@ func (oc *AIClient) buildPromptUpToMessage(
 				}
 				if injectImages && msgMeta.MediaURL != "" && isImageMimeType(msgMeta.MimeType) {
 					if imgPart := oc.downloadHistoryImage(ctx, msgMeta.MediaURL, msgMeta.MimeType); imgPart != nil {
-						prompt = append(prompt, buildMultimodalUserMessage(body, []openai.ChatCompletionContentPartUnionParam{*imgPart}))
+						// Append the media URL so the model can reference it for editing tools (e.g. input_images).
+						bodyWithURL := body + fmt.Sprintf("\n[media_url: %s]", msgMeta.MediaURL)
+						prompt = append(prompt, buildMultimodalUserMessage(bodyWithURL, []openai.ChatCompletionContentPartUnionParam{*imgPart}))
 						continue
 					}
 				}

@@ -156,6 +156,7 @@ You are free to edit `HEARTBEAT.md` with a short checklist or reminders. Keep it
 - You want a different model or thinking level for the task
 - One-shot reminders ("remind me in 20 minutes")
 - Output should deliver directly to a channel without main session involvement
+- Short-interval polling or testing (intervals as low as a few seconds are supported)
 
 Notes:
 - `wakeMode` only affects whether a heartbeat is triggered after a job enqueues events. It does not change whether the cron scheduler runs.

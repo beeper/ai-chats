@@ -110,6 +110,7 @@ func (c ExaConfig) withDefaults() ExaConfig {
 	if c.TextMaxCharacters <= 0 {
 		c.TextMaxCharacters = 500
 	}
+	c.Highlights = true
 	return c
 }
 

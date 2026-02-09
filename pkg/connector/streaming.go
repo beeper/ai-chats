@@ -2474,6 +2474,12 @@ func (oc *AIClient) streamingResponse(
 				result = displayResult
 			}
 
+			// Extract image generation prompt for use as caption on sent images.
+			var imageCaption string
+			if prompt, err := parseToolArgsPrompt(argsJSON); err == nil {
+				imageCaption = truncateCaption(prompt, 256)
+			}
+
 			// Check for image generation result (IMAGE: / IMAGES: prefix)
 			if strings.HasPrefix(result, ImagesResultPrefix) {
 				payload := strings.TrimPrefix(result, ImagesResultPrefix)
@@ -2491,7 +2497,7 @@ func (oc *AIClient) streamingResponse(
 							log.Warn().Err(err).Msg("Failed to decode generated image")
 							continue
 						}
-						_, mediaURL, err := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turnID)
+						_, mediaURL, err := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turnID, imageCaption)
 						if err != nil {
 							log.Warn().Err(err).Msg("Failed to send generated image")
 							continue
@@ -2521,7 +2527,7 @@ func (oc *AIClient) streamingResponse(
 					resultStatus = ResultStatusError
 				} else {
 					// Send image message
-					if _, mediaURL, err := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turnID); err != nil {
+					if _, mediaURL, err := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turnID, imageCaption); err != nil {
 						log.Warn().Err(err).Msg("Failed to send generated image")
 						displayResult = "Error: failed to send generated image"
 						resultStatus = ResultStatusError
@@ -3639,6 +3645,12 @@ func (oc *AIClient) streamingResponse(
 					result = displayResult
 				}
 
+				// Extract image generation prompt for use as caption on sent images.
+				var imageCaption string
+				if prompt, err := parseToolArgsPrompt(argsJSON); err == nil {
+					imageCaption = truncateCaption(prompt, 256)
+				}
+
 				// Check for image generation result (IMAGE: / IMAGES: prefix)
 				if strings.HasPrefix(result, ImagesResultPrefix) {
 					payload := strings.TrimPrefix(result, ImagesResultPrefix)
@@ -3656,7 +3668,7 @@ func (oc *AIClient) streamingResponse(
 								log.Warn().Err(err).Msg("Failed to decode generated image (continuation)")
 								continue
 							}
-							_, mediaURL, err := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turnID)
+							_, mediaURL, err := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turnID, imageCaption)
 							if err != nil {
 								log.Warn().Err(err).Msg("Failed to send generated image (continuation)")
 								continue
@@ -3685,7 +3697,7 @@ func (oc *AIClient) streamingResponse(
 						displayResult = "Error: failed to decode generated image"
 						resultStatus = ResultStatusError
 					} else {
-						if _, mediaURL, err := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turnID); err != nil {
+						if _, mediaURL, err := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turnID, imageCaption); err != nil {
 							log.Warn().Err(err).Msg("Failed to send generated image (continuation)")
 							displayResult = "Error: failed to send generated image"
 							resultStatus = ResultStatusError
@@ -3811,7 +3823,8 @@ func (oc *AIClient) streamingResponse(
 			log.Warn().Err(err).Str("item_id", img.itemID).Msg("Failed to decode generated image")
 			continue
 		}
-		eventID, mediaURL, err := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, img.turnID)
+		// Native API image generation — no user-provided prompt available for caption.
+		eventID, mediaURL, err := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, img.turnID, "")
 		if err != nil {
 			log.Warn().Err(err).Str("item_id", img.itemID).Msg("Failed to send generated image to Matrix")
 			continue
@@ -4403,6 +4416,12 @@ func (oc *AIClient) streamChatCompletions(
 						}
 					}
 
+					// Extract image generation prompt for use as caption on sent images.
+					var imageCaption string
+					if prompt, err := parseToolArgsPrompt(argsJSON); err == nil {
+						imageCaption = truncateCaption(prompt, 256)
+					}
+
 					// Check for image generation result (IMAGE: / IMAGES: prefix)
 					if strings.HasPrefix(result, ImagesResultPrefix) {
 						payload := strings.TrimPrefix(result, ImagesResultPrefix)
@@ -4420,7 +4439,7 @@ func (oc *AIClient) streamChatCompletions(
 									log.Warn().Err(decodeErr).Msg("Failed to decode generated image (Chat Completions)")
 									continue
 								}
-								_, mediaURL, err := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turnID)
+								_, mediaURL, err := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turnID, imageCaption)
 								if err != nil {
 									log.Warn().Err(err).Msg("Failed to send generated image (Chat Completions)")
 									continue
@@ -4448,7 +4467,7 @@ func (oc *AIClient) streamChatCompletions(
 							result = "Error: failed to decode generated image"
 							resultStatus = ResultStatusError
 						} else {
-							if _, mediaURL, sendErr := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turnID); sendErr != nil {
+							if _, mediaURL, sendErr := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turnID, imageCaption); sendErr != nil {
 								log.Warn().Err(sendErr).Msg("Failed to send generated image (Chat Completions)")
 								result = "Error: failed to send generated image"
 								resultStatus = ResultStatusError

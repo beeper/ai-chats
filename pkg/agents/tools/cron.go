@@ -10,7 +10,7 @@ var CronTool = &Tool{
 	Tool: mcp.Tool{
 		Name:        toolspec.CronName,
 		Description: toolspec.CronDescription,
-		Annotations: &mcp.ToolAnnotations{Title: "Cron"},
+		Annotations: &mcp.ToolAnnotations{Title: "Scheduler"},
 		InputSchema: toolspec.CronSchema(),
 	},
 	Type:  ToolTypeBuiltin,
