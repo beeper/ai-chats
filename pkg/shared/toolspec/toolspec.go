@@ -34,9 +34,9 @@ const (
 	TTSDescription = "Convert text to speech and return a MEDIA: path. Use when the user requests audio or TTS is enabled. Copy the MEDIA line exactly."
 
 	MemorySearchName        = "memory_search"
-	MemorySearchDescription = "Mandatory recall step: semantically search MEMORY.md + memory/*.md (and optional session transcripts) before answering questions about prior work, decisions, dates, people, preferences, or todos; returns top snippets with path + lines."
+	MemorySearchDescription = "Mandatory recall step: semantically and keyword search MEMORY.md + memory/*.md + workspace/*.md (and optional session transcripts) before answering questions about prior work, decisions, dates, people, preferences, or todos; returns top snippets with path + lines."
 	MemoryGetName           = "memory_get"
-	MemoryGetDescription    = "Safe snippet read from MEMORY.md, memory/*.md, or configured memorySearch.extraPaths with optional from/lines; use after memory_search to pull only the needed lines and keep context small."
+	MemoryGetDescription    = "Safe snippet read from MEMORY.md, memory/*.md, workspace/*.md, or configured memorySearch.extraPaths with optional from/lines; use after memory_search to pull only the needed lines and keep context small."
 
 	ReadName         = "read"
 	ReadDescription  = "Read file contents. Images sent as attachments. Text: first 2000 lines, lines truncated at 2000 chars. Use offset/limit for large files."
@@ -617,9 +617,25 @@ func MemorySearchSchema() map[string]any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
+			"mode": map[string]any{
+				"type":        "string",
+				"description": "Optional: search mode. auto (default), semantic, keyword, hybrid, or list (lists recent files; query optional).",
+				"enum":        []string{"auto", "semantic", "keyword", "hybrid", "list"},
+			},
 			"query": map[string]any{
 				"type":        "string",
-				"description": "Search query to find relevant memories",
+				"description": "Search query to find relevant memories. Required unless mode=list.",
+			},
+			"sources": map[string]any{
+				"type":        "array",
+				"description": "Optional: restrict to sources (e.g. ['memory','workspace']).",
+				"items": map[string]any{
+					"type": "string",
+				},
+			},
+			"pathPrefix": map[string]any{
+				"type":        "string",
+				"description": "Optional: restrict results to paths under this prefix (virtual paths). Examples: 'memory/', 'workspace/', 'SOUL.md'.",
 			},
 			"maxResults": map[string]any{
 				"type":        "number",
@@ -630,7 +646,7 @@ func MemorySearchSchema() map[string]any {
 				"description": "Minimum relevance score threshold (0-1, default: 0.35)",
 			},
 		},
-		"required": []string{"query"},
+		"required": []string{},
 	}
 }
 

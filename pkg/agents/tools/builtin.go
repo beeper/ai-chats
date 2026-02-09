@@ -48,10 +48,6 @@ func BuiltinTools() []*Tool {
 		ApplyPatchTool,
 		WriteTool,
 		EditTool,
-		StatTool,
-		LSTool,
-		FindTool,
-		GrepTool,
 	}
 	tools = append(tools, NexusTools()...)
 	return tools

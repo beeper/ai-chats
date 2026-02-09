@@ -91,6 +91,19 @@ type SearchOptions struct {
 	MaxResults int
 	MinScore   float64
 	SessionKey string
+	// Mode controls search strategy.
+	// - auto: prefer hybrid (vector + keyword), else keyword, else semantic, else scan fallback
+	// - semantic: vector-only
+	// - keyword: keyword-only (FTS if available; else scan fallback)
+	// - hybrid: merge vector + keyword when possible
+	// - list: list recent files (ignores query text)
+	Mode string
+	// Sources restrict which indexed sources to search (e.g. ["memory","workspace"]).
+	// If empty, uses the manager's configured sources.
+	Sources []string
+	// PathPrefix restricts results to paths under this prefix (virtual paths).
+	// Example: "workspace/projects/acme/".
+	PathPrefix string
 }
 
 type SearchResult struct {

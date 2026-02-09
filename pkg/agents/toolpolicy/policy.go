@@ -51,7 +51,7 @@ var ToolGroups = map[string][]string{
 	GroupNodes:      {"nodes"},
 	GroupStatus:     {"session_status"},
 	GroupOpenClaw:   {"message", "agents_list", "list_models", "list_tools", "modify_room", "sessions_list", "sessions_history", "sessions_send", "sessions_spawn", "session_status", "memory_search", "memory_get", "web_search", "web_fetch", "image", "gravatar_fetch", "beeper_docs"},
-	GroupFS:         {"read", "write", "edit", "apply_patch", "stat", "ls", "find", "grep"},
+	GroupFS:         {"read", "write", "edit", "apply_patch"},
 	GroupNexus: {
 		"get_user_information",
 		"contacts",

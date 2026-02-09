@@ -110,10 +110,6 @@ const (
 	ToolNameApplyPatch    = toolspec.ApplyPatchName
 	ToolNameWrite         = toolspec.WriteName
 	ToolNameEdit          = toolspec.EditName
-	ToolNameStat          = toolspec.StatName
-	ToolNameLS            = toolspec.LSName
-	ToolNameFind          = toolspec.FindName
-	ToolNameGrep          = toolspec.GrepName
 )
 
 type memorySearchOutput struct {
@@ -1983,9 +1979,15 @@ func executeMemorySearch(ctx context.Context, args map[string]any) (string, erro
 		return "", errors.New("memory_search requires bridge context")
 	}
 
-	queryRaw, ok := args["query"].(string)
-	query := strings.TrimSpace(queryRaw)
-	if !ok || query == "" {
+	mode := ""
+	if raw, ok := args["mode"].(string); ok {
+		mode = strings.ToLower(strings.TrimSpace(raw))
+	}
+	query := ""
+	if raw, ok := args["query"].(string); ok {
+		query = strings.TrimSpace(raw)
+	}
+	if mode != "list" && query == "" {
 		return "", errors.New("query required")
 	}
 	var maxResults *int
@@ -2019,12 +2021,41 @@ func executeMemorySearch(ctx context.Context, args map[string]any) (string, erro
 	opts := memory.SearchOptions{
 		SessionKey: btc.Portal.PortalKey.String(),
 		MinScore:   math.NaN(),
+		Mode:       mode,
 	}
 	if maxResults != nil {
 		opts.MaxResults = *maxResults
 	}
 	if minScore != nil {
 		opts.MinScore = *minScore
+	}
+	if raw, ok := args["pathPrefix"].(string); ok {
+		opts.PathPrefix = strings.TrimSpace(raw)
+	}
+	if raw := args["sources"]; raw != nil {
+		if list, ok := raw.([]any); ok {
+			out := make([]string, 0, len(list))
+			for _, item := range list {
+				if s, ok := item.(string); ok {
+					if trimmed := strings.TrimSpace(s); trimmed != "" {
+						out = append(out, trimmed)
+					}
+				}
+			}
+			if len(out) > 0 {
+				opts.Sources = out
+			}
+		} else if list, ok := raw.([]string); ok {
+			out := make([]string, 0, len(list))
+			for _, s := range list {
+				if trimmed := strings.TrimSpace(s); trimmed != "" {
+					out = append(out, trimmed)
+				}
+			}
+			if len(out) > 0 {
+				opts.Sources = out
+			}
+		}
 	}
 	results, err := manager.Search(ctx, query, opts)
 	if err != nil {

@@ -93,7 +93,7 @@ func (m *MemorySearchManager) sync(ctx context.Context, sessionKey string, force
 // This split avoids holding the single SQLite connection during long embedding API calls.
 func (m *MemorySearchManager) syncFullReindex(ctx context.Context, sessionKey, generation string) error {
 	// Phase 1: prepare all content and embeddings outside the transaction.
-	prepared, activePaths, err := m.prepareMemoryFiles(ctx, true, generation)
+	prepared, activeBySource, err := m.prepareMemoryFiles(ctx, true, generation)
 	if err != nil {
 		return err
 	}
@@ -114,8 +114,14 @@ func (m *MemorySearchManager) syncFullReindex(ctx context.Context, sessionKey, g
 				return err
 			}
 		}
-		if err := m.removeStaleMemoryChunks(txCtx, activePaths, generation); err != nil {
-			return err
+		for _, source := range []string{"memory", "workspace"} {
+			active := activeBySource[source]
+			if active == nil {
+				continue
+			}
+			if err := m.removeStaleChunksForSource(txCtx, active, generation, source); err != nil {
+				return err
+			}
 		}
 		if m.syncProgress != nil {
 			m.syncProgress(len(prepared), len(prepared), "cleanup")
@@ -138,7 +144,7 @@ func (m *MemorySearchManager) syncFullReindex(ctx context.Context, sessionKey, g
 
 	// Transaction committed — update in-memory state.
 	m.indexGen = generation
-	if hasSource(m.cfg.Sources, "memory") {
+	if hasSource(m.cfg.Sources, "memory") || hasSource(m.cfg.Sources, "workspace") {
 		m.dirty = false
 	}
 	if m.cfg.Experimental.SessionMemory && hasSource(m.cfg.Sources, "sessions") {
@@ -157,7 +163,7 @@ func (m *MemorySearchManager) syncIncremental(ctx context.Context, sessionKey, g
 	if err := m.indexMemoryFiles(ctx, false, generation); err != nil {
 		return err
 	}
-	if hasSource(m.cfg.Sources, "memory") {
+	if hasSource(m.cfg.Sources, "memory") || hasSource(m.cfg.Sources, "workspace") {
 		m.dirty = false
 	}
 
@@ -269,7 +275,7 @@ func (m *MemorySearchManager) indexMemoryFiles(ctx context.Context, force bool, 
 		return err
 	}
 	extraPaths := normalizeExtraPaths(m.cfg.ExtraPaths)
-	activePaths := make(map[string]textfs.FileEntry)
+	activeBySource := make(map[string]map[string]textfs.FileEntry)
 
 	for _, entry := range entries {
 		path := strings.TrimSpace(entry.Path)
@@ -279,56 +285,96 @@ func (m *MemorySearchManager) indexMemoryFiles(ctx context.Context, force bool, 
 		if !strings.HasSuffix(strings.ToLower(path), ".md") {
 			continue
 		}
-		if !textfs.IsMemoryPath(path) && !isExtraPath(path, extraPaths) {
+		source := strings.ToLower(strings.TrimSpace(entry.Source))
+		if source == "" {
+			source = textfs.ClassifySource(path)
+		}
+		switch source {
+		case "memory":
+			if !hasSource(m.cfg.Sources, "memory") && !isExtraPath(path, extraPaths) {
+				continue
+			}
+		case "workspace":
+			if !hasSource(m.cfg.Sources, "workspace") && !isExtraPath(path, extraPaths) {
+				continue
+			}
+		default:
 			continue
 		}
-		activePaths[path] = entry
+		if activeBySource[source] == nil {
+			activeBySource[source] = make(map[string]textfs.FileEntry)
+		}
+		activeBySource[source][path] = entry
 	}
 
+	// Ensure enabled sources exist even when empty, so stale-chunk cleanup runs.
+	for _, source := range []string{"memory", "workspace"} {
+		if hasSource(m.cfg.Sources, source) && activeBySource[source] == nil {
+			activeBySource[source] = make(map[string]textfs.FileEntry)
+		}
+	}
+
+	total := 0
+	for _, m := range activeBySource {
+		total += len(m)
+	}
 	m.log.Debug().
-		Int("files", len(activePaths)).
+		Int("files", total).
 		Bool("needsFullReindex", force).
 		Bool("batch", m.batchEnabled).
 		Int("concurrency", m.indexConcurrency()).
 		Msg("memory sync: indexing memory files")
 
-	total := len(activePaths)
 	completed := 0
-	for _, entry := range activePaths {
-		source := "memory"
-		needs, err := m.needsFileIndex(ctx, entry, source, generation)
-		if err != nil {
-			return err
-		}
-		if !force && !needs {
-			completed++
+	for _, source := range []string{"memory", "workspace"} {
+		active := activeBySource[source]
+		if active == nil {
 			continue
 		}
-		if m.syncProgress != nil {
-			m.syncProgress(completed, total, entry.Path)
+		for _, entry := range active {
+			needs, err := m.needsFileIndex(ctx, entry, source, generation)
+			if err != nil {
+				return err
+			}
+			if !force && !needs {
+				completed++
+				continue
+			}
+			if m.syncProgress != nil {
+				m.syncProgress(completed, total, entry.Path)
+			}
+			if err := m.indexContent(ctx, entry.Path, source, entry.Content, generation); err != nil {
+				return err
+			}
+			completed++
 		}
-		if err := m.indexContent(ctx, entry.Path, source, entry.Content, generation); err != nil {
-			return err
-		}
-		completed++
 	}
 	if m.syncProgress != nil {
 		m.syncProgress(total, total, "cleanup")
 	}
 
-	return m.removeStaleMemoryChunks(ctx, activePaths, generation)
+	for _, source := range []string{"memory", "workspace"} {
+		active := activeBySource[source]
+		if active == nil {
+			continue
+		}
+		if err := m.removeStaleChunksForSource(ctx, active, generation, source); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // prepareMemoryFiles reads files and computes embeddings without writing to the DB.
 // Returns prepared content ready for writeContent, plus activePaths for stale chunk cleanup.
-func (m *MemorySearchManager) prepareMemoryFiles(ctx context.Context, force bool, generation string) ([]*preparedContent, map[string]textfs.FileEntry, error) {
+func (m *MemorySearchManager) prepareMemoryFiles(ctx context.Context, force bool, generation string) ([]*preparedContent, map[string]map[string]textfs.FileEntry, error) {
 	store := textfs.NewStore(m.db, m.bridgeID, m.loginID, m.agentID)
 	entries, err := store.List(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
 	extraPaths := normalizeExtraPaths(m.cfg.ExtraPaths)
-	activePaths := make(map[string]textfs.FileEntry)
+	activeBySource := make(map[string]map[string]textfs.FileEntry)
 
 	for _, entry := range entries {
 		path := strings.TrimSpace(entry.Path)
@@ -338,45 +384,76 @@ func (m *MemorySearchManager) prepareMemoryFiles(ctx context.Context, force bool
 		if !strings.HasSuffix(strings.ToLower(path), ".md") {
 			continue
 		}
-		if !textfs.IsMemoryPath(path) && !isExtraPath(path, extraPaths) {
+		source := strings.ToLower(strings.TrimSpace(entry.Source))
+		if source == "" {
+			source = textfs.ClassifySource(path)
+		}
+		switch source {
+		case "memory":
+			if !hasSource(m.cfg.Sources, "memory") && !isExtraPath(path, extraPaths) {
+				continue
+			}
+		case "workspace":
+			if !hasSource(m.cfg.Sources, "workspace") && !isExtraPath(path, extraPaths) {
+				continue
+			}
+		default:
 			continue
 		}
-		activePaths[path] = entry
+		if activeBySource[source] == nil {
+			activeBySource[source] = make(map[string]textfs.FileEntry)
+		}
+		activeBySource[source][path] = entry
 	}
 
+	// Ensure enabled sources exist even when empty, so stale-chunk cleanup runs.
+	for _, source := range []string{"memory", "workspace"} {
+		if hasSource(m.cfg.Sources, source) && activeBySource[source] == nil {
+			activeBySource[source] = make(map[string]textfs.FileEntry)
+		}
+	}
+
+	total := 0
+	for _, m := range activeBySource {
+		total += len(m)
+	}
 	m.log.Debug().
-		Int("files", len(activePaths)).
+		Int("files", total).
 		Bool("needsFullReindex", force).
 		Bool("batch", m.batchEnabled).
 		Int("concurrency", m.indexConcurrency()).
 		Msg("memory sync: preparing memory files (embeddings)")
 
-	total := len(activePaths)
 	completed := 0
 	var prepared []*preparedContent
-	for _, entry := range activePaths {
-		source := "memory"
-		needs, err := m.needsFileIndex(ctx, entry, source, generation)
-		if err != nil {
-			return nil, nil, err
-		}
-		if !force && !needs {
-			completed++
+	for _, source := range []string{"memory", "workspace"} {
+		active := activeBySource[source]
+		if active == nil {
 			continue
 		}
-		if m.syncProgress != nil {
-			m.syncProgress(completed, total, entry.Path)
+		for _, entry := range active {
+			needs, err := m.needsFileIndex(ctx, entry, source, generation)
+			if err != nil {
+				return nil, nil, err
+			}
+			if !force && !needs {
+				completed++
+				continue
+			}
+			if m.syncProgress != nil {
+				m.syncProgress(completed, total, entry.Path)
+			}
+			pc, err := m.prepareContent(ctx, entry.Path, source, entry.Content, generation)
+			if err != nil {
+				return nil, nil, err
+			}
+			if pc != nil {
+				prepared = append(prepared, pc)
+			}
+			completed++
 		}
-		pc, err := m.prepareContent(ctx, entry.Path, source, entry.Content, generation)
-		if err != nil {
-			return nil, nil, err
-		}
-		if pc != nil {
-			prepared = append(prepared, pc)
-		}
-		completed++
 	}
-	return prepared, activePaths, nil
+	return prepared, activeBySource, nil
 }
 
 func (m *MemorySearchManager) indexConcurrency() int {
@@ -603,9 +680,13 @@ func (m *MemorySearchManager) deletePathChunks(ctx context.Context, path, source
 	return err
 }
 
-func (m *MemorySearchManager) removeStaleMemoryChunks(ctx context.Context, active map[string]textfs.FileEntry, generation string) error {
+func (m *MemorySearchManager) removeStaleChunksForSource(ctx context.Context, active map[string]textfs.FileEntry, generation string, source string) error {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return nil
+	}
 	genSQL, genArgs := generationFilterSQL(5, generation)
-	args := []any{m.bridgeID, m.loginID, m.agentID, "memory"}
+	args := []any{m.bridgeID, m.loginID, m.agentID, source}
 	args = append(args, genArgs...)
 	rows, err := m.db.Query(ctx,
 		`SELECT DISTINCT path FROM ai_memory_chunks
@@ -634,19 +715,19 @@ func (m *MemorySearchManager) removeStaleMemoryChunks(ctx context.Context, activ
 	for _, path := range stalePaths {
 		delGenSQL, delGenArgs := generationFilterSQL(6, generation)
 		if m.vectorAvailable() {
-			ids := m.collectChunkIDs(ctx, path, "memory", m.status.Model, generation)
+			ids := m.collectChunkIDs(ctx, path, source, m.status.Model, generation)
 			m.deleteVectorIDs(ctx, ids)
 		}
 		_, _ = m.db.Exec(ctx,
 			`DELETE FROM ai_memory_chunks
              WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND path=$4 AND source=$5`+delGenSQL,
-			append([]any{m.bridgeID, m.loginID, m.agentID, path, "memory"}, delGenArgs...)...,
+			append([]any{m.bridgeID, m.loginID, m.agentID, path, source}, delGenArgs...)...,
 		)
 		if m.ftsAvailable {
 			_, _ = m.db.Exec(ctx,
 				`DELETE FROM ai_memory_chunks_fts
                  WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND path=$4 AND source=$5`+delGenSQL,
-				append([]any{m.bridgeID, m.loginID, m.agentID, path, "memory"}, delGenArgs...)...,
+				append([]any{m.bridgeID, m.loginID, m.agentID, path, source}, delGenArgs...)...,
 			)
 		}
 	}
@@ -950,7 +1031,7 @@ func maybePruneEmbeddingCache(ctx context.Context, m *MemorySearchManager) {
 	)
 }
 
-func (m *MemorySearchManager) searchVector(ctx context.Context, queryVec []float64, limit int) ([]memory.HybridVectorResult, error) {
+func (m *MemorySearchManager) searchVector(ctx context.Context, queryVec []float64, limit int, sources []string, pathPrefix string) ([]memory.HybridVectorResult, error) {
 	if !m.cfg.Store.Vector.Enabled {
 		return nil, nil
 	}
@@ -958,10 +1039,12 @@ func (m *MemorySearchManager) searchVector(ctx context.Context, queryVec []float
 		return nil, nil
 	}
 	if m.ensureVectorTable(ctx, len(queryVec)) {
-		filterSQL, filterArgs := sourceFilterSQLQuestion(m.cfg.Sources)
+		filterSQL, filterArgs := sourceFilterSQLQuestion(sources)
 		genSQL, genArgs := generationFilterSQLQuestion(m.indexGen)
+		pathSQL, pathArgs := pathPrefixFilterSQLQuestion(pathPrefix)
 		args := []any{vectorToBlob(queryVec), m.bridgeID, m.loginID, m.agentID, m.status.Model}
 		args = append(args, filterArgs...)
+		args = append(args, pathArgs...)
 		args = append(args, genArgs...)
 		args = append(args, limit)
 		var vecResults []memory.HybridVectorResult
@@ -970,9 +1053,9 @@ func (m *MemorySearchManager) searchVector(ctx context.Context, queryVec []float
                vec_distance_cosine(v.embedding, ?) AS dist
              FROM %s v
              JOIN ai_memory_chunks c ON c.id = v.id
-             WHERE c.bridge_id=? AND c.login_id=? AND c.agent_id=? AND c.model=?%s%s
+             WHERE c.bridge_id=? AND c.login_id=? AND c.agent_id=? AND c.model=?%s%s%s
              ORDER BY dist ASC
-             LIMIT ?`, memoryVectorTable, filterSQL, genSQL),
+             LIMIT ?`, memoryVectorTable, filterSQL, pathSQL, genSQL),
 			func(rows *sql.Rows) error {
 				vecResults = make([]memory.HybridVectorResult, 0, limit)
 				for rows.Next() {
@@ -1005,14 +1088,16 @@ func (m *MemorySearchManager) searchVector(ctx context.Context, queryVec []float
 	}
 
 	baseArgs := []any{m.bridgeID, m.loginID, m.agentID, m.status.Model}
-	filterSQL, filterArgs := sourceFilterSQL(5, m.cfg.Sources)
+	filterSQL, filterArgs := sourceFilterSQL(5, sources)
 	genSQL, genArgs := generationFilterSQL(5+len(filterArgs), m.indexGen)
+	pathSQL, pathArgs := pathPrefixFilterSQL(5+len(filterArgs)+len(genArgs), pathPrefix)
 	args := append(baseArgs, filterArgs...)
 	args = append(args, genArgs...)
+	args = append(args, pathArgs...)
 	rows, err := m.db.Query(ctx,
 		`SELECT id, path, start_line, end_line, text, embedding, source
          FROM ai_memory_chunks
-         WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND model=$4`+filterSQL+genSQL,
+         WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND model=$4`+filterSQL+genSQL+pathSQL,
 		args...,
 	)
 	if err != nil {
@@ -1062,7 +1147,7 @@ func (m *MemorySearchManager) searchVector(ctx context.Context, queryVec []float
 	return results, nil
 }
 
-func (m *MemorySearchManager) searchKeyword(ctx context.Context, query string, limit int) ([]memory.HybridKeywordResult, error) {
+func (m *MemorySearchManager) searchKeyword(ctx context.Context, query string, limit int, sources []string, pathPrefix string) ([]memory.HybridKeywordResult, error) {
 	if !m.ftsAvailable || limit <= 0 {
 		return nil, nil
 	}
@@ -1071,15 +1156,17 @@ func (m *MemorySearchManager) searchKeyword(ctx context.Context, query string, l
 		return nil, nil
 	}
 	baseArgs := []any{ftsQuery, m.status.Model, m.bridgeID, m.loginID, m.agentID}
-	filterSQL, filterArgs := sourceFilterSQL(6, m.cfg.Sources)
+	filterSQL, filterArgs := sourceFilterSQL(6, sources)
 	genSQL, genArgs := generationFilterSQL(6+len(filterArgs), m.indexGen)
+	pathSQL, pathArgs := pathPrefixFilterSQL(6+len(filterArgs)+len(genArgs), pathPrefix)
 	args := append(baseArgs, filterArgs...)
 	args = append(args, genArgs...)
+	args = append(args, pathArgs...)
 	rows, err := m.db.Query(ctx,
 		`SELECT id, path, source, start_line, end_line, text,
            bm25(ai_memory_chunks_fts) AS rank
          FROM ai_memory_chunks_fts
-         WHERE ai_memory_chunks_fts MATCH $1 AND model=$2 AND bridge_id=$3 AND login_id=$4 AND agent_id=$5`+filterSQL+genSQL+`
+         WHERE ai_memory_chunks_fts MATCH $1 AND model=$2 AND bridge_id=$3 AND login_id=$4 AND agent_id=$5`+filterSQL+genSQL+pathSQL+`
          ORDER BY rank ASC
          LIMIT $`+fmt.Sprintf("%d", len(args)+1),
 		append(args, limit)...,
@@ -1138,6 +1225,22 @@ func sourceFilterSQLQuestion(sources []string) (string, []any) {
 		args = append(args, source)
 	}
 	return " AND c.source IN (" + strings.Join(placeholders, ",") + ")", args
+}
+
+func pathPrefixFilterSQL(startIndex int, prefix string) (string, []any) {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
+		return "", nil
+	}
+	return fmt.Sprintf(" AND (path=$%d OR path LIKE $%d)", startIndex, startIndex+1), []any{prefix, prefix + "/%"}
+}
+
+func pathPrefixFilterSQLQuestion(prefix string) (string, []any) {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
+		return "", nil
+	}
+	return " AND (c.path=? OR c.path LIKE ?)", []any{prefix, prefix + "/%"}
 }
 
 func generationFilterSQL(startIndex int, generation string) (string, []any) {

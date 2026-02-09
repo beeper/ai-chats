@@ -173,13 +173,16 @@ func mergeMemorySearchConfig(
 
 func normalizeSources(input []string, sessionMemoryEnabled bool) []string {
 	if len(input) == 0 {
-		input = []string{memory.DefaultMemorySource}
+		// Default to both memory (curated) and workspace (arbitrary notes).
+		input = []string{memory.DefaultMemorySource, "workspace"}
 	}
 	normalized := make(map[string]bool)
 	for _, source := range input {
 		switch strings.ToLower(strings.TrimSpace(source)) {
 		case "memory":
 			normalized["memory"] = true
+		case "workspace":
+			normalized["workspace"] = true
 		case "sessions":
 			if sessionMemoryEnabled {
 				normalized["sessions"] = true

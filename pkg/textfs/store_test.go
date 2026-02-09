@@ -146,11 +146,12 @@ func TestStoreDirEntries(t *testing.T) {
 		t.Fatalf("list: %v", err)
 	}
 	rootEntries, _ := store.DirEntries(entries, "")
-	if len(rootEntries) != 2 {
-		t.Fatalf("expected 2 root entries, got %d", len(rootEntries))
+	if len(rootEntries) != 3 {
+		t.Fatalf("expected 3 root entries, got %d", len(rootEntries))
 	}
 	foundMemory := false
 	foundNotes := false
+	foundWorkspace := false
 	for _, entry := range rootEntries {
 		if entry == "memory/" {
 			foundMemory = true
@@ -158,9 +159,12 @@ func TestStoreDirEntries(t *testing.T) {
 		if entry == "notes/" {
 			foundNotes = true
 		}
+		if entry == "workspace/" {
+			foundWorkspace = true
+		}
 	}
-	if !foundMemory || !foundNotes {
-		t.Fatalf("expected memory/ and notes/ in root entries: %v", rootEntries)
+	if !foundMemory || !foundNotes || !foundWorkspace {
+		t.Fatalf("expected memory/, notes/, and workspace/ in root entries: %v", rootEntries)
 	}
 
 	memEntries, _ := store.DirEntries(entries, "memory")

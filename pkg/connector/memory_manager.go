@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -23,6 +24,8 @@ import (
 )
 
 const memorySnippetMaxChars = 700
+
+var keywordTokenRE = regexp.MustCompile(`[A-Za-z0-9_]+`)
 
 type MemorySearchManager struct {
 	client       *AIClient
@@ -166,7 +169,7 @@ func getMemorySearchManager(client *AIClient, agentID string) (*MemorySearchMana
 		providerKey: providerResult.ProviderKey,
 		log:         client.log.With().Str("component", "memory").Logger(),
 	}
-	if hasSource(cfg.Sources, "memory") {
+	if hasSource(cfg.Sources, "memory") || hasSource(cfg.Sources, "workspace") {
 		manager.dirty = true
 	}
 	manager.batchEnabled = cfg.Remote.Batch.Enabled
@@ -252,6 +255,15 @@ func (m *MemorySearchManager) StatusDetails(ctx context.Context) (*MemorySearchS
 		_ = row.Scan(&count)
 		files += count
 	}
+	if hasSource(m.cfg.Sources, "workspace") {
+		row = m.db.QueryRow(ctx,
+			`SELECT COUNT(*) FROM ai_memory_files WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND source=$4`,
+			m.bridgeID, m.loginID, m.agentID, "workspace",
+		)
+		var count int
+		_ = row.Scan(&count)
+		files += count
+	}
 	if hasSource(m.cfg.Sources, "sessions") {
 		row = m.db.QueryRow(ctx,
 			`SELECT COUNT(*) FROM ai_memory_session_files WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`,
@@ -328,6 +340,12 @@ func buildSourceCounts(ctx context.Context, m *MemorySearchManager) []MemorySear
 				m.bridgeID, m.loginID, m.agentID, "memory",
 			)
 			_ = row.Scan(&count.Files)
+		case "workspace":
+			row := m.db.QueryRow(ctx,
+				`SELECT COUNT(*) FROM ai_memory_files WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND source=$4`,
+				m.bridgeID, m.loginID, m.agentID, "workspace",
+			)
+			_ = row.Scan(&count.Files)
 		case "sessions":
 			row := m.db.QueryRow(ctx,
 				`SELECT COUNT(*) FROM ai_memory_session_files WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`,
@@ -366,8 +384,15 @@ func (m *MemorySearchManager) Search(ctx context.Context, query string, opts mem
 		}
 	}
 
+	mode := strings.ToLower(strings.TrimSpace(opts.Mode))
+	switch mode {
+	case "", "auto", "semantic", "keyword", "hybrid", "list":
+	default:
+		mode = "auto"
+	}
+
 	cleaned := strings.TrimSpace(query)
-	if cleaned == "" {
+	if mode != "list" && cleaned == "" {
 		return []memory.SearchResult{}, nil
 	}
 
@@ -395,41 +420,283 @@ func (m *MemorySearchManager) Search(ctx context.Context, query string, opts mem
 		candidates = 200
 	}
 
+	sources := normalizeSearchSources(opts.Sources, m.cfg.Sources)
+	pathPrefix := normalizeSearchPathPrefix(opts.PathPrefix)
+
+	if mode == "list" {
+		results, err := m.listRecentFiles(ctx, sources, pathPrefix, maxResults)
+		if err != nil {
+			return nil, err
+		}
+		return clampInjectedChars(filterAndLimit(results, minScore, maxResults), m.cfg.Query.MaxInjectedChars), nil
+	}
+
+	wantKeyword := mode == "auto" || mode == "keyword" || mode == "hybrid"
+	wantVector := mode == "auto" || mode == "semantic" || mode == "hybrid"
+
 	keywordResults := []memory.HybridKeywordResult{}
-	if m.cfg.Query.Hybrid.Enabled && m.ftsAvailable {
-		results, err := m.searchKeyword(ctx, cleaned, candidates)
-		if err == nil {
-			keywordResults = results
+	keywordOK := false
+	if wantKeyword {
+		if m.ftsAvailable {
+			results, err := m.searchKeyword(ctx, cleaned, candidates, sources, pathPrefix)
+			if err == nil {
+				keywordResults = results
+				keywordOK = true
+			}
+		}
+		if !keywordOK {
+			results, err := m.searchKeywordScan(ctx, cleaned, candidates, sources, pathPrefix)
+			if err == nil {
+				keywordResults = results
+				keywordOK = true
+			}
 		}
 	}
 
 	vectorResults := []memory.HybridVectorResult{}
-	if m.cfg.Store.Vector.Enabled {
+	vectorOK := false
+	if wantVector && m.cfg.Store.Vector.Enabled {
 		queryVec, err := m.embedQueryWithTimeout(ctx, cleaned)
 		if err != nil {
-			return nil, err
-		}
-		hasVector := false
-		for _, v := range queryVec {
-			if v != 0 {
-				hasVector = true
-				break
+			// For semantic-only queries, embedding failures are fatal. For auto/hybrid,
+			// we degrade to keyword search.
+			if mode == "semantic" {
+				return nil, err
 			}
+			queryVec = nil
 		}
-		if hasVector {
-			results, err := m.searchVector(ctx, queryVec, candidates)
-			if err == nil {
-				vectorResults = results
+		if len(queryVec) > 0 {
+			hasVector := false
+			for _, v := range queryVec {
+				if v != 0 {
+					hasVector = true
+					break
+				}
+			}
+			if hasVector {
+				results, err := m.searchVector(ctx, queryVec, candidates, sources, pathPrefix)
+				if err == nil {
+					vectorResults = results
+					vectorOK = true
+				}
 			}
 		}
 	}
 
-	if !m.cfg.Query.Hybrid.Enabled {
+	switch mode {
+	case "semantic":
+		return clampInjectedChars(filterAndLimit(vectorResultsToSearch(vectorResults), minScore, maxResults), m.cfg.Query.MaxInjectedChars), nil
+	case "keyword":
+		return clampInjectedChars(filterAndLimit(keywordResultsToSearch(keywordResults), minScore, maxResults), m.cfg.Query.MaxInjectedChars), nil
+	}
+
+	// auto/hybrid: merge when hybrid is enabled and we have both sides; otherwise
+	// degrade to whichever side succeeded.
+	if m.cfg.Query.Hybrid.Enabled && vectorOK && keywordOK {
+		merged := memory.MergeHybridResults(vectorResults, keywordResults, m.cfg.Query.Hybrid.VectorWeight, m.cfg.Query.Hybrid.TextWeight)
+		return clampInjectedChars(filterAndLimit(merged, minScore, maxResults), m.cfg.Query.MaxInjectedChars), nil
+	}
+	if vectorOK {
 		return clampInjectedChars(filterAndLimit(vectorResultsToSearch(vectorResults), minScore, maxResults), m.cfg.Query.MaxInjectedChars), nil
 	}
+	if keywordOK {
+		return clampInjectedChars(filterAndLimit(keywordResultsToSearch(keywordResults), minScore, maxResults), m.cfg.Query.MaxInjectedChars), nil
+	}
+	return []memory.SearchResult{}, nil
+}
 
-	merged := memory.MergeHybridResults(vectorResults, keywordResults, m.cfg.Query.Hybrid.VectorWeight, m.cfg.Query.Hybrid.TextWeight)
-	return clampInjectedChars(filterAndLimit(merged, minScore, maxResults), m.cfg.Query.MaxInjectedChars), nil
+func normalizeSearchSources(requested []string, fallback []string) []string {
+	if len(requested) == 0 {
+		return slices.Clone(fallback)
+	}
+	seen := make(map[string]struct{})
+	out := make([]string, 0, len(requested))
+	for _, raw := range requested {
+		switch strings.ToLower(strings.TrimSpace(raw)) {
+		case "memory", "workspace", "sessions":
+			key := strings.ToLower(strings.TrimSpace(raw))
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, key)
+		}
+	}
+	if len(out) == 0 {
+		return slices.Clone(fallback)
+	}
+	return out
+}
+
+func normalizeSearchPathPrefix(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+	normalized, err := textfs.NormalizePath(trimmed)
+	if err != nil {
+		return ""
+	}
+	return normalized
+}
+
+func (m *MemorySearchManager) listRecentFiles(ctx context.Context, sources []string, pathPrefix string, limit int) ([]memory.SearchResult, error) {
+	if m == nil || m.db == nil {
+		return nil, errors.New("memory search unavailable")
+	}
+	if limit <= 0 {
+		limit = memory.DefaultMaxResults
+	}
+	if limit > 200 {
+		limit = 200
+	}
+
+	baseArgs := []any{m.bridgeID, m.loginID, m.agentID}
+	sourceSQL, sourceArgs := sourceFilterSQL(4, sources)
+	pathSQL, pathArgs := pathPrefixFilterSQL(4+len(sourceArgs), pathPrefix)
+	args := append(baseArgs, sourceArgs...)
+	args = append(args, pathArgs...)
+	args = append(args, limit)
+
+	rows, err := m.db.Query(ctx,
+		`SELECT path, source, content
+         FROM ai_memory_files
+         WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`+sourceSQL+pathSQL+`
+         ORDER BY updated_at DESC
+         LIMIT $`+fmt.Sprintf("%d", len(args)),
+		args...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	results := make([]memory.SearchResult, 0, limit)
+	for rows.Next() {
+		var path, source, content string
+		if err := rows.Scan(&path, &source, &content); err != nil {
+			return nil, err
+		}
+		results = append(results, memory.SearchResult{
+			Path:      path,
+			StartLine: 1,
+			EndLine:   1,
+			Score:     1,
+			Snippet:   truncateSnippet(normalizeNewlines(content)),
+			Source:    source,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+func (m *MemorySearchManager) searchKeywordScan(ctx context.Context, query string, limit int, sources []string, pathPrefix string) ([]memory.HybridKeywordResult, error) {
+	if m == nil || m.db == nil || limit <= 0 {
+		return nil, nil
+	}
+	tokens := keywordTokenRE.FindAllString(query, -1)
+	if len(tokens) == 0 {
+		return nil, nil
+	}
+	for i, t := range tokens {
+		tokens[i] = strings.ToLower(strings.TrimSpace(t))
+	}
+
+	// Scan more rows than we return so we can rank matches in-process.
+	scanLimit := limit * 10
+	if scanLimit < 200 {
+		scanLimit = 200
+	}
+	if scanLimit > 1000 {
+		scanLimit = 1000
+	}
+
+	baseArgs := []any{m.bridgeID, m.loginID, m.agentID, m.status.Model}
+	sourceSQL, sourceArgs := sourceFilterSQL(5, sources)
+	genSQL, genArgs := generationFilterSQL(5+len(sourceArgs), m.indexGen)
+	pathSQL, pathArgs := pathPrefixFilterSQL(5+len(sourceArgs)+len(genArgs), pathPrefix)
+	args := append(baseArgs, sourceArgs...)
+	args = append(args, genArgs...)
+	args = append(args, pathArgs...)
+
+	// Add a cheap SQL prefilter: all tokens must appear somewhere.
+	whereParts := make([]string, 0, len(tokens))
+	for i, token := range tokens {
+		whereParts = append(whereParts, fmt.Sprintf(" AND LOWER(text) LIKE $%d", 5+len(sourceArgs)+len(genArgs)+len(pathArgs)+i))
+		args = append(args, "%"+token+"%")
+	}
+	args = append(args, scanLimit)
+
+	rows, err := m.db.Query(ctx,
+		`SELECT id, path, source, start_line, end_line, text
+         FROM ai_memory_chunks
+         WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND model=$4`+sourceSQL+genSQL+pathSQL+strings.Join(whereParts, "")+`
+         ORDER BY updated_at DESC
+         LIMIT $`+fmt.Sprintf("%d", len(args)),
+		args...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	type scored struct {
+		r     memory.HybridKeywordResult
+		score float64
+	}
+	scoredResults := make([]scored, 0, scanLimit)
+	for rows.Next() {
+		var id, path, source, text string
+		var startLine, endLine int
+		if err := rows.Scan(&id, &path, &source, &startLine, &endLine, &text); err != nil {
+			return nil, err
+		}
+		lower := strings.ToLower(text)
+		hits := 0
+		for _, token := range tokens {
+			if strings.Contains(lower, token) {
+				hits++
+			}
+		}
+		if hits == 0 {
+			continue
+		}
+		score := float64(hits) / float64(len(tokens))
+		scoredResults = append(scoredResults, scored{
+			r: memory.HybridKeywordResult{
+				ID:        id,
+				Path:      path,
+				StartLine: startLine,
+				EndLine:   endLine,
+				Source:    source,
+				Snippet:   truncateSnippet(text),
+				TextScore: score,
+			},
+			score: score,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	slices.SortFunc(scoredResults, func(a, b scored) int {
+		if a.score == b.score {
+			return 0
+		}
+		if a.score > b.score {
+			return -1
+		}
+		return 1
+	})
+	if len(scoredResults) > limit {
+		scoredResults = scoredResults[:limit]
+	}
+	out := make([]memory.HybridKeywordResult, 0, len(scoredResults))
+	for _, entry := range scoredResults {
+		out = append(out, entry.r)
+	}
+	return out, nil
 }
 
 func (m *MemorySearchManager) ReadFile(ctx context.Context, relPath string, from, lines *int) (map[string]any, error) {
@@ -531,6 +798,21 @@ func vectorResultsToSearch(results []memory.HybridVectorResult) []memory.SearchR
 			StartLine: entry.StartLine,
 			EndLine:   entry.EndLine,
 			Score:     entry.VectorScore,
+			Snippet:   entry.Snippet,
+			Source:    entry.Source,
+		})
+	}
+	return out
+}
+
+func keywordResultsToSearch(results []memory.HybridKeywordResult) []memory.SearchResult {
+	out := make([]memory.SearchResult, 0, len(results))
+	for _, entry := range results {
+		out = append(out, memory.SearchResult{
+			Path:      entry.Path,
+			StartLine: entry.StartLine,
+			EndLine:   entry.EndLine,
+			Score:     entry.TextScore,
 			Snippet:   entry.Snippet,
 			Source:    entry.Source,
 		})
@@ -649,7 +931,9 @@ func truncateSnippet(text string) string {
 }
 
 func isAllowedMemoryPath(path string, extraPaths []string) bool {
-	if textfs.IsMemoryPath(path) {
+	// Memory search indexes markdown notes across the virtual workspace.
+	// Callers already normalize paths; we still guard by suffix to avoid unnecessary sync triggers.
+	if strings.HasSuffix(strings.ToLower(strings.TrimSpace(path)), ".md") {
 		return true
 	}
 	if len(extraPaths) == 0 {
