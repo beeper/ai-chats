@@ -2468,6 +2468,7 @@ func (cc *CodexClient) handleNewCodexChat(ctx context.Context, portal *bridgev2.
 		cc.sendSystemNotice(ctx, portal, "Usage: !ai new <directory>")
 		return
 	}
+	dir = expandUserPath(dir)
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		cc.sendSystemNotice(ctx, portal, "Invalid path: "+err.Error())
