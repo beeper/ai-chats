@@ -36,13 +36,3 @@ var BeeperSearchAgent = &AgentDefinition{
 	CreatedAt:    0,
 	UpdatedAt:    0,
 }
-
-// GetBeeperSearch returns a copy of the Beeper Search agent.
-func GetBeeperSearch() *AgentDefinition {
-	return BeeperSearchAgent.Clone()
-}
-
-// IsBeeperSearch checks if an agent ID is the Beeper Search agent.
-func IsBeeperSearch(agentID string) bool {
-	return agentID == BeeperSearchAgent.ID
-}

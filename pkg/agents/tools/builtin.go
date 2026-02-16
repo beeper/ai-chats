@@ -7,9 +7,8 @@ import (
 )
 
 var (
-	toolLookupOnce    sync.Once
-	builtinToolByName map[string]*Tool
-	allToolByName     map[string]*Tool
+	toolLookupOnce sync.Once
+	allToolByName  map[string]*Tool
 )
 
 // Tool group constants for policy composition (OpenClaw-style shorthands).
@@ -88,23 +87,6 @@ func DefaultRegistry() *Registry {
 	return reg
 }
 
-// BuiltinRegistry returns a registry with only builtin tools.
-func BuiltinRegistry() *Registry {
-	reg := NewRegistry()
-
-	for _, tool := range BuiltinTools() {
-		reg.Register(tool)
-	}
-
-	return reg
-}
-
-// GetBuiltinTool returns a builtin tool by name.
-func GetBuiltinTool(name string) *Tool {
-	toolLookupOnce.Do(initToolLookup)
-	return builtinToolByName[name]
-}
-
 // GetTool returns any tool by name (builtin or provider).
 func GetTool(name string) *Tool {
 	toolLookupOnce.Do(initToolLookup)
@@ -112,13 +94,6 @@ func GetTool(name string) *Tool {
 }
 
 func initToolLookup() {
-	builtinToolByName = make(map[string]*Tool)
-	for _, tool := range BuiltinTools() {
-		if _, exists := builtinToolByName[tool.Name]; !exists {
-			builtinToolByName[tool.Name] = tool
-		}
-	}
-
 	allToolByName = make(map[string]*Tool)
 	for _, tool := range AllTools() {
 		if _, exists := allToolByName[tool.Name]; !exists {

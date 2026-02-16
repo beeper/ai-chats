@@ -55,19 +55,3 @@ func AddModelPrefix(backend ModelBackend, modelID string) string {
 	}
 	return string(backend) + "/" + modelID
 }
-
-// DefaultModelForProvider returns the default model for a given provider
-func DefaultModelForProvider(provider string) string {
-	switch provider {
-	case ProviderOpenAI:
-		return DefaultModelOpenAI
-	case ProviderOpenRouter:
-		return DefaultModelOpenRouter
-	case ProviderBeeper:
-		return DefaultModelBeeper
-	case ProviderMagicProxy:
-		return DefaultModelOpenRouter
-	default:
-		return DefaultModelOpenRouter
-	}
-}

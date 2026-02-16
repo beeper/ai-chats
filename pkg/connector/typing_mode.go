@@ -133,16 +133,6 @@ func (ts *TypingSignaler) SignalRunStart() {
 	ts.typing.Start()
 }
 
-func (ts *TypingSignaler) SignalMessageStart() {
-	if ts == nil || ts.disabled || !ts.shouldStartOnMessage {
-		return
-	}
-	if !ts.hasRenderableText {
-		return
-	}
-	ts.typing.Start()
-}
-
 func (ts *TypingSignaler) SignalTextDelta(text string) {
 	if ts == nil || ts.disabled {
 		return

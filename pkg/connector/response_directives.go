@@ -139,15 +139,3 @@ func normalizeDirectiveWhitespace(text string) string {
 	text = collapseNewlinesRE.ReplaceAllString(text, "\n\n")
 	return strings.TrimSpace(text)
 }
-
-// StripSilentToken removes the silent token from text if present.
-// Returns the cleaned text.
-func StripSilentToken(text string) string {
-	// Strip markup first to handle wrapped tokens
-	stripped := stringutil.StripMarkup(text)
-	// Remove from start
-	stripped = silentPrefixRE.ReplaceAllString(stripped, "")
-	// Remove from end
-	stripped = silentSuffixRE.ReplaceAllString(stripped, "")
-	return strings.TrimSpace(stripped)
-}

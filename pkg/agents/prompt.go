@@ -1,19 +1,5 @@
 package agents
 
-import (
-	"regexp"
-	"strings"
-
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
-)
-
-var (
-	silentReplyPrefixRE    = regexp.MustCompile(`(?i)^\s*` + regexp.QuoteMeta(SilentReplyToken) + `(?:$|\W)`)
-	silentReplySuffixRE    = regexp.MustCompile(`(?i)\b` + regexp.QuoteMeta(SilentReplyToken) + `\W*$`)
-	heartbeatReplyPrefixRE = regexp.MustCompile(`(?i)^\s*` + regexp.QuoteMeta(HeartbeatToken) + `(?:$|\W)`)
-	heartbeatReplySuffixRE = regexp.MustCompile(`(?i)\b` + regexp.QuoteMeta(HeartbeatToken) + `\W*$`)
-)
-
 // ReactionGuidance controls reaction behavior in prompts.
 // Matches OpenClaw's reactionGuidance with level and channel.
 type ReactionGuidance struct {
@@ -109,57 +95,6 @@ const HeartbeatToken = "HEARTBEAT_OK"
 
 // DefaultMaxAckChars is the max length for heartbeat acknowledgements (OpenClaw uses 300).
 const DefaultMaxAckChars = 300
-
-// IsSilentReplyText checks if the given text is a silent reply token.
-// Handles edge cases like markdown wrapping: **NO_REPLY**, `NO_REPLY`, etc.
-// Matches OpenClaw's isSilentReplyText from tokens.ts.
-func IsSilentReplyText(text string) bool {
-	return containsToken(text, SilentReplyToken)
-}
-
-// IsHeartbeatReplyText checks if the given text is a heartbeat reply token.
-// Handles edge cases like markdown wrapping: **HEARTBEAT_OK**, etc.
-func IsHeartbeatReplyText(text string) bool {
-	return containsToken(text, HeartbeatToken)
-}
-
-// containsToken checks if text contains token at start/end, handling markdown/HTML wrapping.
-// Based on OpenClaw's isSilentReplyText pattern.
-func containsToken(text, token string) bool {
-	if text == "" {
-		return false
-	}
-	stripped := stringutil.StripMarkup(text)
-	trimmed := strings.TrimSpace(stripped)
-
-	if trimmed == token {
-		return true
-	}
-
-	var prefixRE, suffixRE *regexp.Regexp
-	switch token {
-	case SilentReplyToken:
-		prefixRE = silentReplyPrefixRE
-		suffixRE = silentReplySuffixRE
-	case HeartbeatToken:
-		prefixRE = heartbeatReplyPrefixRE
-		suffixRE = heartbeatReplySuffixRE
-	default:
-		escaped := regexp.QuoteMeta(token)
-		prefixRE = regexp.MustCompile(`(?i)^\s*` + escaped + `(?:$|\W)`)
-		suffixRE = regexp.MustCompile(`(?i)\b` + escaped + `\W*$`)
-	}
-	if prefixRE.MatchString(stripped) {
-		return true
-	}
-	return suffixRE.MatchString(stripped)
-}
-
-// StripHeartbeatToken removes the heartbeat token from text and returns the remaining content.
-// This preserves legacy behavior for non-heartbeat messages.
-func StripHeartbeatToken(text string, maxAckChars int) (shouldSkip bool, strippedText string, didStrip bool) {
-	return StripHeartbeatTokenWithMode(text, StripHeartbeatModeMessage, maxAckChars)
-}
 
 // DefaultSystemPrompt is the default prompt for general-purpose agents.
 const DefaultSystemPrompt = `You are a personal assistant called Beep. You run inside the Beeper app.`

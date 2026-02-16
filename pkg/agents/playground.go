@@ -22,13 +22,3 @@ var PlaygroundAgent = &AgentDefinition{
 	CreatedAt:    0,
 	UpdatedAt:    0,
 }
-
-// GetPlaygroundAgent returns a copy of the Playground agent definition.
-func GetPlaygroundAgent() *AgentDefinition {
-	return PlaygroundAgent.Clone()
-}
-
-// IsPlaygroundAgent checks if an agent ID is the Playground agent.
-func IsPlaygroundAgent(agentID string) bool {
-	return agentID == "playground"
-}

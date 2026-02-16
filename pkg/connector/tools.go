@@ -2028,27 +2028,6 @@ func executeEditFile(ctx context.Context, args map[string]any) (string, error) {
 	return fmt.Sprintf("Replaced text in %s.", path), nil
 }
 
-// GetBuiltinTool returns a builtin tool by name, or nil if not found
-func GetBuiltinTool(name string) *ToolDefinition {
-	for _, tool := range BuiltinTools() {
-		if tool.Name == name {
-			return &tool
-		}
-	}
-	return nil
-}
-
-// GetEnabledBuiltinTools returns the list of enabled builtin tools based on config
-func GetEnabledBuiltinTools(isToolEnabled func(string) bool) []ToolDefinition {
-	var enabled []ToolDefinition
-	for _, tool := range BuiltinTools() {
-		if isToolEnabled(tool.Name) {
-			enabled = append(enabled, tool)
-		}
-	}
-	return enabled
-}
-
 // executeMemorySearch handles the memory_search tool
 func executeMemorySearch(ctx context.Context, args map[string]any) (string, error) {
 	btc := GetBridgeToolContext(ctx)

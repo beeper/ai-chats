@@ -42,10 +42,5 @@ func GetBeeperAI() *AgentDefinition {
 	return BeeperAIAgent.Clone()
 }
 
-// IsBeeperAI checks if an agent ID is the default Beep agent.
-func IsBeeperAI(agentID string) bool {
-	return agentID == "beeper"
-}
-
 // DefaultAgentID is the ID of the default agent for new chats.
 const DefaultAgentID = "beeper"

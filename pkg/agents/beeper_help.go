@@ -38,11 +38,6 @@ var BeeperHelpAgent = &AgentDefinition{
 	IsPreset:     true,
 }
 
-// GetBeeperHelp returns a copy of the Beeper Help agent.
-func GetBeeperHelp() *AgentDefinition {
-	return BeeperHelpAgent.Clone()
-}
-
 // IsBeeperHelp checks if an agent ID is the Beeper Help agent.
 func IsBeeperHelp(agentID string) bool {
 	return agentID == BeeperHelpAgent.ID

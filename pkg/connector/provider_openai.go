@@ -50,11 +50,6 @@ var reasoningEffortMap = map[string]responses.ReasoningEffort{
 	"high":   responses.ReasoningEffortHigh,
 }
 
-// NewOpenAIProvider creates a new OpenAI provider
-func NewOpenAIProvider(apiKey string, log zerolog.Logger) (*OpenAIProvider, error) {
-	return NewOpenAIProviderWithBaseURL(apiKey, "", log)
-}
-
 // NewOpenAIProviderWithBaseURL creates an OpenAI provider with custom base URL
 // Used for OpenRouter, Beeper proxy, or custom endpoints
 func NewOpenAIProviderWithBaseURL(apiKey, baseURL string, log zerolog.Logger) (*OpenAIProvider, error) {
