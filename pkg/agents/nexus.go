@@ -56,11 +56,6 @@ var NexusAIAgent = &AgentDefinition{
 	UpdatedAt:    0,
 }
 
-// GetNexusAI returns a copy of the Bexus preset agent.
-func GetNexusAI() *AgentDefinition {
-	return NexusAIAgent.Clone()
-}
-
 // IsNexusAI checks whether the provided agent ID is the Bexus preset.
 func IsNexusAI(agentID string) bool {
 	return agentID == NexusAIAgent.ID

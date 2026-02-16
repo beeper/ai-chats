@@ -89,42 +89,6 @@ var (
 	}
 )
 
-// MapErrorToStateCode maps an API error to a bridge state error code.
-// Returns empty string if the error doesn't map to a known state code.
-func MapErrorToStateCode(err error) status.BridgeStateErrorCode {
-	if err == nil {
-		return ""
-	}
-	if IsBillingError(err) {
-		return AIBillingError
-	}
-	if IsOverloadedError(err) {
-		return AIOverloaded
-	}
-	if IsTimeoutError(err) {
-		return AITimeout
-	}
-	if IsImageError(err) {
-		return AIImageError
-	}
-	if IsRateLimitError(err) {
-		return AIRateLimited
-	}
-	if IsAuthError(err) {
-		return AIAuthFailed
-	}
-	if ParseContextLengthError(err) != nil {
-		return AIContextTooLong
-	}
-	if IsModelNotFound(err) {
-		return AIModelNotFound
-	}
-	if IsServerError(err) {
-		return AIProviderError
-	}
-	return ""
-}
-
 // ContextLengthError contains parsed details from context_length_exceeded errors
 type ContextLengthError struct {
 	ModelMaxTokens  int
@@ -153,11 +117,6 @@ func (e *PreDeltaError) Unwrap() error {
 		return nil
 	}
 	return e.Err
-}
-
-func IsPreDeltaError(err error) bool {
-	var pde *PreDeltaError
-	return errors.As(err, &pde)
 }
 
 func parseContextLengthTokenCounts(text string) (maxTokens, requestedTokens int) {

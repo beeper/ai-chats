@@ -84,26 +84,6 @@ func (m *UnifiedMessage) HasMultimodalContent() bool {
 	return false
 }
 
-// NewTextMessage creates a simple text message
-func NewTextMessage(role MessageRole, text string) UnifiedMessage {
-	return UnifiedMessage{
-		Role: role,
-		Content: []ContentPart{
-			{Type: ContentTypeText, Text: text},
-		},
-	}
-}
-
-// NewImageMessage creates a message with an image
-func NewImageMessage(role MessageRole, imageURL, mimeType string) UnifiedMessage {
-	return UnifiedMessage{
-		Role: role,
-		Content: []ContentPart{
-			{Type: ContentTypeImage, ImageURL: imageURL, MimeType: mimeType},
-		},
-	}
-}
-
 // ToOpenAIResponsesInput converts unified messages to OpenAI Responses API format.
 // Supports text + image/PDF inputs for user messages; audio/video are intentionally
 // excluded (caller should fall back to Chat Completions for those).
@@ -229,14 +209,4 @@ func ToOpenAIResponsesInput(messages []UnifiedMessage) responses.ResponseInputPa
 	}
 
 	return result
-}
-
-// ExtractSystemPrompt extracts the system prompt from unified messages
-func ExtractSystemPrompt(messages []UnifiedMessage) string {
-	for _, msg := range messages {
-		if msg.Role == RoleSystem {
-			return msg.Text()
-		}
-	}
-	return ""
 }

@@ -55,11 +55,6 @@ func ParseProxyError(err error) *ProxyError {
 	return nil
 }
 
-// IsProxyError checks if the error is a structured proxy error
-func IsProxyError(err error) bool {
-	return ParseProxyError(err) != nil
-}
-
 // FormatProxyError formats a proxy error for user display
 func FormatProxyError(proxyErr *ProxyError) string {
 	if proxyErr == nil {

@@ -232,20 +232,6 @@ func IsOwnerOnlyToolName(name string) bool {
 	return ok
 }
 
-// ApplyOwnerOnlyToolPolicy filters owner-only tools when senderIsOwner is false.
-func ApplyOwnerOnlyToolPolicy(names []string, senderIsOwner bool) []string {
-	if senderIsOwner || len(names) == 0 {
-		return names
-	}
-	filtered := make([]string, 0, len(names))
-	for _, name := range names {
-		if !IsOwnerOnlyToolName(name) {
-			filtered = append(filtered, name)
-		}
-	}
-	return filtered
-}
-
 // NormalizeToolList normalizes each tool name in a list.
 func NormalizeToolList(list []string) []string {
 	if len(list) == 0 {
@@ -549,24 +535,6 @@ func makeToolPolicyMatcher(policy *ToolPolicy) func(string) bool {
 	}
 }
 
-// IsToolAllowedByPolicyName checks if a tool is allowed by a single policy.
-func IsToolAllowedByPolicyName(name string, policy *ToolPolicy) bool {
-	if policy == nil {
-		return true
-	}
-	return makeToolPolicyMatcher(policy)(name)
-}
-
-// IsToolAllowedByPolicies checks if a tool is allowed by all policies.
-func IsToolAllowedByPolicies(name string, policies []*ToolPolicy) bool {
-	for _, policy := range policies {
-		if !IsToolAllowedByPolicyName(name, policy) {
-			return false
-		}
-	}
-	return true
-}
-
 // FilterToolsByPolicy filters tools by policy.
 func FilterToolsByPolicy(names []string, policy *ToolPolicy) []string {
 	if policy == nil {
@@ -686,23 +654,6 @@ func ExpandPolicyWithPluginGroups(policy *ToolPolicy, groups PluginToolGroups) *
 		Allow: ExpandPluginGroups(policy.Allow, groups),
 		Deny:  ExpandPluginGroups(policy.Deny, groups),
 	}
-}
-
-// CollectExplicitAllowlist returns all explicit allowlist entries.
-func CollectExplicitAllowlist(policies []*ToolPolicy) []string {
-	var entries []string
-	for _, policy := range policies {
-		if policy == nil || len(policy.Allow) == 0 {
-			continue
-		}
-		for _, value := range policy.Allow {
-			trimmed := strings.TrimSpace(value)
-			if trimmed != "" {
-				entries = append(entries, trimmed)
-			}
-		}
-	}
-	return entries
 }
 
 // StripPluginOnlyAllowlist removes allowlists that only target plugin tools.

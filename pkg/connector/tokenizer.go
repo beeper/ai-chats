@@ -184,12 +184,3 @@ func extractToolContent(content openai.ChatCompletionToolMessageParamContentUnio
 	}
 	return ""
 }
-
-// EstimateSingleMessageTokens estimates tokens for a single string
-func EstimateSingleMessageTokens(text string, model string) (int, error) {
-	tkm, err := getTokenizer(model)
-	if err != nil {
-		return 0, err
-	}
-	return len(tkm.Encode(text, nil, nil)), nil
-}
