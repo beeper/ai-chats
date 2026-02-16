@@ -66,26 +66,6 @@ func parseToolOutputPayload(result string) map[string]any {
 	return map[string]any{"result": parsed}
 }
 
-// emitToolProgress sends a tool progress update event
-func (oc *AIClient) emitToolProgress(ctx context.Context, portal *bridgev2.Portal, state *streamingState, tool *activeToolCall, status ToolStatus, message string, percent int) {
-	if state == nil || tool == nil {
-		return
-	}
-	oc.emitStreamEvent(ctx, portal, state, map[string]any{
-		"type": "data-tool-progress",
-		"data": map[string]any{
-			"call_id":   tool.callID,
-			"tool_name": tool.toolName,
-			"status":    string(status),
-			"progress": map[string]any{
-				"message": message,
-				"percent": percent,
-			},
-		},
-		"transient": true,
-	})
-}
-
 func toolDisplayTitle(toolName string) string {
 	toolName = normalizeToolAlias(toolName)
 	if t := tools.GetTool(toolName); t != nil && t.Annotations != nil && t.Annotations.Title != "" {

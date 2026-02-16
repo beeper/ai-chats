@@ -55,18 +55,6 @@ func IsMemoryPath(relPath string) bool {
 	return strings.HasPrefix(normalized, "memory/")
 }
 
-// IsWorkspacePath returns true for workspace/*.
-func IsWorkspacePath(relPath string) bool {
-	normalized := strings.TrimSpace(relPath)
-	if normalized == "" {
-		return false
-	}
-	normalized = strings.ReplaceAll(normalized, "\\", "/")
-	normalized = strings.TrimPrefix(normalized, "./")
-	normalized = strings.TrimLeft(normalized, "/")
-	return strings.HasPrefix(normalized, "workspace/")
-}
-
 // IsVirtualDir returns true for virtual directories that should exist even when empty.
 func IsVirtualDir(relDir string) bool {
 	normalized, err := NormalizeDir(relDir)

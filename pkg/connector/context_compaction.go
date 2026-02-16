@@ -118,13 +118,6 @@ func RegisterBeforeCompactionHook(hook CompactionBeforeHook) {
 	globalCompactionHooks.beforeHooks = append(globalCompactionHooks.beforeHooks, hook)
 }
 
-// RegisterAfterCompactionHook registers a hook to run after compaction
-func RegisterAfterCompactionHook(hook CompactionAfterHook) {
-	globalCompactionHooks.mu.Lock()
-	defer globalCompactionHooks.mu.Unlock()
-	globalCompactionHooks.afterHooks = append(globalCompactionHooks.afterHooks, hook)
-}
-
 // runBeforeHooks runs all registered before hooks
 func (h *CompactionHooks) runBeforeHooks(ctx context.Context, hookCtx *CompactionHookContext) (*CompactionHookResult, error) {
 	h.mu.RLock()

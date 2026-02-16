@@ -1,7 +1,6 @@
 package tools
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 )
@@ -16,14 +15,6 @@ func JSONResult(payload any) *Result {
 	}
 }
 
-// TextResult creates a simple text result.
-func TextResult(text string) *Result {
-	return &Result{
-		Status:  ResultSuccess,
-		Content: []ContentBlock{{Type: "text", Text: text}},
-	}
-}
-
 // ErrorResult creates an error result.
 // Follows clawdbot pattern: don't throw, return structured errors.
 func ErrorResult(toolName, message string) *Result {
@@ -32,23 +23,6 @@ func ErrorResult(toolName, message string) *Result {
 		Content: []ContentBlock{{Type: "text", Text: message}},
 		Details: map[string]any{"tool": toolName, "error": message},
 		Error:   message,
-	}
-}
-
-// ErrorResultf creates an error result with formatted message.
-func ErrorResultf(toolName, format string, args ...any) *Result {
-	return ErrorResult(toolName, fmt.Sprintf(format, args...))
-}
-
-// ImageResult creates a result with image content.
-func ImageResult(label, path string, data []byte, mimeType string) *Result {
-	return &Result{
-		Status: ResultSuccess,
-		Content: []ContentBlock{
-			{Type: "text", Text: fmt.Sprintf("MEDIA:%s", path)},
-			{Type: "image", Data: base64.StdEncoding.EncodeToString(data), MimeType: mimeType},
-		},
-		Details: map[string]any{"path": path, "label": label},
 	}
 }
 

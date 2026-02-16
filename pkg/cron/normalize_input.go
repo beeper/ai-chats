@@ -51,29 +51,3 @@ func NormalizeCronJobCreate(raw CronJobCreate) CronJobCreate {
 func NormalizeCronJobPatch(raw CronJobPatch) CronJobPatch {
 	return raw
 }
-
-// CoerceSchedule fills kind based on fields.
-func CoerceSchedule(schedule CronSchedule) CronSchedule {
-	next := schedule
-	kind := strings.TrimSpace(schedule.Kind)
-	if kind == "" {
-		switch {
-		case strings.TrimSpace(schedule.At) != "":
-			next.Kind = "at"
-		case schedule.EveryMs > 0:
-			next.Kind = "every"
-		case strings.TrimSpace(schedule.Expr) != "":
-			next.Kind = "cron"
-		}
-	}
-	return next
-}
-
-// CoerceScheduleFromInput supports at string parsing.
-func CoerceScheduleFromInput(schedule CronSchedule, atRaw string) CronSchedule {
-	next := schedule
-	if strings.TrimSpace(next.At) == "" && strings.TrimSpace(atRaw) != "" {
-		next.At = strings.TrimSpace(atRaw)
-	}
-	return CoerceSchedule(next)
-}

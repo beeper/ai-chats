@@ -2,7 +2,6 @@ package textfs
 
 import (
 	"fmt"
-	"unicode/utf8"
 )
 
 const (
@@ -100,20 +99,6 @@ func TruncateHead(content string, maxLines, maxBytes int) Truncation {
 		MaxLines:    maxLines,
 		MaxBytes:    maxBytes,
 	}
-}
-
-func TruncateLine(line string, maxChars int) (string, bool) {
-	if maxChars <= 0 {
-		maxChars = GrepMaxLineLength
-	}
-	if utf8.RuneCountInString(line) <= maxChars {
-		return line, false
-	}
-	runes := []rune(line)
-	if len(runes) <= maxChars {
-		return line, false
-	}
-	return string(runes[:maxChars]) + "... [truncated]", true
 }
 
 func splitLines(content string) []string {
