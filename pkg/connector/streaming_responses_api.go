@@ -224,28 +224,17 @@ func (oc *AIClient) streamingResponse(
 			}
 
 		case "response.reasoning_summary_text.delta":
-			if strings.TrimSpace(streamEvent.Delta) != "" {
-				state.reasoning.WriteString(streamEvent.Delta)
-				oc.emitUIReasoningDelta(ctx, portal, state, streamEvent.Delta)
-			}
+			oc.handleResponseReasoningSummaryDelta(ctx, portal, state, strings.TrimSpace(streamEvent.Delta))
 
 		case "response.reasoning_text.done", "response.reasoning_summary_text.done":
-			if strings.TrimSpace(streamEvent.Text) != "" {
-				state.reasoning.WriteString(streamEvent.Text)
-				oc.emitUIReasoningDelta(ctx, portal, state, streamEvent.Text)
-			}
+			oc.handleResponseReasoningDone(ctx, portal, state, strings.TrimSpace(streamEvent.Text))
 
 		case "response.refusal.delta":
 			touchTyping()
-			if typingSignals != nil {
-				typingSignals.SignalTextDelta(streamEvent.Delta)
-			}
-			oc.emitUITextDelta(ctx, portal, state, streamEvent.Delta)
+			oc.handleResponseRefusalDelta(ctx, portal, state, typingSignals, streamEvent.Delta)
 
 		case "response.refusal.done":
-			if strings.TrimSpace(streamEvent.Refusal) != "" {
-				oc.emitUITextDelta(ctx, portal, state, streamEvent.Refusal)
-			}
+			oc.handleResponseRefusalDone(ctx, portal, state, strings.TrimSpace(streamEvent.Refusal))
 
 		case "response.output_text.done":
 			// text-end is emitted from emitUIFinish to keep one contiguous part.
@@ -677,19 +666,7 @@ func (oc *AIClient) streamingResponse(
 			})
 
 		case "response.output_text.annotation.added":
-			if citation, ok := extractURLCitation(streamEvent.Annotation); ok {
-				state.sourceCitations = mergeSourceCitations(state.sourceCitations, []sourceCitation{citation})
-				oc.emitUISourceURL(ctx, portal, state, citation)
-			}
-			if document, ok := extractDocumentCitation(streamEvent.Annotation); ok {
-				state.sourceDocuments = append(state.sourceDocuments, document)
-				oc.emitUISourceDocument(ctx, portal, state, document)
-			}
-			oc.emitStreamEvent(ctx, portal, state, map[string]any{
-				"type":      "data-annotation",
-				"data":      map[string]any{"annotation": streamEvent.Annotation, "index": streamEvent.AnnotationIndex},
-				"transient": true,
-			})
+			oc.handleResponseOutputAnnotationAdded(ctx, portal, state, streamEvent.Annotation, streamEvent.AnnotationIndex)
 
 		case "response.completed":
 			state.completedAtMs = time.Now().UnixMilli()
@@ -961,46 +938,23 @@ func (oc *AIClient) streamingResponse(
 				}
 
 			case "response.reasoning_summary_text.delta":
-				if strings.TrimSpace(streamEvent.Delta) != "" {
-					state.reasoning.WriteString(streamEvent.Delta)
-					oc.emitUIReasoningDelta(ctx, portal, state, streamEvent.Delta)
-				}
+				oc.handleResponseReasoningSummaryDelta(ctx, portal, state, strings.TrimSpace(streamEvent.Delta))
 
 			case "response.reasoning_text.done", "response.reasoning_summary_text.done":
-				if strings.TrimSpace(streamEvent.Text) != "" {
-					state.reasoning.WriteString(streamEvent.Text)
-					oc.emitUIReasoningDelta(ctx, portal, state, streamEvent.Text)
-				}
+				oc.handleResponseReasoningDone(ctx, portal, state, strings.TrimSpace(streamEvent.Text))
 
 			case "response.refusal.delta":
 				touchTyping()
-				if typingSignals != nil {
-					typingSignals.SignalTextDelta(streamEvent.Delta)
-				}
-				oc.emitUITextDelta(ctx, portal, state, streamEvent.Delta)
+				oc.handleResponseRefusalDelta(ctx, portal, state, typingSignals, streamEvent.Delta)
 
 			case "response.refusal.done":
-				if strings.TrimSpace(streamEvent.Refusal) != "" {
-					oc.emitUITextDelta(ctx, portal, state, streamEvent.Refusal)
-				}
+				oc.handleResponseRefusalDone(ctx, portal, state, strings.TrimSpace(streamEvent.Refusal))
 
 			case "response.output_text.done":
 				// text-end is emitted from emitUIFinish to keep one contiguous part.
 
 			case "response.output_text.annotation.added":
-				if citation, ok := extractURLCitation(streamEvent.Annotation); ok {
-					state.sourceCitations = mergeSourceCitations(state.sourceCitations, []sourceCitation{citation})
-					oc.emitUISourceURL(ctx, portal, state, citation)
-				}
-				if document, ok := extractDocumentCitation(streamEvent.Annotation); ok {
-					state.sourceDocuments = append(state.sourceDocuments, document)
-					oc.emitUISourceDocument(ctx, portal, state, document)
-				}
-				oc.emitStreamEvent(ctx, portal, state, map[string]any{
-					"type":      "data-annotation",
-					"data":      map[string]any{"annotation": streamEvent.Annotation, "index": streamEvent.AnnotationIndex},
-					"transient": true,
-				})
+				oc.handleResponseOutputAnnotationAdded(ctx, portal, state, streamEvent.Annotation, streamEvent.AnnotationIndex)
 
 			case "response.function_call_arguments.delta":
 				touchTyping()
