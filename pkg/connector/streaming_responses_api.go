@@ -189,40 +189,19 @@ func (oc *AIClient) streamingResponse(
 
 		case "response.output_text.delta":
 			touchTyping()
-			delta := maybePrependTextSeparator(state, streamEvent.Delta)
-			state.accumulated.WriteString(delta)
-			parsed := (*streamingDirectiveResult)(nil)
-			if state.replyAccumulator != nil {
-				parsed = state.replyAccumulator.Consume(delta, false)
-			}
-			if parsed != nil {
-				oc.applyStreamingReplyTarget(state, parsed)
-				cleaned := parsed.Text
-				if typingSignals != nil {
-					typingSignals.SignalTextDelta(cleaned)
-				}
-				if cleaned != "" {
-					state.visibleAccumulated.WriteString(cleaned)
-					// First token - send initial message synchronously to capture event_id
-					if state.firstToken && state.visibleAccumulated.Len() > 0 {
-						state.firstToken = false
-						state.firstTokenAtMs = time.Now().UnixMilli()
-						if !state.suppressSend && !isHeartbeat {
-							// Ensure ghost display name is set before sending the first message
-							oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
-							state.initialEventID = oc.sendInitialStreamMessage(ctx, portal, state.visibleAccumulated.String(), state.turnID, state.replyTarget)
-							if state.initialEventID == "" {
-								errText := "failed to send initial streaming message"
-								log.Error().Msg("Failed to send initial streaming message")
-								state.finishReason = "error"
-								oc.emitUIError(ctx, portal, state, errText)
-								oc.emitUIFinish(ctx, portal, state, meta)
-								return false, nil, &PreDeltaError{Err: errors.New(errText)}
-							}
-						}
-					}
-					oc.emitUITextDelta(ctx, portal, state, cleaned)
-				}
+			if err := oc.handleResponseOutputTextDelta(
+				ctx,
+				log,
+				portal,
+				state,
+				meta,
+				typingSignals,
+				isHeartbeat,
+				streamEvent.Delta,
+				"failed to send initial streaming message",
+				"Failed to send initial streaming message",
+			); err != nil {
+				return false, nil, &PreDeltaError{Err: err}
 			}
 
 		case "response.reasoning_text.delta":
@@ -230,28 +209,19 @@ func (oc *AIClient) streamingResponse(
 			if typingSignals != nil {
 				typingSignals.SignalReasoningDelta()
 			}
-			state.reasoning.WriteString(streamEvent.Delta)
-
-			// Check if this is first content (reasoning before text)
-			if state.firstToken && state.reasoning.Len() > 0 {
-				state.firstToken = false
-				state.firstTokenAtMs = time.Now().UnixMilli()
-				if !state.suppressSend && !isHeartbeat {
-					oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
-					// Send empty initial message - will be replaced with content later
-					state.initialEventID = oc.sendInitialStreamMessage(ctx, portal, "...", state.turnID, state.replyTarget)
-					if state.initialEventID == "" {
-						errText := "failed to send initial streaming message"
-						log.Error().Msg("Failed to send initial streaming message")
-						state.finishReason = "error"
-						oc.emitUIError(ctx, portal, state, errText)
-						oc.emitUIFinish(ctx, portal, state, meta)
-						return false, nil, &PreDeltaError{Err: errors.New(errText)}
-					}
-				}
+			if err := oc.handleResponseReasoningTextDelta(
+				ctx,
+				log,
+				portal,
+				state,
+				meta,
+				isHeartbeat,
+				streamEvent.Delta,
+				"failed to send initial streaming message",
+				"Failed to send initial streaming message",
+			); err != nil {
+				return false, nil, &PreDeltaError{Err: err}
 			}
-
-			oc.emitUIReasoningDelta(ctx, portal, state, streamEvent.Delta)
 
 		case "response.reasoning_summary_text.delta":
 			if strings.TrimSpace(streamEvent.Delta) != "" {
@@ -956,38 +926,19 @@ func (oc *AIClient) streamingResponse(
 
 			case "response.output_text.delta":
 				touchTyping()
-				delta := maybePrependTextSeparator(state, streamEvent.Delta)
-				state.accumulated.WriteString(delta)
-				parsed := (*streamingDirectiveResult)(nil)
-				if state.replyAccumulator != nil {
-					parsed = state.replyAccumulator.Consume(delta, false)
-				}
-				if parsed != nil {
-					oc.applyStreamingReplyTarget(state, parsed)
-					cleaned := parsed.Text
-					if typingSignals != nil {
-						typingSignals.SignalTextDelta(cleaned)
-					}
-					if cleaned != "" {
-						state.visibleAccumulated.WriteString(cleaned)
-						if state.firstToken && state.visibleAccumulated.Len() > 0 {
-							state.firstToken = false
-							state.firstTokenAtMs = time.Now().UnixMilli()
-							if !state.suppressSend && !isHeartbeat {
-								oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
-								state.initialEventID = oc.sendInitialStreamMessage(ctx, portal, state.visibleAccumulated.String(), state.turnID, state.replyTarget)
-								if state.initialEventID == "" {
-									errText := "failed to send initial streaming message (continuation)"
-									log.Error().Msg("Failed to send initial streaming message (continuation)")
-									state.finishReason = "error"
-									oc.emitUIError(ctx, portal, state, errText)
-									oc.emitUIFinish(ctx, portal, state, meta)
-									return false, nil, &PreDeltaError{Err: errors.New(errText)}
-								}
-							}
-						}
-						oc.emitUITextDelta(ctx, portal, state, cleaned)
-					}
+				if err := oc.handleResponseOutputTextDelta(
+					ctx,
+					log,
+					portal,
+					state,
+					meta,
+					typingSignals,
+					isHeartbeat,
+					streamEvent.Delta,
+					"failed to send initial streaming message (continuation)",
+					"Failed to send initial streaming message (continuation)",
+				); err != nil {
+					return false, nil, &PreDeltaError{Err: err}
 				}
 
 			case "response.reasoning_text.delta":
@@ -995,24 +946,19 @@ func (oc *AIClient) streamingResponse(
 				if typingSignals != nil {
 					typingSignals.SignalReasoningDelta()
 				}
-				state.reasoning.WriteString(streamEvent.Delta)
-				if state.firstToken && state.reasoning.Len() > 0 {
-					state.firstToken = false
-					state.firstTokenAtMs = time.Now().UnixMilli()
-					if !state.suppressSend && !isHeartbeat {
-						oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
-						state.initialEventID = oc.sendInitialStreamMessage(ctx, portal, "...", state.turnID, state.replyTarget)
-						if state.initialEventID == "" {
-							errText := "failed to send initial streaming message (continuation)"
-							log.Error().Msg("Failed to send initial streaming message (continuation)")
-							state.finishReason = "error"
-							oc.emitUIError(ctx, portal, state, errText)
-							oc.emitUIFinish(ctx, portal, state, meta)
-							return false, nil, &PreDeltaError{Err: errors.New(errText)}
-						}
-					}
+				if err := oc.handleResponseReasoningTextDelta(
+					ctx,
+					log,
+					portal,
+					state,
+					meta,
+					isHeartbeat,
+					streamEvent.Delta,
+					"failed to send initial streaming message (continuation)",
+					"Failed to send initial streaming message (continuation)",
+				); err != nil {
+					return false, nil, &PreDeltaError{Err: err}
 				}
-				oc.emitUIReasoningDelta(ctx, portal, state, streamEvent.Delta)
 
 			case "response.reasoning_summary_text.delta":
 				if strings.TrimSpace(streamEvent.Delta) != "" {
