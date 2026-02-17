@@ -2016,7 +2016,3 @@ func (oc *AIClient) streamingResponse(
 	oc.recordProviderSuccess(ctx)
 	return true, nil, nil
 }
-
-// streamChatCompletions handles streaming using Chat Completions API (for audio support)
-// This is used as a fallback when the prompt contains audio content, since
-// SDK v3.16.0 has ResponseInputAudioParam defined but NOT wired into ResponseInputContentUnionParam.
