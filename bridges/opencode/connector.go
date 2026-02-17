@@ -99,26 +99,27 @@ func (oc *OpenCodeConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 		return nil
 	}
 
-	oc.clientsMu.Lock()
-	if existingAPI := oc.clients[login.ID]; existingAPI != nil {
-		if existing, ok := existingAPI.(*OpenCodeClient); ok {
+	client, err := bridgeadapter.LoadOrCreateClient(
+		&oc.clientsMu,
+		oc.clients,
+		login.ID,
+		func(existingAPI bridgev2.NetworkAPI) bool {
+			existing, ok := existingAPI.(*OpenCodeClient)
+			if !ok || existing == nil {
+				return false
+			}
 			existing.UserLogin = login
 			login.Client = existing
-			oc.clientsMu.Unlock()
-			return nil
-		}
-		delete(oc.clients, login.ID)
-	}
-	oc.clientsMu.Unlock()
-
-	client, err := newOpenCodeClient(login, oc)
+			return true
+		},
+		func() (bridgev2.NetworkAPI, error) {
+			return newOpenCodeClient(login, oc)
+		},
+	)
 	if err != nil {
 		login.Client = &brokenLoginClient{UserLogin: login, Reason: "Couldn't initialize OpenCode for this login."}
 		return nil
 	}
-	oc.clientsMu.Lock()
-	oc.clients[login.ID] = client
-	oc.clientsMu.Unlock()
 	login.Client = client
 	return nil
 }

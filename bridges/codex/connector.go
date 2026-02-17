@@ -163,26 +163,27 @@ func (cc *CodexConnector) loadCodexUserLogin(login *bridgev2.UserLogin) error {
 		return nil
 	}
 
-	cc.clientsMu.Lock()
-	if existingAPI := cc.clients[login.ID]; existingAPI != nil {
-		if existing, ok := existingAPI.(*CodexClient); ok {
+	client, err := bridgeadapter.LoadOrCreateClient(
+		&cc.clientsMu,
+		cc.clients,
+		login.ID,
+		func(existingAPI bridgev2.NetworkAPI) bool {
+			existing, ok := existingAPI.(*CodexClient)
+			if !ok || existing == nil {
+				return false
+			}
 			existing.UserLogin = login
 			login.Client = existing
-			cc.clientsMu.Unlock()
-			return nil
-		}
-		delete(cc.clients, login.ID)
-	}
-	cc.clientsMu.Unlock()
-
-	client, err := newCodexClient(login, cc)
+			return true
+		},
+		func() (bridgev2.NetworkAPI, error) {
+			return newCodexClient(login, cc)
+		},
+	)
 	if err != nil {
 		login.Client = &brokenLoginClient{UserLogin: login, Reason: "Couldn't initialize Codex for this login. Remove and re-add the account."}
 		return nil
 	}
-	cc.clientsMu.Lock()
-	cc.clients[login.ID] = client
-	cc.clientsMu.Unlock()
 	login.Client = client
 	return nil
 }
