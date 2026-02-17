@@ -9,7 +9,7 @@ import (
 func (oc *OpenAIConnector) loadAIUserLogin(login *bridgev2.UserLogin, meta *UserLoginMetadata) error {
 	key := strings.TrimSpace(oc.resolveProviderAPIKey(meta))
 	if key == "" {
-		login.Client = &brokenLoginClient{UserLogin: login, Reason: "No API key available for this login. Sign in again or remove this account."}
+		login.Client = newBrokenLoginClient(login, "No API key available for this login. Sign in again or remove this account.")
 		return nil
 	}
 	oc.clientsMu.Lock()
@@ -21,7 +21,7 @@ func (oc *OpenAIConnector) loadAIUserLogin(login *bridgev2.UserLogin, meta *User
 			oc.clientsMu.Unlock()
 			client, err := newAIClient(login, oc, key)
 			if err != nil {
-				login.Client = &brokenLoginClient{UserLogin: login, Reason: "Couldn't initialize this login. Remove and re-add the account."}
+				login.Client = newBrokenLoginClient(login, "Couldn't initialize this login. Remove and re-add the account.")
 				return nil
 			}
 			oc.clientsMu.Lock()
@@ -67,7 +67,7 @@ func (oc *OpenAIConnector) loadAIUserLogin(login *bridgev2.UserLogin, meta *User
 
 	client, err := newAIClient(login, oc, key)
 	if err != nil {
-		login.Client = &brokenLoginClient{UserLogin: login, Reason: "Couldn't initialize this login. Remove and re-add the account."}
+		login.Client = newBrokenLoginClient(login, "Couldn't initialize this login. Remove and re-add the account.")
 		return nil
 	}
 	oc.clientsMu.Lock()

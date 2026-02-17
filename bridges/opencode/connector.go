@@ -95,7 +95,7 @@ func (oc *OpenCodeConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 	_ = ctx
 	meta := loginMetadata(login)
 	if !strings.EqualFold(strings.TrimSpace(meta.Provider), ProviderOpenCode) {
-		login.Client = &brokenLoginClient{UserLogin: login, Reason: "This bridge only supports OpenCode logins."}
+		login.Client = newBrokenLoginClient(login, "This bridge only supports OpenCode logins.")
 		return nil
 	}
 
@@ -117,7 +117,7 @@ func (oc *OpenCodeConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 		},
 	)
 	if err != nil {
-		login.Client = &brokenLoginClient{UserLogin: login, Reason: "Couldn't initialize OpenCode for this login."}
+		login.Client = newBrokenLoginClient(login, "Couldn't initialize OpenCode for this login.")
 		return nil
 	}
 	login.Client = client

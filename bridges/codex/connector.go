@@ -151,7 +151,7 @@ func (cc *CodexConnector) LoadUserLogin(ctx context.Context, login *bridgev2.Use
 	_ = ctx
 	meta := loginMetadata(login)
 	if !strings.EqualFold(strings.TrimSpace(meta.Provider), ProviderCodex) {
-		login.Client = &brokenLoginClient{UserLogin: login, Reason: "This bridge only supports Codex logins."}
+		login.Client = newBrokenLoginClient(login, "This bridge only supports Codex logins.")
 		return nil
 	}
 	return cc.loadCodexUserLogin(login)
@@ -159,7 +159,7 @@ func (cc *CodexConnector) LoadUserLogin(ctx context.Context, login *bridgev2.Use
 
 func (cc *CodexConnector) loadCodexUserLogin(login *bridgev2.UserLogin) error {
 	if !cc.codexEnabled() {
-		login.Client = &brokenLoginClient{UserLogin: login, Reason: "Codex integration is disabled in the configuration."}
+		login.Client = newBrokenLoginClient(login, "Codex integration is disabled in the configuration.")
 		return nil
 	}
 
@@ -181,7 +181,7 @@ func (cc *CodexConnector) loadCodexUserLogin(login *bridgev2.UserLogin) error {
 		},
 	)
 	if err != nil {
-		login.Client = &brokenLoginClient{UserLogin: login, Reason: "Couldn't initialize Codex for this login. Remove and re-add the account."}
+		login.Client = newBrokenLoginClient(login, "Couldn't initialize Codex for this login. Remove and re-add the account.")
 		return nil
 	}
 	login.Client = client
