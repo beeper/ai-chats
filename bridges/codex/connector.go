@@ -158,7 +158,7 @@ func (cc *CodexConnector) LoadUserLogin(ctx context.Context, login *bridgev2.Use
 }
 
 func (cc *CodexConnector) loadCodexUserLogin(login *bridgev2.UserLogin) error {
-	if cc.Config.Codex != nil && cc.Config.Codex.Enabled != nil && !*cc.Config.Codex.Enabled {
+	if !cc.codexEnabled() {
 		login.Client = &brokenLoginClient{UserLogin: login, Reason: "Codex integration is disabled in the configuration."}
 		return nil
 	}
@@ -190,7 +190,7 @@ func (cc *CodexConnector) loadCodexUserLogin(login *bridgev2.UserLogin) error {
 
 func (cc *CodexConnector) GetLoginFlows() []bridgev2.LoginFlow {
 	flows := []bridgev2.LoginFlow{}
-	if cc.Config.Codex == nil || cc.Config.Codex.Enabled == nil || *cc.Config.Codex.Enabled {
+	if cc.codexEnabled() {
 		flows = append(flows, bridgev2.LoginFlow{
 			ID:          ProviderCodex,
 			Name:        "Codex",
@@ -204,8 +204,12 @@ func (cc *CodexConnector) CreateLogin(ctx context.Context, user *bridgev2.User, 
 	if flowID != ProviderCodex {
 		return nil, fmt.Errorf("login flow %s is not available", flowID)
 	}
-	if cc.Config.Codex != nil && cc.Config.Codex.Enabled != nil && !*cc.Config.Codex.Enabled {
+	if !cc.codexEnabled() {
 		return nil, fmt.Errorf("login flow %s is not available", flowID)
 	}
 	return &CodexLogin{User: user, Connector: cc, FlowID: flowID}, nil
+}
+
+func (cc *CodexConnector) codexEnabled() bool {
+	return cc.Config.Codex == nil || cc.Config.Codex.Enabled == nil || *cc.Config.Codex.Enabled
 }

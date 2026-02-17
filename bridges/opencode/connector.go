@@ -125,7 +125,7 @@ func (oc *OpenCodeConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 }
 
 func (oc *OpenCodeConnector) GetLoginFlows() []bridgev2.LoginFlow {
-	if oc.Config.OpenCode.Enabled != nil && !*oc.Config.OpenCode.Enabled {
+	if !oc.openCodeEnabled() {
 		return nil
 	}
 	return []bridgev2.LoginFlow{{
@@ -140,8 +140,12 @@ func (oc *OpenCodeConnector) CreateLogin(ctx context.Context, user *bridgev2.Use
 	if flowID != ProviderOpenCode {
 		return nil, fmt.Errorf("login flow %s is not available", flowID)
 	}
-	if oc.Config.OpenCode.Enabled != nil && !*oc.Config.OpenCode.Enabled {
+	if !oc.openCodeEnabled() {
 		return nil, fmt.Errorf("login flow %s is not available", flowID)
 	}
 	return &OpenCodeLogin{User: user, Connector: oc, FlowID: flowID}, nil
+}
+
+func (oc *OpenCodeConnector) openCodeEnabled() bool {
+	return oc.Config.OpenCode.Enabled == nil || *oc.Config.OpenCode.Enabled
 }
