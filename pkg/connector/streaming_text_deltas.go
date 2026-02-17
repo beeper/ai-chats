@@ -122,3 +122,76 @@ func (oc *AIClient) handleResponseReasoningTextDelta(
 	oc.emitUIReasoningDelta(ctx, portal, state, delta)
 	return nil
 }
+
+func (oc *AIClient) handleResponseReasoningSummaryDelta(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	delta string,
+) {
+	if delta == "" {
+		return
+	}
+	state.reasoning.WriteString(delta)
+	oc.emitUIReasoningDelta(ctx, portal, state, delta)
+}
+
+func (oc *AIClient) handleResponseReasoningDone(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	text string,
+) {
+	if text == "" {
+		return
+	}
+	state.reasoning.WriteString(text)
+	oc.emitUIReasoningDelta(ctx, portal, state, text)
+}
+
+func (oc *AIClient) handleResponseRefusalDelta(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	typingSignals *TypingSignaler,
+	delta string,
+) {
+	if typingSignals != nil {
+		typingSignals.SignalTextDelta(delta)
+	}
+	oc.emitUITextDelta(ctx, portal, state, delta)
+}
+
+func (oc *AIClient) handleResponseRefusalDone(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	refusal string,
+) {
+	if refusal == "" {
+		return
+	}
+	oc.emitUITextDelta(ctx, portal, state, refusal)
+}
+
+func (oc *AIClient) handleResponseOutputAnnotationAdded(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	annotation any,
+	annotationIndex any,
+) {
+	if citation, ok := extractURLCitation(annotation); ok {
+		state.sourceCitations = mergeSourceCitations(state.sourceCitations, []sourceCitation{citation})
+		oc.emitUISourceURL(ctx, portal, state, citation)
+	}
+	if document, ok := extractDocumentCitation(annotation); ok {
+		state.sourceDocuments = append(state.sourceDocuments, document)
+		oc.emitUISourceDocument(ctx, portal, state, document)
+	}
+	oc.emitStreamEvent(ctx, portal, state, map[string]any{
+		"type":      "data-annotation",
+		"data":      map[string]any{"annotation": annotation, "index": annotationIndex},
+		"transient": true,
+	})
+}
