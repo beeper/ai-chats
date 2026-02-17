@@ -1,6 +1,8 @@
 .DS_Store
 .claude/settings.local.json
 /ai
+/codex
+/opencode
 logs/
 *.db*
 *.yaml
