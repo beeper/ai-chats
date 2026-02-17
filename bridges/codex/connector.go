@@ -107,21 +107,11 @@ func (cc *CodexConnector) applyRuntimeDefaults() {
 }
 
 func (cc *CodexConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
-	return &bridgev2.NetworkGeneralCapabilities{
-		DisappearingMessages: true,
-		Provisioning: bridgev2.ProvisioningCapabilities{
-			ResolveIdentifier: bridgev2.ResolveIdentifierCapabilities{
-				CreateDM:       true,
-				LookupUsername: true,
-				ContactList:    true,
-				Search:         true,
-			},
-		},
-	}
+	return bridgeadapter.DefaultNetworkCapabilities()
 }
 
 func (cc *CodexConnector) GetBridgeInfoVersion() (info, capabilities int) {
-	return 1, 3
+	return bridgeadapter.DefaultBridgeInfoVersion()
 }
 
 func (cc *CodexConnector) FillPortalBridgeInfo(portal *bridgev2.Portal, content *event.BridgeEventContent) {

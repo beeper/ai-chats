@@ -51,21 +51,11 @@ func (oc *OpenCodeConnector) Stop(ctx context.Context) {
 }
 
 func (oc *OpenCodeConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
-	return &bridgev2.NetworkGeneralCapabilities{
-		DisappearingMessages: true,
-		Provisioning: bridgev2.ProvisioningCapabilities{
-			ResolveIdentifier: bridgev2.ResolveIdentifierCapabilities{
-				CreateDM:       true,
-				LookupUsername: true,
-				ContactList:    true,
-				Search:         true,
-			},
-		},
-	}
+	return bridgeadapter.DefaultNetworkCapabilities()
 }
 
 func (oc *OpenCodeConnector) GetBridgeInfoVersion() (info, capabilities int) {
-	return 1, 3
+	return bridgeadapter.DefaultBridgeInfoVersion()
 }
 
 func (oc *OpenCodeConnector) FillPortalBridgeInfo(portal *bridgev2.Portal, content *event.BridgeEventContent) {
