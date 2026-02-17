@@ -1189,30 +1189,11 @@ func (oc *AIClient) streamingResponse(
 	// Check for stream errors
 	if err := stream.Err(); err != nil {
 		logResponsesFailure(log, err, params, meta, messages, "stream_err")
-		if errors.Is(err, context.Canceled) {
-			state.finishReason = "cancelled"
-			// Flush partial content if we already sent some deltas
-			if state.initialEventID != "" && state.accumulated.Len() > 0 {
-				oc.flushPartialStreamingMessage(context.Background(), portal, state, meta)
-			}
-			oc.emitUIAbort(ctx, portal, state, "cancelled")
-			oc.emitUIFinish(ctx, portal, state, meta)
-			if state.initialEventID != "" {
-				return false, nil, &NonFallbackError{Err: err}
-			}
-			return false, nil, &PreDeltaError{Err: err}
-		}
-		cle := ParseContextLengthError(err)
+		cle, handledErr := oc.handleResponsesStreamErr(ctx, portal, state, meta, err, true)
 		if cle != nil {
 			return false, cle, nil
 		}
-		state.finishReason = "error"
-		oc.emitUIError(ctx, portal, state, err.Error())
-		oc.emitUIFinish(ctx, portal, state, meta)
-		if state.initialEventID != "" {
-			return false, nil, &NonFallbackError{Err: err}
-		}
-		return false, nil, &PreDeltaError{Err: err}
+		return false, nil, handledErr
 	}
 
 	// If there are pending tool outputs or MCP approvals, send them back to the API for continuation.
@@ -1863,25 +1844,8 @@ func (oc *AIClient) streamingResponse(
 
 		if err := stream.Err(); err != nil {
 			logResponsesFailure(log, err, continuationParams, meta, messages, "continuation_err")
-			if errors.Is(err, context.Canceled) {
-				state.finishReason = "cancelled"
-				if state.initialEventID != "" && state.accumulated.Len() > 0 {
-					oc.flushPartialStreamingMessage(context.Background(), portal, state, meta)
-				}
-				oc.emitUIAbort(ctx, portal, state, "cancelled")
-				oc.emitUIFinish(ctx, portal, state, meta)
-				if state.initialEventID != "" {
-					return false, nil, &NonFallbackError{Err: err}
-				}
-				return false, nil, &PreDeltaError{Err: err}
-			}
-			state.finishReason = "error"
-			oc.emitUIError(ctx, portal, state, err.Error())
-			oc.emitUIFinish(ctx, portal, state, meta)
-			if state.initialEventID != "" {
-				return false, nil, &NonFallbackError{Err: err}
-			}
-			return false, nil, &PreDeltaError{Err: err}
+			_, handledErr := oc.handleResponsesStreamErr(ctx, portal, state, meta, err, false)
+			return false, nil, handledErr
 		}
 	}
 
