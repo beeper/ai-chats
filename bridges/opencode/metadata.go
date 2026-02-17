@@ -1,6 +1,7 @@
 package opencode
 
 import (
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"go.mau.fi/util/jsontime"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -32,32 +33,11 @@ type GhostMetadata struct {
 }
 
 func loginMetadata(login *bridgev2.UserLogin) *UserLoginMetadata {
-	if login == nil {
-		return &UserLoginMetadata{}
-	}
-	if login.Metadata == nil {
-		meta := &UserLoginMetadata{}
-		login.Metadata = meta
-		return meta
-	}
-	meta, ok := login.Metadata.(*UserLoginMetadata)
-	if !ok || meta == nil {
-		meta = &UserLoginMetadata{}
-		login.Metadata = meta
-	}
-	return meta
+	return bridgeadapter.EnsureLoginMetadata[UserLoginMetadata](login)
 }
 
 func portalMeta(portal *bridgev2.Portal) *PortalMetadata {
-	if portal == nil {
-		return &PortalMetadata{}
-	}
-	meta, ok := portal.Metadata.(*PortalMetadata)
-	if !ok || meta == nil {
-		meta = &PortalMetadata{}
-		portal.Metadata = meta
-	}
-	return meta
+	return bridgeadapter.EnsurePortalMetadata[PortalMetadata](portal)
 }
 
 func humanUserID(loginID networkid.UserLoginID) networkid.UserID {

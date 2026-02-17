@@ -13,6 +13,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 // makeUserLoginIDForConfig creates a stable login ID by hashing provider + base URL + API key.
@@ -110,7 +112,7 @@ func humanUserID(loginID networkid.UserLoginID) networkid.UserID {
 }
 
 func portalMeta(portal *bridgev2.Portal) *PortalMetadata {
-	return portal.Metadata.(*PortalMetadata)
+	return bridgeadapter.EnsurePortalMetadata[PortalMetadata](portal)
 }
 
 // resolveAgentID returns the configured agent ID.
@@ -147,21 +149,7 @@ func shouldIncludeInHistory(meta *MessageMetadata) bool {
 }
 
 func loginMetadata(login *bridgev2.UserLogin) *UserLoginMetadata {
-	if login == nil {
-		return &UserLoginMetadata{}
-	}
-	if login.Metadata == nil {
-		meta := &UserLoginMetadata{}
-		login.Metadata = meta
-		return meta
-	}
-	meta, ok := login.Metadata.(*UserLoginMetadata)
-	if !ok || meta == nil {
-		// Don't crash on schema mismatches; allow logout/deletion to proceed.
-		meta = &UserLoginMetadata{}
-		login.Metadata = meta
-	}
-	return meta
+	return bridgeadapter.EnsureLoginMetadata[UserLoginMetadata](login)
 }
 
 func formatChatSlug(index int) string {

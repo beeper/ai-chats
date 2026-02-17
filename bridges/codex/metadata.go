@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"go.mau.fi/util/jsontime"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -29,27 +30,27 @@ type PortalMetadata struct {
 }
 
 type MessageMetadata struct {
-	Role             string             `json:"role,omitempty"`
-	Body             string             `json:"body,omitempty"`
-	CompletionID     string             `json:"completion_id,omitempty"`
-	FinishReason     string             `json:"finish_reason,omitempty"`
-	PromptTokens     int64              `json:"prompt_tokens,omitempty"`
-	CompletionTokens int64              `json:"completion_tokens,omitempty"`
-	Model            string             `json:"model,omitempty"`
-	ReasoningTokens  int64              `json:"reasoning_tokens,omitempty"`
-	HasToolCalls     bool               `json:"has_tool_calls,omitempty"`
-	Transcript       string             `json:"transcript,omitempty"`
-	TurnID           string             `json:"turn_id,omitempty"`
-	AgentID          string             `json:"agent_id,omitempty"`
-	ToolCalls        []ToolCallMetadata `json:"tool_calls,omitempty"`
-	CanonicalSchema  string             `json:"canonical_schema,omitempty"`
-	CanonicalUIMessage map[string]any   `json:"canonical_ui_message,omitempty"`
-	StartedAtMs      int64              `json:"started_at_ms,omitempty"`
-	FirstTokenAtMs   int64              `json:"first_token_at_ms,omitempty"`
-	CompletedAtMs    int64              `json:"completed_at_ms,omitempty"`
-	ThinkingContent  string             `json:"thinking_content,omitempty"`
-	ThinkingTokenCount int              `json:"thinking_token_count,omitempty"`
-	GeneratedFiles   []GeneratedFileRef `json:"generated_files,omitempty"`
+	Role               string             `json:"role,omitempty"`
+	Body               string             `json:"body,omitempty"`
+	CompletionID       string             `json:"completion_id,omitempty"`
+	FinishReason       string             `json:"finish_reason,omitempty"`
+	PromptTokens       int64              `json:"prompt_tokens,omitempty"`
+	CompletionTokens   int64              `json:"completion_tokens,omitempty"`
+	Model              string             `json:"model,omitempty"`
+	ReasoningTokens    int64              `json:"reasoning_tokens,omitempty"`
+	HasToolCalls       bool               `json:"has_tool_calls,omitempty"`
+	Transcript         string             `json:"transcript,omitempty"`
+	TurnID             string             `json:"turn_id,omitempty"`
+	AgentID            string             `json:"agent_id,omitempty"`
+	ToolCalls          []ToolCallMetadata `json:"tool_calls,omitempty"`
+	CanonicalSchema    string             `json:"canonical_schema,omitempty"`
+	CanonicalUIMessage map[string]any     `json:"canonical_ui_message,omitempty"`
+	StartedAtMs        int64              `json:"started_at_ms,omitempty"`
+	FirstTokenAtMs     int64              `json:"first_token_at_ms,omitempty"`
+	CompletedAtMs      int64              `json:"completed_at_ms,omitempty"`
+	ThinkingContent    string             `json:"thinking_content,omitempty"`
+	ThinkingTokenCount int                `json:"thinking_token_count,omitempty"`
+	GeneratedFiles     []GeneratedFileRef `json:"generated_files,omitempty"`
 }
 
 type ToolCallMetadata struct {
@@ -149,39 +150,15 @@ func (mm *MessageMetadata) CopyFrom(other any) {
 }
 
 func loginMetadata(login *bridgev2.UserLogin) *UserLoginMetadata {
-	if login == nil {
-		return &UserLoginMetadata{}
-	}
-	if meta, ok := login.Metadata.(*UserLoginMetadata); ok && meta != nil {
-		return meta
-	}
-	meta := &UserLoginMetadata{}
-	login.Metadata = meta
-	return meta
+	return bridgeadapter.EnsureLoginMetadata[UserLoginMetadata](login)
 }
 
 func portalMeta(portal *bridgev2.Portal) *PortalMetadata {
-	if portal == nil {
-		return &PortalMetadata{}
-	}
-	if meta, ok := portal.Metadata.(*PortalMetadata); ok && meta != nil {
-		return meta
-	}
-	meta := &PortalMetadata{}
-	portal.Metadata = meta
-	return meta
+	return bridgeadapter.EnsurePortalMetadata[PortalMetadata](portal)
 }
 
 func messageMeta(msg *database.Message) *MessageMetadata {
-	if msg == nil {
-		return &MessageMetadata{}
-	}
-	if meta, ok := msg.Metadata.(*MessageMetadata); ok && meta != nil {
-		return meta
-	}
-	meta := &MessageMetadata{}
-	msg.Metadata = meta
-	return meta
+	return bridgeadapter.EnsureMessageMetadata[MessageMetadata](msg)
 }
 
 func NewTurnID() string {
