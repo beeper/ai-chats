@@ -17,6 +17,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/agents"
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 type approvalDecisionPayload struct {
@@ -64,35 +65,11 @@ func approvalDecisionFromString(decision string) (approve bool, always bool, ok 
 }
 
 func unsupportedMessageStatus(err error) error {
-	return bridgev2.WrapErrorInStatus(err).
-		WithStatus(event.MessageStatusFail).
-		WithErrorReason(event.MessageStatusUnsupported).
-		WithIsCertain(true).
-		WithSendNotice(true).
-		WithErrorAsMessage()
+	return bridgeadapter.UnsupportedMessageStatus(err)
 }
 
 func messageSendStatusError(err error, message string, reason event.MessageStatusReason) error {
-	if err == nil {
-		if message == "" {
-			err = errors.New("message send failed")
-		} else {
-			err = errors.New(message)
-		}
-	}
-	status := bridgev2.WrapErrorInStatus(err).WithSendNotice(true)
-	status = status.WithStatus(messageStatusForError(err))
-	if reason != "" {
-		status = status.WithErrorReason(reason)
-	} else {
-		status = status.WithErrorReason(messageStatusReasonForError(err))
-	}
-	if message != "" {
-		status = status.WithMessage(message)
-	} else {
-		status = status.WithErrorAsMessage()
-	}
-	return status
+	return bridgeadapter.MessageSendStatusError(err, message, reason, messageStatusForError, messageStatusReasonForError)
 }
 
 func matrixEventTimestamp(evt *event.Event) time.Time {
