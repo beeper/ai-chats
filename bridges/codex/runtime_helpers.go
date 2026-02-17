@@ -2,7 +2,6 @@ package codex
 
 import (
 	"context"
-	"errors"
 
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"github.com/rs/zerolog"
@@ -22,35 +21,11 @@ func loggerFromContext(ctx context.Context, fallback *zerolog.Logger) *zerolog.L
 }
 
 func unsupportedMessageStatus(err error) error {
-	return bridgev2.WrapErrorInStatus(err).
-		WithStatus(event.MessageStatusFail).
-		WithErrorReason(event.MessageStatusUnsupported).
-		WithIsCertain(true).
-		WithSendNotice(true).
-		WithErrorAsMessage()
+	return bridgeadapter.UnsupportedMessageStatus(err)
 }
 
 func messageSendStatusError(err error, message string, reason event.MessageStatusReason) error {
-	if err == nil {
-		if message == "" {
-			err = errors.New("message send failed")
-		} else {
-			err = errors.New(message)
-		}
-	}
-	st := bridgev2.WrapErrorInStatus(err).WithSendNotice(true)
-	st = st.WithStatus(messageStatusForError(err))
-	if reason != "" {
-		st = st.WithErrorReason(reason)
-	} else {
-		st = st.WithErrorReason(messageStatusReasonForError(err))
-	}
-	if message != "" {
-		st = st.WithMessage(message)
-	} else {
-		st = st.WithErrorAsMessage()
-	}
-	return st
+	return bridgeadapter.MessageSendStatusError(err, message, reason, messageStatusForError, messageStatusReasonForError)
 }
 
 type brokenLoginClient = bridgeadapter.BrokenLoginClient
