@@ -134,31 +134,8 @@ func (oc *AIClient) streamingResponse(
 		}
 
 		switch streamEvent.Type {
-		case "response.created", "response.queued", "response.in_progress":
-			if strings.TrimSpace(streamEvent.Response.ID) != "" {
-				state.responseID = streamEvent.Response.ID
-			}
-			oc.emitUIRuntimeMetadata(ctx, portal, state, meta, responseMetadataDeltaFromResponse(streamEvent.Response))
-
-		case "response.failed":
-			state.finishReason = "error"
-			if strings.TrimSpace(streamEvent.Response.ID) != "" {
-				state.responseID = streamEvent.Response.ID
-			}
-			oc.emitUIRuntimeMetadata(ctx, portal, state, meta, responseMetadataDeltaFromResponse(streamEvent.Response))
-			if msg := strings.TrimSpace(streamEvent.Response.Error.Message); msg != "" {
-				oc.emitUIError(ctx, portal, state, msg)
-			}
-
-		case "response.incomplete":
-			state.finishReason = strings.TrimSpace(string(streamEvent.Response.IncompleteDetails.Reason))
-			if strings.TrimSpace(state.finishReason) == "" {
-				state.finishReason = "other"
-			}
-			if strings.TrimSpace(streamEvent.Response.ID) != "" {
-				state.responseID = streamEvent.Response.ID
-			}
-			oc.emitUIRuntimeMetadata(ctx, portal, state, meta, responseMetadataDeltaFromResponse(streamEvent.Response))
+		case "response.created", "response.queued", "response.in_progress", "response.failed", "response.incomplete":
+			oc.handleResponseLifecycleEvent(ctx, portal, state, meta, streamEvent.Type, streamEvent.Response)
 
 		case "response.output_item.added":
 			oc.handleResponseOutputItemAdded(ctx, portal, state, activeTools, streamEvent.Item)
@@ -848,31 +825,8 @@ func (oc *AIClient) streamingResponse(
 			streamEvent := stream.Current()
 
 			switch streamEvent.Type {
-			case "response.created", "response.queued", "response.in_progress":
-				if strings.TrimSpace(streamEvent.Response.ID) != "" {
-					state.responseID = streamEvent.Response.ID
-				}
-				oc.emitUIRuntimeMetadata(ctx, portal, state, meta, responseMetadataDeltaFromResponse(streamEvent.Response))
-
-			case "response.failed":
-				state.finishReason = "error"
-				if strings.TrimSpace(streamEvent.Response.ID) != "" {
-					state.responseID = streamEvent.Response.ID
-				}
-				oc.emitUIRuntimeMetadata(ctx, portal, state, meta, responseMetadataDeltaFromResponse(streamEvent.Response))
-				if msg := strings.TrimSpace(streamEvent.Response.Error.Message); msg != "" {
-					oc.emitUIError(ctx, portal, state, msg)
-				}
-
-			case "response.incomplete":
-				state.finishReason = strings.TrimSpace(string(streamEvent.Response.IncompleteDetails.Reason))
-				if strings.TrimSpace(state.finishReason) == "" {
-					state.finishReason = "other"
-				}
-				if strings.TrimSpace(streamEvent.Response.ID) != "" {
-					state.responseID = streamEvent.Response.ID
-				}
-				oc.emitUIRuntimeMetadata(ctx, portal, state, meta, responseMetadataDeltaFromResponse(streamEvent.Response))
+			case "response.created", "response.queued", "response.in_progress", "response.failed", "response.incomplete":
+				oc.handleResponseLifecycleEvent(ctx, portal, state, meta, streamEvent.Type, streamEvent.Response)
 
 			case "response.output_item.added":
 				oc.handleResponseOutputItemAdded(ctx, portal, state, activeTools, streamEvent.Item)
