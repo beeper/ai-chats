@@ -2,7 +2,6 @@ package opencode
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 
@@ -125,23 +124,17 @@ func (oc *OpenCodeConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 }
 
 func (oc *OpenCodeConnector) GetLoginFlows() []bridgev2.LoginFlow {
-	if !oc.openCodeEnabled() {
-		return nil
-	}
-	return []bridgev2.LoginFlow{{
+	return bridgeadapter.SingleLoginFlow(oc.openCodeEnabled(), bridgev2.LoginFlow{
 		ID:          ProviderOpenCode,
 		Name:        "OpenCode",
 		Description: "Create a login for an OpenCode server instance.",
-	}}
+	})
 }
 
 func (oc *OpenCodeConnector) CreateLogin(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
 	_ = ctx
-	if flowID != ProviderOpenCode {
-		return nil, fmt.Errorf("login flow %s is not available", flowID)
-	}
-	if !oc.openCodeEnabled() {
-		return nil, fmt.Errorf("login flow %s is not available", flowID)
+	if err := bridgeadapter.ValidateSingleLoginFlow(flowID, ProviderOpenCode, oc.openCodeEnabled()); err != nil {
+		return nil, err
 	}
 	return &OpenCodeLogin{User: user, Connector: oc, FlowID: flowID}, nil
 }

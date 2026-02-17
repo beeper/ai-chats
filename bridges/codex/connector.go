@@ -2,7 +2,6 @@ package codex
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -189,23 +188,16 @@ func (cc *CodexConnector) loadCodexUserLogin(login *bridgev2.UserLogin) error {
 }
 
 func (cc *CodexConnector) GetLoginFlows() []bridgev2.LoginFlow {
-	flows := []bridgev2.LoginFlow{}
-	if cc.codexEnabled() {
-		flows = append(flows, bridgev2.LoginFlow{
-			ID:          ProviderCodex,
-			Name:        "Codex",
-			Description: "Use a local Codex install via codex app-server (stdio).",
-		})
-	}
-	return flows
+	return bridgeadapter.SingleLoginFlow(cc.codexEnabled(), bridgev2.LoginFlow{
+		ID:          ProviderCodex,
+		Name:        "Codex",
+		Description: "Use a local Codex install via codex app-server (stdio).",
+	})
 }
 
 func (cc *CodexConnector) CreateLogin(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
-	if flowID != ProviderCodex {
-		return nil, fmt.Errorf("login flow %s is not available", flowID)
-	}
-	if !cc.codexEnabled() {
-		return nil, fmt.Errorf("login flow %s is not available", flowID)
+	if err := bridgeadapter.ValidateSingleLoginFlow(flowID, ProviderCodex, cc.codexEnabled()); err != nil {
+		return nil, err
 	}
 	return &CodexLogin{User: user, Connector: cc, FlowID: flowID}, nil
 }
