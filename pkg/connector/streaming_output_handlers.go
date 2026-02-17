@@ -73,6 +73,130 @@ func (oc *AIClient) ensureActiveToolForStreamItem(
 	return oc.upsertActiveToolFromDescriptor(ctx, portal, state, activeTools, itemDesc)
 }
 
+func (oc *AIClient) handleCustomToolInputDeltaFromOutputItem(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	activeTools map[string]*activeToolCall,
+	itemID string,
+	item responses.ResponseOutputItemUnion,
+	delta string,
+) {
+	tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, itemID, item)
+	if tool == nil {
+		return
+	}
+	tool.input.WriteString(delta)
+	oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, delta, tool.toolType == ToolTypeProvider)
+}
+
+func (oc *AIClient) handleCustomToolInputDoneFromOutputItem(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	activeTools map[string]*activeToolCall,
+	itemID string,
+	item responses.ResponseOutputItemUnion,
+	inputText string,
+) {
+	tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, itemID, item)
+	if tool == nil {
+		return
+	}
+	if tool.input.Len() == 0 && strings.TrimSpace(inputText) != "" {
+		tool.input.WriteString(inputText)
+	}
+	oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, parseJSONOrRaw(tool.input.String()), tool.toolType == ToolTypeProvider)
+}
+
+func (oc *AIClient) handleProviderToolInputDeltaFromOutputItem(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	activeTools map[string]*activeToolCall,
+	itemID string,
+	item responses.ResponseOutputItemUnion,
+	delta string,
+) {
+	tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, itemID, item)
+	if tool == nil {
+		return
+	}
+	tool.input.WriteString(delta)
+	oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, delta, true)
+}
+
+func (oc *AIClient) handleProviderToolInputDoneFromOutputItem(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	activeTools map[string]*activeToolCall,
+	itemID string,
+	item responses.ResponseOutputItemUnion,
+	inputText string,
+) {
+	tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, itemID, item)
+	if tool == nil {
+		return
+	}
+	if tool.input.Len() == 0 && strings.TrimSpace(inputText) != "" {
+		tool.input.WriteString(inputText)
+	}
+	oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, parseJSONOrRaw(tool.input.String()), true)
+}
+
+func (oc *AIClient) handleMCPCallFailedFromOutputItem(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	activeTools map[string]*activeToolCall,
+	itemID string,
+	item responses.ResponseOutputItemUnion,
+) {
+	tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, itemID, item)
+	if tool == nil {
+		return
+	}
+	if state != nil && state.uiToolOutputFinalized[tool.callID] {
+		return
+	}
+	errorText := strings.TrimSpace(item.Error)
+	if errorText == "" {
+		errorText = "MCP tool call failed"
+	}
+	denied := outputItemLooksDenied(item)
+	if denied {
+		oc.emitUIToolOutputDenied(ctx, portal, state, tool.callID)
+	} else {
+		oc.emitUIToolOutputError(ctx, portal, state, tool.callID, errorText, true)
+	}
+
+	output := map[string]any{}
+	if denied {
+		output["status"] = "denied"
+	} else {
+		output["error"] = errorText
+	}
+	resultPayload := errorText
+	if denied && resultPayload == "" {
+		resultPayload = "Denied"
+	}
+	resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, resultPayload, ResultStatusError)
+	state.toolCalls = append(state.toolCalls, ToolCallMetadata{
+		CallID:        tool.callID,
+		ToolName:      tool.toolName,
+		ToolType:      string(tool.toolType),
+		Output:        output,
+		Status:        string(ToolStatusFailed),
+		ResultStatus:  string(ResultStatusError),
+		ErrorMessage:  errorText,
+		StartedAtMs:   tool.startedAtMs,
+		CompletedAtMs: time.Now().UnixMilli(),
+		CallEventID:   string(tool.eventID),
+		ResultEventID: string(resultEventID),
+	})
+}
+
 func (oc *AIClient) handleResponseOutputItemAdded(
 	ctx context.Context,
 	portal *bridgev2.Portal,

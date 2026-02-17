@@ -168,95 +168,25 @@ func (oc *AIClient) streamingResponse(
 			oc.handleResponseOutputItemDone(ctx, portal, state, activeTools, streamEvent.Item)
 
 		case "response.custom_tool_call_input.delta":
-			tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item)
-			if tool != nil {
-				tool.input.WriteString(streamEvent.Delta)
-				oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, streamEvent.Delta, tool.toolType == ToolTypeProvider)
-			}
+			oc.handleCustomToolInputDeltaFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item, streamEvent.Delta)
 
 		case "response.custom_tool_call_input.done":
-			tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item)
-			if tool != nil {
-				if tool.input.Len() == 0 && strings.TrimSpace(streamEvent.Input) != "" {
-					tool.input.WriteString(streamEvent.Input)
-				}
-				oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, parseJSONOrRaw(tool.input.String()), tool.toolType == ToolTypeProvider)
-			}
+			oc.handleCustomToolInputDoneFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item, streamEvent.Input)
 
 		case "response.code_interpreter_call_code.delta":
-			tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item)
-			if tool != nil {
-				tool.input.WriteString(streamEvent.Delta)
-				oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, streamEvent.Delta, true)
-			}
+			oc.handleProviderToolInputDeltaFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item, streamEvent.Delta)
 
 		case "response.code_interpreter_call_code.done":
-			tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item)
-			if tool != nil {
-				if tool.input.Len() == 0 && strings.TrimSpace(streamEvent.Code) != "" {
-					tool.input.WriteString(streamEvent.Code)
-				}
-				oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, parseJSONOrRaw(tool.input.String()), true)
-			}
+			oc.handleProviderToolInputDoneFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item, streamEvent.Code)
 
 		case "response.mcp_call_arguments.delta":
-			tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item)
-			if tool != nil {
-				tool.input.WriteString(streamEvent.Delta)
-				oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, streamEvent.Delta, true)
-			}
+			oc.handleProviderToolInputDeltaFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item, streamEvent.Delta)
 
 		case "response.mcp_call_arguments.done":
-			tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item)
-			if tool != nil {
-				if tool.input.Len() == 0 && strings.TrimSpace(streamEvent.Arguments) != "" {
-					tool.input.WriteString(streamEvent.Arguments)
-				}
-				oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, parseJSONOrRaw(tool.input.String()), true)
-			}
+			oc.handleProviderToolInputDoneFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item, streamEvent.Arguments)
 
 		case "response.mcp_call.failed":
-			tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item)
-			if tool != nil {
-				if state != nil && state.uiToolOutputFinalized[tool.callID] {
-					break
-				}
-				errorText := strings.TrimSpace(streamEvent.Item.Error)
-				if errorText == "" {
-					errorText = "MCP tool call failed"
-				}
-				denied := outputItemLooksDenied(streamEvent.Item)
-				if denied {
-					oc.emitUIToolOutputDenied(ctx, portal, state, tool.callID)
-				} else {
-					oc.emitUIToolOutputError(ctx, portal, state, tool.callID, errorText, true)
-				}
-
-				output := map[string]any{}
-				if denied {
-					output["status"] = "denied"
-				} else {
-					output["error"] = errorText
-				}
-				resultPayload := errorText
-				if denied && resultPayload == "" {
-					resultPayload = "Denied"
-				}
-				resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, resultPayload, ResultStatusError)
-				state.toolCalls = append(state.toolCalls, ToolCallMetadata{
-					CallID:        tool.callID,
-					ToolName:      tool.toolName,
-					ToolType:      string(tool.toolType),
-					Output:        output,
-					Status:        string(ToolStatusFailed),
-					ResultStatus:  string(ResultStatusError),
-					ErrorMessage:  errorText,
-					StartedAtMs:   tool.startedAtMs,
-					CompletedAtMs: time.Now().UnixMilli(),
-					CallEventID:   string(tool.eventID),
-					ResultEventID: string(resultEventID),
-				})
-			}
+			oc.handleMCPCallFailedFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item)
 
 		case "response.output_text.delta":
 			touchTyping()
@@ -1338,95 +1268,25 @@ func (oc *AIClient) streamingResponse(
 				oc.handleResponseOutputItemDone(ctx, portal, state, activeTools, streamEvent.Item)
 
 			case "response.custom_tool_call_input.delta":
-				tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item)
-				if tool != nil {
-					tool.input.WriteString(streamEvent.Delta)
-					oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, streamEvent.Delta, tool.toolType == ToolTypeProvider)
-				}
+				oc.handleCustomToolInputDeltaFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item, streamEvent.Delta)
 
 			case "response.custom_tool_call_input.done":
-				tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item)
-				if tool != nil {
-					if tool.input.Len() == 0 && strings.TrimSpace(streamEvent.Input) != "" {
-						tool.input.WriteString(streamEvent.Input)
-					}
-					oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, parseJSONOrRaw(tool.input.String()), tool.toolType == ToolTypeProvider)
-				}
+				oc.handleCustomToolInputDoneFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item, streamEvent.Input)
 
 			case "response.code_interpreter_call_code.delta":
-				tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item)
-				if tool != nil {
-					tool.input.WriteString(streamEvent.Delta)
-					oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, streamEvent.Delta, true)
-				}
+				oc.handleProviderToolInputDeltaFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item, streamEvent.Delta)
 
 			case "response.code_interpreter_call_code.done":
-				tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item)
-				if tool != nil {
-					if tool.input.Len() == 0 && strings.TrimSpace(streamEvent.Code) != "" {
-						tool.input.WriteString(streamEvent.Code)
-					}
-					oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, parseJSONOrRaw(tool.input.String()), true)
-				}
+				oc.handleProviderToolInputDoneFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item, streamEvent.Code)
 
 			case "response.mcp_call_arguments.delta":
-				tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item)
-				if tool != nil {
-					tool.input.WriteString(streamEvent.Delta)
-					oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, streamEvent.Delta, true)
-				}
+				oc.handleProviderToolInputDeltaFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item, streamEvent.Delta)
 
 			case "response.mcp_call_arguments.done":
-				tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item)
-				if tool != nil {
-					if tool.input.Len() == 0 && strings.TrimSpace(streamEvent.Arguments) != "" {
-						tool.input.WriteString(streamEvent.Arguments)
-					}
-					oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, parseJSONOrRaw(tool.input.String()), true)
-				}
+				oc.handleProviderToolInputDoneFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item, streamEvent.Arguments)
 
 			case "response.mcp_call.failed":
-				tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item)
-				if tool != nil {
-					if state != nil && state.uiToolOutputFinalized[tool.callID] {
-						break
-					}
-					errorText := strings.TrimSpace(streamEvent.Item.Error)
-					if errorText == "" {
-						errorText = "MCP tool call failed"
-					}
-					denied := outputItemLooksDenied(streamEvent.Item)
-					if denied {
-						oc.emitUIToolOutputDenied(ctx, portal, state, tool.callID)
-					} else {
-						oc.emitUIToolOutputError(ctx, portal, state, tool.callID, errorText, true)
-					}
-
-					output := map[string]any{}
-					if denied {
-						output["status"] = "denied"
-					} else {
-						output["error"] = errorText
-					}
-					resultPayload := errorText
-					if denied && resultPayload == "" {
-						resultPayload = "Denied"
-					}
-					resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, resultPayload, ResultStatusError)
-					state.toolCalls = append(state.toolCalls, ToolCallMetadata{
-						CallID:        tool.callID,
-						ToolName:      tool.toolName,
-						ToolType:      string(tool.toolType),
-						Output:        output,
-						Status:        string(ToolStatusFailed),
-						ResultStatus:  string(ResultStatusError),
-						ErrorMessage:  errorText,
-						StartedAtMs:   tool.startedAtMs,
-						CompletedAtMs: time.Now().UnixMilli(),
-						CallEventID:   string(tool.eventID),
-						ResultEventID: string(resultEventID),
-					})
-				}
+				oc.handleMCPCallFailedFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item)
 
 			case "response.output_text.delta":
 				touchTyping()
