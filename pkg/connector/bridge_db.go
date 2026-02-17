@@ -4,19 +4,13 @@ import (
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/ai-bridge/pkg/memory/migrations"
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 const aiBridgeVersionTable = "ai_bridge_version"
 
 func makeBridgeChildDB(base *dbutil.Database, log dbutil.DatabaseLogger) *dbutil.Database {
-	if base == nil {
-		return nil
-	}
-	if log == nil {
-		log = dbutil.NoopLogger
-	}
-	return base.Child(aiBridgeVersionTable, migrations.Table, log)
+	return bridgeadapter.MakeMemoryChildDB(base, aiBridgeVersionTable, log)
 }
 
 func (oc *OpenAIConnector) bridgeDB() *dbutil.Database {

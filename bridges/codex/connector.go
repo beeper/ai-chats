@@ -2,7 +2,6 @@ package codex
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -52,11 +51,8 @@ func (cc *CodexConnector) Stop(ctx context.Context) {
 
 func (cc *CodexConnector) Start(ctx context.Context) error {
 	db := cc.bridgeDB()
-	if db == nil {
-		return bridgev2.DBUpgradeError{Err: errors.New("codex bridge database not initialized"), Section: "codex_bridge"}
-	}
-	if err := db.Upgrade(ctx); err != nil {
-		return bridgev2.DBUpgradeError{Err: err, Section: "codex_bridge"}
+	if err := bridgeadapter.UpgradeChildDB(ctx, db, "codex_bridge", "codex bridge database not initialized"); err != nil {
+		return err
 	}
 
 	cc.applyRuntimeDefaults()

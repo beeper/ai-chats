@@ -3,7 +3,6 @@ package connector
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -64,11 +63,8 @@ func (oc *OpenAIConnector) Stop(ctx context.Context) {
 
 func (oc *OpenAIConnector) Start(ctx context.Context) error {
 	db := oc.bridgeDB()
-	if db == nil {
-		return bridgev2.DBUpgradeError{Err: errors.New("ai bridge database not initialized"), Section: "ai_bridge"}
-	}
-	if err := db.Upgrade(ctx); err != nil {
-		return bridgev2.DBUpgradeError{Err: err, Section: "ai_bridge"}
+	if err := bridgeadapter.UpgradeChildDB(ctx, db, "ai_bridge", "ai bridge database not initialized"); err != nil {
+		return err
 	}
 
 	oc.applyRuntimeDefaults()
