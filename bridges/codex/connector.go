@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +15,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
+
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 var (
@@ -42,23 +43,11 @@ func (cc *CodexConnector) Init(bridge *bridgev2.Bridge) {
 			dbutil.ZeroLogger(bridge.Log.With().Str("db_section", "codex_bridge").Logger()),
 		)
 	}
-	cc.clientsMu.Lock()
-	if cc.clients == nil {
-		cc.clients = make(map[networkid.UserLoginID]bridgev2.NetworkAPI)
-	}
-	cc.clientsMu.Unlock()
+	bridgeadapter.EnsureClientMap(&cc.clientsMu, &cc.clients)
 }
 
 func (cc *CodexConnector) Stop(ctx context.Context) {
-	cc.clientsMu.Lock()
-	clients := maps.Clone(cc.clients)
-	cc.clientsMu.Unlock()
-
-	for _, client := range clients {
-		if dc, ok := client.(interface{ Disconnect() }); ok {
-			dc.Disconnect()
-		}
-	}
+	bridgeadapter.StopClients(&cc.clientsMu, &cc.clients)
 }
 
 func (cc *CodexConnector) Start(ctx context.Context) error {
@@ -77,17 +66,10 @@ func (cc *CodexConnector) Start(ctx context.Context) error {
 }
 
 func (cc *CodexConnector) primeUserLoginCache(ctx context.Context) {
-	if cc == nil || cc.br == nil || cc.br.DB == nil || cc.br.DB.UserLogin == nil {
+	if cc == nil {
 		return
 	}
-	userIDs, err := cc.br.DB.UserLogin.GetAllUserIDsWithLogins(ctx)
-	if err != nil {
-		cc.br.Log.Warn().Err(err).Msg("Failed to list users with logins for cache priming")
-		return
-	}
-	for _, mxid := range userIDs {
-		_, _ = cc.br.GetUserByMXID(ctx, mxid)
-	}
+	bridgeadapter.PrimeUserLoginCache(ctx, cc.br)
 }
 
 func (cc *CodexConnector) applyRuntimeDefaults() {

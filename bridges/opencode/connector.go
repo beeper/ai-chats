@@ -3,7 +3,6 @@ package opencode
 import (
 	"context"
 	"fmt"
-	"maps"
 	"strings"
 	"sync"
 
@@ -13,6 +12,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
+
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 var (
@@ -30,11 +31,7 @@ type OpenCodeConnector struct {
 
 func (oc *OpenCodeConnector) Init(bridge *bridgev2.Bridge) {
 	oc.br = bridge
-	oc.clientsMu.Lock()
-	if oc.clients == nil {
-		oc.clients = make(map[networkid.UserLoginID]bridgev2.NetworkAPI)
-	}
-	oc.clientsMu.Unlock()
+	bridgeadapter.EnsureClientMap(&oc.clientsMu, &oc.clients)
 }
 
 func (oc *OpenCodeConnector) Start(ctx context.Context) error {
@@ -50,14 +47,7 @@ func (oc *OpenCodeConnector) Start(ctx context.Context) error {
 
 func (oc *OpenCodeConnector) Stop(ctx context.Context) {
 	_ = ctx
-	oc.clientsMu.Lock()
-	clients := maps.Clone(oc.clients)
-	oc.clientsMu.Unlock()
-	for _, client := range clients {
-		if dc, ok := client.(interface{ Disconnect() }); ok {
-			dc.Disconnect()
-		}
-	}
+	bridgeadapter.StopClients(&oc.clientsMu, &oc.clients)
 }
 
 func (oc *OpenCodeConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {

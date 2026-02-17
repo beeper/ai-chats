@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +19,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/matrix"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
+
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 const (
@@ -54,23 +55,11 @@ func (oc *OpenAIConnector) Init(bridge *bridgev2.Bridge) {
 			dbutil.ZeroLogger(bridge.Log.With().Str("db_section", "ai_bridge").Logger()),
 		)
 	}
-	oc.clientsMu.Lock()
-	if oc.clients == nil {
-		oc.clients = make(map[networkid.UserLoginID]bridgev2.NetworkAPI)
-	}
-	oc.clientsMu.Unlock()
+	bridgeadapter.EnsureClientMap(&oc.clientsMu, &oc.clients)
 }
 
 func (oc *OpenAIConnector) Stop(ctx context.Context) {
-	oc.clientsMu.Lock()
-	clients := maps.Clone(oc.clients)
-	oc.clientsMu.Unlock()
-
-	for _, client := range clients {
-		if dc, ok := client.(interface{ Disconnect() }); ok {
-			dc.Disconnect()
-		}
-	}
+	bridgeadapter.StopClients(&oc.clientsMu, &oc.clients)
 }
 
 func (oc *OpenAIConnector) Start(ctx context.Context) error {
@@ -107,18 +96,10 @@ func (oc *OpenAIConnector) Start(ctx context.Context) error {
 }
 
 func (oc *OpenAIConnector) primeUserLoginCache(ctx context.Context) {
-	if oc == nil || oc.br == nil || oc.br.DB == nil || oc.br.DB.UserLogin == nil {
+	if oc == nil {
 		return
 	}
-	userIDs, err := oc.br.DB.UserLogin.GetAllUserIDsWithLogins(ctx)
-	if err != nil {
-		oc.br.Log.Warn().Err(err).Msg("Failed to list users with logins for cache priming")
-		return
-	}
-	for _, mxid := range userIDs {
-		// Loading the user loads and caches their logins.
-		_, _ = oc.br.GetUserByMXID(ctx, mxid)
-	}
+	bridgeadapter.PrimeUserLoginCache(ctx, oc.br)
 }
 
 func (oc *OpenAIConnector) applyRuntimeDefaults() {
