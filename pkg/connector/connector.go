@@ -69,7 +69,7 @@ func (oc *OpenAIConnector) Start(ctx context.Context) error {
 
 	oc.applyRuntimeDefaults()
 
-	// Ensure all stored logins are loaded into the in-memory cache early.
+	// Ensure all stored logins are loaded into the process-local cache early.
 	// bridgev2's provisioning logout endpoint uses GetCachedUserLoginByID, so if logins
 	// haven't been loaded yet, clients may be unable to remove accounts.
 	oc.primeUserLoginCache(ctx)
@@ -343,9 +343,9 @@ func (oc *OpenAIConnector) GetBridgeInfoVersion() (info, capabilities int) {
 // FillPortalBridgeInfo sets custom room type for AI rooms
 func (oc *OpenAIConnector) FillPortalBridgeInfo(portal *bridgev2.Portal, content *event.BridgeEventContent) {
 	meta := portalMeta(portal)
-	if meta.IsCronRoom {
+	if meta.IsSchedulerRoom {
 		// Cron rooms are hidden by clients
-		content.BeeperRoomTypeV2 = "cron"
+		content.BeeperRoomTypeV2 = "scheduler"
 	} else {
 		content.BeeperRoomTypeV2 = "ai"
 	}

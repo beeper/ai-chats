@@ -9,6 +9,39 @@ import (
 	"github.com/beeper/ai-bridge/pkg/cron"
 )
 
+type cronStoreBackendAdapter struct {
+	backend *lazyStoreBackend
+}
+
+func (a *cronStoreBackendAdapter) Read(ctx context.Context, key string) ([]byte, bool, error) {
+	if a == nil || a.backend == nil {
+		return nil, false, errors.New("bridge state store not available")
+	}
+	return a.backend.Read(ctx, key)
+}
+
+func (a *cronStoreBackendAdapter) Write(ctx context.Context, key string, data []byte) error {
+	if a == nil || a.backend == nil {
+		return errors.New("bridge state store not available")
+	}
+	return a.backend.Write(ctx, key, data)
+}
+
+func (a *cronStoreBackendAdapter) List(ctx context.Context, prefix string) ([]cron.StoreEntry, error) {
+	if a == nil || a.backend == nil {
+		return nil, errors.New("bridge state store not available")
+	}
+	entries, err := a.backend.List(ctx, prefix)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]cron.StoreEntry, 0, len(entries))
+	for _, entry := range entries {
+		out = append(out, cron.StoreEntry{Key: entry.Key, Data: entry.Data})
+	}
+	return out, nil
+}
+
 func resolveCronEnabled(cfg *Config) bool {
 	if cfg == nil || cfg.Cron == nil || cfg.Cron.Enabled == nil {
 		return true
@@ -41,7 +74,7 @@ func (oc *AIClient) buildCronService() *cron.CronService {
 	storePath := resolveCronStorePath(&oc.connector.Config)
 	// Use a lazy wrapper so that each store operation gets a fresh backend
 	// with the current loginID (survives reconnection without stale state).
-	storeBackend := &lazyStoreBackend{client: oc}
+	storeBackend := &cronStoreBackendAdapter{backend: &lazyStoreBackend{client: oc}}
 	deps := cron.CronServiceDeps{
 		NowMs:               func() int64 { return time.Now().UnixMilli() },
 		Log:                 cronLogger{log: oc.log},
@@ -57,7 +90,8 @@ func (oc *AIClient) buildCronService() *cron.CronService {
 			oc.requestHeartbeatNow(ctx, reason)
 		},
 		RunHeartbeatOnce: func(ctx context.Context, reason string) cron.HeartbeatRunResult {
-			return oc.runHeartbeatImmediate(ctx, reason)
+			res := oc.runHeartbeatImmediate(ctx, reason)
+			return cron.HeartbeatRunResult{Status: res.Status, Reason: res.Reason}
 		},
 		RunIsolatedAgentJob: func(ctx context.Context, job cron.CronJob, message string) (string, string, string, error) {
 			return oc.runCronIsolatedAgentJob(ctx, job, message)
@@ -127,9 +161,9 @@ func (oc *AIClient) requestHeartbeatNow(ctx context.Context, reason string) {
 	oc.heartbeatWake.Request(reason, 0)
 }
 
-func (oc *AIClient) runHeartbeatImmediate(ctx context.Context, reason string) cron.HeartbeatRunResult {
+func (oc *AIClient) runHeartbeatImmediate(ctx context.Context, reason string) heartbeatRunResult {
 	if oc == nil || oc.heartbeatRunner == nil {
-		return cron.HeartbeatRunResult{Status: "skipped", Reason: "disabled"}
+		return heartbeatRunResult{Status: "skipped", Reason: "disabled"}
 	}
 	_ = ctx // currently no ctx plumbing in HeartbeatRunner
 	return oc.heartbeatRunner.run(reason)
@@ -150,5 +184,12 @@ func (oc *AIClient) onCronEvent(evt cron.CronEvent) {
 	if backend == nil {
 		return
 	}
-	_ = cron.AppendCronRunLog(context.Background(), backend, path, entry, 0, 0)
+	_ = cron.AppendCronRunLog(
+		context.Background(),
+		&cronStoreBackendAdapter{backend: &lazyStoreBackend{client: oc}},
+		path,
+		entry,
+		0,
+		0,
+	)
 }

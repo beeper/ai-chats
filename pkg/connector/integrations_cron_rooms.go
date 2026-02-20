@@ -23,7 +23,7 @@ func (oc *AIClient) getOrCreateCronRoom(ctx context.Context, agentID, jobID, job
 	if trimmedJob == "" {
 		return nil, errors.New("jobID required")
 	}
-	portalKey := cronPortalKey(oc.UserLogin.ID, trimmedAgent, trimmedJob)
+	portalKey := schedulerPortalKey(oc.UserLogin.ID, trimmedAgent, trimmedJob)
 	portal, err := oc.UserLogin.Bridge.GetPortalByKey(ctx, portalKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get portal: %w", err)
@@ -38,9 +38,9 @@ func (oc *AIClient) getOrCreateCronRoom(ctx context.Context, agentID, jobID, job
 	}
 	display := fmt.Sprintf("Cron: %s", name)
 	portal.Metadata = &PortalMetadata{
-		IsCronRoom: true,
-		CronJobID:  trimmedJob,
-		AgentID:    trimmedAgent,
+		IsSchedulerRoom: true,
+		SchedulerJobID:  trimmedJob,
+		AgentID:         trimmedAgent,
 	}
 	portal.Name = display
 	portal.NameSet = true

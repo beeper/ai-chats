@@ -2,8 +2,6 @@ package connector
 
 import (
 	"github.com/rs/zerolog"
-
-	"github.com/beeper/ai-bridge/pkg/cron"
 )
 
 type cronLogger struct {
@@ -33,5 +31,3 @@ func (l cronLogger) emit(level string, msg string, fields ...any) {
 		logger.Error().Msg(msg)
 	}
 }
-
-var _ cron.Logger = (*cronLogger)(nil)

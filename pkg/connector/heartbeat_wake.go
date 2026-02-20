@@ -6,11 +6,14 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-
-	"github.com/beeper/ai-bridge/pkg/cron"
 )
 
-type HeartbeatWakeHandler func(reason string) cron.HeartbeatRunResult
+type heartbeatRunResult struct {
+	Status string
+	Reason string
+}
+
+type HeartbeatWakeHandler func(reason string) heartbeatRunResult
 
 type HeartbeatWake struct {
 	mu            sync.Mutex
@@ -82,7 +85,7 @@ func (w *HeartbeatWake) schedule(delay time.Duration) {
 		w.mu.Unlock()
 
 		w.log.Debug().Str("reason", reason).Msg("Heartbeat wake executing handler")
-		res := cron.HeartbeatRunResult{Status: "skipped", Reason: "disabled"}
+		res := heartbeatRunResult{Status: "skipped", Reason: "disabled"}
 		func() {
 			defer func() {
 				if r := recover(); r != nil {

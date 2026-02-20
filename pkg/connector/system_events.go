@@ -10,8 +10,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-
-	"github.com/beeper/ai-bridge/pkg/cron"
 )
 
 type SystemEvent struct {
@@ -160,7 +158,7 @@ func snapshotSystemEvents() persistedSystemEvents {
 	return snap
 }
 
-func persistSystemEventsSnapshot(backend cron.StoreBackend, log *zerolog.Logger) {
+func persistSystemEventsSnapshot(backend bridgeStoreBackend, log *zerolog.Logger) {
 	if backend == nil {
 		return
 	}
@@ -179,7 +177,7 @@ func persistSystemEventsSnapshot(backend cron.StoreBackend, log *zerolog.Logger)
 	}
 }
 
-func restoreSystemEventsFromDisk(backend cron.StoreBackend, log *zerolog.Logger) {
+func restoreSystemEventsFromDisk(backend bridgeStoreBackend, log *zerolog.Logger) {
 	if backend == nil {
 		return
 	}
@@ -207,7 +205,7 @@ func restoreSystemEventsFromDisk(backend cron.StoreBackend, log *zerolog.Logger)
 		}
 		existing := systemEvents[key]
 		if existing != nil && len(existing.queue) > 0 {
-			continue // don't overwrite events already in memory
+			continue // don't overwrite events already cached in process
 		}
 		events := make([]SystemEvent, len(pq.Events))
 		for i, pe := range pq.Events {

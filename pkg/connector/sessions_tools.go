@@ -26,7 +26,7 @@ func shouldExcludeModelVisiblePortal(meta *PortalMetadata) bool {
 	if meta == nil {
 		return false
 	}
-	if meta.IsCronRoom || meta.IsBuilderRoom {
+	if meta.IsSchedulerRoom || meta.IsBuilderRoom {
 		return true
 	}
 	return strings.TrimSpace(meta.SubagentParentRoomID) != ""
@@ -37,7 +37,7 @@ func (oc *AIClient) executeSessionsList(ctx context.Context, portal *bridgev2.Po
 	allowedKinds := make(map[string]struct{})
 	for _, kind := range kindsRaw {
 		key := strings.ToLower(strings.TrimSpace(kind))
-		if key == "main" || key == "group" || key == "cron" || key == "hook" || key == "node" || key == "other" {
+		if key == "main" || key == "group" || key == "scheduler" || key == "hook" || key == "node" || key == "other" {
 			allowedKinds[key] = struct{}{}
 		}
 	}
@@ -567,8 +567,8 @@ func resolveSessionKind(current id.RoomID, portal *bridgev2.Portal, meta *Portal
 		return "main"
 	}
 	if meta != nil {
-		if meta.IsCronRoom {
-			return "cron"
+		if meta.IsSchedulerRoom {
+			return "scheduler"
 		}
 		if strings.TrimSpace(meta.SubagentParentRoomID) != "" {
 			return "other"

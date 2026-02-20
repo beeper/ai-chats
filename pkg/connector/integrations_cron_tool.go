@@ -20,7 +20,7 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 		return "", errors.New("cron tool requires bridge context")
 	}
 	client := btc.Client
-	if client.cronService == nil {
+	if client.schedulerIntegration == nil {
 		return "", errors.New("cron service not available")
 	}
 
@@ -34,7 +34,7 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 
 	switch action {
 	case "status":
-		enabled, storePath, jobCount, nextWake, err := client.cronService.Status()
+		enabled, storePath, jobCount, nextWake, err := client.schedulerIntegration.Status()
 		if err != nil {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
@@ -54,7 +54,7 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 		return agenttools.JSONResult(out).Text(), nil
 	case "list":
 		includeDisabled := agenttools.ReadBool(args, "includeDisabled", false)
-		jobs, err := client.cronService.List(includeDisabled)
+		jobs, err := client.schedulerIntegration.List(includeDisabled)
 		if err != nil {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
@@ -110,7 +110,7 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 		if contextMessages > 0 {
 			injectCronReminderContext(&jobInput, btc, contextMessages)
 		}
-		job, err := client.cronService.Add(jobInput)
+		job, err := client.schedulerIntegration.Add(jobInput)
 		if err != nil {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
@@ -162,7 +162,7 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 				}).Text(), nil
 			}
 		}
-		job, err := client.cronService.Update(jobID, patch)
+		job, err := client.schedulerIntegration.Update(jobID, patch)
 		if err != nil {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
@@ -178,7 +178,7 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 				"error":  "jobId required",
 			}).Text(), nil
 		}
-		removed, err := client.cronService.Remove(jobID)
+		removed, err := client.schedulerIntegration.Remove(jobID)
 		if err != nil {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
@@ -197,7 +197,7 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 				"error":  "jobId required",
 			}).Text(), nil
 		}
-		ran, reason, err := client.cronService.Run(jobID, "")
+		ran, reason, err := client.schedulerIntegration.Run(jobID, "")
 		if err != nil {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
@@ -221,7 +221,7 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 			}).Text(), nil
 		}
 		limit := agenttools.ReadIntDefault(args, "limit", 200)
-		runs, err := client.readCronRuns(jobID, limit)
+		runs, err := client.schedulerIntegration.Runs(jobID, limit)
 		if err != nil {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
@@ -244,7 +244,7 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 		if mode != "now" && mode != "next-heartbeat" {
 			mode = "next-heartbeat"
 		}
-		_, err := client.cronService.Wake(mode, text)
+		_, err := client.schedulerIntegration.Wake(mode, text)
 		if err != nil {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
@@ -310,7 +310,7 @@ func injectCronContext(job *cron.CronJobCreate, btc *BridgeToolContext) {
 	// Avoid pinning delivery to internal/hidden rooms (cron rooms, builder rooms, etc.).
 	// For those contexts, leave delivery.to empty so runtime routing can fall back to
 	// last activity or the default chat portal.
-	sourceInternal := meta != nil && (meta.IsCronRoom || meta.IsBuilderRoom)
+	sourceInternal := meta != nil && (meta.IsSchedulerRoom || meta.IsBuilderRoom)
 
 	// For isolated announce jobs created from a room, pin delivery target to that room.
 	// This avoids depending on "last activity" metadata for routing.
@@ -465,28 +465,29 @@ func truncateContextText(input string, maxLen int) string {
 }
 
 func (oc *AIClient) readCronRuns(jobID string, limit int) ([]cron.CronRunLogEntry, error) {
-	if oc == nil || oc.cronService == nil {
+	if oc == nil || oc.schedulerIntegration == nil {
 		return nil, errors.New("cron service not available")
 	}
 	if limit <= 0 {
 		limit = 200
 	}
-	_, storePath, _, _, err := oc.cronService.Status()
+	_, storePath, _, _, err := oc.schedulerIntegration.Status()
 	if err != nil {
 		return nil, err
 	}
-	backend := oc.bridgeStateBackend()
-	if backend == nil {
+	stateBackend := oc.bridgeStateBackend()
+	if stateBackend == nil {
 		return nil, errors.New("cron store not available")
 	}
+	cronBackend := &cronStoreBackendAdapter{backend: &lazyStoreBackend{client: oc}}
 	trimmed := strings.TrimSpace(jobID)
 	if trimmed != "" {
 		path := cron.ResolveCronRunLogPath(storePath, trimmed)
-		return cron.ReadCronRunLogEntries(context.Background(), backend, path, limit, trimmed)
+		return cron.ReadCronRunLogEntries(context.Background(), cronBackend, path, limit, trimmed)
 	}
 	entries := make([]cron.CronRunLogEntry, 0)
 	runDir := cron.ResolveCronRunLogDir(storePath)
-	storeEntries, err := backend.List(context.Background(), runDir)
+	storeEntries, err := stateBackend.List(context.Background(), runDir)
 	if err != nil {
 		return entries, nil
 	}

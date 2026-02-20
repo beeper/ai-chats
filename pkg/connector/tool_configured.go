@@ -128,7 +128,7 @@ func (oc *AIClient) isTTSConfigured() (bool, string) {
 }
 
 func (oc *AIClient) isCronConfigured() (bool, string) {
-	if oc == nil || oc.cronService == nil {
+	if oc == nil || oc.schedulerIntegration == nil {
 		return false, "Cron service not available"
 	}
 	return true, ""

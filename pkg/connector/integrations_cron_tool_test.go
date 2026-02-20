@@ -58,7 +58,7 @@ func TestInjectCronContext_DoesNotPinDeliveryForCronRoom(t *testing.T) {
 	}
 	btc := &BridgeToolContext{
 		Portal: &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!cronroom:example.org")}},
-		Meta:   &PortalMetadata{AgentID: "beeper", IsCronRoom: true},
+		Meta:   &PortalMetadata{AgentID: "beeper", IsSchedulerRoom: true},
 	}
 
 	injectCronContext(&job, btc)

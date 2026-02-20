@@ -8,9 +8,18 @@ import (
 	"time"
 
 	"go.mau.fi/util/dbutil"
-
-	"github.com/beeper/ai-bridge/pkg/cron"
 )
+
+type bridgeStoreEntry struct {
+	Key  string
+	Data []byte
+}
+
+type bridgeStoreBackend interface {
+	Read(ctx context.Context, key string) ([]byte, bool, error)
+	Write(ctx context.Context, key string, data []byte) error
+	List(ctx context.Context, prefix string) ([]bridgeStoreEntry, error)
+}
 
 type bridgeDBBackend struct {
 	db       *dbutil.Database
@@ -50,7 +59,7 @@ func (b *bridgeDBBackend) Write(ctx context.Context, key string, data []byte) er
 	return err
 }
 
-func (b *bridgeDBBackend) List(ctx context.Context, prefix string) ([]cron.StoreEntry, error) {
+func (b *bridgeDBBackend) List(ctx context.Context, prefix string) ([]bridgeStoreEntry, error) {
 	if b == nil || b.db == nil {
 		return nil, errors.New("bridge state store not available")
 	}
@@ -64,18 +73,18 @@ func (b *bridgeDBBackend) List(ctx context.Context, prefix string) ([]cron.Store
 		return nil, err
 	}
 	defer rows.Close()
-	var entries []cron.StoreEntry
+	var entries []bridgeStoreEntry
 	for rows.Next() {
 		var key, content string
 		if err := rows.Scan(&key, &content); err != nil {
 			return nil, err
 		}
-		entries = append(entries, cron.StoreEntry{Key: key, Data: []byte(content)})
+		entries = append(entries, bridgeStoreEntry{Key: key, Data: []byte(content)})
 	}
 	return entries, rows.Err()
 }
 
-func (oc *AIClient) bridgeStateBackend() cron.StoreBackend {
+func (oc *AIClient) bridgeStateBackend() bridgeStoreBackend {
 	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil {
 		return nil
 	}
@@ -112,7 +121,7 @@ func (l *lazyStoreBackend) Write(ctx context.Context, key string, data []byte) e
 	return b.Write(ctx, key, data)
 }
 
-func (l *lazyStoreBackend) List(ctx context.Context, prefix string) ([]cron.StoreEntry, error) {
+func (l *lazyStoreBackend) List(ctx context.Context, prefix string) ([]bridgeStoreEntry, error) {
 	b := l.client.bridgeStateBackend()
 	if b == nil {
 		return nil, errors.New("bridge state store not available")
