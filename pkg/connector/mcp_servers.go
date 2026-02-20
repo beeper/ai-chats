@@ -206,16 +206,6 @@ func (oc *AIClient) configuredMCPServers() []namedMCPServer {
 	return servers
 }
 
-func (oc *AIClient) configuredMCPServerByName(name string) (namedMCPServer, bool) {
-	name = normalizeMCPServerName(name)
-	for _, server := range oc.configuredMCPServers() {
-		if server.Name == name {
-			return server, true
-		}
-	}
-	return namedMCPServer{}, false
-}
-
 func (oc *AIClient) activeMCPServers() []namedMCPServer {
 	servers := oc.configuredMCPServers()
 	active := make([]namedMCPServer, 0, len(servers))

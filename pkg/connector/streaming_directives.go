@@ -28,15 +28,6 @@ func newStreamingDirectiveAccumulator() *streamingDirectiveAccumulator {
 	}
 }
 
-func (acc *streamingDirectiveAccumulator) Reset() {
-	if acc == nil {
-		return
-	}
-	acc.pendingTail = ""
-	acc.pendingWhitespace = ""
-	acc.pendingReply = streamingPendingReplyState{}
-}
-
 func (acc *streamingDirectiveAccumulator) Consume(raw string, final bool) *streamingDirectiveResult {
 	if acc == nil {
 		return nil

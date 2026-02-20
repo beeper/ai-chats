@@ -90,10 +90,6 @@ func approvalErrorToastText(err error) string {
 	}
 }
 
-func formatSystemAck(text string) string {
-	return strings.TrimSpace(text)
-}
-
 func toolDisplayTitle(toolName string) string {
 	toolName = strings.TrimSpace(toolName)
 	if toolName == "" {

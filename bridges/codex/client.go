@@ -13,7 +13,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/rs/xid"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/ptr"
 
@@ -1561,32 +1560,6 @@ func (cc *CodexClient) ensureCodexThread(ctx context.Context, portal *bridgev2.P
 	return nil
 }
 
-func (cc *CodexClient) resetThread(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) error {
-	if meta == nil {
-		return errors.New("missing metadata")
-	}
-	// Best-effort archive the existing thread and remove the temp cwd.
-	if err := cc.ensureRPC(ctx); err == nil && cc.rpc != nil {
-		if tid := strings.TrimSpace(meta.CodexThreadID); tid != "" {
-			callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			_ = cc.rpc.Call(callCtx, "thread/archive", map[string]any{"threadId": tid}, &struct{}{})
-			cancel()
-			cc.loadedMu.Lock()
-			delete(cc.loadedThreads, tid)
-			cc.loadedMu.Unlock()
-		}
-	}
-	if cwd := strings.TrimSpace(meta.CodexCwd); cwd != "" {
-		_ = os.RemoveAll(cwd)
-	}
-	meta.CodexThreadID = ""
-	meta.CodexCwd = ""
-	if err := portal.Save(ctx); err != nil {
-		return err
-	}
-	return cc.ensureCodexThread(ctx, portal, meta)
-}
-
 func (cc *CodexClient) ensureCodexThreadLoaded(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) error {
 	if cc == nil || meta == nil {
 		return errors.New("missing metadata")
@@ -2610,76 +2583,4 @@ func (cc *CodexClient) setApprovalStateTracking(state *streamingState, approvalI
 	state.uiToolApprovalRequested[approvalID] = true
 	state.uiToolNameByToolCallID[toolCallID] = toolName
 	state.uiToolTypeByToolCallID[toolCallID] = ToolTypeProvider
-}
-
-// --- !ai new <dir> ---
-
-func (cc *CodexClient) handleNewCodexChat(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, args []string) {
-	dir := ""
-	if len(args) >= 1 {
-		dir = strings.TrimSpace(strings.Join(args, " "))
-	}
-	if dir == "" {
-		cc.sendSystemNotice(ctx, portal, "Usage: !ai new <directory>")
-		return
-	}
-	dir = expandUserPath(dir)
-	absDir, err := filepath.Abs(dir)
-	if err != nil {
-		cc.sendSystemNotice(ctx, portal, "Invalid path: "+err.Error())
-		return
-	}
-	info, err := os.Stat(absDir)
-	if err != nil || !info.IsDir() {
-		cc.sendSystemNotice(ctx, portal, "Directory not found: "+absDir)
-		return
-	}
-	cc.createAndOpenCodexChat(ctx, portal, absDir)
-}
-
-func (cc *CodexClient) createAndOpenCodexChat(ctx context.Context, fromPortal *bridgev2.Portal, cwd string) {
-	title := "Codex: " + filepath.Base(cwd)
-	portalKey := cc.nextCodexChatPortalKey()
-
-	newPortal, err := cc.UserLogin.Bridge.GetPortalByKey(ctx, portalKey)
-	if err != nil {
-		cc.sendSystemNotice(ctx, fromPortal, "Failed to create portal: "+err.Error())
-		return
-	}
-
-	newMeta := portalMeta(newPortal)
-	newMeta.IsCodexRoom = true
-	newMeta.Title = title
-	newMeta.CodexCwd = cwd
-	// Don't set CodexThreadID — ensureCodexThread will start a new one.
-
-	newPortal.RoomType = database.RoomTypeDM
-	newPortal.OtherUserID = codexGhostID
-	newPortal.Name = title
-	newPortal.NameSet = true
-	if err := newPortal.Save(ctx); err != nil {
-		cc.sendSystemNotice(ctx, fromPortal, "Failed to save portal: "+err.Error())
-		return
-	}
-
-	info := cc.composeCodexChatInfo(title)
-	if err := newPortal.CreateMatrixRoom(ctx, cc.UserLogin, info); err != nil {
-		cc.sendSystemNotice(ctx, fromPortal, "Failed to create room: "+err.Error())
-		return
-	}
-
-	// Start thread with the specified directory.
-	if err := cc.ensureCodexThread(ctx, newPortal, newMeta); err != nil {
-		cc.sendSystemNotice(ctx, fromPortal, "Failed to start Codex thread: "+err.Error())
-		return
-	}
-
-	cc.sendSystemNotice(ctx, newPortal, "Codex session started in "+cwd)
-
-	roomLink := fmt.Sprintf("https://matrix.to/#/%s", newPortal.MXID)
-	cc.sendSystemNotice(ctx, fromPortal, fmt.Sprintf("New Codex session created: %s\nDirectory: %s", roomLink, cwd))
-}
-
-func (cc *CodexClient) nextCodexChatPortalKey() networkid.PortalKey {
-	return codexChatPortalKey(cc.UserLogin.ID, fmt.Sprintf("chat-%s", xid.New().String()))
 }
