@@ -18,7 +18,6 @@ import (
 
 type schedulerIntegrationType = integrationcron.Integration
 type recallIntegrationType = integrationmemory.Integration
-type recallManager = integrationmemory.Manager
 type recallSearchOptions = integrationmemory.SearchOptions
 type recallSearchResult = integrationmemory.SearchResult
 type recallFallbackStatus = integrationmemory.FallbackStatus
