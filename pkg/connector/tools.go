@@ -91,11 +91,11 @@ const ToolNameImageGenerate = toolspec.ImageGenerateName
 // ToolNameSessionStatus is the name of the session status tool.
 const ToolNameSessionStatus = toolspec.SessionStatusName
 
-const ToolNameScheduler = integrationToolSchedulerName
+const ToolNameCron = integrationToolCronName
 
 const (
-	ToolNameRecallSearch       = integrationToolRecallSearchName
-	ToolNameRecallGet          = integrationToolRecallGetName
+	ToolNameMemorySearch       = integrationToolMemorySearchName
+	ToolNameMemoryGet          = integrationToolMemoryGetName
 	ToolNameGravatarFetch      = toolspec.GravatarFetchName
 	ToolNameGravatarSet        = toolspec.GravatarSetName
 	ToolNameBeeperDocs         = toolspec.BeeperDocsName
@@ -104,6 +104,13 @@ const (
 	ToolNameApplyPatch         = toolspec.ApplyPatchName
 	ToolNameWrite              = toolspec.WriteName
 	ToolNameEdit               = toolspec.EditName
+)
+
+// Legacy aliases kept for compatibility while connector internals migrate to cron/memory naming.
+const (
+	ToolNameScheduler    = ToolNameCron
+	ToolNameRecallSearch = ToolNameMemorySearch
+	ToolNameRecallGet    = ToolNameMemoryGet
 )
 
 // ImageResultPrefix is the prefix used to identify image results that need media sending.

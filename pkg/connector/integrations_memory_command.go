@@ -37,8 +37,8 @@ func fnMemory(ce *commands.Event) {
 	if !ok {
 		return
 	}
-	recall := client.recallModule()
-	if recall == nil {
+	memoryModule := client.memoryModule()
+	if memoryModule == nil {
 		ce.Reply("Memory integration unavailable.")
 		return
 	}
@@ -66,7 +66,7 @@ func fnMemory(ce *commands.Event) {
 			Bool("hasPortal", ce.Portal != nil).
 			Msg("memory cmd start")
 
-		manager, errMsg := recall.GetManager(scope)
+		manager, errMsg := memoryModule.GetManager(scope)
 		if manager == nil {
 			client.Log().Info().
 				Str("cmd", "memory status").
@@ -197,7 +197,7 @@ func fnMemory(ce *commands.Event) {
 			Msg("memory cmd done")
 		return
 	case "reindex":
-		manager, errMsg := recall.GetManager(scope)
+		manager, errMsg := memoryModule.GetManager(scope)
 		if manager == nil {
 			ce.Reply("Memory search disabled: %s", errMsg)
 			return
@@ -217,7 +217,7 @@ func fnMemory(ce *commands.Event) {
 			ce.Reply("Usage: !ai memory search <query> [maxResults] [minScore]")
 			return
 		}
-		manager, errMsg := recall.GetManager(scope)
+		manager, errMsg := memoryModule.GetManager(scope)
 		if manager == nil {
 			ce.Reply("Memory search disabled: %s", errMsg)
 			return
@@ -273,7 +273,7 @@ func fnMemory(ce *commands.Event) {
 			ce.Reply("Usage: !ai memory get <path> [from] [lines]")
 			return
 		}
-		manager, errMsg := recall.GetManager(scope)
+		manager, errMsg := memoryModule.GetManager(scope)
 		if manager == nil {
 			ce.Reply("Memory search disabled: %s", errMsg)
 			return

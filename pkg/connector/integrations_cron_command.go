@@ -25,8 +25,8 @@ func fnCron(ce *commands.Event) {
 	if !ok {
 		return
 	}
-	scheduler := client.schedulerModule()
-	if scheduler == nil {
+	cronModule := client.cronModule()
+	if cronModule == nil {
 		ce.Reply("Cron service not available.")
 		return
 	}
@@ -37,7 +37,7 @@ func fnCron(ce *commands.Event) {
 	}
 	switch action {
 	case "status":
-		enabled, storePath, jobCount, nextWake, err := scheduler.Status()
+		enabled, storePath, jobCount, nextWake, err := cronModule.Status()
 		if err != nil {
 			ce.Reply("Cron status failed: %s", err.Error())
 			return
@@ -48,7 +48,7 @@ func fnCron(ce *commands.Event) {
 		if len(ce.Args) > 1 && (strings.EqualFold(ce.Args[1], "all") || strings.EqualFold(ce.Args[1], "--all")) {
 			includeDisabled = true
 		}
-		jobs, err := scheduler.List(includeDisabled)
+		jobs, err := cronModule.List(includeDisabled)
 		if err != nil {
 			ce.Reply("Cron list failed: %s", err.Error())
 			return
@@ -66,7 +66,7 @@ func fnCron(ce *commands.Event) {
 				limit = n
 			}
 		}
-		entries, err := scheduler.Runs(jobID, limit)
+		entries, err := cronModule.Runs(jobID, limit)
 		if err != nil {
 			ce.Reply("Cron runs failed: %s", err.Error())
 			return
@@ -78,7 +78,7 @@ func fnCron(ce *commands.Event) {
 			return
 		}
 		jobID := strings.TrimSpace(ce.Args[1])
-		removed, err := scheduler.Remove(jobID)
+		removed, err := cronModule.Remove(jobID)
 		if err != nil {
 			ce.Reply("Cron remove failed: %s", err.Error())
 			return
@@ -98,7 +98,7 @@ func fnCron(ce *commands.Event) {
 		if len(ce.Args) > 2 && strings.EqualFold(strings.TrimSpace(ce.Args[2]), "force") {
 			mode = "force"
 		}
-		ran, reason, err := scheduler.Run(jobID, mode)
+		ran, reason, err := cronModule.Run(jobID, mode)
 		if err != nil {
 			ce.Reply("Cron run failed: %s", err.Error())
 			return

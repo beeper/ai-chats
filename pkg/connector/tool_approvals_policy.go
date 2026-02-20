@@ -47,7 +47,7 @@ func (oc *AIClient) builtinToolApprovalRequirement(toolName string, args map[str
 			return true, "workspace"
 		}
 		return true, "workspace"
-	case normalizeApprovalToken(ToolNameScheduler):
+	case normalizeApprovalToken(ToolNameCron):
 		action = normalizeApprovalToken(readStringArgAny(args, "action"))
 		switch action {
 		case "status", "list", "runs":

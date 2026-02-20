@@ -17,7 +17,7 @@ func (oc *AIClient) notifySessionMemoryChange(
 	}
 	ctx = oc.backgroundContext(ctx)
 	agentID := resolveAgentID(meta)
-	manager, _ := oc.getRecallManager(agentID)
+	manager, _ := oc.getMemoryManager(agentID)
 	if manager == nil {
 		return
 	}
