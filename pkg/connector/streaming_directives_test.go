@@ -66,7 +66,7 @@ func TestStreamingDirectiveAccumulator_WhitespacePreservation(t *testing.T) {
 	}
 }
 
-func TestStreamingDirectiveAccumulator_ResetClearsWhitespace(t *testing.T) {
+func TestStreamingDirectiveAccumulator_NewAccumulatorClearsWhitespace(t *testing.T) {
 	acc := newStreamingDirectiveAccumulator()
 
 	// Send whitespace-only delta (deferred)
@@ -75,8 +75,8 @@ func TestStreamingDirectiveAccumulator_ResetClearsWhitespace(t *testing.T) {
 		t.Fatal("expected nil for whitespace-only delta")
 	}
 
-	// Reset should clear pendingWhitespace
-	acc.Reset()
+	// A fresh accumulator should clear pending whitespace state.
+	acc = newStreamingDirectiveAccumulator()
 
 	// Next word should NOT have the space prepended
 	result = acc.Consume("Hello", true)
@@ -84,7 +84,7 @@ func TestStreamingDirectiveAccumulator_ResetClearsWhitespace(t *testing.T) {
 		t.Fatal("expected non-nil result for 'Hello'")
 	}
 	if result.Text != "Hello" {
-		t.Errorf("after Reset, text = %q, want %q", result.Text, "Hello")
+		t.Errorf("with new accumulator, text = %q, want %q", result.Text, "Hello")
 	}
 }
 

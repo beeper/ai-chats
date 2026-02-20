@@ -157,10 +157,6 @@ func portalMeta(portal *bridgev2.Portal) *PortalMetadata {
 	return bridgeadapter.EnsurePortalMetadata[PortalMetadata](portal)
 }
 
-func messageMeta(msg *database.Message) *MessageMetadata {
-	return bridgeadapter.EnsureMessageMetadata[MessageMetadata](msg)
-}
-
 func NewTurnID() string {
 	return "turn_" + strings.ReplaceAll(time.Now().UTC().Format("20060102T150405.000000000"), ".", "")
 }
