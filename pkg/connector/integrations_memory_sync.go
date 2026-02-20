@@ -9,7 +9,7 @@ func notifyMemoryFileChanged(ctx context.Context, path string) {
 	}
 	meta := portalMeta(btc.Portal)
 	agentID := resolveAgentID(meta)
-	manager, _ := btc.Client.getRecallManager(agentID)
+	manager, _ := btc.Client.getMemoryManager(agentID)
 	if manager == nil {
 		return
 	}

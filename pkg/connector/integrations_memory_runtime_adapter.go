@@ -132,7 +132,7 @@ func (a *memoryRuntimeAdapter) Logger() zerolog.Logger {
 	return a.client.log
 }
 
-func (oc *AIClient) getRecallManager(agentID string) (*integrationmemory.MemorySearchManager, string) {
+func (oc *AIClient) getMemoryManager(agentID string) (*integrationmemory.MemorySearchManager, string) {
 	if oc == nil {
 		return nil, "memory search unavailable"
 	}
@@ -144,4 +144,8 @@ func (oc *AIClient) getRecallManager(agentID string) (*integrationmemory.MemoryS
 		return nil, errMsg
 	}
 	return manager, ""
+}
+
+func (oc *AIClient) getRecallManager(agentID string) (*integrationmemory.MemorySearchManager, string) {
+	return oc.getMemoryManager(agentID)
 }

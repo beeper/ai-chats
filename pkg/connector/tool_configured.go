@@ -84,7 +84,7 @@ func (oc *AIClient) isWebFetchConfigured(ctx context.Context) (bool, string) {
 	return false, "Web fetch is disabled (direct disabled and Exa API key missing)"
 }
 
-func (oc *AIClient) isRecallSearchExplicitlyDisabled(meta *PortalMetadata) (bool, string) {
+func (oc *AIClient) isMemorySearchExplicitlyDisabled(meta *PortalMetadata) (bool, string) {
 	if oc == nil || oc.connector == nil {
 		return true, "Missing connector"
 	}
@@ -99,6 +99,10 @@ func (oc *AIClient) isRecallSearchExplicitlyDisabled(meta *PortalMetadata) (bool
 		return true, "Memory search disabled"
 	}
 	return false, ""
+}
+
+func (oc *AIClient) isRecallSearchExplicitlyDisabled(meta *PortalMetadata) (bool, string) {
+	return oc.isMemorySearchExplicitlyDisabled(meta)
 }
 
 func (oc *AIClient) isTTSConfigured() (bool, string) {
@@ -127,12 +131,14 @@ func (oc *AIClient) isTTSConfigured() (bool, string) {
 	return true, ""
 }
 
-func (oc *AIClient) isSchedulerConfigured() (bool, string) {
-	if oc == nil || oc.schedulerModule() == nil {
+func (oc *AIClient) isCronConfigured() (bool, string) {
+	if oc == nil || oc.cronModule() == nil {
 		return false, "Scheduler service not available"
 	}
 	return true, ""
 }
+
+func (oc *AIClient) isSchedulerConfigured() (bool, string) { return oc.isCronConfigured() }
 
 func searchEnabled(flag *bool) bool {
 	if flag == nil {

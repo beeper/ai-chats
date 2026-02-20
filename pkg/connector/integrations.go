@@ -16,14 +16,14 @@ import (
 )
 
 const (
-	integrationToolSchedulerName    = "cron"
-	integrationToolRecallSearchName = "memory_search"
-	integrationToolRecallGetName    = "memory_get"
+	integrationToolCronName         = "cron"
+	integrationToolMemorySearchName = "memory_search"
+	integrationToolMemoryGetName    = "memory_get"
 	legacyRecallRootPath            = "memory/"
 	legacyRecallFilePath            = "memory.md"
 
-	integrationModuleScheduler = "cron"
-	integrationModuleRecall    = "memory"
+	integrationModuleCron   = "cron"
+	integrationModuleMemory = "memory"
 )
 
 type toolIntegrationRegistry struct {
@@ -198,7 +198,7 @@ func (oc *AIClient) initIntegrations() {
 	oc.toolRegistry.register(&coreToolIntegration{client: oc})
 	oc.promptRegistry.register(&corePromptIntegration{client: oc})
 
-	if oc.schedulerModuleEnabled() {
+	if oc.cronModuleEnabled() {
 		cronAdapter := &cronConnectorHostAdapter{client: oc}
 		cronAdapter.service = oc.buildCronService()
 		module := integrationcron.NewIntegration(cronAdapter)
@@ -206,7 +206,7 @@ func (oc *AIClient) initIntegrations() {
 		oc.toolRegistry.register(module)
 	}
 
-	if oc.recallModuleEnabled() {
+	if oc.memoryModuleEnabled() {
 		module := integrationmemory.NewIntegration(&memoryConnectorHostAdapter{client: oc})
 		oc.registerIntegrationModule(module.Name(), module)
 		oc.toolRegistry.register(module)
@@ -239,19 +239,23 @@ func (oc *AIClient) integrationModule(name string) any {
 	return oc.integrationModules[strings.ToLower(strings.TrimSpace(name))]
 }
 
-func (oc *AIClient) schedulerModule() *integrationcron.Integration {
-	if module, ok := oc.integrationModule(integrationModuleScheduler).(*integrationcron.Integration); ok {
+func (oc *AIClient) cronModule() *integrationcron.Integration {
+	if module, ok := oc.integrationModule(integrationModuleCron).(*integrationcron.Integration); ok {
 		return module
 	}
 	return nil
 }
 
-func (oc *AIClient) recallModule() *integrationmemory.Integration {
-	if module, ok := oc.integrationModule(integrationModuleRecall).(*integrationmemory.Integration); ok {
+func (oc *AIClient) schedulerModule() *integrationcron.Integration { return oc.cronModule() }
+
+func (oc *AIClient) memoryModule() *integrationmemory.Integration {
+	if module, ok := oc.integrationModule(integrationModuleMemory).(*integrationmemory.Integration); ok {
 		return module
 	}
 	return nil
 }
+
+func (oc *AIClient) recallModule() *integrationmemory.Integration { return oc.memoryModule() }
 
 func (oc *AIClient) eachIntegrationModule(fn func(name string, module any)) {
 	if oc == nil || fn == nil || len(oc.integrationOrder) == 0 {
@@ -340,19 +344,23 @@ func (oc *AIClient) stopLoginLifecycleIntegrations(bridgeID, loginID string) {
 	})
 }
 
-func (oc *AIClient) schedulerModuleEnabled() bool {
+func (oc *AIClient) cronModuleEnabled() bool {
 	if oc == nil || oc.connector == nil || oc.connector.Config.Integrations == nil || oc.connector.Config.Integrations.Scheduler == nil {
 		return true
 	}
 	return *oc.connector.Config.Integrations.Scheduler
 }
 
-func (oc *AIClient) recallModuleEnabled() bool {
+func (oc *AIClient) schedulerModuleEnabled() bool { return oc.cronModuleEnabled() }
+
+func (oc *AIClient) memoryModuleEnabled() bool {
 	if oc == nil || oc.connector == nil || oc.connector.Config.Integrations == nil || oc.connector.Config.Integrations.Recall == nil {
 		return true
 	}
 	return *oc.connector.Config.Integrations.Recall
 }
+
+func (oc *AIClient) recallModuleEnabled() bool { return oc.memoryModuleEnabled() }
 
 func (oc *AIClient) integratedToolDefinitions(
 	ctx context.Context,
@@ -370,18 +378,18 @@ func (oc *AIClient) integratedToolAvailability(meta *PortalMetadata, toolName st
 		return false, false, SourceGlobalDefault, ""
 	}
 	switch strings.TrimSpace(toolName) {
-	case ToolNameScheduler:
-		if !oc.schedulerModuleEnabled() {
+	case ToolNameCron:
+		if !oc.cronModuleEnabled() {
 			return true, false, SourceProviderLimit, "Scheduler integration disabled"
 		}
 		if oc.toolRegistry == nil {
 			return true, false, SourceProviderLimit, "Scheduler integration unavailable"
 		}
-	case ToolNameRecallSearch, ToolNameRecallGet:
-		if !oc.recallModuleEnabled() {
+	case ToolNameMemorySearch, ToolNameMemoryGet:
+		if !oc.memoryModuleEnabled() {
 			return true, false, SourceProviderLimit, "Recall integration disabled"
 		}
-		disabled, reason := oc.isRecallSearchExplicitlyDisabled(meta)
+		disabled, reason := oc.isMemorySearchExplicitlyDisabled(meta)
 		if disabled {
 			return true, false, SourceProviderLimit, reason
 		}
@@ -506,7 +514,7 @@ func (c *coreToolIntegration) Name() string { return "core" }
 func (c *coreToolIntegration) ToolDefinitions(_ context.Context, _ integrationruntime.ToolScope) []integrationruntime.ToolDefinition {
 	var out []integrationruntime.ToolDefinition
 	for _, def := range BuiltinTools() {
-		if def.Name == ToolNameScheduler || def.Name == ToolNameRecallSearch || def.Name == ToolNameRecallGet {
+		if def.Name == ToolNameCron || def.Name == ToolNameMemorySearch || def.Name == ToolNameMemoryGet {
 			continue
 		}
 		out = append(out, def)
@@ -518,7 +526,7 @@ func (c *coreToolIntegration) ExecuteTool(ctx context.Context, call integrationr
 	if c == nil || c.client == nil {
 		return false, "", nil
 	}
-	if call.Name == ToolNameScheduler || call.Name == ToolNameRecallSearch || call.Name == ToolNameRecallGet {
+	if call.Name == ToolNameCron || call.Name == ToolNameMemorySearch || call.Name == ToolNameMemoryGet {
 		return false, "", nil
 	}
 	portal, _ := call.Scope.Portal.(*bridgev2.Portal)
@@ -569,7 +577,7 @@ type cronConnectorHostAdapter struct {
 }
 
 func (a *cronConnectorHostAdapter) ToolDefinitions(_ context.Context, _ integrationruntime.ToolScope) []integrationruntime.ToolDefinition {
-	def, ok := integrationToolByName(ToolNameScheduler)
+	def, ok := integrationToolByName(ToolNameCron)
 	if !ok {
 		return nil
 	}
@@ -577,7 +585,7 @@ func (a *cronConnectorHostAdapter) ToolDefinitions(_ context.Context, _ integrat
 }
 
 func (a *cronConnectorHostAdapter) ExecuteTool(ctx context.Context, call integrationruntime.ToolCall) (bool, string, error) {
-	if call.Name != ToolNameScheduler {
+	if call.Name != ToolNameCron {
 		return false, "", nil
 	}
 	result, err := executeCron(ctx, call.Args)
@@ -589,13 +597,13 @@ func (a *cronConnectorHostAdapter) ToolAvailability(
 	_ integrationruntime.ToolScope,
 	toolName string,
 ) (bool, bool, integrationruntime.SettingSource, string) {
-	if toolName != ToolNameScheduler {
+	if toolName != ToolNameCron {
 		return false, false, integrationruntime.SourceGlobalDefault, ""
 	}
 	if a == nil || a.client == nil {
 		return true, false, integrationruntime.SourceProviderLimit, "Cron service not available"
 	}
-	ok, reason := a.client.isSchedulerConfigured()
+	ok, reason := a.client.isCronConfigured()
 	if ok {
 		return true, true, integrationruntime.SourceGlobalDefault, ""
 	}
@@ -678,10 +686,10 @@ type memoryConnectorHostAdapter struct {
 
 func (a *memoryConnectorHostAdapter) ToolDefinitions(_ context.Context, _ integrationruntime.ToolScope) []integrationruntime.ToolDefinition {
 	var out []integrationruntime.ToolDefinition
-	if def, ok := integrationToolByName(ToolNameRecallSearch); ok {
+	if def, ok := integrationToolByName(ToolNameMemorySearch); ok {
 		out = append(out, def)
 	}
-	if def, ok := integrationToolByName(ToolNameRecallGet); ok {
+	if def, ok := integrationToolByName(ToolNameMemoryGet); ok {
 		out = append(out, def)
 	}
 	return out
@@ -689,11 +697,11 @@ func (a *memoryConnectorHostAdapter) ToolDefinitions(_ context.Context, _ integr
 
 func (a *memoryConnectorHostAdapter) ExecuteTool(ctx context.Context, call integrationruntime.ToolCall) (bool, string, error) {
 	switch call.Name {
-	case ToolNameRecallSearch:
-		result, err := executeRecallSearch(ctx, call.Args)
+	case ToolNameMemorySearch:
+		result, err := executeMemorySearch(ctx, call.Args)
 		return true, result, err
-	case ToolNameRecallGet:
-		result, err := executeRecallGet(ctx, call.Args)
+	case ToolNameMemoryGet:
+		result, err := executeMemoryGet(ctx, call.Args)
 		return true, result, err
 	default:
 		return false, "", nil
@@ -705,14 +713,14 @@ func (a *memoryConnectorHostAdapter) ToolAvailability(
 	scope integrationruntime.ToolScope,
 	toolName string,
 ) (bool, bool, integrationruntime.SettingSource, string) {
-	if toolName != ToolNameRecallSearch && toolName != ToolNameRecallGet {
+	if toolName != ToolNameMemorySearch && toolName != ToolNameMemoryGet {
 		return false, false, integrationruntime.SourceGlobalDefault, ""
 	}
 	if a == nil || a.client == nil {
 		return true, false, integrationruntime.SourceProviderLimit, "Memory search unavailable"
 	}
 	meta, _ := scope.Meta.(*PortalMetadata)
-	disabled, reason := a.client.isRecallSearchExplicitlyDisabled(meta)
+	disabled, reason := a.client.isMemorySearchExplicitlyDisabled(meta)
 	if disabled {
 		return true, false, integrationruntime.SourceProviderLimit, reason
 	}
@@ -744,7 +752,7 @@ func (a *memoryConnectorHostAdapter) GetManager(scope integrationruntime.ToolSco
 		return nil, "memory search unavailable"
 	}
 	meta, _ := scope.Meta.(*PortalMetadata)
-	manager, errMsg := a.client.getRecallManager(resolveAgentID(meta))
+	manager, errMsg := a.client.getMemoryManager(resolveAgentID(meta))
 	if manager == nil {
 		return nil, errMsg
 	}

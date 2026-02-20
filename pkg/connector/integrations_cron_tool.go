@@ -20,8 +20,8 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 		return "", errors.New("cron tool requires bridge context")
 	}
 	client := btc.Client
-	scheduler := client.schedulerModule()
-	if scheduler == nil {
+	cronModule := client.cronModule()
+	if cronModule == nil {
 		return "", errors.New("cron service not available")
 	}
 
@@ -35,7 +35,7 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 
 	switch action {
 	case "status":
-		enabled, storePath, jobCount, nextWake, err := scheduler.Status()
+		enabled, storePath, jobCount, nextWake, err := cronModule.Status()
 		if err != nil {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
@@ -55,7 +55,7 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 		return agenttools.JSONResult(out).Text(), nil
 	case "list":
 		includeDisabled := agenttools.ReadBool(args, "includeDisabled", false)
-		jobs, err := scheduler.List(includeDisabled)
+		jobs, err := cronModule.List(includeDisabled)
 		if err != nil {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
@@ -111,7 +111,7 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 		if contextMessages > 0 {
 			injectCronReminderContext(&jobInput, btc, contextMessages)
 		}
-		job, err := scheduler.Add(jobInput)
+		job, err := cronModule.Add(jobInput)
 		if err != nil {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
@@ -163,7 +163,7 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 				}).Text(), nil
 			}
 		}
-		job, err := scheduler.Update(jobID, patch)
+		job, err := cronModule.Update(jobID, patch)
 		if err != nil {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
@@ -179,7 +179,7 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 				"error":  "jobId required",
 			}).Text(), nil
 		}
-		removed, err := scheduler.Remove(jobID)
+		removed, err := cronModule.Remove(jobID)
 		if err != nil {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
@@ -198,7 +198,7 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 				"error":  "jobId required",
 			}).Text(), nil
 		}
-		ran, reason, err := scheduler.Run(jobID, "")
+		ran, reason, err := cronModule.Run(jobID, "")
 		if err != nil {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
@@ -222,7 +222,7 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 			}).Text(), nil
 		}
 		limit := agenttools.ReadIntDefault(args, "limit", 200)
-		runs, err := scheduler.Runs(jobID, limit)
+		runs, err := cronModule.Runs(jobID, limit)
 		if err != nil {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
@@ -245,7 +245,7 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 		if mode != "now" && mode != "next-heartbeat" {
 			mode = "next-heartbeat"
 		}
-		_, err := scheduler.Wake(mode, text)
+		_, err := cronModule.Wake(mode, text)
 		if err != nil {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
@@ -466,13 +466,13 @@ func truncateContextText(input string, maxLen int) string {
 }
 
 func (oc *AIClient) readCronRuns(jobID string, limit int) ([]integrationcron.RunLogEntry, error) {
-	if oc == nil || oc.schedulerModule() == nil {
+	if oc == nil || oc.cronModule() == nil {
 		return nil, errors.New("cron service not available")
 	}
 	if limit <= 0 {
 		limit = 200
 	}
-	_, storePath, _, _, err := oc.schedulerModule().Status()
+	_, storePath, _, _, err := oc.cronModule().Status()
 	if err != nil {
 		return nil, err
 	}

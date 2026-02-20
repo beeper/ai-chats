@@ -34,15 +34,15 @@ type recallGetOutput struct {
 	Error    string `json:"error,omitempty"`
 }
 
-// executeRecallSearch handles the memory_search tool.
-func executeRecallSearch(ctx context.Context, args map[string]any) (string, error) {
+// executeMemorySearch handles the memory_search tool.
+func executeMemorySearch(ctx context.Context, args map[string]any) (string, error) {
 	btc := GetBridgeToolContext(ctx)
 	if btc == nil {
 		return "", errors.New("memory_search requires bridge context")
 	}
-	var recall *integrationmemory.Integration
+	var memoryModule *integrationmemory.Integration
 	if btc.Client != nil {
-		recall = btc.Client.recallModule()
+		memoryModule = btc.Client.memoryModule()
 	}
 
 	mode := ""
@@ -72,7 +72,7 @@ func executeRecallSearch(ctx context.Context, args map[string]any) (string, erro
 	}
 
 	meta := portalMeta(btc.Portal)
-	if btc.Client == nil || recall == nil {
+	if btc.Client == nil || memoryModule == nil {
 		payload := recallSearchOutput{
 			Results:  []recallSearchResult{},
 			Disabled: true,
@@ -81,7 +81,7 @@ func executeRecallSearch(ctx context.Context, args map[string]any) (string, erro
 		output, _ := json.MarshalIndent(payload, "", "  ")
 		return string(output), nil
 	}
-	manager, errMsg := recall.GetManager(btc.Client.toolScope(btc.Portal, meta))
+	manager, errMsg := memoryModule.GetManager(btc.Client.toolScope(btc.Portal, meta))
 	if manager == nil {
 		payload := recallSearchOutput{
 			Results:  []recallSearchResult{},
@@ -163,15 +163,19 @@ func executeRecallSearch(ctx context.Context, args map[string]any) (string, erro
 	return string(output), nil
 }
 
-// executeRecallGet handles the memory_get tool.
-func executeRecallGet(ctx context.Context, args map[string]any) (string, error) {
+func executeRecallSearch(ctx context.Context, args map[string]any) (string, error) {
+	return executeMemorySearch(ctx, args)
+}
+
+// executeMemoryGet handles the memory_get tool.
+func executeMemoryGet(ctx context.Context, args map[string]any) (string, error) {
 	btc := GetBridgeToolContext(ctx)
 	if btc == nil {
 		return "", errors.New("memory_get requires bridge context")
 	}
-	var recall *integrationmemory.Integration
+	var memoryModule *integrationmemory.Integration
 	if btc.Client != nil {
-		recall = btc.Client.recallModule()
+		memoryModule = btc.Client.memoryModule()
 	}
 
 	pathRaw, ok := args["path"].(string)
@@ -181,7 +185,7 @@ func executeRecallGet(ctx context.Context, args map[string]any) (string, error) 
 	}
 
 	meta := portalMeta(btc.Portal)
-	if btc.Client == nil || recall == nil {
+	if btc.Client == nil || memoryModule == nil {
 		payload := recallGetOutput{
 			Path:     path,
 			Text:     "",
@@ -191,7 +195,7 @@ func executeRecallGet(ctx context.Context, args map[string]any) (string, error) 
 		output, _ := json.MarshalIndent(payload, "", "  ")
 		return string(output), nil
 	}
-	manager, errMsg := recall.GetManager(btc.Client.toolScope(btc.Portal, meta))
+	manager, errMsg := memoryModule.GetManager(btc.Client.toolScope(btc.Portal, meta))
 	if manager == nil {
 		payload := recallGetOutput{
 			Path:     path,
@@ -244,6 +248,10 @@ func executeRecallGet(ctx context.Context, args map[string]any) (string, error) 
 	}
 
 	return string(output), nil
+}
+
+func executeRecallGet(ctx context.Context, args map[string]any) (string, error) {
+	return executeMemoryGet(ctx, args)
 }
 
 func resolveRecallCitationsMode(client *AIClient) string {
