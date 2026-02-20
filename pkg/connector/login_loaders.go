@@ -42,7 +42,7 @@ func (oc *OpenAIConnector) loadAIUserLogin(login *bridgev2.UserLogin, meta *User
 			oc.clientsMu.Unlock()
 			client, err := newAIClient(login, oc, key)
 			if err != nil {
-				// Keep the existing client if it's already in-memory; allow the login to stay cached/deletable.
+				// Keep the existing client if it's already in process; allow the login to stay cached/deletable.
 				oc.clientsMu.Lock()
 				existing.UserLogin = login
 				login.Client = existing
