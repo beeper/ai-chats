@@ -225,21 +225,35 @@ func (oc *AIClient) hasPortalMessages(ctx context.Context, portal *bridgev2.Port
 	return false
 }
 
+func isInternalControlRoom(meta *PortalMetadata) bool {
+	if meta == nil {
+		return false
+	}
+	return meta.IsBuilderRoom || meta.IsSchedulerRoom
+}
+
+func autoGreetingBlockReason(meta *PortalMetadata) string {
+	if meta.AutoGreetingSent {
+		return "already-sent"
+	}
+	if isInternalControlRoom(meta) {
+		return "internal-control-room"
+	}
+	if normalizeSendPolicyMode(meta.SendPolicy) == "deny" {
+		return "send-policy-deny"
+	}
+	if resolveAgentID(meta) == "" {
+		return "no-agent"
+	}
+	return ""
+}
+
 func (oc *AIClient) scheduleAutoGreeting(ctx context.Context, portal *bridgev2.Portal) {
 	if oc == nil || portal == nil || portal.MXID == "" {
 		return
 	}
 	meta := portalMeta(portal)
-	if meta == nil || meta.AutoGreetingSent {
-		return
-	}
-	if meta.IsBuilderRoom || meta.IsCronRoom {
-		return
-	}
-	if normalizeSendPolicyMode(meta.SendPolicy) == "deny" {
-		return
-	}
-	if resolveAgentID(meta) == "" {
+	if autoGreetingBlockReason(meta) != "" {
 		return
 	}
 	if oc.hasPortalMessages(ctx, portal) {
@@ -270,20 +284,12 @@ func (oc *AIClient) scheduleAutoGreeting(ctx context.Context, portal *bridgev2.P
 				return
 			}
 			currentMeta := portalMeta(current)
-			if currentMeta == nil || currentMeta.AutoGreetingSent {
-				oc.Log().Debug().Stringer("room_id", roomID).Msg("auto-greeting loop exiting: already sent or no meta")
+			if currentMeta != nil && currentMeta.AutoGreetingSent {
+				oc.Log().Debug().Stringer("room_id", roomID).Msg("auto-greeting loop exiting: already sent")
 				return
 			}
-			if currentMeta.IsBuilderRoom || currentMeta.IsCronRoom {
-				oc.Log().Debug().Stringer("room_id", roomID).Msg("auto-greeting loop exiting: special room type")
-				return
-			}
-			if normalizeSendPolicyMode(currentMeta.SendPolicy) == "deny" {
-				oc.Log().Debug().Stringer("room_id", roomID).Msg("auto-greeting loop exiting: send policy deny")
-				return
-			}
-			if resolveAgentID(currentMeta) == "" {
-				oc.Log().Debug().Stringer("room_id", roomID).Msg("auto-greeting loop exiting: no agent ID")
+			if reason := autoGreetingBlockReason(currentMeta); reason != "" {
+				oc.Log().Debug().Stringer("room_id", roomID).Str("reason", reason).Msg("auto-greeting loop exiting: blocked by portal state")
 				return
 			}
 			if oc.hasPortalMessages(bgCtx, current) {

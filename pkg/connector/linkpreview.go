@@ -65,7 +65,7 @@ type previewCacheEntry struct {
 	expiresAt time.Time
 }
 
-// previewCache is a simple in-memory cache for URL previews.
+// previewCache is a simple process-local cache for URL previews.
 type previewCache struct {
 	mu      sync.RWMutex
 	entries map[string]*previewCacheEntry

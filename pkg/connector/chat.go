@@ -433,7 +433,7 @@ func (oc *AIClient) createNewChat(ctx context.Context, modelID string) (*bridgev
 		return nil, err
 	}
 
-	// Keep model-only chats consistent with "!ai new <model>": raw/non-agentic.
+	// Keep model-only chats non-agentic and raw-mode by default.
 	meta := portalMeta(portal)
 	if meta != nil && !meta.IsRawMode {
 		meta.IsRawMode = true
