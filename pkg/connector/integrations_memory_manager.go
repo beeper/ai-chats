@@ -131,11 +131,11 @@ var memoryManagerCache = struct {
 	managers: make(map[string]*MemorySearchManager),
 }
 
-func (oc *AIClient) getMemoryManager(agentID string) (*MemorySearchManager, string) {
-	return getMemorySearchManager(oc, agentID)
+func (oc *AIClient) getRecallManager(agentID string) (*MemorySearchManager, string) {
+	return getRecallSearchManager(oc, agentID)
 }
 
-func getMemorySearchManager(client *AIClient, agentID string) (*MemorySearchManager, string) {
+func getRecallSearchManager(client *AIClient, agentID string) (*MemorySearchManager, string) {
 	if client == nil || client.connector == nil {
 		return nil, "memory search unavailable"
 	}
@@ -143,7 +143,7 @@ func getMemorySearchManager(client *AIClient, agentID string) (*MemorySearchMana
 	if db == nil {
 		return nil, "memory search unavailable"
 	}
-	cfg, err := resolveMemorySearchConfig(client, agentID)
+	cfg, err := resolveRecallSearchConfig(client, agentID)
 	if err != nil || cfg == nil {
 		if err != nil {
 			return nil, err.Error()

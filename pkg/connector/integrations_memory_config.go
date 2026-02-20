@@ -14,11 +14,11 @@ import (
 
 type recallAgentSearchConfig = agents.MemorySearchConfig
 
-func resolveMemorySearchConfig(client *AIClient, agentID string) (*memory.ResolvedConfig, error) {
+func resolveRecallSearchConfig(client *AIClient, agentID string) (*memory.ResolvedConfig, error) {
 	if client == nil || client.connector == nil {
 		return nil, errors.New("missing connector")
 	}
-	defaults := client.connector.Config.MemorySearch
+	defaults := client.connector.Config.RecallSearch
 	var overrides *agents.MemorySearchConfig
 
 	if agentID != "" {
@@ -37,7 +37,7 @@ func resolveMemorySearchConfig(client *AIClient, agentID string) (*memory.Resolv
 }
 
 func mergeMemorySearchConfig(
-	defaults *MemorySearchConfig,
+	defaults *RecallSearchConfig,
 	overrides *agents.MemorySearchConfig,
 ) *memory.ResolvedConfig {
 	o := extractOverrideFields(overrides)
@@ -346,7 +346,7 @@ func extractOverrideFields(cfg *agents.MemorySearchConfig) memSearchFields {
 	return f
 }
 
-func extractDefaultFields(cfg *MemorySearchConfig) memSearchFields {
+func extractDefaultFields(cfg *RecallSearchConfig) memSearchFields {
 	var f memSearchFields
 	if cfg == nil {
 		return f

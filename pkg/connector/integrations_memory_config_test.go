@@ -20,8 +20,8 @@ func TestMergeMemorySearchConfig_DefaultsEnabled(t *testing.T) {
 }
 
 func TestMergeMemorySearchConfig_StoreForcedToSQLiteVFS(t *testing.T) {
-	defaults := &MemorySearchConfig{
-		Store: &MemorySearchStoreConfig{
+	defaults := &RecallSearchConfig{
+		Store: &RecallSearchStoreConfig{
 			Driver: "duckdb",
 			Path:   "/tmp/custom.db",
 		},

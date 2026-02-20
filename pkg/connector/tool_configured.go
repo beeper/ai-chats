@@ -84,12 +84,12 @@ func (oc *AIClient) isWebFetchConfigured(ctx context.Context) (bool, string) {
 	return false, "Web fetch is disabled (direct disabled and Exa API key missing)"
 }
 
-func (oc *AIClient) isMemorySearchExplicitlyDisabled(meta *PortalMetadata) (bool, string) {
+func (oc *AIClient) isRecallSearchExplicitlyDisabled(meta *PortalMetadata) (bool, string) {
 	if oc == nil || oc.connector == nil {
 		return true, "Missing connector"
 	}
 	agentID := resolveAgentID(meta)
-	cfg, err := resolveMemorySearchConfig(oc, agentID)
+	cfg, err := resolveRecallSearchConfig(oc, agentID)
 	if err != nil {
 		// resolveMemorySearchConfig returns an error when connector is missing or when the
 		// tool is disabled. Treat both as unavailable here.
@@ -127,9 +127,9 @@ func (oc *AIClient) isTTSConfigured() (bool, string) {
 	return true, ""
 }
 
-func (oc *AIClient) isCronConfigured() (bool, string) {
+func (oc *AIClient) isSchedulerConfigured() (bool, string) {
 	if oc == nil || oc.schedulerIntegration == nil {
-		return false, "Cron service not available"
+		return false, "Scheduler service not available"
 	}
 	return true, ""
 }

@@ -24,7 +24,7 @@ func (oc *AIClient) injectMemoryContext(
 		return prompt
 	}
 
-	if oc == nil || portal == nil || meta == nil || oc.connector == nil || oc.connector.Config.Memory == nil || !oc.connector.Config.Memory.InjectContext {
+	if oc == nil || portal == nil || meta == nil || oc.connector == nil || oc.connector.Config.Recall == nil || !oc.connector.Config.Recall.InjectContext {
 		return prompt
 	}
 	db := oc.bridgeDB()

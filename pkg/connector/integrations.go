@@ -18,9 +18,6 @@ import (
 
 type schedulerIntegrationType = integrationcron.Integration
 type recallIntegrationType = integrationmemory.Integration
-type recallSearchOptions = integrationmemory.SearchOptions
-type recallSearchResult = integrationmemory.SearchResult
-type recallFallbackStatus = integrationmemory.FallbackStatus
 
 const (
 	integrationToolSchedulerName    = "cron"
@@ -243,31 +240,34 @@ func (oc *AIClient) integratedToolAvailability(meta *PortalMetadata, toolName st
 	if oc == nil {
 		return false, false, SourceGlobalDefault, ""
 	}
-	if oc.toolRegistry != nil {
-		if known, available, source, reason := oc.toolRegistry.availability(context.Background(), oc.toolScope(nil, meta), toolName); known {
-			return true, available, source, reason
-		}
-	}
-	return oc.legacyIntegratedToolAvailability(meta, toolName)
-}
-
-func (oc *AIClient) legacyIntegratedToolAvailability(meta *PortalMetadata, toolName string) (bool, bool, SettingSource, string) {
 	switch strings.TrimSpace(toolName) {
 	case ToolNameScheduler:
-		ok, reason := oc.isCronConfigured()
-		if ok {
-			return true, true, SourceGlobalDefault, ""
+		if !oc.schedulerModuleEnabled() {
+			return true, false, SourceProviderLimit, "Scheduler integration disabled"
 		}
-		return true, false, SourceProviderLimit, reason
+		if oc.toolRegistry == nil {
+			return true, false, SourceProviderLimit, "Scheduler integration unavailable"
+		}
 	case ToolNameRecallSearch, ToolNameRecallGet:
-		disabled, reason := oc.isMemorySearchExplicitlyDisabled(meta)
+		if !oc.recallModuleEnabled() {
+			return true, false, SourceProviderLimit, "Recall integration disabled"
+		}
+		disabled, reason := oc.isRecallSearchExplicitlyDisabled(meta)
 		if disabled {
 			return true, false, SourceProviderLimit, reason
 		}
-		return true, true, SourceGlobalDefault, ""
+		if oc.toolRegistry == nil {
+			return true, false, SourceProviderLimit, "Recall integration unavailable"
+		}
 	default:
-		return false, false, SourceGlobalDefault, ""
+		if oc.toolRegistry == nil {
+			return false, false, SourceGlobalDefault, ""
+		}
 	}
+	if known, available, source, reason := oc.toolRegistry.availability(context.Background(), oc.toolScope(nil, meta), toolName); known {
+		return true, available, source, reason
+	}
+	return false, false, SourceGlobalDefault, ""
 }
 
 func (oc *AIClient) executeIntegratedTool(
@@ -432,7 +432,7 @@ func (a *cronConnectorHostAdapter) ToolAvailability(
 	if a == nil || a.client == nil {
 		return true, false, integrationruntime.SourceProviderLimit, "Cron service not available"
 	}
-	ok, reason := a.client.isCronConfigured()
+	ok, reason := a.client.isSchedulerConfigured()
 	if ok {
 		return true, true, integrationruntime.SourceGlobalDefault, ""
 	}
@@ -549,7 +549,7 @@ func (a *memoryConnectorHostAdapter) ToolAvailability(
 		return true, false, integrationruntime.SourceProviderLimit, "Memory search unavailable"
 	}
 	meta, _ := scope.Meta.(*PortalMetadata)
-	disabled, reason := a.client.isMemorySearchExplicitlyDisabled(meta)
+	disabled, reason := a.client.isRecallSearchExplicitlyDisabled(meta)
 	if disabled {
 		return true, false, integrationruntime.SourceProviderLimit, reason
 	}
@@ -581,7 +581,7 @@ func (a *memoryConnectorHostAdapter) GetManager(scope integrationruntime.ToolSco
 		return nil, "memory search unavailable"
 	}
 	meta, _ := scope.Meta.(*PortalMetadata)
-	manager, errMsg := a.client.getMemoryManager(resolveAgentID(meta))
+	manager, errMsg := a.client.getRecallManager(resolveAgentID(meta))
 	if manager == nil {
 		return nil, errMsg
 	}

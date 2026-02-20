@@ -93,7 +93,7 @@ type PruningConfig struct {
 	CustomInstructions string `yaml:"custom_instructions" json:"custom_instructions,omitempty"`
 
 	// RecallFlush runs a pre-compaction recall write pass.
-	RecallFlush *RecallFlushConfig `yaml:"memory_flush" json:"memory_flush,omitempty"`
+	RecallFlush *RecallFlushConfig `yaml:"recall_flush" json:"recall_flush,omitempty"`
 
 	// MaxHistoryTurns limits conversation history to the last N user turns (and their associated
 	// assistant responses). This reduces token usage for long-running DM sessions.
