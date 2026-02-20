@@ -3,7 +3,6 @@ package cron
 import (
 	"context"
 
-	croncore "github.com/beeper/ai-bridge/pkg/cron"
 	iruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
 )
 
@@ -15,13 +14,13 @@ type Host interface {
 	Start(ctx context.Context) error
 	Stop()
 	Status() (bool, string, int, *int64, error)
-	List(includeDisabled bool) ([]croncore.CronJob, error)
-	Add(input croncore.CronJobCreate) (croncore.CronJob, error)
-	Update(id string, patch croncore.CronJobPatch) (croncore.CronJob, error)
+	List(includeDisabled bool) ([]Job, error)
+	Add(input JobCreate) (Job, error)
+	Update(id string, patch JobPatch) (Job, error)
 	Remove(id string) (bool, error)
 	Run(id string, mode string) (bool, string, error)
 	Wake(mode string, text string) (bool, error)
-	Runs(jobID string, limit int) ([]croncore.CronRunLogEntry, error)
+	Runs(jobID string, limit int) ([]RunLogEntry, error)
 }
 
 type Integration struct {
@@ -76,23 +75,23 @@ func (i *Integration) Status() (bool, string, int, *int64, error) {
 	return i.host.Status()
 }
 
-func (i *Integration) List(includeDisabled bool) ([]croncore.CronJob, error) {
+func (i *Integration) List(includeDisabled bool) ([]Job, error) {
 	if i == nil || i.host == nil {
 		return nil, nil
 	}
 	return i.host.List(includeDisabled)
 }
 
-func (i *Integration) Add(input croncore.CronJobCreate) (croncore.CronJob, error) {
+func (i *Integration) Add(input JobCreate) (Job, error) {
 	if i == nil || i.host == nil {
-		return croncore.CronJob{}, nil
+		return Job{}, nil
 	}
 	return i.host.Add(input)
 }
 
-func (i *Integration) Update(id string, patch croncore.CronJobPatch) (croncore.CronJob, error) {
+func (i *Integration) Update(id string, patch JobPatch) (Job, error) {
 	if i == nil || i.host == nil {
-		return croncore.CronJob{}, nil
+		return Job{}, nil
 	}
 	return i.host.Update(id, patch)
 }
@@ -118,7 +117,7 @@ func (i *Integration) Wake(mode string, text string) (bool, error) {
 	return i.host.Wake(mode, text)
 }
 
-func (i *Integration) Runs(jobID string, limit int) ([]croncore.CronRunLogEntry, error) {
+func (i *Integration) Runs(jobID string, limit int) ([]RunLogEntry, error) {
 	if i == nil || i.host == nil {
 		return nil, nil
 	}

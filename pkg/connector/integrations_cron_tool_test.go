@@ -8,7 +8,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/ai-bridge/pkg/cron"
+	integrationcron "github.com/beeper/ai-bridge/pkg/integrations/cron"
 )
 
 func TestReadCronJobID_RequiresCanonicalJobID(t *testing.T) {
@@ -24,10 +24,10 @@ func TestReadCronJobID_RequiresCanonicalJobID(t *testing.T) {
 }
 
 func TestInjectCronContext_SetsDeliveryTargetToCurrentRoom(t *testing.T) {
-	job := cron.CronJobCreate{
-		SessionTarget: cron.CronSessionIsolated,
-		Payload:       cron.CronPayload{Kind: "agentTurn", Message: "Ping"},
-		Delivery:      &cron.CronDelivery{Mode: cron.CronDeliveryAnnounce},
+	job := integrationcron.JobCreate{
+		SessionTarget: integrationcron.SessionIsolated,
+		Payload:       integrationcron.Payload{Kind: "agentTurn", Message: "Ping"},
+		Delivery:      &integrationcron.Delivery{Mode: integrationcron.DeliveryAnnounce},
 	}
 	btc := &BridgeToolContext{
 		Portal: &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.org")}},
@@ -51,10 +51,10 @@ func TestInjectCronContext_SetsDeliveryTargetToCurrentRoom(t *testing.T) {
 }
 
 func TestInjectCronContext_DoesNotPinDeliveryForCronRoom(t *testing.T) {
-	job := cron.CronJobCreate{
-		SessionTarget: cron.CronSessionIsolated,
-		Payload:       cron.CronPayload{Kind: "agentTurn", Message: "Ping"},
-		Delivery:      &cron.CronDelivery{Mode: cron.CronDeliveryAnnounce},
+	job := integrationcron.JobCreate{
+		SessionTarget: integrationcron.SessionIsolated,
+		Payload:       integrationcron.Payload{Kind: "agentTurn", Message: "Ping"},
+		Delivery:      &integrationcron.Delivery{Mode: integrationcron.DeliveryAnnounce},
 	}
 	btc := &BridgeToolContext{
 		Portal: &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!cronroom:example.org")}},

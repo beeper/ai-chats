@@ -7,8 +7,7 @@ import (
 	"strings"
 
 	"github.com/beeper/ai-bridge/pkg/agents"
-	"github.com/beeper/ai-bridge/pkg/memory"
-	"github.com/beeper/ai-bridge/pkg/memory/embedding"
+	memory "github.com/beeper/ai-bridge/pkg/integrations/memory"
 	"github.com/beeper/ai-bridge/pkg/shared/httputil"
 )
 
@@ -68,9 +67,9 @@ func mergeMemorySearchConfig(
 	modelDefault := ""
 	switch provider {
 	case "gemini":
-		modelDefault = embedding.DefaultGeminiEmbeddingModel
+		modelDefault = memory.DefaultGeminiEmbeddingModel
 	case "openai":
-		modelDefault = embedding.DefaultOpenAIEmbeddingModel
+		modelDefault = memory.DefaultOpenAIEmbeddingModel
 	}
 	model := pickString(o.model, d.model, modelDefault)
 

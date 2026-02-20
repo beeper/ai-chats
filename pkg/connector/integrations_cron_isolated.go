@@ -9,7 +9,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 
-	"github.com/beeper/ai-bridge/pkg/cron"
 	integrationcron "github.com/beeper/ai-bridge/pkg/integrations/cron"
 )
 
@@ -17,7 +16,7 @@ const (
 	cronDeliveryTimeout = 10 * time.Second
 )
 
-func (oc *AIClient) runCronIsolatedAgentJob(ctx context.Context, job cron.CronJob, message string) (status string, summary string, outputText string, err error) {
+func (oc *AIClient) runCronIsolatedAgentJob(ctx context.Context, job integrationcron.Job, message string) (status string, summary string, outputText string, err error) {
 	if oc == nil || oc.UserLogin == nil {
 		return "error", "", "", errors.New("missing client")
 	}
@@ -84,7 +83,7 @@ func (oc *AIClient) runCronIsolatedAgentJob(ctx context.Context, job cron.CronJo
 		ResolveAckMaxChars: func(agentID string) int {
 			return resolveHeartbeatAckMaxChars(&oc.connector.Config, resolveHeartbeatConfig(&oc.connector.Config, agentID))
 		},
-		ResolveDeliveryTarget: func(agentID string, delivery *cron.CronDelivery) integrationcron.DeliveryTarget {
+		ResolveDeliveryTarget: func(agentID string, delivery *integrationcron.Delivery) integrationcron.DeliveryTarget {
 			target := oc.resolveCronDeliveryTarget(agentID, delivery)
 			return integrationcron.DeliveryTarget{
 				Portal:  target.Portal,

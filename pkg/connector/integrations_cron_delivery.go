@@ -7,11 +7,10 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/ai-bridge/pkg/cron"
 	integrationcron "github.com/beeper/ai-bridge/pkg/integrations/cron"
 )
 
-func (oc *AIClient) resolveCronDeliveryTarget(agentID string, delivery *cron.CronDelivery) deliveryTarget {
+func (oc *AIClient) resolveCronDeliveryTarget(agentID string, delivery *integrationcron.Delivery) deliveryTarget {
 	resolved := integrationcron.ResolveCronDeliveryTarget(agentID, delivery, integrationcron.DeliveryResolverDeps{
 		ResolveLastTarget: func(agentID string) (string, string, bool) {
 			storeRef, mainKey := oc.resolveHeartbeatMainSessionRef(agentID)

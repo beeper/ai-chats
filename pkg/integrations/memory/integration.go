@@ -6,36 +6,14 @@ import (
 	"github.com/openai/openai-go/v3"
 
 	iruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
+	memorycore "github.com/beeper/ai-bridge/pkg/memory"
 )
 
-type SearchOptions struct {
-	MaxResults int
-	MinScore   float64
-	SessionKey string
-	Mode       string
-	Sources    []string
-	PathPrefix string
-}
-
-type SearchResult struct {
-	Path      string  `json:"path"`
-	StartLine int     `json:"startLine"`
-	EndLine   int     `json:"endLine"`
-	Score     float64 `json:"score"`
-	Snippet   string  `json:"snippet"`
-	Source    string  `json:"source"`
-}
-
-type FallbackStatus struct {
-	From   string `json:"from,omitempty"`
-	Reason string `json:"reason,omitempty"`
-}
-
-type ProviderStatus struct {
-	Provider string
-	Model    string
-	Fallback *FallbackStatus
-}
+type SearchOptions = memorycore.SearchOptions
+type SearchResult = memorycore.SearchResult
+type FallbackStatus = memorycore.FallbackStatus
+type ProviderStatus = memorycore.ProviderStatus
+type ResolvedConfig = memorycore.ResolvedConfig
 
 type SourceCount struct {
 	Source string

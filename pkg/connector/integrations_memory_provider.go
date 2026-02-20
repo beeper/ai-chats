@@ -3,11 +3,10 @@ package connector
 import (
 	"strings"
 
-	"github.com/beeper/ai-bridge/pkg/memory"
-	"github.com/beeper/ai-bridge/pkg/memory/embedding"
+	integrationmemory "github.com/beeper/ai-bridge/pkg/integrations/memory"
 )
 
-func resolveOpenAIEmbeddingConfig(client *AIClient, cfg *memory.ResolvedConfig) (string, string, map[string]string) {
+func resolveOpenAIEmbeddingConfig(client *AIClient, cfg *integrationmemory.ResolvedConfig) (string, string, map[string]string) {
 	var apiKey string
 	var baseURL string
 	if strings.TrimSpace(cfg.Remote.APIKey) != "" {
@@ -57,7 +56,7 @@ func resolveOpenAIEmbeddingConfig(client *AIClient, cfg *memory.ResolvedConfig) 
 // resolveDirectOpenAIEmbeddingConfig resolves the direct OpenAI endpoint
 // (/openai/v1) for batch API calls that require OpenAI-specific endpoints
 // like /files and /batches which OpenRouter does not support.
-func resolveDirectOpenAIEmbeddingConfig(client *AIClient, cfg *memory.ResolvedConfig) (string, string, map[string]string) {
+func resolveDirectOpenAIEmbeddingConfig(client *AIClient, cfg *integrationmemory.ResolvedConfig) (string, string, map[string]string) {
 	var apiKey string
 	var baseURL string
 	if strings.TrimSpace(cfg.Remote.APIKey) != "" {
@@ -104,11 +103,11 @@ func resolveDirectOpenAIEmbeddingConfig(client *AIClient, cfg *memory.ResolvedCo
 	return apiKey, baseURL, cfg.Remote.Headers
 }
 
-func resolveGeminiEmbeddingConfig(_ *AIClient, cfg *memory.ResolvedConfig) (string, string, map[string]string) {
+func resolveGeminiEmbeddingConfig(_ *AIClient, cfg *integrationmemory.ResolvedConfig) (string, string, map[string]string) {
 	apiKey := strings.TrimSpace(cfg.Remote.APIKey)
 	baseURL := strings.TrimSpace(cfg.Remote.BaseURL)
 	if baseURL == "" {
-		baseURL = embedding.DefaultGeminiBaseURL
+		baseURL = integrationmemory.DefaultGeminiBaseURL
 	}
 	return apiKey, baseURL, cfg.Remote.Headers
 }

@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beeper/ai-bridge/pkg/cron"
 	integrationcron "github.com/beeper/ai-bridge/pkg/integrations/cron"
 )
 
@@ -65,7 +64,7 @@ func resolveCronMaxConcurrentRuns(cfg *Config) int {
 	return integrationcron.ResolveCronMaxConcurrentRuns(cfg.Cron.MaxConcurrentRuns)
 }
 
-func (oc *AIClient) buildCronService() *cron.CronService {
+func (oc *AIClient) buildCronService() *integrationcron.Service {
 	if oc == nil {
 		return nil
 	}
@@ -78,7 +77,7 @@ func (oc *AIClient) buildCronService() *cron.CronService {
 		Store:             storeBackend,
 		MaxConcurrentRuns: resolveCronMaxConcurrentRuns(&oc.connector.Config),
 		CronEnabled:       resolveCronEnabled(&oc.connector.Config),
-		ResolveJobTimeoutMs: func(job cron.CronJob) int64 {
+		ResolveJobTimeoutMs: func(job integrationcron.Job) int64 {
 			return oc.resolveCronJobTimeoutMs(job)
 		},
 		EnqueueSystemEvent: func(ctx context.Context, text string, agentID string) error {
@@ -87,18 +86,18 @@ func (oc *AIClient) buildCronService() *cron.CronService {
 		RequestHeartbeatNow: func(ctx context.Context, reason string) {
 			oc.requestHeartbeatNow(ctx, reason)
 		},
-		RunHeartbeatOnce: func(ctx context.Context, reason string) cron.HeartbeatRunResult {
+		RunHeartbeatOnce: func(ctx context.Context, reason string) integrationcron.HeartbeatRunResult {
 			res := oc.runHeartbeatImmediate(ctx, reason)
-			return cron.HeartbeatRunResult{Status: res.Status, Reason: res.Reason}
+			return integrationcron.HeartbeatRunResult{Status: res.Status, Reason: res.Reason}
 		},
-		RunIsolatedAgentJob: func(ctx context.Context, job cron.CronJob, message string) (string, string, string, error) {
+		RunIsolatedAgentJob: func(ctx context.Context, job integrationcron.Job, message string) (string, string, string, error) {
 			return oc.runCronIsolatedAgentJob(ctx, job, message)
 		},
 		OnEvent: oc.onCronEvent,
 	})
 }
 
-func (oc *AIClient) resolveCronJobTimeoutMs(job cron.CronJob) int64 {
+func (oc *AIClient) resolveCronJobTimeoutMs(job integrationcron.Job) int64 {
 	if oc == nil {
 		return 0
 	}
@@ -146,7 +145,7 @@ func (oc *AIClient) runHeartbeatImmediate(ctx context.Context, reason string) he
 	return oc.heartbeatRunner.run(reason)
 }
 
-func (oc *AIClient) onCronEvent(evt cron.CronEvent) {
+func (oc *AIClient) onCronEvent(evt integrationcron.Event) {
 	if oc == nil {
 		return
 	}
@@ -156,8 +155,8 @@ func (oc *AIClient) onCronEvent(evt cron.CronEvent) {
 		StorePath: storePath,
 		Log:       newCronLogger(oc.log),
 		NowMs:     func() int64 { return time.Now().UnixMilli() },
-		AppendRunLog: func(ctx context.Context, path string, entry cron.CronRunLogEntry) error {
-			return cron.AppendCronRunLog(ctx, integrationcron.NewStoreBackendAdapter(backend), path, entry, 0, 0)
+		AppendRunLog: func(ctx context.Context, path string, entry integrationcron.RunLogEntry) error {
+			return integrationcron.AppendRunLog(ctx, integrationcron.NewStoreBackendAdapter(backend), path, entry, 0, 0)
 		},
 	})
 }

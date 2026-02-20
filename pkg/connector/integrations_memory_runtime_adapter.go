@@ -9,7 +9,6 @@ import (
 	"go.mau.fi/util/dbutil"
 
 	integrationmemory "github.com/beeper/ai-bridge/pkg/integrations/memory"
-	memorycore "github.com/beeper/ai-bridge/pkg/memory"
 )
 
 const memorySearchTimeout = 10 * time.Second
@@ -18,28 +17,28 @@ type memoryRuntimeAdapter struct {
 	client *AIClient
 }
 
-func (a *memoryRuntimeAdapter) ResolveConfig(agentID string) (*memorycore.ResolvedConfig, error) {
+func (a *memoryRuntimeAdapter) ResolveConfig(agentID string) (*integrationmemory.ResolvedConfig, error) {
 	if a == nil || a.client == nil {
 		return nil, nil
 	}
 	return resolveRecallSearchConfig(a.client, agentID)
 }
 
-func (a *memoryRuntimeAdapter) ResolveOpenAIEmbeddingConfig(cfg *memorycore.ResolvedConfig) (string, string, map[string]string) {
+func (a *memoryRuntimeAdapter) ResolveOpenAIEmbeddingConfig(cfg *integrationmemory.ResolvedConfig) (string, string, map[string]string) {
 	if a == nil {
 		return "", "", nil
 	}
 	return resolveOpenAIEmbeddingConfig(a.client, cfg)
 }
 
-func (a *memoryRuntimeAdapter) ResolveDirectOpenAIEmbeddingConfig(cfg *memorycore.ResolvedConfig) (string, string, map[string]string) {
+func (a *memoryRuntimeAdapter) ResolveDirectOpenAIEmbeddingConfig(cfg *integrationmemory.ResolvedConfig) (string, string, map[string]string) {
 	if a == nil {
 		return "", "", nil
 	}
 	return resolveDirectOpenAIEmbeddingConfig(a.client, cfg)
 }
 
-func (a *memoryRuntimeAdapter) ResolveGeminiEmbeddingConfig(cfg *memorycore.ResolvedConfig) (string, string, map[string]string) {
+func (a *memoryRuntimeAdapter) ResolveGeminiEmbeddingConfig(cfg *integrationmemory.ResolvedConfig) (string, string, map[string]string) {
 	if a == nil {
 		return "", "", nil
 	}

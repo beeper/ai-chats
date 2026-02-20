@@ -10,11 +10,9 @@ import (
 	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 
-	croncore "github.com/beeper/ai-bridge/pkg/cron"
 	integrationcron "github.com/beeper/ai-bridge/pkg/integrations/cron"
 	integrationmemory "github.com/beeper/ai-bridge/pkg/integrations/memory"
 	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
-	memorycore "github.com/beeper/ai-bridge/pkg/memory"
 )
 
 const (
@@ -567,7 +565,7 @@ func (c *corePromptIntegration) AugmentPrompt(
 
 type cronConnectorHostAdapter struct {
 	client  *AIClient
-	service *croncore.CronService
+	service *integrationcron.Service
 }
 
 func (a *cronConnectorHostAdapter) ToolDefinitions(_ context.Context, _ integrationruntime.ToolScope) []integrationruntime.ToolDefinition {
@@ -625,23 +623,23 @@ func (a *cronConnectorHostAdapter) Status() (bool, string, int, *int64, error) {
 	return a.service.Status()
 }
 
-func (a *cronConnectorHostAdapter) List(includeDisabled bool) ([]croncore.CronJob, error) {
+func (a *cronConnectorHostAdapter) List(includeDisabled bool) ([]integrationcron.Job, error) {
 	if a == nil || a.client == nil || a.service == nil {
 		return nil, errors.New("cron service not available")
 	}
 	return a.service.List(includeDisabled)
 }
 
-func (a *cronConnectorHostAdapter) Add(input croncore.CronJobCreate) (croncore.CronJob, error) {
+func (a *cronConnectorHostAdapter) Add(input integrationcron.JobCreate) (integrationcron.Job, error) {
 	if a == nil || a.client == nil || a.service == nil {
-		return croncore.CronJob{}, errors.New("cron service not available")
+		return integrationcron.Job{}, errors.New("cron service not available")
 	}
 	return a.service.Add(input)
 }
 
-func (a *cronConnectorHostAdapter) Update(id string, patch croncore.CronJobPatch) (croncore.CronJob, error) {
+func (a *cronConnectorHostAdapter) Update(id string, patch integrationcron.JobPatch) (integrationcron.Job, error) {
 	if a == nil || a.client == nil || a.service == nil {
-		return croncore.CronJob{}, errors.New("cron service not available")
+		return integrationcron.Job{}, errors.New("cron service not available")
 	}
 	return a.service.Update(id, patch)
 }
@@ -667,7 +665,7 @@ func (a *cronConnectorHostAdapter) Wake(mode string, text string) (bool, error) 
 	return a.service.Wake(mode, text)
 }
 
-func (a *cronConnectorHostAdapter) Runs(jobID string, limit int) ([]croncore.CronRunLogEntry, error) {
+func (a *cronConnectorHostAdapter) Runs(jobID string, limit int) ([]integrationcron.RunLogEntry, error) {
 	if a == nil || a.client == nil {
 		return nil, errors.New("cron service not available")
 	}
@@ -769,49 +767,14 @@ func (m *memoryManagerAdapter) Status() integrationmemory.ProviderStatus {
 	if m == nil || m.manager == nil {
 		return integrationmemory.ProviderStatus{}
 	}
-	status := m.manager.Status()
-	var fallback *integrationmemory.FallbackStatus
-	if status.Fallback != nil {
-		fallback = &integrationmemory.FallbackStatus{
-			From:   status.Fallback.From,
-			Reason: status.Fallback.Reason,
-		}
-	}
-	return integrationmemory.ProviderStatus{
-		Provider: status.Provider,
-		Model:    status.Model,
-		Fallback: fallback,
-	}
+	return m.manager.Status()
 }
 
 func (m *memoryManagerAdapter) Search(ctx context.Context, query string, opts integrationmemory.SearchOptions) ([]integrationmemory.SearchResult, error) {
 	if m == nil || m.manager == nil {
 		return nil, errors.New("memory search unavailable")
 	}
-	searchOpts := memorycore.SearchOptions{
-		MaxResults: opts.MaxResults,
-		MinScore:   opts.MinScore,
-		SessionKey: opts.SessionKey,
-		Mode:       opts.Mode,
-		Sources:    opts.Sources,
-		PathPrefix: opts.PathPrefix,
-	}
-	results, err := m.manager.Search(ctx, query, searchOpts)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]integrationmemory.SearchResult, 0, len(results))
-	for _, entry := range results {
-		out = append(out, integrationmemory.SearchResult{
-			Path:      entry.Path,
-			StartLine: entry.StartLine,
-			EndLine:   entry.EndLine,
-			Score:     entry.Score,
-			Snippet:   entry.Snippet,
-			Source:    entry.Source,
-		})
-	}
-	return out, nil
+	return m.manager.Search(ctx, query, opts)
 }
 
 func (m *memoryManagerAdapter) ReadFile(ctx context.Context, relPath string, from, lines *int) (map[string]any, error) {

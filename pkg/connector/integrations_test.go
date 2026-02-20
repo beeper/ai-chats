@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/openai/openai-go/v3"
@@ -81,5 +82,65 @@ func TestPromptIntegrationRegistryOrder(t *testing.T) {
 	out := reg.augmentPrompt(context.Background(), integrationruntime.PromptScope{}, base)
 	if len(out) != 3 {
 		t.Fatalf("expected augmented prompt len=3, got %d", len(out))
+	}
+}
+
+func TestPromptIntegrationRegistryAugmentPromptIdempotent(t *testing.T) {
+	reg := &promptIntegrationRegistry{}
+	reg.register(fakePromptIntegration{name: "one", tag: "1"})
+	reg.register(fakePromptIntegration{name: "two", tag: "2"})
+
+	base := []openai.ChatCompletionMessageParamUnion{openai.UserMessage("base")}
+	baseCopy := slices.Clone(base)
+
+	outA := reg.augmentPrompt(context.Background(), integrationruntime.PromptScope{}, base)
+	outB := reg.augmentPrompt(context.Background(), integrationruntime.PromptScope{}, base)
+	if !reflect.DeepEqual(outA, outB) {
+		t.Fatalf("augmentPrompt should be deterministic/idempotent; got outA=%v outB=%v", outA, outB)
+	}
+	if !reflect.DeepEqual(base, baseCopy) {
+		t.Fatalf("augmentPrompt mutated input prompt; got=%v want=%v", base, baseCopy)
+	}
+}
+
+type fakeLifecycleIntegration struct {
+	startCount int
+	stopCount  int
+	stopOrder  *[]string
+	name       string
+}
+
+func (f *fakeLifecycleIntegration) Start(_ context.Context) error {
+	f.startCount++
+	return nil
+}
+
+func (f *fakeLifecycleIntegration) Stop() {
+	f.stopCount++
+	if f.stopOrder != nil {
+		*f.stopOrder = append(*f.stopOrder, f.name)
+	}
+}
+
+func TestLifecycleIntegrationsStartStopOnce(t *testing.T) {
+	stopOrder := make([]string, 0, 2)
+	first := &fakeLifecycleIntegration{name: "first", stopOrder: &stopOrder}
+	second := &fakeLifecycleIntegration{name: "second", stopOrder: &stopOrder}
+
+	client := &AIClient{}
+	client.registerIntegrationModule("first", first)
+	client.registerIntegrationModule("second", second)
+
+	client.startLifecycleIntegrations(context.Background())
+	if first.startCount != 1 || second.startCount != 1 {
+		t.Fatalf("expected one start call each, got first=%d second=%d", first.startCount, second.startCount)
+	}
+
+	client.stopLifecycleIntegrations()
+	if first.stopCount != 1 || second.stopCount != 1 {
+		t.Fatalf("expected one stop call each, got first=%d second=%d", first.stopCount, second.stopCount)
+	}
+	if !reflect.DeepEqual(stopOrder, []string{"second", "first"}) {
+		t.Fatalf("unexpected stop order: got=%v want=%v", stopOrder, []string{"second", "first"})
 	}
 }

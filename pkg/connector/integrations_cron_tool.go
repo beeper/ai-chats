@@ -11,7 +11,6 @@ import (
 
 	"github.com/beeper/ai-bridge/pkg/agents"
 	agenttools "github.com/beeper/ai-bridge/pkg/agents/tools"
-	"github.com/beeper/ai-bridge/pkg/cron"
 	integrationcron "github.com/beeper/ai-bridge/pkg/integrations/cron"
 )
 
@@ -74,7 +73,7 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 				"error":  "job required",
 			}).Text(), nil
 		}
-		jobInput, err := cron.NormalizeCronJobCreateRaw(jobRaw)
+		jobInput, err := integrationcron.NormalizeJobCreateRaw(jobRaw)
 		if err != nil {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
@@ -96,13 +95,13 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 				"error":  "payload.kind is required",
 			}).Text(), nil
 		}
-		if result := cron.ValidateSchedule(jobInput.Schedule); !result.Ok {
+		if result := integrationcron.ValidateSchedule(jobInput.Schedule); !result.Ok {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
 				"error":  result.Message,
 			}).Text(), nil
 		}
-		if result := cron.ValidateScheduleTimestamp(jobInput.Schedule, time.Now().UnixMilli()); !result.Ok {
+		if result := integrationcron.ValidateScheduleTimestamp(jobInput.Schedule, time.Now().UnixMilli()); !result.Ok {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
 				"error":  result.Message,
@@ -135,7 +134,7 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 				"error":  "patch required",
 			}).Text(), nil
 		}
-		patch, err := cron.NormalizeCronJobPatchRaw(rawPatch)
+		patch, err := integrationcron.NormalizeJobPatchRaw(rawPatch)
 		if err != nil {
 			return agenttools.JSONResult(map[string]any{
 				"status": "error",
@@ -151,13 +150,13 @@ func executeCron(ctx context.Context, args map[string]any) (string, error) {
 			}
 		}
 		if patch.Schedule != nil {
-			if result := cron.ValidateSchedule(*patch.Schedule); !result.Ok {
+			if result := integrationcron.ValidateSchedule(*patch.Schedule); !result.Ok {
 				return agenttools.JSONResult(map[string]any{
 					"status": "error",
 					"error":  result.Message,
 				}).Text(), nil
 			}
-			if result := cron.ValidateScheduleTimestamp(*patch.Schedule, time.Now().UnixMilli()); !result.Ok {
+			if result := integrationcron.ValidateScheduleTimestamp(*patch.Schedule, time.Now().UnixMilli()); !result.Ok {
 				return agenttools.JSONResult(map[string]any{
 					"status": "error",
 					"error":  result.Message,
@@ -271,13 +270,13 @@ func readCronJobID(args map[string]any) string {
 	return strings.TrimSpace(agenttools.ReadStringDefault(args, "jobId", ""))
 }
 
-func selectCronPatch(args map[string]any) any {
+func selectCronPatch(args map[string]any) map[string]any {
 	if args == nil {
 		return nil
 	}
 	if raw, ok := args["patch"]; ok {
-		if _, ok := raw.(map[string]any); ok {
-			return raw
+		if patch, ok := raw.(map[string]any); ok {
+			return patch
 		}
 	}
 	return nil
@@ -293,7 +292,7 @@ func readCronJobInput(args map[string]any) map[string]any {
 	return nil
 }
 
-func injectCronContext(job *cron.CronJobCreate, btc *BridgeToolContext) {
+func injectCronContext(job *integrationcron.JobCreate, btc *BridgeToolContext) {
 	if job == nil || btc == nil {
 		return
 	}
@@ -317,18 +316,18 @@ func injectCronContext(job *cron.CronJobCreate, btc *BridgeToolContext) {
 	// For isolated announce jobs created from a room, pin delivery target to that room.
 	// This avoids depending on "last activity" metadata for routing.
 	if !sourceInternal && btc.Portal != nil && btc.Portal.MXID != "" &&
-		job.SessionTarget == cron.CronSessionIsolated &&
+		job.SessionTarget == integrationcron.SessionIsolated &&
 		strings.EqualFold(strings.TrimSpace(job.Payload.Kind), "agentTurn") {
 		if job.Delivery == nil {
-			job.Delivery = &cron.CronDelivery{Mode: cron.CronDeliveryAnnounce}
+			job.Delivery = &integrationcron.Delivery{Mode: integrationcron.DeliveryAnnounce}
 		}
 		mode := job.Delivery.Mode
 		if strings.TrimSpace(string(mode)) == "" {
-			mode = cron.CronDeliveryAnnounce
+			mode = integrationcron.DeliveryAnnounce
 			job.Delivery.Mode = mode
 		}
 		channel := strings.ToLower(strings.TrimSpace(job.Delivery.Channel))
-		if mode == cron.CronDeliveryAnnounce &&
+		if mode == integrationcron.DeliveryAnnounce &&
 			strings.TrimSpace(job.Delivery.To) == "" &&
 			(channel == "" || channel == "last" || channel == "matrix") {
 			job.Delivery.Channel = "matrix"
@@ -358,7 +357,7 @@ const (
 	reminderContextMarker        = "\n\nRecent context:\n"
 )
 
-func injectCronReminderContext(job *cron.CronJobCreate, btc *BridgeToolContext, count int) {
+func injectCronReminderContext(job *integrationcron.JobCreate, btc *BridgeToolContext, count int) {
 	if job == nil || btc == nil || btc.Client == nil {
 		return
 	}
@@ -466,7 +465,7 @@ func truncateContextText(input string, maxLen int) string {
 	return truncated + "..."
 }
 
-func (oc *AIClient) readCronRuns(jobID string, limit int) ([]cron.CronRunLogEntry, error) {
+func (oc *AIClient) readCronRuns(jobID string, limit int) ([]integrationcron.RunLogEntry, error) {
 	if oc == nil || oc.schedulerModule() == nil {
 		return nil, errors.New("cron service not available")
 	}
@@ -484,11 +483,11 @@ func (oc *AIClient) readCronRuns(jobID string, limit int) ([]cron.CronRunLogEntr
 	cronBackend := &cronStoreBackendAdapter{backend: &lazyStoreBackend{client: oc}}
 	trimmed := strings.TrimSpace(jobID)
 	if trimmed != "" {
-		path := cron.ResolveCronRunLogPath(storePath, trimmed)
-		return cron.ReadCronRunLogEntries(context.Background(), integrationcron.NewStoreBackendAdapter(cronBackend), path, limit, trimmed)
+		path := integrationcron.ResolveRunLogPath(storePath, trimmed)
+		return integrationcron.ReadRunLogEntries(context.Background(), integrationcron.NewStoreBackendAdapter(cronBackend), path, limit, trimmed)
 	}
-	entries := make([]cron.CronRunLogEntry, 0)
-	runDir := cron.ResolveCronRunLogDir(storePath)
+	entries := make([]integrationcron.RunLogEntry, 0)
+	runDir := integrationcron.ResolveRunLogDir(storePath)
 	storeEntries, err := stateBackend.List(context.Background(), runDir)
 	if err != nil {
 		return entries, nil
@@ -497,12 +496,12 @@ func (oc *AIClient) readCronRuns(jobID string, limit int) ([]cron.CronRunLogEntr
 		if !strings.HasSuffix(strings.ToLower(se.Key), ".jsonl") {
 			continue
 		}
-		list := cron.ParseCronRunLogEntries(string(se.Data), limit, "")
+		list := integrationcron.ParseRunLogEntries(string(se.Data), limit, "")
 		if len(list) > 0 {
 			entries = append(entries, list...)
 		}
 	}
-	slices.SortFunc(entries, func(a, b cron.CronRunLogEntry) int {
+	slices.SortFunc(entries, func(a, b integrationcron.RunLogEntry) int {
 		return cmp.Compare(a.TS, b.TS)
 	})
 	if len(entries) > limit {
@@ -511,8 +510,8 @@ func (oc *AIClient) readCronRuns(jobID string, limit int) ([]cron.CronRunLogEntr
 	return entries, nil
 }
 
-func cronRunLogEntryFromEvent(evt cron.CronEvent) cron.CronRunLogEntry {
-	return cron.CronRunLogEntry{
+func cronRunLogEntryFromEvent(evt integrationcron.Event) integrationcron.RunLogEntry {
+	return integrationcron.RunLogEntry{
 		TS:          time.Now().UnixMilli(),
 		JobID:       evt.JobID,
 		Action:      evt.Action,
