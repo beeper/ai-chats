@@ -71,7 +71,7 @@ func (m *MemorySearchManager) syncSessions(ctx context.Context, force bool, sess
 		if !ok || meta == nil {
 			continue
 		}
-		if meta.IsCronRoom {
+		if meta.IsSchedulerRoom {
 			continue
 		}
 		if resolveAgentID(meta) != m.agentID {
@@ -226,7 +226,7 @@ func (m *MemorySearchManager) prepareSessions(ctx context.Context, force bool, s
 			}
 		}
 		meta, ok := portal.Metadata.(*PortalMetadata)
-		if !ok || meta == nil || meta.IsCronRoom {
+		if !ok || meta == nil || meta.IsSchedulerRoom {
 			continue
 		}
 		if resolveAgentID(meta) != m.agentID {
@@ -365,7 +365,7 @@ func (m *MemorySearchManager) writeSessions(ctx context.Context, force bool, ses
 			}
 		}
 		meta, ok := portal.Metadata.(*PortalMetadata)
-		if !ok || meta == nil || meta.IsCronRoom {
+		if !ok || meta == nil || meta.IsSchedulerRoom {
 			continue
 		}
 		if resolveAgentID(meta) != m.agentID {

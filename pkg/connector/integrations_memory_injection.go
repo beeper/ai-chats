@@ -48,7 +48,7 @@ func (oc *AIClient) injectMemoryContext(
 		}
 	}
 
-	shouldBootstrap := meta.MemoryBootstrapAt == 0
+	shouldBootstrap := meta.RecallBootstrapAt == 0
 	if shouldBootstrap {
 		_, loc := oc.resolveUserTimezone()
 		now := time.Now().In(loc)
@@ -60,7 +60,7 @@ func (oc *AIClient) injectMemoryContext(
 		if section := readMemorySection(ctx, store, fmt.Sprintf("memory/%s.md", yesterday)); section != "" {
 			sections = append(sections, section)
 		}
-		meta.MemoryBootstrapAt = time.Now().UnixMilli()
+		meta.RecallBootstrapAt = time.Now().UnixMilli()
 		oc.savePortalQuiet(ctx, portal, "memory bootstrap")
 	}
 

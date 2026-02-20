@@ -12,6 +12,8 @@ import (
 	"github.com/beeper/ai-bridge/pkg/shared/httputil"
 )
 
+type recallAgentSearchConfig = agents.MemorySearchConfig
+
 func resolveMemorySearchConfig(client *AIClient, agentID string) (*memory.ResolvedConfig, error) {
 	if client == nil || client.connector == nil {
 		return nil, errors.New("missing connector")

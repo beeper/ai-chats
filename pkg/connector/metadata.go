@@ -202,9 +202,9 @@ type PortalMetadata struct {
 	SessionResetAt             int64            `json:"session_reset_at,omitempty"`
 	AbortedLastRun             bool             `json:"aborted_last_run,omitempty"`
 	CompactionCount            int              `json:"compaction_count,omitempty"`
-	MemoryFlushAt              int64            `json:"memory_flush_at,omitempty"`
-	MemoryFlushCompactionCount int              `json:"memory_flush_compaction_count,omitempty"`
-	MemoryBootstrapAt          int64            `json:"memory_bootstrap_at,omitempty"`
+	RecallFlushAt              int64            `json:"memory_flush_at,omitempty"`
+	RecallFlushCompactionCount int              `json:"memory_flush_compaction_count,omitempty"`
+	RecallBootstrapAt          int64            `json:"memory_bootstrap_at,omitempty"`
 	SessionBootstrappedAt      int64            `json:"session_bootstrapped_at,omitempty"`
 	SessionBootstrapByAgent    map[string]int64 `json:"session_bootstrap_by_agent,omitempty"`
 
@@ -213,8 +213,8 @@ type PortalMetadata struct {
 	AgentPrompt          string `json:"agent_prompt,omitempty"`            // Cached prompt for the assigned agent
 	IsBuilderRoom        bool   `json:"is_builder_room,omitempty"`         // True if this is the Manage AI Chats room (protected from overrides)
 	IsRawMode            bool   `json:"is_raw_mode,omitempty"`             // True if this is a playground/raw mode room (no directive processing)
-	IsCronRoom           bool   `json:"is_cron_room,omitempty"`            // True if this is a hidden cron room
-	CronJobID            string `json:"cron_job_id,omitempty"`             // Cron job ID for cron rooms
+	IsSchedulerRoom      bool   `json:"is_scheduler_room,omitempty"`       // True if this is a hidden scheduler room
+	SchedulerJobID       string `json:"scheduler_job_id,omitempty"`        // Scheduler job ID for scheduler rooms
 	SubagentParentRoomID string `json:"subagent_parent_room_id,omitempty"` // Parent room ID for subagent sessions
 
 	// Ack reaction config - similar to OpenClaw's ack reactions

@@ -131,6 +131,10 @@ var memoryManagerCache = struct {
 	managers: make(map[string]*MemorySearchManager),
 }
 
+func (oc *AIClient) getMemoryManager(agentID string) (*MemorySearchManager, string) {
+	return getMemorySearchManager(oc, agentID)
+}
+
 func getMemorySearchManager(client *AIClient, agentID string) (*MemorySearchManager, string) {
 	if client == nil || client.connector == nil {
 		return nil, "memory search unavailable"

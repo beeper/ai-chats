@@ -20,10 +20,10 @@ func TestMaybeRunMemoryFlush_SkipsInRawMode(t *testing.T) {
 		},
 	)
 
-	if meta.MemoryFlushAt != 0 {
-		t.Fatalf("expected MemoryFlushAt to remain unset in raw mode, got %d", meta.MemoryFlushAt)
+	if meta.RecallFlushAt != 0 {
+		t.Fatalf("expected RecallFlushAt to remain unset in raw mode, got %d", meta.RecallFlushAt)
 	}
-	if meta.MemoryFlushCompactionCount != 0 {
-		t.Fatalf("expected MemoryFlushCompactionCount to remain unset in raw mode, got %d", meta.MemoryFlushCompactionCount)
+	if meta.RecallFlushCompactionCount != 0 {
+		t.Fatalf("expected RecallFlushCompactionCount to remain unset in raw mode, got %d", meta.RecallFlushCompactionCount)
 	}
 }

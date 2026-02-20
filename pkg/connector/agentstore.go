@@ -243,7 +243,7 @@ func ToAgentDefinitionContent(agent *agents.AgentDefinition) *AgentDefinitionCon
 	}
 
 	if agent.MemorySearch != nil {
-		content.MemorySearch = agent.MemorySearch
+		content.RecallSearch = agent.MemorySearch
 	}
 
 	return content
@@ -279,8 +279,8 @@ func FromAgentDefinitionContent(content *AgentDefinitionContent) *agents.AgentDe
 		}
 	}
 
-	if content.MemorySearch != nil {
-		def.MemorySearch = content.MemorySearch
+	if content.RecallSearch != nil {
+		def.MemorySearch = content.RecallSearch
 	}
 
 	return def

@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beeper/ai-bridge/pkg/memory"
+	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
 	"github.com/beeper/ai-bridge/pkg/shared/calc"
 	"github.com/beeper/ai-bridge/pkg/shared/media"
 	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
@@ -34,13 +34,8 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-// ToolDefinition defines a tool that can be used by the AI
-type ToolDefinition struct {
-	Name        string
-	Description string
-	Parameters  map[string]any
-	Execute     func(ctx context.Context, args map[string]any) (string, error)
-}
+// ToolDefinition defines a tool that can be used by the AI.
+type ToolDefinition = integrationruntime.ToolDefinition
 
 var imageFetchHTTPClient = &http.Client{Timeout: 30 * time.Second}
 
@@ -96,13 +91,11 @@ const ToolNameImageGenerate = toolspec.ImageGenerateName
 // ToolNameSessionStatus is the name of the session status tool.
 const ToolNameSessionStatus = toolspec.SessionStatusName
 
-// ToolNameCron is the name of the cron tool.
-const ToolNameCron = toolspec.CronName
+const ToolNameScheduler = integrationToolSchedulerName
 
-// Memory tool names (matching OpenClaw interface)
 const (
-	ToolNameMemorySearch       = toolspec.MemorySearchName
-	ToolNameMemoryGet          = toolspec.MemoryGetName
+	ToolNameRecallSearch       = integrationToolRecallSearchName
+	ToolNameRecallGet          = integrationToolRecallGetName
 	ToolNameGravatarFetch      = toolspec.GravatarFetchName
 	ToolNameGravatarSet        = toolspec.GravatarSetName
 	ToolNameBeeperDocs         = toolspec.BeeperDocsName
@@ -112,23 +105,6 @@ const (
 	ToolNameWrite              = toolspec.WriteName
 	ToolNameEdit               = toolspec.EditName
 )
-
-type memorySearchOutput struct {
-	Results   []memory.SearchResult  `json:"results"`
-	Provider  string                 `json:"provider,omitempty"`
-	Model     string                 `json:"model,omitempty"`
-	Fallback  *memory.FallbackStatus `json:"fallback,omitempty"`
-	Citations string                 `json:"citations,omitempty"`
-	Disabled  bool                   `json:"disabled,omitempty"`
-	Error     string                 `json:"error,omitempty"`
-}
-
-type memoryGetOutput struct {
-	Path     string `json:"path"`
-	Text     string `json:"text"`
-	Disabled bool   `json:"disabled,omitempty"`
-	Error    string `json:"error,omitempty"`
-}
 
 // ImageResultPrefix is the prefix used to identify image results that need media sending.
 const ImageResultPrefix = "IMAGE:"
@@ -2026,254 +2002,6 @@ func executeEditFile(ctx context.Context, args map[string]any) (string, error) {
 		}(entry.Path)
 	}
 	return fmt.Sprintf("Replaced text in %s.", path), nil
-}
-
-// executeMemorySearch handles the memory_search tool
-func executeMemorySearch(ctx context.Context, args map[string]any) (string, error) {
-	btc := GetBridgeToolContext(ctx)
-	if btc == nil {
-		return "", errors.New("memory_search requires bridge context")
-	}
-
-	mode := ""
-	if raw, ok := args["mode"].(string); ok {
-		mode = strings.ToLower(strings.TrimSpace(raw))
-	}
-	query := ""
-	if raw, ok := args["query"].(string); ok {
-		query = strings.TrimSpace(raw)
-	}
-	if mode != "list" && query == "" {
-		return "", errors.New("query required")
-	}
-	var maxResults *int
-	var minScore *float64
-
-	if raw := args["maxResults"]; raw != nil {
-		if max, ok := readNumberArg(raw); ok {
-			val := int(max)
-			maxResults = &val
-		}
-	}
-	if raw := args["minScore"]; raw != nil {
-		if score, ok := readNumberArg(raw); ok {
-			minScore = &score
-		}
-	}
-
-	meta := portalMeta(btc.Portal)
-	agentID := resolveAgentID(meta)
-	manager, errMsg := getMemorySearchManager(btc.Client, agentID)
-	if manager == nil {
-		payload := memorySearchOutput{
-			Results:  []memory.SearchResult{},
-			Disabled: true,
-			Error:    errMsg,
-		}
-		output, _ := json.MarshalIndent(payload, "", "  ")
-		return string(output), nil
-	}
-
-	opts := memory.SearchOptions{
-		SessionKey: btc.Portal.PortalKey.String(),
-		MinScore:   math.NaN(),
-		Mode:       mode,
-	}
-	if maxResults != nil {
-		opts.MaxResults = *maxResults
-	}
-	if minScore != nil {
-		opts.MinScore = *minScore
-	}
-	if raw, ok := args["pathPrefix"].(string); ok {
-		opts.PathPrefix = strings.TrimSpace(raw)
-	}
-	if raw := args["sources"]; raw != nil {
-		if list, ok := raw.([]any); ok {
-			out := make([]string, 0, len(list))
-			for _, item := range list {
-				if s, ok := item.(string); ok {
-					if trimmed := strings.TrimSpace(s); trimmed != "" {
-						out = append(out, trimmed)
-					}
-				}
-			}
-			if len(out) > 0 {
-				opts.Sources = out
-			}
-		} else if list, ok := raw.([]string); ok {
-			out := make([]string, 0, len(list))
-			for _, s := range list {
-				if trimmed := strings.TrimSpace(s); trimmed != "" {
-					out = append(out, trimmed)
-				}
-			}
-			if len(out) > 0 {
-				opts.Sources = out
-			}
-		}
-	}
-	searchCtx, searchCancel := context.WithTimeout(ctx, memorySearchTimeout)
-	defer searchCancel()
-	results, err := manager.Search(searchCtx, query, opts)
-	if err != nil {
-		payload := memorySearchOutput{
-			Results:  []memory.SearchResult{},
-			Disabled: true,
-			Error:    err.Error(),
-		}
-		output, _ := json.MarshalIndent(payload, "", "  ")
-		return string(output), nil
-	}
-
-	status := manager.Status()
-	citationsMode := resolveMemoryCitationsMode(btc.Client)
-	includeCitations := shouldIncludeMemoryCitations(ctx, btc.Client, btc.Portal, citationsMode)
-	decorated := decorateMemorySearchResults(results, includeCitations)
-	payload := memorySearchOutput{
-		Results:   decorated,
-		Provider:  status.Provider,
-		Model:     status.Model,
-		Fallback:  status.Fallback,
-		Citations: citationsMode,
-	}
-	output, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		return "", fmt.Errorf("couldn't format results: %w", err)
-	}
-
-	return string(output), nil
-}
-
-// executeMemoryGet handles the memory_get tool
-func executeMemoryGet(ctx context.Context, args map[string]any) (string, error) {
-	btc := GetBridgeToolContext(ctx)
-	if btc == nil {
-		return "", errors.New("memory_get requires bridge context")
-	}
-
-	pathRaw, ok := args["path"].(string)
-	path := strings.TrimSpace(pathRaw)
-	if !ok || path == "" {
-		return "", errors.New("path required")
-	}
-
-	meta := portalMeta(btc.Portal)
-	agentID := resolveAgentID(meta)
-	manager, errMsg := getMemorySearchManager(btc.Client, agentID)
-	if manager == nil {
-		payload := memoryGetOutput{
-			Path:     path,
-			Text:     "",
-			Disabled: true,
-			Error:    errMsg,
-		}
-		output, _ := json.MarshalIndent(payload, "", "  ")
-		return string(output), nil
-	}
-
-	var from *int
-	var lines *int
-	if raw := args["from"]; raw != nil {
-		if value, ok := readNumberArg(raw); ok {
-			val := int(value)
-			from = &val
-		}
-	}
-	if raw := args["lines"]; raw != nil {
-		if value, ok := readNumberArg(raw); ok {
-			val := int(value)
-			lines = &val
-		}
-	}
-
-	result, err := manager.ReadFile(ctx, path, from, lines)
-	if err != nil {
-		payload := memoryGetOutput{
-			Path:     path,
-			Text:     "",
-			Disabled: true,
-			Error:    err.Error(),
-		}
-		output, _ := json.MarshalIndent(payload, "", "  ")
-		return string(output), nil
-	}
-	text, _ := result["text"].(string)
-	resolvedPath, _ := result["path"].(string)
-	if resolvedPath == "" {
-		resolvedPath = path
-	}
-	payload := memoryGetOutput{
-		Path: resolvedPath,
-		Text: text,
-	}
-	output, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		return "", fmt.Errorf("couldn't format the result: %w", err)
-	}
-
-	return string(output), nil
-}
-
-func resolveMemoryCitationsMode(client *AIClient) string {
-	if client == nil || client.connector == nil || client.connector.Config.Memory == nil {
-		return "auto"
-	}
-	mode := strings.ToLower(strings.TrimSpace(client.connector.Config.Memory.Citations))
-	switch mode {
-	case "on", "off", "auto":
-		return mode
-	default:
-		return "auto"
-	}
-}
-
-func shouldIncludeMemoryCitations(ctx context.Context, client *AIClient, portal *bridgev2.Portal, mode string) bool {
-	switch strings.ToLower(strings.TrimSpace(mode)) {
-	case "on":
-		return true
-	case "off":
-		return false
-	default:
-	}
-	if client == nil || portal == nil {
-		return true
-	}
-	return !client.isGroupChat(ctx, portal)
-}
-
-func decorateMemorySearchResults(results []memory.SearchResult, include bool) []memory.SearchResult {
-	if !include || len(results) == 0 {
-		return results
-	}
-	out := make([]memory.SearchResult, 0, len(results))
-	for _, entry := range results {
-		next := entry
-		citation := formatMemoryCitation(entry)
-		if citation != "" {
-			snippet := strings.TrimSpace(entry.Snippet)
-			if snippet != "" {
-				next.Snippet = fmt.Sprintf("%s\n\nSource: %s", snippet, citation)
-			} else {
-				next.Snippet = fmt.Sprintf("Source: %s", citation)
-			}
-		}
-		out = append(out, next)
-	}
-	return out
-}
-
-func formatMemoryCitation(entry memory.SearchResult) string {
-	if strings.TrimSpace(entry.Path) == "" {
-		return ""
-	}
-	if entry.StartLine > 0 && entry.EndLine > 0 {
-		if entry.StartLine == entry.EndLine {
-			return fmt.Sprintf("%s#L%d", entry.Path, entry.StartLine)
-		}
-		return fmt.Sprintf("%s#L%d-L%d", entry.Path, entry.StartLine, entry.EndLine)
-	}
-	return entry.Path
 }
 
 func readNumberArg(raw any) (float64, bool) {

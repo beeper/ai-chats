@@ -11,7 +11,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/commands"
 
 	"github.com/beeper/ai-bridge/pkg/connector/commandregistry"
-	"github.com/beeper/ai-bridge/pkg/memory"
+	integrationmemory "github.com/beeper/ai-bridge/pkg/integrations/memory"
 	"github.com/beeper/ai-bridge/pkg/textfs"
 )
 
@@ -37,6 +37,11 @@ func fnMemory(ce *commands.Event) {
 	if !ok {
 		return
 	}
+	if client.recallIntegration == nil {
+		ce.Reply("Memory integration unavailable.")
+		return
+	}
+	scope := client.toolScope(ce.Portal, meta)
 	if len(ce.Args) == 0 {
 		ce.Reply("Usage: !ai memory <status|reindex|search|get|set|append> ...")
 		return
@@ -60,7 +65,7 @@ func fnMemory(ce *commands.Event) {
 			Bool("hasPortal", ce.Portal != nil).
 			Msg("memory cmd start")
 
-		manager, errMsg := getMemorySearchManager(client, resolveAgentID(meta))
+		manager, errMsg := client.recallIntegration.GetManager(scope)
 		if manager == nil {
 			client.Log().Info().
 				Str("cmd", "memory status").
@@ -191,7 +196,7 @@ func fnMemory(ce *commands.Event) {
 			Msg("memory cmd done")
 		return
 	case "reindex":
-		manager, errMsg := getMemorySearchManager(client, resolveAgentID(meta))
+		manager, errMsg := client.recallIntegration.GetManager(scope)
 		if manager == nil {
 			ce.Reply("Memory search disabled: %s", errMsg)
 			return
@@ -200,7 +205,7 @@ func fnMemory(ce *commands.Event) {
 		onProgress := func(completed, total int, label string) {
 			ce.Reply("Indexing %d/%d: %s", completed+1, total, label)
 		}
-		if err := manager.syncWithProgress(ce.Ctx, "", true, onProgress); err != nil {
+		if err := manager.SyncWithProgress(ce.Ctx, onProgress); err != nil {
 			ce.Reply("Couldn't reindex memory: %v", err)
 			return
 		}
@@ -211,7 +216,7 @@ func fnMemory(ce *commands.Event) {
 			ce.Reply("Usage: !ai memory search <query> [maxResults] [minScore]")
 			return
 		}
-		manager, errMsg := getMemorySearchManager(client, resolveAgentID(meta))
+		manager, errMsg := client.recallIntegration.GetManager(scope)
 		if manager == nil {
 			ce.Reply("Memory search disabled: %s", errMsg)
 			return
@@ -221,7 +226,7 @@ func fnMemory(ce *commands.Event) {
 		if ce.Portal != nil {
 			sessionKey = ce.Portal.PortalKey.String()
 		}
-		opts := memory.SearchOptions{
+		opts := integrationmemory.SearchOptions{
 			SessionKey: sessionKey,
 			MinScore:   math.NaN(),
 		}
@@ -267,7 +272,7 @@ func fnMemory(ce *commands.Event) {
 			ce.Reply("Usage: !ai memory get <path> [from] [lines]")
 			return
 		}
-		manager, errMsg := getMemorySearchManager(client, resolveAgentID(meta))
+		manager, errMsg := client.recallIntegration.GetManager(scope)
 		if manager == nil {
 			ce.Reply("Memory search disabled: %s", errMsg)
 			return
