@@ -659,7 +659,7 @@ func compactSystemEvent(line string) string {
 	if strings.Contains(lowered, "reason periodic") {
 		return ""
 	}
-	// Filter out the actual heartbeat prompt, but not scheduler jobs that mention "heartbeat".
+		// Filter out the actual heartbeat prompt, but not integration jobs that mention "heartbeat".
 	if strings.HasPrefix(lowered, "read heartbeat.md") {
 		return ""
 	}

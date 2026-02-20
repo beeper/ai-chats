@@ -565,7 +565,7 @@ func (oc *AIClient) sendPlainAssistantMessage(ctx context.Context, portal *bridg
 }
 
 // sendPlainAssistantMessageWithResult is used by automated delivery paths where failures should be
-// observable by the caller (e.g. so the scheduler doesn't get stuck on a blocked send forever).
+// observable by the caller (e.g. so a background runner doesn't get stuck on a blocked send forever).
 func (oc *AIClient) sendPlainAssistantMessageWithResult(ctx context.Context, portal *bridgev2.Portal, text string) error {
 	if portal == nil || portal.MXID == "" {
 		return nil

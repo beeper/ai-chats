@@ -1037,7 +1037,7 @@ func (oc *AIClient) Disconnect() {
 		oc.heartbeatRunner.Stop()
 	}
 
-	// Stop all recall managers for this login (releases goroutines/timers).
+		// Stop all login-scoped integration workers for this login.
 	if oc.UserLogin != nil && oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.DB != nil {
 		bridgeID := string(oc.UserLogin.Bridge.DB.BridgeID)
 		loginID := string(oc.UserLogin.ID)
