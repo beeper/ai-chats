@@ -139,7 +139,7 @@ func purgeVectorRowsBestEffort(ctx context.Context, login *bridgev2.UserLogin, b
 		return
 	}
 
-	cfg, err := resolveMemorySearchConfig(client, "")
+	cfg, err := resolveRecallSearchConfig(client, "")
 	if err != nil || cfg == nil || !cfg.Store.Vector.Enabled {
 		return
 	}

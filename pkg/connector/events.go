@@ -677,7 +677,7 @@ type AgentDefinitionContent struct {
 	IdentityName    string                       `json:"identity_name,omitempty"`
 	IdentityPersona string                       `json:"identity_persona,omitempty"`
 	IsPreset        bool                         `json:"is_preset,omitempty"`
-	RecallSearch    *recallAgentSearchConfig     `json:"memory_search,omitempty"`
+	RecallSearch    *recallAgentSearchConfig     `json:"recall_search,omitempty"`
 	HeartbeatPrompt string                       `json:"heartbeat_prompt,omitempty"`
 	CreatedAt       int64                        `json:"created_at"`
 	UpdatedAt       int64                        `json:"updated_at"`

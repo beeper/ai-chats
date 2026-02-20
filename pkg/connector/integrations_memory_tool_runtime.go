@@ -9,7 +9,13 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
+
+	integrationmemory "github.com/beeper/ai-bridge/pkg/integrations/memory"
 )
+
+type recallSearchOptions = integrationmemory.SearchOptions
+type recallSearchResult = integrationmemory.SearchResult
+type recallFallbackStatus = integrationmemory.FallbackStatus
 
 type recallSearchOutput struct {
 	Results   []recallSearchResult  `json:"results"`
@@ -233,10 +239,10 @@ func executeRecallGet(ctx context.Context, args map[string]any) (string, error) 
 }
 
 func resolveRecallCitationsMode(client *AIClient) string {
-	if client == nil || client.connector == nil || client.connector.Config.Memory == nil {
+	if client == nil || client.connector == nil || client.connector.Config.Recall == nil {
 		return "auto"
 	}
-	mode := strings.ToLower(strings.TrimSpace(client.connector.Config.Memory.Citations))
+	mode := strings.ToLower(strings.TrimSpace(client.connector.Config.Recall.Citations))
 	switch mode {
 	case "on", "off", "auto":
 		return mode

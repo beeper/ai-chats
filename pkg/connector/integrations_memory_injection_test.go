@@ -27,7 +27,7 @@ func TestInjectMemoryContextDisabledWhenConfigOff(t *testing.T) {
 	client := &AIClient{
 		connector: &OpenAIConnector{
 			Config: Config{
-				Memory: &MemoryConfig{
+				Recall: &RecallConfig{
 					InjectContext: false,
 				},
 			},

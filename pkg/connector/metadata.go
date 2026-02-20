@@ -202,9 +202,9 @@ type PortalMetadata struct {
 	SessionResetAt             int64            `json:"session_reset_at,omitempty"`
 	AbortedLastRun             bool             `json:"aborted_last_run,omitempty"`
 	CompactionCount            int              `json:"compaction_count,omitempty"`
-	RecallFlushAt              int64            `json:"memory_flush_at,omitempty"`
-	RecallFlushCompactionCount int              `json:"memory_flush_compaction_count,omitempty"`
-	RecallBootstrapAt          int64            `json:"memory_bootstrap_at,omitempty"`
+	RecallFlushAt              int64            `json:"recall_flush_at,omitempty"`
+	RecallFlushCompactionCount int              `json:"recall_flush_compaction_count,omitempty"`
+	RecallBootstrapAt          int64            `json:"recall_bootstrap_at,omitempty"`
 	SessionBootstrappedAt      int64            `json:"session_bootstrapped_at,omitempty"`
 	SessionBootstrapByAgent    map[string]int64 `json:"session_bootstrap_by_agent,omitempty"`
 
