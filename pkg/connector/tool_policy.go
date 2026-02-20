@@ -44,6 +44,10 @@ func (oc *AIClient) isToolAvailable(meta *PortalMetadata, toolName string) (bool
 		return false, SourceGlobalDefault, "Missing room metadata"
 	}
 
+	if known, available, source, reason := oc.integratedToolAvailability(meta, toolName); known {
+		return available, source, reason
+	}
+
 	if !meta.Capabilities.SupportsToolCalling {
 		return false, SourceModelLimit, "Model does not support tools"
 	}
@@ -65,15 +69,6 @@ func (oc *AIClient) isToolAvailable(meta *PortalMetadata, toolName string) (bool
 		}
 	case toolspec.TTSName:
 		if ok, reason := oc.isTTSConfigured(); !ok {
-			return false, SourceProviderLimit, reason
-		}
-	case toolspec.CronName:
-		if ok, reason := oc.isCronConfigured(); !ok {
-			return false, SourceProviderLimit, reason
-		}
-	case toolspec.MemorySearchName, toolspec.MemoryGetName:
-		// Only hide when explicitly disabled; other runtime failures are surfaced by the tool.
-		if disabled, reason := oc.isMemorySearchExplicitlyDisabled(meta); disabled {
 			return false, SourceProviderLimit, reason
 		}
 	}
@@ -186,8 +181,14 @@ func (oc *AIClient) isToolEnabled(meta *PortalMetadata, toolName string) bool {
 
 func (oc *AIClient) toolNamesForPortal(meta *PortalMetadata) []string {
 	nameSet := make(map[string]struct{})
-	for _, tool := range BuiltinTools() {
-		nameSet[tool.Name] = struct{}{}
+	if oc != nil {
+		for _, tool := range oc.integratedToolDefinitions(context.Background(), nil, meta) {
+			nameSet[tool.Name] = struct{}{}
+		}
+	} else {
+		for _, tool := range BuiltinTools() {
+			nameSet[tool.Name] = struct{}{}
+		}
 	}
 	for _, tool := range agenttools.SessionTools() {
 		nameSet[tool.Name] = struct{}{}

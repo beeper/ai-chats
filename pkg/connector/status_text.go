@@ -313,7 +313,7 @@ func (oc *AIClient) estimatePromptTokens(ctx context.Context, portal *bridgev2.P
 	if err != nil {
 		return 0
 	}
-	prompt = oc.injectMemoryContext(ctx, portal, meta, prompt)
+	prompt = oc.augmentPromptWithIntegrations(ctx, portal, meta, prompt)
 	count, err := EstimateTokens(prompt, oc.effectiveModel(meta))
 	if err != nil {
 		return 0

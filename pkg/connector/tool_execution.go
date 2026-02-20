@@ -372,6 +372,22 @@ func (oc *AIClient) executeBuiltinTool(ctx context.Context, portal *bridgev2.Por
 	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
 		return "", fmt.Errorf("invalid tool arguments: %w", err)
 	}
+	meta := (*PortalMetadata)(nil)
+	if portal != nil {
+		meta = portalMeta(portal)
+	}
+	if handled, result, err := oc.executeIntegratedTool(ctx, portal, meta, normalizeToolAlias(toolName), args, argsJSON); handled {
+		return result, err
+	}
+	return oc.executeBuiltinToolDirect(ctx, portal, toolName, argsJSON)
+}
+
+func (oc *AIClient) executeBuiltinToolDirect(ctx context.Context, portal *bridgev2.Portal, toolName string, argsJSON string) (string, error) {
+	argsJSON = normalizeToolArgsJSON(argsJSON)
+	var args map[string]any
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return "", fmt.Errorf("invalid tool arguments: %w", err)
+	}
 
 	toolName = normalizeToolAlias(toolName)
 

@@ -576,7 +576,7 @@ func (oc *AIClient) enabledBuiltinToolsForModel(ctx context.Context, meta *Porta
 		mcpByName[tool.Name] = tool
 	}
 
-	builtinTools := BuiltinTools()
+	builtinTools := oc.integratedToolDefinitions(ctx, nil, meta)
 	enabled := make([]ToolDefinition, 0, len(builtinTools)+len(mcpTools))
 	seen := make(map[string]struct{}, len(builtinTools)+len(mcpTools))
 

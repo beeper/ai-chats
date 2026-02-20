@@ -70,6 +70,14 @@ func (oc *AIClient) buildAdditionalSystemPrompts(
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
 ) []openai.ChatCompletionMessageParamUnion {
+	return oc.additionalSystemMessages(ctx, portal, meta)
+}
+
+func (oc *AIClient) buildAdditionalSystemPromptsCore(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+) []openai.ChatCompletionMessageParamUnion {
 	var out []openai.ChatCompletionMessageParamUnion
 
 	// Raw mode must be simple: no extra system hints or context injection.
