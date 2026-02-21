@@ -64,7 +64,7 @@ func (oc *AIClient) saveAssistantMessage(
 	} else {
 		log.Debug().Str("msg_id", string(assistantMsg.ID)).Msg("Saved assistant message to database")
 	}
-	oc.notifySessionMemoryChange(ctx, portal, meta, false)
+	oc.notifySessionMutation(ctx, portal, meta, false)
 
 	// Save LastResponseID for "responses" mode context chaining (OpenAI-only)
 	if meta.ConversationMode == "responses" && state.responseID != "" && !oc.isOpenRouterProvider() {

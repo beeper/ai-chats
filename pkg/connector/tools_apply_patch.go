@@ -34,7 +34,7 @@ func executeApplyPatch(ctx context.Context, args map[string]any) (string, error)
 			bg, cancel := context.WithTimeout(detachedBridgeToolContext(ctx), textFSPostWriteTimeout)
 			defer cancel()
 			for _, path := range paths {
-				notifyMemoryFileChanged(bg, path)
+				notifyIntegrationFileChanged(bg, path)
 				maybeRefreshAgentIdentity(bg, path)
 			}
 		}(paths)

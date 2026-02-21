@@ -312,6 +312,10 @@ type AIClient struct {
 
 	toolRegistry   *toolIntegrationRegistry
 	promptRegistry *promptIntegrationRegistry
+	commandRegistry *commandIntegrationRegistry
+	eventRegistry   *eventIntegrationRegistry
+	overflowRegistry *overflowIntegrationRegistry
+	purgeRegistry   *purgeIntegrationRegistry
 
 	// Model catalog cache (VFS-backed)
 	modelCatalogMu     sync.Mutex
@@ -652,7 +656,7 @@ func (oc *AIClient) dispatchOrQueue(
 			}()
 			oc.dispatchCompletionInternal(runCtx, evt, portal, metaSnapshot, promptMessages)
 		}(metaSnapshot)
-		oc.notifySessionMemoryChange(ctx, portal, meta, false)
+		oc.notifySessionMutation(ctx, portal, meta, false)
 		return userMessage, true
 	}
 
@@ -687,7 +691,7 @@ func (oc *AIClient) dispatchOrQueue(
 					queueItem.pending.PendingSent = true
 					pendingSent = true
 				}
-				oc.notifySessionMemoryChange(ctx, portal, meta, false)
+				oc.notifySessionMutation(ctx, portal, meta, false)
 				return userMessage, true
 			}
 		}
@@ -721,7 +725,7 @@ func (oc *AIClient) dispatchOrQueue(
 	if evt != nil && !pendingSent {
 		oc.sendQueueAcceptedSuccess(ctx, portal, evt, queueItem.pending.StatusEvents)
 	}
-	oc.notifySessionMemoryChange(ctx, portal, meta, false)
+	oc.notifySessionMutation(ctx, portal, meta, false)
 	return userMessage, true
 }
 

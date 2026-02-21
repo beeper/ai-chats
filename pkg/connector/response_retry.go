@@ -63,7 +63,21 @@ func (oc *AIClient) responseWithRetry(
 			if !autoCompactionAttempted {
 				autoCompactionAttempted = true
 
-				oc.maybeRunMemoryFlush(ctx, portal, meta, currentPrompt)
+				handledOverflow, overflowPrompt, overflowErr := oc.runOverflowIntegrations(
+					ctx,
+					portal,
+					meta,
+					currentPrompt,
+					cle.RequestedTokens,
+					cle.ModelMaxTokens,
+					attempt+1,
+				)
+				if overflowErr != nil {
+					oc.loggerForContext(ctx).Warn().Err(overflowErr).Msg("overflow integration hook failed")
+				} else if handledOverflow && len(overflowPrompt) > 0 {
+					currentPrompt = overflowPrompt
+					continue
+				}
 
 				// Get context window from model
 				contextWindow := oc.getModelContextWindow(meta)

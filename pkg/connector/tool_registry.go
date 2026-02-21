@@ -18,12 +18,9 @@ func builtinToolExecutors() map[string]toolExecutor {
 		ToolNameMessage:            executeMessage,
 		ToolNameTTS:                executeTTS,
 		ToolNameWebFetch:           executeWebFetch,
-		ToolNameCron:               executeCron,
 		ToolNameImage:              executeAnalyzeImage,
 		ToolNameImageGenerate:      executeImageGeneration,
 		ToolNameSessionStatus:      executeSessionStatus,
-		ToolNameMemorySearch:       executeMemorySearch,
-		ToolNameMemoryGet:          executeMemoryGet,
 		ToolNameRead:               executeReadFile,
 		ToolNameApplyPatch:         executeApplyPatch,
 		ToolNameWrite:              executeWriteFile,
@@ -41,6 +38,9 @@ func buildBuiltinToolDefinitions() []ToolDefinition {
 	defs := make([]ToolDefinition, 0, len(builtin))
 	for _, tool := range builtin {
 		if tool == nil || tool.Name == "" {
+			continue
+		}
+		if tool.Name == ToolNameCron || tool.Name == ToolNameMemorySearch || tool.Name == ToolNameMemoryGet {
 			continue
 		}
 		exec := executors[tool.Name]

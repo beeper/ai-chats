@@ -32,7 +32,9 @@ func purgeLoginDataBestEffort(ctx context.Context, login *bridgev2.UserLogin) {
 		return
 	}
 
-	purgeMemoryLoginDataBestEffort(ctx, login, db, bridgeID, loginID)
+	if client, ok := login.Client.(*AIClient); ok && client != nil {
+		client.purgeLoginIntegrations(ctx, login, bridgeID, loginID)
+	}
 
 	// Bridge-internal KV state (integration state, model catalog, etc.)
 	bestEffortExec(ctx, db,
