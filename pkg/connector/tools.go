@@ -1925,7 +1925,7 @@ func executeWriteFile(ctx context.Context, args map[string]any) (string, error) 
 		go func(path string) {
 			bg, cancel := context.WithTimeout(detachedBridgeToolContext(ctx), textFSPostWriteTimeout)
 			defer cancel()
-			notifyMemoryFileChanged(bg, path)
+			notifyIntegrationFileChanged(bg, path)
 			maybeRefreshAgentIdentity(bg, path)
 		}(entry.Path)
 	}
@@ -1997,7 +1997,7 @@ func executeEditFile(ctx context.Context, args map[string]any) (string, error) {
 		go func(path string) {
 			bg, cancel := context.WithTimeout(detachedBridgeToolContext(ctx), textFSPostWriteTimeout)
 			defer cancel()
-			notifyMemoryFileChanged(bg, path)
+			notifyIntegrationFileChanged(bg, path)
 			maybeRefreshAgentIdentity(bg, path)
 		}(entry.Path)
 	}

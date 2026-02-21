@@ -6,6 +6,7 @@ import (
 	"time"
 
 	integrationmemory "github.com/beeper/ai-bridge/pkg/integrations/memory"
+	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
 )
@@ -24,7 +25,12 @@ func purgeMemoryLoginDataBestEffort(
 	// before deleting chunk rows.
 	chunkIDsByAgent := loadMemoryChunkIDsByAgentBestEffort(ctx, db, bridgeID, loginID)
 	if client, ok := login.Client.(*AIClient); ok && client != nil && client.memoryModule() != nil {
-		client.memoryModule().PurgeForLogin(ctx, bridgeID, loginID, chunkIDsByAgent)
+		client.memoryModule().PurgeForLogin(ctx, integrationruntime.LoginScope{
+			Client:   client,
+			Login:    login,
+			BridgeID: bridgeID,
+			LoginID:  loginID,
+		})
 	} else {
 		integrationmemory.PurgeManagersForLogin(ctx, bridgeID, loginID, chunkIDsByAgent)
 	}

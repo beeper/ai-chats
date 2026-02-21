@@ -3,7 +3,6 @@ package connector
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 
 	integrationcron "github.com/beeper/ai-bridge/pkg/integrations/cron"
 	integrationmemory "github.com/beeper/ai-bridge/pkg/integrations/memory"
+	integrationmodules "github.com/beeper/ai-bridge/pkg/integrations/modules"
 	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
 )
 
@@ -21,9 +21,6 @@ const (
 	integrationToolMemoryGetName    = "memory_get"
 	memoryRootPath                  = "memory/"
 	memoryFilePath                  = "memory.md"
-
-	integrationModuleCron   = "cron"
-	integrationModuleMemory = "memory"
 )
 
 type toolIntegrationRegistry struct {
@@ -128,6 +125,139 @@ func (r *promptIntegrationRegistry) augmentPrompt(
 	return out
 }
 
+type commandIntegrationRegistration struct {
+	integration integrationruntime.CommandIntegration
+	definition  integrationruntime.CommandDefinition
+}
+
+type commandIntegrationRegistry struct {
+	byName map[string]commandIntegrationRegistration
+}
+
+func newCommandIntegrationRegistry() *commandIntegrationRegistry {
+	return &commandIntegrationRegistry{byName: make(map[string]commandIntegrationRegistration)}
+}
+
+func (r *commandIntegrationRegistry) register(integration integrationruntime.CommandIntegration, defs []integrationruntime.CommandDefinition) {
+	if r == nil || integration == nil {
+		return
+	}
+	for _, def := range defs {
+		name := strings.ToLower(strings.TrimSpace(def.Name))
+		if name == "" {
+			continue
+		}
+		if _, exists := r.byName[name]; exists {
+			continue
+		}
+		r.byName[name] = commandIntegrationRegistration{integration: integration, definition: def}
+	}
+}
+
+func (r *commandIntegrationRegistry) definitions() []integrationruntime.CommandDefinition {
+	if r == nil || len(r.byName) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(r.byName))
+	for name := range r.byName {
+		names = append(names, name)
+	}
+	slicesSortStrings(names)
+	out := make([]integrationruntime.CommandDefinition, 0, len(names))
+	for _, name := range names {
+		out = append(out, r.byName[name].definition)
+	}
+	return out
+}
+
+func (r *commandIntegrationRegistry) execute(ctx context.Context, call integrationruntime.CommandCall) (bool, error) {
+	if r == nil {
+		return false, nil
+	}
+	name := strings.ToLower(strings.TrimSpace(call.Name))
+	registration, ok := r.byName[name]
+	if !ok || registration.integration == nil {
+		return false, nil
+	}
+	return registration.integration.ExecuteCommand(ctx, call)
+}
+
+type eventIntegrationRegistry struct {
+	items []integrationruntime.EventIntegration
+}
+
+func (r *eventIntegrationRegistry) register(integration integrationruntime.EventIntegration) {
+	if integration == nil {
+		return
+	}
+	r.items = append(r.items, integration)
+}
+
+func (r *eventIntegrationRegistry) sessionMutation(ctx context.Context, evt integrationruntime.SessionMutationEvent) {
+	if r == nil {
+		return
+	}
+	for _, integration := range r.items {
+		integration.OnSessionMutation(ctx, evt)
+	}
+}
+
+func (r *eventIntegrationRegistry) fileChanged(ctx context.Context, evt integrationruntime.FileChangedEvent) {
+	if r == nil {
+		return
+	}
+	for _, integration := range r.items {
+		integration.OnFileChanged(ctx, evt)
+	}
+}
+
+type overflowIntegrationRegistry struct {
+	items []integrationruntime.OverflowIntegration
+}
+
+func (r *overflowIntegrationRegistry) register(integration integrationruntime.OverflowIntegration) {
+	if integration == nil {
+		return
+	}
+	r.items = append(r.items, integration)
+}
+
+func (r *overflowIntegrationRegistry) handle(ctx context.Context, call integrationruntime.ContextOverflowCall) (bool, []openai.ChatCompletionMessageParamUnion, error) {
+	if r == nil {
+		return false, nil, nil
+	}
+	for _, integration := range r.items {
+		handled, prompt, err := integration.OnContextOverflow(ctx, call)
+		if err != nil {
+			return true, nil, err
+		}
+		if handled {
+			return true, prompt, nil
+		}
+	}
+	return false, nil, nil
+}
+
+type purgeIntegrationRegistry struct {
+	items []integrationruntime.LoginPurgeIntegration
+}
+
+func (r *purgeIntegrationRegistry) register(integration integrationruntime.LoginPurgeIntegration) {
+	if integration == nil {
+		return
+	}
+	r.items = append(r.items, integration)
+}
+
+func (r *purgeIntegrationRegistry) purge(ctx context.Context, scope integrationruntime.LoginScope) {
+	if r == nil {
+		return
+	}
+	for _, integration := range r.items {
+		_ = integration.PurgeForLogin(ctx, scope)
+	}
+}
+
 func settingSourceFromIntegration(source integrationruntime.SettingSource) SettingSource {
 	switch source {
 	case integrationruntime.SourceAgentPolicy:
@@ -186,32 +316,63 @@ func (oc *AIClient) promptScope(portal *bridgev2.Portal, meta *PortalMetadata) i
 	}
 }
 
+func (oc *AIClient) commandScope(portal *bridgev2.Portal, meta *PortalMetadata, evt any) integrationruntime.CommandScope {
+	return integrationruntime.CommandScope{
+		Client: oc,
+		Portal: portal,
+		Meta:   meta,
+		Event:  evt,
+	}
+}
+
 func (oc *AIClient) initIntegrations() {
 	if oc == nil {
 		return
 	}
 	oc.toolRegistry = &toolIntegrationRegistry{}
 	oc.promptRegistry = &promptIntegrationRegistry{}
+	oc.commandRegistry = newCommandIntegrationRegistry()
+	oc.eventRegistry = &eventIntegrationRegistry{}
+	oc.overflowRegistry = &overflowIntegrationRegistry{}
+	oc.purgeRegistry = &purgeIntegrationRegistry{}
 	oc.integrationModules = make(map[string]any)
 	oc.integrationOrder = nil
 
-	oc.toolRegistry.register(&coreToolIntegration{client: oc})
-	oc.promptRegistry.register(&corePromptIntegration{client: oc})
+	coreTools := &coreToolIntegration{client: oc}
+	corePrompts := &corePromptIntegration{client: oc}
+	oc.toolRegistry.register(coreTools)
+	oc.promptRegistry.register(corePrompts)
 
-	if oc.cronModuleEnabled() {
-		cronAdapter := &cronConnectorHostAdapter{client: oc}
-		cronAdapter.service = oc.buildCronService()
-		module := integrationcron.NewIntegration(cronAdapter)
-		oc.registerIntegrationModule(module.Name(), module)
-		oc.toolRegistry.register(module)
+	host := newRuntimeIntegrationHost(oc)
+	for _, module := range integrationmodules.BuiltinModules(host) {
+		if module == nil {
+			continue
+		}
+		name := module.Name()
+		oc.registerIntegrationModule(name, module)
+
+		if toolIntegration, ok := module.(integrationruntime.ToolIntegration); ok {
+			oc.toolRegistry.register(toolIntegration)
+		}
+		if promptIntegration, ok := module.(integrationruntime.PromptIntegration); ok {
+			oc.promptRegistry.register(promptIntegration)
+		}
+		if commandIntegration, ok := module.(integrationruntime.CommandIntegration); ok {
+			defs := commandIntegration.CommandDefinitions(context.Background(), oc.commandScope(nil, nil, nil))
+			oc.commandRegistry.register(commandIntegration, defs)
+		}
+		if eventIntegration, ok := module.(integrationruntime.EventIntegration); ok {
+			oc.eventRegistry.register(eventIntegration)
+		}
+		if overflowIntegration, ok := module.(integrationruntime.OverflowIntegration); ok {
+			oc.overflowRegistry.register(overflowIntegration)
+		}
+		if purgeIntegration, ok := module.(integrationruntime.LoginPurgeIntegration); ok {
+			oc.purgeRegistry.register(purgeIntegration)
+		}
 	}
 
-	if oc.memoryModuleEnabled() {
-		module := integrationmemory.NewIntegration(&memoryConnectorHostAdapter{client: oc})
-		oc.registerIntegrationModule(module.Name(), module)
-		oc.toolRegistry.register(module)
-		oc.promptRegistry.register(module)
-	}
+	registerModuleCommands(oc.commandRegistry.definitions())
 }
 
 func (oc *AIClient) registerIntegrationModule(name string, module any) {
@@ -240,14 +401,14 @@ func (oc *AIClient) integrationModule(name string) any {
 }
 
 func (oc *AIClient) cronModule() *integrationcron.Integration {
-	if module, ok := oc.integrationModule(integrationModuleCron).(*integrationcron.Integration); ok {
+	if module, ok := oc.integrationModule("cron").(*integrationcron.Integration); ok {
 		return module
 	}
 	return nil
 }
 
 func (oc *AIClient) memoryModule() *integrationmemory.Integration {
-	if module, ok := oc.integrationModule(integrationModuleMemory).(*integrationmemory.Integration); ok {
+	if module, ok := oc.integrationModule("memory").(*integrationmemory.Integration); ok {
 		return module
 	}
 	return nil
@@ -315,7 +476,6 @@ func (oc *AIClient) stopLifecycleIntegrations() {
 	if oc == nil || len(oc.integrationOrder) == 0 {
 		return
 	}
-	// Stop in reverse registration order.
 	for i := len(oc.integrationOrder) - 1; i >= 0; i-- {
 		name := oc.integrationOrder[i]
 		module := oc.integrationModule(name)
@@ -338,20 +498,6 @@ func (oc *AIClient) stopLoginLifecycleIntegrations(bridgeID, loginID string) {
 		}
 		loginLifecycle.StopForLogin(bridgeID, loginID)
 	})
-}
-
-func (oc *AIClient) cronModuleEnabled() bool {
-	if oc == nil || oc.connector == nil || oc.connector.Config.Integrations == nil || oc.connector.Config.Integrations.Cron == nil {
-		return true
-	}
-	return *oc.connector.Config.Integrations.Cron
-}
-
-func (oc *AIClient) memoryModuleEnabled() bool {
-	if oc == nil || oc.connector == nil || oc.connector.Config.Integrations == nil || oc.connector.Config.Integrations.Memory == nil {
-		return true
-	}
-	return *oc.connector.Config.Integrations.Memory
 }
 
 func (oc *AIClient) integratedToolDefinitions(
@@ -397,6 +543,20 @@ func (oc *AIClient) integratedToolAvailability(meta *PortalMetadata, toolName st
 		return true, available, source, reason
 	}
 	return false, false, SourceGlobalDefault, ""
+}
+
+func (oc *AIClient) cronModuleEnabled() bool {
+	if oc == nil || oc.connector == nil || oc.connector.Config.Integrations == nil || oc.connector.Config.Integrations.Cron == nil {
+		return true
+	}
+	return *oc.connector.Config.Integrations.Cron
+}
+
+func (oc *AIClient) memoryModuleEnabled() bool {
+	if oc == nil || oc.connector == nil || oc.connector.Config.Integrations == nil || oc.connector.Config.Integrations.Memory == nil {
+		return true
+	}
+	return *oc.connector.Config.Integrations.Memory
 }
 
 func (oc *AIClient) executeIntegratedTool(
@@ -449,9 +609,115 @@ func (oc *AIClient) augmentPromptWithIntegrations(
 		return prompt
 	}
 	if oc.promptRegistry == nil {
-		return oc.injectMemoryContext(ctx, portal, meta, prompt)
+		return prompt
 	}
 	return oc.promptRegistry.augmentPrompt(ctx, oc.promptScope(portal, meta), prompt)
+}
+
+func (oc *AIClient) executeIntegratedCommand(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+	evt any,
+	name string,
+	args []string,
+	rawArgs string,
+	reply func(format string, args ...any),
+) (bool, error) {
+	if oc == nil || oc.commandRegistry == nil {
+		return false, nil
+	}
+	return oc.commandRegistry.execute(ctx, integrationruntime.CommandCall{
+		Name:    name,
+		Args:    args,
+		RawArgs: rawArgs,
+		Scope:   oc.commandScope(portal, meta, evt),
+		Reply:   reply,
+	})
+}
+
+func (oc *AIClient) emitIntegrationSessionMutation(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+	force bool,
+	kind integrationruntime.SessionMutationKind,
+) {
+	if oc == nil || oc.eventRegistry == nil {
+		return
+	}
+	oc.eventRegistry.sessionMutation(ctx, integrationruntime.SessionMutationEvent{
+		Client:     oc,
+		Portal:     portal,
+		Meta:       meta,
+		SessionKey: portal.PortalKey.String(),
+		Force:      force,
+		Kind:       kind,
+	})
+}
+
+func (oc *AIClient) emitIntegrationFileChanged(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, path string) {
+	if oc == nil || oc.eventRegistry == nil {
+		return
+	}
+	oc.eventRegistry.fileChanged(ctx, integrationruntime.FileChangedEvent{
+		Client: oc,
+		Portal: portal,
+		Meta:   meta,
+		Path:   path,
+	})
+}
+
+func (oc *AIClient) notifySessionMutation(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, force bool) {
+	if oc == nil || portal == nil || meta == nil {
+		return
+	}
+	ctx = oc.backgroundContext(ctx)
+	oc.emitIntegrationSessionMutation(ctx, portal, meta, force, integrationruntime.SessionMutationMessage)
+}
+
+func notifyIntegrationFileChanged(ctx context.Context, path string) {
+	btc := GetBridgeToolContext(ctx)
+	if btc == nil || btc.Client == nil {
+		return
+	}
+	meta := portalMeta(btc.Portal)
+	btc.Client.emitIntegrationFileChanged(ctx, btc.Portal, meta, path)
+}
+
+func (oc *AIClient) runOverflowIntegrations(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+	prompt []openai.ChatCompletionMessageParamUnion,
+	requestedTokens int,
+	modelMaxTokens int,
+	attempt int,
+) (bool, []openai.ChatCompletionMessageParamUnion, error) {
+	if oc == nil || oc.overflowRegistry == nil {
+		return false, nil, nil
+	}
+	return oc.overflowRegistry.handle(ctx, integrationruntime.ContextOverflowCall{
+		Client:          oc,
+		Portal:          portal,
+		Meta:            meta,
+		Prompt:          prompt,
+		RequestedTokens: requestedTokens,
+		ModelMaxTokens:  modelMaxTokens,
+		Attempt:         attempt,
+	})
+}
+
+func (oc *AIClient) purgeLoginIntegrations(ctx context.Context, login any, bridgeID, loginID string) {
+	if oc == nil || oc.purgeRegistry == nil {
+		return
+	}
+	oc.purgeRegistry.purge(ctx, integrationruntime.LoginScope{
+		Client:   oc,
+		Login:    login,
+		BridgeID: bridgeID,
+		LoginID:  loginID,
+	})
 }
 
 func integrationToolByName(name string) (ToolDefinition, bool) {
@@ -563,330 +829,15 @@ func (c *corePromptIntegration) AugmentPrompt(
 	return prompt
 }
 
-type cronConnectorHostAdapter struct {
-	client  *AIClient
-	service *integrationcron.Service
-}
-
-func (a *cronConnectorHostAdapter) ToolDefinitions(_ context.Context, _ integrationruntime.ToolScope) []integrationruntime.ToolDefinition {
-	def, ok := integrationToolByName(ToolNameCron)
-	if !ok {
-		return nil
-	}
-	return []integrationruntime.ToolDefinition{def}
-}
-
-func (a *cronConnectorHostAdapter) ExecuteTool(ctx context.Context, call integrationruntime.ToolCall) (bool, string, error) {
-	if call.Name != ToolNameCron {
-		return false, "", nil
-	}
-	result, err := executeCron(ctx, call.Args)
-	return true, result, err
-}
-
-func (a *cronConnectorHostAdapter) ToolAvailability(
-	_ context.Context,
-	_ integrationruntime.ToolScope,
-	toolName string,
-) (bool, bool, integrationruntime.SettingSource, string) {
-	if toolName != ToolNameCron {
-		return false, false, integrationruntime.SourceGlobalDefault, ""
-	}
-	if a == nil || a.client == nil {
-		return true, false, integrationruntime.SourceProviderLimit, "Cron service not available"
-	}
-	ok, reason := a.client.isCronConfigured()
-	if ok {
-		return true, true, integrationruntime.SourceGlobalDefault, ""
-	}
-	return true, false, integrationruntime.SourceProviderLimit, reason
-}
-
-func (a *cronConnectorHostAdapter) Start(_ context.Context) error {
-	if a == nil || a.client == nil || a.service == nil {
-		return nil
-	}
-	return a.service.Start()
-}
-
-func (a *cronConnectorHostAdapter) Stop() {
-	if a == nil || a.client == nil || a.service == nil {
+func slicesSortStrings(in []string) {
+	if len(in) <= 1 {
 		return
 	}
-	a.service.Stop()
-}
-
-func (a *cronConnectorHostAdapter) Status() (bool, string, int, *int64, error) {
-	if a == nil || a.client == nil || a.service == nil {
-		return false, "", 0, nil, errors.New("cron service not available")
-	}
-	return a.service.Status()
-}
-
-func (a *cronConnectorHostAdapter) List(includeDisabled bool) ([]integrationcron.Job, error) {
-	if a == nil || a.client == nil || a.service == nil {
-		return nil, errors.New("cron service not available")
-	}
-	return a.service.List(includeDisabled)
-}
-
-func (a *cronConnectorHostAdapter) Add(input integrationcron.JobCreate) (integrationcron.Job, error) {
-	if a == nil || a.client == nil || a.service == nil {
-		return integrationcron.Job{}, errors.New("cron service not available")
-	}
-	return a.service.Add(input)
-}
-
-func (a *cronConnectorHostAdapter) Update(id string, patch integrationcron.JobPatch) (integrationcron.Job, error) {
-	if a == nil || a.client == nil || a.service == nil {
-		return integrationcron.Job{}, errors.New("cron service not available")
-	}
-	return a.service.Update(id, patch)
-}
-
-func (a *cronConnectorHostAdapter) Remove(id string) (bool, error) {
-	if a == nil || a.client == nil || a.service == nil {
-		return false, errors.New("cron service not available")
-	}
-	return a.service.Remove(id)
-}
-
-func (a *cronConnectorHostAdapter) Run(id string, mode string) (bool, string, error) {
-	if a == nil || a.client == nil || a.service == nil {
-		return false, "", errors.New("cron service not available")
-	}
-	return a.service.Run(id, mode)
-}
-
-func (a *cronConnectorHostAdapter) Wake(mode string, text string) (bool, error) {
-	if a == nil || a.client == nil || a.service == nil {
-		return false, errors.New("cron service not available")
-	}
-	return a.service.Wake(mode, text)
-}
-
-func (a *cronConnectorHostAdapter) Runs(jobID string, limit int) ([]integrationcron.RunLogEntry, error) {
-	if a == nil || a.client == nil {
-		return nil, errors.New("cron service not available")
-	}
-	return a.client.readCronRuns(jobID, limit)
-}
-
-type memoryConnectorHostAdapter struct {
-	client *AIClient
-}
-
-func (a *memoryConnectorHostAdapter) ToolDefinitions(_ context.Context, _ integrationruntime.ToolScope) []integrationruntime.ToolDefinition {
-	var out []integrationruntime.ToolDefinition
-	if def, ok := integrationToolByName(ToolNameMemorySearch); ok {
-		out = append(out, def)
-	}
-	if def, ok := integrationToolByName(ToolNameMemoryGet); ok {
-		out = append(out, def)
-	}
-	return out
-}
-
-func (a *memoryConnectorHostAdapter) ExecuteTool(ctx context.Context, call integrationruntime.ToolCall) (bool, string, error) {
-	switch call.Name {
-	case ToolNameMemorySearch:
-		result, err := executeMemorySearch(ctx, call.Args)
-		return true, result, err
-	case ToolNameMemoryGet:
-		result, err := executeMemoryGet(ctx, call.Args)
-		return true, result, err
-	default:
-		return false, "", nil
-	}
-}
-
-func (a *memoryConnectorHostAdapter) ToolAvailability(
-	_ context.Context,
-	scope integrationruntime.ToolScope,
-	toolName string,
-) (bool, bool, integrationruntime.SettingSource, string) {
-	if toolName != ToolNameMemorySearch && toolName != ToolNameMemoryGet {
-		return false, false, integrationruntime.SourceGlobalDefault, ""
-	}
-	if a == nil || a.client == nil {
-		return true, false, integrationruntime.SourceProviderLimit, "Memory search unavailable"
-	}
-	meta, _ := scope.Meta.(*PortalMetadata)
-	disabled, reason := a.client.isMemorySearchExplicitlyDisabled(meta)
-	if disabled {
-		return true, false, integrationruntime.SourceProviderLimit, reason
-	}
-	return true, true, integrationruntime.SourceGlobalDefault, ""
-}
-
-func (a *memoryConnectorHostAdapter) AdditionalSystemMessages(
-	_ context.Context,
-	_ integrationruntime.PromptScope,
-) []openai.ChatCompletionMessageParamUnion {
-	return nil
-}
-
-func (a *memoryConnectorHostAdapter) AugmentPrompt(
-	ctx context.Context,
-	scope integrationruntime.PromptScope,
-	prompt []openai.ChatCompletionMessageParamUnion,
-) []openai.ChatCompletionMessageParamUnion {
-	if a == nil || a.client == nil {
-		return prompt
-	}
-	portal, _ := scope.Portal.(*bridgev2.Portal)
-	meta, _ := scope.Meta.(*PortalMetadata)
-	return a.client.injectMemoryContext(ctx, portal, meta, prompt)
-}
-
-func (a *memoryConnectorHostAdapter) GetManager(scope integrationruntime.ToolScope) (integrationmemory.Manager, string) {
-	if a == nil || a.client == nil {
-		return nil, "memory search unavailable"
-	}
-	meta, _ := scope.Meta.(*PortalMetadata)
-	manager, errMsg := a.client.getMemoryManager(resolveAgentID(meta))
-	if manager == nil {
-		return nil, errMsg
-	}
-	return &memoryManagerAdapter{manager: manager}, ""
-}
-
-func (a *memoryConnectorHostAdapter) StopForLogin(bridgeID, loginID string) {
-	integrationmemory.StopManagersForLogin(bridgeID, loginID)
-}
-
-func (a *memoryConnectorHostAdapter) PurgeForLogin(ctx context.Context, bridgeID, loginID string, chunkIDsByAgent map[string][]string) {
-	integrationmemory.PurgeManagersForLogin(ctx, bridgeID, loginID, chunkIDsByAgent)
-}
-
-type memoryManagerAdapter struct {
-	manager *integrationmemory.MemorySearchManager
-}
-
-func (m *memoryManagerAdapter) Status() integrationmemory.ProviderStatus {
-	if m == nil || m.manager == nil {
-		return integrationmemory.ProviderStatus{}
-	}
-	return m.manager.Status()
-}
-
-func (m *memoryManagerAdapter) Search(ctx context.Context, query string, opts integrationmemory.SearchOptions) ([]integrationmemory.SearchResult, error) {
-	if m == nil || m.manager == nil {
-		return nil, errors.New("memory search unavailable")
-	}
-	return m.manager.Search(ctx, query, opts)
-}
-
-func (m *memoryManagerAdapter) ReadFile(ctx context.Context, relPath string, from, lines *int) (map[string]any, error) {
-	if m == nil || m.manager == nil {
-		return nil, errors.New("memory search unavailable")
-	}
-	return m.manager.ReadFile(ctx, relPath, from, lines)
-}
-
-func (m *memoryManagerAdapter) StatusDetails(ctx context.Context) (*integrationmemory.StatusDetails, error) {
-	if m == nil || m.manager == nil {
-		return nil, errors.New("memory search unavailable")
-	}
-	status, err := m.manager.StatusDetails(ctx)
-	if err != nil {
-		return nil, err
-	}
-	var sourceCounts []integrationmemory.SourceCount
-	if len(status.SourceCounts) > 0 {
-		sourceCounts = make([]integrationmemory.SourceCount, 0, len(status.SourceCounts))
-		for _, src := range status.SourceCounts {
-			sourceCounts = append(sourceCounts, integrationmemory.SourceCount{
-				Source: src.Source,
-				Files:  src.Files,
-				Chunks: src.Chunks,
-			})
+	for i := 0; i < len(in)-1; i++ {
+		for j := i + 1; j < len(in); j++ {
+			if in[j] < in[i] {
+				in[i], in[j] = in[j], in[i]
+			}
 		}
 	}
-	var fallback *integrationmemory.FallbackStatus
-	if status.Fallback != nil {
-		fallback = &integrationmemory.FallbackStatus{
-			From:   status.Fallback.From,
-			Reason: status.Fallback.Reason,
-		}
-	}
-	var cache *integrationmemory.CacheStatus
-	if status.Cache != nil {
-		cache = &integrationmemory.CacheStatus{
-			Enabled:    status.Cache.Enabled,
-			Entries:    status.Cache.Entries,
-			MaxEntries: status.Cache.MaxEntries,
-		}
-	}
-	var fts *integrationmemory.FTSStatus
-	if status.FTS != nil {
-		fts = &integrationmemory.FTSStatus{
-			Enabled:   status.FTS.Enabled,
-			Available: status.FTS.Available,
-			Error:     status.FTS.Error,
-		}
-	}
-	var vector *integrationmemory.VectorStatus
-	if status.Vector != nil {
-		vector = &integrationmemory.VectorStatus{
-			Enabled:       status.Vector.Enabled,
-			Available:     status.Vector.Available,
-			ExtensionPath: status.Vector.ExtensionPath,
-			LoadError:     status.Vector.LoadError,
-			Dims:          status.Vector.Dims,
-		}
-	}
-	var batch *integrationmemory.BatchStatus
-	if status.Batch != nil {
-		batch = &integrationmemory.BatchStatus{
-			Enabled:        status.Batch.Enabled,
-			Failures:       status.Batch.Failures,
-			Limit:          status.Batch.Limit,
-			Wait:           status.Batch.Wait,
-			Concurrency:    status.Batch.Concurrency,
-			PollIntervalMs: status.Batch.PollIntervalMs,
-			TimeoutMs:      status.Batch.TimeoutMs,
-			LastError:      status.Batch.LastError,
-			LastProvider:   status.Batch.LastProvider,
-		}
-	}
-	return &integrationmemory.StatusDetails{
-		Files:             status.Files,
-		Chunks:            status.Chunks,
-		Dirty:             status.Dirty,
-		WorkspaceDir:      status.WorkspaceDir,
-		DBPath:            status.DBPath,
-		Provider:          status.Provider,
-		Model:             status.Model,
-		RequestedProvider: status.RequestedProvider,
-		Sources:           status.Sources,
-		ExtraPaths:        status.ExtraPaths,
-		SourceCounts:      sourceCounts,
-		Cache:             cache,
-		FTS:               fts,
-		Fallback:          fallback,
-		Vector:            vector,
-		Batch:             batch,
-	}, nil
-}
-
-func (m *memoryManagerAdapter) ProbeVectorAvailability(ctx context.Context) bool {
-	if m == nil || m.manager == nil {
-		return false
-	}
-	return m.manager.ProbeVectorAvailability(ctx)
-}
-
-func (m *memoryManagerAdapter) ProbeEmbeddingAvailability(ctx context.Context) (bool, string) {
-	if m == nil || m.manager == nil {
-		return false, "memory search unavailable"
-	}
-	return m.manager.ProbeEmbeddingAvailability(ctx)
-}
-
-func (m *memoryManagerAdapter) SyncWithProgress(ctx context.Context, onProgress func(completed, total int, label string)) error {
-	if m == nil || m.manager == nil {
-		return errors.New("memory search unavailable")
-	}
-	return m.manager.SyncWithProgress(ctx, onProgress)
 }

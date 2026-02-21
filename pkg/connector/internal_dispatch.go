@@ -107,7 +107,7 @@ func (oc *AIClient) dispatchInternalMessage(
 			}()
 			oc.dispatchCompletionInternal(runCtx, nil, portal, metaSnapshot, promptMessages)
 		}(metaSnapshot)
-		oc.notifySessionMemoryChange(ctx, portal, meta, false)
+		oc.notifySessionMutation(ctx, portal, meta, false)
 		return eventID, false, nil
 	}
 
@@ -137,6 +137,6 @@ func (oc *AIClient) dispatchInternalMessage(
 		oc.loggerForContext(ctx).Debug().Stringer("portal", portal.PortalKey).Msg("Queued internal message")
 	}
 	oc.queuePendingMessage(portal.MXID, queueItem, queueSettings)
-	oc.notifySessionMemoryChange(ctx, portal, meta, false)
+	oc.notifySessionMutation(ctx, portal, meta, false)
 	return eventID, true, nil
 }

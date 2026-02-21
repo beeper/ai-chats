@@ -128,10 +128,17 @@ func (oc *AIClient) isTTSConfigured() (bool, string) {
 }
 
 func (oc *AIClient) isCronConfigured() (bool, string) {
-	if oc == nil || oc.cronModule() == nil {
+	if oc == nil {
 		return false, "Cron service not available"
 	}
-	return true, ""
+	known, available, _, reason := oc.integratedToolAvailability(&PortalMetadata{}, ToolNameCron)
+	if known && available {
+		return true, ""
+	}
+	if strings.TrimSpace(reason) == "" {
+		reason = "Cron service not available"
+	}
+	return false, reason
 }
 
 func searchEnabled(flag *bool) bool {

@@ -479,7 +479,7 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 	if err := oc.UserLogin.Bridge.DB.Message.Update(ctx, edit.EditTarget); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist edited message metadata")
 	}
-	oc.notifySessionMemoryChange(ctx, portal, meta, true)
+	oc.notifySessionMutation(ctx, portal, meta, true)
 
 	// Only regenerate if this was a user message
 	if msgMeta.Role != "user" {
@@ -567,7 +567,7 @@ func (oc *AIClient) regenerateFromEdit(
 		if err := oc.UserLogin.Bridge.DB.Message.Delete(ctx, assistantResponse.RowID); err != nil {
 			oc.loggerForContext(ctx).Warn().Err(err).Str("msg_id", string(assistantResponse.ID)).Msg("Failed to delete redacted message from database")
 		}
-		oc.notifySessionMemoryChange(ctx, portal, meta, true)
+		oc.notifySessionMutation(ctx, portal, meta, true)
 	}
 
 	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", QueueInlineOptions{})

@@ -10,23 +10,12 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2/commands"
 
-	"github.com/beeper/ai-bridge/pkg/connector/commandregistry"
 	integrationmemory "github.com/beeper/ai-bridge/pkg/integrations/memory"
+	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
 	"github.com/beeper/ai-bridge/pkg/textfs"
 )
 
 const memoryCommandMaxBytes = 256 * 1024
-
-// CommandMemory handles the !ai memory command
-var CommandMemory = registerAICommand(commandregistry.Definition{
-	Name:           "memory",
-	Description:    "Inspect and edit memory files/index",
-	Args:           "<status|reindex|search|get|set|append> [...]",
-	Section:        HelpSectionAI,
-	RequiresPortal: true,
-	RequiresLogin:  true,
-	Handler:        fnMemory,
-})
 
 func fnMemory(ce *commands.Event) {
 	if ce.User == nil || !ce.User.Permissions.Admin {
@@ -355,7 +344,7 @@ func fnMemory(ce *commands.Event) {
 				Portal: ce.Portal,
 				Meta:   meta,
 			})
-			notifyMemoryFileChanged(ctx, entry.Path)
+			notifyIntegrationFileChanged(ctx, entry.Path)
 			maybeRefreshAgentIdentity(ctx, entry.Path)
 		}
 		ce.Reply("Memory file updated: %s", path)
@@ -364,4 +353,16 @@ func fnMemory(ce *commands.Event) {
 		ce.Reply("Unknown memory command. Use status, reindex, get, set, or append.")
 		return
 	}
+}
+
+func executeMemoryCommand(_ context.Context, call integrationruntime.CommandCall) (bool, error) {
+	if strings.ToLower(strings.TrimSpace(call.Name)) != "memory" {
+		return false, nil
+	}
+	ce, _ := call.Scope.Event.(*commands.Event)
+	if ce != nil {
+		fnMemory(ce)
+		return true, nil
+	}
+	return false, nil
 }

@@ -1,6 +1,10 @@
 package connector
 
-import "strings"
+import (
+	"strings"
+
+	integrationcron "github.com/beeper/ai-bridge/pkg/integrations/cron"
+)
 
 // buildRawModeSystemPrompt returns the system prompt for raw/playground rooms.
 // Raw mode must be simple: a single system prompt with only the current time appended.
@@ -13,7 +17,7 @@ func (oc *AIClient) buildRawModeSystemPrompt(meta *PortalMetadata) string {
 	}
 
 	timezone, _ := oc.resolveUserTimezone()
-	now := formatCronTime(timezone)
+	now := integrationcron.FormatCronTime(timezone)
 
 	lines := []string{
 		strings.TrimSpace(base),
