@@ -21,7 +21,7 @@ func (a *memoryRuntimeAdapter) ResolveConfig(agentID string) (*integrationmemory
 	if a == nil || a.client == nil {
 		return nil, nil
 	}
-	return resolveRecallSearchConfig(a.client, agentID)
+	return resolveMemorySearchConfig(a.client, agentID)
 }
 
 func (a *memoryRuntimeAdapter) ResolveOpenAIEmbeddingConfig(cfg *integrationmemory.ResolvedConfig) (string, string, map[string]string) {
@@ -89,7 +89,7 @@ func (a *memoryRuntimeAdapter) ListSessionPortals(ctx context.Context, loginID, 
 			}
 		}
 		meta, ok := portal.Metadata.(*PortalMetadata)
-		if !ok || meta == nil || meta.IsSchedulerRoom {
+		if !ok || meta == nil || meta.IsCronRoom {
 			continue
 		}
 		if resolveAgentID(meta) != agentID {
@@ -136,7 +136,7 @@ func (oc *AIClient) getMemoryManager(agentID string) (*integrationmemory.MemoryS
 	if oc == nil {
 		return nil, "memory search unavailable"
 	}
-	manager, errMsg := integrationmemory.GetRecallSearchManager(&memoryRuntimeAdapter{client: oc}, agentID)
+	manager, errMsg := integrationmemory.GetMemorySearchManager(&memoryRuntimeAdapter{client: oc}, agentID)
 	if manager == nil {
 		if errMsg == "" {
 			errMsg = "memory search unavailable"
@@ -144,8 +144,4 @@ func (oc *AIClient) getMemoryManager(agentID string) (*integrationmemory.MemoryS
 		return nil, errMsg
 	}
 	return manager, ""
-}
-
-func (oc *AIClient) getRecallManager(agentID string) (*integrationmemory.MemorySearchManager, string) {
-	return oc.getMemoryManager(agentID)
 }

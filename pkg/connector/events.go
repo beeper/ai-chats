@@ -677,14 +677,14 @@ type AgentDefinitionContent struct {
 	IdentityName    string                       `json:"identity_name,omitempty"`
 	IdentityPersona string                       `json:"identity_persona,omitempty"`
 	IsPreset        bool                         `json:"is_preset,omitempty"`
-	RecallSearch    *recallAgentSearchConfig     `json:"recall_search,omitempty"`
+	MemorySearch    *memoryAgentSearchConfig     `json:"memory_search,omitempty"`
 	HeartbeatPrompt string                       `json:"heartbeat_prompt,omitempty"`
 	CreatedAt       int64                        `json:"created_at"`
 	UpdatedAt       int64                        `json:"updated_at"`
 }
 
-// RecallFactContent stores a recall fact in a timeline event.
-type RecallFactContent struct {
+// MemoryFactContent stores a memory fact in a timeline event.
+type MemoryFactContent struct {
 	FactID     string   `json:"fact_id"`
 	Content    string   `json:"content"`
 	Keywords   []string `json:"keywords,omitempty"`
@@ -696,8 +696,8 @@ type RecallFactContent struct {
 	UpdatedAt  int64    `json:"updated_at,omitempty"`
 }
 
-// RecallIndexEntry represents a single entry in the recall index.
-type RecallIndexEntry struct {
+// MemoryIndexEntry represents a single entry in the memory index.
+type MemoryIndexEntry struct {
 	FactID     string   `json:"fact_id"`
 	EventID    string   `json:"event_id"`
 	Keywords   []string `json:"keywords"`

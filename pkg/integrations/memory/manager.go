@@ -131,7 +131,7 @@ var memoryManagerCache = struct {
 	managers: make(map[string]*MemorySearchManager),
 }
 
-func GetRecallSearchManager(runtime Runtime, agentID string) (*MemorySearchManager, string) {
+func GetMemorySearchManager(runtime Runtime, agentID string) (*MemorySearchManager, string) {
 	if runtime == nil {
 		return nil, "memory search unavailable"
 	}

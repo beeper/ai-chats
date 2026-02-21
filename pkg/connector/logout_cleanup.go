@@ -32,7 +32,7 @@ func purgeLoginDataBestEffort(ctx context.Context, login *bridgev2.UserLogin) {
 		return
 	}
 
-	purgeRecallLoginDataBestEffort(ctx, login, db, bridgeID, loginID)
+	purgeMemoryLoginDataBestEffort(ctx, login, db, bridgeID, loginID)
 
 	// Bridge-internal KV state (integration state, model catalog, etc.)
 	bestEffortExec(ctx, db,

@@ -19,8 +19,8 @@ const (
 	integrationToolCronName         = "cron"
 	integrationToolMemorySearchName = "memory_search"
 	integrationToolMemoryGetName    = "memory_get"
-	legacyRecallRootPath            = "memory/"
-	legacyRecallFilePath            = "memory.md"
+	memoryRootPath                  = "memory/"
+	memoryFilePath                  = "memory.md"
 
 	integrationModuleCron   = "cron"
 	integrationModuleMemory = "memory"
@@ -246,16 +246,12 @@ func (oc *AIClient) cronModule() *integrationcron.Integration {
 	return nil
 }
 
-func (oc *AIClient) schedulerModule() *integrationcron.Integration { return oc.cronModule() }
-
 func (oc *AIClient) memoryModule() *integrationmemory.Integration {
 	if module, ok := oc.integrationModule(integrationModuleMemory).(*integrationmemory.Integration); ok {
 		return module
 	}
 	return nil
 }
-
-func (oc *AIClient) recallModule() *integrationmemory.Integration { return oc.memoryModule() }
 
 func (oc *AIClient) eachIntegrationModule(fn func(name string, module any)) {
 	if oc == nil || fn == nil || len(oc.integrationOrder) == 0 {
@@ -345,22 +341,18 @@ func (oc *AIClient) stopLoginLifecycleIntegrations(bridgeID, loginID string) {
 }
 
 func (oc *AIClient) cronModuleEnabled() bool {
-	if oc == nil || oc.connector == nil || oc.connector.Config.Integrations == nil || oc.connector.Config.Integrations.Scheduler == nil {
+	if oc == nil || oc.connector == nil || oc.connector.Config.Integrations == nil || oc.connector.Config.Integrations.Cron == nil {
 		return true
 	}
-	return *oc.connector.Config.Integrations.Scheduler
+	return *oc.connector.Config.Integrations.Cron
 }
-
-func (oc *AIClient) schedulerModuleEnabled() bool { return oc.cronModuleEnabled() }
 
 func (oc *AIClient) memoryModuleEnabled() bool {
-	if oc == nil || oc.connector == nil || oc.connector.Config.Integrations == nil || oc.connector.Config.Integrations.Recall == nil {
+	if oc == nil || oc.connector == nil || oc.connector.Config.Integrations == nil || oc.connector.Config.Integrations.Memory == nil {
 		return true
 	}
-	return *oc.connector.Config.Integrations.Recall
+	return *oc.connector.Config.Integrations.Memory
 }
-
-func (oc *AIClient) recallModuleEnabled() bool { return oc.memoryModuleEnabled() }
 
 func (oc *AIClient) integratedToolDefinitions(
 	ctx context.Context,
@@ -380,21 +372,21 @@ func (oc *AIClient) integratedToolAvailability(meta *PortalMetadata, toolName st
 	switch strings.TrimSpace(toolName) {
 	case ToolNameCron:
 		if !oc.cronModuleEnabled() {
-			return true, false, SourceProviderLimit, "Scheduler integration disabled"
+			return true, false, SourceProviderLimit, "Cron integration disabled"
 		}
 		if oc.toolRegistry == nil {
-			return true, false, SourceProviderLimit, "Scheduler integration unavailable"
+			return true, false, SourceProviderLimit, "Cron integration unavailable"
 		}
 	case ToolNameMemorySearch, ToolNameMemoryGet:
 		if !oc.memoryModuleEnabled() {
-			return true, false, SourceProviderLimit, "Recall integration disabled"
+			return true, false, SourceProviderLimit, "Memory integration disabled"
 		}
 		disabled, reason := oc.isMemorySearchExplicitlyDisabled(meta)
 		if disabled {
 			return true, false, SourceProviderLimit, reason
 		}
 		if oc.toolRegistry == nil {
-			return true, false, SourceProviderLimit, "Recall integration unavailable"
+			return true, false, SourceProviderLimit, "Memory integration unavailable"
 		}
 	default:
 		if oc.toolRegistry == nil {
@@ -472,15 +464,15 @@ func integrationToolByName(name string) (ToolDefinition, bool) {
 }
 
 func integrationPortalRoomType(meta *PortalMetadata) string {
-	if meta != nil && meta.IsSchedulerRoom {
-		return "scheduler"
+	if meta != nil && meta.IsCronRoom {
+		return "cron"
 	}
 	return "ai"
 }
 
 func isIntegrationSessionKindAllowed(kind string) bool {
 	switch kind {
-	case "main", "group", "scheduler", "hook", "node", "other":
+	case "main", "group", "cron", "hook", "node", "other":
 		return true
 	default:
 		return false
@@ -492,8 +484,8 @@ func integrationSessionKind(currentRoomID string, portalRoomID string, meta *Por
 		return "main"
 	}
 	if meta != nil {
-		if meta.IsSchedulerRoom {
-			return "scheduler"
+		if meta.IsCronRoom {
+			return "cron"
 		}
 		if strings.TrimSpace(meta.SubagentParentRoomID) != "" {
 			return "other"

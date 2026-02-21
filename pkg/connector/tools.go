@@ -106,13 +106,6 @@ const (
 	ToolNameEdit               = toolspec.EditName
 )
 
-// Legacy aliases kept for compatibility while connector internals migrate to cron/memory naming.
-const (
-	ToolNameScheduler    = ToolNameCron
-	ToolNameRecallSearch = ToolNameMemorySearch
-	ToolNameRecallGet    = ToolNameMemoryGet
-)
-
 // ImageResultPrefix is the prefix used to identify image results that need media sending.
 const ImageResultPrefix = "IMAGE:"
 

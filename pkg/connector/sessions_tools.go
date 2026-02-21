@@ -26,7 +26,7 @@ func shouldExcludeModelVisiblePortal(meta *PortalMetadata) bool {
 	if meta == nil {
 		return false
 	}
-	if meta.IsSchedulerRoom || meta.IsBuilderRoom {
+	if meta.IsCronRoom || meta.IsBuilderRoom {
 		return true
 	}
 	return strings.TrimSpace(meta.SubagentParentRoomID) != ""

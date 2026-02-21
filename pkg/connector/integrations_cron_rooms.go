@@ -16,7 +16,7 @@ import (
 
 func cronPortalKey(loginID networkid.UserLoginID, agentID, jobID string) networkid.PortalKey {
 	return networkid.PortalKey{
-		ID:       networkid.PortalID(fmt.Sprintf("openai:%s:scheduler:%s:%s", loginID, url.PathEscape(agentID), url.PathEscape(jobID))),
+		ID:       networkid.PortalID(fmt.Sprintf("openai:%s:cron:%s:%s", loginID, url.PathEscape(agentID), url.PathEscape(jobID))),
 		Receiver: loginID,
 	}
 }
@@ -42,9 +42,9 @@ func (oc *AIClient) getOrCreateCronRoom(ctx context.Context, agentID, jobID, job
 				return nil, fmt.Errorf("failed to get portal: %w", err)
 			}
 			portal.Metadata = &PortalMetadata{
-				IsSchedulerRoom: true,
-				SchedulerJobID:  normalizedJobID,
-				AgentID:         normalizedAgentID,
+				IsCronRoom: true,
+				CronJobID:  normalizedJobID,
+				AgentID:    normalizedAgentID,
 			}
 			portal.Name = displayName
 			portal.NameSet = true

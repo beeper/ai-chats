@@ -34,8 +34,8 @@ type Config struct {
 	// Global settings
 	DefaultSystemPrompt string              `yaml:"default_system_prompt"`
 	ModelCacheDuration  time.Duration       `yaml:"model_cache_duration"`
-	Recall              *RecallConfig       `yaml:"recall"`
-	RecallSearch        *RecallSearchConfig `yaml:"recall_search"`
+	Memory              *MemoryConfig       `yaml:"memory"`
+	MemorySearch        *MemorySearchConfig `yaml:"memory_search"`
 
 	// Context pruning configuration (OpenClaw-style)
 	Pruning *PruningConfig `yaml:"pruning"`
@@ -53,8 +53,8 @@ type Config struct {
 // IntegrationsConfig controls compile-time-available integration registration.
 // When a field is nil, it defaults to enabled.
 type IntegrationsConfig struct {
-	Scheduler *bool `yaml:"scheduler"`
-	Recall    *bool `yaml:"recall"`
+	Cron   *bool `yaml:"cron"`
+	Memory *bool `yaml:"memory"`
 }
 
 // ToolApprovalsRuntimeConfig controls runtime behaviour for tool approvals.
@@ -232,37 +232,37 @@ type SessionConfig struct {
 	Store   string `yaml:"store"`
 }
 
-// RecallConfig configures memory behavior (OpenClaw-style).
-type RecallConfig struct {
+// MemoryConfig configures memory behavior (OpenClaw-style).
+type MemoryConfig struct {
 	Citations     string `yaml:"citations"`
 	InjectContext bool   `yaml:"inject_context"`
 }
 
-// RecallSearchConfig configures semantic memory search (OpenClaw-style).
-type RecallSearchConfig struct {
+// MemorySearchConfig configures semantic memory search (OpenClaw-style).
+type MemorySearchConfig struct {
 	Enabled      *bool                           `yaml:"enabled"`
 	Sources      []string                        `yaml:"sources"`
 	ExtraPaths   []string                        `yaml:"extra_paths"`
 	Provider     string                          `yaml:"provider"`
 	Model        string                          `yaml:"model"`
-	Remote       *RecallSearchRemoteConfig       `yaml:"remote"`
+	Remote       *MemorySearchRemoteConfig       `yaml:"remote"`
 	Fallback     string                          `yaml:"fallback"`
-	Store        *RecallSearchStoreConfig        `yaml:"store"`
-	Chunking     *RecallSearchChunkingConfig     `yaml:"chunking"`
-	Sync         *RecallSearchSyncConfig         `yaml:"sync"`
-	Query        *RecallSearchQueryConfig        `yaml:"query"`
-	Cache        *RecallSearchCacheConfig        `yaml:"cache"`
-	Experimental *RecallSearchExperimentalConfig `yaml:"experimental"`
+	Store        *MemorySearchStoreConfig        `yaml:"store"`
+	Chunking     *MemorySearchChunkingConfig     `yaml:"chunking"`
+	Sync         *MemorySearchSyncConfig         `yaml:"sync"`
+	Query        *MemorySearchQueryConfig        `yaml:"query"`
+	Cache        *MemorySearchCacheConfig        `yaml:"cache"`
+	Experimental *MemorySearchExperimentalConfig `yaml:"experimental"`
 }
 
-type RecallSearchRemoteConfig struct {
+type MemorySearchRemoteConfig struct {
 	BaseURL string                   `yaml:"base_url"`
 	APIKey  string                   `yaml:"api_key"`
 	Headers map[string]string        `yaml:"headers"`
-	Batch   *RecallSearchBatchConfig `yaml:"batch"`
+	Batch   *MemorySearchBatchConfig `yaml:"batch"`
 }
 
-type RecallSearchBatchConfig struct {
+type MemorySearchBatchConfig struct {
 	Enabled        *bool `yaml:"enabled"`
 	Wait           *bool `yaml:"wait"`
 	Concurrency    int   `yaml:"concurrency"`
@@ -270,57 +270,57 @@ type RecallSearchBatchConfig struct {
 	TimeoutMinutes int   `yaml:"timeout_minutes"`
 }
 
-type RecallSearchStoreConfig struct {
+type MemorySearchStoreConfig struct {
 	Driver string                    `yaml:"driver"`
 	Path   string                    `yaml:"path"`
-	Vector *RecallSearchVectorConfig `yaml:"vector"`
+	Vector *MemorySearchVectorConfig `yaml:"vector"`
 }
 
-type RecallSearchVectorConfig struct {
+type MemorySearchVectorConfig struct {
 	Enabled       *bool  `yaml:"enabled"`
 	ExtensionPath string `yaml:"extension_path"`
 }
 
-type RecallSearchChunkingConfig struct {
+type MemorySearchChunkingConfig struct {
 	Tokens  int `yaml:"tokens"`
 	Overlap int `yaml:"overlap"`
 }
 
-type RecallSearchSyncConfig struct {
+type MemorySearchSyncConfig struct {
 	OnSessionStart  *bool                          `yaml:"on_session_start"`
 	OnSearch        *bool                          `yaml:"on_search"`
 	Watch           *bool                          `yaml:"watch"`
 	WatchDebounceMs int                            `yaml:"watch_debounce_ms"`
 	IntervalMinutes int                            `yaml:"interval_minutes"`
-	Sessions        *RecallSearchSessionSyncConfig `yaml:"sessions"`
+	Sessions        *MemorySearchSessionSyncConfig `yaml:"sessions"`
 }
 
-type RecallSearchSessionSyncConfig struct {
+type MemorySearchSessionSyncConfig struct {
 	DeltaBytes    int `yaml:"delta_bytes"`
 	DeltaMessages int `yaml:"delta_messages"`
 	RetentionDays int `yaml:"retention_days"`
 }
 
-type RecallSearchQueryConfig struct {
+type MemorySearchQueryConfig struct {
 	MaxResults       int                       `yaml:"max_results"`
 	MinScore         float64                   `yaml:"min_score"`
 	MaxInjectedChars int                       `yaml:"max_injected_chars"`
-	Hybrid           *RecallSearchHybridConfig `yaml:"hybrid"`
+	Hybrid           *MemorySearchHybridConfig `yaml:"hybrid"`
 }
 
-type RecallSearchHybridConfig struct {
+type MemorySearchHybridConfig struct {
 	Enabled             *bool   `yaml:"enabled"`
 	VectorWeight        float64 `yaml:"vector_weight"`
 	TextWeight          float64 `yaml:"text_weight"`
 	CandidateMultiplier int     `yaml:"candidate_multiplier"`
 }
 
-type RecallSearchCacheConfig struct {
+type MemorySearchCacheConfig struct {
 	Enabled    *bool `yaml:"enabled"`
 	MaxEntries int   `yaml:"max_entries"`
 }
 
-type RecallSearchExperimentalConfig struct {
+type MemorySearchExperimentalConfig struct {
 	SessionMemory *bool `yaml:"session_memory"`
 }
 
@@ -595,8 +595,8 @@ func upgradeConfig(helper configupgrade.Helper) {
 	// Global settings
 	helper.Copy(configupgrade.Str, "default_system_prompt")
 	helper.Copy(configupgrade.Str, "model_cache_duration")
-	helper.Copy(configupgrade.Str, "recall", "citations")
-	helper.Copy(configupgrade.Bool, "recall", "inject_context")
+	helper.Copy(configupgrade.Str, "memory", "citations")
+	helper.Copy(configupgrade.Bool, "memory", "inject_context")
 
 	// Tool approvals
 	helper.Copy(configupgrade.Map, "tool_approvals")
@@ -626,10 +626,10 @@ func upgradeConfig(helper configupgrade.Helper) {
 	helper.Copy(configupgrade.Float, "pruning", "max_history_share")
 	helper.Copy(configupgrade.Int, "pruning", "reserve_tokens")
 	helper.Copy(configupgrade.Str, "pruning", "custom_instructions")
-	helper.Copy(configupgrade.Bool, "pruning", "recall_flush", "enabled")
-	helper.Copy(configupgrade.Int, "pruning", "recall_flush", "soft_threshold_tokens")
-	helper.Copy(configupgrade.Str, "pruning", "recall_flush", "prompt")
-	helper.Copy(configupgrade.Str, "pruning", "recall_flush", "system_prompt")
+	helper.Copy(configupgrade.Bool, "pruning", "memory_flush", "enabled")
+	helper.Copy(configupgrade.Int, "pruning", "memory_flush", "soft_threshold_tokens")
+	helper.Copy(configupgrade.Str, "pruning", "memory_flush", "prompt")
+	helper.Copy(configupgrade.Str, "pruning", "memory_flush", "system_prompt")
 
 	// Link preview configuration
 	helper.Copy(configupgrade.Bool, "link_previews", "enabled")
@@ -741,43 +741,43 @@ func upgradeConfig(helper configupgrade.Helper) {
 	helper.Copy(configupgrade.Int, "tools", "fetch", "direct", "cache_ttl_seconds")
 	helper.Copy(configupgrade.Bool, "tools", "mcp", "enable_stdio")
 
-	// Recall search configuration
-	helper.Copy(configupgrade.Bool, "recall_search", "enabled")
-	helper.Copy(configupgrade.List, "recall_search", "sources")
-	helper.Copy(configupgrade.List, "recall_search", "extra_paths")
-	helper.Copy(configupgrade.Str, "recall_search", "provider")
-	helper.Copy(configupgrade.Str, "recall_search", "model")
-	helper.Copy(configupgrade.Str, "recall_search", "fallback")
-	helper.Copy(configupgrade.Str, "recall_search", "remote", "base_url")
-	helper.Copy(configupgrade.Str, "recall_search", "remote", "api_key")
-	helper.Copy(configupgrade.Map, "recall_search", "remote", "headers")
-	helper.Copy(configupgrade.Bool, "recall_search", "remote", "batch", "enabled")
-	helper.Copy(configupgrade.Bool, "recall_search", "remote", "batch", "wait")
-	helper.Copy(configupgrade.Int, "recall_search", "remote", "batch", "concurrency")
-	helper.Copy(configupgrade.Int, "recall_search", "remote", "batch", "poll_interval_ms")
-	helper.Copy(configupgrade.Int, "recall_search", "remote", "batch", "timeout_minutes")
-	helper.Copy(configupgrade.Str, "recall_search", "store", "driver")
-	helper.Copy(configupgrade.Str, "recall_search", "store", "path")
-	helper.Copy(configupgrade.Bool, "recall_search", "store", "vector", "enabled")
-	helper.Copy(configupgrade.Str, "recall_search", "store", "vector", "extension_path")
-	helper.Copy(configupgrade.Int, "recall_search", "chunking", "tokens")
-	helper.Copy(configupgrade.Int, "recall_search", "chunking", "overlap")
-	helper.Copy(configupgrade.Bool, "recall_search", "sync", "on_session_start")
-	helper.Copy(configupgrade.Bool, "recall_search", "sync", "on_search")
-	helper.Copy(configupgrade.Bool, "recall_search", "sync", "watch")
-	helper.Copy(configupgrade.Int, "recall_search", "sync", "watch_debounce_ms")
-	helper.Copy(configupgrade.Int, "recall_search", "sync", "interval_minutes")
-	helper.Copy(configupgrade.Int, "recall_search", "sync", "sessions", "delta_bytes")
-	helper.Copy(configupgrade.Int, "recall_search", "sync", "sessions", "delta_messages")
-	helper.Copy(configupgrade.Int, "recall_search", "query", "max_results")
-	helper.Copy(configupgrade.Float, "recall_search", "query", "min_score")
-	helper.Copy(configupgrade.Bool, "recall_search", "query", "hybrid", "enabled")
-	helper.Copy(configupgrade.Float, "recall_search", "query", "hybrid", "vector_weight")
-	helper.Copy(configupgrade.Float, "recall_search", "query", "hybrid", "text_weight")
-	helper.Copy(configupgrade.Int, "recall_search", "query", "hybrid", "candidate_multiplier")
-	helper.Copy(configupgrade.Bool, "recall_search", "cache", "enabled")
-	helper.Copy(configupgrade.Int, "recall_search", "cache", "max_entries")
-	helper.Copy(configupgrade.Bool, "recall_search", "experimental", "session_memory")
+	// Memory search configuration
+	helper.Copy(configupgrade.Bool, "memory_search", "enabled")
+	helper.Copy(configupgrade.List, "memory_search", "sources")
+	helper.Copy(configupgrade.List, "memory_search", "extra_paths")
+	helper.Copy(configupgrade.Str, "memory_search", "provider")
+	helper.Copy(configupgrade.Str, "memory_search", "model")
+	helper.Copy(configupgrade.Str, "memory_search", "fallback")
+	helper.Copy(configupgrade.Str, "memory_search", "remote", "base_url")
+	helper.Copy(configupgrade.Str, "memory_search", "remote", "api_key")
+	helper.Copy(configupgrade.Map, "memory_search", "remote", "headers")
+	helper.Copy(configupgrade.Bool, "memory_search", "remote", "batch", "enabled")
+	helper.Copy(configupgrade.Bool, "memory_search", "remote", "batch", "wait")
+	helper.Copy(configupgrade.Int, "memory_search", "remote", "batch", "concurrency")
+	helper.Copy(configupgrade.Int, "memory_search", "remote", "batch", "poll_interval_ms")
+	helper.Copy(configupgrade.Int, "memory_search", "remote", "batch", "timeout_minutes")
+	helper.Copy(configupgrade.Str, "memory_search", "store", "driver")
+	helper.Copy(configupgrade.Str, "memory_search", "store", "path")
+	helper.Copy(configupgrade.Bool, "memory_search", "store", "vector", "enabled")
+	helper.Copy(configupgrade.Str, "memory_search", "store", "vector", "extension_path")
+	helper.Copy(configupgrade.Int, "memory_search", "chunking", "tokens")
+	helper.Copy(configupgrade.Int, "memory_search", "chunking", "overlap")
+	helper.Copy(configupgrade.Bool, "memory_search", "sync", "on_session_start")
+	helper.Copy(configupgrade.Bool, "memory_search", "sync", "on_search")
+	helper.Copy(configupgrade.Bool, "memory_search", "sync", "watch")
+	helper.Copy(configupgrade.Int, "memory_search", "sync", "watch_debounce_ms")
+	helper.Copy(configupgrade.Int, "memory_search", "sync", "interval_minutes")
+	helper.Copy(configupgrade.Int, "memory_search", "sync", "sessions", "delta_bytes")
+	helper.Copy(configupgrade.Int, "memory_search", "sync", "sessions", "delta_messages")
+	helper.Copy(configupgrade.Int, "memory_search", "query", "max_results")
+	helper.Copy(configupgrade.Float, "memory_search", "query", "min_score")
+	helper.Copy(configupgrade.Bool, "memory_search", "query", "hybrid", "enabled")
+	helper.Copy(configupgrade.Float, "memory_search", "query", "hybrid", "vector_weight")
+	helper.Copy(configupgrade.Float, "memory_search", "query", "hybrid", "text_weight")
+	helper.Copy(configupgrade.Int, "memory_search", "query", "hybrid", "candidate_multiplier")
+	helper.Copy(configupgrade.Bool, "memory_search", "cache", "enabled")
+	helper.Copy(configupgrade.Int, "memory_search", "cache", "max_entries")
+	helper.Copy(configupgrade.Bool, "memory_search", "experimental", "session_memory")
 
 	// Tool policy (OpenClaw-style)
 	helper.Copy(configupgrade.Map, "tool_policy")
