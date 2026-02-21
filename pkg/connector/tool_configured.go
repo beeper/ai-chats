@@ -89,7 +89,7 @@ func (oc *AIClient) isMemorySearchExplicitlyDisabled(meta *PortalMetadata) (bool
 		return true, "Missing connector"
 	}
 	agentID := resolveAgentID(meta)
-	cfg, err := resolveRecallSearchConfig(oc, agentID)
+	cfg, err := resolveMemorySearchConfig(oc, agentID)
 	if err != nil {
 		// resolveMemorySearchConfig returns an error when connector is missing or when the
 		// tool is disabled. Treat both as unavailable here.
@@ -99,10 +99,6 @@ func (oc *AIClient) isMemorySearchExplicitlyDisabled(meta *PortalMetadata) (bool
 		return true, "Memory search disabled"
 	}
 	return false, ""
-}
-
-func (oc *AIClient) isRecallSearchExplicitlyDisabled(meta *PortalMetadata) (bool, string) {
-	return oc.isMemorySearchExplicitlyDisabled(meta)
 }
 
 func (oc *AIClient) isTTSConfigured() (bool, string) {
@@ -133,12 +129,10 @@ func (oc *AIClient) isTTSConfigured() (bool, string) {
 
 func (oc *AIClient) isCronConfigured() (bool, string) {
 	if oc == nil || oc.cronModule() == nil {
-		return false, "Scheduler service not available"
+		return false, "Cron service not available"
 	}
 	return true, ""
 }
-
-func (oc *AIClient) isSchedulerConfigured() (bool, string) { return oc.isCronConfigured() }
 
 func searchEnabled(flag *bool) bool {
 	if flag == nil {

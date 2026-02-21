@@ -24,7 +24,7 @@ func (oc *AIClient) injectMemoryContext(
 		return prompt
 	}
 
-	if oc == nil || portal == nil || meta == nil || oc.connector == nil || oc.connector.Config.Recall == nil || !oc.connector.Config.Recall.InjectContext {
+	if oc == nil || portal == nil || meta == nil || oc.connector == nil || oc.connector.Config.Memory == nil || !oc.connector.Config.Memory.InjectContext {
 		return prompt
 	}
 	db := oc.bridgeDB()
@@ -48,7 +48,7 @@ func (oc *AIClient) injectMemoryContext(
 		}
 	}
 
-	shouldBootstrap := meta.RecallBootstrapAt == 0
+	shouldBootstrap := meta.MemoryBootstrapAt == 0
 	if shouldBootstrap {
 		_, loc := oc.resolveUserTimezone()
 		now := time.Now().In(loc)
@@ -60,7 +60,7 @@ func (oc *AIClient) injectMemoryContext(
 		if section := readMemorySection(ctx, store, fmt.Sprintf("memory/%s.md", yesterday)); section != "" {
 			sections = append(sections, section)
 		}
-		meta.RecallBootstrapAt = time.Now().UnixMilli()
+		meta.MemoryBootstrapAt = time.Now().UnixMilli()
 		oc.savePortalQuiet(ctx, portal, "memory bootstrap")
 	}
 

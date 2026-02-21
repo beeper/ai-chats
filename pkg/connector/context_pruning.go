@@ -92,8 +92,8 @@ type PruningConfig struct {
 	// CustomInstructions are additional instructions for the summarization model
 	CustomInstructions string `yaml:"custom_instructions" json:"custom_instructions,omitempty"`
 
-	// RecallFlush runs a pre-compaction recall write pass.
-	RecallFlush *RecallFlushConfig `yaml:"recall_flush" json:"recall_flush,omitempty"`
+	// MemoryFlush runs a pre-compaction memory write pass.
+	MemoryFlush *MemoryFlushConfig `yaml:"memory_flush" json:"memory_flush,omitempty"`
 
 	// MaxHistoryTurns limits conversation history to the last N user turns (and their associated
 	// assistant responses). This reduces token usage for long-running DM sessions.
@@ -102,8 +102,8 @@ type PruningConfig struct {
 	MaxHistoryTurns int `yaml:"max_history_turns" json:"max_history_turns,omitempty"`
 }
 
-// RecallFlushConfig configures pre-compaction recall flush behavior (OpenClaw-style).
-type RecallFlushConfig struct {
+// MemoryFlushConfig configures pre-compaction memory flush behavior (OpenClaw-style).
+type MemoryFlushConfig struct {
 	Enabled             *bool  `yaml:"enabled" json:"enabled,omitempty"`
 	SoftThresholdTokens int    `yaml:"soft_threshold_tokens" json:"soft_threshold_tokens,omitempty"`
 	Prompt              string `yaml:"prompt" json:"prompt,omitempty"`

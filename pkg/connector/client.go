@@ -1037,7 +1037,7 @@ func (oc *AIClient) Disconnect() {
 		oc.heartbeatRunner.Stop()
 	}
 
-		// Stop all login-scoped integration workers for this login.
+	// Stop all login-scoped integration workers for this login.
 	if oc.UserLogin != nil && oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.DB != nil {
 		bridgeID := string(oc.UserLogin.Bridge.DB.BridgeID)
 		loginID := string(oc.UserLogin.ID)
@@ -1468,8 +1468,8 @@ func (oc *AIClient) effectiveAgentPrompt(ctx context.Context, portal *bridgev2.P
 		PromptMode:        agent.PromptMode,
 		HeartbeatPrompt:   resolveHeartbeatPrompt(&oc.connector.Config, resolveHeartbeatConfig(&oc.connector.Config, agent.ID), agent),
 	}
-	if oc.connector != nil && oc.connector.Config.Recall != nil {
-		params.MemoryCitations = strings.TrimSpace(oc.connector.Config.Recall.Citations)
+	if oc.connector != nil && oc.connector.Config.Memory != nil {
+		params.MemoryCitations = strings.TrimSpace(oc.connector.Config.Memory.Citations)
 	}
 	params.UserIdentitySupplement = oc.gravatarContext()
 	params.ContextFiles = oc.buildBootstrapContextFiles(ctx, agentID, meta)

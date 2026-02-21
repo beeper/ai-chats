@@ -119,7 +119,7 @@ func TestToolAvailable_MemorySearch_DisabledByConfig(t *testing.T) {
 	oc := &AIClient{
 		connector: &OpenAIConnector{
 			Config: Config{
-				RecallSearch: &RecallSearchConfig{Enabled: boolPtr(false)},
+				MemorySearch: &MemorySearchConfig{Enabled: boolPtr(false)},
 			},
 		},
 	}

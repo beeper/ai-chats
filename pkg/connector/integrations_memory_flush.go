@@ -45,7 +45,7 @@ func resolveMemoryFlushSettings(config *CompactionConfig) *memoryFlushSettings {
 			systemPrompt:        defaultMemoryFlushSystemPrompt,
 		}
 	}
-	cfg := config.PruningConfig.RecallFlush
+	cfg := config.PruningConfig.MemoryFlush
 	if cfg != nil && cfg.Enabled != nil && !*cfg.Enabled {
 		return nil
 	}
@@ -86,7 +86,7 @@ func (oc *AIClient) shouldRunMemoryFlush(meta *PortalMetadata, totalTokens, cont
 	if threshold <= 0 || totalTokens < threshold {
 		return false
 	}
-	if meta != nil && meta.RecallFlushAt > 0 && meta.RecallFlushCompactionCount == meta.CompactionCount {
+	if meta != nil && meta.MemoryFlushAt > 0 && meta.MemoryFlushCompactionCount == meta.CompactionCount {
 		return false
 	}
 	return true
@@ -131,8 +131,8 @@ func (oc *AIClient) maybeRunMemoryFlush(
 	}
 
 	if meta != nil {
-		meta.RecallFlushAt = time.Now().UnixMilli()
-		meta.RecallFlushCompactionCount = meta.CompactionCount
+		meta.MemoryFlushAt = time.Now().UnixMilli()
+		meta.MemoryFlushCompactionCount = meta.CompactionCount
 		oc.savePortalQuiet(ctx, portal, "memory flush")
 	}
 }

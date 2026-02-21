@@ -11,13 +11,13 @@ import (
 	"github.com/beeper/ai-bridge/pkg/shared/httputil"
 )
 
-type recallAgentSearchConfig = agents.MemorySearchConfig
+type memoryAgentSearchConfig = agents.MemorySearchConfig
 
-func resolveRecallSearchConfig(client *AIClient, agentID string) (*memory.ResolvedConfig, error) {
+func resolveMemorySearchConfig(client *AIClient, agentID string) (*memory.ResolvedConfig, error) {
 	if client == nil || client.connector == nil {
 		return nil, errors.New("missing connector")
 	}
-	defaults := client.connector.Config.RecallSearch
+	defaults := client.connector.Config.MemorySearch
 	var overrides *agents.MemorySearchConfig
 
 	if agentID != "" {
@@ -36,7 +36,7 @@ func resolveRecallSearchConfig(client *AIClient, agentID string) (*memory.Resolv
 }
 
 func mergeMemorySearchConfig(
-	defaults *RecallSearchConfig,
+	defaults *MemorySearchConfig,
 	overrides *agents.MemorySearchConfig,
 ) *memory.ResolvedConfig {
 	o := extractOverrideFields(overrides)
@@ -345,7 +345,7 @@ func extractOverrideFields(cfg *agents.MemorySearchConfig) memSearchFields {
 	return f
 }
 
-func extractDefaultFields(cfg *RecallSearchConfig) memSearchFields {
+func extractDefaultFields(cfg *MemorySearchConfig) memSearchFields {
 	var f memSearchFields
 	if cfg == nil {
 		return f

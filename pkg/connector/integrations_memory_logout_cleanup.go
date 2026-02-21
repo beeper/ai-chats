@@ -10,7 +10,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 )
 
-func purgeRecallLoginDataBestEffort(
+func purgeMemoryLoginDataBestEffort(
 	ctx context.Context,
 	login *bridgev2.UserLogin,
 	db *dbutil.Database,
@@ -20,7 +20,7 @@ func purgeRecallLoginDataBestEffort(
 		return
 	}
 
-	// Stop background recall workers and (if possible) delete vector rows via existing vector-enabled managers
+	// Stop background memory workers and (if possible) delete vector rows via existing vector-enabled managers
 	// before deleting chunk rows.
 	chunkIDsByAgent := loadMemoryChunkIDsByAgentBestEffort(ctx, db, bridgeID, loginID)
 	if client, ok := login.Client.(*AIClient); ok && client != nil && client.memoryModule() != nil {
@@ -48,7 +48,7 @@ func loadMemoryChunkIDsByAgentBestEffort(ctx context.Context, db *dbutil.Databas
 		bridgeID, loginID,
 	)
 	if err != nil {
-		// Missing tables are expected on old DBs or when recall is unused.
+		// Missing tables are expected on old DBs or when memory indexing is unused.
 		msg := strings.ToLower(err.Error())
 		if strings.Contains(msg, "no such table") || strings.Contains(msg, "does not exist") || strings.Contains(msg, "undefined table") {
 			return out
@@ -103,7 +103,7 @@ func purgeAIMemoryTablesBestEffort(ctx context.Context, db *dbutil.Database, bri
 		bridgeID, loginID,
 	)
 
-	// Core recall index/cache tables.
+	// Core memory index/cache tables.
 	bestEffortExec(ctx, db,
 		`DELETE FROM ai_memory_embedding_cache WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
@@ -134,13 +134,13 @@ func purgeVectorRowsBestEffort(ctx context.Context, login *bridgev2.UserLogin, b
 		return
 	}
 
-	// Only AI logins can have recall search vector indexing enabled.
+	// Only AI logins can have memory search vector indexing enabled.
 	client, ok := login.Client.(*AIClient)
 	if !ok || client == nil {
 		return
 	}
 
-	cfg, err := resolveRecallSearchConfig(client, "")
+	cfg, err := resolveMemorySearchConfig(client, "")
 	if err != nil || cfg == nil || !cfg.Store.Vector.Enabled {
 		return
 	}

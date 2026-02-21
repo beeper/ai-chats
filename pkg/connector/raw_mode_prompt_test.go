@@ -110,7 +110,7 @@ func TestRawModePrompt_LatestUserMessageUnchanged_NoLinkContext_NoMessageID(t *t
 					MaxContentChars: 2000,
 					FetchTimeout:    50 * time.Millisecond, // unused in raw mode
 				},
-				Recall: &RecallConfig{
+				Memory: &MemoryConfig{
 					InjectContext: true,
 				},
 			},
@@ -156,7 +156,7 @@ func TestInjectMemoryContext_SkipsInRawMode(t *testing.T) {
 	client := &AIClient{
 		connector: &OpenAIConnector{
 			Config: Config{
-				Recall: &RecallConfig{InjectContext: true},
+				Memory: &MemoryConfig{InjectContext: true},
 			},
 		},
 	}

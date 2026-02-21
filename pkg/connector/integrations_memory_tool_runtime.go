@@ -13,21 +13,21 @@ import (
 	integrationmemory "github.com/beeper/ai-bridge/pkg/integrations/memory"
 )
 
-type recallSearchOptions = integrationmemory.SearchOptions
-type recallSearchResult = integrationmemory.SearchResult
-type recallFallbackStatus = integrationmemory.FallbackStatus
+type memorySearchOptions = integrationmemory.SearchOptions
+type memorySearchResult = integrationmemory.SearchResult
+type memoryFallbackStatus = integrationmemory.FallbackStatus
 
-type recallSearchOutput struct {
-	Results   []recallSearchResult  `json:"results"`
+type memorySearchOutput struct {
+	Results   []memorySearchResult  `json:"results"`
 	Provider  string                `json:"provider,omitempty"`
 	Model     string                `json:"model,omitempty"`
-	Fallback  *recallFallbackStatus `json:"fallback,omitempty"`
+	Fallback  *memoryFallbackStatus `json:"fallback,omitempty"`
 	Citations string                `json:"citations,omitempty"`
 	Disabled  bool                  `json:"disabled,omitempty"`
 	Error     string                `json:"error,omitempty"`
 }
 
-type recallGetOutput struct {
+type memoryGetOutput struct {
 	Path     string `json:"path"`
 	Text     string `json:"text"`
 	Disabled bool   `json:"disabled,omitempty"`
@@ -73,18 +73,18 @@ func executeMemorySearch(ctx context.Context, args map[string]any) (string, erro
 
 	meta := portalMeta(btc.Portal)
 	if btc.Client == nil || memoryModule == nil {
-		payload := recallSearchOutput{
-			Results:  []recallSearchResult{},
+		payload := memorySearchOutput{
+			Results:  []memorySearchResult{},
 			Disabled: true,
-			Error:    "recall integration unavailable",
+			Error:    "memory integration unavailable",
 		}
 		output, _ := json.MarshalIndent(payload, "", "  ")
 		return string(output), nil
 	}
 	manager, errMsg := memoryModule.GetManager(btc.Client.toolScope(btc.Portal, meta))
 	if manager == nil {
-		payload := recallSearchOutput{
-			Results:  []recallSearchResult{},
+		payload := memorySearchOutput{
+			Results:  []memorySearchResult{},
 			Disabled: true,
 			Error:    errMsg,
 		}
@@ -92,7 +92,7 @@ func executeMemorySearch(ctx context.Context, args map[string]any) (string, erro
 		return string(output), nil
 	}
 
-	opts := recallSearchOptions{
+	opts := memorySearchOptions{
 		SessionKey: btc.Portal.PortalKey.String(),
 		MinScore:   math.NaN(),
 		Mode:       mode,
@@ -131,12 +131,13 @@ func executeMemorySearch(ctx context.Context, args map[string]any) (string, erro
 			}
 		}
 	}
+
 	searchCtx, searchCancel := context.WithTimeout(ctx, memorySearchTimeout)
 	defer searchCancel()
 	results, err := manager.Search(searchCtx, query, opts)
 	if err != nil {
-		payload := recallSearchOutput{
-			Results:  []recallSearchResult{},
+		payload := memorySearchOutput{
+			Results:  []memorySearchResult{},
 			Disabled: true,
 			Error:    err.Error(),
 		}
@@ -145,10 +146,10 @@ func executeMemorySearch(ctx context.Context, args map[string]any) (string, erro
 	}
 
 	status := manager.Status()
-	citationsMode := resolveRecallCitationsMode(btc.Client)
-	includeCitations := shouldIncludeRecallCitations(ctx, btc.Client, btc.Portal, citationsMode)
-	decorated := decorateRecallSearchResults(results, includeCitations)
-	payload := recallSearchOutput{
+	citationsMode := resolveMemoryCitationsMode(btc.Client)
+	includeCitations := shouldIncludeMemoryCitations(ctx, btc.Client, btc.Portal, citationsMode)
+	decorated := decorateMemorySearchResults(results, includeCitations)
+	payload := memorySearchOutput{
 		Results:   decorated,
 		Provider:  status.Provider,
 		Model:     status.Model,
@@ -161,10 +162,6 @@ func executeMemorySearch(ctx context.Context, args map[string]any) (string, erro
 	}
 
 	return string(output), nil
-}
-
-func executeRecallSearch(ctx context.Context, args map[string]any) (string, error) {
-	return executeMemorySearch(ctx, args)
 }
 
 // executeMemoryGet handles the memory_get tool.
@@ -186,18 +183,18 @@ func executeMemoryGet(ctx context.Context, args map[string]any) (string, error) 
 
 	meta := portalMeta(btc.Portal)
 	if btc.Client == nil || memoryModule == nil {
-		payload := recallGetOutput{
+		payload := memoryGetOutput{
 			Path:     path,
 			Text:     "",
 			Disabled: true,
-			Error:    "recall integration unavailable",
+			Error:    "memory integration unavailable",
 		}
 		output, _ := json.MarshalIndent(payload, "", "  ")
 		return string(output), nil
 	}
 	manager, errMsg := memoryModule.GetManager(btc.Client.toolScope(btc.Portal, meta))
 	if manager == nil {
-		payload := recallGetOutput{
+		payload := memoryGetOutput{
 			Path:     path,
 			Text:     "",
 			Disabled: true,
@@ -224,7 +221,7 @@ func executeMemoryGet(ctx context.Context, args map[string]any) (string, error) 
 
 	result, err := manager.ReadFile(ctx, path, from, lines)
 	if err != nil {
-		payload := recallGetOutput{
+		payload := memoryGetOutput{
 			Path:     path,
 			Text:     "",
 			Disabled: true,
@@ -238,10 +235,7 @@ func executeMemoryGet(ctx context.Context, args map[string]any) (string, error) 
 	if resolvedPath == "" {
 		resolvedPath = path
 	}
-	payload := recallGetOutput{
-		Path: resolvedPath,
-		Text: text,
-	}
+	payload := memoryGetOutput{Path: resolvedPath, Text: text}
 	output, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		return "", fmt.Errorf("couldn't format the result: %w", err)
@@ -250,15 +244,11 @@ func executeMemoryGet(ctx context.Context, args map[string]any) (string, error) 
 	return string(output), nil
 }
 
-func executeRecallGet(ctx context.Context, args map[string]any) (string, error) {
-	return executeMemoryGet(ctx, args)
-}
-
-func resolveRecallCitationsMode(client *AIClient) string {
-	if client == nil || client.connector == nil || client.connector.Config.Recall == nil {
+func resolveMemoryCitationsMode(client *AIClient) string {
+	if client == nil || client.connector == nil || client.connector.Config.Memory == nil {
 		return "auto"
 	}
-	mode := strings.ToLower(strings.TrimSpace(client.connector.Config.Recall.Citations))
+	mode := strings.ToLower(strings.TrimSpace(client.connector.Config.Memory.Citations))
 	switch mode {
 	case "on", "off", "auto":
 		return mode
@@ -267,7 +257,7 @@ func resolveRecallCitationsMode(client *AIClient) string {
 	}
 }
 
-func shouldIncludeRecallCitations(ctx context.Context, client *AIClient, portal *bridgev2.Portal, mode string) bool {
+func shouldIncludeMemoryCitations(ctx context.Context, client *AIClient, portal *bridgev2.Portal, mode string) bool {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case "on":
 		return true
@@ -281,14 +271,14 @@ func shouldIncludeRecallCitations(ctx context.Context, client *AIClient, portal 
 	return !client.isGroupChat(ctx, portal)
 }
 
-func decorateRecallSearchResults(results []recallSearchResult, include bool) []recallSearchResult {
+func decorateMemorySearchResults(results []memorySearchResult, include bool) []memorySearchResult {
 	if !include || len(results) == 0 {
 		return results
 	}
-	out := make([]recallSearchResult, 0, len(results))
+	out := make([]memorySearchResult, 0, len(results))
 	for _, entry := range results {
 		next := entry
-		citation := formatRecallCitation(entry)
+		citation := formatMemoryCitation(entry)
 		if citation != "" {
 			snippet := strings.TrimSpace(entry.Snippet)
 			if snippet != "" {
@@ -302,7 +292,7 @@ func decorateRecallSearchResults(results []recallSearchResult, include bool) []r
 	return out
 }
 
-func formatRecallCitation(entry recallSearchResult) string {
+func formatMemoryCitation(entry memorySearchResult) string {
 	if strings.TrimSpace(entry.Path) == "" {
 		return ""
 	}
