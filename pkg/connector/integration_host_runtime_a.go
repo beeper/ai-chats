@@ -206,16 +206,19 @@ func (oc *AIClient) updateCronSessionEntry(ctx context.Context, sessionKey strin
 }
 
 func (oc *AIClient) readCronRuns(jobID string, limit int) ([]integrationcron.RunLogEntry, error) {
-	if oc == nil || oc.cronModule() == nil {
+	if oc == nil {
 		return nil, errors.New("cron service not available")
+	}
+	if known, available, _, reason := oc.integratedToolAvailability(&PortalMetadata{}, ToolNameCron); known && !available {
+		if strings.TrimSpace(reason) == "" {
+			reason = "cron service not available"
+		}
+		return nil, errors.New(reason)
 	}
 	if limit <= 0 {
 		limit = 200
 	}
-	_, storePath, _, _, err := oc.cronModule().Status()
-	if err != nil {
-		return nil, err
-	}
+	storePath := resolveCronStorePath(&oc.connector.Config)
 	stateBackend := oc.bridgeStateBackend()
 	if stateBackend == nil {
 		return nil, errors.New("cron store not available")

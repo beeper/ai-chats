@@ -9,8 +9,6 @@ import (
 	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 
-	integrationcron "github.com/beeper/ai-bridge/pkg/integrations/cron"
-	integrationmemory "github.com/beeper/ai-bridge/pkg/integrations/memory"
 	integrationmodules "github.com/beeper/ai-bridge/pkg/integrations/modules"
 	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
 )
@@ -431,20 +429,6 @@ func (oc *AIClient) integrationModule(name string) any {
 		return nil
 	}
 	return oc.integrationModules[strings.ToLower(strings.TrimSpace(name))]
-}
-
-func (oc *AIClient) cronModule() *integrationcron.Integration {
-	if module, ok := oc.integrationModule("cron").(*integrationcron.Integration); ok {
-		return module
-	}
-	return nil
-}
-
-func (oc *AIClient) memoryModule() *integrationmemory.Integration {
-	if module, ok := oc.integrationModule("memory").(*integrationmemory.Integration); ok {
-		return module
-	}
-	return nil
 }
 
 func (oc *AIClient) eachIntegrationModule(fn func(name string, module any)) {
