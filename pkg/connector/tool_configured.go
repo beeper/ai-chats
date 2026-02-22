@@ -84,23 +84,6 @@ func (oc *AIClient) isWebFetchConfigured(ctx context.Context) (bool, string) {
 	return false, "Web fetch is disabled (direct disabled and Exa API key missing)"
 }
 
-func (oc *AIClient) isMemorySearchExplicitlyDisabled(meta *PortalMetadata) (bool, string) {
-	if oc == nil || oc.connector == nil {
-		return true, "Missing connector"
-	}
-	agentID := resolveAgentID(meta)
-	cfg, err := resolveMemorySearchConfig(oc, agentID)
-	if err != nil {
-		// resolveMemorySearchConfig returns an error when connector is missing or when the
-		// tool is disabled. Treat both as unavailable here.
-		return true, err.Error()
-	}
-	if cfg == nil || !cfg.Enabled {
-		return true, "Memory search disabled"
-	}
-	return false, ""
-}
-
 func (oc *AIClient) isTTSConfigured() (bool, string) {
 	// macOS fallback is always available (uses the system "say" command).
 	if isTTSMacOSAvailable() {
@@ -125,20 +108,6 @@ func (oc *AIClient) isTTSConfigured() (bool, string) {
 		return false, "TTS not available for this provider"
 	}
 	return true, ""
-}
-
-func (oc *AIClient) isCronConfigured() (bool, string) {
-	if oc == nil {
-		return false, "Cron service not available"
-	}
-	known, available, _, reason := oc.integratedToolAvailability(&PortalMetadata{}, ToolNameCron)
-	if known && available {
-		return true, ""
-	}
-	if strings.TrimSpace(reason) == "" {
-		reason = "Cron service not available"
-	}
-	return false, reason
 }
 
 func searchEnabled(flag *bool) bool {
