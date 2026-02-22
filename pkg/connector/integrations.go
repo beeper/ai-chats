@@ -19,6 +19,12 @@ const (
 	integrationToolMemoryGetName    = "memory_get"
 )
 
+var integrationToolModules = map[string]string{
+	ToolNameCron:         "cron",
+	ToolNameMemorySearch: "memory",
+	ToolNameMemoryGet:    "memory",
+}
+
 type toolIntegrationRegistry struct {
 	items []integrationruntime.ToolIntegration
 }
@@ -532,48 +538,49 @@ func (oc *AIClient) integratedToolAvailability(meta *PortalMetadata, toolName st
 	if oc == nil {
 		return false, false, SourceGlobalDefault, ""
 	}
-	switch strings.TrimSpace(toolName) {
-	case ToolNameCron:
-		if !oc.cronModuleEnabled() {
-			return true, false, SourceProviderLimit, "Cron integration disabled"
+	moduleName, isModuleTool := integrationModuleForTool(toolName)
+	if isModuleTool && !oc.integrationModuleEnabled(moduleName) {
+		return true, false, SourceProviderLimit, moduleName + " integration disabled"
+	}
+	if oc.toolRegistry == nil {
+		if isModuleTool {
+			return true, false, SourceProviderLimit, moduleName + " integration unavailable"
 		}
-		if oc.toolRegistry == nil {
-			return true, false, SourceProviderLimit, "Cron integration unavailable"
-		}
-	case ToolNameMemorySearch, ToolNameMemoryGet:
-		if !oc.memoryModuleEnabled() {
-			return true, false, SourceProviderLimit, "Memory integration disabled"
-		}
-		disabled, reason := oc.isMemorySearchExplicitlyDisabled(meta)
-		if disabled {
-			return true, false, SourceProviderLimit, reason
-		}
-		if oc.toolRegistry == nil {
-			return true, false, SourceProviderLimit, "Memory integration unavailable"
-		}
-	default:
-		if oc.toolRegistry == nil {
-			return false, false, SourceGlobalDefault, ""
-		}
+		return false, false, SourceGlobalDefault, ""
 	}
 	if known, available, source, reason := oc.toolRegistry.availability(context.Background(), oc.toolScope(nil, meta), toolName); known {
 		return true, available, source, reason
 	}
+	if isModuleTool {
+		return true, false, SourceProviderLimit, moduleName + " integration unavailable"
+	}
 	return false, false, SourceGlobalDefault, ""
 }
 
-func (oc *AIClient) cronModuleEnabled() bool {
-	if oc == nil || oc.connector == nil || oc.connector.Config.Integrations == nil || oc.connector.Config.Integrations.Cron == nil {
-		return true
-	}
-	return *oc.connector.Config.Integrations.Cron
+func integrationModuleForTool(toolName string) (string, bool) {
+	name := strings.TrimSpace(toolName)
+	moduleName, ok := integrationToolModules[name]
+	return moduleName, ok
 }
 
-func (oc *AIClient) memoryModuleEnabled() bool {
-	if oc == nil || oc.connector == nil || oc.connector.Config.Integrations == nil || oc.connector.Config.Integrations.Memory == nil {
+func (oc *AIClient) integrationModuleEnabled(moduleName string) bool {
+	if oc == nil || oc.connector == nil || oc.connector.Config.Integrations == nil {
 		return true
 	}
-	return *oc.connector.Config.Integrations.Memory
+	switch strings.ToLower(strings.TrimSpace(moduleName)) {
+	case "cron":
+		if oc.connector.Config.Integrations.Cron == nil {
+			return true
+		}
+		return *oc.connector.Config.Integrations.Cron
+	case "memory":
+		if oc.connector.Config.Integrations.Memory == nil {
+			return true
+		}
+		return *oc.connector.Config.Integrations.Memory
+	default:
+		return true
+	}
 }
 
 func (oc *AIClient) executeIntegratedTool(
