@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	integrationcron "github.com/beeper/ai-bridge/pkg/integrations/cron"
 	integrationmemory "github.com/beeper/ai-bridge/pkg/integrations/memory"
 	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
+	"github.com/beeper/ai-bridge/pkg/textfs"
 )
 
 type runtimeIntegrationHost struct {
@@ -79,14 +81,36 @@ func (h *runtimeIntegrationHost) ToolDefinitions(_ context.Context, _ integratio
 func (h *runtimeIntegrationHost) ExecuteTool(ctx context.Context, call integrationruntime.ToolCall) (bool, string, error) {
 	switch call.Name {
 	case ToolNameCron:
-		result, err := executeCron(ctx, call.Args)
+		result, err := integrationcron.ExecuteTool(ctx, call.Args, integrationcron.ToolExecDeps{
+			Status: h.Status,
+			List:   h.List,
+			Add:    h.Add,
+			Update: h.Update,
+			Remove: h.Remove,
+			Run:    h.Run,
+			Runs:   h.Runs,
+			Wake:   h.Wake,
+			NowMs:  func() int64 { return time.Now().UnixMilli() },
+			ResolveCreateContext: func() integrationcron.ToolCreateContext {
+				return h.resolveCronToolCreateContext(call.Scope)
+			},
+			ResolveReminderLines: func(count int) []integrationcron.ReminderContextLine {
+				return h.resolveCronReminderLines(call.Scope, count)
+			},
+			ValidateDeliveryTo: integrationcron.ValidateDeliveryTo,
+		})
 		return true, result, err
-	case ToolNameMemorySearch:
-		result, err := executeMemorySearch(ctx, call.Args)
-		return true, result, err
-	case ToolNameMemoryGet:
-		result, err := executeMemoryGet(ctx, call.Args)
-		return true, result, err
+	case ToolNameMemorySearch, ToolNameMemoryGet:
+		return integrationmemory.ExecuteTool(ctx, call, integrationmemory.ToolExecDeps{
+			GetManager:        h.GetManager,
+			ResolveSessionKey: h.resolveMemorySessionKey,
+			ResolveCitationsMode: func(scope integrationruntime.ToolScope) string {
+				return h.resolveMemoryCitationsMode(scope)
+			},
+			ShouldIncludeCitations: func(ctx context.Context, scope integrationruntime.ToolScope, mode string) bool {
+				return h.shouldIncludeMemoryCitations(ctx, scope, mode)
+			},
+		})
 	default:
 		return false, "", nil
 	}
@@ -260,10 +284,12 @@ func (h *runtimeIntegrationHost) CommandDefinitions(_ context.Context, _ integra
 }
 
 func (h *runtimeIntegrationHost) ExecuteCommand(ctx context.Context, call integrationruntime.CommandCall) (bool, error) {
-	if strings.ToLower(strings.TrimSpace(call.Name)) != "memory" {
-		return false, nil
-	}
-	return executeMemoryCommand(ctx, call)
+	return integrationmemory.ExecuteCommand(ctx, call, integrationmemory.CommandExecDeps{
+		GetManager:        h.GetManager,
+		ResolveSessionKey: h.resolveMemorySessionKey,
+		SplitQuotedArgs:   splitQuotedArgs,
+		WriteFile:         h.writeMemoryCommandFile,
+	})
 }
 
 func (h *runtimeIntegrationHost) OnSessionMutation(ctx context.Context, evt integrationruntime.SessionMutationEvent) {
@@ -304,7 +330,162 @@ func (h *runtimeIntegrationHost) PurgeForLogin(ctx context.Context, scope integr
 	db := bridgeDBFromLogin(login)
 	chunkIDsByAgent := loadMemoryChunkIDsByAgentBestEffort(ctx, db, scope.BridgeID, scope.LoginID)
 	integrationmemory.PurgeManagersForLogin(ctx, scope.BridgeID, scope.LoginID, chunkIDsByAgent)
+	purgeVectorRowsBestEffort(ctx, login, scope.BridgeID, scope.LoginID)
+	purgeAIMemoryTablesBestEffort(ctx, db, scope.BridgeID, scope.LoginID)
 	return nil
+}
+
+func (h *runtimeIntegrationHost) resolveCronToolCreateContext(scope integrationruntime.ToolScope) integrationcron.ToolCreateContext {
+	meta, _ := scope.Meta.(*PortalMetadata)
+	portal, _ := scope.Portal.(*bridgev2.Portal)
+	return integrationcron.ToolCreateContext{
+		AgentID:        resolveAgentID(meta),
+		SourceInternal: meta != nil && (meta.IsCronRoom || meta.IsBuilderRoom),
+		SourceRoomID: func() string {
+			if portal == nil || portal.MXID == "" {
+				return ""
+			}
+			return portal.MXID.String()
+		}(),
+	}
+}
+
+func (h *runtimeIntegrationHost) resolveCronReminderLines(scope integrationruntime.ToolScope, count int) []integrationcron.ReminderContextLine {
+	if h == nil || h.client == nil {
+		return nil
+	}
+	portal, _ := scope.Portal.(*bridgev2.Portal)
+	if portal == nil || count <= 0 || h.client.UserLogin == nil || h.client.UserLogin.Bridge == nil || h.client.UserLogin.Bridge.DB == nil {
+		return nil
+	}
+	maxMessages := count
+	if maxMessages > 10 {
+		maxMessages = 10
+	}
+	history, err := h.client.UserLogin.Bridge.DB.Message.GetLastNInPortal(h.client.backgroundContext(context.Background()), portal.PortalKey, maxMessages)
+	if err != nil || len(history) == 0 {
+		return nil
+	}
+	out := make([]integrationcron.ReminderContextLine, 0, len(history))
+	for i := len(history) - 1; i >= 0; i-- {
+		meta := messageMeta(history[i])
+		if meta == nil {
+			continue
+		}
+		role := strings.ToLower(strings.TrimSpace(meta.Role))
+		if role != "user" && role != "assistant" {
+			continue
+		}
+		text := strings.TrimSpace(meta.Body)
+		if text == "" {
+			continue
+		}
+		out = append(out, integrationcron.ReminderContextLine{Role: role, Text: text})
+	}
+	return out
+}
+
+func (h *runtimeIntegrationHost) resolveMemorySessionKey(scope integrationruntime.ToolScope) string {
+	portal, _ := scope.Portal.(*bridgev2.Portal)
+	if portal == nil {
+		return ""
+	}
+	return portal.PortalKey.String()
+}
+
+func (h *runtimeIntegrationHost) resolveMemoryCitationsMode(scope integrationruntime.ToolScope) string {
+	if h == nil || h.client == nil || h.client.connector == nil || h.client.connector.Config.Memory == nil {
+		return "auto"
+	}
+	mode := strings.ToLower(strings.TrimSpace(h.client.connector.Config.Memory.Citations))
+	switch mode {
+	case "on", "off", "auto":
+		return mode
+	default:
+		return "auto"
+	}
+}
+
+func (h *runtimeIntegrationHost) shouldIncludeMemoryCitations(ctx context.Context, scope integrationruntime.ToolScope, mode string) bool {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "on":
+		return true
+	case "off":
+		return false
+	}
+	if h == nil || h.client == nil {
+		return true
+	}
+	portal, _ := scope.Portal.(*bridgev2.Portal)
+	if portal == nil {
+		return true
+	}
+	return !h.client.isGroupChat(ctx, portal)
+}
+
+func (h *runtimeIntegrationHost) writeMemoryCommandFile(
+	ctx context.Context,
+	scope integrationruntime.CommandScope,
+	mode string,
+	path string,
+	content string,
+	maxBytes int,
+) (string, error) {
+	if h == nil || h.client == nil || h.client.UserLogin == nil || h.client.UserLogin.Bridge == nil || h.client.UserLogin.Bridge.DB == nil {
+		return "", errors.New("memory storage unavailable")
+	}
+	if len([]byte(content)) > maxBytes {
+		return "", fmt.Errorf("content exceeds %d bytes", maxBytes)
+	}
+	meta, _ := scope.Meta.(*PortalMetadata)
+	store := textStoreForScope(h.client, meta)
+	if store == nil {
+		return "", errors.New("memory storage unavailable")
+	}
+	if strings.EqualFold(strings.TrimSpace(mode), "append") {
+		if existing, found, err := store.Read(ctx, path); err == nil && found {
+			sep := "\n"
+			if strings.HasSuffix(existing.Content, "\n") || existing.Content == "" {
+				sep = ""
+			}
+			content = existing.Content + sep + content
+			if len([]byte(content)) > maxBytes {
+				return "", fmt.Errorf("content exceeds %d bytes after append", maxBytes)
+			}
+		}
+	}
+	entry, err := store.Write(ctx, path, content)
+	if err != nil {
+		return "", err
+	}
+	if entry != nil {
+		portal, _ := scope.Portal.(*bridgev2.Portal)
+		toolCtx := WithBridgeToolContext(ctx, &BridgeToolContext{
+			Client: h.client,
+			Portal: portal,
+			Meta:   meta,
+		})
+		notifyIntegrationFileChanged(toolCtx, entry.Path)
+		maybeRefreshAgentIdentity(toolCtx, entry.Path)
+		return entry.Path, nil
+	}
+	return path, nil
+}
+
+func textStoreForScope(client *AIClient, meta *PortalMetadata) *textfs.Store {
+	if client == nil || client.UserLogin == nil || client.UserLogin.Bridge == nil || client.UserLogin.Bridge.DB == nil {
+		return nil
+	}
+	db := client.bridgeDB()
+	if db == nil {
+		return nil
+	}
+	return textfs.NewStore(
+		db,
+		string(client.UserLogin.Bridge.DB.BridgeID),
+		string(client.UserLogin.ID),
+		resolveAgentID(meta),
+	)
 }
 
 type memoryManagerAdapter struct {

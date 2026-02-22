@@ -1,8 +1,10 @@
 package connector
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -201,4 +203,49 @@ func (oc *AIClient) updateCronSessionEntry(ctx context.Context, sessionKey strin
 			return updater(entry)
 		},
 	)
+}
+
+func (oc *AIClient) readCronRuns(jobID string, limit int) ([]integrationcron.RunLogEntry, error) {
+	if oc == nil || oc.cronModule() == nil {
+		return nil, errors.New("cron service not available")
+	}
+	if limit <= 0 {
+		limit = 200
+	}
+	_, storePath, _, _, err := oc.cronModule().Status()
+	if err != nil {
+		return nil, err
+	}
+	stateBackend := oc.bridgeStateBackend()
+	if stateBackend == nil {
+		return nil, errors.New("cron store not available")
+	}
+	cronBackend := &cronStoreBackendAdapter{backend: &lazyStoreBackend{client: oc}}
+	trimmed := strings.TrimSpace(jobID)
+	if trimmed != "" {
+		path := integrationcron.ResolveRunLogPath(storePath, trimmed)
+		return integrationcron.ReadRunLogEntries(context.Background(), integrationcron.NewStoreBackendAdapter(cronBackend), path, limit, trimmed)
+	}
+	entries := make([]integrationcron.RunLogEntry, 0)
+	runDir := integrationcron.ResolveRunLogDir(storePath)
+	storeEntries, err := stateBackend.List(context.Background(), runDir)
+	if err != nil {
+		return entries, nil
+	}
+	for _, se := range storeEntries {
+		if !strings.HasSuffix(strings.ToLower(se.Key), ".jsonl") {
+			continue
+		}
+		list := integrationcron.ParseRunLogEntries(string(se.Data), limit, "")
+		if len(list) > 0 {
+			entries = append(entries, list...)
+		}
+	}
+	slices.SortFunc(entries, func(a, b integrationcron.RunLogEntry) int {
+		return cmp.Compare(a.TS, b.TS)
+	})
+	if len(entries) > limit {
+		entries = entries[len(entries)-limit:]
+	}
+	return entries, nil
 }
