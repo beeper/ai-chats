@@ -10,6 +10,7 @@ import (
 	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 
+	"github.com/beeper/ai-bridge/pkg/agents"
 	integrationcron "github.com/beeper/ai-bridge/pkg/integrations/cron"
 	integrationmemory "github.com/beeper/ai-bridge/pkg/integrations/memory"
 	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
@@ -252,12 +253,15 @@ func (h *runtimeIntegrationHost) AugmentPrompt(
 	scope integrationruntime.PromptScope,
 	prompt []openai.ChatCompletionMessageParamUnion,
 ) []openai.ChatCompletionMessageParamUnion {
-	if h == nil || h.client == nil {
-		return prompt
-	}
-	portal, _ := scope.Portal.(*bridgev2.Portal)
-	meta, _ := scope.Meta.(*PortalMetadata)
-	return h.client.injectMemoryContext(ctx, portal, meta, prompt)
+	return integrationmemory.AugmentPrompt(ctx, scope, prompt, integrationmemory.PromptAugmentDeps{
+		ShouldInjectContext: h.shouldInjectMemoryPromptContext,
+		ShouldBootstrap:     h.shouldBootstrapMemoryPromptContext,
+		ResolveBootstrapPaths: func(scope integrationruntime.PromptScope) []string {
+			return h.resolveMemoryBootstrapPaths(scope)
+		},
+		MarkBootstrapped: h.markMemoryPromptBootstrapped,
+		ReadSection:      h.readMemoryPromptSection,
+	})
 }
 
 func (h *runtimeIntegrationHost) GetManager(scope integrationruntime.ToolScope) (integrationmemory.Manager, string) {
@@ -312,9 +316,60 @@ func (h *runtimeIntegrationHost) OnContextOverflow(
 	if h == nil || h.client == nil {
 		return false, nil, nil
 	}
-	portal, _ := call.Portal.(*bridgev2.Portal)
-	meta, _ := call.Meta.(*PortalMetadata)
-	h.client.maybeRunMemoryFlush(ctx, portal, meta, call.Prompt)
+	integrationmemory.HandleOverflow(ctx, call, call.Prompt, integrationmemory.OverflowDeps{
+		IsRawMode: func(call any) bool {
+			overflowCall, _ := call.(integrationruntime.ContextOverflowCall)
+			meta, _ := overflowCall.Meta.(*PortalMetadata)
+			return meta != nil && meta.IsRawMode
+		},
+		ResolveSettings: h.resolveMemoryFlushSettings,
+		TrimPrompt: func(prompt []openai.ChatCompletionMessageParamUnion) []openai.ChatCompletionMessageParamUnion {
+			return smartTruncatePrompt(prompt, 0.5)
+		},
+		ContextWindow: func(call any) int {
+			overflowCall, _ := call.(integrationruntime.ContextOverflowCall)
+			meta, _ := overflowCall.Meta.(*PortalMetadata)
+			return h.client.getModelContextWindow(meta)
+		},
+		ReserveTokens: func() int {
+			compactor := h.client.getCompactor()
+			if compactor == nil || compactor.config == nil || compactor.config.ReserveTokens <= 0 {
+				return 2000
+			}
+			return compactor.config.ReserveTokens
+		},
+		EffectiveModel: func(call any) string {
+			overflowCall, _ := call.(integrationruntime.ContextOverflowCall)
+			meta, _ := overflowCall.Meta.(*PortalMetadata)
+			return h.client.effectiveModel(meta)
+		},
+		EstimateTokens: estimatePromptTokens,
+		AlreadyFlushed: func(call any) bool {
+			overflowCall, _ := call.(integrationruntime.ContextOverflowCall)
+			meta, _ := overflowCall.Meta.(*PortalMetadata)
+			return meta != nil && meta.MemoryFlushAt > 0 && meta.MemoryFlushCompactionCount == meta.CompactionCount
+		},
+		MarkFlushed: func(ctx context.Context, call any) {
+			overflowCall, _ := call.(integrationruntime.ContextOverflowCall)
+			portal, _ := overflowCall.Portal.(*bridgev2.Portal)
+			meta, _ := overflowCall.Meta.(*PortalMetadata)
+			if portal == nil || meta == nil {
+				return
+			}
+			meta.MemoryFlushAt = time.Now().UnixMilli()
+			meta.MemoryFlushCompactionCount = meta.CompactionCount
+			h.client.savePortalQuiet(ctx, portal, "memory flush")
+		},
+		RunFlushToolLoop: func(ctx context.Context, call any, model string, prompt []openai.ChatCompletionMessageParamUnion) error {
+			overflowCall, _ := call.(integrationruntime.ContextOverflowCall)
+			portal, _ := overflowCall.Portal.(*bridgev2.Portal)
+			meta, _ := overflowCall.Meta.(*PortalMetadata)
+			return h.client.runMemoryFlushToolLoop(ctx, portal, meta, model, prompt)
+		},
+		OnError: func(ctx context.Context, err error) {
+			h.client.loggerForContext(ctx).Warn().Err(err).Msg("memory flush failed")
+		},
+	})
 	return false, nil, nil
 }
 
@@ -333,6 +388,44 @@ func (h *runtimeIntegrationHost) PurgeForLogin(ctx context.Context, scope integr
 	purgeVectorRowsBestEffort(ctx, login, scope.BridgeID, scope.LoginID)
 	purgeAIMemoryTablesBestEffort(ctx, db, scope.BridgeID, scope.LoginID)
 	return nil
+}
+
+func (h *runtimeIntegrationHost) resolveMemoryFlushSettings() *integrationmemory.FlushSettings {
+	if h == nil || h.client == nil {
+		return nil
+	}
+	compactor := h.client.getCompactor()
+	if compactor == nil {
+		return nil
+	}
+	config := compactor.config
+	if config == nil || config.PruningConfig == nil {
+		return &integrationmemory.FlushSettings{
+			SoftThresholdTokens: defaultMemoryFlushSoftTokens,
+			Prompt:              integrationmemory.EnsureSilentReplyHint(agents.SilentReplyToken, defaultMemoryFlushPrompt),
+			SystemPrompt:        integrationmemory.EnsureSilentReplyHint(agents.SilentReplyToken, defaultMemoryFlushSystemPrompt),
+		}
+	}
+	cfg := config.PruningConfig.MemoryFlush
+	var enabled *bool
+	softThresholdTokens := 0
+	prompt := ""
+	systemPrompt := ""
+	if cfg != nil {
+		enabled = cfg.Enabled
+		softThresholdTokens = cfg.SoftThresholdTokens
+		prompt = cfg.Prompt
+		systemPrompt = cfg.SystemPrompt
+	}
+	return integrationmemory.NormalizeFlushSettings(
+		enabled,
+		softThresholdTokens,
+		prompt,
+		systemPrompt,
+		defaultMemoryFlushPrompt,
+		defaultMemoryFlushSystemPrompt,
+		agents.SilentReplyToken,
+	)
 }
 
 func (h *runtimeIntegrationHost) resolveCronToolCreateContext(scope integrationruntime.ToolScope) integrationcron.ToolCreateContext {
@@ -486,6 +579,91 @@ func textStoreForScope(client *AIClient, meta *PortalMetadata) *textfs.Store {
 		string(client.UserLogin.ID),
 		resolveAgentID(meta),
 	)
+}
+
+func (h *runtimeIntegrationHost) shouldInjectMemoryPromptContext(scope integrationruntime.PromptScope) bool {
+	if h == nil || h.client == nil || h.client.connector == nil {
+		return false
+	}
+	meta, _ := scope.Meta.(*PortalMetadata)
+	if meta != nil && meta.IsRawMode {
+		return false
+	}
+	return h.client.connector.Config.Memory != nil && h.client.connector.Config.Memory.InjectContext
+}
+
+func (h *runtimeIntegrationHost) shouldBootstrapMemoryPromptContext(scope integrationruntime.PromptScope) bool {
+	meta, _ := scope.Meta.(*PortalMetadata)
+	return meta != nil && meta.MemoryBootstrapAt == 0
+}
+
+func (h *runtimeIntegrationHost) resolveMemoryBootstrapPaths(scope integrationruntime.PromptScope) []string {
+	if h == nil || h.client == nil {
+		return nil
+	}
+	_, loc := h.client.resolveUserTimezone()
+	now := time.Now().In(loc)
+	today := now.Format("2006-01-02")
+	yesterday := now.AddDate(0, 0, -1).Format("2006-01-02")
+	return []string{
+		fmt.Sprintf("memory/%s.md", today),
+		fmt.Sprintf("memory/%s.md", yesterday),
+	}
+}
+
+func (h *runtimeIntegrationHost) markMemoryPromptBootstrapped(ctx context.Context, scope integrationruntime.PromptScope) {
+	if h == nil || h.client == nil {
+		return
+	}
+	meta, _ := scope.Meta.(*PortalMetadata)
+	portal, _ := scope.Portal.(*bridgev2.Portal)
+	if meta == nil || portal == nil {
+		return
+	}
+	meta.MemoryBootstrapAt = time.Now().UnixMilli()
+	h.client.savePortalQuiet(ctx, portal, "memory bootstrap")
+}
+
+func (h *runtimeIntegrationHost) readMemoryPromptSection(ctx context.Context, scope integrationruntime.PromptScope, path string) string {
+	if h == nil || h.client == nil {
+		return ""
+	}
+	meta, _ := scope.Meta.(*PortalMetadata)
+	store := textStoreForScope(h.client, meta)
+	if store == nil {
+		return ""
+	}
+	entry, found, err := store.Read(ctx, path)
+	if err != nil || !found {
+		return ""
+	}
+	content := normalizeNewlines(entry.Content)
+	trunc := textfs.TruncateHead(content, textfs.DefaultMaxLines, textfs.DefaultMaxBytes)
+	if trunc.FirstLineExceedsLimit {
+		return ""
+	}
+	text := trunc.Content
+	if strings.TrimSpace(text) == "" {
+		return ""
+	}
+	if trunc.Truncated {
+		text += "\n\n[truncated]"
+	}
+	return fmt.Sprintf("## %s\n%s", entry.Path, text)
+}
+
+func (oc *AIClient) injectMemoryContext(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+	prompt []openai.ChatCompletionMessageParamUnion,
+) []openai.ChatCompletionMessageParamUnion {
+	host := &runtimeIntegrationHost{client: oc}
+	return host.AugmentPrompt(ctx, integrationruntime.PromptScope{
+		Client: oc,
+		Portal: portal,
+		Meta:   meta,
+	}, prompt)
 }
 
 type memoryManagerAdapter struct {
