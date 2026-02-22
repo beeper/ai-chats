@@ -1,20 +1,29 @@
 package connector
 
 import (
+	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/agents"
 	integrationcron "github.com/beeper/ai-bridge/pkg/integrations/cron"
 	integrationmemory "github.com/beeper/ai-bridge/pkg/integrations/memory"
 	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
 	"github.com/beeper/ai-bridge/pkg/textfs"
+	"github.com/rs/zerolog"
+	"go.mau.fi/util/dbutil"
 )
 
 type runtimeIntegrationHost struct {
@@ -273,7 +282,7 @@ func (h *runtimeIntegrationHost) GetManager(scope integrationruntime.ToolScope) 
 	if manager == nil {
 		return nil, errMsg
 	}
-	return &memoryManagerAdapter{manager: manager}, ""
+	return manager, ""
 }
 
 func (h *runtimeIntegrationHost) CommandDefinitions(_ context.Context, _ integrationruntime.CommandScope) []integrationruntime.CommandDefinition {
@@ -765,123 +774,6 @@ func (oc *AIClient) injectMemoryContext(
 	}, prompt)
 }
 
-type memoryManagerAdapter struct {
-	manager *integrationmemory.MemorySearchManager
-}
-
-func (m *memoryManagerAdapter) Status() integrationmemory.ProviderStatus {
-	if m == nil || m.manager == nil {
-		return integrationmemory.ProviderStatus{}
-	}
-	return m.manager.Status()
-}
-
-func (m *memoryManagerAdapter) Search(ctx context.Context, query string, opts integrationmemory.SearchOptions) ([]integrationmemory.SearchResult, error) {
-	if m == nil || m.manager == nil {
-		return nil, errors.New("memory search unavailable")
-	}
-	return m.manager.Search(ctx, query, opts)
-}
-
-func (m *memoryManagerAdapter) ReadFile(ctx context.Context, relPath string, from, lines *int) (map[string]any, error) {
-	if m == nil || m.manager == nil {
-		return nil, errors.New("memory search unavailable")
-	}
-	return m.manager.ReadFile(ctx, relPath, from, lines)
-}
-
-func (m *memoryManagerAdapter) StatusDetails(ctx context.Context) (*integrationmemory.StatusDetails, error) {
-	if m == nil || m.manager == nil {
-		return nil, errors.New("memory search unavailable")
-	}
-	status, err := m.manager.StatusDetails(ctx)
-	if err != nil {
-		return nil, err
-	}
-	var sourceCounts []integrationmemory.SourceCount
-	if len(status.SourceCounts) > 0 {
-		sourceCounts = make([]integrationmemory.SourceCount, 0, len(status.SourceCounts))
-		for _, src := range status.SourceCounts {
-			sourceCounts = append(sourceCounts, integrationmemory.SourceCount{Source: src.Source, Files: src.Files, Chunks: src.Chunks})
-		}
-	}
-	var fallback *integrationmemory.FallbackStatus
-	if status.Fallback != nil {
-		fallback = &integrationmemory.FallbackStatus{From: status.Fallback.From, Reason: status.Fallback.Reason}
-	}
-	var cache *integrationmemory.CacheStatus
-	if status.Cache != nil {
-		cache = &integrationmemory.CacheStatus{Enabled: status.Cache.Enabled, Entries: status.Cache.Entries, MaxEntries: status.Cache.MaxEntries}
-	}
-	var fts *integrationmemory.FTSStatus
-	if status.FTS != nil {
-		fts = &integrationmemory.FTSStatus{Enabled: status.FTS.Enabled, Available: status.FTS.Available, Error: status.FTS.Error}
-	}
-	var vector *integrationmemory.VectorStatus
-	if status.Vector != nil {
-		vector = &integrationmemory.VectorStatus{
-			Enabled:       status.Vector.Enabled,
-			Available:     status.Vector.Available,
-			ExtensionPath: status.Vector.ExtensionPath,
-			LoadError:     status.Vector.LoadError,
-			Dims:          status.Vector.Dims,
-		}
-	}
-	var batch *integrationmemory.BatchStatus
-	if status.Batch != nil {
-		batch = &integrationmemory.BatchStatus{
-			Enabled:        status.Batch.Enabled,
-			Failures:       status.Batch.Failures,
-			Limit:          status.Batch.Limit,
-			Wait:           status.Batch.Wait,
-			Concurrency:    status.Batch.Concurrency,
-			PollIntervalMs: status.Batch.PollIntervalMs,
-			TimeoutMs:      status.Batch.TimeoutMs,
-			LastError:      status.Batch.LastError,
-			LastProvider:   status.Batch.LastProvider,
-		}
-	}
-	return &integrationmemory.StatusDetails{
-		Files:             status.Files,
-		Chunks:            status.Chunks,
-		Dirty:             status.Dirty,
-		WorkspaceDir:      status.WorkspaceDir,
-		DBPath:            status.DBPath,
-		Provider:          status.Provider,
-		Model:             status.Model,
-		RequestedProvider: status.RequestedProvider,
-		Sources:           status.Sources,
-		ExtraPaths:        status.ExtraPaths,
-		SourceCounts:      sourceCounts,
-		Cache:             cache,
-		FTS:               fts,
-		Fallback:          fallback,
-		Vector:            vector,
-		Batch:             batch,
-	}, nil
-}
-
-func (m *memoryManagerAdapter) ProbeVectorAvailability(ctx context.Context) bool {
-	if m == nil || m.manager == nil {
-		return false
-	}
-	return m.manager.ProbeVectorAvailability(ctx)
-}
-
-func (m *memoryManagerAdapter) ProbeEmbeddingAvailability(ctx context.Context) (bool, string) {
-	if m == nil || m.manager == nil {
-		return false, "memory search unavailable"
-	}
-	return m.manager.ProbeEmbeddingAvailability(ctx)
-}
-
-func (m *memoryManagerAdapter) SyncWithProgress(ctx context.Context, onProgress func(completed, total int, label string)) error {
-	if m == nil || m.manager == nil {
-		return errors.New("memory search unavailable")
-	}
-	return m.manager.SyncWithProgress(ctx, onProgress)
-}
-
 type runtimeLogger struct {
 	client *AIClient
 }
@@ -907,3 +799,868 @@ func (l *runtimeLogger) Debug(msg string, fields map[string]any) { l.emit("debug
 func (l *runtimeLogger) Info(msg string, fields map[string]any)  { l.emit("info", msg, fields) }
 func (l *runtimeLogger) Warn(msg string, fields map[string]any)  { l.emit("warn", msg, fields) }
 func (l *runtimeLogger) Error(msg string, fields map[string]any) { l.emit("error", msg, fields) }
+
+type memoryAgentSearchConfig = agents.MemorySearchConfig
+
+func resolveMemorySearchConfig(client *AIClient, agentID string) (*integrationmemory.ResolvedConfig, error) {
+	if client == nil || client.connector == nil {
+		return nil, errors.New("missing connector")
+	}
+	defaults := client.connector.Config.MemorySearch
+	var overrides *agents.MemorySearchConfig
+
+	if agentID != "" {
+		store := NewAgentStoreAdapter(client)
+		agent, err := store.GetAgentByID(client.backgroundContext(context.TODO()), agentID)
+		if err == nil && agent != nil {
+			overrides = agent.MemorySearch
+		}
+	}
+
+	resolved := mergeMemorySearchConfig(defaults, overrides)
+	if resolved == nil {
+		return nil, errors.New("memory search disabled")
+	}
+	return resolved, nil
+}
+
+func mergeMemorySearchConfig(
+	defaults *MemorySearchConfig,
+	overrides *agents.MemorySearchConfig,
+) *integrationmemory.ResolvedConfig {
+	return integrationmemory.MergeSearchConfig(convertMemorySearchDefaults(defaults), overrides)
+}
+
+func convertMemorySearchDefaults(defaults *MemorySearchConfig) *agents.MemorySearchConfig {
+	if defaults == nil {
+		return nil
+	}
+	raw, err := json.Marshal(defaults)
+	if err != nil {
+		return nil
+	}
+	var out agents.MemorySearchConfig
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil
+	}
+	return &out
+}
+
+func resolveOpenAIEmbeddingConfig(client *AIClient, cfg *integrationmemory.ResolvedConfig) (string, string, map[string]string) {
+	var apiKey string
+	var baseURL string
+	if strings.TrimSpace(cfg.Remote.APIKey) != "" {
+		apiKey = strings.TrimSpace(cfg.Remote.APIKey)
+	} else if client != nil && client.connector != nil {
+		meta := loginMetadata(client.UserLogin)
+		apiKey = strings.TrimSpace(client.connector.resolveOpenAIAPIKey(meta))
+		if meta != nil {
+			if apiKey == "" && meta.Provider == ProviderMagicProxy {
+				apiKey = strings.TrimSpace(meta.APIKey)
+			}
+			if apiKey == "" && meta.Provider == ProviderBeeper {
+				services := client.connector.resolveServiceConfig(meta)
+				if svc, ok := services[serviceOpenRouter]; ok {
+					apiKey = strings.TrimSpace(svc.APIKey)
+					if baseURL == "" {
+						baseURL = strings.TrimSpace(svc.BaseURL)
+					}
+				}
+			}
+		}
+	}
+	if strings.TrimSpace(cfg.Remote.BaseURL) != "" {
+		baseURL = strings.TrimSpace(cfg.Remote.BaseURL)
+	}
+	if baseURL == "" && client != nil && client.connector != nil {
+		if meta := loginMetadata(client.UserLogin); meta != nil {
+			if meta.Provider == ProviderMagicProxy {
+				base := normalizeMagicProxyBaseURL(meta.BaseURL)
+				if base != "" {
+					baseURL = joinProxyPath(base, "/openrouter/v1")
+				}
+			} else if meta.Provider == ProviderBeeper {
+				services := client.connector.resolveServiceConfig(meta)
+				if svc, ok := services[serviceOpenRouter]; ok && strings.TrimSpace(svc.BaseURL) != "" {
+					baseURL = strings.TrimSpace(svc.BaseURL)
+				}
+			}
+		}
+		if baseURL == "" {
+			baseURL = client.connector.resolveOpenAIBaseURL()
+		}
+	}
+	return apiKey, baseURL, cfg.Remote.Headers
+}
+
+// resolveDirectOpenAIEmbeddingConfig resolves the direct OpenAI endpoint
+// (/openai/v1) for batch API calls that require OpenAI-specific endpoints
+// like /files and /batches which OpenRouter does not support.
+func resolveDirectOpenAIEmbeddingConfig(client *AIClient, cfg *integrationmemory.ResolvedConfig) (string, string, map[string]string) {
+	var apiKey string
+	var baseURL string
+	if strings.TrimSpace(cfg.Remote.APIKey) != "" {
+		apiKey = strings.TrimSpace(cfg.Remote.APIKey)
+	} else if client != nil && client.connector != nil {
+		meta := loginMetadata(client.UserLogin)
+		apiKey = strings.TrimSpace(client.connector.resolveOpenAIAPIKey(meta))
+		if meta != nil {
+			if apiKey == "" && meta.Provider == ProviderMagicProxy {
+				apiKey = strings.TrimSpace(meta.APIKey)
+			}
+			if apiKey == "" && meta.Provider == ProviderBeeper {
+				services := client.connector.resolveServiceConfig(meta)
+				if svc, ok := services[serviceOpenAI]; ok {
+					apiKey = strings.TrimSpace(svc.APIKey)
+					if baseURL == "" {
+						baseURL = strings.TrimSpace(svc.BaseURL)
+					}
+				}
+			}
+		}
+	}
+	if strings.TrimSpace(cfg.Remote.BaseURL) != "" {
+		baseURL = strings.TrimSpace(cfg.Remote.BaseURL)
+	}
+	if baseURL == "" && client != nil && client.connector != nil {
+		if meta := loginMetadata(client.UserLogin); meta != nil {
+			if meta.Provider == ProviderMagicProxy {
+				base := normalizeMagicProxyBaseURL(meta.BaseURL)
+				if base != "" {
+					baseURL = joinProxyPath(base, "/openai/v1")
+				}
+			} else if meta.Provider == ProviderBeeper {
+				services := client.connector.resolveServiceConfig(meta)
+				if svc, ok := services[serviceOpenAI]; ok && strings.TrimSpace(svc.BaseURL) != "" {
+					baseURL = strings.TrimSpace(svc.BaseURL)
+				}
+			}
+		}
+		if baseURL == "" {
+			baseURL = client.connector.resolveOpenAIBaseURL()
+		}
+	}
+	return apiKey, baseURL, cfg.Remote.Headers
+}
+
+func resolveGeminiEmbeddingConfig(_ *AIClient, cfg *integrationmemory.ResolvedConfig) (string, string, map[string]string) {
+	apiKey := strings.TrimSpace(cfg.Remote.APIKey)
+	baseURL := strings.TrimSpace(cfg.Remote.BaseURL)
+	if baseURL == "" {
+		baseURL = integrationmemory.DefaultGeminiBaseURL
+	}
+	return apiKey, baseURL, cfg.Remote.Headers
+}
+
+const memorySearchTimeout = 10 * time.Second
+
+type memoryRuntimeAdapter struct {
+	client *AIClient
+}
+
+func (a *memoryRuntimeAdapter) ResolveConfig(agentID string) (*integrationmemory.ResolvedConfig, error) {
+	if a == nil || a.client == nil {
+		return nil, nil
+	}
+	return resolveMemorySearchConfig(a.client, agentID)
+}
+
+func (a *memoryRuntimeAdapter) ResolveOpenAIEmbeddingConfig(cfg *integrationmemory.ResolvedConfig) (string, string, map[string]string) {
+	if a == nil {
+		return "", "", nil
+	}
+	return resolveOpenAIEmbeddingConfig(a.client, cfg)
+}
+
+func (a *memoryRuntimeAdapter) ResolveDirectOpenAIEmbeddingConfig(cfg *integrationmemory.ResolvedConfig) (string, string, map[string]string) {
+	if a == nil {
+		return "", "", nil
+	}
+	return resolveDirectOpenAIEmbeddingConfig(a.client, cfg)
+}
+
+func (a *memoryRuntimeAdapter) ResolveGeminiEmbeddingConfig(cfg *integrationmemory.ResolvedConfig) (string, string, map[string]string) {
+	if a == nil {
+		return "", "", nil
+	}
+	return resolveGeminiEmbeddingConfig(a.client, cfg)
+}
+
+func (a *memoryRuntimeAdapter) ResolvePromptWorkspaceDir() string {
+	return resolvePromptWorkspaceDir()
+}
+
+func (a *memoryRuntimeAdapter) ListSessionPortals(ctx context.Context, loginID, agentID string) ([]integrationmemory.SessionPortal, error) {
+	if a == nil || a.client == nil || a.client.UserLogin == nil || a.client.UserLogin.Bridge == nil || a.client.UserLogin.Bridge.DB == nil {
+		return nil, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if strings.TrimSpace(loginID) == "" {
+		loginID = string(a.client.UserLogin.ID)
+	}
+
+	allowedShared := map[string]struct{}{}
+	if ups, err := a.client.UserLogin.Bridge.DB.UserPortal.GetAllForLogin(ctx, a.client.UserLogin.UserLogin); err == nil {
+		for _, up := range ups {
+			if up == nil || up.Portal.Receiver != "" {
+				continue
+			}
+			allowedShared[up.Portal.String()] = struct{}{}
+		}
+	}
+
+	portals, err := a.client.UserLogin.Bridge.DB.Portal.GetAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]integrationmemory.SessionPortal, 0, len(portals))
+	for _, portal := range portals {
+		if portal == nil || portal.MXID == "" {
+			continue
+		}
+		if portal.Receiver != "" && string(portal.Receiver) != loginID {
+			continue
+		}
+		if portal.Receiver == "" && len(allowedShared) > 0 {
+			if _, ok := allowedShared[portal.PortalKey.String()]; !ok {
+				continue
+			}
+		}
+		meta, ok := portal.Metadata.(*PortalMetadata)
+		if !ok || meta == nil || meta.IsCronRoom {
+			continue
+		}
+		if resolveAgentID(meta) != agentID {
+			continue
+		}
+		key := portal.PortalKey.String()
+		if key == "" {
+			continue
+		}
+		out = append(out, integrationmemory.SessionPortal{Key: key, PortalKey: portal.PortalKey})
+	}
+	return out, nil
+}
+
+func (a *memoryRuntimeAdapter) BridgeDB() *dbutil.Database {
+	if a == nil || a.client == nil {
+		return nil
+	}
+	return a.client.bridgeDB()
+}
+
+func (a *memoryRuntimeAdapter) BridgeID() string {
+	if a == nil || a.client == nil || a.client.UserLogin == nil || a.client.UserLogin.Bridge == nil || a.client.UserLogin.Bridge.DB == nil {
+		return ""
+	}
+	return string(a.client.UserLogin.Bridge.DB.BridgeID)
+}
+
+func (a *memoryRuntimeAdapter) LoginID() string {
+	if a == nil || a.client == nil || a.client.UserLogin == nil {
+		return ""
+	}
+	return string(a.client.UserLogin.ID)
+}
+
+func (a *memoryRuntimeAdapter) Logger() zerolog.Logger {
+	if a == nil || a.client == nil {
+		return zerolog.Logger{}
+	}
+	return a.client.log
+}
+
+func (oc *AIClient) getMemoryManager(agentID string) (*integrationmemory.MemorySearchManager, string) {
+	if oc == nil {
+		return nil, "memory search unavailable"
+	}
+	manager, errMsg := integrationmemory.GetMemorySearchManager(&memoryRuntimeAdapter{client: oc}, agentID)
+	if manager == nil {
+		if errMsg == "" {
+			errMsg = "memory search unavailable"
+		}
+		return nil, errMsg
+	}
+	return manager, ""
+}
+
+func loadMemoryChunkIDsByAgentBestEffort(ctx context.Context, db *dbutil.Database, bridgeID, loginID string) map[string][]string {
+	return integrationmemory.LoadChunkIDsByAgentBestEffort(ctx, db, bridgeID, loginID)
+}
+
+func purgeAIMemoryTablesBestEffort(ctx context.Context, db *dbutil.Database, bridgeID, loginID string) {
+	integrationmemory.PurgeTablesBestEffort(ctx, db, bridgeID, loginID)
+}
+
+func purgeVectorRowsBestEffort(ctx context.Context, login *bridgev2.UserLogin, bridgeID, loginID string) {
+	if login == nil || login.Bridge == nil || login.Bridge.DB == nil {
+		return
+	}
+	db := bridgeDBFromLogin(login)
+	if db == nil {
+		return
+	}
+	client, ok := login.Client.(*AIClient)
+	if !ok || client == nil {
+		return
+	}
+	cfg, err := resolveMemorySearchConfig(client, "")
+	if err != nil || cfg == nil || !cfg.Store.Vector.Enabled {
+		return
+	}
+	extPath := strings.TrimSpace(cfg.Store.Vector.ExtensionPath)
+	if extPath == "" {
+		return
+	}
+	integrationmemory.PurgeVectorRowsBestEffort(ctx, db, bridgeID, loginID, extPath)
+}
+
+type cronStoreBackendAdapter struct {
+	backend *lazyStoreBackend
+}
+
+func (a *cronStoreBackendAdapter) Read(ctx context.Context, key string) ([]byte, bool, error) {
+	if a == nil || a.backend == nil {
+		return nil, false, errors.New("bridge state store not available")
+	}
+	return a.backend.Read(ctx, key)
+}
+
+func (a *cronStoreBackendAdapter) Write(ctx context.Context, key string, data []byte) error {
+	if a == nil || a.backend == nil {
+		return errors.New("bridge state store not available")
+	}
+	return a.backend.Write(ctx, key, data)
+}
+
+func (a *cronStoreBackendAdapter) List(ctx context.Context, prefix string) ([]integrationcron.StoreEntry, error) {
+	if a == nil || a.backend == nil {
+		return nil, errors.New("bridge state store not available")
+	}
+	entries, err := a.backend.List(ctx, prefix)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]integrationcron.StoreEntry, 0, len(entries))
+	for _, entry := range entries {
+		out = append(out, integrationcron.StoreEntry{Key: entry.Key, Data: entry.Data})
+	}
+	return out, nil
+}
+
+func resolveCronEnabled(cfg *Config) bool {
+	if cfg == nil || cfg.Cron == nil {
+		return integrationcron.ResolveCronEnabled(nil)
+	}
+	return integrationcron.ResolveCronEnabled(cfg.Cron.Enabled)
+}
+
+func resolveCronStorePath(cfg *Config) string {
+	raw := ""
+	if cfg != nil && cfg.Cron != nil {
+		raw = cfg.Cron.Store
+	}
+	return integrationcron.ResolveCronStorePath(raw)
+}
+
+func resolveCronMaxConcurrentRuns(cfg *Config) int {
+	if cfg == nil || cfg.Cron == nil {
+		return integrationcron.ResolveCronMaxConcurrentRuns(0)
+	}
+	return integrationcron.ResolveCronMaxConcurrentRuns(cfg.Cron.MaxConcurrentRuns)
+}
+
+func (oc *AIClient) buildCronService() *integrationcron.Service {
+	if oc == nil {
+		return nil
+	}
+	storePath := resolveCronStorePath(&oc.connector.Config)
+	storeBackend := &cronStoreBackendAdapter{backend: &lazyStoreBackend{client: oc}}
+	return integrationcron.BuildCronService(integrationcron.ServiceBuildDeps{
+		NowMs:             func() int64 { return time.Now().UnixMilli() },
+		Log:               oc.log,
+		StorePath:         storePath,
+		Store:             storeBackend,
+		MaxConcurrentRuns: resolveCronMaxConcurrentRuns(&oc.connector.Config),
+		CronEnabled:       resolveCronEnabled(&oc.connector.Config),
+		ResolveJobTimeoutMs: func(job integrationcron.Job) int64 {
+			return oc.resolveCronJobTimeoutMs(job)
+		},
+		EnqueueSystemEvent: func(ctx context.Context, text string, agentID string) error {
+			return oc.enqueueCronSystemEvent(ctx, text, agentID)
+		},
+		RequestHeartbeatNow: func(ctx context.Context, reason string) {
+			oc.requestHeartbeatNow(ctx, reason)
+		},
+		RunHeartbeatOnce: func(ctx context.Context, reason string) integrationcron.HeartbeatRunResult {
+			res := oc.runHeartbeatImmediate(ctx, reason)
+			return integrationcron.HeartbeatRunResult{Status: res.Status, Reason: res.Reason}
+		},
+		RunIsolatedAgentJob: func(ctx context.Context, job integrationcron.Job, message string) (string, string, string, error) {
+			return oc.runCronIsolatedAgentJob(ctx, job, message)
+		},
+		OnEvent: oc.onCronEvent,
+	})
+}
+
+func (oc *AIClient) resolveCronJobTimeoutMs(job integrationcron.Job) int64 {
+	if oc == nil {
+		return 0
+	}
+	defaultSeconds := 600
+	if cfg := &oc.connector.Config; cfg != nil && cfg.Agents != nil && cfg.Agents.Defaults != nil && cfg.Agents.Defaults.TimeoutSeconds > 0 {
+		defaultSeconds = cfg.Agents.Defaults.TimeoutSeconds
+	}
+	return integrationcron.ResolveCronJobTimeoutMs(job, defaultSeconds)
+}
+
+func (oc *AIClient) enqueueCronSystemEvent(ctx context.Context, text string, agentID string) error {
+	if oc == nil {
+		return errors.New("missing client")
+	}
+	agentID = resolveCronAgentID(agentID, &oc.connector.Config)
+	hb := resolveHeartbeatConfig(&oc.connector.Config, agentID)
+	portal, sessionKey, err := oc.resolveHeartbeatSessionPortal(agentID, hb)
+	if err != nil || portal == nil || sessionKey == "" {
+		if err != nil {
+			oc.loggerForContext(context.Background()).Warn().Err(err).Str("agent_id", agentID).Msg("cron: unable to resolve heartbeat session for system event")
+		}
+		sessionKey = strings.TrimSpace(oc.resolveHeartbeatSession(agentID, hb).SessionKey)
+		if sessionKey == "" {
+			return nil
+		}
+	}
+	enqueueSystemEvent(sessionKey, text, agentID)
+	persistSystemEventsSnapshot(oc.bridgeStateBackend(), oc.Log())
+	oc.log.Debug().Str("session_key", sessionKey).Str("agent_id", agentID).Str("text", text).Msg("Cron system event enqueued")
+	return nil
+}
+
+func (oc *AIClient) requestHeartbeatNow(ctx context.Context, reason string) {
+	if oc == nil || oc.heartbeatWake == nil {
+		return
+	}
+	oc.heartbeatWake.Request(reason, 0)
+}
+
+func (oc *AIClient) runHeartbeatImmediate(ctx context.Context, reason string) heartbeatRunResult {
+	if oc == nil || oc.heartbeatRunner == nil {
+		return heartbeatRunResult{Status: "skipped", Reason: "disabled"}
+	}
+	_ = ctx
+	return oc.heartbeatRunner.run(reason)
+}
+
+func (oc *AIClient) onCronEvent(evt integrationcron.Event) {
+	if oc == nil {
+		return
+	}
+	storePath := resolveCronStorePath(&oc.connector.Config)
+	backend := &cronStoreBackendAdapter{backend: &lazyStoreBackend{client: oc}}
+	integrationcron.HandleCronEvent(evt, integrationcron.EventLogDeps{
+		StorePath: storePath,
+		Log:       integrationcron.NewZeroLogger(oc.log),
+		NowMs:     func() int64 { return time.Now().UnixMilli() },
+		AppendRunLog: func(ctx context.Context, path string, entry integrationcron.RunLogEntry) error {
+			return integrationcron.AppendRunLog(ctx, integrationcron.NewStoreBackendAdapter(backend), path, entry, 0, 0)
+		},
+	})
+}
+
+func resolveCronAgentID(raw string, cfg *Config) string {
+	return integrationcron.ResolveCronAgentID(
+		raw,
+		agents.DefaultAgentID,
+		normalizeAgentID,
+		func(normalized string) bool {
+			if cfg == nil || cfg.Agents == nil {
+				return false
+			}
+			for _, entry := range cfg.Agents.List {
+				if normalizeAgentID(entry.ID) == strings.TrimSpace(normalized) {
+					return true
+				}
+			}
+			return false
+		},
+	)
+}
+
+func cronSessionKey(agentID, jobID string) string {
+	return integrationcron.CronSessionKey(agentID, jobID, normalizeAgentID)
+}
+
+func (oc *AIClient) updateCronSessionEntry(ctx context.Context, sessionKey string, updater func(entry integrationcron.SessionEntry) integrationcron.SessionEntry) {
+	if oc == nil {
+		return
+	}
+	integrationcron.UpdateSessionEntry(
+		ctx,
+		oc.bridgeStateBackend(),
+		integrationcron.NewZeroLogger(oc.log),
+		sessionKey,
+		func(entry integrationcron.SessionEntry) integrationcron.SessionEntry {
+			if updater == nil {
+				return entry
+			}
+			return updater(entry)
+		},
+	)
+}
+
+func (oc *AIClient) readCronRuns(jobID string, limit int) ([]integrationcron.RunLogEntry, error) {
+	if oc == nil {
+		return nil, errors.New("cron service not available")
+	}
+	if known, available, _, reason := oc.integratedToolAvailability(&PortalMetadata{}, ToolNameCron); known && !available {
+		if strings.TrimSpace(reason) == "" {
+			reason = "cron service not available"
+		}
+		return nil, errors.New(reason)
+	}
+	if limit <= 0 {
+		limit = 200
+	}
+	storePath := resolveCronStorePath(&oc.connector.Config)
+	stateBackend := oc.bridgeStateBackend()
+	if stateBackend == nil {
+		return nil, errors.New("cron store not available")
+	}
+	cronBackend := &cronStoreBackendAdapter{backend: &lazyStoreBackend{client: oc}}
+	trimmed := strings.TrimSpace(jobID)
+	if trimmed != "" {
+		path := integrationcron.ResolveRunLogPath(storePath, trimmed)
+		return integrationcron.ReadRunLogEntries(context.Background(), integrationcron.NewStoreBackendAdapter(cronBackend), path, limit, trimmed)
+	}
+	entries := make([]integrationcron.RunLogEntry, 0)
+	runDir := integrationcron.ResolveRunLogDir(storePath)
+	storeEntries, err := stateBackend.List(context.Background(), runDir)
+	if err != nil {
+		return entries, nil
+	}
+	for _, se := range storeEntries {
+		if !strings.HasSuffix(strings.ToLower(se.Key), ".jsonl") {
+			continue
+		}
+		list := integrationcron.ParseRunLogEntries(string(se.Data), limit, "")
+		if len(list) > 0 {
+			entries = append(entries, list...)
+		}
+	}
+	slices.SortFunc(entries, func(a, b integrationcron.RunLogEntry) int {
+		return cmp.Compare(a.TS, b.TS)
+	})
+	if len(entries) > limit {
+		entries = entries[len(entries)-limit:]
+	}
+	return entries, nil
+}
+
+func (oc *AIClient) resolveCronDeliveryTarget(agentID string, delivery *integrationcron.Delivery) deliveryTarget {
+	resolved := integrationcron.ResolveCronDeliveryTarget(agentID, delivery, integrationcron.DeliveryResolverDeps{
+		ResolveLastTarget: func(agentID string) (string, string, bool) {
+			storeRef, mainKey := oc.resolveHeartbeatMainSessionRef(agentID)
+			entry, ok := oc.getSessionEntry(context.Background(), storeRef, mainKey)
+			if !ok {
+				return "", "", false
+			}
+			return entry.LastChannel, entry.LastTo, true
+		},
+		IsStaleTarget: func(roomID, agentID string) bool {
+			candidate := strings.TrimSpace(roomID)
+			if candidate == "" || !strings.HasPrefix(candidate, "!") {
+				return false
+			}
+			if p := oc.portalByRoomID(context.Background(), id.RoomID(candidate)); p != nil {
+				if meta := portalMeta(p); meta != nil && normalizeAgentID(meta.AgentID) != normalizeAgentID(agentID) {
+					return true
+				}
+			}
+			return false
+		},
+		LastActiveRoomID: func(agentID string) string {
+			if portal := oc.lastActivePortal(agentID); portal != nil && portal.MXID != "" {
+				return portal.MXID.String()
+			}
+			return ""
+		},
+		DefaultChatRoomID: func() string {
+			if portal := oc.defaultChatPortal(); portal != nil && portal.MXID != "" {
+				return portal.MXID.String()
+			}
+			return ""
+		},
+		ResolvePortalByRoom: func(roomID string) any {
+			return oc.portalByRoomID(context.Background(), id.RoomID(roomID))
+		},
+		IsLoggedIn: oc.IsLoggedIn,
+	})
+	out := deliveryTarget{Channel: resolved.Channel, Reason: resolved.Reason}
+	if portal, ok := resolved.Portal.(*bridgev2.Portal); ok && portal != nil {
+		out.Portal = portal
+		out.RoomID = portal.MXID
+	}
+	return out
+}
+
+func cronPortalKey(loginID networkid.UserLoginID, agentID, jobID string) networkid.PortalKey {
+	return networkid.PortalKey{
+		ID:       networkid.PortalID(fmt.Sprintf("openai:%s:cron:%s:%s", loginID, url.PathEscape(agentID), url.PathEscape(jobID))),
+		Receiver: loginID,
+	}
+}
+
+func (oc *AIClient) getOrCreateCronRoom(ctx context.Context, agentID, jobID, jobName string) (*bridgev2.Portal, error) {
+	if oc == nil || oc.UserLogin == nil {
+		return nil, errors.New("missing login")
+	}
+	room, err := integrationcron.GetOrCreateCronRoom(ctx, agentID, jobID, jobName, integrationcron.RoomResolverDeps{
+		DefaultAgentID: agents.DefaultAgentID,
+		ResolveRoom: func(ctx context.Context, normalizedAgentID, normalizedJobID string) (any, string, error) {
+			portalKey := cronPortalKey(oc.UserLogin.ID, normalizedAgentID, normalizedJobID)
+			portal, err := oc.UserLogin.Bridge.GetPortalByKey(ctx, portalKey)
+			if err != nil {
+				return nil, "", err
+			}
+			return portal, portal.MXID.String(), nil
+		},
+		CreateRoom: func(ctx context.Context, normalizedAgentID, normalizedJobID, displayName string) (any, error) {
+			portalKey := cronPortalKey(oc.UserLogin.ID, normalizedAgentID, normalizedJobID)
+			portal, err := oc.UserLogin.Bridge.GetPortalByKey(ctx, portalKey)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get portal: %w", err)
+			}
+			portal.Metadata = &PortalMetadata{
+				IsCronRoom: true,
+				CronJobID:  normalizedJobID,
+				AgentID:    normalizedAgentID,
+			}
+			portal.Name = displayName
+			portal.NameSet = true
+			if err := portal.Save(ctx); err != nil {
+				return nil, fmt.Errorf("failed to save portal: %w", err)
+			}
+			chatInfo := &bridgev2.ChatInfo{Name: &portal.Name}
+			if err := portal.CreateMatrixRoom(ctx, oc.UserLogin, chatInfo); err != nil {
+				return nil, fmt.Errorf("failed to create Matrix room: %w", err)
+			}
+			return portal, nil
+		},
+		LogCreated: func(ctx context.Context, agentID, jobID string, room any) {
+			portal, _ := room.(*bridgev2.Portal)
+			if portal == nil {
+				return
+			}
+			oc.loggerForContext(ctx).Info().Str("agent_id", strings.TrimSpace(agentID)).Str("job_id", strings.TrimSpace(jobID)).Stringer("portal", portal.PortalKey).Msg("Created cron room")
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	portal, _ := room.(*bridgev2.Portal)
+	if portal == nil {
+		return nil, errors.New("failed to resolve cron room")
+	}
+	return portal, nil
+}
+
+const (
+	cronDeliveryTimeout = 10 * time.Second
+)
+
+func (oc *AIClient) runCronIsolatedAgentJob(ctx context.Context, job integrationcron.Job, message string) (status string, summary string, outputText string, err error) {
+	if oc == nil || oc.UserLogin == nil {
+		return "error", "", "", errors.New("missing client")
+	}
+	return integrationcron.RunCronIsolatedAgentJob(ctx, job, message, integrationcron.IsolatedRunnerDeps{
+		DeliveryTimeout: cronDeliveryTimeout,
+		MergeContext:    oc.mergeCronContext,
+		ResolveAgentID: func(raw string) string {
+			return resolveCronAgentID(raw, &oc.connector.Config)
+		},
+		GetOrCreateRoom: func(ctx context.Context, agentID, jobID, jobName string) (any, error) {
+			return oc.getOrCreateCronRoom(ctx, agentID, jobID, jobName)
+		},
+		BuildDispatchMetadata: func(room any, patch integrationcron.MetadataPatch) any {
+			portal, _ := room.(*bridgev2.Portal)
+			return oc.buildCronDispatchMetadata(portal, patch)
+		},
+		NormalizeThinkingLevel: normalizeThinkingLevel,
+		SessionKey:             cronSessionKey,
+		UpdateSessionEntry: func(ctx context.Context, sessionKey string, updater func(entry integrationcron.SessionEntry) integrationcron.SessionEntry) {
+			oc.updateCronSessionEntry(ctx, sessionKey, updater)
+		},
+		ResolveUserTimezone: func() string {
+			tz, _ := oc.resolveUserTimezone()
+			return tz
+		},
+		LastAssistantMessage: func(ctx context.Context, room any) (string, int64) {
+			portal, _ := room.(*bridgev2.Portal)
+			return oc.lastAssistantMessageInfo(ctx, portal)
+		},
+		DispatchInternalMessage: func(ctx context.Context, room any, metadata any, message string) error {
+			portal, _ := room.(*bridgev2.Portal)
+			if portal == nil {
+				return errors.New("missing portal")
+			}
+			metaSnapshot, _ := metadata.(*PortalMetadata)
+			if metaSnapshot == nil {
+				metaSnapshot = &PortalMetadata{}
+			}
+			_, _, dispatchErr := oc.dispatchInternalMessage(ctx, portal, metaSnapshot, message, "cron", false)
+			return dispatchErr
+		},
+		WaitForAssistantMessage: func(ctx context.Context, room any, lastID string, lastTimestamp int64) (integrationcron.AssistantMessage, bool) {
+			portal, _ := room.(*bridgev2.Portal)
+			msg, found := oc.waitForNewAssistantMessage(ctx, portal, lastID, lastTimestamp)
+			if !found || msg == nil {
+				return integrationcron.AssistantMessage{}, false
+			}
+			body := ""
+			model := ""
+			var promptTokens, completionTokens int64
+			if meta := messageMeta(msg); meta != nil {
+				body = strings.TrimSpace(meta.Body)
+				model = strings.TrimSpace(meta.Model)
+				promptTokens = meta.PromptTokens
+				completionTokens = meta.CompletionTokens
+			}
+			return integrationcron.AssistantMessage{
+				Body:             body,
+				Model:            model,
+				PromptTokens:     promptTokens,
+				CompletionTokens: completionTokens,
+			}, true
+		},
+		ResolveAckMaxChars: func(agentID string) int {
+			return resolveHeartbeatAckMaxChars(&oc.connector.Config, resolveHeartbeatConfig(&oc.connector.Config, agentID))
+		},
+		ResolveDeliveryTarget: func(agentID string, delivery *integrationcron.Delivery) integrationcron.DeliveryTarget {
+			target := oc.resolveCronDeliveryTarget(agentID, delivery)
+			return integrationcron.DeliveryTarget{
+				Portal:  target.Portal,
+				RoomID:  target.RoomID.String(),
+				Channel: target.Channel,
+				Reason:  target.Reason,
+			}
+		},
+		SendDeliveryMessage: func(ctx context.Context, portal any, body string) error {
+			targetPortal, _ := portal.(*bridgev2.Portal)
+			if targetPortal == nil {
+				return errors.New("missing delivery portal")
+			}
+			return oc.sendPlainAssistantMessageWithResult(ctx, targetPortal, body)
+		},
+	})
+}
+
+func (oc *AIClient) buildCronDispatchMetadata(portal *bridgev2.Portal, patch integrationcron.MetadataPatch) *PortalMetadata {
+	meta := portalMeta(portal)
+	metaSnapshot := clonePortalMetadata(meta)
+	if metaSnapshot == nil {
+		metaSnapshot = &PortalMetadata{}
+	}
+	metaSnapshot.AgentID = patch.AgentID
+	if patch.Model != nil {
+		metaSnapshot.Model = strings.TrimSpace(*patch.Model)
+	}
+	if patch.ReasoningEffort != nil {
+		metaSnapshot.ReasoningEffort = strings.TrimSpace(*patch.ReasoningEffort)
+	}
+	if patch.DisableMessageTool {
+		metaSnapshot.DisabledTools = []string{ToolNameMessage}
+	}
+	return metaSnapshot
+}
+
+// mergeCronContext ensures cron runs are cancelled on disconnect while preserving deadlines.
+func (oc *AIClient) mergeCronContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	var base context.Context
+	if oc != nil && oc.disconnectCtx != nil {
+		base = oc.disconnectCtx
+	} else if oc != nil && oc.UserLogin != nil && oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.BackgroundCtx != nil {
+		base = oc.UserLogin.Bridge.BackgroundCtx
+	} else {
+		base = context.Background()
+	}
+
+	if model, ok := modelOverrideFromContext(ctx); ok {
+		base = withModelOverride(base, model)
+	}
+
+	var merged context.Context
+	var cancel context.CancelFunc
+	if deadline, ok := ctx.Deadline(); ok {
+		merged, cancel = context.WithDeadline(base, deadline)
+	} else {
+		merged, cancel = context.WithCancel(base)
+	}
+	return oc.loggerForContext(ctx).WithContext(merged), cancel
+}
+
+func (oc *AIClient) lastAssistantMessageInfo(ctx context.Context, portal *bridgev2.Portal) (string, int64) {
+	if portal == nil {
+		return "", 0
+	}
+	messages, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, 20)
+	if err != nil {
+		return "", 0
+	}
+	bestID := ""
+	bestTS := int64(0)
+	for _, msg := range messages {
+		if msg == nil {
+			continue
+		}
+		meta := messageMeta(msg)
+		if meta == nil || meta.Role != "assistant" {
+			continue
+		}
+		ts := msg.Timestamp.UnixMilli()
+		if bestID == "" || ts > bestTS {
+			bestID = msg.MXID.String()
+			bestTS = ts
+		}
+	}
+	return bestID, bestTS
+}
+
+func (oc *AIClient) waitForNewAssistantMessage(ctx context.Context, portal *bridgev2.Portal, lastID string, lastTimestamp int64) (*database.Message, bool) {
+	if portal == nil {
+		return nil, false
+	}
+	messages, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, 20)
+	if err != nil {
+		return nil, false
+	}
+	var candidate *database.Message
+	candidateTS := lastTimestamp
+	for _, msg := range messages {
+		if msg == nil {
+			continue
+		}
+		meta := messageMeta(msg)
+		if meta == nil || meta.Role != "assistant" {
+			continue
+		}
+		idStr := msg.MXID.String()
+		ts := msg.Timestamp.UnixMilli()
+		if ts < lastTimestamp {
+			continue
+		}
+		if ts == lastTimestamp && idStr == lastID {
+			continue
+		}
+		if candidate == nil || ts > candidateTS {
+			candidate = msg
+			candidateTS = ts
+		}
+	}
+	if candidate == nil {
+		return nil, false
+	}
+	return candidate, true
+}

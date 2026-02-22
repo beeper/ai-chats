@@ -16,62 +16,12 @@ type FallbackStatus = memorycore.FallbackStatus
 type ProviderStatus = memorycore.ProviderStatus
 type ResolvedConfig = memorycore.ResolvedConfig
 
-type SourceCount struct {
-	Source string
-	Files  int
-	Chunks int
-}
-
-type CacheStatus struct {
-	Enabled    bool
-	Entries    int
-	MaxEntries int
-}
-
-type FTSStatus struct {
-	Enabled   bool
-	Available bool
-	Error     string
-}
-
-type VectorStatus struct {
-	Enabled       bool
-	Available     *bool
-	ExtensionPath string
-	LoadError     string
-	Dims          int
-}
-
-type BatchStatus struct {
-	Enabled        bool
-	Failures       int
-	Limit          int
-	Wait           bool
-	Concurrency    int
-	PollIntervalMs int
-	TimeoutMs      int
-	LastError      string
-	LastProvider   string
-}
-
-type StatusDetails struct {
-	Files             int
-	Chunks            int
-	Dirty             bool
-	WorkspaceDir      string
-	DBPath            string
-	Provider          string
-	Model             string
-	RequestedProvider string
-	Sources           []string
-	ExtraPaths        []string
-	SourceCounts      []SourceCount
-	Cache             *CacheStatus
-	FTS               *FTSStatus
-	Fallback          *FallbackStatus
-	Vector            *VectorStatus
-	Batch             *BatchStatus
-}
+type SourceCount = MemorySearchSourceCount
+type CacheStatus = MemorySearchCacheStatus
+type FTSStatus = MemorySearchFTSStatus
+type VectorStatus = MemorySearchVectorStatus
+type BatchStatus = MemorySearchBatchStatus
+type StatusDetails = MemorySearchStatus
 
 type Manager interface {
 	Status() ProviderStatus
