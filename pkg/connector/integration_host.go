@@ -119,6 +119,35 @@ func (h *runtimeIntegrationHost) ToolAvailability(_ context.Context, scope integ
 	}
 }
 
+func (oc *AIClient) isMemorySearchExplicitlyDisabled(meta *PortalMetadata) (bool, string) {
+	if oc == nil || oc.connector == nil {
+		return true, "Missing connector"
+	}
+	agentID := resolveAgentID(meta)
+	cfg, err := resolveMemorySearchConfig(oc, agentID)
+	if err != nil {
+		return true, err.Error()
+	}
+	if cfg == nil || !cfg.Enabled {
+		return true, "Memory search disabled"
+	}
+	return false, ""
+}
+
+func (oc *AIClient) isCronConfigured() (bool, string) {
+	if oc == nil {
+		return false, "Cron service not available"
+	}
+	known, available, _, reason := oc.integratedToolAvailability(&PortalMetadata{}, ToolNameCron)
+	if known && available {
+		return true, ""
+	}
+	if strings.TrimSpace(reason) == "" {
+		reason = "Cron service not available"
+	}
+	return false, reason
+}
+
 func (h *runtimeIntegrationHost) Start(_ context.Context) error {
 	if h == nil || h.cronService == nil {
 		return nil
