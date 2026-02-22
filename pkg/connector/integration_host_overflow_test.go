@@ -5,18 +5,22 @@ import (
 	"testing"
 
 	"github.com/openai/openai-go/v3"
+
+	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
 )
 
 func TestMaybeRunMemoryFlush_SkipsInRawMode(t *testing.T) {
 	client := &AIClient{}
+	host := &runtimeIntegrationHost{client: client}
 	meta := &PortalMetadata{IsRawMode: true}
 
-	client.maybeRunMemoryFlush(
+	_, _, _ = host.OnContextOverflow(
 		context.Background(),
-		nil,
-		meta,
-		[]openai.ChatCompletionMessageParamUnion{
-			openai.UserMessage("latest message"),
+		integrationruntime.ContextOverflowCall{
+			Meta: meta,
+			Prompt: []openai.ChatCompletionMessageParamUnion{
+				openai.UserMessage("latest message"),
+			},
 		},
 	)
 
