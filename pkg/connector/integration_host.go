@@ -407,7 +407,7 @@ func (h *runtimeIntegrationHost) resolveMemoryFlushSettings() *integrationmemory
 			SystemPrompt:        integrationmemory.EnsureSilentReplyHint(agents.SilentReplyToken, defaultSystemPrompt),
 		}
 	}
-	cfg := config.PruningConfig.MemoryFlush
+	cfg := config.PruningConfig.OverflowFlush
 	var enabled *bool
 	softThresholdTokens := 0
 	prompt := ""
