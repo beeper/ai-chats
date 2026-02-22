@@ -343,7 +343,7 @@ func (h *runtimeIntegrationHost) OnContextOverflow(
 			meta, _ := overflowCall.Meta.(*PortalMetadata)
 			return h.client.effectiveModel(meta)
 		},
-		EstimateTokens: estimatePromptTokens,
+		EstimateTokens: estimatePromptTokensForOverflow,
 		AlreadyFlushed: func(call any) bool {
 			overflowCall, _ := call.(integrationruntime.ContextOverflowCall)
 			meta, _ := overflowCall.Meta.(*PortalMetadata)
@@ -364,7 +364,7 @@ func (h *runtimeIntegrationHost) OnContextOverflow(
 			overflowCall, _ := call.(integrationruntime.ContextOverflowCall)
 			portal, _ := overflowCall.Portal.(*bridgev2.Portal)
 			meta, _ := overflowCall.Meta.(*PortalMetadata)
-			return h.client.runMemoryFlushToolLoop(ctx, portal, meta, model, prompt)
+			return h.runFlushToolLoop(ctx, portal, meta, model, prompt)
 		},
 		OnError: func(ctx context.Context, err error) {
 			h.client.loggerForContext(ctx).Warn().Err(err).Msg("memory flush failed")
@@ -400,10 +400,11 @@ func (h *runtimeIntegrationHost) resolveMemoryFlushSettings() *integrationmemory
 	}
 	config := compactor.config
 	if config == nil || config.PruningConfig == nil {
+		defaultPrompt, defaultSystemPrompt := integrationmemory.DefaultFlushPrompts(agents.SilentReplyToken)
 		return &integrationmemory.FlushSettings{
-			SoftThresholdTokens: defaultMemoryFlushSoftTokens,
-			Prompt:              integrationmemory.EnsureSilentReplyHint(agents.SilentReplyToken, defaultMemoryFlushPrompt),
-			SystemPrompt:        integrationmemory.EnsureSilentReplyHint(agents.SilentReplyToken, defaultMemoryFlushSystemPrompt),
+			SoftThresholdTokens: integrationmemory.DefaultFlushSoftTokens,
+			Prompt:              integrationmemory.EnsureSilentReplyHint(agents.SilentReplyToken, defaultPrompt),
+			SystemPrompt:        integrationmemory.EnsureSilentReplyHint(agents.SilentReplyToken, defaultSystemPrompt),
 		}
 	}
 	cfg := config.PruningConfig.MemoryFlush
@@ -417,15 +418,113 @@ func (h *runtimeIntegrationHost) resolveMemoryFlushSettings() *integrationmemory
 		prompt = cfg.Prompt
 		systemPrompt = cfg.SystemPrompt
 	}
+	defaultPrompt, defaultSystemPrompt := integrationmemory.DefaultFlushPrompts(agents.SilentReplyToken)
 	return integrationmemory.NormalizeFlushSettings(
 		enabled,
 		softThresholdTokens,
 		prompt,
 		systemPrompt,
-		defaultMemoryFlushPrompt,
-		defaultMemoryFlushSystemPrompt,
+		defaultPrompt,
+		defaultSystemPrompt,
 		agents.SilentReplyToken,
 	)
+}
+
+func (h *runtimeIntegrationHost) runFlushToolLoop(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+	model string,
+	messages []openai.ChatCompletionMessageParamUnion,
+) error {
+	if h == nil || h.client == nil {
+		return errors.New("memory flush unavailable")
+	}
+	tools := h.memoryFlushTools()
+	if len(tools) == 0 {
+		return nil
+	}
+	toolParams := ToOpenAIChatTools(tools, &h.client.log)
+	toolParams = dedupeChatToolParams(toolParams)
+	toolCtx := WithBridgeToolContext(ctx, &BridgeToolContext{
+		Client: h.client,
+		Portal: portal,
+		Meta:   meta,
+	})
+	return integrationmemory.RunFlushToolLoop(ctx, model, messages, integrationmemory.FlushToolLoopDeps{
+		TimeoutMs: int64((2 * time.Minute) / time.Millisecond),
+		MaxTurns:  6,
+		NextTurn: func(ctx context.Context, model string, messages []openai.ChatCompletionMessageParamUnion) (
+			openai.ChatCompletionMessageParamUnion,
+			[]integrationmemory.ModelToolCall,
+			bool,
+			error,
+		) {
+			req := openai.ChatCompletionNewParams{
+				Model:    model,
+				Messages: messages,
+				Tools:    toolParams,
+			}
+			resp, err := h.client.api.Chat.Completions.New(ctx, req)
+			if err != nil {
+				return openai.ChatCompletionMessageParamUnion{}, nil, false, err
+			}
+			if len(resp.Choices) == 0 {
+				return openai.ChatCompletionMessageParamUnion{}, nil, true, nil
+			}
+			msg := resp.Choices[0].Message
+			assistant := msg.ToAssistantMessageParam()
+			outAssistant := openai.ChatCompletionMessageParamUnion{OfAssistant: &assistant}
+			if len(msg.ToolCalls) == 0 {
+				return outAssistant, nil, true, nil
+			}
+			calls := make([]integrationmemory.ModelToolCall, 0, len(msg.ToolCalls))
+			for _, call := range msg.ToolCalls {
+				calls = append(calls, integrationmemory.ModelToolCall{
+					ID:       call.ID,
+					Name:     strings.TrimSpace(call.Function.Name),
+					ArgsJSON: call.Function.Arguments,
+				})
+			}
+			return outAssistant, calls, false, nil
+		},
+		ExecuteTool: func(ctx context.Context, name string, argsJSON string) (string, error) {
+			if meta != nil && !h.client.isToolEnabled(meta, name) {
+				return "", fmt.Errorf("tool %s is disabled", name)
+			}
+			return h.client.executeBuiltinTool(toolCtx, portal, name, argsJSON)
+		},
+		OnToolError: func(name string, err error) {
+			h.client.loggerForContext(ctx).Warn().Err(err).Str("tool", name).Msg("memory flush tool failed")
+		},
+	})
+}
+
+func (h *runtimeIntegrationHost) memoryFlushTools() []ToolDefinition {
+	var out []ToolDefinition
+	for _, tool := range BuiltinTools() {
+		if integrationmemory.IsAllowedFlushTool(tool.Name) {
+			out = append(out, tool)
+		}
+	}
+	return out
+}
+
+func estimatePromptTokensForOverflow(prompt []openai.ChatCompletionMessageParamUnion, model string) int {
+	if len(prompt) == 0 {
+		return 0
+	}
+	if count, err := EstimateTokens(prompt, model); err == nil && count > 0 {
+		return count
+	}
+	total := 0
+	for _, msg := range prompt {
+		total += estimateMessageChars(msg) / charsPerTokenEstimate
+	}
+	if total <= 0 {
+		return len(prompt) * 3
+	}
+	return total
 }
 
 func (h *runtimeIntegrationHost) resolveCronToolCreateContext(scope integrationruntime.ToolScope) integrationcron.ToolCreateContext {
