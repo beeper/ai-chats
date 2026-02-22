@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -184,4 +185,18 @@ func MarkFlushAt(nowFn func() time.Time, set func(ms int64)) {
 		now = nowFn()
 	}
 	set(now.UnixMilli())
+}
+
+func DefaultFlushPrompts(silentToken string) (prompt string, systemPrompt string) {
+	prompt = strings.TrimSpace(strings.Join([]string{
+		"Pre-compaction memory flush.",
+		"Store durable memories now (use memory/YYYY-MM-DD.md; create memory/ if needed).",
+		fmt.Sprintf("If nothing to store, reply with %s.", silentToken),
+	}, " "))
+	systemPrompt = strings.TrimSpace(strings.Join([]string{
+		"Pre-compaction memory flush turn.",
+		"The session is near auto-compaction; capture durable memories to disk.",
+		fmt.Sprintf("You may reply, but usually %s is correct.", silentToken),
+	}, " "))
+	return prompt, systemPrompt
 }
