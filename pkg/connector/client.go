@@ -310,12 +310,13 @@ type AIClient struct {
 	integrationModules map[string]any
 	integrationOrder   []string
 
-	toolRegistry   *toolIntegrationRegistry
-	promptRegistry *promptIntegrationRegistry
-	commandRegistry *commandIntegrationRegistry
-	eventRegistry   *eventIntegrationRegistry
+	toolRegistry     *toolIntegrationRegistry
+	promptRegistry   *promptIntegrationRegistry
+	commandRegistry  *commandIntegrationRegistry
+	eventRegistry    *eventIntegrationRegistry
 	overflowRegistry *overflowIntegrationRegistry
-	purgeRegistry   *purgeIntegrationRegistry
+	purgeRegistry    *purgeIntegrationRegistry
+	approvalRegistry *toolApprovalIntegrationRegistry
 
 	// Model catalog cache (VFS-backed)
 	modelCatalogMu     sync.Mutex

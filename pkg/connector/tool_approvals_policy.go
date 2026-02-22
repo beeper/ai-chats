@@ -34,28 +34,20 @@ func (oc *AIClient) builtinToolApprovalRequirement(toolName string, args map[str
 		default:
 			return true, action
 		}
-	case normalizeApprovalToken(ToolNameWrite),
-		normalizeApprovalToken(ToolNameEdit),
-		normalizeApprovalToken(ToolNameApplyPatch):
-		path := strings.ToLower(readStringArgAny(args, "path"))
-		// Memory writes/edits are lower-risk (bridge-local notes/state), so allow without approval.
-		if path == memoryFilePath || strings.HasPrefix(path, memoryRootPath) {
-			return false, "memory"
+	default:
+		if handled, required, action := oc.integratedToolApprovalRequirement(toolName, args); handled {
+			return required, action
 		}
-		// If we don't know the path (e.g. apply_patch), default to requiring approval.
-		if path == "" {
+		switch normalizeApprovalToken(toolName) {
+		case normalizeApprovalToken(ToolNameWrite),
+			normalizeApprovalToken(ToolNameEdit),
+			normalizeApprovalToken(ToolNameApplyPatch):
+			path := strings.ToLower(readStringArgAny(args, "path"))
+			if path == "" {
+				return true, "workspace"
+			}
 			return true, "workspace"
 		}
-		return true, "workspace"
-	case normalizeApprovalToken(ToolNameCron):
-		action = normalizeApprovalToken(readStringArgAny(args, "action"))
-		switch action {
-		case "status", "list", "runs":
-			return false, action
-		default:
-			return true, action
-		}
-	default:
 		return true, ""
 	}
 }

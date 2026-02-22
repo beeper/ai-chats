@@ -19,8 +19,6 @@ const (
 	integrationToolCronName         = "cron"
 	integrationToolMemorySearchName = "memory_search"
 	integrationToolMemoryGetName    = "memory_get"
-	memoryRootPath                  = "memory/"
-	memoryFilePath                  = "memory.md"
 )
 
 type toolIntegrationRegistry struct {
@@ -258,6 +256,30 @@ func (r *purgeIntegrationRegistry) purge(ctx context.Context, scope integrationr
 	}
 }
 
+type toolApprovalIntegrationRegistry struct {
+	items []integrationruntime.ToolApprovalIntegration
+}
+
+func (r *toolApprovalIntegrationRegistry) register(integration integrationruntime.ToolApprovalIntegration) {
+	if integration == nil {
+		return
+	}
+	r.items = append(r.items, integration)
+}
+
+func (r *toolApprovalIntegrationRegistry) requirement(toolName string, args map[string]any) (handled bool, required bool, action string) {
+	if r == nil {
+		return false, false, ""
+	}
+	for _, integration := range r.items {
+		handled, required, action = integration.ToolApprovalRequirement(toolName, args)
+		if handled {
+			return handled, required, action
+		}
+	}
+	return false, false, ""
+}
+
 func settingSourceFromIntegration(source integrationruntime.SettingSource) SettingSource {
 	switch source {
 	case integrationruntime.SourceAgentPolicy:
@@ -335,6 +357,7 @@ func (oc *AIClient) initIntegrations() {
 	oc.eventRegistry = &eventIntegrationRegistry{}
 	oc.overflowRegistry = &overflowIntegrationRegistry{}
 	oc.purgeRegistry = &purgeIntegrationRegistry{}
+	oc.approvalRegistry = &toolApprovalIntegrationRegistry{}
 	oc.integrationModules = make(map[string]any)
 	oc.integrationOrder = nil
 
@@ -370,9 +393,19 @@ func (oc *AIClient) initIntegrations() {
 		if purgeIntegration, ok := module.(integrationruntime.LoginPurgeIntegration); ok {
 			oc.purgeRegistry.register(purgeIntegration)
 		}
+		if approvalIntegration, ok := module.(integrationruntime.ToolApprovalIntegration); ok {
+			oc.approvalRegistry.register(approvalIntegration)
+		}
 	}
 
 	registerModuleCommands(oc.commandRegistry.definitions())
+}
+
+func (oc *AIClient) integratedToolApprovalRequirement(toolName string, args map[string]any) (handled bool, required bool, action string) {
+	if oc == nil || oc.approvalRegistry == nil {
+		return false, false, ""
+	}
+	return oc.approvalRegistry.requirement(toolName, args)
 }
 
 func (oc *AIClient) registerIntegrationModule(name string, module any) {

@@ -64,6 +64,12 @@ type PromptIntegration interface {
 	AugmentPrompt(ctx context.Context, scope PromptScope, prompt []openai.ChatCompletionMessageParamUnion) []openai.ChatCompletionMessageParamUnion
 }
 
+// ToolApprovalIntegration is an optional seam for tool approval policy overrides.
+type ToolApprovalIntegration interface {
+	Name() string
+	ToolApprovalRequirement(toolName string, args map[string]any) (handled bool, required bool, action string)
+}
+
 // LifecycleIntegration is an optional capability for integrations that need runtime start/stop hooks.
 type LifecycleIntegration interface {
 	Start(ctx context.Context) error
