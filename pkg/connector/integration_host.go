@@ -800,8 +800,6 @@ func (l *runtimeLogger) Info(msg string, fields map[string]any)  { l.emit("info"
 func (l *runtimeLogger) Warn(msg string, fields map[string]any)  { l.emit("warn", msg, fields) }
 func (l *runtimeLogger) Error(msg string, fields map[string]any) { l.emit("error", msg, fields) }
 
-type memoryAgentSearchConfig = agents.MemorySearchConfig
-
 func resolveMemorySearchConfig(client *AIClient, agentID string) (*integrationmemory.ResolvedConfig, error) {
 	if client == nil || client.connector == nil {
 		return nil, errors.New("missing connector")
