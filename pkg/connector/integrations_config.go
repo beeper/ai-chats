@@ -25,10 +25,10 @@ type Config struct {
 	ToolApprovals *ToolApprovalsRuntimeConfig        `yaml:"tool_approvals"`
 	ToolPolicy    *toolpolicy.GlobalToolPolicyConfig `yaml:"tool_policy"`
 	Agents        *AgentsConfig                      `yaml:"agents"`
-	Channels *ChannelsConfig `yaml:"channels"`
-	Messages *MessagesConfig `yaml:"messages"`
-	Commands *CommandsConfig `yaml:"commands"`
-	Session  *SessionConfig  `yaml:"session"`
+	Channels      *ChannelsConfig                    `yaml:"channels"`
+	Messages      *MessagesConfig                    `yaml:"messages"`
+	Commands      *CommandsConfig                    `yaml:"commands"`
+	Session       *SessionConfig                     `yaml:"session"`
 
 	// Global settings
 	DefaultSystemPrompt string        `yaml:"default_system_prompt"`
@@ -150,7 +150,6 @@ type HeartbeatActiveHoursConfig struct {
 	End      string `yaml:"end"`
 	Timezone string `yaml:"timezone"`
 }
-
 
 // ChannelsConfig defines per-channel settings (OpenClaw-style subset for Matrix).
 type ChannelsConfig struct {

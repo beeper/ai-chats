@@ -1,8 +1,9 @@
 package cron
 
 import (
-	croncore "github.com/beeper/ai-bridge/pkg/cron"
 	"github.com/rs/zerolog"
+
+	croncore "github.com/beeper/ai-bridge/pkg/cron"
 )
 
 // ZeroLogger adapts zerolog to the cron core Logger interface.

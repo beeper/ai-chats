@@ -108,7 +108,7 @@ func TestRawModePrompt_LatestUserMessageUnchanged_NoLinkContext_NoMessageID(t *t
 					MaxContentChars: 2000,
 					FetchTimeout:    50 * time.Millisecond, // unused in raw mode
 				},
-				},
+			},
 		},
 	}
 
@@ -146,4 +146,3 @@ func TestBuildMatrixInboundBody_RawModeBypassesEnvelopeAndSenderMeta(t *testing.
 		t.Fatalf("expected raw body only, got %q", got)
 	}
 }
-

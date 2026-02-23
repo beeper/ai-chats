@@ -101,4 +101,3 @@ func mergeCitationFields(base, incoming sourceCitation) sourceCitation {
 	}
 	return base
 }
-

@@ -237,18 +237,18 @@ func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID 
 	_ = senderID
 	_ = roomID
 	return &streamingState{
-		turnID:                   NewTurnID(),
-		startedAtMs:              nowMillis(),
-		firstToken:               true,
-		initialEventID:           sourceEventID,
-		uiToolStarted:            make(map[string]bool),
-		uiSourceURLSeen:          make(map[string]bool),
-		uiToolCallIDByApproval:   make(map[string]string),
-		uiToolApprovalRequested:  make(map[string]bool),
-		uiToolNameByToolCallID:   make(map[string]string),
-		uiToolTypeByToolCallID:   make(map[string]ToolType),
-		uiToolOutputFinalized:    make(map[string]bool),
-		codexTimelineNotices:     make(map[string]bool),
-		codexToolOutputBuffers:   make(map[string]*strings.Builder),
+		turnID:                  NewTurnID(),
+		startedAtMs:             nowMillis(),
+		firstToken:              true,
+		initialEventID:          sourceEventID,
+		uiToolStarted:           make(map[string]bool),
+		uiSourceURLSeen:         make(map[string]bool),
+		uiToolCallIDByApproval:  make(map[string]string),
+		uiToolApprovalRequested: make(map[string]bool),
+		uiToolNameByToolCallID:  make(map[string]string),
+		uiToolTypeByToolCallID:  make(map[string]ToolType),
+		uiToolOutputFinalized:   make(map[string]bool),
+		codexTimelineNotices:    make(map[string]bool),
+		codexToolOutputBuffers:  make(map[string]*strings.Builder),
 	}
 }

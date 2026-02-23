@@ -15,7 +15,6 @@ type ModuleHooks interface {
 // ModuleFactory constructs a module instance from the runtime host.
 type ModuleFactory func(host Host) ModuleHooks
 
-
 // CommandDefinition describes a chat command exposed by a module.
 type CommandDefinition struct {
 	Name           string

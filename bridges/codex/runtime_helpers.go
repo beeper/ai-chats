@@ -3,9 +3,10 @@ package codex
 import (
 	"context"
 
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/event"
+
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 // loggerFromContext returns the logger from the context if available,
@@ -28,4 +29,3 @@ func messageSendStatusError(err error, message string, reason event.MessageStatu
 }
 
 var newBrokenLoginClient = bridgeadapter.NewBrokenLoginClient
-

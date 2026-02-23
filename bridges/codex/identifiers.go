@@ -5,10 +5,11 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"github.com/rs/xid"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 func makeCodexUserLoginID(mxid id.UserID, instanceID string) networkid.UserLoginID {
