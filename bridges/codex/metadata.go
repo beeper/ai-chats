@@ -84,69 +84,27 @@ func (mm *MessageMetadata) CopyFrom(other any) {
 	if !ok || src == nil {
 		return
 	}
-	if src.Role != "" {
-		mm.Role = src.Role
-	}
-	if src.Body != "" {
-		mm.Body = src.Body
-	}
-	if src.CompletionID != "" {
-		mm.CompletionID = src.CompletionID
-	}
-	if src.FinishReason != "" {
-		mm.FinishReason = src.FinishReason
-	}
-	if src.PromptTokens != 0 {
-		mm.PromptTokens = src.PromptTokens
-	}
-	if src.CompletionTokens != 0 {
-		mm.CompletionTokens = src.CompletionTokens
-	}
-	if src.Model != "" {
-		mm.Model = src.Model
-	}
-	if src.ReasoningTokens != 0 {
-		mm.ReasoningTokens = src.ReasoningTokens
-	}
-	if src.HasToolCalls {
-		mm.HasToolCalls = true
-	}
-	if src.Transcript != "" {
-		mm.Transcript = src.Transcript
-	}
-	if src.TurnID != "" {
-		mm.TurnID = src.TurnID
-	}
-	if src.AgentID != "" {
-		mm.AgentID = src.AgentID
-	}
-	if len(src.ToolCalls) > 0 {
-		mm.ToolCalls = src.ToolCalls
-	}
-	if src.CanonicalSchema != "" {
-		mm.CanonicalSchema = src.CanonicalSchema
-	}
-	if len(src.CanonicalUIMessage) > 0 {
-		mm.CanonicalUIMessage = src.CanonicalUIMessage
-	}
-	if src.StartedAtMs != 0 {
-		mm.StartedAtMs = src.StartedAtMs
-	}
-	if src.FirstTokenAtMs != 0 {
-		mm.FirstTokenAtMs = src.FirstTokenAtMs
-	}
-	if src.CompletedAtMs != 0 {
-		mm.CompletedAtMs = src.CompletedAtMs
-	}
-	if src.ThinkingContent != "" {
-		mm.ThinkingContent = src.ThinkingContent
-	}
-	if src.ThinkingTokenCount != 0 {
-		mm.ThinkingTokenCount = src.ThinkingTokenCount
-	}
-	if len(src.GeneratedFiles) > 0 {
-		mm.GeneratedFiles = src.GeneratedFiles
-	}
+	if src.Role != "" { mm.Role = src.Role }
+	if src.Body != "" { mm.Body = src.Body }
+	if src.CompletionID != "" { mm.CompletionID = src.CompletionID }
+	if src.FinishReason != "" { mm.FinishReason = src.FinishReason }
+	if src.PromptTokens != 0 { mm.PromptTokens = src.PromptTokens }
+	if src.CompletionTokens != 0 { mm.CompletionTokens = src.CompletionTokens }
+	if src.Model != "" { mm.Model = src.Model }
+	if src.ReasoningTokens != 0 { mm.ReasoningTokens = src.ReasoningTokens }
+	if src.HasToolCalls { mm.HasToolCalls = true }
+	if src.Transcript != "" { mm.Transcript = src.Transcript }
+	if src.TurnID != "" { mm.TurnID = src.TurnID }
+	if src.AgentID != "" { mm.AgentID = src.AgentID }
+	if len(src.ToolCalls) > 0 { mm.ToolCalls = src.ToolCalls }
+	if src.CanonicalSchema != "" { mm.CanonicalSchema = src.CanonicalSchema }
+	if len(src.CanonicalUIMessage) > 0 { mm.CanonicalUIMessage = src.CanonicalUIMessage }
+	if src.StartedAtMs != 0 { mm.StartedAtMs = src.StartedAtMs }
+	if src.FirstTokenAtMs != 0 { mm.FirstTokenAtMs = src.FirstTokenAtMs }
+	if src.CompletedAtMs != 0 { mm.CompletedAtMs = src.CompletedAtMs }
+	if src.ThinkingContent != "" { mm.ThinkingContent = src.ThinkingContent }
+	if src.ThinkingTokenCount != 0 { mm.ThinkingTokenCount = src.ThinkingTokenCount }
+	if len(src.GeneratedFiles) > 0 { mm.GeneratedFiles = src.GeneratedFiles }
 }
 
 func loginMetadata(login *bridgev2.UserLogin) *UserLoginMetadata {

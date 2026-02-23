@@ -52,6 +52,12 @@ type codexLoginDone struct {
 	errText string
 }
 
+// codexAccountInfo is the common response shape for account/read calls.
+type codexAccountInfo struct {
+	Type  string `json:"type"`
+	Email string `json:"email"`
+}
+
 func (cl *CodexLogin) logger(ctx context.Context) *zerolog.Logger {
 	var fallback *zerolog.Logger
 	if cl != nil && cl.User != nil {
@@ -152,6 +158,11 @@ func (cl *CodexLogin) Cancel() {
 		cl.cancel()
 		cl.cancel = nil
 	}
+	cl.closeRPCLocked()
+}
+
+// closeRPCLocked closes and nils out the RPC client. Caller must hold cl.mu.
+func (cl *CodexLogin) closeRPCLocked() {
 	if cl.rpc != nil {
 		_ = cl.rpc.Close()
 		cl.rpc = nil
@@ -275,17 +286,12 @@ func (cl *CodexLogin) spawnAndStartLogin(ctx context.Context, log *zerolog.Logge
 
 		// Initialize first (some Codex builds won't accept login/start before initialize).
 		initCtx, cancelInit := context.WithTimeout(bgCtx, 45*time.Second)
-		_, initErr := rpc.Initialize(initCtx, codexrpc.ClientInfo{
-			Name:    cl.Connector.Config.Codex.ClientInfo.Name,
-			Title:   cl.Connector.Config.Codex.ClientInfo.Title,
-			Version: cl.Connector.Config.Codex.ClientInfo.Version,
-		}, false)
+		_, initErr := rpc.Initialize(initCtx, cl.Connector.Config.Codex.ClientInfo.rpcClientInfo(), false)
 		cancelInit()
 		if initErr != nil {
 			log.Warn().Err(initErr).Msg("Codex initialize failed")
-			_ = rpc.Close()
 			cl.mu.Lock()
-			cl.rpc = nil
+			cl.closeRPCLocked()
 			cl.mu.Unlock()
 			select {
 			case cl.startCh <- initErr:
@@ -491,11 +497,8 @@ func (cl *CodexLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 			}
 			readCtx, cancel := context.WithTimeout(cl.backgroundProcessContext(), 10*time.Second)
 			var resp struct {
-				Account *struct {
-					Type  string `json:"type"`
-					Email string `json:"email"`
-				} `json:"account"`
-				RequiresOpenaiAuth bool `json:"requiresOpenaiAuth"`
+				Account            *codexAccountInfo `json:"account"`
+				RequiresOpenaiAuth bool              `json:"requiresOpenaiAuth"`
 			}
 			// Try a few variants for compatibility with different Codex versions.
 			// Use refreshToken=true during login to force Codex to re-check auth state when supported.
@@ -600,10 +603,7 @@ func (cl *CodexLogin) finishLogin(ctx context.Context) (*bridgev2.LoginStep, err
 		readCtx, cancelRead := context.WithTimeout(persistCtx, 10*time.Second)
 		defer cancelRead()
 		var acct struct {
-			Account *struct {
-				Type  string `json:"type"`
-				Email string `json:"email"`
-			} `json:"account"`
+			Account *codexAccountInfo `json:"account"`
 		}
 		_ = cl.rpc.Call(readCtx, "account/read", map[string]any{"refreshToken": false}, &acct)
 		if acct.Account != nil && strings.TrimSpace(acct.Account.Email) != "" {
@@ -636,10 +636,9 @@ func (cl *CodexLogin) finishLogin(ctx context.Context) (*bridgev2.LoginStep, err
 				return nil, fmt.Errorf("failed to load client: %w", err)
 			}
 			go existing.Client.Connect(existing.Log.WithContext(cl.backgroundProcessContext()))
-			if cl.rpc != nil {
-				_ = cl.rpc.Close()
-				cl.rpc = nil
-			}
+			cl.mu.Lock()
+			cl.closeRPCLocked()
+			cl.mu.Unlock()
 			return &bridgev2.LoginStep{
 				Type:   bridgev2.LoginStepTypeComplete,
 				StepID: "io.ai-bridge.codex.complete",
@@ -665,10 +664,9 @@ func (cl *CodexLogin) finishLogin(ctx context.Context) (*bridgev2.LoginStep, err
 	}
 	go login.Client.Connect(login.Log.WithContext(cl.backgroundProcessContext()))
 
-	if cl.rpc != nil {
-		_ = cl.rpc.Close()
-		cl.rpc = nil
-	}
+	cl.mu.Lock()
+	cl.closeRPCLocked()
+	cl.mu.Unlock()
 
 	return &bridgev2.LoginStep{
 		Type:   bridgev2.LoginStepTypeComplete,

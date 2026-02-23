@@ -42,6 +42,13 @@ func (b *Bridge) portalMeta(portal *bridgev2.Portal) *PortalMeta {
 	return meta
 }
 
+func (b *Bridge) portalAgentID(portal *bridgev2.Portal) string {
+	if meta := b.portalMeta(portal); meta != nil {
+		return meta.AgentID
+	}
+	return ""
+}
+
 func (b *Bridge) listAllChatPortals(ctx context.Context) ([]*bridgev2.Portal, error) {
 	if b == nil || b.host == nil {
 		return nil, nil

@@ -27,7 +27,7 @@ func ptrIfNotEmpty(value string) *string {
 
 // Minimal room capabilities for codex bridge rooms.
 var aiBaseCaps = &event.RoomFeatures{
-	ID:                  aiCapID(),
+	ID:                  aiCapabilityID,
 	MaxTextLength:       100000,
 	Reply:               event.CapLevelFullySupported,
 	Thread:              event.CapLevelFullySupported,
@@ -82,9 +82,9 @@ func parseApprovalDecision(raw map[string]any) *approvalDecisionPayload {
 	if !ok {
 		return nil
 	}
-	approvalID := strings.TrimSpace(readStringArgAny(payloadMap, "approvalId"))
-	decision := strings.TrimSpace(readStringArgAny(payloadMap, "decision"))
-	reason := strings.TrimSpace(readStringArgAny(payloadMap, "reason"))
+	approvalID := readStringArgAny(payloadMap, "approvalId")
+	decision := readStringArgAny(payloadMap, "decision")
+	reason := readStringArgAny(payloadMap, "reason")
 	if approvalID == "" || decision == "" {
 		return nil
 	}

@@ -294,13 +294,21 @@ func (m *OpenCodeManager) RemoveInstance(ctx context.Context, instanceID string)
 	return m.bridge.host.SaveOpenCodeInstances(ctx, meta)
 }
 
-func (m *OpenCodeManager) SendMessage(ctx context.Context, instanceID, sessionID string, parts []opencode.PartInput, eventID id.EventID) error {
+func (m *OpenCodeManager) requireConnectedInstance(instanceID string) (*openCodeInstance, error) {
 	inst := m.getInstance(instanceID)
 	if inst == nil {
-		return errors.New("unknown OpenCode instance")
+		return nil, errors.New("unknown OpenCode instance")
 	}
 	if !inst.connected {
-		return errors.New("OpenCode instance disconnected")
+		return nil, errors.New("OpenCode instance disconnected")
+	}
+	return inst, nil
+}
+
+func (m *OpenCodeManager) SendMessage(ctx context.Context, instanceID, sessionID string, parts []opencode.PartInput, eventID id.EventID) error {
+	inst, err := m.requireConnectedInstance(instanceID)
+	if err != nil {
+		return err
 	}
 	if strings.TrimSpace(sessionID) == "" {
 		return errors.New("session id is required")
@@ -335,12 +343,9 @@ func (m *OpenCodeManager) DeleteSession(ctx context.Context, instanceID, session
 }
 
 func (m *OpenCodeManager) CreateSession(ctx context.Context, instanceID, title string) (*opencode.Session, error) {
-	inst := m.getInstance(instanceID)
-	if inst == nil {
-		return nil, errors.New("unknown OpenCode instance")
-	}
-	if !inst.connected {
-		return nil, errors.New("OpenCode instance disconnected")
+	inst, err := m.requireConnectedInstance(instanceID)
+	if err != nil {
+		return nil, err
 	}
 	session, err := inst.client.CreateSession(ctx, title)
 	if err != nil {
@@ -353,12 +358,9 @@ func (m *OpenCodeManager) CreateSession(ctx context.Context, instanceID, title s
 }
 
 func (m *OpenCodeManager) UpdateSessionTitle(ctx context.Context, instanceID, sessionID, title string) (*opencode.Session, error) {
-	inst := m.getInstance(instanceID)
-	if inst == nil {
-		return nil, errors.New("unknown OpenCode instance")
-	}
-	if !inst.connected {
-		return nil, errors.New("OpenCode instance disconnected")
+	inst, err := m.requireConnectedInstance(instanceID)
+	if err != nil {
+		return nil, err
 	}
 	session, err := inst.client.UpdateSessionTitle(ctx, sessionID, title)
 	if err != nil {
@@ -884,240 +886,129 @@ func (inst *openCodeInstance) seenRole(sessionID, messageID string) string {
 	return seen[messageID]
 }
 
-func (inst *openCodeInstance) partState(sessionID, partID string) *openCodePartState {
+// withPartState calls fn with the part state for the given session and part,
+// if it exists. Caller should NOT hold inst.seenMu.
+func (inst *openCodeInstance) withPartState(sessionID, partID string, fn func(ps *openCodePartState)) {
 	inst.seenMu.Lock()
 	defer inst.seenMu.Unlock()
 	if inst.seenPart == nil {
-		return nil
+		return
+	}
+	if parts, ok := inst.seenPart[sessionID]; ok {
+		if state, ok := parts[partID]; ok && state != nil {
+			fn(state)
+		}
+	}
+}
+
+// readPartState calls fn with the part state for the given session and part if
+// it exists. Returns the zero value of T if the part state is not found.
+func readPartState[T any](inst *openCodeInstance, sessionID, partID string, fn func(ps *openCodePartState) T) T {
+	inst.seenMu.Lock()
+	defer inst.seenMu.Unlock()
+	if inst.seenPart == nil {
+		var zero T
+		return zero
 	}
 	parts, ok := inst.seenPart[sessionID]
 	if !ok {
-		return nil
+		var zero T
+		return zero
 	}
-	return parts[partID]
+	state, ok := parts[partID]
+	if !ok || state == nil {
+		var zero T
+		return zero
+	}
+	return fn(state)
+}
+
+func (inst *openCodeInstance) partState(sessionID, partID string) *openCodePartState {
+	return readPartState(inst, sessionID, partID, func(ps *openCodePartState) *openCodePartState { return ps })
 }
 
 func (inst *openCodeInstance) partFlags(sessionID, partID string) (bool, bool) {
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	if inst.seenPart == nil {
-		return false, false
-	}
-	parts, ok := inst.seenPart[sessionID]
-	if !ok {
-		return false, false
-	}
-	state, ok := parts[partID]
-	if !ok || state == nil {
-		return false, false
-	}
-	return state.callSent, state.resultSent
+	type pair struct{ a, b bool }
+	p := readPartState(inst, sessionID, partID, func(ps *openCodePartState) pair {
+		return pair{ps.callSent, ps.resultSent}
+	})
+	return p.a, p.b
 }
 
 func (inst *openCodeInstance) partStreamFlags(sessionID, partID string) (bool, bool, bool, bool) {
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	if inst.seenPart == nil {
-		return false, false, false, false
-	}
-	parts, ok := inst.seenPart[sessionID]
-	if !ok {
-		return false, false, false, false
-	}
-	state, ok := parts[partID]
-	if !ok || state == nil {
-		return false, false, false, false
-	}
-	return state.streamInputStarted, state.streamInputAvailable, state.streamOutputAvailable, state.streamOutputError
+	type quad struct{ a, b, c, d bool }
+	q := readPartState(inst, sessionID, partID, func(ps *openCodePartState) quad {
+		return quad{ps.streamInputStarted, ps.streamInputAvailable, ps.streamOutputAvailable, ps.streamOutputError}
+	})
+	return q.a, q.b, q.c, q.d
 }
 
 func (inst *openCodeInstance) partTextStreamFlags(sessionID, partID string) (bool, bool, bool, bool) {
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	if inst.seenPart == nil {
-		return false, false, false, false
-	}
-	parts, ok := inst.seenPart[sessionID]
-	if !ok {
-		return false, false, false, false
-	}
-	state, ok := parts[partID]
-	if !ok || state == nil {
-		return false, false, false, false
-	}
-	return state.textStreamStarted, state.textStreamEnded, state.reasoningStreamStarted, state.reasoningStreamEnded
+	type quad struct{ a, b, c, d bool }
+	q := readPartState(inst, sessionID, partID, func(ps *openCodePartState) quad {
+		return quad{ps.textStreamStarted, ps.textStreamEnded, ps.reasoningStreamStarted, ps.reasoningStreamEnded}
+	})
+	return q.a, q.b, q.c, q.d
 }
 
 func (inst *openCodeInstance) partCallStatus(sessionID, partID string) string {
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	if inst.seenPart == nil {
-		return ""
-	}
-	parts, ok := inst.seenPart[sessionID]
-	if !ok {
-		return ""
-	}
-	state, ok := parts[partID]
-	if !ok || state == nil {
-		return ""
-	}
-	return state.callStatus
+	return readPartState(inst, sessionID, partID, func(ps *openCodePartState) string { return ps.callStatus })
 }
 
 func (inst *openCodeInstance) partStatusReaction(sessionID, partID string) string {
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	if inst.seenPart == nil {
-		return ""
-	}
-	parts, ok := inst.seenPart[sessionID]
-	if !ok {
-		return ""
-	}
-	state, ok := parts[partID]
-	if !ok || state == nil {
-		return ""
-	}
-	return state.statusReaction
+	return readPartState(inst, sessionID, partID, func(ps *openCodePartState) string { return ps.statusReaction })
 }
 
 func (inst *openCodeInstance) setPartCallSent(sessionID, partID string) {
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	if inst.seenPart == nil {
-		return
-	}
-	if parts, ok := inst.seenPart[sessionID]; ok {
-		if state, ok := parts[partID]; ok && state != nil {
-			state.callSent = true
-		}
-	}
+	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.callSent = true })
 }
 
 func (inst *openCodeInstance) setPartTextStreamStarted(sessionID, partID, kind string) {
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	if inst.seenPart == nil {
-		return
-	}
-	if parts, ok := inst.seenPart[sessionID]; ok {
-		if state, ok := parts[partID]; ok && state != nil {
-			if kind == "reasoning" {
-				state.reasoningStreamStarted = true
-			} else {
-				state.textStreamStarted = true
-			}
+	inst.withPartState(sessionID, partID, func(ps *openCodePartState) {
+		if kind == "reasoning" {
+			ps.reasoningStreamStarted = true
+		} else {
+			ps.textStreamStarted = true
 		}
-	}
+	})
 }
 
 func (inst *openCodeInstance) setPartTextStreamEnded(sessionID, partID, kind string) {
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	if inst.seenPart == nil {
-		return
-	}
-	if parts, ok := inst.seenPart[sessionID]; ok {
-		if state, ok := parts[partID]; ok && state != nil {
-			if kind == "reasoning" {
-				state.reasoningStreamEnded = true
-			} else {
-				state.textStreamEnded = true
-			}
+	inst.withPartState(sessionID, partID, func(ps *openCodePartState) {
+		if kind == "reasoning" {
+			ps.reasoningStreamEnded = true
+		} else {
+			ps.textStreamEnded = true
 		}
-	}
+	})
 }
 
 func (inst *openCodeInstance) setPartStreamInputStarted(sessionID, partID string) {
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	if inst.seenPart == nil {
-		return
-	}
-	if parts, ok := inst.seenPart[sessionID]; ok {
-		if state, ok := parts[partID]; ok && state != nil {
-			state.streamInputStarted = true
-		}
-	}
+	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.streamInputStarted = true })
 }
 
 func (inst *openCodeInstance) setPartStreamInputAvailable(sessionID, partID string) {
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	if inst.seenPart == nil {
-		return
-	}
-	if parts, ok := inst.seenPart[sessionID]; ok {
-		if state, ok := parts[partID]; ok && state != nil {
-			state.streamInputAvailable = true
-		}
-	}
+	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.streamInputAvailable = true })
 }
 
 func (inst *openCodeInstance) setPartStreamOutputAvailable(sessionID, partID string) {
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	if inst.seenPart == nil {
-		return
-	}
-	if parts, ok := inst.seenPart[sessionID]; ok {
-		if state, ok := parts[partID]; ok && state != nil {
-			state.streamOutputAvailable = true
-		}
-	}
+	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.streamOutputAvailable = true })
 }
 
 func (inst *openCodeInstance) setPartStreamOutputError(sessionID, partID string) {
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	if inst.seenPart == nil {
-		return
-	}
-	if parts, ok := inst.seenPart[sessionID]; ok {
-		if state, ok := parts[partID]; ok && state != nil {
-			state.streamOutputError = true
-		}
-	}
+	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.streamOutputError = true })
 }
 
 func (inst *openCodeInstance) setPartCallStatus(sessionID, partID, status string) {
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	if inst.seenPart == nil {
-		return
-	}
-	if parts, ok := inst.seenPart[sessionID]; ok {
-		if state, ok := parts[partID]; ok && state != nil {
-			state.callStatus = status
-		}
-	}
+	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.callStatus = status })
 }
 
 func (inst *openCodeInstance) setPartStatusReaction(sessionID, partID, reaction string) {
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	if inst.seenPart == nil {
-		return
-	}
-	if parts, ok := inst.seenPart[sessionID]; ok {
-		if state, ok := parts[partID]; ok && state != nil {
-			state.statusReaction = reaction
-		}
-	}
+	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.statusReaction = reaction })
 }
 
 func (inst *openCodeInstance) setPartResultSent(sessionID, partID string) {
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	if inst.seenPart == nil {
-		return
-	}
-	if parts, ok := inst.seenPart[sessionID]; ok {
-		if state, ok := parts[partID]; ok && state != nil {
-			state.resultSent = true
-		}
-	}
+	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.resultSent = true })
 }
 
 func (inst *openCodeInstance) ensurePartState(sessionID, messageID, partID, role, partType string) *openCodePartState {

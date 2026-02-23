@@ -3,6 +3,7 @@ package codex
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -41,7 +42,6 @@ const (
 
 func (cc *CodexConnector) Init(bridge *bridgev2.Bridge) {
 	cc.br = bridge
-	cc.db = nil
 	if bridge != nil && bridge.DB != nil && bridge.DB.Database != nil {
 		cc.db = makeCodexBridgeChildDB(
 			bridge.DB.Database,
@@ -68,9 +68,6 @@ func (cc *CodexConnector) Start(ctx context.Context) error {
 }
 
 func (cc *CodexConnector) primeUserLoginCache(ctx context.Context) {
-	if cc == nil {
-		return
-	}
 	bridgeadapter.PrimeUserLoginCache(ctx, cc.br)
 }
 
@@ -229,14 +226,7 @@ func (cc *CodexConnector) CreateLogin(ctx context.Context, user *bridgev2.User, 
 	if flowID == ProviderCodex {
 		flowID = FlowCodexChatGPT
 	}
-	valid := false
-	for _, flow := range cc.GetLoginFlows() {
-		if flow.ID == flowID {
-			valid = true
-			break
-		}
-	}
-	if !valid {
+	if !slices.ContainsFunc(cc.GetLoginFlows(), func(f bridgev2.LoginFlow) bool { return f.ID == flowID }) {
 		return nil, fmt.Errorf("login flow %s is not available", flowID)
 	}
 	return &CodexLogin{User: user, Connector: cc, FlowID: flowID}, nil

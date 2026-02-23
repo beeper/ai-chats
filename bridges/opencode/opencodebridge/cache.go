@@ -58,9 +58,6 @@ func (inst *openCodeInstance) listMessagesForBackfill(ctx context.Context, sessi
 		if count > refreshLimit {
 			refreshLimit = count
 		}
-		if size == 0 {
-			refreshLimit = max(refreshLimit, openCodeBackfillRefreshLimit)
-		}
 	}
 	if requireFull || (refreshLimit > 0 && time.Since(lastRefresh) > openCodeBackfillRefreshInterval) || size == 0 {
 		limit := 0

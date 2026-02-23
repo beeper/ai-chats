@@ -27,6 +27,54 @@ Experimental Matrix ↔ AI bridge for Beeper, built on top of [mautrix/bridgev2]
 ## Docs
 
 - `docs/matrix-ai-matrix-spec-v1.md`: Full Matrix transport spec (events, streaming, approvals, state, and schema examples).
+- `docs/bridge-orchestrator.md`: One-command bridge management in this repo.
+
+## Bridge Orchestrator
+
+Use `tools/bridges` to manage isolated bridge instances for Beeper.
+
+### Configured bridge instances
+
+- `ai`
+- `codex`
+- `opencode`
+
+Instances are defined in `bridges.manifest.yml`.
+
+### Login and run
+
+```bash
+./tools/bridges login --env prod
+./tools/bridges run ai
+```
+
+### Run other bridges
+
+```bash
+./tools/bridges run codex
+./tools/bridges run opencode
+```
+
+### Simple wrapper
+
+```bash
+./run.sh ai
+./run.sh codex
+./run.sh opencode
+```
+
+`run.sh` checks login first and prompts you to login if needed, then runs the selected bridge.
+
+### Useful commands
+
+```bash
+./tools/bridges list
+./tools/bridges status
+./tools/bridges logs ai --follow
+./tools/bridges down ai
+./tools/bridges restart ai
+./tools/bridges whoami
+```
 
 ## Build
 

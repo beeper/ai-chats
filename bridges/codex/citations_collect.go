@@ -62,19 +62,7 @@ func mergeSourceCitations(existing, incoming []sourceCitation) []sourceCitation 
 	}
 	seen := make(map[string]int, len(existing)+len(incoming))
 	merged := make([]sourceCitation, 0, len(existing)+len(incoming))
-	for _, citation := range existing {
-		url := strings.TrimSpace(citation.URL)
-		if url == "" {
-			continue
-		}
-		if idx, ok := seen[url]; ok {
-			merged[idx] = mergeCitationFields(merged[idx], citation)
-			continue
-		}
-		seen[url] = len(merged)
-		merged = append(merged, citation)
-	}
-	for _, citation := range incoming {
+	for _, citation := range append(existing, incoming...) {
 		url := strings.TrimSpace(citation.URL)
 		if url == "" {
 			continue

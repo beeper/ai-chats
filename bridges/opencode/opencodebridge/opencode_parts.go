@@ -66,23 +66,14 @@ func (b *Bridge) emitOpenCodePartEdit(ctx context.Context, portal *bridgev2.Port
 }
 
 func (b *Bridge) emitOpenCodeToolCall(ctx context.Context, portal *bridgev2.Portal, instanceID string, part opencode.Part, fromMe bool, status string) {
-	if portal == nil || part.ID == "" {
-		return
-	}
-	remote := &simplevent.Message[openCodePartEvent]{
-		EventMeta: simplevent.EventMeta{
-			Type:      bridgev2.RemoteEventMessage,
-			PortalKey: portal.PortalKey,
-			Sender:    b.opencodeSender(instanceID, fromMe),
-		},
-		ID:                 opencodeToolCallMessageID(part.ID),
-		Data:               openCodePartEvent{InstanceID: instanceID, Part: part, Kind: openCodePartKindToolCall, Status: status},
-		ConvertMessageFunc: b.convertOpenCodePartMessage,
-	}
-	b.queueRemoteEvent(remote)
+	b.emitOpenCodeToolPartMessage(portal, instanceID, part, fromMe, status, openCodePartKindToolCall, opencodeToolCallMessageID(part.ID))
 }
 
 func (b *Bridge) emitOpenCodeToolResult(ctx context.Context, portal *bridgev2.Portal, instanceID string, part opencode.Part, fromMe bool, status string) {
+	b.emitOpenCodeToolPartMessage(portal, instanceID, part, fromMe, status, openCodePartKindToolResult, opencodeToolResultMessageID(part.ID))
+}
+
+func (b *Bridge) emitOpenCodeToolPartMessage(portal *bridgev2.Portal, instanceID string, part opencode.Part, fromMe bool, status string, kind openCodePartKind, msgID networkid.MessageID) {
 	if portal == nil || part.ID == "" {
 		return
 	}
@@ -92,8 +83,8 @@ func (b *Bridge) emitOpenCodeToolResult(ctx context.Context, portal *bridgev2.Po
 			PortalKey: portal.PortalKey,
 			Sender:    b.opencodeSender(instanceID, fromMe),
 		},
-		ID:                 opencodeToolResultMessageID(part.ID),
-		Data:               openCodePartEvent{InstanceID: instanceID, Part: part, Kind: openCodePartKindToolResult, Status: status},
+		ID:                 msgID,
+		Data:               openCodePartEvent{InstanceID: instanceID, Part: part, Kind: kind, Status: status},
 		ConvertMessageFunc: b.convertOpenCodePartMessage,
 	}
 	b.queueRemoteEvent(remote)
@@ -289,14 +280,8 @@ func (b *Bridge) buildOpenCodePartContent(ctx context.Context, portal *bridgev2.
 }
 
 func buildOpenCodeToolCallContent(part opencode.Part, status string) (*event.MessageEventContent, map[string]any) {
-	toolName := strings.TrimSpace(part.Tool)
-	if toolName == "" {
-		toolName = "tool"
-	}
-	callID := strings.TrimSpace(part.CallID)
-	if callID == "" {
-		callID = part.ID
-	}
+	toolName := opencodeToolName(part)
+	callID := opencodeToolCallID(part)
 	toolStatus := opencodeToolStatus(firstNonEmptyString(status, opencodePartStateStatus(part)))
 	call := &ToolCallData{
 		CallID:   callID,
@@ -313,19 +298,13 @@ func buildOpenCodeToolCallContent(part opencode.Part, status string) (*event.Mes
 	}
 	body := fmt.Sprintf("Calling %s...", toolDisplayTitle(toolName))
 	content := &event.MessageEventContent{MsgType: event.MsgNotice, Body: body}
-	extra := map[string]any{BeeperAIToolCallKey: call}
+	extra := map[string]any{matrixevents.BeeperAIToolCallKey: call}
 	return content, extra
 }
 
 func buildOpenCodeToolResultContent(part opencode.Part, status string) (*event.MessageEventContent, map[string]any) {
-	toolName := strings.TrimSpace(part.Tool)
-	if toolName == "" {
-		toolName = "tool"
-	}
-	callID := strings.TrimSpace(part.CallID)
-	if callID == "" {
-		callID = part.ID
-	}
+	toolName := opencodeToolName(part)
+	callID := opencodeToolCallID(part)
 	stateStatus := firstNonEmptyString(status, opencodePartStateStatus(part))
 	resultStatus := opencodeResultStatus(stateStatus)
 
@@ -352,7 +331,7 @@ func buildOpenCodeToolResultContent(part opencode.Part, status string) (*event.M
 		},
 	}
 	content := &event.MessageEventContent{MsgType: event.MsgNotice, Body: body}
-	extra := map[string]any{BeeperAIToolResultKey: result}
+	extra := map[string]any{matrixevents.BeeperAIToolResultKey: result}
 	return content, extra
 }
 

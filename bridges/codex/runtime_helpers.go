@@ -37,7 +37,3 @@ func newBrokenLoginClient(login *bridgev2.UserLogin, reason string) *brokenLogin
 	}
 }
 
-func purgeLoginDataBestEffort(ctx context.Context, login *bridgev2.UserLogin) {
-	_ = ctx
-	_ = login
-}

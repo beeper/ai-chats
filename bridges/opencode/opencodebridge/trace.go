@@ -7,15 +7,10 @@ func traceLevel(meta *PortalMeta) string {
 		return "off"
 	}
 	level := strings.ToLower(strings.TrimSpace(meta.VerboseLevel))
-	switch level {
-	case "on", "full", "off":
-		return level
-	default:
-		if level == "" {
-			return "off"
-		}
-		return level
+	if level == "" {
+		return "off"
 	}
+	return level
 }
 
 func traceEnabled(meta *PortalMeta) bool {

@@ -4,12 +4,6 @@ import (
 	"strings"
 
 	"github.com/beeper/ai-bridge/pkg/agents/tools"
-	"github.com/beeper/ai-bridge/pkg/matrixevents"
-)
-
-const (
-	BeeperAIToolCallKey   = matrixevents.BeeperAIToolCallKey
-	BeeperAIToolResultKey = matrixevents.BeeperAIToolResultKey
 )
 
 // ToolStatus represents the state of a tool call.
@@ -80,13 +74,10 @@ type ToolResultDisplay struct {
 	ShowArtifacts   bool   `json:"show_artifacts,omitempty"`
 }
 
-func firstNonEmptyString(values ...any) string {
-	for _, raw := range values {
-		switch v := raw.(type) {
-		case string:
-			if s := strings.TrimSpace(v); s != "" {
-				return s
-			}
+func firstNonEmptyString(values ...string) string {
+	for _, v := range values {
+		if s := strings.TrimSpace(v); s != "" {
+			return s
 		}
 	}
 	return ""

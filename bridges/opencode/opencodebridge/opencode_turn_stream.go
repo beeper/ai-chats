@@ -21,11 +21,7 @@ func (m *OpenCodeManager) ensureTurnStarted(ctx context.Context, inst *openCodeI
 	if turnID == "" {
 		return
 	}
-	meta := m.bridge.portalMeta(portal)
-	agentID := ""
-	if meta != nil {
-		agentID = meta.AgentID
-	}
+	agentID := m.bridge.portalAgentID(portal)
 	m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
 		"type":      "start",
 		"messageId": turnID,
@@ -49,11 +45,7 @@ func (m *OpenCodeManager) ensureStepStarted(ctx context.Context, inst *openCodeI
 	if turnID == "" {
 		return
 	}
-	meta := m.bridge.portalMeta(portal)
-	agentID := ""
-	if meta != nil {
-		agentID = meta.AgentID
-	}
+	agentID := m.bridge.portalAgentID(portal)
 	m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
 		"type": "start-step",
 	})
@@ -75,11 +67,7 @@ func (m *OpenCodeManager) closeStepIfOpen(ctx context.Context, inst *openCodeIns
 	if turnID == "" {
 		return
 	}
-	meta := m.bridge.portalMeta(portal)
-	agentID := ""
-	if meta != nil {
-		agentID = meta.AgentID
-	}
+	agentID := m.bridge.portalAgentID(portal)
 	m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
 		"type": "finish-step",
 	})
@@ -105,11 +93,7 @@ func (m *OpenCodeManager) emitTurnFinish(ctx context.Context, inst *openCodeInst
 	if finishReason == "" {
 		finishReason = "stop"
 	}
-	meta := m.bridge.portalMeta(portal)
-	agentID := ""
-	if meta != nil {
-		agentID = meta.AgentID
-	}
+	agentID := m.bridge.portalAgentID(portal)
 	m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
 		"type":         "finish",
 		"finishReason": finishReason,

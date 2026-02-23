@@ -13,9 +13,6 @@ func makeCodexBridgeChildDB(base *dbutil.Database, log dbutil.DatabaseLogger) *d
 }
 
 func (cc *CodexConnector) bridgeDB() *dbutil.Database {
-	if cc == nil {
-		return nil
-	}
 	if cc.db != nil {
 		return cc.db
 	}

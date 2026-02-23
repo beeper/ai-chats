@@ -221,8 +221,6 @@ func sanitizeOpenCodeTitle(title string) string {
 	if trimmed == "" {
 		return ""
 	}
-	trimmed = strings.ReplaceAll(trimmed, "\n", " ")
-	trimmed = strings.ReplaceAll(trimmed, "\r", " ")
 	trimmed = strings.Join(strings.Fields(trimmed), " ")
 	if len(trimmed) > 80 {
 		trimmed = trimmed[:80] + "..."

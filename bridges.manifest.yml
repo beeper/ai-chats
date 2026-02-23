@@ -1,0 +1,36 @@
+instances:
+  ai:
+    bridge_type: ai
+    mode: local-repo
+    repo_path: .
+    build_cmd: ./build.sh
+    binary_path: ./ai
+    beeper_bridge_name: sh-ai
+    config_overrides:
+      appservice.address: websocket
+      appservice.hostname: 127.0.0.1
+      appservice.port: 29345
+
+  codex:
+    bridge_type: codex
+    mode: local-repo
+    repo_path: .
+    build_cmd: BINARY_NAME=codex go tool maubuild
+    binary_path: ./codex
+    beeper_bridge_name: sh-codex
+    config_overrides:
+      appservice.address: websocket
+      appservice.hostname: 127.0.0.1
+      appservice.port: 29346
+
+  opencode:
+    bridge_type: opencode
+    mode: local-repo
+    repo_path: .
+    build_cmd: BINARY_NAME=opencode go tool maubuild
+    binary_path: ./opencode
+    beeper_bridge_name: sh-opencode
+    config_overrides:
+      appservice.address: websocket
+      appservice.hostname: 127.0.0.1
+      appservice.port: 29347

@@ -135,24 +135,22 @@ func (cc *CodexClient) Connect(ctx context.Context) {
 	}
 
 	// Best-effort account/read.
-	if cc.rpc != nil {
-		readCtx, cancel := context.WithTimeout(cc.backgroundContext(ctx), 10*time.Second)
-		defer cancel()
-		var resp struct {
-			Account *struct {
-				Type  string `json:"type"`
-				Email string `json:"email"`
-			} `json:"account"`
-			RequiresOpenaiAuth bool `json:"requiresOpenaiAuth"`
-		}
-		_ = cc.rpc.Call(readCtx, "account/read", map[string]any{"refreshToken": false}, &resp)
-		if resp.Account != nil {
-			cc.loggedIn.Store(true)
-			meta := loginMetadata(cc.UserLogin)
-			if strings.TrimSpace(resp.Account.Email) != "" {
-				meta.CodexAccountEmail = strings.TrimSpace(resp.Account.Email)
-				_ = cc.UserLogin.Save(cc.backgroundContext(ctx))
-			}
+	readCtx, cancel := context.WithTimeout(cc.backgroundContext(ctx), 10*time.Second)
+	defer cancel()
+	var resp struct {
+		Account *struct {
+			Type  string `json:"type"`
+			Email string `json:"email"`
+		} `json:"account"`
+		RequiresOpenaiAuth bool `json:"requiresOpenaiAuth"`
+	}
+	_ = cc.rpc.Call(readCtx, "account/read", map[string]any{"refreshToken": false}, &resp)
+	if resp.Account != nil {
+		cc.loggedIn.Store(true)
+		meta := loginMetadata(cc.UserLogin)
+		if strings.TrimSpace(resp.Account.Email) != "" {
+			meta.CodexAccountEmail = strings.TrimSpace(resp.Account.Email)
+			_ = cc.UserLogin.Save(cc.backgroundContext(ctx))
 		}
 	}
 
@@ -222,11 +220,6 @@ func (cc *CodexClient) LogoutRemote(ctx context.Context) {
 	// Best-effort: remove on-disk per-room Codex working dirs.
 	cc.purgeCodexCwdsBestEffort(ctx)
 
-	// Best-effort: remove per-login data not covered by bridgev2's user_login/portal/message cleanup.
-	if cc != nil && cc.UserLogin != nil {
-		purgeLoginDataBestEffort(ctx, cc.UserLogin)
-	}
-
 	cc.Disconnect()
 
 	if cc.connector != nil {
@@ -242,7 +235,7 @@ func (cc *CodexClient) LogoutRemote(ctx context.Context) {
 }
 
 func (cc *CodexClient) purgeCodexHomeBestEffort(ctx context.Context) {
-	if cc == nil || cc.UserLogin == nil {
+	if cc.UserLogin == nil {
 		return
 	}
 	meta, ok := cc.UserLogin.Metadata.(*UserLoginMetadata)
@@ -267,7 +260,7 @@ func (cc *CodexClient) purgeCodexHomeBestEffort(ctx context.Context) {
 }
 
 func (cc *CodexClient) purgeCodexCwdsBestEffort(ctx context.Context) {
-	if cc == nil || cc.UserLogin == nil || cc.UserLogin.Bridge == nil || cc.UserLogin.Bridge.DB == nil {
+	if cc.UserLogin == nil || cc.UserLogin.Bridge == nil || cc.UserLogin.Bridge.DB == nil {
 		return
 	}
 	if ctx == nil {
@@ -1157,11 +1150,7 @@ func (cc *CodexClient) ensureRPC(ctx context.Context) error {
 
 	initCtx, cancelInit := context.WithTimeout(ctx, 45*time.Second)
 	defer cancelInit()
-	_, err = rpc.Initialize(initCtx, codexrpc.ClientInfo{
-		Name:    cc.connector.Config.Codex.ClientInfo.Name,
-		Title:   cc.connector.Config.Codex.ClientInfo.Title,
-		Version: cc.connector.Config.Codex.ClientInfo.Version,
-	}, false)
+	_, err = rpc.Initialize(initCtx, cc.connector.Config.Codex.ClientInfo.rpcClientInfo(), false)
 	if err != nil {
 		_ = rpc.Close()
 		cc.rpc = nil
@@ -1469,7 +1458,7 @@ func (cc *CodexClient) ensureCodexThread(ctx context.Context, portal *bridgev2.P
 }
 
 func (cc *CodexClient) ensureCodexThreadLoaded(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) error {
-	if cc == nil || meta == nil {
+	if meta == nil {
 		return errors.New("missing metadata")
 	}
 	threadID := strings.TrimSpace(meta.CodexThreadID)
@@ -1549,7 +1538,7 @@ func (cc *CodexClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2
 	// If a turn is in-flight for this thread, try to interrupt it.
 	tid := strings.TrimSpace(meta.CodexThreadID)
 	cc.activeMu.Lock()
-	active := (*codexActiveTurn)(nil)
+	var active *codexActiveTurn
 	for _, at := range cc.activeTurns {
 		if at != nil && strings.TrimSpace(at.threadID) == tid {
 			active = at
@@ -1566,7 +1555,7 @@ func (cc *CodexClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2
 		cancel()
 	}
 
-	if tid := strings.TrimSpace(meta.CodexThreadID); tid != "" {
+	if tid != "" {
 		callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		_ = cc.rpc.Call(callCtx, "thread/archive", map[string]any{"threadId": tid}, &struct{}{})
 		cancel()
@@ -2192,7 +2181,7 @@ func (cc *CodexClient) sendContinuationMessage(ctx context.Context, portal *brid
 }
 
 func (cc *CodexClient) saveAssistantMessage(ctx context.Context, portal *bridgev2.Portal, state *streamingState, model string, finishReason string) {
-	if cc == nil || portal == nil || state == nil || state.initialEventID == "" {
+	if portal == nil || state == nil || state.initialEventID == "" {
 		return
 	}
 	// Collect generated file references for multimodal history re-injection.

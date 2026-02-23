@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	manifestPathDefault = "bridges.manifest.yaml"
+	manifestPathDefault = "bridges.manifest.yml"
 )
 
 var envDomains = map[string]string{

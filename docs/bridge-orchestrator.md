@@ -15,7 +15,7 @@ Use one of:
 ## One-command startup
 
 ```bash
-./tools/bridges up ai-main
+./tools/bridges up ai
 ```
 
 This will:
@@ -44,9 +44,15 @@ This will:
 - `./tools/bridges delete <instance> [--remote]`
 - `./tools/bridges doctor`
 
+Shortcut wrapper:
+
+- `./run.sh ai|codex|opencode`
+  - checks login and prompts with `login` if needed
+  - then runs the selected bridge instance
+
 ## Manifest
 
-Instances are configured in `bridges.manifest.yaml`.
+Instances are configured in `bridges.manifest.yml`.
 
 Key fields:
 

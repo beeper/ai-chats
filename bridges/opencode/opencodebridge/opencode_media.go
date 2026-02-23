@@ -75,16 +75,17 @@ func downloadOpenCodeFile(ctx context.Context, fileURL, fallbackMime string, max
 	if fileURL == "" {
 		return nil, "", errors.New("missing file URL")
 	}
+	var maxBytes int64
+	if maxSizeMB > 0 {
+		maxBytes = int64(maxSizeMB * 1024 * 1024)
+	}
 	if strings.HasPrefix(fileURL, "data:") {
 		data, mimeType, err := decodeOpenCodeDataURL(fileURL)
 		if err != nil {
 			return nil, "", err
 		}
-		if maxSizeMB > 0 {
-			maxBytes := int64(maxSizeMB * 1024 * 1024)
-			if int64(len(data)) > maxBytes {
-				return nil, "", fmt.Errorf("file too large: %d bytes (max %d MB)", len(data), maxSizeMB)
-			}
+		if maxBytes > 0 && int64(len(data)) > maxBytes {
+			return nil, "", fmt.Errorf("file too large: %d bytes (max %d MB)", len(data), maxSizeMB)
 		}
 		if mimeType == "" {
 			mimeType = normalizeMimeType(fallbackMime)
@@ -104,11 +105,8 @@ func downloadOpenCodeFile(ctx context.Context, fileURL, fallbackMime string, max
 		if err != nil {
 			return nil, "", fmt.Errorf("failed to stat file: %w", err)
 		}
-		if maxSizeMB > 0 {
-			maxBytes := int64(maxSizeMB * 1024 * 1024)
-			if info.Size() > maxBytes {
-				return nil, "", fmt.Errorf("file too large: %d bytes (max %d MB)", info.Size(), maxSizeMB)
-			}
+		if maxBytes > 0 && info.Size() > maxBytes {
+			return nil, "", fmt.Errorf("file too large: %d bytes (max %d MB)", info.Size(), maxSizeMB)
 		}
 		data, err := os.ReadFile(pathValue)
 		if err != nil {
@@ -137,26 +135,19 @@ func downloadOpenCodeFile(ctx context.Context, fileURL, fallbackMime string, max
 	if resp.StatusCode != http.StatusOK {
 		return nil, "", fmt.Errorf("file download failed with status %d", resp.StatusCode)
 	}
-	if maxSizeMB > 0 && resp.ContentLength > 0 {
-		maxBytes := int64(maxSizeMB * 1024 * 1024)
-		if resp.ContentLength > maxBytes {
-			return nil, "", fmt.Errorf("file too large: %d bytes (max %d MB)", resp.ContentLength, maxSizeMB)
-		}
+	if maxBytes > 0 && resp.ContentLength > 0 && resp.ContentLength > maxBytes {
+		return nil, "", fmt.Errorf("file too large: %d bytes (max %d MB)", resp.ContentLength, maxSizeMB)
 	}
 	var reader io.Reader = resp.Body
-	if maxSizeMB > 0 {
-		maxBytes := int64(maxSizeMB * 1024 * 1024)
+	if maxBytes > 0 {
 		reader = io.LimitReader(resp.Body, maxBytes+1)
 	}
 	data, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, "", err
 	}
-	if maxSizeMB > 0 {
-		maxBytes := int64(maxSizeMB * 1024 * 1024)
-		if int64(len(data)) > maxBytes {
-			return nil, "", fmt.Errorf("file too large: %d bytes (max %d MB)", len(data), maxSizeMB)
-		}
+	if maxBytes > 0 && int64(len(data)) > maxBytes {
+		return nil, "", fmt.Errorf("file too large: %d bytes (max %d MB)", len(data), maxSizeMB)
 	}
 	mimeType := normalizeMimeType(resp.Header.Get("Content-Type"))
 	if mimeType == "" {

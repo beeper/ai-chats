@@ -4,11 +4,11 @@ import (
 	"time"
 
 	"go.mau.fi/util/configupgrade"
+
+	"github.com/beeper/ai-bridge/bridges/codex/codexrpc"
 )
 
-const (
-	ProviderCodex = "codex"
-)
+const ProviderCodex = "codex"
 
 type Config struct {
 	Bridge             BridgeConfig   `yaml:"bridge"`
@@ -44,6 +44,10 @@ type CodexClientInfo struct {
 	Version string `yaml:"version"`
 }
 
+func (ci *CodexClientInfo) rpcClientInfo() codexrpc.ClientInfo {
+	return codexrpc.ClientInfo{Name: ci.Name, Title: ci.Title, Version: ci.Version}
+}
+
 const exampleNetworkConfig = `
 bridge:
   command_prefix: "!ai"
@@ -59,6 +63,4 @@ codex:
     version: "0.1.0"
 `
 
-func upgradeConfig(helper configupgrade.Helper) {
-	_ = helper
-}
+func upgradeConfig(_ configupgrade.Helper) {}

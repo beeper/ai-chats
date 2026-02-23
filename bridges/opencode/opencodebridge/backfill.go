@@ -238,13 +238,33 @@ func parseOpenCodeMessageID(msgID networkid.MessageID) (string, bool) {
 	if strings.HasPrefix(raw, "opencode:part:") || strings.HasPrefix(raw, "opencode:toolcall:") || strings.HasPrefix(raw, "opencode:toolresult:") {
 		return "", false
 	}
-	if strings.HasPrefix(raw, "opencode:") {
-		value := strings.TrimPrefix(raw, "opencode:")
-		if value != "" {
-			return value, true
-		}
+	if value, ok := strings.CutPrefix(raw, "opencode:"); ok && value != "" {
+		return value, true
 	}
 	return "", false
+}
+
+// appendBackfillPart builds a converted part and appends it to out if non-nil.
+func (b *Bridge) appendBackfillPart(
+	ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI,
+	out *[]*bridgev2.BackfillMessage, sender bridgev2.EventSender, msgTime time.Time, nextOrder func() int64,
+	evt openCodePartEvent, msgID networkid.MessageID,
+) error {
+	cmp, err := b.buildOpenCodeConvertedPart(ctx, portal, intent, evt)
+	if err != nil && err != bridgev2.ErrIgnoringRemoteEvent {
+		return err
+	}
+	if cmp != nil {
+		*out = append(*out, &bridgev2.BackfillMessage{
+			ConvertedMessage: &bridgev2.ConvertedMessage{Parts: []*bridgev2.ConvertedMessagePart{cmp}},
+			Sender:           sender,
+			ID:               msgID,
+			TxnID:            networkid.TransactionID(msgID),
+			Timestamp:        msgTime,
+			StreamOrder:      nextOrder(),
+		})
+	}
+	return nil
 }
 
 func (b *Bridge) convertOpenCodeBackfill(ctx context.Context, portal *bridgev2.Portal, instanceID string, batch []backfillMessageEntry) ([]*bridgev2.BackfillMessage, error) {
@@ -293,44 +313,16 @@ func (b *Bridge) convertOpenCodeBackfill(ctx context.Context, portal *bridgev2.P
 					status = part.State.Status
 				}
 				if status != "" {
-					cmp, err := b.buildOpenCodeConvertedPart(ctx, portal, intent, openCodePartEvent{
-						InstanceID: instanceID,
-						Part:       part,
-						Kind:       openCodePartKindToolCall,
-						Status:     status,
-					})
-					if err != nil && err != bridgev2.ErrIgnoringRemoteEvent {
+					if err := b.appendBackfillPart(ctx, portal, intent, &out, sender, msgTime, nextOrder,
+						openCodePartEvent{InstanceID: instanceID, Part: part, Kind: openCodePartKindToolCall, Status: status},
+						opencodeToolCallMessageID(part.ID)); err != nil {
 						return nil, err
 					}
-					if cmp != nil {
-						out = append(out, &bridgev2.BackfillMessage{
-							ConvertedMessage: &bridgev2.ConvertedMessage{Parts: []*bridgev2.ConvertedMessagePart{cmp}},
-							Sender:           sender,
-							ID:               opencodeToolCallMessageID(part.ID),
-							TxnID:            networkid.TransactionID(opencodeToolCallMessageID(part.ID)),
-							Timestamp:        msgTime,
-							StreamOrder:      nextOrder(),
-						})
-					}
 					if status == "completed" || status == "error" {
-						cmp, err := b.buildOpenCodeConvertedPart(ctx, portal, intent, openCodePartEvent{
-							InstanceID: instanceID,
-							Part:       part,
-							Kind:       openCodePartKindToolResult,
-							Status:     status,
-						})
-						if err != nil && err != bridgev2.ErrIgnoringRemoteEvent {
+						if err := b.appendBackfillPart(ctx, portal, intent, &out, sender, msgTime, nextOrder,
+							openCodePartEvent{InstanceID: instanceID, Part: part, Kind: openCodePartKindToolResult, Status: status},
+							opencodeToolResultMessageID(part.ID)); err != nil {
 							return nil, err
-						}
-						if cmp != nil {
-							out = append(out, &bridgev2.BackfillMessage{
-								ConvertedMessage: &bridgev2.ConvertedMessage{Parts: []*bridgev2.ConvertedMessagePart{cmp}},
-								Sender:           sender,
-								ID:               opencodeToolResultMessageID(part.ID),
-								TxnID:            networkid.TransactionID(opencodeToolResultMessageID(part.ID)),
-								Timestamp:        msgTime,
-								StreamOrder:      nextOrder(),
-							})
 						}
 					}
 				}
@@ -345,23 +337,10 @@ func (b *Bridge) convertOpenCodeBackfill(ctx context.Context, portal *bridgev2.P
 						if attachment.MessageID == "" {
 							attachment.MessageID = part.MessageID
 						}
-						cmp, err := b.buildOpenCodeConvertedPart(ctx, portal, intent, openCodePartEvent{
-							InstanceID: instanceID,
-							Part:       attachment,
-							Kind:       openCodePartKindMessage,
-						})
-						if err != nil && err != bridgev2.ErrIgnoringRemoteEvent {
+						if err := b.appendBackfillPart(ctx, portal, intent, &out, sender, msgTime, nextOrder,
+							openCodePartEvent{InstanceID: instanceID, Part: attachment, Kind: openCodePartKindMessage},
+							opencodePartMessageID(attachment.ID)); err != nil {
 							return nil, err
-						}
-						if cmp != nil {
-							out = append(out, &bridgev2.BackfillMessage{
-								ConvertedMessage: &bridgev2.ConvertedMessage{Parts: []*bridgev2.ConvertedMessagePart{cmp}},
-								Sender:           sender,
-								ID:               opencodePartMessageID(attachment.ID),
-								TxnID:            networkid.TransactionID(opencodePartMessageID(attachment.ID)),
-								Timestamp:        msgTime,
-								StreamOrder:      nextOrder(),
-							})
 						}
 					}
 				}
@@ -370,25 +349,11 @@ func (b *Bridge) convertOpenCodeBackfill(ctx context.Context, portal *bridgev2.P
 			if part.ID == "" {
 				continue
 			}
-			cmp, err := b.buildOpenCodeConvertedPart(ctx, portal, intent, openCodePartEvent{
-				InstanceID: instanceID,
-				Part:       part,
-				Kind:       openCodePartKindMessage,
-			})
-			if err != nil && err != bridgev2.ErrIgnoringRemoteEvent {
+			if err := b.appendBackfillPart(ctx, portal, intent, &out, sender, msgTime, nextOrder,
+				openCodePartEvent{InstanceID: instanceID, Part: part, Kind: openCodePartKindMessage},
+				opencodePartMessageID(part.ID)); err != nil {
 				return nil, err
 			}
-			if cmp == nil {
-				continue
-			}
-			out = append(out, &bridgev2.BackfillMessage{
-				ConvertedMessage: &bridgev2.ConvertedMessage{Parts: []*bridgev2.ConvertedMessagePart{cmp}},
-				Sender:           sender,
-				ID:               opencodePartMessageID(part.ID),
-				TxnID:            networkid.TransactionID(opencodePartMessageID(part.ID)),
-				Timestamp:        msgTime,
-				StreamOrder:      nextOrder(),
-			})
 		}
 	}
 	return out, nil
