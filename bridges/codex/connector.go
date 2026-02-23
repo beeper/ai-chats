@@ -222,10 +222,6 @@ func (cc *CodexConnector) CreateLogin(ctx context.Context, user *bridgev2.User, 
 	if !cc.codexEnabled() {
 		return nil, fmt.Errorf("login flow %s is not available", flowID)
 	}
-	// Compatibility alias for older clients.
-	if flowID == ProviderCodex {
-		flowID = FlowCodexChatGPT
-	}
 	if !slices.ContainsFunc(cc.GetLoginFlows(), func(f bridgev2.LoginFlow) bool { return f.ID == flowID }) {
 		return nil, fmt.Errorf("login flow %s is not available", flowID)
 	}

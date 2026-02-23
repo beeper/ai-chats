@@ -79,10 +79,6 @@ func run() error {
 		return nil
 	}
 	switch os.Args[1] {
-	case "run":
-		return cmdRunCompat(os.Args[2:])
-	case "config":
-		return cmdConfigCompat(os.Args[2:])
 	case "login":
 		return cmdLogin(os.Args[2:])
 	case "logout":
@@ -121,51 +117,7 @@ func run() error {
 
 func printUsage() {
 	fmt.Println("bridgectl - bridgev2 orchestrator")
-	fmt.Println("commands: login logout whoami run config register delete up down restart status logs init list doctor auth")
-}
-
-func cmdRunCompat(args []string) error {
-	fs := flag.NewFlagSet("run", flag.ContinueOnError)
-	manifestPath := fs.String("manifest", manifestPathDefault, "manifest path")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	rest := append([]string{"--manifest", *manifestPath}, fs.Args()...)
-	return cmdUp(rest)
-}
-
-func cmdConfigCompat(args []string) error {
-	fs := flag.NewFlagSet("config", flag.ContinueOnError)
-	manifestPath := fs.String("manifest", manifestPathDefault, "manifest path")
-	output := fs.String("output", "-", "output path for generated config")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	instance, err := requiredInstanceArg(fs.Args())
-	if err != nil {
-		return err
-	}
-	_, cfg, err := loadInstance(*manifestPath, instance)
-	if err != nil {
-		return err
-	}
-	state, err := ensureInstanceLayout(instance)
-	if err != nil {
-		return err
-	}
-	meta, err := ensureInitialized(instance, cfg, state)
-	if err != nil {
-		return err
-	}
-	data, err := os.ReadFile(meta.ConfigPath)
-	if err != nil {
-		return err
-	}
-	if *output == "-" {
-		fmt.Print(string(data))
-		return nil
-	}
-	return os.WriteFile(*output, data, 0o600)
+	fmt.Println("commands: login logout whoami register delete up down restart status logs init list doctor auth")
 }
 
 func cmdLogin(args []string) error {
@@ -468,8 +420,6 @@ func cmdRegister(args []string) error {
 	manifestPath := fs.String("manifest", manifestPathDefault, "manifest path")
 	output := fs.String("output", "-", "output path for registration YAML")
 	jsonOut := fs.Bool("json", false, "print registration metadata as JSON")
-	_ = fs.Bool("get", false, "compatibility flag: ensure existing registration only")
-	_ = fs.String("address", "", "compatibility flag: push address (not used for bridgev2)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -524,8 +474,6 @@ func cmdRegister(args []string) error {
 func cmdDelete(args []string) error {
 	fs := flag.NewFlagSet("delete", flag.ContinueOnError)
 	remote := fs.Bool("remote", false, "also delete remote beeper bridge")
-	_ = fs.Bool("force", false, "compatibility flag")
-	_ = fs.Bool("local-dev", false, "compatibility flag")
 	manifestPath := fs.String("manifest", manifestPathDefault, "manifest path")
 	if err := fs.Parse(args); err != nil {
 		return err

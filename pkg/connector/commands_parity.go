@@ -190,9 +190,6 @@ func fnReset(ce *commands.Event) {
 	client.cancelRoomRun(portal.MXID)
 
 	ce.Reply("%s", formatSystemAck("Session reset."))
-
-	// Keep legacy behavior: after reset, prompt the assistant to greet.
-	go client.dispatchInternalMessage(client.backgroundContext(ce.Ctx), portal, meta, sessionGreetingPrompt, "session-reset", true)
 }
 
 // CommandStop handles the !ai stop command.

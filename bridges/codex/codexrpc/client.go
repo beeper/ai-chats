@@ -59,6 +59,7 @@ type Client struct {
 	wsCtx  context.Context
 	wsStop context.CancelFunc
 
+	writeMu sync.RWMutex
 	writeCh chan writeReq
 
 	nextID  atomic.Int64
@@ -142,7 +143,8 @@ func StartProcess(ctx context.Context, cfg ProcessConfig) (*Client, error) {
 		waitDone:      make(chan struct{}),
 	}
 	c.nextID.Store(1)
-	go c.writeLoop()
+	writeCh := c.writeCh
+	go c.writeLoop(writeCh)
 	go c.readLoop()
 	if c.wsConn != nil && c.stdout != nil {
 		go c.drainStdout()
@@ -179,9 +181,12 @@ func (c *Client) Close() error {
 		return nil
 	}
 	c.failAllPending()
+	c.writeMu.Lock()
 	if c.writeCh != nil {
 		close(c.writeCh)
+		c.writeCh = nil
 	}
+	c.writeMu.Unlock()
 	if c.wsStop != nil {
 		c.wsStop()
 	}
@@ -312,7 +317,7 @@ func (c *Client) Call(ctx context.Context, method string, params any, out any) e
 	}
 }
 
-func (c *Client) writeJSONL(ctx context.Context, v any) error {
+func (c *Client) writeJSONL(ctx context.Context, v any) (err error) {
 	if c.closed.Load() {
 		return errors.New("rpc client closed")
 	}
@@ -326,9 +331,18 @@ func (c *Client) writeJSONL(ctx context.Context, v any) error {
 		data: data,
 		done: make(chan error, 1),
 	}
+
+	c.writeMu.RLock()
+	ch := c.writeCh
+	if ch == nil {
+		c.writeMu.RUnlock()
+		return errors.New("rpc client closed")
+	}
 	select {
-	case c.writeCh <- req:
+	case ch <- req:
+		c.writeMu.RUnlock()
 	case <-ctx.Done():
+		c.writeMu.RUnlock()
 		return ctx.Err()
 	}
 	select {
@@ -342,8 +356,8 @@ func (c *Client) writeJSONL(ctx context.Context, v any) error {
 	}
 }
 
-func (c *Client) writeLoop() {
-	for req := range c.writeCh {
+func (c *Client) writeLoop(ch <-chan writeReq) {
+	for req := range ch {
 		if c.closed.Load() {
 			select {
 			case req.done <- errors.New("rpc client closed"):

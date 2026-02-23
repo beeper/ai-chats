@@ -139,6 +139,24 @@ func TestClient_ProcessExitFailsPendingCallWithoutDeadline(t *testing.T) {
 	}
 }
 
+func TestClient_CloseConcurrentWithWriteDoesNotPanic(t *testing.T) {
+	c := startHelper(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	t.Cleanup(cancel)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 64; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = c.Notify(ctx, "ping", map[string]any{"ok": true})
+		}()
+	}
+	_ = c.Close()
+	wg.Wait()
+}
+
 // Helper process: speaks JSONL over stdin/stdout.
 //
 // Protocol (minimal):
