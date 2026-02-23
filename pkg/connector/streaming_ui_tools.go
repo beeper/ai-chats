@@ -2,12 +2,10 @@ package connector
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
 

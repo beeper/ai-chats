@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"go.mau.fi/util/ptr"
 )
 
 const stuckRunMs int64 = 2 * 60 * 60 * 1000
@@ -202,8 +203,8 @@ func buildPayloadFromPatch(patch CronPayloadPatch) (CronPayload, error) {
 	return CronPayload{
 		Kind:                "agentTurn",
 		Message:             msg,
-		Model:               derefString(patch.Model),
-		Thinking:            derefString(patch.Thinking),
+		Model:               ptr.Val(patch.Model),
+		Thinking:            ptr.Val(patch.Thinking),
 		TimeoutSeconds:      patch.TimeoutSeconds,
 		AllowUnsafeExternal: patch.AllowUnsafeExternal,
 	}, nil
@@ -231,13 +232,6 @@ func mergeCronDelivery(existing *CronDelivery, patch CronDeliveryPatch) *CronDel
 		next.BestEffort = patch.BestEffort
 	}
 	return &next
-}
-
-func derefString(ptr *string) string {
-	if ptr == nil {
-		return ""
-	}
-	return *ptr
 }
 
 func assertSupportedJobSpec(target CronSessionTarget, payload CronPayload) error {

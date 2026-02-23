@@ -1,8 +1,9 @@
 package opencodebridge
 
 import (
+	"cmp"
 	"context"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 
@@ -185,13 +186,13 @@ func (inst *openCodeInstance) listCachedMessages(sessionID string) []opencode.Me
 		for id := range cache.messages {
 			cache.order = append(cache.order, id)
 		}
-		sort.SliceStable(cache.order, func(i, j int) bool {
-			left := cache.messages[cache.order[i]]
-			right := cache.messages[cache.order[j]]
-			if left.ts.Equal(right.ts) {
-				return cache.order[i] < cache.order[j]
+		slices.SortStableFunc(cache.order, func(a, b string) int {
+			left := cache.messages[a]
+			right := cache.messages[b]
+			if c := left.ts.Compare(right.ts); c != 0 {
+				return c
 			}
-			return left.ts.Before(right.ts)
+			return cmp.Compare(a, b)
 		})
 		cache.dirty = false
 	}

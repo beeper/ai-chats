@@ -1,11 +1,12 @@
 package connector
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"regexp"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -461,8 +462,8 @@ func drainHeartbeatSystemEvents(primaryKey string, secondaryKey string) []System
 	if len(entries) <= 1 {
 		return entries
 	}
-	sort.SliceStable(entries, func(i, j int) bool {
-		return entries[i].TS < entries[j].TS
+	slices.SortStableFunc(entries, func(a, b SystemEvent) int {
+		return cmp.Compare(a.TS, b.TS)
 	})
 	return entries
 }

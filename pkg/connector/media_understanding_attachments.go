@@ -1,7 +1,8 @@
 package connector
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 	"strings"
 
 	"maunium.net/go/mautrix/event"
@@ -43,31 +44,31 @@ func selectMediaAttachments(attachments []mediaAttachment, policy *MediaUndersta
 			ordered[i], ordered[j] = ordered[j], ordered[i]
 		}
 	case "path":
-		sort.SliceStable(ordered, func(i, j int) bool {
-			left := strings.ToLower(strings.TrimSpace(ordered[i].FileName))
-			right := strings.ToLower(strings.TrimSpace(ordered[j].FileName))
+		slices.SortStableFunc(ordered, func(a, b mediaAttachment) int {
+			left := strings.ToLower(strings.TrimSpace(a.FileName))
+			right := strings.ToLower(strings.TrimSpace(b.FileName))
 			if left == "" && right == "" {
-				return ordered[i].Index < ordered[j].Index
+				return cmp.Compare(a.Index, b.Index)
 			}
 			if left == "" {
-				return false
+				return 1
 			}
 			if right == "" {
-				return true
+				return -1
 			}
 			if left == right {
-				return ordered[i].Index < ordered[j].Index
+				return cmp.Compare(a.Index, b.Index)
 			}
-			return left < right
+			return cmp.Compare(left, right)
 		})
 	case "url":
-		sort.SliceStable(ordered, func(i, j int) bool {
-			left := strings.ToLower(strings.TrimSpace(ordered[i].URL))
-			right := strings.ToLower(strings.TrimSpace(ordered[j].URL))
+		slices.SortStableFunc(ordered, func(a, b mediaAttachment) int {
+			left := strings.ToLower(strings.TrimSpace(a.URL))
+			right := strings.ToLower(strings.TrimSpace(b.URL))
 			if left == right {
-				return ordered[i].Index < ordered[j].Index
+				return cmp.Compare(a.Index, b.Index)
 			}
-			return left < right
+			return cmp.Compare(left, right)
 		})
 	}
 

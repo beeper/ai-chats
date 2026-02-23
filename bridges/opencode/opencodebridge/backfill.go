@@ -1,8 +1,10 @@
 package opencodebridge
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -52,11 +54,11 @@ func (b *Bridge) FetchMessages(ctx context.Context, params bridgev2.FetchMessage
 	for _, msg := range messages {
 		entries = append(entries, backfillMessageEntry{msg: msg, when: openCodeMessageTime(msg)})
 	}
-	sort.SliceStable(entries, func(i, j int) bool {
-		if entries[i].when.Equal(entries[j].when) {
-			return entries[i].msg.Info.ID < entries[j].msg.Info.ID
+	slices.SortStableFunc(entries, func(a, b backfillMessageEntry) int {
+		if c := a.when.Compare(b.when); c != 0 {
+			return c
 		}
-		return entries[i].when.Before(entries[j].when)
+		return cmp.Compare(a.msg.Info.ID, b.msg.Info.ID)
 	})
 
 	var batch []backfillMessageEntry

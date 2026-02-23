@@ -16,13 +16,10 @@ func ParseDataURI(dataURI string) (string, string, error) {
 	}
 
 	rest := dataURI[5:]
-	commaIdx := strings.Index(rest, ",")
-	if commaIdx == -1 {
+	metadata, data, ok := strings.Cut(rest, ",")
+	if !ok {
 		return "", "", errors.New("invalid data URI: no comma separator")
 	}
-
-	metadata := rest[:commaIdx]
-	data := rest[commaIdx+1:]
 
 	if !strings.Contains(metadata, ";base64") {
 		return "", "", errors.New("only base64 data URIs are supported")
