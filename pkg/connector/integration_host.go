@@ -706,7 +706,9 @@ func (h *runtimeIntegrationHost) WriteTextFile(ctx context.Context, portal any, 
 		return "", fmt.Errorf("content exceeds %d bytes", maxBytes)
 	}
 	if strings.EqualFold(strings.TrimSpace(mode), "append") {
-		if existing, ok, e := store.Read(ctx, path); e == nil && ok {
+		if existing, ok, e := store.Read(ctx, path); e != nil {
+			return "", e
+		} else if ok {
 			sep := "\n"
 			if strings.HasSuffix(existing.Content, "\n") || existing.Content == "" {
 				sep = ""

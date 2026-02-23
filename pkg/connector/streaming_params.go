@@ -110,8 +110,8 @@ func (oc *AIClient) buildResponsesAPIParams(ctx context.Context, portal *bridgev
 	}
 
 	// Prevent duplicate tool names (Anthropic rejects duplicates)
-	params.Tools = dedupeToolParams(params.Tools)
 	logToolParamDuplicates(log, params.Tools)
+	params.Tools = dedupeToolParams(params.Tools)
 
 	return params
 }

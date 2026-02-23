@@ -246,7 +246,11 @@ func (r *purgeIntegrationRegistry) purge(ctx context.Context, scope integrationr
 		return
 	}
 	for _, integration := range r.items {
-		_ = integration.PurgeForLogin(ctx, scope)
+		if err := integration.PurgeForLogin(ctx, scope); err != nil {
+			if client, ok := scope.Client.(*AIClient); ok && client != nil {
+				client.loggerForContext(ctx).Warn().Err(err).Str("integration", integration.Name()).Msg("integration login purge failed")
+			}
+		}
 	}
 }
 

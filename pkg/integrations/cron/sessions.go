@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	croncore "github.com/beeper/ai-bridge/pkg/cron"
 )
@@ -23,6 +24,8 @@ type SessionStore struct {
 }
 
 const SessionStorePath = "cron/sessions.json"
+
+var sessionStoreMu sync.Mutex
 
 type SessionStoreBackend interface {
 	Read(ctx context.Context, key string) ([]byte, bool, error)
@@ -90,6 +93,8 @@ func UpdateSessionEntry(
 	if updater == nil {
 		return
 	}
+	sessionStoreMu.Lock()
+	defer sessionStoreMu.Unlock()
 	store, err := LoadSessionStore(ctx, backend, log)
 	if err != nil {
 		if log != nil {

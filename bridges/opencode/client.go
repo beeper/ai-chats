@@ -39,6 +39,9 @@ func newOpenCodeClient(login *bridgev2.UserLogin, connector *OpenCodeConnector) 
 	if login == nil {
 		return nil, errors.New("missing login")
 	}
+	if connector == nil {
+		return nil, errors.New("missing connector")
+	}
 	client := &OpenCodeClient{
 		UserLogin: login,
 		connector: connector,

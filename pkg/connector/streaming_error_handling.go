@@ -27,8 +27,8 @@ func (oc *AIClient) handleResponsesStreamErr(
 		if state.initialEventID != "" && state.accumulated.Len() > 0 {
 			oc.flushPartialStreamingMessage(context.Background(), portal, state, meta)
 		}
-		oc.emitUIAbort(ctx, portal, state, "cancelled")
-		oc.emitUIFinish(ctx, portal, state, meta)
+		oc.emitUIAbort(context.Background(), portal, state, "cancelled")
+		oc.emitUIFinish(context.Background(), portal, state, meta)
 		return nil, streamFailureError(state, err)
 	}
 

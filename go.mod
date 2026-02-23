@@ -8,7 +8,7 @@ tool go.mau.fi/util/cmd/maubuild
 
 require (
 	github.com/PuerkitoBio/goquery v1.11.0
-	github.com/beeper/bridge-manager v0.13.0
+	github.com/beeper/bridge-manager v0.13.1-0.20260127221509-52074726c975
 	github.com/beeper/desktop-api-go v0.2.0
 	github.com/dyatlov/go-opengraph/opengraph v0.0.0-20220524092352-606d7b1e5f8a
 	github.com/google/uuid v1.6.0
