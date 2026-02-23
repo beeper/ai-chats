@@ -97,6 +97,9 @@ func newCodexClient(login *bridgev2.UserLogin, connector *CodexConnector) (*Code
 	if login == nil {
 		return nil, errors.New("missing login")
 	}
+	if connector == nil {
+		return nil, errors.New("missing connector for CodexClient")
+	}
 	meta := loginMetadata(login)
 	if !strings.EqualFold(strings.TrimSpace(meta.Provider), ProviderCodex) {
 		return nil, fmt.Errorf("invalid provider for CodexClient: %s", meta.Provider)
@@ -625,7 +628,6 @@ func (cc *CodexClient) handleSimpleOutputDelta(
 	if toolCallID == "" {
 		toolCallID = defaultToolName
 	}
-	cc.ensureUIToolInputStart(ctx, portal, state, toolCallID, defaultToolName, true, map[string]any{})
 	buf := cc.appendCodexToolOutput(state, toolCallID, p.Delta)
 	cc.emitUIToolOutputAvailable(ctx, portal, state, toolCallID, buf, true, true)
 }
@@ -743,7 +745,6 @@ func (cc *CodexClient) handleNotif(ctx context.Context, portal *bridgev2.Portal,
 		if toolCallID == "" {
 			toolCallID = toolName
 		}
-		cc.ensureUIToolInputStart(ctx, portal, state, toolCallID, toolName, true, map[string]any{})
 		buf := cc.appendCodexToolOutput(state, toolCallID, p.Delta)
 		cc.emitUIToolOutputAvailable(ctx, portal, state, toolCallID, buf, true, true)
 

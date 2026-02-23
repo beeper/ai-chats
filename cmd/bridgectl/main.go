@@ -988,6 +988,11 @@ func startBridge(meta *metadata) error {
 	}
 	pid := cmd.Process.Pid
 	if err = os.WriteFile(meta.PIDPath, []byte(strconv.Itoa(pid)), 0o600); err != nil {
+		_ = logFile.Close()
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		_ = cmd.Wait()
 		return err
 	}
 	go func() {

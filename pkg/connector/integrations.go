@@ -14,7 +14,6 @@ import (
 	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
 )
 
-
 type toolIntegrationRegistry struct {
 	items []integrationruntime.ToolIntegration
 }
@@ -34,13 +33,14 @@ func (r *toolIntegrationRegistry) definitions(ctx context.Context, scope integra
 	var out []ToolDefinition
 	for _, integration := range r.items {
 		for _, def := range integration.ToolDefinitions(ctx, scope) {
-			if strings.TrimSpace(def.Name) == "" {
+			normalized := strings.ToLower(strings.TrimSpace(def.Name))
+			if normalized == "" {
 				continue
 			}
-			if _, ok := seen[def.Name]; ok {
+			if _, ok := seen[normalized]; ok {
 				continue
 			}
-			seen[def.Name] = struct{}{}
+			seen[normalized] = struct{}{}
 			out = append(out, def)
 		}
 	}
@@ -654,7 +654,6 @@ func (oc *AIClient) purgeLoginIntegrations(ctx context.Context, login any, bridg
 		LoginID:  loginID,
 	})
 }
-
 
 func integrationPortalRoomType(meta *PortalMetadata) string {
 	if kind := moduleRoomKind(meta); kind != "" {

@@ -244,8 +244,6 @@ func autoGreetingBlockReason(meta *PortalMetadata) string {
 		return "send-policy-deny"
 	case resolveAgentID(meta) == "":
 		return "no-agent"
-	case meta != nil && meta.AutoGreetingSent:
-		return "already-sent"
 	}
 	return ""
 }

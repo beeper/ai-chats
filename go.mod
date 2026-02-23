@@ -8,7 +8,7 @@ tool go.mau.fi/util/cmd/maubuild
 
 require (
 	github.com/PuerkitoBio/goquery v1.11.0
-	github.com/beeper/bridge-manager v0.0.0
+	github.com/beeper/bridge-manager v0.13.0
 	github.com/beeper/desktop-api-go v0.2.0
 	github.com/dyatlov/go-opengraph/opengraph v0.0.0-20220524092352-606d7b1e5f8a
 	github.com/google/uuid v1.6.0
@@ -24,8 +24,6 @@ require (
 	golang.org/x/image v0.35.0
 	maunium.net/go/mautrix v0.26.3-0.20260129174719-d2364b382275
 )
-
-replace github.com/beeper/bridge-manager => /Users/batuhan/projects/texts/bridge-manager
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect

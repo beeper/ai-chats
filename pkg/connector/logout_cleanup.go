@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/rs/zerolog"
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
 )
@@ -35,15 +36,19 @@ func purgeLoginDataBestEffort(ctx context.Context, login *bridgev2.UserLogin) {
 	if client, ok := login.Client.(*AIClient); ok && client != nil {
 		client.purgeLoginIntegrations(ctx, login, bridgeID, loginID)
 	}
+	var logger *zerolog.Logger
+	if ctx != nil {
+		logger = zerolog.Ctx(ctx)
+	}
 
 	// Bridge-internal KV state (integration state, model catalog, etc.)
-	bestEffortExec(ctx, db,
+	bestEffortExec(ctx, db, logger,
 		`DELETE FROM ai_bridge_state WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
 }
 
-func bestEffortExec(ctx context.Context, db *dbutil.Database, query string, args ...any) {
+func bestEffortExec(ctx context.Context, db *dbutil.Database, logger *zerolog.Logger, query string, args ...any) {
 	if db == nil {
 		return
 	}
@@ -63,5 +68,8 @@ func bestEffortExec(ctx context.Context, db *dbutil.Database, query string, args
 		strings.Contains(msg, "undefined table") ||
 		strings.Contains(msg, "no such module") {
 		return
+	}
+	if logger != nil {
+		logger.Debug().Err(err).Msg("bestEffortExec unexpected error")
 	}
 }

@@ -190,27 +190,27 @@ type PortalMetadata struct {
 	LastRoomStateSync   int64             `json:"last_room_state_sync,omitempty"` // Track when we've synced room state
 	PDFConfig           *PDFConfig        `json:"pdf_config,omitempty"`           // Per-room PDF processing configuration
 
-	ConversationMode           string           `json:"conversation_mode,omitempty"`
-	LastResponseID             string           `json:"last_response_id,omitempty"`
-	EmitThinking               bool             `json:"emit_thinking,omitempty"`
-	EmitToolArgs               bool             `json:"emit_tool_args,omitempty"`
-	ThinkingLevel              string           `json:"thinking_level,omitempty"`   // off|minimal|low|medium|high|xhigh
-	VerboseLevel               string           `json:"verbose_level,omitempty"`    // off|on|full
-	ElevatedLevel              string           `json:"elevated_level,omitempty"`   // off|on|ask|full
-	GroupActivation            string           `json:"group_activation,omitempty"` // mention|always
-	GroupActivationNeedsIntro  bool             `json:"group_activation_needs_intro,omitempty"`
-	GroupIntroSent             bool             `json:"group_intro_sent,omitempty"`
-	SendPolicy                 string           `json:"send_policy,omitempty"` // allow|deny
-	SessionResetAt             int64            `json:"session_reset_at,omitempty"`
-	AbortedLastRun             bool             `json:"aborted_last_run,omitempty"`
-	CompactionCount       int              `json:"compaction_count,omitempty"`
-	SessionBootstrappedAt int64            `json:"session_bootstrapped_at,omitempty"`
-	SessionBootstrapByAgent    map[string]int64 `json:"session_bootstrap_by_agent,omitempty"`
+	ConversationMode          string           `json:"conversation_mode,omitempty"`
+	LastResponseID            string           `json:"last_response_id,omitempty"`
+	EmitThinking              bool             `json:"emit_thinking,omitempty"`
+	EmitToolArgs              bool             `json:"emit_tool_args,omitempty"`
+	ThinkingLevel             string           `json:"thinking_level,omitempty"`   // off|minimal|low|medium|high|xhigh
+	VerboseLevel              string           `json:"verbose_level,omitempty"`    // off|on|full
+	ElevatedLevel             string           `json:"elevated_level,omitempty"`   // off|on|ask|full
+	GroupActivation           string           `json:"group_activation,omitempty"` // mention|always
+	GroupActivationNeedsIntro bool             `json:"group_activation_needs_intro,omitempty"`
+	GroupIntroSent            bool             `json:"group_intro_sent,omitempty"`
+	SendPolicy                string           `json:"send_policy,omitempty"` // allow|deny
+	SessionResetAt            int64            `json:"session_reset_at,omitempty"`
+	AbortedLastRun            bool             `json:"aborted_last_run,omitempty"`
+	CompactionCount           int              `json:"compaction_count,omitempty"`
+	SessionBootstrappedAt     int64            `json:"session_bootstrapped_at,omitempty"`
+	SessionBootstrapByAgent   map[string]int64 `json:"session_bootstrap_by_agent,omitempty"`
 
 	// Agent-related metadata
-	AgentID              string `json:"agent_id,omitempty"`                // Which agent is the ghost for this room
-	AgentPrompt          string `json:"agent_prompt,omitempty"`            // Cached prompt for the assigned agent
-	IsBuilderRoom        bool   `json:"is_builder_room,omitempty"`         // True if this is the Manage AI Chats room (protected from overrides)
+	AgentID              string         `json:"agent_id,omitempty"`                // Which agent is the ghost for this room
+	AgentPrompt          string         `json:"agent_prompt,omitempty"`            // Cached prompt for the assigned agent
+	IsBuilderRoom        bool           `json:"is_builder_room,omitempty"`         // True if this is the Manage AI Chats room (protected from overrides)
 	IsRawMode            bool           `json:"is_raw_mode,omitempty"`             // True if this is a playground/raw mode room (no directive processing)
 	ModuleMeta           map[string]any `json:"module_meta,omitempty"`             // Generic per-module metadata (e.g., cron room markers, memory flush state)
 	SubagentParentRoomID string         `json:"subagent_parent_room_id,omitempty"` // Parent room ID for subagent sessions
@@ -256,15 +256,47 @@ func clonePortalMetadata(src *PortalMetadata) *PortalMetadata {
 	if src.ModuleMeta != nil {
 		clone.ModuleMeta = make(map[string]any, len(src.ModuleMeta))
 		for k, v := range src.ModuleMeta {
-			if inner, ok := v.(map[string]any); ok {
-				clone.ModuleMeta[k] = maps.Clone(inner)
-			} else {
-				clone.ModuleMeta[k] = v
-			}
+			clone.ModuleMeta[k] = deepCloneAny(v)
 		}
 	}
 
 	return &clone
+}
+
+func deepCloneAny(v any) any {
+	switch val := v.(type) {
+	case map[string]any:
+		return deepCloneMap(val)
+	case []any:
+		out := make([]any, len(val))
+		for i, item := range val {
+			out[i] = deepCloneAny(item)
+		}
+		return out
+	case []string:
+		return append([]string(nil), val...)
+	case []int:
+		return append([]int(nil), val...)
+	case []int64:
+		return append([]int64(nil), val...)
+	case []float64:
+		return append([]float64(nil), val...)
+	case []bool:
+		return append([]bool(nil), val...)
+	default:
+		return val
+	}
+}
+
+func deepCloneMap(src map[string]any) map[string]any {
+	if src == nil {
+		return nil
+	}
+	out := make(map[string]any, len(src))
+	for k, v := range src {
+		out[k] = deepCloneAny(v)
+	}
+	return out
 }
 
 // MessageMetadata keeps a tiny summary of each exchange so we can rebuild

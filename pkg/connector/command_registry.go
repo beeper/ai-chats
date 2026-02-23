@@ -37,6 +37,7 @@ func registerModuleCommands(defs []integrationruntime.CommandDefinition) {
 		moduleCommandsRegistered[name] = struct{}{}
 
 		commandName := name
+		adminOnly := def.AdminOnly
 		description := def.Description
 		if strings.TrimSpace(description) == "" {
 			description = "Integration command"
@@ -54,7 +55,7 @@ func registerModuleCommands(defs []integrationruntime.CommandDefinition) {
 				if !ok {
 					return
 				}
-				if def.AdminOnly {
+				if adminOnly {
 					if ce.User == nil || !ce.User.Permissions.Admin {
 						ce.Reply("Only bridge admins can use this command.")
 						return

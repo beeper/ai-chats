@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/openai/openai-go/v3"
+	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -16,7 +17,6 @@ import (
 	"github.com/beeper/ai-bridge/pkg/agents"
 	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
 	"github.com/beeper/ai-bridge/pkg/textfs"
-	"github.com/rs/zerolog"
 )
 
 type runtimeIntegrationHost struct {
@@ -567,6 +567,13 @@ func (h *runtimeIntegrationHost) MergeDisconnectContext(ctx context.Context) (co
 	} else {
 		merged, cancel = context.WithCancel(base)
 	}
+	go func() {
+		select {
+		case <-ctx.Done():
+			cancel()
+		case <-merged.Done():
+		}
+	}()
 	return h.client.loggerForContext(ctx).WithContext(merged), cancel
 }
 
@@ -820,13 +827,15 @@ func (h *runtimeIntegrationHost) SessionPortals(ctx context.Context, loginID str
 	}
 
 	allowedShared := map[string]struct{}{}
-	if ups, err := h.client.UserLogin.Bridge.DB.UserPortal.GetAllForLogin(ctx, h.client.UserLogin.UserLogin); err == nil {
-		for _, up := range ups {
-			if up == nil || up.Portal.Receiver != "" {
-				continue
-			}
-			allowedShared[up.Portal.String()] = struct{}{}
+	ups, err := h.client.UserLogin.Bridge.DB.UserPortal.GetAllForLogin(ctx, h.client.UserLogin.UserLogin)
+	if err != nil {
+		return nil, err
+	}
+	for _, up := range ups {
+		if up == nil || up.Portal.Receiver != "" {
+			continue
 		}
+		allowedShared[up.Portal.String()] = struct{}{}
 	}
 
 	portals, err := h.client.UserLogin.Bridge.DB.Portal.GetAll(ctx)
@@ -842,7 +851,10 @@ func (h *runtimeIntegrationHost) SessionPortals(ctx context.Context, loginID str
 		if portal.Receiver != "" && string(portal.Receiver) != loginID {
 			continue
 		}
-		if portal.Receiver == "" && len(allowedShared) > 0 {
+		if portal.Receiver == "" {
+			if len(allowedShared) == 0 {
+				continue
+			}
 			if _, ok := allowedShared[portal.PortalKey.String()]; !ok {
 				continue
 			}
@@ -1070,7 +1082,7 @@ func (l *runtimeLogger) Error(msg string, fields map[string]any) { l.emit("error
 // ---- AIClient message helpers (called from sessions_tools.go) ----
 
 func (oc *AIClient) lastAssistantMessageInfo(ctx context.Context, portal *bridgev2.Portal) (string, int64) {
-	if portal == nil {
+	if portal == nil || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil || oc.UserLogin.Bridge.DB.Message == nil {
 		return "", 0
 	}
 	messages, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, 20)
@@ -1097,7 +1109,7 @@ func (oc *AIClient) lastAssistantMessageInfo(ctx context.Context, portal *bridge
 }
 
 func (oc *AIClient) waitForNewAssistantMessage(ctx context.Context, portal *bridgev2.Portal, lastID string, lastTimestamp int64) (*database.Message, bool) {
-	if portal == nil {
+	if portal == nil || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil || oc.UserLogin.Bridge.DB.Message == nil {
 		return nil, false
 	}
 	messages, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, 20)
@@ -1195,7 +1207,9 @@ func resolveEmbeddingConfigGeneric(client *AIClient, apiKey string, baseURL stri
 
 func portalKeyFromParts(client *AIClient, portalID string, receiver string) networkid.PortalKey {
 	key := networkid.PortalKey{ID: networkid.PortalID(portalID)}
-	if receiver != "" && client != nil && client.UserLogin != nil {
+	if receiver != "" {
+		key.Receiver = networkid.UserLoginID(receiver)
+	} else if client != nil && client.UserLogin != nil {
 		key.Receiver = client.UserLogin.ID
 	}
 	return key

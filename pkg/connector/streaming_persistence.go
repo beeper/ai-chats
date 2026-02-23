@@ -53,7 +53,7 @@ func (oc *AIClient) saveAssistantMessage(
 			GeneratedFiles:     genFiles,
 			// Reasoning fields (only populated by Responses API)
 			ThinkingContent:    state.reasoning.String(),
-			ThinkingTokenCount: len(strings.Fields(state.reasoning.String())),
+			ThinkingTokenCount: thinkingTokenCount(modelID, state.reasoning.String()),
 			PromptTokens:       state.promptTokens,
 			CompletionTokens:   state.completionTokens,
 			ReasoningTokens:    state.reasoningTokens,
@@ -73,6 +73,18 @@ func (oc *AIClient) saveAssistantMessage(
 			log.Warn().Err(err).Msg("Failed to save portal after storing response ID")
 		}
 	}
+}
+
+func thinkingTokenCount(model string, content string) int {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return 0
+	}
+	tkm, err := getTokenizer(model)
+	if err != nil {
+		return len(strings.Fields(content))
+	}
+	return len(tkm.Encode(content, nil, nil))
 }
 
 func (oc *AIClient) buildCanonicalUIMessage(state *streamingState, meta *PortalMetadata) map[string]any {

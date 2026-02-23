@@ -5,6 +5,8 @@ package agents
 
 import (
 	"encoding/json"
+	"fmt"
+	"reflect"
 	"slices"
 
 	"github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
@@ -229,14 +231,48 @@ func (a *AgentDefinition) Clone() *AgentDefinition {
 	}
 
 	if a.MemorySearch != nil {
-		copyBytes, _ := json.Marshal(a.MemorySearch)
-		var ms any
-		if err := json.Unmarshal(copyBytes, &ms); err == nil {
-			clone.MemorySearch = ms
-		}
+		clone.MemorySearch = cloneMemorySearchValue(a.MemorySearch)
 	}
 
 	return clone
+}
+
+func cloneMemorySearchValue(src any) any {
+	if src == nil {
+		return nil
+	}
+	copyBytes, err := json.Marshal(src)
+	if err != nil {
+		return src
+	}
+	srcType := reflect.TypeOf(src)
+	if srcType.Kind() == reflect.Ptr {
+		target := reflect.New(srcType.Elem())
+		if err := json.Unmarshal(copyBytes, target.Interface()); err != nil {
+			return src
+		}
+		return target.Interface()
+	}
+	target := reflect.New(srcType)
+	if err := json.Unmarshal(copyBytes, target.Interface()); err != nil {
+		return src
+	}
+	return target.Elem().Interface()
+}
+
+func DecodeMemorySearch[T any](def AgentDefinition) (T, error) {
+	var out T
+	if def.MemorySearch == nil {
+		return out, nil
+	}
+	raw, err := json.Marshal(def.MemorySearch)
+	if err != nil {
+		return out, fmt.Errorf("marshal memory_search: %w", err)
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return out, fmt.Errorf("unmarshal memory_search: %w", err)
+	}
+	return out, nil
 }
 
 func cloneSubagentConfig(cfg *SubagentConfig) *SubagentConfig {

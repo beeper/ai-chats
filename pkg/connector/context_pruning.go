@@ -1,12 +1,14 @@
 package connector
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/openai/openai-go/v3"
+	"gopkg.in/yaml.v3"
 )
 
 // PruningConfig configures context pruning behavior (matches OpenClaw's AgentContextPruningConfig)
@@ -100,6 +102,39 @@ type PruningConfig struct {
 	// A value of 0 means no limit (default behavior).
 	// Default: 0 (unlimited)
 	MaxHistoryTurns int `yaml:"max_history_turns" json:"max_history_turns,omitempty"`
+}
+
+func (pc *PruningConfig) UnmarshalJSON(data []byte) error {
+	type alias PruningConfig
+	var raw struct {
+		alias
+		LegacyOverflowFlush *OverflowFlushConfig `json:"memory_flush,omitempty"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*pc = PruningConfig(raw.alias)
+	if pc.OverflowFlush == nil && raw.LegacyOverflowFlush != nil {
+		pc.OverflowFlush = raw.LegacyOverflowFlush
+	}
+	return nil
+}
+
+func (pc *PruningConfig) UnmarshalYAML(value *yaml.Node) error {
+	type alias PruningConfig
+	var raw struct {
+		alias `yaml:",inline"`
+
+		LegacyOverflowFlush *OverflowFlushConfig `yaml:"memory_flush"`
+	}
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	*pc = PruningConfig(raw.alias)
+	if pc.OverflowFlush == nil && raw.LegacyOverflowFlush != nil {
+		pc.OverflowFlush = raw.LegacyOverflowFlush
+	}
+	return nil
 }
 
 // OverflowFlushConfig configures pre-compaction flush behavior.
