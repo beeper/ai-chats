@@ -280,22 +280,22 @@ type MediaUnderstandingAttachmentsConfig struct {
 
 // MediaUnderstandingModelConfig defines a single media understanding model entry.
 type MediaUnderstandingModelConfig struct {
-	Provider         string                            `yaml:"provider"`
-	Model            string                            `yaml:"model"`
-	Capabilities     []string                          `yaml:"capabilities"`
-	Type             string                            `yaml:"type"`
-	Command          string                            `yaml:"command"`
-	Args             []string                          `yaml:"args"`
-	Prompt           string                            `yaml:"prompt"`
-	MaxChars         int                               `yaml:"maxChars"`
-	MaxBytes         int                               `yaml:"maxBytes"`
-	TimeoutSeconds   int                               `yaml:"timeoutSeconds"`
-	Language         string                            `yaml:"language"`
+	Provider         string                    `yaml:"provider"`
+	Model            string                    `yaml:"model"`
+	Capabilities     []string                  `yaml:"capabilities"`
+	Type             string                    `yaml:"type"`
+	Command          string                    `yaml:"command"`
+	Args             []string                  `yaml:"args"`
+	Prompt           string                    `yaml:"prompt"`
+	MaxChars         int                       `yaml:"maxChars"`
+	MaxBytes         int                       `yaml:"maxBytes"`
+	TimeoutSeconds   int                       `yaml:"timeoutSeconds"`
+	Language         string                    `yaml:"language"`
 	ProviderOptions  map[string]map[string]any `yaml:"providerOptions"`
-	BaseURL          string                   `yaml:"baseUrl"`
-	Headers          map[string]string                 `yaml:"headers"`
-	Profile          string                            `yaml:"profile"`
-	PreferredProfile string                            `yaml:"preferredProfile"`
+	BaseURL          string                    `yaml:"baseUrl"`
+	Headers          map[string]string         `yaml:"headers"`
+	Profile          string                    `yaml:"profile"`
+	PreferredProfile string                    `yaml:"preferredProfile"`
 }
 
 // MediaUnderstandingConfig defines defaults for media understanding of a capability.
