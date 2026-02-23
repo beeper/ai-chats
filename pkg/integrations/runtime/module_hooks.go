@@ -12,6 +12,10 @@ type ModuleHooks interface {
 	Name() string
 }
 
+// ModuleFactory constructs a module instance from the runtime host.
+type ModuleFactory func(host Host) ModuleHooks
+
+
 // CommandDefinition describes a chat command exposed by a module.
 type CommandDefinition struct {
 	Name           string
@@ -187,6 +191,8 @@ type DBAccess interface {
 // ConfigLookup resolves integration/module config flags.
 type ConfigLookup interface {
 	ModuleEnabled(name string) bool
+	ModuleConfig(name string) map[string]any
+	AgentModuleConfig(agentID string, module string) map[string]any
 }
 
 // Logger is a minimal structured logger abstraction.

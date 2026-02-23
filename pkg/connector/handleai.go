@@ -229,7 +229,7 @@ func isInternalControlRoom(meta *PortalMetadata) bool {
 	if meta == nil {
 		return false
 	}
-	return meta.IsBuilderRoom || meta.IsCronRoom
+	return meta.IsBuilderRoom || isModuleInternalRoom(meta)
 }
 
 func autoGreetingBlockReason(meta *PortalMetadata) string {

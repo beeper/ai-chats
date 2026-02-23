@@ -93,7 +93,7 @@ type PruningConfig struct {
 	CustomInstructions string `yaml:"custom_instructions" json:"custom_instructions,omitempty"`
 
 	// OverflowFlush runs a pre-compaction durable-state flush pass.
-	OverflowFlush *OverflowFlushConfig `yaml:"memory_flush" json:"memory_flush,omitempty"`
+	OverflowFlush *OverflowFlushConfig `yaml:"overflow_flush" json:"overflow_flush,omitempty"`
 
 	// MaxHistoryTurns limits conversation history to the last N user turns (and their associated
 	// assistant responses). This reduces token usage for long-running DM sessions.

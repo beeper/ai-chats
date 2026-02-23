@@ -28,7 +28,7 @@ func TestBuildSessionIdentityHint_IncludesRoomIDAndPortalID(t *testing.T) {
 func TestBuildSessionIdentityHint_CronRoomIncludesJobID(t *testing.T) {
 	portal := &bridgev2.Portal{Portal: &database.Portal{}}
 	portal.MXID = id.RoomID("!cron:example.org")
-	meta := &PortalMetadata{IsCronRoom: true, CronJobID: "job-1"}
+	meta := &PortalMetadata{ModuleMeta: map[string]any{"cron": map[string]any{"is_internal_room": true, "cron_job_id": "job-1"}}}
 	got := buildSessionIdentityHint(portal, meta)
 	if !strings.Contains(got, "sessionKey: !cron:example.org") {
 		t.Fatalf("expected sessionKey in hint, got %q", got)

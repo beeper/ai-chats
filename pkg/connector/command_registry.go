@@ -8,7 +8,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/commands"
 
 	"github.com/beeper/ai-bridge/pkg/connector/commandregistry"
-	integrationmodules "github.com/beeper/ai-bridge/pkg/integrations/modules"
 	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
 )
 
@@ -89,8 +88,6 @@ func (oc *OpenAIConnector) registerCommands(proc *commands.Processor) {
 }
 
 func registerCommandsWithOwnerGuard(proc *commands.Processor, cfg *Config, log *zerolog.Logger, section commands.HelpSection) {
-	registerModuleCommands(integrationmodules.BuiltinCommandDefinitions())
-
 	handlers := aiCommandRegistry.All()
 	if len(handlers) > 0 {
 		commandHandlers := make([]commands.CommandHandler, 0, len(handlers))

@@ -1473,8 +1473,12 @@ func (oc *AIClient) effectiveAgentPrompt(ctx context.Context, portal *bridgev2.P
 		PromptMode:        agent.PromptMode,
 		HeartbeatPrompt:   resolveHeartbeatPrompt(&oc.connector.Config, resolveHeartbeatConfig(&oc.connector.Config, agent.ID), agent),
 	}
-	if oc.connector != nil && oc.connector.Config.Memory != nil {
-		params.MemoryCitations = strings.TrimSpace(oc.connector.Config.Memory.Citations)
+	if oc.connector != nil && oc.connector.Config.Modules != nil {
+		if memCfg, ok := oc.connector.Config.Modules["memory"].(map[string]any); ok {
+			if citations, ok := memCfg["citations"].(string); ok {
+				params.MemoryCitations = strings.TrimSpace(citations)
+			}
+		}
 	}
 	params.UserIdentitySupplement = oc.gravatarContext()
 	params.ContextFiles = oc.buildBootstrapContextFiles(ctx, agentID, meta)

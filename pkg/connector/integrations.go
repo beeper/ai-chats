@@ -13,17 +13,6 @@ import (
 	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
 )
 
-const (
-	integrationToolCronName         = "cron"
-	integrationToolMemorySearchName = "memory_search"
-	integrationToolMemoryGetName    = "memory_get"
-)
-
-var integrationToolModules = map[string]string{
-	ToolNameCron:         "cron",
-	ToolNameMemorySearch: "memory",
-	ToolNameMemoryGet:    "memory",
-}
 
 type toolIntegrationRegistry struct {
 	items []integrationruntime.ToolIntegration
@@ -365,11 +354,6 @@ func (oc *AIClient) initIntegrations() {
 	oc.integrationModules = make(map[string]any)
 	oc.integrationOrder = nil
 
-	coreTools := &coreToolIntegration{client: oc}
-	corePrompts := &corePromptIntegration{client: oc}
-	oc.toolRegistry.register(coreTools)
-	oc.promptRegistry.register(corePrompts)
-
 	host := newRuntimeIntegrationHost(oc)
 	for _, module := range integrationmodules.BuiltinModules(host) {
 		if module == nil {
@@ -401,6 +385,12 @@ func (oc *AIClient) initIntegrations() {
 			oc.approvalRegistry.register(approvalIntegration)
 		}
 	}
+
+	// Register core integrations after modules so module tool/prompt implementations take precedence.
+	coreTools := &coreToolIntegration{client: oc}
+	corePrompts := &corePromptIntegration{client: oc}
+	oc.toolRegistry.register(coreTools)
+	oc.promptRegistry.register(corePrompts)
 
 	registerModuleCommands(oc.commandRegistry.definitions())
 }
@@ -535,52 +525,10 @@ func (oc *AIClient) integratedToolDefinitions(
 }
 
 func (oc *AIClient) integratedToolAvailability(meta *PortalMetadata, toolName string) (bool, bool, SettingSource, string) {
-	if oc == nil {
+	if oc == nil || oc.toolRegistry == nil {
 		return false, false, SourceGlobalDefault, ""
 	}
-	moduleName, isModuleTool := integrationModuleForTool(toolName)
-	if isModuleTool && !oc.integrationModuleEnabled(moduleName) {
-		return true, false, SourceProviderLimit, moduleName + " integration disabled"
-	}
-	if oc.toolRegistry == nil {
-		if isModuleTool {
-			return true, false, SourceProviderLimit, moduleName + " integration unavailable"
-		}
-		return false, false, SourceGlobalDefault, ""
-	}
-	if known, available, source, reason := oc.toolRegistry.availability(context.Background(), oc.toolScope(nil, meta), toolName); known {
-		return true, available, source, reason
-	}
-	if isModuleTool {
-		return true, false, SourceProviderLimit, moduleName + " integration unavailable"
-	}
-	return false, false, SourceGlobalDefault, ""
-}
-
-func integrationModuleForTool(toolName string) (string, bool) {
-	name := strings.TrimSpace(toolName)
-	moduleName, ok := integrationToolModules[name]
-	return moduleName, ok
-}
-
-func (oc *AIClient) integrationModuleEnabled(moduleName string) bool {
-	if oc == nil || oc.connector == nil || oc.connector.Config.Integrations == nil {
-		return true
-	}
-	switch strings.ToLower(strings.TrimSpace(moduleName)) {
-	case "cron":
-		if oc.connector.Config.Integrations.Cron == nil {
-			return true
-		}
-		return *oc.connector.Config.Integrations.Cron
-	case "memory":
-		if oc.connector.Config.Integrations.Memory == nil {
-			return true
-		}
-		return *oc.connector.Config.Integrations.Memory
-	default:
-		return true
-	}
+	return oc.toolRegistry.availability(context.Background(), oc.toolScope(nil, meta), toolName)
 }
 
 func (oc *AIClient) executeIntegratedTool(
@@ -744,28 +692,21 @@ func (oc *AIClient) purgeLoginIntegrations(ctx context.Context, login any, bridg
 	})
 }
 
-func integrationToolByName(name string) (ToolDefinition, bool) {
-	for _, def := range BuiltinTools() {
-		if def.Name == name {
-			return def, true
-		}
-	}
-	return ToolDefinition{}, false
-}
 
 func integrationPortalRoomType(meta *PortalMetadata) string {
-	if meta != nil && meta.IsCronRoom {
-		return "cron"
+	if kind := moduleRoomKind(meta); kind != "" {
+		return kind
 	}
 	return "ai"
 }
 
 func isIntegrationSessionKindAllowed(kind string) bool {
 	switch kind {
-	case "main", "group", "cron", "hook", "node", "other":
+	case "main", "group", "hook", "node", "other":
 		return true
 	default:
-		return false
+		// Allow any non-empty module-defined kind (e.g., "cron").
+		return strings.TrimSpace(kind) != ""
 	}
 }
 
@@ -774,8 +715,8 @@ func integrationSessionKind(currentRoomID string, portalRoomID string, meta *Por
 		return "main"
 	}
 	if meta != nil {
-		if meta.IsCronRoom {
-			return "cron"
+		if kind := moduleRoomKind(meta); kind != "" {
+			return kind
 		}
 		if strings.TrimSpace(meta.SubagentParentRoomID) != "" {
 			return "other"
@@ -796,9 +737,6 @@ func (c *coreToolIntegration) Name() string { return "core" }
 func (c *coreToolIntegration) ToolDefinitions(_ context.Context, _ integrationruntime.ToolScope) []integrationruntime.ToolDefinition {
 	var out []integrationruntime.ToolDefinition
 	for _, def := range BuiltinTools() {
-		if def.Name == ToolNameCron || def.Name == ToolNameMemorySearch || def.Name == ToolNameMemoryGet {
-			continue
-		}
 		out = append(out, def)
 	}
 	return out
@@ -806,9 +744,6 @@ func (c *coreToolIntegration) ToolDefinitions(_ context.Context, _ integrationru
 
 func (c *coreToolIntegration) ExecuteTool(ctx context.Context, call integrationruntime.ToolCall) (bool, string, error) {
 	if c == nil || c.client == nil {
-		return false, "", nil
-	}
-	if call.Name == ToolNameCron || call.Name == ToolNameMemorySearch || call.Name == ToolNameMemoryGet {
 		return false, "", nil
 	}
 	portal, _ := call.Scope.Portal.(*bridgev2.Portal)

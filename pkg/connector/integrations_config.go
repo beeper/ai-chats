@@ -25,17 +25,14 @@ type Config struct {
 	ToolApprovals *ToolApprovalsRuntimeConfig        `yaml:"tool_approvals"`
 	ToolPolicy    *toolpolicy.GlobalToolPolicyConfig `yaml:"tool_policy"`
 	Agents        *AgentsConfig                      `yaml:"agents"`
-	Channels      *ChannelsConfig                    `yaml:"channels"`
-	Cron          *CronConfig                        `yaml:"cron"`
-	Messages      *MessagesConfig                    `yaml:"messages"`
-	Commands      *CommandsConfig                    `yaml:"commands"`
-	Session       *SessionConfig                     `yaml:"session"`
+	Channels *ChannelsConfig `yaml:"channels"`
+	Messages *MessagesConfig `yaml:"messages"`
+	Commands *CommandsConfig `yaml:"commands"`
+	Session  *SessionConfig  `yaml:"session"`
 
 	// Global settings
-	DefaultSystemPrompt string              `yaml:"default_system_prompt"`
-	ModelCacheDuration  time.Duration       `yaml:"model_cache_duration"`
-	Memory              *MemoryConfig       `yaml:"memory"`
-	MemorySearch        *MemorySearchConfig `yaml:"memory_search"`
+	DefaultSystemPrompt string        `yaml:"default_system_prompt"`
+	ModelCacheDuration  time.Duration `yaml:"model_cache_duration"`
 
 	// Context pruning configuration (OpenClaw-style)
 	Pruning *PruningConfig `yaml:"pruning"`
@@ -48,13 +45,18 @@ type Config struct {
 
 	// Integration registration toggles.
 	Integrations *IntegrationsConfig `yaml:"integrations"`
+
+	// Module-level configs captured generically (e.g., cron:, memory:, memory_search:).
+	Modules map[string]any `yaml:",inline"`
 }
 
 // IntegrationsConfig controls compile-time-available integration registration.
-// When a field is nil, it defaults to enabled.
+// Module names are keys in the Modules map.
+// A bool value (true/false) enables/disables the module.
+// A map value configures the module (with an optional "enabled" key).
+// Absent modules default to enabled.
 type IntegrationsConfig struct {
-	Cron   *bool `yaml:"cron"`
-	Memory *bool `yaml:"memory"`
+	Modules map[string]any `yaml:",inline"`
 }
 
 // ToolApprovalsRuntimeConfig controls runtime behaviour for tool approvals.
@@ -149,12 +151,6 @@ type HeartbeatActiveHoursConfig struct {
 	Timezone string `yaml:"timezone"`
 }
 
-// CronConfig configures cron scheduling (OpenClaw-style).
-type CronConfig struct {
-	Enabled           *bool  `yaml:"enabled"`
-	Store             string `yaml:"store"`
-	MaxConcurrentRuns int    `yaml:"maxConcurrentRuns"`
-}
 
 // ChannelsConfig defines per-channel settings (OpenClaw-style subset for Matrix).
 type ChannelsConfig struct {
@@ -230,98 +226,6 @@ type SessionConfig struct {
 	Scope   string `yaml:"scope"`
 	MainKey string `yaml:"mainKey"`
 	Store   string `yaml:"store"`
-}
-
-// MemoryConfig configures memory behavior (OpenClaw-style).
-type MemoryConfig struct {
-	Citations     string `yaml:"citations"`
-	InjectContext bool   `yaml:"inject_context"`
-}
-
-// MemorySearchConfig configures semantic memory search (OpenClaw-style).
-type MemorySearchConfig struct {
-	Enabled      *bool                           `yaml:"enabled"`
-	Sources      []string                        `yaml:"sources"`
-	ExtraPaths   []string                        `yaml:"extra_paths"`
-	Provider     string                          `yaml:"provider"`
-	Model        string                          `yaml:"model"`
-	Remote       *MemorySearchRemoteConfig       `yaml:"remote"`
-	Fallback     string                          `yaml:"fallback"`
-	Store        *MemorySearchStoreConfig        `yaml:"store"`
-	Chunking     *MemorySearchChunkingConfig     `yaml:"chunking"`
-	Sync         *MemorySearchSyncConfig         `yaml:"sync"`
-	Query        *MemorySearchQueryConfig        `yaml:"query"`
-	Cache        *MemorySearchCacheConfig        `yaml:"cache"`
-	Experimental *MemorySearchExperimentalConfig `yaml:"experimental"`
-}
-
-type MemorySearchRemoteConfig struct {
-	BaseURL string                   `yaml:"base_url"`
-	APIKey  string                   `yaml:"api_key"`
-	Headers map[string]string        `yaml:"headers"`
-	Batch   *MemorySearchBatchConfig `yaml:"batch"`
-}
-
-type MemorySearchBatchConfig struct {
-	Enabled        *bool `yaml:"enabled"`
-	Wait           *bool `yaml:"wait"`
-	Concurrency    int   `yaml:"concurrency"`
-	PollIntervalMs int   `yaml:"poll_interval_ms"`
-	TimeoutMinutes int   `yaml:"timeout_minutes"`
-}
-
-type MemorySearchStoreConfig struct {
-	Driver string                    `yaml:"driver"`
-	Path   string                    `yaml:"path"`
-	Vector *MemorySearchVectorConfig `yaml:"vector"`
-}
-
-type MemorySearchVectorConfig struct {
-	Enabled       *bool  `yaml:"enabled"`
-	ExtensionPath string `yaml:"extension_path"`
-}
-
-type MemorySearchChunkingConfig struct {
-	Tokens  int `yaml:"tokens"`
-	Overlap int `yaml:"overlap"`
-}
-
-type MemorySearchSyncConfig struct {
-	OnSessionStart  *bool                          `yaml:"on_session_start"`
-	OnSearch        *bool                          `yaml:"on_search"`
-	Watch           *bool                          `yaml:"watch"`
-	WatchDebounceMs int                            `yaml:"watch_debounce_ms"`
-	IntervalMinutes int                            `yaml:"interval_minutes"`
-	Sessions        *MemorySearchSessionSyncConfig `yaml:"sessions"`
-}
-
-type MemorySearchSessionSyncConfig struct {
-	DeltaBytes    int `yaml:"delta_bytes"`
-	DeltaMessages int `yaml:"delta_messages"`
-	RetentionDays int `yaml:"retention_days"`
-}
-
-type MemorySearchQueryConfig struct {
-	MaxResults       int                       `yaml:"max_results"`
-	MinScore         float64                   `yaml:"min_score"`
-	MaxInjectedChars int                       `yaml:"max_injected_chars"`
-	Hybrid           *MemorySearchHybridConfig `yaml:"hybrid"`
-}
-
-type MemorySearchHybridConfig struct {
-	Enabled             *bool   `yaml:"enabled"`
-	VectorWeight        float64 `yaml:"vector_weight"`
-	TextWeight          float64 `yaml:"text_weight"`
-	CandidateMultiplier int     `yaml:"candidate_multiplier"`
-}
-
-type MemorySearchCacheConfig struct {
-	Enabled    *bool `yaml:"enabled"`
-	MaxEntries int   `yaml:"max_entries"`
-}
-
-type MemorySearchExperimentalConfig struct {
-	SessionMemory *bool `yaml:"session_memory"`
 }
 
 // ToolProvidersConfig configures external tool providers like search and fetch.
@@ -626,10 +530,10 @@ func upgradeConfig(helper configupgrade.Helper) {
 	helper.Copy(configupgrade.Float, "pruning", "max_history_share")
 	helper.Copy(configupgrade.Int, "pruning", "reserve_tokens")
 	helper.Copy(configupgrade.Str, "pruning", "custom_instructions")
-	helper.Copy(configupgrade.Bool, "pruning", "memory_flush", "enabled")
-	helper.Copy(configupgrade.Int, "pruning", "memory_flush", "soft_threshold_tokens")
-	helper.Copy(configupgrade.Str, "pruning", "memory_flush", "prompt")
-	helper.Copy(configupgrade.Str, "pruning", "memory_flush", "system_prompt")
+	helper.Copy(configupgrade.Bool, "pruning", "overflow_flush", "enabled")
+	helper.Copy(configupgrade.Int, "pruning", "overflow_flush", "soft_threshold_tokens")
+	helper.Copy(configupgrade.Str, "pruning", "overflow_flush", "prompt")
+	helper.Copy(configupgrade.Str, "pruning", "overflow_flush", "system_prompt")
 
 	// Link preview configuration
 	helper.Copy(configupgrade.Bool, "link_previews", "enabled")

@@ -91,11 +91,7 @@ const ToolNameImageGenerate = toolspec.ImageGenerateName
 // ToolNameSessionStatus is the name of the session status tool.
 const ToolNameSessionStatus = toolspec.SessionStatusName
 
-const ToolNameCron = integrationToolCronName
-
 const (
-	ToolNameMemorySearch       = integrationToolMemorySearchName
-	ToolNameMemoryGet          = integrationToolMemoryGetName
 	ToolNameGravatarFetch      = toolspec.GravatarFetchName
 	ToolNameGravatarSet        = toolspec.GravatarSetName
 	ToolNameBeeperDocs         = toolspec.BeeperDocsName
