@@ -37,8 +37,9 @@ type AgentDefinition struct {
 	Identity        *Identity    `json:"identity,omitempty"`         // custom identity for prompt
 	HeartbeatPrompt string       `json:"heartbeat_prompt,omitempty"` // prompt for heartbeat polling (clawdbot parity)
 
-	// Memory search configuration override (OpenClaw-style)
-	MemorySearch *MemorySearchConfig `json:"memory_search,omitempty"`
+	// Module-specific agent-level config (e.g. memory_search).
+	// Typed by the owning module at runtime; opaque to the connector.
+	MemorySearch any `json:"memory_search,omitempty"`
 
 	// Metadata
 	IsPreset  bool  `json:"is_preset,omitempty"`
@@ -229,9 +230,9 @@ func (a *AgentDefinition) Clone() *AgentDefinition {
 
 	if a.MemorySearch != nil {
 		copyBytes, _ := json.Marshal(a.MemorySearch)
-		var ms MemorySearchConfig
+		var ms any
 		if err := json.Unmarshal(copyBytes, &ms); err == nil {
-			clone.MemorySearch = &ms
+			clone.MemorySearch = ms
 		}
 	}
 

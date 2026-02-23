@@ -201,21 +201,17 @@ type PortalMetadata struct {
 	SendPolicy                 string           `json:"send_policy,omitempty"` // allow|deny
 	SessionResetAt             int64            `json:"session_reset_at,omitempty"`
 	AbortedLastRun             bool             `json:"aborted_last_run,omitempty"`
-	CompactionCount            int              `json:"compaction_count,omitempty"`
-	MemoryFlushAt              int64            `json:"memory_flush_at,omitempty"`
-	MemoryFlushCompactionCount int              `json:"memory_flush_compaction_count,omitempty"`
-	MemoryBootstrapAt          int64            `json:"memory_bootstrap_at,omitempty"`
-	SessionBootstrappedAt      int64            `json:"session_bootstrapped_at,omitempty"`
+	CompactionCount       int              `json:"compaction_count,omitempty"`
+	SessionBootstrappedAt int64            `json:"session_bootstrapped_at,omitempty"`
 	SessionBootstrapByAgent    map[string]int64 `json:"session_bootstrap_by_agent,omitempty"`
 
 	// Agent-related metadata
 	AgentID              string `json:"agent_id,omitempty"`                // Which agent is the ghost for this room
 	AgentPrompt          string `json:"agent_prompt,omitempty"`            // Cached prompt for the assigned agent
 	IsBuilderRoom        bool   `json:"is_builder_room,omitempty"`         // True if this is the Manage AI Chats room (protected from overrides)
-	IsRawMode            bool   `json:"is_raw_mode,omitempty"`             // True if this is a playground/raw mode room (no directive processing)
-	IsCronRoom           bool   `json:"is_cron_room,omitempty"`            // True if this is a hidden cron room
-	CronJobID            string `json:"cron_job_id,omitempty"`             // Cron job ID for cron rooms
-	SubagentParentRoomID string `json:"subagent_parent_room_id,omitempty"` // Parent room ID for subagent sessions
+	IsRawMode            bool           `json:"is_raw_mode,omitempty"`             // True if this is a playground/raw mode room (no directive processing)
+	ModuleMeta           map[string]any `json:"module_meta,omitempty"`             // Generic per-module metadata (e.g., cron room markers, memory flush state)
+	SubagentParentRoomID string         `json:"subagent_parent_room_id,omitempty"` // Parent room ID for subagent sessions
 
 	// Ack reaction config - similar to OpenClaw's ack reactions
 	AckReactionEmoji       string `json:"ack_reaction_emoji,omitempty"`        // Emoji to react with when message received (e.g., "👀", "🤔"). Empty = disabled.
@@ -253,6 +249,17 @@ func clonePortalMetadata(src *PortalMetadata) *PortalMetadata {
 
 	if len(src.DisabledTools) > 0 {
 		clone.DisabledTools = append([]string(nil), src.DisabledTools...)
+	}
+
+	if src.ModuleMeta != nil {
+		clone.ModuleMeta = make(map[string]any, len(src.ModuleMeta))
+		for k, v := range src.ModuleMeta {
+			if inner, ok := v.(map[string]any); ok {
+				clone.ModuleMeta[k] = maps.Clone(inner)
+			} else {
+				clone.ModuleMeta[k] = v
+			}
+		}
 	}
 
 	return &clone
@@ -418,4 +425,34 @@ func NewCallID() string {
 // generateShortID generates a short unique ID (12 chars)
 func generateShortID() string {
 	return random.String(12)
+}
+
+// isModuleInternalRoom checks if any module has marked this portal as an internal room.
+func isModuleInternalRoom(meta *PortalMetadata) bool {
+	if meta == nil || meta.ModuleMeta == nil {
+		return false
+	}
+	for _, v := range meta.ModuleMeta {
+		if m, ok := v.(map[string]any); ok {
+			if internal, _ := m["is_internal_room"].(bool); internal {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// moduleRoomKind returns the module name that owns this internal room, or "".
+func moduleRoomKind(meta *PortalMetadata) string {
+	if meta == nil || meta.ModuleMeta == nil {
+		return ""
+	}
+	for name, v := range meta.ModuleMeta {
+		if m, ok := v.(map[string]any); ok {
+			if internal, _ := m["is_internal_room"].(bool); internal {
+				return name
+			}
+		}
+	}
+	return ""
 }

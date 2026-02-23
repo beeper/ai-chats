@@ -1,8 +1,6 @@
 package modules
 
 import (
-	integrationcron "github.com/beeper/ai-bridge/pkg/integrations/cron"
-	integrationmemory "github.com/beeper/ai-bridge/pkg/integrations/memory"
 	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
 )
 
@@ -19,37 +17,19 @@ func BuiltinModules(host integrationruntime.Host) []integrationruntime.ModuleHoo
 		return cfg.ModuleEnabled(name)
 	}
 
-	out := make([]integrationruntime.ModuleHooks, 0, 2)
-	if isEnabled("cron") {
-		if cronHost, ok := any(host).(integrationcron.Host); ok {
-			out = append(out, integrationcron.NewIntegration(cronHost))
+	out := make([]integrationruntime.ModuleHooks, 0, len(BuiltinFactories))
+	for _, factory := range BuiltinFactories {
+		if factory == nil {
+			continue
 		}
-	}
-	if isEnabled("memory") {
-		if memoryHost, ok := any(host).(integrationmemory.Host); ok {
-			out = append(out, integrationmemory.NewIntegration(memoryHost))
+		module := factory(host)
+		if module == nil {
+			continue
 		}
+		if !isEnabled(module.Name()) {
+			continue
+		}
+		out = append(out, module)
 	}
 	return out
-}
-
-// BuiltinCommandDefinitions returns command definitions exposed by built-in modules.
-func BuiltinCommandDefinitions() []integrationruntime.CommandDefinition {
-	return []integrationruntime.CommandDefinition{
-		{
-			Name:           "cron",
-			Description:    "Inspect/manage cron jobs",
-			Args:           "[status|list|runs|run|remove] ...",
-			RequiresPortal: true,
-			RequiresLogin:  true,
-		},
-		{
-			Name:           "memory",
-			Description:    "Inspect and edit memory files/index",
-			Args:           "<status|reindex|search|get|set|append> [...]",
-			RequiresPortal: true,
-			RequiresLogin:  true,
-			AdminOnly:      true,
-		},
-	}
 }

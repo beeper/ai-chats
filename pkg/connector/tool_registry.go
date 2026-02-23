@@ -3,18 +3,16 @@ package connector
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 
 	agenttools "github.com/beeper/ai-bridge/pkg/agents/tools"
-	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
 )
 
 type toolExecutor func(ctx context.Context, args map[string]any) (string, error)
 
 func builtinToolExecutors() map[string]toolExecutor {
 	return map[string]toolExecutor{
-		toolspec.CalculatorName:    executeCalculator,
-		toolspec.WebSearchName:     executeWebSearch,
+		ToolNameCalculator:         executeCalculator,
+		ToolNameWebSearch:          executeWebSearch,
 		ToolNameMessage:            executeMessage,
 		ToolNameTTS:                executeTTS,
 		ToolNameWebFetch:           executeWebFetch,
@@ -40,12 +38,9 @@ func buildBuiltinToolDefinitions() []ToolDefinition {
 		if tool == nil || tool.Name == "" {
 			continue
 		}
-		if tool.Name == ToolNameCron || tool.Name == ToolNameMemorySearch || tool.Name == ToolNameMemoryGet {
-			continue
-		}
 		exec := executors[tool.Name]
 		if exec == nil {
-			panic(fmt.Sprintf("missing executor for builtin tool %q", tool.Name))
+			continue // Module-owned tool, skip from builtin set
 		}
 		defs = append(defs, ToolDefinition{
 			Name:        tool.Name,

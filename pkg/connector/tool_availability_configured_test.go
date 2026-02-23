@@ -80,22 +80,6 @@ func TestToolAvailable_WebFetch_DirectDisabledAndNoExaKey(t *testing.T) {
 	}
 }
 
-func TestToolAvailable_Cron_RequiresService(t *testing.T) {
-	oc := &AIClient{
-		connector: &OpenAIConnector{Config: Config{}},
-		// cronService intentionally nil
-	}
-	meta := &PortalMetadata{Capabilities: ModelCapabilities{SupportsToolCalling: true}}
-
-	ok, _, reason := oc.isToolAvailable(meta, toolspec.CronName)
-	if ok {
-		t.Fatalf("expected cron to be unavailable without cronService")
-	}
-	if strings.TrimSpace(reason) == "" {
-		t.Fatalf("expected non-empty reason")
-	}
-}
-
 func TestToolAvailable_TTS_PlatformBehavior(t *testing.T) {
 	oc := &AIClient{
 		connector: &OpenAIConnector{Config: Config{}},
@@ -112,25 +96,6 @@ func TestToolAvailable_TTS_PlatformBehavior(t *testing.T) {
 	}
 	if ok {
 		t.Fatalf("expected TTS to be unavailable without configured provider on non-macOS")
-	}
-}
-
-func TestToolAvailable_MemorySearch_DisabledByConfig(t *testing.T) {
-	oc := &AIClient{
-		connector: &OpenAIConnector{
-			Config: Config{
-				MemorySearch: &MemorySearchConfig{Enabled: boolPtr(false)},
-			},
-		},
-	}
-	meta := &PortalMetadata{Capabilities: ModelCapabilities{SupportsToolCalling: true}}
-
-	ok, _, reason := oc.isToolAvailable(meta, toolspec.MemorySearchName)
-	if ok {
-		t.Fatalf("expected memory_search to be unavailable when explicitly disabled")
-	}
-	if strings.TrimSpace(reason) == "" {
-		t.Fatalf("expected non-empty reason")
 	}
 }
 

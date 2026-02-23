@@ -5,8 +5,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/openai/openai-go/v3"
 )
 
 func TestRawModePrompt_HasSingleSystemPromptWithTimeAndWebSearch(t *testing.T) {
@@ -110,10 +108,7 @@ func TestRawModePrompt_LatestUserMessageUnchanged_NoLinkContext_NoMessageID(t *t
 					MaxContentChars: 2000,
 					FetchTimeout:    50 * time.Millisecond, // unused in raw mode
 				},
-				Memory: &MemoryConfig{
-					InjectContext: true,
 				},
-			},
 		},
 	}
 
@@ -152,22 +147,3 @@ func TestBuildMatrixInboundBody_RawModeBypassesEnvelopeAndSenderMeta(t *testing.
 	}
 }
 
-func TestInjectMemoryContext_SkipsInRawMode(t *testing.T) {
-	client := &AIClient{
-		connector: &OpenAIConnector{
-			Config: Config{
-				Memory: &MemoryConfig{InjectContext: true},
-			},
-		},
-	}
-
-	in := []openai.ChatCompletionMessageParamUnion{
-		openai.SystemMessage("system"),
-	}
-	meta := &PortalMetadata{IsRawMode: true}
-
-	out := client.injectMemoryContext(context.Background(), nil, meta, in)
-	if len(out) != len(in) {
-		t.Fatalf("expected unchanged prompt length %d, got %d", len(in), len(out))
-	}
-}

@@ -2,13 +2,24 @@ package memory
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/openai/openai-go/v3"
+	"github.com/rs/zerolog"
+	"go.mau.fi/util/dbutil"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 
+	"github.com/beeper/ai-bridge/pkg/agents"
 	iruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
 	memorycore "github.com/beeper/ai-bridge/pkg/memory"
+	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
+	"github.com/beeper/ai-bridge/pkg/textfs"
 )
+
+const moduleName = "memory"
 
 type SearchOptions = memorycore.SearchOptions
 type SearchResult = memorycore.SearchResult
@@ -33,139 +44,839 @@ type Manager interface {
 	SyncWithProgress(ctx context.Context, onProgress func(completed, total int, label string)) error
 }
 
-type Host interface {
-	ToolDefinitions(ctx context.Context, scope iruntime.ToolScope) []iruntime.ToolDefinition
-	ExecuteTool(ctx context.Context, call iruntime.ToolCall) (handled bool, result string, err error)
-	ToolAvailability(ctx context.Context, scope iruntime.ToolScope, toolName string) (known bool, available bool, source iruntime.SettingSource, reason string)
-
-	AdditionalSystemMessages(ctx context.Context, scope iruntime.PromptScope) []openai.ChatCompletionMessageParamUnion
-	AugmentPrompt(ctx context.Context, scope iruntime.PromptScope, prompt []openai.ChatCompletionMessageParamUnion) []openai.ChatCompletionMessageParamUnion
-	GetManager(scope iruntime.ToolScope) (Manager, string)
-
-	CommandDefinitions(ctx context.Context, scope iruntime.CommandScope) []iruntime.CommandDefinition
-	ExecuteCommand(ctx context.Context, call iruntime.CommandCall) (handled bool, err error)
-
-	OnSessionMutation(ctx context.Context, evt iruntime.SessionMutationEvent)
-	OnFileChanged(ctx context.Context, evt iruntime.FileChangedEvent)
-	OnContextOverflow(ctx context.Context, call iruntime.ContextOverflowCall) (handled bool, newPrompt []openai.ChatCompletionMessageParamUnion, err error)
-
-	StopForLogin(bridgeID, loginID string)
-	PurgeForLogin(ctx context.Context, scope iruntime.LoginScope) error
-}
-
+// Integration is the self-owned memory integration module.
+// It implements ToolIntegration, PromptIntegration, CommandIntegration,
+// EventIntegration, OverflowIntegration, LoginPurgeIntegration, and
+// LoginLifecycleIntegration directly, wiring all deps from Host
+// capability interfaces.
 type Integration struct {
-	host Host
+	host iruntime.Host
 }
 
-func NewIntegration(host Host) *Integration {
+func New(host iruntime.Host) iruntime.ModuleHooks {
+	if host == nil {
+		return nil
+	}
 	return &Integration{host: host}
 }
 
-func (i *Integration) Name() string { return "memory" }
+func (i *Integration) Name() string { return moduleName }
 
-func (i *Integration) ToolDefinitions(ctx context.Context, scope iruntime.ToolScope) []iruntime.ToolDefinition {
-	if i == nil || i.host == nil {
-		return nil
+// ---- ToolIntegration ----
+
+func (i *Integration) ToolDefinitions(_ context.Context, _ iruntime.ToolScope) []iruntime.ToolDefinition {
+	return []iruntime.ToolDefinition{
+		{
+			Name:        toolspec.MemorySearchName,
+			Description: toolspec.MemorySearchDescription,
+			Parameters:  toolspec.MemorySearchSchema(),
+		},
+		{
+			Name:        toolspec.MemoryGetName,
+			Description: toolspec.MemoryGetDescription,
+			Parameters:  toolspec.MemoryGetSchema(),
+		},
 	}
-	defs := i.host.ToolDefinitions(ctx, scope)
-	out := make([]iruntime.ToolDefinition, 0, 2)
-	for _, def := range defs {
-		name := strings.ToLower(strings.TrimSpace(def.Name))
-		if name == "memory_search" || name == "memory_get" {
-			out = append(out, def)
-		}
-	}
-	return out
 }
 
 func (i *Integration) ExecuteTool(ctx context.Context, call iruntime.ToolCall) (bool, string, error) {
-	if i == nil || i.host == nil {
-		return false, "", nil
-	}
 	name := strings.ToLower(strings.TrimSpace(call.Name))
 	if name != "memory_search" && name != "memory_get" {
 		return false, "", nil
 	}
-	return i.host.ExecuteTool(ctx, call)
+	return ExecuteTool(ctx, call, i.buildToolExecDeps())
 }
 
-func (i *Integration) ToolAvailability(ctx context.Context, scope iruntime.ToolScope, toolName string) (bool, bool, iruntime.SettingSource, string) {
-	if i == nil || i.host == nil {
-		return false, false, iruntime.SourceGlobalDefault, ""
-	}
+func (i *Integration) ToolAvailability(_ context.Context, scope iruntime.ToolScope, toolName string) (bool, bool, iruntime.SettingSource, string) {
 	name := strings.ToLower(strings.TrimSpace(toolName))
 	if name != "memory_search" && name != "memory_get" {
 		return false, false, iruntime.SourceGlobalDefault, ""
 	}
-	return i.host.ToolAvailability(ctx, scope, toolName)
+	// Check if memory search is explicitly disabled for this agent.
+	ma, _ := i.host.(iruntime.MetadataAccess)
+	if ma != nil && scope.Meta != nil {
+		agentID := ma.AgentIDFromMeta(scope.Meta)
+		_, errMsg := i.getManager(agentID)
+		if errMsg != "" {
+			return true, false, iruntime.SourceProviderLimit, errMsg
+		}
+	}
+	return true, true, iruntime.SourceGlobalDefault, ""
 }
 
-func (i *Integration) AdditionalSystemMessages(ctx context.Context, scope iruntime.PromptScope) []openai.ChatCompletionMessageParamUnion {
-	if i == nil || i.host == nil {
-		return nil
-	}
-	return i.host.AdditionalSystemMessages(ctx, scope)
+// ---- PromptIntegration ----
+
+func (i *Integration) AdditionalSystemMessages(_ context.Context, _ iruntime.PromptScope) []openai.ChatCompletionMessageParamUnion {
+	return nil
 }
 
 func (i *Integration) AugmentPrompt(ctx context.Context, scope iruntime.PromptScope, prompt []openai.ChatCompletionMessageParamUnion) []openai.ChatCompletionMessageParamUnion {
-	if i == nil || i.host == nil {
-		return prompt
-	}
-	return i.host.AugmentPrompt(ctx, scope, prompt)
+	return AugmentPrompt(ctx, scope, prompt, PromptAugmentDeps{
+		ShouldInjectContext: i.shouldInjectMemoryPromptContext,
+		ShouldBootstrap:     i.shouldBootstrapMemoryPromptContext,
+		ResolveBootstrapPaths: func(scope iruntime.PromptScope) []string {
+			return i.resolveMemoryBootstrapPaths(scope)
+		},
+		MarkBootstrapped: i.markMemoryPromptBootstrapped,
+		ReadSection:      i.readMemoryPromptSection,
+	})
 }
 
-func (i *Integration) GetManager(scope iruntime.ToolScope) (Manager, string) {
-	if i == nil || i.host == nil {
-		return nil, "memory search unavailable"
-	}
-	return i.host.GetManager(scope)
-}
+// ---- CommandIntegration ----
 
-func (i *Integration) CommandDefinitions(ctx context.Context, scope iruntime.CommandScope) []iruntime.CommandDefinition {
-	if i == nil || i.host == nil {
-		return nil
-	}
-	return i.host.CommandDefinitions(ctx, scope)
+func (i *Integration) CommandDefinitions(_ context.Context, _ iruntime.CommandScope) []iruntime.CommandDefinition {
+	return []iruntime.CommandDefinition{{
+		Name:           "memory",
+		Description:    "Inspect and edit memory files/index",
+		Args:           "<status|reindex|search|get|set|append> [...]",
+		RequiresPortal: true,
+		RequiresLogin:  true,
+		AdminOnly:      true,
+	}}
 }
 
 func (i *Integration) ExecuteCommand(ctx context.Context, call iruntime.CommandCall) (bool, error) {
-	if i == nil || i.host == nil {
+	if strings.ToLower(strings.TrimSpace(call.Name)) != moduleName {
 		return false, nil
 	}
-	return i.host.ExecuteCommand(ctx, call)
+	return ExecuteCommand(ctx, call, i.buildCommandExecDeps())
 }
+
+// ---- EventIntegration ----
 
 func (i *Integration) OnSessionMutation(ctx context.Context, evt iruntime.SessionMutationEvent) {
-	if i == nil || i.host == nil {
+	agentID := i.agentIDFromEventMeta(evt.Meta)
+	manager, _ := i.getManager(agentID)
+	if manager == nil {
 		return
 	}
-	i.host.OnSessionMutation(ctx, evt)
+	if msm, ok := manager.(*MemorySearchManager); ok {
+		msm.NotifySessionChanged(ctx, evt.SessionKey, evt.Force)
+	}
 }
 
-func (i *Integration) OnFileChanged(ctx context.Context, evt iruntime.FileChangedEvent) {
-	if i == nil || i.host == nil {
+func (i *Integration) OnFileChanged(_ context.Context, evt iruntime.FileChangedEvent) {
+	agentID := i.agentIDFromEventMeta(evt.Meta)
+	manager, _ := i.getManager(agentID)
+	if manager == nil {
 		return
 	}
-	i.host.OnFileChanged(ctx, evt)
+	if msm, ok := manager.(*MemorySearchManager); ok {
+		msm.NotifyFileChanged(evt.Path)
+	}
 }
+
+// ---- OverflowIntegration ----
 
 func (i *Integration) OnContextOverflow(ctx context.Context, call iruntime.ContextOverflowCall) (bool, []openai.ChatCompletionMessageParamUnion, error) {
-	if i == nil || i.host == nil {
-		return false, nil, nil
-	}
-	return i.host.OnContextOverflow(ctx, call)
+	HandleOverflow(ctx, call, call.Prompt, i.buildOverflowDeps())
+	return false, nil, nil
 }
+
+// ---- LoginLifecycleIntegration ----
 
 func (i *Integration) StopForLogin(bridgeID, loginID string) {
-	if i == nil || i.host == nil {
-		return
-	}
-	i.host.StopForLogin(bridgeID, loginID)
+	StopManagersForLogin(bridgeID, loginID)
 }
 
+// ---- LoginPurgeIntegration ----
+
 func (i *Integration) PurgeForLogin(ctx context.Context, scope iruntime.LoginScope) error {
-	if i == nil || i.host == nil {
+	db := i.resolveBridgeDB()
+	if db == nil {
 		return nil
 	}
-	return i.host.PurgeForLogin(ctx, scope)
+	chunkIDsByAgent := LoadChunkIDsByAgentBestEffort(ctx, db, scope.BridgeID, scope.LoginID)
+	PurgeManagersForLogin(ctx, scope.BridgeID, scope.LoginID, chunkIDsByAgent)
+	// Resolve vector extension path from config for vector row purge.
+	cfg := i.resolveMemorySearchConfig("")
+	if cfg != nil && cfg.Store.Vector.Enabled {
+		extPath := strings.TrimSpace(cfg.Store.Vector.ExtensionPath)
+		if extPath != "" {
+			PurgeVectorRowsBestEffort(ctx, db, scope.BridgeID, scope.LoginID, extPath)
+		}
+	}
+	PurgeTablesBestEffort(ctx, db, scope.BridgeID, scope.LoginID)
+	return nil
+}
+
+// ---- private: tool deps wiring ----
+
+func (i *Integration) buildToolExecDeps() ToolExecDeps {
+	return ToolExecDeps{
+		GetManager: func(scope iruntime.ToolScope) (Manager, string) {
+			agentID := i.resolveAgentIDFromScope(scope)
+			return i.getManager(agentID)
+		},
+		ResolveSessionKey: func(scope iruntime.ToolScope) string {
+			pm, ok := i.host.(iruntime.PortalManager)
+			if !ok || scope.Portal == nil {
+				return ""
+			}
+			return pm.PortalKeyString(scope.Portal)
+		},
+		ResolveCitationsMode: func(_ iruntime.ToolScope) string {
+			return i.resolveMemoryCitationsMode()
+		},
+		ShouldIncludeCitations: func(ctx context.Context, scope iruntime.ToolScope, mode string) bool {
+			return i.shouldIncludeMemoryCitations(ctx, scope, mode)
+		},
+	}
+}
+
+func (i *Integration) buildCommandExecDeps() CommandExecDeps {
+	return CommandExecDeps{
+		GetManager: func(scope iruntime.ToolScope) (Manager, string) {
+			agentID := i.resolveAgentIDFromScope(scope)
+			return i.getManager(agentID)
+		},
+		ResolveSessionKey: func(scope iruntime.ToolScope) string {
+			pm, ok := i.host.(iruntime.PortalManager)
+			if !ok || scope.Portal == nil {
+				return ""
+			}
+			return pm.PortalKeyString(scope.Portal)
+		},
+		SplitQuotedArgs: splitQuotedArgs,
+		WriteFile: func(ctx context.Context, scope iruntime.CommandScope, mode string, path string, content string, maxBytes int) (string, error) {
+			return i.writeMemoryCommandFile(ctx, scope, mode, path, content, maxBytes)
+		},
+	}
+}
+
+// ---- private: overflow deps wiring ----
+
+func (i *Integration) buildOverflowDeps() OverflowDeps {
+	return OverflowDeps{
+		IsRawMode: func(call any) bool {
+			ma, ok := i.host.(iruntime.MetadataAccess)
+			if !ok {
+				return false
+			}
+			overflowCall, _ := call.(iruntime.ContextOverflowCall)
+			return ma.IsRawMode(overflowCall.Meta)
+		},
+		ResolveSettings: i.resolveMemoryFlushSettings,
+		TrimPrompt: func(prompt []openai.ChatCompletionMessageParamUnion) []openai.ChatCompletionMessageParamUnion {
+			oh, ok := i.host.(iruntime.OverflowHelper)
+			if !ok {
+				return prompt
+			}
+			return oh.SmartTruncatePrompt(prompt, 0.5)
+		},
+		ContextWindow: func(call any) int {
+			mh, ok := i.host.(iruntime.ModelHelper)
+			if !ok {
+				return 128000
+			}
+			overflowCall, _ := call.(iruntime.ContextOverflowCall)
+			return mh.ContextWindow(overflowCall.Meta)
+		},
+		ReserveTokens: func() int {
+			oh, ok := i.host.(iruntime.OverflowHelper)
+			if !ok {
+				return 2000
+			}
+			return oh.CompactorReserveTokens()
+		},
+		EffectiveModel: func(call any) string {
+			mh, ok := i.host.(iruntime.ModelHelper)
+			if !ok {
+				return ""
+			}
+			overflowCall, _ := call.(iruntime.ContextOverflowCall)
+			return mh.EffectiveModel(overflowCall.Meta)
+		},
+		EstimateTokens: func(prompt []openai.ChatCompletionMessageParamUnion, model string) int {
+			oh, ok := i.host.(iruntime.OverflowHelper)
+			if !ok {
+				return 0
+			}
+			return oh.EstimateTokens(prompt, model)
+		},
+		AlreadyFlushed: func(call any) bool {
+			ma, ok := i.host.(iruntime.MetadataAccess)
+			if !ok {
+				return false
+			}
+			overflowCall, _ := call.(iruntime.ContextOverflowCall)
+			meta := overflowCall.Meta
+			flushAt := ma.GetModuleMeta(meta, "memory_flush_at")
+			flushCompactionCount := ma.GetModuleMeta(meta, "memory_flush_compaction_count")
+			if flushAt == nil {
+				return false
+			}
+			flushAtMs, _ := flushAt.(int64)
+			if flushAtMs == 0 {
+				// try float64 (JSON unmarshaling)
+				if f, ok := flushAt.(float64); ok {
+					flushAtMs = int64(f)
+				}
+			}
+			if flushAtMs == 0 {
+				return false
+			}
+			compactionCount := ma.CompactionCount(meta)
+			flushCC := 0
+			if flushCompactionCount != nil {
+				switch v := flushCompactionCount.(type) {
+				case int:
+					flushCC = v
+				case int64:
+					flushCC = int(v)
+				case float64:
+					flushCC = int(v)
+				}
+			}
+			return flushCC == compactionCount
+		},
+		MarkFlushed: func(ctx context.Context, call any) {
+			overflowCall, _ := call.(iruntime.ContextOverflowCall)
+			ma, ok := i.host.(iruntime.MetadataAccess)
+			if !ok || overflowCall.Portal == nil || overflowCall.Meta == nil {
+				return
+			}
+			compactionCount := ma.CompactionCount(overflowCall.Meta)
+			ma.SetModuleMeta(overflowCall.Meta, "memory_flush_at", time.Now().UnixMilli())
+			ma.SetModuleMeta(overflowCall.Meta, "memory_flush_compaction_count", compactionCount)
+			pm, ok := i.host.(iruntime.PortalManager)
+			if !ok {
+				return
+			}
+			_ = pm.SavePortal(ctx, overflowCall.Portal, "memory flush")
+		},
+		RunFlushToolLoop: func(ctx context.Context, call any, model string, prompt []openai.ChatCompletionMessageParamUnion) error {
+			overflowCall, _ := call.(iruntime.ContextOverflowCall)
+			return i.runFlushToolLoop(ctx, overflowCall.Portal, overflowCall.Meta, model, prompt)
+		},
+		OnError: func(_ context.Context, err error) {
+			i.host.Logger().Warn("memory flush failed", map[string]any{"error": err.Error()})
+		},
+	}
+}
+
+// ---- private: prompt context ----
+
+func (i *Integration) shouldInjectMemoryPromptContext(scope iruntime.PromptScope) bool {
+	ma, ok := i.host.(iruntime.MetadataAccess)
+	if !ok {
+		return false
+	}
+	if scope.Meta != nil && ma.IsRawMode(scope.Meta) {
+		return false
+	}
+	cl := i.host.ConfigLookup()
+	if cl == nil {
+		return false
+	}
+	cfg := cl.ModuleConfig(moduleName)
+	if cfg == nil {
+		return false
+	}
+	inject, _ := cfg["inject_context"].(bool)
+	return inject
+}
+
+func (i *Integration) shouldBootstrapMemoryPromptContext(scope iruntime.PromptScope) bool {
+	ma, ok := i.host.(iruntime.MetadataAccess)
+	if !ok {
+		return false
+	}
+	raw := ma.GetModuleMeta(scope.Meta, "memory_bootstrap_at")
+	if raw == nil {
+		return true
+	}
+	switch v := raw.(type) {
+	case int64:
+		return v == 0
+	case float64:
+		return v == 0
+	case int:
+		return v == 0
+	}
+	return false
+}
+
+func (i *Integration) resolveMemoryBootstrapPaths(_ iruntime.PromptScope) []string {
+	ah, ok := i.host.(iruntime.AgentHelper)
+	if !ok {
+		return nil
+	}
+	_, loc := ah.UserTimezone()
+	if loc == nil {
+		loc = time.UTC
+	}
+	now := time.Now().In(loc)
+	today := now.Format("2006-01-02")
+	yesterday := now.AddDate(0, 0, -1).Format("2006-01-02")
+	return []string{
+		fmt.Sprintf("memory/%s.md", today),
+		fmt.Sprintf("memory/%s.md", yesterday),
+	}
+}
+
+func (i *Integration) markMemoryPromptBootstrapped(ctx context.Context, scope iruntime.PromptScope) {
+	ma, ok := i.host.(iruntime.MetadataAccess)
+	if !ok || scope.Portal == nil || scope.Meta == nil {
+		return
+	}
+	ma.SetModuleMeta(scope.Meta, "memory_bootstrap_at", time.Now().UnixMilli())
+	pm, ok := i.host.(iruntime.PortalManager)
+	if !ok {
+		return
+	}
+	_ = pm.SavePortal(ctx, scope.Portal, "memory bootstrap")
+}
+
+func (i *Integration) readMemoryPromptSection(ctx context.Context, scope iruntime.PromptScope, path string) string {
+	tfh, ok := i.host.(iruntime.TextFileHelper)
+	if !ok {
+		return ""
+	}
+	agentID := ""
+	if ma, ok := i.host.(iruntime.MetadataAccess); ok && scope.Meta != nil {
+		agentID = ma.AgentIDFromMeta(scope.Meta)
+	}
+	content, filePath, found, err := tfh.ReadTextFile(ctx, agentID, path)
+	if err != nil || !found {
+		return ""
+	}
+	content = normalizeNewlines(content)
+	trunc := textfs.TruncateHead(content, textfs.DefaultMaxLines, textfs.DefaultMaxBytes)
+	if trunc.FirstLineExceedsLimit {
+		return ""
+	}
+	text := trunc.Content
+	if strings.TrimSpace(text) == "" {
+		return ""
+	}
+	if trunc.Truncated {
+		text += "\n\n[truncated]"
+	}
+	if strings.TrimSpace(filePath) != "" {
+		return fmt.Sprintf("## %s\n%s", filePath, text)
+	}
+	return fmt.Sprintf("## %s\n%s", path, text)
+}
+
+// ---- private: memory manager access ----
+
+func (i *Integration) resolveMemorySearchConfig(agentID string) *ResolvedConfig {
+	cl := i.host.ConfigLookup()
+	if cl == nil {
+		return nil
+	}
+	cfg := cl.ModuleConfig("memory_search")
+	agentCfg := cl.AgentModuleConfig(agentID, "memory_search")
+	resolved, err := resolveMemorySearchConfigFromMaps(cfg, agentCfg)
+	if err != nil {
+		return nil
+	}
+	return resolved
+}
+
+func (i *Integration) getManager(agentID string) (Manager, string) {
+	rt := i.buildRuntime()
+	if rt == nil {
+		return nil, "memory search unavailable"
+	}
+	manager, errMsg := GetMemorySearchManager(rt, agentID)
+	if manager == nil {
+		if errMsg == "" {
+			errMsg = "memory search unavailable"
+		}
+		return nil, errMsg
+	}
+	return manager, ""
+}
+
+func (i *Integration) buildRuntime() Runtime {
+	dba := i.host.DBAccess()
+	if dba == nil {
+		return nil
+	}
+	return &hostRuntimeAdapter{host: i.host, dba: dba}
+}
+
+// ---- private: flush tool loop ----
+
+func (i *Integration) runFlushToolLoop(
+	ctx context.Context,
+	portal any,
+	meta any,
+	model string,
+	messages []openai.ChatCompletionMessageParamUnion,
+) error {
+	tph, ok := i.host.(iruntime.ToolPolicyHelper)
+	if !ok {
+		return nil
+	}
+	allTools := tph.AllToolDefinitions()
+	var flushTools []iruntime.ToolDefinition
+	for _, tool := range allTools {
+		if IsAllowedFlushTool(tool.Name) {
+			flushTools = append(flushTools, tool)
+		}
+	}
+	if len(flushTools) == 0 {
+		return nil
+	}
+	toolParams := tph.ToolsToOpenAIParams(flushTools)
+
+	capi, ok := i.host.(iruntime.ChatCompletionAPI)
+	if !ok {
+		return nil
+	}
+
+	return RunFlushToolLoop(ctx, model, messages, FlushToolLoopDeps{
+		TimeoutMs: int64((2 * time.Minute) / time.Millisecond),
+		MaxTurns:  6,
+		NextTurn: func(ctx context.Context, model string, messages []openai.ChatCompletionMessageParamUnion) (
+			openai.ChatCompletionMessageParamUnion,
+			[]ModelToolCall,
+			bool,
+			error,
+		) {
+			result, err := capi.NewCompletion(ctx, model, messages, toolParams)
+			if err != nil {
+				return openai.ChatCompletionMessageParamUnion{}, nil, false, err
+			}
+			if result == nil || result.Done {
+				return openai.ChatCompletionMessageParamUnion{}, nil, true, nil
+			}
+			calls := make([]ModelToolCall, 0, len(result.ToolCalls))
+			for _, tc := range result.ToolCalls {
+				calls = append(calls, ModelToolCall{
+					ID:       tc.ID,
+					Name:     strings.TrimSpace(tc.Name),
+					ArgsJSON: tc.ArgsJSON,
+				})
+			}
+			return result.AssistantMessage, calls, len(calls) == 0, nil
+		},
+		ExecuteTool: func(ctx context.Context, name string, argsJSON string) (string, error) {
+			if tph.IsToolEnabled(meta, name) == false {
+				return "", fmt.Errorf("tool %s is disabled", name)
+			}
+			return tph.ExecuteToolInContext(ctx, portal, meta, name, argsJSON)
+		},
+		OnToolError: func(name string, err error) {
+			i.host.Logger().Warn("memory flush tool failed", map[string]any{"tool": name, "error": err.Error()})
+		},
+	})
+}
+
+// ---- private: flush settings ----
+
+func (i *Integration) resolveMemoryFlushSettings() *FlushSettings {
+	oh, ok := i.host.(iruntime.OverflowHelper)
+	if !ok {
+		return nil
+	}
+	enabled, softThresholdTokens, prompt, systemPrompt := oh.OverflowFlushConfig()
+	silentToken := oh.SilentReplyToken()
+	defaultPrompt, defaultSystemPrompt := DefaultFlushPrompts(silentToken)
+	return NormalizeFlushSettings(
+		enabled,
+		softThresholdTokens,
+		prompt,
+		systemPrompt,
+		defaultPrompt,
+		defaultSystemPrompt,
+		silentToken,
+	)
+}
+
+// ---- private: citations ----
+
+func (i *Integration) resolveMemoryCitationsMode() string {
+	cl := i.host.ConfigLookup()
+	if cl == nil {
+		return "auto"
+	}
+	cfg := cl.ModuleConfig(moduleName)
+	if cfg == nil {
+		return "auto"
+	}
+	mode, _ := cfg["citations"].(string)
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "on", "off", "auto":
+		return strings.ToLower(strings.TrimSpace(mode))
+	default:
+		return "auto"
+	}
+}
+
+func (i *Integration) shouldIncludeMemoryCitations(ctx context.Context, scope iruntime.ToolScope, mode string) bool {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "on":
+		return true
+	case "off":
+		return false
+	}
+	// auto: exclude citations in group chats
+	ma, ok := i.host.(iruntime.MetadataAccess)
+	if !ok || scope.Portal == nil {
+		return true
+	}
+	return !ma.IsGroupChat(ctx, scope.Portal)
+}
+
+// ---- private: memory command file write ----
+
+func (i *Integration) writeMemoryCommandFile(
+	ctx context.Context,
+	scope iruntime.CommandScope,
+	mode string,
+	path string,
+	content string,
+	maxBytes int,
+) (string, error) {
+	tfh, ok := i.host.(iruntime.TextFileHelper)
+	if !ok {
+		return "", fmt.Errorf("memory storage unavailable")
+	}
+	agentID := ""
+	if ma, ok := i.host.(iruntime.MetadataAccess); ok && scope.Meta != nil {
+		agentID = ma.AgentIDFromMeta(scope.Meta)
+	}
+	updatedPath, err := tfh.WriteTextFile(ctx, scope.Portal, scope.Meta, agentID, mode, path, content, maxBytes)
+	if err != nil {
+		return "", err
+	}
+	return updatedPath, nil
+}
+
+// ---- private: helpers ----
+
+func (i *Integration) resolveAgentIDFromScope(scope iruntime.ToolScope) string {
+	return i.agentIDFromEventMeta(scope.Meta)
+}
+
+func (i *Integration) agentIDFromEventMeta(meta any) string {
+	ma, ok := i.host.(iruntime.MetadataAccess)
+	if !ok || meta == nil {
+		return ""
+	}
+	return ma.AgentIDFromMeta(meta)
+}
+
+func (i *Integration) resolveBridgeDB() *dbutil.Database {
+	dba := i.host.DBAccess()
+	if dba == nil {
+		return nil
+	}
+	raw := dba.BridgeDB()
+	if raw == nil {
+		return nil
+	}
+	db, _ := raw.(*dbutil.Database)
+	return db
+}
+
+// splitQuotedArgs parses a raw argument string into tokens, respecting quoted segments.
+func splitQuotedArgs(input string) ([]string, error) {
+	var args []string
+	var current strings.Builder
+	var quote rune
+	for _, r := range input {
+		switch {
+		case quote != 0:
+			if r == quote {
+				quote = 0
+			} else {
+				current.WriteRune(r)
+			}
+		case r == '"' || r == '\'':
+			quote = r
+		case r == ' ' || r == '\t':
+			if current.Len() > 0 {
+				args = append(args, current.String())
+				current.Reset()
+			}
+		default:
+			current.WriteRune(r)
+		}
+	}
+	if quote != 0 {
+		return nil, fmt.Errorf("unclosed quote")
+	}
+	if current.Len() > 0 {
+		args = append(args, current.String())
+	}
+	return args, nil
+}
+
+// ---- hostRuntimeAdapter: bridges iruntime.Host → memory.Runtime ----
+
+type hostRuntimeAdapter struct {
+	host iruntime.Host
+	dba  iruntime.DBAccess
+}
+
+func (a *hostRuntimeAdapter) ResolveConfig(agentID string) (*ResolvedConfig, error) {
+	cl := a.host.ConfigLookup()
+	if cl == nil {
+		return nil, fmt.Errorf("memory search disabled")
+	}
+	// Resolve memory_search config from module config + agent overrides.
+	cfg := cl.ModuleConfig("memory_search")
+	agentCfg := cl.AgentModuleConfig(agentID, "memory_search")
+	return resolveMemorySearchConfigFromMaps(cfg, agentCfg)
+}
+
+func (a *hostRuntimeAdapter) ResolveOpenAIEmbeddingConfig(cfg *ResolvedConfig) (string, string, map[string]string) {
+	eh, ok := a.host.(iruntime.EmbeddingHelper)
+	if !ok {
+		return "", "", nil
+	}
+	apiKey := ""
+	baseURL := ""
+	var headers map[string]string
+	if cfg != nil && cfg.Remote.APIKey != "" {
+		apiKey = cfg.Remote.APIKey
+	}
+	if cfg != nil && cfg.Remote.BaseURL != "" {
+		baseURL = cfg.Remote.BaseURL
+	}
+	if cfg != nil {
+		headers = cfg.Remote.Headers
+	}
+	return eh.ResolveOpenAIEmbeddingConfig(apiKey, baseURL, headers)
+}
+
+func (a *hostRuntimeAdapter) ResolveDirectOpenAIEmbeddingConfig(cfg *ResolvedConfig) (string, string, map[string]string) {
+	eh, ok := a.host.(iruntime.EmbeddingHelper)
+	if !ok {
+		return "", "", nil
+	}
+	apiKey := ""
+	baseURL := ""
+	var headers map[string]string
+	if cfg != nil && cfg.Remote.APIKey != "" {
+		apiKey = cfg.Remote.APIKey
+	}
+	if cfg != nil && cfg.Remote.BaseURL != "" {
+		baseURL = cfg.Remote.BaseURL
+	}
+	if cfg != nil {
+		headers = cfg.Remote.Headers
+	}
+	return eh.ResolveDirectOpenAIEmbeddingConfig(apiKey, baseURL, headers)
+}
+
+func (a *hostRuntimeAdapter) ResolveGeminiEmbeddingConfig(cfg *ResolvedConfig) (string, string, map[string]string) {
+	eh, ok := a.host.(iruntime.EmbeddingHelper)
+	if !ok {
+		return "", "", nil
+	}
+	apiKey := ""
+	baseURL := ""
+	var headers map[string]string
+	if cfg != nil && cfg.Remote.APIKey != "" {
+		apiKey = cfg.Remote.APIKey
+	}
+	if cfg != nil && cfg.Remote.BaseURL != "" {
+		baseURL = cfg.Remote.BaseURL
+	}
+	if cfg != nil {
+		headers = cfg.Remote.Headers
+	}
+	return eh.ResolveGeminiEmbeddingConfig(apiKey, baseURL, headers)
+}
+
+func (a *hostRuntimeAdapter) ResolvePromptWorkspaceDir() string {
+	pc := a.host.PromptContext()
+	if pc == nil {
+		return ""
+	}
+	return pc.ResolveWorkspaceDir()
+}
+
+func (a *hostRuntimeAdapter) ListSessionPortals(ctx context.Context, loginID, agentID string) ([]SessionPortal, error) {
+	lh, ok := a.host.(iruntime.LoginHelper)
+	if !ok {
+		return nil, nil
+	}
+	infos, err := lh.SessionPortals(ctx, loginID, agentID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SessionPortal, 0, len(infos))
+	for _, info := range infos {
+		portalKey, ok := info.PortalKey.(networkid.PortalKey)
+		if !ok {
+			continue
+		}
+		out = append(out, SessionPortal{Key: info.Key, PortalKey: portalKey})
+	}
+	return out, nil
+}
+
+func (a *hostRuntimeAdapter) BridgeDB() *dbutil.Database {
+	raw := a.dba.BridgeDB()
+	if raw == nil {
+		return nil
+	}
+	db, _ := raw.(*dbutil.Database)
+	return db
+}
+
+func (a *hostRuntimeAdapter) BridgeID() string {
+	return a.dba.BridgeID()
+}
+
+func (a *hostRuntimeAdapter) LoginID() string {
+	return a.dba.LoginID()
+}
+
+func (a *hostRuntimeAdapter) Logger() zerolog.Logger {
+	rl, ok := a.host.(iruntime.RawLoggerAccess)
+	if !ok {
+		return zerolog.Nop()
+	}
+	zl, ok := rl.RawLogger().(zerolog.Logger)
+	if !ok {
+		return zerolog.Nop()
+	}
+	return zl
+}
+
+// ---- private: config resolution ----
+
+// resolveMemorySearchConfigFromMaps converts generic map[string]any config
+// (from ConfigLookup) to agents.MemorySearchConfig and merges defaults with
+// agent-specific overrides.
+func resolveMemorySearchConfigFromMaps(defaults map[string]any, agentOverrides map[string]any) (*ResolvedConfig, error) {
+	var defaultsCfg *agents.MemorySearchConfig
+	if len(defaults) > 0 {
+		cfg, err := mapToMemorySearchConfig(defaults)
+		if err == nil {
+			defaultsCfg = cfg
+		}
+	}
+	var overridesCfg *agents.MemorySearchConfig
+	if len(agentOverrides) > 0 {
+		cfg, err := mapToMemorySearchConfig(agentOverrides)
+		if err == nil {
+			overridesCfg = cfg
+		}
+	}
+	resolved := MergeSearchConfig(defaultsCfg, overridesCfg)
+	if resolved == nil {
+		return nil, fmt.Errorf("memory search disabled")
+	}
+	return resolved, nil
+}
+
+func mapToMemorySearchConfig(m map[string]any) (*agents.MemorySearchConfig, error) {
+	raw, err := json.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+	var out agents.MemorySearchConfig
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
