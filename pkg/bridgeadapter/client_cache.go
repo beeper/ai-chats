@@ -16,6 +16,7 @@ func LoadOrCreateClient(
 	create func() (bridgev2.NetworkAPI, error),
 ) (bridgev2.NetworkAPI, error) {
 	if mu == nil {
+		// No mutex means caller opted out of shared cache synchronization.
 		return create()
 	}
 
@@ -27,14 +28,11 @@ func LoadOrCreateClient(
 		}
 		delete(clients, loginID)
 	}
-	mu.Unlock()
-
 	client, err := create()
 	if err != nil {
+		mu.Unlock()
 		return nil, err
 	}
-
-	mu.Lock()
 	clients[loginID] = client
 	mu.Unlock()
 	return client, nil

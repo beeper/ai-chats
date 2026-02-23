@@ -117,8 +117,8 @@ func (oc *AIClient) buildContinuationParams(
 	}
 
 	// Prevent duplicate tool names (Anthropic rejects duplicates)
-	params.Tools = dedupeToolParams(params.Tools)
 	logToolParamDuplicates(&oc.log, params.Tools)
+	params.Tools = dedupeToolParams(params.Tools)
 
 	return params
 }

@@ -9,6 +9,7 @@ logs/
 !config.example.yaml
 !registration.yaml.example
 !**/example-config.yaml
+!**/integrations_example-config.yaml
 !.pre-commit-config.yaml
 !.gitlab-ci.yml
 !.github/**/*.yml

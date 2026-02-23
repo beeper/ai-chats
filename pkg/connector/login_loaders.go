@@ -25,6 +25,15 @@ func (oc *OpenAIConnector) loadAIUserLogin(login *bridgev2.UserLogin, meta *User
 				return nil
 			}
 			oc.clientsMu.Lock()
+			if cachedAPI := oc.clients[login.ID]; cachedAPI != nil {
+				if cached, ok := cachedAPI.(*AIClient); ok && cached != nil {
+					cached.UserLogin = login
+					login.Client = cached
+					oc.clientsMu.Unlock()
+					cached.scheduleBootstrap()
+					return nil
+				}
+			}
 			oc.clients[login.ID] = client
 			oc.clientsMu.Unlock()
 			login.Client = client
@@ -50,6 +59,15 @@ func (oc *OpenAIConnector) loadAIUserLogin(login *bridgev2.UserLogin, meta *User
 				return nil
 			}
 			oc.clientsMu.Lock()
+			if cachedAPI := oc.clients[login.ID]; cachedAPI != nil {
+				if cached, ok := cachedAPI.(*AIClient); ok && cached != nil {
+					cached.UserLogin = login
+					login.Client = cached
+					oc.clientsMu.Unlock()
+					cached.scheduleBootstrap()
+					return nil
+				}
+			}
 			oc.clients[login.ID] = client
 			oc.clientsMu.Unlock()
 			login.Client = client
@@ -71,6 +89,15 @@ func (oc *OpenAIConnector) loadAIUserLogin(login *bridgev2.UserLogin, meta *User
 		return nil
 	}
 	oc.clientsMu.Lock()
+	if cachedAPI := oc.clients[login.ID]; cachedAPI != nil {
+		if cached, ok := cachedAPI.(*AIClient); ok && cached != nil {
+			cached.UserLogin = login
+			login.Client = cached
+			oc.clientsMu.Unlock()
+			cached.scheduleBootstrap()
+			return nil
+		}
+	}
 	oc.clients[login.ID] = client
 	oc.clientsMu.Unlock()
 	login.Client = client

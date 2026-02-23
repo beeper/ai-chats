@@ -6,6 +6,10 @@ github.com/PuerkitoBio/goquery v1.11.0 h1:jZ7pwMQXIITcUXNH83LLk+txlaEy6NVOfTuP43
 github.com/PuerkitoBio/goquery v1.11.0/go.mod h1:wQHgxUOU3JGuj3oD/QFfxUdlzW6xPHfqyHre6VMY4DQ=
 github.com/andybalholm/cascadia v1.3.3 h1:AG2YHrzJIm4BZ19iwJ/DAua6Btl3IwJX+VI4kktS1LM=
 github.com/andybalholm/cascadia v1.3.3/go.mod h1:xNd9bqTn98Ln4DwST8/nG+H0yuB8Hmgu1YHNnWw0GeA=
+github.com/beeper/bridge-manager v0.13.0 h1:3l6TJyH52tzrCv8zOkvembUd78c/Sy4jT7XObb9P0P0=
+github.com/beeper/bridge-manager v0.13.0/go.mod h1:FfU4oXsCdetSXzt2X4h8bp8cskcx9Y+5ZnmunRPOCHY=
+github.com/beeper/bridge-manager v0.13.1-0.20260127221509-52074726c975 h1:GymRS7tdlZl4ljfPLU78xPQc3Wk/EANgNNFwoeKxpXo=
+github.com/beeper/bridge-manager v0.13.1-0.20260127221509-52074726c975/go.mod h1:RhrM0s5I/gV73u2Te2aHQqD+e+/w2UarpbQxU2GS39Y=
 github.com/beeper/desktop-api-go v0.2.0 h1:VrwB1FCEiuPycGo6TsYSVVSKQIWFg22xmlRWVJ88E0A=
 github.com/beeper/desktop-api-go v0.2.0/go.mod h1:y9Mk83OdQWo6ldLTcPyaUPrwjkmvy/3QkhHqZLhU/mA=
 github.com/coder/websocket v1.8.14 h1:9L0p0iKiNOibykf283eHkKUHHrpG7f65OE3BhhO7v9g=

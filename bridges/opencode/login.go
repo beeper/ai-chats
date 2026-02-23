@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -27,6 +28,10 @@ const (
 type OpenCodeLogin struct {
 	User      *bridgev2.User
 	Connector *OpenCodeConnector
+
+	bgMu     sync.Mutex
+	bgCtx    context.Context
+	bgCancel context.CancelFunc
 }
 
 func (ol *OpenCodeLogin) validate() error {
@@ -113,7 +118,9 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 		if err := ol.Connector.LoadUserLogin(ctx, existing); err != nil {
 			return nil, fmt.Errorf("failed to load client: %w", err)
 		}
-		go existing.Client.Connect(existing.Log.WithContext(ctx))
+		if existing.Client != nil {
+			go existing.Client.Connect(existing.Log.WithContext(ol.backgroundProcessContext()))
+		}
 		return openCodeCompleteStep(existing), nil
 	}
 
@@ -131,7 +138,9 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 	if err := ol.Connector.LoadUserLogin(ctx, login); err != nil {
 		return nil, fmt.Errorf("failed to load client: %w", err)
 	}
-	go login.Client.Connect(login.Log.WithContext(ctx))
+	if login.Client != nil {
+		go login.Client.Connect(login.Log.WithContext(ol.backgroundProcessContext()))
+	}
 	return openCodeCompleteStep(login), nil
 }
 
@@ -157,4 +166,22 @@ func openCodeRemoteName(baseURL, username string) string {
 	return fmt.Sprintf("OpenCode (%s@%s)", username, parsed.Host)
 }
 
-func (ol *OpenCodeLogin) Cancel() {}
+func (ol *OpenCodeLogin) backgroundProcessContext() context.Context {
+	ol.bgMu.Lock()
+	defer ol.bgMu.Unlock()
+	if ol.bgCtx == nil || ol.bgCancel == nil {
+		ol.bgCtx, ol.bgCancel = context.WithCancel(context.Background())
+	}
+	return ol.bgCtx
+}
+
+func (ol *OpenCodeLogin) Cancel() {
+	ol.bgMu.Lock()
+	cancel := ol.bgCancel
+	ol.bgCancel = nil
+	ol.bgCtx = nil
+	ol.bgMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}

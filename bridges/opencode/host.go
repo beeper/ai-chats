@@ -19,6 +19,10 @@ import (
 var _ opencodebridge.Host = (*OpenCodeClient)(nil)
 
 func (oc *OpenCodeClient) Log() *zerolog.Logger {
+	if oc == nil || oc.UserLogin == nil {
+		l := zerolog.Nop()
+		return &l
+	}
 	l := oc.UserLogin.Log.With().Str("component", "opencode").Logger()
 	return &l
 }
@@ -31,8 +35,10 @@ func (oc *OpenCodeClient) BackgroundContext(ctx context.Context) context.Context
 	if ctx != nil {
 		return ctx
 	}
-	if bg := oc.UserLogin.Bridge.BackgroundCtx; bg != nil {
-		return bg
+	if oc != nil && oc.UserLogin != nil && oc.UserLogin.Bridge != nil {
+		if bg := oc.UserLogin.Bridge.BackgroundCtx; bg != nil {
+			return bg
+		}
 	}
 	return context.Background()
 }
@@ -63,16 +69,19 @@ func (oc *OpenCodeClient) FinishOpenCodeStream(turnID string) {
 	oc.streamSeqMu.Unlock()
 }
 
-func (oc *OpenCodeClient) DownloadAndEncodeMedia(ctx context.Context, mediaURL string, file *event.EncryptedFileInfo, _ int) (string, string, error) {
+func (oc *OpenCodeClient) DownloadAndEncodeMedia(ctx context.Context, mediaURL string, file *event.EncryptedFileInfo, maxMB int) (string, string, error) {
 	if strings.TrimSpace(mediaURL) == "" {
 		return "", "", errors.New("missing media URL")
 	}
-	if oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.Bot == nil {
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.Bot == nil {
 		return "", "", errors.New("bridge is unavailable")
 	}
 	data, err := oc.UserLogin.Bridge.Bot.DownloadMedia(ctx, id.ContentURIString(mediaURL), file)
 	if err != nil {
 		return "", "", err
+	}
+	if maxMB > 0 && len(data) > maxMB*1024*1024 {
+		return "", "", errors.New("media exceeds configured size limit")
 	}
 	return base64.StdEncoding.EncodeToString(data), "application/octet-stream", nil
 }
@@ -154,11 +163,25 @@ func (oc *OpenCodeClient) DefaultAgentID() string {
 }
 
 func (oc *OpenCodeClient) OpenCodeInstances() map[string]*opencodebridge.OpenCodeInstance {
-	return loginMetadata(oc.UserLogin).OpenCodeInstances
+	if oc == nil || oc.UserLogin == nil {
+		return nil
+	}
+	meta := loginMetadata(oc.UserLogin)
+	if meta == nil {
+		return nil
+	}
+	return meta.OpenCodeInstances
 }
 
 func (oc *OpenCodeClient) SaveOpenCodeInstances(ctx context.Context, instances map[string]*opencodebridge.OpenCodeInstance) error {
+	if oc == nil || oc.UserLogin == nil {
+		return errors.New("missing login")
+	}
 	meta := loginMetadata(oc.UserLogin)
+	if meta == nil {
+		meta = &UserLoginMetadata{}
+		oc.UserLogin.Metadata = meta
+	}
 	meta.OpenCodeInstances = instances
 	return oc.UserLogin.Save(ctx)
 }

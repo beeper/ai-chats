@@ -2,6 +2,8 @@ package connector
 
 import (
 	"encoding/json"
+	"net/url"
+	"path"
 	"strings"
 
 	"github.com/openai/openai-go/v3/responses"
@@ -290,12 +292,34 @@ func codeInterpreterFileParts(item responses.ResponseOutputItemUnion) []generate
 		if strings.TrimSpace(image.URL) == "" {
 			continue
 		}
+		mediaType := codeInterpreterMediaTypeFromURL(image.URL)
 		files = append(files, generatedFilePart{
 			url:       strings.TrimSpace(image.URL),
-			mediaType: "image/png",
+			mediaType: mediaType,
 		})
 	}
 	return files
+}
+
+func codeInterpreterMediaTypeFromURL(rawURL string) string {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	ext := ""
+	if err == nil {
+		ext = strings.ToLower(path.Ext(parsed.Path))
+	}
+	if ext == "" {
+		ext = strings.ToLower(path.Ext(strings.TrimSpace(rawURL)))
+	}
+	switch ext {
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".gif":
+		return "image/gif"
+	default:
+		return "application/octet-stream"
+	}
 }
 
 func responseMetadataDeltaFromResponse(resp responses.Response) map[string]any {
