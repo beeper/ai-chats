@@ -10,6 +10,7 @@ require (
 	github.com/PuerkitoBio/goquery v1.11.0
 	github.com/beeper/bridge-manager v0.13.1-0.20260127221509-52074726c975
 	github.com/beeper/desktop-api-go v0.2.0
+	github.com/coder/websocket v1.8.14
 	github.com/dyatlov/go-opengraph/opengraph v0.0.0-20220524092352-606d7b1e5f8a
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-sqlite3 v1.14.33
@@ -22,13 +23,13 @@ require (
 	github.com/yosuke-furukawa/json5 v0.1.1
 	go.mau.fi/util v0.9.5
 	golang.org/x/image v0.35.0
+	gopkg.in/yaml.v3 v3.0.1
 	maunium.net/go/mautrix v0.26.3-0.20260129174719-d2364b382275
 )
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/andybalholm/cascadia v1.3.3 // indirect
-	github.com/coder/websocket v1.8.14 // indirect
 	github.com/coreos/go-systemd/v22 v22.6.0 // indirect
 	github.com/dlclark/regexp2 v1.10.0 // indirect
 	github.com/google/jsonschema-go v0.3.0 // indirect
@@ -53,6 +54,5 @@ require (
 	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	maunium.net/go/mauflag v1.0.0 // indirect
 )

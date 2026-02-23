@@ -11,10 +11,10 @@ import (
 const ProviderCodex = "codex"
 
 type Config struct {
-	Bridge             BridgeConfig   `yaml:"bridge"`
-	Codex              *CodexConfig   `yaml:"codex"`
-	Owners             []string       `yaml:"owners"`
-	ModelCacheDuration time.Duration  `yaml:"model_cache_duration"`
+	Bridge             BridgeConfig  `yaml:"bridge"`
+	Codex              *CodexConfig  `yaml:"codex"`
+	Owners             []string      `yaml:"owners"`
+	ModelCacheDuration time.Duration `yaml:"model_cache_duration"`
 }
 
 type BridgeConfig struct {
