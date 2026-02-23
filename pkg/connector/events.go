@@ -673,9 +673,9 @@ type AgentDefinitionContent struct {
 	ReasoningEffort string                       `json:"reasoning_effort,omitempty"`
 	IdentityName    string                       `json:"identity_name,omitempty"`
 	IdentityPersona string                       `json:"identity_persona,omitempty"`
-	IsPreset        bool   `json:"is_preset,omitempty"`
-	MemorySearch    any    `json:"memory_search,omitempty"`
-	HeartbeatPrompt string `json:"heartbeat_prompt,omitempty"`
+	IsPreset        bool                         `json:"is_preset,omitempty"`
+	MemorySearch    any                          `json:"memory_search,omitempty"`
+	HeartbeatPrompt string                       `json:"heartbeat_prompt,omitempty"`
 	CreatedAt       int64                        `json:"created_at"`
 	UpdatedAt       int64                        `json:"updated_at"`
 }

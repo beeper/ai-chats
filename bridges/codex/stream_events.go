@@ -42,4 +42,3 @@ func defaultCodexChatPortalKey(loginID networkid.UserLoginID) networkid.PortalKe
 		Receiver: loginID,
 	}
 }
-

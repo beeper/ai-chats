@@ -1,9 +1,10 @@
 package opencode
 
 import (
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 
 	"github.com/beeper/ai-bridge/bridges/opencode/opencodebridge"
 )

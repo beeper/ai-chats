@@ -27,44 +27,44 @@ var modelConfig = struct {
 }{
 	Models: map[string]string{
 		// Anthropic (Claude) via OpenRouter
-		"anthropic/claude-3.7-sonnet":       "Claude 3.7 Sonnet",
+		"anthropic/claude-3.7-sonnet":          "Claude 3.7 Sonnet",
 		"anthropic/claude-3.7-sonnet:thinking": "Claude 3.7 Sonnet (Reasoning)",
-		"anthropic/claude-haiku-4.5":        "Claude Haiku 4.5",
-		"anthropic/claude-opus-4":           "Claude Opus 4",
-		"anthropic/claude-opus-4.1":         "Claude 4.1 Opus",
-		"anthropic/claude-opus-4.5":         "Claude Opus 4.5",
-		"anthropic/claude-opus-4.6":         "Claude Opus 4.6",
-		"anthropic/claude-sonnet-4":         "Claude 4 Sonnet",
-		"anthropic/claude-sonnet-4.5":       "Claude Sonnet 4.5",
+		"anthropic/claude-haiku-4.5":           "Claude Haiku 4.5",
+		"anthropic/claude-opus-4":              "Claude Opus 4",
+		"anthropic/claude-opus-4.1":            "Claude 4.1 Opus",
+		"anthropic/claude-opus-4.5":            "Claude Opus 4.5",
+		"anthropic/claude-opus-4.6":            "Claude Opus 4.6",
+		"anthropic/claude-sonnet-4":            "Claude 4 Sonnet",
+		"anthropic/claude-sonnet-4.5":          "Claude Sonnet 4.5",
 
 		// DeepSeek
-		"deepseek/deepseek-chat-v3-0324": "DeepSeek v3 (0324)",
-		"deepseek/deepseek-chat-v3.1":    "DeepSeek v3.1",
-		"deepseek/deepseek-v3.1-terminus": "DeepSeek v3.1 Terminus",
-		"deepseek/deepseek-v3.2":         "DeepSeek v3.2",
-		"deepseek/deepseek-r1":           "DeepSeek R1 (Original)",
-		"deepseek/deepseek-r1-0528":      "DeepSeek R1 (0528)",
+		"deepseek/deepseek-chat-v3-0324":        "DeepSeek v3 (0324)",
+		"deepseek/deepseek-chat-v3.1":           "DeepSeek v3.1",
+		"deepseek/deepseek-v3.1-terminus":       "DeepSeek v3.1 Terminus",
+		"deepseek/deepseek-v3.2":                "DeepSeek v3.2",
+		"deepseek/deepseek-r1":                  "DeepSeek R1 (Original)",
+		"deepseek/deepseek-r1-0528":             "DeepSeek R1 (0528)",
 		"deepseek/deepseek-r1-distill-qwen-32b": "DeepSeek R1 (Qwen Distilled)",
 
 		// Gemini (Google) via OpenRouter
-		"google/gemini-2.0-flash-001":         "Gemini 2.0 Flash",
-		"google/gemini-2.0-flash-lite-001":    "Gemini 2.0 Flash Lite",
-		"google/gemini-2.5-flash":             "Gemini 2.5 Flash",
-		"google/gemini-2.5-flash-lite":        "Gemini 2.5 Flash Lite",
-		"google/gemini-2.5-pro":               "Gemini 2.5 Pro",
-		"google/gemini-2.5-flash-image":       "Nano Banana",
-		"google/gemini-3-flash-preview":       "Gemini 3 Flash",
-		"google/gemini-3-pro-preview":         "Gemini 3 Pro",
-		"google/gemini-3-pro-image-preview":   "Nano Banana Pro",
+		"google/gemini-2.0-flash-001":       "Gemini 2.0 Flash",
+		"google/gemini-2.0-flash-lite-001":  "Gemini 2.0 Flash Lite",
+		"google/gemini-2.5-flash":           "Gemini 2.5 Flash",
+		"google/gemini-2.5-flash-lite":      "Gemini 2.5 Flash Lite",
+		"google/gemini-2.5-pro":             "Gemini 2.5 Pro",
+		"google/gemini-2.5-flash-image":     "Nano Banana",
+		"google/gemini-3-flash-preview":     "Gemini 3 Flash",
+		"google/gemini-3-pro-preview":       "Gemini 3 Pro",
+		"google/gemini-3-pro-image-preview": "Nano Banana Pro",
 
 		// GLM (Z.AI) - supports reasoning via parameter
-		"z-ai/glm-4.5":    "GLM 4.5",
-		"z-ai/glm-4.5v":   "GLM 4.5V",
+		"z-ai/glm-4.5":     "GLM 4.5",
+		"z-ai/glm-4.5v":    "GLM 4.5V",
 		"z-ai/glm-4.5-air": "GLM 4.5 Air",
-		"z-ai/glm-4.6":    "GLM 4.6",
-		"z-ai/glm-4.6v":   "GLM 4.6V",
-		"z-ai/glm-4.7":    "GLM 4.7",
-		"z-ai/glm-5":      "GLM 5",
+		"z-ai/glm-4.6":     "GLM 4.6",
+		"z-ai/glm-4.6v":    "GLM 4.6V",
+		"z-ai/glm-4.7":     "GLM 4.7",
+		"z-ai/glm-5":       "GLM 5",
 
 		// Kimi (Moonshot)
 		"moonshotai/kimi-k2":          "Kimi K2 (0711)",
@@ -74,8 +74,8 @@ var modelConfig = struct {
 
 		// Llama (Meta)
 		"meta-llama/llama-3.3-70b-instruct": "Llama 3.3 70B",
-		"meta-llama/llama-4-maverick":      "Llama 4 Maverick",
-		"meta-llama/llama-4-scout":         "Llama 4 Scout",
+		"meta-llama/llama-4-maverick":       "Llama 4 Maverick",
+		"meta-llama/llama-4-scout":          "Llama 4 Scout",
 
 		// MiniMax
 		"minimax/minimax-m2":   "MiniMax M2",
@@ -83,7 +83,7 @@ var modelConfig = struct {
 		"minimax/minimax-m2.5": "MiniMax M2.5",
 
 		// OpenAI models via OpenRouter
-		"openai/gpt-4.1":     "GPT 4.1",
+		"openai/gpt-4.1":      "GPT 4.1",
 		"openai/gpt-4.1-mini": "GPT 4.1 Mini",
 		"openai/gpt-4.1-nano": "GPT 4.1 Nano",
 		"openai/gpt-4o-mini":  "GPT 4o Mini",
@@ -106,11 +106,11 @@ var modelConfig = struct {
 		"openai/gpt-oss-120b": "OSS 120B",
 
 		// Qwen (Alibaba)
-		"qwen/qwen-2.5-coder-32b-instruct": "Qwen 2.5 32B",
-		"qwen/qwen3-32b":                  "Qwen 3 32B",
+		"qwen/qwen-2.5-coder-32b-instruct":   "Qwen 2.5 32B",
+		"qwen/qwen3-32b":                     "Qwen 3 32B",
 		"qwen/qwen3-235b-a22b-thinking-2507": "Qwen 3 235B (Thinking)",
-		"qwen/qwen3-235b-a22b":             "Qwen 3 235B",
-		"qwen/qwen3-coder":                  "Qwen 3 Coder",
+		"qwen/qwen3-235b-a22b":               "Qwen 3 235B",
+		"qwen/qwen3-coder":                   "Qwen 3 Coder",
 
 		// xAI (Grok)
 		"x-ai/grok-3":        "Grok 3",
