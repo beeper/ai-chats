@@ -121,41 +121,10 @@ func resolveProviderQuery(providerID string, cfg *MediaUnderstandingConfig, entr
 			normalized[key] = value
 		}
 	}
-	for key, value := range buildDeepgramCompatQuery(cfg, entry) {
-		if _, ok := normalized[key]; !ok {
-			normalized[key] = value
-		}
-	}
 	if len(normalized) == 0 {
 		return nil
 	}
 	return normalized
-}
-
-func buildDeepgramCompatQuery(cfg *MediaUnderstandingConfig, entry MediaUnderstandingModelConfig) map[string]any {
-	var source *MediaUnderstandingDeepgramConfig
-	if entry.Deepgram != nil {
-		source = entry.Deepgram
-	} else if cfg != nil && cfg.Deepgram != nil {
-		source = cfg.Deepgram
-	}
-	if source == nil {
-		return nil
-	}
-	query := map[string]any{}
-	if source.DetectLanguage != nil {
-		query["detect_language"] = *source.DetectLanguage
-	}
-	if source.Punctuate != nil {
-		query["punctuate"] = *source.Punctuate
-	}
-	if source.SmartFormat != nil {
-		query["smart_format"] = *source.SmartFormat
-	}
-	if len(query) == 0 {
-		return nil
-	}
-	return query
 }
 
 func transcribeOpenAICompatibleAudio(ctx context.Context, params mediaAudioRequest) (string, error) {

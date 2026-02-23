@@ -143,7 +143,7 @@ func (c *CronService) Start() error {
 		if workers < 1 {
 			workers = 1
 		}
-		for i := 0; i < workers; i++ {
+		for range workers {
 			c.workersWg.Add(1)
 			go c.workerLoop()
 		}

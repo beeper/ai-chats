@@ -1252,7 +1252,7 @@ func (cc *CodexClient) dispatchNotifications() {
 			// Race: turn/start just returned but subscribeTurn() hasn't registered yet.
 			// Spin-wait briefly for terminal events that must not be dropped.
 			if evt.Method == "turn/completed" || evt.Method == "error" {
-				for i := 0; i < 20; i++ {
+				for range 20 {
 					time.Sleep(50 * time.Millisecond)
 					cc.subMu.Lock()
 					ch = cc.turnSubs[key]

@@ -251,7 +251,7 @@ func runWithConcurrency[T any](tasks []func() (T, error), limit int) (map[int]T,
 		}
 	}
 	wg.Add(limit)
-	for i := 0; i < limit; i++ {
+	for range limit {
 		go worker()
 	}
 	wg.Wait()

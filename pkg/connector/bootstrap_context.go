@@ -76,7 +76,7 @@ func userMdHasValues(content string) bool {
 		v := strings.TrimSpace(value)
 		// Strip common markdown emphasis markers. Do this a couple times because removing "**"
 		// can expose leading whitespace before another marker like "*...*".
-		for i := 0; i < 2; i++ {
+		for range 2 {
 			v = strings.TrimSpace(strings.Trim(v, "*_"))
 		}
 		if strings.HasPrefix(v, "(") && strings.HasSuffix(v, ")") {

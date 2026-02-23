@@ -121,16 +121,13 @@ func detectUTF16(data []byte) (string, int) {
 	if data[0] == 0xfe && data[1] == 0xff {
 		return "utf-16be", 2
 	}
-	sampleLen := len(data)
-	if sampleLen > 2048 {
-		sampleLen = 2048
-	}
+	sampleLen := min(len(data), 2048)
 	if sampleLen < 2 {
 		return "", 0
 	}
 	zeroEven := 0
 	zeroOdd := 0
-	for i := 0; i < sampleLen; i++ {
+	for i := range sampleLen {
 		if data[i] != 0 {
 			continue
 		}

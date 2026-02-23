@@ -278,13 +278,6 @@ type MediaUnderstandingAttachmentsConfig struct {
 	Prefer         string `yaml:"prefer"`
 }
 
-// MediaUnderstandingDeepgramConfig is a deprecated compatibility shim for Deepgram settings.
-type MediaUnderstandingDeepgramConfig struct {
-	DetectLanguage *bool `yaml:"detectLanguage"`
-	Punctuate      *bool `yaml:"punctuate"`
-	SmartFormat    *bool `yaml:"smartFormat"`
-}
-
 // MediaUnderstandingModelConfig defines a single media understanding model entry.
 type MediaUnderstandingModelConfig struct {
 	Provider         string                            `yaml:"provider"`
@@ -298,9 +291,8 @@ type MediaUnderstandingModelConfig struct {
 	MaxBytes         int                               `yaml:"maxBytes"`
 	TimeoutSeconds   int                               `yaml:"timeoutSeconds"`
 	Language         string                            `yaml:"language"`
-	ProviderOptions  map[string]map[string]any         `yaml:"providerOptions"`
-	Deepgram         *MediaUnderstandingDeepgramConfig `yaml:"deepgram"`
-	BaseURL          string                            `yaml:"baseUrl"`
+	ProviderOptions  map[string]map[string]any `yaml:"providerOptions"`
+	BaseURL          string                   `yaml:"baseUrl"`
 	Headers          map[string]string                 `yaml:"headers"`
 	Profile          string                            `yaml:"profile"`
 	PreferredProfile string                            `yaml:"preferredProfile"`
@@ -316,7 +308,6 @@ type MediaUnderstandingConfig struct {
 	TimeoutSeconds  int                                  `yaml:"timeoutSeconds"`
 	Language        string                               `yaml:"language"`
 	ProviderOptions map[string]map[string]any            `yaml:"providerOptions"`
-	Deepgram        *MediaUnderstandingDeepgramConfig    `yaml:"deepgram"`
 	BaseURL         string                               `yaml:"baseUrl"`
 	Headers         map[string]string                    `yaml:"headers"`
 	Attachments     *MediaUnderstandingAttachmentsConfig `yaml:"attachments"`

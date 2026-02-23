@@ -144,9 +144,9 @@ func TestDedupeCache_Concurrent(t *testing.T) {
 	done := make(chan bool)
 
 	// Run concurrent checks
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		go func(id int) {
-			for j := 0; j < 100; j++ {
+			for range 100 {
 				key := "key" + string(rune('A'+id))
 				cache.Check(key)
 			}
@@ -155,7 +155,7 @@ func TestDedupeCache_Concurrent(t *testing.T) {
 	}
 
 	// Wait for all goroutines
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		<-done
 	}
 

@@ -1,4 +1,3 @@
-//lint:file-ignore U1000 System event buffering is staged for future use.
 package connector
 
 import (

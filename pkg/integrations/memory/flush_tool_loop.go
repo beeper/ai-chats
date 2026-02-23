@@ -55,7 +55,7 @@ func RunFlushToolLoop(
 	defer cancel()
 
 	chat := append([]openai.ChatCompletionMessageParamUnion{}, messages...)
-	for i := 0; i < maxTurns; i++ {
+	for range maxTurns {
 		assistant, calls, done, err := deps.NextTurn(flushCtx, model, chat)
 		if err != nil {
 			return err

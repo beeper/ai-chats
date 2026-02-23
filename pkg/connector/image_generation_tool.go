@@ -626,7 +626,7 @@ func generateImagesForRequest(ctx context.Context, btc *BridgeToolContext, req i
 		}
 		sem := make(chan struct{}, concurrency)
 		results := make(chan genResult, count)
-		for i := 0; i < count; i++ {
+		for range count {
 			sem <- struct{}{}
 			go func() {
 				defer func() { <-sem }()
@@ -635,7 +635,7 @@ func generateImagesForRequest(ctx context.Context, btc *BridgeToolContext, req i
 			}()
 		}
 		images := make([]string, 0, count)
-		for i := 0; i < count; i++ {
+		for range count {
 			r := <-results
 			if r.err != nil {
 				return nil, r.err

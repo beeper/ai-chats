@@ -85,9 +85,6 @@ type streamingState struct {
 
 	// Debounced ephemeral logging: true once the "Streaming started" summary has been logged.
 	loggedStreamStart bool
-
-	// Used to avoid spamming repeated timeline notices during a single run.
-	timelineNotices map[string]bool
 }
 
 type mcpApprovalRequest struct {
@@ -123,7 +120,6 @@ func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID 
 		uiToolTypeByToolCallID:  make(map[string]ToolType),
 		uiToolOutputFinalized:   make(map[string]bool),
 		pendingMcpApprovalsSeen: make(map[string]bool),
-		timelineNotices:         make(map[string]bool),
 	}
 	if meta != nil && normalizeSendPolicyMode(meta.SendPolicy) == "deny" {
 		state.suppressSend = true

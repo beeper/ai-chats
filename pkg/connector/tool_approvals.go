@@ -104,22 +104,6 @@ func (oc *AIClient) registerToolApproval(params struct {
 	return p, true
 }
 
-func (oc *AIClient) setApprovalSnapshotEvent(approvalID string, eventID id.EventID, useBot bool) {
-	if oc == nil {
-		return
-	}
-	approvalID = strings.TrimSpace(approvalID)
-	if approvalID == "" || eventID == "" {
-		return
-	}
-	oc.toolApprovalsMu.Lock()
-	if p := oc.toolApprovals[approvalID]; p != nil {
-		p.ApprovalEventID = eventID
-		p.ApprovalEventUseBot = useBot
-	}
-	oc.toolApprovalsMu.Unlock()
-}
-
 func (oc *AIClient) resolveToolApproval(roomID id.RoomID, approvalID string, decision ToolApprovalDecision) error {
 	if oc == nil || oc.UserLogin == nil {
 		return errors.New("bridge not available")
