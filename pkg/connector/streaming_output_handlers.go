@@ -208,11 +208,6 @@ func (oc *AIClient) handleResponseOutputItemAdded(
 	if !desc.ok {
 		return
 	}
-	// Keep legacy handlers for function/web/image to avoid duplicate tool events.
-	switch item.Type {
-	case "function_call", "web_search_call", "image_generation_call":
-		return
-	}
 	if state == nil {
 		return
 	}
@@ -311,11 +306,6 @@ func (oc *AIClient) handleResponseOutputItemDone(
 ) {
 	desc := deriveToolDescriptorForOutputItem(item, state)
 	if !desc.ok {
-		return
-	}
-	// Keep legacy handlers for function/web/image to avoid duplicate tool events.
-	switch item.Type {
-	case "function_call", "web_search_call", "image_generation_call":
 		return
 	}
 	if state == nil {

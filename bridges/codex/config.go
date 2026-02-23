@@ -15,16 +15,10 @@ type Config struct {
 	Codex              *CodexConfig   `yaml:"codex"`
 	Owners             []string       `yaml:"owners"`
 	ModelCacheDuration time.Duration  `yaml:"model_cache_duration"`
-	LinkPreviews       *PreviewConfig `yaml:"link_previews"`
 }
 
 type BridgeConfig struct {
 	CommandPrefix string `yaml:"command_prefix"`
-}
-
-// PreviewConfig is intentionally minimal for the codex bridge split.
-type PreviewConfig struct {
-	Enabled *bool `yaml:"enabled"`
 }
 
 // CodexConfig configures the Codex app-server integration.

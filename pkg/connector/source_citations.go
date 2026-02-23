@@ -193,7 +193,6 @@ func citationProviderMetadata(c sourceCitation) map[string]any {
 	}
 	if site := strings.TrimSpace(c.SiteName); site != "" {
 		meta["site_name"] = site
-		meta["siteName"] = site // camelCase alias for desktop compatibility
 	}
 	if author := strings.TrimSpace(c.Author); author != "" {
 		meta["author"] = author

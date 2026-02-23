@@ -1,12 +1,9 @@
 package codex
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
-	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
 
@@ -71,8 +68,8 @@ func citationProviderMetadata(c sourceCitation) map[string]any {
 	return meta
 }
 
-func buildSourceParts(citations []sourceCitation, documents []sourceDocument, previews []*event.BeeperLinkPreview) []map[string]any {
-	if len(citations) == 0 && len(documents) == 0 && len(previews) == 0 {
+func buildSourceParts(citations []sourceCitation, documents []sourceDocument) []map[string]any {
+	if len(citations) == 0 && len(documents) == 0 {
 		return nil
 	}
 	parts := make([]map[string]any, 0, len(citations)+len(documents))
@@ -149,47 +146,6 @@ func generatedFilesToParts(files []generatedFilePart) []map[string]any {
 		})
 	}
 	return parts
-}
-
-// Link preview support is intentionally minimal in the isolated codex bridge.
-type LinkPreviewConfig struct{}
-
-func getLinkPreviewConfig(connectorConfig *Config) LinkPreviewConfig {
-	_ = connectorConfig
-	return LinkPreviewConfig{}
-}
-
-func generateOutboundLinkPreviews(ctx context.Context, text string, intent bridgev2.MatrixAPI, portal *bridgev2.Portal, citations []sourceCitation, config LinkPreviewConfig) []*event.BeeperLinkPreview {
-	_ = ctx
-	_ = text
-	_ = intent
-	_ = portal
-	_ = citations
-	_ = config
-	return nil
-}
-
-func PreviewsToMapSlice(previews []*event.BeeperLinkPreview) []map[string]any {
-	if len(previews) == 0 {
-		return nil
-	}
-	out := make([]map[string]any, 0, len(previews))
-	for _, p := range previews {
-		if p == nil {
-			continue
-		}
-		entry := map[string]any{
-			"matched_url": p.MatchedURL,
-		}
-		if p.CanonicalURL != "" {
-			entry["canonical_url"] = p.CanonicalURL
-		}
-		if p.Title != "" {
-			entry["title"] = p.Title
-		}
-		out = append(out, entry)
-	}
-	return out
 }
 
 type streamingState struct {

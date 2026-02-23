@@ -2041,7 +2041,7 @@ func (cc *CodexClient) emitUIFinish(ctx context.Context, portal *bridgev2.Portal
 	})
 }
 
-func (cc *CodexClient) buildCanonicalUIMessage(state *streamingState, model string, finishReason string, linkPreviews []*event.BeeperLinkPreview) map[string]any {
+func (cc *CodexClient) buildCanonicalUIMessage(state *streamingState, model string, finishReason string) map[string]any {
 	parts := make([]map[string]any, 0, 2+len(state.toolCalls))
 	if strings.TrimSpace(state.reasoning.String()) != "" {
 		parts = append(parts, map[string]any{"type": "reasoning", "text": state.reasoning.String(), "state": "done"})
@@ -2075,7 +2075,7 @@ func (cc *CodexClient) buildCanonicalUIMessage(state *streamingState, model stri
 		}
 		parts = append(parts, part)
 	}
-	if sourceParts := buildSourceParts(state.sourceCitations, state.sourceDocuments, linkPreviews); len(sourceParts) > 0 {
+	if sourceParts := buildSourceParts(state.sourceCitations, state.sourceDocuments); len(sourceParts) > 0 {
 		parts = append(parts, sourceParts...)
 	}
 	if fileParts := generatedFilesToParts(state.generatedFiles); len(fileParts) > 0 {
@@ -2110,15 +2110,11 @@ func (cc *CodexClient) sendFinalAssistantTurn(ctx context.Context, portal *bridg
 		rendered = format.RenderMarkdown(firstBody, true, true)
 	}
 
-	// Generate link previews for URLs in the response
-	config := getLinkPreviewConfig(&cc.connector.Config)
-	linkPreviews := generateOutboundLinkPreviews(ctx, state.accumulated.String(), intent, portal, state.sourceCitations, config)
-
 	relatesTo := map[string]any{
 		"rel_type": RelReplace,
 		"event_id": state.initialEventID.String(),
 	}
-	uiMessage := cc.buildCanonicalUIMessage(state, model, finishReason, linkPreviews)
+	uiMessage := cc.buildCanonicalUIMessage(state, model, finishReason)
 	raw := map[string]any{
 		"msgtype":        event.MsgText,
 		"body":           "* " + rendered.Body,
@@ -2137,11 +2133,6 @@ func (cc *CodexClient) sendFinalAssistantTurn(ctx context.Context, portal *bridg
 		"m.mentions":                    map[string]any{},
 	}
 
-	// Attach link previews if any were generated
-	if len(linkPreviews) > 0 {
-		raw["com.beeper.linkpreviews"] = PreviewsToMapSlice(linkPreviews)
-	}
-
 	if _, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, &event.Content{Raw: raw}, nil); err != nil {
 		cc.loggerForContext(ctx).Warn().Err(err).Stringer("initial_event_id", state.initialEventID).Msg("Failed to send final assistant turn")
 	} else {
@@ -2150,7 +2141,6 @@ func (cc *CodexClient) sendFinalAssistantTurn(ctx context.Context, portal *bridg
 			Str("turn_id", state.turnID).
 			Bool("has_thinking", state.reasoning.Len() > 0).
 			Int("tool_calls", len(state.toolCalls)).
-			Int("link_previews", len(linkPreviews)).
 			Msg("Sent final assistant turn")
 	}
 
@@ -2212,7 +2202,7 @@ func (cc *CodexClient) saveAssistantMessage(ctx context.Context, portal *bridgev
 			CompletedAtMs:      state.completedAtMs,
 			HasToolCalls:       len(state.toolCalls) > 0,
 			CanonicalSchema:    "ai-sdk-ui-message-v1",
-			CanonicalUIMessage: cc.buildCanonicalUIMessage(state, model, finishReason, nil),
+			CanonicalUIMessage: cc.buildCanonicalUIMessage(state, model, finishReason),
 			GeneratedFiles:     genFiles,
 			ThinkingContent:    state.reasoning.String(),
 			ThinkingTokenCount: len(strings.Fields(state.reasoning.String())),

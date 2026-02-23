@@ -758,8 +758,6 @@ func (m *OpenCodeManager) handleMessageRemoved(ctx context.Context, inst *openCo
 		m.bridge.emitOpenCodePartRemove(ctx, portal, inst.cfg.ID, partID, partType, removedRole == "user")
 		inst.removePart(sessionID, messageID, partID)
 	}
-	// Remove legacy message ID if it exists from older bridges.
-	m.bridge.emitOpenCodeMessageRemove(ctx, portal, inst.cfg.ID, messageID, role == "user")
 }
 
 const disconnectGracePeriod = 5 * time.Second
