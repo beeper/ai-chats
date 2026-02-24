@@ -468,6 +468,8 @@ type ModelDefinitionConfig struct {
 type BridgeConfig struct {
 	CommandPrefix      string `yaml:"command_prefix"`
 	LogEphemeralEvents *bool  `yaml:"log_ephemeral_events"`
+	StreamingTransport string `yaml:"streaming_transport"`        // ephemeral|debounced_edit
+	StreamingDebounce  int    `yaml:"streaming_edit_debounce_ms"` // Debounce for edit transport
 }
 
 func upgradeConfig(helper configupgrade.Helper) {
@@ -498,6 +500,8 @@ func upgradeConfig(helper configupgrade.Helper) {
 	// Bridge-specific configuration
 	helper.Copy(configupgrade.Str, "bridge", "command_prefix")
 	helper.Copy(configupgrade.Bool, "bridge", "log_ephemeral_events")
+	helper.Copy(configupgrade.Str, "bridge", "streaming_transport")
+	helper.Copy(configupgrade.Int, "bridge", "streaming_edit_debounce_ms")
 
 	// Context pruning configuration
 	helper.Copy(configupgrade.Str, "pruning", "mode")

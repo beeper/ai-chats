@@ -117,7 +117,7 @@ func run() error {
 
 func printUsage() {
 	fmt.Println("bridgectl - bridgev2 orchestrator")
-	fmt.Println("commands: login logout whoami register delete up down restart status logs init list doctor auth")
+	fmt.Println("commands: login logout whoami register delete up down restart status logs init list doctor auth help")
 }
 
 func cmdLogin(args []string) error {
@@ -242,11 +242,11 @@ func cmdUp(args []string) error {
 	if err != nil {
 		return err
 	}
-	meta, err := ensureInitialized(instance, cfg, state)
-	if err != nil {
+	if err = ensureBuilt(cfg); err != nil {
 		return err
 	}
-	if err = ensureBuilt(cfg); err != nil {
+	meta, err := ensureInitialized(instance, cfg, state)
+	if err != nil {
 		return err
 	}
 	if err = ensureRegistration(meta, cfg); err != nil {
@@ -407,6 +407,9 @@ func cmdInit(args []string) error {
 	if err != nil {
 		return err
 	}
+	if err = ensureBuilt(cfg); err != nil {
+		return err
+	}
 	meta, err := ensureInitialized(instance, cfg, state)
 	if err != nil {
 		return err
@@ -433,6 +436,9 @@ func cmdRegister(args []string) error {
 	}
 	state, err := ensureInstanceLayout(instance)
 	if err != nil {
+		return err
+	}
+	if err = ensureBuilt(cfg); err != nil {
 		return err
 	}
 	meta, err := ensureInitialized(instance, cfg, state)
@@ -494,7 +500,9 @@ func cmdDelete(args []string) error {
 	if err != nil {
 		return err
 	}
-	_, _ = stopBridge(meta)
+	if _, err := stopBridge(meta); err != nil {
+		return fmt.Errorf("failed to stop %s: %w", instance, err)
+	}
 	if *remote {
 		if err := deleteRemoteBridge(meta.BeeperBridgeName); err != nil {
 			return err
@@ -691,9 +699,9 @@ func ensureInitialized(instance string, cfg instanceConfig, sp *statePaths) (*me
 		if err = generateExampleConfig(meta); err != nil {
 			return nil, err
 		}
-		if err = applyConfigOverrides(meta.ConfigPath, cfg.ConfigOverrides); err != nil {
-			return nil, err
-		}
+	}
+	if err = applyConfigOverrides(meta.ConfigPath, cfg.ConfigOverrides); err != nil {
+		return nil, err
 	}
 	if err = writeMetadata(meta, sp.MetaPath); err != nil {
 		return nil, err

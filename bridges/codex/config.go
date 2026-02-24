@@ -18,7 +18,9 @@ type Config struct {
 }
 
 type BridgeConfig struct {
-	CommandPrefix string `yaml:"command_prefix"`
+	CommandPrefix      string `yaml:"command_prefix"`
+	StreamingTransport string `yaml:"streaming_transport"`        // ephemeral|debounced_edit
+	StreamingDebounce  int    `yaml:"streaming_edit_debounce_ms"` // Debounce for edit transport
 }
 
 // CodexConfig configures the Codex app-server integration.
@@ -45,6 +47,8 @@ func (ci *CodexClientInfo) rpcClientInfo() codexrpc.ClientInfo {
 const exampleNetworkConfig = `
 bridge:
   command_prefix: "!ai"
+  streaming_transport: "ephemeral"
+  streaming_edit_debounce_ms: 250
 codex:
   enabled: true
   command: "codex"

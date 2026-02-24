@@ -17,6 +17,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 )
 
 var (
@@ -77,6 +78,12 @@ func (cc *CodexConnector) applyRuntimeDefaults() {
 	}
 	if cc.Config.Bridge.CommandPrefix == "" {
 		cc.Config.Bridge.CommandPrefix = "!ai"
+	}
+	if cc.Config.Bridge.StreamingTransport == "" {
+		cc.Config.Bridge.StreamingTransport = string(streamtransport.DefaultMode)
+	}
+	if cc.Config.Bridge.StreamingDebounce <= 0 {
+		cc.Config.Bridge.StreamingDebounce = streamtransport.DefaultEditDebounceMs
 	}
 	if cc.Config.Codex == nil {
 		cc.Config.Codex = &CodexConfig{}

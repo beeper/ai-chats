@@ -256,7 +256,7 @@ func (i *Integration) buildOverflowDeps() OverflowDeps {
 			overflowCall, _ := call.(iruntime.ContextOverflowCall)
 			return ma.IsRawMode(overflowCall.Meta)
 		},
-		ResolveSettings: i.resolveMemoryFlushSettings,
+		ResolveSettings: i.resolveOverflowFlushSettings,
 		TrimPrompt: func(prompt []openai.ChatCompletionMessageParamUnion) []openai.ChatCompletionMessageParamUnion {
 			oh, ok := i.host.(iruntime.OverflowHelper)
 			if !ok {
@@ -301,8 +301,8 @@ func (i *Integration) buildOverflowDeps() OverflowDeps {
 			}
 			overflowCall, _ := call.(iruntime.ContextOverflowCall)
 			meta := overflowCall.Meta
-			flushAt := ma.GetModuleMeta(meta, "memory_flush_at")
-			flushCompactionCount := ma.GetModuleMeta(meta, "memory_flush_compaction_count")
+			flushAt := ma.GetModuleMeta(meta, "overflow_flush_at")
+			flushCompactionCount := ma.GetModuleMeta(meta, "overflow_flush_compaction_count")
 			if flushAt == nil {
 				return false
 			}
@@ -337,20 +337,20 @@ func (i *Integration) buildOverflowDeps() OverflowDeps {
 				return
 			}
 			compactionCount := ma.CompactionCount(overflowCall.Meta)
-			ma.SetModuleMeta(overflowCall.Meta, "memory_flush_at", time.Now().UnixMilli())
-			ma.SetModuleMeta(overflowCall.Meta, "memory_flush_compaction_count", compactionCount)
+			ma.SetModuleMeta(overflowCall.Meta, "overflow_flush_at", time.Now().UnixMilli())
+			ma.SetModuleMeta(overflowCall.Meta, "overflow_flush_compaction_count", compactionCount)
 			pm, ok := i.host.(iruntime.PortalManager)
 			if !ok {
 				return
 			}
-			_ = pm.SavePortal(ctx, overflowCall.Portal, "memory flush")
+			_ = pm.SavePortal(ctx, overflowCall.Portal, "overflow flush")
 		},
 		RunFlushToolLoop: func(ctx context.Context, call any, model string, prompt []openai.ChatCompletionMessageParamUnion) error {
 			overflowCall, _ := call.(iruntime.ContextOverflowCall)
 			return i.runFlushToolLoop(ctx, overflowCall.Portal, overflowCall.Meta, model, prompt)
 		},
 		OnError: func(_ context.Context, err error) {
-			i.host.Logger().Warn("memory flush failed", map[string]any{"error": err.Error()})
+			i.host.Logger().Warn("overflow flush failed", map[string]any{"error": err.Error()})
 		},
 	}
 }
@@ -561,14 +561,14 @@ func (i *Integration) runFlushToolLoop(
 			return tph.ExecuteToolInContext(ctx, portal, meta, name, argsJSON)
 		},
 		OnToolError: func(name string, err error) {
-			i.host.Logger().Warn("memory flush tool failed", map[string]any{"tool": name, "error": err.Error()})
+			i.host.Logger().Warn("overflow flush tool failed", map[string]any{"tool": name, "error": err.Error()})
 		},
 	})
 }
 
 // ---- private: flush settings ----
 
-func (i *Integration) resolveMemoryFlushSettings() *FlushSettings {
+func (i *Integration) resolveOverflowFlushSettings() *FlushSettings {
 	oh, ok := i.host.(iruntime.OverflowHelper)
 	if !ok {
 		return nil

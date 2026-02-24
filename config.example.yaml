@@ -297,13 +297,13 @@ default_system_prompt: |
     # Additional instructions for the summarization model
     # custom_instructions: "Focus on preserving code decisions and TODOs"
 
-    # Pre-compaction memory flush (OpenClaw-style).
-    # Runs a silent turn that can write to memory/YYYY-MM-DD.md before compaction.
-    memory_flush:
+    # Pre-compaction overflow/recall flush (OpenClaw-style).
+    # Runs a silent turn that can write durable notes before compaction.
+    overflow_flush:
       enabled: true
       soft_threshold_tokens: 4000
-      prompt: "Pre-compaction memory flush. Store durable memories now (use memory/YYYY-MM-DD.md; create memory/ if needed). If nothing to store, reply with NO_REPLY."
-      system_prompt: "Pre-compaction memory flush turn. The session is near auto-compaction; capture durable memories to disk. You may reply, but usually NO_REPLY is correct."
+      prompt: "Pre-compaction overflow/recall flush. Store durable notes now (use memory/YYYY-MM-DD.md; create memory/ if needed). If nothing to store, reply with NO_REPLY."
+      system_prompt: "Pre-compaction overflow/recall flush turn. The session is near auto-compaction; capture durable notes to disk. You may reply, but usually NO_REPLY is correct."
 
   # Link preview configuration.
   # Automatically fetches metadata for URLs in messages to provide context to the AI

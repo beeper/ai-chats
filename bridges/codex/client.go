@@ -26,6 +26,7 @@ import (
 
 	"github.com/beeper/ai-bridge/bridges/codex/codexrpc"
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 )
 
 var _ bridgev2.NetworkAPI = (*CodexClient)(nil)
@@ -91,6 +92,8 @@ type CodexClient struct {
 	roomMu          sync.Mutex
 	activeRooms     map[id.RoomID]bool
 	pendingMessages map[id.RoomID]*codexPendingMessage
+
+	streamEditGate *streamtransport.EditDebounceGate
 }
 
 func newCodexClient(login *bridgev2.UserLogin, connector *CodexConnector) (*CodexClient, error) {
@@ -120,6 +123,7 @@ func newCodexClient(login *bridgev2.UserLogin, connector *CodexConnector) (*Code
 		turnSubs:        make(map[string]chan codexNotif),
 		activeRooms:     make(map[id.RoomID]bool),
 		pendingMessages: make(map[id.RoomID]*codexPendingMessage),
+		streamEditGate:  streamtransport.NewEditDebounceGate(),
 	}, nil
 }
 
@@ -1714,6 +1718,19 @@ func (cc *CodexClient) emitStreamEvent(ctx context.Context, portal *bridgev2.Por
 	if state.suppressSend {
 		return
 	}
+	if cc.streamTransportMode() == streamtransport.ModeDebouncedEdit {
+		partType, _ := part["type"].(string)
+		switch partType {
+		case "text-delta", "reasoning-delta", "text-end", "reasoning-end":
+			cc.sendDebouncedStreamEdit(ctx, portal, state, false)
+		case "finish", "abort", "error":
+			cc.sendDebouncedStreamEdit(ctx, portal, state, true)
+			if cc.streamEditGate != nil {
+				cc.streamEditGate.Clear(state.turnID)
+			}
+		}
+		return
+	}
 
 	turnID, seq, content, ok := buildStreamEventEnvelope(state, part)
 	if !ok {
@@ -2104,8 +2121,8 @@ func (cc *CodexClient) sendFinalAssistantTurn(ctx context.Context, portal *bridg
 
 	// Safety-split oversized responses into multiple Matrix events
 	var continuationBody string
-	if len(rendered.Body) > maxMatrixEventBodyBytes {
-		firstBody, rest := splitAtMarkdownBoundary(rendered.Body, maxMatrixEventBodyBytes)
+	if len(rendered.Body) > streamtransport.MaxMatrixEventBodyBytes {
+		firstBody, rest := streamtransport.SplitAtMarkdownBoundary(rendered.Body, streamtransport.MaxMatrixEventBodyBytes)
 		continuationBody = rest
 		rendered = format.RenderMarkdown(firstBody, true, true)
 	}
@@ -2147,7 +2164,7 @@ func (cc *CodexClient) sendFinalAssistantTurn(ctx context.Context, portal *bridg
 	// Send continuation messages for overflow
 	for continuationBody != "" {
 		var chunk string
-		chunk, continuationBody = splitAtMarkdownBoundary(continuationBody, maxMatrixEventBodyBytes)
+		chunk, continuationBody = streamtransport.SplitAtMarkdownBoundary(continuationBody, streamtransport.MaxMatrixEventBodyBytes)
 		cc.sendContinuationMessage(ctx, portal, intent, chunk)
 	}
 }

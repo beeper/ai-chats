@@ -3,6 +3,8 @@ package connector
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -241,17 +243,17 @@ func (r *purgeIntegrationRegistry) register(integration integrationruntime.Login
 	r.items = append(r.items, integration)
 }
 
-func (r *purgeIntegrationRegistry) purge(ctx context.Context, scope integrationruntime.LoginScope) {
+func (r *purgeIntegrationRegistry) purge(ctx context.Context, scope integrationruntime.LoginScope) error {
 	if r == nil {
-		return
+		return nil
 	}
+	var purgeErrs []error
 	for _, integration := range r.items {
 		if err := integration.PurgeForLogin(ctx, scope); err != nil {
-			if client, ok := scope.Client.(*AIClient); ok && client != nil {
-				client.loggerForContext(ctx).Warn().Err(err).Str("integration", integration.Name()).Msg("integration login purge failed")
-			}
+			purgeErrs = append(purgeErrs, fmt.Errorf("%s: %w", integration.Name(), err))
 		}
 	}
+	return errors.Join(purgeErrs...)
 }
 
 type toolApprovalIntegrationRegistry struct {
@@ -651,12 +653,14 @@ func (oc *AIClient) purgeLoginIntegrations(ctx context.Context, login any, bridg
 	if oc == nil || oc.purgeRegistry == nil {
 		return
 	}
-	oc.purgeRegistry.purge(ctx, integrationruntime.LoginScope{
+	if err := oc.purgeRegistry.purge(ctx, integrationruntime.LoginScope{
 		Client:   oc,
 		Login:    login,
 		BridgeID: bridgeID,
 		LoginID:  loginID,
-	})
+	}); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("integration login purge failed")
+	}
 }
 
 func integrationPortalRoomType(meta *PortalMetadata) string {

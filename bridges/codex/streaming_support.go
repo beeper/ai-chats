@@ -8,23 +8,6 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-const maxMatrixEventBodyBytes = 60000
-
-// splitAtMarkdownBoundary splits text at a paragraph/line boundary near maxBytes.
-func splitAtMarkdownBoundary(text string, maxBytes int) (string, string) {
-	if len(text) <= maxBytes {
-		return text, ""
-	}
-	cutoff := text[:maxBytes]
-	if idx := strings.LastIndex(cutoff, "\n\n"); idx > maxBytes/2 {
-		return text[:idx], text[idx:]
-	}
-	if idx := strings.LastIndex(cutoff, "\n"); idx > maxBytes/2 {
-		return text[:idx], text[idx:]
-	}
-	return cutoff, text[maxBytes:]
-}
-
 type sourceCitation struct {
 	URL         string
 	Title       string
@@ -80,10 +63,11 @@ func buildSourceParts(citations []sourceCitation, documents []sourceDocument) []
 		if url == "" {
 			continue
 		}
-		if _, ok := seen[url]; ok {
+		seenKey := "url:" + url
+		if _, ok := seen[seenKey]; ok {
 			continue
 		}
-		seen[url] = struct{}{}
+		seen[seenKey] = struct{}{}
 		p := map[string]any{
 			"type":     "source-url",
 			"sourceId": fmt.Sprintf("source-%d", len(parts)+1),
@@ -108,10 +92,11 @@ func buildSourceParts(citations []sourceCitation, documents []sourceDocument) []
 		if key == "" {
 			continue
 		}
-		if _, ok := seen[key]; ok {
+		seenKey := "doc:" + key
+		if _, ok := seen[seenKey]; ok {
 			continue
 		}
-		seen[key] = struct{}{}
+		seen[seenKey] = struct{}{}
 		p := map[string]any{
 			"type":      "source-document",
 			"sourceId":  fmt.Sprintf("source-%d", len(parts)+1),
@@ -137,12 +122,13 @@ func generatedFilesToParts(files []generatedFilePart) []map[string]any {
 	}
 	parts := make([]map[string]any, 0, len(files))
 	for _, file := range files {
-		if strings.TrimSpace(file.url) == "" {
+		url := strings.TrimSpace(file.url)
+		if url == "" {
 			continue
 		}
 		parts = append(parts, map[string]any{
 			"type":      "file",
-			"url":       file.url,
+			"url":       url,
 			"mediaType": strings.TrimSpace(file.mediaType),
 		})
 	}
