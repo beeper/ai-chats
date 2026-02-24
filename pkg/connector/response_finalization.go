@@ -12,28 +12,8 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/agents"
+	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 )
-
-const maxMatrixEventBodyBytes = 60000 // Safety margin below Matrix's ~65KB limit
-
-// splitAtMarkdownBoundary splits text at a paragraph or line boundary near maxBytes.
-// Returns (first, rest). If text fits, rest is empty.
-func splitAtMarkdownBoundary(text string, maxBytes int) (string, string) {
-	if len(text) <= maxBytes {
-		return text, ""
-	}
-	// Search backwards from maxBytes for a paragraph break (\n\n)
-	cutoff := text[:maxBytes]
-	if idx := strings.LastIndex(cutoff, "\n\n"); idx > maxBytes/2 {
-		return text[:idx], text[idx:]
-	}
-	// Fall back to last newline
-	if idx := strings.LastIndex(cutoff, "\n"); idx > maxBytes/2 {
-		return text[:idx], text[idx:]
-	}
-	// Hard break at limit
-	return cutoff, text[maxBytes:]
-}
 
 // sendContinuationMessage sends overflow text as a new (non-edit) message from the bot.
 func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, body string) {
@@ -200,8 +180,8 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 
 	// Safety-split oversized responses into multiple Matrix events
 	var continuationBody string
-	if len(rendered.Body) > maxMatrixEventBodyBytes {
-		firstBody, rest := splitAtMarkdownBoundary(rendered.Body, maxMatrixEventBodyBytes)
+	if len(rendered.Body) > streamtransport.MaxMatrixEventBodyBytes {
+		firstBody, rest := streamtransport.SplitAtMarkdownBoundary(rendered.Body, streamtransport.MaxMatrixEventBodyBytes)
 		continuationBody = rest
 		rendered = format.RenderMarkdown(firstBody, true, true)
 	}
@@ -322,7 +302,7 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 	// Send continuation messages for overflow
 	for continuationBody != "" {
 		var chunk string
-		chunk, continuationBody = splitAtMarkdownBoundary(continuationBody, maxMatrixEventBodyBytes)
+		chunk, continuationBody = streamtransport.SplitAtMarkdownBoundary(continuationBody, streamtransport.MaxMatrixEventBodyBytes)
 		oc.sendContinuationMessage(ctx, portal, intent, chunk)
 	}
 }
@@ -749,8 +729,8 @@ func generatedFilesToParts(files []generatedFilePart) []map[string]any {
 func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata, intent bridgev2.MatrixAPI, rendered event.MessageEventContent, replyToEventID *id.EventID) {
 	// Safety-split oversized responses into multiple Matrix events
 	var continuationBody string
-	if len(rendered.Body) > maxMatrixEventBodyBytes {
-		firstBody, rest := splitAtMarkdownBoundary(rendered.Body, maxMatrixEventBodyBytes)
+	if len(rendered.Body) > streamtransport.MaxMatrixEventBodyBytes {
+		firstBody, rest := streamtransport.SplitAtMarkdownBoundary(rendered.Body, streamtransport.MaxMatrixEventBodyBytes)
 		continuationBody = rest
 		rendered = format.RenderMarkdown(firstBody, true, true)
 	}
@@ -860,7 +840,7 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 	// Send continuation messages for overflow
 	for continuationBody != "" {
 		var chunk string
-		chunk, continuationBody = splitAtMarkdownBoundary(continuationBody, maxMatrixEventBodyBytes)
+		chunk, continuationBody = streamtransport.SplitAtMarkdownBoundary(continuationBody, streamtransport.MaxMatrixEventBodyBytes)
 		oc.sendContinuationMessage(ctx, portal, intent, chunk)
 	}
 }

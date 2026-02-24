@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/beeper/ai-bridge/bridges/opencode/opencodebridge"
 	"github.com/beeper/ai-bridge/pkg/matrixevents"
+	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 )
 
 var _ opencodebridge.Host = (*OpenCodeClient)(nil)
@@ -57,7 +59,57 @@ func (oc *OpenCodeClient) SendPendingStatus(_ context.Context, _ *bridgev2.Porta
 func (oc *OpenCodeClient) SendSuccessStatus(_ context.Context, _ *bridgev2.Portal, _ *event.Event) {
 }
 
-func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(_ context.Context, _ *bridgev2.Portal, _, _, _ string, _ map[string]any) {
+func (oc *OpenCodeClient) streamTransportMode() streamtransport.Mode {
+	if oc == nil || oc.connector == nil {
+		return streamtransport.DefaultMode
+	}
+	if strings.TrimSpace(oc.connector.Config.Bridge.StreamingTransport) == string(streamtransport.ModeDebouncedEdit) {
+		return streamtransport.ModeDebouncedEdit
+	}
+	return streamtransport.ModeEphemeral
+}
+
+func (oc *OpenCodeClient) nextStreamSeq(turnID string) int {
+	oc.streamSeqMu.Lock()
+	defer oc.streamSeqMu.Unlock()
+	oc.streamSeq[turnID]++
+	return oc.streamSeq[turnID]
+}
+
+func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *bridgev2.Portal, turnID, agentID, targetEventID string, part map[string]any) {
+	if oc == nil || portal == nil || portal.MXID == "" {
+		return
+	}
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" || part == nil {
+		return
+	}
+	// OpenCode currently maps turn content via timeline events too; when debounced_edit is selected
+	// we disable ephemeral stream transport until replace-target mapping is added here.
+	if oc.streamTransportMode() == streamtransport.ModeDebouncedEdit {
+		return
+	}
+	if oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.Bot == nil {
+		return
+	}
+	ephemeralSender, ok := any(oc.UserLogin.Bridge.Bot).(matrixevents.MatrixEphemeralSender)
+	if !ok {
+		return
+	}
+	seq := oc.nextStreamSeq(turnID)
+	content, err := matrixevents.BuildStreamEventEnvelope(turnID, seq, part, matrixevents.StreamEventOpts{
+		TargetEventID: strings.TrimSpace(targetEventID),
+		AgentID:       strings.TrimSpace(agentID),
+	})
+	if err != nil {
+		return
+	}
+	eventContent := &event.Content{Raw: content}
+	txnID := matrixevents.BuildStreamEventTxnID(turnID, seq)
+	if _, err = ephemeralSender.SendEphemeralEvent(ctx, portal.MXID, matrixevents.StreamEventMessageType, eventContent, txnID); err != nil {
+		time.Sleep(100 * time.Millisecond)
+		_, _ = ephemeralSender.SendEphemeralEvent(ctx, portal.MXID, matrixevents.StreamEventMessageType, eventContent, txnID)
+	}
 }
 
 func (oc *OpenCodeClient) FinishOpenCodeStream(turnID string) {
@@ -81,7 +133,7 @@ func (oc *OpenCodeClient) DownloadAndEncodeMedia(ctx context.Context, mediaURL s
 		return "", "", err
 	}
 	if maxMB > 0 && len(data) > maxMB*1024*1024 {
-		return "", "", errors.New("media exceeds configured size limit")
+		return "", "", errors.New("media exceeds max size")
 	}
 	return base64.StdEncoding.EncodeToString(data), "application/octet-stream", nil
 }
@@ -175,12 +227,11 @@ func (oc *OpenCodeClient) OpenCodeInstances() map[string]*opencodebridge.OpenCod
 
 func (oc *OpenCodeClient) SaveOpenCodeInstances(ctx context.Context, instances map[string]*opencodebridge.OpenCodeInstance) error {
 	if oc == nil || oc.UserLogin == nil {
-		return errors.New("missing login")
+		return nil
 	}
 	meta := loginMetadata(oc.UserLogin)
 	if meta == nil {
-		meta = &UserLoginMetadata{}
-		oc.UserLogin.Metadata = meta
+		return errors.New("missing login metadata")
 	}
 	meta.OpenCodeInstances = instances
 	return oc.UserLogin.Save(ctx)

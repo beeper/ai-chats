@@ -17,7 +17,9 @@ type Config struct {
 }
 
 type BridgeConfig struct {
-	CommandPrefix string `yaml:"command_prefix"`
+	CommandPrefix      string `yaml:"command_prefix"`
+	StreamingTransport string `yaml:"streaming_transport"`        // ephemeral|debounced_edit
+	StreamingDebounce  int    `yaml:"streaming_edit_debounce_ms"` // Debounce for edit transport
 }
 
 type OpenCode struct {

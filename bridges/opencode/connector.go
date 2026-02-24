@@ -13,6 +13,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 )
 
 var (
@@ -36,6 +37,12 @@ func (oc *OpenCodeConnector) Init(bridge *bridgev2.Bridge) {
 func (oc *OpenCodeConnector) Start(_ context.Context) error {
 	if oc.Config.Bridge.CommandPrefix == "" {
 		oc.Config.Bridge.CommandPrefix = "!opencode"
+	}
+	if oc.Config.Bridge.StreamingTransport == "" {
+		oc.Config.Bridge.StreamingTransport = string(streamtransport.DefaultMode)
+	}
+	if oc.Config.Bridge.StreamingDebounce <= 0 {
+		oc.Config.Bridge.StreamingDebounce = streamtransport.DefaultEditDebounceMs
 	}
 	if oc.Config.OpenCode.Enabled == nil {
 		oc.Config.OpenCode.Enabled = ptr.Ptr(true)

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/beeper/ai-bridge/pkg/matrixevents"
+	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
@@ -60,6 +61,20 @@ func (oc *AIClient) emitStreamEvent(
 			oc.loggerForContext(ctx).Debug().
 				Str("turn_id", strings.TrimSpace(state.turnID)).
 				Msg("Stream event suppressed (suppressSend)")
+		}
+		return
+	}
+	mode := oc.streamTransportMode()
+	if mode == streamtransport.ModeDebouncedEdit {
+		partType, _ := part["type"].(string)
+		switch partType {
+		case "text-delta", "reasoning-delta", "text-end", "reasoning-end":
+			oc.sendDebouncedStreamEdit(ctx, portal, state, false)
+		case "finish", "abort", "error":
+			oc.sendDebouncedStreamEdit(ctx, portal, state, true)
+			if oc.streamEditGate != nil {
+				oc.streamEditGate.Clear(state.turnID)
+			}
 		}
 		return
 	}

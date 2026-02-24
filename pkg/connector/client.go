@@ -32,6 +32,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/agents"
+	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 )
 
 var (
@@ -334,6 +335,8 @@ type AIClient struct {
 	toolApprovalsMu sync.Mutex
 	toolApprovals   map[string]*pendingToolApproval // approvalID -> pending approval
 
+	streamEditGate *streamtransport.EditDebounceGate
+
 	// Per-login cancellation: cancelled when this login disconnects.
 	// All goroutines using backgroundContext() will be cancelled on disconnect.
 	disconnectCtx    context.Context
@@ -398,6 +401,7 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 		userTypingState:     make(map[id.RoomID]userTypingState),
 		queueTyping:         make(map[id.RoomID]*TypingController),
 		toolApprovals:       make(map[string]*pendingToolApproval),
+		streamEditGate:      streamtransport.NewEditDebounceGate(),
 	}
 
 	// Initialize inbound message processing with config values
