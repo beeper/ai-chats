@@ -638,10 +638,8 @@ func (h *runtimeIntegrationHost) IsToolEnabled(meta any, toolName string) bool {
 }
 
 func (h *runtimeIntegrationHost) AllToolDefinitions() []integrationruntime.ToolDefinition {
-	var out []integrationruntime.ToolDefinition
-	for _, tool := range BuiltinTools() {
-		out = append(out, tool)
-	}
+	out := make([]integrationruntime.ToolDefinition, 0, len(BuiltinTools()))
+	out = append(out, BuiltinTools()...)
 	return out
 }
 
@@ -667,9 +665,7 @@ func (h *runtimeIntegrationHost) ToolsToOpenAIParams(tools []integrationruntime.
 		return nil
 	}
 	bridgeTools := make([]ToolDefinition, 0, len(tools))
-	for _, t := range tools {
-		bridgeTools = append(bridgeTools, t)
-	}
+	bridgeTools = append(bridgeTools, tools...)
 	params := ToOpenAIChatTools(bridgeTools, &h.client.log)
 	return dedupeChatToolParams(params)
 }

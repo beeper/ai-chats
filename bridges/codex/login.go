@@ -70,17 +70,6 @@ func (cl *CodexLogin) logger(ctx context.Context) *zerolog.Logger {
 	return loggerFromContext(ctx, fallback)
 }
 
-// hasExistingCodexAuth checks whether ~/.codex/auth.json exists on disk,
-// indicating the user has already authenticated via the Codex CLI.
-func (cl *CodexLogin) hasExistingCodexAuth() bool {
-	home, err := os.UserHomeDir()
-	if err != nil || strings.TrimSpace(home) == "" {
-		return false
-	}
-	info, err := os.Stat(filepath.Join(home, ".codex", "auth.json"))
-	return err == nil && !info.IsDir()
-}
-
 func (cl *CodexLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 	cmd := cl.resolveCodexCommand()
 	if _, err := exec.LookPath(cmd); err != nil {

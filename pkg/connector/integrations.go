@@ -701,10 +701,8 @@ type coreToolIntegration struct {
 func (c *coreToolIntegration) Name() string { return "core" }
 
 func (c *coreToolIntegration) ToolDefinitions(_ context.Context, _ integrationruntime.ToolScope) []integrationruntime.ToolDefinition {
-	var out []integrationruntime.ToolDefinition
-	for _, def := range BuiltinTools() {
-		out = append(out, def)
-	}
+	out := make([]integrationruntime.ToolDefinition, 0, len(BuiltinTools()))
+	out = append(out, BuiltinTools()...)
 	return out
 }
 
