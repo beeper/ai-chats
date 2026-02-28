@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -128,14 +130,41 @@ func (oc *OpenCodeClient) DownloadAndEncodeMedia(ctx context.Context, mediaURL s
 	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.Bot == nil {
 		return "", "", errors.New("bridge is unavailable")
 	}
-	data, err := oc.UserLogin.Bridge.Bot.DownloadMedia(ctx, id.ContentURIString(mediaURL), file)
+	maxBytes := int64(0)
+	if maxMB > 0 {
+		maxBytes = int64(maxMB) * 1024 * 1024
+	}
+	var encoded string
+	errMediaTooLarge := errors.New("media exceeds max size")
+	err := oc.UserLogin.Bridge.Bot.DownloadMediaToFile(ctx, id.ContentURIString(mediaURL), file, false, func(f *os.File) error {
+		if maxBytes > 0 {
+			if stat, err := f.Stat(); err != nil {
+				return err
+			} else if stat.Size() > maxBytes {
+				return errMediaTooLarge
+			}
+		}
+		var reader io.Reader = f
+		if maxBytes > 0 {
+			reader = io.LimitReader(f, maxBytes+1)
+		}
+		data, err := io.ReadAll(reader)
+		if err != nil {
+			return err
+		}
+		if maxBytes > 0 && int64(len(data)) > maxBytes {
+			return errMediaTooLarge
+		}
+		encoded = base64.StdEncoding.EncodeToString(data)
+		return nil
+	})
+	if errors.Is(err, errMediaTooLarge) {
+		return "", "", errMediaTooLarge
+	}
 	if err != nil {
 		return "", "", err
 	}
-	if maxMB > 0 && len(data) > maxMB*1024*1024 {
-		return "", "", errors.New("media exceeds max size")
-	}
-	return base64.StdEncoding.EncodeToString(data), "application/octet-stream", nil
+	return encoded, "application/octet-stream", nil
 }
 
 func (oc *OpenCodeClient) SetRoomName(_ context.Context, _ *bridgev2.Portal, _ string) error {

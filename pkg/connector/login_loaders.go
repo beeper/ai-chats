@@ -27,6 +27,7 @@ func (oc *OpenAIConnector) loadAIUserLogin(login *bridgev2.UserLogin, meta *User
 			oc.clientsMu.Lock()
 			if cachedAPI := oc.clients[login.ID]; cachedAPI != nil {
 				if cached, ok := cachedAPI.(*AIClient); ok && cached != nil {
+					client.Disconnect()
 					cached.UserLogin = login
 					login.Client = cached
 					oc.clientsMu.Unlock()
@@ -61,6 +62,7 @@ func (oc *OpenAIConnector) loadAIUserLogin(login *bridgev2.UserLogin, meta *User
 			oc.clientsMu.Lock()
 			if cachedAPI := oc.clients[login.ID]; cachedAPI != nil {
 				if cached, ok := cachedAPI.(*AIClient); ok && cached != nil {
+					client.Disconnect()
 					cached.UserLogin = login
 					login.Client = cached
 					oc.clientsMu.Unlock()
@@ -91,6 +93,7 @@ func (oc *OpenAIConnector) loadAIUserLogin(login *bridgev2.UserLogin, meta *User
 	oc.clientsMu.Lock()
 	if cachedAPI := oc.clients[login.ID]; cachedAPI != nil {
 		if cached, ok := cachedAPI.(*AIClient); ok && cached != nil {
+			client.Disconnect()
 			cached.UserLogin = login
 			login.Client = cached
 			oc.clientsMu.Unlock()
