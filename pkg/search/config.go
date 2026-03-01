@@ -9,6 +9,8 @@ const (
 	ProviderExa        = "exa"
 	DefaultSearchCount = 5
 	MaxSearchCount     = 10
+	DefaultTimeoutSecs = 30
+	DefaultCacheTtlSecs = 900
 )
 
 var DefaultFallbackOrder = []string{

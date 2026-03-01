@@ -1,6 +1,10 @@
 package connector
 
-import "github.com/beeper/ai-bridge/pkg/shared/toolspec"
+import (
+	"strings"
+
+	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
+)
 
 func (oc *AIClient) toolDescriptionForPortal(meta *PortalMetadata, toolName string, fallback string) string {
 	name := strings.TrimSpace(toolName)

@@ -226,50 +226,13 @@ func executeMessageFocus(ctx context.Context, args map[string]any, btc *BridgeTo
 		return "", errors.New("bridge context not available")
 	}
 
-	sessionKey := firstNonEmptyString(args["sessionKey"])
-	label := firstNonEmptyString(args["label"])
-	chatID := firstNonEmptyString(args["chatId"])
-	instance := firstNonEmptyString(args["instance"])
 	messageID := firstNonEmptyString(args["message_id"])
 	draftText := firstNonEmptyString(args["draftText"], args["message"])
 	draftAttachmentPath := firstNonEmptyString(args["draftAttachmentPath"])
 
-	if sessionKey != "" && label != "" {
-		return "", errors.New("action=focus requires only one of 'sessionKey' or 'label'")
-	}
-	if chatID != "" && (sessionKey != "" || label != "") {
-		return "", errors.New("action=focus requires only one of 'chatId', 'sessionKey', or 'label'")
-	}
-
-	if sessionKey != "" {
-		parsedInstance, parsedChatID, ok := parseDesktopSessionKey(sessionKey)
-		if !ok {
-			return "", errors.New("action=focus requires a desktop-api sessionKey")
-		}
-		chatID = parsedChatID
-		instance = parsedInstance
-	} else if label != "" {
-		if instance != "" {
-			resolvedInstance, resolveErr := btc.Client.resolveDesktopInstanceName(instance)
-			if resolveErr != nil {
-				return "", resolveErr
-			}
-			resolvedID, resolvedKey, err := btc.Client.resolveDesktopSessionByLabel(ctx, resolvedInstance, label)
-			if err != nil {
-				return "", err
-			}
-			chatID = resolvedID
-			sessionKey = resolvedKey
-			instance = resolvedInstance
-		} else {
-			resolvedInstance, resolvedID, resolvedKey, err := btc.Client.resolveDesktopSessionByLabelAnyInstance(ctx, label)
-			if err != nil {
-				return "", err
-			}
-			chatID = resolvedID
-			sessionKey = resolvedKey
-			instance = resolvedInstance
-		}
+	instance, chatID, sessionKey, _, err := resolveDesktopMessageTarget(ctx, btc.Client, args, false)
+	if err != nil {
+		return "", err
 	}
 
 	if messageID != "" && chatID == "" {
@@ -280,17 +243,7 @@ func executeMessageFocus(ctx context.Context, args map[string]any, btc *BridgeTo
 		draftAttachmentPath = expandUserPath(draftAttachmentPath)
 	}
 
-	resolvedInstance, resolveErr := btc.Client.resolveDesktopInstanceName(instance)
-	if resolveErr != nil {
-		return "", resolveErr
-	}
-	instance = resolvedInstance
-	if chatID != "" {
-		// Always return the canonical desktop session key (includes resolved instance).
-		sessionKey = normalizeDesktopSessionKeyWithInstance(instance, chatID)
-	}
-
-	_, err := btc.Client.focusDesktop(ctx, instance, desktopFocusParams{
+	_, err = btc.Client.focusDesktop(ctx, instance, desktopFocusParams{
 		ChatID:              chatID,
 		MessageID:           messageID,
 		DraftText:           draftText,
