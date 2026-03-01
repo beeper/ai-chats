@@ -355,12 +355,34 @@ func buildGeminiRequests(relPath, source string, missing []missingChunk) ([]gemi
 	return requests, mapping
 }
 
-func runOpenAIBatches(ctx context.Context, params openAIBatchParams) (map[string][]float64, error) {
-	if len(params.Requests) == 0 {
+// batchResult represents a single embedding result from a batch output line.
+type batchResult struct {
+	CustomID  string
+	Embedding []float64
+	Error     string
+}
+
+// batchRunner holds provider-specific callbacks for the generic runBatches function.
+type batchRunner[R any] struct {
+	Label       string
+	Client      *http.Client
+	Concurrency int
+	Split       func(requests []R) [][]R
+	CustomIDs   func(group []R) []string
+	Submit      func(ctx context.Context, client *http.Client, group []R) (batchID, outputFileID string, err error)
+	Fetch       func(ctx context.Context, client *http.Client, outputFileID string) (content string, err error)
+	Parse       func(content string) []batchResult
+}
+
+// runBatches splits requests into groups, submits each as a batch, fetches
+// results, and collects embeddings. Provider-specific logic is injected via
+// the batchRunner callbacks.
+func runBatches[R any](ctx context.Context, requests []R, runner batchRunner[R]) (map[string][]float64, error) {
+	if len(requests) == 0 {
 		return map[string][]float64{}, nil
 	}
-	groups := splitOpenAIRequests(params.Requests)
-	client := params.Client
+	groups := runner.Split(requests)
+	client := runner.Client
 	if client == nil {
 		client = http.DefaultClient
 	}
@@ -368,60 +390,98 @@ func runOpenAIBatches(ctx context.Context, params openAIBatchParams) (map[string
 	tasks := make([]func() (struct{}, error), 0, len(groups))
 	for _, group := range groups {
 		tasks = append(tasks, func() (struct{}, error) {
-			batchID, outputFileID, err := submitOpenAIBatch(ctx, client, params, group)
+			batchID, outputFileID, err := runner.Submit(ctx, client, group)
 			if err != nil {
 				return struct{}{}, err
 			}
 			if outputFileID == "" {
-				return struct{}{}, fmt.Errorf("openai batch %s completed without output file", batchID)
+				return struct{}{}, fmt.Errorf("%s batch %s completed without output file", runner.Label, batchID)
 			}
-			content, err := fetchOpenAIFile(ctx, client, params, outputFileID)
+			content, err := runner.Fetch(ctx, client, outputFileID)
 			if err != nil {
 				return struct{}{}, err
 			}
-			lines := parseOpenAIBatchOutput(content)
+			results := runner.Parse(content)
 			remaining := make(map[string]struct{})
-			for _, req := range group {
-				remaining[req.CustomID] = struct{}{}
+			for _, id := range runner.CustomIDs(group) {
+				remaining[id] = struct{}{}
 			}
-			var errors []string
-			for _, line := range lines {
-				if line.CustomID == "" {
+			var errs []string
+			for _, r := range results {
+				if r.CustomID == "" {
 					continue
 				}
-				delete(remaining, line.CustomID)
-				if line.Error.Message != "" {
-					errors = append(errors, fmt.Sprintf("%s: %s", line.CustomID, line.Error.Message))
+				delete(remaining, r.CustomID)
+				if r.Error != "" {
+					errs = append(errs, fmt.Sprintf("%s: %s", r.CustomID, r.Error))
 					continue
 				}
-				if line.Response.StatusCode >= 400 {
-					msg := line.Response.Body.Error.Message
-					if msg == "" {
-						msg = fmt.Sprintf("status %d", line.Response.StatusCode)
-					}
-					errors = append(errors, fmt.Sprintf("%s: %s", line.CustomID, msg))
+				if len(r.Embedding) == 0 {
+					errs = append(errs, fmt.Sprintf("%s: empty embedding", r.CustomID))
 					continue
 				}
-				if len(line.Response.Body.Data) == 0 || len(line.Response.Body.Data[0].Embedding) == 0 {
-					errors = append(errors, fmt.Sprintf("%s: empty embedding", line.CustomID))
-					continue
-				}
-				byCustomID[line.CustomID] = line.Response.Body.Data[0].Embedding
+				byCustomID[r.CustomID] = r.Embedding
 			}
-			if len(errors) > 0 {
-				return struct{}{}, fmt.Errorf("openai batch %s failed: %s", batchID, strings.Join(errors, "; "))
+			if len(errs) > 0 {
+				return struct{}{}, fmt.Errorf("%s batch %s failed: %s", runner.Label, batchID, strings.Join(errs, "; "))
 			}
 			if len(remaining) > 0 {
-				return struct{}{}, fmt.Errorf("openai batch %s missing %d embedding responses", batchID, len(remaining))
+				return struct{}{}, fmt.Errorf("%s batch %s missing %d embedding responses", runner.Label, batchID, len(remaining))
 			}
 			return struct{}{}, nil
 		})
 	}
-	_, err := runWithConcurrency(tasks, params.Concurrency)
+	_, err := runWithConcurrency(tasks, runner.Concurrency)
 	if err != nil {
 		return nil, err
 	}
 	return byCustomID, nil
+}
+
+func openAICustomIDs(group []openAIBatchRequest) []string {
+	ids := make([]string, len(group))
+	for i, req := range group {
+		ids[i] = req.CustomID
+	}
+	return ids
+}
+
+func parseOpenAIResults(content string) []batchResult {
+	lines := parseOpenAIBatchOutput(content)
+	results := make([]batchResult, 0, len(lines))
+	for _, line := range lines {
+		r := batchResult{CustomID: line.CustomID}
+		switch {
+		case line.Error.Message != "":
+			r.Error = line.Error.Message
+		case line.Response.StatusCode >= 400:
+			r.Error = line.Response.Body.Error.Message
+			if r.Error == "" {
+				r.Error = fmt.Sprintf("status %d", line.Response.StatusCode)
+			}
+		case len(line.Response.Body.Data) > 0 && len(line.Response.Body.Data[0].Embedding) > 0:
+			r.Embedding = line.Response.Body.Data[0].Embedding
+		}
+		results = append(results, r)
+	}
+	return results
+}
+
+func runOpenAIBatches(ctx context.Context, params openAIBatchParams) (map[string][]float64, error) {
+	return runBatches(ctx, params.Requests, batchRunner[openAIBatchRequest]{
+		Label:       "openai",
+		Client:      params.Client,
+		Concurrency: params.Concurrency,
+		Split:       splitOpenAIRequests,
+		CustomIDs:   openAICustomIDs,
+		Submit: func(ctx context.Context, client *http.Client, group []openAIBatchRequest) (string, string, error) {
+			return submitOpenAIBatch(ctx, client, params, group)
+		},
+		Fetch: func(ctx context.Context, client *http.Client, outputFileID string) (string, error) {
+			return fetchOpenAIFile(ctx, client, params, outputFileID)
+		},
+		Parse: parseOpenAIResults,
+	})
 }
 
 type openAIBatchParams struct {
@@ -641,74 +701,51 @@ type geminiBatchParams struct {
 	Client       *http.Client
 }
 
+func geminiCustomIDs(group []geminiBatchRequest) []string {
+	ids := make([]string, len(group))
+	for i, req := range group {
+		ids[i] = req.CustomID
+	}
+	return ids
+}
+
+func parseGeminiResults(content string) []batchResult {
+	lines := parseGeminiBatchOutput(content)
+	results := make([]batchResult, 0, len(lines))
+	for _, line := range lines {
+		custom := stringutil.FirstNonEmpty(line.Key, line.CustomID, line.RequestID)
+		r := batchResult{CustomID: custom}
+		switch {
+		case line.Error.Message != "":
+			r.Error = line.Error.Message
+		case line.Response.Error.Message != "":
+			r.Error = line.Response.Error.Message
+		default:
+			r.Embedding = line.Embedding.Values
+			if len(r.Embedding) == 0 {
+				r.Embedding = line.Response.Embedding.Values
+			}
+		}
+		results = append(results, r)
+	}
+	return results
+}
+
 func runGeminiBatches(ctx context.Context, params geminiBatchParams) (map[string][]float64, error) {
-	if len(params.Requests) == 0 {
-		return map[string][]float64{}, nil
-	}
-	groups := splitGeminiRequests(params.Requests)
-	client := params.Client
-	if client == nil {
-		client = http.DefaultClient
-	}
-	byCustomID := make(map[string][]float64)
-	tasks := make([]func() (struct{}, error), 0, len(groups))
-	for _, group := range groups {
-		tasks = append(tasks, func() (struct{}, error) {
-			batchName, outputFileID, err := submitGeminiBatch(ctx, client, params, group)
-			if err != nil {
-				return struct{}{}, err
-			}
-			if outputFileID == "" {
-				return struct{}{}, fmt.Errorf("gemini batch %s completed without output file", batchName)
-			}
-			content, err := fetchGeminiFile(ctx, client, params, outputFileID)
-			if err != nil {
-				return struct{}{}, err
-			}
-			lines := parseGeminiBatchOutput(content)
-			remaining := make(map[string]struct{})
-			for _, req := range group {
-				remaining[req.CustomID] = struct{}{}
-			}
-			var errors []string
-			for _, line := range lines {
-				custom := stringutil.FirstNonEmpty(line.Key, line.CustomID, line.RequestID)
-				if custom == "" {
-					continue
-				}
-				delete(remaining, custom)
-				if line.Error.Message != "" {
-					errors = append(errors, fmt.Sprintf("%s: %s", custom, line.Error.Message))
-					continue
-				}
-				if line.Response.Error.Message != "" {
-					errors = append(errors, fmt.Sprintf("%s: %s", custom, line.Response.Error.Message))
-					continue
-				}
-				embedding := line.Embedding.Values
-				if len(embedding) == 0 {
-					embedding = line.Response.Embedding.Values
-				}
-				if len(embedding) == 0 {
-					errors = append(errors, fmt.Sprintf("%s: empty embedding", custom))
-					continue
-				}
-				byCustomID[custom] = embedding
-			}
-			if len(errors) > 0 {
-				return struct{}{}, fmt.Errorf("gemini batch %s failed: %s", batchName, strings.Join(errors, "; "))
-			}
-			if len(remaining) > 0 {
-				return struct{}{}, fmt.Errorf("gemini batch %s missing %d embedding responses", batchName, len(remaining))
-			}
-			return struct{}{}, nil
-		})
-	}
-	_, err := runWithConcurrency(tasks, params.Concurrency)
-	if err != nil {
-		return nil, err
-	}
-	return byCustomID, nil
+	return runBatches(ctx, params.Requests, batchRunner[geminiBatchRequest]{
+		Label:       "gemini",
+		Client:      params.Client,
+		Concurrency: params.Concurrency,
+		Split:       splitGeminiRequests,
+		CustomIDs:   geminiCustomIDs,
+		Submit: func(ctx context.Context, client *http.Client, group []geminiBatchRequest) (string, string, error) {
+			return submitGeminiBatch(ctx, client, params, group)
+		},
+		Fetch: func(ctx context.Context, client *http.Client, outputFileID string) (string, error) {
+			return fetchGeminiFile(ctx, client, params, outputFileID)
+		},
+		Parse: parseGeminiResults,
+	})
 }
 
 func splitGeminiRequests(requests []geminiBatchRequest) [][]geminiBatchRequest {
