@@ -10,6 +10,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
 	"github.com/beeper/ai-bridge/pkg/shared/citations"
 )
 
@@ -95,51 +96,9 @@ func (oc *AIClient) buildCanonicalUIMessage(state *streamingState, meta *PortalM
 		return nil
 	}
 
-	parts := make([]map[string]any, 0, 2+len(state.toolCalls))
-	reasoningText := strings.TrimSpace(state.reasoning.String())
-	if reasoningText != "" {
-		parts = append(parts, map[string]any{
-			"type":  "reasoning",
-			"text":  reasoningText,
-			"state": "done",
-		})
-	}
-	text := state.accumulated.String()
-	if text != "" {
-		parts = append(parts, map[string]any{
-			"type":  "text",
-			"text":  text,
-			"state": "done",
-		})
-	}
-	for _, tc := range state.toolCalls {
-		toolPart := map[string]any{
-			"type":       "dynamic-tool",
-			"toolName":   tc.ToolName,
-			"toolCallId": tc.CallID,
-			"input":      tc.Input,
-		}
-		if tc.ToolType == string(ToolTypeProvider) {
-			toolPart["providerExecuted"] = true
-		}
-		if tc.ResultStatus == string(ResultStatusSuccess) {
-			toolPart["state"] = "output-available"
-			toolPart["output"] = tc.Output
-		} else {
-			toolPart["state"] = "output-error"
-			if tc.ErrorMessage != "" {
-				toolPart["errorText"] = tc.ErrorMessage
-			} else if result, ok := tc.Output["result"].(string); ok && result != "" {
-				toolPart["errorText"] = result
-			}
-		}
-		parts = append(parts, toolPart)
-	}
-	if sourceParts := buildSourceParts(state.sourceCitations, state.sourceDocuments, nil); len(sourceParts) > 0 {
-		parts = append(parts, sourceParts...)
-	}
-	if fileParts := citations.GeneratedFilesToParts(state.generatedFiles); len(fileParts) > 0 {
-		parts = append(parts, fileParts...)
+	parts := msgconv.ContentParts(state.accumulated.String(), strings.TrimSpace(state.reasoning.String()))
+	if toolParts := msgconv.ToolCallParts(state.toolCalls, string(ToolTypeProvider), string(ResultStatusSuccess), string(ResultStatusDenied)); len(toolParts) > 0 {
+		parts = append(parts, toolParts...)
 	}
 
 	messageID := state.turnID
@@ -147,47 +106,26 @@ func (oc *AIClient) buildCanonicalUIMessage(state *streamingState, meta *PortalM
 		messageID = state.initialEventID.String()
 	}
 
-	metadata := map[string]any{}
-	if state.turnID != "" {
-		metadata["turn_id"] = state.turnID
-	}
-	if state.agentID != "" {
-		metadata["agent_id"] = state.agentID
-	}
-	if model := oc.effectiveModel(meta); model != "" {
-		metadata["model"] = model
-	}
-	if state.finishReason != "" {
-		metadata["finish_reason"] = mapFinishReason(state.finishReason)
-	}
-	if state.promptTokens > 0 || state.completionTokens > 0 || state.reasoningTokens > 0 {
-		metadata["usage"] = map[string]any{
-			"prompt_tokens":     state.promptTokens,
-			"completion_tokens": state.completionTokens,
-			"reasoning_tokens":  state.reasoningTokens,
-		}
-	}
-	timing := map[string]any{}
-	if state.startedAtMs > 0 {
-		timing["started_at"] = state.startedAtMs
-	}
-	if state.firstTokenAtMs > 0 {
-		timing["first_token_at"] = state.firstTokenAtMs
-	}
-	if state.completedAtMs > 0 {
-		timing["completed_at"] = state.completedAtMs
-	}
-	if len(timing) > 0 {
-		metadata["timing"] = timing
-	}
+	metadata := msgconv.BuildUIMessageMetadata(msgconv.UIMessageMetadataParams{
+		TurnID:           state.turnID,
+		AgentID:          state.agentID,
+		Model:            oc.effectiveModel(meta),
+		FinishReason:     state.finishReason,
+		PromptTokens:     state.promptTokens,
+		CompletionTokens: state.completionTokens,
+		ReasoningTokens:  state.reasoningTokens,
+		StartedAtMs:      state.startedAtMs,
+		FirstTokenAtMs:   state.firstTokenAtMs,
+		CompletedAtMs:    state.completedAtMs,
+		IncludeUsage:     true,
+	})
 
-	uiMessage := map[string]any{
-		"id":    messageID,
-		"role":  "assistant",
-		"parts": parts,
-	}
-	if len(metadata) > 0 {
-		uiMessage["metadata"] = metadata
-	}
-	return uiMessage
+	return msgconv.BuildUIMessage(msgconv.UIMessageParams{
+		TurnID:     messageID,
+		Role:       "assistant",
+		Metadata:   metadata,
+		Parts:      parts,
+		SourceURLs: buildSourceParts(state.sourceCitations, state.sourceDocuments, nil),
+		FileParts:  citations.GeneratedFilesToParts(state.generatedFiles),
+	})
 }

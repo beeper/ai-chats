@@ -7,7 +7,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/ai-bridge/pkg/matrixevents"
 	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 )
 
@@ -53,9 +52,9 @@ func (cc *CodexClient) ensureStreamSession(ctx context.Context, portal *bridgev2
 			return state.sequenceNum
 		},
 		RuntimeFallbackFlag: &cc.streamFallbackToDebounced,
-		GetEphemeralSender: func(callCtx context.Context) (matrixevents.MatrixEphemeralSender, bool) {
+		GetEphemeralSender: func(callCtx context.Context) (bridgev2.EphemeralSendingMatrixAPI, bool) {
 			intent := cc.getCodexIntent(callCtx, portal)
-			ephemeralSender, ok := intent.(matrixevents.MatrixEphemeralSender)
+			ephemeralSender, ok := intent.(bridgev2.EphemeralSendingMatrixAPI)
 			return ephemeralSender, ok
 		},
 		SendDebouncedEdit: func(callCtx context.Context, force bool) error {

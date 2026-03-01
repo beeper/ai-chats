@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
@@ -41,7 +42,7 @@ type StreamSessionParams struct {
 	NextSeq          func() int
 
 	RuntimeFallbackFlag *atomic.Bool
-	GetEphemeralSender  func(ctx context.Context) (matrixevents.MatrixEphemeralSender, bool)
+	GetEphemeralSender  func(ctx context.Context) (bridgev2.EphemeralSendingMatrixAPI, bool)
 	SendDebouncedEdit   func(ctx context.Context, force bool) error
 	ClearTurnGate       func()
 	SendHook            func(turnID string, seq int, content map[string]any, txnID string) bool
@@ -194,7 +195,7 @@ func (s *StreamSession) EmitPart(ctx context.Context, part map[string]any) {
 	_ = s.sendEphemeralWithRetry(ephemeralSender, eventContent, txnID, partType)
 }
 
-func (s *StreamSession) sendEphemeralWithRetry(ephemeralSender matrixevents.MatrixEphemeralSender, eventContent *event.Content, txnID string, partType string) bool {
+func (s *StreamSession) sendEphemeralWithRetry(ephemeralSender bridgev2.EphemeralSendingMatrixAPI, eventContent *event.Content, txnID string, partType string) bool {
 	if s == nil || s.IsClosed() || ephemeralSender == nil || eventContent == nil {
 		return false
 	}
