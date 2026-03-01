@@ -1156,7 +1156,8 @@ func (cc *CodexClient) ensureRPC(ctx context.Context) error {
 
 	initCtx, cancelInit := context.WithTimeout(ctx, 45*time.Second)
 	defer cancelInit()
-	_, err = rpc.Initialize(initCtx, cc.connector.Config.Codex.ClientInfo.rpcClientInfo(), false)
+	ci := cc.connector.Config.Codex.ClientInfo
+	_, err = rpc.Initialize(initCtx, codexrpc.ClientInfo{Name: ci.Name, Title: ci.Title, Version: ci.Version}, false)
 	if err != nil {
 		_ = rpc.Close()
 		cc.rpc = nil

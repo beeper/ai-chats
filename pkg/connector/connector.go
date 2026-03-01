@@ -49,8 +49,9 @@ func (oc *OpenAIConnector) Init(bridge *bridgev2.Bridge) {
 	oc.br = bridge
 	oc.db = nil
 	if bridge != nil && bridge.DB != nil && bridge.DB.Database != nil {
-		oc.db = makeBridgeChildDB(
+		oc.db = bridgeadapter.MakeMemoryChildDB(
 			bridge.DB.Database,
+			aiBridgeVersionTable,
 			dbutil.ZeroLogger(bridge.Log.With().Str("db_section", "ai_bridge").Logger()),
 		)
 	}

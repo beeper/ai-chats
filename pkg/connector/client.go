@@ -653,7 +653,10 @@ func (oc *AIClient) dispatchOrQueueCore(
 			oc.sendPendingStatus(ctx, portal, evt, "Processing...")
 			queueItem.pending.PendingSent = true
 		}
-		runCtx := withStatusEvents(oc.backgroundContext(ctx), queueItem.pending.StatusEvents)
+		runCtx := oc.backgroundContext(ctx)
+		if len(queueItem.pending.StatusEvents) > 0 {
+			runCtx = context.WithValue(runCtx, statusEventsKey{}, queueItem.pending.StatusEvents)
+		}
 		if queueItem.pending.Typing != nil {
 			runCtx = WithTypingContext(runCtx, queueItem.pending.Typing)
 		}
@@ -2780,7 +2783,10 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 			}
 		}
 	}
-	statusCtx := withStatusEvents(ctx, extraStatusEvents)
+	statusCtx := ctx
+	if len(extraStatusEvents) > 0 {
+		statusCtx = context.WithValue(ctx, statusEventsKey{}, extraStatusEvents)
+	}
 
 	// Build prompt with combined body
 	promptMessages, err := oc.buildPromptWithLinkContext(statusCtx, last.Portal, last.Meta, combinedBody, rawEventContent, last.Event.ID)

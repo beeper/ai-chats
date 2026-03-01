@@ -330,7 +330,7 @@ func fnThink(ce *commands.Event) {
 		ce.Reply("Thinking: %s", client.defaultThinkLevel(meta))
 		return
 	}
-	level, ok := normalizeThinkLevel(ce.Args[0])
+	level, ok := stringutil.NormalizeEnum(ce.Args[0], thinkLevelAliases)
 	if !ok {
 		ce.Reply("Usage: `!ai think off|minimal|low|medium|high|xhigh`")
 		return
@@ -365,7 +365,7 @@ func fnVerbose(ce *commands.Event) {
 		ce.Reply("Verbosity: %s", current)
 		return
 	}
-	level, ok := normalizeVerboseLevel(ce.Args[0])
+	level, ok := stringutil.NormalizeEnum(ce.Args[0], verboseLevelAliases)
 	if !ok {
 		ce.Reply("Usage: `!ai verbose on|off|full`")
 		return
@@ -403,7 +403,7 @@ func fnReasoning(ce *commands.Event) {
 		ce.Reply("Reasoning: %s", current)
 		return
 	}
-	level, ok := normalizeReasoningLevel(ce.Args[0])
+	level, ok := stringutil.NormalizeEnum(ce.Args[0], reasoningLevelAliases)
 	if !ok {
 		ce.Reply("Usage: `!ai reasoning off|on|low|medium|high|xhigh`")
 		return
@@ -473,7 +473,7 @@ func fnActivation(ce *commands.Event) {
 		ce.Reply("%s", formatSystemAck("Usage: `!ai activation mention|always`"))
 		return
 	}
-	level, ok := normalizeGroupActivation(ce.Args[0])
+	level, ok := stringutil.NormalizeEnum(ce.Args[0], groupActivationAliases)
 	if !ok {
 		ce.Reply("%s", formatSystemAck("Usage: `!ai activation mention|always`"))
 		return
@@ -505,7 +505,7 @@ func fnSend(ce *commands.Event) {
 		ce.Reply("%s", formatSystemAck("Usage: `!ai send on|off|inherit`"))
 		return
 	}
-	mode, ok := normalizeSendPolicy(ce.Args[0])
+	mode, ok := stringutil.NormalizeEnum(ce.Args[0], sendPolicyAliases)
 	if !ok {
 		ce.Reply("%s", formatSystemAck("Usage: `!ai send on|off|inherit`"))
 		return

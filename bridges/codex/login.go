@@ -317,7 +317,8 @@ func (cl *CodexLogin) spawnAndStartLogin(ctx context.Context, log *zerolog.Logge
 
 		// Initialize first (some Codex builds won't accept login/start before initialize).
 		initCtx, cancelInit := context.WithTimeout(bgCtx, 45*time.Second)
-		_, initErr := rpc.Initialize(initCtx, cl.Connector.Config.Codex.ClientInfo.rpcClientInfo(), false)
+		ci := cl.Connector.Config.Codex.ClientInfo
+		_, initErr := rpc.Initialize(initCtx, codexrpc.ClientInfo{Name: ci.Name, Title: ci.Title, Version: ci.Version}, false)
 		cancelInit()
 		if initErr != nil {
 			log.Warn().Err(initErr).Msg("Codex initialize failed")

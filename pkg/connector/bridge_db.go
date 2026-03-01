@@ -9,10 +9,6 @@ import (
 
 const aiBridgeVersionTable = "ai_bridge_version"
 
-func makeBridgeChildDB(base *dbutil.Database, log dbutil.DatabaseLogger) *dbutil.Database {
-	return bridgeadapter.MakeMemoryChildDB(base, aiBridgeVersionTable, log)
-}
-
 func (oc *OpenAIConnector) bridgeDB() *dbutil.Database {
 	if oc == nil {
 		return nil
@@ -21,8 +17,9 @@ func (oc *OpenAIConnector) bridgeDB() *dbutil.Database {
 		return oc.db
 	}
 	if oc.br != nil && oc.br.DB != nil {
-		oc.db = makeBridgeChildDB(
+		oc.db = bridgeadapter.MakeMemoryChildDB(
 			oc.br.DB.Database,
+			aiBridgeVersionTable,
 			dbutil.ZeroLogger(oc.br.Log.With().Str("db_section", "ai_bridge").Logger()),
 		)
 		return oc.db
@@ -40,7 +37,7 @@ func (oc *AIClient) bridgeDB() *dbutil.Database {
 		}
 	}
 	if oc.UserLogin != nil && oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.DB != nil {
-		return makeBridgeChildDB(oc.UserLogin.Bridge.DB.Database, dbutil.NoopLogger)
+		return bridgeadapter.MakeMemoryChildDB(oc.UserLogin.Bridge.DB.Database, aiBridgeVersionTable, dbutil.NoopLogger)
 	}
 	return nil
 }
@@ -55,7 +52,7 @@ func bridgeDBFromLogin(login *bridgev2.UserLogin) *dbutil.Database {
 		}
 	}
 	if login.Bridge != nil && login.Bridge.DB != nil {
-		return makeBridgeChildDB(login.Bridge.DB.Database, dbutil.NoopLogger)
+		return bridgeadapter.MakeMemoryChildDB(login.Bridge.DB.Database, aiBridgeVersionTable, dbutil.NoopLogger)
 	}
 	return nil
 }

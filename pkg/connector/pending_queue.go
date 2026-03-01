@@ -204,7 +204,7 @@ func (oc *AIClient) dispatchQueuedPrompt(
 	}
 	oc.log.Debug().Stringer("room_id", roomID).Str("message_id", item.messageID).Int("prompt_len", len(prompt)).Msg("Dispatching queued prompt")
 	runCtx := oc.attachRoomRun(ctx, roomID)
-	runCtx = withQueueAcceptedStatus(runCtx)
+	runCtx = context.WithValue(runCtx, queueAcceptedStatusKey{}, true)
 	if item.pending.Typing != nil {
 		runCtx = WithTypingContext(runCtx, item.pending.Typing)
 	}

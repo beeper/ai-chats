@@ -1,12 +1,16 @@
 package connector
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
+)
 
 func traceLevel(meta *PortalMetadata) string {
 	if meta == nil {
 		return "off"
 	}
-	if level, ok := normalizeVerboseLevel(meta.VerboseLevel); ok {
+	if level, ok := stringutil.NormalizeEnum(meta.VerboseLevel, verboseLevelAliases); ok {
 		return level
 	}
 	level := strings.ToLower(strings.TrimSpace(meta.VerboseLevel))

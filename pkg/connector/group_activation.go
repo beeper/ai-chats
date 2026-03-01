@@ -1,15 +1,19 @@
 package connector
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
+)
 
 func (oc *AIClient) resolveGroupActivation(meta *PortalMetadata) string {
 	if meta != nil {
-		if normalized, ok := normalizeGroupActivation(meta.GroupActivation); ok {
+		if normalized, ok := stringutil.NormalizeEnum(meta.GroupActivation, groupActivationAliases); ok {
 			return normalized
 		}
 	}
 	if oc != nil && oc.connector != nil && oc.connector.Config.Messages != nil && oc.connector.Config.Messages.GroupChat != nil {
-		if normalized, ok := normalizeGroupActivation(oc.connector.Config.Messages.GroupChat.Activation); ok {
+		if normalized, ok := stringutil.NormalizeEnum(oc.connector.Config.Messages.GroupChat.Activation, groupActivationAliases); ok {
 			return normalized
 		}
 	}

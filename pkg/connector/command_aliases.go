@@ -1,9 +1,5 @@
 package connector
 
-import (
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
-)
-
 var thinkLevelAliases = map[string]string{
 	"off": "off", "false": "off", "no": "off", "0": "off",
 	"on": "low", "enable": "low", "enabled": "low",
@@ -35,24 +31,4 @@ var sendPolicyAliases = map[string]string{
 var groupActivationAliases = map[string]string{
 	"mention": "mention",
 	"always":  "always",
-}
-
-func normalizeThinkLevel(raw string) (string, bool) {
-	return stringutil.NormalizeEnum(raw, thinkLevelAliases)
-}
-
-func normalizeVerboseLevel(raw string) (string, bool) {
-	return stringutil.NormalizeEnum(raw, verboseLevelAliases)
-}
-
-func normalizeReasoningLevel(raw string) (string, bool) {
-	return stringutil.NormalizeEnum(raw, reasoningLevelAliases)
-}
-
-func normalizeSendPolicy(raw string) (string, bool) {
-	return stringutil.NormalizeEnum(raw, sendPolicyAliases)
-}
-
-func normalizeGroupActivation(raw string) (string, bool) {
-	return stringutil.NormalizeEnum(raw, groupActivationAliases)
 }
