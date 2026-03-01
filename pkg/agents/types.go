@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"reflect"
 	"slices"
-	"strings"
 
 	"github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
 )
@@ -77,37 +76,7 @@ const (
 	ResponseModeNatural ResponseMode = "natural"
 	// ResponseModeSimple passes LLM output directly to user without processing.
 	ResponseModeSimple ResponseMode = "simple"
-	// responseModeRawLegacy is a legacy alias for simple mode kept for backward compatibility.
-	responseModeRawLegacy ResponseMode = "raw"
 )
-
-// Normalize maps response mode aliases to canonical values.
-func (m ResponseMode) Normalize() ResponseMode {
-	switch ResponseMode(strings.ToLower(strings.TrimSpace(string(m)))) {
-	case responseModeRawLegacy, ResponseModeSimple:
-		return ResponseModeSimple
-	case ResponseModeNatural:
-		return ResponseModeNatural
-	default:
-		return m
-	}
-}
-
-// UnmarshalJSON normalizes legacy response mode aliases during deserialization.
-func (m *ResponseMode) UnmarshalJSON(data []byte) error {
-	var raw string
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	*m = ResponseMode(raw).Normalize()
-	return nil
-}
-
-// UnmarshalText normalizes legacy response mode aliases for text-based decoders (e.g. YAML/TOML).
-func (m *ResponseMode) UnmarshalText(text []byte) error {
-	*m = ResponseMode(text).Normalize()
-	return nil
-}
 
 // Identity represents a custom agent persona.
 type Identity struct {

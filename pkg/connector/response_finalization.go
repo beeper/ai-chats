@@ -871,8 +871,8 @@ func (oc *AIClient) getAgentResponseMode(meta *PortalMetadata) agents.ResponseMo
 	if agentID != "" {
 		store := NewAgentStoreAdapter(oc)
 		if agent, err := store.GetAgentByID(context.Background(), agentID); err == nil && agent != nil {
-			if mode := agent.ResponseMode.Normalize(); mode != "" {
-				return mode
+			if agent.ResponseMode != "" {
+				return agent.ResponseMode
 			}
 		}
 	}

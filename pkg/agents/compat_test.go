@@ -5,17 +5,14 @@ import (
 	"testing"
 )
 
-func TestGetPresetByIDLegacyPlaygroundAlias(t *testing.T) {
+func TestGetPresetByIDPlaygroundIsNotAPreset(t *testing.T) {
 	preset := GetPresetByID("playground")
-	if preset == nil {
-		t.Fatalf("expected legacy preset id to resolve")
-	}
-	if preset.ID != SimpleAgent.ID {
-		t.Fatalf("expected preset id %q, got %q", SimpleAgent.ID, preset.ID)
+	if preset != nil {
+		t.Fatalf("expected no preset for playground, got %q", preset.ID)
 	}
 }
 
-func TestResponseModeUnmarshalLegacyRawAlias(t *testing.T) {
+func TestResponseModeUnmarshalRawStaysRaw(t *testing.T) {
 	var decoded struct {
 		ResponseMode ResponseMode `json:"response_mode"`
 	}
@@ -24,7 +21,7 @@ func TestResponseModeUnmarshalLegacyRawAlias(t *testing.T) {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
 
-	if decoded.ResponseMode != ResponseModeSimple {
-		t.Fatalf("expected %q, got %q", ResponseModeSimple, decoded.ResponseMode)
+	if decoded.ResponseMode != ResponseMode("raw") {
+		t.Fatalf("expected %q, got %q", ResponseMode("raw"), decoded.ResponseMode)
 	}
 }
