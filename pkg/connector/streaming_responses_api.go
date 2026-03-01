@@ -16,6 +16,328 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
+// processResponseStreamEvent handles a single Responses API stream event.
+// Returns done=true when the caller's loop should break (error/fatal), along with
+// any context-length error or general error.  The caller is responsible for
+// calling logResponsesFailure when err != nil.
+func (oc *AIClient) processResponseStreamEvent(
+	ctx context.Context,
+	log zerolog.Logger,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	meta *PortalMetadata,
+	activeTools map[string]*activeToolCall,
+	typingSignals *TypingSignaler,
+	touchTyping func(),
+	isHeartbeat bool,
+	streamEvent responses.ResponseStreamEventUnion,
+	isContinuation bool,
+) (done bool, cle *ContextLengthError, err error) {
+	contSuffix := ""
+	if isContinuation {
+		contSuffix = " (continuation)"
+	}
+
+	switch streamEvent.Type {
+	case "response.created", "response.queued", "response.in_progress", "response.failed", "response.incomplete":
+		oc.handleResponseLifecycleEvent(ctx, portal, state, meta, streamEvent.Type, streamEvent.Response)
+
+	case "response.output_item.added":
+		oc.handleResponseOutputItemAdded(ctx, portal, state, activeTools, streamEvent.Item)
+
+	case "response.output_item.done":
+		oc.handleResponseOutputItemDone(ctx, portal, state, activeTools, streamEvent.Item)
+
+	case "response.custom_tool_call_input.delta":
+		oc.handleCustomToolInputDeltaFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item, streamEvent.Delta)
+
+	case "response.custom_tool_call_input.done":
+		oc.handleCustomToolInputDoneFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item, streamEvent.Input)
+
+	case "response.code_interpreter_call_code.delta":
+		oc.handleCustomToolInputDeltaFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item, streamEvent.Delta)
+
+	case "response.code_interpreter_call_code.done":
+		oc.handleCustomToolInputDoneFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item, streamEvent.Code)
+
+	case "response.mcp_call_arguments.delta":
+		oc.handleCustomToolInputDeltaFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item, streamEvent.Delta)
+
+	case "response.mcp_call_arguments.done":
+		oc.handleCustomToolInputDoneFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item, streamEvent.Arguments)
+
+	case "response.mcp_call.failed":
+		oc.handleMCPCallFailedFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item)
+
+	case "response.output_text.delta":
+		touchTyping()
+		if err := oc.handleResponseOutputTextDelta(
+			ctx, log, portal, state, meta, typingSignals, isHeartbeat,
+			streamEvent.Delta,
+			"failed to send initial streaming message"+contSuffix,
+			"Failed to send initial streaming message"+contSuffix,
+		); err != nil {
+			return true, nil, &PreDeltaError{Err: err}
+		}
+
+	case "response.reasoning_text.delta":
+		touchTyping()
+		if typingSignals != nil {
+			typingSignals.SignalReasoningDelta()
+		}
+		if err := oc.handleResponseReasoningTextDelta(
+			ctx, log, portal, state, meta, isHeartbeat,
+			streamEvent.Delta,
+			"failed to send initial streaming message"+contSuffix,
+			"Failed to send initial streaming message"+contSuffix,
+		); err != nil {
+			return true, nil, &PreDeltaError{Err: err}
+		}
+
+	case "response.reasoning_summary_text.delta":
+		oc.handleResponseReasoningSummaryDelta(ctx, portal, state, strings.TrimSpace(streamEvent.Delta))
+
+	case "response.reasoning_text.done", "response.reasoning_summary_text.done":
+		oc.handleResponseReasoningDone(ctx, portal, state, strings.TrimSpace(streamEvent.Text))
+
+	case "response.refusal.delta":
+		touchTyping()
+		oc.handleResponseRefusalDelta(ctx, portal, state, typingSignals, streamEvent.Delta)
+
+	case "response.refusal.done":
+		oc.handleResponseRefusalDone(ctx, portal, state, strings.TrimSpace(streamEvent.Refusal))
+
+	case "response.output_text.done":
+		// text-end is emitted from emitUIFinish to keep one contiguous part.
+
+	case "response.function_call_arguments.delta":
+		touchTyping()
+		if typingSignals != nil {
+			typingSignals.SignalToolStart()
+		}
+		oc.handleFunctionCallArgumentsDelta(ctx, portal, state, meta, activeTools, streamEvent.ItemID, streamEvent.Name, streamEvent.Delta)
+
+	case "response.function_call_arguments.done":
+		touchTyping()
+		if typingSignals != nil {
+			typingSignals.SignalToolStart()
+		}
+		oc.handleFunctionCallArgumentsDone(ctx, log, portal, state, meta, activeTools, streamEvent.ItemID, streamEvent.Name, streamEvent.Arguments, !isContinuation, contSuffix)
+
+	case "response.file_search_call.searching", "response.file_search_call.in_progress":
+		oc.handleProviderToolInProgress(ctx, portal, state, activeTools, streamEvent.ItemID, "file_search", ToolTypeProvider)
+
+	case "response.file_search_call.completed":
+		oc.handleProviderToolCompleted(ctx, portal, state, activeTools, streamEvent.ItemID, "file_search", ToolTypeProvider, "")
+
+	case "response.code_interpreter_call.in_progress", "response.code_interpreter_call.interpreting":
+		oc.handleProviderToolInProgress(ctx, portal, state, activeTools, streamEvent.ItemID, "code_interpreter", ToolTypeProvider)
+
+	case "response.code_interpreter_call.completed":
+		oc.handleProviderToolCompleted(ctx, portal, state, activeTools, streamEvent.ItemID, "code_interpreter", ToolTypeProvider, "")
+
+	case "response.mcp_list_tools.in_progress":
+		oc.handleProviderToolInProgress(ctx, portal, state, activeTools, streamEvent.ItemID, "mcp.list_tools", ToolTypeMCP)
+
+	case "response.mcp_list_tools.completed":
+		oc.handleProviderToolCompleted(ctx, portal, state, activeTools, streamEvent.ItemID, "mcp.list_tools", ToolTypeMCP, "")
+
+	case "response.mcp_list_tools.failed":
+		oc.handleProviderToolCompleted(ctx, portal, state, activeTools, streamEvent.ItemID, "mcp.list_tools", ToolTypeMCP, "MCP list tools failed")
+
+	case "response.mcp_call.in_progress":
+		oc.handleProviderToolInProgress(ctx, portal, state, activeTools, streamEvent.ItemID, "mcp.call", ToolTypeMCP)
+
+	case "response.mcp_call.completed":
+		oc.handleProviderToolCompleted(ctx, portal, state, activeTools, streamEvent.ItemID, "mcp.call", ToolTypeMCP, "")
+
+	case "response.web_search_call.searching", "response.web_search_call.in_progress":
+		touchTyping()
+		if typingSignals != nil {
+			typingSignals.SignalToolStart()
+		}
+		callID := streamEvent.ItemID
+		if strings.TrimSpace(callID) == "" {
+			callID = NewCallID()
+		}
+		tool := &activeToolCall{
+			callID:      callID,
+			toolName:    "web_search",
+			toolType:    ToolTypeProvider,
+			startedAtMs: time.Now().UnixMilli(),
+			itemID:      streamEvent.ItemID,
+		}
+		tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
+		activeTools[streamEvent.ItemID] = tool
+
+		if state.initialEventID == "" && !state.suppressSend {
+			oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
+		}
+		oc.uiEmitter(state).EmitUIToolInputDelta(ctx, portal, tool.callID, "web_search", "", true)
+
+	case "response.web_search_call.completed":
+		touchTyping()
+		tool, exists := activeTools[streamEvent.ItemID]
+		callID := ""
+		if exists && tool != nil {
+			callID = tool.callID
+		}
+		if callID == "" {
+			callID = streamEvent.ItemID
+		}
+		if exists {
+			output := map[string]any{"status": "completed"}
+			resultJSON, _ := json.Marshal(output)
+			resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, string(resultJSON), ResultStatusSuccess)
+			state.toolCalls = append(state.toolCalls, ToolCallMetadata{
+				CallID:        callID,
+				ToolName:      "web_search",
+				ToolType:      string(tool.toolType),
+				Output:        output,
+				Status:        string(ToolStatusCompleted),
+				ResultStatus:  string(ResultStatusSuccess),
+				StartedAtMs:   tool.startedAtMs,
+				CompletedAtMs: time.Now().UnixMilli(),
+				CallEventID:   string(tool.eventID),
+				ResultEventID: string(resultEventID),
+			})
+		}
+		oc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, callID, map[string]any{"status": "completed"}, true, false)
+
+	case "response.image_generation_call.in_progress", "response.image_generation_call.generating":
+		touchTyping()
+		if typingSignals != nil {
+			typingSignals.SignalToolStart()
+		}
+		tool, exists := activeTools[streamEvent.ItemID]
+		if !exists {
+			callID := streamEvent.ItemID
+			if strings.TrimSpace(callID) == "" {
+				callID = NewCallID()
+			}
+			tool = &activeToolCall{
+				callID:      callID,
+				toolName:    "image_generation",
+				toolType:    ToolTypeProvider,
+				startedAtMs: time.Now().UnixMilli(),
+				itemID:      streamEvent.ItemID,
+			}
+			tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
+			activeTools[streamEvent.ItemID] = tool
+
+			if state.initialEventID == "" && !state.suppressSend {
+				oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
+			}
+		}
+		oc.uiEmitter(state).EmitUIToolInputDelta(ctx, portal, tool.callID, "image_generation", "", true)
+		log.Debug().Str("item_id", streamEvent.ItemID).Msg("Image generation in progress")
+
+	case "response.image_generation_call.completed":
+		touchTyping()
+		if typingSignals != nil {
+			typingSignals.SignalToolStart()
+		}
+		tool, exists := activeTools[streamEvent.ItemID]
+		callID := ""
+		if exists && tool != nil {
+			callID = tool.callID
+		}
+		if callID == "" {
+			callID = streamEvent.ItemID
+		}
+		if exists {
+			output := map[string]any{"status": "completed"}
+			resultJSON, _ := json.Marshal(output)
+			resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, string(resultJSON), ResultStatusSuccess)
+			state.toolCalls = append(state.toolCalls, ToolCallMetadata{
+				CallID:        callID,
+				ToolName:      "image_generation",
+				ToolType:      string(tool.toolType),
+				Output:        output,
+				Status:        string(ToolStatusCompleted),
+				ResultStatus:  string(ResultStatusSuccess),
+				StartedAtMs:   tool.startedAtMs,
+				CompletedAtMs: time.Now().UnixMilli(),
+				CallEventID:   string(tool.eventID),
+				ResultEventID: string(resultEventID),
+			})
+		}
+		log.Info().Str("item_id", streamEvent.ItemID).Msg("Image generation completed")
+		oc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, callID, map[string]any{"status": "completed"}, true, false)
+
+	case "response.image_generation_call.partial_image":
+		touchTyping()
+		if typingSignals != nil {
+			typingSignals.SignalToolStart()
+		}
+		oc.emitStreamEvent(ctx, portal, state, map[string]any{
+			"type":      "data-image_generation_partial",
+			"data":      map[string]any{"item_id": streamEvent.ItemID, "index": streamEvent.PartialImageIndex, "image_b64": streamEvent.PartialImageB64},
+			"transient": true,
+		})
+
+	case "response.output_text.annotation.added":
+		oc.handleResponseOutputAnnotationAdded(ctx, portal, state, streamEvent.Annotation, streamEvent.AnnotationIndex)
+
+	case "response.completed":
+		state.completedAtMs = time.Now().UnixMilli()
+		if streamEvent.Response.Usage.TotalTokens > 0 || streamEvent.Response.Usage.InputTokens > 0 || streamEvent.Response.Usage.OutputTokens > 0 {
+			state.promptTokens = streamEvent.Response.Usage.InputTokens
+			state.completionTokens = streamEvent.Response.Usage.OutputTokens
+			state.reasoningTokens = streamEvent.Response.Usage.OutputTokensDetails.ReasoningTokens
+			state.totalTokens = streamEvent.Response.Usage.TotalTokens
+		}
+		if streamEvent.Response.Status == "completed" {
+			state.finishReason = "stop"
+		} else {
+			state.finishReason = string(streamEvent.Response.Status)
+		}
+		if streamEvent.Response.ID != "" {
+			state.responseID = streamEvent.Response.ID
+		}
+		oc.uiEmitter(state).EmitUIMessageMetadata(ctx, portal, oc.buildUIMessageMetadata(state, meta, true))
+
+		if !isContinuation {
+			// Extract any generated images from response output
+			for _, output := range streamEvent.Response.Output {
+				if output.Type == "image_generation_call" {
+					imgOutput := output.AsImageGenerationCall()
+					if imgOutput.Status == "completed" && imgOutput.Result != "" {
+						state.pendingImages = append(state.pendingImages, generatedImage{
+							itemID:   imgOutput.ID,
+							imageB64: imgOutput.Result,
+							turnID:   state.turnID,
+						})
+						log.Debug().Str("item_id", imgOutput.ID).Msg("Captured generated image from response")
+					}
+				}
+			}
+		}
+		log.Debug().Str("reason", state.finishReason).Str("response_id", state.responseID).Int("images", len(state.pendingImages)).
+			Msg("Response stream completed" + contSuffix)
+
+	case "error":
+		apiErr := fmt.Errorf("API error: %s", streamEvent.Message)
+		state.finishReason = "error"
+		oc.uiEmitter(state).EmitUIError(ctx, portal, streamEvent.Message)
+		oc.emitUIFinish(ctx, portal, state, meta)
+		// Check for context length error (only on initial stream, not continuation)
+		if !isContinuation {
+			if strings.Contains(streamEvent.Message, "context_length") || strings.Contains(streamEvent.Message, "token") {
+				return true, &ContextLengthError{
+					OriginalError: fmt.Errorf("%s", streamEvent.Message),
+				}, nil
+			}
+		}
+		return true, nil, streamFailureError(state, apiErr)
+
+	default:
+		// Ignore unknown events
+	}
+
+	return false, nil, nil
+}
+
 // handleProviderToolInProgress ensures a provider/MCP tool entry exists and emits input delta.
 func (oc *AIClient) handleProviderToolInProgress(
 	ctx context.Context,
@@ -182,318 +504,12 @@ func (oc *AIClient) streamingResponse(
 		if streamEvent.Type != "error" {
 			oc.markMessageSendSuccess(ctx, portal, evt, state)
 		}
-
-		switch streamEvent.Type {
-		case "response.created", "response.queued", "response.in_progress", "response.failed", "response.incomplete":
-			oc.handleResponseLifecycleEvent(ctx, portal, state, meta, streamEvent.Type, streamEvent.Response)
-
-		case "response.output_item.added":
-			oc.handleResponseOutputItemAdded(ctx, portal, state, activeTools, streamEvent.Item)
-
-		case "response.output_item.done":
-			oc.handleResponseOutputItemDone(ctx, portal, state, activeTools, streamEvent.Item)
-
-		case "response.custom_tool_call_input.delta":
-			oc.handleCustomToolInputDeltaFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item, streamEvent.Delta)
-
-		case "response.custom_tool_call_input.done":
-			oc.handleCustomToolInputDoneFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item, streamEvent.Input)
-
-		case "response.code_interpreter_call_code.delta":
-			oc.handleCustomToolInputDeltaFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item, streamEvent.Delta)
-
-		case "response.code_interpreter_call_code.done":
-			oc.handleCustomToolInputDoneFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item, streamEvent.Code)
-
-		case "response.mcp_call_arguments.delta":
-			oc.handleCustomToolInputDeltaFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item, streamEvent.Delta)
-
-		case "response.mcp_call_arguments.done":
-			oc.handleCustomToolInputDoneFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item, streamEvent.Arguments)
-
-		case "response.mcp_call.failed":
-			oc.handleMCPCallFailedFromOutputItem(ctx, portal, state, activeTools, streamEvent.ItemID, streamEvent.Item)
-
-		case "response.output_text.delta":
-			touchTyping()
-			if err := oc.handleResponseOutputTextDelta(
-				ctx,
-				log,
-				portal,
-				state,
-				meta,
-				typingSignals,
-				isHeartbeat,
-				streamEvent.Delta,
-				"failed to send initial streaming message",
-				"Failed to send initial streaming message",
-			); err != nil {
-				return false, nil, &PreDeltaError{Err: err}
+		done, cle, evtErr := oc.processResponseStreamEvent(ctx, log, portal, state, meta, activeTools, typingSignals, touchTyping, isHeartbeat, streamEvent, false)
+		if done {
+			if evtErr != nil {
+				logResponsesFailure(log, evtErr, params, meta, messages, "stream_event_error")
 			}
-
-		case "response.reasoning_text.delta":
-			touchTyping()
-			if typingSignals != nil {
-				typingSignals.SignalReasoningDelta()
-			}
-			if err := oc.handleResponseReasoningTextDelta(
-				ctx,
-				log,
-				portal,
-				state,
-				meta,
-				isHeartbeat,
-				streamEvent.Delta,
-				"failed to send initial streaming message",
-				"Failed to send initial streaming message",
-			); err != nil {
-				return false, nil, &PreDeltaError{Err: err}
-			}
-
-		case "response.reasoning_summary_text.delta":
-			oc.handleResponseReasoningSummaryDelta(ctx, portal, state, strings.TrimSpace(streamEvent.Delta))
-
-		case "response.reasoning_text.done", "response.reasoning_summary_text.done":
-			oc.handleResponseReasoningDone(ctx, portal, state, strings.TrimSpace(streamEvent.Text))
-
-		case "response.refusal.delta":
-			touchTyping()
-			oc.handleResponseRefusalDelta(ctx, portal, state, typingSignals, streamEvent.Delta)
-
-		case "response.refusal.done":
-			oc.handleResponseRefusalDone(ctx, portal, state, strings.TrimSpace(streamEvent.Refusal))
-
-		case "response.output_text.done":
-			// text-end is emitted from emitUIFinish to keep one contiguous part.
-		case "response.function_call_arguments.delta":
-			touchTyping()
-			if typingSignals != nil {
-				typingSignals.SignalToolStart()
-			}
-			oc.handleFunctionCallArgumentsDelta(ctx, portal, state, meta, activeTools, streamEvent.ItemID, streamEvent.Name, streamEvent.Delta)
-
-		case "response.function_call_arguments.done":
-			touchTyping()
-			if typingSignals != nil {
-				typingSignals.SignalToolStart()
-			}
-			oc.handleFunctionCallArgumentsDone(ctx, log, portal, state, meta, activeTools, streamEvent.ItemID, streamEvent.Name, streamEvent.Arguments, true, "")
-
-		case "response.file_search_call.searching", "response.file_search_call.in_progress":
-			oc.handleProviderToolInProgress(ctx, portal, state, activeTools, streamEvent.ItemID, "file_search", ToolTypeProvider)
-
-		case "response.file_search_call.completed":
-			oc.handleProviderToolCompleted(ctx, portal, state, activeTools, streamEvent.ItemID, "file_search", ToolTypeProvider, "")
-
-		case "response.code_interpreter_call.in_progress", "response.code_interpreter_call.interpreting":
-			oc.handleProviderToolInProgress(ctx, portal, state, activeTools, streamEvent.ItemID, "code_interpreter", ToolTypeProvider)
-
-		case "response.code_interpreter_call.completed":
-			oc.handleProviderToolCompleted(ctx, portal, state, activeTools, streamEvent.ItemID, "code_interpreter", ToolTypeProvider, "")
-
-		case "response.mcp_list_tools.in_progress":
-			oc.handleProviderToolInProgress(ctx, portal, state, activeTools, streamEvent.ItemID, "mcp.list_tools", ToolTypeMCP)
-
-		case "response.mcp_list_tools.completed":
-			oc.handleProviderToolCompleted(ctx, portal, state, activeTools, streamEvent.ItemID, "mcp.list_tools", ToolTypeMCP, "")
-
-		case "response.mcp_list_tools.failed":
-			oc.handleProviderToolCompleted(ctx, portal, state, activeTools, streamEvent.ItemID, "mcp.list_tools", ToolTypeMCP, "MCP list tools failed")
-
-		case "response.mcp_call.in_progress":
-			oc.handleProviderToolInProgress(ctx, portal, state, activeTools, streamEvent.ItemID, "mcp.call", ToolTypeMCP)
-
-		case "response.mcp_call.completed":
-			oc.handleProviderToolCompleted(ctx, portal, state, activeTools, streamEvent.ItemID, "mcp.call", ToolTypeMCP, "")
-
-		case "response.web_search_call.searching", "response.web_search_call.in_progress":
-			touchTyping()
-			if typingSignals != nil {
-				typingSignals.SignalToolStart()
-			}
-			// Web search starting
-			callID := streamEvent.ItemID
-			if strings.TrimSpace(callID) == "" {
-				callID = NewCallID()
-			}
-			tool := &activeToolCall{
-				callID:      callID,
-				toolName:    "web_search",
-				toolType:    ToolTypeProvider,
-				startedAtMs: time.Now().UnixMilli(),
-				itemID:      streamEvent.ItemID,
-			}
-			tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
-			activeTools[streamEvent.ItemID] = tool
-
-			if state.initialEventID == "" && !state.suppressSend {
-				oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
-			}
-			oc.uiEmitter(state).EmitUIToolInputDelta(ctx, portal, tool.callID, "web_search", "", true)
-
-		case "response.web_search_call.completed":
-			touchTyping()
-			// Web search completed
-			tool, exists := activeTools[streamEvent.ItemID]
-			callID := ""
-			if exists && tool != nil {
-				callID = tool.callID
-			}
-			if callID == "" {
-				callID = streamEvent.ItemID
-			}
-			if exists {
-				// Track tool call
-				output := map[string]any{"status": "completed"}
-				resultJSON, _ := json.Marshal(output)
-				resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, string(resultJSON), ResultStatusSuccess)
-				state.toolCalls = append(state.toolCalls, ToolCallMetadata{
-					CallID:        callID,
-					ToolName:      "web_search",
-					ToolType:      string(tool.toolType),
-					Output:        output,
-					Status:        string(ToolStatusCompleted),
-					ResultStatus:  string(ResultStatusSuccess),
-					StartedAtMs:   tool.startedAtMs,
-					CompletedAtMs: time.Now().UnixMilli(),
-					CallEventID:   string(tool.eventID),
-					ResultEventID: string(resultEventID),
-				})
-			}
-			oc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, callID, map[string]any{"status": "completed"}, true, false)
-
-		case "response.image_generation_call.in_progress", "response.image_generation_call.generating":
-			touchTyping()
-			if typingSignals != nil {
-				typingSignals.SignalToolStart()
-			}
-			// Image generation in progress
-			tool, exists := activeTools[streamEvent.ItemID]
-			if !exists {
-				callID := streamEvent.ItemID
-				if strings.TrimSpace(callID) == "" {
-					callID = NewCallID()
-				}
-				tool = &activeToolCall{
-					callID:      callID,
-					toolName:    "image_generation",
-					toolType:    ToolTypeProvider,
-					startedAtMs: time.Now().UnixMilli(),
-					itemID:      streamEvent.ItemID,
-				}
-				tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
-				activeTools[streamEvent.ItemID] = tool
-
-				if state.initialEventID == "" && !state.suppressSend {
-					oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
-				}
-			}
-			oc.uiEmitter(state).EmitUIToolInputDelta(ctx, portal, tool.callID, "image_generation", "", true)
-
-			log.Debug().Str("item_id", streamEvent.ItemID).Msg("Image generation in progress")
-
-		case "response.image_generation_call.completed":
-			touchTyping()
-			if typingSignals != nil {
-				typingSignals.SignalToolStart()
-			}
-			// Image generation completed - the actual image data will be in response.completed
-			tool, exists := activeTools[streamEvent.ItemID]
-			callID := ""
-			if exists && tool != nil {
-				callID = tool.callID
-			}
-			if callID == "" {
-				callID = streamEvent.ItemID
-			}
-			if exists {
-				// Track tool call
-				output := map[string]any{"status": "completed"}
-				resultJSON, _ := json.Marshal(output)
-				resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, string(resultJSON), ResultStatusSuccess)
-				state.toolCalls = append(state.toolCalls, ToolCallMetadata{
-					CallID:        callID,
-					ToolName:      "image_generation",
-					ToolType:      string(tool.toolType),
-					Output:        output,
-					Status:        string(ToolStatusCompleted),
-					ResultStatus:  string(ResultStatusSuccess),
-					StartedAtMs:   tool.startedAtMs,
-					CompletedAtMs: time.Now().UnixMilli(),
-					CallEventID:   string(tool.eventID),
-					ResultEventID: string(resultEventID),
-				})
-			}
-			log.Info().Str("item_id", streamEvent.ItemID).Msg("Image generation completed")
-			oc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, callID, map[string]any{"status": "completed"}, true, false)
-
-		case "response.image_generation_call.partial_image":
-			touchTyping()
-			if typingSignals != nil {
-				typingSignals.SignalToolStart()
-			}
-			oc.emitStreamEvent(ctx, portal, state, map[string]any{
-				"type":      "data-image_generation_partial",
-				"data":      map[string]any{"item_id": streamEvent.ItemID, "index": streamEvent.PartialImageIndex, "image_b64": streamEvent.PartialImageB64},
-				"transient": true,
-			})
-
-		case "response.output_text.annotation.added":
-			oc.handleResponseOutputAnnotationAdded(ctx, portal, state, streamEvent.Annotation, streamEvent.AnnotationIndex)
-
-		case "response.completed":
-			state.completedAtMs = time.Now().UnixMilli()
-
-			if streamEvent.Response.Usage.TotalTokens > 0 || streamEvent.Response.Usage.InputTokens > 0 || streamEvent.Response.Usage.OutputTokens > 0 {
-				state.promptTokens = streamEvent.Response.Usage.InputTokens
-				state.completionTokens = streamEvent.Response.Usage.OutputTokens
-				state.reasoningTokens = streamEvent.Response.Usage.OutputTokensDetails.ReasoningTokens
-				state.totalTokens = streamEvent.Response.Usage.TotalTokens
-			}
-
-			if streamEvent.Response.Status == "completed" {
-				state.finishReason = "stop"
-			} else {
-				state.finishReason = string(streamEvent.Response.Status)
-			}
-			// Capture response ID for persistence (will save to DB and portal after streaming completes)
-			if streamEvent.Response.ID != "" {
-				state.responseID = streamEvent.Response.ID
-			}
-			oc.uiEmitter(state).EmitUIMessageMetadata(ctx, portal, oc.buildUIMessageMetadata(state, meta, true))
-
-			// Extract any generated images from response output
-			for _, output := range streamEvent.Response.Output {
-				if output.Type == "image_generation_call" {
-					imgOutput := output.AsImageGenerationCall()
-					if imgOutput.Status == "completed" && imgOutput.Result != "" {
-						state.pendingImages = append(state.pendingImages, generatedImage{
-							itemID:   imgOutput.ID,
-							imageB64: imgOutput.Result,
-							turnID:   state.turnID,
-						})
-						log.Debug().Str("item_id", imgOutput.ID).Msg("Captured generated image from response")
-					}
-				}
-			}
-
-			log.Debug().Str("reason", state.finishReason).Str("response_id", state.responseID).Int("images", len(state.pendingImages)).Msg("Response stream completed")
-
-		case "error":
-			apiErr := fmt.Errorf("API error: %s", streamEvent.Message)
-			state.finishReason = "error"
-			oc.uiEmitter(state).EmitUIError(ctx, portal, streamEvent.Message)
-			oc.emitUIFinish(ctx, portal, state, meta)
-			logResponsesFailure(log, apiErr, params, meta, messages, "stream_event_error")
-			// Check for context length error
-			if strings.Contains(streamEvent.Message, "context_length") || strings.Contains(streamEvent.Message, "token") {
-				return false, &ContextLengthError{
-					OriginalError: fmt.Errorf("%s", streamEvent.Message),
-				}, nil
-			}
-			return false, nil, streamFailureError(state, apiErr)
-		default:
-			// Ignore unknown events
+			return false, cle, evtErr
 		}
 	}
 
