@@ -3,6 +3,7 @@ package connector
 import (
 	"strings"
 
+	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -47,15 +48,11 @@ func extractInboundReplyContext(evt *event.Event) inboundReplyContext {
 }
 
 func normalizeReplyToMode(raw string) string {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "first":
-		return "first"
-	case "all":
-		return "all"
-	case "off":
-		return "off"
+	mode := runtimeparse.NormalizeReplyToMode(raw)
+	if mode == "" {
+		return ""
 	}
-	return ""
+	return string(mode)
 }
 
 func normalizeThreadReplies(raw string) string {

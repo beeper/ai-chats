@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
 	"maunium.net/go/mautrix/bridgev2/database"
 )
 
@@ -103,7 +104,7 @@ func projectOpenClawMessages(messages []*database.Message) []map[string]any {
 		case "user":
 			entry := map[string]any{
 				"role":      "user",
-				"content":   buildTextBlocks(meta.Body),
+				"content":   buildTextBlocksForRole(meta.Body, true),
 				"timestamp": msg.Timestamp.UnixMilli(),
 			}
 			if msg.MXID != "" {
@@ -165,7 +166,7 @@ func projectAssistantOpenClawMessage(meta *MessageMetadata, msg *database.Messag
 	}
 
 	if len(content) == 0 {
-		content = append(content, buildTextBlocks(meta.Body)...)
+		content = append(content, buildTextBlocksForRole(meta.Body, false)...)
 	}
 	if len(content) == 0 {
 		content = append(content, map[string]any{
@@ -465,10 +466,15 @@ func extractOpenClawToolResultID(msg map[string]any) string {
 }
 
 func buildTextBlocks(text string) []map[string]any {
+	return buildTextBlocksForRole(text, false)
+}
+
+func buildTextBlocksForRole(text string, isUser bool) []map[string]any {
+	cleaned := runtimeparse.SanitizeChatMessageForDisplay(text, isUser)
 	return []map[string]any{
 		{
 			"type": "text",
-			"text": text,
+			"text": cleaned,
 		},
 	}
 }

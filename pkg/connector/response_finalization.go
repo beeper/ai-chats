@@ -205,12 +205,6 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 
 	// Generate link previews for URLs in the response
 	linkPreviews := generateOutboundLinkPreviews(ctx, cleanedContent, intent, portal, state.sourceCitations, getLinkPreviewConfig(&oc.connector.Config))
-	if sourceParts := buildSourceParts(state.sourceCitations, state.sourceDocuments, linkPreviews); len(sourceParts) > 0 {
-		parts = append(parts, sourceParts...)
-	}
-	if fileParts := citations.GeneratedFilesToParts(state.generatedFiles); len(fileParts) > 0 {
-		parts = append(parts, fileParts...)
-	}
 
 	uiMessage := msgconv.BuildUIMessage(msgconv.UIMessageParams{
 		TurnID:     state.turnID,
@@ -683,39 +677,23 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 
 	// Generate link previews for URLs in the response
 	linkPreviews := generateOutboundLinkPreviews(ctx, rendered.Body, intent, portal, state.sourceCitations, getLinkPreviewConfig(&oc.connector.Config))
-	if sourceParts := buildSourceParts(state.sourceCitations, state.sourceDocuments, linkPreviews); len(sourceParts) > 0 {
-		parts = append(parts, sourceParts...)
-	}
-	if fileParts := citations.GeneratedFilesToParts(state.generatedFiles); len(fileParts) > 0 {
-		parts = append(parts, fileParts...)
-	}
 
-	uiMessage := map[string]any{
-		"id":       state.turnID,
-		"role":     "assistant",
-		"metadata": oc.buildUIMessageMetadata(state, meta, true),
-		"parts":    parts,
-	}
+	uiMessage := msgconv.BuildUIMessage(msgconv.UIMessageParams{
+		TurnID:     state.turnID,
+		Role:       "assistant",
+		Metadata:   oc.buildUIMessageMetadata(state, meta, true),
+		Parts:      parts,
+		SourceURLs: buildSourceParts(state.sourceCitations, state.sourceDocuments, linkPreviews),
+		FileParts:  citations.GeneratedFilesToParts(state.generatedFiles),
+	})
 
-	// Outer body/formatted_body use a short fallback — Desktop only reads m.new_content for m.replace events.
-	rawContent2 := map[string]any{
-		"msgtype":                       event.MsgText,
-		"body":                          "* AI response",
-		"format":                        rendered.Format,
-		"formatted_body":                "* AI response",
-		"m.new_content":                 map[string]any{"msgtype": event.MsgText, "body": rendered.Body, "format": rendered.Format, "formatted_body": rendered.FormattedBody, "m.mentions": map[string]any{}},
-		"m.relates_to":                  relatesTo,
-		BeeperAIKey:                     uiMessage,
-		"com.beeper.dont_render_edited": true,
-		"m.mentions":                    map[string]any{},
-	}
-
-	// Attach link previews if any were generated
-	if len(linkPreviews) > 0 {
-		rawContent2["com.beeper.linkpreviews"] = PreviewsToMapSlice(linkPreviews)
-	}
-
-	eventContent := &event.Content{Raw: rawContent2}
+	eventContent := msgconv.BuildFinalEditContent(msgconv.FinalEditContentParams{
+		Rendered:       rendered,
+		RelatesTo:      relatesTo,
+		UIMessage:      uiMessage,
+		LinkPreviews:   PreviewsToMapSlice(linkPreviews),
+		DontShowEdited: true,
+	})
 
 	if _, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, eventContent, nil); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Stringer("initial_event_id", state.initialEventID).Msg("Failed to send final assistant turn (simple mode)")

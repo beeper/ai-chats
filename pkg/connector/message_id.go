@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strings"
 
+	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
 	"maunium.net/go/mautrix/id"
 )
 
@@ -14,28 +15,11 @@ var matrixEventIDLineRE = regexp.MustCompile(`(?i)^\s*\[matrix event id:\s*([^\]
 // stripMessageIDHintLines removes full-line [message_id: ...] hints.
 // Mirrors OpenClaw's gateway chat sanitization behavior.
 func stripMessageIDHintLines(text string) string {
-	if !containsMessageIDHint(text) {
-		return text
-	}
-	lines := strings.Split(text, "\n")
-	changed := false
-	filtered := make([]string, 0, len(lines))
-	for _, line := range lines {
-		if messageIDLineRE.MatchString(line) || matrixEventIDLineRE.MatchString(line) {
-			changed = true
-			continue
-		}
-		filtered = append(filtered, line)
-	}
-	if !changed {
-		return text
-	}
-	return strings.Join(filtered, "\n")
+	return runtimeparse.StripMessageIDHintLines(text)
 }
 
 func containsMessageIDHint(value string) bool {
-	lower := strings.ToLower(value)
-	return strings.Contains(lower, "[message_id:") || strings.Contains(lower, "[matrix event id:")
+	return runtimeparse.ContainsMessageIDHint(value)
 }
 
 func normalizeHintMessageID(value string) string {

@@ -25,6 +25,7 @@ import (
 
 	"github.com/beeper/ai-bridge/bridges/codex/codexrpc"
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
 	"github.com/beeper/ai-bridge/pkg/matrixevents"
 	"github.com/beeper/ai-bridge/pkg/shared/citations"
 	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
@@ -1848,51 +1849,21 @@ func (cc *CodexClient) emitUIFinish(ctx context.Context, portal *bridgev2.Portal
 }
 
 func (cc *CodexClient) buildCanonicalUIMessage(state *streamingState, model string, finishReason string) map[string]any {
-	parts := make([]map[string]any, 0, 2+len(state.toolCalls))
-	if strings.TrimSpace(state.reasoning.String()) != "" {
-		parts = append(parts, map[string]any{"type": "reasoning", "text": state.reasoning.String(), "state": "done"})
+	parts := msgconv.ContentParts(
+		strings.TrimSpace(state.accumulated.String()),
+		strings.TrimSpace(state.reasoning.String()),
+	)
+	if toolParts := msgconv.ToolCallParts(state.toolCalls, string(matrixevents.ToolTypeProvider), string(matrixevents.ResultStatusSuccess), string(matrixevents.ResultStatusDenied)); len(toolParts) > 0 {
+		parts = append(parts, toolParts...)
 	}
-	if strings.TrimSpace(state.accumulated.String()) != "" {
-		parts = append(parts, map[string]any{"type": "text", "text": state.accumulated.String(), "state": "done"})
-	}
-	for _, tc := range state.toolCalls {
-		part := map[string]any{
-			"type":       "dynamic-tool",
-			"toolName":   tc.ToolName,
-			"toolCallId": tc.CallID,
-			"input":      tc.Input,
-		}
-		if tc.ToolType == string(matrixevents.ToolTypeProvider) {
-			part["providerExecuted"] = true
-		}
-		if tc.ResultStatus == string(matrixevents.ResultStatusSuccess) {
-			part["state"] = "output-available"
-			part["output"] = tc.Output
-		} else if tc.ResultStatus == string(matrixevents.ResultStatusDenied) {
-			part["state"] = "output-denied"
-			part["errorText"] = "Denied by user"
-		} else {
-			part["state"] = "output-error"
-			if tc.ErrorMessage != "" {
-				part["errorText"] = tc.ErrorMessage
-			} else if result, ok := tc.Output["result"].(string); ok && result != "" {
-				part["errorText"] = result
-			}
-		}
-		parts = append(parts, part)
-	}
-	if sourceParts := citations.BuildSourceParts(state.sourceCitations, state.sourceDocuments); len(sourceParts) > 0 {
-		parts = append(parts, sourceParts...)
-	}
-	if fileParts := citations.GeneratedFilesToParts(state.generatedFiles); len(fileParts) > 0 {
-		parts = append(parts, fileParts...)
-	}
-	return map[string]any{
-		"id":       state.turnID,
-		"role":     "assistant",
-		"metadata": cc.buildUIMessageMetadata(state, model, true, finishReason),
-		"parts":    parts,
-	}
+	return msgconv.BuildUIMessage(msgconv.UIMessageParams{
+		TurnID:     state.turnID,
+		Role:       "assistant",
+		Metadata:   cc.buildUIMessageMetadata(state, model, true, finishReason),
+		Parts:      parts,
+		SourceURLs: citations.BuildSourceParts(state.sourceCitations, state.sourceDocuments),
+		FileParts:  citations.GeneratedFilesToParts(state.generatedFiles),
+	})
 }
 
 func (cc *CodexClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2.Portal, state *streamingState, model string, finishReason string) {

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -77,10 +78,31 @@ func (oc *AIClient) buildMatrixInboundBody(
 ) string {
 	// Simple mode must not inject any envelope/sender/event-id context.
 	if isSimpleMode(meta) {
-		return strings.TrimSpace(rawBody)
+		ctx := runtimeparse.FinalizeInboundContext(runtimeparse.InboundContext{
+			Provider:     "matrix",
+			Surface:      "matrix",
+			ChatType:     map[bool]string{true: "group", false: "direct"}[isGroup],
+			ChatID:       roomName,
+			SenderLabel:  senderName,
+			SenderID:     senderName,
+			Body:         rawBody,
+			BodyForAgent: rawBody,
+		})
+		return strings.TrimSpace(ctx.BodyForAgent)
 	}
 
-	body := strings.TrimSpace(rawBody)
+	normalized := runtimeparse.FinalizeInboundContext(runtimeparse.InboundContext{
+		Provider:          "matrix",
+		Surface:           "matrix",
+		ChatType:          map[bool]string{true: "group", false: "direct"}[isGroup],
+		ChatID:            roomName,
+		ConversationLabel: roomName,
+		SenderLabel:       senderName,
+		SenderID:          senderName,
+		Body:              rawBody,
+		BodyForAgent:      rawBody,
+	})
+	body := strings.TrimSpace(normalized.BodyForAgent)
 	if body == "" {
 		return ""
 	}

@@ -13,6 +13,7 @@ import (
 
 	"github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
 	"github.com/beeper/ai-bridge/pkg/agents/tools"
+	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
 )
 
 // activeToolCall tracks a tool call that's in progress
@@ -135,44 +136,19 @@ func (oc *AIClient) sendToolCallEvent(ctx context.Context, portal *bridgev2.Port
 		return ""
 	}
 
-	// Build display info
 	displayTitle := toolDisplayTitle(tool.toolName)
 
-	toolCallData := map[string]any{
-		"call_id":   tool.callID,
-		"turn_id":   state.turnID,
-		"tool_name": tool.toolName,
-		"tool_type": string(tool.toolType),
-		"status":    string(ToolStatusRunning),
-		"display": map[string]any{
-			"title":     displayTitle,
-			"collapsed": false,
-		},
-		"timing": map[string]any{
-			"started_at": tool.startedAtMs,
-		},
-	}
-	if input := parseToolInputPayload(tool.input.String()); len(input) > 0 {
-		toolCallData["input"] = input
-	}
-
-	if state.agentID != "" {
-		toolCallData["agent_id"] = state.agentID
-	}
-
-	eventRaw := map[string]any{
-		"body":              fmt.Sprintf("Calling %s...", displayTitle),
-		"msgtype":           event.MsgNotice,
-		BeeperAIToolCallKey: toolCallData,
-	}
-	if state.initialEventID != "" {
-		eventRaw["m.relates_to"] = map[string]any{
-			"rel_type": RelReference,
-			"event_id": state.initialEventID.String(),
-		}
-	}
-
-	eventContent := &event.Content{Raw: eventRaw}
+	eventContent := msgconv.BuildToolCallEventContent(msgconv.ToolCallEventParams{
+		CallID:         tool.callID,
+		TurnID:         state.turnID,
+		ToolName:       tool.toolName,
+		ToolType:       string(tool.toolType),
+		AgentID:        state.agentID,
+		DisplayTitle:   displayTitle,
+		Input:          parseToolInputPayload(tool.input.String()),
+		StartedAtMs:    tool.startedAtMs,
+		ReferenceEvent: state.initialEventID,
+	})
 
 	resp, err := intent.SendMessage(ctx, portal.MXID, ToolCallEventType, eventContent, nil)
 	if err != nil {
@@ -314,38 +290,17 @@ func (oc *AIClient) sendToolResultEvent(ctx context.Context, portal *bridgev2.Po
 		bodyText = fmt.Sprintf("%s completed", toolDisplayTitle(tool.toolName))
 	}
 
-	toolResultData := map[string]any{
-		"call_id":   tool.callID,
-		"turn_id":   state.turnID,
-		"tool_name": tool.toolName,
-		"status":    string(resultStatus),
-		"display": map[string]any{
-			"expandable":       len(result) > 200,
-			"default_expanded": len(result) <= 500,
-		},
-	}
-
-	if state.agentID != "" {
-		toolResultData["agent_id"] = state.agentID
-	}
-
-	if output := parseToolOutputPayload(result); len(output) > 0 {
-		toolResultData["output"] = output
-	}
-
-	eventRaw := map[string]any{
-		"body":                bodyText,
-		"msgtype":             event.MsgNotice,
-		BeeperAIToolResultKey: toolResultData,
-	}
-	if tool.eventID != "" {
-		eventRaw["m.relates_to"] = map[string]any{
-			"rel_type": RelReference,
-			"event_id": tool.eventID.String(),
-		}
-	}
-
-	eventContent := &event.Content{Raw: eventRaw}
+	eventContent := msgconv.BuildToolResultEventContent(msgconv.ToolResultEventParams{
+		CallID:         tool.callID,
+		TurnID:         state.turnID,
+		ToolName:       tool.toolName,
+		AgentID:        state.agentID,
+		ResultStatus:   string(resultStatus),
+		BodyText:       bodyText,
+		Output:         parseToolOutputPayload(result),
+		ResultLength:   len(result),
+		ReferenceEvent: tool.eventID,
+	})
 
 	resp, err := intent.SendMessage(ctx, portal.MXID, ToolResultEventType, eventContent, nil)
 	if err != nil {
