@@ -10,6 +10,7 @@ import (
 
 	"github.com/beeper/ai-bridge/pkg/shared/exa"
 	"github.com/beeper/ai-bridge/pkg/shared/httputil"
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 type exaProvider struct {
