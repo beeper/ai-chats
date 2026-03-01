@@ -26,7 +26,7 @@ func (oc *AIClient) responseWithRetryAndReasoningFallback(
 	maxReasoningFallbacks := 3
 	var lastErr error
 
-	for range maxReasoningFallbacks {
+	for attempt := 0; attempt < maxReasoningFallbacks; attempt++ {
 		attemptedLevels[currentLevel] = true
 
 		// Create a modified meta with the current reasoning level if different from original
