@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
@@ -41,19 +42,21 @@ func TestToolApprovals_Resolve(t *testing.T) {
 		TTL:          2 * time.Second,
 	})
 
-	if err := oc.resolveToolApproval(roomID, approvalID, ToolApprovalDecision{
-		Approve:   true,
-		Always:    false,
-		DecidedBy: owner,
-	}); err != nil {
+	if err := oc.resolveToolApproval(
+		roomID,
+		approvalID,
+		airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalApproved},
+		false,
+		owner,
+	); err != nil {
 		t.Fatalf("resolve failed: %v", err)
 	}
 
-	decision, _, ok := oc.waitToolApproval(context.Background(), approvalID)
+	resolution, _, ok := oc.waitToolApproval(context.Background(), approvalID)
 	if !ok {
 		t.Fatalf("expected wait ok")
 	}
-	if !decision.Approve {
+	if !approvalAllowed(resolution.Decision) {
 		t.Fatalf("expected approve=true")
 	}
 }
@@ -76,11 +79,13 @@ func TestToolApprovals_RejectNonOwner(t *testing.T) {
 		TTL:          2 * time.Second,
 	})
 
-	err := oc.resolveToolApproval(roomID, approvalID, ToolApprovalDecision{
-		Approve:   true,
-		Always:    false,
-		DecidedBy: id.UserID("@attacker:example.com"),
-	})
+	err := oc.resolveToolApproval(
+		roomID,
+		approvalID,
+		airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalApproved},
+		false,
+		id.UserID("@attacker:example.com"),
+	)
 	if err == nil {
 		t.Fatalf("expected non-owner resolution to fail")
 	}
@@ -105,11 +110,13 @@ func TestToolApprovals_RejectCrossRoom(t *testing.T) {
 		TTL:          2 * time.Second,
 	})
 
-	if err := oc.resolveToolApproval(otherRoom, approvalID, ToolApprovalDecision{
-		Approve:   true,
-		Always:    false,
-		DecidedBy: owner,
-	}); err == nil {
+	if err := oc.resolveToolApproval(
+		otherRoom,
+		approvalID,
+		airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalApproved},
+		false,
+		owner,
+	); err == nil {
 		t.Fatalf("expected cross-room resolution to fail")
 	}
 }

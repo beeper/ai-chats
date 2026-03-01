@@ -63,7 +63,7 @@ func DefaultCompactionConfig() *CompactionConfig {
 	}
 }
 
-const defaultIdentifierPreservationInstructions = "Preserve all opaque identifiers exactly as written (no shortening or reconstruction), including UUIDs, hashes, IDs, tokens, API keys, hostnames, IPs, ports, URLs, and file names."
+const defaultIdentifierPreservationInstructions = "Preserve non-secret opaque identifiers exactly as written (no shortening or reconstruction), including UUIDs, hashes, IDs, hostnames, IPs, ports, URLs, and file names. Never retain or reproduce secrets such as API keys, auth tokens, passwords, or private keys."
 
 func (c *Compactor) resolveIdentifierPreservationInstructions() string {
 	policy := strings.ToLower(strings.TrimSpace(c.config.IdentifierPolicy))

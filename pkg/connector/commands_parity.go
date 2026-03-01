@@ -9,6 +9,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/commands"
 
 	"github.com/beeper/ai-bridge/pkg/connector/commandregistry"
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
@@ -134,13 +135,20 @@ func fnApprove(ce *commands.Event) {
 		ce.Reply("Couldn't load AI settings. Try again.")
 		return
 	}
-	err := client.resolveToolApproval(portal.MXID, approvalID, ToolApprovalDecision{
-		Approve:   approve,
-		Always:    always,
-		Reason:    reason,
-		DecidedAt: time.Now(),
-		DecidedBy: ce.User.MXID,
-	})
+	decisionState := airuntime.ToolApprovalDenied
+	if approve {
+		decisionState = airuntime.ToolApprovalApproved
+	}
+	err := client.resolveToolApproval(
+		portal.MXID,
+		approvalID,
+		airuntime.ToolApprovalDecision{
+			State:  decisionState,
+			Reason: reason,
+		},
+		always,
+		ce.User.MXID,
+	)
 	if err != nil {
 		ce.Reply("%s", formatSystemAck(err.Error()))
 		return

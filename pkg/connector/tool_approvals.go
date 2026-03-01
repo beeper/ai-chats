@@ -20,13 +20,9 @@ const (
 	ToolApprovalKindBuiltin ToolApprovalKind = "builtin"
 )
 
-// ToolApprovalDecision is a user decision for a pending tool approval request.
-type ToolApprovalDecision struct {
-	Approve   bool
-	Always    bool   // Persist allow rule when true (only meaningful when Approve=true).
-	Reason    string // Optional; forwarded upstream when supported.
-	DecidedAt time.Time
-	DecidedBy id.UserID
+type toolApprovalResolution struct {
+	Decision airuntime.ToolApprovalDecision
+	Always   bool // Persist allow rule when true (only meaningful when approved).
 }
 
 type pendingToolApproval struct {
@@ -49,7 +45,7 @@ type pendingToolApproval struct {
 	RequestedAt time.Time
 	ExpiresAt   time.Time
 
-	decisionCh chan ToolApprovalDecision
+	decisionCh chan toolApprovalResolution
 }
 
 // ToolApprovalParams holds the parameters for registering a tool approval request.
@@ -102,14 +98,20 @@ func (oc *AIClient) registerToolApproval(params ToolApprovalParams) (*pendingToo
 		Action:       strings.TrimSpace(params.Action),
 		RequestedAt:  now,
 		ExpiresAt:    now.Add(ttl),
-		decisionCh:   make(chan ToolApprovalDecision, 1),
+		decisionCh:   make(chan toolApprovalResolution, 1),
 	}
 	oc.toolApprovals[approvalID] = p
 	oc.Log().Debug().Str("approval_id", approvalID).Str("tool", params.ToolName).Dur("ttl", ttl).Msg("tool approval registered")
 	return p, true
 }
 
-func (oc *AIClient) resolveToolApproval(roomID id.RoomID, approvalID string, decision ToolApprovalDecision) error {
+func (oc *AIClient) resolveToolApproval(
+	roomID id.RoomID,
+	approvalID string,
+	decision airuntime.ToolApprovalDecision,
+	always bool,
+	decidedBy id.UserID,
+) error {
 	if oc == nil || oc.UserLogin == nil {
 		return errors.New("bridge not available")
 	}
@@ -120,7 +122,7 @@ func (oc *AIClient) resolveToolApproval(roomID id.RoomID, approvalID string, dec
 	if strings.TrimSpace(roomID.String()) == "" {
 		return ErrApprovalMissingRoom
 	}
-	if decision.DecidedBy == "" || decision.DecidedBy != oc.UserLogin.UserMXID {
+	if decidedBy == "" || decidedBy != oc.UserLogin.UserMXID {
 		return ErrApprovalOnlyOwner
 	}
 
@@ -139,12 +141,16 @@ func (oc *AIClient) resolveToolApproval(roomID id.RoomID, approvalID string, dec
 	}
 
 	decision.Reason = strings.TrimSpace(decision.Reason)
-	if decision.DecidedAt.IsZero() {
-		decision.DecidedAt = time.Now()
+	if strings.TrimSpace(string(decision.State)) == "" {
+		decision.State = airuntime.ToolApprovalDenied
+	}
+	resolution := toolApprovalResolution{
+		Decision: decision,
+		Always:   always,
 	}
 	select {
-	case p.decisionCh <- decision:
-		oc.Log().Debug().Str("approval_id", approvalID).Str("tool", p.ToolName).Bool("approved", decision.Approve).Msg("tool approval decision delivered")
+	case p.decisionCh <- resolution:
+		oc.Log().Debug().Str("approval_id", approvalID).Str("tool", p.ToolName).Str("state", string(decision.State)).Msg("tool approval decision delivered")
 		go oc.emitApprovalSnapshotDecision(p, decision)
 		return nil
 	default:
@@ -153,20 +159,20 @@ func (oc *AIClient) resolveToolApproval(roomID id.RoomID, approvalID string, dec
 	}
 }
 
-func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (ToolApprovalDecision, *pendingToolApproval, bool) {
+func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (toolApprovalResolution, *pendingToolApproval, bool) {
 	if oc == nil || oc.UserLogin == nil {
-		return ToolApprovalDecision{}, nil, false
+		return toolApprovalResolution{}, nil, false
 	}
 	approvalID = strings.TrimSpace(approvalID)
 	if approvalID == "" {
-		return ToolApprovalDecision{}, nil, false
+		return toolApprovalResolution{}, nil, false
 	}
 
 	oc.toolApprovalsMu.Lock()
 	p := oc.toolApprovals[approvalID]
 	oc.toolApprovalsMu.Unlock()
 	if p == nil {
-		return ToolApprovalDecision{}, nil, false
+		return toolApprovalResolution{}, nil, false
 	}
 
 	oc.Log().Debug().Str("approval_id", approvalID).Str("tool", p.ToolName).Msg("tool approval wait started")
@@ -177,55 +183,53 @@ func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (To
 		oc.dropToolApproval(approvalID)
 		// Best-effort snapshot update so clients stop showing approval UI.
 		// Pass p directly — the map entry is already dropped, but the pointer is still valid.
-		go oc.emitApprovalSnapshotDecision(p, ToolApprovalDecision{
-			Approve:   false,
-			Reason:    "expired",
-			DecidedAt: time.Now(),
-			DecidedBy: oc.UserLogin.UserMXID,
+		go oc.emitApprovalSnapshotDecision(p, airuntime.ToolApprovalDecision{
+			State:  airuntime.ToolApprovalTimedOut,
+			Reason: "expired",
 		})
-		return ToolApprovalDecision{}, p, false
+		return toolApprovalResolution{}, p, false
 	}
 
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 
 	select {
-	case decision := <-p.decisionCh:
-		oc.Log().Debug().Str("approval_id", approvalID).Str("tool", p.ToolName).Bool("approved", decision.Approve).Msg("tool approval decision received")
-		if decision.Approve && decision.Always {
+	case resolution := <-p.decisionCh:
+		oc.Log().Debug().Str("approval_id", approvalID).Str("tool", p.ToolName).Str("state", string(resolution.Decision.State)).Msg("tool approval decision received")
+		if approvalAllowed(resolution.Decision) && resolution.Always {
 			if err := oc.persistAlwaysAllow(ctx, p); err != nil {
 				oc.Log().Warn().Err(err).Str("approval_id", approvalID).Msg("Failed to persist always-allow rule")
 			}
 		}
 		oc.dropToolApproval(approvalID)
-		return decision, p, true
+		return resolution, p, true
 	case <-timer.C:
 		oc.Log().Debug().Str("approval_id", approvalID).Str("tool", p.ToolName).Msg("tool approval timed out")
 		oc.dropToolApproval(approvalID)
 		// Timeout: update the approval snapshot so the UI can stop showing action buttons,
 		// even if the tool is no longer waiting (e.g. on reconnect).
-		go oc.emitApprovalSnapshotDecision(p, ToolApprovalDecision{
-			Approve:   false,
-			Reason:    "timeout",
-			DecidedAt: time.Now(),
-			DecidedBy: oc.UserLogin.UserMXID,
+		go oc.emitApprovalSnapshotDecision(p, airuntime.ToolApprovalDecision{
+			State:  airuntime.ToolApprovalTimedOut,
+			Reason: "timeout",
 		})
-		return ToolApprovalDecision{}, p, false
+		return toolApprovalResolution{}, p, false
 	case <-ctx.Done():
 		oc.Log().Debug().Str("approval_id", approvalID).Str("tool", p.ToolName).Msg("tool approval context cancelled")
 		oc.dropToolApproval(approvalID)
 		// Context cancellation: treat as expired for UI purposes.
-		go oc.emitApprovalSnapshotDecision(p, ToolApprovalDecision{
-			Approve:   false,
-			Reason:    "cancelled",
-			DecidedAt: time.Now(),
-			DecidedBy: oc.UserLogin.UserMXID,
+		go oc.emitApprovalSnapshotDecision(p, airuntime.ToolApprovalDecision{
+			State:  airuntime.ToolApprovalStale,
+			Reason: "cancelled",
 		})
-		return ToolApprovalDecision{}, p, false
+		return toolApprovalResolution{}, p, false
 	}
 }
 
-func (oc *AIClient) emitApprovalSnapshotDecision(p *pendingToolApproval, decision ToolApprovalDecision) {
+func approvalAllowed(decision airuntime.ToolApprovalDecision) bool {
+	return decision.State == airuntime.ToolApprovalApproved
+}
+
+func (oc *AIClient) emitApprovalSnapshotDecision(p *pendingToolApproval, decision airuntime.ToolApprovalDecision) {
 	if oc == nil || oc.UserLogin == nil || p == nil {
 		return
 	}
@@ -255,7 +259,7 @@ func (oc *AIClient) emitApprovalSnapshotDecision(p *pendingToolApproval, decisio
 		"toolCallId": p.ToolCallID,
 		"state":      state,
 	}
-	if decision.Approve {
+	if approvalAllowed(decision) {
 		state = "output-available"
 		body = fmt.Sprintf("Approved %s.", toolName)
 		toolPart["state"] = state
@@ -335,7 +339,15 @@ func (oc *AIClient) isBuiltinToolDenied(
 	if required && state.heartbeat != nil {
 		required = false
 	}
-	runtimeDecision := toRuntimeToolApprovalDecision(required, "builtin", toolName, tool.callID, false)
+	input := airuntime.ToolPolicyInput{
+		ToolName: strings.TrimSpace(toolName),
+		ToolKind: "builtin",
+		CallID:   strings.TrimSpace(tool.callID),
+	}
+	if required {
+		input.RequiredTools = map[string]struct{}{strings.TrimSpace(toolName): {}}
+	}
+	runtimeDecision := airuntime.DecideToolApproval(input)
 	required = runtimeDecision.State == airuntime.ToolApprovalRequired
 	if !required {
 		return false
@@ -359,15 +371,16 @@ func (oc *AIClient) isBuiltinToolDenied(
 		return true
 	}
 	oc.emitUIToolApprovalRequest(ctx, portal, state, approvalID, tool.callID, toolName, tool.eventID, oc.toolApprovalsTTLSeconds())
-	decision, _, ok := oc.waitToolApproval(ctx, approvalID)
+	resolution, _, ok := oc.waitToolApproval(ctx, approvalID)
+	decision := resolution.Decision
 	if !ok {
 		if oc.toolApprovalsAskFallback() == "allow" {
-			decision = ToolApprovalDecision{Approve: true, Reason: "fallback"}
+			decision = airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalApproved, Reason: "fallback"}
 		} else {
-			decision = ToolApprovalDecision{Approve: false, Reason: "timeout"}
+			decision = airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalTimedOut, Reason: "timeout"}
 		}
 	}
-	if !decision.Approve {
+	if !approvalAllowed(decision) {
 		oc.uiEmitter(state).EmitUIToolOutputDenied(ctx, portal, tool.callID)
 		return true
 	}

@@ -277,7 +277,7 @@ func TestCompactorBuildSummarizationInstructions_StrictDefault(t *testing.T) {
 	})
 
 	instructions := compactor.buildSummarizationInstructions()
-	if !strings.Contains(instructions, "Preserve all opaque identifiers exactly as written") {
+	if !strings.Contains(instructions, "Preserve non-secret opaque identifiers exactly as written") {
 		t.Fatalf("expected strict identifier preservation instructions, got: %q", instructions)
 	}
 	if !strings.Contains(instructions, "Focus on TODOs.") {

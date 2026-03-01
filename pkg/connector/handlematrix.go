@@ -79,13 +79,20 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 			logCtx.Warn().Str("decision", decision.Decision).Msg("Unknown approval decision")
 			return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 		}
-		err := oc.resolveToolApproval(portal.MXID, decision.ApprovalID, ToolApprovalDecision{
-			Approve:   approve,
-			Always:    always,
-			Reason:    decision.Reason,
-			DecidedAt: bridgeadapter.MatrixEventTimestamp(msg.Event),
-			DecidedBy: msg.Event.Sender,
-		})
+		state := airuntime.ToolApprovalDenied
+		if approve {
+			state = airuntime.ToolApprovalApproved
+		}
+		err := oc.resolveToolApproval(
+			portal.MXID,
+			decision.ApprovalID,
+			airuntime.ToolApprovalDecision{
+				State:  state,
+				Reason: decision.Reason,
+			},
+			always,
+			msg.Event.Sender,
+		)
 		if err != nil {
 			logCtx.Warn().Err(err).Str("approval_id", decision.ApprovalID).Msg("Failed to resolve approval decision")
 			oc.sendApprovalRejectionEvent(ctx, portal, decision.ApprovalID, err)

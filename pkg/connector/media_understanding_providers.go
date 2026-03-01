@@ -394,8 +394,8 @@ func (r mediaRequestBase) Base64Data() string {
 }
 
 func (r mediaRequestBase) MimeTypeOrDefault(fallback string) string {
-	if strings.TrimSpace(r.MimeType) != "" {
-		return r.MimeType
+	if trimmed := strings.TrimSpace(r.MimeType); trimmed != "" {
+		return trimmed
 	}
 	return fallback
 }
