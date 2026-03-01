@@ -101,7 +101,7 @@ func buildWaveform(samples []int16, sampleRate int) (int, []int) {
 		bucketSize = 1
 	}
 
-	for i := range points {
+	for i := 0; i < points; i++ {
 		start := i * bucketSize
 		end := start + bucketSize
 		if i == points-1 || end > len(samples) {
@@ -284,7 +284,7 @@ func pcm16beToInt16(data []byte, channels int) []int16 {
 	}
 	count := len(data) / 2
 	samples := make([]int16, count)
-	for i := range count {
+	for i := 0; i < count; i++ {
 		samples[i] = int16(binary.BigEndian.Uint16(data[i*2 : i*2+2]))
 	}
 	return monoFromInterleaved(samples, channels)
@@ -332,7 +332,7 @@ func monoFromInterleaved(samples []int16, channels int) []int16 {
 		return nil
 	}
 	mono := make([]int16, frames)
-	for i := range frames {
+	for i := 0; i < frames; i++ {
 		idx := i * channels
 		mono[i] = samples[idx]
 	}
