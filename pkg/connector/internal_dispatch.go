@@ -115,9 +115,9 @@ func (oc *AIClient) dispatchInternalMessage(
 		return eventID, false, nil
 	}
 
-	behavior := oc.queueBehavior(queueSettings.Mode)
+	behavior := airuntime.ResolveQueueBehavior(airuntime.QueueMode(queueSettings.Mode))
 	shouldSteer := behavior.Steer
-	queueDecision := oc.decideQueuePolicy(portal.MXID, queueSettings.Mode, false)
+	queueDecision := airuntime.DecideQueueAction(airuntime.QueueMode(queueSettings.Mode), oc.roomHasActiveRun(portal.MXID), false)
 	if queueDecision.Action == airuntime.QueueActionInterruptAndRun {
 		oc.cancelRoomRun(portal.MXID)
 		oc.clearPendingQueue(portal.MXID)

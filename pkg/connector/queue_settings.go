@@ -2,6 +2,8 @@ package connector
 
 import "strings"
 
+import airuntime "github.com/beeper/ai-bridge/pkg/runtime"
+
 type queueResolveParams struct {
 	cfg        *Config
 	channel    string
@@ -20,20 +22,20 @@ func resolveQueueSettings(params queueResolveParams) QueueSettings {
 
 	resolvedMode := params.inlineMode
 	if resolvedMode == "" && params.session != nil {
-		if mode, ok := normalizeQueueMode(params.session.QueueMode); ok {
+		if mode, ok := airuntime.NormalizeQueueMode(params.session.QueueMode); ok {
 			resolvedMode = mode
 		}
 	}
 	if resolvedMode == "" && queueCfg != nil {
 		if channel != "" && queueCfg.ByChannel != nil {
 			if raw, ok := queueCfg.ByChannel[channel]; ok {
-				if mode, ok := normalizeQueueMode(raw); ok {
+				if mode, ok := airuntime.NormalizeQueueMode(raw); ok {
 					resolvedMode = mode
 				}
 			}
 		}
 		if resolvedMode == "" {
-			if mode, ok := normalizeQueueMode(queueCfg.Mode); ok {
+			if mode, ok := airuntime.NormalizeQueueMode(queueCfg.Mode); ok {
 				resolvedMode = mode
 			}
 		}
@@ -85,11 +87,11 @@ func resolveQueueSettings(params queueResolveParams) QueueSettings {
 	if params.inlineOpts.DropPolicy != nil {
 		dropPolicy = *params.inlineOpts.DropPolicy
 	} else if params.session != nil {
-		if policy, ok := normalizeQueueDropPolicy(params.session.QueueDrop); ok {
+		if policy, ok := airuntime.NormalizeQueueDropPolicy(params.session.QueueDrop); ok {
 			dropPolicy = policy
 		}
 	} else if queueCfg != nil {
-		if policy, ok := normalizeQueueDropPolicy(queueCfg.Drop); ok {
+		if policy, ok := airuntime.NormalizeQueueDropPolicy(queueCfg.Drop); ok {
 			dropPolicy = policy
 		}
 	}

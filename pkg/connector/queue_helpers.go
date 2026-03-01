@@ -19,14 +19,6 @@ type queueState[T any] struct {
 	Cap   int
 }
 
-func elideQueueText(text string, limit int) string {
-	return airuntime.ElideQueueText(text, limit)
-}
-
-func buildQueueSummaryLine(text string, limit int) string {
-	return airuntime.BuildQueueSummaryLine(text, limit)
-}
-
 func applyQueueDropPolicy[T any](params struct {
 	Queue        *queueState[T]
 	Summarize    func(item T) string
@@ -53,7 +45,7 @@ func applyQueueDropPolicy[T any](params struct {
 			params.Queue.DroppedCount++
 			summary := strings.TrimSpace(params.Summarize(item))
 			if summary != "" {
-				params.Queue.SummaryLines = append(params.Queue.SummaryLines, buildQueueSummaryLine(summary, 160))
+				params.Queue.SummaryLines = append(params.Queue.SummaryLines, airuntime.BuildQueueSummaryLine(summary, 160))
 			}
 		}
 		limit := params.SummaryLimit

@@ -32,11 +32,3 @@ const DefaultQueueMode = airuntime.DefaultQueueMode
 
 type QueueSettings = airuntime.QueueSettings
 type QueueInlineOptions = airuntime.QueueInlineOptions
-
-func normalizeQueueMode(raw string) (QueueMode, bool) {
-	return airuntime.NormalizeQueueMode(raw)
-}
-
-func normalizeQueueDropPolicy(raw string) (QueueDropPolicy, bool) {
-	return airuntime.NormalizeQueueDropPolicy(raw)
-}

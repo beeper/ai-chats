@@ -3,6 +3,8 @@ package connector
 import (
 	"fmt"
 	"strings"
+
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 type QueueDirective struct {
@@ -127,7 +129,7 @@ func parseQueueDirectiveArgs(raw string) (consumed int, result QueueDirective) {
 			}
 			if len(parts) > 1 {
 				result.RawDrop = parts[1]
-				if policy, ok := normalizeQueueDropPolicy(parts[1]); ok {
+				if policy, ok := airuntime.NormalizeQueueDropPolicy(parts[1]); ok {
 					result.DropPolicy = &policy
 				}
 				result.HasOptions = true
@@ -135,7 +137,7 @@ func parseQueueDirectiveArgs(raw string) (consumed int, result QueueDirective) {
 			}
 			continue
 		}
-		if mode, ok := normalizeQueueMode(token); ok {
+		if mode, ok := airuntime.NormalizeQueueMode(token); ok {
 			result.QueueMode = mode
 			result.RawMode = token
 			continue

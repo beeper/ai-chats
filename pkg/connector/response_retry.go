@@ -233,7 +233,7 @@ func (oc *AIClient) notifyContextLengthExceeded(
 func (oc *AIClient) truncatePrompt(
 	prompt []openai.ChatCompletionMessageParamUnion,
 ) []openai.ChatCompletionMessageParamUnion {
-	charInputs, totalChars := promptTextPayloads(prompt)
+	charInputs, totalChars := airuntime.PromptTextPayloads(prompt)
 	if totalChars > 0 {
 		decision := airuntime.ApplyCompaction(airuntime.CompactionInput{
 			Messages:      charInputs,
@@ -249,7 +249,7 @@ func (oc *AIClient) truncatePrompt(
 			Msg("Runtime compaction decision")
 	}
 	// Use smart truncation with 50% reduction target
-	return smartTruncatePrompt(prompt, 0.5)
+	return airuntime.SmartTruncatePrompt(prompt, 0.5)
 }
 
 func (oc *AIClient) runtimeCompactOnOverflow(

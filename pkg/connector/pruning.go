@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/openai/openai-go/v3"
 	"github.com/rs/zerolog"
 )
@@ -27,7 +28,7 @@ func (oc *AIClient) applyProactivePruning(ctx context.Context, messages []openai
 	log := zerolog.Ctx(ctx)
 	beforeCount := len(messages)
 
-	pruned := PruneContext(messages, config, contextWindow)
+	pruned := airuntime.PruneContext(messages, config, contextWindow)
 
 	if len(pruned) != beforeCount {
 		log.Debug().

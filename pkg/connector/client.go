@@ -626,7 +626,7 @@ func (oc *AIClient) dispatchOrQueueCore(
 	promptMessages []openai.ChatCompletionMessageParamUnion,
 ) bool {
 	roomID := portal.MXID
-	behavior := oc.queueBehavior(queueSettings.Mode)
+	behavior := airuntime.ResolveQueueBehavior(airuntime.QueueMode(queueSettings.Mode))
 	shouldSteer := behavior.Steer
 	shouldFollowup := behavior.Followup
 	hasDBMessage := userMessage != nil
@@ -639,7 +639,7 @@ func (oc *AIClient) dispatchOrQueueCore(
 			Bool("has_event", evt != nil).
 			Msg("Dispatching inbound message")
 	}
-	queueDecision := oc.decideQueuePolicy(roomID, queueSettings.Mode, false)
+	queueDecision := airuntime.DecideQueueAction(airuntime.QueueMode(queueSettings.Mode), oc.roomHasActiveRun(roomID), false)
 	if trace {
 		oc.loggerForContext(ctx).Debug().
 			Str("room_id", roomID.String()).
@@ -842,7 +842,7 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 		var promptMessages []openai.ChatCompletionMessageParamUnion
 		var err error
 
-		if oc.queueBehavior(actionSnapshot.mode).Collect && len(actionSnapshot.items) > 0 {
+		if airuntime.ResolveQueueBehavior(airuntime.QueueMode(actionSnapshot.mode)).Collect && len(actionSnapshot.items) > 0 {
 			count := len(actionSnapshot.items)
 			if count > 1 {
 				firstKey := oc.queueThreadKey(actionSnapshot.items[0].pending.Event)
@@ -2657,7 +2657,6 @@ func (oc *AIClient) ensureAgentGhostDisplayName(ctx context.Context, agentID, mo
 		oc.loggerForContext(ctx).Debug().Str("agent", agentID).Str("model", modelID).Str("name", displayName).Msg("Updated agent ghost display name")
 	}
 }
-
 
 // ensureModelInRoom ensures the current model's ghost is joined to the portal room.
 // This should be called before any operations that require the model to be in the room

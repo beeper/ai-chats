@@ -30,7 +30,7 @@ func (oc *AIClient) pruningConfigOrDefault() *PruningConfig {
 	if oc != nil && oc.connector != nil && oc.connector.Config.Pruning != nil {
 		return oc.connector.Config.Pruning
 	}
-	return DefaultPruningConfig()
+	return airuntime.DefaultPruningConfig()
 }
 
 func (oc *AIClient) pruningReserveTokens() int {
@@ -58,14 +58,10 @@ func estimatePromptTokensForModel(prompt []openai.ChatCompletionMessageParamUnio
 	}
 	total := 0
 	for _, msg := range prompt {
-		total += estimateMessageChars(msg) / charsPerTokenEstimate
+		total += airuntime.EstimateMessageChars(msg) / airuntime.CharsPerTokenEstimate
 	}
 	if total <= 0 {
 		return len(prompt) * 3
 	}
 	return total
-}
-
-func promptTextPayloads(prompt []openai.ChatCompletionMessageParamUnion) ([]string, int) {
-	return airuntime.PromptTextPayloads(prompt)
 }

@@ -16,6 +16,7 @@ import (
 
 	"github.com/beeper/ai-bridge/pkg/agents"
 	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/beeper/ai-bridge/pkg/textfs"
 )
 
@@ -757,7 +758,7 @@ func (h *runtimeIntegrationHost) ResolveGeminiEmbeddingConfig(apiKey string, bas
 // ---- Optional Host capability: OverflowHelper ----
 
 func (h *runtimeIntegrationHost) SmartTruncatePrompt(prompt []openai.ChatCompletionMessageParamUnion, ratio float64) []openai.ChatCompletionMessageParamUnion {
-	return smartTruncatePrompt(prompt, ratio)
+	return airuntime.SmartTruncatePrompt(prompt, ratio)
 }
 
 func (h *runtimeIntegrationHost) EstimateTokens(prompt []openai.ChatCompletionMessageParamUnion, model string) int {
@@ -769,7 +770,7 @@ func (h *runtimeIntegrationHost) EstimateTokens(prompt []openai.ChatCompletionMe
 	}
 	total := 0
 	for _, msg := range prompt {
-		total += estimateMessageChars(msg) / charsPerTokenEstimate
+		total += airuntime.EstimateMessageChars(msg) / airuntime.CharsPerTokenEstimate
 	}
 	if total <= 0 {
 		return len(prompt) * 3

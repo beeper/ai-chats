@@ -38,7 +38,7 @@ func TestPruneContext(t *testing.T) {
 		}
 		config := &PruningConfig{Enabled: false}
 
-		result := PruneContext(prompt, config, 4096)
+		result := airuntime.PruneContext(prompt, config, 4096)
 
 		if len(result) != len(prompt) {
 			t.Errorf("Expected %d messages, got %d", len(prompt), len(result))
@@ -51,7 +51,7 @@ func TestPruneContext(t *testing.T) {
 			userMsg("Hello"),
 		}
 
-		result := PruneContext(prompt, nil, 4096)
+		result := airuntime.PruneContext(prompt, nil, 4096)
 
 		if len(result) != len(prompt) {
 			t.Errorf("Expected %d messages, got %d", len(prompt), len(result))
@@ -69,7 +69,7 @@ func TestPruneContext(t *testing.T) {
 			SoftTrimRatio: 0.9, // Very high threshold
 		}
 
-		result := PruneContext(prompt, config, 100000) // Large context window
+		result := airuntime.PruneContext(prompt, config, 100000) // Large context window
 
 		if len(result) != len(prompt) {
 			t.Errorf("Expected %d messages, got %d", len(prompt), len(result))
@@ -97,7 +97,7 @@ func TestPruneContext(t *testing.T) {
 			SoftTrimTailChars:  1500,
 		}
 
-		result := PruneContext(prompt, config, 5000) // Small context window
+		result := airuntime.PruneContext(prompt, config, 5000) // Small context window
 
 		// Find the tool result
 		var toolContent string
@@ -154,7 +154,7 @@ func TestPruneContext(t *testing.T) {
 			HardClearPlaceholder: "[CLEARED]",
 		}
 
-		result := PruneContext(prompt, config, 500) // Very small context window
+		result := airuntime.PruneContext(prompt, config, 500) // Very small context window
 
 		// Find cleared or trimmed tool result
 		var foundCleared, foundTrimmed bool
@@ -198,7 +198,7 @@ func TestPruneContext(t *testing.T) {
 			SoftTrimMaxChars:   4000,
 		}
 
-		result := PruneContext(prompt, config, 2000)
+		result := airuntime.PruneContext(prompt, config, 2000)
 
 		// Count how many tool results were trimmed
 		var trimmedCount int
@@ -237,7 +237,7 @@ func TestPruneContext(t *testing.T) {
 			SoftTrimMaxChars:   4000,
 		}
 
-		result := PruneContext(prompt, config, 2000)
+		result := airuntime.PruneContext(prompt, config, 2000)
 
 		// Find the bootstrap tool result
 		var bootstrapFound bool
@@ -263,7 +263,7 @@ func TestToolPatternMatching(t *testing.T) {
 		config := &PruningConfig{
 			ToolsAllow: []string{"list_models"},
 		}
-		pred := makeToolPrunablePredicate(config)
+		pred := airuntime.BuildToolPrunablePredicate(config)
 
 		if !pred("list_models") {
 			t.Error("Should match exact 'list_models'")
@@ -277,7 +277,7 @@ func TestToolPatternMatching(t *testing.T) {
 		config := &PruningConfig{
 			ToolsAllow: []string{"list_*"},
 		}
-		pred := makeToolPrunablePredicate(config)
+		pred := airuntime.BuildToolPrunablePredicate(config)
 
 		if !pred("list_agents") {
 			t.Error("Should match 'list_agents'")
@@ -294,7 +294,7 @@ func TestToolPatternMatching(t *testing.T) {
 		config := &PruningConfig{
 			ToolsAllow: []string{"*_search"},
 		}
-		pred := makeToolPrunablePredicate(config)
+		pred := airuntime.BuildToolPrunablePredicate(config)
 
 		if !pred("web_search") {
 			t.Error("Should match 'web_search'")
@@ -312,7 +312,7 @@ func TestToolPatternMatching(t *testing.T) {
 			ToolsAllow: []string{"*"},
 			ToolsDeny:  []string{"read"},
 		}
-		pred := makeToolPrunablePredicate(config)
+		pred := airuntime.BuildToolPrunablePredicate(config)
 
 		if pred("read") {
 			t.Error("Should not match 'read' (denied)")
@@ -327,7 +327,7 @@ func TestToolPatternMatching(t *testing.T) {
 			ToolsAllow: nil,
 			ToolsDeny:  nil,
 		}
-		pred := makeToolPrunablePredicate(config)
+		pred := airuntime.BuildToolPrunablePredicate(config)
 
 		if !pred("anything") {
 			t.Error("Should match any tool when allow list is empty")
@@ -338,7 +338,7 @@ func TestToolPatternMatching(t *testing.T) {
 		config := &PruningConfig{
 			ToolsAllow: []string{"LIST_*"},
 		}
-		pred := makeToolPrunablePredicate(config)
+		pred := airuntime.BuildToolPrunablePredicate(config)
 
 		if !pred("list_models") {
 			t.Error("Should match lowercase 'list_models'")
@@ -350,11 +350,11 @@ func TestToolPatternMatching(t *testing.T) {
 }
 
 func TestSoftTrimToolResult(t *testing.T) {
-	config := DefaultPruningConfig()
+	config := airuntime.DefaultPruningConfig()
 
 	t.Run("does not trim small content", func(t *testing.T) {
 		content := "Small content"
-		result := softTrimToolResult(content, config)
+		result := airuntime.SoftTrimToolResult(content, config)
 		if result != content {
 			t.Error("Small content should not be trimmed")
 		}
@@ -365,7 +365,7 @@ func TestSoftTrimToolResult(t *testing.T) {
 			strings.Repeat("M", 5000) +
 			strings.Repeat("T", 2000)
 
-		result := softTrimToolResult(content, config)
+		result := airuntime.SoftTrimToolResult(content, config)
 
 		if len(result) >= len(content) {
 			t.Error("Large content should be trimmed")
@@ -386,7 +386,7 @@ func TestSmartTruncatePrompt(t *testing.T) {
 			openai.UserMessage("Hello"),
 		}
 
-		result := smartTruncatePrompt(prompt, 0.5)
+		result := airuntime.SmartTruncatePrompt(prompt, 0.5)
 
 		if result != nil {
 			t.Error("Should return nil for 2-message prompt")
@@ -402,7 +402,7 @@ func TestSmartTruncatePrompt(t *testing.T) {
 			openai.UserMessage("Latest"),
 		}
 
-		result := smartTruncatePrompt(prompt, 0.5)
+		result := airuntime.SmartTruncatePrompt(prompt, 0.5)
 
 		if result == nil {
 			t.Fatal("Should return pruned result")
@@ -414,7 +414,7 @@ func TestSmartTruncatePrompt(t *testing.T) {
 }
 
 func TestDefaultPruningConfig(t *testing.T) {
-	config := DefaultPruningConfig()
+	config := airuntime.DefaultPruningConfig()
 
 	if config.Mode != "cache-ttl" {
 		t.Errorf("Expected Mode cache-ttl, got %q", config.Mode)

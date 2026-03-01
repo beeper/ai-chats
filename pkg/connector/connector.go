@@ -20,6 +20,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 const (
@@ -107,9 +108,9 @@ func (oc *OpenAIConnector) applyRuntimeDefaults() {
 		oc.Config.Bridge.CommandPrefix = "!ai"
 	}
 	if oc.Config.Pruning == nil {
-		oc.Config.Pruning = DefaultPruningConfig()
+		oc.Config.Pruning = airuntime.DefaultPruningConfig()
 	} else {
-		oc.Config.Pruning = applyPruningDefaults(oc.Config.Pruning)
+		oc.Config.Pruning = airuntime.ApplyPruningDefaults(oc.Config.Pruning)
 	}
 }
 
