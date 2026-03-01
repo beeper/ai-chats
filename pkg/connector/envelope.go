@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 var senderPrefixRECache sync.Map
@@ -164,17 +166,11 @@ func formatAgentEnvelope(params struct {
 	return fmt.Sprintf("%s %s", header, params.Body)
 }
 
-// envelopePrefixRE matches the [Channel ...] envelope prefix added by formatAgentEnvelope.
-// This covers known channel names used across platforms.
-var envelopePrefixRE = regexp.MustCompile(
-	`^\[(?:Desktop|Desktop API|WebChat|WhatsApp|Telegram|Signal|Slack|Discord|iMessage|Matrix|Teams|SMS|Google Chat|Zalo|BlueBubbles|Channel)[\s\S]*?\]\s*`,
-)
-
 // StripEnvelope removes the [Channel Timestamp] envelope prefix from a message body.
 // This is useful when replaying historical messages to the model — the envelope is
 // informative for the current turn but noisy in history.
 func StripEnvelope(text string) string {
-	return envelopePrefixRE.ReplaceAllString(text, "")
+	return runtimeparse.StripEnvelope(text)
 }
 
 var senderMetaLineRE = regexp.MustCompile(`(?i)(^|\n)\[from:\s*[^\]]+\]`)
