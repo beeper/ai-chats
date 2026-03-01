@@ -3,6 +3,7 @@ package connector
 import (
 	"testing"
 
+	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
 	"maunium.net/go/mautrix/id"
 )
 
@@ -22,8 +23,8 @@ func TestResolveFinalReplyTarget_ModeOffStripsDirectiveReply(t *testing.T) {
 			ThreadRoot: "$thread",
 		},
 	}
-	directives := &ResponseDirectives{
-		ReplyToEventID: "$explicit",
+	directives := &runtimeparse.ReplyDirectiveResult{
+		ReplyToID:      "$explicit",
 		ReplyToCurrent: true,
 		HasReplyTag:    true,
 	}
@@ -52,8 +53,8 @@ func TestResolveFinalReplyTarget_ModeAllUsesExplicit(t *testing.T) {
 			ThreadRoot: id.EventID("$thread"),
 		},
 	}
-	directives := &ResponseDirectives{
-		ReplyToEventID: id.EventID("$explicit"),
+	directives := &runtimeparse.ReplyDirectiveResult{
+		ReplyToID:   id.EventID("$explicit").String(),
 		HasReplyTag:    true,
 	}
 	target := client.resolveFinalReplyTarget(nil, state, directives)

@@ -72,6 +72,9 @@ type QueueMode string
 const (
 	QueueModeInterrupt    QueueMode = "interrupt"
 	QueueModeBacklog      QueueMode = "backlog"
+	QueueModeSteer        QueueMode = "steer"
+	QueueModeFollowup     QueueMode = "followup"
+	QueueModeCollect      QueueMode = "collect"
 	QueueModeSteerBacklog QueueMode = "steer-backlog"
 )
 
@@ -89,6 +92,14 @@ const (
 type QueueDecision struct {
 	Action QueueDecisionAction
 	Reason string
+}
+
+// QueueBehavior controls steer/followup/collect semantics.
+type QueueBehavior struct {
+	Steer        bool
+	Followup     bool
+	Collect      bool
+	BacklogAfter bool
 }
 
 // ReplyTargetDecision is the resolved target for a reply action.

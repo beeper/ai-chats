@@ -47,14 +47,6 @@ func extractInboundReplyContext(evt *event.Event) inboundReplyContext {
 	return ctx
 }
 
-func normalizeReplyToMode(raw string) string {
-	mode := runtimeparse.NormalizeReplyToMode(raw)
-	if mode == "" {
-		return ""
-	}
-	return string(mode)
-}
-
 func normalizeThreadReplies(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "off":
@@ -69,8 +61,8 @@ func normalizeThreadReplies(raw string) string {
 
 func (oc *AIClient) resolveMatrixReplyToMode() string {
 	if oc != nil && oc.connector != nil && oc.connector.Config.Channels != nil && oc.connector.Config.Channels.Matrix != nil {
-		if normalized := normalizeReplyToMode(oc.connector.Config.Channels.Matrix.ReplyToMode); normalized != "" {
-			return normalized
+		if mode := runtimeparse.NormalizeReplyToMode(oc.connector.Config.Channels.Matrix.ReplyToMode); mode != "" {
+			return string(mode)
 		}
 	}
 	return "off"
@@ -139,7 +131,7 @@ func (oc *AIClient) queueThreadKey(evt *event.Event) string {
 	return ""
 }
 
-func (oc *AIClient) resolveFinalReplyTarget(meta *PortalMetadata, state *streamingState, directives *ResponseDirectives) ReplyTarget {
+func (oc *AIClient) resolveFinalReplyTarget(meta *PortalMetadata, state *streamingState, directives *runtimeparse.ReplyDirectiveResult) ReplyTarget {
 	target := ReplyTarget{}
 	if state != nil {
 		target = state.replyTarget
@@ -150,8 +142,8 @@ func (oc *AIClient) resolveFinalReplyTarget(meta *PortalMetadata, state *streami
 		ReplyToID: string(target.ReplyTo),
 	}
 	if directives != nil {
-		if directives.ReplyToEventID != "" {
-			payload.ReplyToID = directives.ReplyToEventID.String()
+		if directives.ReplyToID != "" {
+			payload.ReplyToID = directives.ReplyToID
 		}
 		payload.ReplyToTag = directives.HasReplyTag
 		payload.ReplyToCurrent = directives.ReplyToCurrent
