@@ -360,52 +360,9 @@ func (oc *AIClient) streamChatCompletions(
 					// Tool approval gating for dangerous builtin tools.
 					var argsObj map[string]any
 					_ = json.Unmarshal([]byte(argsJSON), &argsObj)
-					required, action := oc.builtinToolApprovalRequirement(toolName, argsObj)
-					if required && oc.isBuiltinAlwaysAllowed(toolName, action) {
-						required = false
-					}
-					if required && state.heartbeat != nil {
-						required = false
-					}
-					if required {
-						approvalID := NewCallID()
-						ttl := time.Duration(oc.toolApprovalsTTLSeconds()) * time.Second
-						oc.registerToolApproval(struct {
-							ApprovalID   string
-							RoomID       id.RoomID
-							TurnID       string
-							ToolCallID   string
-							ToolName     string
-							ToolKind     ToolApprovalKind
-							RuleToolName string
-							ServerLabel  string
-							Action       string
-							TTL          time.Duration
-						}{
-							ApprovalID:   approvalID,
-							RoomID:       state.roomID,
-							TurnID:       state.turnID,
-							ToolCallID:   tool.callID,
-							ToolName:     toolName,
-							ToolKind:     ToolApprovalKindBuiltin,
-							RuleToolName: toolName,
-							Action:       action,
-							TTL:          ttl,
-						})
-						oc.emitUIToolApprovalRequest(ctx, portal, state, approvalID, tool.callID, toolName, tool.eventID, oc.toolApprovalsTTLSeconds())
-						decision, _, ok := oc.waitToolApproval(ctx, approvalID)
-						if !ok {
-							if oc.toolApprovalsAskFallback() == "allow" {
-								decision = ToolApprovalDecision{Approve: true, Reason: "fallback"}
-							} else {
-								decision = ToolApprovalDecision{Approve: false, Reason: "timeout"}
-							}
-						}
-						if !decision.Approve {
-							resultStatus = ResultStatusDenied
-							result = "Denied by user"
-							oc.emitUIToolOutputDenied(ctx, portal, state, tool.callID)
-						}
+					if oc.gateBuiltinToolApproval(ctx, portal, state, tool, toolName, argsObj) {
+						resultStatus = ResultStatusDenied
+						result = "Denied by user"
 					}
 
 					if resultStatus != ResultStatusDenied {

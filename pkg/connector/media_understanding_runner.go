@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -381,12 +382,19 @@ func splitModelProvider(modelID string) (string, string) {
 	return strings.ToLower(strings.TrimSpace(parts[0])), strings.TrimSpace(parts[1])
 }
 
+var hasBinaryCache sync.Map
+
 func hasBinary(name string) bool {
 	if strings.TrimSpace(name) == "" {
 		return false
 	}
+	if v, ok := hasBinaryCache.Load(name); ok {
+		return v.(bool)
+	}
 	_, err := exec.LookPath(name)
-	return err == nil
+	found := err == nil
+	hasBinaryCache.Store(name, found)
+	return found
 }
 
 func fileExists(path string) bool {

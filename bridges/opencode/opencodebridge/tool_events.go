@@ -5,6 +5,7 @@ import (
 
 	"github.com/beeper/ai-bridge/pkg/agents/tools"
 	"github.com/beeper/ai-bridge/pkg/matrixevents"
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 type ToolStatus = matrixevents.ToolStatus
@@ -73,12 +74,7 @@ type ToolResultDisplay struct {
 }
 
 func firstNonEmptyString(values ...string) string {
-	for _, v := range values {
-		if s := strings.TrimSpace(v); s != "" {
-			return s
-		}
-	}
-	return ""
+	return stringutil.FirstNonEmpty(values...)
 }
 
 func toolDisplayTitle(toolName string) string {

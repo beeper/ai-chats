@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -50,7 +51,8 @@ type pendingToolApproval struct {
 	decisionCh chan ToolApprovalDecision
 }
 
-func (oc *AIClient) registerToolApproval(params struct {
+// ToolApprovalParams holds the parameters for registering a tool approval request.
+type ToolApprovalParams struct {
 	ApprovalID string
 	RoomID     id.RoomID
 	TurnID     string
@@ -64,7 +66,9 @@ func (oc *AIClient) registerToolApproval(params struct {
 	Action       string
 
 	TTL time.Duration
-}) (*pendingToolApproval, bool) {
+}
+
+func (oc *AIClient) registerToolApproval(params ToolApprovalParams) (*pendingToolApproval, bool) {
 	if oc == nil {
 		return nil, false
 	}
@@ -307,6 +311,56 @@ func (oc *AIClient) emitApprovalSnapshotDecision(p *pendingToolApproval, decisio
 			oc.Log().Warn().Err(err).Str("approval_id", p.ApprovalID).Msg("tool approval: failed to send snapshot decision via bot")
 		}
 	}
+}
+
+// gateBuiltinToolApproval checks whether a builtin tool call requires user approval
+// and, if so, registers the approval, emits a UI request, and waits for a decision.
+// Returns true if the tool call was denied and should not be executed.
+func (oc *AIClient) gateBuiltinToolApproval(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	tool *activeToolCall,
+	toolName string,
+	argsObj map[string]any,
+) (denied bool) {
+	required, action := oc.builtinToolApprovalRequirement(toolName, argsObj)
+	if required && oc.isBuiltinAlwaysAllowed(toolName, action) {
+		required = false
+	}
+	if required && state.heartbeat != nil {
+		required = false
+	}
+	if !required {
+		return false
+	}
+	approvalID := NewCallID()
+	ttl := time.Duration(oc.toolApprovalsTTLSeconds()) * time.Second
+	oc.registerToolApproval(ToolApprovalParams{
+		ApprovalID:   approvalID,
+		RoomID:       state.roomID,
+		TurnID:       state.turnID,
+		ToolCallID:   tool.callID,
+		ToolName:     toolName,
+		ToolKind:     ToolApprovalKindBuiltin,
+		RuleToolName: toolName,
+		Action:       action,
+		TTL:          ttl,
+	})
+	oc.emitUIToolApprovalRequest(ctx, portal, state, approvalID, tool.callID, toolName, tool.eventID, oc.toolApprovalsTTLSeconds())
+	decision, _, ok := oc.waitToolApproval(ctx, approvalID)
+	if !ok {
+		if oc.toolApprovalsAskFallback() == "allow" {
+			decision = ToolApprovalDecision{Approve: true, Reason: "fallback"}
+		} else {
+			decision = ToolApprovalDecision{Approve: false, Reason: "timeout"}
+		}
+	}
+	if !decision.Approve {
+		oc.emitUIToolOutputDenied(ctx, portal, state, tool.callID)
+		return true
+	}
+	return false
 }
 
 func (oc *AIClient) dropToolApproval(approvalID string) {

@@ -2,7 +2,6 @@ package codex
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -13,6 +12,8 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	"github.com/beeper/ai-bridge/pkg/shared/maputil"
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 func humanUserID(loginID networkid.UserLoginID) networkid.UserID {
@@ -40,14 +41,7 @@ var aiBaseCaps = &event.RoomFeatures{
 }
 
 func isMatrixBotUser(ctx context.Context, bridge *bridgev2.Bridge, userID id.UserID) bool {
-	if userID == "" || bridge == nil {
-		return false
-	}
-	if bridge.Bot != nil && bridge.Bot.GetMXID() == userID {
-		return true
-	}
-	ghost, err := bridge.GetGhostByMXID(ctx, userID)
-	return err == nil && ghost != nil
+	return bridgeadapter.IsMatrixBotUser(ctx, bridge, userID)
 }
 
 type approvalDecisionPayload struct {
@@ -57,18 +51,7 @@ type approvalDecisionPayload struct {
 }
 
 func readStringArgAny(args map[string]any, key string) string {
-	if args == nil {
-		return ""
-	}
-	raw := args[key]
-	switch v := raw.(type) {
-	case string:
-		return strings.TrimSpace(v)
-	case fmt.Stringer:
-		return strings.TrimSpace(v.String())
-	default:
-		return ""
-	}
+	return maputil.StringArg(args, key)
 }
 
 func parseApprovalDecision(raw map[string]any) *approvalDecisionPayload {
@@ -110,23 +93,9 @@ func approvalDecisionFromString(decision string) (approve bool, always bool, ok 
 }
 
 func matrixEventTimestamp(evt *event.Event) time.Time {
-	if evt != nil && evt.Timestamp > 0 {
-		return time.UnixMilli(evt.Timestamp)
-	}
-	return time.Now()
+	return bridgeadapter.MatrixEventTimestamp(evt)
 }
 
 func normalizeElevatedLevel(raw string) (string, bool) {
-	key := strings.ToLower(strings.TrimSpace(raw))
-	switch key {
-	case "off", "false", "no", "0":
-		return "off", true
-	case "full", "auto", "auto-approve", "autoapprove":
-		return "full", true
-	case "ask", "prompt", "approval", "approve":
-		return "ask", true
-	case "on", "true", "yes", "1":
-		return "on", true
-	}
-	return "", false
+	return stringutil.NormalizeElevatedLevel(raw)
 }

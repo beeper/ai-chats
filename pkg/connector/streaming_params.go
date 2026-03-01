@@ -68,10 +68,10 @@ func (oc *AIClient) buildResponsesAPIParams(ctx context.Context, portal *bridgev
 	// Add builtin function tools only for agent chats that support tool calling.
 	// Model-only chats use a simple prompt without tools to avoid context overflow on small models.
 	hasAgent := resolveAgentID(meta) != ""
+	strictMode := resolveToolStrictMode(isOpenRouter)
 	if meta.Capabilities.SupportsToolCalling && hasAgent {
 		enabledTools := oc.enabledBuiltinToolsForModel(ctx, meta)
 		if len(enabledTools) > 0 {
-			strictMode := resolveToolStrictMode(oc.isOpenRouterProvider())
 			params.Tools = append(params.Tools, ToOpenAITools(enabledTools, strictMode, &oc.log)...)
 			log.Debug().Int("count", len(enabledTools)).Msg("Added builtin function tools")
 		}
@@ -85,7 +85,6 @@ func (oc *AIClient) buildResponsesAPIParams(ctx context.Context, portal *bridgev
 				}
 			}
 			if len(enabledSessions) > 0 {
-				strictMode := resolveToolStrictMode(oc.isOpenRouterProvider())
 				params.Tools = append(params.Tools, bossToolsToOpenAI(enabledSessions, strictMode, &oc.log)...)
 				log.Debug().Int("count", len(enabledSessions)).Msg("Added session tools")
 			}
@@ -100,12 +99,11 @@ func (oc *AIClient) buildResponsesAPIParams(ctx context.Context, portal *bridgev
 				enabledBoss = append(enabledBoss, tool)
 			}
 		}
-		strictMode := resolveToolStrictMode(oc.isOpenRouterProvider())
 		params.Tools = append(params.Tools, bossToolsToOpenAI(enabledBoss, strictMode, &oc.log)...)
 		log.Debug().Int("count", len(enabledBoss)).Msg("Added boss agent tools")
 	}
 
-	if oc.isOpenRouterProvider() {
+	if isOpenRouter {
 		params.Tools = renameWebSearchToolParams(params.Tools)
 	}
 

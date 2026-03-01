@@ -16,21 +16,14 @@ func (cc *CodexClient) streamTransportMode() streamtransport.Mode {
 	if cc == nil || cc.connector == nil {
 		return streamtransport.DefaultMode
 	}
-	if strings.TrimSpace(cc.connector.Config.Bridge.StreamingTransport) == string(streamtransport.ModeDebouncedEdit) {
-		return streamtransport.ModeDebouncedEdit
-	}
-	return streamtransport.ModeEphemeral
+	return streamtransport.ResolveMode(cc.connector.Config.Bridge.StreamingTransport)
 }
 
 func (cc *CodexClient) streamEditDebounceDuration() time.Duration {
 	if cc == nil || cc.connector == nil {
-		return time.Duration(streamtransport.DefaultEditDebounceMs) * time.Millisecond
+		return streamtransport.ResolveDebounceDuration(0)
 	}
-	ms := cc.connector.Config.Bridge.StreamingDebounce
-	if ms <= 0 {
-		ms = streamtransport.DefaultEditDebounceMs
-	}
-	return time.Duration(ms) * time.Millisecond
+	return streamtransport.ResolveDebounceDuration(cc.connector.Config.Bridge.StreamingDebounce)
 }
 
 func (cc *CodexClient) sendDebouncedStreamEdit(ctx context.Context, portal *bridgev2.Portal, state *streamingState, force bool) {

@@ -16,7 +16,24 @@ const (
 const (
 	DefaultMode           = ModeEphemeral
 	DefaultEditDebounceMs = 250
+	staleTurnTTL          = 30 * time.Minute
 )
+
+// ResolveMode returns ModeDebouncedEdit if configValue matches, otherwise DefaultMode.
+func ResolveMode(configValue string) Mode {
+	if strings.TrimSpace(configValue) == string(ModeDebouncedEdit) {
+		return ModeDebouncedEdit
+	}
+	return ModeEphemeral
+}
+
+// ResolveDebounceDuration returns configMs as a duration, falling back to DefaultEditDebounceMs.
+func ResolveDebounceDuration(configMs int) time.Duration {
+	if configMs <= 0 {
+		configMs = DefaultEditDebounceMs
+	}
+	return time.Duration(configMs) * time.Millisecond
+}
 
 type turnGateState struct {
 	lastBody string
@@ -49,6 +66,12 @@ func (g *EditDebounceGate) ShouldEmit(turnID, body string, now time.Time, deboun
 
 	g.mu.Lock()
 	defer g.mu.Unlock()
+
+	for id, s := range g.turns {
+		if !s.lastAt.IsZero() && now.Sub(s.lastAt) >= staleTurnTTL {
+			delete(g.turns, id)
+		}
+	}
 
 	state, ok := g.turns[turnID]
 	if !ok {

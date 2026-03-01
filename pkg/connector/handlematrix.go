@@ -73,10 +73,7 @@ func messageSendStatusError(err error, message string, reason event.MessageStatu
 }
 
 func matrixEventTimestamp(evt *event.Event) time.Time {
-	if evt != nil && evt.Timestamp > 0 {
-		return time.UnixMilli(evt.Timestamp)
-	}
-	return time.Now()
+	return bridgeadapter.MatrixEventTimestamp(evt)
 }
 
 // HandleMatrixMessage processes incoming Matrix messages and dispatches them to the AI

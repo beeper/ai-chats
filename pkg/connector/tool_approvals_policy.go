@@ -1,17 +1,13 @@
 package connector
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/beeper/ai-bridge/pkg/shared/maputil"
+)
 
 func readStringArgAny(args map[string]any, key string) string {
-	if args == nil {
-		return ""
-	}
-	if v, ok := args[key]; ok {
-		if s, ok := v.(string); ok {
-			return strings.TrimSpace(s)
-		}
-	}
-	return ""
+	return maputil.StringArg(args, key)
 }
 
 func (oc *AIClient) builtinToolApprovalRequirement(toolName string, args map[string]any) (required bool, action string) {

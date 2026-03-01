@@ -29,21 +29,7 @@ func TestToolApprovals_Resolve(t *testing.T) {
 	oc := newTestAIClient(owner)
 
 	approvalID := "approval-1"
-	oc.registerToolApproval(struct {
-		ApprovalID string
-		RoomID     id.RoomID
-		TurnID     string
-
-		ToolCallID string
-		ToolName   string
-
-		ToolKind     ToolApprovalKind
-		RuleToolName string
-		ServerLabel  string
-		Action       string
-
-		TTL time.Duration
-	}{
+	oc.registerToolApproval(ToolApprovalParams{
 		ApprovalID:   approvalID,
 		RoomID:       roomID,
 		TurnID:       "turn-1",
@@ -78,21 +64,7 @@ func TestToolApprovals_RejectNonOwner(t *testing.T) {
 
 	oc := newTestAIClient(owner)
 	approvalID := "approval-1"
-	oc.registerToolApproval(struct {
-		ApprovalID string
-		RoomID     id.RoomID
-		TurnID     string
-
-		ToolCallID string
-		ToolName   string
-
-		ToolKind     ToolApprovalKind
-		RuleToolName string
-		ServerLabel  string
-		Action       string
-
-		TTL time.Duration
-	}{
+	oc.registerToolApproval(ToolApprovalParams{
 		ApprovalID:   approvalID,
 		RoomID:       roomID,
 		TurnID:       "turn-1",
@@ -121,21 +93,7 @@ func TestToolApprovals_RejectCrossRoom(t *testing.T) {
 
 	oc := newTestAIClient(owner)
 	approvalID := "approval-1"
-	oc.registerToolApproval(struct {
-		ApprovalID string
-		RoomID     id.RoomID
-		TurnID     string
-
-		ToolCallID string
-		ToolName   string
-
-		ToolKind     ToolApprovalKind
-		RuleToolName string
-		ServerLabel  string
-		Action       string
-
-		TTL time.Duration
-	}{
+	oc.registerToolApproval(ToolApprovalParams{
 		ApprovalID:   approvalID,
 		RoomID:       roomID,
 		TurnID:       "turn-1",
@@ -162,21 +120,7 @@ func TestToolApprovals_TimeoutAutoDeny(t *testing.T) {
 
 	oc := newTestAIClient(owner)
 	approvalID := "approval-1"
-	oc.registerToolApproval(struct {
-		ApprovalID string
-		RoomID     id.RoomID
-		TurnID     string
-
-		ToolCallID string
-		ToolName   string
-
-		ToolKind     ToolApprovalKind
-		RuleToolName string
-		ServerLabel  string
-		Action       string
-
-		TTL time.Duration
-	}{
+	oc.registerToolApproval(ToolApprovalParams{
 		ApprovalID:   approvalID,
 		RoomID:       roomID,
 		TurnID:       "turn-1",

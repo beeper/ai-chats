@@ -2,6 +2,8 @@ package connector
 
 import (
 	"strings"
+
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 func normalizeThinkLevel(raw string) (string, bool) {
@@ -52,18 +54,7 @@ func normalizeReasoningLevel(raw string) (string, bool) {
 }
 
 func normalizeElevatedLevel(raw string) (string, bool) {
-	key := strings.ToLower(strings.TrimSpace(raw))
-	switch key {
-	case "off", "false", "no", "0":
-		return "off", true
-	case "full", "auto", "auto-approve", "autoapprove":
-		return "full", true
-	case "ask", "prompt", "approval", "approve":
-		return "ask", true
-	case "on", "true", "yes", "1":
-		return "on", true
-	}
-	return "", false
+	return stringutil.NormalizeElevatedLevel(raw)
 }
 
 func normalizeSendPolicy(raw string) (string, bool) {

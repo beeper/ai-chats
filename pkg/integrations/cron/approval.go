@@ -2,6 +2,8 @@ package cron
 
 import (
 	"strings"
+
+	"github.com/beeper/ai-bridge/pkg/shared/maputil"
 )
 
 func (i *Integration) ToolApprovalRequirement(toolName string, args map[string]any) (handled bool, required bool, action string) {
@@ -11,7 +13,7 @@ func (i *Integration) ToolApprovalRequirement(toolName string, args map[string]a
 	if !strings.EqualFold(strings.TrimSpace(toolName), "cron") {
 		return false, false, ""
 	}
-	action = strings.ToLower(strings.TrimSpace(readStringArg(args, "action")))
+	action = strings.ToLower(strings.TrimSpace(maputil.StringArg(args, "action")))
 	switch action {
 	case "status", "list", "runs":
 		return true, false, action
@@ -21,16 +23,4 @@ func (i *Integration) ToolApprovalRequirement(toolName string, args map[string]a
 		}
 		return true, true, action
 	}
-}
-
-func readStringArg(args map[string]any, key string) string {
-	if args == nil {
-		return ""
-	}
-	if raw, ok := args[key]; ok {
-		if s, ok := raw.(string); ok {
-			return s
-		}
-	}
-	return ""
 }

@@ -19,10 +19,12 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
 	"github.com/beeper/ai-bridge/pkg/shared/calc"
+	"github.com/beeper/ai-bridge/pkg/shared/maputil"
 	"github.com/beeper/ai-bridge/pkg/shared/media"
 	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
 	"github.com/beeper/ai-bridge/pkg/textfs"
@@ -67,9 +69,18 @@ func GetBridgeToolContext(ctx context.Context) *BridgeToolContext {
 	return contextValue[*BridgeToolContext](ctx, bridgeToolContextKey{})
 }
 
-// BuiltinTools returns the list of available builtin tools
+var (
+	builtinToolsOnce   sync.Once
+	builtinToolsCached []ToolDefinition
+)
+
+// BuiltinTools returns the list of available builtin tools.
+// The result is computed once and cached for the process lifetime.
 func BuiltinTools() []ToolDefinition {
-	return buildBuiltinToolDefinitions()
+	builtinToolsOnce.Do(func() {
+		builtinToolsCached = buildBuiltinToolDefinitions()
+	})
+	return builtinToolsCached
 }
 
 // ToolNameMessage is the name of the message tool.
@@ -1797,14 +1808,7 @@ func detachedBridgeToolContext(ctx context.Context) context.Context {
 }
 
 func readStringArg(args map[string]any, keys ...string) (string, bool) {
-	for _, key := range keys {
-		if raw, ok := args[key]; ok {
-			if s, ok := raw.(string); ok && strings.TrimSpace(s) != "" {
-				return s, true
-			}
-		}
-	}
-	return "", false
+	return maputil.StringArgMulti(args, keys...)
 }
 
 func readIntArg(args map[string]any, keys ...string) (int, bool) {

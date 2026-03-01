@@ -9,7 +9,6 @@ import (
 
 	"github.com/openai/openai-go/v3/responses"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/id"
 )
 
 func (oc *AIClient) upsertActiveToolFromDescriptor(
@@ -241,21 +240,7 @@ func (oc *AIClient) handleResponseOutputItemAdded(
 				serverLabel: serverLabel,
 			})
 			ttl := time.Duration(oc.toolApprovalsTTLSeconds()) * time.Second
-			oc.registerToolApproval(struct {
-				ApprovalID string
-				RoomID     id.RoomID
-				TurnID     string
-
-				ToolCallID string
-				ToolName   string
-
-				ToolKind     ToolApprovalKind
-				RuleToolName string
-				ServerLabel  string
-				Action       string
-
-				TTL time.Duration
-			}{
+			oc.registerToolApproval(ToolApprovalParams{
 				ApprovalID:   approvalID,
 				RoomID:       state.roomID,
 				TurnID:       state.turnID,
@@ -341,21 +326,7 @@ func (oc *AIClient) handleResponseOutputItemDone(
 				serverLabel: serverLabel,
 			})
 			ttl := time.Duration(oc.toolApprovalsTTLSeconds()) * time.Second
-			oc.registerToolApproval(struct {
-				ApprovalID string
-				RoomID     id.RoomID
-				TurnID     string
-
-				ToolCallID string
-				ToolName   string
-
-				ToolKind     ToolApprovalKind
-				RuleToolName string
-				ServerLabel  string
-				Action       string
-
-				TTL time.Duration
-			}{
+			oc.registerToolApproval(ToolApprovalParams{
 				ApprovalID:   approvalID,
 				RoomID:       state.roomID,
 				TurnID:       state.turnID,

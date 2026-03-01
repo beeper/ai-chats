@@ -10,7 +10,6 @@ import (
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/id"
 )
 
 func (oc *AIClient) ensureFunctionCallTool(
@@ -112,104 +111,14 @@ func (oc *AIClient) handleFunctionCallArgumentsDone(
 	} else {
 		// Tool approval gating for dangerous builtin tools.
 		if argsObj, ok := inputMap.(map[string]any); ok {
-			required, action := oc.builtinToolApprovalRequirement(toolName, argsObj)
-			if required && oc.isBuiltinAlwaysAllowed(toolName, action) {
-				required = false
-			}
-			if required && state.heartbeat != nil {
-				required = false
-			}
-			if required {
-				approvalID := NewCallID()
-				ttl := time.Duration(oc.toolApprovalsTTLSeconds()) * time.Second
-				oc.registerToolApproval(struct {
-					ApprovalID string
-					RoomID     id.RoomID
-					TurnID     string
-
-					ToolCallID string
-					ToolName   string
-
-					ToolKind     ToolApprovalKind
-					RuleToolName string
-					ServerLabel  string
-					Action       string
-
-					TTL time.Duration
-				}{
-					ApprovalID:   approvalID,
-					RoomID:       state.roomID,
-					TurnID:       state.turnID,
-					ToolCallID:   tool.callID,
-					ToolName:     toolName,
-					ToolKind:     ToolApprovalKindBuiltin,
-					RuleToolName: toolName,
-					Action:       action,
-					TTL:          ttl,
-				})
-				oc.emitUIToolApprovalRequest(ctx, portal, state, approvalID, tool.callID, toolName, tool.eventID, oc.toolApprovalsTTLSeconds())
-				decision, _, ok := oc.waitToolApproval(ctx, approvalID)
-				if !ok {
-					if oc.toolApprovalsAskFallback() == "allow" {
-						decision = ToolApprovalDecision{Approve: true, Reason: "fallback"}
-					} else {
-						decision = ToolApprovalDecision{Approve: false, Reason: "timeout"}
-					}
-				}
-				if !decision.Approve {
-					resultStatus = ResultStatusDenied
-					result = "Denied by user"
-					oc.emitUIToolOutputDenied(ctx, portal, state, tool.callID)
-				}
+			if oc.gateBuiltinToolApproval(ctx, portal, state, tool, toolName, argsObj) {
+				resultStatus = ResultStatusDenied
+				result = "Denied by user"
 			}
 		} else if approvalFallbackForNonObject {
-			// If args aren't a JSON object, still gate by tool name.
-			required, action := oc.builtinToolApprovalRequirement(toolName, nil)
-			if required && oc.isBuiltinAlwaysAllowed(toolName, action) {
-				required = false
-			}
-			if required && state.heartbeat != nil {
-				required = false
-			}
-			if required {
-				approvalID := NewCallID()
-				ttl := time.Duration(oc.toolApprovalsTTLSeconds()) * time.Second
-				oc.registerToolApproval(struct {
-					ApprovalID   string
-					RoomID       id.RoomID
-					TurnID       string
-					ToolCallID   string
-					ToolName     string
-					ToolKind     ToolApprovalKind
-					RuleToolName string
-					ServerLabel  string
-					Action       string
-					TTL          time.Duration
-				}{
-					ApprovalID:   approvalID,
-					RoomID:       state.roomID,
-					TurnID:       state.turnID,
-					ToolCallID:   tool.callID,
-					ToolName:     toolName,
-					ToolKind:     ToolApprovalKindBuiltin,
-					RuleToolName: toolName,
-					Action:       action,
-					TTL:          ttl,
-				})
-				oc.emitUIToolApprovalRequest(ctx, portal, state, approvalID, tool.callID, toolName, tool.eventID, oc.toolApprovalsTTLSeconds())
-				decision, _, ok := oc.waitToolApproval(ctx, approvalID)
-				if !ok {
-					if oc.toolApprovalsAskFallback() == "allow" {
-						decision = ToolApprovalDecision{Approve: true, Reason: "fallback"}
-					} else {
-						decision = ToolApprovalDecision{Approve: false, Reason: "timeout"}
-					}
-				}
-				if !decision.Approve {
-					resultStatus = ResultStatusDenied
-					result = "Denied by user"
-					oc.emitUIToolOutputDenied(ctx, portal, state, tool.callID)
-				}
+			if oc.gateBuiltinToolApproval(ctx, portal, state, tool, toolName, nil) {
+				resultStatus = ResultStatusDenied
+				result = "Denied by user"
 			}
 		}
 

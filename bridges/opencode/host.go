@@ -65,10 +65,7 @@ func (oc *OpenCodeClient) streamTransportMode() streamtransport.Mode {
 	if oc == nil || oc.connector == nil {
 		return streamtransport.DefaultMode
 	}
-	if strings.TrimSpace(oc.connector.Config.Bridge.StreamingTransport) == string(streamtransport.ModeDebouncedEdit) {
-		return streamtransport.ModeDebouncedEdit
-	}
-	return streamtransport.ModeEphemeral
+	return streamtransport.ResolveMode(oc.connector.Config.Bridge.StreamingTransport)
 }
 
 func (oc *OpenCodeClient) nextStreamSeq(turnID string) int {
@@ -137,13 +134,6 @@ func (oc *OpenCodeClient) DownloadAndEncodeMedia(ctx context.Context, mediaURL s
 	var encoded string
 	errMediaTooLarge := errors.New("media exceeds max size")
 	err := oc.UserLogin.Bridge.Bot.DownloadMediaToFile(ctx, id.ContentURIString(mediaURL), file, false, func(f *os.File) error {
-		if maxBytes > 0 {
-			if stat, err := f.Stat(); err != nil {
-				return err
-			} else if stat.Size() > maxBytes {
-				return errMediaTooLarge
-			}
-		}
 		var reader io.Reader = f
 		if maxBytes > 0 {
 			reader = io.LimitReader(f, maxBytes+1)

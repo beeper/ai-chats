@@ -16,21 +16,14 @@ func (oc *AIClient) streamTransportMode() streamtransport.Mode {
 	if oc == nil || oc.connector == nil {
 		return streamtransport.DefaultMode
 	}
-	if strings.TrimSpace(oc.connector.Config.Bridge.StreamingTransport) == string(streamtransport.ModeDebouncedEdit) {
-		return streamtransport.ModeDebouncedEdit
-	}
-	return streamtransport.ModeEphemeral
+	return streamtransport.ResolveMode(oc.connector.Config.Bridge.StreamingTransport)
 }
 
 func (oc *AIClient) streamEditDebounceDuration() time.Duration {
 	if oc == nil || oc.connector == nil {
-		return time.Duration(streamtransport.DefaultEditDebounceMs) * time.Millisecond
+		return streamtransport.ResolveDebounceDuration(0)
 	}
-	ms := oc.connector.Config.Bridge.StreamingDebounce
-	if ms <= 0 {
-		ms = streamtransport.DefaultEditDebounceMs
-	}
-	return time.Duration(ms) * time.Millisecond
+	return streamtransport.ResolveDebounceDuration(oc.connector.Config.Bridge.StreamingDebounce)
 }
 
 func (oc *AIClient) sendDebouncedStreamEdit(ctx context.Context, portal *bridgev2.Portal, state *streamingState, force bool) {

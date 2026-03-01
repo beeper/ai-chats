@@ -78,10 +78,10 @@ func (oc *AIClient) buildContinuationParams(
 	// Add builtin function tools only for agent chats that support tool calling.
 	// Model-only chats use a simple prompt without tools to avoid context overflow on small models.
 	agentID := resolveAgentID(meta)
+	strictMode := resolveToolStrictMode(isOpenRouter)
 	if meta.Capabilities.SupportsToolCalling && agentID != "" {
 		enabledTools := oc.enabledBuiltinToolsForModel(ctx, meta)
 		if len(enabledTools) > 0 {
-			strictMode := resolveToolStrictMode(oc.isOpenRouterProvider())
 			params.Tools = append(params.Tools, ToOpenAITools(enabledTools, strictMode, &oc.log)...)
 		}
 	}
@@ -94,7 +94,6 @@ func (oc *AIClient) buildContinuationParams(
 				enabledBoss = append(enabledBoss, tool)
 			}
 		}
-		strictMode := resolveToolStrictMode(oc.isOpenRouterProvider())
 		params.Tools = append(params.Tools, bossToolsToOpenAI(enabledBoss, strictMode, &oc.log)...)
 	}
 
@@ -107,12 +106,11 @@ func (oc *AIClient) buildContinuationParams(
 			}
 		}
 		if len(enabledSessions) > 0 {
-			strictMode := resolveToolStrictMode(oc.isOpenRouterProvider())
 			params.Tools = append(params.Tools, bossToolsToOpenAI(enabledSessions, strictMode, &oc.log)...)
 		}
 	}
 
-	if oc.isOpenRouterProvider() {
+	if isOpenRouter {
 		params.Tools = renameWebSearchToolParams(params.Tools)
 	}
 
