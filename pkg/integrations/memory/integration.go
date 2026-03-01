@@ -248,7 +248,10 @@ func (i *Integration) buildOverflowDeps() OverflowDeps {
 			if !ok {
 				return false
 			}
-			overflowCall, _ := call.(iruntime.ContextOverflowCall)
+			overflowCall, ok := call.(iruntime.ContextOverflowCall)
+			if !ok {
+				return false
+			}
 			return ma.IsSimpleMode(overflowCall.Meta)
 		},
 		ResolveSettings: i.resolveOverflowFlushSettings,
@@ -264,7 +267,10 @@ func (i *Integration) buildOverflowDeps() OverflowDeps {
 			if !ok {
 				return 128000
 			}
-			overflowCall, _ := call.(iruntime.ContextOverflowCall)
+			overflowCall, ok := call.(iruntime.ContextOverflowCall)
+			if !ok {
+				return 128000
+			}
 			return mh.ContextWindow(overflowCall.Meta)
 		},
 		ReserveTokens: func() int {
@@ -279,7 +285,10 @@ func (i *Integration) buildOverflowDeps() OverflowDeps {
 			if !ok {
 				return ""
 			}
-			overflowCall, _ := call.(iruntime.ContextOverflowCall)
+			overflowCall, ok := call.(iruntime.ContextOverflowCall)
+			if !ok {
+				return ""
+			}
 			return mh.EffectiveModel(overflowCall.Meta)
 		},
 		EstimateTokens: func(prompt []openai.ChatCompletionMessageParamUnion, model string) int {
@@ -294,7 +303,10 @@ func (i *Integration) buildOverflowDeps() OverflowDeps {
 			if !ok {
 				return false
 			}
-			overflowCall, _ := call.(iruntime.ContextOverflowCall)
+			overflowCall, ok := call.(iruntime.ContextOverflowCall)
+			if !ok {
+				return false
+			}
 			meta := overflowCall.Meta
 			flushAt := ma.GetModuleMeta(meta, "overflow_flush_at")
 			flushCompactionCount := ma.GetModuleMeta(meta, "overflow_flush_compaction_count")

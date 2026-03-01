@@ -313,10 +313,10 @@ func (oc *AIClient) emitApprovalSnapshotDecision(p *pendingToolApproval, decisio
 	}
 }
 
-// gateBuiltinToolApproval checks whether a builtin tool call requires user approval
+// isBuiltinToolDenied checks whether a builtin tool call requires user approval
 // and, if so, registers the approval, emits a UI request, and waits for a decision.
 // Returns true if the tool call was denied and should not be executed.
-func (oc *AIClient) gateBuiltinToolApproval(
+func (oc *AIClient) isBuiltinToolDenied(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	state *streamingState,
@@ -324,6 +324,9 @@ func (oc *AIClient) gateBuiltinToolApproval(
 	toolName string,
 	argsObj map[string]any,
 ) (denied bool) {
+	if state == nil || tool == nil {
+		return true
+	}
 	required, action := oc.builtinToolApprovalRequirement(toolName, argsObj)
 	if required && oc.isBuiltinAlwaysAllowed(toolName, action) {
 		required = false
@@ -336,7 +339,7 @@ func (oc *AIClient) gateBuiltinToolApproval(
 	}
 	approvalID := NewCallID()
 	ttl := time.Duration(oc.toolApprovalsTTLSeconds()) * time.Second
-	oc.registerToolApproval(ToolApprovalParams{
+	if _, created := oc.registerToolApproval(ToolApprovalParams{
 		ApprovalID:   approvalID,
 		RoomID:       state.roomID,
 		TurnID:       state.turnID,
@@ -346,7 +349,12 @@ func (oc *AIClient) gateBuiltinToolApproval(
 		RuleToolName: toolName,
 		Action:       action,
 		TTL:          ttl,
-	})
+	}); !created {
+		oc.loggerForContext(ctx).Error().
+			Str("tool_name", toolName).
+			Msg("tool approval: failed to register builtin approval request")
+		return true
+	}
 	oc.emitUIToolApprovalRequest(ctx, portal, state, approvalID, tool.callID, toolName, tool.eventID, oc.toolApprovalsTTLSeconds())
 	decision, _, ok := oc.waitToolApproval(ctx, approvalID)
 	if !ok {

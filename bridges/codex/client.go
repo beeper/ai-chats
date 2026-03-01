@@ -1021,10 +1021,10 @@ func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2
 		statusVal = strings.TrimSpace(statusVal)
 		switch statusVal {
 		case "declined":
-			cc.emitStreamEvent(ctx, portal, state, map[string]any{
+			cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, map[string]any{
 				"type":       "tool-output-denied",
 				"toolCallId": itemID,
-			})
+			}, true, false)
 		case "failed":
 			errText := "tool failed"
 			if errObj, ok := it["error"].(map[string]any); ok {
@@ -1032,12 +1032,12 @@ func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2
 					errText = strings.TrimSpace(msg)
 				}
 			}
-			cc.emitStreamEvent(ctx, portal, state, map[string]any{
+			cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, map[string]any{
 				"type":             "tool-output-error",
 				"toolCallId":       itemID,
 				"errorText":        errText,
 				"providerExecuted": true,
-			})
+			}, true, false)
 		default:
 			cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, it, true, false)
 		}
