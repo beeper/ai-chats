@@ -16,7 +16,7 @@ var SimpleAgent = &AgentDefinition{
 	},
 	Tools:        &toolpolicy.ToolPolicyConfig{Profile: toolpolicy.ProfileSimple},
 	PromptMode:   PromptModeNone,  // no system prompt sections
-	ResponseMode: ResponseModeRaw, // no directive processing
+	ResponseMode: ResponseModeSimple, // no directive processing
 	IsPreset:     true,
 	CreatedAt:    0,
 	UpdatedAt:    0,

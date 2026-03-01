@@ -128,8 +128,8 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 
 	// Check response mode - simple mode skips directive processing
 	responseMode := oc.getAgentResponseMode(meta)
-	if responseMode == agents.ResponseModeRaw {
-		// Simple/raw mode: send content directly without directive processing
+	if responseMode == agents.ResponseModeSimple {
+		// Simple mode: send content directly without directive processing
 		rendered := format.RenderMarkdown(rawContent, true, true)
 		replyTo := id.EventID("")
 		if state != nil {
@@ -864,7 +864,7 @@ func generateOutboundLinkPreviews(ctx context.Context, text string, intent bridg
 func (oc *AIClient) getAgentResponseMode(meta *PortalMetadata) agents.ResponseMode {
 	// Simple mode flag takes priority (set by simple command)
 	if isSimpleMode(meta) {
-		return agents.ResponseModeRaw
+		return agents.ResponseModeSimple
 	}
 
 	agentID := resolveAgentID(meta)

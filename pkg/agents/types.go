@@ -75,8 +75,8 @@ const (
 	// ResponseModeNatural processes directives (reply tags, silent replies).
 	// Reactions require the message tool. Matches OpenClaw behavior.
 	ResponseModeNatural ResponseMode = "natural"
-	// ResponseModeRaw passes LLM output directly to user without processing.
-	ResponseModeRaw ResponseMode = "raw"
+	// ResponseModeSimple passes LLM output directly to user without processing.
+	ResponseModeSimple ResponseMode = "simple"
 )
 
 // Identity represents a custom agent persona.
