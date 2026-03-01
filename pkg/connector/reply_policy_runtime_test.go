@@ -55,7 +55,7 @@ func TestResolveFinalReplyTarget_ModeAllUsesExplicit(t *testing.T) {
 	}
 	directives := &runtimeparse.ReplyDirectiveResult{
 		ReplyToID:   id.EventID("$explicit").String(),
-		HasReplyTag:    true,
+		HasReplyTag: true,
 	}
 	target := client.resolveFinalReplyTarget(nil, state, directives)
 	if target.ReplyTo != id.EventID("$explicit") {

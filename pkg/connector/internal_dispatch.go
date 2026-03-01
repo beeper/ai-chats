@@ -115,7 +115,8 @@ func (oc *AIClient) dispatchInternalMessage(
 		return eventID, false, nil
 	}
 
-	shouldSteer := queueSettings.Mode == QueueModeSteer || queueSettings.Mode == QueueModeSteerBacklog
+	behavior := oc.queueBehavior(queueSettings.Mode)
+	shouldSteer := behavior.Steer
 	queueDecision := oc.decideQueuePolicy(portal.MXID, queueSettings.Mode, false)
 	if queueDecision.Action == airuntime.QueueActionInterruptAndRun {
 		oc.cancelRoomRun(portal.MXID)
@@ -127,7 +128,7 @@ func (oc *AIClient) dispatchInternalMessage(
 			queueItem.prompt = appendMessageIDHint(queueItem.prompt, pending.Event.ID)
 		}
 		if oc.enqueueSteerQueue(portal.MXID, queueItem) {
-			if queueSettings.Mode != QueueModeSteerBacklog {
+			if !behavior.BacklogAfter {
 				if trace {
 					oc.loggerForContext(ctx).Debug().Stringer("portal", portal.PortalKey).Msg("Steered internal message into active run")
 				}
@@ -135,7 +136,7 @@ func (oc *AIClient) dispatchInternalMessage(
 			}
 		}
 	}
-	if queueSettings.Mode == QueueModeSteerBacklog {
+	if behavior.BacklogAfter {
 		queueItem.backlogAfter = true
 	}
 	if trace {

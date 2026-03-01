@@ -633,8 +633,9 @@ func (oc *AIClient) dispatchOrQueueCore(
 	promptMessages []openai.ChatCompletionMessageParamUnion,
 ) bool {
 	roomID := portal.MXID
-	shouldSteer := queueSettings.Mode == QueueModeSteer || queueSettings.Mode == QueueModeSteerBacklog
-	shouldFollowup := queueSettings.Mode == QueueModeFollowup || queueSettings.Mode == QueueModeCollect || queueSettings.Mode == QueueModeSteerBacklog
+	behavior := oc.queueBehavior(queueSettings.Mode)
+	shouldSteer := behavior.Steer
+	shouldFollowup := behavior.Followup
 	hasDBMessage := userMessage != nil
 	trace := traceEnabled(meta)
 	if trace {
@@ -735,7 +736,7 @@ func (oc *AIClient) dispatchOrQueueCore(
 		oc.saveUserMessage(ctx, evt, userMessage)
 	}
 
-	if queueSettings.Mode == QueueModeSteerBacklog {
+	if behavior.BacklogAfter {
 		queueItem.backlogAfter = true
 	}
 	if trace {
@@ -851,7 +852,7 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 		var promptMessages []openai.ChatCompletionMessageParamUnion
 		var err error
 
-		if actionSnapshot.mode == QueueModeCollect && len(actionSnapshot.items) > 0 {
+		if oc.queueBehavior(actionSnapshot.mode).Collect && len(actionSnapshot.items) > 0 {
 			count := len(actionSnapshot.items)
 			if count > 1 {
 				firstKey := oc.queueThreadKey(actionSnapshot.items[0].pending.Event)
