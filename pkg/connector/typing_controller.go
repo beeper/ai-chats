@@ -39,7 +39,6 @@ type TypingControllerOptions struct {
 	TTL      time.Duration
 }
 
-// NewTypingController creates a new typing controller.
 func NewTypingController(client *AIClient, ctx context.Context, portal *bridgev2.Portal, opts TypingControllerOptions) *TypingController {
 	interval := opts.Interval
 	if interval == 0 {
@@ -192,7 +191,6 @@ func (tc *TypingController) Stop() {
 	tc.client.setModelTyping(tc.ctx, tc.portal, false)
 }
 
-// IsActive returns whether typing is currently active.
 func (tc *TypingController) IsActive() bool {
 	tc.mu.Lock()
 	defer tc.mu.Unlock()

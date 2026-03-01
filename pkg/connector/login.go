@@ -462,7 +462,6 @@ func formatRemoteName(provider, apiKey string) string {
 	}
 }
 
-// maskAPIKey returns a masked version of the API key showing first 3 and last 3 chars.
 func maskAPIKey(key string) string {
 	if len(key) <= 6 {
 		return "***"

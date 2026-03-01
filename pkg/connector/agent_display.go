@@ -52,7 +52,6 @@ func (oc *AIClient) resolveAgentIdentityName(ctx context.Context, agentID string
 	return strings.TrimSpace(identity.Name)
 }
 
-// agentDefaultModel returns the default model for an agent.
 func (oc *AIClient) agentDefaultModel(agent *agents.AgentDefinition) string {
 	if agent == nil {
 		return oc.effectiveModel(nil)

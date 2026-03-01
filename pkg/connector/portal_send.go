@@ -10,7 +10,6 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-// sendViaPortal sends a pre-built message through bridgev2's full pipeline.
 // Handles: intent resolution, ghost room join, send, DB persist.
 // Returns the Matrix event ID and the network message ID used.
 // If msgID is empty, a new one is generated.
@@ -51,7 +50,6 @@ func (oc *AIClient) sendViaPortal(
 	return dbMsgs[0].MXID, msgID, nil
 }
 
-// sendEditViaPortal sends an edit through bridgev2's pipeline.
 // The targetMsgID is the network message ID of the message to edit.
 func (oc *AIClient) sendEditViaPortal(
 	ctx context.Context,
@@ -84,7 +82,6 @@ func (oc *AIClient) sendEditViaPortal(
 	return nil
 }
 
-// redactViaPortal redacts message parts through bridgev2's pipeline.
 func (oc *AIClient) redactViaPortal(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -142,7 +139,6 @@ func (oc *AIClient) redactEventViaPortal(
 	return oc.redactViaPortal(ctx, portal, part.ID)
 }
 
-// getIntentForPortal resolves the Matrix intent for the current model/agent ghost.
 // Use this when you need an intent for non-message operations (e.g. UploadMedia).
 func (oc *AIClient) getIntentForPortal(
 	ctx context.Context,
@@ -160,7 +156,6 @@ func (oc *AIClient) getIntentForPortal(
 	return intent, nil
 }
 
-// senderForPortal returns the EventSender based on portal's agent/model config.
 func (oc *AIClient) senderForPortal(ctx context.Context, portal *bridgev2.Portal) bridgev2.EventSender {
 	meta := portalMeta(portal)
 	agentID := resolveAgentID(meta)

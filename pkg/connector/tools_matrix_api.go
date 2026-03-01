@@ -13,7 +13,6 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-// getMatrixConnector returns the Matrix connector interface from the bridge.
 func getMatrixConnector(btc *BridgeToolContext) bridgev2.MatrixConnector {
 	if btc == nil || btc.Client == nil || btc.Client.UserLogin == nil || btc.Client.UserLogin.Bridge == nil {
 		return nil
@@ -159,7 +158,6 @@ func removeMatrixReactions(ctx context.Context, btc *BridgeToolContext, eventID 
 	return removed, nil
 }
 
-// sendMatrixReadReceipt sends a read receipt for a message.
 func sendMatrixReadReceipt(ctx context.Context, btc *BridgeToolContext, eventID id.EventID) error {
 	if btc == nil || btc.Client == nil || btc.Client.UserLogin == nil || btc.Client.UserLogin.Bridge == nil || btc.Portal == nil {
 		return nil
@@ -178,7 +176,6 @@ type MatrixUserProfile struct {
 	AvatarURL   string `json:"avatar_url,omitempty"`
 }
 
-// getMatrixUserProfile gets a user's profile information.
 func getMatrixUserProfile(ctx context.Context, btc *BridgeToolContext, userID id.UserID) (*MatrixUserProfile, error) {
 	matrixConn := getMatrixConnector(btc)
 	if matrixConn == nil || btc.Portal == nil {
@@ -208,7 +205,6 @@ type MatrixRoomInfo struct {
 	MemberCount int    `json:"member_count,omitempty"`
 }
 
-// getMatrixRoomInfo gets information about a room.
 func getMatrixRoomInfo(ctx context.Context, btc *BridgeToolContext) (*MatrixRoomInfo, error) {
 	matrixConn := getMatrixConnector(btc)
 	if matrixConn == nil {

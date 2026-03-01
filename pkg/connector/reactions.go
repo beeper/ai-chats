@@ -10,7 +10,6 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-// sendReaction sends a reaction emoji to a Matrix event via bridgev2's RemoteEvent pipeline.
 func (oc *AIClient) sendReaction(ctx context.Context, portal *bridgev2.Portal, targetEventID id.EventID, emoji string) {
 	if portal == nil || portal.MXID == "" || targetEventID == "" || emoji == "" {
 		return

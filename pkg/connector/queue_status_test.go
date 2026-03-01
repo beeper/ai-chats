@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
@@ -71,7 +72,7 @@ func TestDispatchOrQueueQueueRejectReturnsNotPending(t *testing.T) {
 			},
 		},
 		cap:        1,
-		dropPolicy: QueueDropNew,
+		dropPolicy: airuntime.QueueDropNew,
 	}
 
 	evt := &event.Event{ID: id.EventID("$new")}
@@ -89,7 +90,7 @@ func TestDispatchOrQueueQueueRejectReturnsNotPending(t *testing.T) {
 		nil,
 		nil,
 		queueItem,
-		QueueSettings{Mode: QueueModeCollect, Cap: 1, DropPolicy: QueueDropNew},
+		QueueSettings{Mode: airuntime.QueueModeCollect, Cap: 1, DropPolicy: airuntime.QueueDropNew},
 		nil,
 	)
 
@@ -123,7 +124,7 @@ func TestDispatchOrQueueQueueAcceptReturnsPending(t *testing.T) {
 		nil,
 		nil,
 		queueItem,
-		QueueSettings{Mode: QueueModeCollect, Cap: 10, DropPolicy: QueueDropOld},
+		QueueSettings{Mode: airuntime.QueueModeCollect, Cap: 10, DropPolicy: airuntime.QueueDropOld},
 		nil,
 	)
 

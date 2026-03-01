@@ -14,7 +14,6 @@ var (
 	tokenizerCacheMu sync.RWMutex
 )
 
-// getTokenizer returns a cached tiktoken encoder for the given model
 func getTokenizer(model string) (*tiktoken.Tiktoken, error) {
 	tokenizerCacheMu.RLock()
 	if tkm, ok := tokenizerCache[model]; ok {

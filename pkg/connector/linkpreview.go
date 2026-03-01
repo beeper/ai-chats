@@ -28,7 +28,6 @@ import (
 	"github.com/beeper/ai-bridge/pkg/shared/citations"
 )
 
-// LinkPreviewConfig holds configuration for link preview functionality.
 type LinkPreviewConfig struct {
 	Enabled         bool          `yaml:"enabled"`
 	MaxURLsInbound  int           `yaml:"max_urls_inbound"`  // Max URLs to process from user messages
@@ -40,7 +39,6 @@ type LinkPreviewConfig struct {
 	CacheTTL        time.Duration `yaml:"cache_ttl"`         // How long to cache previews
 }
 
-// DefaultLinkPreviewConfig returns sensible defaults.
 func DefaultLinkPreviewConfig() LinkPreviewConfig {
 	return LinkPreviewConfig{
 		Enabled:         true,
@@ -61,13 +59,11 @@ type PreviewWithImage struct {
 	ImageURL  string // Original image URL for reference
 }
 
-// previewCacheEntry holds a cached preview with expiration.
 type previewCacheEntry struct {
 	preview   *PreviewWithImage
 	expiresAt time.Time
 }
 
-// previewCache is a simple process-local cache for URL previews.
 type previewCache struct {
 	mu      sync.RWMutex
 	entries map[string]*previewCacheEntry
@@ -135,13 +131,11 @@ func (c *previewCache) set(url string, preview *PreviewWithImage, ttl time.Durat
 	}
 }
 
-// LinkPreviewer handles URL preview generation.
 type LinkPreviewer struct {
 	config     LinkPreviewConfig
 	httpClient *http.Client
 }
 
-// NewLinkPreviewer creates a new link previewer with the given config.
 func NewLinkPreviewer(config LinkPreviewConfig) *LinkPreviewer {
 	return &LinkPreviewer{
 		config: config,
@@ -201,7 +195,6 @@ func ExtractURLs(text string, maxURLs int) []string {
 	return urls
 }
 
-// isAllowedURL checks if a URL is safe to fetch.
 func isAllowedURL(rawURL string) bool {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
@@ -343,7 +336,6 @@ func (lp *LinkPreviewer) FetchPreview(ctx context.Context, urlStr string) (*Prev
 	return result, nil
 }
 
-// downloadImage downloads an image from a URL and returns its data, mime type, and dimensions.
 func (lp *LinkPreviewer) downloadImage(ctx context.Context, imageURL string) ([]byte, string, int, int) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
 	if err != nil {
@@ -736,7 +728,6 @@ func PreviewsToMapSlice(previews []*event.BeeperLinkPreview) []map[string]any {
 	return result
 }
 
-// extractTitle extracts a title from HTML using goquery.
 func extractTitle(doc *goquery.Document) string {
 	// Try <title> tag first
 	if title := doc.Find("title").First().Text(); title != "" {
@@ -753,7 +744,6 @@ func extractTitle(doc *goquery.Document) string {
 	return ""
 }
 
-// extractDescription extracts a description from HTML using goquery.
 func extractDescription(doc *goquery.Document) string {
 	// Try meta description
 	if desc, exists := doc.Find("meta[name='description']").First().Attr("content"); exists && desc != "" {
@@ -766,7 +756,6 @@ func extractDescription(doc *goquery.Document) string {
 	return ""
 }
 
-// summarizeText truncates text to maxWords and maxLength.
 func summarizeText(text string, maxWords, maxLength int) string {
 	// Normalize whitespace
 	text = strings.TrimSpace(text)

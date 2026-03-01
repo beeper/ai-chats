@@ -10,7 +10,6 @@ import (
 	_ "golang.org/x/image/webp"
 )
 
-// analyzeImage returns the width and height of an image.
 func analyzeImage(data []byte) (width, height int) {
 	if len(data) == 0 {
 		return 0, 0

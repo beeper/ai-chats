@@ -60,7 +60,6 @@ type BridgeToolContext struct {
 	SenderID      string     // The triggering sender ID (owner-only tool gating)
 }
 
-// bridgeToolContextKey is the context key for BridgeToolContext
 type bridgeToolContextKey struct{}
 
 // WithBridgeToolContext adds bridge context to a context
@@ -68,7 +67,6 @@ func WithBridgeToolContext(ctx context.Context, btc *BridgeToolContext) context.
 	return context.WithValue(ctx, bridgeToolContextKey{}, btc)
 }
 
-// GetBridgeToolContext retrieves bridge context from a context
 func GetBridgeToolContext(ctx context.Context) *BridgeToolContext {
 	return contextValue[*BridgeToolContext](ctx, bridgeToolContextKey{})
 }
@@ -87,35 +85,22 @@ func initBuiltinTools() {
 	}
 }
 
-// BuiltinTools returns the list of available builtin tools.
 // The result is computed once and cached for the process lifetime.
 func BuiltinTools() []ToolDefinition {
 	builtinToolsOnce.Do(initBuiltinTools)
 	return builtinToolsCached
 }
 
-// GetBuiltinTool returns the builtin tool with the given name, or nil if not found.
 func GetBuiltinTool(name string) *ToolDefinition {
 	builtinToolsOnce.Do(initBuiltinTools)
 	return builtinToolsByNameMap[name]
 }
 
-// ToolNameMessage is the name of the message tool.
 const ToolNameMessage = toolspec.MessageName
-
-// ToolNameTTS is the name of the text-to-speech tool.
 const ToolNameTTS = toolspec.TTSName
-
-// ToolNameWebFetch is the name of the web fetch tool.
 const ToolNameWebFetch = toolspec.WebFetchName
-
-// ToolNameImage is the OpenClaw-compatible image analysis tool.
 const ToolNameImage = toolspec.ImageName
-
-// ToolNameImageGenerate is the image generation tool (non-OpenClaw).
 const ToolNameImageGenerate = toolspec.ImageGenerateName
-
-// ToolNameSessionStatus is the name of the session status tool.
 const ToolNameSessionStatus = toolspec.SessionStatusName
 
 const (
@@ -129,22 +114,11 @@ const (
 	ToolNameEdit               = toolspec.EditName
 )
 
-// ImageResultPrefix is the prefix used to identify image results that need media sending.
 const ImageResultPrefix = "IMAGE:"
-
-// ImagesResultPrefix is the prefix used to identify multi-image results.
 const ImagesResultPrefix = "IMAGES:"
-
-// DefaultImageModel is the default model for image generation.
 const DefaultImageModel = "google/gemini-3-pro-image-preview"
-
-// DefaultOpenAIImageModel is the default direct OpenAI image model.
 const DefaultOpenAIImageModel = "gpt-image-1"
-
-// DefaultGeminiImageModel is the default direct Gemini image model.
 const DefaultGeminiImageModel = "gemini-3-pro-image-preview"
-
-// TTSResultPrefix is the prefix used to identify TTS results that need audio sending.
 const TTSResultPrefix = "AUDIO:"
 
 // parseBoolArg extracts a boolean argument from args, handling JSON's bool, float64,
@@ -167,12 +141,10 @@ func parseBoolArg(args map[string]any, key string) (value bool, explicit bool) {
 	return false, true
 }
 
-// normalizeMessageAction coerces message actions to canonical lowercase form.
 func normalizeMessageAction(action string) string {
 	return strings.ToLower(strings.TrimSpace(action))
 }
 
-// normalizeMessageArgs normalizes canonical message arguments in-place.
 func normalizeMessageArgs(args map[string]any) {
 	if args == nil {
 		return
@@ -354,7 +326,6 @@ func expandUserPath(value string) string {
 	return value
 }
 
-// executeMessage handles the message tool for sending messages and channel actions.
 // Matches OpenClaw's message tool pattern with full action support.
 func executeMessage(ctx context.Context, args map[string]any) (string, error) {
 	action, ok := args["action"].(string)
@@ -429,7 +400,6 @@ func executeMessage(ctx context.Context, args map[string]any) (string, error) {
 	}
 }
 
-// executeMessageReact handles the react action of the message tool.
 // Supports adding reactions (with emoji) and removing reactions (with remove:true or empty emoji).
 func executeMessageReact(ctx context.Context, args map[string]any, btc *BridgeToolContext) (string, error) {
 	emoji, _ := args["emoji"].(string)
@@ -464,7 +434,6 @@ func executeMessageReact(ctx context.Context, args map[string]any, btc *BridgeTo
 	})
 }
 
-// executeMessageSend handles the send action of the message tool.
 func executeMessageSend(ctx context.Context, args map[string]any, btc *BridgeToolContext) (string, error) {
 	if handled, desktopResult, err := maybeExecuteMessageSendDesktop(ctx, args, btc); handled {
 		return desktopResult, err
@@ -631,7 +600,6 @@ func executeMessageSend(ctx context.Context, args map[string]any, btc *BridgeToo
 	})
 }
 
-// executeMessageEdit handles the edit action - edits an existing message.
 func executeMessageEdit(ctx context.Context, args map[string]any, btc *BridgeToolContext) (string, error) {
 	if handled, desktopResult, err := maybeExecuteMessageEditDesktop(ctx, args, btc); handled {
 		return desktopResult, err
@@ -693,7 +661,6 @@ func executeMessageEdit(ctx context.Context, args map[string]any, btc *BridgeToo
 	})
 }
 
-// executeMessageDelete handles the delete action - redacts a message.
 func executeMessageDelete(ctx context.Context, args map[string]any, btc *BridgeToolContext) (string, error) {
 	messageID, ok := args["message_id"].(string)
 	if !ok || messageID == "" {
@@ -712,7 +679,6 @@ func executeMessageDelete(ctx context.Context, args map[string]any, btc *BridgeT
 	})
 }
 
-// executeMessageReply handles the reply action - sends a message as a reply to another.
 func executeMessageReply(ctx context.Context, args map[string]any, btc *BridgeToolContext) (string, error) {
 	if handled, desktopResult, err := maybeExecuteMessageReplyDesktop(ctx, args, btc); handled {
 		return desktopResult, err
@@ -744,7 +710,6 @@ func executeMessageReply(ctx context.Context, args map[string]any, btc *BridgeTo
 	})
 }
 
-// executeMessagePin handles pin/unpin actions - updates room pinned events.
 func executeMessagePin(ctx context.Context, args map[string]any, btc *BridgeToolContext, pin bool) (string, error) {
 	messageID, ok := args["message_id"].(string)
 	if !ok || messageID == "" {
@@ -808,7 +773,6 @@ func executeMessagePin(ctx context.Context, args map[string]any, btc *BridgeTool
 	})
 }
 
-// executeMessageListPins handles list-pins action - returns currently pinned messages.
 func executeMessageListPins(ctx context.Context, btc *BridgeToolContext) (string, error) {
 	pinnedEvents := getPinnedEventIDs(ctx, btc)
 
@@ -819,7 +783,6 @@ func executeMessageListPins(ctx context.Context, btc *BridgeToolContext) (string
 	})
 }
 
-// executeMessageThreadReply handles thread-reply action - sends a message in a thread.
 func executeMessageThreadReply(ctx context.Context, args map[string]any, btc *BridgeToolContext) (string, error) {
 	// thread_id is the root message of the thread
 	threadID, ok := args["thread_id"].(string)
@@ -851,7 +814,6 @@ func executeMessageThreadReply(ctx context.Context, args map[string]any, btc *Br
 	})
 }
 
-// executeMessageSearch searches messages in the current chat.
 func executeMessageSearch(ctx context.Context, args map[string]any, btc *BridgeToolContext) (string, error) {
 	if handled, desktopResult, err := maybeExecuteMessageSearchDesktop(ctx, args, btc); handled {
 		return desktopResult, err
@@ -907,7 +869,6 @@ func executeMessageSearch(ctx context.Context, args map[string]any, btc *BridgeT
 	return fmt.Sprintf(`{"action":"search","query":%q,"results":%s,"count":%d}`, query, string(resultsJSON), len(results)), nil
 }
 
-// truncateString truncates a string to maxLen characters, adding "..." if truncated.
 func truncateString(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
@@ -915,12 +876,10 @@ func truncateString(s string, maxLen int) string {
 	return s[:maxLen] + "..."
 }
 
-// executeWebFetch fetches a web page and extracts readable content.
 func executeWebFetch(ctx context.Context, args map[string]any) (string, error) {
 	return executeWebFetchWithProviders(ctx, args)
 }
 
-// executeImageGeneration generates image(s) using provider-specific image generation APIs.
 func executeImageGeneration(ctx context.Context, args map[string]any) (string, error) {
 	btc := GetBridgeToolContext(ctx)
 	if btc == nil {
@@ -1179,8 +1138,6 @@ func extractOpenRouterImages(ctx context.Context, parsed any) ([]string, error) 
 	return out, nil
 }
 
-// extractOpenRouterImageRef tries to find a usable image reference (data URL or http URL)
-// from common OpenRouter image objects (message.images entries or content parts).
 func extractOpenRouterImageRef(v any) string {
 	switch t := v.(type) {
 	case string:
@@ -1231,7 +1188,6 @@ func normalizeOpenRouterImageRefToB64(ctx context.Context, ref string) (string, 
 	return "", fmt.Errorf("unexpected image reference format: %s", ref[:min(120, len(ref))])
 }
 
-// extractBase64FromDataURL parses a data URL and returns raw base64 data.
 func extractBase64FromDataURL(dataURL string) (string, error) {
 	b64Data, _, err := media.ParseDataURI(dataURL)
 	if err == nil {
@@ -1244,7 +1200,6 @@ func extractBase64FromDataURL(dataURL string) (string, error) {
 	return base64.StdEncoding.EncodeToString(data), nil
 }
 
-// fetchImageAsBase64 fetches an image URL and returns it as base64.
 func fetchImageAsBase64(ctx context.Context, imageURL string) (string, error) {
 	b64Data, _, err := fetchImageAsBase64WithType(ctx, imageURL)
 	if err != nil {
@@ -1280,7 +1235,6 @@ func fetchImageAsBase64WithType(ctx context.Context, imageURL string) (string, s
 	return base64.StdEncoding.EncodeToString(data), mimeType, nil
 }
 
-// executeTTS converts text to speech.
 // Supports: macOS 'say' command, Beeper provider, OpenAI provider.
 func executeTTS(ctx context.Context, args map[string]any) (string, error) {
 	text, ok := args["text"].(string)
@@ -1498,12 +1452,10 @@ func resolveOpenAITTSBaseURL(btc *BridgeToolContext, providerBaseURL string) (st
 	}
 }
 
-// isTTSMacOSAvailable checks if macOS 'say' command is available.
 func isTTSMacOSAvailable() bool {
 	return runtime.GOOS == "darwin"
 }
 
-// callMacOSSay uses macOS 'say' command to generate speech.
 func callMacOSSay(ctx context.Context, text, voice string) (string, error) {
 	audioData, err := runMacOSSay(ctx, text, voice, ".m4a", []string{"--file-format=m4af", "--data-format=aac"})
 	if err != nil {
@@ -1597,7 +1549,6 @@ func callOpenAITTS(ctx context.Context, apiKey, baseURL, text, model, voice stri
 	return base64.StdEncoding.EncodeToString(audioBytes), nil
 }
 
-// executeCalculator evaluates a simple arithmetic expression
 func executeCalculator(ctx context.Context, args map[string]any) (string, error) {
 	expr, ok := args["expression"].(string)
 	if !ok {
@@ -1617,7 +1568,6 @@ func executeWebSearch(ctx context.Context, args map[string]any) (string, error) 
 	return executeWebSearchWithProviders(ctx, args)
 }
 
-// executeSessionStatus returns current session status including time, model, and usage info.
 // Similar to OpenClaw's session_status tool.
 func executeSessionStatus(ctx context.Context, args map[string]any) (string, error) {
 	btc := GetBridgeToolContext(ctx)
@@ -1790,7 +1740,6 @@ func detachedBridgeToolContext(ctx context.Context) context.Context {
 	return base
 }
 
-// executeReadFile handles the read tool.
 func executeReadFile(ctx context.Context, args map[string]any) (string, error) {
 	store, err := textFSStore(ctx)
 	if err != nil {
@@ -1852,7 +1801,6 @@ func executeReadFile(ctx context.Context, args map[string]any) (string, error) {
 	return output, nil
 }
 
-// executeWriteFile handles the write tool.
 func executeWriteFile(ctx context.Context, args map[string]any) (string, error) {
 	store, err := textFSStore(ctx)
 	if err != nil {
@@ -1887,7 +1835,6 @@ func executeWriteFile(ctx context.Context, args map[string]any) (string, error) 
 	return fmt.Sprintf("Wrote %d bytes to %s.", len([]byte(content)), path), nil
 }
 
-// executeEditFile handles the edit tool.
 func executeEditFile(ctx context.Context, args map[string]any) (string, error) {
 	store, err := textFSStore(ctx)
 	if err != nil {
