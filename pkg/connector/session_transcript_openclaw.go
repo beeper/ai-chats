@@ -117,17 +117,6 @@ func projectOpenClawMessages(messages []*database.Message) []map[string]any {
 				toolResult := projectToolResultOpenClawMessage(call, msg, idx)
 				out = append(out, toolResult)
 			}
-		case "toolResult":
-			// Legacy persisted tool rows (rare): normalize them to OpenClaw shape.
-			entry := map[string]any{
-				"role":      "toolResult",
-				"content":   buildTextBlocks(meta.Body),
-				"timestamp": msg.Timestamp.UnixMilli(),
-			}
-			if msg.MXID != "" {
-				entry["id"] = msg.MXID.String()
-			}
-			out = append(out, entry)
 		}
 	}
 	return out

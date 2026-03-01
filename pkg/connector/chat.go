@@ -438,7 +438,7 @@ func (oc *AIClient) createNewChat(ctx context.Context, modelID string) (*bridgev
 	if meta != nil && !meta.IsSimpleMode {
 		meta.IsSimpleMode = true
 		if err := portal.Save(ctx); err != nil {
-			return nil, fmt.Errorf("failed to save portal raw mode: %w", err)
+			return nil, fmt.Errorf("failed to save portal simple mode: %w", err)
 		}
 	}
 

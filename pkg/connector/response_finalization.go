@@ -248,7 +248,7 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 	if sourceParts := buildSourceParts(state.sourceCitations, state.sourceDocuments, linkPreviews); len(sourceParts) > 0 {
 		parts = append(parts, sourceParts...)
 	}
-	if fileParts := generatedFilesToParts(state.generatedFiles); len(fileParts) > 0 {
+	if fileParts := citations.GeneratedFilesToParts(state.generatedFiles); len(fileParts) > 0 {
 		parts = append(parts, fileParts...)
 	}
 
@@ -707,10 +707,8 @@ func buildSourceParts(cits []citations.SourceCitation, documents []citations.Sou
 	return parts
 }
 
-// generatedFilesToParts delegates to the shared citations package.
-var generatedFilesToParts = citations.GeneratedFilesToParts
 
-// sendFinalAssistantTurnContent is a helper for raw mode that sends content without directive processing.
+// sendFinalAssistantTurnContent is a helper for simple mode that sends content without directive processing.
 func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata, intent bridgev2.MatrixAPI, rendered event.MessageEventContent, replyToEventID *id.EventID) {
 	// Safety-split oversized responses into multiple Matrix events
 	var continuationBody string
@@ -779,7 +777,7 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 	if sourceParts := buildSourceParts(state.sourceCitations, state.sourceDocuments, linkPreviews); len(sourceParts) > 0 {
 		parts = append(parts, sourceParts...)
 	}
-	if fileParts := generatedFilesToParts(state.generatedFiles); len(fileParts) > 0 {
+	if fileParts := citations.GeneratedFilesToParts(state.generatedFiles); len(fileParts) > 0 {
 		parts = append(parts, fileParts...)
 	}
 
@@ -811,15 +809,15 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 	eventContent := &event.Content{Raw: rawContent2}
 
 	if _, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, eventContent, nil); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Stringer("initial_event_id", state.initialEventID).Msg("Failed to send final assistant turn (raw mode)")
+		oc.loggerForContext(ctx).Warn().Err(err).Stringer("initial_event_id", state.initialEventID).Msg("Failed to send final assistant turn (simple mode)")
 	} else {
 		oc.recordAgentActivity(ctx, portal, meta)
 		oc.loggerForContext(ctx).Debug().
 			Str("initial_event_id", state.initialEventID.String()).
 			Str("turn_id", state.turnID).
-			Str("mode", "raw").
+			Str("mode", "simple").
 			Int("link_previews", len(linkPreviews)).
-			Msg("Sent final assistant turn (raw mode)")
+			Msg("Sent final assistant turn (simple mode)")
 	}
 
 	// Send continuation messages for overflow

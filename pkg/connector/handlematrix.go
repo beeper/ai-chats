@@ -1354,16 +1354,7 @@ func (oc *AIClient) buildPromptForRegenerate(
 	latestUserID id.EventID,
 ) ([]openai.ChatCompletionMessageParamUnion, error) {
 	var prompt []openai.ChatCompletionMessageParamUnion
-	isSimple := isSimpleMode(meta)
-	if isSimple {
-		prompt = append(prompt, openai.SystemMessage(oc.buildSimpleModeSystemPrompt(meta)))
-	} else {
-		systemPrompt := oc.effectivePrompt(meta)
-		if systemPrompt != "" {
-			prompt = append(prompt, openai.SystemMessage(systemPrompt))
-		}
-		prompt = append(prompt, oc.buildAdditionalSystemPrompts(ctx, portal, meta)...)
-	}
+	prompt = append(prompt, oc.buildSystemMessages(ctx, portal, meta)...)
 
 	historyLimit := oc.historyLimit(ctx, portal, meta)
 	resetAt := int64(0)

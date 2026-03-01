@@ -158,9 +158,6 @@ func resolveRunTimeoutSeconds(args map[string]any) time.Duration {
 	if seconds, ok := read("runTimeoutSeconds"); ok && seconds > 0 {
 		return time.Duration(seconds) * time.Second
 	}
-	if seconds, ok := read("timeoutSeconds"); ok && seconds > 0 {
-		return time.Duration(seconds) * time.Second
-	}
 	return 0
 }
 

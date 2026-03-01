@@ -10,6 +10,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	"github.com/beeper/ai-bridge/pkg/shared/citations"
 )
 
 // saveAssistantMessage saves the completed assistant message to the database
@@ -137,7 +138,7 @@ func (oc *AIClient) buildCanonicalUIMessage(state *streamingState, meta *PortalM
 	if sourceParts := buildSourceParts(state.sourceCitations, state.sourceDocuments, nil); len(sourceParts) > 0 {
 		parts = append(parts, sourceParts...)
 	}
-	if fileParts := generatedFilesToParts(state.generatedFiles); len(fileParts) > 0 {
+	if fileParts := citations.GeneratedFilesToParts(state.generatedFiles); len(fileParts) > 0 {
 		parts = append(parts, fileParts...)
 	}
 
