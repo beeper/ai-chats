@@ -564,6 +564,26 @@ func copySchemaMeta(src map[string]any, dst map[string]any) {
 	}
 }
 
+func tryCollapseUnionVariants(schema map[string]any, variants []any) (any, bool) {
+	nonNull, stripped := stripNullVariants(variants)
+	if flattened := tryFlattenLiteralAnyOf(nonNull); flattened != nil {
+		copySchemaMeta(schema, flattened)
+		return flattened, true
+	}
+	if stripped && len(nonNull) == 1 {
+		if lone, ok := nonNull[0].(map[string]any); ok {
+			result := make(map[string]any, len(lone)+3)
+			for k, v := range lone {
+				result[k] = v
+			}
+			copySchemaMeta(schema, result)
+			return result, true
+		}
+		return nonNull[0], true
+	}
+	return nil, false
+}
+
 func cleanSchemaWithDefs(schema map[string]any, defs schemaDefs, refStack map[string]struct{}, report *schemaSanitizeReport) any {
 	nextDefs := extendSchemaDefs(defs, schema)
 
@@ -623,46 +643,14 @@ func cleanSchemaWithDefs(schema map[string]any, defs schemaDefs, refStack map[st
 	}
 
 	if hasAnyOf {
-		nonNull, stripped := stripNullVariants(cleanedAnyOf)
-		if stripped {
-			cleanedAnyOf = nonNull
-		}
-		if flattened := tryFlattenLiteralAnyOf(nonNull); flattened != nil {
-			copySchemaMeta(schema, flattened)
-			return flattened
-		}
-		if stripped && len(nonNull) == 1 {
-			if lone, ok := nonNull[0].(map[string]any); ok {
-				result := make(map[string]any, len(lone)+3)
-				for k, v := range lone {
-					result[k] = v
-				}
-				copySchemaMeta(schema, result)
-				return result
-			}
-			return nonNull[0]
+		if collapsed, ok := tryCollapseUnionVariants(schema, cleanedAnyOf); ok {
+			return collapsed
 		}
 	}
 
 	if hasOneOf {
-		nonNull, stripped := stripNullVariants(cleanedOneOf)
-		if stripped {
-			cleanedOneOf = nonNull
-		}
-		if flattened := tryFlattenLiteralAnyOf(nonNull); flattened != nil {
-			copySchemaMeta(schema, flattened)
-			return flattened
-		}
-		if stripped && len(nonNull) == 1 {
-			if lone, ok := nonNull[0].(map[string]any); ok {
-				result := make(map[string]any, len(lone)+3)
-				for k, v := range lone {
-					result[k] = v
-				}
-				copySchemaMeta(schema, result)
-				return result
-			}
-			return nonNull[0]
+		if collapsed, ok := tryCollapseUnionVariants(schema, cleanedOneOf); ok {
+			return collapsed
 		}
 	}
 

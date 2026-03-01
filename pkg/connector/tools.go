@@ -40,6 +40,8 @@ import (
 type ToolDefinition = integrationruntime.ToolDefinition
 
 var imageFetchHTTPClient = &http.Client{Timeout: 30 * time.Second}
+var openRouterImageHTTPClient = &http.Client{Timeout: 120 * time.Second}
+var openAITTSHTTPClient = &http.Client{Timeout: 30 * time.Second}
 
 var validVoices = map[string]bool{
 	"alloy": true, "ash": true, "coral": true, "echo": true,
@@ -71,17 +73,30 @@ func GetBridgeToolContext(ctx context.Context) *BridgeToolContext {
 }
 
 var (
-	builtinToolsOnce   sync.Once
-	builtinToolsCached []ToolDefinition
+	builtinToolsOnce       sync.Once
+	builtinToolsCached     []ToolDefinition
+	builtinToolsByNameMap  map[string]*ToolDefinition
 )
+
+func initBuiltinTools() {
+	builtinToolsCached = buildBuiltinToolDefinitions()
+	builtinToolsByNameMap = make(map[string]*ToolDefinition, len(builtinToolsCached))
+	for i := range builtinToolsCached {
+		builtinToolsByNameMap[builtinToolsCached[i].Name] = &builtinToolsCached[i]
+	}
+}
 
 // BuiltinTools returns the list of available builtin tools.
 // The result is computed once and cached for the process lifetime.
 func BuiltinTools() []ToolDefinition {
-	builtinToolsOnce.Do(func() {
-		builtinToolsCached = buildBuiltinToolDefinitions()
-	})
-	return slices.Clone(builtinToolsCached)
+	builtinToolsOnce.Do(initBuiltinTools)
+	return builtinToolsCached
+}
+
+// GetBuiltinTool returns the builtin tool with the given name, or nil if not found.
+func GetBuiltinTool(name string) *ToolDefinition {
+	builtinToolsOnce.Do(initBuiltinTools)
+	return builtinToolsByNameMap[name]
 }
 
 // ToolNameMessage is the name of the message tool.
@@ -130,6 +145,26 @@ const DefaultGeminiImageModel = "gemini-3-pro-image-preview"
 
 // TTSResultPrefix is the prefix used to identify TTS results that need audio sending.
 const TTSResultPrefix = "AUDIO:"
+
+// parseBoolArg extracts a boolean argument from args, handling JSON's bool, float64,
+// int, and string representations. Returns the parsed value and whether the key was present.
+func parseBoolArg(args map[string]any, key string) (value bool, explicit bool) {
+	raw, ok := args[key]
+	if !ok {
+		return false, false
+	}
+	switch v := raw.(type) {
+	case bool:
+		return v, true
+	case float64:
+		return v != 0, true
+	case int:
+		return v != 0, true
+	case string:
+		return strings.EqualFold(strings.TrimSpace(v), "true") || strings.TrimSpace(v) == "1", true
+	}
+	return false, true
+}
 
 // normalizeMessageAction coerces message actions to canonical lowercase form.
 func normalizeMessageAction(action string) string {
@@ -906,22 +941,7 @@ func executeImageGeneration(ctx context.Context, args map[string]any) (string, e
 		return "", err
 	}
 
-	// Allow explicit async override (JSON tool args might encode booleans as native bools).
-	asyncExplicit := false
-	asyncValue := false
-	if raw, ok := args["async"]; ok {
-		asyncExplicit = true
-		switch v := raw.(type) {
-		case bool:
-			asyncValue = v
-		case float64:
-			asyncValue = v != 0
-		case int:
-			asyncValue = v != 0
-		case string:
-			asyncValue = strings.EqualFold(strings.TrimSpace(v), "true") || strings.TrimSpace(v) == "1"
-		}
-	}
+	asyncValue, asyncExplicit := parseBoolArg(args, "async")
 
 	// Default to async for Magic Proxy since image generation can take long and blocks the stream loop.
 	loginMeta := loginMetadata(btc.Client.UserLogin)
@@ -1039,8 +1059,7 @@ func callOpenRouterImageGen(ctx context.Context, apiKey, baseURL string, reqBody
 	req.Header.Set("HTTP-Referer", "https://beeper.com")
 	req.Header.Set("X-Title", "Beeper AI")
 
-	client := &http.Client{Timeout: 120 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := openRouterImageHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -1304,22 +1323,7 @@ func executeTTS(ctx context.Context, args map[string]any) (string, error) {
 
 	btc := GetBridgeToolContext(ctx)
 
-	// Allow explicit async override (JSON tool args might encode booleans as native bools).
-	asyncExplicit := false
-	asyncValue := false
-	if raw, ok := args["async"]; ok {
-		asyncExplicit = true
-		switch v := raw.(type) {
-		case bool:
-			asyncValue = v
-		case float64:
-			asyncValue = v != 0
-		case int:
-			asyncValue = v != 0
-		case string:
-			asyncValue = strings.EqualFold(strings.TrimSpace(v), "true") || strings.TrimSpace(v) == "1"
-		}
-	}
+	asyncValue, asyncExplicit := parseBoolArg(args, "async")
 
 	// Default to async for Magic Proxy to avoid blocking the stream loop.
 	async := asyncValue
@@ -1591,9 +1595,7 @@ func callOpenAITTS(ctx context.Context, apiKey, baseURL, text, model, voice stri
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	// Execute request
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := openAITTSHTTPClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("request failed: %w", err)
 	}
@@ -1947,8 +1949,8 @@ func executeEditFile(ctx context.Context, args map[string]any) (string, error) {
 		return "", errors.New("missing or invalid 'newText' argument")
 	}
 
-	readCtx, cancel := context.WithTimeout(ctx, textFSToolTimeout)
-	defer cancel()
+	readCtx, cancelRead := context.WithTimeout(ctx, textFSToolTimeout)
+	defer cancelRead()
 	entry, found, err := store.Read(readCtx, path)
 	if err != nil {
 		return "", err
@@ -1983,8 +1985,8 @@ func executeEditFile(ctx context.Context, args map[string]any) (string, error) {
 	if len(updated) > textFSMaxBytes {
 		return "", fmt.Errorf("content exceeds %s limit", textfs.FormatSize(textFSMaxBytes))
 	}
-	writeCtx, cancel := context.WithTimeout(ctx, textFSToolTimeout)
-	defer cancel()
+	writeCtx, cancelWrite := context.WithTimeout(ctx, textFSToolTimeout)
+	defer cancelWrite()
 	entry, err = store.Write(writeCtx, path, updated)
 	if err != nil {
 		return "", err

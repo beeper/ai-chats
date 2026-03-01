@@ -97,15 +97,6 @@ func registerProviders(registry *Registry, cfg *Config) {
 	if p := newProviderIfEnabled(cfg.Exa.Enabled, cfg.Exa.APIKey, func() Provider { return &exaProvider{cfg: cfg.Exa} }); p != nil {
 		registry.Register(p)
 	}
-	if p := newProviderIfEnabled(cfg.Brave.Enabled, cfg.Brave.APIKey, func() Provider { return &braveProvider{cfg: cfg.Brave} }); p != nil {
-		registry.Register(p)
-	}
-	if p := newProviderIfEnabled(cfg.Perplexity.Enabled, cfg.Perplexity.APIKey, func() Provider { return &perplexityProvider{cfg: cfg.Perplexity} }); p != nil {
-		registry.Register(p)
-	}
-	if p := newProviderIfEnabled(cfg.OpenRouter.Enabled, cfg.OpenRouter.APIKey, func() Provider { return &openRouterProvider{cfg: cfg.OpenRouter} }); p != nil {
-		registry.Register(p)
-	}
 }
 
 // newProviderIfEnabled returns a Provider when the feature flag is on and the

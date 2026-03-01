@@ -50,35 +50,20 @@ func (oc *AIClient) isWebSearchConfigured(ctx context.Context) (bool, string) {
 	cfg := oc.effectiveSearchConfig(ctx)
 	// Mirrors pkg/search/router.go provider registration requirements.
 	if strings.TrimSpace(cfg.Exa.APIKey) != "" {
-		if searchEnabled(cfg.Exa.Enabled) {
+		if optionalBoolDefault(cfg.Exa.Enabled, true) {
 			return true, ""
 		}
 	}
-	if strings.TrimSpace(cfg.Brave.APIKey) != "" {
-		if searchEnabled(cfg.Brave.Enabled) {
-			return true, ""
-		}
-	}
-	if strings.TrimSpace(cfg.Perplexity.APIKey) != "" {
-		if searchEnabled(cfg.Perplexity.Enabled) {
-			return true, ""
-		}
-	}
-	if strings.TrimSpace(cfg.OpenRouter.APIKey) != "" {
-		if searchEnabled(cfg.OpenRouter.Enabled) {
-			return true, ""
-		}
-	}
-	return false, "Web search is not configured (missing API key for all providers)"
+	return false, "Web search is not configured (missing Exa API key)"
 }
 
 func (oc *AIClient) isWebFetchConfigured(ctx context.Context) (bool, string) {
 	cfg := oc.effectiveFetchConfig(ctx)
 	// Exa requires an API key; direct does not.
-	if strings.TrimSpace(cfg.Exa.APIKey) != "" && fetchEnabled(cfg.Exa.Enabled) {
+	if strings.TrimSpace(cfg.Exa.APIKey) != "" && optionalBoolDefault(cfg.Exa.Enabled, true) {
 		return true, ""
 	}
-	if fetchEnabled(cfg.Direct.Enabled) {
+	if optionalBoolDefault(cfg.Direct.Enabled, true) {
 		return true, ""
 	}
 	return false, "Web fetch is disabled (direct disabled and Exa API key missing)"
@@ -110,16 +95,9 @@ func (oc *AIClient) isTTSConfigured() (bool, string) {
 	return true, ""
 }
 
-func searchEnabled(flag *bool) bool {
+func optionalBoolDefault(flag *bool, def bool) bool {
 	if flag == nil {
-		return true
-	}
-	return *flag
-}
-
-func fetchEnabled(flag *bool) bool {
-	if flag == nil {
-		return true
+		return def
 	}
 	return *flag
 }

@@ -417,10 +417,8 @@ func (oc *AIClient) executeBuiltinToolDirect(ctx context.Context, portal *bridge
 	}
 
 	// Standard builtin tools
-	for _, tool := range BuiltinTools() {
-		if tool.Name == toolName {
-			return tool.Execute(ctx, args)
-		}
+	if tool := GetBuiltinTool(toolName); tool != nil {
+		return tool.Execute(ctx, args)
 	}
 	return "", fmt.Errorf("unknown tool: %s", toolName)
 }
@@ -448,60 +446,17 @@ func (oc *AIClient) executeBossTool(ctx context.Context, portal *bridgev2.Portal
 			}
 		}
 	}
-	if toolName == "sessions_spawn" {
-		result, err = oc.executeSessionsSpawn(ctx, portal, args)
-		if err != nil {
-			return &bossToolResult{Error: err}
-		}
-		content := result.Text()
-		if result.Status == tools.ResultError {
-			return &bossToolResult{Error: fmt.Errorf("%s", content)}
-		}
-		return &bossToolResult{Content: content}
+	type sessionToolFunc func(context.Context, *bridgev2.Portal, map[string]any) (*tools.Result, error)
+	sessionTools := map[string]sessionToolFunc{
+		"sessions_spawn":   oc.executeSessionsSpawn,
+		"sessions_list":    oc.executeSessionsList,
+		"sessions_history": oc.executeSessionsHistory,
+		"sessions_send":    oc.executeSessionsSend,
+		"agents_list":      oc.executeAgentsList,
 	}
-	if toolName == "sessions_list" {
-		result, err = oc.executeSessionsList(ctx, portal, args)
-		if err != nil {
-			return &bossToolResult{Error: err}
-		}
-		content := result.Text()
-		if result.Status == tools.ResultError {
-			return &bossToolResult{Error: fmt.Errorf("%s", content)}
-		}
-		return &bossToolResult{Content: content}
-	}
-	if toolName == "sessions_history" {
-		result, err = oc.executeSessionsHistory(ctx, portal, args)
-		if err != nil {
-			return &bossToolResult{Error: err}
-		}
-		content := result.Text()
-		if result.Status == tools.ResultError {
-			return &bossToolResult{Error: fmt.Errorf("%s", content)}
-		}
-		return &bossToolResult{Content: content}
-	}
-	if toolName == "sessions_send" {
-		result, err = oc.executeSessionsSend(ctx, portal, args)
-		if err != nil {
-			return &bossToolResult{Error: err}
-		}
-		content := result.Text()
-		if result.Status == tools.ResultError {
-			return &bossToolResult{Error: fmt.Errorf("%s", content)}
-		}
-		return &bossToolResult{Content: content}
-	}
-	if toolName == "agents_list" {
-		result, err = oc.executeAgentsList(ctx, portal, args)
-		if err != nil {
-			return &bossToolResult{Error: err}
-		}
-		content := result.Text()
-		if result.Status == tools.ResultError {
-			return &bossToolResult{Error: fmt.Errorf("%s", content)}
-		}
-		return &bossToolResult{Content: content}
+	if fn, ok := sessionTools[toolName]; ok {
+		result, err = fn(ctx, portal, args)
+		return bossToolResultFromToolsResult(result, err)
 	}
 
 	switch toolName {
@@ -525,17 +480,19 @@ func (oc *AIClient) executeBossTool(ctx context.Context, portal *bridgev2.Portal
 		return nil // Not a boss tool
 	}
 
+	return bossToolResultFromToolsResult(result, err)
+}
+
+func bossToolResultFromToolsResult(result *tools.Result, err error) *bossToolResult {
 	if err != nil {
 		return &bossToolResult{Error: err}
 	}
 	if result == nil {
 		return &bossToolResult{Content: ""}
 	}
-
-	// Extract content from result
 	content := result.Text()
 	if result.Status == tools.ResultError {
-		return &bossToolResult{Error: fmt.Errorf("%s", content)}
+		return &bossToolResult{Error: errors.New(content)}
 	}
 	return &bossToolResult{Content: content}
 }

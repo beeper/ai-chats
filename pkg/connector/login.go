@@ -177,22 +177,6 @@ func (ol *OpenAILogin) credentialsStep() *bridgev2.LoginStep {
 				Description: "Optional. Used for web search and fetch.",
 			})
 		}
-		if !ol.configHasBraveKey() {
-			fields = append(fields, bridgev2.LoginInputDataField{
-				Type:        bridgev2.LoginInputFieldTypeToken,
-				ID:          "brave_api_key",
-				Name:        "Brave Search API Key",
-				Description: "Optional. Used for web search.",
-			})
-		}
-		if !ol.configHasPerplexityKey() {
-			fields = append(fields, bridgev2.LoginInputDataField{
-				Type:        bridgev2.LoginInputFieldTypeToken,
-				ID:          "perplexity_api_key",
-				Name:        "Perplexity API Key",
-				Description: "Optional. Used for web search via OpenRouter.",
-			})
-		}
 	default:
 		return nil
 	}
@@ -364,12 +348,6 @@ func (ol *OpenAILogin) resolveCustomLogin(input map[string]string) (string, stri
 	if !ol.configHasExaKey() {
 		serviceTokens.Exa = strings.TrimSpace(input["exa_api_key"])
 	}
-	if !ol.configHasBraveKey() {
-		serviceTokens.Brave = strings.TrimSpace(input["brave_api_key"])
-	}
-	if !ol.configHasPerplexityKey() {
-		serviceTokens.Perplexity = strings.TrimSpace(input["perplexity_api_key"])
-	}
 
 	return provider, apiKey, serviceTokens, nil
 }
@@ -466,20 +444,6 @@ func (ol *OpenAILogin) configHasExaKey() bool {
 		return true
 	}
 	return false
-}
-
-func (ol *OpenAILogin) configHasBraveKey() bool {
-	if ol.Connector.Config.Tools.Search == nil {
-		return false
-	}
-	return strings.TrimSpace(ol.Connector.Config.Tools.Search.Brave.APIKey) != ""
-}
-
-func (ol *OpenAILogin) configHasPerplexityKey() bool {
-	if ol.Connector.Config.Tools.Search == nil {
-		return false
-	}
-	return strings.TrimSpace(ol.Connector.Config.Tools.Search.Perplexity.APIKey) != ""
 }
 
 // formatRemoteName generates a display name for the account based on provider.

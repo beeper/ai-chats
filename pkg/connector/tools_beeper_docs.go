@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/beeper/ai-bridge/pkg/search"
 	"github.com/beeper/ai-bridge/pkg/shared/exa"
 	"github.com/beeper/ai-bridge/pkg/shared/httputil"
 )
@@ -23,7 +24,11 @@ func executeBeeperDocs(ctx context.Context, args map[string]any) (string, error)
 		numResults = int(c)
 	}
 
-	cfg := resolveSearchConfig(ctx)
+	btc := GetBridgeToolContext(ctx)
+	var cfg *search.Config
+	if btc != nil && btc.Client != nil {
+		cfg = btc.Client.effectiveSearchConfig(ctx)
+	}
 	if cfg == nil || (cfg.Exa.APIKey == "" && cfg.Exa.BaseURL == "") {
 		return "", errors.New("beeper_docs requires Exa search configuration")
 	}

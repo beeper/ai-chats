@@ -61,7 +61,7 @@ func TestSimpleModePrompt_NoWebSearchHintEvenWhenConfigured(t *testing.T) {
 				},
 				Tools: ToolProvidersConfig{
 					Search: &SearchConfig{
-						Brave: ProviderBraveConfig{APIKey: "test-key"},
+						Exa: ProviderExaConfig{APIKey: "test-key"},
 					},
 				},
 			},

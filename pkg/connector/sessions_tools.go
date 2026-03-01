@@ -17,6 +17,10 @@ import (
 	"github.com/beeper/ai-bridge/pkg/agents/tools"
 )
 
+func toolsErrorResult(err error) (*tools.Result, error) {
+	return tools.JSONResult(map[string]any{"status": "error", "error": err.Error()}), nil
+}
+
 type sessionListEntry struct {
 	updatedAt int64
 	data      map[string]any
@@ -68,10 +72,7 @@ func (oc *AIClient) executeSessionsList(ctx context.Context, portal *bridgev2.Po
 
 	portals, err := oc.listAllChatPortals(ctx)
 	if err != nil {
-		return tools.JSONResult(map[string]any{
-			"status": "error",
-			"error":  err.Error(),
-		}), nil
+		return toolsErrorResult(err)
 	}
 
 	currentRoomID := id.RoomID("")
@@ -221,10 +222,7 @@ func (oc *AIClient) executeSessionsList(ctx context.Context, portal *bridgev2.Po
 func (oc *AIClient) executeSessionsHistory(ctx context.Context, portal *bridgev2.Portal, args map[string]any) (*tools.Result, error) {
 	sessionKey, err := tools.ReadString(args, "sessionKey", true)
 	if err != nil || sessionKey == "" {
-		return tools.JSONResult(map[string]any{
-			"status": "error",
-			"error":  "sessionKey is required",
-		}), nil
+		return toolsErrorResult(errors.New("sessionKey is required"))
 	}
 	rawLimit := 0
 	if v, err := tools.ReadInt(args, "limit", false); err == nil && v > 0 {
@@ -245,10 +243,7 @@ func (oc *AIClient) executeSessionsHistory(ctx context.Context, portal *bridgev2
 	if instance, chatID, ok := parseDesktopSessionKey(sessionKey); ok {
 		resolvedInstance, resolveErr := oc.resolveDesktopInstanceName(instance)
 		if resolveErr != nil {
-			return tools.JSONResult(map[string]any{
-				"status": "error",
-				"error":  resolveErr.Error(),
-			}), nil
+			return toolsErrorResult(resolveErr)
 		}
 		instance = resolvedInstance
 		if trace {
@@ -259,10 +254,7 @@ func (oc *AIClient) executeSessionsHistory(ctx context.Context, portal *bridgev2
 			if clientErr == nil {
 				clientErr = errors.New("desktop API token is not set")
 			}
-			return tools.JSONResult(map[string]any{
-				"status": "error",
-				"error":  clientErr.Error(),
-			}), nil
+			return toolsErrorResult(clientErr)
 		}
 		chat, chatErr := client.Chats.Get(ctx, escapeDesktopPathSegment(chatID), beeperdesktopapi.ChatGetParams{})
 		if chatErr != nil {
@@ -276,10 +268,7 @@ func (oc *AIClient) executeSessionsHistory(ctx context.Context, portal *bridgev2
 		}
 		messages, msgErr := oc.listDesktopMessages(ctx, client, chatID, limit)
 		if msgErr != nil {
-			return tools.JSONResult(map[string]any{
-				"status": "error",
-				"error":  msgErr.Error(),
-			}), nil
+			return toolsErrorResult(msgErr)
 		}
 		isGroup := true
 		if chat != nil && chat.Type == beeperdesktopapi.ChatTypeSingle {
@@ -305,18 +294,12 @@ func (oc *AIClient) executeSessionsHistory(ctx context.Context, portal *bridgev2
 
 	resolvedPortal, displayKey, resolveErr := oc.resolveSessionPortal(ctx, portal, sessionKey)
 	if resolveErr != nil {
-		return tools.JSONResult(map[string]any{
-			"status": "error",
-			"error":  resolveErr.Error(),
-		}), nil
+		return toolsErrorResult(resolveErr)
 	}
 
 	messages, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, resolvedPortal.PortalKey, limit)
 	if err != nil {
-		return tools.JSONResult(map[string]any{
-			"status": "error",
-			"error":  err.Error(),
-		}), nil
+		return toolsErrorResult(err)
 	}
 	if trace {
 		oc.loggerForContext(ctx).Debug().Int("count", len(messages)).Msg("Sessions history fetched from Matrix")
@@ -340,10 +323,7 @@ func (oc *AIClient) executeSessionsHistory(ctx context.Context, portal *bridgev2
 func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Portal, args map[string]any) (*tools.Result, error) {
 	message, err := tools.ReadString(args, "message", true)
 	if err != nil || strings.TrimSpace(message) == "" {
-		return tools.JSONResult(map[string]any{
-			"status": "error",
-			"error":  "message is required",
-		}), nil
+		return toolsErrorResult(errors.New("message is required"))
 	}
 	meta := portalMeta(portal)
 	trace := traceEnabled(meta)
@@ -379,10 +359,7 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 	if instance, chatID, ok := parseDesktopSessionKey(sessionKey); ok {
 		resolvedInstance, resolveErr := oc.resolveDesktopInstanceName(instance)
 		if resolveErr != nil {
-			return tools.JSONResult(map[string]any{
-				"status": "error",
-				"error":  resolveErr.Error(),
-			}), nil
+			return toolsErrorResult(resolveErr)
 		}
 		instance = resolvedInstance
 		if trace {
@@ -392,10 +369,7 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 			Text: message,
 		})
 		if sendErr != nil {
-			return tools.JSONResult(map[string]any{
-				"status": "error",
-				"error":  sendErr.Error(),
-			}), nil
+			return toolsErrorResult(sendErr)
 		}
 		result := map[string]any{
 			"runId":      runID,
@@ -450,40 +424,34 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 			} else {
 				desktopInstance, chatID, desktopKey, desktopErr = oc.resolveDesktopSessionByLabelAnyInstance(ctx, label)
 			}
-			if desktopErr == nil {
-				if trace {
-					oc.loggerForContext(ctx).Debug().Str("instance", desktopInstance).Str("chat_id", chatID).Msg("Sending to desktop session by label")
-				}
-				_, sendErr := oc.sendDesktopMessage(ctx, desktopInstance, chatID, desktopSendMessageRequest{
-					Text: message,
-				})
-				if sendErr != nil {
-					return tools.JSONResult(map[string]any{
-						"status": "error",
-						"error":  sendErr.Error(),
-					}), nil
-				}
-				result := map[string]any{
-					"runId":      runID,
-					"status":     "accepted",
-					"sessionKey": desktopKey,
-					"delivery": map[string]any{
-						"status": "pending",
-						"mode":   "announce",
-					},
-				}
-				return tools.JSONResult(result), nil
-			}
 			if desktopErr != nil {
 				return tools.JSONResult(map[string]any{
 					"status": "error",
 					"error":  desktopErr.Error(),
 				}), nil
 			}
-			return tools.JSONResult(map[string]any{
-				"status": "error",
-				"error":  resolveErr.Error(),
-			}), nil
+			if trace {
+				oc.loggerForContext(ctx).Debug().Str("instance", desktopInstance).Str("chat_id", chatID).Msg("Sending to desktop session by label")
+			}
+			_, sendErr := oc.sendDesktopMessage(ctx, desktopInstance, chatID, desktopSendMessageRequest{
+				Text: message,
+			})
+			if sendErr != nil {
+				return tools.JSONResult(map[string]any{
+					"status": "error",
+					"error":  sendErr.Error(),
+				}), nil
+			}
+			result := map[string]any{
+				"runId":      runID,
+				"status":     "accepted",
+				"sessionKey": desktopKey,
+				"delivery": map[string]any{
+					"status": "pending",
+					"mode":   "announce",
+				},
+			}
+			return tools.JSONResult(result), nil
 		}
 		targetPortal = target
 		displayKey = display

@@ -14,8 +14,8 @@ func (oc *AIClient) builtinToolApprovalRequirement(toolName string, args map[str
 	if toolName == "" || !oc.toolApprovalsRequireForTool(toolName) {
 		return false, ""
 	}
-	switch normalizeApprovalToken(toolName) {
-	case normalizeApprovalToken(ToolNameMessage):
+	switch toolName {
+	case ToolNameMessage:
 		action = normalizeMessageAction(maputil.StringArg(args, "action"))
 		switch action {
 		// Read-only / non-destructive actions (do not require approval).
@@ -30,10 +30,8 @@ func (oc *AIClient) builtinToolApprovalRequirement(toolName string, args map[str
 		if handled, required, action := oc.integratedToolApprovalRequirement(toolName, args); handled {
 			return required, action
 		}
-		switch normalizeApprovalToken(toolName) {
-		case normalizeApprovalToken(ToolNameWrite),
-			normalizeApprovalToken(ToolNameEdit),
-			normalizeApprovalToken(ToolNameApplyPatch):
+		switch toolName {
+		case ToolNameWrite, ToolNameEdit, ToolNameApplyPatch:
 			path := strings.ToLower(maputil.StringArg(args, "path"))
 			if path == "" {
 				return true, "workspace"

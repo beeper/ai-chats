@@ -43,7 +43,7 @@ func TestToolAvailable_WebSearch_WithProviderKey(t *testing.T) {
 			Config: Config{
 				Tools: ToolProvidersConfig{
 					Search: &SearchConfig{
-						Brave: ProviderBraveConfig{APIKey: "test"},
+						Exa: ProviderExaConfig{APIKey: "test"},
 					},
 				},
 			},

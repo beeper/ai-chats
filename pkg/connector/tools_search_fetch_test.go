@@ -14,8 +14,8 @@ func TestApplyLoginTokensToSearchConfig_MagicProxyForcesExa(t *testing.T) {
 		BaseURL:  "https://bai.bt.hn/team/proxy",
 	}
 	cfg := &search.Config{
-		Provider:  search.ProviderOpenRouter,
-		Fallbacks: []string{search.ProviderBrave},
+		Provider:  search.ProviderExa,
+		Fallbacks: []string{search.ProviderExa},
 	}
 
 	got := applyLoginTokensToSearchConfig(cfg, meta, oc)
@@ -38,8 +38,8 @@ func TestApplyLoginTokensToSearchConfig_CustomExaEndpointForcesExa(t *testing.T)
 	oc := &OpenAIConnector{}
 	meta := &UserLoginMetadata{Provider: ProviderOpenAI}
 	cfg := &search.Config{
-		Provider:  search.ProviderOpenRouter,
-		Fallbacks: []string{search.ProviderOpenRouter, search.ProviderBrave},
+		Provider:  search.ProviderExa,
+		Fallbacks: []string{search.ProviderExa},
 		Exa: search.ExaConfig{
 			APIKey:  "exa-token",
 			BaseURL: "https://ai.bt.hn/exa",
@@ -63,8 +63,8 @@ func TestApplyLoginTokensToSearchConfig_DefaultExaEndpointDoesNotForceExa(t *tes
 		APIKey:   "openrouter-token",
 	}
 	cfg := &search.Config{
-		Provider:  search.ProviderOpenRouter,
-		Fallbacks: []string{search.ProviderOpenRouter, search.ProviderBrave},
+		Provider:  search.ProviderExa,
+		Fallbacks: []string{search.ProviderExa},
 		Exa: search.ExaConfig{
 			BaseURL: "https://api.exa.ai",
 		},
@@ -72,10 +72,10 @@ func TestApplyLoginTokensToSearchConfig_DefaultExaEndpointDoesNotForceExa(t *tes
 
 	got := applyLoginTokensToSearchConfig(cfg, meta, oc)
 
-	if got.Provider != search.ProviderOpenRouter {
+	if got.Provider != search.ProviderExa {
 		t.Fatalf("unexpected provider override: %q", got.Provider)
 	}
-	if len(got.Fallbacks) != 2 {
+	if len(got.Fallbacks) != 1 || got.Fallbacks[0] != search.ProviderExa {
 		t.Fatalf("unexpected fallbacks: %#v", got.Fallbacks)
 	}
 	if got.Exa.APIKey == "openrouter-token" {

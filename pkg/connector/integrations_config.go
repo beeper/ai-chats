@@ -328,10 +328,7 @@ type SearchConfig struct {
 	Provider  string   `yaml:"provider"`
 	Fallbacks []string `yaml:"fallbacks"`
 
-	Exa        ProviderExaConfig        `yaml:"exa"`
-	Brave      ProviderBraveConfig      `yaml:"brave"`
-	Perplexity ProviderPerplexityConfig `yaml:"perplexity"`
-	OpenRouter ProviderOpenRouterConfig `yaml:"openrouter"`
+	Exa ProviderExaConfig `yaml:"exa"`
 }
 
 type FetchConfig struct {
@@ -352,36 +349,6 @@ type ProviderExaConfig struct {
 	IncludeText       bool   `yaml:"include_text"`
 	TextMaxCharacters int    `yaml:"text_max_chars"`
 	Highlights        bool   `yaml:"highlights"`
-}
-
-type ProviderBraveConfig struct {
-	Enabled          *bool  `yaml:"enabled"`
-	BaseURL          string `yaml:"base_url"`
-	APIKey           string `yaml:"api_key"`
-	TimeoutSecs      int    `yaml:"timeout_seconds"`
-	CacheTtlSecs     int    `yaml:"cache_ttl_seconds"`
-	SearchLang       string `yaml:"search_lang"`
-	UILang           string `yaml:"ui_lang"`
-	DefaultCountry   string `yaml:"default_country"`
-	DefaultFreshness string `yaml:"default_freshness"`
-}
-
-type ProviderPerplexityConfig struct {
-	Enabled      *bool  `yaml:"enabled"`
-	APIKey       string `yaml:"api_key"`
-	BaseURL      string `yaml:"base_url"`
-	Model        string `yaml:"model"`
-	TimeoutSecs  int    `yaml:"timeout_seconds"`
-	CacheTtlSecs int    `yaml:"cache_ttl_seconds"`
-}
-
-type ProviderOpenRouterConfig struct {
-	Enabled      *bool  `yaml:"enabled"`
-	APIKey       string `yaml:"api_key"`
-	BaseURL      string `yaml:"base_url"`
-	Model        string `yaml:"model"`
-	TimeoutSecs  int    `yaml:"timeout_seconds"`
-	CacheTtlSecs int    `yaml:"cache_ttl_seconds"`
 }
 
 type ProviderDirectConfig struct {
@@ -598,27 +565,6 @@ func upgradeConfig(helper configupgrade.Helper) {
 	helper.Copy(configupgrade.Bool, "tools", "search", "exa", "include_text")
 	helper.Copy(configupgrade.Int, "tools", "search", "exa", "text_max_chars")
 	helper.Copy(configupgrade.Bool, "tools", "search", "exa", "highlights")
-	helper.Copy(configupgrade.Bool, "tools", "search", "brave", "enabled")
-	helper.Copy(configupgrade.Str, "tools", "search", "brave", "base_url")
-	helper.Copy(configupgrade.Str, "tools", "search", "brave", "api_key")
-	helper.Copy(configupgrade.Int, "tools", "search", "brave", "timeout_seconds")
-	helper.Copy(configupgrade.Int, "tools", "search", "brave", "cache_ttl_seconds")
-	helper.Copy(configupgrade.Str, "tools", "search", "brave", "search_lang")
-	helper.Copy(configupgrade.Str, "tools", "search", "brave", "ui_lang")
-	helper.Copy(configupgrade.Str, "tools", "search", "brave", "default_country")
-	helper.Copy(configupgrade.Str, "tools", "search", "brave", "default_freshness")
-	helper.Copy(configupgrade.Bool, "tools", "search", "perplexity", "enabled")
-	helper.Copy(configupgrade.Str, "tools", "search", "perplexity", "api_key")
-	helper.Copy(configupgrade.Str, "tools", "search", "perplexity", "base_url")
-	helper.Copy(configupgrade.Str, "tools", "search", "perplexity", "model")
-	helper.Copy(configupgrade.Int, "tools", "search", "perplexity", "timeout_seconds")
-	helper.Copy(configupgrade.Int, "tools", "search", "perplexity", "cache_ttl_seconds")
-	helper.Copy(configupgrade.Bool, "tools", "search", "openrouter", "enabled")
-	helper.Copy(configupgrade.Str, "tools", "search", "openrouter", "api_key")
-	helper.Copy(configupgrade.Str, "tools", "search", "openrouter", "base_url")
-	helper.Copy(configupgrade.Str, "tools", "search", "openrouter", "model")
-	helper.Copy(configupgrade.Int, "tools", "search", "openrouter", "timeout_seconds")
-	helper.Copy(configupgrade.Int, "tools", "search", "openrouter", "cache_ttl_seconds")
 	helper.Copy(configupgrade.Str, "tools", "fetch", "provider")
 	helper.Copy(configupgrade.List, "tools", "fetch", "fallbacks")
 	helper.Copy(configupgrade.Bool, "tools", "fetch", "exa", "enabled")

@@ -19,7 +19,11 @@ func executeWebSearchWithProviders(ctx context.Context, args map[string]any) (st
 		return "", err
 	}
 
-	cfg := resolveSearchConfig(ctx)
+	btc := GetBridgeToolContext(ctx)
+	var cfg *search.Config
+	if btc != nil && btc.Client != nil {
+		cfg = btc.Client.effectiveSearchConfig(ctx)
+	}
 	resp, err := search.Search(ctx, req, cfg)
 	if err != nil {
 		return "", err
@@ -59,7 +63,11 @@ func executeWebFetchWithProviders(ctx context.Context, args map[string]any) (str
 		MaxChars:    maxChars,
 	}
 
-	cfg := resolveFetchConfig(ctx)
+	btc := GetBridgeToolContext(ctx)
+	var cfg *fetch.Config
+	if btc != nil && btc.Client != nil {
+		cfg = btc.Client.effectiveFetchConfig(ctx)
+	}
 	resp, err := fetch.Fetch(ctx, req, cfg)
 	if err != nil {
 		return "", err
@@ -167,37 +175,6 @@ func buildSearchPayload(resp *search.Response) map[string]any {
 	return payload
 }
 
-func resolveSearchConfig(ctx context.Context) *search.Config {
-	var cfg *search.Config
-	var meta *UserLoginMetadata
-	var connector *OpenAIConnector
-	if btc := GetBridgeToolContext(ctx); btc != nil && btc.Client != nil {
-		connector = btc.Client.connector
-		src := connector.Config.Tools.Search
-		cfg = mapSearchConfig(src)
-		if btc.Client.UserLogin != nil {
-			meta = loginMetadata(btc.Client.UserLogin)
-		}
-	}
-	cfg = applyLoginTokensToSearchConfig(cfg, meta, connector)
-	return search.ApplyEnvDefaults(cfg)
-}
-
-func resolveFetchConfig(ctx context.Context) *fetch.Config {
-	var cfg *fetch.Config
-	var meta *UserLoginMetadata
-	var connector *OpenAIConnector
-	if btc := GetBridgeToolContext(ctx); btc != nil && btc.Client != nil {
-		connector = btc.Client.connector
-		src := connector.Config.Tools.Fetch
-		cfg = mapFetchConfig(src)
-		if btc.Client.UserLogin != nil {
-			meta = loginMetadata(btc.Client.UserLogin)
-		}
-	}
-	cfg = applyLoginTokensToFetchConfig(cfg, meta, connector)
-	return fetch.ApplyEnvDefaults(cfg)
-}
 
 func applyLoginTokensToSearchConfig(cfg *search.Config, meta *UserLoginMetadata, connector *OpenAIConnector) *search.Config {
 	if cfg == nil {
@@ -213,18 +190,6 @@ func applyLoginTokensToSearchConfig(cfg *search.Config, meta *UserLoginMetadata,
 	}
 	if cfg.Exa.BaseURL == "" {
 		cfg.Exa.BaseURL = services[serviceExa].BaseURL
-	}
-	if cfg.Brave.APIKey == "" {
-		cfg.Brave.APIKey = services[serviceBrave].APIKey
-	}
-	if cfg.Perplexity.APIKey == "" {
-		cfg.Perplexity.APIKey = services[servicePerplexity].APIKey
-	}
-	if cfg.OpenRouter.APIKey == "" {
-		cfg.OpenRouter.APIKey = services[serviceOpenRouter].APIKey
-	}
-	if cfg.OpenRouter.BaseURL == "" {
-		cfg.OpenRouter.BaseURL = services[serviceOpenRouter].BaseURL
 	}
 
 	if shouldApplyExaProxyDefaults(meta) {
@@ -310,60 +275,46 @@ func forceSearchProviderExa(cfg *search.Config) {
 	cfg.Provider = search.ProviderExa
 }
 
-func applyExaProxyDefaults(cfg *search.Config, meta *UserLoginMetadata, connector *OpenAIConnector) {
-	if cfg == nil || connector == nil {
+func applyExaProxyDefaultsTo(baseURL *string, apiKey *string, meta *UserLoginMetadata, connector *OpenAIConnector) {
+	if connector == nil {
 		return
 	}
 	proxyRoot := connector.resolveProxyRoot(meta)
 	if proxyRoot == "" {
 		return
 	}
-	if isRelativePath(cfg.Exa.BaseURL) {
-		cfg.Exa.BaseURL = joinProxyPath(proxyRoot, cfg.Exa.BaseURL)
-	} else if shouldUseExaProxyBase(cfg.Exa.BaseURL) {
+	if isRelativePath(*baseURL) {
+		*baseURL = joinProxyPath(proxyRoot, *baseURL)
+	} else if shouldUseExaProxyBase(*baseURL) {
 		if proxyBase := connector.resolveExaProxyBaseURL(meta); proxyBase != "" {
-			cfg.Exa.BaseURL = proxyBase
+			*baseURL = proxyBase
 		}
 	}
-	if cfg.Exa.APIKey == "" {
+	if *apiKey == "" {
 		if meta != nil && meta.Provider == ProviderMagicProxy {
 			if token := strings.TrimSpace(meta.APIKey); token != "" {
-				cfg.Exa.APIKey = token
+				*apiKey = token
 			}
 		} else if meta != nil && meta.Provider == ProviderBeeper {
 			if token := connector.resolveBeeperToken(meta); token != "" {
-				cfg.Exa.APIKey = token
+				*apiKey = token
 			}
 		}
 	}
 }
 
+func applyExaProxyDefaults(cfg *search.Config, meta *UserLoginMetadata, connector *OpenAIConnector) {
+	if cfg == nil {
+		return
+	}
+	applyExaProxyDefaultsTo(&cfg.Exa.BaseURL, &cfg.Exa.APIKey, meta, connector)
+}
+
 func applyFetchExaProxyDefaults(cfg *fetch.Config, meta *UserLoginMetadata, connector *OpenAIConnector) {
-	if cfg == nil || connector == nil {
+	if cfg == nil {
 		return
 	}
-	proxyRoot := connector.resolveProxyRoot(meta)
-	if proxyRoot == "" {
-		return
-	}
-	if isRelativePath(cfg.Exa.BaseURL) {
-		cfg.Exa.BaseURL = joinProxyPath(proxyRoot, cfg.Exa.BaseURL)
-	} else if shouldUseExaProxyBase(cfg.Exa.BaseURL) {
-		if proxyBase := connector.resolveExaProxyBaseURL(meta); proxyBase != "" {
-			cfg.Exa.BaseURL = proxyBase
-		}
-	}
-	if cfg.Exa.APIKey == "" {
-		if meta != nil && meta.Provider == ProviderMagicProxy {
-			if token := strings.TrimSpace(meta.APIKey); token != "" {
-				cfg.Exa.APIKey = token
-			}
-		} else if meta != nil && meta.Provider == ProviderBeeper {
-			if token := connector.resolveBeeperToken(meta); token != "" {
-				cfg.Exa.APIKey = token
-			}
-		}
-	}
+	applyExaProxyDefaultsTo(&cfg.Exa.BaseURL, &cfg.Exa.APIKey, meta, connector)
 }
 
 func shouldUseExaProxyBase(baseURL string) bool {
@@ -396,33 +347,6 @@ func mapSearchConfig(src *SearchConfig) *search.Config {
 			IncludeText:       src.Exa.IncludeText,
 			TextMaxCharacters: src.Exa.TextMaxCharacters,
 			Highlights:        src.Exa.Highlights,
-		},
-		Brave: search.BraveConfig{
-			Enabled:          src.Brave.Enabled,
-			BaseURL:          src.Brave.BaseURL,
-			APIKey:           src.Brave.APIKey,
-			TimeoutSecs:      src.Brave.TimeoutSecs,
-			CacheTtlSecs:     src.Brave.CacheTtlSecs,
-			SearchLang:       src.Brave.SearchLang,
-			UILang:           src.Brave.UILang,
-			DefaultCountry:   src.Brave.DefaultCountry,
-			DefaultFreshness: src.Brave.DefaultFreshness,
-		},
-		Perplexity: search.PerplexityConfig{
-			Enabled:      src.Perplexity.Enabled,
-			APIKey:       src.Perplexity.APIKey,
-			BaseURL:      src.Perplexity.BaseURL,
-			Model:        src.Perplexity.Model,
-			TimeoutSecs:  src.Perplexity.TimeoutSecs,
-			CacheTtlSecs: src.Perplexity.CacheTtlSecs,
-		},
-		OpenRouter: search.OpenRouterConfig{
-			Enabled:      src.OpenRouter.Enabled,
-			APIKey:       src.OpenRouter.APIKey,
-			BaseURL:      src.OpenRouter.BaseURL,
-			Model:        src.OpenRouter.Model,
-			TimeoutSecs:  src.OpenRouter.TimeoutSecs,
-			CacheTtlSecs: src.OpenRouter.CacheTtlSecs,
 		},
 	}
 }
