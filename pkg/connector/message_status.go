@@ -19,7 +19,7 @@ func messageStatusForError(err error) event.MessageStatus {
 }
 
 func messageStatusReasonForError(err error) event.MessageStatusReason {
-	switch airuntime.ClassifyFallbackError(err) {
+	switch airuntime.DecideFallback(err).Class {
 	case airuntime.FailureClassAuth:
 		return event.MessageStatusNoPermission
 	case airuntime.FailureClassRateLimit, airuntime.FailureClassTimeout, airuntime.FailureClassNetwork:

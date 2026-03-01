@@ -31,6 +31,7 @@ func ApplyCompaction(input CompactionInput) CompactionResult {
 		}
 		return result
 	}
+	originalChars := result.OriginalChars
 	protected := input.ProtectedTail
 	if protected < 0 {
 		protected = 0
@@ -42,7 +43,7 @@ func ApplyCompaction(input CompactionInput) CompactionResult {
 	if cutoff < 0 {
 		cutoff = 0
 	}
-	for result.OriginalChars > input.MaxChars && cutoff > 0 {
+	for result.OriginalChars > input.MaxChars && cutoff > 0 && len(messages) > 0 {
 		dropped := messages[0]
 		messages = messages[1:]
 		result.OriginalChars -= len(dropped)
@@ -51,20 +52,19 @@ func ApplyCompaction(input CompactionInput) CompactionResult {
 	}
 	result.Messages = messages
 	result.FinalChars = result.OriginalChars
+	reason := "drop_oldest"
+	if result.DroppedCount == 0 {
+		reason = "protected_tail_prevented_drop"
+	}
+	if result.FinalChars > input.MaxChars && result.DroppedCount > 0 {
+		reason = "budget_exceeded_after_drop"
+	}
 	result.Decision = CompactionDecision{
 		Applied:       result.DroppedCount > 0,
 		DroppedCount:  result.DroppedCount,
-		OriginalChars: inputCharCount(input.Messages),
+		OriginalChars: originalChars,
 		FinalChars:    result.FinalChars,
-		Reason:        "drop_oldest",
+		Reason:        reason,
 	}
 	return result
-}
-
-func inputCharCount(messages []string) int {
-	total := 0
-	for _, message := range messages {
-		total += len(message)
-	}
-	return total
 }

@@ -11,17 +11,6 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
-// shouldFallbackOnError determines if a model fallback should be attempted.
-// Mirrors OpenClaw's fallback triggers (auth, rate limits, timeouts).
-func shouldFallbackOnError(err error) bool {
-	var nf *NonFallbackError
-	if errors.As(err, &nf) {
-		return false
-	}
-	class := airuntime.ClassifyFallbackError(err)
-	return airuntime.ShouldTriggerFallback(class)
-}
-
 // NonFallbackError marks an error as ineligible for model fallback.
 // This is used when partial output has already been sent.
 type NonFallbackError struct {
@@ -128,7 +117,13 @@ func (oc *AIClient) responseWithModelFallbackDynamic(
 			// Error already handled (context length or non-retryable path).
 			return
 		}
-		if !shouldFallbackOnError(err) || idx == len(modelChain)-1 {
+		var nf *NonFallbackError
+		if errors.As(err, &nf) {
+			oc.notifyMatrixSendFailure(ctx, portal, evt, err)
+			return
+		}
+		decision := airuntime.DecideFallback(err)
+		if decision.Action == airuntime.FallbackActionNone || idx == len(modelChain)-1 {
 			oc.notifyMatrixSendFailure(ctx, portal, evt, err)
 			return
 		}
@@ -136,6 +131,9 @@ func (oc *AIClient) responseWithModelFallbackDynamic(
 			Err(err).
 			Str("failed_model", modelID).
 			Str("next_model", modelChain[idx+1]).
+			Str("fallback_action", string(decision.Action)).
+			Str("fallback_class", string(decision.Class)).
+			Str("fallback_reason", decision.Reason).
 			Str("failover_reason", string(ClassifyFailoverReason(err))).
 			Msg("Model failed; falling back to next model")
 	}

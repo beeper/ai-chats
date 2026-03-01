@@ -87,6 +87,19 @@ func TestQueueFallbackToolCompactionDecisions(t *testing.T) {
 	if !comp.Decision.Applied || comp.DroppedCount == 0 {
 		t.Fatalf("expected compaction to drop messages, got %#v", comp.Decision)
 	}
+	if mode, ok := NormalizeQueueMode("steer+backlog"); !ok || mode != QueueModeSteerBacklog {
+		t.Fatalf("expected normalized steer+backlog mode, got mode=%q ok=%v", mode, ok)
+	}
+	if drop, ok := NormalizeQueueDropPolicy("summary"); !ok || drop != QueueDropSummarize {
+		t.Fatalf("expected normalized summary drop policy, got drop=%q ok=%v", drop, ok)
+	}
+	overflow := ResolveQueueOverflow(2, 2, QueueDropSummarize)
+	if !overflow.KeepNew || overflow.ItemsToDrop != 1 || !overflow.ShouldSummarize {
+		t.Fatalf("unexpected overflow decision: %#v", overflow)
+	}
+	if d := DecideFallback(assertErr("invalid_api_key")); d.Action != FallbackActionAbort {
+		t.Fatalf("expected auth fallback action abort, got %#v", d)
+	}
 }
 
 func TestNormalizeMessageID(t *testing.T) {
@@ -98,6 +111,15 @@ func TestNormalizeMessageID(t *testing.T) {
 	}
 	if got := NormalizeMessageID("[message_id: bad id]"); got != "" {
 		t.Fatalf("expected invalid message id to normalize empty, got %q", got)
+	}
+}
+
+func TestAbortTriggerNormalization(t *testing.T) {
+	if !IsAbortTriggerText("STOP PLEASE!!!") {
+		t.Fatalf("expected normalized abort trigger to match")
+	}
+	if IsAbortTriggerText("continue") {
+		t.Fatalf("did not expect non-abort text to match")
 	}
 }
 

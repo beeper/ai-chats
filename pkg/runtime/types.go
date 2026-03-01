@@ -78,6 +78,38 @@ const (
 	QueueModeSteerBacklog QueueMode = "steer-backlog"
 )
 
+// QueueDropPolicy controls overflow behavior for queued messages.
+type QueueDropPolicy string
+
+const (
+	QueueDropOld       QueueDropPolicy = "old"
+	QueueDropNew       QueueDropPolicy = "new"
+	QueueDropSummarize QueueDropPolicy = "summarize"
+)
+
+const (
+	DefaultQueueDebounceMs = 1000
+	DefaultQueueCap        = 20
+)
+
+const DefaultQueueDrop = QueueDropSummarize
+const DefaultQueueMode = QueueModeCollect
+
+// QueueSettings is the canonical runtime queue configuration.
+type QueueSettings struct {
+	Mode       QueueMode
+	DebounceMs int
+	Cap        int
+	DropPolicy QueueDropPolicy
+}
+
+// QueueInlineOptions carries per-message queue overrides.
+type QueueInlineOptions struct {
+	DebounceMs *int
+	Cap        *int
+	DropPolicy *QueueDropPolicy
+}
+
 // QueueDecisionAction is the runtime's final queue decision.
 type QueueDecisionAction string
 
@@ -121,6 +153,26 @@ const (
 	FailureClassContextOverflow FailureClass = "context_overflow"
 	FailureClassProviderHard    FailureClass = "provider_hard"
 )
+
+// FallbackAction is the runtime-prescribed fallback handling mode.
+type FallbackAction string
+
+const (
+	FallbackActionNone      FallbackAction = "none"
+	FallbackActionRetry     FallbackAction = "retry"
+	FallbackActionFailover  FallbackAction = "failover"
+	FallbackActionTrimRetry FallbackAction = "trim_retry"
+	FallbackActionAbort     FallbackAction = "abort"
+)
+
+// FallbackDecision standardizes fallback behavior and UX copy.
+type FallbackDecision struct {
+	Class       FailureClass
+	Action      FallbackAction
+	Reason      string
+	StatusText  string
+	ShouldRetry bool
+}
 
 // ToolApprovalState tracks the approval lifecycle for tools.
 type ToolApprovalState string

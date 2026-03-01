@@ -3,6 +3,7 @@ package connector
 import (
 	"strings"
 
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/responses"
 )
@@ -13,7 +14,7 @@ func (oc *AIClient) convertToResponsesInput(messages []openai.ChatCompletionMess
 	for _, msg := range messages {
 		if msg.OfTool != nil {
 			toolCallID := strings.TrimSpace(msg.OfTool.ToolCallID)
-			content := strings.TrimSpace(extractToolContent(msg.OfTool.Content))
+			content := strings.TrimSpace(airuntime.ExtractToolContent(msg.OfTool.Content))
 			if toolCallID != "" && content != "" {
 				input = append(input, responses.ResponseInputItemUnionParam{
 					OfFunctionCallOutput: &responses.ResponseInputItemFunctionCallOutputParam{
@@ -117,7 +118,7 @@ func (oc *AIClient) convertToResponsesInput(messages []openai.ChatCompletionMess
 			continue
 		}
 
-		content, role := extractMessageContent(msg)
+		content, role := airuntime.ExtractMessageContent(msg)
 		if role == "" || content == "" {
 			continue
 		}

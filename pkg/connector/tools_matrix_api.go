@@ -8,6 +8,7 @@ import (
 	"go.mau.fi/util/variationselector"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -93,11 +94,6 @@ func removeMatrixReactions(ctx context.Context, btc *BridgeToolContext, eventID 
 		return 0, nil
 	}
 
-	intent := btc.Client.getModelIntent(ctx, btc.Portal)
-	if intent == nil {
-		return 0, errors.New("failed to get model intent")
-	}
-
 	targetPart, err := btc.Client.UserLogin.Bridge.DB.Message.GetPartByMXID(ctx, eventID)
 	if err != nil {
 		return 0, err
@@ -144,28 +140,22 @@ func removeMatrixReactions(ctx context.Context, btc *BridgeToolContext, eventID 
 		targets = append(targets, reaction)
 	}
 
+	sender := btc.Client.senderForPortal(ctx, btc.Portal)
 	removed := 0
-	var firstErr error
 	for _, reaction := range targets {
-		_, err := intent.SendMessage(ctx, btc.Portal.MXID, event.EventRedaction, &event.Content{
-			Parsed: &event.RedactionEventContent{
-				Redacts: reaction.MXID,
-			},
-		}, &bridgev2.MatrixSendExtra{Timestamp: time.Now(), ReactionMeta: reaction})
-		if err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
-			continue
+		emojiID := reaction.EmojiID
+		if emojiID == "" {
+			emojiID = networkid.EmojiID(reaction.Emoji)
 		}
-		if err := btc.Client.UserLogin.Bridge.DB.Reaction.Delete(ctx, reaction); err == nil {
-			removed++
-		}
+		btc.Client.UserLogin.QueueRemoteEvent(&AIRemoteReactionRemove{
+			portal:        btc.Portal.PortalKey,
+			sender:        sender,
+			targetMessage: targetPart.ID,
+			emojiID:       emojiID,
+		})
+		removed++
 	}
 
-	if removed == 0 && firstErr != nil {
-		return 0, firstErr
-	}
 	return removed, nil
 }
 

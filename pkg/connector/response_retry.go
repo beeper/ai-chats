@@ -8,6 +8,7 @@ import (
 	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 )
 
@@ -256,76 +257,19 @@ func (oc *AIClient) runtimeCompactOnOverflow(
 	contextWindowTokens int,
 	requestedTokens int,
 ) ([]openai.ChatCompletionMessageParamUnion, airuntime.CompactionDecision, bool) {
-	charInputs, totalChars := promptTextPayloads(prompt)
-	if len(prompt) <= 2 || totalChars <= 0 {
-		decision := airuntime.CompactionDecision{
-			Applied:       false,
-			DroppedCount:  0,
-			OriginalChars: totalChars,
-			FinalChars:    totalChars,
-			Reason:        "insufficient_prompt",
-		}
-		return prompt, decision, false
-	}
-
-	maxChars := totalChars / 2
-	if contextWindowTokens > 0 {
-		budget := (contextWindowTokens - oc.pruningReserveTokens()) * charsPerTokenEstimate
-		if budget > 0 && budget < maxChars {
-			maxChars = budget
-		}
-	}
-	if requestedTokens > contextWindowTokens && contextWindowTokens > 0 {
-		targetKeep := float64(contextWindowTokens) / float64(requestedTokens)
-		targetChars := int(float64(totalChars) * targetKeep)
-		if targetChars > 0 && targetChars < maxChars {
-			maxChars = targetChars
-		}
-	}
-	if maxChars <= 0 {
-		maxChars = totalChars / 2
-	}
-	if maxChars <= 0 {
-		maxChars = 1
-	}
-
-	compaction := airuntime.ApplyCompaction(airuntime.CompactionInput{
-		Messages:      charInputs,
-		MaxChars:      maxChars,
-		ProtectedTail: 3,
+	result := airuntime.CompactPromptOnOverflow(airuntime.OverflowCompactionInput{
+		Prompt:              prompt,
+		ContextWindowTokens: contextWindowTokens,
+		RequestedTokens:     requestedTokens,
+		ReserveTokens:       oc.pruningReserveTokens(),
+		ProtectedTail:       3,
 	})
-	decision := compaction.Decision
-	if !decision.Applied {
-		return prompt, decision, false
-	}
-
-	ratio := 0.5
-	if decision.OriginalChars > 0 && decision.FinalChars > 0 {
-		keep := float64(decision.FinalChars) / float64(decision.OriginalChars)
-		ratio = 1 - keep
-	}
-	if ratio < 0.1 {
-		ratio = 0.1
-	}
-	if ratio > 0.85 {
-		ratio = 0.85
-	}
-
-	compacted := smartTruncatePrompt(prompt, ratio)
-	if len(compacted) >= len(prompt) {
-		compacted = smartTruncatePrompt(prompt, 0.5)
-	}
-	success := len(compacted) > 2 && len(compacted) < len(prompt)
-	return compacted, decision, success
+	return result.Prompt, result.Decision, result.Success
 }
 
 // emitCompactionStatus sends a compaction status event to the room
 func (oc *AIClient) emitCompactionStatus(ctx context.Context, portal *bridgev2.Portal, evt *CompactionEvent) {
 	if portal == nil || portal.MXID == "" {
-		return
-	}
-	intent := oc.getModelIntent(ctx, portal)
-	if intent == nil {
 		return
 	}
 
@@ -356,9 +300,14 @@ func (oc *AIClient) emitCompactionStatus(ctx context.Context, portal *bridgev2.P
 		content["error"] = evt.Error
 	}
 
-	eventContent := &event.Content{Raw: content}
-
-	if _, err := intent.SendMessage(ctx, portal.MXID, CompactionStatusEventType, eventContent, nil); err != nil {
+	converted := &bridgev2.ConvertedMessage{
+		Parts: []*bridgev2.ConvertedMessagePart{{
+			ID:    networkid.PartID("0"),
+			Type:  CompactionStatusEventType,
+			Extra: content,
+		}},
+	}
+	if _, _, err := oc.sendViaPortal(ctx, portal, converted, ""); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).
 			Str("type", string(evt.Type)).
 			Msg("Failed to emit compaction status event")

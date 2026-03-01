@@ -260,7 +260,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		ackReactionEventID = oc.sendAckReaction(ctx, portal, msg.Event.ID, ackReaction)
 	}
 	if ackReactionEventID != "" && removeAckAfter {
-		oc.storeAckReaction(portal.MXID, msg.Event.ID, ackReactionEventID)
+		oc.storeAckReaction(ctx, portal.MXID, msg.Event.ID, ackReaction)
 	}
 	if trace {
 		logCtx.Debug().
@@ -511,14 +511,7 @@ func (oc *AIClient) regenerateFromEdit(
 	if assistantResponse != nil {
 		// Try to redact the old response
 		if assistantResponse.MXID != "" {
-			intent, _ := portal.GetIntentFor(ctx, bridgev2.EventSender{IsFromMe: true}, oc.UserLogin, bridgev2.RemoteEventMessageRemove)
-			if intent != nil {
-				_, _ = intent.SendMessage(ctx, portal.MXID, event.EventRedaction, &event.Content{
-					Parsed: &event.RedactionEventContent{
-						Redacts: assistantResponse.MXID,
-					},
-				}, nil)
-			}
+			_ = oc.redactEventViaPortal(ctx, portal, assistantResponse.MXID)
 		}
 		// Clean up database record to prevent orphaned messages
 		if err := oc.UserLogin.Bridge.DB.Message.Delete(ctx, assistantResponse.RowID); err != nil {
@@ -1048,14 +1041,15 @@ func (oc *AIClient) savePortalQuiet(ctx context.Context, portal *bridgev2.Portal
 }
 
 // Ack reaction tracking for removal after reply
-// Maps room ID -> source message ID -> ack reaction event ID
+// Maps room ID -> source message ID -> ack reaction metadata
 const (
 	ackReactionTTL             = 5 * time.Minute
 	ackReactionCleanupInterval = time.Minute
 )
 
 type ackReactionEntry struct {
-	reactionEventID id.EventID
+	targetNetworkID networkid.MessageID // Network ID of the target message for reaction removal
+	emoji           string              // Emoji used for the reaction
 	storedAt        time.Time
 }
 
@@ -1095,34 +1089,37 @@ func cleanupAckReactionStore() {
 	}
 }
 
-// sendAckReaction sends an acknowledgement reaction to a message.
+// sendAckReaction sends an acknowledgement reaction to a message via bridgev2's pipeline.
 // Returns the event ID of the reaction for potential removal.
 func (oc *AIClient) sendAckReaction(ctx context.Context, portal *bridgev2.Portal, targetEventID id.EventID, emoji string) id.EventID {
 	if portal == nil || portal.MXID == "" || targetEventID == "" || emoji == "" {
 		return ""
 	}
-	if err := oc.ensureModelInRoom(ctx, portal); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure ghost is in room for ack reaction")
-		return ""
-	}
-	intent := oc.getModelIntent(ctx, portal)
-	if intent == nil {
+
+	// Look up the target message in the DB for SendConvertedReaction
+	targetPart, err := oc.UserLogin.Bridge.DB.Message.GetPartByMXID(ctx, targetEventID)
+	if err != nil || targetPart == nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Stringer("target_event", targetEventID).Msg("Target message not found for ack reaction")
 		return ""
 	}
 
-	eventContent := &event.Content{
-		Raw: map[string]any{
-			"m.relates_to": map[string]any{
-				"rel_type": "m.annotation",
-				"event_id": targetEventID.String(),
-				"key":      emoji,
-			},
-		},
-	}
-
-	resp, err := intent.SendMessage(ctx, portal.MXID, event.EventReaction, eventContent, nil)
+	sender := oc.senderForPortal(ctx, portal)
+	pi := portal.Internal()
+	intent, _, err := pi.GetIntentAndUserMXIDFor(
+		ctx, sender, oc.UserLogin, nil, bridgev2.RemoteEventReaction,
+	)
 	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to get intent for ack reaction")
+		return ""
+	}
+
+	emojiID := networkid.EmojiID(emoji)
+	result := pi.SendConvertedReaction(
+		ctx, sender.Sender, intent, targetPart,
+		emojiID, emoji, time.Now(), nil, nil, nil,
+	)
+	if !result.Success {
+		oc.loggerForContext(ctx).Warn().
 			Stringer("target_event", targetEventID).
 			Str("emoji", emoji).
 			Msg("Failed to send ack reaction")
@@ -1132,13 +1129,18 @@ func (oc *AIClient) sendAckReaction(ctx context.Context, portal *bridgev2.Portal
 	oc.loggerForContext(ctx).Debug().
 		Stringer("target_event", targetEventID).
 		Str("emoji", emoji).
-		Stringer("reaction_event", resp.EventID).
 		Msg("Sent ack reaction")
-	return resp.EventID
+	return result.EventID
 }
 
 // storeAckReaction stores an ack reaction for later removal.
-func (oc *AIClient) storeAckReaction(roomID id.RoomID, sourceEventID, reactionEventID id.EventID) {
+func (oc *AIClient) storeAckReaction(ctx context.Context, roomID id.RoomID, sourceEventID id.EventID, emoji string) {
+	// Look up the network message ID for the source event
+	var targetNetworkID networkid.MessageID
+	if part, err := oc.UserLogin.Bridge.DB.Message.GetPartByMXID(ctx, sourceEventID); err == nil && part != nil {
+		targetNetworkID = part.ID
+	}
+
 	ackReactionStoreMu.Lock()
 	defer ackReactionStoreMu.Unlock()
 
@@ -1146,12 +1148,13 @@ func (oc *AIClient) storeAckReaction(roomID id.RoomID, sourceEventID, reactionEv
 		ackReactionStore[roomID] = make(map[id.EventID]ackReactionEntry)
 	}
 	ackReactionStore[roomID][sourceEventID] = ackReactionEntry{
-		reactionEventID: reactionEventID,
+		targetNetworkID: targetNetworkID,
+		emoji:           emoji,
 		storedAt:        time.Now(),
 	}
 }
 
-// removeAckReaction removes a previously sent ack reaction.
+// removeAckReaction removes a previously sent ack reaction via bridgev2's pipeline.
 func (oc *AIClient) removeAckReaction(ctx context.Context, portal *bridgev2.Portal, sourceEventID id.EventID) {
 	ackReactionStoreMu.Lock()
 	roomReactions := ackReactionStore[portal.MXID]
@@ -1167,31 +1170,22 @@ func (oc *AIClient) removeAckReaction(ctx context.Context, portal *bridgev2.Port
 	delete(roomReactions, sourceEventID)
 	ackReactionStoreMu.Unlock()
 
-	reactionEventID := entry.reactionEventID
-	if reactionEventID == "" {
+	if entry.targetNetworkID == "" || entry.emoji == "" {
 		return
 	}
 
-	intent := oc.getModelIntent(ctx, portal)
-	if intent == nil {
-		return
-	}
+	sender := oc.senderForPortal(ctx, portal)
+	oc.UserLogin.QueueRemoteEvent(&AIRemoteReactionRemove{
+		portal:        portal.PortalKey,
+		sender:        sender,
+		targetMessage: entry.targetNetworkID,
+		emojiID:       networkid.EmojiID(entry.emoji),
+	})
 
-	// Redact the ack reaction
-	_, err := intent.SendMessage(ctx, portal.MXID, event.EventRedaction, &event.Content{
-		Parsed: &event.RedactionEventContent{
-			Redacts: reactionEventID,
-		},
-	}, nil)
-	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).
-			Stringer("reaction_event", reactionEventID).
-			Msg("Failed to remove ack reaction")
-	} else {
-		oc.loggerForContext(ctx).Debug().
-			Stringer("reaction_event", reactionEventID).
-			Msg("Removed ack reaction")
-	}
+	oc.loggerForContext(ctx).Debug().
+		Stringer("source_event", sourceEventID).
+		Str("emoji", entry.emoji).
+		Msg("Queued ack reaction removal")
 }
 
 // handleToolsCommand handles the !ai tools command for per-tool management

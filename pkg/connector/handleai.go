@@ -141,8 +141,8 @@ func (oc *AIClient) setModelTyping(ctx context.Context, portal *bridgev2.Portal,
 	if portal == nil || portal.MXID == "" {
 		return
 	}
-	intent := oc.getModelIntent(ctx, portal)
-	if intent == nil {
+	intent, err := oc.getIntentForPortal(ctx, portal, bridgev2.RemoteEventMessage)
+	if err != nil || intent == nil {
 		return
 	}
 	var timeout time.Duration

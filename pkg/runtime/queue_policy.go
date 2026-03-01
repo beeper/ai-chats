@@ -1,5 +1,43 @@
 package runtime
 
+import "strings"
+
+func NormalizeQueueMode(raw string) (QueueMode, bool) {
+	cleaned := strings.TrimSpace(strings.ToLower(raw))
+	switch cleaned {
+	case "queue", "queued":
+		return QueueModeSteer, true
+	case "interrupt", "interrupts", "abort":
+		return QueueModeInterrupt, true
+	case "steer", "steering":
+		return QueueModeSteer, true
+	case "followup", "follow-ups", "followups":
+		return QueueModeFollowup, true
+	case "collect", "coalesce":
+		return QueueModeCollect, true
+	case "steer+backlog", "steer-backlog", "steer_backlog":
+		return QueueModeSteerBacklog, true
+	case "backlog":
+		return QueueModeBacklog, true
+	default:
+		return "", false
+	}
+}
+
+func NormalizeQueueDropPolicy(raw string) (QueueDropPolicy, bool) {
+	cleaned := strings.TrimSpace(strings.ToLower(raw))
+	switch cleaned {
+	case "old", "oldest":
+		return QueueDropOld, true
+	case "new", "newest":
+		return QueueDropNew, true
+	case "summarize", "summary":
+		return QueueDropSummarize, true
+	default:
+		return "", false
+	}
+}
+
 func ResolveQueueBehavior(mode QueueMode) QueueBehavior {
 	switch mode {
 	case QueueModeSteer:
@@ -12,6 +50,34 @@ func ResolveQueueBehavior(mode QueueMode) QueueBehavior {
 		return QueueBehavior{Steer: true, Followup: true, BacklogAfter: true}
 	default:
 		return QueueBehavior{}
+	}
+}
+
+type QueueOverflowResult struct {
+	KeepNew         bool
+	ItemsToDrop     int
+	ShouldSummarize bool
+}
+
+func ResolveQueueOverflow(capacity int, currentLen int, policy QueueDropPolicy) QueueOverflowResult {
+	if capacity <= 0 || currentLen < capacity {
+		return QueueOverflowResult{KeepNew: true}
+	}
+	if policy == QueueDropNew {
+		return QueueOverflowResult{
+			KeepNew:         false,
+			ItemsToDrop:     0,
+			ShouldSummarize: false,
+		}
+	}
+	dropCount := currentLen - capacity + 1
+	if dropCount < 1 {
+		return QueueOverflowResult{KeepNew: true}
+	}
+	return QueueOverflowResult{
+		KeepNew:         true,
+		ItemsToDrop:     dropCount,
+		ShouldSummarize: policy == QueueDropSummarize,
 	}
 }
 

@@ -487,7 +487,7 @@ func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, met
 	cwd := strings.TrimSpace(meta.CodexCwd)
 
 	// Post placeholder timeline message immediately to get an event id for streaming.
-	state.initialEventID = cc.sendInitialStreamMessage(ctx, portal, "...", state.turnID)
+	state.initialEventID = cc.sendInitialStreamMessage(ctx, portal, state, "...", state.turnID)
 	if state.initialEventID == "" {
 		log.Warn().Msg("Failed to send initial streaming message")
 		return
@@ -1510,25 +1510,6 @@ func (cc *CodexClient) ensureCodexThreadLoaded(ctx context.Context, portal *brid
 	return nil
 }
 
-func (cc *CodexClient) getCodexIntent(ctx context.Context, portal *bridgev2.Portal) bridgev2.MatrixAPI {
-	if portal == nil || portal.MXID == "" {
-		return nil
-	}
-	if cc.UserLogin == nil || cc.UserLogin.Bridge == nil {
-		return nil
-	}
-	ghost, err := cc.UserLogin.Bridge.GetGhostByID(ctx, codexGhostID)
-	if err != nil || ghost == nil {
-		return nil
-	}
-	// Ensure info.
-	ghost.UpdateInfo(ctx, &bridgev2.UserInfo{
-		Name:  ptr.Ptr("Codex"),
-		IsBot: ptr.Ptr(true),
-	})
-	return ghost.Intent
-}
-
 // HandleMatrixDeleteChat best-effort archives the Codex thread and removes the temp cwd.
 // The core bridge handles Matrix-side room cleanup separately.
 func (cc *CodexClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2.MatrixDeleteChat) error {
@@ -1715,11 +1696,7 @@ func (cc *CodexClient) processPendingCodex(roomID id.RoomID) {
 
 // Streaming helpers (Codex -> Matrix AI SDK chunk mapping)
 
-func (cc *CodexClient) sendInitialStreamMessage(ctx context.Context, portal *bridgev2.Portal, content string, turnID string) id.EventID {
-	intent := cc.getCodexIntent(ctx, portal)
-	if intent == nil {
-		return ""
-	}
+func (cc *CodexClient) sendInitialStreamMessage(ctx context.Context, portal *bridgev2.Portal, state *streamingState, content string, turnID string) id.EventID {
 	uiMessage := map[string]any{
 		"id":   turnID,
 		"role": "assistant",
@@ -1728,19 +1705,35 @@ func (cc *CodexClient) sendInitialStreamMessage(ctx context.Context, portal *bri
 		},
 		"parts": []any{},
 	}
-	eventContent := &event.Content{
-		Raw: map[string]any{
-			"msgtype":                event.MsgText,
-			"body":                   content,
-			matrixevents.BeeperAIKey: uiMessage,
-			"m.mentions":             map[string]any{},
-		},
+
+	eventRaw := map[string]any{
+		"msgtype":                event.MsgText,
+		"body":                   content,
+		matrixevents.BeeperAIKey: uiMessage,
+		"m.mentions":             map[string]any{},
 	}
-	resp, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, eventContent, nil)
+
+	msgID := newMessageID()
+	converted := &bridgev2.ConvertedMessage{
+		Parts: []*bridgev2.ConvertedMessagePart{{
+			ID:         networkid.PartID("0"),
+			Type:       event.EventMessage,
+			Content:    &event.MessageEventContent{MsgType: event.MsgText, Body: content},
+			Extra:      eventRaw,
+			DBMetadata: &MessageMetadata{Role: "assistant", TurnID: turnID},
+		}},
+	}
+
+	eventID, _, err := cc.sendViaPortal(ctx, portal, converted, msgID)
 	if err != nil {
+		cc.loggerForContext(ctx).Error().Err(err).Msg("Failed to send initial streaming message")
 		return ""
 	}
-	return resp.EventID
+	if state != nil {
+		state.networkMessageID = msgID
+	}
+	cc.loggerForContext(ctx).Info().Stringer("event_id", eventID).Str("turn_id", turnID).Msg("Initial streaming message sent")
+	return eventID
 }
 
 func (cc *CodexClient) buildUIMessageMetadata(state *streamingState, model string, includeUsage bool, finishReason string) map[string]any {
@@ -1792,10 +1785,6 @@ func (cc *CodexClient) sendToolCallApprovalEvent(
 	if state.suppressSend {
 		return
 	}
-	intent := cc.getCodexIntent(ctx, portal)
-	if intent == nil {
-		return
-	}
 	displayTitle := toolDisplayTitle(toolName)
 	toolType := string(matrixevents.ToolTypeProvider)
 	if tt, ok := state.ui.UIToolTypeByToolCallID[toolCallID]; ok {
@@ -1825,13 +1814,28 @@ func (cc *CodexClient) sendToolCallApprovalEvent(
 			"event_id": state.initialEventID.String(),
 		}
 	}
-	eventContent := &event.Content{Raw: eventRaw}
-	_, err := intent.SendMessage(ctx, portal.MXID, matrixevents.ToolCallEventType, eventContent, nil)
+
+	converted := &bridgev2.ConvertedMessage{
+		Parts: []*bridgev2.ConvertedMessagePart{{
+			ID:    networkid.PartID("0"),
+			Type:  matrixevents.ToolCallEventType,
+			Extra: eventRaw,
+		}},
+	}
+
+	eventID, _, err := cc.sendViaPortal(ctx, portal, converted, "")
 	if err != nil {
 		cc.loggerForContext(ctx).Warn().Err(err).
 			Str("tool", toolName).Str("approval_id", approvalID).
 			Msg("Failed to send tool call approval event")
+		return
 	}
+	cc.loggerForContext(ctx).Debug().
+		Stringer("event_id", eventID).
+		Str("call_id", toolCallID).
+		Str("tool", toolName).
+		Str("approval_id", approvalID).
+		Msg("Sent tool call approval_required timeline event")
 }
 
 func (cc *CodexClient) emitUIFinish(ctx context.Context, portal *bridgev2.Portal, state *streamingState, model string, finishReason string) {
@@ -1867,10 +1871,6 @@ func (cc *CodexClient) sendFinalAssistantTurn(ctx context.Context, portal *bridg
 	if state.suppressSend {
 		return
 	}
-	intent := cc.getCodexIntent(ctx, portal)
-	if intent == nil {
-		return
-	}
 	rendered := format.RenderMarkdown(state.accumulated.String(), true, true)
 
 	// Safety-split oversized responses into multiple Matrix events
@@ -1881,50 +1881,53 @@ func (cc *CodexClient) sendFinalAssistantTurn(ctx context.Context, portal *bridg
 		rendered = format.RenderMarkdown(firstBody, true, true)
 	}
 
-	relatesTo := map[string]any{
-		"rel_type": matrixevents.RelReplace,
-		"event_id": state.initialEventID.String(),
-	}
 	uiMessage := cc.buildCanonicalUIMessage(state, model, finishReason)
-	raw := map[string]any{
-		"msgtype":        event.MsgText,
-		"body":           "* " + rendered.Body,
-		"format":         rendered.Format,
-		"formatted_body": "* " + rendered.FormattedBody,
-		"m.new_content": map[string]any{
-			"msgtype":        event.MsgText,
-			"body":           rendered.Body,
-			"format":         rendered.Format,
-			"formatted_body": rendered.FormattedBody,
-			"m.mentions":     map[string]any{},
-		},
-		"m.relates_to":                  relatesTo,
+	topLevelExtra := map[string]any{
 		matrixevents.BeeperAIKey:        uiMessage,
 		"com.beeper.dont_render_edited": true,
 		"m.mentions":                    map[string]any{},
 	}
 
-	if _, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, &event.Content{Raw: raw}, nil); err != nil {
-		cc.loggerForContext(ctx).Warn().Err(err).Stringer("initial_event_id", state.initialEventID).Msg("Failed to send final assistant turn")
-	} else {
-		cc.loggerForContext(ctx).Debug().
-			Str("initial_event_id", state.initialEventID.String()).
-			Str("turn_id", state.turnID).
-			Bool("has_thinking", state.reasoning.Len() > 0).
-			Int("tool_calls", len(state.toolCalls)).
-			Msg("Sent final assistant turn")
-	}
+	sender := cc.senderForPortal()
+	cc.UserLogin.QueueRemoteEvent(&CodexRemoteEdit{
+		portal:        portal.PortalKey,
+		sender:        sender,
+		targetMessage: state.networkMessageID,
+		timestamp:     time.Now(),
+		preBuilt: &bridgev2.ConvertedEdit{
+			ModifiedParts: []*bridgev2.ConvertedEditPart{{
+				Type: event.EventMessage,
+				Content: &event.MessageEventContent{
+					MsgType:       event.MsgText,
+					Body:          rendered.Body,
+					Format:        rendered.Format,
+					FormattedBody: rendered.FormattedBody,
+				},
+				Extra:         map[string]any{"m.mentions": map[string]any{}},
+				TopLevelExtra: topLevelExtra,
+			}},
+		},
+	})
+	cc.loggerForContext(ctx).Debug().
+		Str("initial_event_id", state.initialEventID.String()).
+		Str("turn_id", state.turnID).
+		Bool("has_thinking", state.reasoning.Len() > 0).
+		Int("tool_calls", len(state.toolCalls)).
+		Msg("Queued final assistant turn edit")
 
 	// Send continuation messages for overflow
 	for continuationBody != "" {
 		var chunk string
 		chunk, continuationBody = streamtransport.SplitAtMarkdownBoundary(continuationBody, streamtransport.MaxMatrixEventBodyBytes)
-		cc.sendContinuationMessage(ctx, portal, intent, chunk)
+		cc.sendContinuationMessage(ctx, portal, chunk)
 	}
 }
 
 // sendContinuationMessage sends overflow text as a new (non-edit) message from the bot.
-func (cc *CodexClient) sendContinuationMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, body string) {
+func (cc *CodexClient) sendContinuationMessage(ctx context.Context, portal *bridgev2.Portal, body string) {
+	if portal == nil || portal.MXID == "" {
+		return
+	}
 	rendered := format.RenderMarkdown(body, true, true)
 	raw := map[string]any{
 		"msgtype":                 event.MsgText,
@@ -1934,17 +1937,30 @@ func (cc *CodexClient) sendContinuationMessage(ctx context.Context, portal *brid
 		"com.beeper.continuation": true,
 		"m.mentions":              map[string]any{},
 	}
-	if _, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, &event.Content{Raw: raw}, nil); err != nil {
-		cc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to send continuation message")
-	} else {
-		cc.loggerForContext(ctx).Debug().Int("body_len", len(body)).Msg("Sent continuation message for oversized response")
-	}
+	sender := cc.senderForPortal()
+	cc.UserLogin.QueueRemoteEvent(&CodexRemoteMessage{
+		portal:    portal.PortalKey,
+		id:        newMessageID(),
+		sender:    sender,
+		timestamp: time.Now(),
+		preBuilt: &bridgev2.ConvertedMessage{
+			Parts: []*bridgev2.ConvertedMessagePart{{
+				ID:      networkid.PartID("0"),
+				Type:    event.EventMessage,
+				Content: &event.MessageEventContent{MsgType: event.MsgText, Body: body},
+				Extra:   raw,
+			}},
+		},
+	})
+	cc.loggerForContext(ctx).Debug().Int("body_len", len(body)).Msg("Queued continuation message for oversized response")
 }
 
 func (cc *CodexClient) saveAssistantMessage(ctx context.Context, portal *bridgev2.Portal, state *streamingState, model string, finishReason string) {
 	if portal == nil || state == nil || state.initialEventID == "" {
 		return
 	}
+	log := cc.loggerForContext(ctx)
+
 	// Collect generated file references for multimodal history re-injection.
 	var genFiles []GeneratedFileRef
 	if len(state.generatedFiles) > 0 {
@@ -1954,38 +1970,55 @@ func (cc *CodexClient) saveAssistantMessage(ctx context.Context, portal *bridgev
 		}
 	}
 
+	fullMeta := &MessageMetadata{
+		Role:               "assistant",
+		Body:               state.accumulated.String(),
+		FinishReason:       finishReason,
+		Model:              model,
+		TurnID:             state.turnID,
+		AgentID:            state.agentID,
+		ToolCalls:          state.toolCalls,
+		StartedAtMs:        state.startedAtMs,
+		FirstTokenAtMs:     state.firstTokenAtMs,
+		CompletedAtMs:      state.completedAtMs,
+		HasToolCalls:       len(state.toolCalls) > 0,
+		CanonicalSchema:    "ai-sdk-ui-message-v1",
+		CanonicalUIMessage: cc.buildCanonicalUIMessage(state, model, finishReason),
+		GeneratedFiles:     genFiles,
+		ThinkingContent:    state.reasoning.String(),
+		ThinkingTokenCount: len(strings.Fields(state.reasoning.String())),
+		PromptTokens:       state.promptTokens,
+		CompletionTokens:   state.completionTokens,
+		ReasoningTokens:    state.reasoningTokens,
+	}
+
+	// If the message was sent via sendViaPortal, the DB row already exists — update it.
+	if state.networkMessageID != "" {
+		existing, err := cc.UserLogin.Bridge.DB.Message.GetPartByMXID(ctx, state.initialEventID)
+		if err == nil && existing != nil {
+			existing.Metadata = fullMeta
+			if err := cc.UserLogin.Bridge.DB.Message.Update(ctx, existing); err != nil {
+				log.Warn().Err(err).Str("msg_id", string(existing.ID)).Msg("Failed to update assistant message metadata")
+			} else {
+				log.Debug().Str("msg_id", string(existing.ID)).Msg("Updated assistant message metadata")
+			}
+			return
+		}
+		log.Warn().Err(err).Stringer("mxid", state.initialEventID).Msg("Could not find existing DB row for update, falling back to insert")
+	}
+
 	assistantMsg := &database.Message{
 		ID:        bridgeadapter.MatrixMessageID(state.initialEventID),
 		Room:      portal.PortalKey,
 		SenderID:  codexGhostID,
 		MXID:      state.initialEventID,
 		Timestamp: time.Now(),
-		Metadata: &MessageMetadata{
-			Role:               "assistant",
-			Body:               state.accumulated.String(),
-			FinishReason:       finishReason,
-			Model:              model,
-			TurnID:             state.turnID,
-			AgentID:            state.agentID,
-			ToolCalls:          state.toolCalls,
-			StartedAtMs:        state.startedAtMs,
-			FirstTokenAtMs:     state.firstTokenAtMs,
-			CompletedAtMs:      state.completedAtMs,
-			HasToolCalls:       len(state.toolCalls) > 0,
-			CanonicalSchema:    "ai-sdk-ui-message-v1",
-			CanonicalUIMessage: cc.buildCanonicalUIMessage(state, model, finishReason),
-			GeneratedFiles:     genFiles,
-			ThinkingContent:    state.reasoning.String(),
-			ThinkingTokenCount: len(strings.Fields(state.reasoning.String())),
-			PromptTokens:       state.promptTokens,
-			CompletionTokens:   state.completionTokens,
-			ReasoningTokens:    state.reasoningTokens,
-		},
+		Metadata:  fullMeta,
 	}
 	if err := cc.UserLogin.Bridge.DB.Message.Insert(ctx, assistantMsg); err != nil {
-		cc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to save assistant message")
+		log.Warn().Err(err).Msg("Failed to save assistant message")
 	} else {
-		cc.loggerForContext(ctx).Debug().Str("msg_id", string(assistantMsg.ID)).Msg("Saved assistant message to database")
+		log.Debug().Str("msg_id", string(assistantMsg.ID)).Msg("Saved assistant message to database")
 	}
 }
 

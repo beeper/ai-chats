@@ -3,6 +3,8 @@ package connector
 import (
 	"strconv"
 	"strings"
+
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 type queueSummaryState struct {
@@ -18,18 +20,11 @@ type queueState[T any] struct {
 }
 
 func elideQueueText(text string, limit int) string {
-	if limit <= 0 || len(text) <= limit {
-		return text
-	}
-	if limit <= 1 {
-		return text[:1]
-	}
-	return strings.TrimRight(text[:limit-1], " \t\r\n") + "…"
+	return airuntime.ElideQueueText(text, limit)
 }
 
 func buildQueueSummaryLine(text string, limit int) string {
-	cleaned := strings.Join(strings.Fields(text), " ")
-	return elideQueueText(cleaned, limit)
+	return airuntime.BuildQueueSummaryLine(text, limit)
 }
 
 func applyQueueDropPolicy[T any](params struct {
@@ -43,16 +38,17 @@ func applyQueueDropPolicy[T any](params struct {
 	if params.Queue.Cap <= 0 || len(params.Queue.Items) < params.Queue.Cap {
 		return true
 	}
-	if params.Queue.DropPolicy == QueueDropNew {
+	overflow := airuntime.ResolveQueueOverflow(params.Queue.Cap, len(params.Queue.Items), airuntime.QueueDropPolicy(params.Queue.DropPolicy))
+	if !overflow.KeepNew {
 		return false
 	}
-	dropCount := len(params.Queue.Items) - params.Queue.Cap + 1
+	dropCount := overflow.ItemsToDrop
 	if dropCount < 1 {
 		return true
 	}
 	dropped := params.Queue.Items[:dropCount]
 	params.Queue.Items = params.Queue.Items[dropCount:]
-	if params.Queue.DropPolicy == QueueDropSummarize {
+	if overflow.ShouldSummarize {
 		for _, item := range dropped {
 			params.Queue.DroppedCount++
 			summary := strings.TrimSpace(params.Summarize(item))
