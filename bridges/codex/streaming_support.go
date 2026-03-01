@@ -4,10 +4,11 @@ import (
 	"context"
 	"strings"
 
+	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/ai-bridge/pkg/matrixevents"
 	"github.com/beeper/ai-bridge/pkg/shared/citations"
+	"github.com/beeper/ai-bridge/pkg/shared/streamui"
 )
 
 type streamingState struct {
@@ -32,16 +33,7 @@ type streamingState struct {
 	firstToken         bool
 	suppressSend       bool
 
-	uiFinished              bool
-	uiTextID                string
-	uiReasoningID           string
-	uiToolStarted           map[string]bool
-	uiSourceURLSeen         map[string]bool
-	uiToolCallIDByApproval  map[string]string
-	uiToolApprovalRequested map[string]bool
-	uiToolNameByToolCallID  map[string]string
-	uiToolTypeByToolCallID  map[string]matrixevents.ToolType
-	uiToolOutputFinalized   map[string]bool
+	ui streamui.UIState
 
 	codexToolOutputBuffers    map[string]*strings.Builder
 	codexLatestDiff           string
@@ -49,24 +41,30 @@ type streamingState struct {
 	codexTimelineNotices      map[string]bool
 }
 
+func (cc *CodexClient) uiEmitter(state *streamingState) *streamui.Emitter {
+	return &streamui.Emitter{
+		State: &state.ui,
+		Emit: func(ctx context.Context, portal *bridgev2.Portal, part map[string]any) {
+			cc.emitStreamEvent(ctx, portal, state, part)
+		},
+	}
+}
+
 func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID id.EventID, senderID string, roomID id.RoomID) *streamingState {
 	_ = ctx
 	_ = meta
 	_ = senderID
 	_ = roomID
+	turnID := NewTurnID()
+	ui := streamui.UIState{TurnID: turnID}
+	ui.InitMaps()
 	return &streamingState{
-		turnID:                  NewTurnID(),
-		startedAtMs:             nowMillis(),
-		firstToken:              true,
-		initialEventID:          sourceEventID,
-		uiToolStarted:           make(map[string]bool),
-		uiSourceURLSeen:         make(map[string]bool),
-		uiToolCallIDByApproval:  make(map[string]string),
-		uiToolApprovalRequested: make(map[string]bool),
-		uiToolNameByToolCallID:  make(map[string]string),
-		uiToolTypeByToolCallID:  make(map[string]matrixevents.ToolType),
-		uiToolOutputFinalized:   make(map[string]bool),
-		codexTimelineNotices:    make(map[string]bool),
-		codexToolOutputBuffers:  make(map[string]*strings.Builder),
+		turnID:                 turnID,
+		startedAtMs:            nowMillis(),
+		firstToken:             true,
+		initialEventID:         sourceEventID,
+		ui:                     ui,
+		codexTimelineNotices:   make(map[string]bool),
+		codexToolOutputBuffers: make(map[string]*strings.Builder),
 	}
 }

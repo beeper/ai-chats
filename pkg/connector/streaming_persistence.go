@@ -8,6 +8,8 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
+
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 // saveAssistantMessage saves the completed assistant message to the database
@@ -30,7 +32,7 @@ func (oc *AIClient) saveAssistantMessage(
 	}
 
 	assistantMsg := &database.Message{
-		ID:        MakeMessageID(state.initialEventID),
+		ID:        bridgeadapter.MatrixMessageID(state.initialEventID),
 		Room:      portal.PortalKey,
 		SenderID:  modelUserID(modelID),
 		MXID:      state.initialEventID,

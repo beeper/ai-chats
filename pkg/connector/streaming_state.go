@@ -5,12 +5,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beeper/ai-bridge/pkg/shared/citations"
 	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/responses"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/ai-bridge/pkg/shared/citations"
+	"github.com/beeper/ai-bridge/pkg/shared/streamui"
 )
 
 // streamingState tracks the state of a streaming response
@@ -60,22 +62,8 @@ type streamingState struct {
 	suppressSave      bool
 	suppressSend      bool
 
-	// AI SDK UIMessage stream tracking
-	uiStarted               bool
-	uiFinished              bool
-	uiTextID                string
-	uiReasoningID           string
-	uiStepOpen              bool
-	uiStepCount             int
-	uiToolStarted           map[string]bool
-	uiSourceURLSeen         map[string]bool
-	uiSourceDocumentSeen    map[string]bool
-	uiFileSeen              map[string]bool
-	uiToolCallIDByApproval  map[string]string
-	uiToolApprovalRequested map[string]bool
-	uiToolNameByToolCallID  map[string]string
-	uiToolTypeByToolCallID  map[string]ToolType
-	uiToolOutputFinalized   map[string]bool
+	// AI SDK UIMessage stream tracking (shared across bridges)
+	ui streamui.UIState
 
 	// Pending MCP approvals to resolve before the turn can continue.
 	pendingMcpApprovals     []mcpApprovalRequest
@@ -101,8 +89,11 @@ func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID 
 	if meta != nil {
 		agentID = resolveAgentID(meta)
 	}
+	turnID := NewTurnID()
+	ui := streamui.UIState{TurnID: turnID}
+	ui.InitMaps()
 	state := &streamingState{
-		turnID:                  NewTurnID(),
+		turnID:                  turnID,
 		agentID:                 agentID,
 		startedAtMs:             time.Now().UnixMilli(),
 		firstToken:              true,
@@ -111,15 +102,7 @@ func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID 
 		roomID:                  roomID,
 		statusSentIDs:           make(map[id.EventID]bool),
 		replyAccumulator:        newStreamingDirectiveAccumulator(),
-		uiToolStarted:           make(map[string]bool),
-		uiSourceURLSeen:         make(map[string]bool),
-		uiSourceDocumentSeen:    make(map[string]bool),
-		uiFileSeen:              make(map[string]bool),
-		uiToolCallIDByApproval:  make(map[string]string),
-		uiToolApprovalRequested: make(map[string]bool),
-		uiToolNameByToolCallID:  make(map[string]string),
-		uiToolTypeByToolCallID:  make(map[string]ToolType),
-		uiToolOutputFinalized:   make(map[string]bool),
+		ui:                      ui,
 		pendingMcpApprovalsSeen: make(map[string]bool),
 	}
 	if meta != nil && normalizeSendPolicyMode(meta.SendPolicy) == "deny" {
@@ -136,6 +119,15 @@ func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID 
 		}
 	}
 	return state
+}
+
+func (oc *AIClient) uiEmitter(state *streamingState) *streamui.Emitter {
+	return &streamui.Emitter{
+		State: &state.ui,
+		Emit: func(ctx context.Context, portal *bridgev2.Portal, part map[string]any) {
+			oc.emitStreamEvent(ctx, portal, state, part)
+		},
+	}
 }
 
 func (oc *AIClient) applyStreamingReplyTarget(state *streamingState, parsed *streamingDirectiveResult) {

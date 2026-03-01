@@ -6,21 +6,16 @@ import (
 	"go.mau.fi/util/configupgrade"
 
 	"github.com/beeper/ai-bridge/bridges/codex/codexrpc"
+	"github.com/beeper/ai-bridge/pkg/shared/bridgeconfig"
 )
 
 const ProviderCodex = "codex"
 
 type Config struct {
-	Bridge             BridgeConfig  `yaml:"bridge"`
-	Codex              *CodexConfig  `yaml:"codex"`
-	Owners             []string      `yaml:"owners"`
-	ModelCacheDuration time.Duration `yaml:"model_cache_duration"`
-}
-
-type BridgeConfig struct {
-	CommandPrefix      string `yaml:"command_prefix"`
-	StreamingTransport string `yaml:"streaming_transport"`        // ephemeral|debounced_edit
-	StreamingDebounce  int    `yaml:"streaming_edit_debounce_ms"` // Debounce for edit transport
+	Bridge             bridgeconfig.BridgeConfig `yaml:"bridge"`
+	Codex              *CodexConfig              `yaml:"codex"`
+	Owners             []string                  `yaml:"owners"`
+	ModelCacheDuration time.Duration             `yaml:"model_cache_duration"`
 }
 
 // CodexConfig configures the Codex app-server integration.

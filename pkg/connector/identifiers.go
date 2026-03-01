@@ -165,7 +165,3 @@ func parseChatSlug(slug string) (int, bool) {
 	return 0, false
 }
 
-// MakeMessageID creates a message ID from a Matrix event ID
-func MakeMessageID(eventID id.EventID) networkid.MessageID {
-	return bridgeadapter.MatrixMessageID(eventID)
-}
