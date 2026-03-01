@@ -2,6 +2,8 @@ package connector
 
 import "testing"
 
+import runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
+
 func TestStripEnvelope(t *testing.T) {
 	tests := []struct {
 		input string
@@ -26,7 +28,7 @@ func TestStripEnvelope(t *testing.T) {
 		{"[Unknown prefix] should not strip", "[Unknown prefix] should not strip"},
 	}
 	for _, tt := range tests {
-		if got := StripEnvelope(tt.input); got != tt.want {
+		if got := runtimeparse.StripEnvelope(tt.input); got != tt.want {
 			t.Errorf("StripEnvelope(%q) = %q, want %q", tt.input, got, tt.want)
 		}
 	}

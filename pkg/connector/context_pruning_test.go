@@ -36,7 +36,7 @@ func TestPruneContext(t *testing.T) {
 			userMsg("Hello"),
 			assistantMsg("Hi!"),
 		}
-		config := &PruningConfig{Enabled: false}
+		config := &airuntime.PruningConfig{Enabled: false}
 
 		result := airuntime.PruneContext(prompt, config, 4096)
 
@@ -64,7 +64,7 @@ func TestPruneContext(t *testing.T) {
 			userMsg("Hello"),
 			assistantMsg("Hi there!"),
 		}
-		config := &PruningConfig{
+		config := &airuntime.PruningConfig{
 			Enabled:       true,
 			SoftTrimRatio: 0.9, // Very high threshold
 		}
@@ -87,7 +87,7 @@ func TestPruneContext(t *testing.T) {
 			assistantMsg("Done"),
 			userMsg("Thanks"),
 		}
-		config := &PruningConfig{
+		config := &airuntime.PruningConfig{
 			Enabled:            true,
 			SoftTrimRatio:      0.1, // Low threshold to trigger pruning
 			HardClearRatio:     0.9, // High to avoid hard clear
@@ -141,7 +141,7 @@ func TestPruneContext(t *testing.T) {
 			userMsg("Latest"),
 		}
 		enabled := true
-		config := &PruningConfig{
+		config := &airuntime.PruningConfig{
 			Enabled:              true,
 			SoftTrimRatio:        0.01, // Very low to always trigger
 			HardClearRatio:       0.01, // Very low to always trigger
@@ -190,7 +190,7 @@ func TestPruneContext(t *testing.T) {
 			toolResultMsg(strings.Repeat("z", 10000), "call_new"),
 			userMsg("Latest"),
 		}
-		config := &PruningConfig{
+		config := &airuntime.PruningConfig{
 			Enabled:            true,
 			SoftTrimRatio:      0.1,
 			HardClearRatio:     0.9,
@@ -229,7 +229,7 @@ func TestPruneContext(t *testing.T) {
 			toolResultMsg(strings.Repeat("x", 10000), "call_after"),
 			userMsg("Latest"),
 		}
-		config := &PruningConfig{
+		config := &airuntime.PruningConfig{
 			Enabled:            true,
 			SoftTrimRatio:      0.1,
 			HardClearRatio:     0.9,
@@ -260,7 +260,7 @@ func TestPruneContext(t *testing.T) {
 
 func TestToolPatternMatching(t *testing.T) {
 	t.Run("exact match", func(t *testing.T) {
-		config := &PruningConfig{
+		config := &airuntime.PruningConfig{
 			ToolsAllow: []string{"list_models"},
 		}
 		pred := airuntime.BuildToolPrunablePredicate(config)
@@ -274,7 +274,7 @@ func TestToolPatternMatching(t *testing.T) {
 	})
 
 	t.Run("wildcard suffix", func(t *testing.T) {
-		config := &PruningConfig{
+		config := &airuntime.PruningConfig{
 			ToolsAllow: []string{"list_*"},
 		}
 		pred := airuntime.BuildToolPrunablePredicate(config)
@@ -291,7 +291,7 @@ func TestToolPatternMatching(t *testing.T) {
 	})
 
 	t.Run("wildcard prefix", func(t *testing.T) {
-		config := &PruningConfig{
+		config := &airuntime.PruningConfig{
 			ToolsAllow: []string{"*_search"},
 		}
 		pred := airuntime.BuildToolPrunablePredicate(config)
@@ -308,7 +308,7 @@ func TestToolPatternMatching(t *testing.T) {
 	})
 
 	t.Run("deny takes precedence", func(t *testing.T) {
-		config := &PruningConfig{
+		config := &airuntime.PruningConfig{
 			ToolsAllow: []string{"*"},
 			ToolsDeny:  []string{"read"},
 		}
@@ -323,7 +323,7 @@ func TestToolPatternMatching(t *testing.T) {
 	})
 
 	t.Run("empty allow means all allowed", func(t *testing.T) {
-		config := &PruningConfig{
+		config := &airuntime.PruningConfig{
 			ToolsAllow: nil,
 			ToolsDeny:  nil,
 		}
@@ -335,7 +335,7 @@ func TestToolPatternMatching(t *testing.T) {
 	})
 
 	t.Run("case insensitive", func(t *testing.T) {
-		config := &PruningConfig{
+		config := &airuntime.PruningConfig{
 			ToolsAllow: []string{"LIST_*"},
 		}
 		pred := airuntime.BuildToolPrunablePredicate(config)

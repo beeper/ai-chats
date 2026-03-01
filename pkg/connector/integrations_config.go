@@ -10,6 +10,7 @@ import (
 
 	"github.com/beeper/ai-bridge/pkg/agents"
 	"github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/beeper/ai-bridge/pkg/shared/bridgeconfig"
 )
 
@@ -37,7 +38,7 @@ type Config struct {
 	ModelCacheDuration  time.Duration `yaml:"model_cache_duration"`
 
 	// Context pruning configuration (OpenClaw-style)
-	Pruning *PruningConfig `yaml:"pruning"`
+	Pruning *airuntime.PruningConfig `yaml:"pruning"`
 
 	// Link preview configuration
 	LinkPreviews *LinkPreviewConfig `yaml:"link_previews"`
