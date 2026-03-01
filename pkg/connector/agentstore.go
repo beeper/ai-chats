@@ -26,7 +26,6 @@ type AgentStoreAdapter struct {
 	mu     sync.Mutex // protects read-modify-write operations on custom agents
 }
 
-// NewAgentStoreAdapter creates a new agent store adapter.
 func NewAgentStoreAdapter(client *AIClient) *AgentStoreAdapter {
 	return &AgentStoreAdapter{client: client}
 }
@@ -205,7 +204,6 @@ func (s *AgentStoreAdapter) GetAgentByID(ctx context.Context, agentID string) (*
 	return agent, nil
 }
 
-// GetAgentForRoom returns the agent assigned to a room.
 // Falls back to the Quick Chatter if no specific agent is set.
 func (s *AgentStoreAdapter) GetAgentForRoom(ctx context.Context, meta *PortalMetadata) (*agents.AgentDefinition, error) {
 	agentID := resolveAgentID(meta)
@@ -288,7 +286,6 @@ type BossStoreAdapter struct {
 	store *AgentStoreAdapter
 }
 
-// NewBossStoreAdapter creates a new boss store adapter.
 func NewBossStoreAdapter(client *AIClient) *BossStoreAdapter {
 	return &BossStoreAdapter{
 		store: NewAgentStoreAdapter(client),

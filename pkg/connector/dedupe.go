@@ -6,13 +6,10 @@ import (
 )
 
 const (
-	// DefaultDedupeTTL is the time-to-live for deduplication entries (20 minutes like clawdbot)
-	DefaultDedupeTTL = 20 * time.Minute
-	// DefaultDedupeMaxSize is the maximum number of entries in the cache
+	DefaultDedupeTTL    = 20 * time.Minute
 	DefaultDedupeMaxSize = 5000
 )
 
-// DedupeCache is a thread-safe LRU cache with TTL for message deduplication.
 // Based on clawdbot's dedupe.ts implementation.
 type DedupeCache struct {
 	mu      sync.Mutex
@@ -22,7 +19,6 @@ type DedupeCache struct {
 	lastTS  int64
 }
 
-// NewDedupeCache creates a new deduplication cache with the given TTL and max size.
 func NewDedupeCache(ttl time.Duration, maxSize int) *DedupeCache {
 	if ttl <= 0 {
 		ttl = DefaultDedupeTTL
@@ -37,7 +33,6 @@ func NewDedupeCache(ttl time.Duration, maxSize int) *DedupeCache {
 	}
 }
 
-// Check returns true if key is a duplicate (seen within TTL).
 // Also records the key for future checks.
 func (c *DedupeCache) Check(key string) bool {
 	if key == "" {
@@ -99,7 +94,6 @@ func (c *DedupeCache) prune(cutoff int64) {
 	}
 }
 
-// Size returns the current number of entries in the cache.
 func (c *DedupeCache) Size() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()

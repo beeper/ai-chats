@@ -18,7 +18,6 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
-// dispatchCompletionInternal contains the actual completion logic
 func (oc *AIClient) dispatchCompletionInternal(
 	ctx context.Context,
 	sourceEvent *event.Event,
@@ -32,7 +31,6 @@ func (oc *AIClient) dispatchCompletionInternal(
 	oc.streamingResponseWithRetry(runCtx, sourceEvent, portal, meta, prompt)
 }
 
-// notifyMatrixSendFailure sends an error status back to Matrix
 func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, err error) {
 	// Check for auth errors (401/403) - trigger reauth with StateBadCredentials
 	if IsAuthError(err) {
@@ -116,7 +114,6 @@ func (oc *AIClient) recordProviderError(ctx context.Context) {
 	}
 }
 
-// recordProviderSuccess resets the consecutive error counter on a successful request.
 func (oc *AIClient) recordProviderSuccess(ctx context.Context) {
 	meta := loginMetadata(oc.UserLogin)
 	if meta.ConsecutiveErrors == 0 {
@@ -136,7 +133,6 @@ func (oc *AIClient) recordProviderSuccess(ctx context.Context) {
 	}
 }
 
-// setModelTyping sets the typing indicator for the current model's ghost user
 func (oc *AIClient) setModelTyping(ctx context.Context, portal *bridgev2.Portal, typing bool) {
 	if portal == nil || portal.MXID == "" {
 		return
@@ -156,7 +152,6 @@ func (oc *AIClient) setModelTyping(ctx context.Context, portal *bridgev2.Portal,
 	}
 }
 
-// sendPendingStatus sends a PENDING status for a message that is queued
 func (oc *AIClient) sendPendingStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, message string) {
 	if portal == nil || portal.Bridge == nil || evt == nil {
 		return
@@ -169,7 +164,6 @@ func (oc *AIClient) sendPendingStatus(ctx context.Context, portal *bridgev2.Port
 	portal.Bridge.Matrix.SendMessageStatus(ctx, &status, bridgev2.StatusEventInfoFromEvent(evt))
 }
 
-// sendSuccessStatus sends a SUCCESS status for a message that was previously pending
 func (oc *AIClient) sendSuccessStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event) {
 	if portal == nil || portal.Bridge == nil || evt == nil {
 		return
@@ -313,9 +307,6 @@ func (oc *AIClient) scheduleAutoGreeting(ctx context.Context, portal *bridgev2.P
 	}()
 }
 
-// scheduleWelcomeMessage waits for a portal to get a Matrix room ID and then sends the
-// welcome notice (and schedules an auto-greeting for agent rooms).
-//
 // This is primarily for rooms created via provisioning (ResolveIdentifier/CreateDM),
 // where the room creation happens in bridgev2 internals and we don't have a direct hook
 // after CreateMatrixRoom succeeds.
@@ -353,7 +344,6 @@ func (oc *AIClient) scheduleWelcomeMessage(ctx context.Context, portalKey networ
 	}()
 }
 
-// sendWelcomeMessage sends a system notice when a new chat is created and schedules an auto-greeting.
 func (oc *AIClient) sendWelcomeMessage(ctx context.Context, portal *bridgev2.Portal) {
 	if oc == nil || portal == nil {
 		return
@@ -401,7 +391,6 @@ func (oc *AIClient) sendWelcomeMessage(ctx context.Context, portal *bridgev2.Por
 	oc.scheduleAutoGreeting(bgCtx, portal)
 }
 
-// maybeGenerateTitle generates a title for the room after the first exchange
 func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Portal, assistantResponse string) {
 	meta := portalMeta(portal)
 
@@ -457,7 +446,6 @@ func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Por
 	}()
 }
 
-// getTitleGenerationModel returns the model to use for generating chat titles.
 // Priority: UserLoginMetadata.TitleGenerationModel > provider-specific default > current model
 func (oc *AIClient) getTitleGenerationModel() string {
 	meta := loginMetadata(oc.UserLogin)
@@ -475,7 +463,6 @@ func (oc *AIClient) getTitleGenerationModel() string {
 	return "google/gemini-2.5-flash"
 }
 
-// generateRoomTitle asks the model to generate a short descriptive title for the conversation
 // Uses Responses API for OpenRouter compatibility (the PDF plugins middleware adds a 'plugins'
 // field that is only valid for Responses API, not Chat Completions API)
 func (oc *AIClient) generateRoomTitle(ctx context.Context, userMessage, assistantResponse string) (string, error) {
@@ -575,7 +562,6 @@ func extractTitleFromResponse(resp *responses.Response) string {
 	return ""
 }
 
-// setRoomName sets the Matrix room name via m.room.name state event
 func (oc *AIClient) setRoomName(ctx context.Context, portal *bridgev2.Portal, name string) error {
 	return oc.setRoomNameInternal(ctx, portal, name, true)
 }
@@ -612,7 +598,6 @@ func (oc *AIClient) setRoomNameInternal(ctx context.Context, portal *bridgev2.Po
 	return nil
 }
 
-// setRoomTopic sets the Matrix room topic via m.room.topic state event
 func (oc *AIClient) setRoomTopic(ctx context.Context, portal *bridgev2.Portal, topic string) error {
 	if portal.MXID == "" {
 		return errors.New("portal has no Matrix room ID")
@@ -636,7 +621,6 @@ func (oc *AIClient) setRoomTopic(ctx context.Context, portal *bridgev2.Portal, t
 	return nil
 }
 
-// getModelContextWindow returns the context window size for the current model
 func (oc *AIClient) getModelContextWindow(meta *PortalMetadata) int {
 	modelID := oc.effectiveModel(meta)
 
@@ -659,7 +643,6 @@ func (oc *AIClient) getModelContextWindow(meta *PortalMetadata) int {
 	return 128000
 }
 
-// setRoomSystemPrompt updates the room's system prompt in metadata.
 // This is separate from room topic (which is display-only).
 func (oc *AIClient) setRoomSystemPrompt(ctx context.Context, portal *bridgev2.Portal, prompt string) error {
 	return oc.setRoomSystemPromptInternal(ctx, portal, prompt, true)

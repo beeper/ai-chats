@@ -45,7 +45,6 @@ func resolveLoginForCommand(
 	return defaultLogin
 }
 
-// getAIClient retrieves the AIClient from the command event's user login
 func getAIClient(ce *commands.Event) *AIClient {
 	if ce == nil || ce.User == nil {
 		return nil
@@ -73,7 +72,6 @@ func getAIClient(ce *commands.Event) *AIClient {
 	return client
 }
 
-// getPortalMeta retrieves the PortalMetadata from the command event's portal
 func getPortalMeta(ce *commands.Event) *PortalMetadata {
 	if ce.Portal == nil {
 		return nil

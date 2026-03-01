@@ -447,12 +447,10 @@ func generateShortID() string {
 	return random.String(12)
 }
 
-// isModuleInternalRoom checks if any module has marked this portal as an internal room.
 func isModuleInternalRoom(meta *PortalMetadata) bool {
 	return moduleRoomKind(meta) != ""
 }
 
-// moduleRoomKind returns the module name that owns this internal room, or "".
 func moduleRoomKind(meta *PortalMetadata) string {
 	if meta == nil || meta.ModuleMeta == nil {
 		return ""

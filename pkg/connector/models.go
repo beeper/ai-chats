@@ -42,7 +42,6 @@ func ParseModelPrefix(modelID string) (backend ModelBackend, actualModel string)
 	}
 }
 
-// HasValidPrefix checks if a model ID has a valid backend prefix
 func HasValidPrefix(modelID string) bool {
 	backend, _ := ParseModelPrefix(modelID)
 	return backend != ""

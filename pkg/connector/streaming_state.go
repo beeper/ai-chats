@@ -89,7 +89,6 @@ type mcpApprovalRequest struct {
 	serverLabel string
 }
 
-// newStreamingState creates a new streaming state with initialized fields
 func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID id.EventID, senderID string, roomID id.RoomID) *streamingState {
 	agentID := ""
 	if meta != nil {

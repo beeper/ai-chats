@@ -17,7 +17,6 @@ import (
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
-// makeUserLoginIDForConfig creates a stable login ID by hashing provider + base URL + API key.
 //
 // Multiple logins with identical config are supported by appending an ordinal suffix: -2, -3, ...
 func makeUserLoginIDForConfig(mxid id.UserID, provider, apiKey, baseURL string, ordinal int) networkid.UserLoginID {
@@ -74,7 +73,6 @@ func modelUserID(modelID string) networkid.UserID {
 	return networkid.UserID(fmt.Sprintf("model-%s", url.PathEscape(modelID)))
 }
 
-// agentUserID creates a ghost user ID for an agent (no model suffix).
 // Format: "agent-{agent-id}"
 func agentUserID(agentID string) networkid.UserID {
 	return networkid.UserID(fmt.Sprintf("agent-%s", url.PathEscape(agentID)))
@@ -115,7 +113,6 @@ func portalMeta(portal *bridgev2.Portal) *PortalMetadata {
 	return bridgeadapter.EnsurePortalMetadata[PortalMetadata](portal)
 }
 
-// resolveAgentID returns the configured agent ID.
 func resolveAgentID(meta *PortalMetadata) string {
 	if meta == nil {
 		return ""
@@ -130,7 +127,6 @@ func messageMeta(msg *database.Message) *MessageMetadata {
 	return msg.Metadata.(*MessageMetadata)
 }
 
-// shouldIncludeInHistory checks if a message should be included in LLM history.
 // Filters out non-conversation messages and messages explicitly excluded
 // (e.g., welcome messages).
 func shouldIncludeInHistory(meta *MessageMetadata) bool {

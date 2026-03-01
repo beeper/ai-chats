@@ -41,7 +41,7 @@ func resolveQueueSettings(params queueResolveParams) QueueSettings {
 		}
 	}
 	if resolvedMode == "" {
-		resolvedMode = DefaultQueueMode
+		resolvedMode = airuntime.DefaultQueueMode
 	}
 
 	debounce := (*int)(nil)
@@ -60,7 +60,7 @@ func resolveQueueSettings(params queueResolveParams) QueueSettings {
 		}
 	}
 
-	debounceMs := DefaultQueueDebounceMs
+	debounceMs := airuntime.DefaultQueueDebounceMs
 	if debounce != nil {
 		debounceMs = *debounce
 		if debounceMs < 0 {
@@ -76,7 +76,7 @@ func resolveQueueSettings(params queueResolveParams) QueueSettings {
 	} else if queueCfg != nil && queueCfg.Cap != nil {
 		capValue = queueCfg.Cap
 	}
-	cap := DefaultQueueCap
+	cap := airuntime.DefaultQueueCap
 	if capValue != nil {
 		if *capValue > 0 {
 			cap = *capValue
@@ -96,7 +96,7 @@ func resolveQueueSettings(params queueResolveParams) QueueSettings {
 		}
 	}
 	if dropPolicy == "" {
-		dropPolicy = DefaultQueueDrop
+		dropPolicy = airuntime.DefaultQueueDrop
 	}
 
 	return QueueSettings{

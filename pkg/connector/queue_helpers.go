@@ -63,7 +63,7 @@ func applyQueueDropPolicy[T any](params struct {
 }
 
 func buildQueueSummaryPrompt(state *pendingQueue, noun string) string {
-	if state == nil || state.dropPolicy != QueueDropSummarize || state.droppedCount <= 0 {
+	if state == nil || state.dropPolicy != airuntime.QueueDropSummarize || state.droppedCount <= 0 {
 		return ""
 	}
 	title := "[Queue overflow] Dropped " + itoa(state.droppedCount) + " " + noun

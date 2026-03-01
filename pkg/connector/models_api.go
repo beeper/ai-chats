@@ -37,7 +37,6 @@ var OpenClawAliases = map[string]string{
 
 // Model API provides a unified interface for looking up models and aliases.
 
-// GetModelDisplayName returns a human-readable display name for a model.
 func GetModelDisplayName(modelID string) string {
 	// Resolve any aliases first
 	resolvedID := ResolveAlias(modelID)
@@ -71,7 +70,6 @@ func stripAnthropicDateSuffix(modelID string) (string, bool) {
 	return lower[:len(lower)-9], true
 }
 
-// ResolveAlias returns the actual model ID for a given alias.
 // If the input is not an alias, it returns the input unchanged.
 func ResolveAlias(modelID string) string {
 	normalized := strings.TrimSpace(modelID)
