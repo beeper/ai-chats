@@ -741,7 +741,7 @@ func (oc *AIClient) describeImageWithEntry(
 		return buildMediaOutput(MediaCapabilityImage, text, "google", entry.Model, attachmentIndex), nil
 	}
 
-	b64Data, actualMime, err := oc.downloadMediaBase64Bytes(ctx, mediaURL, encryptedFile, maxBytes, mimeType)
+	rawData, actualMime, err := oc.downloadMediaBytes(ctx, mediaURL, encryptedFile, maxBytes, mimeType)
 	if err != nil {
 		return nil, err
 	}
@@ -751,6 +751,7 @@ func (oc *AIClient) describeImageWithEntry(
 	if actualMime == "" {
 		actualMime = "image/jpeg"
 	}
+	b64Data := base64.StdEncoding.EncodeToString(rawData)
 	dataURL := buildDataURL(actualMime, b64Data)
 
 	messages := []UnifiedMessage{
@@ -824,17 +825,19 @@ func (oc *AIClient) transcribeAudioWithEntry(
 	}
 
 	request := mediaAudioRequest{
+		mediaRequestBase: mediaRequestBase{
+			APIKey:   apiKey,
+			BaseURL:  resolveMediaBaseURL(capCfg, entry),
+			Headers:  headers,
+			Model:    strings.TrimSpace(entry.Model),
+			Prompt:   prompt,
+			MimeType: actualMime,
+			Data:     data,
+			Timeout:  timeout,
+		},
 		Provider: providerID,
-		APIKey:   apiKey,
-		BaseURL:  resolveMediaBaseURL(capCfg, entry),
-		Headers:  headers,
-		Model:    strings.TrimSpace(entry.Model),
 		Language: resolveMediaLanguage(entry, capCfg),
-		Prompt:   prompt,
-		MimeType: actualMime,
 		FileName: fileName,
-		Data:     data,
-		Timeout:  timeout,
 	}
 	if providerID == "openai" && strings.TrimSpace(request.BaseURL) == "" {
 		request.BaseURL = resolveOpenAIMediaBaseURL(oc)
@@ -1203,16 +1206,3 @@ func estimateBase64Size(size int) int {
 	return ((size + 2) / 3) * 4
 }
 
-func (oc *AIClient) downloadMediaBase64Bytes(
-	ctx context.Context,
-	mediaURL string,
-	encryptedFile *event.EncryptedFileInfo,
-	maxBytes int,
-	fallbackMime string,
-) (string, string, error) {
-	data, mimeType, err := oc.downloadMediaBytes(ctx, mediaURL, encryptedFile, maxBytes, fallbackMime)
-	if err != nil {
-		return "", "", err
-	}
-	return base64.StdEncoding.EncodeToString(data), mimeType, nil
-}

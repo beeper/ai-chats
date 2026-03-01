@@ -9,11 +9,6 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
-const (
-	defaultImageUnderstandingPrompt = "Describe the image."
-	defaultAudioUnderstandingPrompt = "Transcribe the audio."
-	imageUnderstandingMaxTokens     = 1024
-)
 
 func (oc *AIClient) canUseMediaUnderstanding(meta *PortalMetadata) bool {
 	if meta == nil {
@@ -216,7 +211,7 @@ func (oc *AIClient) analyzeImageWithModel(
 		return "", errors.New("missing model for image analysis")
 	}
 	if strings.TrimSpace(prompt) == "" {
-		prompt = defaultImageUnderstandingPrompt
+		prompt = defaultPromptByCapability[MediaCapabilityImage]
 	}
 
 	modelIDForAPI := oc.modelIDForAPI(modelID)
@@ -255,7 +250,7 @@ func (oc *AIClient) analyzeImageWithModel(
 	resp, err := oc.provider.Generate(ctx, GenerateParams{
 		Model:               modelIDForAPI,
 		Messages:            messages,
-		MaxCompletionTokens: imageUnderstandingMaxTokens,
+		MaxCompletionTokens: defaultImageUnderstandingLimit,
 	})
 	if err != nil {
 		return "", fmt.Errorf("image analysis failed for model %s (image %s): %w", modelIDForAPI, imageRef, err)
@@ -276,7 +271,7 @@ func (oc *AIClient) analyzeAudioWithModel(
 		return "", errors.New("missing model for audio analysis")
 	}
 	if strings.TrimSpace(prompt) == "" {
-		prompt = defaultAudioUnderstandingPrompt
+		prompt = defaultPromptByCapability[MediaCapabilityAudio]
 	}
 
 	modelIDForAPI := oc.modelIDForAPI(modelID)
@@ -314,7 +309,7 @@ func (oc *AIClient) analyzeAudioWithModel(
 	resp, err := oc.provider.Generate(ctx, GenerateParams{
 		Model:               modelIDForAPI,
 		Messages:            messages,
-		MaxCompletionTokens: imageUnderstandingMaxTokens,
+		MaxCompletionTokens: defaultImageUnderstandingLimit,
 	})
 	if err != nil {
 		return "", fmt.Errorf("audio analysis failed for model %s (audio %s): %w", modelIDForAPI, audioRef, err)
@@ -347,7 +342,7 @@ func buildImageUnderstandingPrompt(caption string, hasUserCaption bool) string {
 			return caption
 		}
 	}
-	return defaultImageUnderstandingPrompt
+	return defaultPromptByCapability[MediaCapabilityImage]
 }
 
 func buildAudioUnderstandingPrompt(caption string, hasUserCaption bool) string {
@@ -357,7 +352,7 @@ func buildAudioUnderstandingPrompt(caption string, hasUserCaption bool) string {
 			return caption
 		}
 	}
-	return defaultAudioUnderstandingPrompt
+	return defaultPromptByCapability[MediaCapabilityAudio]
 }
 
 func buildImageUnderstandingMessage(caption string, hasUserCaption bool, description string) string {
