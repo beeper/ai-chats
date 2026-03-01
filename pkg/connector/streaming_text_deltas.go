@@ -5,8 +5,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/rs/zerolog"
 	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
+	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/beeper/ai-bridge/pkg/shared/citations"

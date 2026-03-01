@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"github.com/openai/openai-go/v3"
 	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
+	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 )
 
