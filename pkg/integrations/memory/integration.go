@@ -248,13 +248,13 @@ func (i *Integration) buildCommandExecDeps() CommandExecDeps {
 
 func (i *Integration) buildOverflowDeps() OverflowDeps {
 	return OverflowDeps{
-		IsRawMode: func(call any) bool {
+		IsSimpleMode: func(call any) bool {
 			ma, ok := i.host.(iruntime.MetadataAccess)
 			if !ok {
 				return false
 			}
 			overflowCall, _ := call.(iruntime.ContextOverflowCall)
-			return ma.IsRawMode(overflowCall.Meta)
+			return ma.IsSimpleMode(overflowCall.Meta)
 		},
 		ResolveSettings: i.resolveOverflowFlushSettings,
 		TrimPrompt: func(prompt []openai.ChatCompletionMessageParamUnion) []openai.ChatCompletionMessageParamUnion {
@@ -362,7 +362,7 @@ func (i *Integration) shouldInjectMemoryPromptContext(scope iruntime.PromptScope
 	if !ok {
 		return false
 	}
-	if scope.Meta != nil && ma.IsRawMode(scope.Meta) {
+	if scope.Meta != nil && ma.IsSimpleMode(scope.Meta) {
 		return false
 	}
 	cl := i.host.ConfigLookup()

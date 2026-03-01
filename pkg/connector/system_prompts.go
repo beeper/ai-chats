@@ -80,8 +80,8 @@ func (oc *AIClient) buildAdditionalSystemPromptsCore(
 ) []openai.ChatCompletionMessageParamUnion {
 	var out []openai.ChatCompletionMessageParamUnion
 
-	// Raw mode must be simple: no extra system hints or context injection.
-	if meta != nil && meta.IsRawMode {
+	// Simple mode: no extra system hints or context injection.
+	if isSimpleMode(meta) {
 		return nil
 	}
 

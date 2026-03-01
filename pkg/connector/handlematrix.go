@@ -639,12 +639,12 @@ func (oc *AIClient) handleMediaMessage(
 			ok = true
 		case isTextFileMime(mimeType):
 			if !oc.canUseMediaUnderstanding(meta) {
-				return nil, bridgeadapter.UnsupportedMessageStatus(errors.New("text file understanding is only available when an agent is assigned and raw mode is off"))
+				return nil, bridgeadapter.UnsupportedMessageStatus(errors.New("text file understanding is only available when an agent is assigned"))
 			}
 			return oc.handleTextFileMessage(ctx, msg, portal, meta, string(mediaURL), mimeType, pendingSent)
 		case mimeType == "" || mimeType == "application/octet-stream":
 			if !oc.canUseMediaUnderstanding(meta) {
-				return nil, bridgeadapter.UnsupportedMessageStatus(errors.New("text file understanding is only available when an agent is assigned and raw mode is off"))
+				return nil, bridgeadapter.UnsupportedMessageStatus(errors.New("text file understanding is only available when an agent is assigned"))
 			}
 			return oc.handleTextFileMessage(ctx, msg, portal, meta, string(mediaURL), mimeType, pendingSent)
 		}

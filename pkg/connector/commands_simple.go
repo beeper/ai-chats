@@ -9,18 +9,18 @@ import (
 	"github.com/beeper/ai-bridge/pkg/connector/commandregistry"
 )
 
-// CommandPlayground handles the !ai playground command with sub-commands.
-var CommandPlayground = registerAICommand(commandregistry.Definition{
-	Name:          "playground",
-	Aliases:       []string{"sandbox"},
+// CommandSimple handles the !ai simple command with sub-commands.
+var CommandSimple = registerAICommand(commandregistry.Definition{
+	Name:          "simple",
+	Aliases:       []string{"playground", "sandbox"},
 	Description:   "Manage AI chat rooms (new, list)",
 	Args:          "<new [model] | list>",
 	Section:       HelpSectionAI,
 	RequiresLogin: true,
-	Handler:       fnPlayground,
+	Handler:       fnSimple,
 })
 
-func fnPlayground(ce *commands.Event) {
+func fnSimple(ce *commands.Event) {
 	client, ok := requireClient(ce)
 	if !ok {
 		return
@@ -44,7 +44,7 @@ func fnPlayground(ce *commands.Event) {
 		} else {
 			modelID = client.effectiveModel(nil)
 		}
-		go client.createAndOpenModelChat(ce.Ctx, ce.Portal, modelID)
+		go client.createAndOpenSimpleChat(ce.Ctx, ce.Portal, modelID)
 		ce.Reply("Creating AI chat with %s...", modelID)
 
 	case "list":
@@ -78,10 +78,10 @@ func fnPlayground(ce *commands.Event) {
 			}
 			sb.WriteString("\n")
 		}
-		sb.WriteString("Use `!ai playground new <model>` to create a chat")
+		sb.WriteString("Use `!ai simple new <model>` to create a chat")
 		ce.Reply(sb.String())
 
 	default:
-		ce.Reply("Usage:\n• `!ai playground new [model]` — Create a new AI chat\n• `!ai playground list` — List available models")
+		ce.Reply("Usage:\n• `!ai simple new [model]` — Create a new AI chat\n• `!ai simple list` — List available models")
 	}
 }

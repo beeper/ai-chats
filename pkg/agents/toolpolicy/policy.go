@@ -10,7 +10,7 @@ import (
 type ToolProfileID string
 
 const (
-	ProfileMinimal   ToolProfileID = "minimal"
+	ProfileSimple    ToolProfileID = "simple"
 	ProfileCoding    ToolProfileID = "coding"
 	ProfileMessaging ToolProfileID = "messaging"
 	ProfileFull      ToolProfileID = "full"
@@ -89,7 +89,7 @@ type toolProfilePolicy struct {
 
 // ToolProfiles define which tool groups each profile allows.
 var ToolProfiles = map[ToolProfileID]toolProfilePolicy{
-	ProfileMinimal: {Allow: []string{"session_status"}},
+	ProfileSimple: {Allow: []string{"session_status", "web_search"}},
 	// OpenClaw semantics: allow workspace tools + runtime + session tooling + memory + image.
 	ProfileCoding: {Allow: []string{GroupFS, GroupRuntime, GroupSessions, GroupMemory, "image"}},
 	// OpenClaw semantics: messaging + limited session inspection/sends.

@@ -9,12 +9,12 @@ const (
 )
 
 // PresetAgents contains the default agent definitions.
-// Includes Beep (default), Playground (sandbox), and Boss (meta).
+// Includes Beep (default), Simple (direct model access), and Boss (meta).
 var PresetAgents = []*AgentDefinition{
 	BeeperAIAgent,
 	BeeperSearchAgent,
 	BeeperHelpAgent,
-	PlaygroundAgent,
+	SimpleAgent,
 }
 
 // GetPresetByID returns a preset agent by ID.

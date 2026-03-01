@@ -16,8 +16,14 @@ const (
 )
 
 func (oc *AIClient) canUseMediaUnderstanding(meta *PortalMetadata) bool {
-	if meta == nil || meta.IsRawMode {
+	if meta == nil {
 		return false
+	}
+	// Simple mode: allow media processing based on the model's native capabilities.
+	// Agent-mediated fallback (resolveUnderstandingModel) is naturally gated by
+	// resolveAgentID, so only native model capabilities apply in simple mode.
+	if isSimpleMode(meta) {
+		return true
 	}
 	return hasAssignedAgent(meta)
 }

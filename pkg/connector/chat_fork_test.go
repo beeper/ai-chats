@@ -2,7 +2,7 @@ package connector
 
 import "testing"
 
-func TestCloneForkPortalMetadata_PreservesRawMode(t *testing.T) {
+func TestCloneForkPortalMetadata_PreservesSimpleMode(t *testing.T) {
 	src := &PortalMetadata{
 		Model:               "openai/gpt-5",
 		SystemPrompt:        "You are helpful.",
@@ -16,7 +16,7 @@ func TestCloneForkPortalMetadata_PreservesRawMode(t *testing.T) {
 		ConversationMode: "responses",
 		AgentID:          "beeper",
 		AgentPrompt:      "agent prompt",
-		IsRawMode:        true,
+		IsSimpleMode:     true,
 		GroupActivation:  "always", // Not copied in fork metadata.
 	}
 
@@ -30,8 +30,8 @@ func TestCloneForkPortalMetadata_PreservesRawMode(t *testing.T) {
 	if got.Title != "Forked Chat" {
 		t.Fatalf("expected title Forked Chat, got %q", got.Title)
 	}
-	if !got.IsRawMode {
-		t.Fatalf("expected IsRawMode=true on forked metadata")
+	if !got.IsSimpleMode {
+		t.Fatalf("expected IsSimpleMode=true on forked metadata")
 	}
 	if got.GroupActivation != "" {
 		t.Fatalf("expected GroupActivation to remain unset in fork metadata copy, got %q", got.GroupActivation)

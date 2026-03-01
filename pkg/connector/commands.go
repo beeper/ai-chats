@@ -417,9 +417,9 @@ func fnCommands(ce *commands.Event) {
 			"- `!ai regenerate`\n" +
 			"- `!ai title [text]`\n" +
 			"- `!ai timezone [IANA_TZ]`\n\n" +
-			"Playground:\n" +
-			"- `!ai playground new [model]` — Create a new AI chat\n" +
-			"- `!ai playground list` — List available models\n\n" +
+			"Simple Mode:\n" +
+			"- `!ai simple new [model]` — Create a new AI chat\n" +
+			"- `!ai simple list` — List available models\n\n" +
 			"Agents:\n" +
 			"- `!ai agent [id|none]`\n" +
 			"- `!ai agents`\n" +

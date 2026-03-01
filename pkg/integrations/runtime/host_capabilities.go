@@ -28,7 +28,7 @@ type PortalManager interface {
 type MetadataAccess interface {
 	GetModuleMeta(meta any, key string) any
 	SetModuleMeta(meta any, key string, value any)
-	IsRawMode(meta any) bool
+	IsSimpleMode(meta any) bool
 	AgentIDFromMeta(meta any) string
 	CompactionCount(meta any) int
 	IsGroupChat(ctx context.Context, portal any) bool

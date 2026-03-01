@@ -211,7 +211,7 @@ type PortalMetadata struct {
 	AgentID              string         `json:"agent_id,omitempty"`                // Which agent is the ghost for this room
 	AgentPrompt          string         `json:"agent_prompt,omitempty"`            // Cached prompt for the assigned agent
 	IsBuilderRoom        bool           `json:"is_builder_room,omitempty"`         // True if this is the Manage AI Chats room (protected from overrides)
-	IsRawMode            bool           `json:"is_raw_mode,omitempty"`             // True if this is a playground/raw mode room (no directive processing)
+	IsSimpleMode         bool           `json:"is_simple_mode,omitempty"`          // True if this is a simple mode room (no directive processing)
 	ModuleMeta           map[string]any `json:"module_meta,omitempty"`             // Generic per-module metadata (e.g., cron room markers, memory flush state)
 	SubagentParentRoomID string         `json:"subagent_parent_room_id,omitempty"` // Parent room ID for subagent sessions
 
@@ -231,6 +231,12 @@ type PortalMetadata struct {
 
 	// Anthropic prompt cache TTL tracking
 	LastCacheTTLRefresh int64 `json:"last_cache_ttl_refresh,omitempty"` // Unix millis of last cache-eligible request
+}
+
+// isSimpleMode reports whether the portal is in simple mode
+// (no directive processing, minimal agent chrome).
+func isSimpleMode(meta *PortalMetadata) bool {
+	return meta != nil && meta.IsSimpleMode
 }
 
 func clonePortalMetadata(src *PortalMetadata) *PortalMetadata {

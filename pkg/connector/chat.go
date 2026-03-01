@@ -29,8 +29,8 @@ const (
 	ToolNameWebSearch  = toolspec.WebSearchName
 )
 
-// defaultRawModeSystemPrompt is the default system prompt for model-only (raw) rooms.
-const defaultRawModeSystemPrompt = "You are a helpful assistant."
+// defaultSimpleModeSystemPrompt is the default system prompt for simple mode rooms.
+const defaultSimpleModeSystemPrompt = "You are a helpful assistant."
 
 func hasAssignedAgent(meta *PortalMetadata) bool {
 	if meta == nil {
@@ -427,16 +427,16 @@ func (oc *AIClient) createAgentChatWithModel(ctx context.Context, agent *agents.
 func (oc *AIClient) createNewChat(ctx context.Context, modelID string) (*bridgev2.CreateChatResponse, error) {
 	portal, chatInfo, err := oc.initPortalForChat(ctx, PortalInitOpts{
 		ModelID:      modelID,
-		SystemPrompt: defaultRawModeSystemPrompt,
+		SystemPrompt: defaultSimpleModeSystemPrompt,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	// Keep model-only chats non-agentic and raw-mode by default.
+	// Keep simple mode chats non-agentic by default.
 	meta := portalMeta(portal)
-	if meta != nil && !meta.IsRawMode {
-		meta.IsRawMode = true
+	if meta != nil && !meta.IsSimpleMode {
+		meta.IsSimpleMode = true
 		if err := portal.Save(ctx); err != nil {
 			return nil, fmt.Errorf("failed to save portal raw mode: %w", err)
 		}
@@ -494,7 +494,7 @@ func cloneForkPortalMetadata(src *PortalMetadata, slug, title string) *PortalMet
 		ConversationMode:    src.ConversationMode,
 		AgentID:             src.AgentID,
 		AgentPrompt:         src.AgentPrompt,
-		IsRawMode:           src.IsRawMode,
+		IsSimpleMode:        src.IsSimpleMode,
 	}
 }
 
@@ -720,7 +720,7 @@ func (oc *AIClient) handleNewChat(
 		oc.sendSystemNotice(runCtx, portal, fmt.Sprintf("That model isn't available: %s", modelID))
 		return
 	}
-	oc.createAndOpenModelChat(runCtx, portal, modelID)
+	oc.createAndOpenSimpleChat(runCtx, portal, modelID)
 }
 
 func (oc *AIClient) resolveAgentModelForNewChat(ctx context.Context, agent *agents.AgentDefinition, preferredModel string) (string, error) {
@@ -783,8 +783,8 @@ func (oc *AIClient) createAndOpenAgentChat(ctx context.Context, portal *bridgev2
 	))
 }
 
-func (oc *AIClient) createAndOpenModelChat(ctx context.Context, portal *bridgev2.Portal, modelID string) {
-	newPortal, chatInfo, err := oc.createNewChatWithModel(ctx, modelID)
+func (oc *AIClient) createAndOpenSimpleChat(ctx context.Context, portal *bridgev2.Portal, modelID string) {
+	newPortal, chatInfo, err := oc.createNewSimpleChat(ctx, modelID)
 	if err != nil {
 		oc.sendSystemNotice(ctx, portal, "Couldn't create the chat: "+err.Error())
 		return
@@ -925,22 +925,20 @@ func (oc *AIClient) copyMessagesToChat(
 	return copiedCount
 }
 
-// createNewChatWithModel creates a new chat portal with the specified model and default settings
-func (oc *AIClient) createNewChatWithModel(ctx context.Context, modelID string) (*bridgev2.Portal, *bridgev2.ChatInfo, error) {
+// createNewSimpleChat creates a new simple mode chat portal with the specified model.
+func (oc *AIClient) createNewSimpleChat(ctx context.Context, modelID string) (*bridgev2.Portal, *bridgev2.ChatInfo, error) {
 	portal, chatInfo, err := oc.initPortalForChat(ctx, PortalInitOpts{
 		ModelID:      modelID,
-		SystemPrompt: defaultRawModeSystemPrompt,
+		SystemPrompt: defaultSimpleModeSystemPrompt,
 	})
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Model-only rooms are "raw"/non-agentic rooms. This disables directive processing
-	// and prevents media-understanding unions from making the room appear more capable
-	// than the base model.
+	// Simple mode rooms are non-agentic. This disables directive processing.
 	meta := portalMeta(portal)
-	if meta != nil && !meta.IsRawMode {
-		meta.IsRawMode = true
+	if meta != nil && !meta.IsSimpleMode {
+		meta.IsSimpleMode = true
 		if err := portal.Save(ctx); err != nil {
 			return nil, nil, err
 		}
@@ -1178,7 +1176,7 @@ func (oc *AIClient) handleModelSwitch(ctx context.Context, portal *bridgev2.Port
 		return
 	}
 
-	// For non-agent rooms, use model-only ghosts
+	// For non-agent rooms, use simple mode ghosts
 	oc.loggerForContext(ctx).Info().
 		Str("old_model", oldModel).
 		Str("new_model", newModel).

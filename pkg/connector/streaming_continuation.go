@@ -76,7 +76,7 @@ func (oc *AIClient) buildContinuationParams(
 	}
 
 	// Add builtin function tools only for agent chats that support tool calling.
-	// Model-only chats use a simple prompt without tools to avoid context overflow on small models.
+	// Simple mode chats use a minimal prompt without tools to avoid context overflow on small models.
 	agentID := resolveAgentID(meta)
 	strictMode := resolveToolStrictMode(isOpenRouter)
 	if meta.Capabilities.SupportsToolCalling && agentID != "" {

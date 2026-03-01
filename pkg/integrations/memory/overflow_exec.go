@@ -18,7 +18,7 @@ type FlushSettings struct {
 }
 
 type OverflowDeps struct {
-	IsRawMode        func(call any) bool
+	IsSimpleMode     func(call any) bool
 	ResolveSettings  func() *FlushSettings
 	TrimPrompt       func(prompt []openai.ChatCompletionMessageParamUnion) []openai.ChatCompletionMessageParamUnion
 	ContextWindow    func(call any) int
@@ -37,7 +37,7 @@ func HandleOverflow(
 	prompt []openai.ChatCompletionMessageParamUnion,
 	deps OverflowDeps,
 ) {
-	if deps.IsRawMode != nil && deps.IsRawMode(call) {
+	if deps.IsSimpleMode != nil && deps.IsSimpleMode(call) {
 		return
 	}
 	settings := deps.ResolveSettings

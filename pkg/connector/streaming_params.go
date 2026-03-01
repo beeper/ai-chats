@@ -66,7 +66,7 @@ func (oc *AIClient) buildResponsesAPIParams(ctx context.Context, portal *bridgev
 		Msg("Provider detection for tool filtering")
 
 	// Add builtin function tools only for agent chats that support tool calling.
-	// Model-only chats use a simple prompt without tools to avoid context overflow on small models.
+	// Simple mode chats use a minimal prompt without tools to avoid context overflow on small models.
 	hasAgent := resolveAgentID(meta) != ""
 	strictMode := resolveToolStrictMode(isOpenRouter)
 	if meta.Capabilities.SupportsToolCalling && hasAgent {

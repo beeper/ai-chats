@@ -126,10 +126,10 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 
 	rawContent := state.accumulated.String()
 
-	// Check response mode - raw mode skips directive processing
+	// Check response mode - simple mode skips directive processing
 	responseMode := oc.getAgentResponseMode(meta)
 	if responseMode == agents.ResponseModeRaw {
-		// Raw mode: send content directly without directive processing
+		// Simple/raw mode: send content directly without directive processing
 		rendered := format.RenderMarkdown(rawContent, true, true)
 		replyTo := id.EventID("")
 		if state != nil {

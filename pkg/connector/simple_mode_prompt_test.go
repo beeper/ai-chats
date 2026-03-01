@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func TestRawModePrompt_HasSingleSystemPromptWithTimeAndWebSearch(t *testing.T) {
+func TestSimpleModePrompt_HasSingleSystemPromptWithTimeAndWebSearch(t *testing.T) {
 	client := &AIClient{
 		connector: &OpenAIConnector{
 			Config: Config{
@@ -19,8 +19,8 @@ func TestRawModePrompt_HasSingleSystemPromptWithTimeAndWebSearch(t *testing.T) {
 	}
 
 	meta := &PortalMetadata{
-		IsRawMode: true,
-		// No SystemPrompt override: should use defaultRawModeSystemPrompt.
+		IsSimpleMode: true,
+		// No SystemPrompt override: should use defaultSimpleModeSystemPrompt.
 	}
 
 	out, err := client.buildPromptWithLinkContext(context.Background(), nil, meta, "hello", nil, "")
@@ -41,8 +41,8 @@ func TestRawModePrompt_HasSingleSystemPromptWithTimeAndWebSearch(t *testing.T) {
 	if systemCount != 1 {
 		t.Fatalf("expected exactly 1 system message, got %d", systemCount)
 	}
-	if !strings.Contains(systemText, defaultRawModeSystemPrompt) {
-		t.Fatalf("expected system prompt to include default raw prompt, got: %q", systemText)
+	if !strings.Contains(systemText, defaultSimpleModeSystemPrompt) {
+		t.Fatalf("expected system prompt to include default simple mode prompt, got: %q", systemText)
 	}
 	if !strings.Contains(systemText, "Current time:") {
 		t.Fatalf("expected system prompt to include current time line, got: %q", systemText)
@@ -52,7 +52,7 @@ func TestRawModePrompt_HasSingleSystemPromptWithTimeAndWebSearch(t *testing.T) {
 	}
 }
 
-func TestRawModePrompt_NoWebSearchHintEvenWhenConfigured(t *testing.T) {
+func TestSimpleModePrompt_NoWebSearchHintEvenWhenConfigured(t *testing.T) {
 	client := &AIClient{
 		connector: &OpenAIConnector{
 			Config: Config{
@@ -69,7 +69,7 @@ func TestRawModePrompt_NoWebSearchHintEvenWhenConfigured(t *testing.T) {
 	}
 
 	meta := &PortalMetadata{
-		IsRawMode: true,
+		IsSimpleMode: true,
 		Capabilities: ModelCapabilities{
 			SupportsToolCalling: true,
 		},
@@ -91,11 +91,11 @@ func TestRawModePrompt_NoWebSearchHintEvenWhenConfigured(t *testing.T) {
 		t.Fatalf("expected a system prompt")
 	}
 	if strings.Contains(systemText, "web_search") {
-		t.Fatalf("raw mode should not advertise web_search (tools are never injected), got: %q", systemText)
+		t.Fatalf("simple mode should not advertise web_search (tools are never injected), got: %q", systemText)
 	}
 }
 
-func TestRawModePrompt_LatestUserMessageUnchanged_NoLinkContext_NoMessageID(t *testing.T) {
+func TestSimpleModePrompt_LatestUserMessageUnchanged_NoLinkContext_NoMessageID(t *testing.T) {
 	client := &AIClient{
 		connector: &OpenAIConnector{
 			Config: Config{
@@ -106,13 +106,13 @@ func TestRawModePrompt_LatestUserMessageUnchanged_NoLinkContext_NoMessageID(t *t
 					Enabled:         true,
 					MaxURLsInbound:  5,
 					MaxContentChars: 2000,
-					FetchTimeout:    50 * time.Millisecond, // unused in raw mode
+					FetchTimeout:    50 * time.Millisecond, // unused in simple mode
 				},
 			},
 		},
 	}
 
-	meta := &PortalMetadata{IsRawMode: true}
+	meta := &PortalMetadata{IsSimpleMode: true}
 	latest := "check this: https://example.com"
 
 	out, err := client.buildPromptWithLinkContext(context.Background(), nil, meta, latest, nil, "$evt")
@@ -133,13 +133,13 @@ func TestRawModePrompt_LatestUserMessageUnchanged_NoLinkContext_NoMessageID(t *t
 		t.Fatalf("expected latest user message unchanged, got %q want %q", got, strings.TrimSpace(latest))
 	}
 	if strings.Contains(strings.ToLower(got), "[message_id:") {
-		t.Fatalf("did not expect message_id hint in raw mode, got %q", got)
+		t.Fatalf("did not expect message_id hint in simple mode, got %q", got)
 	}
 }
 
-func TestBuildMatrixInboundBody_RawModeBypassesEnvelopeAndSenderMeta(t *testing.T) {
+func TestBuildMatrixInboundBody_SimpleModeBypassesEnvelopeAndSenderMeta(t *testing.T) {
 	client := &AIClient{}
-	meta := &PortalMetadata{IsRawMode: true}
+	meta := &PortalMetadata{IsSimpleMode: true}
 
 	got := client.buildMatrixInboundBody(context.Background(), nil, meta, nil, "  hi  ", "Alice", "Room", true)
 	if got != "hi" {

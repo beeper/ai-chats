@@ -259,9 +259,9 @@ func (h *runtimeIntegrationHost) SetModuleMeta(meta any, key string, value any) 
 	m.ModuleMeta[key] = value
 }
 
-func (h *runtimeIntegrationHost) IsRawMode(meta any) bool {
+func (h *runtimeIntegrationHost) IsSimpleMode(meta any) bool {
 	m, _ := meta.(*PortalMetadata)
-	return m != nil && m.IsRawMode
+	return isSimpleMode(m)
 }
 
 func (h *runtimeIntegrationHost) AgentIDFromMeta(meta any) string {
