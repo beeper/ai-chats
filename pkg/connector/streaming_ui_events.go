@@ -2,8 +2,6 @@ package connector
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
 )
@@ -23,94 +21,37 @@ func (oc *AIClient) emitUIRuntimeMetadata(
 }
 
 func (oc *AIClient) emitUIStart(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata) {
-	if state.uiStarted {
-		return
-	}
-	state.uiStarted = true
-	oc.emitStreamEvent(ctx, portal, state, map[string]any{
-		"type":            "start",
-		"messageId":       state.turnID,
-		"messageMetadata": oc.buildUIMessageMetadata(state, meta, false),
-	})
+	oc.uiEmitter(state).EmitUIStart(ctx, portal, oc.buildUIMessageMetadata(state, meta, false))
 }
 
 func (oc *AIClient) emitUIMessageMetadata(ctx context.Context, portal *bridgev2.Portal, state *streamingState, metadata map[string]any) {
-	if len(metadata) == 0 {
-		return
-	}
-	oc.emitStreamEvent(ctx, portal, state, map[string]any{
-		"type":            "message-metadata",
-		"messageMetadata": metadata,
-	})
+	oc.uiEmitter(state).EmitUIMessageMetadata(ctx, portal, metadata)
 }
 
 func (oc *AIClient) emitUIAbort(ctx context.Context, portal *bridgev2.Portal, state *streamingState, reason string) {
-	part := map[string]any{
-		"type": "abort",
-	}
-	if strings.TrimSpace(reason) != "" {
-		part["reason"] = reason
-	}
-	oc.emitStreamEvent(ctx, portal, state, part)
+	oc.uiEmitter(state).EmitUIAbort(ctx, portal, reason)
 }
 
 func (oc *AIClient) emitUIStepStart(ctx context.Context, portal *bridgev2.Portal, state *streamingState) {
-	if state.uiStepOpen {
-		return
-	}
-	state.uiStepOpen = true
-	state.uiStepCount++
-	oc.emitStreamEvent(ctx, portal, state, map[string]any{
-		"type": "start-step",
-	})
+	oc.uiEmitter(state).EmitUIStepStart(ctx, portal)
 }
 
 func (oc *AIClient) emitUIStepFinish(ctx context.Context, portal *bridgev2.Portal, state *streamingState) {
-	if !state.uiStepOpen {
-		return
-	}
-	state.uiStepOpen = false
-	oc.emitStreamEvent(ctx, portal, state, map[string]any{
-		"type": "finish-step",
-	})
+	oc.uiEmitter(state).EmitUIStepFinish(ctx, portal)
 }
 
 func (oc *AIClient) ensureUIText(ctx context.Context, portal *bridgev2.Portal, state *streamingState) {
-	if state.uiTextID != "" {
-		return
-	}
-	state.uiTextID = fmt.Sprintf("text-%s", state.turnID)
-	oc.emitStreamEvent(ctx, portal, state, map[string]any{
-		"type": "text-start",
-		"id":   state.uiTextID,
-	})
+	oc.uiEmitter(state).EnsureUIText(ctx, portal)
 }
 
 func (oc *AIClient) ensureUIReasoning(ctx context.Context, portal *bridgev2.Portal, state *streamingState) {
-	if state.uiReasoningID != "" {
-		return
-	}
-	state.uiReasoningID = fmt.Sprintf("reasoning-%s", state.turnID)
-	oc.emitStreamEvent(ctx, portal, state, map[string]any{
-		"type": "reasoning-start",
-		"id":   state.uiReasoningID,
-	})
+	oc.uiEmitter(state).EnsureUIReasoning(ctx, portal)
 }
 
 func (oc *AIClient) emitUITextDelta(ctx context.Context, portal *bridgev2.Portal, state *streamingState, delta string) {
-	oc.ensureUIText(ctx, portal, state)
-	oc.emitStreamEvent(ctx, portal, state, map[string]any{
-		"type":  "text-delta",
-		"id":    state.uiTextID,
-		"delta": delta,
-	})
+	oc.uiEmitter(state).EmitUITextDelta(ctx, portal, delta)
 }
 
 func (oc *AIClient) emitUIReasoningDelta(ctx context.Context, portal *bridgev2.Portal, state *streamingState, delta string) {
-	oc.ensureUIReasoning(ctx, portal, state)
-	oc.emitStreamEvent(ctx, portal, state, map[string]any{
-		"type":  "reasoning-delta",
-		"id":    state.uiReasoningID,
-		"delta": delta,
-	})
+	oc.uiEmitter(state).EmitUIReasoningDelta(ctx, portal, delta)
 }

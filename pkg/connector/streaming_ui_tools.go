@@ -2,7 +2,6 @@ package connector
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -20,62 +19,15 @@ func (oc *AIClient) ensureUIToolInputStart(
 	title string,
 	providerMetadata map[string]any,
 ) {
-	if toolCallID == "" {
-		return
-	}
-	if !state.uiToolStarted[toolCallID] {
-		state.uiToolStarted[toolCallID] = true
-		if strings.TrimSpace(toolName) != "" {
-			state.uiToolNameByToolCallID[toolCallID] = toolName
-		}
-		part := map[string]any{
-			"type":             "tool-input-start",
-			"toolCallId":       toolCallID,
-			"toolName":         toolName,
-			"providerExecuted": providerExecuted,
-		}
-		if dynamic {
-			part["dynamic"] = true
-		}
-		if strings.TrimSpace(title) != "" {
-			part["title"] = title
-		}
-		if len(providerMetadata) > 0 {
-			part["providerMetadata"] = providerMetadata
-		}
-		oc.emitStreamEvent(ctx, portal, state, part)
-	}
-	if strings.TrimSpace(toolName) != "" {
-		state.uiToolNameByToolCallID[toolCallID] = toolName
-	}
+	oc.uiEmitter(state).EnsureUIToolInputStart(ctx, portal, toolCallID, toolName, providerExecuted, dynamic, title, providerMetadata)
 }
 
 func (oc *AIClient) emitUIToolInputDelta(ctx context.Context, portal *bridgev2.Portal, state *streamingState, toolCallID, toolName, delta string, providerExecuted bool) {
-	if toolCallID == "" {
-		return
-	}
-	oc.ensureUIToolInputStart(ctx, portal, state, toolCallID, toolName, providerExecuted, false, toolDisplayTitle(toolName), nil)
-	if delta != "" {
-		oc.emitStreamEvent(ctx, portal, state, map[string]any{
-			"type":           "tool-input-delta",
-			"toolCallId":     toolCallID,
-			"inputTextDelta": delta,
-		})
-	}
+	oc.uiEmitter(state).EmitUIToolInputDelta(ctx, portal, toolCallID, toolName, delta, providerExecuted)
 }
 
 func (oc *AIClient) emitUIToolInputAvailable(ctx context.Context, portal *bridgev2.Portal, state *streamingState, toolCallID, toolName string, input any, providerExecuted bool) {
-	if toolCallID == "" {
-		return
-	}
-	oc.ensureUIToolInputStart(ctx, portal, state, toolCallID, toolName, providerExecuted, false, toolDisplayTitle(toolName), nil)
-	oc.emitStreamEvent(ctx, portal, state, map[string]any{
-		"type":             "tool-input-available",
-		"toolCallId":       toolCallID,
-		"toolName":         toolName,
-		"input":            input,
-		"providerExecuted": providerExecuted,
-	})
+	oc.uiEmitter(state).EmitUIToolInputAvailable(ctx, portal, toolCallID, toolName, input, providerExecuted)
 }
 
 func (oc *AIClient) emitUIToolInputError(
@@ -88,22 +40,7 @@ func (oc *AIClient) emitUIToolInputError(
 	providerExecuted bool,
 	dynamic bool,
 ) {
-	if toolCallID == "" {
-		return
-	}
-	oc.ensureUIToolInputStart(ctx, portal, state, toolCallID, toolName, providerExecuted, dynamic, toolDisplayTitle(toolName), nil)
-	part := map[string]any{
-		"type":             "tool-input-error",
-		"toolCallId":       toolCallID,
-		"toolName":         toolName,
-		"input":            input,
-		"errorText":        errorText,
-		"providerExecuted": providerExecuted,
-	}
-	if dynamic {
-		part["dynamic"] = true
-	}
-	oc.emitStreamEvent(ctx, portal, state, part)
+	oc.uiEmitter(state).EmitUIToolInputError(ctx, portal, toolCallID, toolName, input, errorText, providerExecuted, dynamic)
 }
 
 func (oc *AIClient) emitUIToolApprovalRequest(
@@ -116,21 +53,7 @@ func (oc *AIClient) emitUIToolApprovalRequest(
 	targetEventID id.EventID,
 	ttlSeconds int,
 ) {
-	if strings.TrimSpace(approvalID) == "" || strings.TrimSpace(toolCallID) == "" {
-		return
-	}
-	if state == nil {
-		// Without a streaming state we can't track approvals or emit stream events safely.
-		return
-	}
-	state.uiToolCallIDByApproval[approvalID] = toolCallID
-	oc.emitStreamEvent(ctx, portal, state, map[string]any{
-		"type":       "tool-approval-request",
-		"approvalId": approvalID,
-		"toolCallId": toolCallID,
-		"toolName":   toolName,
-		"ttlSeconds": ttlSeconds,
-	})
+	oc.uiEmitter(state).EmitUIToolApprovalRequest(ctx, portal, approvalID, toolCallID, toolName, ttlSeconds)
 
 	// Send a second tool_call timeline event with approval data so the desktop
 	// ToolEventGrouper can render inline approval buttons.
@@ -142,57 +65,13 @@ func (oc *AIClient) emitUIToolApprovalRequest(
 }
 
 func (oc *AIClient) emitUIToolOutputAvailable(ctx context.Context, portal *bridgev2.Portal, state *streamingState, toolCallID string, output any, providerExecuted bool, preliminary bool) {
-	if toolCallID == "" {
-		return
-	}
-	if state != nil && !preliminary {
-		if state.uiToolOutputFinalized[toolCallID] {
-			return
-		}
-		state.uiToolOutputFinalized[toolCallID] = true
-	}
-	part := map[string]any{
-		"type":             "tool-output-available",
-		"toolCallId":       toolCallID,
-		"output":           output,
-		"providerExecuted": providerExecuted,
-	}
-	if preliminary {
-		part["preliminary"] = true
-	}
-	oc.emitStreamEvent(ctx, portal, state, part)
+	oc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, toolCallID, output, providerExecuted, preliminary)
 }
 
 func (oc *AIClient) emitUIToolOutputDenied(ctx context.Context, portal *bridgev2.Portal, state *streamingState, toolCallID string) {
-	if strings.TrimSpace(toolCallID) == "" {
-		return
-	}
-	if state != nil {
-		if state.uiToolOutputFinalized[toolCallID] {
-			return
-		}
-		state.uiToolOutputFinalized[toolCallID] = true
-	}
-	oc.emitStreamEvent(ctx, portal, state, map[string]any{
-		"type":       "tool-output-denied",
-		"toolCallId": toolCallID,
-	})
+	oc.uiEmitter(state).EmitUIToolOutputDenied(ctx, portal, toolCallID)
 }
 
 func (oc *AIClient) emitUIToolOutputError(ctx context.Context, portal *bridgev2.Portal, state *streamingState, toolCallID, errorText string, providerExecuted bool) {
-	if toolCallID == "" {
-		return
-	}
-	if state != nil {
-		if state.uiToolOutputFinalized[toolCallID] {
-			return
-		}
-		state.uiToolOutputFinalized[toolCallID] = true
-	}
-	oc.emitStreamEvent(ctx, portal, state, map[string]any{
-		"type":             "tool-output-error",
-		"toolCallId":       toolCallID,
-		"errorText":        errorText,
-		"providerExecuted": providerExecuted,
-	})
+	oc.uiEmitter(state).EmitUIToolOutputError(ctx, portal, toolCallID, errorText, providerExecuted)
 }
