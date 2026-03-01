@@ -48,6 +48,8 @@ var (
 	_ bridgev2.TypingHandlingNetworkAPI         = (*AIClient)(nil)
 )
 
+var mediaDownloadHTTPClient = &http.Client{Timeout: 60 * time.Second}
+
 var rejectAllMediaFileFeatures = &event.FileFeatures{
 	MimeTypes: map[string]event.CapabilitySupportLevel{
 		"*/*": event.CapLevelRejected,
@@ -2611,12 +2613,7 @@ func (oc *AIClient) downloadAndEncodeMedia(ctx context.Context, mxcURL string, e
 		return "", "", fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Use a client with timeout
-	client := &http.Client{
-		Timeout: 60 * time.Second,
-	}
-
-	resp, err := client.Do(req)
+	resp, err := mediaDownloadHTTPClient.Do(req)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to download media: %w", err)
 	}
