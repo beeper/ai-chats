@@ -22,10 +22,8 @@ func (cc *CodexClient) sendDebouncedStreamEdit(ctx context.Context, portal *brid
 		VisibleBody:    state.visibleAccumulated.String(),
 		FallbackBody:   state.accumulated.String(),
 		InitialEventID: state.initialEventID,
-		TurnID:         state.turnID,
-		Gate:           nil,
-		Debounce:       0,
-		Intent:         cc.getCodexIntent(ctx, portal),
+		TurnID:  state.turnID,
+		Intent:  cc.getCodexIntent(ctx, portal),
 		Log:            cc.loggerForContext(ctx),
 	})
 	return nil

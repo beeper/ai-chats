@@ -3,7 +3,6 @@ package streamtransport
 import (
 	"context"
 	"strings"
-	"time"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
@@ -22,9 +21,7 @@ type DebouncedEditParams struct {
 	InitialEventID id.EventID
 	TurnID         string
 
-	Gate     **EditDebounceGate
-	Debounce time.Duration
-	Intent   bridgev2.MatrixAPI
+	Intent bridgev2.MatrixAPI
 	Log      *zerolog.Logger
 }
 
@@ -45,19 +42,7 @@ func SendDebouncedEdit(ctx context.Context, p DebouncedEditParams) bool {
 		return false
 	}
 
-	now := time.Now()
-	shouldEmit := p.Force
-	if !shouldEmit {
-		if p.Gate == nil {
-			gate := NewEditDebounceGate()
-			p.Gate = &gate
-		}
-		if *p.Gate == nil {
-			*p.Gate = NewEditDebounceGate()
-		}
-		shouldEmit = (*p.Gate).ShouldEmit(p.TurnID, body, now, p.Debounce)
-	}
-	if !shouldEmit {
+	if !p.Force {
 		return false
 	}
 

@@ -19,11 +19,8 @@ func (oc *AIClient) sendDebouncedStreamEdit(ctx context.Context, portal *bridgev
 		VisibleBody:    state.visibleAccumulated.String(),
 		FallbackBody:   state.accumulated.String(),
 		InitialEventID: state.initialEventID,
-		TurnID:         state.turnID,
-		// Session owns debounce scheduling and coalescing.
-		Gate:     nil,
-		Debounce: 0,
-		Intent:   oc.getModelIntent(ctx, portal),
+		TurnID:  state.turnID,
+		Intent:  oc.getModelIntent(ctx, portal),
 		Log:      oc.loggerForContext(ctx),
 	})
 	return nil
