@@ -184,7 +184,7 @@ func ShouldDebounce(evt *event.Event, body string) bool {
 	if strings.HasPrefix(trimmed, "!") {
 		return false
 	}
-	if isAbortTrigger(trimmed) {
+	if airuntime.IsAbortTriggerText(trimmed) {
 		return false
 	}
 

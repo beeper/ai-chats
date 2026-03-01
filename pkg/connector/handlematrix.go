@@ -176,11 +176,11 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	if isGroup {
 		commandBody = stripMentionPatterns(commandBody, mentionRegexes)
 	}
-	if !commandAuthorized && isAbortTrigger(commandBody) {
+	if !commandAuthorized && airuntime.IsAbortTriggerText(commandBody) {
 		logCtx.Debug().Msg("Ignoring abort trigger from unauthorized sender")
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
-	if commandAuthorized && isAbortTrigger(commandBody) {
+	if commandAuthorized && airuntime.IsAbortTriggerText(commandBody) {
 		stopped := oc.abortRoom(ctx, portal, meta)
 		oc.sendSystemNotice(ctx, portal, formatAbortNotice(stopped))
 		logCtx.Debug().Msg("Abort trigger handled")
