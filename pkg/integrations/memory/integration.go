@@ -27,11 +27,6 @@ type FallbackStatus = memorycore.FallbackStatus
 type ProviderStatus = memorycore.ProviderStatus
 type ResolvedConfig = memorycore.ResolvedConfig
 
-type SourceCount = MemorySearchSourceCount
-type CacheStatus = MemorySearchCacheStatus
-type FTSStatus = MemorySearchFTSStatus
-type VectorStatus = MemorySearchVectorStatus
-type BatchStatus = MemorySearchBatchStatus
 type StatusDetails = MemorySearchStatus
 
 type Manager interface {

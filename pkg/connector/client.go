@@ -2900,17 +2900,6 @@ func getModelCapabilities(modelID string, info *ModelInfo) ModelCapabilities {
 	return caps
 }
 
-// AgentState tracks the state of an active agent turn
-type AgentState struct {
-	AgentID     string
-	TurnID      string
-	Status      string // pending, thinking, generating, tool_use, completed, failed, cancelled
-	StartedAt   time.Time
-	Model       string
-	ToolCalls   []string // Event IDs of tool calls
-	ImageEvents []string // Event IDs of generated images
-}
-
 // buildDedupeKey creates a unique key for inbound message deduplication.
 // Format: matrix|{loginID}|{roomID}|{eventID}
 func (oc *AIClient) buildDedupeKey(roomID id.RoomID, eventID id.EventID) string {
