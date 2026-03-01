@@ -77,7 +77,6 @@ func (m *MemorySearchManager) syncSessions(ctx context.Context, force bool, sess
 		Int("files", len(active)).
 		Bool("needsFullReindex", force).
 		Int("dirtyFiles", dirtyFiles).
-		Bool("batch", m.batchEnabled).
 		Int("concurrency", m.indexConcurrency()).
 		Msg("memory sync: indexing session files")
 

@@ -6,16 +6,9 @@ import (
 )
 
 func (m *MemorySearchManager) purgeSessionPath(ctx context.Context, path string, ops *pendingVectorOps) {
+	_ = ops
 	if path == "" {
 		return
-	}
-	if m.vectorAvailable() {
-		ids := m.collectChunkIDs(ctx, path, "sessions", m.status.Model, "")
-		if ops != nil {
-			ops.deletes = append(ops.deletes, ids...)
-		} else {
-			m.deleteVectorIDs(ctx, ids)
-		}
 	}
 	_, _ = m.db.Exec(ctx,
 		`DELETE FROM ai_memory_chunks

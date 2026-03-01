@@ -3,7 +3,6 @@ package memory
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -38,10 +37,7 @@ type MemorySearchManager struct {
 	loginID      string
 	agentID      string
 	cfg          *memorycore.ResolvedConfig
-	provider     memorycore.EmbeddingProvider
 	status       memorycore.ProviderStatus
-	providerKey  string
-	vectorDims   int
 	indexGen     string
 	ftsAvailable bool
 	ftsError     string
@@ -57,14 +53,7 @@ type MemorySearchManager struct {
 	intervalOnce      sync.Once
 	intervalStop      chan struct{}
 	intervalStopOnce  sync.Once
-	vectorExtOK       *vectorExtStatus
-	vectorError       string
-	batchEnabled      bool
-	batchFailures     int
-	batchLastError    string
-	batchLastProvider string
 	mu                sync.Mutex
-	vectorMu          sync.Mutex // protects vectorExtOK and vectorError; separate from mu to avoid deadlock when sync() holds mu
 }
 
 type MemorySearchStatus struct {
@@ -161,27 +150,22 @@ func GetMemorySearchManager(runtime Runtime, agentID string) (*MemorySearchManag
 		return existing, ""
 	}
 
-	providerResult, err := buildMemoryProvider(runtime, cfg)
-	if err != nil {
-		return nil, err.Error()
-	}
-
 	manager := &MemorySearchManager{
-		runtime:     runtime,
-		db:          db,
-		bridgeID:    bridgeID,
-		loginID:     loginID,
-		agentID:     agentID,
-		cfg:         cfg,
-		provider:    providerResult.Provider,
-		status:      providerResult.Status,
-		providerKey: providerResult.ProviderKey,
-		log:         runtime.Logger().With().Str("component", "memory").Logger(),
+		runtime:  runtime,
+		db:       db,
+		bridgeID: bridgeID,
+		loginID:  loginID,
+		agentID:  agentID,
+		cfg:      cfg,
+		status: memorycore.ProviderStatus{
+			Provider: "builtin",
+			Model:    "lexical",
+		},
+		log: runtime.Logger().With().Str("component", "memory").Logger(),
 	}
 	if hasSource(cfg.Sources, "memory") || hasSource(cfg.Sources, "workspace") {
 		manager.dirty = true
 	}
-	manager.batchEnabled = cfg.Remote.Batch.Enabled
 
 	initCtx, initCancel := context.WithTimeout(context.Background(), memoryManagerInitTimeout)
 	defer initCancel()
@@ -208,23 +192,13 @@ func (m *MemorySearchManager) ensureDefaultMemoryFiles(ctx context.Context) {
 }
 
 func (m *MemorySearchManager) ProbeVectorAvailability(ctx context.Context) bool {
-	if m == nil || m.cfg == nil || !m.cfg.Store.Vector.Enabled {
-		return false
-	}
-	// Probe by trying to grab+release a vector connection.
-	err := m.withVectorConn(ctx, func(_ *sql.Conn) error { return nil })
-	return err == nil
+	_ = ctx
+	return false
 }
 
 func (m *MemorySearchManager) ProbeEmbeddingAvailability(ctx context.Context) (bool, string) {
-	if m == nil || m.provider == nil {
-		return false, "memory search unavailable"
-	}
-	_, err := m.embedBatchWithRetry(ctx, []string{"ping"})
-	if err != nil {
-		return false, err.Error()
-	}
-	return true, ""
+	_ = ctx
+	return false, "embeddings disabled (lexical memory mode)"
 }
 
 func (m *MemorySearchManager) StatusDetails(ctx context.Context) (*MemorySearchStatus, error) {
@@ -241,17 +215,7 @@ func (m *MemorySearchManager) StatusDetails(ctx context.Context) (*MemorySearchS
 	m.mu.Lock()
 	dirty := m.dirty
 	indexGen := m.indexGen
-	vectorDims := m.vectorDims
-	batchEnabled := m.batchEnabled
-	batchFailures := m.batchFailures
-	batchLastError := m.batchLastError
-	batchLastProvider := m.batchLastProvider
 	m.mu.Unlock()
-
-	// Snapshot vector fields under vectorMu.
-	m.vectorMu.Lock()
-	vectorError := m.vectorError
-	m.vectorMu.Unlock()
 
 	workspaceDir := ""
 	if m.runtime != nil {
@@ -325,38 +289,17 @@ func (m *MemorySearchManager) StatusDetails(ctx context.Context) (*MemorySearchS
 	status.Cache = cacheStatus
 
 	status.FTS = &MemorySearchFTSStatus{
-		Enabled:   m.cfg.Query.Hybrid.Enabled,
+		Enabled:   true,
 		Available: m.ftsAvailable,
 		Error:     m.ftsError,
 	}
-
-	vectorAvailablePtr := (*bool)(nil)
-	if m.vectorAvailable() {
-		ready := true
-		vectorAvailablePtr = &ready
-	} else if vectorError != "" {
-		ready := false
-		vectorAvailablePtr = &ready
-	}
 	status.Vector = &MemorySearchVectorStatus{
-		Enabled:       m.cfg.Store.Vector.Enabled,
-		Available:     vectorAvailablePtr,
-		ExtensionPath: m.cfg.Store.Vector.ExtensionPath,
-		LoadError:     vectorError,
-		Dims:          vectorDims,
+		Enabled:   false,
+		Available: nil,
 	}
 
-	timeoutMs := m.cfg.Remote.Batch.TimeoutMinutes * 60 * 1000
 	status.Batch = &MemorySearchBatchStatus{
-		Enabled:        batchEnabled,
-		Failures:       batchFailures,
-		Limit:          2,
-		Wait:           m.cfg.Remote.Batch.Wait,
-		Concurrency:    m.cfg.Remote.Batch.Concurrency,
-		PollIntervalMs: m.cfg.Remote.Batch.PollIntervalMs,
-		TimeoutMs:      timeoutMs,
-		LastError:      batchLastError,
-		LastProvider:   batchLastProvider,
+		Enabled: false,
 	}
 
 	m.log.Info().
@@ -479,106 +422,27 @@ func (m *MemorySearchManager) Search(ctx context.Context, query string, opts mem
 		return clampInjectedChars(filterAndLimit(results, minScore, maxResults), m.cfg.Query.MaxInjectedChars), nil
 	}
 
-	wantKeyword := mode == "auto" || mode == "keyword" || mode == "hybrid"
-	wantVector := mode == "auto" || mode == "semantic" || mode == "hybrid"
-
-	keywordResults := []memorycore.HybridKeywordResult{} // mergeable (chunk-level)
-	keywordDirect := []memorycore.SearchResult{}         // non-mergeable (file-level)
-	keywordOK := false
-	if wantKeyword {
-		if m.ftsAvailable {
-			results, err := m.searchKeyword(ctx, cleaned, candidates, sources, pathPrefix, indexGen)
-			if err == nil {
-				keywordResults = results
-				keywordOK = true
-			}
-			// In auto mode, prefer returning fast keyword hits before paying for embeddings.
-			if mode == "auto" {
-				fast := clampInjectedChars(
-					filterAndLimit(keywordResultsToSearch(keywordResults), minScore, maxResults),
-					m.cfg.Query.MaxInjectedChars,
-				)
-				if len(fast) > 0 {
-					return fast, nil
-				}
-			}
-		}
-		if !keywordOK {
-			// If FTS isn't available, avoid scanning chunks for auto/keyword mode: scan files instead.
-			// Hybrid mode needs chunk IDs for merge, so it still uses chunk scan fallback.
-			if mode == "hybrid" {
-				results, err := m.searchKeywordScan(ctx, cleaned, candidates, sources, pathPrefix, indexGen)
-				if err == nil {
-					keywordResults = results
-					keywordOK = true
-				}
-			} else {
-				results, err := m.searchKeywordFiles(ctx, cleaned, candidates, sources, pathPrefix)
-				if err == nil {
-					keywordDirect = results
-					keywordOK = len(results) > 0
-				}
-			}
+	chunkResults := []memorycore.HybridKeywordResult{}
+	if m.ftsAvailable {
+		results, err := m.searchKeyword(ctx, cleaned, candidates, sources, pathPrefix, indexGen)
+		if err == nil {
+			chunkResults = results
 		}
 	}
-
-	vectorResults := []memorycore.HybridVectorResult{}
-	vectorOK := false
-	// In auto mode, only pay for embeddings if keyword search couldn't find anything.
-	if wantVector && m.cfg.Store.Vector.Enabled && !(mode == "auto" && keywordOK) {
-		queryVec, err := m.embedQueryWithTimeout(ctx, cleaned)
+	if len(chunkResults) == 0 && (mode == "semantic" || mode == "hybrid") {
+		results, err := m.searchKeywordScan(ctx, cleaned, candidates, sources, pathPrefix, indexGen)
+		if err == nil {
+			chunkResults = results
+		}
+	}
+	if len(chunkResults) == 0 {
+		results, err := m.searchKeywordFiles(ctx, cleaned, candidates, sources, pathPrefix)
 		if err != nil {
-			// For semantic-only queries, embedding failures are fatal. For auto/hybrid,
-			// we degrade to keyword search.
-			if mode == "semantic" {
-				return nil, err
-			}
-			queryVec = nil
+			return nil, err
 		}
-		if len(queryVec) > 0 {
-			hasVector := false
-			for _, v := range queryVec {
-				if v != 0 {
-					hasVector = true
-					break
-				}
-			}
-			if hasVector {
-				results, err := m.searchVector(ctx, queryVec, candidates, sources, pathPrefix, indexGen)
-				if err == nil {
-					vectorResults = results
-					vectorOK = true
-				}
-			}
-		}
+		return clampInjectedChars(filterAndLimit(results, minScore, maxResults), m.cfg.Query.MaxInjectedChars), nil
 	}
-
-	switch mode {
-	case "semantic":
-		return clampInjectedChars(filterAndLimit(vectorResultsToSearch(vectorResults), minScore, maxResults), m.cfg.Query.MaxInjectedChars), nil
-	case "keyword":
-		if len(keywordDirect) > 0 {
-			return clampInjectedChars(filterAndLimit(keywordDirect, minScore, maxResults), m.cfg.Query.MaxInjectedChars), nil
-		}
-		return clampInjectedChars(filterAndLimit(keywordResultsToSearch(keywordResults), minScore, maxResults), m.cfg.Query.MaxInjectedChars), nil
-	}
-
-	// auto/hybrid: merge when hybrid is enabled and we have both sides; otherwise
-	// degrade to whichever side succeeded.
-	if m.cfg.Query.Hybrid.Enabled && vectorOK && keywordOK {
-		merged := memorycore.MergeHybridResults(vectorResults, keywordResults, m.cfg.Query.Hybrid.VectorWeight, m.cfg.Query.Hybrid.TextWeight)
-		return clampInjectedChars(filterAndLimit(merged, minScore, maxResults), m.cfg.Query.MaxInjectedChars), nil
-	}
-	if vectorOK {
-		return clampInjectedChars(filterAndLimit(vectorResultsToSearch(vectorResults), minScore, maxResults), m.cfg.Query.MaxInjectedChars), nil
-	}
-	if keywordOK {
-		if len(keywordDirect) > 0 {
-			return clampInjectedChars(filterAndLimit(keywordDirect, minScore, maxResults), m.cfg.Query.MaxInjectedChars), nil
-		}
-		return clampInjectedChars(filterAndLimit(keywordResultsToSearch(keywordResults), minScore, maxResults), m.cfg.Query.MaxInjectedChars), nil
-	}
-	return []memorycore.SearchResult{}, nil
+	return clampInjectedChars(filterAndLimit(keywordResultsToSearch(chunkResults), minScore, maxResults), m.cfg.Query.MaxInjectedChars), nil
 }
 
 func normalizeSearchSources(requested []string, fallback []string) []string {

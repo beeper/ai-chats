@@ -40,6 +40,7 @@ func PurgeManagersForLogin(ctx context.Context, bridgeID, loginID string, chunkI
 	if strings.TrimSpace(bridgeID) == "" || strings.TrimSpace(loginID) == "" {
 		return
 	}
+	_ = chunkIDsByAgent
 	prefix := bridgeID + ":" + loginID + ":"
 
 	memoryManagerCache.mu.Lock()
@@ -55,19 +56,15 @@ func PurgeManagersForLogin(ctx context.Context, bridgeID, loginID string, chunkI
 	}
 	memoryManagerCache.mu.Unlock()
 
-	// Best-effort: delete vector table rows using the grab+release pattern.
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	for _, mgr := range managers {
-		if ids := chunkIDsByAgent[mgr.agentID]; len(ids) > 0 {
-			mgr.deleteVectorIDs(ctx, ids)
-		}
 		mgr.Close()
 	}
 }
 
-// stopMemoryManagersForLogin stops all memory managers for a login without deleting vector rows.
+// stopMemoryManagersForLogin stops all memory managers for a login.
 // Used during disconnect to release goroutines and timers.
 func StopManagersForLogin(bridgeID, loginID string) {
 	if strings.TrimSpace(bridgeID) == "" || strings.TrimSpace(loginID) == "" {
