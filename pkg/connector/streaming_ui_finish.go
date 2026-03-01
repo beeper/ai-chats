@@ -7,10 +7,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 )
 
-func (oc *AIClient) emitUIError(ctx context.Context, portal *bridgev2.Portal, state *streamingState, errText string) {
-	oc.uiEmitter(state).EmitUIError(ctx, portal, errText)
-}
-
 func (oc *AIClient) emitUIFinish(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata) {
 	ui := oc.uiEmitter(state)
 	ui.EmitUIFinish(ctx, portal, mapFinishReason(state.finishReason), oc.buildUIMessageMetadata(state, meta, true))

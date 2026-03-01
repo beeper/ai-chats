@@ -47,7 +47,7 @@ func (oc *AIClient) upsertActiveToolFromDescriptor(
 	if tool.eventID == "" && strings.TrimSpace(tool.toolName) != "" {
 		tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
 	}
-	oc.ensureUIToolInputStart(ctx, portal, state, tool.callID, tool.toolName, desc.providerExecuted, desc.dynamic, toolDisplayTitle(tool.toolName), nil)
+	oc.uiEmitter(state).EnsureUIToolInputStart(ctx, portal, tool.callID, tool.toolName, desc.providerExecuted, desc.dynamic, toolDisplayTitle(tool.toolName), nil)
 	return tool
 }
 
@@ -86,7 +86,7 @@ func (oc *AIClient) handleCustomToolInputDeltaFromOutputItem(
 		return
 	}
 	tool.input.WriteString(delta)
-	oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, delta, tool.toolType == ToolTypeProvider)
+	oc.uiEmitter(state).EmitUIToolInputDelta(ctx, portal, tool.callID, tool.toolName, delta, tool.toolType == ToolTypeProvider)
 }
 
 func (oc *AIClient) handleCustomToolInputDoneFromOutputItem(
@@ -105,7 +105,7 @@ func (oc *AIClient) handleCustomToolInputDoneFromOutputItem(
 	if tool.input.Len() == 0 && strings.TrimSpace(inputText) != "" {
 		tool.input.WriteString(inputText)
 	}
-	oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, parseJSONOrRaw(tool.input.String()), tool.toolType == ToolTypeProvider)
+	oc.uiEmitter(state).EmitUIToolInputAvailable(ctx, portal, tool.callID, tool.toolName, parseJSONOrRaw(tool.input.String()), tool.toolType == ToolTypeProvider)
 }
 
 func (oc *AIClient) handleProviderToolInputDeltaFromOutputItem(
@@ -122,7 +122,7 @@ func (oc *AIClient) handleProviderToolInputDeltaFromOutputItem(
 		return
 	}
 	tool.input.WriteString(delta)
-	oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, delta, true)
+	oc.uiEmitter(state).EmitUIToolInputDelta(ctx, portal, tool.callID, tool.toolName, delta, true)
 }
 
 func (oc *AIClient) handleProviderToolInputDoneFromOutputItem(
@@ -141,7 +141,7 @@ func (oc *AIClient) handleProviderToolInputDoneFromOutputItem(
 	if tool.input.Len() == 0 && strings.TrimSpace(inputText) != "" {
 		tool.input.WriteString(inputText)
 	}
-	oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, parseJSONOrRaw(tool.input.String()), true)
+	oc.uiEmitter(state).EmitUIToolInputAvailable(ctx, portal, tool.callID, tool.toolName, parseJSONOrRaw(tool.input.String()), true)
 }
 
 func (oc *AIClient) handleMCPCallFailedFromOutputItem(
@@ -165,9 +165,9 @@ func (oc *AIClient) handleMCPCallFailedFromOutputItem(
 	}
 	denied := outputItemLooksDenied(item)
 	if denied {
-		oc.emitUIToolOutputDenied(ctx, portal, state, tool.callID)
+		oc.uiEmitter(state).EmitUIToolOutputDenied(ctx, portal, tool.callID)
 	} else {
-		oc.emitUIToolOutputError(ctx, portal, state, tool.callID, errorText, true)
+		oc.uiEmitter(state).EmitUIToolOutputError(ctx, portal, tool.callID, errorText, true)
 	}
 
 	output := map[string]any{}
@@ -214,7 +214,7 @@ func (oc *AIClient) gateMcpToolApproval(
 	if tool.input.Len() == 0 {
 		tool.input.WriteString(stringifyJSONValue(desc.input))
 	}
-	oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, desc.input, true)
+	oc.uiEmitter(state).EmitUIToolInputAvailable(ctx, portal, tool.callID, tool.toolName, desc.input, true)
 	if state.pendingMcpApprovalsSeen[approvalID] {
 		return
 	}
@@ -292,7 +292,7 @@ func (oc *AIClient) handleResponseOutputItemAdded(
 		if tool.input.Len() == 0 {
 			tool.input.WriteString(stringifyJSONValue(desc.input))
 		}
-		oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, desc.input, desc.providerExecuted)
+		oc.uiEmitter(state).EmitUIToolInputAvailable(ctx, portal, tool.callID, tool.toolName, desc.input, desc.providerExecuted)
 	}
 }
 
@@ -327,13 +327,13 @@ func (oc *AIClient) handleResponseOutputItemDone(
 		if tool.input.Len() == 0 {
 			tool.input.WriteString(stringifyJSONValue(desc.input))
 		}
-		oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, desc.input, desc.providerExecuted)
+		oc.uiEmitter(state).EmitUIToolInputAvailable(ctx, portal, tool.callID, tool.toolName, desc.input, desc.providerExecuted)
 	}
 
 	if files := codeInterpreterFileParts(item); len(files) > 0 {
 		for _, file := range files {
 			recordGeneratedFile(state, file.URL, file.MediaType)
-			oc.emitUIFile(ctx, portal, state, file.URL, file.MediaType)
+			oc.uiEmitter(state).EmitUIFile(ctx, portal, file.URL, file.MediaType)
 		}
 	}
 
@@ -343,16 +343,16 @@ func (oc *AIClient) handleResponseOutputItemDone(
 	errorText := strings.TrimSpace(item.Error)
 	switch {
 	case outputItemLooksDenied(item):
-		oc.emitUIToolOutputDenied(ctx, portal, state, tool.callID)
+		oc.uiEmitter(state).EmitUIToolOutputDenied(ctx, portal, tool.callID)
 		resultStatus = ResultStatusDenied
 	case statusText == "failed" || statusText == "incomplete" || errorText != "":
 		if errorText == "" {
 			errorText = fmt.Sprintf("%s failed", tool.toolName)
 		}
-		oc.emitUIToolOutputError(ctx, portal, state, tool.callID, errorText, true)
+		oc.uiEmitter(state).EmitUIToolOutputError(ctx, portal, tool.callID, errorText, true)
 		resultStatus = ResultStatusError
 	default:
-		oc.emitUIToolOutputAvailable(ctx, portal, state, tool.callID, result, true, false)
+		oc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, tool.callID, result, true, false)
 	}
 
 	resultJSON, _ := json.Marshal(result)

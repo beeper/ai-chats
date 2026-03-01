@@ -63,7 +63,7 @@ func (oc *AIClient) handleFunctionCallArgumentsDelta(
 	tool := oc.ensureFunctionCallTool(ctx, portal, state, meta, activeTools, itemID, name, "")
 	tool.itemID = itemID
 	tool.input.WriteString(delta)
-	oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, name, delta, tool.toolType == ToolTypeProvider)
+	oc.uiEmitter(state).EmitUIToolInputDelta(ctx, portal, tool.callID, name, delta, tool.toolType == ToolTypeProvider)
 }
 
 func (oc *AIClient) handleFunctionCallArgumentsDone(
@@ -99,9 +99,9 @@ func (oc *AIClient) handleFunctionCallArgumentsDone(
 	var inputMap any
 	if err := json.Unmarshal([]byte(argsJSON), &inputMap); err != nil {
 		inputMap = argsJSON
-		oc.emitUIToolInputError(ctx, portal, state, tool.callID, toolName, argsJSON, "Invalid JSON tool input", tool.toolType == ToolTypeProvider, false)
+		oc.uiEmitter(state).EmitUIToolInputError(ctx, portal, tool.callID, toolName, argsJSON, "Invalid JSON tool input", tool.toolType == ToolTypeProvider, false)
 	}
-	oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, toolName, inputMap, tool.toolType == ToolTypeProvider)
+	oc.uiEmitter(state).EmitUIToolInputAvailable(ctx, portal, tool.callID, toolName, inputMap, tool.toolType == ToolTypeProvider)
 
 	resultStatus := ResultStatusSuccess
 	var result string
@@ -160,7 +160,7 @@ func (oc *AIClient) handleFunctionCallArgumentsDone(
 				resultStatus = ResultStatusError
 			} else {
 				recordGeneratedFile(state, mediaURL, mimeType)
-				oc.emitUIFile(ctx, portal, state, mediaURL, mimeType)
+				oc.uiEmitter(state).EmitUIFile(ctx, portal, mediaURL, mimeType)
 				displayResult = "Audio message sent successfully"
 			}
 		}
@@ -196,7 +196,7 @@ func (oc *AIClient) handleFunctionCallArgumentsDone(
 					continue
 				}
 				recordGeneratedFile(state, mediaURL, mimeType)
-				oc.emitUIFile(ctx, portal, state, mediaURL, mimeType)
+				oc.uiEmitter(state).EmitUIFile(ctx, portal, mediaURL, mimeType)
 				sentURLs = append(sentURLs, mediaURL)
 				success++
 			}
@@ -226,7 +226,7 @@ func (oc *AIClient) handleFunctionCallArgumentsDone(
 				resultStatus = ResultStatusError
 			} else {
 				recordGeneratedFile(state, mediaURL, mimeType)
-				oc.emitUIFile(ctx, portal, state, mediaURL, mimeType)
+				oc.uiEmitter(state).EmitUIFile(ctx, portal, mediaURL, mimeType)
 				displayResult = fmt.Sprintf("Image generated and sent to the user. Media URL: %s", mediaURL)
 			}
 		}
@@ -245,9 +245,9 @@ func (oc *AIClient) handleFunctionCallArgumentsDone(
 
 	// Emit UI tool output immediately so desktop sees completion without waiting for timeline event send.
 	if resultStatus == ResultStatusSuccess {
-		oc.emitUIToolOutputAvailable(ctx, portal, state, tool.callID, result, tool.toolType == ToolTypeProvider, false)
+		oc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, tool.callID, result, tool.toolType == ToolTypeProvider, false)
 	} else if resultStatus != ResultStatusDenied {
-		oc.emitUIToolOutputError(ctx, portal, state, tool.callID, result, tool.toolType == ToolTypeProvider)
+		oc.uiEmitter(state).EmitUIToolOutputError(ctx, portal, tool.callID, result, tool.toolType == ToolTypeProvider)
 	}
 
 	// Normalize input for storage.

@@ -29,7 +29,7 @@ func (oc *AIClient) handleResponseLifecycleEvent(
 		}
 		oc.emitUIRuntimeMetadata(ctx, portal, state, meta, responseMetadataDeltaFromResponse(response))
 		if msg := strings.TrimSpace(response.Error.Message); msg != "" {
-			oc.emitUIError(ctx, portal, state, msg)
+			oc.uiEmitter(state).EmitUIError(ctx, portal, msg)
 		}
 	case "response.incomplete":
 		state.finishReason = strings.TrimSpace(string(response.IncompleteDetails.Reason))

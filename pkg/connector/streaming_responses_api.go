@@ -74,7 +74,7 @@ func (oc *AIClient) streamingResponse(
 
 	// Emit AI SDK UI stream start and first step
 	oc.emitUIStart(ctx, portal, state, meta)
-	oc.emitUIStepStart(ctx, portal, state)
+	oc.uiEmitter(state).EmitUIStepStart(ctx, portal)
 
 	// Process stream events - no debouncing, stream every delta immediately
 	for stream.Next() {
@@ -196,7 +196,7 @@ func (oc *AIClient) streamingResponse(
 				activeTools[streamEvent.ItemID] = tool
 				tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
 			}
-			oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, "", true)
+			oc.uiEmitter(state).EmitUIToolInputDelta(ctx, portal, tool.callID, tool.toolName, "", true)
 
 		case "response.file_search_call.completed":
 			tool, exists := activeTools[streamEvent.ItemID]
@@ -222,7 +222,7 @@ func (oc *AIClient) streamingResponse(
 				tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
 			}
 			output := map[string]any{"status": "completed"}
-			oc.emitUIToolOutputAvailable(ctx, portal, state, callID, output, true, false)
+			oc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, callID, output, true, false)
 
 			resultJSON, _ := json.Marshal(output)
 			resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, string(resultJSON), ResultStatusSuccess)
@@ -256,7 +256,7 @@ func (oc *AIClient) streamingResponse(
 				activeTools[streamEvent.ItemID] = tool
 				tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
 			}
-			oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, "", true)
+			oc.uiEmitter(state).EmitUIToolInputDelta(ctx, portal, tool.callID, tool.toolName, "", true)
 
 		case "response.code_interpreter_call.completed":
 			tool, exists := activeTools[streamEvent.ItemID]
@@ -282,7 +282,7 @@ func (oc *AIClient) streamingResponse(
 				tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
 			}
 			output := map[string]any{"status": "completed"}
-			oc.emitUIToolOutputAvailable(ctx, portal, state, callID, output, true, false)
+			oc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, callID, output, true, false)
 
 			resultJSON, _ := json.Marshal(output)
 			resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, string(resultJSON), ResultStatusSuccess)
@@ -316,7 +316,7 @@ func (oc *AIClient) streamingResponse(
 				activeTools[streamEvent.ItemID] = tool
 				tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
 			}
-			oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, "", true)
+			oc.uiEmitter(state).EmitUIToolInputDelta(ctx, portal, tool.callID, tool.toolName, "", true)
 
 		case "response.mcp_list_tools.completed":
 			tool, exists := activeTools[streamEvent.ItemID]
@@ -342,7 +342,7 @@ func (oc *AIClient) streamingResponse(
 				tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
 			}
 			output := map[string]any{"status": "completed"}
-			oc.emitUIToolOutputAvailable(ctx, portal, state, callID, output, true, false)
+			oc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, callID, output, true, false)
 
 			resultJSON, _ := json.Marshal(output)
 			resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, string(resultJSON), ResultStatusSuccess)
@@ -383,7 +383,7 @@ func (oc *AIClient) streamingResponse(
 				tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
 			}
 			errText := "MCP list tools failed"
-			oc.emitUIToolOutputError(ctx, portal, state, callID, errText, true)
+			oc.uiEmitter(state).EmitUIToolOutputError(ctx, portal, callID, errText, true)
 
 			resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, errText, ResultStatusError)
 			state.toolCalls = append(state.toolCalls, ToolCallMetadata{
@@ -417,7 +417,7 @@ func (oc *AIClient) streamingResponse(
 				activeTools[streamEvent.ItemID] = tool
 				tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
 			}
-			oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, "", true)
+			oc.uiEmitter(state).EmitUIToolInputDelta(ctx, portal, tool.callID, tool.toolName, "", true)
 
 		case "response.mcp_call.completed":
 			tool, exists := activeTools[streamEvent.ItemID]
@@ -443,7 +443,7 @@ func (oc *AIClient) streamingResponse(
 				tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
 			}
 			output := map[string]any{"status": "completed"}
-			oc.emitUIToolOutputAvailable(ctx, portal, state, callID, output, true, false)
+			oc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, callID, output, true, false)
 
 			resultJSON, _ := json.Marshal(output)
 			resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, string(resultJSON), ResultStatusSuccess)
@@ -483,7 +483,7 @@ func (oc *AIClient) streamingResponse(
 			if state.initialEventID == "" && !state.suppressSend {
 				oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
 			}
-			oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, "web_search", "", true)
+			oc.uiEmitter(state).EmitUIToolInputDelta(ctx, portal, tool.callID, "web_search", "", true)
 
 		case "response.web_search_call.completed":
 			touchTyping()
@@ -514,7 +514,7 @@ func (oc *AIClient) streamingResponse(
 					ResultEventID: string(resultEventID),
 				})
 			}
-			oc.emitUIToolOutputAvailable(ctx, portal, state, callID, map[string]any{"status": "completed"}, true, false)
+			oc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, callID, map[string]any{"status": "completed"}, true, false)
 
 		case "response.image_generation_call.in_progress", "response.image_generation_call.generating":
 			touchTyping()
@@ -542,7 +542,7 @@ func (oc *AIClient) streamingResponse(
 					oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
 				}
 			}
-			oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, "image_generation", "", true)
+			oc.uiEmitter(state).EmitUIToolInputDelta(ctx, portal, tool.callID, "image_generation", "", true)
 
 			log.Debug().Str("item_id", streamEvent.ItemID).Msg("Image generation in progress")
 
@@ -579,7 +579,7 @@ func (oc *AIClient) streamingResponse(
 				})
 			}
 			log.Info().Str("item_id", streamEvent.ItemID).Msg("Image generation completed")
-			oc.emitUIToolOutputAvailable(ctx, portal, state, callID, map[string]any{"status": "completed"}, true, false)
+			oc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, callID, map[string]any{"status": "completed"}, true, false)
 
 		case "response.image_generation_call.partial_image":
 			touchTyping()
@@ -614,7 +614,7 @@ func (oc *AIClient) streamingResponse(
 			if streamEvent.Response.ID != "" {
 				state.responseID = streamEvent.Response.ID
 			}
-			oc.emitUIMessageMetadata(ctx, portal, state, oc.buildUIMessageMetadata(state, meta, true))
+			oc.uiEmitter(state).EmitUIMessageMetadata(ctx, portal, oc.buildUIMessageMetadata(state, meta, true))
 
 			// Extract any generated images from response output
 			for _, output := range streamEvent.Response.Output {
@@ -636,7 +636,7 @@ func (oc *AIClient) streamingResponse(
 		case "error":
 			apiErr := fmt.Errorf("API error: %s", streamEvent.Message)
 			state.finishReason = "error"
-			oc.emitUIError(ctx, portal, state, streamEvent.Message)
+			oc.uiEmitter(state).EmitUIError(ctx, portal, streamEvent.Message)
 			oc.emitUIFinish(ctx, portal, state, meta)
 			logResponsesFailure(log, apiErr, params, meta, messages, "stream_event_error")
 			// Check for context length error
@@ -654,7 +654,7 @@ func (oc *AIClient) streamingResponse(
 		}
 	}
 
-	oc.emitUIStepFinish(ctx, portal, state)
+	oc.uiEmitter(state).EmitUIStepFinish(ctx, portal)
 
 	// Check for stream errors
 	if err := stream.Err(); err != nil {
@@ -676,7 +676,7 @@ func (oc *AIClient) streamingResponse(
 			if state.initialEventID != "" && state.accumulated.Len() > 0 {
 				oc.flushPartialStreamingMessage(context.Background(), portal, state, meta)
 			}
-			oc.emitUIAbort(ctx, portal, state, "cancelled")
+			oc.uiEmitter(state).EmitUIAbort(ctx, portal, "cancelled")
 			oc.emitUIFinish(ctx, portal, state, meta)
 			if state.initialEventID != "" {
 				return false, nil, &NonFallbackError{Err: ctx.Err()}
@@ -689,7 +689,7 @@ func (oc *AIClient) streamingResponse(
 			err := fmt.Errorf("max responses tool call rounds reached (%d)", maxToolRounds)
 			log.Warn().Err(err).Int("pending_outputs", len(state.pendingFunctionOutputs)).Msg("Stopping responses continuation loop")
 			state.finishReason = "error"
-			oc.emitUIError(ctx, portal, state, err.Error())
+			oc.uiEmitter(state).EmitUIError(ctx, portal, err.Error())
 			oc.emitUIFinish(ctx, portal, state, meta)
 			if state.initialEventID != "" {
 				return false, nil, &NonFallbackError{Err: err}
@@ -723,7 +723,7 @@ func (oc *AIClient) streamingResponse(
 
 			if !decision.Approve {
 				// Optimistically mark as denied in the UI; the provider may emit a denial later as well.
-				oc.emitUIToolOutputDenied(ctx, portal, state, approval.toolCallID)
+				oc.uiEmitter(state).EmitUIToolOutputDenied(ctx, portal, approval.toolCallID)
 			}
 		}
 
@@ -758,7 +758,7 @@ func (oc *AIClient) streamingResponse(
 			initErr := errors.New("continuation streaming not available")
 			logResponsesFailure(log, initErr, continuationParams, meta, messages, "continuation_init")
 			state.finishReason = "error"
-			oc.emitUIError(ctx, portal, state, initErr.Error())
+			oc.uiEmitter(state).EmitUIError(ctx, portal, initErr.Error())
 			oc.emitUIFinish(ctx, portal, state, meta)
 			if state.initialEventID != "" {
 				return false, nil, &NonFallbackError{Err: initErr}
@@ -768,7 +768,7 @@ func (oc *AIClient) streamingResponse(
 		// Clear pending inputs only once continuation stream has actually started.
 		state.pendingFunctionOutputs = nil
 		state.pendingMcpApprovals = nil
-		oc.emitUIStepStart(ctx, portal, state)
+		oc.uiEmitter(state).EmitUIStepStart(ctx, portal)
 
 		// Process continuation stream events
 		for stream.Next() {
@@ -890,13 +890,13 @@ func (oc *AIClient) streamingResponse(
 				if streamEvent.Response.ID != "" {
 					state.responseID = streamEvent.Response.ID
 				}
-				oc.emitUIMessageMetadata(ctx, portal, state, oc.buildUIMessageMetadata(state, meta, true))
+				oc.uiEmitter(state).EmitUIMessageMetadata(ctx, portal, oc.buildUIMessageMetadata(state, meta, true))
 				log.Debug().Str("reason", state.finishReason).Str("response_id", state.responseID).Msg("Continuation stream completed")
 
 			case "error":
 				apiErr := fmt.Errorf("API error: %s", streamEvent.Message)
 				state.finishReason = "error"
-				oc.emitUIError(ctx, portal, state, streamEvent.Message)
+				oc.uiEmitter(state).EmitUIError(ctx, portal, streamEvent.Message)
 				oc.emitUIFinish(ctx, portal, state, meta)
 				logResponsesFailure(log, apiErr, continuationParams, meta, messages, "continuation_event_error")
 				if state.initialEventID != "" {
@@ -908,7 +908,7 @@ func (oc *AIClient) streamingResponse(
 			}
 		}
 
-		oc.emitUIStepFinish(ctx, portal, state)
+		oc.uiEmitter(state).EmitUIStepFinish(ctx, portal)
 
 		if err := stream.Err(); err != nil {
 			logResponsesFailure(log, err, continuationParams, meta, messages, "continuation_err")
