@@ -9,10 +9,6 @@ import (
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
-func unsupportedMessageStatus(err error) error {
-	return bridgeadapter.UnsupportedMessageStatus(err)
-}
-
 func messageSendStatusError(err error, message string, reason event.MessageStatusReason) error {
 	return bridgeadapter.MessageSendStatusError(err, message, reason, messageStatusForError, messageStatusReasonForError)
 }

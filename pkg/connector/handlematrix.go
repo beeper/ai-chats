@@ -18,56 +18,7 @@ import (
 
 	"github.com/beeper/ai-bridge/pkg/agents"
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
-	"github.com/beeper/ai-bridge/pkg/shared/maputil"
 )
-
-type approvalDecisionPayload struct {
-	ApprovalID string
-	Decision   string
-	Reason     string
-}
-
-func parseApprovalDecision(raw map[string]any) *approvalDecisionPayload {
-	if raw == nil {
-		return nil
-	}
-	payloadRaw, ok := raw["com.beeper.ai.approval_decision"]
-	if !ok || payloadRaw == nil {
-		return nil
-	}
-	payloadMap, ok := payloadRaw.(map[string]any)
-	if !ok {
-		return nil
-	}
-	approvalID := strings.TrimSpace(maputil.StringArg(payloadMap, "approvalId"))
-	decision := strings.TrimSpace(maputil.StringArg(payloadMap, "decision"))
-	reason := strings.TrimSpace(maputil.StringArg(payloadMap, "reason"))
-	if approvalID == "" || decision == "" {
-		return nil
-	}
-	return &approvalDecisionPayload{
-		ApprovalID: approvalID,
-		Decision:   decision,
-		Reason:     reason,
-	}
-}
-
-func approvalDecisionFromString(decision string) (approve bool, always bool, ok bool) {
-	switch strings.ToLower(strings.TrimSpace(decision)) {
-	case "allow", "approve", "yes", "y", "true", "1", "once":
-		return true, false, true
-	case "always", "always-allow", "allow-always":
-		return true, true, true
-	case "deny", "no", "n", "false", "0", "reject":
-		return false, false, true
-	default:
-		return false, false, false
-	}
-}
-
-func unsupportedMessageStatus(err error) error {
-	return bridgeadapter.UnsupportedMessageStatus(err)
-}
 
 func messageSendStatusError(err error, message string, reason event.MessageStatusReason) error {
 	return bridgeadapter.MessageSendStatusError(err, message, reason, messageStatusForError, messageStatusReasonForError)
@@ -121,8 +72,8 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 
-	if decision := parseApprovalDecision(msg.Event.Content.Raw); decision != nil {
-		approve, always, ok := approvalDecisionFromString(decision.Decision)
+	if decision := bridgeadapter.ParseApprovalDecision(msg.Event.Content.Raw); decision != nil {
+		approve, always, ok := bridgeadapter.ApprovalDecisionFromString(decision.Decision)
 		if !ok {
 			logCtx.Warn().Str("decision", decision.Decision).Msg("Unknown approval decision")
 			return &bridgev2.MatrixMessageResponse{Pending: false}, nil
@@ -171,7 +122,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		// Continue to text handling below
 	default:
 		logCtx.Debug().Str("msg_type", string(msgType)).Msg("Unsupported message type")
-		return nil, unsupportedMessageStatus(fmt.Errorf("%s messages are not supported", msgType))
+		return nil, bridgeadapter.UnsupportedMessageStatus(fmt.Errorf("%s messages are not supported", msgType))
 	}
 	if msg.Content.RelatesTo != nil && msg.Content.RelatesTo.GetReplaceID() != "" {
 		logCtx.Debug().Msg("Ignoring edit event in HandleMatrixMessage")
@@ -232,7 +183,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	runCtx := ctx
 
 	if rawBody == "" {
-		return nil, unsupportedMessageStatus(errors.New("empty messages are not supported"))
+		return nil, bridgeadapter.UnsupportedMessageStatus(errors.New("empty messages are not supported"))
 	}
 
 	// Mention detection (OpenClaw-style)
@@ -670,7 +621,7 @@ func (oc *AIClient) handleMediaMessage(
 		mediaURL = msg.Content.File.URL
 	}
 	if mediaURL == "" {
-		return nil, unsupportedMessageStatus(fmt.Errorf("%s message has no URL", msgType))
+		return nil, bridgeadapter.UnsupportedMessageStatus(fmt.Errorf("%s message has no URL", msgType))
 	}
 
 	// Get MIME type
@@ -688,12 +639,12 @@ func (oc *AIClient) handleMediaMessage(
 			ok = true
 		case isTextFileMime(mimeType):
 			if !oc.canUseMediaUnderstanding(meta) {
-				return nil, unsupportedMessageStatus(errors.New("text file understanding is only available when an agent is assigned and raw mode is off"))
+				return nil, bridgeadapter.UnsupportedMessageStatus(errors.New("text file understanding is only available when an agent is assigned and raw mode is off"))
 			}
 			return oc.handleTextFileMessage(ctx, msg, portal, meta, string(mediaURL), mimeType, pendingSent)
 		case mimeType == "" || mimeType == "application/octet-stream":
 			if !oc.canUseMediaUnderstanding(meta) {
-				return nil, unsupportedMessageStatus(errors.New("text file understanding is only available when an agent is assigned and raw mode is off"))
+				return nil, bridgeadapter.UnsupportedMessageStatus(errors.New("text file understanding is only available when an agent is assigned and raw mode is off"))
 			}
 			return oc.handleTextFileMessage(ctx, msg, portal, meta, string(mediaURL), mimeType, pendingSent)
 		}
@@ -701,7 +652,7 @@ func (oc *AIClient) handleMediaMessage(
 
 	if !ok {
 		logCtx.Debug().Str("msg_type", string(msgType)).Msg("Unsupported media type")
-		return nil, unsupportedMessageStatus(fmt.Errorf("unsupported media type: %s", msgType))
+		return nil, bridgeadapter.UnsupportedMessageStatus(fmt.Errorf("unsupported media type: %s", msgType))
 	}
 
 	if mimeType == "" {
@@ -882,7 +833,7 @@ func (oc *AIClient) handleMediaMessage(
 			}
 		}
 
-		return nil, unsupportedMessageStatus(fmt.Errorf(
+		return nil, bridgeadapter.UnsupportedMessageStatus(fmt.Errorf(
 			"current model (%s) does not support %s; switch to a capable model using !ai model",
 			oc.effectiveModel(meta), config.capabilityName,
 		))

@@ -196,6 +196,71 @@ func (oc *AIClient) handleMCPCallFailedFromOutputItem(
 	})
 }
 
+// gateMcpToolApproval handles an MCP approval request item: registers the
+// approval, auto-approves when policy allows, or emits a UI approval request.
+func (oc *AIClient) gateMcpToolApproval(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	tool *activeToolCall,
+	desc responseToolDescriptor,
+	item responses.ResponseOutputItemUnion,
+) {
+	approvalID := strings.TrimSpace(item.ID)
+	if approvalID == "" {
+		approvalID = NewCallID()
+	}
+	state.uiToolCallIDByApproval[approvalID] = tool.callID
+	if tool.input.Len() == 0 {
+		tool.input.WriteString(stringifyJSONValue(desc.input))
+	}
+	oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, desc.input, true)
+	if state.pendingMcpApprovalsSeen[approvalID] {
+		return
+	}
+	state.pendingMcpApprovalsSeen[approvalID] = true
+	parsed := item.AsMcpApprovalRequest()
+	serverLabel := strings.TrimSpace(parsed.ServerLabel)
+	mcpToolName := strings.TrimSpace(parsed.Name)
+	state.pendingMcpApprovals = append(state.pendingMcpApprovals, mcpApprovalRequest{
+		approvalID:  approvalID,
+		toolCallID:  tool.callID,
+		toolName:    tool.toolName,
+		serverLabel: serverLabel,
+	})
+	ttl := time.Duration(oc.toolApprovalsTTLSeconds()) * time.Second
+	oc.registerToolApproval(ToolApprovalParams{
+		ApprovalID:   approvalID,
+		RoomID:       state.roomID,
+		TurnID:       state.turnID,
+		ToolCallID:   tool.callID,
+		ToolName:     tool.toolName,
+		ToolKind:     ToolApprovalKindMCP,
+		RuleToolName: mcpToolName,
+		ServerLabel:  serverLabel,
+		TTL:          ttl,
+	})
+
+	// If approvals are disabled, not required, or already always-allowed, auto-approve
+	// without prompting. Otherwise emit an approval request to the UI.
+	needsApproval := oc.toolApprovalsRuntimeEnabled() && oc.toolApprovalsRequireForMCP() && !oc.isMcpAlwaysAllowed(serverLabel, mcpToolName)
+	if needsApproval && state.heartbeat != nil {
+		needsApproval = false
+	}
+	if needsApproval {
+		if !state.uiToolApprovalRequested[approvalID] {
+			state.uiToolApprovalRequested[approvalID] = true
+			oc.emitUIToolApprovalRequest(ctx, portal, state, approvalID, tool.callID, tool.toolName, tool.eventID, oc.toolApprovalsTTLSeconds())
+		}
+	} else {
+		_ = oc.resolveToolApproval(state.roomID, approvalID, ToolApprovalDecision{
+			Approve:   true,
+			DecidedAt: time.Now(),
+			DecidedBy: oc.UserLogin.UserMXID,
+		})
+	}
+}
+
 func (oc *AIClient) handleResponseOutputItemAdded(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -219,58 +284,7 @@ func (oc *AIClient) handleResponseOutputItemAdded(
 	}
 
 	if item.Type == "mcp_approval_request" {
-		approvalID := strings.TrimSpace(item.ID)
-		if approvalID == "" {
-			approvalID = NewCallID()
-		}
-		state.uiToolCallIDByApproval[approvalID] = tool.callID
-		if tool.input.Len() == 0 {
-			tool.input.WriteString(stringifyJSONValue(desc.input))
-		}
-		oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, desc.input, true)
-		if !state.pendingMcpApprovalsSeen[approvalID] {
-			state.pendingMcpApprovalsSeen[approvalID] = true
-			parsed := item.AsMcpApprovalRequest()
-			serverLabel := strings.TrimSpace(parsed.ServerLabel)
-			mcpToolName := strings.TrimSpace(parsed.Name)
-			state.pendingMcpApprovals = append(state.pendingMcpApprovals, mcpApprovalRequest{
-				approvalID:  approvalID,
-				toolCallID:  tool.callID,
-				toolName:    tool.toolName,
-				serverLabel: serverLabel,
-			})
-			ttl := time.Duration(oc.toolApprovalsTTLSeconds()) * time.Second
-			oc.registerToolApproval(ToolApprovalParams{
-				ApprovalID:   approvalID,
-				RoomID:       state.roomID,
-				TurnID:       state.turnID,
-				ToolCallID:   tool.callID,
-				ToolName:     tool.toolName,
-				ToolKind:     ToolApprovalKindMCP,
-				RuleToolName: mcpToolName,
-				ServerLabel:  serverLabel,
-				TTL:          ttl,
-			})
-
-			// If approvals are disabled, not required, or already always-allowed, auto-approve without prompting.
-			// Otherwise emit an approval request to the UI.
-			needsApproval := oc.toolApprovalsRuntimeEnabled() && oc.toolApprovalsRequireForMCP() && !oc.isMcpAlwaysAllowed(serverLabel, mcpToolName)
-			if needsApproval && state != nil && state.heartbeat != nil {
-				needsApproval = false
-			}
-			if needsApproval {
-				if state != nil && !state.uiToolApprovalRequested[approvalID] {
-					state.uiToolApprovalRequested[approvalID] = true
-					oc.emitUIToolApprovalRequest(ctx, portal, state, approvalID, tool.callID, tool.toolName, tool.eventID, oc.toolApprovalsTTLSeconds())
-				}
-			} else {
-				_ = oc.resolveToolApproval(state.roomID, approvalID, ToolApprovalDecision{
-					Approve:   true,
-					DecidedAt: time.Now(),
-					DecidedBy: oc.UserLogin.UserMXID,
-				})
-			}
-		}
+		oc.gateMcpToolApproval(ctx, portal, state, tool, desc, item)
 		return
 	}
 
@@ -305,56 +319,7 @@ func (oc *AIClient) handleResponseOutputItemDone(
 	}
 
 	if item.Type == "mcp_approval_request" {
-		approvalID := strings.TrimSpace(item.ID)
-		if approvalID == "" {
-			approvalID = NewCallID()
-		}
-		state.uiToolCallIDByApproval[approvalID] = tool.callID
-		if tool.input.Len() == 0 {
-			tool.input.WriteString(stringifyJSONValue(desc.input))
-		}
-		oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, tool.toolName, desc.input, true)
-		if !state.pendingMcpApprovalsSeen[approvalID] {
-			state.pendingMcpApprovalsSeen[approvalID] = true
-			parsed := item.AsMcpApprovalRequest()
-			serverLabel := strings.TrimSpace(parsed.ServerLabel)
-			mcpToolName := strings.TrimSpace(parsed.Name)
-			state.pendingMcpApprovals = append(state.pendingMcpApprovals, mcpApprovalRequest{
-				approvalID:  approvalID,
-				toolCallID:  tool.callID,
-				toolName:    tool.toolName,
-				serverLabel: serverLabel,
-			})
-			ttl := time.Duration(oc.toolApprovalsTTLSeconds()) * time.Second
-			oc.registerToolApproval(ToolApprovalParams{
-				ApprovalID:   approvalID,
-				RoomID:       state.roomID,
-				TurnID:       state.turnID,
-				ToolCallID:   tool.callID,
-				ToolName:     tool.toolName,
-				ToolKind:     ToolApprovalKindMCP,
-				RuleToolName: mcpToolName,
-				ServerLabel:  serverLabel,
-				TTL:          ttl,
-			})
-
-			needsApproval := oc.toolApprovalsRuntimeEnabled() && oc.toolApprovalsRequireForMCP() && !oc.isMcpAlwaysAllowed(serverLabel, mcpToolName)
-			if needsApproval && state != nil && state.heartbeat != nil {
-				needsApproval = false
-			}
-			if needsApproval {
-				if state != nil && !state.uiToolApprovalRequested[approvalID] {
-					state.uiToolApprovalRequested[approvalID] = true
-					oc.emitUIToolApprovalRequest(ctx, portal, state, approvalID, tool.callID, tool.toolName, tool.eventID, oc.toolApprovalsTTLSeconds())
-				}
-			} else {
-				_ = oc.resolveToolApproval(state.roomID, approvalID, ToolApprovalDecision{
-					Approve:   true,
-					DecidedAt: time.Now(),
-					DecidedBy: oc.UserLogin.UserMXID,
-				})
-			}
-		}
+		oc.gateMcpToolApproval(ctx, portal, state, tool, desc, item)
 		return
 	}
 

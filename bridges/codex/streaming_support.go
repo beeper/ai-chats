@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/ai-bridge/pkg/matrixevents"
 )
 
 type sourceCitation struct {
@@ -165,7 +167,7 @@ type streamingState struct {
 	uiToolCallIDByApproval  map[string]string
 	uiToolApprovalRequested map[string]bool
 	uiToolNameByToolCallID  map[string]string
-	uiToolTypeByToolCallID  map[string]ToolType
+	uiToolTypeByToolCallID  map[string]matrixevents.ToolType
 	uiToolOutputFinalized   map[string]bool
 
 	codexToolOutputBuffers    map[string]*strings.Builder
@@ -189,7 +191,7 @@ func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID 
 		uiToolCallIDByApproval:  make(map[string]string),
 		uiToolApprovalRequested: make(map[string]bool),
 		uiToolNameByToolCallID:  make(map[string]string),
-		uiToolTypeByToolCallID:  make(map[string]ToolType),
+		uiToolTypeByToolCallID:  make(map[string]matrixevents.ToolType),
 		uiToolOutputFinalized:   make(map[string]bool),
 		codexTimelineNotices:    make(map[string]bool),
 		codexToolOutputBuffers:  make(map[string]*strings.Builder),

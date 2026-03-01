@@ -6,48 +6,6 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
-
-	"github.com/beeper/ai-bridge/pkg/matrixevents"
-)
-
-const (
-	RelReplace   = matrixevents.RelReplace
-	RelReference = matrixevents.RelReference
-	RelThread    = matrixevents.RelThread
-	RelInReplyTo = matrixevents.RelInReplyTo
-)
-
-const (
-	BeeperAIKey           = matrixevents.BeeperAIKey
-	BeeperAIToolCallKey   = matrixevents.BeeperAIToolCallKey
-	BeeperAIToolResultKey = matrixevents.BeeperAIToolResultKey
-)
-
-var ToolCallEventType = matrixevents.ToolCallEventType
-var ToolResultEventType = matrixevents.ToolResultEventType
-
-type ToolStatus = matrixevents.ToolStatus
-
-const (
-	ToolStatusPending          = matrixevents.ToolStatusPending
-	ToolStatusRunning          = matrixevents.ToolStatusRunning
-	ToolStatusCompleted        = matrixevents.ToolStatusCompleted
-	ToolStatusFailed           = matrixevents.ToolStatusFailed
-	ToolStatusApprovalRequired = matrixevents.ToolStatusApprovalRequired
-)
-
-type ToolType = matrixevents.ToolType
-
-const (
-	ToolTypeProvider = matrixevents.ToolTypeProvider
-)
-
-type ResultStatus = matrixevents.ResultStatus
-
-const (
-	ResultStatusSuccess = matrixevents.ResultStatusSuccess
-	ResultStatusError   = matrixevents.ResultStatusError
-	ResultStatusDenied  = matrixevents.ResultStatusDenied
 )
 
 const (

@@ -26,6 +26,7 @@ import (
 
 	"github.com/beeper/ai-bridge/bridges/codex/codexrpc"
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	"github.com/beeper/ai-bridge/pkg/matrixevents"
 	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
@@ -337,7 +338,7 @@ func (cc *CodexClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal)
 	}
 	return &bridgev2.ChatInfo{
 		Name:  ptr.Ptr(title),
-		Topic: ptrIfNotEmpty(portal.Topic),
+		Topic: ptr.NonZero(portal.Topic),
 	}, nil
 }
 
@@ -366,7 +367,7 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 	portal := msg.Portal
 	meta := portalMeta(portal)
 	if meta == nil || !meta.IsCodexRoom {
-		return nil, unsupportedMessageStatus(errors.New("not a Codex room"))
+		return nil, bridgeadapter.UnsupportedMessageStatus(errors.New("not a Codex room"))
 	}
 	if bridgeadapter.IsMatrixBotUser(ctx, cc.UserLogin.Bridge, msg.Event.Sender) {
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
@@ -374,8 +375,8 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 
 	// Structured approval decision (sent by capable clients). Keep this before the
 	// fallback command/UI path so the user doesn't need to emit text commands.
-	if decision := parseApprovalDecision(msg.Event.Content.Raw); decision != nil {
-		approve, _, ok := approvalDecisionFromString(decision.Decision)
+	if decision := bridgeadapter.ParseApprovalDecision(msg.Event.Content.Raw); decision != nil {
+		approve, _, ok := bridgeadapter.ApprovalDecisionFromString(decision.Decision)
 		if !ok {
 			return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 		}
@@ -395,7 +396,7 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 	switch msg.Content.MsgType {
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
 	default:
-		return nil, unsupportedMessageStatus(fmt.Errorf("%s messages are not supported", msg.Content.MsgType))
+		return nil, bridgeadapter.UnsupportedMessageStatus(fmt.Errorf("%s messages are not supported", msg.Content.MsgType))
 	}
 	if msg.Content.RelatesTo != nil && msg.Content.RelatesTo.GetReplaceID() != "" {
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
@@ -581,11 +582,11 @@ done:
 		state.toolCalls = append(state.toolCalls, ToolCallMetadata{
 			CallID:        diffToolID,
 			ToolName:      "diff",
-			ToolType:      string(ToolTypeProvider),
+			ToolType:      string(matrixevents.ToolTypeProvider),
 			Input:         map[string]any{"turnId": turnID},
 			Output:        map[string]any{"diff": diff},
-			Status:        string(ToolStatusCompleted),
-			ResultStatus:  string(ResultStatusSuccess),
+			Status:        string(matrixevents.ToolStatusCompleted),
+			ResultStatus:  string(matrixevents.ResultStatusSuccess),
 			StartedAtMs:   state.startedAtMs,
 			CompletedAtMs: state.completedAtMs,
 		})
@@ -956,10 +957,10 @@ func newProviderToolCall(id, name string, output map[string]any) ToolCallMetadat
 	return ToolCallMetadata{
 		CallID:        id,
 		ToolName:      name,
-		ToolType:      string(ToolTypeProvider),
+		ToolType:      string(matrixevents.ToolTypeProvider),
 		Output:        output,
-		Status:        string(ToolStatusCompleted),
-		ResultStatus:  string(ResultStatusSuccess),
+		Status:        string(matrixevents.ToolStatusCompleted),
+		ResultStatus:  string(matrixevents.ResultStatusSuccess),
 		StartedAtMs:   now,
 		CompletedAtMs: now,
 	}
@@ -1043,17 +1044,17 @@ func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2
 		tc := newProviderToolCall(itemID, fmt.Sprintf("%v", it["type"]), it)
 		switch statusVal {
 		case "declined":
-			tc.ResultStatus = string(ResultStatusDenied)
+			tc.ResultStatus = string(matrixevents.ResultStatusDenied)
 			tc.ErrorMessage = "Denied by user"
 		case "failed":
-			tc.ResultStatus = string(ResultStatusError)
+			tc.ResultStatus = string(matrixevents.ResultStatusError)
 			if errObj, ok := it["error"].(map[string]any); ok {
 				if msg, ok := errObj["message"].(string); ok && strings.TrimSpace(msg) != "" {
 					tc.ErrorMessage = strings.TrimSpace(msg)
 				}
 			}
 		default:
-			tc.ResultStatus = string(ResultStatusSuccess)
+			tc.ResultStatus = string(matrixevents.ResultStatusSuccess)
 		}
 		state.toolCalls = append(state.toolCalls, tc)
 	case "collabToolCall":
@@ -1388,8 +1389,8 @@ func (cc *CodexClient) composeCodexChatInfo(title string) *bridgev2.ChatInfo {
 			MemberMap:   members,
 			PowerLevels: &bridgev2.PowerLevelOverrides{
 				Events: map[event.Type]int{
-					RoomCapabilitiesEventType: 100,
-					RoomSettingsEventType:     0,
+					matrixevents.RoomCapabilitiesEventType: 100,
+					matrixevents.RoomSettingsEventType:     0,
 				},
 			},
 		},
@@ -1737,7 +1738,7 @@ func (cc *CodexClient) emitStreamEvent(ctx context.Context, portal *bridgev2.Por
 	if !ok {
 		return
 	}
-	txnID := buildStreamEventTxnID(turnID, seq)
+	txnID := matrixevents.BuildStreamEventTxnID(turnID, seq)
 
 	if cc.streamEventHook != nil {
 		cc.streamEventHook(turnID, seq, content, txnID)
@@ -1748,12 +1749,12 @@ func (cc *CodexClient) emitStreamEvent(ctx context.Context, portal *bridgev2.Por
 	if intent == nil {
 		return
 	}
-	ephemeralSender, ok := intent.(matrixEphemeralSender)
+	ephemeralSender, ok := intent.(matrixevents.MatrixEphemeralSender)
 	if !ok {
 		return
 	}
 	eventContent := &event.Content{Raw: content}
-	_, _ = ephemeralSender.SendEphemeralEvent(ctx, portal.MXID, StreamEventMessageType, eventContent, txnID)
+	_, _ = ephemeralSender.SendEphemeralEvent(ctx, portal.MXID, matrixevents.StreamEventMessageType, eventContent, txnID)
 }
 
 func (cc *CodexClient) sendInitialStreamMessage(ctx context.Context, portal *bridgev2.Portal, content string, turnID string) id.EventID {
@@ -1773,7 +1774,7 @@ func (cc *CodexClient) sendInitialStreamMessage(ctx context.Context, portal *bri
 		Raw: map[string]any{
 			"msgtype":    event.MsgText,
 			"body":       content,
-			BeeperAIKey:  uiMessage,
+			matrixevents.BeeperAIKey:  uiMessage,
 			"m.mentions": map[string]any{},
 		},
 	}
@@ -1954,7 +1955,7 @@ func (cc *CodexClient) sendToolCallApprovalEvent(
 		return
 	}
 	displayTitle := toolDisplayTitle(toolName)
-	toolType := string(ToolTypeProvider)
+	toolType := string(matrixevents.ToolTypeProvider)
 	if tt, ok := state.uiToolTypeByToolCallID[toolCallID]; ok {
 		toolType = string(tt)
 	}
@@ -1963,7 +1964,7 @@ func (cc *CodexClient) sendToolCallApprovalEvent(
 		"turn_id":                state.turnID,
 		"tool_name":              toolName,
 		"tool_type":              toolType,
-		"status":                 string(ToolStatusApprovalRequired),
+		"status":                 string(matrixevents.ToolStatusApprovalRequired),
 		"approval_id":            approvalID,
 		"approval_expires_at_ms": expiresAtMs,
 		"display": map[string]any{
@@ -1974,16 +1975,16 @@ func (cc *CodexClient) sendToolCallApprovalEvent(
 	eventRaw := map[string]any{
 		"body":              fmt.Sprintf("Approval required for %s", displayTitle),
 		"msgtype":           event.MsgNotice,
-		BeeperAIToolCallKey: toolCallData,
+		matrixevents.BeeperAIToolCallKey: toolCallData,
 	}
 	if state.initialEventID != "" {
 		eventRaw["m.relates_to"] = map[string]any{
-			"rel_type": RelReference,
+			"rel_type": matrixevents.RelReference,
 			"event_id": state.initialEventID.String(),
 		}
 	}
 	eventContent := &event.Content{Raw: eventRaw}
-	_, err := intent.SendMessage(ctx, portal.MXID, ToolCallEventType, eventContent, nil)
+	_, err := intent.SendMessage(ctx, portal.MXID, matrixevents.ToolCallEventType, eventContent, nil)
 	if err != nil {
 		cc.loggerForContext(ctx).Warn().Err(err).
 			Str("tool", toolName).Str("approval_id", approvalID).
@@ -2074,13 +2075,13 @@ func (cc *CodexClient) buildCanonicalUIMessage(state *streamingState, model stri
 			"toolCallId": tc.CallID,
 			"input":      tc.Input,
 		}
-		if tc.ToolType == string(ToolTypeProvider) {
+		if tc.ToolType == string(matrixevents.ToolTypeProvider) {
 			part["providerExecuted"] = true
 		}
-		if tc.ResultStatus == string(ResultStatusSuccess) {
+		if tc.ResultStatus == string(matrixevents.ResultStatusSuccess) {
 			part["state"] = "output-available"
 			part["output"] = tc.Output
-		} else if tc.ResultStatus == string(ResultStatusDenied) {
+		} else if tc.ResultStatus == string(matrixevents.ResultStatusDenied) {
 			part["state"] = "output-denied"
 			part["errorText"] = "Denied by user"
 		} else {
@@ -2129,7 +2130,7 @@ func (cc *CodexClient) sendFinalAssistantTurn(ctx context.Context, portal *bridg
 	}
 
 	relatesTo := map[string]any{
-		"rel_type": RelReplace,
+		"rel_type": matrixevents.RelReplace,
 		"event_id": state.initialEventID.String(),
 	}
 	uiMessage := cc.buildCanonicalUIMessage(state, model, finishReason)
@@ -2146,7 +2147,7 @@ func (cc *CodexClient) sendFinalAssistantTurn(ctx context.Context, portal *bridg
 			"m.mentions":     map[string]any{},
 		},
 		"m.relates_to":                  relatesTo,
-		BeeperAIKey:                     uiMessage,
+		matrixevents.BeeperAIKey:                     uiMessage,
 		"com.beeper.dont_render_edited": true,
 		"m.mentions":                    map[string]any{},
 	}
@@ -2448,10 +2449,10 @@ func (cc *CodexClient) setApprovalStateTracking(state *streamingState, approvalI
 		state.uiToolNameByToolCallID = make(map[string]string)
 	}
 	if state.uiToolTypeByToolCallID == nil {
-		state.uiToolTypeByToolCallID = make(map[string]ToolType)
+		state.uiToolTypeByToolCallID = make(map[string]matrixevents.ToolType)
 	}
 	state.uiToolCallIDByApproval[approvalID] = toolCallID
 	state.uiToolApprovalRequested[approvalID] = true
 	state.uiToolNameByToolCallID[toolCallID] = toolName
-	state.uiToolTypeByToolCallID[toolCallID] = ToolTypeProvider
+	state.uiToolTypeByToolCallID[toolCallID] = matrixevents.ToolTypeProvider
 }
