@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 )
@@ -17,7 +18,7 @@ func (oc *AIClient) buildStatusText(
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
 	isGroup bool,
-	queueSettings QueueSettings,
+	queueSettings airuntime.QueueSettings,
 ) string {
 	if meta == nil || portal == nil {
 		return "Status unavailable"

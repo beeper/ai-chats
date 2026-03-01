@@ -90,7 +90,7 @@ func TestDispatchOrQueueQueueRejectReturnsNotPending(t *testing.T) {
 		nil,
 		nil,
 		queueItem,
-		QueueSettings{Mode: airuntime.QueueModeCollect, Cap: 1, DropPolicy: airuntime.QueueDropNew},
+		airuntime.QueueSettings{Mode: airuntime.QueueModeCollect, Cap: 1, DropPolicy: airuntime.QueueDropNew},
 		nil,
 	)
 
@@ -124,7 +124,7 @@ func TestDispatchOrQueueQueueAcceptReturnsPending(t *testing.T) {
 		nil,
 		nil,
 		queueItem,
-		QueueSettings{Mode: airuntime.QueueModeCollect, Cap: 10, DropPolicy: airuntime.QueueDropOld},
+		airuntime.QueueSettings{Mode: airuntime.QueueModeCollect, Cap: 10, DropPolicy: airuntime.QueueDropOld},
 		nil,
 	)
 

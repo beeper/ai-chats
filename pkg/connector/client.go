@@ -529,7 +529,7 @@ func (oc *AIClient) releaseRoom(roomID id.RoomID) {
 }
 
 // queuePendingMessage adds a message to the pending queue for later processing.
-func (oc *AIClient) queuePendingMessage(roomID id.RoomID, item pendingQueueItem, settings QueueSettings) bool {
+func (oc *AIClient) queuePendingMessage(roomID id.RoomID, item pendingQueueItem, settings airuntime.QueueSettings) bool {
 	enqueued := oc.enqueuePendingItem(roomID, item, settings)
 	if enqueued {
 		snapshot := oc.getQueueSnapshot(roomID)
@@ -622,11 +622,11 @@ func (oc *AIClient) dispatchOrQueueCore(
 	meta *PortalMetadata,
 	userMessage *database.Message,
 	queueItem pendingQueueItem,
-	queueSettings QueueSettings,
+	queueSettings airuntime.QueueSettings,
 	promptMessages []openai.ChatCompletionMessageParamUnion,
 ) bool {
 	roomID := portal.MXID
-	behavior := airuntime.ResolveQueueBehavior(airuntime.QueueMode(queueSettings.Mode))
+	behavior := airuntime.ResolveQueueBehavior(queueSettings.Mode)
 	shouldSteer := behavior.Steer
 	shouldFollowup := behavior.Followup
 	hasDBMessage := userMessage != nil
@@ -639,7 +639,7 @@ func (oc *AIClient) dispatchOrQueueCore(
 			Bool("has_event", evt != nil).
 			Msg("Dispatching inbound message")
 	}
-	queueDecision := airuntime.DecideQueueAction(airuntime.QueueMode(queueSettings.Mode), oc.roomHasActiveRun(roomID), false)
+	queueDecision := airuntime.DecideQueueAction(queueSettings.Mode, oc.roomHasActiveRun(roomID), false)
 	if trace {
 		oc.loggerForContext(ctx).Debug().
 			Str("room_id", roomID.String()).
@@ -756,7 +756,7 @@ func (oc *AIClient) dispatchOrQueue(
 	meta *PortalMetadata,
 	userMessage *database.Message,
 	queueItem pendingQueueItem,
-	queueSettings QueueSettings,
+	queueSettings airuntime.QueueSettings,
 	promptMessages []openai.ChatCompletionMessageParamUnion,
 ) (dbMessage *database.Message, isPending bool) {
 	isPending = oc.dispatchOrQueueCore(ctx, evt, portal, meta, userMessage, queueItem, queueSettings, promptMessages)
@@ -771,7 +771,7 @@ func (oc *AIClient) dispatchOrQueueWithStatus(
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
 	queueItem pendingQueueItem,
-	queueSettings QueueSettings,
+	queueSettings airuntime.QueueSettings,
 	promptMessages []openai.ChatCompletionMessageParamUnion,
 ) {
 	oc.dispatchOrQueueCore(ctx, evt, portal, meta, nil, queueItem, queueSettings, promptMessages)
@@ -842,7 +842,7 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 		var promptMessages []openai.ChatCompletionMessageParamUnion
 		var err error
 
-		if airuntime.ResolveQueueBehavior(airuntime.QueueMode(actionSnapshot.mode)).Collect && len(actionSnapshot.items) > 0 {
+		if airuntime.ResolveQueueBehavior(actionSnapshot.mode).Collect && len(actionSnapshot.items) > 0 {
 			count := len(actionSnapshot.items)
 			if count > 1 {
 				firstKey := oc.queueThreadKey(actionSnapshot.items[0].pending.Event)
@@ -2850,7 +2850,7 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 		enqueuedAt:      time.Now().UnixMilli(),
 		rawEventContent: rawEventContent,
 	}
-	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(statusCtx, last.Portal, last.Meta, "", QueueInlineOptions{})
+	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(statusCtx, last.Portal, last.Meta, "", airuntime.QueueInlineOptions{})
 
 	_, _ = oc.dispatchOrQueue(statusCtx, last.Event, last.Portal, last.Meta, nil, queueItem, queueSettings, promptMessages)
 

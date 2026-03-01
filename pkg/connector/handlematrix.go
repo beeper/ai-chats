@@ -170,7 +170,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	}
 	mentionRegexes := buildMentionRegexes(&oc.connector.Config, agentDef)
 
-	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", QueueInlineOptions{})
+	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
 
 	commandBody := rawBody
 	if isGroup {
@@ -520,7 +520,7 @@ func (oc *AIClient) regenerateFromEdit(
 		oc.notifySessionMutation(ctx, portal, meta, true)
 	}
 
-	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", QueueInlineOptions{})
+	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
 	isGroup := oc.isGroupChat(ctx, portal)
 	pending := pendingMessage{
 		Event:       evt,
@@ -691,7 +691,7 @@ func (oc *AIClient) handleMediaMessage(
 	if trace {
 		logCtx.Debug().Bool("supports_media", supportsMedia).Msg("Media capability check")
 	}
-	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", QueueInlineOptions{})
+	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
 
 	// Get caption (body is usually the filename or caption)
 	rawCaption := strings.TrimSpace(msg.Content.Body)
@@ -919,7 +919,7 @@ func (oc *AIClient) handleTextFileMessage(
 	if msg == nil {
 		return nil, errors.New("missing matrix event for text file message")
 	}
-	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", QueueInlineOptions{})
+	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
 
 	rawCaption := strings.TrimSpace(msg.Content.Body)
 	fileName := strings.TrimSpace(msg.Content.FileName)
@@ -1270,7 +1270,7 @@ func (oc *AIClient) handleRegenerate(
 		return
 	}
 
-	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(runCtx, portal, meta, "", QueueInlineOptions{})
+	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(runCtx, portal, meta, "", airuntime.QueueInlineOptions{})
 	isGroup := oc.isGroupChat(runCtx, portal)
 	pending := pendingMessage{
 		Event:         evt,
