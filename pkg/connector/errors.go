@@ -14,29 +14,11 @@ import (
 
 // Bridge state error codes for AI-specific errors
 const (
-	AIRateLimited    status.BridgeStateErrorCode = "ai-rate-limited"
-	AIAuthFailed     status.BridgeStateErrorCode = "ai-auth-failed"
-	AIContextTooLong status.BridgeStateErrorCode = "ai-context-too-long"
-	AIModelNotFound  status.BridgeStateErrorCode = "ai-model-not-found"
-	AIProviderError  status.BridgeStateErrorCode = "ai-provider-error"
-	AIBillingError   status.BridgeStateErrorCode = "ai-billing-error"
-	AIOverloaded     status.BridgeStateErrorCode = "ai-overloaded"
-	AITimeout        status.BridgeStateErrorCode = "ai-timeout"
-	AIImageError     status.BridgeStateErrorCode = "ai-image-error"
+	AIRateLimited   status.BridgeStateErrorCode = "ai-rate-limited"
+	AIAuthFailed    status.BridgeStateErrorCode = "ai-auth-failed"
+	AIProviderError status.BridgeStateErrorCode = "ai-provider-error"
+	AIBillingError  status.BridgeStateErrorCode = "ai-billing-error"
 )
-
-// BridgeStateHumanErrors provides human-readable messages for AI bridge error codes
-var BridgeStateHumanErrors = map[status.BridgeStateErrorCode]string{
-	AIRateLimited:    "You're sending requests too quickly. Wait a moment, then try again.",
-	AIAuthFailed:     "Authentication failed. Check your API key or sign in again.",
-	AIContextTooLong: "This conversation is too long for this model.",
-	AIModelNotFound:  "That model isn't available.",
-	AIProviderError:  "The AI provider returned an error. Try again later.",
-	AIBillingError:   "There's a billing issue with the AI provider. Check your account or credits.",
-	AIOverloaded:     "The AI service is busy right now. Try again in a moment.",
-	AITimeout:        "The request timed out. Try again.",
-	AIImageError:     "That image is too large or has unsupported dimensions for this model.",
-}
 
 var (
 	maxContextPattern        = regexp.MustCompile(`maximum context length is (\d+) tokens`)
@@ -61,31 +43,6 @@ var (
 		ErrCode:    "IO.AI_BRIDGE.OPENAI_OR_OPENROUTER_REQUIRED",
 		Err:        "Enter an OpenAI or OpenRouter API key.",
 		StatusCode: http.StatusBadRequest,
-	}
-	ErrAPIKeyInvalid = bridgev2.RespError{
-		ErrCode:    "IO.AI_BRIDGE.INVALID_API_KEY",
-		Err:        "That API key is invalid.",
-		StatusCode: http.StatusUnauthorized,
-	}
-	ErrProviderUnavailable = bridgev2.RespError{
-		ErrCode:    "IO.AI_BRIDGE.PROVIDER_UNAVAILABLE",
-		Err:        "The AI provider is unavailable.",
-		StatusCode: http.StatusServiceUnavailable,
-	}
-	ErrContextLengthExceeded = bridgev2.RespError{
-		ErrCode:    "IO.AI_BRIDGE.CONTEXT_LENGTH_EXCEEDED",
-		Err:        "Message is too long. Some earlier messages were trimmed.",
-		StatusCode: http.StatusRequestEntityTooLarge,
-	}
-	ErrUnsupportedMediaType = bridgev2.RespError{
-		ErrCode:    "IO.AI_BRIDGE.UNSUPPORTED_MEDIA_TYPE",
-		Err:        "This file type isn't supported by the current model.",
-		StatusCode: http.StatusUnsupportedMediaType,
-	}
-	ErrModelNotFound = bridgev2.RespError{
-		ErrCode:    "IO.AI_BRIDGE.MODEL_NOT_FOUND",
-		Err:        "That model isn't available.",
-		StatusCode: http.StatusNotFound,
 	}
 )
 

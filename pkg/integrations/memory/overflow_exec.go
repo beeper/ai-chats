@@ -176,17 +176,6 @@ func NormalizeFlushSettings(
 	}
 }
 
-func MarkFlushAt(nowFn func() time.Time, set func(ms int64)) {
-	if set == nil {
-		return
-	}
-	now := time.Now()
-	if nowFn != nil {
-		now = nowFn()
-	}
-	set(now.UnixMilli())
-}
-
 func DefaultFlushPrompts(silentToken string) (prompt string, systemPrompt string) {
 	prompt = strings.TrimSpace(strings.Join([]string{
 		"Pre-compaction memory flush.",
