@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 const (
@@ -49,11 +51,10 @@ func normalizeMediaProviderID(id string) string {
 }
 
 func normalizeMediaBaseURL(value string, fallback string) string {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return fallback
+	if trimmed := stringutil.NormalizeBaseURL(value); trimmed != "" {
+		return trimmed
 	}
-	return strings.TrimRight(trimmed, "/")
+	return fallback
 }
 
 func readErrorResponse(res *http.Response) string {

@@ -3,6 +3,8 @@ package connector
 import (
 	"net/url"
 	"strings"
+
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 const (
@@ -85,7 +87,7 @@ func normalizeProxyBaseURL(raw string) string {
 }
 
 func stripProxyServiceSuffix(path string) string {
-	trimmed := strings.TrimRight(strings.TrimSpace(path), "/")
+	trimmed := stringutil.NormalizeBaseURL(path)
 	if trimmed == "" {
 		return ""
 	}
@@ -106,7 +108,7 @@ func stripProxyServiceSuffix(path string) string {
 }
 
 func joinProxyPath(base, suffix string) string {
-	base = strings.TrimRight(strings.TrimSpace(base), "/")
+	base = stringutil.NormalizeBaseURL(base)
 	if base == "" {
 		return ""
 	}

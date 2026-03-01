@@ -3,13 +3,8 @@ package stringutil
 import "strings"
 
 // NormalizeBaseURL trims whitespace and trailing slashes from a URL.
-// If the result is empty, fallback is returned.
-func NormalizeBaseURL(value, fallback string) string {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return fallback
-	}
-	return strings.TrimRight(trimmed, "/")
+func NormalizeBaseURL(value string) string {
+	return strings.TrimRight(strings.TrimSpace(value), "/")
 }
 
 // NormalizeEnum normalizes a raw string to a canonical enum value.
