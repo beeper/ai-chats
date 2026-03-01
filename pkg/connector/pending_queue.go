@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
@@ -25,16 +26,16 @@ type pendingQueue struct {
 	items          []pendingQueueItem
 	draining       bool
 	lastEnqueuedAt int64
-	mode           QueueMode
+	mode           airuntime.QueueMode
 	debounceMs     int
 	cap            int
-	dropPolicy     QueueDropPolicy
+	dropPolicy     airuntime.QueueDropPolicy
 	droppedCount   int
 	summaryLines   []string
 	lastItem       *pendingQueueItem
 }
 
-func (oc *AIClient) getPendingQueue(roomID id.RoomID, settings QueueSettings) *pendingQueue {
+func (oc *AIClient) getPendingQueue(roomID id.RoomID, settings airuntime.QueueSettings) *pendingQueue {
 	oc.pendingQueuesMu.Lock()
 	defer oc.pendingQueuesMu.Unlock()
 	queue := oc.pendingQueues[roomID]
@@ -72,7 +73,7 @@ func (oc *AIClient) clearPendingQueue(roomID id.RoomID) {
 	}
 }
 
-func (oc *AIClient) enqueuePendingItem(roomID id.RoomID, item pendingQueueItem, settings QueueSettings) bool {
+func (oc *AIClient) enqueuePendingItem(roomID id.RoomID, item pendingQueueItem, settings airuntime.QueueSettings) bool {
 	queue := oc.getPendingQueue(roomID, settings)
 	if queue == nil {
 		return false
@@ -221,7 +222,7 @@ func (oc *AIClient) dispatchQueuedPrompt(
 				followup := item
 				followup.backlogAfter = false
 				followup.allowDuplicate = true
-				queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(oc.backgroundContext(ctx), item.pending.Portal, item.pending.Meta, "", QueueInlineOptions{})
+				queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(oc.backgroundContext(ctx), item.pending.Portal, item.pending.Meta, "", airuntime.QueueInlineOptions{})
 				oc.queuePendingMessage(roomID, followup, queueSettings)
 			}
 			oc.releaseRoom(roomID)

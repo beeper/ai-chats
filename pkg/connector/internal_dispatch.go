@@ -98,7 +98,7 @@ func (oc *AIClient) dispatchInternalMessage(
 		summaryLine: trimmed,
 		enqueuedAt:  time.Now().UnixMilli(),
 	}
-	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", QueueInlineOptions{})
+	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
 
 	if oc.acquireRoom(portal.MXID) {
 		metaSnapshot := clonePortalMetadata(meta)
@@ -115,9 +115,9 @@ func (oc *AIClient) dispatchInternalMessage(
 		return eventID, false, nil
 	}
 
-	behavior := airuntime.ResolveQueueBehavior(airuntime.QueueMode(queueSettings.Mode))
+	behavior := airuntime.ResolveQueueBehavior(queueSettings.Mode)
 	shouldSteer := behavior.Steer
-	queueDecision := airuntime.DecideQueueAction(airuntime.QueueMode(queueSettings.Mode), oc.roomHasActiveRun(portal.MXID), false)
+	queueDecision := airuntime.DecideQueueAction(queueSettings.Mode, oc.roomHasActiveRun(portal.MXID), false)
 	if queueDecision.Action == airuntime.QueueActionInterruptAndRun {
 		oc.cancelRoomRun(portal.MXID)
 		oc.clearPendingQueue(portal.MXID)

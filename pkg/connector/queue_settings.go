@@ -8,11 +8,11 @@ type queueResolveParams struct {
 	cfg        *Config
 	channel    string
 	session    *sessionEntry
-	inlineMode QueueMode
-	inlineOpts QueueInlineOptions
+	inlineMode airuntime.QueueMode
+	inlineOpts airuntime.QueueInlineOptions
 }
 
-func resolveQueueSettings(params queueResolveParams) QueueSettings {
+func resolveQueueSettings(params queueResolveParams) airuntime.QueueSettings {
 	channel := strings.TrimSpace(strings.ToLower(params.channel))
 	cfg := params.cfg
 	queueCfg := (*QueueConfig)(nil)
@@ -83,7 +83,7 @@ func resolveQueueSettings(params queueResolveParams) QueueSettings {
 		}
 	}
 
-	dropPolicy := QueueDropPolicy("")
+	dropPolicy := airuntime.QueueDropPolicy("")
 	if params.inlineOpts.DropPolicy != nil {
 		dropPolicy = *params.inlineOpts.DropPolicy
 	} else if params.session != nil {
@@ -99,7 +99,7 @@ func resolveQueueSettings(params queueResolveParams) QueueSettings {
 		dropPolicy = airuntime.DefaultQueueDrop
 	}
 
-	return QueueSettings{
+	return airuntime.QueueSettings{
 		Mode:       resolvedMode,
 		DebounceMs: debounceMs,
 		Cap:        cap,

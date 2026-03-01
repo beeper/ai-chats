@@ -8,7 +8,7 @@ import (
 )
 
 type queueSummaryState struct {
-	DropPolicy   QueueDropPolicy
+	DropPolicy   airuntime.QueueDropPolicy
 	DroppedCount int
 	SummaryLines []string
 }
@@ -30,7 +30,7 @@ func applyQueueDropPolicy[T any](params struct {
 	if params.Queue.Cap <= 0 || len(params.Queue.Items) < params.Queue.Cap {
 		return true
 	}
-	overflow := airuntime.ResolveQueueOverflow(params.Queue.Cap, len(params.Queue.Items), airuntime.QueueDropPolicy(params.Queue.DropPolicy))
+	overflow := airuntime.ResolveQueueOverflow(params.Queue.Cap, len(params.Queue.Items), params.Queue.DropPolicy)
 	if !overflow.KeepNew {
 		return false
 	}

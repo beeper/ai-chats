@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"maunium.net/go/mautrix/bridgev2"
 )
 
@@ -10,9 +11,9 @@ func (oc *AIClient) resolveQueueSettingsForPortal(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
-	inlineMode QueueMode,
-	inlineOpts QueueInlineOptions,
-) (QueueSettings, *sessionEntry, sessionStoreRef, string) {
+	inlineMode airuntime.QueueMode,
+	inlineOpts airuntime.QueueInlineOptions,
+) (airuntime.QueueSettings, *sessionEntry, sessionStoreRef, string) {
 	agentID := normalizeAgentID(resolveAgentID(meta))
 	storeRef := oc.resolveSessionStoreRef(agentID)
 	sessionKey := ""
