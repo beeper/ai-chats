@@ -9,12 +9,12 @@ import (
 
 type QueueDirective struct {
 	Cleaned      string
-	QueueMode    QueueMode
+	QueueMode    airuntime.QueueMode
 	QueueReset   bool
 	RawMode      string
 	DebounceMs   *int
 	Cap          *int
-	DropPolicy   *QueueDropPolicy
+	DropPolicy   *airuntime.QueueDropPolicy
 	RawDebounce  string
 	RawCap       string
 	RawDrop      string

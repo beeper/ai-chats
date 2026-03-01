@@ -389,11 +389,6 @@ func (oc *OpenAIConnector) GetLoginFlows() []bridgev2.LoginFlow {
 }
 
 func (oc *OpenAIConnector) CreateLogin(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
-	// Compatibility aliases: some clients may still request these historic flow IDs even though
-	// we intentionally keep the UI limited to Beeper AI, Magic Proxy and Custom.
-	if flowID == ProviderOpenAI || flowID == ProviderOpenRouter {
-		flowID = FlowCustom
-	}
 	// Validate by checking if flowID is in available flows
 	flows := oc.GetLoginFlows()
 	valid := false

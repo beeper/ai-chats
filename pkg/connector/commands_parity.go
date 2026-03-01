@@ -50,7 +50,7 @@ func fnStatus(ce *commands.Event) {
 		return
 	}
 	isGroup := client.isGroupChat(ce.Ctx, portal)
-	queueSettings, _, _, _ := client.resolveQueueSettingsForPortal(ce.Ctx, portal, meta, "", QueueInlineOptions{})
+	queueSettings, _, _, _ := client.resolveQueueSettingsForPortal(ce.Ctx, portal, meta, "", airuntime.QueueInlineOptions{})
 	ce.Reply("%s", client.buildStatusText(ce.Ctx, portal, meta, isGroup, queueSettings))
 }
 
@@ -251,7 +251,7 @@ func fnQueue(ce *commands.Event) {
 		return
 	}
 
-	queueSettings, _, storeRef, sessionKey := client.resolveQueueSettingsForPortal(ce.Ctx, portal, meta, "", QueueInlineOptions{})
+	queueSettings, _, storeRef, sessionKey := client.resolveQueueSettingsForPortal(ce.Ctx, portal, meta, "", airuntime.QueueInlineOptions{})
 
 	if len(ce.Args) == 0 || strings.EqualFold(strings.TrimSpace(ce.Args[0]), "status") {
 		ce.Reply("%s", buildQueueStatusLine(queueSettings))
@@ -271,7 +271,7 @@ func fnQueue(ce *commands.Event) {
 			})
 		}
 		client.clearPendingQueue(portal.MXID)
-		queueSettings, _, _, _ = client.resolveQueueSettingsForPortal(ce.Ctx, portal, meta, "", QueueInlineOptions{})
+		queueSettings, _, _, _ = client.resolveQueueSettingsForPortal(ce.Ctx, portal, meta, "", airuntime.QueueInlineOptions{})
 		ce.Reply("%s", buildQueueStatusLine(queueSettings))
 		return
 	}
@@ -314,7 +314,7 @@ func fnQueue(ce *commands.Event) {
 		})
 	}
 
-	queueSettings, _, _, _ = client.resolveQueueSettingsForPortal(ce.Ctx, portal, meta, "", QueueInlineOptions{})
+	queueSettings, _, _, _ = client.resolveQueueSettingsForPortal(ce.Ctx, portal, meta, "", airuntime.QueueInlineOptions{})
 	ce.Reply("%s", buildQueueStatusLine(queueSettings))
 }
 
