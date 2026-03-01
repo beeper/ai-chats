@@ -219,7 +219,12 @@ func (oc *AIClient) gateMcpToolApproval(
 
 	// If approvals are disabled, not required, or already always-allowed, auto-approve
 	// without prompting. Otherwise emit an approval request to the UI.
-	runtimeDecision := toRuntimeToolApprovalDecision(true, "mcp", mcpToolName, tool.callID, oc.toolApprovalsRequireForMCP())
+	runtimeDecision := airuntime.DecideToolApproval(airuntime.ToolPolicyInput{
+		ToolName:      mcpToolName,
+		ToolKind:      "mcp",
+		CallID:        tool.callID,
+		RequireForMCP: oc.toolApprovalsRequireForMCP(),
+	})
 	needsApproval := oc.toolApprovalsRuntimeEnabled() && runtimeDecision.State == airuntime.ToolApprovalRequired && !oc.isMcpAlwaysAllowed(serverLabel, mcpToolName)
 	if needsApproval && state.heartbeat != nil {
 		needsApproval = false
@@ -230,11 +235,13 @@ func (oc *AIClient) gateMcpToolApproval(
 			oc.emitUIToolApprovalRequest(ctx, portal, state, approvalID, tool.callID, tool.toolName, tool.eventID, oc.toolApprovalsTTLSeconds())
 		}
 	} else {
-		if err := oc.resolveToolApproval(state.roomID, approvalID, ToolApprovalDecision{
-			Approve:   true,
-			DecidedAt: time.Now(),
-			DecidedBy: oc.UserLogin.UserMXID,
-		}); err != nil {
+		if err := oc.resolveToolApproval(
+			state.roomID,
+			approvalID,
+			airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalApproved, Reason: "auto_approved"},
+			false,
+			oc.UserLogin.UserMXID,
+		); err != nil {
 			oc.loggerForContext(ctx).Warn().Err(err).Str("approval_id", approvalID).Msg("Failed to auto-approve MCP tool call")
 		}
 	}

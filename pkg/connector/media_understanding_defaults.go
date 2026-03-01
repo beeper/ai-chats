@@ -47,7 +47,10 @@ var defaultImageModelsByProvider = map[string]string{
 
 func truncateText(s string, maxChars int) string {
 	if maxChars > 0 && len(s) > maxChars {
-		return s[:maxChars]
+		runes := []rune(s)
+		if len(runes) > maxChars {
+			return string(runes[:maxChars])
+		}
 	}
 	return s
 }

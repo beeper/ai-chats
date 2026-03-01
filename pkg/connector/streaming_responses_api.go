@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/responses"
@@ -503,21 +504,23 @@ func (oc *AIClient) streamingResponse(
 
 		approvalInputs := make([]responses.ResponseInputItemUnionParam, 0, len(pendingApprovals))
 		for _, approval := range pendingApprovals {
-			decision, _, ok := oc.waitToolApproval(ctx, approval.approvalID)
+			resolution, _, ok := oc.waitToolApproval(ctx, approval.approvalID)
+			decision := resolution.Decision
 			if !ok {
 				if oc.toolApprovalsAskFallback() == "allow" {
-					decision = ToolApprovalDecision{Approve: true, Reason: "fallback"}
+					decision = airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalApproved, Reason: "fallback"}
 				} else {
-					decision = ToolApprovalDecision{Approve: false, Reason: "timeout"}
+					decision = airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalTimedOut, Reason: "timeout"}
 				}
 			}
-			item := responses.ResponseInputItemParamOfMcpApprovalResponse(approval.approvalID, decision.Approve)
+			approved := approvalAllowed(decision)
+			item := responses.ResponseInputItemParamOfMcpApprovalResponse(approval.approvalID, approved)
 			if decision.Reason != "" && item.OfMcpApprovalResponse != nil {
 				item.OfMcpApprovalResponse.Reason = param.NewOpt(decision.Reason)
 			}
 			approvalInputs = append(approvalInputs, item)
 
-			if !decision.Approve {
+			if !approved {
 				// Optimistically mark as denied in the UI; the provider may emit a denial later as well.
 				oc.uiEmitter(state).EmitUIToolOutputDenied(ctx, portal, approval.toolCallID)
 			}

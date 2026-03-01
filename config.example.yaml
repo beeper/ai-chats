@@ -93,7 +93,7 @@ default_system_prompt: |
   tools:
     search:
       provider: "exa"
-      fallbacks: ["exa"]
+      fallbacks: []
       exa:
         api_key: ""
         base_url: "https://api.exa.ai"

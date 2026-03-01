@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"regexp"
 	"runtime"
@@ -50,8 +49,6 @@ var (
 	_ bridgev2.MuteHandlingNetworkAPI           = (*AIClient)(nil)
 	_ bridgev2.MarkedUnreadHandlingNetworkAPI   = (*AIClient)(nil)
 )
-
-var mediaDownloadHTTPClient = &http.Client{Timeout: 60 * time.Second}
 
 var rejectAllMediaFileFeatures = &event.FileFeatures{
 	MimeTypes: map[string]event.CapabilitySupportLevel{
