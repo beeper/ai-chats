@@ -139,4 +139,3 @@ func (oc *AIClient) emitStreamEvent(
 		}
 	}
 }
-

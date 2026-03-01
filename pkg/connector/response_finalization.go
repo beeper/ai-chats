@@ -707,7 +707,6 @@ func buildSourceParts(cits []citations.SourceCitation, documents []citations.Sou
 	return parts
 }
 
-
 // sendFinalAssistantTurnContent is a helper for simple mode that sends content without directive processing.
 func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata, intent bridgev2.MatrixAPI, rendered event.MessageEventContent, replyToEventID *id.EventID) {
 	// Safety-split oversized responses into multiple Matrix events

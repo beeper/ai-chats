@@ -164,4 +164,3 @@ func parseChatSlug(slug string) (int, bool) {
 	}
 	return 0, false
 }
-
