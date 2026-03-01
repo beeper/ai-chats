@@ -184,7 +184,7 @@ func (oc *AIClient) handleResponseOutputAnnotationAdded(
 	annotationIndex any,
 ) {
 	if citation, ok := extractURLCitation(annotation); ok {
-		state.sourceCitations = citations.MergeSourceCitations(state.sourceCitations, []citations.SourceCitation{citation})
+		state.sourceCitations = citations.AppendUniqueCitation(state.sourceCitations, citation)
 		oc.uiEmitter(state).EmitUISourceURL(ctx, portal, citation)
 	}
 	if document, ok := extractDocumentCitation(annotation); ok {

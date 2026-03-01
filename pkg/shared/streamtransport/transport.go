@@ -42,8 +42,9 @@ type turnGateState struct {
 
 // EditDebounceGate tracks per-turn edit emission to avoid duplicate and overly-frequent edits.
 type EditDebounceGate struct {
-	mu    sync.Mutex
-	turns map[string]*turnGateState
+	mu            sync.Mutex
+	turns         map[string]*turnGateState
+	lastEvictedAt time.Time
 }
 
 func NewEditDebounceGate() *EditDebounceGate {
@@ -67,10 +68,13 @@ func (g *EditDebounceGate) ShouldEmit(turnID, body string, now time.Time, deboun
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	for id, s := range g.turns {
-		if !s.lastAt.IsZero() && now.Sub(s.lastAt) >= staleTurnTTL {
-			delete(g.turns, id)
+	if now.Sub(g.lastEvictedAt) >= staleTurnTTL {
+		for id, s := range g.turns {
+			if !s.lastAt.IsZero() && now.Sub(s.lastAt) >= staleTurnTTL {
+				delete(g.turns, id)
+			}
 		}
+		g.lastEvictedAt = now
 	}
 
 	state, ok := g.turns[turnID]
