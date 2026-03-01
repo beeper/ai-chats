@@ -13,9 +13,9 @@ import (
 // streamingRunPrep holds the shared state produced by prepareStreamingRun.
 type streamingRunPrep struct {
 	State         *streamingState
-	TypingCtrl    *TypingController
 	TypingSignals *TypingSignaler
 	TouchTyping   func()
+	IsHeartbeat   bool
 }
 
 // prepareStreamingRun performs the shared preamble for both the Responses API
@@ -90,9 +90,9 @@ func (oc *AIClient) prepareStreamingRun(
 
 	prep = streamingRunPrep{
 		State:         state,
-		TypingCtrl:    typingCtrl,
 		TypingSignals: typingSignals,
 		TouchTyping:   touchTyping,
+		IsHeartbeat:   isHeartbeat,
 	}
 	return prep, pruned, cleanup
 }

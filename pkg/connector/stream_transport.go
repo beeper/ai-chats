@@ -24,7 +24,7 @@ func (oc *AIClient) streamEditDebounceDuration() time.Duration {
 }
 
 func (oc *AIClient) sendDebouncedStreamEdit(ctx context.Context, portal *bridgev2.Portal, state *streamingState, force bool) {
-	if oc == nil || state == nil {
+	if oc == nil || state == nil || portal == nil {
 		return
 	}
 	streamtransport.SendDebouncedEdit(ctx, streamtransport.DebouncedEditParams{

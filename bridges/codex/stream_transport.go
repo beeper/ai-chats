@@ -24,7 +24,7 @@ func (cc *CodexClient) streamEditDebounceDuration() time.Duration {
 }
 
 func (cc *CodexClient) sendDebouncedStreamEdit(ctx context.Context, portal *bridgev2.Portal, state *streamingState, force bool) {
-	if cc == nil || state == nil {
+	if cc == nil || state == nil || portal == nil {
 		return
 	}
 	streamtransport.SendDebouncedEdit(ctx, streamtransport.DebouncedEditParams{

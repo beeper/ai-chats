@@ -41,7 +41,7 @@ func (oc *AIClient) streamChatCompletions(
 	state := prep.State
 	typingSignals := prep.TypingSignals
 	touchTyping := prep.TouchTyping
-	isHeartbeat := state.heartbeat != nil
+	isHeartbeat := prep.IsHeartbeat
 
 	currentMessages := messages
 	// Tool loops can legitimately require several rounds (e.g. multi-step file ops).

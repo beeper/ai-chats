@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	iruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
+	"github.com/beeper/ai-bridge/pkg/shared/maputil"
 	"github.com/beeper/ai-bridge/pkg/textfs"
 )
 
@@ -66,8 +67,8 @@ func executeSearchTool(ctx context.Context, scope iruntime.ToolScope, args map[s
 	if deps.GetManager == nil {
 		return "", errors.New("memory_search unavailable")
 	}
-	mode := strings.ToLower(strings.TrimSpace(readString(args, "mode")))
-	query := strings.TrimSpace(readString(args, "query"))
+	mode := strings.ToLower(maputil.StringArg(args, "mode"))
+	query := maputil.StringArg(args, "query")
 	if mode != "list" && query == "" {
 		return "", errors.New("query required")
 	}
@@ -92,7 +93,7 @@ func executeSearchTool(ctx context.Context, scope iruntime.ToolScope, args map[s
 	if score, ok := readFloat(args, "minScore"); ok {
 		opts.MinScore = score
 	}
-	if prefix := strings.TrimSpace(readString(args, "pathPrefix")); prefix != "" {
+	if prefix := maputil.StringArg(args, "pathPrefix"); prefix != "" {
 		opts.PathPrefix = prefix
 	}
 	if sources := readStringList(args, "sources"); len(sources) > 0 {
@@ -134,7 +135,7 @@ func executeGetTool(ctx context.Context, scope iruntime.ToolScope, args map[stri
 	if deps.GetManager == nil {
 		return "", errors.New("memory_get unavailable")
 	}
-	path := strings.TrimSpace(readString(args, "path"))
+	path := maputil.StringArg(args, "path")
 	if path == "" {
 		return "", errors.New("path required")
 	}
@@ -406,14 +407,6 @@ func resolveSessionKey(scope iruntime.ToolScope, fn func(scope iruntime.ToolScop
 		return ""
 	}
 	return strings.TrimSpace(fn(scope))
-}
-
-func readString(args map[string]any, key string) string {
-	if args == nil {
-		return ""
-	}
-	value, _ := args[key].(string)
-	return value
 }
 
 func readFloat(args map[string]any, key string) (float64, bool) {

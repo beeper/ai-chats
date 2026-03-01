@@ -42,7 +42,7 @@ func (oc *AIClient) streamingResponse(
 	state := prep.State
 	typingSignals := prep.TypingSignals
 	touchTyping := prep.TouchTyping
-	isHeartbeat := state.heartbeat != nil
+	isHeartbeat := prep.IsHeartbeat
 
 	if state.roomID != "" {
 		oc.markRoomRunStreaming(state.roomID, true)

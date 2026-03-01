@@ -28,9 +28,9 @@ func ParseApprovalDecision(raw map[string]any) *ApprovalDecisionPayload {
 	if !ok {
 		return nil
 	}
-	approvalID := strings.TrimSpace(maputil.StringArg(payloadMap, "approvalId"))
-	decision := strings.TrimSpace(maputil.StringArg(payloadMap, "decision"))
-	reason := strings.TrimSpace(maputil.StringArg(payloadMap, "reason"))
+	approvalID := maputil.StringArg(payloadMap, "approvalId")
+	decision := maputil.StringArg(payloadMap, "decision")
+	reason := maputil.StringArg(payloadMap, "reason")
 	if approvalID == "" || decision == "" {
 		return nil
 	}
