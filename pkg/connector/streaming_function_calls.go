@@ -111,12 +111,12 @@ func (oc *AIClient) handleFunctionCallArgumentsDone(
 	} else {
 		// Tool approval gating for dangerous builtin tools.
 		if argsObj, ok := inputMap.(map[string]any); ok {
-			if oc.gateBuiltinToolApproval(ctx, portal, state, tool, toolName, argsObj) {
+			if oc.isBuiltinToolDenied(ctx, portal, state, tool, toolName, argsObj) {
 				resultStatus = ResultStatusDenied
 				result = "Denied by user"
 			}
 		} else if approvalFallbackForNonObject {
-			if oc.gateBuiltinToolApproval(ctx, portal, state, tool, toolName, nil) {
+			if oc.isBuiltinToolDenied(ctx, portal, state, tool, toolName, nil) {
 				resultStatus = ResultStatusDenied
 				result = "Denied by user"
 			}

@@ -24,7 +24,7 @@ func ResolveMode(configValue string) Mode {
 	if strings.TrimSpace(configValue) == string(ModeDebouncedEdit) {
 		return ModeDebouncedEdit
 	}
-	return ModeEphemeral
+	return DefaultMode
 }
 
 // ResolveDebounceDuration returns configMs as a duration, falling back to DefaultEditDebounceMs.
