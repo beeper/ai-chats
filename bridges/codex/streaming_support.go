@@ -8,6 +8,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/shared/citations"
+	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 	"github.com/beeper/ai-bridge/pkg/shared/streamui"
 )
 
@@ -33,12 +34,14 @@ type streamingState struct {
 	firstToken         bool
 	suppressSend       bool
 
-	ui streamui.UIState
+	ui      streamui.UIState
+	session *streamtransport.StreamSession
 
 	codexToolOutputBuffers    map[string]*strings.Builder
 	codexLatestDiff           string
 	codexReasoningSummarySeen bool
 	codexTimelineNotices      map[string]bool
+	loggedStreamStart         bool
 }
 
 func (cc *CodexClient) uiEmitter(state *streamingState) *streamui.Emitter {

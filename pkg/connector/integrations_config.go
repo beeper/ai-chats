@@ -462,9 +462,6 @@ func upgradeConfig(helper configupgrade.Helper) {
 
 	// Bridge-specific configuration
 	helper.Copy(configupgrade.Str, "bridge", "command_prefix")
-	helper.Copy(configupgrade.Bool, "bridge", "log_ephemeral_events")
-	helper.Copy(configupgrade.Str, "bridge", "streaming_transport")
-	helper.Copy(configupgrade.Int, "bridge", "streaming_edit_debounce_ms")
 
 	// Context pruning configuration
 	helper.Copy(configupgrade.Str, "pruning", "mode")
@@ -487,6 +484,8 @@ func upgradeConfig(helper configupgrade.Helper) {
 	helper.Copy(configupgrade.Float, "pruning", "max_history_share")
 	helper.Copy(configupgrade.Int, "pruning", "reserve_tokens")
 	helper.Copy(configupgrade.Str, "pruning", "custom_instructions")
+	helper.Copy(configupgrade.Str, "pruning", "identifier_policy")
+	helper.Copy(configupgrade.Str, "pruning", "identifier_instructions")
 	helper.Copy(configupgrade.Bool, "pruning", "overflow_flush", "enabled")
 	helper.Copy(configupgrade.Int, "pruning", "overflow_flush", "soft_threshold_tokens")
 	helper.Copy(configupgrade.Str, "pruning", "overflow_flush", "prompt")

@@ -33,7 +33,6 @@ import (
 
 	"github.com/beeper/ai-bridge/pkg/agents"
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
-	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 )
 
 var (
@@ -338,8 +337,7 @@ type AIClient struct {
 	toolApprovalsMu sync.Mutex
 	toolApprovals   map[string]*pendingToolApproval // approvalID -> pending approval
 
-	streamEditGate             *streamtransport.EditDebounceGate
-	streamFallbackToDebounced  atomic.Bool
+	streamFallbackToDebounced atomic.Bool
 
 	// Per-login cancellation: cancelled when this login disconnects.
 	// All goroutines using backgroundContext() will be cancelled on disconnect.
@@ -405,7 +403,6 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 		userTypingState:     make(map[id.RoomID]userTypingState),
 		queueTyping:         make(map[id.RoomID]*TypingController),
 		toolApprovals:       make(map[string]*pendingToolApproval),
-		streamEditGate:      streamtransport.NewEditDebounceGate(),
 	}
 
 	// Initialize inbound message processing with config values
@@ -2813,12 +2810,6 @@ func (oc *AIClient) ensureModelInRoom(ctx context.Context, portal *bridgev2.Port
 
 func (oc *AIClient) loggerForContext(ctx context.Context) *zerolog.Logger {
 	return bridgeadapter.LoggerFromContext(ctx, &oc.log)
-}
-
-// logEphemeralVerbose returns true when per-event ephemeral logging is enabled via config.
-func (oc *AIClient) logEphemeralVerbose() bool {
-	cfg := oc.connector.Config.Bridge.LogEphemeralEvents
-	return cfg != nil && *cfg
 }
 
 func (oc *AIClient) backgroundContext(ctx context.Context) context.Context {

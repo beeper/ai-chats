@@ -83,9 +83,7 @@ func (tc *TypingController) Start() {
 	// Start TTL timer
 	if tc.ttl > 0 {
 		tc.ttlTimer = time.AfterFunc(tc.ttl, func() {
-			if tc.client.logEphemeralVerbose() {
-				tc.client.log.Debug().Msg("Typing TTL reached, stopping typing indicator")
-			}
+			tc.client.log.Debug().Msg("Typing TTL reached, stopping typing indicator")
 			tc.Stop()
 		})
 	}

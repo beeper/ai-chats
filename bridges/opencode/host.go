@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
@@ -61,20 +60,6 @@ func (oc *OpenCodeClient) SendPendingStatus(_ context.Context, _ *bridgev2.Porta
 func (oc *OpenCodeClient) SendSuccessStatus(_ context.Context, _ *bridgev2.Portal, _ *event.Event) {
 }
 
-func (oc *OpenCodeClient) streamTransportMode() streamtransport.Mode {
-	if oc == nil || oc.connector == nil {
-		return streamtransport.DefaultMode
-	}
-	return streamtransport.ResolveMode(oc.connector.Config.Bridge.StreamingTransport)
-}
-
-func (oc *OpenCodeClient) nextStreamSeq(turnID string) int {
-	oc.streamSeqMu.Lock()
-	defer oc.streamSeqMu.Unlock()
-	oc.streamSeq[turnID]++
-	return oc.streamSeq[turnID]
-}
-
 func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *bridgev2.Portal, turnID, agentID, targetEventID string, part map[string]any) {
 	if oc == nil || portal == nil || portal.MXID == "" {
 		return
@@ -83,41 +68,144 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 	if turnID == "" || part == nil {
 		return
 	}
-	// OpenCode currently maps turn content via timeline events too; when debounced_edit is selected
-	// we disable ephemeral stream transport until replace-target mapping is added here.
-	if oc.streamTransportMode() == streamtransport.ModeDebouncedEdit {
-		return
-	}
 	if oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.Bot == nil {
 		return
 	}
-	ephemeralSender, ok := any(oc.UserLogin.Bridge.Bot).(matrixevents.MatrixEphemeralSender)
-	if !ok {
-		return
+
+	oc.streamMu.Lock()
+	state := oc.streamStates[turnID]
+	if state == nil {
+		state = &openCodeStreamState{
+			turnID:        turnID,
+			agentID:       strings.TrimSpace(agentID),
+			targetEventID: strings.TrimSpace(targetEventID),
+		}
+		oc.streamStates[turnID] = state
 	}
-	seq := oc.nextStreamSeq(turnID)
-	content, err := matrixevents.BuildStreamEventEnvelope(turnID, seq, part, matrixevents.StreamEventOpts{
-		TargetEventID: strings.TrimSpace(targetEventID),
-		AgentID:       strings.TrimSpace(agentID),
-	})
-	if err != nil {
-		return
+	if state.targetEventID == "" && strings.TrimSpace(targetEventID) != "" {
+		state.targetEventID = strings.TrimSpace(targetEventID)
 	}
-	eventContent := &event.Content{Raw: content}
-	txnID := matrixevents.BuildStreamEventTxnID(turnID, seq)
-	if _, err = ephemeralSender.SendEphemeralEvent(ctx, portal.MXID, matrixevents.StreamEventMessageType, eventContent, txnID); err != nil {
-		time.Sleep(100 * time.Millisecond)
-		_, _ = ephemeralSender.SendEphemeralEvent(ctx, portal.MXID, matrixevents.StreamEventMessageType, eventContent, txnID)
+	needPlaceholder := state.initialEventID == ""
+	partType, _ := part["type"].(string)
+	switch strings.TrimSpace(partType) {
+	case "text-delta":
+		if delta, _ := part["delta"].(string); delta != "" {
+			state.visible.WriteString(delta)
+			state.accumulated.WriteString(delta)
+		}
+	case "reasoning-delta":
+		if delta, _ := part["delta"].(string); delta != "" {
+			state.accumulated.WriteString(delta)
+		}
 	}
+	oc.streamMu.Unlock()
+
+	if needPlaceholder {
+		content := &event.Content{Raw: map[string]any{
+			"msgtype": event.MsgText,
+			"body":    "...",
+		}}
+		resp, err := oc.UserLogin.Bridge.Bot.SendMessage(ctx, portal.MXID, event.EventMessage, content, nil)
+		if err == nil && resp != nil && resp.EventID != "" {
+			oc.streamMu.Lock()
+			st := oc.streamStates[turnID]
+			if st != nil && st.initialEventID == "" {
+				st.initialEventID = resp.EventID
+				st.targetEventID = resp.EventID.String()
+			}
+			oc.streamMu.Unlock()
+		}
+	}
+
+	oc.streamMu.Lock()
+	state = oc.streamStates[turnID]
+	if state == nil {
+		state = &openCodeStreamState{
+			turnID:        turnID,
+			agentID:       strings.TrimSpace(agentID),
+			targetEventID: strings.TrimSpace(targetEventID),
+		}
+		oc.streamStates[turnID] = state
+	}
+	session := oc.streamSessions[turnID]
+	if session == nil {
+		session = streamtransport.NewStreamSession(streamtransport.StreamSessionParams{
+			TurnID:  turnID,
+			AgentID: state.agentID,
+			GetTargetEventID: func() string {
+				oc.streamMu.Lock()
+				defer oc.streamMu.Unlock()
+				st := oc.streamStates[turnID]
+				if st == nil {
+					return ""
+				}
+				return st.targetEventID
+			},
+			GetRoomID: func() id.RoomID {
+				return portal.MXID
+			},
+			GetSuppressSend: func() bool { return false },
+			NextSeq: func() int {
+				oc.streamMu.Lock()
+				defer oc.streamMu.Unlock()
+				st := oc.streamStates[turnID]
+				if st == nil {
+					return 0
+				}
+				st.sequenceNum++
+				return st.sequenceNum
+			},
+			RuntimeFallbackFlag: &oc.streamFallbackToDebounced,
+			GetEphemeralSender: func(callCtx context.Context) (matrixevents.MatrixEphemeralSender, bool) {
+				ephemeralSender, ok := any(oc.UserLogin.Bridge.Bot).(matrixevents.MatrixEphemeralSender)
+				return ephemeralSender, ok
+			},
+			SendDebouncedEdit: func(callCtx context.Context, force bool) error {
+				oc.streamMu.Lock()
+				st := oc.streamStates[turnID]
+				var visibleBody, fallbackBody string
+				var initialEventID id.EventID
+				if st != nil {
+					visibleBody = st.visible.String()
+					fallbackBody = st.accumulated.String()
+					initialEventID = st.initialEventID
+				}
+				oc.streamMu.Unlock()
+				streamtransport.SendDebouncedEdit(callCtx, streamtransport.DebouncedEditParams{
+					Portal:         portal,
+					Force:          force,
+					SuppressSend:   false,
+					VisibleBody:    visibleBody,
+					FallbackBody:   fallbackBody,
+					InitialEventID: initialEventID,
+					TurnID:         turnID,
+					Gate:           nil,
+					Debounce:       0,
+					Intent:         oc.UserLogin.Bridge.Bot,
+					Log:            oc.Log(),
+				})
+				return nil
+			},
+			Logger: oc.Log(),
+		})
+		oc.streamSessions[turnID] = session
+	}
+	oc.streamMu.Unlock()
+	session.EmitPart(ctx, part)
 }
 
 func (oc *OpenCodeClient) FinishOpenCodeStream(turnID string) {
 	if turnID == "" {
 		return
 	}
-	oc.streamSeqMu.Lock()
-	delete(oc.streamSeq, turnID)
-	oc.streamSeqMu.Unlock()
+	oc.streamMu.Lock()
+	session := oc.streamSessions[turnID]
+	delete(oc.streamSessions, turnID)
+	delete(oc.streamStates, turnID)
+	oc.streamMu.Unlock()
+	if session != nil {
+		session.End(oc.BackgroundContext(context.Background()), streamtransport.EndReason("finish"))
+	}
 }
 
 func (oc *OpenCodeClient) DownloadAndEncodeMedia(ctx context.Context, mediaURL string, file *event.EncryptedFileInfo, maxMB int) (string, string, error) {

@@ -41,6 +41,13 @@ type CompactionConfig struct {
 
 	// CustomInstructions are additional instructions for the summarization model
 	CustomInstructions string `yaml:"custom_instructions" json:"custom_instructions,omitempty"`
+
+	// IdentifierPolicy controls opaque identifier preservation in summaries.
+	// Supported: "strict" (default), "off", "custom".
+	IdentifierPolicy string `yaml:"identifier_policy" json:"identifier_policy,omitempty"`
+
+	// IdentifierInstructions is used when IdentifierPolicy is "custom".
+	IdentifierInstructions string `yaml:"identifier_instructions" json:"identifier_instructions,omitempty"`
 }
 
 // DefaultCompactionConfig returns default compaction settings
@@ -52,7 +59,41 @@ func DefaultCompactionConfig() *CompactionConfig {
 		MaxSummaryTokens:     500,
 		MaxHistoryShare:      0.5,
 		ReserveTokens:        20000,
+		IdentifierPolicy:     "strict",
 	}
+}
+
+const defaultIdentifierPreservationInstructions = "Preserve all opaque identifiers exactly as written (no shortening or reconstruction), including UUIDs, hashes, IDs, tokens, API keys, hostnames, IPs, ports, URLs, and file names."
+
+func (c *Compactor) resolveIdentifierPreservationInstructions() string {
+	policy := strings.ToLower(strings.TrimSpace(c.config.IdentifierPolicy))
+	if policy == "" {
+		policy = "strict"
+	}
+	switch policy {
+	case "off":
+		return ""
+	case "custom":
+		custom := strings.TrimSpace(c.config.IdentifierInstructions)
+		if custom != "" {
+			return custom
+		}
+		return defaultIdentifierPreservationInstructions
+	default:
+		return defaultIdentifierPreservationInstructions
+	}
+}
+
+func (c *Compactor) buildSummarizationInstructions() string {
+	identifierInstructions := c.resolveIdentifierPreservationInstructions()
+	customInstructions := strings.TrimSpace(c.config.CustomInstructions)
+	if identifierInstructions == "" {
+		return customInstructions
+	}
+	if customInstructions == "" {
+		return identifierInstructions
+	}
+	return identifierInstructions + "\n\nAdditional focus:\n" + customInstructions
 }
 
 // CompactionEventType represents the type of compaction event
@@ -461,8 +502,8 @@ func (c *Compactor) generateSummary(ctx context.Context, messages []openai.ChatC
 
 Be concise but preserve critical context. Format the summary as bullet points.`
 
-	if c.config.CustomInstructions != "" {
-		systemPrompt += "\n\nAdditional instructions: " + c.config.CustomInstructions
+	if instructions := c.buildSummarizationInstructions(); instructions != "" {
+		systemPrompt += "\n\nAdditional instructions:\n" + instructions
 	}
 
 	userPrompt := fmt.Sprintf("Summarize this conversation history:\n\n%s", conversation.String())
@@ -654,12 +695,14 @@ func (c *Compactor) CompactOnOverflow(
 			HardClearEnabled:     originalConfig.PruningConfig.HardClearEnabled,
 			HardClearPlaceholder: originalConfig.PruningConfig.HardClearPlaceholder,
 		},
-		SummarizationEnabled: originalConfig.SummarizationEnabled,
-		SummarizationModel:   originalConfig.SummarizationModel,
-		MaxSummaryTokens:     originalConfig.MaxSummaryTokens,
-		MaxHistoryShare:      0.3, // More aggressive for overflow
-		ReserveTokens:        originalConfig.ReserveTokens,
-		CustomInstructions:   originalConfig.CustomInstructions,
+		SummarizationEnabled:   originalConfig.SummarizationEnabled,
+		SummarizationModel:     originalConfig.SummarizationModel,
+		MaxSummaryTokens:       originalConfig.MaxSummaryTokens,
+		MaxHistoryShare:        0.3, // More aggressive for overflow
+		ReserveTokens:          originalConfig.ReserveTokens,
+		CustomInstructions:     originalConfig.CustomInstructions,
+		IdentifierPolicy:       originalConfig.IdentifierPolicy,
+		IdentifierInstructions: originalConfig.IdentifierInstructions,
 	}
 	defer func() { c.config = originalConfig }()
 

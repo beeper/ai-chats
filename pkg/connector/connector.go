@@ -20,7 +20,6 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
-	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 )
 
 const (
@@ -105,12 +104,6 @@ func (oc *OpenAIConnector) applyRuntimeDefaults() {
 	}
 	if oc.Config.Bridge.CommandPrefix == "" {
 		oc.Config.Bridge.CommandPrefix = "!ai"
-	}
-	if oc.Config.Bridge.StreamingTransport == "" {
-		oc.Config.Bridge.StreamingTransport = string(streamtransport.DefaultMode)
-	}
-	if oc.Config.Bridge.StreamingDebounce <= 0 {
-		oc.Config.Bridge.StreamingDebounce = streamtransport.DefaultEditDebounceMs
 	}
 	if oc.Config.Pruning == nil {
 		oc.Config.Pruning = DefaultPruningConfig()

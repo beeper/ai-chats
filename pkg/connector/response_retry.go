@@ -243,13 +243,15 @@ func (oc *AIClient) getCompactor() *Compactor {
 		if oc.connector.Config.Pruning != nil {
 			pruning := oc.connector.Config.Pruning
 			compactionConfig = &CompactionConfig{
-				PruningConfig:        pruning,
-				SummarizationEnabled: pruning.SummarizationEnabled,
-				SummarizationModel:   strings.TrimSpace(pruning.SummarizationModel),
-				MaxSummaryTokens:     pruning.MaxSummaryTokens,
-				MaxHistoryShare:      pruning.MaxHistoryShare,
-				ReserveTokens:        pruning.ReserveTokens,
-				CustomInstructions:   pruning.CustomInstructions,
+				PruningConfig:          pruning,
+				SummarizationEnabled:   pruning.SummarizationEnabled,
+				SummarizationModel:     strings.TrimSpace(pruning.SummarizationModel),
+				MaxSummaryTokens:       pruning.MaxSummaryTokens,
+				MaxHistoryShare:        pruning.MaxHistoryShare,
+				ReserveTokens:          pruning.ReserveTokens,
+				CustomInstructions:     pruning.CustomInstructions,
+				IdentifierPolicy:       pruning.IdentifierPolicy,
+				IdentifierInstructions: pruning.IdentifierInstructions,
 			}
 			if compactionConfig.SummarizationEnabled == nil {
 				compactionConfig.SummarizationEnabled = defaults.SummarizationEnabled
@@ -262,6 +264,9 @@ func (oc *AIClient) getCompactor() *Compactor {
 			}
 			if compactionConfig.ReserveTokens <= 0 {
 				compactionConfig.ReserveTokens = defaults.ReserveTokens
+			}
+			if strings.TrimSpace(compactionConfig.IdentifierPolicy) == "" {
+				compactionConfig.IdentifierPolicy = defaults.IdentifierPolicy
 			}
 		} else {
 			compactionConfig = defaults

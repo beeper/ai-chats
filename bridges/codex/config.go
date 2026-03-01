@@ -42,8 +42,6 @@ func (ci *CodexClientInfo) rpcClientInfo() codexrpc.ClientInfo {
 const exampleNetworkConfig = `
 bridge:
   command_prefix: "!ai"
-  streaming_transport: "ephemeral"
-  streaming_edit_debounce_ms: 250
 codex:
   enabled: true
   command: "codex"

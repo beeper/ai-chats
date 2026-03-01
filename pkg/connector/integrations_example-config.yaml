@@ -51,12 +51,6 @@ default_system_prompt: |
   Follow the user's intent and be accurate.
 model_cache_duration: 6h
 
-# Bridge-specific behaviour tweaks.
-bridge:
-  # Log every individual ephemeral event (stream chunks, typing refreshes).
-  # Default false — only logs debounced start/stop summaries.
-  log_ephemeral_events: false
-
 # Optional message rendering settings (OpenClaw-style).
 messages:
   # Prefix applied to outbound replies (and heartbeat ok acks).
@@ -344,13 +338,20 @@ pruning:
   # Additional instructions for the summarization model
   # custom_instructions: "Focus on preserving code decisions and TODOs"
 
-  # Pre-compaction overflow/recall flush (OpenClaw-style).
-  # Runs a silent turn that can write durable notes before compaction.
+  # Identifier preservation policy for summaries:
+  # - strict (default): preserve opaque identifiers exactly
+  # - off: no special identifier-preservation instruction
+  # - custom: use identifier_instructions below
+  identifier_policy: "strict"
+  # identifier_instructions: "Keep ticket IDs, hashes, and hostnames unchanged."
+
+  # Optional pre-compaction overflow flush turn.
+  # Disabled by default to keep compaction independent from memory workflows.
   overflow_flush:
-    enabled: true
+    enabled: false
     soft_threshold_tokens: 4000
-    prompt: "Pre-compaction overflow/recall flush. Store durable notes now (use memory/YYYY-MM-DD.md; create memory/ if needed). If nothing to store, reply with NO_REPLY."
-    system_prompt: "Pre-compaction overflow/recall flush turn. The session is near auto-compaction; capture durable notes to disk. You may reply, but usually NO_REPLY is correct."
+    prompt: "Pre-compaction overflow flush. Persist any durable notes now if your tools support it. If nothing to store, reply with NO_REPLY."
+    system_prompt: "Pre-compaction overflow flush turn. The session is near auto-compaction; persist durable notes if possible. You may reply, but usually NO_REPLY is correct."
 
 # Link preview configuration.
 # Automatically fetches metadata for URLs in messages to provide context to the AI

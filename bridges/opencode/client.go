@@ -13,9 +13,11 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/bridges/opencode/opencodebridge"
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 )
 
 var _ bridgev2.NetworkAPI = (*OpenCodeClient)(nil)
@@ -31,8 +33,20 @@ type OpenCodeClient struct {
 
 	loggedIn atomic.Bool
 
-	streamSeqMu sync.Mutex
-	streamSeq   map[string]int
+	streamMu                  sync.Mutex
+	streamSessions            map[string]*streamtransport.StreamSession
+	streamStates              map[string]*openCodeStreamState
+	streamFallbackToDebounced atomic.Bool
+}
+
+type openCodeStreamState struct {
+	turnID         string
+	agentID        string
+	targetEventID  string
+	initialEventID id.EventID
+	sequenceNum    int
+	accumulated    strings.Builder
+	visible        strings.Builder
 }
 
 func newOpenCodeClient(login *bridgev2.UserLogin, connector *OpenCodeConnector) (*OpenCodeClient, error) {
@@ -43,9 +57,10 @@ func newOpenCodeClient(login *bridgev2.UserLogin, connector *OpenCodeConnector) 
 		return nil, errors.New("missing connector")
 	}
 	client := &OpenCodeClient{
-		UserLogin: login,
-		connector: connector,
-		streamSeq: make(map[string]int),
+		UserLogin:      login,
+		connector:      connector,
+		streamSessions: make(map[string]*streamtransport.StreamSession),
+		streamStates:   make(map[string]*openCodeStreamState),
 	}
 	client.bridge = opencodebridge.NewBridge(client)
 	return client, nil
@@ -63,6 +78,19 @@ func (oc *OpenCodeClient) Connect(ctx context.Context) {
 
 func (oc *OpenCodeClient) Disconnect() {
 	oc.loggedIn.Store(false)
+	oc.streamMu.Lock()
+	sessions := make([]*streamtransport.StreamSession, 0, len(oc.streamSessions))
+	for _, s := range oc.streamSessions {
+		if s != nil {
+			sessions = append(sessions, s)
+		}
+	}
+	oc.streamSessions = make(map[string]*streamtransport.StreamSession)
+	oc.streamStates = make(map[string]*openCodeStreamState)
+	oc.streamMu.Unlock()
+	for _, s := range sessions {
+		s.End(context.Background(), streamtransport.EndReason("disconnect"))
+	}
 	if oc.bridge != nil {
 		oc.bridge.DisconnectAll()
 	}

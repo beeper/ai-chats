@@ -96,7 +96,6 @@ type CodexClient struct {
 	activeRooms     map[id.RoomID]bool
 	pendingMessages map[id.RoomID]*codexPendingMessage
 
-	streamEditGate            *streamtransport.EditDebounceGate
 	streamFallbackToDebounced atomic.Bool
 }
 
@@ -127,7 +126,6 @@ func newCodexClient(login *bridgev2.UserLogin, connector *CodexConnector) (*Code
 		turnSubs:        make(map[string]chan codexNotif),
 		activeRooms:     make(map[id.RoomID]bool),
 		pendingMessages: make(map[id.RoomID]*codexPendingMessage),
-		streamEditGate:  streamtransport.NewEditDebounceGate(),
 	}, nil
 }
 
@@ -1715,47 +1713,6 @@ func (cc *CodexClient) processPendingCodex(roomID id.RoomID) {
 
 // Streaming helpers (Codex -> Matrix AI SDK chunk mapping)
 
-func (cc *CodexClient) emitStreamEvent(ctx context.Context, portal *bridgev2.Portal, state *streamingState, part map[string]any) {
-	if portal == nil || portal.MXID == "" || state == nil {
-		return
-	}
-	if state.suppressSend {
-		return
-	}
-	if cc.streamTransportMode() == streamtransport.ModeDebouncedEdit {
-		cc.emitDebouncedStreamPart(ctx, portal, state, part)
-		return
-	}
-
-	turnID, seq, content, ok := buildStreamEventEnvelope(state, part)
-	if !ok {
-		return
-	}
-	txnID := matrixevents.BuildStreamEventTxnID(turnID, seq)
-
-	if cc.streamEventHook != nil {
-		cc.streamEventHook(turnID, seq, content, txnID)
-		return
-	}
-
-	intent := cc.getCodexIntent(ctx, portal)
-	if intent == nil {
-		return
-	}
-	ephemeralSender, ok := intent.(matrixevents.MatrixEphemeralSender)
-	if !ok {
-		cc.fallbackStreamTransportToDebounced(ctx, "intent_missing_ephemeral_sender", nil)
-		cc.emitDebouncedStreamPart(ctx, portal, state, part)
-		return
-	}
-	eventContent := &event.Content{Raw: content}
-	_, err := ephemeralSender.SendEphemeralEvent(ctx, portal.MXID, matrixevents.StreamEventMessageType, eventContent, txnID)
-	if err != nil && streamtransport.ShouldFallbackToDebounced(err) {
-		cc.fallbackStreamTransportToDebounced(ctx, "ephemeral_send_unknown", err)
-		cc.emitDebouncedStreamPart(ctx, portal, state, part)
-	}
-}
-
 func (cc *CodexClient) sendInitialStreamMessage(ctx context.Context, portal *bridgev2.Portal, content string, turnID string) id.EventID {
 	intent := cc.getCodexIntent(ctx, portal)
 	if intent == nil {
@@ -1883,6 +1840,10 @@ func (cc *CodexClient) sendToolCallApprovalEvent(
 
 func (cc *CodexClient) emitUIFinish(ctx context.Context, portal *bridgev2.Portal, state *streamingState, model string, finishReason string) {
 	cc.uiEmitter(state).EmitUIFinish(ctx, portal, finishReason, cc.buildUIMessageMetadata(state, model, true, finishReason))
+	if state != nil && state.session != nil {
+		state.session.End(ctx, streamtransport.EndReason(finishReason))
+		state.session = nil
+	}
 }
 
 func (cc *CodexClient) buildCanonicalUIMessage(state *streamingState, model string, finishReason string) map[string]any {

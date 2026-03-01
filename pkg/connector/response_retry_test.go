@@ -31,13 +31,15 @@ func newCompactorTestClient(pruning *PruningConfig, provider string) *AIClient {
 func TestGetCompactor_UsesPruningCompactionFields(t *testing.T) {
 	enabled := false
 	pruning := &PruningConfig{
-		Enabled:              true,
-		SummarizationEnabled: &enabled,
-		SummarizationModel:   "openai/gpt-test",
-		MaxSummaryTokens:     321,
-		MaxHistoryShare:      0.42,
-		ReserveTokens:        777,
-		CustomInstructions:   "preserve TODOs and constraints",
+		Enabled:                true,
+		SummarizationEnabled:   &enabled,
+		SummarizationModel:     "openai/gpt-test",
+		MaxSummaryTokens:       321,
+		MaxHistoryShare:        0.42,
+		ReserveTokens:          777,
+		CustomInstructions:     "preserve TODOs and constraints",
+		IdentifierPolicy:       "custom",
+		IdentifierInstructions: "Keep ticket IDs untouched.",
 	}
 
 	client := newCompactorTestClient(pruning, ProviderOpenAI)
@@ -63,6 +65,12 @@ func TestGetCompactor_UsesPruningCompactionFields(t *testing.T) {
 	}
 	if compactor.config.CustomInstructions != "preserve TODOs and constraints" {
 		t.Fatalf("unexpected custom instructions: %q", compactor.config.CustomInstructions)
+	}
+	if compactor.config.IdentifierPolicy != "custom" {
+		t.Fatalf("unexpected identifier policy: %q", compactor.config.IdentifierPolicy)
+	}
+	if compactor.config.IdentifierInstructions != "Keep ticket IDs untouched." {
+		t.Fatalf("unexpected identifier instructions: %q", compactor.config.IdentifierInstructions)
 	}
 }
 

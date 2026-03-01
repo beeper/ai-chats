@@ -92,6 +92,14 @@ type PruningConfig struct {
 	// CustomInstructions are additional instructions for the summarization model
 	CustomInstructions string `yaml:"custom_instructions" json:"custom_instructions,omitempty"`
 
+	// IdentifierPolicy controls how compaction summaries preserve opaque identifiers.
+	// Supported: "strict" (default), "off", "custom".
+	IdentifierPolicy string `yaml:"identifier_policy" json:"identifier_policy,omitempty"`
+
+	// IdentifierInstructions provides custom preservation guidance when
+	// IdentifierPolicy is set to "custom".
+	IdentifierInstructions string `yaml:"identifier_instructions" json:"identifier_instructions,omitempty"`
+
 	// OverflowFlush runs a pre-compaction durable-state flush pass.
 	OverflowFlush *OverflowFlushConfig `yaml:"overflow_flush" json:"overflow_flush,omitempty"`
 

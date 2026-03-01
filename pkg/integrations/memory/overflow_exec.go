@@ -153,7 +153,8 @@ func NormalizeFlushSettings(
 	defaultSystemPrompt string,
 	silentToken string,
 ) *FlushSettings {
-	if enabled != nil && !*enabled {
+	// Keep compaction independent from memory unless explicitly enabled.
+	if enabled == nil || !*enabled {
 		return nil
 	}
 	soft := DefaultFlushSoftTokens

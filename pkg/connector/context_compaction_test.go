@@ -150,6 +150,9 @@ func TestCompactionConfig(t *testing.T) {
 	if config.ReserveTokens != 20000 {
 		t.Errorf("Expected ReserveTokens 20000, got %d", config.ReserveTokens)
 	}
+	if config.IdentifierPolicy != "strict" {
+		t.Errorf("Expected IdentifierPolicy strict, got %q", config.IdentifierPolicy)
+	}
 }
 
 func TestCompactionEventTypes(t *testing.T) {
@@ -265,4 +268,52 @@ func containsUserMessage(messages []openai.ChatCompletionMessageParamUnion, want
 		}
 	}
 	return false
+}
+
+func TestCompactorBuildSummarizationInstructions_StrictDefault(t *testing.T) {
+	compactor := NewCompactor(nil, zerolog.Nop(), &CompactionConfig{
+		PruningConfig:      DefaultPruningConfig(),
+		CustomInstructions: "Focus on TODOs.",
+	})
+
+	instructions := compactor.buildSummarizationInstructions()
+	if !strings.Contains(instructions, "Preserve all opaque identifiers exactly as written") {
+		t.Fatalf("expected strict identifier preservation instructions, got: %q", instructions)
+	}
+	if !strings.Contains(instructions, "Focus on TODOs.") {
+		t.Fatalf("expected custom instructions to be included, got: %q", instructions)
+	}
+}
+
+func TestCompactorBuildSummarizationInstructions_IdentifierOff(t *testing.T) {
+	compactor := NewCompactor(nil, zerolog.Nop(), &CompactionConfig{
+		PruningConfig:      DefaultPruningConfig(),
+		IdentifierPolicy:   "off",
+		CustomInstructions: "Only include decisions.",
+	})
+
+	instructions := compactor.buildSummarizationInstructions()
+	if strings.Contains(instructions, "Preserve all opaque identifiers exactly as written") {
+		t.Fatalf("did not expect identifier-preservation instructions when policy=off")
+	}
+	if instructions != "Only include decisions." {
+		t.Fatalf("unexpected instructions: %q", instructions)
+	}
+}
+
+func TestCompactorBuildSummarizationInstructions_IdentifierCustom(t *testing.T) {
+	compactor := NewCompactor(nil, zerolog.Nop(), &CompactionConfig{
+		PruningConfig:          DefaultPruningConfig(),
+		IdentifierPolicy:       "custom",
+		IdentifierInstructions: "Keep JIRA and commit hashes verbatim.",
+		CustomInstructions:     "Highlight blockers.",
+	})
+
+	instructions := compactor.buildSummarizationInstructions()
+	if !strings.Contains(instructions, "Keep JIRA and commit hashes verbatim.") {
+		t.Fatalf("expected custom identifier instructions, got: %q", instructions)
+	}
+	if !strings.Contains(instructions, "Highlight blockers.") {
+		t.Fatalf("expected custom focus instructions, got: %q", instructions)
+	}
 }

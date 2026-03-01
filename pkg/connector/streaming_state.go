@@ -12,6 +12,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/shared/citations"
+	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 	"github.com/beeper/ai-bridge/pkg/shared/streamui"
 )
 
@@ -65,6 +66,7 @@ type streamingState struct {
 	// AI SDK UIMessage stream tracking (shared across bridges)
 	ui      streamui.UIState
 	emitter *streamui.Emitter
+	session *streamtransport.StreamSession
 
 	// Pending MCP approvals to resolve before the turn can continue.
 	pendingMcpApprovals     []mcpApprovalRequest
