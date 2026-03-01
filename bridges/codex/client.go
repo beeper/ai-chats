@@ -2306,6 +2306,7 @@ func (cc *CodexClient) setApprovalStateTracking(state *streamingState, approvalI
 	if state == nil {
 		return
 	}
+	state.ui.InitMaps()
 	state.ui.UIToolCallIDByApproval[approvalID] = toolCallID
 	state.ui.UIToolApprovalRequested[approvalID] = true
 	state.ui.UIToolNameByToolCallID[toolCallID] = toolName

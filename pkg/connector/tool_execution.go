@@ -227,7 +227,7 @@ func (oc *AIClient) sendToolCallApprovalEvent(
 
 	toolType := string(ToolTypeBuiltin)
 	if state != nil {
-		if tt, ok := state.uiToolTypeByToolCallID[toolCallID]; ok {
+		if tt, ok := state.ui.UIToolTypeByToolCallID[toolCallID]; ok {
 			toolType = string(tt)
 		}
 	}

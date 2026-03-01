@@ -41,8 +41,8 @@ func (oc *AIClient) upsertActiveToolFromDescriptor(
 	if desc.toolType != "" {
 		tool.toolType = desc.toolType
 	}
-	state.uiToolNameByToolCallID[tool.callID] = tool.toolName
-	state.uiToolTypeByToolCallID[tool.callID] = tool.toolType
+	state.ui.UIToolNameByToolCallID[tool.callID] = tool.toolName
+	state.ui.UIToolTypeByToolCallID[tool.callID] = tool.toolType
 
 	if tool.eventID == "" && strings.TrimSpace(tool.toolName) != "" {
 		tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
@@ -156,7 +156,7 @@ func (oc *AIClient) handleMCPCallFailedFromOutputItem(
 	if tool == nil {
 		return
 	}
-	if state != nil && state.uiToolOutputFinalized[tool.callID] {
+	if state != nil && state.ui.UIToolOutputFinalized[tool.callID] {
 		return
 	}
 	errorText := strings.TrimSpace(item.Error)
@@ -210,7 +210,7 @@ func (oc *AIClient) gateMcpToolApproval(
 	if approvalID == "" {
 		approvalID = NewCallID()
 	}
-	state.uiToolCallIDByApproval[approvalID] = tool.callID
+	state.ui.UIToolCallIDByApproval[approvalID] = tool.callID
 	if tool.input.Len() == 0 {
 		tool.input.WriteString(stringifyJSONValue(desc.input))
 	}
@@ -248,8 +248,8 @@ func (oc *AIClient) gateMcpToolApproval(
 		needsApproval = false
 	}
 	if needsApproval {
-		if !state.uiToolApprovalRequested[approvalID] {
-			state.uiToolApprovalRequested[approvalID] = true
+		if !state.ui.UIToolApprovalRequested[approvalID] {
+			state.ui.UIToolApprovalRequested[approvalID] = true
 			oc.emitUIToolApprovalRequest(ctx, portal, state, approvalID, tool.callID, tool.toolName, tool.eventID, oc.toolApprovalsTTLSeconds())
 		}
 	} else {
@@ -279,7 +279,7 @@ func (oc *AIClient) handleResponseOutputItemAdded(
 	if tool == nil {
 		return
 	}
-	if state.uiToolOutputFinalized[tool.callID] {
+	if state.ui.UIToolOutputFinalized[tool.callID] {
 		return
 	}
 
@@ -314,7 +314,7 @@ func (oc *AIClient) handleResponseOutputItemDone(
 	if tool == nil {
 		return
 	}
-	if state.uiToolOutputFinalized[tool.callID] {
+	if state.ui.UIToolOutputFinalized[tool.callID] {
 		return
 	}
 

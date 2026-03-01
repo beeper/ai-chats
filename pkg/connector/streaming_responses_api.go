@@ -207,7 +207,7 @@ func (oc *AIClient) streamingResponse(
 			if exists && tool != nil {
 				callID = tool.callID
 			}
-			if state != nil && state.uiToolOutputFinalized[callID] {
+			if state != nil && state.ui.UIToolOutputFinalized[callID] {
 				break
 			}
 			if !exists {
@@ -267,7 +267,7 @@ func (oc *AIClient) streamingResponse(
 			if exists && tool != nil {
 				callID = tool.callID
 			}
-			if state != nil && state.uiToolOutputFinalized[callID] {
+			if state != nil && state.ui.UIToolOutputFinalized[callID] {
 				break
 			}
 			if !exists {
@@ -327,7 +327,7 @@ func (oc *AIClient) streamingResponse(
 			if exists && tool != nil {
 				callID = tool.callID
 			}
-			if state != nil && state.uiToolOutputFinalized[callID] {
+			if state != nil && state.ui.UIToolOutputFinalized[callID] {
 				break
 			}
 			if !exists {
@@ -368,7 +368,7 @@ func (oc *AIClient) streamingResponse(
 			if exists && tool != nil {
 				callID = tool.callID
 			}
-			if state != nil && state.uiToolOutputFinalized[callID] {
+			if state != nil && state.ui.UIToolOutputFinalized[callID] {
 				break
 			}
 			if !exists {
@@ -428,7 +428,7 @@ func (oc *AIClient) streamingResponse(
 			if exists && tool != nil {
 				callID = tool.callID
 			}
-			if state != nil && state.uiToolOutputFinalized[callID] {
+			if state != nil && state.ui.UIToolOutputFinalized[callID] {
 				break
 			}
 			if !exists {

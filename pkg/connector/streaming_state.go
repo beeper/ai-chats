@@ -122,6 +122,8 @@ func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID 
 }
 
 func (oc *AIClient) uiEmitter(state *streamingState) *streamui.Emitter {
+	state.ui.TurnID = state.turnID
+	state.ui.InitMaps()
 	return &streamui.Emitter{
 		State: &state.ui,
 		Emit: func(ctx context.Context, portal *bridgev2.Portal, part map[string]any) {

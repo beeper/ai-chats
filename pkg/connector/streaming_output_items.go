@@ -175,7 +175,7 @@ func deriveToolDescriptorForOutputItem(item responses.ResponseOutputItemUnion, s
 		desc.providerExecuted = true
 		desc.dynamic = true
 		if approvalID := strings.TrimSpace(item.ApprovalRequestID); approvalID != "" && state != nil {
-			if mapped := strings.TrimSpace(state.uiToolCallIDByApproval[approvalID]); mapped != "" {
+			if mapped := strings.TrimSpace(state.ui.UIToolCallIDByApproval[approvalID]); mapped != "" {
 				desc.callID = mapped
 			}
 		}
