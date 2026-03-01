@@ -178,10 +178,8 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 					VisibleBody:    visibleBody,
 					FallbackBody:   fallbackBody,
 					InitialEventID: initialEventID,
-					TurnID:         turnID,
-					Gate:           nil,
-					Debounce:       0,
-					Intent:         oc.UserLogin.Bridge.Bot,
+					TurnID:  turnID,
+					Intent:  oc.UserLogin.Bridge.Bot,
 					Log:            oc.Log(),
 				})
 				return nil

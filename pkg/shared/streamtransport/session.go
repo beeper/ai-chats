@@ -66,20 +66,33 @@ type StreamSession struct {
 	workerStopCh  chan struct{}
 	workerDoneCh  chan struct{}
 	endOnce       sync.Once
+
+	// Lazy worker start: goroutine and channels are only allocated when needed.
+	workerOnce    sync.Once
+	workerStarted atomic.Bool
 }
 
 func NewStreamSession(params StreamSessionParams) *StreamSession {
 	sendCtx, sendCancel := context.WithCancel(context.Background())
 	s := &StreamSession{
-		params:        params,
-		sendCtx:       sendCtx,
-		sendCancel:    sendCancel,
-		debounceReqCh: make(chan debounceRequest, 256),
-		workerStopCh:  make(chan struct{}),
-		workerDoneCh:  make(chan struct{}),
+		params:       params,
+		sendCtx:      sendCtx,
+		sendCancel:   sendCancel,
+		workerStopCh: make(chan struct{}),
+		workerDoneCh: make(chan struct{}),
 	}
-	go s.runDebouncedWorker()
 	return s
+}
+
+// ensureWorker lazily starts the debounce worker goroutine and allocates the
+// request channel on first use. This avoids the goroutine + channel overhead
+// when only ephemeral (non-debounced) streaming is used.
+func (s *StreamSession) ensureWorker() {
+	s.workerOnce.Do(func() {
+		s.debounceReqCh = make(chan debounceRequest, 256)
+		s.workerStarted.Store(true)
+		go s.runDebouncedWorker()
+	})
 }
 
 func (s *StreamSession) IsClosed() bool {
@@ -97,14 +110,16 @@ func (s *StreamSession) End(ctx context.Context, _ EndReason) {
 		return
 	}
 	s.sendCancel()
-	s.endOnce.Do(func() {
-		close(s.workerStopCh)
-	})
-	waitCtx, cancel := context.WithTimeout(ctx, endWaitTimeout)
-	defer cancel()
-	select {
-	case <-s.workerDoneCh:
-	case <-waitCtx.Done():
+	if s.workerStarted.Load() {
+		s.endOnce.Do(func() {
+			close(s.workerStopCh)
+		})
+		waitCtx, cancel := context.WithTimeout(ctx, endWaitTimeout)
+		defer cancel()
+		select {
+		case <-s.workerDoneCh:
+		case <-waitCtx.Done():
+		}
 	}
 	if s.params.ClearTurnGate != nil {
 		s.params.ClearTurnGate()
@@ -119,9 +134,6 @@ func (s *StreamSession) EmitPart(ctx context.Context, part map[string]any) {
 		return
 	}
 	if s.params.GetSuppressSend != nil && s.params.GetSuppressSend() {
-		return
-	}
-	if s.emitViaHook(part) {
 		return
 	}
 
@@ -142,6 +154,8 @@ func (s *StreamSession) EmitPart(ctx context.Context, part map[string]any) {
 	if s.params.NextSeq == nil {
 		return
 	}
+
+	// Build the envelope once and share it between hook and ephemeral paths.
 	seq := s.params.NextSeq()
 	targetEventID := ""
 	if s.params.GetTargetEventID != nil {
@@ -155,9 +169,12 @@ func (s *StreamSession) EmitPart(ctx context.Context, part map[string]any) {
 		return
 	}
 	txnID := matrixevents.BuildStreamEventTxnID(turnID, seq)
+
+	// Try hook first; if it handles the event we're done.
 	if s.params.SendHook != nil && s.params.SendHook(turnID, seq, content, txnID) {
 		return
 	}
+
 	if s.params.GetEphemeralSender == nil {
 		s.switchToDebounced(ctx, "missing_ephemeral_sender_getter", nil)
 		if debounceEligible {
@@ -175,30 +192,6 @@ func (s *StreamSession) EmitPart(ctx context.Context, part map[string]any) {
 	}
 	eventContent := &event.Content{Raw: content}
 	_ = s.sendEphemeralWithRetry(ephemeralSender, eventContent, txnID, partType)
-}
-
-func (s *StreamSession) emitViaHook(part map[string]any) bool {
-	if s == nil || s.params.SendHook == nil || part == nil || s.params.NextSeq == nil {
-		return false
-	}
-	turnID := strings.TrimSpace(s.params.TurnID)
-	if turnID == "" {
-		return true
-	}
-	seq := s.params.NextSeq()
-	targetEventID := ""
-	if s.params.GetTargetEventID != nil {
-		targetEventID = strings.TrimSpace(s.params.GetTargetEventID())
-	}
-	content, err := matrixevents.BuildStreamEventEnvelope(turnID, seq, part, matrixevents.StreamEventOpts{
-		TargetEventID: targetEventID,
-		AgentID:       strings.TrimSpace(s.params.AgentID),
-	})
-	if err != nil {
-		return true
-	}
-	txnID := matrixevents.BuildStreamEventTxnID(turnID, seq)
-	return s.params.SendHook(turnID, seq, content, txnID)
 }
 
 func (s *StreamSession) sendEphemeralWithRetry(ephemeralSender matrixevents.MatrixEphemeralSender, eventContent *event.Content, txnID string, partType string) bool {
@@ -285,6 +278,7 @@ func (s *StreamSession) enqueueDebounced(force bool) {
 	if s == nil || s.IsClosed() {
 		return
 	}
+	s.ensureWorker()
 	req := debounceRequest{force: force}
 	select {
 	case s.debounceReqCh <- req:
