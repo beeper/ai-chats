@@ -5,12 +5,8 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
-	"mime"
 	"net/http"
-	"net/url"
 	"os"
-	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -2526,145 +2522,18 @@ func (oc *AIClient) buildPromptUpToMessage(
 	return prompt, nil
 }
 
-// downloadAndEncodeMedia downloads media from Matrix and returns base64-encoded data
-// If encryptedFile is provided, decrypts the media using AES-CTR
-// maxSizeMB limits the download size (0 = no limit)
-// Returns (base64Data, mimeType, error)
+// downloadAndEncodeMedia downloads media and returns base64-encoded data.
+// maxSizeMB limits the download size (0 = no limit).
 func (oc *AIClient) downloadAndEncodeMedia(ctx context.Context, mxcURL string, encryptedFile *event.EncryptedFileInfo, maxSizeMB int) (string, string, error) {
-	// For encrypted media, use the URL from the encrypted file info
-	downloadURL := mxcURL
-	if encryptedFile != nil {
-		downloadURL = string(encryptedFile.URL)
-	}
-
-	// Handle local file URLs/paths (common in local rooms)
-	if strings.HasPrefix(downloadURL, "file://") || strings.HasPrefix(downloadURL, "/") {
-		path := downloadURL
-		if strings.HasPrefix(path, "file://") {
-			path = strings.TrimPrefix(path, "file://")
-			if unescaped, err := url.PathUnescape(path); err == nil {
-				path = unescaped
-			}
-		}
-
-		info, err := os.Stat(path)
-		if err != nil {
-			return "", "", fmt.Errorf("failed to stat local file: %w", err)
-		}
-		if maxSizeMB > 0 {
-			maxBytes := int64(maxSizeMB * 1024 * 1024)
-			if info.Size() > maxBytes {
-				return "", "", fmt.Errorf("media too large: %d bytes (max %d MB)", info.Size(), maxSizeMB)
-			}
-		}
-
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return "", "", fmt.Errorf("failed to read local file: %w", err)
-		}
-		if encryptedFile != nil {
-			if err := encryptedFile.DecryptInPlace(data); err != nil {
-				return "", "", fmt.Errorf("failed to decrypt media: %w", err)
-			}
-		}
-
-		mimeType := mime.TypeByExtension(filepath.Ext(path))
-		if mimeType == "" {
-			mimeType = http.DetectContentType(data)
-		}
-		if mimeType == "" {
-			mimeType = "application/octet-stream"
-		}
-
-		b64Data := base64.StdEncoding.EncodeToString(data)
-		return b64Data, mimeType, nil
-	}
-
-	if strings.HasPrefix(downloadURL, "mxc://") {
-		if oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.Bot == nil {
-			return "", "", errors.New("matrix API unavailable for MXC media download")
-		}
-		data, err := oc.UserLogin.Bridge.Bot.DownloadMedia(ctx, id.ContentURIString(downloadURL), encryptedFile)
-		if err != nil {
-			return "", "", fmt.Errorf("failed to download media via Matrix API: %w", err)
-		}
-		if maxSizeMB > 0 {
-			maxBytes := int64(maxSizeMB * 1024 * 1024)
-			if int64(len(data)) > maxBytes {
-				return "", "", fmt.Errorf("media too large (max %d MB)", maxSizeMB)
-			}
-		}
-		mimeType := http.DetectContentType(data)
-		if mimeType == "" {
-			mimeType = "application/octet-stream"
-		}
-		b64Data := base64.StdEncoding.EncodeToString(data)
-		return b64Data, mimeType, nil
-	}
-
-	httpURL := downloadURL
-
-	// Create HTTP request with context
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, httpURL, nil)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to create request: %w", err)
-	}
-
-	resp, err := mediaDownloadHTTPClient.Do(req)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to download media: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("download failed with status %d", resp.StatusCode)
-	}
-
-	// Check content length if available
-	if maxSizeMB > 0 && resp.ContentLength > 0 {
-		maxBytes := int64(maxSizeMB * 1024 * 1024)
-		if resp.ContentLength > maxBytes {
-			return "", "", fmt.Errorf("media too large: %d bytes (max %d MB)", resp.ContentLength, maxSizeMB)
-		}
-	}
-
-	// Read with size limit
-	var reader io.Reader = resp.Body
+	maxBytes := 0
 	if maxSizeMB > 0 {
-		maxBytes := int64(maxSizeMB * 1024 * 1024)
-		reader = io.LimitReader(resp.Body, maxBytes+1) // +1 to detect overflow
+		maxBytes = maxSizeMB * 1024 * 1024
 	}
-
-	data, err := io.ReadAll(reader)
+	data, mimeType, err := oc.downloadMediaBytes(ctx, mxcURL, encryptedFile, maxBytes, "")
 	if err != nil {
-		return "", "", fmt.Errorf("failed to read media: %w", err)
+		return "", "", err
 	}
-
-	// Check if we hit the size limit
-	if maxSizeMB > 0 {
-		maxBytes := int64(maxSizeMB * 1024 * 1024)
-		if int64(len(data)) > maxBytes {
-			return "", "", fmt.Errorf("media too large (max %d MB)", maxSizeMB)
-		}
-	}
-
-	// Decrypt if encrypted (E2EE media)
-	if encryptedFile != nil {
-		if err := encryptedFile.DecryptInPlace(data); err != nil {
-			return "", "", fmt.Errorf("failed to decrypt media: %w", err)
-		}
-	}
-
-	// Get MIME type from response header
-	mimeType := resp.Header.Get("Content-Type")
-	if mimeType == "" {
-		mimeType = "application/octet-stream"
-	}
-
-	// Base64 encode
-	b64Data := base64.StdEncoding.EncodeToString(data)
-
-	return b64Data, mimeType, nil
+	return base64.StdEncoding.EncodeToString(data), mimeType, nil
 }
 
 // getAudioFormat extracts the audio format from a MIME type for OpenRouter API
