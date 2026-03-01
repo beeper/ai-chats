@@ -23,6 +23,7 @@ import (
 	_ "golang.org/x/image/webp"
 
 	"github.com/beeper/ai-bridge/pkg/shared/media"
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 type imageGenProvider string
@@ -124,7 +125,7 @@ func parseImageGenArgs(args map[string]any) (imageGenRequest, error) {
 	req.InputImages = append(req.InputImages, readStringSlice(args, "input_images")...)
 	req.InputImages = append(req.InputImages, readStringSlice(args, "inputImages")...)
 	req.InputImages = append(req.InputImages, readStringSlice(args, "input_image")...)
-	req.InputImages = dedupeStrings(req.InputImages)
+	req.InputImages = stringutil.DedupeStrings(req.InputImages)
 
 	return req, nil
 }
@@ -152,24 +153,6 @@ func readStringSlice(args map[string]any, key string) []string {
 	return nil
 }
 
-func dedupeStrings(values []string) []string {
-	if len(values) < 2 {
-		return values
-	}
-	seen := make(map[string]struct{}, len(values))
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		if value == "" {
-			continue
-		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		out = append(out, value)
-	}
-	return out
-}
 
 func resolveImageGenProvider(req imageGenRequest, btc *BridgeToolContext) (imageGenProvider, error) {
 	provider := strings.ToLower(strings.TrimSpace(req.Provider))

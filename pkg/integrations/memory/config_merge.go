@@ -6,6 +6,7 @@ import (
 
 	"github.com/beeper/ai-bridge/pkg/agents"
 	"github.com/beeper/ai-bridge/pkg/shared/httputil"
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 func MergeSearchConfig(defaults *agents.MemorySearchConfig, overrides *agents.MemorySearchConfig) *ResolvedConfig {
@@ -47,7 +48,7 @@ func MergeSearchConfig(defaults *agents.MemorySearchConfig, overrides *agents.Me
 	sources := normalizeSources(rawSources, sessionMemory)
 
 	rawExtraPaths := slices.Concat(d.extraPaths, o.extraPaths)
-	extraPaths := dedupeStrings(rawExtraPaths)
+	extraPaths := stringutil.DedupeStrings(rawExtraPaths)
 
 	vector := VectorConfig{
 		Enabled:       pickBool(o.vectorEnabled, d.vectorEnabled, true),
@@ -314,22 +315,3 @@ func extractFields(cfg *agents.MemorySearchConfig) searchFields {
 	return f
 }
 
-func dedupeStrings(input []string) []string {
-	if len(input) == 0 {
-		return nil
-	}
-	seen := make(map[string]struct{}, len(input))
-	out := make([]string, 0, len(input))
-	for _, raw := range input {
-		trimmed := strings.TrimSpace(raw)
-		if trimmed == "" {
-			continue
-		}
-		if _, ok := seen[trimmed]; ok {
-			continue
-		}
-		seen[trimmed] = struct{}{}
-		out = append(out, trimmed)
-	}
-	return out
-}
