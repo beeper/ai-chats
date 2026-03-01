@@ -860,10 +860,10 @@ func generateOutboundLinkPreviews(ctx context.Context, text string, intent bridg
 
 // getAgentResponseMode returns the response mode for the current agent.
 // Defaults to ResponseModeNatural if not set.
-// IsRawMode on the portal overrides all other settings (for playground rooms).
+// IsSimpleMode on the portal overrides all other settings (for simple mode rooms).
 func (oc *AIClient) getAgentResponseMode(meta *PortalMetadata) agents.ResponseMode {
-	// IsRawMode flag takes priority (set by playground command)
-	if meta.IsRawMode {
+	// Simple mode flag takes priority (set by simple command)
+	if isSimpleMode(meta) {
 		return agents.ResponseModeRaw
 	}
 

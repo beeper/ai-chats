@@ -24,6 +24,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/ai-bridge/pkg/shared/citations"
 )
 
 // LinkPreviewConfig holds configuration for link preview functionality.
@@ -484,8 +486,8 @@ func (lp *LinkPreviewer) FetchPreviewsWithCitations(ctx context.Context, urls []
 	}
 
 	// Build URL -> citation index for O(1) lookups.
-	citationByURL := make(map[string]sourceCitation, len(citations))
-	for _, c := range citations {
+	citationByURL := make(map[string]citations.SourceCitation, len(cits))
+	for _, c := range cits {
 		u := strings.TrimSpace(c.URL)
 		if u != "" {
 			citationByURL[u] = c

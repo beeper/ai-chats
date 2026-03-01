@@ -1354,13 +1354,11 @@ func (oc *AIClient) buildPromptForRegenerate(
 	latestUserID id.EventID,
 ) ([]openai.ChatCompletionMessageParamUnion, error) {
 	var prompt []openai.ChatCompletionMessageParamUnion
-	isRaw := meta != nil && meta.IsRawMode
-	systemPrompt := ""
-	if isRaw {
-		systemPrompt = oc.buildRawModeSystemPrompt(meta)
-		prompt = append(prompt, openai.SystemMessage(systemPrompt))
+	isSimple := isSimpleMode(meta)
+	if isSimple {
+		prompt = append(prompt, openai.SystemMessage(oc.buildSimpleModeSystemPrompt(meta)))
 	} else {
-		systemPrompt = oc.effectivePrompt(meta)
+		systemPrompt := oc.effectivePrompt(meta)
 		if systemPrompt != "" {
 			prompt = append(prompt, openai.SystemMessage(systemPrompt))
 		}
@@ -1405,13 +1403,7 @@ func (oc *AIClient) buildPromptForRegenerate(
 				continue
 			}
 
-			body := msgMeta.Body
-			if isRaw {
-				body = stripMessageIDHintLines(body)
-				body = StripEnvelope(body)
-			} else if msg.MXID != "" {
-				body = appendMessageIDHint(msgMeta.Body, msg.MXID)
-			}
+			body := cleanHistoryBody(msgMeta.Body, isSimple, msg.MXID)
 
 			// Only inject images for recent messages and vision-capable models.
 			// This loop builds newest-to-oldest, so early entries are the most recent.

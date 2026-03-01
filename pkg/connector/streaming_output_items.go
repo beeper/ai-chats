@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/openai/openai-go/v3/responses"
+
+	"github.com/beeper/ai-bridge/pkg/shared/citations"
 )
 
 func mergeMaps(base map[string]any, extra map[string]any) map[string]any {
@@ -282,20 +284,20 @@ func responseOutputItemResultPayload(item responses.ResponseOutputItemUnion) any
 	}
 }
 
-func codeInterpreterFileParts(item responses.ResponseOutputItemUnion) []generatedFilePart {
+func codeInterpreterFileParts(item responses.ResponseOutputItemUnion) []citations.GeneratedFilePart {
 	if item.Type != "code_interpreter_call" || len(item.Outputs) == 0 {
 		return nil
 	}
-	files := make([]generatedFilePart, 0, len(item.Outputs))
+	files := make([]citations.GeneratedFilePart, 0, len(item.Outputs))
 	for _, output := range item.Outputs {
 		image := output.AsImage()
 		if strings.TrimSpace(image.URL) == "" {
 			continue
 		}
 		mediaType := codeInterpreterMediaTypeFromURL(image.URL)
-		files = append(files, generatedFilePart{
-			url:       strings.TrimSpace(image.URL),
-			mediaType: mediaType,
+		files = append(files, citations.GeneratedFilePart{
+			URL:       strings.TrimSpace(image.URL),
+			MediaType: mediaType,
 		})
 	}
 	return files

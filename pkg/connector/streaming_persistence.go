@@ -25,7 +25,7 @@ func (oc *AIClient) saveAssistantMessage(
 	if len(state.generatedFiles) > 0 {
 		genFiles = make([]GeneratedFileRef, 0, len(state.generatedFiles))
 		for _, f := range state.generatedFiles {
-			genFiles = append(genFiles, GeneratedFileRef{URL: f.url, MimeType: f.mediaType})
+			genFiles = append(genFiles, GeneratedFileRef{URL: f.URL, MimeType: f.MediaType})
 		}
 	}
 

@@ -332,8 +332,8 @@ func (oc *AIClient) handleResponseOutputItemDone(
 
 	if files := codeInterpreterFileParts(item); len(files) > 0 {
 		for _, file := range files {
-			recordGeneratedFile(state, file.url, file.mediaType)
-			oc.emitUIFile(ctx, portal, state, file.url, file.mediaType)
+			recordGeneratedFile(state, file.URL, file.MediaType)
+			oc.emitUIFile(ctx, portal, state, file.URL, file.MediaType)
 		}
 	}
 

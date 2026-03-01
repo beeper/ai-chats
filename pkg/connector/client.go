@@ -2107,24 +2107,13 @@ func (oc *AIClient) buildBasePrompt(
 	meta *PortalMetadata,
 ) ([]openai.ChatCompletionMessageParamUnion, error) {
 	var prompt []openai.ChatCompletionMessageParamUnion
-	isRaw := meta != nil && meta.IsRawMode
-	if !isRaw {
+	isSimple := isSimpleMode(meta)
+	if !isSimple {
 		prompt = maybePrependSessionGreeting(ctx, portal, meta, prompt, oc.log)
 	}
 
 	// Add system prompt - agent prompt takes priority, then room override, then config default
-	if isRaw {
-		prompt = append(prompt, openai.SystemMessage(oc.buildRawModeSystemPrompt(meta)))
-	} else {
-		systemPrompt := oc.effectiveAgentPrompt(ctx, portal, meta)
-		if systemPrompt == "" {
-			systemPrompt = oc.effectivePrompt(meta)
-		}
-		if systemPrompt != "" {
-			prompt = append(prompt, openai.SystemMessage(systemPrompt))
-		}
-		prompt = append(prompt, oc.buildAdditionalSystemPrompts(ctx, portal, meta)...)
-	}
+	prompt = append(prompt, oc.buildSystemMessages(ctx, portal, meta)...)
 
 	// Add history
 	historyLimit := oc.historyLimit(ctx, portal, meta)
@@ -2152,13 +2141,7 @@ func (oc *AIClient) buildBasePrompt(
 			// Include message ID so the AI can reference specific messages for reactions/replies.
 			// Format: message body + "\n[message_id: $eventId]" (matches clawdbot pattern).
 			body := sanitizeHistoryImages(msgMeta.Body)
-			if isRaw {
-				// Best-effort cleanup of legacy stored hints/envelopes; do not add new ones.
-				body = stripMessageIDHintLines(body)
-				body = StripEnvelope(body)
-			} else if history[i].MXID != "" {
-				body = appendMessageIDHint(body, history[i].MXID)
-			}
+			body = cleanHistoryBody(body, isSimple, history[i].MXID)
 
 			// Only inject images for recent messages and vision-capable models.
 			injectImages := hasVision && i < maxHistoryImageMessages
@@ -2246,9 +2229,9 @@ func (oc *AIClient) buildPromptWithLinkContext(
 	prompt = oc.augmentPromptWithIntegrations(ctx, portal, meta, prompt)
 
 	// Build final message with link context
-	isRaw := meta != nil && meta.IsRawMode
+	isSimple := isSimpleMode(meta)
 	finalMessage := strings.TrimSpace(latest)
-	if !isRaw {
+	if !isSimple {
 		finalMessage = oc.applyAbortHint(ctx, portal, meta, latest)
 		linkContext := oc.buildLinkContext(ctx, latest, rawEventContent)
 		if linkContext != "" {
@@ -2258,7 +2241,7 @@ func (oc *AIClient) buildPromptWithLinkContext(
 
 	// Include reaction feedback from users (like OpenClaw's system events)
 	// This lets the AI know when users react to its messages
-	if !isRaw && portal != nil && portal.MXID != "" {
+	if !isSimple && portal != nil && portal.MXID != "" {
 		reactionFeedback := DrainReactionFeedback(portal.MXID)
 		if len(reactionFeedback) > 0 {
 			feedbackText := FormatReactionFeedback(reactionFeedback)
@@ -2269,7 +2252,7 @@ func (oc *AIClient) buildPromptWithLinkContext(
 		}
 	}
 
-	if !isRaw {
+	if !isSimple {
 		finalMessage = appendMessageIDHint(finalMessage, eventID)
 	}
 	prompt = append(prompt, openai.UserMessage(finalMessage))
@@ -2352,11 +2335,11 @@ func (oc *AIClient) buildPromptWithMedia(
 	if err != nil {
 		return nil, err
 	}
-	isRaw := meta != nil && meta.IsRawMode
+	isSimple := isSimpleMode(meta)
 	prompt = oc.augmentPromptWithIntegrations(ctx, portal, meta, prompt)
 
 	captionWithID := strings.TrimSpace(caption)
-	if !isRaw {
+	if !isSimple {
 		caption = oc.applyAbortHint(ctx, portal, meta, caption)
 		captionWithID = appendMessageIDHint(caption, eventID)
 	}
@@ -2491,19 +2474,8 @@ func (oc *AIClient) buildPromptUpToMessage(
 	var prompt []openai.ChatCompletionMessageParamUnion
 
 	// Add system prompt - agent prompt takes priority, then room override, then config default
-	isRaw := meta != nil && meta.IsRawMode
-	if isRaw {
-		prompt = append(prompt, openai.SystemMessage(oc.buildRawModeSystemPrompt(meta)))
-	} else {
-		systemPrompt := oc.effectiveAgentPrompt(ctx, portal, meta)
-		if systemPrompt == "" {
-			systemPrompt = oc.effectivePrompt(meta)
-		}
-		if systemPrompt != "" {
-			prompt = append(prompt, openai.SystemMessage(systemPrompt))
-		}
-		prompt = append(prompt, oc.buildAdditionalSystemPrompts(ctx, portal, meta)...)
-	}
+	isSimple := isSimpleMode(meta)
+	prompt = append(prompt, oc.buildSystemMessages(ctx, portal, meta)...)
 
 	// Get history
 	historyLimit := oc.historyLimit(ctx, portal, meta)
@@ -2528,13 +2500,7 @@ func (oc *AIClient) buildPromptUpToMessage(
 			// Stop after adding the target message
 			if msg.ID == targetMessageID {
 				// Use the new body for the edited message
-				body := newBody
-				if !isRaw && msg.MXID != "" {
-					body = appendMessageIDHint(newBody, msg.MXID)
-				} else if isRaw {
-					body = stripMessageIDHintLines(body)
-					body = StripEnvelope(body)
-				}
+				body := cleanHistoryBody(newBody, isSimple, msg.MXID)
 				prompt = append(prompt, openai.UserMessage(body))
 				break
 			}
@@ -2548,13 +2514,7 @@ func (oc *AIClient) buildPromptUpToMessage(
 			}
 
 			// Skip assistant messages that came after the target (we're going backwards)
-			body := msgMeta.Body
-			if !isRaw && msg.MXID != "" {
-				body = appendMessageIDHint(msgMeta.Body, msg.MXID)
-			} else if isRaw {
-				body = stripMessageIDHintLines(body)
-				body = StripEnvelope(body)
-			}
+			body := cleanHistoryBody(msgMeta.Body, isSimple, msg.MXID)
 
 			// Only inject images for recent messages and vision-capable models.
 			injectImages := hasVision && i < maxHistoryImageMessages

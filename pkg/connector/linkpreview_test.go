@@ -10,6 +10,8 @@ import (
 
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/ai-bridge/pkg/shared/citations"
 )
 
 func TestPreviewCacheReturnsClones(t *testing.T) {
@@ -90,7 +92,7 @@ func TestPreviewFromCitation(t *testing.T) {
 	lp := NewLinkPreviewer(DefaultLinkPreviewConfig())
 	ctx := context.Background()
 
-	citation := sourceCitation{
+	citation := citations.SourceCitation{
 		URL:         "https://example.com/article",
 		Title:       "Test Article",
 		Description: "A great article about testing.",
@@ -134,7 +136,7 @@ func TestPreviewFromCitation_NoImage(t *testing.T) {
 	lp := NewLinkPreviewer(DefaultLinkPreviewConfig())
 	ctx := context.Background()
 
-	citation := sourceCitation{
+	citation := citations.SourceCitation{
 		URL:   "https://example.com/no-image",
 		Title: "No Image Article",
 	}
@@ -170,7 +172,7 @@ func TestFetchPreviewsWithCitations_PrefersCitation(t *testing.T) {
 	ctx := context.Background()
 
 	citationURL := "https://example.com/exa-result"
-	citations := []sourceCitation{
+	cits := []citations.SourceCitation{
 		{
 			URL:         citationURL,
 			Title:       "Exa Title",
@@ -180,7 +182,7 @@ func TestFetchPreviewsWithCitations_PrefersCitation(t *testing.T) {
 	}
 
 	// Request two URLs: one with citation, one without (will use HTML fallback).
-	previews := lp.FetchPreviewsWithCitations(ctx, []string{citationURL, htmlServer.URL + "/other"}, citations)
+	previews := lp.FetchPreviewsWithCitations(ctx, []string{citationURL, htmlServer.URL + "/other"}, cits)
 
 	// The citation URL should produce a preview with Exa metadata.
 	var citationPreview *PreviewWithImage

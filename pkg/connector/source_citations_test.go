@@ -1,6 +1,10 @@
 package connector
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/beeper/ai-bridge/pkg/shared/citations"
+)
 
 func TestExtractWebSearchCitationsFromToolOutput(t *testing.T) {
 	output := `{
@@ -37,15 +41,15 @@ func TestExtractWebSearchCitationsFromToolOutput_OnlyForWebSearch(t *testing.T) 
 }
 
 func TestMergeSourceCitations_DedupesByURL(t *testing.T) {
-	existing := []sourceCitation{
+	existing := []citations.SourceCitation{
 		{URL: "https://example.com/one", Title: "One"},
 	}
-	incoming := []sourceCitation{
+	incoming := []citations.SourceCitation{
 		{URL: "https://example.com/one", Title: "Duplicate", Description: "desc"},
 		{URL: "https://example.com/two", Title: "Two"},
 	}
 
-	got := mergeSourceCitations(existing, incoming)
+	got := citations.MergeSourceCitations(existing, incoming)
 	if len(got) != 2 {
 		t.Fatalf("expected 2 merged citations, got %d", len(got))
 	}

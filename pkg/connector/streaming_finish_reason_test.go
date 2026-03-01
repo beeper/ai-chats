@@ -1,6 +1,10 @@
 package connector
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/beeper/ai-bridge/pkg/shared/citations"
+)
 
 func TestMapFinishReason(t *testing.T) {
 	tests := []struct {
@@ -67,19 +71,19 @@ func TestBuildCanonicalUIMessage_IncludesSourceAndFileParts(t *testing.T) {
 	oc := &AIClient{}
 	state := &streamingState{
 		turnID: "turn-1",
-		sourceCitations: []sourceCitation{{
+		sourceCitations: []citations.SourceCitation{{
 			URL:   "https://example.com",
 			Title: "Example",
 		}},
-		sourceDocuments: []sourceDocument{{
+		sourceDocuments: []citations.SourceDocument{{
 			ID:        "doc-1",
 			Title:     "Doc",
 			Filename:  "doc.txt",
 			MediaType: "text/plain",
 		}},
-		generatedFiles: []generatedFilePart{{
-			url:       "mxc://example/file",
-			mediaType: "image/png",
+		generatedFiles: []citations.GeneratedFilePart{{
+			URL:       "mxc://example/file",
+			MediaType: "image/png",
 		}},
 	}
 
