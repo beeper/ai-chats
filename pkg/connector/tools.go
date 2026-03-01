@@ -1378,7 +1378,7 @@ func executeTTS(ctx context.Context, args map[string]any) (string, error) {
 		return "TTS started (async). I'll send the audio here when ready.", nil
 	}
 
-	audioB64, err := generateTTSBase64(ctx, btc, text, voice, model, voiceFromArgs, modelFromArgs)
+	audioB64, err := generateTTSBase64(ctx, btc, text, voice, model)
 	if err != nil {
 		return "", err
 	}
@@ -1389,7 +1389,6 @@ func generateTTSBase64(
 	ctx context.Context,
 	btc *BridgeToolContext,
 	text, voice, model string,
-	voiceFromArgs, modelFromArgs bool,
 ) (string, error) {
 	// Try provider-based TTS first (Beeper/OpenAI).
 	if btc != nil && btc.Client != nil {
@@ -1415,7 +1414,7 @@ func generateTTSBase64(
 
 				// Call OpenAI TTS API (fallback from tts-1-hd -> tts-1 when using defaults).
 				audioData, err := callOpenAITTS(ctx, btc.Client.apiKey, ttsBaseURL, text, ttsModel, openAIVoice)
-				if err != nil && !modelFromArgs && ttsModel == "tts-1-hd" {
+				if err != nil && model == "" && ttsModel == "tts-1-hd" {
 					audioData, err = callOpenAITTS(ctx, btc.Client.apiKey, ttsBaseURL, text, "tts-1", openAIVoice)
 				}
 				if err == nil {
@@ -1429,7 +1428,7 @@ func generateTTSBase64(
 	// Try macOS 'say' command as fallback.
 	if isTTSMacOSAvailable() {
 		macOSVoice := voice
-		if !voiceFromArgs {
+		if voice == "" {
 			macOSVoice = ""
 		} else if validVoices[strings.ToLower(strings.TrimSpace(macOSVoice))] {
 			// The user provided an OpenAI voice name; use a macOS voice instead.
