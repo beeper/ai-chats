@@ -2,7 +2,6 @@ package connector
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -319,90 +318,7 @@ func (oc *AIClient) streamChatCompletions(
 						}
 					}
 
-					// Check for TTS audio result (AUDIO: prefix)
-					if strings.HasPrefix(result, TTSResultPrefix) {
-						audioB64 := strings.TrimPrefix(result, TTSResultPrefix)
-						audioData, decodeErr := base64.StdEncoding.DecodeString(audioB64)
-						if decodeErr != nil {
-							log.Warn().Err(decodeErr).Msg("Failed to decode TTS audio (Chat Completions)")
-							result = "Error: failed to decode TTS audio"
-							resultStatus = ResultStatusError
-						} else {
-							mimeType := detectAudioMime(audioData, "audio/mpeg")
-							if _, mediaURL, sendErr := oc.sendGeneratedAudio(ctx, portal, audioData, mimeType, state.turnID); sendErr != nil {
-								log.Warn().Err(sendErr).Msg("Failed to send TTS audio (Chat Completions)")
-								result = "Error: failed to send TTS audio"
-								resultStatus = ResultStatusError
-							} else {
-								recordGeneratedFile(state, mediaURL, mimeType)
-								oc.uiEmitter(state).EmitUIFile(ctx, portal, mediaURL, mimeType)
-								result = "Audio message sent successfully"
-							}
-						}
-					}
-
-					// Extract image generation prompt for use as caption on sent images.
-					var imageCaption string
-					if prompt, err := parseToolArgsPrompt(argsJSON); err == nil {
-						imageCaption = prompt
-					}
-
-					// Check for image generation result (IMAGE: / IMAGES: prefix)
-					if strings.HasPrefix(result, ImagesResultPrefix) {
-						payload := strings.TrimPrefix(result, ImagesResultPrefix)
-						var images []string
-						if err := json.Unmarshal([]byte(payload), &images); err != nil {
-							log.Warn().Err(err).Msg("Failed to parse generated images payload (Chat Completions)")
-							result = "Error: failed to parse generated images"
-							resultStatus = ResultStatusError
-						} else {
-							success := 0
-							var sentURLs []string
-							for _, imageB64 := range images {
-								imageData, mimeType, decodeErr := decodeBase64Image(imageB64)
-								if decodeErr != nil {
-									log.Warn().Err(decodeErr).Msg("Failed to decode generated image (Chat Completions)")
-									continue
-								}
-								_, mediaURL, err := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turnID, imageCaption)
-								if err != nil {
-									log.Warn().Err(err).Msg("Failed to send generated image (Chat Completions)")
-									continue
-								}
-								recordGeneratedFile(state, mediaURL, mimeType)
-								oc.uiEmitter(state).EmitUIFile(ctx, portal, mediaURL, mimeType)
-								sentURLs = append(sentURLs, mediaURL)
-								success++
-							}
-							if success == len(images) && success > 0 {
-								result = fmt.Sprintf("Images generated and sent to the user (%d). Media URLs: %s", success, strings.Join(sentURLs, ", "))
-							} else if success > 0 {
-								result = fmt.Sprintf("Images generated with %d/%d sent successfully. Media URLs: %s", success, len(images), strings.Join(sentURLs, ", "))
-								resultStatus = ResultStatusError
-							} else {
-								result = "Error: failed to send generated images"
-								resultStatus = ResultStatusError
-							}
-						}
-					} else if strings.HasPrefix(result, ImageResultPrefix) {
-						imageB64 := strings.TrimPrefix(result, ImageResultPrefix)
-						imageData, mimeType, decodeErr := decodeBase64Image(imageB64)
-						if decodeErr != nil {
-							log.Warn().Err(decodeErr).Msg("Failed to decode generated image (Chat Completions)")
-							result = "Error: failed to decode generated image"
-							resultStatus = ResultStatusError
-						} else {
-							if _, mediaURL, sendErr := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turnID, imageCaption); sendErr != nil {
-								log.Warn().Err(sendErr).Msg("Failed to send generated image (Chat Completions)")
-								result = "Error: failed to send generated image"
-								resultStatus = ResultStatusError
-							} else {
-								recordGeneratedFile(state, mediaURL, mimeType)
-								oc.uiEmitter(state).EmitUIFile(ctx, portal, mediaURL, mimeType)
-								result = fmt.Sprintf("Image generated and sent to the user. Media URL: %s", mediaURL)
-							}
-						}
-					}
+					result, resultStatus = oc.processToolMediaResult(ctx, log, portal, state, argsJSON, result, resultStatus, " (Chat Completions)")
 				}
 
 				// Normalize input for storage
