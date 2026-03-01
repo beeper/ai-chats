@@ -1814,34 +1814,6 @@ func (cc *CodexClient) emitUIStart(ctx context.Context, portal *bridgev2.Portal,
 	cc.uiEmitter(state).EmitUIStart(ctx, portal, cc.buildUIMessageMetadata(state, model, false, ""))
 }
 
-func (cc *CodexClient) emitUIMessageMetadata(ctx context.Context, portal *bridgev2.Portal, state *streamingState, metadata map[string]any) {
-	cc.uiEmitter(state).EmitUIMessageMetadata(ctx, portal, metadata)
-}
-
-func (cc *CodexClient) emitUIStepStart(ctx context.Context, portal *bridgev2.Portal, state *streamingState) {
-	cc.uiEmitter(state).EmitUIStepStart(ctx, portal)
-}
-
-func (cc *CodexClient) emitUIStepFinish(ctx context.Context, portal *bridgev2.Portal, state *streamingState) {
-	cc.uiEmitter(state).EmitUIStepFinish(ctx, portal)
-}
-
-func (cc *CodexClient) ensureUIText(ctx context.Context, portal *bridgev2.Portal, state *streamingState) {
-	cc.uiEmitter(state).EnsureUIText(ctx, portal)
-}
-
-func (cc *CodexClient) ensureUIReasoning(ctx context.Context, portal *bridgev2.Portal, state *streamingState) {
-	cc.uiEmitter(state).EnsureUIReasoning(ctx, portal)
-}
-
-func (cc *CodexClient) emitUITextDelta(ctx context.Context, portal *bridgev2.Portal, state *streamingState, delta string) {
-	cc.uiEmitter(state).EmitUITextDelta(ctx, portal, delta)
-}
-
-func (cc *CodexClient) emitUIReasoningDelta(ctx context.Context, portal *bridgev2.Portal, state *streamingState, delta string) {
-	cc.uiEmitter(state).EmitUIReasoningDelta(ctx, portal, delta)
-}
-
 func (cc *CodexClient) ensureUIToolInputStart(ctx context.Context, portal *bridgev2.Portal, state *streamingState, toolCallID, toolName string, providerExecuted bool, input any) {
 	if toolCallID == "" {
 		return
@@ -1849,10 +1821,6 @@ func (cc *CodexClient) ensureUIToolInputStart(ctx context.Context, portal *bridg
 	ui := cc.uiEmitter(state)
 	ui.EnsureUIToolInputStart(ctx, portal, toolCallID, toolName, providerExecuted, false, streamui.ToolDisplayTitle(toolName), nil)
 	ui.EmitUIToolInputAvailable(ctx, portal, toolCallID, toolName, input, providerExecuted)
-}
-
-func (cc *CodexClient) emitUIToolOutputAvailable(ctx context.Context, portal *bridgev2.Portal, state *streamingState, toolCallID string, output any, providerExecuted bool, preliminary bool) {
-	cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, toolCallID, output, providerExecuted, preliminary)
 }
 
 func (cc *CodexClient) emitUIToolApprovalRequest(
@@ -1914,14 +1882,6 @@ func (cc *CodexClient) sendToolCallApprovalEvent(
 			Str("tool", toolName).Str("approval_id", approvalID).
 			Msg("Failed to send tool call approval event")
 	}
-}
-
-func (cc *CodexClient) emitUIError(ctx context.Context, portal *bridgev2.Portal, state *streamingState, errText string) {
-	cc.uiEmitter(state).EmitUIError(ctx, portal, errText)
-}
-
-func (cc *CodexClient) emitUISourceURL(ctx context.Context, portal *bridgev2.Portal, state *streamingState, citation citations.SourceCitation) {
-	cc.uiEmitter(state).EmitUISourceURL(ctx, portal, citation)
 }
 
 func (cc *CodexClient) emitUIFinish(ctx context.Context, portal *bridgev2.Portal, state *streamingState, model string, finishReason string) {
