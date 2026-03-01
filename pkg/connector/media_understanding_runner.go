@@ -92,10 +92,10 @@ func (oc *AIClient) applyMediaUnderstandingForAttachments(
 			attachmentDecisions := make([]MediaUnderstandingAttachmentDecision, 0, len(selected))
 			for _, attachment := range selected {
 				attempt := MediaUnderstandingModelDecision{
-					Type:     "provider",
+					Type:     MediaEntryTypeProvider,
 					Provider: normalizeMediaProviderID(loginMetadata(oc.UserLogin).Provider),
 					Model:    oc.effectiveModel(meta),
-					Outcome:  "skipped",
+					Outcome:  MediaOutcomeSkipped,
 					Reason:   "primary model supports vision",
 				}
 				attachmentDecisions = append(attachmentDecisions, MediaUnderstandingAttachmentDecision{
@@ -106,7 +106,7 @@ func (oc *AIClient) applyMediaUnderstandingForAttachments(
 			}
 			result.Decisions = []MediaUnderstandingDecision{{
 				Capability:  capability,
-				Outcome:     "skipped",
+				Outcome:     MediaOutcomeSkipped,
 				Attachments: attachmentDecisions,
 			}}
 			return result, nil
@@ -129,7 +129,7 @@ func (oc *AIClient) applyMediaUnderstandingForAttachments(
 		}
 		result.Decisions = []MediaUnderstandingDecision{{
 			Capability:  capability,
-			Outcome:     "skipped",
+			Outcome:     MediaOutcomeSkipped,
 			Attachments: attachmentDecisions,
 		}}
 		return result, nil
@@ -148,7 +148,7 @@ func (oc *AIClient) applyMediaUnderstandingForAttachments(
 			Attempts:        attempts,
 		}
 		for i := range attempts {
-			if attempts[i].Outcome == "success" {
+			if attempts[i].Outcome == MediaOutcomeSuccess {
 				decision.Chosen = &attempts[i]
 				break
 			}
@@ -160,9 +160,9 @@ func (oc *AIClient) applyMediaUnderstandingForAttachments(
 	}
 
 	result.Outputs = outputs
-	decisionOutcome := "skipped"
+	decisionOutcome := MediaOutcomeSkipped
 	if len(outputs) > 0 {
-		decisionOutcome = "success"
+		decisionOutcome = MediaOutcomeSuccess
 	}
 	result.Decisions = []MediaUnderstandingDecision{{
 		Capability:  capability,
@@ -171,7 +171,7 @@ func (oc *AIClient) applyMediaUnderstandingForAttachments(
 	}}
 	oc.loggerForContext(ctx).Debug().
 		Str("capability", string(capability)).
-		Str("outcome", decisionOutcome).
+		Str("outcome", string(decisionOutcome)).
 		Int("attachments", len(selected)).
 		Int("outputs", len(outputs)).
 		Msg("Media understanding decision")
@@ -212,31 +212,23 @@ func (oc *AIClient) resolveAutoAudioEntry(cfg *MediaUnderstandingConfig) *MediaU
 		}
 	}
 
-	if key := oc.resolveMediaProviderAPIKey("openai", "", ""); key != "" || hasProviderAuthHeader("openai", headers) {
-		return &MediaUnderstandingModelConfig{
-			Provider: "openai",
-			Model:    defaultAudioModelsByProvider["openai"],
+	candidates := []struct {
+		provider string
+		model    string
+	}{
+		{"openai", defaultAudioModelsByProvider["openai"]},
+		{"groq", defaultAudioModelsByProvider["groq"]},
+		{"deepgram", defaultAudioModelsByProvider["deepgram"]},
+		{"google", defaultGoogleAudioModel},
+	}
+	for _, c := range candidates {
+		if oc.resolveMediaProviderAPIKey(c.provider, "", "") != "" || hasProviderAuthHeader(c.provider, headers) {
+			return &MediaUnderstandingModelConfig{
+				Provider: c.provider,
+				Model:    c.model,
+			}
 		}
 	}
-	if key := oc.resolveMediaProviderAPIKey("groq", "", ""); key != "" || hasProviderAuthHeader("groq", headers) {
-		return &MediaUnderstandingModelConfig{
-			Provider: "groq",
-			Model:    defaultAudioModelsByProvider["groq"],
-		}
-	}
-	if key := oc.resolveMediaProviderAPIKey("deepgram", "", ""); key != "" || hasProviderAuthHeader("deepgram", headers) {
-		return &MediaUnderstandingModelConfig{
-			Provider: "deepgram",
-			Model:    defaultAudioModelsByProvider["deepgram"],
-		}
-	}
-	if key := oc.resolveMediaProviderAPIKey("google", "", ""); key != "" || hasProviderAuthHeader("google", headers) {
-		return &MediaUnderstandingModelConfig{
-			Provider: "google",
-			Model:    defaultGoogleAudioModel,
-		}
-	}
-
 	return nil
 }
 
@@ -510,10 +502,10 @@ func (oc *AIClient) runMediaUnderstandingEntries(
 		entryType := entry.ResolvedType()
 		provider := strings.TrimSpace(entry.Provider)
 		model := strings.TrimSpace(entry.Model)
-		if entryType == "cli" {
+		if entryType == MediaEntryTypeCLI {
 			provider = strings.TrimSpace(entry.Command)
 			if provider == "" {
-				provider = "cli"
+				provider = string(MediaEntryTypeCLI)
 			}
 			if model == "" {
 				model = provider
@@ -528,7 +520,7 @@ func (oc *AIClient) runMediaUnderstandingEntries(
 				Type:     entryType,
 				Provider: provider,
 				Model:    model,
-				Outcome:  "failed",
+				Outcome:  MediaOutcomeFailed,
 				Reason:   err.Error(),
 			})
 			continue
@@ -538,7 +530,7 @@ func (oc *AIClient) runMediaUnderstandingEntries(
 				Type:     entryType,
 				Provider: provider,
 				Model:    model,
-				Outcome:  "skipped",
+				Outcome:  MediaOutcomeSkipped,
 				Reason:   "empty output",
 			})
 			continue
@@ -547,7 +539,7 @@ func (oc *AIClient) runMediaUnderstandingEntries(
 			Type:     entryType,
 			Provider: provider,
 			Model:    model,
-			Outcome:  "success",
+			Outcome:  MediaOutcomeSuccess,
 		})
 		return output, attempts, nil
 	}
@@ -618,7 +610,7 @@ func (oc *AIClient) runMediaUnderstandingEntry(
 	timeout := resolveMediaTimeoutSeconds(entry.TimeoutSeconds, capCfg, defaultTimeoutSecondsByCapability[capability])
 
 	switch entryType {
-	case "cli":
+	case MediaEntryTypeCLI:
 		data, actualMime, err := oc.downloadMediaBytes(ctx, attachment.URL, attachment.EncryptedFile, maxBytes, attachment.MimeType)
 		if err != nil {
 			return nil, err
@@ -640,7 +632,7 @@ func (oc *AIClient) runMediaUnderstandingEntry(
 		if err != nil {
 			return nil, err
 		}
-		return buildMediaOutput(capability, output, "cli", entry.Model, attachment.Index), nil
+		return buildMediaOutput(capability, output, string(MediaEntryTypeCLI), entry.Model, attachment.Index), nil
 
 	default:
 		providerID := normalizeMediaProviderID(entry.Provider)
