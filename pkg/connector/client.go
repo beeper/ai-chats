@@ -601,7 +601,24 @@ func (oc *AIClient) sendQueueRejectedStatus(ctx context.Context, portal *bridgev
 // If the room is available, it dispatches the completion immediately and returns Pending=true
 // so message status can be flipped to SUCCESS on first response bytes.
 // If the room is busy, it queues the message and sends a PENDING status.
-func (oc *AIClient) dispatchOrQueue(
+// saveUserMessage persists a user message to the database.
+func (oc *AIClient) saveUserMessage(ctx context.Context, evt *event.Event, msg *database.Message) {
+	if evt != nil {
+		msg.MXID = evt.ID
+	}
+	if _, err := oc.UserLogin.Bridge.GetGhostByID(ctx, msg.SenderID); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure user ghost before saving message")
+	}
+	if err := oc.UserLogin.Bridge.DB.Message.Insert(ctx, msg); err != nil {
+		oc.loggerForContext(ctx).Err(err).Msg("Failed to save message to database")
+	}
+}
+
+// dispatchOrQueueCore contains shared dispatch/steer/queue logic.
+// When userMessage is non-nil, it saves the message to the DB, handles ack
+// reactions, sends pending status on acquire, and notifies session mutations.
+// Returns true if the message was accepted (dispatched or queued).
+func (oc *AIClient) dispatchOrQueueCore(
 	ctx context.Context,
 	evt *event.Event,
 	portal *bridgev2.Portal,
@@ -610,10 +627,11 @@ func (oc *AIClient) dispatchOrQueue(
 	queueItem pendingQueueItem,
 	queueSettings QueueSettings,
 	promptMessages []openai.ChatCompletionMessageParamUnion,
-) (dbMessage *database.Message, isPending bool) {
+) bool {
 	roomID := portal.MXID
 	shouldSteer := queueSettings.Mode == QueueModeSteer || queueSettings.Mode == QueueModeSteerBacklog
 	shouldFollowup := queueSettings.Mode == QueueModeFollowup || queueSettings.Mode == QueueModeCollect || queueSettings.Mode == QueueModeSteerBacklog
+	hasDBMessage := userMessage != nil
 	trace := traceEnabled(meta)
 	if trace {
 		oc.loggerForContext(ctx).Debug().
@@ -632,17 +650,10 @@ func (oc *AIClient) dispatchOrQueue(
 			oc.loggerForContext(ctx).Debug().Stringer("room_id", roomID).Msg("Room acquired; dispatching immediately")
 		}
 		oc.stopQueueTyping(roomID)
-		// Save user message to database - we must do this ourselves since we return Pending=true.
-		if userMessage != nil && evt != nil {
-			userMessage.MXID = evt.ID
-			if _, err := oc.UserLogin.Bridge.GetGhostByID(ctx, userMessage.SenderID); err != nil {
-				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure user ghost before saving message")
-			}
-			if err := oc.UserLogin.Bridge.DB.Message.Insert(ctx, userMessage); err != nil {
-				oc.loggerForContext(ctx).Err(err).Msg("Failed to save user message to database")
-			}
+		if hasDBMessage {
+			oc.saveUserMessage(ctx, evt, userMessage)
 		}
-		if !queueItem.pending.PendingSent {
+		if hasDBMessage && !queueItem.pending.PendingSent {
 			oc.sendPendingStatus(ctx, portal, evt, "Processing...")
 			queueItem.pending.PendingSent = true
 		}
@@ -654,8 +665,7 @@ func (oc *AIClient) dispatchOrQueue(
 		metaSnapshot := clonePortalMetadata(meta)
 		go func(metaSnapshot *PortalMetadata) {
 			defer func() {
-				// Remove ack reaction after response is complete (if configured)
-				if metaSnapshot != nil && metaSnapshot.AckReactionRemoveAfter {
+				if hasDBMessage && metaSnapshot != nil && metaSnapshot.AckReactionRemoveAfter {
 					oc.removePendingAckReactions(oc.backgroundContext(ctx), portal, queueItem.pending)
 				}
 				oc.releaseRoom(roomID)
@@ -663,11 +673,14 @@ func (oc *AIClient) dispatchOrQueue(
 			}()
 			oc.dispatchCompletionInternal(runCtx, evt, portal, metaSnapshot, promptMessages)
 		}(metaSnapshot)
-		oc.notifySessionMutation(ctx, portal, meta, false)
-		return userMessage, true
+		if hasDBMessage {
+			oc.notifySessionMutation(ctx, portal, meta, false)
+		}
+		return true
 	}
 
 	pendingSent := false
+	messageSaved := false
 	if shouldSteer && queueItem.pending.Type == pendingTypeText {
 		queueItem.prompt = queueItem.pending.MessageBody
 		if queueItem.pending.Event != nil {
@@ -681,16 +694,9 @@ func (oc *AIClient) dispatchOrQueue(
 					Bool("followup", shouldFollowup).
 					Msg("Steering message into active run")
 			}
-			if userMessage != nil {
-				if evt != nil {
-					userMessage.MXID = evt.ID
-				}
-				if _, err := oc.UserLogin.Bridge.GetGhostByID(ctx, userMessage.SenderID); err != nil {
-					oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure user ghost before saving steered message")
-				}
-				if err := oc.UserLogin.Bridge.DB.Message.Insert(ctx, userMessage); err != nil {
-					oc.loggerForContext(ctx).Err(err).Msg("Failed to save steered message to database")
-				}
+			if hasDBMessage {
+				oc.saveUserMessage(ctx, evt, userMessage)
+				messageSaved = true
 			}
 			if !shouldFollowup {
 				if evt != nil && !queueItem.pending.PendingSent {
@@ -698,21 +704,17 @@ func (oc *AIClient) dispatchOrQueue(
 					queueItem.pending.PendingSent = true
 					pendingSent = true
 				}
-				oc.notifySessionMutation(ctx, portal, meta, false)
-				return userMessage, true
+				if hasDBMessage {
+					oc.notifySessionMutation(ctx, portal, meta, false)
+				}
+				return true
 			}
 		}
 	}
 
-	// Room busy - save message ourselves and queue for later
-	if userMessage != nil {
-		userMessage.MXID = evt.ID
-		if _, err := oc.UserLogin.Bridge.GetGhostByID(ctx, userMessage.SenderID); err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure user ghost before saving queued message")
-		}
-		if err := oc.UserLogin.Bridge.DB.Message.Insert(ctx, userMessage); err != nil {
-			oc.loggerForContext(ctx).Err(err).Msg("Failed to save queued message to database")
-		}
+	// Room busy - queue for later
+	if hasDBMessage && !messageSaved {
+		oc.saveUserMessage(ctx, evt, userMessage)
 	}
 
 	if queueSettings.Mode == QueueModeSteerBacklog {
@@ -727,16 +729,32 @@ func (oc *AIClient) dispatchOrQueue(
 			oc.loggerForContext(ctx).Warn().Stringer("room_id", roomID).Msg("Room busy queue rejected message")
 		}
 		oc.sendQueueRejectedStatus(ctx, portal, evt, queueItem.pending.StatusEvents, "Couldn't queue the message. Try again.")
-		return userMessage, false
+		return false
 	}
 	if evt != nil && !pendingSent {
 		oc.sendQueueAcceptedSuccess(ctx, portal, evt, queueItem.pending.StatusEvents)
 	}
-	oc.notifySessionMutation(ctx, portal, meta, false)
-	return userMessage, true
+	if hasDBMessage {
+		oc.notifySessionMutation(ctx, portal, meta, false)
+	}
+	return true
 }
 
-// dispatchOrQueueWithStatus is like dispatchOrQueue but does not return a DB message.
+func (oc *AIClient) dispatchOrQueue(
+	ctx context.Context,
+	evt *event.Event,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+	userMessage *database.Message,
+	queueItem pendingQueueItem,
+	queueSettings QueueSettings,
+	promptMessages []openai.ChatCompletionMessageParamUnion,
+) (dbMessage *database.Message, isPending bool) {
+	isPending = oc.dispatchOrQueueCore(ctx, evt, portal, meta, userMessage, queueItem, queueSettings, promptMessages)
+	return userMessage, isPending
+}
+
+// dispatchOrQueueWithStatus is like dispatchOrQueue but does not save a DB message.
 // Used for regenerate/edit operations.
 func (oc *AIClient) dispatchOrQueueWithStatus(
 	ctx context.Context,
@@ -747,83 +765,7 @@ func (oc *AIClient) dispatchOrQueueWithStatus(
 	queueSettings QueueSettings,
 	promptMessages []openai.ChatCompletionMessageParamUnion,
 ) {
-	roomID := portal.MXID
-	shouldSteer := queueSettings.Mode == QueueModeSteer || queueSettings.Mode == QueueModeSteerBacklog
-	shouldFollowup := queueSettings.Mode == QueueModeFollowup || queueSettings.Mode == QueueModeCollect || queueSettings.Mode == QueueModeSteerBacklog
-	trace := traceEnabled(meta)
-	if trace {
-		oc.loggerForContext(ctx).Debug().
-			Str("room_id", roomID.String()).
-			Str("queue_mode", string(queueSettings.Mode)).
-			Str("pending_type", string(queueItem.pending.Type)).
-			Bool("has_event", evt != nil).
-			Msg("Dispatching inbound message with status")
-	}
-	if queueSettings.Mode == QueueModeInterrupt {
-		oc.cancelRoomRun(roomID)
-		oc.clearPendingQueue(roomID)
-	}
-	if oc.acquireRoom(roomID) {
-		if trace {
-			oc.loggerForContext(ctx).Debug().Stringer("room_id", roomID).Msg("Room acquired; dispatching immediately")
-		}
-		oc.stopQueueTyping(roomID)
-		runCtx := withStatusEvents(oc.backgroundContext(ctx), queueItem.pending.StatusEvents)
-		if queueItem.pending.Typing != nil {
-			runCtx = WithTypingContext(runCtx, queueItem.pending.Typing)
-		}
-		runCtx = oc.attachRoomRun(runCtx, roomID)
-		metaSnapshot := clonePortalMetadata(meta)
-		go func(metaSnapshot *PortalMetadata) {
-			defer func() {
-				oc.releaseRoom(roomID)
-				oc.processPendingQueue(oc.backgroundContext(ctx), roomID)
-			}()
-			oc.dispatchCompletionInternal(runCtx, evt, portal, metaSnapshot, promptMessages)
-		}(metaSnapshot)
-		return
-	}
-
-	pendingSent := false
-	if shouldSteer && queueItem.pending.Type == pendingTypeText {
-		queueItem.prompt = queueItem.pending.MessageBody
-		if queueItem.pending.Event != nil {
-			queueItem.prompt = appendMessageIDHint(queueItem.prompt, queueItem.pending.Event.ID)
-		}
-		steered := oc.enqueueSteerQueue(roomID, queueItem)
-		if steered && !shouldFollowup {
-			if trace {
-				oc.loggerForContext(ctx).Debug().
-					Str("room_id", roomID.String()).
-					Bool("followup", shouldFollowup).
-					Msg("Steering message into active run")
-			}
-			if evt != nil && !queueItem.pending.PendingSent {
-				oc.sendPendingStatus(ctx, portal, evt, "Processing...")
-				queueItem.pending.PendingSent = true
-				pendingSent = true
-			}
-			return
-		}
-	}
-
-	if queueSettings.Mode == QueueModeSteerBacklog {
-		queueItem.backlogAfter = true
-	}
-	if trace {
-		oc.loggerForContext(ctx).Debug().Stringer("room_id", roomID).Msg("Room busy; queued message")
-	}
-	enqueued := oc.queuePendingMessage(roomID, queueItem, queueSettings)
-	if !enqueued {
-		if trace {
-			oc.loggerForContext(ctx).Warn().Stringer("room_id", roomID).Msg("Room busy queue rejected message")
-		}
-		oc.sendQueueRejectedStatus(ctx, portal, evt, queueItem.pending.StatusEvents, "Couldn't queue the message. Try again.")
-		return
-	}
-	if evt != nil && !pendingSent {
-		oc.sendQueueAcceptedSuccess(ctx, portal, evt, queueItem.pending.StatusEvents)
-	}
+	oc.dispatchOrQueueCore(ctx, evt, portal, meta, nil, queueItem, queueSettings, promptMessages)
 }
 
 // processPendingQueue processes queued messages for a room.
