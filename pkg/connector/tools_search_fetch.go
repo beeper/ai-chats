@@ -9,6 +9,7 @@ import (
 
 	"github.com/beeper/ai-bridge/pkg/fetch"
 	"github.com/beeper/ai-bridge/pkg/search"
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 	"github.com/beeper/ai-bridge/pkg/shared/websearch"
 )
 
@@ -295,7 +296,7 @@ func hasExaTokenAndCustomEndpoint(apiKey, baseURL string) bool {
 }
 
 func isCustomExaEndpoint(baseURL string) bool {
-	trimmed := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	trimmed := stringutil.NormalizeBaseURL(baseURL)
 	if trimmed == "" {
 		return false
 	}
@@ -366,7 +367,7 @@ func applyFetchExaProxyDefaults(cfg *fetch.Config, meta *UserLoginMetadata, conn
 }
 
 func shouldUseExaProxyBase(baseURL string) bool {
-	trimmed := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	trimmed := stringutil.NormalizeBaseURL(baseURL)
 	if trimmed == "" {
 		return true
 	}

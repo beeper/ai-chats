@@ -3,6 +3,7 @@ package connector
 import (
 	"strings"
 
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 	"maunium.net/go/mautrix/bridgev2"
 )
 
@@ -44,10 +45,10 @@ func (oc *OpenAIConnector) loadAIUserLogin(login *bridgev2.UserLogin, meta *User
 
 		existingMeta := loginMetadata(existing.UserLogin)
 		existingProvider := strings.TrimSpace(existingMeta.Provider)
-		existingBaseURL := strings.TrimRight(strings.TrimSpace(existingMeta.BaseURL), "/")
+		existingBaseURL := stringutil.NormalizeBaseURL(existingMeta.BaseURL)
 		needsRebuild := existing.apiKey != key ||
 			!strings.EqualFold(existingProvider, strings.TrimSpace(meta.Provider)) ||
-			existingBaseURL != strings.TrimRight(strings.TrimSpace(meta.BaseURL), "/")
+			existingBaseURL != stringutil.NormalizeBaseURL(meta.BaseURL)
 		if needsRebuild {
 			oc.clientsMu.Unlock()
 			client, err := newAIClient(login, oc, key)

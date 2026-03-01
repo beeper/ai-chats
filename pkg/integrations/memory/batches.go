@@ -316,7 +316,7 @@ func geminiHeaders(apiKey string, headers map[string]string) http.Header {
 }
 
 func normalizeBaseURL(raw string) string {
-	return strings.TrimRight(raw, "/")
+	return stringutil.NormalizeBaseURL(raw)
 }
 
 func buildOpenAIRequests(relPath, source, model string, missing []missingChunk) ([]openAIBatchRequest, map[string]missingChunk) {

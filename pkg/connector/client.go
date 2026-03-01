@@ -1765,53 +1765,77 @@ func (oc *AIClient) resolveModelID(ctx context.Context, modelID string) (string,
 
 	models, err := oc.listAvailableModels(ctx, false)
 	if err == nil && len(models) > 0 {
+		// Fast path: exact ID match
 		for _, model := range models {
 			if model.ID == normalized {
 				return model.ID, true, nil
 			}
 		}
 
+		// Pre-compute lowercase values once for remaining lookups
 		lower := strings.ToLower(normalized)
-		for _, model := range models {
-			if strings.ToLower(model.ID) == lower {
-				return model.ID, true, nil
+		type modelIndex struct {
+			id        string
+			lowerID   string
+			lowerName string
+			provider  string
+		}
+		indexed := make([]modelIndex, len(models))
+		for i, model := range models {
+			indexed[i] = modelIndex{
+				id:        model.ID,
+				lowerID:   strings.ToLower(model.ID),
+				lowerName: strings.ToLower(model.Name),
+				provider:  model.Provider,
 			}
 		}
 
-		for _, model := range models {
-			if strings.EqualFold(model.Name, normalized) {
-				return model.ID, true, nil
+		// Case-insensitive ID match
+		for _, m := range indexed {
+			if m.lowerID == lower {
+				return m.id, true, nil
 			}
 		}
 
+		// Case-insensitive name match
+		for _, m := range indexed {
+			if m.lowerName == lower {
+				return m.id, true, nil
+			}
+		}
+
+		// Provider/model matching for "provider/model" format
 		if strings.Contains(normalized, "/") {
 			parts := strings.SplitN(normalized, "/", 2)
-			providerPart := parts[0]
-			rest := parts[1]
+			providerPart, rest := parts[0], parts[1]
 			if providerPart != "" && rest != "" {
-				for _, model := range models {
-					modelProvider := model.Provider
-					if modelProvider == "" {
-						if backend, _ := ParseModelPrefix(model.ID); backend != "" {
-							modelProvider = string(backend)
+				lowerProvider := strings.ToLower(providerPart)
+				lowerRest := strings.ToLower(rest)
+				for _, m := range indexed {
+					provider := m.provider
+					if provider == "" {
+						if backend, _ := ParseModelPrefix(m.id); backend != "" {
+							provider = string(backend)
 						}
 					}
-					if modelProvider == "" || !strings.EqualFold(modelProvider, providerPart) {
+					if provider == "" || strings.ToLower(provider) != lowerProvider {
 						continue
 					}
-					if strings.EqualFold(model.ID, rest) ||
-						strings.EqualFold(model.Name, rest) ||
-						strings.HasSuffix(strings.ToLower(model.ID), "/"+strings.ToLower(rest)) {
-						return model.ID, true, nil
+					if m.lowerID == lowerRest ||
+						m.lowerName == lowerRest ||
+						strings.HasSuffix(m.lowerID, "/"+lowerRest) {
+						return m.id, true, nil
 					}
 				}
 			}
 		}
 
+		// Suffix matching for bare model names
 		if !strings.Contains(normalized, "/") {
+			suffix := "/" + normalized
 			var match string
 			for _, model := range models {
-				if strings.HasSuffix(model.ID, "/"+normalized) {
+				if strings.HasSuffix(model.ID, suffix) {
 					if match != "" && match != model.ID {
 						return "", false, nil
 					}
