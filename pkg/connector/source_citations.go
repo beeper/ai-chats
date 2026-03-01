@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
+
+	"github.com/beeper/ai-bridge/pkg/shared/maputil"
 )
 
 type sourceCitation struct {
@@ -35,7 +37,7 @@ func extractURLCitation(annotation any) (sourceCitation, bool) {
 	if typ != "url_citation" {
 		return sourceCitation{}, false
 	}
-	urlStr, ok := readStringArg(raw, "url")
+	urlStr, ok := maputil.StringArgMulti(raw, "url")
 	if !ok {
 		return sourceCitation{}, false
 	}
@@ -48,7 +50,7 @@ func extractURLCitation(annotation any) (sourceCitation, bool) {
 	default:
 		return sourceCitation{}, false
 	}
-	title, _ := readStringArg(raw, "title")
+	title, _ := maputil.StringArgMulti(raw, "title")
 	return sourceCitation{URL: urlStr, Title: title}, true
 }
 
@@ -64,8 +66,8 @@ func extractDocumentCitation(annotation any) (sourceDocument, bool) {
 		return sourceDocument{}, false
 	}
 
-	fileID, _ := readStringArg(raw, "file_id")
-	filename, _ := readStringArg(raw, "filename")
+	fileID, _ := maputil.StringArgMulti(raw, "file_id")
+	filename, _ := maputil.StringArgMulti(raw, "filename")
 	title := filename
 	if strings.TrimSpace(title) == "" {
 		title = fileID
@@ -113,7 +115,7 @@ func extractWebSearchCitationsFromToolOutput(toolName, output string) []sourceCi
 		if !ok {
 			continue
 		}
-		urlStr, ok := readStringArg(entry, "url")
+		urlStr, ok := maputil.StringArgMulti(entry, "url")
 		if !ok {
 			continue
 		}
@@ -126,13 +128,13 @@ func extractWebSearchCitationsFromToolOutput(toolName, output string) []sourceCi
 		default:
 			continue
 		}
-		title, _ := readStringArg(entry, "title")
-		description, _ := readStringArg(entry, "description")
-		published, _ := readStringArg(entry, "published")
-		siteName, _ := readStringArg(entry, "siteName")
-		author, _ := readStringArg(entry, "author")
-		image, _ := readStringArg(entry, "image")
-		favicon, _ := readStringArg(entry, "favicon")
+		title, _ := maputil.StringArgMulti(entry, "title")
+		description, _ := maputil.StringArgMulti(entry, "description")
+		published, _ := maputil.StringArgMulti(entry, "published")
+		siteName, _ := maputil.StringArgMulti(entry, "siteName")
+		author, _ := maputil.StringArgMulti(entry, "author")
+		image, _ := maputil.StringArgMulti(entry, "image")
+		favicon, _ := maputil.StringArgMulti(entry, "favicon")
 		citations = append(citations, sourceCitation{
 			URL:         urlStr,
 			Title:       title,

@@ -12,6 +12,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 func ensureReactionContent(msg *bridgev2.MatrixReaction) *event.ReactionEventContent {
@@ -53,7 +55,7 @@ func (oc *AIClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Matr
 	if msg == nil || msg.Event == nil || msg.Portal == nil {
 		return &database.Reaction{}, nil
 	}
-	if isMatrixBotUser(ctx, oc.UserLogin.Bridge, msg.Event.Sender) {
+	if bridgeadapter.IsMatrixBotUser(ctx, oc.UserLogin.Bridge, msg.Event.Sender) {
 		return &database.Reaction{}, nil
 	}
 
@@ -98,7 +100,7 @@ func (oc *AIClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev
 	if msg == nil || msg.Event == nil || msg.Portal == nil || msg.TargetReaction == nil {
 		return nil
 	}
-	if isMatrixBotUser(ctx, oc.UserLogin.Bridge, msg.Event.Sender) {
+	if bridgeadapter.IsMatrixBotUser(ctx, oc.UserLogin.Bridge, msg.Event.Sender) {
 		return nil
 	}
 

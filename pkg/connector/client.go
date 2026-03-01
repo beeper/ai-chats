@@ -32,6 +32,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/agents"
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 )
 
@@ -2885,7 +2886,7 @@ func (oc *AIClient) ensureModelInRoom(ctx context.Context, portal *bridgev2.Port
 }
 
 func (oc *AIClient) loggerForContext(ctx context.Context) *zerolog.Logger {
-	return loggerFromContext(ctx, &oc.log)
+	return bridgeadapter.LoggerFromContext(ctx, &oc.log)
 }
 
 // logEphemeralVerbose returns true when per-event ephemeral logging is enabled via config.

@@ -6,10 +6,6 @@ import (
 	"github.com/beeper/ai-bridge/pkg/shared/maputil"
 )
 
-func readStringArgAny(args map[string]any, key string) string {
-	return maputil.StringArg(args, key)
-}
-
 func (oc *AIClient) builtinToolApprovalRequirement(toolName string, args map[string]any) (required bool, action string) {
 	if oc == nil || !oc.toolApprovalsRuntimeEnabled() {
 		return false, ""
@@ -20,7 +16,7 @@ func (oc *AIClient) builtinToolApprovalRequirement(toolName string, args map[str
 	}
 	switch normalizeApprovalToken(toolName) {
 	case normalizeApprovalToken(ToolNameMessage):
-		action = normalizeMessageAction(readStringArgAny(args, "action"))
+		action = normalizeMessageAction(maputil.StringArg(args, "action"))
 		switch action {
 		// Read-only / non-destructive actions (do not require approval).
 		case "reactions", "search", "read", "member-info", "channel-info", "list-pins",
@@ -38,7 +34,7 @@ func (oc *AIClient) builtinToolApprovalRequirement(toolName string, args map[str
 		case normalizeApprovalToken(ToolNameWrite),
 			normalizeApprovalToken(ToolNameEdit),
 			normalizeApprovalToken(ToolNameApplyPatch):
-			path := strings.ToLower(readStringArgAny(args, "path"))
+			path := strings.ToLower(maputil.StringArg(args, "path"))
 			if path == "" {
 				return true, "workspace"
 			}

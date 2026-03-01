@@ -9,6 +9,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/commands"
 
 	"github.com/beeper/ai-bridge/pkg/connector/commandregistry"
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 // CommandStatus handles the !ai status command.
@@ -437,7 +438,7 @@ func fnElevated(ce *commands.Event) {
 		ce.Reply("Elevated access: %s", current)
 		return
 	}
-	level, ok := normalizeElevatedLevel(ce.Args[0])
+	level, ok := stringutil.NormalizeElevatedLevel(ce.Args[0])
 	if !ok {
 		ce.Reply("Usage: `!ai elevated off|on|ask|full`")
 		return

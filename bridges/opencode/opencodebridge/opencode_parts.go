@@ -14,6 +14,7 @@ import (
 
 	"github.com/beeper/ai-bridge/bridges/opencode/opencode"
 	"github.com/beeper/ai-bridge/pkg/matrixevents"
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 type openCodePartKind int
@@ -282,7 +283,7 @@ func (b *Bridge) buildOpenCodePartContent(ctx context.Context, portal *bridgev2.
 func buildOpenCodeToolCallContent(part opencode.Part, status string) (*event.MessageEventContent, map[string]any) {
 	toolName := opencodeToolName(part)
 	callID := opencodeToolCallID(part)
-	toolStatus := opencodeToolStatus(firstNonEmptyString(status, opencodePartStateStatus(part)))
+	toolStatus := opencodeToolStatus(stringutil.FirstNonEmpty(status, opencodePartStateStatus(part)))
 	call := &ToolCallData{
 		CallID:   callID,
 		ToolName: toolName,
@@ -305,7 +306,7 @@ func buildOpenCodeToolCallContent(part opencode.Part, status string) (*event.Mes
 func buildOpenCodeToolResultContent(part opencode.Part, status string) (*event.MessageEventContent, map[string]any) {
 	toolName := opencodeToolName(part)
 	callID := opencodeToolCallID(part)
-	stateStatus := firstNonEmptyString(status, opencodePartStateStatus(part))
+	stateStatus := stringutil.FirstNonEmpty(status, opencodePartStateStatus(part))
 	resultStatus := opencodeResultStatus(stateStatus)
 
 	outputText := ""

@@ -27,6 +27,7 @@ import (
 	"github.com/beeper/ai-bridge/bridges/codex/codexrpc"
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 var _ bridgev2.NetworkAPI = (*CodexClient)(nil)
@@ -128,7 +129,7 @@ func newCodexClient(login *bridgev2.UserLogin, connector *CodexConnector) (*Code
 }
 
 func (cc *CodexClient) loggerForContext(ctx context.Context) *zerolog.Logger {
-	return loggerFromContext(ctx, &cc.log)
+	return bridgeadapter.LoggerFromContext(ctx, &cc.log)
 }
 
 func (cc *CodexClient) Connect(ctx context.Context) {
@@ -367,7 +368,7 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 	if meta == nil || !meta.IsCodexRoom {
 		return nil, unsupportedMessageStatus(errors.New("not a Codex room"))
 	}
-	if isMatrixBotUser(ctx, cc.UserLogin.Bridge, msg.Event.Sender) {
+	if bridgeadapter.IsMatrixBotUser(ctx, cc.UserLogin.Bridge, msg.Event.Sender) {
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 
@@ -428,7 +429,7 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 		MXID:      msg.Event.ID,
 		Room:      portal.PortalKey,
 		SenderID:  humanUserID(cc.UserLogin.ID),
-		Timestamp: matrixEventTimestamp(msg.Event),
+		Timestamp: bridgeadapter.MatrixEventTimestamp(msg.Event),
 		Metadata: &MessageMetadata{
 			Role: "user",
 			Body: body,
@@ -493,7 +494,7 @@ func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, met
 	cc.emitUIStepStart(ctx, portal, state)
 
 	approvalPolicy := "unlessTrusted"
-	if lvl, _ := normalizeElevatedLevel(meta.ElevatedLevel); lvl == "full" {
+	if lvl, _ := stringutil.NormalizeElevatedLevel(meta.ElevatedLevel); lvl == "full" {
 		approvalPolicy = "never"
 	}
 
@@ -2377,7 +2378,7 @@ func (cc *CodexClient) handleApprovalRequest(
 	cc.registerToolApproval(approvalID, toolCallID, toolName, time.Duration(ttlSeconds)*time.Second)
 
 	if active.meta != nil {
-		if lvl, _ := normalizeElevatedLevel(active.meta.ElevatedLevel); lvl == "full" {
+		if lvl, _ := stringutil.NormalizeElevatedLevel(active.meta.ElevatedLevel); lvl == "full" {
 			return map[string]any{"decision": "accept"}, nil
 		}
 	}

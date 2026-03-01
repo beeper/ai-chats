@@ -18,6 +18,7 @@ import (
 
 	"github.com/beeper/ai-bridge/pkg/agents"
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	"github.com/beeper/ai-bridge/pkg/shared/maputil"
 )
 
 type approvalDecisionPayload struct {
@@ -38,9 +39,9 @@ func parseApprovalDecision(raw map[string]any) *approvalDecisionPayload {
 	if !ok {
 		return nil
 	}
-	approvalID := strings.TrimSpace(readStringArgAny(payloadMap, "approvalId"))
-	decision := strings.TrimSpace(readStringArgAny(payloadMap, "decision"))
-	reason := strings.TrimSpace(readStringArgAny(payloadMap, "reason"))
+	approvalID := strings.TrimSpace(maputil.StringArg(payloadMap, "approvalId"))
+	decision := strings.TrimSpace(maputil.StringArg(payloadMap, "decision"))
+	reason := strings.TrimSpace(maputil.StringArg(payloadMap, "reason"))
 	if approvalID == "" || decision == "" {
 		return nil
 	}
@@ -70,10 +71,6 @@ func unsupportedMessageStatus(err error) error {
 
 func messageSendStatusError(err error, message string, reason event.MessageStatusReason) error {
 	return bridgeadapter.MessageSendStatusError(err, message, reason, messageStatusForError, messageStatusReasonForError)
-}
-
-func matrixEventTimestamp(evt *event.Event) time.Time {
-	return bridgeadapter.MatrixEventTimestamp(evt)
 }
 
 // HandleMatrixMessage processes incoming Matrix messages and dispatches them to the AI
@@ -119,7 +116,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		}
 	}
 
-	if isMatrixBotUser(ctx, oc.UserLogin.Bridge, msg.Event.Sender) {
+	if bridgeadapter.IsMatrixBotUser(ctx, oc.UserLogin.Bridge, msg.Event.Sender) {
 		logCtx.Debug().Msg("Ignoring bot message")
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
@@ -383,7 +380,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 			Role: "user",
 			Body: body,
 		},
-		Timestamp: matrixEventTimestamp(msg.Event),
+		Timestamp: bridgeadapter.MatrixEventTimestamp(msg.Event),
 	}
 	if msg.InputTransactionID != "" {
 		userMessage.SendTxnID = networkid.RawTransactionID(msg.InputTransactionID)
@@ -796,7 +793,7 @@ func (oc *AIClient) handleMediaMessage(
 				Role: "user",
 				Body: body,
 			},
-			Timestamp: matrixEventTimestamp(msg.Event),
+			Timestamp: bridgeadapter.MatrixEventTimestamp(msg.Event),
 		}
 		if msg.InputTransactionID != "" {
 			userMessage.SendTxnID = networkid.RawTransactionID(msg.InputTransactionID)
@@ -916,7 +913,7 @@ func (oc *AIClient) handleMediaMessage(
 		Room:      portal.PortalKey,
 		SenderID:  humanUserID(oc.UserLogin.ID),
 		Metadata:  userMeta,
-		Timestamp: matrixEventTimestamp(msg.Event),
+		Timestamp: bridgeadapter.MatrixEventTimestamp(msg.Event),
 	}
 	if msg.InputTransactionID != "" {
 		userMessage.SendTxnID = networkid.RawTransactionID(msg.InputTransactionID)
@@ -1037,7 +1034,7 @@ func (oc *AIClient) handleTextFileMessage(
 			Role: "user",
 			Body: combined,
 		},
-		Timestamp: matrixEventTimestamp(msg.Event),
+		Timestamp: bridgeadapter.MatrixEventTimestamp(msg.Event),
 	}
 	if msg.InputTransactionID != "" {
 		userMessage.SendTxnID = networkid.RawTransactionID(msg.InputTransactionID)

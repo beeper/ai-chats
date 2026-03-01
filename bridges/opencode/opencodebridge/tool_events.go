@@ -5,7 +5,6 @@ import (
 
 	"github.com/beeper/ai-bridge/pkg/agents/tools"
 	"github.com/beeper/ai-bridge/pkg/matrixevents"
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 type ToolStatus = matrixevents.ToolStatus
@@ -71,10 +70,6 @@ type ToolResultDisplay struct {
 	DefaultExpanded bool   `json:"default_expanded,omitempty"`
 	ShowStdout      bool   `json:"show_stdout,omitempty"`
 	ShowArtifacts   bool   `json:"show_artifacts,omitempty"`
-}
-
-func firstNonEmptyString(values ...string) string {
-	return stringutil.FirstNonEmpty(values...)
 }
 
 func toolDisplayTitle(toolName string) string {

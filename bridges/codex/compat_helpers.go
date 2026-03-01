@@ -1,19 +1,14 @@
 package codex
 
 import (
-	"context"
 	"strings"
-	"time"
 
 	"go.mau.fi/util/ptr"
-	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"github.com/beeper/ai-bridge/pkg/shared/maputil"
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 func humanUserID(loginID networkid.UserLoginID) networkid.UserID {
@@ -40,18 +35,10 @@ var aiBaseCaps = &event.RoomFeatures{
 	DeleteChat:          true,
 }
 
-func isMatrixBotUser(ctx context.Context, bridge *bridgev2.Bridge, userID id.UserID) bool {
-	return bridgeadapter.IsMatrixBotUser(ctx, bridge, userID)
-}
-
 type approvalDecisionPayload struct {
 	ApprovalID string
 	Decision   string
 	Reason     string
-}
-
-func readStringArgAny(args map[string]any, key string) string {
-	return maputil.StringArg(args, key)
 }
 
 func parseApprovalDecision(raw map[string]any) *approvalDecisionPayload {
@@ -66,9 +53,9 @@ func parseApprovalDecision(raw map[string]any) *approvalDecisionPayload {
 	if !ok {
 		return nil
 	}
-	approvalID := readStringArgAny(payloadMap, "approvalId")
-	decision := readStringArgAny(payloadMap, "decision")
-	reason := readStringArgAny(payloadMap, "reason")
+	approvalID := maputil.StringArg(payloadMap, "approvalId")
+	decision := maputil.StringArg(payloadMap, "decision")
+	reason := maputil.StringArg(payloadMap, "reason")
 	if approvalID == "" || decision == "" {
 		return nil
 	}
@@ -90,12 +77,4 @@ func approvalDecisionFromString(decision string) (approve bool, always bool, ok 
 	default:
 		return false, false, false
 	}
-}
-
-func matrixEventTimestamp(evt *event.Event) time.Time {
-	return bridgeadapter.MatrixEventTimestamp(evt)
-}
-
-func normalizeElevatedLevel(raw string) (string, bool) {
-	return stringutil.NormalizeElevatedLevel(raw)
 }

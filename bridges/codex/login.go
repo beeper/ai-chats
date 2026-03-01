@@ -17,6 +17,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 
 	"github.com/beeper/ai-bridge/bridges/codex/codexrpc"
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 var (
@@ -67,7 +68,7 @@ func (cl *CodexLogin) logger(ctx context.Context) *zerolog.Logger {
 		l := zerolog.Nop()
 		fallback = &l
 	}
-	return loggerFromContext(ctx, fallback)
+	return bridgeadapter.LoggerFromContext(ctx, fallback)
 }
 
 func (cl *CodexLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {

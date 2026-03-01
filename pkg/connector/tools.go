@@ -1807,10 +1807,6 @@ func detachedBridgeToolContext(ctx context.Context) context.Context {
 	return base
 }
 
-func readStringArg(args map[string]any, keys ...string) (string, bool) {
-	return maputil.StringArgMulti(args, keys...)
-}
-
 func readIntArg(args map[string]any, keys ...string) (int, bool) {
 	for _, key := range keys {
 		if raw, ok := args[key]; ok {
@@ -1840,7 +1836,7 @@ func executeReadFile(ctx context.Context, args map[string]any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	path, ok := readStringArg(args, "path", "file_path")
+	path, ok := maputil.StringArgMulti(args, "path", "file_path")
 	if !ok {
 		return "", errors.New("missing or invalid 'path' argument")
 	}
@@ -1902,7 +1898,7 @@ func executeWriteFile(ctx context.Context, args map[string]any) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	path, ok := readStringArg(args, "path", "file_path")
+	path, ok := maputil.StringArgMulti(args, "path", "file_path")
 	if !ok {
 		return "", errors.New("missing or invalid 'path' argument")
 	}
@@ -1937,15 +1933,15 @@ func executeEditFile(ctx context.Context, args map[string]any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	path, ok := readStringArg(args, "path", "file_path")
+	path, ok := maputil.StringArgMulti(args, "path", "file_path")
 	if !ok {
 		return "", errors.New("missing or invalid 'path' argument")
 	}
-	oldText, ok := readStringArg(args, "oldText", "old_string")
+	oldText, ok := maputil.StringArgMulti(args, "oldText", "old_string")
 	if !ok {
 		return "", errors.New("missing or invalid 'oldText' argument")
 	}
-	newText, ok := readStringArg(args, "newText", "new_string")
+	newText, ok := maputil.StringArgMulti(args, "newText", "new_string")
 	if !ok {
 		return "", errors.New("missing or invalid 'newText' argument")
 	}

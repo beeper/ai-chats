@@ -3,18 +3,11 @@ package codex
 import (
 	"context"
 
-	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
-
-// loggerFromContext returns the logger from the context if available,
-// otherwise falls back to the provided logger.
-func loggerFromContext(ctx context.Context, fallback *zerolog.Logger) *zerolog.Logger {
-	return bridgeadapter.LoggerFromContext(ctx, fallback)
-}
 
 func unsupportedMessageStatus(err error) error {
 	return bridgeadapter.UnsupportedMessageStatus(err)

@@ -2,8 +2,6 @@ package connector
 
 import (
 	"strings"
-
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 func normalizeThinkLevel(raw string) (string, bool) {
@@ -51,10 +49,6 @@ func normalizeReasoningLevel(raw string) (string, bool) {
 		return key, true
 	}
 	return "", false
-}
-
-func normalizeElevatedLevel(raw string) (string, bool) {
-	return stringutil.NormalizeElevatedLevel(raw)
 }
 
 func normalizeSendPolicy(raw string) (string, bool) {
