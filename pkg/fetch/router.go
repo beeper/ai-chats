@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
+
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 // Fetch executes a fetch using the configured provider chain.
@@ -58,30 +59,7 @@ func normalizeRequest(req Request, _ *Config) Request {
 }
 
 func buildOrder(cfg *Config) []string {
-	order := make([]string, 0, len(cfg.Fallbacks)+1)
-	provider := strings.TrimSpace(cfg.Provider)
-	if provider != "" && provider != "auto" {
-		order = append(order, provider)
-	}
-	order = append(order, cfg.Fallbacks...)
-	return dedupeOrder(order)
-}
-
-func dedupeOrder(items []string) []string {
-	seen := make(map[string]bool, len(items))
-	result := make([]string, 0, len(items))
-	for _, item := range items {
-		name := strings.TrimSpace(item)
-		if name == "" || seen[name] {
-			continue
-		}
-		seen[name] = true
-		result = append(result, name)
-	}
-	if len(result) == 0 {
-		return slices.Clone(DefaultFallbackOrder)
-	}
-	return result
+	return stringutil.BuildProviderOrder(cfg.Provider, cfg.Fallbacks, DefaultFallbackOrder)
 }
 
 func registerProviders(registry *Registry, cfg *Config) {

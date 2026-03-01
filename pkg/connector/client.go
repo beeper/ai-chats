@@ -29,6 +29,7 @@ import (
 
 	"github.com/beeper/ai-bridge/pkg/agents"
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 var (
@@ -1104,7 +1105,7 @@ func (oc *AIClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*br
 		return &bridgev2.UserInfo{
 			Name:         ptr.Ptr(displayName),
 			IsBot:        ptr.Ptr(true),
-			Identifiers:  uniqueStrings(identifiers),
+			Identifiers:  stringutil.DedupeStrings(identifiers),
 			ExtraUpdates: updateGhostLastSync,
 		}, nil
 	}

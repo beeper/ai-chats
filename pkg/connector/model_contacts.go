@@ -3,6 +3,8 @@ package connector
 import (
 	"net/url"
 	"strings"
+
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 func modelContactName(modelID string, info *ModelInfo) string {
@@ -40,7 +42,7 @@ func modelContactIdentifiers(modelID string, info *ModelInfo) []string {
 	if openRouterURL := modelContactOpenRouterURL(modelID, info); openRouterURL != "" {
 		identifiers = append(identifiers, "uri:"+openRouterURL)
 	}
-	return uniqueStrings(identifiers)
+	return stringutil.DedupeStrings(identifiers)
 }
 
 func modelContactOpenRouterURL(modelID string, info *ModelInfo) string {
@@ -75,18 +77,3 @@ func openRouterModelURL(modelID string) string {
 	return "https://openrouter.ai/models/" + strings.Join(parts, "/")
 }
 
-func uniqueStrings(values []string) []string {
-	seen := make(map[string]struct{}, len(values))
-	result := make([]string, 0, len(values))
-	for _, value := range values {
-		if value == "" {
-			continue
-		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		result = append(result, value)
-	}
-	return result
-}
