@@ -132,7 +132,6 @@ func resolveEndpoint(baseURL, path string) string {
 	return base + path
 }
 
-
 func resolveSiteName(raw string) string {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {

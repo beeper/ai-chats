@@ -409,7 +409,6 @@ func resolveSessionKey(scope iruntime.ToolScope, fn func(scope iruntime.ToolScop
 	return strings.TrimSpace(fn(scope))
 }
 
-
 func readStringList(args map[string]any, key string) []string {
 	if args == nil {
 		return nil

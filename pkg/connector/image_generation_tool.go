@@ -153,7 +153,6 @@ func readStringSlice(args map[string]any, key string) []string {
 	return nil
 }
 
-
 func resolveImageGenProvider(req imageGenRequest, btc *BridgeToolContext) (imageGenProvider, error) {
 	provider := strings.ToLower(strings.TrimSpace(req.Provider))
 	if provider != "" {

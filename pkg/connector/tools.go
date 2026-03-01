@@ -72,9 +72,9 @@ func GetBridgeToolContext(ctx context.Context) *BridgeToolContext {
 }
 
 var (
-	builtinToolsOnce       sync.Once
-	builtinToolsCached     []ToolDefinition
-	builtinToolsByNameMap  map[string]*ToolDefinition
+	builtinToolsOnce      sync.Once
+	builtinToolsCached    []ToolDefinition
+	builtinToolsByNameMap map[string]*ToolDefinition
 )
 
 func initBuiltinTools() {
@@ -1786,7 +1786,6 @@ func detachedBridgeToolContext(ctx context.Context) context.Context {
 	}
 	return base
 }
-
 
 // executeReadFile handles the read tool.
 func executeReadFile(ctx context.Context, args map[string]any) (string, error) {

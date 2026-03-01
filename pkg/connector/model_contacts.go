@@ -76,4 +76,3 @@ func openRouterModelURL(modelID string) string {
 	}
 	return "https://openrouter.ai/models/" + strings.Join(parts, "/")
 }
-

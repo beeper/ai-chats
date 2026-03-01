@@ -12,9 +12,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
+
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 type mediaUnderstandingResult struct {
@@ -703,7 +704,7 @@ func (oc *AIClient) describeImageWithEntry(
 		if err != nil {
 			return nil, err
 		}
-			text = truncateText(text, maxChars)
+		text = truncateText(text, maxChars)
 		return buildMediaOutput(MediaCapabilityImage, text, "google", entry.Model, attachmentIndex), nil
 	}
 
@@ -1136,4 +1137,3 @@ func estimateBase64Size(size int) int {
 	}
 	return ((size + 2) / 3) * 4
 }
-

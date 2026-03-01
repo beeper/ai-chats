@@ -59,4 +59,3 @@ func TestExaProviderSearchUsesHighlightMaxCharacters(t *testing.T) {
 		t.Fatalf("expected maxCharacters=777, got %#v", highlights["maxCharacters"])
 	}
 }
-

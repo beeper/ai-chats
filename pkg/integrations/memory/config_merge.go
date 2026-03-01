@@ -314,4 +314,3 @@ func extractFields(cfg *agents.MemorySearchConfig) searchFields {
 	}
 	return f
 }
-

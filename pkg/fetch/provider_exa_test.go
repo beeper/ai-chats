@@ -151,4 +151,3 @@ func TestExaProviderFetchReturnsStatusErrors(t *testing.T) {
 		t.Fatalf("expected status details in error, got: %s", msg)
 	}
 }
-
