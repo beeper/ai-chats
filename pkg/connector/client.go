@@ -1954,6 +1954,9 @@ var base64DataURIPattern = regexp.MustCompile(`data:image/[^;]+;base64,[A-Za-z0-
 // sanitizeHistoryImages strips oversized base64-encoded images from a message body.
 // Images that exceed maxBase64ImageBytes are replaced with a placeholder.
 func sanitizeHistoryImages(body string) string {
+	if !strings.Contains(body, "data:image/") {
+		return body
+	}
 	return base64DataURIPattern.ReplaceAllStringFunc(body, func(match string) string {
 		// Extract just the base64 portion after "base64,"
 		idx := strings.Index(match, "base64,")
