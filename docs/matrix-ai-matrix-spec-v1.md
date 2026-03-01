@@ -5,7 +5,8 @@
 > [!WARNING]
 > Status: *Draft* (unreleased), proposed v1.
 > This is a highly experimental profile.
-> It requires homeserver and client support (custom event types + ephemeral events + rendering/consumption).
+> It relies on homeserver/client support for custom event types and rendering/consumption.
+> Streaming transport is adaptive: ephemeral-first with debounced timeline-edit fallback when ephemeral delivery is unsupported.
 > This repo contains one experimental implementation, but the transport profile is not bridge-specific: any Matrix bot/client/bridge can emit and consume these events.
 
 ## Contents
@@ -26,7 +27,9 @@
 ## Scope
 This document specifies a Matrix transport profile for real-time AI:
 - Canonical assistant content in `m.room.message` (`com.beeper.ai` as AI SDK-compatible `UIMessage`).
-- Streaming deltas as ephemeral events (`com.beeper.ai.stream_event` with AI SDK `UIMessageChunk`).
+- Streaming deltas via adaptive transport:
+  - primary: ephemeral events (`com.beeper.ai.stream_event` with AI SDK `UIMessageChunk`)
+  - fallback: debounced `m.replace` timeline edits when ephemeral delivery is unavailable
 - `com.beeper.ai.*` timeline projection events (tool call/result, compaction status, etc).
 - `com.beeper.ai.*` state events (room settings/capabilities).
 - Tool approvals (MCP approvals + selected builtin tools).
@@ -52,7 +55,8 @@ Reference implementation in this repo (ai-bridge):
 
 <a id="compatibility"></a>
 ## Compatibility
-- Homeserver support for custom event types and ephemeral events is required.
+- Homeserver support for custom event types is required.
+- Ephemeral support is optional but recommended; when unavailable, implementations should fall back to debounced timeline edits.
 - Clients must explicitly implement rendering/consumption of these custom types.
 - Non-supporting clients should fall back to `m.room.message.body` where available.
 

@@ -68,7 +68,9 @@ func (oc *AIClient) ensureStreamSession(ctx context.Context, portal *bridgev2.Po
 	return state.session
 }
 
-// emitStreamEvent sends an AI SDK UIMessageChunk streaming event to the room.
+// emitStreamEvent routes AI SDK UIMessageChunk parts through shared stream transport.
+// Transport attempts ephemeral delivery first and automatically falls back to
+// debounced timeline edits when ephemeral streaming is unavailable.
 func (oc *AIClient) emitStreamEvent(
 	ctx context.Context,
 	portal *bridgev2.Portal,
