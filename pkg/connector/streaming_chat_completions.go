@@ -227,10 +227,7 @@ func (oc *AIClient) streamChatCompletions(
 				}
 				oc.uiEmitter(state).EmitUIAbort(ctx, portal, "cancelled")
 				oc.emitUIFinish(ctx, portal, state, meta)
-				if state.initialEventID != "" {
-					return false, nil, &NonFallbackError{Err: err}
-				}
-				return false, nil, &PreDeltaError{Err: err}
+				return false, nil, streamFailureError(state, err)
 			}
 			if cle := ParseContextLengthError(err); cle != nil {
 				return false, cle, nil
@@ -239,10 +236,7 @@ func (oc *AIClient) streamChatCompletions(
 			state.finishReason = "error"
 			oc.uiEmitter(state).EmitUIError(ctx, portal, err.Error())
 			oc.emitUIFinish(ctx, portal, state, meta)
-			if state.initialEventID != "" {
-				return false, nil, &NonFallbackError{Err: err}
-			}
-			return false, nil, &PreDeltaError{Err: err}
+			return false, nil, streamFailureError(state, err)
 		}
 
 		// Execute any accumulated tool calls
@@ -417,12 +411,6 @@ func (oc *AIClient) streamChatCompletions(
 					inputMap = argsJSON
 					oc.uiEmitter(state).EmitUIToolInputError(ctx, portal, tool.callID, toolName, argsJSON, "Invalid JSON tool input", false, false)
 				}
-				inputMapForMeta := map[string]any{}
-				if parsed, ok := inputMap.(map[string]any); ok {
-					inputMapForMeta = parsed
-				} else if raw, ok := inputMap.(string); ok && raw != "" {
-					inputMapForMeta = map[string]any{"_raw": raw}
-				}
 				oc.uiEmitter(state).EmitUIToolInputAvailable(ctx, portal, tool.callID, toolName, inputMap, false)
 
 				// Track tool call in metadata
@@ -432,7 +420,7 @@ func (oc *AIClient) streamChatCompletions(
 					CallID:        tool.callID,
 					ToolName:      toolName,
 					ToolType:      string(tool.toolType),
-					Input:         inputMapForMeta,
+					Input:         parseToolInputPayload(argsJSON),
 					Output:        map[string]any{"result": result},
 					Status:        string(ToolStatusCompleted),
 					ResultStatus:  string(resultStatus),

@@ -3,7 +3,6 @@ package connector
 import (
 	"context"
 	"strings"
-	"time"
 
 	"github.com/beeper/ai-bridge/pkg/matrixevents"
 	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
@@ -122,14 +121,16 @@ func (oc *AIClient) emitStreamEvent(
 		oc.loggerForContext(ctx).Warn().Err(err).
 			Str("part_type", partType).
 			Int("seq", seq).
-			Msg("Failed to emit stream event, retrying once")
-		time.Sleep(100 * time.Millisecond)
-		_, err = ephemeralSender.SendEphemeralEvent(ctx, portal.MXID, StreamEventMessageType, eventContent, txnID)
-		if err != nil {
-			oc.loggerForContext(ctx).Error().Err(err).
-				Str("part_type", partType).
-				Int("seq", seq).
-				Msg("Failed to emit stream event after retry")
-		}
+			Msg("Failed to emit stream event, retrying async")
+		// Fire-and-forget async retry to avoid blocking the stream hot path.
+		go func() {
+			_, retryErr := ephemeralSender.SendEphemeralEvent(ctx, portal.MXID, StreamEventMessageType, eventContent, txnID)
+			if retryErr != nil {
+				oc.loggerForContext(ctx).Error().Err(retryErr).
+					Str("part_type", partType).
+					Int("seq", seq).
+					Msg("Failed to emit stream event after async retry")
+			}
+		}()
 	}
 }

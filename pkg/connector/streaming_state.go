@@ -63,7 +63,8 @@ type streamingState struct {
 	suppressSend      bool
 
 	// AI SDK UIMessage stream tracking (shared across bridges)
-	ui streamui.UIState
+	ui      streamui.UIState
+	emitter *streamui.Emitter
 
 	// Pending MCP approvals to resolve before the turn can continue.
 	pendingMcpApprovals     []mcpApprovalRequest
@@ -121,7 +122,22 @@ func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID 
 	return state
 }
 
+func (oc *AIClient) setupEmitter(state *streamingState) {
+	if state == nil {
+		return
+	}
+	state.emitter = &streamui.Emitter{
+		State: &state.ui,
+		Emit: func(ctx context.Context, portal *bridgev2.Portal, part map[string]any) {
+			oc.emitStreamEvent(ctx, portal, state, part)
+		},
+	}
+}
+
 func (oc *AIClient) uiEmitter(state *streamingState) *streamui.Emitter {
+	if state != nil && state.emitter != nil {
+		return state.emitter
+	}
 	if state == nil {
 		fallback := &streamui.UIState{}
 		fallback.InitMaps()
@@ -155,7 +171,7 @@ func (oc *AIClient) applyStreamingReplyTarget(state *streamingState, parsed *str
 }
 
 func (oc *AIClient) markMessageSendSuccess(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, state *streamingState) {
-	if state == nil || state.suppressSend {
+	if state == nil || state.suppressSend || state.statusSent {
 		return
 	}
 	if queueAcceptedStatusFromContext(ctx) {

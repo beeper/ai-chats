@@ -12,6 +12,99 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 )
 
+// processToolMediaResult handles TTS audio (AUDIO: prefix), single image (IMAGE: prefix),
+// and multi-image (IMAGES: prefix) tool results. Returns the display-friendly result string
+// and (possibly updated) result status.
+func (oc *AIClient) processToolMediaResult(
+	ctx context.Context,
+	log zerolog.Logger,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	argsJSON string,
+	result string,
+	resultStatus ResultStatus,
+	logSuffix string,
+) (string, ResultStatus) {
+	// TTS audio (AUDIO: prefix)
+	if strings.HasPrefix(result, TTSResultPrefix) {
+		audioB64 := strings.TrimPrefix(result, TTSResultPrefix)
+		audioData, err := base64.StdEncoding.DecodeString(audioB64)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to decode TTS audio" + logSuffix)
+			return "Error: failed to decode TTS audio", ResultStatusError
+		}
+		mimeType := detectAudioMime(audioData, "audio/mpeg")
+		if _, mediaURL, err := oc.sendGeneratedAudio(ctx, portal, audioData, mimeType, state.turnID); err != nil {
+			log.Warn().Err(err).Msg("Failed to send TTS audio" + logSuffix)
+			return "Error: failed to send TTS audio", ResultStatusError
+		} else {
+			recordGeneratedFile(state, mediaURL, mimeType)
+			oc.uiEmitter(state).EmitUIFile(ctx, portal, mediaURL, mimeType)
+			return "Audio message sent successfully", resultStatus
+		}
+	}
+
+	// Extract image caption from tool args.
+	var imageCaption string
+	if prompt, err := parseToolArgsPrompt(argsJSON); err == nil {
+		imageCaption = prompt
+	}
+
+	// Multiple images (IMAGES: prefix)
+	if strings.HasPrefix(result, ImagesResultPrefix) {
+		payload := strings.TrimPrefix(result, ImagesResultPrefix)
+		var images []string
+		if err := json.Unmarshal([]byte(payload), &images); err != nil {
+			log.Warn().Err(err).Msg("Failed to parse generated images payload" + logSuffix)
+			return "Error: failed to parse generated images", ResultStatusError
+		}
+		success := 0
+		var sentURLs []string
+		for _, imageB64 := range images {
+			imageData, mimeType, err := decodeBase64Image(imageB64)
+			if err != nil {
+				log.Warn().Err(err).Msg("Failed to decode generated image" + logSuffix)
+				continue
+			}
+			_, mediaURL, err := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turnID, imageCaption)
+			if err != nil {
+				log.Warn().Err(err).Msg("Failed to send generated image" + logSuffix)
+				continue
+			}
+			recordGeneratedFile(state, mediaURL, mimeType)
+			oc.uiEmitter(state).EmitUIFile(ctx, portal, mediaURL, mimeType)
+			sentURLs = append(sentURLs, mediaURL)
+			success++
+		}
+		if success == len(images) && success > 0 {
+			return fmt.Sprintf("Images generated and sent to the user (%d). Media URLs: %s", success, strings.Join(sentURLs, ", ")), resultStatus
+		} else if success > 0 {
+			return fmt.Sprintf("Images generated with %d/%d sent successfully. Media URLs: %s", success, len(images), strings.Join(sentURLs, ", ")), ResultStatusError
+		}
+		return "Error: failed to send generated images", ResultStatusError
+	}
+
+	// Single image (IMAGE: prefix)
+	if strings.HasPrefix(result, ImageResultPrefix) {
+		imageB64 := strings.TrimPrefix(result, ImageResultPrefix)
+		imageData, mimeType, err := decodeBase64Image(imageB64)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to decode generated image" + logSuffix)
+			return "Error: failed to decode generated image", ResultStatusError
+		}
+		if _, mediaURL, err := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turnID, imageCaption); err != nil {
+			log.Warn().Err(err).Msg("Failed to send generated image" + logSuffix)
+			return "Error: failed to send generated image", ResultStatusError
+		} else {
+			recordGeneratedFile(state, mediaURL, mimeType)
+			oc.uiEmitter(state).EmitUIFile(ctx, portal, mediaURL, mimeType)
+			return fmt.Sprintf("Image generated and sent to the user. Media URL: %s", mediaURL), resultStatus
+		}
+	}
+
+	return result, resultStatus
+}
+
 func (oc *AIClient) ensureFunctionCallTool(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -250,14 +343,6 @@ func (oc *AIClient) handleFunctionCallArgumentsDone(
 		oc.uiEmitter(state).EmitUIToolOutputError(ctx, portal, tool.callID, result, tool.toolType == ToolTypeProvider)
 	}
 
-	// Normalize input for storage.
-	inputMapForMeta := map[string]any{}
-	if parsed, ok := inputMap.(map[string]any); ok {
-		inputMapForMeta = parsed
-	} else if raw, ok := inputMap.(string); ok && raw != "" {
-		inputMapForMeta = map[string]any{"_raw": raw}
-	}
-
 	// Track tool call in metadata.
 	completedAt := time.Now().UnixMilli()
 	resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, result, resultStatus)
@@ -265,7 +350,7 @@ func (oc *AIClient) handleFunctionCallArgumentsDone(
 		CallID:        tool.callID,
 		ToolName:      toolName,
 		ToolType:      string(tool.toolType),
-		Input:         inputMapForMeta,
+		Input:         parseToolInputPayload(argsJSON),
 		Output:        map[string]any{"result": result},
 		Status:        string(ToolStatusCompleted),
 		ResultStatus:  string(resultStatus),

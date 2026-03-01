@@ -83,6 +83,9 @@ func (acc *streamingDirectiveAccumulator) Consume(raw string, final bool) *strea
 }
 
 func splitTrailingDirective(text string) (string, string) {
+	if !strings.Contains(text, "[") {
+		return text, ""
+	}
 	// Buffer incomplete [[...]] reply directives.
 	openIndex := strings.LastIndex(text, "[[")
 	if openIndex >= 0 {
@@ -153,6 +156,16 @@ func isMessageIDHintPrefix(lower string) bool {
 }
 
 func parseStreamingChunk(raw string) *streamingDirectiveResult {
+	// Fast path: skip regex when no directives are possible.
+	if !strings.Contains(raw, "[[") && !strings.Contains(raw, "[message_id:") && !strings.Contains(raw, "[matrix event id:") {
+		parsed := &streamingDirectiveResult{Text: raw}
+		if isSilentReplyText(raw) {
+			parsed.IsSilent = true
+			parsed.Text = ""
+		}
+		return parsed
+	}
+
 	cleaned := raw
 	parsed := &streamingDirectiveResult{}
 

@@ -116,42 +116,6 @@ func (oc *AIClient) handleCustomToolInputDoneFromOutputItem(
 	oc.uiEmitter(state).EmitUIToolInputAvailable(ctx, portal, tool.callID, tool.toolName, parseJSONOrRaw(tool.input.String()), tool.toolType == ToolTypeProvider)
 }
 
-func (oc *AIClient) handleProviderToolInputDeltaFromOutputItem(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	activeTools map[string]*activeToolCall,
-	itemID string,
-	item responses.ResponseOutputItemUnion,
-	delta string,
-) {
-	tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, itemID, item)
-	if tool == nil {
-		return
-	}
-	tool.input.WriteString(delta)
-	oc.uiEmitter(state).EmitUIToolInputDelta(ctx, portal, tool.callID, tool.toolName, delta, true)
-}
-
-func (oc *AIClient) handleProviderToolInputDoneFromOutputItem(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	activeTools map[string]*activeToolCall,
-	itemID string,
-	item responses.ResponseOutputItemUnion,
-	inputText string,
-) {
-	tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, itemID, item)
-	if tool == nil {
-		return
-	}
-	if tool.input.Len() == 0 && strings.TrimSpace(inputText) != "" {
-		tool.input.WriteString(inputText)
-	}
-	oc.uiEmitter(state).EmitUIToolInputAvailable(ctx, portal, tool.callID, tool.toolName, parseJSONOrRaw(tool.input.String()), true)
-}
-
 func (oc *AIClient) handleMCPCallFailedFromOutputItem(
 	ctx context.Context,
 	portal *bridgev2.Portal,

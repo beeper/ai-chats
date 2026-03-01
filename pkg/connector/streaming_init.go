@@ -46,6 +46,7 @@ func (oc *AIClient) prepareStreamingRun(
 		roomID = portal.MXID
 	}
 	state := newStreamingState(ctx, meta, sourceEventID, senderID, roomID)
+	oc.setupEmitter(state)
 	state.replyTarget = oc.resolveInitialReplyTarget(evt)
 
 	// Ensure model ghost is in the room before any operations
