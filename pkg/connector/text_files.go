@@ -2,7 +2,6 @@ package connector
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -64,18 +63,6 @@ func isTextFileMime(mimeType string) bool {
 	}
 	_, ok := textFileMimeTypesMap[mimeType]
 	return ok
-}
-
-func decodeBase64String(b64Data string) ([]byte, error) {
-	data, err := base64.StdEncoding.DecodeString(b64Data)
-	if err == nil {
-		return data, nil
-	}
-	data, err = base64.URLEncoding.DecodeString(b64Data)
-	if err != nil {
-		return nil, fmt.Errorf("base64 decode failed: %w", err)
-	}
-	return data, nil
 }
 
 func trimTextForModel(text string) (string, bool) {
@@ -202,16 +189,9 @@ func decodeTextBytes(data []byte) (string, error) {
 }
 
 func (oc *AIClient) downloadTextFile(ctx context.Context, mediaURL string, encryptedFile *event.EncryptedFileInfo, mimeType string) (string, bool, error) {
-	b64Data, _, err := oc.downloadMediaBase64(ctx, mediaURL, encryptedFile, maxTextFileBytes/(1024*1024), mimeType)
+	data, _, err := oc.downloadMediaBytes(ctx, mediaURL, encryptedFile, maxTextFileBytes, mimeType)
 	if err != nil {
 		return "", false, err
-	}
-	data, err := decodeBase64String(b64Data)
-	if err != nil {
-		return "", false, err
-	}
-	if len(data) > maxTextFileBytes {
-		return "", false, fmt.Errorf("file too large (%d bytes)", len(data))
 	}
 	text, err := decodeTextBytes(data)
 	if err != nil {

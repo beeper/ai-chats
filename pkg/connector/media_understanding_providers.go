@@ -275,19 +275,8 @@ func transcribeDeepgramAudio(ctx context.Context, params mediaAudioRequest, quer
 	return text, nil
 }
 
-func transcribeGeminiAudio(ctx context.Context, params mediaAudioRequest) (string, error) {
-	baseURL := normalizeMediaBaseURL(params.BaseURL, defaultGoogleBaseURL)
-	model := strings.TrimSpace(params.Model)
-	if model == "" {
-		model = defaultGoogleAudioModel
-	}
+func callGeminiGenerateContent(ctx context.Context, baseURL, model, apiKey string, headers map[string]string, prompt, mimeType string, data []byte, timeout time.Duration, errorLabel string) (string, error) {
 	endpoint := fmt.Sprintf("%s/models/%s:generateContent", baseURL, model)
-
-	prompt := strings.TrimSpace(params.Prompt)
-	if prompt == "" {
-		prompt = defaultPromptByCapability[MediaCapabilityAudio]
-	}
-
 	body := map[string]any{
 		"contents": []map[string]any{
 			{
@@ -296,8 +285,8 @@ func transcribeGeminiAudio(ctx context.Context, params mediaAudioRequest) (strin
 					{"text": prompt},
 					{
 						"inline_data": map[string]any{
-							"mime_type": params.MimeTypeOrDefault("audio/wav"),
-							"data":      params.Base64Data(),
+							"mime_type": mimeType,
+							"data":      base64.StdEncoding.EncodeToString(data),
 						},
 					},
 				},
@@ -313,15 +302,15 @@ func transcribeGeminiAudio(ctx context.Context, params mediaAudioRequest) (strin
 	if err != nil {
 		return "", err
 	}
-	applyHeaderMap(req.Header, params.Headers)
+	applyHeaderMap(req.Header, headers)
 	if !headerExists(req.Header, "Content-Type") {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if !headerExists(req.Header, "X-Goog-Api-Key") && params.APIKey != "" {
-		req.Header.Set("X-Goog-Api-Key", params.APIKey)
+	if !headerExists(req.Header, "X-Goog-Api-Key") && apiKey != "" {
+		req.Header.Set("X-Goog-Api-Key", apiKey)
 	}
 
-	client := &http.Client{Timeout: params.Timeout}
+	client := &http.Client{Timeout: timeout}
 	res, err := client.Do(req)
 	if err != nil {
 		return "", err
@@ -329,9 +318,9 @@ func transcribeGeminiAudio(ctx context.Context, params mediaAudioRequest) (strin
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		detail := readErrorResponse(res)
 		if detail != "" {
-			return "", fmt.Errorf("audio transcription failed (HTTP %d): %s", res.StatusCode, detail)
+			return "", fmt.Errorf("%s failed (HTTP %d): %s", errorLabel, res.StatusCode, detail)
 		}
-		return "", fmt.Errorf("audio transcription failed (HTTP %d)", res.StatusCode)
+		return "", fmt.Errorf("%s failed (HTTP %d)", errorLabel, res.StatusCode)
 	}
 	defer res.Body.Close()
 	var payloadResp struct {
@@ -347,7 +336,7 @@ func transcribeGeminiAudio(ctx context.Context, params mediaAudioRequest) (strin
 		return "", err
 	}
 	if len(payloadResp.Candidates) == 0 {
-		return "", errors.New("audio transcription response missing text")
+		return "", fmt.Errorf("%s response missing text", errorLabel)
 	}
 	var parts []string
 	for _, part := range payloadResp.Candidates[0].Content.Parts {
@@ -356,9 +345,22 @@ func transcribeGeminiAudio(ctx context.Context, params mediaAudioRequest) (strin
 		}
 	}
 	if len(parts) == 0 {
-		return "", errors.New("audio transcription response missing text")
+		return "", fmt.Errorf("%s response missing text", errorLabel)
 	}
 	return strings.Join(parts, "\n"), nil
+}
+
+func transcribeGeminiAudio(ctx context.Context, params mediaAudioRequest) (string, error) {
+	baseURL := normalizeMediaBaseURL(params.BaseURL, defaultGoogleBaseURL)
+	model := strings.TrimSpace(params.Model)
+	if model == "" {
+		model = defaultGoogleAudioModel
+	}
+	prompt := strings.TrimSpace(params.Prompt)
+	if prompt == "" {
+		prompt = defaultPromptByCapability[MediaCapabilityAudio]
+	}
+	return callGeminiGenerateContent(ctx, baseURL, model, params.APIKey, params.Headers, prompt, params.MimeTypeOrDefault("audio/wav"), params.Data, params.Timeout, "audio transcription")
 }
 
 func describeGeminiVideo(ctx context.Context, params mediaVideoRequest) (string, error) {
@@ -367,84 +369,11 @@ func describeGeminiVideo(ctx context.Context, params mediaVideoRequest) (string,
 	if model == "" {
 		model = defaultGoogleVideoModel
 	}
-	endpoint := fmt.Sprintf("%s/models/%s:generateContent", baseURL, model)
-
 	prompt := strings.TrimSpace(params.Prompt)
 	if prompt == "" {
 		prompt = defaultPromptByCapability[MediaCapabilityVideo]
 	}
-
-	body := map[string]any{
-		"contents": []map[string]any{
-			{
-				"role": "user",
-				"parts": []map[string]any{
-					{"text": prompt},
-					{
-						"inline_data": map[string]any{
-							"mime_type": params.MimeTypeOrDefault("video/mp4"),
-							"data":      params.Base64Data(),
-						},
-					},
-				},
-			},
-		},
-	}
-	payload, err := json.Marshal(body)
-	if err != nil {
-		return "", err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
-	if err != nil {
-		return "", err
-	}
-	applyHeaderMap(req.Header, params.Headers)
-	if !headerExists(req.Header, "Content-Type") {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	if !headerExists(req.Header, "X-Goog-Api-Key") && params.APIKey != "" {
-		req.Header.Set("X-Goog-Api-Key", params.APIKey)
-	}
-
-	client := &http.Client{Timeout: params.Timeout}
-	res, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		detail := readErrorResponse(res)
-		if detail != "" {
-			return "", fmt.Errorf("video description failed (HTTP %d): %s", res.StatusCode, detail)
-		}
-		return "", fmt.Errorf("video description failed (HTTP %d)", res.StatusCode)
-	}
-	defer res.Body.Close()
-	var payloadResp struct {
-		Candidates []struct {
-			Content struct {
-				Parts []struct {
-					Text string `json:"text"`
-				} `json:"parts"`
-			} `json:"content"`
-		} `json:"candidates"`
-	}
-	if err := json.NewDecoder(res.Body).Decode(&payloadResp); err != nil {
-		return "", err
-	}
-	if len(payloadResp.Candidates) == 0 {
-		return "", errors.New("video description response missing text")
-	}
-	var parts []string
-	for _, part := range payloadResp.Candidates[0].Content.Parts {
-		if trimmed := strings.TrimSpace(part.Text); trimmed != "" {
-			parts = append(parts, trimmed)
-		}
-	}
-	if len(parts) == 0 {
-		return "", errors.New("video description response missing text")
-	}
-	return strings.Join(parts, "\n"), nil
+	return callGeminiGenerateContent(ctx, baseURL, model, params.APIKey, params.Headers, prompt, params.MimeTypeOrDefault("video/mp4"), params.Data, params.Timeout, "video description")
 }
 
 func describeGeminiImage(ctx context.Context, params mediaImageRequest) (string, error) {
@@ -453,154 +382,44 @@ func describeGeminiImage(ctx context.Context, params mediaImageRequest) (string,
 	if model == "" {
 		model = defaultGoogleImageModel
 	}
-	endpoint := fmt.Sprintf("%s/models/%s:generateContent", baseURL, model)
-
 	prompt := strings.TrimSpace(params.Prompt)
 	if prompt == "" {
 		prompt = defaultPromptByCapability[MediaCapabilityImage]
 	}
+	return callGeminiGenerateContent(ctx, baseURL, model, params.APIKey, params.Headers, prompt, params.MimeTypeOrDefault("image/jpeg"), params.Data, params.Timeout, "image description")
+}
 
-	body := map[string]any{
-		"contents": []map[string]any{
-			{
-				"role": "user",
-				"parts": []map[string]any{
-					{"text": prompt},
-					{
-						"inline_data": map[string]any{
-							"mime_type": params.MimeTypeOrDefault("image/jpeg"),
-							"data":      params.Base64Data(),
-						},
-					},
-				},
-			},
-		},
-	}
-	payload, err := json.Marshal(body)
-	if err != nil {
-		return "", err
-	}
+type mediaRequestBase struct {
+	APIKey   string
+	BaseURL  string
+	Headers  map[string]string
+	Model    string
+	Prompt   string
+	MimeType string
+	Data     []byte
+	Timeout  time.Duration
+}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
-	if err != nil {
-		return "", err
-	}
-	applyHeaderMap(req.Header, params.Headers)
-	if !headerExists(req.Header, "Content-Type") {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	if !headerExists(req.Header, "X-Goog-Api-Key") && params.APIKey != "" {
-		req.Header.Set("X-Goog-Api-Key", params.APIKey)
-	}
+func (r mediaRequestBase) Base64Data() string {
+	return base64.StdEncoding.EncodeToString(r.Data)
+}
 
-	client := &http.Client{Timeout: params.Timeout}
-	res, err := client.Do(req)
-	if err != nil {
-		return "", err
+func (r mediaRequestBase) MimeTypeOrDefault(fallback string) string {
+	if strings.TrimSpace(r.MimeType) != "" {
+		return r.MimeType
 	}
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		detail := readErrorResponse(res)
-		if detail != "" {
-			return "", fmt.Errorf("image description failed (HTTP %d): %s", res.StatusCode, detail)
-		}
-		return "", fmt.Errorf("image description failed (HTTP %d)", res.StatusCode)
-	}
-	defer res.Body.Close()
-	var payloadResp struct {
-		Candidates []struct {
-			Content struct {
-				Parts []struct {
-					Text string `json:"text"`
-				} `json:"parts"`
-			} `json:"content"`
-		} `json:"candidates"`
-	}
-	if err := json.NewDecoder(res.Body).Decode(&payloadResp); err != nil {
-		return "", err
-	}
-	if len(payloadResp.Candidates) == 0 {
-		return "", errors.New("image description response missing text")
-	}
-	var parts []string
-	for _, part := range payloadResp.Candidates[0].Content.Parts {
-		if trimmed := strings.TrimSpace(part.Text); trimmed != "" {
-			parts = append(parts, trimmed)
-		}
-	}
-	if len(parts) == 0 {
-		return "", errors.New("image description response missing text")
-	}
-	return strings.Join(parts, "\n"), nil
+	return fallback
 }
 
 type mediaAudioRequest struct {
+	mediaRequestBase
 	Provider string
-	APIKey   string
-	BaseURL  string
-	Headers  map[string]string
-	Model    string
 	Language string
-	Prompt   string
-	MimeType string
 	FileName string
-	Data     []byte
-	Timeout  time.Duration
 }
 
-func (r mediaAudioRequest) Base64Data() string {
-	return base64.StdEncoding.EncodeToString(r.Data)
-}
-
-func (r mediaAudioRequest) MimeTypeOrDefault(fallback string) string {
-	if strings.TrimSpace(r.MimeType) != "" {
-		return r.MimeType
-	}
-	return fallback
-}
-
-type mediaVideoRequest struct {
-	APIKey   string
-	BaseURL  string
-	Headers  map[string]string
-	Model    string
-	Prompt   string
-	MimeType string
-	Data     []byte
-	Timeout  time.Duration
-}
-
-type mediaImageRequest struct {
-	APIKey   string
-	BaseURL  string
-	Headers  map[string]string
-	Model    string
-	Prompt   string
-	MimeType string
-	Data     []byte
-	Timeout  time.Duration
-}
-
-func (r mediaImageRequest) Base64Data() string {
-	return base64.StdEncoding.EncodeToString(r.Data)
-}
-
-func (r mediaImageRequest) MimeTypeOrDefault(fallback string) string {
-	if strings.TrimSpace(r.MimeType) != "" {
-		return r.MimeType
-	}
-	return fallback
-}
-
-func (r mediaVideoRequest) Base64Data() string {
-	return base64.StdEncoding.EncodeToString(r.Data)
-}
-
-func (r mediaVideoRequest) MimeTypeOrDefault(fallback string) string {
-	if strings.TrimSpace(r.MimeType) != "" {
-		return r.MimeType
-	}
-	return fallback
-}
+type mediaVideoRequest = mediaRequestBase
+type mediaImageRequest = mediaRequestBase
 
 func resolveMediaFileName(fallback string, msgType string, mediaURL string) string {
 	base := strings.TrimSpace(fallback)
