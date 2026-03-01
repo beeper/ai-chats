@@ -1,19 +1,17 @@
 module github.com/beeper/ai-bridge
 
-go 1.24.0
-
-toolchain go1.24.5
+go 1.25.0
 
 tool go.mau.fi/util/cmd/maubuild
 
 require (
 	github.com/PuerkitoBio/goquery v1.11.0
-	github.com/beeper/bridge-manager v0.13.1-0.20260127221509-52074726c975
+	github.com/beeper/bridge-manager v0.14.0
 	github.com/beeper/desktop-api-go v0.2.0
 	github.com/coder/websocket v1.8.14
 	github.com/dyatlov/go-opengraph/opengraph v0.0.0-20220524092352-606d7b1e5f8a
 	github.com/google/uuid v1.6.0
-	github.com/mattn/go-sqlite3 v1.14.33
+	github.com/mattn/go-sqlite3 v1.14.34
 	github.com/modelcontextprotocol/go-sdk v1.2.0
 	github.com/openai/openai-go/v3 v3.16.0
 	github.com/pkoukk/tiktoken-go v0.1.8
@@ -21,10 +19,10 @@ require (
 	github.com/rs/xid v1.6.0
 	github.com/rs/zerolog v1.34.0
 	github.com/yosuke-furukawa/json5 v0.1.1
-	go.mau.fi/util v0.9.5
+	go.mau.fi/util v0.9.6
 	golang.org/x/image v0.35.0
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.26.3-0.20260129174719-d2364b382275
+	maunium.net/go/mautrix v0.26.3
 )
 
 require (
@@ -33,7 +31,7 @@ require (
 	github.com/coreos/go-systemd/v22 v22.6.0 // indirect
 	github.com/dlclark/regexp2 v1.10.0 // indirect
 	github.com/google/jsonschema-go v0.3.0 // indirect
-	github.com/lib/pq v1.10.9 // indirect
+	github.com/lib/pq v1.11.2 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/petermattis/goid v0.0.0-20260113132338-7c7de50cc741 // indirect
@@ -45,14 +43,14 @@ require (
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/yuin/goldmark v1.7.16 // indirect
 	go.mau.fi/zeroconfig v0.2.0 // indirect
-	golang.org/x/crypto v0.47.0 // indirect
-	golang.org/x/exp v0.0.0-20260112195511-716be5621a96 // indirect
-	golang.org/x/mod v0.32.0 // indirect
-	golang.org/x/net v0.49.0 // indirect
+	golang.org/x/crypto v0.48.0 // indirect
+	golang.org/x/exp v0.0.0-20260218203240-3dfff04db8fa // indirect
+	golang.org/x/mod v0.33.0 // indirect
+	golang.org/x/net v0.50.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/sys v0.40.0 // indirect
-	golang.org/x/text v0.33.0 // indirect
+	golang.org/x/sys v0.41.0 // indirect
+	golang.org/x/text v0.34.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	maunium.net/go/mauflag v1.0.0 // indirect
 )
