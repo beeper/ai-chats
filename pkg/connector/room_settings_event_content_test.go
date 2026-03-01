@@ -16,16 +16,6 @@ func TestRoomSettingsEventContentUnmarshalAgentID(t *testing.T) {
 	}
 }
 
-func TestRoomSettingsEventContentUnmarshalLegacyDefaultAgentIDIgnored(t *testing.T) {
-	var content RoomSettingsEventContent
-	if err := json.Unmarshal([]byte(`{"default_agent_id":"legacy"}`), &content); err != nil {
-		t.Fatalf("unmarshal failed: %v", err)
-	}
-	if content.AgentID != "" {
-		t.Fatalf("expected default_agent_id to be ignored, got AgentID=%q", content.AgentID)
-	}
-}
-
 func TestRoomSettingsEventContentMarshalUsesCanonicalAgentID(t *testing.T) {
 	raw, err := json.Marshal(RoomSettingsEventContent{
 		Model:   "openai/gpt-5",

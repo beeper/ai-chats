@@ -95,32 +95,44 @@ func MergeSourceCitations(existing, incoming []SourceCitation) []SourceCitation 
 		return existing
 	}
 	seen := make(map[string]int, len(existing)+len(incoming))
+	// Allocate a fresh slice to avoid mutating the backing array of existing.
 	merged := make([]SourceCitation, 0, len(existing)+len(incoming))
-	for _, citation := range existing {
+	addCitation := func(citation SourceCitation) {
 		url := strings.TrimSpace(citation.URL)
 		if url == "" {
-			continue
+			return
 		}
 		if idx, ok := seen[url]; ok {
 			merged[idx] = MergeCitationFields(merged[idx], citation)
-			continue
+			return
 		}
 		seen[url] = len(merged)
 		merged = append(merged, citation)
 	}
-	for _, citation := range incoming {
-		url := strings.TrimSpace(citation.URL)
-		if url == "" {
-			continue
-		}
-		if idx, ok := seen[url]; ok {
-			merged[idx] = MergeCitationFields(merged[idx], citation)
-			continue
-		}
-		seen[url] = len(merged)
-		merged = append(merged, citation)
+	for _, c := range existing {
+		addCitation(c)
+	}
+	for _, c := range incoming {
+		addCitation(c)
 	}
 	return merged
+}
+
+// AppendUniqueCitation appends a single citation, deduplicating by URL without
+// allocating a map. Use this on hot paths (e.g. streaming) where citations
+// arrive one at a time.
+func AppendUniqueCitation(citations []SourceCitation, c SourceCitation) []SourceCitation {
+	url := strings.TrimSpace(c.URL)
+	if url == "" {
+		return citations
+	}
+	for i, existing := range citations {
+		if strings.TrimSpace(existing.URL) == url {
+			citations[i] = MergeCitationFields(existing, c)
+			return citations
+		}
+	}
+	return append(citations, c)
 }
 
 // BuildSourceParts converts citations and documents into stream-event source

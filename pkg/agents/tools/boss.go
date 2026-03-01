@@ -495,10 +495,6 @@ var SessionsSpawnTool = &Tool{
 					"type":        "number",
 					"description": "Optional run timeout in seconds.",
 				},
-				"timeoutSeconds": map[string]any{
-					"type":        "number",
-					"description": "Legacy alias for runTimeoutSeconds.",
-				},
 				"cleanup": map[string]any{
 					"type":        "string",
 					"enum":        []string{"delete", "keep"},
