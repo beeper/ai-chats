@@ -84,7 +84,6 @@ Authoritative identifiers are defined in `pkg/matrixevents/matrixevents.go`.
 | `com.beeper.ai.room_settings` | state | state | User-editable room settings | [State](#state-room-settings) |
 | `com.beeper.ai.model_capabilities` | state | state | Available models + capabilities (defined; may be unused) | [State](#state-model-capabilities) |
 | `com.beeper.ai.agents` | state | state | Agents + orchestration (defined; may be unused) | [State](#state-agents) |
-| `com.beeper.ai.stream_delta` | ephemeral | ephemeral | Legacy/compat streaming deltas (defined; may be unused) | [Defined schemas](#defined-schemas) |
 | `com.beeper.ai.assistant_turn` | message | timeline | Rich turn container (defined; may be unused) | [Defined schemas](#defined-schemas) |
 | `com.beeper.ai.error` | message | timeline | AI error event (defined; may be unused) | [Defined schemas](#defined-schemas) |
 | `com.beeper.ai.turn_cancelled` | message | timeline | Turn cancelled event (defined; may be unused) | [Defined schemas](#defined-schemas) |
@@ -677,22 +676,6 @@ To keep the main spec terse, the schemas below are collapsed. They are defined i
   "tool_name": "web_search",
   "status": "running",
   "progress": { "stage": "executing", "percent": 50, "message": "Searching..." }
-}
-```
-
-</details>
-
-<details>
-<summary><strong>com.beeper.ai.stream_delta</strong> (StreamDeltaContent, legacy/compat)</summary>
-
-```json
-{
-  "turn_id": "turn_123",
-  "agent_id": "boss",
-  "target_event": "$turn_placeholder",
-  "content_type": "text",
-  "delta": "hello",
-  "seq": 1
 }
 ```
 
