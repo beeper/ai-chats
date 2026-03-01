@@ -87,7 +87,8 @@ func (e *Emitter) EmitUIFile(ctx context.Context, portal *bridgev2.Portal, fileU
 		return
 	}
 	e.State.UIFileSeen[fileURL] = true
-	if strings.TrimSpace(mediaType) == "" {
+	mediaType = strings.TrimSpace(mediaType)
+	if mediaType == "" {
 		mediaType = "application/octet-stream"
 	}
 	e.Emit(ctx, portal, map[string]any{

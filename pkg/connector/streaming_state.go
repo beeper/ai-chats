@@ -122,8 +122,14 @@ func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID 
 }
 
 func (oc *AIClient) uiEmitter(state *streamingState) *streamui.Emitter {
-	state.ui.TurnID = state.turnID
-	state.ui.InitMaps()
+	if state == nil {
+		fallback := &streamui.UIState{}
+		fallback.InitMaps()
+		return &streamui.Emitter{
+			State: fallback,
+			Emit:  func(context.Context, *bridgev2.Portal, map[string]any) {},
+		}
+	}
 	return &streamui.Emitter{
 		State: &state.ui,
 		Emit: func(ctx context.Context, portal *bridgev2.Portal, part map[string]any) {

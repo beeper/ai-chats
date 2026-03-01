@@ -310,7 +310,7 @@ func (oc *AIClient) streamChatCompletions(
 					// Tool approval gating for dangerous builtin tools.
 					var argsObj map[string]any
 					_ = json.Unmarshal([]byte(argsJSON), &argsObj)
-					if oc.gateBuiltinToolApproval(ctx, portal, state, tool, toolName, argsObj) {
+					if oc.isBuiltinToolDenied(ctx, portal, state, tool, toolName, argsObj) {
 						resultStatus = ResultStatusDenied
 						result = "Denied by user"
 					}
