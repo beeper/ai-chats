@@ -4,16 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/beeper/ai-bridge/pkg/matrixevents"
-
 	"maunium.net/go/mautrix/bridgev2/networkid"
+
+	"github.com/beeper/ai-bridge/pkg/matrixevents"
 )
-
-var StreamEventMessageType = matrixevents.StreamEventMessageType
-var RoomCapabilitiesEventType = matrixevents.RoomCapabilitiesEventType
-var RoomSettingsEventType = matrixevents.RoomSettingsEventType
-
-type matrixEphemeralSender = matrixevents.MatrixEphemeralSender
 
 func buildStreamEventEnvelope(state *streamingState, part map[string]any) (turnID string, seq int, content map[string]any, ok bool) {
 	turnID = strings.TrimSpace(state.turnID)
@@ -30,10 +24,6 @@ func buildStreamEventEnvelope(state *streamingState, part map[string]any) (turnI
 		return "", 0, nil, false
 	}
 	return turnID, seq, env, true
-}
-
-func buildStreamEventTxnID(turnID string, seq int) string {
-	return matrixevents.BuildStreamEventTxnID(turnID, seq)
 }
 
 func defaultCodexChatPortalKey(loginID networkid.UserLoginID) networkid.PortalKey {

@@ -16,7 +16,6 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/agents/tools"
 )
@@ -37,61 +36,12 @@ func (oc *AIClient) streamChatCompletions(
 		Str("portal", portalID).
 		Logger()
 
-	// Initialize streaming state with source event ID for [[reply_to_current]] support
-	var sourceEventID id.EventID
-	senderID := ""
-	if evt != nil {
-		sourceEventID = evt.ID
-		if evt.Sender != "" {
-			senderID = evt.Sender.String()
-		}
-	}
-	roomID := id.RoomID("")
-	if portal != nil {
-		roomID = portal.MXID
-	}
-	state := newStreamingState(ctx, meta, sourceEventID, senderID, roomID)
-	state.replyTarget = oc.resolveInitialReplyTarget(evt)
-
-	// Ensure model ghost is in the room before any operations
-	if !state.suppressSend {
-		if err := oc.ensureModelInRoom(ctx, portal); err != nil {
-			log.Warn().Err(err).Msg("Failed to ensure model is in room")
-			// Continue anyway - typing will fail gracefully
-		}
-	}
-
-	// Create typing controller with TTL and automatic refresh
-	var typingCtrl *TypingController
-	var typingSignals *TypingSignaler
-	touchTyping := func() {}
+	prep, messages, typingCleanup := oc.prepareStreamingRun(ctx, log, evt, portal, meta, messages)
+	defer typingCleanup()
+	state := prep.State
+	typingSignals := prep.TypingSignals
+	touchTyping := prep.TouchTyping
 	isHeartbeat := state.heartbeat != nil
-	if !state.suppressSend && !isHeartbeat {
-		mode := oc.resolveTypingMode(meta, typingContextFromContext(ctx), isHeartbeat)
-		interval := oc.resolveTypingInterval(meta)
-		if interval > 0 && mode != TypingModeNever {
-			typingCtrl = NewTypingController(oc, ctx, portal, TypingControllerOptions{
-				Interval: interval,
-				TTL:      typingTTL,
-			})
-			typingSignals = NewTypingSignaler(typingCtrl, mode, isHeartbeat)
-			touchTyping = func() {
-				typingCtrl.RefreshTTL()
-			}
-		}
-	}
-	if typingSignals != nil {
-		typingSignals.SignalRunStart()
-	}
-	defer func() {
-		if typingCtrl != nil {
-			typingCtrl.MarkRunComplete()
-			typingCtrl.MarkDispatchIdle()
-		}
-	}()
-
-	// Apply proactive context pruning if enabled
-	messages = oc.applyProactivePruning(ctx, messages, meta)
 
 	currentMessages := messages
 	// Tool loops can legitimately require several rounds (e.g. multi-step file ops).

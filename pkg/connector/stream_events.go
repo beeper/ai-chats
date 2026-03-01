@@ -116,7 +116,7 @@ func (oc *AIClient) emitStreamEvent(
 
 	eventContent := &event.Content{Raw: content}
 
-	txnID := buildStreamEventTxnID(turnID, seq)
+	txnID := matrixevents.BuildStreamEventTxnID(turnID, seq)
 	if verbose {
 		oc.loggerForContext(ctx).Debug().
 			Stringer("room_id", portal.MXID).
@@ -142,6 +142,3 @@ func (oc *AIClient) emitStreamEvent(
 	}
 }
 
-func buildStreamEventTxnID(turnID string, seq int) string {
-	return matrixevents.BuildStreamEventTxnID(turnID, seq)
-}

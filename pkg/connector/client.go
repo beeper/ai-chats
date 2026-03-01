@@ -1134,7 +1134,7 @@ func (oc *AIClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*
 	// Use actual portal.Topic, not SystemPrompt (they are separate concepts)
 	return &bridgev2.ChatInfo{
 		Name:  ptr.Ptr(title),
-		Topic: ptrIfNotEmpty(portal.Topic),
+		Topic: ptr.NonZero(portal.Topic),
 	}, nil
 }
 
@@ -2910,13 +2910,6 @@ func (oc *AIClient) backgroundContext(ctx context.Context) context.Context {
 		base = withModelOverride(base, model)
 	}
 	return oc.loggerForContext(ctx).WithContext(base)
-}
-
-func ptrIfNotEmpty(value string) *string {
-	if value == "" {
-		return nil
-	}
-	return ptr.Ptr(value)
 }
 
 // getModelCapabilities computes capabilities for a model.

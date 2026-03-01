@@ -99,11 +99,15 @@ func clonePreviewWithImage(src *PreviewWithImage) *PreviewWithImage {
 }
 
 func (c *previewCache) get(url string) *PreviewWithImage {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	entry, ok := c.entries[url]
-	if !ok || time.Now().After(entry.expiresAt) {
+	if !ok {
+		return nil
+	}
+	if time.Now().After(entry.expiresAt) {
+		delete(c.entries, url)
 		return nil
 	}
 	return clonePreviewWithImage(entry.preview)
