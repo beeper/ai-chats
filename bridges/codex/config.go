@@ -5,7 +5,6 @@ import (
 
 	"go.mau.fi/util/configupgrade"
 
-	"github.com/beeper/ai-bridge/bridges/codex/codexrpc"
 	"github.com/beeper/ai-bridge/pkg/shared/bridgeconfig"
 )
 
@@ -33,10 +32,6 @@ type CodexClientInfo struct {
 	Name    string `yaml:"name"`
 	Title   string `yaml:"title"`
 	Version string `yaml:"version"`
-}
-
-func (ci *CodexClientInfo) rpcClientInfo() codexrpc.ClientInfo {
-	return codexrpc.ClientInfo{Name: ci.Name, Title: ci.Title, Version: ci.Version}
 }
 
 const exampleNetworkConfig = `

@@ -40,7 +40,7 @@ func TestMarkMessageSendSuccessSkippedWhenQueueAccepted(t *testing.T) {
 	state := &streamingState{}
 	evt := &event.Event{ID: id.EventID("$event")}
 
-	oc.markMessageSendSuccess(withQueueAcceptedStatus(context.Background()), nil, evt, state)
+	oc.markMessageSendSuccess(context.WithValue(context.Background(), queueAcceptedStatusKey{}, true), nil, evt, state)
 
 	if state.statusSent {
 		t.Fatalf("expected statusSent=false when queue accepted marker is set")
