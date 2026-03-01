@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/google/uuid"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -53,7 +54,9 @@ func (oc *AIClient) dispatchInternalMessage(
 	}
 	eventID := id.EventID(fmt.Sprintf("$%s-%s", prefix, uuid.NewString()))
 
-	promptMessages, err := oc.buildPrompt(ctx, portal, meta, trimmed, eventID)
+	inboundCtx := oc.resolvePromptInboundContext(ctx, portal, trimmed, eventID)
+	promptCtx := withInboundContext(ctx, inboundCtx)
+	promptMessages, err := oc.buildPrompt(promptCtx, portal, meta, trimmed, eventID)
 	if err != nil {
 		return eventID, false, err
 	}
@@ -79,10 +82,11 @@ func (oc *AIClient) dispatchInternalMessage(
 
 	isGroup := oc.isGroupChat(ctx, portal)
 	pending := pendingMessage{
-		Portal:      portal,
-		Meta:        meta,
-		Type:        pendingTypeText,
-		MessageBody: trimmed,
+		Portal:         portal,
+		Meta:           meta,
+		InboundContext: &inboundCtx,
+		Type:           pendingTypeText,
+		MessageBody:    trimmed,
 		Typing: &TypingContext{
 			IsGroup:      isGroup,
 			WasMentioned: true,
@@ -98,7 +102,7 @@ func (oc *AIClient) dispatchInternalMessage(
 
 	if oc.acquireRoom(portal.MXID) {
 		metaSnapshot := clonePortalMetadata(meta)
-		runCtx := oc.attachRoomRun(oc.backgroundContext(ctx), portal.MXID)
+		runCtx := oc.attachRoomRun(withInboundContext(oc.backgroundContext(ctx), inboundCtx), portal.MXID)
 		runCtx = WithTypingContext(runCtx, pending.Typing)
 		go func(metaSnapshot *PortalMetadata) {
 			defer func() {
@@ -112,7 +116,8 @@ func (oc *AIClient) dispatchInternalMessage(
 	}
 
 	shouldSteer := queueSettings.Mode == QueueModeSteer || queueSettings.Mode == QueueModeSteerBacklog
-	if queueSettings.Mode == QueueModeInterrupt {
+	queueDecision := oc.decideQueuePolicy(portal.MXID, queueSettings.Mode, false)
+	if queueDecision.Action == airuntime.QueueActionInterruptAndRun {
 		oc.cancelRoomRun(portal.MXID)
 		oc.clearPendingQueue(portal.MXID)
 	}

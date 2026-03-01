@@ -91,6 +91,13 @@ type QueueDecision struct {
 	Reason string
 }
 
+// ReplyTargetDecision is the resolved target for a reply action.
+type ReplyTargetDecision struct {
+	ReplyToID  string
+	ThreadRoot string
+	Reason     string
+}
+
 // FailureClass groups error types for fallback and UX handling.
 type FailureClass string
 
@@ -123,4 +130,13 @@ type ToolApprovalDecision struct {
 	Tool    string
 	CallID  string
 	IsError bool
+}
+
+// CompactionDecision captures deterministic compaction outcomes for observability.
+type CompactionDecision struct {
+	Applied       bool
+	DroppedCount  int
+	OriginalChars int
+	FinalChars    int
+	Reason        string
 }

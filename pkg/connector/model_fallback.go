@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
@@ -16,6 +17,10 @@ func shouldFallbackOnError(err error) bool {
 	var nf *NonFallbackError
 	if errors.As(err, &nf) {
 		return false
+	}
+	class := airuntime.ClassifyFallbackError(err)
+	if airuntime.ShouldTriggerFallback(class) {
+		return true
 	}
 	return IsAuthError(err) ||
 		IsRateLimitError(err) ||

@@ -1,6 +1,9 @@
 package connector
 
-import "maunium.net/go/mautrix/event"
+import (
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
+	"maunium.net/go/mautrix/event"
+)
 
 func messageStatusForError(err error) event.MessageStatus {
 	switch {
@@ -16,6 +19,14 @@ func messageStatusForError(err error) event.MessageStatus {
 }
 
 func messageStatusReasonForError(err error) event.MessageStatusReason {
+	switch airuntime.ClassifyFallbackError(err) {
+	case airuntime.FailureClassAuth:
+		return event.MessageStatusNoPermission
+	case airuntime.FailureClassRateLimit, airuntime.FailureClassTimeout, airuntime.FailureClassNetwork:
+		return event.MessageStatusNetworkError
+	case airuntime.FailureClassContextOverflow:
+		return event.MessageStatusUnsupported
+	}
 	switch {
 	case IsAuthError(err), IsBillingError(err):
 		return event.MessageStatusNoPermission

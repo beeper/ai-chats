@@ -11,6 +11,7 @@ type CompactionResult struct {
 	DroppedCount  int
 	OriginalChars int
 	FinalChars    int
+	Decision      CompactionDecision
 }
 
 func ApplyCompaction(input CompactionInput) CompactionResult {
@@ -21,6 +22,13 @@ func ApplyCompaction(input CompactionInput) CompactionResult {
 	}
 	if input.MaxChars <= 0 || len(messages) == 0 || result.OriginalChars <= input.MaxChars {
 		result.FinalChars = result.OriginalChars
+		result.Decision = CompactionDecision{
+			Applied:       false,
+			DroppedCount:  0,
+			OriginalChars: result.OriginalChars,
+			FinalChars:    result.FinalChars,
+			Reason:        "within_budget",
+		}
 		return result
 	}
 	protected := input.ProtectedTail
@@ -43,5 +51,20 @@ func ApplyCompaction(input CompactionInput) CompactionResult {
 	}
 	result.Messages = messages
 	result.FinalChars = result.OriginalChars
+	result.Decision = CompactionDecision{
+		Applied:       result.DroppedCount > 0,
+		DroppedCount:  result.DroppedCount,
+		OriginalChars: inputCharCount(input.Messages),
+		FinalChars:    result.FinalChars,
+		Reason:        "drop_oldest",
+	}
 	return result
+}
+
+func inputCharCount(messages []string) int {
+	total := 0
+	for _, message := range messages {
+		total += len(message)
+	}
+	return total
 }

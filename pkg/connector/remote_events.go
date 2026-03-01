@@ -2,8 +2,10 @@ package connector
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/variationselector"
 
@@ -11,7 +13,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
 )
@@ -152,9 +153,9 @@ func (e *AIRemoteEdit) ConvertEdit(_ context.Context, _ *bridgev2.Portal, _ brid
 // -----------------------------------------------------------------------
 
 var (
-	_ bridgev2.RemoteReaction                = (*AIRemoteReaction)(nil)
-	_ bridgev2.RemoteEventWithTimestamp      = (*AIRemoteReaction)(nil)
-	_ bridgev2.RemoteReactionWithMeta        = (*AIRemoteReaction)(nil)
+	_ bridgev2.RemoteReaction                 = (*AIRemoteReaction)(nil)
+	_ bridgev2.RemoteEventWithTimestamp       = (*AIRemoteReaction)(nil)
+	_ bridgev2.RemoteReactionWithMeta         = (*AIRemoteReaction)(nil)
 	_ bridgev2.RemoteReactionWithExtraContent = (*AIRemoteReaction)(nil)
 )
 
@@ -366,8 +367,8 @@ func NewAIToolCallMessage(
 		variant:   AIMessageToolCall,
 		preBuilt: &bridgev2.ConvertedMessage{
 			Parts: []*bridgev2.ConvertedMessagePart{{
-				ID:   networkid.PartID("0"),
-				Type: ToolCallEventType,
+				ID:    networkid.PartID("0"),
+				Type:  ToolCallEventType,
 				Extra: content.Raw,
 			}},
 		},
@@ -391,8 +392,8 @@ func NewAIToolResultMessage(
 		variant:   AIMessageToolResult,
 		preBuilt: &bridgev2.ConvertedMessage{
 			Parts: []*bridgev2.ConvertedMessagePart{{
-				ID:   networkid.PartID("0"),
-				Type: ToolResultEventType,
+				ID:    networkid.PartID("0"),
+				Type:  ToolResultEventType,
 				Extra: content.Raw,
 			}},
 		},
@@ -401,5 +402,5 @@ func NewAIToolResultMessage(
 
 // newMessageID generates a unique message ID for AI remote events.
 func newMessageID() networkid.MessageID {
-	return networkid.MessageID("ai-" + id.NewEventID().String())
+	return networkid.MessageID(fmt.Sprintf("ai:%s", uuid.NewString()))
 }

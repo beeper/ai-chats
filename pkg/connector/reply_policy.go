@@ -144,13 +144,29 @@ func (oc *AIClient) resolveFinalReplyTarget(meta *PortalMetadata, state *streami
 	if state != nil {
 		target = state.replyTarget
 	}
-	replyToMode := oc.resolveMatrixReplyToMode()
-	allowReplyTag := replyToMode != "off"
-	if directives != nil && !allowReplyTag {
-		directives.ReplyToEventID = ""
+
+	replyMode := runtimeparse.NormalizeReplyToMode(oc.resolveMatrixReplyToMode())
+	payload := runtimeparse.ReplyPayload{
+		ReplyToID: string(target.ReplyTo),
 	}
-	if directives != nil && allowReplyTag && directives.ReplyToEventID != "" {
-		target.ReplyTo = directives.ReplyToEventID
+	if directives != nil {
+		if directives.ReplyToEventID != "" {
+			payload.ReplyToID = directives.ReplyToEventID.String()
+		}
+		payload.ReplyToTag = directives.HasReplyTag
+		payload.ReplyToCurrent = directives.ReplyToCurrent
+	}
+	applied := runtimeparse.ApplyReplyToMode([]runtimeparse.ReplyPayload{payload}, runtimeparse.ReplyThreadPolicy{
+		Mode:                     replyMode,
+		AllowExplicitWhenModeOff: false,
+	})
+	if len(applied) > 0 {
+		target.ReplyTo = id.EventID(strings.TrimSpace(applied[0].ReplyToID))
+	} else {
+		target.ReplyTo = ""
+	}
+	if replyMode == runtimeparse.ReplyToModeOff {
+		target.ThreadRoot = ""
 	}
 	if target.ReplyTo == "" && target.ThreadRoot != "" {
 		target.ReplyTo = target.ThreadRoot

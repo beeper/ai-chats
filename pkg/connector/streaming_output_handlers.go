@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/openai/openai-go/v3/responses"
 	"maunium.net/go/mautrix/bridgev2"
 )
@@ -218,7 +219,8 @@ func (oc *AIClient) gateMcpToolApproval(
 
 	// If approvals are disabled, not required, or already always-allowed, auto-approve
 	// without prompting. Otherwise emit an approval request to the UI.
-	needsApproval := oc.toolApprovalsRuntimeEnabled() && oc.toolApprovalsRequireForMCP() && !oc.isMcpAlwaysAllowed(serverLabel, mcpToolName)
+	runtimeDecision := toRuntimeToolApprovalDecision(true, "mcp", mcpToolName, tool.callID, oc.toolApprovalsRequireForMCP())
+	needsApproval := oc.toolApprovalsRuntimeEnabled() && runtimeDecision.State == airuntime.ToolApprovalRequired && !oc.isMcpAlwaysAllowed(serverLabel, mcpToolName)
 	if needsApproval && state.heartbeat != nil {
 		needsApproval = false
 	}

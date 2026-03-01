@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
@@ -20,6 +21,7 @@ type DebounceEntry struct {
 	Event        *event.Event
 	Portal       *bridgev2.Portal
 	Meta         *PortalMetadata
+	InboundCtx   airuntime.InboundContext
 	RawBody      string
 	SenderName   string
 	RoomName     string

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
@@ -63,8 +64,7 @@ func formatCurrentTimeForPrompt(timezone string) string {
 // cleanHistoryBody strips or appends message ID hints based on mode.
 func cleanHistoryBody(body string, simple bool, mxid id.EventID) string {
 	if simple {
-		body = stripMessageIDHintLines(body)
-		body = StripEnvelope(body)
+		body = airuntime.SanitizeChatMessageForDisplay(body, true)
 	} else if mxid != "" {
 		body = appendMessageIDHint(body, mxid)
 	}

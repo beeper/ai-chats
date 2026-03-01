@@ -6,6 +6,7 @@ import (
 
 	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
 )
 
@@ -53,7 +54,7 @@ func (oc *AIClient) resolvePromptInboundContext(
 	chatID := ""
 	if portal != nil {
 		chatID = portal.MXID.String()
-		if portal.Portal != nil && portal.Portal.RoomType == bridgev2.RoomTypeGroupDM {
+		if portal.Portal != nil && portal.Portal.RoomType == database.RoomTypeGroupDM {
 			chatType = "group"
 		}
 	}

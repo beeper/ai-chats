@@ -362,6 +362,7 @@ type pendingMessage struct {
 	Event           *event.Event
 	Portal          *bridgev2.Portal
 	Meta            *PortalMetadata
+	InboundContext  *airuntime.InboundContext
 	Type            pendingMessageType
 	MessageBody     string                   // For text, regenerate, edit_regenerate (caption for media)
 	MediaURL        string                   // For media messages (image, PDF, audio, video)
@@ -638,7 +639,15 @@ func (oc *AIClient) dispatchOrQueueCore(
 			Bool("has_event", evt != nil).
 			Msg("Dispatching inbound message")
 	}
-	if queueSettings.Mode == QueueModeInterrupt {
+	queueDecision := oc.decideQueuePolicy(roomID, queueSettings.Mode, false)
+	if trace {
+		oc.loggerForContext(ctx).Debug().
+			Str("room_id", roomID.String()).
+			Str("queue_action", string(queueDecision.Action)).
+			Str("queue_reason", queueDecision.Reason).
+			Msg("Queue policy decision")
+	}
+	if queueDecision.Action == airuntime.QueueActionInterruptAndRun {
 		oc.cancelRoomRun(roomID)
 		oc.clearPendingQueue(roomID)
 	}
@@ -657,6 +666,9 @@ func (oc *AIClient) dispatchOrQueueCore(
 		runCtx := oc.backgroundContext(ctx)
 		if len(queueItem.pending.StatusEvents) > 0 {
 			runCtx = context.WithValue(runCtx, statusEventsKey{}, queueItem.pending.StatusEvents)
+		}
+		if queueItem.pending.InboundContext != nil {
+			runCtx = withInboundContext(runCtx, *queueItem.pending.InboundContext)
 		}
 		if queueItem.pending.Typing != nil {
 			runCtx = WithTypingContext(runCtx, queueItem.pending.Typing)
@@ -875,7 +887,11 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 				logCtx.Debug().Str("body", combined).Msg("Collect prompt body")
 			}
 			metaSnapshot := clonePortalMetadata(item.pending.Meta)
-			promptMessages, err = oc.buildPromptWithLinkContext(ctx, item.pending.Portal, metaSnapshot, combined, nil, "")
+			promptCtx := ctx
+			if item.pending.InboundContext != nil {
+				promptCtx = withInboundContext(promptCtx, *item.pending.InboundContext)
+			}
+			promptMessages, err = oc.buildPromptWithLinkContext(promptCtx, item.pending.Portal, metaSnapshot, combined, nil, "")
 		} else {
 			summaryPrompt := oc.takeQueueSummary(roomID, "message")
 			if summaryPrompt != "" {
@@ -908,6 +924,10 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 			if item.pending.Event != nil {
 				eventID = item.pending.Event.ID
 			}
+			promptCtx := ctx
+			if item.pending.InboundContext != nil {
+				promptCtx = withInboundContext(promptCtx, *item.pending.InboundContext)
+			}
 			if trace {
 				logCtx.Debug().
 					Str("pending_type", string(item.pending.Type)).
@@ -916,13 +936,13 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 			}
 			switch item.pending.Type {
 			case pendingTypeText:
-				promptMessages, err = oc.buildPromptWithLinkContext(ctx, item.pending.Portal, metaSnapshot, item.pending.MessageBody, item.rawEventContent, eventID)
+				promptMessages, err = oc.buildPromptWithLinkContext(promptCtx, item.pending.Portal, metaSnapshot, item.pending.MessageBody, item.rawEventContent, eventID)
 			case pendingTypeImage, pendingTypePDF, pendingTypeAudio, pendingTypeVideo:
-				promptMessages, err = oc.buildPromptWithMedia(ctx, item.pending.Portal, metaSnapshot, item.pending.MessageBody, item.pending.MediaURL, item.pending.MimeType, item.pending.EncryptedFile, item.pending.Type, eventID)
+				promptMessages, err = oc.buildPromptWithMedia(promptCtx, item.pending.Portal, metaSnapshot, item.pending.MessageBody, item.pending.MediaURL, item.pending.MimeType, item.pending.EncryptedFile, item.pending.Type, eventID)
 			case pendingTypeRegenerate:
-				promptMessages, err = oc.buildPromptForRegenerate(ctx, item.pending.Portal, metaSnapshot, item.pending.MessageBody, item.pending.SourceEventID)
+				promptMessages, err = oc.buildPromptForRegenerate(promptCtx, item.pending.Portal, metaSnapshot, item.pending.MessageBody, item.pending.SourceEventID)
 			case pendingTypeEditRegenerate:
-				promptMessages, err = oc.buildPromptUpToMessage(ctx, item.pending.Portal, metaSnapshot, item.pending.TargetMsgID, item.pending.MessageBody)
+				promptMessages, err = oc.buildPromptUpToMessage(promptCtx, item.pending.Portal, metaSnapshot, item.pending.TargetMsgID, item.pending.MessageBody)
 			default:
 				err = fmt.Errorf("unknown pending message type: %s", item.pending.Type)
 			}
@@ -2512,6 +2532,7 @@ func (oc *AIClient) buildPromptUpToMessage(
 			switch msgMeta.Role {
 			case "assistant":
 				body = stripThinkTags(body)
+				body = airuntime.SanitizeChatMessageForDisplay(body, false)
 				if body == "" {
 					continue
 				}
@@ -2522,10 +2543,7 @@ func (oc *AIClient) buildPromptUpToMessage(
 					}
 				}
 			default:
-				body = StripEnvelope(body)
-				if isSimple {
-					body = stripMessageIDHintLines(body)
-				}
+				body = airuntime.SanitizeChatMessageForDisplay(body, true)
 				if injectImages && msgMeta.MediaURL != "" && isImageMimeType(msgMeta.MimeType) {
 					if imgPart := oc.downloadHistoryImage(ctx, msgMeta.MediaURL, msgMeta.MimeType); imgPart != nil {
 						// Append the media URL so the model can reference it for editing tools (e.g. input_images).
@@ -2540,10 +2558,7 @@ func (oc *AIClient) buildPromptUpToMessage(
 	} else {
 		// No history, just add the new message
 		body := strings.TrimSpace(newBody)
-		body = StripEnvelope(body)
-		if isSimple {
-			body = stripMessageIDHintLines(body)
-		}
+		body = airuntime.SanitizeChatMessageForDisplay(body, true)
 		prompt = append(prompt, openai.UserMessage(body))
 	}
 
@@ -2794,6 +2809,8 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 	}
 
 	combinedBody := oc.buildMatrixInboundBody(ctx, last.Portal, last.Meta, last.Event, combinedRaw, last.SenderName, last.RoomName, last.IsGroup)
+	inboundCtx := oc.buildMatrixInboundContext(last.Portal, last.Event, combinedRaw, last.SenderName, last.RoomName, last.IsGroup)
+	ctx = withInboundContext(ctx, inboundCtx)
 	rawEventContent := map[string]any(nil)
 	if last.Event != nil && last.Event.Content.Raw != nil {
 		rawEventContent = last.Event.Content.Raw
@@ -2862,6 +2879,7 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 		Event:           last.Event,
 		Portal:          last.Portal,
 		Meta:            last.Meta,
+		InboundContext:  &inboundCtx,
 		Type:            pendingTypeText,
 		MessageBody:     combinedBody,
 		StatusEvents:    extraStatusEvents,

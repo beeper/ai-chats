@@ -11,6 +11,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
+	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/beeper/ai-bridge/pkg/shared/citations"
 	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 	"github.com/beeper/ai-bridge/pkg/shared/streamui"
@@ -160,16 +161,26 @@ func (oc *AIClient) applyStreamingReplyTarget(state *streamingState, parsed *str
 	if oc == nil || state == nil || parsed == nil || !parsed.HasReplyTag {
 		return
 	}
-	if oc.resolveMatrixReplyToMode() == "off" {
-		return
-	}
+	mode := runtimeparse.NormalizeReplyToMode(oc.resolveMatrixReplyToMode())
 	if parsed.ReplyToExplicitID != "" {
-		state.replyTarget.ReplyTo = id.EventID(parsed.ReplyToExplicitID)
-		return
-	}
-	if parsed.ReplyToCurrent && state.sourceEventID != "" {
+		state.replyTarget.ReplyTo = id.EventID(strings.TrimSpace(parsed.ReplyToExplicitID))
+	} else if parsed.ReplyToCurrent && state.sourceEventID != "" {
 		state.replyTarget.ReplyTo = state.sourceEventID
 	}
+
+	applied := runtimeparse.ApplyReplyToMode([]runtimeparse.ReplyPayload{{
+		ReplyToID:      state.replyTarget.ReplyTo.String(),
+		ReplyToTag:     parsed.HasReplyTag,
+		ReplyToCurrent: parsed.ReplyToCurrent,
+	}}, runtimeparse.ReplyThreadPolicy{
+		Mode:                     mode,
+		AllowExplicitWhenModeOff: false,
+	})
+	if len(applied) == 0 || strings.TrimSpace(applied[0].ReplyToID) == "" {
+		state.replyTarget.ReplyTo = ""
+		return
+	}
+	state.replyTarget.ReplyTo = id.EventID(strings.TrimSpace(applied[0].ReplyToID))
 }
 
 func (oc *AIClient) markMessageSendSuccess(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, state *streamingState) {

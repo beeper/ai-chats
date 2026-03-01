@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
@@ -229,6 +230,40 @@ func (oc *AIClient) notifyContextLengthExceeded(
 func (oc *AIClient) truncatePrompt(
 	prompt []openai.ChatCompletionMessageParamUnion,
 ) []openai.ChatCompletionMessageParamUnion {
+	charInputs := make([]string, 0, len(prompt))
+	totalChars := 0
+	for _, msg := range prompt {
+		text := ""
+		switch {
+		case msg.OfSystem != nil:
+			text = extractSystemContent(msg.OfSystem.Content)
+		case msg.OfAssistant != nil:
+			text = extractAssistantContent(msg.OfAssistant.Content)
+		case msg.OfUser != nil:
+			text = extractUserContent(msg.OfUser.Content)
+		case msg.OfTool != nil:
+			text = extractToolContent(msg.OfTool.Content)
+		}
+		if strings.TrimSpace(text) == "" {
+			continue
+		}
+		charInputs = append(charInputs, text)
+		totalChars += len(text)
+	}
+	if totalChars > 0 {
+		decision := airuntime.ApplyCompaction(airuntime.CompactionInput{
+			Messages:      charInputs,
+			MaxChars:      totalChars / 2,
+			ProtectedTail: 3,
+		}).Decision
+		oc.loggerForContext(context.Background()).Debug().
+			Bool("applied", decision.Applied).
+			Int("dropped", decision.DroppedCount).
+			Int("original_chars", decision.OriginalChars).
+			Int("final_chars", decision.FinalChars).
+			Str("reason", decision.Reason).
+			Msg("Runtime compaction decision")
+	}
 	// Use smart truncation with 50% reduction target
 	return smartTruncatePrompt(prompt, 0.5)
 }

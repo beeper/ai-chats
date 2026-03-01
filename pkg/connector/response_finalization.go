@@ -7,33 +7,52 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/agents"
 	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/beeper/ai-bridge/pkg/shared/citations"
 	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 )
 
 // sendContinuationMessage sends overflow text as a new (non-edit) message from the bot.
-func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, body string) {
-	rendered := format.RenderMarkdown(body, true, true)
-	raw := map[string]any{
-		"msgtype":                 event.MsgText,
-		"body":                    rendered.Body,
-		"format":                  rendered.Format,
-		"formatted_body":          rendered.FormattedBody,
-		"com.beeper.continuation": true,
-		"m.mentions":              map[string]any{},
+func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev2.Portal, body string) {
+	if portal == nil || portal.MXID == "" {
+		return
 	}
-	eventContent := &event.Content{Raw: raw}
-	if _, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, eventContent, nil); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to send continuation message")
-	} else {
-		oc.loggerForContext(ctx).Debug().Int("body_len", len(body)).Msg("Sent continuation message for oversized response")
+	meta := portalMeta(portal)
+	agentID := resolveAgentID(meta)
+	modelID := oc.effectiveModel(meta)
+	rendered := msgconv.BuildPlainMessageContent(msgconv.PlainMessageContentParams{
+		Text: body,
+	})
+	// Add continuation flag to the raw content
+	rendered.Raw["com.beeper.continuation"] = true
+	senderID := modelUserID(modelID)
+	if agentID != "" {
+		senderID = agentUserID(agentID)
 	}
+	msg := &AIRemoteMessage{
+		portal:    portal.PortalKey,
+		id:        newMessageID(),
+		sender:    bridgev2.EventSender{Sender: senderID, SenderLogin: oc.UserLogin.ID},
+		timestamp: time.Now(),
+		variant:   AIMessageText,
+		preBuilt: &bridgev2.ConvertedMessage{
+			Parts: []*bridgev2.ConvertedMessagePart{{
+				ID:      networkid.PartID("0"),
+				Type:    event.EventMessage,
+				Content: &event.MessageEventContent{MsgType: event.MsgText, Body: body},
+				Extra:   rendered.Raw,
+			}},
+		},
+	}
+	oc.UserLogin.QueueRemoteEvent(msg)
+	oc.loggerForContext(ctx).Debug().Int("body_len", len(body)).Msg("Queued continuation message for oversized response")
 }
 
 // sendInitialStreamMessage sends the first message in a streaming session and returns its event ID
@@ -131,7 +150,8 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 	responseMode := oc.getAgentResponseMode(meta)
 	if responseMode == agents.ResponseModeSimple {
 		// Simple mode: send content directly without directive processing
-		rendered := format.RenderMarkdown(rawContent, true, true)
+		cleanedRaw := airuntime.SanitizeChatMessageForDisplay(rawContent, false)
+		rendered := format.RenderMarkdown(cleanedRaw, true, true)
 		replyTo := id.EventID("")
 		if state != nil {
 			replyTo = state.replyTarget.EffectiveReplyTo()
@@ -169,7 +189,7 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 	}
 
 	// Use cleaned content (directives stripped)
-	cleanedContent := stripMessageIDHintLines(directives.Text)
+	cleanedContent := airuntime.SanitizeChatMessageForDisplay(stripMessageIDHintLines(directives.Text), false)
 
 	finalReplyTarget := oc.resolveFinalReplyTarget(meta, state, directives)
 	responsePrefix := resolveResponsePrefixForReply(oc, &oc.connector.Config, meta)
@@ -241,7 +261,7 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 	for continuationBody != "" {
 		var chunk string
 		chunk, continuationBody = streamtransport.SplitAtMarkdownBoundary(continuationBody, streamtransport.MaxMatrixEventBodyBytes)
-		oc.sendContinuationMessage(ctx, portal, intent, chunk)
+		oc.sendContinuationMessage(ctx, portal, chunk)
 	}
 }
 
@@ -479,7 +499,15 @@ func (oc *AIClient) redactInitialStreamingMessage(ctx context.Context, portal *b
 }
 
 func (oc *AIClient) sendPlainAssistantMessage(ctx context.Context, portal *bridgev2.Portal, text string) {
-	_ = oc.sendPlainAssistantMessageWithResult(ctx, portal, text)
+	if portal == nil || portal.MXID == "" {
+		return
+	}
+	meta := portalMeta(portal)
+	agentID := resolveAgentID(meta)
+	modelID := oc.effectiveModel(meta)
+	msg := NewAITextMessage(portal, oc.UserLogin, text, meta, agentID, modelID)
+	oc.UserLogin.QueueRemoteEvent(msg)
+	oc.recordAgentActivity(ctx, portal, meta)
 }
 
 // sendPlainAssistantMessageWithResult is used by automated delivery paths where failures should be
@@ -711,7 +739,7 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 	for continuationBody != "" {
 		var chunk string
 		chunk, continuationBody = streamtransport.SplitAtMarkdownBoundary(continuationBody, streamtransport.MaxMatrixEventBodyBytes)
-		oc.sendContinuationMessage(ctx, portal, intent, chunk)
+		oc.sendContinuationMessage(ctx, portal, chunk)
 	}
 }
 

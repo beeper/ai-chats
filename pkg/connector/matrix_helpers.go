@@ -76,12 +76,21 @@ func (oc *AIClient) buildMatrixInboundBody(
 	roomName string,
 	isGroup bool,
 ) string {
-	normalized := oc.buildMatrixInboundContext(portal, evt, rawBody, senderName, roomName, isGroup)
-
 	// Simple mode must not inject any envelope/sender/event-id context.
 	if isSimpleMode(meta) {
-		return strings.TrimSpace(normalized.BodyForAgent)
+		simpleCtx := runtimeparse.FinalizeInboundContext(runtimeparse.InboundContext{
+			Provider:        "matrix",
+			Surface:         "beeper-matrix",
+			ChatType:        map[bool]string{true: "group", false: "direct"}[isGroup],
+			ChatID:          strings.TrimSpace(roomName),
+			Body:            rawBody,
+			RawBody:         rawBody,
+			BodyForAgent:    rawBody,
+			BodyForCommands: rawBody,
+		})
+		return strings.TrimSpace(simpleCtx.BodyForAgent)
 	}
+	normalized := oc.buildMatrixInboundContext(portal, evt, rawBody, senderName, roomName, isGroup)
 
 	body := strings.TrimSpace(normalized.BodyForAgent)
 	if body == "" {

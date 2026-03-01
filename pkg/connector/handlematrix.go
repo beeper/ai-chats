@@ -18,6 +18,7 @@ import (
 
 	"github.com/beeper/ai-bridge/pkg/agents"
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 func messageSendStatusError(err error, message string, reason event.MessageStatusReason) error {
@@ -263,6 +264,8 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	}
 
 	body := oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, rawBody, senderName, roomName, isGroup)
+	inboundCtx := oc.buildMatrixInboundContext(portal, msg.Event, rawBody, senderName, roomName, isGroup)
+	runCtx = withInboundContext(runCtx, inboundCtx)
 	if isGroup && requireMention {
 		body = oc.buildGroupHistoryContext(portal.MXID, body, oc.resolveGroupHistoryLimit())
 	}
@@ -284,6 +287,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 			Event:        msg.Event,
 			Portal:       portal,
 			Meta:         runMeta,
+			InboundCtx:   inboundCtx,
 			RawBody:      rawBody,
 			SenderName:   senderName,
 			RoomName:     roomName,
@@ -341,6 +345,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		Event:           msg.Event,
 		Portal:          portal,
 		Meta:            runMeta,
+		InboundContext:  &inboundCtx,
 		Type:            pendingTypeText,
 		MessageBody:     body,
 		RawEventContent: rawEventContent,
@@ -730,8 +735,10 @@ func (oc *AIClient) handleMediaMessage(
 	}
 
 	dispatchTextOnly := func(rawBody string) (*bridgev2.MatrixMessageResponse, error) {
+		inboundCtx := oc.buildMatrixInboundContext(portal, msg.Event, rawBody, senderName, roomName, isGroup)
+		promptCtx := withInboundContext(ctx, inboundCtx)
 		body := oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, rawBody, senderName, roomName, isGroup)
-		promptMessages, err := oc.buildPrompt(ctx, portal, meta, body, eventID)
+		promptMessages, err := oc.buildPrompt(promptCtx, portal, meta, body, eventID)
 		if err != nil {
 			return nil, messageSendStatusError(err, "Couldn't prepare the message. Try again.", "")
 		}
@@ -750,13 +757,14 @@ func (oc *AIClient) handleMediaMessage(
 			userMessage.SendTxnID = networkid.RawTransactionID(msg.InputTransactionID)
 		}
 		pending := pendingMessage{
-			Event:       msg.Event,
-			Portal:      portal,
-			Meta:        meta,
-			Type:        pendingTypeText,
-			MessageBody: body,
-			PendingSent: pendingSent,
-			Typing:      typingCtx,
+			Event:          msg.Event,
+			Portal:         portal,
+			Meta:           meta,
+			InboundContext: &inboundCtx,
+			Type:           pendingTypeText,
+			MessageBody:    body,
+			PendingSent:    pendingSent,
+			Typing:         typingCtx,
 		}
 		queueItem := pendingQueueItem{
 			pending:     pending,
@@ -764,7 +772,7 @@ func (oc *AIClient) handleMediaMessage(
 			summaryLine: rawBody,
 			enqueuedAt:  time.Now().UnixMilli(),
 		}
-		dbMsg, isPending := oc.dispatchOrQueue(ctx, msg.Event, portal, meta, userMessage, queueItem, queueSettings, promptMessages)
+		dbMsg, isPending := oc.dispatchOrQueue(promptCtx, msg.Event, portal, meta, userMessage, queueItem, queueSettings, promptMessages)
 		return &bridgev2.MatrixMessageResponse{
 			DB:      dbMsg,
 			Pending: isPending,
@@ -841,7 +849,9 @@ func (oc *AIClient) handleMediaMessage(
 
 	// Build prompt with media
 	captionForPrompt := oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, caption, senderName, roomName, isGroup)
-	promptMessages, err := oc.buildPromptWithMedia(ctx, portal, meta, captionForPrompt, string(mediaURL), mimeType, encryptedFile, config.msgType, eventID)
+	captionInboundCtx := oc.buildMatrixInboundContext(portal, msg.Event, caption, senderName, roomName, isGroup)
+	promptCtx := withInboundContext(ctx, captionInboundCtx)
+	promptMessages, err := oc.buildPromptWithMedia(promptCtx, portal, meta, captionForPrompt, string(mediaURL), mimeType, encryptedFile, config.msgType, eventID)
 	if err != nil {
 		return nil, messageSendStatusError(err, "Couldn't prepare the media message. Try again.", "")
 	}
@@ -871,16 +881,17 @@ func (oc *AIClient) handleMediaMessage(
 	}
 
 	pending := pendingMessage{
-		Event:         msg.Event,
-		Portal:        portal,
-		Meta:          meta,
-		Type:          config.msgType,
-		MessageBody:   captionForPrompt,
-		MediaURL:      string(mediaURL),
-		MimeType:      mimeType,
-		EncryptedFile: encryptedFile,
-		PendingSent:   pendingSent,
-		Typing:        typingCtx,
+		Event:          msg.Event,
+		Portal:         portal,
+		Meta:           meta,
+		InboundContext: &captionInboundCtx,
+		Type:           config.msgType,
+		MessageBody:    captionForPrompt,
+		MediaURL:       string(mediaURL),
+		MimeType:       mimeType,
+		EncryptedFile:  encryptedFile,
+		PendingSent:    pendingSent,
+		Typing:         typingCtx,
 	}
 	queueItem := pendingQueueItem{
 		pending:     pending,
@@ -888,7 +899,7 @@ func (oc *AIClient) handleMediaMessage(
 		summaryLine: rawCaption,
 		enqueuedAt:  time.Now().UnixMilli(),
 	}
-	dbMsg, isPending := oc.dispatchOrQueue(ctx, msg.Event, portal, meta, userMessage, queueItem, queueSettings, promptMessages)
+	dbMsg, isPending := oc.dispatchOrQueue(promptCtx, msg.Event, portal, meta, userMessage, queueItem, queueSettings, promptMessages)
 
 	return &bridgev2.MatrixMessageResponse{
 		DB:      dbMsg,
@@ -926,6 +937,11 @@ func (oc *AIClient) handleTextFileMessage(
 	}
 
 	isGroup := oc.isGroupChat(ctx, portal)
+	roomName := ""
+	if isGroup {
+		roomName = oc.matrixRoomDisplayName(ctx, portal)
+	}
+	senderName := oc.matrixDisplayName(ctx, portal.MXID, msg.Event.Sender)
 	agentDef := (*agents.AgentDefinition)(nil)
 	if agentID := resolveAgentID(meta); agentID != "" {
 		store := NewAgentStoreAdapter(oc)
@@ -971,7 +987,9 @@ func (oc *AIClient) handleTextFileMessage(
 		eventID = msg.Event.ID
 	}
 
-	promptMessages, err := oc.buildPrompt(ctx, portal, meta, combined, eventID)
+	inboundCtx := oc.buildMatrixInboundContext(portal, msg.Event, combined, senderName, roomName, isGroup)
+	promptCtx := withInboundContext(ctx, inboundCtx)
+	promptMessages, err := oc.buildPrompt(promptCtx, portal, meta, combined, eventID)
 	if err != nil {
 		return nil, messageSendStatusError(err, "Couldn't prepare the message. Try again.", "")
 	}
@@ -992,13 +1010,14 @@ func (oc *AIClient) handleTextFileMessage(
 	}
 
 	pending := pendingMessage{
-		Event:       msg.Event,
-		Portal:      portal,
-		Meta:        meta,
-		Type:        pendingTypeText,
-		MessageBody: combined,
-		PendingSent: pendingSent,
-		Typing:      typingCtx,
+		Event:          msg.Event,
+		Portal:         portal,
+		Meta:           meta,
+		InboundContext: &inboundCtx,
+		Type:           pendingTypeText,
+		MessageBody:    combined,
+		PendingSent:    pendingSent,
+		Typing:         typingCtx,
 	}
 	queueItem := pendingQueueItem{
 		pending:     pending,
@@ -1006,7 +1025,7 @@ func (oc *AIClient) handleTextFileMessage(
 		summaryLine: strings.TrimSpace(rawCaption),
 		enqueuedAt:  time.Now().UnixMilli(),
 	}
-	dbMsg, isPending := oc.dispatchOrQueue(ctx, msg.Event, portal, meta, userMessage, queueItem, queueSettings, promptMessages)
+	dbMsg, isPending := oc.dispatchOrQueue(promptCtx, msg.Event, portal, meta, userMessage, queueItem, queueSettings, promptMessages)
 
 	return &bridgev2.MatrixMessageResponse{
 		DB:      dbMsg,
@@ -1405,6 +1424,7 @@ func (oc *AIClient) buildPromptForRegenerate(
 			switch msgMeta.Role {
 			case "assistant":
 				body = stripThinkTags(body)
+				body = airuntime.SanitizeChatMessageForDisplay(body, false)
 				if body == "" {
 					continue
 				}
@@ -1417,10 +1437,7 @@ func (oc *AIClient) buildPromptForRegenerate(
 				}
 				prompt = append(prompt, openai.AssistantMessage(body))
 			default:
-				if isSimple {
-					body = StripEnvelope(body)
-					body = stripMessageIDHintLines(body)
-				}
+				body = airuntime.SanitizeChatMessageForDisplay(body, true)
 				if injectImages && msgMeta.MediaURL != "" && isImageMimeType(msgMeta.MimeType) {
 					if imgPart := oc.downloadHistoryImage(ctx, msgMeta.MediaURL, msgMeta.MimeType); imgPart != nil {
 						// Append the media URL so the model can reference it for editing tools (e.g. input_images).
@@ -1447,8 +1464,7 @@ func (oc *AIClient) buildPromptForRegenerate(
 	if !isSimple {
 		latest = appendMessageIDHint(latestUserBody, latestUserID)
 	} else {
-		latest = StripEnvelope(latest)
-		latest = stripMessageIDHintLines(latest)
+		latest = airuntime.SanitizeChatMessageForDisplay(latest, true)
 	}
 	prompt = append(prompt, openai.UserMessage(latest))
 	return prompt, nil

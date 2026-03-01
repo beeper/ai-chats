@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -334,6 +335,8 @@ func (oc *AIClient) isBuiltinToolDenied(
 	if required && state.heartbeat != nil {
 		required = false
 	}
+	runtimeDecision := toRuntimeToolApprovalDecision(required, "builtin", toolName, tool.callID, false)
+	required = runtimeDecision.State == airuntime.ToolApprovalRequired
 	if !required {
 		return false
 	}
