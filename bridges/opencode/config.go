@@ -4,6 +4,8 @@ import (
 	_ "embed"
 
 	"go.mau.fi/util/configupgrade"
+
+	"github.com/beeper/ai-bridge/pkg/shared/bridgeconfig"
 )
 
 const ProviderOpenCode = "opencode"
@@ -12,14 +14,8 @@ const ProviderOpenCode = "opencode"
 var exampleNetworkConfig string
 
 type Config struct {
-	Bridge   BridgeConfig `yaml:"bridge"`
-	OpenCode OpenCode     `yaml:"opencode"`
-}
-
-type BridgeConfig struct {
-	CommandPrefix      string `yaml:"command_prefix"`
-	StreamingTransport string `yaml:"streaming_transport"`        // ephemeral|debounced_edit
-	StreamingDebounce  int    `yaml:"streaming_edit_debounce_ms"` // Debounce for edit transport
+	Bridge   bridgeconfig.BridgeConfig `yaml:"bridge"`
+	OpenCode OpenCode                  `yaml:"opencode"`
 }
 
 type OpenCode struct {

@@ -29,6 +29,7 @@ import (
 	"github.com/beeper/ai-bridge/pkg/matrixevents"
 	"github.com/beeper/ai-bridge/pkg/shared/citations"
 	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
+	"github.com/beeper/ai-bridge/pkg/shared/streamui"
 	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
@@ -1810,133 +1811,55 @@ func (cc *CodexClient) buildUIMessageMetadata(state *streamingState, model strin
 }
 
 func (cc *CodexClient) emitUIStart(ctx context.Context, portal *bridgev2.Portal, state *streamingState, model string) {
-	cc.emitStreamEvent(ctx, portal, state, map[string]any{
-		"type":            "start",
-		"messageId":       state.turnID,
-		"messageMetadata": cc.buildUIMessageMetadata(state, model, false, ""),
-	})
+	cc.uiEmitter(state).EmitUIStart(ctx, portal, cc.buildUIMessageMetadata(state, model, false, ""))
 }
 
 func (cc *CodexClient) emitUIMessageMetadata(ctx context.Context, portal *bridgev2.Portal, state *streamingState, metadata map[string]any) {
-	if len(metadata) == 0 {
-		return
-	}
-	cc.emitStreamEvent(ctx, portal, state, map[string]any{
-		"type":            "message-metadata",
-		"messageMetadata": metadata,
-	})
+	cc.uiEmitter(state).EmitUIMessageMetadata(ctx, portal, metadata)
 }
 
 func (cc *CodexClient) emitUIStepStart(ctx context.Context, portal *bridgev2.Portal, state *streamingState) {
-	cc.emitStreamEvent(ctx, portal, state, map[string]any{"type": "start-step"})
+	cc.uiEmitter(state).EmitUIStepStart(ctx, portal)
 }
 
 func (cc *CodexClient) emitUIStepFinish(ctx context.Context, portal *bridgev2.Portal, state *streamingState) {
-	cc.emitStreamEvent(ctx, portal, state, map[string]any{"type": "finish-step"})
+	cc.uiEmitter(state).EmitUIStepFinish(ctx, portal)
 }
 
 func (cc *CodexClient) ensureUIText(ctx context.Context, portal *bridgev2.Portal, state *streamingState) {
-	if state.uiTextID != "" {
-		return
-	}
-	state.uiTextID = fmt.Sprintf("text-%s", state.turnID)
-	cc.emitStreamEvent(ctx, portal, state, map[string]any{
-		"type": "text-start",
-		"id":   state.uiTextID,
-	})
+	cc.uiEmitter(state).EnsureUIText(ctx, portal)
 }
 
 func (cc *CodexClient) ensureUIReasoning(ctx context.Context, portal *bridgev2.Portal, state *streamingState) {
-	if state.uiReasoningID != "" {
-		return
-	}
-	state.uiReasoningID = fmt.Sprintf("reasoning-%s", state.turnID)
-	cc.emitStreamEvent(ctx, portal, state, map[string]any{
-		"type": "reasoning-start",
-		"id":   state.uiReasoningID,
-	})
+	cc.uiEmitter(state).EnsureUIReasoning(ctx, portal)
 }
 
 func (cc *CodexClient) emitUITextDelta(ctx context.Context, portal *bridgev2.Portal, state *streamingState, delta string) {
-	cc.ensureUIText(ctx, portal, state)
-	cc.emitStreamEvent(ctx, portal, state, map[string]any{
-		"type":  "text-delta",
-		"id":    state.uiTextID,
-		"delta": delta,
-	})
+	cc.uiEmitter(state).EmitUITextDelta(ctx, portal, delta)
 }
 
 func (cc *CodexClient) emitUIReasoningDelta(ctx context.Context, portal *bridgev2.Portal, state *streamingState, delta string) {
-	cc.ensureUIReasoning(ctx, portal, state)
-	cc.emitStreamEvent(ctx, portal, state, map[string]any{
-		"type":  "reasoning-delta",
-		"id":    state.uiReasoningID,
-		"delta": delta,
-	})
+	cc.uiEmitter(state).EmitUIReasoningDelta(ctx, portal, delta)
 }
 
 func (cc *CodexClient) ensureUIToolInputStart(ctx context.Context, portal *bridgev2.Portal, state *streamingState, toolCallID, toolName string, providerExecuted bool, input any) {
 	if toolCallID == "" {
 		return
 	}
-	if state.uiToolStarted == nil {
-		state.uiToolStarted = make(map[string]bool)
-	}
-	if state.uiToolStarted[toolCallID] {
-		return
-	}
-	state.uiToolStarted[toolCallID] = true
-	cc.emitStreamEvent(ctx, portal, state, map[string]any{
-		"type":             "tool-input-start",
-		"toolCallId":       toolCallID,
-		"toolName":         toolName,
-		"providerExecuted": providerExecuted,
-	})
-	cc.emitStreamEvent(ctx, portal, state, map[string]any{
-		"type":             "tool-input-available",
-		"toolCallId":       toolCallID,
-		"toolName":         toolName,
-		"input":            input,
-		"providerExecuted": providerExecuted,
-	})
+	ui := cc.uiEmitter(state)
+	ui.EnsureUIToolInputStart(ctx, portal, toolCallID, toolName, providerExecuted, false, streamui.ToolDisplayTitle(toolName), nil)
+	ui.EmitUIToolInputAvailable(ctx, portal, toolCallID, toolName, input, providerExecuted)
 }
 
 func (cc *CodexClient) emitUIToolOutputAvailable(ctx context.Context, portal *bridgev2.Portal, state *streamingState, toolCallID string, output any, providerExecuted bool, preliminary bool) {
-	if toolCallID == "" {
-		return
-	}
-	if state.uiToolOutputFinalized == nil {
-		state.uiToolOutputFinalized = make(map[string]bool)
-	}
-	if state.uiToolOutputFinalized[toolCallID] && !preliminary {
-		return
-	}
-	if !preliminary {
-		state.uiToolOutputFinalized[toolCallID] = true
-	}
-	part := map[string]any{
-		"type":             "tool-output-available",
-		"toolCallId":       toolCallID,
-		"output":           output,
-		"providerExecuted": providerExecuted,
-	}
-	if preliminary {
-		part["preliminary"] = true
-	}
-	cc.emitStreamEvent(ctx, portal, state, part)
+	cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, toolCallID, output, providerExecuted, preliminary)
 }
 
 func (cc *CodexClient) emitUIToolApprovalRequest(
 	ctx context.Context, portal *bridgev2.Portal, state *streamingState,
 	approvalID, toolCallID, toolName string, ttlSeconds int,
 ) {
-	cc.emitStreamEvent(ctx, portal, state, map[string]any{
-		"type":       "tool-approval-request",
-		"approvalId": approvalID,
-		"toolCallId": toolCallID,
-		"toolName":   toolName,
-		"ttlSeconds": ttlSeconds,
-	})
+	cc.uiEmitter(state).EmitUIToolApprovalRequest(ctx, portal, approvalID, toolCallID, toolName, ttlSeconds)
 }
 
 // sendToolCallApprovalEvent sends a tool_call timeline event with status "approval_required"
@@ -1957,7 +1880,7 @@ func (cc *CodexClient) sendToolCallApprovalEvent(
 	}
 	displayTitle := toolDisplayTitle(toolName)
 	toolType := string(matrixevents.ToolTypeProvider)
-	if tt, ok := state.uiToolTypeByToolCallID[toolCallID]; ok {
+	if tt, ok := state.ui.UIToolTypeByToolCallID[toolCallID]; ok {
 		toolType = string(tt)
 	}
 	toolCallData := map[string]any{
@@ -1994,71 +1917,15 @@ func (cc *CodexClient) sendToolCallApprovalEvent(
 }
 
 func (cc *CodexClient) emitUIError(ctx context.Context, portal *bridgev2.Portal, state *streamingState, errText string) {
-	if errText == "" {
-		errText = "Unknown error"
-	}
-	cc.emitStreamEvent(ctx, portal, state, map[string]any{
-		"type":      "error",
-		"errorText": errText,
-	})
+	cc.uiEmitter(state).EmitUIError(ctx, portal, errText)
 }
 
 func (cc *CodexClient) emitUISourceURL(ctx context.Context, portal *bridgev2.Portal, state *streamingState, citation citations.SourceCitation) {
-	if state == nil {
-		return
-	}
-	url := strings.TrimSpace(citation.URL)
-	if url == "" {
-		return
-	}
-	if state.uiSourceURLSeen[url] {
-		return
-	}
-	state.uiSourceURLSeen[url] = true
-	part := map[string]any{
-		"type":     "source-url",
-		"sourceId": fmt.Sprintf("source-url-%d", len(state.uiSourceURLSeen)),
-		"url":      url,
-	}
-	if title := strings.TrimSpace(citation.Title); title != "" {
-		part["title"] = title
-	}
-	if providerMeta := citations.ProviderMetadata(citation); len(providerMeta) > 0 {
-		part["providerMetadata"] = providerMeta
-	}
-	cc.emitStreamEvent(ctx, portal, state, part)
+	cc.uiEmitter(state).EmitUISourceURL(ctx, portal, citation)
 }
 
 func (cc *CodexClient) emitUIFinish(ctx context.Context, portal *bridgev2.Portal, state *streamingState, model string, finishReason string) {
-	if state.uiFinished {
-		return
-	}
-	state.uiFinished = true
-	if state.uiTextID != "" {
-		cc.emitStreamEvent(ctx, portal, state, map[string]any{"type": "text-end", "id": state.uiTextID})
-		state.uiTextID = ""
-	}
-	if state.uiReasoningID != "" {
-		cc.emitStreamEvent(ctx, portal, state, map[string]any{"type": "reasoning-end", "id": state.uiReasoningID})
-		state.uiReasoningID = ""
-	}
-	cc.emitUIStepFinish(ctx, portal, state)
-	// Finalize any un-finished tool calls before sending finish.
-	for toolCallID := range state.uiToolStarted {
-		if !state.uiToolOutputFinalized[toolCallID] {
-			cc.emitStreamEvent(ctx, portal, state, map[string]any{
-				"type":             "tool-output-error",
-				"toolCallId":       toolCallID,
-				"errorText":        "cancelled",
-				"providerExecuted": true,
-			})
-		}
-	}
-	cc.emitStreamEvent(ctx, portal, state, map[string]any{
-		"type":            "finish",
-		"finishReason":    finishReason,
-		"messageMetadata": cc.buildUIMessageMetadata(state, model, true, finishReason),
-	})
+	cc.uiEmitter(state).EmitUIFinish(ctx, portal, finishReason, cc.buildUIMessageMetadata(state, model, true, finishReason))
 }
 
 func (cc *CodexClient) buildCanonicalUIMessage(state *streamingState, model string, finishReason string) map[string]any {
@@ -2204,7 +2071,7 @@ func (cc *CodexClient) saveAssistantMessage(ctx context.Context, portal *bridgev
 	}
 
 	assistantMsg := &database.Message{
-		ID:        MakeMessageID(state.initialEventID),
+		ID:        bridgeadapter.MatrixMessageID(state.initialEventID),
 		Room:      portal.PortalKey,
 		SenderID:  codexGhostID,
 		MXID:      state.initialEventID,
@@ -2435,25 +2302,12 @@ func (cc *CodexClient) sendSystemNoticeOnce(ctx context.Context, portal *bridgev
 }
 
 // setApprovalStateTracking populates the streaming state maps used for approval correlation.
-// It lazily initialises the maps so callers don't have to worry about nil.
 func (cc *CodexClient) setApprovalStateTracking(state *streamingState, approvalID, toolCallID, toolName string) {
 	if state == nil {
 		return
 	}
-	if state.uiToolCallIDByApproval == nil {
-		state.uiToolCallIDByApproval = make(map[string]string)
-	}
-	if state.uiToolApprovalRequested == nil {
-		state.uiToolApprovalRequested = make(map[string]bool)
-	}
-	if state.uiToolNameByToolCallID == nil {
-		state.uiToolNameByToolCallID = make(map[string]string)
-	}
-	if state.uiToolTypeByToolCallID == nil {
-		state.uiToolTypeByToolCallID = make(map[string]matrixevents.ToolType)
-	}
-	state.uiToolCallIDByApproval[approvalID] = toolCallID
-	state.uiToolApprovalRequested[approvalID] = true
-	state.uiToolNameByToolCallID[toolCallID] = toolName
-	state.uiToolTypeByToolCallID[toolCallID] = matrixevents.ToolTypeProvider
+	state.ui.UIToolCallIDByApproval[approvalID] = toolCallID
+	state.ui.UIToolApprovalRequested[approvalID] = true
+	state.ui.UIToolNameByToolCallID[toolCallID] = toolName
+	state.ui.UIToolTypeByToolCallID[toolCallID] = matrixevents.ToolTypeProvider
 }

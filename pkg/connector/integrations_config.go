@@ -9,6 +9,7 @@ import (
 
 	"github.com/beeper/ai-bridge/pkg/agents"
 	"github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
+	"github.com/beeper/ai-bridge/pkg/shared/bridgeconfig"
 )
 
 //go:embed integrations_example-config.yaml
@@ -464,13 +465,8 @@ type ModelDefinitionConfig struct {
 	MaxTokens     int      `yaml:"max_tokens"`
 }
 
-// BridgeConfig tweaks Matrix-side behaviour for the AI bridge.
-type BridgeConfig struct {
-	CommandPrefix      string `yaml:"command_prefix"`
-	LogEphemeralEvents *bool  `yaml:"log_ephemeral_events"`
-	StreamingTransport string `yaml:"streaming_transport"`        // ephemeral|debounced_edit
-	StreamingDebounce  int    `yaml:"streaming_edit_debounce_ms"` // Debounce for edit transport
-}
+// BridgeConfig is an alias for the shared bridge config.
+type BridgeConfig = bridgeconfig.BridgeConfig
 
 func upgradeConfig(helper configupgrade.Helper) {
 	// Beeper credentials for auto-login

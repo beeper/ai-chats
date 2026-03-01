@@ -12,8 +12,6 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
-type matrixEphemeralSender = matrixevents.MatrixEphemeralSender
-
 func buildStreamEventEnvelope(state *streamingState, part map[string]any) (turnID string, seq int, content map[string]any, ok bool) {
 	turnID = strings.TrimSpace(state.turnID)
 	if turnID == "" {
@@ -84,7 +82,7 @@ func (oc *AIClient) emitStreamEvent(
 		return
 	}
 
-	ephemeralSender, ok := intent.(matrixEphemeralSender)
+	ephemeralSender, ok := intent.(matrixevents.MatrixEphemeralSender)
 	if !ok {
 		if !state.streamEphemeralUnsupported {
 			state.streamEphemeralUnsupported = true
