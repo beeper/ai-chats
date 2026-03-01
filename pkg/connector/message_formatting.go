@@ -5,8 +5,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-
-	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 var senderPrefixRECache sync.Map
@@ -26,11 +24,6 @@ func hasSenderPrefix(body string, senderLabel string) bool {
 		return false
 	}
 	return getSenderPrefixRE(label).MatchString(body)
-}
-
-// StripEnvelope removes channel-style envelope prefixes from message text.
-func StripEnvelope(text string) string {
-	return runtimeparse.StripEnvelope(text)
 }
 
 type NormalizedLocation struct {

@@ -3,6 +3,8 @@ package connector
 import (
 	"testing"
 	"time"
+
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 func TestApplyRuntimeDefaultsSetsPruningDefaults(t *testing.T) {
@@ -33,7 +35,7 @@ func TestApplyRuntimeDefaultsSetsPruningDefaults(t *testing.T) {
 func TestApplyRuntimeDefaultsKeepsExplicitPruningModeOff(t *testing.T) {
 	connector := &OpenAIConnector{
 		Config: Config{
-			Pruning: &PruningConfig{
+			Pruning: &airuntime.PruningConfig{
 				Mode:    "off",
 				Enabled: false,
 			},

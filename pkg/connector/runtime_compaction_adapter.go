@@ -26,7 +26,7 @@ type CompactionEvent struct {
 	Error          string              `json:"error,omitempty"`
 }
 
-func (oc *AIClient) pruningConfigOrDefault() *PruningConfig {
+func (oc *AIClient) pruningConfigOrDefault() *airuntime.PruningConfig {
 	if oc != nil && oc.connector != nil && oc.connector.Config.Pruning != nil {
 		return oc.connector.Config.Pruning
 	}
@@ -41,7 +41,7 @@ func (oc *AIClient) pruningReserveTokens() int {
 	return cfg.ReserveTokens
 }
 
-func (oc *AIClient) pruningOverflowFlushConfig() *OverflowFlushConfig {
+func (oc *AIClient) pruningOverflowFlushConfig() *airuntime.OverflowFlushConfig {
 	cfg := oc.pruningConfigOrDefault()
 	if cfg == nil {
 		return nil
