@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
@@ -14,6 +15,7 @@ func (cc *CodexClient) sendDebouncedStreamEdit(ctx context.Context, portal *brid
 	if cc == nil || state == nil || portal == nil {
 		return nil
 	}
+	intent, _ := cc.getCodexIntentForPortal(ctx, portal, bridgev2.RemoteEventMessage)
 	streamtransport.SendDebouncedEdit(ctx, streamtransport.DebouncedEditParams{
 		Portal:         portal,
 		Force:          force,
@@ -21,11 +23,22 @@ func (cc *CodexClient) sendDebouncedStreamEdit(ctx context.Context, portal *brid
 		VisibleBody:    state.visibleAccumulated.String(),
 		FallbackBody:   state.accumulated.String(),
 		InitialEventID: state.initialEventID,
-		TurnID:  state.turnID,
-		Intent:  cc.getCodexIntent(ctx, portal),
+		TurnID:         state.turnID,
+		SendFunc:       codexIntentSendFunc(intent),
 		Log:            cc.loggerForContext(ctx),
 	})
 	return nil
+}
+
+// codexIntentSendFunc wraps a MatrixAPI intent into a streamtransport.SendFunc.
+func codexIntentSendFunc(intent bridgev2.MatrixAPI) streamtransport.SendFunc {
+	if intent == nil {
+		return nil
+	}
+	return func(ctx context.Context, roomID id.RoomID, content *event.Content) error {
+		_, err := intent.SendMessage(ctx, roomID, event.EventMessage, content, nil)
+		return err
+	}
 }
 
 func (cc *CodexClient) ensureStreamSession(ctx context.Context, portal *bridgev2.Portal, state *streamingState) *streamtransport.StreamSession {
@@ -53,7 +66,10 @@ func (cc *CodexClient) ensureStreamSession(ctx context.Context, portal *bridgev2
 		},
 		RuntimeFallbackFlag: &cc.streamFallbackToDebounced,
 		GetEphemeralSender: func(callCtx context.Context) (bridgev2.EphemeralSendingMatrixAPI, bool) {
-			intent := cc.getCodexIntent(callCtx, portal)
+			intent, err := cc.getCodexIntentForPortal(callCtx, portal, bridgev2.RemoteEventMessage)
+			if err != nil || intent == nil {
+				return nil, false
+			}
 			ephemeralSender, ok := intent.(bridgev2.EphemeralSendingMatrixAPI)
 			return ephemeralSender, ok
 		},

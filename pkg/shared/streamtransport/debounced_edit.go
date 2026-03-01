@@ -11,6 +11,10 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
+// SendFunc sends a message event to a Matrix room. Callers build this from
+// the intent they resolve, keeping intent handling out of this package.
+type SendFunc func(ctx context.Context, roomID id.RoomID, content *event.Content) error
+
 // DebouncedEditParams holds the inputs needed by SendDebouncedEdit.
 type DebouncedEditParams struct {
 	Portal         *bridgev2.Portal
@@ -21,7 +25,7 @@ type DebouncedEditParams struct {
 	InitialEventID id.EventID
 	TurnID         string
 
-	Intent bridgev2.MatrixAPI
+	SendFunc SendFunc
 	Log      *zerolog.Logger
 }
 
@@ -46,7 +50,7 @@ func SendDebouncedEdit(ctx context.Context, p DebouncedEditParams) bool {
 		return false
 	}
 
-	if p.Intent == nil {
+	if p.SendFunc == nil {
 		return false
 	}
 	rendered := format.RenderMarkdown(body, true, true)
@@ -54,7 +58,7 @@ func SendDebouncedEdit(ctx context.Context, p DebouncedEditParams) bool {
 	if raw == nil {
 		return false
 	}
-	if _, err := p.Intent.SendMessage(ctx, p.Portal.MXID, event.EventMessage, &event.Content{Raw: raw}, nil); err != nil {
+	if err := p.SendFunc(ctx, p.Portal.MXID, &event.Content{Raw: raw}); err != nil {
 		if p.Log != nil {
 			p.Log.Warn().Err(err).Stringer("event_id", p.InitialEventID).Msg("Failed to send debounced stream edit")
 		}

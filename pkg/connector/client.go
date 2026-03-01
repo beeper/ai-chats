@@ -2658,46 +2658,6 @@ func (oc *AIClient) ensureAgentGhostDisplayName(ctx context.Context, agentID, mo
 	}
 }
 
-// getModelIntent returns the Matrix intent for the current model or agent's ghost in the portal.
-// If an agent is configured for the room, returns the agent ghost's intent.
-// Otherwise, falls back to the model ghost's intent.
-func (oc *AIClient) getModelIntent(ctx context.Context, portal *bridgev2.Portal) bridgev2.MatrixAPI {
-	meta := portalMeta(portal)
-
-	// Check if an agent is configured for this room
-	agentID := resolveAgentID(meta)
-
-	// Use agent ghost if an agent is configured
-	if agentID != "" {
-		modelID := oc.effectiveModel(meta)
-		ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, agentUserID(agentID))
-		if err == nil && ghost != nil {
-			// Ensure the ghost has a display name set
-			store := NewAgentStoreAdapter(oc)
-			agent, _ := store.GetAgentByID(ctx, agentID)
-			if agent != nil {
-				agentName := oc.resolveAgentDisplayName(ctx, agent)
-				oc.ensureAgentGhostDisplayName(ctx, agentID, modelID, agentName)
-			}
-			return ghost.Intent
-		}
-		oc.loggerForContext(ctx).Warn().Err(err).Str("agent", agentID).Msg("Failed to get agent ghost, falling back to model")
-	}
-
-	// Fall back to model ghost
-	modelID := oc.effectiveModel(meta)
-	if agentID == "" {
-		if override, ok := modelOverrideFromContext(ctx); ok {
-			modelID = override
-		}
-	}
-	ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, modelUserID(modelID))
-	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Str("model", modelID).Msg("Failed to get model ghost")
-		return nil
-	}
-	return ghost.Intent
-}
 
 // ensureModelInRoom ensures the current model's ghost is joined to the portal room.
 // This should be called before any operations that require the model to be in the room
@@ -2706,9 +2666,9 @@ func (oc *AIClient) ensureModelInRoom(ctx context.Context, portal *bridgev2.Port
 	if portal == nil || portal.MXID == "" {
 		return errors.New("invalid portal")
 	}
-	intent := oc.getModelIntent(ctx, portal)
-	if intent == nil {
-		return errors.New("failed to get model intent")
+	intent, err := oc.getIntentForPortal(ctx, portal, bridgev2.RemoteEventMessage)
+	if err != nil {
+		return fmt.Errorf("failed to get intent: %w", err)
 	}
 	return intent.EnsureJoined(ctx, portal.MXID)
 }
@@ -2903,18 +2863,7 @@ func (oc *AIClient) removeAckReactionByID(ctx context.Context, portal *bridgev2.
 		return
 	}
 
-	intent := oc.getModelIntent(ctx, portal)
-	if intent == nil {
-		return
-	}
-
-	// Redact the ack reaction
-	_, err := intent.SendMessage(ctx, portal.MXID, event.EventRedaction, &event.Content{
-		Parsed: &event.RedactionEventContent{
-			Redacts: reactionEventID,
-		},
-	}, nil)
-	if err != nil {
+	if err := oc.redactEventViaPortal(ctx, portal, reactionEventID); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).
 			Stringer("reaction_event", reactionEventID).
 			Msg("Failed to remove ack reaction by ID")

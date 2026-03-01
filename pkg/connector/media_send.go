@@ -2,10 +2,10 @@ package connector
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -22,9 +22,10 @@ func (oc *AIClient) sendGeneratedMedia(
 	asVoice bool,
 	caption string,
 ) (id.EventID, string, error) {
-	intent := oc.getModelIntent(ctx, portal)
-	if intent == nil {
-		return "", "", errors.New("failed to get model intent")
+	// Get intent for upload (standard pattern — 7 reference bridges use intent.UploadMedia)
+	intent, err := oc.getIntentForPortal(ctx, portal, bridgev2.RemoteEventMessage)
+	if err != nil {
+		return "", "", fmt.Errorf("intent resolution failed: %w", err)
 	}
 
 	uri, file, err := intent.UploadMedia(ctx, portal.MXID, data, fileName, mimeType)
@@ -91,12 +92,20 @@ func (oc *AIClient) sendGeneratedMedia(
 		}
 	}
 
-	eventContent := &event.Content{Raw: rawContent}
-	resp, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, eventContent, nil)
-	if err != nil {
-		return "", "", fmt.Errorf("send failed: %w", err)
+	converted := &bridgev2.ConvertedMessage{
+		Parts: []*bridgev2.ConvertedMessagePart{{
+			ID:      networkid.PartID("0"),
+			Type:    event.EventMessage,
+			Content: &event.MessageEventContent{MsgType: msgType, Body: body},
+			Extra:   rawContent,
+		}},
 	}
-	return resp.EventID, string(uri), nil
+
+	eventID, _, sendErr := oc.sendViaPortal(ctx, portal, converted, "")
+	if sendErr != nil {
+		return "", "", fmt.Errorf("send failed: %w", sendErr)
+	}
+	return eventID, string(uri), nil
 }
 
 func extensionForMIME(mimeType, defaultExt string, overrides map[string]string) string {

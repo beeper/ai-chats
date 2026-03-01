@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
@@ -264,16 +265,12 @@ func (oc *AIClient) sendToolCallApprovalEvent(
 	return eventID
 }
 
-// sendToolResultEvent sends a tool result as a timeline event
+// sendToolResultEvent sends a tool result as a timeline event via bridgev2's pipeline.
 func (oc *AIClient) sendToolResultEvent(ctx context.Context, portal *bridgev2.Portal, state *streamingState, tool *activeToolCall, result string, resultStatus ResultStatus) id.EventID {
 	if portal == nil || portal.MXID == "" {
 		return ""
 	}
 	if state != nil && state.suppressSend {
-		return ""
-	}
-	intent := oc.getModelIntent(ctx, portal)
-	if intent == nil {
 		return ""
 	}
 
@@ -308,20 +305,28 @@ func (oc *AIClient) sendToolResultEvent(ctx context.Context, portal *bridgev2.Po
 		ReferenceEvent: tool.eventID,
 	})
 
-	resp, err := intent.SendMessage(ctx, portal.MXID, ToolResultEventType, eventContent, nil)
+	converted := &bridgev2.ConvertedMessage{
+		Parts: []*bridgev2.ConvertedMessagePart{{
+			ID:    networkid.PartID("0"),
+			Type:  ToolResultEventType,
+			Extra: eventContent.Raw,
+		}},
+	}
+
+	eventID, _, err := oc.sendViaPortal(ctx, portal, converted, "")
 	if err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Str("tool", tool.toolName).Msg("Failed to send tool result event")
 		return ""
 	}
 
 	oc.loggerForContext(ctx).Debug().
-		Stringer("event_id", resp.EventID).
+		Stringer("event_id", eventID).
 		Str("call_id", tool.callID).
 		Str("tool", tool.toolName).
 		Str("status", string(resultStatus)).
 		Msg("Sent tool result timeline event")
 
-	return resp.EventID
+	return eventID
 }
 
 // executeBuiltinTool finds and executes a builtin tool by name.

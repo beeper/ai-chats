@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -162,13 +163,20 @@ func (oc *AIClient) runSubagentCompletion(
 		if err == nil {
 			return false, nil
 		}
-		if !shouldFallbackOnError(err) || idx == len(modelChain)-1 {
+		var nf *NonFallbackError
+		if errors.As(err, &nf) {
+			return false, err
+		}
+		decision := airuntime.DecideFallback(err)
+		if decision.Action == airuntime.FallbackActionNone || idx == len(modelChain)-1 {
 			return false, err
 		}
 		oc.loggerForContext(ctx).Warn().
 			Err(err).
 			Str("failed_model", modelID).
 			Str("next_model", modelChain[idx+1]).
+			Str("fallback_action", string(decision.Action)).
+			Str("fallback_class", string(decision.Class)).
 			Msg("Subagent model failed; falling back to next model")
 	}
 	return false, nil

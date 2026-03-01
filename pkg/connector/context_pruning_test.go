@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/openai/openai-go/v3"
 )
 
@@ -102,7 +103,7 @@ func TestPruneContext(t *testing.T) {
 		var toolContent string
 		for _, msg := range result {
 			if msg.OfTool != nil {
-				toolContent = extractToolContent(msg.OfTool.Content)
+				toolContent = airuntime.ExtractToolContent(msg.OfTool.Content)
 				break
 			}
 		}
@@ -159,7 +160,7 @@ func TestPruneContext(t *testing.T) {
 		var foundCleared, foundTrimmed bool
 		for _, msg := range result {
 			if msg.OfTool != nil {
-				content := extractToolContent(msg.OfTool.Content)
+				content := airuntime.ExtractToolContent(msg.OfTool.Content)
 				if content == "[CLEARED]" {
 					foundCleared = true
 				}
@@ -203,7 +204,7 @@ func TestPruneContext(t *testing.T) {
 		var trimmedCount int
 		for _, msg := range result {
 			if msg.OfTool != nil {
-				content := extractToolContent(msg.OfTool.Content)
+				content := airuntime.ExtractToolContent(msg.OfTool.Content)
 				if strings.Contains(content, "trimmed") {
 					trimmedCount++
 				}
@@ -242,7 +243,7 @@ func TestPruneContext(t *testing.T) {
 		var bootstrapFound bool
 		for _, msg := range result {
 			if msg.OfTool != nil && msg.OfTool.ToolCallID == "call_bootstrap" {
-				content := extractToolContent(msg.OfTool.Content)
+				content := airuntime.ExtractToolContent(msg.OfTool.Content)
 				// Should NOT be trimmed
 				if !strings.Contains(content, "trimmed") {
 					bootstrapFound = true

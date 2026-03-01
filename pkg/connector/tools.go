@@ -31,6 +31,7 @@ import (
 	"github.com/beeper/ai-bridge/pkg/textfs"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
@@ -538,9 +539,9 @@ func executeMessageSend(ctx context.Context, args map[string]any, btc *BridgeToo
 	asVoice, _ := args["asVoice"].(bool)
 	gifPlayback, _ := args["gifPlayback"].(bool)
 
-	intent := btc.Client.getModelIntent(ctx, btc.Portal)
-	if intent == nil {
-		return "", errors.New("failed to get model intent")
+	intent, err := btc.Client.getIntentForPortal(ctx, btc.Portal, bridgev2.RemoteEventMessage)
+	if err != nil {
+		return "", fmt.Errorf("failed to get intent: %w", err)
 	}
 
 	uri, file, err := intent.UploadMedia(ctx, btc.Portal.MXID, data, fileName, mimeType)
@@ -609,14 +610,21 @@ func executeMessageSend(ctx context.Context, args map[string]any, btc *BridgeToo
 		}
 	}
 
-	eventContent := &event.Content{Raw: rawContent}
-	resp, err := intent.SendMessage(ctx, btc.Portal.MXID, event.EventMessage, eventContent, nil)
-	if err != nil {
-		return "", fmt.Errorf("couldn't send the media message: %w", err)
+	converted := &bridgev2.ConvertedMessage{
+		Parts: []*bridgev2.ConvertedMessagePart{{
+			ID:      networkid.PartID("0"),
+			Type:    event.EventMessage,
+			Content: &event.MessageEventContent{MsgType: msgType, Body: caption},
+			Extra:   rawContent,
+		}},
+	}
+	eventID, _, sendErr := btc.Client.sendViaPortal(ctx, btc.Portal, converted, "")
+	if sendErr != nil {
+		return "", fmt.Errorf("couldn't send the media message: %w", sendErr)
 	}
 
 	return jsonActionResult("send", map[string]any{
-		"event_id":  resp.EventID,
+		"event_id":  eventID,
 		"status":    "sent",
 		"mime_type": mimeType,
 		"msgtype":   msgType,
@@ -638,43 +646,48 @@ func executeMessageEdit(ctx context.Context, args map[string]any, btc *BridgeToo
 		return "", errors.New("action=edit requires 'message' parameter")
 	}
 
-	intent := btc.Client.getModelIntent(ctx, btc.Portal)
-	if intent == nil {
-		return "", errors.New("failed to get model intent")
-	}
-
 	targetEventID := id.EventID(messageID)
 	rendered := format.RenderMarkdown(message, true, true)
 
-	// Send edit with m.replace relation
-	eventContent := &event.Content{
-		Raw: map[string]any{
-			"msgtype":        event.MsgText,
-			"body":           "* " + rendered.Body,
-			"format":         rendered.Format,
-			"formatted_body": "* " + rendered.FormattedBody,
-			"m.new_content": map[string]any{
-				"msgtype":        event.MsgText,
-				"body":           rendered.Body,
-				"format":         rendered.Format,
-				"formatted_body": rendered.FormattedBody,
-				"m.mentions":     map[string]any{},
-			},
-			"m.relates_to": map[string]any{
-				"rel_type": RelReplace,
-				"event_id": targetEventID.String(),
-			},
-			"m.mentions": map[string]any{},
-		},
+	// Look up the target message in DB to get its network message ID
+	targetPart, err := btc.Client.UserLogin.Bridge.DB.Message.GetPartByMXID(ctx, targetEventID)
+	if err != nil || targetPart == nil {
+		return "", fmt.Errorf("target message not found for edit: %s", messageID)
 	}
 
-	resp, err := intent.SendMessage(ctx, btc.Portal.MXID, event.EventMessage, eventContent, nil)
-	if err != nil {
+	editRaw := map[string]any{
+		"msgtype":        event.MsgText,
+		"body":           "* " + rendered.Body,
+		"format":         rendered.Format,
+		"formatted_body": "* " + rendered.FormattedBody,
+		"m.new_content": map[string]any{
+			"msgtype":        event.MsgText,
+			"body":           rendered.Body,
+			"format":         rendered.Format,
+			"formatted_body": rendered.FormattedBody,
+			"m.mentions":     map[string]any{},
+		},
+		"m.relates_to": map[string]any{
+			"rel_type": RelReplace,
+			"event_id": targetEventID.String(),
+		},
+		"m.mentions": map[string]any{},
+	}
+
+	editContent := &bridgev2.ConvertedEdit{
+		ModifiedParts: []*bridgev2.ConvertedEditPart{{
+			Part:    targetPart,
+			Type:    event.EventMessage,
+			Content: &event.MessageEventContent{MsgType: event.MsgText, Body: rendered.Body},
+			Extra:   editRaw,
+		}},
+	}
+
+	if err := btc.Client.sendEditViaPortal(ctx, btc.Portal, targetPart.ID, editContent); err != nil {
 		return "", fmt.Errorf("couldn't edit the message: %w", err)
 	}
 
 	return jsonActionResult("edit", map[string]any{
-		"event_id":  resp.EventID,
 		"edited_id": targetEventID,
 		"status":    "sent",
 	})
@@ -687,20 +700,9 @@ func executeMessageDelete(ctx context.Context, args map[string]any, btc *BridgeT
 		return "", errors.New("action=delete requires 'message_id' parameter")
 	}
 
-	intent := btc.Client.getModelIntent(ctx, btc.Portal)
-	if intent == nil {
-		return "", errors.New("failed to get model intent")
-	}
-
 	targetEventID := id.EventID(messageID)
 
-	// Send redaction event
-	_, err := intent.SendMessage(ctx, btc.Portal.MXID, event.EventRedaction, &event.Content{
-		Parsed: &event.RedactionEventContent{
-			Redacts: targetEventID,
-		},
-	}, nil)
-	if err != nil {
+	if err := btc.Client.redactEventViaPortal(ctx, btc.Portal, targetEventID); err != nil {
 		return "", fmt.Errorf("couldn't delete the message: %w", err)
 	}
 

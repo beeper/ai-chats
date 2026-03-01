@@ -5,15 +5,16 @@ import (
 	"errors"
 	"fmt"
 
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
 )
 
 func sendFormattedMessage(ctx context.Context, btc *BridgeToolContext, message string, relatesTo map[string]any, errorPrefix string) (id.EventID, error) {
-	intent := btc.Client.getModelIntent(ctx, btc.Portal)
-	if intent == nil {
-		return "", errors.New("failed to get model intent")
+	if btc.Portal == nil || btc.Portal.MXID == "" {
+		return "", errors.New("invalid portal")
 	}
 
 	rendered := format.RenderMarkdown(message, true, true)
@@ -28,13 +29,21 @@ func sendFormattedMessage(ctx context.Context, btc *BridgeToolContext, message s
 		raw["m.relates_to"] = relatesTo
 	}
 
-	eventContent := &event.Content{Raw: raw}
-	resp, err := intent.SendMessage(ctx, btc.Portal.MXID, event.EventMessage, eventContent, nil)
+	converted := &bridgev2.ConvertedMessage{
+		Parts: []*bridgev2.ConvertedMessagePart{{
+			ID:      networkid.PartID("0"),
+			Type:    event.EventMessage,
+			Content: &event.MessageEventContent{MsgType: event.MsgText, Body: rendered.Body},
+			Extra:   raw,
+		}},
+	}
+
+	eventID, _, err := btc.Client.sendViaPortal(ctx, btc.Portal, converted, "")
 	if err != nil {
 		if errorPrefix == "" {
 			errorPrefix = "failed to send message"
 		}
 		return "", fmt.Errorf("%s: %w", errorPrefix, err)
 	}
-	return resp.EventID, nil
+	return eventID, nil
 }

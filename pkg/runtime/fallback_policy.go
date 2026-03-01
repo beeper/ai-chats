@@ -44,3 +44,58 @@ func ShouldTriggerFallback(class FailureClass) bool {
 		return false
 	}
 }
+
+// DecideFallback converts raw errors into runtime-standard retry/failover behavior.
+func DecideFallback(err error) FallbackDecision {
+	class := ClassifyFallbackError(err)
+	switch class {
+	case FailureClassAuth:
+		return FallbackDecision{
+			Class:       class,
+			Action:      FallbackActionAbort,
+			Reason:      "auth_or_permission_error",
+			StatusText:  "Authentication/permission failed. Check credentials or access.",
+			ShouldRetry: false,
+		}
+	case FailureClassRateLimit:
+		return FallbackDecision{
+			Class:       class,
+			Action:      FallbackActionFailover,
+			Reason:      "rate_limited",
+			StatusText:  "Provider rate limit reached. Trying fallback model.",
+			ShouldRetry: true,
+		}
+	case FailureClassTimeout, FailureClassNetwork:
+		return FallbackDecision{
+			Class:       class,
+			Action:      FallbackActionRetry,
+			Reason:      "transient_network_failure",
+			StatusText:  "Temporary network/provider issue. Retrying.",
+			ShouldRetry: true,
+		}
+	case FailureClassContextOverflow:
+		return FallbackDecision{
+			Class:       class,
+			Action:      FallbackActionTrimRetry,
+			Reason:      "context_overflow",
+			StatusText:  "Context window exceeded. Compacting and retrying.",
+			ShouldRetry: true,
+		}
+	case FailureClassProviderHard:
+		return FallbackDecision{
+			Class:       class,
+			Action:      FallbackActionFailover,
+			Reason:      "provider_hard_failure",
+			StatusText:  "Provider/model failure. Trying fallback model.",
+			ShouldRetry: true,
+		}
+	default:
+		return FallbackDecision{
+			Class:       FailureClassUnknown,
+			Action:      FallbackActionNone,
+			Reason:      "unknown_error",
+			StatusText:  "Unknown error.",
+			ShouldRetry: false,
+		}
+	}
+}

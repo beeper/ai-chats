@@ -178,9 +178,12 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 					VisibleBody:    visibleBody,
 					FallbackBody:   fallbackBody,
 					InitialEventID: initialEventID,
-					TurnID:  turnID,
-					Intent:  oc.UserLogin.Bridge.Bot,
-					Log:            oc.Log(),
+					TurnID:         turnID,
+					SendFunc: func(ctx context.Context, roomID id.RoomID, content *event.Content) error {
+						_, err := oc.UserLogin.Bridge.Bot.SendMessage(ctx, roomID, event.EventMessage, content, nil)
+						return err
+					},
+					Log: oc.Log(),
 				})
 				return nil
 			},

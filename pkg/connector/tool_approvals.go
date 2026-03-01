@@ -9,6 +9,7 @@ import (
 
 	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -305,10 +306,15 @@ func (oc *AIClient) emitApprovalSnapshotDecision(p *pendingToolApproval, decisio
 
 	sendWithBot := p.ApprovalEventUseBot
 	if !sendWithBot {
-		if intent := oc.getModelIntent(ctx, portal); intent != nil {
-			if _, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, eventContent, nil); err == nil {
-				return
-			}
+		converted := &bridgev2.ConvertedMessage{
+			Parts: []*bridgev2.ConvertedMessagePart{{
+				ID:    networkid.PartID("0"),
+				Type:  event.EventMessage,
+				Extra: eventContent.Raw,
+			}},
+		}
+		if _, _, err := oc.sendViaPortal(ctx, portal, converted, ""); err == nil {
+			return
 		}
 	}
 	if oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.Bot != nil {

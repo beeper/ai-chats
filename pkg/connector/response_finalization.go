@@ -148,10 +148,6 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 	if state != nil && state.suppressSend {
 		return
 	}
-	intent := oc.getModelIntent(ctx, portal)
-	if intent == nil {
-		return
-	}
 
 	rawContent := state.accumulated.String()
 
@@ -166,9 +162,9 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 			replyTo = state.replyTarget.EffectiveReplyTo()
 		}
 		if replyTo != "" {
-			oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, intent, rendered, &replyTo)
+			oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, rendered, &replyTo)
 		} else {
-			oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, intent, rendered, nil)
+			oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, rendered, nil)
 		}
 		return
 	}
@@ -182,18 +178,7 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 			Str("turn_id", state.turnID).
 			Str("initial_event_id", state.initialEventID.String()).
 			Msg("Silent reply detected, redacting streaming message")
-
-		// Redact the initial streaming message
-		if state.initialEventID != "" {
-			_, err := intent.SendMessage(ctx, portal.MXID, event.EventRedaction, &event.Content{
-				Parsed: &event.RedactionEventContent{
-					Redacts: state.initialEventID,
-				},
-			}, nil)
-			if err != nil {
-				oc.loggerForContext(ctx).Warn().Err(err).Stringer("event_id", state.initialEventID).Msg("Failed to redact silent reply message")
-			}
-		}
+		oc.redactInitialStreamingMessage(ctx, portal, state)
 		return
 	}
 
@@ -230,10 +215,11 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 		parts = append(parts, toolParts...)
 	}
 
-	relatesTo := msgconv.RelatesToReplace(state.initialEventID, finalReplyTarget.EffectiveReplyTo())
-
-	// Generate link previews for URLs in the response
-	linkPreviews := generateOutboundLinkPreviews(ctx, cleanedContent, intent, portal, state.sourceCitations, getLinkPreviewConfig(&oc.connector.Config))
+	// Generate link previews for URLs in the response (needs intent for image upload)
+	var linkPreviews []*event.BeeperLinkPreview
+	if intent, err := oc.getIntentForPortal(ctx, portal, bridgev2.RemoteEventMessage); err == nil {
+		linkPreviews = generateOutboundLinkPreviews(ctx, cleanedContent, intent, portal, state.sourceCitations, getLinkPreviewConfig(&oc.connector.Config))
+	}
 
 	uiMessage := msgconv.BuildUIMessage(msgconv.UIMessageParams{
 		TurnID:     state.turnID,
@@ -244,27 +230,44 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 		FileParts:  citations.GeneratedFilesToParts(state.generatedFiles),
 	})
 
-	eventContent := msgconv.BuildFinalEditContent(msgconv.FinalEditContentParams{
-		Rendered:       rendered,
-		RelatesTo:      relatesTo,
-		UIMessage:      uiMessage,
-		LinkPreviews:   PreviewsToMapSlice(linkPreviews),
-		DontShowEdited: true,
-	})
-
-	if _, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, eventContent, nil); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Stringer("initial_event_id", state.initialEventID).Msg("Failed to send final assistant turn")
-	} else {
-		oc.recordAgentActivity(ctx, portal, meta)
-		oc.loggerForContext(ctx).Debug().
-			Str("initial_event_id", state.initialEventID.String()).
-			Str("turn_id", state.turnID).
-			Bool("has_thinking", state.reasoning.Len() > 0).
-			Int("tool_calls", len(state.toolCalls)).
-			Bool("has_reply", directives.ReplyToID != "").
-			Int("link_previews", len(linkPreviews)).
-			Msg("Sent final assistant turn with metadata")
+	topLevelExtra := map[string]any{
+		BeeperAIKey:                     uiMessage,
+		"com.beeper.dont_render_edited": true,
+		"m.mentions":                    map[string]any{},
 	}
+	if lps := PreviewsToMapSlice(linkPreviews); len(lps) > 0 {
+		topLevelExtra["com.beeper.linkpreviews"] = lps
+	}
+
+	sender := oc.senderForPortal(ctx, portal)
+	oc.UserLogin.QueueRemoteEvent(&AIRemoteEdit{
+		portal:        portal.PortalKey,
+		sender:        sender,
+		targetMessage: state.networkMessageID,
+		timestamp:     time.Now(),
+		preBuilt: &bridgev2.ConvertedEdit{
+			ModifiedParts: []*bridgev2.ConvertedEditPart{{
+				Type: event.EventMessage,
+				Content: &event.MessageEventContent{
+					MsgType:       event.MsgText,
+					Body:          rendered.Body,
+					Format:        rendered.Format,
+					FormattedBody: rendered.FormattedBody,
+				},
+				Extra:         map[string]any{"m.mentions": map[string]any{}},
+				TopLevelExtra: topLevelExtra,
+			}},
+		},
+	})
+	oc.recordAgentActivity(ctx, portal, meta)
+	oc.loggerForContext(ctx).Debug().
+		Str("initial_event_id", state.initialEventID.String()).
+		Str("turn_id", state.turnID).
+		Bool("has_thinking", state.reasoning.Len() > 0).
+		Int("tool_calls", len(state.toolCalls)).
+		Bool("has_reply", finalReplyTarget.ReplyTo != "").
+		Int("link_previews", len(linkPreviews)).
+		Msg("Queued final assistant turn edit")
 
 	// Send continuation messages for overflow
 	for continuationBody != "" {
@@ -277,10 +280,6 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 // sendFinalHeartbeatTurn handles heartbeat-specific response delivery.
 func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata) {
 	if portal == nil || portal.MXID == "" || state == nil || state.heartbeat == nil {
-		return
-	}
-	intent := oc.getModelIntent(ctx, portal)
-	if intent == nil {
 		return
 	}
 
@@ -353,7 +352,7 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 			oc.sendPlainAssistantMessage(ctx, portal, heartbeatOk)
 			silent = false
 		}
-		oc.redactInitialStreamingMessage(ctx, portal, intent, state)
+		oc.redactInitialStreamingMessage(ctx, portal, state)
 		status := "ok-token"
 		if strings.TrimSpace(rawContent) == "" {
 			status = "ok-empty"
@@ -381,7 +380,7 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 	if hasContent && !shouldSkipMain && !hasMedia {
 		if oc.isDuplicateHeartbeat(storeRef, hb.SessionKey, cleaned, state.startedAtMs) {
 			oc.restoreHeartbeatUpdatedAt(storeRef, hb.SessionKey, hb.PrevUpdatedAt)
-			oc.redactInitialStreamingMessage(ctx, portal, intent, state)
+			oc.redactInitialStreamingMessage(ctx, portal, state)
 			state.pendingImages = nil
 			indicator := (*HeartbeatIndicatorType)(nil)
 			if hb.UseIndicator {
@@ -403,7 +402,7 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 	}
 
 	if !deliverable {
-		oc.redactInitialStreamingMessage(ctx, portal, intent, state)
+		oc.redactInitialStreamingMessage(ctx, portal, state)
 		state.pendingImages = nil
 		preview := cleaned
 		if preview == "" && hasReasoning {
@@ -425,7 +424,7 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 
 	if !hb.ShowAlerts {
 		oc.restoreHeartbeatUpdatedAt(storeRef, hb.SessionKey, hb.PrevUpdatedAt)
-		oc.redactInitialStreamingMessage(ctx, portal, intent, state)
+		oc.redactInitialStreamingMessage(ctx, portal, state)
 		state.pendingImages = nil
 		indicator := (*HeartbeatIndicatorType)(nil)
 		if hb.UseIndicator {
@@ -459,7 +458,7 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 			oc.sendPlainAssistantMessage(ctx, portal, cleaned)
 		} else {
 			rendered := format.RenderMarkdown(cleaned, true, true)
-			oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, intent, rendered, nil)
+			oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, rendered, nil)
 		}
 	}
 
@@ -490,20 +489,21 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 	sendOutcome(HeartbeatRunOutcome{Status: "ran", Text: cleaned, Sent: true})
 }
 
-func (oc *AIClient) redactInitialStreamingMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, state *streamingState) {
-	if portal == nil || intent == nil || state == nil {
+func (oc *AIClient) redactInitialStreamingMessage(ctx context.Context, portal *bridgev2.Portal, state *streamingState) {
+	if portal == nil || state == nil {
 		return
 	}
 	if state.initialEventID == "" {
 		return
 	}
-	_, err := intent.SendMessage(ctx, portal.MXID, event.EventRedaction, &event.Content{
-		Parsed: &event.RedactionEventContent{
-			Redacts: state.initialEventID,
-		},
-	}, nil)
-	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Stringer("event_id", state.initialEventID).Msg("Failed to redact heartbeat reply message")
+	if state.networkMessageID != "" {
+		if err := oc.redactViaPortal(ctx, portal, state.networkMessageID); err != nil {
+			oc.loggerForContext(ctx).Warn().Err(err).Stringer("event_id", state.initialEventID).Msg("Failed to redact streaming message via network ID")
+		}
+		return
+	}
+	if err := oc.redactEventViaPortal(ctx, portal, state.initialEventID); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Stringer("event_id", state.initialEventID).Msg("Failed to redact streaming message via event ID")
 	}
 }
 
@@ -525,26 +525,26 @@ func (oc *AIClient) sendPlainAssistantMessageWithResult(ctx context.Context, por
 	if portal == nil || portal.MXID == "" {
 		return nil
 	}
-	intent := oc.getModelIntent(ctx, portal)
-	if intent == nil {
-		return fmt.Errorf("missing intent")
-	}
-
-	// Best-effort: automated delivery may target rooms where the ghost isn't currently joined.
-	// EnsureJoined is typically a no-op when already in the room.
-	if err := intent.EnsureJoined(ctx, portal.MXID); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Stringer("room_id", portal.MXID).Msg("Failed to ensure assistant ghost is joined")
-	}
 
 	rendered := format.RenderMarkdown(text, true, true)
-	eventRawContent := map[string]any{
+	eventRaw := map[string]any{
 		"msgtype":        event.MsgText,
 		"body":           rendered.Body,
 		"format":         rendered.Format,
 		"formatted_body": rendered.FormattedBody,
 		"m.mentions":     map[string]any{},
 	}
-	if _, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, &event.Content{Raw: eventRawContent}, nil); err != nil {
+
+	converted := &bridgev2.ConvertedMessage{
+		Parts: []*bridgev2.ConvertedMessagePart{{
+			ID:      networkid.PartID("0"),
+			Type:    event.EventMessage,
+			Content: &event.MessageEventContent{MsgType: event.MsgText, Body: rendered.Body},
+			Extra:   eventRaw,
+		}},
+	}
+
+	if _, _, err := oc.sendViaPortal(ctx, portal, converted, ""); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Stringer("room_id", portal.MXID).Msg("Failed to send plain assistant message")
 		return err
 	}
@@ -684,7 +684,7 @@ func buildSourceParts(cits []citations.SourceCitation, documents []citations.Sou
 }
 
 // sendFinalAssistantTurnContent is a helper for simple mode that sends content without directive processing.
-func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata, intent bridgev2.MatrixAPI, rendered event.MessageEventContent, replyToEventID *id.EventID) {
+func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata, rendered event.MessageEventContent, replyToEventID *id.EventID) {
 	// Safety-split oversized responses into multiple Matrix events
 	var continuationBody string
 	if len(rendered.Body) > streamtransport.MaxMatrixEventBodyBytes {
@@ -713,6 +713,7 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 	relatesTo := msgconv.RelatesToReplace(state.initialEventID, replyTo)
 
 	// Generate link previews for URLs in the response
+	intent, _ := oc.getIntentForPortal(ctx, portal, bridgev2.RemoteEventMessage)
 	linkPreviews := generateOutboundLinkPreviews(ctx, rendered.Body, intent, portal, state.sourceCitations, getLinkPreviewConfig(&oc.connector.Config))
 
 	uiMessage := msgconv.BuildUIMessage(msgconv.UIMessageParams{
@@ -732,17 +733,31 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 		DontShowEdited: true,
 	})
 
-	if _, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, eventContent, nil); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Stringer("initial_event_id", state.initialEventID).Msg("Failed to send final assistant turn (simple mode)")
-	} else {
-		oc.recordAgentActivity(ctx, portal, meta)
-		oc.loggerForContext(ctx).Debug().
-			Str("initial_event_id", state.initialEventID.String()).
-			Str("turn_id", state.turnID).
-			Str("mode", "simple").
-			Int("link_previews", len(linkPreviews)).
-			Msg("Sent final assistant turn (simple mode)")
+	sender := oc.senderForPortal(ctx, portal)
+	editContent := &bridgev2.ConvertedEdit{
+		ModifiedParts: []*bridgev2.ConvertedEditPart{{
+			Part:    nil,
+			Type:    event.EventMessage,
+			Content: &event.MessageEventContent{MsgType: event.MsgText, Body: rendered.Body},
+			Extra:   eventContent.Raw,
+			TopLevelExtra: map[string]any{
+				"m.new_content": eventContent.Raw,
+			},
+		}},
 	}
+	oc.UserLogin.QueueRemoteEvent(&AIRemoteEdit{
+		portal:        portal.PortalKey,
+		sender:        sender,
+		targetMessage: state.networkMessageID,
+		preBuilt:      editContent,
+	})
+	oc.recordAgentActivity(ctx, portal, meta)
+	oc.loggerForContext(ctx).Debug().
+		Str("initial_event_id", state.initialEventID.String()).
+		Str("turn_id", state.turnID).
+		Str("mode", "simple").
+		Int("link_previews", len(linkPreviews)).
+		Msg("Queued final assistant turn edit (simple mode)")
 
 	// Send continuation messages for overflow
 	for continuationBody != "" {

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/shared/citations"
@@ -30,6 +31,7 @@ type streamingState struct {
 	sourceDocuments    []citations.SourceDocument
 	generatedFiles     []citations.GeneratedFilePart
 	initialEventID     id.EventID
+	networkMessageID   networkid.MessageID
 	sequenceNum        int
 	firstToken         bool
 	suppressSend       bool
