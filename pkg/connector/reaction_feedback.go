@@ -95,9 +95,37 @@ func EnqueueReactionFeedback(roomID id.RoomID, feedback ReactionFeedback) {
 }
 
 // DrainReactionFeedback returns and clears all reaction feedback for a room.
+// The map entry is removed once drained so that idle rooms do not leak memory.
 func DrainReactionFeedback(roomID id.RoomID) []ReactionFeedback {
-	q := getReactionQueue(roomID)
-	return q.DrainFeedback()
+	reactionQueuesMu.Lock()
+	q, ok := reactionQueues[roomID]
+	if !ok {
+		reactionQueuesMu.Unlock()
+		return nil
+	}
+	reactionQueuesMu.Unlock()
+
+	items := q.DrainFeedback()
+
+	// Remove map entry when empty to avoid unbounded growth.
+	q.mu.Lock()
+	empty := len(q.feedback) == 0
+	q.mu.Unlock()
+	if empty {
+		reactionQueuesMu.Lock()
+		// Re-check: another goroutine may have enqueued between our drain and this lock.
+		q2, ok := reactionQueues[roomID]
+		if ok {
+			q2.mu.Lock()
+			stillEmpty := len(q2.feedback) == 0
+			q2.mu.Unlock()
+			if stillEmpty {
+				delete(reactionQueues, roomID)
+			}
+		}
+		reactionQueuesMu.Unlock()
+	}
+	return items
 }
 
 // FormatReactionFeedback formats reaction feedback as context for the AI.

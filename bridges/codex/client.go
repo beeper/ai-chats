@@ -27,6 +27,7 @@ import (
 	"github.com/beeper/ai-bridge/bridges/codex/codexrpc"
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"github.com/beeper/ai-bridge/pkg/matrixevents"
+	"github.com/beeper/ai-bridge/pkg/shared/citations"
 	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
@@ -2002,7 +2003,7 @@ func (cc *CodexClient) emitUIError(ctx context.Context, portal *bridgev2.Portal,
 	})
 }
 
-func (cc *CodexClient) emitUISourceURL(ctx context.Context, portal *bridgev2.Portal, state *streamingState, citation sourceCitation) {
+func (cc *CodexClient) emitUISourceURL(ctx context.Context, portal *bridgev2.Portal, state *streamingState, citation citations.SourceCitation) {
 	if state == nil {
 		return
 	}
@@ -2022,7 +2023,7 @@ func (cc *CodexClient) emitUISourceURL(ctx context.Context, portal *bridgev2.Por
 	if title := strings.TrimSpace(citation.Title); title != "" {
 		part["title"] = title
 	}
-	if providerMeta := citationProviderMetadata(citation); len(providerMeta) > 0 {
+	if providerMeta := citations.ProviderMetadata(citation); len(providerMeta) > 0 {
 		part["providerMetadata"] = providerMeta
 	}
 	cc.emitStreamEvent(ctx, portal, state, part)
@@ -2094,10 +2095,10 @@ func (cc *CodexClient) buildCanonicalUIMessage(state *streamingState, model stri
 		}
 		parts = append(parts, part)
 	}
-	if sourceParts := buildSourceParts(state.sourceCitations, state.sourceDocuments); len(sourceParts) > 0 {
+	if sourceParts := citations.BuildSourceParts(state.sourceCitations, state.sourceDocuments); len(sourceParts) > 0 {
 		parts = append(parts, sourceParts...)
 	}
-	if fileParts := generatedFilesToParts(state.generatedFiles); len(fileParts) > 0 {
+	if fileParts := citations.GeneratedFilesToParts(state.generatedFiles); len(fileParts) > 0 {
 		parts = append(parts, fileParts...)
 	}
 	return map[string]any{
@@ -2198,7 +2199,7 @@ func (cc *CodexClient) saveAssistantMessage(ctx context.Context, portal *bridgev
 	if len(state.generatedFiles) > 0 {
 		genFiles = make([]GeneratedFileRef, 0, len(state.generatedFiles))
 		for _, f := range state.generatedFiles {
-			genFiles = append(genFiles, GeneratedFileRef{URL: f.url, MimeType: f.mediaType})
+			genFiles = append(genFiles, GeneratedFileRef{URL: f.URL, MimeType: f.MediaType})
 		}
 	}
 

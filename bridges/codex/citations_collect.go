@@ -3,20 +3,22 @@ package codex
 import (
 	"encoding/json"
 	"strings"
+
+	"github.com/beeper/ai-bridge/pkg/shared/citations"
 )
 
 func collectToolOutputCitations(state *streamingState, toolName, output string) {
 	if state == nil {
 		return
 	}
-	citations := extractWebSearchCitationsFromToolOutput(toolName, output)
-	if len(citations) == 0 {
+	extracted := extractWebSearchCitationsFromToolOutput(toolName, output)
+	if len(extracted) == 0 {
 		return
 	}
-	state.sourceCitations = mergeSourceCitations(state.sourceCitations, citations)
+	state.sourceCitations = citations.MergeSourceCitations(state.sourceCitations, extracted)
 }
 
-func extractWebSearchCitationsFromToolOutput(toolName, output string) []sourceCitation {
+func extractWebSearchCitationsFromToolOutput(toolName, output string) []citations.SourceCitation {
 	if normalizeToolAlias(strings.TrimSpace(toolName)) != "websearch" {
 		return nil
 	}
@@ -32,7 +34,7 @@ func extractWebSearchCitationsFromToolOutput(toolName, output string) []sourceCi
 	if !ok || len(rawResults) == 0 {
 		return nil
 	}
-	citations := make([]sourceCitation, 0, len(rawResults))
+	result := make([]citations.SourceCitation, 0, len(rawResults))
 	for _, item := range rawResults {
 		m, ok := item.(map[string]any)
 		if !ok {
@@ -46,58 +48,12 @@ func extractWebSearchCitationsFromToolOutput(toolName, output string) []sourceCi
 		title, _ := m["title"].(string)
 		description, _ := m["description"].(string)
 		siteName, _ := m["siteName"].(string)
-		citations = append(citations, sourceCitation{
+		result = append(result, citations.SourceCitation{
 			URL:         url,
 			Title:       strings.TrimSpace(title),
 			Description: strings.TrimSpace(description),
 			SiteName:    strings.TrimSpace(siteName),
 		})
 	}
-	return citations
-}
-
-func mergeSourceCitations(existing, incoming []sourceCitation) []sourceCitation {
-	if len(incoming) == 0 {
-		return existing
-	}
-	seen := make(map[string]int, len(existing)+len(incoming))
-	merged := make([]sourceCitation, 0, len(existing)+len(incoming))
-	for _, citation := range append(existing, incoming...) {
-		url := strings.TrimSpace(citation.URL)
-		if url == "" {
-			continue
-		}
-		if idx, ok := seen[url]; ok {
-			merged[idx] = mergeCitationFields(merged[idx], citation)
-			continue
-		}
-		seen[url] = len(merged)
-		merged = append(merged, citation)
-	}
-	return merged
-}
-
-func mergeCitationFields(base, incoming sourceCitation) sourceCitation {
-	if strings.TrimSpace(base.Title) == "" {
-		base.Title = incoming.Title
-	}
-	if strings.TrimSpace(base.Description) == "" {
-		base.Description = incoming.Description
-	}
-	if strings.TrimSpace(base.Published) == "" {
-		base.Published = incoming.Published
-	}
-	if strings.TrimSpace(base.SiteName) == "" {
-		base.SiteName = incoming.SiteName
-	}
-	if strings.TrimSpace(base.Author) == "" {
-		base.Author = incoming.Author
-	}
-	if strings.TrimSpace(base.Image) == "" {
-		base.Image = incoming.Image
-	}
-	if strings.TrimSpace(base.Favicon) == "" {
-		base.Favicon = incoming.Favicon
-	}
-	return base
+	return result
 }

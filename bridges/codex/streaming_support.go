@@ -2,140 +2,13 @@ package codex
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/matrixevents"
+	"github.com/beeper/ai-bridge/pkg/shared/citations"
 )
-
-type sourceCitation struct {
-	URL         string
-	Title       string
-	Description string
-	Published   string
-	SiteName    string
-	Author      string
-	Image       string
-	Favicon     string
-}
-
-type sourceDocument struct {
-	ID        string
-	Title     string
-	Filename  string
-	MediaType string
-}
-
-func citationProviderMetadata(c sourceCitation) map[string]any {
-	meta := map[string]any{}
-	if v := strings.TrimSpace(c.Description); v != "" {
-		meta["description"] = v
-	}
-	if v := strings.TrimSpace(c.Published); v != "" {
-		meta["published"] = v
-	}
-	if v := strings.TrimSpace(c.SiteName); v != "" {
-		meta["site_name"] = v
-	}
-	if v := strings.TrimSpace(c.Author); v != "" {
-		meta["author"] = v
-	}
-	if v := strings.TrimSpace(c.Image); v != "" {
-		meta["image"] = v
-	}
-	if v := strings.TrimSpace(c.Favicon); v != "" {
-		meta["favicon"] = v
-	}
-	if len(meta) == 0 {
-		return nil
-	}
-	return meta
-}
-
-func buildSourceParts(citations []sourceCitation, documents []sourceDocument) []map[string]any {
-	if len(citations) == 0 && len(documents) == 0 {
-		return nil
-	}
-	parts := make([]map[string]any, 0, len(citations)+len(documents))
-	seen := make(map[string]struct{}, len(citations)+len(documents))
-	for _, c := range citations {
-		url := strings.TrimSpace(c.URL)
-		if url == "" {
-			continue
-		}
-		seenKey := "url:" + url
-		if _, ok := seen[seenKey]; ok {
-			continue
-		}
-		seen[seenKey] = struct{}{}
-		p := map[string]any{
-			"type":     "source-url",
-			"sourceId": fmt.Sprintf("source-%d", len(parts)+1),
-			"url":      url,
-		}
-		if title := strings.TrimSpace(c.Title); title != "" {
-			p["title"] = title
-		}
-		if meta := citationProviderMetadata(c); len(meta) > 0 {
-			p["providerMetadata"] = meta
-		}
-		parts = append(parts, p)
-	}
-	for _, d := range documents {
-		key := strings.TrimSpace(d.ID)
-		if key == "" {
-			key = strings.TrimSpace(d.Filename)
-		}
-		if key == "" {
-			key = strings.TrimSpace(d.Title)
-		}
-		if key == "" {
-			continue
-		}
-		seenKey := "doc:" + key
-		if _, ok := seen[seenKey]; ok {
-			continue
-		}
-		seen[seenKey] = struct{}{}
-		p := map[string]any{
-			"type":      "source-document",
-			"sourceId":  fmt.Sprintf("source-%d", len(parts)+1),
-			"mediaType": d.MediaType,
-			"title":     d.Title,
-		}
-		if fn := strings.TrimSpace(d.Filename); fn != "" {
-			p["filename"] = fn
-		}
-		parts = append(parts, p)
-	}
-	return parts
-}
-
-type generatedFilePart struct {
-	url       string
-	mediaType string
-}
-
-func generatedFilesToParts(files []generatedFilePart) []map[string]any {
-	if len(files) == 0 {
-		return nil
-	}
-	parts := make([]map[string]any, 0, len(files))
-	for _, file := range files {
-		url := strings.TrimSpace(file.url)
-		if url == "" {
-			continue
-		}
-		parts = append(parts, map[string]any{
-			"type":      "file",
-			"url":       url,
-			"mediaType": strings.TrimSpace(file.mediaType),
-		})
-	}
-	return parts
-}
 
 type streamingState struct {
 	turnID             string
@@ -151,9 +24,9 @@ type streamingState struct {
 	visibleAccumulated strings.Builder
 	reasoning          strings.Builder
 	toolCalls          []ToolCallMetadata
-	sourceCitations    []sourceCitation
-	sourceDocuments    []sourceDocument
-	generatedFiles     []generatedFilePart
+	sourceCitations    []citations.SourceCitation
+	sourceDocuments    []citations.SourceDocument
+	generatedFiles     []citations.GeneratedFilePart
 	initialEventID     id.EventID
 	sequenceNum        int
 	firstToken         bool
