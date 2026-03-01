@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 )
@@ -74,7 +75,7 @@ func (ol *OpenAILogin) Cancel() {}
 func (ol *OpenAILogin) SubmitUserInput(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
 	switch ol.FlowID {
 	case ProviderBeeper:
-		baseURL := strings.TrimRight(strings.TrimSpace(ol.Connector.Config.Beeper.BaseURL), "/")
+		baseURL := stringutil.NormalizeBaseURL(ol.Connector.Config.Beeper.BaseURL)
 		if baseURL == "" {
 			domain := strings.TrimSpace(input["beeper_domain"])
 			if domain == "" {
@@ -212,7 +213,7 @@ func (ol *OpenAILogin) credentialsStep() *bridgev2.LoginStep {
 
 func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseURL string, serviceTokens *ServiceTokens) (*bridgev2.LoginStep, error) {
 	apiKey = strings.TrimSpace(apiKey)
-	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	baseURL = stringutil.NormalizeBaseURL(baseURL)
 	if ol.User == nil {
 		return nil, errors.New("missing user context for login")
 	}
@@ -227,7 +228,7 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 		if !ok || meta == nil {
 			continue
 		}
-		existingBase := strings.TrimRight(strings.TrimSpace(meta.BaseURL), "/")
+		existingBase := stringutil.NormalizeBaseURL(meta.BaseURL)
 		if meta.Provider == provider && meta.APIKey == apiKey && existingBase == baseURL {
 			dupCount++
 		}

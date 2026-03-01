@@ -13,14 +13,10 @@ func (cc *CodexClient) streamTransportMode() streamtransport.Mode {
 	if cc == nil || cc.connector == nil {
 		return streamtransport.DefaultMode
 	}
-	mode := streamtransport.ResolveMode(cc.connector.Config.Bridge.StreamingTransport)
-	if mode == streamtransport.ModeDebouncedEdit {
-		return mode
-	}
-	if cc.streamFallbackToDebounced.Load() {
-		return streamtransport.ModeDebouncedEdit
-	}
-	return mode
+	return streamtransport.ResolveModeWithRuntimeFallback(
+		cc.connector.Config.Bridge.StreamingTransport,
+		&cc.streamFallbackToDebounced,
+	)
 }
 
 func (cc *CodexClient) streamEditDebounceDuration() time.Duration {
@@ -53,23 +49,22 @@ func (cc *CodexClient) emitDebouncedStreamPart(ctx context.Context, portal *brid
 	if state == nil {
 		return
 	}
-	partType, _ := part["type"].(string)
-	switch partType {
-	case "text-delta", "reasoning-delta", "text-end", "reasoning-end":
-		cc.sendDebouncedStreamEdit(ctx, portal, state, false)
-	case "finish", "abort", "error":
-		cc.sendDebouncedStreamEdit(ctx, portal, state, true)
-		if cc.streamEditGate != nil {
-			cc.streamEditGate.Clear(state.turnID)
-		}
-	}
+	streamtransport.HandleDebouncedPart(
+		part,
+		func(force bool) { cc.sendDebouncedStreamEdit(ctx, portal, state, force) },
+		func() {
+			if cc.streamEditGate != nil {
+				cc.streamEditGate.Clear(state.turnID)
+			}
+		},
+	)
 }
 
 func (cc *CodexClient) fallbackStreamTransportToDebounced(ctx context.Context, reason string, err error) {
 	if cc == nil {
 		return
 	}
-	if !cc.streamFallbackToDebounced.CompareAndSwap(false, true) {
+	if !streamtransport.EnableRuntimeFallbackToDebounced(&cc.streamFallbackToDebounced) {
 		return
 	}
 	if err != nil {

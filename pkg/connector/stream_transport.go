@@ -13,14 +13,10 @@ func (oc *AIClient) streamTransportMode() streamtransport.Mode {
 	if oc == nil || oc.connector == nil {
 		return streamtransport.DefaultMode
 	}
-	mode := streamtransport.ResolveMode(oc.connector.Config.Bridge.StreamingTransport)
-	if mode == streamtransport.ModeDebouncedEdit {
-		return mode
-	}
-	if oc.streamFallbackToDebounced.Load() {
-		return streamtransport.ModeDebouncedEdit
-	}
-	return mode
+	return streamtransport.ResolveModeWithRuntimeFallback(
+		oc.connector.Config.Bridge.StreamingTransport,
+		&oc.streamFallbackToDebounced,
+	)
 }
 
 func (oc *AIClient) streamEditDebounceDuration() time.Duration {
@@ -53,23 +49,22 @@ func (oc *AIClient) emitDebouncedStreamPart(ctx context.Context, portal *bridgev
 	if state == nil {
 		return
 	}
-	partType, _ := part["type"].(string)
-	switch partType {
-	case "text-delta", "reasoning-delta", "text-end", "reasoning-end":
-		oc.sendDebouncedStreamEdit(ctx, portal, state, false)
-	case "finish", "abort", "error":
-		oc.sendDebouncedStreamEdit(ctx, portal, state, true)
-		if oc.streamEditGate != nil {
-			oc.streamEditGate.Clear(state.turnID)
-		}
-	}
+	streamtransport.HandleDebouncedPart(
+		part,
+		func(force bool) { oc.sendDebouncedStreamEdit(ctx, portal, state, force) },
+		func() {
+			if oc.streamEditGate != nil {
+				oc.streamEditGate.Clear(state.turnID)
+			}
+		},
+	)
 }
 
 func (oc *AIClient) fallbackStreamTransportToDebounced(ctx context.Context, reason string, err error) {
 	if oc == nil {
 		return
 	}
-	if !oc.streamFallbackToDebounced.CompareAndSwap(false, true) {
+	if !streamtransport.EnableRuntimeFallbackToDebounced(&oc.streamFallbackToDebounced) {
 		return
 	}
 	if err != nil {

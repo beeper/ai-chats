@@ -26,6 +26,7 @@ import (
 	"github.com/beeper/ai-bridge/pkg/shared/calc"
 	"github.com/beeper/ai-bridge/pkg/shared/maputil"
 	"github.com/beeper/ai-bridge/pkg/shared/media"
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
 	"github.com/beeper/ai-bridge/pkg/textfs"
 
@@ -1454,7 +1455,7 @@ func generateTTSBase64(
 }
 
 func resolveOpenAITTSBaseURL(btc *BridgeToolContext, providerBaseURL string) (string, bool) {
-	baseURL := strings.TrimRight(strings.TrimSpace(providerBaseURL), "/")
+	baseURL := stringutil.NormalizeBaseURL(providerBaseURL)
 	lowerBaseURL := strings.ToLower(baseURL)
 
 	isOpenAIProvider := lowerBaseURL == "" || strings.Contains(lowerBaseURL, "openai.com")
@@ -1477,7 +1478,7 @@ func resolveOpenAITTSBaseURL(btc *BridgeToolContext, providerBaseURL string) (st
 	switch meta.Provider {
 	case ProviderOpenAI:
 		if client.connector != nil {
-			resolved := strings.TrimRight(strings.TrimSpace(client.connector.resolveOpenAIBaseURL()), "/")
+			resolved := stringutil.NormalizeBaseURL(client.connector.resolveOpenAIBaseURL())
 			if resolved != "" {
 				return resolved, true
 			}
@@ -1487,7 +1488,7 @@ func resolveOpenAITTSBaseURL(btc *BridgeToolContext, providerBaseURL string) (st
 		if client.connector != nil {
 			services := client.connector.resolveServiceConfig(meta)
 			if svc, ok := services[serviceOpenAI]; ok {
-				resolved := strings.TrimRight(strings.TrimSpace(svc.BaseURL), "/")
+				resolved := stringutil.NormalizeBaseURL(svc.BaseURL)
 				if resolved != "" {
 					return resolved, true
 				}
@@ -1501,7 +1502,7 @@ func resolveOpenAITTSBaseURL(btc *BridgeToolContext, providerBaseURL string) (st
 		}
 
 		if meta.Provider == ProviderBeeper && client.connector != nil {
-			base := strings.TrimRight(strings.TrimSpace(client.connector.resolveBeeperBaseURL(meta)), "/")
+			base := stringutil.NormalizeBaseURL(client.connector.resolveBeeperBaseURL(meta))
 			if base != "" {
 				return base + "/openai/v1", true
 			}

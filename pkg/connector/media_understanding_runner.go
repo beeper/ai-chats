@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 )
@@ -1045,12 +1046,11 @@ func resolveOpenAIMediaBaseURL(oc *AIClient) string {
 	if oc.UserLogin != nil && oc.UserLogin.Metadata != nil {
 		services := oc.connector.resolveServiceConfig(loginMetadata(oc.UserLogin))
 		if svc, ok := services[serviceOpenAI]; ok && strings.TrimSpace(svc.BaseURL) != "" {
-			return strings.TrimRight(strings.TrimSpace(svc.BaseURL), "/")
+			return stringutil.NormalizeBaseURL(svc.BaseURL)
 		}
 	}
-	base := strings.TrimSpace(oc.connector.resolveOpenAIBaseURL())
-	if base != "" {
-		return strings.TrimRight(base, "/")
+	if base := stringutil.NormalizeBaseURL(oc.connector.resolveOpenAIBaseURL()); base != "" {
+		return base
 	}
 	return defaultOpenAITranscriptionBaseURL
 }
