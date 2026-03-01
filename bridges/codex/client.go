@@ -96,7 +96,8 @@ type CodexClient struct {
 	activeRooms     map[id.RoomID]bool
 	pendingMessages map[id.RoomID]*codexPendingMessage
 
-	streamEditGate *streamtransport.EditDebounceGate
+	streamEditGate            *streamtransport.EditDebounceGate
+	streamFallbackToDebounced atomic.Bool
 }
 
 func newCodexClient(login *bridgev2.UserLogin, connector *CodexConnector) (*CodexClient, error) {
@@ -1722,16 +1723,7 @@ func (cc *CodexClient) emitStreamEvent(ctx context.Context, portal *bridgev2.Por
 		return
 	}
 	if cc.streamTransportMode() == streamtransport.ModeDebouncedEdit {
-		partType, _ := part["type"].(string)
-		switch partType {
-		case "text-delta", "reasoning-delta", "text-end", "reasoning-end":
-			cc.sendDebouncedStreamEdit(ctx, portal, state, false)
-		case "finish", "abort", "error":
-			cc.sendDebouncedStreamEdit(ctx, portal, state, true)
-			if cc.streamEditGate != nil {
-				cc.streamEditGate.Clear(state.turnID)
-			}
-		}
+		cc.emitDebouncedStreamPart(ctx, portal, state, part)
 		return
 	}
 
@@ -1752,10 +1744,16 @@ func (cc *CodexClient) emitStreamEvent(ctx context.Context, portal *bridgev2.Por
 	}
 	ephemeralSender, ok := intent.(matrixevents.MatrixEphemeralSender)
 	if !ok {
+		cc.fallbackStreamTransportToDebounced(ctx, "intent_missing_ephemeral_sender", nil)
+		cc.emitDebouncedStreamPart(ctx, portal, state, part)
 		return
 	}
 	eventContent := &event.Content{Raw: content}
-	_, _ = ephemeralSender.SendEphemeralEvent(ctx, portal.MXID, matrixevents.StreamEventMessageType, eventContent, txnID)
+	_, err := ephemeralSender.SendEphemeralEvent(ctx, portal.MXID, matrixevents.StreamEventMessageType, eventContent, txnID)
+	if err != nil && streamtransport.ShouldFallbackToDebounced(err) {
+		cc.fallbackStreamTransportToDebounced(ctx, "ephemeral_send_unknown", err)
+		cc.emitDebouncedStreamPart(ctx, portal, state, part)
+	}
 }
 
 func (cc *CodexClient) sendInitialStreamMessage(ctx context.Context, portal *bridgev2.Portal, content string, turnID string) id.EventID {

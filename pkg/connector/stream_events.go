@@ -64,16 +64,7 @@ func (oc *AIClient) emitStreamEvent(
 	}
 	mode := oc.streamTransportMode()
 	if mode == streamtransport.ModeDebouncedEdit {
-		partType, _ := part["type"].(string)
-		switch partType {
-		case "text-delta", "reasoning-delta", "text-end", "reasoning-end":
-			oc.sendDebouncedStreamEdit(ctx, portal, state, false)
-		case "finish", "abort", "error":
-			oc.sendDebouncedStreamEdit(ctx, portal, state, true)
-			if oc.streamEditGate != nil {
-				oc.streamEditGate.Clear(state.turnID)
-			}
-		}
+		oc.emitDebouncedStreamPart(ctx, portal, state, part)
 		return
 	}
 	intent := oc.getModelIntent(ctx, portal)
@@ -86,11 +77,9 @@ func (oc *AIClient) emitStreamEvent(
 	if !ok {
 		if !state.streamEphemeralUnsupported {
 			state.streamEphemeralUnsupported = true
-			partType, _ := part["type"].(string)
-			oc.loggerForContext(ctx).Warn().
-				Str("part_type", partType).
-				Msg("Matrix intent does not support ephemeral events; stream updates will be dropped")
+			oc.fallbackStreamTransportToDebounced(ctx, "intent_missing_ephemeral_sender", nil)
 		}
+		oc.emitDebouncedStreamPart(ctx, portal, state, part)
 		return
 	}
 
@@ -125,6 +114,11 @@ func (oc *AIClient) emitStreamEvent(
 	}
 	_, err := ephemeralSender.SendEphemeralEvent(ctx, portal.MXID, StreamEventMessageType, eventContent, txnID)
 	if err != nil {
+		if streamtransport.ShouldFallbackToDebounced(err) {
+			oc.fallbackStreamTransportToDebounced(ctx, "ephemeral_send_unknown", err)
+			oc.emitDebouncedStreamPart(ctx, portal, state, part)
+			return
+		}
 		oc.loggerForContext(ctx).Warn().Err(err).
 			Str("part_type", partType).
 			Int("seq", seq).

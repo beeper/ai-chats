@@ -1,76 +1,58 @@
 package connector
 
 import (
-	"strings"
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
+var thinkLevelAliases = map[string]string{
+	"off": "off", "false": "off", "no": "off", "0": "off",
+	"on": "low", "enable": "low", "enabled": "low",
+	"min": "minimal", "minimal": "minimal", "think": "minimal",
+	"low": "low", "thinkhard": "low", "think-hard": "low", "think_hard": "low",
+	"mid": "medium", "med": "medium", "medium": "medium", "thinkharder": "medium", "think-harder": "medium", "harder": "medium",
+	"high": "high", "ultra": "high", "ultrathink": "high", "thinkhardest": "high", "highest": "high", "max": "high",
+	"xhigh": "xhigh", "x-high": "xhigh", "x_high": "xhigh",
+}
+
+var verboseLevelAliases = map[string]string{
+	"off": "off", "false": "off", "no": "off", "0": "off",
+	"full": "full", "all": "full", "everything": "full",
+	"on": "on", "minimal": "on", "true": "on", "yes": "on", "1": "on",
+}
+
+var reasoningLevelAliases = map[string]string{
+	"off": "off", "false": "off", "no": "off", "0": "off",
+	"on": "on", "true": "on", "yes": "on", "1": "on", "stream": "on",
+	"low": "low", "medium": "medium", "high": "high", "xhigh": "xhigh",
+}
+
+var sendPolicyAliases = map[string]string{
+	"allow": "allow", "on": "allow",
+	"deny": "deny", "off": "deny",
+	"inherit": "inherit", "default": "inherit", "reset": "inherit",
+}
+
+var groupActivationAliases = map[string]string{
+	"mention": "mention",
+	"always":  "always",
+}
+
 func normalizeThinkLevel(raw string) (string, bool) {
-	key := strings.ToLower(strings.TrimSpace(raw))
-	switch key {
-	case "off", "false", "no", "0":
-		return "off", true
-	case "on", "enable", "enabled":
-		return "low", true
-	case "min", "minimal", "think":
-		return "minimal", true
-	case "low", "thinkhard", "think-hard", "think_hard":
-		return "low", true
-	case "mid", "med", "medium", "thinkharder", "think-harder", "harder":
-		return "medium", true
-	case "high", "ultra", "ultrathink", "thinkhardest", "highest", "max":
-		return "high", true
-	case "xhigh", "x-high", "x_high":
-		return "xhigh", true
-	}
-	return "", false
+	return stringutil.NormalizeEnum(raw, thinkLevelAliases)
 }
 
 func normalizeVerboseLevel(raw string) (string, bool) {
-	key := strings.ToLower(strings.TrimSpace(raw))
-	switch key {
-	case "off", "false", "no", "0":
-		return "off", true
-	case "full", "all", "everything":
-		return "full", true
-	case "on", "minimal", "true", "yes", "1":
-		return "on", true
-	}
-	return "", false
+	return stringutil.NormalizeEnum(raw, verboseLevelAliases)
 }
 
 func normalizeReasoningLevel(raw string) (string, bool) {
-	key := strings.ToLower(strings.TrimSpace(raw))
-	switch key {
-	case "off", "false", "no", "0":
-		return "off", true
-	case "on", "true", "yes", "1", "stream":
-		return "on", true
-	case "low", "medium", "high", "xhigh":
-		return key, true
-	}
-	return "", false
+	return stringutil.NormalizeEnum(raw, reasoningLevelAliases)
 }
 
 func normalizeSendPolicy(raw string) (string, bool) {
-	key := strings.ToLower(strings.TrimSpace(raw))
-	switch key {
-	case "allow", "on":
-		return "allow", true
-	case "deny", "off":
-		return "deny", true
-	case "inherit", "default", "reset":
-		return "inherit", true
-	}
-	return "", false
+	return stringutil.NormalizeEnum(raw, sendPolicyAliases)
 }
 
 func normalizeGroupActivation(raw string) (string, bool) {
-	key := strings.ToLower(strings.TrimSpace(raw))
-	switch key {
-	case "mention":
-		return "mention", true
-	case "always":
-		return "always", true
-	}
-	return "", false
+	return stringutil.NormalizeEnum(raw, groupActivationAliases)
 }

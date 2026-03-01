@@ -336,7 +336,8 @@ type AIClient struct {
 	toolApprovalsMu sync.Mutex
 	toolApprovals   map[string]*pendingToolApproval // approvalID -> pending approval
 
-	streamEditGate *streamtransport.EditDebounceGate
+	streamEditGate             *streamtransport.EditDebounceGate
+	streamFallbackToDebounced  atomic.Bool
 
 	// Per-login cancellation: cancelled when this login disconnects.
 	// All goroutines using backgroundContext() will be cancelled on disconnect.
