@@ -1774,10 +1774,10 @@ func (cc *CodexClient) sendInitialStreamMessage(ctx context.Context, portal *bri
 	}
 	eventContent := &event.Content{
 		Raw: map[string]any{
-			"msgtype":    event.MsgText,
-			"body":       content,
-			matrixevents.BeeperAIKey:  uiMessage,
-			"m.mentions": map[string]any{},
+			"msgtype":                event.MsgText,
+			"body":                   content,
+			matrixevents.BeeperAIKey: uiMessage,
+			"m.mentions":             map[string]any{},
 		},
 	}
 	resp, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, eventContent, nil)
@@ -1865,8 +1865,8 @@ func (cc *CodexClient) sendToolCallApprovalEvent(
 		},
 	}
 	eventRaw := map[string]any{
-		"body":              fmt.Sprintf("Approval required for %s", displayTitle),
-		"msgtype":           event.MsgNotice,
+		"body":                           fmt.Sprintf("Approval required for %s", displayTitle),
+		"msgtype":                        event.MsgNotice,
 		matrixevents.BeeperAIToolCallKey: toolCallData,
 	}
 	if state.initialEventID != "" {
@@ -1975,7 +1975,7 @@ func (cc *CodexClient) sendFinalAssistantTurn(ctx context.Context, portal *bridg
 			"m.mentions":     map[string]any{},
 		},
 		"m.relates_to":                  relatesTo,
-		matrixevents.BeeperAIKey:                     uiMessage,
+		matrixevents.BeeperAIKey:        uiMessage,
 		"com.beeper.dont_render_edited": true,
 		"m.mentions":                    map[string]any{},
 	}

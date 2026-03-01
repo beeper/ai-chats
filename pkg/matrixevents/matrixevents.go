@@ -15,8 +15,8 @@ import (
 //
 // Keep these values stable: clients may rely on them for rendering and behavior.
 var (
-	ToolCallEventType      = event.Type{Type: "com.beeper.ai.tool_call", Class: event.MessageEventType}
-	ToolResultEventType    = event.Type{Type: "com.beeper.ai.tool_result", Class: event.MessageEventType}
+	ToolCallEventType   = event.Type{Type: "com.beeper.ai.tool_call", Class: event.MessageEventType}
+	ToolResultEventType = event.Type{Type: "com.beeper.ai.tool_result", Class: event.MessageEventType}
 
 	StreamEventMessageType = event.Type{Type: "com.beeper.ai.stream_event", Class: event.EphemeralEventType}
 
