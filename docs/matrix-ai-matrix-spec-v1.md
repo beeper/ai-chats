@@ -19,7 +19,6 @@
 - [State Events](#state)
 - [Tool Approvals](#approvals)
 - [Other Matrix Keys](#other-keys)
-- [Defined Schemas (May Not Be Emitted)](#defined-schemas)
 - [Implementation Notes](#impl-notes)
 - [Forward Compatibility](#forward-compat)
 
@@ -82,15 +81,6 @@ Authoritative identifiers are defined in `pkg/matrixevents/matrixevents.go`.
 | `com.beeper.ai.compaction_status` | message | timeline | Context compaction lifecycle/status | [Projections](#projection-compaction) |
 | `com.beeper.ai.room_capabilities` | state | state | Producer-controlled capabilities and effective settings | [State](#state-room-capabilities) |
 | `com.beeper.ai.room_settings` | state | state | User-editable room settings | [State](#state-room-settings) |
-| `com.beeper.ai.model_capabilities` | state | state | Available models + capabilities (defined; may be unused) | [State](#state-model-capabilities) |
-| `com.beeper.ai.agents` | state | state | Agents + orchestration (defined; may be unused) | [State](#state-agents) |
-| `com.beeper.ai.assistant_turn` | message | timeline | Rich turn container (defined; may be unused) | [Defined schemas](#defined-schemas) |
-| `com.beeper.ai.error` | message | timeline | AI error event (defined; may be unused) | [Defined schemas](#defined-schemas) |
-| `com.beeper.ai.turn_cancelled` | message | timeline | Turn cancelled event (defined; may be unused) | [Defined schemas](#defined-schemas) |
-| `com.beeper.ai.agent_handoff` | message | timeline | Agent handoff event (defined; may be unused) | [Defined schemas](#defined-schemas) |
-| `com.beeper.ai.step_boundary` | message | timeline | Step boundary event (defined; may be unused) | [Defined schemas](#defined-schemas) |
-| `com.beeper.ai.generation_status` | message | timeline | Generation status event (defined; may be unused) | [Defined schemas](#defined-schemas) |
-| `com.beeper.ai.tool_progress` | message | timeline | Tool progress event (defined; may be unused) | [Defined schemas](#defined-schemas) |
 
 ### Content Keys (Inside Standard Events)
 | Key | Where it appears | Purpose | Spec section |
@@ -137,6 +127,12 @@ Example:
   }
 }
 ```
+
+### Assistant Turn Encoding
+Send assistant turns as standard `m.room.message` events:
+- `msgtype` and `body` for Matrix fallback.
+- Full AI payload in `com.beeper.ai` as `UIMessage`.
+- Turn-level metadata in `com.beeper.ai.metadata` (for example: `turn_id`, `agent_id`, `model`, `finish_reason`, `usage`, `timing`).
 
 <a id="streaming"></a>
 ## Streaming
@@ -422,51 +418,6 @@ Example:
 }
 ```
 
-<a id="state-model-capabilities"></a>
-### `com.beeper.ai.model_capabilities` (defined; may be unused)
-Fields:
-- `available_models: ModelInfo[]`
-
-Example:
-```json
-{
-  "available_models": [
-    {
-      "id": "openai/gpt-5",
-      "name": "GPT-5",
-      "provider": "openai",
-      "supports_vision": true,
-      "supports_tool_calling": true,
-      "supports_reasoning": true,
-      "supports_web_search": false
-    }
-  ]
-}
-```
-
-<a id="state-agents"></a>
-### `com.beeper.ai.agents` (defined; may be unused)
-Fields:
-- `agents: AgentConfig[]`
-- `orchestration?: OrchestrationConfig`
-
-Example:
-```json
-{
-  "agents": [
-    {
-      "agent_id": "boss",
-      "name": "Boss",
-      "model": "openai/gpt-5",
-      "user_id": "@ai-boss:example.org",
-      "role": "primary",
-      "triggers": ["@boss"]
-    }
-  ],
-  "orchestration": { "mode": "user_directed", "allow_parallel": false, "max_concurrent": 1 }
-}
-```
-
 <a id="approvals"></a>
 ## Tool Approvals
 Approvals are an owner-only gate for:
@@ -558,128 +509,6 @@ Examples:
 - `https://<homeserver>/_matrix/client/unstable/com.beeper.ai/openrouter/v1`
 - `https://<homeserver>/_matrix/client/unstable/com.beeper.ai/openai/v1`
 - `https://<homeserver>/_matrix/client/unstable/com.beeper.ai/exa`
-
-<a id="defined-schemas"></a>
-## Defined Schemas (May Not Be Emitted)
-To keep the main spec terse, the schemas below are collapsed. They are defined in `pkg/connector/events.go` and are part of the v1 surface area.
-
-<details>
-<summary><strong>com.beeper.ai.assistant_turn</strong> (AssistantTurnContent / AssistantTurnAI)</summary>
-
-```json
-{
-  "body": "hello world",
-  "msgtype": "m.text",
-  "com.beeper.ai": {
-    "turn_id": "turn_123",
-    "agent_id": "boss",
-    "model": "openai/gpt-5",
-    "status": "completed",
-    "finish_reason": "stop",
-    "usage": { "prompt_tokens": 10, "completion_tokens": 20 },
-    "timing": { "started_at": 1738970000000, "completed_at": 1738970000500 }
-  }
-}
-```
-
-</details>
-
-<details>
-<summary><strong>com.beeper.ai.error</strong> (AIErrorContent / AIErrorData)</summary>
-
-```json
-{
-  "body": "Generation failed: context too long",
-  "msgtype": "m.notice",
-  "com.beeper.ai.error": {
-    "turn_id": "turn_123",
-    "agent_id": "boss",
-    "error_code": "context_too_long",
-    "error_message": "prompt is too long",
-    "retryable": true
-  }
-}
-```
-
-</details>
-
-<details>
-<summary><strong>com.beeper.ai.turn_cancelled</strong> (TurnCancelledContent)</summary>
-
-```json
-{
-  "turn_id": "turn_123",
-  "agent_id": "boss",
-  "cancelled_at": 1738970000123,
-  "reason": "user_cancelled"
-}
-```
-
-</details>
-
-<details>
-<summary><strong>com.beeper.ai.agent_handoff</strong> (AgentHandoffContent / AgentHandoffData)</summary>
-
-```json
-{
-  "body": "Handing off to Researcher",
-  "msgtype": "m.notice",
-  "com.beeper.ai.agent_handoff": {
-    "from_agent": "boss",
-    "to_agent": "researcher",
-    "from_turn": "turn_123",
-    "reason": "needs_sources"
-  }
-}
-```
-
-</details>
-
-<details>
-<summary><strong>com.beeper.ai.step_boundary</strong> (StepBoundaryContent)</summary>
-
-```json
-{
-  "turn_id": "turn_123",
-  "agent_id": "boss",
-  "step_number": 2,
-  "step_type": "tool_response_processed",
-  "display": { "label": "Processed tool results" }
-}
-```
-
-</details>
-
-<details>
-<summary><strong>com.beeper.ai.generation_status</strong> (GenerationStatusContent)</summary>
-
-```json
-{
-  "turn_id": "turn_123",
-  "agent_id": "boss",
-  "target_event": "$turn_placeholder",
-  "status": "thinking",
-  "status_message": "Planning..."
-}
-```
-
-</details>
-
-<details>
-<summary><strong>com.beeper.ai.tool_progress</strong> (ToolProgressContent)</summary>
-
-```json
-{
-  "call_id": "call_123",
-  "turn_id": "turn_123",
-  "agent_id": "boss",
-  "tool_name": "web_search",
-  "status": "running",
-  "progress": { "stage": "executing", "percent": 50, "message": "Searching..." }
-}
-```
-
-</details>
 
 <a id="impl-notes"></a>
 ## Implementation Notes
