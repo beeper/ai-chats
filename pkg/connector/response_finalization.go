@@ -12,6 +12,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/agents"
+	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
 	"github.com/beeper/ai-bridge/pkg/shared/citations"
 	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 )
@@ -188,14 +189,7 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 	}
 
 	// Build AI SDK UIMessage payload
-	parts := make([]map[string]any, 0, 2+len(state.toolCalls))
-	if state.reasoning.Len() > 0 {
-		parts = append(parts, map[string]any{
-			"type":  "reasoning",
-			"text":  state.reasoning.String(),
-			"state": "done",
-		})
-	}
+	parts := msgconv.ContentParts("", strings.TrimSpace(state.reasoning.String()))
 	if cleanedContent != "" {
 		parts = append(parts, map[string]any{
 			"type":  "text",
@@ -203,45 +197,11 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 			"state": "done",
 		})
 	}
-	for _, tc := range state.toolCalls {
-		toolPart := map[string]any{
-			"type":       "dynamic-tool",
-			"toolName":   tc.ToolName,
-			"toolCallId": tc.CallID,
-			"input":      tc.Input,
-		}
-		if tc.ToolType == string(ToolTypeProvider) {
-			toolPart["providerExecuted"] = true
-		}
-		if tc.ResultStatus == string(ResultStatusSuccess) {
-			toolPart["state"] = "output-available"
-			toolPart["output"] = tc.Output
-		} else if tc.ResultStatus == string(ResultStatusDenied) {
-			toolPart["state"] = "output-denied"
-			toolPart["errorText"] = "Denied by user"
-		} else {
-			toolPart["state"] = "output-error"
-			if tc.ErrorMessage != "" {
-				toolPart["errorText"] = tc.ErrorMessage
-			} else if result, ok := tc.Output["result"].(string); ok && result != "" {
-				toolPart["errorText"] = result
-			}
-		}
-		parts = append(parts, toolPart)
+	if toolParts := msgconv.ToolCallParts(state.toolCalls, string(ToolTypeProvider), string(ResultStatusSuccess), string(ResultStatusDenied)); len(toolParts) > 0 {
+		parts = append(parts, toolParts...)
 	}
 
-	// Build m.relates_to with replace relation
-	relatesTo := map[string]any{
-		"rel_type": RelReplace,
-		"event_id": state.initialEventID.String(),
-	}
-
-	// Add reply relation if enabled
-	if finalReplyTarget.EffectiveReplyTo() != "" {
-		relatesTo["m.in_reply_to"] = map[string]any{
-			"event_id": finalReplyTarget.EffectiveReplyTo().String(),
-		}
-	}
+	relatesTo := msgconv.RelatesToReplace(state.initialEventID, finalReplyTarget.EffectiveReplyTo())
 
 	// Generate link previews for URLs in the response
 	linkPreviews := generateOutboundLinkPreviews(ctx, cleanedContent, intent, portal, state.sourceCitations, getLinkPreviewConfig(&oc.connector.Config))
@@ -252,39 +212,22 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 		parts = append(parts, fileParts...)
 	}
 
-	uiMessage := map[string]any{
-		"id":       state.turnID,
-		"role":     "assistant",
-		"metadata": oc.buildUIMessageMetadata(state, meta, true),
-		"parts":    parts,
-	}
+	uiMessage := msgconv.BuildUIMessage(msgconv.UIMessageParams{
+		TurnID:     state.turnID,
+		Role:       "assistant",
+		Metadata:   oc.buildUIMessageMetadata(state, meta, true),
+		Parts:      parts,
+		SourceURLs: buildSourceParts(state.sourceCitations, state.sourceDocuments, linkPreviews),
+		FileParts:  citations.GeneratedFilesToParts(state.generatedFiles),
+	})
 
-	// Send edit event with m.replace relation and m.new_content
-	// Outer body/formatted_body use a short fallback — Desktop only reads m.new_content for m.replace events.
-	eventRawContent := map[string]any{
-		"msgtype":        event.MsgText,
-		"body":           "* AI response",
-		"format":         rendered.Format,
-		"formatted_body": "* AI response",
-		"m.new_content": map[string]any{
-			"msgtype":        event.MsgText,
-			"body":           rendered.Body,
-			"format":         rendered.Format,
-			"formatted_body": rendered.FormattedBody,
-			"m.mentions":     map[string]any{},
-		},
-		"m.relates_to":                  relatesTo,
-		BeeperAIKey:                     uiMessage,
-		"com.beeper.dont_render_edited": true, // Don't show "edited" indicator for streaming updates
-		"m.mentions":                    map[string]any{},
-	}
-
-	// Attach link previews if any were generated
-	if len(linkPreviews) > 0 {
-		eventRawContent["com.beeper.linkpreviews"] = PreviewsToMapSlice(linkPreviews)
-	}
-
-	eventContent := &event.Content{Raw: eventRawContent}
+	eventContent := msgconv.BuildFinalEditContent(msgconv.FinalEditContentParams{
+		Rendered:       rendered,
+		RelatesTo:      relatesTo,
+		UIMessage:      uiMessage,
+		LinkPreviews:   PreviewsToMapSlice(linkPreviews),
+		DontShowEdited: true,
+	})
 
 	if _, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, eventContent, nil); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Stringer("initial_event_id", state.initialEventID).Msg("Failed to send final assistant turn")
@@ -720,14 +663,7 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 	}
 
 	// Build AI metadata
-	parts := make([]map[string]any, 0, 2+len(state.toolCalls))
-	if state.reasoning.Len() > 0 {
-		parts = append(parts, map[string]any{
-			"type":  "reasoning",
-			"text":  state.reasoning.String(),
-			"state": "done",
-		})
-	}
+	parts := msgconv.ContentParts("", strings.TrimSpace(state.reasoning.String()))
 	if rendered.Body != "" {
 		parts = append(parts, map[string]any{
 			"type":  "text",
@@ -735,43 +671,15 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 			"state": "done",
 		})
 	}
-	for _, tc := range state.toolCalls {
-		toolPart := map[string]any{
-			"type":       "dynamic-tool",
-			"toolName":   tc.ToolName,
-			"toolCallId": tc.CallID,
-			"input":      tc.Input,
-		}
-		if tc.ToolType == string(ToolTypeProvider) {
-			toolPart["providerExecuted"] = true
-		}
-		if tc.ResultStatus == string(ResultStatusSuccess) {
-			toolPart["state"] = "output-available"
-			toolPart["output"] = tc.Output
-		} else if tc.ResultStatus == string(ResultStatusDenied) {
-			toolPart["state"] = "output-denied"
-			toolPart["errorText"] = "Denied by user"
-		} else {
-			toolPart["state"] = "output-error"
-			if tc.ErrorMessage != "" {
-				toolPart["errorText"] = tc.ErrorMessage
-			} else if result, ok := tc.Output["result"].(string); ok && result != "" {
-				toolPart["errorText"] = result
-			}
-		}
-		parts = append(parts, toolPart)
+	if toolParts := msgconv.ToolCallParts(state.toolCalls, string(ToolTypeProvider), string(ResultStatusSuccess), string(ResultStatusDenied)); len(toolParts) > 0 {
+		parts = append(parts, toolParts...)
 	}
 
-	relatesTo := map[string]any{
-		"rel_type": RelReplace,
-		"event_id": state.initialEventID.String(),
+	replyTo := id.EventID("")
+	if replyToEventID != nil {
+		replyTo = *replyToEventID
 	}
-
-	if replyToEventID != nil && *replyToEventID != "" {
-		relatesTo["m.in_reply_to"] = map[string]any{
-			"event_id": replyToEventID.String(),
-		}
-	}
+	relatesTo := msgconv.RelatesToReplace(state.initialEventID, replyTo)
 
 	// Generate link previews for URLs in the response
 	linkPreviews := generateOutboundLinkPreviews(ctx, rendered.Body, intent, portal, state.sourceCitations, getLinkPreviewConfig(&oc.connector.Config))

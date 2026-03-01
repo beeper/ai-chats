@@ -4,48 +4,29 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
 )
 
 func (oc *AIClient) buildUIMessageMetadata(state *streamingState, meta *PortalMetadata, includeUsage bool) map[string]any {
-	metadata := map[string]any{
-		"model":    oc.effectiveModel(meta),
-		"turn_id":  state.turnID,
-		"agent_id": state.agentID,
-	}
-	if includeUsage {
-		metadata["usage"] = map[string]any{
-			"prompt_tokens":     state.promptTokens,
-			"completion_tokens": state.completionTokens,
-			"reasoning_tokens":  state.reasoningTokens,
-			"total_tokens":      state.totalTokens,
-		}
-		metadata["timing"] = map[string]any{
-			"started_at":     state.startedAtMs,
-			"first_token_at": state.firstTokenAtMs,
-			"completed_at":   state.completedAtMs,
-		}
-		metadata["finish_reason"] = mapFinishReason(state.finishReason)
-	}
-	return metadata
+	return msgconv.BuildUIMessageMetadata(msgconv.UIMessageMetadataParams{
+		TurnID:           state.turnID,
+		AgentID:          state.agentID,
+		Model:            oc.effectiveModel(meta),
+		FinishReason:     state.finishReason,
+		PromptTokens:     state.promptTokens,
+		CompletionTokens: state.completionTokens,
+		ReasoningTokens:  state.reasoningTokens,
+		TotalTokens:      state.totalTokens,
+		StartedAtMs:      state.startedAtMs,
+		FirstTokenAtMs:   state.firstTokenAtMs,
+		CompletedAtMs:    state.completedAtMs,
+		IncludeUsage:     includeUsage,
+	})
 }
 
 func mapFinishReason(reason string) string {
-	switch reason {
-	case "stop":
-		return "stop"
-	case "end_turn", "end-turn":
-		return "stop"
-	case "length", "max_output_tokens":
-		return "length"
-	case "content_filter", "content-filter":
-		return "content-filter"
-	case "tool_calls", "tool-calls", "tool_use", "tool-use", "toolUse":
-		return "tool-calls"
-	case "error":
-		return "error"
-	default:
-		return "other"
-	}
+	return msgconv.MapFinishReason(reason)
 }
 
 func shouldContinueChatToolLoop(finishReason string, toolCallCount int) bool {

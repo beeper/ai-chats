@@ -156,8 +156,8 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 				return st.sequenceNum
 			},
 			RuntimeFallbackFlag: &oc.streamFallbackToDebounced,
-			GetEphemeralSender: func(callCtx context.Context) (matrixevents.MatrixEphemeralSender, bool) {
-				ephemeralSender, ok := any(oc.UserLogin.Bridge.Bot).(matrixevents.MatrixEphemeralSender)
+			GetEphemeralSender: func(callCtx context.Context) (bridgev2.EphemeralSendingMatrixAPI, bool) {
+				ephemeralSender, ok := any(oc.UserLogin.Bridge.Bot).(bridgev2.EphemeralSendingMatrixAPI)
 				return ephemeralSender, ok
 			},
 			SendDebouncedEdit: func(callCtx context.Context, force bool) error {

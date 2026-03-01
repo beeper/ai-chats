@@ -55,9 +55,9 @@ func (oc *AIClient) ensureStreamSession(ctx context.Context, portal *bridgev2.Po
 			return state.sequenceNum
 		},
 		RuntimeFallbackFlag: &oc.streamFallbackToDebounced,
-		GetEphemeralSender: func(callCtx context.Context) (matrixevents.MatrixEphemeralSender, bool) {
+		GetEphemeralSender: func(callCtx context.Context) (bridgev2.EphemeralSendingMatrixAPI, bool) {
 			intent := oc.getModelIntent(callCtx, portal)
-			ephemeralSender, ok := intent.(matrixevents.MatrixEphemeralSender)
+			ephemeralSender, ok := intent.(bridgev2.EphemeralSendingMatrixAPI)
 			return ephemeralSender, ok
 		},
 		SendDebouncedEdit: func(callCtx context.Context, force bool) error {
