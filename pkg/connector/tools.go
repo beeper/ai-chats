@@ -1305,20 +1305,12 @@ func executeTTS(ctx context.Context, args map[string]any) (string, error) {
 
 	// Get voice/model (defaults are provider-specific).
 	voice := ""
-	voiceFromArgs := false
 	if v, ok := args["voice"].(string); ok {
-		if trimmed := strings.TrimSpace(v); trimmed != "" {
-			voice = trimmed
-			voiceFromArgs = true
-		}
+		voice = strings.TrimSpace(v)
 	}
 	model := ""
-	modelFromArgs := false
 	if v, ok := args["model"].(string); ok {
-		if trimmed := strings.TrimSpace(v); trimmed != "" {
-			model = trimmed
-			modelFromArgs = true
-		}
+		model = strings.TrimSpace(v)
 	}
 
 	btc := GetBridgeToolContext(ctx)
@@ -1352,8 +1344,6 @@ func executeTTS(ctx context.Context, args map[string]any) (string, error) {
 		textCopy := text
 		voiceCopy := voice
 		modelCopy := model
-		voiceFromArgsCopy := voiceFromArgs
-		modelFromArgsCopy := modelFromArgs
 		client := btc.Client
 		portal := btc.Portal
 		btcCopy := *btc
@@ -1363,7 +1353,7 @@ func executeTTS(ctx context.Context, args map[string]any) (string, error) {
 			bgctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer cancel()
 
-			audioB64, err := generateTTSBase64(bgctx, &btcCopy, textCopy, voiceCopy, modelCopy, voiceFromArgsCopy, modelFromArgsCopy)
+			audioB64, err := generateTTSBase64(bgctx, &btcCopy, textCopy, voiceCopy, modelCopy)
 			if err != nil {
 				client.Log().Warn().Err(err).Msg("async TTS generation failed")
 				client.sendSystemNotice(bgctx, portal, "TTS failed: "+err.Error())

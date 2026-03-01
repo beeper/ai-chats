@@ -388,10 +388,7 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 	if sessionKey != "" {
 		target, display, resolveErr := oc.resolveSessionPortal(ctx, portal, sessionKey)
 		if resolveErr != nil {
-			return tools.JSONResult(map[string]any{
-				"status": "error",
-				"error":  resolveErr.Error(),
-			}), nil
+			return toolsErrorResult(resolveErr)
 		}
 		targetPortal = target
 		displayKey = display
@@ -400,10 +397,7 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 		}
 	} else {
 		if strings.TrimSpace(label) == "" {
-			return tools.JSONResult(map[string]any{
-				"status": "error",
-				"error":  "sessionKey or label is required",
-			}), nil
+			return toolsErrorResult(errors.New("sessionKey or label is required"))
 		}
 		target, display, resolveErr := oc.resolveSessionPortalByLabel(ctx, label, agentID)
 		if resolveErr != nil {
@@ -414,10 +408,7 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 			if strings.TrimSpace(instance) != "" {
 				resolvedInstance, resolveErr := oc.resolveDesktopInstanceName(instance)
 				if resolveErr != nil {
-					return tools.JSONResult(map[string]any{
-						"status": "error",
-						"error":  resolveErr.Error(),
-					}), nil
+					return toolsErrorResult(resolveErr)
 				}
 				desktopInstance = resolvedInstance
 				chatID, desktopKey, desktopErr = oc.resolveDesktopSessionByLabel(ctx, resolvedInstance, label)
@@ -425,10 +416,7 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 				desktopInstance, chatID, desktopKey, desktopErr = oc.resolveDesktopSessionByLabelAnyInstance(ctx, label)
 			}
 			if desktopErr != nil {
-				return tools.JSONResult(map[string]any{
-					"status": "error",
-					"error":  desktopErr.Error(),
-				}), nil
+				return toolsErrorResult(desktopErr)
 			}
 			if trace {
 				oc.loggerForContext(ctx).Debug().Str("instance", desktopInstance).Str("chat_id", chatID).Msg("Sending to desktop session by label")
@@ -437,10 +425,7 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 				Text: message,
 			})
 			if sendErr != nil {
-				return tools.JSONResult(map[string]any{
-					"status": "error",
-					"error":  sendErr.Error(),
-				}), nil
+				return toolsErrorResult(sendErr)
 			}
 			result := map[string]any{
 				"runId":      runID,

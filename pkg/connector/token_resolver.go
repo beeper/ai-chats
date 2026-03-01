@@ -11,8 +11,6 @@ const (
 	serviceOpenAI     = "openai"
 	serviceOpenRouter = "openrouter"
 	serviceExa        = "exa"
-	serviceBrave      = "brave"
-	servicePerplexity = "perplexity"
 )
 
 const (
@@ -204,10 +202,6 @@ func (oc *OpenAIConnector) resolveServiceConfig(meta *UserLoginMetadata) Service
 				BaseURL: base + "/openai/v1",
 				APIKey:  token,
 			}
-			services[servicePerplexity] = ServiceConfig{
-				BaseURL: base + "/openrouter/v1",
-				APIKey:  token,
-			}
 		}
 		if proxyBase := oc.resolveExaProxyBaseURL(meta); proxyBase != "" {
 			services[serviceExa] = ServiceConfig{
@@ -234,10 +228,6 @@ func (oc *OpenAIConnector) resolveServiceConfig(meta *UserLoginMetadata) Service
 				BaseURL: joinProxyPath(base, "/exa"),
 				APIKey:  token,
 			}
-			services[servicePerplexity] = ServiceConfig{
-				BaseURL: joinProxyPath(base, "/openrouter/v1"),
-				APIKey:  token,
-			}
 		}
 		return services
 	}
@@ -252,12 +242,6 @@ func (oc *OpenAIConnector) resolveServiceConfig(meta *UserLoginMetadata) Service
 	}
 	services[serviceExa] = ServiceConfig{
 		APIKey: loginTokenForService(meta, serviceExa),
-	}
-	services[serviceBrave] = ServiceConfig{
-		APIKey: loginTokenForService(meta, serviceBrave),
-	}
-	services[servicePerplexity] = ServiceConfig{
-		APIKey: loginTokenForService(meta, servicePerplexity),
 	}
 	return services
 }
@@ -367,14 +351,6 @@ func loginTokenForService(meta *UserLoginMetadata, service string) string {
 	case serviceExa:
 		if meta.ServiceTokens != nil {
 			return trimToken(meta.ServiceTokens.Exa)
-		}
-	case serviceBrave:
-		if meta.ServiceTokens != nil {
-			return trimToken(meta.ServiceTokens.Brave)
-		}
-	case servicePerplexity:
-		if meta.ServiceTokens != nil {
-			return trimToken(meta.ServiceTokens.Perplexity)
 		}
 	}
 	return ""
