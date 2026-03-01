@@ -25,6 +25,12 @@ const (
 
 type EndReason string
 
+const (
+	EndReasonFinish     EndReason = "finish"
+	EndReasonDisconnect EndReason = "disconnect"
+	EndReasonError      EndReason = "error"
+)
+
 type StreamSessionParams struct {
 	TurnID  string
 	AgentID string
@@ -199,11 +205,6 @@ func (s *StreamSession) sendEphemeralWithRetry(ephemeralSender matrixevents.Matr
 	if s == nil || s.IsClosed() || ephemeralSender == nil || eventContent == nil {
 		return false
 	}
-	targetEventID := ""
-	if s.params.GetTargetEventID != nil {
-		targetEventID = strings.TrimSpace(s.params.GetTargetEventID())
-	}
-	_ = targetEventID
 	send := func() error {
 		if s.IsClosed() {
 			return context.Canceled

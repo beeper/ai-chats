@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 type directProvider struct {
@@ -21,7 +23,7 @@ func newDirectProvider(cfg *Config) Provider {
 	if cfg == nil {
 		return nil
 	}
-	if !isEnabled(cfg.Direct.Enabled, true) {
+	if !stringutil.BoolPtrOr(cfg.Direct.Enabled, true) {
 		return nil
 	}
 	return &directProvider{cfg: cfg.Direct}

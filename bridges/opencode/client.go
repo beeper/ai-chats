@@ -89,7 +89,7 @@ func (oc *OpenCodeClient) Disconnect() {
 	oc.streamStates = make(map[string]*openCodeStreamState)
 	oc.streamMu.Unlock()
 	for _, s := range sessions {
-		s.End(context.Background(), streamtransport.EndReason("disconnect"))
+		s.End(context.Background(), streamtransport.EndReasonDisconnect)
 	}
 	if oc.bridge != nil {
 		oc.bridge.DisconnectAll()

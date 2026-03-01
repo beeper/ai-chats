@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 // Search executes a search using the configured provider chain.
@@ -103,7 +105,7 @@ func registerProviders(registry *Registry, cfg *Config) {
 // API key is non-empty. It returns nil otherwise, centralising the common
 // validation that every provider constructor previously duplicated.
 func newProviderIfEnabled(enabled *bool, apiKey string, create func() Provider) Provider {
-	if !isEnabled(enabled, true) {
+	if !stringutil.BoolPtrOr(enabled, true) {
 		return nil
 	}
 	if strings.TrimSpace(apiKey) == "" {

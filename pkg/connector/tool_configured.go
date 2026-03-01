@@ -6,6 +6,7 @@ import (
 
 	"github.com/beeper/ai-bridge/pkg/fetch"
 	"github.com/beeper/ai-bridge/pkg/search"
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 // These helpers answer "is this tool actually usable/configured right now?"
@@ -50,7 +51,7 @@ func (oc *AIClient) isWebSearchConfigured(ctx context.Context) (bool, string) {
 	cfg := oc.effectiveSearchConfig(ctx)
 	// Mirrors pkg/search/router.go provider registration requirements.
 	if strings.TrimSpace(cfg.Exa.APIKey) != "" {
-		if optionalBoolDefault(cfg.Exa.Enabled, true) {
+		if stringutil.BoolPtrOr(cfg.Exa.Enabled, true) {
 			return true, ""
 		}
 	}
@@ -60,10 +61,10 @@ func (oc *AIClient) isWebSearchConfigured(ctx context.Context) (bool, string) {
 func (oc *AIClient) isWebFetchConfigured(ctx context.Context) (bool, string) {
 	cfg := oc.effectiveFetchConfig(ctx)
 	// Exa requires an API key; direct does not.
-	if strings.TrimSpace(cfg.Exa.APIKey) != "" && optionalBoolDefault(cfg.Exa.Enabled, true) {
+	if strings.TrimSpace(cfg.Exa.APIKey) != "" && stringutil.BoolPtrOr(cfg.Exa.Enabled, true) {
 		return true, ""
 	}
-	if optionalBoolDefault(cfg.Direct.Enabled, true) {
+	if stringutil.BoolPtrOr(cfg.Direct.Enabled, true) {
 		return true, ""
 	}
 	return false, "Web fetch is disabled (direct disabled and Exa API key missing)"
@@ -95,9 +96,3 @@ func (oc *AIClient) isTTSConfigured() (bool, string) {
 	return true, ""
 }
 
-func optionalBoolDefault(flag *bool, def bool) bool {
-	if flag == nil {
-		return def
-	}
-	return *flag
-}

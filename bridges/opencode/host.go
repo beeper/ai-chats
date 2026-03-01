@@ -204,7 +204,7 @@ func (oc *OpenCodeClient) FinishOpenCodeStream(turnID string) {
 	delete(oc.streamStates, turnID)
 	oc.streamMu.Unlock()
 	if session != nil {
-		session.End(oc.BackgroundContext(context.Background()), streamtransport.EndReason("finish"))
+		session.End(oc.BackgroundContext(context.Background()), streamtransport.EndReasonFinish)
 	}
 }
 

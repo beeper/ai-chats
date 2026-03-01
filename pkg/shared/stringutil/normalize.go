@@ -1,10 +1,20 @@
 package stringutil
 
-import "strings"
+import (
+	"strings"
+)
 
 // NormalizeBaseURL trims whitespace and trailing slashes from a URL.
 func NormalizeBaseURL(value string) string {
 	return strings.TrimRight(strings.TrimSpace(value), "/")
+}
+
+// BoolPtrOr dereferences a *bool, returning fallback if the pointer is nil.
+func BoolPtrOr(ptr *bool, fallback bool) bool {
+	if ptr == nil {
+		return fallback
+	}
+	return *ptr
 }
 
 // NormalizeEnum normalizes a raw string to a canonical enum value.

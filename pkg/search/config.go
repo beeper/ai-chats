@@ -3,6 +3,8 @@ package search
 import (
 	"slices"
 	"strings"
+
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 const (
@@ -66,11 +68,4 @@ func (c ExaConfig) withDefaults() ExaConfig {
 	}
 	c.Highlights = true
 	return c
-}
-
-func isEnabled(flag *bool, fallback bool) bool {
-	if flag == nil {
-		return fallback
-	}
-	return *flag
 }

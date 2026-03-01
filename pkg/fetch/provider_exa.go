@@ -10,6 +10,7 @@ import (
 
 	"github.com/beeper/ai-bridge/pkg/shared/exa"
 	"github.com/beeper/ai-bridge/pkg/shared/httputil"
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 type exaProvider struct {
@@ -20,7 +21,7 @@ func newExaProvider(cfg *Config) Provider {
 	if cfg == nil {
 		return nil
 	}
-	if !isEnabled(cfg.Exa.Enabled, true) {
+	if !stringutil.BoolPtrOr(cfg.Exa.Enabled, true) {
 		return nil
 	}
 	apiKey := strings.TrimSpace(cfg.Exa.APIKey)

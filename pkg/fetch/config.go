@@ -3,6 +3,8 @@ package fetch
 import (
 	"slices"
 	"strings"
+
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 const (
@@ -83,11 +85,4 @@ func (c DirectConfig) withDefaults() DirectConfig {
 		c.MaxRedirects = 3
 	}
 	return c
-}
-
-func isEnabled(flag *bool, fallback bool) bool {
-	if flag == nil {
-		return fallback
-	}
-	return *flag
 }
