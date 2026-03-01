@@ -16,23 +16,37 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
+// responseStreamContext holds loop-invariant parameters for processing a Responses API
+// stream.  Only streamEvent and isContinuation change per event.
+type responseStreamContext struct {
+	log           zerolog.Logger
+	portal        *bridgev2.Portal
+	state         *streamingState
+	meta          *PortalMetadata
+	activeTools   map[string]*activeToolCall
+	typingSignals *TypingSignaler
+	touchTyping   func()
+	isHeartbeat   bool
+}
+
 // processResponseStreamEvent handles a single Responses API stream event.
 // Returns done=true when the caller's loop should break (error/fatal), along with
 // any context-length error or general error.  The caller is responsible for
 // calling logResponsesFailure when err != nil.
 func (oc *AIClient) processResponseStreamEvent(
 	ctx context.Context,
-	log zerolog.Logger,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	meta *PortalMetadata,
-	activeTools map[string]*activeToolCall,
-	typingSignals *TypingSignaler,
-	touchTyping func(),
-	isHeartbeat bool,
+	rsc *responseStreamContext,
 	streamEvent responses.ResponseStreamEventUnion,
 	isContinuation bool,
 ) (done bool, cle *ContextLengthError, err error) {
+	log := rsc.log
+	portal := rsc.portal
+	state := rsc.state
+	meta := rsc.meta
+	activeTools := rsc.activeTools
+	typingSignals := rsc.typingSignals
+	touchTyping := rsc.touchTyping
+	isHeartbeat := rsc.isHeartbeat
 	contSuffix := ""
 	if isContinuation {
 		contSuffix = " (continuation)"
@@ -125,19 +139,19 @@ func (oc *AIClient) processResponseStreamEvent(
 		oc.handleFunctionCallArgumentsDone(ctx, log, portal, state, meta, activeTools, streamEvent.ItemID, streamEvent.Name, streamEvent.Arguments, !isContinuation, contSuffix)
 
 	case "response.file_search_call.searching", "response.file_search_call.in_progress":
-		oc.handleProviderToolInProgress(ctx, portal, state, activeTools, streamEvent.ItemID, "file_search", ToolTypeProvider)
+		oc.handleProviderToolInProgress(ctx, portal, state, meta, activeTools, streamEvent.ItemID, "file_search", ToolTypeProvider)
 
 	case "response.file_search_call.completed":
 		oc.handleProviderToolCompleted(ctx, portal, state, activeTools, streamEvent.ItemID, "file_search", ToolTypeProvider, "")
 
 	case "response.code_interpreter_call.in_progress", "response.code_interpreter_call.interpreting":
-		oc.handleProviderToolInProgress(ctx, portal, state, activeTools, streamEvent.ItemID, "code_interpreter", ToolTypeProvider)
+		oc.handleProviderToolInProgress(ctx, portal, state, meta, activeTools, streamEvent.ItemID, "code_interpreter", ToolTypeProvider)
 
 	case "response.code_interpreter_call.completed":
 		oc.handleProviderToolCompleted(ctx, portal, state, activeTools, streamEvent.ItemID, "code_interpreter", ToolTypeProvider, "")
 
 	case "response.mcp_list_tools.in_progress":
-		oc.handleProviderToolInProgress(ctx, portal, state, activeTools, streamEvent.ItemID, "mcp.list_tools", ToolTypeMCP)
+		oc.handleProviderToolInProgress(ctx, portal, state, meta, activeTools, streamEvent.ItemID, "mcp.list_tools", ToolTypeMCP)
 
 	case "response.mcp_list_tools.completed":
 		oc.handleProviderToolCompleted(ctx, portal, state, activeTools, streamEvent.ItemID, "mcp.list_tools", ToolTypeMCP, "")
@@ -146,7 +160,7 @@ func (oc *AIClient) processResponseStreamEvent(
 		oc.handleProviderToolCompleted(ctx, portal, state, activeTools, streamEvent.ItemID, "mcp.list_tools", ToolTypeMCP, "MCP list tools failed")
 
 	case "response.mcp_call.in_progress":
-		oc.handleProviderToolInProgress(ctx, portal, state, activeTools, streamEvent.ItemID, "mcp.call", ToolTypeMCP)
+		oc.handleProviderToolInProgress(ctx, portal, state, meta, activeTools, streamEvent.ItemID, "mcp.call", ToolTypeMCP)
 
 	case "response.mcp_call.completed":
 		oc.handleProviderToolCompleted(ctx, portal, state, activeTools, streamEvent.ItemID, "mcp.call", ToolTypeMCP, "")
@@ -156,80 +170,18 @@ func (oc *AIClient) processResponseStreamEvent(
 		if typingSignals != nil {
 			typingSignals.SignalToolStart()
 		}
-		callID := streamEvent.ItemID
-		if strings.TrimSpace(callID) == "" {
-			callID = NewCallID()
-		}
-		tool := &activeToolCall{
-			callID:      callID,
-			toolName:    "web_search",
-			toolType:    ToolTypeProvider,
-			startedAtMs: time.Now().UnixMilli(),
-			itemID:      streamEvent.ItemID,
-		}
-		tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
-		activeTools[streamEvent.ItemID] = tool
-
-		if state.initialEventID == "" && !state.suppressSend {
-			oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
-		}
-		oc.uiEmitter(state).EmitUIToolInputDelta(ctx, portal, tool.callID, "web_search", "", true)
+		oc.handleProviderToolInProgress(ctx, portal, state, meta, activeTools, streamEvent.ItemID, "web_search", ToolTypeProvider)
 
 	case "response.web_search_call.completed":
 		touchTyping()
-		tool, exists := activeTools[streamEvent.ItemID]
-		callID := ""
-		if exists && tool != nil {
-			callID = tool.callID
-		}
-		if callID == "" {
-			callID = streamEvent.ItemID
-		}
-		if exists {
-			output := map[string]any{"status": "completed"}
-			resultJSON, _ := json.Marshal(output)
-			resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, string(resultJSON), ResultStatusSuccess)
-			state.toolCalls = append(state.toolCalls, ToolCallMetadata{
-				CallID:        callID,
-				ToolName:      "web_search",
-				ToolType:      string(tool.toolType),
-				Output:        output,
-				Status:        string(ToolStatusCompleted),
-				ResultStatus:  string(ResultStatusSuccess),
-				StartedAtMs:   tool.startedAtMs,
-				CompletedAtMs: time.Now().UnixMilli(),
-				CallEventID:   string(tool.eventID),
-				ResultEventID: string(resultEventID),
-			})
-		}
-		oc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, callID, map[string]any{"status": "completed"}, true, false)
+		oc.handleProviderToolCompleted(ctx, portal, state, activeTools, streamEvent.ItemID, "web_search", ToolTypeProvider, "")
 
 	case "response.image_generation_call.in_progress", "response.image_generation_call.generating":
 		touchTyping()
 		if typingSignals != nil {
 			typingSignals.SignalToolStart()
 		}
-		tool, exists := activeTools[streamEvent.ItemID]
-		if !exists {
-			callID := streamEvent.ItemID
-			if strings.TrimSpace(callID) == "" {
-				callID = NewCallID()
-			}
-			tool = &activeToolCall{
-				callID:      callID,
-				toolName:    "image_generation",
-				toolType:    ToolTypeProvider,
-				startedAtMs: time.Now().UnixMilli(),
-				itemID:      streamEvent.ItemID,
-			}
-			tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
-			activeTools[streamEvent.ItemID] = tool
-
-			if state.initialEventID == "" && !state.suppressSend {
-				oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
-			}
-		}
-		oc.uiEmitter(state).EmitUIToolInputDelta(ctx, portal, tool.callID, "image_generation", "", true)
+		oc.handleProviderToolInProgress(ctx, portal, state, meta, activeTools, streamEvent.ItemID, "image_generation", ToolTypeProvider)
 		log.Debug().Str("item_id", streamEvent.ItemID).Msg("Image generation in progress")
 
 	case "response.image_generation_call.completed":
@@ -237,33 +189,8 @@ func (oc *AIClient) processResponseStreamEvent(
 		if typingSignals != nil {
 			typingSignals.SignalToolStart()
 		}
-		tool, exists := activeTools[streamEvent.ItemID]
-		callID := ""
-		if exists && tool != nil {
-			callID = tool.callID
-		}
-		if callID == "" {
-			callID = streamEvent.ItemID
-		}
-		if exists {
-			output := map[string]any{"status": "completed"}
-			resultJSON, _ := json.Marshal(output)
-			resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, string(resultJSON), ResultStatusSuccess)
-			state.toolCalls = append(state.toolCalls, ToolCallMetadata{
-				CallID:        callID,
-				ToolName:      "image_generation",
-				ToolType:      string(tool.toolType),
-				Output:        output,
-				Status:        string(ToolStatusCompleted),
-				ResultStatus:  string(ResultStatusSuccess),
-				StartedAtMs:   tool.startedAtMs,
-				CompletedAtMs: time.Now().UnixMilli(),
-				CallEventID:   string(tool.eventID),
-				ResultEventID: string(resultEventID),
-			})
-		}
+		oc.handleProviderToolCompleted(ctx, portal, state, activeTools, streamEvent.ItemID, "image_generation", ToolTypeProvider, "")
 		log.Info().Str("item_id", streamEvent.ItemID).Msg("Image generation completed")
-		oc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, callID, map[string]any{"status": "completed"}, true, false)
 
 	case "response.image_generation_call.partial_image":
 		touchTyping()
@@ -343,6 +270,7 @@ func (oc *AIClient) handleProviderToolInProgress(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	state *streamingState,
+	meta *PortalMetadata,
 	activeTools map[string]*activeToolCall,
 	itemID string,
 	toolName string,
@@ -363,6 +291,10 @@ func (oc *AIClient) handleProviderToolInProgress(
 		}
 		activeTools[itemID] = tool
 		tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
+
+		if state.initialEventID == "" && !state.suppressSend {
+			oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
+		}
 	}
 	oc.uiEmitter(state).EmitUIToolInputDelta(ctx, portal, tool.callID, tool.toolName, "", true)
 }
@@ -498,13 +430,24 @@ func (oc *AIClient) streamingResponse(
 	oc.emitUIStart(ctx, portal, state, meta)
 	oc.uiEmitter(state).EmitUIStepStart(ctx, portal)
 
+	rsc := &responseStreamContext{
+		log:           log,
+		portal:        portal,
+		state:         state,
+		meta:          meta,
+		activeTools:   activeTools,
+		typingSignals: typingSignals,
+		touchTyping:   touchTyping,
+		isHeartbeat:   isHeartbeat,
+	}
+
 	// Process stream events - no debouncing, stream every delta immediately
 	for stream.Next() {
 		streamEvent := stream.Current()
 		if streamEvent.Type != "error" {
 			oc.markMessageSendSuccess(ctx, portal, evt, state)
 		}
-		done, cle, evtErr := oc.processResponseStreamEvent(ctx, log, portal, state, meta, activeTools, typingSignals, touchTyping, isHeartbeat, streamEvent, false)
+		done, cle, evtErr := oc.processResponseStreamEvent(ctx, rsc, streamEvent, false)
 		if done {
 			if evtErr != nil {
 				logResponsesFailure(log, evtErr, params, meta, messages, "stream_event_error")
@@ -602,6 +545,7 @@ func (oc *AIClient) streamingResponse(
 
 		// Reset active tools for new iteration
 		activeTools = make(map[string]*activeToolCall)
+		rsc.activeTools = activeTools
 
 		// Start continuation stream
 		// Ensure the next assistant text delta can't get glued to the previous text.
@@ -623,7 +567,7 @@ func (oc *AIClient) streamingResponse(
 		// Process continuation stream events
 		for stream.Next() {
 			streamEvent := stream.Current()
-			done, _, evtErr := oc.processResponseStreamEvent(ctx, log, portal, state, meta, activeTools, typingSignals, touchTyping, isHeartbeat, streamEvent, true)
+			done, _, evtErr := oc.processResponseStreamEvent(ctx, rsc, streamEvent, true)
 			if done {
 				if evtErr != nil {
 					logResponsesFailure(log, evtErr, continuationParams, meta, messages, "continuation_event_error")

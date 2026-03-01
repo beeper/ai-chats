@@ -238,6 +238,35 @@ func (oc *AIClient) gateMcpToolApproval(
 	}
 }
 
+// resolveOutputItemTool performs the common setup shared by handleResponseOutputItemAdded
+// and handleResponseOutputItemDone: derives the tool descriptor, upserts the active tool,
+// checks finalization, and handles mcp_approval_request gating.
+// Returns (tool, desc, ok). When ok is false the caller should return early.
+func (oc *AIClient) resolveOutputItemTool(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	activeTools map[string]*activeToolCall,
+	item responses.ResponseOutputItemUnion,
+) (*activeToolCall, responseToolDescriptor, bool) {
+	desc := deriveToolDescriptorForOutputItem(item, state)
+	if !desc.ok || state == nil {
+		return nil, desc, false
+	}
+	tool := oc.upsertActiveToolFromDescriptor(ctx, portal, state, activeTools, desc)
+	if tool == nil {
+		return nil, desc, false
+	}
+	if state.ui.UIToolOutputFinalized[tool.callID] {
+		return nil, desc, false
+	}
+	if item.Type == "mcp_approval_request" {
+		oc.gateMcpToolApproval(ctx, portal, state, tool, desc, item)
+		return nil, desc, false
+	}
+	return tool, desc, true
+}
+
 func (oc *AIClient) handleResponseOutputItemAdded(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -245,23 +274,8 @@ func (oc *AIClient) handleResponseOutputItemAdded(
 	activeTools map[string]*activeToolCall,
 	item responses.ResponseOutputItemUnion,
 ) {
-	desc := deriveToolDescriptorForOutputItem(item, state)
-	if !desc.ok {
-		return
-	}
-	if state == nil {
-		return
-	}
-	tool := oc.upsertActiveToolFromDescriptor(ctx, portal, state, activeTools, desc)
-	if tool == nil {
-		return
-	}
-	if state.ui.UIToolOutputFinalized[tool.callID] {
-		return
-	}
-
-	if item.Type == "mcp_approval_request" {
-		oc.gateMcpToolApproval(ctx, portal, state, tool, desc, item)
+	tool, desc, ok := oc.resolveOutputItemTool(ctx, portal, state, activeTools, item)
+	if !ok {
 		return
 	}
 
@@ -280,23 +294,8 @@ func (oc *AIClient) handleResponseOutputItemDone(
 	activeTools map[string]*activeToolCall,
 	item responses.ResponseOutputItemUnion,
 ) {
-	desc := deriveToolDescriptorForOutputItem(item, state)
-	if !desc.ok {
-		return
-	}
-	if state == nil {
-		return
-	}
-	tool := oc.upsertActiveToolFromDescriptor(ctx, portal, state, activeTools, desc)
-	if tool == nil {
-		return
-	}
-	if state.ui.UIToolOutputFinalized[tool.callID] {
-		return
-	}
-
-	if item.Type == "mcp_approval_request" {
-		oc.gateMcpToolApproval(ctx, portal, state, tool, desc, item)
+	tool, desc, ok := oc.resolveOutputItemTool(ctx, portal, state, activeTools, item)
+	if !ok {
 		return
 	}
 

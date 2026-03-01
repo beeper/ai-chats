@@ -3,8 +3,6 @@ package fetch
 import (
 	"slices"
 	"strings"
-
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 const (
