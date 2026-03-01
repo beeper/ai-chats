@@ -2,8 +2,9 @@ package tools
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
+
+	"github.com/beeper/ai-bridge/pkg/shared/maputil"
 )
 
 // ReadString reads a string parameter from input.
@@ -38,35 +39,14 @@ func ReadStringDefault(params map[string]any, key, defaultVal string) string {
 // ReadNumber reads a numeric parameter from input.
 // Following clawdbot's readNumberParam pattern.
 func ReadNumber(params map[string]any, key string, required bool) (float64, error) {
-	v, ok := params[key]
-	if !ok || v == nil {
-		if required {
-			return 0, fmt.Errorf("parameter %q is required", key)
-		}
-		return 0, nil
-	}
-	switch n := v.(type) {
-	case float64:
-		return n, nil
-	case float32:
-		return float64(n), nil
-	case int:
-		return float64(n), nil
-	case int64:
-		return float64(n), nil
-	case int32:
-		return float64(n), nil
-	case string:
-		f, err := strconv.ParseFloat(strings.TrimSpace(n), 64)
-		if err != nil {
-			if required {
-				return 0, fmt.Errorf("parameter %q must be a number", key)
-			}
-			return 0, nil
-		}
-		return f, nil
+	v, ok := maputil.NumberArg(params, key)
+	if ok {
+		return v, nil
 	}
 	if required {
+		if _, exists := params[key]; !exists || params[key] == nil {
+			return 0, fmt.Errorf("parameter %q is required", key)
+		}
 		return 0, fmt.Errorf("parameter %q must be a number", key)
 	}
 	return 0, nil

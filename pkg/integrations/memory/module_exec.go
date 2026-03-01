@@ -87,10 +87,10 @@ func executeSearchTool(ctx context.Context, scope iruntime.ToolScope, args map[s
 		MinScore:   math.NaN(),
 		Mode:       mode,
 	}
-	if max, ok := readInt(args, "maxResults"); ok {
+	if max, ok := maputil.IntArg(args, "maxResults"); ok {
 		opts.MaxResults = max
 	}
-	if score, ok := readFloat(args, "minScore"); ok {
+	if score, ok := maputil.NumberArg(args, "minScore"); ok {
 		opts.MinScore = score
 	}
 	if prefix := maputil.StringArg(args, "pathPrefix"); prefix != "" {
@@ -150,10 +150,10 @@ func executeGetTool(ctx context.Context, scope iruntime.ToolScope, args map[stri
 	}
 	var from *int
 	var lines *int
-	if val, ok := readInt(args, "from"); ok {
+	if val, ok := maputil.IntArg(args, "from"); ok {
 		from = &val
 	}
-	if val, ok := readInt(args, "lines"); ok {
+	if val, ok := maputil.IntArg(args, "lines"); ok {
 		lines = &val
 	}
 	result, readErr := manager.ReadFile(ctx, path, from, lines)
@@ -409,50 +409,6 @@ func resolveSessionKey(scope iruntime.ToolScope, fn func(scope iruntime.ToolScop
 	return strings.TrimSpace(fn(scope))
 }
 
-func readFloat(args map[string]any, key string) (float64, bool) {
-	if args == nil {
-		return 0, false
-	}
-	raw, ok := args[key]
-	if !ok || raw == nil {
-		return 0, false
-	}
-	switch v := raw.(type) {
-	case float64:
-		return v, true
-	case float32:
-		return float64(v), true
-	case int:
-		return float64(v), true
-	case int64:
-		return float64(v), true
-	case int32:
-		return float64(v), true
-	case uint:
-		return float64(v), true
-	case uint64:
-		return float64(v), true
-	case uint32:
-		return float64(v), true
-	case json.Number:
-		if f, err := v.Float64(); err == nil {
-			return f, true
-		}
-	case string:
-		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
-			return f, true
-		}
-	}
-	return 0, false
-}
-
-func readInt(args map[string]any, key string) (int, bool) {
-	val, ok := readFloat(args, key)
-	if !ok {
-		return 0, false
-	}
-	return int(val), true
-}
 
 func readStringList(args map[string]any, key string) []string {
 	if args == nil {

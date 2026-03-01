@@ -6,6 +6,9 @@ import (
 	"strings"
 )
 
+// DefaultBaseURL is the standard Exa API endpoint.
+const DefaultBaseURL = "https://api.exa.ai"
+
 // AuthHeaders returns the standard Exa API authentication headers.
 // For non-Exa base URLs, it also attaches a Bearer Authorization header.
 func AuthHeaders(baseURL, apiKey string) map[string]string {

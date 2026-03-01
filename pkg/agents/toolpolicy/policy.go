@@ -239,7 +239,7 @@ func ExpandToolGroups(list []string) []string {
 		}
 		expanded = append(expanded, value)
 	}
-	return uniqueStrings(expanded)
+	return stringutil.DedupeStrings(expanded)
 }
 
 // ResolveToolProfilePolicy returns the allow/deny lists for a profile.
@@ -271,7 +271,7 @@ func MergeAlsoAllow(policy *ToolPolicy, alsoAllow []string) *ToolPolicy {
 	merged := slices.Clone(policy.Allow)
 	merged = append(merged, alsoAllow...)
 	return &ToolPolicy{
-		Allow: uniqueStrings(merged),
+		Allow: stringutil.DedupeStrings(merged),
 		Deny:  slices.Clone(policy.Deny),
 	}
 }
@@ -281,9 +281,9 @@ func unionAllow(base []string, extra []string) []string {
 		return base
 	}
 	if len(base) == 0 {
-		return uniqueStrings(append([]string{"*"}, extra...))
+		return stringutil.DedupeStrings(append([]string{"*"}, extra...))
 	}
-	return uniqueStrings(append(base, extra...))
+	return stringutil.DedupeStrings(append(base, extra...))
 }
 
 // PickToolPolicy merges allow/alsoAllow/deny into a resolved policy.
@@ -620,7 +620,7 @@ func ExpandPluginGroups(list []string, groups PluginToolGroups) []string {
 			expanded = append(expanded, normalized)
 		}
 	}
-	return uniqueStrings(expanded)
+	return stringutil.DedupeStrings(expanded)
 }
 
 // ExpandPolicyWithPluginGroups expands plugin group shorthands inside a policy.
@@ -687,7 +687,7 @@ func StripPluginOnlyAllowlist(policy *ToolPolicy, groups PluginToolGroups, coreT
 
 	stripped := !hasCoreEntry
 	if stripped {
-		return true, uniqueStrings(unknownAllowlist), &ToolPolicy{
+		return true, stringutil.DedupeStrings(unknownAllowlist), &ToolPolicy{
 			Allow: nil,
 			Deny:  slices.Clone(policy.Deny),
 		}

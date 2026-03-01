@@ -1788,28 +1788,6 @@ func detachedBridgeToolContext(ctx context.Context) context.Context {
 	return base
 }
 
-func readIntArg(args map[string]any, keys ...string) (int, bool) {
-	for _, key := range keys {
-		if raw, ok := args[key]; ok {
-			switch v := raw.(type) {
-			case float64:
-				return int(v), true
-			case int:
-				return v, true
-			case int64:
-				return int(v), true
-			case string:
-				if strings.TrimSpace(v) == "" {
-					continue
-				}
-				if parsed, err := strconv.Atoi(v); err == nil {
-					return parsed, true
-				}
-			}
-		}
-	}
-	return 0, false
-}
 
 // executeReadFile handles the read tool.
 func executeReadFile(ctx context.Context, args map[string]any) (string, error) {
@@ -1821,8 +1799,8 @@ func executeReadFile(ctx context.Context, args map[string]any) (string, error) {
 	if !ok {
 		return "", errors.New("missing or invalid 'path' argument")
 	}
-	offset, _ := readIntArg(args, "offset")
-	limit, _ := readIntArg(args, "limit")
+	offset, _ := maputil.IntArg(args, "offset")
+	limit, _ := maputil.IntArg(args, "limit")
 
 	readCtx, cancel := context.WithTimeout(ctx, textFSToolTimeout)
 	defer cancel()

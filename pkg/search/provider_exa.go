@@ -92,8 +92,10 @@ func (p *exaProvider) Search(ctx context.Context, req Request) (*Response, error
 		desc := ""
 		if len(entry.Highlights) > 0 {
 			desc = strings.TrimSpace(entry.Highlights[0])
-		} else if entry.Text != "" {
-			desc = truncate(entry.Text, 240)
+		} else if text := strings.TrimSpace(entry.Text); len(text) > 240 {
+			desc = text[:240] + "..."
+		} else if text != "" {
+			desc = text
 		}
 		results = append(results, Result{
 			ID:          strings.TrimSpace(entry.ID),
@@ -122,28 +124,13 @@ func (p *exaProvider) Search(ctx context.Context, req Request) (*Response, error
 }
 
 func resolveEndpoint(baseURL, path string) string {
-	trimmed := strings.TrimSpace(baseURL)
-	if trimmed == "" {
+	base := stringutil.NormalizeBaseURL(baseURL)
+	if base == "" {
 		return ""
 	}
-	parsed, err := url.Parse(trimmed)
-	if err != nil {
-		return strings.TrimRight(trimmed, "/") + path
-	}
-	if parsed.Path == "" || parsed.Path == "/" {
-		parsed.Path = path
-		return parsed.String()
-	}
-	return strings.TrimRight(trimmed, "/") + path
+	return base + path
 }
 
-func truncate(value string, max int) string {
-	value = strings.TrimSpace(value)
-	if max <= 0 || len(value) <= max {
-		return value
-	}
-	return value[:max] + "..."
-}
 
 func resolveSiteName(raw string) string {
 	parsed, err := url.Parse(strings.TrimSpace(raw))

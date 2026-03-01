@@ -699,7 +699,7 @@ func (oc *AIClient) describeImageWithEntry(
 			Data:     data,
 			Timeout:  resolveMediaTimeoutSeconds(entry.TimeoutSeconds, capCfg, defaultTimeoutSecondsByCapability[MediaCapabilityImage]),
 		}
-		text, err := describeGeminiImage(ctx, request)
+		text, err := callGeminiForCapability(ctx, request, MediaCapabilityImage)
 		if err != nil {
 			return nil, err
 		}
@@ -815,7 +815,7 @@ func (oc *AIClient) transcribeAudioWithEntry(
 		query := resolveProviderQuery("deepgram", capCfg, entry)
 		text, err = transcribeDeepgramAudio(ctx, request, query)
 	case "google":
-		text, err = transcribeGeminiAudio(ctx, request)
+		text, err = callGeminiForCapability(ctx, request.mediaRequestBase, MediaCapabilityAudio)
 	default:
 		err = fmt.Errorf("unsupported audio provider: %s", providerID)
 	}
@@ -929,7 +929,7 @@ func (oc *AIClient) describeVideoWithEntry(
 		Data:     data,
 		Timeout:  timeout,
 	}
-	text, err := describeGeminiVideo(ctx, request)
+	text, err := callGeminiForCapability(ctx, request, MediaCapabilityVideo)
 	if err != nil {
 		return nil, err
 	}
@@ -1054,13 +1054,30 @@ func resolveProfiledEnvKey(base string, profile string) string {
 	return strings.TrimSpace(os.Getenv(env))
 }
 
+// resolveProfiledKeys tries resolveProfiledEnvKey for each envBase with the given
+// profile and preferredProfile, then falls back to the plain env var.
+// Returns the first non-empty result.
+func resolveProfiledKeys(envBases []string, profile, preferredProfile string) string {
+	for _, base := range envBases {
+		if key := resolveProfiledEnvKey(base, profile); key != "" {
+			return key
+		}
+		if key := resolveProfiledEnvKey(base, preferredProfile); key != "" {
+			return key
+		}
+	}
+	for _, base := range envBases {
+		if key := strings.TrimSpace(os.Getenv(base)); key != "" {
+			return key
+		}
+	}
+	return ""
+}
+
 func (oc *AIClient) resolveMediaProviderAPIKey(providerID string, profile string, preferredProfile string) string {
 	switch providerID {
 	case "openai":
-		if key := resolveProfiledEnvKey("OPENAI_API_KEY", profile); key != "" {
-			return key
-		}
-		if key := resolveProfiledEnvKey("OPENAI_API_KEY", preferredProfile); key != "" {
+		if key := resolveProfiledKeys([]string{"OPENAI_API_KEY"}, profile, preferredProfile); key != "" {
 			return key
 		}
 		if oc.connector != nil && oc.UserLogin != nil && oc.UserLogin.Metadata != nil {
@@ -1076,43 +1093,13 @@ func (oc *AIClient) resolveMediaProviderAPIKey(providerID string, profile string
 		}
 		return strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
 	case "groq":
-		if key := resolveProfiledEnvKey("GROQ_API_KEY", profile); key != "" {
-			return key
-		}
-		if key := resolveProfiledEnvKey("GROQ_API_KEY", preferredProfile); key != "" {
-			return key
-		}
-		return strings.TrimSpace(os.Getenv("GROQ_API_KEY"))
+		return resolveProfiledKeys([]string{"GROQ_API_KEY"}, profile, preferredProfile)
 	case "deepgram":
-		if key := resolveProfiledEnvKey("DEEPGRAM_API_KEY", profile); key != "" {
-			return key
-		}
-		if key := resolveProfiledEnvKey("DEEPGRAM_API_KEY", preferredProfile); key != "" {
-			return key
-		}
-		return strings.TrimSpace(os.Getenv("DEEPGRAM_API_KEY"))
+		return resolveProfiledKeys([]string{"DEEPGRAM_API_KEY"}, profile, preferredProfile)
 	case "google":
-		if key := resolveProfiledEnvKey("GEMINI_API_KEY", profile); key != "" {
-			return key
-		}
-		if key := resolveProfiledEnvKey("GEMINI_API_KEY", preferredProfile); key != "" {
-			return key
-		}
-		if key := resolveProfiledEnvKey("GOOGLE_API_KEY", profile); key != "" {
-			return key
-		}
-		if key := resolveProfiledEnvKey("GOOGLE_API_KEY", preferredProfile); key != "" {
-			return key
-		}
-		if key := strings.TrimSpace(os.Getenv("GEMINI_API_KEY")); key != "" {
-			return key
-		}
-		return strings.TrimSpace(os.Getenv("GOOGLE_API_KEY"))
+		return resolveProfiledKeys([]string{"GEMINI_API_KEY", "GOOGLE_API_KEY"}, profile, preferredProfile)
 	case "openrouter":
-		if key := resolveProfiledEnvKey("OPENROUTER_API_KEY", profile); key != "" {
-			return key
-		}
-		if key := resolveProfiledEnvKey("OPENROUTER_API_KEY", preferredProfile); key != "" {
+		if key := resolveProfiledKeys([]string{"OPENROUTER_API_KEY"}, profile, preferredProfile); key != "" {
 			return key
 		}
 		if oc.connector != nil {

@@ -9,6 +9,20 @@ import (
 	beeperdesktopapi "github.com/beeper/desktop-api-go"
 )
 
+// resolveDesktopInstance resolves the "instance" arg and returns the canonical instance name.
+func resolveDesktopInstance(args map[string]any, client *AIClient) (string, error) {
+	instance := firstNonEmptyString(args["instance"])
+	return client.resolveDesktopInstanceName(instance)
+}
+
+// argsLimit extracts an integer limit from args, clamped to a default.
+func argsLimit(args map[string]any, defaultLimit int) int {
+	if raw, ok := args["limit"].(float64); ok && raw > 0 {
+		return int(raw)
+	}
+	return defaultLimit
+}
+
 func hasDesktopMessageTargetHints(args map[string]any) bool {
 	if args == nil {
 		return false
@@ -263,10 +277,7 @@ func maybeExecuteMessageSearchDesktop(ctx context.Context, args map[string]any, 
 	if err != nil {
 		return true, "", err
 	}
-	limit := 20
-	if raw, ok := args["limit"].(float64); ok && raw > 0 {
-		limit = int(raw)
-	}
+	limit := argsLimit(args, 20)
 	messages, searchErr := btc.Client.searchDesktopMessages(ctx, instance, query, limit, chatID)
 	if searchErr != nil {
 		return true, "", searchErr
@@ -296,16 +307,11 @@ func maybeExecuteMessageSearchDesktop(ctx context.Context, args map[string]any, 
 }
 
 func executeMessageDesktopListChats(ctx context.Context, args map[string]any, btc *BridgeToolContext) (string, error) {
-	instance := firstNonEmptyString(args["instance"])
-	resolvedInstance, err := btc.Client.resolveDesktopInstanceName(instance)
+	instance, err := resolveDesktopInstance(args, btc.Client)
 	if err != nil {
 		return "", err
 	}
-	instance = resolvedInstance
-	limit := 50
-	if raw, ok := args["limit"].(float64); ok && raw > 0 {
-		limit = int(raw)
-	}
+	limit := argsLimit(args, 50)
 	chats, err := btc.Client.listDesktopChats(ctx, instance, limit)
 	if err != nil {
 		return "", err
@@ -324,16 +330,11 @@ func executeMessageDesktopSearchChats(ctx context.Context, args map[string]any, 
 	if query == "" {
 		return "", errors.New("action=desktop-search-chats requires 'query'")
 	}
-	instance := firstNonEmptyString(args["instance"])
-	resolvedInstance, err := btc.Client.resolveDesktopInstanceName(instance)
+	instance, err := resolveDesktopInstance(args, btc.Client)
 	if err != nil {
 		return "", err
 	}
-	instance = resolvedInstance
-	limit := 50
-	if raw, ok := args["limit"].(float64); ok && raw > 0 {
-		limit = int(raw)
-	}
+	limit := argsLimit(args, 50)
 	chats, err := btc.Client.searchDesktopChats(ctx, instance, query, limit)
 	if err != nil {
 		return "", err
@@ -358,16 +359,13 @@ func executeMessageDesktopSearchMessages(ctx context.Context, args map[string]an
 		return "", err
 	}
 	if !resolved {
-		resolvedInstance, err := btc.Client.resolveDesktopInstanceName("")
+		resolvedInstance, err := resolveDesktopInstance(args, btc.Client)
 		if err != nil {
 			return "", err
 		}
 		instance = resolvedInstance
 	}
-	limit := 20
-	if raw, ok := args["limit"].(float64); ok && raw > 0 {
-		limit = int(raw)
-	}
+	limit := argsLimit(args, 20)
 	messages, err := btc.Client.searchDesktopMessages(ctx, instance, query, limit, chatID)
 	if err != nil {
 		return "", err
@@ -396,12 +394,10 @@ func executeMessageDesktopSearchMessages(ctx context.Context, args map[string]an
 }
 
 func executeMessageDesktopCreateChat(ctx context.Context, args map[string]any, btc *BridgeToolContext) (string, error) {
-	instance := firstNonEmptyString(args["instance"])
-	resolvedInstance, err := btc.Client.resolveDesktopInstanceName(instance)
+	instance, err := resolveDesktopInstance(args, btc.Client)
 	if err != nil {
 		return "", err
 	}
-	instance = resolvedInstance
 	accountID := firstNonEmptyString(args["accountId"])
 	if accountID == "" {
 		return "", errors.New("action=desktop-create-chat requires 'accountId'")
@@ -515,12 +511,10 @@ func executeMessageDesktopClearReminder(ctx context.Context, args map[string]any
 }
 
 func executeMessageDesktopUploadAsset(ctx context.Context, args map[string]any, btc *BridgeToolContext) (string, error) {
-	instance := firstNonEmptyString(args["instance"])
-	resolvedInstance, err := btc.Client.resolveDesktopInstanceName(instance)
+	instance, err := resolveDesktopInstance(args, btc.Client)
 	if err != nil {
 		return "", err
 	}
-	instance = resolvedInstance
 	bufferInput := firstNonEmptyString(args["buffer"])
 	mediaInput := firstNonEmptyString(args["media"], args["path"])
 	if bufferInput == "" && mediaInput == "" {
@@ -545,12 +539,10 @@ func executeMessageDesktopUploadAsset(ctx context.Context, args map[string]any, 
 }
 
 func executeMessageDesktopDownloadAsset(ctx context.Context, args map[string]any, btc *BridgeToolContext) (string, error) {
-	instance := firstNonEmptyString(args["instance"])
-	resolvedInstance, err := btc.Client.resolveDesktopInstanceName(instance)
+	instance, err := resolveDesktopInstance(args, btc.Client)
 	if err != nil {
 		return "", err
 	}
-	instance = resolvedInstance
 	rawURL := firstNonEmptyString(args["url"])
 	if rawURL == "" {
 		return "", errors.New("action=desktop-download-asset requires 'url'")

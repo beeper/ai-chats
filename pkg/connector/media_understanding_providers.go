@@ -350,43 +350,32 @@ func callGeminiGenerateContent(ctx context.Context, baseURL, model, apiKey strin
 	return strings.Join(parts, "\n"), nil
 }
 
-func transcribeGeminiAudio(ctx context.Context, params mediaAudioRequest) (string, error) {
-	baseURL := normalizeMediaBaseURL(params.BaseURL, defaultGoogleBaseURL)
-	model := strings.TrimSpace(params.Model)
-	if model == "" {
-		model = defaultGoogleAudioModel
-	}
-	prompt := strings.TrimSpace(params.Prompt)
-	if prompt == "" {
-		prompt = defaultPromptByCapability[MediaCapabilityAudio]
-	}
-	return callGeminiGenerateContent(ctx, baseURL, model, params.APIKey, params.Headers, prompt, params.MimeTypeOrDefault("audio/wav"), params.Data, params.Timeout, "audio transcription")
+// geminiCapabilityConfig holds per-capability defaults for Gemini calls.
+type geminiCapabilityConfig struct {
+	defaultModel string
+	capability   MediaUnderstandingCapability
+	mimeDefault  string
+	errorLabel   string
 }
 
-func describeGeminiVideo(ctx context.Context, params mediaVideoRequest) (string, error) {
-	baseURL := normalizeMediaBaseURL(params.BaseURL, defaultGoogleBaseURL)
-	model := strings.TrimSpace(params.Model)
-	if model == "" {
-		model = defaultGoogleVideoModel
-	}
-	prompt := strings.TrimSpace(params.Prompt)
-	if prompt == "" {
-		prompt = defaultPromptByCapability[MediaCapabilityVideo]
-	}
-	return callGeminiGenerateContent(ctx, baseURL, model, params.APIKey, params.Headers, prompt, params.MimeTypeOrDefault("video/mp4"), params.Data, params.Timeout, "video description")
+var geminiCapabilityConfigs = map[MediaUnderstandingCapability]geminiCapabilityConfig{
+	MediaCapabilityAudio: {defaultModel: defaultGoogleAudioModel, capability: MediaCapabilityAudio, mimeDefault: "audio/wav", errorLabel: "audio transcription"},
+	MediaCapabilityVideo: {defaultModel: defaultGoogleVideoModel, capability: MediaCapabilityVideo, mimeDefault: "video/mp4", errorLabel: "video description"},
+	MediaCapabilityImage: {defaultModel: defaultGoogleImageModel, capability: MediaCapabilityImage, mimeDefault: "image/jpeg", errorLabel: "image description"},
 }
 
-func describeGeminiImage(ctx context.Context, params mediaImageRequest) (string, error) {
+func callGeminiForCapability(ctx context.Context, params mediaRequestBase, cap MediaUnderstandingCapability) (string, error) {
+	cfg := geminiCapabilityConfigs[cap]
 	baseURL := normalizeMediaBaseURL(params.BaseURL, defaultGoogleBaseURL)
 	model := strings.TrimSpace(params.Model)
 	if model == "" {
-		model = defaultGoogleImageModel
+		model = cfg.defaultModel
 	}
 	prompt := strings.TrimSpace(params.Prompt)
 	if prompt == "" {
-		prompt = defaultPromptByCapability[MediaCapabilityImage]
+		prompt = defaultPromptByCapability[cap]
 	}
-	return callGeminiGenerateContent(ctx, baseURL, model, params.APIKey, params.Headers, prompt, params.MimeTypeOrDefault("image/jpeg"), params.Data, params.Timeout, "image description")
+	return callGeminiGenerateContent(ctx, baseURL, model, params.APIKey, params.Headers, prompt, params.MimeTypeOrDefault(cfg.mimeDefault), params.Data, params.Timeout, cfg.errorLabel)
 }
 
 type mediaRequestBase struct {

@@ -3,6 +3,8 @@ package fetch
 import (
 	"slices"
 	"strings"
+
+	"github.com/beeper/ai-bridge/pkg/shared/exa"
 )
 
 const (
@@ -61,7 +63,7 @@ func (c *Config) WithDefaults() *Config {
 
 func (c ExaConfig) withDefaults() ExaConfig {
 	if c.BaseURL == "" {
-		c.BaseURL = "https://api.exa.ai"
+		c.BaseURL = exa.DefaultBaseURL
 	}
 	if c.TextMaxCharacters <= 0 {
 		c.TextMaxCharacters = 5_000
