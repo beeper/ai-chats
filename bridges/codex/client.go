@@ -494,7 +494,7 @@ func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, met
 		return
 	}
 	cc.emitUIStart(ctx, portal, state, model)
-	cc.emitUIStepStart(ctx, portal, state)
+	cc.uiEmitter(state).EmitUIStepStart(ctx, portal)
 
 	approvalPolicy := "unlessTrusted"
 	if lvl, _ := stringutil.NormalizeElevatedLevel(meta.ElevatedLevel); lvl == "full" {
@@ -520,7 +520,7 @@ func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, met
 		"sandboxPolicy":  cc.buildSandboxPolicy(cwd),
 	}, &turnStart)
 	if err != nil {
-		cc.emitUIError(ctx, portal, state, err.Error())
+		cc.uiEmitter(state).EmitUIError(ctx, portal, err.Error())
 		cc.emitUIFinish(ctx, portal, state, model, "failed")
 		cc.sendFinalAssistantTurn(ctx, portal, state, model, "failed")
 		cc.saveAssistantMessage(ctx, portal, state, model, "failed")
@@ -580,7 +580,7 @@ done:
 	if diff := strings.TrimSpace(state.codexLatestDiff); diff != "" {
 		diffToolID := fmt.Sprintf("diff-%s", turnID)
 		cc.ensureUIToolInputStart(ctx, portal, state, diffToolID, "diff", true, map[string]any{"turnId": turnID})
-		cc.emitUIToolOutputAvailable(ctx, portal, state, diffToolID, diff, true, false)
+		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, diffToolID, diff, true, false)
 		state.toolCalls = append(state.toolCalls, ToolCallMetadata{
 			CallID:        diffToolID,
 			ToolName:      "diff",
@@ -594,7 +594,7 @@ done:
 		})
 	}
 	if completedErr != "" {
-		cc.emitUIError(ctx, portal, state, completedErr)
+		cc.uiEmitter(state).EmitUIError(ctx, portal, completedErr)
 	}
 	cc.emitUIFinish(ctx, portal, state, model, finishStatus)
 	cc.sendFinalAssistantTurn(ctx, portal, state, model, finishStatus)
@@ -637,7 +637,7 @@ func (cc *CodexClient) handleSimpleOutputDelta(
 		toolCallID = defaultToolName
 	}
 	buf := cc.appendCodexToolOutput(state, toolCallID, p.Delta)
-	cc.emitUIToolOutputAvailable(ctx, portal, state, toolCallID, buf, true, true)
+	cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, toolCallID, buf, true, true)
 }
 
 func (cc *CodexClient) handleNotif(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, state *streamingState, model, threadID, turnID string, evt codexNotif) {
@@ -650,7 +650,7 @@ func (cc *CodexClient) handleNotif(ctx context.Context, portal *bridgev2.Portal,
 		}
 		_ = json.Unmarshal(evt.Params, &p)
 		if strings.TrimSpace(p.Error.Message) != "" {
-			cc.emitUIError(ctx, portal, state, p.Error.Message)
+			cc.uiEmitter(state).EmitUIError(ctx, portal, p.Error.Message)
 			cc.sendSystemNoticeOnce(ctx, portal, state, "turn:error", "Codex error: "+strings.TrimSpace(p.Error.Message))
 		}
 
@@ -671,7 +671,7 @@ func (cc *CodexClient) handleNotif(ctx context.Context, portal *bridgev2.Portal,
 		}
 		state.accumulated.WriteString(p.Delta)
 		state.visibleAccumulated.WriteString(p.Delta)
-		cc.emitUITextDelta(ctx, portal, state, p.Delta)
+		cc.uiEmitter(state).EmitUITextDelta(ctx, portal, p.Delta)
 
 	case "item/reasoning/summaryTextDelta":
 		var p struct {
@@ -689,7 +689,7 @@ func (cc *CodexClient) handleNotif(ctx context.Context, portal *bridgev2.Portal,
 			state.firstTokenAtMs = time.Now().UnixMilli()
 		}
 		state.reasoning.WriteString(p.Delta)
-		cc.emitUIReasoningDelta(ctx, portal, state, p.Delta)
+		cc.uiEmitter(state).EmitUIReasoningDelta(ctx, portal, p.Delta)
 
 	case "item/reasoning/summaryPartAdded":
 		var p struct {
@@ -703,7 +703,7 @@ func (cc *CodexClient) handleNotif(ctx context.Context, portal *bridgev2.Portal,
 		state.codexReasoningSummarySeen = true
 		if state.reasoning.Len() > 0 {
 			state.reasoning.WriteString("\n")
-			cc.emitUIReasoningDelta(ctx, portal, state, "\n")
+			cc.uiEmitter(state).EmitUIReasoningDelta(ctx, portal, "\n")
 		}
 
 	case "item/reasoning/textDelta":
@@ -725,7 +725,7 @@ func (cc *CodexClient) handleNotif(ctx context.Context, portal *bridgev2.Portal,
 			state.firstTokenAtMs = time.Now().UnixMilli()
 		}
 		state.reasoning.WriteString(p.Delta)
-		cc.emitUIReasoningDelta(ctx, portal, state, p.Delta)
+		cc.uiEmitter(state).EmitUIReasoningDelta(ctx, portal, p.Delta)
 
 	case "item/commandExecution/outputDelta":
 		cc.handleSimpleOutputDelta(ctx, portal, state, evt.Params, threadID, turnID, "commandExecution")
@@ -754,7 +754,7 @@ func (cc *CodexClient) handleNotif(ctx context.Context, portal *bridgev2.Portal,
 			toolCallID = toolName
 		}
 		buf := cc.appendCodexToolOutput(state, toolCallID, p.Delta)
-		cc.emitUIToolOutputAvailable(ctx, portal, state, toolCallID, buf, true, true)
+		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, toolCallID, buf, true, true)
 
 	case "item/collabToolCall/outputDelta":
 		cc.handleSimpleOutputDelta(ctx, portal, state, evt.Params, threadID, turnID, "collabToolCall")
@@ -772,7 +772,7 @@ func (cc *CodexClient) handleNotif(ctx context.Context, portal *bridgev2.Portal,
 		state.codexLatestDiff = p.Diff
 		diffToolID := fmt.Sprintf("diff-%s", turnID)
 		cc.ensureUIToolInputStart(ctx, portal, state, diffToolID, "diff", true, map[string]any{"turnId": turnID})
-		cc.emitUIToolOutputAvailable(ctx, portal, state, diffToolID, p.Diff, true, true)
+		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, diffToolID, p.Diff, true, true)
 
 	case "item/plan/delta":
 		cc.handleSimpleOutputDelta(ctx, portal, state, evt.Params, threadID, turnID, "plan")
@@ -794,7 +794,7 @@ func (cc *CodexClient) handleNotif(ctx context.Context, portal *bridgev2.Portal,
 			input["explanation"] = strings.TrimSpace(*p.Explanation)
 		}
 		cc.ensureUIToolInputStart(ctx, portal, state, toolCallID, "plan", true, input)
-		cc.emitUIToolOutputAvailable(ctx, portal, state, toolCallID, map[string]any{
+		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, toolCallID, map[string]any{
 			"explanation": input["explanation"],
 			"plan":        p.Plan,
 		}, true, true)
@@ -822,7 +822,7 @@ func (cc *CodexClient) handleNotif(ctx context.Context, portal *bridgev2.Portal,
 		state.completionTokens = p.TokenUsage.Total.OutputTokens
 		state.reasoningTokens = p.TokenUsage.Total.ReasoningOutputTokens
 		state.totalTokens = p.TokenUsage.Total.TotalTokens
-		cc.emitUIMessageMetadata(ctx, portal, state, cc.buildUIMessageMetadata(state, model, true, ""))
+		cc.uiEmitter(state).EmitUIMessageMetadata(ctx, portal, cc.buildUIMessageMetadata(state, model, true, ""))
 
 	case "item/started":
 		var p struct {
@@ -990,7 +990,7 @@ func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2
 		}
 		state.accumulated.WriteString(it.Text)
 		state.visibleAccumulated.WriteString(it.Text)
-		cc.emitUITextDelta(ctx, portal, state, it.Text)
+		cc.uiEmitter(state).EmitUITextDelta(ctx, portal, it.Text)
 		return
 	case "reasoning":
 		// If reasoning deltas were dropped, backfill once from the completed item.
@@ -1013,7 +1013,7 @@ func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2
 			return
 		}
 		state.reasoning.WriteString(text)
-		cc.emitUIReasoningDelta(ctx, portal, state, text)
+		cc.uiEmitter(state).EmitUIReasoningDelta(ctx, portal, text)
 		return
 	case "commandExecution", "fileChange", "mcpToolCall":
 		var it map[string]any
@@ -1040,7 +1040,7 @@ func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2
 				"providerExecuted": true,
 			})
 		default:
-			cc.emitUIToolOutputAvailable(ctx, portal, state, itemID, it, true, false)
+			cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, it, true, false)
 		}
 
 		tc := newProviderToolCall(itemID, fmt.Sprintf("%v", it["type"]), it)
@@ -1062,24 +1062,24 @@ func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2
 	case "collabToolCall":
 		var it map[string]any
 		_ = json.Unmarshal(raw, &it)
-		cc.emitUIToolOutputAvailable(ctx, portal, state, itemID, it, true, false)
+		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, it, true, false)
 		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "collabToolCall", it))
 	case "webSearch":
 		var it map[string]any
 		_ = json.Unmarshal(raw, &it)
-		cc.emitUIToolOutputAvailable(ctx, portal, state, itemID, it, true, false)
+		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, it, true, false)
 		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "webSearch", it))
 		// Extract web search citations and emit source-url stream events.
 		if outputJSON, err := json.Marshal(it); err == nil {
 			collectToolOutputCitations(state, "webSearch", string(outputJSON))
 			for _, citation := range state.sourceCitations {
-				cc.emitUISourceURL(ctx, portal, state, citation)
+				cc.uiEmitter(state).EmitUISourceURL(ctx, portal, citation)
 			}
 		}
 	case "imageView":
 		var it map[string]any
 		_ = json.Unmarshal(raw, &it)
-		cc.emitUIToolOutputAvailable(ctx, portal, state, itemID, it, true, false)
+		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, it, true, false)
 		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "imageView", it))
 	case "plan":
 		var it struct {
@@ -1090,12 +1090,12 @@ func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2
 		if text == "" {
 			return
 		}
-		cc.emitUIToolOutputAvailable(ctx, portal, state, itemID, text, true, false)
+		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, text, true, false)
 		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "plan", map[string]any{"text": text}))
 	case "enteredReviewMode":
 		var it map[string]any
 		_ = json.Unmarshal(raw, &it)
-		cc.emitUIToolOutputAvailable(ctx, portal, state, itemID, it, true, false)
+		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, it, true, false)
 		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "review", it))
 	case "exitedReviewMode":
 		var it struct {
@@ -1106,12 +1106,12 @@ func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2
 		if text == "" {
 			return
 		}
-		cc.emitUIToolOutputAvailable(ctx, portal, state, itemID, text, true, false)
+		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, text, true, false)
 		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "review", map[string]any{"review": text}))
 	case "contextCompaction":
 		var it map[string]any
 		_ = json.Unmarshal(raw, &it)
-		cc.emitUIToolOutputAvailable(ctx, portal, state, itemID, it, true, false)
+		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, it, true, false)
 		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "contextCompaction", it))
 		cc.sendSystemNoticeOnce(ctx, portal, state, "compaction:completed:"+itemID, "Codex finished compacting context.")
 	}

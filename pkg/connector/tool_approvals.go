@@ -357,7 +357,7 @@ func (oc *AIClient) gateBuiltinToolApproval(
 		}
 	}
 	if !decision.Approve {
-		oc.emitUIToolOutputDenied(ctx, portal, state, tool.callID)
+		oc.uiEmitter(state).EmitUIToolOutputDenied(ctx, portal, tool.callID)
 		return true
 	}
 	return false

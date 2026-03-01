@@ -27,8 +27,8 @@ func TestCodex_StreamChunks_BasicOrderingAndSeq(t *testing.T) {
 	state := &streamingState{turnID: "turn_local_1"}
 
 	cc.emitUIStart(ctx, portal, state, "gpt-5.1-codex")
-	cc.emitUIStepStart(ctx, portal, state)
-	cc.emitUITextDelta(ctx, portal, state, "hi")
+	cc.uiEmitter(state).EmitUIStepStart(ctx, portal)
+	cc.uiEmitter(state).EmitUITextDelta(ctx, portal, "hi")
 	cc.emitUIFinish(ctx, portal, state, "gpt-5.1-codex", "completed")
 
 	if len(gotParts) < 5 {

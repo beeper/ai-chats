@@ -32,7 +32,7 @@ func (oc *AIClient) finalizeResponsesStream(
 			continue
 		}
 		recordGeneratedFile(state, mediaURL, mimeType)
-		oc.emitUIFile(ctx, portal, state, mediaURL, mimeType)
+		oc.uiEmitter(state).EmitUIFile(ctx, portal, mediaURL, mimeType)
 		log.Info().Stringer("event_id", eventID).Str("item_id", img.itemID).Msg("Sent generated image to Matrix")
 	}
 	oc.emitUIFinish(ctx, portal, state, meta)

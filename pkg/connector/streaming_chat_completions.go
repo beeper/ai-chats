@@ -107,7 +107,7 @@ func (oc *AIClient) streamChatCompletions(
 		var roundContent strings.Builder
 		state.finishReason = ""
 
-		oc.emitUIStepStart(ctx, portal, state)
+		oc.uiEmitter(state).EmitUIStepStart(ctx, portal)
 
 		for stream.Next() {
 			chunk := stream.Current()
@@ -118,7 +118,7 @@ func (oc *AIClient) streamChatCompletions(
 				state.completionTokens = chunk.Usage.CompletionTokens
 				state.reasoningTokens = chunk.Usage.CompletionTokensDetails.ReasoningTokens
 				state.totalTokens = chunk.Usage.TotalTokens
-				oc.emitUIMessageMetadata(ctx, portal, state, oc.buildUIMessageMetadata(state, meta, true))
+				oc.uiEmitter(state).EmitUIMessageMetadata(ctx, portal, oc.buildUIMessageMetadata(state, meta, true))
 			}
 
 			for _, choice := range chunk.Choices {
@@ -150,13 +150,13 @@ func (oc *AIClient) streamChatCompletions(
 										errText := "failed to send initial streaming message"
 										log.Error().Msg("Failed to send initial streaming message")
 										state.finishReason = "error"
-										oc.emitUIError(ctx, portal, state, errText)
+										oc.uiEmitter(state).EmitUIError(ctx, portal, errText)
 										oc.emitUIFinish(ctx, portal, state, meta)
 										return false, nil, &PreDeltaError{Err: errors.New(errText)}
 									}
 								}
 							}
-							oc.emitUITextDelta(ctx, portal, state, cleaned)
+							oc.uiEmitter(state).EmitUITextDelta(ctx, portal, cleaned)
 						}
 					}
 				}
@@ -166,7 +166,7 @@ func (oc *AIClient) streamChatCompletions(
 					if typingSignals != nil {
 						typingSignals.SignalTextDelta(choice.Delta.Refusal)
 					}
-					oc.emitUITextDelta(ctx, portal, state, choice.Delta.Refusal)
+					oc.uiEmitter(state).EmitUITextDelta(ctx, portal, choice.Delta.Refusal)
 				}
 
 				// Handle tool calls from Chat Completions API
@@ -206,7 +206,7 @@ func (oc *AIClient) streamChatCompletions(
 					// Accumulate arguments
 					if toolDelta.Function.Arguments != "" {
 						tool.input.WriteString(toolDelta.Function.Arguments)
-						oc.emitUIToolInputDelta(ctx, portal, state, tool.callID, tool.toolName, toolDelta.Function.Arguments, false)
+						oc.uiEmitter(state).EmitUIToolInputDelta(ctx, portal, tool.callID, tool.toolName, toolDelta.Function.Arguments, false)
 					}
 				}
 
@@ -217,7 +217,7 @@ func (oc *AIClient) streamChatCompletions(
 
 		}
 
-		oc.emitUIStepFinish(ctx, portal, state)
+		oc.uiEmitter(state).EmitUIStepFinish(ctx, portal)
 
 		if err := stream.Err(); err != nil {
 			if errors.Is(err, context.Canceled) {
@@ -225,7 +225,7 @@ func (oc *AIClient) streamChatCompletions(
 				if state.initialEventID != "" && state.accumulated.Len() > 0 {
 					oc.flushPartialStreamingMessage(context.Background(), portal, state, meta)
 				}
-				oc.emitUIAbort(ctx, portal, state, "cancelled")
+				oc.uiEmitter(state).EmitUIAbort(ctx, portal, "cancelled")
 				oc.emitUIFinish(ctx, portal, state, meta)
 				if state.initialEventID != "" {
 					return false, nil, &NonFallbackError{Err: err}
@@ -237,7 +237,7 @@ func (oc *AIClient) streamChatCompletions(
 			}
 			logChatCompletionsFailure(log, err, params, meta, currentMessages, "stream_err")
 			state.finishReason = "error"
-			oc.emitUIError(ctx, portal, state, err.Error())
+			oc.uiEmitter(state).EmitUIError(ctx, portal, err.Error())
 			oc.emitUIFinish(ctx, portal, state, meta)
 			if state.initialEventID != "" {
 				return false, nil, &NonFallbackError{Err: err}
@@ -341,7 +341,7 @@ func (oc *AIClient) streamChatCompletions(
 								resultStatus = ResultStatusError
 							} else {
 								recordGeneratedFile(state, mediaURL, mimeType)
-								oc.emitUIFile(ctx, portal, state, mediaURL, mimeType)
+								oc.uiEmitter(state).EmitUIFile(ctx, portal, mediaURL, mimeType)
 								result = "Audio message sent successfully"
 							}
 						}
@@ -376,7 +376,7 @@ func (oc *AIClient) streamChatCompletions(
 									continue
 								}
 								recordGeneratedFile(state, mediaURL, mimeType)
-								oc.emitUIFile(ctx, portal, state, mediaURL, mimeType)
+								oc.uiEmitter(state).EmitUIFile(ctx, portal, mediaURL, mimeType)
 								sentURLs = append(sentURLs, mediaURL)
 								success++
 							}
@@ -404,7 +404,7 @@ func (oc *AIClient) streamChatCompletions(
 								resultStatus = ResultStatusError
 							} else {
 								recordGeneratedFile(state, mediaURL, mimeType)
-								oc.emitUIFile(ctx, portal, state, mediaURL, mimeType)
+								oc.uiEmitter(state).EmitUIFile(ctx, portal, mediaURL, mimeType)
 								result = fmt.Sprintf("Image generated and sent to the user. Media URL: %s", mediaURL)
 							}
 						}
@@ -415,7 +415,7 @@ func (oc *AIClient) streamChatCompletions(
 				var inputMap any
 				if err := json.Unmarshal([]byte(argsJSON), &inputMap); err != nil {
 					inputMap = argsJSON
-					oc.emitUIToolInputError(ctx, portal, state, tool.callID, toolName, argsJSON, "Invalid JSON tool input", false, false)
+					oc.uiEmitter(state).EmitUIToolInputError(ctx, portal, tool.callID, toolName, argsJSON, "Invalid JSON tool input", false, false)
 				}
 				inputMapForMeta := map[string]any{}
 				if parsed, ok := inputMap.(map[string]any); ok {
@@ -423,7 +423,7 @@ func (oc *AIClient) streamChatCompletions(
 				} else if raw, ok := inputMap.(string); ok && raw != "" {
 					inputMapForMeta = map[string]any{"_raw": raw}
 				}
-				oc.emitUIToolInputAvailable(ctx, portal, state, tool.callID, toolName, inputMap, false)
+				oc.uiEmitter(state).EmitUIToolInputAvailable(ctx, portal, tool.callID, toolName, inputMap, false)
 
 				// Track tool call in metadata
 				completedAt := time.Now().UnixMilli()
@@ -444,9 +444,9 @@ func (oc *AIClient) streamChatCompletions(
 
 				if resultStatus == ResultStatusSuccess {
 					collectToolOutputCitations(state, toolName, result)
-					oc.emitUIToolOutputAvailable(ctx, portal, state, tool.callID, result, tool.toolType == ToolTypeProvider, false)
+					oc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, tool.callID, result, tool.toolType == ToolTypeProvider, false)
 				} else if resultStatus != ResultStatusDenied {
-					oc.emitUIToolOutputError(ctx, portal, state, tool.callID, result, tool.toolType == ToolTypeProvider)
+					oc.uiEmitter(state).EmitUIToolOutputError(ctx, portal, tool.callID, result, tool.toolType == ToolTypeProvider)
 				}
 
 				toolResults = append(toolResults, chatToolResult{callID: tool.callID, output: result})

@@ -34,7 +34,7 @@ func (oc *AIClient) ensureInitialStreamMessage(
 		if state.initialEventID == "" {
 			log.Error().Msg(logMessage)
 			state.finishReason = "error"
-			oc.emitUIError(ctx, portal, state, errText)
+			oc.uiEmitter(state).EmitUIError(ctx, portal, errText)
 			oc.emitUIFinish(ctx, portal, state, meta)
 			return errors.New(errText)
 		}
@@ -90,7 +90,7 @@ func (oc *AIClient) handleResponseOutputTextDelta(
 			return err
 		}
 	}
-	oc.emitUITextDelta(ctx, portal, state, cleaned)
+	oc.uiEmitter(state).EmitUITextDelta(ctx, portal, cleaned)
 	return nil
 }
 
@@ -121,7 +121,7 @@ func (oc *AIClient) handleResponseReasoningTextDelta(
 			return err
 		}
 	}
-	oc.emitUIReasoningDelta(ctx, portal, state, delta)
+	oc.uiEmitter(state).EmitUIReasoningDelta(ctx, portal, delta)
 	return nil
 }
 
@@ -135,7 +135,7 @@ func (oc *AIClient) handleResponseReasoningSummaryDelta(
 		return
 	}
 	state.reasoning.WriteString(delta)
-	oc.emitUIReasoningDelta(ctx, portal, state, delta)
+	oc.uiEmitter(state).EmitUIReasoningDelta(ctx, portal, delta)
 }
 
 func (oc *AIClient) handleResponseReasoningDone(
@@ -148,7 +148,7 @@ func (oc *AIClient) handleResponseReasoningDone(
 		return
 	}
 	state.reasoning.WriteString(text)
-	oc.emitUIReasoningDelta(ctx, portal, state, text)
+	oc.uiEmitter(state).EmitUIReasoningDelta(ctx, portal, text)
 }
 
 func (oc *AIClient) handleResponseRefusalDelta(
@@ -161,7 +161,7 @@ func (oc *AIClient) handleResponseRefusalDelta(
 	if typingSignals != nil {
 		typingSignals.SignalTextDelta(delta)
 	}
-	oc.emitUITextDelta(ctx, portal, state, delta)
+	oc.uiEmitter(state).EmitUITextDelta(ctx, portal, delta)
 }
 
 func (oc *AIClient) handleResponseRefusalDone(
@@ -173,7 +173,7 @@ func (oc *AIClient) handleResponseRefusalDone(
 	if refusal == "" {
 		return
 	}
-	oc.emitUITextDelta(ctx, portal, state, refusal)
+	oc.uiEmitter(state).EmitUITextDelta(ctx, portal, refusal)
 }
 
 func (oc *AIClient) handleResponseOutputAnnotationAdded(
@@ -185,11 +185,11 @@ func (oc *AIClient) handleResponseOutputAnnotationAdded(
 ) {
 	if citation, ok := extractURLCitation(annotation); ok {
 		state.sourceCitations = citations.MergeSourceCitations(state.sourceCitations, []citations.SourceCitation{citation})
-		oc.emitUISourceURL(ctx, portal, state, citation)
+		oc.uiEmitter(state).EmitUISourceURL(ctx, portal, citation)
 	}
 	if document, ok := extractDocumentCitation(annotation); ok {
 		state.sourceDocuments = append(state.sourceDocuments, document)
-		oc.emitUISourceDocument(ctx, portal, state, document)
+		oc.uiEmitter(state).EmitUISourceDocument(ctx, portal, document)
 	}
 	oc.emitStreamEvent(ctx, portal, state, map[string]any{
 		"type":      "data-annotation",
