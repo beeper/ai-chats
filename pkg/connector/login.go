@@ -300,6 +300,40 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 	}, nil
 }
 
+func serviceTokensEmpty(tokens *ServiceTokens) bool {
+	if tokens == nil {
+		return true
+	}
+	if len(tokens.DesktopAPIInstances) > 0 {
+		for _, instance := range tokens.DesktopAPIInstances {
+			if strings.TrimSpace(instance.Token) != "" || strings.TrimSpace(instance.BaseURL) != "" {
+				return false
+			}
+		}
+	}
+	if len(tokens.MCPServers) > 0 {
+		for _, server := range tokens.MCPServers {
+			if strings.TrimSpace(server.Transport) != "" ||
+				strings.TrimSpace(server.Endpoint) != "" ||
+				strings.TrimSpace(server.Command) != "" ||
+				len(server.Args) > 0 ||
+				strings.TrimSpace(server.Token) != "" ||
+				strings.TrimSpace(server.AuthURL) != "" ||
+				strings.TrimSpace(server.AuthType) != "" ||
+				strings.TrimSpace(server.Kind) != "" ||
+				server.Connected {
+				return false
+			}
+		}
+	}
+	return strings.TrimSpace(tokens.OpenAI) == "" &&
+		strings.TrimSpace(tokens.OpenRouter) == "" &&
+		strings.TrimSpace(tokens.Exa) == "" &&
+		strings.TrimSpace(tokens.Brave) == "" &&
+		strings.TrimSpace(tokens.Perplexity) == "" &&
+		strings.TrimSpace(tokens.DesktopAPI) == ""
+}
+
 func (ol *OpenAILogin) resolveCustomLogin(input map[string]string) (string, string, *ServiceTokens, error) {
 	if input == nil {
 		input = map[string]string{}
@@ -350,40 +384,6 @@ func (ol *OpenAILogin) resolveCustomLogin(input map[string]string) (string, stri
 	}
 
 	return provider, apiKey, serviceTokens, nil
-}
-
-func serviceTokensEmpty(tokens *ServiceTokens) bool {
-	if tokens == nil {
-		return true
-	}
-	if len(tokens.DesktopAPIInstances) > 0 {
-		for _, instance := range tokens.DesktopAPIInstances {
-			if strings.TrimSpace(instance.Token) != "" || strings.TrimSpace(instance.BaseURL) != "" {
-				return false
-			}
-		}
-	}
-	if len(tokens.MCPServers) > 0 {
-		for _, server := range tokens.MCPServers {
-			if strings.TrimSpace(server.Transport) != "" ||
-				strings.TrimSpace(server.Endpoint) != "" ||
-				strings.TrimSpace(server.Command) != "" ||
-				len(server.Args) > 0 ||
-				strings.TrimSpace(server.Token) != "" ||
-				strings.TrimSpace(server.AuthURL) != "" ||
-				strings.TrimSpace(server.AuthType) != "" ||
-				strings.TrimSpace(server.Kind) != "" ||
-				server.Connected {
-				return false
-			}
-		}
-	}
-	return strings.TrimSpace(tokens.OpenAI) == "" &&
-		strings.TrimSpace(tokens.OpenRouter) == "" &&
-		strings.TrimSpace(tokens.Exa) == "" &&
-		strings.TrimSpace(tokens.Brave) == "" &&
-		strings.TrimSpace(tokens.Perplexity) == "" &&
-		strings.TrimSpace(tokens.DesktopAPI) == ""
 }
 
 func beeperBaseURLFromDomain(domain string) string {

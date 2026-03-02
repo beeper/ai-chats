@@ -174,8 +174,8 @@ const (
 // ActionResponseEventType is the event type for com.beeper.action_response (MSC1485).
 var ActionResponseEventType = matrixevents.ActionResponseEventType
 
-// BotCommandDescriptionEventType is the state event type for MSC4391 command descriptions.
-var BotCommandDescriptionEventType = matrixevents.BotCommandDescriptionEventType
+// CommandDescriptionEventType is the state event type for com.beeper.command_description.
+var CommandDescriptionEventType = matrixevents.CommandDescriptionEventType
 
 // ModelInfo describes a single AI model's capabilities
 type ModelInfo struct {
