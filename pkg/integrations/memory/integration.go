@@ -375,7 +375,7 @@ func (i *Integration) buildOverflowDeps() OverflowDeps {
 			}
 			_ = pm.SavePortal(ctx, overflowCall.Portal, "overflow flush")
 		},
-		RunFlushToolLoop: func(ctx context.Context, call any, model string, prompt []openai.ChatCompletionMessageParamUnion) error {
+		RunFlushToolLoop: func(ctx context.Context, call any, model string, prompt []openai.ChatCompletionMessageParamUnion) (bool, error) {
 			overflowCall, _ := call.(iruntime.ContextOverflowCall)
 			return i.runFlushToolLoop(ctx, overflowCall.Portal, overflowCall.Meta, model, prompt)
 		},
@@ -534,10 +534,10 @@ func (i *Integration) runFlushToolLoop(
 	meta any,
 	model string,
 	messages []openai.ChatCompletionMessageParamUnion,
-) error {
+) (bool, error) {
 	tph, ok := i.host.(iruntime.ToolPolicyHelper)
 	if !ok {
-		return nil
+		return false, nil
 	}
 	allTools := tph.AllToolDefinitions()
 	var flushTools []iruntime.ToolDefinition
@@ -547,16 +547,16 @@ func (i *Integration) runFlushToolLoop(
 		}
 	}
 	if len(flushTools) == 0 {
-		return nil
+		return false, nil
 	}
 	toolParams := tph.ToolsToOpenAIParams(flushTools)
 
 	capi, ok := i.host.(iruntime.ChatCompletionAPI)
 	if !ok {
-		return nil
+		return false, nil
 	}
 
-	return RunFlushToolLoop(ctx, model, messages, FlushToolLoopDeps{
+	if err := RunFlushToolLoop(ctx, model, messages, FlushToolLoopDeps{
 		TimeoutMs: int64((2 * time.Minute) / time.Millisecond),
 		MaxTurns:  6,
 		NextTurn: func(ctx context.Context, model string, messages []openai.ChatCompletionMessageParamUnion) (
@@ -591,7 +591,10 @@ func (i *Integration) runFlushToolLoop(
 		OnToolError: func(name string, err error) {
 			i.host.Logger().Warn("overflow flush tool failed", map[string]any{"tool": name, "error": err.Error()})
 		},
-	})
+	}); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (i *Integration) resolveOverflowFlushSettings() *FlushSettings {

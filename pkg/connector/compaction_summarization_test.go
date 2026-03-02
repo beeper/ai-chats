@@ -53,3 +53,12 @@ func TestInjectSystemPromptAtFirstNonSystem(t *testing.T) {
 		t.Fatal("expected inserted system message at first non-system boundary")
 	}
 }
+
+func TestResolveCompactionSummaryModel(t *testing.T) {
+	if got := resolveCompactionSummaryModel("openai/gpt-5", "openai/gpt-5.2"); got != "openai/gpt-5" {
+		t.Fatalf("expected active model priority, got %q", got)
+	}
+	if got := resolveCompactionSummaryModel(" ", "openai/gpt-5.2"); got != "openai/gpt-5.2" {
+		t.Fatalf("expected configured model fallback, got %q", got)
+	}
+}

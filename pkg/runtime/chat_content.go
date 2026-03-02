@@ -130,6 +130,8 @@ func EstimateMessageChars(msg openai.ChatCompletionMessageParamUnion) int {
 		return chars
 	case msg.OfTool != nil:
 		return len(ExtractToolContent(msg.OfTool.Content))
+	case msg.OfDeveloper != nil:
+		return len(ExtractDeveloperContent(msg.OfDeveloper.Content))
 	}
 	return 0
 }

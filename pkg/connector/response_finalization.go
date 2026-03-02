@@ -162,9 +162,9 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 			replyTo = state.replyTarget.EffectiveReplyTo()
 		}
 		if replyTo != "" {
-			oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, rendered, &replyTo)
+			oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, rendered, &replyTo, "simple")
 		} else {
-			oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, rendered, nil)
+			oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, rendered, nil, "simple")
 		}
 		return
 	}
@@ -183,7 +183,7 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 	}
 
 	// Use cleaned content (directives stripped)
-	cleanedContent := airuntime.SanitizeChatMessageForDisplay(airuntime.StripMessageIDHintLines(directives.Text), false)
+	cleanedContent := airuntime.SanitizeChatMessageForDisplay(directives.Text, false)
 
 	finalReplyTarget := oc.resolveFinalReplyTarget(meta, state, &directives)
 	responsePrefix := resolveResponsePrefixForReply(oc, &oc.connector.Config, meta)
@@ -193,87 +193,11 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 		}
 	}
 	rendered := format.RenderMarkdown(cleanedContent, true, true)
-
-	// Safety-split oversized responses into multiple Matrix events
-	var continuationBody string
-	if len(rendered.Body) > streamtransport.MaxMatrixEventBodyBytes {
-		firstBody, rest := streamtransport.SplitAtMarkdownBoundary(rendered.Body, streamtransport.MaxMatrixEventBodyBytes)
-		continuationBody = rest
-		rendered = format.RenderMarkdown(firstBody, true, true)
-	}
-
-	// Build AI SDK UIMessage payload
-	parts := msgconv.ContentParts("", strings.TrimSpace(state.reasoning.String()))
-	if cleanedContent != "" {
-		parts = append(parts, map[string]any{
-			"type":  "text",
-			"text":  "", // omitted: full text is in m.new_content.body
-			"state": "done",
-		})
-	}
-	if toolParts := msgconv.ToolCallParts(state.toolCalls, string(ToolTypeProvider), string(ResultStatusSuccess), string(ResultStatusDenied)); len(toolParts) > 0 {
-		parts = append(parts, toolParts...)
-	}
-
-	// Generate link previews for URLs in the response (needs intent for image upload)
-	var linkPreviews []*event.BeeperLinkPreview
-	if intent, err := oc.getIntentForPortal(ctx, portal, bridgev2.RemoteEventMessage); err == nil {
-		linkPreviews = generateOutboundLinkPreviews(ctx, cleanedContent, intent, portal, state.sourceCitations, getLinkPreviewConfig(&oc.connector.Config))
-	}
-
-	uiMessage := msgconv.BuildUIMessage(msgconv.UIMessageParams{
-		TurnID:     state.turnID,
-		Role:       "assistant",
-		Metadata:   oc.buildUIMessageMetadata(state, meta, true),
-		Parts:      parts,
-		SourceURLs: buildSourceParts(state.sourceCitations, state.sourceDocuments, linkPreviews),
-		FileParts:  citations.GeneratedFilesToParts(state.generatedFiles),
-	})
-
-	topLevelExtra := map[string]any{
-		BeeperAIKey:                     uiMessage,
-		"com.beeper.dont_render_edited": true,
-		"m.mentions":                    map[string]any{},
-	}
-	if lps := PreviewsToMapSlice(linkPreviews); len(lps) > 0 {
-		topLevelExtra["com.beeper.linkpreviews"] = lps
-	}
-
-	sender := oc.senderForPortal(ctx, portal)
-	oc.UserLogin.QueueRemoteEvent(&AIRemoteEdit{
-		portal:        portal.PortalKey,
-		sender:        sender,
-		targetMessage: state.networkMessageID,
-		timestamp:     time.Now(),
-		preBuilt: &bridgev2.ConvertedEdit{
-			ModifiedParts: []*bridgev2.ConvertedEditPart{{
-				Type: event.EventMessage,
-				Content: &event.MessageEventContent{
-					MsgType:       event.MsgText,
-					Body:          rendered.Body,
-					Format:        rendered.Format,
-					FormattedBody: rendered.FormattedBody,
-				},
-				Extra:         map[string]any{"m.mentions": map[string]any{}},
-				TopLevelExtra: topLevelExtra,
-			}},
-		},
-	})
-	oc.recordAgentActivity(ctx, portal, meta)
-	oc.loggerForContext(ctx).Debug().
-		Str("initial_event_id", state.initialEventID.String()).
-		Str("turn_id", state.turnID).
-		Bool("has_thinking", state.reasoning.Len() > 0).
-		Int("tool_calls", len(state.toolCalls)).
-		Bool("has_reply", finalReplyTarget.ReplyTo != "").
-		Int("link_previews", len(linkPreviews)).
-		Msg("Queued final assistant turn edit")
-
-	// Send continuation messages for overflow
-	for continuationBody != "" {
-		var chunk string
-		chunk, continuationBody = streamtransport.SplitAtMarkdownBoundary(continuationBody, streamtransport.MaxMatrixEventBodyBytes)
-		oc.sendContinuationMessage(ctx, portal, chunk)
+	if finalReplyTarget.ReplyTo != "" {
+		replyTo := finalReplyTarget.ReplyTo
+		oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, rendered, &replyTo, "natural")
+	} else {
+		oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, rendered, nil, "natural")
 	}
 }
 
@@ -458,7 +382,7 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 			oc.sendPlainAssistantMessage(ctx, portal, cleaned)
 		} else {
 			rendered := format.RenderMarkdown(cleaned, true, true)
-			oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, rendered, nil)
+			oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, rendered, nil, "heartbeat")
 		}
 	}
 
@@ -684,7 +608,7 @@ func buildSourceParts(cits []citations.SourceCitation, documents []citations.Sou
 }
 
 // sendFinalAssistantTurnContent is a helper for simple mode that sends content without directive processing.
-func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata, rendered event.MessageEventContent, replyToEventID *id.EventID) {
+func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata, rendered event.MessageEventContent, replyToEventID *id.EventID, mode string) {
 	// Safety-split oversized responses into multiple Matrix events
 	var continuationBody string
 	if len(rendered.Body) > streamtransport.MaxMatrixEventBodyBytes {
@@ -755,9 +679,9 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 	oc.loggerForContext(ctx).Debug().
 		Str("initial_event_id", state.initialEventID.String()).
 		Str("turn_id", state.turnID).
-		Str("mode", "simple").
+		Str("mode", strings.TrimSpace(mode)).
 		Int("link_previews", len(linkPreviews)).
-		Msg("Queued final assistant turn edit (simple mode)")
+		Msg("Queued final assistant turn edit")
 
 	// Send continuation messages for overflow
 	for continuationBody != "" {

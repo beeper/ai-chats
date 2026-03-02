@@ -184,6 +184,17 @@ func (oc *AIClient) applyStreamingReplyTarget(state *streamingState, parsed *run
 	state.replyTarget.ReplyTo = id.EventID(strings.TrimSpace(applied[0].ReplyToID))
 }
 
+func (oc *AIClient) finalizeStreamingReplyAccumulator(state *streamingState) {
+	if oc == nil || state == nil || state.replyAccumulator == nil {
+		return
+	}
+	parsed := state.replyAccumulator.Consume("", true)
+	if parsed == nil {
+		return
+	}
+	oc.applyStreamingReplyTarget(state, parsed)
+}
+
 func (oc *AIClient) markMessageSendSuccess(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, state *streamingState) {
 	if state == nil || state.suppressSend || state.statusSent {
 		return

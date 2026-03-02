@@ -35,6 +35,7 @@ func (oc *AIClient) finalizeResponsesStream(
 		oc.uiEmitter(state).EmitUIFile(ctx, portal, mediaURL, mimeType)
 		log.Info().Stringer("event_id", eventID).Str("item_id", img.itemID).Msg("Sent generated image to Matrix")
 	}
+	oc.finalizeStreamingReplyAccumulator(state)
 	oc.emitUIFinish(ctx, portal, state, meta)
 
 	// Persist final assistant turn with complete content and metadata.

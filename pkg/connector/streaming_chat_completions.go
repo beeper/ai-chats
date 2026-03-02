@@ -404,6 +404,7 @@ func (oc *AIClient) streamChatCompletions(
 	if state.finishReason == "" {
 		state.finishReason = "stop"
 	}
+	oc.finalizeStreamingReplyAccumulator(state)
 	oc.emitUIFinish(ctx, portal, state, meta)
 
 	// Send final edit and save to database

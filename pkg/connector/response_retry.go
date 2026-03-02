@@ -33,8 +33,9 @@ func (oc *AIClient) responseWithRetry(
 	logLabel string,
 ) (bool, error) {
 	currentPrompt := prompt
-	autoCompactionAttempted := false
 	preflightFlushAttempted := false
+	overflowCompactionAttempts := 0
+	var lastCLE *ContextLengthError
 
 	for attempt := range maxRetryAttempts {
 		if !preflightFlushAttempted {
@@ -54,8 +55,9 @@ func (oc *AIClient) responseWithRetry(
 			return false, err
 		}
 
-		// If we got a context length error, try runtime compaction once.
+		// If we got a context length error, run overflow compaction / truncation recovery.
 		if cle != nil {
+			lastCLE = cle
 			oc.loggerForContext(ctx).Info().Int("attempt", attempt+1).Int("requested_tokens", cle.RequestedTokens).Int("max_tokens", cle.ModelMaxTokens).Str("log_label", logLabel).Msg("Context length exceeded, attempting recovery")
 			// In Responses conversation mode, previous_response_id can accumulate hidden server-side
 			// context that local truncation cannot affect. Reset it once and retry with local history.
@@ -68,24 +70,23 @@ func (oc *AIClient) responseWithRetry(
 				continue
 			}
 
-			// Try auto-compaction first (only once per retry loop)
-			if !autoCompactionAttempted {
-				autoCompactionAttempted = true
+			// Get context window from model.
+			contextWindow := oc.getModelContextWindow(meta)
+			if contextWindow <= 0 {
+				contextWindow = 128000 // Default fallback
+			}
+			sessionID := string(portal.MXID)
+			modelID := ""
+			if meta != nil {
+				modelID = oc.effectiveModel(meta)
+			}
+			tokensBefore := estimatePromptTokensForModel(currentPrompt, modelID)
+
+			if overflowCompactionAttempts < maxRetryAttempts {
+				overflowCompactionAttempts++
 				oc.runCompactionFlushHook(ctx, portal, meta, currentPrompt, cle, attempt+1)
 
-				// Get context window from model
-				contextWindow := oc.getModelContextWindow(meta)
-				if contextWindow <= 0 {
-					contextWindow = 128000 // Default fallback
-				}
-
-				// Emit compaction start event
-				sessionID := string(portal.MXID)
-				modelID := ""
-				if meta != nil {
-					modelID = oc.effectiveModel(meta)
-				}
-				tokensBefore := estimatePromptTokensForModel(currentPrompt, modelID)
+				// Emit compaction start event.
 				oc.emitCompactionLifecycle(ctx, integrationruntime.CompactionLifecycleEvent{
 					Client:              oc,
 					Portal:              portal,
@@ -105,7 +106,6 @@ func (oc *AIClient) responseWithRetry(
 				})
 
 				compacted, decision, compactionSuccess := oc.runtimeCompactOnOverflow(currentPrompt, contextWindow, cle.RequestedTokens, tokensBefore)
-
 				if compactionSuccess && len(compacted) > 2 {
 					compacted = oc.applyCompactionModelSummaryAndRefresh(ctx, meta, currentPrompt, compacted, decision, contextWindow)
 					tokensAfter := estimatePromptTokensForModel(compacted, modelID)
@@ -117,7 +117,6 @@ func (oc *AIClient) responseWithRetry(
 					if decision.DroppedCount > 0 {
 						summary = fmt.Sprintf("Dropped %d older context entries.", decision.DroppedCount)
 					}
-					// Emit compaction end event
 					oc.emitCompactionStatus(ctx, portal, &CompactionEvent{
 						Type:           CompactionEventEnd,
 						SessionID:      sessionID,
@@ -170,12 +169,49 @@ func (oc *AIClient) responseWithRetry(
 						Int("tokens_after", tokensAfter).
 						Int("dropped", decision.DroppedCount).
 						Msg("Auto-compaction succeeded, retrying with compacted context")
-
 					currentPrompt = compacted
 					continue
 				}
 
-				// Compaction failed or didn't help enough
+				// Compaction was insufficient. Try an explicit tool-result truncation pass.
+				truncatedPrompt, truncatedCount := oc.truncateOversizedToolResultsForOverflow(currentPrompt, contextWindow)
+				if truncatedCount > 0 {
+					tokensAfter := estimatePromptTokensForModel(truncatedPrompt, modelID)
+					oc.emitCompactionStatus(ctx, portal, &CompactionEvent{
+						Type:           CompactionEventEnd,
+						SessionID:      sessionID,
+						MessagesBefore: len(currentPrompt),
+						MessagesAfter:  len(truncatedPrompt),
+						TokensBefore:   tokensBefore,
+						TokensAfter:    tokensAfter,
+						Summary:        fmt.Sprintf("Truncated %d oversized tool result(s).", truncatedCount),
+						WillRetry:      true,
+					})
+					oc.emitCompactionLifecycle(ctx, integrationruntime.CompactionLifecycleEvent{
+						Client:              oc,
+						Portal:              portal,
+						Meta:                meta,
+						Phase:               integrationruntime.CompactionLifecycleEnd,
+						Attempt:             attempt + 1,
+						ContextWindowTokens: contextWindow,
+						RequestedTokens:     cle.RequestedTokens,
+						PromptTokens:        tokensAfter,
+						MessagesBefore:      len(currentPrompt),
+						MessagesAfter:       len(truncatedPrompt),
+						TokensBefore:        tokensBefore,
+						TokensAfter:         tokensAfter,
+						Reason:              "truncate_oversized_tool_results",
+						WillRetry:           true,
+					})
+					oc.loggerForContext(ctx).Info().
+						Int("truncated_count", truncatedCount).
+						Int("tokens_before", tokensBefore).
+						Int("tokens_after", tokensAfter).
+						Msg("Compaction fallback truncated oversized tool results, retrying")
+					currentPrompt = truncatedPrompt
+					continue
+				}
+
 				oc.emitCompactionStatus(ctx, portal, &CompactionEvent{
 					Type:      CompactionEventEnd,
 					SessionID: sessionID,
@@ -192,25 +228,26 @@ func (oc *AIClient) responseWithRetry(
 					PromptTokens:        tokensBefore,
 					MessagesBefore:      len(currentPrompt),
 					TokensBefore:        tokensBefore,
-					DroppedCount:        decision.DroppedCount,
-					Reason:              decision.Reason,
+					Reason:              "compaction did not reduce context sufficiently",
 					Error:               "compaction did not reduce context sufficiently",
 				})
-
-				oc.loggerForContext(ctx).Warn().Msg("Auto-compaction did not help, falling back to reactive truncation")
 			}
 
 			oc.notifyContextLengthExceeded(ctx, portal, cle, false)
 			return false, cle
 		}
 
-		// Non-context error, already handled in responseFn
-		return false, nil
+		// Non-context nil error from responseFn: treat as a terminal failure.
+		return false, errors.New("response failed without context length detail")
 	}
 
-	oc.notifyMatrixSendFailure(ctx, portal, evt,
-		errors.New("exceeded maximum retry attempts for prompt overflow"))
-	return false, nil
+	if lastCLE != nil {
+		oc.notifyContextLengthExceeded(ctx, portal, lastCLE, false)
+		return false, fmt.Errorf("exceeded maximum retry attempts for prompt overflow: %w", lastCLE)
+	}
+	terminal := errors.New("exceeded maximum retry attempts for prompt overflow")
+	oc.notifyMatrixSendFailure(ctx, portal, evt, terminal)
+	return false, terminal
 }
 
 func (oc *AIClient) runCompactionPreflightFlushHook(
@@ -405,6 +442,49 @@ func (oc *AIClient) runtimeCompactOnOverflow(
 		ProtectedTail:       3,
 	})
 	return result.Prompt, result.Decision, result.Success
+}
+
+func (oc *AIClient) truncateOversizedToolResultsForOverflow(
+	prompt []openai.ChatCompletionMessageParamUnion,
+	contextWindowTokens int,
+) ([]openai.ChatCompletionMessageParamUnion, int) {
+	if len(prompt) == 0 {
+		return prompt, 0
+	}
+	cfg := oc.pruningConfigOrDefault()
+	if cfg == nil {
+		cfg = airuntime.DefaultPruningConfig()
+	}
+	maxChars := cfg.SoftTrimMaxChars
+	if maxChars <= 0 {
+		maxChars = 4000
+	}
+	thresholdChars := maxChars * 2
+	if contextWindowTokens > 0 {
+		windowThreshold := (contextWindowTokens * airuntime.CharsPerTokenEstimate) / 4
+		if windowThreshold > thresholdChars {
+			thresholdChars = windowThreshold
+		}
+	}
+
+	out := append([]openai.ChatCompletionMessageParamUnion{}, prompt...)
+	truncated := 0
+	for i, msg := range out {
+		if msg.OfTool == nil {
+			continue
+		}
+		content := airuntime.ExtractToolContent(msg.OfTool.Content)
+		if len(content) <= thresholdChars {
+			continue
+		}
+		trimmed := airuntime.SoftTrimToolResult(content, cfg)
+		if trimmed == content {
+			continue
+		}
+		out[i] = openai.ToolMessage(trimmed, msg.OfTool.ToolCallID)
+		truncated++
+	}
+	return out, truncated
 }
 
 // emitCompactionStatus sends a compaction status event to the room

@@ -27,7 +27,7 @@ type OverflowDeps struct {
 	EstimateTokens   func(prompt []openai.ChatCompletionMessageParamUnion, model string) int
 	AlreadyFlushed   func(call any) bool
 	MarkFlushed      func(ctx context.Context, call any)
-	RunFlushToolLoop func(ctx context.Context, call any, model string, prompt []openai.ChatCompletionMessageParamUnion) error
+	RunFlushToolLoop func(ctx context.Context, call any, model string, prompt []openai.ChatCompletionMessageParamUnion) (bool, error)
 	OnError          func(ctx context.Context, err error)
 }
 
@@ -89,13 +89,14 @@ func HandleOverflow(
 	if deps.RunFlushToolLoop == nil {
 		return
 	}
-	if err := deps.RunFlushToolLoop(ctx, call, model, flushPrompt); err != nil {
+	ranFlush, err := deps.RunFlushToolLoop(ctx, call, model, flushPrompt)
+	if err != nil {
 		if deps.OnError != nil {
 			deps.OnError(ctx, err)
 		}
 		return
 	}
-	if deps.MarkFlushed != nil {
+	if ranFlush && deps.MarkFlushed != nil {
 		deps.MarkFlushed(ctx, call)
 	}
 }
