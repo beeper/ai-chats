@@ -22,7 +22,7 @@ require (
 	go.mau.fi/util v0.9.6
 	golang.org/x/image v0.35.0
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.26.3
+	maunium.net/go/mautrix v0.26.4-0.20260302052750-fea9e99e6f8e
 )
 
 require (
@@ -54,5 +54,3 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	maunium.net/go/mauflag v1.0.0 // indirect
 )
-
-replace maunium.net/go/mautrix => /Users/batuhan/Projects/texts/mautrix-go
