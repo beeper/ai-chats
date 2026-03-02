@@ -373,11 +373,3 @@ func (oc *AIClient) findApprovalByEventID(eventID id.EventID) string {
 		return false
 	})
 }
-
-func (oc *AIClient) dropToolApproval(approvalID string) {
-	if oc == nil {
-		return
-	}
-	oc.approvals.Drop(approvalID)
-	oc.Log().Debug().Str("approval_id", approvalID).Msg("tool approval dropped")
-}

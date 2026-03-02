@@ -3,7 +3,6 @@ package connector
 import (
 	"context"
 	"errors"
-	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -67,35 +66,5 @@ func (oc *AIClient) sendApprovalRejectionEvent(ctx context.Context, portal *brid
 	}
 	if _, _, sendErr := oc.sendViaPortal(ctx, portal, converted, ""); sendErr != nil {
 		oc.loggerForContext(ctx).Warn().Err(sendErr).Msg("Failed to send approval rejection event")
-	}
-}
-
-// sendToast sends a simple toast notification to the portal.
-func (oc *AIClient) sendToast(ctx context.Context, portal *bridgev2.Portal, text string, toastType aiToastType) {
-	if oc == nil || portal == nil || portal.MXID == "" {
-		return
-	}
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return
-	}
-	raw := map[string]any{
-		"msgtype": event.MsgNotice,
-		"body":    text,
-		"com.beeper.ai.toast": map[string]any{
-			"text": text,
-			"type": string(toastType),
-		},
-		"m.mentions": map[string]any{},
-	}
-	converted := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:    networkid.PartID("0"),
-			Type:  event.EventMessage,
-			Extra: raw,
-		}},
-	}
-	if _, _, err := oc.sendViaPortal(ctx, portal, converted, ""); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Str("toast", text).Msg("Failed to send toast")
 	}
 }

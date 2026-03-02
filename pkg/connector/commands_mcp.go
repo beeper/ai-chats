@@ -131,15 +131,6 @@ func parseMCPHTTPAuthArgs(rest []string) (token string, authType string, authURL
 	return token, authType, authURL
 }
 
-func isMCPTransportToken(value string) bool {
-	switch normalizeMCPServerTransport(value) {
-	case mcpTransportStreamableHTTP, mcpTransportStdio:
-		return true
-	default:
-		return false
-	}
-}
-
 func parseMCPAddArgs(args []string, allowStdio bool) (name string, cfg MCPServerConfig, err error) {
 	trimmed := make([]string, 0, len(args))
 	for _, raw := range args {

@@ -14,6 +14,61 @@ import (
 )
 
 // -----------------------------------------------------------------------
+// OpenCodeRemoteMessage — for sending messages via QueueRemoteEvent
+// -----------------------------------------------------------------------
+
+var (
+	_ bridgev2.RemoteMessage              = (*OpenCodeRemoteMessage)(nil)
+	_ bridgev2.RemoteEventWithTimestamp   = (*OpenCodeRemoteMessage)(nil)
+	_ bridgev2.RemoteEventWithStreamOrder = (*OpenCodeRemoteMessage)(nil)
+)
+
+// OpenCodeRemoteMessage is a RemoteMessage for OpenCode-generated content routed through bridgev2.
+type OpenCodeRemoteMessage struct {
+	portal    networkid.PortalKey
+	id        networkid.MessageID
+	sender    bridgev2.EventSender
+	timestamp time.Time
+
+	preBuilt *bridgev2.ConvertedMessage
+}
+
+func (m *OpenCodeRemoteMessage) GetType() bridgev2.RemoteEventType {
+	return bridgev2.RemoteEventMessage
+}
+
+func (m *OpenCodeRemoteMessage) GetPortalKey() networkid.PortalKey {
+	return m.portal
+}
+
+func (m *OpenCodeRemoteMessage) AddLogContext(c zerolog.Context) zerolog.Context {
+	return c.Str("opencode_msg_id", string(m.id))
+}
+
+func (m *OpenCodeRemoteMessage) GetSender() bridgev2.EventSender {
+	return m.sender
+}
+
+func (m *OpenCodeRemoteMessage) GetID() networkid.MessageID {
+	return m.id
+}
+
+func (m *OpenCodeRemoteMessage) GetTimestamp() time.Time {
+	if m.timestamp.IsZero() {
+		return time.Now()
+	}
+	return m.timestamp
+}
+
+func (m *OpenCodeRemoteMessage) GetStreamOrder() int64 {
+	return m.GetTimestamp().UnixMilli()
+}
+
+func (m *OpenCodeRemoteMessage) ConvertMessage(_ context.Context, _ *bridgev2.Portal, _ bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
+	return m.preBuilt, nil
+}
+
+// -----------------------------------------------------------------------
 // OpenCodeRemoteEdit — for debounced streaming edits
 // -----------------------------------------------------------------------
 

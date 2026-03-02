@@ -318,6 +318,9 @@ func cmdRun(args []string) error {
 	}
 	argv := []string{meta.BinaryPath, "-c", meta.ConfigPath}
 	fmt.Printf("running %s in foreground\n", instance)
+	if err = os.Chdir(filepath.Dir(meta.ConfigPath)); err != nil {
+		return fmt.Errorf("failed to chdir: %w", err)
+	}
 	return syscall.Exec(meta.BinaryPath, argv, os.Environ())
 }
 

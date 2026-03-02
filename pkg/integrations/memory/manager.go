@@ -851,21 +851,6 @@ func clampInjectedChars(results []memorycore.SearchResult, maxChars int) []memor
 	return results
 }
 
-func vectorResultsToSearch(results []memorycore.HybridVectorResult) []memorycore.SearchResult {
-	out := make([]memorycore.SearchResult, 0, len(results))
-	for _, entry := range results {
-		out = append(out, memorycore.SearchResult{
-			Path:      entry.Path,
-			StartLine: entry.StartLine,
-			EndLine:   entry.EndLine,
-			Score:     entry.VectorScore,
-			Snippet:   entry.Snippet,
-			Source:    entry.Source,
-		})
-	}
-	return out
-}
-
 func keywordResultsToSearch(results []memorycore.HybridKeywordResult) []memorycore.SearchResult {
 	out := make([]memorycore.SearchResult, 0, len(results))
 	for _, entry := range results {

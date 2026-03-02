@@ -10,7 +10,7 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
-// sendViaPortal sends a pre-built message through bridgev2's full pipeline.
+// sendViaPortal sends a pre-built message through bridgev2's QueueRemoteEvent pipeline.
 func (oc *OpenCodeClient) sendViaPortal(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -21,14 +21,15 @@ func (oc *OpenCodeClient) sendViaPortal(
 		return fmt.Errorf("invalid portal")
 	}
 	sender := oc.SenderForOpenCode(instanceID, false)
-	pi := portal.Internal()
-	intent, _, err := pi.GetIntentAndUserMXIDFor(ctx, sender, oc.UserLogin, nil, bridgev2.RemoteEventMessage)
-	if err != nil {
-		return fmt.Errorf("intent resolution failed: %w", err)
-	}
 	msgID := newOpenCodeMessageID()
-	now := time.Now()
-	_, result := pi.SendConvertedMessage(ctx, msgID, intent, sender.Sender, converted, now, now.UnixMilli(), nil)
+	evt := &OpenCodeRemoteMessage{
+		portal:    portal.PortalKey,
+		id:        msgID,
+		sender:    sender,
+		timestamp: time.Now(),
+		preBuilt:  converted,
+	}
+	result := oc.UserLogin.QueueRemoteEvent(evt)
 	if !result.Success {
 		if result.Error != nil {
 			return fmt.Errorf("send failed: %w", result.Error)
