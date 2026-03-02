@@ -22,7 +22,6 @@ import (
 	"time"
 
 	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
-	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/beeper/ai-bridge/pkg/shared/calc"
 	"github.com/beeper/ai-bridge/pkg/shared/maputil"
 	"github.com/beeper/ai-bridge/pkg/shared/media"
@@ -151,7 +150,7 @@ func normalizeMessageArgs(args map[string]any) {
 	}
 	if raw, ok := args["message_id"]; ok {
 		if value, ok := raw.(string); ok {
-			args["message_id"] = runtimeparse.NormalizeMessageID(value)
+			args["message_id"] = strings.TrimSpace(value)
 		}
 	}
 }

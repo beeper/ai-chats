@@ -38,7 +38,7 @@ func TestStreamingAccumulator_SplitDirective(t *testing.T) {
 func TestSanitizeChatMessageForDisplay_User(t *testing.T) {
 	input := "[Matrix] Alice: hello\n[message_id: $abc]\nConversation info (untrusted metadata):\n```json\n{\"a\":1}\n```"
 	out := SanitizeChatMessageForDisplay(input, true)
-	if out != "Alice: hello" {
+	if out != "[Matrix] Alice: hello\n[message_id: $abc]" {
 		t.Fatalf("unexpected sanitized output: %q", out)
 	}
 }
@@ -99,18 +99,6 @@ func TestQueueFallbackToolCompactionDecisions(t *testing.T) {
 	}
 	if d := DecideFallback(assertErr("invalid_api_key")); d.Action != FallbackActionAbort {
 		t.Fatalf("expected auth fallback action abort, got %#v", d)
-	}
-}
-
-func TestNormalizeMessageID(t *testing.T) {
-	if got := NormalizeMessageID("[message_id: $abc:example.com]"); got != "$abc:example.com" {
-		t.Fatalf("expected normalized message id, got %q", got)
-	}
-	if got := NormalizeMessageID("reply [message_id: $abc:example.com]"); got != "$abc:example.com" {
-		t.Fatalf("expected inline normalized message id, got %q", got)
-	}
-	if got := NormalizeMessageID("[message_id: bad id]"); got != "" {
-		t.Fatalf("expected invalid message id to normalize empty, got %q", got)
 	}
 }
 

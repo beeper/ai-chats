@@ -626,29 +626,6 @@ func notifyIntegrationFileChanged(ctx context.Context, path string) {
 	btc.Client.emitIntegrationFileChanged(ctx, btc.Portal, meta, path)
 }
 
-func (oc *AIClient) runOverflowIntegrations(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	prompt []openai.ChatCompletionMessageParamUnion,
-	requestedTokens int,
-	modelMaxTokens int,
-	attempt int,
-) (bool, []openai.ChatCompletionMessageParamUnion, error) {
-	if oc == nil || oc.overflowRegistry == nil {
-		return false, nil, nil
-	}
-	return oc.overflowRegistry.handle(ctx, integrationruntime.ContextOverflowCall{
-		Client:          oc,
-		Portal:          portal,
-		Meta:            meta,
-		Prompt:          prompt,
-		RequestedTokens: requestedTokens,
-		ModelMaxTokens:  modelMaxTokens,
-		Attempt:         attempt,
-	})
-}
-
 func (oc *AIClient) purgeLoginIntegrations(ctx context.Context, login any, bridgeID, loginID string) {
 	if oc == nil || oc.purgeRegistry == nil {
 		return

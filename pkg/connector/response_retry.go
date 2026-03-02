@@ -64,22 +64,6 @@ func (oc *AIClient) responseWithRetry(
 			if !autoCompactionAttempted {
 				autoCompactionAttempted = true
 
-				handledOverflow, overflowPrompt, overflowErr := oc.runOverflowIntegrations(
-					ctx,
-					portal,
-					meta,
-					currentPrompt,
-					cle.RequestedTokens,
-					cle.ModelMaxTokens,
-					attempt+1,
-				)
-				if overflowErr != nil {
-					oc.loggerForContext(ctx).Warn().Err(overflowErr).Msg("overflow integration hook failed")
-				} else if handledOverflow && len(overflowPrompt) > 0 {
-					currentPrompt = overflowPrompt
-					continue
-				}
-
 				// Get context window from model
 				contextWindow := oc.getModelContextWindow(meta)
 				if contextWindow <= 0 {
@@ -145,21 +129,8 @@ func (oc *AIClient) responseWithRetry(
 				oc.loggerForContext(ctx).Warn().Msg("Auto-compaction did not help, falling back to reactive truncation")
 			}
 
-			// Fall back to reactive truncation
-			truncated := oc.truncatePrompt(currentPrompt)
-			if len(truncated) <= 2 {
-				return false, cle
-			}
-
-			oc.notifyContextLengthExceeded(ctx, portal, cle, true)
-			currentPrompt = truncated
-
-			oc.loggerForContext(ctx).Debug().
-				Int("attempt", attempt+1).
-				Int("new_prompt_len", len(currentPrompt)).
-				Str("log_label", logLabel).
-				Msg("Retrying Responses API with truncated context")
-			continue
+			oc.notifyContextLengthExceeded(ctx, portal, cle, false)
+			return false, cle
 		}
 
 		// Non-context error, already handled in responseFn
@@ -222,34 +193,6 @@ func (oc *AIClient) notifyContextLengthExceeded(
 	}
 
 	oc.sendSystemNotice(ctx, portal, message)
-}
-
-// truncatePrompt intelligently prunes messages while preserving conversation coherence.
-// Uses smart context pruning that:
-// 1. Never removes system prompt or latest user message
-// 2. First truncates large tool results (keeps head + tail)
-// 3. Removes oldest messages while keeping tool call/result pairs together
-// 4. Preserves recent context with higher priority
-func (oc *AIClient) truncatePrompt(
-	prompt []openai.ChatCompletionMessageParamUnion,
-) []openai.ChatCompletionMessageParamUnion {
-	charInputs, totalChars := airuntime.PromptTextPayloads(prompt)
-	if totalChars > 0 {
-		decision := airuntime.ApplyCompaction(airuntime.CompactionInput{
-			Messages:      charInputs,
-			MaxChars:      totalChars / 2,
-			ProtectedTail: 3,
-		}).Decision
-		oc.loggerForContext(context.Background()).Debug().
-			Bool("applied", decision.Applied).
-			Int("dropped", decision.DroppedCount).
-			Int("original_chars", decision.OriginalChars).
-			Int("final_chars", decision.FinalChars).
-			Str("reason", decision.Reason).
-			Msg("Runtime compaction decision")
-	}
-	// Use smart truncation with 50% reduction target
-	return airuntime.SmartTruncatePrompt(prompt, 0.5)
 }
 
 func (oc *AIClient) runtimeCompactOnOverflow(
