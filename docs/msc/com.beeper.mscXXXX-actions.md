@@ -2,7 +2,7 @@
 
 **Prior art:** [MSC1485](https://docs.google.com/document/d/1EgDkQMO_UEXsR7V4xFJYXrCf0FBz5Pzq-RFoojdqJk/) (tulir), [MSC3381](https://github.com/matrix-org/matrix-spec-proposals/pull/3381) (polls), [MSC4140](https://github.com/matrix-org/matrix-spec-proposals/pull/4140) (delayed events), [MSC4392](https://github.com/matrix-org/matrix-spec-proposals/pull/4392) (semantic markup)
 
-**Status:** Implementing in mautrix-go + ai-bridge.
+**Status:** Implemented in mautrix-go + ai-bridge.
 
 ## Summary
 
@@ -106,6 +106,10 @@ When a user clicks a button, the client sends:
 | `m.relates_to.m.from_action_hint.hint_key` | integer | Index of the selected hint in `hints[]` |
 | `action_id` | string | The action identifier from the hint's `event` content |
 | `context` | object | Passthrough from the original `com.beeper.action_hints.context` |
+
+### Implementation Note: `m.from_action_hint`
+
+mautrix-go's `RelatesTo` struct does not yet have a dedicated field for the nested `m.from_action_hint` relation. The bridge's `ParseActionResponse()` extracts `event_id` from `RelatesTo.EventID` but cannot parse `hint_key` from the custom nesting. In practice, ai-bridge identifies the selected hint via the `action_id` in the response content + the `context` passthrough, so the `hint_key` index is not required for correct operation.
 
 ## State Update on Selection
 

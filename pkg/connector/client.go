@@ -330,8 +330,7 @@ type AIClient struct {
 	mcpToolsFetchedAt time.Time
 
 	// Tool approvals (e.g. OpenAI MCP approval requests)
-	toolApprovalsMu sync.Mutex
-	toolApprovals   map[string]*pendingToolApproval // approvalID -> pending approval
+	approvals *bridgeadapter.ApprovalManager[toolApprovalResolution]
 
 	streamFallbackToDebounced atomic.Bool
 
@@ -399,7 +398,7 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 		groupHistoryBuffers: make(map[id.RoomID]*groupHistoryBuffer),
 		userTypingState:     make(map[id.RoomID]userTypingState),
 		queueTyping:         make(map[id.RoomID]*TypingController),
-		toolApprovals:       make(map[string]*pendingToolApproval),
+		approvals:           bridgeadapter.NewApprovalManager[toolApprovalResolution](),
 	}
 
 	// Initialize inbound message processing with config values

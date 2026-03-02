@@ -35,6 +35,7 @@ import (
 
 var _ bridgev2.NetworkAPI = (*CodexClient)(nil)
 var _ bridgev2.DeleteChatHandlingNetworkAPI = (*CodexClient)(nil)
+var _ bridgev2.ActionResponseHandlingNetworkAPI = (*CodexClient)(nil)
 
 const codexGhostID = networkid.UserID("codex")
 
@@ -90,8 +91,7 @@ type CodexClient struct {
 	loadedMu      sync.Mutex
 	loadedThreads map[string]bool // threadId -> loaded via thread/start|thread/resume
 
-	toolApprovalsMu sync.Mutex
-	toolApprovals   map[string]*pendingToolApprovalCodex
+	approvals *bridgeadapter.ApprovalManager[ToolApprovalDecisionCodex]
 
 	roomMu          sync.Mutex
 	activeRooms     map[id.RoomID]bool
@@ -121,7 +121,7 @@ func newCodexClient(login *bridgev2.UserLogin, connector *CodexConnector) (*Code
 		log:             log,
 		notifCh:         make(chan codexNotif, 4096),
 		notifDone:       make(chan struct{}),
-		toolApprovals:   make(map[string]*pendingToolApprovalCodex),
+		approvals:       bridgeadapter.NewApprovalManager[ToolApprovalDecisionCodex](),
 		loadedThreads:   make(map[string]bool),
 		activeTurns:     make(map[string]*codexActiveTurn),
 		turnSubs:        make(map[string]chan codexNotif),
@@ -371,25 +371,6 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 		return nil, bridgeadapter.UnsupportedMessageStatus(errors.New("not a Codex room"))
 	}
 	if bridgeadapter.IsMatrixBotUser(ctx, cc.UserLogin.Bridge, msg.Event.Sender) {
-		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
-	}
-
-	// Structured approval decision (sent by capable clients). Keep this before the
-	// fallback command/UI path so the user doesn't need to emit text commands.
-	if decision := bridgeadapter.ParseApprovalDecision(msg.Event.Content.Raw); decision != nil {
-		approve, _, ok := bridgeadapter.ApprovalDecisionFromString(decision.Decision)
-		if !ok {
-			return &bridgev2.MatrixMessageResponse{Pending: false}, nil
-		}
-		err := cc.resolveToolApproval(decision.ApprovalID, ToolApprovalDecisionCodex{
-			Approve:   approve,
-			Reason:    strings.TrimSpace(decision.Reason),
-			DecidedAt: time.Now(),
-			DecidedBy: msg.Event.Sender,
-		})
-		if err != nil {
-			cc.sendToast(ctx, portal, approvalErrorToastText(err), aiToastTypeError)
-		}
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 
@@ -1837,6 +1818,114 @@ func (cc *CodexClient) sendToolCallApprovalEvent(
 		Msg("Sent tool call approval_required timeline event")
 }
 
+// sendActionHintsApprovalEvent sends a timeline message with com.beeper.action_hints
+// containing Allow/Always/Deny buttons for tool approval (MSC1485 pattern).
+func (cc *CodexClient) sendActionHintsApprovalEvent(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	toolCallID string,
+	toolName string,
+	approvalID string,
+	expiresAtMs int64,
+) {
+	if portal == nil || portal.MXID == "" {
+		return
+	}
+
+	var ownerMXID id.UserID
+	if cc.UserLogin != nil {
+		ownerMXID = cc.UserLogin.UserMXID
+	}
+
+	hints := bridgeadapter.BuildApprovalHints(bridgeadapter.ApprovalHintsParams{
+		ApprovalID:  approvalID,
+		ToolCallID:  toolCallID,
+		ToolName:    toolName,
+		OwnerMXID:   ownerMXID,
+		ExpiresAtMs: expiresAtMs,
+	})
+
+	body := fmt.Sprintf("Allow %s tool?", toolName)
+	uiMessage := map[string]any{
+		"id":   "approval:" + approvalID,
+		"role": "assistant",
+		"parts": []map[string]any{
+			{
+				"type":       "action-hints",
+				"toolCallId": toolCallID,
+				"toolName":   toolName,
+			},
+		},
+	}
+	if state != nil && state.turnID != "" {
+		uiMessage["metadata"] = map[string]any{"turn_id": state.turnID}
+	}
+
+	eventRaw := map[string]any{
+		"msgtype":                         event.MsgNotice,
+		"body":                            body,
+		matrixevents.BeeperAIKey:          uiMessage,
+		matrixevents.BeeperActionHintsKey: hints,
+		"m.mentions":                      map[string]any{},
+	}
+
+	converted := &bridgev2.ConvertedMessage{
+		Parts: []*bridgev2.ConvertedMessagePart{{
+			ID:    networkid.PartID("0"),
+			Type:  event.EventMessage,
+			Extra: eventRaw,
+		}},
+	}
+	if evtID, msgID, err := cc.sendViaPortal(ctx, portal, converted, ""); err == nil && evtID != "" {
+		cc.approvals.SetData(approvalID, func(data any) any {
+			if d, ok := data.(*pendingToolApprovalDataCodex); ok {
+				d.ApprovalEventID = evtID
+				d.ApprovalNetworkMsgID = msgID
+			}
+			return data
+		})
+	}
+}
+
+// HandleMatrixActionResponse handles com.beeper.action_response events (MSC1485 action hints).
+// This implements bridgev2.ActionResponseHandlingNetworkAPI.
+func (cc *CodexClient) HandleMatrixActionResponse(ctx context.Context, msg *bridgev2.MatrixActionResponse) error {
+	if msg == nil || msg.Content == nil || msg.Portal == nil {
+		return nil
+	}
+	log := cc.loggerForContext(ctx)
+
+	parsed := bridgeadapter.ParseActionResponse(msg.Content)
+	if parsed == nil {
+		log.Warn().Msg("action response: failed to parse payload")
+		return nil
+	}
+
+	approve, _, ok := bridgeadapter.ActionDecisionFromString(parsed.ActionID)
+	if !ok {
+		log.Warn().Str("action_id", parsed.ActionID).Msg("action response: unknown action_id")
+		return nil
+	}
+
+	approvalID := strings.TrimSpace(parsed.ApprovalID)
+	if approvalID == "" {
+		log.Warn().Msg("action response: missing approval_id in context")
+		return nil
+	}
+
+	err := cc.resolveToolApproval(approvalID, ToolApprovalDecisionCodex{
+		Approve:   approve,
+		DecidedAt: time.Now(),
+		DecidedBy: msg.Event.Sender,
+	})
+	if err != nil {
+		log.Warn().Err(err).Str("approval_id", approvalID).Msg("action response: failed to resolve approval")
+		cc.sendToast(ctx, msg.Portal, bridgeadapter.ApprovalErrorToastText(err), aiToastTypeError)
+	}
+	return nil
+}
+
 func (cc *CodexClient) emitUIFinish(ctx context.Context, portal *bridgev2.Portal, state *streamingState, model string, finishReason string) {
 	cc.uiEmitter(state).EmitUIFinish(ctx, portal, finishReason, cc.buildUIMessageMetadata(state, model, true, finishReason))
 	if state != nil && state.session != nil {
@@ -2030,100 +2119,31 @@ type ToolApprovalDecisionCodex struct {
 	DecidedBy id.UserID
 }
 
-type pendingToolApprovalCodex struct {
-	ApprovalID  string
-	ToolCallID  string
-	ToolName    string
-	RequestedAt time.Time
-	ExpiresAt   time.Time
-	decisionCh  chan ToolApprovalDecisionCodex
+// pendingToolApprovalDataCodex holds codex-specific metadata stored in
+// ApprovalManager's PendingApproval.Data field.
+type pendingToolApprovalDataCodex struct {
+	ApprovalID           string
+	ToolCallID           string
+	ToolName             string
+	ApprovalEventID      id.EventID
+	ApprovalNetworkMsgID networkid.MessageID
 }
 
-func (cc *CodexClient) registerToolApproval(approvalID, toolCallID, toolName string, ttl time.Duration) (*pendingToolApprovalCodex, bool) {
-	approvalID = strings.TrimSpace(approvalID)
-	if approvalID == "" {
-		return nil, false
+func (cc *CodexClient) registerToolApproval(approvalID, toolCallID, toolName string, ttl time.Duration) (*bridgeadapter.PendingApproval[ToolApprovalDecisionCodex], bool) {
+	data := &pendingToolApprovalDataCodex{
+		ApprovalID: strings.TrimSpace(approvalID),
+		ToolCallID: strings.TrimSpace(toolCallID),
+		ToolName:   strings.TrimSpace(toolName),
 	}
-	if ttl <= 0 {
-		ttl = 10 * time.Minute
-	}
-	cc.toolApprovalsMu.Lock()
-	defer cc.toolApprovalsMu.Unlock()
-	if existing := cc.toolApprovals[approvalID]; existing != nil {
-		return existing, false
-	}
-	now := time.Now()
-	p := &pendingToolApprovalCodex{
-		ApprovalID:  approvalID,
-		ToolCallID:  toolCallID,
-		ToolName:    toolName,
-		RequestedAt: now,
-		ExpiresAt:   now.Add(ttl),
-		decisionCh:  make(chan ToolApprovalDecisionCodex, 1),
-	}
-	cc.toolApprovals[approvalID] = p
-	return p, true
+	return cc.approvals.Register(approvalID, ttl, data)
 }
 
 func (cc *CodexClient) resolveToolApproval(approvalID string, decision ToolApprovalDecisionCodex) error {
-	approvalID = strings.TrimSpace(approvalID)
-	if approvalID == "" {
-		return ErrApprovalMissingID
-	}
-	cc.toolApprovalsMu.Lock()
-	p := cc.toolApprovals[approvalID]
-	cc.toolApprovalsMu.Unlock()
-	if p == nil {
-		return fmt.Errorf("%w: %s", ErrApprovalUnknown, approvalID)
-	}
-	if time.Now().After(p.ExpiresAt) {
-		cc.toolApprovalsMu.Lock()
-		delete(cc.toolApprovals, approvalID)
-		cc.toolApprovalsMu.Unlock()
-		return fmt.Errorf("%w: %s", ErrApprovalExpired, approvalID)
-	}
-	select {
-	case p.decisionCh <- decision:
-		return nil
-	default:
-		return fmt.Errorf("%w: %s", ErrApprovalAlreadyHandled, approvalID)
-	}
+	return cc.approvals.Resolve(approvalID, decision)
 }
 
 func (cc *CodexClient) waitToolApproval(ctx context.Context, approvalID string) (ToolApprovalDecisionCodex, bool) {
-	approvalID = strings.TrimSpace(approvalID)
-	if approvalID == "" {
-		return ToolApprovalDecisionCodex{}, false
-	}
-	cc.toolApprovalsMu.Lock()
-	p := cc.toolApprovals[approvalID]
-	cc.toolApprovalsMu.Unlock()
-	if p == nil {
-		return ToolApprovalDecisionCodex{}, false
-	}
-	timeout := time.Until(p.ExpiresAt)
-	if timeout <= 0 {
-		cc.toolApprovalsMu.Lock()
-		delete(cc.toolApprovals, approvalID)
-		cc.toolApprovalsMu.Unlock()
-		return ToolApprovalDecisionCodex{}, false
-	}
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-	select {
-	case d := <-p.decisionCh:
-		cc.toolApprovalsMu.Lock()
-		delete(cc.toolApprovals, approvalID)
-		cc.toolApprovalsMu.Unlock()
-		return d, true
-	case <-timer.C:
-		cc.toolApprovalsMu.Lock()
-		delete(cc.toolApprovals, approvalID)
-		cc.toolApprovalsMu.Unlock()
-		return ToolApprovalDecisionCodex{}, false
-	case <-ctx.Done():
-		return ToolApprovalDecisionCodex{}, false
-	}
+	return cc.approvals.Wait(ctx, approvalID)
 }
 
 func (cc *CodexClient) handleApprovalRequest(
@@ -2157,8 +2177,9 @@ func (cc *CodexClient) handleApprovalRequest(
 	inputMap := extractInput(req.Params)
 	cc.ensureUIToolInputStart(ctx, active.portal, active.state, toolCallID, toolName, true, inputMap)
 	cc.emitUIToolApprovalRequest(ctx, active.portal, active.state, approvalID, toolCallID, toolName, ttlSeconds)
-	cc.sendToolCallApprovalEvent(ctx, active.portal, active.state, toolCallID, toolName, approvalID,
-		time.Now().Add(time.Duration(ttlSeconds)*time.Second).UnixMilli())
+	approvalExpiresAtMs := time.Now().Add(time.Duration(ttlSeconds) * time.Second).UnixMilli()
+	cc.sendToolCallApprovalEvent(ctx, active.portal, active.state, toolCallID, toolName, approvalID, approvalExpiresAtMs)
+	cc.sendActionHintsApprovalEvent(ctx, active.portal, active.state, toolCallID, toolName, approvalID, approvalExpiresAtMs)
 	cc.sendSystemNoticeOnce(ctx, active.portal, active.state, "codex-approval:"+approvalID, fmt.Sprintf("Approval required (%s): !ai approve %s <allow|deny> [reason]", toolName, approvalID))
 	cc.registerToolApproval(approvalID, toolCallID, toolName, time.Duration(ttlSeconds)*time.Second)
 

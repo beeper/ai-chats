@@ -11,6 +11,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/bridges/codex/codexrpc"
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 func TestCodex_CommandApproval_RequestBlocksUntilApproved(t *testing.T) {
@@ -29,8 +30,8 @@ func TestCodex_CommandApproval_RequestBlocksUntilApproved(t *testing.T) {
 				}
 			}
 		},
-		toolApprovals: make(map[string]*pendingToolApprovalCodex),
-		activeRooms:   make(map[id.RoomID]bool),
+		approvals:   bridgeadapter.NewApprovalManager[ToolApprovalDecisionCodex](),
+		activeRooms: make(map[id.RoomID]bool),
 	}
 
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
@@ -107,7 +108,7 @@ func TestCodex_CommandApproval_AutoApproveInFullElevated(t *testing.T) {
 
 	cc := &CodexClient{
 		streamEventHook: func(turnID string, seq int, content map[string]any, txnID string) {},
-		toolApprovals:   make(map[string]*pendingToolApprovalCodex),
+		approvals:       bridgeadapter.NewApprovalManager[ToolApprovalDecisionCodex](),
 		activeRooms:     make(map[id.RoomID]bool),
 	}
 

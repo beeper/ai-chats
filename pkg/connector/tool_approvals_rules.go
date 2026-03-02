@@ -115,7 +115,7 @@ func (oc *AIClient) isBuiltinAlwaysAllowed(toolName, action string) bool {
 	return false
 }
 
-func (oc *AIClient) persistAlwaysAllow(ctx context.Context, pending *pendingToolApproval) error {
+func (oc *AIClient) persistAlwaysAllow(ctx context.Context, pending *pendingToolApprovalData) error {
 	if oc == nil || oc.UserLogin == nil || pending == nil {
 		return nil
 	}
