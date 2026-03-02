@@ -75,9 +75,6 @@ type streamingState struct {
 	pendingMcpApprovals     []mcpApprovalRequest
 	pendingMcpApprovalsSeen map[string]bool
 
-	// Avoid logging repeated missing-ephemeral warnings.
-	streamEphemeralUnsupported bool
-
 	// Debounced ephemeral logging: true once the "Streaming started" summary has been logged.
 	loggedStreamStart bool
 }

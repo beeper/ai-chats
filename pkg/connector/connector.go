@@ -47,6 +47,10 @@ type OpenAIConnector struct {
 }
 
 func (oc *OpenAIConnector) Init(bridge *bridgev2.Bridge) {
+	// Process remote events synchronously so callers can retrieve event IDs
+	// and maintain strict message ordering (send → edit → redact).
+	bridgev2.PortalEventBuffer = 0
+
 	oc.br = bridge
 	oc.db = nil
 	if bridge != nil && bridge.DB != nil && bridge.DB.Database != nil {

@@ -466,10 +466,6 @@ func extractOpenClawToolResultID(msg map[string]any) string {
 	return strings.TrimSpace(toString(msg["toolUseId"]))
 }
 
-func buildTextBlocks(text string) []map[string]any {
-	return buildTextBlocksForRole(text, false)
-}
-
 func buildTextBlocksForRole(text string, isUser bool) []map[string]any {
 	cleaned := runtimeparse.SanitizeChatMessageForDisplay(text, isUser)
 	return []map[string]any{

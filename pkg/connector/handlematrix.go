@@ -1071,14 +1071,13 @@ func cleanupAckReactionStore() {
 	}
 }
 
-// sendAckReaction sends an acknowledgement reaction to a message via bridgev2's pipeline.
+// sendAckReaction sends an acknowledgement reaction to a message via QueueRemoteEvent.
 // Returns the event ID of the reaction for potential removal.
 func (oc *AIClient) sendAckReaction(ctx context.Context, portal *bridgev2.Portal, targetEventID id.EventID, emoji string) id.EventID {
 	if portal == nil || portal.MXID == "" || targetEventID == "" || emoji == "" {
 		return ""
 	}
 
-	// Look up the target message in the DB for SendConvertedReaction
 	targetPart, err := oc.UserLogin.Bridge.DB.Message.GetPartByMXID(ctx, targetEventID)
 	if err != nil || targetPart == nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Stringer("target_event", targetEventID).Msg("Target message not found for ack reaction")
@@ -1086,20 +1085,15 @@ func (oc *AIClient) sendAckReaction(ctx context.Context, portal *bridgev2.Portal
 	}
 
 	sender := oc.senderForPortal(ctx, portal)
-	pi := portal.Internal()
-	intent, _, err := pi.GetIntentAndUserMXIDFor(
-		ctx, sender, oc.UserLogin, nil, bridgev2.RemoteEventReaction,
-	)
-	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to get intent for ack reaction")
-		return ""
-	}
-
 	emojiID := networkid.EmojiID(emoji)
-	result := pi.SendConvertedReaction(
-		ctx, sender.Sender, intent, targetPart,
-		emojiID, emoji, time.Now(), nil, nil, nil,
-	)
+	result := oc.UserLogin.QueueRemoteEvent(&AIRemoteReaction{
+		portal:        portal.PortalKey,
+		sender:        sender,
+		targetMessage: targetPart.ID,
+		emoji:         emoji,
+		emojiID:       emojiID,
+		timestamp:     time.Now(),
+	})
 	if !result.Success {
 		oc.loggerForContext(ctx).Warn().
 			Stringer("target_event", targetEventID).

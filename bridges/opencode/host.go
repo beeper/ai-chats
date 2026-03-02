@@ -107,30 +107,31 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 			instanceID = pmeta.InstanceID
 		}
 		sender := oc.SenderForOpenCode(instanceID, false)
-		pi := portal.Internal()
-		intent, _, err := pi.GetIntentAndUserMXIDFor(ctx, sender, oc.UserLogin, nil, bridgev2.RemoteEventMessage)
-		if err == nil && intent != nil {
-			msgID := newOpenCodeMessageID()
-			converted := &bridgev2.ConvertedMessage{
-				Parts: []*bridgev2.ConvertedMessagePart{{
-					ID:      networkid.PartID("0"),
-					Type:    event.EventMessage,
-					Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "..."},
-					Extra:   map[string]any{"msgtype": event.MsgText, "body": "...", "m.mentions": map[string]any{}},
-				}},
+		msgID := newOpenCodeMessageID()
+		converted := &bridgev2.ConvertedMessage{
+			Parts: []*bridgev2.ConvertedMessagePart{{
+				ID:      networkid.PartID("0"),
+				Type:    event.EventMessage,
+				Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "..."},
+				Extra:   map[string]any{"msgtype": event.MsgText, "body": "...", "m.mentions": map[string]any{}},
+			}},
+		}
+		result := oc.UserLogin.QueueRemoteEvent(&OpenCodeRemoteMessage{
+			portal:    portal.PortalKey,
+			id:        msgID,
+			sender:    sender,
+			timestamp: time.Now(),
+			preBuilt:  converted,
+		})
+		if result.Success && result.EventID != "" {
+			oc.streamMu.Lock()
+			st := oc.streamStates[turnID]
+			if st != nil && st.initialEventID == "" {
+				st.initialEventID = result.EventID
+				st.networkMessageID = msgID
+				st.targetEventID = result.EventID.String()
 			}
-			now := time.Now()
-			dbMsgs, result := pi.SendConvertedMessage(ctx, msgID, intent, sender.Sender, converted, now, now.UnixMilli(), nil)
-			if result.Success && len(dbMsgs) > 0 {
-				oc.streamMu.Lock()
-				st := oc.streamStates[turnID]
-				if st != nil && st.initialEventID == "" {
-					st.initialEventID = dbMsgs[0].MXID
-					st.networkMessageID = msgID
-					st.targetEventID = dbMsgs[0].MXID.String()
-				}
-				oc.streamMu.Unlock()
-			}
+			oc.streamMu.Unlock()
 		}
 	}
 

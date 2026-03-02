@@ -10,7 +10,7 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-// sendViaPortal sends a pre-built message through bridgev2's full pipeline.
+// sendViaPortal sends a pre-built message through bridgev2's QueueRemoteEvent pipeline.
 // Handles: intent resolution, ghost room join, send, DB persist.
 // Returns the Matrix event ID and the network message ID used.
 // If msgID is empty, a new one is generated.
@@ -26,32 +26,25 @@ func (cc *CodexClient) sendViaPortal(
 	if cc == nil || cc.UserLogin == nil || cc.UserLogin.Bridge == nil {
 		return "", msgID, fmt.Errorf("bridge unavailable")
 	}
-	sender := cc.senderForPortal()
-	pi := portal.Internal()
-	intent, _, err := pi.GetIntentAndUserMXIDFor(
-		ctx, sender, cc.UserLogin, nil, bridgev2.RemoteEventMessage,
-	)
-	if err != nil {
-		return "", "", fmt.Errorf("intent resolution failed: %w", err)
-	}
 	if msgID == "" {
 		msgID = newMessageID()
 	}
-	now := time.Now()
-	dbMsgs, result := pi.SendConvertedMessage(
-		ctx, msgID, intent, sender.Sender, converted,
-		now, now.UnixMilli(), nil,
-	)
+	sender := cc.senderForPortal()
+	evt := &CodexRemoteMessage{
+		portal:    portal.PortalKey,
+		id:        msgID,
+		sender:    sender,
+		timestamp: time.Now(),
+		preBuilt:  converted,
+	}
+	result := cc.UserLogin.QueueRemoteEvent(evt)
 	if !result.Success {
 		if result.Error != nil {
 			return "", msgID, fmt.Errorf("send failed: %w", result.Error)
 		}
 		return "", msgID, fmt.Errorf("send failed")
 	}
-	if len(dbMsgs) == 0 {
-		return "", msgID, fmt.Errorf("send returned no messages")
-	}
-	return dbMsgs[0].MXID, msgID, nil
+	return result.EventID, msgID, nil
 }
 
 // getCodexIntentForPortal resolves the Matrix intent for the Codex ghost.
@@ -62,12 +55,9 @@ func (cc *CodexClient) getCodexIntentForPortal(
 	evtType bridgev2.RemoteEventType,
 ) (bridgev2.MatrixAPI, error) {
 	sender := cc.senderForPortal()
-	pi := portal.Internal()
-	intent, _, err := pi.GetIntentAndUserMXIDFor(
-		ctx, sender, cc.UserLogin, nil, evtType,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("intent resolution failed: %w", err)
+	intent, ok := portal.GetIntentFor(ctx, sender, cc.UserLogin, evtType)
+	if !ok {
+		return nil, fmt.Errorf("intent resolution failed")
 	}
 	return intent, nil
 }
