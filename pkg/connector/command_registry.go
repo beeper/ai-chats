@@ -178,11 +178,7 @@ func (oc *AIClient) BroadcastCommandDescriptions(ctx context.Context, portal *br
 // into a structured arguments map for com.beeper.command_description.
 func buildCommandArguments(argsStr string) map[string]any {
 	args := map[string]any{}
-	for _, part := range strings.Fields(argsStr) {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
+	for _, part := range tokenizeArgs(argsStr) {
 		required := false
 		name := part
 		if strings.HasPrefix(name, "<") && strings.HasSuffix(name, ">") {
@@ -202,4 +198,41 @@ func buildCommandArguments(argsStr string) map[string]any {
 		}
 	}
 	return args
+}
+
+// tokenizeArgs splits an args string into tokens, keeping bracketed segments
+// (e.g. "[_model name_]" or "<add|remove>") as single tokens.
+func tokenizeArgs(s string) []string {
+	var tokens []string
+	i := 0
+	for i < len(s) {
+		// Skip whitespace
+		if s[i] == ' ' || s[i] == '\t' {
+			i++
+			continue
+		}
+		var close byte
+		switch s[i] {
+		case '<':
+			close = '>'
+		case '[':
+			close = ']'
+		}
+		if close != 0 {
+			end := strings.IndexByte(s[i+1:], close)
+			if end >= 0 {
+				tokens = append(tokens, s[i:i+1+end+1])
+				i += 1 + end + 1
+				continue
+			}
+		}
+		// Plain word: read until next whitespace
+		j := i + 1
+		for j < len(s) && s[j] != ' ' && s[j] != '\t' {
+			j++
+		}
+		tokens = append(tokens, s[i:j])
+		i = j
+	}
+	return tokens
 }
