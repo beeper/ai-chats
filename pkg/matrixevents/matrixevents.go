@@ -44,9 +44,9 @@ const (
 // Re-exported from mautrix-go event.BeeperActionResponse.
 var ActionResponseEventType = event.BeeperActionResponse
 
-// BotCommandDescriptionEventType is the state event type for MSC4391 command descriptions.
-// Re-exported from mautrix-go event.StateMSC4391BotCommand.
-var BotCommandDescriptionEventType = event.StateMSC4391BotCommand
+// CommandDescriptionEventType is the state event type for MSC4391 command descriptions.
+// Already accepted in gomuks/mautrix-go ecosystem.
+var CommandDescriptionEventType = event.StateMSC4391BotCommand
 
 // ToolStatus represents the state of a tool call.
 type ToolStatus string

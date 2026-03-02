@@ -1,12 +1,14 @@
-# Bot Command Descriptions for ai-bridge
+# Command Descriptions (MSC4391)
 
-**Prior art:** [MSC4391](https://github.com/matrix-org/matrix-spec-proposals/pull/4391) (bot command descriptions)
+**Spec:** [MSC4391](https://github.com/matrix-org/matrix-spec-proposals/pull/4391) (bot command descriptions)
 
-**Status:** MSC4391 already implemented in mautrix-go and gomuks. ai-bridge migration in progress.
+**Status:** Already implemented in mautrix-go and gomuks. Adopted as-is by ai-bridge.
 
 ## Summary
 
-ai-bridge adopts MSC4391 for advertising available bot commands to clients. Instead of users memorizing `!ai status`, `!ai model`, etc., clients discover commands from state events and render them as slash commands with autocomplete and typed parameters.
+ai-bridge uses MSC4391 `org.matrix.msc4391.command_description` state events to advertise available commands to clients. Instead of users memorizing `!ai status`, `!ai model`, etc., clients discover commands from state events and render them as slash commands with autocomplete and typed parameters.
+
+MSC4391 is already used in gomuks (web + TUI) and deeply integrated into mautrix-go's command processor, so we adopt it directly rather than creating a `com.beeper.` variant.
 
 ## State Event
 
@@ -64,6 +66,19 @@ When a client sends a command, it includes the structured field:
 
 The `body` field contains the text fallback for clients without MSC4391 support.
 
+## Relationship with Action Hints (MSC1485)
+
+MSC4391 and `com.beeper.action_hints` serve complementary roles:
+
+| Aspect | MSC4391 Commands | Action Hints (MSC1485) |
+|--------|-----------------|----------------------|
+| Discovery | State events in room | Inline on messages |
+| Initiation | User-initiated (slash commands) | System-prompted (buttons) |
+| Invocation | `org.matrix.msc4391.command` in message | `com.beeper.action_response` event |
+| Use case | `!ai model`, `!ai reset`, etc. | Tool approval Allow/Deny |
+
+Both could be unified in the future (action hints as an alternate invocation path for commands), but currently they serve distinct UX patterns.
+
 ## Command List
 
 Commands broadcast by ai-bridge:
@@ -94,15 +109,17 @@ Dynamic commands from integrations/modules are also broadcast.
 1. Iterates `aiCommandRegistry.All()`
 2. Maps each `commandregistry.Definition` to an MSC4391 command description
 3. Sends `org.matrix.msc4391.command_description` state events via the bot intent
-4. Called on room join and when commands change dynamically
+4. Called from `BroadcastRoomState()` on room join
 
 ### Text Fallback
 
-The `!ai` text prefix parsing is kept as a fallback for clients without MSC4391 support. When `org.matrix.msc4391.command` is present in the message, it takes precedence over text parsing.
+The `!ai` text prefix parsing is kept as a fallback for older clients. When `org.matrix.msc4391.command` is present in the message, it takes precedence.
 
 ### mautrix-go
 
-Already has:
-- `StateMSC4391BotCommand` event type (`event/type.go:208`)
-- `MSC4391BotCommandInput` struct in `MessageEventContent` (`event/message.go:147`)
-- gomuks renders slash commands from these state events
+Already has full support:
+- `StateMSC4391BotCommand` event type (`event/type.go`)
+- `MSC4391BotCommandInput` struct in `MessageEventContent` (`event/message.go`)
+- `cmdschema` package for parsing command schemas
+- `commands.Processor` routes structured commands
+- gomuks renders slash commands from state events

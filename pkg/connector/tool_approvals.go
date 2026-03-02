@@ -252,53 +252,62 @@ func (oc *AIClient) emitApprovalSnapshotDecision(p *pendingToolApproval, decisio
 		toolName = "tool"
 	}
 
-	state := "output-denied"
+	// Determine selection state for the action hints edit
+	selectedHint := -1
 	body := fmt.Sprintf("Approval denied for %s.", toolName)
-	toolPart := map[string]any{
-		"type":       "dynamic-tool",
-		"toolName":   toolName,
-		"toolCallId": p.ToolCallID,
-		"state":      state,
-	}
+	uiState := "output-denied"
 	if approvalAllowed(decision) {
-		state = "output-available"
+		selectedHint = 0 // "Allow" button
 		body = fmt.Sprintf("Approved %s.", toolName)
-		toolPart["state"] = state
-		toolPart["output"] = map[string]any{"message": "Approved"}
+		uiState = "output-available"
 	} else {
 		reason := strings.TrimSpace(decision.Reason)
 		switch strings.ToLower(reason) {
 		case "timeout", "expired", "cancelled", "canceled":
 			body = fmt.Sprintf("Approval expired for %s.", toolName)
-			toolPart["errorText"] = "Expired"
+			selectedHint = -1 // no selection, just disable
 		default:
-			if reason == "" {
-				reason = "Denied"
-			}
-			toolPart["errorText"] = reason
+			selectedHint = 2 // "Deny" button
 		}
 	}
 
+	// Build updated action hints with selection state (disabled buttons)
+	updatedHints := map[string]any{
+		"hints":    []any{}, // empty — buttons are disabled after selection
+		"resolved": true,
+	}
+	if selectedHint >= 0 {
+		updatedHints["selected_hint"] = selectedHint
+	}
+
+	uiPart := map[string]any{
+		"type":       "action-hints",
+		"toolCallId": p.ToolCallID,
+		"toolName":   toolName,
+		"state":      uiState,
+	}
 	uiMessage := map[string]any{
 		"id":       "approval:" + p.ApprovalID,
 		"role":     "assistant",
 		"metadata": map[string]any{"turn_id": p.TurnID},
-		"parts":    []map[string]any{toolPart},
+		"parts":    []map[string]any{uiPart},
 	}
 
 	eventRaw := map[string]any{
 		"msgtype": event.MsgNotice,
 		"body":    "* " + body,
 		"m.new_content": map[string]any{
-			"msgtype":    event.MsgNotice,
-			"body":       body,
-			"m.mentions": map[string]any{},
+			"msgtype":              event.MsgNotice,
+			"body":                 body,
+			BeeperActionHintsKey:   updatedHints,
+			"m.mentions":           map[string]any{},
 		},
 		"m.relates_to": map[string]any{
 			"rel_type": RelReplace,
 			"event_id": p.ApprovalEventID.String(),
 		},
 		BeeperAIKey:                     uiMessage,
+		BeeperActionHintsKey:            updatedHints,
 		"com.beeper.dont_render_edited": true,
 		"m.mentions":                    map[string]any{},
 	}

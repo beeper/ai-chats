@@ -1394,7 +1394,12 @@ func (oc *AIClient) BroadcastRoomState(ctx context.Context, portal *bridgev2.Por
 	if err := oc.broadcastCapabilities(ctx, portal); err != nil {
 		return err
 	}
-	return oc.broadcastSettings(ctx, portal)
+	if err := oc.broadcastSettings(ctx, portal); err != nil {
+		return err
+	}
+	// Broadcast command descriptions so clients can discover slash commands.
+	oc.BroadcastCommandDescriptions(ctx, portal)
+	return nil
 }
 
 // buildEffectiveSettings builds the effective settings with source explanations
