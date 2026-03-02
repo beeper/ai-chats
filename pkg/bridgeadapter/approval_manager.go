@@ -74,7 +74,11 @@ func (m *ApprovalManager[D]) Register(id string, ttl time.Duration, data any) (*
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if existing := m.pending[id]; existing != nil {
-		return existing, false
+		if time.Now().Before(existing.ExpiresAt) {
+			return existing, false
+		}
+		// Expired — clean up and fall through to create new
+		delete(m.pending, id)
 	}
 	p := &PendingApproval[D]{
 		ExpiresAt: time.Now().Add(ttl),

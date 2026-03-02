@@ -1891,7 +1891,7 @@ func (cc *CodexClient) sendActionHintsApprovalEvent(
 // HandleMatrixActionResponse handles com.beeper.action_response events (MSC1485 action hints).
 // This implements bridgev2.ActionResponseHandlingNetworkAPI.
 func (cc *CodexClient) HandleMatrixActionResponse(ctx context.Context, msg *bridgev2.MatrixActionResponse) error {
-	if msg == nil || msg.Content == nil || msg.Portal == nil {
+	if msg == nil || msg.Event == nil || msg.Content == nil || msg.Portal == nil {
 		return nil
 	}
 	log := cc.loggerForContext(ctx)

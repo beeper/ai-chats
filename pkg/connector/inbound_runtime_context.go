@@ -42,7 +42,7 @@ func (oc *AIClient) resolvePromptInboundContext(
 		inbound.BodyForAgent = airuntime.SanitizeChatMessageForDisplay(inbound.BodyForAgent, true)
 		inbound.BodyForCommands = airuntime.SanitizeChatMessageForDisplay(inbound.BodyForCommands, true)
 		if strings.TrimSpace(inbound.BodyForAgent) == "" {
-			inbound.BodyForAgent = strings.TrimSpace(latest)
+			inbound.BodyForAgent = airuntime.SanitizeChatMessageForDisplay(strings.TrimSpace(latest), true)
 		}
 		if inbound.MessageID == "" && eventID != "" {
 			inbound.MessageID = eventID.String()
