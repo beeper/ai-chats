@@ -1,18 +1,26 @@
-# com.beeper.action_hints — Action Hints (Buttons)
-
-**Prior art:** [MSC1485](https://docs.google.com/document/d/1EgDkQMO_UEXsR7V4xFJYXrCf0FBz5Pzq-RFoojdqJk/) (tulir), [MSC3381](https://github.com/matrix-org/matrix-spec-proposals/pull/3381) (polls), [MSC4140](https://github.com/matrix-org/matrix-spec-proposals/pull/4140) (delayed events), [MSC4392](https://github.com/matrix-org/matrix-spec-proposals/pull/4392) (semantic markup)
-
-**Status:** Implemented in mautrix-go + ai-bridge.
+# MSC: Action Hints
 
 ## Summary
 
-`com.beeper.action_hints` adds structured button data to Matrix messages. Clients render the hints as clickable buttons. When a user clicks a button, an event is sent back to the room with a relation linking it to the original message.
+This proposal adds structured button data to Matrix messages via a `com.beeper.action_hints` content block. Clients render hints as clickable buttons attached to a message. When a user clicks a button, a `com.beeper.action_response` event is sent to the room with a relation linking it to the original message.
 
-Based on tulir's MSC1485 proposal with Beeper extensions for access control, expiry, exclusive selection, and opaque context passthrough.
+The design is based on [MSC1485] with extensions for access control, expiry, exclusive selection, and opaque context passthrough.
 
-## Content Structure
+## Motivation
 
-The `com.beeper.action_hints` key in event content contains a single object with the `hints` array and extension fields:
+Matrix currently lacks a standard mechanism for attaching interactive buttons to messages. Several use cases require structured, one-shot selection UI:
+
+- **Tool approval:** AI assistants need to present Allow / Deny / Always Allow buttons when requesting permission to execute tools. Text-based approval (`!approve allow`) is fragile and undiscoverable.
+- **Interactive bots:** Bots that present menus, confirmations, or multi-choice prompts benefit from structured buttons rather than relying on users to type exact command strings.
+- **Polls-like selection:** [MSC3381] defines polls, but many scenarios need lightweight single-message selection without the overhead of a full poll event flow.
+
+Without a standard button mechanism, each bot reinvents its own text-parsing scheme, leading to inconsistent UX and fragile integrations.
+
+## Proposal
+
+### Content Structure
+
+The `com.beeper.action_hints` key in `m.room.message` content contains a single object with a `hints` array and optional extension fields:
 
 ```json
 {
@@ -51,18 +59,20 @@ The `com.beeper.action_hints` key in event content contains a single object with
 }
 ```
 
+Clients MUST render hints as buttons when the `com.beeper.action_hints` key is present. Clients that do not support action hints MUST still display the message `body` as plain text.
+
 ### Hint Object
 
 Each entry in `hints[]`:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `body` | string | yes | Button label text |
-| `format` | string | no | Format of `formatted_body` (e.g. `org.matrix.custom.html`) |
-| `formatted_body` | string | no | HTML-formatted label |
-| `img` | mxc URI | no | Optional button image |
-| `event_type` | string | no | Type of event sent on click. Default: `m.room.message` |
-| `event` | object | no | Content of event sent on click. Default: `{ "msgtype": "m.text", "body": <body> }` |
+| `body` | string | yes | Button label text. |
+| `format` | string | no | Format of `formatted_body` (e.g. `org.matrix.custom.html`). |
+| `formatted_body` | string | no | HTML-formatted label. |
+| `img` | mxc URI | no | Optional button image. |
+| `event_type` | string | no | Type of event sent on click. Default: `m.room.message`. |
+| `event` | object | no | Content of event sent on click. Default: `{ "msgtype": "m.text", "body": <body> }`. |
 
 ### Extension Fields
 
@@ -70,14 +80,14 @@ Sibling fields alongside `hints[]` in the `com.beeper.action_hints` object:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `exclusive` | boolean | Only one response allowed (like polls with `max_selections: 1`) |
-| `allowed_senders` | string[] | User IDs who can press buttons (empty = anyone) |
-| `expires_at` | integer | Unix ms timestamp; buttons disabled after expiry |
-| `context` | object | Opaque data passed through to the response event |
+| `exclusive` | boolean | Only one response allowed (like polls with `max_selections: 1`). When `true`, clients MUST disable all buttons after one is clicked. |
+| `allowed_senders` | string[] | Matrix user IDs permitted to click buttons. Empty array or omitted means anyone in the room MAY respond. |
+| `expires_at` | integer | Unix millisecond timestamp. Clients MUST disable buttons after this time. Servers SHOULD reject responses received after expiry. |
+| `context` | object | Opaque data passed through to the response event. Clients MUST include this in the response unchanged. |
 
-## Response Event
+### Response Event
 
-When a user clicks a button, the client sends:
+When a user clicks a button, the client sends a `com.beeper.action_response` event:
 
 ```json
 {
@@ -98,56 +108,70 @@ When a user clicks a button, the client sends:
 }
 ```
 
-### Response Fields
+#### Response Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `m.relates_to.m.from_action_hint.event_id` | string | Event ID of the message containing the hints |
-| `m.relates_to.m.from_action_hint.hint_key` | integer | Index of the selected hint in `hints[]` |
-| `action_id` | string | The action identifier from the hint's `event` content |
-| `context` | object | Passthrough from the original `com.beeper.action_hints.context` |
+| `m.relates_to.m.from_action_hint.event_id` | string | Event ID of the message containing the hints. |
+| `m.relates_to.m.from_action_hint.hint_key` | integer | Index of the selected hint in `hints[]`. |
+| `action_id` | string | The action identifier from the hint's `event` content. |
+| `context` | object | Passthrough from the original `com.beeper.action_hints.context`. |
 
-### Implementation Note: `m.from_action_hint`
-
-mautrix-go's `RelatesTo` struct does not yet have a dedicated field for the nested `m.from_action_hint` relation. The bridge's `ParseActionResponse()` extracts `event_id` from `RelatesTo.EventID` but cannot parse `hint_key` from the custom nesting. In practice, ai-bridge identifies the selected hint via the `action_id` in the response content + the `context` passthrough, so the `hint_key` index is not required for correct operation.
-
-## State Update on Selection
+### State Update on Selection
 
 After processing a response, the sender of the original message SHOULD edit it to:
-1. Mark the selected hint (e.g. add `"selected": true` to the chosen hint)
-2. Disable remaining hints (clients should stop rendering buttons)
-3. Update the message body to reflect the selection
 
-## AI SDK UIMessage Integration
+1. Mark the selected hint (e.g. add `"selected": true` to the chosen hint object).
+2. Disable remaining hints (clients SHOULD stop rendering buttons).
+3. Update the message `body` to reflect the selection.
 
-For ai-bridge, the `com.beeper.ai` UIMessage includes an `action-hints` part that references the sibling `com.beeper.action_hints` data:
+## Fallback
 
-```json
-{
-  "com.beeper.ai": {
-    "id": "turn_123",
-    "role": "assistant",
-    "parts": [
-      {
-        "type": "action-hints",
-        "toolCallId": "call_456",
-        "toolName": "web_search"
-      }
-    ]
-  }
-}
-```
+Clients that do not render action hints MAY allow users to respond via a text reply containing the `action_id`. For example, replying `/respond allow` to a message with action hints. The bot SHOULD synthesize a `com.beeper.action_response` event from such text replies.
 
-Single source of truth: the `action-hints` part tells clients to render buttons from `com.beeper.action_hints`. No duplication of button data in the AI parts.
+## Potential Issues
 
-## Older-Client Fallback
+- **Button rendering divergence:** Different clients may render hints with varying visual fidelity. The `body` field ensures a minimum text representation.
+- **Race conditions with `exclusive`:** If two users click simultaneously before the edit disabling buttons propagates, duplicate responses may arrive. Servers SHOULD aggregate responses and the hint sender SHOULD handle duplicates gracefully.
 
-If a user replies to a message containing `com.beeper.action_hints` with `/respond <action_id>`, the bridge synthesizes a `com.beeper.action_response` event. This covers clients that don't render buttons natively.
+## Alternatives
 
-## Why Timeline Events for Responses
+### Ephemeral vs Timeline for Responses
 
-`com.beeper.action_response` is a persisted timeline event because:
-- Audit trail: users can see who approved what
-- Server-side aggregation via `m.relates_to`
-- Consistent with MSC1485 original design
-- Survives client reconnects and app restarts
+`com.beeper.action_response` is a persisted timeline event rather than an ephemeral event because:
+
+- **Audit trail:** Users can see who approved what in room history.
+- **Server-side aggregation:** The `m.relates_to` relation enables bundled aggregations.
+- **Consistency with [MSC1485]:** The original proposal uses timeline events for responses.
+- **Durability:** Responses survive client reconnects, app restarts, and late-joining members.
+
+Ephemeral responses were considered but rejected due to the lack of delivery guarantees and the inability to aggregate them server-side.
+
+### MSC3381 Polls
+
+[MSC3381] polls provide similar selection UX but are designed as standalone events with their own lifecycle (start, response, end). Action hints are intentionally lightweight — they attach directly to an existing message and require no separate lifecycle management.
+
+## Security Considerations
+
+- **`allowed_senders` enforcement:** Clients MUST check `allowed_senders` before rendering buttons as clickable. Servers receiving a `com.beeper.action_response` from a user not in `allowed_senders` SHOULD reject the event. If `allowed_senders` is empty or absent, any joined room member MAY respond.
+- **`expires_at` validation:** Clients MUST NOT render expired buttons as clickable. The hint sender SHOULD reject responses arriving after `expires_at`, accounting for reasonable clock skew.
+- **`context` tampering:** The `context` field is opaque and passed through unchanged. The hint sender MUST NOT trust `context` values in responses without validating them against the original hint. A malicious client could modify `context` to reference a different approval or tool call.
+- **Power levels:** Sending a `com.beeper.action_response` event requires the standard power level for that event type. Room administrators MAY restrict who can send responses via power levels.
+
+## Unstable Prefix
+
+While this proposal is not yet part of the Matrix specification, implementations MUST use the following unstable prefixes:
+
+| Unstable | Stable (future) |
+|----------|----------------|
+| `com.beeper.action_hints` | `m.action_hints` |
+| `com.beeper.action_response` | `m.action_response` |
+| `m.from_action_hint` | No change expected |
+
+## Dependencies
+
+- [MSC1485]: Action hints (buttons) — original proposal by tulir. This MSC extends the design with access control, expiry, and context passthrough.
+- [MSC3381]: Polls — prior art for exclusive selection semantics.
+
+[MSC1485]: https://docs.google.com/document/d/1EgDkQMO_UEXsR7V4xFJYXrCf0FBz5Pzq-RFoojdqJk/
+[MSC3381]: https://github.com/matrix-org/matrix-spec-proposals/pull/3381

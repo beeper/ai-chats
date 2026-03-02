@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"math"
 
-	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
+
+	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 const (

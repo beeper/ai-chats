@@ -10,6 +10,11 @@ instances:
       appservice.address: websocket
       appservice.hostname: 127.0.0.1
       appservice.port: 29345
+      database.type: sqlite3-fk-wal
+      database.uri: file:ai.db?_txlock=immediate
+      bridge.permissions:
+        "*": relay
+        beeper.com: admin
 
   codex:
     bridge_type: codex
@@ -22,6 +27,11 @@ instances:
       appservice.address: websocket
       appservice.hostname: 127.0.0.1
       appservice.port: 29346
+      database.type: sqlite3-fk-wal
+      database.uri: file:codex.db?_txlock=immediate
+      bridge.permissions:
+        "*": relay
+        beeper.com: admin
 
   opencode:
     bridge_type: opencode
@@ -34,3 +44,8 @@ instances:
       appservice.address: websocket
       appservice.hostname: 127.0.0.1
       appservice.port: 29347
+      database.type: sqlite3-fk-wal
+      database.uri: file:opencode.db?_txlock=immediate
+      bridge.permissions:
+        "*": relay
+        beeper.com: admin

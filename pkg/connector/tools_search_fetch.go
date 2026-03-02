@@ -175,7 +175,6 @@ func buildSearchPayload(resp *search.Response) map[string]any {
 	return payload
 }
 
-
 func applyLoginTokensToSearchConfig(cfg *search.Config, meta *UserLoginMetadata, connector *OpenAIConnector) *search.Config {
 	if cfg == nil {
 		cfg = &search.Config{}

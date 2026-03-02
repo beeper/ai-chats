@@ -3,9 +3,10 @@ package connector
 import (
 	"strings"
 
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/responses"
+
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 func (oc *AIClient) convertToResponsesInput(messages []openai.ChatCompletionMessageParamUnion, _ *PortalMetadata) responses.ResponseInputParam {

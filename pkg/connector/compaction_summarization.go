@@ -8,8 +8,9 @@ import (
 	"strings"
 	"time"
 
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/openai/openai-go/v3"
+
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 const (

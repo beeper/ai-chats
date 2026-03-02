@@ -50,10 +50,10 @@ type MediaUnderstandingOutput struct {
 // MediaUnderstandingModelDecision records a single model attempt.
 type MediaUnderstandingModelDecision struct {
 	Type     MediaUnderstandingEntryType `json:"type,omitempty"`
-	Provider string                     `json:"provider,omitempty"`
-	Model    string                     `json:"model,omitempty"`
-	Outcome  MediaUnderstandingOutcome  `json:"outcome,omitempty"`
-	Reason   string                     `json:"reason,omitempty"`
+	Provider string                      `json:"provider,omitempty"`
+	Model    string                      `json:"model,omitempty"`
+	Outcome  MediaUnderstandingOutcome   `json:"outcome,omitempty"`
+	Reason   string                      `json:"reason,omitempty"`
 }
 
 // MediaUnderstandingAttachmentDecision records attempts for one attachment.

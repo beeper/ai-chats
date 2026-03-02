@@ -6,11 +6,12 @@ import (
 	"sync"
 	"time"
 
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 // DefaultDebounceMs is the default debounce delay in milliseconds.

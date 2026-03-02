@@ -3,9 +3,10 @@ package connector
 import (
 	"strings"
 
-	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 type ReplyTarget struct {

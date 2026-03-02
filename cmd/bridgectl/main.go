@@ -19,6 +19,7 @@ import (
 	"github.com/beeper/bridge-manager/api/beeperapi"
 	"github.com/beeper/bridge-manager/api/hungryapi"
 	"gopkg.in/yaml.v3"
+	"maunium.net/go/mautrix"
 )
 
 const (
@@ -105,6 +106,8 @@ func run() error {
 		return cmdList(os.Args[2:])
 	case "doctor":
 		return cmdDoctor(os.Args[2:])
+	case "run":
+		return cmdRun(os.Args[2:])
 	case "auth":
 		return cmdAuth(os.Args[2:])
 	case "help", "-h", "--help":
@@ -117,7 +120,7 @@ func run() error {
 
 func printUsage() {
 	fmt.Println("bridgectl - bridgev2 orchestrator")
-	fmt.Println("commands: login logout whoami register delete up down restart status logs init list doctor auth help")
+	fmt.Println("commands: login logout whoami register delete up down run restart status logs init list doctor auth help")
 }
 
 func cmdLogin(args []string) error {
@@ -163,15 +166,32 @@ func cmdLogin(args []string) error {
 	if err != nil {
 		return err
 	}
+	matrixClient, err := mautrix.NewClient(fmt.Sprintf("https://matrix.%s", domain), "", "")
+	if err != nil {
+		return fmt.Errorf("failed to create matrix client: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	loginResp, err := matrixClient.Login(ctx, &mautrix.ReqLogin{
+		Type:                     "org.matrix.login.jwt",
+		Token:                    resp.LoginToken,
+		InitialDeviceDisplayName: "ai-bridge-manager",
+	})
+	if err != nil {
+		return fmt.Errorf("matrix login failed: %w", err)
+	}
 	username := ""
 	if resp.Whoami != nil {
 		username = resp.Whoami.UserInfo.Username
+	}
+	if username == "" {
+		username = loginResp.UserID.Localpart()
 	}
 	cfg := authConfig{
 		Env:      *env,
 		Domain:   domain,
 		Username: username,
-		Token:    resp.LoginToken,
+		Token:    loginResp.AccessToken,
 	}
 	if err = saveAuthConfig(cfg); err != nil {
 		return err
@@ -263,6 +283,42 @@ func cmdUp(args []string) error {
 	fmt.Printf("started %s\n", instance)
 	fmt.Printf("log: %s\n", meta.LogPath)
 	return nil
+}
+
+func cmdRun(args []string) error {
+	fs := flag.NewFlagSet("run", flag.ContinueOnError)
+	manifestPath := fs.String("manifest", manifestPathDefault, "manifest path")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	instance, err := requiredInstanceArg(fs.Args())
+	if err != nil {
+		return err
+	}
+	_, cfg, err := loadInstance(*manifestPath, instance)
+	if err != nil {
+		return err
+	}
+	state, err := ensureInstanceLayout(instance)
+	if err != nil {
+		return err
+	}
+	if err = ensureBuilt(cfg); err != nil {
+		return err
+	}
+	meta, err := ensureInitialized(instance, cfg, state)
+	if err != nil {
+		return err
+	}
+	if err = ensureRegistration(meta, cfg); err != nil {
+		return err
+	}
+	if _, err = os.Stat(meta.BinaryPath); err != nil {
+		return fmt.Errorf("binary not found: %w", err)
+	}
+	argv := []string{meta.BinaryPath, "-c", meta.ConfigPath}
+	fmt.Printf("running %s in foreground\n", instance)
+	return syscall.Exec(meta.BinaryPath, argv, os.Environ())
 }
 
 func cmdDown(args []string) error {

@@ -9,13 +9,14 @@ import (
 	"strings"
 	"time"
 
-	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/shared/constant"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
+
+	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
 
 	"github.com/beeper/ai-bridge/pkg/agents/tools"
 )

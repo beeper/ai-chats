@@ -397,7 +397,7 @@ func (r mediaRequestBase) MimeTypeOrDefault(fallback string) string {
 	if trimmed := strings.TrimSpace(r.MimeType); trimmed != "" {
 		return trimmed
 	}
-	return fallback
+	return strings.TrimSpace(fallback)
 }
 
 type mediaAudioRequest struct {

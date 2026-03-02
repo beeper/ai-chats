@@ -9,7 +9,6 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
-
 func (oc *AIClient) canUseMediaUnderstanding(meta *PortalMetadata) bool {
 	if meta == nil {
 		return false

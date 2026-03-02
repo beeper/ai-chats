@@ -8,13 +8,14 @@ import (
 	"strings"
 	"time"
 
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
+
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 // responseStreamContext holds loop-invariant parameters for processing a Responses API

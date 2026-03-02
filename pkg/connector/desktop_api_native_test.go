@@ -17,8 +17,8 @@ func TestParseDesktopAPIAddArgs(t *testing.T) {
 		wantURL string
 		wantErr bool
 	}{
-		{name: "token only", args: []string{"tok"}, wantErr: true},
-		{name: "token and base url", args: []string{"tok", "https://example.test"}, wantN: "tok", wantT: "https://example.test"},
+		{name: "token only", args: []string{"tok"}, wantN: "", wantT: "tok"},
+		{name: "token and base url", args: []string{"tok", "https://example.test"}, wantN: "", wantT: "tok", wantURL: "https://example.test"},
 		{name: "name and token", args: []string{"work", "tok"}, wantN: "work", wantT: "tok"},
 		{name: "name token and base url", args: []string{"work", "tok", "https://example.test"}, wantN: "work", wantT: "tok", wantURL: "https://example.test"},
 		{name: "empty", args: nil, wantErr: true},

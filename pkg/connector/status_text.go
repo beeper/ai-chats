@@ -8,9 +8,10 @@ import (
 	"strings"
 	"time"
 
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
+
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 func (oc *AIClient) buildStatusText(

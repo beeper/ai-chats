@@ -1,8 +1,9 @@
 package connector
 
 import (
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"maunium.net/go/mautrix/event"
+
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 func messageStatusForError(err error) event.MessageStatus {

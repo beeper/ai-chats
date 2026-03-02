@@ -3,11 +3,12 @@ package connector
 import (
 	"testing"
 
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 func newPruningTestClient(pruning *airuntime.PruningConfig, provider string) *AIClient {

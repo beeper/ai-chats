@@ -5,10 +5,11 @@ import (
 	"errors"
 	"strings"
 
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
+
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 // NonFallbackError marks an error as ineligible for model fallback.
@@ -123,7 +124,7 @@ func (oc *AIClient) responseWithModelFallbackDynamic(
 			return
 		}
 		decision := airuntime.DecideFallback(err)
-		if decision.Action == airuntime.FallbackActionNone || idx == len(modelChain)-1 {
+		if decision.Action != airuntime.FallbackActionFailover || idx == len(modelChain)-1 {
 			oc.notifyMatrixSendFailure(ctx, portal, evt, err)
 			return
 		}

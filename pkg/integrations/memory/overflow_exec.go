@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	iruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
 	"github.com/openai/openai-go/v3"
+
+	iruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
 )
 
 const DefaultFlushSoftTokens = 4000

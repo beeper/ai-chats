@@ -1,8 +1,10 @@
 package connector
 
-import "strings"
+import (
+	"strings"
 
-import airuntime "github.com/beeper/ai-bridge/pkg/runtime"
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
+)
 
 type queueResolveParams struct {
 	cfg        *Config
