@@ -31,17 +31,17 @@ type PruningConfig struct {
 	ToolsAllow []string `yaml:"tools_allow" json:"tools_allow,omitempty"`
 	ToolsDeny  []string `yaml:"tools_deny" json:"tools_deny,omitempty"`
 
-	SummarizationEnabled   *bool   `yaml:"summarization_enabled" json:"summarization_enabled,omitempty"`
-	SummarizationModel     string  `yaml:"summarization_model" json:"summarization_model,omitempty"`
-	MaxSummaryTokens       int     `yaml:"max_summary_tokens" json:"max_summary_tokens,omitempty"`
-	MaxHistoryShare        float64 `yaml:"max_history_share" json:"max_history_share,omitempty"`
-	ReserveTokens          int     `yaml:"reserve_tokens" json:"reserve_tokens,omitempty"`
-	CustomInstructions     string  `yaml:"custom_instructions" json:"custom_instructions,omitempty"`
-	IdentifierPolicy       string  `yaml:"identifier_policy" json:"identifier_policy,omitempty"`
-	IdentifierInstructions string  `yaml:"identifier_instructions" json:"identifier_instructions,omitempty"`
+	SummarizationEnabled   *bool                `yaml:"summarization_enabled" json:"summarization_enabled,omitempty"`
+	SummarizationModel     string               `yaml:"summarization_model" json:"summarization_model,omitempty"`
+	MaxSummaryTokens       int                  `yaml:"max_summary_tokens" json:"max_summary_tokens,omitempty"`
+	MaxHistoryShare        float64              `yaml:"max_history_share" json:"max_history_share,omitempty"`
+	ReserveTokens          int                  `yaml:"reserve_tokens" json:"reserve_tokens,omitempty"`
+	CustomInstructions     string               `yaml:"custom_instructions" json:"custom_instructions,omitempty"`
+	IdentifierPolicy       string               `yaml:"identifier_policy" json:"identifier_policy,omitempty"`
+	IdentifierInstructions string               `yaml:"identifier_instructions" json:"identifier_instructions,omitempty"`
+	OverflowFlush          *OverflowFlushConfig `yaml:"overflow_flush" json:"overflow_flush,omitempty"`
 
-	OverflowFlush   *OverflowFlushConfig `yaml:"overflow_flush" json:"overflow_flush,omitempty"`
-	MaxHistoryTurns int                  `yaml:"max_history_turns" json:"max_history_turns,omitempty"`
+	MaxHistoryTurns int `yaml:"max_history_turns" json:"max_history_turns,omitempty"`
 }
 
 // OverflowFlushConfig configures pre-compaction flush behavior.
@@ -68,6 +68,12 @@ func DefaultPruningConfig() *PruningConfig {
 		SoftTrimTailChars:    1500,
 		HardClearEnabled:     &enabled,
 		HardClearPlaceholder: "[Old tool result content cleared]",
+		OverflowFlush: &OverflowFlushConfig{
+			Enabled:             &enabled,
+			SoftThresholdTokens: 4000,
+			Prompt:              "Pre-compaction overflow flush. Persist any durable notes now if your tools support it. If nothing to store, reply with NO_REPLY.",
+			SystemPrompt:        "Pre-compaction overflow flush turn. The session is near auto-compaction; persist durable notes if possible. You may reply, but usually NO_REPLY is correct.",
+		},
 	}
 }
 
@@ -260,6 +266,9 @@ func ApplyPruningDefaults(config *PruningConfig) *PruningConfig {
 	}
 	if cfg.HardClearPlaceholder == "" {
 		cfg.HardClearPlaceholder = defaults.HardClearPlaceholder
+	}
+	if cfg.OverflowFlush == nil {
+		cfg.OverflowFlush = defaults.OverflowFlush
 	}
 	return &cfg
 }

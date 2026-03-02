@@ -183,7 +183,7 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 	}
 
 	// Use cleaned content (directives stripped)
-	cleanedContent := airuntime.SanitizeChatMessageForDisplay(directives.Text, false)
+	cleanedContent := airuntime.SanitizeChatMessageForDisplay(airuntime.StripMessageIDHintLines(directives.Text), false)
 
 	finalReplyTarget := oc.resolveFinalReplyTarget(meta, state, &directives)
 	responsePrefix := resolveResponsePrefixForReply(oc, &oc.connector.Config, meta)

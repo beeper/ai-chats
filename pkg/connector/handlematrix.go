@@ -109,6 +109,14 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		logCtx.Debug().Msg("Ignoring edit event in HandleMatrixMessage")
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
+
+	// Reply-based approval fallback: if a user replies to an action hints message
+	// with an approval action (allow/deny/always or /respond <action>), treat it
+	// as clicking the corresponding button. Covers clients without native action hints.
+	if handled, resp := oc.tryReplyApprovalFallback(ctx, msg, portal); handled {
+		return resp, nil
+	}
+
 	rawBody := strings.TrimSpace(msg.Content.Body)
 	if msg.Content.MsgType == event.MsgLocation && strings.TrimSpace(msg.Content.GeoURI) != "" {
 		rawMap := msg.Event.Content.Raw
@@ -1442,4 +1450,59 @@ func (oc *AIClient) buildPromptForRegenerate(
 	}
 	prompt = append(prompt, openai.UserMessage(latest))
 	return prompt, nil
+}
+
+// tryReplyApprovalFallback checks whether an incoming message is a reply to a
+// pending action hints approval event with an approval action as body text.
+// Supports bare actions ("allow", "deny", "always") and the /respond prefix
+// ("/respond allow"). Returns (true, response) if handled, (false, nil) otherwise.
+func (oc *AIClient) tryReplyApprovalFallback(
+	ctx context.Context,
+	msg *bridgev2.MatrixMessage,
+	portal *bridgev2.Portal,
+) (bool, *bridgev2.MatrixMessageResponse) {
+	if msg.Content.RelatesTo == nil {
+		return false, nil
+	}
+	replyTo := msg.Content.RelatesTo.GetReplyTo()
+	if replyTo == "" {
+		return false, nil
+	}
+
+	approvalID := oc.findApprovalByEventID(replyTo)
+	if approvalID == "" {
+		return false, nil
+	}
+
+	body := strings.TrimSpace(msg.Content.Body)
+	body = strings.TrimPrefix(body, "/respond ")
+	body = strings.TrimPrefix(body, "/respond")
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return false, nil
+	}
+
+	approve, always, ok := bridgeadapter.ActionDecisionFromString(body)
+	if !ok {
+		return false, nil
+	}
+
+	state := airuntime.ToolApprovalDenied
+	if approve {
+		state = airuntime.ToolApprovalApproved
+	}
+	err := oc.resolveToolApproval(
+		portal.MXID,
+		approvalID,
+		airuntime.ToolApprovalDecision{State: state},
+		always,
+		msg.Event.Sender,
+	)
+	if err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).
+			Str("approval_id", approvalID).
+			Msg("reply approval fallback: failed to resolve")
+		oc.sendApprovalRejectionEvent(ctx, portal, approvalID, err)
+	}
+	return true, &bridgev2.MatrixMessageResponse{Pending: false}
 }

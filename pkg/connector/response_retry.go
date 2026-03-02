@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
 	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
@@ -20,7 +21,7 @@ const (
 type responseFunc func(ctx context.Context, evt *event.Event, portal *bridgev2.Portal, meta *PortalMetadata, prompt []openai.ChatCompletionMessageParamUnion) (bool, *ContextLengthError, error)
 
 // responseWithRetry wraps a response function with context length retry logic.
-// It performs one runtime compaction attempt before falling back to reactive truncation.
+// It performs one runtime compaction retry attempt.
 func (oc *AIClient) responseWithRetry(
 	ctx context.Context,
 	evt *event.Event,
@@ -46,7 +47,7 @@ func (oc *AIClient) responseWithRetry(
 			return false, err
 		}
 
-		// If we got a context length error, try auto-compaction first, then truncation
+		// If we got a context length error, try runtime compaction once.
 		if cle != nil {
 			oc.loggerForContext(ctx).Info().Int("attempt", attempt+1).Int("requested_tokens", cle.RequestedTokens).Int("max_tokens", cle.ModelMaxTokens).Str("log_label", logLabel).Msg("Context length exceeded, attempting recovery")
 			// In Responses conversation mode, previous_response_id can accumulate hidden server-side
@@ -63,6 +64,7 @@ func (oc *AIClient) responseWithRetry(
 			// Try auto-compaction first (only once per retry loop)
 			if !autoCompactionAttempted {
 				autoCompactionAttempted = true
+				oc.runCompactionFlushHook(ctx, portal, meta, currentPrompt, cle, attempt+1)
 
 				// Get context window from model
 				contextWindow := oc.getModelContextWindow(meta)
@@ -140,6 +142,50 @@ func (oc *AIClient) responseWithRetry(
 	oc.notifyMatrixSendFailure(ctx, portal, evt,
 		errors.New("exceeded maximum retry attempts for prompt overflow"))
 	return false, nil
+}
+
+type overflowFlushHook interface {
+	OnContextOverflow(ctx context.Context, call integrationruntime.ContextOverflowCall)
+}
+
+func (oc *AIClient) runCompactionFlushHook(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+	prompt []openai.ChatCompletionMessageParamUnion,
+	cle *ContextLengthError,
+	attempt int,
+) {
+	if oc == nil || meta == nil || cle == nil {
+		return
+	}
+	cfg := oc.pruningOverflowFlushConfig()
+	if cfg == nil {
+		return
+	}
+	if cfg.Enabled != nil && !*cfg.Enabled {
+		return
+	}
+	if oc.integrationModules == nil {
+		return
+	}
+	module, ok := oc.integrationModules["memory"]
+	if !ok || module == nil {
+		return
+	}
+	hook, ok := module.(overflowFlushHook)
+	if !ok {
+		return
+	}
+	hook.OnContextOverflow(ctx, integrationruntime.ContextOverflowCall{
+		Client:          oc,
+		Portal:          portal,
+		Meta:            meta,
+		Prompt:          prompt,
+		RequestedTokens: cle.RequestedTokens,
+		ModelMaxTokens:  cle.ModelMaxTokens,
+		Attempt:         attempt,
+	})
 }
 
 func (oc *AIClient) streamingResponseWithRetry(

@@ -1559,19 +1559,21 @@ func (cc *CodexClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Po
 	if portal == nil || portal.MXID == "" || cc.UserLogin == nil || cc.UserLogin.Bridge == nil {
 		return
 	}
-	bot := cc.UserLogin.Bridge.Bot
-	if bot == nil {
-		return
-	}
-	content := &event.MessageEventContent{
-		MsgType:  event.MsgNotice,
-		Body:     strings.TrimSpace(message),
-		Mentions: &event.Mentions{},
+	converted := &bridgev2.ConvertedMessage{
+		Parts: []*bridgev2.ConvertedMessagePart{{
+			ID:   networkid.PartID("0"),
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType:  event.MsgNotice,
+				Body:     strings.TrimSpace(message),
+				Mentions: &event.Mentions{},
+			},
+		}},
 	}
 	bg := cc.backgroundContext(ctx)
 	sendCtx, cancel := context.WithTimeout(bg, 10*time.Second)
 	defer cancel()
-	_, _ = bot.SendMessage(sendCtx, portal.MXID, event.EventMessage, &event.Content{Parsed: content}, nil)
+	cc.sendViaPortal(sendCtx, portal, converted, "")
 }
 
 func (cc *CodexClient) sendToast(ctx context.Context, portal *bridgev2.Portal, text string, toastType aiToastType) {
@@ -1580,10 +1582,6 @@ func (cc *CodexClient) sendToast(ctx context.Context, portal *bridgev2.Portal, t
 	}
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return
-	}
-	bot := cc.UserLogin.Bridge.Bot
-	if bot == nil {
 		return
 	}
 	raw := map[string]any{
@@ -1595,10 +1593,17 @@ func (cc *CodexClient) sendToast(ctx context.Context, portal *bridgev2.Portal, t
 		},
 		"m.mentions": map[string]any{},
 	}
+	converted := &bridgev2.ConvertedMessage{
+		Parts: []*bridgev2.ConvertedMessagePart{{
+			ID:    networkid.PartID("0"),
+			Type:  event.EventMessage,
+			Extra: raw,
+		}},
+	}
 	bg := cc.backgroundContext(ctx)
 	sendCtx, cancel := context.WithTimeout(bg, 10*time.Second)
 	defer cancel()
-	_, _ = bot.SendMessage(sendCtx, portal.MXID, event.EventMessage, &event.Content{Raw: raw}, nil)
+	cc.sendViaPortal(sendCtx, portal, converted, "")
 }
 
 func (cc *CodexClient) sendPendingStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, message string) {

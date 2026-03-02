@@ -205,33 +205,6 @@ func (r *eventIntegrationRegistry) fileChanged(ctx context.Context, evt integrat
 	}
 }
 
-type overflowIntegrationRegistry struct {
-	items []integrationruntime.OverflowIntegration
-}
-
-func (r *overflowIntegrationRegistry) register(integration integrationruntime.OverflowIntegration) {
-	if integration == nil {
-		return
-	}
-	r.items = append(r.items, integration)
-}
-
-func (r *overflowIntegrationRegistry) handle(ctx context.Context, call integrationruntime.ContextOverflowCall) (bool, []openai.ChatCompletionMessageParamUnion, error) {
-	if r == nil {
-		return false, nil, nil
-	}
-	for _, integration := range r.items {
-		handled, prompt, err := integration.OnContextOverflow(ctx, call)
-		if err != nil {
-			return true, nil, err
-		}
-		if handled {
-			return true, prompt, nil
-		}
-	}
-	return false, nil, nil
-}
-
 type purgeIntegrationRegistry struct {
 	items []integrationruntime.LoginPurgeIntegration
 }
@@ -317,7 +290,6 @@ func (oc *AIClient) initIntegrations() {
 	oc.promptRegistry = &promptIntegrationRegistry{}
 	oc.commandRegistry = newCommandIntegrationRegistry()
 	oc.eventRegistry = &eventIntegrationRegistry{}
-	oc.overflowRegistry = &overflowIntegrationRegistry{}
 	oc.purgeRegistry = &purgeIntegrationRegistry{}
 	oc.approvalRegistry = &toolApprovalIntegrationRegistry{}
 	oc.integrationModules = make(map[string]any)
@@ -343,9 +315,6 @@ func (oc *AIClient) initIntegrations() {
 		}
 		if eventIntegration, ok := module.(integrationruntime.EventIntegration); ok {
 			oc.eventRegistry.register(eventIntegration)
-		}
-		if overflowIntegration, ok := module.(integrationruntime.OverflowIntegration); ok {
-			oc.overflowRegistry.register(overflowIntegration)
 		}
 		if purgeIntegration, ok := module.(integrationruntime.LoginPurgeIntegration); ok {
 			oc.purgeRegistry.register(purgeIntegration)

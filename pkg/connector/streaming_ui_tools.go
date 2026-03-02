@@ -103,43 +103,26 @@ func (oc *AIClient) sendActionHintsApprovalEvent(
 	}
 
 	eventRaw := map[string]any{
-		"msgtype":              event.MsgNotice,
-		"body":                 body,
-		BeeperAIKey:            uiMessage,
-		BeeperActionHintsKey:   hints,
-		"m.mentions":           map[string]any{},
+		"msgtype":            event.MsgNotice,
+		"body":               body,
+		BeeperAIKey:          uiMessage,
+		BeeperActionHintsKey: hints,
+		"m.mentions":         map[string]any{},
 	}
-	eventContent := &event.Content{Raw: eventRaw}
 
-	// Track approval event ID for later edits
-	var sentEventID id.EventID
-	var useBot bool
-
+	// Track approval event/message IDs for later edits
 	converted := &bridgev2.ConvertedMessage{
 		Parts: []*bridgev2.ConvertedMessagePart{{
 			ID:    "0",
 			Type:  event.EventMessage,
-			Extra: eventContent.Raw,
+			Extra: eventRaw,
 		}},
 	}
-	if evtID, _, err := oc.sendViaPortal(ctx, portal, converted, ""); err == nil && evtID != "" {
-		sentEventID = evtID
-	} else {
-		// Fallback: send via bot
-		useBot = true
-		if oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.Bot != nil {
-			if resp, err := oc.UserLogin.Bridge.Bot.SendMessage(ctx, portal.MXID, event.EventMessage, eventContent, nil); err == nil {
-				sentEventID = resp.EventID
-			}
-		}
-	}
-
-	// Track the approval event ID so emitApprovalSnapshotDecision can edit it later
-	if sentEventID != "" {
+	if evtID, msgID, err := oc.sendViaPortal(ctx, portal, converted, ""); err == nil && evtID != "" {
 		oc.toolApprovalsMu.Lock()
 		if p := oc.toolApprovals[approvalID]; p != nil {
-			p.ApprovalEventID = sentEventID
-			p.ApprovalEventUseBot = useBot
+			p.ApprovalEventID = evtID
+			p.ApprovalNetworkMsgID = msgID
 		}
 		oc.toolApprovalsMu.Unlock()
 	}

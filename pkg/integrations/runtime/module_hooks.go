@@ -97,12 +97,6 @@ type ContextOverflowCall struct {
 	Attempt         int
 }
 
-// OverflowIntegration can intercept context overflow and provide a replacement prompt.
-type OverflowIntegration interface {
-	Name() string
-	OnContextOverflow(ctx context.Context, call ContextOverflowCall) (handled bool, newPrompt []openai.ChatCompletionMessageParamUnion, err error)
-}
-
 // LoginScope carries per-login cleanup scope.
 type LoginScope struct {
 	Client   any

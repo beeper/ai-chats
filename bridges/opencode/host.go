@@ -51,8 +51,7 @@ func (oc *OpenCodeClient) SendSystemNotice(ctx context.Context, portal *bridgev2
 	if portal == nil || portal.MXID == "" {
 		return
 	}
-	content := &event.MessageEventContent{MsgType: event.MsgNotice, Body: msg, Mentions: &event.Mentions{}}
-	_, _ = oc.UserLogin.Bridge.Bot.SendMessage(ctx, portal.MXID, event.EventMessage, &event.Content{Parsed: content}, nil)
+	oc.sendSystemNoticeViaPortal(ctx, portal, msg)
 }
 
 func (oc *OpenCodeClient) SendPendingStatus(_ context.Context, _ *bridgev2.Portal, _ *event.Event, _ string) {

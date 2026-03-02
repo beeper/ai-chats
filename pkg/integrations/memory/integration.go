@@ -41,8 +41,8 @@ type Manager interface {
 
 // Integration is the self-owned memory integration module.
 // It implements ToolIntegration, PromptIntegration, CommandIntegration,
-// EventIntegration, OverflowIntegration, LoginPurgeIntegration, and
-// LoginLifecycleIntegration directly, wiring all deps from Host
+// EventIntegration, LoginPurgeIntegration, and LoginLifecycleIntegration
+// directly, wiring all deps from Host
 // capability interfaces.
 type Integration struct {
 	host iruntime.Host
@@ -161,11 +161,8 @@ func (i *Integration) OnFileChanged(_ context.Context, evt iruntime.FileChangedE
 	}
 }
 
-// ---- OverflowIntegration ----
-
-func (i *Integration) OnContextOverflow(ctx context.Context, call iruntime.ContextOverflowCall) (bool, []openai.ChatCompletionMessageParamUnion, error) {
+func (i *Integration) OnContextOverflow(ctx context.Context, call iruntime.ContextOverflowCall) {
 	HandleOverflow(ctx, call, call.Prompt, i.buildOverflowDeps())
-	return false, nil, nil
 }
 
 // ---- LoginLifecycleIntegration ----
@@ -237,8 +234,6 @@ func (i *Integration) buildCommandExecDeps() CommandExecDeps {
 		},
 	}
 }
-
-// ---- private: overflow deps wiring ----
 
 func (i *Integration) buildOverflowDeps() OverflowDeps {
 	return OverflowDeps{
@@ -314,7 +309,6 @@ func (i *Integration) buildOverflowDeps() OverflowDeps {
 			}
 			flushAtMs, _ := flushAt.(int64)
 			if flushAtMs == 0 {
-				// try float64 (JSON unmarshaling)
 				if f, ok := flushAt.(float64); ok {
 					flushAtMs = int64(f)
 				}
@@ -504,8 +498,6 @@ func (i *Integration) buildRuntime() Runtime {
 	return &hostRuntimeAdapter{host: i.host, dba: dba}
 }
 
-// ---- private: flush tool loop ----
-
 func (i *Integration) runFlushToolLoop(
 	ctx context.Context,
 	portal any,
@@ -571,8 +563,6 @@ func (i *Integration) runFlushToolLoop(
 		},
 	})
 }
-
-// ---- private: flush settings ----
 
 func (i *Integration) resolveOverflowFlushSettings() *FlushSettings {
 	oh, ok := i.host.(iruntime.OverflowHelper)

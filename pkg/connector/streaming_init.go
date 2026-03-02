@@ -21,7 +21,7 @@ type streamingRunPrep struct {
 // prepareStreamingRun performs the shared preamble for both the Responses API
 // and Chat Completions streaming paths: initialise streaming state, set the
 // reply target, ensure the model ghost is in the room, create a typing
-// controller/signaler, signal run start, and apply proactive context pruning.
+// controller/signaler, and signal run start.
 //
 // The returned cleanup function MUST be deferred by the caller to mark the
 // typing controller complete.
@@ -86,8 +86,7 @@ func (oc *AIClient) prepareStreamingRun(
 		}
 	}
 
-	// Apply proactive context pruning
-	pruned = oc.applyProactivePruning(ctx, messages, meta)
+	pruned = messages
 
 	prep = streamingRunPrep{
 		State:         state,

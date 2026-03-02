@@ -38,10 +38,10 @@ type pendingToolApproval struct {
 	RuleToolName string // normalized for matching/persistence (e.g. "message" or raw MCP tool name without "mcp.")
 	ServerLabel  string // MCP only
 	Action       string // builtin only (optional)
-	// ApprovalEventID tracks the timeline message used for durable approval UI (for edits).
+	// ApprovalEventID tracks the Matrix event ID for reverse-lookup by findApprovalByEventID.
 	ApprovalEventID id.EventID
-	// ApprovalEventUseBot records whether the approval message was sent as the bridge bot.
-	ApprovalEventUseBot bool
+	// ApprovalNetworkMsgID is the network message ID returned by sendViaPortal, used for edits.
+	ApprovalNetworkMsgID networkid.MessageID
 
 	RequestedAt time.Time
 	ExpiresAt   time.Time
@@ -234,10 +234,10 @@ func (oc *AIClient) emitApprovalSnapshotDecision(p *pendingToolApproval, decisio
 	if oc == nil || oc.UserLogin == nil || p == nil {
 		return
 	}
-	// ApprovalEventID may be empty if the approval was resolved before the timeline
+	// ApprovalNetworkMsgID may be empty if the approval was resolved before the timeline
 	// message was sent (race between resolveToolApproval and emitUIToolApprovalRequest).
 	// This is harmless — the stream event path (tool-output-*) resolves the UI instead.
-	if p.ApprovalEventID == "" {
+	if p.ApprovalNetworkMsgID == "" {
 		return
 	}
 
@@ -293,43 +293,37 @@ func (oc *AIClient) emitApprovalSnapshotDecision(p *pendingToolApproval, decisio
 		"parts":    []map[string]any{uiPart},
 	}
 
-	eventRaw := map[string]any{
-		"msgtype": event.MsgNotice,
-		"body":    "* " + body,
-		"m.new_content": map[string]any{
-			"msgtype":              event.MsgNotice,
-			"body":                 body,
-			BeeperActionHintsKey:   updatedHints,
-			"m.mentions":           map[string]any{},
-		},
-		"m.relates_to": map[string]any{
-			"rel_type": RelReplace,
-			"event_id": p.ApprovalEventID.String(),
-		},
+	// Look up the DB message part so sendEditViaPortal can reference the original event.
+	receiver := portal.Receiver
+	if receiver == "" {
+		receiver = oc.UserLogin.ID
+	}
+	parts, err := oc.UserLogin.Bridge.DB.Message.GetAllPartsByID(ctx, receiver, p.ApprovalNetworkMsgID)
+	if err != nil || len(parts) == 0 {
+		oc.Log().Warn().Err(err).Str("approval_id", p.ApprovalID).Msg("tool approval: approval message not found in DB for edit")
+		return
+	}
+
+	editExtra := map[string]any{
 		BeeperAIKey:                     uiMessage,
 		BeeperActionHintsKey:            updatedHints,
 		"com.beeper.dont_render_edited": true,
 		"m.mentions":                    map[string]any{},
 	}
-	eventContent := &event.Content{Raw: eventRaw}
-
-	sendWithBot := p.ApprovalEventUseBot
-	if !sendWithBot {
-		converted := &bridgev2.ConvertedMessage{
-			Parts: []*bridgev2.ConvertedMessagePart{{
-				ID:    networkid.PartID("0"),
-				Type:  event.EventMessage,
-				Extra: eventContent.Raw,
-			}},
-		}
-		if _, _, err := oc.sendViaPortal(ctx, portal, converted, ""); err == nil {
-			return
-		}
+	converted := &bridgev2.ConvertedEdit{
+		ModifiedParts: []*bridgev2.ConvertedEditPart{{
+			Part: parts[0],
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgNotice,
+				Body:    body,
+			},
+			Extra:         map[string]any{BeeperActionHintsKey: updatedHints, "m.mentions": map[string]any{}},
+			TopLevelExtra: editExtra,
+		}},
 	}
-	if oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.Bot != nil {
-		if _, err := oc.UserLogin.Bridge.Bot.SendMessage(ctx, portal.MXID, event.EventMessage, eventContent, nil); err != nil {
-			oc.Log().Warn().Err(err).Str("approval_id", p.ApprovalID).Msg("tool approval: failed to send snapshot decision via bot")
-		}
+	if err := oc.sendEditViaPortal(ctx, portal, p.ApprovalNetworkMsgID, converted); err != nil {
+		oc.Log().Warn().Err(err).Str("approval_id", p.ApprovalID).Msg("tool approval: failed to send snapshot decision")
 	}
 }
 
@@ -400,6 +394,22 @@ func (oc *AIClient) isBuiltinToolDenied(
 		return true
 	}
 	return false
+}
+
+// findApprovalByEventID returns the approval ID for a pending approval whose
+// timeline message matches the given Matrix event ID. Returns "" if not found.
+func (oc *AIClient) findApprovalByEventID(eventID id.EventID) string {
+	if oc == nil || eventID == "" {
+		return ""
+	}
+	oc.toolApprovalsMu.Lock()
+	defer oc.toolApprovalsMu.Unlock()
+	for aid, p := range oc.toolApprovals {
+		if p != nil && p.ApprovalEventID == eventID {
+			return aid
+		}
+	}
+	return ""
 }
 
 func (oc *AIClient) dropToolApproval(approvalID string) {

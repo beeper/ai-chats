@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 )
 
@@ -44,10 +45,6 @@ func (oc *AIClient) sendApprovalRejectionEvent(ctx context.Context, portal *brid
 	if oc == nil || portal == nil || portal.MXID == "" || approvalID == "" {
 		return
 	}
-	bot := oc.UserLogin.Bridge.Bot
-	if bot == nil {
-		return
-	}
 
 	errorText := "Expired"
 	switch {
@@ -80,7 +77,14 @@ func (oc *AIClient) sendApprovalRejectionEvent(ctx context.Context, portal *brid
 		},
 		"m.mentions": map[string]any{},
 	}
-	if _, sendErr := bot.SendMessage(ctx, portal.MXID, event.EventMessage, &event.Content{Raw: raw}, nil); sendErr != nil {
+	converted := &bridgev2.ConvertedMessage{
+		Parts: []*bridgev2.ConvertedMessagePart{{
+			ID:    networkid.PartID("0"),
+			Type:  event.EventMessage,
+			Extra: raw,
+		}},
+	}
+	if _, _, sendErr := oc.sendViaPortal(ctx, portal, converted, ""); sendErr != nil {
 		oc.loggerForContext(ctx).Warn().Err(sendErr).Msg("Failed to send approval rejection event")
 	}
 }

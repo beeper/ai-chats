@@ -314,7 +314,6 @@ type AIClient struct {
 	promptRegistry   *promptIntegrationRegistry
 	commandRegistry  *commandIntegrationRegistry
 	eventRegistry    *eventIntegrationRegistry
-	overflowRegistry *overflowIntegrationRegistry
 	purgeRegistry    *purgeIntegrationRegistry
 	approvalRegistry *toolApprovalIntegrationRegistry
 
