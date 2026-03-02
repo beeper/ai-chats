@@ -90,10 +90,6 @@ func SplitTrailingMessageIDHint(text string) (string, string) {
 }
 
 func IsMessageIDHintPrefix(lower string) bool {
-	for _, target := range []string{"[message_id:"} {
-		if strings.HasPrefix(target, lower) || strings.HasPrefix(lower, target) {
-			return true
-		}
-	}
-	return false
+	const target = "[message_id:"
+	return strings.HasPrefix(target, lower) || strings.HasPrefix(lower, target)
 }

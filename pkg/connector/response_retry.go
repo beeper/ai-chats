@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 
 	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
 	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
@@ -33,8 +34,14 @@ func (oc *AIClient) responseWithRetry(
 ) (bool, error) {
 	currentPrompt := prompt
 	autoCompactionAttempted := false
+	preflightFlushAttempted := false
 
 	for attempt := range maxRetryAttempts {
+		if !preflightFlushAttempted {
+			preflightFlushAttempted = true
+			oc.runCompactionPreflightFlushHook(ctx, portal, meta, currentPrompt, attempt+1)
+		}
+
 		success, cle, err := responseFn(ctx, evt, portal, meta, currentPrompt)
 		if success {
 			return true, nil
@@ -74,20 +81,33 @@ func (oc *AIClient) responseWithRetry(
 
 				// Emit compaction start event
 				sessionID := string(portal.MXID)
+				modelID := ""
+				if meta != nil {
+					modelID = oc.effectiveModel(meta)
+				}
+				tokensBefore := estimatePromptTokensForModel(currentPrompt, modelID)
+				oc.emitCompactionLifecycle(ctx, integrationruntime.CompactionLifecycleEvent{
+					Client:              oc,
+					Portal:              portal,
+					Meta:                meta,
+					Phase:               integrationruntime.CompactionLifecycleStart,
+					Attempt:             attempt + 1,
+					ContextWindowTokens: contextWindow,
+					RequestedTokens:     cle.RequestedTokens,
+					PromptTokens:        tokensBefore,
+					MessagesBefore:      len(currentPrompt),
+					TokensBefore:        tokensBefore,
+				})
 				oc.emitCompactionStatus(ctx, portal, &CompactionEvent{
 					Type:           CompactionEventStart,
 					SessionID:      sessionID,
 					MessagesBefore: len(currentPrompt),
 				})
 
-				compacted, decision, compactionSuccess := oc.runtimeCompactOnOverflow(currentPrompt, contextWindow, cle.RequestedTokens)
+				compacted, decision, compactionSuccess := oc.runtimeCompactOnOverflow(currentPrompt, contextWindow, cle.RequestedTokens, tokensBefore)
 
 				if compactionSuccess && len(compacted) > 2 {
-					modelID := ""
-					if meta != nil {
-						modelID = oc.effectiveModel(meta)
-					}
-					tokensBefore := estimatePromptTokensForModel(currentPrompt, modelID)
+					compacted = oc.applyCompactionModelSummaryAndRefresh(ctx, meta, currentPrompt, compacted, decision, contextWindow)
 					tokensAfter := estimatePromptTokensForModel(compacted, modelID)
 					if meta != nil {
 						meta.CompactionCount++
@@ -108,6 +128,40 @@ func (oc *AIClient) responseWithRetry(
 						Summary:        summary,
 						WillRetry:      true,
 					})
+					oc.emitCompactionLifecycle(ctx, integrationruntime.CompactionLifecycleEvent{
+						Client:              oc,
+						Portal:              portal,
+						Meta:                meta,
+						Phase:               integrationruntime.CompactionLifecycleEnd,
+						Attempt:             attempt + 1,
+						ContextWindowTokens: contextWindow,
+						RequestedTokens:     cle.RequestedTokens,
+						PromptTokens:        tokensAfter,
+						MessagesBefore:      len(currentPrompt),
+						MessagesAfter:       len(compacted),
+						TokensBefore:        tokensBefore,
+						TokensAfter:         tokensAfter,
+						DroppedCount:        decision.DroppedCount,
+						Reason:              decision.Reason,
+						WillRetry:           true,
+					})
+					oc.emitCompactionLifecycle(ctx, integrationruntime.CompactionLifecycleEvent{
+						Client:              oc,
+						Portal:              portal,
+						Meta:                meta,
+						Phase:               integrationruntime.CompactionLifecycleRefresh,
+						Attempt:             attempt + 1,
+						ContextWindowTokens: contextWindow,
+						RequestedTokens:     cle.RequestedTokens,
+						PromptTokens:        tokensAfter,
+						MessagesBefore:      len(currentPrompt),
+						MessagesAfter:       len(compacted),
+						TokensBefore:        tokensBefore,
+						TokensAfter:         tokensAfter,
+						DroppedCount:        decision.DroppedCount,
+						Reason:              decision.Reason,
+						WillRetry:           true,
+					})
 
 					oc.loggerForContext(ctx).Info().
 						Int("messages_before", len(currentPrompt)).
@@ -127,6 +181,21 @@ func (oc *AIClient) responseWithRetry(
 					SessionID: sessionID,
 					Error:     "compaction did not reduce context sufficiently",
 				})
+				oc.emitCompactionLifecycle(ctx, integrationruntime.CompactionLifecycleEvent{
+					Client:              oc,
+					Portal:              portal,
+					Meta:                meta,
+					Phase:               integrationruntime.CompactionLifecycleFail,
+					Attempt:             attempt + 1,
+					ContextWindowTokens: contextWindow,
+					RequestedTokens:     cle.RequestedTokens,
+					PromptTokens:        tokensBefore,
+					MessagesBefore:      len(currentPrompt),
+					TokensBefore:        tokensBefore,
+					DroppedCount:        decision.DroppedCount,
+					Reason:              decision.Reason,
+					Error:               "compaction did not reduce context sufficiently",
+				})
 
 				oc.loggerForContext(ctx).Warn().Msg("Auto-compaction did not help, falling back to reactive truncation")
 			}
@@ -142,6 +211,80 @@ func (oc *AIClient) responseWithRetry(
 	oc.notifyMatrixSendFailure(ctx, portal, evt,
 		errors.New("exceeded maximum retry attempts for prompt overflow"))
 	return false, nil
+}
+
+func (oc *AIClient) runCompactionPreflightFlushHook(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+	prompt []openai.ChatCompletionMessageParamUnion,
+	attempt int,
+) {
+	if oc == nil || meta == nil {
+		return
+	}
+	contextWindow := oc.getModelContextWindow(meta)
+	if contextWindow <= 0 {
+		contextWindow = 128000
+	}
+	modelID := oc.effectiveModel(meta)
+	promptTokens := estimatePromptTokensForModel(prompt, modelID)
+	projectedTokens := projectedCompactionFlushTokens(meta, promptTokens)
+	oc.emitCompactionLifecycle(ctx, integrationruntime.CompactionLifecycleEvent{
+		Client:              oc,
+		Portal:              portal,
+		Meta:                meta,
+		Phase:               integrationruntime.CompactionLifecyclePreFlush,
+		Attempt:             attempt,
+		ContextWindowTokens: contextWindow,
+		RequestedTokens:     projectedTokens,
+		PromptTokens:        promptTokens,
+		MessagesBefore:      len(prompt),
+		TokensBefore:        promptTokens,
+	})
+	oc.runCompactionFlushHook(ctx, portal, meta, prompt, &ContextLengthError{
+		RequestedTokens: projectedTokens,
+		ModelMaxTokens:  contextWindow,
+	}, attempt)
+}
+
+func projectedCompactionFlushTokens(meta *PortalMetadata, promptTokens int) int {
+	if promptTokens < 0 {
+		promptTokens = 0
+	}
+	if meta == nil {
+		return promptTokens
+	}
+	lastPrompt := int(moduleMetaNumber(meta, "compaction_last_prompt_tokens"))
+	lastOutput := int(moduleMetaNumber(meta, "compaction_last_completion_tokens"))
+	if lastPrompt <= 0 {
+		return promptTokens
+	}
+	projected := lastPrompt + int(math.Max(0, float64(lastOutput))) + promptTokens
+	if projected < promptTokens {
+		return promptTokens
+	}
+	return projected
+}
+
+func moduleMetaNumber(meta *PortalMetadata, key string) int64 {
+	if meta == nil || meta.ModuleMeta == nil || key == "" {
+		return 0
+	}
+	raw, ok := meta.ModuleMeta[key]
+	if !ok || raw == nil {
+		return 0
+	}
+	switch v := raw.(type) {
+	case int:
+		return int64(v)
+	case int64:
+		return v
+	case float64:
+		return int64(v)
+	default:
+		return 0
+	}
 }
 
 type overflowFlushHook interface {
@@ -245,12 +388,20 @@ func (oc *AIClient) runtimeCompactOnOverflow(
 	prompt []openai.ChatCompletionMessageParamUnion,
 	contextWindowTokens int,
 	requestedTokens int,
+	currentPromptTokens int,
 ) ([]openai.ChatCompletionMessageParamUnion, airuntime.CompactionDecision, bool) {
 	result := airuntime.CompactPromptOnOverflow(airuntime.OverflowCompactionInput{
 		Prompt:              prompt,
 		ContextWindowTokens: contextWindowTokens,
 		RequestedTokens:     requestedTokens,
+		CurrentPromptTokens: currentPromptTokens,
 		ReserveTokens:       oc.pruningReserveTokens(),
+		KeepRecentTokens:    oc.pruningKeepRecentTokens(),
+		CompactionMode:      oc.pruningCompactionMode(),
+		Summarization:       false,
+		MaxSummaryTokens:    oc.pruningMaxSummaryTokens(),
+		RefreshPrompt:       "",
+		MaxHistoryShare:     oc.pruningMaxHistoryShare(),
 		ProtectedTail:       3,
 	})
 	return result.Prompt, result.Decision, result.Success

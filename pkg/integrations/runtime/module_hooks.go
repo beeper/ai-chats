@@ -86,6 +86,43 @@ type EventIntegration interface {
 	OnFileChanged(ctx context.Context, evt FileChangedEvent)
 }
 
+// CompactionLifecyclePhase describes runtime compaction lifecycle hooks.
+type CompactionLifecyclePhase string
+
+const (
+	CompactionLifecyclePreFlush CompactionLifecyclePhase = "pre_flush"
+	CompactionLifecycleStart    CompactionLifecyclePhase = "start"
+	CompactionLifecycleEnd      CompactionLifecyclePhase = "end"
+	CompactionLifecycleFail     CompactionLifecyclePhase = "fail"
+	CompactionLifecycleRefresh  CompactionLifecyclePhase = "post_refresh"
+)
+
+// CompactionLifecycleEvent provides compaction lifecycle details to integrations.
+type CompactionLifecycleEvent struct {
+	Client              any
+	Portal              any
+	Meta                any
+	Phase               CompactionLifecyclePhase
+	Attempt             int
+	ContextWindowTokens int
+	RequestedTokens     int
+	PromptTokens        int
+	MessagesBefore      int
+	MessagesAfter       int
+	TokensBefore        int
+	TokensAfter         int
+	DroppedCount        int
+	Reason              string
+	WillRetry           bool
+	Error               string
+}
+
+// CompactionLifecycleIntegration consumes compaction lifecycle events.
+type CompactionLifecycleIntegration interface {
+	Name() string
+	OnCompactionLifecycle(ctx context.Context, evt CompactionLifecycleEvent)
+}
+
 // ContextOverflowCall contains context-overflow retry state.
 type ContextOverflowCall struct {
 	Client          any

@@ -780,7 +780,7 @@ func (h *runtimeIntegrationHost) EstimateTokens(prompt []openai.ChatCompletionMe
 
 func (h *runtimeIntegrationHost) CompactorReserveTokens() int {
 	if h == nil || h.client == nil {
-		return 2000
+		return airuntime.DefaultPruningConfig().ReserveTokens
 	}
 	return h.client.pruningReserveTokens()
 }

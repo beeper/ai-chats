@@ -165,6 +165,36 @@ func (i *Integration) OnContextOverflow(ctx context.Context, call iruntime.Conte
 	HandleOverflow(ctx, call, call.Prompt, i.buildOverflowDeps())
 }
 
+func (i *Integration) OnCompactionLifecycle(ctx context.Context, evt iruntime.CompactionLifecycleEvent) {
+	ma, ok := i.host.(iruntime.MetadataAccess)
+	if !ok || evt.Meta == nil {
+		return
+	}
+	switch evt.Phase {
+	case iruntime.CompactionLifecycleStart:
+		ma.SetModuleMeta(evt.Meta, "compaction_in_flight", true)
+	case iruntime.CompactionLifecycleEnd:
+		ma.SetModuleMeta(evt.Meta, "compaction_in_flight", false)
+		ma.SetModuleMeta(evt.Meta, "last_compaction_at", time.Now().UnixMilli())
+		ma.SetModuleMeta(evt.Meta, "last_compaction_dropped_count", evt.DroppedCount)
+	case iruntime.CompactionLifecycleFail:
+		ma.SetModuleMeta(evt.Meta, "compaction_in_flight", false)
+		ma.SetModuleMeta(evt.Meta, "last_compaction_error", strings.TrimSpace(evt.Error))
+	case iruntime.CompactionLifecycleRefresh:
+		ma.SetModuleMeta(evt.Meta, "last_compaction_refresh_at", time.Now().UnixMilli())
+	}
+	pm, ok := i.host.(iruntime.PortalManager)
+	if !ok || evt.Portal == nil {
+		return
+	}
+	if err := pm.SavePortal(ctx, evt.Portal, "compaction lifecycle"); err != nil {
+		i.host.Logger().Warn("failed to persist compaction lifecycle metadata", map[string]any{
+			"error": err.Error(),
+			"phase": string(evt.Phase),
+		})
+	}
+}
+
 // ---- LoginLifecycleIntegration ----
 
 func (i *Integration) StopForLogin(bridgeID, loginID string) {

@@ -358,6 +358,33 @@ func (oc *AIClient) registerIntegrationModule(name string, module any) {
 	oc.integrationOrder = append(oc.integrationOrder, key)
 }
 
+func (oc *AIClient) emitCompactionLifecycle(
+	ctx context.Context,
+	evt integrationruntime.CompactionLifecycleEvent,
+) {
+	if oc == nil || len(oc.integrationModules) == 0 {
+		return
+	}
+	if len(oc.integrationOrder) > 0 {
+		for _, key := range oc.integrationOrder {
+			module := oc.integrationModules[key]
+			integration, ok := module.(integrationruntime.CompactionLifecycleIntegration)
+			if !ok || integration == nil {
+				continue
+			}
+			integration.OnCompactionLifecycle(ctx, evt)
+		}
+		return
+	}
+	for _, module := range oc.integrationModules {
+		integration, ok := module.(integrationruntime.CompactionLifecycleIntegration)
+		if !ok || integration == nil {
+			continue
+		}
+		integration.OnCompactionLifecycle(ctx, evt)
+	}
+}
+
 func (oc *AIClient) integrationModule(name string) any {
 	if oc == nil || oc.integrationModules == nil {
 		return nil

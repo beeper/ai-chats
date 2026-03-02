@@ -34,11 +34,15 @@ type PruningConfig struct {
 	SummarizationEnabled   *bool                `yaml:"summarization_enabled" json:"summarization_enabled,omitempty"`
 	SummarizationModel     string               `yaml:"summarization_model" json:"summarization_model,omitempty"`
 	MaxSummaryTokens       int                  `yaml:"max_summary_tokens" json:"max_summary_tokens,omitempty"`
+	CompactionMode         string               `yaml:"compaction_mode" json:"compaction_mode,omitempty"`
+	KeepRecentTokens       int                  `yaml:"keep_recent_tokens" json:"keep_recent_tokens,omitempty"`
 	MaxHistoryShare        float64              `yaml:"max_history_share" json:"max_history_share,omitempty"`
 	ReserveTokens          int                  `yaml:"reserve_tokens" json:"reserve_tokens,omitempty"`
+	ReserveTokensFloor     int                  `yaml:"reserve_tokens_floor" json:"reserve_tokens_floor,omitempty"`
 	CustomInstructions     string               `yaml:"custom_instructions" json:"custom_instructions,omitempty"`
 	IdentifierPolicy       string               `yaml:"identifier_policy" json:"identifier_policy,omitempty"`
 	IdentifierInstructions string               `yaml:"identifier_instructions" json:"identifier_instructions,omitempty"`
+	PostCompactionRefresh  string               `yaml:"post_compaction_refresh_prompt" json:"post_compaction_refresh_prompt,omitempty"`
 	OverflowFlush          *OverflowFlushConfig `yaml:"overflow_flush" json:"overflow_flush,omitempty"`
 
 	MaxHistoryTurns int `yaml:"max_history_turns" json:"max_history_turns,omitempty"`
@@ -55,24 +59,34 @@ type OverflowFlushConfig struct {
 // DefaultPruningConfig returns OpenClaw-like default settings.
 func DefaultPruningConfig() *PruningConfig {
 	enabled := true
+	summarizationEnabled := true
 	return &PruningConfig{
-		Mode:                 "cache-ttl",
-		TTL:                  1 * time.Hour,
-		Enabled:              true,
-		SoftTrimRatio:        0.3,
-		HardClearRatio:       0.5,
-		KeepLastAssistants:   3,
-		MinPrunableChars:     50000,
-		SoftTrimMaxChars:     4000,
-		SoftTrimHeadChars:    1500,
-		SoftTrimTailChars:    1500,
-		HardClearEnabled:     &enabled,
-		HardClearPlaceholder: "[Old tool result content cleared]",
+		Mode:                  "cache-ttl",
+		TTL:                   1 * time.Hour,
+		Enabled:               true,
+		SoftTrimRatio:         0.3,
+		HardClearRatio:        0.5,
+		KeepLastAssistants:    3,
+		MinPrunableChars:      50000,
+		SoftTrimMaxChars:      4000,
+		SoftTrimHeadChars:     1500,
+		SoftTrimTailChars:     1500,
+		HardClearEnabled:      &enabled,
+		HardClearPlaceholder:  "[Old tool result content cleared]",
+		SummarizationEnabled:  &summarizationEnabled,
+		SummarizationModel:    "openai/gpt-5.2",
+		MaxSummaryTokens:      500,
+		CompactionMode:        "safeguard",
+		KeepRecentTokens:      20000,
+		MaxHistoryShare:       0.5,
+		ReserveTokens:         20000,
+		ReserveTokensFloor:    20000,
+		PostCompactionRefresh: "[Post-compaction context refresh]\nRe-anchor to the latest user intent and preserve unresolved tasks and identifiers.",
 		OverflowFlush: &OverflowFlushConfig{
 			Enabled:             &enabled,
 			SoftThresholdTokens: 4000,
-			Prompt:              "Pre-compaction overflow flush. Persist any durable notes now if your tools support it. If nothing to store, reply with NO_REPLY.",
-			SystemPrompt:        "Pre-compaction overflow flush turn. The session is near auto-compaction; persist durable notes if possible. You may reply, but usually NO_REPLY is correct.",
+			Prompt:              "Pre-compaction memory flush. Store durable memories now (use memory/YYYY-MM-DD.md; create memory/ if needed). IMPORTANT: If the file already exists, APPEND new content only and do not overwrite existing entries. If nothing to store, reply with NO_REPLY.",
+			SystemPrompt:        "Pre-compaction memory flush turn. The session is near auto-compaction; capture durable memories to disk. You may reply, but usually NO_REPLY is correct.",
 		},
 	}
 }
@@ -237,6 +251,7 @@ func estimateTotalChars(messages []pruningMessageInfo) int {
 func ApplyPruningDefaults(config *PruningConfig) *PruningConfig {
 	cfg := *config
 	defaults := DefaultPruningConfig()
+	originalReserveTokens := cfg.ReserveTokens
 	if strings.TrimSpace(cfg.Mode) == "" {
 		cfg.Mode = defaults.Mode
 	}
@@ -266,6 +281,47 @@ func ApplyPruningDefaults(config *PruningConfig) *PruningConfig {
 	}
 	if cfg.HardClearPlaceholder == "" {
 		cfg.HardClearPlaceholder = defaults.HardClearPlaceholder
+	}
+	if cfg.SummarizationEnabled == nil {
+		cfg.SummarizationEnabled = defaults.SummarizationEnabled
+	}
+	if cfg.MaxSummaryTokens <= 0 {
+		cfg.MaxSummaryTokens = defaults.MaxSummaryTokens
+	}
+	if strings.TrimSpace(cfg.CompactionMode) == "" {
+		cfg.CompactionMode = defaults.CompactionMode
+	} else {
+		mode := strings.ToLower(strings.TrimSpace(cfg.CompactionMode))
+		switch mode {
+		case "default", "safeguard":
+			cfg.CompactionMode = mode
+		default:
+			cfg.CompactionMode = defaults.CompactionMode
+		}
+	}
+	if cfg.KeepRecentTokens <= 0 {
+		cfg.KeepRecentTokens = defaults.KeepRecentTokens
+	}
+	if strings.TrimSpace(cfg.PostCompactionRefresh) == "" {
+		cfg.PostCompactionRefresh = defaults.PostCompactionRefresh
+	}
+	if cfg.MaxHistoryShare <= 0 {
+		cfg.MaxHistoryShare = defaults.MaxHistoryShare
+	}
+	if cfg.MaxHistoryShare < 0.1 {
+		cfg.MaxHistoryShare = 0.1
+	}
+	if cfg.MaxHistoryShare > 0.9 {
+		cfg.MaxHistoryShare = 0.9
+	}
+	if cfg.ReserveTokens <= 0 {
+		cfg.ReserveTokens = defaults.ReserveTokens
+	}
+	if cfg.ReserveTokensFloor < 0 {
+		cfg.ReserveTokensFloor = 0
+	}
+	if cfg.ReserveTokensFloor == 0 && originalReserveTokens <= 0 && defaults.ReserveTokensFloor > 0 {
+		cfg.ReserveTokensFloor = defaults.ReserveTokensFloor
 	}
 	if cfg.OverflowFlush == nil {
 		cfg.OverflowFlush = defaults.OverflowFlush

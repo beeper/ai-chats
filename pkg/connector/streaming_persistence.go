@@ -77,6 +77,20 @@ func (oc *AIClient) saveAssistantMessage(
 		oc.insertAssistantMessage(ctx, log, portal, state, modelID, fullMeta)
 	}
 
+	usageMetaUpdated := false
+	if meta != nil && (state.promptTokens > 0 || state.completionTokens > 0) {
+		if meta.ModuleMeta == nil {
+			meta.ModuleMeta = make(map[string]any, 4)
+		}
+		meta.ModuleMeta["compaction_last_prompt_tokens"] = state.promptTokens
+		meta.ModuleMeta["compaction_last_completion_tokens"] = state.completionTokens
+		meta.ModuleMeta["compaction_last_usage_at"] = time.Now().UnixMilli()
+		usageMetaUpdated = true
+	}
+	if usageMetaUpdated && portal != nil {
+		oc.savePortalQuiet(ctx, portal, "compaction usage snapshot")
+	}
+
 	oc.notifySessionMutation(ctx, portal, meta, false)
 
 	// Save LastResponseID for "responses" mode context chaining (OpenAI-only)

@@ -3,6 +3,8 @@ package runtime
 import (
 	"strings"
 	"testing"
+
+	"github.com/openai/openai-go/v3"
 )
 
 func TestParseReplyDirectives_ExplicitOverridesCurrent(t *testing.T) {
@@ -162,6 +164,122 @@ func TestStripMessageIDHintLines_LiteralBehavior(t *testing.T) {
 	}
 	if got := StripMessageIDHintLines("[MESSAGE_ID: abc123]"); got != "[MESSAGE_ID: abc123]" {
 		t.Fatalf("expected case-sensitive guard behavior to preserve uppercase hint, got %q", got)
+	}
+}
+
+func TestCompactPromptOnOverflow_UsesMaxHistoryShareBudget(t *testing.T) {
+	prompt := []openai.ChatCompletionMessageParamUnion{
+		openai.SystemMessage("system"),
+		openai.UserMessage(strings.Repeat("A", 200)),
+		openai.AssistantMessage(strings.Repeat("B", 200)),
+		openai.UserMessage(strings.Repeat("C", 200)),
+		openai.AssistantMessage(strings.Repeat("D", 200)),
+		openai.UserMessage(strings.Repeat("E", 200)),
+		openai.AssistantMessage(strings.Repeat("F", 200)),
+	}
+	result := CompactPromptOnOverflow(OverflowCompactionInput{
+		Prompt:              prompt,
+		ContextWindowTokens: 200,
+		RequestedTokens:     200,
+		ReserveTokens:       0,
+		MaxHistoryShare:     0.1,
+		ProtectedTail:       2,
+	})
+	if !result.Decision.Applied || result.Decision.DroppedCount == 0 {
+		t.Fatalf("expected compaction decision to drop history, got %#v", result.Decision)
+	}
+	if len(result.Prompt) > len(prompt) {
+		t.Fatalf("expected compacted prompt to shrink, before=%d after=%d", len(prompt), len(result.Prompt))
+	}
+}
+
+func TestApplyPruningDefaults_ReserveFloorOnlyWhenUnset(t *testing.T) {
+	withReserve := ApplyPruningDefaults(&PruningConfig{ReserveTokens: 777})
+	if withReserve.ReserveTokens != 777 {
+		t.Fatalf("expected explicit reserve tokens to be preserved, got %d", withReserve.ReserveTokens)
+	}
+	if withReserve.ReserveTokensFloor != 0 {
+		t.Fatalf("expected reserve floor to stay unset when reserve tokens is explicit, got %d", withReserve.ReserveTokensFloor)
+	}
+
+	unset := ApplyPruningDefaults(&PruningConfig{})
+	if unset.ReserveTokens <= 0 {
+		t.Fatalf("expected default reserve tokens, got %d", unset.ReserveTokens)
+	}
+	if unset.ReserveTokensFloor <= 0 {
+		t.Fatalf("expected default reserve floor when reserve tokens are unset, got %d", unset.ReserveTokensFloor)
+	}
+}
+
+func TestApplyPruningDefaults_CompactionKnobs(t *testing.T) {
+	cfg := ApplyPruningDefaults(&PruningConfig{
+		CompactionMode:  "DEFAULT",
+		MaxHistoryShare: 0.99,
+	})
+	if cfg.CompactionMode != "default" {
+		t.Fatalf("expected normalized compaction mode default, got %q", cfg.CompactionMode)
+	}
+	if cfg.KeepRecentTokens <= 0 {
+		t.Fatalf("expected keep recent tokens defaulted, got %d", cfg.KeepRecentTokens)
+	}
+	if cfg.MaxHistoryShare > 0.9 {
+		t.Fatalf("expected max history share clamp <= 0.9, got %v", cfg.MaxHistoryShare)
+	}
+	if cfg.SummarizationEnabled == nil || !*cfg.SummarizationEnabled {
+		t.Fatalf("expected summarization enabled by default")
+	}
+	if cfg.MaxSummaryTokens <= 0 {
+		t.Fatalf("expected max summary tokens defaulted, got %d", cfg.MaxSummaryTokens)
+	}
+	if strings.TrimSpace(cfg.PostCompactionRefresh) == "" {
+		t.Fatal("expected post compaction refresh prompt defaulted")
+	}
+}
+
+func TestCompactPromptOnOverflow_InsertsSummaryAndRefresh(t *testing.T) {
+	prompt := []openai.ChatCompletionMessageParamUnion{
+		openai.SystemMessage("sys"),
+		openai.UserMessage(strings.Repeat("U", 350)),
+		openai.AssistantMessage(strings.Repeat("A", 350)),
+		openai.UserMessage(strings.Repeat("X", 350)),
+		openai.AssistantMessage(strings.Repeat("Y", 350)),
+	}
+	result := CompactPromptOnOverflow(OverflowCompactionInput{
+		Prompt:              prompt,
+		ContextWindowTokens: 300,
+		RequestedTokens:     600,
+		CurrentPromptTokens: 600,
+		ReserveTokens:       100,
+		KeepRecentTokens:    120,
+		CompactionMode:      "safeguard",
+		Summarization:       true,
+		MaxSummaryTokens:    120,
+		RefreshPrompt:       "[Post-compaction context refresh]\nRe-anchor.",
+		MaxHistoryShare:     0.5,
+		ProtectedTail:       2,
+	})
+	if !result.Decision.Applied || !result.Success {
+		t.Fatalf("expected successful compaction with dropped history, got decision=%#v success=%v", result.Decision, result.Success)
+	}
+	sawSummary := false
+	sawRefresh := false
+	for _, msg := range result.Prompt {
+		if msg.OfSystem == nil {
+			continue
+		}
+		text := ExtractSystemContent(msg.OfSystem.Content)
+		if strings.Contains(text, "[Compaction summary of earlier context]") {
+			sawSummary = true
+		}
+		if strings.Contains(text, "[Post-compaction context refresh]") {
+			sawRefresh = true
+		}
+	}
+	if !sawSummary {
+		t.Fatal("expected compaction summary system message")
+	}
+	if !sawRefresh {
+		t.Fatal("expected post-compaction refresh system message")
 	}
 }
 

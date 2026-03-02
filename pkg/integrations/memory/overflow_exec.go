@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	iruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
 	"github.com/openai/openai-go/v3"
 )
 
@@ -65,7 +66,10 @@ func HandleOverflow(
 		model = deps.EffectiveModel(call)
 	}
 	totalTokens := 0
-	if deps.EstimateTokens != nil {
+	if overflowCall, ok := call.(iruntime.ContextOverflowCall); ok && overflowCall.RequestedTokens > 0 {
+		totalTokens = overflowCall.RequestedTokens
+	}
+	if totalTokens <= 0 && deps.EstimateTokens != nil {
 		totalTokens = deps.EstimateTokens(prompt, model)
 	}
 	if !shouldRunFlush(totalTokens, contextWindow, reserveTokens, flushSettings, deps.AlreadyFlushed, call) {

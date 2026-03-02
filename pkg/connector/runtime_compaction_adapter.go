@@ -1,6 +1,8 @@
 package connector
 
 import (
+	"strings"
+
 	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/openai/openai-go/v3"
 )
@@ -28,17 +30,117 @@ type CompactionEvent struct {
 
 func (oc *AIClient) pruningConfigOrDefault() *airuntime.PruningConfig {
 	if oc != nil && oc.connector != nil && oc.connector.Config.Pruning != nil {
-		return oc.connector.Config.Pruning
+		return airuntime.ApplyPruningDefaults(oc.connector.Config.Pruning)
 	}
 	return airuntime.DefaultPruningConfig()
 }
 
 func (oc *AIClient) pruningReserveTokens() int {
 	cfg := oc.pruningConfigOrDefault()
-	if cfg == nil || cfg.ReserveTokens <= 0 {
-		return 2000
+	defaults := airuntime.DefaultPruningConfig()
+	if cfg == nil {
+		return defaults.ReserveTokens
 	}
-	return cfg.ReserveTokens
+	reserve := cfg.ReserveTokens
+	if reserve <= 0 {
+		reserve = defaults.ReserveTokens
+	}
+	if cfg.ReserveTokensFloor > 0 && reserve < cfg.ReserveTokensFloor {
+		reserve = cfg.ReserveTokensFloor
+	}
+	return reserve
+}
+
+func (oc *AIClient) pruningMaxHistoryShare() float64 {
+	cfg := oc.pruningConfigOrDefault()
+	defaults := airuntime.DefaultPruningConfig()
+	if cfg == nil || cfg.MaxHistoryShare <= 0 || cfg.MaxHistoryShare >= 1 {
+		return defaults.MaxHistoryShare
+	}
+	return cfg.MaxHistoryShare
+}
+
+func (oc *AIClient) pruningCompactionMode() string {
+	cfg := oc.pruningConfigOrDefault()
+	defaults := airuntime.DefaultPruningConfig()
+	if cfg == nil {
+		return defaults.CompactionMode
+	}
+	mode := strings.ToLower(strings.TrimSpace(cfg.CompactionMode))
+	switch mode {
+	case "default", "safeguard":
+		return mode
+	default:
+		return defaults.CompactionMode
+	}
+}
+
+func (oc *AIClient) pruningKeepRecentTokens() int {
+	cfg := oc.pruningConfigOrDefault()
+	defaults := airuntime.DefaultPruningConfig()
+	if cfg == nil || cfg.KeepRecentTokens <= 0 {
+		return defaults.KeepRecentTokens
+	}
+	return cfg.KeepRecentTokens
+}
+
+func (oc *AIClient) pruningSummarizationEnabled() bool {
+	cfg := oc.pruningConfigOrDefault()
+	if cfg == nil || cfg.SummarizationEnabled == nil {
+		return true
+	}
+	return *cfg.SummarizationEnabled
+}
+
+func (oc *AIClient) pruningMaxSummaryTokens() int {
+	cfg := oc.pruningConfigOrDefault()
+	defaults := airuntime.DefaultPruningConfig()
+	if cfg == nil || cfg.MaxSummaryTokens <= 0 {
+		return defaults.MaxSummaryTokens
+	}
+	return cfg.MaxSummaryTokens
+}
+
+func (oc *AIClient) pruningSummarizationModel() string {
+	cfg := oc.pruningConfigOrDefault()
+	defaults := airuntime.DefaultPruningConfig()
+	if cfg == nil || strings.TrimSpace(cfg.SummarizationModel) == "" {
+		return defaults.SummarizationModel
+	}
+	return strings.TrimSpace(cfg.SummarizationModel)
+}
+
+func (oc *AIClient) pruningCustomInstructions() string {
+	cfg := oc.pruningConfigOrDefault()
+	if cfg == nil {
+		return ""
+	}
+	return strings.TrimSpace(cfg.CustomInstructions)
+}
+
+func (oc *AIClient) pruningIdentifierPolicy() string {
+	cfg := oc.pruningConfigOrDefault()
+	if cfg == nil {
+		return ""
+	}
+	return strings.TrimSpace(cfg.IdentifierPolicy)
+}
+
+func (oc *AIClient) pruningIdentifierInstructions() string {
+	cfg := oc.pruningConfigOrDefault()
+	if cfg == nil {
+		return ""
+	}
+	return strings.TrimSpace(cfg.IdentifierInstructions)
+}
+
+func (oc *AIClient) pruningPostCompactionRefreshPrompt() string {
+	cfg := oc.pruningConfigOrDefault()
+	defaults := airuntime.DefaultPruningConfig()
+	if cfg == nil || strings.TrimSpace(cfg.PostCompactionRefresh) == "" {
+		return defaults.PostCompactionRefresh
+	}
+	return cfg.PostCompactionRefresh
 }
 
 func (oc *AIClient) pruningOverflowFlushConfig() *airuntime.OverflowFlushConfig {
