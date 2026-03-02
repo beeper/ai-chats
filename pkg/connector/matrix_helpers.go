@@ -108,9 +108,12 @@ func (oc *AIClient) buildMatrixInboundContext(
 		bodyForAgent = senderName + ": " + strings.TrimSpace(bodyForAgent)
 	}
 
-	chatID := strings.TrimSpace(roomName)
-	if chatID == "" && portal != nil && portal.MXID != "" {
+	chatID := ""
+	if portal != nil && portal.MXID != "" {
 		chatID = portal.MXID.String()
+	}
+	if chatID == "" {
+		chatID = strings.TrimSpace(roomName)
 	}
 
 	inbound := runtimeparse.InboundContext{
