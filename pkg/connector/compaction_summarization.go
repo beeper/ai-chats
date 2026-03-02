@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/openai/openai-go/v3"
@@ -19,8 +20,11 @@ const (
 	compactionDefaultSummaryFallback             = "No prior history."
 	compactionDefaultSummaryParts                = 2
 	compactionDefaultMinMessagesForSplit         = 4
-	compactionMergeSummariesInstructions         = "Merge these partial summaries into a single cohesive summary. Preserve decisions, TODOs, open questions, and constraints."
+	compactionMergeSummariesInstructions         = "Merge these partial summaries into a single cohesive summary. Preserve decisions, TODOs, open questions, and any constraints."
 	compactionIdentifierPreservationInstructions = "Preserve all opaque identifiers exactly as written (no shortening or reconstruction), including UUIDs, hashes, IDs, tokens, API keys, hostnames, IPs, ports, URLs, and file names."
+	compactionSummarizationSystemPrompt          = "You are a context summarization assistant. Your task is to read a conversation between a user and an AI coding assistant, then produce a structured summary following the exact format specified.\n\nDo NOT continue the conversation. Do NOT respond to any questions in the conversation. ONLY output the structured summary."
+	compactionSummarizationPrompt                = "The messages above are a conversation to summarize. Create a structured context checkpoint summary that another LLM will use to continue the work.\n\nUse this EXACT format:\n\n## Goal\n[What is the user trying to accomplish? Can be multiple items if the session covers different tasks.]\n\n## Constraints & Preferences\n- [Any constraints, preferences, or requirements mentioned by user]\n- [Or \"(none)\" if none were mentioned]\n\n## Progress\n### Done\n- [x] [Completed tasks/changes]\n\n### In Progress\n- [ ] [Current work]\n\n### Blocked\n- [Issues preventing progress, if any]\n\n## Key Decisions\n- **[Decision]**: [Brief rationale]\n\n## Next Steps\n1. [Ordered list of what should happen next]\n\n## Critical Context\n- [Any data, examples, or references needed to continue]\n- [Or \"(none)\" if not applicable]\n\nKeep each section concise. Preserve exact file paths, function names, and error messages."
+	compactionSummarizationUpdatePrompt          = "The messages above are NEW conversation messages to incorporate into the existing summary provided in <previous-summary> tags.\n\nUpdate the existing structured summary with new information. RULES:\n- PRESERVE all existing information from the previous summary\n- ADD new progress, decisions, and context from the new messages\n- UPDATE the Progress section: move items from \"In Progress\" to \"Done\" when completed\n- UPDATE \"Next Steps\" based on what was accomplished\n- PRESERVE exact file paths, function names, and error messages\n- If something is no longer relevant, you may remove it\n\nUse this EXACT format:\n\n## Goal\n[Preserve existing goals, add new ones if the task expanded]\n\n## Constraints & Preferences\n- [Preserve existing, add new ones discovered]\n\n## Progress\n### Done\n- [x] [Include previously done items AND newly completed items]\n\n### In Progress\n- [ ] [Current work - update based on progress]\n\n### Blocked\n- [Current blockers - remove if resolved]\n\n## Key Decisions\n- **[Decision]**: [Brief rationale] (preserve all previous, add new)\n\n## Next Steps\n1. [Update based on current state]\n\n## Critical Context\n- [Preserve important context, add new if needed]\n\nKeep each section concise. Preserve exact file paths, function names, and error messages."
 )
 
 func normalizeCompactionSummaryParts(parts int, messageCount int) int {
@@ -40,12 +44,9 @@ func estimateCompactionMessagesTokens(messages []openai.ChatCompletionMessagePar
 	if len(messages) == 0 {
 		return 0
 	}
-	if count, err := EstimateTokens(messages, model); err == nil && count > 0 {
-		return count
-	}
 	total := 0
 	for _, msg := range messages {
-		total += airuntime.EstimateMessageChars(msg) / airuntime.CharsPerTokenEstimate
+		total += estimateCompactionMessageTokens(msg, model)
 	}
 	if total <= 0 {
 		return len(messages) * 3
@@ -53,8 +54,12 @@ func estimateCompactionMessagesTokens(messages []openai.ChatCompletionMessagePar
 	return total
 }
 
-func estimateCompactionMessageTokens(msg openai.ChatCompletionMessageParamUnion, model string) int {
-	return estimateCompactionMessagesTokens([]openai.ChatCompletionMessageParamUnion{msg}, model)
+func estimateCompactionMessageTokens(msg openai.ChatCompletionMessageParamUnion, _ string) int {
+	fallback := airuntime.EstimateMessageChars(msg) / airuntime.CharsPerTokenEstimate
+	if fallback <= 0 {
+		return 1
+	}
+	return fallback
 }
 
 func splitCompactionMessagesByTokenShare(
@@ -205,21 +210,55 @@ func serializeCompactionConversation(messages []openai.ChatCompletionMessagePara
 		return ""
 	}
 	var b strings.Builder
-	for i, msg := range messages {
-		text, role := airuntime.ExtractMessageContent(msg)
-		role = strings.TrimSpace(role)
-		if role == "" {
-			role = "message"
+	for _, msg := range messages {
+		switch {
+		case msg.OfUser != nil:
+			text := strings.TrimSpace(airuntime.ExtractUserContent(msg.OfUser.Content))
+			if text != "" {
+				_, _ = fmt.Fprintf(&b, "[User]: %s\n\n", text)
+			}
+		case msg.OfAssistant != nil:
+			text := strings.TrimSpace(airuntime.ExtractAssistantContent(msg.OfAssistant.Content))
+			if text != "" {
+				_, _ = fmt.Fprintf(&b, "[Assistant]: %s\n\n", text)
+			}
+			if len(msg.OfAssistant.ToolCalls) > 0 {
+				toolCalls := make([]string, 0, len(msg.OfAssistant.ToolCalls))
+				for _, tc := range msg.OfAssistant.ToolCalls {
+					if tc.OfFunction == nil {
+						continue
+					}
+					name := strings.TrimSpace(tc.OfFunction.Function.Name)
+					args := strings.TrimSpace(tc.OfFunction.Function.Arguments)
+					if name == "" {
+						continue
+					}
+					if args != "" {
+						toolCalls = append(toolCalls, fmt.Sprintf("%s(%s)", name, args))
+					} else {
+						toolCalls = append(toolCalls, fmt.Sprintf("%s()", name))
+					}
+				}
+				if len(toolCalls) > 0 {
+					_, _ = fmt.Fprintf(&b, "[Assistant tool calls]: %s\n\n", strings.Join(toolCalls, "; "))
+				}
+			}
+		case msg.OfTool != nil:
+			text := strings.TrimSpace(airuntime.ExtractToolContent(msg.OfTool.Content))
+			if text != "" {
+				_, _ = fmt.Fprintf(&b, "[Tool result]: %s\n\n", text)
+			}
+		case msg.OfSystem != nil:
+			text := strings.TrimSpace(airuntime.ExtractSystemContent(msg.OfSystem.Content))
+			if text != "" {
+				_, _ = fmt.Fprintf(&b, "[System]: %s\n\n", text)
+			}
+		case msg.OfDeveloper != nil:
+			text := strings.TrimSpace(airuntime.ExtractDeveloperContent(msg.OfDeveloper.Content))
+			if text != "" {
+				_, _ = fmt.Fprintf(&b, "[Developer]: %s\n\n", text)
+			}
 		}
-		text = strings.TrimSpace(text)
-		if text == "" {
-			continue
-		}
-		text = strings.ReplaceAll(text, "\n", " ")
-		if len(text) > 4000 {
-			text = text[:4000] + "..."
-		}
-		_, _ = fmt.Fprintf(&b, "[%d] %s: %s\n", i+1, role, text)
 	}
 	return strings.TrimSpace(b.String())
 }
@@ -234,64 +273,87 @@ func extractAssistantTextFromCompletion(resp *openai.ChatCompletion) string {
 	return strings.TrimSpace(text)
 }
 
-func (oc *AIClient) generateCompactionSummary(
+type generateSummaryParams struct {
+	Model            string
+	ReserveTokens    int
+	MaxSummaryTokens int
+	Messages         []openai.ChatCompletionMessageParamUnion
+	PreviousSummary  string
+	Instructions     string
+}
+
+func (oc *AIClient) generateSummary(
 	ctx context.Context,
-	model string,
-	maxSummaryTokens int,
-	messages []openai.ChatCompletionMessageParamUnion,
-	previousSummary string,
-	instructions string,
+	params generateSummaryParams,
 ) (string, error) {
 	if oc == nil {
 		return "", errors.New("missing api client")
 	}
-	model = strings.TrimSpace(model)
+	model := strings.TrimSpace(params.Model)
 	if model == "" {
 		return "", errors.New("missing summarization model")
 	}
-	conversation := serializeCompactionConversation(messages)
+	conversation := serializeCompactionConversation(params.Messages)
 	if conversation == "" {
-		if strings.TrimSpace(previousSummary) != "" {
-			return strings.TrimSpace(previousSummary), nil
+		if strings.TrimSpace(params.PreviousSummary) != "" {
+			return strings.TrimSpace(params.PreviousSummary), nil
 		}
 		return "", errors.New("empty compaction conversation")
 	}
 
-	system := "You are a context compaction summarizer. Preserve decisions, TODOs, open questions, constraints, and unresolved tasks."
-	if strings.TrimSpace(instructions) != "" {
-		system += "\n\n" + strings.TrimSpace(instructions)
+	maxTokens := 0
+	if params.ReserveTokens > 0 {
+		maxTokens = int(math.Floor(float64(params.ReserveTokens) * 0.8))
 	}
-	system += "\n\nReturn only the summary text."
-
-	var user strings.Builder
-	if ps := strings.TrimSpace(previousSummary); ps != "" {
-		user.WriteString("<previous_summary>\n")
-		user.WriteString(ps)
-		user.WriteString("\n</previous_summary>\n\n")
+	if maxTokens <= 0 && params.MaxSummaryTokens > 0 {
+		maxTokens = params.MaxSummaryTokens
 	}
-	user.WriteString("<conversation>\n")
-	user.WriteString(conversation)
-	user.WriteString("\n</conversation>")
+	basePrompt := compactionSummarizationPrompt
+	if strings.TrimSpace(params.PreviousSummary) != "" {
+		basePrompt = compactionSummarizationUpdatePrompt
+	}
+	if custom := strings.TrimSpace(params.Instructions); custom != "" {
+		basePrompt += "\n\nAdditional focus: " + custom
+	}
+	var promptText strings.Builder
+	promptText.WriteString("<conversation>\n")
+	promptText.WriteString(conversation)
+	promptText.WriteString("\n</conversation>\n\n")
+	if ps := strings.TrimSpace(params.PreviousSummary); ps != "" {
+		promptText.WriteString("<previous-summary>\n")
+		promptText.WriteString(ps)
+		promptText.WriteString("\n</previous-summary>\n\n")
+	}
+	promptText.WriteString(basePrompt)
 
-	params := openai.ChatCompletionNewParams{
+	request := openai.ChatCompletionNewParams{
 		Model: model,
 		Messages: []openai.ChatCompletionMessageParamUnion{
-			openai.SystemMessage(system),
-			openai.UserMessage(user.String()),
+			openai.SystemMessage(compactionSummarizationSystemPrompt),
+			openai.UserMessage(promptText.String()),
 		},
 	}
-	if maxSummaryTokens > 0 {
-		params.MaxCompletionTokens = openai.Int(int64(maxSummaryTokens))
+	if maxTokens > 0 {
+		request.MaxCompletionTokens = openai.Int(int64(maxTokens))
 	}
 
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
-		resp, err := oc.api.Chat.Completions.New(ctx, params)
+		resp, err := oc.api.Chat.Completions.New(ctx, request)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return "", err
 			}
 			lastErr = err
+			if attempt < 2 {
+				timer := time.NewTimer(time.Duration(500*(attempt+1)) * time.Millisecond)
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+					return "", ctx.Err()
+				case <-timer.C:
+				}
+			}
 			continue
 		}
 		summary := extractAssistantTextFromCompletion(resp)
@@ -309,6 +371,7 @@ func (oc *AIClient) generateCompactionSummary(
 
 type compactionSummaryParams struct {
 	Model                  string
+	ReserveTokens          int
 	Messages               []openai.ChatCompletionMessageParamUnion
 	MaxSummaryTokens       int
 	MaxChunkTokens         int
@@ -344,7 +407,14 @@ func (oc *AIClient) summarizeCompactionChunks(
 	)
 	summary := strings.TrimSpace(params.PreviousSummary)
 	for _, chunk := range chunks {
-		next, err := oc.generateCompactionSummary(ctx, params.Model, params.MaxSummaryTokens, chunk, summary, instructions)
+		next, err := oc.generateSummary(ctx, generateSummaryParams{
+			Model:            params.Model,
+			ReserveTokens:    params.ReserveTokens,
+			MaxSummaryTokens: params.MaxSummaryTokens,
+			Messages:         chunk,
+			PreviousSummary:  summary,
+			Instructions:     instructions,
+		})
 		if err != nil {
 			return "", err
 		}
@@ -354,6 +424,14 @@ func (oc *AIClient) summarizeCompactionChunks(
 		return compactionDefaultSummaryFallback, nil
 	}
 	return summary, nil
+}
+
+func resolveCompactionSummaryModel(activeModel string, configuredModel string) string {
+	active := strings.TrimSpace(activeModel)
+	if active != "" {
+		return active
+	}
+	return strings.TrimSpace(configuredModel)
 }
 
 func (oc *AIClient) summarizeCompactionWithFallback(
@@ -543,10 +621,7 @@ func (oc *AIClient) applyCompactionModelSummaryAndRefresh(
 	if oc.pruningSummarizationEnabled() {
 		dropped := selectDroppedCompactionMessages(originalPrompt, compactedPrompt, decision.DroppedCount)
 		if len(dropped) > 0 {
-			model := oc.pruningSummarizationModel()
-			if model == "" {
-				model = oc.effectiveModel(meta)
-			}
+			model := resolveCompactionSummaryModel(oc.effectiveModel(meta), oc.pruningSummarizationModel())
 			allMessages := append([]openai.ChatCompletionMessageParamUnion{}, dropped...)
 			allMessages = append(allMessages, compactedPrompt...)
 			adaptive := computeCompactionAdaptiveChunkRatio(allMessages, model, contextWindowTokens)
@@ -556,6 +631,7 @@ func (oc *AIClient) applyCompactionModelSummaryAndRefresh(
 			}
 			summary := oc.summarizeCompactionInStages(ctx, compactionSummaryParams{
 				Model:                  model,
+				ReserveTokens:          oc.pruningReserveTokens(),
 				Messages:               dropped,
 				MaxSummaryTokens:       oc.pruningMaxSummaryTokens(),
 				MaxChunkTokens:         maxChunkTokens,

@@ -375,6 +375,9 @@ func PruneContext(
 	}
 
 	cfg := ApplyPruningDefaults(config)
+	if strings.EqualFold(strings.TrimSpace(cfg.Mode), "off") {
+		return prompt
+	}
 	if cfg.MaxHistoryTurns > 0 {
 		prompt = LimitHistoryTurns(prompt, cfg.MaxHistoryTurns)
 	}
@@ -385,8 +388,28 @@ func PruneContext(
 	}
 
 	messages := make([]pruningMessageInfo, len(prompt))
+	toolNameByCallID := make(map[string]string)
 	for i, msg := range prompt {
-		messages[i] = analyzePruningMessage(msg)
+		info := analyzePruningMessage(msg)
+		if msg.OfAssistant != nil {
+			for _, tc := range msg.OfAssistant.ToolCalls {
+				if tc.OfFunction == nil {
+					continue
+				}
+				callID := strings.TrimSpace(tc.OfFunction.ID)
+				toolName := strings.TrimSpace(strings.ToLower(tc.OfFunction.Function.Name))
+				if callID != "" && toolName != "" {
+					toolNameByCallID[callID] = toolName
+				}
+			}
+		}
+		if msg.OfTool != nil {
+			callID := strings.TrimSpace(msg.OfTool.ToolCallID)
+			if callID != "" {
+				info.toolName = toolNameByCallID[callID]
+			}
+		}
+		messages[i] = info
 	}
 
 	cutoffIndex := findAssistantCutoffIndex(messages, cfg.KeepLastAssistants)
