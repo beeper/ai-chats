@@ -2,11 +2,12 @@ package connector
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -47,44 +48,18 @@ func (oc *AIClient) sendActionHintsApprovalEvent(
 		return
 	}
 
-	ownerMXID := ""
+	var ownerMXID id.UserID
 	if oc.UserLogin != nil {
-		ownerMXID = oc.UserLogin.UserMXID.String()
+		ownerMXID = oc.UserLogin.UserMXID
 	}
 
-	contextData, _ := json.Marshal(map[string]any{
-		"approval_id":  approvalID,
-		"tool_name":    toolName,
-		"tool_call_id": toolCallID,
+	hints := bridgeadapter.BuildApprovalHints(bridgeadapter.ApprovalHintsParams{
+		ApprovalID:  approvalID,
+		ToolCallID:  toolCallID,
+		ToolName:    toolName,
+		OwnerMXID:   ownerMXID,
+		ExpiresAtMs: expiresAtMs,
 	})
-
-	hints := &event.BeeperActionHints{
-		Hints: []event.BeeperActionHint{
-			{
-				Body:      "Allow",
-				EventType: "com.beeper.action_response",
-				Event:     json.RawMessage(`{"action_id":"allow"}`),
-			},
-			{
-				Body:      "Always Allow",
-				EventType: "com.beeper.action_response",
-				Event:     json.RawMessage(`{"action_id":"always"}`),
-			},
-			{
-				Body:      "Deny",
-				EventType: "com.beeper.action_response",
-				Event:     json.RawMessage(`{"action_id":"deny"}`),
-			},
-		},
-		Exclusive: true,
-		Context:   contextData,
-	}
-	if ownerMXID != "" {
-		hints.AllowedSenders = []id.UserID{id.UserID(ownerMXID)}
-	}
-	if expiresAtMs > 0 {
-		hints.ExpiresAt = expiresAtMs
-	}
 
 	body := fmt.Sprintf("Allow %s tool?", toolName)
 	uiMessage := map[string]any{
@@ -113,17 +88,18 @@ func (oc *AIClient) sendActionHintsApprovalEvent(
 	// Track approval event/message IDs for later edits
 	converted := &bridgev2.ConvertedMessage{
 		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:    "0",
+			ID:    networkid.PartID("0"),
 			Type:  event.EventMessage,
 			Extra: eventRaw,
 		}},
 	}
 	if evtID, msgID, err := oc.sendViaPortal(ctx, portal, converted, ""); err == nil && evtID != "" {
-		oc.toolApprovalsMu.Lock()
-		if p := oc.toolApprovals[approvalID]; p != nil {
-			p.ApprovalEventID = evtID
-			p.ApprovalNetworkMsgID = msgID
-		}
-		oc.toolApprovalsMu.Unlock()
+		oc.approvals.SetData(approvalID, func(data any) any {
+			if d, ok := data.(*pendingToolApprovalData); ok {
+				d.ApprovalEventID = evtID
+				d.ApprovalNetworkMsgID = msgID
+			}
+			return data
+		})
 	}
 }

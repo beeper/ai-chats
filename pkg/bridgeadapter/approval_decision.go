@@ -12,7 +12,6 @@ type ActionResponsePayload struct {
 	ActionID   string
 	ApprovalID string
 	ToolCallID string
-	HintKey    int
 	EventID    string // event_id of the message containing action hints
 }
 
@@ -54,48 +53,6 @@ func ParseActionResponse(content *event.BeeperActionResponseEventContent) *Actio
 	}
 
 	return payload
-}
-
-// Deprecated: ApprovalDecisionPayload is the old payload type for com.beeper.ai.approval_decision.
-// Use ActionResponsePayload instead. Kept for codex bridge compatibility.
-type ApprovalDecisionPayload struct {
-	ApprovalID string
-	Decision   string
-	Reason     string
-}
-
-// Deprecated: ParseApprovalDecision extracts an ApprovalDecisionPayload from the raw
-// event content map. Use ParseActionResponse with com.beeper.action_response events instead.
-// Kept for codex bridge compatibility.
-func ParseApprovalDecision(raw map[string]any) *ApprovalDecisionPayload {
-	if raw == nil {
-		return nil
-	}
-	payloadRaw, ok := raw["com.beeper.ai.approval_decision"]
-	if !ok || payloadRaw == nil {
-		return nil
-	}
-	payloadMap, ok := payloadRaw.(map[string]any)
-	if !ok {
-		return nil
-	}
-	approvalID, _ := payloadMap["approvalId"].(string)
-	decision, _ := payloadMap["decision"].(string)
-	reason, _ := payloadMap["reason"].(string)
-	if approvalID == "" || decision == "" {
-		return nil
-	}
-	return &ApprovalDecisionPayload{
-		ApprovalID: approvalID,
-		Decision:   decision,
-		Reason:     reason,
-	}
-}
-
-// Deprecated: ApprovalDecisionFromString converts a free-text decision string into
-// structured booleans. Use ActionDecisionFromString instead. Kept for codex bridge compatibility.
-func ApprovalDecisionFromString(decision string) (approve bool, always bool, ok bool) {
-	return ActionDecisionFromString(decision)
 }
 
 // ActionDecisionFromString converts an action_id string from a com.beeper.action_response

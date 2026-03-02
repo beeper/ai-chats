@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -18,8 +19,8 @@ func newTestAIClient(owner id.UserID) *AIClient {
 		Metadata: &UserLoginMetadata{},
 	}
 	return &AIClient{
-		UserLogin:     ul,
-		toolApprovals: make(map[string]*pendingToolApproval),
+		UserLogin: ul,
+		approvals: bridgeadapter.NewApprovalManager[toolApprovalResolution](),
 	}
 }
 

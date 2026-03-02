@@ -51,7 +51,8 @@ Reference implementation in this repo (ai-bridge):
 - Tool call/result projections: `pkg/connector/tool_execution.go`
 - Compaction status emission: `pkg/connector/response_retry.go`
 - State broadcast: `pkg/connector/chat.go`
-- Approvals: `pkg/connector/tool_approvals*.go`, `pkg/connector/handlematrix.go`, `pkg/connector/inbound_command_handlers.go`, `pkg/connector/streaming.go`
+- Approvals: `pkg/connector/tool_approvals*.go`, `pkg/connector/handlematrix.go`, `pkg/connector/handler_interfaces.go`, `pkg/connector/streaming_ui_tools.go`
+- Shared approval manager + action hints builder: `pkg/bridgeadapter/approval_manager.go`, `pkg/bridgeadapter/action_hints_builder.go`
 
 <a id="compatibility"></a>
 ## Compatibility
@@ -85,6 +86,8 @@ Authoritative identifiers are defined in `pkg/matrixevents/matrixevents.go`.
 | `com.beeper.ai.compaction_status` | message | timeline | Context compaction lifecycle/status | [Projections](#projection-compaction) |
 | `com.beeper.ai.room_capabilities` | state | state | Producer-controlled capabilities and effective settings | [State](#state-room-capabilities) |
 | `com.beeper.ai.room_settings` | state | state | User-editable room settings | [State](#state-room-settings) |
+| `com.beeper.ai.model_capabilities` | state | state | Per-model capabilities (e.g. supported features) | — |
+| `com.beeper.ai.agents` | state | state | Agent definitions for the room | — |
 
 ### Content Keys (Inside Standard Events)
 | Key | Where it appears | Purpose | Spec section |
@@ -92,7 +95,8 @@ Authoritative identifiers are defined in `pkg/matrixevents/matrixevents.go`.
 | `com.beeper.ai` | `m.room.message` | Canonical assistant `UIMessage` | [Canonical](#canonical) |
 | `com.beeper.ai.tool_call` | `com.beeper.ai.tool_call` event content | Tool call payload | [Projections](#projection-tool-call) |
 | `com.beeper.ai.tool_result` | `com.beeper.ai.tool_result` event content | Tool result payload | [Projections](#projection-tool-result) |
-| `com.beeper.ai.approval_decision` | inbound `m.room.message` raw content | Approve/deny payload | [Approvals](#approvals-decision) |
+| `com.beeper.action_hints` | `m.room.message` | Action hint buttons (Allow / Always Allow / Deny) for tool approval | [Approvals](#approvals-decision) |
+| `com.beeper.action_response` | timeline event (inbound) | User's approval/deny response to action hints | [Approvals](#approvals-decision) |
 | `com.beeper.ai.model_id` | `m.room.message` | Routing/display hint | [Other keys](#other-keys-routing) |
 | `com.beeper.ai.agent` | `m.room.message`, `m.room.member` | Routing hint or agent definition | [Other keys](#other-keys-agent) |
 | `com.beeper.ai.image_generation` | `m.room.message` (image) | Generated-image tag/metadata | [Other keys](#other-keys-media) |
@@ -448,20 +452,42 @@ When approval is needed, the bridge emits:
 
 <a id="approvals-decision"></a>
 ### Approving / Denying
-Approvals can be resolved via:
-- Command: `!ai approve <approvalId> <allow|always|deny> [reason]` (owner-only).
-- Message payload: an `m.room.message` whose raw content includes `com.beeper.ai.approval_decision`.
+Approvals are resolved via `com.beeper.action_hints` + `com.beeper.action_response`:
 
-Approval decision payload:
+1. **Bridge sends** an `m.room.message` with `com.beeper.action_hints` content key containing Allow / Always Allow / Deny buttons, plus context (`approval_id`, `tool_call_id`, `tool_name`), `allowed_senders` (owner-only), and `expires_at`.
+
 ```json
 {
-  "com.beeper.ai.approval_decision": {
-    "approvalId": "abc123",
-    "decision": "allow|always|deny",
-    "reason": "optional"
+  "msgtype": "m.notice",
+  "body": "Allow web_search tool?",
+  "com.beeper.action_hints": {
+    "hints": [
+      { "body": "Allow", "event_type": "com.beeper.action_response", "event": {"action_id": "allow"} },
+      { "body": "Always Allow", "event_type": "com.beeper.action_response", "event": {"action_id": "always"} },
+      { "body": "Deny", "event_type": "com.beeper.action_response", "event": {"action_id": "deny"} }
+    ],
+    "exclusive": true,
+    "context": "{\"approval_id\":\"abc123\",\"tool_name\":\"web_search\",\"tool_call_id\":\"call_456\"}",
+    "allowed_senders": ["@owner:example.com"],
+    "expires_at": 1738970600000
   }
 }
 ```
+
+2. **Client sends** a `com.beeper.action_response` event with `action_id` (`"allow"`, `"always"`, or `"deny"`) and `context` (echoed from the hint), related to the hints message via `m.from_action_hint`.
+
+```json
+{
+  "type": "com.beeper.action_response",
+  "content": {
+    "action_id": "allow",
+    "context": "{\"approval_id\":\"abc123\",\"tool_name\":\"web_search\",\"tool_call_id\":\"call_456\"}",
+    "m.relates_to": { "rel_type": "m.from_action_hint", "event_id": "$hints_event" }
+  }
+}
+```
+
+3. **Legacy fallback**: `!ai approve <approvalId> <allow|always|deny> [reason]` text command (owner-only).
 
 Always-allow:
 - `always` persists an allow rule in login metadata.

@@ -19,7 +19,7 @@ Ephemeral events are short-lived, non-persisted events delivered via `/sync` to 
 | Power levels key | `ephemeral` + `ephemeral_default` (default 50) | `GetEphemeralLevel()` (same concept) |
 | TTL | Not specified | 2 minutes, server-side cleanup every 60s |
 | Timestamp | `origin_server_ts` on event | `?ts=` query param on PUT, stored as `origin_server_ts` |
-| Response | `{}` | `{"event_id": "$..."}` |
+| Response | `{}` | `{}` (empty body) |
 | Built-in type blocking | Rejects `m.*` types | No type restriction (power levels apply) |
 | Sync delivery | `ephemeral` section of `/sync` rooms | Same — added to `joined.Ephemeral.Events` |
 
@@ -46,7 +46,7 @@ PUT /_matrix/client/unstable/com.beeper.ephemeral/rooms/{roomId}/ephemeral/{even
 
 **Response:** `200 OK`
 ```json
-{"event_id": "$ephemeral_event_id"}
+{}
 ```
 
 ### Receiving (via /sync)
