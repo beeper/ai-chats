@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	DefaultDedupeTTL    = 20 * time.Minute
+	DefaultDedupeTTL     = 20 * time.Minute
 	DefaultDedupeMaxSize = 5000
 )
 

@@ -4,10 +4,11 @@ import (
 	"context"
 	"strings"
 
-	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 func (oc *AIClient) matrixRoomDisplayName(ctx context.Context, portal *bridgev2.Portal) string {

@@ -6,7 +6,6 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
-
 func messageTypeForMIME(mimeType string) event.MessageType {
 	mimeType = strings.ToLower(strings.TrimSpace(mimeType))
 	switch {

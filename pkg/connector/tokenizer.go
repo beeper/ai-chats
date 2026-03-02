@@ -68,3 +68,25 @@ func EstimateTokens(messages []openai.ChatCompletionMessageParamUnion, model str
 
 	return numTokens, nil
 }
+
+func estimatePromptTokensFallback(messages []openai.ChatCompletionMessageParamUnion) int {
+	if len(messages) == 0 {
+		return 0
+	}
+
+	// Match EstimateTokens structure conservatively:
+	// - 3 tokens/message structural overhead
+	// - ~1 token/message for role
+	// - ceil(chars/4) for message payload
+	// - 3 tokens for assistant reply priming
+	total := 3
+	for _, msg := range messages {
+		total += 3
+		total += 1
+		chars := airuntime.EstimateMessageChars(msg)
+		if chars > 0 {
+			total += (chars + airuntime.CharsPerTokenEstimate - 1) / airuntime.CharsPerTokenEstimate
+		}
+	}
+	return total
+}

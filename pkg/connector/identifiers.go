@@ -17,7 +17,6 @@ import (
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
-//
 // Multiple logins with identical config are supported by appending an ordinal suffix: -2, -3, ...
 func makeUserLoginIDForConfig(mxid id.UserID, provider, apiKey, baseURL string, ordinal int) networkid.UserLoginID {
 	escaped := url.PathEscape(string(mxid))

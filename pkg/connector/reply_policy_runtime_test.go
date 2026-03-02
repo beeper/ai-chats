@@ -3,8 +3,9 @@ package connector
 import (
 	"testing"
 
-	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
 	"maunium.net/go/mautrix/id"
+
+	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 func TestResolveFinalReplyTarget_ModeOffStripsDirectiveReply(t *testing.T) {

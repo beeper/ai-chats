@@ -9,9 +9,10 @@ import (
 	"strings"
 	"time"
 
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/openai/openai-go/v3/responses"
 	"maunium.net/go/mautrix/bridgev2"
+
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 func stableMCPApprovalID(toolCallID string, desc responseToolDescriptor) string {

@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
 	"maunium.net/go/mautrix/bridgev2/database"
+
+	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 const (

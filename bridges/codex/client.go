@@ -2176,12 +2176,14 @@ func (cc *CodexClient) handleApprovalRequest(
 
 	inputMap := extractInput(req.Params)
 	cc.ensureUIToolInputStart(ctx, active.portal, active.state, toolCallID, toolName, true, inputMap)
+	approvalTTL := time.Duration(ttlSeconds) * time.Second
+	cc.registerToolApproval(approvalID, toolCallID, toolName, approvalTTL)
+
 	cc.emitUIToolApprovalRequest(ctx, active.portal, active.state, approvalID, toolCallID, toolName, ttlSeconds)
-	approvalExpiresAtMs := time.Now().Add(time.Duration(ttlSeconds) * time.Second).UnixMilli()
+	approvalExpiresAtMs := time.Now().Add(approvalTTL).UnixMilli()
 	cc.sendToolCallApprovalEvent(ctx, active.portal, active.state, toolCallID, toolName, approvalID, approvalExpiresAtMs)
 	cc.sendActionHintsApprovalEvent(ctx, active.portal, active.state, toolCallID, toolName, approvalID, approvalExpiresAtMs)
 	cc.sendSystemNoticeOnce(ctx, active.portal, active.state, "codex-approval:"+approvalID, fmt.Sprintf("Approval required (%s): !ai approve %s <allow|deny> [reason]", toolName, approvalID))
-	cc.registerToolApproval(approvalID, toolCallID, toolName, time.Duration(ttlSeconds)*time.Second)
 
 	if active.meta != nil {
 		if lvl, _ := stringutil.NormalizeElevatedLevel(active.meta.ElevatedLevel); lvl == "full" {

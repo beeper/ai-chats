@@ -768,14 +768,7 @@ func (h *runtimeIntegrationHost) EstimateTokens(prompt []openai.ChatCompletionMe
 	if count, err := EstimateTokens(prompt, model); err == nil && count > 0 {
 		return count
 	}
-	total := 0
-	for _, msg := range prompt {
-		total += airuntime.EstimateMessageChars(msg) / airuntime.CharsPerTokenEstimate
-	}
-	if total <= 0 {
-		return len(prompt) * 3
-	}
-	return total
+	return estimatePromptTokensFallback(prompt)
 }
 
 func (h *runtimeIntegrationHost) CompactorReserveTokens() int {

@@ -3,8 +3,9 @@ package connector
 import (
 	"strings"
 
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/openai/openai-go/v3"
+
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 // CompactionEventType represents a compaction lifecycle event type.
@@ -158,12 +159,5 @@ func estimatePromptTokensForModel(prompt []openai.ChatCompletionMessageParamUnio
 	if count, err := EstimateTokens(prompt, model); err == nil && count > 0 {
 		return count
 	}
-	total := 0
-	for _, msg := range prompt {
-		total += airuntime.EstimateMessageChars(msg) / airuntime.CharsPerTokenEstimate
-	}
-	if total <= 0 {
-		return len(prompt) * 3
-	}
-	return total
+	return estimatePromptTokensFallback(prompt)
 }

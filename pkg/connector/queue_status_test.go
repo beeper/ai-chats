@@ -4,11 +4,12 @@ import (
 	"context"
 	"testing"
 
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 func TestQueueStatusEventsDeduplicates(t *testing.T) {

@@ -95,4 +95,3 @@ func (oc *AIClient) isTTSConfigured() (bool, string) {
 	}
 	return true, ""
 }
-

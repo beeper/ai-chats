@@ -87,11 +87,13 @@ func (oc *AIClient) sendInitialStreamMessage(ctx context.Context, portal *bridge
 	}
 
 	eventRaw := map[string]any{
-		"msgtype":      event.MsgText,
-		"body":         content,
-		"m.relates_to": relatesTo,
-		BeeperAIKey:    uiMessage,
-		"m.mentions":   map[string]any{},
+		"msgtype":    event.MsgText,
+		"body":       content,
+		BeeperAIKey:  uiMessage,
+		"m.mentions": map[string]any{},
+	}
+	if relatesTo != nil {
+		eventRaw["m.relates_to"] = relatesTo
 	}
 
 	msgID := newMessageID()

@@ -11,8 +11,9 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 	"maunium.net/go/mautrix/event"
+
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 var (
@@ -21,7 +22,6 @@ var (
 )
 
 const maxTextFileBytes = 5 * 1024 * 1024
-
 
 var textFileMimeTypesMap = map[string]event.CapabilitySupportLevel{
 	"text/plain":                event.CapLevelFullySupported,

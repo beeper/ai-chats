@@ -4,10 +4,11 @@ import (
 	"context"
 	"strings"
 
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
+
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 type inboundContextKey struct{}

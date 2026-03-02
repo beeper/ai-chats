@@ -1,8 +1,10 @@
 package connector
 
-import "testing"
+import (
+	"testing"
 
-import runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
+	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
+)
 
 func TestStripEnvelope(t *testing.T) {
 	tests := []struct {

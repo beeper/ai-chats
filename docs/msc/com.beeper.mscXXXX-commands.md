@@ -1,20 +1,28 @@
-# Command Descriptions (MSC4391)
-
-**Spec:** [MSC4391](https://github.com/matrix-org/matrix-spec-proposals/pull/4391) (bot command descriptions)
-
-**Status:** Already implemented in mautrix-go and gomuks. Adopted as-is by ai-bridge.
+# MSC: ai-bridge MSC4391 Command Profile
 
 ## Summary
 
-ai-bridge uses MSC4391 `org.matrix.msc4391.command_description` state events to advertise available commands to clients. Instead of users memorizing `!ai status`, `!ai model`, etc., clients discover commands from state events and render them as slash commands with autocomplete and typed parameters.
+This document defines the specific command set that ai-bridge advertises via [MSC4391] bot command descriptions. Rather than introducing a custom `com.beeper.*` command system, ai-bridge adopts MSC4391 directly — broadcasting `org.matrix.msc4391.command_description` state events so that supporting clients can render slash commands with autocomplete and typed parameters.
 
-MSC4391 is already used in gomuks (web + TUI) and deeply integrated into mautrix-go's command processor, so we adopt it directly rather than creating a `com.beeper.` variant.
+This is a profile document, not a new MSC. It specifies which commands ai-bridge publishes and how they interact with the action hints system defined in [com.beeper.action_hints](com.beeper.mscXXXX-actions.md).
 
-## State Event
+## Motivation
+
+Text-based bot commands (`!ai model gpt-4o`, `!ai reset`) have several problems:
+
+- **Undiscoverable:** Users must read documentation or type `!ai help` to learn available commands. There is no in-client autocomplete or parameter hinting.
+- **Fragile parsing:** Free-text command parsing leads to ambiguous inputs and poor error messages. Typed parameters eliminate this class of bugs.
+- **No validation:** Without structured schemas, clients cannot validate arguments before sending. Invalid commands waste a round-trip.
+
+[MSC4391] solves these problems by letting bots advertise commands as room state events. Clients that support MSC4391 render them as slash commands with autocomplete. ai-bridge adopts this directly.
+
+## Proposal
+
+### State Event
 
 Type: `org.matrix.msc4391.command_description`
 
-ai-bridge broadcasts one state event per command on room join:
+The bot MUST broadcast one state event per command when it joins a room. The `state_key` is the command name.
 
 ```json
 {
@@ -44,9 +52,9 @@ ai-bridge broadcasts one state event per command on room join:
 }
 ```
 
-## Structured Invocation
+### Structured Invocation
 
-When a client sends a command, it includes the structured field:
+When a client sends a command, it MUST include the `org.matrix.msc4391.command` field in the message content:
 
 ```json
 {
@@ -64,22 +72,22 @@ When a client sends a command, it includes the structured field:
 }
 ```
 
-The `body` field contains the text fallback for clients without MSC4391 support.
+The `body` field MUST contain a text fallback for clients without MSC4391 support. When `org.matrix.msc4391.command` is present, the bot MUST use the structured field and ignore the `body` for command parsing.
 
-## Relationship with Action Hints (MSC1485)
+### Relationship with Action Hints
 
 MSC4391 and `com.beeper.action_hints` serve complementary roles:
 
-| Aspect | MSC4391 Commands | Action Hints (MSC1485) |
-|--------|-----------------|----------------------|
+| Aspect | MSC4391 Commands | Action Hints |
+|--------|-----------------|--------------|
 | Discovery | State events in room | Inline on messages |
 | Initiation | User-initiated (slash commands) | System-prompted (buttons) |
 | Invocation | `org.matrix.msc4391.command` in message | `com.beeper.action_response` event |
-| Use case | `!ai model`, `!ai reset`, etc. | Tool approval Allow/Deny |
+| Use case | `model`, `reset`, `status`, etc. | Tool approval Allow/Deny |
 
-Both could be unified in the future (action hints as an alternate invocation path for commands), but currently they serve distinct UX patterns.
+Both MAY be unified in the future (action hints as an alternate invocation path for commands), but currently they serve distinct UX patterns.
 
-## Command List
+### Command List
 
 Commands broadcast by ai-bridge:
 
@@ -99,27 +107,32 @@ Commands broadcast by ai-bridge:
 | `whoami` | Show your Matrix user ID | — |
 | `last-heartbeat` | Show last heartbeat event | — |
 
-Dynamic commands from integrations/modules are also broadcast.
+Dynamic commands from integrations and modules are also broadcast as state events.
 
-## Implementation
+## Fallback
 
-### ai-bridge (`command_registry.go`)
+Clients without MSC4391 support MAY send commands as `!ai <command>` text messages. The bot MUST parse `!ai` prefixed text as a fallback when the `org.matrix.msc4391.command` field is absent.
 
-`BroadcastCommandDescriptions()`:
-1. Iterates `aiCommandRegistry.All()`
-2. Maps each `commandregistry.Definition` to an MSC4391 command description
-3. Sends `org.matrix.msc4391.command_description` state events via the bot intent
-4. Called from `BroadcastRoomState()` on room join
+When both are present, the structured `org.matrix.msc4391.command` field takes precedence over the text `body`.
 
-### Text Fallback
+## Security Considerations
 
-The `!ai` text prefix parsing is kept as a fallback for older clients. When `org.matrix.msc4391.command` is present in the message, it takes precedence.
+- **Command authorization:** The bot SHOULD check room power levels before executing commands that modify room or session state. Commands like `reset`, `model`, and `elevated` affect all users in the room.
+- **Argument validation:** The bot MUST validate structured arguments against the published schema before execution. Malformed arguments MUST be rejected with an error message.
 
-### mautrix-go
+## Unstable Prefix
 
-Already has full support:
-- `StateMSC4391BotCommand` event type (`event/type.go`)
-- `MSC4391BotCommandInput` struct in `MessageEventContent` (`event/message.go`)
-- `cmdschema` package for parsing command schemas
-- `commands.Processor` routes structured commands
-- gomuks renders slash commands from state events
+This profile uses the MSC4391 unstable prefix directly:
+
+| Unstable | Stable (future) |
+|----------|----------------|
+| `org.matrix.msc4391.command_description` | `m.command_description` |
+| `org.matrix.msc4391.command` | `m.command` |
+
+No `com.beeper.*` variant is needed — MSC4391 is adopted as-is.
+
+## Dependencies
+
+- [MSC4391]: Bot command descriptions — the underlying protocol this profile builds on.
+
+[MSC4391]: https://github.com/matrix-org/matrix-spec-proposals/pull/4391

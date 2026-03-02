@@ -3,8 +3,9 @@ package connector
 import (
 	"context"
 
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"maunium.net/go/mautrix/bridgev2"
+
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 func (oc *AIClient) resolveQueueSettingsForPortal(

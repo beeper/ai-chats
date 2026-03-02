@@ -3,8 +3,9 @@ package connector
 import (
 	"testing"
 
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"maunium.net/go/mautrix/id"
+
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 func TestDecideQueuePolicy_InterruptWithActiveRun(t *testing.T) {

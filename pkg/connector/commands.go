@@ -681,7 +681,7 @@ func fnDesktopAPI(ce *commands.Event) {
 	case "add":
 		parsedName, parsedToken, parsedBaseURL, parsedErr := parseDesktopAPIAddArgs(ce.Args[1:])
 		if parsedErr != nil {
-			ce.Reply("Usage: `!ai desktop-api add <name> <token> [baseURL]`.")
+			ce.Reply("Usage: %s", desktopAPIManageUsage)
 			return
 		}
 		if parsedName == "" || parsedName == desktopDefaultInstance {
@@ -725,9 +725,32 @@ func parseDesktopAPIAddArgs(args []string) (name, token, baseURL string, err err
 		return "", "", "", errors.New("missing args")
 	}
 
-	if len(trimmed) < 2 {
-		return "", "", "", errors.New("missing args")
+	if len(trimmed) == 1 {
+		name = ""
+		token = trimmed[0]
+		baseURL = ""
+		if token == "" {
+			return "", "", "", errors.New("missing token")
+		}
+		return name, token, baseURL, nil
 	}
+
+	if len(trimmed) == 2 {
+		if isLikelyHTTPURL(trimmed[1]) {
+			name = ""
+			token = trimmed[0]
+			baseURL = trimmed[1]
+		} else {
+			name = normalizeDesktopInstanceName(trimmed[0])
+			token = trimmed[1]
+			baseURL = ""
+		}
+		if token == "" {
+			return "", "", "", errors.New("missing token")
+		}
+		return name, token, baseURL, nil
+	}
+
 	name = normalizeDesktopInstanceName(trimmed[0])
 	token = trimmed[1]
 	baseURL = strings.TrimSpace(strings.Join(trimmed[2:], " "))

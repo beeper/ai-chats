@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 func (oc *AIClient) emitUIToolApprovalRequest(

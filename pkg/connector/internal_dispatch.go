@@ -7,12 +7,13 @@ import (
 	"strings"
 	"time"
 
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/google/uuid"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
+
+	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
 func (oc *AIClient) dispatchInternalMessage(
