@@ -11,6 +11,7 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 	"maunium.net/go/mautrix/event"
 )
 
@@ -21,16 +22,6 @@ var (
 
 const maxTextFileBytes = 5 * 1024 * 1024
 
-func normalizeMimeType(mimeType string) string {
-	lower := strings.ToLower(strings.TrimSpace(mimeType))
-	if lower == "" {
-		return lower
-	}
-	if semi := strings.IndexByte(lower, ';'); semi >= 0 {
-		return strings.TrimSpace(lower[:semi])
-	}
-	return lower
-}
 
 var textFileMimeTypesMap = map[string]event.CapabilitySupportLevel{
 	"text/plain":                event.CapLevelFullySupported,
@@ -54,7 +45,7 @@ var textFileMimeTypesMap = map[string]event.CapabilitySupportLevel{
 }
 
 func isTextFileMime(mimeType string) bool {
-	mimeType = normalizeMimeType(mimeType)
+	mimeType = stringutil.NormalizeMimeType(mimeType)
 	if strings.HasPrefix(mimeType, "text/") {
 		return true
 	}

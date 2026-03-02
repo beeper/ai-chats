@@ -10,9 +10,9 @@ type streamingPendingReplyState struct {
 
 // StreamingDirectiveAccumulator parses streamed assistant deltas while keeping directive state.
 type StreamingDirectiveAccumulator struct {
-	pendingTail       string
-	pendingReply      streamingPendingReplyState
-	pendingWhitespace string
+	pendingTail  string
+	pendingReply streamingPendingReplyState
+	activeReply  streamingPendingReplyState
 }
 
 func NewStreamingDirectiveAccumulator() *StreamingDirectiveAccumulator {
@@ -36,11 +36,14 @@ func (acc *StreamingDirectiveAccumulator) Consume(raw string, final bool) *Strea
 	}
 
 	parsed := ParseStreamingChunk(combined)
-	hasTag := acc.pendingReply.hasTag || parsed.HasReplyTag
-	sawCurrent := acc.pendingReply.sawCurrent || parsed.ReplyToCurrent
+	hasTag := acc.activeReply.hasTag || acc.pendingReply.hasTag || parsed.HasReplyTag
+	sawCurrent := acc.activeReply.sawCurrent || acc.pendingReply.sawCurrent || parsed.ReplyToCurrent
 	explicitID := parsed.ReplyToExplicitID
 	if explicitID == "" {
 		explicitID = acc.pendingReply.explicitID
+	}
+	if explicitID == "" {
+		explicitID = acc.activeReply.explicitID
 	}
 
 	result := &StreamingDirectiveResult{
@@ -53,7 +56,6 @@ func (acc *StreamingDirectiveAccumulator) Consume(raw string, final bool) *Strea
 	}
 
 	if !HasRenderableStreamingContent(result) {
-		acc.pendingWhitespace += result.Text
 		if hasTag {
 			acc.pendingReply = streamingPendingReplyState{
 				explicitID: explicitID,
@@ -64,18 +66,20 @@ func (acc *StreamingDirectiveAccumulator) Consume(raw string, final bool) *Strea
 		return nil
 	}
 
-	if acc.pendingWhitespace != "" {
-		result.Text = acc.pendingWhitespace + result.Text
-		acc.pendingWhitespace = ""
+	// Keep reply directive context sticky across the full streamed assistant message.
+	acc.activeReply = streamingPendingReplyState{
+		explicitID: explicitID,
+		sawCurrent: sawCurrent,
+		hasTag:     hasTag,
 	}
 	acc.pendingReply = streamingPendingReplyState{}
 	return result
 }
 
 func ParseStreamingChunk(raw string) *StreamingDirectiveResult {
-	if !strings.Contains(raw, "[[") && !ContainsMessageIDHint(raw) {
+	if !strings.Contains(raw, "[[") {
 		parsed := &StreamingDirectiveResult{Text: raw}
-		if IsSilentReplyText(raw, SilentReplyToken) {
+		if IsSilentReplyText(raw, SilentReplyToken) || IsSilentReplyPrefixText(raw, SilentReplyToken) {
 			parsed.IsSilent = true
 			parsed.Text = ""
 		}
@@ -83,13 +87,15 @@ func ParseStreamingChunk(raw string) *StreamingDirectiveResult {
 	}
 
 	parsed := ParseInlineDirectives(raw, InlineDirectiveParseOptions{
-		StripAudioTag:       true,
+		StripAudioTag:       false,
 		StripReplyTags:      true,
-		NormalizeWhitespace: false,
-		SilentToken:         SilentReplyToken,
+		NormalizeWhitespace: true,
 	})
-	cleaned := StripMessageIDHintLines(parsed.Text)
-	if IsSilentReplyText(cleaned, SilentReplyToken) {
+	text := parsed.Text
+	if parsed.HasReplyTag {
+		text = parsed.Text
+	}
+	if IsSilentReplyText(text, SilentReplyToken) || IsSilentReplyPrefixText(text, SilentReplyToken) {
 		return &StreamingDirectiveResult{
 			Text:              "",
 			ReplyToExplicitID: parsed.ReplyToExplicitID,
@@ -101,7 +107,7 @@ func ParseStreamingChunk(raw string) *StreamingDirectiveResult {
 	}
 
 	return &StreamingDirectiveResult{
-		Text:              cleaned,
+		Text:              text,
 		ReplyToExplicitID: parsed.ReplyToExplicitID,
 		ReplyToCurrent:    parsed.ReplyToCurrent,
 		HasReplyTag:       parsed.HasReplyTag,
@@ -114,5 +120,5 @@ func HasRenderableStreamingContent(result *StreamingDirectiveResult) bool {
 	if result == nil {
 		return false
 	}
-	return strings.TrimSpace(result.Text) != ""
+	return result.Text != "" || result.AudioAsVoice
 }

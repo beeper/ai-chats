@@ -595,10 +595,6 @@ func (oc *AIClient) sendQueueRejectedStatus(ctx context.Context, portal *bridgev
 	}
 }
 
-// dispatchOrQueue handles the common room acquisition pattern for message processing.
-// If the room is available, it dispatches the completion immediately and returns Pending=true
-// so message status can be flipped to SUCCESS on first response bytes.
-// If the room is busy, it queues the message and sends a PENDING status.
 // saveUserMessage persists a user message to the database.
 func (oc *AIClient) saveUserMessage(ctx context.Context, evt *event.Event, msg *database.Message) {
 	if evt != nil {
@@ -660,7 +656,7 @@ func (oc *AIClient) dispatchOrQueueCore(
 		if hasDBMessage {
 			oc.saveUserMessage(ctx, evt, userMessage)
 		}
-		if hasDBMessage && !queueItem.pending.PendingSent {
+		if evt != nil && !queueItem.pending.PendingSent {
 			oc.sendPendingStatus(ctx, portal, evt, "Processing...")
 			queueItem.pending.PendingSent = true
 		}
@@ -723,10 +719,6 @@ func (oc *AIClient) dispatchOrQueueCore(
 	}
 
 	// Room busy - queue for later
-	if hasDBMessage && !messageSaved {
-		oc.saveUserMessage(ctx, evt, userMessage)
-	}
-
 	if behavior.BacklogAfter {
 		queueItem.backlogAfter = true
 	}
@@ -740,6 +732,9 @@ func (oc *AIClient) dispatchOrQueueCore(
 		}
 		oc.sendQueueRejectedStatus(ctx, portal, evt, queueItem.pending.StatusEvents, "Couldn't queue the message. Try again.")
 		return false
+	}
+	if hasDBMessage && !messageSaved {
+		oc.saveUserMessage(ctx, evt, userMessage)
 	}
 	if evt != nil && !pendingSent {
 		oc.sendQueueAcceptedSuccess(ctx, portal, evt, queueItem.pending.StatusEvents)

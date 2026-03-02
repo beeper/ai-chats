@@ -3,8 +3,6 @@ package runtime
 import (
 	"regexp"
 	"strings"
-
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 const SilentReplyToken = "NO_REPLY"
@@ -29,15 +27,10 @@ type InlineDirectiveParseResult struct {
 }
 
 var (
-	audioTagRE = regexp.MustCompile(`(?i)\[\[\s*audio_as_voice\s*\]\]`)
-	replyTagRE = regexp.MustCompile(`(?i)\[\[\s*(?:reply_to_current|reply_to\s*:\s*([^\]\n]+))\s*\]\]`)
-
-	silentPrefixRE = regexp.MustCompile(`^\s*` + regexp.QuoteMeta(SilentReplyToken) + `(?:$|\W)`)
-	silentSuffixRE = regexp.MustCompile(`\b` + regexp.QuoteMeta(SilentReplyToken) + `\b\W*$`)
-
+	audioTagRE          = regexp.MustCompile(`(?i)\[\[\s*audio_as_voice\s*\]\]`)
+	replyTagRE          = regexp.MustCompile(`(?i)\[\[\s*(?:reply_to_current|reply_to\s*:\s*([^\]\n]+))\s*\]\]`)
 	collapseSpacesRE    = regexp.MustCompile(`[ \t]+`)
 	normalizeNewlinesRE = regexp.MustCompile(`[ \t]*\n[ \t]*`)
-	collapseNewlinesRE  = regexp.MustCompile(`\n{3,}`)
 )
 
 func ParseInlineDirectives(text string, options InlineDirectiveParseOptions) InlineDirectiveParseResult {
@@ -46,20 +39,12 @@ func ParseInlineDirectives(text string, options InlineDirectiveParseOptions) Inl
 	}
 
 	stripAudio := true
+	stripReply := true
+	// Keep a compatibility guard for zero-value options while preserving
+	// OpenClaw defaults (strip audio/reply tags by default).
 	if options.StripAudioTag || options.StripReplyTags || options.NormalizeWhitespace || options.SilentToken != "" || options.CurrentMessageID != "" {
 		stripAudio = options.StripAudioTag
-	}
-	stripReply := true
-	if options.StripReplyTags || options.CurrentMessageID != "" || options.SilentToken != "" || options.NormalizeWhitespace {
 		stripReply = options.StripReplyTags
-	}
-	normalizeWhitespace := true
-	if options.NormalizeWhitespace || options.CurrentMessageID != "" || options.SilentToken != "" {
-		normalizeWhitespace = options.NormalizeWhitespace
-	}
-	silentToken := options.SilentToken
-	if strings.TrimSpace(silentToken) == "" {
-		silentToken = SilentReplyToken
 	}
 
 	cleaned := text
@@ -90,9 +75,8 @@ func ParseInlineDirectives(text string, options InlineDirectiveParseOptions) Inl
 		return match
 	})
 
-	if normalizeWhitespace {
-		cleaned = NormalizeDirectiveWhitespace(cleaned)
-	}
+	// OpenClaw normalizes whitespace after inline tag stripping.
+	cleaned = NormalizeDirectiveWhitespace(cleaned)
 
 	if explicit != "" {
 		result.ReplyToExplicitID = explicit
@@ -104,36 +88,45 @@ func ParseInlineDirectives(text string, options InlineDirectiveParseOptions) Inl
 		}
 	}
 
-	if IsSilentReplyText(cleaned, silentToken) {
-		result.IsSilent = true
-		cleaned = ""
-	}
-
 	result.Text = cleaned
 	return result
 }
 
 func IsSilentReplyText(text, token string) bool {
-	if strings.TrimSpace(text) == "" {
+	if text == "" {
 		return false
 	}
 	token = strings.TrimSpace(token)
 	if token == "" {
 		token = SilentReplyToken
 	}
-	stripped := stringutil.StripMarkup(text)
-	trimmed := strings.TrimSpace(stripped)
-	if trimmed == token {
-		return true
+	pattern := `^\s*` + regexp.QuoteMeta(token) + `\s*$`
+	return regexp.MustCompile(pattern).MatchString(text)
+}
+
+func IsSilentReplyPrefixText(text, token string) bool {
+	if text == "" {
+		return false
 	}
-	prefix := regexp.MustCompile(`^\s*` + regexp.QuoteMeta(token) + `(?:$|\W)`)
-	suffix := regexp.MustCompile(`\b` + regexp.QuoteMeta(token) + `\b\W*$`)
-	return prefix.MatchString(stripped) || suffix.MatchString(stripped)
+	token = strings.TrimSpace(token)
+	if token == "" {
+		token = SilentReplyToken
+	}
+	normalized := strings.ToUpper(strings.TrimLeft(text, " \t\r\n"))
+	if normalized == "" {
+		return false
+	}
+	if !strings.Contains(normalized, "_") {
+		return false
+	}
+	if regexp.MustCompile(`[^A-Z_]`).MatchString(normalized) {
+		return false
+	}
+	return strings.HasPrefix(strings.ToUpper(token), normalized)
 }
 
 func NormalizeDirectiveWhitespace(text string) string {
 	text = collapseSpacesRE.ReplaceAllString(text, " ")
 	text = normalizeNewlinesRE.ReplaceAllString(text, "\n")
-	text = collapseNewlinesRE.ReplaceAllString(text, "\n\n")
 	return strings.TrimSpace(text)
 }

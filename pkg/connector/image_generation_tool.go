@@ -1041,7 +1041,7 @@ func loadInputImageBase64(ctx context.Context, btc *BridgeToolContext, ref strin
 		if err != nil {
 			return "", "", err
 		}
-		mimeType := normalizeMimeType(headerMime)
+		mimeType := stringutil.NormalizeMimeType(headerMime)
 		if mimeType == "" || !strings.HasPrefix(mimeType, "image/") {
 			_, detectedMime, err := media.DecodeBase64(b64Data)
 			if err != nil {

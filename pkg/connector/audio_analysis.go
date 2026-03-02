@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 const waveformPoints = 100
@@ -23,7 +25,7 @@ func analyzeAudio(data []byte, mimeType string) (int, []int) {
 		return 0, nil
 	}
 
-	normalized := normalizeMimeType(mimeType)
+	normalized := stringutil.NormalizeMimeType(mimeType)
 	switch normalized {
 	case "audio/wav", "audio/x-wav", "audio/wave":
 		if samples, sampleRate, err := parseWavPCM(data); err == nil {

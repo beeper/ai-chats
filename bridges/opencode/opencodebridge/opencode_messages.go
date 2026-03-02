@@ -13,6 +13,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/ai-bridge/bridges/opencode/opencode"
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 const openCodeMaxMediaMB = 50
@@ -95,7 +96,7 @@ func (b *Bridge) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 			return nil, err
 		}
 		if mimeType == "" && msg.Content.Info != nil {
-			mimeType = normalizeMimeType(msg.Content.Info.MimeType)
+			mimeType = stringutil.NormalizeMimeType(msg.Content.Info.MimeType)
 		}
 		if mimeType == "" {
 			mimeType = "application/octet-stream"

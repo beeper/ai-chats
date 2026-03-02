@@ -35,8 +35,23 @@ func TestStreamingAccumulator_SplitDirective(t *testing.T) {
 	}
 }
 
+func TestStreamingAccumulator_ReplyTagStickyAcrossChunks(t *testing.T) {
+	acc := NewStreamingDirectiveAccumulator()
+	if got := acc.Consume("[[reply_to_current]]", false); got != nil {
+		t.Fatalf("expected tag-only chunk to be deferred, got %#v", got)
+	}
+	first := acc.Consume("first", false)
+	if first == nil || !first.HasReplyTag || !first.ReplyToCurrent {
+		t.Fatalf("expected first renderable chunk to carry reply tag, got %#v", first)
+	}
+	second := acc.Consume("second", false)
+	if second == nil || !second.HasReplyTag || !second.ReplyToCurrent {
+		t.Fatalf("expected sticky reply tag on subsequent chunk, got %#v", second)
+	}
+}
+
 func TestSanitizeChatMessageForDisplay_User(t *testing.T) {
-	input := "[Matrix] Alice: hello\n[message_id: $abc]\nConversation info (untrusted metadata):\n```json\n{\"a\":1}\n```"
+	input := "[Matrix room Thu 2025-01-02T03:04Z] Alice: hello\n[message_id: $abc]\nConversation info (untrusted metadata):\n```json\n{\"a\":1}\n```"
 	out := SanitizeChatMessageForDisplay(input, true)
 	if out != "Alice: hello" {
 		t.Fatalf("unexpected sanitized output: %q", out)
@@ -120,6 +135,33 @@ func TestAbortTriggerNormalization(t *testing.T) {
 	}
 	if IsAbortTriggerText("continue") {
 		t.Fatalf("did not expect non-abort text to match")
+	}
+}
+
+func TestSilentReplySemantics(t *testing.T) {
+	if !IsSilentReplyText("NO_REPLY", SilentReplyToken) {
+		t.Fatal("expected exact NO_REPLY token to be silent")
+	}
+	if IsSilentReplyText("NO_REPLY but with text", SilentReplyToken) {
+		t.Fatal("did not expect substantive text to be silent")
+	}
+	if !IsSilentReplyPrefixText("NO_RE", SilentReplyToken) {
+		t.Fatal("expected uppercase underscore prefix to match")
+	}
+	if IsSilentReplyPrefixText("No", SilentReplyToken) {
+		t.Fatal("did not expect ambiguous natural-language prefix to match")
+	}
+}
+
+func TestStripMessageIDHintLines_LiteralBehavior(t *testing.T) {
+	if got := StripMessageIDHintLines("hi\n[message_id: abc123]"); got != "hi" {
+		t.Fatalf("expected full-line hint to be stripped, got %q", got)
+	}
+	if got := StripMessageIDHintLines("I typed [message_id: abc123] on purpose"); got != "I typed [message_id: abc123] on purpose" {
+		t.Fatalf("expected inline message_id to be preserved, got %q", got)
+	}
+	if got := StripMessageIDHintLines("[MESSAGE_ID: abc123]"); got != "[MESSAGE_ID: abc123]" {
+		t.Fatalf("expected case-sensitive guard behavior to preserve uppercase hint, got %q", got)
 	}
 }
 

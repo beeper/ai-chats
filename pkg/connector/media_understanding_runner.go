@@ -576,7 +576,7 @@ func (oc *AIClient) extractMediaFileBlocks(
 		if skip[attachment.Index] {
 			continue
 		}
-		mimeType := normalizeMimeType(attachment.MimeType)
+		mimeType := stringutil.NormalizeMimeType(attachment.MimeType)
 		if mimeType == "" || !isTextFileMime(mimeType) {
 			continue
 		}

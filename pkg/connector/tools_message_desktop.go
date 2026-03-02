@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	beeperdesktopapi "github.com/beeper/desktop-api-go"
+
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 // resolveDesktopInstance resolves the "instance" arg and returns the canonical instance name.
@@ -138,7 +140,7 @@ func maybeExecuteMessageSendDesktop(ctx context.Context, args map[string]any, bt
 		if mediaErr != nil {
 			return true, "", mediaErr
 		}
-		mimeType := normalizeMimeType(firstNonEmptyString(args["mimeType"], detectedMime))
+		mimeType := stringutil.NormalizeMimeType(firstNonEmptyString(args["mimeType"], detectedMime))
 		fileName := resolveMessageFilename(args, mediaInput, mimeType)
 		uploadResp, uploadErr := btc.Client.uploadDesktopAssetBase64(ctx, instance, data, fileName, mimeType)
 		if uploadErr != nil {
@@ -524,7 +526,7 @@ func executeMessageDesktopUploadAsset(ctx context.Context, args map[string]any, 
 	if err != nil {
 		return "", err
 	}
-	mimeType := normalizeMimeType(firstNonEmptyString(args["mimeType"], detectedMime))
+	mimeType := stringutil.NormalizeMimeType(firstNonEmptyString(args["mimeType"], detectedMime))
 	fileName := resolveMessageFilename(args, mediaInput, mimeType)
 	upload, err := btc.Client.uploadDesktopAssetBase64(ctx, instance, data, fileName, mimeType)
 	if err != nil {

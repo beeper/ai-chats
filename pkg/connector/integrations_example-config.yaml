@@ -346,9 +346,9 @@ pruning:
   # identifier_instructions: "Keep ticket IDs, hashes, and hostnames unchanged."
 
   # Optional pre-compaction overflow flush turn.
-  # Disabled by default to keep compaction independent from memory workflows.
+  # Enabled by default (OpenClaw parity). Disable explicitly if you want no pre-flush.
   overflow_flush:
-    enabled: false
+    enabled: true
     soft_threshold_tokens: 4000
     prompt: "Pre-compaction overflow flush. Persist any durable notes now if your tools support it. If nothing to store, reply with NO_REPLY."
     system_prompt: "Pre-compaction overflow flush turn. The session is near auto-compaction; persist durable notes if possible. You may reply, but usually NO_REPLY is correct."

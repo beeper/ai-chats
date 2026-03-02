@@ -19,6 +19,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/ai-bridge/bridges/opencode/opencode"
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 func (b *Bridge) buildOpenCodeFileContent(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, part opencode.Part) (*event.MessageEventContent, error) {
@@ -34,7 +35,7 @@ func (b *Bridge) buildOpenCodeFileContent(ctx context.Context, portal *bridgev2.
 		return nil, err
 	}
 	if part.Mime != "" {
-		mimeType = normalizeMimeType(part.Mime)
+		mimeType = stringutil.NormalizeMimeType(part.Mime)
 	}
 	if mimeType == "" {
 		mimeType = "application/octet-stream"
@@ -88,7 +89,7 @@ func downloadOpenCodeFile(ctx context.Context, fileURL, fallbackMime string, max
 			return nil, "", fmt.Errorf("file too large: %d bytes (max %d MB)", len(data), maxSizeMB)
 		}
 		if mimeType == "" {
-			mimeType = normalizeMimeType(fallbackMime)
+			mimeType = stringutil.NormalizeMimeType(fallbackMime)
 		}
 		return data, mimeType, nil
 	}
@@ -112,12 +113,12 @@ func downloadOpenCodeFile(ctx context.Context, fileURL, fallbackMime string, max
 		if err != nil {
 			return nil, "", fmt.Errorf("failed to read file: %w", err)
 		}
-		mimeType := normalizeMimeType(mime.TypeByExtension(filepath.Ext(pathValue)))
+		mimeType := stringutil.NormalizeMimeType(mime.TypeByExtension(filepath.Ext(pathValue)))
 		if mimeType == "" {
 			mimeType = http.DetectContentType(data)
 		}
 		if mimeType == "" {
-			mimeType = normalizeMimeType(fallbackMime)
+			mimeType = stringutil.NormalizeMimeType(fallbackMime)
 		}
 		return data, mimeType, nil
 	}
@@ -149,9 +150,9 @@ func downloadOpenCodeFile(ctx context.Context, fileURL, fallbackMime string, max
 	if maxBytes > 0 && int64(len(data)) > maxBytes {
 		return nil, "", fmt.Errorf("file too large: %d bytes (max %d MB)", len(data), maxSizeMB)
 	}
-	mimeType := normalizeMimeType(resp.Header.Get("Content-Type"))
+	mimeType := stringutil.NormalizeMimeType(resp.Header.Get("Content-Type"))
 	if mimeType == "" {
-		mimeType = normalizeMimeType(fallbackMime)
+		mimeType = stringutil.NormalizeMimeType(fallbackMime)
 	}
 	return data, mimeType, nil
 }
@@ -176,13 +177,13 @@ func decodeOpenCodeDataURL(raw string) ([]byte, string, error) {
 		if err != nil {
 			return nil, "", err
 		}
-		return decoded, normalizeMimeType(mimeType), nil
+		return decoded, stringutil.NormalizeMimeType(mimeType), nil
 	}
 	decoded, err := url.PathUnescape(payload)
 	if err != nil {
 		return nil, "", err
 	}
-	return []byte(decoded), normalizeMimeType(mimeType), nil
+	return []byte(decoded), stringutil.NormalizeMimeType(mimeType), nil
 }
 
 func filenameFromOpenCodeURL(raw string) string {

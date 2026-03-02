@@ -5,13 +5,12 @@ import (
 	"strings"
 )
 
-var messageIDLineRE = regexp.MustCompile(`(?i)^\s*\[message_id:\s*([^\]\r\n]+)\]\s*$`)
-var matrixEventIDLineRE = regexp.MustCompile(`(?i)^\s*\[matrix event id:\s*([^\]\s]+)(?:\s+room:\s*[^\]]+)?\]\s*$`)
+var messageIDLineRE = regexp.MustCompile(`(?i)^\s*\[message_id:\s*[^\]]+\]\s*$`)
+var messageIDLineExtractRE = regexp.MustCompile(`(?i)^\s*\[message_id:\s*([^\]\r\n]+)\]\s*$`)
 var messageIDInlineRE = regexp.MustCompile(`(?i)\[message_id:\s*([^\]\r\n]+)\]`)
 
 func ContainsMessageIDHint(value string) bool {
-	lower := strings.ToLower(value)
-	return strings.Contains(lower, "[message_id:") || strings.Contains(lower, "[matrix event id:")
+	return strings.Contains(value, "[message_id:")
 }
 
 func NormalizeHintMessageID(value string) string {
@@ -36,17 +35,11 @@ func NormalizeMessageID(value string) string {
 	if trimmed == "" {
 		return ""
 	}
-	if match := messageIDLineRE.FindStringSubmatch(trimmed); len(match) > 1 {
-		return NormalizeHintMessageID(match[1])
-	}
-	if match := matrixEventIDLineRE.FindStringSubmatch(trimmed); len(match) > 1 {
+	if match := messageIDLineExtractRE.FindStringSubmatch(trimmed); len(match) > 1 {
 		return NormalizeHintMessageID(match[1])
 	}
 	if match := messageIDInlineRE.FindStringSubmatch(trimmed); len(match) > 1 {
 		return NormalizeHintMessageID(match[1])
-	}
-	if ContainsMessageIDHint(trimmed) {
-		return ""
 	}
 	return trimmed
 }
@@ -59,7 +52,7 @@ func StripMessageIDHintLines(text string) string {
 	changed := false
 	filtered := make([]string, 0, len(lines))
 	for _, line := range lines {
-		if messageIDLineRE.MatchString(line) || matrixEventIDLineRE.MatchString(line) {
+		if messageIDLineRE.MatchString(line) {
 			changed = true
 			continue
 		}
@@ -97,7 +90,7 @@ func SplitTrailingMessageIDHint(text string) (string, string) {
 }
 
 func IsMessageIDHintPrefix(lower string) bool {
-	for _, target := range []string{"[message_id:", "[matrix event id:"} {
+	for _, target := range []string{"[message_id:"} {
 		if strings.HasPrefix(target, lower) || strings.HasPrefix(lower, target) {
 			return true
 		}

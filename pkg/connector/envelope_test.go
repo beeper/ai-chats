@@ -9,9 +9,9 @@ func TestStripEnvelope(t *testing.T) {
 		input string
 		want  string
 	}{
-		{"[Desktop API user 2024-01-01T00:00:00.000Z] hello", "hello"},
-		{"[Desktop user +5m 2024-01-01T00:00:00.000Z] hello world", "hello world"},
-		{"[WhatsApp Alice +2m] how are you?", "how are you?"},
+		{"[WebChat user Thu 2025-01-02T03:04Z] hello", "hello"},
+		{"[WhatsApp 2026-01-24 13:36] hello world", "hello world"},
+		{"[WhatsApp Alice +2m 2024-01-01 10:00] how are you?", "how are you?"},
 		{"[Telegram Bot] test message", "test message"},
 		{"[Signal user] hi", "hi"},
 		{"[Slack user] msg", "msg"},
@@ -19,12 +19,13 @@ func TestStripEnvelope(t *testing.T) {
 		{"[iMessage user] msg", "msg"},
 		{"[Matrix user] msg", "msg"},
 		{"[Teams user] msg", "msg"},
-		{"[SMS user] msg", "msg"},
 		{"[Google Chat user] msg", "msg"},
-		{"[Channel user] msg", "msg"},
 		{"[WebChat user] msg", "msg"},
+		{"[Zalo Personal sender] msg", "msg"},
 		{"no envelope here", "no envelope here"},
 		{"", ""},
+		{"[WebChat] should not strip", "[WebChat] should not strip"},
+		{"[Matrix] should not strip", "[Matrix] should not strip"},
 		{"[Unknown prefix] should not strip", "[Unknown prefix] should not strip"},
 	}
 	for _, tt := range tests {

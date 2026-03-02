@@ -302,7 +302,7 @@ type MediaUnderstandingModelConfig struct {
 }
 
 func (c MediaUnderstandingModelConfig) ResolvedType() MediaUnderstandingEntryType {
-	t := strings.TrimSpace(c.Type)
+	t := strings.ToLower(strings.TrimSpace(c.Type))
 	if t != "" {
 		return MediaUnderstandingEntryType(t)
 	}

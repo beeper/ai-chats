@@ -17,6 +17,18 @@ func BoolPtrOr(ptr *bool, fallback bool) bool {
 	return *ptr
 }
 
+// NormalizeMimeType lowercases, trims whitespace, and strips parameters from a MIME type.
+func NormalizeMimeType(mimeType string) string {
+	lower := strings.ToLower(strings.TrimSpace(mimeType))
+	if lower == "" {
+		return lower
+	}
+	if semi := strings.IndexByte(lower, ';'); semi >= 0 {
+		return strings.TrimSpace(lower[:semi])
+	}
+	return lower
+}
+
 // NormalizeEnum normalizes a raw string to a canonical enum value.
 // It lowercases and trims the input, then looks it up in the aliases map.
 // Returns the canonical value and true if found, or ("", false) if not.

@@ -327,7 +327,7 @@ func (oc *AIClient) handleProviderToolCompleted(
 			callID:      callID,
 			toolName:    toolName,
 			toolType:    toolType,
-			startedAtMs: time.Now().UnixMilli(),
+			startedAtMs: 0, // Unknown; in_progress event was missed
 			itemID:      itemID,
 		}
 		activeTools[itemID] = tool

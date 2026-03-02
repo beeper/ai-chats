@@ -39,10 +39,6 @@ func respErrorCode(err error) string {
 	if errors.As(err, &respErrPtr) && respErrPtr != nil {
 		return strings.TrimSpace(respErrPtr.ErrCode)
 	}
-	var respErr mautrix.RespError
-	if errors.As(err, &respErr) {
-		return strings.TrimSpace(respErr.ErrCode)
-	}
 	return ""
 }
 

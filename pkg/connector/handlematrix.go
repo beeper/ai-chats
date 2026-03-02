@@ -19,6 +19,7 @@ import (
 	"github.com/beeper/ai-bridge/pkg/agents"
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 func messageSendStatusError(err error, message string, reason event.MessageStatusReason) error {
@@ -82,7 +83,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		msgType = event.MsgImage
 	}
 	if msgType == event.MsgVideo && msg.Content.Info != nil && msg.Content.Info.MauGIF {
-		if mimeType := normalizeMimeType(msg.Content.Info.MimeType); strings.HasPrefix(mimeType, "image/") {
+		if mimeType := stringutil.NormalizeMimeType(msg.Content.Info.MimeType); strings.HasPrefix(mimeType, "image/") {
 			msgType = event.MsgImage
 		}
 	}
@@ -613,7 +614,7 @@ func (oc *AIClient) handleMediaMessage(
 	// Get MIME type
 	mimeType := ""
 	if msg.Content.Info != nil && msg.Content.Info.MimeType != "" {
-		mimeType = normalizeMimeType(msg.Content.Info.MimeType)
+		mimeType = stringutil.NormalizeMimeType(msg.Content.Info.MimeType)
 	}
 
 	// Handle PDF or text files (MsgFile)

@@ -66,6 +66,7 @@ func (c ExaConfig) withDefaults() ExaConfig {
 	if c.TextMaxCharacters <= 0 {
 		c.TextMaxCharacters = 500
 	}
+	// Highlights are always enabled as they significantly improve search result quality.
 	c.Highlights = true
 	return c
 }

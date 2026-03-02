@@ -494,7 +494,7 @@ func executeMessageSend(ctx context.Context, args map[string]any, btc *BridgeToo
 		return "", err
 	}
 
-	mimeType := normalizeMimeType(firstNonEmptyString(args["mimeType"], detectedMime))
+	mimeType := stringutil.NormalizeMimeType(firstNonEmptyString(args["mimeType"], detectedMime))
 	if mimeType == "" {
 		mimeType = http.DetectContentType(data)
 	}
@@ -1220,7 +1220,7 @@ func fetchImageAsBase64WithType(ctx context.Context, imageURL string) (string, s
 		return "", "", fmt.Errorf("couldn't fetch image %s (status %d)", imageURL, resp.StatusCode)
 	}
 
-	mimeType := normalizeMimeType(resp.Header.Get("Content-Type"))
+	mimeType := stringutil.NormalizeMimeType(resp.Header.Get("Content-Type"))
 
 	// Limit to 10MB
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))

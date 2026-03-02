@@ -9,9 +9,12 @@ import (
 )
 
 func (oc *AIClient) emitUIFinish(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata) {
+	if state == nil {
+		return
+	}
 	ui := oc.uiEmitter(state)
 	ui.EmitUIFinish(ctx, portal, mapFinishReason(state.finishReason), oc.buildUIMessageMetadata(state, meta, true))
-	if state != nil && state.session != nil {
+	if state.session != nil {
 		state.session.End(ctx, streamtransport.EndReason(mapFinishReason(state.finishReason)))
 		state.session = nil
 	}
