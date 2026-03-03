@@ -143,8 +143,16 @@ func (m *OpenCodeManager) Connect(ctx context.Context, baseURL, password, userna
 	}
 
 	m.mu.Lock()
-	if existing := m.instances[instanceID]; existing != nil && existing.cancel != nil {
-		existing.cancel()
+	if existing := m.instances[instanceID]; existing != nil {
+		if existing.cancel != nil {
+			existing.cancel()
+		}
+		existing.disconnectMu.Lock()
+		if existing.disconnectTimer != nil {
+			existing.disconnectTimer.Stop()
+			existing.disconnectTimer = nil
+		}
+		existing.disconnectMu.Unlock()
 	}
 	m.instances[instanceID] = inst
 	m.mu.Unlock()
