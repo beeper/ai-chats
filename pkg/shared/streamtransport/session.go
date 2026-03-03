@@ -17,7 +17,7 @@ import (
 
 const (
 	// Fixed debounce interval for fallback post+edit streaming.
-	debounceInterval = 500 * time.Millisecond
+	debounceInterval = 200 * time.Millisecond
 	// Retry once for non-fallback ephemeral send errors.
 	nonFallbackRetryCount = 1
 	// Max wait for debounced worker shutdown and final flush.
@@ -210,7 +210,7 @@ func (s *StreamSession) sendEphemeralWithRetry(ephemeralSender bridgev2.Ephemera
 		if roomID == "" {
 			return context.Canceled
 		}
-		_, err := ephemeralSender.SendEphemeralEvent(s.sendCtx, roomID, matrixevents.StreamEventMessageType, eventContent, txnID)
+		_, err := ephemeralSender.BeeperSendEphemeralEvent(s.sendCtx, roomID, matrixevents.StreamEventMessageType, eventContent, txnID)
 		return err
 	}
 	err := send()

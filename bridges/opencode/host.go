@@ -54,12 +54,6 @@ func (oc *OpenCodeClient) SendSystemNotice(ctx context.Context, portal *bridgev2
 	oc.sendSystemNoticeViaPortal(ctx, portal, msg)
 }
 
-func (oc *OpenCodeClient) SendPendingStatus(_ context.Context, _ *bridgev2.Portal, _ *event.Event, _ string) {
-}
-
-func (oc *OpenCodeClient) SendSuccessStatus(_ context.Context, _ *bridgev2.Portal, _ *event.Event) {
-}
-
 func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *bridgev2.Portal, turnID, agentID, targetEventID string, part map[string]any) {
 	if oc == nil || portal == nil || portal.MXID == "" {
 		return
@@ -182,22 +176,19 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 				oc.streamMu.Lock()
 				st := oc.streamStates[turnID]
 				var visibleBody, fallbackBody string
-				var initialEventID id.EventID
 				var netMsgID networkid.MessageID
 				if st != nil {
 					visibleBody = st.visible.String()
 					fallbackBody = st.accumulated.String()
-					initialEventID = st.initialEventID
 					netMsgID = st.networkMessageID
 				}
 				oc.streamMu.Unlock()
 				content := streamtransport.BuildDebouncedEditContent(streamtransport.DebouncedEditParams{
-					PortalMXID:     portal.MXID,
-					Force:          force,
-					SuppressSend:   false,
-					VisibleBody:    visibleBody,
-					FallbackBody:   fallbackBody,
-					InitialEventID: initialEventID,
+					PortalMXID:   portal.MXID.String(),
+					Force:        force,
+					SuppressSend: false,
+					VisibleBody:  visibleBody,
+					FallbackBody: fallbackBody,
 				})
 				if content == nil || netMsgID == "" {
 					return nil
@@ -336,6 +327,7 @@ func (oc *OpenCodeClient) PortalMeta(portal *bridgev2.Portal) *opencodebridge.Po
 		TitleGenerated: meta.TitleGenerated,
 		AgentID:        meta.AgentID,
 		VerboseLevel:   meta.VerboseLevel,
+		AwaitingPath:   meta.OpenCodeAwaitingPath,
 	}
 }
 
@@ -353,6 +345,7 @@ func (oc *OpenCodeClient) SetPortalMeta(portal *bridgev2.Portal, meta *opencodeb
 	existing.TitleGenerated = meta.TitleGenerated
 	existing.AgentID = meta.AgentID
 	existing.VerboseLevel = meta.VerboseLevel
+	existing.OpenCodeAwaitingPath = meta.AwaitingPath
 	portal.Metadata = existing
 }
 

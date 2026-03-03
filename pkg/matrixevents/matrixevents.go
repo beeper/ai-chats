@@ -40,10 +40,6 @@ const (
 	BeeperActionHintsKey  = "com.beeper.action_hints"
 )
 
-// ActionResponseEventType is the event type for com.beeper.action_response (MSC1485 action hints).
-// Re-exported from mautrix-go event.BeeperActionResponse.
-var ActionResponseEventType = event.BeeperActionResponse
-
 // CommandDescriptionEventType is the state event type for MSC4391 command descriptions.
 // Already accepted in gomuks/mautrix-go ecosystem.
 var CommandDescriptionEventType = event.StateMSC4391BotCommand

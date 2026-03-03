@@ -342,12 +342,12 @@ func (m *OpenCodeManager) DeleteSession(ctx context.Context, instanceID, session
 	return inst.client.DeleteSession(ctx, sessionID)
 }
 
-func (m *OpenCodeManager) CreateSession(ctx context.Context, instanceID, title string) (*opencode.Session, error) {
+func (m *OpenCodeManager) CreateSession(ctx context.Context, instanceID, title, directory string) (*opencode.Session, error) {
 	inst, err := m.requireConnectedInstance(instanceID)
 	if err != nil {
 		return nil, err
 	}
-	session, err := inst.client.CreateSession(ctx, title)
+	session, err := inst.client.CreateSession(ctx, title, directory)
 	if err != nil {
 		if opencode.IsAuthError(err) {
 			m.setConnected(inst, false)

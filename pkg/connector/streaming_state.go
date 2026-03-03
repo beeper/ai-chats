@@ -79,6 +79,10 @@ type streamingState struct {
 	loggedStreamStart bool
 }
 
+func (s *streamingState) hasInitialMessageTarget() bool {
+	return s != nil && (s.initialEventID != "" || s.networkMessageID != "")
+}
+
 type mcpApprovalRequest struct {
 	approvalID  string
 	toolCallID  string

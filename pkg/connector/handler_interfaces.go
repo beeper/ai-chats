@@ -2,59 +2,9 @@ package connector
 
 import (
 	"context"
-	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
-
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 )
-
-// HandleMatrixActionResponse handles com.beeper.action_response events (MSC1485 action hints).
-// This implements bridgev2.ActionResponseHandlingNetworkAPI.
-func (oc *AIClient) HandleMatrixActionResponse(ctx context.Context, msg *bridgev2.MatrixActionResponse) error {
-	if msg == nil || msg.Event == nil || msg.Content == nil || msg.Portal == nil {
-		return nil
-	}
-	logCtx := oc.loggerForContext(ctx)
-
-	parsed := bridgeadapter.ParseActionResponse(msg.Content)
-	if parsed == nil {
-		logCtx.Warn().Msg("action response: failed to parse payload")
-		return nil
-	}
-
-	approve, always, ok := bridgeadapter.ActionDecisionFromString(parsed.ActionID)
-	if !ok {
-		logCtx.Warn().Str("action_id", parsed.ActionID).Msg("action response: unknown action_id")
-		return nil
-	}
-
-	approvalID := strings.TrimSpace(parsed.ApprovalID)
-	if approvalID == "" {
-		logCtx.Warn().Msg("action response: missing approval_id in context")
-		return nil
-	}
-
-	state := airuntime.ToolApprovalDenied
-	if approve {
-		state = airuntime.ToolApprovalApproved
-	}
-	err := oc.resolveToolApproval(
-		msg.Portal.MXID,
-		approvalID,
-		airuntime.ToolApprovalDecision{
-			State: state,
-		},
-		always,
-		msg.Event.Sender,
-	)
-	if err != nil {
-		logCtx.Warn().Err(err).Str("approval_id", approvalID).Msg("action response: failed to resolve approval")
-		oc.sendApprovalRejectionEvent(ctx, msg.Portal, approvalID, err)
-	}
-	return nil
-}
 
 // HandleMatrixReadReceipt tracks read receipt positions. AI-bridge is the
 // authoritative side so there is nothing to forward to a remote network.

@@ -15,15 +15,16 @@ type UserLoginMetadata struct {
 }
 
 type PortalMetadata struct {
-	Title                string `json:"title,omitempty"`
-	TitleGenerated       bool   `json:"title_generated,omitempty"`
-	IsOpenCodeRoom       bool   `json:"is_opencode_room,omitempty"`
-	OpenCodeInstanceID   string `json:"opencode_instance_id,omitempty"`
-	OpenCodeSessionID    string `json:"opencode_session_id,omitempty"`
-	OpenCodeReadOnly     bool   `json:"opencode_read_only,omitempty"`
-	OpenCodeTitlePending bool   `json:"opencode_title_pending,omitempty"`
-	AgentID              string `json:"agent_id,omitempty"`
-	VerboseLevel         string `json:"verbose_level,omitempty"`
+	Title                  string `json:"title,omitempty"`
+	TitleGenerated         bool   `json:"title_generated,omitempty"`
+	IsOpenCodeRoom         bool   `json:"is_opencode_room,omitempty"`
+	OpenCodeInstanceID     string `json:"opencode_instance_id,omitempty"`
+	OpenCodeSessionID      string `json:"opencode_session_id,omitempty"`
+	OpenCodeReadOnly       bool   `json:"opencode_read_only,omitempty"`
+	OpenCodeTitlePending   bool   `json:"opencode_title_pending,omitempty"`
+	OpenCodeAwaitingPath   bool   `json:"opencode_awaiting_path,omitempty"`
+	AgentID                string `json:"agent_id,omitempty"`
+	VerboseLevel           string `json:"verbose_level,omitempty"`
 }
 
 type MessageMetadata struct{}

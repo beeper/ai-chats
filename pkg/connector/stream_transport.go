@@ -15,12 +15,11 @@ func (oc *AIClient) sendDebouncedStreamEdit(ctx context.Context, portal *bridgev
 		return nil
 	}
 	content := streamtransport.BuildDebouncedEditContent(streamtransport.DebouncedEditParams{
-		PortalMXID:     portal.MXID,
-		Force:          force,
-		SuppressSend:   state.suppressSend,
-		VisibleBody:    state.visibleAccumulated.String(),
-		FallbackBody:   state.accumulated.String(),
-		InitialEventID: state.initialEventID,
+		PortalMXID:   portal.MXID.String(),
+		Force:        force,
+		SuppressSend: state.suppressSend,
+		VisibleBody:  state.visibleAccumulated.String(),
+		FallbackBody: state.accumulated.String(),
 	})
 	if content == nil || state.networkMessageID == "" {
 		return nil

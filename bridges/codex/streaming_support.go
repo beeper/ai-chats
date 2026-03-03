@@ -46,6 +46,10 @@ type streamingState struct {
 	loggedStreamStart         bool
 }
 
+func (s *streamingState) hasInitialMessageTarget() bool {
+	return s != nil && (s.initialEventID != "" || s.networkMessageID != "")
+}
+
 func (cc *CodexClient) uiEmitter(state *streamingState) *streamui.Emitter {
 	state.ui.TurnID = state.turnID
 	state.ui.InitMaps()

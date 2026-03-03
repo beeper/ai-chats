@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/google/uuid"
 	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -193,40 +194,52 @@ func (b *Bridge) createOpenCodeSessionChat(ctx context.Context, instanceID, titl
 		return nil, errors.New("OpenCode instance not connected")
 	}
 
-	session, err := b.manager.CreateSession(ctx, instanceID, title)
+	// Use a placeholder session ID; the real session is created after the
+	// user provides a working directory path.
+	placeholderSessionID := "setup-" + uuid.New().String()
+
+	displayTitle := title
+	if displayTitle == "" {
+		displayTitle = "OpenCode Session"
+	}
+
+	portalKey := OpenCodePortalKey(login.ID, instanceID, placeholderSessionID)
+	portal, err := login.Bridge.GetPortalByKey(ctx, portalKey)
 	if err != nil {
 		return nil, err
 	}
-	if session == nil {
-		return nil, errors.New("OpenCode session creation failed")
+
+	meta := &PortalMeta{
+		IsOpenCodeRoom: true,
+		InstanceID:     instanceID,
+		SessionID:      "",
+		AwaitingPath:   true,
+		TitlePending:   pendingTitle,
+		Title:          displayTitle,
+	}
+	if meta.AgentID == "" {
+		meta.AgentID = b.host.DefaultAgentID()
 	}
 
-	if err := b.ensureOpenCodeSessionPortalWithRoom(ctx, inst, *session, false); err != nil {
+	portal.RoomType = database.RoomTypeDM
+	portal.OtherUserID = OpenCodeUserID(instanceID)
+	portal.Name = displayTitle
+	portal.NameSet = true
+	b.host.SetPortalMeta(portal, meta)
+
+	if err := b.host.SavePortal(ctx, portal); err != nil {
 		return nil, err
-	}
-	portal := b.findOpenCodePortal(ctx, instanceID, session.ID)
-	if portal == nil {
-		return nil, errors.New("failed to load OpenCode portal")
-	}
-	meta := b.portalMeta(portal)
-	if meta != nil {
-		meta.TitlePending = pendingTitle
-		if title != "" {
-			meta.Title = title
-		}
-		b.host.SetPortalMeta(portal, meta)
-		_ = b.host.SavePortal(ctx, portal)
-	}
-
-	displayTitle := title
-	if displayTitle == "" && meta != nil {
-		displayTitle = meta.Title
-	}
-	if displayTitle == "" {
-		displayTitle = "OpenCode Session " + session.ID
 	}
 
 	chatInfo := b.composeOpenCodeChatInfo(displayTitle, instanceID)
+	if err := portal.CreateMatrixRoom(ctx, login, chatInfo); err != nil {
+		b.host.CleanupPortal(ctx, portal, "failed to create OpenCode room")
+		return nil, err
+	}
+
+	b.host.SendSystemNotice(ctx, portal, "AI Chats can make mistakes.")
+	b.host.SendSystemNotice(ctx, portal, "What directory should OpenCode work in? Send an absolute path.")
+
 	return &bridgev2.CreateChatResponse{
 		PortalKey:  portal.PortalKey,
 		PortalInfo: chatInfo,
