@@ -65,14 +65,14 @@ func (oc *AIClient) streamChatCompletions(
 		if temp := oc.effectiveTemperature(meta); temp > 0 {
 			params.Temperature = openai.Float(temp)
 		}
-		// Add tools only for agent chats that support tool calling.
-		// Simple mode chats use a minimal prompt without tools to avoid context overflow on small models.
+		// Add builtin tools for this turn.
+		// In simple mode this is intentionally restricted to web_search.
+		enabledTools := oc.selectedBuiltinToolsForTurn(ctx, meta)
 		chatHasAgent := resolveAgentID(meta) != ""
+		if len(enabledTools) > 0 {
+			params.Tools = append(params.Tools, ToOpenAIChatTools(enabledTools, &oc.log)...)
+		}
 		if meta.Capabilities.SupportsToolCalling && chatHasAgent {
-			enabledTools := oc.enabledBuiltinToolsForModel(ctx, meta)
-			if len(enabledTools) > 0 {
-				params.Tools = append(params.Tools, ToOpenAIChatTools(enabledTools, &oc.log)...)
-			}
 			if !oc.isBuilderRoom(portal) {
 				var enabledSessions []*tools.Tool
 				for _, tool := range tools.SessionTools() {

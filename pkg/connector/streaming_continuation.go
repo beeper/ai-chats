@@ -75,15 +75,13 @@ func (oc *AIClient) buildContinuationParams(
 		}
 	}
 
-	// Add builtin function tools only for agent chats that support tool calling.
-	// Simple mode chats use a minimal prompt without tools to avoid context overflow on small models.
+	// Add builtin function tools for this turn.
+	// In simple mode this is intentionally restricted to web_search.
 	agentID := resolveAgentID(meta)
 	strictMode := resolveToolStrictMode(isOpenRouter)
-	if meta.Capabilities.SupportsToolCalling && agentID != "" {
-		enabledTools := oc.enabledBuiltinToolsForModel(ctx, meta)
-		if len(enabledTools) > 0 {
-			params.Tools = append(params.Tools, ToOpenAITools(enabledTools, strictMode, &oc.log)...)
-		}
+	enabledTools := oc.selectedBuiltinToolsForTurn(ctx, meta)
+	if len(enabledTools) > 0 {
+		params.Tools = append(params.Tools, ToOpenAITools(enabledTools, strictMode, &oc.log)...)
 	}
 
 	// Add boss tools for Boss agent rooms (needed for multi-turn tool use)

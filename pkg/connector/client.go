@@ -97,6 +97,8 @@ var aiBaseCaps = &event.RoomFeatures{
 		event.MsgImage:      cloneRejectAllMediaFeatures(),
 	},
 	MaxTextLength:       AIMaxTextLength,
+	LocationMessage:     event.CapLevelRejected,
+	Poll:                event.CapLevelRejected,
 	Reply:               event.CapLevelFullySupported,
 	Thread:              event.CapLevelFullySupported,
 	Edit:                event.CapLevelFullySupported,
@@ -123,8 +125,9 @@ var aiBaseCaps = &event.RoomFeatures{
 }
 
 type capabilityIDOptions struct {
-	SupportsPDF       bool
-	SupportsTextFiles bool
+	SupportsPDF        bool
+	SupportsTextFiles  bool
+	SupportsMsgActions bool
 }
 
 // buildCapabilityID constructs a deterministic capability ID based on model modalities
@@ -139,6 +142,9 @@ func buildCapabilityID(caps ModelCapabilities, opts capabilityIDOptions) string 
 	}
 	if caps.SupportsImageGen {
 		suffixes = append(suffixes, "imagegen")
+	}
+	if opts.SupportsMsgActions {
+		suffixes = append(suffixes, "msgactions")
 	}
 	if opts.SupportsPDF || caps.SupportsPDF {
 		suffixes = append(suffixes, "pdf")
@@ -1165,15 +1171,35 @@ func (oc *AIClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal
 	modelCaps := oc.getRoomCapabilities(ctx, meta)
 	allowTextFiles := oc.canUseMediaUnderstanding(meta)
 	supportsPDF := modelCaps.SupportsPDF || oc.isOpenRouterProvider()
+	supportsMsgActions := oc.supportsMessageActionsFeature(meta)
 
 	// Clone base capabilities
 	caps := aiBaseCaps.Clone()
 
 	// Build dynamic capability ID from modalities
 	caps.ID = buildCapabilityID(modelCaps, capabilityIDOptions{
-		SupportsPDF:       supportsPDF,
-		SupportsTextFiles: allowTextFiles,
+		SupportsPDF:        supportsPDF,
+		SupportsTextFiles:  allowTextFiles,
+		SupportsMsgActions: supportsMsgActions,
 	})
+
+	if supportsMsgActions {
+		caps.Reply = event.CapLevelFullySupported
+		caps.Edit = event.CapLevelFullySupported
+		caps.EditMaxCount = 10
+		caps.EditMaxAge = ptr.Ptr(jsontime.S(AIEditMaxAge))
+		caps.Reaction = event.CapLevelFullySupported
+		caps.ReactionCount = 1
+	} else {
+		// Use explicit rejected levels so features remain visible in
+		// com.beeper.room_features instead of being omitted by omitempty.
+		caps.Reply = event.CapLevelRejected
+		caps.Edit = event.CapLevelRejected
+		caps.EditMaxCount = 0
+		caps.EditMaxAge = nil
+		caps.Reaction = event.CapLevelRejected
+		caps.ReactionCount = 0
+	}
 
 	// Apply file capabilities based on modalities
 	if modelCaps.SupportsVision {
@@ -1218,6 +1244,22 @@ func (oc *AIClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal
 	// Note: Reasoning is processing mode - doesn't affect room features
 
 	return caps
+}
+
+func (oc *AIClient) supportsMessageActionsFeature(meta *PortalMetadata) bool {
+	if meta == nil || isSimpleMode(meta) {
+		return false
+	}
+	if oc == nil {
+		return true
+	}
+	if oc.getAgentResponseMode(meta) == agents.ResponseModeSimple {
+		return false
+	}
+	if oc.connector == nil {
+		return true
+	}
+	return oc.isToolEnabled(meta, ToolNameMessage)
 }
 
 // effectiveModel returns the full prefixed model ID (e.g., "openai/gpt-5.2")

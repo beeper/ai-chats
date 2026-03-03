@@ -48,6 +48,11 @@ func (oc *AIClient) prepareStreamingRun(
 	state := newStreamingState(ctx, meta, sourceEventID, senderID, roomID)
 	oc.setupEmitter(state)
 	state.replyTarget = oc.resolveInitialReplyTarget(evt)
+	if isSimpleMode(meta) {
+		// Simple mode does not include reply/thread context in prompts, so avoid
+		// attaching reply relations to outbound assistant events as well.
+		state.replyTarget = ReplyTarget{}
+	}
 
 	// Ensure model ghost is in the room before any operations
 	if !state.suppressSend {

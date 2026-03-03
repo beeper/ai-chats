@@ -11,6 +11,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+
+	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 )
 
 // -----------------------------------------------------------------------
@@ -130,6 +132,7 @@ func (e *CodexRemoteEdit) ConvertEdit(_ context.Context, _ *bridgev2.Portal, _ b
 			}
 		}
 	}
+	streamtransport.EnsureDontRenderEdited(e.preBuilt)
 	return e.preBuilt, nil
 }
 

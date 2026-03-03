@@ -159,15 +159,7 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 		// Simple mode: send content directly without directive processing
 		cleanedRaw := airuntime.SanitizeChatMessageForDisplay(rawContent, false)
 		rendered := format.RenderMarkdown(cleanedRaw, true, true)
-		replyTo := id.EventID("")
-		if state != nil {
-			replyTo = state.replyTarget.EffectiveReplyTo()
-		}
-		if replyTo != "" {
-			oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, rendered, &replyTo, "simple")
-		} else {
-			oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, rendered, nil, "simple")
-		}
+		oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, rendered, nil, "simple")
 		return
 	}
 
@@ -657,24 +649,35 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 		FileParts:  citations.GeneratedFilesToParts(state.generatedFiles),
 	})
 
-	eventContent := msgconv.BuildFinalEditContent(msgconv.FinalEditContentParams{
-		Rendered:       rendered,
-		RelatesTo:      relatesTo,
-		UIMessage:      uiMessage,
-		LinkPreviews:   PreviewsToMapSlice(linkPreviews),
-		DontShowEdited: true,
-	})
+	extra := map[string]any{
+		"com.beeper.ai": uiMessage,
+		"m.mentions":    map[string]any{},
+	}
+	if len(linkPreviews) > 0 {
+		extra["com.beeper.linkpreviews"] = PreviewsToMapSlice(linkPreviews)
+	}
+
+	topLevelExtra := map[string]any{
+		"com.beeper.dont_render_edited": true,
+		"m.mentions":                    map[string]any{},
+	}
+	if relatesTo != nil {
+		topLevelExtra["m.relates_to"] = relatesTo
+	}
 
 	sender := oc.senderForPortal(ctx, portal)
 	editContent := &bridgev2.ConvertedEdit{
 		ModifiedParts: []*bridgev2.ConvertedEditPart{{
-			Part:    nil,
-			Type:    event.EventMessage,
-			Content: &event.MessageEventContent{MsgType: event.MsgText, Body: rendered.Body},
-			Extra:   eventContent.Raw,
-			TopLevelExtra: map[string]any{
-				"m.new_content": eventContent.Raw,
+			Part: nil,
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType:       event.MsgText,
+				Body:          rendered.Body,
+				Format:        rendered.Format,
+				FormattedBody: rendered.FormattedBody,
 			},
+			Extra:         extra,
+			TopLevelExtra: topLevelExtra,
 		}},
 	}
 	oc.UserLogin.QueueRemoteEvent(&AIRemoteEdit{

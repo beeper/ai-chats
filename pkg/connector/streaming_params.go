@@ -65,17 +65,17 @@ func (oc *AIClient) buildResponsesAPIParams(ctx context.Context, portal *bridgev
 		Str("detected_provider", loginMetadata(oc.UserLogin).Provider).
 		Msg("Provider detection for tool filtering")
 
-	// Add builtin function tools only for agent chats that support tool calling.
-	// Simple mode chats use a minimal prompt without tools to avoid context overflow on small models.
+	// Add builtin function tools for this turn.
+	// In simple mode this is intentionally restricted to web_search.
 	hasAgent := resolveAgentID(meta) != ""
 	strictMode := resolveToolStrictMode(isOpenRouter)
-	if meta.Capabilities.SupportsToolCalling && hasAgent {
-		enabledTools := oc.enabledBuiltinToolsForModel(ctx, meta)
-		if len(enabledTools) > 0 {
-			params.Tools = append(params.Tools, ToOpenAITools(enabledTools, strictMode, &oc.log)...)
-			log.Debug().Int("count", len(enabledTools)).Msg("Added builtin function tools")
-		}
+	enabledTools := oc.selectedBuiltinToolsForTurn(ctx, meta)
+	if len(enabledTools) > 0 {
+		params.Tools = append(params.Tools, ToOpenAITools(enabledTools, strictMode, &oc.log)...)
+		log.Debug().Int("count", len(enabledTools)).Msg("Added builtin function tools")
+	}
 
+	if meta.Capabilities.SupportsToolCalling && hasAgent {
 		// Add session tools for non-boss rooms
 		if !hasBossAgent(meta) && !oc.isBuilderRoom(portal) {
 			var enabledSessions []*tools.Tool

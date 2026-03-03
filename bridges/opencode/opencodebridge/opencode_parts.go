@@ -14,6 +14,7 @@ import (
 
 	"github.com/beeper/ai-bridge/bridges/opencode/opencode"
 	"github.com/beeper/ai-bridge/pkg/matrixevents"
+	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
@@ -151,9 +152,11 @@ func (b *Bridge) convertOpenCodePartEdit(ctx context.Context, portal *bridgev2.P
 	if cmp == nil {
 		return nil, bridgev2.ErrIgnoringRemoteEvent
 	}
-	return &bridgev2.ConvertedEdit{
+	edit := &bridgev2.ConvertedEdit{
 		ModifiedParts: []*bridgev2.ConvertedEditPart{cmp.ToEditPart(existing[0])},
-	}, nil
+	}
+	streamtransport.EnsureDontRenderEdited(edit)
+	return edit, nil
 }
 
 func (b *Bridge) buildOpenCodeConvertedPart(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, data openCodePartEvent) (*bridgev2.ConvertedMessagePart, error) {

@@ -3,6 +3,7 @@ package streamtransport
 import (
 	"strings"
 
+	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 )
 
@@ -27,5 +28,21 @@ func BuildReplaceEditRaw(targetEventID string, body, formattedBody string, forma
 		},
 		"com.beeper.dont_render_edited": true,
 		"m.mentions":                    map[string]any{},
+	}
+}
+
+// EnsureDontRenderEdited marks every edit part so clients can suppress "edited" UI chrome.
+func EnsureDontRenderEdited(edit *bridgev2.ConvertedEdit) {
+	if edit == nil {
+		return
+	}
+	for _, part := range edit.ModifiedParts {
+		if part == nil {
+			continue
+		}
+		if part.TopLevelExtra == nil {
+			part.TopLevelExtra = map[string]any{}
+		}
+		part.TopLevelExtra["com.beeper.dont_render_edited"] = true
 	}
 }
