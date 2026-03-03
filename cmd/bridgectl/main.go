@@ -281,7 +281,7 @@ func cmdUp(args []string) error {
 		return err
 	}
 	fmt.Printf("started %s\n", instance)
-	fmt.Printf("log: %s\n", meta.LogPath)
+	printRuntimePaths(meta)
 	return nil
 }
 
@@ -318,6 +318,7 @@ func cmdRun(args []string) error {
 	}
 	argv := []string{meta.BinaryPath, "-c", meta.ConfigPath}
 	fmt.Printf("running %s in foreground\n", instance)
+	printRuntimePaths(meta)
 	if err = os.Chdir(filepath.Dir(meta.ConfigPath)); err != nil {
 		return fmt.Errorf("failed to chdir: %w", err)
 	}
@@ -868,7 +869,8 @@ func ensureRegistration(meta *metadata, cfg instanceConfig) error {
 	if err = os.WriteFile(meta.RegistrationPath, []byte(yml), 0o600); err != nil {
 		return err
 	}
-	if err = patchConfigWithRegistration(meta.ConfigPath, &reg, hc.HomeserverURL.String(), cfg.BridgeType); err != nil {
+	userID := fmt.Sprintf("@%s:%s", auth.Username, auth.Domain)
+	if err = patchConfigWithRegistration(meta.ConfigPath, &reg, hc.HomeserverURL.String(), meta.BeeperBridgeName, cfg.BridgeType, auth.Domain, reg.AppToken, userID, who.User.AsmuxData.LoginToken); err != nil {
 		return err
 	}
 
@@ -906,7 +908,7 @@ func deleteRemoteBridge(name string) error {
 	return nil
 }
 
-func patchConfigWithRegistration(configPath string, reg any, homeserverURL, bridgeType string) error {
+func patchConfigWithRegistration(configPath string, reg any, homeserverURL, bridgeName, bridgeType, beeperDomain, asToken, userID, provisioningSecret string) error {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return err
@@ -916,8 +918,17 @@ func patchConfigWithRegistration(configPath string, reg any, homeserverURL, brid
 		return err
 	}
 	regMap := toMap(reg)
+
+	// Homeserver — hungryserv websocket mode
 	setPath(doc, []string{"homeserver", "address"}, homeserverURL)
 	setPath(doc, []string{"homeserver", "domain"}, "beeper.local")
+	setPath(doc, []string{"homeserver", "software"}, "hungry")
+	setPath(doc, []string{"homeserver", "async_media"}, true)
+	setPath(doc, []string{"homeserver", "websocket"}, true)
+	setPath(doc, []string{"homeserver", "ping_interval_seconds"}, 180)
+
+	// Appservice — registration tokens
+	setPath(doc, []string{"appservice", "address"}, "irrelevant")
 	setPath(doc, []string{"appservice", "as_token"}, regMap["as_token"])
 	setPath(doc, []string{"appservice", "hs_token"}, regMap["hs_token"])
 	if v, ok := regMap["id"]; ok {
@@ -928,9 +939,74 @@ func patchConfigWithRegistration(configPath string, reg any, homeserverURL, brid
 			setPath(doc, []string{"appservice", "bot", "username"}, s)
 		}
 	}
+	setPath(doc, []string{"appservice", "username_template"}, fmt.Sprintf("%s_{{.}}", bridgeName))
+
+	// Bridge — Beeper defaults
+	setPath(doc, []string{"bridge", "personal_filtering_spaces"}, true)
+	setPath(doc, []string{"bridge", "private_chat_portal_meta"}, false)
+	setPath(doc, []string{"bridge", "split_portals"}, true)
+	setPath(doc, []string{"bridge", "bridge_status_notices"}, "none")
+	setPath(doc, []string{"bridge", "cross_room_replies"}, true)
+	setPath(doc, []string{"bridge", "cleanup_on_logout", "enabled"}, true)
+	setPath(doc, []string{"bridge", "cleanup_on_logout", "manual", "private"}, "delete")
+	setPath(doc, []string{"bridge", "cleanup_on_logout", "manual", "relayed"}, "delete")
+	setPath(doc, []string{"bridge", "cleanup_on_logout", "manual", "shared_no_users"}, "delete")
+	setPath(doc, []string{"bridge", "cleanup_on_logout", "manual", "shared_has_users"}, "delete")
+	setPath(doc, []string{"bridge", "permissions", userID}, "admin")
+
+	// Database — sqlite for self-hosted
+	setPath(doc, []string{"database", "type"}, "sqlite3-fk-wal")
+	setPath(doc, []string{"database", "uri"}, "file:ai.db?_txlock=immediate")
+
+	// Matrix connector
+	setPath(doc, []string{"matrix", "message_status_events"}, true)
+	setPath(doc, []string{"matrix", "message_error_notices"}, false)
+	setPath(doc, []string{"matrix", "sync_direct_chat_list"}, false)
+	setPath(doc, []string{"matrix", "federate_rooms"}, false)
+
+	// Provisioning
+	if provisioningSecret != "" {
+		setPath(doc, []string{"provisioning", "shared_secret"}, provisioningSecret)
+	}
+	setPath(doc, []string{"provisioning", "allow_matrix_auth"}, true)
+	setPath(doc, []string{"provisioning", "debug_endpoints"}, true)
+
+	// Double puppet — allow beeper.com users
+	setPath(doc, []string{"double_puppet", "servers", beeperDomain}, homeserverURL)
+	setPath(doc, []string{"double_puppet", "secrets", beeperDomain}, "as_token:"+asToken)
+	setPath(doc, []string{"double_puppet", "allow_discovery"}, false)
+
+	// Backfill
+	setPath(doc, []string{"backfill", "enabled"}, true)
+	setPath(doc, []string{"backfill", "queue", "enabled"}, true)
+	setPath(doc, []string{"backfill", "queue", "batch_size"}, 50)
+	setPath(doc, []string{"backfill", "queue", "max_batches"}, 0)
+
+	// Encryption — end-to-bridge encryption for Beeper
+	setPath(doc, []string{"encryption", "allow"}, true)
+	setPath(doc, []string{"encryption", "default"}, true)
+	setPath(doc, []string{"encryption", "require"}, true)
+	setPath(doc, []string{"encryption", "appservice"}, true)
+	setPath(doc, []string{"encryption", "allow_key_sharing"}, true)
+	setPath(doc, []string{"encryption", "delete_keys", "delete_outbound_on_ack"}, true)
+	setPath(doc, []string{"encryption", "delete_keys", "ratchet_on_decrypt"}, true)
+	setPath(doc, []string{"encryption", "delete_keys", "delete_fully_used_on_decrypt"}, true)
+	setPath(doc, []string{"encryption", "delete_keys", "delete_prev_on_new_session"}, true)
+	setPath(doc, []string{"encryption", "delete_keys", "delete_on_device_delete"}, true)
+	setPath(doc, []string{"encryption", "delete_keys", "periodically_delete_expired"}, true)
+	setPath(doc, []string{"encryption", "verification_levels", "receive"}, "cross-signed-tofu")
+	setPath(doc, []string{"encryption", "verification_levels", "send"}, "cross-signed-tofu")
+	setPath(doc, []string{"encryption", "verification_levels", "share"}, "cross-signed-tofu")
+	setPath(doc, []string{"encryption", "rotation", "enable_custom"}, true)
+	setPath(doc, []string{"encryption", "rotation", "milliseconds"}, 2592000000)
+	setPath(doc, []string{"encryption", "rotation", "messages"}, 10000)
+	setPath(doc, []string{"encryption", "rotation", "disable_device_change_key_rotation"}, true)
+
+	// Network
 	if bridgeType != "" {
 		setPath(doc, []string{"network", "bridge_type"}, bridgeType)
 	}
+
 	out, err := yaml.Marshal(doc)
 	if err != nil {
 		return err
@@ -983,6 +1059,45 @@ func setPath(root map[string]any, parts []string, value any) {
 		cur = nm
 	}
 	cur[parts[len(parts)-1]] = value
+}
+
+func printRuntimePaths(meta *metadata) {
+	fmt.Printf("paths:\n")
+	fmt.Printf("  config: %s\n", meta.ConfigPath)
+	fmt.Printf("  registration: %s\n", meta.RegistrationPath)
+	fmt.Printf("  log: %s\n", meta.LogPath)
+	fmt.Printf("  pid: %s\n", meta.PIDPath)
+	if dbURI, err := getDatabaseURI(meta.ConfigPath); err == nil && dbURI != "" {
+		fmt.Printf("  database.uri: %s\n", dbURI)
+	}
+}
+
+func getDatabaseURI(configPath string) (string, error) {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return "", err
+	}
+	var doc map[string]any
+	if err = yaml.Unmarshal(data, &doc); err != nil {
+		return "", err
+	}
+	dbRaw, ok := doc["database"]
+	if !ok {
+		return "", nil
+	}
+	dbMap, ok := dbRaw.(map[string]any)
+	if !ok {
+		return "", nil
+	}
+	uriRaw, ok := dbMap["uri"]
+	if !ok {
+		return "", nil
+	}
+	uri, ok := uriRaw.(string)
+	if !ok {
+		return "", nil
+	}
+	return uri, nil
 }
 
 func startBridge(meta *metadata) error {

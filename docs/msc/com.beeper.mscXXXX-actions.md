@@ -2,7 +2,7 @@
 
 ## Summary
 
-This proposal adds structured button data to Matrix messages via a `com.beeper.action_hints` content block. Clients render hints as clickable buttons attached to a message. When a user clicks a button, a `com.beeper.action_response` event is sent to the room with a relation linking it to the original message.
+This proposal adds structured button data to Matrix messages via a `com.beeper.action_hints` content block. Clients render hints as clickable buttons attached to a message. When a user clicks a button, the client sends a standard `m.room.message` reply to the original message with action metadata in the content.
 
 The design is based on [MSC1485] with extensions for access control, expiry, exclusive selection, and opaque context passthrough.
 
@@ -32,17 +32,17 @@ The `com.beeper.action_hints` key in `m.room.message` content contains a single 
       "hints": [
         {
           "body": "Allow",
-          "event_type": "com.beeper.action_response",
+          "event_type": "m.room.message",
           "event": { "action_id": "allow" }
         },
         {
           "body": "Always Allow",
-          "event_type": "com.beeper.action_response",
+          "event_type": "m.room.message",
           "event": { "action_id": "always" }
         },
         {
           "body": "Deny",
-          "event_type": "com.beeper.action_response",
+          "event_type": "m.room.message",
           "event": { "action_id": "deny" }
         }
       ],
@@ -87,16 +87,17 @@ Sibling fields alongside `hints[]` in the `com.beeper.action_hints` object:
 
 ### Response Event
 
-When a user clicks a button, the client sends a `com.beeper.action_response` event:
+When a user clicks a button, the client sends a standard `m.room.message` reply event:
 
 ```json
 {
-  "type": "com.beeper.action_response",
+  "type": "m.room.message",
   "content": {
+    "msgtype": "m.notice",
+    "body": "Allow",
     "m.relates_to": {
-      "m.from_action_hint": {
-        "event_id": "$original_message",
-        "hint_key": 0
+      "m.in_reply_to": {
+        "event_id": "$original_message"
       }
     },
     "action_id": "allow",
@@ -112,8 +113,7 @@ When a user clicks a button, the client sends a `com.beeper.action_response` eve
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `m.relates_to.m.from_action_hint.event_id` | string | Event ID of the message containing the hints. |
-| `m.relates_to.m.from_action_hint.hint_key` | integer | Index of the selected hint in `hints[]`. |
+| `m.relates_to.m.in_reply_to.event_id` | string | Event ID of the message containing the hints. |
 | `action_id` | string | The action identifier from the hint's `event` content. |
 | `context` | object | Passthrough from the original `com.beeper.action_hints.context`. |
 
@@ -127,7 +127,7 @@ After processing a response, the sender of the original message SHOULD edit it t
 
 ## Fallback
 
-Clients that do not render action hints MAY allow users to respond via a text reply containing the `action_id`. For example, replying `/respond allow` to a message with action hints. The bot SHOULD synthesize a `com.beeper.action_response` event from such text replies.
+Clients that do not render action hints MAY allow users to respond via a text reply containing the `action_id`. For example, replying `/respond allow` to a message with action hints. The bot SHOULD interpret such replies as approval actions.
 
 ## Potential Issues
 
@@ -138,10 +138,10 @@ Clients that do not render action hints MAY allow users to respond via a text re
 
 ### Ephemeral vs Timeline for Responses
 
-`com.beeper.action_response` is a persisted timeline event rather than an ephemeral event because:
+`m.room.message` is a persisted timeline event rather than an ephemeral event because:
 
 - **Audit trail:** Users can see who approved what in room history.
-- **Server-side aggregation:** The `m.relates_to` relation enables bundled aggregations.
+- **Server-side aggregation:** A normal message reply enables timeline-based aggregation and moderation visibility.
 - **Consistency with [MSC1485]:** The original proposal uses timeline events for responses.
 - **Durability:** Responses survive client reconnects, app restarts, and late-joining members.
 
@@ -153,20 +153,19 @@ Ephemeral responses were considered but rejected due to the lack of delivery gua
 
 ## Security Considerations
 
-- **`allowed_senders` enforcement:** Clients MUST check `allowed_senders` before rendering buttons as clickable. Servers receiving a `com.beeper.action_response` from a user not in `allowed_senders` SHOULD reject the event. If `allowed_senders` is empty or absent, any joined room member MAY respond.
+- **`allowed_senders` enforcement:** Clients MUST check `allowed_senders` before rendering buttons as clickable. Servers receiving a reply-based approval action from a user not in `allowed_senders` SHOULD reject the response. If `allowed_senders` is empty or absent, any joined room member MAY respond.
 - **`expires_at` validation:** Clients MUST NOT render expired buttons as clickable. The hint sender SHOULD reject responses arriving after `expires_at`, accounting for reasonable clock skew.
 - **`context` tampering:** The `context` field is opaque and passed through unchanged. The hint sender MUST NOT trust `context` values in responses without validating them against the original hint. A malicious client could modify `context` to reference a different approval or tool call.
-- **Power levels:** Sending a `com.beeper.action_response` event requires the standard power level for that event type. Room administrators MAY restrict who can send responses via power levels.
+- **Power levels:** Sending a reply message requires the standard power level for `m.room.message` events. Room administrators MAY restrict who can send response messages via power levels.
 
 ## Unstable Prefix
 
-While this proposal is not yet part of the Matrix specification, implementations MUST use the following unstable prefixes:
+While this proposal is not yet part of the Matrix specification, implementations MUST use the following unstable prefixes/keys:
 
 | Unstable | Stable (future) |
 |----------|----------------|
 | `com.beeper.action_hints` | `m.action_hints` |
-| `com.beeper.action_response` | `m.action_response` |
-| `m.from_action_hint` | No change expected |
+| `m.in_reply_to` | No change expected |
 
 ## Dependencies
 

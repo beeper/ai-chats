@@ -5,7 +5,6 @@ import (
 
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
-	"maunium.net/go/mautrix/id"
 )
 
 // DebouncedEditContent is the rendered content for a debounced streaming edit.
@@ -17,18 +16,17 @@ type DebouncedEditContent struct {
 
 // DebouncedEditParams holds the inputs needed by BuildDebouncedEditContent.
 type DebouncedEditParams struct {
-	PortalMXID     id.RoomID
-	Force          bool
-	SuppressSend   bool
-	VisibleBody    string
-	FallbackBody   string
-	InitialEventID id.EventID
+	PortalMXID   string
+	Force        bool
+	SuppressSend bool
+	VisibleBody  string
+	FallbackBody string
 }
 
 // BuildDebouncedEditContent validates inputs and renders the edit content.
 // Returns nil if the edit should be skipped.
 func BuildDebouncedEditContent(p DebouncedEditParams) *DebouncedEditContent {
-	if p.PortalMXID == "" || p.InitialEventID == "" {
+	if strings.TrimSpace(p.PortalMXID) == "" {
 		return nil
 	}
 	if p.SuppressSend {

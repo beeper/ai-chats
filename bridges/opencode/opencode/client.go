@@ -75,14 +75,6 @@ func NewClient(baseURL, username, password string) (*Client, error) {
 	}, nil
 }
 
-// BaseURL returns the normalized base URL for the client.
-func (c *Client) BaseURL() string {
-	if c == nil {
-		return ""
-	}
-	return c.baseURL
-}
-
 func (c *Client) newRequest(ctx context.Context, method, path string, body any) (*http.Request, error) {
 	var reader io.Reader
 	if body != nil {
@@ -139,11 +131,14 @@ func (c *Client) ListSessions(ctx context.Context) ([]Session, error) {
 	return sessions, nil
 }
 
-// CreateSession creates a new session with an optional title.
-func (c *Client) CreateSession(ctx context.Context, title string) (*Session, error) {
+// CreateSession creates a new session with an optional title and directory.
+func (c *Client) CreateSession(ctx context.Context, title, directory string) (*Session, error) {
 	payload := map[string]any{}
 	if strings.TrimSpace(title) != "" {
 		payload["title"] = strings.TrimSpace(title)
+	}
+	if strings.TrimSpace(directory) != "" {
+		payload["directory"] = strings.TrimSpace(directory)
 	}
 	req, err := c.newRequest(ctx, http.MethodPost, "/session", payload)
 	if err != nil {
@@ -224,32 +219,6 @@ func (c *Client) ListMessages(ctx context.Context, sessionID string, limit int) 
 		return nil, err
 	}
 	return messages, nil
-}
-
-// SendMessage sends a message to a session and waits for the assistant response.
-func (c *Client) SendMessage(ctx context.Context, sessionID, messageID string, parts []PartInput) (*MessageWithParts, error) {
-	if strings.TrimSpace(sessionID) == "" {
-		return nil, errors.New("session id is required")
-	}
-	if len(parts) == 0 {
-		return nil, errors.New("message parts are required")
-	}
-	payload := map[string]any{
-		"parts": parts,
-	}
-	if strings.TrimSpace(messageID) != "" {
-		payload["messageID"] = strings.TrimSpace(messageID)
-	}
-	path := fmt.Sprintf("/session/%s/message", url.PathEscape(sessionID))
-	req, err := c.newRequest(ctx, http.MethodPost, path, payload)
-	if err != nil {
-		return nil, err
-	}
-	var msg MessageWithParts
-	if err := c.do(req, &msg); err != nil {
-		return nil, err
-	}
-	return &msg, nil
 }
 
 // SendMessageAsync sends a message to a session asynchronously. The server

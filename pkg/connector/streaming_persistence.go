@@ -8,6 +8,7 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
@@ -61,7 +62,18 @@ func (oc *AIClient) saveAssistantMessage(
 
 	// If the message was sent via sendViaPortal, the DB row already exists — update it.
 	if state.networkMessageID != "" {
-		existing, err := oc.UserLogin.Bridge.DB.Message.GetPartByMXID(ctx, state.initialEventID)
+		receiver := portal.Receiver
+		if receiver == "" && oc.UserLogin != nil {
+			receiver = oc.UserLogin.ID
+		}
+		var existing *database.Message
+		var err error
+		if receiver != "" {
+			existing, err = oc.UserLogin.Bridge.DB.Message.GetPartByID(ctx, receiver, state.networkMessageID, networkid.PartID("0"))
+		}
+		if existing == nil && state.initialEventID != "" {
+			existing, err = oc.UserLogin.Bridge.DB.Message.GetPartByMXID(ctx, state.initialEventID)
+		}
 		if err == nil && existing != nil {
 			existing.Metadata = fullMeta
 			if err := oc.UserLogin.Bridge.DB.Message.Update(ctx, existing); err != nil {
@@ -70,7 +82,11 @@ func (oc *AIClient) saveAssistantMessage(
 				log.Debug().Str("msg_id", string(existing.ID)).Msg("Updated assistant message metadata")
 			}
 		} else {
-			log.Warn().Err(err).Stringer("mxid", state.initialEventID).Msg("Could not find existing DB row for update, falling back to insert")
+			log.Warn().
+				Err(err).
+				Stringer("mxid", state.initialEventID).
+				Str("msg_id", string(state.networkMessageID)).
+				Msg("Could not find existing DB row for update, falling back to insert")
 			oc.insertAssistantMessage(ctx, log, portal, state, modelID, fullMeta)
 		}
 	} else {
@@ -112,6 +128,9 @@ func (oc *AIClient) insertAssistantMessage(
 	modelID string,
 	meta *MessageMetadata,
 ) {
+	if state == nil || state.initialEventID == "" {
+		return
+	}
 	assistantMsg := &database.Message{
 		ID:        bridgeadapter.MatrixMessageID(state.initialEventID),
 		Room:      portal.PortalKey,

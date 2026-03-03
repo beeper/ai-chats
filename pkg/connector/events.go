@@ -171,9 +171,6 @@ const (
 	BeeperActionHintsKey  = matrixevents.BeeperActionHintsKey
 )
 
-// ActionResponseEventType is the event type for com.beeper.action_response (MSC1485).
-var ActionResponseEventType = matrixevents.ActionResponseEventType
-
 // CommandDescriptionEventType is the state event type for com.beeper.command_description.
 var CommandDescriptionEventType = matrixevents.CommandDescriptionEventType
 

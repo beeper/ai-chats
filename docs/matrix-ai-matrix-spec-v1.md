@@ -96,7 +96,6 @@ Authoritative identifiers are defined in `pkg/matrixevents/matrixevents.go`.
 | `com.beeper.ai.tool_call` | `com.beeper.ai.tool_call` event content | Tool call payload | [Projections](#projection-tool-call) |
 | `com.beeper.ai.tool_result` | `com.beeper.ai.tool_result` event content | Tool result payload | [Projections](#projection-tool-result) |
 | `com.beeper.action_hints` | `m.room.message` | Action hint buttons (Allow / Always Allow / Deny) for tool approval | [Approvals](#approvals-decision) |
-| `com.beeper.action_response` | timeline event (inbound) | User's approval/deny response to action hints | [Approvals](#approvals-decision) |
 | `com.beeper.ai.model_id` | `m.room.message` | Routing/display hint | [Other keys](#other-keys-routing) |
 | `com.beeper.ai.agent` | `m.room.message`, `m.room.member` | Routing hint or agent definition | [Other keys](#other-keys-agent) |
 | `com.beeper.ai.image_generation` | `m.room.message` (image) | Generated-image tag/metadata | [Other keys](#other-keys-media) |
@@ -452,7 +451,7 @@ When approval is needed, the bridge emits:
 
 <a id="approvals-decision"></a>
 ### Approving / Denying
-Approvals are resolved via `com.beeper.action_hints` + `com.beeper.action_response`:
+Approvals are resolved via `com.beeper.action_hints` + reply-based `m.room.message` actions:
 
 1. **Bridge sends** an `m.room.message` with `com.beeper.action_hints` content key containing Allow / Always Allow / Deny buttons, plus context (`approval_id`, `tool_call_id`, `tool_name`), `allowed_senders` (owner-only), and `expires_at`.
 
@@ -462,9 +461,9 @@ Approvals are resolved via `com.beeper.action_hints` + `com.beeper.action_respon
   "body": "Allow web_search tool?",
   "com.beeper.action_hints": {
     "hints": [
-      { "body": "Allow", "event_type": "com.beeper.action_response", "event": {"action_id": "allow"} },
-      { "body": "Always Allow", "event_type": "com.beeper.action_response", "event": {"action_id": "always"} },
-      { "body": "Deny", "event_type": "com.beeper.action_response", "event": {"action_id": "deny"} }
+      { "body": "Allow", "event_type": "m.room.message", "event": {"action_id": "allow"} },
+      { "body": "Always Allow", "event_type": "m.room.message", "event": {"action_id": "always"} },
+      { "body": "Deny", "event_type": "m.room.message", "event": {"action_id": "deny"} }
     ],
     "exclusive": true,
     "context": "{\"approval_id\":\"abc123\",\"tool_name\":\"web_search\",\"tool_call_id\":\"call_456\"}",
@@ -474,15 +473,15 @@ Approvals are resolved via `com.beeper.action_hints` + `com.beeper.action_respon
 }
 ```
 
-2. **Client sends** a `com.beeper.action_response` event with `action_id` (`"allow"`, `"always"`, or `"deny"`) and `context` (echoed from the hint), related to the hints message via `m.from_action_hint`.
+2. **Client sends** an `m.room.message` with `action_id` (`"allow"`, `"always"`, or `"deny"`) and `context` (echoed from the hint), related to the hints message via `m.in_reply_to`.
 
 ```json
 {
-  "type": "com.beeper.action_response",
+  "type": "m.room.message",
   "content": {
     "action_id": "allow",
-    "context": "{\"approval_id\":\"abc123\",\"tool_name\":\"web_search\",\"tool_call_id\":\"call_456\"}",
-    "m.relates_to": { "rel_type": "m.from_action_hint", "event_id": "$hints_event" }
+    "context": { "approval_id":"abc123","tool_name":"web_search","tool_call_id":"call_456" },
+    "m.relates_to": { "m.in_reply_to": { "event_id": "$hints_event" } }
   }
 }
 ```

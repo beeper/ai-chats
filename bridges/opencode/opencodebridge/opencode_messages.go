@@ -47,6 +47,20 @@ func (b *Bridge) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 		b.host.SendSystemNotice(ctx, portal, "OpenCode integration is not available.")
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
+	if meta != nil && meta.AwaitingPath {
+		path := strings.TrimSpace(msg.Content.Body)
+		session, err := b.manager.CreateSession(ctx, meta.InstanceID, "", path)
+		if err != nil {
+			b.host.SendSystemNotice(ctx, portal, "Failed to create session: "+err.Error())
+			return &bridgev2.MatrixMessageResponse{Pending: false}, nil
+		}
+		meta.SessionID = session.ID
+		meta.AwaitingPath = false
+		b.host.SetPortalMeta(portal, meta)
+		_ = b.host.SavePortal(ctx, portal)
+		b.host.SendSystemNotice(ctx, portal, fmt.Sprintf("Working directory set to %s", path))
+		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
+	}
 	if meta == nil || meta.InstanceID == "" || meta.SessionID == "" {
 		b.host.SendSystemNotice(ctx, portal, "OpenCode session metadata is missing for this room.")
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
@@ -146,7 +160,6 @@ func (b *Bridge) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 		return nil, errUnsupportedMessageType
 	}
 
-	b.host.SendPendingStatus(ctx, portal, msg.Event, "Sending to OpenCode...")
 	if trace {
 		if log := b.host.Log(); log != nil {
 			log.Debug().Msg("OpenCode send queued")
@@ -171,7 +184,6 @@ func (b *Bridge) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 			}
 		}
 		b.maybeFinalizeOpenCodeTitle(runCtx, portal, meta, titleCandidate)
-		b.host.SendSuccessStatus(runCtx, portal, msg.Event)
 	}()
 
 	return &bridgev2.MatrixMessageResponse{Pending: true}, nil
@@ -293,12 +305,7 @@ func (b *Bridge) opencodeSender(instanceID string, fromMe bool) bridgev2.EventSe
 }
 
 var (
-	errMissingMessageContent  = fmtError("missing message content")
-	errUnsupportedMessageType = fmtError("unsupported message type")
-	errEmptyMessage           = fmtError("empty message body")
+	errMissingMessageContent  = bridgeError("missing message content")
+	errUnsupportedMessageType = bridgeError("unsupported message type")
+	errEmptyMessage           = bridgeError("empty message body")
 )
-
-// fmtError creates a simple error without pulling in fmt.
-type fmtError string
-
-func (e fmtError) Error() string { return string(e) }

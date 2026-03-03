@@ -122,7 +122,7 @@ func (oc *AIClient) sendInitialStreamMessage(ctx context.Context, portal *bridge
 // flushPartialStreamingMessage saves the partially accumulated assistant message on context cancellation.
 // This ensures that content already streamed to Matrix is persisted in the database.
 func (oc *AIClient) flushPartialStreamingMessage(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata) {
-	if state == nil || state.initialEventID == "" || state.accumulated.Len() == 0 {
+	if state == nil || !state.hasInitialMessageTarget() || state.accumulated.Len() == 0 {
 		return
 	}
 	state.completedAtMs = time.Now().UnixMilli()
@@ -380,7 +380,7 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 	}
 
 	if cleaned != "" {
-		if state.initialEventID == "" {
+		if !state.hasInitialMessageTarget() {
 			oc.sendPlainAssistantMessage(ctx, portal, cleaned)
 		} else {
 			rendered := format.RenderMarkdown(cleaned, true, true)
@@ -419,13 +419,13 @@ func (oc *AIClient) redactInitialStreamingMessage(ctx context.Context, portal *b
 	if portal == nil || state == nil {
 		return
 	}
-	if state.initialEventID == "" {
-		return
-	}
 	if state.networkMessageID != "" {
 		if err := oc.redactViaPortal(ctx, portal, state.networkMessageID); err != nil {
 			oc.loggerForContext(ctx).Warn().Err(err).Stringer("event_id", state.initialEventID).Msg("Failed to redact streaming message via network ID")
 		}
+		return
+	}
+	if state.initialEventID == "" {
 		return
 	}
 	if err := oc.redactEventViaPortal(ctx, portal, state.initialEventID); err != nil {

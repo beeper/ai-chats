@@ -82,7 +82,7 @@ MSC4391 and `com.beeper.action_hints` serve complementary roles:
 |--------|-----------------|--------------|
 | Discovery | State events in room | Inline on messages |
 | Initiation | User-initiated (slash commands) | System-prompted (buttons) |
-| Invocation | `org.matrix.msc4391.command` in message | `com.beeper.action_response` event |
+| Invocation | `org.matrix.msc4391.command` in message | Replying `m.room.message` with `action_id` |
 | Use case | `model`, `reset`, `status`, etc. | Tool approval Allow/Deny |
 
 Both MAY be unified in the future (action hints as an alternate invocation path for commands), but currently they serve distinct UX patterns.

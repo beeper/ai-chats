@@ -16,8 +16,6 @@ type Host interface {
 	Login() *bridgev2.UserLogin
 	BackgroundContext(ctx context.Context) context.Context
 	SendSystemNotice(ctx context.Context, portal *bridgev2.Portal, msg string)
-	SendPendingStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, msg string)
-	SendSuccessStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event)
 	EmitOpenCodeStreamEvent(ctx context.Context, portal *bridgev2.Portal, turnID, agentID, targetEventID string, part map[string]any)
 	FinishOpenCodeStream(turnID string)
 	DownloadAndEncodeMedia(ctx context.Context, mediaURL string, file *event.EncryptedFileInfo, maxMB int) (string, string, error)
@@ -46,6 +44,7 @@ type PortalMeta struct {
 	TitleGenerated bool
 	AgentID        string
 	VerboseLevel   string
+	AwaitingPath   bool
 }
 
 // OpenCodeInstance stores connection details for an OpenCode server.
@@ -72,20 +71,6 @@ func NewBridge(host Host) *Bridge {
 	}
 	bridge.manager = NewOpenCodeManager(bridge)
 	return bridge
-}
-
-func (b *Bridge) Host() Host {
-	if b == nil {
-		return nil
-	}
-	return b.host
-}
-
-func (b *Bridge) Manager() *OpenCodeManager {
-	if b == nil {
-		return nil
-	}
-	return b.manager
 }
 
 func (b *Bridge) DisplayName(instanceID string) string {
@@ -116,17 +101,6 @@ func (b *Bridge) CreateSessionChat(ctx context.Context, instanceID, title string
 	return b.createOpenCodeSessionChat(ctx, instanceID, title, pendingTitle)
 }
 
-func (b *Bridge) IsAvailable() bool {
-	return b != nil && b.manager != nil
-}
-
-func (b *Bridge) IsConnected(instanceID string) bool {
-	if b == nil || b.manager == nil {
-		return false
-	}
-	return b.manager.IsConnected(instanceID)
-}
-
 func (b *Bridge) RestoreConnections(ctx context.Context) error {
 	if b == nil || b.manager == nil {
 		return nil
@@ -139,24 +113,6 @@ func (b *Bridge) DisconnectAll() {
 		return
 	}
 	b.manager.DisconnectAll()
-}
-
-func (b *Bridge) Connect(ctx context.Context, baseURL, password, username string) (*OpenCodeInstance, int, error) {
-	if b == nil || b.manager == nil {
-		return nil, 0, ErrUnavailable
-	}
-	inst, count, err := b.manager.Connect(ctx, baseURL, password, username)
-	if inst == nil || err != nil {
-		return nil, count, err
-	}
-	return &inst.cfg, count, err
-}
-
-func (b *Bridge) RemoveInstance(ctx context.Context, instanceID string) error {
-	if b == nil || b.manager == nil {
-		return ErrUnavailable
-	}
-	return b.manager.RemoveInstance(ctx, instanceID)
 }
 
 var (

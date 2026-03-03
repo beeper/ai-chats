@@ -35,7 +35,6 @@ import (
 
 var _ bridgev2.NetworkAPI = (*CodexClient)(nil)
 var _ bridgev2.DeleteChatHandlingNetworkAPI = (*CodexClient)(nil)
-var _ bridgev2.ActionResponseHandlingNetworkAPI = (*CodexClient)(nil)
 
 const codexGhostID = networkid.UserID("codex")
 
@@ -389,6 +388,28 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 
+	if meta.AwaitingCwdSetup {
+		path := strings.TrimSpace(msg.Content.Body)
+		info, err := os.Stat(path)
+		if err != nil || !info.IsDir() {
+			cc.sendSystemNotice(ctx, portal, "That path doesn't exist or isn't a directory. Send a valid absolute path.")
+			return &bridgev2.MatrixMessageResponse{Pending: false}, nil
+		}
+		meta.CodexCwd = path
+		meta.AwaitingCwdSetup = false
+		if err := portal.Save(ctx); err != nil {
+			return nil, messageSendStatusError(err, "Failed to save portal.", "")
+		}
+		if err := cc.ensureRPC(cc.backgroundContext(ctx)); err != nil {
+			return nil, messageSendStatusError(err, "Codex isn't available. Sign in again.", "")
+		}
+		if err := cc.ensureCodexThread(ctx, portal, meta); err != nil {
+			return nil, messageSendStatusError(err, "Failed to start Codex thread.", "")
+		}
+		cc.sendSystemNotice(ctx, portal, fmt.Sprintf("Working directory set to %s", path))
+		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
+	}
+
 	if err := cc.ensureRPC(cc.backgroundContext(ctx)); err != nil {
 		return nil, messageSendStatusError(err, "Codex isn't available. Sign in again.", "")
 	}
@@ -469,14 +490,14 @@ func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, met
 
 	// Post placeholder timeline message immediately to get an event id for streaming.
 	state.initialEventID = cc.sendInitialStreamMessage(ctx, portal, state, "...", state.turnID)
-	if state.initialEventID == "" {
+	if !state.hasInitialMessageTarget() {
 		log.Warn().Msg("Failed to send initial streaming message")
 		return
 	}
 	cc.emitUIStart(ctx, portal, state, model)
 	cc.uiEmitter(state).EmitUIStepStart(ctx, portal)
 
-	approvalPolicy := "unlessTrusted"
+	approvalPolicy := "untrusted"
 	if lvl, _ := stringutil.NormalizeElevatedLevel(meta.ElevatedLevel); lvl == "full" {
 		approvalPolicy = "never"
 	}
@@ -1324,10 +1345,19 @@ func (cc *CodexClient) ensureDefaultCodexChat(ctx context.Context) error {
 			return err
 		}
 		cc.sendSystemNotice(ctx, portal, "AI Chats can make mistakes.")
+		cc.sendSystemNotice(ctx, portal, "What directory should Codex work in? Send an absolute path.")
+		meta.AwaitingCwdSetup = true
+		if err := portal.Save(ctx); err != nil {
+			return err
+		}
+		return nil
 	}
 
-	// Ensure thread started at a temp dir.
-	return cc.ensureCodexThread(ctx, portal, meta)
+	// Ensure thread started if directory is already set.
+	if strings.TrimSpace(meta.CodexCwd) != "" {
+		return cc.ensureCodexThread(ctx, portal, meta)
+	}
+	return nil
 }
 
 func (cc *CodexClient) composeCodexChatInfo(title string) *bridgev2.ChatInfo {
@@ -1387,19 +1417,10 @@ func (cc *CodexClient) ensureCodexThread(ctx context.Context, portal *bridgev2.P
 		return errors.New("missing portal/meta")
 	}
 	if strings.TrimSpace(meta.CodexCwd) == "" {
-		cwd, err := os.MkdirTemp("", "ai-bridge-codex-*")
-		if err != nil {
-			return err
-		}
-		meta.CodexCwd = cwd
+		return errors.New("codex working directory not set")
 	}
 	if _, err := os.Stat(meta.CodexCwd); err != nil {
-		cwd, mkErr := os.MkdirTemp("", "ai-bridge-codex-*")
-		if mkErr != nil {
-			return mkErr
-		}
-		meta.CodexCwd = cwd
-		meta.CodexThreadID = ""
+		return fmt.Errorf("working directory %s no longer exists", meta.CodexCwd)
 	}
 	if err := portal.Save(ctx); err != nil {
 		return err
@@ -1421,7 +1442,7 @@ func (cc *CodexClient) ensureCodexThread(ctx context.Context, portal *bridgev2.P
 	err := cc.rpc.Call(callCtx, "thread/start", map[string]any{
 		"model":          model,
 		"cwd":            meta.CodexCwd,
-		"approvalPolicy": "unlessTrusted",
+		"approvalPolicy": "untrusted",
 		"sandboxPolicy":  cc.buildSandboxPolicy(meta.CodexCwd),
 	}, &resp)
 	if err != nil {
@@ -1468,7 +1489,7 @@ func (cc *CodexClient) ensureCodexThreadLoaded(ctx context.Context, portal *brid
 		"threadId":       threadID,
 		"model":          cc.connector.Config.Codex.DefaultModel,
 		"cwd":            meta.CodexCwd,
-		"approvalPolicy": "unlessTrusted",
+		"approvalPolicy": "untrusted",
 		"sandboxPolicy":  cc.buildSandboxPolicy(meta.CodexCwd),
 	}, &resp)
 	if err != nil {
@@ -1888,44 +1909,6 @@ func (cc *CodexClient) sendActionHintsApprovalEvent(
 	}
 }
 
-// HandleMatrixActionResponse handles com.beeper.action_response events (MSC1485 action hints).
-// This implements bridgev2.ActionResponseHandlingNetworkAPI.
-func (cc *CodexClient) HandleMatrixActionResponse(ctx context.Context, msg *bridgev2.MatrixActionResponse) error {
-	if msg == nil || msg.Event == nil || msg.Content == nil || msg.Portal == nil {
-		return nil
-	}
-	log := cc.loggerForContext(ctx)
-
-	parsed := bridgeadapter.ParseActionResponse(msg.Content)
-	if parsed == nil {
-		log.Warn().Msg("action response: failed to parse payload")
-		return nil
-	}
-
-	approve, _, ok := bridgeadapter.ActionDecisionFromString(parsed.ActionID)
-	if !ok {
-		log.Warn().Str("action_id", parsed.ActionID).Msg("action response: unknown action_id")
-		return nil
-	}
-
-	approvalID := strings.TrimSpace(parsed.ApprovalID)
-	if approvalID == "" {
-		log.Warn().Msg("action response: missing approval_id in context")
-		return nil
-	}
-
-	err := cc.resolveToolApproval(approvalID, ToolApprovalDecisionCodex{
-		Approve:   approve,
-		DecidedAt: time.Now(),
-		DecidedBy: msg.Event.Sender,
-	})
-	if err != nil {
-		log.Warn().Err(err).Str("approval_id", approvalID).Msg("action response: failed to resolve approval")
-		cc.sendToast(ctx, msg.Portal, bridgeadapter.ApprovalErrorToastText(err), aiToastTypeError)
-	}
-	return nil
-}
-
 func (cc *CodexClient) emitUIFinish(ctx context.Context, portal *bridgev2.Portal, state *streamingState, model string, finishReason string) {
 	cc.uiEmitter(state).EmitUIFinish(ctx, portal, finishReason, cc.buildUIMessageMetadata(state, model, true, finishReason))
 	if state != nil && state.session != nil {
@@ -1953,7 +1936,7 @@ func (cc *CodexClient) buildCanonicalUIMessage(state *streamingState, model stri
 }
 
 func (cc *CodexClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2.Portal, state *streamingState, model string, finishReason string) {
-	if portal == nil || portal.MXID == "" || state == nil || state.initialEventID == "" {
+	if portal == nil || portal.MXID == "" || state == nil || !state.hasInitialMessageTarget() {
 		return
 	}
 	if state.suppressSend {
@@ -2044,7 +2027,7 @@ func (cc *CodexClient) sendContinuationMessage(ctx context.Context, portal *brid
 }
 
 func (cc *CodexClient) saveAssistantMessage(ctx context.Context, portal *bridgev2.Portal, state *streamingState, model string, finishReason string) {
-	if portal == nil || state == nil || state.initialEventID == "" {
+	if portal == nil || state == nil || !state.hasInitialMessageTarget() {
 		return
 	}
 	log := cc.loggerForContext(ctx)
@@ -2082,7 +2065,18 @@ func (cc *CodexClient) saveAssistantMessage(ctx context.Context, portal *bridgev
 
 	// If the message was sent via sendViaPortal, the DB row already exists — update it.
 	if state.networkMessageID != "" {
-		existing, err := cc.UserLogin.Bridge.DB.Message.GetPartByMXID(ctx, state.initialEventID)
+		receiver := portal.Receiver
+		if receiver == "" && cc.UserLogin != nil {
+			receiver = cc.UserLogin.ID
+		}
+		var existing *database.Message
+		var err error
+		if receiver != "" {
+			existing, err = cc.UserLogin.Bridge.DB.Message.GetPartByID(ctx, receiver, state.networkMessageID, networkid.PartID("0"))
+		}
+		if existing == nil && state.initialEventID != "" {
+			existing, err = cc.UserLogin.Bridge.DB.Message.GetPartByMXID(ctx, state.initialEventID)
+		}
 		if err == nil && existing != nil {
 			existing.Metadata = fullMeta
 			if err := cc.UserLogin.Bridge.DB.Message.Update(ctx, existing); err != nil {
@@ -2092,7 +2086,14 @@ func (cc *CodexClient) saveAssistantMessage(ctx context.Context, portal *bridgev
 			}
 			return
 		}
-		log.Warn().Err(err).Stringer("mxid", state.initialEventID).Msg("Could not find existing DB row for update, falling back to insert")
+		log.Warn().
+			Err(err).
+			Stringer("mxid", state.initialEventID).
+			Str("msg_id", string(state.networkMessageID)).
+			Msg("Could not find existing DB row for update, falling back to insert")
+	}
+	if state.initialEventID == "" {
+		return
 	}
 
 	assistantMsg := &database.Message{

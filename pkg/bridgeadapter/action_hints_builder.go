@@ -3,7 +3,6 @@ package bridgeadapter
 import (
 	"encoding/json"
 
-	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
 
@@ -18,39 +17,27 @@ type ApprovalHintsParams struct {
 
 // BuildApprovalHints constructs the standard Allow / Always Allow / Deny action hints
 // used for tool approval requests.
-func BuildApprovalHints(params ApprovalHintsParams) *event.BeeperActionHints {
+func BuildApprovalHints(params ApprovalHintsParams) map[string]any {
 	contextData, _ := json.Marshal(map[string]any{
 		"approval_id":  params.ApprovalID,
 		"tool_name":    params.ToolName,
 		"tool_call_id": params.ToolCallID,
 	})
 
-	hints := &event.BeeperActionHints{
-		Hints: []event.BeeperActionHint{
-			{
-				Body:      "Allow",
-				EventType: "com.beeper.action_response",
-				Event:     json.RawMessage(`{"action_id":"allow"}`),
-			},
-			{
-				Body:      "Always Allow",
-				EventType: "com.beeper.action_response",
-				Event:     json.RawMessage(`{"action_id":"always"}`),
-			},
-			{
-				Body:      "Deny",
-				EventType: "com.beeper.action_response",
-				Event:     json.RawMessage(`{"action_id":"deny"}`),
-			},
+	hints := map[string]any{
+		"hints": []map[string]any{
+			{"body": "Allow", "event_type": "m.room.message", "event": json.RawMessage(`{"action_id":"allow"}`)},
+			{"body": "Always Allow", "event_type": "m.room.message", "event": json.RawMessage(`{"action_id":"always"}`)},
+			{"body": "Deny", "event_type": "m.room.message", "event": json.RawMessage(`{"action_id":"deny"}`)},
 		},
-		Exclusive: true,
-		Context:   contextData,
+		"exclusive": true,
+		"context":   contextData,
 	}
 	if params.OwnerMXID != "" {
-		hints.AllowedSenders = []id.UserID{params.OwnerMXID}
+		hints["allowed_senders"] = []id.UserID{params.OwnerMXID}
 	}
 	if params.ExpiresAtMs > 0 {
-		hints.ExpiresAt = params.ExpiresAtMs
+		hints["expires_at"] = params.ExpiresAtMs
 	}
 	return hints
 }

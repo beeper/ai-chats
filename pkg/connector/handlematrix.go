@@ -1448,9 +1448,9 @@ func (oc *AIClient) buildPromptForRegenerate(
 }
 
 // tryReplyApprovalFallback checks whether an incoming message is a reply to a
-// pending action hints approval event with an approval action as body text.
-// Supports bare actions ("allow", "deny", "always") and the /respond prefix
-// ("/respond allow"). Returns (true, response) if handled, (false, nil) otherwise.
+// pending action-hints approval message. If it is, an action can be provided in
+// message metadata (action_id) or text form (allow/deny/always or /respond allow).
+// Returns (true, response) if handled, (false, nil) otherwise.
 func (oc *AIClient) tryReplyApprovalFallback(
 	ctx context.Context,
 	msg *bridgev2.MatrixMessage,
@@ -1466,18 +1466,26 @@ func (oc *AIClient) tryReplyApprovalFallback(
 
 	approvalID := oc.findApprovalByEventID(replyTo)
 	if approvalID == "" {
+		approvalID = oc.lookupApprovalIDFromMessage(msg.Event)
+		if approvalID == "" {
+			return false, nil
+		}
+	}
+
+	actionID := parseMessageActionID(msg.Event)
+	if actionID == "" {
+		body := strings.TrimSpace(msg.Content.Body)
+		body = strings.TrimPrefix(body, "/respond ")
+		body = strings.TrimPrefix(body, "/respond")
+		body = strings.TrimSpace(body)
+		actionID = body
+	}
+
+	if actionID == "" {
 		return false, nil
 	}
 
-	body := strings.TrimSpace(msg.Content.Body)
-	body = strings.TrimPrefix(body, "/respond ")
-	body = strings.TrimPrefix(body, "/respond")
-	body = strings.TrimSpace(body)
-	if body == "" {
-		return false, nil
-	}
-
-	approve, always, ok := bridgeadapter.ActionDecisionFromString(body)
+	approve, always, ok := bridgeadapter.ActionDecisionFromString(actionID)
 	if !ok {
 		return false, nil
 	}
@@ -1500,4 +1508,37 @@ func (oc *AIClient) tryReplyApprovalFallback(
 		oc.sendApprovalRejectionEvent(ctx, portal, approvalID, err)
 	}
 	return true, &bridgev2.MatrixMessageResponse{Pending: false}
+}
+
+func parseMessageActionID(evt *event.Event) string {
+	if evt == nil || evt.Content.Raw == nil {
+		return ""
+	}
+	actionID, ok := evt.Content.Raw["action_id"].(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(actionID)
+}
+
+func (oc *AIClient) lookupApprovalIDFromMessage(evt *event.Event) string {
+	if evt == nil || evt.Content.Raw == nil {
+		return ""
+	}
+
+	rawContext, ok := evt.Content.Raw["context"]
+	if !ok || rawContext == nil {
+		return ""
+	}
+
+	contextMap, ok := rawContext.(map[string]any)
+	if !ok {
+		return ""
+	}
+
+	approvalID, ok := contextMap["approval_id"].(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(approvalID)
 }

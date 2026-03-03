@@ -33,7 +33,10 @@ func (oc *AIClient) ensureInitialStreamMessage(
 	if !state.suppressSend && !isHeartbeat {
 		oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
 		state.initialEventID = oc.sendInitialStreamMessage(ctx, portal, state, initialText, state.turnID, state.replyTarget)
-		if state.initialEventID == "" {
+		// Some older homeserver/client combinations may accept the send but not
+		// return the event ID immediately. In that case, networkMessageID is still
+		// sufficient for subsequent debounced/final edits.
+		if !state.hasInitialMessageTarget() {
 			log.Error().Msg(logMessage)
 			state.finishReason = "error"
 			oc.uiEmitter(state).EmitUIError(ctx, portal, errText)
