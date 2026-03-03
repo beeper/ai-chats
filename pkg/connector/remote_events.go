@@ -15,6 +15,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
+	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 )
 
 // -----------------------------------------------------------------------
@@ -153,6 +154,7 @@ func (e *AIRemoteEdit) ConvertEdit(_ context.Context, _ *bridgev2.Portal, _ brid
 			}
 		}
 	}
+	streamtransport.EnsureDontRenderEdited(e.preBuilt)
 	return e.preBuilt, nil
 }
 
