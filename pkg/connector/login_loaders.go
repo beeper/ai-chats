@@ -102,4 +102,3 @@ func (oc *OpenAIConnector) reuseExistingClient(login *bridgev2.UserLogin, existi
 	login.Client = existing
 	oc.clientsMu.Unlock()
 }
-
