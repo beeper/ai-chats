@@ -55,25 +55,9 @@ func fnSimple(ce *commands.Event) {
 		var sb strings.Builder
 		sb.WriteString("Available models:\n\n")
 		for _, m := range models {
-			var caps []string
-			if m.SupportsVision {
-				caps = append(caps, "Vision")
-			}
-			if m.SupportsReasoning {
-				caps = append(caps, "Reasoning")
-			}
-			if m.SupportsWebSearch {
-				caps = append(caps, "Web Search")
-			}
-			if m.SupportsImageGen {
-				caps = append(caps, "Image Gen")
-			}
-			if m.SupportsToolCalling {
-				caps = append(caps, "Tools")
-			}
 			sb.WriteString(fmt.Sprintf("• **%s** (`%s`)\n", m.Name, m.ID))
-			if len(caps) > 0 {
-				sb.WriteString(fmt.Sprintf("  %s\n", strings.Join(caps, " · ")))
+			if caps := formatModelCapabilities(m); caps != "" {
+				sb.WriteString(fmt.Sprintf("  %s\n", caps))
 			}
 			sb.WriteString("\n")
 		}

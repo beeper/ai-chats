@@ -77,16 +77,8 @@ func copyToolDefinitions(defs []ToolDefinition) []ToolDefinition {
 	return out
 }
 
-func copyStringMap(src map[string]string) map[string]string {
-	if len(src) == 0 {
-		return nil
-	}
-	return maps.Clone(src)
-}
-
 func (oc *AIClient) mcpRequestTimeout() time.Duration {
-	timeoutSeconds := defaultMCPTimeoutSeconds
-	return time.Duration(timeoutSeconds) * time.Second
+	return time.Duration(defaultMCPTimeoutSeconds) * time.Second
 }
 
 func (oc *AIClient) mcpHTTPClientForServer(server namedMCPServer) (*http.Client, error) {
@@ -102,17 +94,6 @@ func (oc *AIClient) mcpHTTPClientForServer(server namedMCPServer) (*http.Client,
 		},
 	}
 	return client, nil
-}
-
-func mcpLoggingMiddleware() mcp.Middleware {
-	return func(next mcp.MethodHandler) mcp.MethodHandler {
-		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
-			start := time.Now()
-			result, err := next(ctx, method, req)
-			_ = start // latency available via time.Since(start) if a logger is wired in
-			return result, err
-		}
-	}
 }
 
 func (oc *AIClient) newMCPSession(ctx context.Context, server namedMCPServer) (*mcp.ClientSession, error) {
@@ -131,7 +112,6 @@ func (oc *AIClient) newMCPSession(ctx context.Context, server namedMCPServer) (*
 		Name:    "ai-bridge",
 		Version: "1.0.0",
 	}, nil)
-	client.AddSendingMiddleware(mcpLoggingMiddleware())
 
 	var (
 		session *mcp.ClientSession
@@ -207,9 +187,6 @@ func (oc *AIClient) mcpToolDefinitions(ctx context.Context) ([]ToolDefinition, e
 	if !oc.isMCPConfigured() {
 		return nil, nil
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
 
 	now := time.Now()
 	oc.mcpToolsMu.Lock()
@@ -220,18 +197,12 @@ func (oc *AIClient) mcpToolDefinitions(ctx context.Context) ([]ToolDefinition, e
 	}
 	oc.mcpToolsMu.Unlock()
 
-	callCtx := ctx
-	var cancel context.CancelFunc
-	if _, hasDeadline := callCtx.Deadline(); !hasDeadline {
-		timeout := oc.mcpRequestTimeout()
-		if timeout > 10*time.Second {
-			timeout = 10 * time.Second
-		}
-		callCtx, cancel = context.WithTimeout(ctx, timeout)
+	timeout := oc.mcpRequestTimeout()
+	if timeout > 10*time.Second {
+		timeout = 10 * time.Second
 	}
-	if cancel != nil {
-		defer cancel()
-	}
+	callCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 
 	servers := oc.activeMCPServers()
 	var combined []ToolDefinition
@@ -265,7 +236,7 @@ func (oc *AIClient) mcpToolDefinitions(ctx context.Context) ([]ToolDefinition, e
 	oc.mcpToolsMu.Lock()
 	oc.mcpTools = copyToolDefinitions(combined)
 	oc.mcpToolSet = toolSet
-	oc.mcpToolServer = copyStringMap(toolServer)
+	oc.mcpToolServer = maps.Clone(toolServer)
 	oc.mcpToolsFetchedAt = time.Now()
 	oc.mcpToolsMu.Unlock()
 
@@ -365,17 +336,10 @@ func (oc *AIClient) mcpServerForTool(ctx context.Context, toolName string) (name
 	return servers[0], true
 }
 
-func (oc *AIClient) isMCPToolName(name string) bool {
-	return oc.hasCachedMCPTool(name)
-}
-
 func (oc *AIClient) shouldUseMCPTool(ctx context.Context, toolName string) bool {
 	toolName = strings.TrimSpace(toolName)
 	if toolName == "" || !oc.isMCPConfigured() {
 		return false
-	}
-	if ctx == nil {
-		ctx = context.Background()
 	}
 	if oc.hasCachedMCPTool(toolName) {
 		return true
@@ -524,18 +488,9 @@ func (oc *AIClient) executeMCPTool(ctx context.Context, toolName string, args ma
 	if !oc.isMCPConfigured() {
 		return "", errors.New("MCP tools are not configured (add an MCP server with !ai mcp add/connect)")
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
 
-	callCtx := ctx
-	var cancel context.CancelFunc
-	if _, hasDeadline := callCtx.Deadline(); !hasDeadline {
-		callCtx, cancel = context.WithTimeout(ctx, oc.mcpRequestTimeout())
-	}
-	if cancel != nil {
-		defer cancel()
-	}
+	callCtx, cancel := context.WithTimeout(ctx, oc.mcpRequestTimeout())
+	defer cancel()
 
 	server, ok := oc.mcpServerForTool(callCtx, toolName)
 	if !ok {

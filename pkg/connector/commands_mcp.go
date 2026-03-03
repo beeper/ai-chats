@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/commands"
 
 	"github.com/beeper/ai-bridge/pkg/connector/commandregistry"
@@ -45,23 +46,17 @@ func fnMCPCommand(ce *commands.Event) {
 		return
 	}
 
-	sub := strings.ToLower(strings.TrimSpace(ce.Args[0]))
-	switch sub {
+	switch strings.ToLower(strings.TrimSpace(ce.Args[0])) {
 	case "list":
 		fnMCPList(ce, client)
-		return
 	case "add":
 		fnMCPAdd(ce, client)
-		return
 	case "connect":
 		fnMCPConnect(ce, client)
-		return
 	case "disconnect":
 		fnMCPDisconnect(ce, client)
-		return
 	case "remove":
 		fnMCPRemove(ce, client)
-		return
 	default:
 		ce.Reply("Usage: %s", mcpManageUsage(allowStdio))
 	}
@@ -115,10 +110,8 @@ func fnMCPList(ce *commands.Event, client *AIClient) {
 	ce.Reply("MCP servers:\n%s", strings.Join(lines, "\n"))
 }
 
-func parseMCPHTTPAuthArgs(rest []string) (token string, authType string, authURL string) {
-	token = ""
+func parseMCPHTTPAuthArgs(rest []string) (token, authType, authURL string) {
 	authType = "bearer"
-	authURL = ""
 	if len(rest) > 0 {
 		token = strings.TrimSpace(rest[0])
 	}
@@ -128,7 +121,7 @@ func parseMCPHTTPAuthArgs(rest []string) (token string, authType string, authURL
 	if len(rest) > 2 {
 		authURL = strings.TrimSpace(strings.Join(rest[2:], " "))
 	}
-	return token, authType, authURL
+	return
 }
 
 func parseMCPAddArgs(args []string, allowStdio bool) (name string, cfg MCPServerConfig, err error) {
@@ -139,19 +132,11 @@ func parseMCPAddArgs(args []string, allowStdio bool) (name string, cfg MCPServer
 			trimmed = append(trimmed, part)
 		}
 	}
-	if len(trimmed) == 0 {
-		return "", MCPServerConfig{}, errors.New("missing args")
-	}
-
 	if len(trimmed) < 2 {
 		return "", MCPServerConfig{}, errors.New("missing target")
 	}
 	name = normalizeMCPServerName(trimmed[0])
 	targetIndex := 1
-
-	if targetIndex >= len(trimmed) {
-		return "", MCPServerConfig{}, errors.New("missing target")
-	}
 
 	rawTransportOrTarget := strings.TrimSpace(trimmed[targetIndex])
 	normalizedTransport := normalizeMCPServerTransport(rawTransportOrTarget)
@@ -202,14 +187,8 @@ func parseMCPAddArgs(args []string, allowStdio bool) (name string, cfg MCPServer
 }
 
 func fnMCPAdd(ce *commands.Event, client *AIClient) {
-	login := client.UserLogin
-	if login == nil {
-		ce.Reply("You're not signed in. Sign in and try again.")
-		return
-	}
-	meta := loginMetadata(login)
-	if meta == nil {
-		ce.Reply("Couldn't load your settings. Try again.")
+	login, meta, ok := requireLoginMeta(ce, client)
+	if !ok {
 		return
 	}
 
@@ -266,6 +245,22 @@ func resolveMCPServerArg(client *AIClient, args []string) (namedMCPServer, strin
 	return namedMCPServer{}, "", errors.New("not found")
 }
 
+// requireLoginMeta validates that the client has a login and loadable metadata.
+// Returns nil metadata on failure (after replying to the user).
+func requireLoginMeta(ce *commands.Event, client *AIClient) (*bridgev2.UserLogin, *UserLoginMetadata, bool) {
+	login := client.UserLogin
+	if login == nil {
+		ce.Reply("You're not signed in. Sign in and try again.")
+		return nil, nil, false
+	}
+	meta := loginMetadata(login)
+	if meta == nil {
+		ce.Reply("Couldn't load your settings. Try again.")
+		return nil, nil, false
+	}
+	return login, meta, true
+}
+
 func sendMCPAuthURLNotice(client *AIClient, ce *commands.Event, server namedMCPServer) {
 	if strings.TrimSpace(server.Config.AuthURL) == "" {
 		return
@@ -281,26 +276,29 @@ func sendMCPAuthURLNotice(client *AIClient, ce *commands.Event, server namedMCPS
 }
 
 func (oc *AIClient) verifyMCPServerConnection(ctx context.Context, server namedMCPServer) (int, error) {
-	if ctx == nil {
-		ctx = context.Background()
+	timeout := oc.mcpRequestTimeout()
+	if timeout > 10*time.Second {
+		timeout = 10 * time.Second
 	}
-	callCtx := ctx
-	var cancel context.CancelFunc
-	if _, hasDeadline := callCtx.Deadline(); !hasDeadline {
-		timeout := oc.mcpRequestTimeout()
-		if timeout > 10*time.Second {
-			timeout = 10 * time.Second
-		}
-		callCtx, cancel = context.WithTimeout(ctx, timeout)
-	}
-	if cancel != nil {
-		defer cancel()
-	}
+	callCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
 	defs, err := oc.fetchMCPToolsForServer(callCtx, server)
 	if err != nil {
 		return 0, err
 	}
 	return len(defs), nil
+}
+
+func replyMCPResolveError(ce *commands.Event, err error) {
+	switch err.Error() {
+	case "none configured":
+		ce.Reply("No MCP servers are set up yet. Run `!ai mcp add` first.")
+	case "ambiguous":
+		ce.Reply("Multiple MCP servers are set up. Include a server name, or run `!ai mcp list`.")
+	default:
+		ce.Reply("Couldn't find that MCP server. Run `!ai mcp list`.")
+	}
 }
 
 func setLoginMCPServer(meta *UserLoginMetadata, name string, cfg MCPServerConfig) {
@@ -327,27 +325,14 @@ func clearLoginMCPServer(meta *UserLoginMetadata, name string) {
 }
 
 func fnMCPConnect(ce *commands.Event, client *AIClient) {
-	login := client.UserLogin
-	if login == nil {
-		ce.Reply("You're not signed in. Sign in and try again.")
-		return
-	}
-	meta := loginMetadata(login)
-	if meta == nil {
-		ce.Reply("Couldn't load your settings. Try again.")
+	login, meta, ok := requireLoginMeta(ce, client)
+	if !ok {
 		return
 	}
 
 	target, tokenOverride, err := resolveMCPServerArg(client, ce.Args[1:])
 	if err != nil {
-		switch err.Error() {
-		case "none configured":
-			ce.Reply("No MCP servers are set up yet. Run `!ai mcp add` first.")
-		case "ambiguous":
-			ce.Reply("Multiple MCP servers are set up. Include a server name, or run `!ai mcp list`.")
-		default:
-			ce.Reply("Couldn't find that MCP server. Run `!ai mcp list`.")
-		}
+		replyMCPResolveError(ce, err)
 		return
 	}
 
@@ -402,27 +387,14 @@ func fnMCPConnect(ce *commands.Event, client *AIClient) {
 }
 
 func fnMCPDisconnect(ce *commands.Event, client *AIClient) {
-	login := client.UserLogin
-	if login == nil {
-		ce.Reply("You're not signed in. Sign in and try again.")
-		return
-	}
-	meta := loginMetadata(login)
-	if meta == nil {
-		ce.Reply("Couldn't load your settings. Try again.")
+	login, meta, ok := requireLoginMeta(ce, client)
+	if !ok {
 		return
 	}
 
 	target, _, err := resolveMCPServerArg(client, ce.Args[1:])
 	if err != nil {
-		switch err.Error() {
-		case "none configured":
-			ce.Reply("No MCP servers are set up yet.")
-		case "ambiguous":
-			ce.Reply("Multiple MCP servers are set up. Include a server name, or run `!ai mcp list`.")
-		default:
-			ce.Reply("Couldn't find that MCP server. Run `!ai mcp list`.")
-		}
+		replyMCPResolveError(ce, err)
 		return
 	}
 
@@ -438,27 +410,14 @@ func fnMCPDisconnect(ce *commands.Event, client *AIClient) {
 }
 
 func fnMCPRemove(ce *commands.Event, client *AIClient) {
-	login := client.UserLogin
-	if login == nil {
-		ce.Reply("You're not signed in. Sign in and try again.")
-		return
-	}
-	meta := loginMetadata(login)
-	if meta == nil {
-		ce.Reply("Couldn't load your settings. Try again.")
+	login, meta, ok := requireLoginMeta(ce, client)
+	if !ok {
 		return
 	}
 
 	target, _, err := resolveMCPServerArg(client, ce.Args[1:])
 	if err != nil {
-		switch err.Error() {
-		case "none configured":
-			ce.Reply("No MCP servers are set up yet.")
-		case "ambiguous":
-			ce.Reply("Multiple MCP servers are set up. Include a server name, or run `!ai mcp list`.")
-		default:
-			ce.Reply("Couldn't find that MCP server. Run `!ai mcp list`.")
-		}
+		replyMCPResolveError(ce, err)
 		return
 	}
 

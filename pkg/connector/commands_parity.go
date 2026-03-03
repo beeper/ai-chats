@@ -127,20 +127,14 @@ var CommandStop = registerAICommand(commandregistry.Definition{
 })
 
 func fnStop(ce *commands.Event) {
-	portal, ok := requirePortal(ce)
+	if _, ok := requirePortal(ce); !ok {
+		return
+	}
+	client, meta, ok := requireClientMeta(ce)
 	if !ok {
 		return
 	}
-	meta := getPortalMeta(ce)
-	if meta == nil {
-		ce.Reply("Couldn't load room settings. Try again.")
-		return
-	}
-	client, _, ok := requireClientMeta(ce)
-	if !ok {
-		return
-	}
-	stopped := client.abortRoom(ce.Ctx, portal, meta)
+	stopped := client.abortRoom(ce.Ctx, ce.Portal, meta)
 	ce.Reply("%s", formatAbortNotice(stopped))
 }
 

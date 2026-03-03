@@ -146,6 +146,27 @@ func splitQuotedArgs(input string) ([]string, error) {
 	return args, nil
 }
 
+// formatModelCapabilities returns a human-readable capability tag list for a model.
+func formatModelCapabilities(m ModelInfo) string {
+	var caps []string
+	if m.SupportsVision {
+		caps = append(caps, "Vision")
+	}
+	if m.SupportsReasoning {
+		caps = append(caps, "Reasoning")
+	}
+	if m.SupportsWebSearch {
+		caps = append(caps, "Web Search")
+	}
+	if m.SupportsImageGen {
+		caps = append(caps, "Image Gen")
+	}
+	if m.SupportsToolCalling {
+		caps = append(caps, "Tools")
+	}
+	return strings.Join(caps, " · ")
+}
+
 // CommandModel handles the !ai model command
 var CommandModel = registerAICommand(commandregistry.Definition{
 	Name:           "model",
@@ -456,6 +477,28 @@ func fnConfig(ce *commands.Event) {
 	ce.Reply(config)
 }
 
+// formatDesktopInstanceList returns a formatted string of desktop API instances.
+func formatDesktopInstanceList(client *AIClient) string {
+	instances := client.desktopAPIInstances()
+	if len(instances) == 0 {
+		return "Desktop API instances: none configured"
+	}
+	lines := make([]string, 0, len(instances))
+	for _, name := range client.desktopAPIInstanceNames() {
+		config := instances[name]
+		status := "set"
+		if strings.TrimSpace(config.Token) == "" {
+			status = "missing token"
+		}
+		if strings.TrimSpace(config.BaseURL) != "" {
+			lines = append(lines, fmt.Sprintf("- %s: %s (base URL %s)", name, status, strings.TrimSpace(config.BaseURL)))
+		} else {
+			lines = append(lines, fmt.Sprintf("- %s: %s", name, status))
+		}
+	}
+	return "Desktop API instances:\n" + strings.Join(lines, "\n")
+}
+
 func fnSetDesktopAPIToken(ce *commands.Event) {
 	client, ok := requireClient(ce)
 	if !ok {
@@ -473,25 +516,7 @@ func fnSetDesktopAPIToken(ce *commands.Event) {
 	}
 
 	if len(ce.Args) == 0 {
-		instances := client.desktopAPIInstances()
-		if len(instances) == 0 {
-			ce.Reply("Desktop API instances: none configured")
-			return
-		}
-		lines := make([]string, 0, len(instances))
-		for _, name := range client.desktopAPIInstanceNames() {
-			config := instances[name]
-			status := "set"
-			if strings.TrimSpace(config.Token) == "" {
-				status = "missing token"
-			}
-			if strings.TrimSpace(config.BaseURL) != "" {
-				lines = append(lines, fmt.Sprintf("- %s: %s (base URL %s)", name, status, strings.TrimSpace(config.BaseURL)))
-			} else {
-				lines = append(lines, fmt.Sprintf("- %s: %s", name, status))
-			}
-		}
-		ce.Reply("Desktop API instances:\n%s", strings.Join(lines, "\n"))
+		ce.Reply("%s", formatDesktopInstanceList(client))
 		return
 	}
 
@@ -650,25 +675,7 @@ func fnListDesktopAPIInstances(ce *commands.Event) {
 	if !ok {
 		return
 	}
-	instances := client.desktopAPIInstances()
-	if len(instances) == 0 {
-		ce.Reply("Desktop API instances: none configured")
-		return
-	}
-	lines := make([]string, 0, len(instances))
-	for _, name := range client.desktopAPIInstanceNames() {
-		config := instances[name]
-		status := "set"
-		if strings.TrimSpace(config.Token) == "" {
-			status = "missing token"
-		}
-		if strings.TrimSpace(config.BaseURL) != "" {
-			lines = append(lines, fmt.Sprintf("- %s: %s (base URL %s)", name, status, strings.TrimSpace(config.BaseURL)))
-		} else {
-			lines = append(lines, fmt.Sprintf("- %s: %s", name, status))
-		}
-	}
-	ce.Reply("Desktop API instances:\n%s", strings.Join(lines, "\n"))
+	ce.Reply("%s", formatDesktopInstanceList(client))
 }
 
 func fnDesktopAPI(ce *commands.Event) {
@@ -1083,38 +1090,17 @@ func fnModels(ce *commands.Event) {
 	var sb strings.Builder
 	sb.WriteString("Available models:\n\n")
 	for _, m := range models {
-		var caps []string
-		if m.SupportsVision {
-			caps = append(caps, "Vision")
-		}
-		if m.SupportsReasoning {
-			caps = append(caps, "Reasoning")
-		}
-		if m.SupportsWebSearch {
-			caps = append(caps, "Web Search")
-		}
-		if m.SupportsImageGen {
-			caps = append(caps, "Image Gen")
-		}
-		if m.SupportsToolCalling {
-			caps = append(caps, "Tools")
-		}
 		sb.WriteString(fmt.Sprintf("• **%s** (`%s`)\n", m.Name, m.ID))
 		if m.Description != "" {
 			sb.WriteString(fmt.Sprintf("  %s\n", m.Description))
 		}
-		if len(caps) > 0 {
-			sb.WriteString(fmt.Sprintf("  %s\n", strings.Join(caps, " · ")))
+		if caps := formatModelCapabilities(m); caps != "" {
+			sb.WriteString(fmt.Sprintf("  %s\n", caps))
 		}
 		sb.WriteString("\n")
 	}
 
-	currentModel := ""
-	if meta != nil {
-		currentModel = client.effectiveModel(meta)
-	} else {
-		currentModel = client.effectiveModel(nil)
-	}
+	currentModel := client.effectiveModel(meta)
 	sb.WriteString(fmt.Sprintf("Current: **%s**\nUse `!ai model <id>` to switch models", currentModel))
 	ce.Reply(sb.String())
 }
