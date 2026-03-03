@@ -265,7 +265,7 @@ func (cl *CodexLogin) spawnAndStartLogin(ctx context.Context, log *zerolog.Logge
 	cmd := cl.resolveCodexCommand()
 	launch, err := cl.Connector.resolveAppServerLaunch()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolving app-server launch: %w", err)
 	}
 
 	// IMPORTANT: Do not bind the Codex app-server process lifetime to the HTTP request context.
@@ -289,7 +289,7 @@ func (cl *CodexLogin) spawnAndStartLogin(ctx context.Context, log *zerolog.Logge
 		},
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("starting codex process: %w", err)
 	}
 	cl.setRPC(rpc)
 	cl.codexHome = codexHome

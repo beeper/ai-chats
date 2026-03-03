@@ -373,3 +373,7 @@ func (cc *CodexConnector) CreateLogin(ctx context.Context, user *bridgev2.User, 
 func (cc *CodexConnector) codexEnabled() bool {
 	return cc.Config.Codex == nil || cc.Config.Codex.Enabled == nil || *cc.Config.Codex.Enabled
 }
+
+func NewConnector() *CodexConnector {
+	return &CodexConnector{}
+}

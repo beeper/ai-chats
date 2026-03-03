@@ -3,6 +3,7 @@ package codex
 import (
 	"context"
 	"strings"
+	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -61,17 +62,13 @@ func (cc *CodexClient) uiEmitter(state *streamingState) *streamui.Emitter {
 	}
 }
 
-func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID id.EventID, senderID string, roomID id.RoomID) *streamingState {
-	_ = ctx
-	_ = meta
-	_ = senderID
-	_ = roomID
+func newStreamingState(sourceEventID id.EventID) *streamingState {
 	turnID := NewTurnID()
 	ui := streamui.UIState{TurnID: turnID}
 	ui.InitMaps()
 	return &streamingState{
 		turnID:                 turnID,
-		startedAtMs:            nowMillis(),
+		startedAtMs:            time.Now().UnixMilli(),
 		firstToken:             true,
 		initialEventID:         sourceEventID,
 		ui:                     ui,
