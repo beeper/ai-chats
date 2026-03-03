@@ -7,8 +7,26 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
+
+func ensureConvertedMessageParts(converted *bridgev2.ConvertedMessage) {
+	if converted == nil || len(converted.Parts) == 0 {
+		return
+	}
+	parts := converted.Parts[:0]
+	for _, part := range converted.Parts {
+		if part == nil {
+			continue
+		}
+		if part.Content == nil {
+			part.Content = &event.MessageEventContent{}
+		}
+		parts = append(parts, part)
+	}
+	converted.Parts = parts
+}
 
 // Handles: intent resolution, ghost room join, send, DB persist via QueueRemoteEvent.
 // Returns the Matrix event ID and the network message ID used.
@@ -25,6 +43,7 @@ func (oc *AIClient) sendViaPortal(
 	if msgID == "" {
 		msgID = newMessageID()
 	}
+	ensureConvertedMessageParts(converted)
 	sender := oc.senderForPortal(ctx, portal)
 	evt := &AIRemoteMessage{
 		portal:    portal.PortalKey,

@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -18,6 +19,46 @@ import (
 	"github.com/beeper/ai-bridge/pkg/shared/citations"
 	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 )
+
+const maxSafeEditPayloadBytes = 54 * 1024
+
+func estimateFinalEditEventSizeBytes(rendered event.MessageEventContent, topLevelExtra map[string]any, fullFallback bool) int {
+	topBody := "* AI response"
+	topFormat := event.Format("")
+	topFormatted := ""
+	if fullFallback {
+		topBody = "* " + rendered.Body
+		if rendered.Format != "" && rendered.FormattedBody != "" {
+			topFormat = rendered.Format
+			topFormatted = "* " + rendered.FormattedBody
+		}
+	}
+
+	raw := map[string]any{
+		"msgtype": event.MsgText,
+		"body":    topBody,
+		"m.new_content": map[string]any{
+			"msgtype":        event.MsgText,
+			"body":           rendered.Body,
+			"format":         rendered.Format,
+			"formatted_body": rendered.FormattedBody,
+			"m.mentions":     map[string]any{},
+		},
+		"m.mentions": map[string]any{},
+	}
+	if topFormat != "" {
+		raw["format"] = topFormat
+		raw["formatted_body"] = topFormatted
+	}
+	for key, value := range topLevelExtra {
+		raw[key] = value
+	}
+	encoded, err := json.Marshal(raw)
+	if err != nil {
+		return 0
+	}
+	return len(encoded)
+}
 
 // sendContinuationMessage sends overflow text as a new (non-edit) message from the bot.
 func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev2.Portal, body string) {
@@ -612,11 +653,13 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 	}
 
 	// Build AI metadata
-	parts := msgconv.ContentParts("", strings.TrimSpace(state.reasoning.String()))
+	// Keep edit payload lean: include only final text state, not accumulated
+	// tool/source/reasoning payloads from the full turn.
+	parts := []map[string]any{}
 	if rendered.Body != "" {
 		parts = append(parts, map[string]any{
 			"type":  "text",
-			"text":  "", // omitted: full text is in m.new_content.body
+			"text":  "",
 			"state": "done",
 		})
 	}
@@ -645,24 +688,28 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 		Role:       "assistant",
 		Metadata:   oc.buildUIMessageMetadata(state, meta, true),
 		Parts:      parts,
-		SourceURLs: buildSourceParts(state.sourceCitations, state.sourceDocuments, linkPreviews),
-		FileParts:  citations.GeneratedFilesToParts(state.generatedFiles),
 	})
-
-	extra := map[string]any{
-		"com.beeper.ai": uiMessage,
-		"m.mentions":    map[string]any{},
-	}
-	if len(linkPreviews) > 0 {
-		extra["com.beeper.linkpreviews"] = PreviewsToMapSlice(linkPreviews)
-	}
 
 	topLevelExtra := map[string]any{
 		"com.beeper.dont_render_edited": true,
+		"com.beeper.ai":                 uiMessage,
 		"m.mentions":                    map[string]any{},
+	}
+	if len(linkPreviews) > 0 {
+		topLevelExtra["com.beeper.linkpreviews"] = PreviewsToMapSlice(linkPreviews)
 	}
 	if relatesTo != nil {
 		topLevelExtra["m.relates_to"] = relatesTo
+	}
+	useFullFallback := estimateFinalEditEventSizeBytes(rendered, topLevelExtra, true) <= maxSafeEditPayloadBytes
+	if !useFullFallback {
+		// Keep top-level fallback text minimal to avoid duplicating full response
+		// outside m.new_content when close to Matrix event size limits.
+		topLevelExtra["body"] = "* AI response"
+		if rendered.Format != "" {
+			topLevelExtra["format"] = rendered.Format
+			topLevelExtra["formatted_body"] = "* AI response"
+		}
 	}
 
 	sender := oc.senderForPortal(ctx, portal)
@@ -676,7 +723,7 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 				Format:        rendered.Format,
 				FormattedBody: rendered.FormattedBody,
 			},
-			Extra:         extra,
+			Extra:         nil,
 			TopLevelExtra: topLevelExtra,
 		}},
 	}
