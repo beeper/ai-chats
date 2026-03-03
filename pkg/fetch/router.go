@@ -15,7 +15,7 @@ func Fetch(ctx context.Context, req Request, cfg *Config) (*Response, error) {
 		return nil, errors.New("missing url")
 	}
 	cfg = cfg.WithDefaults()
-	req = normalizeRequest(req, cfg)
+	req = normalizeRequest(req)
 
 	registry := NewRegistry()
 	registerProviders(registry, cfg)
@@ -47,11 +47,10 @@ func Fetch(ctx context.Context, req Request, cfg *Config) (*Response, error) {
 	return nil, errors.New("no fetch providers available")
 }
 
-func normalizeRequest(req Request, _ *Config) Request {
+func normalizeRequest(req Request) Request {
 	if req.ExtractMode == "" {
 		req.ExtractMode = "markdown"
 	}
-	// Let providers apply their own defaults when max chars is not specified.
 	if req.MaxChars < 0 {
 		req.MaxChars = 0
 	}

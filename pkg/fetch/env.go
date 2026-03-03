@@ -29,22 +29,12 @@ func ApplyEnvDefaults(cfg *Config) *Config {
 	if cfg == nil {
 		return ConfigFromEnv()
 	}
-	current := cfg.WithDefaults()
 	envCfg := ConfigFromEnv()
-
-	if strings.TrimSpace(current.Provider) == "" {
-		current.Provider = envCfg.Provider
+	if cfg.Exa.APIKey == "" {
+		cfg.Exa.APIKey = envCfg.Exa.APIKey
 	}
-	if len(current.Fallbacks) == 0 {
-		current.Fallbacks = envCfg.Fallbacks
+	if cfg.Exa.BaseURL == "" {
+		cfg.Exa.BaseURL = envCfg.Exa.BaseURL
 	}
-
-	if current.Exa.APIKey == "" {
-		current.Exa.APIKey = envCfg.Exa.APIKey
-	}
-	if current.Exa.BaseURL == "" {
-		current.Exa.BaseURL = envCfg.Exa.BaseURL
-	}
-
-	return current
+	return cfg.WithDefaults()
 }

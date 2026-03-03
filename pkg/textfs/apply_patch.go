@@ -79,34 +79,19 @@ func ApplyPatch(ctx context.Context, store *Store, input string) (*ApplyPatchRes
 	}
 
 	summary := ApplyPatchSummary{}
-	seenAdded := map[string]struct{}{}
-	seenModified := map[string]struct{}{}
-	seenDeleted := map[string]struct{}{}
-	record := func(bucket string, value string) {
-		if strings.TrimSpace(value) == "" {
+	recordUnique := func(seen map[string]struct{}, list *[]string, path string) {
+		if strings.TrimSpace(path) == "" {
 			return
 		}
-		switch bucket {
-		case "added":
-			if _, ok := seenAdded[value]; ok {
-				return
-			}
-			seenAdded[value] = struct{}{}
-			summary.Added = append(summary.Added, value)
-		case "modified":
-			if _, ok := seenModified[value]; ok {
-				return
-			}
-			seenModified[value] = struct{}{}
-			summary.Modified = append(summary.Modified, value)
-		case "deleted":
-			if _, ok := seenDeleted[value]; ok {
-				return
-			}
-			seenDeleted[value] = struct{}{}
-			summary.Deleted = append(summary.Deleted, value)
+		if _, ok := seen[path]; ok {
+			return
 		}
+		seen[path] = struct{}{}
+		*list = append(*list, path)
 	}
+	seenAdded := make(map[string]struct{})
+	seenModified := make(map[string]struct{})
+	seenDeleted := make(map[string]struct{})
 
 	for _, h := range parsed.hunks {
 		switch hunk := h.(type) {
@@ -118,7 +103,7 @@ func ApplyPatch(ctx context.Context, store *Store, input string) (*ApplyPatchRes
 			if _, err := store.Write(ctx, path, hunk.contents); err != nil {
 				return nil, err
 			}
-			record("added", path)
+			recordUnique(seenAdded, &summary.Added, path)
 		case deleteFileHunk:
 			path, err := NormalizePath(hunk.path)
 			if err != nil {
@@ -132,7 +117,7 @@ func ApplyPatch(ctx context.Context, store *Store, input string) (*ApplyPatchRes
 			if err := store.Delete(ctx, path); err != nil {
 				return nil, err
 			}
-			record("deleted", path)
+			recordUnique(seenDeleted, &summary.Deleted, path)
 		case updateFileHunk:
 			path, err := NormalizePath(hunk.path)
 			if err != nil {
@@ -160,12 +145,12 @@ func ApplyPatch(ctx context.Context, store *Store, input string) (*ApplyPatchRes
 				if err := store.Delete(ctx, path); err != nil {
 					return nil, err
 				}
-				record("modified", movePath)
+				recordUnique(seenModified, &summary.Modified, movePath)
 			} else {
 				if _, err := store.Write(ctx, path, updated); err != nil {
 					return nil, err
 				}
-				record("modified", path)
+				recordUnique(seenModified, &summary.Modified, path)
 			}
 		default:
 			return nil, errors.New("unsupported patch hunk")
@@ -179,7 +164,6 @@ func ApplyPatch(ctx context.Context, store *Store, input string) (*ApplyPatchRes
 
 type parsedPatch struct {
 	hunks []applyPatchHunk
-	patch string
 }
 
 func parsePatchText(input string) (*parsedPatch, error) {
@@ -209,24 +193,23 @@ func parsePatchText(input string) (*parsedPatch, error) {
 		lineNumber += consumed
 		remaining = remaining[consumed:]
 	}
-	return &parsedPatch{hunks: hunks, patch: strings.Join(validated, "\n")}, nil
+	return &parsedPatch{hunks: hunks}, nil
 }
 
 func checkPatchBoundariesLenient(lines []string) ([]string, error) {
 	if err := checkPatchBoundariesStrict(lines); err == nil {
 		return lines, nil
 	}
-	if len(lines) < 4 {
-		return nil, checkPatchBoundariesStrict(lines)
-	}
-	first := strings.TrimSpace(lines[0])
-	last := strings.TrimSpace(lines[len(lines)-1])
-	if (first == "<<EOF" || first == "<<'EOF'" || first == "<<\"EOF\"") && strings.HasSuffix(last, "EOF") {
-		inner := lines[1 : len(lines)-1]
-		if err := checkPatchBoundariesStrict(inner); err == nil {
-			return inner, nil
+	// Try unwrapping heredoc wrappers (<<EOF ... EOF).
+	if len(lines) >= 4 {
+		first := strings.TrimSpace(lines[0])
+		last := strings.TrimSpace(lines[len(lines)-1])
+		if (first == "<<EOF" || first == "<<'EOF'" || first == "<<\"EOF\"") && strings.HasSuffix(last, "EOF") {
+			inner := lines[1 : len(lines)-1]
+			if err := checkPatchBoundariesStrict(inner); err == nil {
+				return inner, nil
+			}
 		}
-		return nil, checkPatchBoundariesStrict(inner)
 	}
 	return nil, checkPatchBoundariesStrict(lines)
 }
@@ -253,17 +236,17 @@ func parseOneHunk(lines []string, lineNumber int) (applyPatchHunk, int, error) {
 	firstLine := strings.TrimSpace(lines[0])
 	if strings.HasPrefix(firstLine, addFileMarker) {
 		targetPath := strings.TrimPrefix(firstLine, addFileMarker)
-		contents := ""
+		var contents strings.Builder
 		consumed := 1
 		for _, addLine := range lines[1:] {
-			if strings.HasPrefix(addLine, "+") {
-				contents += addLine[1:] + "\n"
-				consumed++
-			} else {
+			if !strings.HasPrefix(addLine, "+") {
 				break
 			}
+			contents.WriteString(addLine[1:])
+			contents.WriteByte('\n')
+			consumed++
 		}
-		return addFileHunk{path: targetPath, contents: contents}, consumed, nil
+		return addFileHunk{path: targetPath, contents: contents.String()}, consumed, nil
 	}
 	if strings.HasPrefix(firstLine, deleteFileMarker) {
 		targetPath := strings.TrimPrefix(firstLine, deleteFileMarker)

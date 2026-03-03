@@ -45,12 +45,10 @@ func IsAllowedTextNotePath(relPath string) (ok bool, ext string, reason string) 
 	if ext == "" {
 		return false, "", "missing_extension"
 	}
-	for _, allowed := range allowedNoteExts {
-		if ext == allowed {
-			return true, ext, ""
-		}
+	if !slices.Contains(allowedNoteExts, ext) {
+		return false, ext, "unsupported_extension"
 	}
-	return false, ext, "unsupported_extension"
+	return true, ext, ""
 }
 
 // NoteMaxBytesDefault is the default per-file size cap for note indexing and reads.

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"fmt"
 	"time"
 
 	"go.mau.fi/util/dbutil"
@@ -109,7 +110,7 @@ func (s *Store) WriteIfMissing(ctx context.Context, relPath, content string) (bo
 	}
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return false, nil
+		return false, fmt.Errorf("check rows affected: %w", err)
 	}
 	return rows > 0, nil
 }

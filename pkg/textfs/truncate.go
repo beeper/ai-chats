@@ -2,6 +2,7 @@ package textfs
 
 import (
 	"fmt"
+	"strings"
 )
 
 const (
@@ -105,32 +106,9 @@ func splitLines(content string) []string {
 	if content == "" {
 		return []string{""}
 	}
-	out := make([]string, 0, 64)
-	start := 0
-	for i := 0; i < len(content); i++ {
-		if content[i] == '\n' {
-			out = append(out, content[start:i])
-			start = i + 1
-		}
-	}
-	out = append(out, content[start:])
-	return out
+	return strings.Split(content, "\n")
 }
 
 func joinLines(lines []string) string {
-	if len(lines) == 0 {
-		return ""
-	}
-	total := 0
-	for _, line := range lines {
-		total += len(line) + 1
-	}
-	b := make([]byte, 0, total)
-	for i, line := range lines {
-		if i > 0 {
-			b = append(b, '\n')
-		}
-		b = append(b, line...)
-	}
-	return string(b)
+	return strings.Join(lines, "\n")
 }

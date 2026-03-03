@@ -28,27 +28,18 @@ func ApplyEnvDefaults(cfg *Config) *Config {
 	if cfg == nil {
 		return ConfigFromEnv()
 	}
-	providerSet := strings.TrimSpace(cfg.Provider) != ""
-	current := cfg.WithDefaults()
+	providerExplicit := strings.TrimSpace(cfg.Provider) != ""
 	envCfg := ConfigFromEnv()
-
-	if strings.TrimSpace(current.Provider) == "" {
-		current.Provider = envCfg.Provider
+	if cfg.Exa.APIKey == "" {
+		cfg.Exa.APIKey = envCfg.Exa.APIKey
 	}
-	if len(current.Fallbacks) == 0 {
-		current.Fallbacks = envCfg.Fallbacks
+	if cfg.Exa.BaseURL == "" {
+		cfg.Exa.BaseURL = envCfg.Exa.BaseURL
 	}
-
-	if current.Exa.APIKey == "" {
-		current.Exa.APIKey = envCfg.Exa.APIKey
+	result := cfg.WithDefaults()
+	// If no provider was explicitly configured but an API key is available, prefer exa.
+	if !providerExplicit && strings.TrimSpace(result.Exa.APIKey) != "" {
+		result.Provider = ProviderExa
 	}
-	if current.Exa.BaseURL == "" {
-		current.Exa.BaseURL = envCfg.Exa.BaseURL
-	}
-
-	if !providerSet && strings.TrimSpace(current.Exa.APIKey) != "" {
-		current.Provider = ProviderExa
-	}
-
-	return current
+	return result
 }
