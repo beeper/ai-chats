@@ -65,22 +65,17 @@ func ChunkMarkdown(content string, tokens, overlap int) []Chunk {
 			currentChars = 0
 			return
 		}
-		acc := 0
-		kept := make([]lineEntry, 0, len(current))
+		chars := 0
+		start := len(current)
 		for i := len(current) - 1; i >= 0; i-- {
-			entry := current[i]
-			acc += len(entry.line) + 1
-			kept = append(kept, entry)
-			if acc >= overlapChars {
+			chars += len(current[i].line) + 1
+			start = i
+			if chars >= overlapChars {
 				break
 			}
 		}
-		slices.Reverse(kept)
-		current = kept
-		currentChars = 0
-		for _, entry := range kept {
-			currentChars += len(entry.line) + 1
-		}
+		current = slices.Clone(current[start:])
+		currentChars = chars
 	}
 
 	for i, line := range lines {

@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -209,7 +210,6 @@ func (m *MemorySearchManager) StatusDetails(ctx context.Context) (*MemorySearchS
 	statusCtx, cancel := context.WithTimeout(ctx, memoryStatusTimeout)
 	defer cancel()
 	start := time.Now()
-	m.log.Info().Dur("timeout", memoryStatusTimeout).Msg("memory status: start")
 
 	// Snapshot mutable fields under mu to avoid data races with sync().
 	m.mu.Lock()
@@ -246,31 +246,23 @@ func (m *MemorySearchManager) StatusDetails(ctx context.Context) (*MemorySearchS
 	_ = row.Scan(&status.Chunks)
 
 	files := 0
-	if hasSource(m.cfg.Sources, "memory") {
-		row = m.db.QueryRow(statusCtx,
-			`SELECT COUNT(*) FROM ai_memory_files WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND source=$4`,
-			m.bridgeID, m.loginID, m.agentID, "memory",
-		)
+	for _, source := range []string{"memory", "workspace"} {
+		if !hasSource(m.cfg.Sources, source) {
+			continue
+		}
 		var count int
-		_ = row.Scan(&count)
-		files += count
-	}
-	if hasSource(m.cfg.Sources, "workspace") {
-		row = m.db.QueryRow(statusCtx,
+		_ = m.db.QueryRow(statusCtx,
 			`SELECT COUNT(*) FROM ai_memory_files WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND source=$4`,
-			m.bridgeID, m.loginID, m.agentID, "workspace",
-		)
-		var count int
-		_ = row.Scan(&count)
+			m.bridgeID, m.loginID, m.agentID, source,
+		).Scan(&count)
 		files += count
 	}
 	if hasSource(m.cfg.Sources, "sessions") {
-		row = m.db.QueryRow(statusCtx,
+		var count int
+		_ = m.db.QueryRow(statusCtx,
 			`SELECT COUNT(*) FROM ai_memory_session_files WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`,
 			m.bridgeID, m.loginID, m.agentID,
-		)
-		var count int
-		_ = row.Scan(&count)
+		).Scan(&count)
 		files += count
 	}
 	status.Files = files
@@ -302,11 +294,11 @@ func (m *MemorySearchManager) StatusDetails(ctx context.Context) (*MemorySearchS
 		Enabled: false,
 	}
 
-	m.log.Info().
+	m.log.Debug().
 		Dur("dur", time.Since(start)).
 		Int("files", status.Files).
 		Int("chunks", status.Chunks).
-		Msg("memory status: done")
+		Msg("memory status")
 	return status, nil
 }
 
@@ -318,33 +310,24 @@ func buildSourceCounts(ctx context.Context, m *MemorySearchManager, indexGen str
 	for _, source := range m.cfg.Sources {
 		count := MemorySearchSourceCount{Source: source}
 		switch source {
-		case "memory":
-			row := m.db.QueryRow(ctx,
+		case "memory", "workspace":
+			_ = m.db.QueryRow(ctx,
 				`SELECT COUNT(*) FROM ai_memory_files WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND source=$4`,
-				m.bridgeID, m.loginID, m.agentID, "memory",
-			)
-			_ = row.Scan(&count.Files)
-		case "workspace":
-			row := m.db.QueryRow(ctx,
-				`SELECT COUNT(*) FROM ai_memory_files WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND source=$4`,
-				m.bridgeID, m.loginID, m.agentID, "workspace",
-			)
-			_ = row.Scan(&count.Files)
+				m.bridgeID, m.loginID, m.agentID, source,
+			).Scan(&count.Files)
 		case "sessions":
-			row := m.db.QueryRow(ctx,
+			_ = m.db.QueryRow(ctx,
 				`SELECT COUNT(*) FROM ai_memory_session_files WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`,
 				m.bridgeID, m.loginID, m.agentID,
-			)
-			_ = row.Scan(&count.Files)
+			).Scan(&count.Files)
 		}
 		genSQL, genArgs := generationFilterSQL(5, indexGen)
 		args := []any{m.bridgeID, m.loginID, m.agentID, source}
 		args = append(args, genArgs...)
-		row := m.db.QueryRow(ctx,
+		_ = m.db.QueryRow(ctx,
 			`SELECT COUNT(*) FROM ai_memory_chunks WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND source=$4`+genSQL,
 			args...,
-		)
-		_ = row.Scan(&count.Chunks)
+		).Scan(&count.Chunks)
 		out = append(out, count)
 	}
 	return out
@@ -452,15 +435,17 @@ func normalizeSearchSources(requested []string, fallback []string) []string {
 	seen := make(map[string]struct{})
 	out := make([]string, 0, len(requested))
 	for _, raw := range requested {
-		switch strings.ToLower(strings.TrimSpace(raw)) {
+		key := strings.ToLower(strings.TrimSpace(raw))
+		switch key {
 		case "memory", "workspace", "sessions":
-			key := strings.ToLower(strings.TrimSpace(raw))
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			seen[key] = struct{}{}
-			out = append(out, key)
+		default:
+			continue
 		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, key)
 	}
 	if len(out) == 0 {
 		return slices.Clone(fallback)
@@ -640,13 +625,7 @@ func (m *MemorySearchManager) searchKeywordScan(ctx context.Context, query strin
 		return nil, err
 	}
 	slices.SortFunc(scoredResults, func(a, b scored) int {
-		if a.score == b.score {
-			return 0
-		}
-		if a.score > b.score {
-			return -1
-		}
-		return 1
+		return cmp.Compare(b.score, a.score)
 	})
 	if len(scoredResults) > limit {
 		scoredResults = scoredResults[:limit]
@@ -947,33 +926,17 @@ func truncateSnippet(text string) string {
 	}
 	limit := memorySnippetMaxChars
 	count := 0
-	for _, r := range text {
-		if r <= 0xFFFF {
-			count++
-		} else {
-			count += 2
-		}
-		if count > limit {
-			break
-		}
-	}
-	if count <= limit {
-		return text
-	}
-	out := make([]rune, 0, len(text))
-	count = 0
-	for _, r := range text {
+	for i, r := range text {
 		inc := 1
 		if r > 0xFFFF {
 			inc = 2
 		}
 		if count+inc > limit {
-			break
+			return text[:i]
 		}
-		out = append(out, r)
 		count += inc
 	}
-	return string(out)
+	return text
 }
 
 func isAllowedMemoryPath(path string, extraPaths []string) bool {
