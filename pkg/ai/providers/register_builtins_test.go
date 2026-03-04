@@ -104,4 +104,42 @@ func TestRegisterBuiltInAPIProviders(t *testing.T) {
 	if strings.Contains(strings.ToLower(anthropicEvt.Error.ErrorMessage), "not implemented") {
 		t.Fatalf("expected anthropic runtime implementation, got stub error: %q", anthropicEvt.Error.ErrorMessage)
 	}
+
+	googleStream, err := ai.Stream(ai.Model{
+		ID:       "gemini-2.5-flash",
+		Provider: "google",
+		API:      ai.APIGoogleGenerativeAI,
+	}, ai.Context{}, nil)
+	if err != nil {
+		t.Fatalf("unexpected google stream resolve error: %v", err)
+	}
+	googleEvt, err := googleStream.Next(ctx)
+	if err != nil {
+		t.Fatalf("expected google terminal error event, got %v", err)
+	}
+	if googleEvt.Type != ai.EventError {
+		t.Fatalf("expected google error event, got %s", googleEvt.Type)
+	}
+	if strings.Contains(strings.ToLower(googleEvt.Error.ErrorMessage), "not implemented") {
+		t.Fatalf("expected google runtime implementation, got stub error: %q", googleEvt.Error.ErrorMessage)
+	}
+
+	vertexStream, err := ai.Stream(ai.Model{
+		ID:       "gemini-2.5-flash",
+		Provider: "google-vertex",
+		API:      ai.APIGoogleVertex,
+	}, ai.Context{}, nil)
+	if err != nil {
+		t.Fatalf("unexpected vertex stream resolve error: %v", err)
+	}
+	vertexEvt, err := vertexStream.Next(ctx)
+	if err != nil {
+		t.Fatalf("expected vertex terminal error event, got %v", err)
+	}
+	if vertexEvt.Type != ai.EventError {
+		t.Fatalf("expected vertex error event, got %s", vertexEvt.Type)
+	}
+	if strings.Contains(strings.ToLower(vertexEvt.Error.ErrorMessage), "not implemented") {
+		t.Fatalf("expected vertex runtime implementation, got stub error: %q", vertexEvt.Error.ErrorMessage)
+	}
 }

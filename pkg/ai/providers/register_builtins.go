@@ -75,11 +75,19 @@ func RegisterBuiltInAPIProviders() {
 		Stream:       streamAnthropicMessages,
 		StreamSimple: streamSimpleAnthropicMessages,
 	}, BuiltinProviderSourceID)
+	ai.RegisterAPIProvider(ai.APIProvider{
+		API:          ai.APIGoogleGenerativeAI,
+		Stream:       streamGoogleGenerativeAI,
+		StreamSimple: streamSimpleGoogleGenerativeAI,
+	}, BuiltinProviderSourceID)
+	ai.RegisterAPIProvider(ai.APIProvider{
+		API:          ai.APIGoogleVertex,
+		Stream:       streamGoogleVertex,
+		StreamSimple: streamSimpleGoogleVertex,
+	}, BuiltinProviderSourceID)
 
 	for _, apiID := range []ai.Api{
-		ai.APIGoogleGenerativeAI,
 		ai.APIGoogleGeminiCLI,
-		ai.APIGoogleVertex,
 		ai.APIBedrockConverse,
 	} {
 		ai.RegisterAPIProvider(ai.APIProvider{
