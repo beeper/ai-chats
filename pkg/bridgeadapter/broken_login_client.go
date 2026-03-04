@@ -19,16 +19,12 @@ type BrokenLoginClient struct {
 // NewBrokenLoginClient creates a BrokenLoginClient for a login that cannot be fully
 // initialized (e.g. missing credentials or invalid config).
 func NewBrokenLoginClient(login *bridgev2.UserLogin, reason string) *BrokenLoginClient {
-	return &BrokenLoginClient{
-		UserLogin: login,
-		Reason:    reason,
-	}
+	return &BrokenLoginClient{UserLogin: login, Reason: reason}
 }
 
 var _ bridgev2.NetworkAPI = (*BrokenLoginClient)(nil)
 
-func (c *BrokenLoginClient) Connect(ctx context.Context) {
-	_ = ctx
+func (c *BrokenLoginClient) Connect(_ context.Context) {
 	if c == nil || c.UserLogin == nil || c.UserLogin.BridgeState == nil {
 		return
 	}
@@ -52,32 +48,22 @@ func (c *BrokenLoginClient) LogoutRemote(ctx context.Context) {
 	}
 }
 
-func (c *BrokenLoginClient) IsThisUser(ctx context.Context, userID networkid.UserID) bool {
-	_ = ctx
-	_ = userID
+func (c *BrokenLoginClient) IsThisUser(_ context.Context, _ networkid.UserID) bool {
 	return false
 }
 
-func (c *BrokenLoginClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
-	_ = ctx
-	_ = portal
+func (c *BrokenLoginClient) GetChatInfo(_ context.Context, _ *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	return nil, bridgev2.ErrNotLoggedIn
 }
 
-func (c *BrokenLoginClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
-	_ = ctx
-	_ = ghost
+func (c *BrokenLoginClient) GetUserInfo(_ context.Context, _ *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
 	return nil, bridgev2.ErrNotLoggedIn
 }
 
-func (c *BrokenLoginClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
-	_ = ctx
-	_ = portal
+func (c *BrokenLoginClient) GetCapabilities(_ context.Context, _ *bridgev2.Portal) *event.RoomFeatures {
 	return &event.RoomFeatures{}
 }
 
-func (c *BrokenLoginClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
-	_ = ctx
-	_ = msg
+func (c *BrokenLoginClient) HandleMatrixMessage(_ context.Context, _ *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
 	return nil, bridgev2.ErrNotLoggedIn
 }

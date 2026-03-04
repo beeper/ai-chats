@@ -284,12 +284,12 @@ func (cc *CodexConnector) GetConfig() (example string, data any, upgrader config
 }
 
 func (cc *CodexConnector) GetDBMetaTypes() database.MetaTypes {
-	return bridgeadapter.MetaTypes(
-		func() any { return &PortalMetadata{} },
-		func() any { return &MessageMetadata{} },
-		func() any { return &UserLoginMetadata{} },
-		func() any { return &GhostMetadata{} },
-	)
+	return database.MetaTypes{
+		Portal:    func() any { return &PortalMetadata{} },
+		Message:   func() any { return &MessageMetadata{} },
+		UserLogin: func() any { return &UserLoginMetadata{} },
+		Ghost:     func() any { return &GhostMetadata{} },
+	}
 }
 
 func (cc *CodexConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {

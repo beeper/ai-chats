@@ -56,16 +56,23 @@ type PendingApproval[D any] struct {
 
 // NewApprovalManager creates a new ApprovalManager.
 func NewApprovalManager[D any]() *ApprovalManager[D] {
-	return &ApprovalManager[D]{
-		pending: make(map[string]*PendingApproval[D]),
+	return &ApprovalManager[D]{pending: make(map[string]*PendingApproval[D])}
+}
+
+// normalizeID trims and validates an approval ID, returning ErrApprovalMissingID if empty.
+func normalizeID(id string) (string, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return "", ErrApprovalMissingID
 	}
+	return id, nil
 }
 
 // Register adds a new pending approval with the given TTL.
 // Returns the PendingApproval and true if newly created, or the existing one and false if already registered.
 func (m *ApprovalManager[D]) Register(id string, ttl time.Duration, data any) (*PendingApproval[D], bool) {
-	id = strings.TrimSpace(id)
-	if id == "" {
+	id, err := normalizeID(id)
+	if err != nil {
 		return nil, false
 	}
 	if ttl <= 0 {
@@ -77,7 +84,6 @@ func (m *ApprovalManager[D]) Register(id string, ttl time.Duration, data any) (*
 		if time.Now().Before(existing.ExpiresAt) {
 			return existing, false
 		}
-		// Expired — clean up and fall through to create new
 		delete(m.pending, id)
 	}
 	p := &PendingApproval[D]{
@@ -90,12 +96,10 @@ func (m *ApprovalManager[D]) Register(id string, ttl time.Duration, data any) (*
 }
 
 // Resolve delivers a decision to the pending approval identified by id.
-// Returns ErrApprovalUnknown if not found, ErrApprovalExpired if expired,
-// or ErrApprovalAlreadyHandled if the channel is already full.
 func (m *ApprovalManager[D]) Resolve(id string, decision D) error {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return ErrApprovalMissingID
+	id, err := normalizeID(id)
+	if err != nil {
+		return err
 	}
 	m.mu.Lock()
 	p := m.pending[id]
@@ -104,24 +108,23 @@ func (m *ApprovalManager[D]) Resolve(id string, decision D) error {
 		return ErrApprovalUnknown
 	}
 	if time.Now().After(p.ExpiresAt) {
-		m.Drop(id)
+		m.drop(id)
 		return ErrApprovalExpired
 	}
 	select {
 	case p.ch <- decision:
 		return nil
 	default:
-		m.Drop(id)
+		m.drop(id)
 		return ErrApprovalAlreadyHandled
 	}
 }
 
 // Wait blocks until a decision arrives, the approval expires, or ctx is cancelled.
-// Returns the decision and true on success, or zero-value and false on timeout/cancel.
 func (m *ApprovalManager[D]) Wait(ctx context.Context, id string) (D, bool) {
 	var zero D
-	id = strings.TrimSpace(id)
-	if id == "" {
+	id, err := normalizeID(id)
+	if err != nil {
 		return zero, false
 	}
 	m.mu.Lock()
@@ -132,30 +135,33 @@ func (m *ApprovalManager[D]) Wait(ctx context.Context, id string) (D, bool) {
 	}
 	timeout := time.Until(p.ExpiresAt)
 	if timeout <= 0 {
-		m.Drop(id)
+		m.drop(id)
 		return zero, false
 	}
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	select {
 	case d := <-p.ch:
-		m.Drop(id)
+		m.drop(id)
 		return d, true
 	case <-timer.C:
-		m.Drop(id)
+		m.drop(id)
 		return zero, false
 	case <-ctx.Done():
-		m.Drop(id)
+		m.drop(id)
 		return zero, false
 	}
 }
 
 // Drop removes a pending approval from the manager.
 func (m *ApprovalManager[D]) Drop(id string) {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return
+	if id, err := normalizeID(id); err == nil {
+		m.drop(id)
 	}
+}
+
+// drop is the internal (already-validated) removal.
+func (m *ApprovalManager[D]) drop(id string) {
 	m.mu.Lock()
 	delete(m.pending, id)
 	m.mu.Unlock()
