@@ -67,3 +67,31 @@ func TestBuildGeminiCLIHeaders(t *testing.T) {
 		}
 	})
 }
+
+func TestGeminiEmptyStreamRetryHelpers(t *testing.T) {
+	if delay, ok := GeminiEmptyStreamBackoff(1); !ok || delay != 500*time.Millisecond {
+		t.Fatalf("expected first retry backoff 500ms, got %v (ok=%v)", delay, ok)
+	}
+	if delay, ok := GeminiEmptyStreamBackoff(2); !ok || delay != time.Second {
+		t.Fatalf("expected second retry backoff 1s, got %v (ok=%v)", delay, ok)
+	}
+	if _, ok := GeminiEmptyStreamBackoff(0); ok {
+		t.Fatalf("did not expect backoff for attempt 0")
+	}
+	if _, ok := GeminiEmptyStreamBackoff(3); ok {
+		t.Fatalf("did not expect backoff beyond max retries")
+	}
+
+	if !ShouldRetryGeminiEmptyStream(false, 0) {
+		t.Fatalf("expected retry on first empty attempt")
+	}
+	if !ShouldRetryGeminiEmptyStream(false, 1) {
+		t.Fatalf("expected retry on second empty attempt")
+	}
+	if ShouldRetryGeminiEmptyStream(false, 2) {
+		t.Fatalf("did not expect retry beyond max attempts")
+	}
+	if ShouldRetryGeminiEmptyStream(true, 0) {
+		t.Fatalf("did not expect retry when content was received")
+	}
+}

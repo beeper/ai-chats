@@ -11,6 +11,10 @@ import (
 )
 
 const ClaudeThinkingBetaHeader = "interleaved-thinking-2025-05-14"
+const (
+	MaxGeminiEmptyStreamRetries = 2
+	EmptyStreamBaseDelayMs      = 500
+)
 
 func ExtractRetryDelay(errorText string, headers http.Header) (int, bool) {
 	return extractRetryDelayAt(errorText, headers, time.Now())
@@ -147,4 +151,16 @@ func BuildGeminiCLIHeaders(model ai.Model, headers map[string]string) map[string
 		out["anthropic-beta"] = ClaudeThinkingBetaHeader
 	}
 	return out
+}
+
+func GeminiEmptyStreamBackoff(attempt int) (time.Duration, bool) {
+	if attempt <= 0 || attempt > MaxGeminiEmptyStreamRetries {
+		return 0, false
+	}
+	delayMs := EmptyStreamBaseDelayMs * (1 << (attempt - 1))
+	return time.Duration(delayMs) * time.Millisecond, true
+}
+
+func ShouldRetryGeminiEmptyStream(hasContent bool, emptyAttempt int) bool {
+	return !hasContent && emptyAttempt < MaxGeminiEmptyStreamRetries
 }
