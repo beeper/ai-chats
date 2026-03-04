@@ -66,10 +66,10 @@ type StreamSession struct {
 	debounceReqCh chan debounceRequest
 	workerStopCh  chan struct{}
 	workerDoneCh  chan struct{}
-	endOnce       sync.Once
+	endWorker     func() // closes workerStopCh exactly once
 
 	// Lazy worker start: goroutine and channels are only allocated when needed.
-	workerOnce    sync.Once
+	ensureWorker  func() // lazily starts the debounce worker goroutine
 	workerStarted atomic.Bool
 }
 
@@ -82,18 +82,15 @@ func NewStreamSession(params StreamSessionParams) *StreamSession {
 		workerStopCh: make(chan struct{}),
 		workerDoneCh: make(chan struct{}),
 	}
-	return s
-}
-
-// ensureWorker lazily starts the debounce worker goroutine and allocates the
-// request channel on first use. This avoids the goroutine + channel overhead
-// when only ephemeral (non-debounced) streaming is used.
-func (s *StreamSession) ensureWorker() {
-	s.workerOnce.Do(func() {
+	s.endWorker = sync.OnceFunc(func() {
+		close(s.workerStopCh)
+	})
+	s.ensureWorker = sync.OnceFunc(func() {
 		s.debounceReqCh = make(chan debounceRequest, 256)
 		s.workerStarted.Store(true)
 		go s.runDebouncedWorker()
 	})
+	return s
 }
 
 func (s *StreamSession) IsClosed() bool {
@@ -112,9 +109,7 @@ func (s *StreamSession) End(ctx context.Context, _ EndReason) {
 	}
 	s.sendCancel()
 	if s.workerStarted.Load() {
-		s.endOnce.Do(func() {
-			close(s.workerStopCh)
-		})
+		s.endWorker()
 		waitCtx, cancel := context.WithTimeout(ctx, endWaitTimeout)
 		defer cancel()
 		select {

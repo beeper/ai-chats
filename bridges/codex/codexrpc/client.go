@@ -74,12 +74,10 @@ type Client struct {
 	onStderr      func(line string)
 	onProcessExit func(err error)
 
-	closed   atomic.Bool
-	failOnce sync.Once
+	closed         atomic.Bool
+	failAllPending func() // drains and errors all pending RPC calls exactly once
 
-	waitOnce sync.Once
-	waitErr  error
-	waitDone chan struct{} // closed when cmd.Wait() completes
+	waitForProcess func() error // calls cmd.Wait() exactly once and caches the result
 }
 
 type writeReq struct {
@@ -140,8 +138,29 @@ func StartProcess(ctx context.Context, cfg ProcessConfig) (*Client, error) {
 		requestRoutes: make(map[string]func(ctx context.Context, req Request) (any, *RPCError)),
 		onStderr:      cfg.OnStderr,
 		onProcessExit: cfg.OnProcessExit,
-		waitDone:      make(chan struct{}),
 	}
+	c.failAllPending = sync.OnceFunc(func() {
+		rpcErr := &RPCError{Code: -32000, Message: "rpc process closed"}
+		c.pending.Range(func(key, value any) bool {
+			ch, ok := value.(chan Response)
+			if !ok || ch == nil {
+				c.pending.Delete(key)
+				return true
+			}
+			select {
+			case ch <- Response{Error: rpcErr}:
+			default:
+			}
+			c.pending.Delete(key)
+			return true
+		})
+	})
+	c.waitForProcess = sync.OnceValue(func() error {
+		if c.cmd != nil {
+			return c.cmd.Wait()
+		}
+		return nil
+	})
 	c.nextID.Store(1)
 	writeCh := c.writeCh
 	go c.writeLoop(writeCh)
@@ -162,18 +181,6 @@ func StartProcess(ctx context.Context, cfg ProcessConfig) (*Client, error) {
 		_ = c.Close()
 	}()
 	return c, nil
-}
-
-// waitForProcess calls cmd.Wait() exactly once and caches the result.
-func (c *Client) waitForProcess() error {
-	c.waitOnce.Do(func() {
-		if c.cmd != nil {
-			c.waitErr = c.cmd.Wait()
-		}
-		close(c.waitDone)
-	})
-	<-c.waitDone
-	return c.waitErr
 }
 
 func (c *Client) Close() error {
@@ -197,28 +204,9 @@ func (c *Client) Close() error {
 	if c.cmd != nil && c.cmd.Process != nil {
 		_ = c.cmd.Process.Kill()
 	}
-	// Wait for process exit (uses sync.Once to avoid double cmd.Wait())
+	// Wait for process exit (uses sync.OnceValue to avoid double cmd.Wait())
 	_ = c.waitForProcess()
 	return nil
-}
-
-func (c *Client) failAllPending() {
-	c.failOnce.Do(func() {
-		rpcErr := &RPCError{Code: -32000, Message: "rpc process closed"}
-		c.pending.Range(func(key, value any) bool {
-			ch, ok := value.(chan Response)
-			if !ok || ch == nil {
-				c.pending.Delete(key)
-				return true
-			}
-			select {
-			case ch <- Response{Error: rpcErr}:
-			default:
-			}
-			c.pending.Delete(key)
-			return true
-		})
-	})
 }
 
 func (c *Client) OnNotification(fn func(method string, params json.RawMessage)) {

@@ -51,9 +51,9 @@ type MemorySearchManager struct {
 	watchTimer        *time.Timer
 	sessionWatchTimer *time.Timer
 	sessionWatchKey   string
-	intervalOnce      sync.Once
+	startIntervalSync func() // starts the interval sync goroutine exactly once
 	intervalStop      chan struct{}
-	intervalStopOnce  sync.Once
+	closeIntervalStop func() // closes intervalStop channel exactly once
 	mu                sync.Mutex
 }
 
@@ -164,6 +164,40 @@ func GetMemorySearchManager(runtime Runtime, agentID string) (*MemorySearchManag
 		},
 		log: runtime.Logger().With().Str("component", "memory").Logger(),
 	}
+	manager.startIntervalSync = sync.OnceFunc(func() {
+		interval := time.Duration(manager.cfg.Sync.IntervalMinutes) * time.Minute
+		manager.mu.Lock()
+		if manager.intervalStop == nil {
+			manager.intervalStop = make(chan struct{})
+		}
+		stopCh := manager.intervalStop
+		manager.mu.Unlock()
+		manager.log.Debug().Dur("interval", interval).Msg("Memory sync starting interval sync goroutine")
+		go func() {
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					if err := manager.sync(context.Background(), "", false); err != nil {
+						manager.log.Warn().Msg("memory sync failed (interval): " + err.Error())
+					} else {
+						manager.log.Debug().Msg("Memory sync interval complete")
+					}
+				case <-stopCh:
+					return
+				}
+			}
+		}()
+	})
+	manager.closeIntervalStop = sync.OnceFunc(func() {
+		manager.mu.Lock()
+		stopCh := manager.intervalStop
+		manager.mu.Unlock()
+		if stopCh != nil {
+			close(stopCh)
+		}
+	})
 	if hasSource(cfg.Sources, "memory") || hasSource(cfg.Sources, "workspace") {
 		manager.dirty = true
 	}

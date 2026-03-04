@@ -6,10 +6,15 @@ import (
 	"github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
 )
 
-var (
-	toolLookupOnce sync.Once
-	allToolByName  map[string]*Tool
-)
+var toolLookup = sync.OnceValue(func() map[string]*Tool {
+	m := make(map[string]*Tool)
+	for _, tool := range AllTools() {
+		if _, exists := m[tool.Name]; !exists {
+			m[tool.Name] = tool
+		}
+	}
+	return m
+})
 
 // Tool group constants for policy composition (OpenClaw-style shorthands).
 const (
@@ -87,15 +92,5 @@ func DefaultRegistry() *Registry {
 
 // GetTool returns any tool by name (builtin or provider).
 func GetTool(name string) *Tool {
-	toolLookupOnce.Do(initToolLookup)
-	return allToolByName[name]
-}
-
-func initToolLookup() {
-	allToolByName = make(map[string]*Tool)
-	for _, tool := range AllTools() {
-		if _, exists := allToolByName[tool.Name]; !exists {
-			allToolByName[tool.Name] = tool
-		}
-	}
+	return toolLookup()[name]
 }

@@ -94,30 +94,7 @@ func (m *MemorySearchManager) ensureIntervalSync() {
 	if m.cfg.Sync.IntervalMinutes <= 0 {
 		return
 	}
-	m.intervalOnce.Do(func() {
-		interval := time.Duration(m.cfg.Sync.IntervalMinutes) * time.Minute
-		m.mu.Lock()
-		if m.intervalStop == nil {
-			m.intervalStop = make(chan struct{})
-		}
-		stopCh := m.intervalStop
-		m.mu.Unlock()
-		m.log.Debug().Dur("interval", interval).Msg("Memory sync starting interval sync goroutine")
-		go func() {
-			ticker := time.NewTicker(interval)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ticker.C:
-					if err := m.sync(context.Background(), "", false); err != nil {
-						m.log.Warn().Msg("memory sync failed (interval): " + err.Error())
-					} else {
-						m.log.Debug().Msg("Memory sync interval complete")
-					}
-				case <-stopCh:
-					return
-				}
-			}
-		}()
-	})
+	if m.startIntervalSync != nil {
+		m.startIntervalSync()
+	}
 }

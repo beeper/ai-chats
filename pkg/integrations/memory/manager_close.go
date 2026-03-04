@@ -11,13 +11,8 @@ func (m *MemorySearchManager) Close() {
 	}
 
 	// Stop interval ticker goroutine (if started).
-	m.mu.Lock()
-	stopCh := m.intervalStop
-	m.mu.Unlock()
-	if stopCh != nil {
-		m.intervalStopOnce.Do(func() {
-			close(stopCh)
-		})
+	if m.closeIntervalStop != nil {
+		m.closeIntervalStop()
 	}
 
 	// Stop debounced timers.
