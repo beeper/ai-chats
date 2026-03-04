@@ -265,6 +265,18 @@ func (o *OpenAIProvider) buildResponsesParams(params GenerateParams) responses.R
 
 // GenerateStream generates a streaming response from OpenAI using Responses API
 func (o *OpenAIProvider) GenerateStream(ctx context.Context, params GenerateParams) (<-chan StreamEvent, error) {
+	if pkgAIProviderRuntimeEnabled() {
+		if pkgAIEvents, ok := tryGenerateStreamWithPkgAI(ctx, o.baseURL, params); ok {
+			o.log.Debug().
+				Str("model", params.Model).
+				Msg("Using pkg/ai provider runtime for OpenAI stream")
+			return pkgAIEvents, nil
+		}
+		o.log.Warn().
+			Str("model", params.Model).
+			Msg("pkg/ai provider runtime fallback to existing OpenAI stream path")
+	}
+
 	events := make(chan StreamEvent, 100)
 
 	go func() {
