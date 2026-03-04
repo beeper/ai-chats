@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	aipkg "github.com/beeper/ai-bridge/pkg/ai"
 )
 
 func TestPkgAIProviderRuntimeEnabled(t *testing.T) {
@@ -29,6 +31,11 @@ func TestInferProviderNameFromBaseURL(t *testing.T) {
 		{name: "beeper proxy", baseURL: "https://ai.beeper.com/openai", want: "beeper"},
 		{name: "magic proxy", baseURL: "https://magicproxy.example/v1", want: "magic-proxy"},
 		{name: "azure", baseURL: "https://my-openai.azure.com", want: "azure-openai-responses"},
+		{name: "anthropic", baseURL: "https://api.anthropic.com", want: "anthropic"},
+		{name: "google cloudcode", baseURL: "https://cloudcode-pa.googleapis.com", want: "google-gemini-cli"},
+		{name: "google mldev", baseURL: "https://generativelanguage.googleapis.com", want: "google"},
+		{name: "google vertex", baseURL: "https://us-central1-aiplatform.googleapis.com", want: "google-vertex"},
+		{name: "bedrock", baseURL: "https://bedrock-runtime.us-east-1.amazonaws.com", want: "amazon-bedrock"},
 	}
 
 	for _, tc := range cases {
@@ -74,6 +81,27 @@ func TestBuildPkgAIModelFromGenerateParams(t *testing.T) {
 		t.Fatalf("expected azure base URL to map to azure-openai-responses API, got %q", azure.API)
 	}
 
+	anthropic := buildPkgAIModelFromGenerateParams(GenerateParams{
+		Model: "claude-sonnet-4-5",
+	}, "https://api.anthropic.com")
+	if anthropic.API != "anthropic-messages" {
+		t.Fatalf("expected anthropic base URL to map to anthropic-messages API, got %q", anthropic.API)
+	}
+
+	google := buildPkgAIModelFromGenerateParams(GenerateParams{
+		Model: "gemini-2.5-flash",
+	}, "https://generativelanguage.googleapis.com")
+	if google.API != "google-generative-ai" {
+		t.Fatalf("expected google base URL to map to google-generative-ai API, got %q", google.API)
+	}
+
+	bedrock := buildPkgAIModelFromGenerateParams(GenerateParams{
+		Model: "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+	}, "https://bedrock-runtime.us-east-1.amazonaws.com")
+	if bedrock.API != aipkg.APIBedrockConverse {
+		t.Fatalf("expected bedrock base URL to map to %q API, got %q", aipkg.APIBedrockConverse, bedrock.API)
+	}
+
 	nonReasoning := buildPkgAIModelFromGenerateParams(GenerateParams{
 		Model: "gpt-4.1-mini",
 	}, "")
@@ -87,6 +115,20 @@ func TestBuildPkgAIModelFromGenerateParams(t *testing.T) {
 	}, "")
 	if !withReasoningOverride.Reasoning {
 		t.Fatalf("expected reasoning effort override to mark model as reasoning capable")
+	}
+
+	heuristicAnthropic := buildPkgAIModelFromGenerateParams(GenerateParams{
+		Model: "claude-3-7-sonnet-latest",
+	}, "")
+	if heuristicAnthropic.API != "anthropic-messages" {
+		t.Fatalf("expected claude model heuristic to map to anthropic API, got %q", heuristicAnthropic.API)
+	}
+
+	heuristicGoogle := buildPkgAIModelFromGenerateParams(GenerateParams{
+		Model: "gemini-2.5-pro",
+	}, "")
+	if heuristicGoogle.API != "google-generative-ai" {
+		t.Fatalf("expected gemini model heuristic to map to google API, got %q", heuristicGoogle.API)
 	}
 }
 

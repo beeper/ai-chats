@@ -20,6 +20,16 @@ func inferProviderNameFromBaseURL(baseURL string) string {
 	switch {
 	case strings.Contains(lower, "openrouter.ai"):
 		return "openrouter"
+	case strings.Contains(lower, "api.anthropic.com"):
+		return "anthropic"
+	case strings.Contains(lower, "cloudcode-pa.googleapis.com"):
+		return "google-gemini-cli"
+	case strings.Contains(lower, "aiplatform.googleapis.com"), strings.Contains(lower, "vertex"):
+		return "google-vertex"
+	case strings.Contains(lower, "googleapis.com"), strings.Contains(lower, "generativelanguage.googleapis.com"):
+		return "google"
+	case strings.Contains(lower, "bedrock"):
+		return "amazon-bedrock"
 	case strings.Contains(lower, "beeper.com"):
 		return "beeper"
 	case strings.Contains(lower, "magicproxy"):
@@ -34,12 +44,7 @@ func inferProviderNameFromBaseURL(baseURL string) string {
 func buildPkgAIModelFromGenerateParams(params GenerateParams, baseURL string) aipkg.Model {
 	modelID := strings.TrimSpace(params.Model)
 	provider := inferProviderNameFromBaseURL(baseURL)
-	api := aipkg.APIOpenAIResponses
-	if provider == "openrouter" {
-		api = aipkg.APIOpenAICompletions
-	} else if provider == "azure-openai-responses" {
-		api = aipkg.APIAzureOpenAIResponse
-	}
+	api := inferAPIFromProviderModel(provider, modelID)
 	return aipkg.Model{
 		ID:        modelID,
 		Name:      modelID,
@@ -49,6 +54,34 @@ func buildPkgAIModelFromGenerateParams(params GenerateParams, baseURL string) ai
 		Reasoning: modelSupportsReasoning(modelID) || strings.TrimSpace(params.ReasoningEffort) != "",
 		Input:     []string{"text"},
 		MaxTokens: max(params.MaxCompletionTokens, 4096),
+	}
+}
+
+func inferAPIFromProviderModel(provider string, modelID string) aipkg.Api {
+	switch provider {
+	case "openrouter":
+		return aipkg.APIOpenAICompletions
+	case "azure-openai-responses":
+		return aipkg.APIAzureOpenAIResponse
+	case "anthropic":
+		return aipkg.APIAnthropicMessages
+	case "google":
+		return aipkg.APIGoogleGenerativeAI
+	case "google-gemini-cli":
+		return aipkg.APIGoogleGeminiCLI
+	case "google-vertex":
+		return aipkg.APIGoogleVertex
+	case "amazon-bedrock":
+		return aipkg.APIBedrockConverse
+	}
+	model := strings.ToLower(strings.TrimSpace(modelID))
+	switch {
+	case strings.HasPrefix(model, "claude-"):
+		return aipkg.APIAnthropicMessages
+	case strings.HasPrefix(model, "gemini-"):
+		return aipkg.APIGoogleGenerativeAI
+	default:
+		return aipkg.APIOpenAIResponses
 	}
 }
 
