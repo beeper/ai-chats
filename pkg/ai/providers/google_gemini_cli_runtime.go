@@ -176,7 +176,7 @@ func streamGoogleGeminiCLIWithOptions(
 		var lastErr error
 		for attempt := 0; attempt <= maxGeminiCLIRetries; attempt++ {
 			if runCtx.Err() != nil {
-				pushProviderError(stream, model, runCtx.Err().Error())
+				pushProviderAborted(stream, model)
 				return
 			}
 			endpoint := endpoints[minInt(attempt, len(endpoints)-1)]
@@ -203,6 +203,10 @@ func streamGoogleGeminiCLIWithOptions(
 						delay = time.Duration(parsedDelayMs) * time.Millisecond
 					}
 					if sleepErr := sleepWithContext(runCtx, delay); sleepErr != nil {
+						if isContextAborted(runCtx, sleepErr) {
+							pushProviderAborted(stream, model)
+							return
+						}
 						pushProviderError(stream, model, sleepErr.Error())
 						return
 					}
@@ -214,6 +218,10 @@ func streamGoogleGeminiCLIWithOptions(
 			if lastErr != nil && attempt < maxGeminiCLIRetries {
 				delay := baseGeminiCLIRetryDelay * time.Duration(1<<attempt)
 				if sleepErr := sleepWithContext(runCtx, delay); sleepErr != nil {
+					if isContextAborted(runCtx, sleepErr) {
+						pushProviderAborted(stream, model)
+						return
+					}
 					pushProviderError(stream, model, sleepErr.Error())
 					return
 				}
@@ -222,6 +230,10 @@ func streamGoogleGeminiCLIWithOptions(
 		}
 		if response == nil || response.Body == nil {
 			if lastErr != nil {
+				if isContextAborted(runCtx, lastErr) {
+					pushProviderAborted(stream, model)
+					return
+				}
 				pushProviderError(stream, model, lastErr.Error())
 				return
 			}
@@ -243,6 +255,10 @@ func streamGoogleGeminiCLIWithOptions(
 			)
 			_ = currentResponse.Body.Close()
 			if err != nil {
+				if isContextAborted(runCtx, err) {
+					pushProviderAborted(stream, model)
+					return
+				}
 				pushProviderError(stream, model, err.Error())
 				return
 			}
@@ -255,11 +271,19 @@ func streamGoogleGeminiCLIWithOptions(
 			}
 			delay, _ := GeminiEmptyStreamBackoff(emptyAttempt + 1)
 			if sleepErr := sleepWithContext(runCtx, delay); sleepErr != nil {
+				if isContextAborted(runCtx, sleepErr) {
+					pushProviderAborted(stream, model)
+					return
+				}
 				pushProviderError(stream, model, sleepErr.Error())
 				return
 			}
 			retryResp, reqErr := doGeminiCLIRequest(runCtx, requestURL, requestHeaders, requestBodyJSON)
 			if reqErr != nil {
+				if isContextAborted(runCtx, reqErr) {
+					pushProviderAborted(stream, model)
+					return
+				}
 				pushProviderError(stream, model, reqErr.Error())
 				return
 			}
