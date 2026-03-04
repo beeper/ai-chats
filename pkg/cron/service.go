@@ -928,7 +928,7 @@ func (c *CronService) ensureLoadedLocked(forceReload bool) error {
 		job := c.store.Jobs[i]
 		name := strings.TrimSpace(job.Name)
 		if name == "" {
-			name = inferLegacyName(&CronJobCreate{Payload: job.Payload, Schedule: job.Schedule})
+			name = "Cron job"
 			mutated = true
 		} else if name != job.Name {
 			mutated = true

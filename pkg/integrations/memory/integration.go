@@ -15,6 +15,7 @@ import (
 	"github.com/beeper/ai-bridge/pkg/agents"
 	iruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
 	memorycore "github.com/beeper/ai-bridge/pkg/memory"
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
 	"github.com/beeper/ai-bridge/pkg/textfs"
 )
@@ -251,9 +252,18 @@ func (i *Integration) buildToolExecDeps() ToolExecDeps {
 
 func (i *Integration) buildCommandExecDeps() CommandExecDeps {
 	return CommandExecDeps{
-		GetManager:        i.managerForScope,
-		ResolveSessionKey: i.sessionKeyForScope,
-		SplitQuotedArgs:   splitQuotedArgs,
+		GetManager: func(scope iruntime.ToolScope) (Manager, string) {
+			agentID := i.agentIDFromEventMeta(scope.Meta)
+			return i.getManager(agentID)
+		},
+		ResolveSessionKey: func(scope iruntime.ToolScope) string {
+			pm, ok := i.host.(iruntime.PortalManager)
+			if !ok || scope.Portal == nil {
+				return ""
+			}
+			return pm.PortalKeyString(scope.Portal)
+		},
+		SplitQuotedArgs: stringutil.SplitQuotedArgs,
 		WriteFile: func(ctx context.Context, scope iruntime.CommandScope, mode string, path string, content string, maxBytes int) (string, error) {
 			return i.writeMemoryCommandFile(ctx, scope, mode, path, content, maxBytes)
 		},
@@ -680,38 +690,6 @@ func (i *Integration) resolveBridgeDB() *dbutil.Database {
 	return nil
 }
 
-// splitQuotedArgs parses a raw argument string into tokens, respecting quoted segments.
-func splitQuotedArgs(input string) ([]string, error) {
-	var args []string
-	var current strings.Builder
-	var quote rune
-	for _, r := range input {
-		switch {
-		case quote != 0:
-			if r == quote {
-				quote = 0
-			} else {
-				current.WriteRune(r)
-			}
-		case r == '"' || r == '\'':
-			quote = r
-		case r == ' ' || r == '\t':
-			if current.Len() > 0 {
-				args = append(args, current.String())
-				current.Reset()
-			}
-		default:
-			current.WriteRune(r)
-		}
-	}
-	if quote != 0 {
-		return nil, fmt.Errorf("unclosed quote")
-	}
-	if current.Len() > 0 {
-		args = append(args, current.String())
-	}
-	return args, nil
-}
 
 // ---- hostRuntimeAdapter: bridges iruntime.Host → memory.Runtime ----
 

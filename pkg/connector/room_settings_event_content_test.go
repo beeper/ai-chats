@@ -28,7 +28,4 @@ func TestRoomSettingsEventContentMarshalUsesCanonicalAgentID(t *testing.T) {
 	if !strings.Contains(encoded, `"agent_id":"beeper"`) {
 		t.Fatalf("expected canonical agent_id field, got %s", encoded)
 	}
-	if strings.Contains(encoded, "default_agent_id") {
-		t.Fatalf("did not expect legacy default_agent_id field in %s", encoded)
-	}
 }

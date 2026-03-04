@@ -19,22 +19,22 @@ func TestEstimatePromptTokensFallbackShortPrompt(t *testing.T) {
 	}
 }
 
-func TestEstimatePromptTokensFallbackExceedsLegacyForShortPrompts(t *testing.T) {
+func TestEstimatePromptTokensFallbackExceedsNaiveForShortPrompts(t *testing.T) {
 	prompt := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("a"),
 		openai.UserMessage("b"),
 	}
 
-	legacy := 0
+	naive := 0
 	for _, msg := range prompt {
-		legacy += airuntime.EstimateMessageChars(msg) / airuntime.CharsPerTokenEstimate
+		naive += airuntime.EstimateMessageChars(msg) / airuntime.CharsPerTokenEstimate
 	}
-	if legacy <= 0 {
-		legacy = len(prompt) * 3
+	if naive <= 0 {
+		naive = len(prompt) * 3
 	}
 
 	got := estimatePromptTokensFallback(prompt)
-	if got <= legacy {
-		t.Fatalf("expected new fallback estimate to exceed legacy estimate for short prompts, got=%d legacy=%d", got, legacy)
+	if got <= naive {
+		t.Fatalf("expected new fallback estimate to exceed naive estimate for short prompts, got=%d naive=%d", got, naive)
 	}
 }

@@ -4,34 +4,26 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/beeper/ai-bridge/pkg/runtime"
 )
 
-/*
-Original OpenClaw prompt snippets (reference copy, do not edit):
-
-- "You are a personal assistant running inside OpenClaw."
-- "OpenClaw is controlled via subcommands. Do not invent commands."
-- "To manage the Gateway daemon service (start/stop/restart):"
-  "- openclaw gateway status"
-  "- openclaw gateway start"
-  "- openclaw gateway stop"
-  "- openclaw gateway restart"
-  "- If unsure, ask the user to run `openclaw help` (or `openclaw gateway --help`) and paste the output."
-- "When diagnosing issues, run `openclaw status` yourself when possible; only ask the user if you lack access (e.g., sandboxed)."
-*/
-
-func buildSkillsSection(skillsPrompt string, isMinimal bool, readToolName string) []string {
-	if isMinimal {
+func buildSkillsSection(params struct {
+	skillsPrompt string
+	isMinimal    bool
+	readToolName string
+}) []string {
+	if params.isMinimal {
 		return nil
 	}
-	trimmed := strings.TrimSpace(skillsPrompt)
+	trimmed := strings.TrimSpace(params.skillsPrompt)
 	if trimmed == "" {
 		return nil
 	}
 	return []string{
 		"## Skills (mandatory)",
 		"Before replying: scan <available_skills> <description> entries.",
-		fmt.Sprintf("- If exactly one skill clearly applies: read its SKILL.md at <location> with `%s`, then follow it.", readToolName),
+		fmt.Sprintf("- If exactly one skill clearly applies: read its SKILL.md at <location> with `%s`, then follow it.", params.readToolName),
 		"- If multiple could apply: choose the most specific one, then read/follow it.",
 		"- If none clearly apply: do not read any SKILL.md.",
 		"Constraints: never read more than one skill up front; only read after selecting.",
@@ -135,7 +127,7 @@ func buildMessagingSection(
 			"- Use `message` for proactive sends + channel actions (polls, reactions, etc.).",
 			"- For `action=send`, include `to` and `message`.",
 			fmt.Sprintf("- If multiple channels are configured, pass `channel` (%s).", messageChannelOpts),
-			fmt.Sprintf("- If you use `message` (`action=send`) to deliver your user-visible reply, respond with ONLY: %s (avoid duplicate replies).", SilentReplyToken),
+			fmt.Sprintf("- If you use `message` (`action=send`) to deliver your user-visible reply, respond with ONLY: %s (avoid duplicate replies).", runtime.SilentReplyToken),
 		}
 		if inlineButtons {
 			lines = append(lines, "- Inline buttons supported. Use `action=send` with `buttons=[[{text,callback_data}]]` (callback_data routes back as a user message).")
@@ -429,7 +421,11 @@ func BuildSystemPrompt(params SystemPromptParams) string {
 	}
 	isMinimal := promptMode == PromptModeMinimal || promptMode == PromptModeNone
 
-	skillsSection := buildSkillsSection(skillsPrompt, isMinimal, readToolName)
+	skillsSection := buildSkillsSection(struct {
+		skillsPrompt string
+		isMinimal    bool
+		readToolName string
+	}{skillsPrompt, isMinimal, readToolName})
 	memorySection := buildMemorySection(isMinimal, availableTools, params.MemoryCitations)
 	docsSection := buildDocsSection(isMinimal, availableTools["beeper_docs"])
 
@@ -650,16 +646,16 @@ func BuildSystemPrompt(params SystemPromptParams) string {
 	if !isMinimal {
 		lines = append(lines,
 			"## Silent Replies",
-			fmt.Sprintf("When you have nothing to say, respond with ONLY: %s", SilentReplyToken),
+			fmt.Sprintf("When you have nothing to say, respond with ONLY: %s", runtime.SilentReplyToken),
 			"",
 			"⚠️ Rules:",
 			"- It must be your ENTIRE message — nothing else",
-			fmt.Sprintf("- Never append it to an actual response (never include \"%s\" in real replies)", SilentReplyToken),
+			fmt.Sprintf("- Never append it to an actual response (never include \"%s\" in real replies)", runtime.SilentReplyToken),
 			"- Never wrap it in markdown or code blocks",
 			"",
-			fmt.Sprintf("❌ Wrong: \"Here's help... %s\"", SilentReplyToken),
-			fmt.Sprintf("❌ Wrong: \"%s\"", SilentReplyToken),
-			fmt.Sprintf("✅ Right: %s", SilentReplyToken),
+			fmt.Sprintf("❌ Wrong: \"Here's help... %s\"", runtime.SilentReplyToken),
+			fmt.Sprintf("❌ Wrong: \"%s\"", runtime.SilentReplyToken),
+			fmt.Sprintf("✅ Right: %s", runtime.SilentReplyToken),
 			"",
 		)
 	}

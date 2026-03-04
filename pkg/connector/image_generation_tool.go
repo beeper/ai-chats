@@ -22,6 +22,7 @@ import (
 
 	_ "golang.org/x/image/webp"
 
+	"github.com/beeper/ai-bridge/pkg/shared/httputil"
 	"github.com/beeper/ai-bridge/pkg/shared/media"
 	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
@@ -1076,12 +1077,12 @@ func loadInputImageBase64(ctx context.Context, btc *BridgeToolContext, ref strin
 }
 
 var imageFetchBlockedCIDRs = []*net.IPNet{
-	mustParseCIDR("127.0.0.0/8"),
-	mustParseCIDR("10.0.0.0/8"),
-	mustParseCIDR("172.16.0.0/12"),
-	mustParseCIDR("192.168.0.0/16"),
-	mustParseCIDR("169.254.0.0/16"),
-	mustParseCIDR("::1/128"),
+	httputil.MustParseCIDR("127.0.0.0/8"),
+	httputil.MustParseCIDR("10.0.0.0/8"),
+	httputil.MustParseCIDR("172.16.0.0/12"),
+	httputil.MustParseCIDR("192.168.0.0/16"),
+	httputil.MustParseCIDR("169.254.0.0/16"),
+	httputil.MustParseCIDR("::1/128"),
 }
 
 var imageFetchMetadataIP = net.ParseIP("169.254.169.254")
@@ -1147,13 +1148,6 @@ func isDisallowedImageIP(ip net.IP) bool {
 	return false
 }
 
-func mustParseCIDR(value string) *net.IPNet {
-	_, parsed, err := net.ParseCIDR(value)
-	if err != nil {
-		panic(fmt.Sprintf("invalid CIDR %q: %v", value, err))
-	}
-	return parsed
-}
 
 func isLocalImageRef(ref string) bool {
 	return strings.HasPrefix(ref, "file://") || strings.HasPrefix(ref, "/") || strings.HasPrefix(ref, "~") || strings.HasPrefix(ref, ".")

@@ -779,7 +779,7 @@ func (h *runtimeIntegrationHost) CompactorReserveTokens() int {
 }
 
 func (h *runtimeIntegrationHost) SilentReplyToken() string {
-	return agents.SilentReplyToken
+	return airuntime.SilentReplyToken
 }
 
 func (h *runtimeIntegrationHost) OverflowFlushConfig() (enabled *bool, softThresholdTokens int, prompt string, systemPrompt string) {

@@ -15,6 +15,7 @@ import (
 	"github.com/beeper/ai-bridge/pkg/agents"
 	"github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
 	"github.com/beeper/ai-bridge/pkg/connector/commandregistry"
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 // HelpSectionAI is the help section for AI-related commands
@@ -92,59 +93,6 @@ func isValidAgentID(agentID string) bool {
 	return true
 }
 
-func splitQuotedArgs(input string) ([]string, error) {
-	var args []string
-	var current strings.Builder
-	var quote rune
-	escaped := false
-
-	flush := func() {
-		if current.Len() > 0 {
-			args = append(args, current.String())
-			current.Reset()
-		}
-	}
-
-	for _, r := range input {
-		if escaped {
-			current.WriteRune(r)
-			escaped = false
-			continue
-		}
-
-		if r == '\\' && quote != '\'' {
-			escaped = true
-			continue
-		}
-
-		if quote != 0 {
-			if r == quote {
-				quote = 0
-				continue
-			}
-			current.WriteRune(r)
-			continue
-		}
-
-		switch r {
-		case '\'', '"':
-			quote = r
-		case ' ', '\t', '\n', '\r':
-			flush()
-		default:
-			current.WriteRune(r)
-		}
-	}
-
-	if quote != 0 {
-		return nil, errors.New("unterminated quote")
-	}
-	if escaped {
-		current.WriteRune('\\')
-	}
-	flush()
-	return args, nil
-}
 
 // CommandModel handles the !ai model command
 var CommandModel = registerAICommand(commandregistry.Definition{
@@ -408,7 +356,6 @@ func fnCommands(ce *commands.Event) {
 			"- `!ai send on|off|inherit`\n" +
 			"- `!ai queue status|reset|<mode> [debounce:<dur>] [cap:<n>] [drop:<old|new|summarize>]`\n\n" +
 			"Session actions:\n" +
-			"- `!ai approve <approvalId> <allow|always|deny> [reason]`\n" +
 			"- `!ai new` — New chat of the same type\n" +
 			"- `!ai reset` — Reset this session/thread\n" +
 			"- `!ai stop` — Abort the current run\n" +
@@ -1416,7 +1363,7 @@ func fnCreateAgent(ce *commands.Event) {
 
 	args := ce.Args
 	if raw := strings.TrimSpace(ce.RawArgs); raw != "" {
-		if parsed, err := splitQuotedArgs(raw); err == nil && len(parsed) > 0 {
+		if parsed, err := stringutil.SplitQuotedArgs(raw); err == nil && len(parsed) > 0 {
 			args = parsed
 		}
 	}

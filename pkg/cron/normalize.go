@@ -2,7 +2,6 @@ package cron
 
 import (
 	"errors"
-	"fmt"
 	"regexp"
 	"strings"
 )
@@ -75,44 +74,6 @@ func truncateText(input string, maxLen int) string {
 		return "…"
 	}
 	return strings.TrimSpace(input[:maxLen-1]) + "…"
-}
-
-// inferLegacyName mirrors OpenClaw's fallback naming.
-func inferLegacyName(job *CronJobCreate) string {
-	if job == nil {
-		return "Cron job"
-	}
-	text := ""
-	switch strings.ToLower(job.Payload.Kind) {
-	case "systemevent":
-		text = job.Payload.Text
-	case "agentturn":
-		text = job.Payload.Message
-	}
-	firstLine := ""
-	for _, line := range strings.Split(text, "\n") {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			firstLine = line
-			break
-		}
-	}
-	if firstLine != "" {
-		return truncateText(firstLine, 60)
-	}
-	switch strings.ToLower(job.Schedule.Kind) {
-	case "cron":
-		if strings.TrimSpace(job.Schedule.Expr) != "" {
-			return "Cron: " + truncateText(strings.TrimSpace(job.Schedule.Expr), 52)
-		}
-	case "every":
-		if job.Schedule.EveryMs > 0 {
-			return fmt.Sprintf("Every: %dms", job.Schedule.EveryMs)
-		}
-	case "at":
-		return "One-shot"
-	}
-	return "Cron job"
 }
 
 func normalizePayloadToSystemText(payload CronPayload) string {

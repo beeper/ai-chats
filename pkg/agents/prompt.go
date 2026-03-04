@@ -87,9 +87,6 @@ type SubagentPromptParams struct {
 	Task                string // Description of the task to complete
 }
 
-// SilentReplyToken is the expected response when the agent has nothing to say.
-const SilentReplyToken = "NO_REPLY"
-
 // HeartbeatToken is the expected response for heartbeat polls.
 const HeartbeatToken = "HEARTBEAT_OK"
 

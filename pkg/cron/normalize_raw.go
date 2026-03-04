@@ -63,10 +63,6 @@ func normalizeCronJobInputRaw(raw any, applyDefaults bool) rawRecord {
 			next["payload"] = maps.Clone(payloadMap)
 		}
 	}
-	if _, ok := base["isolation"]; ok {
-		delete(next, "isolation")
-	}
-
 	if applyDefaults {
 		if _, ok := next["wakeMode"]; !ok {
 			next["wakeMode"] = string(CronWakeNextHeartbeat)

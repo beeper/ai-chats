@@ -31,9 +31,6 @@ func ResolveCronStorePath(storePath string) string {
 		}
 	}
 	override := strings.TrimSpace(os.Getenv("OPENCLAW_STATE_DIR"))
-	if override == "" {
-		override = strings.TrimSpace(os.Getenv("CLAWDBOT_STATE_DIR"))
-	}
 	if override != "" {
 		if dir, err := textfs.NormalizeDir(override); err == nil {
 			if dir == "" {
