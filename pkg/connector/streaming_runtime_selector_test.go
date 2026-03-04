@@ -26,6 +26,19 @@ func TestPkgAIRuntimeEnabledFromEnv(t *testing.T) {
 	if pkgAIRuntimeEnabled() {
 		t.Fatalf("expected runtime flag disabled for value off")
 	}
+
+	t.Setenv("PI_USE_PKG_AI_RUNTIME_DRY_RUN", "")
+	if pkgAIRuntimeDryRunEnabled() {
+		t.Fatalf("expected dry-run flag disabled by default")
+	}
+	t.Setenv("PI_USE_PKG_AI_RUNTIME_DRY_RUN", "yes")
+	if !pkgAIRuntimeDryRunEnabled() {
+		t.Fatalf("expected dry-run flag enabled for value yes")
+	}
+	t.Setenv("PI_USE_PKG_AI_RUNTIME_DRY_RUN", "0")
+	if pkgAIRuntimeDryRunEnabled() {
+		t.Fatalf("expected dry-run flag disabled for value 0")
+	}
 }
 
 func TestChooseStreamingRuntimePath(t *testing.T) {

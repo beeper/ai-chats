@@ -8,6 +8,7 @@ import (
 	"time"
 
 	aipkg "github.com/beeper/ai-bridge/pkg/ai"
+	aiproviders "github.com/beeper/ai-bridge/pkg/ai/providers"
 	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
@@ -24,6 +25,11 @@ const (
 
 func pkgAIRuntimeEnabled() bool {
 	value := strings.ToLower(strings.TrimSpace(os.Getenv("PI_USE_PKG_AI_RUNTIME")))
+	return value == "1" || value == "true" || value == "yes" || value == "on"
+}
+
+func pkgAIRuntimeDryRunEnabled() bool {
+	value := strings.ToLower(strings.TrimSpace(os.Getenv("PI_USE_PKG_AI_RUNTIME_DRY_RUN")))
 	return value == "1" || value == "true" || value == "yes" || value == "on"
 }
 
@@ -66,11 +72,39 @@ func (oc *AIClient) streamWithPkgAIBridge(
 		Str("ai_model_provider", string(aiModel.Provider)).
 		Str("ai_model_id", aiModel.ID).
 		Msg("pkg/ai runtime bridge flag enabled; prepared adapter context/model and delegating to existing runtime path")
+	if pkgAIRuntimeDryRunEnabled() {
+		oc.runPkgAIBridgeDryRun(ctx, aiModel, aiContext)
+	}
 	switch oc.resolveModelAPI(meta) {
 	case ModelAPIChatCompletions:
 		return oc.streamChatCompletions(ctx, evt, portal, meta, prompt)
 	default:
 		return oc.streamingResponseWithToolSchemaFallback(ctx, evt, portal, meta, prompt)
+	}
+}
+
+func (oc *AIClient) runPkgAIBridgeDryRun(ctx context.Context, model aipkg.Model, aiContext aipkg.Context) {
+	aiproviders.RegisterBuiltInAPIProviders()
+	stream, err := aipkg.Stream(model, aiContext, &aipkg.StreamOptions{
+		Ctx:       ctx,
+		MaxTokens: model.MaxTokens,
+	})
+	if err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("pkg/ai dry-run failed to create stream")
+		return
+	}
+	events := streamEventsFromAIStream(ctx, stream)
+	count := 0
+	for evt := range events {
+		count++
+		if evt.Type == StreamEventError {
+			oc.loggerForContext(ctx).Debug().Err(evt.Error).Int("event_count", count).Msg("pkg/ai dry-run produced error event")
+			return
+		}
+		if evt.Type == StreamEventComplete {
+			oc.loggerForContext(ctx).Debug().Int("event_count", count).Str("finish_reason", evt.FinishReason).Msg("pkg/ai dry-run completed")
+			return
+		}
 	}
 }
 
