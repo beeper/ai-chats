@@ -22,7 +22,7 @@ require (
 	go.mau.fi/util v0.9.6
 	golang.org/x/image v0.35.0
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.26.4-0.20260303222821-d5724daf4994
+	maunium.net/go/mautrix v0.26.4-0.20260304003850-fef4326fbce6
 )
 
 require (
