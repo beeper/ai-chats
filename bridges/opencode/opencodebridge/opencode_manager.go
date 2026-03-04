@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -17,54 +18,12 @@ import (
 	"github.com/beeper/ai-bridge/bridges/opencode/opencode"
 )
 
+// OpenCodeManager coordinates connections to OpenCode server instances,
+// dispatches SSE events, and manages session lifecycle.
 type OpenCodeManager struct {
 	bridge    *Bridge
 	mu        sync.RWMutex
 	instances map[string]*openCodeInstance
-}
-
-type openCodeInstance struct {
-	cfg       OpenCodeInstance
-	client    *opencode.Client
-	connected bool
-	cancel    context.CancelFunc
-
-	disconnectMu    sync.Mutex
-	disconnectTimer *time.Timer
-
-	seenMu         sync.Mutex
-	seenMsg        map[string]map[string]string
-	seenPart       map[string]map[string]*openCodePartState
-	partsByMessage map[string]map[string]map[string]struct{}
-
-	cacheMu      sync.Mutex
-	messageCache map[string]*openCodeMessageCache
-
-	turnState map[string]map[string]*openCodeTurnState
-}
-
-type openCodeTurnState struct {
-	started  bool
-	stepOpen bool
-	finished bool
-}
-
-type openCodePartState struct {
-	role                   string
-	messageID              string
-	partType               string
-	callStatus             string
-	statusReaction         string
-	callSent               bool
-	resultSent             bool
-	textStreamStarted      bool
-	textStreamEnded        bool
-	reasoningStreamStarted bool
-	reasoningStreamEnded   bool
-	streamInputStarted     bool
-	streamInputAvailable   bool
-	streamOutputAvailable  bool
-	streamOutputError      bool
 }
 
 func NewOpenCodeManager(bridge *Bridge) *OpenCodeManager {
@@ -96,14 +55,11 @@ func (m *OpenCodeManager) getInstance(instanceID string) *openCodeInstance {
 
 func (m *OpenCodeManager) IsConnected(instanceID string) bool {
 	inst := m.getInstance(instanceID)
-	if inst == nil {
-		return false
-	}
-	return inst.connected
+	return inst != nil && inst.connected
 }
 
 // DisconnectAll stops all in-memory OpenCode connections/event loops without
-// modifying persisted instance metadata. Connections will be restored on next login connect.
+// modifying persisted instance metadata.
 func (m *OpenCodeManager) DisconnectAll() {
 	if m == nil {
 		return
@@ -133,16 +89,11 @@ func (m *OpenCodeManager) RestoreConnections(ctx context.Context) error {
 	if m == nil || m.bridge == nil || m.bridge.host == nil {
 		return nil
 	}
-	meta := m.bridge.host.OpenCodeInstances()
-	if len(meta) == 0 {
-		return nil
-	}
-	for _, cfg := range meta {
+	for _, cfg := range m.bridge.host.OpenCodeInstances() {
 		if cfg == nil || strings.TrimSpace(cfg.URL) == "" {
 			continue
 		}
-		_, _, err := m.Connect(ctx, cfg.URL, cfg.Password, cfg.Username)
-		if err != nil {
+		if _, _, err := m.Connect(ctx, cfg.URL, cfg.Password, cfg.Username); err != nil {
 			m.log().Warn().Err(err).Str("instance", cfg.ID).Msg("Failed to restore OpenCode instance")
 		}
 	}
@@ -163,18 +114,17 @@ func (m *OpenCodeManager) Connect(ctx context.Context, baseURL, password, userna
 
 	normalized, err := opencode.NormalizeBaseURL(baseURL)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("normalize url: %w", err)
 	}
 	instanceID := OpenCodeInstanceID(normalized, user)
 
 	client, err := opencode.NewClient(normalized, user, password)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("create client: %w", err)
 	}
-
 	sessions, err := client.ListSessions(ctx)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("list sessions: %w", err)
 	}
 
 	inst := &openCodeInstance{
@@ -197,24 +147,17 @@ func (m *OpenCodeManager) Connect(ctx context.Context, baseURL, password, userna
 		if existing.cancel != nil {
 			existing.cancel()
 		}
+		existing.disconnectMu.Lock()
+		if existing.disconnectTimer != nil {
+			existing.disconnectTimer.Stop()
+			existing.disconnectTimer = nil
+		}
+		existing.disconnectMu.Unlock()
 	}
 	m.instances[instanceID] = inst
 	m.mu.Unlock()
 
-	meta := m.bridge.host.OpenCodeInstances()
-	if meta == nil {
-		meta = make(map[string]*OpenCodeInstance)
-	}
-	meta[instanceID] = &OpenCodeInstance{
-		ID:       instanceID,
-		URL:      normalized,
-		Username: user,
-		Password: strings.TrimSpace(password),
-	}
-	if err := m.bridge.host.SaveOpenCodeInstances(ctx, meta); err != nil {
-		m.log().Warn().Err(err).Msg("Failed to persist OpenCode instance")
-	}
-
+	m.persistInstance(ctx, inst)
 	m.bridge.ensureOpenCodeGhostDisplayName(ctx, instanceID)
 
 	count, syncErr := m.syncSessions(ctx, inst, sessions)
@@ -222,21 +165,19 @@ func (m *OpenCodeManager) Connect(ctx context.Context, baseURL, password, userna
 	return inst, count, syncErr
 }
 
-func (m *OpenCodeManager) cleanupInstancePortals(ctx context.Context, inst *openCodeInstance) {
-	portals, err := m.bridge.listAllChatPortals(ctx)
-	if err != nil {
-		m.log().Warn().Err(err).Msg("Failed to list portals for cleanup")
-		return
+func (m *OpenCodeManager) persistInstance(ctx context.Context, inst *openCodeInstance) {
+	meta := m.bridge.host.OpenCodeInstances()
+	if meta == nil {
+		meta = make(map[string]*OpenCodeInstance)
 	}
-	for _, portal := range portals {
-		meta := m.bridge.portalMeta(portal)
-		if meta == nil || !meta.IsOpenCodeRoom || meta.InstanceID != inst.cfg.ID {
-			continue
-		}
-		if err := inst.client.DeleteSession(ctx, meta.SessionID); err != nil {
-			m.log().Warn().Err(err).Str("session", meta.SessionID).Msg("Failed to delete OpenCode session during cleanup")
-		}
-		m.bridge.host.CleanupPortal(ctx, portal, "opencode instance removed")
+	meta[inst.cfg.ID] = &OpenCodeInstance{
+		ID:       inst.cfg.ID,
+		URL:      inst.cfg.URL,
+		Username: inst.cfg.Username,
+		Password: inst.cfg.Password,
+	}
+	if err := m.bridge.host.SaveOpenCodeInstances(ctx, meta); err != nil {
+		m.log().Warn().Err(err).Msg("Failed to persist OpenCode instance")
 	}
 }
 
@@ -249,8 +190,6 @@ func (m *OpenCodeManager) RemoveInstance(ctx context.Context, instanceID string)
 		return errors.New("instance id is required")
 	}
 
-	// Read the instance before teardown so we can clean up portals/sessions
-	// while the client is still functional.
 	m.mu.RLock()
 	inst := m.instances[id]
 	m.mu.RUnlock()
@@ -286,12 +225,28 @@ func (m *OpenCodeManager) RemoveInstance(ctx context.Context, instanceID string)
 			meta = nil
 		}
 	}
-
 	if !hadInstance {
 		return ErrInstanceNotFound
 	}
-
 	return m.bridge.host.SaveOpenCodeInstances(ctx, meta)
+}
+
+func (m *OpenCodeManager) cleanupInstancePortals(ctx context.Context, inst *openCodeInstance) {
+	portals, err := m.bridge.listAllChatPortals(ctx)
+	if err != nil {
+		m.log().Warn().Err(err).Msg("Failed to list portals for cleanup")
+		return
+	}
+	for _, portal := range portals {
+		meta := m.bridge.portalMeta(portal)
+		if meta == nil || !meta.IsOpenCodeRoom || meta.InstanceID != inst.cfg.ID {
+			continue
+		}
+		if err := inst.client.DeleteSession(ctx, meta.SessionID); err != nil {
+			m.log().Warn().Err(err).Str("session", meta.SessionID).Msg("Failed to delete OpenCode session during cleanup")
+		}
+		m.bridge.host.CleanupPortal(ctx, portal, "opencode instance removed")
+	}
 }
 
 func (m *OpenCodeManager) requireConnectedInstance(instanceID string) (*openCodeInstance, error) {
@@ -320,7 +275,7 @@ func (m *OpenCodeManager) SendMessage(ctx context.Context, instanceID, sessionID
 	msgID := opencodeMessageIDForEvent(eventID)
 	if msgID != "" {
 		if inst.isSeen(sessionID, msgID) {
-			return nil // already sent
+			return nil
 		}
 		inst.markSeen(sessionID, msgID, "user")
 	}
@@ -329,7 +284,7 @@ func (m *OpenCodeManager) SendMessage(ctx context.Context, instanceID, sessionID
 		if opencode.IsAuthError(err) {
 			m.setConnected(inst, false)
 		}
-		return err
+		return fmt.Errorf("send message: %w", err)
 	}
 	return nil
 }
@@ -351,7 +306,7 @@ func (m *OpenCodeManager) AbortSession(ctx context.Context, instanceID, sessionI
 		if opencode.IsAuthError(err) {
 			m.setConnected(inst, false)
 		}
-		return err
+		return fmt.Errorf("abort session: %w", err)
 	}
 	return nil
 }
@@ -366,7 +321,7 @@ func (m *OpenCodeManager) CreateSession(ctx context.Context, instanceID, title, 
 		if opencode.IsAuthError(err) {
 			m.setConnected(inst, false)
 		}
-		return nil, err
+		return nil, fmt.Errorf("create session: %w", err)
 	}
 	return session, nil
 }
@@ -381,7 +336,7 @@ func (m *OpenCodeManager) UpdateSessionTitle(ctx context.Context, instanceID, se
 		if opencode.IsAuthError(err) {
 			m.setConnected(inst, false)
 		}
-		return nil, err
+		return nil, fmt.Errorf("update session title: %w", err)
 	}
 	return session, nil
 }
@@ -398,6 +353,8 @@ func (m *OpenCodeManager) syncSessions(ctx context.Context, inst *openCodeInstan
 	return count, nil
 }
 
+// ---------- event loop ----------
+
 func (m *OpenCodeManager) startEventLoop(inst *openCodeInstance) {
 	if inst == nil || m.bridge == nil || m.bridge.host == nil {
 		return
@@ -409,149 +366,186 @@ func (m *OpenCodeManager) startEventLoop(inst *openCodeInstance) {
 	ctx, cancel := context.WithCancel(login.Bridge.BackgroundCtx)
 	inst.cancel = cancel
 
-	go func() {
-		backoff := 2 * time.Second
-		maxBackoff := 2 * time.Minute
-		for {
-			if ctx.Err() != nil {
-				return
-			}
-			connectStart := time.Now()
-			events, errs := inst.client.StreamEvents(ctx)
-
-			sessions, err := inst.client.ListSessions(ctx)
-			if err == nil {
-				if _, syncErr := m.syncSessions(ctx, inst, sessions); syncErr != nil {
-					m.log().Warn().Err(syncErr).Str("instance", inst.cfg.ID).Msg("Failed to sync OpenCode sessions after reconnect")
-				}
-			} else {
-				m.log().Warn().Err(err).Str("instance", inst.cfg.ID).Msg("Failed to list OpenCode sessions after reconnect")
-			}
-			m.setConnected(inst, true)
-
-			streamEnded := false
-			for !streamEnded {
-				select {
-				case evt, ok := <-events:
-					if !ok {
-						streamEnded = true
-						break
-					}
-					m.handleEvent(ctx, inst, evt)
-				case err, ok := <-errs:
-					if ok && err != nil {
-						m.log().Warn().Err(err).Str("instance", inst.cfg.ID).Msg("OpenCode event stream error")
-					}
-					streamEnded = true
-				case <-ctx.Done():
-					return
-				}
-			}
-
-			m.setConnected(inst, false)
-			if ctx.Err() != nil {
-				return
-			}
-
-			if time.Since(connectStart) > 10*time.Second {
-				backoff = 2 * time.Second
-			} else if backoff < maxBackoff {
-				backoff *= 2
-				if backoff > maxBackoff {
-					backoff = maxBackoff
-				}
-			}
-
-			timer := time.NewTimer(backoff)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return
-			case <-timer.C:
-			}
-		}
-	}()
+	go m.runEventLoop(ctx, inst)
 }
+
+func (m *OpenCodeManager) runEventLoop(ctx context.Context, inst *openCodeInstance) {
+	backoff := 2 * time.Second
+	const maxBackoff = 2 * time.Minute
+
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		connectStart := time.Now()
+		events, errs := inst.client.StreamEvents(ctx)
+
+		if sessions, err := inst.client.ListSessions(ctx); err == nil {
+			if _, syncErr := m.syncSessions(ctx, inst, sessions); syncErr != nil {
+				m.log().Warn().Err(syncErr).Str("instance", inst.cfg.ID).Msg("Failed to sync sessions after reconnect")
+			}
+		} else {
+			m.log().Warn().Err(err).Str("instance", inst.cfg.ID).Msg("Failed to list sessions after reconnect")
+		}
+		m.setConnected(inst, true)
+
+		if m.consumeEventStream(ctx, inst, events, errs) {
+			return // context cancelled
+		}
+
+		m.setConnected(inst, false)
+		if ctx.Err() != nil {
+			return
+		}
+
+		if time.Since(connectStart) > 10*time.Second {
+			backoff = 2 * time.Second
+		} else if backoff < maxBackoff {
+			backoff = min(backoff*2, maxBackoff)
+		}
+
+		timer := time.NewTimer(backoff)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+	}
+}
+
+// consumeEventStream reads from the event/error channels until the stream ends
+// or the context is cancelled. Returns true if context was cancelled.
+func (m *OpenCodeManager) consumeEventStream(ctx context.Context, inst *openCodeInstance, events <-chan opencode.Event, errs <-chan error) bool {
+	for {
+		select {
+		case evt, ok := <-events:
+			if !ok {
+				return false
+			}
+			m.handleEvent(ctx, inst, evt)
+		case err, ok := <-errs:
+			if ok && err != nil {
+				m.log().Warn().Err(err).Str("instance", inst.cfg.ID).Msg("Event stream error")
+			}
+			return false
+		case <-ctx.Done():
+			return true
+		}
+	}
+}
+
+// ---------- event dispatch ----------
 
 func (m *OpenCodeManager) handleEvent(ctx context.Context, inst *openCodeInstance, evt opencode.Event) {
 	switch evt.Type {
 	case "session.created", "session.updated":
-		var session opencode.Session
-		if err := evt.DecodeInfo(&session); err != nil {
-			m.log().Warn().Err(err).Msg("Failed to decode OpenCode session event")
-			return
-		}
-		if err := m.bridge.ensureOpenCodeSessionPortal(ctx, inst, session); err != nil {
-			m.log().Warn().Err(err).Str("session", session.ID).Msg("Failed to ensure OpenCode session portal")
-		}
+		m.handleSessionEvent(ctx, inst, evt)
 	case "session.deleted":
-		var session opencode.Session
-		if err := evt.DecodeInfo(&session); err != nil {
-			m.log().Warn().Err(err).Msg("Failed to decode OpenCode session delete event")
-			return
-		}
-		m.bridge.removeOpenCodeSessionPortal(ctx, inst.cfg.ID, session.ID, "opencode session deleted")
+		m.handleSessionDeleted(ctx, inst, evt)
 	case "message.updated":
-		var msg opencode.Message
-		if err := evt.DecodeInfo(&msg); err != nil {
-			m.log().Warn().Err(err).Msg("Failed to decode OpenCode message event")
-			return
-		}
-		m.handleMessageEvent(ctx, inst, msg)
+		m.handleMessageUpdated(ctx, inst, evt)
 	case "message.removed":
-		var payload struct {
-			SessionID string `json:"sessionID"`
-			MessageID string `json:"messageID"`
-		}
-		if err := evt.DecodeInfo(&payload); err != nil {
-			m.log().Warn().Err(err).Msg("Failed to decode OpenCode message removal event")
-			return
-		}
-		m.handleMessageRemoved(ctx, inst, payload.SessionID, payload.MessageID)
+		m.handleMessageRemovedEvent(ctx, inst, evt)
 	case "message.part.updated":
-		var payload struct {
-			Part  opencode.Part `json:"part"`
-			Delta string        `json:"delta"`
-		}
-		if err := json.Unmarshal(evt.Properties, &payload); err != nil {
-			m.log().Warn().Err(err).Msg("Failed to decode OpenCode part update event")
-			return
-		}
-		part := payload.Part
-		if payload.Delta != "" && part.MessageID != "" {
-			if full, err := inst.client.GetMessage(ctx, part.SessionID, part.MessageID); err == nil && full != nil {
-				if refreshed, ok := findOpenCodePart(full.Parts, part.ID); ok {
-					part = refreshed
-				}
-			}
-		}
-		m.handlePartUpdated(ctx, inst, part, payload.Delta)
+		m.handlePartUpdatedEvent(ctx, inst, evt)
 	case "message.part.delta":
-		var payload struct {
-			SessionID string `json:"sessionID"`
-			MessageID string `json:"messageID"`
-			PartID    string `json:"partID"`
-			Field     string `json:"field"`
-			Delta     string `json:"delta"`
-		}
-		if err := json.Unmarshal(evt.Properties, &payload); err != nil {
-			m.log().Warn().Err(err).Msg("Failed to decode OpenCode part delta event")
-			return
-		}
-		m.handlePartDelta(ctx, inst, payload.SessionID, payload.MessageID, payload.PartID, payload.Field, payload.Delta)
+		m.handlePartDeltaEvent(ctx, inst, evt)
 	case "message.part.removed":
-		var payload struct {
-			SessionID string `json:"sessionID"`
-			MessageID string `json:"messageID"`
-			PartID    string `json:"partID"`
-		}
-		if err := json.Unmarshal(evt.Properties, &payload); err != nil {
-			m.log().Warn().Err(err).Msg("Failed to decode OpenCode part removal event")
-			return
-		}
-		m.handlePartRemoved(ctx, inst, payload.SessionID, payload.MessageID, payload.PartID)
+		m.handlePartRemovedEvent(ctx, inst, evt)
 	}
 }
+
+func (m *OpenCodeManager) handleSessionEvent(ctx context.Context, inst *openCodeInstance, evt opencode.Event) {
+	var session opencode.Session
+	if err := evt.DecodeInfo(&session); err != nil {
+		m.log().Warn().Err(err).Msg("Failed to decode session event")
+		return
+	}
+	if err := m.bridge.ensureOpenCodeSessionPortal(ctx, inst, session); err != nil {
+		m.log().Warn().Err(err).Str("session", session.ID).Msg("Failed to ensure session portal")
+	}
+}
+
+func (m *OpenCodeManager) handleSessionDeleted(ctx context.Context, inst *openCodeInstance, evt opencode.Event) {
+	var session opencode.Session
+	if err := evt.DecodeInfo(&session); err != nil {
+		m.log().Warn().Err(err).Msg("Failed to decode session delete event")
+		return
+	}
+	m.bridge.removeOpenCodeSessionPortal(ctx, inst.cfg.ID, session.ID, "opencode session deleted")
+}
+
+func (m *OpenCodeManager) handleMessageUpdated(ctx context.Context, inst *openCodeInstance, evt opencode.Event) {
+	var msg opencode.Message
+	if err := evt.DecodeInfo(&msg); err != nil {
+		m.log().Warn().Err(err).Msg("Failed to decode message event")
+		return
+	}
+	m.handleMessageEvent(ctx, inst, msg)
+}
+
+func (m *OpenCodeManager) handleMessageRemovedEvent(ctx context.Context, inst *openCodeInstance, evt opencode.Event) {
+	var payload struct {
+		SessionID string `json:"sessionID"`
+		MessageID string `json:"messageID"`
+	}
+	if err := evt.DecodeInfo(&payload); err != nil {
+		m.log().Warn().Err(err).Msg("Failed to decode message removal event")
+		return
+	}
+	m.handleMessageRemoved(ctx, inst, payload.SessionID, payload.MessageID)
+}
+
+func (m *OpenCodeManager) handlePartUpdatedEvent(ctx context.Context, inst *openCodeInstance, evt opencode.Event) {
+	var payload struct {
+		Part  opencode.Part `json:"part"`
+		Delta string        `json:"delta"`
+	}
+	if err := json.Unmarshal(evt.Properties, &payload); err != nil {
+		m.log().Warn().Err(err).Msg("Failed to decode part update event")
+		return
+	}
+	part := payload.Part
+	if payload.Delta != "" && part.MessageID != "" {
+		if full, err := inst.client.GetMessage(ctx, part.SessionID, part.MessageID); err == nil && full != nil {
+			if refreshed, ok := findOpenCodePart(full.Parts, part.ID); ok {
+				part = refreshed
+			}
+		}
+	}
+	m.handlePartUpdated(ctx, inst, part, payload.Delta)
+}
+
+func (m *OpenCodeManager) handlePartDeltaEvent(ctx context.Context, inst *openCodeInstance, evt opencode.Event) {
+	var payload struct {
+		SessionID string `json:"sessionID"`
+		MessageID string `json:"messageID"`
+		PartID    string `json:"partID"`
+		Field     string `json:"field"`
+		Delta     string `json:"delta"`
+	}
+	if err := json.Unmarshal(evt.Properties, &payload); err != nil {
+		m.log().Warn().Err(err).Msg("Failed to decode part delta event")
+		return
+	}
+	m.handlePartDelta(ctx, inst, payload.SessionID, payload.MessageID, payload.PartID, payload.Field, payload.Delta)
+}
+
+func (m *OpenCodeManager) handlePartRemovedEvent(ctx context.Context, inst *openCodeInstance, evt opencode.Event) {
+	var payload struct {
+		SessionID string `json:"sessionID"`
+		MessageID string `json:"messageID"`
+		PartID    string `json:"partID"`
+	}
+	if err := json.Unmarshal(evt.Properties, &payload); err != nil {
+		m.log().Warn().Err(err).Msg("Failed to decode part removal event")
+		return
+	}
+	m.handlePartRemoved(ctx, inst, payload.SessionID, payload.MessageID, payload.PartID)
+}
+
+// ---------- message/part processing ----------
 
 func (m *OpenCodeManager) handleMessageEvent(ctx context.Context, inst *openCodeInstance, msg opencode.Message) {
 	if msg.ID == "" || msg.SessionID == "" {
@@ -561,8 +555,7 @@ func (m *OpenCodeManager) handleMessageEvent(ctx context.Context, inst *openCode
 
 	if inst.isSeen(msg.SessionID, msg.ID) {
 		if isCompleted && msg.Role != "user" {
-			portal := m.bridge.findOpenCodePortal(ctx, inst.cfg.ID, msg.SessionID)
-			if portal != nil {
+			if portal := m.bridge.findOpenCodePortal(ctx, inst.cfg.ID, msg.SessionID); portal != nil {
 				m.emitTurnFinish(ctx, inst, portal, msg.SessionID, msg.ID, "stop")
 			}
 		}
@@ -570,11 +563,10 @@ func (m *OpenCodeManager) handleMessageEvent(ctx context.Context, inst *openCode
 	}
 	full, err := inst.client.GetMessage(ctx, msg.SessionID, msg.ID)
 	if err != nil {
-		m.log().Warn().Err(err).Str("message", msg.ID).Msg("Failed to fetch OpenCode message")
+		m.log().Warn().Err(err).Str("message", msg.ID).Msg("Failed to fetch message")
 		return
 	}
 	if msg.Role == "user" {
-		// Do not echo user-role messages back into Matrix.
 		inst.markSeen(msg.SessionID, msg.ID, msg.Role)
 		return
 	}
@@ -620,25 +612,8 @@ func (m *OpenCodeManager) handlePartUpdated(ctx context.Context, inst *openCodeI
 		return
 	}
 	inst.upsertPart(part.SessionID, part.MessageID, part)
-	role := inst.seenRole(part.SessionID, part.MessageID)
-	if role == "user" && inst.isSeen(part.SessionID, part.MessageID) {
-		return
-	}
-	if role == "" && part.MessageID != "" {
-		if full, err := inst.client.GetMessage(ctx, part.SessionID, part.MessageID); err == nil && full != nil {
-			role = full.Info.Role
-			if role != "" {
-				inst.markSeen(part.SessionID, part.MessageID, role)
-			}
-		}
-	}
-	if role == "" {
-		role = "assistant"
-	}
+	role := m.resolvePartRole(ctx, inst, part)
 	if role == "user" {
-		if part.MessageID != "" {
-			inst.markSeen(part.SessionID, part.MessageID, role)
-		}
 		return
 	}
 	if part.Type == "tool" && delta != "" {
@@ -652,6 +627,29 @@ func (m *OpenCodeManager) handlePartUpdated(ctx context.Context, inst *openCodeI
 	}
 	m.emitTextStreamEnd(ctx, inst, portal, part)
 	m.handlePart(ctx, inst, portal, role, part, true)
+}
+
+// resolvePartRole determines the role for a part, fetching the full message if needed.
+func (m *OpenCodeManager) resolvePartRole(ctx context.Context, inst *openCodeInstance, part opencode.Part) string {
+	role := inst.seenRole(part.SessionID, part.MessageID)
+	if role == "user" && inst.isSeen(part.SessionID, part.MessageID) {
+		return "user"
+	}
+	if role == "" && part.MessageID != "" {
+		if full, err := inst.client.GetMessage(ctx, part.SessionID, part.MessageID); err == nil && full != nil {
+			role = full.Info.Role
+			if role != "" {
+				inst.markSeen(part.SessionID, part.MessageID, role)
+			}
+		}
+	}
+	if role == "" {
+		role = "assistant"
+	}
+	if role == "user" && part.MessageID != "" {
+		inst.markSeen(part.SessionID, part.MessageID, role)
+	}
+	return role
 }
 
 func (m *OpenCodeManager) handlePartDelta(ctx context.Context, inst *openCodeInstance, sessionID, messageID, partID, field, delta string) {
@@ -670,12 +668,11 @@ func (m *OpenCodeManager) handlePartDelta(ctx context.Context, inst *openCodeIns
 		role = "assistant"
 	}
 
-	// Build a synthetic Part with enough fields for the stream emitters.
 	part := opencode.Part{
 		ID:        partID,
 		SessionID: sessionID,
 		MessageID: messageID,
-		Type:      field, // field corresponds to the part type (text, reasoning, tool)
+		Type:      field,
 	}
 	inst.ensurePartState(sessionID, messageID, partID, role, field)
 
@@ -718,7 +715,6 @@ func (m *OpenCodeManager) handlePart(ctx context.Context, inst *openCodeInstance
 		m.handleToolPart(ctx, inst, portal, role, part)
 		return
 	}
-
 	state := inst.partState(part.SessionID, part.ID)
 	if state == nil {
 		inst.ensurePartState(part.SessionID, part.MessageID, part.ID, role, part.Type)
@@ -770,8 +766,7 @@ func (m *OpenCodeManager) handleToolPart(ctx context.Context, inst *openCodeInst
 		inst.setPartResultSent(part.SessionID, part.ID)
 	}
 	if status == "completed" || status == "error" {
-		prev := inst.partStatusReaction(part.SessionID, part.ID)
-		if prev != "" {
+		if prev := inst.partStatusReaction(part.SessionID, part.ID); prev != "" {
 			m.bridge.emitOpenCodeToolStatusReactionRemove(ctx, portal, inst.cfg.ID, part, role == "user", prev)
 			inst.setPartStatusReaction(part.SessionID, part.ID, "")
 		}
@@ -822,6 +817,8 @@ func (m *OpenCodeManager) handleMessageRemoved(ctx context.Context, inst *openCo
 	}
 }
 
+// ---------- connection state management ----------
+
 const disconnectGracePeriod = 5 * time.Second
 
 func (m *OpenCodeManager) setConnected(inst *openCodeInstance, connected bool) {
@@ -833,13 +830,11 @@ func (m *OpenCodeManager) setConnected(inst *openCodeInstance, connected bool) {
 	defer inst.disconnectMu.Unlock()
 
 	if connected {
-		// Reconnected: cancel any pending disconnect timer silently.
 		if inst.disconnectTimer != nil {
 			inst.disconnectTimer.Stop()
 			inst.disconnectTimer = nil
 		}
 		if inst.connected {
-			// Already marked connected — nothing to broadcast.
 			return
 		}
 		inst.connected = true
@@ -847,9 +842,8 @@ func (m *OpenCodeManager) setConnected(inst *openCodeInstance, connected bool) {
 		return
 	}
 
-	// Disconnect: start a grace-period timer before notifying rooms.
 	if !inst.connected {
-		return // already disconnected
+		return
 	}
 	inst.connected = false
 
@@ -861,7 +855,7 @@ func (m *OpenCodeManager) setConnected(inst *openCodeInstance, connected bool) {
 		defer inst.disconnectMu.Unlock()
 		inst.disconnectTimer = nil
 		if inst.connected {
-			return // reconnected during grace period
+			return
 		}
 		m.applyConnectedState(inst, false)
 	})
@@ -894,329 +888,15 @@ func (m *OpenCodeManager) applyConnectedState(inst *openCodeInstance, connected 
 		meta.ReadOnly = !connected
 		m.bridge.host.SetPortalMeta(portal, meta)
 		_ = m.bridge.host.SavePortal(ctx, portal)
-		if !connected {
-			m.bridge.host.SendSystemNotice(ctx, portal, "OpenCode disconnected. This room is now read-only until it reconnects.")
-		} else {
+		if connected {
 			m.bridge.host.SendSystemNotice(ctx, portal, "OpenCode reconnected. You can send messages again.")
-		}
-	}
-}
-
-func (inst *openCodeInstance) isSeen(sessionID, messageID string) bool {
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	if inst.seenMsg == nil {
-		inst.seenMsg = make(map[string]map[string]string)
-	}
-	seen, ok := inst.seenMsg[sessionID]
-	if !ok {
-		return false
-	}
-	_, exists := seen[messageID]
-	return exists
-}
-
-func (inst *openCodeInstance) markSeen(sessionID, messageID, role string) {
-	if messageID == "" || sessionID == "" {
-		return
-	}
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	if inst.seenMsg == nil {
-		inst.seenMsg = make(map[string]map[string]string)
-	}
-	seen, ok := inst.seenMsg[sessionID]
-	if !ok {
-		seen = make(map[string]string)
-		inst.seenMsg[sessionID] = seen
-	}
-	seen[messageID] = role
-}
-
-func (inst *openCodeInstance) seenRole(sessionID, messageID string) string {
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	if inst.seenMsg == nil {
-		return ""
-	}
-	seen, ok := inst.seenMsg[sessionID]
-	if !ok {
-		return ""
-	}
-	return seen[messageID]
-}
-
-// withPartState calls fn with the part state for the given session and part,
-// if it exists. Caller should NOT hold inst.seenMu.
-func (inst *openCodeInstance) withPartState(sessionID, partID string, fn func(ps *openCodePartState)) {
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	if inst.seenPart == nil {
-		return
-	}
-	if parts, ok := inst.seenPart[sessionID]; ok {
-		if state, ok := parts[partID]; ok && state != nil {
-			fn(state)
-		}
-	}
-}
-
-// readPartState calls fn with the part state for the given session and part if
-// it exists. Returns the zero value of T if the part state is not found.
-func readPartState[T any](inst *openCodeInstance, sessionID, partID string, fn func(ps *openCodePartState) T) T {
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	if inst.seenPart == nil {
-		var zero T
-		return zero
-	}
-	parts, ok := inst.seenPart[sessionID]
-	if !ok {
-		var zero T
-		return zero
-	}
-	state, ok := parts[partID]
-	if !ok || state == nil {
-		var zero T
-		return zero
-	}
-	return fn(state)
-}
-
-func (inst *openCodeInstance) partState(sessionID, partID string) *openCodePartState {
-	return readPartState(inst, sessionID, partID, func(ps *openCodePartState) *openCodePartState { return ps })
-}
-
-func (inst *openCodeInstance) partFlags(sessionID, partID string) (bool, bool) {
-	type pair struct{ a, b bool }
-	p := readPartState(inst, sessionID, partID, func(ps *openCodePartState) pair {
-		return pair{ps.callSent, ps.resultSent}
-	})
-	return p.a, p.b
-}
-
-func (inst *openCodeInstance) partStreamFlags(sessionID, partID string) (bool, bool, bool, bool) {
-	type quad struct{ a, b, c, d bool }
-	q := readPartState(inst, sessionID, partID, func(ps *openCodePartState) quad {
-		return quad{ps.streamInputStarted, ps.streamInputAvailable, ps.streamOutputAvailable, ps.streamOutputError}
-	})
-	return q.a, q.b, q.c, q.d
-}
-
-func (inst *openCodeInstance) partTextStreamFlags(sessionID, partID string) (bool, bool, bool, bool) {
-	type quad struct{ a, b, c, d bool }
-	q := readPartState(inst, sessionID, partID, func(ps *openCodePartState) quad {
-		return quad{ps.textStreamStarted, ps.textStreamEnded, ps.reasoningStreamStarted, ps.reasoningStreamEnded}
-	})
-	return q.a, q.b, q.c, q.d
-}
-
-func (inst *openCodeInstance) partCallStatus(sessionID, partID string) string {
-	return readPartState(inst, sessionID, partID, func(ps *openCodePartState) string { return ps.callStatus })
-}
-
-func (inst *openCodeInstance) partStatusReaction(sessionID, partID string) string {
-	return readPartState(inst, sessionID, partID, func(ps *openCodePartState) string { return ps.statusReaction })
-}
-
-func (inst *openCodeInstance) setPartCallSent(sessionID, partID string) {
-	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.callSent = true })
-}
-
-func (inst *openCodeInstance) setPartTextStreamStarted(sessionID, partID, kind string) {
-	inst.withPartState(sessionID, partID, func(ps *openCodePartState) {
-		if kind == "reasoning" {
-			ps.reasoningStreamStarted = true
 		} else {
-			ps.textStreamStarted = true
-		}
-	})
-}
-
-func (inst *openCodeInstance) setPartTextStreamEnded(sessionID, partID, kind string) {
-	inst.withPartState(sessionID, partID, func(ps *openCodePartState) {
-		if kind == "reasoning" {
-			ps.reasoningStreamEnded = true
-		} else {
-			ps.textStreamEnded = true
-		}
-	})
-}
-
-func (inst *openCodeInstance) setPartStreamInputStarted(sessionID, partID string) {
-	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.streamInputStarted = true })
-}
-
-func (inst *openCodeInstance) setPartStreamInputAvailable(sessionID, partID string) {
-	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.streamInputAvailable = true })
-}
-
-func (inst *openCodeInstance) setPartStreamOutputAvailable(sessionID, partID string) {
-	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.streamOutputAvailable = true })
-}
-
-func (inst *openCodeInstance) setPartStreamOutputError(sessionID, partID string) {
-	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.streamOutputError = true })
-}
-
-func (inst *openCodeInstance) setPartCallStatus(sessionID, partID, status string) {
-	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.callStatus = status })
-}
-
-func (inst *openCodeInstance) setPartStatusReaction(sessionID, partID, reaction string) {
-	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.statusReaction = reaction })
-}
-
-func (inst *openCodeInstance) setPartResultSent(sessionID, partID string) {
-	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.resultSent = true })
-}
-
-func (inst *openCodeInstance) ensurePartState(sessionID, messageID, partID, role, partType string) *openCodePartState {
-	if sessionID == "" || partID == "" {
-		return nil
-	}
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	if inst.seenPart == nil {
-		inst.seenPart = make(map[string]map[string]*openCodePartState)
-	}
-	parts, ok := inst.seenPart[sessionID]
-	if !ok {
-		parts = make(map[string]*openCodePartState)
-		inst.seenPart[sessionID] = parts
-	}
-	state, ok := parts[partID]
-	if !ok {
-		state = &openCodePartState{role: role, messageID: messageID, partType: partType}
-		parts[partID] = state
-	} else {
-		if role != "" {
-			state.role = role
-		}
-		if messageID != "" {
-			state.messageID = messageID
-		}
-		if partType != "" {
-			state.partType = partType
-		}
-	}
-	if messageID != "" {
-		if inst.partsByMessage == nil {
-			inst.partsByMessage = make(map[string]map[string]map[string]struct{})
-		}
-		msgMap, ok := inst.partsByMessage[sessionID]
-		if !ok {
-			msgMap = make(map[string]map[string]struct{})
-			inst.partsByMessage[sessionID] = msgMap
-		}
-		partSet, ok := msgMap[messageID]
-		if !ok {
-			partSet = make(map[string]struct{})
-			msgMap[messageID] = partSet
-		}
-		partSet[partID] = struct{}{}
-	}
-	return state
-}
-
-func (inst *openCodeInstance) messageParts(sessionID, messageID string) map[string]*openCodePartState {
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	result := make(map[string]*openCodePartState)
-	if inst.partsByMessage == nil || inst.seenPart == nil {
-		return result
-	}
-	msgMap, ok := inst.partsByMessage[sessionID]
-	if !ok {
-		return result
-	}
-	partSet, ok := msgMap[messageID]
-	if !ok {
-		return result
-	}
-	for partID := range partSet {
-		if state, ok := inst.seenPart[sessionID][partID]; ok {
-			result[partID] = state
-		} else {
-			result[partID] = &openCodePartState{}
-		}
-	}
-	return result
-}
-
-func (inst *openCodeInstance) removePart(sessionID, messageID, partID string) {
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	if inst.seenPart != nil {
-		if parts, ok := inst.seenPart[sessionID]; ok {
-			delete(parts, partID)
-		}
-	}
-	if inst.partsByMessage != nil {
-		if msgMap, ok := inst.partsByMessage[sessionID]; ok {
-			if partSet, ok := msgMap[messageID]; ok {
-				delete(partSet, partID)
-				if len(partSet) == 0 {
-					delete(msgMap, messageID)
-				}
-			}
-			if len(msgMap) == 0 {
-				delete(inst.partsByMessage, sessionID)
-			}
+			m.bridge.host.SendSystemNotice(ctx, portal, "OpenCode disconnected. This room is now read-only until it reconnects.")
 		}
 	}
 }
 
-func (inst *openCodeInstance) ensureTurnState(sessionID, messageID string) *openCodeTurnState {
-	if sessionID == "" || messageID == "" {
-		return nil
-	}
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	if inst.turnState == nil {
-		inst.turnState = make(map[string]map[string]*openCodeTurnState)
-	}
-	sess, ok := inst.turnState[sessionID]
-	if !ok {
-		sess = make(map[string]*openCodeTurnState)
-		inst.turnState[sessionID] = sess
-	}
-	state, ok := sess[messageID]
-	if !ok {
-		state = &openCodeTurnState{}
-		sess[messageID] = state
-	}
-	return state
-}
-
-func (inst *openCodeInstance) turnStateFor(sessionID, messageID string) *openCodeTurnState {
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	if inst.turnState == nil {
-		return nil
-	}
-	sess, ok := inst.turnState[sessionID]
-	if !ok {
-		return nil
-	}
-	return sess[messageID]
-}
-
-func (inst *openCodeInstance) removeTurnState(sessionID, messageID string) {
-	inst.seenMu.Lock()
-	defer inst.seenMu.Unlock()
-	if inst.turnState == nil {
-		return
-	}
-	sess, ok := inst.turnState[sessionID]
-	if !ok {
-		return
-	}
-	delete(sess, messageID)
-	if len(sess) == 0 {
-		delete(inst.turnState, sessionID)
-	}
-}
+// ---------- utilities ----------
 
 func opencodeMessageIDForEvent(eventID id.EventID) string {
 	trimmed := strings.TrimSpace(string(eventID))
@@ -1228,9 +908,6 @@ func opencodeMessageIDForEvent(eventID id.EventID) string {
 }
 
 func findOpenCodePart(parts []opencode.Part, partID string) (opencode.Part, bool) {
-	if partID == "" {
-		return opencode.Part{}, false
-	}
 	for _, part := range parts {
 		if part.ID == partID {
 			return part, true

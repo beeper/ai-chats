@@ -28,6 +28,10 @@ type OpenCodeConnector struct {
 	clients   map[networkid.UserLoginID]bridgev2.NetworkAPI
 }
 
+func NewConnector() *OpenCodeConnector {
+	return &OpenCodeConnector{}
+}
+
 func (oc *OpenCodeConnector) Init(bridge *bridgev2.Bridge) {
 	oc.br = bridge
 	bridgeadapter.EnsureClientMap(&oc.clientsMu, &oc.clients)

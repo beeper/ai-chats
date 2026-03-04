@@ -31,6 +31,15 @@ func opencodePartStreamID(part opencode.Part, kind string) string {
 	return "text-" + part.ID
 }
 
+// partTurnID returns the stream turn ID for a part, falling back to the part ID.
+func partTurnID(part opencode.Part) string {
+	turnID := opencodeMessageStreamTurnID(part.SessionID, part.MessageID)
+	if turnID == "" {
+		return "opencode-part-" + part.ID
+	}
+	return turnID
+}
+
 func (m *OpenCodeManager) emitTextStreamDelta(ctx context.Context, inst *openCodeInstance, portal *bridgev2.Portal, part opencode.Part, delta string) {
 	m.emitTextStreamDeltaForKind(ctx, inst, portal, part, delta, "text")
 }
@@ -40,16 +49,10 @@ func (m *OpenCodeManager) emitReasoningStreamDelta(ctx context.Context, inst *op
 }
 
 func (m *OpenCodeManager) emitTextStreamDeltaForKind(ctx context.Context, inst *openCodeInstance, portal *bridgev2.Portal, part opencode.Part, delta, kind string) {
-	if m == nil || m.bridge == nil || portal == nil || inst == nil {
+	if m == nil || m.bridge == nil || portal == nil || inst == nil || delta == "" {
 		return
 	}
-	if delta == "" {
-		return
-	}
-	turnID := opencodeMessageStreamTurnID(part.SessionID, part.MessageID)
-	if turnID == "" {
-		turnID = "opencode-part-" + part.ID
-	}
+	turnID := partTurnID(part)
 	partID := opencodePartStreamID(part, kind)
 	if partID == "" {
 		return
@@ -57,10 +60,11 @@ func (m *OpenCodeManager) emitTextStreamDeltaForKind(ctx context.Context, inst *
 	agentID := m.bridge.portalAgentID(portal)
 	m.closeStepIfOpen(ctx, inst, portal, part.SessionID, part.MessageID)
 	m.ensureTurnStarted(ctx, inst, portal, part.SessionID, part.MessageID)
-	textStarted, _, reasoningStarted, _ := inst.partTextStreamFlags(part.SessionID, part.ID)
-	started := textStarted
+
+	tsf := inst.partTextStreamFlags(part.SessionID, part.ID)
+	started := tsf.textStarted
 	if kind == "reasoning" {
-		started = reasoningStarted
+		started = tsf.reasoningStarted
 	}
 	if !started {
 		m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
@@ -87,21 +91,18 @@ func (m *OpenCodeManager) emitTextStreamEnd(ctx context.Context, inst *openCodeI
 		return
 	}
 	kind := part.Type
-	turnID := opencodeMessageStreamTurnID(part.SessionID, part.MessageID)
-	if turnID == "" {
-		turnID = "opencode-part-" + part.ID
-	}
+	turnID := partTurnID(part)
 	partID := opencodePartStreamID(part, kind)
 	if partID == "" {
 		return
 	}
 	agentID := m.bridge.portalAgentID(portal)
-	textStarted, textEnded, reasoningStarted, reasoningEnded := inst.partTextStreamFlags(part.SessionID, part.ID)
-	started := textStarted
-	ended := textEnded
+	tsf := inst.partTextStreamFlags(part.SessionID, part.ID)
+	started := tsf.textStarted
+	ended := tsf.textEnded
 	if kind == "reasoning" {
-		started = reasoningStarted
-		ended = reasoningEnded
+		started = tsf.reasoningStarted
+		ended = tsf.reasoningEnded
 	}
 	if !started || ended {
 		return

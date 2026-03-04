@@ -32,10 +32,7 @@ func (m *OpenCodeManager) emitToolStreamDelta(ctx context.Context, inst *openCod
 	if delta == "" {
 		return
 	}
-	turnID := opencodeMessageStreamTurnID(part.SessionID, part.MessageID)
-	if turnID == "" {
-		turnID = "opencode-part-" + part.ID
-	}
+	turnID := partTurnID(part)
 	toolCallID := opencodeToolCallID(part)
 	if toolCallID == "" {
 		return
@@ -43,8 +40,8 @@ func (m *OpenCodeManager) emitToolStreamDelta(ctx context.Context, inst *openCod
 	toolName := opencodeToolName(part)
 	agentID := m.bridge.portalAgentID(portal)
 	m.ensureStepStarted(ctx, inst, portal, part.SessionID, part.MessageID)
-	started, _, _, _ := inst.partStreamFlags(part.SessionID, part.ID)
-	if !started {
+	sf := inst.partStreamFlags(part.SessionID, part.ID)
+	if !sf.inputStarted {
 		m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
 			"type":             "tool-input-start",
 			"toolCallId":       toolCallID,
@@ -62,16 +59,10 @@ func (m *OpenCodeManager) emitToolStreamDelta(ctx context.Context, inst *openCod
 }
 
 func (m *OpenCodeManager) emitToolStreamState(ctx context.Context, inst *openCodeInstance, portal *bridgev2.Portal, part opencode.Part, _ string) {
-	if m == nil || m.bridge == nil || portal == nil {
+	if m == nil || m.bridge == nil || portal == nil || part.State == nil {
 		return
 	}
-	if part.State == nil {
-		return
-	}
-	turnID := opencodeMessageStreamTurnID(part.SessionID, part.MessageID)
-	if turnID == "" {
-		turnID = "opencode-part-" + part.ID
-	}
+	turnID := partTurnID(part)
 	toolCallID := opencodeToolCallID(part)
 	if toolCallID == "" {
 		return
@@ -79,10 +70,10 @@ func (m *OpenCodeManager) emitToolStreamState(ctx context.Context, inst *openCod
 	toolName := opencodeToolName(part)
 	agentID := m.bridge.portalAgentID(portal)
 	m.ensureStepStarted(ctx, inst, portal, part.SessionID, part.MessageID)
-	started, inputAvailable, outputAvailable, outputError := inst.partStreamFlags(part.SessionID, part.ID)
+	sf := inst.partStreamFlags(part.SessionID, part.ID)
 
-	if len(part.State.Input) > 0 && !inputAvailable {
-		if !started {
+	if len(part.State.Input) > 0 && !sf.inputAvailable {
+		if !sf.inputStarted {
 			m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
 				"type":             "tool-input-start",
 				"toolCallId":       toolCallID,
@@ -91,7 +82,6 @@ func (m *OpenCodeManager) emitToolStreamState(ctx context.Context, inst *openCod
 				"providerExecuted": false,
 			})
 			inst.setPartStreamInputStarted(part.SessionID, part.ID)
-			started = true
 		}
 		m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
 			"type":             "tool-input-available",
@@ -103,7 +93,7 @@ func (m *OpenCodeManager) emitToolStreamState(ctx context.Context, inst *openCod
 		inst.setPartStreamInputAvailable(part.SessionID, part.ID)
 	}
 
-	if part.State.Output != "" && !outputAvailable {
+	if part.State.Output != "" && !sf.outputAvailable {
 		m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
 			"type":             "tool-output-available",
 			"toolCallId":       toolCallID,
@@ -113,7 +103,7 @@ func (m *OpenCodeManager) emitToolStreamState(ctx context.Context, inst *openCod
 		inst.setPartStreamOutputAvailable(part.SessionID, part.ID)
 	}
 
-	if part.State.Error != "" && !outputError {
+	if part.State.Error != "" && !sf.outputError {
 		m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
 			"type":             "tool-output-error",
 			"toolCallId":       toolCallID,

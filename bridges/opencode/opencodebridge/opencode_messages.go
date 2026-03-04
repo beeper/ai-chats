@@ -22,25 +22,7 @@ func (b *Bridge) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 	if msg.Content == nil || msg.Event == nil {
 		return nil, errMissingMessageContent
 	}
-	trace := traceEnabled(meta)
-	traceFull := traceFull(meta)
-	if trace {
-		if log := b.host.Log(); log != nil {
-			logger := log.With().
-				Stringer("event_id", msg.Event.ID).
-				Stringer("portal", portal.PortalKey).
-				Str("msg_type", string(msg.Content.MsgType)).
-				Logger()
-			logger.Debug().Msg("OpenCode inbound message received")
-		}
-	}
 	if msg.Content.RelatesTo != nil && msg.Content.RelatesTo.GetReplaceID() != "" {
-		// Ignore edits from Matrix to avoid echo loops; OpenCode updates via SSE.
-		if trace {
-			if log := b.host.Log(); log != nil {
-				log.Debug().Msg("OpenCode edit ignored")
-			}
-		}
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 	if b == nil || b.manager == nil {
@@ -48,18 +30,7 @@ func (b *Bridge) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 	if meta != nil && meta.AwaitingPath {
-		path := strings.TrimSpace(msg.Content.Body)
-		session, err := b.manager.CreateSession(ctx, meta.InstanceID, "", path)
-		if err != nil {
-			b.host.SendSystemNotice(ctx, portal, "Failed to create session: "+err.Error())
-			return &bridgev2.MatrixMessageResponse{Pending: false}, nil
-		}
-		meta.SessionID = session.ID
-		meta.AwaitingPath = false
-		b.host.SetPortalMeta(portal, meta)
-		_ = b.host.SavePortal(ctx, portal)
-		b.host.SendSystemNotice(ctx, portal, fmt.Sprintf("Working directory set to %s", path))
-		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
+		return b.handleAwaitingPath(ctx, msg, portal, meta)
 	}
 	if meta == nil || meta.InstanceID == "" || meta.SessionID == "" {
 		b.host.SendSystemNotice(ctx, portal, "OpenCode session metadata is missing for this room.")
@@ -75,118 +46,101 @@ func (b *Bridge) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 		msgType = event.MsgImage
 	}
 
-	var parts []opencode.PartInput
-	var body string
-	var titleCandidate string
-
-	switch msgType {
-	case event.MsgText, event.MsgNotice, event.MsgEmote:
-		body = strings.TrimSpace(msg.Content.Body)
-		if body == "" {
-			return nil, errEmptyMessage
-		}
-		if trace {
-			if log := b.host.Log(); log != nil {
-				log.Debug().Int("body_len", len(body)).Msg("OpenCode text message")
-			}
-		}
-		if traceFull {
-			if log := b.host.Log(); log != nil {
-				log.Debug().Str("body", body).Msg("OpenCode text body")
-			}
-		}
-		parts = append(parts, opencode.PartInput{Type: "text", Text: body})
-		titleCandidate = body
-	case event.MsgImage, event.MsgVideo, event.MsgAudio, event.MsgFile:
-		mediaURL := string(msg.Content.URL)
-		if mediaURL == "" && msg.Content.File != nil {
-			mediaURL = string(msg.Content.File.URL)
-		}
-		if mediaURL == "" {
-			return nil, errUnsupportedMessageType
-		}
-		b64Data, mimeType, err := b.host.DownloadAndEncodeMedia(ctx, mediaURL, msg.Content.File, openCodeMaxMediaMB)
-		if err != nil {
-			return nil, err
-		}
-		if mimeType == "" && msg.Content.Info != nil {
-			mimeType = stringutil.NormalizeMimeType(msg.Content.Info.MimeType)
-		}
-		if mimeType == "" {
-			mimeType = "application/octet-stream"
-		}
-
-		filename := strings.TrimSpace(msg.Content.FileName)
-		caption := strings.TrimSpace(msg.Content.Body)
-		if filename == "" {
-			filename = caption
-			caption = ""
-		} else if caption == filename {
-			caption = ""
-		}
-		if filename == "" {
-			filename = fallbackFilenameForMIME(mimeType)
-		}
-
-		dataURL := fmt.Sprintf("data:%s;base64,%s", mimeType, b64Data)
-		parts = append(parts, opencode.PartInput{
-			Type:     "file",
-			Mime:     mimeType,
-			Filename: filename,
-			URL:      dataURL,
-		})
-		if caption != "" {
-			parts = append(parts, opencode.PartInput{Type: "text", Text: caption})
-		}
-		if trace {
-			if log := b.host.Log(); log != nil {
-				log.Debug().
-					Str("mime_type", mimeType).
-					Str("filename", filename).
-					Bool("has_caption", caption != "").
-					Msg("OpenCode media message")
-			}
-		}
-		if traceFull && caption != "" {
-			if log := b.host.Log(); log != nil {
-				log.Debug().Str("caption", caption).Msg("OpenCode media caption")
-			}
-		}
-		titleCandidate = caption
-		if titleCandidate == "" {
-			titleCandidate = filename
-		}
-	default:
-		return nil, errUnsupportedMessageType
-	}
-
-	if trace {
-		if log := b.host.Log(); log != nil {
-			log.Debug().Msg("OpenCode send queued")
-		}
+	parts, titleCandidate, err := b.buildInboundParts(ctx, msg, msgType)
+	if err != nil {
+		return nil, err
 	}
 
 	runCtx := b.host.BackgroundContext(ctx)
 	go func() {
-		err := b.manager.SendMessage(runCtx, meta.InstanceID, meta.SessionID, parts, msg.Event.ID)
-		if err != nil {
-			if trace {
-				if log := b.host.Log(); log != nil {
-					log.Warn().Err(err).Msg("OpenCode send failed")
-				}
-			}
+		if err := b.manager.SendMessage(runCtx, meta.InstanceID, meta.SessionID, parts, msg.Event.ID); err != nil {
 			b.host.SendSystemNotice(runCtx, portal, "OpenCode send failed: "+err.Error())
 			return
-		}
-		if trace {
-			if log := b.host.Log(); log != nil {
-				log.Debug().Msg("OpenCode send completed")
-			}
 		}
 		b.maybeFinalizeOpenCodeTitle(runCtx, portal, meta, titleCandidate)
 	}()
 
 	return &bridgev2.MatrixMessageResponse{Pending: true}, nil
+}
+
+func (b *Bridge) handleAwaitingPath(ctx context.Context, msg *bridgev2.MatrixMessage, portal *bridgev2.Portal, meta *PortalMeta) (*bridgev2.MatrixMessageResponse, error) {
+	path := strings.TrimSpace(msg.Content.Body)
+	session, err := b.manager.CreateSession(ctx, meta.InstanceID, "", path)
+	if err != nil {
+		b.host.SendSystemNotice(ctx, portal, "Failed to create session: "+err.Error())
+		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
+	}
+	meta.SessionID = session.ID
+	meta.AwaitingPath = false
+	b.host.SetPortalMeta(portal, meta)
+	_ = b.host.SavePortal(ctx, portal)
+	b.host.SendSystemNotice(ctx, portal, fmt.Sprintf("Working directory set to %s", path))
+	return &bridgev2.MatrixMessageResponse{Pending: false}, nil
+}
+
+func (b *Bridge) buildInboundParts(ctx context.Context, msg *bridgev2.MatrixMessage, msgType event.MessageType) ([]opencode.PartInput, string, error) {
+	switch msgType {
+	case event.MsgText, event.MsgNotice, event.MsgEmote:
+		body := strings.TrimSpace(msg.Content.Body)
+		if body == "" {
+			return nil, "", errEmptyMessage
+		}
+		return []opencode.PartInput{{Type: "text", Text: body}}, body, nil
+
+	case event.MsgImage, event.MsgVideo, event.MsgAudio, event.MsgFile:
+		return b.buildMediaParts(ctx, msg)
+
+	default:
+		return nil, "", errUnsupportedMessageType
+	}
+}
+
+func (b *Bridge) buildMediaParts(ctx context.Context, msg *bridgev2.MatrixMessage) ([]opencode.PartInput, string, error) {
+	mediaURL := string(msg.Content.URL)
+	if mediaURL == "" && msg.Content.File != nil {
+		mediaURL = string(msg.Content.File.URL)
+	}
+	if mediaURL == "" {
+		return nil, "", errUnsupportedMessageType
+	}
+	b64Data, mimeType, err := b.host.DownloadAndEncodeMedia(ctx, mediaURL, msg.Content.File, openCodeMaxMediaMB)
+	if err != nil {
+		return nil, "", err
+	}
+	if mimeType == "" && msg.Content.Info != nil {
+		mimeType = stringutil.NormalizeMimeType(msg.Content.Info.MimeType)
+	}
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
+	}
+
+	filename := strings.TrimSpace(msg.Content.FileName)
+	caption := strings.TrimSpace(msg.Content.Body)
+	if filename == "" {
+		filename = caption
+		caption = ""
+	} else if caption == filename {
+		caption = ""
+	}
+	if filename == "" {
+		filename = fallbackFilenameForMIME(mimeType)
+	}
+
+	dataURL := fmt.Sprintf("data:%s;base64,%s", mimeType, b64Data)
+	parts := []opencode.PartInput{{
+		Type:     "file",
+		Mime:     mimeType,
+		Filename: filename,
+		URL:      dataURL,
+	}}
+	if caption != "" {
+		parts = append(parts, opencode.PartInput{Type: "text", Text: caption})
+	}
+	titleCandidate := caption
+	if titleCandidate == "" {
+		titleCandidate = filename
+	}
+	return parts, titleCandidate, nil
 }
 
 func fallbackFilenameForMIME(mimeType string) string {
@@ -205,10 +159,7 @@ func (b *Bridge) maybeFinalizeOpenCodeTitle(ctx context.Context, portal *bridgev
 		return
 	}
 	normalized := sanitizeOpenCodeTitle(title)
-	if normalized == "" {
-		return
-	}
-	if b.manager == nil {
+	if normalized == "" || b.manager == nil {
 		return
 	}
 	if _, err := b.manager.UpdateSessionTitle(ctx, meta.InstanceID, meta.SessionID, normalized); err != nil {
@@ -262,11 +213,15 @@ func (b *Bridge) emitOpenCodeMessageRemove(ctx context.Context, portal *bridgev2
 	b.emitOpenCodeMessageRemoveWithSender(ctx, portal, networkid.MessageID("opencode:"+messageID), sender)
 }
 
-func (b *Bridge) emitOpenCodeMessageRemoveWithSender(ctx context.Context, portal *bridgev2.Portal, messageID networkid.MessageID, sender bridgev2.EventSender) {
-	if portal == nil || messageID == "" {
+func (b *Bridge) emitOpenCodeMessageRemoveWithSender(_ context.Context, portal *bridgev2.Portal, messageID networkid.MessageID, sender bridgev2.EventSender) {
+	if portal == nil || messageID == "" || b == nil || b.host == nil {
 		return
 	}
-	remove := &simplevent.MessageRemove{
+	login := b.host.Login()
+	if login == nil {
+		return
+	}
+	login.QueueRemoteEvent(&simplevent.MessageRemove{
 		EventMeta: simplevent.EventMeta{
 			Type:      bridgev2.RemoteEventMessageRemove,
 			PortalKey: portal.PortalKey,
@@ -274,15 +229,7 @@ func (b *Bridge) emitOpenCodeMessageRemoveWithSender(ctx context.Context, portal
 			Timestamp: time.Now(),
 		},
 		TargetMessage: messageID,
-	}
-	if b == nil || b.host == nil {
-		return
-	}
-	login := b.host.Login()
-	if login == nil {
-		return
-	}
-	login.QueueRemoteEvent(remove)
+	})
 }
 
 func opencodePartMessageID(partID string) networkid.MessageID {
