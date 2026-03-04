@@ -85,4 +85,23 @@ func TestRegisterBuiltInAPIProviders(t *testing.T) {
 	if strings.Contains(strings.ToLower(codexEvt.Error.ErrorMessage), "not implemented") {
 		t.Fatalf("expected codex runtime implementation, got stub error: %q", codexEvt.Error.ErrorMessage)
 	}
+
+	anthropicStream, err := ai.Stream(ai.Model{
+		ID:       "claude-sonnet-4-5",
+		Provider: "anthropic",
+		API:      ai.APIAnthropicMessages,
+	}, ai.Context{}, nil)
+	if err != nil {
+		t.Fatalf("unexpected anthropic stream resolve error: %v", err)
+	}
+	anthropicEvt, err := anthropicStream.Next(ctx)
+	if err != nil {
+		t.Fatalf("expected anthropic terminal error event, got %v", err)
+	}
+	if anthropicEvt.Type != ai.EventError {
+		t.Fatalf("expected anthropic error event, got %s", anthropicEvt.Type)
+	}
+	if strings.Contains(strings.ToLower(anthropicEvt.Error.ErrorMessage), "not implemented") {
+		t.Fatalf("expected anthropic runtime implementation, got stub error: %q", anthropicEvt.Error.ErrorMessage)
+	}
 }
