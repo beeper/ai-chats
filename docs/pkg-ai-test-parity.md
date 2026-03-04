@@ -58,6 +58,4 @@ The following are currently kept as env-gated scaffolds in
 - 📝 `xhigh.test.ts` (live)
 - 📝 `zen.test.ts`
 - 📝 `empty.test.ts`
-- 📝 `image-tool-result.test.ts` (live)
-- 📝 `google-gemini-cli-claude-thinking-header.test.ts` (live)
 - 📝 `github-copilot-anthropic.test.ts` (live)

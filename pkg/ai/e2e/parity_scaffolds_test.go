@@ -25,11 +25,6 @@ func TestBedrockModelsE2EParityScaffold(t *testing.T) {
 	t.Skip("parity scaffold for bedrock-models.test.ts pending runtime implementation")
 }
 
-func TestAnthropicToolNameNormalizationE2EParityScaffold(t *testing.T) {
-	requirePIAIE2E(t)
-	t.Skip("parity scaffold for anthropic-tool-name-normalization.test.ts pending runtime implementation")
-}
-
 func TestGoogleGeminiCLIEmptyStreamE2EParityScaffold(t *testing.T) {
 	requirePIAIE2E(t)
 	t.Skip("parity scaffold for google-gemini-cli-empty-stream.test.ts pending runtime implementation")
@@ -48,11 +43,6 @@ func TestZenE2EParityScaffold(t *testing.T) {
 func TestEmptyE2EParityScaffold(t *testing.T) {
 	requirePIAIE2E(t)
 	t.Skip("parity scaffold for empty.test.ts pending runtime implementation")
-}
-
-func TestGoogleGeminiCliClaudeThinkingHeaderE2EParityScaffold(t *testing.T) {
-	requirePIAIE2E(t)
-	t.Skip("parity scaffold for google-gemini-cli-claude-thinking-header.test.ts pending runtime implementation")
 }
 
 func TestGithubCopilotAnthropicE2EParityScaffold(t *testing.T) {
