@@ -27,8 +27,7 @@ var inboundMetaFastRE = regexp.MustCompile(
 )
 
 var envelopePrefixRE = regexp.MustCompile(`^\[([^\]]+)\]\s*`)
-var envelopeHeaderISODateRE = regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z\b`)
-var envelopeHeaderLocalDateRE = regexp.MustCompile(`\d{4}-\d{2}-\d{2} \d{2}:\d{2}\b`)
+var envelopeHeaderDateRE = regexp.MustCompile(`\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}Z\b| \d{2}:\d{2}\b)`)
 
 var envelopeChannels = []string{
 	"WebChat",
@@ -47,10 +46,7 @@ var envelopeChannels = []string{
 }
 
 func looksLikeEnvelopeHeader(header string) bool {
-	if envelopeHeaderISODateRE.MatchString(header) {
-		return true
-	}
-	if envelopeHeaderLocalDateRE.MatchString(header) {
+	if envelopeHeaderDateRE.MatchString(header) {
 		return true
 	}
 	for _, label := range envelopeChannels {

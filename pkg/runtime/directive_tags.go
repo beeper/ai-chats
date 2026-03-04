@@ -92,34 +92,33 @@ func ParseInlineDirectives(text string, options InlineDirectiveParseOptions) Inl
 	return result
 }
 
+var nonUpperUnderscoreRE = regexp.MustCompile(`[^A-Z_]`)
+
+// IsSilentReplyText checks whether text is exactly the silent reply token (modulo whitespace).
 func IsSilentReplyText(text, token string) bool {
 	if text == "" {
 		return false
 	}
-	token = strings.TrimSpace(token)
-	if token == "" {
+	if token = strings.TrimSpace(token); token == "" {
 		token = SilentReplyToken
 	}
-	pattern := `^\s*` + regexp.QuoteMeta(token) + `\s*$`
-	return regexp.MustCompile(pattern).MatchString(text)
+	return strings.TrimSpace(text) == token
 }
 
+// IsSilentReplyPrefixText checks whether text is a partial-typing prefix of the silent token
+// (e.g. "NO_RE" for "NO_REPLY"), used during streaming to detect silent replies early.
 func IsSilentReplyPrefixText(text, token string) bool {
 	if text == "" {
 		return false
 	}
-	token = strings.TrimSpace(token)
-	if token == "" {
+	if token = strings.TrimSpace(token); token == "" {
 		token = SilentReplyToken
 	}
 	normalized := strings.ToUpper(strings.TrimLeft(text, " \t\r\n"))
-	if normalized == "" {
+	if normalized == "" || !strings.Contains(normalized, "_") {
 		return false
 	}
-	if !strings.Contains(normalized, "_") {
-		return false
-	}
-	if regexp.MustCompile(`[^A-Z_]`).MatchString(normalized) {
+	if nonUpperUnderscoreRE.MatchString(normalized) {
 		return false
 	}
 	return strings.HasPrefix(strings.ToUpper(token), normalized)
