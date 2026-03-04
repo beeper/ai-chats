@@ -3,6 +3,7 @@ package providers
 import (
 	"context"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -40,7 +41,29 @@ func TestRegisterBuiltInAPIProviders(t *testing.T) {
 	if evt.Error.StopReason != ai.StopReasonError {
 		t.Fatalf("expected stopReason=error, got %s", evt.Error.StopReason)
 	}
+	if strings.Contains(strings.ToLower(evt.Error.ErrorMessage), "not implemented") {
+		t.Fatalf("expected openai responses runtime implementation, got stub error: %q", evt.Error.ErrorMessage)
+	}
 	if _, err := stream.Next(ctx); err != io.EOF {
 		t.Fatalf("expected EOF after terminal event, got %v", err)
+	}
+
+	completionsStream, err := ai.Stream(ai.Model{
+		ID:       "openai/gpt-4o-mini",
+		Provider: "openrouter",
+		API:      ai.APIOpenAICompletions,
+	}, ai.Context{}, nil)
+	if err != nil {
+		t.Fatalf("unexpected completions stream resolve error: %v", err)
+	}
+	completionsEvt, err := completionsStream.Next(ctx)
+	if err != nil {
+		t.Fatalf("expected completions terminal error event, got %v", err)
+	}
+	if completionsEvt.Type != ai.EventError {
+		t.Fatalf("expected completions error event, got %s", completionsEvt.Type)
+	}
+	if strings.Contains(strings.ToLower(completionsEvt.Error.ErrorMessage), "not implemented") {
+		t.Fatalf("expected openai completions runtime implementation, got stub error: %q", completionsEvt.Error.ErrorMessage)
 	}
 }
