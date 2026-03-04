@@ -56,13 +56,3 @@ func IntArg(args map[string]any, key string) (int, bool) {
 	}
 	return int(v), true
 }
-
-// IntArgMulti tries multiple keys in order, returning the first valid integer.
-func IntArgMulti(args map[string]any, keys ...string) (int, bool) {
-	for _, key := range keys {
-		if v, ok := IntArg(args, key); ok {
-			return v, true
-		}
-	}
-	return 0, false
-}
