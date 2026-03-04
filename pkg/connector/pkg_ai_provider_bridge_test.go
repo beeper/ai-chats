@@ -78,7 +78,7 @@ func TestShouldFallbackFromPkgAIEvent(t *testing.T) {
 }
 
 func TestTryGenerateStreamWithPkgAIFallsBackOnStubbedProviders(t *testing.T) {
-	events, ok := tryGenerateStreamWithPkgAI(context.Background(), "", GenerateParams{
+	events, ok := tryGenerateStreamWithPkgAI(context.Background(), "https://openrouter.ai/api/v1", "", GenerateParams{
 		Model: "gpt-4.1-mini",
 		Messages: []UnifiedMessage{
 			{

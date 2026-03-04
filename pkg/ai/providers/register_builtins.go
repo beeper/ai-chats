@@ -50,9 +50,14 @@ func notImplementedSimpleStream(apiID ai.Api) ai.StreamSimpleFn {
 
 // RegisterBuiltInAPIProviders registers providers implemented in this package.
 func RegisterBuiltInAPIProviders() {
+	ai.RegisterAPIProvider(ai.APIProvider{
+		API:          ai.APIOpenAIResponses,
+		Stream:       streamOpenAIResponses,
+		StreamSimple: streamSimpleOpenAIResponses,
+	}, BuiltinProviderSourceID)
+
 	for _, apiID := range []ai.Api{
 		ai.APIOpenAICompletions,
-		ai.APIOpenAIResponses,
 		ai.APIAzureOpenAIResponse,
 		ai.APIOpenAICodexResponse,
 		ai.APIAnthropicMessages,

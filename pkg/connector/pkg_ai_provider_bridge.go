@@ -61,6 +61,7 @@ func shouldFallbackFromPkgAIEvent(event StreamEvent) bool {
 func tryGenerateStreamWithPkgAI(
 	ctx context.Context,
 	baseURL string,
+	apiKey string,
 	params GenerateParams,
 ) (<-chan StreamEvent, bool) {
 	aiproviders.RegisterBuiltInAPIProviders()
@@ -72,6 +73,7 @@ func tryGenerateStreamWithPkgAI(
 		Ctx:         ctx,
 		MaxTokens:   params.MaxCompletionTokens,
 		Temperature: &temp,
+		APIKey:      strings.TrimSpace(apiKey),
 	}
 
 	stream, err := aipkg.Stream(model, aiContext, options)

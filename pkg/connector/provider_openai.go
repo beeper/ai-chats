@@ -27,6 +27,7 @@ import (
 type OpenAIProvider struct {
 	client  openai.Client
 	log     zerolog.Logger
+	apiKey  string
 	baseURL string
 }
 
@@ -82,6 +83,7 @@ func NewOpenAIProviderWithUserID(apiKey, baseURL, userID string, log zerolog.Log
 	return &OpenAIProvider{
 		client:  client,
 		log:     log.With().Str("provider", "openai").Logger(),
+		apiKey:  apiKey,
 		baseURL: baseURL,
 	}, nil
 }
@@ -195,6 +197,7 @@ func NewOpenAIProviderWithPDFPlugin(apiKey, baseURL, userID, pdfEngine string, h
 	return &OpenAIProvider{
 		client:  client,
 		log:     log.With().Str("provider", "openai").Str("pdf_engine", pdfEngine).Logger(),
+		apiKey:  apiKey,
 		baseURL: baseURL,
 	}, nil
 }
@@ -266,7 +269,7 @@ func (o *OpenAIProvider) buildResponsesParams(params GenerateParams) responses.R
 // GenerateStream generates a streaming response from OpenAI using Responses API
 func (o *OpenAIProvider) GenerateStream(ctx context.Context, params GenerateParams) (<-chan StreamEvent, error) {
 	if pkgAIProviderRuntimeEnabled() {
-		if pkgAIEvents, ok := tryGenerateStreamWithPkgAI(ctx, o.baseURL, params); ok {
+		if pkgAIEvents, ok := tryGenerateStreamWithPkgAI(ctx, o.baseURL, o.apiKey, params); ok {
 			o.log.Debug().
 				Str("model", params.Model).
 				Msg("Using pkg/ai provider runtime for OpenAI stream")
