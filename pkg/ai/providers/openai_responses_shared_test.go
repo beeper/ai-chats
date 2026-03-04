@@ -179,3 +179,89 @@ func TestConvertResponsesMessages_DropsAbortedReasoningOnlyAssistant(t *testing.
 		}
 	}
 }
+
+func TestConvertResponsesMessages_ToolResultImageOnlyAddsImageUserMessage(t *testing.T) {
+	model := ai.Model{
+		ID:       "gpt-5-mini",
+		Provider: "openai",
+		API:      ai.APIOpenAIResponses,
+		Input:    []string{"text", "image"},
+	}
+	context := ai.Context{
+		Messages: []ai.Message{
+			{
+				Role:       ai.RoleToolResult,
+				ToolCallID: "call_123|fc_456",
+				ToolName:   "get_circle",
+				Content: []ai.ContentBlock{
+					{
+						Type:     ai.ContentTypeImage,
+						Data:     "abc123",
+						MimeType: "image/png",
+					},
+				},
+			},
+		},
+	}
+
+	output := ConvertResponsesMessages(model, context, openAIToolCallProviders, nil)
+	if len(output) != 2 {
+		t.Fatalf("expected function_call_output plus image user message, got %d entries: %#v", len(output), output)
+	}
+	functionOutput := output[0]
+	if functionOutput["type"] != "function_call_output" {
+		t.Fatalf("expected first output to be function_call_output, got %#v", functionOutput)
+	}
+	if outputText, _ := functionOutput["output"].(string); outputText != "(see attached image)" {
+		t.Fatalf("expected image placeholder output text, got %q", outputText)
+	}
+
+	userMessage := output[1]
+	if role, _ := userMessage["role"].(string); role != "user" {
+		t.Fatalf("expected second output to be user message, got %#v", userMessage)
+	}
+	content, _ := userMessage["content"].([]map[string]any)
+	if len(content) != 2 {
+		t.Fatalf("expected text prefix + image content, got %#v", userMessage["content"])
+	}
+	if content[0]["type"] != "input_text" {
+		t.Fatalf("expected first content part input_text, got %#v", content[0])
+	}
+	if content[1]["type"] != "input_image" {
+		t.Fatalf("expected second content part input_image, got %#v", content[1])
+	}
+	if imageURL, _ := content[1]["image_url"].(string); imageURL != "data:image/png;base64,abc123" {
+		t.Fatalf("unexpected image_url encoding: %q", imageURL)
+	}
+}
+
+func TestConvertResponsesMessages_ToolResultTextAndImageKeepsTextOutput(t *testing.T) {
+	model := ai.Model{
+		ID:       "gpt-5-mini",
+		Provider: "openai",
+		API:      ai.APIOpenAIResponses,
+		Input:    []string{"text", "image"},
+	}
+	context := ai.Context{
+		Messages: []ai.Message{
+			{
+				Role:       ai.RoleToolResult,
+				ToolCallID: "call_123|fc_456",
+				ToolName:   "get_circle_with_description",
+				Content: []ai.ContentBlock{
+					{Type: ai.ContentTypeText, Text: "diameter is 100 pixels"},
+					{Type: ai.ContentTypeImage, Data: "img64", MimeType: "image/png"},
+				},
+			},
+		},
+	}
+
+	output := ConvertResponsesMessages(model, context, openAIToolCallProviders, nil)
+	if len(output) != 2 {
+		t.Fatalf("expected function_call_output plus image user message, got %d entries: %#v", len(output), output)
+	}
+	functionOutput := output[0]
+	if outputText, _ := functionOutput["output"].(string); outputText != "diameter is 100 pixels" {
+		t.Fatalf("expected text output to be preserved, got %q", outputText)
+	}
+}

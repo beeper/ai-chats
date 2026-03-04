@@ -37,7 +37,7 @@ Legend:
 - `tool-call-id-normalization.test.ts` → ✅ `pkg/ai/providers/openai_responses_shared_test.go`, `pkg/ai/providers/openai_completions_convert_test.go`
 - `anthropic-tool-name-normalization.test.ts` → ✅ `pkg/ai/providers/anthropic_test.go`
 - `cache-retention.test.ts` → ✅ `pkg/ai/providers/cache_retention_test.go`
-- `image-tool-result.test.ts` → ✅ `pkg/ai/providers/openai_completions_test.go`
+- `image-tool-result.test.ts` → ✅ `pkg/ai/providers/openai_completions_test.go`, `pkg/ai/providers/openai_responses_shared_test.go`
 - `unicode-surrogate.test.ts` → ✅ `pkg/ai/utils/sanitize_unicode_test.go`
 - `supports-xhigh.test.ts` / `xhigh.test.ts` → ✅ `pkg/ai/models_test.go`
 - `interleaved-thinking.test.ts` (deterministic parts) → ✅ `pkg/ai/providers/anthropic_test.go`, `pkg/ai/providers/amazon_bedrock_test.go`

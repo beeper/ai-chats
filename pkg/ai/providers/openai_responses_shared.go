@@ -2,6 +2,7 @@ package providers
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 
 	"github.com/beeper/ai-bridge/pkg/ai"
@@ -158,9 +159,13 @@ func ConvertResponsesMessages(
 			}
 			output := "(see attached image)"
 			var textParts []string
+			var imageBlocks []ai.ContentBlock
 			for _, block := range msg.Content {
 				if block.Type == ai.ContentTypeText {
 					textParts = append(textParts, block.Text)
+				}
+				if block.Type == ai.ContentTypeImage {
+					imageBlocks = append(imageBlocks, block)
 				}
 			}
 			if len(textParts) > 0 {
@@ -171,6 +176,29 @@ func ConvertResponsesMessages(
 				"call_id": callID,
 				"output":  utils.SanitizeSurrogates(output),
 			})
+			if len(imageBlocks) > 0 && slices.Contains(model.Input, "image") {
+				content := make([]map[string]any, 0, len(imageBlocks)+1)
+				content = append(content, map[string]any{
+					"type": "input_text",
+					"text": "Attached image(s) from tool result:",
+				})
+				for _, image := range imageBlocks {
+					if strings.TrimSpace(image.Data) == "" || strings.TrimSpace(image.MimeType) == "" {
+						continue
+					}
+					content = append(content, map[string]any{
+						"type":      "input_image",
+						"detail":    "auto",
+						"image_url": "data:" + image.MimeType + ";base64," + image.Data,
+					})
+				}
+				if len(content) > 1 {
+					messages = append(messages, map[string]any{
+						"role":    "user",
+						"content": content,
+					})
+				}
+			}
 		}
 	}
 	return messages
