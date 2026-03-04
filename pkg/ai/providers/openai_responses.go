@@ -1,12 +1,10 @@
 package providers
 
 import (
-	"encoding/json"
 	"os"
 	"strings"
 
 	"github.com/beeper/ai-bridge/pkg/ai"
-	"github.com/beeper/ai-bridge/pkg/ai/utils"
 )
 
 type OpenAIResponsesOptions struct {
@@ -14,6 +12,12 @@ type OpenAIResponsesOptions struct {
 	ReasoningEffort  ai.ThinkingLevel
 	ReasoningSummary string
 	ServiceTier      string
+}
+
+var openAIToolCallProviders = map[string]struct{}{
+	"openai":       {},
+	"openai-codex": {},
+	"opencode":     {},
 }
 
 func ResolveCacheRetention(cacheRetention ai.CacheRetention) ai.CacheRetention {
@@ -37,7 +41,7 @@ func GetPromptCacheRetention(baseURL string, cacheRetention ai.CacheRetention) s
 }
 
 func BuildOpenAIResponsesParams(model ai.Model, context ai.Context, options OpenAIResponsesOptions) map[string]any {
-	messages := ConvertOpenAIResponsesMessages(model, context)
+	messages := ConvertResponsesMessages(model, context, openAIToolCallProviders, nil)
 	retention := ResolveCacheRetention(options.StreamOptions.CacheRetention)
 	params := map[string]any{
 		"model":  model.ID,
@@ -55,7 +59,7 @@ func BuildOpenAIResponsesParams(model ai.Model, context ai.Context, options Open
 		params["service_tier"] = options.ServiceTier
 	}
 	if context.Tools != nil {
-		params["tools"] = convertResponsesTools(context.Tools)
+		params["tools"] = ConvertResponsesTools(context.Tools, false)
 	}
 	if retention != ai.CacheRetentionNone && strings.TrimSpace(options.StreamOptions.SessionID) != "" {
 		params["prompt_cache_key"] = options.StreamOptions.SessionID
@@ -93,120 +97,7 @@ func BuildOpenAIResponsesParams(model ai.Model, context ai.Context, options Open
 }
 
 func ConvertOpenAIResponsesMessages(model ai.Model, context ai.Context) []map[string]any {
-	messages := make([]map[string]any, 0, len(context.Messages)+1)
-	if strings.TrimSpace(context.SystemPrompt) != "" {
-		role := "system"
-		if model.Reasoning {
-			role = "developer"
-		}
-		messages = append(messages, map[string]any{
-			"role":    role,
-			"content": utils.SanitizeSurrogates(context.SystemPrompt),
-		})
-	}
-
-	transformed := TransformMessages(context.Messages, model, nil)
-	for _, msg := range transformed {
-		switch msg.Role {
-		case ai.RoleUser:
-			content := []map[string]any{}
-			if strings.TrimSpace(msg.Text) != "" {
-				content = append(content, map[string]any{
-					"type": "input_text",
-					"text": utils.SanitizeSurrogates(msg.Text),
-				})
-			}
-			for _, block := range msg.Content {
-				if block.Type == ai.ContentTypeText && strings.TrimSpace(block.Text) != "" {
-					content = append(content, map[string]any{
-						"type": "input_text",
-						"text": utils.SanitizeSurrogates(block.Text),
-					})
-				}
-				if block.Type == ai.ContentTypeImage {
-					content = append(content, map[string]any{
-						"type":      "input_image",
-						"detail":    "auto",
-						"image_url": "data:" + block.MimeType + ";base64," + block.Data,
-					})
-				}
-			}
-			if len(content) == 0 {
-				continue
-			}
-			messages = append(messages, map[string]any{
-				"role":    "user",
-				"content": content,
-			})
-		case ai.RoleAssistant:
-			for _, block := range msg.Content {
-				switch block.Type {
-				case ai.ContentTypeText:
-					messages = append(messages, map[string]any{
-						"type":   "message",
-						"role":   "assistant",
-						"status": "completed",
-						"id":     fallbackTextID(block.TextSignature),
-						"content": []map[string]any{{
-							"type":        "output_text",
-							"text":        utils.SanitizeSurrogates(block.Text),
-							"annotations": []any{},
-						}},
-					})
-				case ai.ContentTypeThinking:
-					if block.ThinkingSignature != "" {
-						// signature payload is already serialized response item.
-						// best-effort keep as text fallback when opaque.
-						messages = append(messages, map[string]any{
-							"type":    "reasoning",
-							"summary": []map[string]any{{"type": "summary_text", "text": block.Thinking}},
-						})
-					}
-				case ai.ContentTypeToolCall:
-					parts := strings.SplitN(block.ID, "|", 2)
-					callID := block.ID
-					itemID := ""
-					if len(parts) == 2 {
-						callID = parts[0]
-						itemID = parts[1]
-					}
-					args := "{}"
-					if block.Arguments != nil {
-						b, _ := json.Marshal(block.Arguments)
-						args = string(b)
-					}
-					messages = append(messages, map[string]any{
-						"type":      "function_call",
-						"id":        itemID,
-						"call_id":   callID,
-						"name":      block.Name,
-						"arguments": args,
-					})
-				}
-			}
-		case ai.RoleToolResult:
-			callID := msg.ToolCallID
-			if strings.Contains(callID, "|") {
-				callID = strings.SplitN(callID, "|", 2)[0]
-			}
-			output := "(see attached image)"
-			var textParts []string
-			for _, block := range msg.Content {
-				if block.Type == ai.ContentTypeText {
-					textParts = append(textParts, block.Text)
-				}
-			}
-			if len(textParts) > 0 {
-				output = strings.Join(textParts, "\n")
-			}
-			messages = append(messages, map[string]any{
-				"type":    "function_call_output",
-				"call_id": callID,
-				"output":  utils.SanitizeSurrogates(output),
-			})
-		}
-	}
-	return messages
+	return ConvertResponsesMessages(model, context, openAIToolCallProviders, nil)
 }
 
 func fallbackTextID(signature string) string {
@@ -217,18 +108,4 @@ func fallbackTextID(signature string) string {
 		return signature
 	}
 	return "msg_0"
-}
-
-func convertResponsesTools(tools []ai.Tool) []map[string]any {
-	out := make([]map[string]any, 0, len(tools))
-	for _, tool := range tools {
-		out = append(out, map[string]any{
-			"type":        "function",
-			"name":        tool.Name,
-			"description": tool.Description,
-			"parameters":  tool.Parameters,
-			"strict":      false,
-		})
-	}
-	return out
 }

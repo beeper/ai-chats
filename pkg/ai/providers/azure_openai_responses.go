@@ -12,6 +12,13 @@ const defaultAzureAPIVersion = "v1"
 
 var ErrMissingAzureBaseURL = errors.New("azure openai base url is required")
 
+var azureToolCallProviders = map[string]struct{}{
+	"openai":                 {},
+	"openai-codex":           {},
+	"opencode":               {},
+	"azure-openai-responses": {},
+}
+
 type AzureOpenAIResponsesOptions struct {
 	OpenAIResponsesOptions
 	AzureAPIVersion     string
@@ -99,7 +106,7 @@ func BuildAzureOpenAIResponsesParams(
 	options AzureOpenAIResponsesOptions,
 ) map[string]any {
 	deploymentName := ResolveDeploymentName(model, &options)
-	messages := ConvertOpenAIResponsesMessages(model, context)
+	messages := ConvertResponsesMessages(model, context, azureToolCallProviders, nil)
 
 	params := map[string]any{
 		"model":            deploymentName,
@@ -114,7 +121,7 @@ func BuildAzureOpenAIResponsesParams(
 		params["temperature"] = *options.StreamOptions.Temperature
 	}
 	if len(context.Tools) > 0 {
-		params["tools"] = convertResponsesTools(context.Tools)
+		params["tools"] = ConvertResponsesTools(context.Tools, false)
 	}
 	if model.Reasoning {
 		if options.ReasoningEffort != "" || strings.TrimSpace(options.ReasoningSummary) != "" {
