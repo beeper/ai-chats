@@ -147,7 +147,15 @@ func streamAnthropicMessagesWithOptions(
 			}
 		}
 
+		if isContextAborted(runCtx, nil) {
+			pushProviderAborted(stream, model)
+			return
+		}
 		if err := anthropicStream.Err(); err != nil {
+			if isContextAborted(runCtx, err) {
+				pushProviderAborted(stream, model)
+				return
+			}
 			pushProviderError(stream, model, err.Error())
 			return
 		}

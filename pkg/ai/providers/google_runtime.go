@@ -97,6 +97,10 @@ func streamGoogleWithBackend(
 
 		for result, err := range client.Models.GenerateContentStream(runCtx, model.ID, contents, config) {
 			if err != nil {
+				if isContextAborted(runCtx, err) {
+					pushProviderAborted(stream, model)
+					return
+				}
 				pushProviderError(stream, model, err.Error())
 				return
 			}
@@ -155,6 +159,10 @@ func streamGoogleWithBackend(
 					}
 				}
 			}
+		}
+		if isContextAborted(runCtx, nil) {
+			pushProviderAborted(stream, model)
+			return
 		}
 
 		usage.Cost = ai.CalculateCost(model, usage)

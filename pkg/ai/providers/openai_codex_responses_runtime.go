@@ -120,7 +120,15 @@ func streamOpenAICodexResponsesWithOptions(
 			}
 		}
 
+		if isContextAborted(runCtx, nil) {
+			pushProviderAborted(stream, model)
+			return
+		}
 		if err := openAIStream.Err(); err != nil {
+			if isContextAborted(runCtx, err) {
+				pushProviderAborted(stream, model)
+				return
+			}
 			pushProviderError(stream, model, err.Error())
 			return
 		}
