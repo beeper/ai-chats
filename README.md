@@ -29,6 +29,7 @@ Experimental Matrix ↔ AI bridge for Beeper, built on top of [mautrix/bridgev2]
 - `docs/matrix-ai-matrix-spec-v1.md`: Full Matrix transport spec (events, streaming, approvals, state, and schema examples).
 - `docs/bridge-orchestrator.md`: One-command bridge management in this repo.
 - `docs/pkg-ai-runtime-migration.md`: Feature flags and rollout notes for connector ↔ `pkg/ai` runtime bridging.
+- `docs/pkg-ai-test-parity.md`: Port-status tracker for `pi-mono/packages/ai` test parity.
 
 ## Bridge Orchestrator
 
