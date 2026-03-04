@@ -86,3 +86,65 @@ func TestConvertOpenAICompletionsMessages_BatchesToolResultImages(t *testing.T) 
 		t.Fatalf("expected 2 image parts, got %d", imageCount)
 	}
 }
+
+func TestConvertOpenAICompletionsMessages_NormalizesPipeSeparatedToolCallIDs(t *testing.T) {
+	model := ai.Model{
+		ID:       "gpt-4o-mini",
+		API:      ai.APIOpenAICompletions,
+		Provider: "openrouter",
+		BaseURL:  "https://openrouter.ai/api/v1",
+		Input:    []string{"text"},
+	}
+	now := time.Now().UnixMilli()
+	context := ai.Context{
+		Messages: []ai.Message{
+			{Role: ai.RoleUser, Text: "Use tool", Timestamp: now},
+			{
+				Role: ai.RoleAssistant,
+				Content: []ai.ContentBlock{
+					{
+						Type:      ai.ContentTypeToolCall,
+						ID:        "call_abc123|this-is-a-very-long-item-id-with-specials+/==",
+						Name:      "echo",
+						Arguments: map[string]any{"message": "hello"},
+					},
+				},
+				Provider:   "github-copilot",
+				API:        ai.APIOpenAIResponses,
+				Model:      "gpt-5.2-codex",
+				StopReason: ai.StopReasonToolUse,
+				Timestamp:  now + 1,
+			},
+			{
+				Role:       ai.RoleToolResult,
+				ToolCallID: "call_abc123|this-is-a-very-long-item-id-with-specials+/==",
+				ToolName:   "echo",
+				Content: []ai.ContentBlock{
+					{Type: ai.ContentTypeText, Text: "hello"},
+				},
+				Timestamp: now + 2,
+			},
+		},
+	}
+
+	messages := ConvertOpenAICompletionsMessages(model, context, GetCompat(model))
+	if len(messages) < 3 {
+		t.Fatalf("expected converted messages, got %d", len(messages))
+	}
+	assistant := messages[1]
+	if len(assistant.ToolCalls) != 1 {
+		t.Fatalf("expected single assistant tool call, got %#v", assistant.ToolCalls)
+	}
+	normalizedID, _ := assistant.ToolCalls[0]["id"].(string)
+	if normalizedID == "" || normalizedID == "call_abc123|this-is-a-very-long-item-id-with-specials+/==" {
+		t.Fatalf("expected tool call id to be normalized, got %q", normalizedID)
+	}
+
+	toolResult := messages[2]
+	if toolResult.Role != "tool" {
+		t.Fatalf("expected tool message, got %s", toolResult.Role)
+	}
+	if toolResult.ToolCallID != normalizedID {
+		t.Fatalf("expected tool result id to match normalized call id, got tool=%q assistant=%q", toolResult.ToolCallID, normalizedID)
+	}
+}

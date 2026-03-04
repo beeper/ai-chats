@@ -9,17 +9,57 @@ import (
 )
 
 type AnthropicOptions struct {
-	StreamOptions        ai.StreamOptions
-	ThinkingEnabled      bool
-	ThinkingBudgetTokens int
-	Effort               string
-	InterleavedThinking  bool
-	ToolChoice           string
+	StreamOptions          ai.StreamOptions
+	ThinkingEnabled        bool
+	ThinkingBudgetTokens   int
+	Effort                 string
+	InterleavedThinking    bool
+	ToolChoice             string
+	UseClaudeCodeToolNames bool
 }
 
 type cacheControl struct {
 	Type string `json:"type"`
 	TTL  string `json:"ttl,omitempty"`
+}
+
+var claudeCodeToolLookup = map[string]string{
+	"read":            "Read",
+	"write":           "Write",
+	"edit":            "Edit",
+	"bash":            "Bash",
+	"grep":            "Grep",
+	"glob":            "Glob",
+	"askuserquestion": "AskUserQuestion",
+	"enterplanmode":   "EnterPlanMode",
+	"exitplanmode":    "ExitPlanMode",
+	"killshell":       "KillShell",
+	"notebookedit":    "NotebookEdit",
+	"skill":           "Skill",
+	"task":            "Task",
+	"taskoutput":      "TaskOutput",
+	"todowrite":       "TodoWrite",
+	"webfetch":        "WebFetch",
+	"websearch":       "WebSearch",
+}
+
+func ToClaudeCodeToolName(name string) string {
+	if normalized, ok := claudeCodeToolLookup[strings.ToLower(strings.TrimSpace(name))]; ok {
+		return normalized
+	}
+	return name
+}
+
+func FromClaudeCodeToolName(name string, tools []ai.Tool) string {
+	if len(tools) > 0 {
+		lower := strings.ToLower(strings.TrimSpace(name))
+		for _, tool := range tools {
+			if strings.ToLower(strings.TrimSpace(tool.Name)) == lower {
+				return tool.Name
+			}
+		}
+	}
+	return name
 }
 
 func resolveAnthropicCacheRetention(cacheRetention ai.CacheRetention) ai.CacheRetention {
@@ -49,7 +89,7 @@ func BuildAnthropicParams(model ai.Model, context ai.Context, options AnthropicO
 		"model":      model.ID,
 		"stream":     true,
 		"max_tokens": max(1024, options.StreamOptions.MaxTokens),
-		"messages":   convertAnthropicMessages(model, context),
+		"messages":   convertAnthropicMessagesInternal(model, context, options.UseClaudeCodeToolNames),
 	}
 
 	_, cache := GetAnthropicCacheControl(model.BaseURL, options.StreamOptions.CacheRetention)
@@ -76,7 +116,7 @@ func BuildAnthropicParams(model ai.Model, context ai.Context, options AnthropicO
 		params["tool_choice"] = map[string]any{"type": options.ToolChoice}
 	}
 	if len(context.Tools) > 0 {
-		params["tools"] = convertAnthropicTools(context.Tools)
+		params["tools"] = convertAnthropicTools(context.Tools, options.UseClaudeCodeToolNames)
 	}
 	if options.ThinkingEnabled {
 		thinking := map[string]any{"type": "enabled"}
@@ -95,6 +135,10 @@ func BuildAnthropicParams(model ai.Model, context ai.Context, options AnthropicO
 }
 
 func convertAnthropicMessages(model ai.Model, context ai.Context) []map[string]any {
+	return convertAnthropicMessagesInternal(model, context, false)
+}
+
+func convertAnthropicMessagesInternal(model ai.Model, context ai.Context, useClaudeCodeToolNames bool) []map[string]any {
 	transformed := TransformMessages(context.Messages, model, func(id string, _ ai.Model, _ ai.Message) string {
 		sanitized := strings.Map(func(r rune) rune {
 			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' {
@@ -159,10 +203,14 @@ func convertAnthropicMessages(model ai.Model, context ai.Context) []map[string]a
 					}
 					parts = append(parts, map[string]any{"type": "thinking", "thinking": utils.SanitizeSurrogates(block.Thinking)})
 				case ai.ContentTypeToolCall:
+					toolName := block.Name
+					if useClaudeCodeToolNames {
+						toolName = ToClaudeCodeToolName(toolName)
+					}
 					parts = append(parts, map[string]any{
 						"type":  "tool_use",
 						"id":    block.ID,
-						"name":  block.Name,
+						"name":  toolName,
 						"input": block.Arguments,
 					})
 				}
@@ -204,11 +252,15 @@ func convertAnthropicMessages(model ai.Model, context ai.Context) []map[string]a
 	return out
 }
 
-func convertAnthropicTools(tools []ai.Tool) []map[string]any {
+func convertAnthropicTools(tools []ai.Tool, useClaudeCodeToolNames bool) []map[string]any {
 	out := make([]map[string]any, 0, len(tools))
 	for _, tool := range tools {
+		toolName := tool.Name
+		if useClaudeCodeToolNames {
+			toolName = ToClaudeCodeToolName(tool.Name)
+		}
 		out = append(out, map[string]any{
-			"name":         tool.Name,
+			"name":         toolName,
 			"description":  tool.Description,
 			"input_schema": tool.Parameters,
 		})

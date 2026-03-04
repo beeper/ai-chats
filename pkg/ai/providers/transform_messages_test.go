@@ -120,3 +120,46 @@ func TestTransformMessages_RemovesThoughtSignatureAcrossModels(t *testing.T) {
 		}
 	}
 }
+
+func TestTransformMessages_SynthesizesMissingToolResultBeforeNextUserTurn(t *testing.T) {
+	model := ai.Model{
+		ID:       "gpt-4o-mini",
+		API:      ai.APIOpenAICompletions,
+		Provider: "openai",
+	}
+	now := time.Now().UnixMilli()
+	input := []ai.Message{
+		{
+			Role: ai.RoleAssistant,
+			Content: []ai.ContentBlock{
+				{
+					Type:      ai.ContentTypeToolCall,
+					ID:        "call_1",
+					Name:      "calculate",
+					Arguments: map[string]any{"expression": "25*18"},
+				},
+			},
+			StopReason: ai.StopReasonToolUse,
+			Timestamp:  now,
+		},
+		{
+			Role:      ai.RoleUser,
+			Text:      "Never mind, what is 2+2?",
+			Timestamp: now + 1,
+		},
+	}
+
+	result := TransformMessages(input, model, nil)
+	if len(result) != 3 {
+		t.Fatalf("expected synthesized tool result to be inserted, got %d messages", len(result))
+	}
+	if result[1].Role != ai.RoleToolResult {
+		t.Fatalf("expected synthesized message at index 1 to be toolResult, got %s", result[1].Role)
+	}
+	if result[1].ToolCallID != "call_1" || result[1].ToolName != "calculate" || !result[1].IsError {
+		t.Fatalf("unexpected synthesized toolResult payload: %#v", result[1])
+	}
+	if len(result[1].Content) == 0 || result[1].Content[0].Text != "No result provided" {
+		t.Fatalf("expected synthesized toolResult content fallback")
+	}
+}

@@ -116,3 +116,64 @@ func TestConvertAnthropicMessages_ToolCallsAndToolResultFallback(t *testing.T) {
 		t.Fatalf("expected fallback text for non-text tool result, got %#v", innerContent[0]["text"])
 	}
 }
+
+func TestClaudeCodeToolNameNormalization(t *testing.T) {
+	tools := []ai.Tool{
+		{Name: "todowrite"},
+		{Name: "read"},
+		{Name: "find"},
+		{Name: "my_custom_tool"},
+	}
+
+	if got := ToClaudeCodeToolName("todowrite"); got != "TodoWrite" {
+		t.Fatalf("expected todowrite -> TodoWrite, got %q", got)
+	}
+	if got := FromClaudeCodeToolName("TodoWrite", tools); got != "todowrite" {
+		t.Fatalf("expected TodoWrite to map back to user tool name todowrite, got %q", got)
+	}
+
+	// find is not a Claude Code canonical tool name and must not map to Glob.
+	if got := ToClaudeCodeToolName("find"); got != "find" {
+		t.Fatalf("expected find to remain unchanged, got %q", got)
+	}
+	if got := FromClaudeCodeToolName("Glob", tools); got != "Glob" {
+		t.Fatalf("expected Glob to stay Glob when no matching user tool exists, got %q", got)
+	}
+
+	if got := ToClaudeCodeToolName("my_custom_tool"); got != "my_custom_tool" {
+		t.Fatalf("expected custom tool to remain unchanged, got %q", got)
+	}
+}
+
+func TestBuildAnthropicParams_UsesClaudeCodeCanonicalToolNames(t *testing.T) {
+	params := BuildAnthropicParams(
+		ai.Model{ID: "claude-sonnet-4-5"},
+		ai.Context{
+			Messages: []ai.Message{
+				{
+					Role: ai.RoleAssistant,
+					Content: []ai.ContentBlock{
+						{Type: ai.ContentTypeToolCall, ID: "call_1", Name: "read", Arguments: map[string]any{"path": "/tmp/test.txt"}},
+					},
+				},
+			},
+			Tools: []ai.Tool{
+				{Name: "read", Description: "Read file", Parameters: map[string]any{"type": "object"}},
+			},
+		},
+		AnthropicOptions{
+			UseClaudeCodeToolNames: true,
+		},
+	)
+
+	tools := params["tools"].([]map[string]any)
+	if tools[0]["name"] != "Read" {
+		t.Fatalf("expected outbound tool schema name to use Claude Code casing, got %#v", tools[0]["name"])
+	}
+
+	messages := params["messages"].([]map[string]any)
+	assistantContent := messages[0]["content"].([]map[string]any)
+	if assistantContent[0]["name"] != "Read" {
+		t.Fatalf("expected outbound assistant tool_use name to use Claude Code casing, got %#v", assistantContent[0]["name"])
+	}
+}
