@@ -66,4 +66,23 @@ func TestRegisterBuiltInAPIProviders(t *testing.T) {
 	if strings.Contains(strings.ToLower(completionsEvt.Error.ErrorMessage), "not implemented") {
 		t.Fatalf("expected openai completions runtime implementation, got stub error: %q", completionsEvt.Error.ErrorMessage)
 	}
+
+	codexStream, err := ai.Stream(ai.Model{
+		ID:       "gpt-5.1-codex-mini",
+		Provider: "openai-codex",
+		API:      ai.APIOpenAICodexResponse,
+	}, ai.Context{}, nil)
+	if err != nil {
+		t.Fatalf("unexpected codex stream resolve error: %v", err)
+	}
+	codexEvt, err := codexStream.Next(ctx)
+	if err != nil {
+		t.Fatalf("expected codex terminal error event, got %v", err)
+	}
+	if codexEvt.Type != ai.EventError {
+		t.Fatalf("expected codex error event, got %s", codexEvt.Type)
+	}
+	if strings.Contains(strings.ToLower(codexEvt.Error.ErrorMessage), "not implemented") {
+		t.Fatalf("expected codex runtime implementation, got stub error: %q", codexEvt.Error.ErrorMessage)
+	}
 }

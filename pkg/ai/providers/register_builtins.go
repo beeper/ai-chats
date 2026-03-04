@@ -65,9 +65,13 @@ func RegisterBuiltInAPIProviders() {
 		Stream:       streamAzureOpenAIResponses,
 		StreamSimple: streamSimpleAzureOpenAIResponses,
 	}, BuiltinProviderSourceID)
+	ai.RegisterAPIProvider(ai.APIProvider{
+		API:          ai.APIOpenAICodexResponse,
+		Stream:       streamOpenAICodexResponses,
+		StreamSimple: streamSimpleOpenAICodexResponses,
+	}, BuiltinProviderSourceID)
 
 	for _, apiID := range []ai.Api{
-		ai.APIOpenAICodexResponse,
 		ai.APIAnthropicMessages,
 		ai.APIGoogleGenerativeAI,
 		ai.APIGoogleGeminiCLI,
