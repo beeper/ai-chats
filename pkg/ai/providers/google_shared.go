@@ -41,6 +41,54 @@ type GoogleInlineData struct {
 	Data     string `json:"data"`
 }
 
+func ConvertGoogleTools(tools []ai.Tool, useParameters bool) []map[string]any {
+	if len(tools) == 0 {
+		return nil
+	}
+	functions := make([]map[string]any, 0, len(tools))
+	for _, tool := range tools {
+		declaration := map[string]any{
+			"name":        tool.Name,
+			"description": tool.Description,
+		}
+		if useParameters {
+			declaration["parameters"] = tool.Parameters
+		} else {
+			declaration["parametersJsonSchema"] = tool.Parameters
+		}
+		functions = append(functions, declaration)
+	}
+	return []map[string]any{
+		{
+			"functionDeclarations": functions,
+		},
+	}
+}
+
+func MapGoogleToolChoice(choice string) string {
+	switch strings.ToLower(strings.TrimSpace(choice)) {
+	case "none":
+		return "NONE"
+	case "any":
+		return "ANY"
+	default:
+		return "AUTO"
+	}
+}
+
+func MapGoogleStopReason(reason string) ai.StopReason {
+	switch strings.ToUpper(strings.TrimSpace(reason)) {
+	case "STOP":
+		return ai.StopReasonStop
+	case "MAX_TOKENS":
+		return ai.StopReasonLength
+	case "TOOL_USE":
+		return ai.StopReasonToolUse
+	default:
+		return ai.StopReasonError
+	}
+}
+
 func IsThinkingPart(part GooglePart) bool {
 	return part.Thought
 }

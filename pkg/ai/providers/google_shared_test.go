@@ -90,3 +90,51 @@ func TestConvertMessages_ConvertsUnsignedToolCallsToHistoricalTextForGemini3(t *
 		t.Fatalf("unexpected historical context text: %s", joined)
 	}
 }
+
+func TestGoogleSharedToolAndStopReasonHelpers(t *testing.T) {
+	tools := ConvertGoogleTools([]ai.Tool{
+		{
+			Name:        "search",
+			Description: "Search",
+			Parameters:  map[string]any{"type": "object"},
+		},
+	}, false)
+	if len(tools) != 1 {
+		t.Fatalf("expected one Gemini tools wrapper entry, got %d", len(tools))
+	}
+	declarations, _ := tools[0]["functionDeclarations"].([]map[string]any)
+	if len(declarations) != 1 {
+		t.Fatalf("expected one function declaration, got %#v", tools[0]["functionDeclarations"])
+	}
+	if _, ok := declarations[0]["parametersJsonSchema"]; !ok {
+		t.Fatalf("expected parametersJsonSchema in default conversion")
+	}
+
+	legacy := ConvertGoogleTools([]ai.Tool{
+		{Name: "search", Parameters: map[string]any{"type": "object"}},
+	}, true)
+	legacyDecls, _ := legacy[0]["functionDeclarations"].([]map[string]any)
+	if _, ok := legacyDecls[0]["parameters"]; !ok {
+		t.Fatalf("expected parameters field when useParameters=true")
+	}
+
+	if got := MapGoogleToolChoice("any"); got != "ANY" {
+		t.Fatalf("expected any->ANY, got %q", got)
+	}
+	if got := MapGoogleToolChoice("none"); got != "NONE" {
+		t.Fatalf("expected none->NONE, got %q", got)
+	}
+	if got := MapGoogleToolChoice("unexpected"); got != "AUTO" {
+		t.Fatalf("expected unknown->AUTO, got %q", got)
+	}
+
+	if got := MapGoogleStopReason("STOP"); got != ai.StopReasonStop {
+		t.Fatalf("expected STOP->stop, got %q", got)
+	}
+	if got := MapGoogleStopReason("MAX_TOKENS"); got != ai.StopReasonLength {
+		t.Fatalf("expected MAX_TOKENS->length, got %q", got)
+	}
+	if got := MapGoogleStopReason("other"); got != ai.StopReasonError {
+		t.Fatalf("expected unknown->error, got %q", got)
+	}
+}
