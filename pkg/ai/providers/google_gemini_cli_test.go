@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/beeper/ai-bridge/pkg/ai"
 )
 
 func TestExtractRetryDelay(t *testing.T) {
@@ -41,6 +43,27 @@ func TestExtractRetryDelay(t *testing.T) {
 		delay, ok := extractRetryDelayAt("", headers, now)
 		if !ok || delay != 31000 {
 			t.Fatalf("expected 31000ms, got %d (ok=%v)", delay, ok)
+		}
+	})
+}
+
+func TestBuildGeminiCLIHeaders(t *testing.T) {
+	t.Run("adds anthropic beta for claude thinking model", func(t *testing.T) {
+		headers := BuildGeminiCLIHeaders(ai.Model{ID: "claude-opus-4-5-thinking"}, map[string]string{
+			"authorization": "Bearer token",
+		})
+		if headers["anthropic-beta"] != ClaudeThinkingBetaHeader {
+			t.Fatalf("expected anthropic-beta header %q, got %q", ClaudeThinkingBetaHeader, headers["anthropic-beta"])
+		}
+		if headers["authorization"] != "Bearer token" {
+			t.Fatalf("expected existing headers to be preserved")
+		}
+	})
+
+	t.Run("does not add anthropic beta for gemini model", func(t *testing.T) {
+		headers := BuildGeminiCLIHeaders(ai.Model{ID: "gemini-2.5-flash"}, nil)
+		if _, ok := headers["anthropic-beta"]; ok {
+			t.Fatalf("did not expect anthropic-beta header for gemini model")
 		}
 	})
 }

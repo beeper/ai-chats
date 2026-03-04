@@ -10,6 +10,8 @@ import (
 	"github.com/beeper/ai-bridge/pkg/ai"
 )
 
+const ClaudeThinkingBetaHeader = "interleaved-thinking-2025-05-14"
+
 func ExtractRetryDelay(errorText string, headers http.Header) (int, bool) {
 	return extractRetryDelayAt(errorText, headers, time.Now())
 }
@@ -129,4 +131,20 @@ func NormalizeGoogleToolCall(name string, args map[string]any, id string, though
 		block.ThoughtSignature = thoughtSignature
 	}
 	return block
+}
+
+func IsClaudeThinkingModel(modelID string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(modelID))
+	return strings.Contains(normalized, "claude") && strings.Contains(normalized, "thinking")
+}
+
+func BuildGeminiCLIHeaders(model ai.Model, headers map[string]string) map[string]string {
+	out := map[string]string{}
+	for k, v := range headers {
+		out[k] = v
+	}
+	if IsClaudeThinkingModel(model.ID) {
+		out["anthropic-beta"] = ClaudeThinkingBetaHeader
+	}
+	return out
 }
