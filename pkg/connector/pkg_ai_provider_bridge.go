@@ -37,6 +37,8 @@ func buildPkgAIModelFromGenerateParams(params GenerateParams, baseURL string) ai
 	api := aipkg.APIOpenAIResponses
 	if provider == "openrouter" {
 		api = aipkg.APIOpenAICompletions
+	} else if provider == "azure-openai-responses" {
+		api = aipkg.APIAzureOpenAIResponse
 	}
 	return aipkg.Model{
 		ID:        modelID,

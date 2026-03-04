@@ -55,9 +55,13 @@ func RegisterBuiltInAPIProviders() {
 		Stream:       streamOpenAIResponses,
 		StreamSimple: streamSimpleOpenAIResponses,
 	}, BuiltinProviderSourceID)
+	ai.RegisterAPIProvider(ai.APIProvider{
+		API:          ai.APIOpenAICompletions,
+		Stream:       streamOpenAICompletions,
+		StreamSimple: streamSimpleOpenAICompletions,
+	}, BuiltinProviderSourceID)
 
 	for _, apiID := range []ai.Api{
-		ai.APIOpenAICompletions,
 		ai.APIAzureOpenAIResponse,
 		ai.APIOpenAICodexResponse,
 		ai.APIAnthropicMessages,

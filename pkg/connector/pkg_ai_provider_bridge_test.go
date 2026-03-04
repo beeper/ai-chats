@@ -63,6 +63,13 @@ func TestBuildPkgAIModelFromGenerateParams(t *testing.T) {
 	if openAI.MaxTokens != 16384 {
 		t.Fatalf("unexpected max tokens: %d", openAI.MaxTokens)
 	}
+
+	azure := buildPkgAIModelFromGenerateParams(GenerateParams{
+		Model: "gpt-4.1-mini",
+	}, "https://my-openai.azure.com")
+	if azure.API != "azure-openai-responses" {
+		t.Fatalf("expected azure base URL to map to azure-openai-responses API, got %q", azure.API)
+	}
 }
 
 func TestShouldFallbackFromPkgAIEvent(t *testing.T) {
@@ -78,7 +85,7 @@ func TestShouldFallbackFromPkgAIEvent(t *testing.T) {
 }
 
 func TestTryGenerateStreamWithPkgAIFallsBackOnStubbedProviders(t *testing.T) {
-	events, ok := tryGenerateStreamWithPkgAI(context.Background(), "https://openrouter.ai/api/v1", "", GenerateParams{
+	events, ok := tryGenerateStreamWithPkgAI(context.Background(), "https://my-openai.azure.com", "", GenerateParams{
 		Model: "gpt-4.1-mini",
 		Messages: []UnifiedMessage{
 			{
