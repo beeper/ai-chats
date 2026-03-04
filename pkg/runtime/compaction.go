@@ -1,37 +1,38 @@
 package runtime
 
+// CompactionInput describes text-level compaction parameters.
 type CompactionInput struct {
 	Messages      []string
 	MaxChars      int
 	ProtectedTail int
 }
 
+// CompactionResult holds the outcome of a text-level compaction pass.
 type CompactionResult struct {
-	Messages      []string
-	DroppedCount  int
-	OriginalChars int
-	FinalChars    int
-	Decision      CompactionDecision
+	Messages []string
+	Decision CompactionDecision
 }
 
+// ApplyCompaction drops oldest messages until the total character count fits within budget,
+// while respecting the protected tail window.
 func ApplyCompaction(input CompactionInput) CompactionResult {
 	messages := append([]string(nil), input.Messages...)
-	result := CompactionResult{Messages: messages}
+	originalChars := 0
 	for _, msg := range messages {
-		result.OriginalChars += len(msg)
+		originalChars += len(msg)
 	}
-	if input.MaxChars <= 0 || len(messages) == 0 || result.OriginalChars <= input.MaxChars {
-		result.FinalChars = result.OriginalChars
-		result.Decision = CompactionDecision{
-			Applied:       false,
-			DroppedCount:  0,
-			OriginalChars: result.OriginalChars,
-			FinalChars:    result.FinalChars,
-			Reason:        "within_budget",
+
+	if input.MaxChars <= 0 || len(messages) == 0 || originalChars <= input.MaxChars {
+		return CompactionResult{
+			Messages: messages,
+			Decision: CompactionDecision{
+				OriginalChars: originalChars,
+				FinalChars:    originalChars,
+				Reason:        "within_budget",
+			},
 		}
-		return result
 	}
-	originalChars := result.OriginalChars
+
 	protected := input.ProtectedTail
 	if protected < 0 {
 		protected = 0
@@ -43,28 +44,31 @@ func ApplyCompaction(input CompactionInput) CompactionResult {
 	if cutoff < 0 {
 		cutoff = 0
 	}
-	for result.OriginalChars > input.MaxChars && cutoff > 0 && len(messages) > 0 {
-		dropped := messages[0]
+
+	currentChars := originalChars
+	droppedCount := 0
+	for currentChars > input.MaxChars && cutoff > 0 && len(messages) > 0 {
+		currentChars -= len(messages[0])
 		messages = messages[1:]
-		result.OriginalChars -= len(dropped)
-		result.DroppedCount++
+		droppedCount++
 		cutoff--
 	}
-	result.Messages = messages
-	result.FinalChars = result.OriginalChars
+
 	reason := "drop_oldest"
-	if result.DroppedCount == 0 {
+	if droppedCount == 0 {
 		reason = "protected_tail_prevented_drop"
-	}
-	if result.FinalChars > input.MaxChars && result.DroppedCount > 0 {
+	} else if currentChars > input.MaxChars {
 		reason = "budget_exceeded_after_drop"
 	}
-	result.Decision = CompactionDecision{
-		Applied:       result.DroppedCount > 0,
-		DroppedCount:  result.DroppedCount,
-		OriginalChars: originalChars,
-		FinalChars:    result.FinalChars,
-		Reason:        reason,
+
+	return CompactionResult{
+		Messages: messages,
+		Decision: CompactionDecision{
+			Applied:       droppedCount > 0,
+			DroppedCount:  droppedCount,
+			OriginalChars: originalChars,
+			FinalChars:    currentChars,
+			Reason:        reason,
+		},
 	}
-	return result
 }

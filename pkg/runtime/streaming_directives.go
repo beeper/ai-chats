@@ -76,6 +76,7 @@ func (acc *StreamingDirectiveAccumulator) Consume(raw string, final bool) *Strea
 	return result
 }
 
+// ParseStreamingChunk parses inline directives from a streaming chunk.
 func ParseStreamingChunk(raw string) *StreamingDirectiveResult {
 	if !strings.Contains(raw, "[[") {
 		parsed := &StreamingDirectiveResult{Text: raw}
@@ -92,33 +93,38 @@ func ParseStreamingChunk(raw string) *StreamingDirectiveResult {
 		NormalizeWhitespace: true,
 	})
 	text := parsed.Text
-	if parsed.HasReplyTag {
-		text = parsed.Text
+	isSilent := IsSilentReplyText(text, SilentReplyToken) || IsSilentReplyPrefixText(text, SilentReplyToken)
+	if isSilent {
+		text = ""
 	}
-	if IsSilentReplyText(text, SilentReplyToken) || IsSilentReplyPrefixText(text, SilentReplyToken) {
-		return &StreamingDirectiveResult{
-			Text:              "",
-			ReplyToExplicitID: parsed.ReplyToExplicitID,
-			ReplyToCurrent:    parsed.ReplyToCurrent,
-			HasReplyTag:       parsed.HasReplyTag,
-			AudioAsVoice:      parsed.AudioAsVoice,
-			IsSilent:          true,
-		}
-	}
-
 	return &StreamingDirectiveResult{
 		Text:              text,
 		ReplyToExplicitID: parsed.ReplyToExplicitID,
 		ReplyToCurrent:    parsed.ReplyToCurrent,
 		HasReplyTag:       parsed.HasReplyTag,
 		AudioAsVoice:      parsed.AudioAsVoice,
-		IsSilent:          parsed.IsSilent,
+		IsSilent:          isSilent,
 	}
 }
 
+// HasRenderableStreamingContent checks whether a streaming result has text or audio to render.
 func HasRenderableStreamingContent(result *StreamingDirectiveResult) bool {
 	if result == nil {
 		return false
 	}
 	return result.Text != "" || result.AudioAsVoice
+}
+
+// SplitTrailingDirective splits text at the last unclosed [[ directive tag,
+// returning the body before and the incomplete tag after.
+func SplitTrailingDirective(text string) (string, string) {
+	openIndex := strings.LastIndex(text, "[[")
+	if openIndex < 0 {
+		return text, ""
+	}
+	closeIndex := strings.Index(text[openIndex+2:], "]]")
+	if closeIndex >= 0 {
+		return text, ""
+	}
+	return text[:openIndex], text[openIndex:]
 }

@@ -101,3 +101,20 @@ func DecideQueueAction(mode QueueMode, hasActiveRun bool, isHeartbeat bool) Queu
 		return QueueDecision{Action: QueueActionEnqueue, Reason: "default_backlog"}
 	}
 }
+
+// ElideQueueText truncates text to the given character limit with an ellipsis.
+func ElideQueueText(text string, limit int) string {
+	if limit <= 0 || len(text) <= limit {
+		return text
+	}
+	if limit <= 1 {
+		return text[:1]
+	}
+	return strings.TrimRight(text[:limit-1], " \t\r\n") + "…"
+}
+
+// BuildQueueSummaryLine collapses whitespace and elides text to the given limit.
+func BuildQueueSummaryLine(text string, limit int) string {
+	cleaned := strings.Join(strings.Fields(text), " ")
+	return ElideQueueText(cleaned, limit)
+}

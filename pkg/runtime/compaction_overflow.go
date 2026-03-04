@@ -137,16 +137,7 @@ func pruneHistoryForContextSharePrompt(
 		budgetTokens = 1
 	}
 
-	preambleEnd := 0
-	for preambleEnd < len(prompt) {
-		msg := prompt[preambleEnd]
-		if msg.OfSystem != nil || msg.OfDeveloper != nil {
-			preambleEnd++
-			continue
-		}
-		break
-	}
-
+	preambleEnd := preambleEndIndex(prompt)
 	kept := append([]openai.ChatCompletionMessageParamUnion{}, prompt[preambleEnd:]...)
 	droppedCount := 0
 	droppedTokens := 0
@@ -390,6 +381,32 @@ func CompactPromptOnOverflow(input OverflowCompactionInput) OverflowCompactionRe
 	}
 }
 
+// preambleEndIndex returns the index after the last leading system/developer message.
+func preambleEndIndex(prompt []openai.ChatCompletionMessageParamUnion) int {
+	i := 0
+	for i < len(prompt) {
+		if prompt[i].OfSystem != nil || prompt[i].OfDeveloper != nil {
+			i++
+			continue
+		}
+		break
+	}
+	return i
+}
+
+// insertAfterPreamble inserts a message after all leading system/developer messages.
+func insertAfterPreamble(
+	prompt []openai.ChatCompletionMessageParamUnion,
+	msg openai.ChatCompletionMessageParamUnion,
+) []openai.ChatCompletionMessageParamUnion {
+	at := preambleEndIndex(prompt)
+	out := make([]openai.ChatCompletionMessageParamUnion, 0, len(prompt)+1)
+	out = append(out, prompt[:at]...)
+	out = append(out, msg)
+	out = append(out, prompt[at:]...)
+	return out
+}
+
 func injectCompactionRefreshPrompt(
 	prompt []openai.ChatCompletionMessageParamUnion,
 	refreshPrompt string,
@@ -397,20 +414,7 @@ func injectCompactionRefreshPrompt(
 	if len(prompt) == 0 {
 		return prompt
 	}
-	insertAt := 0
-	for insertAt < len(prompt) {
-		msg := prompt[insertAt]
-		if msg.OfSystem != nil || msg.OfDeveloper != nil {
-			insertAt++
-			continue
-		}
-		break
-	}
-	out := make([]openai.ChatCompletionMessageParamUnion, 0, len(prompt)+1)
-	out = append(out, prompt[:insertAt]...)
-	out = append(out, openai.SystemMessage(strings.TrimSpace(refreshPrompt)))
-	out = append(out, prompt[insertAt:]...)
-	return out
+	return insertAfterPreamble(prompt, openai.SystemMessage(strings.TrimSpace(refreshPrompt)))
 }
 
 func injectCompactionSummary(
@@ -435,20 +439,7 @@ func injectCompactionSummary(
 	if summary == "" {
 		return compacted
 	}
-	insertAt := 0
-	for insertAt < len(compacted) {
-		msg := compacted[insertAt]
-		if msg.OfSystem != nil || msg.OfDeveloper != nil {
-			insertAt++
-			continue
-		}
-		break
-	}
-	out := make([]openai.ChatCompletionMessageParamUnion, 0, len(compacted)+1)
-	out = append(out, compacted[:insertAt]...)
-	out = append(out, openai.SystemMessage(summary))
-	out = append(out, compacted[insertAt:]...)
-	return out
+	return insertAfterPreamble(compacted, openai.SystemMessage(summary))
 }
 
 func buildCompactionSummaryText(

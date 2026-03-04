@@ -101,7 +101,7 @@ func TestQueueFallbackToolCompactionDecisions(t *testing.T) {
 		MaxChars:      6,
 		ProtectedTail: 1,
 	})
-	if !comp.Decision.Applied || comp.DroppedCount == 0 {
+	if !comp.Decision.Applied || comp.Decision.DroppedCount == 0 {
 		t.Fatalf("expected compaction to drop messages, got %#v", comp.Decision)
 	}
 	if mode, ok := NormalizeQueueMode("steer+backlog"); !ok || mode != QueueModeSteerBacklog {
