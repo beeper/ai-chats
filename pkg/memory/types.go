@@ -1,7 +1,5 @@
 package memory
 
-import "context"
-
 type ResolvedConfig struct {
 	Enabled      bool
 	Sources      []string
@@ -113,13 +111,6 @@ type SearchResult struct {
 	Score     float64 `json:"score"`
 	Snippet   string  `json:"snippet"`
 	Source    string  `json:"source"`
-}
-
-type EmbeddingProvider interface {
-	ID() string
-	Model() string
-	EmbedQuery(ctx context.Context, text string) ([]float64, error)
-	EmbedBatch(ctx context.Context, texts []string) ([][]float64, error)
 }
 
 type ProviderStatus struct {

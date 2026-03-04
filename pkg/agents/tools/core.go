@@ -97,14 +97,4 @@ var (
 		Type:  ToolTypeBuiltin,
 		Group: GroupOpenClaw,
 	}
-	GravatarSetTool = &Tool{
-		Tool: mcp.Tool{
-			Name:        toolspec.GravatarSetName,
-			Description: toolspec.GravatarSetDescription,
-			Annotations: &mcp.ToolAnnotations{Title: "Gravatar Set"},
-			InputSchema: toolspec.GravatarSetSchema(),
-		},
-		Type:  ToolTypeBuiltin,
-		Group: GroupBuilder,
-	}
 )

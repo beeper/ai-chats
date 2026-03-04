@@ -229,8 +229,6 @@ type PortalMetadata struct {
 	TypingMode            string `json:"typing_mode,omitempty"`             // never|instant|thinking|message
 	TypingIntervalSeconds *int   `json:"typing_interval_seconds,omitempty"` // Optional per-session override
 
-	// Anthropic prompt cache TTL tracking
-	LastCacheTTLRefresh int64 `json:"last_cache_ttl_refresh,omitempty"` // Unix millis of last cache-eligible request
 }
 
 // isSimpleMode reports whether the portal is in simple mode
