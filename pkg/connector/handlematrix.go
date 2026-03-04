@@ -1456,15 +1456,11 @@ func (oc *AIClient) tryReplyApprovalFallback(
 	msg *bridgev2.MatrixMessage,
 	portal *bridgev2.Portal,
 ) (bool, *bridgev2.MatrixMessageResponse) {
-	if msg.Content.RelatesTo == nil {
-		return false, nil
+	replyTo := approvalTargetEventID(msg.Event, msg.Content)
+	approvalID := ""
+	if replyTo != "" {
+		approvalID = oc.findApprovalByEventID(replyTo)
 	}
-	replyTo := msg.Content.RelatesTo.GetReplyTo()
-	if replyTo == "" {
-		return false, nil
-	}
-
-	approvalID := oc.findApprovalByEventID(replyTo)
 	if approvalID == "" {
 		approvalID = oc.lookupApprovalIDFromMessage(msg.Event)
 		if approvalID == "" {
@@ -1510,35 +1506,62 @@ func (oc *AIClient) tryReplyApprovalFallback(
 	return true, &bridgev2.MatrixMessageResponse{Pending: false}
 }
 
-func parseMessageActionID(evt *event.Event) string {
+func approvalTargetEventID(evt *event.Event, content *event.MessageEventContent) id.EventID {
+	if content != nil && content.RelatesTo != nil {
+		if replyTo := strings.TrimSpace(string(content.RelatesTo.GetReplyTo())); replyTo != "" {
+			return id.EventID(replyTo)
+		}
+	}
 	if evt == nil || evt.Content.Raw == nil {
 		return ""
 	}
-	actionID, ok := evt.Content.Raw["action_id"].(string)
+	rawRelatesTo, ok := evt.Content.Raw["m.relates_to"].(map[string]any)
 	if !ok {
 		return ""
 	}
+	if relType, _ := rawRelatesTo["rel_type"].(string); strings.TrimSpace(relType) != "m.from_action_hint" {
+		return ""
+	}
+	eventID, _ := rawRelatesTo["event_id"].(string)
+	return id.EventID(strings.TrimSpace(eventID))
+}
+
+func parseMessageActionID(evt *event.Event) string {
+	actionResponse := parseActionResponseMetadata(evt)
+	if actionResponse == nil {
+		return ""
+	}
+	actionID, _ := actionResponse["action_id"].(string)
 	return strings.TrimSpace(actionID)
 }
 
 func (oc *AIClient) lookupApprovalIDFromMessage(evt *event.Event) string {
-	if evt == nil || evt.Content.Raw == nil {
+	actionResponse := parseActionResponseMetadata(evt)
+	if actionResponse == nil {
 		return ""
 	}
-
-	rawContext, ok := evt.Content.Raw["context"]
+	rawContext, ok := actionResponse["context"]
 	if !ok || rawContext == nil {
 		return ""
 	}
-
 	contextMap, ok := rawContext.(map[string]any)
 	if !ok {
 		return ""
 	}
-
 	approvalID, ok := contextMap["approval_id"].(string)
 	if !ok {
 		return ""
 	}
 	return strings.TrimSpace(approvalID)
+}
+
+func parseActionResponseMetadata(evt *event.Event) map[string]any {
+	if evt == nil || evt.Content.Raw == nil {
+		return nil
+	}
+	actionResponse, ok := evt.Content.Raw["com.beeper.action_response"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	return actionResponse
 }
