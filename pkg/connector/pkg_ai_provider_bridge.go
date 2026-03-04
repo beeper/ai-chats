@@ -24,7 +24,9 @@ func inferProviderNameFromBaseURL(baseURL string) string {
 		return "openrouter"
 	case strings.Contains(lower, "api.anthropic.com"):
 		return "anthropic"
-	case strings.Contains(lower, "cloudcode-pa.googleapis.com"):
+	case strings.Contains(lower, "daily-cloudcode-pa.sandbox.googleapis.com"),
+		strings.Contains(lower, "cloudcode-pa.sandbox.googleapis.com"),
+		strings.Contains(lower, "cloudcode-pa.googleapis.com"):
 		return "google-gemini-cli"
 	case strings.Contains(lower, "aiplatform.googleapis.com"), strings.Contains(lower, "vertex"):
 		return "google-vertex"
@@ -70,6 +72,8 @@ func inferAPIFromProviderModel(provider string, modelID string) aipkg.Api {
 	case "google":
 		return aipkg.APIGoogleGenerativeAI
 	case "google-gemini-cli":
+		return aipkg.APIGoogleGeminiCLI
+	case "google-antigravity":
 		return aipkg.APIGoogleGeminiCLI
 	case "google-vertex":
 		return aipkg.APIGoogleVertex

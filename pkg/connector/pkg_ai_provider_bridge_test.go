@@ -33,6 +33,7 @@ func TestInferProviderNameFromBaseURL(t *testing.T) {
 		{name: "azure", baseURL: "https://my-openai.azure.com", want: "azure-openai-responses"},
 		{name: "anthropic", baseURL: "https://api.anthropic.com", want: "anthropic"},
 		{name: "google cloudcode", baseURL: "https://cloudcode-pa.googleapis.com", want: "google-gemini-cli"},
+		{name: "google antigravity", baseURL: "https://daily-cloudcode-pa.sandbox.googleapis.com", want: "google-gemini-cli"},
 		{name: "google mldev", baseURL: "https://generativelanguage.googleapis.com", want: "google"},
 		{name: "google vertex", baseURL: "https://us-central1-aiplatform.googleapis.com", want: "google-vertex"},
 		{name: "bedrock", baseURL: "https://bedrock-runtime.us-east-1.amazonaws.com", want: "amazon-bedrock"},
@@ -93,6 +94,13 @@ func TestBuildPkgAIModelFromGenerateParams(t *testing.T) {
 	}, "https://generativelanguage.googleapis.com")
 	if google.API != "google-generative-ai" {
 		t.Fatalf("expected google base URL to map to google-generative-ai API, got %q", google.API)
+	}
+
+	antigravity := buildPkgAIModelFromGenerateParams(GenerateParams{
+		Model: "gemini-2.5-pro",
+	}, "https://daily-cloudcode-pa.sandbox.googleapis.com")
+	if antigravity.API != "google-gemini-cli" {
+		t.Fatalf("expected antigravity endpoint to map to google-gemini-cli API, got %q", antigravity.API)
 	}
 
 	bedrock := buildPkgAIModelFromGenerateParams(GenerateParams{
