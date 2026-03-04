@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	cronlib "github.com/robfig/cron/v3"
 )
 
 const (
@@ -38,8 +36,7 @@ func ValidateSchedule(schedule CronSchedule) TimestampValidationResult {
 				Message: "schedule.expr is required for kind=cron",
 			}
 		}
-		parser := cronlib.NewParser(cronlib.Minute | cronlib.Hour | cronlib.Dom | cronlib.Month | cronlib.Dow | cronlib.Descriptor)
-		if _, err := parser.Parse(expr); err != nil {
+		if _, err := cronParser.Parse(expr); err != nil {
 			return TimestampValidationResult{
 				Ok:      false,
 				Message: fmt.Sprintf("Invalid schedule.expr: %s", err.Error()),

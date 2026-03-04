@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path"
 	"slices"
 	"strings"
@@ -48,21 +49,19 @@ func ResolveCronRunLogPath(storePath, jobID string) string {
 var cronRunLogLocks sync.Map
 
 func cronRunLogLock(path string) *sync.Mutex {
-	if path == "" {
-		return &sync.Mutex{}
-	}
-	if val, ok := cronRunLogLocks.Load(path); ok {
-		return val.(*sync.Mutex)
+	key := path
+	if key == "" {
+		key = "__run_log__"
 	}
 	mu := &sync.Mutex{}
-	actual, _ := cronRunLogLocks.LoadOrStore(path, mu)
+	actual, _ := cronRunLogLocks.LoadOrStore(key, mu)
 	return actual.(*sync.Mutex)
 }
 
 // AppendCronRunLog appends a log entry and prunes if too large.
 func AppendCronRunLog(ctx context.Context, backend StoreBackend, path string, entry CronRunLogEntry, maxBytes int64, keepLines int) error {
 	if backend == nil {
-		return errors.New("cron store backend not configured")
+		return errors.New("append run log: store backend not configured")
 	}
 	if maxBytes <= 0 {
 		maxBytes = 2_000_000
@@ -72,7 +71,7 @@ func AppendCronRunLog(ctx context.Context, backend StoreBackend, path string, en
 	}
 	payload, err := json.Marshal(entry)
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal run log entry: %w", err)
 	}
 	lock := cronRunLogLock(path)
 	lock.Lock()
@@ -156,7 +155,7 @@ func ParseCronRunLogEntries(raw string, limit int, jobID string) []CronRunLogEnt
 // ReadCronRunLogEntries reads recent entries from a jsonl log.
 func ReadCronRunLogEntries(ctx context.Context, backend StoreBackend, path string, limit int, jobID string) ([]CronRunLogEntry, error) {
 	if backend == nil {
-		return []CronRunLogEntry{}, errors.New("cron store backend not configured")
+		return []CronRunLogEntry{}, errors.New("read run log: store backend not configured")
 	}
 	data, found, err := backend.Read(ctx, path)
 	if err != nil || !found {

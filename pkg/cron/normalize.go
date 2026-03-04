@@ -115,20 +115,13 @@ func inferLegacyName(job *CronJobCreate) string {
 	return "Cron job"
 }
 
-func normalizePayloadToSystemText(payload CronPayload) string {
-	if strings.EqualFold(payload.Kind, "systemEvent") {
-		return strings.TrimSpace(payload.Text)
+func resolveJobPayloadTextForMain(job CronJob) (text string, reason string) {
+	if !strings.EqualFold(job.Payload.Kind, "systemEvent") {
+		return "", `main job requires payload.kind="systemEvent"`
 	}
-	return strings.TrimSpace(payload.Message)
-}
-
-func resolveJobPayloadTextForMain(job CronJob) (string, string) {
-	if strings.EqualFold(job.Payload.Kind, "systemEvent") {
-		text := normalizePayloadToSystemText(job.Payload)
-		if text == "" {
-			return "", "main job requires non-empty systemEvent text"
-		}
-		return text, ""
+	text = strings.TrimSpace(job.Payload.Text)
+	if text == "" {
+		return "", "main job requires non-empty systemEvent text"
 	}
-	return "", `main job requires payload.kind="systemEvent"`
+	return text, ""
 }

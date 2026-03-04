@@ -3,8 +3,6 @@ package cron
 import (
 	"strings"
 	"time"
-
-	cronlib "github.com/robfig/cron/v3"
 )
 
 // ComputeNextRunAtMs returns the next run time in unix ms.
@@ -55,8 +53,7 @@ func ComputeNextRunAtMs(schedule CronSchedule, nowMs int64) *int64 {
 				location = loc
 			}
 		}
-		parser := cronlib.NewParser(cronlib.Minute | cronlib.Hour | cronlib.Dom | cronlib.Month | cronlib.Dow | cronlib.Descriptor)
-		sched, err := parser.Parse(expr)
+		sched, err := cronParser.Parse(expr)
 		if err != nil {
 			return nil
 		}

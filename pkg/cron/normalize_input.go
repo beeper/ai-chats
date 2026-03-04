@@ -46,8 +46,3 @@ func normalizeCronJobInput(raw CronJobCreate, opts normalizeOptions) CronJobCrea
 func NormalizeCronJobCreate(raw CronJobCreate) CronJobCreate {
 	return normalizeCronJobInput(raw, normalizeOptions{applyDefaults: true})
 }
-
-// NormalizeCronJobPatch currently no-op; provided for parity.
-func NormalizeCronJobPatch(raw CronJobPatch) CronJobPatch {
-	return raw
-}

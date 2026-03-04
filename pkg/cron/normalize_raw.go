@@ -3,6 +3,7 @@ package cron
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"maps"
 	"strings"
 	"time"
@@ -213,15 +214,15 @@ func coerceDeliveryMap(delivery map[string]any) map[string]any {
 func NormalizeCronJobCreateRaw(raw any) (CronJobCreate, error) {
 	normalized := normalizeCronJobInputRaw(raw, true)
 	if normalized == nil {
-		return CronJobCreate{}, errors.New("invalid cron job")
+		return CronJobCreate{}, errors.New("normalize create: invalid cron job input")
 	}
 	data, err := json.Marshal(normalized)
 	if err != nil {
-		return CronJobCreate{}, err
+		return CronJobCreate{}, fmt.Errorf("normalize create marshal: %w", err)
 	}
 	var out CronJobCreate
 	if err := json.Unmarshal(data, &out); err != nil {
-		return CronJobCreate{}, err
+		return CronJobCreate{}, fmt.Errorf("normalize create unmarshal: %w", err)
 	}
 	return NormalizeCronJobCreate(out), nil
 }
@@ -230,7 +231,7 @@ func NormalizeCronJobCreateRaw(raw any) (CronJobCreate, error) {
 func NormalizeCronJobPatchRaw(raw any) (CronJobPatch, error) {
 	normalized := normalizeCronJobInputRaw(raw, false)
 	if normalized == nil {
-		return CronJobPatch{}, errors.New("invalid cron patch")
+		return CronJobPatch{}, errors.New("normalize patch: invalid cron job input")
 	}
 	agentIDPresent := false
 	agentIDNil := false
@@ -240,15 +241,15 @@ func NormalizeCronJobPatchRaw(raw any) (CronJobPatch, error) {
 	}
 	data, err := json.Marshal(normalized)
 	if err != nil {
-		return CronJobPatch{}, err
+		return CronJobPatch{}, fmt.Errorf("normalize patch marshal: %w", err)
 	}
 	var out CronJobPatch
 	if err := json.Unmarshal(data, &out); err != nil {
-		return CronJobPatch{}, err
+		return CronJobPatch{}, fmt.Errorf("normalize patch unmarshal: %w", err)
 	}
 	if agentIDPresent && agentIDNil && out.AgentID == nil {
 		empty := ""
 		out.AgentID = &empty
 	}
-	return NormalizeCronJobPatch(out), nil
+	return out, nil
 }

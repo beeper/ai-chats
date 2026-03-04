@@ -17,16 +17,11 @@ func createJob(nowMs int64, input CronJobCreate) (CronJob, error) {
 	if err != nil {
 		return CronJob{}, err
 	}
-	enabled := false
-	if input.Enabled != nil {
-		enabled = *input.Enabled
-	} else {
-		enabled = true
-	}
+	enabled := input.Enabled == nil || *input.Enabled
 	deleteAfter := false
 	if input.DeleteAfterRun != nil {
 		deleteAfter = *input.DeleteAfterRun
-	} else if strings.EqualFold(strings.TrimSpace(input.Schedule.Kind), "at") {
+	} else if normalizeString(input.Schedule.Kind) == "at" {
 		deleteAfter = true
 	}
 	wakeMode := input.WakeMode
@@ -54,7 +49,7 @@ func createJob(nowMs int64, input CronJobCreate) (CronJob, error) {
 		job.State = *input.State
 	}
 	// Fixed-rate default for "every": anchor to createdAtMs if missing.
-	if strings.EqualFold(strings.TrimSpace(job.Schedule.Kind), "every") && job.Schedule.AnchorMs == nil {
+	if normalizeString(job.Schedule.Kind) == "every" && job.Schedule.AnchorMs == nil {
 		anchor := job.CreatedAtMs
 		job.Schedule.AnchorMs = &anchor
 	}
@@ -151,11 +146,10 @@ func mergeCronState(existing CronJobState, patch CronJobState) CronJobState {
 }
 
 func mergeCronPayload(existing CronPayload, patch CronPayloadPatch) (CronPayload, error) {
-	if patch.Kind != "" && !strings.EqualFold(patch.Kind, existing.Kind) {
+	if patch.Kind != "" && normalizeString(patch.Kind) != normalizeString(existing.Kind) {
 		return buildPayloadFromPatch(patch)
 	}
-	kind := strings.ToLower(existing.Kind)
-	if kind == "systemevent" {
+	if normalizeString(existing.Kind) == "systemevent" {
 		text := existing.Text
 		if patch.Text != nil {
 			text = *patch.Text
@@ -182,8 +176,7 @@ func mergeCronPayload(existing CronPayload, patch CronPayloadPatch) (CronPayload
 }
 
 func buildPayloadFromPatch(patch CronPayloadPatch) (CronPayload, error) {
-	kind := strings.ToLower(patch.Kind)
-	if kind == "systemevent" {
+	if normalizeString(patch.Kind) == "systemevent" {
 		text := ""
 		if patch.Text != nil {
 			text = *patch.Text
@@ -235,10 +228,11 @@ func mergeCronDelivery(existing *CronDelivery, patch CronDeliveryPatch) *CronDel
 }
 
 func assertSupportedJobSpec(target CronSessionTarget, payload CronPayload) error {
-	if target == CronSessionMain && !strings.EqualFold(payload.Kind, "systemEvent") {
+	kind := normalizeString(payload.Kind)
+	if target == CronSessionMain && kind != "systemevent" {
 		return errors.New("main cron jobs require payload.kind=systemEvent")
 	}
-	if target == CronSessionIsolated && !strings.EqualFold(payload.Kind, "agentTurn") {
+	if target == CronSessionIsolated && kind != "agentturn" {
 		return errors.New("isolated cron jobs require payload.kind=agentTurn")
 	}
 	return nil
@@ -255,7 +249,7 @@ func computeJobNextRunAtMs(job CronJob, nowMs int64) *int64 {
 	if !job.Enabled {
 		return nil
 	}
-	if strings.EqualFold(job.Schedule.Kind, "at") {
+	if normalizeString(job.Schedule.Kind) == "at" {
 		if job.State.LastStatus == "ok" && job.State.LastRunAtMs != nil {
 			return nil
 		}
@@ -265,7 +259,7 @@ func computeJobNextRunAtMs(job CronJob, nowMs int64) *int64 {
 		}
 		return &atMs
 	}
-	if strings.EqualFold(job.Schedule.Kind, "every") {
+	if normalizeString(job.Schedule.Kind) == "every" {
 		// Fixed-rate default: anchor to createdAtMs if not provided.
 		sched := job.Schedule
 		if sched.AnchorMs == nil {
@@ -308,14 +302,14 @@ func recomputeNextRuns(store *CronStoreFile, nowMs int64, log Logger) bool {
 			mutated = true
 		}
 		// Ensure "every" jobs have a stable anchor for fixed-rate scheduling.
-		if strings.EqualFold(strings.TrimSpace(job.Schedule.Kind), "every") && job.Schedule.AnchorMs == nil {
+		if normalizeString(job.Schedule.Kind) == "every" && job.Schedule.AnchorMs == nil {
 			anchor := job.CreatedAtMs
 			job.Schedule.AnchorMs = &anchor
 			mutated = true
 		}
 		// Preserve overdue nextRunAtMs for recurring jobs so they run once immediately on app-open.
 		if job.State.NextRunAtMs != nil &&
-			!strings.EqualFold(strings.TrimSpace(job.Schedule.Kind), "at") &&
+			normalizeString(job.Schedule.Kind) != "at" &&
 			*job.State.NextRunAtMs <= nowMs {
 			// If schedule is invalid, drop nextRunAtMs so it won't loop forever.
 			if computeJobNextRunAtMs(job, nowMs) == nil {
@@ -372,5 +366,3 @@ func sortJobs(jobs []CronJob) {
 		return cmp.Compare(av, bv)
 	})
 }
-
-// helpers defined in normalize.go and utils.go

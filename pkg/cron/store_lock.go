@@ -7,16 +7,11 @@ import (
 
 var cronStoreLocks sync.Map
 
-func storeLockKey(path string) string {
-	trimmed := strings.TrimSpace(path)
-	if trimmed == "" {
-		return "__cron_store__"
-	}
-	return trimmed
-}
-
 func storeLockForPath(path string) *sync.Mutex {
-	key := storeLockKey(path)
+	key := strings.TrimSpace(path)
+	if key == "" {
+		key = "__cron_store__"
+	}
 	if val, ok := cronStoreLocks.Load(key); ok {
 		return val.(*sync.Mutex)
 	}

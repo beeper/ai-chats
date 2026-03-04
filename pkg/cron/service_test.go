@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -27,15 +28,6 @@ func (l *testLogger) Warn(msg string, _ ...any) {
 	l.mu.Unlock()
 }
 func (l *testLogger) Error(_ string, _ ...any) {}
-
-func contains(s, sub string) bool {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
-}
 
 func TestSchedulerRunsOverdueJobsOnStart(t *testing.T) {
 	log := &testLogger{}
@@ -301,7 +293,7 @@ func TestValidateScheduleRejectsInvalidTZ(t *testing.T) {
 	if result.Ok {
 		t.Fatal("expected validation to fail for invalid timezone")
 	}
-	if !contains(result.Message, "not a valid IANA timezone") {
+	if !strings.Contains(result.Message, "not a valid IANA timezone") {
 		t.Fatalf("unexpected message: %s", result.Message)
 	}
 }
@@ -325,7 +317,7 @@ func TestValidateScheduleRejectsInvalidCronExpr(t *testing.T) {
 	if result.Ok {
 		t.Fatal("expected validation to fail for invalid cron expression")
 	}
-	if !contains(result.Message, "Invalid schedule.expr") {
+	if !strings.Contains(result.Message, "Invalid schedule.expr") {
 		t.Fatalf("unexpected message: %s", result.Message)
 	}
 }

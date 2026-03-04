@@ -113,7 +113,10 @@ func SaveCronStore(ctx context.Context, backend StoreBackend, storePath string, 
 	}
 	payload, err := json5.MarshalIndent(store, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("cron store marshal: %w", err)
 	}
-	return backend.Write(ctx, storePath, payload)
+	if err := backend.Write(ctx, storePath, payload); err != nil {
+		return fmt.Errorf("cron store write: %w", err)
+	}
+	return nil
 }
