@@ -35,22 +35,28 @@ func (s *AssistantMessageEventStream) Push(evt AssistantMessageEvent) {
 	default:
 	}
 
+	isComplete := false
 	if evt.Type == EventDone {
 		s.mu.Lock()
 		s.result = evt.Message
 		s.hasResult = true
 		s.mu.Unlock()
+		isComplete = true
 	}
 	if evt.Type == EventError {
 		s.mu.Lock()
 		s.result = evt.Error
 		s.hasResult = true
 		s.mu.Unlock()
+		isComplete = true
 	}
 
 	select {
 	case <-s.done:
 	case s.ch <- evt:
+	}
+	if isComplete {
+		s.Close()
 	}
 }
 
