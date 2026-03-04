@@ -50,9 +50,7 @@ Legend:
 
 - `oauth.ts` (provider/token helper semantics) → ✅ `pkg/ai/oauth/*_test.go`
 
-### Remaining scaffolds in Go e2e suite
+### Out of scope for this port
 
-The following are currently kept as env-gated scaffolds in
-`pkg/ai/e2e/parity_scaffolds_test.go`:
-
-- 📝 `zen.test.ts`
+- `zen.test.ts` targets OpenCode Zen-specific provider/runtime behavior, which is
+  outside the `pi-mono/packages/ai/src` provider set and outside this port scope.
