@@ -375,6 +375,21 @@ func (o *OpenAIProvider) GenerateStream(ctx context.Context, params GeneratePara
 
 // Generate performs a non-streaming generation using Responses API
 func (o *OpenAIProvider) Generate(ctx context.Context, params GenerateParams) (*GenerateResponse, error) {
+	if pkgAIProviderRuntimeEnabled() {
+		if pkgAIResp, handled, err := tryGenerateWithPkgAI(ctx, o.baseURL, o.apiKey, params); handled {
+			if err != nil {
+				return nil, fmt.Errorf("pkg/ai generation failed: %w", err)
+			}
+			o.log.Debug().
+				Str("model", params.Model).
+				Msg("Using pkg/ai provider runtime for OpenAI generate")
+			return pkgAIResp, nil
+		}
+		o.log.Warn().
+			Str("model", params.Model).
+			Msg("pkg/ai provider runtime fallback to existing OpenAI generate path")
+	}
+
 	// Responses input supports images and PDFs but not audio/video, so fall back to
 	// Chat Completions when unsupported media is present.
 	if hasUnsupportedResponsesUnifiedMessages(params.Messages) {

@@ -2,6 +2,8 @@ package connector
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"time"
@@ -119,6 +121,17 @@ func shouldFallbackFromPkgAIEvent(event StreamEvent) bool {
 		strings.Contains(errText, "no api provider registered")
 }
 
+func shouldFallbackFromPkgAIError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errText := strings.ToLower(strings.TrimSpace(err.Error()))
+	return strings.Contains(errText, "not implemented yet") ||
+		strings.Contains(errText, "no api provider registered") ||
+		strings.Contains(errText, "has no stream function") ||
+		strings.Contains(errText, "has no streamsimple function")
+}
+
 func tryGenerateStreamWithPkgAI(
 	ctx context.Context,
 	baseURL string,
@@ -174,5 +187,101 @@ func tryGenerateStreamWithPkgAI(
 	case <-time.After(50 * time.Millisecond):
 		// No immediate events: proceed with pkg/ai channel and let caller consume.
 		return mapped, true
+	}
+}
+
+func tryGenerateWithPkgAI(
+	ctx context.Context,
+	baseURL string,
+	apiKey string,
+	params GenerateParams,
+) (*GenerateResponse, bool, error) {
+	aiproviders.RegisterBuiltInAPIProviders()
+	model := buildPkgAIModelFromGenerateParams(params, baseURL)
+	aiContext := toAIContext(params.SystemPrompt, params.Messages, params.Tools)
+
+	temp := params.Temperature
+	options := &aipkg.StreamOptions{
+		Ctx:         ctx,
+		MaxTokens:   params.MaxCompletionTokens,
+		Temperature: &temp,
+		APIKey:      strings.TrimSpace(apiKey),
+	}
+
+	var (
+		message aipkg.Message
+		err     error
+	)
+	if reasoning := parseThinkingLevel(params.ReasoningEffort); reasoning != "" {
+		message, err = aipkg.CompleteSimple(model, aiContext, &aipkg.SimpleStreamOptions{
+			StreamOptions: *options,
+			Reasoning:     reasoning,
+		})
+	} else {
+		message, err = aipkg.Complete(model, aiContext, options)
+	}
+	if err != nil {
+		if shouldFallbackFromPkgAIError(err) {
+			return nil, false, nil
+		}
+		return nil, true, err
+	}
+	if message.StopReason == aipkg.StopReasonError && strings.TrimSpace(message.ErrorMessage) != "" {
+		runtimeErr := errors.New(strings.TrimSpace(message.ErrorMessage))
+		if shouldFallbackFromPkgAIError(runtimeErr) {
+			return nil, false, nil
+		}
+		return nil, true, runtimeErr
+	}
+	return generateResponseFromAIMessage(message), true, nil
+}
+
+func generateResponseFromAIMessage(message aipkg.Message) *GenerateResponse {
+	var contentParts []string
+	var thinkingParts []string
+	toolCalls := make([]ToolCallResult, 0)
+	for _, block := range message.Content {
+		switch block.Type {
+		case aipkg.ContentTypeText:
+			if text := strings.TrimSpace(block.Text); text != "" {
+				contentParts = append(contentParts, text)
+			}
+		case aipkg.ContentTypeThinking:
+			if thinking := strings.TrimSpace(block.Thinking); thinking != "" {
+				thinkingParts = append(thinkingParts, thinking)
+			}
+		case aipkg.ContentTypeToolCall:
+			argumentsJSON := "{}"
+			if block.Arguments != nil {
+				if raw, err := json.Marshal(block.Arguments); err == nil {
+					argumentsJSON = string(raw)
+				}
+			}
+			toolCalls = append(toolCalls, ToolCallResult{
+				ID:        strings.TrimSpace(block.ID),
+				Name:      strings.TrimSpace(block.Name),
+				Arguments: argumentsJSON,
+			})
+		}
+	}
+
+	content := strings.Join(contentParts, "\n")
+	if strings.TrimSpace(content) == "" && len(thinkingParts) > 0 {
+		content = strings.Join(thinkingParts, "\n")
+	}
+	finishReason := strings.TrimSpace(string(message.StopReason))
+	if finishReason == "" {
+		finishReason = "stop"
+	}
+
+	return &GenerateResponse{
+		Content:      content,
+		FinishReason: finishReason,
+		ToolCalls:    toolCalls,
+		Usage: UsageInfo{
+			PromptTokens:     message.Usage.Input,
+			CompletionTokens: message.Usage.Output,
+			TotalTokens:      message.Usage.TotalTokens,
+		},
 	}
 }

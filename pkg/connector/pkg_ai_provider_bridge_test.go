@@ -144,6 +144,18 @@ func TestShouldFallbackFromPkgAIEvent(t *testing.T) {
 	}
 }
 
+func TestShouldFallbackFromPkgAIError(t *testing.T) {
+	if !shouldFallbackFromPkgAIError(errors.New("provider runtime is not implemented yet")) {
+		t.Fatalf("expected not-implemented errors to trigger fallback")
+	}
+	if !shouldFallbackFromPkgAIError(errors.New("provider x has no stream function")) {
+		t.Fatalf("expected missing stream function errors to trigger fallback")
+	}
+	if shouldFallbackFromPkgAIError(errors.New("missing API key for provider")) {
+		t.Fatalf("did not expect runtime credential errors to trigger fallback")
+	}
+}
+
 func TestTryGenerateStreamWithPkgAIReturnsRuntimeErrorEventsWhenProviderResolved(t *testing.T) {
 	events, ok := tryGenerateStreamWithPkgAI(context.Background(), "https://my-openai.azure.com", "", GenerateParams{
 		Model: "gpt-4.1-mini",
@@ -162,6 +174,76 @@ func TestTryGenerateStreamWithPkgAIReturnsRuntimeErrorEventsWhenProviderResolved
 	event := <-events
 	if event.Type != StreamEventError {
 		t.Fatalf("expected runtime error event without credentials, got %#v", event)
+	}
+}
+
+func TestTryGenerateWithPkgAIFallsBackOnStubbedProviders(t *testing.T) {
+	resp, handled, err := tryGenerateWithPkgAI(context.Background(), "https://cloudcode-pa.googleapis.com", "", GenerateParams{
+		Model: "gemini-2.5-flash",
+		Messages: []UnifiedMessage{
+			{
+				Role: RoleUser,
+				Content: []ContentPart{
+					{Type: ContentTypeText, Text: "hello"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected nil error on fallback path, got %v", err)
+	}
+	if handled {
+		t.Fatalf("expected fallback for stubbed google-gemini-cli runtime")
+	}
+	if resp != nil {
+		t.Fatalf("expected nil response on fallback path")
+	}
+}
+
+func TestTryGenerateWithPkgAIReturnsRuntimeErrorWhenProviderResolved(t *testing.T) {
+	resp, handled, err := tryGenerateWithPkgAI(context.Background(), "https://api.anthropic.com", "", GenerateParams{
+		Model: "claude-sonnet-4-5",
+		Messages: []UnifiedMessage{
+			{
+				Role: RoleUser,
+				Content: []ContentPart{
+					{Type: ContentTypeText, Text: "hello"},
+				},
+			},
+		},
+	})
+	if !handled {
+		t.Fatalf("expected anthropic provider to be handled by pkg/ai runtime")
+	}
+	if err == nil {
+		t.Fatalf("expected runtime error without credentials")
+	}
+	if resp != nil {
+		t.Fatalf("expected nil response when runtime returns error")
+	}
+}
+
+func TestGenerateResponseFromAIMessage(t *testing.T) {
+	resp := generateResponseFromAIMessage(aipkg.Message{
+		StopReason: aipkg.StopReasonToolUse,
+		Usage:      aipkg.Usage{Input: 7, Output: 3, TotalTokens: 10},
+		Content: []aipkg.ContentBlock{
+			{Type: aipkg.ContentTypeThinking, Thinking: "plan"},
+			{Type: aipkg.ContentTypeText, Text: "answer"},
+			{Type: aipkg.ContentTypeToolCall, ID: "call_1", Name: "search", Arguments: map[string]any{"q": "go"}},
+		},
+	})
+	if resp.Content != "answer" {
+		t.Fatalf("expected content text extraction, got %q", resp.Content)
+	}
+	if resp.FinishReason != string(aipkg.StopReasonToolUse) {
+		t.Fatalf("unexpected finish reason: %q", resp.FinishReason)
+	}
+	if len(resp.ToolCalls) != 1 || resp.ToolCalls[0].Name != "search" {
+		t.Fatalf("expected tool call mapping, got %#v", resp.ToolCalls)
+	}
+	if resp.Usage.TotalTokens != 10 {
+		t.Fatalf("expected usage mapping, got %#v", resp.Usage)
 	}
 }
 
