@@ -3,7 +3,7 @@ package embedding
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/beeper/ai-bridge/pkg/shared/httputil"
@@ -53,7 +53,7 @@ func buildGeminiModelPath(model string) string {
 
 func NewGeminiProvider(apiKey, baseURL, model string, headers map[string]string) (*Provider, error) {
 	if strings.TrimSpace(apiKey) == "" {
-		return nil, errors.New("gemini embeddings require api_key")
+		return nil, fmt.Errorf("gemini embeddings: missing api_key")
 	}
 	if strings.TrimSpace(baseURL) == "" {
 		baseURL = DefaultGeminiBaseURL
@@ -78,7 +78,7 @@ func NewGeminiProvider(apiKey, baseURL, model string, headers map[string]string)
 		}
 		resp, err := client.post(ctx, client.embedURL(), body)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("gemini embed query: %w", err)
 		}
 		var payload struct {
 			Embedding struct {
@@ -86,7 +86,7 @@ func NewGeminiProvider(apiKey, baseURL, model string, headers map[string]string)
 			} `json:"embedding"`
 		}
 		if err := json.Unmarshal(resp, &payload); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("gemini embed query: decode response: %w", err)
 		}
 		return NormalizeEmbedding(payload.Embedding.Values), nil
 	}
@@ -108,7 +108,7 @@ func NewGeminiProvider(apiKey, baseURL, model string, headers map[string]string)
 		body := map[string]any{"requests": requests}
 		resp, err := client.post(ctx, client.batchURL(), body)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("gemini embed batch: %w", err)
 		}
 		var payload struct {
 			Embeddings []struct {
@@ -116,7 +116,7 @@ func NewGeminiProvider(apiKey, baseURL, model string, headers map[string]string)
 			} `json:"embeddings"`
 		}
 		if err := json.Unmarshal(resp, &payload); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("gemini embed batch: decode response: %w", err)
 		}
 		results := make([][]float64, 0, len(texts))
 		for i := range texts {

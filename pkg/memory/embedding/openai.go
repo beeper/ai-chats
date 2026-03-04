@@ -2,7 +2,7 @@ package embedding
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/openai/openai-go/v3"
@@ -29,7 +29,7 @@ func NormalizeOpenAIModel(model string) string {
 
 func NewOpenAIProvider(apiKey, baseURL, model string, headers map[string]string) (*Provider, error) {
 	if strings.TrimSpace(apiKey) == "" {
-		return nil, errors.New("openai embeddings require api_key")
+		return nil, fmt.Errorf("openai embeddings: missing api_key")
 	}
 	if strings.TrimSpace(baseURL) == "" {
 		baseURL = DefaultOpenAIBaseURL
@@ -53,7 +53,7 @@ func NewOpenAIProvider(apiKey, baseURL, model string, headers map[string]string)
 		}
 		resp, err := client.Embeddings.New(ctx, params)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("openai embed batch: %w", err)
 		}
 		out := make([][]float64, 0, len(resp.Data))
 		for _, entry := range resp.Data {
