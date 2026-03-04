@@ -1512,18 +1512,7 @@ func approvalTargetEventID(evt *event.Event, content *event.MessageEventContent)
 			return id.EventID(replyTo)
 		}
 	}
-	if evt == nil || evt.Content.Raw == nil {
-		return ""
-	}
-	rawRelatesTo, ok := evt.Content.Raw["m.relates_to"].(map[string]any)
-	if !ok {
-		return ""
-	}
-	if relType, _ := rawRelatesTo["rel_type"].(string); strings.TrimSpace(relType) != "m.from_action_hint" {
-		return ""
-	}
-	eventID, _ := rawRelatesTo["event_id"].(string)
-	return id.EventID(strings.TrimSpace(eventID))
+	return ""
 }
 
 func parseMessageActionID(evt *event.Event) string {
