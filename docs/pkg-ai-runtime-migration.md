@@ -65,13 +65,14 @@ The `pkg/ai/e2e` suite now includes live provider parity checks for:
 - orphan tool-call recovery (`tool-call-without-result.test.ts` parity subset),
 - usage total-token accounting (`total-tokens.test.ts` parity subset).
 - context-overflow detection (`context-overflow.test.ts` parity subset).
+- OpenAI Responses reasoning replay/handoff (`openai-responses-reasoning-replay-e2e.test.ts` subset).
 - Anthropic and Google complete/stream smoke coverage.
 
 Run with:
 
 ```bash
 PI_AI_E2E=1 OPENAI_API_KEY=... ANTHROPIC_API_KEY=... GEMINI_API_KEY=... \
-  go test ./pkg/ai/e2e -run "TestGenerateE2E_OpenAI|TestAbortE2E_OpenAIStream|TestToolCallWithoutResultE2E_OpenAI|TestTotalTokensE2E_OpenAI|TestContextOverflowE2E_OpenAI|TestGenerateE2E_Anthropic|TestGenerateE2E_Google"
+  go test ./pkg/ai/e2e -run "TestGenerateE2E_OpenAI|TestAbortE2E_OpenAIStream|TestToolCallWithoutResultE2E_OpenAI|TestTotalTokensE2E_OpenAI|TestContextOverflowE2E_OpenAI|TestOpenAIReasoningReplayE2E_|TestGenerateE2E_Anthropic|TestGenerateE2E_Google"
 ```
 
 Optional overrides:
@@ -79,6 +80,7 @@ Optional overrides:
 - `PI_AI_E2E_OPENAI_MODEL` (default: `gpt-4o-mini`)
 - `PI_AI_E2E_OPENAI_BASE_URL` (for OpenAI-compatible endpoints)
 - `PI_AI_E2E_OPENAI_CONTEXT_WINDOW` (default: `128000`, or `400000` for `gpt-5*` models)
+- `PI_AI_E2E_OPENAI_REASONING_SOURCE_MODEL` / `PI_AI_E2E_OPENAI_REASONING_TARGET_MODEL`
 - `PI_AI_E2E_ANTHROPIC_MODEL` / `PI_AI_E2E_ANTHROPIC_BASE_URL`
 - `PI_AI_E2E_GOOGLE_MODEL` / `PI_AI_E2E_GOOGLE_BASE_URL`
 

@@ -19,13 +19,13 @@ Legend:
 - `tool-call-without-result.test.ts` → ✅🧪 `pkg/ai/e2e/parity_openai_test.go`
 - `total-tokens.test.ts` → ✅🧪 `pkg/ai/e2e/parity_openai_test.go`
 - `tokens.test.ts` → ✅🧪 `pkg/ai/e2e/abort_test.go` (OpenAI subset)
+- `openai-responses-reasoning-replay-e2e.test.ts` → ✅🧪 `pkg/ai/e2e/openai_reasoning_replay_e2e_test.go` (+ deterministic conversion assertions in `pkg/ai/providers/openai_responses_shared_test.go`)
 
 ### Provider/unit parity
 
 - `openai-completions-tool-choice.test.ts` → ✅ `pkg/ai/providers/openai_completions_test.go`
 - `openai-completions-tool-result-images.test.ts` → ✅ `pkg/ai/providers/openai_completions_test.go`
 - `openai-codex-stream.test.ts` → ✅ `pkg/ai/providers/openai_codex_responses_test.go`
-- `openai-responses-reasoning-replay-e2e.test.ts` (message conversion semantics) → ✅ `pkg/ai/providers/openai_responses_shared_test.go`
 - `google-gemini-cli-retry-delay.test.ts` → ✅ `pkg/ai/providers/google_gemini_cli_test.go`
 - `google-gemini-cli-empty-stream.test.ts` → ✅ `pkg/ai/providers/google_gemini_cli_test.go`
 - `google-gemini-cli-claude-thinking-header.test.ts` → ✅ `pkg/ai/providers/google_gemini_cli_test.go`

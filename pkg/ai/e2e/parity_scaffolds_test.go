@@ -40,11 +40,6 @@ func TestCrossProviderHandoffE2EParityScaffold(t *testing.T) {
 	t.Skip("parity scaffold for cross-provider-handoff.test.ts pending runtime implementation")
 }
 
-func TestOpenAIResponsesReasoningReplayE2EParityScaffold(t *testing.T) {
-	requirePIAIE2E(t)
-	t.Skip("parity scaffold for openai-responses-reasoning-replay-e2e.test.ts pending runtime implementation")
-}
-
 func TestGoogleGeminiCLIEmptyStreamE2EParityScaffold(t *testing.T) {
 	requirePIAIE2E(t)
 	t.Skip("parity scaffold for google-gemini-cli-empty-stream.test.ts pending runtime implementation")
