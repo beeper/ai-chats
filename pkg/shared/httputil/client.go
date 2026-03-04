@@ -28,18 +28,6 @@ func PostJSON(ctx context.Context, url string, headers map[string]string, payloa
 	return doRequest(req, timeoutSecs)
 }
 
-// GetJSON sends a GET request with the given headers and returns the response body.
-func GetJSON(ctx context.Context, url string, headers map[string]string, timeoutSecs int) ([]byte, int, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, 0, fmt.Errorf("creating request: %w", err)
-	}
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-	return doRequest(req, timeoutSecs)
-}
-
 // doRequest executes an HTTP request with the given timeout and reads/validates the response.
 func doRequest(req *http.Request, timeoutSecs int) ([]byte, int, error) {
 	client := &http.Client{Timeout: time.Duration(timeoutSecs) * time.Second}
