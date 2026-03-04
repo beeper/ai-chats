@@ -13,12 +13,12 @@ import (
 	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
-const waveformPoints = 100
+var hasFFmpeg = sync.OnceValue(func() bool {
+	_, err := exec.LookPath("ffmpeg")
+	return err == nil
+})
 
-var (
-	ffmpegOnce      sync.Once
-	ffmpegAvailable bool
-)
+const waveformPoints = 100
 
 func analyzeAudio(data []byte, mimeType string) (int, []int) {
 	if len(data) == 0 {
@@ -44,15 +44,6 @@ func analyzeAudio(data []byte, mimeType string) (int, []int) {
 	}
 
 	return 0, nil
-}
-
-func hasFFmpeg() bool {
-	ffmpegOnce.Do(func() {
-		if _, err := exec.LookPath("ffmpeg"); err == nil {
-			ffmpegAvailable = true
-		}
-	})
-	return ffmpegAvailable
 }
 
 func decodePCMWithFFmpeg(data []byte) ([]int16, int, error) {

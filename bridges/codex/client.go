@@ -83,16 +83,16 @@ type CodexClient struct {
 	activeMu    sync.Mutex
 	activeTurns map[string]*codexActiveTurn // turnKey(threadId, turnId) -> active turn (for approvals)
 
-	subMu        sync.Mutex
-	turnSubs     map[string]chan codexNotif // turnKey(threadId, turnId) -> notification channel
-	dispatchOnce sync.Once
+	subMu            sync.Mutex
+	turnSubs         map[string]chan codexNotif // turnKey(threadId, turnId) -> notification channel
+	startDispatching func()                    // starts dispatchNotifications goroutine exactly once
 
 	loadedMu      sync.Mutex
 	loadedThreads map[string]bool // threadId -> loaded via thread/start|thread/resume
 
 	approvals *bridgeadapter.ApprovalManager[ToolApprovalDecisionCodex]
 
-	bootstrapOnce sync.Once
+	scheduleBootstrapOnce func() // starts bootstrap goroutine exactly once
 
 	roomMu          sync.Mutex
 	activeRooms     map[id.RoomID]bool
@@ -113,7 +113,7 @@ func newCodexClient(login *bridgev2.UserLogin, connector *CodexConnector) (*Code
 		return nil, fmt.Errorf("invalid provider for CodexClient: %s", meta.Provider)
 	}
 	log := login.Log.With().Str("component", "codex").Logger()
-	return &CodexClient{
+	cc := &CodexClient{
 		UserLogin:       login,
 		connector:       connector,
 		log:             log,
@@ -125,7 +125,14 @@ func newCodexClient(login *bridgev2.UserLogin, connector *CodexConnector) (*Code
 		turnSubs:        make(map[string]chan codexNotif),
 		activeRooms:     make(map[id.RoomID]bool),
 		pendingMessages: make(map[id.RoomID]*codexPendingMessage),
-	}, nil
+	}
+	cc.startDispatching = sync.OnceFunc(func() {
+		go cc.dispatchNotifications()
+	})
+	cc.scheduleBootstrapOnce = sync.OnceFunc(func() {
+		go cc.bootstrap(cc.UserLogin.Bridge.BackgroundCtx)
+	})
+	return cc, nil
 }
 
 func (cc *CodexClient) loggerForContext(ctx context.Context) *zerolog.Logger {
@@ -1162,9 +1169,7 @@ func (cc *CodexClient) ensureRPC(ctx context.Context) error {
 		return err
 	}
 
-	cc.dispatchOnce.Do(func() {
-		go cc.dispatchNotifications()
-	})
+	cc.startDispatching()
 
 	rpc.OnNotification(func(method string, params json.RawMessage) {
 		if !cc.loggedIn.Load() {
@@ -1310,9 +1315,7 @@ func (cc *CodexClient) backgroundContext(ctx context.Context) context.Context {
 }
 
 func (cc *CodexClient) scheduleBootstrap() {
-	cc.bootstrapOnce.Do(func() {
-		go cc.bootstrap(cc.UserLogin.Bridge.BackgroundCtx)
-	})
+	cc.scheduleBootstrapOnce()
 }
 
 func (cc *CodexClient) bootstrap(ctx context.Context) {
