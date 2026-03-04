@@ -1,6 +1,9 @@
 package ai
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 var modelRegistry = map[string]map[string]Model{}
 
@@ -31,6 +34,7 @@ func GetProviders() []string {
 	for provider := range modelRegistry {
 		out = append(out, provider)
 	}
+	slices.Sort(out)
 	return out
 }
 
@@ -43,6 +47,9 @@ func GetModels(provider string) []Model {
 	for _, model := range models {
 		out = append(out, model)
 	}
+	slices.SortFunc(out, func(a, b Model) int {
+		return strings.Compare(a.ID, b.ID)
+	})
 	return out
 }
 

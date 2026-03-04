@@ -41,3 +41,24 @@ func TestModelsAreEqual(t *testing.T) {
 		t.Fatalf("expected nil model comparison to be false")
 	}
 }
+
+func TestModelRegistryDeterministicOrdering(t *testing.T) {
+	previous := modelRegistry
+	modelRegistry = map[string]map[string]Model{}
+	defer func() {
+		modelRegistry = previous
+	}()
+
+	RegisterModels("z-provider", []Model{{ID: "b-model"}, {ID: "a-model"}})
+	RegisterModels("a-provider", []Model{{ID: "z-model"}, {ID: "x-model"}})
+
+	providers := GetProviders()
+	if len(providers) != 2 || providers[0] != "a-provider" || providers[1] != "z-provider" {
+		t.Fatalf("expected sorted providers, got %#v", providers)
+	}
+
+	models := GetModels("z-provider")
+	if len(models) != 2 || models[0].ID != "a-model" || models[1].ID != "b-model" {
+		t.Fatalf("expected sorted model IDs, got %#v", models)
+	}
+}
