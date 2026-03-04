@@ -383,13 +383,15 @@ func (m *MemorySearchManager) writeContent(ctx context.Context, pc *preparedCont
 			return err
 		}
 		if m.ftsAvailable {
-			_, _ = m.db.Exec(ctx,
+			if _, err := m.db.Exec(ctx,
 				`INSERT INTO ai_memory_chunks_fts
                  (text, id, path, source, model, start_line, end_line, bridge_id, login_id, agent_id)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 				chunk.Text, chunkID, pc.Path, pc.Source, m.status.Model, chunk.StartLine, chunk.EndLine,
 				m.bridgeID, m.loginID, m.agentID,
-			)
+			); err != nil {
+				m.log.Warn().Err(err).Str("chunk_id", chunkID).Msg("FTS insert failed")
+			}
 		}
 	}
 	return m.deletePathChunks(ctx, pc.Path, pc.Source, pc.Generation, newIDs)
@@ -462,11 +464,13 @@ func (m *MemorySearchManager) deletePathChunks(ctx context.Context, path, source
 		return nil
 	}
 	for _, id := range ids {
-		_, _ = m.db.Exec(ctx,
+		if _, err := m.db.Exec(ctx,
 			`DELETE FROM ai_memory_chunks_fts
              WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND id=$4`,
 			m.bridgeID, m.loginID, m.agentID, id,
-		)
+		); err != nil {
+			m.log.Warn().Err(err).Str("chunk_id", id).Msg("FTS delete failed")
+		}
 	}
 	_, err = m.db.Exec(ctx,
 		`DELETE FROM ai_memory_chunks
@@ -510,17 +514,22 @@ func (m *MemorySearchManager) removeStaleChunksForSource(ctx context.Context, ac
 
 	for _, path := range stalePaths {
 		delGenSQL, delGenArgs := generationFilterSQL(6, generation)
-		_, _ = m.db.Exec(ctx,
+		delArgs := append([]any{m.bridgeID, m.loginID, m.agentID, path, source}, delGenArgs...)
+		if _, err := m.db.Exec(ctx,
 			`DELETE FROM ai_memory_chunks
              WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND path=$4 AND source=$5`+delGenSQL,
-			append([]any{m.bridgeID, m.loginID, m.agentID, path, source}, delGenArgs...)...,
-		)
+			delArgs...,
+		); err != nil {
+			m.log.Warn().Err(err).Str("path", path).Msg("stale chunk delete failed")
+		}
 		if m.ftsAvailable {
-			_, _ = m.db.Exec(ctx,
+			if _, err := m.db.Exec(ctx,
 				`DELETE FROM ai_memory_chunks_fts
                  WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND path=$4 AND source=$5`+delGenSQL,
-				append([]any{m.bridgeID, m.loginID, m.agentID, path, source}, delGenArgs...)...,
-			)
+				delArgs...,
+			); err != nil {
+				m.log.Warn().Err(err).Str("path", path).Msg("stale FTS delete failed")
+			}
 		}
 	}
 	return nil
@@ -562,18 +571,22 @@ func (m *MemorySearchManager) deleteOldGenerations(ctx context.Context, generati
 	if m.ftsAvailable {
 		ids := m.collectOldGenerationIDs(ctx, generation)
 		for _, id := range ids {
-			_, _ = m.db.Exec(ctx,
+			if _, err := m.db.Exec(ctx,
 				`DELETE FROM ai_memory_chunks_fts
                  WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND id=$4`,
 				m.bridgeID, m.loginID, m.agentID, id,
-			)
+			); err != nil {
+				m.log.Warn().Err(err).Str("chunk_id", id).Msg("old generation FTS delete failed")
+			}
 		}
 	}
-	_, _ = m.db.Exec(ctx,
+	if _, err := m.db.Exec(ctx,
 		`DELETE FROM ai_memory_chunks
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND id NOT LIKE $4`,
 		m.bridgeID, m.loginID, m.agentID, generation+":%",
-	)
+	); err != nil {
+		m.log.Warn().Err(err).Str("generation", generation).Msg("old generation chunk delete failed")
+	}
 }
 
 func (m *MemorySearchManager) searchKeyword(ctx context.Context, query string, limit int, sources []string, pathPrefix string, indexGen string) ([]memorycore.HybridKeywordResult, error) {

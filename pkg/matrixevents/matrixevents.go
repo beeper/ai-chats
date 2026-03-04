@@ -1,7 +1,6 @@
 package matrixevents
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
@@ -86,13 +85,13 @@ type StreamEventOpts struct {
 func BuildStreamEventEnvelope(turnID string, seq int, part map[string]any, opts StreamEventOpts) (map[string]any, error) {
 	turnID = strings.TrimSpace(turnID)
 	if turnID == "" {
-		return nil, errors.New("missing turn_id")
+		return nil, fmt.Errorf("stream event envelope: missing turn_id")
 	}
 	if seq <= 0 {
-		return nil, errors.New("seq must be > 0")
+		return nil, fmt.Errorf("stream event envelope: seq must be > 0 (got %d)", seq)
 	}
 	if part == nil {
-		return nil, errors.New("missing part")
+		return nil, fmt.Errorf("stream event envelope: missing part")
 	}
 
 	content := map[string]any{

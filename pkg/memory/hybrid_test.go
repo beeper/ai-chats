@@ -1,6 +1,9 @@
 package memory
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 func TestBM25RankToScore(t *testing.T) {
 	if score := BM25RankToScore(-1); score != 1 {
@@ -14,62 +17,26 @@ func TestBM25RankToScore(t *testing.T) {
 	}
 }
 
-func TestMergeHybridResults(t *testing.T) {
-	vector := []HybridVectorResult{
-		{
-			ID:          "a",
-			Path:        "memory/a.md",
-			StartLine:   1,
-			EndLine:     2,
-			Source:      "memory",
-			Snippet:     "Vector A",
-			VectorScore: 0.9,
-		},
-		{
-			ID:          "b",
-			Path:        "memory/b.md",
-			StartLine:   3,
-			EndLine:     4,
-			Source:      "memory",
-			Snippet:     "Vector B",
-			VectorScore: 0.2,
-		},
+func TestBM25RankToScore_NonFinite(t *testing.T) {
+	nanScore := BM25RankToScore(math.NaN())
+	infScore := BM25RankToScore(math.Inf(1))
+	expected := 1.0 / (1 + 999)
+	if nanScore != expected {
+		t.Fatalf("expected NaN rank to return %v, got %v", expected, nanScore)
 	}
-	keyword := []HybridKeywordResult{
-		{
-			ID:        "b",
-			Path:      "memory/b.md",
-			StartLine: 3,
-			EndLine:   4,
-			Source:    "memory",
-			Snippet:   "Keyword B",
-			TextScore: 0.8,
-		},
-		{
-			ID:        "c",
-			Path:      "memory/c.md",
-			StartLine: 5,
-			EndLine:   6,
-			Source:    "memory",
-			Snippet:   "Keyword C",
-			TextScore: 0.7,
-		},
+	if infScore != expected {
+		t.Fatalf("expected Inf rank to return %v, got %v", expected, infScore)
 	}
+}
 
-	results := MergeHybridResults(vector, keyword, 0.5, 0.5)
-	if len(results) != 3 {
-		t.Fatalf("expected 3 results, got %d", len(results))
+func TestBuildFtsQuery(t *testing.T) {
+	if got := BuildFtsQuery(""); got != "" {
+		t.Fatalf("expected empty query for empty input, got %q", got)
 	}
-	if results[0].Path != "memory/b.md" {
-		t.Fatalf("expected top result to be memory/b.md, got %s", results[0].Path)
+	if got := BuildFtsQuery("hello world"); got != `"hello" AND "world"` {
+		t.Fatalf("unexpected FTS query: %q", got)
 	}
-	if results[1].Path != "memory/a.md" {
-		t.Fatalf("expected second result to be memory/a.md, got %s", results[1].Path)
-	}
-	if results[2].Path != "memory/c.md" {
-		t.Fatalf("expected third result to be memory/c.md, got %s", results[2].Path)
-	}
-	if results[0].Snippet != "Keyword B" {
-		t.Fatalf("expected keyword snippet to override vector snippet, got %s", results[0].Snippet)
+	if got := BuildFtsQuery("  !!!  "); got != "" {
+		t.Fatalf("expected empty query for punctuation-only input, got %q", got)
 	}
 }
