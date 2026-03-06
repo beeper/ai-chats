@@ -196,12 +196,10 @@ func (b *Bridge) emitOpenCodePartRemove(ctx context.Context, portal *bridgev2.Po
 	if portal == nil || partID == "" {
 		return
 	}
-	sender := b.opencodeSender(instanceID, fromMe)
 	if partType == "tool" {
-		b.emitOpenCodeMessageRemoveWithSender(ctx, portal, opencodeToolCallMessageID(partID), sender)
-		b.emitOpenCodeMessageRemoveWithSender(ctx, portal, opencodeToolResultMessageID(partID), sender)
 		return
 	}
+	sender := b.opencodeSender(instanceID, fromMe)
 	b.emitOpenCodeMessageRemoveWithSender(ctx, portal, opencodePartMessageID(partID), sender)
 }
 
@@ -234,14 +232,6 @@ func (b *Bridge) emitOpenCodeMessageRemoveWithSender(_ context.Context, portal *
 
 func opencodePartMessageID(partID string) networkid.MessageID {
 	return networkid.MessageID("opencode:part:" + partID)
-}
-
-func opencodeToolCallMessageID(partID string) networkid.MessageID {
-	return networkid.MessageID("opencode:toolcall:" + partID)
-}
-
-func opencodeToolResultMessageID(partID string) networkid.MessageID {
-	return networkid.MessageID("opencode:toolresult:" + partID)
 }
 
 func (b *Bridge) opencodeSender(instanceID string, fromMe bool) bridgev2.EventSender {

@@ -383,6 +383,9 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 	if msg.Content.RelatesTo != nil && msg.Content.RelatesTo.GetReplaceID() != "" {
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
+	if handled, resp := cc.tryApprovalDecisionEvent(ctx, msg); handled {
+		return resp, nil
+	}
 
 	body := strings.TrimSpace(msg.Content.Body)
 	if body == "" {
@@ -1024,10 +1027,7 @@ func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2
 		statusVal = strings.TrimSpace(statusVal)
 		switch statusVal {
 		case "declined":
-			cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, map[string]any{
-				"type":       "tool-output-denied",
-				"toolCallId": itemID,
-			}, true, false)
+			cc.uiEmitter(state).EmitUIToolOutputDenied(ctx, portal, itemID)
 		case "failed":
 			errText := "tool failed"
 			if errObj, ok := it["error"].(map[string]any); ok {
@@ -1035,14 +1035,16 @@ func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2
 					errText = strings.TrimSpace(msg)
 				}
 			}
-			cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, map[string]any{
-				"type":             "tool-output-error",
-				"toolCallId":       itemID,
-				"errorText":        errText,
-				"providerExecuted": true,
-			}, true, false)
+			cc.uiEmitter(state).EmitUIToolOutputError(ctx, portal, itemID, errText, true)
 		default:
 			cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, it, true, false)
+		}
+		collectToolOutputArtifacts(state, it)
+		for _, document := range state.sourceDocuments {
+			cc.uiEmitter(state).EmitUISourceDocument(ctx, portal, document)
+		}
+		for _, file := range state.generatedFiles {
+			cc.uiEmitter(state).EmitUIFile(ctx, portal, file.URL, file.MediaType)
 		}
 
 		tc := newProviderToolCall(itemID, fmt.Sprintf("%v", it["type"]), it)
@@ -1065,6 +1067,13 @@ func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2
 		var it map[string]any
 		_ = json.Unmarshal(raw, &it)
 		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, it, true, false)
+		collectToolOutputArtifacts(state, it)
+		for _, document := range state.sourceDocuments {
+			cc.uiEmitter(state).EmitUISourceDocument(ctx, portal, document)
+		}
+		for _, file := range state.generatedFiles {
+			cc.uiEmitter(state).EmitUIFile(ctx, portal, file.URL, file.MediaType)
+		}
 		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "collabToolCall", it))
 	case "webSearch":
 		var it map[string]any
@@ -1078,10 +1087,24 @@ func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2
 				cc.uiEmitter(state).EmitUISourceURL(ctx, portal, citation)
 			}
 		}
+		collectToolOutputArtifacts(state, it)
+		for _, document := range state.sourceDocuments {
+			cc.uiEmitter(state).EmitUISourceDocument(ctx, portal, document)
+		}
+		for _, file := range state.generatedFiles {
+			cc.uiEmitter(state).EmitUIFile(ctx, portal, file.URL, file.MediaType)
+		}
 	case "imageView":
 		var it map[string]any
 		_ = json.Unmarshal(raw, &it)
 		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, it, true, false)
+		collectToolOutputArtifacts(state, it)
+		for _, document := range state.sourceDocuments {
+			cc.uiEmitter(state).EmitUISourceDocument(ctx, portal, document)
+		}
+		for _, file := range state.generatedFiles {
+			cc.uiEmitter(state).EmitUIFile(ctx, portal, file.URL, file.MediaType)
+		}
 		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "imageView", it))
 	case "plan":
 		var it struct {
@@ -1781,141 +1804,6 @@ func (cc *CodexClient) emitUIToolApprovalRequest(
 	cc.uiEmitter(state).EmitUIToolApprovalRequest(ctx, portal, approvalID, toolCallID, toolName, ttlSeconds)
 }
 
-// sendToolCallApprovalEvent sends a tool_call timeline event with status "approval_required"
-// so the desktop timeline can show inline approval buttons (mirrors AIClient.sendToolCallApprovalEvent).
-func (cc *CodexClient) sendToolCallApprovalEvent(
-	ctx context.Context, portal *bridgev2.Portal, state *streamingState,
-	toolCallID, toolName, approvalID string, expiresAtMs int64,
-) {
-	if portal == nil || portal.MXID == "" || state == nil {
-		return
-	}
-	if state.suppressSend {
-		return
-	}
-	displayTitle := toolDisplayTitle(toolName)
-	toolType := string(matrixevents.ToolTypeProvider)
-	if tt, ok := state.ui.UIToolTypeByToolCallID[toolCallID]; ok {
-		toolType = string(tt)
-	}
-	toolCallData := map[string]any{
-		"call_id":                toolCallID,
-		"turn_id":                state.turnID,
-		"tool_name":              toolName,
-		"tool_type":              toolType,
-		"status":                 string(matrixevents.ToolStatusApprovalRequired),
-		"approval_id":            approvalID,
-		"approval_expires_at_ms": expiresAtMs,
-		"display": map[string]any{
-			"title":     displayTitle,
-			"collapsed": false,
-		},
-	}
-	eventRaw := map[string]any{
-		"body":                           fmt.Sprintf("Approval required for %s", displayTitle),
-		"msgtype":                        event.MsgNotice,
-		matrixevents.BeeperAIToolCallKey: toolCallData,
-	}
-	if state.initialEventID != "" {
-		eventRaw["m.relates_to"] = map[string]any{
-			"rel_type": matrixevents.RelReference,
-			"event_id": state.initialEventID.String(),
-		}
-	}
-
-	converted := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:    networkid.PartID("0"),
-			Type:  matrixevents.ToolCallEventType,
-			Extra: eventRaw,
-		}},
-	}
-
-	eventID, _, err := cc.sendViaPortal(ctx, portal, converted, "")
-	if err != nil {
-		cc.loggerForContext(ctx).Warn().Err(err).
-			Str("tool", toolName).Str("approval_id", approvalID).
-			Msg("Failed to send tool call approval event")
-		return
-	}
-	cc.loggerForContext(ctx).Debug().
-		Stringer("event_id", eventID).
-		Str("call_id", toolCallID).
-		Str("tool", toolName).
-		Str("approval_id", approvalID).
-		Msg("Sent tool call approval_required timeline event")
-}
-
-// sendActionHintsApprovalEvent sends a timeline message with com.beeper.action_hints
-// containing Allow/Always/Deny buttons for tool approval (MSC1485 pattern).
-func (cc *CodexClient) sendActionHintsApprovalEvent(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	toolCallID string,
-	toolName string,
-	approvalID string,
-	expiresAtMs int64,
-) {
-	if portal == nil || portal.MXID == "" {
-		return
-	}
-
-	var ownerMXID id.UserID
-	if cc.UserLogin != nil {
-		ownerMXID = cc.UserLogin.UserMXID
-	}
-
-	hints := bridgeadapter.BuildApprovalHints(bridgeadapter.ApprovalHintsParams{
-		ApprovalID:  approvalID,
-		ToolCallID:  toolCallID,
-		ToolName:    toolName,
-		OwnerMXID:   ownerMXID,
-		ExpiresAtMs: expiresAtMs,
-	})
-
-	body := fmt.Sprintf("Allow %s tool?", toolName)
-	uiMessage := map[string]any{
-		"id":   "approval:" + approvalID,
-		"role": "assistant",
-		"parts": []map[string]any{
-			{
-				"type":       "action-hints",
-				"toolCallId": toolCallID,
-				"toolName":   toolName,
-			},
-		},
-	}
-	if state != nil && state.turnID != "" {
-		uiMessage["metadata"] = map[string]any{"turn_id": state.turnID}
-	}
-
-	eventRaw := map[string]any{
-		"msgtype":                         event.MsgNotice,
-		"body":                            body,
-		matrixevents.BeeperAIKey:          uiMessage,
-		matrixevents.BeeperActionHintsKey: hints,
-		"m.mentions":                      map[string]any{},
-	}
-
-	converted := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:    networkid.PartID("0"),
-			Type:  event.EventMessage,
-			Extra: eventRaw,
-		}},
-	}
-	if evtID, msgID, err := cc.sendViaPortal(ctx, portal, converted, ""); err == nil && evtID != "" {
-		cc.approvals.SetData(approvalID, func(data any) any {
-			if d, ok := data.(*pendingToolApprovalDataCodex); ok {
-				d.ApprovalEventID = evtID
-				d.ApprovalNetworkMsgID = msgID
-			}
-			return data
-		})
-	}
-}
-
 func (cc *CodexClient) emitUIFinish(ctx context.Context, portal *bridgev2.Portal, state *streamingState, model string, finishReason string) {
 	cc.uiEmitter(state).EmitUIFinish(ctx, portal, finishReason, cc.buildUIMessageMetadata(state, model, true, finishReason))
 	if state != nil && state.session != nil {
@@ -2188,10 +2076,6 @@ func (cc *CodexClient) handleApprovalRequest(
 	cc.registerToolApproval(approvalID, toolCallID, toolName, approvalTTL)
 
 	cc.emitUIToolApprovalRequest(ctx, active.portal, active.state, approvalID, toolCallID, toolName, ttlSeconds)
-	approvalExpiresAtMs := time.Now().Add(approvalTTL).UnixMilli()
-	cc.sendToolCallApprovalEvent(ctx, active.portal, active.state, toolCallID, toolName, approvalID, approvalExpiresAtMs)
-	cc.sendActionHintsApprovalEvent(ctx, active.portal, active.state, toolCallID, toolName, approvalID, approvalExpiresAtMs)
-	cc.sendSystemNoticeOnce(ctx, active.portal, active.state, "codex-approval:"+approvalID, fmt.Sprintf("Approval required (%s): !ai approve %s <allow|deny> [reason]", toolName, approvalID))
 
 	if active.meta != nil {
 		if lvl, _ := stringutil.NormalizeElevatedLevel(active.meta.ElevatedLevel); lvl == "full" {
@@ -2207,6 +2091,44 @@ func (cc *CodexClient) handleApprovalRequest(
 		return map[string]any{"decision": "accept"}, nil
 	}
 	return map[string]any{"decision": "decline"}, nil
+}
+
+func (cc *CodexClient) tryApprovalDecisionEvent(ctx context.Context, msg *bridgev2.MatrixMessage) (bool, *bridgev2.MatrixMessageResponse) {
+	raw, ok := parseCodexApprovalDecision(msg.Event)
+	if !ok {
+		return false, nil
+	}
+	decision, ok := bridgeadapter.ParseApprovalDecision(raw)
+	if !ok {
+		cc.loggerForContext(ctx).Warn().
+			Str("sender", msg.Event.Sender.String()).
+			Msg("codex approval decision missing required fields")
+		return true, &bridgev2.MatrixMessageResponse{Pending: false}
+	}
+	err := cc.resolveToolApproval(decision.ApprovalID, ToolApprovalDecisionCodex{
+		Approve:   decision.Approve,
+		Reason:    decision.Reason,
+		DecidedAt: time.Now(),
+		DecidedBy: msg.Event.Sender,
+	})
+	if err != nil {
+		cc.loggerForContext(ctx).Warn().Err(err).
+			Str("approval_id", decision.ApprovalID).
+			Msg("codex approval decision: failed to resolve")
+		cc.sendSystemNotice(ctx, msg.Portal, bridgeadapter.ApprovalErrorToastText(err))
+	}
+	return true, &bridgev2.MatrixMessageResponse{Pending: false}
+}
+
+func parseCodexApprovalDecision(evt *event.Event) (map[string]any, bool) {
+	if evt == nil || evt.Content.Raw == nil {
+		return nil, false
+	}
+	raw, ok := evt.Content.Raw["com.beeper.ai.approval_decision"].(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	return raw, true
 }
 
 func (cc *CodexClient) handleCommandApprovalRequest(ctx context.Context, req codexrpc.Request) (any, *codexrpc.RPCError) {

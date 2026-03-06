@@ -8,12 +8,10 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
 	"github.com/beeper/ai-bridge/pkg/agents/tools"
-	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
 )
 
 // activeToolCall tracks a tool call that's in progress
@@ -125,124 +123,22 @@ func summarizeMessageAction(obj map[string]any) string {
 
 // sendToolCallEvent sends a tool call as a timeline event via bridgev2's pipeline.
 func (oc *AIClient) sendToolCallEvent(ctx context.Context, portal *bridgev2.Portal, state *streamingState, tool *activeToolCall) id.EventID {
-	if portal == nil || portal.MXID == "" {
-		return ""
-	}
-	if state != nil && state.suppressSend {
-		return ""
-	}
-
-	displayTitle := toolDisplayTitle(tool.toolName)
-
-	eventContent := msgconv.BuildToolCallEventContent(msgconv.ToolCallEventParams{
-		CallID:         tool.callID,
-		TurnID:         state.turnID,
-		ToolName:       tool.toolName,
-		ToolType:       string(tool.toolType),
-		AgentID:        state.agentID,
-		DisplayTitle:   displayTitle,
-		Input:          parseToolInputPayload(tool.input.String()),
-		StartedAtMs:    tool.startedAtMs,
-		ReferenceEvent: state.initialEventID,
-	})
-
-	converted := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:    networkid.PartID("0"),
-			Type:  ToolCallEventType,
-			Extra: eventContent.Raw,
-		}},
-	}
-
-	eventID, _, err := oc.sendViaPortal(ctx, portal, converted, "")
-	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Str("tool", tool.toolName).Msg("Failed to send tool call event")
-		return ""
-	}
-
-	oc.loggerForContext(ctx).Debug().
-		Stringer("event_id", eventID).
-		Str("call_id", tool.callID).
-		Str("tool", tool.toolName).
-		Msg("Sent tool call timeline event")
-
-	// Expose the Matrix event ID to the streaming UI so Desktop can react to the tool call event.
-	if state != nil && tool != nil && strings.TrimSpace(tool.callID) != "" && eventID != "" {
-		oc.emitStreamEvent(ctx, portal, state, map[string]any{
-			"type": "data-tool-call-event",
-			"id":   fmt.Sprintf("tool-call-event:%s", tool.callID),
-			"data": map[string]any{
-				"toolCallId":  tool.callID,
-				"callEventId": eventID.String(),
-			},
-		})
-	}
-
-	return eventID
+	_ = ctx
+	_ = portal
+	_ = state
+	_ = tool
+	return ""
 }
 
 // sendToolResultEvent sends a tool result as a timeline event via bridgev2's pipeline.
 func (oc *AIClient) sendToolResultEvent(ctx context.Context, portal *bridgev2.Portal, state *streamingState, tool *activeToolCall, result string, resultStatus ResultStatus) id.EventID {
-	if portal == nil || portal.MXID == "" {
-		return ""
-	}
-	if state != nil && state.suppressSend {
-		return ""
-	}
-
-	// Truncate result for body if too long
-	bodyText := result
-	var parsedResult any
-	if err := json.Unmarshal([]byte(result), &parsedResult); err == nil {
-		if obj, ok := parsedResult.(map[string]any); ok {
-			if msg, ok := obj["message"].(string); ok && msg != "" {
-				bodyText = msg
-			} else if tool.toolName == ToolNameMessage {
-				bodyText = summarizeMessageAction(obj)
-			}
-		}
-	}
-	if len(bodyText) > 200 {
-		bodyText = bodyText[:200] + "..."
-	}
-	if bodyText == "" {
-		bodyText = fmt.Sprintf("%s completed", toolDisplayTitle(tool.toolName))
-	}
-
-	eventContent := msgconv.BuildToolResultEventContent(msgconv.ToolResultEventParams{
-		CallID:         tool.callID,
-		TurnID:         state.turnID,
-		ToolName:       tool.toolName,
-		AgentID:        state.agentID,
-		ResultStatus:   string(resultStatus),
-		BodyText:       bodyText,
-		Output:         parseToolOutputPayload(result),
-		ResultLength:   len(result),
-		ReferenceEvent: tool.eventID,
-	})
-
-	converted := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:    networkid.PartID("0"),
-			Type:  ToolResultEventType,
-			Extra: eventContent.Raw,
-		}},
-	}
-
-	eventID, _, err := oc.sendViaPortal(ctx, portal, converted, "")
-	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Str("tool", tool.toolName).Msg("Failed to send tool result event")
-		return ""
-	}
-
-	oc.loggerForContext(ctx).Debug().
-		Stringer("event_id", eventID).
-		Str("call_id", tool.callID).
-		Str("tool", tool.toolName).
-		Str("status", string(resultStatus)).
-		Msg("Sent tool result timeline event")
-
-	return eventID
+	_ = ctx
+	_ = portal
+	_ = state
+	_ = tool
+	_ = result
+	_ = resultStatus
+	return ""
 }
 
 // executeBuiltinTool finds and executes a builtin tool by name.

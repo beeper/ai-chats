@@ -9,7 +9,6 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
@@ -195,100 +194,9 @@ func approvalData(p *bridgeadapter.PendingApproval[toolApprovalResolution]) *pen
 }
 
 func (oc *AIClient) emitApprovalSnapshotDecision(d *pendingToolApprovalData, decision airuntime.ToolApprovalDecision) {
-	if oc == nil || oc.UserLogin == nil || d == nil {
-		return
-	}
-	// ApprovalNetworkMsgID may be empty if the approval was resolved before the timeline
-	// message was sent (race between resolveToolApproval and emitUIToolApprovalRequest).
-	// This is harmless — the stream event path (tool-output-*) resolves the UI instead.
-	if d.ApprovalNetworkMsgID == "" {
-		return
-	}
-
-	ctx := oc.backgroundContext(context.Background())
-	portal := oc.portalByRoomID(ctx, d.RoomID)
-	if portal == nil || portal.MXID == "" {
-		return
-	}
-
-	toolName := strings.TrimSpace(d.ToolName)
-	if toolName == "" {
-		toolName = "tool"
-	}
-
-	// Determine selection state for the action hints edit
-	selectedHint := -1
-	body := fmt.Sprintf("Approval denied for %s.", toolName)
-	uiState := "output-denied"
-	if approvalAllowed(decision) {
-		selectedHint = 0 // "Allow" button
-		body = fmt.Sprintf("Approved %s.", toolName)
-		uiState = "output-available"
-	} else {
-		reason := strings.TrimSpace(decision.Reason)
-		switch strings.ToLower(reason) {
-		case "timeout", "expired", "cancelled", "canceled":
-			body = fmt.Sprintf("Approval expired for %s.", toolName)
-			selectedHint = -1 // no selection, just disable
-		default:
-			selectedHint = 2 // "Deny" button
-		}
-	}
-
-	// Build updated action hints with selection state (disabled buttons)
-	updatedHints := map[string]any{
-		"hints":    []any{}, // empty — buttons are disabled after selection
-		"resolved": true,
-	}
-	if selectedHint >= 0 {
-		updatedHints["selected_hint"] = selectedHint
-	}
-
-	uiPart := map[string]any{
-		"type":       "action-hints",
-		"toolCallId": d.ToolCallID,
-		"toolName":   toolName,
-		"state":      uiState,
-	}
-	uiMessage := map[string]any{
-		"id":       "approval:" + d.ApprovalID,
-		"role":     "assistant",
-		"metadata": map[string]any{"turn_id": d.TurnID},
-		"parts":    []map[string]any{uiPart},
-	}
-
-	// Look up the DB message part so sendEditViaPortal can reference the original event.
-	receiver := portal.Receiver
-	if receiver == "" {
-		receiver = oc.UserLogin.ID
-	}
-	parts, err := oc.UserLogin.Bridge.DB.Message.GetAllPartsByID(ctx, receiver, d.ApprovalNetworkMsgID)
-	if err != nil || len(parts) == 0 {
-		oc.Log().Warn().Err(err).Str("approval_id", d.ApprovalID).Msg("tool approval: approval message not found in DB for edit")
-		return
-	}
-
-	editExtra := map[string]any{
-		BeeperAIKey:                     uiMessage,
-		BeeperActionHintsKey:            updatedHints,
-		"com.beeper.dont_render_edited": true,
-		"m.mentions":                    map[string]any{},
-	}
-	converted := &bridgev2.ConvertedEdit{
-		ModifiedParts: []*bridgev2.ConvertedEditPart{{
-			Part: parts[0],
-			Type: event.EventMessage,
-			Content: &event.MessageEventContent{
-				MsgType: event.MsgNotice,
-				Body:    body,
-			},
-			Extra:         map[string]any{BeeperActionHintsKey: updatedHints, "m.mentions": map[string]any{}},
-			TopLevelExtra: editExtra,
-		}},
-	}
-	if err := oc.sendEditViaPortal(ctx, portal, d.ApprovalNetworkMsgID, converted); err != nil {
-		oc.Log().Warn().Err(err).Str("approval_id", d.ApprovalID).Msg("tool approval: failed to send snapshot decision")
-	}
+	_ = oc
+	_ = d
+	_ = decision
 }
 
 // isBuiltinToolDenied checks whether a builtin tool call requires user approval

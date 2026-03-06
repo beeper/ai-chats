@@ -7,6 +7,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
@@ -21,7 +22,7 @@ const (
 // marking an approval as output-denied. This is used when resolveToolApproval
 // fails (expired/unknown/already-handled) so the desktop can close the modal
 // instead of retrying in a loop.
-func (oc *AIClient) sendApprovalRejectionEvent(ctx context.Context, portal *bridgev2.Portal, approvalID string, err error) {
+func (oc *AIClient) sendApprovalRejectionEvent(ctx context.Context, portal *bridgev2.Portal, approvalID string, err error, replyToEventID id.EventID) {
 	if oc == nil || portal == nil || portal.MXID == "" || approvalID == "" {
 		return
 	}
@@ -45,8 +46,11 @@ func (oc *AIClient) sendApprovalRejectionEvent(ctx context.Context, portal *brid
 			"type": string(aiToastTypeError),
 		},
 		BeeperAIKey: map[string]any{
-			"id":   "approval:" + approvalID,
+			"id":   approvalID,
 			"role": "assistant",
+			"metadata": map[string]any{
+				"approval_id": approvalID,
+			},
 			"parts": []map[string]any{{
 				"type":       "dynamic-tool",
 				"toolName":   "tool",
@@ -56,6 +60,13 @@ func (oc *AIClient) sendApprovalRejectionEvent(ctx context.Context, portal *brid
 			}},
 		},
 		"m.mentions": map[string]any{},
+	}
+	if replyToEventID != "" {
+		raw["m.relates_to"] = map[string]any{
+			"m.in_reply_to": map[string]any{
+				"event_id": replyToEventID.String(),
+			},
+		}
 	}
 	converted := &bridgev2.ConvertedMessage{
 		Parts: []*bridgev2.ConvertedMessagePart{{

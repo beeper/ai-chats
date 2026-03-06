@@ -1,7 +1,6 @@
 package msgconv
 
 import (
-	"fmt"
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -351,102 +350,6 @@ func ConvertAIResponse(p AIResponseParams) (*bridgev2.ConvertedMessage, error) {
 	return &bridgev2.ConvertedMessage{
 		Parts: []*bridgev2.ConvertedMessagePart{part},
 	}, nil
-}
-
-// ToolCallEventParams contains parameters for building a tool call timeline event.
-type ToolCallEventParams struct {
-	CallID         string
-	TurnID         string
-	ToolName       string
-	ToolType       string
-	AgentID        string
-	DisplayTitle   string
-	Input          map[string]any
-	StartedAtMs    int64
-	ReferenceEvent id.EventID // The initial streaming event to reference
-}
-
-// BuildToolCallEventContent builds the event content for a tool call timeline event.
-func BuildToolCallEventContent(p ToolCallEventParams) *event.Content {
-	toolCallData := map[string]any{
-		"call_id":   p.CallID,
-		"turn_id":   p.TurnID,
-		"tool_name": p.ToolName,
-		"tool_type": p.ToolType,
-		"status":    "running",
-		"display": map[string]any{
-			"title":     p.DisplayTitle,
-			"collapsed": false,
-		},
-		"timing": map[string]any{
-			"started_at": p.StartedAtMs,
-		},
-	}
-	if len(p.Input) > 0 {
-		toolCallData["input"] = p.Input
-	}
-	if p.AgentID != "" {
-		toolCallData["agent_id"] = p.AgentID
-	}
-
-	raw := map[string]any{
-		"body":                           fmt.Sprintf("Calling %s...", p.DisplayTitle),
-		"msgtype":                        event.MsgNotice,
-		matrixevents.BeeperAIToolCallKey: toolCallData,
-	}
-	if p.ReferenceEvent != "" {
-		raw["m.relates_to"] = map[string]any{
-			"rel_type": matrixevents.RelReference,
-			"event_id": p.ReferenceEvent.String(),
-		}
-	}
-	return &event.Content{Raw: raw}
-}
-
-// ToolResultEventParams contains parameters for building a tool result timeline event.
-type ToolResultEventParams struct {
-	CallID         string
-	TurnID         string
-	ToolName       string
-	AgentID        string
-	ResultStatus   string
-	BodyText       string
-	Output         map[string]any
-	ResultLength   int
-	ReferenceEvent id.EventID // The tool call event to reference
-}
-
-// BuildToolResultEventContent builds the event content for a tool result timeline event.
-func BuildToolResultEventContent(p ToolResultEventParams) *event.Content {
-	toolResultData := map[string]any{
-		"call_id":   p.CallID,
-		"turn_id":   p.TurnID,
-		"tool_name": p.ToolName,
-		"status":    p.ResultStatus,
-		"display": map[string]any{
-			"expandable":       p.ResultLength > 200,
-			"default_expanded": p.ResultLength <= 500,
-		},
-	}
-	if p.AgentID != "" {
-		toolResultData["agent_id"] = p.AgentID
-	}
-	if len(p.Output) > 0 {
-		toolResultData["output"] = p.Output
-	}
-
-	raw := map[string]any{
-		"body":                             p.BodyText,
-		"msgtype":                          event.MsgNotice,
-		matrixevents.BeeperAIToolResultKey: toolResultData,
-	}
-	if p.ReferenceEvent != "" {
-		raw["m.relates_to"] = map[string]any{
-			"rel_type": matrixevents.RelReference,
-			"event_id": p.ReferenceEvent.String(),
-		}
-	}
-	return &event.Content{Raw: raw}
 }
 
 // MapFinishReason normalizes provider-specific finish reasons to standard values.

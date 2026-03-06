@@ -52,7 +52,7 @@ Reference implementation in this repo (ai-bridge):
 - Compaction status emission: `pkg/connector/response_retry.go`
 - State broadcast: `pkg/connector/chat.go`
 - Approvals: `pkg/connector/tool_approvals*.go`, `pkg/connector/handlematrix.go`, `pkg/connector/handler_interfaces.go`, `pkg/connector/streaming_ui_tools.go`
-- Shared approval manager + action hints builder: `pkg/bridgeadapter/approval_manager.go`, `pkg/bridgeadapter/action_hints_builder.go`
+- Shared approval manager + approval-decision parser: `pkg/bridgeadapter/approval_manager.go`, `pkg/bridgeadapter/approval_decision.go`
 
 <a id="compatibility"></a>
 ## Compatibility
@@ -81,8 +81,6 @@ Authoritative identifiers are defined in `pkg/matrixevents/matrixevents.go`.
 | --- | --- | --- | --- | --- |
 | `m.room.message` | message | timeline | Canonical assistant message carrier (`com.beeper.ai`) | [Canonical](#canonical) |
 | `com.beeper.ai.stream_event` | ephemeral | ephemeral | Streaming `UIMessageChunk` deltas | [Streaming](#streaming) |
-| `com.beeper.ai.tool_call` | message | timeline | Tool invocation projection | [Projections](#projection-tool-call) |
-| `com.beeper.ai.tool_result` | message | timeline | Tool result projection | [Projections](#projection-tool-result) |
 | `com.beeper.ai.compaction_status` | message | timeline | Context compaction lifecycle/status | [Projections](#projection-compaction) |
 | `com.beeper.ai.room_capabilities` | state | state | Producer-controlled capabilities and effective settings | [State](#state-room-capabilities) |
 | `com.beeper.ai.room_settings` | state | state | User-editable room settings | [State](#state-room-settings) |
@@ -93,9 +91,7 @@ Authoritative identifiers are defined in `pkg/matrixevents/matrixevents.go`.
 | Key | Where it appears | Purpose | Spec section |
 | --- | --- | --- | --- |
 | `com.beeper.ai` | `m.room.message` | Canonical assistant `UIMessage` | [Canonical](#canonical) |
-| `com.beeper.ai.tool_call` | `com.beeper.ai.tool_call` event content | Tool call payload | [Projections](#projection-tool-call) |
-| `com.beeper.ai.tool_result` | `com.beeper.ai.tool_result` event content | Tool result payload | [Projections](#projection-tool-result) |
-| `com.beeper.action_hints` | `m.room.message` | Action hint buttons (Allow / Always Allow / Deny) for tool approval | [Approvals](#approvals-decision) |
+| `com.beeper.ai.approval_decision` | `m.room.message` | Owner approval response for pending tool requests | [Approvals](#approvals-decision) |
 | `com.beeper.ai.model_id` | `m.room.message` | Routing/display hint | [Other keys](#other-keys-routing) |
 | `com.beeper.ai.agent` | `m.room.message`, `m.room.member` | Routing hint or agent definition | [Other keys](#other-keys-agent) |
 | `com.beeper.ai.image_generation` | `m.room.message` (image) | Generated-image tag/metadata | [Other keys](#other-keys-media) |
@@ -208,7 +204,6 @@ This bridge emits some `data-*` chunks in `part` for UI coordination. Clients th
 | Chunk type | Transient | Payload |
 | --- | --- | --- |
 | `data-tool-progress` | yes | `data.call_id`, `data.tool_name`, `data.status`, `data.progress` |
-| `data-tool-call-event` | no | `id = "tool-call-event:<toolCallId>"`, `data.toolCallId`, `data.callEventId` |
 | `data-image_generation_partial` | yes | `data.item_id`, `data.index`, `data.image_b64` |
 | `data-annotation` | yes | `data.annotation`, `data.index` |
 
@@ -255,89 +250,7 @@ sequenceDiagram
 ```
 
 <a id="projections"></a>
-## Timeline Projections
-These are separate timeline events to support richer UI and/or non-streaming clients.
-
-<a id="projection-tool-call"></a>
-### `com.beeper.ai.tool_call`
-A timeline-visible projection of a tool invocation.
-
-Schema (event content):
-- `body: string` (fallback)
-- `msgtype: "m.notice"` (fallback)
-- `com.beeper.ai.tool_call: object`
-  - `call_id: string`
-  - `turn_id: string`
-  - `agent_id?: string`
-  - `tool_name: string`
-  - `tool_type: "builtin"|"provider"|"function"|"mcp"`
-  - `status: "pending"|"running"|"completed"|"failed"|"timeout"|"cancelled"`
-  - `input?: object`
-  - `display?: { title?: string, icon?: string, collapsed?: boolean }`
-  - `timing?: { started_at?: number, first_token_at?: number, completed_at?: number }` (unix ms)
-  - `result_event?: string` (Matrix event ID, optional)
-  - `mcp_server?: string` (optional)
-  - `requires_approval?: boolean`
-  - `approval?: { reason?: string, actions?: string[] }`
-
-Relations:
-- SHOULD include `m.relates_to = { rel_type: "m.reference", event_id: <turn placeholder> }` when applicable.
-
-Example:
-```json
-{
-  "body": "Calling Web Search...",
-  "msgtype": "m.notice",
-  "m.relates_to": { "rel_type": "m.reference", "event_id": "$turn_placeholder" },
-  "com.beeper.ai.tool_call": {
-    "call_id": "call_123",
-    "turn_id": "turn_123",
-    "tool_name": "web_search",
-    "tool_type": "provider",
-    "status": "running",
-    "input": { "query": "matrix event types" },
-    "timing": { "started_at": 1738970000000 }
-  }
-}
-```
-
-<a id="projection-tool-result"></a>
-### `com.beeper.ai.tool_result`
-A timeline-visible projection of the tool result.
-
-Schema (event content):
-- `body: string` (fallback)
-- `msgtype: "m.notice"` (fallback)
-- `format?: "org.matrix.custom.html"` (optional)
-- `formatted_body?: string` (optional)
-- `com.beeper.ai.tool_result: object`
-  - `call_id: string`
-  - `turn_id: string`
-  - `agent_id?: string`
-  - `tool_name: string`
-  - `status: "success"|"error"|"partial"`
-  - `output?: object`
-  - `artifacts?: { type: "file"|"image", mxc_uri?: string, filename?: string, mimetype?: string, size?: number }[]`
-  - `display?: { format?: string, expandable?: boolean, default_expanded?: boolean, show_stdout?: boolean, show_artifacts?: boolean }`
-
-Relations:
-- SHOULD reference the tool call event via `m.relates_to = { rel_type: "m.reference", event_id: <tool_call_event_id> }`.
-
-Example:
-```json
-{
-  "body": "Search completed",
-  "msgtype": "m.notice",
-  "m.relates_to": { "rel_type": "m.reference", "event_id": "$tool_call_event" },
-  "com.beeper.ai.tool_result": {
-    "call_id": "call_123",
-    "turn_id": "turn_123",
-    "tool_name": "web_search",
-    "status": "success",
-    "output": { "status": "completed", "results": [] }
-  }
-}
-```
+## Additional Timeline Status
 
 <a id="projection-compaction"></a>
 ### `com.beeper.ai.compaction_status`
@@ -443,7 +356,7 @@ When approval is needed, the bridge emits:
    - `approvalId: string`
    - `toolCallId: string`
 2. A timeline-visible fallback notice (for clients that drop/ignore ephemeral events) instructing the user to run `!ai approve ...`.
-   - The notice is an `m.room.message` with `msgtype = "m.notice"` and includes a `com.beeper.ai` `UIMessage` whose `parts` contains a `dynamic-tool` part with:
+   - The notice is an `m.room.message` with `msgtype = "m.notice"`, SHOULD reply to the originating assistant turn via `m.relates_to.m.in_reply_to`, and includes a `com.beeper.ai` `UIMessage` whose `metadata` contains `approval_id` and whose `parts` contains a `dynamic-tool` part with:
      - `state = "approval-requested"`
      - `toolCallId: string`
      - `toolName: string`
@@ -451,40 +364,36 @@ When approval is needed, the bridge emits:
 
 <a id="approvals-decision"></a>
 ### Approving / Denying
-Approvals are resolved via `com.beeper.action_hints` + reply-based `m.room.message` actions:
+Approvals are resolved through a canonical owner reply event:
 
-1. **Bridge sends** an `m.room.message` with `com.beeper.action_hints` content key containing Allow / Always Allow / Deny buttons, plus context (`approval_id`, `tool_call_id`, `tool_name`), `allowed_senders` (owner-only), and `expires_at`.
+1. **Bridge sends** canonical tool state in `com.beeper.ai` and/or `com.beeper.ai.stream_event` with:
+   - `part.type = "tool-approval-request"` during streaming
+   - a persisted `dynamic-tool` part with approval metadata in the final `UIMessage`
 
-```json
-{
-  "msgtype": "m.notice",
-  "body": "Allow web_search tool?",
-  "com.beeper.action_hints": {
-    "hints": [
-      { "body": "Allow", "event_type": "m.room.message", "event": {"action_id": "allow"} },
-      { "body": "Always Allow", "event_type": "m.room.message", "event": {"action_id": "always"} },
-      { "body": "Deny", "event_type": "m.room.message", "event": {"action_id": "deny"} }
-    ],
-    "exclusive": true,
-    "context": "{\"approval_id\":\"abc123\",\"tool_name\":\"web_search\",\"tool_call_id\":\"call_456\"}",
-    "allowed_senders": ["@owner:example.com"],
-    "expires_at": 1738970600000
-  }
-}
-```
-
-2. **Client sends** an `m.room.message` with `action_id` (`"allow"`, `"always"`, or `"deny"`) and `context` (echoed from the hint), related to the hints message via `m.in_reply_to`.
+2. **Client sends** a standard `m.room.message` whose content includes `com.beeper.ai.approval_decision` and SHOULD reply to the originating assistant turn via `m.relates_to.m.in_reply_to`:
 
 ```json
 {
   "type": "m.room.message",
   "content": {
-    "action_id": "allow",
-    "context": { "approval_id":"abc123","tool_name":"web_search","tool_call_id":"call_456" },
-    "m.relates_to": { "m.in_reply_to": { "event_id": "$hints_event" } }
+    "msgtype": "m.text",
+    "body": "Approved",
+    "m.relates_to": {
+      "m.in_reply_to": { "event_id": "$assistant_turn" }
+    },
+    "com.beeper.ai.approval_decision": {
+      "approval_id": "abc123",
+      "decision": "allow",
+      "always": false
+    }
   }
 }
 ```
+
+Allowed `decision` values:
+- `"allow"` or `"once"`: approve just this request
+- `"always"`: approve and persist an allow rule
+- `"deny"`: reject the request
 
 3. **Legacy fallback**: `!ai approve <approvalId> <allow|always|deny> [reason]` text command (owner-only).
 

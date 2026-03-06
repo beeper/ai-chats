@@ -25,6 +25,7 @@ type openCodePartState struct {
 	streamInputAvailable   bool
 	streamOutputAvailable  bool
 	streamOutputError      bool
+	artifactStreamSent     bool
 }
 
 // openCodeTurnState tracks whether turn-level stream events (start, step, finish)
@@ -156,6 +157,10 @@ func (inst *openCodeInstance) partStatusReaction(sessionID, partID string) strin
 	return readPartState(inst, sessionID, partID, func(ps *openCodePartState) string { return ps.statusReaction })
 }
 
+func (inst *openCodeInstance) partArtifactStreamSent(sessionID, partID string) bool {
+	return readPartState(inst, sessionID, partID, func(ps *openCodePartState) bool { return ps.artifactStreamSent })
+}
+
 // ---------- part-state setters ----------
 
 func (inst *openCodeInstance) setPartCallSent(sessionID, partID string) {
@@ -208,6 +213,10 @@ func (inst *openCodeInstance) setPartStatusReaction(sessionID, partID, reaction 
 
 func (inst *openCodeInstance) setPartResultSent(sessionID, partID string) {
 	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.resultSent = true })
+}
+
+func (inst *openCodeInstance) setPartArtifactStreamSent(sessionID, partID string) {
+	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.artifactStreamSent = true })
 }
 
 func (inst *openCodeInstance) ensurePartState(sessionID, messageID, partID, role, partType string) *openCodePartState {
