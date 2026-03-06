@@ -118,7 +118,7 @@ func (m *OpenCodeManager) emitArtifactStream(ctx context.Context, inst *openCode
 	if m == nil || m.bridge == nil || portal == nil || inst == nil {
 		return
 	}
-	if inst.partArtifactStreamSent(part.SessionID, part.ID) {
+	if !inst.markPartArtifactStreamSent(part.SessionID, part.ID) {
 		return
 	}
 	turnID := partTurnID(part)
@@ -141,6 +141,10 @@ func (m *OpenCodeManager) emitArtifactStream(ctx context.Context, inst *openCode
 		title = strings.TrimSpace(part.Name)
 	}
 	if title != "" {
+		filename := strings.TrimSpace(part.Filename)
+		if filename == "" {
+			filename = title
+		}
 		mediaType := strings.TrimSpace(part.Mime)
 		if mediaType == "" {
 			mediaType = "application/octet-stream"
@@ -149,7 +153,7 @@ func (m *OpenCodeManager) emitArtifactStream(ctx context.Context, inst *openCode
 			"type":      "source-document",
 			"sourceId":  "opencode-doc-" + part.ID,
 			"title":     title,
-			"filename":  strings.TrimSpace(part.Filename),
+			"filename":  filename,
 			"mediaType": mediaType,
 		})
 	}
@@ -162,6 +166,4 @@ func (m *OpenCodeManager) emitArtifactStream(ctx context.Context, inst *openCode
 			"title":    title,
 		})
 	}
-
-	inst.setPartArtifactStreamSent(part.SessionID, part.ID)
 }

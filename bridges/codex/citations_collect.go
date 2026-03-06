@@ -20,22 +20,23 @@ func collectToolOutputCitations(state *streamingState, toolName, output string) 
 	state.sourceCitations = citations.MergeSourceCitations(state.sourceCitations, extracted)
 }
 
-func collectToolOutputArtifacts(state *streamingState, output any) {
+func collectToolOutputArtifacts(state *streamingState, output any) ([]citations.SourceDocument, []citations.GeneratedFilePart) {
 	if state == nil || output == nil {
-		return
+		return nil, nil
 	}
+	var newDocs []citations.SourceDocument
+	var newFiles []citations.GeneratedFilePart
 	walkToolOutputArtifacts(output, func(doc citations.SourceDocument, file citations.GeneratedFilePart) {
-		if doc != (citations.SourceDocument{}) {
-			if !hasSourceDocument(state.sourceDocuments, doc) {
-				state.sourceDocuments = append(state.sourceDocuments, doc)
-			}
+		if doc != (citations.SourceDocument{}) && !hasSourceDocument(state.sourceDocuments, doc) {
+			state.sourceDocuments = append(state.sourceDocuments, doc)
+			newDocs = append(newDocs, doc)
 		}
-		if file != (citations.GeneratedFilePart{}) {
-			if !hasGeneratedFile(state.generatedFiles, file) {
-				state.generatedFiles = append(state.generatedFiles, file)
-			}
+		if file != (citations.GeneratedFilePart{}) && !hasGeneratedFile(state.generatedFiles, file) {
+			state.generatedFiles = append(state.generatedFiles, file)
+			newFiles = append(newFiles, file)
 		}
 	})
+	return newDocs, newFiles
 }
 
 func walkToolOutputArtifacts(value any, record func(citations.SourceDocument, citations.GeneratedFilePart)) {
@@ -56,23 +57,24 @@ func walkToolOutputArtifacts(value any, record func(citations.SourceDocument, ci
 
 func extractArtifactRecord(raw map[string]any) (citations.SourceDocument, citations.GeneratedFilePart) {
 	url := firstString(raw, "url", "uri", "downloadUrl", "download_url", "fileUrl", "file_url")
-	filename := firstString(raw, "filename", "fileName", "name")
+	filename := firstString(raw, "filename", "fileName")
 	title := firstString(raw, "title", "label")
 	mediaType := firstString(raw, "mediaType", "media_type", "mimeType", "mime_type", "contentType", "content_type")
-	id := firstString(raw, "id", "fileId", "file_id", "documentId", "document_id")
+	id := firstString(raw, "fileId", "file_id", "documentId", "document_id")
+	hasArtifactSignal := strings.TrimSpace(url) != "" || filename != "" || id != "" || mediaType != ""
+	if !hasArtifactSignal {
+		return citations.SourceDocument{}, citations.GeneratedFilePart{}
+	}
 
 	if title == "" {
 		title = filename
-	}
-	if filename == "" && title != "" && strings.Contains(title, ".") {
-		filename = title
 	}
 	if mediaType == "" && filename != "" {
 		mediaType = mediaTypeFromFilename(filename)
 	}
 
 	var doc citations.SourceDocument
-	if id != "" || filename != "" || title != "" {
+	if id != "" || filename != "" || title != "" || mediaType != "" {
 		doc = citations.SourceDocument{
 			ID:        id,
 			Title:     title,
@@ -83,8 +85,14 @@ func extractArtifactRecord(raw map[string]any) (citations.SourceDocument, citati
 
 	var file citations.GeneratedFilePart
 	if parsedURL, err := neturl.Parse(strings.TrimSpace(url)); err == nil && (parsedURL.Scheme == "http" || parsedURL.Scheme == "https") {
+		if filename == "" {
+			filename = filenameFromURL(parsedURL.Path)
+		}
+		if title == "" {
+			title = filename
+		}
 		if mediaType == "" {
-			mediaType = mediaTypeFromFilename(filenameFromURL(parsedURL.Path))
+			mediaType = mediaTypeFromFilename(filename)
 		}
 		file = citations.GeneratedFilePart{
 			URL:       strings.TrimSpace(url),
@@ -119,8 +127,10 @@ func mediaTypeFromFilename(filename string) string {
 	switch ext {
 	case ".pdf":
 		return "application/pdf"
-	case ".txt", ".md":
+	case ".txt":
 		return "text/plain"
+	case ".md":
+		return "text/markdown"
 	case ".json":
 		return "application/json"
 	case ".csv":

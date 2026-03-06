@@ -973,6 +973,18 @@ func newProviderToolCall(id, name string, output map[string]any) ToolCallMetadat
 	}
 }
 
+func emitNewArtifacts(ctx context.Context, portal *bridgev2.Portal, emitter *streamui.Emitter, docs []citations.SourceDocument, files []citations.GeneratedFilePart) {
+	if emitter == nil {
+		return
+	}
+	for _, document := range docs {
+		emitter.EmitUISourceDocument(ctx, portal, document)
+	}
+	for _, file := range files {
+		emitter.EmitUIFile(ctx, portal, file.URL, file.MediaType)
+	}
+}
+
 func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2.Portal, state *streamingState, raw json.RawMessage) {
 	var probe struct {
 		Type string `json:"type"`
@@ -1039,13 +1051,8 @@ func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2
 		default:
 			cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, it, true, false)
 		}
-		collectToolOutputArtifacts(state, it)
-		for _, document := range state.sourceDocuments {
-			cc.uiEmitter(state).EmitUISourceDocument(ctx, portal, document)
-		}
-		for _, file := range state.generatedFiles {
-			cc.uiEmitter(state).EmitUIFile(ctx, portal, file.URL, file.MediaType)
-		}
+		newDocs, newFiles := collectToolOutputArtifacts(state, it)
+		emitNewArtifacts(ctx, portal, cc.uiEmitter(state), newDocs, newFiles)
 
 		tc := newProviderToolCall(itemID, fmt.Sprintf("%v", it["type"]), it)
 		switch statusVal {
@@ -1067,13 +1074,8 @@ func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2
 		var it map[string]any
 		_ = json.Unmarshal(raw, &it)
 		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, it, true, false)
-		collectToolOutputArtifacts(state, it)
-		for _, document := range state.sourceDocuments {
-			cc.uiEmitter(state).EmitUISourceDocument(ctx, portal, document)
-		}
-		for _, file := range state.generatedFiles {
-			cc.uiEmitter(state).EmitUIFile(ctx, portal, file.URL, file.MediaType)
-		}
+		newDocs, newFiles := collectToolOutputArtifacts(state, it)
+		emitNewArtifacts(ctx, portal, cc.uiEmitter(state), newDocs, newFiles)
 		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "collabToolCall", it))
 	case "webSearch":
 		var it map[string]any
@@ -1087,24 +1089,14 @@ func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2
 				cc.uiEmitter(state).EmitUISourceURL(ctx, portal, citation)
 			}
 		}
-		collectToolOutputArtifacts(state, it)
-		for _, document := range state.sourceDocuments {
-			cc.uiEmitter(state).EmitUISourceDocument(ctx, portal, document)
-		}
-		for _, file := range state.generatedFiles {
-			cc.uiEmitter(state).EmitUIFile(ctx, portal, file.URL, file.MediaType)
-		}
+		newDocs, newFiles := collectToolOutputArtifacts(state, it)
+		emitNewArtifacts(ctx, portal, cc.uiEmitter(state), newDocs, newFiles)
 	case "imageView":
 		var it map[string]any
 		_ = json.Unmarshal(raw, &it)
 		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, it, true, false)
-		collectToolOutputArtifacts(state, it)
-		for _, document := range state.sourceDocuments {
-			cc.uiEmitter(state).EmitUISourceDocument(ctx, portal, document)
-		}
-		for _, file := range state.generatedFiles {
-			cc.uiEmitter(state).EmitUIFile(ctx, portal, file.URL, file.MediaType)
-		}
+		newDocs, newFiles := collectToolOutputArtifacts(state, it)
+		emitNewArtifacts(ctx, portal, cc.uiEmitter(state), newDocs, newFiles)
 		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "imageView", it))
 	case "plan":
 		var it struct {

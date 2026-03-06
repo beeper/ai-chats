@@ -152,10 +152,6 @@ func (inst *openCodeInstance) partCallStatus(sessionID, partID string) string {
 	return readPartState(inst, sessionID, partID, func(ps *openCodePartState) string { return ps.callStatus })
 }
 
-func (inst *openCodeInstance) partArtifactStreamSent(sessionID, partID string) bool {
-	return readPartState(inst, sessionID, partID, func(ps *openCodePartState) bool { return ps.artifactStreamSent })
-}
-
 // ---------- part-state setters ----------
 
 func (inst *openCodeInstance) setPartCallSent(sessionID, partID string) {
@@ -206,8 +202,15 @@ func (inst *openCodeInstance) setPartResultSent(sessionID, partID string) {
 	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.resultSent = true })
 }
 
-func (inst *openCodeInstance) setPartArtifactStreamSent(sessionID, partID string) {
-	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.artifactStreamSent = true })
+func (inst *openCodeInstance) markPartArtifactStreamSent(sessionID, partID string) bool {
+	changed := false
+	inst.withPartState(sessionID, partID, func(ps *openCodePartState) {
+		if !ps.artifactStreamSent {
+			ps.artifactStreamSent = true
+			changed = true
+		}
+	})
+	return changed
 }
 
 func (inst *openCodeInstance) ensurePartState(sessionID, messageID, partID, role, partType string) *openCodePartState {

@@ -57,7 +57,9 @@ func toolDisplayTitle(toolName string) string {
 	return toolName
 }
 
-// sendToolCallEvent sends a tool call as a timeline event via bridgev2's pipeline.
+// sendToolCallEvent intentionally does not emit a separate timeline projection.
+// The canonical transport is UIMessage plus stream events; callers still expect an
+// event ID return value, so this remains as a no-op compatibility stub.
 func (oc *AIClient) sendToolCallEvent(ctx context.Context, portal *bridgev2.Portal, state *streamingState, tool *activeToolCall) id.EventID {
 	_ = ctx
 	_ = portal
@@ -66,7 +68,9 @@ func (oc *AIClient) sendToolCallEvent(ctx context.Context, portal *bridgev2.Port
 	return ""
 }
 
-// sendToolResultEvent sends a tool result as a timeline event via bridgev2's pipeline.
+// sendToolResultEvent intentionally does not emit a separate timeline projection.
+// The canonical transport is UIMessage plus stream events; callers still expect an
+// event ID return value, so this remains as a no-op compatibility stub.
 func (oc *AIClient) sendToolResultEvent(ctx context.Context, portal *bridgev2.Portal, state *streamingState, tool *activeToolCall, result string, resultStatus ResultStatus) id.EventID {
 	_ = ctx
 	_ = portal
