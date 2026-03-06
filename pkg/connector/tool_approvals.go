@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
@@ -41,10 +40,6 @@ type pendingToolApprovalData struct {
 	RuleToolName string // normalized for matching/persistence (e.g. "message" or raw MCP tool name without "mcp.")
 	ServerLabel  string // MCP only
 	Action       string // builtin only (optional)
-	// ApprovalEventID tracks the Matrix event ID for reverse-lookup by findApprovalByEventID.
-	ApprovalEventID id.EventID
-	// ApprovalNetworkMsgID is the network message ID returned by sendViaPortal, used for edits.
-	ApprovalNetworkMsgID networkid.MessageID
 
 	RequestedAt time.Time
 }
@@ -266,18 +261,4 @@ func (oc *AIClient) isBuiltinToolDenied(
 		return true
 	}
 	return false
-}
-
-// findApprovalByEventID returns the approval ID for a pending approval whose
-// timeline message matches the given Matrix event ID. Returns "" if not found.
-func (oc *AIClient) findApprovalByEventID(eventID id.EventID) string {
-	if oc == nil || eventID == "" {
-		return ""
-	}
-	return oc.approvals.FindByData(func(data any) bool {
-		if d, ok := data.(*pendingToolApprovalData); ok {
-			return d.ApprovalEventID == eventID
-		}
-		return false
-	})
 }

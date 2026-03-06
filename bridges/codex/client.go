@@ -2018,11 +2018,9 @@ type ToolApprovalDecisionCodex struct {
 // pendingToolApprovalDataCodex holds codex-specific metadata stored in
 // ApprovalManager's PendingApproval.Data field.
 type pendingToolApprovalDataCodex struct {
-	ApprovalID           string
-	ToolCallID           string
-	ToolName             string
-	ApprovalEventID      id.EventID
-	ApprovalNetworkMsgID networkid.MessageID
+	ApprovalID string
+	ToolCallID string
+	ToolName   string
 }
 
 func (cc *CodexClient) registerToolApproval(approvalID, toolCallID, toolName string, ttl time.Duration) (*bridgeadapter.PendingApproval[ToolApprovalDecisionCodex], bool) {
