@@ -14,7 +14,6 @@ type openCodePartState struct {
 	messageID              string
 	partType               string
 	callStatus             string
-	statusReaction         string
 	callSent               bool
 	resultSent             bool
 	textStreamStarted      bool
@@ -153,10 +152,6 @@ func (inst *openCodeInstance) partCallStatus(sessionID, partID string) string {
 	return readPartState(inst, sessionID, partID, func(ps *openCodePartState) string { return ps.callStatus })
 }
 
-func (inst *openCodeInstance) partStatusReaction(sessionID, partID string) string {
-	return readPartState(inst, sessionID, partID, func(ps *openCodePartState) string { return ps.statusReaction })
-}
-
 func (inst *openCodeInstance) partArtifactStreamSent(sessionID, partID string) bool {
 	return readPartState(inst, sessionID, partID, func(ps *openCodePartState) bool { return ps.artifactStreamSent })
 }
@@ -205,10 +200,6 @@ func (inst *openCodeInstance) setPartStreamOutputError(sessionID, partID string)
 
 func (inst *openCodeInstance) setPartCallStatus(sessionID, partID, status string) {
 	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.callStatus = status })
-}
-
-func (inst *openCodeInstance) setPartStatusReaction(sessionID, partID, reaction string) {
-	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.statusReaction = reaction })
 }
 
 func (inst *openCodeInstance) setPartResultSent(sessionID, partID string) {

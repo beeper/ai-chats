@@ -49,76 +49,12 @@ func parseToolInputPayload(argsJSON string) map[string]any {
 	return map[string]any{"value": parsed}
 }
 
-func parseToolOutputPayload(result string) map[string]any {
-	trimmed := strings.TrimSpace(result)
-	if trimmed == "" {
-		return nil
-	}
-	var parsed any
-	if err := json.Unmarshal([]byte(trimmed), &parsed); err != nil {
-		return map[string]any{"result": result}
-	}
-	if m, ok := parsed.(map[string]any); ok {
-		return m
-	}
-	return map[string]any{"result": parsed}
-}
-
 func toolDisplayTitle(toolName string) string {
 	toolName = normalizeToolAlias(toolName)
 	if t := tools.GetTool(toolName); t != nil && t.Annotations != nil && t.Annotations.Title != "" {
 		return t.Annotations.Title
 	}
 	return toolName
-}
-
-func summarizeMessageAction(obj map[string]any) string {
-	action, _ := obj["action"].(string)
-	switch action {
-	case "react":
-		emoji, _ := obj["emoji"].(string)
-		status, _ := obj["status"].(string)
-		if status == "removed" {
-			if emoji != "" {
-				return fmt.Sprintf("Removed reaction %s", emoji)
-			}
-			return "Removed reaction"
-		}
-		if emoji != "" {
-			return fmt.Sprintf("Reacted with %s", emoji)
-		}
-		return "Reaction sent"
-	case "send":
-		return "Message sent"
-	case "edit":
-		return "Message edited"
-	case "delete":
-		return "Message deleted"
-	case "reply":
-		return "Reply sent"
-	case "thread-reply":
-		return "Thread reply sent"
-	case "read":
-		return "Read receipt sent"
-	case "pin":
-		return "Message pinned"
-	case "unpin":
-		return "Message unpinned"
-	case "list-pins":
-		return "Pins retrieved"
-	case "reactions":
-		return "Reactions retrieved"
-	case "search":
-		return "Search completed"
-	case "member-info":
-		return "Member info retrieved"
-	case "channel-info":
-		return "Channel info retrieved"
-	case "channel-edit":
-		return "Channel updated"
-	default:
-		return ""
-	}
 }
 
 // sendToolCallEvent sends a tool call as a timeline event via bridgev2's pipeline.
