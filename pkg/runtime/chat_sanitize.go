@@ -69,7 +69,7 @@ func StripEnvelope(text string) string {
 	return text[len(match[0]):]
 }
 
-func StripInboundMetadata(text string) string {
+func stripInboundMetadata(text string) string {
 	if strings.TrimSpace(text) == "" {
 		return text
 	}
@@ -138,7 +138,7 @@ func shouldStripTrailingUntrustedContext(lines []string, idx int) bool {
 }
 
 func SanitizeChatMessageForDisplay(text string, isUser bool) string {
-	out := StripInboundMetadata(text)
+	out := stripInboundMetadata(text)
 	if isUser {
 		out = StripEnvelope(out)
 		out = StripMessageIDHintLines(out)

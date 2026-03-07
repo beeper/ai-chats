@@ -1837,34 +1837,6 @@ catalogFallback:
 	return oc.findModelInfoInCatalog(modelID)
 }
 
-// maxBase64ImageBytes is the maximum size of inline base64 image data allowed in
-// historical message bodies. Images larger than this are stripped to save tokens.
-const maxBase64ImageBytes = 1 * 1024 * 1024 // 1MB
-
-var base64DataURIPattern = regexp.MustCompile(`data:image/[^;]+;base64,[A-Za-z0-9+/=]{100,}`)
-
-// sanitizeHistoryImages strips oversized base64-encoded images from a message body.
-// Images that exceed maxBase64ImageBytes are replaced with a placeholder.
-func sanitizeHistoryImages(body string) string {
-	if !strings.Contains(body, "data:image/") {
-		return body
-	}
-	return base64DataURIPattern.ReplaceAllStringFunc(body, func(match string) string {
-		// Extract just the base64 portion after "base64,"
-		idx := strings.Index(match, "base64,")
-		if idx == -1 {
-			return match
-		}
-		b64Data := match[idx+7:]
-		// base64 encodes 3 bytes per 4 chars, so decoded size ≈ len*3/4
-		decodedSize := len(b64Data) * 3 / 4
-		if decodedSize > maxBase64ImageBytes {
-			return "[image removed: too large for history]"
-		}
-		return match
-	})
-}
-
 // maxHistoryImageMessages limits how many recent history messages can have images injected,
 // to keep token usage under control.
 const maxHistoryImageMessages = 10

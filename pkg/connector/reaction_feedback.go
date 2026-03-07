@@ -51,14 +51,6 @@ func (q *ReactionQueue) addReactionLocked(feedback ReactionFeedback) {
 	}
 }
 
-// AddReaction adds a reaction feedback to the queue.
-// Skips consecutive duplicates like OpenClaw does.
-func (q *ReactionQueue) AddReaction(feedback ReactionFeedback) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	q.addReactionLocked(feedback)
-}
-
 // DrainFeedback returns all queued feedback and clears the queue.
 func (q *ReactionQueue) DrainFeedback() []ReactionFeedback {
 	q.mu.Lock()

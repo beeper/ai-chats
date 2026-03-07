@@ -14,7 +14,7 @@ import (
 )
 
 // CommandStatus handles the !ai status command.
-var CommandStatus = registerAICommand(commandregistry.Definition{
+var _ = registerAICommand(commandregistry.Definition{
 	Name:           "status",
 	Description:    "Show current session status",
 	Section:        HelpSectionAI,
@@ -24,7 +24,7 @@ var CommandStatus = registerAICommand(commandregistry.Definition{
 })
 
 // CommandLastHeartbeat handles the !ai last-heartbeat command.
-var CommandLastHeartbeat = registerAICommand(commandregistry.Definition{
+var _ = registerAICommand(commandregistry.Definition{
 	Name:           "last-heartbeat",
 	Description:    "Show the last heartbeat event for this login",
 	Section:        HelpSectionAI,
@@ -80,7 +80,7 @@ func fnLastHeartbeat(ce *commands.Event) {
 }
 
 // CommandReset handles the !ai reset command.
-var CommandReset = registerAICommand(commandregistry.Definition{
+var _ = registerAICommand(commandregistry.Definition{
 	Name:           "reset",
 	Description:    "Start a new session/thread in this room",
 	Section:        HelpSectionAI,
@@ -117,7 +117,7 @@ func fnReset(ce *commands.Event) {
 }
 
 // CommandStop handles the !ai stop command.
-var CommandStop = registerAICommand(commandregistry.Definition{
+var _ = registerAICommand(commandregistry.Definition{
 	Name:           "stop",
 	Description:    "Abort the current run and clear the pending queue",
 	Section:        HelpSectionAI,
@@ -145,7 +145,7 @@ func fnStop(ce *commands.Event) {
 }
 
 // CommandQueue handles the !ai queue command.
-var CommandQueue = registerAICommand(commandregistry.Definition{
+var _ = registerAICommand(commandregistry.Definition{
 	Name:           "queue",
 	Description:    "Inspect or configure the message queue",
 	Args:           "[status|reset|<mode>] [debounce:<dur>] [cap:<n>] [drop:<old|new|summarize>]",
@@ -232,7 +232,7 @@ func fnQueue(ce *commands.Event) {
 }
 
 // CommandThink handles the !ai think command.
-var CommandThink = registerAICommand(commandregistry.Definition{
+var _ = registerAICommand(commandregistry.Definition{
 	Name:           "think",
 	Description:    "Get or set thinking level (off|minimal|low|medium|high|xhigh)",
 	Args:           "[level]",
@@ -262,7 +262,7 @@ func fnThink(ce *commands.Event) {
 }
 
 // CommandVerbose handles the !ai verbose command.
-var CommandVerbose = registerAICommand(commandregistry.Definition{
+var _ = registerAICommand(commandregistry.Definition{
 	Name:           "verbose",
 	Description:    "Get or set verbosity (off|on|full)",
 	Args:           "[level]",
@@ -296,7 +296,7 @@ func fnVerbose(ce *commands.Event) {
 }
 
 // CommandReasoning handles the !ai reasoning command.
-var CommandReasoning = registerAICommand(commandregistry.Definition{
+var _ = registerAICommand(commandregistry.Definition{
 	Name:           "reasoning",
 	Description:    "Get or set reasoning visibility/effort (off|on|low|medium|high|xhigh)",
 	Args:           "[level]",
@@ -334,7 +334,7 @@ func fnReasoning(ce *commands.Event) {
 }
 
 // CommandElevated handles the !ai elevated command.
-var CommandElevated = registerAICommand(commandregistry.Definition{
+var _ = registerAICommand(commandregistry.Definition{
 	Name:           "elevated",
 	Description:    "Get or set elevated access (off|on|ask|full)",
 	Args:           "[level]",
@@ -368,7 +368,7 @@ func fnElevated(ce *commands.Event) {
 }
 
 // CommandActivation handles the !ai activation command.
-var CommandActivation = registerAICommand(commandregistry.Definition{
+var _ = registerAICommand(commandregistry.Definition{
 	Name:           "activation",
 	Description:    "Set group activation policy (mention|always)",
 	Args:           "<mention|always>",
@@ -405,7 +405,7 @@ func fnActivation(ce *commands.Event) {
 }
 
 // CommandSend handles the !ai send command.
-var CommandSend = registerAICommand(commandregistry.Definition{
+var _ = registerAICommand(commandregistry.Definition{
 	Name:           "send",
 	Description:    "Allow/deny sending messages (on|off|inherit)",
 	Args:           "<on|off|inherit>",
@@ -445,7 +445,7 @@ func fnSend(ce *commands.Event) {
 }
 
 // CommandWhoami handles the !ai whoami command.
-var CommandWhoami = registerAICommand(commandregistry.Definition{
+var _ = registerAICommand(commandregistry.Definition{
 	Name:           "whoami",
 	Description:    "Show your Matrix user ID",
 	Section:        HelpSectionAI,

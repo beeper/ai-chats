@@ -334,7 +334,7 @@ func supportsGeminiImageGen(btc *BridgeToolContext) bool {
 
 func normalizeOpenAIModel(model string) string {
 	if strings.TrimSpace(model) == "" {
-		return DefaultOpenAIImageModel
+		return defaultOpenAIImageModel
 	}
 	_, actual := ParseModelPrefix(model)
 	actual = strings.TrimSpace(actual)
@@ -347,7 +347,7 @@ func normalizeOpenAIModel(model string) string {
 
 func normalizeGeminiModel(model string) string {
 	if strings.TrimSpace(model) == "" {
-		return DefaultGeminiImageModel
+		return defaultGeminiImageModel
 	}
 	_, actual := ParseModelPrefix(model)
 	actual = strings.TrimSpace(actual)

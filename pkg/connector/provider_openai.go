@@ -524,12 +524,6 @@ func defaultOpenAIModels() []ModelInfo {
 	return nil
 }
 
-// PDFPluginConfig holds configuration for the PDF file-parser plugin
-type PDFPluginConfig struct {
-	ID     string          `json:"id"`
-	Config json.RawMessage `json:"config,omitempty"`
-}
-
 // MakePDFPluginMiddleware creates middleware that injects the file-parser plugin for PDFs.
 // The defaultEngine parameter is used as a fallback when no per-request engine is set in context.
 // To set a per-request engine, use WithPDFEngine() to add it to the request context.

@@ -76,7 +76,7 @@ func ParseInlineDirectives(text string, options InlineDirectiveParseOptions) Inl
 	})
 
 	// OpenClaw normalizes whitespace after inline tag stripping.
-	cleaned = NormalizeDirectiveWhitespace(cleaned)
+	cleaned = normalizeDirectiveWhitespace(cleaned)
 
 	if explicit != "" {
 		result.ReplyToExplicitID = explicit
@@ -124,7 +124,7 @@ func IsSilentReplyPrefixText(text, token string) bool {
 	return strings.HasPrefix(strings.ToUpper(token), normalized)
 }
 
-func NormalizeDirectiveWhitespace(text string) string {
+func normalizeDirectiveWhitespace(text string) string {
 	text = collapseSpacesRE.ReplaceAllString(text, " ")
 	text = normalizeNewlinesRE.ReplaceAllString(text, "\n")
 	return strings.TrimSpace(text)

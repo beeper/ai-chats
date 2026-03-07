@@ -7,7 +7,7 @@ import (
 	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
-type QueueDirective struct {
+type queueDirective struct {
 	Cleaned      string
 	QueueMode    airuntime.QueueMode
 	QueueReset   bool
@@ -55,7 +55,7 @@ func parseQueueCap(raw string) *int {
 	return &value
 }
 
-func parseQueueDirectiveArgs(raw string) (consumed int, result QueueDirective) {
+func parseQueueDirectiveArgs(raw string) (consumed int, result queueDirective) {
 	i := 0
 	for i < len(raw) && raw[i] <= ' ' {
 		i++

@@ -24,7 +24,7 @@ func mcpManageUsage(allowStdio bool) string {
 }
 
 // CommandMCP handles the !ai mcp command.
-var CommandMCP = registerAICommand(commandregistry.Definition{
+var _ = registerAICommand(commandregistry.Definition{
 	Name:          "mcp",
 	Description:   "Manage MCP servers for this login",
 	Args:          "<add|remove|connect|disconnect|list> [args]",

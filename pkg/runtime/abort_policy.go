@@ -47,7 +47,7 @@ var abortTriggers = map[string]struct{}{
 	"do not do that":          {},
 }
 
-func NormalizeAbortTriggerText(text string) string {
+func normalizeAbortTriggerText(text string) string {
 	cleaned := strings.TrimSpace(strings.ToLower(text))
 	cleaned = strings.ReplaceAll(cleaned, "’", "'")
 	cleaned = strings.Join(strings.Fields(cleaned), " ")
@@ -56,7 +56,7 @@ func NormalizeAbortTriggerText(text string) string {
 }
 
 func IsAbortTriggerText(text string) bool {
-	normalized := NormalizeAbortTriggerText(text)
+	normalized := normalizeAbortTriggerText(text)
 	if normalized == "" {
 		return false
 	}

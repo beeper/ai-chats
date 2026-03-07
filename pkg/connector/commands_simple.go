@@ -10,7 +10,7 @@ import (
 )
 
 // CommandSimple handles the !ai simple command with sub-commands.
-var CommandSimple = registerAICommand(commandregistry.Definition{
+var _ = registerAICommand(commandregistry.Definition{
 	Name:          "simple",
 	Description:   "Manage AI chat rooms (new, list)",
 	Args:          "<new [model] | list>",

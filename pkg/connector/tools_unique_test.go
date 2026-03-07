@@ -41,3 +41,20 @@ func TestToolNamesUnique(t *testing.T) {
 		}
 	}
 }
+
+func TestBuiltinToolsIncludeGravatarSet(t *testing.T) {
+	if tool := GetBuiltinTool(ToolNameGravatarSet); tool == nil {
+		t.Fatalf("expected gravatar_set builtin tool definition")
+	}
+
+	found := false
+	for _, tool := range agenttools.BuiltinTools() {
+		if tool != nil && tool.Name == ToolNameGravatarSet {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected gravatar_set agent tool registration")
+	}
+}

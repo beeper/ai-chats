@@ -36,15 +36,6 @@ func ClassifyFallbackError(err error) FailureClass {
 	}
 }
 
-func ShouldTriggerFallback(class FailureClass) bool {
-	switch class {
-	case FailureClassAuth, FailureClassRateLimit, FailureClassTimeout, FailureClassNetwork, FailureClassContextOverflow, FailureClassProviderHard:
-		return true
-	default:
-		return false
-	}
-}
-
 // DecideFallback converts raw errors into runtime-standard retry/failover behavior.
 func DecideFallback(err error) FallbackDecision {
 	class := ClassifyFallbackError(err)

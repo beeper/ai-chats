@@ -97,11 +97,11 @@ func GetBuiltinTool(name string) *ToolDefinition {
 }
 
 const ToolNameMessage = toolspec.MessageName
-const ToolNameTTS = toolspec.TTSName
-const ToolNameWebFetch = toolspec.WebFetchName
+const toolNameTTS = toolspec.TTSName
+const toolNameWebFetch = toolspec.WebFetchName
 const ToolNameImage = toolspec.ImageName
 const ToolNameImageGenerate = toolspec.ImageGenerateName
-const ToolNameSessionStatus = toolspec.SessionStatusName
+const toolNameSessionStatus = toolspec.SessionStatusName
 
 const (
 	ToolNameGravatarFetch      = toolspec.GravatarFetchName
@@ -117,8 +117,8 @@ const (
 const ImageResultPrefix = "IMAGE:"
 const ImagesResultPrefix = "IMAGES:"
 const DefaultImageModel = "google/gemini-3-pro-image-preview"
-const DefaultOpenAIImageModel = "gpt-image-1"
-const DefaultGeminiImageModel = "gemini-3-pro-image-preview"
+const defaultOpenAIImageModel = "gpt-image-1"
+const defaultGeminiImageModel = "gemini-3-pro-image-preview"
 const TTSResultPrefix = "AUDIO:"
 
 // parseBoolArg extracts a boolean argument from args, handling JSON's bool, float64,

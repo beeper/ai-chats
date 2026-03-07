@@ -290,39 +290,6 @@ func (r *AIRemoteMessageRemove) GetTargetMessage() networkid.MessageID {
 }
 
 // -----------------------------------------------------------------------
-// AIRemoteTyping — for typing indicators
-// -----------------------------------------------------------------------
-
-var _ bridgev2.RemoteTyping = (*AIRemoteTyping)(nil)
-
-// AIRemoteTyping is a RemoteTyping for AI typing indicators.
-type AIRemoteTyping struct {
-	portal  networkid.PortalKey
-	sender  bridgev2.EventSender
-	timeout time.Duration
-}
-
-func (t *AIRemoteTyping) GetType() bridgev2.RemoteEventType {
-	return bridgev2.RemoteEventTyping
-}
-
-func (t *AIRemoteTyping) GetPortalKey() networkid.PortalKey {
-	return t.portal
-}
-
-func (t *AIRemoteTyping) AddLogContext(c zerolog.Context) zerolog.Context {
-	return c.Dur("typing_timeout", t.timeout)
-}
-
-func (t *AIRemoteTyping) GetSender() bridgev2.EventSender {
-	return t.sender
-}
-
-func (t *AIRemoteTyping) GetTimeout() time.Duration {
-	return t.timeout
-}
-
-// -----------------------------------------------------------------------
 // Constructor helpers — build pre-converted messages for common patterns
 // -----------------------------------------------------------------------
 

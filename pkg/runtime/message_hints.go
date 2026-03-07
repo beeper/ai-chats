@@ -63,33 +63,3 @@ func StripMessageIDHintLines(text string) string {
 	}
 	return strings.Join(filtered, "\n")
 }
-
-func SplitTrailingMessageIDHint(text string) (string, string) {
-	idx := strings.LastIndex(text, "\n")
-	var prefix, lastLine string
-	if idx >= 0 {
-		prefix = text[:idx+1]
-		lastLine = text[idx+1:]
-	} else {
-		lastLine = text
-	}
-	trimmed := strings.TrimSpace(lastLine)
-	if trimmed == "" {
-		return text, ""
-	}
-	if trimmed[0] != '[' {
-		return text, ""
-	}
-	if strings.Contains(trimmed, "]") {
-		return text, ""
-	}
-	if IsMessageIDHintPrefix(strings.ToLower(trimmed)) {
-		return prefix, lastLine
-	}
-	return text, ""
-}
-
-func IsMessageIDHintPrefix(lower string) bool {
-	const target = "[message_id:"
-	return strings.HasPrefix(target, lower) || strings.HasPrefix(lower, target)
-}

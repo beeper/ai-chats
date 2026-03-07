@@ -14,4 +14,7 @@ const (
 	DefaultHybridCandidateMultiple = 4
 	DefaultCacheEnabled            = true
 	DefaultMemorySource            = "memory"
+	DefaultOpenAIEmbeddingModel    = "text-embedding-3-small"
+	DefaultGeminiBaseURL           = "https://generativelanguage.googleapis.com/v1beta"
+	DefaultGeminiEmbeddingModel    = "gemini-embedding-001"
 )

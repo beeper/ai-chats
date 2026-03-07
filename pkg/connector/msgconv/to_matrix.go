@@ -358,44 +358,6 @@ func RelatesToReplace(initialEventID id.EventID, replyTo id.EventID) map[string]
 	return rel
 }
 
-// FinalEditContentParams contains parameters for building a streaming final edit event.
-type FinalEditContentParams struct {
-	Rendered       event.MessageEventContent
-	RelatesTo      map[string]any
-	UIMessage      map[string]any
-	LinkPreviews   []map[string]any
-	DontShowEdited bool
-}
-
-// BuildFinalEditContent builds the event content for a streaming final edit (m.replace).
-func BuildFinalEditContent(p FinalEditContentParams) *event.Content {
-	raw := map[string]any{
-		"msgtype":        event.MsgText,
-		"body":           "* AI response",
-		"format":         p.Rendered.Format,
-		"formatted_body": "* AI response",
-		"m.new_content": map[string]any{
-			"msgtype":        event.MsgText,
-			"body":           p.Rendered.Body,
-			"format":         p.Rendered.Format,
-			"formatted_body": p.Rendered.FormattedBody,
-			"m.mentions":     map[string]any{},
-		},
-		matrixevents.BeeperAIKey: p.UIMessage,
-		"m.mentions":             map[string]any{},
-	}
-	if p.RelatesTo != nil {
-		raw["m.relates_to"] = p.RelatesTo
-	}
-	if p.DontShowEdited {
-		raw["com.beeper.dont_render_edited"] = true
-	}
-	if len(p.LinkPreviews) > 0 {
-		raw["com.beeper.linkpreviews"] = p.LinkPreviews
-	}
-	return &event.Content{Raw: raw}
-}
-
 // PlainMessageContentParams contains parameters for building a plain text message.
 type PlainMessageContentParams struct {
 	Text         string

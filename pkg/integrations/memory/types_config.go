@@ -2,7 +2,6 @@ package memory
 
 import (
 	memorycore "github.com/beeper/ai-bridge/pkg/memory"
-	embeddingcore "github.com/beeper/ai-bridge/pkg/memory/embedding"
 )
 
 type RemoteConfig = memorycore.RemoteConfig
@@ -32,7 +31,7 @@ const (
 	DefaultCacheEnabled            = memorycore.DefaultCacheEnabled
 	DefaultMemorySource            = memorycore.DefaultMemorySource
 
-	DefaultOpenAIEmbeddingModel = embeddingcore.DefaultOpenAIEmbeddingModel
-	DefaultGeminiEmbeddingModel = embeddingcore.DefaultGeminiEmbeddingModel
-	DefaultGeminiBaseURL        = embeddingcore.DefaultGeminiBaseURL
+	DefaultOpenAIEmbeddingModel = memorycore.DefaultOpenAIEmbeddingModel
+	DefaultGeminiEmbeddingModel = memorycore.DefaultGeminiEmbeddingModel
+	DefaultGeminiBaseURL        = memorycore.DefaultGeminiBaseURL
 )

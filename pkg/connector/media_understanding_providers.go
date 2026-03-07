@@ -389,10 +389,6 @@ type mediaRequestBase struct {
 	Timeout  time.Duration
 }
 
-func (r mediaRequestBase) Base64Data() string {
-	return base64.StdEncoding.EncodeToString(r.Data)
-}
-
 func (r mediaRequestBase) MimeTypeOrDefault(fallback string) string {
 	if trimmed := strings.TrimSpace(r.MimeType); trimmed != "" {
 		return trimmed

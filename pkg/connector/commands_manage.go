@@ -9,7 +9,7 @@ import (
 
 // CommandManage handles the !ai manage command.
 // This creates or opens the Builder room for advanced users to manage custom agents.
-var CommandManage = registerAICommand(commandregistry.Definition{
+var _ = registerAICommand(commandregistry.Definition{
 	Name:          "manage",
 	Description:   "Open the agent management room (for creating custom agents)",
 	Section:       HelpSectionAI,

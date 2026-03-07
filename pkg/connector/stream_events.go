@@ -4,32 +4,11 @@ import (
 	"context"
 	"strings"
 
-	"github.com/beeper/ai-bridge/pkg/matrixevents"
 	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
 )
-
-func buildStreamEventEnvelope(state *streamingState, part map[string]any) (turnID string, seq int, content map[string]any, ok bool) {
-	if state == nil {
-		return "", 0, nil, false
-	}
-	turnID = strings.TrimSpace(state.turnID)
-	if turnID == "" {
-		return "", 0, nil, false
-	}
-	state.sequenceNum++
-	seq = state.sequenceNum
-	env, err := matrixevents.BuildStreamEventEnvelope(turnID, seq, part, matrixevents.StreamEventOpts{
-		TargetEventID: state.initialEventID.String(),
-		AgentID:       state.agentID,
-	})
-	if err != nil {
-		return "", 0, nil, false
-	}
-	return turnID, seq, env, true
-}
 
 func (oc *AIClient) ensureStreamSession(ctx context.Context, portal *bridgev2.Portal, state *streamingState) *streamtransport.StreamSession {
 	if oc == nil || portal == nil || state == nil {

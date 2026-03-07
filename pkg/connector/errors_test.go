@@ -2,7 +2,6 @@ package connector
 
 import (
 	"errors"
-	"strings"
 	"testing"
 
 	"github.com/openai/openai-go/v3"
@@ -411,31 +410,6 @@ func TestClassifyFailoverReason(t *testing.T) {
 				t.Errorf("ClassifyFailoverReason() = %q, want %q", got, tt.expect)
 			}
 		})
-	}
-}
-
-func TestSanitizeHistoryImages(t *testing.T) {
-	// Small image should be preserved
-	smallB64 := "data:image/png;base64," + strings.Repeat("A", 200)
-	if got := sanitizeHistoryImages(smallB64); got != smallB64 {
-		t.Error("expected small image to be preserved")
-	}
-
-	// Large image (over 1MB decoded) should be stripped
-	// 1MB base64 = ~1.37M chars
-	largeB64 := "data:image/png;base64," + strings.Repeat("A", 1500000)
-	got := sanitizeHistoryImages(largeB64)
-	if strings.Contains(got, "AAAA") {
-		t.Error("expected large image to be stripped")
-	}
-	if got != "[image removed: too large for history]" {
-		t.Errorf("unexpected replacement: %q", got[:50])
-	}
-
-	// Text without images should be unchanged
-	plain := "hello world, no images here"
-	if sanitizeHistoryImages(plain) != plain {
-		t.Error("expected plain text to be unchanged")
 	}
 }
 
