@@ -18,12 +18,6 @@ func init() {
 	event.TypeMap[AgentsEventType] = reflect.TypeOf(AgentsEventContent{})
 }
 
-// ToolCallEventType represents a tool invocation
-var ToolCallEventType = matrixevents.ToolCallEventType
-
-// ToolResultEventType represents a tool execution result
-var ToolResultEventType = matrixevents.ToolResultEventType
-
 // StreamEventMessageType is the unified event type for AI streaming updates (ephemeral).
 var StreamEventMessageType = matrixevents.StreamEventMessageType
 
@@ -165,10 +159,7 @@ const (
 
 // Content field keys
 const (
-	BeeperAIKey           = matrixevents.BeeperAIKey
-	BeeperAIToolCallKey   = matrixevents.BeeperAIToolCallKey
-	BeeperAIToolResultKey = matrixevents.BeeperAIToolResultKey
-	BeeperActionHintsKey  = matrixevents.BeeperActionHintsKey
+	BeeperAIKey = matrixevents.BeeperAIKey
 )
 
 // CommandDescriptionEventType is the state event type for com.beeper.command_description.

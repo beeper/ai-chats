@@ -225,18 +225,12 @@ func parseOpenCodePartID(msgID networkid.MessageID) (string, bool) {
 	if after, ok := strings.CutPrefix(raw, "opencode:part:"); ok {
 		return after, true
 	}
-	if after, ok := strings.CutPrefix(raw, "opencode:toolcall:"); ok {
-		return after, true
-	}
-	if after, ok := strings.CutPrefix(raw, "opencode:toolresult:"); ok {
-		return after, true
-	}
 	return "", false
 }
 
 func parseOpenCodeMessageID(msgID networkid.MessageID) (string, bool) {
 	raw := string(msgID)
-	if strings.HasPrefix(raw, "opencode:part:") || strings.HasPrefix(raw, "opencode:toolcall:") || strings.HasPrefix(raw, "opencode:toolresult:") {
+	if strings.HasPrefix(raw, "opencode:part:") {
 		return "", false
 	}
 	if value, ok := strings.CutPrefix(raw, "opencode:"); ok && value != "" {
@@ -249,9 +243,9 @@ func parseOpenCodeMessageID(msgID networkid.MessageID) (string, bool) {
 func (b *Bridge) appendBackfillPart(
 	ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI,
 	out *[]*bridgev2.BackfillMessage, sender bridgev2.EventSender, msgTime time.Time, nextOrder func() int64,
-	evt openCodePartEvent, msgID networkid.MessageID,
+	part opencode.Part, msgID networkid.MessageID,
 ) error {
-	cmp, err := b.buildOpenCodeConvertedPart(ctx, portal, intent, evt)
+	cmp, err := b.buildOpenCodeConvertedPart(ctx, portal, intent, part)
 	if err != nil && err != bridgev2.ErrIgnoringRemoteEvent {
 		return err
 	}
@@ -309,24 +303,6 @@ func (b *Bridge) convertOpenCodeBackfill(ctx context.Context, portal *bridgev2.P
 				part.SessionID = msg.Info.SessionID
 			}
 			if part.Type == "tool" {
-				status := ""
-				if part.State != nil {
-					status = part.State.Status
-				}
-				if status != "" {
-					if err := b.appendBackfillPart(ctx, portal, intent, &out, sender, msgTime, nextOrder,
-						openCodePartEvent{InstanceID: instanceID, Part: part, Kind: openCodePartKindToolCall, Status: status},
-						opencodeToolCallMessageID(part.ID)); err != nil {
-						return nil, err
-					}
-					if status == "completed" || status == "error" {
-						if err := b.appendBackfillPart(ctx, portal, intent, &out, sender, msgTime, nextOrder,
-							openCodePartEvent{InstanceID: instanceID, Part: part, Kind: openCodePartKindToolResult, Status: status},
-							opencodeToolResultMessageID(part.ID)); err != nil {
-							return nil, err
-						}
-					}
-				}
 				if part.State != nil && len(part.State.Attachments) > 0 {
 					for _, attachment := range part.State.Attachments {
 						if attachment.ID == "" {
@@ -339,7 +315,7 @@ func (b *Bridge) convertOpenCodeBackfill(ctx context.Context, portal *bridgev2.P
 							attachment.MessageID = part.MessageID
 						}
 						if err := b.appendBackfillPart(ctx, portal, intent, &out, sender, msgTime, nextOrder,
-							openCodePartEvent{InstanceID: instanceID, Part: attachment, Kind: openCodePartKindMessage},
+							attachment,
 							opencodePartMessageID(attachment.ID)); err != nil {
 							return nil, err
 						}
@@ -351,7 +327,7 @@ func (b *Bridge) convertOpenCodeBackfill(ctx context.Context, portal *bridgev2.P
 				continue
 			}
 			if err := b.appendBackfillPart(ctx, portal, intent, &out, sender, msgTime, nextOrder,
-				openCodePartEvent{InstanceID: instanceID, Part: part, Kind: openCodePartKindMessage},
+				part,
 				opencodePartMessageID(part.ID)); err != nil {
 				return nil, err
 			}

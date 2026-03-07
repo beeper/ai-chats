@@ -4,7 +4,7 @@
 
 This document defines the specific command set that ai-bridge advertises via [MSC4391] bot command descriptions. Rather than introducing a custom `com.beeper.*` command system, ai-bridge adopts MSC4391 directly — broadcasting `org.matrix.msc4391.command_description` state events so that supporting clients can render slash commands with autocomplete and typed parameters.
 
-This is a profile document, not a new MSC. It specifies which commands ai-bridge publishes and how they interact with the action hints system defined in [com.beeper.action_hints](com.beeper.mscXXXX-actions.md).
+This is a profile document, not a new MSC. It specifies which commands ai-bridge publishes via MSC4391.
 
 ## Motivation
 
@@ -73,19 +73,6 @@ When a client sends a command, it MUST include the `org.matrix.msc4391.command` 
 ```
 
 The `body` field MUST contain a text fallback for clients without MSC4391 support. When `org.matrix.msc4391.command` is present, the bot MUST use the structured field and ignore the `body` for command parsing.
-
-### Relationship with Action Hints
-
-MSC4391 and `com.beeper.action_hints` serve complementary roles:
-
-| Aspect | MSC4391 Commands | Action Hints |
-|--------|-----------------|--------------|
-| Discovery | State events in room | Inline on messages |
-| Initiation | User-initiated (slash commands) | System-prompted (buttons) |
-| Invocation | `org.matrix.msc4391.command` in message | Replying `m.room.message` with `action_id` |
-| Use case | `model`, `reset`, `status`, etc. | Tool approval Allow/Deny |
-
-Both MAY be unified in the future (action hints as an alternate invocation path for commands), but currently they serve distinct UX patterns.
 
 ### Command List
 

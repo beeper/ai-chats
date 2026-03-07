@@ -3,6 +3,7 @@ package codex
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -14,24 +15,33 @@ import (
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
+func newTestCodexClient(owner id.UserID) *CodexClient {
+	ul := &bridgev2.UserLogin{}
+	ul.UserLogin = &database.UserLogin{
+		UserMXID: owner,
+	}
+	return &CodexClient{
+		UserLogin:   ul,
+		approvals:   bridgeadapter.NewApprovalManager[ToolApprovalDecisionCodex](),
+		activeRooms: make(map[id.RoomID]bool),
+	}
+}
+
 func TestCodex_CommandApproval_RequestBlocksUntilApproved(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	t.Cleanup(cancel)
 
 	var gotPartTypes []string
-	cc := &CodexClient{
-		streamEventHook: func(turnID string, seq int, content map[string]any, txnID string) {
-			_ = turnID
-			_ = seq
-			_ = txnID
-			if p, ok := content["part"].(map[string]any); ok {
-				if typ, ok := p["type"].(string); ok {
-					gotPartTypes = append(gotPartTypes, typ)
-				}
+	cc := newTestCodexClient(id.UserID("@owner:example.com"))
+	cc.streamEventHook = func(turnID string, seq int, content map[string]any, txnID string) {
+		_ = turnID
+		_ = seq
+		_ = txnID
+		if p, ok := content["part"].(map[string]any); ok {
+			if typ, ok := p["type"].(string); ok {
+				gotPartTypes = append(gotPartTypes, typ)
 			}
-		},
-		approvals:   bridgeadapter.NewApprovalManager[ToolApprovalDecisionCodex](),
-		activeRooms: make(map[id.RoomID]bool),
+		}
 	}
 
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
@@ -71,11 +81,11 @@ func TestCodex_CommandApproval_RequestBlocksUntilApproved(t *testing.T) {
 	// Give the handler a moment to register and start waiting.
 	time.Sleep(50 * time.Millisecond)
 
-	if err := cc.resolveToolApproval("123", ToolApprovalDecisionCodex{
+	if err := cc.resolveToolApproval(portal.MXID, "123", ToolApprovalDecisionCodex{
 		Approve:   true,
 		Reason:    "",
 		DecidedAt: time.Now(),
-		DecidedBy: id.UserID("@owner:example.com"),
+		DecidedBy: cc.UserLogin.UserMXID,
 	}); err != nil {
 		t.Fatalf("resolveToolApproval: %v", err)
 	}
@@ -106,11 +116,8 @@ func TestCodex_CommandApproval_AutoApproveInFullElevated(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	t.Cleanup(cancel)
 
-	cc := &CodexClient{
-		streamEventHook: func(turnID string, seq int, content map[string]any, txnID string) {},
-		approvals:       bridgeadapter.NewApprovalManager[ToolApprovalDecisionCodex](),
-		activeRooms:     make(map[id.RoomID]bool),
-	}
+	cc := newTestCodexClient(id.UserID("@owner:example.com"))
+	cc.streamEventHook = func(turnID string, seq int, content map[string]any, txnID string) {}
 
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
 	meta := &PortalMetadata{ElevatedLevel: "full"}
@@ -139,5 +146,40 @@ func TestCodex_CommandApproval_AutoApproveInFullElevated(t *testing.T) {
 	res, _ := cc.handleCommandApprovalRequest(ctx, req)
 	if res.(map[string]any)["decision"] != "accept" {
 		t.Fatalf("expected decision=accept, got %#v", res)
+	}
+}
+
+func TestCodex_CommandApproval_RejectNonOwner(t *testing.T) {
+	owner := id.UserID("@owner:example.com")
+	roomID := id.RoomID("!room:example.com")
+
+	cc := newTestCodexClient(owner)
+	cc.registerToolApproval(roomID, "approval-1", "item-1", "commandExecution", 2*time.Second)
+
+	err := cc.resolveToolApproval(roomID, "approval-1", ToolApprovalDecisionCodex{
+		Approve:   true,
+		DecidedAt: time.Now(),
+		DecidedBy: id.UserID("@attacker:example.com"),
+	})
+	if !errors.Is(err, bridgeadapter.ErrApprovalOnlyOwner) {
+		t.Fatalf("expected ErrApprovalOnlyOwner, got %v", err)
+	}
+}
+
+func TestCodex_CommandApproval_RejectCrossRoom(t *testing.T) {
+	owner := id.UserID("@owner:example.com")
+	roomID := id.RoomID("!room1:example.com")
+	otherRoom := id.RoomID("!room2:example.com")
+
+	cc := newTestCodexClient(owner)
+	cc.registerToolApproval(roomID, "approval-1", "item-1", "commandExecution", 2*time.Second)
+
+	err := cc.resolveToolApproval(otherRoom, "approval-1", ToolApprovalDecisionCodex{
+		Approve:   true,
+		DecidedAt: time.Now(),
+		DecidedBy: owner,
+	})
+	if !errors.Is(err, bridgeadapter.ErrApprovalWrongRoom) {
+		t.Fatalf("expected ErrApprovalWrongRoom, got %v", err)
 	}
 }

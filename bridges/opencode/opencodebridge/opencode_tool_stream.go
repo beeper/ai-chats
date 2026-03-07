@@ -113,3 +113,71 @@ func (m *OpenCodeManager) emitToolStreamState(ctx context.Context, inst *openCod
 		inst.setPartStreamOutputError(part.SessionID, part.ID)
 	}
 }
+
+func (m *OpenCodeManager) emitArtifactStream(ctx context.Context, inst *openCodeInstance, portal *bridgev2.Portal, part opencode.Part) {
+	if m == nil || m.bridge == nil || portal == nil || inst == nil {
+		return
+	}
+	turnID := partTurnID(part)
+	agentID := m.bridge.portalAgentID(portal)
+	if state := inst.partState(part.SessionID, part.ID); state != nil && state.artifactStreamSent {
+		return
+	}
+	sourceURL := strings.TrimSpace(part.URL)
+	title := strings.TrimSpace(part.Filename)
+	if title == "" {
+		title = strings.TrimSpace(part.Name)
+	}
+	if sourceURL == "" && title == "" {
+		return
+	}
+
+	emitted := false
+
+	if sourceURL != "" {
+		mediaType := strings.TrimSpace(part.Mime)
+		if mediaType == "" {
+			mediaType = "application/octet-stream"
+		}
+		m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
+			"type":      "file",
+			"url":       sourceURL,
+			"mediaType": mediaType,
+		})
+		emitted = true
+	}
+
+	if title != "" {
+		filename := strings.TrimSpace(part.Filename)
+		if filename == "" {
+			filename = title
+		}
+		mediaType := strings.TrimSpace(part.Mime)
+		if mediaType == "" {
+			mediaType = "application/octet-stream"
+		}
+		m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
+			"type":      "source-document",
+			"sourceId":  "opencode-doc-" + part.ID,
+			"title":     title,
+			"filename":  filename,
+			"mediaType": mediaType,
+		})
+		emitted = true
+	}
+
+	if sourceURL != "" {
+		m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
+			"type":     "source-url",
+			"sourceId": "opencode-source-" + part.ID,
+			"url":      sourceURL,
+			"title":    title,
+		})
+		emitted = true
+	}
+
+	if !emitted {
+		return
+	}
+	inst.markPartArtifactStreamSent(part.SessionID, part.ID)
+}

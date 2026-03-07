@@ -111,10 +111,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 
-	// Reply-based approval fallback: if a user replies to an action hints message
-	// with an approval action (allow/deny/always or /respond <action>), treat it
-	// as clicking the corresponding button. Covers clients without native action hints.
-	if handled, resp := oc.tryReplyApprovalFallback(ctx, msg, portal); handled {
+	if handled, resp := oc.tryApprovalDecisionEvent(ctx, msg, portal); handled {
 		return resp, nil
 	}
 
@@ -1447,110 +1444,66 @@ func (oc *AIClient) buildPromptForRegenerate(
 	return prompt, nil
 }
 
-// tryReplyApprovalFallback checks whether an incoming message is a reply to a
-// pending action-hints approval message. If it is, an action can be provided in
-// message metadata (action_id) or text form (allow/deny/always or /respond allow).
-// Returns (true, response) if handled, (false, nil) otherwise.
-func (oc *AIClient) tryReplyApprovalFallback(
+func (oc *AIClient) tryApprovalDecisionEvent(
 	ctx context.Context,
 	msg *bridgev2.MatrixMessage,
 	portal *bridgev2.Portal,
 ) (bool, *bridgev2.MatrixMessageResponse) {
-	replyTo := approvalTargetEventID(msg.Event, msg.Content)
-	approvalID := ""
-	if replyTo != "" {
-		approvalID = oc.findApprovalByEventID(replyTo)
-	}
-	if approvalID == "" {
-		approvalID = oc.lookupApprovalIDFromMessage(msg.Event)
-		if approvalID == "" {
-			return false, nil
-		}
-	}
-
-	actionID := parseMessageActionID(msg.Event)
-	if actionID == "" {
-		body := strings.TrimSpace(msg.Content.Body)
-		body = strings.TrimPrefix(body, "/respond ")
-		body = strings.TrimPrefix(body, "/respond")
-		body = strings.TrimSpace(body)
-		actionID = body
-	}
-
-	if actionID == "" {
-		return false, nil
-	}
-
-	approve, always, ok := bridgeadapter.ActionDecisionFromString(actionID)
+	decisionPayload, ok := parseApprovalDecisionMetadata(msg.Event)
 	if !ok {
 		return false, nil
 	}
+	decision, ok := bridgeadapter.ParseApprovalDecision(decisionPayload)
+	if !ok {
+		oc.loggerForContext(ctx).Warn().
+			Str("sender", msg.Event.Sender.String()).
+			Msg("approval decision event missing required fields")
+		return true, &bridgev2.MatrixMessageResponse{Pending: false}
+	}
 
 	state := airuntime.ToolApprovalDenied
-	if approve {
+	if decision.Approve {
 		state = airuntime.ToolApprovalApproved
 	}
 	err := oc.resolveToolApproval(
 		portal.MXID,
-		approvalID,
-		airuntime.ToolApprovalDecision{State: state},
-		always,
+		decision.ApprovalID,
+		airuntime.ToolApprovalDecision{State: state, Reason: decision.Reason},
+		decision.Always,
 		msg.Event.Sender,
 	)
 	if err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).
-			Str("approval_id", approvalID).
-			Msg("reply approval fallback: failed to resolve")
-		oc.sendApprovalRejectionEvent(ctx, portal, approvalID, err)
+			Str("approval_id", decision.ApprovalID).
+			Msg("approval decision: failed to resolve")
+		oc.sendApprovalRejectionEvent(ctx, portal, decision.ApprovalID, err, approvalDecisionReplyTarget(msg.Event))
 	}
 	return true, &bridgev2.MatrixMessageResponse{Pending: false}
 }
 
-func approvalTargetEventID(evt *event.Event, content *event.MessageEventContent) id.EventID {
-	if content != nil && content.RelatesTo != nil {
-		if replyTo := strings.TrimSpace(string(content.RelatesTo.GetReplyTo())); replyTo != "" {
-			return id.EventID(replyTo)
-		}
-	}
-	return ""
-}
-
-func parseMessageActionID(evt *event.Event) string {
-	actionResponse := parseActionResponseMetadata(evt)
-	if actionResponse == nil {
-		return ""
-	}
-	actionID, _ := actionResponse["action_id"].(string)
-	return strings.TrimSpace(actionID)
-}
-
-func (oc *AIClient) lookupApprovalIDFromMessage(evt *event.Event) string {
-	actionResponse := parseActionResponseMetadata(evt)
-	if actionResponse == nil {
-		return ""
-	}
-	rawContext, ok := actionResponse["context"]
-	if !ok || rawContext == nil {
-		return ""
-	}
-	contextMap, ok := rawContext.(map[string]any)
-	if !ok {
-		return ""
-	}
-	approvalID, ok := contextMap["approval_id"].(string)
-	if !ok {
-		return ""
-	}
-	return strings.TrimSpace(approvalID)
-}
-
-func parseActionResponseMetadata(evt *event.Event) map[string]any {
+func parseApprovalDecisionMetadata(evt *event.Event) (map[string]any, bool) {
 	if evt == nil || evt.Content.Raw == nil {
-		return nil
+		return nil, false
 	}
-	actionResponse, ok := evt.Content.Raw["com.beeper.action_response"].(map[string]any)
+	actionResponse, ok := evt.Content.Raw["com.beeper.ai.approval_decision"].(map[string]any)
 	if !ok {
-		return nil
+		return nil, false
 	}
-	return actionResponse
+	return actionResponse, true
+}
+
+func approvalDecisionReplyTarget(evt *event.Event) id.EventID {
+	if evt == nil || evt.Content.Raw == nil {
+		return ""
+	}
+	relatesTo, ok := evt.Content.Raw["m.relates_to"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	inReplyTo, ok := relatesTo["m.in_reply_to"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	eventID, _ := inReplyTo["event_id"].(string)
+	return id.EventID(strings.TrimSpace(eventID))
 }

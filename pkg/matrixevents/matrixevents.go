@@ -11,9 +11,6 @@ import (
 //
 // Keep these values stable: clients may rely on them for rendering and behavior.
 var (
-	ToolCallEventType   = event.Type{Type: "com.beeper.ai.tool_call", Class: event.MessageEventType}
-	ToolResultEventType = event.Type{Type: "com.beeper.ai.tool_result", Class: event.MessageEventType}
-
 	StreamEventMessageType = event.Type{Type: "com.beeper.ai.stream_event", Class: event.EphemeralEventType}
 
 	CompactionStatusEventType = event.Type{Type: "com.beeper.ai.compaction_status", Class: event.MessageEventType}
@@ -33,10 +30,7 @@ const (
 
 // Content field keys.
 const (
-	BeeperAIKey           = "com.beeper.ai"
-	BeeperAIToolCallKey   = "com.beeper.ai.tool_call"
-	BeeperAIToolResultKey = "com.beeper.ai.tool_result"
-	BeeperActionHintsKey  = "com.beeper.action_hints"
+	BeeperAIKey = "com.beeper.ai"
 )
 
 // CommandDescriptionEventType is the state event type for MSC4391 command descriptions.

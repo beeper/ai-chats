@@ -8,12 +8,10 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
 	"github.com/beeper/ai-bridge/pkg/agents/tools"
-	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
 )
 
 // activeToolCall tracks a tool call that's in progress
@@ -51,21 +49,6 @@ func parseToolInputPayload(argsJSON string) map[string]any {
 	return map[string]any{"value": parsed}
 }
 
-func parseToolOutputPayload(result string) map[string]any {
-	trimmed := strings.TrimSpace(result)
-	if trimmed == "" {
-		return nil
-	}
-	var parsed any
-	if err := json.Unmarshal([]byte(trimmed), &parsed); err != nil {
-		return map[string]any{"result": result}
-	}
-	if m, ok := parsed.(map[string]any); ok {
-		return m
-	}
-	return map[string]any{"result": parsed}
-}
-
 func toolDisplayTitle(toolName string) string {
 	toolName = normalizeToolAlias(toolName)
 	if t := tools.GetTool(toolName); t != nil && t.Annotations != nil && t.Annotations.Title != "" {
@@ -74,175 +57,28 @@ func toolDisplayTitle(toolName string) string {
 	return toolName
 }
 
-func summarizeMessageAction(obj map[string]any) string {
-	action, _ := obj["action"].(string)
-	switch action {
-	case "react":
-		emoji, _ := obj["emoji"].(string)
-		status, _ := obj["status"].(string)
-		if status == "removed" {
-			if emoji != "" {
-				return fmt.Sprintf("Removed reaction %s", emoji)
-			}
-			return "Removed reaction"
-		}
-		if emoji != "" {
-			return fmt.Sprintf("Reacted with %s", emoji)
-		}
-		return "Reaction sent"
-	case "send":
-		return "Message sent"
-	case "edit":
-		return "Message edited"
-	case "delete":
-		return "Message deleted"
-	case "reply":
-		return "Reply sent"
-	case "thread-reply":
-		return "Thread reply sent"
-	case "read":
-		return "Read receipt sent"
-	case "pin":
-		return "Message pinned"
-	case "unpin":
-		return "Message unpinned"
-	case "list-pins":
-		return "Pins retrieved"
-	case "reactions":
-		return "Reactions retrieved"
-	case "search":
-		return "Search completed"
-	case "member-info":
-		return "Member info retrieved"
-	case "channel-info":
-		return "Channel info retrieved"
-	case "channel-edit":
-		return "Channel updated"
-	default:
-		return ""
-	}
-}
-
-// sendToolCallEvent sends a tool call as a timeline event via bridgev2's pipeline.
+// sendToolCallEvent intentionally does not emit a separate timeline projection.
+// The canonical transport is UIMessage plus stream events; callers still expect an
+// event ID return value, so this remains as a no-op compatibility stub.
 func (oc *AIClient) sendToolCallEvent(ctx context.Context, portal *bridgev2.Portal, state *streamingState, tool *activeToolCall) id.EventID {
-	if portal == nil || portal.MXID == "" {
-		return ""
-	}
-	if state != nil && state.suppressSend {
-		return ""
-	}
-
-	displayTitle := toolDisplayTitle(tool.toolName)
-
-	eventContent := msgconv.BuildToolCallEventContent(msgconv.ToolCallEventParams{
-		CallID:         tool.callID,
-		TurnID:         state.turnID,
-		ToolName:       tool.toolName,
-		ToolType:       string(tool.toolType),
-		AgentID:        state.agentID,
-		DisplayTitle:   displayTitle,
-		Input:          parseToolInputPayload(tool.input.String()),
-		StartedAtMs:    tool.startedAtMs,
-		ReferenceEvent: state.initialEventID,
-	})
-
-	converted := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:    networkid.PartID("0"),
-			Type:  ToolCallEventType,
-			Extra: eventContent.Raw,
-		}},
-	}
-
-	eventID, _, err := oc.sendViaPortal(ctx, portal, converted, "")
-	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Str("tool", tool.toolName).Msg("Failed to send tool call event")
-		return ""
-	}
-
-	oc.loggerForContext(ctx).Debug().
-		Stringer("event_id", eventID).
-		Str("call_id", tool.callID).
-		Str("tool", tool.toolName).
-		Msg("Sent tool call timeline event")
-
-	// Expose the Matrix event ID to the streaming UI so Desktop can react to the tool call event.
-	if state != nil && tool != nil && strings.TrimSpace(tool.callID) != "" && eventID != "" {
-		oc.emitStreamEvent(ctx, portal, state, map[string]any{
-			"type": "data-tool-call-event",
-			"id":   fmt.Sprintf("tool-call-event:%s", tool.callID),
-			"data": map[string]any{
-				"toolCallId":  tool.callID,
-				"callEventId": eventID.String(),
-			},
-		})
-	}
-
-	return eventID
+	_ = ctx
+	_ = portal
+	_ = state
+	_ = tool
+	return ""
 }
 
-// sendToolResultEvent sends a tool result as a timeline event via bridgev2's pipeline.
+// sendToolResultEvent intentionally does not emit a separate timeline projection.
+// The canonical transport is UIMessage plus stream events; callers still expect an
+// event ID return value, so this remains as a no-op compatibility stub.
 func (oc *AIClient) sendToolResultEvent(ctx context.Context, portal *bridgev2.Portal, state *streamingState, tool *activeToolCall, result string, resultStatus ResultStatus) id.EventID {
-	if portal == nil || portal.MXID == "" {
-		return ""
-	}
-	if state != nil && state.suppressSend {
-		return ""
-	}
-
-	// Truncate result for body if too long
-	bodyText := result
-	var parsedResult any
-	if err := json.Unmarshal([]byte(result), &parsedResult); err == nil {
-		if obj, ok := parsedResult.(map[string]any); ok {
-			if msg, ok := obj["message"].(string); ok && msg != "" {
-				bodyText = msg
-			} else if tool.toolName == ToolNameMessage {
-				bodyText = summarizeMessageAction(obj)
-			}
-		}
-	}
-	if len(bodyText) > 200 {
-		bodyText = bodyText[:200] + "..."
-	}
-	if bodyText == "" {
-		bodyText = fmt.Sprintf("%s completed", toolDisplayTitle(tool.toolName))
-	}
-
-	eventContent := msgconv.BuildToolResultEventContent(msgconv.ToolResultEventParams{
-		CallID:         tool.callID,
-		TurnID:         state.turnID,
-		ToolName:       tool.toolName,
-		AgentID:        state.agentID,
-		ResultStatus:   string(resultStatus),
-		BodyText:       bodyText,
-		Output:         parseToolOutputPayload(result),
-		ResultLength:   len(result),
-		ReferenceEvent: tool.eventID,
-	})
-
-	converted := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:    networkid.PartID("0"),
-			Type:  ToolResultEventType,
-			Extra: eventContent.Raw,
-		}},
-	}
-
-	eventID, _, err := oc.sendViaPortal(ctx, portal, converted, "")
-	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Str("tool", tool.toolName).Msg("Failed to send tool result event")
-		return ""
-	}
-
-	oc.loggerForContext(ctx).Debug().
-		Stringer("event_id", eventID).
-		Str("call_id", tool.callID).
-		Str("tool", tool.toolName).
-		Str("status", string(resultStatus)).
-		Msg("Sent tool result timeline event")
-
-	return eventID
+	_ = ctx
+	_ = portal
+	_ = state
+	_ = tool
+	_ = result
+	_ = resultStatus
+	return ""
 }
 
 // executeBuiltinTool finds and executes a builtin tool by name.

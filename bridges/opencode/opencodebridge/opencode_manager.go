@@ -718,7 +718,15 @@ func (m *OpenCodeManager) handlePart(ctx context.Context, inst *openCodeInstance
 	state := inst.partState(part.SessionID, part.ID)
 	if state == nil {
 		inst.ensurePartState(part.SessionID, part.MessageID, part.ID, role, part.Type)
+		if part.Type == "file" {
+			m.emitArtifactStream(ctx, inst, portal, part)
+			return
+		}
 		m.bridge.emitOpenCodePart(ctx, portal, inst.cfg.ID, part, role == "user")
+		return
+	}
+	if part.Type == "file" {
+		m.emitArtifactStream(ctx, inst, portal, part)
 		return
 	}
 	if allowEdit && (part.Type == "text" || part.Type == "reasoning") {
@@ -742,34 +750,13 @@ func (m *OpenCodeManager) handleToolPart(ctx context.Context, inst *openCodeInst
 	callSent, resultSent := inst.partFlags(part.SessionID, part.ID)
 	callStatus := inst.partCallStatus(part.SessionID, part.ID)
 	if !callSent && status != "" {
-		m.bridge.emitOpenCodeToolCall(ctx, portal, inst.cfg.ID, part, role == "user", status)
 		inst.setPartCallSent(part.SessionID, part.ID)
 		inst.setPartCallStatus(part.SessionID, part.ID, status)
 	} else if callSent && status != "" && status != callStatus {
 		inst.setPartCallStatus(part.SessionID, part.ID, status)
 	}
-
-	reaction := opencodeToolStatusReaction(part, status)
-	prevReaction := inst.partStatusReaction(part.SessionID, part.ID)
-	if reaction != prevReaction {
-		if prevReaction != "" {
-			m.bridge.emitOpenCodeToolStatusReactionRemove(ctx, portal, inst.cfg.ID, part, role == "user", prevReaction)
-			inst.setPartStatusReaction(part.SessionID, part.ID, "")
-		}
-		if reaction != "" {
-			m.bridge.emitOpenCodeToolStatusReaction(ctx, portal, inst.cfg.ID, part, role == "user", reaction)
-			inst.setPartStatusReaction(part.SessionID, part.ID, reaction)
-		}
-	}
 	if !resultSent && (status == "completed" || status == "error") {
-		m.bridge.emitOpenCodeToolResult(ctx, portal, inst.cfg.ID, part, role == "user", status)
 		inst.setPartResultSent(part.SessionID, part.ID)
-	}
-	if status == "completed" || status == "error" {
-		if prev := inst.partStatusReaction(part.SessionID, part.ID); prev != "" {
-			m.bridge.emitOpenCodeToolStatusReactionRemove(ctx, portal, inst.cfg.ID, part, role == "user", prev)
-			inst.setPartStatusReaction(part.SessionID, part.ID, "")
-		}
 	}
 	if part.State == nil || len(part.State.Attachments) == 0 {
 		return

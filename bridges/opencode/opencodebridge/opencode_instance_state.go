@@ -14,7 +14,6 @@ type openCodePartState struct {
 	messageID              string
 	partType               string
 	callStatus             string
-	statusReaction         string
 	callSent               bool
 	resultSent             bool
 	textStreamStarted      bool
@@ -25,6 +24,7 @@ type openCodePartState struct {
 	streamInputAvailable   bool
 	streamOutputAvailable  bool
 	streamOutputError      bool
+	artifactStreamSent     bool
 }
 
 // openCodeTurnState tracks whether turn-level stream events (start, step, finish)
@@ -152,10 +152,6 @@ func (inst *openCodeInstance) partCallStatus(sessionID, partID string) string {
 	return readPartState(inst, sessionID, partID, func(ps *openCodePartState) string { return ps.callStatus })
 }
 
-func (inst *openCodeInstance) partStatusReaction(sessionID, partID string) string {
-	return readPartState(inst, sessionID, partID, func(ps *openCodePartState) string { return ps.statusReaction })
-}
-
 // ---------- part-state setters ----------
 
 func (inst *openCodeInstance) setPartCallSent(sessionID, partID string) {
@@ -202,12 +198,19 @@ func (inst *openCodeInstance) setPartCallStatus(sessionID, partID, status string
 	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.callStatus = status })
 }
 
-func (inst *openCodeInstance) setPartStatusReaction(sessionID, partID, reaction string) {
-	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.statusReaction = reaction })
-}
-
 func (inst *openCodeInstance) setPartResultSent(sessionID, partID string) {
 	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.resultSent = true })
+}
+
+func (inst *openCodeInstance) markPartArtifactStreamSent(sessionID, partID string) bool {
+	changed := false
+	inst.withPartState(sessionID, partID, func(ps *openCodePartState) {
+		if !ps.artifactStreamSent {
+			ps.artifactStreamSent = true
+			changed = true
+		}
+	})
+	return changed
 }
 
 func (inst *openCodeInstance) ensurePartState(sessionID, messageID, partID, role, partType string) *openCodePartState {
