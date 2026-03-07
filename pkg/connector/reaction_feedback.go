@@ -2,6 +2,7 @@ package connector
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -60,8 +61,7 @@ func (q *ReactionQueue) DrainFeedback() []ReactionFeedback {
 		return nil
 	}
 
-	result := make([]ReactionFeedback, len(q.feedback))
-	copy(result, q.feedback)
+	result := slices.Clone(q.feedback)
 	q.feedback = q.feedback[:0]
 	q.lastText = "" // Reset deduplication state
 	return result

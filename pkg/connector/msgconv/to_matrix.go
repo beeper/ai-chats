@@ -194,10 +194,6 @@ func MergeUIMessageMetadata(base, update map[string]any) map[string]any {
 	return jsonutil.MergeRecursive(base, update)
 }
 
-func cloneMap(raw any) map[string]any {
-	return jsonutil.DeepCloneMap(jsonutil.ToMap(raw))
-}
-
 func normalizeUIParts(raw any) []map[string]any {
 	switch typed := raw.(type) {
 	case nil:
@@ -224,7 +220,7 @@ func AppendUIMessageArtifacts(uiMessage map[string]any, sourceParts, fileParts [
 	if len(uiMessage) == 0 {
 		return nil
 	}
-	out := cloneMap(uiMessage)
+	out := jsonutil.DeepCloneMap(jsonutil.ToMap(uiMessage))
 	parts := normalizeUIParts(out["parts"])
 	seen := make(map[string]struct{}, len(parts))
 	for _, part := range parts {

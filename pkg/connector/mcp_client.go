@@ -74,9 +74,7 @@ func copyToolDefinitions(defs []ToolDefinition) []ToolDefinition {
 	if len(defs) == 0 {
 		return nil
 	}
-	out := make([]ToolDefinition, len(defs))
-	copy(out, defs)
-	return out
+	return slices.Clone(defs)
 }
 
 func copyStringMap(src map[string]string) map[string]string {

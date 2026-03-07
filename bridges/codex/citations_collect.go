@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/beeper/ai-bridge/pkg/shared/citations"
+	"github.com/beeper/ai-bridge/pkg/shared/maputil"
 )
 
 func collectToolOutputCitations(state *streamingState, toolName, output string) {
@@ -56,11 +57,11 @@ func walkToolOutputArtifacts(value any, record func(citations.SourceDocument, ci
 }
 
 func extractArtifactRecord(raw map[string]any) (citations.SourceDocument, citations.GeneratedFilePart) {
-	url := firstString(raw, "url", "uri", "downloadUrl", "download_url", "fileUrl", "file_url")
-	filename := firstString(raw, "filename", "fileName")
-	title := firstString(raw, "title", "label")
-	mediaType := firstString(raw, "mediaType", "media_type", "mimeType", "mime_type", "contentType", "content_type")
-	id := firstString(raw, "fileId", "file_id", "documentId", "document_id")
+	url, _ := maputil.StringArgMulti(raw, "url", "uri", "downloadUrl", "download_url", "fileUrl", "file_url")
+	filename, _ := maputil.StringArgMulti(raw, "filename", "fileName")
+	title, _ := maputil.StringArgMulti(raw, "title", "label")
+	mediaType, _ := maputil.StringArgMulti(raw, "mediaType", "media_type", "mimeType", "mime_type", "contentType", "content_type")
+	id, _ := maputil.StringArgMulti(raw, "fileId", "file_id", "documentId", "document_id")
 	hasArtifactSignal := strings.TrimSpace(url) != "" || filename != "" || id != "" || mediaType != ""
 	if !hasArtifactSignal {
 		return citations.SourceDocument{}, citations.GeneratedFilePart{}
@@ -109,17 +110,6 @@ func extractArtifactRecord(raw map[string]any) (citations.SourceDocument, citati
 	}
 
 	return doc, file
-}
-
-func firstString(raw map[string]any, keys ...string) string {
-	for _, key := range keys {
-		value, _ := raw[key].(string)
-		value = strings.TrimSpace(value)
-		if value != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 func mediaTypeFromFilename(filename string) string {

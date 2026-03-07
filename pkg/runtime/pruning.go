@@ -3,6 +3,7 @@ package runtime
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -430,8 +431,7 @@ func PruneContext(
 		prunableToolIndexes = append(prunableToolIndexes, i)
 	}
 
-	result := make([]openai.ChatCompletionMessageParamUnion, len(prompt))
-	copy(result, prompt)
+	result := slices.Clone(prompt)
 
 	for _, i := range prunableToolIndexes {
 		msg := result[i]

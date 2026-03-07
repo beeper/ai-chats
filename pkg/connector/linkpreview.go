@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -89,10 +90,7 @@ func clonePreviewWithImage(src *PreviewWithImage) *PreviewWithImage {
 		Preview:  cloneBeeperLinkPreview(src.Preview),
 		ImageURL: src.ImageURL,
 	}
-	if len(src.ImageData) > 0 {
-		clone.ImageData = make([]byte, len(src.ImageData))
-		copy(clone.ImageData, src.ImageData)
-	}
+	clone.ImageData = slices.Clone(src.ImageData)
 	return clone
 }
 

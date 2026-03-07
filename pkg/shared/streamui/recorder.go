@@ -40,7 +40,7 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 			"text":  "",
 			"state": "streaming",
 		}
-		if providerMetadata := cloneMap(chunk["providerMetadata"]); len(providerMetadata) > 0 {
+		if providerMetadata := jsonutil.DeepCloneMap(jsonutil.ToMap(chunk["providerMetadata"])); len(providerMetadata) > 0 {
 			part["providerMetadata"] = providerMetadata
 		}
 		state.UITextPartIndexByID[partID] = appendPart(state, part)
@@ -49,7 +49,7 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 		if partID == "" {
 			return
 		}
-		part := ensureTextPart(state, partID, cloneMap(chunk["providerMetadata"]))
+		part := ensureTextPart(state, partID, jsonutil.DeepCloneMap(jsonutil.ToMap(chunk["providerMetadata"])))
 		part["state"] = "streaming"
 		part["text"] = stringValue(part["text"]) + stringValue(chunk["delta"])
 	case "text-end":
@@ -70,7 +70,7 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 			"text":  "",
 			"state": "streaming",
 		}
-		if providerMetadata := cloneMap(chunk["providerMetadata"]); len(providerMetadata) > 0 {
+		if providerMetadata := jsonutil.DeepCloneMap(jsonutil.ToMap(chunk["providerMetadata"])); len(providerMetadata) > 0 {
 			part["providerMetadata"] = providerMetadata
 		}
 		state.UIReasoningPartIndexByID[partID] = appendPart(state, part)
@@ -79,7 +79,7 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 		if partID == "" {
 			return
 		}
-		part := ensureReasoningPart(state, partID, cloneMap(chunk["providerMetadata"]))
+		part := ensureReasoningPart(state, partID, jsonutil.DeepCloneMap(jsonutil.ToMap(chunk["providerMetadata"])))
 		part["state"] = "streaming"
 		part["text"] = stringValue(part["text"]) + stringValue(chunk["delta"])
 	case "reasoning-end":
@@ -104,7 +104,7 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 		if providerExecuted, ok := boolValue(chunk["providerExecuted"]); ok {
 			part["providerExecuted"] = providerExecuted
 		}
-		if providerMetadata := cloneMap(chunk["providerMetadata"]); len(providerMetadata) > 0 {
+		if providerMetadata := jsonutil.DeepCloneMap(jsonutil.ToMap(chunk["providerMetadata"])); len(providerMetadata) > 0 {
 			part["callProviderMetadata"] = providerMetadata
 		}
 	case "tool-input-delta":
@@ -128,14 +128,14 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 		}
 		part := ensureToolPart(state, toolCallID, strings.TrimSpace(stringValue(chunk["toolName"])))
 		part["state"] = "input-available"
-		part["input"] = deepCloneAny(chunk["input"])
+		part["input"] = jsonutil.DeepCloneAny(chunk["input"])
 		if title := strings.TrimSpace(stringValue(chunk["title"])); title != "" {
 			part["title"] = title
 		}
 		if providerExecuted, ok := boolValue(chunk["providerExecuted"]); ok {
 			part["providerExecuted"] = providerExecuted
 		}
-		if providerMetadata := cloneMap(chunk["providerMetadata"]); len(providerMetadata) > 0 {
+		if providerMetadata := jsonutil.DeepCloneMap(jsonutil.ToMap(chunk["providerMetadata"])); len(providerMetadata) > 0 {
 			part["callProviderMetadata"] = providerMetadata
 		}
 	case "tool-input-error":
@@ -145,7 +145,7 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 		}
 		part := ensureToolPart(state, toolCallID, strings.TrimSpace(stringValue(chunk["toolName"])))
 		part["state"] = "output-error"
-		part["input"] = deepCloneAny(chunk["input"])
+		part["input"] = jsonutil.DeepCloneAny(chunk["input"])
 		part["errorText"] = stringValue(chunk["errorText"])
 		if title := strings.TrimSpace(stringValue(chunk["title"])); title != "" {
 			part["title"] = title
@@ -153,7 +153,7 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 		if providerExecuted, ok := boolValue(chunk["providerExecuted"]); ok {
 			part["providerExecuted"] = providerExecuted
 		}
-		if providerMetadata := cloneMap(chunk["providerMetadata"]); len(providerMetadata) > 0 {
+		if providerMetadata := jsonutil.DeepCloneMap(jsonutil.ToMap(chunk["providerMetadata"])); len(providerMetadata) > 0 {
 			part["callProviderMetadata"] = providerMetadata
 		}
 	case "tool-approval-request":
@@ -171,7 +171,7 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 		}
 		part := ensureToolPart(state, toolCallID, strings.TrimSpace(stringValue(state.UIToolNameByToolCallID[toolCallID])))
 		part["state"] = "output-available"
-		part["output"] = deepCloneAny(chunk["output"])
+		part["output"] = jsonutil.DeepCloneAny(chunk["output"])
 		if providerExecuted, ok := boolValue(chunk["providerExecuted"]); ok {
 			part["providerExecuted"] = providerExecuted
 		}
@@ -199,7 +199,7 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 		part := ensureToolPart(state, toolCallID, strings.TrimSpace(stringValue(state.UIToolNameByToolCallID[toolCallID])))
 		part["state"] = "output-denied"
 	case "source-url", "source-document", "file":
-		appendPart(state, deepCloneMap(chunk))
+		appendPart(state, jsonutil.DeepCloneMap(jsonutil.ToMap(chunk)))
 	case "finish":
 		mergeMessageMetadata(ensureAssistantMessage(state), chunk["messageMetadata"])
 	case "error":
@@ -211,7 +211,7 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 			if transient, ok := boolValue(chunk["transient"]); ok && transient {
 				return
 			}
-			appendOrReplaceDataPart(state, deepCloneMap(chunk))
+			appendOrReplaceDataPart(state, jsonutil.DeepCloneMap(jsonutil.ToMap(chunk)))
 		}
 	}
 }
@@ -220,7 +220,7 @@ func SnapshotCanonicalUIMessage(state *UIState) map[string]any {
 	if state == nil || len(state.UICanonicalMessage) == 0 {
 		return nil
 	}
-	return deepCloneMap(state.UICanonicalMessage)
+	return jsonutil.DeepCloneMap(jsonutil.ToMap(state.UICanonicalMessage))
 }
 
 func RecordApprovalResponse(state *UIState, approvalID, toolCallID string, approved bool, reason string) {
@@ -395,18 +395,6 @@ func setTerminalState(message map[string]any, typ string, reason string) {
 	}
 	metadata["beeper_terminal_state"] = terminal
 	message["metadata"] = metadata
-}
-
-func cloneMap(raw any) map[string]any {
-	return jsonutil.DeepCloneMap(jsonutil.ToMap(raw))
-}
-
-func deepCloneMap(raw any) map[string]any {
-	return jsonutil.DeepCloneMap(jsonutil.ToMap(raw))
-}
-
-func deepCloneAny(raw any) any {
-	return jsonutil.DeepCloneAny(raw)
 }
 
 func stringValue(raw any) string {

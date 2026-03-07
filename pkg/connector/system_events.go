@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -84,8 +85,7 @@ func drainSystemEventEntries(sessionKey string) []SystemEvent {
 		systemEventsMu.Unlock()
 		return nil
 	}
-	out := make([]SystemEvent, len(entry.queue))
-	copy(out, entry.queue)
+	out := slices.Clone(entry.queue)
 	delete(systemEvents, key)
 	systemEventsMu.Unlock()
 	return out

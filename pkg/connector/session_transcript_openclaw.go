@@ -229,7 +229,7 @@ func parseCanonicalAssistantBlocks(meta *MessageMetadata) ([]map[string]any, []o
 			if toolName == "" {
 				toolName = "unknown_tool"
 			}
-			args := toMapAny(part["input"])
+			args := jsonutil.ToMap(part["input"])
 			if args == nil {
 				args = map[string]any{}
 			}
@@ -257,7 +257,7 @@ func parseCanonicalAssistantBlocks(meta *MessageMetadata) ([]map[string]any, []o
 					call.Input = tc.Input
 				}
 			} else {
-				call.Output = toMapAny(part["output"])
+				call.Output = jsonutil.ToMap(part["output"])
 				state := strings.TrimSpace(toString(part["state"]))
 				if state == "output-denied" {
 					call.ResultStatus = string(ResultStatusDenied)
@@ -485,8 +485,4 @@ func toString(value any) string {
 		return str
 	}
 	return fmt.Sprint(value)
-}
-
-func toMapAny(value any) map[string]any {
-	return jsonutil.ToMap(value)
 }

@@ -123,7 +123,7 @@ func normalizeToolSchema(schema map[string]any) map[string]any {
 		if _, hasType := schema["type"]; hasType {
 			return schema
 		}
-		next := cloneSchemaMap(schema)
+		next := maps.Clone(schema)
 		next["type"] = "object"
 		return next
 	}
@@ -159,10 +159,6 @@ func hasObjectProperties(schema map[string]any) bool {
 		return true
 	}
 	return false
-}
-
-func cloneSchemaMap(schema map[string]any) map[string]any {
-	return maps.Clone(schema)
 }
 
 func mergeObjectUnionSchema(schema map[string]any) map[string]any {
