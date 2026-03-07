@@ -48,6 +48,16 @@ Instances are defined in `bridges.manifest.yml`.
 ./tools/bridges run ai
 ```
 
+To log into a local Beeper env instead of production:
+
+```bash
+./tools/bridges login --env local
+./tools/bridges whoami
+./tools/bridges run ai
+```
+
+`local` maps to `beeper.localtest.me`. Other supported envs are `prod`, `staging`, and `dev`.
+
 ### Run other bridges
 
 ```bash
@@ -75,6 +85,44 @@ Instances are defined in `bridges.manifest.yml`.
 ./tools/bridges restart ai
 ./tools/bridges whoami
 ```
+
+### Reset everything
+
+If you want to wipe the current login session and fully reset the built-in bridge manager state:
+
+1. Stop and delete each bridge instance, including its remote Beeper registration:
+
+```bash
+./tools/bridges delete --remote ai
+./tools/bridges delete --remote codex
+./tools/bridges delete --remote opencode
+```
+
+2. Remove the saved login session:
+
+```bash
+./tools/bridges logout
+```
+
+3. Log back into the env you actually want:
+
+```bash
+./tools/bridges login --env local
+./tools/bridges whoami
+```
+
+4. Start the bridge again:
+
+```bash
+./tools/bridges run ai
+```
+
+Notes:
+
+- `delete --remote <instance>` removes the local instance state under `~/.local/share/ai-bridge-manager/instances/<instance>` and also deletes the remote Beeper bridge record.
+- `logout` removes the saved auth config at `~/.config/ai-bridge-manager/config.json`.
+- If you only want to reset the login session, `logout` followed by `login --env ...` is enough.
+- If you want the absolute manual nuke after the commands above, you can also remove `~/.local/share/ai-bridge-manager/` and `~/.config/ai-bridge-manager/`.
 
 ## Build
 
