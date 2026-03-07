@@ -29,4 +29,3 @@ func TestCodexPendingQueueFIFO(t *testing.T) {
 		t.Fatalf("expected queue to be empty, got %#v", got)
 	}
 }
-

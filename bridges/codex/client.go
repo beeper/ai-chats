@@ -388,7 +388,7 @@ func (cc *CodexClient) ResolveIdentifier(ctx context.Context, identifier string,
 			return nil, fmt.Errorf("failed to load Codex chat: %w", err)
 		}
 		if portal == nil {
-			return nil, errors.New("Codex chat unavailable")
+			return nil, errors.New("codex chat unavailable")
 		}
 		chatInfo := cc.composeCodexChatInfo(codexPortalTitle(portal))
 		chat = &bridgev2.CreateChatResponse{

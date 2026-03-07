@@ -4,8 +4,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/beeper/ai-bridge/bridges/opencode/opencode"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/ai-bridge/bridges/opencode/opencode"
 )
 
 // openCodePartState tracks the bridge-side delivery state of a single OpenCode

@@ -240,29 +240,6 @@ func parseOpenCodeMessageID(msgID networkid.MessageID) (string, bool) {
 	return "", false
 }
 
-// appendBackfillPart builds a converted part and appends it to out if non-nil.
-func (b *Bridge) appendBackfillPart(
-	ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI,
-	out *[]*bridgev2.BackfillMessage, sender bridgev2.EventSender, msgTime time.Time, nextOrder func() int64,
-	part opencode.Part, msgID networkid.MessageID,
-) error {
-	cmp, err := b.buildOpenCodeConvertedPart(ctx, portal, intent, part)
-	if err != nil && err != bridgev2.ErrIgnoringRemoteEvent {
-		return err
-	}
-	if cmp != nil {
-		*out = append(*out, &bridgev2.BackfillMessage{
-			ConvertedMessage: &bridgev2.ConvertedMessage{Parts: []*bridgev2.ConvertedMessagePart{cmp}},
-			Sender:           sender,
-			ID:               msgID,
-			TxnID:            networkid.TransactionID(msgID),
-			Timestamp:        msgTime,
-			StreamOrder:      nextOrder(),
-		})
-	}
-	return nil
-}
-
 func (b *Bridge) convertOpenCodeBackfill(ctx context.Context, portal *bridgev2.Portal, instanceID string, batch []backfillMessageEntry) ([]*bridgev2.BackfillMessage, error) {
 	if b == nil || portal == nil || b.host == nil {
 		return nil, nil

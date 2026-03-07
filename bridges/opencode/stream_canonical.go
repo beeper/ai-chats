@@ -216,7 +216,7 @@ func (oc *OpenCodeClient) queueFinalStreamEdit(ctx context.Context, portal *brid
 }
 
 func stringMapValue(values map[string]any, key string) string {
-	raw, _ := values[key]
+	raw := values[key]
 	if value, ok := raw.(string); ok {
 		return strings.TrimSpace(value)
 	}
