@@ -52,10 +52,6 @@ func responseOutputItemToMap(item responses.ResponseOutputItemUnion) map[string]
 	return jsonutil.ToMap(item)
 }
 
-func toJSONObject(value any) map[string]any {
-	return jsonutil.ToMap(value)
-}
-
 type responseToolDescriptor struct {
 	itemID           string
 	callID           string
@@ -215,7 +211,7 @@ func responseOutputItemResultPayload(item responses.ResponseOutputItemUnion) any
 		result := map[string]any{
 			"status": item.Status,
 		}
-		if action := toJSONObject(item.Action); len(action) > 0 {
+		if action := jsonutil.ToMap(item.Action); len(action) > 0 {
 			result["action"] = action
 		}
 		return result

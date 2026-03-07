@@ -13,6 +13,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 
 	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
+	"github.com/beeper/ai-bridge/pkg/shared/jsonutil"
 )
 
 func stableMCPApprovalID(toolCallID string, desc responseToolDescriptor) string {
@@ -344,7 +345,7 @@ func (oc *AIClient) handleResponseOutputItemDone(
 	resultJSON, _ := json.Marshal(result)
 	resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, string(resultJSON), resultStatus)
 	outputMap := map[string]any{}
-	if converted := toJSONObject(result); len(converted) > 0 {
+	if converted := jsonutil.ToMap(result); len(converted) > 0 {
 		outputMap = converted
 	} else if result != nil {
 		outputMap = map[string]any{"result": result}

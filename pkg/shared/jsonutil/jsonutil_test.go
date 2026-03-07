@@ -18,8 +18,9 @@ func TestToMap(t *testing.T) {
 		if got["a"] != "b" {
 			t.Fatalf("unexpected value: %#v", got)
 		}
-		if &got == &src {
-			return
+		got["a"] = "c"
+		if src["a"] != "c" {
+			t.Fatal("expected map input to be returned as-is")
 		}
 	})
 

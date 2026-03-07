@@ -16,9 +16,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/beeper/ai-bridge/pkg/shared/jsonutil"
 	"github.com/beeper/bridge-manager/api/beeperapi"
 	"github.com/beeper/bridge-manager/api/hungryapi"
-	"github.com/beeper/ai-bridge/pkg/shared/jsonutil"
 	"gopkg.in/yaml.v3"
 	"maunium.net/go/mautrix"
 )
@@ -930,7 +930,7 @@ func patchConfigWithRegistration(configPath string, reg any, homeserverURL, brid
 	if err = yaml.Unmarshal(data, &doc); err != nil {
 		return err
 	}
-	regMap := toMap(reg)
+	regMap := jsonutil.ToMap(reg)
 
 	// Homeserver — hungryserv websocket mode
 	setPath(doc, []string{"homeserver", "address"}, homeserverURL)
@@ -1280,8 +1280,4 @@ func promptLine(label string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(s), nil
-}
-
-func toMap(v any) map[string]any {
-	return jsonutil.ToMap(v)
 }

@@ -288,7 +288,7 @@ func (oc *AIClient) loadModelCatalog(ctx context.Context, useCache bool) []Model
 	if useCache {
 		oc.modelCatalogMu.Lock()
 		if oc.modelCatalogLoaded {
-			cached := append([]ModelCatalogEntry(nil), oc.modelCatalogCache...)
+			cached := slices.Clone(oc.modelCatalogCache)
 			oc.modelCatalogMu.Unlock()
 			return cached
 		}
@@ -321,7 +321,7 @@ func (oc *AIClient) loadModelCatalog(ctx context.Context, useCache bool) []Model
 	if useCache {
 		oc.modelCatalogMu.Lock()
 		oc.modelCatalogLoaded = true
-		oc.modelCatalogCache = append([]ModelCatalogEntry(nil), entries...)
+		oc.modelCatalogCache = slices.Clone(entries)
 		oc.modelCatalogMu.Unlock()
 	}
 	return entries

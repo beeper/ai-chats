@@ -11,6 +11,7 @@ import (
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"github.com/beeper/ai-bridge/pkg/matrixevents"
 	"github.com/beeper/ai-bridge/pkg/shared/streamui"
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
 
 type canonicalBackfillSnapshot struct {
@@ -63,7 +64,7 @@ func buildCanonicalAssistantBackfill(msg opencode.MessageWithParts, agentID stri
 		body: body,
 		ui:   uiMessage,
 		meta: &MessageMetadata{
-			Role:               firstNonEmptyString(strings.TrimSpace(msg.Info.Role), "assistant"),
+			Role:               stringutil.FirstNonEmpty(strings.TrimSpace(msg.Info.Role), "assistant"),
 			Body:               body,
 			SessionID:          strings.TrimSpace(msg.Info.SessionID),
 			MessageID:          strings.TrimSpace(msg.Info.ID),
@@ -72,7 +73,7 @@ func buildCanonicalAssistantBackfill(msg opencode.MessageWithParts, agentID stri
 			ModelID:            strings.TrimSpace(msg.Info.ModelID),
 			ProviderID:         strings.TrimSpace(msg.Info.ProviderID),
 			Mode:               strings.TrimSpace(msg.Info.Mode),
-			FinishReason:       firstNonEmptyString(strings.TrimSpace(msg.Info.Finish), finishReason),
+			FinishReason:       stringutil.FirstNonEmpty(strings.TrimSpace(msg.Info.Finish), finishReason),
 			Cost:               backfillCost(msg),
 			PromptTokens:       backfillPromptTokens(msg),
 			CompletionTokens:   backfillCompletionTokens(msg),
@@ -249,13 +250,13 @@ func canonicalDataPart(part opencode.Part) map[string]any {
 		if part.Cost != 0 {
 			data["cost"] = part.Cost
 		}
-		case "patch":
-			if hash := strings.TrimSpace(part.Hash); hash != "" {
-				data["hash"] = hash
-			}
-			if len(part.Files) > 0 {
-				data["files"] = slices.Clone(part.Files)
-			}
+	case "patch":
+		if hash := strings.TrimSpace(part.Hash); hash != "" {
+			data["hash"] = hash
+		}
+		if len(part.Files) > 0 {
+			data["files"] = slices.Clone(part.Files)
+		}
 	case "snapshot":
 		if snapshot := strings.TrimSpace(part.Snapshot); snapshot != "" {
 			data["snapshot"] = snapshot
@@ -365,7 +366,7 @@ func canonicalGeneratedFilesBridge(uiMessage map[string]any) []bridgeadapter.Gen
 		}
 		files = append(files, bridgeadapter.GeneratedFileRef{
 			URL:      url,
-			MimeType: firstNonEmptyString(strings.TrimSpace(stringValueBridge(part["mediaType"])), "application/octet-stream"),
+			MimeType: stringutil.FirstNonEmpty(strings.TrimSpace(stringValueBridge(part["mediaType"])), "application/octet-stream"),
 		})
 	}
 	return files
@@ -436,15 +437,6 @@ func stringValueBridge(raw any) string {
 	default:
 		return ""
 	}
-}
-
-func firstNonEmptyString(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
 }
 
 func buildCanonicalBackfillPart(snapshot canonicalBackfillSnapshot) *event.MessageEventContent {

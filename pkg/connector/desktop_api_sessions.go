@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"slices"
 	"strings"
@@ -101,11 +102,7 @@ func resolveDesktopInstanceName(instances map[string]DesktopAPIInstance, request
 	}
 
 	// More than one instance and no explicit default: require callers to specify.
-	names := make([]string, 0, len(instances))
-	for name := range instances {
-		names = append(names, name)
-	}
-	slices.Sort(names)
+	names := slices.Sorted(maps.Keys(instances))
 	return "", fmt.Errorf(
 		"multiple desktop API instances configured (%s). Provide instance or use the sessionKey from sessions_list (desktop-api:<instance>:<chatId>), or set a default with !ai desktop-api add <token> [baseURL]",
 		strings.Join(names, ", "),
@@ -150,12 +147,13 @@ func parseDesktopSessionKey(sessionKey string) (string, string, bool) {
 	if raw == "" {
 		return "", "", false
 	}
-	parts := strings.SplitN(raw, ":", 2)
-	if len(parts) == 1 {
-		return desktopDefaultInstance, strings.TrimSpace(parts[0]), strings.TrimSpace(parts[0]) != ""
+	instance, chatID, ok := strings.Cut(raw, ":")
+	if !ok {
+		chatID = strings.TrimSpace(raw)
+		return desktopDefaultInstance, chatID, chatID != ""
 	}
-	instance := normalizeDesktopInstanceName(parts[0])
-	chatID := strings.TrimSpace(parts[1])
+	instance = normalizeDesktopInstanceName(instance)
+	chatID = strings.TrimSpace(chatID)
 	if chatID == "" {
 		return "", "", false
 	}
@@ -214,11 +212,7 @@ func (oc *AIClient) desktopAPIInstanceNames() []string {
 	if len(instances) == 0 {
 		return nil
 	}
-	names := make([]string, 0, len(instances))
-	for name := range instances {
-		names = append(names, name)
-	}
-	slices.Sort(names)
+	names := slices.Sorted(maps.Keys(instances))
 	for i, name := range names {
 		if name == desktopDefaultInstance {
 			if i > 0 {

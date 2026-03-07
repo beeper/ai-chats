@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -501,8 +502,8 @@ func (oc *AIClient) streamingResponse(
 			Str("previous_response_id", state.responseID).
 			Msg("Continuing response with pending tool actions")
 
-		pendingOutputs := append([]functionCallOutput(nil), state.pendingFunctionOutputs...)
-		pendingApprovals := append([]mcpApprovalRequest(nil), state.pendingMcpApprovals...)
+		pendingOutputs := slices.Clone(state.pendingFunctionOutputs)
+		pendingApprovals := slices.Clone(state.pendingMcpApprovals)
 
 		approvalInputs := make([]responses.ResponseInputItemUnionParam, 0, len(pendingApprovals))
 		for _, approval := range pendingApprovals {

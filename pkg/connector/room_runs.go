@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"slices"
 	"sync"
 
 	"maunium.net/go/mautrix/event"
@@ -67,7 +68,7 @@ func (oc *AIClient) clearRoomRun(roomID id.RoomID) {
 		run.cancel()
 	}
 	run.mu.Lock()
-	ackPending := append([]pendingMessage(nil), run.ackPending...)
+	ackPending := slices.Clone(run.ackPending)
 	run.mu.Unlock()
 	if len(ackPending) == 0 {
 		return
@@ -139,7 +140,7 @@ func (oc *AIClient) drainSteerQueue(roomID id.RoomID) []pendingQueueItem {
 		return nil
 	}
 	run.mu.Lock()
-	items := append([]pendingQueueItem(nil), run.steerQueue...)
+	items := slices.Clone(run.steerQueue)
 	run.steerQueue = nil
 	run.mu.Unlock()
 	return items
