@@ -268,9 +268,9 @@ func appendChatMessageToPromptContext(ctx *PromptContext, msg openai.ChatComplet
 	}
 	switch {
 	case msg.OfSystem != nil:
-		appendSystemPromptText(ctx, extractChatSystemText(msg.OfSystem.Content))
+		appendPromptText(&ctx.SystemPrompt, extractChatSystemText(msg.OfSystem.Content))
 	case msg.OfDeveloper != nil:
-		appendDeveloperPromptText(ctx, extractChatDeveloperText(msg.OfDeveloper.Content))
+		appendPromptText(&ctx.DeveloperPrompt, extractChatDeveloperText(msg.OfDeveloper.Content))
 	case msg.OfUser != nil:
 		ctx.Messages = append(ctx.Messages, promptMessageFromChatUser(msg.OfUser))
 	case msg.OfAssistant != nil:
@@ -280,28 +280,16 @@ func appendChatMessageToPromptContext(ctx *PromptContext, msg openai.ChatComplet
 	}
 }
 
-func appendSystemPromptText(ctx *PromptContext, text string) {
+func appendPromptText(dst *string, text string) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return
 	}
-	if ctx.SystemPrompt == "" {
-		ctx.SystemPrompt = text
+	if *dst == "" {
+		*dst = text
 		return
 	}
-	ctx.SystemPrompt = strings.TrimSpace(ctx.SystemPrompt + "\n\n" + text)
-}
-
-func appendDeveloperPromptText(ctx *PromptContext, text string) {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return
-	}
-	if ctx.DeveloperPrompt == "" {
-		ctx.DeveloperPrompt = text
-		return
-	}
-	ctx.DeveloperPrompt = strings.TrimSpace(ctx.DeveloperPrompt + "\n\n" + text)
+	*dst = strings.TrimSpace(*dst + "\n\n" + text)
 }
 
 func promptMessageFromChatUser(msg *openai.ChatCompletionUserMessageParam) PromptMessage {

@@ -2084,52 +2084,15 @@ func (cc *CodexClient) saveAssistantMessage(ctx context.Context, portal *bridgev
 		ThinkingTokenCount: len(strings.Fields(state.reasoning.String())),
 	}
 
-	// If the message was sent via sendViaPortal, the DB row already exists — update it.
-	if state.networkMessageID != "" {
-		receiver := portal.Receiver
-		if receiver == "" && cc.UserLogin != nil {
-			receiver = cc.UserLogin.ID
-		}
-		var existing *database.Message
-		var err error
-		if receiver != "" {
-			existing, err = cc.UserLogin.Bridge.DB.Message.GetPartByID(ctx, receiver, state.networkMessageID, networkid.PartID("0"))
-		}
-		if existing == nil && state.initialEventID != "" {
-			existing, err = cc.UserLogin.Bridge.DB.Message.GetPartByMXID(ctx, state.initialEventID)
-		}
-		if err == nil && existing != nil {
-			existing.Metadata = fullMeta
-			if err := cc.UserLogin.Bridge.DB.Message.Update(ctx, existing); err != nil {
-				log.Warn().Err(err).Str("msg_id", string(existing.ID)).Msg("Failed to update assistant message metadata")
-			} else {
-				log.Debug().Str("msg_id", string(existing.ID)).Msg("Updated assistant message metadata")
-			}
-			return
-		}
-		log.Warn().
-			Err(err).
-			Stringer("mxid", state.initialEventID).
-			Str("msg_id", string(state.networkMessageID)).
-			Msg("Could not find existing DB row for update, falling back to insert")
-	}
-	if state.initialEventID == "" {
-		return
-	}
-
-	assistantMsg := &database.Message{
-		ID:        bridgeadapter.MatrixMessageID(state.initialEventID),
-		Room:      portal.PortalKey,
-		SenderID:  codexGhostID,
-		MXID:      state.initialEventID,
-		Timestamp: time.Now(),
-		Metadata:  fullMeta,
-	}
-	if err := cc.UserLogin.Bridge.DB.Message.Insert(ctx, assistantMsg); err != nil {
-		log.Warn().Err(err).Msg("Failed to save assistant message")
-	} else {
-		log.Debug().Str("msg_id", string(assistantMsg.ID)).Msg("Saved assistant message to database")
-	}
+	bridgeadapter.UpsertAssistantMessage(ctx, bridgeadapter.UpsertAssistantMessageParams{
+		Login:            cc.UserLogin,
+		Portal:           portal,
+		SenderID:         codexGhostID,
+		NetworkMessageID: state.networkMessageID,
+		InitialEventID:   state.initialEventID,
+		Metadata:         fullMeta,
+		Logger:           log,
+	})
 }
 
 // --- Approvals ---

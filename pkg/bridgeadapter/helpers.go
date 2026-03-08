@@ -1,9 +1,11 @@
 package bridgeadapter
 
 import (
+	"context"
 	"fmt"
 	"time"
 
+	"github.com/rs/zerolog"
 	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -192,5 +194,72 @@ func BuildChatInfoWithFallback(metaTitle, portalName, fallbackTitle, portalTopic
 	return &bridgev2.ChatInfo{
 		Name:  ptr.Ptr(title),
 		Topic: ptr.NonZero(portalTopic),
+	}
+}
+
+// UpsertAssistantMessageParams holds parameters for UpsertAssistantMessage.
+type UpsertAssistantMessageParams struct {
+	Login            *bridgev2.UserLogin
+	Portal           *bridgev2.Portal
+	SenderID         networkid.UserID
+	NetworkMessageID networkid.MessageID
+	InitialEventID   id.EventID
+	Metadata         any // must satisfy database.MetaMerger
+	Logger           zerolog.Logger
+}
+
+// UpsertAssistantMessage updates an existing message's metadata or inserts a new one.
+// If NetworkMessageID is set, tries to find and update the existing row first.
+// Falls back to inserting a new row keyed by InitialEventID.
+func UpsertAssistantMessage(ctx context.Context, p UpsertAssistantMessageParams) {
+	if p.Login == nil || p.Portal == nil {
+		return
+	}
+	db := p.Login.Bridge.DB.Message
+
+	if p.NetworkMessageID != "" {
+		receiver := p.Portal.Receiver
+		if receiver == "" {
+			receiver = p.Login.ID
+		}
+		var existing *database.Message
+		var err error
+		if receiver != "" {
+			existing, err = db.GetPartByID(ctx, receiver, p.NetworkMessageID, networkid.PartID("0"))
+		}
+		if existing == nil && p.InitialEventID != "" {
+			existing, err = db.GetPartByMXID(ctx, p.InitialEventID)
+		}
+		if err == nil && existing != nil {
+			existing.Metadata = p.Metadata
+			if err := db.Update(ctx, existing); err != nil {
+				p.Logger.Warn().Err(err).Str("msg_id", string(existing.ID)).Msg("Failed to update assistant message metadata")
+			} else {
+				p.Logger.Debug().Str("msg_id", string(existing.ID)).Msg("Updated assistant message metadata")
+			}
+			return
+		}
+		p.Logger.Warn().
+			Err(err).
+			Stringer("mxid", p.InitialEventID).
+			Str("msg_id", string(p.NetworkMessageID)).
+			Msg("Could not find existing DB row for update, falling back to insert")
+	}
+
+	if p.InitialEventID == "" {
+		return
+	}
+	assistantMsg := &database.Message{
+		ID:        MatrixMessageID(p.InitialEventID),
+		Room:      p.Portal.PortalKey,
+		SenderID:  p.SenderID,
+		MXID:      p.InitialEventID,
+		Timestamp: time.Now(),
+		Metadata:  p.Metadata,
+	}
+	if err := db.Insert(ctx, assistantMsg); err != nil {
+		p.Logger.Warn().Err(err).Msg("Failed to insert assistant message to database")
+	} else {
+		p.Logger.Debug().Str("msg_id", string(assistantMsg.ID)).Msg("Inserted assistant message to database")
 	}
 }

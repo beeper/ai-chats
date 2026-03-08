@@ -2031,7 +2031,7 @@ func (oc *AIClient) buildContextWithLinkContext(
 
 	isSimple := isSimpleMode(meta)
 	if !isSimple {
-		appendSystemPromptText(&promptContext, airuntime.BuildInboundMetaSystemPrompt(inboundCtx))
+		appendPromptText(&promptContext.SystemPrompt, airuntime.BuildInboundMetaSystemPrompt(inboundCtx))
 	}
 
 	finalMessage := strings.TrimSpace(latest)
@@ -2167,7 +2167,7 @@ func (oc *AIClient) buildContextWithMedia(
 	isSimple := isSimpleMode(meta)
 	inboundCtx := oc.resolvePromptInboundContext(ctx, portal, caption, eventID)
 	if !isSimple {
-		appendSystemPromptText(&promptContext, airuntime.BuildInboundMetaSystemPrompt(inboundCtx))
+		appendPromptText(&promptContext.SystemPrompt, airuntime.BuildInboundMetaSystemPrompt(inboundCtx))
 	}
 
 	captionWithID := strings.TrimSpace(caption)

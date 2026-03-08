@@ -60,38 +60,15 @@ func (oc *AIClient) saveAssistantMessage(
 		ThinkingTokenCount: thinkingTokenCount(modelID, state.reasoning.String()),
 	}
 
-	// If the message was sent via sendViaPortal, the DB row already exists — update it.
-	if state.networkMessageID != "" {
-		receiver := portal.Receiver
-		if receiver == "" && oc.UserLogin != nil {
-			receiver = oc.UserLogin.ID
-		}
-		var existing *database.Message
-		var err error
-		if receiver != "" {
-			existing, err = oc.UserLogin.Bridge.DB.Message.GetPartByID(ctx, receiver, state.networkMessageID, networkid.PartID("0"))
-		}
-		if existing == nil && state.initialEventID != "" {
-			existing, err = oc.UserLogin.Bridge.DB.Message.GetPartByMXID(ctx, state.initialEventID)
-		}
-		if err == nil && existing != nil {
-			existing.Metadata = fullMeta
-			if err := oc.UserLogin.Bridge.DB.Message.Update(ctx, existing); err != nil {
-				log.Warn().Err(err).Str("msg_id", string(existing.ID)).Msg("Failed to update assistant message metadata")
-			} else {
-				log.Debug().Str("msg_id", string(existing.ID)).Msg("Updated assistant message metadata")
-			}
-		} else {
-			log.Warn().
-				Err(err).
-				Stringer("mxid", state.initialEventID).
-				Str("msg_id", string(state.networkMessageID)).
-				Msg("Could not find existing DB row for update, falling back to insert")
-			oc.insertAssistantMessage(ctx, log, portal, state, modelID, fullMeta)
-		}
-	} else {
-		oc.insertAssistantMessage(ctx, log, portal, state, modelID, fullMeta)
-	}
+	bridgeadapter.UpsertAssistantMessage(ctx, bridgeadapter.UpsertAssistantMessageParams{
+		Login:            oc.UserLogin,
+		Portal:           portal,
+		SenderID:         modelUserID(modelID),
+		NetworkMessageID: state.networkMessageID,
+		InitialEventID:   state.initialEventID,
+		Metadata:         fullMeta,
+		Logger:           log,
+	})
 
 	usageMetaUpdated := false
 	if meta != nil && (state.promptTokens > 0 || state.completionTokens > 0) {
@@ -110,33 +87,7 @@ func (oc *AIClient) saveAssistantMessage(
 	oc.notifySessionMutation(ctx, portal, meta, false)
 }
 
-// insertAssistantMessage is the fallback path for saving assistant messages when no
-// pre-existing DB row was created by sendViaPortal.
-func (oc *AIClient) insertAssistantMessage(
-	ctx context.Context,
-	log zerolog.Logger,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	modelID string,
-	meta *MessageMetadata,
-) {
-	if state == nil || state.initialEventID == "" {
-		return
-	}
-	assistantMsg := &database.Message{
-		ID:        bridgeadapter.MatrixMessageID(state.initialEventID),
-		Room:      portal.PortalKey,
-		SenderID:  modelUserID(modelID),
-		MXID:      state.initialEventID,
-		Timestamp: time.Now(),
-		Metadata:  meta,
-	}
-	if err := oc.UserLogin.Bridge.DB.Message.Insert(ctx, assistantMsg); err != nil {
-		log.Warn().Err(err).Msg("Failed to insert assistant message to database")
-	} else {
-		log.Debug().Str("msg_id", string(assistantMsg.ID)).Msg("Inserted assistant message to database")
-	}
-}
+
 
 func thinkingTokenCount(model string, content string) int {
 	content = strings.TrimSpace(content)
