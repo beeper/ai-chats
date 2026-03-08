@@ -81,13 +81,8 @@ func (oc *AIClient) enqueuePendingItem(roomID id.RoomID, item pendingQueueItem, 
 	}
 
 	for _, existing := range queue.items {
-		if !item.allowDuplicate {
-			if item.messageID != "" && existing.messageID == item.messageID {
-				return false
-			}
-			if item.messageID == "" && existing.messageID == "" && item.pending.MessageBody != "" && existing.pending.MessageBody == item.pending.MessageBody {
-				return false
-			}
+		if pendingQueueItemsConflict(item, existing) {
+			return false
 		}
 	}
 
@@ -127,6 +122,19 @@ func (oc *AIClient) enqueuePendingItem(roomID id.RoomID, item pendingQueueItem, 
 	queue.items = append(queue.items, item)
 	oc.log.Debug().Stringer("room_id", roomID).Str("message_id", item.messageID).Int("queue_size", len(queue.items)).Msg("Pending queue item enqueued")
 	return true
+}
+
+func pendingQueueItemsConflict(item pendingQueueItem, existing pendingQueueItem) bool {
+	if item.allowDuplicate {
+		return false
+	}
+	if item.messageID != "" && existing.messageID == item.messageID {
+		return true
+	}
+	return item.messageID == "" &&
+		existing.messageID == "" &&
+		item.pending.MessageBody != "" &&
+		existing.pending.MessageBody == item.pending.MessageBody
 }
 
 func (oc *AIClient) popQueueItems(roomID id.RoomID, count int) []pendingQueueItem {

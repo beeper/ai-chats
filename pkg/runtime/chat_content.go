@@ -46,11 +46,8 @@ func ExtractUserContent(content openai.ChatCompletionUserMessageParamContentUnio
 	if content.OfString.Value != "" {
 		return content.OfString.Value
 	}
-	return joinContentText(content.OfArrayOfContentParts, func(part openai.ChatCompletionContentPartUnionParam) string {
-		if part.OfText == nil {
-			return ""
-		}
-		return part.OfText.Text
+	return joinOptionalContentText(content.OfArrayOfContentParts, func(part openai.ChatCompletionContentPartUnionParam) *openai.ChatCompletionContentPartTextParam {
+		return part.OfText
 	})
 }
 
@@ -58,11 +55,8 @@ func ExtractAssistantContent(content openai.ChatCompletionAssistantMessageParamC
 	if content.OfString.Value != "" {
 		return content.OfString.Value
 	}
-	return joinContentText(content.OfArrayOfContentParts, func(part openai.ChatCompletionAssistantMessageParamContentArrayOfContentPartUnion) string {
-		if part.OfText == nil {
-			return ""
-		}
-		return part.OfText.Text
+	return joinOptionalContentText(content.OfArrayOfContentParts, func(part openai.ChatCompletionAssistantMessageParamContentArrayOfContentPartUnion) *openai.ChatCompletionContentPartTextParam {
+		return part.OfText
 	})
 }
 
@@ -93,6 +87,16 @@ func joinContentText[T any](parts []T, extract func(T) string) string {
 		sb.WriteString(extract(part))
 	}
 	return sb.String()
+}
+
+func joinOptionalContentText[T any](parts []T, extract func(T) *openai.ChatCompletionContentPartTextParam) string {
+	return joinContentText(parts, func(part T) string {
+		textPart := extract(part)
+		if textPart == nil {
+			return ""
+		}
+		return textPart.Text
+	})
 }
 
 // EstimateMessageChars approximates character usage for one prompt message.

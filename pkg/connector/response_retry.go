@@ -117,11 +117,10 @@ func (oc *AIClient) responseWithRetry(
 						Summary:        summary,
 						WillRetry:      true,
 					})
-					oc.emitCompactionLifecycle(ctx, integrationruntime.CompactionLifecycleEvent{
+					oc.emitCompactionLifecyclePhases(ctx, integrationruntime.CompactionLifecycleEvent{
 						Client:              oc,
 						Portal:              portal,
 						Meta:                meta,
-						Phase:               integrationruntime.CompactionLifecycleEnd,
 						Attempt:             attempt + 1,
 						ContextWindowTokens: contextWindow,
 						RequestedTokens:     cle.RequestedTokens,
@@ -133,24 +132,7 @@ func (oc *AIClient) responseWithRetry(
 						DroppedCount:        decision.DroppedCount,
 						Reason:              decision.Reason,
 						WillRetry:           true,
-					})
-					oc.emitCompactionLifecycle(ctx, integrationruntime.CompactionLifecycleEvent{
-						Client:              oc,
-						Portal:              portal,
-						Meta:                meta,
-						Phase:               integrationruntime.CompactionLifecycleRefresh,
-						Attempt:             attempt + 1,
-						ContextWindowTokens: contextWindow,
-						RequestedTokens:     cle.RequestedTokens,
-						PromptTokens:        tokensAfter,
-						MessagesBefore:      len(currentPrompt),
-						MessagesAfter:       len(compacted),
-						TokensBefore:        tokensBefore,
-						TokensAfter:         tokensAfter,
-						DroppedCount:        decision.DroppedCount,
-						Reason:              decision.Reason,
-						WillRetry:           true,
-					})
+					}, integrationruntime.CompactionLifecycleEnd, integrationruntime.CompactionLifecycleRefresh)
 
 					oc.loggerForContext(ctx).Info().
 						Int("messages_before", len(currentPrompt)).
@@ -238,6 +220,14 @@ func (oc *AIClient) responseWithRetry(
 	terminal := errors.New("exceeded maximum retry attempts for prompt overflow")
 	oc.notifyMatrixSendFailure(ctx, portal, evt, terminal)
 	return false, terminal
+}
+
+func (oc *AIClient) emitCompactionLifecyclePhases(ctx context.Context, base integrationruntime.CompactionLifecycleEvent, phases ...integrationruntime.CompactionLifecyclePhase) {
+	for _, phase := range phases {
+		event := base
+		event.Phase = phase
+		oc.emitCompactionLifecycle(ctx, event)
+	}
 }
 
 func (oc *AIClient) runCompactionPreflightFlushHook(

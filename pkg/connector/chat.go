@@ -1888,22 +1888,7 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 		if err != nil {
 			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to load default chat portal by deterministic key")
 		} else if portal != nil {
-			loginMeta.DefaultChatPortalID = string(portal.PortalKey.ID)
-			if err := oc.UserLogin.Save(ctx); err != nil {
-				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist default chat portal ID")
-			}
-			if portal.MXID != "" {
-				oc.loggerForContext(ctx).Debug().Stringer("portal", portal.PortalKey).Msg("Existing default chat already has MXID")
-				return nil
-			}
-			info := oc.chatInfoFromPortal(ctx, portal)
-			oc.loggerForContext(ctx).Info().Stringer("portal", portal.PortalKey).Msg("Default chat missing MXID; creating Matrix room")
-			err := portal.CreateMatrixRoom(ctx, oc.UserLogin, info)
-			if err != nil {
-				oc.loggerForContext(ctx).Err(err).Msg("Failed to create Matrix room for default chat")
-			}
-			oc.sendWelcomeMessage(ctx, portal)
-			return err
+			return oc.ensureExistingChatPortalReady(ctx, loginMeta, portal, "Existing default chat already has MXID", "Default chat missing MXID; creating Matrix room", "Failed to create Matrix room for default chat")
 		}
 	}
 
@@ -1928,22 +1913,7 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 	}
 
 	if defaultPortal != nil {
-		loginMeta.DefaultChatPortalID = string(defaultPortal.PortalKey.ID)
-		if err := oc.UserLogin.Save(ctx); err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist default chat portal ID")
-		}
-		if defaultPortal.MXID != "" {
-			oc.loggerForContext(ctx).Debug().Stringer("portal", defaultPortal.PortalKey).Msg("Existing chat already has MXID")
-			return nil
-		}
-		info := oc.chatInfoFromPortal(ctx, defaultPortal)
-		oc.loggerForContext(ctx).Info().Stringer("portal", defaultPortal.PortalKey).Msg("Existing portal missing MXID; creating Matrix room")
-		err := defaultPortal.CreateMatrixRoom(ctx, oc.UserLogin, info)
-		if err != nil {
-			oc.loggerForContext(ctx).Err(err).Msg("Failed to create Matrix room for existing portal")
-		}
-		oc.sendWelcomeMessage(ctx, defaultPortal)
-		return err
+		return oc.ensureExistingChatPortalReady(ctx, loginMeta, defaultPortal, "Existing chat already has MXID", "Existing portal missing MXID; creating Matrix room", "Failed to create Matrix room for existing portal")
 	}
 
 	// Create default chat with Beep agent
@@ -2023,6 +1993,27 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 	oc.sendWelcomeMessage(ctx, portal)
 	oc.loggerForContext(ctx).Info().Stringer("portal", portal.PortalKey).Msg("New AI Chat room created")
 	return nil
+}
+
+func (oc *AIClient) ensureExistingChatPortalReady(ctx context.Context, loginMeta *UserLoginMetadata, portal *bridgev2.Portal, readyMsg string, createMsg string, errMsg string) error {
+	if loginMeta != nil {
+		loginMeta.DefaultChatPortalID = string(portal.PortalKey.ID)
+		if err := oc.UserLogin.Save(ctx); err != nil {
+			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist default chat portal ID")
+		}
+	}
+	if portal.MXID != "" {
+		oc.loggerForContext(ctx).Debug().Stringer("portal", portal.PortalKey).Msg(readyMsg)
+		return nil
+	}
+	info := oc.chatInfoFromPortal(ctx, portal)
+	oc.loggerForContext(ctx).Info().Stringer("portal", portal.PortalKey).Msg(createMsg)
+	err := portal.CreateMatrixRoom(ctx, oc.UserLogin, info)
+	if err != nil {
+		oc.loggerForContext(ctx).Err(err).Msg(errMsg)
+	}
+	oc.sendWelcomeMessage(ctx, portal)
+	return err
 }
 
 func (oc *AIClient) listAllChatPortals(ctx context.Context) ([]*bridgev2.Portal, error) {

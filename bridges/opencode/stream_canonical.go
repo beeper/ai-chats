@@ -82,27 +82,21 @@ func (oc *OpenCodeClient) currentCanonicalUIMessage(state *openCodeStreamState) 
 		return nil
 	}
 	uiMessage := streamui.SnapshotCanonicalUIMessage(&state.ui)
+	metadata := opencodeUIMessageMetadata(state)
 	if len(uiMessage) == 0 {
 		return msgconv.BuildUIMessage(msgconv.UIMessageParams{
-			TurnID: state.turnID,
-			Role:   "assistant",
-			Metadata: msgconv.BuildUIMessageMetadata(msgconv.UIMessageMetadataParams{
-				TurnID:           state.turnID,
-				AgentID:          state.agentID,
-				Model:            state.modelID,
-				FinishReason:     state.finishReason,
-				PromptTokens:     state.promptTokens,
-				CompletionTokens: state.completionTokens,
-				ReasoningTokens:  state.reasoningTokens,
-				TotalTokens:      state.totalTokens,
-				StartedAtMs:      state.startedAtMs,
-				CompletedAtMs:    state.completedAtMs,
-				IncludeUsage:     true,
-			}),
+			TurnID:   state.turnID,
+			Role:     "assistant",
+			Metadata: metadata,
 		})
 	}
-	metadata, _ := uiMessage["metadata"].(map[string]any)
-	uiMessage["metadata"] = msgconv.MergeUIMessageMetadata(metadata, msgconv.BuildUIMessageMetadata(msgconv.UIMessageMetadataParams{
+	existingMetadata, _ := uiMessage["metadata"].(map[string]any)
+	uiMessage["metadata"] = msgconv.MergeUIMessageMetadata(existingMetadata, metadata)
+	return uiMessage
+}
+
+func opencodeUIMessageMetadata(state *openCodeStreamState) map[string]any {
+	return msgconv.BuildUIMessageMetadata(msgconv.UIMessageMetadataParams{
 		TurnID:           state.turnID,
 		AgentID:          state.agentID,
 		Model:            state.modelID,
@@ -114,8 +108,7 @@ func (oc *OpenCodeClient) currentCanonicalUIMessage(state *openCodeStreamState) 
 		StartedAtMs:      state.startedAtMs,
 		CompletedAtMs:    state.completedAtMs,
 		IncludeUsage:     true,
-	}))
-	return uiMessage
+	})
 }
 
 func (oc *OpenCodeClient) buildStreamDBMetadata(state *openCodeStreamState) *MessageMetadata {
