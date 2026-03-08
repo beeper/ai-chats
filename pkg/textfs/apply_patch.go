@@ -312,8 +312,8 @@ func parseUpdateFileChunk(lines []string, lineNumber int, allowMissingContext bo
 	chunk := updateFileChunk{}
 	if lines[0] == emptyChangeContextMarker {
 		startIndex = 1
-	} else if strings.HasPrefix(lines[0], changeContextMarker) {
-		chunk.changeContext = strings.TrimPrefix(lines[0], changeContextMarker)
+	} else if ctx, ok := strings.CutPrefix(lines[0], changeContextMarker); ok {
+		chunk.changeContext = ctx
 		chunk.hasContext = true
 		startIndex = 1
 	} else if !allowMissingContext {

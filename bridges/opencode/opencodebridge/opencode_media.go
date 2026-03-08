@@ -96,8 +96,8 @@ func downloadOpenCodeFile(ctx context.Context, fileURL, fallbackMime string, max
 
 	if strings.HasPrefix(fileURL, "file://") || strings.HasPrefix(fileURL, "/") {
 		pathValue := fileURL
-		if strings.HasPrefix(pathValue, "file://") {
-			pathValue = strings.TrimPrefix(pathValue, "file://")
+		if p, ok := strings.CutPrefix(pathValue, "file://"); ok {
+			pathValue = p
 			if unescaped, err := url.PathUnescape(pathValue); err == nil {
 				pathValue = unescaped
 			}
@@ -158,15 +158,14 @@ func downloadOpenCodeFile(ctx context.Context, fileURL, fallbackMime string, max
 }
 
 func decodeOpenCodeDataURL(raw string) ([]byte, string, error) {
-	if !strings.HasPrefix(raw, "data:") {
+	rest, ok := strings.CutPrefix(raw, "data:")
+	if !ok {
 		return nil, "", errors.New("not a data URL")
 	}
-	comma := strings.IndexByte(raw, ',')
-	if comma < 0 {
+	meta, payload, ok := strings.Cut(rest, ",")
+	if !ok {
 		return nil, "", errors.New("invalid data URL")
 	}
-	meta := raw[len("data:"):comma]
-	payload := raw[comma+1:]
 	isBase64 := strings.Contains(meta, ";base64")
 	mimeType := ""
 	if meta != "" {
@@ -187,8 +186,7 @@ func decodeOpenCodeDataURL(raw string) ([]byte, string, error) {
 }
 
 func filenameFromOpenCodeURL(raw string) string {
-	if strings.HasPrefix(raw, "file://") {
-		pathValue := strings.TrimPrefix(raw, "file://")
+	if pathValue, ok := strings.CutPrefix(raw, "file://"); ok {
 		if unescaped, err := url.PathUnescape(pathValue); err == nil {
 			pathValue = unescaped
 		}

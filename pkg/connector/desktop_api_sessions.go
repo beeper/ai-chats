@@ -136,10 +136,10 @@ func parseDesktopSessionKey(sessionKey string) (string, string, bool) {
 		return "", "", false
 	}
 	var raw string
-	if strings.HasPrefix(trimmed, desktopSessionKeyPrefix) {
-		raw = strings.TrimPrefix(trimmed, desktopSessionKeyPrefix)
-	} else if strings.HasPrefix(trimmed, desktopSessionKeyAliasPrefix) {
-		raw = strings.TrimPrefix(trimmed, desktopSessionKeyAliasPrefix)
+	if r, ok := strings.CutPrefix(trimmed, desktopSessionKeyPrefix); ok {
+		raw = r
+	} else if r, ok := strings.CutPrefix(trimmed, desktopSessionKeyAliasPrefix); ok {
+		raw = r
 	} else {
 		return "", "", false
 	}

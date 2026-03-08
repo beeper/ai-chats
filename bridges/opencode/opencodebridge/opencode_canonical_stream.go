@@ -73,8 +73,7 @@ func (m *OpenCodeManager) syncAssistantTextPart(ctx context.Context, inst *openC
 			inst.appendPartTextContent(part.SessionID, part.ID, kind, text)
 			delivered = text
 		}
-	} else if text != "" && strings.HasPrefix(text, delivered) && len(text) > len(delivered) {
-		missing := text[len(delivered):]
+	} else if missing, ok := strings.CutPrefix(text, delivered); ok && missing != "" {
 		m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
 			"type":  kind + "-delta",
 			"id":    partID,

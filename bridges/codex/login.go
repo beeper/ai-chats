@@ -733,9 +733,9 @@ func (cl *CodexLogin) resolveCodexHomeBaseDir() string {
 			base = filepath.Join(os.TempDir(), "ai-bridge-codex")
 		}
 	}
-	if strings.HasPrefix(base, "~"+string(os.PathSeparator)) {
+	if rest, ok := strings.CutPrefix(base, "~"+string(os.PathSeparator)); ok {
 		if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-			base = filepath.Join(home, strings.TrimPrefix(base, "~"+string(os.PathSeparator)))
+			base = filepath.Join(home, rest)
 		}
 	}
 	abs, err := filepath.Abs(base)

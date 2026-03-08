@@ -71,8 +71,8 @@ func stripTokenAtEdges(raw string, token string) (string, bool) {
 	for changed {
 		changed = false
 		next := strings.TrimSpace(text)
-		if strings.HasPrefix(next, token) {
-			after := strings.TrimLeft(next[len(token):], " \t\r\n")
+		if after, ok := strings.CutPrefix(next, token); ok {
+			after = strings.TrimLeft(after, " \t\r\n")
 			text = after
 			didStrip = true
 			changed = true
