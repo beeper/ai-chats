@@ -37,7 +37,7 @@ type Config struct {
 	DefaultSystemPrompt string        `yaml:"default_system_prompt"`
 	ModelCacheDuration  time.Duration `yaml:"model_cache_duration"`
 
-	// Context pruning configuration (OpenClaw-style)
+	// Context pruning configuration
 	Pruning *airuntime.PruningConfig `yaml:"pruning"`
 
 	// Link preview configuration
@@ -105,7 +105,7 @@ func (c *ToolApprovalsRuntimeConfig) WithDefaults() *ToolApprovalsRuntimeConfig 
 	return c
 }
 
-// AgentsConfig configures agent defaults (OpenClaw-style).
+// AgentsConfig configures agent defaults.
 type AgentsConfig struct {
 	Defaults *AgentDefaultsConfig `yaml:"defaults"`
 	List     []AgentEntryConfig   `yaml:"list"`
@@ -127,7 +127,7 @@ type AgentDefaultsConfig struct {
 	TypingIntervalSec *int                   `yaml:"typingIntervalSeconds"`
 }
 
-// AgentEntryConfig defines per-agent overrides (OpenClaw-style).
+// AgentEntryConfig defines per-agent overrides.
 type AgentEntryConfig struct {
 	ID                string           `yaml:"id"`
 	Heartbeat         *HeartbeatConfig `yaml:"heartbeat"`
@@ -135,7 +135,7 @@ type AgentEntryConfig struct {
 	TypingIntervalSec *int             `yaml:"typingIntervalSeconds"`
 }
 
-// HeartbeatConfig configures periodic heartbeat runs (OpenClaw-style).
+// HeartbeatConfig configures periodic heartbeat runs.
 type HeartbeatConfig struct {
 	Every            *string                     `yaml:"every"`
 	ActiveHours      *HeartbeatActiveHoursConfig `yaml:"activeHours"`
@@ -154,7 +154,7 @@ type HeartbeatActiveHoursConfig struct {
 	Timezone string `yaml:"timezone"`
 }
 
-// ChannelsConfig defines per-channel settings (OpenClaw-style subset for Matrix).
+// ChannelsConfig defines per-channel settings.
 type ChannelsConfig struct {
 	Defaults *ChannelDefaultsConfig `yaml:"defaults"`
 	Matrix   *ChannelConfig         `yaml:"matrix"`
@@ -178,7 +178,7 @@ type ChannelHeartbeatVisibilityConfig struct {
 	UseIndicator *bool `yaml:"useIndicator"`
 }
 
-// MessagesConfig defines message rendering settings (OpenClaw-style).
+// MessagesConfig defines message rendering settings.
 type MessagesConfig struct {
 	ResponsePrefix   string                 `yaml:"responsePrefix"`
 	AckReaction      string                 `yaml:"ackReaction"`
@@ -190,7 +190,7 @@ type MessagesConfig struct {
 	InboundDebounce  *InboundDebounceConfig `yaml:"inbound"`
 }
 
-// CommandsConfig defines command authorization settings (OpenClaw-style).
+// CommandsConfig defines command authorization settings.
 type CommandsConfig struct {
 	OwnerAllowFrom []string `yaml:"ownerAllowFrom"`
 }
@@ -223,7 +223,7 @@ type QueueConfig struct {
 	Drop                string            `yaml:"drop"`
 }
 
-// SessionConfig configures session store behavior (OpenClaw-style).
+// SessionConfig configures session behavior.
 type SessionConfig struct {
 	Scope   string `yaml:"scope"`
 	MainKey string `yaml:"mainKey"`
@@ -440,7 +440,7 @@ type ProvidersConfig struct {
 	OpenRouter ProviderConfig `yaml:"openrouter"`
 }
 
-// ModelsConfig configures model catalog seeding (OpenClaw-style).
+// ModelsConfig configures model catalog seeding.
 type ModelsConfig struct {
 	Mode      string                         `yaml:"mode"` // merge | replace
 	Providers map[string]ModelProviderConfig `yaml:"providers"`
@@ -553,7 +553,7 @@ func upgradeConfig(helper configupgrade.Helper) {
 	helper.Copy(configupgrade.Int, "messages", "queue", "cap")
 	helper.Copy(configupgrade.Str, "messages", "queue", "drop")
 
-	// Session configuration (OpenClaw-style)
+	// Session configuration
 	helper.Copy(configupgrade.Str, "session", "scope")
 	helper.Copy(configupgrade.Str, "session", "mainKey")
 
@@ -649,6 +649,6 @@ func upgradeConfig(helper configupgrade.Helper) {
 	helper.Copy(configupgrade.Int, "memory_search", "cache", "max_entries")
 	helper.Copy(configupgrade.Bool, "memory_search", "experimental", "session_memory")
 
-	// Tool policy (OpenClaw-style)
+	// Tool policy
 	helper.Copy(configupgrade.Map, "tool_policy")
 }
