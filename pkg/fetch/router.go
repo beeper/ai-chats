@@ -15,7 +15,7 @@ func Fetch(ctx context.Context, req Request, cfg *Config) (*Response, error) {
 		return nil, errors.New("missing url")
 	}
 	cfg = cfg.WithDefaults()
-	req = normalizeRequest(req, cfg)
+	req = normalizeRequest(req)
 
 	registry := NewRegistry()
 	registerProviders(registry, cfg)
@@ -47,7 +47,7 @@ func Fetch(ctx context.Context, req Request, cfg *Config) (*Response, error) {
 	return nil, errors.New("no fetch providers available")
 }
 
-func normalizeRequest(req Request, _ *Config) Request {
+func normalizeRequest(req Request) Request {
 	if req.ExtractMode == "" {
 		req.ExtractMode = "markdown"
 	}

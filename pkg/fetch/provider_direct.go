@@ -37,13 +37,6 @@ func (p *directProvider) Fetch(ctx context.Context, req Request) (*Response, err
 	if !isAllowedURL(req.URL) {
 		return nil, errors.New("url not allowed")
 	}
-	parsedURL, err := url.Parse(req.URL)
-	if err != nil {
-		return nil, fmt.Errorf("invalid url: %w", err)
-	}
-	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return nil, errors.New("url must use http or https")
-	}
 
 	client := &http.Client{Timeout: time.Duration(p.cfg.TimeoutSecs) * time.Second}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, req.URL, nil)
@@ -72,11 +65,7 @@ func (p *directProvider) Fetch(ctx context.Context, req Request) (*Response, err
 		}
 	}
 
-	limit := int64(maxChars * 2)
-	if limit <= 0 {
-		limit = int64(DefaultMaxChars * 2)
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, limit))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, int64(maxChars*2)))
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +78,7 @@ func (p *directProvider) Fetch(ctx context.Context, req Request) (*Response, err
 			text = extractTextFromHTML(text)
 			extractor = "basic-text"
 		} else {
-			text = htmlToMarkdownBasic(text)
+			text = extractTextFromHTML(text)
 			extractor = "basic-markdown"
 		}
 	} else if strings.Contains(contentType, "application/json") {
@@ -181,11 +170,6 @@ func isAllowedURL(rawURL string) bool {
 		}
 	}
 	return true
-}
-
-func htmlToMarkdownBasic(input string) string {
-	// Minimal HTML stripping for now; can be improved with readability later.
-	return extractTextFromHTML(input)
 }
 
 func extractTextFromHTML(html string) string {
