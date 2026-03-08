@@ -347,13 +347,7 @@ func (cc *CodexClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal)
 	}, nil
 }
 
-func (cc *CodexClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
-	if ghost == nil {
-		return defaultCodexUserInfo(), nil
-	}
-	if ghost.ID == codexGhostID {
-		return defaultCodexUserInfo(), nil
-	}
+func (cc *CodexClient) GetUserInfo(_ context.Context, _ *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
 	return defaultCodexUserInfo(), nil
 }
 

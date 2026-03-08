@@ -578,20 +578,18 @@ func (cl *CodexLogin) buildStillWaitingStep(suffix string) *bridgev2.LoginStep {
 	instr := "Still waiting for Codex login to complete. " + suffix
 	displayType := bridgev2.LoginDisplayTypeNothing
 	data := ""
-	authMode := cl.getAuthMode()
-	if authMode == "apiKey" {
+	switch cl.getAuthMode() {
+	case "apiKey":
 		stepID = "io.ai-bridge.codex.validating"
 		instr = "Still validating the API key with Codex. Keep this screen open."
-		displayType = bridgev2.LoginDisplayTypeNothing
-		data = ""
-	} else if authMode == "chatgptAuthTokens" {
+	case "chatgptAuthTokens":
 		stepID = "io.ai-bridge.codex.validating_external_tokens"
 		instr = "Still validating ChatGPT external tokens with Codex. Keep this screen open."
-		displayType = bridgev2.LoginDisplayTypeNothing
-		data = ""
-	} else if strings.TrimSpace(cl.getAuthURL()) != "" {
-		displayType = bridgev2.LoginDisplayTypeCode
-		data = strings.TrimSpace(cl.getAuthURL())
+	default:
+		if authURL := strings.TrimSpace(cl.getAuthURL()); authURL != "" {
+			displayType = bridgev2.LoginDisplayTypeCode
+			data = authURL
+		}
 	}
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeDisplayAndWait,

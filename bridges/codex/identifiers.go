@@ -24,10 +24,9 @@ func generateShortID() string {
 }
 
 func isCodexIdentifier(identifier string) bool {
-	trimmed := strings.ToLower(strings.TrimSpace(identifier))
-	switch trimmed {
-	case "", "codex", "@codex", "codex:default", "codex:codex":
-		return trimmed != ""
+	switch strings.ToLower(strings.TrimSpace(identifier)) {
+	case "codex", "@codex", "codex:default", "codex:codex":
+		return true
 	default:
 		return false
 	}

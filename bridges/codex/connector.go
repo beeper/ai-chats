@@ -289,8 +289,7 @@ func (cc *CodexConnector) GetDBMetaTypes() database.MetaTypes {
 	}
 }
 
-func (cc *CodexConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
-	_ = ctx
+func (cc *CodexConnector) LoadUserLogin(_ context.Context, login *bridgev2.UserLogin) error {
 	meta := loginMetadata(login)
 	if !strings.EqualFold(strings.TrimSpace(meta.Provider), ProviderCodex) {
 		login.Client = newBrokenLoginClient(login, cc, "This bridge only supports Codex logins.")
@@ -356,8 +355,7 @@ func (cc *CodexConnector) GetLoginFlows() []bridgev2.LoginFlow {
 	}
 }
 
-func (cc *CodexConnector) CreateLogin(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
-	_ = ctx
+func (cc *CodexConnector) CreateLogin(_ context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
 	if !cc.codexEnabled() {
 		return nil, fmt.Errorf("login flow %s is not available", flowID)
 	}
