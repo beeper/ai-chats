@@ -179,7 +179,6 @@ func ApplyPatch(ctx context.Context, store *Store, input string) (*ApplyPatchRes
 
 type parsedPatch struct {
 	hunks []applyPatchHunk
-	patch string
 }
 
 func parsePatchText(input string) (*parsedPatch, error) {
@@ -209,26 +208,26 @@ func parsePatchText(input string) (*parsedPatch, error) {
 		lineNumber += consumed
 		remaining = remaining[consumed:]
 	}
-	return &parsedPatch{hunks: hunks, patch: strings.Join(validated, "\n")}, nil
+	return &parsedPatch{hunks: hunks}, nil
 }
 
 func checkPatchBoundariesLenient(lines []string) ([]string, error) {
-	if err := checkPatchBoundariesStrict(lines); err == nil {
+	outerErr := checkPatchBoundariesStrict(lines)
+	if outerErr == nil {
 		return lines, nil
 	}
-	if len(lines) < 4 {
-		return nil, checkPatchBoundariesStrict(lines)
-	}
-	first := strings.TrimSpace(lines[0])
-	last := strings.TrimSpace(lines[len(lines)-1])
-	if (first == "<<EOF" || first == "<<'EOF'" || first == "<<\"EOF\"") && strings.HasSuffix(last, "EOF") {
-		inner := lines[1 : len(lines)-1]
-		if err := checkPatchBoundariesStrict(inner); err == nil {
+	if len(lines) >= 4 {
+		first := strings.TrimSpace(lines[0])
+		last := strings.TrimSpace(lines[len(lines)-1])
+		if (first == "<<EOF" || first == "<<'EOF'" || first == "<<\"EOF\"") && strings.HasSuffix(last, "EOF") {
+			inner := lines[1 : len(lines)-1]
+			if err := checkPatchBoundariesStrict(inner); err != nil {
+				return nil, err
+			}
 			return inner, nil
 		}
-		return nil, checkPatchBoundariesStrict(inner)
 	}
-	return nil, checkPatchBoundariesStrict(lines)
+	return nil, outerErr
 }
 
 func checkPatchBoundariesStrict(lines []string) error {

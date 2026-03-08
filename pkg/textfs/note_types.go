@@ -25,9 +25,7 @@ var allowedNoteExts = []string{
 // AllowedNoteExtensions returns the hardcoded list of indexable "note" file extensions.
 // Extensions are lowercase and include a leading dot.
 func AllowedNoteExtensions() []string {
-	out := slices.Clone(allowedNoteExts)
-	slices.Sort(out)
-	return out
+	return slices.Clone(allowedNoteExts)
 }
 
 // IsAllowedTextNotePath checks whether a virtual path is allowed for note indexing/reading.
@@ -45,12 +43,10 @@ func IsAllowedTextNotePath(relPath string) (ok bool, ext string, reason string) 
 	if ext == "" {
 		return false, "", "missing_extension"
 	}
-	for _, allowed := range allowedNoteExts {
-		if ext == allowed {
-			return true, ext, ""
-		}
+	if !slices.Contains(allowedNoteExts, ext) {
+		return false, ext, "unsupported_extension"
 	}
-	return false, ext, "unsupported_extension"
+	return true, ext, ""
 }
 
 // NoteMaxBytesDefault is the default per-file size cap for note indexing and reads.

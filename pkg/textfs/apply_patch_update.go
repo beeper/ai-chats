@@ -1,6 +1,7 @@
 package textfs
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"strings"
@@ -69,16 +70,9 @@ func computeReplacements(originalLines []string, filePath string, chunks []updat
 }
 
 func sortReplacements(replacements []replacement) {
-	if len(replacements) < 2 {
-		return
-	}
-	for i := 0; i < len(replacements)-1; i++ {
-		for j := i + 1; j < len(replacements); j++ {
-			if replacements[j].start < replacements[i].start {
-				replacements[i], replacements[j] = replacements[j], replacements[i]
-			}
-		}
-	}
+	slices.SortFunc(replacements, func(a, b replacement) int {
+		return cmp.Compare(a.start, b.start)
+	})
 }
 
 func applyReplacements(lines []string, replacements []replacement) []string {

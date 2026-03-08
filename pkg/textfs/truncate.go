@@ -2,6 +2,7 @@ package textfs
 
 import (
 	"fmt"
+	"strings"
 )
 
 const (
@@ -41,7 +42,7 @@ func TruncateHead(content string, maxLines, maxBytes int) Truncation {
 	if maxBytes <= 0 {
 		maxBytes = DefaultMaxBytes
 	}
-	lines := splitLines(content)
+	lines := strings.Split(content, "\n")
 	totalLines := len(lines)
 	totalBytes := len(content)
 	if totalLines <= maxLines && totalBytes <= maxBytes {
@@ -56,7 +57,7 @@ func TruncateHead(content string, maxLines, maxBytes int) Truncation {
 			MaxBytes:    maxBytes,
 		}
 	}
-	firstLineBytes := len([]byte(lines[0]))
+	firstLineBytes := len(lines[0])
 	if firstLineBytes > maxBytes {
 		return Truncation{
 			Content:               "",
@@ -76,9 +77,9 @@ func TruncateHead(content string, maxLines, maxBytes int) Truncation {
 	truncatedBy := "lines"
 	for i := 0; i < len(lines) && i < maxLines; i++ {
 		line := lines[i]
-		lineBytes := len([]byte(line))
+		lineBytes := len(line)
 		if i > 0 {
-			lineBytes += 1
+			lineBytes++
 		}
 		if outputBytes+lineBytes > maxBytes {
 			truncatedBy = "bytes"
@@ -87,7 +88,7 @@ func TruncateHead(content string, maxLines, maxBytes int) Truncation {
 		outputLines = append(outputLines, line)
 		outputBytes += lineBytes
 	}
-	outputContent := joinLines(outputLines)
+	outputContent := strings.Join(outputLines, "\n")
 	return Truncation{
 		Content:     outputContent,
 		Truncated:   true,
@@ -95,42 +96,8 @@ func TruncateHead(content string, maxLines, maxBytes int) Truncation {
 		TotalLines:  totalLines,
 		TotalBytes:  totalBytes,
 		OutputLines: len(outputLines),
-		OutputBytes: len([]byte(outputContent)),
+		OutputBytes: len(outputContent),
 		MaxLines:    maxLines,
 		MaxBytes:    maxBytes,
 	}
-}
-
-func splitLines(content string) []string {
-	if content == "" {
-		return []string{""}
-	}
-	out := make([]string, 0, 64)
-	start := 0
-	for i := 0; i < len(content); i++ {
-		if content[i] == '\n' {
-			out = append(out, content[start:i])
-			start = i + 1
-		}
-	}
-	out = append(out, content[start:])
-	return out
-}
-
-func joinLines(lines []string) string {
-	if len(lines) == 0 {
-		return ""
-	}
-	total := 0
-	for _, line := range lines {
-		total += len(line) + 1
-	}
-	b := make([]byte, 0, total)
-	for i, line := range lines {
-		if i > 0 {
-			b = append(b, '\n')
-		}
-		b = append(b, line...)
-	}
-	return string(b)
 }
