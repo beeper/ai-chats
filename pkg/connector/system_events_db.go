@@ -21,11 +21,11 @@ type systemEventsDBScope struct {
 }
 
 func systemEventsScope(client *AIClient) *systemEventsDBScope {
-	if client == nil || client.UserLogin == nil || client.UserLogin.Bridge == nil || client.UserLogin.Bridge.DB == nil {
+	if client == nil || client.UserLogin == nil || client.UserLogin.Bridge == nil {
 		return nil
 	}
 	db := client.bridgeDB()
-	if db == nil {
+	if db == nil || client.UserLogin.Bridge.DB == nil {
 		return nil
 	}
 	return &systemEventsDBScope{
@@ -35,17 +35,28 @@ func systemEventsScope(client *AIClient) *systemEventsDBScope {
 	}
 }
 
-func snapshotSystemEvents() []persistedSystemEventQueue {
+func (scope *systemEventsDBScope) ownerKey() string {
+	if scope == nil {
+		return ""
+	}
+	return scope.bridgeID + systemEventsKeySeparator + scope.loginID
+}
+
+func snapshotSystemEvents(ownerKey string) []persistedSystemEventQueue {
 	systemEventsMu.Lock()
 	defer systemEventsMu.Unlock()
 
 	snap := make([]persistedSystemEventQueue, 0, len(systemEvents))
 	for key, entry := range systemEvents {
+		owner, sessionKey, ok := splitSystemEventsMapKey(key)
+		if !ok || owner != strings.TrimSpace(ownerKey) {
+			continue
+		}
 		if entry == nil || len(entry.queue) == 0 {
 			continue
 		}
 		snap = append(snap, persistedSystemEventQueue{
-			SessionKey: key,
+			SessionKey: sessionKey,
 			Events:     slices.Clone(entry.queue),
 			LastText:   entry.lastText,
 		})
@@ -58,7 +69,7 @@ func persistSystemEventsSnapshot(client *AIClient) {
 	if scope == nil {
 		return
 	}
-	if err := saveSystemEventsSnapshot(context.Background(), scope, snapshotSystemEvents()); err != nil {
+	if err := saveSystemEventsSnapshot(context.Background(), scope, snapshotSystemEvents(scope.ownerKey())); err != nil {
 		if log := client.Log(); log != nil {
 			log.Warn().Err(err).Msg("system events: write failed during persist")
 		}
@@ -83,11 +94,15 @@ func restoreSystemEventsFromDB(client *AIClient) {
 		if strings.TrimSpace(queue.SessionKey) == "" || len(queue.Events) == 0 {
 			continue
 		}
-		existing := systemEvents[queue.SessionKey]
+		mapKey, err := buildSystemEventsMapKey(scope.ownerKey(), queue.SessionKey)
+		if err != nil {
+			continue
+		}
+		existing := systemEvents[mapKey]
 		if existing != nil && len(existing.queue) > 0 {
 			continue
 		}
-		systemEvents[queue.SessionKey] = &systemEventQueue{
+		systemEvents[mapKey] = &systemEventQueue{
 			queue:    slices.Clone(queue.Events),
 			lastText: queue.LastText,
 		}

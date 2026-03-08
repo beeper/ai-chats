@@ -15,6 +15,8 @@ func setupTestDB(t *testing.T) *dbutil.Database {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
+	raw.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = raw.Close() })
 	db, err := dbutil.NewWithDB(raw, "sqlite3")
 	if err != nil {
 		t.Fatalf("wrap db: %v", err)
@@ -32,6 +34,9 @@ func TestUpgradeV1Fresh(t *testing.T) {
 	ctx := context.Background()
 	parentDB := setupTestDB(t)
 	bridgeDB := NewChild(parentDB, dbutil.NoopLogger)
+	if bridgeDB == nil {
+		t.Fatalf("expected child DB")
+	}
 
 	if err := Upgrade(ctx, bridgeDB, "ai_bridge", "database not initialized"); err != nil {
 		t.Fatalf("upgrade failed: %v", err)
@@ -78,6 +83,9 @@ func TestNewChildUpgrade(t *testing.T) {
 	}
 	if err := Upgrade(ctx, bridgeDB, "ai_bridge", "database not initialized"); err != nil {
 		t.Fatalf("upgrade failed: %v", err)
+	}
+	if err := Upgrade(ctx, bridgeDB, "ai_bridge", "database not initialized"); err != nil {
+		t.Fatalf("second upgrade failed: %v", err)
 	}
 
 	var version int

@@ -63,12 +63,14 @@ func sanitizeAgentID(raw string) string {
 	}
 	cleaned := agentIDInvalidChars.ReplaceAllString(lowered, "-")
 	cleaned = agentIDLeadingDash.ReplaceAllString(cleaned, "")
+	cleaned = strings.TrimLeft(cleaned, "_")
 	cleaned = agentIDTrailingDash.ReplaceAllString(cleaned, "")
 	if len(cleaned) > 64 {
 		cleaned = cleaned[:64]
+		cleaned = strings.TrimLeft(cleaned, "_")
 		cleaned = agentIDTrailingDash.ReplaceAllString(cleaned, "")
 	}
-	if cleaned == "" {
+	if cleaned == "" || !agentIDValidRe.MatchString(cleaned) {
 		return defaultAgentID
 	}
 	return cleaned
@@ -151,7 +153,11 @@ func normalizeCronJobInputRaw(raw any, applyDefaults bool) map[string]any {
 		case string:
 			trimmed := strings.TrimSpace(v)
 			if trimmed == "" {
-				delete(next, "agentId")
+				if applyDefaults {
+					delete(next, "agentId")
+				} else {
+					next["agentId"] = ""
+				}
 			} else {
 				next["agentId"] = sanitizeAgentID(trimmed)
 			}

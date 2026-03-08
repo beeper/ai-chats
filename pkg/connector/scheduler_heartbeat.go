@@ -197,6 +197,9 @@ func (s *schedulerRuntime) handleHeartbeatRun(ctx context.Context, tick Schedule
 		return nil
 	}
 	state = store.Agents[idx]
+	if !state.Enabled || state.Revision != tick.Revision || containsRunKey(state.ProcessedRunKeys, tick.RunKey) {
+		return nil
+	}
 	state.LastResult = res.Status
 	state.LastError = res.Reason
 	finishedAtMs := time.Now().UnixMilli()
@@ -307,14 +310,20 @@ func computeManagedHeartbeatDue(client *AIClient, state managedHeartbeatState, n
 	if state.IntervalMs <= 0 {
 		return 0
 	}
+	var dueAtMs int64
 	if state.LastRunAtMs > 0 {
-		return state.LastRunAtMs + state.IntervalMs
+		dueAtMs = state.LastRunAtMs + state.IntervalMs
+		return clampHeartbeatDueToActiveHours(client, state.ActiveHours, dueAtMs)
 	}
-	ref, sessionKey := client.resolveHeartbeatMainSessionRef(state.AgentID)
-	if entry, ok := client.getSessionEntry(context.Background(), ref, sessionKey); ok && entry.LastHeartbeatSentAt > 0 {
-		return entry.LastHeartbeatSentAt + state.IntervalMs
+	if client != nil {
+		ref, sessionKey := client.resolveHeartbeatMainSessionRef(state.AgentID)
+		if entry, ok := client.getSessionEntry(context.Background(), ref, sessionKey); ok && entry.LastHeartbeatSentAt > 0 {
+			dueAtMs = entry.LastHeartbeatSentAt + state.IntervalMs
+			return clampHeartbeatDueToActiveHours(client, state.ActiveHours, dueAtMs)
+		}
 	}
-	return nowMs + state.IntervalMs
+	dueAtMs = nowMs + state.IntervalMs
+	return clampHeartbeatDueToActiveHours(client, state.ActiveHours, dueAtMs)
 }
 
 func upsertManagedHeartbeat(store *managedHeartbeatStore, agentID string, hb *HeartbeatConfig) *managedHeartbeatState {

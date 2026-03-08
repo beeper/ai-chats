@@ -195,7 +195,7 @@ type CommandsConfig struct {
 	OwnerAllowFrom []string `yaml:"ownerAllowFrom"`
 }
 
-// GroupChatConfig mirrors OpenClaw's group chat settings.
+// GroupChatConfig defines group chat settings.
 type GroupChatConfig struct {
 	MentionPatterns []string `yaml:"mentionPatterns"`
 	Activation      string   `yaml:"activation"` // mention|always
@@ -207,13 +207,13 @@ type DirectChatConfig struct {
 	HistoryLimit int `yaml:"historyLimit"`
 }
 
-// InboundDebounceConfig mirrors OpenClaw's inbound debounce config.
+// InboundDebounceConfig defines inbound debounce behavior.
 type InboundDebounceConfig struct {
 	DebounceMs int            `yaml:"debounceMs"`
 	ByChannel  map[string]int `yaml:"byChannel"`
 }
 
-// QueueConfig mirrors OpenClaw's queue settings.
+// QueueConfig defines queue behavior.
 type QueueConfig struct {
 	Mode                string            `yaml:"mode"`
 	ByChannel           map[string]string `yaml:"byChannel"`

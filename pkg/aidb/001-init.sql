@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS ai_memory_session_files (
   hash TEXT NOT NULL,
   size INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
-  PRIMARY KEY (bridge_id, login_id, agent_id, session_key)
+  PRIMARY KEY (bridge_id, login_id, agent_id, session_key, path)
 );
 
 CREATE INDEX IF NOT EXISTS idx_ai_memory_session_files_path ON ai_memory_session_files(path);
@@ -183,8 +183,6 @@ CREATE TABLE IF NOT EXISTS ai_system_events (
   last_text TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (bridge_id, login_id, session_key, event_index)
 );
-
-CREATE INDEX IF NOT EXISTS idx_ai_system_events_lookup ON ai_system_events(bridge_id, login_id, session_key);
 
 CREATE TABLE IF NOT EXISTS ai_sessions (
   bridge_id TEXT NOT NULL,

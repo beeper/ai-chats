@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.mau.fi/util/dbutil"
 
 	"github.com/beeper/ai-bridge/pkg/agents"
 )
@@ -32,7 +33,7 @@ type sessionStoreRef struct {
 }
 
 type sessionDBScope struct {
-	db       *sql.DB
+	db       *dbutil.Database
 	bridgeID string
 	loginID  string
 }
@@ -67,15 +68,15 @@ func sessionStoreLock(ref sessionStoreRef, sessionKey string) *sync.Mutex {
 }
 
 func (oc *AIClient) sessionDBScope() *sessionDBScope {
-	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil {
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
 		return nil
 	}
 	db := oc.bridgeDB()
-	if db == nil || db.RawDB == nil {
+	if db == nil || oc.UserLogin.Bridge.DB == nil {
 		return nil
 	}
 	return &sessionDBScope{
-		db:       db.RawDB,
+		db:       db,
 		bridgeID: string(oc.UserLogin.Bridge.DB.BridgeID),
 		loginID:  string(oc.UserLogin.ID),
 	}
@@ -112,7 +113,7 @@ func (oc *AIClient) getSessionEntry(ctx context.Context, ref sessionStoreRef, se
 		queueDebounceMs sql.NullInt64
 		queueCap        sql.NullInt64
 	)
-	err := scope.db.QueryRowContext(ctx, `
+	err := scope.db.QueryRow(ctx, `
 		SELECT
 			session_id,
 			updated_at_ms,
@@ -127,7 +128,7 @@ func (oc *AIClient) getSessionEntry(ctx context.Context, ref sessionStoreRef, se
 			queue_cap,
 			queue_drop
 		FROM ai_sessions
-		WHERE bridge_id=? AND login_id=? AND store_agent_id=? AND session_key=?
+		WHERE bridge_id=$1 AND login_id=$2 AND store_agent_id=$3 AND session_key=$4
 	`,
 		scope.bridgeID, scope.loginID, normalizeSessionStoreAgentID(ref.AgentID), strings.TrimSpace(sessionKey),
 	).Scan(
@@ -164,7 +165,7 @@ func (oc *AIClient) upsertSessionEntry(ctx context.Context, ref sessionStoreRef,
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	_, err := scope.db.ExecContext(ctx, `
+	_, err := scope.db.Exec(ctx, `
 		INSERT INTO ai_sessions (
 			bridge_id,
 			login_id,
@@ -182,7 +183,7 @@ func (oc *AIClient) upsertSessionEntry(ctx context.Context, ref sessionStoreRef,
 			queue_debounce_ms,
 			queue_cap,
 			queue_drop
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 		ON CONFLICT (bridge_id, login_id, store_agent_id, session_key) DO UPDATE SET
 			session_id=excluded.session_id,
 			updated_at_ms=excluded.updated_at_ms,

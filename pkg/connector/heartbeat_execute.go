@@ -85,7 +85,8 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 		return heartbeatRunResult{Status: "skipped", Reason: "no-session"}
 	}
 
-	pendingEvents := hasSystemEvents(sessionKey) || (storeKey != "" && !strings.EqualFold(storeKey, sessionKey) && hasSystemEvents(storeKey))
+	ownerKey := systemEventsOwnerKey(oc)
+	pendingEvents := hasSystemEvents(ownerKey, sessionKey) || (storeKey != "" && !strings.EqualFold(storeKey, sessionKey) && hasSystemEvents(ownerKey, storeKey))
 	if !oc.shouldRunHeartbeatForFile(agentID, reason) && !pendingEvents {
 		oc.log.Debug().Str("agent_id", agentID).Msg("Heartbeat skipped: empty heartbeat file and no pending events")
 		oc.emitHeartbeatEvent(&HeartbeatEventPayload{
@@ -131,9 +132,9 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 	isExecEvent := reason == "exec-event"
 	hasExecCompletion := false
 	if isExecEvent {
-		systemEvents := peekSystemEvents(sessionKey)
+		systemEvents := peekSystemEvents(ownerKey, sessionKey)
 		if storeKey != "" && !strings.EqualFold(storeKey, sessionKey) {
-			systemEvents = append(systemEvents, peekSystemEvents(storeKey)...)
+			systemEvents = append(systemEvents, peekSystemEvents(ownerKey, storeKey)...)
 		}
 		for _, evt := range systemEvents {
 			if strings.Contains(evt, "Exec finished") {
@@ -179,7 +180,7 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 	}
 	systemEvents := ""
 	if !suppressSend {
-		systemEvents = formatSystemEvents(drainHeartbeatSystemEvents(sessionKey, storeKey))
+		systemEvents = formatSystemEvents(drainHeartbeatSystemEvents(ownerKey, sessionKey, storeKey))
 		if systemEvents != "" {
 			prompt = systemEvents + "\n\n" + prompt
 			persistSystemEventsSnapshot(oc)
@@ -268,10 +269,10 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 	}
 }
 
-func drainHeartbeatSystemEvents(primaryKey string, secondaryKey string) []SystemEvent {
-	entries := drainSystemEventEntries(primaryKey)
+func drainHeartbeatSystemEvents(ownerKey string, primaryKey string, secondaryKey string) []SystemEvent {
+	entries := drainSystemEventEntries(ownerKey, primaryKey)
 	if sk := strings.TrimSpace(secondaryKey); sk != "" && !strings.EqualFold(strings.TrimSpace(primaryKey), sk) {
-		entries = append(entries, drainSystemEventEntries(secondaryKey)...)
+		entries = append(entries, drainSystemEventEntries(ownerKey, secondaryKey)...)
 	}
 	if len(entries) <= 1 {
 		return entries
@@ -280,6 +281,13 @@ func drainHeartbeatSystemEvents(primaryKey string, secondaryKey string) []System
 		return cmp.Compare(a.TS, b.TS)
 	})
 	return entries
+}
+
+func systemEventsOwnerKey(oc *AIClient) string {
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil {
+		return ""
+	}
+	return string(oc.UserLogin.Bridge.DB.BridgeID) + systemEventsKeySeparator + string(oc.UserLogin.ID)
 }
 
 func (oc *AIClient) buildContextWithHeartbeat(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, prompt string) (PromptContext, error) {

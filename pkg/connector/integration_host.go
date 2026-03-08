@@ -419,7 +419,10 @@ func (h *runtimeIntegrationHost) HeartbeatAckMaxChars(agentID string) int {
 }
 
 func (h *runtimeIntegrationHost) EnqueueSystemEvent(sessionKey string, text string, agentID string) {
-	enqueueSystemEvent(sessionKey, text, agentID)
+	if h == nil || h.client == nil {
+		return
+	}
+	enqueueSystemEvent(systemEventsOwnerKey(h.client), sessionKey, text, agentID)
 }
 
 func (h *runtimeIntegrationHost) PersistSystemEvents() {

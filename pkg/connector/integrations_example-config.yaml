@@ -237,7 +237,7 @@ recall_search:
 # Recall configuration.
 # recall:
 #   citations: "auto" # auto | on | off
-#   inject_context: false # default false (clawdbot-aligned). when true, injects MEMORY.md snippets as extra system context.
+#   inject_context: false # default false. when true, injects MEMORY.md snippets as extra system context.
 
   # Tool policy. Controls allow/deny lists and profiles.
   # tool_policy:
@@ -271,7 +271,7 @@ recall_search:
 # Reduces token usage by intelligently truncating old tool results.
 pruning:
   # Pruning mode: off | cache-ttl
-  # cache-ttl aligns with clawdbot defaults.
+  # cache-ttl is the default pruning mode.
   mode: "cache-ttl"
 
   # Refresh interval for cache-ttl mode.

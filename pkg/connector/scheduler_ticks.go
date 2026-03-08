@@ -105,10 +105,11 @@ func resolveScheduledCronTimeoutSeconds(client *AIClient, override *int) int {
 
 func truncateSchedulePreview(text string) string {
 	text = strings.Join(strings.Fields(strings.TrimSpace(text)), " ")
-	if len(text) <= 160 {
+	runes := []rune(text)
+	if len(runes) <= 160 {
 		return text
 	}
-	return strings.TrimSpace(text[:159]) + "..."
+	return strings.TrimSpace(string(runes[:159])) + "..."
 }
 
 func appendMissingDisabledTool(existing []string, toolName string) []string {

@@ -230,7 +230,7 @@ func (oc *AIClient) loadModelCatalog(ctx context.Context, useCache bool) []Model
 }
 
 func (oc *AIClient) derivedModelCatalogEntries() []ModelCatalogEntry {
-	if oc == nil || oc.UserLogin == nil {
+	if oc == nil || oc.UserLogin == nil || oc.connector == nil {
 		return nil
 	}
 	loginMeta := loginMetadata(oc.UserLogin)
@@ -245,8 +245,6 @@ func (oc *AIClient) derivedModelCatalogEntries() []ModelCatalogEntry {
 		switch strings.ToLower(strings.TrimSpace(oc.connector.Config.Models.Mode)) {
 		case "replace":
 			mode = "replace"
-		case "merge":
-			mode = defaultModelCatalogMode
 		}
 	}
 

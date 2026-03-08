@@ -192,7 +192,7 @@ func (s *schedulerRuntime) CronRun(ctx context.Context, jobID string) (bool, str
 		RunKey:         buildTickRunKey(record.Revision, "manual", time.Now().UnixMilli()),
 		Reason:         "manual",
 	}
-	if err := s.handleCronRun(context.Background(), tick, true); err != nil {
+	if err := s.handleCronRun(ctx, tick, true); err != nil {
 		return false, "", err
 	}
 	return true, "", nil
@@ -286,6 +286,9 @@ func (s *schedulerRuntime) handleCronRun(ctx context.Context, tick ScheduleTickC
 		return nil
 	}
 	record = store.Jobs[idx]
+	if !record.Job.Enabled || tick.Revision != record.Revision || containsRunKey(record.ProcessedRunKeys, tick.RunKey) {
+		return nil
+	}
 	finishedAt := time.Now().UnixMilli()
 	record.Job.State.RunningAtMs = nil
 	record.Job.State.LastRunAtMs = &finishedAt
