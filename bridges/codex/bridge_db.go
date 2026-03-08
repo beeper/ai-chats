@@ -3,13 +3,11 @@ package codex
 import (
 	"go.mau.fi/util/dbutil"
 
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	"github.com/beeper/ai-bridge/pkg/aidb"
 )
 
-const codexBridgeVersionTable = "codex_bridge_version"
-
 func makeCodexBridgeChildDB(base *dbutil.Database, log dbutil.DatabaseLogger) *dbutil.Database {
-	return bridgeadapter.MakeMemoryChildDB(base, codexBridgeVersionTable, log)
+	return aidb.NewChild(base, log)
 }
 
 func (cc *CodexConnector) bridgeDB() *dbutil.Database {

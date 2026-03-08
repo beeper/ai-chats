@@ -18,6 +18,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/ai-bridge/bridges/codex/codexrpc"
+	"github.com/beeper/ai-bridge/pkg/aidb"
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
@@ -59,7 +60,7 @@ func (cc *CodexConnector) Stop(ctx context.Context) {
 
 func (cc *CodexConnector) Start(ctx context.Context) error {
 	db := cc.bridgeDB()
-	if err := bridgeadapter.UpgradeChildDB(ctx, db, "codex_bridge", "codex bridge database not initialized"); err != nil {
+	if err := aidb.Upgrade(ctx, db, "codex_bridge", "codex bridge database not initialized"); err != nil {
 		return err
 	}
 

@@ -18,7 +18,6 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/rs/xid v1.6.0
 	github.com/rs/zerolog v1.34.0
-	github.com/yosuke-furukawa/json5 v0.1.1
 	go.mau.fi/util v0.9.6
 	golang.org/x/image v0.35.0
 	gopkg.in/yaml.v3 v3.0.1

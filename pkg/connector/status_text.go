@@ -157,7 +157,7 @@ func (oc *AIClient) buildStatusText(
 	}
 	sb.WriteString(typingLine + "\n")
 
-	// Command-only heartbeat surface (OpenClaw parity: show last heartbeat snapshot for debugging).
+	// Command-only heartbeat surface for debugging.
 	sb.WriteString(formatHeartbeatSummary(time.Now().UnixMilli(), getLastHeartbeatEventForLogin(oc.UserLogin)) + "\n")
 
 	return strings.TrimSpace(sb.String())

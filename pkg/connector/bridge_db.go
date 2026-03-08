@@ -4,10 +4,8 @@ import (
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	"github.com/beeper/ai-bridge/pkg/aidb"
 )
-
-const aiBridgeVersionTable = "ai_bridge_version"
 
 func (oc *OpenAIConnector) bridgeDB() *dbutil.Database {
 	if oc == nil {
@@ -17,9 +15,8 @@ func (oc *OpenAIConnector) bridgeDB() *dbutil.Database {
 		return oc.db
 	}
 	if oc.br != nil && oc.br.DB != nil {
-		oc.db = bridgeadapter.MakeMemoryChildDB(
+		oc.db = aidb.NewChild(
 			oc.br.DB.Database,
-			aiBridgeVersionTable,
 			dbutil.ZeroLogger(oc.br.Log.With().Str("db_section", "ai_bridge").Logger()),
 		)
 		return oc.db
@@ -37,7 +34,7 @@ func (oc *AIClient) bridgeDB() *dbutil.Database {
 		}
 	}
 	if oc.UserLogin != nil && oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.DB != nil {
-		return bridgeadapter.MakeMemoryChildDB(oc.UserLogin.Bridge.DB.Database, aiBridgeVersionTable, dbutil.NoopLogger)
+		return aidb.NewChild(oc.UserLogin.Bridge.DB.Database, dbutil.NoopLogger)
 	}
 	return nil
 }
@@ -52,7 +49,7 @@ func bridgeDBFromLogin(login *bridgev2.UserLogin) *dbutil.Database {
 		}
 	}
 	if login.Bridge != nil && login.Bridge.DB != nil {
-		return bridgeadapter.MakeMemoryChildDB(login.Bridge.DB.Database, aiBridgeVersionTable, dbutil.NoopLogger)
+		return aidb.NewChild(login.Bridge.DB.Database, dbutil.NoopLogger)
 	}
 	return nil
 }

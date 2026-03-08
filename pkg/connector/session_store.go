@@ -108,9 +108,9 @@ func (oc *AIClient) getSessionEntry(ctx context.Context, ref sessionStoreRef, se
 		ctx = context.Background()
 	}
 	var (
-		entry             sessionEntry
-		queueDebounceMs   sql.NullInt64
-		queueCap          sql.NullInt64
+		entry           sessionEntry
+		queueDebounceMs sql.NullInt64
+		queueCap        sql.NullInt64
 	)
 	err := scope.db.QueryRowContext(ctx, `
 		SELECT

@@ -1,4 +1,4 @@
--- v0 -> v1: create ai bridge schema
+-- v0 -> v1: create shared AI bridge schema
 CREATE TABLE IF NOT EXISTS ai_memory_files (
   bridge_id TEXT NOT NULL,
   login_id TEXT NOT NULL,
