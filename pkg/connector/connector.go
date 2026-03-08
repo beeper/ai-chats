@@ -20,6 +20,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
+	"github.com/beeper/ai-bridge/pkg/aidb"
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 )
@@ -47,10 +48,10 @@ type OpenAIConnector struct {
 	clientsMu sync.Mutex
 	clients   map[networkid.UserLoginID]bridgev2.NetworkAPI
 
-	runtimeMatrixMu          sync.RWMutex
-	runtimeMatrixUserMXID    id.UserID
-	runtimeMatrixAccessToken string
-	runtimeMatrixHomeserver  string
+	localAIBridgeLoginMu         sync.RWMutex
+	localAIBridgeLoginUserMXID   id.UserID
+	localAIBridgeLoginToken      string
+	localAIBridgeLoginHomeserver string
 }
 
 func (oc *OpenAIConnector) Init(bridge *bridgev2.Bridge) {
@@ -61,9 +62,8 @@ func (oc *OpenAIConnector) Init(bridge *bridgev2.Bridge) {
 	oc.br = bridge
 	oc.db = nil
 	if bridge != nil && bridge.DB != nil && bridge.DB.Database != nil {
-		oc.db = bridgeadapter.MakeMemoryChildDB(
+		oc.db = aidb.NewChild(
 			bridge.DB.Database,
-			aiBridgeVersionTable,
 			dbutil.ZeroLogger(bridge.Log.With().Str("db_section", "ai_bridge").Logger()),
 		)
 	}
@@ -76,7 +76,7 @@ func (oc *OpenAIConnector) Stop(ctx context.Context) {
 
 func (oc *OpenAIConnector) Start(ctx context.Context) error {
 	db := oc.bridgeDB()
-	if err := bridgeadapter.UpgradeChildDB(ctx, db, "ai_bridge", "ai bridge database not initialized"); err != nil {
+	if err := aidb.Upgrade(ctx, db, "ai_bridge", "ai bridge database not initialized"); err != nil {
 		return err
 	}
 
@@ -128,16 +128,16 @@ func (oc *OpenAIConnector) applyRuntimeDefaults() {
 	}
 }
 
-// SetMatrixCredentials seeds the runtime Beeper Cloud auth tuple from the Matrix account.
-func (oc *OpenAIConnector) SetMatrixCredentials(userMXID id.UserID, accessToken, homeserver string) {
+// SetLocalAIBridgeLogin updates the local managed Beeper Cloud auth tuple for SDK-driven local AI bridge setup.
+func (oc *OpenAIConnector) SetLocalAIBridgeLogin(userMXID id.UserID, accessToken, homeserver string) {
 	if oc == nil {
 		return
 	}
-	oc.runtimeMatrixMu.Lock()
-	oc.runtimeMatrixUserMXID = id.UserID(strings.TrimSpace(string(userMXID)))
-	oc.runtimeMatrixAccessToken = strings.TrimSpace(accessToken)
-	oc.runtimeMatrixHomeserver = strings.TrimSpace(homeserver)
-	oc.runtimeMatrixMu.Unlock()
+	oc.localAIBridgeLoginMu.Lock()
+	oc.localAIBridgeLoginUserMXID = id.UserID(strings.TrimSpace(string(userMXID)))
+	oc.localAIBridgeLoginToken = strings.TrimSpace(accessToken)
+	oc.localAIBridgeLoginHomeserver = strings.TrimSpace(homeserver)
+	oc.localAIBridgeLoginMu.Unlock()
 	if oc.br != nil {
 		if _, err := oc.reconcileManagedBeeperLogin(context.Background()); err != nil {
 			oc.br.Log.Warn().Err(err).Stringer("user_mxid", userMXID).Msg("Failed to reconcile managed Beeper Cloud login after runtime credential update")
@@ -159,6 +159,9 @@ func (oc *OpenAIConnector) registerCustomEventHandlers() {
 
 	// Register handler for BeeperSendState wrapper events (desktop E2EE state updates)
 	matrixConnector.EventProcessor.On(event.BeeperSendState, oc.handleBeeperSendStateEvent)
+
+	// Register handler for internal scheduler delayed ticks.
+	matrixConnector.EventProcessor.On(ScheduleTickEventType, oc.handleScheduleTickEvent)
 
 	oc.br.Log.Info().
 		Str("beeper_send_state_type", event.BeeperSendState.Type).

@@ -9,7 +9,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -19,184 +18,9 @@ import (
 	"github.com/beeper/ai-bridge/pkg/textfs"
 )
 
-type heartbeatAgentState struct {
-	agentID    string
-	heartbeat  *HeartbeatConfig
-	intervalMs int64
-	lastRunMs  int64
-	nextDueMs  int64
-}
-
-type HeartbeatRunner struct {
-	client  *AIClient
-	agents  map[string]*heartbeatAgentState
-	timer   *time.Timer
-	stopped bool
-	mu      sync.Mutex
-}
-
-func NewHeartbeatRunner(client *AIClient) *HeartbeatRunner {
-	return &HeartbeatRunner{
-		client: client,
-		agents: make(map[string]*heartbeatAgentState),
-	}
-}
-
-func (r *HeartbeatRunner) Start() {
-	if r == nil || r.client == nil {
-		return
-	}
-	r.updateConfig(&r.client.connector.Config)
-	if r.client.heartbeatWake != nil {
-		r.client.heartbeatWake.SetHandler(func(reason string) heartbeatRunResult {
-			return r.run(reason)
-		})
-	}
-}
-
-func (r *HeartbeatRunner) Stop() {
-	if r == nil {
-		return
-	}
-	r.mu.Lock()
-	r.stopped = true
-	if r.timer != nil {
-		r.timer.Stop()
-		r.timer = nil
-	}
-	r.mu.Unlock()
-	if r.client != nil && r.client.heartbeatWake != nil {
-		r.client.heartbeatWake.SetHandler(nil)
-	}
-}
-
-func (r *HeartbeatRunner) updateConfig(cfg *Config) {
-	if r == nil {
-		return
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.stopped {
-		return
-	}
-	now := time.Now().UnixMilli()
-	prev := r.agents
-	next := make(map[string]*heartbeatAgentState)
-	for _, agent := range resolveHeartbeatAgents(cfg) {
-		intervalMs := resolveHeartbeatIntervalMs(cfg, "", agent.heartbeat)
-		if intervalMs <= 0 {
-			continue
-		}
-		prevState := prev[agent.agentID]
-		nextDue := now + intervalMs
-		lastRun := int64(0)
-		if prevState != nil {
-			lastRun = prevState.lastRunMs
-			if prevState.lastRunMs > 0 {
-				nextDue = prevState.lastRunMs + intervalMs
-			} else if prevState.intervalMs == intervalMs && prevState.nextDueMs > now {
-				nextDue = prevState.nextDueMs
-			}
-		} else if r.client != nil {
-			// On first startup (no prevState), seed from persisted session data
-			// so we don't wait a full interval if the heartbeat is already overdue.
-			ref, sessionKey := r.client.resolveHeartbeatMainSessionRef(agent.agentID)
-			if entry, ok := r.client.getSessionEntry(context.Background(), ref, sessionKey); ok && entry.LastHeartbeatSentAt > 0 {
-				lastRun = entry.LastHeartbeatSentAt
-				nextDue = lastRun + intervalMs
-			}
-		}
-		next[agent.agentID] = &heartbeatAgentState{
-			agentID:    agent.agentID,
-			heartbeat:  agent.heartbeat,
-			intervalMs: intervalMs,
-			lastRunMs:  lastRun,
-			nextDueMs:  nextDue,
-		}
-	}
-	r.agents = next
-	r.client.log.Info().Int("agents", len(next)).Msg("Heartbeat config updated")
-	r.scheduleNextLocked()
-}
-
-func (r *HeartbeatRunner) scheduleNextLocked() {
-	if r.stopped {
-		return
-	}
-	if r.timer != nil {
-		r.timer.Stop()
-		r.timer = nil
-	}
-	if len(r.agents) == 0 || r.client == nil || r.client.heartbeatWake == nil {
-		return
-	}
-	now := time.Now().UnixMilli()
-	nextDue := int64(0)
-	for _, agent := range r.agents {
-		if nextDue == 0 || agent.nextDueMs < nextDue {
-			nextDue = agent.nextDueMs
-		}
-	}
-	if nextDue == 0 {
-		return
-	}
-	delay := nextDue - now
-	if delay < 0 {
-		delay = 0
-	}
-	r.timer = time.AfterFunc(time.Duration(delay)*time.Millisecond, func() {
-		r.client.heartbeatWake.Request("interval", 0)
-	})
-}
-
-func (r *HeartbeatRunner) run(reason string) heartbeatRunResult {
-	r.mu.Lock()
-	if r.stopped || len(r.agents) == 0 {
-		r.mu.Unlock()
-		r.client.log.Debug().Str("reason", reason).Msg("Heartbeat run skipped: disabled or no agents")
-		return heartbeatRunResult{Status: "skipped", Reason: "disabled"}
-	}
-	agents := make([]*heartbeatAgentState, 0, len(r.agents))
-	for _, agent := range r.agents {
-		agents = append(agents, agent)
-	}
-	r.mu.Unlock()
-
-	r.client.log.Info().Str("reason", reason).Int("agents", len(agents)).Msg("Heartbeat run starting")
-
-	now := time.Now().UnixMilli()
-	isInterval := reason == "interval"
-	ran := false
-	for _, agent := range agents {
-		if isInterval && now < agent.nextDueMs {
-			r.client.log.Debug().Str("agent_id", agent.agentID).Int64("next_due_ms", agent.nextDueMs).Msg("Heartbeat agent not yet due")
-			continue
-		}
-		res := r.client.runHeartbeatOnce(agent.agentID, agent.heartbeat, reason)
-		r.client.log.Info().Str("agent_id", agent.agentID).Str("status", res.Status).Str("result_reason", res.Reason).Msg("Heartbeat agent finished")
-		if res.Status == "skipped" && res.Reason == "requests-in-flight" {
-			return res
-		}
-		if res.Status != "skipped" || res.Reason != "disabled" {
-			r.mu.Lock()
-			agent.lastRunMs = now
-			agent.nextDueMs = now + agent.intervalMs
-			r.mu.Unlock()
-		}
-		if res.Status == "ran" {
-			ran = true
-		}
-	}
-	r.mu.Lock()
-	r.scheduleNextLocked()
-	r.mu.Unlock()
-	if ran {
-		return heartbeatRunResult{Status: "ran"}
-	}
-	if isInterval {
-		return heartbeatRunResult{Status: "skipped", Reason: "not-due"}
-	}
-	return heartbeatRunResult{Status: "skipped", Reason: "disabled"}
+type heartbeatRunResult struct {
+	Status string
+	Reason string
 }
 
 type heartbeatAgent struct {
@@ -261,8 +85,8 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 		return heartbeatRunResult{Status: "skipped", Reason: "no-session"}
 	}
 
-	// Skip when HEARTBEAT.md exists but is effectively empty.
-	pendingEvents := hasSystemEvents(sessionKey) || (storeKey != "" && !strings.EqualFold(storeKey, sessionKey) && hasSystemEvents(storeKey))
+	ownerKey := systemEventsOwnerKey(oc)
+	pendingEvents := hasSystemEvents(ownerKey, sessionKey) || (storeKey != "" && !strings.EqualFold(storeKey, sessionKey) && hasSystemEvents(ownerKey, storeKey))
 	if !oc.shouldRunHeartbeatForFile(agentID, reason) && !pendingEvents {
 		oc.log.Debug().Str("agent_id", agentID).Msg("Heartbeat skipped: empty heartbeat file and no pending events")
 		oc.emitHeartbeatEvent(&HeartbeatEventPayload{
@@ -308,9 +132,9 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 	isExecEvent := reason == "exec-event"
 	hasExecCompletion := false
 	if isExecEvent {
-		systemEvents := peekSystemEvents(sessionKey)
+		systemEvents := peekSystemEvents(ownerKey, sessionKey)
 		if storeKey != "" && !strings.EqualFold(storeKey, sessionKey) {
-			systemEvents = append(systemEvents, peekSystemEvents(storeKey)...)
+			systemEvents = append(systemEvents, peekSystemEvents(ownerKey, storeKey)...)
 		}
 		for _, evt := range systemEvents {
 			if strings.Contains(evt, "Exec finished") {
@@ -324,11 +148,6 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 	if promptMeta == nil {
 		promptMeta = &PortalMetadata{}
 	}
-	// Force the heartbeat run to use the heartbeat agent's system prompt/context, even if the
-	// delivery/session portal is not currently assigned to that agent.
-	//
-	// Without this, heartbeats for the default agent can end up using a "non-agent room" prompt
-	// that doesn't inject HEARTBEAT.md and other workspace context files.
 	promptMeta.AgentID = agentID
 	if heartbeat != nil && heartbeat.Model != nil {
 		if model := strings.TrimSpace(*heartbeat.Model); model != "" {
@@ -347,7 +166,6 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 		ResponsePrefix:   responsePrefix,
 		SessionKey:       storeKey,
 		StoreAgentID:     sessionResolution.StoreRef.AgentID,
-		StorePath:        sessionResolution.StoreRef.Path,
 		PrevUpdatedAt:    prevUpdatedAt,
 		TargetRoom:       deliveryRoom,
 		TargetReason:     deliveryReason,
@@ -360,14 +178,12 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 	if hasExecCompletion {
 		prompt = execEventPrompt
 	}
-	// Only drain system events when delivery is possible. If suppressSend is true
-	// (no delivery target), leave events queued for the next heartbeat that can deliver.
 	systemEvents := ""
 	if !suppressSend {
-		systemEvents = formatSystemEvents(drainHeartbeatSystemEvents(sessionKey, storeKey))
+		systemEvents = formatSystemEvents(drainHeartbeatSystemEvents(ownerKey, sessionKey, storeKey))
 		if systemEvents != "" {
 			prompt = systemEvents + "\n\n" + prompt
-			persistSystemEventsSnapshot(oc.bridgeStateBackend(), oc.Log())
+			persistSystemEventsSnapshot(oc)
 		}
 	}
 
@@ -453,10 +269,10 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 	}
 }
 
-func drainHeartbeatSystemEvents(primaryKey string, secondaryKey string) []SystemEvent {
-	entries := drainSystemEventEntries(primaryKey)
+func drainHeartbeatSystemEvents(ownerKey string, primaryKey string, secondaryKey string) []SystemEvent {
+	entries := drainSystemEventEntries(ownerKey, primaryKey)
 	if sk := strings.TrimSpace(secondaryKey); sk != "" && !strings.EqualFold(strings.TrimSpace(primaryKey), sk) {
-		entries = append(entries, drainSystemEventEntries(secondaryKey)...)
+		entries = append(entries, drainSystemEventEntries(ownerKey, secondaryKey)...)
 	}
 	if len(entries) <= 1 {
 		return entries
@@ -465,6 +281,13 @@ func drainHeartbeatSystemEvents(primaryKey string, secondaryKey string) []System
 		return cmp.Compare(a.TS, b.TS)
 	})
 	return entries
+}
+
+func systemEventsOwnerKey(oc *AIClient) string {
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil {
+		return ""
+	}
+	return string(oc.UserLogin.Bridge.DB.BridgeID) + "|" + string(oc.UserLogin.ID)
 }
 
 func (oc *AIClient) buildContextWithHeartbeat(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, prompt string) (PromptContext, error) {
@@ -484,17 +307,14 @@ func (oc *AIClient) buildContextWithHeartbeat(ctx context.Context, portal *bridg
 
 func (oc *AIClient) resolveHeartbeatSessionPortal(agentID string, heartbeat *HeartbeatConfig) (*bridgev2.Portal, string, error) {
 	session := ""
-	if heartbeat != nil {
-		if heartbeat.Session != nil {
-			session = strings.TrimSpace(*heartbeat.Session)
-		}
+	if heartbeat != nil && heartbeat.Session != nil {
+		session = strings.TrimSpace(*heartbeat.Session)
 	}
 	mainKey := ""
 	if oc != nil && oc.connector != nil && oc.connector.Config.Session != nil {
 		mainKey = strings.TrimSpace(oc.connector.Config.Session.MainKey)
 	}
 	if session == "" || strings.EqualFold(session, "main") || strings.EqualFold(session, "global") || (mainKey != "" && strings.EqualFold(session, mainKey)) {
-		// Match resolveCronDeliveryTarget priority: session LastTo → lastActivePortal → defaultChatPortal
 		hbSession := oc.resolveHeartbeatSession(agentID, heartbeat)
 		if hbSession.Entry != nil {
 			lastChannel := strings.TrimSpace(hbSession.Entry.LastChannel)
@@ -502,7 +322,6 @@ func (oc *AIClient) resolveHeartbeatSessionPortal(agentID string, heartbeat *Hea
 			if lastTo != "" && strings.HasPrefix(lastTo, "!") && (lastChannel == "" || strings.EqualFold(lastChannel, "matrix")) {
 				if portal := oc.portalByRoomID(context.Background(), id.RoomID(lastTo)); portal != nil {
 					if meta := portalMeta(portal); meta != nil && normalizeAgentID(meta.AgentID) != normalizeAgentID(agentID) {
-						// Stale routing: portal no longer uses this agent.
 						goto mainFallback
 					}
 					return portal, portal.MXID.String(), nil
@@ -523,7 +342,6 @@ func (oc *AIClient) resolveHeartbeatSessionPortal(agentID string, heartbeat *Hea
 			return portal, portal.MXID.String(), nil
 		}
 	}
-	// Final fallback: same priority as above
 	hbSession := oc.resolveHeartbeatSession(agentID, heartbeat)
 	if hbSession.Entry != nil {
 		lastChannel := strings.TrimSpace(hbSession.Entry.LastChannel)
@@ -621,6 +439,9 @@ const execEventPrompt = "An async command you ran earlier has completed. The res
 func resolveActiveHoursTimezone(oc *AIClient, raw string) *time.Location {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" || strings.EqualFold(trimmed, "user") {
+		if oc == nil {
+			return time.Local
+		}
 		_, loc := oc.resolveUserTimezone()
 		return loc
 	}
@@ -629,6 +450,9 @@ func resolveActiveHoursTimezone(oc *AIClient, raw string) *time.Location {
 	}
 	if loc, err := time.LoadLocation(trimmed); err == nil {
 		return loc
+	}
+	if oc == nil {
+		return time.Local
 	}
 	_, loc := oc.resolveUserTimezone()
 	return loc
@@ -664,11 +488,9 @@ func compactSystemEvent(line string) string {
 	if strings.Contains(lowered, "reason periodic") {
 		return ""
 	}
-	// Filter out the actual heartbeat prompt, but not integration jobs that mention "heartbeat".
 	if strings.HasPrefix(lowered, "read heartbeat.md") {
 		return ""
 	}
-	// Filter heartbeat poll/wake noise.
 	if strings.Contains(lowered, "heartbeat poll") || strings.Contains(lowered, "heartbeat wake") {
 		return ""
 	}

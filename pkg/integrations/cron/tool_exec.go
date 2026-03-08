@@ -22,14 +22,12 @@ type ReminderContextLine struct {
 }
 
 type ToolExecDeps struct {
-	Status func() (enabled bool, storePath string, jobCount int, nextWake *int64, err error)
+	Status func() (enabled bool, backend string, jobCount int, nextRun *int64, err error)
 	List   func(includeDisabled bool) ([]Job, error)
 	Add    func(input JobCreate) (Job, error)
 	Update func(id string, patch JobPatch) (Job, error)
 	Remove func(id string) (bool, error)
-	Run    func(id string, mode string) (bool, string, error)
-	Runs   func(jobID string, limit int) ([]RunLogEntry, error)
-	Wake   func(mode string, text string) (bool, error)
+	Run    func(id string) (bool, string, error)
 
 	NowMs                func() int64
 	ResolveCreateContext func() ToolCreateContext
@@ -63,19 +61,19 @@ func ExecuteTool(ctx context.Context, args map[string]any, deps ToolExecDeps) (s
 		if deps.Status == nil {
 			return errorJSON("cron status unavailable"), nil
 		}
-		enabled, storePath, jobCount, nextWake, err := deps.Status()
+		enabled, backend, jobCount, nextRun, err := deps.Status()
 		if err != nil {
 			return errorJSON(err.Error()), nil
 		}
 		out := map[string]any{
-			"enabled":   enabled,
-			"storePath": storePath,
-			"jobs":      jobCount,
+			"enabled": enabled,
+			"backend": backend,
+			"jobs":    jobCount,
 		}
-		if nextWake != nil {
-			out["nextWakeAtMs"] = *nextWake
+		if nextRun != nil {
+			out["nextRunAtMs"] = *nextRun
 		} else {
-			out["nextWakeAtMs"] = nil
+			out["nextRunAtMs"] = nil
 		}
 		return agenttools.JSONResult(out).Text(), nil
 	case "list":
@@ -188,7 +186,7 @@ func ExecuteTool(ctx context.Context, args map[string]any, deps ToolExecDeps) (s
 		if jobID == "" {
 			return errorJSON("jobId required"), nil
 		}
-		ran, reason, err := deps.Run(jobID, "")
+		ran, reason, err := deps.Run(jobID)
 		if err != nil {
 			return errorJSON(err.Error()), nil
 		}
@@ -200,37 +198,6 @@ func ExecuteTool(ctx context.Context, args map[string]any, deps ToolExecDeps) (s
 			out["reason"] = reason
 		}
 		return agenttools.JSONResult(out).Text(), nil
-	case "runs":
-		if deps.Runs == nil {
-			return errorJSON("cron runs unavailable"), nil
-		}
-		jobID := readJobID(args)
-		if jobID == "" {
-			return errorJSON("jobId required"), nil
-		}
-		limit := agenttools.ReadIntDefault(args, "limit", 200)
-		entries, err := deps.Runs(jobID, limit)
-		if err != nil {
-			return errorJSON(err.Error()), nil
-		}
-		return agenttools.JSONResult(map[string]any{"entries": entries}).Text(), nil
-	case "wake":
-		if deps.Wake == nil {
-			return errorJSON("cron wake unavailable"), nil
-		}
-		text := strings.TrimSpace(agenttools.ReadStringDefault(args, "text", ""))
-		if text == "" {
-			return errorJSON("text is required"), nil
-		}
-		mode := strings.ToLower(strings.TrimSpace(agenttools.ReadStringDefault(args, "mode", "")))
-		if mode != "now" && mode != "next-heartbeat" {
-			mode = "next-heartbeat"
-		}
-		_, err := deps.Wake(mode, text)
-		if err != nil {
-			return errorJSON(err.Error()), nil
-		}
-		return agenttools.JSONResult(map[string]any{"ok": true}).Text(), nil
 	default:
 		return errorJSON(fmt.Sprintf("unknown action: %s", action)), nil
 	}
@@ -280,29 +247,11 @@ func injectToolContext(job *JobCreate, resolve func() ToolCreateContext) {
 		}
 		job.AgentID = &agentID
 	}
-
-	if tc.SourceInternal {
-		return
-	}
-	if strings.TrimSpace(tc.SourceRoomID) == "" {
-		return
-	}
-	if job.SessionTarget != SessionIsolated || !strings.EqualFold(strings.TrimSpace(job.Payload.Kind), "agentTurn") {
-		return
-	}
-	if job.Delivery == nil {
-		job.Delivery = &Delivery{Mode: DeliveryAnnounce}
-	}
-	mode := job.Delivery.Mode
-	if strings.TrimSpace(string(mode)) == "" {
-		mode = DeliveryAnnounce
-		job.Delivery.Mode = mode
-	}
-	channel := strings.ToLower(strings.TrimSpace(job.Delivery.Channel))
-	if mode == DeliveryAnnounce &&
+	if job.Delivery != nil &&
+		job.Delivery.Mode == DeliveryAnnounce &&
 		strings.TrimSpace(job.Delivery.To) == "" &&
-		(channel == "" || channel == "last" || channel == "matrix") {
-		job.Delivery.Channel = "matrix"
+		!tc.SourceInternal &&
+		strings.TrimSpace(tc.SourceRoomID) != "" {
 		job.Delivery.To = strings.TrimSpace(tc.SourceRoomID)
 	}
 }
@@ -311,10 +260,11 @@ func injectReminderContext(job *JobCreate, lines []ReminderContextLine, count in
 	if job == nil {
 		return
 	}
-	if strings.ToLower(strings.TrimSpace(job.Payload.Kind)) != "systemevent" {
+	kind := strings.ToLower(strings.TrimSpace(job.Payload.Kind))
+	if kind != "agentturn" {
 		return
 	}
-	text := strings.TrimSpace(job.Payload.Text)
+	text := strings.TrimSpace(job.Payload.Message)
 	if text == "" {
 		return
 	}
@@ -323,7 +273,8 @@ func injectReminderContext(job *JobCreate, lines []ReminderContextLine, count in
 		return
 	}
 	baseText := stripExistingReminderContext(text)
-	job.Payload.Text = baseText + reminderContextMarker + strings.Join(contextLines, "\n")
+	withContext := baseText + reminderContextMarker + strings.Join(contextLines, "\n")
+	job.Payload.Message = withContext
 }
 
 func stripExistingReminderContext(text string) string {

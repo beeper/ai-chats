@@ -5,17 +5,22 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	cronlib "github.com/robfig/cron/v3"
 )
 
-// parseAbsoluteTimeMs parses an absolute time string into unix ms.
-// Accepts RFC3339 and millisecond unix timestamps.
 var (
 	isoTZRe       = regexp.MustCompile(`(?i)(Z|[+-]\d{2}:?\d{2})$`)
 	isoDateRe     = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 	isoDateTimeRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T`)
+	cronParser    = cronlib.NewParser(cronlib.Minute | cronlib.Hour | cronlib.Dom | cronlib.Month | cronlib.Dow | cronlib.Descriptor)
 )
 
-func normalizeUtcIso(raw string) string {
+func normalizeString(s string) string {
+	return strings.ToLower(strings.TrimSpace(s))
+}
+
+func normalizeUTCISO(raw string) string {
 	if isoTZRe.MatchString(raw) {
 		return raw
 	}
@@ -39,8 +44,7 @@ func parseAbsoluteTimeMs(raw string) (int64, bool) {
 		}
 		return 0, false
 	}
-	normalized := normalizeUtcIso(trimmed)
-	if t, err := time.Parse(time.RFC3339, normalized); err == nil {
+	if t, err := time.Parse(time.RFC3339, normalizeUTCISO(trimmed)); err == nil {
 		return t.UTC().UnixMilli(), true
 	}
 	return 0, false

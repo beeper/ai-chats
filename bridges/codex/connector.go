@@ -18,6 +18,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/ai-bridge/bridges/codex/codexrpc"
+	"github.com/beeper/ai-bridge/pkg/aidb"
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
@@ -45,7 +46,7 @@ const (
 func (cc *CodexConnector) Init(bridge *bridgev2.Bridge) {
 	cc.br = bridge
 	if bridge != nil && bridge.DB != nil && bridge.DB.Database != nil {
-		cc.db = makeCodexBridgeChildDB(
+		cc.db = aidb.NewChild(
 			bridge.DB.Database,
 			dbutil.ZeroLogger(bridge.Log.With().Str("db_section", "codex_bridge").Logger()),
 		)
@@ -59,7 +60,7 @@ func (cc *CodexConnector) Stop(ctx context.Context) {
 
 func (cc *CodexConnector) Start(ctx context.Context) error {
 	db := cc.bridgeDB()
-	if err := bridgeadapter.UpgradeChildDB(ctx, db, "codex_bridge", "codex bridge database not initialized"); err != nil {
+	if err := aidb.Upgrade(ctx, db, "codex_bridge", "codex bridge database not initialized"); err != nil {
 		return err
 	}
 
@@ -67,6 +68,20 @@ func (cc *CodexConnector) Start(ctx context.Context) error {
 	cc.primeUserLoginCache(ctx)
 	cc.autoProvisionExistingCodex(ctx)
 
+	return nil
+}
+
+func (cc *CodexConnector) bridgeDB() *dbutil.Database {
+	if cc.db != nil {
+		return cc.db
+	}
+	if cc.br != nil && cc.br.DB != nil {
+		cc.db = aidb.NewChild(
+			cc.br.DB.Database,
+			dbutil.ZeroLogger(cc.br.Log.With().Str("db_section", "codex_bridge").Logger()),
+		)
+		return cc.db
+	}
 	return nil
 }
 
@@ -257,12 +272,7 @@ func (cc *CodexConnector) GetBridgeInfoVersion() (info, capabilities int) {
 }
 
 func (cc *CodexConnector) FillPortalBridgeInfo(portal *bridgev2.Portal, content *event.BridgeEventContent) {
-	meta := portalMeta(portal)
-	if meta.IsCronRoom {
-		content.BeeperRoomTypeV2 = "cron"
-	} else {
-		content.BeeperRoomTypeV2 = "codex"
-	}
+	content.BeeperRoomTypeV2 = "codex"
 }
 
 func (cc *CodexConnector) GetName() bridgev2.BridgeName {

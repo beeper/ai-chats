@@ -11,14 +11,69 @@ const (
 	tenYearsMs  int64 = int64(10 * 365.25 * 24 * 60 * 60 * 1000)
 )
 
-// TimestampValidationResult mirrors OpenClaw timestamp validation output.
-type TimestampValidationResult struct {
-	Ok      bool
-	Message string
+func ComputeNextRunAtMs(schedule Schedule, nowMs int64) *int64 {
+	kind := strings.TrimSpace(schedule.Kind)
+	switch kind {
+	case "at":
+		runAtMs, ok := parseAbsoluteTimeMs(schedule.At)
+		if !ok {
+			return nil
+		}
+		if runAtMs > nowMs {
+			return &runAtMs
+		}
+		return nil
+	case "every":
+		everyMs := schedule.EveryMs
+		if everyMs < 1 {
+			everyMs = 1
+		}
+		anchor := int64(0)
+		if schedule.AnchorMs != nil {
+			anchor = *schedule.AnchorMs
+		} else {
+			anchor = nowMs
+		}
+		if anchor < 0 {
+			anchor = 0
+		}
+		if nowMs < anchor {
+			return &anchor
+		}
+		elapsed := nowMs - anchor
+		steps := (elapsed + everyMs - 1) / everyMs
+		if steps < 1 {
+			steps = 1
+		}
+		next := anchor + steps*everyMs
+		return &next
+	case "cron":
+		expr := strings.TrimSpace(schedule.Expr)
+		if expr == "" {
+			return nil
+		}
+		location := time.UTC
+		if tz := strings.TrimSpace(schedule.TZ); tz != "" {
+			if loc, err := time.LoadLocation(tz); err == nil {
+				location = loc
+			}
+		}
+		sched, err := cronParser.Parse(expr)
+		if err != nil {
+			return nil
+		}
+		next := sched.Next(time.UnixMilli(nowMs).In(location))
+		if next.IsZero() {
+			return nil
+		}
+		nextMs := next.UTC().UnixMilli()
+		return &nextMs
+	default:
+		return nil
+	}
 }
 
-// ValidateSchedule validates the schedule's timezone and cron expression (if applicable).
-func ValidateSchedule(schedule CronSchedule) TimestampValidationResult {
+func ValidateSchedule(schedule Schedule) TimestampValidationResult {
 	kind := strings.TrimSpace(schedule.Kind)
 	if tz := strings.TrimSpace(schedule.TZ); tz != "" {
 		if _, err := time.LoadLocation(tz); err != nil {
@@ -46,9 +101,7 @@ func ValidateSchedule(schedule CronSchedule) TimestampValidationResult {
 	return TimestampValidationResult{Ok: true}
 }
 
-// ValidateScheduleTimestamp validates "at" schedules.
-// Rejects timestamps that are more than 1 minute in the past or 10 years in the future.
-func ValidateScheduleTimestamp(schedule CronSchedule, nowMs int64) TimestampValidationResult {
+func ValidateScheduleTimestamp(schedule Schedule, nowMs int64) TimestampValidationResult {
 	if strings.TrimSpace(schedule.Kind) != "at" {
 		return TimestampValidationResult{Ok: true}
 	}
@@ -56,17 +109,17 @@ func ValidateScheduleTimestamp(schedule CronSchedule, nowMs int64) TimestampVali
 		nowMs = time.Now().UnixMilli()
 	}
 	atRaw := strings.TrimSpace(schedule.At)
-	atMs, ok := parseAbsoluteTimeMs(atRaw)
+	runAtMs, ok := parseAbsoluteTimeMs(atRaw)
 	if !ok {
 		return TimestampValidationResult{
 			Ok:      false,
 			Message: fmt.Sprintf("Invalid schedule.at: expected ISO-8601 timestamp (got %v)", schedule.At),
 		}
 	}
-	diffMs := atMs - nowMs
+	diffMs := runAtMs - nowMs
 	if diffMs < -oneMinuteMs {
 		nowDate := time.UnixMilli(nowMs).UTC().Format("2006-01-02T15:04:05.000Z")
-		atDate := time.UnixMilli(atMs).UTC().Format("2006-01-02T15:04:05.000Z")
+		atDate := time.UnixMilli(runAtMs).UTC().Format("2006-01-02T15:04:05.000Z")
 		minutesAgo := int64(-diffMs / oneMinuteMs)
 		return TimestampValidationResult{
 			Ok: false,
@@ -79,7 +132,7 @@ func ValidateScheduleTimestamp(schedule CronSchedule, nowMs int64) TimestampVali
 		}
 	}
 	if diffMs > tenYearsMs {
-		atDate := time.UnixMilli(atMs).UTC().Format("2006-01-02T15:04:05.000Z")
+		atDate := time.UnixMilli(runAtMs).UTC().Format("2006-01-02T15:04:05.000Z")
 		yearsAhead := int64(diffMs / int64(365.25*24*60*60*1000))
 		return TimestampValidationResult{
 			Ok: false,
