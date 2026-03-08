@@ -6,7 +6,7 @@ func TestAgentContactIdentifiers(t *testing.T) {
 	modelID := "openrouter/openai/gpt-4.1"
 	info := &ModelInfo{
 		ID:       modelID,
-		Name:     "GPT 4.1",
+		Name:     "GPT-4.1",
 		Provider: "openrouter",
 	}
 	identifiers := agentContactIdentifiers("beeper", modelID, info)

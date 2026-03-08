@@ -164,18 +164,33 @@ func (oc *AIClient) canUseImageGeneration() bool {
 	}
 }
 
+func normalizeModelSearchString(s string) string {
+	replacer := strings.NewReplacer("-", " ", "_", " ", ".", " ", "/", " ", ":", " ")
+	return strings.Join(strings.Fields(replacer.Replace(strings.ToLower(strings.TrimSpace(s)))), " ")
+}
+
 func modelMatchesQuery(query string, model *ModelInfo) bool {
 	if query == "" || model == nil {
 		return false
 	}
-	if strings.Contains(strings.ToLower(model.ID), query) {
+	rawQuery := strings.ToLower(strings.TrimSpace(query))
+	if rawQuery == "" {
+		return false
+	}
+	normalizedQuery := normalizeModelSearchString(rawQuery)
+
+	if strings.Contains(strings.ToLower(model.ID), rawQuery) ||
+		(normalizedQuery != "" && strings.Contains(normalizeModelSearchString(model.ID), normalizedQuery)) {
 		return true
 	}
-	if strings.Contains(strings.ToLower(modelContactName(model.ID, model)), query) {
+	name := modelContactName(model.ID, model)
+	if strings.Contains(strings.ToLower(name), rawQuery) ||
+		(normalizedQuery != "" && strings.Contains(normalizeModelSearchString(name), normalizedQuery)) {
 		return true
 	}
 	for _, ident := range modelContactIdentifiers(model.ID, model) {
-		if strings.Contains(strings.ToLower(ident), query) {
+		if strings.Contains(strings.ToLower(ident), rawQuery) ||
+			(normalizedQuery != "" && strings.Contains(normalizeModelSearchString(ident), normalizedQuery)) {
 			return true
 		}
 	}

@@ -32,7 +32,7 @@ func TestCallOpenRouterImageGen_ParsesMessageImagesSnakeCase(t *testing.T) {
 	defer srv.Close()
 
 	images, err := callOpenRouterImageGen(context.Background(), "tok", srv.URL, map[string]any{
-		"model":      "google/gemini-2.5-flash-image-preview",
+		"model":      "google/gemini-3-pro-image-preview",
 		"messages":   []map[string]any{{"role": "user", "content": "cat"}},
 		"modalities": []string{"image", "text"},
 		"stream":     false,
@@ -64,7 +64,7 @@ func TestCallOpenRouterImageGen_ParsesMessageImagesCamelCase(t *testing.T) {
 	defer srv.Close()
 
 	images, err := callOpenRouterImageGen(context.Background(), "tok", srv.URL, map[string]any{
-		"model":      "google/gemini-2.5-flash-image-preview",
+		"model":      "google/gemini-3-pro-image-preview",
 		"messages":   []map[string]any{{"role": "user", "content": "cat"}},
 		"modalities": []string{"image", "text"},
 		"stream":     false,
@@ -97,7 +97,7 @@ func TestCallOpenRouterImageGen_ParsesContentPartsArray(t *testing.T) {
 	defer srv.Close()
 
 	images, err := callOpenRouterImageGen(context.Background(), "tok", srv.URL, map[string]any{
-		"model":      "google/gemini-2.5-flash-image-preview",
+		"model":      "google/gemini-3-pro-image-preview",
 		"messages":   []map[string]any{{"role": "user", "content": "cat"}},
 		"modalities": []string{"image", "text"},
 		"stream":     false,

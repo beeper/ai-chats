@@ -1,40 +1,6 @@
 {
   "models": [
     {
-      "id": "anthropic/claude-3.7-sonnet",
-      "name": "Claude 3.7 Sonnet",
-      "provider": "openrouter",
-      "api": "openai-completions",
-      "supports_vision": true,
-      "supports_tool_calling": true,
-      "supports_reasoning": true,
-      "supports_web_search": true,
-      "supports_pdf": true,
-      "context_window": 200000,
-      "max_output_tokens": 64000,
-      "available_tools": [
-        "web_search",
-        "function_calling"
-      ]
-    },
-    {
-      "id": "anthropic/claude-3.7-sonnet:thinking",
-      "name": "Claude 3.7 Sonnet (Reasoning)",
-      "provider": "openrouter",
-      "api": "openai-completions",
-      "supports_vision": true,
-      "supports_tool_calling": true,
-      "supports_reasoning": true,
-      "supports_web_search": true,
-      "supports_pdf": true,
-      "context_window": 200000,
-      "max_output_tokens": 64000,
-      "available_tools": [
-        "web_search",
-        "function_calling"
-      ]
-    },
-    {
       "id": "anthropic/claude-haiku-4.5",
       "name": "Claude Haiku 4.5",
       "provider": "openrouter",
@@ -46,23 +12,6 @@
       "supports_pdf": true,
       "context_window": 200000,
       "max_output_tokens": 64000,
-      "available_tools": [
-        "web_search",
-        "function_calling"
-      ]
-    },
-    {
-      "id": "anthropic/claude-opus-4",
-      "name": "Claude Opus 4",
-      "provider": "openrouter",
-      "api": "openai-completions",
-      "supports_vision": true,
-      "supports_tool_calling": true,
-      "supports_reasoning": true,
-      "supports_web_search": true,
-      "supports_pdf": true,
-      "context_window": 200000,
-      "max_output_tokens": 32000,
       "available_tools": [
         "web_search",
         "function_calling"
@@ -129,7 +78,7 @@
       "supports_reasoning": true,
       "supports_web_search": true,
       "supports_pdf": true,
-      "context_window": 1000000,
+      "context_window": 200000,
       "max_output_tokens": 64000,
       "available_tools": [
         "web_search",
@@ -154,6 +103,23 @@
       ]
     },
     {
+      "id": "anthropic/claude-sonnet-4.6",
+      "name": "Claude Sonnet 4.6",
+      "provider": "openrouter",
+      "api": "openai-completions",
+      "supports_vision": true,
+      "supports_tool_calling": true,
+      "supports_reasoning": true,
+      "supports_web_search": true,
+      "supports_pdf": true,
+      "context_window": 1000000,
+      "max_output_tokens": 128000,
+      "available_tools": [
+        "web_search",
+        "function_calling"
+      ]
+    },
+    {
       "id": "deepseek/deepseek-chat-v3-0324",
       "name": "DeepSeek v3 (0324)",
       "provider": "openrouter",
@@ -163,7 +129,7 @@
       "supports_reasoning": true,
       "supports_web_search": false,
       "context_window": 163840,
-      "max_output_tokens": 65536,
+      "max_output_tokens": 163840,
       "available_tools": [
         "function_calling"
       ]
@@ -371,7 +337,7 @@
       "supports_video": true,
       "supports_pdf": true,
       "context_window": 1048576,
-      "max_output_tokens": 65535,
+      "max_output_tokens": 65536,
       "available_tools": [
         "function_calling"
       ]
@@ -393,6 +359,42 @@
     {
       "id": "google/gemini-3-pro-preview",
       "name": "Gemini 3 Pro",
+      "provider": "openrouter",
+      "api": "openai-completions",
+      "supports_vision": true,
+      "supports_tool_calling": true,
+      "supports_reasoning": true,
+      "supports_web_search": false,
+      "supports_audio": true,
+      "supports_video": true,
+      "supports_pdf": true,
+      "context_window": 1048576,
+      "max_output_tokens": 65536,
+      "available_tools": [
+        "function_calling"
+      ]
+    },
+    {
+      "id": "google/gemini-3.1-flash-lite-preview",
+      "name": "Gemini 3.1 Flash Lite",
+      "provider": "openrouter",
+      "api": "openai-completions",
+      "supports_vision": true,
+      "supports_tool_calling": true,
+      "supports_reasoning": true,
+      "supports_web_search": false,
+      "supports_audio": true,
+      "supports_video": true,
+      "supports_pdf": true,
+      "context_window": 1048576,
+      "max_output_tokens": 65536,
+      "available_tools": [
+        "function_calling"
+      ]
+    },
+    {
+      "id": "google/gemini-3.1-pro-preview",
+      "name": "Gemini 3.1 Pro",
       "provider": "openrouter",
       "api": "openai-completions",
       "supports_vision": true,
@@ -463,7 +465,7 @@
       "supports_reasoning": true,
       "supports_web_search": false,
       "context_window": 196608,
-      "max_output_tokens": 65536,
+      "max_output_tokens": 196608,
       "available_tools": [
         "function_calling"
       ]
@@ -492,6 +494,7 @@
       "supports_reasoning": true,
       "supports_web_search": false,
       "context_window": 196608,
+      "max_output_tokens": 196608,
       "available_tools": [
         "function_calling"
       ]
@@ -505,7 +508,7 @@
       "supports_tool_calling": true,
       "supports_reasoning": false,
       "supports_web_search": false,
-      "context_window": 131072,
+      "context_window": 131000,
       "available_tools": [
         "function_calling"
       ]
@@ -525,11 +528,11 @@
       ]
     },
     {
-      "id": "moonshotai/kimi-k2-thinking",
-      "name": "Kimi K2 (Thinking)",
+      "id": "moonshotai/kimi-k2.5",
+      "name": "Kimi K2.5",
       "provider": "openrouter",
       "api": "openai-completions",
-      "supports_vision": false,
+      "supports_vision": true,
       "supports_tool_calling": true,
       "supports_reasoning": true,
       "supports_web_search": false,
@@ -540,23 +543,8 @@
       ]
     },
     {
-      "id": "moonshotai/kimi-k2.5",
-      "name": "Kimi K2.5",
-      "provider": "openrouter",
-      "api": "openai-completions",
-      "supports_vision": true,
-      "supports_tool_calling": true,
-      "supports_reasoning": true,
-      "supports_web_search": false,
-      "context_window": 262144,
-      "max_output_tokens": 262144,
-      "available_tools": [
-        "function_calling"
-      ]
-    },
-    {
       "id": "openai/gpt-4.1",
-      "name": "GPT 4.1",
+      "name": "GPT-4.1",
       "provider": "openrouter",
       "api": "openai-responses",
       "supports_vision": true,
@@ -573,7 +561,7 @@
     },
     {
       "id": "openai/gpt-4.1-mini",
-      "name": "GPT 4.1 Mini",
+      "name": "GPT-4.1 Mini",
       "provider": "openrouter",
       "api": "openai-responses",
       "supports_vision": true,
@@ -590,7 +578,7 @@
     },
     {
       "id": "openai/gpt-4.1-nano",
-      "name": "GPT 4.1 Nano",
+      "name": "GPT-4.1 Nano",
       "provider": "openrouter",
       "api": "openai-responses",
       "supports_vision": true,
@@ -607,7 +595,7 @@
     },
     {
       "id": "openai/gpt-4o-mini",
-      "name": "GPT 4o Mini",
+      "name": "GPT-4o-mini",
       "provider": "openrouter",
       "api": "openai-responses",
       "supports_vision": true,
@@ -677,7 +665,7 @@
     },
     {
       "id": "openai/gpt-5-mini",
-      "name": "GPT 5 Mini",
+      "name": "GPT-5 mini",
       "provider": "openrouter",
       "api": "openai-responses",
       "supports_vision": true,
@@ -694,7 +682,7 @@
     },
     {
       "id": "openai/gpt-5-nano",
-      "name": "GPT 5 Nano",
+      "name": "GPT-5 nano",
       "provider": "openrouter",
       "api": "openai-responses",
       "supports_vision": true,
@@ -711,7 +699,7 @@
     },
     {
       "id": "openai/gpt-5.1",
-      "name": "GPT 5.1",
+      "name": "GPT-5.1",
       "provider": "openrouter",
       "api": "openai-responses",
       "supports_vision": true,
@@ -728,7 +716,7 @@
     },
     {
       "id": "openai/gpt-5.2",
-      "name": "GPT 5.2",
+      "name": "GPT-5.2",
       "provider": "openrouter",
       "api": "openai-responses",
       "supports_vision": true,
@@ -745,7 +733,7 @@
     },
     {
       "id": "openai/gpt-5.2-pro",
-      "name": "GPT 5.2 Pro",
+      "name": "GPT-5.2 Pro",
       "provider": "openrouter",
       "api": "openai-responses",
       "supports_vision": true,
@@ -761,8 +749,42 @@
       ]
     },
     {
+      "id": "openai/gpt-5.3-chat",
+      "name": "GPT-5.3 Instant",
+      "provider": "openrouter",
+      "api": "openai-responses",
+      "supports_vision": true,
+      "supports_tool_calling": true,
+      "supports_reasoning": false,
+      "supports_web_search": true,
+      "supports_pdf": true,
+      "context_window": 128000,
+      "max_output_tokens": 16384,
+      "available_tools": [
+        "web_search",
+        "function_calling"
+      ]
+    },
+    {
+      "id": "openai/gpt-5.4",
+      "name": "GPT-5.4",
+      "provider": "openrouter",
+      "api": "openai-responses",
+      "supports_vision": true,
+      "supports_tool_calling": true,
+      "supports_reasoning": true,
+      "supports_web_search": true,
+      "supports_pdf": true,
+      "context_window": 1050000,
+      "max_output_tokens": 128000,
+      "available_tools": [
+        "web_search",
+        "function_calling"
+      ]
+    },
+    {
       "id": "openai/gpt-oss-120b",
-      "name": "OSS 120B",
+      "name": "GPT OSS 120B",
       "provider": "openrouter",
       "api": "openai-responses",
       "supports_vision": false,
@@ -776,7 +798,7 @@
     },
     {
       "id": "openai/gpt-oss-20b",
-      "name": "OSS 20B",
+      "name": "GPT OSS 20B",
       "provider": "openrouter",
       "api": "openai-responses",
       "supports_vision": false,
@@ -790,7 +812,7 @@
     },
     {
       "id": "openai/o3",
-      "name": "O3",
+      "name": "o3",
       "provider": "openrouter",
       "api": "openai-responses",
       "supports_vision": true,
@@ -807,7 +829,7 @@
     },
     {
       "id": "openai/o3-mini",
-      "name": "O3 Mini",
+      "name": "o3-mini",
       "provider": "openrouter",
       "api": "openai-responses",
       "supports_vision": false,
@@ -823,7 +845,7 @@
     },
     {
       "id": "openai/o3-pro",
-      "name": "O3 Pro",
+      "name": "o3 Pro",
       "provider": "openrouter",
       "api": "openai-responses",
       "supports_vision": true,
@@ -840,7 +862,7 @@
     },
     {
       "id": "openai/o4-mini",
-      "name": "O4 Mini",
+      "name": "o4-mini",
       "provider": "openrouter",
       "api": "openai-responses",
       "supports_vision": true,
@@ -856,16 +878,15 @@
       ]
     },
     {
-      "id": "qwen/qwen-2.5-coder-32b-instruct",
+      "id": "qwen/qwen2.5-vl-32b-instruct",
       "name": "Qwen 2.5 32B",
       "provider": "openrouter",
       "api": "openai-completions",
-      "supports_vision": false,
+      "supports_vision": true,
       "supports_tool_calling": false,
       "supports_reasoning": false,
       "supports_web_search": false,
-      "context_window": 32768,
-      "max_output_tokens": 32768
+      "context_window": 128000
     },
     {
       "id": "qwen/qwen3-235b-a22b",
@@ -876,24 +897,9 @@
       "supports_tool_calling": true,
       "supports_reasoning": true,
       "supports_web_search": false,
-      "context_window": 40960,
-      "max_output_tokens": 40960,
-      "available_tools": [
-        "function_calling"
-      ]
-    },
-    {
-      "id": "qwen/qwen3-235b-a22b-thinking-2507",
-      "name": "Qwen 3 235B (Thinking)",
-      "provider": "openrouter",
-      "api": "openai-completions",
-      "supports_vision": false,
-      "supports_tool_calling": true,
-      "supports_reasoning": true,
-      "supports_web_search": true,
       "context_window": 131072,
+      "max_output_tokens": 8192,
       "available_tools": [
-        "web_search",
         "function_calling"
       ]
     },
@@ -1013,7 +1019,7 @@
       "supports_reasoning": true,
       "supports_web_search": false,
       "context_window": 131072,
-      "max_output_tokens": 65536,
+      "max_output_tokens": 98304,
       "available_tools": [
         "function_calling"
       ]
@@ -1057,8 +1063,8 @@
       "supports_tool_calling": true,
       "supports_reasoning": true,
       "supports_web_search": false,
-      "context_window": 202752,
-      "max_output_tokens": 65536,
+      "context_window": 204800,
+      "max_output_tokens": 204800,
       "available_tools": [
         "function_calling"
       ]
@@ -1089,7 +1095,6 @@
       "supports_reasoning": true,
       "supports_web_search": false,
       "context_window": 202752,
-      "max_output_tokens": 65535,
       "available_tools": [
         "function_calling"
       ]
@@ -1103,8 +1108,7 @@
       "supports_tool_calling": true,
       "supports_reasoning": true,
       "supports_web_search": false,
-      "context_window": 204800,
-      "max_output_tokens": 131072,
+      "context_window": 202752,
       "available_tools": [
         "function_calling"
       ]

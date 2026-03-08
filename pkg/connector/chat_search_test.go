@@ -5,7 +5,7 @@ import "testing"
 func TestModelMatchesQuery(t *testing.T) {
 	model := &ModelInfo{
 		ID:       "openrouter/openai/gpt-4.1",
-		Name:     "GPT 4.1",
+		Name:     "GPT-4.1",
 		Provider: "openrouter",
 	}
 

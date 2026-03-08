@@ -9,7 +9,7 @@ import (
 func TestValidateUserID(t *testing.T) {
 	connector := &OpenAIConnector{}
 
-	validModel := modelUserID("anthropic/claude-3.7-sonnet")
+	validModel := modelUserID("anthropic/claude-sonnet-4.6")
 	validAgent := agentUserID("beeper")
 	invalidPrefix := networkid.UserID("user-someone")
 	invalidEscapedModel := networkid.UserID("model-%ZZ")
