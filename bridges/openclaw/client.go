@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -63,6 +64,7 @@ type openClawStreamState struct {
 	promptTokens     int64
 	completionTokens int64
 	reasoningTokens  int64
+	totalTokens      int64
 	startedAtMs      int64
 	firstTokenAtMs   int64
 	completedAtMs    int64
@@ -197,7 +199,7 @@ func (oc *OpenClawClient) GetChatInfo(_ context.Context, portal *bridgev2.Portal
 	return &bridgev2.ChatInfo{Name: ptr.Ptr(title)}, nil
 }
 
-func (oc *OpenClawClient) GetUserInfo(_ context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
+func (oc *OpenClawClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
 	if ghost == nil {
 		return &bridgev2.UserInfo{Name: ptr.Ptr("OpenClaw"), IsBot: ptr.Ptr(true)}, nil
 	}
@@ -206,15 +208,64 @@ func (oc *OpenClawClient) GetUserInfo(_ context.Context, ghost *bridgev2.Ghost) 
 		return &bridgev2.UserInfo{Name: ptr.Ptr("OpenClaw"), IsBot: ptr.Ptr(true)}, nil
 	}
 	meta := ghostMeta(ghost)
-	name := meta.OpenClawAgentName
-	if name == "" {
-		name = oc.displayNameForAgent(agentID)
+	identity := oc.lookupAgentIdentity(ctx, agentID, "")
+	if identity != nil {
+		if strings.TrimSpace(identity.AgentID) != "" {
+			meta.OpenClawAgentID = strings.TrimSpace(identity.AgentID)
+		}
+		if strings.TrimSpace(identity.Name) != "" {
+			meta.OpenClawAgentName = strings.TrimSpace(identity.Name)
+		}
+		if strings.TrimSpace(identity.Avatar) != "" {
+			meta.OpenClawAgentAvatarURL = strings.TrimSpace(identity.Avatar)
+		}
+		if strings.TrimSpace(identity.Emoji) != "" {
+			meta.OpenClawAgentEmoji = strings.TrimSpace(identity.Emoji)
+		}
 	}
-	return &bridgev2.UserInfo{
+	name := oc.formatAgentDisplayName(meta, agentID)
+	info := &bridgev2.UserInfo{
 		Name:        ptr.Ptr(name),
 		IsBot:       ptr.Ptr(true),
 		Identifiers: []string{"openclaw:" + agentID},
-	}, nil
+		ExtraUpdates: func(_ context.Context, ghost *bridgev2.Ghost) bool {
+			if ghost == nil {
+				return false
+			}
+			current := ghostMeta(ghost)
+			changed := false
+			if value := strings.TrimSpace(meta.OpenClawAgentID); value != "" && current.OpenClawAgentID != value {
+				current.OpenClawAgentID = value
+				changed = true
+			}
+			if value := strings.TrimSpace(meta.OpenClawAgentName); value != "" && current.OpenClawAgentName != value {
+				current.OpenClawAgentName = value
+				changed = true
+			}
+			if value := strings.TrimSpace(meta.OpenClawAgentAvatarURL); value != "" && current.OpenClawAgentAvatarURL != value {
+				current.OpenClawAgentAvatarURL = value
+				changed = true
+			}
+			if value := strings.TrimSpace(meta.OpenClawAgentEmoji); value != "" && current.OpenClawAgentEmoji != value {
+				current.OpenClawAgentEmoji = value
+				changed = true
+			}
+			if current.OpenClawAgentRole != "assistant" {
+				current.OpenClawAgentRole = "assistant"
+				changed = true
+			}
+			now := time.Now().UnixMilli()
+			if current.LastSeenAt != now {
+				current.LastSeenAt = now
+				changed = true
+			}
+			return changed
+		},
+	}
+	if avatar := oc.agentAvatar(meta, agentID); avatar != nil {
+		info.Avatar = avatar
+	}
+	return info, nil
 }
 
 func (oc *OpenClawClient) Log() *zerolog.Logger {
@@ -282,6 +333,66 @@ func (oc *OpenClawClient) displayNameForAgent(agentID string) string {
 		return "OpenClaw"
 	}
 	return strings.TrimSpace(agentID)
+}
+
+func (oc *OpenClawClient) formatAgentDisplayName(meta *GhostMetadata, agentID string) string {
+	name := ""
+	emoji := ""
+	if meta != nil {
+		name = strings.TrimSpace(meta.OpenClawAgentName)
+		emoji = strings.TrimSpace(meta.OpenClawAgentEmoji)
+	}
+	if name == "" {
+		name = oc.displayNameForAgent(agentID)
+	}
+	if emoji != "" && !strings.HasPrefix(name, emoji) {
+		return emoji + " " + name
+	}
+	return name
+}
+
+func (oc *OpenClawClient) lookupAgentIdentity(ctx context.Context, agentID, sessionKey string) *gatewayAgentIdentity {
+	if oc == nil || oc.manager == nil {
+		return nil
+	}
+	gateway := oc.manager.gatewayClient()
+	if gateway == nil {
+		return nil
+	}
+	identity, err := gateway.GetAgentIdentity(ctx, agentID, sessionKey)
+	if err != nil {
+		oc.Log().Debug().Err(err).Str("agent_id", agentID).Str("session_key", sessionKey).Msg("Failed to fetch OpenClaw agent identity")
+		return nil
+	}
+	return identity
+}
+
+func (oc *OpenClawClient) agentAvatar(meta *GhostMetadata, agentID string) *bridgev2.Avatar {
+	if meta == nil {
+		return nil
+	}
+	avatarURL := strings.TrimSpace(meta.OpenClawAgentAvatarURL)
+	if avatarURL == "" {
+		return nil
+	}
+	return &bridgev2.Avatar{
+		ID: networkid.AvatarID("openclaw:" + stringsTrimDefault(meta.OpenClawAgentID, agentID) + ":" + avatarURL),
+		Get: func(ctx context.Context) ([]byte, error) {
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, avatarURL, nil)
+			if err != nil {
+				return nil, err
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				return nil, err
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+				return nil, errors.New("avatar download failed")
+			}
+			return io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+		},
+	}
 }
 
 func (oc *OpenClawClient) senderForAgent(agentID string, fromMe bool) bridgev2.EventSender {

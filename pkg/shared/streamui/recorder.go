@@ -164,6 +164,14 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 		part := ensureToolPart(state, toolCallID, strings.TrimSpace(stringValue(state.UIToolNameByToolCallID[toolCallID])))
 		part["state"] = "approval-requested"
 		part["approval"] = map[string]any{"id": strings.TrimSpace(stringValue(chunk["approvalId"]))}
+	case "tool-approval-response":
+		RecordApprovalResponse(
+			state,
+			strings.TrimSpace(stringValue(chunk["approvalId"])),
+			strings.TrimSpace(stringValue(chunk["toolCallId"])),
+			boolValueOrDefault(chunk["approved"], false),
+			strings.TrimSpace(stringValue(chunk["reason"])),
+		)
 	case "tool-output-available":
 		toolCallID := strings.TrimSpace(stringValue(chunk["toolCallId"]))
 		if toolCallID == "" {
@@ -407,6 +415,13 @@ func stringValue(raw any) string {
 func boolValue(raw any) (bool, bool) {
 	value, ok := raw.(bool)
 	return value, ok
+}
+
+func boolValueOrDefault(raw any, fallback bool) bool {
+	if value, ok := boolValue(raw); ok {
+		return value
+	}
+	return fallback
 }
 
 func tryJSON(raw string) (any, bool) {

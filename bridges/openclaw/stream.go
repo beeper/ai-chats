@@ -318,6 +318,7 @@ func (oc *OpenClawClient) applyStreamMessageMetadata(state *openClawStreamState,
 		}
 	}
 	if usage, _ := metadata["usage"].(map[string]any); len(usage) > 0 {
+		usage = normalizeOpenClawUsage(usage)
 		if value, ok := maputil.NumberArg(usage, "prompt_tokens"); ok {
 			state.promptTokens = int64(value)
 		}
@@ -326,6 +327,9 @@ func (oc *OpenClawClient) applyStreamMessageMetadata(state *openClawStreamState,
 		}
 		if value, ok := maputil.NumberArg(usage, "reasoning_tokens"); ok {
 			state.reasoningTokens = int64(value)
+		}
+		if value, ok := maputil.NumberArg(usage, "total_tokens"); ok {
+			state.totalTokens = int64(value)
 		}
 	}
 }
@@ -343,6 +347,7 @@ func (oc *OpenClawClient) currentCanonicalUIMessage(state *openClawStreamState) 
 		PromptTokens:     state.promptTokens,
 		CompletionTokens: state.completionTokens,
 		ReasoningTokens:  state.reasoningTokens,
+		TotalTokens:      state.totalTokens,
 		StartedAtMs:      state.startedAtMs,
 		FirstTokenAtMs:   state.firstTokenAtMs,
 		CompletedAtMs:    state.completedAtMs,
@@ -384,6 +389,7 @@ func (oc *OpenClawClient) buildStreamDBMetadata(state *openClawStreamState) *Mes
 		PromptTokens:       state.promptTokens,
 		CompletionTokens:   state.completionTokens,
 		ReasoningTokens:    state.reasoningTokens,
+		TotalTokens:        state.totalTokens,
 		CanonicalSchema:    "ai-sdk-ui-message-v1",
 		CanonicalUIMessage: oc.currentCanonicalUIMessage(state),
 		StartedAtMs:        state.startedAtMs,
