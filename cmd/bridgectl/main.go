@@ -1218,12 +1218,12 @@ func requiredInstanceArg(args []string) (string, error) {
 }
 
 func expandPath(p string) (string, error) {
-	if strings.HasPrefix(p, "~/") {
+	if rest, ok := strings.CutPrefix(p, "~/"); ok {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", err
 		}
-		p = filepath.Join(home, p[2:])
+		p = filepath.Join(home, rest)
 	}
 	return filepath.Abs(p)
 }
