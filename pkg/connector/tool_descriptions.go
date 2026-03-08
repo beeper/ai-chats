@@ -3,6 +3,7 @@ package connector
 import (
 	"strings"
 
+	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
 )
 
@@ -20,8 +21,5 @@ func (oc *AIClient) toolDescriptionForPortal(meta *PortalMetadata, toolName stri
 }
 
 func (oc *AIClient) resolveWebSearchDescription(fallback string) string {
-	if fallback != "" {
-		return fallback
-	}
-	return toolspec.WebSearchDescription
+	return stringutil.FirstNonEmpty(fallback, toolspec.WebSearchDescription)
 }

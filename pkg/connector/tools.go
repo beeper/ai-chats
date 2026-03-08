@@ -872,10 +872,6 @@ func truncateString(s string, maxLen int) string {
 	return s[:maxLen] + "..."
 }
 
-func executeWebFetch(ctx context.Context, args map[string]any) (string, error) {
-	return executeWebFetchWithProviders(ctx, args)
-}
-
 func executeImageGeneration(ctx context.Context, args map[string]any) (string, error) {
 	btc := GetBridgeToolContext(ctx)
 	if btc == nil {
@@ -1368,15 +1364,11 @@ func generateTTSBase64(
 
 	// Try macOS 'say' command as fallback.
 	if isTTSMacOSAvailable() {
+		// If the user supplied an OpenAI-specific voice name (or no voice at all),
+		// fall back to the default macOS voice.
 		macOSVoice := voice
-		if voice == "" {
-			macOSVoice = ""
-		} else if validVoices[strings.ToLower(strings.TrimSpace(macOSVoice))] {
-			// The user provided an OpenAI voice name; use a macOS voice instead.
-			macOSVoice = ""
-		}
-		if macOSVoice == "" {
-			macOSVoice = "Samantha" // Default macOS voice
+		if macOSVoice == "" || validVoices[strings.ToLower(strings.TrimSpace(macOSVoice))] {
+			macOSVoice = "Samantha"
 		}
 		audioData, err := callMacOSSay(ctx, text, macOSVoice)
 		if err != nil {
@@ -1557,11 +1549,6 @@ func executeCalculator(ctx context.Context, args map[string]any) (string, error)
 	}
 
 	return fmt.Sprintf("%.6g", result), nil
-}
-
-// executeWebSearch performs a web search (placeholder implementation)
-func executeWebSearch(ctx context.Context, args map[string]any) (string, error) {
-	return executeWebSearchWithProviders(ctx, args)
 }
 
 // Similar to OpenClaw's session_status tool.
