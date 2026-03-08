@@ -35,7 +35,7 @@ func (oc *AIClient) buildResponsesAPIParams(ctx context.Context, portal *bridgev
 		OfInputItemList: input,
 	}
 
-	// Add reasoning effort if configured (uses inheritance: room → user → default)
+	// Add reasoning effort when the resolved target supports it.
 	if reasoningEffort := oc.effectiveReasoningEffort(meta); reasoningEffort != "" {
 		params.Reasoning = shared.ReasoningParam{
 			Effort: shared.ReasoningEffort(reasoningEffort),

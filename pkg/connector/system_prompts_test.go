@@ -15,7 +15,7 @@ func TestBuildSessionIdentityHint_IncludesRoomIDAndPortalID(t *testing.T) {
 	portal.MXID = id.RoomID("!room:example.org")
 	portal.PortalKey = networkid.PortalKey{ID: networkid.PortalID("portal-123")}
 
-	meta := &PortalMetadata{AgentID: "beeper"}
+	meta := agentModeTestMeta("beeper")
 	got := buildSessionIdentityHint(portal, meta)
 	if got == "" {
 		t.Fatalf("expected non-empty hint")

@@ -8,17 +8,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 )
 
-func TestHistoryLimitIgnoresLegacyMetaOverride(t *testing.T) {
-	client := &AIClient{}
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: "!room:test", RoomType: database.RoomTypeGroupDM}}
-	meta := &PortalMetadata{MaxContextMessages: 7}
-
-	limit := client.historyLimit(context.Background(), portal, meta)
-	if limit != defaultGroupContextMessages {
-		t.Fatalf("expected group default %d, got %d", defaultGroupContextMessages, limit)
-	}
-}
-
 func TestHistoryLimitDefaultsByRoomType(t *testing.T) {
 	client := &AIClient{}
 

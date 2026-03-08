@@ -577,9 +577,8 @@ func (oc *AIClient) createAgentChatWithModel(ctx context.Context, agent *agents.
 
 	agentName := oc.resolveAgentDisplayName(ctx, agent)
 	portal, chatInfo, err := oc.initPortalForChat(ctx, PortalInitOpts{
-		ModelID:      modelID,
-		Title:        fmt.Sprintf("Chat with %s", agentName),
-		SystemPrompt: agent.SystemPrompt,
+		ModelID: modelID,
+		Title:   fmt.Sprintf("Chat with %s", agentName),
 	})
 	if err != nil {
 		return nil, err
@@ -629,8 +628,7 @@ func (oc *AIClient) createAgentChatWithModel(ctx context.Context, agent *agents.
 // createNewChat creates a new portal for a specific model
 func (oc *AIClient) createNewChat(ctx context.Context, modelID string) (*bridgev2.CreateChatResponse, error) {
 	portal, chatInfo, err := oc.initPortalForChat(ctx, PortalInitOpts{
-		ModelID:      modelID,
-		SystemPrompt: defaultSimpleModeSystemPrompt,
+		ModelID: modelID,
 	})
 	if err != nil {
 		return nil, err
@@ -665,11 +663,10 @@ func (oc *AIClient) allocateNextChatIndex(ctx context.Context) (int, error) {
 
 // PortalInitOpts contains options for initializing a chat portal
 type PortalInitOpts struct {
-	ModelID      string
-	Title        string
-	SystemPrompt string
-	CopyFrom     *PortalMetadata // For forked chats - copies config from source
-	PortalKey    *networkid.PortalKey
+	ModelID   string
+	Title     string
+	CopyFrom  *PortalMetadata // For forked chats - copies config from source
+	PortalKey *networkid.PortalKey
 }
 
 func cloneForkPortalMetadata(src *PortalMetadata, slug, title string) *PortalMetadata {
@@ -737,8 +734,6 @@ func (oc *AIClient) initPortalForChat(ctx context.Context, opts PortalInitOpts) 
 		portal.AvatarID = networkid.AvatarID(defaultAvatar)
 		portal.AvatarMXC = id.ContentURIString(defaultAvatar)
 	}
-	// Note: portal.Topic is NOT set to SystemPrompt - they are separate concepts
-
 	if err := portal.Save(ctx); err != nil {
 		return nil, nil, fmt.Errorf("failed to save portal: %w", err)
 	}
@@ -876,7 +871,7 @@ func (oc *AIClient) handleNewChat(
 
 	// No args: create new room of same type
 	if meta == nil {
-		oc.sendSystemNotice(runCtx, portal, "Couldn't read current room settings.")
+		oc.sendSystemNotice(runCtx, portal, "Couldn't resolve the current chat target.")
 		return
 	}
 	agentID := resolveAgentID(meta)
@@ -1113,8 +1108,7 @@ func (oc *AIClient) copyMessagesToChat(
 // createNewSimpleChat creates a new simple mode chat portal with the specified model.
 func (oc *AIClient) createNewSimpleChat(ctx context.Context, modelID string) (*bridgev2.Portal, *bridgev2.ChatInfo, error) {
 	portal, chatInfo, err := oc.initPortalForChat(ctx, PortalInitOpts{
-		ModelID:      modelID,
-		SystemPrompt: defaultSimpleModeSystemPrompt,
+		ModelID: modelID,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -1448,7 +1442,7 @@ func (oc *AIClient) ensureSingleAIGhost(ctx context.Context, portal *bridgev2.Po
 	return nil
 }
 
-// BroadcastRoomState sends current room capabilities and settings to Matrix room state
+// BroadcastRoomState refreshes standard Matrix room capabilities and command descriptions.
 func (oc *AIClient) BroadcastRoomState(ctx context.Context, portal *bridgev2.Portal) error {
 	portal.UpdateCapabilities(ctx, oc.UserLogin, true)
 	oc.BroadcastCommandDescriptions(ctx, portal)
@@ -1627,10 +1621,9 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 	}
 
 	portal, chatInfo, err := oc.initPortalForChat(ctx, PortalInitOpts{
-		ModelID:      modelID,
-		Title:        "New AI Chat",
-		SystemPrompt: beeperAgent.SystemPrompt,
-		PortalKey:    &defaultPortalKey,
+		ModelID:   modelID,
+		Title:     "New AI Chat",
+		PortalKey: &defaultPortalKey,
 	})
 	if err != nil {
 		existingPortal, existingErr := oc.UserLogin.Bridge.GetExistingPortalByKey(ctx, defaultPortalKey)

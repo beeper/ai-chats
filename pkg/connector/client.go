@@ -1148,8 +1148,7 @@ func updateGhostLastSync(_ context.Context, ghost *bridgev2.Ghost) bool {
 func (oc *AIClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
 	meta := portalMeta(portal)
 
-	// Always recompute effective room capabilities to ensure they're up-to-date
-	// (includes image-understanding union for agent rooms)
+	// Always recompute effective room capabilities from the resolved room target.
 	modelCaps := oc.getRoomCapabilities(ctx, meta)
 	allowTextFiles := oc.canUseMediaUnderstanding(meta)
 	supportsPDF := modelCaps.SupportsPDF || oc.isOpenRouterProvider()
@@ -1411,9 +1410,7 @@ func getLinkPreviewConfig(connectorConfig *Config) LinkPreviewConfig {
 	return config
 }
 
-// effectiveAgentPrompt returns the system prompt for the agent assigned to the room.
-// This uses BuildSystemPrompt to generate a full prompt with room context when an agent is configured.
-// Returns empty string if no agent is configured.
+// effectiveAgentPrompt returns the resolved agent prompt for the current room target.
 func (oc *AIClient) effectiveAgentPrompt(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) string {
 	if meta == nil {
 		return ""

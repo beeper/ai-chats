@@ -31,7 +31,7 @@ This document specifies a Matrix transport profile for real-time AI:
   - primary: ephemeral events (`com.beeper.ai.stream_event` with AI SDK `UIMessageChunk`)
   - fallback: debounced `m.replace` timeline edits when ephemeral delivery is unavailable
 - `com.beeper.ai.*` timeline projection events (tool call/result, compaction status, etc).
-- `com.beeper.ai.*` state events (room settings/capabilities).
+- standard Matrix room features for capability advertising.
 - Tool approvals (MCP approvals + selected builtin tools).
 - Auxiliary `com.beeper.ai*` keys used for routing/metadata.
 
@@ -82,9 +82,6 @@ Authoritative identifiers are defined in `pkg/matrixevents/matrixevents.go`.
 | `m.room.message` | message | timeline | Canonical assistant message carrier (`com.beeper.ai`) | [Canonical](#canonical) |
 | `com.beeper.ai.stream_event` | ephemeral | ephemeral | Streaming `UIMessageChunk` deltas | [Streaming](#streaming) |
 | `com.beeper.ai.compaction_status` | message | timeline | Context compaction lifecycle/status | [Projections](#projection-compaction) |
-| `com.beeper.ai.room_capabilities` | state | state | Producer-controlled capabilities and effective settings | [State](#state-room-capabilities) |
-| `com.beeper.ai.room_settings` | state | state | User-editable room settings | [State](#state-room-settings) |
-| `com.beeper.ai.model_capabilities` | state | state | Per-model capabilities (e.g. supported features) | — |
 | `com.beeper.ai.agents` | state | state | Agent definitions for the room | — |
 
 ### Content Keys (Inside Standard Events)
@@ -288,56 +285,7 @@ Example:
 
 <a id="state"></a>
 ## State Events
-State events broadcast room configuration and capabilities.
-
-<a id="state-room-capabilities"></a>
-### `com.beeper.ai.room_capabilities`
-Producer-controlled capabilities and effective settings.
-
-Fields (see `RoomCapabilitiesEventContent` in `pkg/connector/events.go`):
-- `capabilities?: ModelCapabilities`
-- `available_tools?: ToolInfo[]`
-- `reasoning_effort_options?: { value: string, label: string }[]`
-- `provider?: string`
-- `effective_settings?: object`
-
-Example:
-```json
-{
-  "capabilities": {
-    "supports_reasoning": true,
-    "supports_tool_calling": true
-  },
-  "available_tools": [
-    {"name": "web_search", "display_name": "Web Search", "type": "provider", "enabled": true, "available": true}
-  ],
-  "provider": "beeper"
-}
-```
-
-<a id="state-room-settings"></a>
-### `com.beeper.ai.room_settings`
-User-editable room settings.
-
-Fields (see `RoomSettingsEventContent` in `pkg/connector/events.go`):
-- `model?: string`
-- `system_prompt?: string`
-- `temperature?: number`
-- `max_context_messages?: number`
-- `max_completion_tokens?: number`
-- `reasoning_effort?: string`
-- `agent_id?: string`
-- `emit_thinking?: boolean`
-- `emit_tool_args?: boolean`
-
-Example:
-```json
-{
-  "model": "openai/gpt-5",
-  "temperature": 0.7,
-  "agent_id": "boss"
-}
-```
+This bridge no longer uses custom room state for editable AI configuration. Room target selection is determined by ghost identity and membership, while room-level capability advertising uses standard Matrix room features.
 
 <a id="approvals"></a>
 ## Tool Approvals

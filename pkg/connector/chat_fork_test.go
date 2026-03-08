@@ -4,7 +4,6 @@ import "testing"
 
 func TestCloneForkPortalMetadata_PreservesSimpleMode(t *testing.T) {
 	src := &PortalMetadata{
-		GroupActivation: "always", // Legacy field is not copied in fork metadata.
 		ResolvedTarget: &ResolvedTarget{
 			Kind:    ResolvedTargetModel,
 			GhostID: modelUserID("openai/gpt-5"),
@@ -24,8 +23,5 @@ func TestCloneForkPortalMetadata_PreservesSimpleMode(t *testing.T) {
 	}
 	if !isSimpleMode(got) {
 		t.Fatalf("expected forked metadata to keep resolved simple-mode target")
-	}
-	if got.GroupActivation != "" {
-		t.Fatalf("expected GroupActivation to remain unset in fork metadata copy, got %q", got.GroupActivation)
 	}
 }

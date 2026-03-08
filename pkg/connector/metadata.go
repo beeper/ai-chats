@@ -7,7 +7,6 @@ import (
 	"go.mau.fi/util/jsontime"
 	"go.mau.fi/util/random"
 	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"github.com/beeper/ai-bridge/pkg/shared/jsonutil"
@@ -51,15 +50,6 @@ type UserProfile struct {
 	Occupation         string `json:"occupation,omitempty"`
 	AboutUser          string `json:"about_user,omitempty"`
 	CustomInstructions string `json:"custom_instructions,omitempty"`
-}
-
-// Legacy-only storage type kept so old JSON can still unmarshal during the hard cut.
-// New code must not read this.
-type UserDefaults struct {
-	Model           string   `json:"model,omitempty"`
-	SystemPrompt    string   `json:"system_prompt,omitempty"`
-	Temperature     *float64 `json:"temperature,omitempty"`
-	ReasoningEffort string   `json:"reasoning_effort,omitempty"`
 }
 
 // ServiceTokens stores optional per-login credentials for external services.
@@ -129,14 +119,10 @@ type UserLoginMetadata struct {
 	Gravatar             *GravatarState `json:"gravatar,omitempty"`
 	Timezone             string         `json:"timezone,omitempty"`
 	Profile              *UserProfile   `json:"profile,omitempty"`
-	ResponsePrefix       string         `json:"response_prefix,omitempty"` // Legacy-only. New code must not read this.
 
 	// FileAnnotationCache stores parsed PDF content from OpenRouter's file-parser plugin
 	// Key is the file hash (SHA256), pruned after 7 days
 	FileAnnotationCache map[string]FileAnnotation `json:"file_annotation_cache,omitempty"`
-
-	// Legacy-only. New code must not read this.
-	Defaults *UserDefaults `json:"defaults,omitempty"`
 
 	// Optional per-login tokens for external services
 	ServiceTokens *ServiceTokens `json:"service_tokens,omitempty"`
@@ -146,8 +132,6 @@ type UserLoginMetadata struct {
 
 	// Custom agents store (source of truth for user-created agents).
 	CustomAgents map[string]*AgentDefinitionContent `json:"custom_agents,omitempty"`
-	// Legacy-only. New code must not read this.
-	BuilderRoomID networkid.PortalID `json:"builder_room_id,omitempty"`
 	// Last active room per agent (used for heartbeat delivery).
 	LastActiveRoomByAgent map[string]string `json:"last_active_room_by_agent,omitempty"`
 	// Heartbeat dedupe state per agent.
@@ -179,33 +163,11 @@ type GravatarState struct {
 	Primary *GravatarProfile `json:"primary,omitempty"`
 }
 
-// PortalMetadata stores per-room tuning knobs for the assistant.
+// PortalMetadata stores non-derivable per-room runtime state.
 type PortalMetadata struct {
-	// Legacy-only selector/tuning fields kept to allow old JSON to unmarshal during
-	// the hard cut. New code must not read these.
-	Model                     string            `json:"model,omitempty"`
-	SystemPrompt              string            `json:"system_prompt,omitempty"`
-	Temperature               float64           `json:"temperature,omitempty"`
-	MaxContextMessages        int               `json:"max_context_messages,omitempty"`
-	MaxCompletionTokens       int               `json:"max_completion_tokens,omitempty"`
-	ReasoningEffort           string            `json:"reasoning_effort,omitempty"`
-	Capabilities              ModelCapabilities `json:"capabilities,omitempty"`
-	PDFConfig                 *PDFConfig        `json:"pdf_config,omitempty"`
-	EmitThinking              bool              `json:"emit_thinking,omitempty"`
-	EmitToolArgs              bool              `json:"emit_tool_args,omitempty"`
-	ThinkingLevel             string            `json:"thinking_level,omitempty"`
-	VerboseLevel              string            `json:"verbose_level,omitempty"`
-	ElevatedLevel             string            `json:"elevated_level,omitempty"`
-	GroupActivation           string            `json:"group_activation,omitempty"`
-	GroupActivationNeedsIntro bool              `json:"group_activation_needs_intro,omitempty"`
-	GroupIntroSent            bool              `json:"group_intro_sent,omitempty"`
-	SendPolicy                string            `json:"send_policy,omitempty"`
-	AgentID                   string            `json:"agent_id,omitempty"`
-	AgentPrompt               string            `json:"agent_prompt,omitempty"`
-	IsBuilderRoom             bool              `json:"is_builder_room,omitempty"`
-	IsSimpleMode              bool              `json:"is_simple_mode,omitempty"`
-	AckReactionEmoji          string            `json:"ack_reaction_emoji,omitempty"`
-	AckReactionRemoveAfter    bool              `json:"ack_reaction_remove_after,omitempty"`
+	AckReactionEmoji       string     `json:"ack_reaction_emoji,omitempty"`
+	AckReactionRemoveAfter bool       `json:"ack_reaction_remove_after,omitempty"`
+	PDFConfig              *PDFConfig `json:"pdf_config,omitempty"`
 
 	Slug             string `json:"slug,omitempty"`
 	Title            string `json:"title,omitempty"`
@@ -227,9 +189,6 @@ type PortalMetadata struct {
 	ResolvedTarget       *ResolvedTarget `json:"-"`
 	RuntimeModelOverride string          `json:"-"`
 	RuntimeReasoning     string          `json:"-"`
-
-	// Legacy-only. New code must not read this.
-	ResponsePrefix string `json:"response_prefix,omitempty"`
 
 	// Debounce configuration (0 = use default, -1 = disabled)
 	DebounceMs int `json:"debounce_ms,omitempty"`

@@ -48,28 +48,3 @@ func TestDefaultThinkLevelModelAware(t *testing.T) {
 		t.Fatalf("expected off for non-reasoning models, got %q", got)
 	}
 }
-
-func TestDefaultThinkLevelIgnoresLegacyThinkingOverrides(t *testing.T) {
-	client := &AIClient{
-		connector: &OpenAIConnector{},
-		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
-			Provider: ProviderOpenRouter,
-			ModelCache: &ModelCache{Models: []ModelInfo{
-				{ID: "openai/o4-mini", SupportsReasoning: true},
-			}},
-		}}},
-	}
-	meta := &PortalMetadata{
-		ThinkingLevel:   "high",
-		ReasoningEffort: "medium",
-		ResolvedTarget: &ResolvedTarget{
-			Kind:    ResolvedTargetModel,
-			GhostID: modelUserID("openai/o4-mini"),
-			ModelID: "openai/o4-mini",
-		},
-	}
-
-	if got := client.defaultThinkLevel(meta); got != "low" {
-		t.Fatalf("expected ghost/model-derived low think level, got %q", got)
-	}
-}

@@ -221,12 +221,6 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 	cleanedContent := airuntime.SanitizeChatMessageForDisplay(directives.Text, false)
 
 	finalReplyTarget := oc.resolveFinalReplyTarget(meta, state, &directives)
-	responsePrefix := resolveResponsePrefixForReply(oc, &oc.connector.Config, meta)
-	if responsePrefix != "" && strings.TrimSpace(cleanedContent) != "" {
-		if !strings.HasPrefix(cleanedContent, responsePrefix) {
-			cleanedContent = responsePrefix + " " + cleanedContent
-		}
-	}
 	rendered := format.RenderMarkdown(cleanedContent, true, true)
 	if finalReplyTarget.ReplyTo != "" {
 		replyTo := finalReplyTarget.ReplyTo
@@ -266,12 +260,6 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 		}
 		shouldSkip = false
 	}
-	responsePrefix := strings.TrimSpace(hb.ResponsePrefix)
-	if responsePrefix != "" && strings.TrimSpace(finalText) != "" && !shouldSkip {
-		if !strings.HasPrefix(finalText, responsePrefix) {
-			finalText = responsePrefix + " " + finalText
-		}
-	}
 	cleaned := strings.TrimSpace(finalText)
 	hasMedia := len(state.pendingImages) > 0
 	shouldSkipMain := shouldSkip && !hasMedia && !hb.ExecEvent
@@ -304,11 +292,7 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 		oc.restoreHeartbeatUpdatedAt(storeRef, hb.SessionKey, hb.PrevUpdatedAt)
 		silent := true
 		if hb.ShowOk && deliverable {
-			heartbeatOk := agents.HeartbeatToken
-			if responsePrefix != "" {
-				heartbeatOk = responsePrefix + " " + agents.HeartbeatToken
-			}
-			oc.sendPlainAssistantMessage(ctx, portal, heartbeatOk)
+			oc.sendPlainAssistantMessage(ctx, portal, agents.HeartbeatToken)
 			silent = false
 		}
 		oc.redactInitialStreamingMessage(ctx, portal, state)
@@ -728,11 +712,9 @@ func generateOutboundLinkPreviews(ctx context.Context, text string, intent bridg
 	return UploadPreviewImages(ctx, previewsWithImages, intent, portal.MXID)
 }
 
-// getAgentResponseMode returns the response mode for the current agent.
-// Defaults to ResponseModeNatural if not set.
-// IsSimpleMode on the portal overrides all other settings (for simple mode rooms).
+// getAgentResponseMode returns the response mode for the current room target.
+// Defaults to ResponseModeNatural if no agent-specific mode is configured.
 func (oc *AIClient) getAgentResponseMode(meta *PortalMetadata) agents.ResponseMode {
-	// Simple mode flag takes priority (set by simple command)
 	if isSimpleMode(meta) {
 		return agents.ResponseModeSimple
 	}

@@ -13,7 +13,6 @@ import (
 func TestPrepareStreamingRun_SimpleModeClearsReplyTarget(t *testing.T) {
 	oc := &AIClient{}
 	meta := &PortalMetadata{
-		SendPolicy: "deny",
 		ResolvedTarget: &ResolvedTarget{
 			Kind:    ResolvedTargetModel,
 			GhostID: modelUserID("openai/gpt-5.2"),
@@ -54,9 +53,7 @@ func TestPrepareStreamingRun_SimpleModeClearsReplyTarget(t *testing.T) {
 
 func TestPrepareStreamingRun_NonSimpleKeepsReplyTarget(t *testing.T) {
 	oc := &AIClient{}
-	meta := &PortalMetadata{
-		SendPolicy: "deny",
-	}
+	meta := &PortalMetadata{}
 	evt := &event.Event{
 		ID:     id.EventID("$evt"),
 		Sender: id.UserID("@alice:example.com"),

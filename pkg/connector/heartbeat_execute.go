@@ -148,7 +148,6 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 	if promptMeta == nil {
 		promptMeta = &PortalMetadata{}
 	}
-	responsePrefix := resolveResponsePrefixForHeartbeat(oc, cfg, agentID, promptMeta)
 	hbCfg := &HeartbeatRunConfig{
 		Reason:           reason,
 		AckMaxChars:      resolveHeartbeatAckMaxChars(cfg, heartbeat),
@@ -157,7 +156,6 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 		UseIndicator:     visibility.UseIndicator,
 		IncludeReasoning: heartbeat != nil && heartbeat.IncludeReasoning != nil && *heartbeat.IncludeReasoning,
 		ExecEvent:        hasExecCompletion,
-		ResponsePrefix:   responsePrefix,
 		SessionKey:       storeKey,
 		StoreAgentID:     sessionResolution.StoreRef.AgentID,
 		PrevUpdatedAt:    prevUpdatedAt,

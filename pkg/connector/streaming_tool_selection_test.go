@@ -18,16 +18,7 @@ func TestSelectedBuiltinToolsForTurn_SimpleModeEnablesOnlyWebSearch(t *testing.T
 		},
 	}
 
-	meta := &PortalMetadata{
-		ResolvedTarget: &ResolvedTarget{
-			Kind:    ResolvedTargetModel,
-			GhostID: modelUserID("openai/gpt-5.2"),
-			ModelID: "openai/gpt-5.2",
-		},
-		Capabilities: ModelCapabilities{
-			SupportsToolCalling: true,
-		},
-	}
+	meta := simpleModeTestMeta("openai/gpt-5.2")
 
 	got := client.selectedBuiltinToolsForTurn(context.Background(), meta)
 	if len(got) != 1 {
@@ -51,11 +42,7 @@ func TestSelectedBuiltinToolsForTurn_NonAgentNonSimpleGetsNoTools(t *testing.T) 
 		},
 	}
 
-	meta := &PortalMetadata{
-		Capabilities: ModelCapabilities{
-			SupportsToolCalling: true,
-		},
-	}
+	meta := &PortalMetadata{}
 
 	got := client.selectedBuiltinToolsForTurn(context.Background(), meta)
 	if len(got) != 0 {

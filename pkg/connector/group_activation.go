@@ -11,8 +11,3 @@ func (oc *AIClient) resolveGroupActivation(meta *PortalMetadata) string {
 	}
 	return "mention"
 }
-
-func normalizeSendPolicyMode(raw string) string {
-	_ = raw
-	return ""
-}

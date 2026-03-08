@@ -6,7 +6,7 @@ Batteries included - one click setup (for [Beeper Plus](https://www.beeper.com/p
 
 Coming soon to Beeper Desktop as an experiment. Join the [Developer Community](beeper://connect) on [Matrix](https://matrix.to/#/#beeper-developers:beeper.com?via=beeper.com) for early access.
 
-Connect all your chats with one click and manage your inbox with agents. Supports image generation, reminders, web search, and memory. Create basic AI Chats to talk to models with no tools and customizable system prompt.
+Connect all your chats with one click and manage your inbox with agents. Supports image generation, reminders, web search, and memory. Create direct model chats for simple conversations or agent chats for richer workflows.
 
 Made by humans using agentic coding.
 
@@ -20,7 +20,7 @@ Experimental Matrix ↔ AI bridge for Beeper, built on top of [mautrix/bridgev2]
 - Per-model chats (each model shows up as its own contact)
 - Streaming responses
 - Multimodal input (images, PDFs, audio, video) when supported by the model
-- Per-room settings (model, temperature, system prompt, context limits, tools)
+- Ghost-based chat targeting for models and agents
 - Login flows for Beeper, Magic Proxy, or custom (BYOK)
 - OpenClaw-style memory search (stored in the bridge DB)
 

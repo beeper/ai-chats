@@ -629,20 +629,3 @@ func (oc *AIClient) getModelContextWindow(meta *PortalMetadata) int {
 	// Default for unknown models
 	return 128000
 }
-
-// This is separate from room topic (which is display-only).
-func (oc *AIClient) setRoomSystemPrompt(ctx context.Context, portal *bridgev2.Portal, prompt string) error {
-	return oc.setRoomSystemPromptInternal(ctx, portal, prompt, true)
-}
-
-func (oc *AIClient) setRoomSystemPromptNoSave(ctx context.Context, portal *bridgev2.Portal, prompt string) error {
-	return oc.setRoomSystemPromptInternal(ctx, portal, prompt, false)
-}
-
-func (oc *AIClient) setRoomSystemPromptInternal(ctx context.Context, portal *bridgev2.Portal, prompt string, save bool) error {
-	_ = ctx
-	_ = portal
-	_ = prompt
-	_ = save
-	return nil
-}
