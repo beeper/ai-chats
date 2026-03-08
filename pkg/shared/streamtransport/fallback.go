@@ -57,7 +57,7 @@ func httpErrStatus(err *mautrix.HTTPError) int {
 }
 
 func isFallbackRespErrorCode(code string) bool {
-	upper := strings.ToUpper(strings.TrimSpace(code))
+	upper := strings.ToUpper(code)
 	if upper == "" {
 		return false
 	}

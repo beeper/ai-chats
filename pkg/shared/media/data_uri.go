@@ -35,7 +35,7 @@ func ParseDataURI(dataURI string) (string, string, error) {
 
 // DecodeBase64 decodes raw/base64 data or data URIs and returns bytes plus mime type.
 func DecodeBase64(b64Data string) ([]byte, string, error) {
-	mimeType := ""
+	var mimeType string
 
 	// Strip data-URI prefix if present, extracting the mime type.
 	if strings.HasPrefix(b64Data, "data:") {

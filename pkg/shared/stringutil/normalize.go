@@ -13,7 +13,7 @@ func NormalizeBaseURL(value string) string {
 func NormalizeMimeType(mimeType string) string {
 	lower := strings.ToLower(strings.TrimSpace(mimeType))
 	if lower == "" {
-		return lower
+		return ""
 	}
 	if semi := strings.IndexByte(lower, ';'); semi >= 0 {
 		return strings.TrimSpace(lower[:semi])

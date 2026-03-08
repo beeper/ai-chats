@@ -123,7 +123,7 @@ func (s *StreamSession) End(ctx context.Context, _ EndReason) {
 }
 
 func (s *StreamSession) EmitPart(ctx context.Context, part map[string]any) {
-	if s == nil || s.IsClosed() {
+	if s.IsClosed() {
 		return
 	}
 	if part == nil {
@@ -194,7 +194,7 @@ func (s *StreamSession) EmitPart(ctx context.Context, part map[string]any) {
 }
 
 func (s *StreamSession) sendEphemeralWithRetry(ephemeralSender bridgev2.EphemeralSendingMatrixAPI, eventContent *event.Content, txnID string, partType string) bool {
-	if s == nil || s.IsClosed() || ephemeralSender == nil || eventContent == nil {
+	if s.IsClosed() || ephemeralSender == nil || eventContent == nil {
 		return false
 	}
 	send := func() error {
@@ -266,15 +266,11 @@ func (s *StreamSession) switchToDebounced(_ context.Context, reason string, err 
 	if !switched {
 		return
 	}
-	if err != nil {
-		s.logWarn(reason, err)
-		return
-	}
-	s.logWarn(reason, nil)
+	s.logWarn(reason, err)
 }
 
 func (s *StreamSession) enqueueDebounced(force bool) {
-	if s == nil || s.IsClosed() {
+	if s.IsClosed() {
 		return
 	}
 	s.ensureWorker()
@@ -351,7 +347,7 @@ func (s *StreamSession) sendDebounced(ctx context.Context, force bool) error {
 }
 
 func debouncedPartMode(partType string) (eligible bool, force bool) {
-	switch strings.TrimSpace(partType) {
+	switch partType {
 	case "text-delta", "reasoning-delta", "text-end", "reasoning-end":
 		return true, false
 	case "finish", "abort", "error":
@@ -365,7 +361,7 @@ func (s *StreamSession) logWarn(reason string, err error) {
 	if s == nil || s.params.Logger == nil {
 		return
 	}
-	ev := s.params.Logger.Warn().Str("reason", strings.TrimSpace(reason))
+	ev := s.params.Logger.Warn().Str("reason", reason)
 	if err != nil {
 		ev = ev.Err(err)
 	}

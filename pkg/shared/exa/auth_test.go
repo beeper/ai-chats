@@ -19,7 +19,6 @@ func TestShouldAttachBearerAuth(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			got := ShouldAttachBearerAuth(tc.baseURL)
 			if got != tc.want {

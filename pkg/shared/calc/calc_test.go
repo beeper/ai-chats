@@ -1,6 +1,7 @@
 package calc
 
 import (
+	"math"
 	"strings"
 	"testing"
 )
@@ -50,12 +51,5 @@ func TestEvalExpression(t *testing.T) {
 }
 
 func almostEqual(a, b float64) bool {
-	if a == b {
-		return true
-	}
-	diff := a - b
-	if diff < 0 {
-		diff = -diff
-	}
-	return diff < 1e-9
+	return a == b || math.Abs(a-b) < 1e-9
 }
