@@ -288,7 +288,11 @@ func backfillTokenValue(msg opencode.MessageWithParts, pick func(opencode.TokenU
 }
 
 func backfillTotalTokens(msg opencode.MessageWithParts) int64 {
-	return backfillPromptTokens(msg) + backfillCompletionTokens(msg) + backfillReasoningTokens(msg)
+	total := backfillPromptTokens(msg) + backfillCompletionTokens(msg) + backfillReasoningTokens(msg)
+	if msg.Info.Tokens != nil && msg.Info.Tokens.Cache != nil {
+		total += int64(msg.Info.Tokens.Cache.Read + msg.Info.Tokens.Cache.Write)
+	}
+	return total
 }
 
 func buildCanonicalBackfillPart(snapshot canonicalBackfillSnapshot) *event.MessageEventContent {

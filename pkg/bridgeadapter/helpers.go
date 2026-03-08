@@ -223,14 +223,14 @@ func UpsertAssistantMessage(ctx context.Context, p UpsertAssistantMessageParams)
 			receiver = p.Login.ID
 		}
 		var existing *database.Message
-		var err error
+		var errByID, errByMXID error
 		if receiver != "" {
-			existing, err = db.GetPartByID(ctx, receiver, p.NetworkMessageID, networkid.PartID("0"))
+			existing, errByID = db.GetPartByID(ctx, receiver, p.NetworkMessageID, networkid.PartID("0"))
 		}
 		if existing == nil && p.InitialEventID != "" {
-			existing, err = db.GetPartByMXID(ctx, p.InitialEventID)
+			existing, errByMXID = db.GetPartByMXID(ctx, p.InitialEventID)
 		}
-		if err == nil && existing != nil {
+		if existing != nil {
 			existing.Metadata = p.Metadata
 			if err := db.Update(ctx, existing); err != nil {
 				p.Logger.Warn().Err(err).Str("msg_id", string(existing.ID)).Msg("Failed to update assistant message metadata")
@@ -240,7 +240,8 @@ func UpsertAssistantMessage(ctx context.Context, p UpsertAssistantMessageParams)
 			return
 		}
 		p.Logger.Warn().
-			Err(err).
+			AnErr("err_by_id", errByID).
+			AnErr("err_by_mxid", errByMXID).
 			Stringer("mxid", p.InitialEventID).
 			Str("msg_id", string(p.NetworkMessageID)).
 			Msg("Could not find existing DB row for update, falling back to insert")
