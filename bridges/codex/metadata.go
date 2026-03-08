@@ -32,28 +32,14 @@ type PortalMetadata struct {
 }
 
 type MessageMetadata struct {
-	Role               string             `json:"role,omitempty"`
-	Body               string             `json:"body,omitempty"`
-	ExcludeFromHistory bool               `json:"exclude_from_history,omitempty"`
-	CompletionID       string             `json:"completion_id,omitempty"`
-	FinishReason       string             `json:"finish_reason,omitempty"`
-	PromptTokens       int64              `json:"prompt_tokens,omitempty"`
-	CompletionTokens   int64              `json:"completion_tokens,omitempty"`
-	Model              string             `json:"model,omitempty"`
-	ReasoningTokens    int64              `json:"reasoning_tokens,omitempty"`
-	HasToolCalls       bool               `json:"has_tool_calls,omitempty"`
-	Transcript         string             `json:"transcript,omitempty"`
-	TurnID             string             `json:"turn_id,omitempty"`
-	AgentID            string             `json:"agent_id,omitempty"`
-	ToolCalls          []ToolCallMetadata `json:"tool_calls,omitempty"`
-	CanonicalSchema    string             `json:"canonical_schema,omitempty"`
-	CanonicalUIMessage map[string]any     `json:"canonical_ui_message,omitempty"`
-	StartedAtMs        int64              `json:"started_at_ms,omitempty"`
-	FirstTokenAtMs     int64              `json:"first_token_at_ms,omitempty"`
-	CompletedAtMs      int64              `json:"completed_at_ms,omitempty"`
-	ThinkingContent    string             `json:"thinking_content,omitempty"`
-	ThinkingTokenCount int                `json:"thinking_token_count,omitempty"`
-	GeneratedFiles     []GeneratedFileRef `json:"generated_files,omitempty"`
+	bridgeadapter.BaseMessageMetadata
+	ExcludeFromHistory bool   `json:"exclude_from_history,omitempty"`
+	CompletionID       string `json:"completion_id,omitempty"`
+	Model              string `json:"model,omitempty"`
+	HasToolCalls       bool   `json:"has_tool_calls,omitempty"`
+	Transcript         string `json:"transcript,omitempty"`
+	FirstTokenAtMs     int64  `json:"first_token_at_ms,omitempty"`
+	ThinkingTokenCount int    `json:"thinking_token_count,omitempty"`
 }
 
 type ToolCallMetadata = bridgeadapter.ToolCallMetadata
@@ -71,32 +57,15 @@ func (mm *MessageMetadata) CopyFrom(other any) {
 	if !ok || src == nil {
 		return
 	}
-	if src.Role != "" {
-		mm.Role = src.Role
-	}
-	if src.Body != "" {
-		mm.Body = src.Body
-	}
+	mm.CopyFromBase(&src.BaseMessageMetadata)
 	if src.ExcludeFromHistory {
 		mm.ExcludeFromHistory = true
 	}
 	if src.CompletionID != "" {
 		mm.CompletionID = src.CompletionID
 	}
-	if src.FinishReason != "" {
-		mm.FinishReason = src.FinishReason
-	}
-	if src.PromptTokens != 0 {
-		mm.PromptTokens = src.PromptTokens
-	}
-	if src.CompletionTokens != 0 {
-		mm.CompletionTokens = src.CompletionTokens
-	}
 	if src.Model != "" {
 		mm.Model = src.Model
-	}
-	if src.ReasoningTokens != 0 {
-		mm.ReasoningTokens = src.ReasoningTokens
 	}
 	if src.HasToolCalls {
 		mm.HasToolCalls = true
@@ -104,38 +73,11 @@ func (mm *MessageMetadata) CopyFrom(other any) {
 	if src.Transcript != "" {
 		mm.Transcript = src.Transcript
 	}
-	if src.TurnID != "" {
-		mm.TurnID = src.TurnID
-	}
-	if src.AgentID != "" {
-		mm.AgentID = src.AgentID
-	}
-	if len(src.ToolCalls) > 0 {
-		mm.ToolCalls = src.ToolCalls
-	}
-	if src.CanonicalSchema != "" {
-		mm.CanonicalSchema = src.CanonicalSchema
-	}
-	if len(src.CanonicalUIMessage) > 0 {
-		mm.CanonicalUIMessage = src.CanonicalUIMessage
-	}
-	if src.StartedAtMs != 0 {
-		mm.StartedAtMs = src.StartedAtMs
-	}
 	if src.FirstTokenAtMs != 0 {
 		mm.FirstTokenAtMs = src.FirstTokenAtMs
 	}
-	if src.CompletedAtMs != 0 {
-		mm.CompletedAtMs = src.CompletedAtMs
-	}
-	if src.ThinkingContent != "" {
-		mm.ThinkingContent = src.ThinkingContent
-	}
 	if src.ThinkingTokenCount != 0 {
 		mm.ThinkingTokenCount = src.ThinkingTokenCount
-	}
-	if len(src.GeneratedFiles) > 0 {
-		mm.GeneratedFiles = src.GeneratedFiles
 	}
 }
 

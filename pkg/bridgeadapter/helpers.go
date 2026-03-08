@@ -1,6 +1,7 @@
 package bridgeadapter
 
 import (
+	"fmt"
 	"time"
 
 	"go.mau.fi/util/ptr"
@@ -8,6 +9,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 )
@@ -135,6 +137,47 @@ func BuildDMChatInfo(p DMChatInfoParams) *bridgev2.ChatInfo {
 			},
 		},
 	}
+}
+
+// SendViaPortalParams holds the parameters for SendViaPortal.
+type SendViaPortalParams struct {
+	Login     *bridgev2.UserLogin
+	Portal    *bridgev2.Portal
+	Sender    bridgev2.EventSender
+	IDPrefix  string // e.g. "ai", "codex", "opencode"
+	LogKey    string // zerolog field name, e.g. "ai_msg_id"
+	MsgID     networkid.MessageID
+	Converted *bridgev2.ConvertedMessage
+}
+
+// SendViaPortal sends a pre-built message through bridgev2's QueueRemoteEvent pipeline.
+// If MsgID is empty, a new one is generated using IDPrefix.
+func SendViaPortal(p SendViaPortalParams) (id.EventID, networkid.MessageID, error) {
+	if p.Portal == nil || p.Portal.MXID == "" {
+		return "", "", fmt.Errorf("invalid portal")
+	}
+	if p.Login == nil {
+		return "", p.MsgID, fmt.Errorf("bridge unavailable")
+	}
+	if p.MsgID == "" {
+		p.MsgID = NewMessageID(p.IDPrefix)
+	}
+	evt := &RemoteMessage{
+		Portal:    p.Portal.PortalKey,
+		ID:        p.MsgID,
+		Sender:    p.Sender,
+		Timestamp: time.Now(),
+		LogKey:    p.LogKey,
+		PreBuilt:  p.Converted,
+	}
+	result := p.Login.QueueRemoteEvent(evt)
+	if !result.Success {
+		if result.Error != nil {
+			return "", p.MsgID, fmt.Errorf("send failed: %w", result.Error)
+		}
+		return "", p.MsgID, fmt.Errorf("send failed")
+	}
+	return result.EventID, p.MsgID, nil
 }
 
 func BuildChatInfoWithFallback(metaTitle, portalName, fallbackTitle, portalTopic string) *bridgev2.ChatInfo {

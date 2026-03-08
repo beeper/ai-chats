@@ -2575,8 +2575,7 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 		Room:     last.Portal.PortalKey,
 		SenderID: humanUserID(oc.UserLogin.ID),
 		Metadata: &MessageMetadata{
-			Role: "user",
-			Body: combinedBody,
+			BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{Role: "user", Body: combinedBody},
 		},
 		Timestamp: time.Now(),
 	}

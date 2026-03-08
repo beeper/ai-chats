@@ -77,34 +77,6 @@ func NewBridge(host Host) *Bridge {
 	return bridge
 }
 
-func (b *Bridge) DisplayName(instanceID string) string {
-	if b == nil {
-		return ""
-	}
-	return b.opencodeDisplayName(instanceID)
-}
-
-func (b *Bridge) InstanceConfig(instanceID string) *OpenCodeInstance {
-	if b == nil {
-		return nil
-	}
-	return b.opencodeInstanceConfig(instanceID)
-}
-
-func (b *Bridge) EnsureGhostDisplayName(ctx context.Context, instanceID string) {
-	if b == nil {
-		return
-	}
-	b.ensureOpenCodeGhostDisplayName(ctx, instanceID)
-}
-
-func (b *Bridge) CreateSessionChat(ctx context.Context, instanceID, title string, pendingTitle bool) (*bridgev2.CreateChatResponse, error) {
-	if b == nil {
-		return nil, ErrUnavailable
-	}
-	return b.createOpenCodeSessionChat(ctx, instanceID, title, pendingTitle)
-}
-
 func (b *Bridge) AbortSession(ctx context.Context, instanceID, sessionID string) error {
 	if b == nil || b.manager == nil {
 		return ErrUnavailable

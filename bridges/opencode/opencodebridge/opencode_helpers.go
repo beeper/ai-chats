@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-func (b *Bridge) opencodeInstanceConfig(instanceID string) *OpenCodeInstance {
+func (b *Bridge) InstanceConfig(instanceID string) *OpenCodeInstance {
 	if b == nil || b.host == nil {
 		return nil
 	}
@@ -16,8 +16,11 @@ func (b *Bridge) opencodeInstanceConfig(instanceID string) *OpenCodeInstance {
 	return meta[instanceID]
 }
 
-func (b *Bridge) opencodeDisplayName(instanceID string) string {
-	cfg := b.opencodeInstanceConfig(instanceID)
+func (b *Bridge) DisplayName(instanceID string) string {
+	if b == nil {
+		return ""
+	}
+	cfg := b.InstanceConfig(instanceID)
 	return opencodeLabelFromURL(cfg)
 }
 

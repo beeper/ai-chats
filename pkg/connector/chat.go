@@ -1120,8 +1120,7 @@ func (oc *AIClient) copyMessagesToChat(
 			Content:   srcMeta.Body,
 			Timestamp: srcMsg.Timestamp,
 			Metadata: &MessageMetadata{
-				Role: srcMeta.Role,
-				Body: srcMeta.Body,
+				BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{Role: srcMeta.Role, Body: srcMeta.Body},
 			},
 		}
 

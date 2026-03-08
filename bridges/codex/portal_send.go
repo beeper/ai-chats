@@ -3,7 +3,6 @@ package codex
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -13,41 +12,21 @@ import (
 )
 
 // sendViaPortal sends a pre-built message through bridgev2's QueueRemoteEvent pipeline.
-// Handles: intent resolution, ghost room join, send, DB persist.
-// Returns the Matrix event ID and the network message ID used.
-// If msgID is empty, a new one is generated.
 func (cc *CodexClient) sendViaPortal(
-	ctx context.Context,
+	_ context.Context,
 	portal *bridgev2.Portal,
 	converted *bridgev2.ConvertedMessage,
 	msgID networkid.MessageID,
 ) (id.EventID, networkid.MessageID, error) {
-	if portal == nil || portal.MXID == "" {
-		return "", "", fmt.Errorf("invalid portal")
-	}
-	if cc == nil || cc.UserLogin == nil || cc.UserLogin.Bridge == nil {
-		return "", msgID, fmt.Errorf("bridge unavailable")
-	}
-	if msgID == "" {
-		msgID = bridgeadapter.NewMessageID("codex")
-	}
-	sender := cc.senderForPortal()
-	evt := &CodexRemoteMessage{
-		Portal:    portal.PortalKey,
-		ID:        msgID,
-		Sender:    sender,
-		Timestamp: time.Now(),
+	return bridgeadapter.SendViaPortal(bridgeadapter.SendViaPortalParams{
+		Login:     cc.UserLogin,
+		Portal:    portal,
+		Sender:    cc.senderForPortal(),
+		IDPrefix:  "codex",
 		LogKey:    "codex_msg_id",
-		PreBuilt:  converted,
-	}
-	result := cc.UserLogin.QueueRemoteEvent(evt)
-	if !result.Success {
-		if result.Error != nil {
-			return "", msgID, fmt.Errorf("send failed: %w", result.Error)
-		}
-		return "", msgID, fmt.Errorf("send failed")
-	}
-	return result.EventID, msgID, nil
+		MsgID:     msgID,
+		Converted: converted,
+	})
 }
 
 // getCodexIntentForPortal resolves the Matrix intent for the Codex ghost.

@@ -30,39 +30,23 @@ func ensureConvertedMessageParts(converted *bridgev2.ConvertedMessage) {
 	converted.Parts = parts
 }
 
-// Handles: intent resolution, ghost room join, send, DB persist via QueueRemoteEvent.
-// Returns the Matrix event ID and the network message ID used.
-// If msgID is empty, a new one is generated.
+// sendViaPortal sends a pre-built message through bridgev2's QueueRemoteEvent pipeline.
 func (oc *AIClient) sendViaPortal(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	converted *bridgev2.ConvertedMessage,
 	msgID networkid.MessageID,
 ) (id.EventID, networkid.MessageID, error) {
-	if portal == nil || portal.MXID == "" {
-		return "", "", fmt.Errorf("invalid portal")
-	}
-	if msgID == "" {
-		msgID = bridgeadapter.NewMessageID("ai")
-	}
 	ensureConvertedMessageParts(converted)
-	sender := oc.senderForPortal(ctx, portal)
-	evt := &bridgeadapter.RemoteMessage{
-		Portal:    portal.PortalKey,
-		ID:        msgID,
-		Sender:    sender,
-		Timestamp: time.Now(),
+	return bridgeadapter.SendViaPortal(bridgeadapter.SendViaPortalParams{
+		Login:     oc.UserLogin,
+		Portal:    portal,
+		Sender:    oc.senderForPortal(ctx, portal),
+		IDPrefix:  "ai",
 		LogKey:    "ai_msg_id",
-		PreBuilt:  converted,
-	}
-	result := oc.UserLogin.QueueRemoteEvent(evt)
-	if !result.Success {
-		if result.Error != nil {
-			return "", msgID, fmt.Errorf("send failed: %w", result.Error)
-		}
-		return "", msgID, fmt.Errorf("send failed")
-	}
-	return result.EventID, msgID, nil
+		MsgID:     msgID,
+		Converted: converted,
+	})
 }
 
 // The targetMsgID is the network message ID of the message to edit.
