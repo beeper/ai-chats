@@ -168,9 +168,3 @@ func loadSystemEventsSnapshot(ctx context.Context, scope *systemEventsDBScope) (
 	}
 	return queues, nil
 }
-
-func logSystemEventsError(log *zerolog.Logger, err error, msg string) {
-	if log != nil {
-		log.Warn().Err(err).Msg(msg)
-	}
-}

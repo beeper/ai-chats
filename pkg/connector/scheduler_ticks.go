@@ -157,13 +157,6 @@ func shortTickKind(kind string) string {
 	}
 }
 
-func derefString(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return *value
-}
-
 func max64(a, b int64) int64 {
 	if a > b {
 		return a
