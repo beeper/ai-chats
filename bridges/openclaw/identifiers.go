@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -12,6 +13,11 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/shared/openclawconv"
+)
+
+var (
+	openClawValidAgentIDRe   = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
+	openClawInvalidAgentIDRe = regexp.MustCompile(`[^a-z0-9_-]+`)
 )
 
 func makeOpenClawUserLoginID(mxid id.UserID, ordinal int) networkid.UserLoginID {
@@ -58,7 +64,7 @@ func openClawPortalKey(loginID networkid.UserLoginID, gatewayID, sessionKey stri
 }
 
 func openClawGhostUserID(agentID string) networkid.UserID {
-	trimmed := strings.TrimSpace(agentID)
+	trimmed := canonicalOpenClawAgentID(agentID)
 	if trimmed == "" {
 		trimmed = "gateway"
 	}
@@ -74,7 +80,7 @@ func parseOpenClawGhostID(ghostID string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	value = strings.TrimSpace(value)
+	value = canonicalOpenClawAgentID(value)
 	if value == "" {
 		return "", false
 	}
@@ -86,11 +92,11 @@ func openClawAgentIDFromSessionKey(sessionKey string) string {
 }
 
 func openClawDMAgentSessionKey(agentID string) string {
-	agentID = strings.TrimSpace(agentID)
+	agentID = canonicalOpenClawAgentID(agentID)
 	if agentID == "" {
 		agentID = "gateway"
 	}
-	return fmt.Sprintf("agent:%s:matrix-dm", strings.ToLower(agentID))
+	return fmt.Sprintf("agent:%s:matrix-dm", agentID)
 }
 
 func isOpenClawSyntheticDMSessionKey(sessionKey string) bool {
@@ -99,4 +105,21 @@ func isOpenClawSyntheticDMSessionKey(sessionKey string) bool {
 		return false
 	}
 	return openClawAgentIDFromSessionKey(sessionKey) != ""
+}
+
+func canonicalOpenClawAgentID(agentID string) string {
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		return ""
+	}
+	if openClawValidAgentIDRe.MatchString(agentID) {
+		return strings.ToLower(agentID)
+	}
+	normalized := strings.ToLower(agentID)
+	normalized = openClawInvalidAgentIDRe.ReplaceAllString(normalized, "-")
+	normalized = strings.Trim(normalized, "-")
+	if len(normalized) > 64 {
+		normalized = normalized[:64]
+	}
+	return normalized
 }

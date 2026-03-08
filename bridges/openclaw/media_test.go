@@ -211,6 +211,15 @@ func TestOpenClawAttachmentSourceFromNestedAssetSource(t *testing.T) {
 	}
 }
 
+func TestDownloadOpenClawAttachmentURLRejectsLocalFiles(t *testing.T) {
+	if _, _, err := downloadOpenClawAttachmentURL(context.Background(), "file:///tmp/test.txt", "", 1024, 1); err == nil {
+		t.Fatal("expected local file URL to be rejected")
+	}
+	if _, _, err := downloadOpenClawAttachmentURL(context.Background(), "/tmp/test.txt", "", 1024, 1); err == nil {
+		t.Fatal("expected absolute path to be rejected")
+	}
+}
+
 func TestTopicForPortal(t *testing.T) {
 	oc := &OpenClawClient{}
 	topic := oc.topicForPortal(&PortalMetadata{

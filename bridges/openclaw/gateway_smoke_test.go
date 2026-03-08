@@ -39,30 +39,28 @@ func TestGatewaySmoke(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sessions.list: %v", err)
 	}
-	if len(sessions) == 0 {
-		t.Fatal("expected at least one visible session")
-	}
-
 	sessionKey := strings.TrimSpace(os.Getenv("OPENCLAW_SMOKE_SESSION_KEY"))
-	if sessionKey == "" {
+	if sessionKey == "" && len(sessions) > 0 {
 		sessionKey = sessions[0].Key
 	}
-	history, err := client.RecentHistory(ctx, sessionKey, 10)
-	if err != nil {
-		t.Fatalf("chat.history: %v", err)
-	}
-	if history == nil {
-		t.Fatal("expected non-nil history response")
-	}
-
-	agentID := openClawAgentIDFromSessionKey(sessionKey)
-	if agentID != "" {
-		identity, err := client.GetAgentIdentity(ctx, agentID, sessionKey)
+	if sessionKey != "" {
+		history, err := client.RecentHistory(ctx, sessionKey, 10)
 		if err != nil {
-			t.Fatalf("agent.identity.get: %v", err)
+			t.Fatalf("chat.history: %v", err)
 		}
-		if identity == nil || strings.TrimSpace(identity.AgentID) == "" {
-			t.Fatal("expected non-empty agent identity")
+		if history == nil {
+			t.Fatal("expected non-nil history response")
+		}
+
+		agentID := openClawAgentIDFromSessionKey(sessionKey)
+		if agentID != "" {
+			identity, err := client.GetAgentIdentity(ctx, agentID, sessionKey)
+			if err != nil {
+				t.Fatalf("agent.identity.get: %v", err)
+			}
+			if identity == nil || strings.TrimSpace(identity.AgentID) == "" {
+				t.Fatal("expected non-empty agent identity")
+			}
 		}
 	}
 

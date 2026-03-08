@@ -80,8 +80,9 @@ func appendRunKey(existing []string, runKey string) []string {
 }
 
 func containsRunKey(existing []string, runKey string) bool {
+	trimmedRunKey := strings.TrimSpace(runKey)
 	for _, candidate := range existing {
-		if strings.TrimSpace(candidate) == strings.TrimSpace(runKey) {
+		if strings.TrimSpace(candidate) == trimmedRunKey {
 			return true
 		}
 	}

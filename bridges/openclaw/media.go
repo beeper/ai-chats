@@ -9,7 +9,6 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -315,32 +314,7 @@ func downloadOpenClawAttachmentURL(ctx context.Context, rawURL, fallbackMime str
 		return nil, "", errors.New("missing attachment URL")
 	}
 	if strings.HasPrefix(rawURL, "file://") || strings.HasPrefix(rawURL, "/") {
-		pathValue := rawURL
-		if strings.HasPrefix(pathValue, "file://") {
-			pathValue = strings.TrimPrefix(pathValue, "file://")
-			if unescaped, err := url.PathUnescape(pathValue); err == nil {
-				pathValue = unescaped
-			}
-		}
-		info, err := os.Stat(pathValue)
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to stat file: %w", err)
-		}
-		if maxBytes > 0 && info.Size() > maxBytes {
-			return nil, "", fmt.Errorf("file too large: %d bytes (max %d MB)", info.Size(), maxSizeMB)
-		}
-		data, err := os.ReadFile(pathValue)
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to read file: %w", err)
-		}
-		mimeType := stringutil.NormalizeMimeType(mime.TypeByExtension(filepath.Ext(pathValue)))
-		if mimeType == "" {
-			mimeType = http.DetectContentType(data)
-		}
-		if mimeType == "" {
-			mimeType = stringutil.NormalizeMimeType(fallbackMime)
-		}
-		return data, mimeType, nil
+		return nil, "", errors.New("local file access is not permitted")
 	}
 
 	client := &http.Client{Timeout: 60 * time.Second}

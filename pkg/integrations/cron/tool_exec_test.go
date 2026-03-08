@@ -37,6 +37,9 @@ func TestInjectToolContextSkipsDeliveryTargetForInternalSource(t *testing.T) {
 			SourceRoomID:   "!cronroom:example.org",
 		}
 	})
+	if job.AgentID == nil || *job.AgentID != "main" {
+		t.Fatal("expected agent id to be set")
+	}
 	if job.Delivery == nil {
 		t.Fatal("expected delivery to remain present")
 	}

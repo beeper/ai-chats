@@ -92,8 +92,10 @@ func (ol *OpenClawLogin) SubmitUserInput(ctx context.Context, input map[string]s
 	authMode := "none"
 	if token != "" {
 		authMode = "token"
+		password = ""
 	} else if password != "" {
 		authMode = "password"
+		token = ""
 	}
 
 	remoteName := openClawRemoteName(normalizedURL, label)

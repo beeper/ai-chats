@@ -1,6 +1,8 @@
 package openclaw
 
 import (
+	"encoding/json"
+
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
@@ -192,11 +194,31 @@ func ghostMeta(ghost *bridgev2.Ghost) *GhostMetadata {
 	if ghost == nil {
 		return &GhostMetadata{}
 	}
-	meta, ok := ghost.Metadata.(*GhostMetadata)
-	if ok && meta != nil {
-		return meta
+	switch typed := ghost.Metadata.(type) {
+	case *GhostMetadata:
+		if typed != nil {
+			return typed
+		}
+	case map[string]any:
+		data, err := json.Marshal(typed)
+		if err == nil {
+			var meta GhostMetadata
+			if err = json.Unmarshal(data, &meta); err == nil {
+				ghost.Metadata = &meta
+				return &meta
+			}
+		}
+	case map[string]string:
+		data, err := json.Marshal(typed)
+		if err == nil {
+			var meta GhostMetadata
+			if err = json.Unmarshal(data, &meta); err == nil {
+				ghost.Metadata = &meta
+				return &meta
+			}
+		}
 	}
-	meta = &GhostMetadata{}
+	meta := &GhostMetadata{}
 	ghost.Metadata = meta
 	return meta
 }

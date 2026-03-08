@@ -86,6 +86,17 @@ func (s *schedulerRuntime) HandleScheduleTick(ctx context.Context, evt *event.Ev
 		s.client.log.Warn().Err(err).Stringer("event_id", evt.ID).Msg("Failed to decode schedule tick")
 		return
 	}
+	s.handleScheduleTickContent(ctx, tick, evt, portal)
+}
+
+func (s *schedulerRuntime) HandleScheduleTickContent(ctx context.Context, tick ScheduleTickContent, evt *event.Event, portal *bridgev2.Portal) {
+	if s == nil || s.client == nil || evt == nil {
+		return
+	}
+	s.handleScheduleTickContent(ctx, tick, evt, portal)
+}
+
+func (s *schedulerRuntime) handleScheduleTickContent(ctx context.Context, tick ScheduleTickContent, evt *event.Event, portal *bridgev2.Portal) {
 	switch tick.Kind {
 	case scheduleTickKindCronPlan:
 		if err := s.handleCronPlan(ctx, tick); err != nil {

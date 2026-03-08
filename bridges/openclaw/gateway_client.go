@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -270,11 +271,12 @@ type gatewayWSClient struct {
 	pendingMu sync.Mutex
 	pending   map[string]chan gatewayResponseFrame
 
-	conn      *websocket.Conn
-	events    chan gatewayEvent
-	closeOnce sync.Once
-	closeCh   chan struct{}
-	readDone  chan struct{}
+	conn        *websocket.Conn
+	events      chan gatewayEvent
+	closeOnce   sync.Once
+	closeCh     chan struct{}
+	readDone    chan struct{}
+	readStarted atomic.Bool
 }
 
 func newGatewayWSClient(cfg gatewayConnectConfig) *gatewayWSClient {
@@ -342,6 +344,7 @@ func (c *gatewayWSClient) Connect(ctx context.Context) (string, error) {
 	}
 
 	deviceToken := parseHelloDeviceToken(res.Payload)
+	c.readStarted.Store(true)
 	go c.readLoop()
 	return deviceToken, nil
 }
@@ -352,7 +355,9 @@ func (c *gatewayWSClient) Close() {
 		if c.conn != nil {
 			_ = c.conn.Close(websocket.StatusNormalClosure, "closing")
 		}
-		<-c.readDone
+		if c.readStarted.Load() {
+			<-c.readDone
+		}
 		close(c.events)
 	})
 }
@@ -559,8 +564,11 @@ func normalizeGatewayAgentIdentity(identity *gatewayAgentIdentity) *gatewayAgent
 
 func (c *gatewayWSClient) Request(ctx context.Context, method string, params map[string]any, out any) error {
 	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(context.Background(), openClawDefaultRequestTimout)
+		ctx, cancel = context.WithTimeout(ctx, openClawDefaultRequestTimout)
 		defer cancel()
 	}
 	reqID := uuid.NewString()
@@ -703,7 +711,6 @@ func (c *gatewayWSClient) readLoop() {
 			case c.events <- gatewayEvent{Name: evt.Event, Payload: evt.Payload}:
 			case <-c.closeCh:
 				return
-			default:
 			}
 		}
 	}

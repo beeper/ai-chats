@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -402,8 +403,8 @@ func (oc *OpenClawClient) agentAvatar(meta *GhostMetadata, agentID string) *brid
 	if meta == nil {
 		return nil
 	}
-	avatarURL := strings.TrimSpace(meta.OpenClawAgentAvatarURL)
-	if avatarURL == "" {
+	avatarURL, err := oc.resolveAllowedAvatarURL(strings.TrimSpace(meta.OpenClawAgentAvatarURL))
+	if err != nil || avatarURL == "" {
 		return nil
 	}
 	return &bridgev2.Avatar{
@@ -413,7 +414,7 @@ func (oc *OpenClawClient) agentAvatar(meta *GhostMetadata, agentID string) *brid
 			if err != nil {
 				return nil, err
 			}
-			resp, err := http.DefaultClient.Do(req)
+			resp, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
 			if err != nil {
 				return nil, err
 			}
@@ -424,6 +425,45 @@ func (oc *OpenClawClient) agentAvatar(meta *GhostMetadata, agentID string) *brid
 			return io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
 		},
 	}
+}
+
+func (oc *OpenClawClient) resolveAllowedAvatarURL(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", errors.New("missing avatar URL")
+	}
+	if strings.HasPrefix(raw, "data:image/") {
+		return raw, nil
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "", err
+	}
+	loginURL := strings.TrimSpace(loginMetadata(oc.UserLogin).GatewayURL)
+	if loginURL == "" {
+		return "", errors.New("gateway URL is unavailable")
+	}
+	base, err := url.Parse(loginURL)
+	if err != nil {
+		return "", err
+	}
+	switch base.Scheme {
+	case "ws":
+		base.Scheme = "http"
+	case "wss":
+		base.Scheme = "https"
+	}
+	switch parsed.Scheme {
+	case "":
+		parsed = base.ResolveReference(parsed)
+	case "http", "https":
+	default:
+		return "", errors.New("avatar URL scheme is not permitted")
+	}
+	if !strings.EqualFold(parsed.Host, base.Host) {
+		return "", errors.New("avatar URL host is not permitted")
+	}
+	return parsed.String(), nil
 }
 
 func (oc *OpenClawClient) senderForAgent(agentID string, fromMe bool) bridgev2.EventSender {

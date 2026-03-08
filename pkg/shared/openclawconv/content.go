@@ -1,9 +1,15 @@
 package openclawconv
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/beeper/ai-bridge/pkg/shared/jsonutil"
+)
+
+var (
+	validAgentIDRe   = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
+	invalidAgentIDRe = regexp.MustCompile(`[^a-z0-9_-]+`)
 )
 
 func AgentIDFromSessionKey(sessionKey string) string {
@@ -15,7 +21,16 @@ func AgentIDFromSessionKey(sessionKey string) string {
 	if agentID == "" {
 		return ""
 	}
-	return strings.ToLower(agentID)
+	if validAgentIDRe.MatchString(agentID) {
+		return strings.ToLower(agentID)
+	}
+	normalized := strings.ToLower(agentID)
+	normalized = invalidAgentIDRe.ReplaceAllString(normalized, "-")
+	normalized = strings.Trim(normalized, "-")
+	if len(normalized) > 64 {
+		normalized = normalized[:64]
+	}
+	return normalized
 }
 
 func ContentBlocks(message map[string]any) []map[string]any {

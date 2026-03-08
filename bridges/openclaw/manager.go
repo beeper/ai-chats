@@ -33,6 +33,8 @@ type openClawManager struct {
 	sessions  map[string]gatewaySessionRow
 	approvals *bridgeadapter.ApprovalManager[*openClawPendingApprovalData]
 	waiting   map[string]struct{}
+	started   map[string]struct{}
+	resyncing map[string]time.Time
 
 	cancel context.CancelFunc
 }
@@ -54,6 +56,8 @@ func newOpenClawManager(client *OpenClawClient) *openClawManager {
 		sessions:  make(map[string]gatewaySessionRow),
 		approvals: bridgeadapter.NewApprovalManager[*openClawPendingApprovalData](),
 		waiting:   make(map[string]struct{}),
+		started:   make(map[string]struct{}),
+		resyncing: make(map[string]time.Time),
 	}
 }
 
@@ -75,6 +79,20 @@ func (m *openClawManager) Start(ctx context.Context) error {
 		_ = m.client.UserLogin.Save(ctx)
 	}
 	runCtx, cancel := context.WithCancel(context.Background())
+	started := false
+	defer func() {
+		if started {
+			return
+		}
+		cancel()
+		gw.Close()
+		m.mu.Lock()
+		if m.gateway == gw {
+			m.gateway = nil
+		}
+		m.cancel = nil
+		m.mu.Unlock()
+	}()
 	m.mu.Lock()
 	m.gateway = gw
 	m.cancel = cancel
@@ -82,6 +100,7 @@ func (m *openClawManager) Start(ctx context.Context) error {
 	if err = m.syncSessions(ctx); err != nil {
 		return err
 	}
+	started = true
 	go m.eventLoop(runCtx, gw.Events())
 	return nil
 }
@@ -92,6 +111,8 @@ func (m *openClawManager) Stop() {
 	gateway := m.gateway
 	m.cancel = nil
 	m.gateway = nil
+	m.started = make(map[string]struct{})
+	m.resyncing = make(map[string]time.Time)
 	m.mu.Unlock()
 	if cancel != nil {
 		cancel()
@@ -113,6 +134,7 @@ func (m *openClawManager) syncSessions(ctx context.Context) error {
 	m.mu.Lock()
 	for _, session := range sessions {
 		m.sessions[session.Key] = session
+		delete(m.resyncing, session.Key)
 	}
 	m.mu.Unlock()
 	for _, session := range sessions {
@@ -128,6 +150,14 @@ func (m *openClawManager) gatewayClient() *gatewayWSClient {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.gateway
+}
+
+func (m *openClawManager) requireGateway() (*gatewayWSClient, error) {
+	gateway := m.gatewayClient()
+	if gateway == nil {
+		return nil, errors.New("gateway client is unavailable")
+	}
+	return gateway, nil
 }
 
 func (m *openClawManager) trackWaitingRun(runID string) bool {
@@ -155,10 +185,14 @@ func (m *openClawManager) untrackWaitingRun(runID string) {
 }
 
 func (m *openClawManager) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
+	gateway, err := m.requireGateway()
+	if err != nil {
+		return nil, err
+	}
 	meta := portalMeta(msg.Portal)
 	body := strings.TrimSpace(msg.Content.Body)
 	if isOpenClawAbortCommand(body, msg.Content.MsgType, msg.Event.Type) {
-		if err := m.gatewayClient().AbortRun(ctx, meta.OpenClawSessionKey, ""); err != nil {
+		if err := gateway.AbortRun(ctx, meta.OpenClawSessionKey, ""); err != nil {
 			return nil, err
 		}
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
@@ -172,12 +206,14 @@ func (m *openClawManager) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 	if meta.OpenClawDMCreatedFromContact && meta.OpenClawSessionID == "" && isOpenClawSyntheticDMSessionKey(meta.OpenClawSessionKey) {
-		if resolvedKey, err := m.gatewayClient().ResolveSessionKey(ctx, meta.OpenClawSessionKey); err == nil && strings.TrimSpace(resolvedKey) != "" && strings.TrimSpace(resolvedKey) != strings.TrimSpace(meta.OpenClawSessionKey) {
+		if resolvedKey, err := gateway.ResolveSessionKey(ctx, meta.OpenClawSessionKey); err == nil && strings.TrimSpace(resolvedKey) != "" && strings.TrimSpace(resolvedKey) != strings.TrimSpace(meta.OpenClawSessionKey) {
 			meta.OpenClawSessionKey = strings.TrimSpace(resolvedKey)
-			_ = msg.Portal.Save(ctx)
+			if saveErr := msg.Portal.Save(ctx); saveErr != nil {
+				m.client.Log().Warn().Err(saveErr).Str("portal_key", string(msg.Portal.PortalKey.ID)).Msg("Failed to save OpenClaw portal after resolved session key update")
+			}
 		}
 	}
-	_, err = m.gatewayClient().SendMessage(
+	_, err = gateway.SendMessage(
 		ctx,
 		meta.OpenClawSessionKey,
 		text,
@@ -260,6 +296,10 @@ func isOpenClawAbortCommand(body string, msgType event.MessageType, evtType even
 }
 
 func (m *openClawManager) ResolveApprovalDecision(ctx context.Context, portal *bridgev2.Portal, decision bridgeadapter.ApprovalDecisionPayload) error {
+	gateway, err := m.requireGateway()
+	if err != nil {
+		return err
+	}
 	pending := m.approvals.Get(strings.TrimSpace(decision.ApprovalID))
 	if pending == nil {
 		return bridgeadapter.ErrApprovalUnknown
@@ -277,15 +317,19 @@ func (m *openClawManager) ResolveApprovalDecision(ctx context.Context, portal *b
 			upstreamDecision = "allow-always"
 		}
 	}
-	if err := m.gatewayClient().ResolveApproval(ctx, decision.ApprovalID, upstreamDecision); err != nil {
+	if err := gateway.ResolveApproval(ctx, decision.ApprovalID, upstreamDecision); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (m *openClawManager) FetchMessages(ctx context.Context, params bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {
+	gateway, err := m.requireGateway()
+	if err != nil {
+		return nil, err
+	}
 	meta := portalMeta(params.Portal)
-	history, err := m.gatewayClient().RecentHistory(ctx, meta.OpenClawSessionKey, normalizeHistoryLimit(params.Count))
+	history, err := gateway.RecentHistory(ctx, meta.OpenClawSessionKey, normalizeHistoryLimit(params.Count))
 	if err != nil {
 		return nil, err
 	}
@@ -324,7 +368,9 @@ func (m *openClawManager) FetchMessages(ctx context.Context, params bridgev2.Fet
 		})
 	}
 	meta.LastHistorySyncAt = time.Now().UnixMilli()
-	_ = params.Portal.Save(ctx)
+	if err := params.Portal.Save(ctx); err != nil {
+		m.client.Log().Warn().Err(err).Str("session_key", meta.OpenClawSessionKey).Msg("Failed saving OpenClaw portal metadata after history fetch")
+	}
 	return &bridgev2.FetchMessagesResponse{
 		Messages:                backfill,
 		HasMore:                 false,
@@ -730,16 +776,20 @@ func (m *openClawManager) handleChatEvent(ctx context.Context, payload gatewayCh
 	if payload.State == "final" || payload.State == "aborted" || payload.State == "error" {
 		m.ensureStreamStart(ctx, portal, meta, turnID, payload.RunID, agentID, messageMetadata)
 		if usage := normalizeOpenClawUsage(payload.Usage); len(usage) > 0 {
+			reasoningTokens := int64(0)
 			if value, ok := openClawUsageInt64(usage, "prompt_tokens"); ok {
 				meta.InputTokens = value
 			}
 			if value, ok := openClawUsageInt64(usage, "completion_tokens"); ok {
 				meta.OutputTokens = value
 			}
+			if value, ok := openClawUsageInt64(usage, "reasoning_tokens"); ok {
+				reasoningTokens = value
+			}
 			if value, ok := openClawUsageInt64(usage, "total_tokens"); ok {
 				meta.TotalTokens = value
 			} else {
-				meta.TotalTokens = meta.InputTokens + meta.OutputTokens
+				meta.TotalTokens = meta.InputTokens + meta.OutputTokens + reasoningTokens
 			}
 			meta.TotalTokensFresh = true
 		}
@@ -765,6 +815,7 @@ func (m *openClawManager) handleChatEvent(ctx context.Context, payload gatewayCh
 			"messageMetadata": messageMetadata,
 		})
 		m.client.FinishStream(turnID, payload.State)
+		m.clearStartedTurn(turnID)
 		m.untrackWaitingRun(payload.RunID)
 		meta.LastLiveSeq = payload.Seq
 		_ = portal.Save(ctx)
@@ -772,6 +823,16 @@ func (m *openClawManager) handleChatEvent(ctx context.Context, payload gatewayCh
 }
 
 func (m *openClawManager) ensureStreamStart(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, turnID, runID, agentID string, messageMetadata map[string]any) {
+	if strings.TrimSpace(turnID) == "" {
+		return
+	}
+	m.mu.Lock()
+	if _, exists := m.started[turnID]; exists {
+		m.mu.Unlock()
+		return
+	}
+	m.started[turnID] = struct{}{}
+	m.mu.Unlock()
 	if agentID == "" {
 		agentID = resolveOpenClawAgentID(meta, meta.OpenClawSessionKey, nil)
 	}
@@ -965,6 +1026,7 @@ func (m *openClawManager) waitForRunCompletion(ctx context.Context, portal *brid
 			"messageMetadata": metadata,
 		})
 		m.client.FinishStream(turnID, status)
+		m.clearStartedTurn(turnID)
 		return
 	}
 	m.client.EmitStreamPart(ctx, portal, turnID, agentID, meta.OpenClawSessionKey, map[string]any{
@@ -972,6 +1034,7 @@ func (m *openClawManager) waitForRunCompletion(ctx context.Context, portal *brid
 		"messageMetadata": metadata,
 	})
 	m.client.FinishStream(turnID, status)
+	m.clearStartedTurn(turnID)
 }
 
 func (m *openClawManager) recoverRunText(ctx context.Context, sessionKey, turnID string) string {
@@ -983,8 +1046,20 @@ func (m *openClawManager) recoverRunText(ctx context.Context, sessionKey, turnID
 	if err != nil || history == nil {
 		return ""
 	}
-	for i := len(history.Messages) - 1; i >= 0; i-- {
-		message := history.Messages[i]
+	filtered := history.Messages
+	if trimmedTurnID := strings.TrimSpace(turnID); trimmedTurnID != "" {
+		filtered = make([]map[string]any, 0, len(history.Messages))
+		for _, message := range history.Messages {
+			if strings.EqualFold(historyMessageTurnID(message), trimmedTurnID) {
+				filtered = append(filtered, message)
+			}
+		}
+		if len(filtered) == 0 {
+			filtered = history.Messages
+		}
+	}
+	for i := len(filtered) - 1; i >= 0; i-- {
+		message := filtered[i]
 		role := strings.ToLower(strings.TrimSpace(stringValue(message["role"])))
 		if role != "assistant" && role != "toolresult" {
 			continue
@@ -1020,6 +1095,7 @@ func (m *openClawManager) resolvePortal(ctx context.Context, sessionKey string) 
 	key := m.client.portalKeyForSession(sessionKey)
 	portal, err := m.client.UserLogin.Bridge.GetPortalByKey(ctx, key)
 	if err == nil && portal != nil {
+		m.clearPendingPortalResync(sessionKey)
 		return portal
 	}
 	m.mu.RLock()
@@ -1028,10 +1104,17 @@ func (m *openClawManager) resolvePortal(ctx context.Context, sessionKey string) 
 	if !ok {
 		session = gatewaySessionRow{Key: sessionKey, SessionID: sessionKey}
 	}
-	m.client.UserLogin.QueueRemoteEvent(&OpenClawSessionResyncEvent{client: m.client, session: session})
+	if m.shouldQueuePortalResync(sessionKey) {
+		m.client.UserLogin.QueueRemoteEvent(&OpenClawSessionResyncEvent{client: m.client, session: session})
+	}
 	portal, _ = m.client.UserLogin.Bridge.GetPortalByKey(ctx, key)
+	if portal != nil {
+		m.clearPendingPortalResync(sessionKey)
+	}
 	return portal
 }
+
+var openClawMissingMessageTimestamp = time.Unix(0, 0).UTC()
 
 func extractMessageTimestamp(message map[string]any) time.Time {
 	if ts, ok := message["timestamp"].(float64); ok && ts > 0 {
@@ -1040,7 +1123,55 @@ func extractMessageTimestamp(message map[string]any) time.Time {
 	if ts, ok := message["timestamp"].(int64); ok && ts > 0 {
 		return time.UnixMilli(ts)
 	}
-	return time.Now()
+	if ts, ok := message["timestamp"].(int); ok && ts > 0 {
+		return time.UnixMilli(int64(ts))
+	}
+	return openClawMissingMessageTimestamp
+}
+
+func historyMessageTurnID(message map[string]any) string {
+	return strings.TrimSpace(stringsTrimDefault(
+		stringValue(message["turnId"]),
+		stringsTrimDefault(
+			stringValue(message["turn_id"]),
+			stringsTrimDefault(stringValue(message["runId"]), stringValue(message["run_id"])),
+		),
+	))
+}
+
+func (m *openClawManager) clearStartedTurn(turnID string) {
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
+		return
+	}
+	m.mu.Lock()
+	delete(m.started, turnID)
+	m.mu.Unlock()
+}
+
+func (m *openClawManager) shouldQueuePortalResync(sessionKey string) bool {
+	sessionKey = strings.TrimSpace(sessionKey)
+	if sessionKey == "" {
+		return false
+	}
+	now := time.Now()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if last, ok := m.resyncing[sessionKey]; ok && now.Sub(last) < 5*time.Second {
+		return false
+	}
+	m.resyncing[sessionKey] = now
+	return true
+}
+
+func (m *openClawManager) clearPendingPortalResync(sessionKey string) {
+	sessionKey = strings.TrimSpace(sessionKey)
+	if sessionKey == "" {
+		return
+	}
+	m.mu.Lock()
+	delete(m.resyncing, sessionKey)
+	m.mu.Unlock()
 }
 
 func extractMessageText(message map[string]any) string {

@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -65,6 +66,9 @@ func (s *schedulerRuntime) ensureHeartbeatRoomLocked(ctx context.Context, state 
 }
 
 func (s *schedulerRuntime) getOrCreateScheduledPortal(ctx context.Context, portalID, displayName string, setup func(meta *PortalMetadata)) (*bridgev2.Portal, error) {
+	if s == nil || s.client == nil || s.client.UserLogin == nil || s.client.UserLogin.Bridge == nil {
+		return nil, errors.New("scheduler client is not available")
+	}
 	key := portalKeyFromParts(s.client, portalID, string(s.client.UserLogin.ID))
 	portal, err := s.client.UserLogin.Bridge.GetPortalByKey(ctx, key)
 	if err != nil {
