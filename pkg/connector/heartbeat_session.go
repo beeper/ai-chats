@@ -13,20 +13,21 @@ type heartbeatSessionResolution struct {
 	Entry      *sessionEntry
 }
 
-func (oc *AIClient) resolveHeartbeatSession(agentID string, heartbeat *HeartbeatConfig) heartbeatSessionResolution {
-	cfg := (*Config)(nil)
+// heartbeatSessionPreamble computes the store ref, main session key, resolved agent,
+// and scope that are shared by both resolveHeartbeatSession and resolveHeartbeatMainSessionRef.
+func (oc *AIClient) heartbeatSessionPreamble(agentID string) (cfg *Config, resolvedAgent string, storeRef sessionStoreRef, mainSessionKey string, scope string) {
 	if oc != nil && oc.connector != nil {
 		cfg = &oc.connector.Config
 	}
-	resolvedAgent := normalizeAgentID(agentID)
+	resolvedAgent = normalizeAgentID(agentID)
 	if resolvedAgent == "" {
 		resolvedAgent = normalizeAgentID(agents.DefaultAgentID)
 	}
-	scope := sessionScopePerSender
+	scope = sessionScopePerSender
 	if cfg != nil && cfg.Session != nil {
 		scope = normalizeSessionScope(cfg.Session.Scope)
 	}
-	mainSessionKey := resolveAgentMainSessionKey(cfg, resolvedAgent)
+	mainSessionKey = resolveAgentMainSessionKey(cfg, resolvedAgent)
 	if scope == sessionScopeGlobal {
 		mainSessionKey = sessionScopeGlobal
 	}
@@ -37,10 +38,15 @@ func (oc *AIClient) resolveHeartbeatSession(agentID string, heartbeat *Heartbeat
 			storeAgentID = resolvedAgent
 		}
 	}
-	storeRef := sessionStoreRef{
+	storeRef = sessionStoreRef{
 		AgentID: storeAgentID,
 		Path:    resolveSessionStorePath(cfg, storeAgentID),
 	}
+	return cfg, resolvedAgent, storeRef, mainSessionKey, scope
+}
+
+func (oc *AIClient) resolveHeartbeatSession(agentID string, heartbeat *HeartbeatConfig) heartbeatSessionResolution {
+	cfg, resolvedAgent, storeRef, mainSessionKey, scope := oc.heartbeatSessionPreamble(agentID)
 	store, _ := oc.loadSessionStore(context.Background(), storeRef)
 	mainEntry, hasMain := store.Sessions[mainSessionKey]
 	if scope == sessionScopeGlobal {
@@ -95,32 +101,6 @@ func (oc *AIClient) resolveHeartbeatSession(agentID string, heartbeat *Heartbeat
 }
 
 func (oc *AIClient) resolveHeartbeatMainSessionRef(agentID string) (sessionStoreRef, string) {
-	cfg := (*Config)(nil)
-	if oc != nil && oc.connector != nil {
-		cfg = &oc.connector.Config
-	}
-	resolvedAgent := normalizeAgentID(agentID)
-	if resolvedAgent == "" {
-		resolvedAgent = normalizeAgentID(agents.DefaultAgentID)
-	}
-	scope := sessionScopePerSender
-	if cfg != nil && cfg.Session != nil {
-		scope = normalizeSessionScope(cfg.Session.Scope)
-	}
-	mainSessionKey := resolveAgentMainSessionKey(cfg, resolvedAgent)
-	if scope == sessionScopeGlobal {
-		mainSessionKey = sessionScopeGlobal
-	}
-	storeAgentID := resolvedAgent
-	if scope == sessionScopeGlobal {
-		storeAgentID = normalizeAgentID(agents.DefaultAgentID)
-		if storeAgentID == "" {
-			storeAgentID = resolvedAgent
-		}
-	}
-	storeRef := sessionStoreRef{
-		AgentID: storeAgentID,
-		Path:    resolveSessionStorePath(cfg, storeAgentID),
-	}
+	_, _, storeRef, mainSessionKey, _ := oc.heartbeatSessionPreamble(agentID)
 	return storeRef, mainSessionKey
 }

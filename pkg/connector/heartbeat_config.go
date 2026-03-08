@@ -35,9 +35,6 @@ func resolveHeartbeatConfig(cfg *Config, agentID string) *HeartbeatConfig {
 			break
 		}
 	}
-	if base == nil && override == nil {
-		return override
-	}
 	if base == nil {
 		return override
 	}

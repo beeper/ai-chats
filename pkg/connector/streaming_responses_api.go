@@ -113,10 +113,10 @@ func (oc *AIClient) processResponseStreamEvent(
 		}
 
 	case "response.reasoning_summary_text.delta":
-		oc.handleResponseReasoningSummaryDelta(ctx, portal, state, strings.TrimSpace(streamEvent.Delta))
+		oc.appendReasoningText(ctx, portal, state, strings.TrimSpace(streamEvent.Delta))
 
 	case "response.reasoning_text.done", "response.reasoning_summary_text.done":
-		oc.handleResponseReasoningDone(ctx, portal, state, strings.TrimSpace(streamEvent.Text))
+		oc.appendReasoningText(ctx, portal, state, strings.TrimSpace(streamEvent.Text))
 
 	case "response.refusal.delta":
 		touchTyping()

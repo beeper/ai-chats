@@ -130,20 +130,9 @@ func (oc *AIClient) handleResponseReasoningTextDelta(
 	return nil
 }
 
-func (oc *AIClient) handleResponseReasoningSummaryDelta(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	delta string,
-) {
-	if delta == "" {
-		return
-	}
-	state.reasoning.WriteString(delta)
-	oc.uiEmitter(state).EmitUIReasoningDelta(ctx, portal, delta)
-}
-
-func (oc *AIClient) handleResponseReasoningDone(
+// appendReasoningText appends non-empty reasoning/summary text to state and emits a UI delta.
+// Used by both reasoning_summary_text.delta and reasoning_text.done / reasoning_summary_text.done.
+func (oc *AIClient) appendReasoningText(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	state *streamingState,

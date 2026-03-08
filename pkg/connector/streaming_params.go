@@ -98,29 +98,36 @@ func (oc *AIClient) buildResponsesAPIParams(ctx context.Context, portal *bridgev
 	return params
 }
 
+// resolveToolSchema converts a tool's InputSchema to map[string]any, sanitises it,
+// and logs any stripped keys. Shared by both Responses API and Chat Completions converters.
+func resolveToolSchema(inputSchema any, toolName string, log *zerolog.Logger) map[string]any {
+	var schema map[string]any
+	switch v := inputSchema.(type) {
+	case nil:
+		return nil
+	case map[string]any:
+		schema = v
+	default:
+		encoded, err := json.Marshal(v)
+		if err == nil {
+			if err := json.Unmarshal(encoded, &schema); err != nil {
+				return nil
+			}
+		}
+	}
+	if schema != nil {
+		var stripped []string
+		schema, stripped = sanitizeToolSchemaWithReport(schema)
+		logSchemaSanitization(log, toolName, stripped)
+	}
+	return schema
+}
+
 // bossToolsToOpenAI converts boss tools to OpenAI Responses API format.
 func bossToolsToOpenAI(bossTools []*tools.Tool, strictMode ToolStrictMode, log *zerolog.Logger) []responses.ToolUnionParam {
 	var result []responses.ToolUnionParam
 	for _, t := range bossTools {
-		var schema map[string]any
-		switch v := t.InputSchema.(type) {
-		case nil:
-			schema = nil
-		case map[string]any:
-			schema = v
-		default:
-			encoded, err := json.Marshal(v)
-			if err == nil {
-				if err := json.Unmarshal(encoded, &schema); err != nil {
-					schema = nil
-				}
-			}
-		}
-		if schema != nil {
-			var stripped []string
-			schema, stripped = sanitizeToolSchemaWithReport(schema)
-			logSchemaSanitization(log, t.Name, stripped)
-		}
+		schema := resolveToolSchema(t.InputSchema, t.Name, log)
 		strict := shouldUseStrictMode(strictMode, schema)
 		toolParam := responses.ToolUnionParam{
 			OfFunction: &responses.FunctionToolParam{
@@ -142,25 +149,7 @@ func bossToolsToOpenAI(bossTools []*tools.Tool, strictMode ToolStrictMode, log *
 func bossToolsToChatTools(bossTools []*tools.Tool, log *zerolog.Logger) []openai.ChatCompletionToolUnionParam {
 	var result []openai.ChatCompletionToolUnionParam
 	for _, t := range bossTools {
-		var schema map[string]any
-		switch v := t.InputSchema.(type) {
-		case nil:
-			schema = nil
-		case map[string]any:
-			schema = v
-		default:
-			encoded, err := json.Marshal(v)
-			if err == nil {
-				if err := json.Unmarshal(encoded, &schema); err != nil {
-					schema = nil
-				}
-			}
-		}
-		if schema != nil {
-			var stripped []string
-			schema, stripped = sanitizeToolSchemaWithReport(schema)
-			logSchemaSanitization(log, t.Name, stripped)
-		}
+		schema := resolveToolSchema(t.InputSchema, t.Name, log)
 		function := openai.FunctionDefinitionParam{
 			Name:       t.Name,
 			Parameters: schema,
