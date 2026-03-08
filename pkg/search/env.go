@@ -32,13 +32,8 @@ func ApplyEnvDefaults(cfg *Config) *Config {
 	current := cfg.WithDefaults()
 	envCfg := ConfigFromEnv()
 
-	if strings.TrimSpace(current.Provider) == "" {
-		current.Provider = envCfg.Provider
-	}
-	if len(current.Fallbacks) == 0 {
-		current.Fallbacks = envCfg.Fallbacks
-	}
-
+	// WithDefaults already fills Provider and Fallbacks, so only credentials
+	// need merging from the environment.
 	if current.Exa.APIKey == "" {
 		current.Exa.APIKey = envCfg.Exa.APIKey
 	}
