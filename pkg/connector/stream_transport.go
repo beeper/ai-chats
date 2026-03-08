@@ -7,6 +7,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 )
 
@@ -25,12 +26,13 @@ func (oc *AIClient) sendDebouncedStreamEdit(ctx context.Context, portal *bridgev
 		return nil
 	}
 	sender := oc.senderForPortal(ctx, portal)
-	oc.UserLogin.QueueRemoteEvent(&AIRemoteEdit{
-		portal:        portal.PortalKey,
-		sender:        sender,
-		targetMessage: state.networkMessageID,
-		timestamp:     time.Now(),
-		preBuilt: &bridgev2.ConvertedEdit{
+	oc.UserLogin.QueueRemoteEvent(&bridgeadapter.RemoteEdit{
+		Portal:        portal.PortalKey,
+		Sender:        sender,
+		TargetMessage: state.networkMessageID,
+		Timestamp:     time.Now(),
+		LogKey:        "ai_edit_target",
+		PreBuilt: &bridgev2.ConvertedEdit{
 			ModifiedParts: []*bridgev2.ConvertedEditPart{{
 				Type: event.EventMessage,
 				Content: &event.MessageEventContent{

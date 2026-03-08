@@ -28,11 +28,12 @@ func (cc *CodexClient) sendDebouncedStreamEdit(ctx context.Context, portal *brid
 	}
 	sender := cc.senderForPortal()
 	cc.UserLogin.QueueRemoteEvent(&CodexRemoteEdit{
-		portal:        portal.PortalKey,
-		sender:        sender,
-		targetMessage: state.networkMessageID,
-		timestamp:     time.Now(),
-		preBuilt: &bridgev2.ConvertedEdit{
+		Portal:        portal.PortalKey,
+		Sender:        sender,
+		TargetMessage: state.networkMessageID,
+		Timestamp:     time.Now(),
+		LogKey:        "codex_edit_target",
+		PreBuilt: &bridgev2.ConvertedEdit{
 			ModifiedParts: []*bridgev2.ConvertedEditPart{{
 				Type: event.EventMessage,
 				Content: &event.MessageEventContent{

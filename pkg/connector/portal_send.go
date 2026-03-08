@@ -9,6 +9,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 func ensureConvertedMessageParts(converted *bridgev2.ConvertedMessage) {
@@ -45,12 +47,13 @@ func (oc *AIClient) sendViaPortal(
 	}
 	ensureConvertedMessageParts(converted)
 	sender := oc.senderForPortal(ctx, portal)
-	evt := &AIRemoteMessage{
-		portal:    portal.PortalKey,
-		id:        msgID,
-		sender:    sender,
-		timestamp: time.Now(),
-		preBuilt:  converted,
+	evt := &bridgeadapter.RemoteMessage{
+		Portal:    portal.PortalKey,
+		ID:        msgID,
+		Sender:    sender,
+		Timestamp: time.Now(),
+		LogKey:    "ai_msg_id",
+		PreBuilt:  converted,
 	}
 	result := oc.UserLogin.QueueRemoteEvent(evt)
 	if !result.Success {
@@ -73,12 +76,13 @@ func (oc *AIClient) sendEditViaPortal(
 		return fmt.Errorf("invalid portal")
 	}
 	sender := oc.senderForPortal(ctx, portal)
-	evt := &AIRemoteEdit{
-		portal:        portal.PortalKey,
-		sender:        sender,
-		targetMessage: targetMsgID,
-		timestamp:     time.Now(),
-		preBuilt:      converted,
+	evt := &bridgeadapter.RemoteEdit{
+		Portal:        portal.PortalKey,
+		Sender:        sender,
+		TargetMessage: targetMsgID,
+		Timestamp:     time.Now(),
+		LogKey:        "ai_edit_target",
+		PreBuilt:      converted,
 	}
 	result := oc.UserLogin.QueueRemoteEvent(evt)
 	if !result.Success {

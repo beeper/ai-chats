@@ -23,11 +23,12 @@ func (oc *OpenCodeClient) sendViaPortal(
 	sender := oc.SenderForOpenCode(instanceID, false)
 	msgID := newOpenCodeMessageID()
 	evt := &OpenCodeRemoteMessage{
-		portal:    portal.PortalKey,
-		id:        msgID,
-		sender:    sender,
-		timestamp: time.Now(),
-		preBuilt:  converted,
+		Portal:    portal.PortalKey,
+		ID:        msgID,
+		Sender:    sender,
+		Timestamp: time.Now(),
+		LogKey:    "opencode_msg_id",
+		PreBuilt:  converted,
 	}
 	result := oc.UserLogin.QueueRemoteEvent(evt)
 	if !result.Success {

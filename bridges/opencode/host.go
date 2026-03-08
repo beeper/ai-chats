@@ -151,11 +151,12 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 			}},
 		}
 		result := oc.UserLogin.QueueRemoteEvent(&OpenCodeRemoteMessage{
-			portal:    portal.PortalKey,
-			id:        msgID,
-			sender:    sender,
-			timestamp: time.Now(),
-			preBuilt:  converted,
+			Portal:    portal.PortalKey,
+			ID:        msgID,
+			Sender:    sender,
+			Timestamp: time.Now(),
+			LogKey:    "opencode_msg_id",
+			PreBuilt:  converted,
 		})
 		if result.Success && result.EventID != "" {
 			oc.streamMu.Lock()
@@ -242,11 +243,12 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 				}
 				sender := oc.SenderForOpenCode(instanceID, false)
 				oc.UserLogin.QueueRemoteEvent(&OpenCodeRemoteEdit{
-					portal:        portal.PortalKey,
-					sender:        sender,
-					targetMessage: netMsgID,
-					timestamp:     time.Now(),
-					preBuilt: &bridgev2.ConvertedEdit{
+					Portal:        portal.PortalKey,
+					Sender:        sender,
+					TargetMessage: netMsgID,
+					Timestamp:     time.Now(),
+					LogKey:        "opencode_edit_target",
+					PreBuilt: &bridgev2.ConvertedEdit{
 						ModifiedParts: []*bridgev2.ConvertedEditPart{{
 							Type: event.EventMessage,
 							Content: &event.MessageEventContent{
