@@ -2091,7 +2091,7 @@ func (cc *CodexClient) saveAssistantMessage(ctx context.Context, portal *bridgev
 		NetworkMessageID: state.networkMessageID,
 		InitialEventID:   state.initialEventID,
 		Metadata:         fullMeta,
-		Logger:           log,
+		Logger:           *log,
 	})
 }
 
