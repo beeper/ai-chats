@@ -333,18 +333,7 @@ func (cc *CodexClient) IsThisUser(ctx context.Context, userID networkid.UserID) 
 
 func (cc *CodexClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	meta := portalMeta(portal)
-	title := meta.Title
-	if title == "" {
-		if portal.Name != "" {
-			title = portal.Name
-		} else {
-			title = "Codex"
-		}
-	}
-	return &bridgev2.ChatInfo{
-		Name:  ptr.Ptr(title),
-		Topic: ptr.NonZero(portal.Topic),
-	}, nil
+	return bridgeadapter.BuildChatInfoWithFallback(meta.Title, portal.Name, "Codex", portal.Topic), nil
 }
 
 func (cc *CodexClient) GetUserInfo(_ context.Context, _ *bridgev2.Ghost) (*bridgev2.UserInfo, error) {

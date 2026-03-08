@@ -54,14 +54,6 @@ func (oc *AIClient) resolveSubagentAllowlist(ctx context.Context, requesterAgent
 	return allowAny, allowSet
 }
 
-func resolveSubagentModel(override string, agent *agents.AgentDefinition, defaults *agents.SubagentConfig) string {
-	return resolveSubagentConfigValue(override, agent, defaults, "model")
-}
-
-func resolveSubagentThinking(override string, agent *agents.AgentDefinition, defaults *agents.SubagentConfig) string {
-	return resolveSubagentConfigValue(override, agent, defaults, "thinking")
-}
-
 func resolveSubagentConfigValue(override string, agent *agents.AgentDefinition, defaults *agents.SubagentConfig, field string) string {
 	return firstNonEmptyTrimmed(override, subagentStringValue(agent, field), subagentStringValue(defaults, field))
 }
@@ -264,7 +256,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 	if oc.connector != nil && oc.connector.Config.Agents != nil && oc.connector.Config.Agents.Defaults != nil {
 		defaultSubagents = oc.connector.Config.Agents.Defaults.Subagents
 	}
-	thinkingCandidate := resolveSubagentThinking(thinkingOverride, targetAgent, defaultSubagents)
+	thinkingCandidate := resolveSubagentConfigValue(thinkingOverride, targetAgent, defaultSubagents, "thinking")
 	thinkingLevel, ok := normalizeThinkingLevel(thinkingCandidate)
 	if !ok {
 		return tools.JSONResult(map[string]any{
@@ -274,7 +266,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 	}
 	reasoningEffort := mapThinkingToReasoningEffort(thinkingLevel)
 
-	modelCandidate := resolveSubagentModel(modelOverride, targetAgent, defaultSubagents)
+	modelCandidate := resolveSubagentConfigValue(modelOverride, targetAgent, defaultSubagents, "model")
 
 	resolvedModel := ""
 	modelWarning := ""

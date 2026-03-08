@@ -254,7 +254,20 @@ func (oc *AIClient) handleFunctionCallArgumentsDone(
 		oc.uiEmitter(state).EmitUIToolOutputError(ctx, portal, tool.callID, result, tool.toolType == ToolTypeProvider)
 	}
 
-	// Track tool call in metadata.
+	recordCompletedToolCall(ctx, oc, portal, state, tool, toolName, argsJSON, result, resultStatus)
+}
+
+func recordCompletedToolCall(
+	ctx context.Context,
+	oc *AIClient,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	tool *activeToolCall,
+	toolName string,
+	argsJSON string,
+	result string,
+	resultStatus ResultStatus,
+) {
 	completedAt := time.Now().UnixMilli()
 	resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, result, resultStatus)
 	state.toolCalls = append(state.toolCalls, ToolCallMetadata{

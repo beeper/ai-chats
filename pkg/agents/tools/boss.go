@@ -10,6 +10,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
+	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
 )
 
 // Boss tools for agent management.
@@ -157,20 +158,10 @@ var ForkAgentTool = &Tool{
 		Name:        "fork_agent",
 		Description: "Create a copy of an existing agent as a new custom agent",
 		Annotations: &mcp.ToolAnnotations{Title: "Fork Agent"},
-		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"source_id": map[string]any{
-					"type":        "string",
-					"description": "ID of the agent to copy",
-				},
-				"new_name": map[string]any{
-					"type":        "string",
-					"description": "Name for the new agent (defaults to '[Original Name] (Fork)')",
-				},
-			},
-			"required": []string{"source_id"},
-		},
+		InputSchema: toolspec.ObjectSchema(map[string]any{
+			"source_id": toolspec.StringProperty("ID of the agent to copy"),
+			"new_name":  toolspec.StringProperty("Name for the new agent (defaults to '[Original Name] (Fork)')"),
+		}, "source_id"),
 	},
 	Type:  ToolTypeBuiltin,
 	Group: GroupBuilder,
@@ -257,20 +248,10 @@ var RunInternalCommandTool = &Tool{
 		Name:        "run_internal_command",
 		Description: "Run an internal !ai command in a target room",
 		Annotations: &mcp.ToolAnnotations{Title: "Run Internal Command"},
-		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"command": map[string]any{
-					"type":        "string",
-					"description": "The !ai command to run (with or without prefix)",
-				},
-				"room_id": map[string]any{
-					"type":        "string",
-					"description": "Optional target room ID (defaults to the current room)",
-				},
-			},
-			"required": []string{"command"},
-		},
+		InputSchema: toolspec.ObjectSchema(map[string]any{
+			"command": toolspec.StringProperty("The !ai command to run (with or without prefix)"),
+			"room_id": toolspec.StringProperty("Optional target room ID (defaults to the current room)"),
+		}, "command"),
 	},
 	Type:  ToolTypeBuiltin,
 	Group: GroupBuilder,
@@ -376,32 +357,13 @@ var SessionsSendTool = &Tool{
 		Name:        "sessions_send",
 		Description: "Send a message into another session. Prefer the sessionKey from sessions_list; label is fallback only.",
 		Annotations: &mcp.ToolAnnotations{Title: "Send to Session"},
-		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"sessionKey": map[string]any{
-					"type":        "string",
-					"description": "Session identifier from sessions_list (preferred canonical target)",
-				},
-				"label": map[string]any{
-					"type":        "string",
-					"description": "Session label fallback (can be ambiguous; sessionKey is preferred)",
-				},
-				"agentId": map[string]any{
-					"type":        "string",
-					"description": "Agent id filter for label lookups",
-				},
-				"message": map[string]any{
-					"type":        "string",
-					"description": "The message to send",
-				},
-				"timeoutSeconds": map[string]any{
-					"type":        "number",
-					"description": "Optional timeout for the remote session",
-				},
-			},
-			"required": []string{"message"},
-		},
+		InputSchema: toolspec.ObjectSchema(map[string]any{
+			"sessionKey":     toolspec.StringProperty("Session identifier from sessions_list (preferred canonical target)"),
+			"label":          toolspec.StringProperty("Session label fallback (can be ambiguous; sessionKey is preferred)"),
+			"agentId":        toolspec.StringProperty("Agent id filter for label lookups"),
+			"message":        toolspec.StringProperty("The message to send"),
+			"timeoutSeconds": toolspec.NumberProperty("Optional timeout for the remote session"),
+		}, "message"),
 	},
 	Type:  ToolTypeBuiltin,
 	Group: GroupSessions,

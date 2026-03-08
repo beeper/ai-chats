@@ -1078,19 +1078,7 @@ func (oc *AIClient) IsThisUser(ctx context.Context, userID networkid.UserID) boo
 
 func (oc *AIClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	meta := portalMeta(portal)
-	title := meta.Title
-	if title == "" {
-		if portal.Name != "" {
-			title = portal.Name
-		} else {
-			title = "AI Chat"
-		}
-	}
-	// Use actual portal.Topic, not SystemPrompt (they are separate concepts)
-	return &bridgev2.ChatInfo{
-		Name:  ptr.Ptr(title),
-		Topic: ptr.NonZero(portal.Topic),
-	}, nil
+	return bridgeadapter.BuildChatInfoWithFallback(meta.Title, portal.Name, "AI Chat", portal.Topic), nil
 }
 
 func (oc *AIClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {

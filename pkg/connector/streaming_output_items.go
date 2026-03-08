@@ -70,16 +70,7 @@ func deriveToolDescriptorForOutputItem(item responses.ResponseOutputItemUnion, s
 	}
 	switch item.Type {
 	case "function_call":
-		desc.callID = strings.TrimSpace(item.CallID)
-		if desc.callID == "" {
-			desc.callID = item.ID
-		}
-		desc.toolName = strings.TrimSpace(item.Name)
-		desc.toolType = ToolTypeFunction
-		desc.providerExecuted = false
-		desc.dynamic = false
-		desc.input = parseJSONOrRaw(item.Arguments)
-		desc.ok = desc.toolName != ""
+		desc = responseFunctionToolDescriptor(item, false, parseJSONOrRaw(item.Arguments))
 	case "web_search_call":
 		desc.toolName = ToolNameWebSearch
 		desc.toolType = ToolTypeProvider
@@ -120,16 +111,7 @@ func deriveToolDescriptorForOutputItem(item responses.ResponseOutputItemUnion, s
 	case "apply_patch_call":
 		desc = providerDynamicResponseToolDescriptor(item, "apply_patch")
 	case "custom_tool_call":
-		desc.callID = strings.TrimSpace(item.CallID)
-		if desc.callID == "" {
-			desc.callID = item.ID
-		}
-		desc.toolName = strings.TrimSpace(item.Name)
-		desc.toolType = ToolTypeFunction
-		desc.providerExecuted = false
-		desc.dynamic = true
-		desc.input = parseJSONOrRaw(item.Input)
-		desc.ok = desc.toolName != ""
+		desc = responseFunctionToolDescriptor(item, true, parseJSONOrRaw(item.Input))
 	case "mcp_call":
 		desc.toolName = "mcp." + strings.TrimSpace(item.Name)
 		desc.toolType = ToolTypeMCP
@@ -167,6 +149,24 @@ func deriveToolDescriptorForOutputItem(item responses.ResponseOutputItemUnion, s
 		desc.itemID = desc.callID
 	}
 	return desc
+}
+
+func responseFunctionToolDescriptor(item responses.ResponseOutputItemUnion, dynamic bool, input any) responseToolDescriptor {
+	callID := strings.TrimSpace(item.CallID)
+	if callID == "" {
+		callID = item.ID
+	}
+	toolName := strings.TrimSpace(item.Name)
+	return responseToolDescriptor{
+		itemID:           item.ID,
+		callID:           callID,
+		toolName:         toolName,
+		toolType:         ToolTypeFunction,
+		input:            input,
+		providerExecuted: false,
+		dynamic:          dynamic,
+		ok:               toolName != "",
+	}
 }
 
 func providerDynamicResponseToolDescriptor(item responses.ResponseOutputItemUnion, toolName string) responseToolDescriptor {

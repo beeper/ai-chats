@@ -133,42 +133,19 @@ func WebFetchSchema() map[string]any {
 
 // ReadSchema returns the JSON schema for the read tool.
 func ReadSchema() map[string]any {
-	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"path": map[string]any{
-				"type":        "string",
-				"description": "Path to the file to read (relative or absolute)",
-			},
-			"offset": map[string]any{
-				"type":        "number",
-				"description": "Line number to start reading from (1-indexed)",
-			},
-			"limit": map[string]any{
-				"type":        "number",
-				"description": "Maximum number of lines to read",
-			},
-		},
-		"required": []string{"path"},
-	}
+	return ObjectSchema(map[string]any{
+		"path":   StringProperty("Path to the file to read (relative or absolute)"),
+		"offset": NumberProperty("Line number to start reading from (1-indexed)"),
+		"limit":  NumberProperty("Maximum number of lines to read"),
+	}, "path")
 }
 
 // WriteSchema returns the JSON schema for the write tool.
 func WriteSchema() map[string]any {
-	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"path": map[string]any{
-				"type":        "string",
-				"description": "Path to the file to write (relative or absolute)",
-			},
-			"content": map[string]any{
-				"type":        "string",
-				"description": "Content to write to the file",
-			},
-		},
-		"required": []string{"path", "content"},
-	}
+	return ObjectSchema(map[string]any{
+		"path":    StringProperty("Path to the file to write (relative or absolute)"),
+		"content": StringProperty("Content to write to the file"),
+	}, "path", "content")
 }
 
 // EditSchema returns the JSON schema for the edit tool.
@@ -566,31 +543,44 @@ func ImageGenerateSchema() map[string]any {
 
 // TTSSchema returns the JSON schema for the tts tool.
 func TTSSchema() map[string]any {
+	return ObjectSchema(map[string]any{
+		"async":   BooleanProperty("Optional: if true, start TTS in the background and send the audio to the chat when ready (tool returns immediately)."),
+		"text":    StringProperty("Text to convert to speech."),
+		"voice":   StringProperty("Optional: preferred voice (OpenAI voices: alloy, ash, coral, echo, fable, onyx, nova, sage, shimmer)."),
+		"model":   StringProperty("Optional: TTS model (e.g. tts-1-hd, tts-1)."),
+		"channel": StringProperty("Optional channel id to pick output format (e.g. telegram)."),
+	}, "text")
+}
+
+func ObjectSchema(properties map[string]any, required ...string) map[string]any {
+	schema := map[string]any{
+		"type":       "object",
+		"properties": properties,
+	}
+	if len(required) > 0 {
+		schema["required"] = required
+	}
+	return schema
+}
+
+func StringProperty(description string) map[string]any {
 	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"async": map[string]any{
-				"type":        "boolean",
-				"description": "Optional: if true, start TTS in the background and send the audio to the chat when ready (tool returns immediately).",
-			},
-			"text": map[string]any{
-				"type":        "string",
-				"description": "Text to convert to speech.",
-			},
-			"voice": map[string]any{
-				"type":        "string",
-				"description": "Optional: preferred voice (OpenAI voices: alloy, ash, coral, echo, fable, onyx, nova, sage, shimmer).",
-			},
-			"model": map[string]any{
-				"type":        "string",
-				"description": "Optional: TTS model (e.g. tts-1-hd, tts-1).",
-			},
-			"channel": map[string]any{
-				"type":        "string",
-				"description": "Optional channel id to pick output format (e.g. telegram).",
-			},
-		},
-		"required": []string{"text"},
+		"type":        "string",
+		"description": description,
+	}
+}
+
+func NumberProperty(description string) map[string]any {
+	return map[string]any{
+		"type":        "number",
+		"description": description,
+	}
+}
+
+func BooleanProperty(description string) map[string]any {
+	return map[string]any{
+		"type":        "boolean",
+		"description": description,
 	}
 }
 
