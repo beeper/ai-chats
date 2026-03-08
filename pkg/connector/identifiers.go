@@ -1,8 +1,6 @@
 package connector
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -17,40 +15,61 @@ import (
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
-// Multiple logins with identical config are supported by appending an ordinal suffix: -2, -3, ...
-func makeUserLoginIDForConfig(mxid id.UserID, provider, apiKey, baseURL string, ordinal int) networkid.UserLoginID {
-	escaped := url.PathEscape(string(mxid))
-	provider = strings.TrimSpace(provider)
-	apiKey = strings.TrimSpace(apiKey)
-	baseURL = normalizeBaseURLForLoginID(baseURL)
-
-	// Stable, unambiguous hash input.
-	sum := sha256.Sum256([]byte(provider + "\n" + baseURL + "\n" + apiKey))
-	hashShort := hex.EncodeToString(sum[:8]) // 16 hex chars
-
-	base := fmt.Sprintf("openai:%s:%s:%s", escaped, provider, hashShort)
-	if ordinal <= 1 {
-		return networkid.UserLoginID(base)
-	}
-	return networkid.UserLoginID(fmt.Sprintf("%s-%d", base, ordinal))
+func baseLoginID(providerSlug string, mxid id.UserID) networkid.UserLoginID {
+	return networkid.UserLoginID(fmt.Sprintf("%s:%s", strings.TrimSpace(providerSlug), url.PathEscape(string(mxid))))
 }
 
-func normalizeBaseURLForLoginID(baseURL string) string {
-	baseURL = strings.TrimSpace(baseURL)
-	baseURL = strings.TrimRight(baseURL, "/")
-	if baseURL == "" {
-		return ""
+func nthLoginID(providerSlug string, mxid id.UserID, ordinal int) networkid.UserLoginID {
+	base := baseLoginID(providerSlug, mxid)
+	if ordinal <= 1 {
+		return base
 	}
-	parsed, err := url.Parse(baseURL)
-	if err != nil {
-		return strings.ToLower(baseURL)
+	return networkid.UserLoginID(fmt.Sprintf("%s:%d", base, ordinal))
+}
+
+func nextLoginID(user *bridgev2.User, providerSlug string, mxid id.UserID) networkid.UserLoginID {
+	used := map[string]struct{}{}
+	if user != nil {
+		for _, existing := range user.GetUserLogins() {
+			if existing == nil {
+				continue
+			}
+			used[string(existing.ID)] = struct{}{}
+		}
 	}
-	parsed.Host = strings.ToLower(strings.TrimSpace(parsed.Host))
-	parsed.Fragment = ""
-	parsed.RawQuery = ""
-	clean := strings.TrimSpace(parsed.String())
-	clean = strings.TrimRight(clean, "/")
-	return strings.ToLower(clean)
+	for ordinal := 1; ; ordinal++ {
+		loginID := nthLoginID(providerSlug, mxid, ordinal)
+		if _, ok := used[string(loginID)]; !ok {
+			return loginID
+		}
+	}
+}
+
+func providerLoginID(provider string, mxid id.UserID, ordinal int) networkid.UserLoginID {
+	return nthLoginID(providerSlug(provider), mxid, ordinal)
+}
+
+func nextProviderLoginID(user *bridgev2.User, provider string, mxid id.UserID) networkid.UserLoginID {
+	return nextLoginID(user, providerSlug(provider), mxid)
+}
+
+func managedBeeperLoginID(mxid id.UserID) networkid.UserLoginID {
+	return baseLoginID("beeper", mxid)
+}
+
+func providerSlug(provider string) string {
+	switch strings.TrimSpace(provider) {
+	case ProviderBeeper:
+		return "beeper"
+	case ProviderOpenAI:
+		return "openai"
+	case ProviderOpenRouter:
+		return "openrouter"
+	case ProviderMagicProxy:
+		return "magic-proxy"
+	default:
+		return strings.TrimSpace(provider)
+	}
 }
 
 func portalKeyForChat(loginID networkid.UserLoginID) networkid.PortalKey {

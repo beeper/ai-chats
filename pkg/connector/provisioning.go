@@ -45,12 +45,12 @@ func (oc *OpenAIConnector) initProvisioning() {
 // getLogin gets the user login from the request
 func (api *ProvisioningAPI) getLogin(w http.ResponseWriter, r *http.Request) *bridgev2.UserLogin {
 	user := api.prov.GetUser(r)
-	logins := user.GetUserLogins()
-	if len(logins) < 1 {
+	login := api.connector.getPreferredUserLogin(r.Context(), user)
+	if login == nil {
 		mautrix.MNotFound.WithMessage("No logins found.").Write(w)
 		return nil
 	}
-	return logins[0]
+	return login
 }
 
 // handleListModels handles GET /v1/models

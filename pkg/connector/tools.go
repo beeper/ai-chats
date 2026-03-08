@@ -999,7 +999,7 @@ func callOpenRouterImageGen(ctx context.Context, apiKey, baseURL string, reqBody
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("HTTP-Referer", "https://beeper.com")
-	req.Header.Set("X-Title", "Beeper AI")
+	req.Header.Set("X-Title", "Beeper Cloud")
 
 	resp, err := openRouterImageHTTPClient.Do(req)
 	if err != nil {

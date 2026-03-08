@@ -132,7 +132,7 @@ func (oc *OpenAIConnector) resolveProxyRoot(meta *UserLoginMetadata) string {
 			return normalizeProxyBaseURL(raw)
 		}
 	}
-	raw := strings.TrimSpace(oc.Config.Beeper.BaseURL)
+	raw := strings.TrimSpace(oc.resolveManagedBeeperAuth().BaseURL)
 	if raw == "" && meta != nil {
 		raw = strings.TrimSpace(meta.BaseURL)
 	}
@@ -170,17 +170,16 @@ func (oc *OpenAIConnector) resolveBeeperBaseURL(meta *UserLoginMetadata) string 
 			return base
 		}
 	}
-	return normalizeBeeperBaseURL(oc.Config.Beeper.BaseURL)
+	return oc.resolveManagedBeeperAuth().BaseURL
 }
 
 func (oc *OpenAIConnector) resolveBeeperToken(meta *UserLoginMetadata) string {
-	if key := trimToken(oc.Config.Beeper.Token); key != "" {
-		return key
-	}
 	if meta != nil {
-		return trimToken(meta.APIKey)
+		if key := trimToken(meta.APIKey); key != "" {
+			return key
+		}
 	}
-	return ""
+	return oc.resolveManagedBeeperAuth().Token
 }
 
 func (oc *OpenAIConnector) resolveServiceConfig(meta *UserLoginMetadata) ServiceConfigMap {

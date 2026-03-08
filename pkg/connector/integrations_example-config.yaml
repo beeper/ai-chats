@@ -1,11 +1,12 @@
 # Connector-specific configuration lives under the `network:` section of the
 # main config file.
 
-# Beeper AI credentials for automatic login (optional).
-# If both base_url and token are set, users don't need to manually log in.
+# Beeper Cloud credentials for automatic login (optional).
+# If user_mxid, base_url, and token are set, users don't need to manually log in.
 beeper:
+  user_mxid: "" # Owning Matrix user for the built-in Beeper Cloud login.
   base_url: ""  # Optional. If empty, login uses selected Beeper domain.
-  token: ""     # Beeper AI key (requires Beeper Plus)
+  token: ""     # Beeper Matrix access token
 
 # Per-provider default models and settings.
 # These are used when a room doesn't have a specific model configured.

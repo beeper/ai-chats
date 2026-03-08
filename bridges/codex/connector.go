@@ -168,7 +168,7 @@ func (cc *CodexConnector) autoProvisionExistingCodex(ctx context.Context) {
 		}
 
 		// Use a deterministic instance ID so restarts won't create duplicates.
-		loginID := makeCodexUserLoginID(mxid, "system-codex")
+		loginID := makeCodexUserLoginID(mxid, 1)
 
 		// If this login already exists in the DB (e.g. from a previous run), skip creation.
 		existing, err := cc.br.GetExistingUserLoginByID(ctx, loginID)

@@ -41,10 +41,11 @@ encryption:
 
 # Connector-specific options (identical to pkg/connector/example-config.yaml)
 network:
-  # Beeper AI credentials for automatic login (optional)
+  # Beeper Cloud credentials for automatic login (optional)
   beeper:
+    user_mxid: "" # Owning Matrix user for the built-in Beeper Cloud login.
     base_url: ""  # Optional. If empty, login uses selected Beeper domain.
-    token: ""     # Beeper AI key (requires Beeper Plus)
+    token: ""     # Beeper Matrix access token
 
   # Per-provider default models
   providers:

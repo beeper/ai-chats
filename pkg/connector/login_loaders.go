@@ -11,6 +11,14 @@ import (
 func (oc *OpenAIConnector) loadAIUserLogin(login *bridgev2.UserLogin, meta *UserLoginMetadata) error {
 	key := strings.TrimSpace(oc.resolveProviderAPIKey(meta))
 	if key == "" {
+		oc.clientsMu.Lock()
+		if existingAPI := oc.clients[login.ID]; existingAPI != nil {
+			if existing, ok := existingAPI.(*AIClient); ok && existing != nil {
+				existing.Disconnect()
+			}
+			delete(oc.clients, login.ID)
+		}
+		oc.clientsMu.Unlock()
 		login.Client = newBrokenLoginClient(login, "No API key available for this login. Sign in again or remove this account.")
 		return nil
 	}
@@ -72,6 +80,7 @@ func (oc *OpenAIConnector) loadAIUserLogin(login *bridgev2.UserLogin, meta *User
 					return nil
 				}
 			}
+			existing.Disconnect()
 			oc.clients[login.ID] = client
 			oc.clientsMu.Unlock()
 			login.Client = client

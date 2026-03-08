@@ -143,8 +143,8 @@ func (ol *OpenAILogin) credentialsStep() *bridgev2.LoginStep {
 			fields = append(fields, bridgev2.LoginInputDataField{
 				Type:        bridgev2.LoginInputFieldTypeToken,
 				ID:          "beeper_token",
-				Name:        "Beeper AI key",
-				Description: "Beeper AI needs a key to connect to Beeper servers. Requires Beeper Plus.",
+				Name:        "Beeper Cloud token",
+				Description: "Beeper Cloud uses your Matrix access token to connect to Beeper servers.",
 			})
 		}
 	case ProviderMagicProxy:
@@ -203,7 +203,6 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 		return nil, errors.New("missing user context for login")
 	}
 
-	// Count existing logins for the same provider+baseURL+API key.
 	dupCount := 0
 	for _, existing := range ol.User.GetUserLogins() {
 		if existing == nil || existing.Metadata == nil {
@@ -213,15 +212,13 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 		if !ok || meta == nil {
 			continue
 		}
-		existingBase := stringutil.NormalizeBaseURL(meta.BaseURL)
-		if meta.Provider == provider && meta.APIKey == apiKey && existingBase == baseURL {
+		if meta.Provider == provider {
 			dupCount++
 		}
 	}
 
 	ordinal := dupCount + 1
-	// Hash provider+baseURL+API key, and disambiguate duplicates with -2/-3/... suffixes.
-	loginID := makeUserLoginIDForConfig(ol.User.MXID, provider, apiKey, baseURL, ordinal)
+	loginID := providerLoginID(provider, ol.User.MXID, ordinal)
 
 	// Ensure uniqueness in case of gaps or concurrent additions.
 	if ol.Connector != nil && ol.Connector.br != nil {
@@ -234,13 +231,13 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 		for {
 			if _, ok := used[string(loginID)]; ok {
 				ordinal++
-				loginID = makeUserLoginIDForConfig(ol.User.MXID, provider, apiKey, baseURL, ordinal)
+				loginID = providerLoginID(provider, ol.User.MXID, ordinal)
 				continue
 			}
 			if existing, _ := ol.Connector.br.GetExistingUserLoginByID(ctx, loginID); existing != nil {
 				used[string(loginID)] = struct{}{}
 				ordinal++
-				loginID = makeUserLoginIDForConfig(ol.User.MXID, provider, apiKey, baseURL, ordinal)
+				loginID = providerLoginID(provider, ol.User.MXID, ordinal)
 				continue
 			}
 			break
@@ -451,7 +448,7 @@ func (ol *OpenAILogin) configHasExaKey() bool {
 func formatRemoteName(provider, apiKey string) string {
 	switch provider {
 	case ProviderBeeper:
-		return "Beeper AI"
+		return "Beeper Cloud"
 	case ProviderOpenAI:
 		return fmt.Sprintf("OpenAI (%s)", maskAPIKey(apiKey))
 	case ProviderOpenRouter:

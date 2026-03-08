@@ -609,7 +609,7 @@ func (cl *CodexLogin) finishLogin(ctx context.Context) (*bridgev2.LoginStep, err
 	persistCtx := cl.backgroundProcessContext()
 	log := cl.logger(persistCtx)
 
-	loginID := makeCodexUserLoginID(cl.User.MXID, cl.instanceID)
+	loginID := nextCodexUserLoginID(cl.User)
 	remoteName := "Codex"
 	dupCount := 0
 	for _, existing := range cl.User.GetUserLogins() {
@@ -648,38 +648,6 @@ func (cl *CodexLogin) finishLogin(ctx context.Context) (*bridgev2.LoginStep, err
 		CodexHomeManaged:  true,
 		CodexAuthMode:     cl.getAuthMode(),
 		CodexAccountEmail: accountEmail,
-	}
-
-	if cl.Connector != nil && cl.Connector.br != nil {
-		if existing, _ := cl.Connector.br.GetExistingUserLoginByID(persistCtx, loginID); existing != nil {
-			existingMeta, ok := existing.Metadata.(*UserLoginMetadata)
-			if !ok || existingMeta == nil {
-				existingMeta = &UserLoginMetadata{}
-			}
-			*existingMeta = *meta
-			existing.Metadata = existingMeta
-			existing.RemoteName = remoteName
-			if err := existing.Save(persistCtx); err != nil {
-				return nil, fmt.Errorf("failed to update existing login: %w", err)
-			}
-			log.Info().Str("user_login_id", string(existing.ID)).Msg("Updated existing Codex login")
-			if err := cl.Connector.LoadUserLogin(persistCtx, existing); err != nil {
-				return nil, fmt.Errorf("failed to load client: %w", err)
-			}
-			cl.startDefaultChatBootstrap(existing, log)
-			go existing.Client.Connect(existing.Log.WithContext(cl.backgroundProcessContext()))
-			cl.mu.Lock()
-			cl.closeRPCLocked()
-			cl.mu.Unlock()
-			return &bridgev2.LoginStep{
-				Type:   bridgev2.LoginStepTypeComplete,
-				StepID: "io.ai-bridge.codex.complete",
-				CompleteParams: &bridgev2.LoginCompleteParams{
-					UserLoginID: existing.ID,
-					UserLogin:   existing,
-				},
-			}, nil
-		}
 	}
 
 	login, err := cl.User.NewLogin(persistCtx, &database.UserLogin{

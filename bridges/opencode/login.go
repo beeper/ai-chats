@@ -94,7 +94,6 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 	}
 	password := strings.TrimSpace(input["password"])
 	instanceID := opencodebridge.OpenCodeInstanceID(normalizedURL, username)
-	loginID := makeOpenCodeUserLoginID(ol.User.MXID, instanceID)
 	remoteName := openCodeRemoteName(normalizedURL, username)
 
 	instances := map[string]*opencodebridge.OpenCodeInstance{
@@ -107,8 +106,17 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 		},
 	}
 
-	if existing, _ := ol.Connector.br.GetExistingUserLoginByID(ctx, loginID); existing != nil {
+	for _, existing := range ol.User.GetUserLogins() {
+		if existing == nil {
+			continue
+		}
 		existingMeta := loginMetadata(existing)
+		if existingMeta.Provider != ProviderOpenCode {
+			continue
+		}
+		if _, ok := existingMeta.OpenCodeInstances[instanceID]; !ok {
+			continue
+		}
 		existingMeta.Provider = ProviderOpenCode
 		existingMeta.OpenCodeInstances = instances
 		existing.Metadata = existingMeta
@@ -124,6 +132,8 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 		}
 		return openCodeCompleteStep(existing), nil
 	}
+
+	loginID := nextOpenCodeUserLoginID(ol.User)
 
 	login, err := ol.User.NewLogin(ctx, &database.UserLogin{
 		ID:         loginID,

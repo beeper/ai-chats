@@ -18,6 +18,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/matrix"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
@@ -45,6 +46,11 @@ type OpenAIConnector struct {
 
 	clientsMu sync.Mutex
 	clients   map[networkid.UserLoginID]bridgev2.NetworkAPI
+
+	runtimeMatrixMu          sync.RWMutex
+	runtimeMatrixUserMXID    id.UserID
+	runtimeMatrixAccessToken string
+	runtimeMatrixHomeserver  string
 }
 
 func (oc *OpenAIConnector) Init(bridge *bridgev2.Bridge) {
@@ -80,6 +86,9 @@ func (oc *OpenAIConnector) Start(ctx context.Context) error {
 	// bridgev2's provisioning logout endpoint uses GetCachedUserLoginByID, so if logins
 	// haven't been loaded yet, clients may be unable to remove accounts.
 	oc.primeUserLoginCache(ctx)
+	if _, err := oc.reconcileManagedBeeperLogin(ctx); err != nil {
+		return err
+	}
 
 	// Register AI commands with the command processor
 	if proc, ok := oc.br.Commands.(*commands.Processor); ok {
@@ -119,16 +128,20 @@ func (oc *OpenAIConnector) applyRuntimeDefaults() {
 	}
 }
 
-// SetMatrixCredentials seeds Beeper provider config from the Matrix account, if unset.
-func (oc *OpenAIConnector) SetMatrixCredentials(accessToken, homeserver string) {
+// SetMatrixCredentials seeds the runtime Beeper Cloud auth tuple from the Matrix account.
+func (oc *OpenAIConnector) SetMatrixCredentials(userMXID id.UserID, accessToken, homeserver string) {
 	if oc == nil {
 		return
 	}
-	if oc.Config.Beeper.BaseURL == "" && strings.TrimSpace(homeserver) != "" {
-		oc.Config.Beeper.BaseURL = strings.TrimSpace(homeserver)
-	}
-	if oc.Config.Beeper.Token == "" && strings.TrimSpace(accessToken) != "" {
-		oc.Config.Beeper.Token = strings.TrimSpace(accessToken)
+	oc.runtimeMatrixMu.Lock()
+	oc.runtimeMatrixUserMXID = id.UserID(strings.TrimSpace(string(userMXID)))
+	oc.runtimeMatrixAccessToken = strings.TrimSpace(accessToken)
+	oc.runtimeMatrixHomeserver = strings.TrimSpace(homeserver)
+	oc.runtimeMatrixMu.Unlock()
+	if oc.br != nil {
+		if _, err := oc.reconcileManagedBeeperLogin(context.Background()); err != nil {
+			oc.br.Log.Warn().Err(err).Stringer("user_mxid", userMXID).Msg("Failed to reconcile managed Beeper Cloud login after runtime credential update")
+		}
 	}
 }
 
@@ -361,7 +374,7 @@ func (oc *OpenAIConnector) FillPortalBridgeInfo(portal *bridgev2.Portal, content
 
 func (oc *OpenAIConnector) GetName() bridgev2.BridgeName {
 	return bridgev2.BridgeName{
-		DisplayName:          "Beeper AI",
+		DisplayName:          "Beeper Cloud",
 		NetworkURL:           "https://www.beeper.com/ai",
 		NetworkIcon:          "mxc://beeper.com/51a668657dd9e0132cc823ad9402c6c2d0fc3321",
 		NetworkID:            "ai",
@@ -392,11 +405,14 @@ func (oc *OpenAIConnector) LoadUserLogin(ctx context.Context, login *bridgev2.Us
 
 // Package-level flow definitions (use Provider* constants as flow IDs)
 func (oc *OpenAIConnector) GetLoginFlows() []bridgev2.LoginFlow {
-	flows := []bridgev2.LoginFlow{
-		{ID: ProviderBeeper, Name: "Beeper AI"},
-		{ID: ProviderMagicProxy, Name: "Magic Proxy"},
-		{ID: FlowCustom, Name: "Manual"},
+	flows := make([]bridgev2.LoginFlow, 0, 3)
+	if !oc.hasManagedBeeperAuth() {
+		flows = append(flows, bridgev2.LoginFlow{ID: ProviderBeeper, Name: "Beeper Cloud"})
 	}
+	flows = append(flows,
+		bridgev2.LoginFlow{ID: ProviderMagicProxy, Name: "Magic Proxy"},
+		bridgev2.LoginFlow{ID: FlowCustom, Name: "Manual"},
+	)
 	return flows
 }
 
@@ -420,14 +436,14 @@ func (oc *OpenAIConnector) CreateLogin(ctx context.Context, user *bridgev2.User,
 // This ensures we use the correct provider/API credentials when a user has multiple accounts.
 func (oc *OpenAIConnector) getLoginForPortal(ctx context.Context, user *bridgev2.User, portal *bridgev2.Portal) *bridgev2.UserLogin {
 	if portal == nil {
-		return user.GetDefaultLogin()
+		return oc.getPreferredUserLogin(ctx, user)
 	}
 
 	// The portal's Receiver field contains the UserLogin ID that owns this portal
 	receiverID := portal.Receiver
 	if receiverID == "" {
 		oc.br.Log.Warn().Stringer("portal", portal.PortalKey).Msg("Portal has no receiver, using default login")
-		return user.GetDefaultLogin()
+		return oc.getPreferredUserLogin(ctx, user)
 	}
 
 	// Get the specific login that matches the portal's receiver
@@ -438,7 +454,7 @@ func (oc *OpenAIConnector) getLoginForPortal(ctx context.Context, user *bridgev2
 			Stringer("portal", portal.PortalKey).
 			Str("receiver", string(receiverID)).
 			Msg("Failed to get login for portal receiver, using default login")
-		return user.GetDefaultLogin()
+		return oc.getPreferredUserLogin(ctx, user)
 	}
 
 	return login
