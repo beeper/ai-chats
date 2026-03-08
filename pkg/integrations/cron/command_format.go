@@ -8,7 +8,7 @@ import (
 	croncore "github.com/beeper/ai-bridge/pkg/cron"
 )
 
-func FormatCronStatusText(enabled bool, storePath string, jobCount int, nextWakeAtMs *int64) string {
+func formatCronStatusText(enabled bool, storePath string, jobCount int, nextWakeAtMs *int64) string {
 	next := "none"
 	if nextWakeAtMs != nil && *nextWakeAtMs > 0 {
 		next = fmt.Sprintf("%s (%d)", formatUnixMs(*nextWakeAtMs), *nextWakeAtMs)
@@ -16,7 +16,7 @@ func FormatCronStatusText(enabled bool, storePath string, jobCount int, nextWake
 	return fmt.Sprintf("Cron: enabled=%v jobs=%d store=%s next=%s", enabled, jobCount, strings.TrimSpace(storePath), next)
 }
 
-func FormatCronJobListText(jobs []croncore.CronJob) string {
+func formatCronJobListText(jobs []croncore.CronJob) string {
 	if len(jobs) == 0 {
 		return "Cron jobs: (none)"
 	}
@@ -62,7 +62,7 @@ func FormatCronJobListText(jobs []croncore.CronJob) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-func FormatCronRunsText(jobID string, entries []croncore.CronRunLogEntry) string {
+func formatCronRunsText(jobID string, entries []croncore.CronRunLogEntry) string {
 	jobID = strings.TrimSpace(jobID)
 	if len(entries) == 0 {
 		if jobID != "" {

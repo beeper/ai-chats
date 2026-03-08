@@ -10,7 +10,7 @@ import (
 	iruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
 )
 
-const DefaultFlushSoftTokens = 4000
+const defaultFlushSoftTokens = 4000
 
 type FlushSettings struct {
 	SoftThresholdTokens int
@@ -143,14 +143,14 @@ func buildFlushPrompt(base []openai.ChatCompletionMessageParamUnion, settings *F
 	return trimmed
 }
 
-func EnsureSilentReplyHint(token string, text string) string {
+func ensureSilentReplyHint(token string, text string) string {
 	if strings.Contains(text, token) {
 		return text
 	}
 	return text + "\n\nIf no user-visible reply is needed, start with " + token + "."
 }
 
-func NormalizeFlushSettings(
+func normalizeFlushSettings(
 	enabled *bool,
 	softThresholdTokens int,
 	prompt string,
@@ -163,7 +163,7 @@ func NormalizeFlushSettings(
 	if enabled == nil || !*enabled {
 		return nil
 	}
-	soft := DefaultFlushSoftTokens
+	soft := defaultFlushSoftTokens
 	if softThresholdTokens > 0 {
 		soft = softThresholdTokens
 	}
@@ -177,12 +177,12 @@ func NormalizeFlushSettings(
 	}
 	return &FlushSettings{
 		SoftThresholdTokens: soft,
-		Prompt:              EnsureSilentReplyHint(silentToken, p),
-		SystemPrompt:        EnsureSilentReplyHint(silentToken, sp),
+		Prompt:              ensureSilentReplyHint(silentToken, p),
+		SystemPrompt:        ensureSilentReplyHint(silentToken, sp),
 	}
 }
 
-func DefaultFlushPrompts(silentToken string) (prompt string, systemPrompt string) {
+func defaultFlushPrompts(silentToken string) (prompt string, systemPrompt string) {
 	prompt = strings.TrimSpace(strings.Join([]string{
 		"Pre-compaction memory flush.",
 		"Store durable memories now (use memory/YYYY-MM-DD.md; create memory/ if needed).",

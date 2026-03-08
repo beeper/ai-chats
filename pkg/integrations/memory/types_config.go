@@ -33,5 +33,4 @@ const (
 
 	DefaultOpenAIEmbeddingModel = memorycore.DefaultOpenAIEmbeddingModel
 	DefaultGeminiEmbeddingModel = memorycore.DefaultGeminiEmbeddingModel
-	DefaultGeminiBaseURL        = memorycore.DefaultGeminiBaseURL
 )

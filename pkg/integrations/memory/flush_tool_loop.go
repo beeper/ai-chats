@@ -89,7 +89,7 @@ func RunFlushToolLoop(
 	return nil
 }
 
-func IsAllowedFlushTool(name string) bool {
+func isAllowedFlushTool(name string) bool {
 	switch strings.TrimSpace(name) {
 	case "read", "write", "edit":
 		return true

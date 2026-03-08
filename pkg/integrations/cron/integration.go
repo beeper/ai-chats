@@ -168,7 +168,7 @@ func (i *Integration) executeCronCommand(call iruntime.CommandCall) (bool, error
 			reply("Cron status failed: %s", err.Error())
 			return true, nil
 		}
-		reply(FormatCronStatusText(enabled, storePath, jobCount, nextWake))
+		reply(formatCronStatusText(enabled, storePath, jobCount, nextWake))
 	case "list":
 		includeDisabled := false
 		if len(call.Args) > 1 && (strings.EqualFold(call.Args[1], "all") || strings.EqualFold(call.Args[1], "--all")) {
@@ -179,7 +179,7 @@ func (i *Integration) executeCronCommand(call iruntime.CommandCall) (bool, error
 			reply("Cron list failed: %s", err.Error())
 			return true, nil
 		}
-		reply(FormatCronJobListText(jobs))
+		reply(formatCronJobListText(jobs))
 	case "runs":
 		if len(call.Args) < 2 || strings.TrimSpace(call.Args[1]) == "" {
 			reply("Usage: `!ai cron runs <jobId> [limit]`")
@@ -197,7 +197,7 @@ func (i *Integration) executeCronCommand(call iruntime.CommandCall) (bool, error
 			reply("Cron runs failed: %s", err.Error())
 			return true, nil
 		}
-		reply(FormatCronRunsText(jobID, entries))
+		reply(formatCronRunsText(jobID, entries))
 	case "remove", "rm", "delete":
 		if len(call.Args) < 2 || strings.TrimSpace(call.Args[1]) == "" {
 			reply("Usage: `!ai cron remove <jobId>`")

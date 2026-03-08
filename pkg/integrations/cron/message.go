@@ -16,11 +16,11 @@ func BuildCronMessage(jobID, jobName, message, timezone string) string {
 		base = name
 	}
 	header := fmt.Sprintf("[cron:%s %s] %s", strings.TrimSpace(jobID), name, base)
-	timeLine := fmt.Sprintf("Current time: %s", FormatCronTime(timezone))
+	timeLine := fmt.Sprintf("Current time: %s", formatCronTime(timezone))
 	return strings.TrimSpace(header + "\n" + timeLine)
 }
 
-func FormatCronTime(timezone string) string {
+func formatCronTime(timezone string) string {
 	loc := time.UTC
 	if tz := strings.TrimSpace(timezone); tz != "" {
 		if loaded, err := time.LoadLocation(tz); err == nil {

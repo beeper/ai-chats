@@ -14,9 +14,7 @@ import (
 	"github.com/beeper/ai-bridge/pkg/textfs"
 )
 
-const (
-	CommandMaxBytes = 256 * 1024
-)
+const commandMaxBytes = 256 * 1024
 
 type ToolExecDeps struct {
 	GetManager             func(scope iruntime.ToolScope) (Manager, string)
@@ -205,9 +203,6 @@ func ExecuteCommand(ctx context.Context, call iruntime.CommandCall, deps Command
 			reply("Memory search disabled: %s", errMsgOrDefault(errMsg))
 			return true, nil
 		}
-		if len(call.Args) > 1 {
-			_ = isDeepStatusArg(call.Args[1])
-		}
 		status, statusErr := manager.StatusDetails(ctx)
 		if statusErr != nil {
 			reply("Couldn't load memory status: %v", statusErr)
@@ -331,11 +326,11 @@ func ExecuteCommand(ctx context.Context, call iruntime.CommandCall, deps Command
 		}
 		path := args[1]
 		content := strings.Join(args[2:], " ")
-		if len([]byte(content)) > CommandMaxBytes {
-			reply("Content exceeds %s limit.", textfs.FormatSize(CommandMaxBytes))
+		if len([]byte(content)) > commandMaxBytes {
+			reply("Content exceeds %s limit.", textfs.FormatSize(commandMaxBytes))
 			return true, nil
 		}
-		updatedPath, writeErr := deps.WriteFile(ctx, call.Scope, action, path, content, CommandMaxBytes)
+		updatedPath, writeErr := deps.WriteFile(ctx, call.Scope, action, path, content, commandMaxBytes)
 		if writeErr != nil {
 			reply("Couldn't write memory: %v", writeErr)
 			return true, nil
@@ -446,15 +441,6 @@ func errMsgOrDefault(raw string) string {
 		return "memory integration unavailable"
 	}
 	return trimmed
-}
-
-func isDeepStatusArg(raw string) bool {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "deep", "probe", "verbose":
-		return true
-	default:
-		return false
-	}
 }
 
 func formatStatusLines(status *StatusDetails) []string {

@@ -19,7 +19,7 @@ func (i *Integration) ToolApprovalRequirement(toolName string, args map[string]a
 	switch name {
 	case "write", "edit", "apply_patch":
 		path := strings.ToLower(strings.TrimSpace(maputil.StringArg(args, "path")))
-		if IsManagedPath(path) {
+		if isManagedPath(path) {
 			return true, false, "memory"
 		}
 		return false, false, ""
@@ -28,7 +28,7 @@ func (i *Integration) ToolApprovalRequirement(toolName string, args map[string]a
 	}
 }
 
-func IsManagedPath(path string) bool {
+func isManagedPath(path string) bool {
 	trimmed := strings.TrimSpace(strings.ToLower(path))
 	if trimmed == "" {
 		return false

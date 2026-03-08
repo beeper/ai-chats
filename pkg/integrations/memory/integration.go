@@ -524,7 +524,7 @@ func (i *Integration) runFlushToolLoop(
 	allTools := tph.AllToolDefinitions()
 	var flushTools []iruntime.ToolDefinition
 	for _, tool := range allTools {
-		if IsAllowedFlushTool(tool.Name) {
+		if isAllowedFlushTool(tool.Name) {
 			flushTools = append(flushTools, tool)
 		}
 	}
@@ -586,8 +586,8 @@ func (i *Integration) resolveOverflowFlushSettings() *FlushSettings {
 	}
 	enabled, softThresholdTokens, prompt, systemPrompt := oh.OverflowFlushConfig()
 	silentToken := oh.SilentReplyToken()
-	defaultPrompt, defaultSystemPrompt := DefaultFlushPrompts(silentToken)
-	return NormalizeFlushSettings(
+	defaultPrompt, defaultSystemPrompt := defaultFlushPrompts(silentToken)
+	return normalizeFlushSettings(
 		enabled,
 		softThresholdTokens,
 		prompt,
