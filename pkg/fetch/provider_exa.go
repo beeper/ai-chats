@@ -36,7 +36,11 @@ func (p *exaProvider) Name() string {
 }
 
 func (p *exaProvider) Fetch(ctx context.Context, req Request) (*Response, error) {
-	endpoint := strings.TrimRight(p.cfg.BaseURL, "/") + "/contents"
+	base := stringutil.NormalizeBaseURL(p.cfg.BaseURL)
+	if base == "" {
+		return nil, errors.New("exa base_url is empty")
+	}
+	endpoint := base + "/contents"
 	maxChars := req.MaxChars
 	if maxChars <= 0 {
 		maxChars = p.cfg.TextMaxCharacters
