@@ -8,6 +8,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 // sendViaPortal sends a pre-built message through bridgev2's QueueRemoteEvent pipeline.
@@ -27,7 +29,7 @@ func (cc *CodexClient) sendViaPortal(
 		return "", msgID, fmt.Errorf("bridge unavailable")
 	}
 	if msgID == "" {
-		msgID = newMessageID()
+		msgID = bridgeadapter.NewMessageID("codex")
 	}
 	sender := cc.senderForPortal()
 	evt := &CodexRemoteMessage{

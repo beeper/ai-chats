@@ -55,33 +55,41 @@ func (oc *AIClient) resolveSubagentAllowlist(ctx context.Context, requesterAgent
 }
 
 func resolveSubagentModel(override string, agent *agents.AgentDefinition, defaults *agents.SubagentConfig) string {
-	if trimmed := strings.TrimSpace(override); trimmed != "" {
-		return trimmed
-	}
-	if agent != nil && agent.Subagents != nil {
-		if trimmed := strings.TrimSpace(agent.Subagents.Model); trimmed != "" {
-			return trimmed
-		}
-	}
-	if defaults != nil {
-		if trimmed := strings.TrimSpace(defaults.Model); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
+	return firstNonEmptyTrimmed(
+		override,
+		subagentStringValue(agent, func(cfg *agents.SubagentConfig) string { return cfg.Model }),
+		subagentStringValue(defaults, func(cfg *agents.SubagentConfig) string { return cfg.Model }),
+	)
 }
 
 func resolveSubagentThinking(override string, agent *agents.AgentDefinition, defaults *agents.SubagentConfig) string {
-	if trimmed := strings.TrimSpace(override); trimmed != "" {
-		return trimmed
-	}
-	if agent != nil && agent.Subagents != nil {
-		if trimmed := strings.TrimSpace(agent.Subagents.Thinking); trimmed != "" {
-			return trimmed
+	return firstNonEmptyTrimmed(
+		override,
+		subagentStringValue(agent, func(cfg *agents.SubagentConfig) string { return cfg.Thinking }),
+		subagentStringValue(defaults, func(cfg *agents.SubagentConfig) string { return cfg.Thinking }),
+	)
+}
+
+func subagentStringValue(source any, extract func(*agents.SubagentConfig) string) string {
+	switch cfg := source.(type) {
+	case *agents.AgentDefinition:
+		if cfg == nil {
+			return ""
 		}
+		return subagentStringValue(cfg.Subagents, extract)
+	case *agents.SubagentConfig:
+		if cfg == nil {
+			return ""
+		}
+		return extract(cfg)
+	default:
+		return ""
 	}
-	if defaults != nil {
-		if trimmed := strings.TrimSpace(defaults.Thinking); trimmed != "" {
+}
+
+func firstNonEmptyTrimmed(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
 			return trimmed
 		}
 	}

@@ -3,7 +3,6 @@ package connector
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
@@ -81,7 +80,7 @@ func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev
 	}
 	msg := &bridgeadapter.RemoteMessage{
 		Portal:    portal.PortalKey,
-		ID:        newMessageID(),
+		ID:        bridgeadapter.NewMessageID("ai"),
 		Sender:    bridgev2.EventSender{Sender: senderID, SenderLogin: oc.UserLogin.ID},
 		Timestamp: time.Now(),
 		LogKey:    "ai_msg_id",
@@ -139,7 +138,7 @@ func (oc *AIClient) sendInitialStreamMessage(ctx context.Context, portal *bridge
 		eventRaw["m.relates_to"] = relatesTo
 	}
 
-	msgID := newMessageID()
+	msgID := bridgeadapter.NewMessageID("ai")
 	converted := &bridgev2.ConvertedMessage{
 		Parts: []*bridgev2.ConvertedMessagePart{{
 			ID:         networkid.PartID("0"),
@@ -539,28 +538,7 @@ func buildSourceParts(cits []citations.SourceCitation, documents []citations.Sou
 	seen := make(map[string]struct{}, len(cits)+len(documents)+len(previews))
 
 	appendURL := func(url, title string, providerMetadata map[string]any) {
-		url = strings.TrimSpace(url)
-		if url == "" {
-			return
-		}
-		seenKey := "url:" + url
-		if _, ok := seen[seenKey]; ok {
-			return
-		}
-		seen[seenKey] = struct{}{}
-
-		part := map[string]any{
-			"type":     "source-url",
-			"sourceId": fmt.Sprintf("source-%d", len(parts)+1),
-			"url":      url,
-		}
-		if title = strings.TrimSpace(title); title != "" {
-			part["title"] = title
-		}
-		if len(providerMetadata) > 0 {
-			part["providerMetadata"] = providerMetadata
-		}
-		parts = append(parts, part)
+		citations.AppendSourceURLPart(&parts, seen, url, title, providerMetadata)
 	}
 
 	for _, citation := range cits {
@@ -586,31 +564,7 @@ func buildSourceParts(cits []citations.SourceCitation, documents []citations.Sou
 	}
 
 	for _, doc := range documents {
-		key := strings.TrimSpace(doc.ID)
-		if key == "" {
-			key = strings.TrimSpace(doc.Filename)
-		}
-		if key == "" {
-			key = strings.TrimSpace(doc.Title)
-		}
-		if key == "" {
-			continue
-		}
-		seenKey := "doc:" + key
-		if _, ok := seen[seenKey]; ok {
-			continue
-		}
-		seen[seenKey] = struct{}{}
-		part := map[string]any{
-			"type":      "source-document",
-			"sourceId":  fmt.Sprintf("source-%d", len(parts)+1),
-			"mediaType": doc.MediaType,
-			"title":     doc.Title,
-		}
-		if filename := strings.TrimSpace(doc.Filename); filename != "" {
-			part["filename"] = filename
-		}
-		parts = append(parts, part)
+		citations.AppendSourceDocumentPart(&parts, seen, doc)
 	}
 
 	for _, preview := range previews {

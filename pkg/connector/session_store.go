@@ -68,17 +68,14 @@ func sessionStoreLock(ref sessionStoreRef, sessionKey string) *sync.Mutex {
 }
 
 func (oc *AIClient) sessionDBScope() *sessionDBScope {
-	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
-		return nil
-	}
-	db := oc.bridgeDB()
-	if db == nil || oc.UserLogin.Bridge.DB == nil {
+	db, bridgeID, loginID := loginDBContext(oc)
+	if db == nil {
 		return nil
 	}
 	return &sessionDBScope{
 		db:       db,
-		bridgeID: string(oc.UserLogin.Bridge.DB.BridgeID),
-		loginID:  string(oc.UserLogin.ID),
+		bridgeID: bridgeID,
+		loginID:  loginID,
 	}
 }
 

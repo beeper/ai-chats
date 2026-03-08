@@ -1896,7 +1896,7 @@ func (cc *CodexClient) sendInitialStreamMessage(ctx context.Context, portal *bri
 		"m.mentions":             map[string]any{},
 	}
 
-	msgID := newMessageID()
+	msgID := bridgeadapter.NewMessageID("codex")
 	converted := &bridgev2.ConvertedMessage{
 		Parts: []*bridgev2.ConvertedMessagePart{{
 			ID:         networkid.PartID("0"),
@@ -2015,19 +2015,12 @@ func (cc *CodexClient) sendFinalAssistantTurn(ctx context.Context, portal *bridg
 		TargetMessage: state.networkMessageID,
 		Timestamp:     time.Now(),
 		LogKey:        "codex_edit_target",
-		PreBuilt: &bridgev2.ConvertedEdit{
-			ModifiedParts: []*bridgev2.ConvertedEditPart{{
-				Type: event.EventMessage,
-				Content: &event.MessageEventContent{
-					MsgType:       event.MsgText,
-					Body:          rendered.Body,
-					Format:        rendered.Format,
-					FormattedBody: rendered.FormattedBody,
-				},
-				Extra:         map[string]any{"m.mentions": map[string]any{}},
-				TopLevelExtra: topLevelExtra,
-			}},
-		},
+		PreBuilt: streamtransport.BuildConvertedEdit(&event.MessageEventContent{
+			MsgType:       event.MsgText,
+			Body:          rendered.Body,
+			Format:        rendered.Format,
+			FormattedBody: rendered.FormattedBody,
+		}, topLevelExtra),
 	})
 	cc.loggerForContext(ctx).Debug().
 		Str("initial_event_id", state.initialEventID.String()).
@@ -2061,7 +2054,7 @@ func (cc *CodexClient) sendContinuationMessage(ctx context.Context, portal *brid
 	sender := cc.senderForPortal()
 	cc.UserLogin.QueueRemoteEvent(&CodexRemoteMessage{
 		Portal:    portal.PortalKey,
-		ID:        newMessageID(),
+		ID:        bridgeadapter.NewMessageID("codex"),
 		Sender:    sender,
 		Timestamp: time.Now(),
 		LogKey:    "codex_msg_id",

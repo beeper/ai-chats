@@ -71,20 +71,7 @@ func (oc *AIClient) sendGeneratedMedia(
 		}
 	}
 
-	if msgType == event.MsgAudio {
-		if durationMs, waveform := analyzeAudio(data, mimeType); durationMs > 0 || len(waveform) > 0 {
-			if durationMs > 0 {
-				info["duration"] = durationMs
-			}
-			rawContent["org.matrix.msc1767.audio"] = map[string]any{
-				"duration": durationMs,
-				"waveform": waveform,
-			}
-		}
-		if asVoice {
-			rawContent["org.matrix.msc3245.voice"] = map[string]any{}
-		}
-	}
+	populateAudioMessageContent(rawContent, info, data, mimeType, asVoice, msgType)
 
 	if turnID != "" && metadataKey != "" {
 		rawContent[metadataKey] = map[string]any{
@@ -113,4 +100,22 @@ func extensionForMIME(mimeType, defaultExt string, overrides map[string]string) 
 		return ext
 	}
 	return defaultExt
+}
+
+func populateAudioMessageContent(rawContent map[string]any, info map[string]any, data []byte, mimeType string, asVoice bool, msgType event.MessageType) {
+	if msgType != event.MsgAudio {
+		return
+	}
+	if durationMs, waveform := analyzeAudio(data, mimeType); durationMs > 0 || len(waveform) > 0 {
+		if durationMs > 0 {
+			info["duration"] = durationMs
+		}
+		rawContent["org.matrix.msc1767.audio"] = map[string]any{
+			"duration": durationMs,
+			"waveform": waveform,
+		}
+	}
+	if asVoice {
+		rawContent["org.matrix.msc3245.voice"] = map[string]any{}
+	}
 }

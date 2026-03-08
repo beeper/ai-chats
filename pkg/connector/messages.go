@@ -429,26 +429,28 @@ func extractChatSystemText(content openai.ChatCompletionSystemMessageParamConten
 	if content.OfString.Value != "" {
 		return content.OfString.Value
 	}
-	var parts []string
-	for _, part := range content.OfArrayOfContentParts {
-		if strings.TrimSpace(part.Text) != "" {
-			parts = append(parts, part.Text)
-		}
-	}
-	return strings.Join(parts, "\n")
+	return joinChatText(content.OfArrayOfContentParts, func(part openai.ChatCompletionContentPartTextParam) string {
+		return part.Text
+	})
 }
 
 func extractChatDeveloperText(content openai.ChatCompletionDeveloperMessageParamContentUnion) string {
 	if content.OfString.Value != "" {
 		return content.OfString.Value
 	}
-	var parts []string
-	for _, part := range content.OfArrayOfContentParts {
-		if strings.TrimSpace(part.Text) != "" {
-			parts = append(parts, part.Text)
+	return joinChatText(content.OfArrayOfContentParts, func(part openai.ChatCompletionContentPartTextParam) string {
+		return part.Text
+	})
+}
+
+func joinChatText[T any](parts []T, extract func(T) string) string {
+	var values []string
+	for _, part := range parts {
+		if text := strings.TrimSpace(extract(part)); text != "" {
+			values = append(values, text)
 		}
 	}
-	return strings.Join(parts, "\n")
+	return strings.Join(values, "\n")
 }
 
 func inferPromptMimeTypeFromDataURL(value string) string {

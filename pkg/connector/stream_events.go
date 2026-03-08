@@ -2,7 +2,6 @@ package connector
 
 import (
 	"context"
-	"strings"
 
 	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 
@@ -59,19 +58,16 @@ func (oc *AIClient) emitStreamEvent(
 	state *streamingState,
 	part map[string]any,
 ) {
-	if portal == nil || portal.MXID == "" || state == nil || state.suppressSend {
+	if state == nil {
 		return
 	}
-	if !state.loggedStreamStart {
-		state.loggedStreamStart = true
-		oc.loggerForContext(ctx).Info().
-			Stringer("room_id", portal.MXID).
-			Str("turn_id", strings.TrimSpace(state.turnID)).
-			Msg("Streaming events")
-	}
-	session := oc.ensureStreamSession(ctx, portal, state)
-	if session == nil {
-		return
-	}
-	session.EmitPart(ctx, part)
+	streamtransport.EmitStreamEvent(ctx, portal, streamtransport.StreamEventState{
+		TurnID:       state.turnID,
+		SuppressSend: state.suppressSend,
+		LoggedStart:  &state.loggedStreamStart,
+		EnsureSession: func() *streamtransport.StreamSession {
+			return oc.ensureStreamSession(ctx, portal, state)
+		},
+		Logger: oc.loggerForContext(ctx),
+	}, part)
 }

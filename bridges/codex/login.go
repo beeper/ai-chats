@@ -609,7 +609,7 @@ func (cl *CodexLogin) finishLogin(ctx context.Context) (*bridgev2.LoginStep, err
 	persistCtx := cl.backgroundProcessContext()
 	log := cl.logger(persistCtx)
 
-	loginID := nextCodexUserLoginID(cl.User)
+	loginID := bridgeadapter.NextUserLoginID(cl.User, "codex")
 	remoteName := "Codex"
 	dupCount := 0
 	for _, existing := range cl.User.GetUserLogins() {

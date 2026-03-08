@@ -134,56 +134,69 @@ func BuildSourceParts(citations []SourceCitation, documents []SourceDocument) []
 	parts := make([]map[string]any, 0, len(citations)+len(documents))
 	seen := make(map[string]struct{}, len(citations)+len(documents))
 	for _, c := range citations {
-		url := strings.TrimSpace(c.URL)
-		if url == "" {
-			continue
-		}
-		seenKey := "url:" + url
-		if _, ok := seen[seenKey]; ok {
-			continue
-		}
-		seen[seenKey] = struct{}{}
-		p := map[string]any{
-			"type":     "source-url",
-			"sourceId": fmt.Sprintf("source-%d", len(parts)+1),
-			"url":      url,
-		}
-		if title := strings.TrimSpace(c.Title); title != "" {
-			p["title"] = title
-		}
-		if meta := ProviderMetadata(c); len(meta) > 0 {
-			p["providerMetadata"] = meta
-		}
-		parts = append(parts, p)
+		AppendSourceURLPart(&parts, seen, c.URL, c.Title, ProviderMetadata(c))
 	}
 	for _, d := range documents {
-		key := strings.TrimSpace(d.ID)
-		if key == "" {
-			key = strings.TrimSpace(d.Filename)
-		}
-		if key == "" {
-			key = strings.TrimSpace(d.Title)
-		}
-		if key == "" {
-			continue
-		}
-		seenKey := "doc:" + key
-		if _, ok := seen[seenKey]; ok {
-			continue
-		}
-		seen[seenKey] = struct{}{}
-		p := map[string]any{
-			"type":      "source-document",
-			"sourceId":  fmt.Sprintf("source-%d", len(parts)+1),
-			"mediaType": d.MediaType,
-			"title":     d.Title,
-		}
-		if fn := strings.TrimSpace(d.Filename); fn != "" {
-			p["filename"] = fn
-		}
-		parts = append(parts, p)
+		AppendSourceDocumentPart(&parts, seen, d)
 	}
 	return parts
+}
+
+// AppendSourceURLPart appends a deduplicated source-url part to parts.
+func AppendSourceURLPart(parts *[]map[string]any, seen map[string]struct{}, url, title string, providerMetadata map[string]any) {
+	url = strings.TrimSpace(url)
+	if url == "" {
+		return
+	}
+	seenKey := "url:" + url
+	if _, ok := seen[seenKey]; ok {
+		return
+	}
+	seen[seenKey] = struct{}{}
+	part := map[string]any{
+		"type":     "source-url",
+		"sourceId": fmt.Sprintf("source-%d", len(*parts)+1),
+		"url":      url,
+	}
+	if title = strings.TrimSpace(title); title != "" {
+		part["title"] = title
+	}
+	if len(providerMetadata) > 0 {
+		part["providerMetadata"] = providerMetadata
+	}
+	*parts = append(*parts, part)
+}
+
+// AppendSourceDocumentPart appends a deduplicated source-document part to parts.
+func AppendSourceDocumentPart(parts *[]map[string]any, seen map[string]struct{}, doc SourceDocument) {
+	key := sourceDocumentKey(doc)
+	if key == "" {
+		return
+	}
+	seenKey := "doc:" + key
+	if _, ok := seen[seenKey]; ok {
+		return
+	}
+	seen[seenKey] = struct{}{}
+	part := map[string]any{
+		"type":      "source-document",
+		"sourceId":  fmt.Sprintf("source-%d", len(*parts)+1),
+		"mediaType": doc.MediaType,
+		"title":     doc.Title,
+	}
+	if filename := strings.TrimSpace(doc.Filename); filename != "" {
+		part["filename"] = filename
+	}
+	*parts = append(*parts, part)
+}
+
+func sourceDocumentKey(doc SourceDocument) string {
+	for _, candidate := range []string{doc.ID, doc.Filename, doc.Title} {
+		if key := strings.TrimSpace(candidate); key != "" {
+			return key
+		}
+	}
+	return ""
 }
 
 // GeneratedFilesToParts converts generated files into stream-event parts.

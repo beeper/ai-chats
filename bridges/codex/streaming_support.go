@@ -3,6 +3,7 @@ package codex
 import (
 	"context"
 	"strings"
+	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -68,7 +69,7 @@ func newStreamingState(_ context.Context, _ *PortalMetadata, sourceEventID id.Ev
 	ui.InitMaps()
 	return &streamingState{
 		turnID:                 turnID,
-		startedAtMs:            nowMillis(),
+		startedAtMs:            time.Now().UnixMilli(),
 		firstToken:             true,
 		initialEventID:         sourceEventID,
 		ui:                     ui,

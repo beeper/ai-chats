@@ -382,31 +382,33 @@ func (m *OpenCodeManager) AbortSession(ctx context.Context, instanceID, sessionI
 }
 
 func (m *OpenCodeManager) CreateSession(ctx context.Context, instanceID, title, directory string) (*opencode.Session, error) {
-	inst, err := m.requireConnectedInstance(instanceID)
-	if err != nil {
-		return nil, err
-	}
-	session, err := inst.client.CreateSession(ctx, title, directory)
-	if err != nil {
-		if opencode.IsAuthError(err) {
-			m.setConnected(inst, false)
-		}
-		return nil, fmt.Errorf("create session: %w", err)
-	}
-	return session, nil
+	return m.runSessionMutation(ctx, instanceID, "create session", func(inst *openCodeInstance) (*opencode.Session, error) {
+		return inst.client.CreateSession(ctx, title, directory)
+	})
 }
 
 func (m *OpenCodeManager) UpdateSessionTitle(ctx context.Context, instanceID, sessionID, title string) (*opencode.Session, error) {
+	return m.runSessionMutation(ctx, instanceID, "update session title", func(inst *openCodeInstance) (*opencode.Session, error) {
+		return inst.client.UpdateSessionTitle(ctx, sessionID, title)
+	})
+}
+
+func (m *OpenCodeManager) runSessionMutation(
+	ctx context.Context,
+	instanceID string,
+	action string,
+	run func(*openCodeInstance) (*opencode.Session, error),
+) (*opencode.Session, error) {
 	inst, err := m.requireConnectedInstance(instanceID)
 	if err != nil {
 		return nil, err
 	}
-	session, err := inst.client.UpdateSessionTitle(ctx, sessionID, title)
+	session, err := run(inst)
 	if err != nil {
 		if opencode.IsAuthError(err) {
 			m.setConnected(inst, false)
 		}
-		return nil, fmt.Errorf("update session title: %w", err)
+		return nil, fmt.Errorf("%s: %w", action, err)
 	}
 	return session, nil
 }
