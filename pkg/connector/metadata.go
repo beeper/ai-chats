@@ -272,13 +272,13 @@ func clonePortalMetadata(src *PortalMetadata) *PortalMetadata {
 type MessageMetadata struct {
 	bridgeadapter.BaseMessageMetadata
 
-	CompletionID     string `json:"completion_id,omitempty"`
-	Model            string `json:"model,omitempty"`
-	HasToolCalls     bool   `json:"has_tool_calls,omitempty"`
-	Transcript       string `json:"transcript,omitempty"`
-	FirstTokenAtMs   int64  `json:"first_token_at_ms,omitempty"`
-	ThinkingTokenCount int  `json:"thinking_token_count,omitempty"`
-	ExcludeFromHistory bool `json:"exclude_from_history,omitempty"`
+	CompletionID       string `json:"completion_id,omitempty"`
+	Model              string `json:"model,omitempty"`
+	HasToolCalls       bool   `json:"has_tool_calls,omitempty"`
+	Transcript         string `json:"transcript,omitempty"`
+	FirstTokenAtMs     int64  `json:"first_token_at_ms,omitempty"`
+	ThinkingTokenCount int    `json:"thinking_token_count,omitempty"`
+	ExcludeFromHistory bool   `json:"exclude_from_history,omitempty"`
 
 	// Media understanding (OpenClaw-style)
 	MediaUnderstanding          []MediaUnderstandingOutput   `json:"media_understanding,omitempty"`
