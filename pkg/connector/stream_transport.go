@@ -32,22 +32,15 @@ func (oc *AIClient) sendDebouncedStreamEdit(ctx context.Context, portal *bridgev
 		TargetMessage: state.networkMessageID,
 		Timestamp:     time.Now(),
 		LogKey:        "ai_edit_target",
-		PreBuilt: &bridgev2.ConvertedEdit{
-			ModifiedParts: []*bridgev2.ConvertedEditPart{{
-				Type: event.EventMessage,
-				Content: &event.MessageEventContent{
-					MsgType:       event.MsgText,
-					Body:          content.Body,
-					Format:        content.Format,
-					FormattedBody: content.FormattedBody,
-				},
-				Extra: map[string]any{"m.mentions": map[string]any{}},
-				TopLevelExtra: map[string]any{
-					"com.beeper.dont_render_edited": true,
-					"m.mentions":                    map[string]any{},
-				},
-			}},
-		},
+		PreBuilt: streamtransport.BuildConvertedEdit(&event.MessageEventContent{
+			MsgType:       event.MsgText,
+			Body:          content.Body,
+			Format:        content.Format,
+			FormattedBody: content.FormattedBody,
+		}, map[string]any{
+			"com.beeper.dont_render_edited": true,
+			"m.mentions":                    map[string]any{},
+		}),
 	})
 	return nil
 }

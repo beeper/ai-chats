@@ -53,3 +53,14 @@ func bridgeDBFromLogin(login *bridgev2.UserLogin) *dbutil.Database {
 	}
 	return nil
 }
+
+func loginDBContext(client *AIClient) (*dbutil.Database, string, string) {
+	if client == nil || client.UserLogin == nil || client.UserLogin.Bridge == nil {
+		return nil, "", ""
+	}
+	db := client.bridgeDB()
+	if db == nil || client.UserLogin.Bridge.DB == nil {
+		return nil, "", ""
+	}
+	return db, string(client.UserLogin.Bridge.DB.BridgeID), string(client.UserLogin.ID)
+}

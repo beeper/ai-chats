@@ -59,14 +59,7 @@ func NewOpenAIProviderWithUserID(apiKey, baseURL, userID string, log zerolog.Log
 		opts = append(opts, option.WithBaseURL(baseURL))
 	}
 
-	if userID != "" {
-		opts = append(opts, option.WithMiddleware(func(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
-			q := req.URL.Query()
-			q.Set("user_id", userID)
-			req.URL.RawQuery = q.Encode()
-			return next(req)
-		}))
-	}
+	opts = appendUserIDOption(opts, userID)
 	opts = append(opts, option.WithMiddleware(makeRequestTraceMiddleware(log)))
 
 	client := openai.NewClient(opts...)
@@ -80,6 +73,18 @@ func NewOpenAIProviderWithUserID(apiKey, baseURL, userID string, log zerolog.Log
 
 func newOutboundRequestID() string {
 	return "abr_" + random.String(12)
+}
+
+func appendUserIDOption(opts []option.RequestOption, userID string) []option.RequestOption {
+	if userID == "" {
+		return opts
+	}
+	return append(opts, option.WithMiddleware(func(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
+		q := req.URL.Query()
+		q.Set("user_id", userID)
+		req.URL.RawQuery = q.Encode()
+		return next(req)
+	}))
 }
 
 func makeRequestTraceMiddleware(log zerolog.Logger) option.Middleware {
@@ -164,15 +169,7 @@ func NewOpenAIProviderWithPDFPlugin(apiKey, baseURL, userID, pdfEngine string, h
 		opts = append(opts, option.WithBaseURL(baseURL))
 	}
 
-	// Add user_id query parameter if provided
-	if userID != "" {
-		opts = append(opts, option.WithMiddleware(func(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
-			q := req.URL.Query()
-			q.Set("user_id", userID)
-			req.URL.RawQuery = q.Encode()
-			return next(req)
-		}))
-	}
+	opts = appendUserIDOption(opts, userID)
 
 	opts = httputil.AppendHeaderOptions(opts, headers)
 

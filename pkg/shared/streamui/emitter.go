@@ -139,25 +139,22 @@ func (e *Emitter) EmitUIStepFinish(ctx context.Context, portal *bridgev2.Portal)
 
 // EnsureUIText sends "text-start" the first time it's called for a turn.
 func (e *Emitter) EnsureUIText(ctx context.Context, portal *bridgev2.Portal) {
-	if e.State.UITextID != "" {
-		return
-	}
-	e.State.UITextID = fmt.Sprintf("text-%s", e.State.TurnID)
-	e.Emit(ctx, portal, map[string]any{
-		"type": "text-start",
-		"id":   e.State.UITextID,
-	})
+	e.ensureUIPartStarted(ctx, portal, &e.State.UITextID, "text")
 }
 
 // EnsureUIReasoning sends "reasoning-start" the first time it's called for a turn.
 func (e *Emitter) EnsureUIReasoning(ctx context.Context, portal *bridgev2.Portal) {
-	if e.State.UIReasoningID != "" {
+	e.ensureUIPartStarted(ctx, portal, &e.State.UIReasoningID, "reasoning")
+}
+
+func (e *Emitter) ensureUIPartStarted(ctx context.Context, portal *bridgev2.Portal, idRef *string, partType string) {
+	if idRef == nil || *idRef != "" {
 		return
 	}
-	e.State.UIReasoningID = fmt.Sprintf("reasoning-%s", e.State.TurnID)
+	*idRef = fmt.Sprintf("%s-%s", partType, e.State.TurnID)
 	e.Emit(ctx, portal, map[string]any{
-		"type": "reasoning-start",
-		"id":   e.State.UIReasoningID,
+		"type": partType + "-start",
+		"id":   *idRef,
 	})
 }
 

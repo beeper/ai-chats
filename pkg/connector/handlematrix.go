@@ -785,38 +785,48 @@ func (oc *AIClient) handleMediaMessage(
 		// If model lacks vision but agent supports image understanding, analyze image first.
 		if msgType == event.MsgImage {
 			visionModel, visionFallback := oc.resolveVisionModelForImage(ctx, meta)
-			if visionFallback && visionModel != "" {
-				analysisPrompt := buildImageUnderstandingPrompt(caption, hasUserCaption)
-				description, err := oc.analyzeImageWithModel(ctx, visionModel, string(mediaURL), mimeType, encryptedFile, analysisPrompt)
-				if err != nil {
-					oc.loggerForContext(ctx).Warn().Err(err).Msg("Image understanding failed")
-					return nil, messageSendStatusError(err, "Couldn't analyze the image. Try again, or switch to a vision-capable model with !ai model.", "")
-				}
-
-				combined := buildImageUnderstandingMessage(caption, hasUserCaption, description)
-				if combined == "" {
-					return nil, messageSendStatusError(errors.New("image understanding produced empty result"), "Couldn't analyze the image. Try again, or switch to a vision-capable model with !ai model.", "")
-				}
-				return dispatchTextOnly(combined)
+			if resp, err := oc.dispatchMediaUnderstandingFallback(
+				ctx,
+				visionModel,
+				visionFallback,
+				string(mediaURL),
+				mimeType,
+				encryptedFile,
+				caption,
+				hasUserCaption,
+				buildImageUnderstandingPrompt,
+				oc.analyzeImageWithModel,
+				buildImageUnderstandingMessage,
+				"Image understanding failed",
+				"image understanding produced empty result",
+				"Couldn't analyze the image. Try again, or switch to a vision-capable model with !ai model.",
+				dispatchTextOnly,
+			); resp != nil || err != nil {
+				return resp, err
 			}
 		}
 
 		// If model lacks audio but agent supports audio understanding, analyze audio first.
 		if msgType == event.MsgAudio {
 			audioModel, audioFallback := oc.resolveAudioModelForInput(ctx, meta)
-			if audioFallback && audioModel != "" {
-				analysisPrompt := buildAudioUnderstandingPrompt(caption, hasUserCaption)
-				transcript, err := oc.analyzeAudioWithModel(ctx, audioModel, string(mediaURL), mimeType, encryptedFile, analysisPrompt)
-				if err != nil {
-					oc.loggerForContext(ctx).Warn().Err(err).Msg("Audio understanding failed")
-					return nil, messageSendStatusError(err, "Couldn't analyze the audio. Try again, or switch to an audio-capable model with !ai model.", "")
-				}
-
-				combined := buildAudioUnderstandingMessage(caption, hasUserCaption, transcript)
-				if combined == "" {
-					return nil, messageSendStatusError(errors.New("audio understanding produced empty result"), "Couldn't analyze the audio. Try again, or switch to an audio-capable model with !ai model.", "")
-				}
-				return dispatchTextOnly(combined)
+			if resp, err := oc.dispatchMediaUnderstandingFallback(
+				ctx,
+				audioModel,
+				audioFallback,
+				string(mediaURL),
+				mimeType,
+				encryptedFile,
+				caption,
+				hasUserCaption,
+				buildAudioUnderstandingPrompt,
+				oc.analyzeAudioWithModel,
+				buildAudioUnderstandingMessage,
+				"Audio understanding failed",
+				"audio understanding produced empty result",
+				"Couldn't analyze the audio. Try again, or switch to an audio-capable model with !ai model.",
+				dispatchTextOnly,
+			); resp != nil || err != nil {
+				return resp, err
 			}
 		}
 
@@ -884,6 +894,40 @@ func (oc *AIClient) handleMediaMessage(
 		DB:      dbMsg,
 		Pending: isPending,
 	}, nil
+}
+
+func (oc *AIClient) dispatchMediaUnderstandingFallback(
+	ctx context.Context,
+	model string,
+	fallback bool,
+	mediaURL string,
+	mimeType string,
+	encryptedFile *event.EncryptedFileInfo,
+	caption string,
+	hasUserCaption bool,
+	buildPrompt func(string, bool) string,
+	analyze func(context.Context, string, string, string, *event.EncryptedFileInfo, string) (string, error),
+	buildMessage func(string, bool, string) string,
+	failureLog string,
+	emptyResult string,
+	userError string,
+	dispatchTextOnly func(string) (*bridgev2.MatrixMessageResponse, error),
+) (*bridgev2.MatrixMessageResponse, error) {
+	if !fallback || model == "" {
+		return nil, nil
+	}
+	analysisPrompt := buildPrompt(caption, hasUserCaption)
+	description, err := analyze(ctx, model, mediaURL, mimeType, encryptedFile, analysisPrompt)
+	if err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg(failureLog)
+		return nil, messageSendStatusError(err, userError, "")
+	}
+
+	combined := buildMessage(caption, hasUserCaption, description)
+	if combined == "" {
+		return nil, messageSendStatusError(errors.New(emptyResult), userError, "")
+	}
+	return dispatchTextOnly(combined)
 }
 
 func (oc *AIClient) handleTextFileMessage(

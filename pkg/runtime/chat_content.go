@@ -37,74 +37,62 @@ func ExtractSystemContent(content openai.ChatCompletionSystemMessageParamContent
 	if content.OfString.Value != "" {
 		return content.OfString.Value
 	}
-	if len(content.OfArrayOfContentParts) > 0 {
-		var sb strings.Builder
-		for _, part := range content.OfArrayOfContentParts {
-			sb.WriteString(part.Text)
-		}
-		return sb.String()
-	}
-	return ""
+	return joinContentText(content.OfArrayOfContentParts, func(part openai.ChatCompletionContentPartTextParam) string {
+		return part.Text
+	})
 }
 
 func ExtractUserContent(content openai.ChatCompletionUserMessageParamContentUnion) string {
 	if content.OfString.Value != "" {
 		return content.OfString.Value
 	}
-	if len(content.OfArrayOfContentParts) > 0 {
-		var sb strings.Builder
-		for _, part := range content.OfArrayOfContentParts {
-			if part.OfText != nil {
-				sb.WriteString(part.OfText.Text)
-			}
+	return joinContentText(content.OfArrayOfContentParts, func(part openai.ChatCompletionContentPartUnionParam) string {
+		if part.OfText == nil {
+			return ""
 		}
-		return sb.String()
-	}
-	return ""
+		return part.OfText.Text
+	})
 }
 
 func ExtractAssistantContent(content openai.ChatCompletionAssistantMessageParamContentUnion) string {
 	if content.OfString.Value != "" {
 		return content.OfString.Value
 	}
-	if len(content.OfArrayOfContentParts) > 0 {
-		var sb strings.Builder
-		for _, part := range content.OfArrayOfContentParts {
-			if part.OfText != nil {
-				sb.WriteString(part.OfText.Text)
-			}
+	return joinContentText(content.OfArrayOfContentParts, func(part openai.ChatCompletionAssistantMessageParamContentArrayOfContentPartUnion) string {
+		if part.OfText == nil {
+			return ""
 		}
-		return sb.String()
-	}
-	return ""
+		return part.OfText.Text
+	})
 }
 
 func ExtractDeveloperContent(content openai.ChatCompletionDeveloperMessageParamContentUnion) string {
 	if content.OfString.Value != "" {
 		return content.OfString.Value
 	}
-	if len(content.OfArrayOfContentParts) > 0 {
-		var sb strings.Builder
-		for _, part := range content.OfArrayOfContentParts {
-			sb.WriteString(part.Text)
-		}
-		return sb.String()
-	}
-	return ""
+	return joinContentText(content.OfArrayOfContentParts, func(part openai.ChatCompletionContentPartTextParam) string {
+		return part.Text
+	})
 }
 
 func ExtractToolContent(content openai.ChatCompletionToolMessageParamContentUnion) string {
 	if content.OfString.Value != "" {
 		return content.OfString.Value
 	}
-	if len(content.OfArrayOfContentParts) > 0 {
-		var sb strings.Builder
-		for _, part := range content.OfArrayOfContentParts {
-			sb.WriteString(part.Text)
-		}
-		return sb.String()
+	return joinContentText(content.OfArrayOfContentParts, func(part openai.ChatCompletionContentPartTextParam) string {
+		return part.Text
+	})
+}
+
+func joinContentText[T any](parts []T, extract func(T) string) string {
+	if len(parts) == 0 {
+		return ""
 	}
-	return ""
+	var sb strings.Builder
+	for _, part := range parts {
+		sb.WriteString(extract(part))
+	}
+	return sb.String()
 }
 
 // EstimateMessageChars approximates character usage for one prompt message.

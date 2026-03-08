@@ -385,36 +385,30 @@ func backfillCost(msg opencode.MessageWithParts) float64 {
 }
 
 func backfillPromptTokens(msg opencode.MessageWithParts) int64 {
-	if msg.Info.Tokens != nil {
-		return int64(msg.Info.Tokens.Input)
-	}
-	for _, part := range msg.Parts {
-		if part.Type == "step-finish" && part.Tokens != nil {
-			return int64(part.Tokens.Input)
-		}
-	}
-	return 0
+	return backfillTokenValue(msg, func(tokens opencode.TokenUsage) int64 {
+		return int64(tokens.Input)
+	})
 }
 
 func backfillCompletionTokens(msg opencode.MessageWithParts) int64 {
-	if msg.Info.Tokens != nil {
-		return int64(msg.Info.Tokens.Output)
-	}
-	for _, part := range msg.Parts {
-		if part.Type == "step-finish" && part.Tokens != nil {
-			return int64(part.Tokens.Output)
-		}
-	}
-	return 0
+	return backfillTokenValue(msg, func(tokens opencode.TokenUsage) int64 {
+		return int64(tokens.Output)
+	})
 }
 
 func backfillReasoningTokens(msg opencode.MessageWithParts) int64 {
+	return backfillTokenValue(msg, func(tokens opencode.TokenUsage) int64 {
+		return int64(tokens.Reasoning)
+	})
+}
+
+func backfillTokenValue(msg opencode.MessageWithParts, pick func(opencode.TokenUsage) int64) int64 {
 	if msg.Info.Tokens != nil {
-		return int64(msg.Info.Tokens.Reasoning)
+		return pick(*msg.Info.Tokens)
 	}
 	for _, part := range msg.Parts {
 		if part.Type == "step-finish" && part.Tokens != nil {
-			return int64(part.Tokens.Reasoning)
+			return pick(*part.Tokens)
 		}
 	}
 	return 0

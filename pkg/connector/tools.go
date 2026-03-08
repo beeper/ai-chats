@@ -169,17 +169,7 @@ func firstNonEmptyString(values ...any) string {
 }
 
 func messageTypeForMIME(mimeType string) event.MessageType {
-	mimeType = strings.ToLower(strings.TrimSpace(mimeType))
-	switch {
-	case strings.HasPrefix(mimeType, "image/"):
-		return event.MsgImage
-	case strings.HasPrefix(mimeType, "audio/"):
-		return event.MsgAudio
-	case strings.HasPrefix(mimeType, "video/"):
-		return event.MsgVideo
-	default:
-		return event.MsgFile
-	}
+	return media.MessageTypeForMIME(mimeType)
 }
 
 func resolveMessageMedia(ctx context.Context, btc *BridgeToolContext, bufferInput, mediaInput string) ([]byte, string, error) {
@@ -564,20 +554,7 @@ func executeMessageSend(ctx context.Context, args map[string]any, btc *BridgeToo
 		}
 	}
 
-	if msgType == event.MsgAudio {
-		if durationMs, waveform := analyzeAudio(data, mimeType); durationMs > 0 || len(waveform) > 0 {
-			if durationMs > 0 {
-				info["duration"] = durationMs
-			}
-			rawContent["org.matrix.msc1767.audio"] = map[string]any{
-				"duration": durationMs,
-				"waveform": waveform,
-			}
-		}
-		if asVoice {
-			rawContent["org.matrix.msc3245.voice"] = map[string]any{}
-		}
-	}
+	populateAudioMessageContent(rawContent, info, data, mimeType, asVoice, msgType)
 
 	converted := &bridgev2.ConvertedMessage{
 		Parts: []*bridgev2.ConvertedMessagePart{{

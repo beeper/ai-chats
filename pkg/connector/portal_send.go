@@ -43,7 +43,7 @@ func (oc *AIClient) sendViaPortal(
 		return "", "", fmt.Errorf("invalid portal")
 	}
 	if msgID == "" {
-		msgID = newMessageID()
+		msgID = bridgeadapter.NewMessageID("ai")
 	}
 	ensureConvertedMessageParts(converted)
 	sender := oc.senderForPortal(ctx, portal)

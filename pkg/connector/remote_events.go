@@ -184,7 +184,3 @@ func NewAITextMessage(
 	}
 }
 
-// newMessageID generates a unique message ID for AI remote events.
-func newMessageID() networkid.MessageID {
-	return bridgeadapter.NewMessageID("ai")
-}

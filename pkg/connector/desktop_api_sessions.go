@@ -564,23 +564,11 @@ func (oc *AIClient) resolveDesktopSessionByLabelWithOptions(ctx context.Context,
 		return exactMatches[0].ID, key, nil
 	}
 	if len(exactMatches) > 1 {
-		titles := make([]string, 0, len(exactMatches))
-		for i, chat := range exactMatches {
-			if i >= 5 {
-				break
-			}
-			titles = append(titles, describeDesktopChatForLabel(chat, accounts[strings.TrimSpace(chat.AccountID)]))
-		}
+		titles := topDesktopChatLabels(exactMatches, accounts)
 		return "", "", fmt.Errorf("%w: label '%s' matched multiple chats (%s)", errDesktopLabelAmbiguous, trimmed, strings.Join(titles, ", "))
 	}
 	if len(partialMatches) > 0 {
-		suggestions := make([]string, 0, len(partialMatches))
-		for i, chat := range partialMatches {
-			if i >= 5 {
-				break
-			}
-			suggestions = append(suggestions, describeDesktopChatForLabel(chat, accounts[strings.TrimSpace(chat.AccountID)]))
-		}
+		suggestions := topDesktopChatLabels(partialMatches, accounts)
 		return "", "", fmt.Errorf("%w: no exact session found for label '%s'. Top matches: %s. Use the sessionKey from sessions_list for deterministic targeting", errDesktopLabelNotFound, trimmed, strings.Join(suggestions, ", "))
 	}
 	acctID := strings.TrimSpace(opts.AccountID)
@@ -596,6 +584,17 @@ func (oc *AIClient) resolveDesktopSessionByLabelWithOptions(ctx context.Context,
 		return "", "", fmt.Errorf("%w: no session found for label '%s' with filters (%s). Use the sessionKey from sessions_list", errDesktopLabelNotFound, trimmed, strings.Join(filterParts, ", "))
 	}
 	return "", "", fmt.Errorf("%w: no session found for label '%s'. Use the sessionKey from sessions_list", errDesktopLabelNotFound, trimmed)
+}
+
+func topDesktopChatLabels(chats []beeperdesktopapi.Chat, accounts map[string]beeperdesktopapi.Account) []string {
+	labels := make([]string, 0, min(len(chats), 5))
+	for i, chat := range chats {
+		if i >= 5 {
+			break
+		}
+		labels = append(labels, describeDesktopChatForLabel(chat, accounts[strings.TrimSpace(chat.AccountID)]))
+	}
+	return labels
 }
 
 func (oc *AIClient) resolveDesktopSessionByLabel(ctx context.Context, instance, label string) (string, string, error) {

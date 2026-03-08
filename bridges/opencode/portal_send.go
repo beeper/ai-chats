@@ -8,6 +8,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
+
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 // sendViaPortal sends a pre-built message through bridgev2's QueueRemoteEvent pipeline.
@@ -21,7 +23,7 @@ func (oc *OpenCodeClient) sendViaPortal(
 		return fmt.Errorf("invalid portal")
 	}
 	sender := oc.SenderForOpenCode(instanceID, false)
-	msgID := newOpenCodeMessageID()
+	msgID := bridgeadapter.NewMessageID("opencode")
 	evt := &OpenCodeRemoteMessage{
 		Portal:    portal.PortalKey,
 		ID:        msgID,

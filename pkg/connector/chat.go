@@ -541,15 +541,34 @@ func (oc *AIClient) resolveModelIdentifier(ctx context.Context, modelID string, 
 
 	info := oc.findModelInfo(modelID)
 	return &bridgev2.ResolveIdentifierResponse{
-		UserID: userID,
-		UserInfo: &bridgev2.UserInfo{
-			Name:        ptr.Ptr(modelContactName(modelID, info)),
-			IsBot:       ptr.Ptr(false),
-			Identifiers: modelContactIdentifiers(modelID, info),
-		},
-		Ghost: ghost,
-		Chat:  chatResp,
+		UserID:   userID,
+		UserInfo: modelMemberUserInfo(modelID, info),
+		Ghost:    ghost,
+		Chat:     chatResp,
 	}, nil
+}
+
+func modelMemberUserInfo(modelID string, info *ModelInfo) *bridgev2.UserInfo {
+	return &bridgev2.UserInfo{
+		Name:        ptr.Ptr(modelContactName(modelID, info)),
+		IsBot:       ptr.Ptr(false),
+		Identifiers: modelContactIdentifiers(modelID, info),
+	}
+}
+
+func modelJoinMember(loginID networkid.UserLoginID, modelID, modelName string, info *ModelInfo) bridgev2.ChatMember {
+	return bridgev2.ChatMember{
+		EventSender: bridgev2.EventSender{
+			Sender:      modelUserID(modelID),
+			SenderLogin: loginID,
+		},
+		Membership: event.MembershipJoin,
+		UserInfo:   modelMemberUserInfo(modelID, info),
+		MemberEventExtra: map[string]any{
+			"displayname":            modelName,
+			"com.beeper.ai.model_id": modelID,
+		},
+	}
 }
 
 // createAgentChat creates a new chat room for an agent
@@ -1197,24 +1216,7 @@ func (oc *AIClient) composeChatInfo(title, modelID string) *bridgev2.ChatInfo {
 			},
 			Membership: event.MembershipJoin,
 		},
-		modelUserID(modelID): {
-			EventSender: bridgev2.EventSender{
-				Sender:      modelUserID(modelID),
-				SenderLogin: oc.UserLogin.ID,
-			},
-			Membership: event.MembershipJoin,
-			UserInfo: &bridgev2.UserInfo{
-				Name:        ptr.Ptr(modelName),
-				IsBot:       ptr.Ptr(false),
-				Identifiers: modelContactIdentifiers(modelID, modelInfo),
-			},
-			// Set displayname directly in membership event content
-			// This works because MemberEventContent.Displayname has omitempty
-			MemberEventExtra: map[string]any{
-				"displayname":            modelName,
-				"com.beeper.ai.model_id": modelID,
-			},
-		},
+		modelUserID(modelID): modelJoinMember(oc.UserLogin.ID, modelID, modelName, modelInfo),
 	}
 	return &bridgev2.ChatInfo{
 		Name:  ptr.Ptr(title),
@@ -1410,22 +1412,7 @@ func (oc *AIClient) handleModelSwitch(ctx context.Context, portal *bridgev2.Port
 				Membership:     event.MembershipLeave,
 				PrevMembership: event.MembershipJoin,
 			},
-			modelUserID(newModel): {
-				EventSender: bridgev2.EventSender{
-					Sender:      modelUserID(newModel),
-					SenderLogin: oc.UserLogin.ID,
-				},
-				Membership: event.MembershipJoin,
-				UserInfo: &bridgev2.UserInfo{
-					Name:        ptr.Ptr(newModelName),
-					IsBot:       ptr.Ptr(false),
-					Identifiers: modelContactIdentifiers(newModel, newInfo),
-				},
-				MemberEventExtra: map[string]any{
-					"displayname":            newModelName,
-					"com.beeper.ai.model_id": newModel,
-				},
-			},
+			modelUserID(newModel): modelJoinMember(oc.UserLogin.ID, newModel, newModelName, newInfo),
 		},
 	}
 

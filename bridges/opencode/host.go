@@ -16,6 +16,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/bridges/opencode/opencodebridge"
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
 	"github.com/beeper/ai-bridge/pkg/matrixevents"
 	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
@@ -119,7 +120,7 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 			instanceID = pmeta.InstanceID
 		}
 		sender := oc.SenderForOpenCode(instanceID, false)
-		msgID := newOpenCodeMessageID()
+		msgID := bridgeadapter.NewMessageID("opencode")
 		uiMessage := msgconv.BuildUIMessage(msgconv.UIMessageParams{
 			TurnID: turnID,
 			Role:   "assistant",

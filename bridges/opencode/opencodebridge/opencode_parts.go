@@ -22,35 +22,31 @@ type openCodePartEvent struct {
 }
 
 func (b *Bridge) emitOpenCodePart(ctx context.Context, portal *bridgev2.Portal, instanceID string, part opencode.Part, fromMe bool) {
-	if portal == nil || part.ID == "" {
-		return
-	}
-	remote := &simplevent.Message[openCodePartEvent]{
-		EventMeta: simplevent.EventMeta{
-			Type:      bridgev2.RemoteEventMessage,
-			PortalKey: portal.PortalKey,
-			Sender:    b.opencodeSender(instanceID, fromMe),
-		},
-		ID:                 opencodePartMessageID(part.ID),
-		Data:               openCodePartEvent{InstanceID: instanceID, Part: part},
-		ConvertMessageFunc: b.convertOpenCodePartMessage,
-	}
-	b.queueRemoteEvent(remote)
+	b.emitOpenCodePartEvent(portal, instanceID, part, fromMe, bridgev2.RemoteEventMessage)
 }
 
 func (b *Bridge) emitOpenCodePartEdit(ctx context.Context, portal *bridgev2.Portal, instanceID string, part opencode.Part, fromMe bool) {
+	b.emitOpenCodePartEvent(portal, instanceID, part, fromMe, bridgev2.RemoteEventEdit)
+}
+
+func (b *Bridge) emitOpenCodePartEvent(portal *bridgev2.Portal, instanceID string, part opencode.Part, fromMe bool, eventType bridgev2.RemoteEventType) {
 	if portal == nil || part.ID == "" {
 		return
 	}
 	remote := &simplevent.Message[openCodePartEvent]{
 		EventMeta: simplevent.EventMeta{
-			Type:      bridgev2.RemoteEventEdit,
+			Type:      eventType,
 			PortalKey: portal.PortalKey,
 			Sender:    b.opencodeSender(instanceID, fromMe),
 		},
-		TargetMessage:   opencodePartMessageID(part.ID),
-		Data:            openCodePartEvent{InstanceID: instanceID, Part: part},
-		ConvertEditFunc: b.convertOpenCodePartEdit,
+		Data: openCodePartEvent{InstanceID: instanceID, Part: part},
+	}
+	if eventType == bridgev2.RemoteEventMessage {
+		remote.ID = opencodePartMessageID(part.ID)
+		remote.ConvertMessageFunc = b.convertOpenCodePartMessage
+	} else {
+		remote.TargetMessage = opencodePartMessageID(part.ID)
+		remote.ConvertEditFunc = b.convertOpenCodePartEdit
 	}
 	b.queueRemoteEvent(remote)
 }

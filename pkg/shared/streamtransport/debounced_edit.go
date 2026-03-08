@@ -3,6 +3,7 @@ package streamtransport
 import (
 	"strings"
 
+	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 )
@@ -47,5 +48,25 @@ func BuildDebouncedEditContent(p DebouncedEditParams) *DebouncedEditContent {
 		Body:          rendered.Body,
 		FormattedBody: rendered.FormattedBody,
 		Format:        rendered.Format,
+	}
+}
+
+// BuildConvertedEdit wraps rendered message content into a standard Matrix edit.
+func BuildConvertedEdit(content *event.MessageEventContent, topLevelExtra map[string]any) *bridgev2.ConvertedEdit {
+	if content == nil {
+		return nil
+	}
+	return &bridgev2.ConvertedEdit{
+		ModifiedParts: []*bridgev2.ConvertedEditPart{{
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType:       content.MsgType,
+				Body:          content.Body,
+				Format:        content.Format,
+				FormattedBody: content.FormattedBody,
+			},
+			Extra:         map[string]any{"m.mentions": map[string]any{}},
+			TopLevelExtra: topLevelExtra,
+		}},
 	}
 }

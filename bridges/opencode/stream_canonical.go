@@ -15,6 +15,7 @@ import (
 	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
 	"github.com/beeper/ai-bridge/pkg/matrixevents"
 	"github.com/beeper/ai-bridge/pkg/shared/maputil"
+	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 	"github.com/beeper/ai-bridge/pkg/shared/streamui"
 	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 )
@@ -222,19 +223,12 @@ func (oc *OpenCodeClient) queueFinalStreamEdit(ctx context.Context, portal *brid
 		TargetMessage: state.networkMessageID,
 		Timestamp:     time.Now(),
 		LogKey:        "opencode_edit_target",
-		PreBuilt: &bridgev2.ConvertedEdit{
-			ModifiedParts: []*bridgev2.ConvertedEditPart{{
-				Type: event.EventMessage,
-				Content: &event.MessageEventContent{
-					MsgType:       event.MsgText,
-					Body:          rendered.Body,
-					Format:        rendered.Format,
-					FormattedBody: rendered.FormattedBody,
-				},
-				Extra:         map[string]any{"m.mentions": map[string]any{}},
-				TopLevelExtra: topLevelExtra,
-			}},
-		},
+		PreBuilt: streamtransport.BuildConvertedEdit(&event.MessageEventContent{
+			MsgType:       event.MsgText,
+			Body:          rendered.Body,
+			Format:        rendered.Format,
+			FormattedBody: rendered.FormattedBody,
+		}, topLevelExtra),
 	})
 }
 
