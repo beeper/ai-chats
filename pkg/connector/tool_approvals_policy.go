@@ -32,10 +32,6 @@ func (oc *AIClient) builtinToolApprovalRequirement(toolName string, args map[str
 		}
 		switch toolName {
 		case ToolNameWrite, ToolNameEdit, ToolNameApplyPatch:
-			path := strings.ToLower(maputil.StringArg(args, "path"))
-			if path == "" {
-				return true, "workspace"
-			}
 			return true, "workspace"
 		}
 		return true, ""

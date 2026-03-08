@@ -13,11 +13,9 @@ import (
 
 func (oc *AIClient) resolveToolPolicyModelContext(meta *PortalMetadata) (provider string, modelID string) {
 	modelID = oc.effectiveModel(meta)
-	backend, actual := ParseModelPrefix(modelID)
-	if backend != "" {
+	if _, actual := ParseModelPrefix(modelID); actual != modelID {
 		modelID = actual
 	}
-	provider = ""
 	provider, _ = splitModelProvider(modelID)
 	if provider == "" {
 		loginMeta := loginMetadata(oc.UserLogin)
