@@ -186,6 +186,17 @@ func (oc *OpenClawClient) computeVisibleDelta(turnID, text string) string {
 	return text
 }
 
+func (oc *OpenClawClient) isStreamActive(turnID string) bool {
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
+		return false
+	}
+	oc.streamMu.Lock()
+	defer oc.streamMu.Unlock()
+	_, ok := oc.streamStates[turnID]
+	return ok
+}
+
 func (oc *OpenClawClient) ensureStreamStateLocked(portal *bridgev2.Portal, turnID, agentID, sessionKey string) *openClawStreamState {
 	state := oc.streamStates[turnID]
 	if state == nil {

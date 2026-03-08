@@ -31,6 +31,7 @@ type openClawManager struct {
 	gateway   *gatewayWSClient
 	sessions  map[string]gatewaySessionRow
 	approvals *bridgeadapter.ApprovalManager[*openClawPendingApprovalData]
+	waiting   map[string]struct{}
 
 	cancel context.CancelFunc
 }
@@ -48,6 +49,7 @@ func newOpenClawManager(client *OpenClawClient) *openClawManager {
 		client:    client,
 		sessions:  make(map[string]gatewaySessionRow),
 		approvals: bridgeadapter.NewApprovalManager[*openClawPendingApprovalData](),
+		waiting:   make(map[string]struct{}),
 	}
 }
 
@@ -122,6 +124,30 @@ func (m *openClawManager) gatewayClient() *gatewayWSClient {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.gateway
+}
+
+func (m *openClawManager) trackWaitingRun(runID string) bool {
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, exists := m.waiting[runID]; exists {
+		return false
+	}
+	m.waiting[runID] = struct{}{}
+	return true
+}
+
+func (m *openClawManager) untrackWaitingRun(runID string) {
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return
+	}
+	m.mu.Lock()
+	delete(m.waiting, runID)
+	m.mu.Unlock()
 }
 
 func (m *openClawManager) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
@@ -637,6 +663,7 @@ func (m *openClawManager) handleChatEvent(ctx context.Context, payload gatewayCh
 	messageMetadata := openClawStreamMessageMetadata(meta, payload, agentID, turnID)
 	if payload.State == "delta" {
 		m.ensureStreamStart(ctx, portal, meta, turnID, payload.RunID, agentID, messageMetadata)
+		m.startRunRecovery(ctx, portal, meta, turnID, payload.RunID, agentID)
 		text := extractMessageText(payload.Message)
 		delta := m.client.computeVisibleDelta(turnID, text)
 		if delta != "" {
@@ -682,6 +709,7 @@ func (m *openClawManager) handleChatEvent(ctx context.Context, payload gatewayCh
 			"messageMetadata": messageMetadata,
 		})
 		m.client.FinishStream(turnID, payload.State)
+		m.untrackWaitingRun(payload.RunID)
 		meta.LastLiveSeq = payload.Seq
 		_ = portal.Save(ctx)
 	}
@@ -735,6 +763,7 @@ func (m *openClawManager) handleAgentEvent(ctx context.Context, payload gatewayA
 		agentMetadata["session_key"] = payload.SessionKey
 	}
 	m.ensureStreamStart(ctx, portal, meta, turnID, payload.RunID, agentID, agentMetadata)
+	m.startRunRecovery(ctx, portal, meta, turnID, payload.RunID, agentID)
 	stream := strings.ToLower(strings.TrimSpace(payload.Stream))
 	switch stream {
 	case "reasoning":
@@ -796,6 +825,116 @@ func (m *openClawManager) attachApprovalContext(approvalID, sessionKey, turnID, 
 		}
 		return pending
 	})
+}
+
+func (m *openClawManager) startRunRecovery(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, turnID, runID, agentID string) {
+	runID = strings.TrimSpace(runID)
+	if runID == "" || portal == nil || portal.MXID == "" {
+		return
+	}
+	if !m.trackWaitingRun(runID) {
+		return
+	}
+	go m.waitForRunCompletion(m.client.BackgroundContext(ctx), portal, meta, turnID, runID, agentID)
+}
+
+func (m *openClawManager) waitForRunCompletion(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, turnID, runID, agentID string) {
+	defer m.untrackWaitingRun(runID)
+
+	timer := time.NewTimer(20 * time.Second)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return
+	case <-timer.C:
+	}
+
+	if !m.client.isStreamActive(turnID) {
+		return
+	}
+	gateway := m.gatewayClient()
+	if gateway == nil {
+		return
+	}
+	waitResp, err := gateway.WaitForRun(ctx, runID, 30*time.Second)
+	if err != nil || waitResp == nil || !m.client.isStreamActive(turnID) {
+		return
+	}
+	status := strings.ToLower(strings.TrimSpace(waitResp.Status))
+	if status == "" || status == "timeout" {
+		return
+	}
+
+	if recoveredText := m.recoverRunText(ctx, meta.OpenClawSessionKey, turnID); recoveredText != "" {
+		if delta := m.client.computeVisibleDelta(turnID, recoveredText); delta != "" {
+			m.client.EmitStreamPart(ctx, portal, turnID, agentID, meta.OpenClawSessionKey, map[string]any{
+				"type":  "text-delta",
+				"id":    "text-" + turnID,
+				"delta": delta,
+			})
+		}
+	}
+
+	metadata := msgconv.BuildUIMessageMetadata(msgconv.UIMessageMetadataParams{
+		TurnID:        turnID,
+		AgentID:       agentID,
+		CompletionID:  runID,
+		FinishReason:  status,
+		StartedAtMs:   waitResp.StartedAt,
+		CompletedAtMs: waitResp.EndedAt,
+		IncludeUsage:  true,
+	})
+	if meta.OpenClawSessionID != "" {
+		metadata["session_id"] = meta.OpenClawSessionID
+	}
+	if meta.OpenClawSessionKey != "" {
+		metadata["session_key"] = meta.OpenClawSessionKey
+	}
+	if strings.TrimSpace(waitResp.Error) != "" {
+		metadata["error_text"] = strings.TrimSpace(waitResp.Error)
+	}
+	switch status {
+	case "error":
+		m.client.EmitStreamPart(ctx, portal, turnID, agentID, meta.OpenClawSessionKey, map[string]any{
+			"type":      "error",
+			"errorText": stringsTrimDefault(waitResp.Error, "OpenClaw run failed"),
+		})
+	default:
+		m.client.EmitStreamPart(ctx, portal, turnID, agentID, meta.OpenClawSessionKey, map[string]any{
+			"type":            "finish",
+			"messageMetadata": metadata,
+		})
+		m.client.FinishStream(turnID, status)
+		return
+	}
+	m.client.EmitStreamPart(ctx, portal, turnID, agentID, meta.OpenClawSessionKey, map[string]any{
+		"type":            "finish",
+		"messageMetadata": metadata,
+	})
+	m.client.FinishStream(turnID, status)
+}
+
+func (m *openClawManager) recoverRunText(ctx context.Context, sessionKey, turnID string) string {
+	gateway := m.gatewayClient()
+	if gateway == nil || strings.TrimSpace(sessionKey) == "" {
+		return ""
+	}
+	history, err := gateway.RecentHistory(ctx, sessionKey, 25)
+	if err != nil || history == nil {
+		return ""
+	}
+	for i := len(history.Messages) - 1; i >= 0; i-- {
+		message := history.Messages[i]
+		role := strings.ToLower(strings.TrimSpace(stringValue(message["role"])))
+		if role != "assistant" && role != "toolresult" {
+			continue
+		}
+		text := extractMessageText(message)
+		if strings.TrimSpace(text) != "" {
+			return text
+		}
+	}
+	return ""
 }
 
 func (m *openClawManager) resolvePortal(ctx context.Context, sessionKey string) *bridgev2.Portal {

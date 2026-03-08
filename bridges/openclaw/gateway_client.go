@@ -142,6 +142,14 @@ type gatewayAgentIdentity struct {
 	Emoji   string `json:"emoji,omitempty"`
 }
 
+type gatewayWaitRunResponse struct {
+	RunID     string `json:"runId,omitempty"`
+	Status    string `json:"status,omitempty"`
+	StartedAt int64  `json:"startedAt,omitempty"`
+	EndedAt   int64  `json:"endedAt,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
 type gatewayEvent struct {
 	Name    string
 	Payload json.RawMessage
@@ -357,6 +365,22 @@ func (c *gatewayWSClient) GetAgentIdentity(ctx context.Context, agentID, session
 	}
 	var resp gatewayAgentIdentity
 	if err := c.Request(ctx, "agent.identity.get", params, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *gatewayWSClient) WaitForRun(ctx context.Context, runID string, timeout time.Duration) (*gatewayWaitRunResponse, error) {
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return nil, errors.New("run id is required")
+	}
+	params := map[string]any{"runId": runID}
+	if timeout > 0 {
+		params["timeoutMs"] = timeout.Milliseconds()
+	}
+	var resp gatewayWaitRunResponse
+	if err := c.Request(ctx, "agent.wait", params, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

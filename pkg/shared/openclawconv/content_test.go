@@ -36,4 +36,10 @@ func TestIsAttachmentBlock(t *testing.T) {
 	}) {
 		t.Fatal("input_file should be treated as attachment")
 	}
+	if !IsAttachmentBlock(map[string]any{
+		"type": "file",
+		"file": map[string]any{"url": "https://example.com/file.txt"},
+	}) {
+		t.Fatal("nested file map should be treated as attachment")
+	}
 }

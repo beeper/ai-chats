@@ -1,6 +1,9 @@
 package openclaw
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestOpenClawAgentIDFromSessionKey(t *testing.T) {
 	if got := openClawAgentIDFromSessionKey("agent:main:discord:channel:123"); got != "main" {
@@ -110,5 +113,52 @@ func TestNormalizeOpenClawUsage(t *testing.T) {
 	}
 	if usage["total_tokens"] != int64(16) {
 		t.Fatalf("expected total_tokens=16, got %#v", usage["total_tokens"])
+	}
+}
+
+func TestOpenClawAttachmentSourceFromNestedFileMap(t *testing.T) {
+	block := map[string]any{
+		"type": "file",
+		"file": map[string]any{
+			"url":      "https://example.com/doc.txt",
+			"mimeType": "text/plain",
+			"name":     "doc.txt",
+		},
+	}
+	source := openClawAttachmentSourceFromBlock(block)
+	if source == nil {
+		t.Fatal("expected source")
+	}
+	if source.Kind != "url" || source.URL != "https://example.com/doc.txt" || source.FileName != "doc.txt" {
+		t.Fatalf("unexpected source: %#v", source)
+	}
+}
+
+func TestTopicForPortal(t *testing.T) {
+	oc := &OpenClawClient{}
+	topic := oc.topicForPortal(&PortalMetadata{
+		OpenClawChannel:            "discord",
+		OpenClawSubject:            "Support",
+		ModelProvider:              "openai",
+		Model:                      "gpt-5",
+		OpenClawLastMessagePreview: "hello there",
+		HistoryMode:                "recent_only",
+	})
+	want := "discord | Support | openai | gpt-5 | Recent: hello there | History: recent_only"
+	if topic != want {
+		t.Fatalf("unexpected topic: %q", topic)
+	}
+}
+
+func TestOpenClawApprovalResolvedText(t *testing.T) {
+	if got := openClawApprovalResolvedText("deny"); got != "Tool approval denied" {
+		t.Fatalf("unexpected deny text: %q", got)
+	}
+}
+
+func TestRecoverRunTextEmptyWithoutGateway(t *testing.T) {
+	mgr := &openClawManager{}
+	if text := mgr.recoverRunText(context.Background(), "", "turn-1"); text != "" {
+		t.Fatalf("expected empty text, got %q", text)
 	}
 }

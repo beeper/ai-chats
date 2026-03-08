@@ -196,7 +196,10 @@ func (oc *OpenClawClient) GetCapabilities(_ context.Context, _ *bridgev2.Portal)
 func (oc *OpenClawClient) GetChatInfo(_ context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	meta := portalMeta(portal)
 	title := oc.displayNameForPortal(meta)
-	return &bridgev2.ChatInfo{Name: ptr.Ptr(title)}, nil
+	return &bridgev2.ChatInfo{
+		Name:  ptr.Ptr(title),
+		Topic: ptr.NonZero(oc.topicForPortal(meta)),
+	}, nil
 }
 
 func (oc *OpenClawClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
@@ -306,6 +309,15 @@ func (oc *OpenClawClient) displayNameForSession(session gatewaySessionRow) strin
 	if strings.TrimSpace(session.Label) != "" {
 		return strings.TrimSpace(session.Label)
 	}
+	if strings.TrimSpace(session.Subject) != "" {
+		return strings.TrimSpace(session.Subject)
+	}
+	if strings.TrimSpace(session.LastTo) != "" {
+		return strings.TrimSpace(session.LastTo)
+	}
+	if strings.TrimSpace(session.Channel) != "" {
+		return strings.TrimSpace(session.Channel)
+	}
 	if strings.TrimSpace(session.Key) != "" {
 		return strings.TrimSpace(session.Key)
 	}
@@ -316,12 +328,32 @@ func (oc *OpenClawClient) displayNameForPortal(meta *PortalMetadata) string {
 	if meta == nil {
 		return "OpenClaw"
 	}
-	for _, value := range []string{meta.OpenClawDerivedTitle, meta.OpenClawDisplayName, meta.OpenClawSessionKey} {
+	for _, value := range []string{meta.OpenClawDerivedTitle, meta.OpenClawDisplayName, meta.OpenClawSessionLabel, meta.OpenClawSubject, meta.LastTo, meta.OpenClawChannel, meta.OpenClawSessionKey} {
 		if strings.TrimSpace(value) != "" {
 			return strings.TrimSpace(value)
 		}
 	}
 	return "OpenClaw"
+}
+
+func (oc *OpenClawClient) topicForPortal(meta *PortalMetadata) string {
+	if meta == nil {
+		return ""
+	}
+	parts := make([]string, 0, 6)
+	for _, value := range []string{meta.OpenClawChannel, meta.OpenClawSubject, meta.ModelProvider, meta.Model} {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			parts = append(parts, value)
+		}
+	}
+	if strings.TrimSpace(meta.OpenClawLastMessagePreview) != "" {
+		parts = append(parts, "Recent: "+strings.TrimSpace(meta.OpenClawLastMessagePreview))
+	}
+	if meta.HistoryMode != "" {
+		parts = append(parts, "History: "+meta.HistoryMode)
+	}
+	return strings.Join(parts, " | ")
 }
 
 func (oc *OpenClawClient) displayNameForAgent(agentID string) string {

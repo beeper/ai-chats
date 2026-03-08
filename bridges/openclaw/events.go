@@ -3,6 +3,7 @@ package openclaw
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -43,7 +44,7 @@ func (evt *OpenClawSessionResyncEvent) GetSender() bridgev2.EventSender {
 	return bridgev2.EventSender{}
 }
 
-func (evt *OpenClawSessionResyncEvent) GetChatInfo(_ context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
+func (evt *OpenClawSessionResyncEvent) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	if portal == nil {
 		return nil, fmt.Errorf("missing portal")
 	}
@@ -99,16 +100,32 @@ func (evt *OpenClawSessionResyncEvent) GetChatInfo(_ context.Context, portal *br
 		},
 	}
 	agentID := stringsTrimDefault(meta.OpenClawAgentID, "gateway")
+	identity := evt.client.lookupAgentIdentity(ctx, agentID, evt.session.Key)
+	if identity != nil && strings.TrimSpace(identity.AgentID) != "" {
+		agentID = strings.TrimSpace(identity.AgentID)
+		meta.OpenClawAgentID = agentID
+	}
+	agentName := evt.client.displayNameForAgent(agentID)
+	if identity != nil {
+		if strings.TrimSpace(identity.Name) != "" {
+			agentName = evt.client.formatAgentDisplayName(&GhostMetadata{
+				OpenClawAgentID:    agentID,
+				OpenClawAgentName:  strings.TrimSpace(identity.Name),
+				OpenClawAgentEmoji: strings.TrimSpace(identity.Emoji),
+			}, agentID)
+		}
+	}
 	memberMap[openClawGhostUserID(agentID)] = bridgev2.ChatMember{
 		EventSender: evt.client.senderForAgent(agentID, false),
 		UserInfo: &bridgev2.UserInfo{
-			Name:  ptr.Ptr(evt.client.displayNameForAgent(agentID)),
+			Name:  ptr.Ptr(agentName),
 			IsBot: ptr.Ptr(true),
 		},
 	}
 	return &bridgev2.ChatInfo{
-		Type: ptr.Ptr(database.RoomTypeDM),
-		Name: ptr.Ptr(title),
+		Type:  ptr.Ptr(database.RoomTypeDM),
+		Name:  ptr.Ptr(title),
+		Topic: ptr.NonZero(evt.client.topicForPortal(meta)),
 		Members: &bridgev2.ChatMemberList{
 			IsFull:    true,
 			MemberMap: memberMap,

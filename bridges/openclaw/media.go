@@ -87,29 +87,21 @@ func openClawAttachmentSourceFromBlock(block map[string]any) *openClawAttachment
 	if len(block) == 0 {
 		return nil
 	}
-	source := jsonutil.ToMap(block["source"])
-	if len(source) > 0 {
-		sourceType := strings.ToLower(strings.TrimSpace(stringValue(source["type"])))
-		switch sourceType {
-		case "base64":
-			return &openClawAttachmentSource{
-				Kind:     sourceType,
-				Data:     strings.TrimSpace(stringValue(source["data"])),
-				MimeType: stringutil.NormalizeMimeType(stringsTrimDefault(stringValue(source["media_type"]), stringValue(block["mimeType"]))),
-				FileName: stringsTrimDefault(stringValue(source["filename"]), openClawBlockFilename(block)),
-			}
-		case "url":
-			return &openClawAttachmentSource{
-				Kind:     sourceType,
-				URL:      strings.TrimSpace(stringValue(source["url"])),
-				MimeType: stringutil.NormalizeMimeType(stringsTrimDefault(stringValue(block["mimeType"]), stringValue(block["mediaType"]))),
-				FileName: openClawBlockFilename(block),
-			}
+	for _, candidate := range []any{
+		block["source"],
+		block["file"],
+		block["image_url"],
+		block["imageUrl"],
+		block["asset"],
+		block["blob"],
+	} {
+		if source := openClawAttachmentSourceFromValue(candidate, block); source != nil {
+			return source
 		}
 	}
 	if data := strings.TrimSpace(stringValue(block["content"])); data != "" {
 		return &openClawAttachmentSource{
-			Kind:     "base64",
+			Kind:     openClawAttachmentKindFromString(data),
 			Data:     data,
 			MimeType: stringutil.NormalizeMimeType(stringsTrimDefault(stringValue(block["mimeType"]), stringValue(block["mediaType"]))),
 			FileName: openClawBlockFilename(block),
@@ -117,7 +109,7 @@ func openClawAttachmentSourceFromBlock(block map[string]any) *openClawAttachment
 	}
 	if data := strings.TrimSpace(stringValue(block["data"])); data != "" {
 		return &openClawAttachmentSource{
-			Kind:     "base64",
+			Kind:     openClawAttachmentKindFromString(data),
 			Data:     data,
 			MimeType: stringutil.NormalizeMimeType(stringsTrimDefault(stringValue(block["mimeType"]), stringValue(block["mediaType"]))),
 			FileName: openClawBlockFilename(block),
@@ -132,6 +124,72 @@ func openClawAttachmentSourceFromBlock(block map[string]any) *openClawAttachment
 		}
 	}
 	return nil
+}
+
+func openClawAttachmentSourceFromValue(value any, block map[string]any) *openClawAttachmentSource {
+	if raw := strings.TrimSpace(stringValue(value)); raw != "" {
+		source := &openClawAttachmentSource{
+			Kind:     openClawAttachmentKindFromString(raw),
+			MimeType: stringutil.NormalizeMimeType(stringsTrimDefault(stringValue(block["mimeType"]), stringValue(block["mediaType"]))),
+			FileName: openClawBlockFilename(block),
+		}
+		if source.Kind == "url" {
+			source.URL = raw
+		} else {
+			source.Data = raw
+		}
+		return source
+	}
+
+	source := jsonutil.ToMap(value)
+	if len(source) == 0 {
+		return nil
+	}
+	sourceType := strings.ToLower(strings.TrimSpace(stringValue(source["type"])))
+	if sourceType == "" {
+		if rawURL := strings.TrimSpace(stringsTrimDefault(stringValue(source["url"]), stringValue(source["href"]))); rawURL != "" {
+			sourceType = "url"
+		} else if rawData := strings.TrimSpace(stringsTrimDefault(stringValue(source["data"]), stringValue(source["content"]))); rawData != "" {
+			sourceType = openClawAttachmentKindFromString(rawData)
+		}
+	}
+	result := &openClawAttachmentSource{
+		Kind:     sourceType,
+		URL:      strings.TrimSpace(stringsTrimDefault(stringValue(source["url"]), stringValue(source["href"]))),
+		Data:     strings.TrimSpace(stringsTrimDefault(stringValue(source["data"]), stringValue(source["content"]))),
+		MimeType: stringutil.NormalizeMimeType(stringsTrimDefault(stringsTrimDefault(stringValue(source["media_type"]), stringValue(source["mimeType"])), stringsTrimDefault(stringValue(block["mimeType"]), stringValue(block["mediaType"])))),
+		FileName: stringsTrimDefault(stringsTrimDefault(stringValue(source["filename"]), stringValue(source["name"])), openClawBlockFilename(block)),
+	}
+	switch result.Kind {
+	case "base64", "url":
+		return result
+	case "":
+		return nil
+	default:
+		if result.URL != "" {
+			result.Kind = "url"
+			return result
+		}
+		if result.Data != "" {
+			result.Kind = openClawAttachmentKindFromString(result.Data)
+			return result
+		}
+		return nil
+	}
+}
+
+func openClawAttachmentKindFromString(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") || strings.HasPrefix(raw, "file://") || strings.HasPrefix(raw, "/") {
+		return "url"
+	}
+	if strings.HasPrefix(raw, "data:") {
+		return "base64"
+	}
+	return "base64"
 }
 
 func openClawBlockFilename(block map[string]any) string {
