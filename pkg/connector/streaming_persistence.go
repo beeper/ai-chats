@@ -7,8 +7,6 @@ import (
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
