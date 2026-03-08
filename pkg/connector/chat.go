@@ -13,6 +13,7 @@ import (
 
 	"github.com/beeper/ai-bridge/pkg/agents"
 	"github.com/beeper/ai-bridge/pkg/agents/tools"
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
 	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
 
@@ -1751,18 +1752,7 @@ func (oc *AIClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Porta
 	if portal == nil || portal.MXID == "" {
 		return
 	}
-	converted := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:   networkid.PartID("0"),
-			Type: event.EventMessage,
-			Content: &event.MessageEventContent{
-				MsgType:  event.MsgNotice,
-				Body:     message,
-				Mentions: &event.Mentions{},
-			},
-		}},
-	}
-	if _, _, err := oc.sendViaPortal(ctx, portal, converted, ""); err != nil {
+	if _, _, err := oc.sendViaPortal(ctx, portal, bridgeadapter.BuildSystemNotice(message), ""); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to send system notice")
 	}
 }

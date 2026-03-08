@@ -1,7 +1,6 @@
 package connector
 
 import (
-	"encoding/json"
 	"mime"
 	"net/url"
 	"path/filepath"
@@ -77,57 +76,5 @@ func extractWebSearchCitationsFromToolOutput(toolName, output string) []citation
 	if normalizeToolAlias(strings.TrimSpace(toolName)) != ToolNameWebSearch {
 		return nil
 	}
-	output = strings.TrimSpace(output)
-	if output == "" || !strings.HasPrefix(output, "{") {
-		return nil
-	}
-
-	var payload map[string]any
-	if err := json.Unmarshal([]byte(output), &payload); err != nil {
-		return nil
-	}
-
-	rawResults, ok := payload["results"].([]any)
-	if !ok || len(rawResults) == 0 {
-		return nil
-	}
-
-	result := make([]citations.SourceCitation, 0, len(rawResults))
-	for _, rawResult := range rawResults {
-		entry, ok := rawResult.(map[string]any)
-		if !ok {
-			continue
-		}
-		urlStr := maputil.StringArg(entry, "url")
-		if urlStr == "" {
-			continue
-		}
-		parsed, err := url.Parse(urlStr)
-		if err != nil {
-			continue
-		}
-		switch parsed.Scheme {
-		case "http", "https":
-		default:
-			continue
-		}
-		title := maputil.StringArg(entry, "title")
-		description := maputil.StringArg(entry, "description")
-		published := maputil.StringArg(entry, "published")
-		siteName := maputil.StringArg(entry, "siteName")
-		author := maputil.StringArg(entry, "author")
-		image := maputil.StringArg(entry, "image")
-		favicon := maputil.StringArg(entry, "favicon")
-		result = append(result, citations.SourceCitation{
-			URL:         urlStr,
-			Title:       title,
-			Description: description,
-			Published:   published,
-			SiteName:    siteName,
-			Author:      author,
-			Image:       image,
-			Favicon:     favicon,
-		})
-	}
-	return result
+	return citations.ExtractWebSearchCitations(output)
 }

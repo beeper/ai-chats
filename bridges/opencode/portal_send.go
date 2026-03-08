@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
@@ -49,18 +47,7 @@ func (oc *OpenCodeClient) sendSystemNoticeViaPortal(ctx context.Context, portal 
 	if pmeta != nil {
 		instanceID = pmeta.InstanceID
 	}
-	converted := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:   networkid.PartID("0"),
-			Type: event.EventMessage,
-			Content: &event.MessageEventContent{
-				MsgType:  event.MsgNotice,
-				Body:     msg,
-				Mentions: &event.Mentions{},
-			},
-		}},
-	}
-	if err := oc.sendViaPortal(ctx, portal, instanceID, converted); err != nil {
+	if err := oc.sendViaPortal(ctx, portal, instanceID, bridgeadapter.BuildSystemNotice(msg)); err != nil {
 		oc.Log().Warn().Err(err).Msg("Failed to send system notice")
 	}
 }

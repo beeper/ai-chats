@@ -89,17 +89,7 @@ func (m *OpenCodeManager) DisconnectAll() {
 		if inst == nil {
 			continue
 		}
-		if inst.cancel != nil {
-			inst.cancel()
-		}
-		inst.cancel = nil
-		inst.connected = false
-		inst.disconnectMu.Lock()
-		if inst.disconnectTimer != nil {
-			inst.disconnectTimer.Stop()
-			inst.disconnectTimer = nil
-		}
-		inst.disconnectMu.Unlock()
+		inst.cancelAndStopTimer()
 	}
 	m.instances = make(map[string]*openCodeInstance)
 }
@@ -173,15 +163,7 @@ func (m *OpenCodeManager) Connect(ctx context.Context, baseURL, password, userna
 
 	m.mu.Lock()
 	if existing := m.instances[instanceID]; existing != nil {
-		if existing.cancel != nil {
-			existing.cancel()
-		}
-		existing.disconnectMu.Lock()
-		if existing.disconnectTimer != nil {
-			existing.disconnectTimer.Stop()
-			existing.disconnectTimer = nil
-		}
-		existing.disconnectMu.Unlock()
+		existing.cancelAndStopTimer()
 	}
 	m.instances[instanceID] = inst
 	m.mu.Unlock()
@@ -232,15 +214,7 @@ func (m *OpenCodeManager) RemoveInstance(ctx context.Context, instanceID string)
 	m.mu.Lock()
 	if inst := m.instances[id]; inst != nil {
 		hadInstance = true
-		if inst.cancel != nil {
-			inst.cancel()
-		}
-		inst.disconnectMu.Lock()
-		if inst.disconnectTimer != nil {
-			inst.disconnectTimer.Stop()
-			inst.disconnectTimer = nil
-		}
-		inst.disconnectMu.Unlock()
+		inst.cancelAndStopTimer()
 		delete(m.instances, id)
 	}
 	m.mu.Unlock()

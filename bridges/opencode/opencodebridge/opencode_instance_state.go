@@ -74,6 +74,21 @@ type openCodeInstance struct {
 	sendQueue    map[string]*openCodeSessionQueue
 }
 
+// cancelAndStopTimer cancels the instance's event loop and stops its disconnect timer.
+func (inst *openCodeInstance) cancelAndStopTimer() {
+	if inst.cancel != nil {
+		inst.cancel()
+	}
+	inst.cancel = nil
+	inst.connected = false
+	inst.disconnectMu.Lock()
+	if inst.disconnectTimer != nil {
+		inst.disconnectTimer.Stop()
+		inst.disconnectTimer = nil
+	}
+	inst.disconnectMu.Unlock()
+}
+
 // ---------- seen-message helpers ----------
 
 func (inst *openCodeInstance) isSeen(sessionID, messageID string) bool {

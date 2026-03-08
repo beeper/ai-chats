@@ -1,14 +1,11 @@
 package opencodebridge
 
 import (
-	"encoding/json"
-	"slices"
 	"strings"
 
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/ai-bridge/bridges/opencode/opencode"
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"github.com/beeper/ai-bridge/pkg/matrixevents"
 	"github.com/beeper/ai-bridge/pkg/shared/streamui"
 	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
@@ -85,9 +82,9 @@ func buildCanonicalAssistantBackfill(msg opencode.MessageWithParts, agentID stri
 			CanonicalUIMessage: uiMessage,
 			StartedAtMs:        int64(msg.Info.Time.Created),
 			CompletedAtMs:      int64(msg.Info.Time.Completed),
-			ThinkingContent:    canonicalReasoningTextBridge(uiMessage),
-			ToolCalls:          canonicalToolCallsBridge(uiMessage),
-			GeneratedFiles:     canonicalGeneratedFilesBridge(uiMessage),
+			ThinkingContent:    CanonicalReasoningText(uiMessage),
+			ToolCalls:          CanonicalToolCalls(uiMessage),
+			GeneratedFiles:     CanonicalGeneratedFiles(uiMessage),
 		},
 	}
 }
@@ -238,139 +235,13 @@ func canonicalDataPart(part opencode.Part) map[string]any {
 	if strings.TrimSpace(part.ID) == "" {
 		return nil
 	}
-	data := map[string]any{
-		"type": "data-opencode-" + strings.TrimSpace(part.Type),
-		"id":   strings.TrimSpace(part.ID),
-	}
-	switch part.Type {
-	case "step-finish":
-		if reason := strings.TrimSpace(part.Reason); reason != "" {
-			data["reason"] = reason
-		}
-		if part.Cost != 0 {
-			data["cost"] = part.Cost
-		}
-	case "patch":
-		if hash := strings.TrimSpace(part.Hash); hash != "" {
-			data["hash"] = hash
-		}
-		if len(part.Files) > 0 {
-			data["files"] = slices.Clone(part.Files)
-		}
-	case "snapshot":
-		if snapshot := strings.TrimSpace(part.Snapshot); snapshot != "" {
-			data["snapshot"] = snapshot
-		}
-	case "agent":
-		if name := strings.TrimSpace(part.Name); name != "" {
-			data["name"] = name
-		}
-	case "subtask":
-		if desc := strings.TrimSpace(part.Description); desc != "" {
-			data["description"] = desc
-		}
-		if prompt := strings.TrimSpace(part.Prompt); prompt != "" {
-			data["prompt"] = prompt
-		}
-		if agent := strings.TrimSpace(part.Agent); agent != "" {
-			data["agent"] = agent
-		}
-	case "retry":
-		if part.Attempt != 0 {
-			data["attempt"] = part.Attempt
-		}
-		if len(part.Error) > 0 {
-			data["error"] = string(part.Error)
-		}
-	case "compaction":
-		data["auto"] = part.Auto
-	default:
+	data := BuildDataPartMap(part)
+	if data == nil {
 		return nil
 	}
 	return data
 }
 
-func canonicalReasoningTextBridge(uiMessage map[string]any) string {
-	parts, _ := uiMessage["parts"].([]any)
-	var sb strings.Builder
-	for _, raw := range parts {
-		part, ok := raw.(map[string]any)
-		if !ok || strings.TrimSpace(stringValueBridge(part["type"])) != "reasoning" {
-			continue
-		}
-		text := strings.TrimSpace(stringValueBridge(part["text"]))
-		if text == "" {
-			continue
-		}
-		if sb.Len() > 0 {
-			sb.WriteString("\n")
-		}
-		sb.WriteString(text)
-	}
-	return sb.String()
-}
-
-func canonicalToolCallsBridge(uiMessage map[string]any) []bridgeadapter.ToolCallMetadata {
-	parts, _ := uiMessage["parts"].([]any)
-	calls := make([]bridgeadapter.ToolCallMetadata, 0, len(parts))
-	for _, raw := range parts {
-		part, ok := raw.(map[string]any)
-		if !ok || strings.TrimSpace(stringValueBridge(part["type"])) != "dynamic-tool" {
-			continue
-		}
-		call := bridgeadapter.ToolCallMetadata{
-			CallID:   strings.TrimSpace(stringValueBridge(part["toolCallId"])),
-			ToolName: strings.TrimSpace(stringValueBridge(part["toolName"])),
-			ToolType: "opencode",
-			Status:   strings.TrimSpace(stringValueBridge(part["state"])),
-		}
-		if input, ok := part["input"].(map[string]any); ok {
-			call.Input = input
-		}
-		if output, ok := part["output"].(map[string]any); ok {
-			call.Output = output
-		} else if output := strings.TrimSpace(stringValueBridge(part["output"])); output != "" {
-			call.Output = map[string]any{"text": output}
-		}
-		switch call.Status {
-		case "output-available":
-			call.ResultStatus = "completed"
-		case "output-error":
-			call.ResultStatus = "error"
-			call.ErrorMessage = strings.TrimSpace(stringValueBridge(part["errorText"]))
-		case "output-denied":
-			call.ResultStatus = "denied"
-		case "approval-requested":
-			call.ResultStatus = "pending_approval"
-		default:
-			call.ResultStatus = call.Status
-		}
-		if call.CallID != "" {
-			calls = append(calls, call)
-		}
-	}
-	return calls
-}
-
-func canonicalGeneratedFilesBridge(uiMessage map[string]any) []bridgeadapter.GeneratedFileRef {
-	parts, _ := uiMessage["parts"].([]any)
-	files := make([]bridgeadapter.GeneratedFileRef, 0, len(parts))
-	for _, raw := range parts {
-		part, ok := raw.(map[string]any)
-		if !ok || strings.TrimSpace(stringValueBridge(part["type"])) != "file" {
-			continue
-		}
-		url := strings.TrimSpace(stringValueBridge(part["url"]))
-		if url == "" {
-			continue
-		}
-		files = append(files, bridgeadapter.GeneratedFileRef{
-			URL:      url,
-			MimeType: stringutil.FirstNonEmpty(strings.TrimSpace(stringValueBridge(part["mediaType"])), "application/octet-stream"),
-		})
-	}
-	return files
-}
 
 func backfillCost(msg opencode.MessageWithParts) float64 {
 	if msg.Info.Cost != 0 {
@@ -416,17 +287,6 @@ func backfillTokenValue(msg opencode.MessageWithParts, pick func(opencode.TokenU
 
 func backfillTotalTokens(msg opencode.MessageWithParts) int64 {
 	return backfillPromptTokens(msg) + backfillCompletionTokens(msg) + backfillReasoningTokens(msg)
-}
-
-func stringValueBridge(raw any) string {
-	switch value := raw.(type) {
-	case string:
-		return value
-	case json.Number:
-		return value.String()
-	default:
-		return ""
-	}
 }
 
 func buildCanonicalBackfillPart(snapshot canonicalBackfillSnapshot) *event.MessageEventContent {
