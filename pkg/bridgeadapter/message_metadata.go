@@ -53,7 +53,10 @@ func (b *BaseMessageMetadata) CopyFromBase(src *BaseMessageMetadata) {
 		b.CanonicalSchema = src.CanonicalSchema
 	}
 	if len(src.CanonicalUIMessage) > 0 {
-		b.CanonicalUIMessage = src.CanonicalUIMessage
+		b.CanonicalUIMessage = make(map[string]any, len(src.CanonicalUIMessage))
+		for k, v := range src.CanonicalUIMessage {
+			b.CanonicalUIMessage[k] = v
+		}
 	}
 	if src.StartedAtMs != 0 {
 		b.StartedAtMs = src.StartedAtMs
@@ -65,10 +68,12 @@ func (b *BaseMessageMetadata) CopyFromBase(src *BaseMessageMetadata) {
 		b.ThinkingContent = src.ThinkingContent
 	}
 	if len(src.ToolCalls) > 0 {
-		b.ToolCalls = src.ToolCalls
+		b.ToolCalls = make([]ToolCallMetadata, len(src.ToolCalls))
+		copy(b.ToolCalls, src.ToolCalls)
 	}
 	if len(src.GeneratedFiles) > 0 {
-		b.GeneratedFiles = src.GeneratedFiles
+		b.GeneratedFiles = make([]GeneratedFileRef, len(src.GeneratedFiles))
+		copy(b.GeneratedFiles, src.GeneratedFiles)
 	}
 }
 

@@ -667,13 +667,23 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 			TopLevelExtra: topLevelExtra,
 		}},
 	}
-	oc.UserLogin.QueueRemoteEvent(&bridgeadapter.RemoteEdit{
-		Portal:        portal.PortalKey,
-		Sender:        sender,
-		TargetMessage: state.networkMessageID,
-		LogKey:        "ai_edit_target",
-		PreBuilt:      editContent,
-	})
+	editTarget := state.networkMessageID
+	if editTarget == "" {
+		editTarget = bridgeadapter.MatrixMessageID(state.initialEventID)
+	}
+	if editTarget == "" {
+		oc.loggerForContext(ctx).Warn().
+			Str("turn_id", state.turnID).
+			Msg("Skipping final assistant edit: no network or initial event target")
+	} else {
+		oc.UserLogin.QueueRemoteEvent(&bridgeadapter.RemoteEdit{
+			Portal:        portal.PortalKey,
+			Sender:        sender,
+			TargetMessage: editTarget,
+			LogKey:        "ai_edit_target",
+			PreBuilt:      editContent,
+		})
+	}
 	oc.recordAgentActivity(ctx, portal, meta)
 	oc.loggerForContext(ctx).Debug().
 		Str("initial_event_id", state.initialEventID.String()).

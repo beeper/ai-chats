@@ -53,32 +53,24 @@ func (oc *AIClient) resolveSubagentAllowlist(ctx context.Context, requesterAgent
 	return allowAny, allowSet
 }
 
-func resolveSubagentConfigValue(override string, agent *agents.AgentDefinition, defaults *agents.SubagentConfig, field string) string {
-	return firstNonEmptyTrimmed(override, subagentStringValue(agent, field), subagentStringValue(defaults, field))
+func subagentModel(agent *agents.AgentDefinition, defaults *agents.SubagentConfig) string {
+	if agent != nil && agent.Subagents != nil && agent.Subagents.Model != "" {
+		return agent.Subagents.Model
+	}
+	if defaults != nil && defaults.Model != "" {
+		return defaults.Model
+	}
+	return ""
 }
 
-func subagentStringValue(source any, field string) string {
-	switch cfg := source.(type) {
-	case *agents.AgentDefinition:
-		if cfg == nil {
-			return ""
-		}
-		return subagentStringValue(cfg.Subagents, field)
-	case *agents.SubagentConfig:
-		if cfg == nil {
-			return ""
-		}
-		switch field {
-		case "model":
-			return cfg.Model
-		case "thinking":
-			return cfg.Thinking
-		default:
-			return ""
-		}
-	default:
-		return ""
+func subagentThinking(agent *agents.AgentDefinition, defaults *agents.SubagentConfig) string {
+	if agent != nil && agent.Subagents != nil && agent.Subagents.Thinking != "" {
+		return agent.Subagents.Thinking
 	}
+	if defaults != nil && defaults.Thinking != "" {
+		return defaults.Thinking
+	}
+	return ""
 }
 
 func firstNonEmptyTrimmed(values ...string) string {
@@ -255,7 +247,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 	if oc.connector != nil && oc.connector.Config.Agents != nil && oc.connector.Config.Agents.Defaults != nil {
 		defaultSubagents = oc.connector.Config.Agents.Defaults.Subagents
 	}
-	thinkingCandidate := resolveSubagentConfigValue(thinkingOverride, targetAgent, defaultSubagents, "thinking")
+	thinkingCandidate := firstNonEmptyTrimmed(thinkingOverride, subagentThinking(targetAgent, defaultSubagents))
 	thinkingLevel, ok := normalizeThinkingLevel(thinkingCandidate)
 	if !ok {
 		return tools.JSONResult(map[string]any{
@@ -265,7 +257,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 	}
 	reasoningEffort := mapThinkingToReasoningEffort(thinkingLevel)
 
-	modelCandidate := resolveSubagentConfigValue(modelOverride, targetAgent, defaultSubagents, "model")
+	modelCandidate := firstNonEmptyTrimmed(modelOverride, subagentModel(targetAgent, defaultSubagents))
 
 	resolvedModel := ""
 	modelWarning := ""

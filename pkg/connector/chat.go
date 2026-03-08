@@ -1983,9 +1983,10 @@ func (oc *AIClient) ensureExistingChatPortalReady(ctx context.Context, loginMeta
 	err := portal.CreateMatrixRoom(ctx, oc.UserLogin, info)
 	if err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg(errMsg)
+		return err
 	}
 	oc.sendWelcomeMessage(ctx, portal)
-	return err
+	return nil
 }
 
 func (oc *AIClient) listAllChatPortals(ctx context.Context) ([]*bridgev2.Portal, error) {
