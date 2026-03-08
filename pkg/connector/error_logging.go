@@ -32,7 +32,9 @@ func logProviderFailure(
 ) {
 	event := log.Error().Err(err).Str("stage", stage)
 	addRequestSummary(event, meta, messages)
-	addSummary(event)
+	if addSummary != nil {
+		addSummary(event)
+	}
 	addOpenAIErrorFields(event, err)
 	event.Msg(msg)
 }

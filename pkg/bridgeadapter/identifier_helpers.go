@@ -42,12 +42,15 @@ func NextUserLoginID(user *bridgev2.User, prefix string) networkid.UserLoginID {
 		}
 		used[string(existing.ID)] = struct{}{}
 	}
-	for ordinal := 1; ; ordinal++ {
+	for ordinal := 1; ordinal <= len(used)+1; ordinal++ {
 		loginID := MakeUserLoginID(prefix, user.MXID, ordinal)
 		if _, ok := used[string(loginID)]; !ok {
 			return loginID
 		}
 	}
+	// Should be unreachable: there are at most len(used) occupied ordinals,
+	// so ordinal len(used)+1 must be free. Fall back to a safe default.
+	return MakeUserLoginID(prefix, user.MXID, len(used)+1)
 }
 
 func SingleLoginFlow(enabled bool, flow bridgev2.LoginFlow) []bridgev2.LoginFlow {
