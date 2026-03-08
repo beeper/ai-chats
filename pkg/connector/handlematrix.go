@@ -318,8 +318,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		Room:     portal.PortalKey,
 		SenderID: humanUserID(oc.UserLogin.ID),
 		Metadata: &MessageMetadata{
-			Role: "user",
-			Body: body,
+			BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{Role: "user", Body: body},
 		},
 		Timestamp: bridgeadapter.MatrixEventTimestamp(msg.Event),
 	}
@@ -846,8 +845,10 @@ func (oc *AIClient) handleMediaMessage(
 	}
 
 	userMeta := &MessageMetadata{
-		Role:     "user",
-		Body:     oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, buildMediaMetadataBody(caption, config.bodySuffix, understanding), senderName, roomName, isGroup),
+		BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
+			Role: "user",
+			Body: oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, buildMediaMetadataBody(caption, config.bodySuffix, understanding), senderName, roomName, isGroup),
+		},
 		MediaURL: string(mediaURL),
 		MimeType: mimeType,
 	}

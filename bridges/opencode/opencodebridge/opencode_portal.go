@@ -137,14 +137,14 @@ func (b *Bridge) composeOpenCodeChatInfo(title, instanceID string) *bridgev2.Cha
 		HumanUserID:       b.host.HumanUserID(login.ID),
 		LoginID:           login.ID,
 		BotUserID:         OpenCodeUserID(instanceID),
-		BotDisplayName:    b.opencodeDisplayName(instanceID),
+		BotDisplayName:    b.DisplayName(instanceID),
 		CanBackfill:       true,
 		CapabilitiesEvent: b.host.RoomCapabilitiesEventType(),
 		SettingsEvent:     b.host.RoomSettingsEventType(),
 	})
 }
 
-func (b *Bridge) createOpenCodeSessionChat(ctx context.Context, instanceID, title string, pendingTitle bool) (*bridgev2.CreateChatResponse, error) {
+func (b *Bridge) CreateSessionChat(ctx context.Context, instanceID, title string, pendingTitle bool) (*bridgev2.CreateChatResponse, error) {
 	if b == nil || b.host == nil {
 		return nil, errors.New("login unavailable")
 	}

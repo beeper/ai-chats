@@ -7,7 +7,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 )
 
-func (b *Bridge) ensureOpenCodeGhostDisplayName(ctx context.Context, instanceID string) {
+func (b *Bridge) EnsureGhostDisplayName(ctx context.Context, instanceID string) {
 	if b == nil || b.host == nil {
 		return
 	}
@@ -19,7 +19,7 @@ func (b *Bridge) ensureOpenCodeGhostDisplayName(ctx context.Context, instanceID 
 	if err != nil || ghost == nil {
 		return
 	}
-	displayName := b.opencodeDisplayName(instanceID)
+	displayName := b.DisplayName(instanceID)
 	if ghost.Name == "" || !ghost.NameSet || ghost.Name != displayName {
 		ghost.UpdateInfo(ctx, &bridgev2.UserInfo{
 			Name:  ptr.Ptr(displayName),

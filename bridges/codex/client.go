@@ -493,8 +493,7 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 		SenderID:  humanUserID(cc.UserLogin.ID),
 		Timestamp: bridgeadapter.MatrixEventTimestamp(msg.Event),
 		Metadata: &MessageMetadata{
-			Role: "user",
-			Body: body,
+			BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{Role: "user", Body: body},
 		},
 	}
 	if msg.InputTransactionID != "" {
@@ -1731,10 +1730,12 @@ func (cc *CodexClient) sendApprovalRequestFallbackEvent(
 			Content: &event.MessageEventContent{MsgType: event.MsgNotice, Body: "Tool approval required"},
 			Extra:   raw,
 			DBMetadata: &MessageMetadata{
-				Role:               "assistant",
+				BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
+					Role:               "assistant",
+					CanonicalSchema:    "ai-sdk-ui-message-v1",
+					CanonicalUIMessage: uiMessage,
+				},
 				ExcludeFromHistory: true,
-				CanonicalSchema:    "ai-sdk-ui-message-v1",
-				CanonicalUIMessage: uiMessage,
 			},
 		}},
 	}
@@ -1878,7 +1879,7 @@ func (cc *CodexClient) sendInitialStreamMessage(ctx context.Context, portal *bri
 			Type:       event.EventMessage,
 			Content:    &event.MessageEventContent{MsgType: event.MsgText, Body: content},
 			Extra:      eventRaw,
-			DBMetadata: &MessageMetadata{Role: "assistant", TurnID: turnID},
+			DBMetadata: &MessageMetadata{BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{Role: "assistant", TurnID: turnID}},
 		}},
 	}
 
@@ -2060,25 +2061,27 @@ func (cc *CodexClient) saveAssistantMessage(ctx context.Context, portal *bridgev
 	}
 
 	fullMeta := &MessageMetadata{
-		Role:               "assistant",
-		Body:               state.accumulated.String(),
-		FinishReason:       finishReason,
+		BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
+			Role:               "assistant",
+			Body:               state.accumulated.String(),
+			FinishReason:       finishReason,
+			TurnID:             state.turnID,
+			AgentID:            state.agentID,
+			ToolCalls:          state.toolCalls,
+			StartedAtMs:        state.startedAtMs,
+			CompletedAtMs:      state.completedAtMs,
+			CanonicalSchema:    "ai-sdk-ui-message-v1",
+			CanonicalUIMessage: cc.buildCanonicalUIMessage(state, model, finishReason),
+			GeneratedFiles:     genFiles,
+			ThinkingContent:    state.reasoning.String(),
+			PromptTokens:       state.promptTokens,
+			CompletionTokens:   state.completionTokens,
+			ReasoningTokens:    state.reasoningTokens,
+		},
 		Model:              model,
-		TurnID:             state.turnID,
-		AgentID:            state.agentID,
-		ToolCalls:          state.toolCalls,
-		StartedAtMs:        state.startedAtMs,
 		FirstTokenAtMs:     state.firstTokenAtMs,
-		CompletedAtMs:      state.completedAtMs,
 		HasToolCalls:       len(state.toolCalls) > 0,
-		CanonicalSchema:    "ai-sdk-ui-message-v1",
-		CanonicalUIMessage: cc.buildCanonicalUIMessage(state, model, finishReason),
-		GeneratedFiles:     genFiles,
-		ThinkingContent:    state.reasoning.String(),
 		ThinkingTokenCount: len(strings.Fields(state.reasoning.String())),
-		PromptTokens:       state.promptTokens,
-		CompletionTokens:   state.completionTokens,
-		ReasoningTokens:    state.reasoningTokens,
 	}
 
 	// If the message was sent via sendViaPortal, the DB row already exists — update it.

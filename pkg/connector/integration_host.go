@@ -451,7 +451,7 @@ func (h *runtimeIntegrationHost) ResolveAgentID(raw string, fallbackDefault stri
 		return agents.DefaultAgentID
 	}
 	normalized := normalizeAgentID(raw)
-	if normalized == "" || !h.agentExists(normalized) {
+	if normalized == "" || !h.AgentExists(normalized) {
 		if fallbackDefault != "" {
 			return normalizeAgentID(fallbackDefault)
 		}
@@ -465,10 +465,6 @@ func (h *runtimeIntegrationHost) NormalizeAgentID(raw string) string {
 }
 
 func (h *runtimeIntegrationHost) AgentExists(normalizedID string) bool {
-	return h.agentExists(normalizedID)
-}
-
-func (h *runtimeIntegrationHost) agentExists(normalizedID string) bool {
 	if h == nil || h.client == nil || h.client.connector == nil {
 		return false
 	}

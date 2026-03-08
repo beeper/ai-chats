@@ -169,7 +169,7 @@ func (m *OpenCodeManager) Connect(ctx context.Context, baseURL, password, userna
 	m.mu.Unlock()
 
 	m.persistInstance(ctx, inst)
-	m.bridge.ensureOpenCodeGhostDisplayName(ctx, instanceID)
+	m.bridge.EnsureGhostDisplayName(ctx, instanceID)
 
 	count, syncErr := m.syncSessions(ctx, inst, sessions)
 	m.startEventLoop(inst)
@@ -355,14 +355,6 @@ func (m *OpenCodeManager) AbortSession(ctx context.Context, instanceID, sessionI
 	return nil
 }
 
-func (m *OpenCodeManager) CreateSession(ctx context.Context, instanceID, title, directory string) (*opencode.Session, error) {
-	return m.runCreateSession(ctx, instanceID, title, directory)
-}
-
-func (m *OpenCodeManager) UpdateSessionTitle(ctx context.Context, instanceID, sessionID, title string) (*opencode.Session, error) {
-	return m.runUpdateSessionTitle(ctx, instanceID, sessionID, title)
-}
-
 func (m *OpenCodeManager) runSessionMutation(
 	ctx context.Context,
 	instanceID string,
@@ -383,13 +375,13 @@ func (m *OpenCodeManager) runSessionMutation(
 	return session, nil
 }
 
-func (m *OpenCodeManager) runCreateSession(ctx context.Context, instanceID, title, directory string) (*opencode.Session, error) {
+func (m *OpenCodeManager) CreateSession(ctx context.Context, instanceID, title, directory string) (*opencode.Session, error) {
 	return m.runSessionMutation(ctx, instanceID, "create session", func(inst *openCodeInstance) (*opencode.Session, error) {
 		return inst.client.CreateSession(ctx, title, directory)
 	})
 }
 
-func (m *OpenCodeManager) runUpdateSessionTitle(ctx context.Context, instanceID, sessionID, title string) (*opencode.Session, error) {
+func (m *OpenCodeManager) UpdateSessionTitle(ctx context.Context, instanceID, sessionID, title string) (*opencode.Session, error) {
 	return m.runSessionMutation(ctx, instanceID, "update session title", func(inst *openCodeInstance) (*opencode.Session, error) {
 		return inst.client.UpdateSessionTitle(ctx, sessionID, title)
 	})

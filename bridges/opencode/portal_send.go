@@ -2,8 +2,6 @@ package opencode
 
 import (
 	"context"
-	"fmt"
-	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 
@@ -12,32 +10,20 @@ import (
 
 // sendViaPortal sends a pre-built message through bridgev2's QueueRemoteEvent pipeline.
 func (oc *OpenCodeClient) sendViaPortal(
-	ctx context.Context,
+	_ context.Context,
 	portal *bridgev2.Portal,
 	instanceID string,
 	converted *bridgev2.ConvertedMessage,
 ) error {
-	if portal == nil || portal.MXID == "" {
-		return fmt.Errorf("invalid portal")
-	}
-	sender := oc.SenderForOpenCode(instanceID, false)
-	msgID := bridgeadapter.NewMessageID("opencode")
-	evt := &OpenCodeRemoteMessage{
-		Portal:    portal.PortalKey,
-		ID:        msgID,
-		Sender:    sender,
-		Timestamp: time.Now(),
+	_, _, err := bridgeadapter.SendViaPortal(bridgeadapter.SendViaPortalParams{
+		Login:     oc.UserLogin,
+		Portal:    portal,
+		Sender:    oc.SenderForOpenCode(instanceID, false),
+		IDPrefix:  "opencode",
 		LogKey:    "opencode_msg_id",
-		PreBuilt:  converted,
-	}
-	result := oc.UserLogin.QueueRemoteEvent(evt)
-	if !result.Success {
-		if result.Error != nil {
-			return fmt.Errorf("send failed: %w", result.Error)
-		}
-		return fmt.Errorf("send failed")
-	}
-	return nil
+		Converted: converted,
+	})
+	return err
 }
 
 // sendSystemNoticeViaPortal is a convenience wrapper for sending MsgNotice via the pipeline.
