@@ -132,7 +132,11 @@ func (i *Integration) executeCronCommand(ctx context.Context, call iruntime.Comm
 			reply("Cron add failed: %s", err.Error())
 			return nil
 		}
-		deps := i.buildToolExecDeps(ctx, call.Scope)
+		deps := i.buildToolExecDeps(ctx, iruntime.ToolScope{
+			Client: call.Scope.Client,
+			Portal: call.Scope.Portal,
+			Meta:   call.Scope.Meta,
+		})
 		injectToolContext(&input, deps.ResolveCreateContext)
 		if input.Delivery != nil && strings.EqualFold(strings.TrimSpace(string(input.Delivery.Mode)), "announce") && deps.ValidateDeliveryTo != nil {
 			if err := deps.ValidateDeliveryTo(input.Delivery.To); err != nil {
@@ -166,7 +170,11 @@ func (i *Integration) executeCronCommand(ctx context.Context, call iruntime.Comm
 			reply("Cron update failed: %s", err.Error())
 			return nil
 		}
-		deps := i.buildToolExecDeps(ctx, call.Scope)
+		deps := i.buildToolExecDeps(ctx, iruntime.ToolScope{
+			Client: call.Scope.Client,
+			Portal: call.Scope.Portal,
+			Meta:   call.Scope.Meta,
+		})
 		if patch.Delivery != nil && patch.Delivery.To != nil && deps.ValidateDeliveryTo != nil {
 			if err := deps.ValidateDeliveryTo(*patch.Delivery.To); err != nil {
 				reply("Cron update failed: %s", err.Error())
