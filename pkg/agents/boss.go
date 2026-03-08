@@ -19,9 +19,7 @@ var BossAgent = &AgentDefinition{
 	Tools:        &toolpolicy.ToolPolicyConfig{Profile: toolpolicy.ProfileBoss},
 	SystemPrompt: BossSystemPrompt,
 	PromptMode:   PromptModeFull,
-	IsPreset:     true,
-	CreatedAt:    0, // Preset agents have no creation time
-	UpdatedAt:    0,
+	IsPreset: true,
 }
 
 // GetBossAgent returns a copy of the Boss agent definition.
@@ -31,5 +29,5 @@ func GetBossAgent() *AgentDefinition {
 
 // IsBossAgent checks if an agent ID is the Boss agent.
 func IsBossAgent(agentID string) bool {
-	return agentID == "boss"
+	return agentID == BossAgent.ID
 }

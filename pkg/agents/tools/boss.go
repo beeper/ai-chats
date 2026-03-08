@@ -58,6 +58,10 @@ func subagentSchema() map[string]any {
 				"type":        "string",
 				"description": "Default model override for subagents spawned by this agent",
 			},
+			"thinking": map[string]any{
+				"type":        "string",
+				"description": "Default thinking level for subagents (e.g. off, low, medium, high)",
+			},
 			"allowAgents": map[string]any{
 				"type":        "array",
 				"items":       map[string]any{"type": "string"},
@@ -537,7 +541,7 @@ func readSubagentConfig(input map[string]any) (*SubagentConfig, error) {
 	if err := unmarshalParam(input, "subagents", &cfg); err != nil {
 		return nil, err
 	}
-	if cfg.Model == "" && len(cfg.AllowAgents) == 0 {
+	if cfg.Model == "" && cfg.Thinking == "" && len(cfg.AllowAgents) == 0 {
 		return nil, nil
 	}
 	return &cfg, nil

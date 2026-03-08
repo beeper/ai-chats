@@ -12,7 +12,8 @@ func subagentsToTools(cfg *agents.SubagentConfig) *tools.SubagentConfig {
 		return nil
 	}
 	out := &tools.SubagentConfig{
-		Model: cfg.Model,
+		Model:    cfg.Model,
+		Thinking: cfg.Thinking,
 	}
 	if len(cfg.AllowAgents) > 0 {
 		out.AllowAgents = slices.Clone(cfg.AllowAgents)
@@ -25,7 +26,8 @@ func subagentsFromTools(cfg *tools.SubagentConfig) *agents.SubagentConfig {
 		return nil
 	}
 	out := &agents.SubagentConfig{
-		Model: cfg.Model,
+		Model:    cfg.Model,
+		Thinking: cfg.Thinking,
 	}
 	if len(cfg.AllowAgents) > 0 {
 		out.AllowAgents = slices.Clone(cfg.AllowAgents)

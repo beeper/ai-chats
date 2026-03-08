@@ -411,7 +411,7 @@ func BuildSystemPrompt(params SystemPromptParams) string {
 	var runtimeCapabilities []string
 	if runtimeInfo != nil {
 		for _, cap := range runtimeInfo.Capabilities {
-			trimmed := strings.TrimSpace(fmt.Sprint(cap))
+			trimmed := strings.TrimSpace(cap)
 			if trimmed != "" {
 				runtimeCapabilities = append(runtimeCapabilities, trimmed)
 			}

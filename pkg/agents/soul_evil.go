@@ -155,7 +155,7 @@ func DecideSoulEvil(params SoulEvilCheckParams) SoulEvilDecision {
 	if chance > 0 {
 		rnd := params.Random
 		if rnd == nil {
-			rnd = func() float64 { return randFloat64() }
+			rnd = rand.Float64
 		}
 		if rnd() < chance {
 			return SoulEvilDecision{UseEvil: true, Reason: "chance", FileName: fileName}
@@ -163,8 +163,4 @@ func DecideSoulEvil(params SoulEvilCheckParams) SoulEvilDecision {
 	}
 
 	return SoulEvilDecision{UseEvil: false, FileName: fileName}
-}
-
-func randFloat64() float64 {
-	return rand.Float64()
 }
