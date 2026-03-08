@@ -127,7 +127,6 @@ func (oc *AIClient) resolveToolApproval(
 		return err
 	}
 	oc.Log().Debug().Str("approval_id", approvalID).Str("tool", d.ToolName).Str("state", string(decision.State)).Msg("tool approval decision delivered")
-	go oc.emitApprovalSnapshotDecision(d, decision)
 	return nil
 }
 
@@ -150,18 +149,11 @@ func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (to
 
 	resolution, ok := oc.approvals.Wait(ctx, approvalID)
 	if !ok {
-		// Determine if it was a timeout or context cancellation for snapshot purposes.
 		reason := "timeout"
-		state := airuntime.ToolApprovalTimedOut
 		if ctx.Err() != nil {
 			reason = "cancelled"
-			state = airuntime.ToolApprovalStale
 		}
 		oc.Log().Debug().Str("approval_id", approvalID).Str("tool", d.ToolName).Str("reason", reason).Msg("tool approval wait ended without decision")
-		go oc.emitApprovalSnapshotDecision(d, airuntime.ToolApprovalDecision{
-			State:  state,
-			Reason: reason,
-		})
 		return toolApprovalResolution{}, d, false
 	}
 
@@ -187,12 +179,6 @@ func approvalData(p *bridgeadapter.PendingApproval[toolApprovalResolution]) *pen
 		return d
 	}
 	return &pendingToolApprovalData{}
-}
-
-func (oc *AIClient) emitApprovalSnapshotDecision(d *pendingToolApprovalData, decision airuntime.ToolApprovalDecision) {
-	_ = oc
-	_ = d
-	_ = decision
 }
 
 // isBuiltinToolDenied checks whether a builtin tool call requires user approval
