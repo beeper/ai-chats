@@ -59,7 +59,7 @@ func (m *RemoteMessage) GetID() networkid.MessageID {
 
 func (m *RemoteMessage) GetTimestamp() time.Time {
 	if m.Timestamp.IsZero() {
-		return time.Now()
+		m.Timestamp = time.Now()
 	}
 	return m.Timestamp
 }
@@ -116,7 +116,7 @@ func (e *RemoteEdit) GetTargetMessage() networkid.MessageID {
 
 func (e *RemoteEdit) GetTimestamp() time.Time {
 	if e.Timestamp.IsZero() {
-		return time.Now()
+		e.Timestamp = time.Now()
 	}
 	return e.Timestamp
 }
@@ -127,9 +127,9 @@ func (e *RemoteEdit) GetStreamOrder() int64 {
 
 func (e *RemoteEdit) ConvertEdit(_ context.Context, _ *bridgev2.Portal, _ bridgev2.MatrixAPI, existing []*database.Message) (*bridgev2.ConvertedEdit, error) {
 	if e.PreBuilt != nil && len(existing) > 0 {
-		for i, part := range e.PreBuilt.ModifiedParts {
-			if part.Part == nil && i < len(existing) {
-				part.Part = existing[i]
+		for i := range e.PreBuilt.ModifiedParts {
+			if e.PreBuilt.ModifiedParts[i].Part == nil && i < len(existing) {
+				e.PreBuilt.ModifiedParts[i].Part = existing[i]
 			}
 		}
 	}

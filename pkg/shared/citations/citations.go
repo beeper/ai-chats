@@ -179,10 +179,14 @@ func AppendSourceDocumentPart(parts *[]map[string]any, seen map[string]struct{},
 	}
 	seen[seenKey] = struct{}{}
 	part := map[string]any{
-		"type":      "source-document",
-		"sourceId":  fmt.Sprintf("source-%d", len(*parts)+1),
-		"mediaType": doc.MediaType,
-		"title":     doc.Title,
+		"type":     "source-document",
+		"sourceId": fmt.Sprintf("source-%d", len(*parts)+1),
+	}
+	if mediaType := strings.TrimSpace(doc.MediaType); mediaType != "" {
+		part["mediaType"] = mediaType
+	}
+	if title := strings.TrimSpace(doc.Title); title != "" {
+		part["title"] = title
 	}
 	if filename := strings.TrimSpace(doc.Filename); filename != "" {
 		part["filename"] = filename

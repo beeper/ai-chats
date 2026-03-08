@@ -80,8 +80,8 @@ func (inst *openCodeInstance) cancelAndStopTimer() {
 		inst.cancel()
 	}
 	inst.cancel = nil
-	inst.connected = false
 	inst.disconnectMu.Lock()
+	inst.connected = false
 	if inst.disconnectTimer != nil {
 		inst.disconnectTimer.Stop()
 		inst.disconnectTimer = nil
