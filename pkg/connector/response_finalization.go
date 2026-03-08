@@ -144,7 +144,7 @@ func (oc *AIClient) sendInitialStreamMessage(ctx context.Context, portal *bridge
 			Type:       event.EventMessage,
 			Content:    &event.MessageEventContent{MsgType: event.MsgText, Body: content},
 			Extra:      eventRaw,
-			DBMetadata: &MessageMetadata{Role: "assistant", TurnID: turnID},
+			DBMetadata: &MessageMetadata{BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{Role: "assistant", TurnID: turnID}},
 		}},
 	}
 

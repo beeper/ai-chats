@@ -66,9 +66,8 @@ func (oc *AIClient) dispatchInternalMessage(
 		Room:     portal.PortalKey,
 		SenderID: humanUserID(oc.UserLogin.ID),
 		Metadata: &MessageMetadata{
-			Role:               "user",
-			Body:               trimmed,
-			ExcludeFromHistory: excludeFromHistory,
+			BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{Role: "user", Body: trimmed},
+			ExcludeFromHistory:  excludeFromHistory,
 		},
 		Timestamp: time.Now(),
 	}

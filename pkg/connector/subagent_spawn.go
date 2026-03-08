@@ -359,8 +359,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 		Room:     childPortal.PortalKey,
 		SenderID: humanUserID(oc.UserLogin.ID),
 		Metadata: &MessageMetadata{
-			Role: "user",
-			Body: task,
+			BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{Role: "user", Body: task},
 		},
 		Timestamp: time.Now(),
 	}

@@ -143,11 +143,13 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 				Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "..."},
 				Extra:   extra,
 				DBMetadata: &MessageMetadata{
-					Role:               "assistant",
-					TurnID:             turnID,
-					AgentID:            strings.TrimSpace(agentID),
-					CanonicalSchema:    "ai-sdk-ui-message-v1",
-					CanonicalUIMessage: uiMessage,
+					BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
+						Role:               "assistant",
+						TurnID:             turnID,
+						AgentID:            strings.TrimSpace(agentID),
+						CanonicalSchema:    "ai-sdk-ui-message-v1",
+						CanonicalUIMessage: uiMessage,
+					},
 				},
 			}},
 		}

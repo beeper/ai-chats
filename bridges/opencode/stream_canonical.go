@@ -11,6 +11,7 @@ import (
 	"maunium.net/go/mautrix/format"
 
 	"github.com/beeper/ai-bridge/bridges/opencode/opencodebridge"
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
 	"github.com/beeper/ai-bridge/pkg/matrixevents"
 	"github.com/beeper/ai-bridge/pkg/shared/maputil"
@@ -117,31 +118,33 @@ func (oc *OpenCodeClient) buildStreamDBMetadata(state *openCodeStreamState) *Mes
 	uiMessage := oc.currentCanonicalUIMessage(state)
 	thinking := opencodebridge.CanonicalReasoningText(uiMessage)
 	return &MessageMetadata{
-		Role:               stringutil.FirstNonEmpty(state.role, "assistant"),
-		Body:               stringutil.FirstNonEmpty(state.visible.String(), state.accumulated.String()),
-		SessionID:          state.sessionID,
-		MessageID:          state.messageID,
-		ParentMessageID:    state.parentMessageID,
-		Agent:              state.agent,
-		ModelID:            state.modelID,
-		ProviderID:         state.providerID,
-		Mode:               state.mode,
-		FinishReason:       state.finishReason,
-		ErrorText:          state.errorText,
-		Cost:               state.cost,
-		PromptTokens:       state.promptTokens,
-		CompletionTokens:   state.completionTokens,
-		ReasoningTokens:    state.reasoningTokens,
-		TotalTokens:        state.totalTokens,
-		TurnID:             state.turnID,
-		AgentID:            state.agentID,
-		CanonicalSchema:    "ai-sdk-ui-message-v1",
-		CanonicalUIMessage: uiMessage,
-		StartedAtMs:        state.startedAtMs,
-		CompletedAtMs:      state.completedAtMs,
-		ThinkingContent:    thinking,
-		ToolCalls:          opencodebridge.CanonicalToolCalls(uiMessage),
-		GeneratedFiles:     opencodebridge.CanonicalGeneratedFiles(uiMessage),
+		BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
+			Role:               stringutil.FirstNonEmpty(state.role, "assistant"),
+			Body:               stringutil.FirstNonEmpty(state.visible.String(), state.accumulated.String()),
+			FinishReason:       state.finishReason,
+			PromptTokens:       state.promptTokens,
+			CompletionTokens:   state.completionTokens,
+			ReasoningTokens:    state.reasoningTokens,
+			TurnID:             state.turnID,
+			AgentID:            state.agentID,
+			CanonicalSchema:    "ai-sdk-ui-message-v1",
+			CanonicalUIMessage: uiMessage,
+			StartedAtMs:        state.startedAtMs,
+			CompletedAtMs:      state.completedAtMs,
+			ThinkingContent:    thinking,
+			ToolCalls:          opencodebridge.CanonicalToolCalls(uiMessage),
+			GeneratedFiles:     opencodebridge.CanonicalGeneratedFiles(uiMessage),
+		},
+		SessionID:       state.sessionID,
+		MessageID:       state.messageID,
+		ParentMessageID: state.parentMessageID,
+		Agent:           state.agent,
+		ModelID:         state.modelID,
+		ProviderID:      state.providerID,
+		Mode:            state.mode,
+		ErrorText:       state.errorText,
+		Cost:            state.cost,
+		TotalTokens:     state.totalTokens,
 	}
 }
 

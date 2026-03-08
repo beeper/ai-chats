@@ -36,26 +36,28 @@ func (oc *AIClient) saveAssistantMessage(
 	}
 
 	fullMeta := &MessageMetadata{
-		Role:               "assistant",
-		Body:               state.accumulated.String(),
+		BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
+			Role:               "assistant",
+			Body:               state.accumulated.String(),
+			FinishReason:       state.finishReason,
+			TurnID:             state.turnID,
+			AgentID:            state.agentID,
+			ToolCalls:          state.toolCalls,
+			StartedAtMs:        state.startedAtMs,
+			CompletedAtMs:      state.completedAtMs,
+			CanonicalSchema:    "ai-sdk-ui-message-v1",
+			CanonicalUIMessage: oc.buildCanonicalUIMessage(state, meta),
+			GeneratedFiles:     genFiles,
+			ThinkingContent:    state.reasoning.String(),
+			PromptTokens:       state.promptTokens,
+			CompletionTokens:   state.completionTokens,
+			ReasoningTokens:    state.reasoningTokens,
+		},
 		CompletionID:       state.responseID,
-		FinishReason:       state.finishReason,
 		Model:              modelID,
-		TurnID:             state.turnID,
-		AgentID:            state.agentID,
-		ToolCalls:          state.toolCalls,
-		StartedAtMs:        state.startedAtMs,
 		FirstTokenAtMs:     state.firstTokenAtMs,
-		CompletedAtMs:      state.completedAtMs,
 		HasToolCalls:       len(state.toolCalls) > 0,
-		CanonicalSchema:    "ai-sdk-ui-message-v1",
-		CanonicalUIMessage: oc.buildCanonicalUIMessage(state, meta),
-		GeneratedFiles:     genFiles,
-		ThinkingContent:    state.reasoning.String(),
 		ThinkingTokenCount: thinkingTokenCount(modelID, state.reasoning.String()),
-		PromptTokens:       state.promptTokens,
-		CompletionTokens:   state.completionTokens,
-		ReasoningTokens:    state.reasoningTokens,
 	}
 
 	// If the message was sent via sendViaPortal, the DB row already exists — update it.

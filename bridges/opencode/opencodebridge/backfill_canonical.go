@@ -6,6 +6,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/ai-bridge/bridges/opencode/opencode"
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"github.com/beeper/ai-bridge/pkg/matrixevents"
 	"github.com/beeper/ai-bridge/pkg/shared/streamui"
 	"github.com/beeper/ai-bridge/pkg/shared/stringutil"

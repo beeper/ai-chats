@@ -726,8 +726,7 @@ func (oc *AIClient) handleMediaMessage(
 			Room:     portal.PortalKey,
 			SenderID: humanUserID(oc.UserLogin.ID),
 			Metadata: &MessageMetadata{
-				Role: "user",
-				Body: body,
+				BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{Role: "user", Body: body},
 			},
 			Timestamp: bridgeadapter.MatrixEventTimestamp(msg.Event),
 		}
@@ -1024,8 +1023,7 @@ func (oc *AIClient) handleTextFileMessage(
 		Room:     portal.PortalKey,
 		SenderID: humanUserID(oc.UserLogin.ID),
 		Metadata: &MessageMetadata{
-			Role: "user",
-			Body: combined,
+			BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{Role: "user", Body: combined},
 		},
 		Timestamp: bridgeadapter.MatrixEventTimestamp(msg.Event),
 	}
