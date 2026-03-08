@@ -41,11 +41,11 @@ func ComputeNextRunAtMs(schedule Schedule, nowMs int64) *int64 {
 			return &anchor
 		}
 		elapsed := nowMs - anchor
-		steps := (elapsed + everyMs - 1) / everyMs
-		if steps < 1 {
-			steps = 1
-		}
+		steps := elapsed/everyMs + 1
 		next := anchor + steps*everyMs
+		if next <= nowMs {
+			next += everyMs
+		}
 		return &next
 	case "cron":
 		expr := strings.TrimSpace(schedule.Expr)
@@ -98,7 +98,28 @@ func ValidateSchedule(schedule Schedule) TimestampValidationResult {
 			}
 		}
 	}
-	return TimestampValidationResult{Ok: true}
+	if kind == "every" {
+		if schedule.EveryMs <= 0 {
+			return TimestampValidationResult{
+				Ok:      false,
+				Message: "schedule.everyMs must be greater than 0 for kind=every",
+			}
+		}
+		return TimestampValidationResult{Ok: true}
+	}
+	if kind == "at" {
+		return TimestampValidationResult{Ok: true}
+	}
+	if kind == "" {
+		return TimestampValidationResult{
+			Ok:      false,
+			Message: "schedule.kind is required",
+		}
+	}
+	return TimestampValidationResult{
+		Ok:      false,
+		Message: fmt.Sprintf("unsupported schedule.kind %q", kind),
+	}
 }
 
 func ValidateScheduleTimestamp(schedule Schedule, nowMs int64) TimestampValidationResult {

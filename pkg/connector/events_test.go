@@ -2,6 +2,7 @@ package connector
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"maunium.net/go/mautrix/bridgev2/commands"
@@ -53,6 +54,17 @@ func TestBuildCommandDescriptionContent_ValidMSC4391(t *testing.T) {
 	}
 	if content.Command != "cron" {
 		t.Fatalf("unexpected command: %q", content.Command)
+	}
+	raw, err := json.Marshal(content)
+	if err != nil {
+		t.Fatalf("marshal command description: %v", err)
+	}
+	serialized := string(raw)
+	if !strings.Contains(serialized, "Inspect/manage scheduled jobs") {
+		t.Fatalf("expected updated description in %s", serialized)
+	}
+	if !strings.Contains(serialized, "add|update") {
+		t.Fatalf("expected expanded args in %s", serialized)
 	}
 	if content.TailParam != "args" {
 		t.Fatalf("expected tail param args, got %q", content.TailParam)

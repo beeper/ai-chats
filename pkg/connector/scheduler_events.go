@@ -63,7 +63,7 @@ func (oc *OpenAIConnector) handleScheduleTickEvent(ctx context.Context, evt *eve
 		oc.br.Log.Warn().Err(err).Stringer("event_id", evt.ID).Msg("Failed to parse schedule tick")
 		return
 	}
-	client.scheduler.HandleScheduleTick(ctx, evt, portal)
+	client.scheduler.HandleScheduleTickContent(ctx, content, evt, portal)
 }
 
 func resolvePortalLogin(br *bridgev2.Bridge, portal *bridgev2.Portal) *bridgev2.UserLogin {

@@ -1,0 +1,4 @@
+bridge:
+  command_prefix: "!openclaw"
+openclaw:
+  enabled: true
