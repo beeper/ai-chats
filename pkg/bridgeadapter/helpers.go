@@ -158,7 +158,7 @@ func SendViaPortal(p SendViaPortalParams) (id.EventID, networkid.MessageID, erro
 	if p.Portal == nil || p.Portal.MXID == "" {
 		return "", "", fmt.Errorf("invalid portal")
 	}
-	if p.Login == nil {
+	if p.Login == nil || p.Login.Bridge == nil {
 		return "", p.MsgID, fmt.Errorf("bridge unavailable")
 	}
 	if p.MsgID == "" {

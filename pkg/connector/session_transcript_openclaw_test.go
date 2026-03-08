@@ -7,6 +7,8 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 func TestStripOpenClawToolResults(t *testing.T) {
@@ -101,30 +103,32 @@ func TestBuildOpenClawSessionMessagesFromCanonical(t *testing.T) {
 		MXID:      id.EventID("$assistant1"),
 		Timestamp: time.UnixMilli(1730000000000),
 		Metadata: &MessageMetadata{
-			Role:            "assistant",
-			CanonicalSchema: "ai-sdk-ui-message-v1",
-			CanonicalUIMessage: map[string]any{
-				"parts": []any{
-					map[string]any{"type": "text", "text": "hello"},
-					map[string]any{
-						"type":       "dynamic-tool",
-						"toolCallId": "call_1",
-						"toolName":   "web_search",
-						"input":      map[string]any{"q": "matrix"},
-						"state":      "output-available",
-						"output":     map[string]any{"result": "ok"},
+			BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
+				Role:            "assistant",
+				CanonicalSchema: "ai-sdk-ui-message-v1",
+				CanonicalUIMessage: map[string]any{
+					"parts": []any{
+						map[string]any{"type": "text", "text": "hello"},
+						map[string]any{
+							"type":       "dynamic-tool",
+							"toolCallId": "call_1",
+							"toolName":   "web_search",
+							"input":      map[string]any{"q": "matrix"},
+							"state":      "output-available",
+							"output":     map[string]any{"result": "ok"},
+						},
 					},
 				},
-			},
-			ToolCalls: []ToolCallMetadata{
-				{
-					CallID:        "call_1",
-					ToolName:      "web_search",
-					Input:         map[string]any{"q": "matrix"},
-					Output:        map[string]any{"result": "ok"},
-					ResultStatus:  "success",
-					CallEventID:   "$toolcall1",
-					ResultEventID: "$toolresult1",
+				ToolCalls: []ToolCallMetadata{
+					{
+						CallID:        "call_1",
+						ToolName:      "web_search",
+						Input:         map[string]any{"q": "matrix"},
+						Output:        map[string]any{"result": "ok"},
+						ResultStatus:  "success",
+						CallEventID:   "$toolcall1",
+						ResultEventID: "$toolresult1",
+					},
 				},
 			},
 		},
