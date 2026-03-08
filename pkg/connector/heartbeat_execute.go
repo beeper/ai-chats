@@ -287,7 +287,7 @@ func systemEventsOwnerKey(oc *AIClient) string {
 	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil {
 		return ""
 	}
-	return string(oc.UserLogin.Bridge.DB.BridgeID) + systemEventsKeySeparator + string(oc.UserLogin.ID)
+	return string(oc.UserLogin.Bridge.DB.BridgeID) + "|" + string(oc.UserLogin.ID)
 }
 
 func (oc *AIClient) buildContextWithHeartbeat(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, prompt string) (PromptContext, error) {
@@ -439,6 +439,9 @@ const execEventPrompt = "An async command you ran earlier has completed. The res
 func resolveActiveHoursTimezone(oc *AIClient, raw string) *time.Location {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" || strings.EqualFold(trimmed, "user") {
+		if oc == nil {
+			return time.Local
+		}
 		_, loc := oc.resolveUserTimezone()
 		return loc
 	}
@@ -447,6 +450,9 @@ func resolveActiveHoursTimezone(oc *AIClient, raw string) *time.Location {
 	}
 	if loc, err := time.LoadLocation(trimmed); err == nil {
 		return loc
+	}
+	if oc == nil {
+		return time.Local
 	}
 	_, loc := oc.resolveUserTimezone()
 	return loc

@@ -39,7 +39,7 @@ func (scope *systemEventsDBScope) ownerKey() string {
 	if scope == nil {
 		return ""
 	}
-	return scope.bridgeID + systemEventsKeySeparator + scope.loginID
+	return scope.bridgeID + "|" + scope.loginID
 }
 
 func snapshotSystemEvents(ownerKey string) []persistedSystemEventQueue {

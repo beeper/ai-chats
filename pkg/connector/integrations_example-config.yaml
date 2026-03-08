@@ -78,7 +78,7 @@ commands:
   # Optional allowlist for owner-only tools/commands (Matrix IDs, or "matrix:@user:server").
   ownerAllowFrom: []
 
-# Tool approval gating (Clawdbot-style approvals).
+# Tool approval gating.
 tool_approvals:
   enabled: true
   ttlSeconds: 600
