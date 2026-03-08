@@ -309,12 +309,7 @@ func ApplyPruningDefaults(config *PruningConfig) *PruningConfig {
 	if cfg.MaxHistoryShare <= 0 {
 		cfg.MaxHistoryShare = defaults.MaxHistoryShare
 	}
-	if cfg.MaxHistoryShare < 0.1 {
-		cfg.MaxHistoryShare = 0.1
-	}
-	if cfg.MaxHistoryShare > 0.9 {
-		cfg.MaxHistoryShare = 0.9
-	}
+	cfg.MaxHistoryShare = max(0.1, min(cfg.MaxHistoryShare, 0.9))
 	if cfg.ReserveTokens <= 0 {
 		cfg.ReserveTokens = defaults.ReserveTokens
 	}
@@ -384,9 +379,6 @@ func PruneContext(
 	}
 
 	charWindow := contextWindowTokens * CharsPerTokenEstimate
-	if charWindow <= 0 {
-		return prompt
-	}
 
 	messages := make([]pruningMessageInfo, len(prompt))
 	toolNameByCallID := make(map[string]string)
@@ -468,10 +460,6 @@ func PruneContext(
 		return result
 	}
 
-	placeholder := cfg.HardClearPlaceholder
-	if placeholder == "" {
-		placeholder = "[Old tool result content cleared]"
-	}
 	for _, i := range prunableToolIndexes {
 		if ratio < cfg.HardClearRatio {
 			break
@@ -480,9 +468,9 @@ func PruneContext(
 		if msg.OfTool == nil {
 			continue
 		}
-		result[i] = openai.ToolMessage(placeholder, msg.OfTool.ToolCallID)
+		result[i] = openai.ToolMessage(cfg.HardClearPlaceholder, msg.OfTool.ToolCallID)
 		oldChars := messages[i].charCount
-		newChars := len(placeholder)
+		newChars := len(cfg.HardClearPlaceholder)
 		totalChars += newChars - oldChars
 		ratio = float64(totalChars) / float64(charWindow)
 	}
