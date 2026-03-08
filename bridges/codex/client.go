@@ -2010,11 +2010,12 @@ func (cc *CodexClient) sendFinalAssistantTurn(ctx context.Context, portal *bridg
 
 	sender := cc.senderForPortal()
 	cc.UserLogin.QueueRemoteEvent(&CodexRemoteEdit{
-		portal:        portal.PortalKey,
-		sender:        sender,
-		targetMessage: state.networkMessageID,
-		timestamp:     time.Now(),
-		preBuilt: &bridgev2.ConvertedEdit{
+		Portal:        portal.PortalKey,
+		Sender:        sender,
+		TargetMessage: state.networkMessageID,
+		Timestamp:     time.Now(),
+		LogKey:        "codex_edit_target",
+		PreBuilt: &bridgev2.ConvertedEdit{
 			ModifiedParts: []*bridgev2.ConvertedEditPart{{
 				Type: event.EventMessage,
 				Content: &event.MessageEventContent{
@@ -2059,11 +2060,12 @@ func (cc *CodexClient) sendContinuationMessage(ctx context.Context, portal *brid
 	}
 	sender := cc.senderForPortal()
 	cc.UserLogin.QueueRemoteEvent(&CodexRemoteMessage{
-		portal:    portal.PortalKey,
-		id:        newMessageID(),
-		sender:    sender,
-		timestamp: time.Now(),
-		preBuilt: &bridgev2.ConvertedMessage{
+		Portal:    portal.PortalKey,
+		ID:        newMessageID(),
+		Sender:    sender,
+		Timestamp: time.Now(),
+		LogKey:    "codex_msg_id",
+		PreBuilt: &bridgev2.ConvertedMessage{
 			Parts: []*bridgev2.ConvertedMessagePart{{
 				ID:      networkid.PartID("0"),
 				Type:    event.EventMessage,

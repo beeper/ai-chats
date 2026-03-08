@@ -31,11 +31,12 @@ func (cc *CodexClient) sendViaPortal(
 	}
 	sender := cc.senderForPortal()
 	evt := &CodexRemoteMessage{
-		portal:    portal.PortalKey,
-		id:        msgID,
-		sender:    sender,
-		timestamp: time.Now(),
-		preBuilt:  converted,
+		Portal:    portal.PortalKey,
+		ID:        msgID,
+		Sender:    sender,
+		Timestamp: time.Now(),
+		LogKey:    "codex_msg_id",
+		PreBuilt:  converted,
 	}
 	result := cc.UserLogin.QueueRemoteEvent(evt)
 	if !result.Success {

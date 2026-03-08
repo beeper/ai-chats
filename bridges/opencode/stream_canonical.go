@@ -217,11 +217,12 @@ func (oc *OpenCodeClient) queueFinalStreamEdit(ctx context.Context, portal *brid
 	}
 	sender := oc.SenderForOpenCode(instanceID, false)
 	oc.UserLogin.QueueRemoteEvent(&OpenCodeRemoteEdit{
-		portal:        portal.PortalKey,
-		sender:        sender,
-		targetMessage: state.networkMessageID,
-		timestamp:     time.Now(),
-		preBuilt: &bridgev2.ConvertedEdit{
+		Portal:        portal.PortalKey,
+		Sender:        sender,
+		TargetMessage: state.networkMessageID,
+		Timestamp:     time.Now(),
+		LogKey:        "opencode_edit_target",
+		PreBuilt: &bridgev2.ConvertedEdit{
 			ModifiedParts: []*bridgev2.ConvertedEditPart{{
 				Type: event.EventMessage,
 				Content: &event.MessageEventContent{

@@ -14,6 +14,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/agents"
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
 	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/beeper/ai-bridge/pkg/shared/citations"
@@ -78,13 +79,13 @@ func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev
 	if agentID != "" {
 		senderID = agentUserID(agentID)
 	}
-	msg := &AIRemoteMessage{
-		portal:    portal.PortalKey,
-		id:        newMessageID(),
-		sender:    bridgev2.EventSender{Sender: senderID, SenderLogin: oc.UserLogin.ID},
-		timestamp: time.Now(),
-		variant:   AIMessageText,
-		preBuilt: &bridgev2.ConvertedMessage{
+	msg := &bridgeadapter.RemoteMessage{
+		Portal:    portal.PortalKey,
+		ID:        newMessageID(),
+		Sender:    bridgev2.EventSender{Sender: senderID, SenderLogin: oc.UserLogin.ID},
+		Timestamp: time.Now(),
+		LogKey:    "ai_msg_id",
+		PreBuilt: &bridgev2.ConvertedMessage{
 			Parts: []*bridgev2.ConvertedMessagePart{{
 				ID:      networkid.PartID("0"),
 				Type:    event.EventMessage,
@@ -731,11 +732,12 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 			TopLevelExtra: topLevelExtra,
 		}},
 	}
-	oc.UserLogin.QueueRemoteEvent(&AIRemoteEdit{
-		portal:        portal.PortalKey,
-		sender:        sender,
-		targetMessage: state.networkMessageID,
-		preBuilt:      editContent,
+	oc.UserLogin.QueueRemoteEvent(&bridgeadapter.RemoteEdit{
+		Portal:        portal.PortalKey,
+		Sender:        sender,
+		TargetMessage: state.networkMessageID,
+		LogKey:        "ai_edit_target",
+		PreBuilt:      editContent,
 	})
 	oc.recordAgentActivity(ctx, portal, meta)
 	oc.loggerForContext(ctx).Debug().
