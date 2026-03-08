@@ -242,7 +242,6 @@ func canonicalDataPart(part opencode.Part) map[string]any {
 	return data
 }
 
-
 func backfillCost(msg opencode.MessageWithParts) float64 {
 	if msg.Info.Cost != 0 {
 		return msg.Info.Cost
