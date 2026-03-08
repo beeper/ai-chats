@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"fmt"
-	"math"
 	"strings"
 
 	"github.com/openai/openai-go/v3"
@@ -60,9 +59,6 @@ func splitPromptByTokenShare(prompt []openai.ChatCompletionMessageParamUnion, pa
 		parts = len(prompt)
 	}
 	totalTokens := estimatePromptTokensForCompaction(prompt)
-	if totalTokens <= 0 {
-		return [][]openai.ChatCompletionMessageParamUnion{prompt}
-	}
 	targetTokens := float64(totalTokens) / float64(parts)
 	chunks := make([][]openai.ChatCompletionMessageParamUnion, 0, parts)
 	current := make([]openai.ChatCompletionMessageParamUnion, 0, len(prompt)/parts+1)
@@ -132,7 +128,7 @@ func pruneHistoryForContextSharePrompt(
 	if maxHistoryShare <= 0 {
 		maxHistoryShare = 0.5
 	}
-	budgetTokens := int(math.Floor(float64(maxContextTokens) * maxHistoryShare))
+	budgetTokens := int(float64(maxContextTokens) * maxHistoryShare)
 	if budgetTokens <= 0 {
 		budgetTokens = 1
 	}
@@ -229,9 +225,6 @@ func CompactPromptOnOverflow(input OverflowCompactionInput) OverflowCompactionRe
 	currentPromptTokens := input.CurrentPromptTokens
 	if currentPromptTokens <= 0 {
 		currentPromptTokens = estimatePromptTokensForCompaction(workingPrompt)
-		if currentPromptTokens <= 0 {
-			currentPromptTokens = len(workingPrompt) * 4
-		}
 	}
 	maxChars := totalChars
 	if input.ContextWindowTokens > 0 {
@@ -274,9 +267,7 @@ func CompactPromptOnOverflow(input OverflowCompactionInput) OverflowCompactionRe
 	if maxChars >= totalChars {
 		maxChars = int(float64(totalChars) * 0.85)
 	}
-	if maxChars <= 0 {
-		maxChars = 1
-	}
+	maxChars = max(maxChars, 1)
 
 	compaction := ApplyCompaction(CompactionInput{
 		Messages:      charInputs,
@@ -316,28 +307,14 @@ func CompactPromptOnOverflow(input OverflowCompactionInput) OverflowCompactionRe
 		}
 	}
 	if targetPromptTokens <= 0 {
-		targetPromptTokens = currentPromptTokens / 2
-	}
-	if targetPromptTokens <= 0 {
-		targetPromptTokens = 1
+		targetPromptTokens = max(currentPromptTokens/2, 1)
 	}
 	ratio := 0.5
 	if currentPromptTokens > 0 {
-		keepFraction := float64(targetPromptTokens) / float64(currentPromptTokens)
-		if keepFraction < 0.1 {
-			keepFraction = 0.1
-		}
-		if keepFraction > 0.95 {
-			keepFraction = 0.95
-		}
+		keepFraction := max(0.1, min(float64(targetPromptTokens)/float64(currentPromptTokens), 0.95))
 		ratio = 1 - keepFraction
 	}
-	if ratio < 0.1 {
-		ratio = 0.1
-	}
-	if ratio > 0.85 {
-		ratio = 0.85
-	}
+	ratio = max(0.1, min(ratio, 0.85))
 
 	compacted := SmartTruncatePrompt(workingPrompt, ratio)
 	if len(compacted) == 0 {

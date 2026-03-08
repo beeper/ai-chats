@@ -43,9 +43,6 @@ func ApplyCompaction(input CompactionInput) CompactionResult {
 		protected = len(messages)
 	}
 	cutoff := len(messages) - protected
-	if cutoff < 0 {
-		cutoff = 0
-	}
 
 	currentChars := originalChars
 	droppedCount := 0
