@@ -85,8 +85,6 @@ func (oc *AIClient) saveAssistantMessage(
 	oc.notifySessionMutation(ctx, portal, meta, false)
 }
 
-
-
 func thinkingTokenCount(model string, content string) int {
 	content = strings.TrimSpace(content)
 	if content == "" {

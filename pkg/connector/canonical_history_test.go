@@ -3,19 +3,23 @@ package connector
 import (
 	"context"
 	"testing"
+
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 func TestHistoryMessageBundle_LegacyAssistantFallback(t *testing.T) {
 	oc := &AIClient{}
 	bundle := oc.historyMessageBundle(context.Background(), &MessageMetadata{
-		Role: "assistant",
-		Body: "done",
-		ToolCalls: []ToolCallMetadata{{
-			CallID:   "call_1",
-			ToolName: "Read",
-			Input:    map[string]any{"path": "README.md"},
-			Output:   map[string]any{"result": "ok"},
-		}},
+		BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
+			Role: "assistant",
+			Body: "done",
+			ToolCalls: []ToolCallMetadata{{
+				CallID:   "call_1",
+				ToolName: "Read",
+				Input:    map[string]any{"path": "README.md"},
+				Output:   map[string]any{"result": "ok"},
+			}},
+		},
 	}, false)
 
 	if len(bundle) != 2 {
@@ -35,19 +39,21 @@ func TestHistoryMessageBundle_LegacyAssistantFallback(t *testing.T) {
 func TestHistoryMessageBundle_CanonicalPartsSupportsMapSlices(t *testing.T) {
 	oc := &AIClient{}
 	bundle := oc.historyMessageBundle(context.Background(), &MessageMetadata{
-		Role:            "assistant",
-		CanonicalSchema: "ai-sdk-ui-message-v1",
-		CanonicalUIMessage: map[string]any{
-			"role": "assistant",
-			"parts": []map[string]any{
-				{"type": "text", "text": "hello"},
-				{
-					"type":       "dynamic-tool",
-					"toolCallId": "call_1",
-					"toolName":   "Read",
-					"input":      map[string]any{"path": "README.md"},
-					"state":      "output-available",
-					"output":     map[string]any{"result": "ok"},
+		BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
+			Role:            "assistant",
+			CanonicalSchema: "ai-sdk-ui-message-v1",
+			CanonicalUIMessage: map[string]any{
+				"role": "assistant",
+				"parts": []map[string]any{
+					{"type": "text", "text": "hello"},
+					{
+						"type":       "dynamic-tool",
+						"toolCallId": "call_1",
+						"toolName":   "Read",
+						"input":      map[string]any{"path": "README.md"},
+						"state":      "output-available",
+						"output":     map[string]any{"result": "ok"},
+					},
 				},
 			},
 		},

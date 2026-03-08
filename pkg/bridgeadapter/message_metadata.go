@@ -3,21 +3,21 @@ package bridgeadapter
 // BaseMessageMetadata contains fields common to all bridge MessageMetadata structs.
 // Embed this in each bridge's MessageMetadata to share CopyFrom logic.
 type BaseMessageMetadata struct {
-	Role             string             `json:"role,omitempty"`
-	Body             string             `json:"body,omitempty"`
-	FinishReason     string             `json:"finish_reason,omitempty"`
-	PromptTokens     int64              `json:"prompt_tokens,omitempty"`
-	CompletionTokens int64              `json:"completion_tokens,omitempty"`
-	ReasoningTokens  int64              `json:"reasoning_tokens,omitempty"`
-	TurnID           string             `json:"turn_id,omitempty"`
-	AgentID          string             `json:"agent_id,omitempty"`
-	CanonicalSchema  string             `json:"canonical_schema,omitempty"`
+	Role               string             `json:"role,omitempty"`
+	Body               string             `json:"body,omitempty"`
+	FinishReason       string             `json:"finish_reason,omitempty"`
+	PromptTokens       int64              `json:"prompt_tokens,omitempty"`
+	CompletionTokens   int64              `json:"completion_tokens,omitempty"`
+	ReasoningTokens    int64              `json:"reasoning_tokens,omitempty"`
+	TurnID             string             `json:"turn_id,omitempty"`
+	AgentID            string             `json:"agent_id,omitempty"`
+	CanonicalSchema    string             `json:"canonical_schema,omitempty"`
 	CanonicalUIMessage map[string]any     `json:"canonical_ui_message,omitempty"`
-	StartedAtMs      int64              `json:"started_at_ms,omitempty"`
-	CompletedAtMs    int64              `json:"completed_at_ms,omitempty"`
-	ThinkingContent  string             `json:"thinking_content,omitempty"`
-	ToolCalls        []ToolCallMetadata `json:"tool_calls,omitempty"`
-	GeneratedFiles   []GeneratedFileRef `json:"generated_files,omitempty"`
+	StartedAtMs        int64              `json:"started_at_ms,omitempty"`
+	CompletedAtMs      int64              `json:"completed_at_ms,omitempty"`
+	ThinkingContent    string             `json:"thinking_content,omitempty"`
+	ToolCalls          []ToolCallMetadata `json:"tool_calls,omitempty"`
+	GeneratedFiles     []GeneratedFileRef `json:"generated_files,omitempty"`
 }
 
 // CopyFromBase copies non-zero common fields from src into the receiver.
