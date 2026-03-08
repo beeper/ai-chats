@@ -46,7 +46,7 @@ const (
 func (cc *CodexConnector) Init(bridge *bridgev2.Bridge) {
 	cc.br = bridge
 	if bridge != nil && bridge.DB != nil && bridge.DB.Database != nil {
-		cc.db = makeCodexBridgeChildDB(
+		cc.db = aidb.NewChild(
 			bridge.DB.Database,
 			dbutil.ZeroLogger(bridge.Log.With().Str("db_section", "codex_bridge").Logger()),
 		)
@@ -68,6 +68,20 @@ func (cc *CodexConnector) Start(ctx context.Context) error {
 	cc.primeUserLoginCache(ctx)
 	cc.autoProvisionExistingCodex(ctx)
 
+	return nil
+}
+
+func (cc *CodexConnector) bridgeDB() *dbutil.Database {
+	if cc.db != nil {
+		return cc.db
+	}
+	if cc.br != nil && cc.br.DB != nil {
+		cc.db = aidb.NewChild(
+			cc.br.DB.Database,
+			dbutil.ZeroLogger(cc.br.Log.With().Str("db_section", "codex_bridge").Logger()),
+		)
+		return cc.db
+	}
 	return nil
 }
 

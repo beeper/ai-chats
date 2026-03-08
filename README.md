@@ -29,6 +29,10 @@ Experimental Matrix ↔ AI bridge for Beeper, built on top of [mautrix/bridgev2]
 - `docs/matrix-ai-matrix-spec-v1.md`: Full Matrix transport spec (events, streaming, approvals, state, and schema examples).
 - `docs/bridge-orchestrator.md`: One-command bridge management in this repo.
 
+## Development note
+
+The shared AI bridge schema now uses a single `ai_bridge_version` table. If you have a local dev SQLite database created before this refactor, delete and recreate it instead of expecting an automatic migration from the old version-table layout.
+
 ## Bridge Orchestrator
 
 Use `tools/bridges` to manage isolated bridge instances for Beeper.

@@ -144,9 +144,9 @@ func (i *Integration) executeCronCommand(ctx context.Context, call iruntime.Comm
 			return nil
 		}
 		jobID := strings.TrimSpace(call.Args[1])
-		rawJSON := strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(call.RawArgs, action), jobID))
+		rawJSON := strings.TrimSpace(strings.Join(call.Args[2:], " "))
 		if rawJSON == "" {
-			rawJSON = strings.TrimSpace(strings.Join(call.Args[2:], " "))
+			rawJSON = strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(call.RawArgs, action), jobID))
 		}
 		var raw map[string]any
 		if err := json.Unmarshal([]byte(rawJSON), &raw); err != nil {

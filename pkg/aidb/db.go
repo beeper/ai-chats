@@ -11,13 +11,13 @@ import (
 
 const VersionTable = "ai_bridge_version"
 
-var upgradeTable dbutil.UpgradeTable
+var Upgrades dbutil.UpgradeTable
 
 //go:embed *.sql
 var rawUpgrades embed.FS
 
 func init() {
-	upgradeTable.RegisterFS(rawUpgrades)
+	Upgrades.RegisterFS(rawUpgrades)
 }
 
 // NewChild creates a child DB using the shared AI bridge schema.
@@ -28,7 +28,7 @@ func NewChild(base *dbutil.Database, log dbutil.DatabaseLogger) *dbutil.Database
 	if log == nil {
 		log = dbutil.NoopLogger
 	}
-	return base.Child(VersionTable, upgradeTable, log)
+	return base.Child(VersionTable, Upgrades, log)
 }
 
 // Upgrade validates and upgrades a child DB, wrapping errors as DBUpgradeError.

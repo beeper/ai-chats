@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"time"
 
@@ -111,8 +112,14 @@ func (s *schedulerRuntime) reconcile(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	var reconcileErrs []error
 	if err := s.reconcileCronLocked(ctx); err != nil {
-		return err
+		s.client.log.Warn().Err(err).Msg("Failed to reconcile cron state")
+		reconcileErrs = append(reconcileErrs, err)
 	}
-	return s.reconcileHeartbeatLocked(ctx)
+	if err := s.reconcileHeartbeatLocked(ctx); err != nil {
+		s.client.log.Warn().Err(err).Msg("Failed to reconcile managed heartbeat state")
+		reconcileErrs = append(reconcileErrs, err)
+	}
+	return errors.Join(reconcileErrs...)
 }

@@ -66,6 +66,7 @@ func sanitizeAgentID(raw string) string {
 	cleaned = agentIDTrailingDash.ReplaceAllString(cleaned, "")
 	if len(cleaned) > 64 {
 		cleaned = cleaned[:64]
+		cleaned = agentIDTrailingDash.ReplaceAllString(cleaned, "")
 	}
 	if cleaned == "" {
 		return defaultAgentID

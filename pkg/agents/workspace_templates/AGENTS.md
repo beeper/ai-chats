@@ -140,7 +140,7 @@ Default heartbeat prompt:
 
 You are free to edit `HEARTBEAT.md` with a short checklist or reminders. Keep it small to limit token burn.
 
-### Heartbeat vs Scheduled Jobs: When to Use Each
+### Heartbeat And Cron: When to Use Each
 
 **Use heartbeat when:**
 
@@ -160,7 +160,8 @@ You are free to edit `HEARTBEAT.md` with a short checklist or reminders. Keep it
 
 Notes:
 - Cron jobs use the shared delayed-event scheduler backend.
-- For `announce` delivery, `delivery.to` should be a Matrix room ID like `!room:server`. Omit `delivery.to` to route to the last active room (fallback: default chat).
+- For true channel-targeted `announce` delivery, set `delivery.to` to a Matrix room ID like `!room:server`.
+- If `delivery.to` is omitted, delivery falls back to the source room when the job is created from a normal chat. Internal/background creation falls back to the last active room, then the default chat.
 
 **Tip:** Batch similar periodic checks into `HEARTBEAT.md` instead of creating multiple cron jobs. Use cron for precise schedules and standalone tasks.
 

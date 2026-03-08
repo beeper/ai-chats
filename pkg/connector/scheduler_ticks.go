@@ -29,16 +29,16 @@ func (s *schedulerRuntime) scheduleTickLocked(ctx context.Context, roomID id.Roo
 	return resp, nil
 }
 
-func (s *schedulerRuntime) delayedEventExistsLocked(ctx context.Context, delayID string) bool {
+func (s *schedulerRuntime) delayedEventExistsLocked(ctx context.Context, delayID string) (bool, error) {
 	intent := s.intentClient()
 	if intent == nil || strings.TrimSpace(delayID) == "" {
-		return false
+		return false, nil
 	}
 	resp, err := intent.DelayedEvents(ctx, &mautrix.ReqDelayedEvents{DelayID: id.DelayID(delayID)})
 	if err != nil {
-		return false
+		return false, err
 	}
-	return resp != nil
+	return resp != nil, nil
 }
 
 func (s *schedulerRuntime) cancelPendingDelayLocked(ctx context.Context, delayID string) error {
