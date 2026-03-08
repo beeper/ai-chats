@@ -563,6 +563,10 @@ func ObjectSchema(properties map[string]any, required ...string) map[string]any 
 	return schema
 }
 
+func EmptyObjectSchema() map[string]any {
+	return ObjectSchema(map[string]any{})
+}
+
 func StringProperty(description string) map[string]any {
 	return map[string]any{
 		"type":        "string",
