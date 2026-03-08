@@ -280,7 +280,7 @@ func (h *runtimeIntegrationHost) IsInternalRoom(meta any) bool {
 	if m == nil {
 		return false
 	}
-	return m.IsBuilderRoom || isModuleInternalRoom(m)
+	return isModuleInternalRoom(m)
 }
 
 func (h *runtimeIntegrationHost) PortalMeta(portal any) any {

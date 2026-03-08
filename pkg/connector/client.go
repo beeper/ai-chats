@@ -1562,6 +1562,14 @@ func (oc *AIClient) effectiveReasoningEffort(meta *PortalMetadata) string {
 	if !oc.getModelCapabilitiesForMeta(meta).SupportsReasoning {
 		return ""
 	}
+	if meta != nil {
+		switch effort := strings.ToLower(strings.TrimSpace(meta.RuntimeReasoning)); effort {
+		case "low", "medium", "high":
+			return effort
+		case "off", "none":
+			return ""
+		}
+	}
 	return defaultReasoningEffort
 }
 

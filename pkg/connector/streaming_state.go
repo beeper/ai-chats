@@ -111,9 +111,6 @@ func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID 
 		ui:                      ui,
 		pendingMcpApprovalsSeen: make(map[string]bool),
 	}
-	if meta != nil && normalizeSendPolicyMode(meta.SendPolicy) == "deny" {
-		state.suppressSend = true
-	}
 	if hb := heartbeatRunFromContext(ctx); hb != nil {
 		state.heartbeat = hb.Config
 		state.heartbeatResultCh = hb.ResultCh

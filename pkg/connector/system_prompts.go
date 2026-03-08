@@ -79,15 +79,9 @@ func (oc *AIClient) buildAdditionalSystemPromptsCore(
 
 	if meta != nil && portal != nil && oc.isGroupChat(ctx, portal) {
 		activation := oc.resolveGroupActivation(meta)
-		shouldIntro := !meta.GroupIntroSent || meta.GroupActivationNeedsIntro
-		if shouldIntro {
-			intro := buildGroupIntro(oc.matrixRoomDisplayName(ctx, portal), activation)
-			if strings.TrimSpace(intro) != "" {
-				out = append(out, openai.SystemMessage(intro))
-			}
-			meta.GroupIntroSent = true
-			meta.GroupActivationNeedsIntro = false
-			oc.savePortalQuiet(ctx, portal, "group intro")
+		intro := buildGroupIntro(oc.matrixRoomDisplayName(ctx, portal), activation)
+		if strings.TrimSpace(intro) != "" {
+			out = append(out, openai.SystemMessage(intro))
 		}
 	}
 

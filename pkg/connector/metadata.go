@@ -226,6 +226,7 @@ type PortalMetadata struct {
 	DisabledTools        []string        `json:"-"`
 	ResolvedTarget       *ResolvedTarget `json:"-"`
 	RuntimeModelOverride string          `json:"-"`
+	RuntimeReasoning     string          `json:"-"`
 
 	// Legacy-only. New code must not read this.
 	ResponsePrefix string `json:"response_prefix,omitempty"`

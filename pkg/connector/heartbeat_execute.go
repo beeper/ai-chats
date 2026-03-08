@@ -148,12 +148,6 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 	if promptMeta == nil {
 		promptMeta = &PortalMetadata{}
 	}
-	promptMeta.AgentID = agentID
-	if heartbeat != nil && heartbeat.Model != nil {
-		if model := strings.TrimSpace(*heartbeat.Model); model != "" {
-			promptMeta.Model = model
-		}
-	}
 	responsePrefix := resolveResponsePrefixForHeartbeat(oc, cfg, agentID, promptMeta)
 	hbCfg := &HeartbeatRunConfig{
 		Reason:           reason,

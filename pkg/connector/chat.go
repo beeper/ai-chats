@@ -1009,13 +1009,13 @@ func (oc *AIClient) createForkedChat(
 		return nil, nil, err
 	}
 
-	agentID := sourceMeta.AgentID
+	agentID := resolveAgentID(sourceMeta)
 	if agentID != "" {
 		pm := portalMeta(portal)
-		pm.AgentID = agentID
 
 		modelID := oc.effectiveModel(pm)
 		portal.OtherUserID = agentUserID(agentID)
+		pm.ResolvedTarget = resolveTargetFromGhostID(portal.OtherUserID)
 
 		agentName := agentID
 		agentAvatar := ""
@@ -1660,14 +1660,11 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 
 	// Set agent-specific metadata
 	pm := portalMeta(portal)
-	pm.AgentID = beeperAgent.ID
-	if beeperAgent.SystemPrompt != "" {
-		pm.SystemPrompt = beeperAgent.SystemPrompt
-	}
 
 	// Update the OtherUserID to be the agent ghost
 	agentGhostID := agentUserID(beeperAgent.ID)
 	portal.OtherUserID = agentGhostID
+	pm.ResolvedTarget = resolveTargetFromGhostID(agentGhostID)
 
 	if err := portal.Save(ctx); err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg("Failed to save portal with agent config")

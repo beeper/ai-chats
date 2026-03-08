@@ -73,7 +73,7 @@ func (oc *AIClient) streamChatCompletions(
 			params.Tools = append(params.Tools, ToOpenAIChatTools(enabledTools, &oc.log)...)
 		}
 		if oc.getModelCapabilitiesForMeta(meta).SupportsToolCalling && chatHasAgent {
-			if !oc.isBuilderRoom(portal) {
+			if !hasBossAgent(meta) {
 				var enabledSessions []*tools.Tool
 				for _, tool := range tools.SessionTools() {
 					if oc.isToolEnabled(meta, tool.Name) {
@@ -84,7 +84,7 @@ func (oc *AIClient) streamChatCompletions(
 					params.Tools = append(params.Tools, bossToolsToChatTools(enabledSessions, &oc.log)...)
 				}
 			}
-			if hasBossAgent(meta) || oc.isBuilderRoom(portal) {
+			if hasBossAgent(meta) {
 				var enabledBoss []*tools.Tool
 				for _, tool := range tools.BossTools() {
 					if oc.isToolEnabled(meta, tool.Name) {

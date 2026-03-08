@@ -223,15 +223,9 @@ func isInternalControlRoom(meta *PortalMetadata) bool {
 }
 
 func autoGreetingBlockReason(meta *PortalMetadata) string {
-	sendPolicy := ""
-	if meta != nil {
-		sendPolicy = meta.SendPolicy
-	}
 	switch {
 	case isInternalControlRoom(meta):
 		return "internal-control-room"
-	case normalizeSendPolicyMode(sendPolicy) == "deny":
-		return "send-policy-deny"
 	case resolveAgentID(meta) == "":
 		return "no-agent"
 	}

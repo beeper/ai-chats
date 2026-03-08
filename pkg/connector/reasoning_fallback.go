@@ -34,7 +34,7 @@ func (oc *AIClient) responseWithRetryAndReasoningFallback(
 		if meta != nil && currentLevel != originalLevel {
 			// Clone meta and override reasoning effort
 			metaCopy := *meta
-			metaCopy.ReasoningEffort = currentLevel
+			metaCopy.RuntimeReasoning = currentLevel
 			effectiveMeta = &metaCopy
 			oc.loggerForContext(ctx).Info().
 				Str("original_level", originalLevel).

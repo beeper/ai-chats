@@ -80,12 +80,10 @@ func (m *OpenAIRemoteMessage) ConvertMessage(ctx context.Context, portal *bridge
 		m.Metadata.Body = m.Content
 	}
 
-	// Get model from metadata or portal fallback
+	// Prefer the message metadata model when present.
 	model := ""
 	if m.Metadata != nil && m.Metadata.Model != "" {
 		model = m.Metadata.Model
-	} else if portalMeta, ok := portal.Metadata.(*PortalMetadata); ok && portalMeta.Model != "" {
-		model = portalMeta.Model
 	}
 
 	var thinkingContent string

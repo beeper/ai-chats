@@ -299,15 +299,8 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 
 	childMeta := portalMeta(childPortal)
 	childMeta.SubagentParentRoomID = portal.MXID.String()
-	childMeta.SystemPrompt = agents.BuildSubagentSystemPrompt(agents.SubagentPromptParams{
-		RequesterSessionKey: portal.MXID.String(),
-		RequesterChannel:    "matrix",
-		ChildSessionKey:     childPortal.MXID.String(),
-		Label:               label,
-		Task:                task,
-	})
 	if reasoningEffort != "" {
-		childMeta.ReasoningEffort = reasoningEffort
+		childMeta.RuntimeReasoning = reasoningEffort
 	}
 
 	roomName := resolveSubagentRoomName(label, task)

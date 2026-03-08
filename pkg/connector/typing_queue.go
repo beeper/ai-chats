@@ -11,9 +11,6 @@ func (oc *AIClient) startQueueTyping(ctx context.Context, portal *bridgev2.Porta
 	if oc == nil || portal == nil || portal.MXID == "" {
 		return
 	}
-	if meta != nil && normalizeSendPolicyMode(meta.SendPolicy) == "deny" {
-		return
-	}
 	if typingCtx == nil {
 		typingCtx = &TypingContext{IsGroup: oc.isGroupChat(ctx, portal)}
 	}
