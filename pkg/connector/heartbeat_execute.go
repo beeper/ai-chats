@@ -329,7 +329,9 @@ func (oc *AIClient) resolveHeartbeatSessionPortal(agentID string, heartbeat *Hea
 	}
 	if strings.HasPrefix(session, "!") {
 		if portal := oc.portalByRoomID(context.Background(), id.RoomID(session)); portal != nil {
-			return portal, portal.MXID.String(), nil
+			if meta := portalMeta(portal); meta == nil || normalizeAgentID(meta.AgentID) == normalizeAgentID(agentID) {
+				return portal, portal.MXID.String(), nil
+			}
 		}
 	}
 	hbSession := oc.resolveHeartbeatSession(agentID, heartbeat)

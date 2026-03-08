@@ -29,7 +29,9 @@ func resolveHeartbeatVisibility(cfg *Config, channel string) ResolvedHeartbeatVi
 		UseIndicator: defaultHeartbeatVisibility.UseIndicator,
 	}
 
-	applyHeartbeatVisibility(&result, defaults.Heartbeat)
+	if defaults != nil {
+		applyHeartbeatVisibility(&result, defaults.Heartbeat)
+	}
 	if perChannel != nil {
 		applyHeartbeatVisibility(&result, perChannel.Heartbeat)
 	}

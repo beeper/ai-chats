@@ -513,15 +513,22 @@ func deleteMissingScopedRows(ctx context.Context, scope *schedulerDBScope, keep 
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	var toDelete []string
 	for rows.Next() {
 		var idValue string
 		if err := rows.Scan(&idValue); err != nil {
+			rows.Close()
 			return err
 		}
-		if _, ok := keep[strings.TrimSpace(idValue)]; ok {
-			continue
+		if _, ok := keep[strings.TrimSpace(idValue)]; !ok {
+			toDelete = append(toDelete, idValue)
 		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, idValue := range toDelete {
 		if _, err := scope.db.Exec(ctx, fmt.Sprintf(
 			`DELETE FROM %s WHERE bridge_id=$1 AND login_id=$2 AND %s=$3`,
 			entityTable, idColumn,
@@ -535,5 +542,5 @@ func deleteMissingScopedRows(ctx context.Context, scope *schedulerDBScope, keep 
 			return err
 		}
 	}
-	return rows.Err()
+	return nil
 }

@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"fmt"
 	"slices"
 
 	"github.com/beeper/ai-bridge/pkg/agents"
@@ -48,6 +49,6 @@ func convertSubagentConfig[T subagentConfigLike, R any](cfg T, build func(string
 		}
 		return build(typed.Model, typed.Thinking, allowAgents)
 	default:
-		return nil
+		panic(fmt.Sprintf("unsupported subagent config type: %T", cfg))
 	}
 }
