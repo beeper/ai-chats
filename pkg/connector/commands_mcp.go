@@ -115,10 +115,8 @@ func fnMCPList(ce *commands.Event, client *AIClient) {
 	ce.Reply("MCP servers:\n%s", strings.Join(lines, "\n"))
 }
 
-func parseMCPHTTPAuthArgs(rest []string) (token string, authType string, authURL string) {
-	token = ""
+func parseMCPHTTPAuthArgs(rest []string) (token, authType, authURL string) {
 	authType = "bearer"
-	authURL = ""
 	if len(rest) > 0 {
 		token = strings.TrimSpace(rest[0])
 	}
@@ -148,10 +146,6 @@ func parseMCPAddArgs(args []string, allowStdio bool) (name string, cfg MCPServer
 	}
 	name = normalizeMCPServerName(trimmed[0])
 	targetIndex := 1
-
-	if targetIndex >= len(trimmed) {
-		return "", MCPServerConfig{}, errors.New("missing target")
-	}
 
 	rawTransportOrTarget := strings.TrimSpace(trimmed[targetIndex])
 	normalizedTransport := normalizeMCPServerTransport(rawTransportOrTarget)

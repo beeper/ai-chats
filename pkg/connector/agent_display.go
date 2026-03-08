@@ -14,9 +14,6 @@ func (oc *AIClient) resolveAgentDisplayName(ctx context.Context, agent *agents.A
 	}
 	name := strings.TrimSpace(agent.EffectiveName())
 	if name == "" {
-		name = strings.TrimSpace(agent.Name)
-	}
-	if name == "" {
 		return ""
 	}
 	if name == agent.Name {

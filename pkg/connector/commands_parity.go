@@ -34,24 +34,13 @@ var _ = registerAICommand(commandregistry.Definition{
 })
 
 func fnStatus(ce *commands.Event) {
-	portal, ok := requirePortal(ce)
+	client, meta, ok := requireClientMeta(ce)
 	if !ok {
 		return
 	}
-	meta := getPortalMeta(ce)
-	if meta == nil {
-		ce.Reply("Couldn't load room settings. Try again.")
-		return
-	}
-
-	client := getAIClient(ce)
-	if client == nil {
-		ce.Reply("Couldn't load AI settings. Try again.")
-		return
-	}
-	isGroup := client.isGroupChat(ce.Ctx, portal)
-	queueSettings, _, _, _ := client.resolveQueueSettingsForPortal(ce.Ctx, portal, meta, "", airuntime.QueueInlineOptions{})
-	ce.Reply("%s", client.buildStatusText(ce.Ctx, portal, meta, isGroup, queueSettings))
+	isGroup := client.isGroupChat(ce.Ctx, ce.Portal)
+	queueSettings, _, _, _ := client.resolveQueueSettingsForPortal(ce.Ctx, ce.Portal, meta, "", airuntime.QueueInlineOptions{})
+	ce.Reply("%s", client.buildStatusText(ce.Ctx, ce.Portal, meta, isGroup, queueSettings))
 }
 
 func fnLastHeartbeat(ce *commands.Event) {
@@ -90,28 +79,17 @@ var _ = registerAICommand(commandregistry.Definition{
 })
 
 func fnReset(ce *commands.Event) {
-	portal, ok := requirePortal(ce)
+	client, meta, ok := requireClientMeta(ce)
 	if !ok {
-		return
-	}
-	meta := getPortalMeta(ce)
-	if meta == nil {
-		ce.Reply("Couldn't load room settings. Try again.")
-		return
-	}
-
-	client := getAIClient(ce)
-	if client == nil {
-		ce.Reply("Couldn't load AI settings. Try again.")
 		return
 	}
 
 	meta.SessionResetAt = time.Now().UnixMilli()
 	meta.GroupIntroSent = false
 	meta.GroupActivationNeedsIntro = true
-	client.savePortalQuiet(ce.Ctx, portal, "session reset")
-	client.clearPendingQueue(portal.MXID)
-	client.cancelRoomRun(portal.MXID)
+	client.savePortalQuiet(ce.Ctx, ce.Portal, "session reset")
+	client.clearPendingQueue(ce.Portal.MXID)
+	client.cancelRoomRun(ce.Portal.MXID)
 
 	ce.Reply("%s", formatSystemAck("Session reset."))
 }
@@ -127,20 +105,11 @@ var _ = registerAICommand(commandregistry.Definition{
 })
 
 func fnStop(ce *commands.Event) {
-	portal, ok := requirePortal(ce)
+	client, meta, ok := requireClientMeta(ce)
 	if !ok {
 		return
 	}
-	meta := getPortalMeta(ce)
-	if meta == nil {
-		ce.Reply("Couldn't load room settings. Try again.")
-		return
-	}
-	client, _, ok := requireClientMeta(ce)
-	if !ok {
-		return
-	}
-	stopped := client.abortRoom(ce.Ctx, portal, meta)
+	stopped := client.abortRoom(ce.Ctx, ce.Portal, meta)
 	ce.Reply("%s", formatAbortNotice(stopped))
 }
 
@@ -156,14 +125,11 @@ var _ = registerAICommand(commandregistry.Definition{
 })
 
 func fnQueue(ce *commands.Event) {
-	portal, ok := requirePortal(ce)
-	if !ok {
-		return
-	}
 	client, meta, ok := requireClientMeta(ce)
 	if !ok {
 		return
 	}
+	portal := ce.Portal
 
 	queueSettings, _, storeRef, sessionKey := client.resolveQueueSettingsForPortal(ce.Ctx, portal, meta, "", airuntime.QueueInlineOptions{})
 

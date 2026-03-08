@@ -1,7 +1,6 @@
 package connector
 
 import (
-	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/commands"
 
 	"github.com/beeper/ai-bridge/pkg/agents"
@@ -24,14 +23,6 @@ func requireClient(ce *commands.Event) (*AIClient, bool) {
 		return nil, false
 	}
 	return client, true
-}
-
-func requirePortal(ce *commands.Event) (*bridgev2.Portal, bool) {
-	if ce.Portal == nil {
-		ce.Reply("This command can only be used in a room.")
-		return nil, false
-	}
-	return ce.Portal, true
 }
 
 func rejectBossOverrides(ce *commands.Event, meta *PortalMetadata, message string) bool {

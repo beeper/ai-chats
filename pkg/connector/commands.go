@@ -466,29 +466,6 @@ func fnSetDesktopAPIToken(ce *commands.Event) {
 		return
 	}
 
-	if len(ce.Args) == 0 {
-		instances := client.desktopAPIInstances()
-		if len(instances) == 0 {
-			ce.Reply("Desktop API instances: none configured")
-			return
-		}
-		lines := make([]string, 0, len(instances))
-		for _, name := range client.desktopAPIInstanceNames() {
-			config := instances[name]
-			status := "set"
-			if strings.TrimSpace(config.Token) == "" {
-				status = "missing token"
-			}
-			if strings.TrimSpace(config.BaseURL) != "" {
-				lines = append(lines, fmt.Sprintf("- %s: %s (base URL %s)", name, status, strings.TrimSpace(config.BaseURL)))
-			} else {
-				lines = append(lines, fmt.Sprintf("- %s: %s", name, status))
-			}
-		}
-		ce.Reply("Desktop API instances:\n%s", strings.Join(lines, "\n"))
-		return
-	}
-
 	token := strings.TrimSpace(ce.Args[0])
 	baseURL := ""
 	if len(ce.Args) > 1 {
@@ -725,38 +702,17 @@ func parseDesktopAPIAddArgs(args []string) (name, token, baseURL string, err err
 	}
 
 	if len(trimmed) == 1 {
-		name = ""
-		token = trimmed[0]
-		baseURL = ""
-		if token == "" {
-			return "", "", "", errors.New("missing token")
-		}
-		return name, token, baseURL, nil
+		return "", trimmed[0], "", nil
 	}
 
 	if len(trimmed) == 2 {
 		if isLikelyHTTPURL(trimmed[1]) {
-			name = ""
-			token = trimmed[0]
-			baseURL = trimmed[1]
-		} else {
-			name = normalizeDesktopInstanceName(trimmed[0])
-			token = trimmed[1]
-			baseURL = ""
+			return "", trimmed[0], trimmed[1], nil
 		}
-		if token == "" {
-			return "", "", "", errors.New("missing token")
-		}
-		return name, token, baseURL, nil
+		return normalizeDesktopInstanceName(trimmed[0]), trimmed[1], "", nil
 	}
 
-	name = normalizeDesktopInstanceName(trimmed[0])
-	token = trimmed[1]
-	baseURL = strings.TrimSpace(strings.Join(trimmed[2:], " "))
-	if token == "" {
-		return "", "", "", errors.New("missing token")
-	}
-	return name, token, baseURL, nil
+	return normalizeDesktopInstanceName(trimmed[0]), trimmed[1], strings.TrimSpace(strings.Join(trimmed[2:], " ")), nil
 }
 
 func isLikelyHTTPURL(raw string) bool {
@@ -996,11 +952,8 @@ var _ = registerAICommand(commandregistry.Definition{
 })
 
 func fnTitle(ce *commands.Event) {
-	client, ok := requireClient(ce)
+	client, _, ok := requireClientMeta(ce)
 	if !ok {
-		return
-	}
-	if _, ok := requirePortal(ce); !ok {
 		return
 	}
 
@@ -1061,12 +1014,7 @@ func fnModels(ce *commands.Event) {
 		sb.WriteString("\n")
 	}
 
-	currentModel := ""
-	if meta != nil {
-		currentModel = client.effectiveModel(meta)
-	} else {
-		currentModel = client.effectiveModel(nil)
-	}
+	currentModel := client.effectiveModel(meta)
 	sb.WriteString(fmt.Sprintf("Current: **%s**\nUse `!ai model <id>` to switch models", currentModel))
 	ce.Reply(sb.String())
 }
@@ -1236,9 +1184,6 @@ func fnAgent(ce *commands.Event) {
 		}
 		displayName := client.resolveAgentDisplayName(ce.Ctx, agent)
 		if displayName == "" {
-			displayName = agent.Name
-		}
-		if displayName == "" {
 			displayName = agent.ID
 		}
 		ce.Reply("Current agent: **%s** (`%s`)\n%s", displayName, agent.ID, agent.Description)
@@ -1281,9 +1226,6 @@ func fnAgent(ce *commands.Event) {
 	client.ensureAgentGhostDisplayName(ce.Ctx, agent.ID, modelID, agentName)
 	_ = client.BroadcastRoomState(ce.Ctx, ce.Portal)
 	displayName := agentName
-	if displayName == "" {
-		displayName = agent.Name
-	}
 	if displayName == "" {
 		displayName = agent.ID
 	}
