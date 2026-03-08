@@ -197,7 +197,8 @@ Consumer requirements:
 - MUST accept and safely handle all valid AI SDK chunk types.
 - MUST ignore unknown future chunk types.
 - MUST NOT persist `data-*` chunks with `transient: true`.
-- MUST treat `start`, `finish`, `abort`, and `message-metadata` as stream-only events.
+- MUST treat `start`, `finish`, `abort`, and `message-metadata` as stream-only events, not persisted parts.
+- MUST merge payload data from stream-only terminal and metadata chunks into the final canonical `UIMessage.metadata` during finalization or replay assembly. This includes fields such as `finish_reason`, `usage`, and `timing`.
 - MUST persist `start-step` as a `step-start` part in the canonical `UIMessage`.
 
 ### Bridge-specific `data-*` chunks
@@ -356,7 +357,8 @@ When approval is needed, the bridge emits:
    - `approvalId: string`
    - `toolCallId: string`
 2. A timeline-visible fallback notice (for clients that drop/ignore ephemeral events).
-   - The notice is an `m.room.message` with `msgtype = "m.notice"`, SHOULD reply to the originating assistant turn via `m.relates_to.m.in_reply_to`, and includes a `com.beeper.ai` `UIMessage` whose `metadata` contains `approvalId` and whose `parts` contains a `dynamic-tool` part with:
+   - The notice is an `m.room.message` with `msgtype = "m.notice"`, SHOULD reply to the originating assistant turn via `m.relates_to.m.in_reply_to`, and includes a complete `com.beeper.ai` `UIMessage` using the canonical shape defined above (`id`, `role`, optional `metadata`, `parts`).
+   - That fallback `UIMessage.metadata` contains `approvalId` and its `parts` contains a `dynamic-tool` part with:
      - `state = "approval-requested"`
      - `toolCallId: string`
      - `toolName: string`
@@ -403,7 +405,10 @@ Rules:
 - Timeline fallback notices are UI affordances only. They MUST NOT be projected into provider replay history.
 
 Always-allow:
-- `always: true` persists an allow rule in login metadata.
+- `always: true` persists an allow rule in login metadata, scoped to the current login/account for the current bridge implementation.
+- A stored rule matches on the approval target identity emitted by the bridge for that login: at minimum `toolName`, plus any bridge-emitted qualifier needed to distinguish separate approval surfaces for that login (for example agent/model or room-scoped tool routing).
+- Rules are allow-only. If multiple stored rules match, the most specific rule for the current login wins; otherwise any matching allow rule MAY be applied.
+- Approval events themselves remain the audit record for the concrete `approvalId`; persisted allow rules are derived from those events and do not change canonical replay history.
 
 TTL:
 - Pending approvals expire after `ttlSeconds`.
