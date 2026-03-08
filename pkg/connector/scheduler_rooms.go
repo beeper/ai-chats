@@ -14,7 +14,6 @@ func (s *schedulerRuntime) ensureCronRoomLocked(ctx context.Context, record *sch
 	}
 	portalID := fmt.Sprintf("cron:%s:%s", normalizeAgentID(record.Job.AgentID), strings.TrimSpace(record.Job.ID))
 	portal, err := s.getOrCreateScheduledPortal(ctx, portalID, fmt.Sprintf("Cron: %s", strings.TrimSpace(record.Job.Name)), func(meta *PortalMetadata) {
-		meta.AgentID = normalizeAgentID(record.Job.AgentID)
 		if meta.ModuleMeta == nil {
 			meta.ModuleMeta = make(map[string]any)
 		}
@@ -29,6 +28,10 @@ func (s *schedulerRuntime) ensureCronRoomLocked(ctx context.Context, record *sch
 	if err != nil {
 		return err
 	}
+	portal.OtherUserID = agentUserID(normalizeAgentID(record.Job.AgentID))
+	if err := portal.Save(ctx); err != nil {
+		return err
+	}
 	record.RoomID = portal.MXID.String()
 	return nil
 }
@@ -39,7 +42,6 @@ func (s *schedulerRuntime) ensureHeartbeatRoomLocked(ctx context.Context, state 
 	}
 	portalID := fmt.Sprintf("heartbeat:%s", normalizeAgentID(state.AgentID))
 	portal, err := s.getOrCreateScheduledPortal(ctx, portalID, fmt.Sprintf("Heartbeat: %s", state.AgentID), func(meta *PortalMetadata) {
-		meta.AgentID = normalizeAgentID(state.AgentID)
 		if meta.ModuleMeta == nil {
 			meta.ModuleMeta = make(map[string]any)
 		}
@@ -52,6 +54,10 @@ func (s *schedulerRuntime) ensureHeartbeatRoomLocked(ctx context.Context, state 
 		}
 	})
 	if err != nil {
+		return err
+	}
+	portal.OtherUserID = agentUserID(normalizeAgentID(state.AgentID))
+	if err := portal.Save(ctx); err != nil {
 		return err
 	}
 	state.RoomID = portal.MXID.String()

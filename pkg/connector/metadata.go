@@ -46,7 +46,15 @@ type FileAnnotation struct {
 	CreatedAt  int64  `json:"created_at"`           // Unix timestamp when cached
 }
 
-// UserDefaults stores user-level default settings for new chats
+type UserProfile struct {
+	Name               string `json:"name,omitempty"`
+	Occupation         string `json:"occupation,omitempty"`
+	AboutUser          string `json:"about_user,omitempty"`
+	CustomInstructions string `json:"custom_instructions,omitempty"`
+}
+
+// Legacy-only storage type kept so old JSON can still unmarshal during the hard cut.
+// New code must not read this.
 type UserDefaults struct {
 	Model           string   `json:"model,omitempty"`
 	SystemPrompt    string   `json:"system_prompt,omitempty"`
@@ -110,7 +118,6 @@ type BuiltinAlwaysAllowRule struct {
 
 // UserLoginMetadata is stored on each login row to keep per-user settings.
 type UserLoginMetadata struct {
-	Persona              string         `json:"persona,omitempty"`
 	Provider             string         `json:"provider,omitempty"` // Selected provider (beeper, openai, openrouter)
 	APIKey               string         `json:"api_key,omitempty"`
 	BaseURL              string         `json:"base_url,omitempty"`               // Per-user API endpoint
@@ -121,13 +128,14 @@ type UserLoginMetadata struct {
 	ChatsSynced          bool           `json:"chats_synced,omitempty"` // True after initial bootstrap completed successfully
 	Gravatar             *GravatarState `json:"gravatar,omitempty"`
 	Timezone             string         `json:"timezone,omitempty"`
-	ResponsePrefix       string         `json:"response_prefix,omitempty"`
+	Profile              *UserProfile   `json:"profile,omitempty"`
+	ResponsePrefix       string         `json:"response_prefix,omitempty"` // Legacy-only. New code must not read this.
 
 	// FileAnnotationCache stores parsed PDF content from OpenRouter's file-parser plugin
 	// Key is the file hash (SHA256), pruned after 7 days
 	FileAnnotationCache map[string]FileAnnotation `json:"file_annotation_cache,omitempty"`
 
-	// User-level defaults for new chats (set via provisioning API)
+	// Legacy-only. New code must not read this.
 	Defaults *UserDefaults `json:"defaults,omitempty"`
 
 	// Optional per-login tokens for external services
@@ -136,13 +144,10 @@ type UserLoginMetadata struct {
 	// Tool approval rules (e.g. "always allow" decisions for MCP approvals or dangerous builtin tools).
 	ToolApprovals *ToolApprovalsConfig `json:"tool_approvals,omitempty"`
 
-	// AgentModelOverrides stores per-agent model overrides (agent ID -> model ID).
-	AgentModelOverrides map[string]string `json:"agent_model_overrides,omitempty"`
-
-	// Agent Builder room for managing agents
-	BuilderRoomID networkid.PortalID `json:"builder_room_id,omitempty"`
 	// Custom agents store (source of truth for user-created agents).
 	CustomAgents map[string]*AgentDefinitionContent `json:"custom_agents,omitempty"`
+	// Legacy-only. New code must not read this.
+	BuilderRoomID networkid.PortalID `json:"builder_room_id,omitempty"`
 	// Last active room per agent (used for heartbeat delivery).
 	LastActiveRoomByAgent map[string]string `json:"last_active_room_by_agent,omitempty"`
 	// Heartbeat dedupe state per agent.
@@ -176,51 +181,54 @@ type GravatarState struct {
 
 // PortalMetadata stores per-room tuning knobs for the assistant.
 type PortalMetadata struct {
-	Model               string            `json:"model,omitempty"`                 // Set from room state
-	SystemPrompt        string            `json:"system_prompt,omitempty"`         // Set from room state
-	ResponsePrefix      string            `json:"response_prefix,omitempty"`       // Per-room response prefix override
-	Temperature         float64           `json:"temperature,omitempty"`           // Set from room state
-	MaxContextMessages  int               `json:"max_context_messages,omitempty"`  // Set from room state
-	MaxCompletionTokens int               `json:"max_completion_tokens,omitempty"` // Set from room state
-	ReasoningEffort     string            `json:"reasoning_effort,omitempty"`      // none, low, medium, high, xhigh
-	Slug                string            `json:"slug,omitempty"`
-	Title               string            `json:"title,omitempty"`
-	TitleGenerated      bool              `json:"title_generated,omitempty"` // True if title was auto-generated
-	WelcomeSent         bool              `json:"welcome_sent,omitempty"`
-	AutoGreetingSent    bool              `json:"auto_greeting_sent,omitempty"`
-	Capabilities        ModelCapabilities `json:"capabilities,omitempty"`
-	LastRoomStateSync   int64             `json:"last_room_state_sync,omitempty"` // Track when we've synced room state
-	PDFConfig           *PDFConfig        `json:"pdf_config,omitempty"`           // Per-room PDF processing configuration
+	// Legacy-only selector/tuning fields kept to allow old JSON to unmarshal during
+	// the hard cut. New code must not read these.
+	Model                     string            `json:"model,omitempty"`
+	SystemPrompt              string            `json:"system_prompt,omitempty"`
+	Temperature               float64           `json:"temperature,omitempty"`
+	MaxContextMessages        int               `json:"max_context_messages,omitempty"`
+	MaxCompletionTokens       int               `json:"max_completion_tokens,omitempty"`
+	ReasoningEffort           string            `json:"reasoning_effort,omitempty"`
+	Capabilities              ModelCapabilities `json:"capabilities,omitempty"`
+	PDFConfig                 *PDFConfig        `json:"pdf_config,omitempty"`
+	EmitThinking              bool              `json:"emit_thinking,omitempty"`
+	EmitToolArgs              bool              `json:"emit_tool_args,omitempty"`
+	ThinkingLevel             string            `json:"thinking_level,omitempty"`
+	VerboseLevel              string            `json:"verbose_level,omitempty"`
+	ElevatedLevel             string            `json:"elevated_level,omitempty"`
+	GroupActivation           string            `json:"group_activation,omitempty"`
+	GroupActivationNeedsIntro bool              `json:"group_activation_needs_intro,omitempty"`
+	GroupIntroSent            bool              `json:"group_intro_sent,omitempty"`
+	SendPolicy                string            `json:"send_policy,omitempty"`
+	AgentID                   string            `json:"agent_id,omitempty"`
+	AgentPrompt               string            `json:"agent_prompt,omitempty"`
+	IsBuilderRoom             bool              `json:"is_builder_room,omitempty"`
+	IsSimpleMode              bool              `json:"is_simple_mode,omitempty"`
+	AckReactionEmoji          string            `json:"ack_reaction_emoji,omitempty"`
+	AckReactionRemoveAfter    bool              `json:"ack_reaction_remove_after,omitempty"`
 
-	EmitThinking              bool             `json:"emit_thinking,omitempty"`
-	EmitToolArgs              bool             `json:"emit_tool_args,omitempty"`
-	ThinkingLevel             string           `json:"thinking_level,omitempty"`   // off|minimal|low|medium|high|xhigh
-	VerboseLevel              string           `json:"verbose_level,omitempty"`    // off|on|full
-	ElevatedLevel             string           `json:"elevated_level,omitempty"`   // off|on|ask|full
-	GroupActivation           string           `json:"group_activation,omitempty"` // mention|always
-	GroupActivationNeedsIntro bool             `json:"group_activation_needs_intro,omitempty"`
-	GroupIntroSent            bool             `json:"group_intro_sent,omitempty"`
-	SendPolicy                string           `json:"send_policy,omitempty"` // allow|deny
-	SessionResetAt            int64            `json:"session_reset_at,omitempty"`
-	AbortedLastRun            bool             `json:"aborted_last_run,omitempty"`
-	CompactionCount           int              `json:"compaction_count,omitempty"`
-	SessionBootstrappedAt     int64            `json:"session_bootstrapped_at,omitempty"`
-	SessionBootstrapByAgent   map[string]int64 `json:"session_bootstrap_by_agent,omitempty"`
+	Slug             string `json:"slug,omitempty"`
+	Title            string `json:"title,omitempty"`
+	TitleGenerated   bool   `json:"title_generated,omitempty"` // True if title was auto-generated
+	WelcomeSent      bool   `json:"welcome_sent,omitempty"`
+	AutoGreetingSent bool   `json:"auto_greeting_sent,omitempty"`
 
-	// Agent-related metadata
-	AgentID              string         `json:"agent_id,omitempty"`                // Which agent is the ghost for this room
-	AgentPrompt          string         `json:"agent_prompt,omitempty"`            // Cached prompt for the assigned agent
-	IsBuilderRoom        bool           `json:"is_builder_room,omitempty"`         // True if this is the Manage AI Chats room (protected from overrides)
-	IsSimpleMode         bool           `json:"is_simple_mode,omitempty"`          // True if this is a simple mode room (no directive processing)
+	SessionResetAt          int64            `json:"session_reset_at,omitempty"`
+	AbortedLastRun          bool             `json:"aborted_last_run,omitempty"`
+	CompactionCount         int              `json:"compaction_count,omitempty"`
+	SessionBootstrappedAt   int64            `json:"session_bootstrapped_at,omitempty"`
+	SessionBootstrapByAgent map[string]int64 `json:"session_bootstrap_by_agent,omitempty"`
+
 	ModuleMeta           map[string]any `json:"module_meta,omitempty"`             // Generic per-module metadata (e.g., cron room markers, memory flush state)
 	SubagentParentRoomID string         `json:"subagent_parent_room_id,omitempty"` // Parent room ID for subagent sessions
 
-	// Ack reaction config - similar to OpenClaw's ack reactions
-	AckReactionEmoji       string `json:"ack_reaction_emoji,omitempty"`        // Emoji to react with when message received (e.g., "👀", "🤔"). Empty = disabled.
-	AckReactionRemoveAfter bool   `json:"ack_reaction_remove_after,omitempty"` // Remove the ack reaction after replying
-
 	// Runtime-only overrides (not persisted)
-	DisabledTools []string `json:"-"`
+	DisabledTools        []string        `json:"-"`
+	ResolvedTarget       *ResolvedTarget `json:"-"`
+	RuntimeModelOverride string          `json:"-"`
+
+	// Legacy-only. New code must not read this.
+	ResponsePrefix string `json:"response_prefix,omitempty"`
 
 	// Debounce configuration (0 = use default, -1 = disabled)
 	DebounceMs int `json:"debounce_ms,omitempty"`
@@ -231,10 +239,8 @@ type PortalMetadata struct {
 
 }
 
-// isSimpleMode reports whether the portal is in simple mode
-// (no directive processing, minimal agent chrome).
 func isSimpleMode(meta *PortalMetadata) bool {
-	return meta != nil && meta.IsSimpleMode
+	return meta != nil && meta.ResolvedTarget != nil && meta.ResolvedTarget.Kind == ResolvedTargetModel
 }
 
 func clonePortalMetadata(src *PortalMetadata) *PortalMetadata {
@@ -256,12 +262,17 @@ func clonePortalMetadata(src *PortalMetadata) *PortalMetadata {
 	if len(src.DisabledTools) > 0 {
 		clone.DisabledTools = slices.Clone(src.DisabledTools)
 	}
+	clone.ResolvedTarget = src.ResolvedTarget
 
 	if src.ModuleMeta != nil {
 		clone.ModuleMeta = make(map[string]any, len(src.ModuleMeta))
 		for k, v := range src.ModuleMeta {
 			clone.ModuleMeta[k] = jsonutil.DeepCloneAny(v)
 		}
+	}
+	if src.ResolvedTarget != nil {
+		target := *src.ResolvedTarget
+		clone.ResolvedTarget = &target
 	}
 
 	return &clone
@@ -272,20 +283,26 @@ func clonePortalMetadata(src *PortalMetadata) *PortalMetadata {
 type MessageMetadata struct {
 	bridgeadapter.BaseMessageMetadata
 
-	CompletionID       string `json:"completion_id,omitempty"`
-	Model              string `json:"model,omitempty"`
-	HasToolCalls       bool   `json:"has_tool_calls,omitempty"`
-	Transcript         string `json:"transcript,omitempty"`
-	FirstTokenAtMs     int64  `json:"first_token_at_ms,omitempty"`
-	ThinkingTokenCount int    `json:"thinking_token_count,omitempty"`
-	ExcludeFromHistory bool   `json:"exclude_from_history,omitempty"`
+	CompletionID string `json:"completion_id,omitempty"`
+	Model        string `json:"model,omitempty"`
+	HasToolCalls bool   `json:"has_tool_calls,omitempty"`
+	Transcript   string `json:"transcript,omitempty"`
 
 	// Media understanding (OpenClaw-style)
 	MediaUnderstanding          []MediaUnderstandingOutput   `json:"media_understanding,omitempty"`
 	MediaUnderstandingDecisions []MediaUnderstandingDecision `json:"media_understanding_decisions,omitempty"`
 
+	// Timing information
+	FirstTokenAtMs int64 `json:"first_token_at_ms,omitempty"` // Unix ms of first token
+
+	// Thinking/reasoning content (embedded, not separate)
+	ThinkingTokenCount int `json:"thinking_token_count,omitempty"` // Number of thinking tokens
+
+	// History exclusion
+	ExcludeFromHistory bool `json:"exclude_from_history,omitempty"` // Exclude from LLM context (e.g., welcome messages)
+
 	// Multimodal history: media attached to this message for re-injection into prompts.
-	MediaURL string `json:"media_url,omitempty"` // mxc:// URL for user-sent media
+	MediaURL string `json:"media_url,omitempty"` // mxc:// URL for user-sent media (image, PDF, audio, video)
 	MimeType string `json:"mime_type,omitempty"` // MIME type of user-sent media
 }
 
@@ -304,27 +321,64 @@ func (mm *MessageMetadata) CopyFrom(other any) {
 	if !ok || src == nil {
 		return
 	}
-	mm.CopyFromBase(&src.BaseMessageMetadata)
+	if src.Role != "" {
+		mm.Role = src.Role
+	}
+	if src.Body != "" {
+		mm.Body = src.Body
+	}
 	if src.CompletionID != "" {
 		mm.CompletionID = src.CompletionID
+	}
+	if src.FinishReason != "" {
+		mm.FinishReason = src.FinishReason
+	}
+	if src.PromptTokens != 0 {
+		mm.PromptTokens = src.PromptTokens
+	}
+	if src.CompletionTokens != 0 {
+		mm.CompletionTokens = src.CompletionTokens
 	}
 	if src.Model != "" {
 		mm.Model = src.Model
 	}
+	if src.ReasoningTokens != 0 {
+		mm.ReasoningTokens = src.ReasoningTokens
+	}
 	if src.HasToolCalls {
 		mm.HasToolCalls = true
 	}
-	if src.Transcript != "" {
-		mm.Transcript = src.Transcript
+
+	// Copy new fields
+	if src.TurnID != "" {
+		mm.TurnID = src.TurnID
+	}
+	if src.AgentID != "" {
+		mm.AgentID = src.AgentID
+	}
+	if len(src.ToolCalls) > 0 {
+		mm.ToolCalls = src.ToolCalls
+	}
+	if src.CanonicalSchema != "" {
+		mm.CanonicalSchema = src.CanonicalSchema
+	}
+	if len(src.CanonicalUIMessage) > 0 {
+		mm.CanonicalUIMessage = src.CanonicalUIMessage
+	}
+	if src.StartedAtMs != 0 {
+		mm.StartedAtMs = src.StartedAtMs
 	}
 	if src.FirstTokenAtMs != 0 {
 		mm.FirstTokenAtMs = src.FirstTokenAtMs
 	}
+	if src.CompletedAtMs != 0 {
+		mm.CompletedAtMs = src.CompletedAtMs
+	}
+	if src.ThinkingContent != "" {
+		mm.ThinkingContent = src.ThinkingContent
+	}
 	if src.ThinkingTokenCount != 0 {
 		mm.ThinkingTokenCount = src.ThinkingTokenCount
-	}
-	if src.ExcludeFromHistory {
-		mm.ExcludeFromHistory = true
 	}
 }
 

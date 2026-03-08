@@ -10,7 +10,7 @@ import (
 
 func TestMaybePrependSessionGreeting(t *testing.T) {
 	ctx := context.Background()
-	meta := &PortalMetadata{AgentID: "beeper"}
+	meta := agentModeTestMeta("beeper")
 	prompt := []openai.ChatCompletionMessageParamUnion{}
 
 	out := maybePrependSessionGreeting(ctx, nil, meta, prompt, zerolog.Nop())

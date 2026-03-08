@@ -326,12 +326,12 @@ func (s *schedulerRuntime) executeCronJob(ctx context.Context, record *scheduled
 	if meta == nil {
 		meta = &PortalMetadata{}
 	}
-	meta.AgentID = normalizedCronAgentID(&record.Job.AgentID)
-	if model := strings.TrimSpace(record.Job.Payload.Model); model != "" {
-		meta.Model = model
+	if portal.OtherUserID == "" {
+		portal.OtherUserID = agentUserID(normalizedCronAgentID(&record.Job.AgentID))
 	}
-	if thinking := strings.TrimSpace(record.Job.Payload.Thinking); thinking != "" {
-		meta.ReasoningEffort = thinking
+	meta.ResolvedTarget = resolveTargetFromGhostID(portal.OtherUserID)
+	if model := strings.TrimSpace(record.Job.Payload.Model); model != "" {
+		meta.RuntimeModelOverride = ResolveAlias(model)
 	}
 	if record.Job.Delivery != nil && record.Job.Delivery.Mode == integrationcron.DeliveryAnnounce {
 		meta.DisabledTools = appendMissingDisabledTool(meta.DisabledTools, "message")
@@ -391,7 +391,7 @@ func (s *schedulerRuntime) resolveCronDeliveryTarget(agentID string, delivery *i
 				return true
 			}
 			meta := portalMeta(portal)
-			return meta != nil && normalizeAgentID(meta.AgentID) != normalizeAgentID(agentID)
+			return meta != nil && normalizeAgentID(resolveAgentID(meta)) != normalizeAgentID(agentID)
 		},
 		LastActiveRoomID: func(agentID string) string {
 			if portal := s.client.lastActivePortal(agentID); portal != nil && portal.MXID != "" {

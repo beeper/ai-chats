@@ -34,18 +34,8 @@ func buildGroupIntro(roomName string, activation string) string {
 }
 
 func buildVerboseSystemHint(meta *PortalMetadata) string {
-	if meta == nil {
-		return ""
-	}
-	level := strings.ToLower(strings.TrimSpace(meta.VerboseLevel))
-	switch level {
-	case "on":
-		return "Verbosity: on. Provide a bit more detail and context when helpful, but stay focused."
-	case "full":
-		return "Verbosity: full. Be thorough and detailed. Explain assumptions and reasoning clearly, without unnecessary fluff."
-	default:
-		return ""
-	}
+	_ = meta
+	return ""
 }
 
 func buildSessionIdentityHint(portal *bridgev2.Portal, meta *PortalMetadata) string {

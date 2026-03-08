@@ -81,40 +81,14 @@ func (oc *AIClient) buildStatusText(
 		sb.WriteString(fmt.Sprintf("Group activation: %s\n", activation))
 	}
 
-	thinking := oc.defaultThinkLevel(meta)
-	reasoning := strings.TrimSpace(meta.ReasoningEffort)
-	if reasoning == "" {
-		if meta.EmitThinking {
-			reasoning = "on"
-		} else {
-			reasoning = "off"
-		}
-	}
-	verbose := strings.TrimSpace(meta.VerboseLevel)
-	if verbose == "" {
-		verbose = "off"
-	}
-	elevated := strings.TrimSpace(meta.ElevatedLevel)
-	if elevated == "" {
-		elevated = "off"
-	}
-	sendPolicy := normalizeSendPolicyMode(meta.SendPolicy)
-	if sendPolicy == "" {
-		sendPolicy = "allow"
-	}
-	sendLabel := "on"
-	if sendPolicy == "deny" {
-		sendLabel = "off"
-	}
-	responseMode := string(oc.getAgentResponseMode(meta))
+	caps := oc.getRoomCapabilities(ctx, meta)
 	sb.WriteString(fmt.Sprintf(
-		"Options: think=%s reasoning=%s verbose=%s elevated=%s send=%s response=%s\n",
-		thinking,
-		reasoning,
-		verbose,
-		elevated,
-		sendLabel,
-		responseMode,
+		"Features: tools=%t vision=%t audio=%t video=%t pdf=%t\n",
+		caps.SupportsToolCalling,
+		caps.SupportsVision,
+		caps.SupportsAudio,
+		caps.SupportsVideo,
+		caps.SupportsPDF,
 	))
 
 	queueDepth := 0
@@ -391,7 +365,7 @@ func (oc *AIClient) buildToolsStatusText(meta *PortalMetadata) string {
 		sb.WriteString(fmt.Sprintf("  [%s] %s: %s%s\n", status, tool.Name, desc, reason))
 	}
 
-	if meta != nil && !meta.Capabilities.SupportsToolCalling {
+	if meta != nil && !oc.getModelCapabilitiesForMeta(meta).SupportsToolCalling {
 		sb.WriteString(fmt.Sprintf("\nNote: Current model (%s) may not support tool calling.\n", oc.effectiveModel(meta)))
 	}
 

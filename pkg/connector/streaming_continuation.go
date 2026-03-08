@@ -93,7 +93,7 @@ func (oc *AIClient) buildContinuationParams(
 	}
 
 	// Add session tools for non-boss agent rooms (needed for multi-turn tool use)
-	if meta.Capabilities.SupportsToolCalling && agentID != "" && !(hasBossAgent(meta) || agents.IsBossAgent(agentID)) {
+	if oc.getModelCapabilitiesForMeta(meta).SupportsToolCalling && agentID != "" && !(hasBossAgent(meta) || agents.IsBossAgent(agentID)) {
 		var enabledSessions []*tools.Tool
 		for _, tool := range tools.SessionTools() {
 			if oc.isToolEnabled(meta, tool.Name) {

@@ -46,9 +46,7 @@ func addRequestSummary(event *zerolog.Event, meta *PortalMetadata, messages []op
 	event.Int("message_count", len(messages))
 	event.Bool("has_audio", hasAudioContent(messages))
 	event.Bool("has_multimodal", hasMultimodalContent(messages))
-	if meta != nil {
-		event.Bool("tool_calling", meta.Capabilities.SupportsToolCalling)
-	}
+	_ = meta
 }
 
 func addResponsesParamsSummary(event *zerolog.Event, params responses.ResponseNewParams) {

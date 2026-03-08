@@ -59,7 +59,7 @@ func (oc *AIClient) buildResponsesAPIParams(ctx context.Context, portal *bridgev
 		log.Debug().Int("count", len(enabledTools)).Msg("Added builtin function tools")
 	}
 
-	if meta.Capabilities.SupportsToolCalling && hasAgent {
+	if oc.getModelCapabilitiesForMeta(meta).SupportsToolCalling && hasAgent {
 		// Add session tools for non-boss rooms
 		if !hasBossAgent(meta) && !oc.isBuilderRoom(portal) {
 			var enabledSessions []*tools.Tool

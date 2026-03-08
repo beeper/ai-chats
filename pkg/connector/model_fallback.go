@@ -28,18 +28,9 @@ func (e *NonFallbackError) Unwrap() error {
 }
 
 // modelFallbackChain returns the model chain to try in order.
-// Room-level overrides take priority and disable fallbacks.
+// Agent-defined fallbacks are used for agent rooms; model rooms only use their selected model.
 func (oc *AIClient) modelFallbackChain(ctx context.Context, meta *PortalMetadata) []string {
-	// Explicit room-level model overrides should not fall back.
-	if meta != nil && strings.TrimSpace(meta.Model) != "" {
-		return dedupeModels([]string{ResolveAlias(meta.Model)})
-	}
-
-	agentID := ""
-	if meta != nil {
-		agentID = meta.AgentID
-	}
-
+	agentID := resolveAgentID(meta)
 	if agentID != "" {
 		store := NewAgentStoreAdapter(oc)
 		agent, err := store.GetAgentByID(ctx, agentID)
@@ -72,8 +63,7 @@ func (oc *AIClient) overrideModel(meta *PortalMetadata, modelID string) *PortalM
 		return nil
 	}
 	metaCopy := *meta
-	metaCopy.Model = modelID
-	metaCopy.Capabilities = getModelCapabilities(modelID, oc.findModelInfo(modelID))
+	metaCopy.RuntimeModelOverride = ResolveAlias(modelID)
 	return &metaCopy
 }
 

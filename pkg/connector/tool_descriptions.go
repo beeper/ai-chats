@@ -11,7 +11,7 @@ func (oc *AIClient) toolDescriptionForPortal(meta *PortalMetadata, toolName stri
 	name := strings.TrimSpace(toolName)
 	switch name {
 	case toolspec.ImageName:
-		if meta != nil && meta.Capabilities.SupportsVision {
+		if meta != nil && oc.getModelCapabilitiesForMeta(meta).SupportsVision {
 			return toolspec.ImageDescriptionVisionHint
 		}
 	case toolspec.WebSearchName:

@@ -20,6 +20,17 @@ import (
 var aiCommandRegistry = commandregistry.NewRegistry()
 var moduleCommandRegisterMu sync.Mutex
 var moduleCommandsRegistered = map[string]struct{}{}
+var allowedUserCommandNames = map[string]struct{}{
+	"new":    {},
+	"reset":  {},
+	"status": {},
+	"stop":   {},
+}
+
+func isUserFacingCommand(name string) bool {
+	_, ok := allowedUserCommandNames[strings.TrimSpace(strings.ToLower(name))]
+	return ok
+}
 
 func registerAICommand(def commandregistry.Definition) *commands.FullHandler {
 	return aiCommandRegistry.Register(def)
@@ -101,6 +112,9 @@ func registerCommandsWithOwnerGuard(proc *commands.Processor, cfg *Config, log *
 			if handler == nil || handler.Func == nil {
 				continue
 			}
+			if !isUserFacingCommand(handler.Name) {
+				continue
+			}
 			original := handler.Func
 			handler.Func = func(ce *commands.Event) {
 				senderID := ""
@@ -149,6 +163,9 @@ func (oc *AIClient) BroadcastCommandDescriptions(ctx context.Context, portal *br
 
 	for _, handler := range handlers {
 		if handler == nil || handler.Name == "" {
+			continue
+		}
+		if !isUserFacingCommand(handler.Name) {
 			continue
 		}
 		stateKey := handler.Name

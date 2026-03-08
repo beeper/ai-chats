@@ -3,33 +3,13 @@ package connector
 import "fmt"
 
 func applyThinkingLevel(meta *PortalMetadata, level string) {
-	if meta == nil {
-		return
-	}
-	meta.ThinkingLevel = level
-	meta.EmitThinking = level != "off"
-	if level == "minimal" {
-		meta.ReasoningEffort = "low"
-	} else if level == "low" || level == "medium" || level == "high" || level == "xhigh" {
-		meta.ReasoningEffort = level
-	}
+	_ = meta
+	_ = level
 }
 
 func applyReasoningLevel(meta *PortalMetadata, level string) {
-	if meta == nil {
-		return
-	}
-	if level == "off" {
-		meta.EmitThinking = false
-		meta.ReasoningEffort = ""
-		return
-	}
-	if level == "on" {
-		meta.EmitThinking = true
-		return
-	}
-	meta.EmitThinking = true
-	meta.ReasoningEffort = level
+	_ = meta
+	_ = level
 }
 
 func formatThinkingAck(level string) string {

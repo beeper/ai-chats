@@ -72,7 +72,7 @@ func (oc *AIClient) streamChatCompletions(
 		if len(enabledTools) > 0 {
 			params.Tools = append(params.Tools, ToOpenAIChatTools(enabledTools, &oc.log)...)
 		}
-		if meta.Capabilities.SupportsToolCalling && chatHasAgent {
+		if oc.getModelCapabilitiesForMeta(meta).SupportsToolCalling && chatHasAgent {
 			if !oc.isBuilderRoom(portal) {
 				var enabledSessions []*tools.Tool
 				for _, tool := range tools.SessionTools() {

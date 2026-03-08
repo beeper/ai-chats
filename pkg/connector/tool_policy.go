@@ -45,12 +45,12 @@ func (oc *AIClient) isToolAvailable(meta *PortalMetadata, toolName string) (bool
 		return available, source, reason
 	}
 
-	if !meta.Capabilities.SupportsToolCalling {
+	if !oc.getModelCapabilitiesForMeta(meta).SupportsToolCalling {
 		return false, SourceModelLimit, "Model does not support tools"
 	}
 
-	if agenttools.IsBossTool(toolName) && !(meta.IsBuilderRoom || hasBossAgent(meta)) {
-		return false, SourceGlobalDefault, "Builder room only"
+	if agenttools.IsBossTool(toolName) && !hasBossAgent(meta) {
+		return false, SourceGlobalDefault, "Boss agent only"
 	}
 
 	// Tool runtime prerequisites (API keys, services, etc.). These are intentionally
@@ -190,7 +190,7 @@ func (oc *AIClient) toolNamesForPortal(meta *PortalMetadata) []string {
 	for _, tool := range agenttools.SessionTools() {
 		nameSet[tool.Name] = struct{}{}
 	}
-	if meta != nil && (meta.IsBuilderRoom || hasBossAgent(meta)) {
+	if meta != nil && hasBossAgent(meta) {
 		for _, tool := range agenttools.BossTools() {
 			nameSet[tool.Name] = struct{}{}
 		}

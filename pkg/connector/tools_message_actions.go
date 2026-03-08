@@ -151,11 +151,7 @@ func executeMessageMemberInfo(ctx context.Context, args map[string]any, btc *Bri
 			} else {
 				store := NewAgentStoreAdapter(btc.Client)
 				if agent, err := store.GetAgentByID(ctx, agentID); err == nil && agent != nil && agent.Model.Primary != "" {
-					if override := btc.Client.agentModelOverride(agentID); override != "" {
-						modelID = ResolveAlias(override)
-					} else {
-						modelID = ResolveAlias(agent.Model.Primary)
-					}
+					modelID = ResolveAlias(agent.Model.Primary)
 				}
 			}
 		}

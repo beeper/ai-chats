@@ -70,7 +70,7 @@ func TestBuildPromptWithLinkContext_SimpleModeSkipsInboundRuntimeMetadata(t *tes
 			},
 		},
 	}
-	meta := &PortalMetadata{IsSimpleMode: true}
+	meta := simpleModeTestMeta("openai/gpt-5")
 	ctx := withInboundContext(context.Background(), airuntime.InboundContext{
 		Provider:     "matrix",
 		Surface:      "beeper-matrix",

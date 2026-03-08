@@ -1542,10 +1542,7 @@ func executeSessionStatus(ctx context.Context, args map[string]any) (string, err
 	dayOfWeek := now.Weekday().String()
 
 	// Get model info
-	model := meta.Model
-	if model == "" {
-		model = btc.Client.effectiveModel(meta)
-	}
+	model := btc.Client.effectiveModel(meta)
 
 	// Parse provider from model string (format: "provider/model" or just "model")
 	provider := "unknown"
@@ -1555,15 +1552,9 @@ func executeSessionStatus(ctx context.Context, args map[string]any) (string, err
 		modelName = parsedModel
 	}
 
-	// Get context/token info from metadata
-	maxContext := meta.MaxContextMessages
-	if maxContext == 0 {
-		maxContext = 12 // default
-	}
-	maxTokens := meta.MaxCompletionTokens
-	if maxTokens == 0 {
-		maxTokens = 512 // default
-	}
+	// Get context/token info from the effective runtime only.
+	maxContext := btc.Client.getModelContextWindow(meta)
+	maxTokens := btc.Client.effectiveMaxTokens(meta)
 
 	// Build session info
 	sessionID := string(btc.Portal.PortalKey.ID)
@@ -1575,74 +1566,10 @@ func executeSessionStatus(ctx context.Context, args map[string]any) (string, err
 		title = "Untitled"
 	}
 
-	// Handle model change if requested (OpenClaw-style "model" alias supported)
-	var modelChanged string
-	newModel := ""
-	if raw, ok := args["set_model"].(string); ok && strings.TrimSpace(raw) != "" {
-		newModel = strings.TrimSpace(raw)
-	} else if raw, ok := args["model"].(string); ok && strings.TrimSpace(raw) != "" {
-		newModel = strings.TrimSpace(raw)
-	}
-
-	if newModel != "" {
-		if strings.EqualFold(newModel, "default") || strings.EqualFold(newModel, "reset") {
-			metaCopy := *meta
-			metaCopy.Model = ""
-			effective := btc.Client.effectiveModel(&metaCopy)
-			if err := btc.Client.validateDMModelSwitch(btc.Portal, meta, effective); err != nil {
-				return "", dmModelSwitchBlockedError(effective)
-			}
-
-			// Clear override and recompute capabilities from effective model
-			meta.Model = ""
-			effective = btc.Client.effectiveModel(meta)
-			meta.Capabilities = getModelCapabilities(effective, btc.Client.findModelInfo(effective))
-			if err := btc.Portal.Save(ctx); err != nil {
-				return "", fmt.Errorf("couldn't save model reset: %w", err)
-			}
-			btc.Portal.UpdateBridgeInfo(ctx)
-			btc.Client.ensureGhostDisplayName(ctx, effective)
-			modelChanged = fmt.Sprintf("\n\nModel reset to %s.", effective)
-			model = effective
-			if parsedProvider, parsedModel := splitModelProvider(effective); parsedProvider != "" && parsedModel != "" {
-				provider = parsedProvider
-				modelName = parsedModel
-			} else {
-				modelName = effective
-			}
-		} else {
-			resolvedModel, valid, err := btc.Client.resolveModelID(ctx, newModel)
-			if err != nil || !valid || resolvedModel == "" {
-				return "", fmt.Errorf("invalid model: %s", newModel)
-			}
-			if err := btc.Client.validateDMModelSwitch(btc.Portal, meta, resolvedModel); err != nil {
-				return "", dmModelSwitchBlockedError(resolvedModel)
-			}
-
-			// Update the model in metadata
-			meta.Model = resolvedModel
-			meta.Capabilities = getModelCapabilities(resolvedModel, btc.Client.findModelInfo(resolvedModel))
-			// Save portal metadata
-			if err := btc.Portal.Save(ctx); err != nil {
-				return "", fmt.Errorf("couldn't save model change: %w", err)
-			}
-			btc.Portal.UpdateBridgeInfo(ctx)
-			btc.Client.ensureGhostDisplayName(ctx, resolvedModel)
-			modelChanged = fmt.Sprintf("\n\nModel set to %s.", resolvedModel)
-			model = resolvedModel
-			if parsedProvider, parsedModel := splitModelProvider(resolvedModel); parsedProvider != "" && parsedModel != "" {
-				provider = parsedProvider
-				modelName = parsedModel
-			} else {
-				modelName = resolvedModel
-			}
-		}
-	}
-
 	// Get agent info if available
 	agentInfo := ""
-	if meta.AgentID != "" {
-		agentInfo = fmt.Sprintf("\nAgent: %s", meta.AgentID)
+	if agentID := resolveAgentID(meta); agentID != "" {
+		agentInfo = fmt.Sprintf("\nAgent: %s", agentID)
 	}
 
 	// Build status card similar to OpenClaw
@@ -1656,7 +1583,7 @@ Provider: %s
 Max Context: %d messages
 Max Tokens: %d
 
-Session: %s
+	Session: %s
 Chat: %s%s%s`,
 		timeStr, timezone, now.Format("MST"),
 		dayOfWeek,
@@ -1667,7 +1594,7 @@ Chat: %s%s%s`,
 		sessionID,
 		title,
 		agentInfo,
-		modelChanged,
+		"",
 	)
 
 	return status, nil

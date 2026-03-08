@@ -219,7 +219,7 @@ func isInternalControlRoom(meta *PortalMetadata) bool {
 	if meta == nil {
 		return false
 	}
-	return meta.IsBuilderRoom || isModuleInternalRoom(meta)
+	return isModuleInternalRoom(meta)
 }
 
 func autoGreetingBlockReason(meta *PortalMetadata) string {
@@ -369,19 +369,16 @@ func (oc *AIClient) sendWelcomeMessage(ctx context.Context, portal *bridgev2.Por
 		// Still send the welcome notice and schedule greeting; duplicates are preferable to missing UX.
 	}
 
-	if meta.AgentID == "" {
-		displayName := modelContactName(meta.Model, oc.findModelInfo(meta.Model))
+	if resolveAgentID(meta) == "" {
+		modelID := oc.effectiveModel(meta)
+		displayName := modelContactName(modelID, oc.findModelInfo(modelID))
 		oc.sendSystemNotice(bgCtx, portal, fmt.Sprintf("You are chatting with %s. AI can make mistakes.", displayName))
 	} else {
 		oc.sendSystemNotice(bgCtx, portal, "AI can make mistakes.")
 	}
 
-	// Ensure initial room state exists for clients (model/settings/capabilities).
-	// Only broadcast once on first-room initialization.
-	if meta.LastRoomStateSync == 0 {
-		if err := oc.BroadcastRoomState(bgCtx, portal); err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to broadcast initial room state")
-		}
+	if err := oc.BroadcastRoomState(bgCtx, portal); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to broadcast room state")
 	}
 
 	oc.scheduleAutoGreeting(bgCtx, portal)
@@ -649,18 +646,9 @@ func (oc *AIClient) setRoomSystemPromptNoSave(ctx context.Context, portal *bridg
 }
 
 func (oc *AIClient) setRoomSystemPromptInternal(ctx context.Context, portal *bridgev2.Portal, prompt string, save bool) error {
-	if portal.MXID == "" {
-		return errors.New("portal has no Matrix room ID")
-	}
-
-	meta := portalMeta(portal)
-	meta.SystemPrompt = prompt
-
-	if save {
-		if err := portal.Save(ctx); err != nil {
-			return fmt.Errorf("failed to save portal: %w", err)
-		}
-		oc.loggerForContext(ctx).Debug().Str("prompt_len", fmt.Sprintf("%d", len(prompt))).Msg("Set room system prompt")
-	}
+	_ = ctx
+	_ = portal
+	_ = prompt
+	_ = save
 	return nil
 }

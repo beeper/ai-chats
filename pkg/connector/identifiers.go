@@ -27,8 +27,30 @@ func nthLoginID(providerSlug string, mxid id.UserID, ordinal int) networkid.User
 	return networkid.UserLoginID(fmt.Sprintf("%s:%d", base, ordinal))
 }
 
+func nextLoginID(user *bridgev2.User, providerSlug string, mxid id.UserID) networkid.UserLoginID {
+	used := map[string]struct{}{}
+	if user != nil {
+		for _, existing := range user.GetUserLogins() {
+			if existing == nil {
+				continue
+			}
+			used[string(existing.ID)] = struct{}{}
+		}
+	}
+	for ordinal := 1; ; ordinal++ {
+		loginID := nthLoginID(providerSlug, mxid, ordinal)
+		if _, ok := used[string(loginID)]; !ok {
+			return loginID
+		}
+	}
+}
+
 func providerLoginID(provider string, mxid id.UserID, ordinal int) networkid.UserLoginID {
 	return nthLoginID(providerSlug(provider), mxid, ordinal)
+}
+
+func nextProviderLoginID(user *bridgev2.User, provider string, mxid id.UserID) networkid.UserLoginID {
+	return nextLoginID(user, providerSlug(provider), mxid)
 }
 
 func managedBeeperLoginID(mxid id.UserID) networkid.UserLoginID {
@@ -105,15 +127,61 @@ func humanUserID(loginID networkid.UserLoginID) networkid.UserID {
 	return bridgeadapter.HumanUserID("openai-user", loginID)
 }
 
+const (
+	ResolvedTargetUnknown = ""
+	ResolvedTargetModel   = "model"
+	ResolvedTargetAgent   = "agent"
+)
+
+type ResolvedTarget struct {
+	Kind    string
+	GhostID networkid.UserID
+	ModelID string
+	AgentID string
+}
+
+func resolveTargetFromGhostID(ghostID networkid.UserID) *ResolvedTarget {
+	if ghostID == "" {
+		return nil
+	}
+	if modelID := strings.TrimSpace(parseModelFromGhostID(string(ghostID))); modelID != "" {
+		return &ResolvedTarget{
+			Kind:    ResolvedTargetModel,
+			GhostID: ghostID,
+			ModelID: modelID,
+		}
+	}
+	if agentID, ok := parseAgentFromGhostID(string(ghostID)); ok && strings.TrimSpace(agentID) != "" {
+		return &ResolvedTarget{
+			Kind:    ResolvedTargetAgent,
+			GhostID: ghostID,
+			AgentID: strings.TrimSpace(agentID),
+		}
+	}
+	return nil
+}
+
+func resolvedAgentIDForGhost(ghostID networkid.UserID) string {
+	target := resolveTargetFromGhostID(ghostID)
+	if target == nil {
+		return ""
+	}
+	return target.AgentID
+}
+
 func portalMeta(portal *bridgev2.Portal) *PortalMetadata {
-	return bridgeadapter.EnsurePortalMetadata[PortalMetadata](portal)
+	meta := bridgeadapter.EnsurePortalMetadata[PortalMetadata](portal)
+	if meta != nil {
+		meta.ResolvedTarget = resolveTargetFromGhostID(portal.OtherUserID)
+	}
+	return meta
 }
 
 func resolveAgentID(meta *PortalMetadata) string {
-	if meta == nil {
+	if meta == nil || meta.ResolvedTarget == nil {
 		return ""
 	}
-	return meta.AgentID
+	return meta.ResolvedTarget.AgentID
 }
 
 func messageMeta(msg *database.Message) *MessageMetadata {
