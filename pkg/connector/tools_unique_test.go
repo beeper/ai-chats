@@ -21,7 +21,7 @@ func TestToolNamesUnique(t *testing.T) {
 		builtinSeen[tool.Name] = struct{}{}
 	}
 
-	// Boss tools (combined with builtin in builder rooms)
+	// Boss tools (combined with builtin in boss-agent rooms)
 	for _, tool := range agenttools.BossTools() {
 		if tool.Name == "" {
 			t.Fatalf("boss tool has empty name: %+v", tool)

@@ -8,7 +8,7 @@ This is a profile document, not a new MSC. It specifies which commands ai-bridge
 
 ## Motivation
 
-Text-based bot commands (`!ai model gpt-4o`, `!ai reset`) have several problems:
+Text-based bot commands (`!ai status`, `!ai reset`) have several problems:
 
 - **Undiscoverable:** Users must read documentation or type `!ai help` to learn available commands. There is no in-client autocomplete or parameter hinting.
 - **Fragile parsing:** Free-text command parsing leads to ambiguous inputs and poor error messages. Typed parameters eliminate this class of bugs.
@@ -36,22 +36,6 @@ The bot MUST broadcast one state event per command when it joins a room. The `st
 ```
 
 ```json
-{
-  "type": "org.matrix.msc4391.command_description",
-  "state_key": "model",
-  "content": {
-    "description": "Get or set the AI model",
-    "arguments": {
-      "model_id": {
-        "description": "Model identifier (e.g. gpt-4o, claude-sonnet)",
-        "required": false,
-        "type": "string"
-      }
-    }
-  }
-}
-```
-
 ### Structured Invocation
 
 When a client sends a command, it MUST include the `org.matrix.msc4391.command` field in the message content:
@@ -61,12 +45,10 @@ When a client sends a command, it MUST include the `org.matrix.msc4391.command` 
   "type": "m.room.message",
   "content": {
     "msgtype": "m.text",
-    "body": "!ai model gpt-4o",
+    "body": "!ai status",
     "org.matrix.msc4391.command": {
-      "command": "model",
-      "arguments": {
-        "model_id": "gpt-4o"
-      }
+      "command": "status",
+      "arguments": {}
     }
   }
 }
@@ -80,19 +62,10 @@ Commands broadcast by ai-bridge:
 
 | Command | Description | Arguments |
 |---------|-------------|-----------|
+| `new` | Create a new chat of the same type | `agent?: string` |
 | `status` | Show current session status | — |
-| `model` | Get or set the AI model | `model_id?: string` |
 | `reset` | Start a new session/thread | — |
 | `stop` | Abort current run and clear queue | — |
-| `think` | Get or set thinking level | `level?: off\|minimal\|low\|medium\|high\|xhigh` |
-| `verbose` | Get or set verbosity | `level?: off\|on\|full` |
-| `reasoning` | Get or set reasoning visibility | `level?: off\|on\|low\|medium\|high\|xhigh` |
-| `elevated` | Get or set elevated access | `level?: off\|on\|ask\|full` |
-| `activation` | Set group activation policy | `policy: mention\|always` |
-| `send` | Allow/deny sending messages | `mode: on\|off\|inherit` |
-| `queue` | Inspect or configure message queue | `action?: status\|reset\|<mode>` |
-| `whoami` | Show your Matrix user ID | — |
-| `last-heartbeat` | Show last heartbeat event | — |
 
 Dynamic commands from integrations and modules are also broadcast as state events.
 
@@ -104,7 +77,7 @@ When both are present, the structured `org.matrix.msc4391.command` field takes p
 
 ## Security Considerations
 
-- **Command authorization:** The bot SHOULD check room power levels before executing commands that modify room or session state. Commands like `reset`, `model`, and `elevated` affect all users in the room.
+- **Command authorization:** The bot SHOULD check room power levels before executing commands that modify room or session state.
 - **Argument validation:** The bot MUST validate structured arguments against the published schema before execution. Malformed arguments MUST be rejected with an error message.
 
 ## Unstable Prefix

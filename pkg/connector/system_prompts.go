@@ -34,18 +34,8 @@ func buildGroupIntro(roomName string, activation string) string {
 }
 
 func buildVerboseSystemHint(meta *PortalMetadata) string {
-	if meta == nil {
-		return ""
-	}
-	level := strings.ToLower(strings.TrimSpace(meta.VerboseLevel))
-	switch level {
-	case "on":
-		return "Verbosity: on. Provide a bit more detail and context when helpful, but stay focused."
-	case "full":
-		return "Verbosity: full. Be thorough and detailed. Explain assumptions and reasoning clearly, without unnecessary fluff."
-	default:
-		return ""
-	}
+	_ = meta
+	return ""
 }
 
 func buildSessionIdentityHint(portal *bridgev2.Portal, meta *PortalMetadata) string {
@@ -89,15 +79,9 @@ func (oc *AIClient) buildAdditionalSystemPromptsCore(
 
 	if meta != nil && portal != nil && oc.isGroupChat(ctx, portal) {
 		activation := oc.resolveGroupActivation(meta)
-		shouldIntro := !meta.GroupIntroSent || meta.GroupActivationNeedsIntro
-		if shouldIntro {
-			intro := buildGroupIntro(oc.matrixRoomDisplayName(ctx, portal), activation)
-			if strings.TrimSpace(intro) != "" {
-				out = append(out, openai.SystemMessage(intro))
-			}
-			meta.GroupIntroSent = true
-			meta.GroupActivationNeedsIntro = false
-			oc.savePortalQuiet(ctx, portal, "group intro")
+		intro := buildGroupIntro(oc.matrixRoomDisplayName(ctx, portal), activation)
+		if strings.TrimSpace(intro) != "" {
+			out = append(out, openai.SystemMessage(intro))
 		}
 	}
 

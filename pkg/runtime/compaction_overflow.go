@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/openai/openai-go/v3"
@@ -134,7 +135,7 @@ func pruneHistoryForContextSharePrompt(
 	}
 
 	preambleEnd := preambleEndIndex(prompt)
-	kept := append([]openai.ChatCompletionMessageParamUnion{}, prompt[preambleEnd:]...)
+	kept := slices.Clone(prompt[preambleEnd:])
 	droppedCount := 0
 	droppedTokens := 0
 	for len(kept) > 0 && estimatePromptTokensForCompaction(kept) > budgetTokens {
@@ -152,7 +153,7 @@ func pruneHistoryForContextSharePrompt(
 		kept = repairOrphanToolResults(rest)
 	}
 
-	finalPrompt := append([]openai.ChatCompletionMessageParamUnion{}, prompt[:preambleEnd]...)
+	finalPrompt := slices.Clone(prompt[:preambleEnd])
 	finalPrompt = append(finalPrompt, kept...)
 	return historySharePruneResult{
 		Prompt:        finalPrompt,
@@ -166,7 +167,7 @@ func pruneHistoryForContextSharePrompt(
 
 // CompactPromptOnOverflow applies deterministic compaction + smart truncation for overflow retries.
 func CompactPromptOnOverflow(input OverflowCompactionInput) OverflowCompactionResult {
-	workingPrompt := append([]openai.ChatCompletionMessageParamUnion{}, input.Prompt...)
+	workingPrompt := slices.Clone(input.Prompt)
 	if len(workingPrompt) <= 2 {
 		_, totalChars := PromptTextPayloads(workingPrompt)
 		decision := CompactionDecision{

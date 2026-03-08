@@ -74,7 +74,7 @@ func (oc *AIClient) lastActivePortal(agentID string) *bridgev2.Portal {
 	portal := oc.portalByRoomID(context.Background(), id.RoomID(room))
 	// Guard against stale mappings when a room's agent assignment changes.
 	if portal != nil {
-		if meta := portalMeta(portal); meta != nil && normalizeAgentID(meta.AgentID) != normalizeAgentID(agentID) {
+		if meta := portalMeta(portal); meta != nil && normalizeAgentID(resolveAgentID(meta)) != normalizeAgentID(agentID) {
 			return nil
 		}
 	}

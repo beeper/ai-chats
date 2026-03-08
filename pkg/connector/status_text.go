@@ -1,14 +1,11 @@
 package connector
 
 import (
-	"cmp"
 	"context"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
-	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 
 	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
@@ -81,40 +78,14 @@ func (oc *AIClient) buildStatusText(
 		sb.WriteString(fmt.Sprintf("Group activation: %s\n", activation))
 	}
 
-	thinking := oc.defaultThinkLevel(meta)
-	reasoning := strings.TrimSpace(meta.ReasoningEffort)
-	if reasoning == "" {
-		if meta.EmitThinking {
-			reasoning = "on"
-		} else {
-			reasoning = "off"
-		}
-	}
-	verbose := strings.TrimSpace(meta.VerboseLevel)
-	if verbose == "" {
-		verbose = "off"
-	}
-	elevated := strings.TrimSpace(meta.ElevatedLevel)
-	if elevated == "" {
-		elevated = "off"
-	}
-	sendPolicy := normalizeSendPolicyMode(meta.SendPolicy)
-	if sendPolicy == "" {
-		sendPolicy = "allow"
-	}
-	sendLabel := "on"
-	if sendPolicy == "deny" {
-		sendLabel = "off"
-	}
-	responseMode := string(oc.getAgentResponseMode(meta))
+	caps := oc.getRoomCapabilities(ctx, meta)
 	sb.WriteString(fmt.Sprintf(
-		"Options: think=%s reasoning=%s verbose=%s elevated=%s send=%s response=%s\n",
-		thinking,
-		reasoning,
-		verbose,
-		elevated,
-		sendLabel,
-		responseMode,
+		"Features: tools=%t vision=%t audio=%t video=%t pdf=%t\n",
+		caps.SupportsToolCalling,
+		caps.SupportsVision,
+		caps.SupportsAudio,
+		caps.SupportsVideo,
+		caps.SupportsPDF,
 	))
 
 	queueDepth := 0
@@ -206,64 +177,6 @@ func formatTypingInterval(interval time.Duration) string {
 		seconds = 1
 	}
 	return fmt.Sprintf("%ds", seconds)
-}
-
-func (oc *AIClient) buildContextStatus(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) string {
-	if meta == nil || portal == nil {
-		return "Context unavailable"
-	}
-	var sb strings.Builder
-	sb.WriteString("Context\n")
-	modelID := oc.effectiveModel(meta)
-	provider := strings.TrimSpace(loginMetadata(oc.UserLogin).Provider)
-	if provider != "" {
-		sb.WriteString(fmt.Sprintf("Model: %s/%s\n", provider, modelID))
-	} else {
-		sb.WriteString(fmt.Sprintf("Model: %s\n", modelID))
-	}
-
-	contextWindow := oc.getModelContextWindow(meta)
-	estimate := oc.estimatePromptTokens(ctx, portal, meta)
-	if estimate > 0 {
-		sb.WriteString(fmt.Sprintf(
-			"Prompt estimate: %s/%s (%s)\n",
-			formatCompactTokens(int64(estimate)),
-			formatCompactTokens(int64(contextWindow)),
-			formatPercent(estimate, contextWindow),
-		))
-	} else {
-		sb.WriteString(fmt.Sprintf("Context window: %s tokens\n", formatCompactTokens(int64(contextWindow))))
-	}
-
-	systemPrompt := oc.effectivePrompt(meta)
-	if systemPrompt != "" {
-		sysTokens := 0
-		if count, err := EstimateTokens([]openai.ChatCompletionMessageParamUnion{openai.SystemMessage(systemPrompt)}, modelID); err == nil {
-			sysTokens = count
-		}
-		sysLine := fmt.Sprintf("System prompt: %d chars", len(systemPrompt))
-		if sysTokens > 0 {
-			sysLine = fmt.Sprintf("%s (%s tokens)", sysLine, formatCompactTokens(int64(sysTokens)))
-		}
-		sb.WriteString(sysLine + "\n")
-	}
-
-	historyLimit := oc.historyLimit(ctx, portal, meta)
-	historyCount := 0
-	if historyLimit > 0 {
-		if history, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, historyLimit); err == nil {
-			historyCount = len(history)
-		}
-	}
-	sb.WriteString(fmt.Sprintf("History limit: %d messages\n", historyLimit))
-	sb.WriteString(fmt.Sprintf("History loaded: %d messages\n", historyCount))
-
-	sb.WriteString(fmt.Sprintf("Compactions: %d\n", meta.CompactionCount))
-
-	if meta.SessionResetAt > 0 {
-		sb.WriteString(fmt.Sprintf("Session reset: %s\n", time.UnixMilli(meta.SessionResetAt).Format(time.RFC3339)))
-	}
-	return strings.TrimSpace(sb.String())
 }
 
 type assistantUsageSnapshot struct {
@@ -363,37 +276,4 @@ func formatAge(deltaMs int64) string {
 		return fmt.Sprintf("%dh ago", int(d.Hours()))
 	}
 	return fmt.Sprintf("%dd ago", int(d.Hours()/24))
-}
-
-func (oc *AIClient) buildToolsStatusText(meta *PortalMetadata) string {
-	var sb strings.Builder
-	sb.WriteString("Tool Status:\n\n")
-
-	toolsList := oc.buildAvailableTools(meta)
-	slices.SortFunc(toolsList, func(a, b ToolInfo) int {
-		return cmp.Compare(a.Name, b.Name)
-	})
-
-	sb.WriteString("Tools:\n")
-	for _, tool := range toolsList {
-		status := "✗"
-		if tool.Enabled {
-			status = "✓"
-		}
-		desc := tool.Description
-		if desc == "" {
-			desc = tool.DisplayName
-		}
-		reason := ""
-		if !tool.Enabled && tool.Reason != "" {
-			reason = fmt.Sprintf(" (%s)", tool.Reason)
-		}
-		sb.WriteString(fmt.Sprintf("  [%s] %s: %s%s\n", status, tool.Name, desc, reason))
-	}
-
-	if meta != nil && !meta.Capabilities.SupportsToolCalling {
-		sb.WriteString(fmt.Sprintf("\nNote: Current model (%s) may not support tool calling.\n", oc.effectiveModel(meta)))
-	}
-
-	return strings.TrimSpace(sb.String())
 }

@@ -12,6 +12,8 @@ import (
 	"github.com/openai/openai-go/v3/shared"
 	"github.com/rs/zerolog"
 
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/status"
@@ -153,26 +155,20 @@ func (oc *AIClient) setModelTyping(ctx context.Context, portal *bridgev2.Portal,
 }
 
 func (oc *AIClient) sendPendingStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, message string) {
-	if portal == nil || portal.Bridge == nil || evt == nil {
-		return
-	}
 	status := bridgev2.MessageStatus{
 		Status:    event.MessageStatusPending,
 		Message:   message,
 		IsCertain: true,
 	}
-	portal.Bridge.Matrix.SendMessageStatus(ctx, &status, bridgev2.StatusEventInfoFromEvent(evt))
+	bridgeadapter.SendMatrixMessageStatus(ctx, portal, evt, status)
 }
 
 func (oc *AIClient) sendSuccessStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event) {
-	if portal == nil || portal.Bridge == nil || evt == nil {
-		return
-	}
 	status := bridgev2.MessageStatus{
 		Status:    event.MessageStatusSuccess,
 		IsCertain: true,
 	}
-	portal.Bridge.Matrix.SendMessageStatus(ctx, &status, bridgev2.StatusEventInfoFromEvent(evt))
+	bridgeadapter.SendMatrixMessageStatus(ctx, portal, evt, status)
 }
 
 const autoGreetingDelay = 5 * time.Second
@@ -223,19 +219,13 @@ func isInternalControlRoom(meta *PortalMetadata) bool {
 	if meta == nil {
 		return false
 	}
-	return meta.IsBuilderRoom || isModuleInternalRoom(meta)
+	return isModuleInternalRoom(meta)
 }
 
 func autoGreetingBlockReason(meta *PortalMetadata) string {
-	sendPolicy := ""
-	if meta != nil {
-		sendPolicy = meta.SendPolicy
-	}
 	switch {
 	case isInternalControlRoom(meta):
 		return "internal-control-room"
-	case normalizeSendPolicyMode(sendPolicy) == "deny":
-		return "send-policy-deny"
 	case resolveAgentID(meta) == "":
 		return "no-agent"
 	}
@@ -373,19 +363,16 @@ func (oc *AIClient) sendWelcomeMessage(ctx context.Context, portal *bridgev2.Por
 		// Still send the welcome notice and schedule greeting; duplicates are preferable to missing UX.
 	}
 
-	if meta.AgentID == "" {
-		displayName := modelContactName(meta.Model, oc.findModelInfo(meta.Model))
+	if resolveAgentID(meta) == "" {
+		modelID := oc.effectiveModel(meta)
+		displayName := modelContactName(modelID, oc.findModelInfo(modelID))
 		oc.sendSystemNotice(bgCtx, portal, fmt.Sprintf("You are chatting with %s. AI can make mistakes.", displayName))
 	} else {
 		oc.sendSystemNotice(bgCtx, portal, "AI can make mistakes.")
 	}
 
-	// Ensure initial room state exists for clients (model/settings/capabilities).
-	// Only broadcast once on first-room initialization.
-	if meta.LastRoomStateSync == 0 {
-		if err := oc.BroadcastRoomState(bgCtx, portal); err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to broadcast initial room state")
-		}
+	if err := oc.BroadcastRoomState(bgCtx, portal); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to broadcast room state")
 	}
 
 	oc.scheduleAutoGreeting(bgCtx, portal)
@@ -641,30 +628,4 @@ func (oc *AIClient) getModelContextWindow(meta *PortalMetadata) int {
 
 	// Default for unknown models
 	return 128000
-}
-
-// This is separate from room topic (which is display-only).
-func (oc *AIClient) setRoomSystemPrompt(ctx context.Context, portal *bridgev2.Portal, prompt string) error {
-	return oc.setRoomSystemPromptInternal(ctx, portal, prompt, true)
-}
-
-func (oc *AIClient) setRoomSystemPromptNoSave(ctx context.Context, portal *bridgev2.Portal, prompt string) error {
-	return oc.setRoomSystemPromptInternal(ctx, portal, prompt, false)
-}
-
-func (oc *AIClient) setRoomSystemPromptInternal(ctx context.Context, portal *bridgev2.Portal, prompt string, save bool) error {
-	if portal.MXID == "" {
-		return errors.New("portal has no Matrix room ID")
-	}
-
-	meta := portalMeta(portal)
-	meta.SystemPrompt = prompt
-
-	if save {
-		if err := portal.Save(ctx); err != nil {
-			return fmt.Errorf("failed to save portal: %w", err)
-		}
-		oc.loggerForContext(ctx).Debug().Str("prompt_len", fmt.Sprintf("%d", len(prompt))).Msg("Set room system prompt")
-	}
-	return nil
 }

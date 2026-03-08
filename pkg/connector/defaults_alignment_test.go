@@ -1,6 +1,11 @@
 package connector
 
-import "testing"
+import (
+	"testing"
+
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
+)
 
 func TestEffectiveTemperatureDefaultUnset(t *testing.T) {
 	client := &AIClient{}
@@ -10,11 +15,22 @@ func TestEffectiveTemperatureDefaultUnset(t *testing.T) {
 }
 
 func TestDefaultThinkLevelModelAware(t *testing.T) {
-	client := &AIClient{}
+	client := &AIClient{
+		connector: &OpenAIConnector{},
+		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
+			Provider: ProviderOpenRouter,
+			ModelCache: &ModelCache{Models: []ModelInfo{
+				{ID: "openai/o4-mini", SupportsReasoning: true},
+				{ID: "openai/gpt-4o-mini", SupportsReasoning: false},
+			}},
+		}}},
+	}
 
 	reasoningMeta := &PortalMetadata{
-		Capabilities: ModelCapabilities{
-			SupportsReasoning: true,
+		ResolvedTarget: &ResolvedTarget{
+			Kind:    ResolvedTargetModel,
+			GhostID: modelUserID("openai/o4-mini"),
+			ModelID: "openai/o4-mini",
 		},
 	}
 	if got := client.defaultThinkLevel(reasoningMeta); got != "low" {
@@ -22,39 +38,13 @@ func TestDefaultThinkLevelModelAware(t *testing.T) {
 	}
 
 	nonReasoningMeta := &PortalMetadata{
-		Capabilities: ModelCapabilities{
-			SupportsReasoning: false,
+		ResolvedTarget: &ResolvedTarget{
+			Kind:    ResolvedTargetModel,
+			GhostID: modelUserID("openai/gpt-4o-mini"),
+			ModelID: "openai/gpt-4o-mini",
 		},
 	}
 	if got := client.defaultThinkLevel(nonReasoningMeta); got != "off" {
 		t.Fatalf("expected off for non-reasoning models, got %q", got)
-	}
-}
-
-func TestDefaultThinkLevelHonorsExplicitThinkingLevel(t *testing.T) {
-	client := &AIClient{}
-	meta := &PortalMetadata{
-		ThinkingLevel: "high",
-		Capabilities: ModelCapabilities{
-			SupportsReasoning: true,
-		},
-	}
-
-	if got := client.defaultThinkLevel(meta); got != "high" {
-		t.Fatalf("expected explicit thinking level to win, got %q", got)
-	}
-}
-
-func TestDefaultThinkLevelUsesReasoningEffortFallback(t *testing.T) {
-	client := &AIClient{}
-	meta := &PortalMetadata{
-		Capabilities: ModelCapabilities{
-			SupportsReasoning: true,
-		},
-		ReasoningEffort: "medium",
-	}
-
-	if got := client.defaultThinkLevel(meta); got != "medium" {
-		t.Fatalf("expected medium from reasoning effort, got %q", got)
 	}
 }

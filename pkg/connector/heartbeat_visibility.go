@@ -29,29 +29,27 @@ func resolveHeartbeatVisibility(cfg *Config, channel string) ResolvedHeartbeatVi
 		UseIndicator: defaultHeartbeatVisibility.UseIndicator,
 	}
 
-	if defaults != nil && defaults.Heartbeat != nil {
-		if defaults.Heartbeat.ShowOk != nil {
-			result.ShowOk = *defaults.Heartbeat.ShowOk
-		}
-		if defaults.Heartbeat.ShowAlerts != nil {
-			result.ShowAlerts = *defaults.Heartbeat.ShowAlerts
-		}
-		if defaults.Heartbeat.UseIndicator != nil {
-			result.UseIndicator = *defaults.Heartbeat.UseIndicator
-		}
+	if defaults != nil {
+		applyHeartbeatVisibility(&result, defaults.Heartbeat)
 	}
-
-	if perChannel != nil && perChannel.Heartbeat != nil {
-		if perChannel.Heartbeat.ShowOk != nil {
-			result.ShowOk = *perChannel.Heartbeat.ShowOk
-		}
-		if perChannel.Heartbeat.ShowAlerts != nil {
-			result.ShowAlerts = *perChannel.Heartbeat.ShowAlerts
-		}
-		if perChannel.Heartbeat.UseIndicator != nil {
-			result.UseIndicator = *perChannel.Heartbeat.UseIndicator
-		}
+	if perChannel != nil {
+		applyHeartbeatVisibility(&result, perChannel.Heartbeat)
 	}
 
 	return result
+}
+
+func applyHeartbeatVisibility(dst *ResolvedHeartbeatVisibility, cfg *ChannelHeartbeatVisibilityConfig) {
+	if dst == nil || cfg == nil {
+		return
+	}
+	if cfg.ShowOk != nil {
+		dst.ShowOk = *cfg.ShowOk
+	}
+	if cfg.ShowAlerts != nil {
+		dst.ShowAlerts = *cfg.ShowAlerts
+	}
+	if cfg.UseIndicator != nil {
+		dst.UseIndicator = *cfg.UseIndicator
+	}
 }

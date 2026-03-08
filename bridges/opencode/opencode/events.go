@@ -71,8 +71,8 @@ func (c *Client) StreamEvents(ctx context.Context) (<-chan Event, <-chan error) 
 				flush()
 				continue
 			}
-			if strings.HasPrefix(line, "data:") {
-				dataLines = append(dataLines, strings.TrimSpace(strings.TrimPrefix(line, "data:")))
+			if d, ok := strings.CutPrefix(line, "data:"); ok {
+				dataLines = append(dataLines, strings.TrimSpace(d))
 			}
 		}
 		if err := scanner.Err(); err != nil && ctx.Err() == nil {

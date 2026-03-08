@@ -44,7 +44,7 @@ func (oc *AIClient) resolveHeartbeatDeliveryTarget(agentID string, heartbeat *He
 			if target.Portal != nil && target.RoomID != "" {
 				// Stale agent routing guard: skip if portal is now assigned to a
 				// different agent (matches resolveHeartbeatSessionPortal behavior).
-				if meta := portalMeta(target.Portal); meta != nil && normalizeAgentID(meta.AgentID) != normalizeAgentID(agentID) {
+				if meta := portalMeta(target.Portal); meta != nil && normalizeAgentID(resolveAgentID(meta)) != normalizeAgentID(agentID) {
 					// Fall through to lastActivePortal / defaultChatPortal.
 				} else {
 					return target

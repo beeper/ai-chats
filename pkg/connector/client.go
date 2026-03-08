@@ -1078,19 +1078,7 @@ func (oc *AIClient) IsThisUser(ctx context.Context, userID networkid.UserID) boo
 
 func (oc *AIClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	meta := portalMeta(portal)
-	title := meta.Title
-	if title == "" {
-		if portal.Name != "" {
-			title = portal.Name
-		} else {
-			title = "AI Chat"
-		}
-	}
-	// Use actual portal.Topic, not SystemPrompt (they are separate concepts)
-	return &bridgev2.ChatInfo{
-		Name:  ptr.Ptr(title),
-		Topic: ptr.NonZero(portal.Topic),
-	}, nil
+	return bridgeadapter.BuildChatInfoWithFallback(meta.Title, portal.Name, "AI Chat", portal.Topic), nil
 }
 
 func (oc *AIClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
@@ -1101,7 +1089,7 @@ func (oc *AIClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*br
 		store := NewAgentStoreAdapter(oc)
 		agent, err := store.GetAgentByID(ctx, agentID)
 		displayName := "Unknown Agent"
-		modelID := oc.agentModelOverride(agentID)
+		modelID := ""
 		if err == nil && agent != nil {
 			displayName = oc.resolveAgentDisplayName(ctx, agent)
 			if displayName == "" {
@@ -1160,8 +1148,7 @@ func updateGhostLastSync(_ context.Context, ghost *bridgev2.Ghost) bool {
 func (oc *AIClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
 	meta := portalMeta(portal)
 
-	// Always recompute effective room capabilities to ensure they're up-to-date
-	// (includes image-understanding union for agent rooms)
+	// Always recompute effective room capabilities from the resolved room target.
 	modelCaps := oc.getRoomCapabilities(ctx, meta)
 	allowTextFiles := oc.canUseMediaUnderstanding(meta)
 	supportsPDF := modelCaps.SupportsPDF || oc.isOpenRouterProvider()
@@ -1257,59 +1244,27 @@ func (oc *AIClient) supportsMessageActionsFeature(meta *PortalMetadata) bool {
 }
 
 // effectiveModel returns the full prefixed model ID (e.g., "openai/gpt-5.2")
-// Priority: Room → Agent → User → Provider → Global
-// Exception: Boss agent rooms always use the Boss agent's model (no overrides)
+// based only on the resolved room target.
 func (oc *AIClient) effectiveModel(meta *PortalMetadata) string {
-	// Check if an agent is assigned
-	if meta != nil {
-		agentID := resolveAgentID(meta)
-		if agentID != "" {
-			// Load the agent to get its model
+	if meta != nil && strings.TrimSpace(meta.RuntimeModelOverride) != "" {
+		return ResolveAlias(meta.RuntimeModelOverride)
+	}
+	if meta != nil && meta.ResolvedTarget != nil {
+		switch meta.ResolvedTarget.Kind {
+		case ResolvedTargetModel:
+			return ResolveAlias(meta.ResolvedTarget.ModelID)
+		case ResolvedTargetAgent:
 			store := NewAgentStoreAdapter(oc)
-			agent, err := store.GetAgentByID(context.Background(), agentID)
-			if err == nil && agent != nil {
-				// Boss agent rooms always use the Boss model - no overrides allowed
-				if agents.IsBossAgent(agentID) && agent.Model.Primary != "" {
-					return ResolveAlias(agent.Model.Primary)
-				}
-				// For other agents, room override takes priority, then agent model
-				if meta.Model != "" {
-					return ResolveAlias(meta.Model)
-				}
-				if override := oc.agentModelOverride(agentID); override != "" {
-					return ResolveAlias(override)
-				}
-				if agent.Model.Primary != "" {
-					return ResolveAlias(agent.Model.Primary)
-				}
+			agent, err := store.GetAgentByID(context.Background(), meta.ResolvedTarget.AgentID)
+			if err == nil && agent != nil && agent.Model.Primary != "" {
+				return ResolveAlias(agent.Model.Primary)
 			}
+			return ""
+		default:
+			return ""
 		}
 	}
-
-	// Room-level model override (for rooms without an agent)
-	if meta != nil && meta.Model != "" {
-		return ResolveAlias(meta.Model)
-	}
-
-	// User-level default
-	loginMeta := loginMetadata(oc.UserLogin)
-	if loginMeta.Defaults != nil && loginMeta.Defaults.Model != "" {
-		return ResolveAlias(loginMeta.Defaults.Model)
-	}
-
-	// Provider default from config
 	return oc.defaultModelForProvider()
-}
-
-func (oc *AIClient) agentModelOverride(agentID string) string {
-	if agentID == "" || oc.UserLogin == nil {
-		return ""
-	}
-	loginMeta := loginMetadata(oc.UserLogin)
-	if loginMeta == nil || loginMeta.AgentModelOverrides == nil {
-		return ""
-	}
-	return strings.TrimSpace(loginMeta.AgentModelOverrides[agentID])
 }
 
 // effectiveModelForAPI returns the actual model name to send to the API
@@ -1343,7 +1298,13 @@ func (oc *AIClient) modelIDForAPI(modelID string) string {
 
 // defaultModelForProvider returns the configured default model for this login's provider
 func (oc *AIClient) defaultModelForProvider() string {
+	if oc == nil || oc.connector == nil || oc.UserLogin == nil {
+		return DefaultModelOpenRouter
+	}
 	loginMeta := loginMetadata(oc.UserLogin)
+	if loginMeta == nil {
+		return DefaultModelOpenRouter
+	}
 	providers := oc.connector.Config.Providers
 
 	switch loginMeta.Provider {
@@ -1367,29 +1328,50 @@ func (oc *AIClient) defaultModelForProvider() string {
 	}
 }
 
-// effectivePrompt returns the system prompt to use
-// Priority: Room ? User ? Bridge Config
+// effectivePrompt returns the base system prompt to use for non-agent rooms.
 func (oc *AIClient) effectivePrompt(meta *PortalMetadata) string {
-	// Room-level override takes priority
-	var base string
-	if meta != nil && meta.SystemPrompt != "" {
-		base = meta.SystemPrompt
-	} else {
-		loginMeta := loginMetadata(oc.UserLogin)
-		if loginMeta.Defaults != nil && loginMeta.Defaults.SystemPrompt != "" {
-			base = loginMeta.Defaults.SystemPrompt
-		} else {
-			base = oc.connector.Config.DefaultSystemPrompt
-		}
-	}
-	gravatarContext := oc.gravatarContext()
-	if gravatarContext == "" {
+	base := oc.connector.Config.DefaultSystemPrompt
+	supplement := oc.profilePromptSupplement()
+	if supplement == "" {
 		return base
 	}
 	if strings.TrimSpace(base) == "" {
-		return gravatarContext
+		return supplement
 	}
-	return fmt.Sprintf("%s\n\n%s", base, gravatarContext)
+	return fmt.Sprintf("%s\n\n%s", base, supplement)
+}
+
+func (oc *AIClient) profilePromptSupplement() string {
+	if oc == nil || oc.UserLogin == nil {
+		return strings.TrimSpace(oc.gravatarContext())
+	}
+	loginMeta := loginMetadata(oc.UserLogin)
+	if loginMeta == nil {
+		return strings.TrimSpace(oc.gravatarContext())
+	}
+
+	var lines []string
+	if profile := loginMeta.Profile; profile != nil {
+		if v := strings.TrimSpace(profile.Name); v != "" {
+			lines = append(lines, "Name: "+v)
+		}
+		if v := strings.TrimSpace(profile.Occupation); v != "" {
+			lines = append(lines, "Occupation: "+v)
+		}
+		if v := strings.TrimSpace(profile.AboutUser); v != "" {
+			lines = append(lines, "About the user: "+v)
+		}
+		if v := strings.TrimSpace(profile.CustomInstructions); v != "" {
+			lines = append(lines, "Custom instructions: "+v)
+		}
+	}
+	if gravatar := strings.TrimSpace(oc.gravatarContext()); gravatar != "" {
+		lines = append(lines, gravatar)
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return "User profile:\n- " + strings.Join(lines, "\n- ")
 }
 
 // getLinkPreviewConfig returns the link preview configuration, with defaults filled in.
@@ -1428,9 +1410,7 @@ func getLinkPreviewConfig(connectorConfig *Config) LinkPreviewConfig {
 	return config
 }
 
-// effectiveAgentPrompt returns the system prompt for the agent assigned to the room.
-// This uses BuildSystemPrompt to generate a full prompt with room context when an agent is configured.
-// Returns empty string if no agent is configured.
+// effectiveAgentPrompt returns the resolved agent prompt for the current room target.
 func (oc *AIClient) effectiveAgentPrompt(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) string {
 	if meta == nil {
 		return ""
@@ -1456,9 +1436,6 @@ func (oc *AIClient) effectiveAgentPrompt(ctx context.Context, portal *bridgev2.P
 	if strings.TrimSpace(agent.SystemPrompt) != "" {
 		extraParts = append(extraParts, strings.TrimSpace(agent.SystemPrompt))
 	}
-	if meta != nil && strings.TrimSpace(meta.SystemPrompt) != "" {
-		extraParts = append(extraParts, strings.TrimSpace(meta.SystemPrompt))
-	}
 	extraSystemPrompt := strings.Join(extraParts, "\n\n")
 
 	// Build params for prompt generation (OpenClaw template)
@@ -1476,7 +1453,7 @@ func (oc *AIClient) effectiveAgentPrompt(ctx context.Context, portal *bridgev2.P
 			}
 		}
 	}
-	params.UserIdentitySupplement = oc.gravatarContext()
+	params.UserIdentitySupplement = oc.profilePromptSupplement()
 	params.ContextFiles = oc.buildBootstrapContextFiles(ctx, agentID, meta)
 	if meta != nil && strings.TrimSpace(meta.SubagentParentRoomID) != "" {
 		params.PromptMode = agents.PromptModeMinimal
@@ -1499,21 +1476,23 @@ func (oc *AIClient) effectiveAgentPrompt(ctx context.Context, portal *bridgev2.P
 		params.ToolSummaries = toolSummaries
 	}
 
-	// Build capabilities list from metadata
+	modelCaps := oc.getModelCapabilitiesForMeta(meta)
+
+	// Build capabilities list from model resolution
 	var caps []string
-	if meta.Capabilities.SupportsVision {
+	if modelCaps.SupportsVision {
 		caps = append(caps, "vision")
 	}
-	if meta.Capabilities.SupportsToolCalling {
+	if modelCaps.SupportsToolCalling {
 		caps = append(caps, "tools")
 	}
-	if meta.Capabilities.SupportsReasoning {
+	if modelCaps.SupportsReasoning {
 		caps = append(caps, "reasoning")
 	}
-	if meta.Capabilities.SupportsAudio {
+	if modelCaps.SupportsAudio {
 		caps = append(caps, "audio")
 	}
-	if meta.Capabilities.SupportsVideo {
+	if modelCaps.SupportsVideo {
 		caps = append(caps, "video")
 	}
 
@@ -1540,7 +1519,7 @@ func (oc *AIClient) effectiveAgentPrompt(ctx context.Context, portal *bridgev2.P
 	}
 
 	// Reasoning hints and level
-	params.ReasoningTagHint = meta.Capabilities.SupportsReasoning && meta.EmitThinking
+	params.ReasoningTagHint = false
 	params.ReasoningLevel = resolvePromptReasoningLevel(meta)
 
 	// Default thinking level (OpenClaw-style): low for reasoning-capable models, otherwise off.
@@ -1549,31 +1528,13 @@ func (oc *AIClient) effectiveAgentPrompt(ctx context.Context, portal *bridgev2.P
 	return agents.BuildSystemPrompt(params)
 }
 
-// effectiveTemperature returns the temperature to use.
-// Priority: Room → User → Default (unset / provider default).
 func (oc *AIClient) effectiveTemperature(meta *PortalMetadata) float64 {
-	if meta != nil && meta.Temperature > 0 {
-		return meta.Temperature
-	}
-	var loginMeta *UserLoginMetadata
-	if oc != nil && oc.UserLogin != nil {
-		loginMeta = loginMetadata(oc.UserLogin)
-	}
-	if loginMeta != nil && loginMeta.Defaults != nil && loginMeta.Defaults.Temperature != nil {
-		return *loginMeta.Defaults.Temperature
-	}
 	return defaultTemperature
 }
 
 // defaultThinkLevel resolves the default think level in an OpenClaw-compatible way:
 // low for reasoning-capable models, off otherwise.
 func (oc *AIClient) defaultThinkLevel(meta *PortalMetadata) string {
-	if meta != nil {
-		level := strings.ToLower(strings.TrimSpace(meta.ThinkingLevel))
-		if level != "" {
-			return level
-		}
-	}
 	switch effort := strings.ToLower(strings.TrimSpace(oc.effectiveReasoningEffort(meta))); effort {
 	case "off", "none":
 		return "off"
@@ -1583,39 +1544,33 @@ func (oc *AIClient) defaultThinkLevel(meta *PortalMetadata) string {
 		}
 		return effort
 	}
-	if meta != nil && meta.Capabilities.SupportsReasoning {
+	if caps := oc.getModelCapabilitiesForMeta(meta); caps.SupportsReasoning {
 		return "low"
+	}
+	if modelID := strings.TrimSpace(oc.effectiveModel(meta)); modelID != "" {
+		if info := oc.findModelInfo(modelID); info != nil && info.SupportsReasoning {
+			return "low"
+		}
 	}
 	return "off"
 }
 
-// effectiveReasoningEffort returns the reasoning effort to use
-// Priority: Room ? User ? "" (none)
 func (oc *AIClient) effectiveReasoningEffort(meta *PortalMetadata) string {
-	if meta != nil && !meta.Capabilities.SupportsReasoning {
+	if !oc.getModelCapabilitiesForMeta(meta).SupportsReasoning {
 		return ""
 	}
-	if meta != nil && meta.ReasoningEffort != "" {
-		return meta.ReasoningEffort
+	if meta != nil {
+		switch effort := strings.ToLower(strings.TrimSpace(meta.RuntimeReasoning)); effort {
+		case "low", "medium", "high":
+			return effort
+		case "off", "none":
+			return ""
+		}
 	}
-	var loginMeta *UserLoginMetadata
-	if oc != nil && oc.UserLogin != nil {
-		loginMeta = loginMetadata(oc.UserLogin)
-	}
-	if loginMeta != nil && loginMeta.Defaults != nil && loginMeta.Defaults.ReasoningEffort != "" {
-		return loginMeta.Defaults.ReasoningEffort
-	}
-	if meta != nil && meta.Capabilities.SupportsReasoning {
-		return defaultReasoningEffort
-	}
-	return ""
+	return defaultReasoningEffort
 }
 
 func (oc *AIClient) historyLimit(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) int {
-	if meta != nil && meta.MaxContextMessages > 0 {
-		return meta.MaxContextMessages
-	}
-
 	isGroup := portal != nil && oc.isGroupChat(ctx, portal)
 	if oc != nil && oc.connector != nil && oc.connector.Config.Messages != nil {
 		if isGroup {
@@ -1636,18 +1591,11 @@ func (oc *AIClient) historyLimit(ctx context.Context, portal *bridgev2.Portal, m
 
 func (oc *AIClient) effectiveMaxTokens(meta *PortalMetadata) int {
 	var maxTokens int
-	// 1. Per-room override (highest priority)
-	if meta != nil && meta.MaxCompletionTokens > 0 {
-		maxTokens = meta.MaxCompletionTokens
+	modelID := oc.effectiveModel(meta)
+	if info := oc.findModelInfo(modelID); info != nil && info.MaxOutputTokens > 0 {
+		maxTokens = info.MaxOutputTokens
 	} else {
-		// 2. Model catalog MaxOutputTokens
-		modelID := oc.effectiveModel(meta)
-		if info := oc.findModelInfo(modelID); info != nil && info.MaxOutputTokens > 0 {
-			maxTokens = info.MaxOutputTokens
-		} else {
-			// 3. Hardcoded fallback
-			maxTokens = defaultMaxTokens
-		}
+		maxTokens = defaultMaxTokens
 	}
 	// Cap at context window to prevent impossible requests.
 	// When max output tokens >= context window (common for thinking/reasoning
@@ -2043,7 +1991,7 @@ func (oc *AIClient) buildContextWithLinkContext(
 
 	isSimple := isSimpleMode(meta)
 	if !isSimple {
-		appendSystemPromptText(&promptContext, airuntime.BuildInboundMetaSystemPrompt(inboundCtx))
+		appendPromptText(&promptContext.SystemPrompt, airuntime.BuildInboundMetaSystemPrompt(inboundCtx))
 	}
 
 	finalMessage := strings.TrimSpace(latest)
@@ -2179,7 +2127,7 @@ func (oc *AIClient) buildContextWithMedia(
 	isSimple := isSimpleMode(meta)
 	inboundCtx := oc.resolvePromptInboundContext(ctx, portal, caption, eventID)
 	if !isSimple {
-		appendSystemPromptText(&promptContext, airuntime.BuildInboundMetaSystemPrompt(inboundCtx))
+		appendPromptText(&promptContext.SystemPrompt, airuntime.BuildInboundMetaSystemPrompt(inboundCtx))
 	}
 
 	captionWithID := strings.TrimSpace(caption)
@@ -2582,13 +2530,12 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 
 	// Create user message for database
 	userMessage := &database.Message{
-		ID:       networkid.MessageID(fmt.Sprintf("mx:%s", string(last.Event.ID))),
+		ID:       bridgeadapter.MatrixMessageID(last.Event.ID),
 		MXID:     last.Event.ID,
 		Room:     last.Portal.PortalKey,
 		SenderID: humanUserID(oc.UserLogin.ID),
 		Metadata: &MessageMetadata{
-			Role: "user",
-			Body: combinedBody,
+			BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{Role: "user", Body: combinedBody},
 		},
 		Timestamp: time.Now(),
 	}

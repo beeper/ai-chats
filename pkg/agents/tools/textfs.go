@@ -14,38 +14,44 @@ func execUnavailable(name string) func(ctx context.Context, input map[string]any
 	}
 }
 
+type unavailableBuiltinToolSpec struct {
+	name        string
+	description string
+	title       string
+	inputSchema map[string]any
+}
+
+func newUnavailableBuiltinTool(spec unavailableBuiltinToolSpec) *Tool {
+	return &Tool{
+		Tool: mcp.Tool{
+			Name:        spec.name,
+			Description: spec.description,
+			Annotations: &mcp.ToolAnnotations{Title: spec.title},
+			InputSchema: spec.inputSchema,
+		},
+		Type:    ToolTypeBuiltin,
+		Group:   GroupFS,
+		Execute: execUnavailable(spec.name),
+	}
+}
+
 var (
-	ReadTool = &Tool{
-		Tool: mcp.Tool{
-			Name:        toolspec.ReadName,
-			Description: toolspec.ReadDescription,
-			Annotations: &mcp.ToolAnnotations{Title: "Read"},
-			InputSchema: toolspec.ReadSchema(),
-		},
-		Type:    ToolTypeBuiltin,
-		Group:   GroupFS,
-		Execute: execUnavailable(toolspec.ReadName),
-	}
-	WriteTool = &Tool{
-		Tool: mcp.Tool{
-			Name:        toolspec.WriteName,
-			Description: toolspec.WriteDescription,
-			Annotations: &mcp.ToolAnnotations{Title: "Write"},
-			InputSchema: toolspec.WriteSchema(),
-		},
-		Type:    ToolTypeBuiltin,
-		Group:   GroupFS,
-		Execute: execUnavailable(toolspec.WriteName),
-	}
-	EditTool = &Tool{
-		Tool: mcp.Tool{
-			Name:        toolspec.EditName,
-			Description: toolspec.EditDescription,
-			Annotations: &mcp.ToolAnnotations{Title: "Edit"},
-			InputSchema: toolspec.EditSchema(),
-		},
-		Type:    ToolTypeBuiltin,
-		Group:   GroupFS,
-		Execute: execUnavailable(toolspec.EditName),
-	}
+	ReadTool = newUnavailableBuiltinTool(unavailableBuiltinToolSpec{
+		name:        toolspec.ReadName,
+		description: toolspec.ReadDescription,
+		title:       "Read",
+		inputSchema: toolspec.ReadSchema(),
+	})
+	WriteTool = newUnavailableBuiltinTool(unavailableBuiltinToolSpec{
+		name:        toolspec.WriteName,
+		description: toolspec.WriteDescription,
+		title:       "Write",
+		inputSchema: toolspec.WriteSchema(),
+	})
+	EditTool = newUnavailableBuiltinTool(unavailableBuiltinToolSpec{
+		name:        toolspec.EditName,
+		description: toolspec.EditDescription,
+		title:       "Edit",
+		inputSchema: toolspec.EditSchema(),
+	})
 )

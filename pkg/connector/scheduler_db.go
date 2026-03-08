@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 
 	"go.mau.fi/util/dbutil"
@@ -383,95 +384,19 @@ func flattenHeartbeatActiveHours(cfg *HeartbeatActiveHoursConfig) (string, strin
 }
 
 func loadCronRunKeys(ctx context.Context, scope *schedulerDBScope, jobID string) ([]string, error) {
-	rows, err := scope.db.Query(ctx, `
-		SELECT run_key
-		FROM ai_cron_job_run_keys
-		WHERE bridge_id=$1 AND login_id=$2 AND job_id=$3
-		ORDER BY run_index
-	`, scope.bridgeID, scope.loginID, jobID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var keys []string
-	for rows.Next() {
-		var key string
-		if err := rows.Scan(&key); err != nil {
-			return nil, err
-		}
-		keys = append(keys, key)
-	}
-	return keys, rows.Err()
+	return loadIndexedRunKeys(ctx, scope, "ai_cron_job_run_keys", "job_id", jobID)
 }
 
 func replaceCronRunKeys(ctx context.Context, scope *schedulerDBScope, jobID string, keys []string) error {
-	if _, err := scope.db.Exec(ctx, `
-		DELETE FROM ai_cron_job_run_keys
-		WHERE bridge_id=$1 AND login_id=$2 AND job_id=$3
-	`, scope.bridgeID, scope.loginID, jobID); err != nil {
-		return err
-	}
-	for idx, key := range keys {
-		key = strings.TrimSpace(key)
-		if key == "" {
-			continue
-		}
-		if _, err := scope.db.Exec(ctx, `
-			INSERT INTO ai_cron_job_run_keys (
-				bridge_id, login_id, job_id, run_index, run_key
-			) VALUES ($1, $2, $3, $4, $5)
-		`, scope.bridgeID, scope.loginID, jobID, idx, key); err != nil {
-			return err
-		}
-	}
-	return nil
+	return replaceIndexedRunKeys(ctx, scope, "ai_cron_job_run_keys", "job_id", jobID, keys)
 }
 
 func loadHeartbeatRunKeys(ctx context.Context, scope *schedulerDBScope, agentID string) ([]string, error) {
-	rows, err := scope.db.Query(ctx, `
-		SELECT run_key
-		FROM ai_managed_heartbeat_run_keys
-		WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3
-		ORDER BY run_index
-	`, scope.bridgeID, scope.loginID, agentID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var keys []string
-	for rows.Next() {
-		var key string
-		if err := rows.Scan(&key); err != nil {
-			return nil, err
-		}
-		keys = append(keys, key)
-	}
-	return keys, rows.Err()
+	return loadIndexedRunKeys(ctx, scope, "ai_managed_heartbeat_run_keys", "agent_id", agentID)
 }
 
 func replaceHeartbeatRunKeys(ctx context.Context, scope *schedulerDBScope, agentID string, keys []string) error {
-	if _, err := scope.db.Exec(ctx, `
-		DELETE FROM ai_managed_heartbeat_run_keys
-		WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3
-	`, scope.bridgeID, scope.loginID, agentID); err != nil {
-		return err
-	}
-	for idx, key := range keys {
-		key = strings.TrimSpace(key)
-		if key == "" {
-			continue
-		}
-		if _, err := scope.db.Exec(ctx, `
-			INSERT INTO ai_managed_heartbeat_run_keys (
-				bridge_id, login_id, agent_id, run_index, run_key
-			) VALUES ($1, $2, $3, $4, $5)
-		`, scope.bridgeID, scope.loginID, agentID, idx, key); err != nil {
-			return err
-		}
-	}
-	return nil
+	return replaceIndexedRunKeys(ctx, scope, "ai_managed_heartbeat_run_keys", "agent_id", agentID, keys)
 }
 
 func nullableInt64Pointer(value sql.NullInt64) *int64 {
@@ -527,49 +452,95 @@ func nullableBoolValue(value *bool) any {
 }
 
 func deleteMissingCronRows(ctx context.Context, scope *schedulerDBScope, keep map[string]struct{}) error {
-	rows, err := scope.db.Query(ctx, `SELECT job_id FROM ai_cron_jobs WHERE bridge_id=$1 AND login_id=$2`, scope.bridgeID, scope.loginID)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var jobID string
-		if err := rows.Scan(&jobID); err != nil {
-			return err
-		}
-		if _, ok := keep[strings.TrimSpace(jobID)]; ok {
-			continue
-		}
-		if _, err := scope.db.Exec(ctx, `DELETE FROM ai_cron_jobs WHERE bridge_id=$1 AND login_id=$2 AND job_id=$3`, scope.bridgeID, scope.loginID, jobID); err != nil {
-			return err
-		}
-		if _, err := scope.db.Exec(ctx, `DELETE FROM ai_cron_job_run_keys WHERE bridge_id=$1 AND login_id=$2 AND job_id=$3`, scope.bridgeID, scope.loginID, jobID); err != nil {
-			return err
-		}
-	}
-	return rows.Err()
+	return deleteMissingScopedRows(ctx, scope, keep, "ai_cron_jobs", "job_id", "ai_cron_job_run_keys")
 }
 
 func deleteMissingHeartbeatRows(ctx context.Context, scope *schedulerDBScope, keep map[string]struct{}) error {
-	rows, err := scope.db.Query(ctx, `SELECT agent_id FROM ai_managed_heartbeats WHERE bridge_id=$1 AND login_id=$2`, scope.bridgeID, scope.loginID)
+	return deleteMissingScopedRows(ctx, scope, keep, "ai_managed_heartbeats", "agent_id", "ai_managed_heartbeat_run_keys")
+}
+
+func loadIndexedRunKeys(ctx context.Context, scope *schedulerDBScope, table, idColumn, idValue string) ([]string, error) {
+	rows, err := scope.db.Query(ctx, fmt.Sprintf(`
+		SELECT run_key
+		FROM %s
+		WHERE bridge_id=$1 AND login_id=$2 AND %s=$3
+		ORDER BY run_index
+	`, table, idColumn), scope.bridgeID, scope.loginID, idValue)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var keys []string
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, err
+		}
+		keys = append(keys, key)
+	}
+	return keys, rows.Err()
+}
+
+func replaceIndexedRunKeys(ctx context.Context, scope *schedulerDBScope, table, idColumn, idValue string, keys []string) error {
+	if _, err := scope.db.Exec(ctx, fmt.Sprintf(`
+		DELETE FROM %s
+		WHERE bridge_id=$1 AND login_id=$2 AND %s=$3
+	`, table, idColumn), scope.bridgeID, scope.loginID, idValue); err != nil {
+		return err
+	}
+	for idx, key := range keys {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if _, err := scope.db.Exec(ctx, fmt.Sprintf(`
+			INSERT INTO %s (
+				bridge_id, login_id, %s, run_index, run_key
+			) VALUES ($1, $2, $3, $4, $5)
+		`, table, idColumn), scope.bridgeID, scope.loginID, idValue, idx, key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func deleteMissingScopedRows(ctx context.Context, scope *schedulerDBScope, keep map[string]struct{}, entityTable, idColumn, runKeyTable string) error {
+	rows, err := scope.db.Query(ctx, fmt.Sprintf(
+		`SELECT %s FROM %s WHERE bridge_id=$1 AND login_id=$2`,
+		idColumn, entityTable,
+	), scope.bridgeID, scope.loginID)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	var toDelete []string
 	for rows.Next() {
-		var agentID string
-		if err := rows.Scan(&agentID); err != nil {
+		var idValue string
+		if err := rows.Scan(&idValue); err != nil {
+			rows.Close()
 			return err
 		}
-		if _, ok := keep[strings.TrimSpace(agentID)]; ok {
-			continue
+		if _, ok := keep[strings.TrimSpace(idValue)]; !ok {
+			toDelete = append(toDelete, idValue)
 		}
-		if _, err := scope.db.Exec(ctx, `DELETE FROM ai_managed_heartbeats WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`, scope.bridgeID, scope.loginID, agentID); err != nil {
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, idValue := range toDelete {
+		if _, err := scope.db.Exec(ctx, fmt.Sprintf(
+			`DELETE FROM %s WHERE bridge_id=$1 AND login_id=$2 AND %s=$3`,
+			entityTable, idColumn,
+		), scope.bridgeID, scope.loginID, idValue); err != nil {
 			return err
 		}
-		if _, err := scope.db.Exec(ctx, `DELETE FROM ai_managed_heartbeat_run_keys WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`, scope.bridgeID, scope.loginID, agentID); err != nil {
+		if _, err := scope.db.Exec(ctx, fmt.Sprintf(
+			`DELETE FROM %s WHERE bridge_id=$1 AND login_id=$2 AND %s=$3`,
+			runKeyTable, idColumn,
+		), scope.bridgeID, scope.loginID, idValue); err != nil {
 			return err
 		}
 	}
-	return rows.Err()
+	return nil
 }

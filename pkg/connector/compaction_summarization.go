@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -623,7 +624,7 @@ func (oc *AIClient) applyCompactionModelSummaryAndRefresh(
 		dropped := selectDroppedCompactionMessages(originalPrompt, compactedPrompt, decision.DroppedCount)
 		if len(dropped) > 0 {
 			model := resolveCompactionSummaryModel(oc.effectiveModel(meta), oc.pruningSummarizationModel())
-			allMessages := append([]openai.ChatCompletionMessageParamUnion{}, dropped...)
+			allMessages := slices.Clone(dropped)
 			allMessages = append(allMessages, compactedPrompt...)
 			adaptive := computeCompactionAdaptiveChunkRatio(allMessages, model, contextWindowTokens)
 			maxChunkTokens := int(math.Floor(float64(contextWindowTokens)*adaptive)) - compactionSummarizationOverhead

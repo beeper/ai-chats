@@ -147,7 +147,7 @@ func (oc *OpenCodeClient) tryApprovalDecisionEvent(ctx context.Context, msg *bri
 	if oc == nil || oc.bridge == nil || msg == nil || msg.Event == nil || msg.Portal == nil {
 		return false, nil
 	}
-	raw, ok := parseOpenCodeApprovalDecision(msg.Event)
+	raw, ok := bridgeadapter.ParseApprovalDecisionEvent(msg.Event)
 	if !ok {
 		return false, nil
 	}
@@ -167,17 +167,6 @@ func (oc *OpenCodeClient) tryApprovalDecisionEvent(ctx context.Context, msg *bri
 		oc.sendSystemNoticeViaPortal(ctx, msg.Portal, bridgeadapter.ApprovalErrorToastText(err))
 	}
 	return true, &bridgev2.MatrixMessageResponse{Pending: false}
-}
-
-func parseOpenCodeApprovalDecision(evt *event.Event) (map[string]any, bool) {
-	if evt == nil || evt.Content.Raw == nil {
-		return nil, false
-	}
-	raw, ok := evt.Content.Raw["com.beeper.ai.approval_decision"].(map[string]any)
-	if !ok {
-		return nil, false
-	}
-	return raw, true
 }
 
 func (oc *OpenCodeClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2.MatrixDeleteChat) error {

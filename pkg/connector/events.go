@@ -13,9 +13,6 @@ import (
 // init registers custom AI event types with mautrix's TypeMap
 // so the state store can properly parse them during sync
 func init() {
-	event.TypeMap[RoomCapabilitiesEventType] = reflect.TypeOf(RoomCapabilitiesEventContent{})
-	event.TypeMap[RoomSettingsEventType] = reflect.TypeOf(RoomSettingsEventContent{})
-	event.TypeMap[ModelCapabilitiesEventType] = reflect.TypeOf(ModelCapabilitiesEventContent{})
 	event.TypeMap[AgentsEventType] = reflect.TypeOf(AgentsEventContent{})
 }
 
@@ -24,17 +21,6 @@ var StreamEventMessageType = matrixevents.StreamEventMessageType
 
 // CompactionStatusEventType notifies clients about context compaction
 var CompactionStatusEventType = matrixevents.CompactionStatusEventType
-
-// RoomCapabilitiesEventType is the Matrix state event type for bridge-controlled capabilities
-// Protected by power levels (100) so only the bridge bot can modify
-var RoomCapabilitiesEventType = matrixevents.RoomCapabilitiesEventType
-
-// RoomSettingsEventType is the Matrix state event type for user-editable settings
-// Normal power level (0) so users can modify
-var RoomSettingsEventType = matrixevents.RoomSettingsEventType
-
-// ModelCapabilitiesEventType is the Matrix state event type for broadcasting available models
-var ModelCapabilitiesEventType = matrixevents.ModelCapabilitiesEventType
 
 // AgentsEventType configures active agents in a room
 var AgentsEventType = matrixevents.AgentsEventType
@@ -69,82 +55,29 @@ const (
 	ToolTypeMCP      = matrixevents.ToolTypeMCP
 )
 
-// ReasoningEffortOption represents an available reasoning effort level
-type ReasoningEffortOption struct {
-	Value string `json:"value"` // minimal, low, medium, high, xhigh
-	Label string `json:"label"` // Display name
-}
-
-// SettingSource indicates where a setting value came from
+// SettingSource indicates where a setting or availability decision came from.
 type SettingSource string
 
 const (
 	SourceAgentPolicy    SettingSource = "agent_policy"
-	SourceRoomOverride   SettingSource = "room_override"
-	SourceUserDefault    SettingSource = "user_default"
 	SourceProviderConfig SettingSource = "provider_config"
 	SourceGlobalDefault  SettingSource = "global_default"
 	SourceModelLimit     SettingSource = "model_limitation"
 	SourceProviderLimit  SettingSource = "provider_limitation"
 )
 
-// SettingExplanation describes why a setting has its current value
-type SettingExplanation struct {
-	Value  any           `json:"value"`
-	Source SettingSource `json:"source"`
-	Reason string        `json:"reason,omitempty"` // Only when limited/unavailable
-}
-
-// EffectiveSettings shows current values with source explanations
-type EffectiveSettings struct {
-	Model           SettingExplanation `json:"model"`
-	SystemPrompt    SettingExplanation `json:"system_prompt"`
-	Temperature     SettingExplanation `json:"temperature"`
-	ReasoningEffort SettingExplanation `json:"reasoning_effort"`
-}
-
-// RoomCapabilitiesEventContent represents bridge-controlled room capabilities
-// This is protected by power levels (100) so only the bridge bot can modify
-type RoomCapabilitiesEventContent struct {
-	Capabilities           *ModelCapabilities      `json:"capabilities,omitempty"`
-	AvailableTools         []ToolInfo              `json:"available_tools,omitempty"`
-	ReasoningEffortOptions []ReasoningEffortOption `json:"reasoning_effort_options,omitempty"`
-	Provider               string                  `json:"provider,omitempty"`
-	EffectiveSettings      *EffectiveSettings      `json:"effective_settings,omitempty"`
-}
-
-// RoomSettingsEventContent represents user-editable room settings
-// This uses normal power levels (0) so users can modify
-type RoomSettingsEventContent struct {
-	Model               string   `json:"model,omitempty"`
-	SystemPrompt        string   `json:"system_prompt,omitempty"`
-	Temperature         *float64 `json:"temperature,omitempty"`
-	MaxContextMessages  int      `json:"max_context_messages,omitempty"`
-	MaxCompletionTokens int      `json:"max_completion_tokens,omitempty"`
-	ReasoningEffort     string   `json:"reasoning_effort,omitempty"`
-	AgentID             string   `json:"agent_id,omitempty"`
-	EmitThinking        *bool    `json:"emit_thinking,omitempty"`
-	EmitToolArgs        *bool    `json:"emit_tool_args,omitempty"`
-}
-
-// ToolInfo describes a tool and its status for room state broadcasting
+// ToolInfo describes a tool and its status for internal UI/config rendering.
 type ToolInfo struct {
 	Name        string        `json:"name"`
-	DisplayName string        `json:"display_name"` // Human-readable name for UI
-	Type        string        `json:"type"`         // "builtin", "provider", "plugin", "mcp"
+	DisplayName string        `json:"display_name"`
+	Type        string        `json:"type"`
 	Description string        `json:"description,omitempty"`
 	Enabled     bool          `json:"enabled"`
-	Available   bool          `json:"available"`        // Based on model capabilities and provider
-	Source      SettingSource `json:"source,omitempty"` // Where enabled state came from
-	Reason      string        `json:"reason,omitempty"` // Only when limited/unavailable
+	Available   bool          `json:"available"`
+	Source      SettingSource `json:"source,omitempty"`
+	Reason      string        `json:"reason,omitempty"`
 }
 
-// ModelCapabilitiesEventContent represents available models and their capabilities
-type ModelCapabilitiesEventContent struct {
-	AvailableModels []ModelInfo `json:"available_models"`
-}
-
-// Tool constants for model capabilities
 const (
 	ToolWebSearch       = "web_search"
 	ToolFunctionCalling = "function_calling"

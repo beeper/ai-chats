@@ -8,7 +8,12 @@ import (
 )
 
 func newTestAIClientWithConfig(cfg Config) *AIClient {
-	login := &database.UserLogin{Metadata: &UserLoginMetadata{Provider: ProviderOpenAI}}
+	login := &database.UserLogin{Metadata: &UserLoginMetadata{
+		Provider: ProviderOpenAI,
+		ModelCache: &ModelCache{Models: []ModelInfo{
+			{ID: "openai/gpt-5.2", SupportsToolCalling: true},
+		}},
+	}}
 	userLogin := &bridgev2.UserLogin{UserLogin: login}
 	return &AIClient{
 		UserLogin: userLogin,
@@ -18,12 +23,7 @@ func newTestAIClientWithConfig(cfg Config) *AIClient {
 
 func TestApplyPatchAvailability_DisabledByDefault(t *testing.T) {
 	oc := newTestAIClientWithConfig(Config{})
-	meta := &PortalMetadata{
-		Model: "openai/gpt-5.2",
-		Capabilities: ModelCapabilities{
-			SupportsToolCalling: true,
-		},
-	}
+	meta := simpleModeTestMeta("openai/gpt-5.2")
 
 	available, _, _ := oc.isToolAvailable(meta, ToolNameApplyPatch)
 	if available {
@@ -42,12 +42,7 @@ func TestApplyPatchAvailability_EnabledWithoutAllowlist(t *testing.T) {
 			},
 		},
 	})
-	meta := &PortalMetadata{
-		Model: "openai/gpt-5.2",
-		Capabilities: ModelCapabilities{
-			SupportsToolCalling: true,
-		},
-	}
+	meta := simpleModeTestMeta("openai/gpt-5.2")
 
 	available, _, _ := oc.isToolAvailable(meta, ToolNameApplyPatch)
 	if !available {
@@ -67,12 +62,7 @@ func TestApplyPatchAvailability_AllowlistMismatch(t *testing.T) {
 			},
 		},
 	})
-	meta := &PortalMetadata{
-		Model: "openai/gpt-5.2",
-		Capabilities: ModelCapabilities{
-			SupportsToolCalling: true,
-		},
-	}
+	meta := simpleModeTestMeta("openai/gpt-5.2")
 
 	available, _, _ := oc.isToolAvailable(meta, ToolNameApplyPatch)
 	if available {

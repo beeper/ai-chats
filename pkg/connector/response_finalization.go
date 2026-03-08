@@ -3,7 +3,6 @@ package connector
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
@@ -14,11 +13,11 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/agents"
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
 	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/beeper/ai-bridge/pkg/shared/citations"
 	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
-	"github.com/beeper/ai-bridge/pkg/shared/streamui"
 )
 
 const maxSafeEditPayloadBytes = 54 * 1024
@@ -78,13 +77,13 @@ func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev
 	if agentID != "" {
 		senderID = agentUserID(agentID)
 	}
-	msg := &AIRemoteMessage{
-		portal:    portal.PortalKey,
-		id:        newMessageID(),
-		sender:    bridgev2.EventSender{Sender: senderID, SenderLogin: oc.UserLogin.ID},
-		timestamp: time.Now(),
-		variant:   AIMessageText,
-		preBuilt: &bridgev2.ConvertedMessage{
+	msg := &bridgeadapter.RemoteMessage{
+		Portal:    portal.PortalKey,
+		ID:        bridgeadapter.NewMessageID("ai"),
+		Sender:    bridgev2.EventSender{Sender: senderID, SenderLogin: oc.UserLogin.ID},
+		Timestamp: time.Now(),
+		LogKey:    "ai_msg_id",
+		PreBuilt: &bridgev2.ConvertedMessage{
 			Parts: []*bridgev2.ConvertedMessagePart{{
 				ID:      networkid.PartID("0"),
 				Type:    event.EventMessage,
@@ -138,14 +137,14 @@ func (oc *AIClient) sendInitialStreamMessage(ctx context.Context, portal *bridge
 		eventRaw["m.relates_to"] = relatesTo
 	}
 
-	msgID := newMessageID()
+	msgID := bridgeadapter.NewMessageID("ai")
 	converted := &bridgev2.ConvertedMessage{
 		Parts: []*bridgev2.ConvertedMessagePart{{
 			ID:         networkid.PartID("0"),
 			Type:       event.EventMessage,
 			Content:    &event.MessageEventContent{MsgType: event.MsgText, Body: content},
 			Extra:      eventRaw,
-			DBMetadata: &MessageMetadata{Role: "assistant", TurnID: turnID},
+			DBMetadata: &MessageMetadata{BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{Role: "assistant", TurnID: turnID}},
 		}},
 	}
 
@@ -222,12 +221,6 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 	cleanedContent := airuntime.SanitizeChatMessageForDisplay(directives.Text, false)
 
 	finalReplyTarget := oc.resolveFinalReplyTarget(meta, state, &directives)
-	responsePrefix := resolveResponsePrefixForReply(oc, &oc.connector.Config, meta)
-	if responsePrefix != "" && strings.TrimSpace(cleanedContent) != "" {
-		if !strings.HasPrefix(cleanedContent, responsePrefix) {
-			cleanedContent = responsePrefix + " " + cleanedContent
-		}
-	}
 	rendered := format.RenderMarkdown(cleanedContent, true, true)
 	if finalReplyTarget.ReplyTo != "" {
 		replyTo := finalReplyTarget.ReplyTo
@@ -267,12 +260,6 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 		}
 		shouldSkip = false
 	}
-	responsePrefix := strings.TrimSpace(hb.ResponsePrefix)
-	if responsePrefix != "" && strings.TrimSpace(finalText) != "" && !shouldSkip {
-		if !strings.HasPrefix(finalText, responsePrefix) {
-			finalText = responsePrefix + " " + finalText
-		}
-	}
 	cleaned := strings.TrimSpace(finalText)
 	hasMedia := len(state.pendingImages) > 0
 	shouldSkipMain := shouldSkip && !hasMedia && !hb.ExecEvent
@@ -305,11 +292,7 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 		oc.restoreHeartbeatUpdatedAt(storeRef, hb.SessionKey, hb.PrevUpdatedAt)
 		silent := true
 		if hb.ShowOk && deliverable {
-			heartbeatOk := agents.HeartbeatToken
-			if responsePrefix != "" {
-				heartbeatOk = responsePrefix + " " + agents.HeartbeatToken
-			}
-			oc.sendPlainAssistantMessage(ctx, portal, heartbeatOk)
+			oc.sendPlainAssistantMessage(ctx, portal, agents.HeartbeatToken)
 			silent = false
 		}
 		oc.redactInitialStreamingMessage(ctx, portal, state)
@@ -538,28 +521,7 @@ func buildSourceParts(cits []citations.SourceCitation, documents []citations.Sou
 	seen := make(map[string]struct{}, len(cits)+len(documents)+len(previews))
 
 	appendURL := func(url, title string, providerMetadata map[string]any) {
-		url = strings.TrimSpace(url)
-		if url == "" {
-			return
-		}
-		seenKey := "url:" + url
-		if _, ok := seen[seenKey]; ok {
-			return
-		}
-		seen[seenKey] = struct{}{}
-
-		part := map[string]any{
-			"type":     "source-url",
-			"sourceId": fmt.Sprintf("source-%d", len(parts)+1),
-			"url":      url,
-		}
-		if title = strings.TrimSpace(title); title != "" {
-			part["title"] = title
-		}
-		if len(providerMetadata) > 0 {
-			part["providerMetadata"] = providerMetadata
-		}
-		parts = append(parts, part)
+		citations.AppendSourceURLPart(&parts, seen, url, title, providerMetadata)
 	}
 
 	for _, citation := range cits {
@@ -585,31 +547,7 @@ func buildSourceParts(cits []citations.SourceCitation, documents []citations.Sou
 	}
 
 	for _, doc := range documents {
-		key := strings.TrimSpace(doc.ID)
-		if key == "" {
-			key = strings.TrimSpace(doc.Filename)
-		}
-		if key == "" {
-			key = strings.TrimSpace(doc.Title)
-		}
-		if key == "" {
-			continue
-		}
-		seenKey := "doc:" + key
-		if _, ok := seen[seenKey]; ok {
-			continue
-		}
-		seen[seenKey] = struct{}{}
-		part := map[string]any{
-			"type":      "source-document",
-			"sourceId":  fmt.Sprintf("source-%d", len(parts)+1),
-			"mediaType": doc.MediaType,
-			"title":     doc.Title,
-		}
-		if filename := strings.TrimSpace(doc.Filename); filename != "" {
-			part["filename"] = filename
-		}
-		parts = append(parts, part)
+		citations.AppendSourceDocumentPart(&parts, seen, doc)
 	}
 
 	for _, preview := range previews {
@@ -645,25 +583,7 @@ func buildSourceParts(cits []citations.SourceCitation, documents []citations.Sou
 }
 
 func (oc *AIClient) buildFinalEditUIMessage(state *streamingState, meta *PortalMetadata, linkPreviews []*event.BeeperLinkPreview) map[string]any {
-	if state == nil {
-		return nil
-	}
-	if uiMessage := streamui.SnapshotCanonicalUIMessage(&state.ui); len(uiMessage) > 0 {
-		metadata, _ := uiMessage["metadata"].(map[string]any)
-		uiMessage["metadata"] = msgconv.MergeUIMessageMetadata(metadata, oc.buildUIMessageMetadata(state, meta, true))
-		return msgconv.AppendUIMessageArtifacts(
-			uiMessage,
-			buildSourceParts(state.sourceCitations, state.sourceDocuments, linkPreviews),
-			citations.GeneratedFilesToParts(state.generatedFiles),
-		)
-	}
-	return msgconv.BuildUIMessage(msgconv.UIMessageParams{
-		TurnID:     state.turnID,
-		Role:       "assistant",
-		Metadata:   oc.buildUIMessageMetadata(state, meta, true),
-		SourceURLs: buildSourceParts(state.sourceCitations, state.sourceDocuments, linkPreviews),
-		FileParts:  citations.GeneratedFilesToParts(state.generatedFiles),
-	})
+	return oc.buildStreamUIMessage(state, meta, linkPreviews)
 }
 
 // sendFinalAssistantTurnContent is a helper for simple mode that sends content without directive processing.
@@ -731,12 +651,23 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 			TopLevelExtra: topLevelExtra,
 		}},
 	}
-	oc.UserLogin.QueueRemoteEvent(&AIRemoteEdit{
-		portal:        portal.PortalKey,
-		sender:        sender,
-		targetMessage: state.networkMessageID,
-		preBuilt:      editContent,
-	})
+	editTarget := state.networkMessageID
+	if editTarget == "" {
+		editTarget = bridgeadapter.MatrixMessageID(state.initialEventID)
+	}
+	if editTarget == "" {
+		oc.loggerForContext(ctx).Warn().
+			Str("turn_id", state.turnID).
+			Msg("Skipping final assistant edit: no network or initial event target")
+	} else {
+		oc.UserLogin.QueueRemoteEvent(&bridgeadapter.RemoteEdit{
+			Portal:        portal.PortalKey,
+			Sender:        sender,
+			TargetMessage: editTarget,
+			LogKey:        "ai_edit_target",
+			PreBuilt:      editContent,
+		})
+	}
 	oc.recordAgentActivity(ctx, portal, meta)
 	oc.loggerForContext(ctx).Debug().
 		Str("initial_event_id", state.initialEventID.String()).
@@ -781,11 +712,9 @@ func generateOutboundLinkPreviews(ctx context.Context, text string, intent bridg
 	return UploadPreviewImages(ctx, previewsWithImages, intent, portal.MXID)
 }
 
-// getAgentResponseMode returns the response mode for the current agent.
-// Defaults to ResponseModeNatural if not set.
-// IsSimpleMode on the portal overrides all other settings (for simple mode rooms).
+// getAgentResponseMode returns the response mode for the current room target.
+// Defaults to ResponseModeNatural if no agent-specific mode is configured.
 func (oc *AIClient) getAgentResponseMode(meta *PortalMetadata) agents.ResponseMode {
-	// Simple mode flag takes priority (set by simple command)
 	if isSimpleMode(meta) {
 		return agents.ResponseModeSimple
 	}

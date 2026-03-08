@@ -12,11 +12,10 @@ import (
 	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/agents"
 	"github.com/beeper/ai-bridge/pkg/agents/tools"
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 func normalizeAgentID(value string) string {
@@ -54,34 +53,29 @@ func (oc *AIClient) resolveSubagentAllowlist(ctx context.Context, requesterAgent
 	return allowAny, allowSet
 }
 
-func resolveSubagentModel(override string, agent *agents.AgentDefinition, defaults *agents.SubagentConfig) string {
-	if trimmed := strings.TrimSpace(override); trimmed != "" {
-		return trimmed
+func subagentModel(agent *agents.AgentDefinition, defaults *agents.SubagentConfig) string {
+	if agent != nil && agent.Subagents != nil && agent.Subagents.Model != "" {
+		return agent.Subagents.Model
 	}
-	if agent != nil && agent.Subagents != nil {
-		if trimmed := strings.TrimSpace(agent.Subagents.Model); trimmed != "" {
-			return trimmed
-		}
-	}
-	if defaults != nil {
-		if trimmed := strings.TrimSpace(defaults.Model); trimmed != "" {
-			return trimmed
-		}
+	if defaults != nil && defaults.Model != "" {
+		return defaults.Model
 	}
 	return ""
 }
 
-func resolveSubagentThinking(override string, agent *agents.AgentDefinition, defaults *agents.SubagentConfig) string {
-	if trimmed := strings.TrimSpace(override); trimmed != "" {
-		return trimmed
+func subagentThinking(agent *agents.AgentDefinition, defaults *agents.SubagentConfig) string {
+	if agent != nil && agent.Subagents != nil && agent.Subagents.Thinking != "" {
+		return agent.Subagents.Thinking
 	}
-	if agent != nil && agent.Subagents != nil {
-		if trimmed := strings.TrimSpace(agent.Subagents.Thinking); trimmed != "" {
-			return trimmed
-		}
+	if defaults != nil && defaults.Thinking != "" {
+		return defaults.Thinking
 	}
-	if defaults != nil {
-		if trimmed := strings.TrimSpace(defaults.Thinking); trimmed != "" {
+	return ""
+}
+
+func firstNonEmptyTrimmed(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
 			return trimmed
 		}
 	}
@@ -253,7 +247,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 	if oc.connector != nil && oc.connector.Config.Agents != nil && oc.connector.Config.Agents.Defaults != nil {
 		defaultSubagents = oc.connector.Config.Agents.Defaults.Subagents
 	}
-	thinkingCandidate := resolveSubagentThinking(thinkingOverride, targetAgent, defaultSubagents)
+	thinkingCandidate := firstNonEmptyTrimmed(thinkingOverride, subagentThinking(targetAgent, defaultSubagents))
 	thinkingLevel, ok := normalizeThinkingLevel(thinkingCandidate)
 	if !ok {
 		return tools.JSONResult(map[string]any{
@@ -263,7 +257,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 	}
 	reasoningEffort := mapThinkingToReasoningEffort(thinkingLevel)
 
-	modelCandidate := resolveSubagentModel(modelOverride, targetAgent, defaultSubagents)
+	modelCandidate := firstNonEmptyTrimmed(modelOverride, subagentModel(targetAgent, defaultSubagents))
 
 	resolvedModel := ""
 	modelWarning := ""
@@ -305,15 +299,8 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 
 	childMeta := portalMeta(childPortal)
 	childMeta.SubagentParentRoomID = portal.MXID.String()
-	childMeta.SystemPrompt = agents.BuildSubagentSystemPrompt(agents.SubagentPromptParams{
-		RequesterSessionKey: portal.MXID.String(),
-		RequesterChannel:    "matrix",
-		ChildSessionKey:     childPortal.MXID.String(),
-		Label:               label,
-		Task:                task,
-	})
 	if reasoningEffort != "" {
-		childMeta.ReasoningEffort = reasoningEffort
+		childMeta.RuntimeReasoning = reasoningEffort
 	}
 
 	roomName := resolveSubagentRoomName(label, task)
@@ -342,7 +329,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 		}
 	}
 
-	eventID := id.EventID(fmt.Sprintf("$subagent-%s", uuid.NewString()))
+	eventID := bridgeadapter.NewEventID("subagent")
 	promptMessages, err := oc.buildPrompt(ctx, childPortal, childMeta, task, eventID)
 	if err != nil {
 		return tools.JSONResult(map[string]any{
@@ -352,13 +339,12 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 	}
 
 	userMessage := &database.Message{
-		ID:       networkid.MessageID(fmt.Sprintf("mx:%s", eventID)),
+		ID:       bridgeadapter.MatrixMessageID(eventID),
 		MXID:     eventID,
 		Room:     childPortal.PortalKey,
 		SenderID: humanUserID(oc.UserLogin.ID),
 		Metadata: &MessageMetadata{
-			Role: "user",
-			Body: task,
+			BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{Role: "user", Body: task},
 		},
 		Timestamp: time.Now(),
 	}

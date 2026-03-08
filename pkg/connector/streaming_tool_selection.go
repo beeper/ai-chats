@@ -5,7 +5,7 @@ import "context"
 // selectedBuiltinToolsForTurn returns builtin tools exposed to the model for a turn.
 // Simple mode stays minimal: it only exposes web_search when tool-calling is supported.
 func (oc *AIClient) selectedBuiltinToolsForTurn(ctx context.Context, meta *PortalMetadata) []ToolDefinition {
-	if meta == nil || !meta.Capabilities.SupportsToolCalling {
+	if meta == nil || !oc.getModelCapabilitiesForMeta(meta).SupportsToolCalling {
 		return nil
 	}
 

@@ -161,15 +161,13 @@ type ChannelsConfig struct {
 }
 
 type ChannelDefaultsConfig struct {
-	Heartbeat      *ChannelHeartbeatVisibilityConfig `yaml:"heartbeat"`
-	ResponsePrefix string                            `yaml:"responsePrefix"`
+	Heartbeat *ChannelHeartbeatVisibilityConfig `yaml:"heartbeat"`
 }
 
 type ChannelConfig struct {
-	Heartbeat      *ChannelHeartbeatVisibilityConfig `yaml:"heartbeat"`
-	ResponsePrefix string                            `yaml:"responsePrefix"`
-	ReplyToMode    string                            `yaml:"replyToMode"`   // off|first|all (Matrix)
-	ThreadReplies  string                            `yaml:"threadReplies"` // off|inbound|always (Matrix)
+	Heartbeat     *ChannelHeartbeatVisibilityConfig `yaml:"heartbeat"`
+	ReplyToMode   string                            `yaml:"replyToMode"`   // off|first|all (Matrix)
+	ThreadReplies string                            `yaml:"threadReplies"` // off|inbound|always (Matrix)
 }
 
 type ChannelHeartbeatVisibilityConfig struct {
@@ -180,7 +178,6 @@ type ChannelHeartbeatVisibilityConfig struct {
 
 // MessagesConfig defines message rendering settings.
 type MessagesConfig struct {
-	ResponsePrefix   string                 `yaml:"responsePrefix"`
 	AckReaction      string                 `yaml:"ackReaction"`
 	AckReactionScope string                 `yaml:"ackReactionScope"` // group-mentions|group-all|direct|all|off|none
 	RemoveAckAfter   bool                   `yaml:"removeAckAfterReply"`
@@ -544,7 +541,6 @@ func upgradeConfig(helper configupgrade.Helper) {
 	helper.Copy(configupgrade.Bool, "cron", "enabled")
 
 	// Messages configuration
-	helper.Copy(configupgrade.Str, "messages", "responsePrefix")
 	helper.Copy(configupgrade.List, "commands", "ownerAllowFrom")
 	helper.Copy(configupgrade.Str, "messages", "queue", "mode")
 	helper.Copy(configupgrade.Map, "messages", "queue", "byChannel")
@@ -575,11 +571,9 @@ func upgradeConfig(helper configupgrade.Helper) {
 	helper.Copy(configupgrade.Bool, "channels", "defaults", "heartbeat", "showOk")
 	helper.Copy(configupgrade.Bool, "channels", "defaults", "heartbeat", "showAlerts")
 	helper.Copy(configupgrade.Bool, "channels", "defaults", "heartbeat", "useIndicator")
-	helper.Copy(configupgrade.Str, "channels", "defaults", "responsePrefix")
 	helper.Copy(configupgrade.Bool, "channels", "matrix", "heartbeat", "showOk")
 	helper.Copy(configupgrade.Bool, "channels", "matrix", "heartbeat", "showAlerts")
 	helper.Copy(configupgrade.Bool, "channels", "matrix", "heartbeat", "useIndicator")
-	helper.Copy(configupgrade.Str, "channels", "matrix", "responsePrefix")
 	helper.Copy(configupgrade.Str, "channels", "matrix", "replyToMode")
 	helper.Copy(configupgrade.Str, "channels", "matrix", "threadReplies")
 

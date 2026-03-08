@@ -15,6 +15,14 @@ import (
 	"github.com/beeper/ai-bridge/pkg/matrixevents"
 )
 
+type StreamEventState struct {
+	TurnID        string
+	SuppressSend  bool
+	LoggedStart   *bool
+	EnsureSession func() *StreamSession
+	Logger        *zerolog.Logger
+}
+
 const (
 	// Fixed debounce interval for fallback post+edit streaming.
 	debounceInterval = 200 * time.Millisecond
@@ -91,6 +99,51 @@ func NewStreamSession(params StreamSessionParams) *StreamSession {
 		go s.runDebouncedWorker()
 	})
 	return s
+}
+
+// EmitStreamEvent logs the stream start once and emits a part through a session.
+func EmitStreamEvent(ctx context.Context, portal *bridgev2.Portal, state StreamEventState, part map[string]any) {
+	if portal == nil || portal.MXID == "" || state.SuppressSend {
+		return
+	}
+	if state.LoggedStart != nil && !*state.LoggedStart {
+		*state.LoggedStart = true
+		if state.Logger != nil {
+			state.Logger.Info().
+				Stringer("room_id", portal.MXID).
+				Str("turn_id", strings.TrimSpace(state.TurnID)).
+				Msg("Streaming events")
+		}
+	}
+	if state.EnsureSession == nil {
+		return
+	}
+	session := state.EnsureSession()
+	if session == nil {
+		return
+	}
+	session.EmitPart(ctx, part)
+}
+
+// EmitStreamEventWithSession is a convenience wrapper for callers that only need
+// to provide the common stream state fields.
+func EmitStreamEventWithSession(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	turnID string,
+	suppressSend bool,
+	loggedStart *bool,
+	logger *zerolog.Logger,
+	ensureSession func() *StreamSession,
+	part map[string]any,
+) {
+	EmitStreamEvent(ctx, portal, StreamEventState{
+		TurnID:        turnID,
+		SuppressSend:  suppressSend,
+		LoggedStart:   loggedStart,
+		EnsureSession: ensureSession,
+		Logger:        logger,
+	}, part)
 }
 
 func (s *StreamSession) IsClosed() bool {
@@ -222,7 +275,7 @@ func (s *StreamSession) sendEphemeralWithRetry(ephemeralSender bridgev2.Ephemera
 		}
 		return false
 	}
-	for i := 0; i < nonFallbackRetryCount; i++ {
+	for range nonFallbackRetryCount {
 		if s.IsClosed() {
 			return false
 		}

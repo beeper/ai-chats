@@ -11,11 +11,11 @@ import (
 // ParseDataURI parses a base64 data URI and returns raw base64 data and mime type.
 func ParseDataURI(dataURI string) (string, string, error) {
 	// Format: data:[<mediatype>][;base64],<data>
-	if !strings.HasPrefix(dataURI, "data:") {
+	rest, ok := strings.CutPrefix(dataURI, "data:")
+	if !ok {
 		return "", "", errors.New("not a data URI")
 	}
 
-	rest := dataURI[5:]
 	metadata, data, ok := strings.Cut(rest, ",")
 	if !ok {
 		return "", "", errors.New("invalid data URI: no comma separator")

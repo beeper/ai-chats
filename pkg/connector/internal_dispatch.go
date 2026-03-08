@@ -3,16 +3,14 @@ package connector
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 )
 
@@ -53,7 +51,7 @@ func (oc *AIClient) dispatchInternalMessage(
 	if src := strings.TrimSpace(source); src != "" {
 		prefix = src
 	}
-	eventID := id.EventID(fmt.Sprintf("$%s-%s", prefix, uuid.NewString()))
+	eventID := bridgeadapter.NewEventID(prefix)
 
 	inboundCtx := oc.resolvePromptInboundContext(ctx, portal, trimmed, eventID)
 	promptCtx := withInboundContext(ctx, inboundCtx)
@@ -63,14 +61,13 @@ func (oc *AIClient) dispatchInternalMessage(
 	}
 
 	userMessage := &database.Message{
-		ID:       networkid.MessageID(fmt.Sprintf("mx:%s", eventID)),
+		ID:       bridgeadapter.MatrixMessageID(eventID),
 		MXID:     eventID,
 		Room:     portal.PortalKey,
 		SenderID: humanUserID(oc.UserLogin.ID),
 		Metadata: &MessageMetadata{
-			Role:               "user",
-			Body:               trimmed,
-			ExcludeFromHistory: excludeFromHistory,
+			BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{Role: "user", Body: trimmed},
+			ExcludeFromHistory:  excludeFromHistory,
 		},
 		Timestamp: time.Now(),
 	}

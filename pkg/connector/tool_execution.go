@@ -128,7 +128,7 @@ func (oc *AIClient) executeBuiltinToolDirect(ctx context.Context, portal *bridge
 		return oc.executeMCPTool(ctx, toolName, args)
 	}
 	// Check if this is a Boss room or a session tool - use boss tool executor
-	if (meta != nil && hasBossAgent(meta)) || oc.isBuilderRoom(portal) || tools.IsSessionTool(toolName) || tools.IsBossTool(toolName) {
+	if (meta != nil && hasBossAgent(meta)) || tools.IsSessionTool(toolName) || tools.IsBossTool(toolName) {
 		if result := oc.executeBossTool(ctx, portal, toolName, args); result != nil {
 			return result.Content, result.Error
 		}

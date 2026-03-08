@@ -664,9 +664,6 @@ func integrationSessionKind(currentRoomID string, portalRoomID string, meta *Por
 		if strings.TrimSpace(meta.SubagentParentRoomID) != "" {
 			return "other"
 		}
-		if meta.IsBuilderRoom {
-			return "other"
-		}
 	}
 	return "group"
 }

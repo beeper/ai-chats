@@ -1,5 +1,127 @@
 package bridgeadapter
 
+// BaseMessageMetadata contains fields common to all bridge MessageMetadata structs.
+// Embed this in each bridge's MessageMetadata to share CopyFrom logic.
+type BaseMessageMetadata struct {
+	Role               string             `json:"role,omitempty"`
+	Body               string             `json:"body,omitempty"`
+	FinishReason       string             `json:"finish_reason,omitempty"`
+	PromptTokens       int64              `json:"prompt_tokens,omitempty"`
+	CompletionTokens   int64              `json:"completion_tokens,omitempty"`
+	ReasoningTokens    int64              `json:"reasoning_tokens,omitempty"`
+	TurnID             string             `json:"turn_id,omitempty"`
+	AgentID            string             `json:"agent_id,omitempty"`
+	CanonicalSchema    string             `json:"canonical_schema,omitempty"`
+	CanonicalUIMessage map[string]any     `json:"canonical_ui_message,omitempty"`
+	StartedAtMs        int64              `json:"started_at_ms,omitempty"`
+	CompletedAtMs      int64              `json:"completed_at_ms,omitempty"`
+	ThinkingContent    string             `json:"thinking_content,omitempty"`
+	ToolCalls          []ToolCallMetadata `json:"tool_calls,omitempty"`
+	GeneratedFiles     []GeneratedFileRef `json:"generated_files,omitempty"`
+}
+
+// CopyFromBase copies non-zero common fields from src into the receiver.
+func (b *BaseMessageMetadata) CopyFromBase(src *BaseMessageMetadata) {
+	if src == nil {
+		return
+	}
+	if src.Role != "" {
+		b.Role = src.Role
+	}
+	if src.Body != "" {
+		b.Body = src.Body
+	}
+	if src.FinishReason != "" {
+		b.FinishReason = src.FinishReason
+	}
+	if src.PromptTokens != 0 {
+		b.PromptTokens = src.PromptTokens
+	}
+	if src.CompletionTokens != 0 {
+		b.CompletionTokens = src.CompletionTokens
+	}
+	if src.ReasoningTokens != 0 {
+		b.ReasoningTokens = src.ReasoningTokens
+	}
+	if src.TurnID != "" {
+		b.TurnID = src.TurnID
+	}
+	if src.AgentID != "" {
+		b.AgentID = src.AgentID
+	}
+	if src.CanonicalSchema != "" {
+		b.CanonicalSchema = src.CanonicalSchema
+	}
+	if len(src.CanonicalUIMessage) > 0 {
+		b.CanonicalUIMessage = cloneJSONMap(src.CanonicalUIMessage)
+	}
+	if src.StartedAtMs != 0 {
+		b.StartedAtMs = src.StartedAtMs
+	}
+	if src.CompletedAtMs != 0 {
+		b.CompletedAtMs = src.CompletedAtMs
+	}
+	if src.ThinkingContent != "" {
+		b.ThinkingContent = src.ThinkingContent
+	}
+	if len(src.ToolCalls) > 0 {
+		b.ToolCalls = make([]ToolCallMetadata, len(src.ToolCalls))
+		for i, call := range src.ToolCalls {
+			b.ToolCalls[i] = ToolCallMetadata{
+				CallID:        call.CallID,
+				ToolName:      call.ToolName,
+				ToolType:      call.ToolType,
+				Input:         cloneJSONMap(call.Input),
+				Output:        cloneJSONMap(call.Output),
+				Status:        call.Status,
+				ResultStatus:  call.ResultStatus,
+				ErrorMessage:  call.ErrorMessage,
+				StartedAtMs:   call.StartedAtMs,
+				CompletedAtMs: call.CompletedAtMs,
+				CallEventID:   call.CallEventID,
+				ResultEventID: call.ResultEventID,
+			}
+		}
+	}
+	if len(src.GeneratedFiles) > 0 {
+		b.GeneratedFiles = make([]GeneratedFileRef, len(src.GeneratedFiles))
+		copy(b.GeneratedFiles, src.GeneratedFiles)
+	}
+}
+
+func cloneJSONMap(src map[string]any) map[string]any {
+	if len(src) == 0 {
+		return nil
+	}
+	cloned := make(map[string]any, len(src))
+	for k, v := range src {
+		cloned[k] = cloneJSONValue(v)
+	}
+	return cloned
+}
+
+func cloneJSONSlice(src []any) []any {
+	if len(src) == 0 {
+		return nil
+	}
+	cloned := make([]any, len(src))
+	for i, v := range src {
+		cloned[i] = cloneJSONValue(v)
+	}
+	return cloned
+}
+
+func cloneJSONValue(v any) any {
+	switch typed := v.(type) {
+	case map[string]any:
+		return cloneJSONMap(typed)
+	case []any:
+		return cloneJSONSlice(typed)
+	default:
+		return v
+	}
+}
+
 // ToolCallMetadata tracks a tool call within a message.
 // Both bridges and the connector share this type for JSON-serialized database storage.
 type ToolCallMetadata struct {

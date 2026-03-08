@@ -105,15 +105,53 @@ func humanUserID(loginID networkid.UserLoginID) networkid.UserID {
 	return bridgeadapter.HumanUserID("openai-user", loginID)
 }
 
+const (
+	ResolvedTargetUnknown = ""
+	ResolvedTargetModel   = "model"
+	ResolvedTargetAgent   = "agent"
+)
+
+type ResolvedTarget struct {
+	Kind    string
+	GhostID networkid.UserID
+	ModelID string
+	AgentID string
+}
+
+func resolveTargetFromGhostID(ghostID networkid.UserID) *ResolvedTarget {
+	if ghostID == "" {
+		return nil
+	}
+	if modelID := strings.TrimSpace(parseModelFromGhostID(string(ghostID))); modelID != "" {
+		return &ResolvedTarget{
+			Kind:    ResolvedTargetModel,
+			GhostID: ghostID,
+			ModelID: modelID,
+		}
+	}
+	if agentID, ok := parseAgentFromGhostID(string(ghostID)); ok && strings.TrimSpace(agentID) != "" {
+		return &ResolvedTarget{
+			Kind:    ResolvedTargetAgent,
+			GhostID: ghostID,
+			AgentID: strings.TrimSpace(agentID),
+		}
+	}
+	return nil
+}
+
 func portalMeta(portal *bridgev2.Portal) *PortalMetadata {
-	return bridgeadapter.EnsurePortalMetadata[PortalMetadata](portal)
+	meta := bridgeadapter.EnsurePortalMetadata[PortalMetadata](portal)
+	if meta != nil && portal != nil {
+		meta.ResolvedTarget = resolveTargetFromGhostID(portal.OtherUserID)
+	}
+	return meta
 }
 
 func resolveAgentID(meta *PortalMetadata) string {
-	if meta == nil {
+	if meta == nil || meta.ResolvedTarget == nil {
 		return ""
 	}
-	return meta.AgentID
+	return meta.ResolvedTarget.AgentID
 }
 
 func messageMeta(msg *database.Message) *MessageMetadata {

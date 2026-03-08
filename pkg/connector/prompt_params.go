@@ -5,8 +5,5 @@ func resolvePromptWorkspaceDir() string {
 }
 
 func resolvePromptReasoningLevel(meta *PortalMetadata) string {
-	if meta != nil && meta.EmitThinking {
-		return "on"
-	}
 	return ""
 }

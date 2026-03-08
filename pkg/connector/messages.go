@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/openai/openai-go/v3"
@@ -131,27 +132,6 @@ func (m *UnifiedMessage) Text() string {
 	return strings.Join(texts, "\n")
 }
 
-// HasImages returns true if the message contains image content.
-func (m *UnifiedMessage) HasImages() bool {
-	for _, part := range m.Content {
-		if part.Type == ContentTypeImage {
-			return true
-		}
-	}
-	return false
-}
-
-// HasMultimodalContent returns true if the message contains any non-text content.
-func (m *UnifiedMessage) HasMultimodalContent() bool {
-	for _, part := range m.Content {
-		switch part.Type {
-		case ContentTypeImage, ContentTypePDF, ContentTypeAudio, ContentTypeVideo:
-			return true
-		}
-	}
-	return false
-}
-
 // Text returns the text content of a canonical prompt message.
 func (m PromptMessage) Text() string {
 	var texts []string
@@ -171,7 +151,7 @@ func (m PromptMessage) Text() string {
 func ToPromptContext(systemPrompt string, tools []ToolDefinition, messages []UnifiedMessage) PromptContext {
 	ctx := PromptContext{
 		SystemPrompt: strings.TrimSpace(systemPrompt),
-		Tools:        append([]ToolDefinition(nil), tools...),
+		Tools:        slices.Clone(tools),
 	}
 
 	systemParts := make([]string, 0, len(messages))
@@ -288,9 +268,9 @@ func appendChatMessageToPromptContext(ctx *PromptContext, msg openai.ChatComplet
 	}
 	switch {
 	case msg.OfSystem != nil:
-		appendSystemPromptText(ctx, extractChatSystemText(msg.OfSystem.Content))
+		appendPromptText(&ctx.SystemPrompt, extractChatSystemText(msg.OfSystem.Content))
 	case msg.OfDeveloper != nil:
-		appendDeveloperPromptText(ctx, extractChatDeveloperText(msg.OfDeveloper.Content))
+		appendPromptText(&ctx.DeveloperPrompt, extractChatDeveloperText(msg.OfDeveloper.Content))
 	case msg.OfUser != nil:
 		ctx.Messages = append(ctx.Messages, promptMessageFromChatUser(msg.OfUser))
 	case msg.OfAssistant != nil:
@@ -300,28 +280,16 @@ func appendChatMessageToPromptContext(ctx *PromptContext, msg openai.ChatComplet
 	}
 }
 
-func appendSystemPromptText(ctx *PromptContext, text string) {
+func appendPromptText(dst *string, text string) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return
 	}
-	if ctx.SystemPrompt == "" {
-		ctx.SystemPrompt = text
+	if *dst == "" {
+		*dst = text
 		return
 	}
-	ctx.SystemPrompt = strings.TrimSpace(ctx.SystemPrompt + "\n\n" + text)
-}
-
-func appendDeveloperPromptText(ctx *PromptContext, text string) {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return
-	}
-	if ctx.DeveloperPrompt == "" {
-		ctx.DeveloperPrompt = text
-		return
-	}
-	ctx.DeveloperPrompt = strings.TrimSpace(ctx.DeveloperPrompt + "\n\n" + text)
+	*dst = strings.TrimSpace(*dst + "\n\n" + text)
 }
 
 func promptMessageFromChatUser(msg *openai.ChatCompletionUserMessageParam) PromptMessage {
@@ -429,34 +397,37 @@ func extractChatSystemText(content openai.ChatCompletionSystemMessageParamConten
 	if content.OfString.Value != "" {
 		return content.OfString.Value
 	}
-	var parts []string
-	for _, part := range content.OfArrayOfContentParts {
-		if strings.TrimSpace(part.Text) != "" {
-			parts = append(parts, part.Text)
-		}
-	}
-	return strings.Join(parts, "\n")
+	return joinChatText(content.OfArrayOfContentParts, func(part openai.ChatCompletionContentPartTextParam) string {
+		return part.Text
+	})
 }
 
 func extractChatDeveloperText(content openai.ChatCompletionDeveloperMessageParamContentUnion) string {
 	if content.OfString.Value != "" {
 		return content.OfString.Value
 	}
-	var parts []string
-	for _, part := range content.OfArrayOfContentParts {
-		if strings.TrimSpace(part.Text) != "" {
-			parts = append(parts, part.Text)
+	return joinChatText(content.OfArrayOfContentParts, func(part openai.ChatCompletionContentPartTextParam) string {
+		return part.Text
+	})
+}
+
+func joinChatText[T any](parts []T, extract func(T) string) string {
+	var values []string
+	for _, part := range parts {
+		if text := strings.TrimSpace(extract(part)); text != "" {
+			values = append(values, text)
 		}
 	}
-	return strings.Join(parts, "\n")
+	return strings.Join(values, "\n")
 }
 
 func inferPromptMimeTypeFromDataURL(value string) string {
 	value = strings.TrimSpace(value)
-	if !strings.HasPrefix(value, "data:") {
+	rest, ok := strings.CutPrefix(value, "data:")
+	if !ok {
 		return ""
 	}
-	value = strings.TrimPrefix(value, "data:")
+	value = rest
 	idx := strings.Index(value, ";")
 	if idx <= 0 {
 		return ""

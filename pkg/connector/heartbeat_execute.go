@@ -148,13 +148,6 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 	if promptMeta == nil {
 		promptMeta = &PortalMetadata{}
 	}
-	promptMeta.AgentID = agentID
-	if heartbeat != nil && heartbeat.Model != nil {
-		if model := strings.TrimSpace(*heartbeat.Model); model != "" {
-			promptMeta.Model = model
-		}
-	}
-	responsePrefix := resolveResponsePrefixForHeartbeat(oc, cfg, agentID, promptMeta)
 	hbCfg := &HeartbeatRunConfig{
 		Reason:           reason,
 		AckMaxChars:      resolveHeartbeatAckMaxChars(cfg, heartbeat),
@@ -163,7 +156,6 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 		UseIndicator:     visibility.UseIndicator,
 		IncludeReasoning: heartbeat != nil && heartbeat.IncludeReasoning != nil && *heartbeat.IncludeReasoning,
 		ExecEvent:        hasExecCompletion,
-		ResponsePrefix:   responsePrefix,
 		SessionKey:       storeKey,
 		StoreAgentID:     sessionResolution.StoreRef.AgentID,
 		PrevUpdatedAt:    prevUpdatedAt,
@@ -316,19 +308,9 @@ func (oc *AIClient) resolveHeartbeatSessionPortal(agentID string, heartbeat *Hea
 	}
 	if session == "" || strings.EqualFold(session, "main") || strings.EqualFold(session, "global") || (mainKey != "" && strings.EqualFold(session, mainKey)) {
 		hbSession := oc.resolveHeartbeatSession(agentID, heartbeat)
-		if hbSession.Entry != nil {
-			lastChannel := strings.TrimSpace(hbSession.Entry.LastChannel)
-			lastTo := strings.TrimSpace(hbSession.Entry.LastTo)
-			if lastTo != "" && strings.HasPrefix(lastTo, "!") && (lastChannel == "" || strings.EqualFold(lastChannel, "matrix")) {
-				if portal := oc.portalByRoomID(context.Background(), id.RoomID(lastTo)); portal != nil {
-					if meta := portalMeta(portal); meta != nil && normalizeAgentID(meta.AgentID) != normalizeAgentID(agentID) {
-						goto mainFallback
-					}
-					return portal, portal.MXID.String(), nil
-				}
-			}
+		if portal := oc.heartbeatSessionPortalCandidate(agentID, hbSession); portal != nil {
+			return portal, portal.MXID.String(), nil
 		}
-	mainFallback:
 		if portal := oc.lastActivePortal(agentID); portal != nil {
 			return portal, portal.MXID.String(), nil
 		}
@@ -339,23 +321,15 @@ func (oc *AIClient) resolveHeartbeatSessionPortal(agentID string, heartbeat *Hea
 	}
 	if strings.HasPrefix(session, "!") {
 		if portal := oc.portalByRoomID(context.Background(), id.RoomID(session)); portal != nil {
-			return portal, portal.MXID.String(), nil
-		}
-	}
-	hbSession := oc.resolveHeartbeatSession(agentID, heartbeat)
-	if hbSession.Entry != nil {
-		lastChannel := strings.TrimSpace(hbSession.Entry.LastChannel)
-		lastTo := strings.TrimSpace(hbSession.Entry.LastTo)
-		if lastTo != "" && strings.HasPrefix(lastTo, "!") && (lastChannel == "" || strings.EqualFold(lastChannel, "matrix")) {
-			if portal := oc.portalByRoomID(context.Background(), id.RoomID(lastTo)); portal != nil {
-				if meta := portalMeta(portal); meta != nil && normalizeAgentID(meta.AgentID) != normalizeAgentID(agentID) {
-					goto finalFallback
-				}
+			if meta := portalMeta(portal); meta == nil || normalizeAgentID(resolveAgentID(meta)) == normalizeAgentID(agentID) {
 				return portal, portal.MXID.String(), nil
 			}
 		}
 	}
-finalFallback:
+	hbSession := oc.resolveHeartbeatSession(agentID, heartbeat)
+	if portal := oc.heartbeatSessionPortalCandidate(agentID, hbSession); portal != nil {
+		return portal, portal.MXID.String(), nil
+	}
 	if portal := oc.lastActivePortal(agentID); portal != nil {
 		return portal, portal.MXID.String(), nil
 	}
@@ -363,6 +337,25 @@ finalFallback:
 		return portal, portal.MXID.String(), nil
 	}
 	return nil, "", errors.New("no session")
+}
+
+func (oc *AIClient) heartbeatSessionPortalCandidate(agentID string, session heartbeatSessionResolution) *bridgev2.Portal {
+	if session.Entry == nil {
+		return nil
+	}
+	lastChannel := strings.TrimSpace(session.Entry.LastChannel)
+	lastTo := strings.TrimSpace(session.Entry.LastTo)
+	if lastTo == "" || !strings.HasPrefix(lastTo, "!") || (lastChannel != "" && !strings.EqualFold(lastChannel, "matrix")) {
+		return nil
+	}
+	portal := oc.portalByRoomID(context.Background(), id.RoomID(lastTo))
+	if portal == nil {
+		return nil
+	}
+	if meta := portalMeta(portal); meta != nil && normalizeAgentID(resolveAgentID(meta)) != normalizeAgentID(agentID) {
+		return nil
+	}
+	return portal
 }
 
 func (oc *AIClient) shouldRunHeartbeatForFile(agentID string, reason string) bool {

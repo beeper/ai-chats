@@ -313,13 +313,12 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	}
 	logCtx.Debug().Int("prompt_messages", len(promptContext.Messages)).Msg("Built prompt for inbound message")
 	userMessage := &database.Message{
-		ID:       networkid.MessageID(fmt.Sprintf("mx:%s", string(eventID))),
+		ID:       bridgeadapter.MatrixMessageID(eventID),
 		MXID:     eventID,
 		Room:     portal.PortalKey,
 		SenderID: humanUserID(oc.UserLogin.ID),
 		Metadata: &MessageMetadata{
-			Role: "user",
-			Body: body,
+			BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{Role: "user", Body: body},
 		},
 		Timestamp: bridgeadapter.MatrixEventTimestamp(msg.Event),
 	}
@@ -722,13 +721,12 @@ func (oc *AIClient) handleMediaMessage(
 			return nil, messageSendStatusError(err, "Couldn't prepare the message. Try again.", "")
 		}
 		userMessage := &database.Message{
-			ID:       networkid.MessageID(fmt.Sprintf("mx:%s", string(eventID))),
+			ID:       bridgeadapter.MatrixMessageID(eventID),
 			MXID:     eventID,
 			Room:     portal.PortalKey,
 			SenderID: humanUserID(oc.UserLogin.ID),
 			Metadata: &MessageMetadata{
-				Role: "user",
-				Body: body,
+				BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{Role: "user", Body: body},
 			},
 			Timestamp: bridgeadapter.MatrixEventTimestamp(msg.Event),
 		}
@@ -785,38 +783,48 @@ func (oc *AIClient) handleMediaMessage(
 		// If model lacks vision but agent supports image understanding, analyze image first.
 		if msgType == event.MsgImage {
 			visionModel, visionFallback := oc.resolveVisionModelForImage(ctx, meta)
-			if visionFallback && visionModel != "" {
-				analysisPrompt := buildImageUnderstandingPrompt(caption, hasUserCaption)
-				description, err := oc.analyzeImageWithModel(ctx, visionModel, string(mediaURL), mimeType, encryptedFile, analysisPrompt)
-				if err != nil {
-					oc.loggerForContext(ctx).Warn().Err(err).Msg("Image understanding failed")
-					return nil, messageSendStatusError(err, "Couldn't analyze the image. Try again, or switch to a vision-capable model with !ai model.", "")
-				}
-
-				combined := buildImageUnderstandingMessage(caption, hasUserCaption, description)
-				if combined == "" {
-					return nil, messageSendStatusError(errors.New("image understanding produced empty result"), "Couldn't analyze the image. Try again, or switch to a vision-capable model with !ai model.", "")
-				}
-				return dispatchTextOnly(combined)
+			if resp, err := oc.dispatchMediaUnderstandingFallback(
+				ctx,
+				visionModel,
+				visionFallback,
+				string(mediaURL),
+				mimeType,
+				encryptedFile,
+				caption,
+				hasUserCaption,
+				buildImageUnderstandingPrompt,
+				oc.analyzeImageWithModel,
+				buildImageUnderstandingMessage,
+				"Image understanding failed",
+				"image understanding produced empty result",
+				"Couldn't analyze the image. Try again, or switch to a vision-capable model with !ai model.",
+				dispatchTextOnly,
+			); resp != nil || err != nil {
+				return resp, err
 			}
 		}
 
 		// If model lacks audio but agent supports audio understanding, analyze audio first.
 		if msgType == event.MsgAudio {
 			audioModel, audioFallback := oc.resolveAudioModelForInput(ctx, meta)
-			if audioFallback && audioModel != "" {
-				analysisPrompt := buildAudioUnderstandingPrompt(caption, hasUserCaption)
-				transcript, err := oc.analyzeAudioWithModel(ctx, audioModel, string(mediaURL), mimeType, encryptedFile, analysisPrompt)
-				if err != nil {
-					oc.loggerForContext(ctx).Warn().Err(err).Msg("Audio understanding failed")
-					return nil, messageSendStatusError(err, "Couldn't analyze the audio. Try again, or switch to an audio-capable model with !ai model.", "")
-				}
-
-				combined := buildAudioUnderstandingMessage(caption, hasUserCaption, transcript)
-				if combined == "" {
-					return nil, messageSendStatusError(errors.New("audio understanding produced empty result"), "Couldn't analyze the audio. Try again, or switch to an audio-capable model with !ai model.", "")
-				}
-				return dispatchTextOnly(combined)
+			if resp, err := oc.dispatchMediaUnderstandingFallback(
+				ctx,
+				audioModel,
+				audioFallback,
+				string(mediaURL),
+				mimeType,
+				encryptedFile,
+				caption,
+				hasUserCaption,
+				buildAudioUnderstandingPrompt,
+				oc.analyzeAudioWithModel,
+				buildAudioUnderstandingMessage,
+				"Audio understanding failed",
+				"audio understanding produced empty result",
+				"Couldn't analyze the audio. Try again, or switch to an audio-capable model with !ai model.",
+				dispatchTextOnly,
+			); resp != nil || err != nil {
+				return resp, err
 			}
 		}
 
@@ -836,8 +844,10 @@ func (oc *AIClient) handleMediaMessage(
 	}
 
 	userMeta := &MessageMetadata{
-		Role:     "user",
-		Body:     oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, buildMediaMetadataBody(caption, config.bodySuffix, understanding), senderName, roomName, isGroup),
+		BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
+			Role: "user",
+			Body: oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, buildMediaMetadataBody(caption, config.bodySuffix, understanding), senderName, roomName, isGroup),
+		},
 		MediaURL: string(mediaURL),
 		MimeType: mimeType,
 	}
@@ -848,7 +858,7 @@ func (oc *AIClient) handleMediaMessage(
 	}
 
 	userMessage := &database.Message{
-		ID:        networkid.MessageID(fmt.Sprintf("mx:%s", string(eventID))),
+		ID:        bridgeadapter.MatrixMessageID(eventID),
 		MXID:      eventID,
 		Room:      portal.PortalKey,
 		SenderID:  humanUserID(oc.UserLogin.ID),
@@ -884,6 +894,43 @@ func (oc *AIClient) handleMediaMessage(
 		DB:      dbMsg,
 		Pending: isPending,
 	}, nil
+}
+
+func (oc *AIClient) dispatchMediaUnderstandingFallback(
+	ctx context.Context,
+	model string,
+	fallback bool,
+	mediaURL string,
+	mimeType string,
+	encryptedFile *event.EncryptedFileInfo,
+	caption string,
+	hasUserCaption bool,
+	buildPrompt func(string, bool) string,
+	analyze func(context.Context, string, string, string, *event.EncryptedFileInfo, string) (string, error),
+	buildMessage func(string, bool, string) string,
+	failureLog string,
+	emptyResult string,
+	userError string,
+	dispatchTextOnly func(string) (*bridgev2.MatrixMessageResponse, error),
+) (*bridgev2.MatrixMessageResponse, error) {
+	if !fallback || model == "" {
+		return nil, nil
+	}
+	analysisPrompt := buildPrompt(caption, hasUserCaption)
+	description, err := analyze(ctx, model, mediaURL, mimeType, encryptedFile, analysisPrompt)
+	if err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg(failureLog)
+		return nil, messageSendStatusError(err, userError, "")
+	}
+	if description == "" {
+		return nil, messageSendStatusError(errors.New(emptyResult), userError, "")
+	}
+
+	combined := buildMessage(caption, hasUserCaption, description)
+	if combined == "" {
+		return nil, messageSendStatusError(errors.New(emptyResult), userError, "")
+	}
+	return dispatchTextOnly(combined)
 }
 
 func (oc *AIClient) handleTextFileMessage(
@@ -974,13 +1021,12 @@ func (oc *AIClient) handleTextFileMessage(
 	}
 
 	userMessage := &database.Message{
-		ID:       networkid.MessageID(fmt.Sprintf("mx:%s", string(eventID))),
+		ID:       bridgeadapter.MatrixMessageID(eventID),
 		MXID:     eventID,
 		Room:     portal.PortalKey,
 		SenderID: humanUserID(oc.UserLogin.ID),
 		Metadata: &MessageMetadata{
-			Role: "user",
-			Body: combined,
+			BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{Role: "user", Body: combined},
 		},
 		Timestamp: bridgeadapter.MatrixEventTimestamp(msg.Event),
 	}
@@ -1159,183 +1205,6 @@ func (oc *AIClient) removeAckReaction(ctx context.Context, portal *bridgev2.Port
 		Stringer("source_event", sourceEventID).
 		Str("emoji", entry.emoji).
 		Msg("Queued ack reaction removal")
-}
-
-// handleToolsCommand handles the !ai tools command for per-tool management
-func (oc *AIClient) handleToolsCommand(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	arg string,
-) {
-	runCtx := oc.backgroundContext(ctx)
-
-	// No args - show status
-	if arg == "" {
-		oc.showToolsStatus(runCtx, portal, meta)
-		return
-	}
-
-	parts := strings.SplitN(arg, " ", 2)
-	action := strings.ToLower(parts[0])
-
-	switch action {
-	case "list":
-		oc.showToolsStatus(runCtx, portal, meta)
-	case "on", "enable", "true", "1", "off", "disable", "false", "0":
-		oc.sendSystemNotice(runCtx, portal, "Per-tool toggles aren't supported anymore. Update tool policy in agent settings or the global tool_policy config.")
-	default:
-		oc.sendSystemNotice(runCtx, portal, "Usage:\n"+
-			"• !ai tools - Show current tool status\n"+
-			"• !ai tools list - List available tools\n"+
-			"Tool toggles are managed by tool policy.")
-	}
-}
-
-// showToolsStatus displays the current status of all tools
-func (oc *AIClient) showToolsStatus(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) {
-	oc.sendSystemNotice(ctx, portal, oc.buildToolsStatusText(meta))
-}
-
-// handleRegenerate regenerates the last AI response
-func (oc *AIClient) handleRegenerate(
-	ctx context.Context,
-	evt *event.Event,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-) {
-	runCtx := oc.backgroundContext(ctx)
-
-	// Get message history
-	history, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(runCtx, portal.PortalKey, 10)
-	if err != nil || len(history) == 0 {
-		oc.sendSystemNotice(runCtx, portal, "No messages to regenerate from.")
-		return
-	}
-
-	// Find the last user message
-	var lastUserMessage *database.Message
-	for _, msg := range history {
-		msgMeta := messageMeta(msg)
-		if msgMeta != nil && msgMeta.Role == "user" {
-			lastUserMessage = msg
-			break
-		}
-	}
-
-	if lastUserMessage == nil {
-		oc.sendSystemNotice(runCtx, portal, "No user message found to regenerate from.")
-		return
-	}
-
-	userMeta := messageMeta(lastUserMessage)
-	if userMeta == nil || userMeta.Body == "" {
-		oc.sendSystemNotice(runCtx, portal, "Can't regenerate: message content isn't available.")
-		return
-	}
-
-	oc.sendSystemNotice(runCtx, portal, "Regenerating response...")
-
-	// Build prompt excluding the old assistant response
-	promptContext, err := oc.buildContextForRegenerate(runCtx, portal, meta, userMeta.Body, lastUserMessage.MXID)
-	if err != nil {
-		oc.sendSystemNotice(runCtx, portal, "Couldn't regenerate: "+err.Error())
-		return
-	}
-
-	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(runCtx, portal, meta, "", airuntime.QueueInlineOptions{})
-	isGroup := oc.isGroupChat(runCtx, portal)
-	pending := pendingMessage{
-		Event:         evt,
-		Portal:        portal,
-		Meta:          meta,
-		Type:          pendingTypeRegenerate,
-		MessageBody:   userMeta.Body,
-		SourceEventID: lastUserMessage.MXID,
-		Typing: &TypingContext{
-			IsGroup:      isGroup,
-			WasMentioned: true,
-		},
-	}
-	queueItem := pendingQueueItem{
-		pending:     pending,
-		messageID:   string(evt.ID),
-		summaryLine: userMeta.Body,
-		enqueuedAt:  time.Now().UnixMilli(),
-	}
-	oc.dispatchOrQueueWithStatus(runCtx, evt, portal, meta, queueItem, queueSettings, promptContext)
-}
-
-// handleRegenerateTitle regenerates the current room title from recent messages.
-func (oc *AIClient) handleRegenerateTitle(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-) {
-	runCtx := oc.backgroundContext(ctx)
-
-	history, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(runCtx, portal.PortalKey, 20)
-	if err != nil || len(history) == 0 {
-		oc.sendSystemNotice(runCtx, portal, "No messages to generate a title from.")
-		return
-	}
-
-	var lastUserMessage *database.Message
-	var lastAssistantMessage *database.Message
-	for _, msg := range history {
-		msgMeta := messageMeta(msg)
-		if !shouldIncludeInHistory(msgMeta) {
-			continue
-		}
-		if lastAssistantMessage == nil && msgMeta.Role == "assistant" {
-			lastAssistantMessage = msg
-		}
-		if lastUserMessage == nil && msgMeta.Role == "user" {
-			lastUserMessage = msg
-		}
-		if lastUserMessage != nil && lastAssistantMessage != nil {
-			break
-		}
-	}
-
-	if lastUserMessage == nil {
-		oc.sendSystemNotice(runCtx, portal, "No user message found to generate a title from.")
-		return
-	}
-
-	userMeta := messageMeta(lastUserMessage)
-	if userMeta == nil || userMeta.Body == "" {
-		oc.sendSystemNotice(runCtx, portal, "Can't generate a title: message content isn't available.")
-		return
-	}
-
-	assistantBody := ""
-	if lastAssistantMessage != nil {
-		assistantMeta := messageMeta(lastAssistantMessage)
-		if assistantMeta != nil {
-			assistantBody = assistantMeta.Body
-		}
-	}
-
-	oc.sendSystemNotice(runCtx, portal, "Regenerating title...")
-
-	title, err := oc.generateRoomTitle(runCtx, userMeta.Body, assistantBody)
-	if err != nil {
-		oc.sendSystemNotice(runCtx, portal, "Couldn't generate a title: "+err.Error())
-		return
-	}
-
-	title = strings.TrimSpace(title)
-	if title == "" {
-		oc.sendSystemNotice(runCtx, portal, "Couldn't generate a title: empty response.")
-		return
-	}
-
-	if err := oc.setRoomName(runCtx, portal, title); err != nil {
-		oc.sendSystemNotice(runCtx, portal, "Couldn't set the room title: "+err.Error())
-		return
-	}
-
-	oc.sendSystemNotice(runCtx, portal, fmt.Sprintf("Room title updated to: %s", title))
 }
 
 // buildPromptForRegenerate builds a prompt for regeneration, excluding the last assistant message

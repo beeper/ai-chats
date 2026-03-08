@@ -15,10 +15,8 @@ func TestGetCapabilities_SimpleModeDisablesReplyEditReaction(t *testing.T) {
 	oc := &AIClient{connector: &OpenAIConnector{}}
 	portal := &bridgev2.Portal{
 		Portal: &database.Portal{
-			Metadata: &PortalMetadata{
-				IsSimpleMode: true,
-				Capabilities: ModelCapabilities{SupportsToolCalling: true},
-			},
+			OtherUserID: modelUserID("openai/gpt-5"),
+			Metadata:    simpleModeTestMeta("openai/gpt-5"),
 		},
 	}
 
@@ -46,9 +44,8 @@ func TestGetCapabilities_NonSimpleEnablesReplyEditReaction(t *testing.T) {
 	oc := &AIClient{connector: &OpenAIConnector{}}
 	portal := &bridgev2.Portal{
 		Portal: &database.Portal{
-			Metadata: &PortalMetadata{
-				Capabilities: ModelCapabilities{SupportsToolCalling: true},
-			},
+			OtherUserID: agentUserID("beeper"),
+			Metadata:    agentModeTestMeta("beeper"),
 		},
 	}
 
@@ -68,8 +65,9 @@ func TestGetCapabilities_MessageToolDisabledDisablesReplyEditReaction(t *testing
 	oc := &AIClient{connector: &OpenAIConnector{}}
 	portal := &bridgev2.Portal{
 		Portal: &database.Portal{
+			OtherUserID: agentUserID("beeper"),
 			Metadata: &PortalMetadata{
-				Capabilities: ModelCapabilities{SupportsToolCalling: true},
+				ResolvedTarget: agentModeTestMeta("beeper").ResolvedTarget,
 				DisabledTools: []string{
 					ToolNameMessage,
 				},

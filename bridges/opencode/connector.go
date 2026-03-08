@@ -84,12 +84,12 @@ func (oc *OpenCodeConnector) GetConfig() (example string, data any, upgrader con
 }
 
 func (oc *OpenCodeConnector) GetDBMetaTypes() database.MetaTypes {
-	return database.MetaTypes{
-		Portal:    func() any { return &PortalMetadata{} },
-		Message:   func() any { return &MessageMetadata{} },
-		UserLogin: func() any { return &UserLoginMetadata{} },
-		Ghost:     func() any { return &GhostMetadata{} },
-	}
+	return bridgeadapter.BuildMetaTypes(
+		func() any { return &PortalMetadata{} },
+		func() any { return &MessageMetadata{} },
+		func() any { return &UserLoginMetadata{} },
+		func() any { return &GhostMetadata{} },
+	)
 }
 
 func (oc *OpenCodeConnector) LoadUserLogin(_ context.Context, login *bridgev2.UserLogin) error {
@@ -99,20 +99,14 @@ func (oc *OpenCodeConnector) LoadUserLogin(_ context.Context, login *bridgev2.Us
 		return nil
 	}
 
-	client, err := bridgeadapter.LoadOrCreateClient(
+	client, err := bridgeadapter.LoadOrCreateTypedClient(
 		&oc.clientsMu,
 		oc.clients,
-		login.ID,
-		func(existingAPI bridgev2.NetworkAPI) bool {
-			existing, ok := existingAPI.(*OpenCodeClient)
-			if !ok || existing == nil {
-				return false
-			}
+		login,
+		func(existing *OpenCodeClient, login *bridgev2.UserLogin) {
 			existing.UserLogin = login
-			login.Client = existing
-			return true
 		},
-		func() (bridgev2.NetworkAPI, error) {
+		func() (*OpenCodeClient, error) {
 			return newOpenCodeClient(login, oc)
 		},
 	)

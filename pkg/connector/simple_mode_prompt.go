@@ -16,19 +16,14 @@ import (
 // Simple mode uses a single system prompt with only the current time appended.
 func (oc *AIClient) buildSimpleModeSystemPrompt(meta *PortalMetadata) string {
 	base := defaultSimpleModeSystemPrompt
-	if meta != nil {
-		if v := strings.TrimSpace(meta.SystemPrompt); v != "" {
-			base = v
-		}
-	}
-
 	timezone, _ := oc.resolveUserTimezone()
 	now := formatCurrentTimeForPrompt(timezone)
 
-	lines := []string{
-		strings.TrimSpace(base),
-		"Current time: " + now,
+	lines := []string{strings.TrimSpace(base)}
+	if supplement := strings.TrimSpace(oc.profilePromptSupplement()); supplement != "" {
+		lines = append(lines, supplement)
 	}
+	lines = append(lines, "Current time: "+now)
 	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 

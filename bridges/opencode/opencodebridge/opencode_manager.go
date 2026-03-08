@@ -89,17 +89,7 @@ func (m *OpenCodeManager) DisconnectAll() {
 		if inst == nil {
 			continue
 		}
-		if inst.cancel != nil {
-			inst.cancel()
-		}
-		inst.cancel = nil
-		inst.connected = false
-		inst.disconnectMu.Lock()
-		if inst.disconnectTimer != nil {
-			inst.disconnectTimer.Stop()
-			inst.disconnectTimer = nil
-		}
-		inst.disconnectMu.Unlock()
+		inst.cancelAndStopTimer()
 	}
 	m.instances = make(map[string]*openCodeInstance)
 }
@@ -173,21 +163,13 @@ func (m *OpenCodeManager) Connect(ctx context.Context, baseURL, password, userna
 
 	m.mu.Lock()
 	if existing := m.instances[instanceID]; existing != nil {
-		if existing.cancel != nil {
-			existing.cancel()
-		}
-		existing.disconnectMu.Lock()
-		if existing.disconnectTimer != nil {
-			existing.disconnectTimer.Stop()
-			existing.disconnectTimer = nil
-		}
-		existing.disconnectMu.Unlock()
+		existing.cancelAndStopTimer()
 	}
 	m.instances[instanceID] = inst
 	m.mu.Unlock()
 
 	m.persistInstance(ctx, inst)
-	m.bridge.ensureOpenCodeGhostDisplayName(ctx, instanceID)
+	m.bridge.EnsureGhostDisplayName(ctx, instanceID)
 
 	count, syncErr := m.syncSessions(ctx, inst, sessions)
 	m.startEventLoop(inst)
@@ -232,15 +214,7 @@ func (m *OpenCodeManager) RemoveInstance(ctx context.Context, instanceID string)
 	m.mu.Lock()
 	if inst := m.instances[id]; inst != nil {
 		hadInstance = true
-		if inst.cancel != nil {
-			inst.cancel()
-		}
-		inst.disconnectMu.Lock()
-		if inst.disconnectTimer != nil {
-			inst.disconnectTimer.Stop()
-			inst.disconnectTimer = nil
-		}
-		inst.disconnectMu.Unlock()
+		inst.cancelAndStopTimer()
 		delete(m.instances, id)
 	}
 	m.mu.Unlock()
@@ -381,34 +355,36 @@ func (m *OpenCodeManager) AbortSession(ctx context.Context, instanceID, sessionI
 	return nil
 }
 
-func (m *OpenCodeManager) CreateSession(ctx context.Context, instanceID, title, directory string) (*opencode.Session, error) {
+func (m *OpenCodeManager) runSessionMutation(
+	ctx context.Context,
+	instanceID string,
+	action string,
+	run func(*openCodeInstance) (*opencode.Session, error),
+) (*opencode.Session, error) {
 	inst, err := m.requireConnectedInstance(instanceID)
 	if err != nil {
 		return nil, err
 	}
-	session, err := inst.client.CreateSession(ctx, title, directory)
+	session, err := run(inst)
 	if err != nil {
 		if opencode.IsAuthError(err) {
 			m.setConnected(inst, false)
 		}
-		return nil, fmt.Errorf("create session: %w", err)
+		return nil, fmt.Errorf("%s: %w", action, err)
 	}
 	return session, nil
 }
 
+func (m *OpenCodeManager) CreateSession(ctx context.Context, instanceID, title, directory string) (*opencode.Session, error) {
+	return m.runSessionMutation(ctx, instanceID, "create session", func(inst *openCodeInstance) (*opencode.Session, error) {
+		return inst.client.CreateSession(ctx, title, directory)
+	})
+}
+
 func (m *OpenCodeManager) UpdateSessionTitle(ctx context.Context, instanceID, sessionID, title string) (*opencode.Session, error) {
-	inst, err := m.requireConnectedInstance(instanceID)
-	if err != nil {
-		return nil, err
-	}
-	session, err := inst.client.UpdateSessionTitle(ctx, sessionID, title)
-	if err != nil {
-		if opencode.IsAuthError(err) {
-			m.setConnected(inst, false)
-		}
-		return nil, fmt.Errorf("update session title: %w", err)
-	}
-	return session, nil
+	return m.runSessionMutation(ctx, instanceID, "update session title", func(inst *openCodeInstance) (*opencode.Session, error) {
+		return inst.client.UpdateSessionTitle(ctx, sessionID, title)
+	})
 }
 
 func (m *OpenCodeManager) syncSessions(ctx context.Context, inst *openCodeInstance, sessions []opencode.Session) (int, error) {

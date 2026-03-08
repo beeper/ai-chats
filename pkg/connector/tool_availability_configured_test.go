@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
+
 	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
 )
 
@@ -22,8 +25,11 @@ func TestToolAvailable_WebSearch_RequiresAnyProviderKey(t *testing.T) {
 				},
 			},
 		},
+		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
+			ModelCache: &ModelCache{Models: []ModelInfo{{ID: "openai/gpt-5.2", SupportsToolCalling: true}}},
+		}}},
 	}
-	meta := &PortalMetadata{Capabilities: ModelCapabilities{SupportsToolCalling: true}}
+	meta := simpleModeTestMeta("openai/gpt-5.2")
 
 	ok, source, reason := oc.isToolAvailable(meta, toolspec.WebSearchName)
 	if ok {
@@ -48,8 +54,11 @@ func TestToolAvailable_WebSearch_WithProviderKey(t *testing.T) {
 				},
 			},
 		},
+		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
+			ModelCache: &ModelCache{Models: []ModelInfo{{ID: "openai/gpt-5.2", SupportsToolCalling: true}}},
+		}}},
 	}
-	meta := &PortalMetadata{Capabilities: ModelCapabilities{SupportsToolCalling: true}}
+	meta := simpleModeTestMeta("openai/gpt-5.2")
 
 	ok, _, reason := oc.isToolAvailable(meta, toolspec.WebSearchName)
 	if !ok {
@@ -68,8 +77,11 @@ func TestToolAvailable_WebFetch_DirectDisabledAndNoExaKey(t *testing.T) {
 				},
 			},
 		},
+		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
+			ModelCache: &ModelCache{Models: []ModelInfo{{ID: "openai/gpt-5.2", SupportsToolCalling: true}}},
+		}}},
 	}
-	meta := &PortalMetadata{Capabilities: ModelCapabilities{SupportsToolCalling: true}}
+	meta := simpleModeTestMeta("openai/gpt-5.2")
 
 	ok, source, reason := oc.isToolAvailable(meta, toolspec.WebFetchName)
 	if ok {
@@ -84,8 +96,11 @@ func TestToolAvailable_TTS_PlatformBehavior(t *testing.T) {
 	oc := &AIClient{
 		connector: &OpenAIConnector{Config: Config{}},
 		// provider/apiKey intentionally empty
+		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
+			ModelCache: &ModelCache{Models: []ModelInfo{{ID: "openai/gpt-5.2", SupportsToolCalling: true}}},
+		}}},
 	}
-	meta := &PortalMetadata{Capabilities: ModelCapabilities{SupportsToolCalling: true}}
+	meta := simpleModeTestMeta("openai/gpt-5.2")
 
 	ok, _, reason := oc.isToolAvailable(meta, toolspec.TTSName)
 	if runtime.GOOS == "darwin" {

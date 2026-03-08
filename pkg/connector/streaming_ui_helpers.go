@@ -5,7 +5,11 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"maunium.net/go/mautrix/event"
+
 	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
+	"github.com/beeper/ai-bridge/pkg/shared/citations"
+	"github.com/beeper/ai-bridge/pkg/shared/streamui"
 )
 
 func (oc *AIClient) buildUIMessageMetadata(state *streamingState, meta *PortalMetadata, includeUsage bool) map[string]any {
@@ -22,6 +26,36 @@ func (oc *AIClient) buildUIMessageMetadata(state *streamingState, meta *PortalMe
 		FirstTokenAtMs:   state.firstTokenAtMs,
 		CompletedAtMs:    state.completedAtMs,
 		IncludeUsage:     includeUsage,
+	})
+}
+
+// buildStreamUIMessage constructs the canonical UI message for streaming edits and persistence.
+// linkPreviews may be nil for intermediate saves.
+func (oc *AIClient) buildStreamUIMessage(state *streamingState, meta *PortalMetadata, linkPreviews []*event.BeeperLinkPreview) map[string]any {
+	if state == nil {
+		return nil
+	}
+	sourceParts := buildSourceParts(state.sourceCitations, state.sourceDocuments, linkPreviews)
+	fileParts := citations.GeneratedFilesToParts(state.generatedFiles)
+	if uiMessage := streamui.SnapshotCanonicalUIMessage(&state.ui); len(uiMessage) > 0 {
+		metadata, _ := uiMessage["metadata"].(map[string]any)
+		uiMessage["metadata"] = msgconv.MergeUIMessageMetadata(metadata, oc.buildUIMessageMetadata(state, meta, true))
+		return msgconv.AppendUIMessageArtifacts(uiMessage, sourceParts, fileParts)
+	}
+	var parts []map[string]any
+	if text := state.accumulated.String(); text != "" {
+		parts = append(parts, map[string]any{"type": "text", "text": text})
+	}
+	if reasoning := state.reasoning.String(); reasoning != "" {
+		parts = append(parts, map[string]any{"type": "reasoning", "reasoning": reasoning})
+	}
+	return msgconv.BuildUIMessage(msgconv.UIMessageParams{
+		TurnID:     state.turnID,
+		Role:       "assistant",
+		Parts:      parts,
+		Metadata:   oc.buildUIMessageMetadata(state, meta, true),
+		SourceURLs: sourceParts,
+		FileParts:  fileParts,
 	})
 }
 

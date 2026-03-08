@@ -173,10 +173,12 @@ func buildApprovalSnapshotPart(body string, uiMessage map[string]any, toastText 
 		Content: &event.MessageEventContent{MsgType: event.MsgNotice, Body: body},
 		Extra:   raw,
 		DBMetadata: &MessageMetadata{
-			Role:               "assistant",
+			BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
+				Role:               "assistant",
+				CanonicalSchema:    "ai-sdk-ui-message-v1",
+				CanonicalUIMessage: uiMessage,
+			},
 			ExcludeFromHistory: true,
-			CanonicalSchema:    "ai-sdk-ui-message-v1",
-			CanonicalUIMessage: uiMessage,
 		},
 	}
 }

@@ -16,6 +16,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/bridges/opencode/opencodebridge"
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
 	"github.com/beeper/ai-bridge/pkg/matrixevents"
 	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
@@ -119,7 +120,7 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 			instanceID = pmeta.InstanceID
 		}
 		sender := oc.SenderForOpenCode(instanceID, false)
-		msgID := newOpenCodeMessageID()
+		msgID := bridgeadapter.NewMessageID("opencode")
 		uiMessage := msgconv.BuildUIMessage(msgconv.UIMessageParams{
 			TurnID: turnID,
 			Role:   "assistant",
@@ -142,20 +143,23 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 				Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "..."},
 				Extra:   extra,
 				DBMetadata: &MessageMetadata{
-					Role:               "assistant",
-					TurnID:             turnID,
-					AgentID:            strings.TrimSpace(agentID),
-					CanonicalSchema:    "ai-sdk-ui-message-v1",
-					CanonicalUIMessage: uiMessage,
+					BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
+						Role:               "assistant",
+						TurnID:             turnID,
+						AgentID:            strings.TrimSpace(agentID),
+						CanonicalSchema:    "ai-sdk-ui-message-v1",
+						CanonicalUIMessage: uiMessage,
+					},
 				},
 			}},
 		}
 		result := oc.UserLogin.QueueRemoteEvent(&OpenCodeRemoteMessage{
-			portal:    portal.PortalKey,
-			id:        msgID,
-			sender:    sender,
-			timestamp: time.Now(),
-			preBuilt:  converted,
+			Portal:    portal.PortalKey,
+			ID:        msgID,
+			Sender:    sender,
+			Timestamp: time.Now(),
+			LogKey:    "opencode_msg_id",
+			PreBuilt:  converted,
 		})
 		if result.Success && result.EventID != "" {
 			oc.streamMu.Lock()
@@ -242,11 +246,12 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 				}
 				sender := oc.SenderForOpenCode(instanceID, false)
 				oc.UserLogin.QueueRemoteEvent(&OpenCodeRemoteEdit{
-					portal:        portal.PortalKey,
-					sender:        sender,
-					targetMessage: netMsgID,
-					timestamp:     time.Now(),
-					preBuilt: &bridgev2.ConvertedEdit{
+					Portal:        portal.PortalKey,
+					Sender:        sender,
+					TargetMessage: netMsgID,
+					Timestamp:     time.Now(),
+					LogKey:        "opencode_edit_target",
+					PreBuilt: &bridgev2.ConvertedEdit{
 						ModifiedParts: []*bridgev2.ConvertedEditPart{{
 							Type: event.EventMessage,
 							Content: &event.MessageEventContent{

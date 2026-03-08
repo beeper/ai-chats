@@ -19,8 +19,11 @@ func TestSimpleModePrompt_HasSingleSystemPromptWithTimeAndWebSearch(t *testing.T
 	}
 
 	meta := &PortalMetadata{
-		IsSimpleMode: true,
-		// No SystemPrompt override: should use defaultSimpleModeSystemPrompt.
+		ResolvedTarget: &ResolvedTarget{
+			Kind:    ResolvedTargetModel,
+			GhostID: modelUserID("openai/gpt-5.2"),
+			ModelID: "openai/gpt-5.2",
+		},
 	}
 
 	out, err := client.buildPromptWithLinkContext(context.Background(), nil, meta, "hello", nil, "")
@@ -69,9 +72,10 @@ func TestSimpleModePrompt_NoWebSearchHintEvenWhenConfigured(t *testing.T) {
 	}
 
 	meta := &PortalMetadata{
-		IsSimpleMode: true,
-		Capabilities: ModelCapabilities{
-			SupportsToolCalling: true,
+		ResolvedTarget: &ResolvedTarget{
+			Kind:    ResolvedTargetModel,
+			GhostID: modelUserID("openai/gpt-5.2"),
+			ModelID: "openai/gpt-5.2",
 		},
 	}
 
@@ -112,7 +116,7 @@ func TestSimpleModePrompt_LatestUserMessageUnchanged_NoLinkContext_NoMessageID(t
 		},
 	}
 
-	meta := &PortalMetadata{IsSimpleMode: true}
+	meta := &PortalMetadata{ResolvedTarget: &ResolvedTarget{Kind: ResolvedTargetModel, GhostID: modelUserID("openai/gpt-5.2"), ModelID: "openai/gpt-5.2"}}
 	latest := "check this: https://example.com"
 
 	out, err := client.buildPromptWithLinkContext(context.Background(), nil, meta, latest, nil, "$evt")
@@ -139,7 +143,7 @@ func TestSimpleModePrompt_LatestUserMessageUnchanged_NoLinkContext_NoMessageID(t
 
 func TestBuildMatrixInboundBody_SimpleModeBypassesEnvelopeAndSenderMeta(t *testing.T) {
 	client := &AIClient{}
-	meta := &PortalMetadata{IsSimpleMode: true}
+	meta := &PortalMetadata{ResolvedTarget: &ResolvedTarget{Kind: ResolvedTargetModel, GhostID: modelUserID("openai/gpt-5.2"), ModelID: "openai/gpt-5.2"}}
 
 	got := client.buildMatrixInboundBody(context.Background(), nil, meta, nil, "  hi  ", "Alice", "Room", true)
 	if got != "hi" {

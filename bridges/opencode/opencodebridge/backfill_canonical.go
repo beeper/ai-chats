@@ -1,8 +1,6 @@
 package opencodebridge
 
 import (
-	"encoding/json"
-	"slices"
 	"strings"
 
 	"maunium.net/go/mautrix/event"
@@ -64,30 +62,32 @@ func buildCanonicalAssistantBackfill(msg opencode.MessageWithParts, agentID stri
 		body: body,
 		ui:   uiMessage,
 		meta: &MessageMetadata{
-			Role:               stringutil.FirstNonEmpty(strings.TrimSpace(msg.Info.Role), "assistant"),
-			Body:               body,
-			SessionID:          strings.TrimSpace(msg.Info.SessionID),
-			MessageID:          strings.TrimSpace(msg.Info.ID),
-			ParentMessageID:    strings.TrimSpace(msg.Info.ParentID),
-			Agent:              strings.TrimSpace(msg.Info.Agent),
-			ModelID:            strings.TrimSpace(msg.Info.ModelID),
-			ProviderID:         strings.TrimSpace(msg.Info.ProviderID),
-			Mode:               strings.TrimSpace(msg.Info.Mode),
-			FinishReason:       stringutil.FirstNonEmpty(strings.TrimSpace(msg.Info.Finish), finishReason),
-			Cost:               backfillCost(msg),
-			PromptTokens:       backfillPromptTokens(msg),
-			CompletionTokens:   backfillCompletionTokens(msg),
-			ReasoningTokens:    backfillReasoningTokens(msg),
-			TotalTokens:        backfillTotalTokens(msg),
-			TurnID:             turnID,
-			AgentID:            strings.TrimSpace(agentID),
-			CanonicalSchema:    "ai-sdk-ui-message-v1",
-			CanonicalUIMessage: uiMessage,
-			StartedAtMs:        int64(msg.Info.Time.Created),
-			CompletedAtMs:      int64(msg.Info.Time.Completed),
-			ThinkingContent:    canonicalReasoningTextBridge(uiMessage),
-			ToolCalls:          canonicalToolCallsBridge(uiMessage),
-			GeneratedFiles:     canonicalGeneratedFilesBridge(uiMessage),
+			BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
+				Role:               stringutil.FirstNonEmpty(strings.TrimSpace(msg.Info.Role), "assistant"),
+				Body:               body,
+				FinishReason:       stringutil.FirstNonEmpty(strings.TrimSpace(msg.Info.Finish), finishReason),
+				PromptTokens:       backfillPromptTokens(msg),
+				CompletionTokens:   backfillCompletionTokens(msg),
+				ReasoningTokens:    backfillReasoningTokens(msg),
+				TurnID:             turnID,
+				AgentID:            strings.TrimSpace(agentID),
+				CanonicalSchema:    "ai-sdk-ui-message-v1",
+				CanonicalUIMessage: uiMessage,
+				StartedAtMs:        int64(msg.Info.Time.Created),
+				CompletedAtMs:      int64(msg.Info.Time.Completed),
+				ThinkingContent:    CanonicalReasoningText(uiMessage),
+				ToolCalls:          CanonicalToolCalls(uiMessage),
+				GeneratedFiles:     CanonicalGeneratedFiles(uiMessage),
+			},
+			SessionID:       strings.TrimSpace(msg.Info.SessionID),
+			MessageID:       strings.TrimSpace(msg.Info.ID),
+			ParentMessageID: strings.TrimSpace(msg.Info.ParentID),
+			Agent:           strings.TrimSpace(msg.Info.Agent),
+			ModelID:         strings.TrimSpace(msg.Info.ModelID),
+			ProviderID:      strings.TrimSpace(msg.Info.ProviderID),
+			Mode:            strings.TrimSpace(msg.Info.Mode),
+			Cost:            backfillCost(msg),
+			TotalTokens:     backfillTotalTokens(msg),
 		},
 	}
 }
@@ -238,138 +238,11 @@ func canonicalDataPart(part opencode.Part) map[string]any {
 	if strings.TrimSpace(part.ID) == "" {
 		return nil
 	}
-	data := map[string]any{
-		"type": "data-opencode-" + strings.TrimSpace(part.Type),
-		"id":   strings.TrimSpace(part.ID),
-	}
-	switch part.Type {
-	case "step-finish":
-		if reason := strings.TrimSpace(part.Reason); reason != "" {
-			data["reason"] = reason
-		}
-		if part.Cost != 0 {
-			data["cost"] = part.Cost
-		}
-	case "patch":
-		if hash := strings.TrimSpace(part.Hash); hash != "" {
-			data["hash"] = hash
-		}
-		if len(part.Files) > 0 {
-			data["files"] = slices.Clone(part.Files)
-		}
-	case "snapshot":
-		if snapshot := strings.TrimSpace(part.Snapshot); snapshot != "" {
-			data["snapshot"] = snapshot
-		}
-	case "agent":
-		if name := strings.TrimSpace(part.Name); name != "" {
-			data["name"] = name
-		}
-	case "subtask":
-		if desc := strings.TrimSpace(part.Description); desc != "" {
-			data["description"] = desc
-		}
-		if prompt := strings.TrimSpace(part.Prompt); prompt != "" {
-			data["prompt"] = prompt
-		}
-		if agent := strings.TrimSpace(part.Agent); agent != "" {
-			data["agent"] = agent
-		}
-	case "retry":
-		if part.Attempt != 0 {
-			data["attempt"] = part.Attempt
-		}
-		if len(part.Error) > 0 {
-			data["error"] = string(part.Error)
-		}
-	case "compaction":
-		data["auto"] = part.Auto
-	default:
+	data := BuildDataPartMap(part)
+	if data == nil {
 		return nil
 	}
 	return data
-}
-
-func canonicalReasoningTextBridge(uiMessage map[string]any) string {
-	parts, _ := uiMessage["parts"].([]any)
-	var sb strings.Builder
-	for _, raw := range parts {
-		part, ok := raw.(map[string]any)
-		if !ok || strings.TrimSpace(stringValueBridge(part["type"])) != "reasoning" {
-			continue
-		}
-		text := strings.TrimSpace(stringValueBridge(part["text"]))
-		if text == "" {
-			continue
-		}
-		if sb.Len() > 0 {
-			sb.WriteString("\n")
-		}
-		sb.WriteString(text)
-	}
-	return sb.String()
-}
-
-func canonicalToolCallsBridge(uiMessage map[string]any) []bridgeadapter.ToolCallMetadata {
-	parts, _ := uiMessage["parts"].([]any)
-	calls := make([]bridgeadapter.ToolCallMetadata, 0, len(parts))
-	for _, raw := range parts {
-		part, ok := raw.(map[string]any)
-		if !ok || strings.TrimSpace(stringValueBridge(part["type"])) != "dynamic-tool" {
-			continue
-		}
-		call := bridgeadapter.ToolCallMetadata{
-			CallID:   strings.TrimSpace(stringValueBridge(part["toolCallId"])),
-			ToolName: strings.TrimSpace(stringValueBridge(part["toolName"])),
-			ToolType: "opencode",
-			Status:   strings.TrimSpace(stringValueBridge(part["state"])),
-		}
-		if input, ok := part["input"].(map[string]any); ok {
-			call.Input = input
-		}
-		if output, ok := part["output"].(map[string]any); ok {
-			call.Output = output
-		} else if output := strings.TrimSpace(stringValueBridge(part["output"])); output != "" {
-			call.Output = map[string]any{"text": output}
-		}
-		switch call.Status {
-		case "output-available":
-			call.ResultStatus = "completed"
-		case "output-error":
-			call.ResultStatus = "error"
-			call.ErrorMessage = strings.TrimSpace(stringValueBridge(part["errorText"]))
-		case "output-denied":
-			call.ResultStatus = "denied"
-		case "approval-requested":
-			call.ResultStatus = "pending_approval"
-		default:
-			call.ResultStatus = call.Status
-		}
-		if call.CallID != "" {
-			calls = append(calls, call)
-		}
-	}
-	return calls
-}
-
-func canonicalGeneratedFilesBridge(uiMessage map[string]any) []bridgeadapter.GeneratedFileRef {
-	parts, _ := uiMessage["parts"].([]any)
-	files := make([]bridgeadapter.GeneratedFileRef, 0, len(parts))
-	for _, raw := range parts {
-		part, ok := raw.(map[string]any)
-		if !ok || strings.TrimSpace(stringValueBridge(part["type"])) != "file" {
-			continue
-		}
-		url := strings.TrimSpace(stringValueBridge(part["url"]))
-		if url == "" {
-			continue
-		}
-		files = append(files, bridgeadapter.GeneratedFileRef{
-			URL:      url,
-			MimeType: stringutil.FirstNonEmpty(strings.TrimSpace(stringValueBridge(part["mediaType"])), "application/octet-stream"),
-		})
-	}
-	return files
 }
 
 func backfillCost(msg opencode.MessageWithParts) float64 {
@@ -385,54 +258,47 @@ func backfillCost(msg opencode.MessageWithParts) float64 {
 }
 
 func backfillPromptTokens(msg opencode.MessageWithParts) int64 {
-	if msg.Info.Tokens != nil {
-		return int64(msg.Info.Tokens.Input)
-	}
-	for _, part := range msg.Parts {
-		if part.Type == "step-finish" && part.Tokens != nil {
-			return int64(part.Tokens.Input)
-		}
-	}
-	return 0
+	return backfillTokenValue(msg, func(tokens opencode.TokenUsage) int64 {
+		return int64(tokens.Input)
+	})
 }
 
 func backfillCompletionTokens(msg opencode.MessageWithParts) int64 {
-	if msg.Info.Tokens != nil {
-		return int64(msg.Info.Tokens.Output)
-	}
-	for _, part := range msg.Parts {
-		if part.Type == "step-finish" && part.Tokens != nil {
-			return int64(part.Tokens.Output)
-		}
-	}
-	return 0
+	return backfillTokenValue(msg, func(tokens opencode.TokenUsage) int64 {
+		return int64(tokens.Output)
+	})
 }
 
 func backfillReasoningTokens(msg opencode.MessageWithParts) int64 {
+	return backfillTokenValue(msg, func(tokens opencode.TokenUsage) int64 {
+		return int64(tokens.Reasoning)
+	})
+}
+
+func backfillTokenValue(msg opencode.MessageWithParts, pick func(opencode.TokenUsage) int64) int64 {
 	if msg.Info.Tokens != nil {
-		return int64(msg.Info.Tokens.Reasoning)
+		return pick(*msg.Info.Tokens)
 	}
 	for _, part := range msg.Parts {
 		if part.Type == "step-finish" && part.Tokens != nil {
-			return int64(part.Tokens.Reasoning)
+			return pick(*part.Tokens)
 		}
 	}
 	return 0
 }
 
 func backfillTotalTokens(msg opencode.MessageWithParts) int64 {
-	return backfillPromptTokens(msg) + backfillCompletionTokens(msg) + backfillReasoningTokens(msg)
-}
-
-func stringValueBridge(raw any) string {
-	switch value := raw.(type) {
-	case string:
-		return value
-	case json.Number:
-		return value.String()
-	default:
-		return ""
+	total := backfillPromptTokens(msg) + backfillCompletionTokens(msg) + backfillReasoningTokens(msg)
+	if msg.Info.Tokens != nil && msg.Info.Tokens.Cache != nil {
+		total += int64(msg.Info.Tokens.Cache.Read + msg.Info.Tokens.Cache.Write)
+		return total
 	}
+	for _, part := range msg.Parts {
+		if part.Tokens != nil && part.Tokens.Cache != nil {
+			total += int64(part.Tokens.Cache.Read + part.Tokens.Cache.Write)
+		}
+	}
+	return total
 }
 
 func buildCanonicalBackfillPart(snapshot canonicalBackfillSnapshot) *event.MessageEventContent {

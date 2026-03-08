@@ -1,6 +1,7 @@
 package bridgeadapter
 
 import (
+	"context"
 	"errors"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -46,4 +47,16 @@ func MessageSendStatusError(
 		st = st.WithErrorAsMessage()
 	}
 	return st
+}
+
+func SendMatrixMessageStatus(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	evt *event.Event,
+	status bridgev2.MessageStatus,
+) {
+	if portal == nil || portal.Bridge == nil || evt == nil {
+		return
+	}
+	portal.Bridge.Matrix.SendMessageStatus(ctx, &status, bridgev2.StatusEventInfoFromEvent(evt))
 }

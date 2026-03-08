@@ -71,29 +71,24 @@ func GetBridgeToolContext(ctx context.Context) *BridgeToolContext {
 	return contextValue[*BridgeToolContext](ctx, bridgeToolContextKey{})
 }
 
-var (
-	builtinToolsOnce      sync.Once
-	builtinToolsCached    []ToolDefinition
-	builtinToolsByNameMap map[string]*ToolDefinition
-)
-
-func initBuiltinTools() {
-	builtinToolsCached = buildBuiltinToolDefinitions()
-	builtinToolsByNameMap = make(map[string]*ToolDefinition, len(builtinToolsCached))
-	for i := range builtinToolsCached {
-		builtinToolsByNameMap[builtinToolsCached[i].Name] = &builtinToolsCached[i]
+var builtinToolsInit = sync.OnceValues(func() ([]ToolDefinition, map[string]*ToolDefinition) {
+	tools := buildBuiltinToolDefinitions()
+	byName := make(map[string]*ToolDefinition, len(tools))
+	for i := range tools {
+		byName[tools[i].Name] = &tools[i]
 	}
-}
+	return tools, byName
+})
 
-// The result is computed once and cached for the process lifetime.
+// BuiltinTools returns all builtin tool definitions (computed once and cached).
 func BuiltinTools() []ToolDefinition {
-	builtinToolsOnce.Do(initBuiltinTools)
-	return builtinToolsCached
+	tools, _ := builtinToolsInit()
+	return tools
 }
 
 func GetBuiltinTool(name string) *ToolDefinition {
-	builtinToolsOnce.Do(initBuiltinTools)
-	return builtinToolsByNameMap[name]
+	_, byName := builtinToolsInit()
+	return byName[name]
 }
 
 const ToolNameMessage = toolspec.MessageName
@@ -169,17 +164,7 @@ func firstNonEmptyString(values ...any) string {
 }
 
 func messageTypeForMIME(mimeType string) event.MessageType {
-	mimeType = strings.ToLower(strings.TrimSpace(mimeType))
-	switch {
-	case strings.HasPrefix(mimeType, "image/"):
-		return event.MsgImage
-	case strings.HasPrefix(mimeType, "audio/"):
-		return event.MsgAudio
-	case strings.HasPrefix(mimeType, "video/"):
-		return event.MsgVideo
-	default:
-		return event.MsgFile
-	}
+	return media.MessageTypeForMIME(mimeType)
 }
 
 func resolveMessageMedia(ctx context.Context, btc *BridgeToolContext, bufferInput, mediaInput string) ([]byte, string, error) {
@@ -564,20 +549,7 @@ func executeMessageSend(ctx context.Context, args map[string]any, btc *BridgeToo
 		}
 	}
 
-	if msgType == event.MsgAudio {
-		if durationMs, waveform := analyzeAudio(data, mimeType); durationMs > 0 || len(waveform) > 0 {
-			if durationMs > 0 {
-				info["duration"] = durationMs
-			}
-			rawContent["org.matrix.msc1767.audio"] = map[string]any{
-				"duration": durationMs,
-				"waveform": waveform,
-			}
-		}
-		if asVoice {
-			rawContent["org.matrix.msc3245.voice"] = map[string]any{}
-		}
-	}
+	populateAudioMessageContent(rawContent, info, data, mimeType, asVoice, msgType)
 
 	converted := &bridgev2.ConvertedMessage{
 		Parts: []*bridgev2.ConvertedMessagePart{{
@@ -1570,10 +1542,7 @@ func executeSessionStatus(ctx context.Context, args map[string]any) (string, err
 	dayOfWeek := now.Weekday().String()
 
 	// Get model info
-	model := meta.Model
-	if model == "" {
-		model = btc.Client.effectiveModel(meta)
-	}
+	model := btc.Client.effectiveModel(meta)
 
 	// Parse provider from model string (format: "provider/model" or just "model")
 	provider := "unknown"
@@ -1583,15 +1552,9 @@ func executeSessionStatus(ctx context.Context, args map[string]any) (string, err
 		modelName = parsedModel
 	}
 
-	// Get context/token info from metadata
-	maxContext := meta.MaxContextMessages
-	if maxContext == 0 {
-		maxContext = 12 // default
-	}
-	maxTokens := meta.MaxCompletionTokens
-	if maxTokens == 0 {
-		maxTokens = 512 // default
-	}
+	// Get context/token info from the effective runtime only.
+	maxContext := btc.Client.getModelContextWindow(meta)
+	maxTokens := btc.Client.effectiveMaxTokens(meta)
 
 	// Build session info
 	sessionID := string(btc.Portal.PortalKey.ID)
@@ -1603,74 +1566,10 @@ func executeSessionStatus(ctx context.Context, args map[string]any) (string, err
 		title = "Untitled"
 	}
 
-	// Handle model change if requested (OpenClaw-style "model" alias supported)
-	var modelChanged string
-	newModel := ""
-	if raw, ok := args["set_model"].(string); ok && strings.TrimSpace(raw) != "" {
-		newModel = strings.TrimSpace(raw)
-	} else if raw, ok := args["model"].(string); ok && strings.TrimSpace(raw) != "" {
-		newModel = strings.TrimSpace(raw)
-	}
-
-	if newModel != "" {
-		if strings.EqualFold(newModel, "default") || strings.EqualFold(newModel, "reset") {
-			metaCopy := *meta
-			metaCopy.Model = ""
-			effective := btc.Client.effectiveModel(&metaCopy)
-			if err := btc.Client.validateDMModelSwitch(btc.Portal, meta, effective); err != nil {
-				return "", dmModelSwitchBlockedError(effective)
-			}
-
-			// Clear override and recompute capabilities from effective model
-			meta.Model = ""
-			effective = btc.Client.effectiveModel(meta)
-			meta.Capabilities = getModelCapabilities(effective, btc.Client.findModelInfo(effective))
-			if err := btc.Portal.Save(ctx); err != nil {
-				return "", fmt.Errorf("couldn't save model reset: %w", err)
-			}
-			btc.Portal.UpdateBridgeInfo(ctx)
-			btc.Client.ensureGhostDisplayName(ctx, effective)
-			modelChanged = fmt.Sprintf("\n\nModel reset to %s.", effective)
-			model = effective
-			if parsedProvider, parsedModel := splitModelProvider(effective); parsedProvider != "" && parsedModel != "" {
-				provider = parsedProvider
-				modelName = parsedModel
-			} else {
-				modelName = effective
-			}
-		} else {
-			resolvedModel, valid, err := btc.Client.resolveModelID(ctx, newModel)
-			if err != nil || !valid || resolvedModel == "" {
-				return "", fmt.Errorf("invalid model: %s", newModel)
-			}
-			if err := btc.Client.validateDMModelSwitch(btc.Portal, meta, resolvedModel); err != nil {
-				return "", dmModelSwitchBlockedError(resolvedModel)
-			}
-
-			// Update the model in metadata
-			meta.Model = resolvedModel
-			meta.Capabilities = getModelCapabilities(resolvedModel, btc.Client.findModelInfo(resolvedModel))
-			// Save portal metadata
-			if err := btc.Portal.Save(ctx); err != nil {
-				return "", fmt.Errorf("couldn't save model change: %w", err)
-			}
-			btc.Portal.UpdateBridgeInfo(ctx)
-			btc.Client.ensureGhostDisplayName(ctx, resolvedModel)
-			modelChanged = fmt.Sprintf("\n\nModel set to %s.", resolvedModel)
-			model = resolvedModel
-			if parsedProvider, parsedModel := splitModelProvider(resolvedModel); parsedProvider != "" && parsedModel != "" {
-				provider = parsedProvider
-				modelName = parsedModel
-			} else {
-				modelName = resolvedModel
-			}
-		}
-	}
-
 	// Get agent info if available
 	agentInfo := ""
-	if meta.AgentID != "" {
-		agentInfo = fmt.Sprintf("\nAgent: %s", meta.AgentID)
+	if agentID := resolveAgentID(meta); agentID != "" {
+		agentInfo = fmt.Sprintf("\nAgent: %s", agentID)
 	}
 
 	// Build status card similar to OpenClaw
@@ -1684,7 +1583,7 @@ Provider: %s
 Max Context: %d messages
 Max Tokens: %d
 
-Session: %s
+	Session: %s
 Chat: %s%s%s`,
 		timeStr, timezone, now.Format("MST"),
 		dayOfWeek,
@@ -1695,7 +1594,7 @@ Chat: %s%s%s`,
 		sessionID,
 		title,
 		agentInfo,
-		modelChanged,
+		"",
 	)
 
 	return status, nil

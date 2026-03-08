@@ -333,18 +333,7 @@ func (cc *CodexClient) IsThisUser(ctx context.Context, userID networkid.UserID) 
 
 func (cc *CodexClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	meta := portalMeta(portal)
-	title := meta.Title
-	if title == "" {
-		if portal.Name != "" {
-			title = portal.Name
-		} else {
-			title = "Codex"
-		}
-	}
-	return &bridgev2.ChatInfo{
-		Name:  ptr.Ptr(title),
-		Topic: ptr.NonZero(portal.Topic),
-	}, nil
+	return bridgeadapter.BuildChatInfoWithFallback(meta.Title, portal.Name, "Codex", portal.Topic), nil
 }
 
 func (cc *CodexClient) GetUserInfo(_ context.Context, _ *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
@@ -498,14 +487,13 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 
 	// Save user message immediately; we return Pending=true.
 	userMsg := &database.Message{
-		ID:        networkid.MessageID(fmt.Sprintf("mx:%s", string(msg.Event.ID))),
+		ID:        bridgeadapter.MatrixMessageID(msg.Event.ID),
 		MXID:      msg.Event.ID,
 		Room:      portal.PortalKey,
 		SenderID:  humanUserID(cc.UserLogin.ID),
 		Timestamp: bridgeadapter.MatrixEventTimestamp(msg.Event),
 		Metadata: &MessageMetadata{
-			Role: "user",
-			Body: body,
+			BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{Role: "user", Body: body},
 		},
 	}
 	if msg.InputTransactionID != "" {
@@ -1136,67 +1124,96 @@ func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2
 		}
 		state.toolCalls = append(state.toolCalls, tc)
 	case "collabToolCall":
-		var it map[string]any
-		_ = json.Unmarshal(raw, &it)
-		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, it, true, false)
-		newDocs, newFiles := collectToolOutputArtifacts(state, it)
-		emitNewArtifacts(ctx, portal, cc.uiEmitter(state), newDocs, newFiles)
-		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "collabToolCall", it))
+		cc.emitProviderJSONToolOutput(ctx, portal, state, itemID, "collabToolCall", raw, providerJSONToolOutputOptions{collectArtifacts: true})
 	case "webSearch":
-		var it map[string]any
-		_ = json.Unmarshal(raw, &it)
-		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, it, true, false)
-		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "webSearch", it))
-		// Extract web search citations and emit source-url stream events.
-		if outputJSON, err := json.Marshal(it); err == nil {
-			collectToolOutputCitations(state, "webSearch", string(outputJSON))
-			for _, citation := range state.sourceCitations {
-				cc.uiEmitter(state).EmitUISourceURL(ctx, portal, citation)
-			}
-		}
-		newDocs, newFiles := collectToolOutputArtifacts(state, it)
-		emitNewArtifacts(ctx, portal, cc.uiEmitter(state), newDocs, newFiles)
+		cc.emitProviderJSONToolOutput(ctx, portal, state, itemID, "webSearch", raw, providerJSONToolOutputOptions{
+			collectArtifacts:        true,
+			collectCitations:        true,
+			appendBeforeSideEffects: true,
+		})
 	case "imageView":
-		var it map[string]any
-		_ = json.Unmarshal(raw, &it)
-		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, it, true, false)
-		newDocs, newFiles := collectToolOutputArtifacts(state, it)
-		emitNewArtifacts(ctx, portal, cc.uiEmitter(state), newDocs, newFiles)
-		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "imageView", it))
+		cc.emitProviderJSONToolOutput(ctx, portal, state, itemID, "imageView", raw, providerJSONToolOutputOptions{collectArtifacts: true})
 	case "plan":
 		var it struct {
 			Text string `json:"text"`
 		}
 		_ = json.Unmarshal(raw, &it)
-		text := strings.TrimSpace(it.Text)
-		if text == "" {
+		if !cc.emitTrimmedProviderToolTextOutput(ctx, portal, state, itemID, "plan", "text", it.Text) {
 			return
 		}
-		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, text, true, false)
-		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "plan", map[string]any{"text": text}))
 	case "enteredReviewMode":
-		var it map[string]any
-		_ = json.Unmarshal(raw, &it)
-		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, it, true, false)
-		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "review", it))
+		cc.emitProviderJSONToolOutput(ctx, portal, state, itemID, "review", raw, providerJSONToolOutputOptions{})
 	case "exitedReviewMode":
 		var it struct {
 			Review string `json:"review"`
 		}
 		_ = json.Unmarshal(raw, &it)
-		text := strings.TrimSpace(it.Review)
-		if text == "" {
+		if !cc.emitTrimmedProviderToolTextOutput(ctx, portal, state, itemID, "review", "review", it.Review) {
 			return
 		}
-		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, text, true, false)
-		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "review", map[string]any{"review": text}))
 	case "contextCompaction":
-		var it map[string]any
-		_ = json.Unmarshal(raw, &it)
-		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, it, true, false)
-		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "contextCompaction", it))
+		cc.emitProviderJSONToolOutput(ctx, portal, state, itemID, "contextCompaction", raw, providerJSONToolOutputOptions{})
 		cc.sendSystemNoticeOnce(ctx, portal, state, "compaction:completed:"+itemID, "Codex finished compacting context.")
 	}
+}
+
+type providerJSONToolOutputOptions struct {
+	collectArtifacts        bool
+	collectCitations        bool
+	appendBeforeSideEffects bool
+}
+
+func (cc *CodexClient) emitProviderJSONToolOutput(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	itemID string,
+	toolName string,
+	raw []byte,
+	opts providerJSONToolOutputOptions,
+) {
+	var it map[string]any
+	_ = json.Unmarshal(raw, &it)
+	cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, it, true, false)
+	appendToolCall := func() {
+		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, toolName, it))
+	}
+	if opts.appendBeforeSideEffects {
+		appendToolCall()
+	}
+	if opts.collectCitations {
+		if outputJSON, err := json.Marshal(it); err == nil {
+			collectToolOutputCitations(state, toolName, string(outputJSON))
+			for _, citation := range state.sourceCitations {
+				cc.uiEmitter(state).EmitUISourceURL(ctx, portal, citation)
+			}
+		}
+	}
+	if opts.collectArtifacts {
+		newDocs, newFiles := collectToolOutputArtifacts(state, it)
+		emitNewArtifacts(ctx, portal, cc.uiEmitter(state), newDocs, newFiles)
+	}
+	if !opts.appendBeforeSideEffects {
+		appendToolCall()
+	}
+}
+
+func (cc *CodexClient) emitTrimmedProviderToolTextOutput(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	itemID string,
+	toolName string,
+	field string,
+	value string,
+) bool {
+	text := strings.TrimSpace(value)
+	if text == "" {
+		return false
+	}
+	cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, text, true, false)
+	state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, toolName, map[string]any{field: text}))
+	return true
 }
 
 func (cc *CodexClient) ensureRPC(ctx context.Context) error {
@@ -1481,44 +1498,15 @@ func (cc *CodexClient) composeCodexChatInfo(title string) *bridgev2.ChatInfo {
 	if title == "" {
 		title = "Codex"
 	}
-	members := bridgev2.ChatMemberMap{
-		humanUserID(cc.UserLogin.ID): {
-			EventSender: bridgev2.EventSender{
-				IsFromMe:    true,
-				SenderLogin: cc.UserLogin.ID,
-			},
-			Membership: event.MembershipJoin,
-		},
-		codexGhostID: {
-			EventSender: bridgev2.EventSender{
-				Sender:      codexGhostID,
-				SenderLogin: cc.UserLogin.ID,
-			},
-			Membership: event.MembershipJoin,
-			UserInfo: &bridgev2.UserInfo{
-				Name:  ptr.Ptr("Codex"),
-				IsBot: ptr.Ptr(true),
-			},
-			MemberEventExtra: map[string]any{
-				"displayname": "Codex",
-			},
-		},
-	}
-	return &bridgev2.ChatInfo{
-		Name: ptr.Ptr(title),
-		Type: ptr.Ptr(database.RoomTypeDM),
-		Members: &bridgev2.ChatMemberList{
-			IsFull:      true,
-			OtherUserID: codexGhostID,
-			MemberMap:   members,
-			PowerLevels: &bridgev2.PowerLevelOverrides{
-				Events: map[event.Type]int{
-					matrixevents.RoomCapabilitiesEventType: 100,
-					matrixevents.RoomSettingsEventType:     0,
-				},
-			},
-		},
-	}
+	return bridgeadapter.BuildDMChatInfo(bridgeadapter.DMChatInfoParams{
+		Title:             title,
+		HumanUserID:       humanUserID(cc.UserLogin.ID),
+		LoginID:           cc.UserLogin.ID,
+		BotUserID:         codexGhostID,
+		BotDisplayName:    "Codex",
+		CapabilitiesEvent: matrixevents.RoomCapabilitiesEventType,
+		SettingsEvent:     matrixevents.RoomSettingsEventType,
+	})
 }
 
 func (cc *CodexClient) buildSandboxPolicy(cwd string) map[string]any {
@@ -1678,21 +1666,10 @@ func (cc *CodexClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Po
 	if portal == nil || portal.MXID == "" || cc.UserLogin == nil || cc.UserLogin.Bridge == nil {
 		return
 	}
-	converted := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:   networkid.PartID("0"),
-			Type: event.EventMessage,
-			Content: &event.MessageEventContent{
-				MsgType:  event.MsgNotice,
-				Body:     strings.TrimSpace(message),
-				Mentions: &event.Mentions{},
-			},
-		}},
-	}
 	bg := cc.backgroundContext(ctx)
 	sendCtx, cancel := context.WithTimeout(bg, 10*time.Second)
 	defer cancel()
-	cc.sendViaPortal(sendCtx, portal, converted, "")
+	cc.sendViaPortal(sendCtx, portal, bridgeadapter.BuildSystemNotice(strings.TrimSpace(message)), "")
 }
 
 func (cc *CodexClient) sendApprovalRequestFallbackEvent(
@@ -1753,10 +1730,12 @@ func (cc *CodexClient) sendApprovalRequestFallbackEvent(
 			Content: &event.MessageEventContent{MsgType: event.MsgNotice, Body: "Tool approval required"},
 			Extra:   raw,
 			DBMetadata: &MessageMetadata{
-				Role:               "assistant",
+				BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
+					Role:               "assistant",
+					CanonicalSchema:    "ai-sdk-ui-message-v1",
+					CanonicalUIMessage: uiMessage,
+				},
 				ExcludeFromHistory: true,
-				CanonicalSchema:    "ai-sdk-ui-message-v1",
-				CanonicalUIMessage: uiMessage,
 			},
 		}},
 	}
@@ -1769,23 +1748,20 @@ func (cc *CodexClient) sendApprovalRequestFallbackEvent(
 }
 
 func (cc *CodexClient) sendPendingStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, message string) {
-	if portal == nil || portal.Bridge == nil || evt == nil {
-		return
-	}
 	st := bridgev2.MessageStatus{
 		Status:    event.MessageStatusPending,
 		Message:   message,
 		IsCertain: true,
 	}
-	portal.Bridge.Matrix.SendMessageStatus(ctx, &st, bridgev2.StatusEventInfoFromEvent(evt))
+	bridgeadapter.SendMatrixMessageStatus(ctx, portal, evt, st)
 }
 
 func (cc *CodexClient) markMessageSendSuccess(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, state *streamingState) {
-	if portal == nil || portal.Bridge == nil || evt == nil || state == nil {
+	if state == nil {
 		return
 	}
 	st := bridgev2.MessageStatus{Status: event.MessageStatusSuccess, IsCertain: true}
-	portal.Bridge.Matrix.SendMessageStatus(ctx, &st, bridgev2.StatusEventInfoFromEvent(evt))
+	bridgeadapter.SendMatrixMessageStatus(ctx, portal, evt, st)
 }
 
 func (cc *CodexClient) acquireRoomIfQueueEmpty(roomID id.RoomID) bool {
@@ -1896,14 +1872,14 @@ func (cc *CodexClient) sendInitialStreamMessage(ctx context.Context, portal *bri
 		"m.mentions":             map[string]any{},
 	}
 
-	msgID := newMessageID()
+	msgID := bridgeadapter.NewMessageID("codex")
 	converted := &bridgev2.ConvertedMessage{
 		Parts: []*bridgev2.ConvertedMessagePart{{
 			ID:         networkid.PartID("0"),
 			Type:       event.EventMessage,
 			Content:    &event.MessageEventContent{MsgType: event.MsgText, Body: content},
 			Extra:      eventRaw,
-			DBMetadata: &MessageMetadata{Role: "assistant", TurnID: turnID},
+			DBMetadata: &MessageMetadata{BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{Role: "assistant", TurnID: turnID}},
 		}},
 	}
 
@@ -2010,23 +1986,16 @@ func (cc *CodexClient) sendFinalAssistantTurn(ctx context.Context, portal *bridg
 
 	sender := cc.senderForPortal()
 	cc.UserLogin.QueueRemoteEvent(&CodexRemoteEdit{
-		portal:        portal.PortalKey,
-		sender:        sender,
-		targetMessage: state.networkMessageID,
-		timestamp:     time.Now(),
-		preBuilt: &bridgev2.ConvertedEdit{
-			ModifiedParts: []*bridgev2.ConvertedEditPart{{
-				Type: event.EventMessage,
-				Content: &event.MessageEventContent{
-					MsgType:       event.MsgText,
-					Body:          rendered.Body,
-					Format:        rendered.Format,
-					FormattedBody: rendered.FormattedBody,
-				},
-				Extra:         map[string]any{"m.mentions": map[string]any{}},
-				TopLevelExtra: topLevelExtra,
-			}},
-		},
+		Portal:        portal.PortalKey,
+		Sender:        sender,
+		TargetMessage: state.networkMessageID,
+		Timestamp:     time.Now(),
+		LogKey:        "codex_edit_target",
+		PreBuilt: streamtransport.BuildRenderedConvertedEdit(streamtransport.RenderedMarkdownContent{
+			Body:          rendered.Body,
+			Format:        rendered.Format,
+			FormattedBody: rendered.FormattedBody,
+		}, topLevelExtra),
 	})
 	cc.loggerForContext(ctx).Debug().
 		Str("initial_event_id", state.initialEventID.String()).
@@ -2059,11 +2028,12 @@ func (cc *CodexClient) sendContinuationMessage(ctx context.Context, portal *brid
 	}
 	sender := cc.senderForPortal()
 	cc.UserLogin.QueueRemoteEvent(&CodexRemoteMessage{
-		portal:    portal.PortalKey,
-		id:        newMessageID(),
-		sender:    sender,
-		timestamp: time.Now(),
-		preBuilt: &bridgev2.ConvertedMessage{
+		Portal:    portal.PortalKey,
+		ID:        bridgeadapter.NewMessageID("codex"),
+		Sender:    sender,
+		Timestamp: time.Now(),
+		LogKey:    "codex_msg_id",
+		PreBuilt: &bridgev2.ConvertedMessage{
 			Parts: []*bridgev2.ConvertedMessagePart{{
 				ID:      networkid.PartID("0"),
 				Type:    event.EventMessage,
@@ -2091,73 +2061,38 @@ func (cc *CodexClient) saveAssistantMessage(ctx context.Context, portal *bridgev
 	}
 
 	fullMeta := &MessageMetadata{
-		Role:               "assistant",
-		Body:               state.accumulated.String(),
-		FinishReason:       finishReason,
+		BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
+			Role:               "assistant",
+			Body:               state.accumulated.String(),
+			FinishReason:       finishReason,
+			TurnID:             state.turnID,
+			AgentID:            state.agentID,
+			ToolCalls:          state.toolCalls,
+			StartedAtMs:        state.startedAtMs,
+			CompletedAtMs:      state.completedAtMs,
+			CanonicalSchema:    "ai-sdk-ui-message-v1",
+			CanonicalUIMessage: cc.buildCanonicalUIMessage(state, model, finishReason),
+			GeneratedFiles:     genFiles,
+			ThinkingContent:    state.reasoning.String(),
+			PromptTokens:       state.promptTokens,
+			CompletionTokens:   state.completionTokens,
+			ReasoningTokens:    state.reasoningTokens,
+		},
 		Model:              model,
-		TurnID:             state.turnID,
-		AgentID:            state.agentID,
-		ToolCalls:          state.toolCalls,
-		StartedAtMs:        state.startedAtMs,
 		FirstTokenAtMs:     state.firstTokenAtMs,
-		CompletedAtMs:      state.completedAtMs,
 		HasToolCalls:       len(state.toolCalls) > 0,
-		CanonicalSchema:    "ai-sdk-ui-message-v1",
-		CanonicalUIMessage: cc.buildCanonicalUIMessage(state, model, finishReason),
-		GeneratedFiles:     genFiles,
-		ThinkingContent:    state.reasoning.String(),
 		ThinkingTokenCount: len(strings.Fields(state.reasoning.String())),
-		PromptTokens:       state.promptTokens,
-		CompletionTokens:   state.completionTokens,
-		ReasoningTokens:    state.reasoningTokens,
 	}
 
-	// If the message was sent via sendViaPortal, the DB row already exists — update it.
-	if state.networkMessageID != "" {
-		receiver := portal.Receiver
-		if receiver == "" && cc.UserLogin != nil {
-			receiver = cc.UserLogin.ID
-		}
-		var existing *database.Message
-		var err error
-		if receiver != "" {
-			existing, err = cc.UserLogin.Bridge.DB.Message.GetPartByID(ctx, receiver, state.networkMessageID, networkid.PartID("0"))
-		}
-		if existing == nil && state.initialEventID != "" {
-			existing, err = cc.UserLogin.Bridge.DB.Message.GetPartByMXID(ctx, state.initialEventID)
-		}
-		if err == nil && existing != nil {
-			existing.Metadata = fullMeta
-			if err := cc.UserLogin.Bridge.DB.Message.Update(ctx, existing); err != nil {
-				log.Warn().Err(err).Str("msg_id", string(existing.ID)).Msg("Failed to update assistant message metadata")
-			} else {
-				log.Debug().Str("msg_id", string(existing.ID)).Msg("Updated assistant message metadata")
-			}
-			return
-		}
-		log.Warn().
-			Err(err).
-			Stringer("mxid", state.initialEventID).
-			Str("msg_id", string(state.networkMessageID)).
-			Msg("Could not find existing DB row for update, falling back to insert")
-	}
-	if state.initialEventID == "" {
-		return
-	}
-
-	assistantMsg := &database.Message{
-		ID:        bridgeadapter.MatrixMessageID(state.initialEventID),
-		Room:      portal.PortalKey,
-		SenderID:  codexGhostID,
-		MXID:      state.initialEventID,
-		Timestamp: time.Now(),
-		Metadata:  fullMeta,
-	}
-	if err := cc.UserLogin.Bridge.DB.Message.Insert(ctx, assistantMsg); err != nil {
-		log.Warn().Err(err).Msg("Failed to save assistant message")
-	} else {
-		log.Debug().Str("msg_id", string(assistantMsg.ID)).Msg("Saved assistant message to database")
-	}
+	bridgeadapter.UpsertAssistantMessage(ctx, bridgeadapter.UpsertAssistantMessageParams{
+		Login:            cc.UserLogin,
+		Portal:           portal,
+		SenderID:         codexGhostID,
+		NetworkMessageID: state.networkMessageID,
+		InitialEventID:   state.initialEventID,
+		Metadata:         fullMeta,
+		Logger:           *log,
+	})
 }
 
 // --- Approvals ---
@@ -2273,7 +2208,7 @@ func (cc *CodexClient) handleApprovalRequest(
 }
 
 func (cc *CodexClient) tryApprovalDecisionEvent(ctx context.Context, msg *bridgev2.MatrixMessage) (bool, *bridgev2.MatrixMessageResponse) {
-	raw, ok := parseCodexApprovalDecision(msg.Event)
+	raw, ok := bridgeadapter.ParseApprovalDecisionEvent(msg.Event)
 	if !ok {
 		return false, nil
 	}
@@ -2297,17 +2232,6 @@ func (cc *CodexClient) tryApprovalDecisionEvent(ctx context.Context, msg *bridge
 		cc.sendSystemNotice(ctx, msg.Portal, bridgeadapter.ApprovalErrorToastText(err))
 	}
 	return true, &bridgev2.MatrixMessageResponse{Pending: false}
-}
-
-func parseCodexApprovalDecision(evt *event.Event) (map[string]any, bool) {
-	if evt == nil || evt.Content.Raw == nil {
-		return nil, false
-	}
-	raw, ok := evt.Content.Raw["com.beeper.ai.approval_decision"].(map[string]any)
-	if !ok {
-		return nil, false
-	}
-	return raw, true
 }
 
 func (cc *CodexClient) handleCommandApprovalRequest(ctx context.Context, req codexrpc.Request) (any, *codexrpc.RPCError) {

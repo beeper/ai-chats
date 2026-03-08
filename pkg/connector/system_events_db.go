@@ -21,17 +21,14 @@ type systemEventsDBScope struct {
 }
 
 func systemEventsScope(client *AIClient) *systemEventsDBScope {
-	if client == nil || client.UserLogin == nil || client.UserLogin.Bridge == nil {
-		return nil
-	}
-	db := client.bridgeDB()
-	if db == nil || client.UserLogin.Bridge.DB == nil {
+	db, bridgeID, loginID := loginDBContext(client)
+	if db == nil {
 		return nil
 	}
 	return &systemEventsDBScope{
 		db:       db,
-		bridgeID: string(client.UserLogin.Bridge.DB.BridgeID),
-		loginID:  string(client.UserLogin.ID),
+		bridgeID: bridgeID,
+		loginID:  loginID,
 	}
 }
 

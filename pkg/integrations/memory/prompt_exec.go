@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/openai/openai-go/v3"
@@ -54,7 +55,7 @@ func AugmentPrompt(
 		return prompt
 	}
 	contextText := strings.Join(sections, "\n\n")
-	out := append([]openai.ChatCompletionMessageParamUnion{}, prompt...)
+	out := slices.Clone(prompt)
 	out = append(out, openai.SystemMessage(contextText))
 	return out
 }

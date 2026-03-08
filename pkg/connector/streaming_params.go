@@ -35,7 +35,7 @@ func (oc *AIClient) buildResponsesAPIParams(ctx context.Context, portal *bridgev
 		OfInputItemList: input,
 	}
 
-	// Add reasoning effort if configured (uses inheritance: room → user → default)
+	// Add reasoning effort when the resolved target supports it.
 	if reasoningEffort := oc.effectiveReasoningEffort(meta); reasoningEffort != "" {
 		params.Reasoning = shared.ReasoningParam{
 			Effort: shared.ReasoningEffort(reasoningEffort),
@@ -59,9 +59,9 @@ func (oc *AIClient) buildResponsesAPIParams(ctx context.Context, portal *bridgev
 		log.Debug().Int("count", len(enabledTools)).Msg("Added builtin function tools")
 	}
 
-	if meta.Capabilities.SupportsToolCalling && hasAgent {
-		// Add session tools for non-boss rooms
-		if !hasBossAgent(meta) && !oc.isBuilderRoom(portal) {
+	if oc.getModelCapabilitiesForMeta(meta).SupportsToolCalling && hasAgent {
+		// Add session tools for non-boss agent rooms.
+		if !hasBossAgent(meta) {
 			var enabledSessions []*tools.Tool
 			for _, tool := range tools.SessionTools() {
 				if oc.isToolEnabled(meta, tool.Name) {
@@ -76,7 +76,7 @@ func (oc *AIClient) buildResponsesAPIParams(ctx context.Context, portal *bridgev
 	}
 
 	// Add boss tools if this is a Boss room
-	if hasBossAgent(meta) || oc.isBuilderRoom(portal) {
+	if hasBossAgent(meta) {
 		var enabledBoss []*tools.Tool
 		for _, tool := range tools.BossTools() {
 			if oc.isToolEnabled(meta, tool.Name) {

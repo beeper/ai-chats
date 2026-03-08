@@ -72,8 +72,8 @@ func (oc *AIClient) streamChatCompletions(
 		if len(enabledTools) > 0 {
 			params.Tools = append(params.Tools, ToOpenAIChatTools(enabledTools, &oc.log)...)
 		}
-		if meta.Capabilities.SupportsToolCalling && chatHasAgent {
-			if !oc.isBuilderRoom(portal) {
+		if oc.getModelCapabilitiesForMeta(meta).SupportsToolCalling && chatHasAgent {
+			if !hasBossAgent(meta) {
 				var enabledSessions []*tools.Tool
 				for _, tool := range tools.SessionTools() {
 					if oc.isToolEnabled(meta, tool.Name) {
@@ -84,7 +84,7 @@ func (oc *AIClient) streamChatCompletions(
 					params.Tools = append(params.Tools, bossToolsToChatTools(enabledSessions, &oc.log)...)
 				}
 			}
-			if hasBossAgent(meta) || oc.isBuilderRoom(portal) {
+			if hasBossAgent(meta) {
 				var enabledBoss []*tools.Tool
 				for _, tool := range tools.BossTools() {
 					if oc.isToolEnabled(meta, tool.Name) {
@@ -331,22 +331,7 @@ func (oc *AIClient) streamChatCompletions(
 				}
 				oc.uiEmitter(state).EmitUIToolInputAvailable(ctx, portal, tool.callID, toolName, inputMap, false)
 
-				// Track tool call in metadata
-				completedAt := time.Now().UnixMilli()
-				resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, result, resultStatus)
-				state.toolCalls = append(state.toolCalls, ToolCallMetadata{
-					CallID:        tool.callID,
-					ToolName:      toolName,
-					ToolType:      string(tool.toolType),
-					Input:         parseToolInputPayload(argsJSON),
-					Output:        map[string]any{"result": result},
-					Status:        string(ToolStatusCompleted),
-					ResultStatus:  string(resultStatus),
-					StartedAtMs:   tool.startedAtMs,
-					CompletedAtMs: completedAt,
-					CallEventID:   string(tool.eventID),
-					ResultEventID: string(resultEventID),
-				})
+				recordCompletedToolCall(ctx, oc, portal, state, tool, toolName, argsJSON, result, resultStatus)
 
 				if resultStatus == ResultStatusSuccess {
 					collectToolOutputCitations(state, toolName, result)

@@ -280,7 +280,7 @@ func (h *runtimeIntegrationHost) IsInternalRoom(meta any) bool {
 	if m == nil {
 		return false
 	}
-	return m.IsBuilderRoom || isModuleInternalRoom(m)
+	return isModuleInternalRoom(m)
 }
 
 func (h *runtimeIntegrationHost) PortalMeta(portal any) any {
@@ -299,18 +299,6 @@ func (h *runtimeIntegrationHost) SetMetaField(meta any, key string, value any) {
 		return
 	}
 	switch key {
-	case "AgentID":
-		if v, ok := value.(string); ok {
-			m.AgentID = v
-		}
-	case "Model":
-		if v, ok := value.(string); ok {
-			m.Model = strings.TrimSpace(v)
-		}
-	case "ReasoningEffort":
-		if v, ok := value.(string); ok {
-			m.ReasoningEffort = strings.TrimSpace(v)
-		}
 	case "DisabledTools":
 		if v, ok := value.([]string); ok {
 			m.DisabledTools = v
@@ -451,7 +439,7 @@ func (h *runtimeIntegrationHost) ResolveAgentID(raw string, fallbackDefault stri
 		return agents.DefaultAgentID
 	}
 	normalized := normalizeAgentID(raw)
-	if normalized == "" || !h.agentExists(normalized) {
+	if normalized == "" || !h.AgentExists(normalized) {
 		if fallbackDefault != "" {
 			return normalizeAgentID(fallbackDefault)
 		}
@@ -465,10 +453,6 @@ func (h *runtimeIntegrationHost) NormalizeAgentID(raw string) string {
 }
 
 func (h *runtimeIntegrationHost) AgentExists(normalizedID string) bool {
-	return h.agentExists(normalizedID)
-}
-
-func (h *runtimeIntegrationHost) agentExists(normalizedID string) bool {
 	if h == nil || h.client == nil || h.client.connector == nil {
 		return false
 	}

@@ -53,9 +53,6 @@ func (oc *AIClient) agentDefaultModel(agent *agents.AgentDefinition) string {
 	if agent == nil {
 		return oc.effectiveModel(nil)
 	}
-	if override := oc.agentModelOverride(agent.ID); override != "" {
-		return ResolveAlias(override)
-	}
 	if agent.Model.Primary != "" {
 		return ResolveAlias(agent.Model.Primary)
 	}

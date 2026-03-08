@@ -30,7 +30,7 @@ func shouldExcludeModelVisiblePortal(meta *PortalMetadata) bool {
 	if meta == nil {
 		return false
 	}
-	if isModuleInternalRoom(meta) || meta.IsBuilderRoom {
+	if isModuleInternalRoom(meta) {
 		return true
 	}
 	return strings.TrimSpace(meta.SubagentParentRoomID) != ""
@@ -125,11 +125,7 @@ func (oc *AIClient) executeSessionsList(ctx context.Context, portal *bridgev2.Po
 			entry["updatedAt"] = updatedAt
 		}
 		if meta != nil {
-			model := meta.Model
-			if strings.TrimSpace(model) == "" {
-				model = oc.effectiveModel(meta)
-			}
-			if model != "" {
+			if model := oc.effectiveModel(meta); model != "" {
 				entry["model"] = model
 			}
 		}

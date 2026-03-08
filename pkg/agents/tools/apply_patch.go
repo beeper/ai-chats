@@ -1,19 +1,10 @@
 package tools
 
-import (
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+import "github.com/beeper/ai-bridge/pkg/shared/toolspec"
 
-	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
-)
-
-var ApplyPatchTool = &Tool{
-	Tool: mcp.Tool{
-		Name:        toolspec.ApplyPatchName,
-		Description: toolspec.ApplyPatchDescription,
-		Annotations: &mcp.ToolAnnotations{Title: "apply_patch"},
-		InputSchema: toolspec.ApplyPatchSchema(),
-	},
-	Type:    ToolTypeBuiltin,
-	Group:   GroupFS,
-	Execute: execUnavailable(toolspec.ApplyPatchName),
-}
+var ApplyPatchTool = newUnavailableBuiltinTool(unavailableBuiltinToolSpec{
+	name:        toolspec.ApplyPatchName,
+	description: toolspec.ApplyPatchDescription,
+	title:       "Apply Patch",
+	inputSchema: toolspec.ApplyPatchSchema(),
+})

@@ -183,7 +183,7 @@ func (cc *CodexConnector) autoProvisionExistingCodex(ctx context.Context) {
 		}
 
 		// Use a deterministic instance ID so restarts won't create duplicates.
-		loginID := makeCodexUserLoginID(mxid, 1)
+		loginID := bridgeadapter.MakeUserLoginID("codex", mxid, 1)
 
 		// If this login already exists in the DB (e.g. from a previous run), skip creation.
 		existing, err := cc.br.GetExistingUserLoginByID(ctx, loginID)
@@ -291,12 +291,12 @@ func (cc *CodexConnector) GetConfig() (example string, data any, upgrader config
 }
 
 func (cc *CodexConnector) GetDBMetaTypes() database.MetaTypes {
-	return database.MetaTypes{
-		Portal:    func() any { return &PortalMetadata{} },
-		Message:   func() any { return &MessageMetadata{} },
-		UserLogin: func() any { return &UserLoginMetadata{} },
-		Ghost:     func() any { return &GhostMetadata{} },
-	}
+	return bridgeadapter.BuildMetaTypes(
+		func() any { return &PortalMetadata{} },
+		func() any { return &MessageMetadata{} },
+		func() any { return &UserLoginMetadata{} },
+		func() any { return &GhostMetadata{} },
+	)
 }
 
 func (cc *CodexConnector) LoadUserLogin(_ context.Context, login *bridgev2.UserLogin) error {
@@ -314,20 +314,14 @@ func (cc *CodexConnector) loadCodexUserLogin(login *bridgev2.UserLogin) error {
 		return nil
 	}
 
-	client, err := bridgeadapter.LoadOrCreateClient(
+	client, err := bridgeadapter.LoadOrCreateTypedClient(
 		&cc.clientsMu,
 		cc.clients,
-		login.ID,
-		func(existingAPI bridgev2.NetworkAPI) bool {
-			existing, ok := existingAPI.(*CodexClient)
-			if !ok || existing == nil {
-				return false
-			}
+		login,
+		func(existing *CodexClient, login *bridgev2.UserLogin) {
 			existing.UserLogin = login
-			login.Client = existing
-			return true
 		},
-		func() (bridgev2.NetworkAPI, error) {
+		func() (*CodexClient, error) {
 			return newCodexClient(login, cc)
 		},
 	)
@@ -336,9 +330,7 @@ func (cc *CodexConnector) loadCodexUserLogin(login *bridgev2.UserLogin) error {
 		return nil
 	}
 	login.Client = client
-	if codexClient, ok := client.(*CodexClient); ok {
-		codexClient.scheduleBootstrap()
-	}
+	client.scheduleBootstrap()
 	return nil
 }
 

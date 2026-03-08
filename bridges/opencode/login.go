@@ -13,6 +13,7 @@ import (
 
 	openCodeAPI "github.com/beeper/ai-bridge/bridges/opencode/opencode"
 	"github.com/beeper/ai-bridge/bridges/opencode/opencodebridge"
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 var (
@@ -133,7 +134,7 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 		return openCodeCompleteStep(existing), nil
 	}
 
-	loginID := nextOpenCodeUserLoginID(ol.User)
+	loginID := bridgeadapter.NextUserLoginID(ol.User, "opencode")
 
 	login, err := ol.User.NewLogin(ctx, &database.UserLogin{
 		ID:         loginID,

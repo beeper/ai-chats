@@ -9,6 +9,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 func ensureConvertedMessageParts(converted *bridgev2.ConvertedMessage) {
@@ -28,38 +30,23 @@ func ensureConvertedMessageParts(converted *bridgev2.ConvertedMessage) {
 	converted.Parts = parts
 }
 
-// Handles: intent resolution, ghost room join, send, DB persist via QueueRemoteEvent.
-// Returns the Matrix event ID and the network message ID used.
-// If msgID is empty, a new one is generated.
+// sendViaPortal sends a pre-built message through bridgev2's QueueRemoteEvent pipeline.
 func (oc *AIClient) sendViaPortal(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	converted *bridgev2.ConvertedMessage,
 	msgID networkid.MessageID,
 ) (id.EventID, networkid.MessageID, error) {
-	if portal == nil || portal.MXID == "" {
-		return "", "", fmt.Errorf("invalid portal")
-	}
-	if msgID == "" {
-		msgID = newMessageID()
-	}
 	ensureConvertedMessageParts(converted)
-	sender := oc.senderForPortal(ctx, portal)
-	evt := &AIRemoteMessage{
-		portal:    portal.PortalKey,
-		id:        msgID,
-		sender:    sender,
-		timestamp: time.Now(),
-		preBuilt:  converted,
-	}
-	result := oc.UserLogin.QueueRemoteEvent(evt)
-	if !result.Success {
-		if result.Error != nil {
-			return "", msgID, fmt.Errorf("send failed: %w", result.Error)
-		}
-		return "", msgID, fmt.Errorf("send failed")
-	}
-	return result.EventID, msgID, nil
+	return bridgeadapter.SendViaPortal(bridgeadapter.SendViaPortalParams{
+		Login:     oc.UserLogin,
+		Portal:    portal,
+		Sender:    oc.senderForPortal(ctx, portal),
+		IDPrefix:  "ai",
+		LogKey:    "ai_msg_id",
+		MsgID:     msgID,
+		Converted: converted,
+	})
 }
 
 // The targetMsgID is the network message ID of the message to edit.
@@ -73,12 +60,13 @@ func (oc *AIClient) sendEditViaPortal(
 		return fmt.Errorf("invalid portal")
 	}
 	sender := oc.senderForPortal(ctx, portal)
-	evt := &AIRemoteEdit{
-		portal:        portal.PortalKey,
-		sender:        sender,
-		targetMessage: targetMsgID,
-		timestamp:     time.Now(),
-		preBuilt:      converted,
+	evt := &bridgeadapter.RemoteEdit{
+		Portal:        portal.PortalKey,
+		Sender:        sender,
+		TargetMessage: targetMsgID,
+		Timestamp:     time.Now(),
+		LogKey:        "ai_edit_target",
+		PreBuilt:      converted,
 	}
 	result := oc.UserLogin.QueueRemoteEvent(evt)
 	if !result.Success {

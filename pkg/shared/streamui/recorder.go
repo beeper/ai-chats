@@ -35,15 +35,7 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 		if partID == "" {
 			return
 		}
-		part := map[string]any{
-			"type":  "text",
-			"text":  "",
-			"state": "streaming",
-		}
-		if providerMetadata := jsonutil.DeepCloneMap(jsonutil.ToMap(chunk["providerMetadata"])); len(providerMetadata) > 0 {
-			part["providerMetadata"] = providerMetadata
-		}
-		state.UITextPartIndexByID[partID] = appendPart(state, part)
+		state.UITextPartIndexByID[partID] = appendPart(state, newStreamingTextPart("text", jsonutil.DeepCloneMap(jsonutil.ToMap(chunk["providerMetadata"]))))
 	case "text-delta":
 		partID := strings.TrimSpace(stringValue(chunk["id"]))
 		if partID == "" {
@@ -65,15 +57,7 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 		if partID == "" {
 			return
 		}
-		part := map[string]any{
-			"type":  "reasoning",
-			"text":  "",
-			"state": "streaming",
-		}
-		if providerMetadata := jsonutil.DeepCloneMap(jsonutil.ToMap(chunk["providerMetadata"])); len(providerMetadata) > 0 {
-			part["providerMetadata"] = providerMetadata
-		}
-		state.UIReasoningPartIndexByID[partID] = appendPart(state, part)
+		state.UIReasoningPartIndexByID[partID] = appendPart(state, newStreamingTextPart("reasoning", jsonutil.DeepCloneMap(jsonutil.ToMap(chunk["providerMetadata"]))))
 	case "reasoning-delta":
 		partID := strings.TrimSpace(stringValue(chunk["id"]))
 		if partID == "" {
@@ -291,14 +275,7 @@ func ensureTextPart(state *UIState, partID string, providerMetadata map[string]a
 	if idx, ok := state.UITextPartIndexByID[partID]; ok {
 		return getPartAt(state, idx)
 	}
-	part := map[string]any{
-		"type":  "text",
-		"text":  "",
-		"state": "streaming",
-	}
-	if len(providerMetadata) > 0 {
-		part["providerMetadata"] = providerMetadata
-	}
+	part := newStreamingTextPart("text", providerMetadata)
 	state.UITextPartIndexByID[partID] = appendPart(state, part)
 	return part
 }
@@ -307,15 +284,20 @@ func ensureReasoningPart(state *UIState, partID string, providerMetadata map[str
 	if idx, ok := state.UIReasoningPartIndexByID[partID]; ok {
 		return getPartAt(state, idx)
 	}
+	part := newStreamingTextPart("reasoning", providerMetadata)
+	state.UIReasoningPartIndexByID[partID] = appendPart(state, part)
+	return part
+}
+
+func newStreamingTextPart(partType string, providerMetadata map[string]any) map[string]any {
 	part := map[string]any{
-		"type":  "reasoning",
+		"type":  partType,
 		"text":  "",
 		"state": "streaming",
 	}
 	if len(providerMetadata) > 0 {
 		part["providerMetadata"] = providerMetadata
 	}
-	state.UIReasoningPartIndexByID[partID] = appendPart(state, part)
 	return part
 }
 

@@ -10,6 +10,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
+	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
 )
 
 // Boss tools for agent management.
@@ -134,18 +135,14 @@ var CreateAgentTool = &Tool{
 		Name:        "create_agent",
 		Description: "Create a new AI agent with custom configuration",
 		Annotations: &mcp.ToolAnnotations{Title: "Create Agent"},
-		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"name":          map[string]any{"type": "string", "description": "Display name for the agent"},
-				"description":   map[string]any{"type": "string", "description": "Brief description of what the agent does"},
-				"model":         map[string]any{"type": "string", "description": "Model ID to use (e.g., 'anthropic/claude-sonnet-4.5'). Leave empty for default."},
-				"system_prompt": map[string]any{"type": "string", "description": "Custom system prompt for the agent"},
-				"tools":         toolPolicySchema(),
-				"subagents":     subagentSchema(),
-			},
-			"required": []string{"name"},
-		},
+		InputSchema: toolspec.ObjectSchema(map[string]any{
+			"name":          toolspec.StringProperty("Display name for the agent"),
+			"description":   toolspec.StringProperty("Brief description of what the agent does"),
+			"model":         toolspec.StringProperty("Model ID to use (e.g., 'anthropic/claude-sonnet-4.5'). Leave empty for default."),
+			"system_prompt": toolspec.StringProperty("Custom system prompt for the agent"),
+			"tools":         toolPolicySchema(),
+			"subagents":     subagentSchema(),
+		}, "name"),
 	},
 	Type:  ToolTypeBuiltin,
 	Group: GroupBuilder,
@@ -157,20 +154,10 @@ var ForkAgentTool = &Tool{
 		Name:        "fork_agent",
 		Description: "Create a copy of an existing agent as a new custom agent",
 		Annotations: &mcp.ToolAnnotations{Title: "Fork Agent"},
-		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"source_id": map[string]any{
-					"type":        "string",
-					"description": "ID of the agent to copy",
-				},
-				"new_name": map[string]any{
-					"type":        "string",
-					"description": "Name for the new agent (defaults to '[Original Name] (Fork)')",
-				},
-			},
-			"required": []string{"source_id"},
-		},
+		InputSchema: toolspec.ObjectSchema(map[string]any{
+			"source_id": toolspec.StringProperty("ID of the agent to copy"),
+			"new_name":  toolspec.StringProperty("Name for the new agent (defaults to '[Original Name] (Fork)')"),
+		}, "source_id"),
 	},
 	Type:  ToolTypeBuiltin,
 	Group: GroupBuilder,
@@ -182,19 +169,15 @@ var EditAgentTool = &Tool{
 		Name:        "edit_agent",
 		Description: "Modify an existing custom agent's configuration",
 		Annotations: &mcp.ToolAnnotations{Title: "Edit Agent"},
-		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"agent_id":      map[string]any{"type": "string", "description": "ID of the agent to edit"},
-				"name":          map[string]any{"type": "string", "description": "New display name"},
-				"description":   map[string]any{"type": "string", "description": "New description"},
-				"model":         map[string]any{"type": "string", "description": "New model ID"},
-				"system_prompt": map[string]any{"type": "string", "description": "New system prompt"},
-				"tools":         toolPolicySchema(),
-				"subagents":     subagentSchema(),
-			},
-			"required": []string{"agent_id"},
-		},
+		InputSchema: toolspec.ObjectSchema(map[string]any{
+			"agent_id":      toolspec.StringProperty("ID of the agent to edit"),
+			"name":          toolspec.StringProperty("New display name"),
+			"description":   toolspec.StringProperty("New description"),
+			"model":         toolspec.StringProperty("New model ID"),
+			"system_prompt": toolspec.StringProperty("New system prompt"),
+			"tools":         toolPolicySchema(),
+			"subagents":     subagentSchema(),
+		}, "agent_id"),
 	},
 	Type:  ToolTypeBuiltin,
 	Group: GroupBuilder,
@@ -206,16 +189,9 @@ var DeleteAgentTool = &Tool{
 		Name:        "delete_agent",
 		Description: "Delete a custom agent (preset agents cannot be deleted)",
 		Annotations: &mcp.ToolAnnotations{Title: "Delete Agent"},
-		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"agent_id": map[string]any{
-					"type":        "string",
-					"description": "ID of the agent to delete",
-				},
-			},
-			"required": []string{"agent_id"},
-		},
+		InputSchema: toolspec.ObjectSchema(map[string]any{
+			"agent_id": toolspec.StringProperty("ID of the agent to delete"),
+		}, "agent_id"),
 	},
 	Type:  ToolTypeBuiltin,
 	Group: GroupBuilder,
@@ -227,10 +203,7 @@ var ListAgentsTool = &Tool{
 		Name:        "list_agents",
 		Description: "List all available agents (both preset and custom)",
 		Annotations: &mcp.ToolAnnotations{Title: "List Agents"},
-		InputSchema: map[string]any{
-			"type":       "object",
-			"properties": map[string]any{},
-		},
+		InputSchema: toolspec.EmptyObjectSchema(),
 	},
 	Type:  ToolTypeBuiltin,
 	Group: GroupBuilder,
@@ -242,10 +215,7 @@ var ListModelsTool = &Tool{
 		Name:        "list_models",
 		Description: "List all available AI models",
 		Annotations: &mcp.ToolAnnotations{Title: "List Models"},
-		InputSchema: map[string]any{
-			"type":       "object",
-			"properties": map[string]any{},
-		},
+		InputSchema: toolspec.EmptyObjectSchema(),
 	},
 	Type:  ToolTypeBuiltin,
 	Group: GroupSessions,
@@ -257,20 +227,10 @@ var RunInternalCommandTool = &Tool{
 		Name:        "run_internal_command",
 		Description: "Run an internal !ai command in a target room",
 		Annotations: &mcp.ToolAnnotations{Title: "Run Internal Command"},
-		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"command": map[string]any{
-					"type":        "string",
-					"description": "The !ai command to run (with or without prefix)",
-				},
-				"room_id": map[string]any{
-					"type":        "string",
-					"description": "Optional target room ID (defaults to the current room)",
-				},
-			},
-			"required": []string{"command"},
-		},
+		InputSchema: toolspec.ObjectSchema(map[string]any{
+			"command": toolspec.StringProperty("The !ai command to run (with or without prefix)"),
+			"room_id": toolspec.StringProperty("Optional target room ID (defaults to the current room)"),
+		}, "command"),
 	},
 	Type:  ToolTypeBuiltin,
 	Group: GroupBuilder,
@@ -282,28 +242,12 @@ var ModifyRoomTool = &Tool{
 		Name:        "modify_room",
 		Description: "Modify an existing room's configuration",
 		Annotations: &mcp.ToolAnnotations{Title: "Modify Room"},
-		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"room_id": map[string]any{
-					"type":        "string",
-					"description": "ID of the room to modify",
-				},
-				"name": map[string]any{
-					"type":        "string",
-					"description": "New display name for the room",
-				},
-				"agent_id": map[string]any{
-					"type":        "string",
-					"description": "New agent ID to assign to this room",
-				},
-				"system_prompt": map[string]any{
-					"type":        "string",
-					"description": "New system prompt override for this room",
-				},
-			},
-			"required": []string{"room_id"},
-		},
+		InputSchema: toolspec.ObjectSchema(map[string]any{
+			"room_id":       toolspec.StringProperty("ID of the room to modify"),
+			"name":          toolspec.StringProperty("New display name for the room"),
+			"agent_id":      toolspec.StringProperty("New agent ID to assign to this room"),
+			"system_prompt": toolspec.StringProperty("New system prompt override for this room"),
+		}, "room_id"),
 	},
 	Type:  ToolTypeBuiltin,
 	Group: GroupSessions,
@@ -315,27 +259,15 @@ var SessionsListTool = &Tool{
 		Name:        "sessions_list",
 		Description: "List sessions with optional filters and last messages.",
 		Annotations: &mcp.ToolAnnotations{Title: "List Sessions"},
-		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"kinds": map[string]any{
-					"type":  "array",
-					"items": map[string]any{"type": "string"},
-				},
-				"limit": map[string]any{
-					"type":        "number",
-					"description": "Maximum number of sessions to return (default: 50)",
-				},
-				"activeMinutes": map[string]any{
-					"type":        "number",
-					"description": "Only include sessions active within this many minutes",
-				},
-				"messageLimit": map[string]any{
-					"type":        "number",
-					"description": "Include the last N messages for each session",
-				},
+		InputSchema: toolspec.ObjectSchema(map[string]any{
+			"kinds": map[string]any{
+				"type":  "array",
+				"items": map[string]any{"type": "string"},
 			},
-		},
+			"limit":         toolspec.NumberProperty("Maximum number of sessions to return (default: 50)"),
+			"activeMinutes": toolspec.NumberProperty("Only include sessions active within this many minutes"),
+			"messageLimit":  toolspec.NumberProperty("Include the last N messages for each session"),
+		}),
 	},
 	Type:  ToolTypeBuiltin,
 	Group: GroupSessions,
@@ -347,24 +279,11 @@ var SessionsHistoryTool = &Tool{
 		Name:        "sessions_history",
 		Description: "Fetch message history for a session. Use the sessionKey from sessions_list.",
 		Annotations: &mcp.ToolAnnotations{Title: "Session History"},
-		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"sessionKey": map[string]any{
-					"type":        "string",
-					"description": "Session identifier from sessions_list (preferred canonical target)",
-				},
-				"limit": map[string]any{
-					"type":        "number",
-					"description": "Maximum number of messages to return (default: 200)",
-				},
-				"includeTools": map[string]any{
-					"type":        "boolean",
-					"description": "Whether to include tool calls in the returned history",
-				},
-			},
-			"required": []string{"sessionKey"},
-		},
+		InputSchema: toolspec.ObjectSchema(map[string]any{
+			"sessionKey":   toolspec.StringProperty("Session identifier from sessions_list (preferred canonical target)"),
+			"limit":        toolspec.NumberProperty("Maximum number of messages to return (default: 200)"),
+			"includeTools": toolspec.BooleanProperty("Whether to include tool calls in the returned history"),
+		}, "sessionKey"),
 	},
 	Type:  ToolTypeBuiltin,
 	Group: GroupSessions,
@@ -376,32 +295,13 @@ var SessionsSendTool = &Tool{
 		Name:        "sessions_send",
 		Description: "Send a message into another session. Prefer the sessionKey from sessions_list; label is fallback only.",
 		Annotations: &mcp.ToolAnnotations{Title: "Send to Session"},
-		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"sessionKey": map[string]any{
-					"type":        "string",
-					"description": "Session identifier from sessions_list (preferred canonical target)",
-				},
-				"label": map[string]any{
-					"type":        "string",
-					"description": "Session label fallback (can be ambiguous; sessionKey is preferred)",
-				},
-				"agentId": map[string]any{
-					"type":        "string",
-					"description": "Agent id filter for label lookups",
-				},
-				"message": map[string]any{
-					"type":        "string",
-					"description": "The message to send",
-				},
-				"timeoutSeconds": map[string]any{
-					"type":        "number",
-					"description": "Optional timeout for the remote session",
-				},
-			},
-			"required": []string{"message"},
-		},
+		InputSchema: toolspec.ObjectSchema(map[string]any{
+			"sessionKey":     toolspec.StringProperty("Session identifier from sessions_list (preferred canonical target)"),
+			"label":          toolspec.StringProperty("Session label fallback (can be ambiguous; sessionKey is preferred)"),
+			"agentId":        toolspec.StringProperty("Agent id filter for label lookups"),
+			"message":        toolspec.StringProperty("The message to send"),
+			"timeoutSeconds": toolspec.NumberProperty("Optional timeout for the remote session"),
+		}, "message"),
 	},
 	Type:  ToolTypeBuiltin,
 	Group: GroupSessions,
@@ -413,41 +313,19 @@ var SessionsSpawnTool = &Tool{
 		Name:        "sessions_spawn",
 		Description: "Spawn a background sub-agent run in an isolated session and announce the result back to the requester chat.",
 		Annotations: &mcp.ToolAnnotations{Title: "Spawn Session"},
-		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"task": map[string]any{
-					"type":        "string",
-					"description": "Task description for the sub-agent.",
-				},
-				"label": map[string]any{
-					"type":        "string",
-					"description": "Optional label for the sub-agent run.",
-				},
-				"agentId": map[string]any{
-					"type":        "string",
-					"description": "Agent ID override for the sub-agent run.",
-				},
-				"model": map[string]any{
-					"type":        "string",
-					"description": "Optional model override (provider/model).",
-				},
-				"thinking": map[string]any{
-					"type":        "string",
-					"description": "Optional thinking level override.",
-				},
-				"runTimeoutSeconds": map[string]any{
-					"type":        "number",
-					"description": "Optional run timeout in seconds.",
-				},
-				"cleanup": map[string]any{
-					"type":        "string",
-					"enum":        []string{"delete", "keep"},
-					"description": "Cleanup policy for the spawned session.",
-				},
+		InputSchema: toolspec.ObjectSchema(map[string]any{
+			"task":              toolspec.StringProperty("Task description for the sub-agent."),
+			"label":             toolspec.StringProperty("Optional label for the sub-agent run."),
+			"agentId":           toolspec.StringProperty("Agent ID override for the sub-agent run."),
+			"model":             toolspec.StringProperty("Optional model override (provider/model)."),
+			"thinking":          toolspec.StringProperty("Optional thinking level override."),
+			"runTimeoutSeconds": toolspec.NumberProperty("Optional run timeout in seconds."),
+			"cleanup": map[string]any{
+				"type":        "string",
+				"enum":        []string{"delete", "keep"},
+				"description": "Cleanup policy for the spawned session.",
 			},
-			"required": []string{"task"},
-		},
+		}, "task"),
 	},
 	Type:  ToolTypeBuiltin,
 	Group: GroupSessions,

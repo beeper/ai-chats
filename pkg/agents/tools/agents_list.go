@@ -1,6 +1,10 @@
 package tools
 
-import "github.com/modelcontextprotocol/go-sdk/mcp"
+import (
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
+)
 
 // AgentsListTool lists agent ids allowed for sessions_spawn.
 var AgentsListTool = &Tool{
@@ -8,10 +12,7 @@ var AgentsListTool = &Tool{
 		Name:        "agents_list",
 		Description: "List agent ids you can target with sessions_spawn (based on allowlists).",
 		Annotations: &mcp.ToolAnnotations{Title: "Agents List"},
-		InputSchema: map[string]any{
-			"type":       "object",
-			"properties": map[string]any{},
-		},
+		InputSchema: toolspec.EmptyObjectSchema(),
 	},
 	Type:  ToolTypeBuiltin,
 	Group: GroupSessions,

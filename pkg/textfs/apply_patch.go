@@ -250,8 +250,7 @@ func parseOneHunk(lines []string, lineNumber int) (applyPatchHunk, int, error) {
 		return nil, 0, fmt.Errorf("invalid patch hunk at line %d: empty hunk", lineNumber)
 	}
 	firstLine := strings.TrimSpace(lines[0])
-	if strings.HasPrefix(firstLine, addFileMarker) {
-		targetPath := strings.TrimPrefix(firstLine, addFileMarker)
+	if targetPath, ok := strings.CutPrefix(firstLine, addFileMarker); ok {
 		contents := ""
 		consumed := 1
 		for _, addLine := range lines[1:] {
@@ -264,19 +263,17 @@ func parseOneHunk(lines []string, lineNumber int) (applyPatchHunk, int, error) {
 		}
 		return addFileHunk{path: targetPath, contents: contents}, consumed, nil
 	}
-	if strings.HasPrefix(firstLine, deleteFileMarker) {
-		targetPath := strings.TrimPrefix(firstLine, deleteFileMarker)
+	if targetPath, ok := strings.CutPrefix(firstLine, deleteFileMarker); ok {
 		return deleteFileHunk{path: targetPath}, 1, nil
 	}
-	if strings.HasPrefix(firstLine, updateFileMarker) {
-		targetPath := strings.TrimPrefix(firstLine, updateFileMarker)
+	if targetPath, ok := strings.CutPrefix(firstLine, updateFileMarker); ok {
 		remaining := lines[1:]
 		consumed := 1
 		movePath := ""
 		if len(remaining) > 0 {
 			candidate := strings.TrimSpace(remaining[0])
-			if strings.HasPrefix(candidate, moveToMarker) {
-				movePath = strings.TrimPrefix(candidate, moveToMarker)
+			if mp, ok := strings.CutPrefix(candidate, moveToMarker); ok {
+				movePath = mp
 				remaining = remaining[1:]
 				consumed++
 			}
@@ -315,8 +312,8 @@ func parseUpdateFileChunk(lines []string, lineNumber int, allowMissingContext bo
 	chunk := updateFileChunk{}
 	if lines[0] == emptyChangeContextMarker {
 		startIndex = 1
-	} else if strings.HasPrefix(lines[0], changeContextMarker) {
-		chunk.changeContext = strings.TrimPrefix(lines[0], changeContextMarker)
+	} else if ctx, ok := strings.CutPrefix(lines[0], changeContextMarker); ok {
+		chunk.changeContext = ctx
 		chunk.hasContext = true
 		startIndex = 1
 	} else if !allowMissingContext {

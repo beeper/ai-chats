@@ -73,8 +73,7 @@ func (m *OpenCodeManager) syncAssistantTextPart(ctx context.Context, inst *openC
 			inst.appendPartTextContent(part.SessionID, part.ID, kind, text)
 			delivered = text
 		}
-	} else if text != "" && strings.HasPrefix(text, delivered) && len(text) > len(delivered) {
-		missing := text[len(delivered):]
+	} else if missing, ok := strings.CutPrefix(text, delivered); ok && missing != "" {
 		m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
 			"type":  kind + "-delta",
 			"id":    partID,
@@ -101,6 +100,18 @@ func (m *OpenCodeManager) emitDataPartStream(ctx context.Context, inst *openCode
 	if state := inst.partState(part.SessionID, part.ID); state != nil && state.dataStreamSent {
 		return
 	}
+	data := BuildDataPartMap(part)
+	if data == nil {
+		return
+	}
+	turnID := partTurnID(part)
+	m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, m.bridge.portalAgentID(portal), data)
+	inst.markPartDataStreamSent(part.SessionID, part.ID)
+}
+
+// BuildDataPartMap builds a map representation of an opencode data part for streaming or backfill.
+// Returns nil for unknown part types.
+func BuildDataPartMap(part opencode.Part) map[string]any {
 	data := map[string]any{
 		"type": "data-opencode-" + strings.TrimSpace(part.Type),
 		"id":   part.ID,
@@ -147,8 +158,8 @@ func (m *OpenCodeManager) emitDataPartStream(ctx context.Context, inst *openCode
 		}
 	case "compaction":
 		data["auto"] = part.Auto
+	default:
+		return nil
 	}
-	turnID := partTurnID(part)
-	m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, m.bridge.portalAgentID(portal), data)
-	inst.markPartDataStreamSent(part.SessionID, part.ID)
+	return data
 }

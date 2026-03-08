@@ -1,12 +1,28 @@
 package bridgeadapter
 
-import "strings"
+import (
+	"strings"
+
+	"maunium.net/go/mautrix/event"
+)
 
 type ApprovalDecisionPayload struct {
 	ApprovalID string
 	Approved   bool
 	Always     bool
 	Reason     string
+}
+
+// ParseApprovalDecisionEvent extracts the approval decision payload from a Matrix event's raw content.
+func ParseApprovalDecisionEvent(evt *event.Event) (map[string]any, bool) {
+	if evt == nil || evt.Content.Raw == nil {
+		return nil, false
+	}
+	raw, ok := evt.Content.Raw["com.beeper.ai.approval_decision"].(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	return raw, true
 }
 
 func ParseApprovalDecision(raw map[string]any) (ApprovalDecisionPayload, bool) {

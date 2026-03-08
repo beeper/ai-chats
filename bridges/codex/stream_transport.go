@@ -2,13 +2,11 @@ package codex
 
 import (
 	"context"
-	"strings"
-	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 )
 
@@ -16,40 +14,17 @@ func (cc *CodexClient) sendDebouncedStreamEdit(ctx context.Context, portal *brid
 	if cc == nil || state == nil || portal == nil {
 		return nil
 	}
-	content := streamtransport.BuildDebouncedEditContent(streamtransport.DebouncedEditParams{
-		PortalMXID:   portal.MXID.String(),
-		Force:        force,
-		SuppressSend: state.suppressSend,
-		VisibleBody:  state.visibleAccumulated.String(),
-		FallbackBody: state.accumulated.String(),
+	return bridgeadapter.SendDebouncedStreamEdit(bridgeadapter.SendDebouncedStreamEditParams{
+		Login:            cc.UserLogin,
+		Portal:           portal,
+		Sender:           cc.senderForPortal(),
+		NetworkMessageID: state.networkMessageID,
+		SuppressSend:     state.suppressSend,
+		VisibleBody:      state.visibleAccumulated.String(),
+		FallbackBody:     state.accumulated.String(),
+		LogKey:           "codex_edit_target",
+		Force:            force,
 	})
-	if content == nil || state.networkMessageID == "" {
-		return nil
-	}
-	sender := cc.senderForPortal()
-	cc.UserLogin.QueueRemoteEvent(&CodexRemoteEdit{
-		portal:        portal.PortalKey,
-		sender:        sender,
-		targetMessage: state.networkMessageID,
-		timestamp:     time.Now(),
-		preBuilt: &bridgev2.ConvertedEdit{
-			ModifiedParts: []*bridgev2.ConvertedEditPart{{
-				Type: event.EventMessage,
-				Content: &event.MessageEventContent{
-					MsgType:       event.MsgText,
-					Body:          content.Body,
-					Format:        content.Format,
-					FormattedBody: content.FormattedBody,
-				},
-				Extra: map[string]any{"m.mentions": map[string]any{}},
-				TopLevelExtra: map[string]any{
-					"com.beeper.dont_render_edited": true,
-					"m.mentions":                    map[string]any{},
-				},
-			}},
-		},
-	})
-	return nil
 }
 
 func (cc *CodexClient) ensureStreamSession(ctx context.Context, portal *bridgev2.Portal, state *streamingState) *streamtransport.StreamSession {
@@ -100,19 +75,17 @@ func (cc *CodexClient) ensureStreamSession(ctx context.Context, portal *bridgev2
 }
 
 func (cc *CodexClient) emitStreamEvent(ctx context.Context, portal *bridgev2.Portal, state *streamingState, part map[string]any) {
-	if portal == nil || portal.MXID == "" || state == nil || state.suppressSend {
+	if state == nil {
 		return
 	}
-	if !state.loggedStreamStart {
-		state.loggedStreamStart = true
-		cc.loggerForContext(ctx).Info().
-			Stringer("room_id", portal.MXID).
-			Str("turn_id", strings.TrimSpace(state.turnID)).
-			Msg("Streaming events")
-	}
-	session := cc.ensureStreamSession(ctx, portal, state)
-	if session == nil {
-		return
-	}
-	session.EmitPart(ctx, part)
+	streamtransport.EmitStreamEventWithSession(
+		ctx,
+		portal,
+		state.turnID,
+		state.suppressSend,
+		&state.loggedStreamStart,
+		cc.loggerForContext(ctx),
+		func() *streamtransport.StreamSession { return cc.ensureStreamSession(ctx, portal, state) },
+		part,
+	)
 }

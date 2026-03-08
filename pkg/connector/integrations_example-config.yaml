@@ -54,10 +54,8 @@ model_cache_duration: 6h
 
 # Optional message rendering settings.
 messages:
-  # Prefix applied to outbound replies (and heartbeat ok acks).
-  responsePrefix: ""
   # History defaults for prompt construction.
-  # Set 0 to disable, or override per-room with !ai context.
+  # Set 0 to disable.
   directChat:
     historyLimit: 20
   groupChat:
@@ -94,8 +92,8 @@ tool_approvals:
 # Optional per-channel overrides.
 channels:
   matrix:
-    # Response prefix override for Matrix rooms.
-    responsePrefix: ""
+    # Matrix reply/thread behavior.
+    replyToMode: "first"
 
 # Session configuration.
 session:
