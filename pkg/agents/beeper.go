@@ -25,7 +25,7 @@ var BeeperAIAgent = &AgentDefinition{
 	Tools:        &toolpolicy.ToolPolicyConfig{Profile: toolpolicy.ProfileFull},
 	SystemPrompt: BeeperDelegationPrompt,
 	PromptMode:   PromptModeFull,
-	IsPreset: true,
+	IsPreset:     true,
 }
 
 // GetBeeperAI returns a copy of the default Beep agent.

@@ -32,5 +32,5 @@ var BeeperSearchAgent = &AgentDefinition{
 	},
 	SystemPrompt: BeeperSearchPrompt,
 	PromptMode:   PromptModeFull,
-	IsPreset: true,
+	IsPreset:     true,
 }

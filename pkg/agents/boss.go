@@ -19,7 +19,7 @@ var BossAgent = &AgentDefinition{
 	Tools:        &toolpolicy.ToolPolicyConfig{Profile: toolpolicy.ProfileBoss},
 	SystemPrompt: BossSystemPrompt,
 	PromptMode:   PromptModeFull,
-	IsPreset: true,
+	IsPreset:     true,
 }
 
 // GetBossAgent returns a copy of the Boss agent definition.
