@@ -25,6 +25,7 @@ var (
 )
 
 const maxSystemEvents = 20
+const systemEventsKeySeparator = "\x1f"
 
 func requireSessionKey(key string) (string, error) {
 	trimmed := strings.TrimSpace(key)
@@ -42,8 +43,8 @@ func normalizeContextKey(key string) string {
 	return strings.ToLower(trimmed)
 }
 
-func enqueueSystemEvent(sessionKey string, text string, contextKey string) {
-	key, err := requireSessionKey(sessionKey)
+func enqueueSystemEvent(ownerKey string, sessionKey string, text string, contextKey string) {
+	key, err := buildSystemEventsMapKey(ownerKey, sessionKey)
 	if err != nil {
 		return
 	}
@@ -70,8 +71,8 @@ func enqueueSystemEvent(sessionKey string, text string, contextKey string) {
 	systemEventsMu.Unlock()
 }
 
-func drainSystemEventEntries(sessionKey string) []SystemEvent {
-	key, err := requireSessionKey(sessionKey)
+func drainSystemEventEntries(ownerKey string, sessionKey string) []SystemEvent {
+	key, err := buildSystemEventsMapKey(ownerKey, sessionKey)
 	if err != nil {
 		return nil
 	}
@@ -87,8 +88,8 @@ func drainSystemEventEntries(sessionKey string) []SystemEvent {
 	return out
 }
 
-func peekSystemEvents(sessionKey string) []string {
-	key, err := requireSessionKey(sessionKey)
+func peekSystemEvents(ownerKey string, sessionKey string) []string {
+	key, err := buildSystemEventsMapKey(ownerKey, sessionKey)
 	if err != nil {
 		return nil
 	}
@@ -106,8 +107,8 @@ func peekSystemEvents(sessionKey string) []string {
 	return out
 }
 
-func hasSystemEvents(sessionKey string) bool {
-	key, err := requireSessionKey(sessionKey)
+func hasSystemEvents(ownerKey string, sessionKey string) bool {
+	key, err := buildSystemEventsMapKey(ownerKey, sessionKey)
 	if err != nil {
 		return false
 	}
@@ -116,4 +117,24 @@ func hasSystemEvents(sessionKey string) bool {
 	has := entry != nil && len(entry.queue) > 0
 	systemEventsMu.Unlock()
 	return has
+}
+
+func buildSystemEventsMapKey(ownerKey string, sessionKey string) (string, error) {
+	owner := strings.TrimSpace(ownerKey)
+	key, err := requireSessionKey(sessionKey)
+	if err != nil {
+		return "", err
+	}
+	if owner == "" {
+		return "", errors.New("system events require an owner key")
+	}
+	return owner + systemEventsKeySeparator + key, nil
+}
+
+func splitSystemEventsMapKey(key string) (string, string, bool) {
+	owner, sessionKey, ok := strings.Cut(strings.TrimSpace(key), systemEventsKeySeparator)
+	if !ok || strings.TrimSpace(owner) == "" || strings.TrimSpace(sessionKey) == "" {
+		return "", "", false
+	}
+	return owner, sessionKey, true
 }

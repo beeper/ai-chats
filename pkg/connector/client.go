@@ -1791,10 +1791,7 @@ func (oc *AIClient) listAvailableModels(ctx context.Context, forceRefresh bool) 
 		}
 	}
 
-	oc.loggerForContext(ctx).Debug().Msg("Loading model catalog from VFS")
-	if _, err := oc.ensureModelCatalogVFS(ctx); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to seed model catalog")
-	}
+	oc.loggerForContext(ctx).Debug().Msg("Loading derived model catalog")
 	allModels := oc.loadModelCatalogModels(ctx)
 
 	// Update cache

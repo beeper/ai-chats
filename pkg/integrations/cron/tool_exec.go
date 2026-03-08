@@ -247,7 +247,13 @@ func injectToolContext(job *JobCreate, resolve func() ToolCreateContext) {
 		}
 		job.AgentID = &agentID
 	}
-
+	if job.Delivery != nil &&
+		job.Delivery.Mode == DeliveryAnnounce &&
+		strings.TrimSpace(job.Delivery.To) == "" &&
+		!tc.SourceInternal &&
+		strings.TrimSpace(tc.SourceRoomID) != "" {
+		job.Delivery.To = strings.TrimSpace(tc.SourceRoomID)
+	}
 }
 
 func injectReminderContext(job *JobCreate, lines []ReminderContextLine, count int) {

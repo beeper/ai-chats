@@ -1,4 +1,4 @@
--- v0 -> v1: create ai bridge schema
+-- v0 -> v1: create shared AI bridge schema
 CREATE TABLE IF NOT EXISTS ai_memory_files (
   bridge_id TEXT NOT NULL,
   login_id TEXT NOT NULL,
@@ -83,19 +83,10 @@ CREATE TABLE IF NOT EXISTS ai_memory_session_files (
   hash TEXT NOT NULL,
   size INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
-  PRIMARY KEY (bridge_id, login_id, agent_id, session_key)
+  PRIMARY KEY (bridge_id, login_id, agent_id, session_key, path)
 );
 
 CREATE INDEX IF NOT EXISTS idx_ai_memory_session_files_path ON ai_memory_session_files(path);
-
-CREATE TABLE IF NOT EXISTS ai_bridge_state (
-  bridge_id TEXT NOT NULL,
-  login_id TEXT NOT NULL,
-  store_key TEXT NOT NULL,
-  content TEXT NOT NULL,
-  updated_at INTEGER NOT NULL,
-  PRIMARY KEY (bridge_id, login_id, store_key)
-);
 
 CREATE TABLE IF NOT EXISTS ai_cron_jobs (
   bridge_id TEXT NOT NULL,
@@ -108,21 +99,48 @@ CREATE TABLE IF NOT EXISTS ai_cron_jobs (
   delete_after_run INTEGER NOT NULL DEFAULT 0,
   created_at_ms INTEGER NOT NULL DEFAULT 0,
   updated_at_ms INTEGER NOT NULL DEFAULT 0,
-  schedule_json TEXT NOT NULL DEFAULT '{}',
-  payload_json TEXT NOT NULL DEFAULT '{}',
-  delivery_json TEXT NOT NULL DEFAULT '',
-  state_json TEXT NOT NULL DEFAULT '{}',
+  schedule_kind TEXT NOT NULL DEFAULT '',
+  schedule_at TEXT NOT NULL DEFAULT '',
+  schedule_every_ms INTEGER,
+  schedule_anchor_ms INTEGER,
+  schedule_expr TEXT NOT NULL DEFAULT '',
+  schedule_tz TEXT NOT NULL DEFAULT '',
+  payload_kind TEXT NOT NULL DEFAULT '',
+  payload_message TEXT NOT NULL DEFAULT '',
+  payload_model TEXT NOT NULL DEFAULT '',
+  payload_thinking TEXT NOT NULL DEFAULT '',
+  payload_timeout_seconds INTEGER,
+  payload_allow_unsafe_external INTEGER,
+  delivery_mode TEXT NOT NULL DEFAULT '',
+  delivery_channel TEXT NOT NULL DEFAULT '',
+  delivery_to TEXT NOT NULL DEFAULT '',
+  delivery_best_effort INTEGER,
+  state_next_run_at_ms INTEGER,
+  state_running_at_ms INTEGER,
+  state_last_run_at_ms INTEGER,
+  state_last_status TEXT NOT NULL DEFAULT '',
+  state_last_error TEXT NOT NULL DEFAULT '',
+  state_last_duration_ms INTEGER,
   room_id TEXT NOT NULL DEFAULT '',
   revision INTEGER NOT NULL DEFAULT 1,
   pending_delay_id TEXT NOT NULL DEFAULT '',
   pending_delay_kind TEXT NOT NULL DEFAULT '',
   pending_run_key TEXT NOT NULL DEFAULT '',
   last_output_preview TEXT NOT NULL DEFAULT '',
-  processed_run_keys_json TEXT NOT NULL DEFAULT '[]',
   PRIMARY KEY (bridge_id, login_id, job_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_ai_cron_jobs_lookup ON ai_cron_jobs(bridge_id, login_id, agent_id);
+
+CREATE TABLE IF NOT EXISTS ai_cron_job_run_keys (
+  bridge_id TEXT NOT NULL,
+  login_id TEXT NOT NULL,
+  job_id TEXT NOT NULL,
+  run_index INTEGER NOT NULL,
+  run_key TEXT NOT NULL,
+  PRIMARY KEY (bridge_id, login_id, job_id, run_index),
+  UNIQUE (bridge_id, login_id, job_id, run_key)
+);
 
 CREATE TABLE IF NOT EXISTS ai_managed_heartbeats (
   bridge_id TEXT NOT NULL,
@@ -130,7 +148,9 @@ CREATE TABLE IF NOT EXISTS ai_managed_heartbeats (
   agent_id TEXT NOT NULL,
   enabled INTEGER NOT NULL DEFAULT 1,
   interval_ms INTEGER NOT NULL DEFAULT 0,
-  active_hours_json TEXT NOT NULL DEFAULT '',
+  active_hours_start TEXT NOT NULL DEFAULT '',
+  active_hours_end TEXT NOT NULL DEFAULT '',
+  active_hours_timezone TEXT NOT NULL DEFAULT '',
   room_id TEXT NOT NULL DEFAULT '',
   revision INTEGER NOT NULL DEFAULT 1,
   next_run_at_ms INTEGER,
@@ -140,8 +160,17 @@ CREATE TABLE IF NOT EXISTS ai_managed_heartbeats (
   last_run_at_ms INTEGER,
   last_result TEXT NOT NULL DEFAULT '',
   last_error TEXT NOT NULL DEFAULT '',
-  processed_run_keys_json TEXT NOT NULL DEFAULT '[]',
   PRIMARY KEY (bridge_id, login_id, agent_id)
+);
+
+CREATE TABLE IF NOT EXISTS ai_managed_heartbeat_run_keys (
+  bridge_id TEXT NOT NULL,
+  login_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  run_index INTEGER NOT NULL,
+  run_key TEXT NOT NULL,
+  PRIMARY KEY (bridge_id, login_id, agent_id, run_index),
+  UNIQUE (bridge_id, login_id, agent_id, run_key)
 );
 
 CREATE TABLE IF NOT EXISTS ai_system_events (
@@ -155,4 +184,28 @@ CREATE TABLE IF NOT EXISTS ai_system_events (
   PRIMARY KEY (bridge_id, login_id, session_key, event_index)
 );
 
-CREATE INDEX IF NOT EXISTS idx_ai_system_events_lookup ON ai_system_events(bridge_id, login_id, session_key);
+CREATE TABLE IF NOT EXISTS ai_sessions (
+  bridge_id TEXT NOT NULL,
+  login_id TEXT NOT NULL,
+  store_agent_id TEXT NOT NULL,
+  session_key TEXT NOT NULL,
+  session_id TEXT NOT NULL DEFAULT '',
+  updated_at_ms INTEGER NOT NULL DEFAULT 0,
+  last_heartbeat_text TEXT NOT NULL DEFAULT '',
+  last_heartbeat_sent_at_ms INTEGER NOT NULL DEFAULT 0,
+  last_channel TEXT NOT NULL DEFAULT '',
+  last_to TEXT NOT NULL DEFAULT '',
+  last_account_id TEXT NOT NULL DEFAULT '',
+  last_thread_id TEXT NOT NULL DEFAULT '',
+  queue_mode TEXT NOT NULL DEFAULT '',
+  queue_debounce_ms INTEGER,
+  queue_cap INTEGER,
+  queue_drop TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (bridge_id, login_id, store_agent_id, session_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_sessions_lookup
+  ON ai_sessions(bridge_id, login_id, store_agent_id);
+
+CREATE INDEX IF NOT EXISTS idx_ai_sessions_updated
+  ON ai_sessions(bridge_id, login_id, store_agent_id, updated_at_ms);

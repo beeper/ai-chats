@@ -192,7 +192,7 @@ func (s *schedulerRuntime) CronRun(ctx context.Context, jobID string) (bool, str
 		RunKey:         buildTickRunKey(record.Revision, "manual", time.Now().UnixMilli()),
 		Reason:         "manual",
 	}
-	if err := s.handleCronRun(context.Background(), tick, true); err != nil {
+	if err := s.handleCronRun(ctx, tick, true); err != nil {
 		return false, "", err
 	}
 	return true, "", nil
@@ -259,11 +259,11 @@ func (s *schedulerRuntime) handleCronRun(ctx context.Context, tick ScheduleTickC
 		return nil
 	}
 	nowMs := time.Now().UnixMilli()
-	record.PendingDelayID = ""
-	record.PendingDelayKind = ""
-	record.PendingRunKey = ""
 	record.Job.State.RunningAtMs = &nowMs
 	if !manual {
+		record.PendingDelayID = ""
+		record.PendingDelayKind = ""
+		record.PendingRunKey = ""
 		s.scheduleNextCronAfterRunLocked(ctx, &record, tick.ScheduledForMs, nowMs)
 	}
 	store.Jobs[idx] = record
@@ -286,6 +286,9 @@ func (s *schedulerRuntime) handleCronRun(ctx context.Context, tick ScheduleTickC
 		return nil
 	}
 	record = store.Jobs[idx]
+	if !record.Job.Enabled || tick.Revision != record.Revision || containsRunKey(record.ProcessedRunKeys, tick.RunKey) {
+		return nil
+	}
 	finishedAt := time.Now().UnixMilli()
 	record.Job.State.RunningAtMs = nil
 	record.Job.State.LastRunAtMs = &finishedAt
@@ -295,7 +298,12 @@ func (s *schedulerRuntime) handleCronRun(ctx context.Context, tick ScheduleTickC
 	record.LastOutputPreview = preview
 	record.ProcessedRunKeys = appendRunKey(record.ProcessedRunKeys, tick.RunKey)
 	record.Job.UpdatedAtMs = finishedAt
-	if strings.EqualFold(strings.TrimSpace(record.Job.Schedule.Kind), "at") {
+	if record.Job.DeleteAfterRun {
+		if record.PendingDelayID != "" {
+			if err := s.cancelPendingDelayLocked(ctx, record.PendingDelayID); err != nil {
+				s.client.log.Warn().Err(err).Str("job_id", record.Job.ID).Msg("Failed to cancel pending cron delay during delete-after-run cleanup")
+			}
+		}
 		record.Job.Enabled = false
 		record.Job.State.NextRunAtMs = nil
 		record.PendingDelayID = ""
@@ -416,9 +424,18 @@ func (s *schedulerRuntime) scheduleCronRecordLocked(ctx context.Context, record 
 		record.PendingRunKey = ""
 		return
 	}
-	if validateExisting && record.PendingDelayID != "" && s.delayedEventExistsLocked(ctx, record.PendingDelayID) {
-		record.Job.State.NextRunAtMs = due
-		return
+	if validateExisting && record.PendingDelayID != "" {
+		exists, err := s.delayedEventExistsLocked(ctx, record.PendingDelayID)
+		if err != nil {
+			s.client.log.Warn().Err(err).Str("job_id", record.Job.ID).Msg("Failed to validate existing cron delay")
+			record.Job.State.LastStatus = "error"
+			record.Job.State.LastError = err.Error()
+			return
+		}
+		if exists {
+			record.Job.State.NextRunAtMs = due
+			return
+		}
 	}
 	if record.PendingDelayID != "" {
 		_ = s.cancelPendingDelayLocked(ctx, record.PendingDelayID)
@@ -481,19 +498,24 @@ func validateCronPatchForScheduler(patch *integrationcron.JobPatch) error {
 		return errors.New("cron patch is required")
 	}
 	if patch.Payload != nil {
-		payload := integrationcron.Payload{
-			Kind:                patch.Payload.Kind,
-			Message:             derefString(patch.Payload.Message),
-			Model:               derefString(patch.Payload.Model),
-			Thinking:            derefString(patch.Payload.Thinking),
-			TimeoutSeconds:      patch.Payload.TimeoutSeconds,
-			AllowUnsafeExternal: patch.Payload.AllowUnsafeExternal,
+		if kind := strings.TrimSpace(patch.Payload.Kind); kind != "" {
+			if !strings.EqualFold(kind, "agentTurn") {
+				return fmt.Errorf("unsupported cron payload kind: %s", kind)
+			}
+			patch.Payload.Kind = "agentTurn"
 		}
-		if err := validateCronPayload(&payload); err != nil {
-			return err
+		if patch.Payload.Message != nil {
+			trimmed := strings.TrimSpace(*patch.Payload.Message)
+			patch.Payload.Message = &trimmed
 		}
-		patch.Payload.Kind = payload.Kind
-		patch.Payload.Message = &payload.Message
+		if patch.Payload.Model != nil {
+			trimmed := strings.TrimSpace(*patch.Payload.Model)
+			patch.Payload.Model = &trimmed
+		}
+		if patch.Payload.Thinking != nil {
+			trimmed := strings.TrimSpace(*patch.Payload.Thinking)
+			patch.Payload.Thinking = &trimmed
+		}
 	}
 	return nil
 }
@@ -648,18 +670,18 @@ func applyScheduledCronPatch(record scheduledCronJob, patch integrationcron.JobP
 func computeInitialCronDue(job integrationcron.Job, nowMs int64) *int64 {
 	switch strings.ToLower(strings.TrimSpace(job.Schedule.Kind)) {
 	case "at":
-		atMs, ok := parseScheduleAt(job.Schedule.At)
+		runAtMs, ok := parseScheduleAt(job.Schedule.At)
 		if !ok {
 			return nil
 		}
 		if job.State.LastRunAtMs != nil && *job.State.LastRunAtMs > 0 {
 			return nil
 		}
-		if atMs <= nowMs {
+		if runAtMs <= nowMs {
 			val := nowMs
 			return &val
 		}
-		return &atMs
+		return &runAtMs
 	default:
 		return integrationcron.ComputeNextRunAtMs(job.Schedule, nowMs)
 	}

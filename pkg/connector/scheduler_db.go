@@ -3,7 +3,6 @@ package connector
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"strings"
 
 	"go.mau.fi/util/dbutil"
@@ -40,9 +39,12 @@ func (s *schedulerRuntime) loadCronStoreLocked(ctx context.Context) (scheduledCr
 	rows, err := scope.db.Query(ctx, `
 		SELECT
 			job_id, agent_id, name, description, enabled, delete_after_run,
-			created_at_ms, updated_at_ms, schedule_json, payload_json,
-			delivery_json, state_json, room_id, revision, pending_delay_id,
-			pending_delay_kind, pending_run_key, last_output_preview, processed_run_keys_json
+			created_at_ms, updated_at_ms,
+			schedule_kind, schedule_at, schedule_every_ms, schedule_anchor_ms, schedule_expr, schedule_tz,
+			payload_kind, payload_message, payload_model, payload_thinking, payload_timeout_seconds, payload_allow_unsafe_external,
+			delivery_mode, delivery_channel, delivery_to, delivery_best_effort,
+			state_next_run_at_ms, state_running_at_ms, state_last_run_at_ms, state_last_status, state_last_error, state_last_duration_ms,
+			room_id, revision, pending_delay_id, pending_delay_kind, pending_run_key, last_output_preview
 		FROM ai_cron_jobs
 		WHERE bridge_id=$1 AND login_id=$2
 		ORDER BY job_id
@@ -55,14 +57,21 @@ func (s *schedulerRuntime) loadCronStoreLocked(ctx context.Context) (scheduledCr
 	store := scheduledCronStore{}
 	for rows.Next() {
 		var (
-			record            scheduledCronJob
-			enabled           bool
-			deleteAfterRun    bool
-			scheduleJSON      string
-			payloadJSON       string
-			deliveryJSON      string
-			stateJSON         string
-			processedKeysJSON string
+			record              scheduledCronJob
+			enabled             bool
+			deleteAfterRun      bool
+			scheduleEveryMs     sql.NullInt64
+			scheduleAnchorMs    sql.NullInt64
+			payloadTimeout      sql.NullInt64
+			payloadAllowUnsafe  sql.NullBool
+			deliveryMode        string
+			deliveryChannel     string
+			deliveryTo          string
+			deliveryBestEffort  sql.NullBool
+			stateNextRunAtMs    sql.NullInt64
+			stateRunningAtMs    sql.NullInt64
+			stateLastRunAtMs    sql.NullInt64
+			stateLastDurationMs sql.NullInt64
 		)
 		if err := rows.Scan(
 			&record.Job.ID,
@@ -73,38 +82,50 @@ func (s *schedulerRuntime) loadCronStoreLocked(ctx context.Context) (scheduledCr
 			&deleteAfterRun,
 			&record.Job.CreatedAtMs,
 			&record.Job.UpdatedAtMs,
-			&scheduleJSON,
-			&payloadJSON,
-			&deliveryJSON,
-			&stateJSON,
+			&record.Job.Schedule.Kind,
+			&record.Job.Schedule.At,
+			&scheduleEveryMs,
+			&scheduleAnchorMs,
+			&record.Job.Schedule.Expr,
+			&record.Job.Schedule.TZ,
+			&record.Job.Payload.Kind,
+			&record.Job.Payload.Message,
+			&record.Job.Payload.Model,
+			&record.Job.Payload.Thinking,
+			&payloadTimeout,
+			&payloadAllowUnsafe,
+			&deliveryMode,
+			&deliveryChannel,
+			&deliveryTo,
+			&deliveryBestEffort,
+			&stateNextRunAtMs,
+			&stateRunningAtMs,
+			&stateLastRunAtMs,
+			&record.Job.State.LastStatus,
+			&record.Job.State.LastError,
+			&stateLastDurationMs,
 			&record.RoomID,
 			&record.Revision,
 			&record.PendingDelayID,
 			&record.PendingDelayKind,
 			&record.PendingRunKey,
 			&record.LastOutputPreview,
-			&processedKeysJSON,
 		); err != nil {
 			return scheduledCronStore{}, err
 		}
 		record.Job.Enabled = enabled
 		record.Job.DeleteAfterRun = deleteAfterRun
-		if err := schedulerUnmarshalJSON(scheduleJSON, &record.Job.Schedule); err != nil {
-			return scheduledCronStore{}, err
-		}
-		if err := schedulerUnmarshalJSON(payloadJSON, &record.Job.Payload); err != nil {
-			return scheduledCronStore{}, err
-		}
-		if deliveryJSON != "" {
-			record.Job.Delivery = &integrationcron.Delivery{}
-			if err := schedulerUnmarshalJSON(deliveryJSON, record.Job.Delivery); err != nil {
-				return scheduledCronStore{}, err
-			}
-		}
-		if err := schedulerUnmarshalJSON(stateJSON, &record.Job.State); err != nil {
-			return scheduledCronStore{}, err
-		}
-		if err := schedulerUnmarshalJSON(processedKeysJSON, &record.ProcessedRunKeys); err != nil {
+		record.Job.Schedule.EveryMs = scheduleEveryMs.Int64
+		record.Job.Schedule.AnchorMs = nullableInt64Pointer(scheduleAnchorMs)
+		record.Job.Payload.TimeoutSeconds = nullableIntPointer(payloadTimeout)
+		record.Job.Payload.AllowUnsafeExternal = nullableBoolPointer(payloadAllowUnsafe)
+		record.Job.State.NextRunAtMs = nullableInt64Pointer(stateNextRunAtMs)
+		record.Job.State.RunningAtMs = nullableInt64Pointer(stateRunningAtMs)
+		record.Job.State.LastRunAtMs = nullableInt64Pointer(stateLastRunAtMs)
+		record.Job.State.LastDurationMs = nullableInt64Pointer(stateLastDurationMs)
+		record.Job.Delivery = buildCronDelivery(deliveryMode, deliveryChannel, deliveryTo, deliveryBestEffort)
+		record.ProcessedRunKeys, err = loadCronRunKeys(ctx, scope, record.Job.ID)
+		if err != nil {
 			return scheduledCronStore{}, err
 		}
 		store.Jobs = append(store.Jobs, record)
@@ -129,34 +150,25 @@ func (s *schedulerRuntime) saveCronStoreLocked(ctx context.Context, store schedu
 			return err
 		}
 		for _, record := range store.Jobs {
-			scheduleJSON, err := schedulerMarshalJSON(record.Job.Schedule)
-			if err != nil {
-				return err
-			}
-			payloadJSON, err := schedulerMarshalJSON(record.Job.Payload)
-			if err != nil {
-				return err
-			}
-			deliveryJSON, err := schedulerMarshalNullableJSON(record.Job.Delivery)
-			if err != nil {
-				return err
-			}
-			stateJSON, err := schedulerMarshalJSON(record.Job.State)
-			if err != nil {
-				return err
-			}
-			processedJSON, err := schedulerMarshalJSON(record.ProcessedRunKeys)
-			if err != nil {
-				return err
-			}
+			deliveryMode, deliveryChannel, deliveryTo, deliveryBestEffort := flattenCronDelivery(record.Job.Delivery)
 			if _, err := scope.db.Exec(ctx, `
 				INSERT INTO ai_cron_jobs (
 					bridge_id, login_id, job_id, agent_id, name, description,
 					enabled, delete_after_run, created_at_ms, updated_at_ms,
-					schedule_json, payload_json, delivery_json, state_json,
-					room_id, revision, pending_delay_id, pending_delay_kind,
-					pending_run_key, last_output_preview, processed_run_keys_json
-				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+					schedule_kind, schedule_at, schedule_every_ms, schedule_anchor_ms, schedule_expr, schedule_tz,
+					payload_kind, payload_message, payload_model, payload_thinking, payload_timeout_seconds, payload_allow_unsafe_external,
+					delivery_mode, delivery_channel, delivery_to, delivery_best_effort,
+					state_next_run_at_ms, state_running_at_ms, state_last_run_at_ms, state_last_status, state_last_error, state_last_duration_ms,
+					room_id, revision, pending_delay_id, pending_delay_kind, pending_run_key, last_output_preview
+				) VALUES (
+					$1, $2, $3, $4, $5, $6,
+					$7, $8, $9, $10,
+					$11, $12, $13, $14, $15, $16,
+					$17, $18, $19, $20, $21, $22,
+					$23, $24, $25, $26,
+					$27, $28, $29, $30, $31, $32,
+					$33, $34, $35, $36, $37, $38
+				)
 				ON CONFLICT (bridge_id, login_id, job_id) DO UPDATE SET
 					agent_id=excluded.agent_id,
 					name=excluded.name,
@@ -165,24 +177,46 @@ func (s *schedulerRuntime) saveCronStoreLocked(ctx context.Context, store schedu
 					delete_after_run=excluded.delete_after_run,
 					created_at_ms=excluded.created_at_ms,
 					updated_at_ms=excluded.updated_at_ms,
-					schedule_json=excluded.schedule_json,
-					payload_json=excluded.payload_json,
-					delivery_json=excluded.delivery_json,
-					state_json=excluded.state_json,
+					schedule_kind=excluded.schedule_kind,
+					schedule_at=excluded.schedule_at,
+					schedule_every_ms=excluded.schedule_every_ms,
+					schedule_anchor_ms=excluded.schedule_anchor_ms,
+					schedule_expr=excluded.schedule_expr,
+					schedule_tz=excluded.schedule_tz,
+					payload_kind=excluded.payload_kind,
+					payload_message=excluded.payload_message,
+					payload_model=excluded.payload_model,
+					payload_thinking=excluded.payload_thinking,
+					payload_timeout_seconds=excluded.payload_timeout_seconds,
+					payload_allow_unsafe_external=excluded.payload_allow_unsafe_external,
+					delivery_mode=excluded.delivery_mode,
+					delivery_channel=excluded.delivery_channel,
+					delivery_to=excluded.delivery_to,
+					delivery_best_effort=excluded.delivery_best_effort,
+					state_next_run_at_ms=excluded.state_next_run_at_ms,
+					state_running_at_ms=excluded.state_running_at_ms,
+					state_last_run_at_ms=excluded.state_last_run_at_ms,
+					state_last_status=excluded.state_last_status,
+					state_last_error=excluded.state_last_error,
+					state_last_duration_ms=excluded.state_last_duration_ms,
 					room_id=excluded.room_id,
 					revision=excluded.revision,
 					pending_delay_id=excluded.pending_delay_id,
 					pending_delay_kind=excluded.pending_delay_kind,
 					pending_run_key=excluded.pending_run_key,
-					last_output_preview=excluded.last_output_preview,
-					processed_run_keys_json=excluded.processed_run_keys_json
+					last_output_preview=excluded.last_output_preview
 			`,
 				scope.bridgeID, scope.loginID, record.Job.ID, record.Job.AgentID, record.Job.Name, record.Job.Description,
 				record.Job.Enabled, record.Job.DeleteAfterRun, record.Job.CreatedAtMs, record.Job.UpdatedAtMs,
-				scheduleJSON, payloadJSON, deliveryJSON, stateJSON,
-				record.RoomID, record.Revision, record.PendingDelayID, record.PendingDelayKind,
-				record.PendingRunKey, record.LastOutputPreview, processedJSON,
+				record.Job.Schedule.Kind, record.Job.Schedule.At, nullableInt64ValueForZero(record.Job.Schedule.EveryMs), nullableInt64Value(record.Job.Schedule.AnchorMs), record.Job.Schedule.Expr, record.Job.Schedule.TZ,
+				record.Job.Payload.Kind, record.Job.Payload.Message, record.Job.Payload.Model, record.Job.Payload.Thinking, nullableIntValue(record.Job.Payload.TimeoutSeconds), nullableBoolValue(record.Job.Payload.AllowUnsafeExternal),
+				deliveryMode, deliveryChannel, deliveryTo, deliveryBestEffort,
+				nullableInt64Value(record.Job.State.NextRunAtMs), nullableInt64Value(record.Job.State.RunningAtMs), nullableInt64Value(record.Job.State.LastRunAtMs), record.Job.State.LastStatus, record.Job.State.LastError, nullableInt64Value(record.Job.State.LastDurationMs),
+				record.RoomID, record.Revision, record.PendingDelayID, record.PendingDelayKind, record.PendingRunKey, record.LastOutputPreview,
 			); err != nil {
+				return err
+			}
+			if err := replaceCronRunKeys(ctx, scope, record.Job.ID, record.ProcessedRunKeys); err != nil {
 				return err
 			}
 		}
@@ -197,9 +231,10 @@ func (s *schedulerRuntime) loadHeartbeatStoreLocked(ctx context.Context) (manage
 	}
 	rows, err := scope.db.Query(ctx, `
 		SELECT
-			agent_id, enabled, interval_ms, active_hours_json, room_id, revision,
-			next_run_at_ms, pending_delay_id, pending_delay_kind, pending_run_key,
-			last_run_at_ms, last_result, last_error, processed_run_keys_json
+			agent_id, enabled, interval_ms,
+			active_hours_start, active_hours_end, active_hours_timezone,
+			room_id, revision, next_run_at_ms, pending_delay_id, pending_delay_kind, pending_run_key,
+			last_run_at_ms, last_result, last_error
 		FROM ai_managed_heartbeats
 		WHERE bridge_id=$1 AND login_id=$2
 		ORDER BY agent_id
@@ -212,18 +247,21 @@ func (s *schedulerRuntime) loadHeartbeatStoreLocked(ctx context.Context) (manage
 	store := managedHeartbeatStore{}
 	for rows.Next() {
 		var (
-			state             managedHeartbeatState
-			enabled           bool
-			activeHoursJSON   string
-			nextRunAtMs       sql.NullInt64
-			lastRunAtMs       sql.NullInt64
-			processedKeysJSON string
+			state          managedHeartbeatState
+			enabled        bool
+			activeStart    string
+			activeEnd      string
+			activeTimezone string
+			nextRunAtMs    sql.NullInt64
+			lastRunAtMs    sql.NullInt64
 		)
 		if err := rows.Scan(
 			&state.AgentID,
 			&enabled,
 			&state.IntervalMs,
-			&activeHoursJSON,
+			&activeStart,
+			&activeEnd,
+			&activeTimezone,
 			&state.RoomID,
 			&state.Revision,
 			&nextRunAtMs,
@@ -233,20 +271,21 @@ func (s *schedulerRuntime) loadHeartbeatStoreLocked(ctx context.Context) (manage
 			&lastRunAtMs,
 			&state.LastResult,
 			&state.LastError,
-			&processedKeysJSON,
 		); err != nil {
 			return managedHeartbeatStore{}, err
 		}
 		state.Enabled = enabled
 		state.NextRunAtMs = nextRunAtMs.Int64
 		state.LastRunAtMs = lastRunAtMs.Int64
-		if activeHoursJSON != "" {
-			state.ActiveHours = &HeartbeatActiveHoursConfig{}
-			if err := schedulerUnmarshalJSON(activeHoursJSON, state.ActiveHours); err != nil {
-				return managedHeartbeatStore{}, err
+		if strings.TrimSpace(activeStart) != "" || strings.TrimSpace(activeEnd) != "" || strings.TrimSpace(activeTimezone) != "" {
+			state.ActiveHours = &HeartbeatActiveHoursConfig{
+				Start:    activeStart,
+				End:      activeEnd,
+				Timezone: activeTimezone,
 			}
 		}
-		if err := schedulerUnmarshalJSON(processedKeysJSON, &state.ProcessedRunKeys); err != nil {
+		state.ProcessedRunKeys, err = loadHeartbeatRunKeys(ctx, scope, state.AgentID)
+		if err != nil {
 			return managedHeartbeatStore{}, err
 		}
 		store.Agents = append(store.Agents, state)
@@ -271,24 +310,20 @@ func (s *schedulerRuntime) saveHeartbeatStoreLocked(ctx context.Context, store m
 			return err
 		}
 		for _, state := range store.Agents {
-			activeHoursJSON, err := schedulerMarshalNullableJSON(state.ActiveHours)
-			if err != nil {
-				return err
-			}
-			processedJSON, err := schedulerMarshalJSON(state.ProcessedRunKeys)
-			if err != nil {
-				return err
-			}
+			activeStart, activeEnd, activeTimezone := flattenHeartbeatActiveHours(state.ActiveHours)
 			if _, err := scope.db.Exec(ctx, `
 				INSERT INTO ai_managed_heartbeats (
-					bridge_id, login_id, agent_id, enabled, interval_ms, active_hours_json,
+					bridge_id, login_id, agent_id, enabled, interval_ms,
+					active_hours_start, active_hours_end, active_hours_timezone,
 					room_id, revision, next_run_at_ms, pending_delay_id, pending_delay_kind,
-					pending_run_key, last_run_at_ms, last_result, last_error, processed_run_keys_json
-				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, 0), $10, $11, $12, NULLIF($13, 0), $14, $15, $16)
+					pending_run_key, last_run_at_ms, last_result, last_error
+				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 				ON CONFLICT (bridge_id, login_id, agent_id) DO UPDATE SET
 					enabled=excluded.enabled,
 					interval_ms=excluded.interval_ms,
-					active_hours_json=excluded.active_hours_json,
+					active_hours_start=excluded.active_hours_start,
+					active_hours_end=excluded.active_hours_end,
+					active_hours_timezone=excluded.active_hours_timezone,
 					room_id=excluded.room_id,
 					revision=excluded.revision,
 					next_run_at_ms=excluded.next_run_at_ms,
@@ -297,13 +332,16 @@ func (s *schedulerRuntime) saveHeartbeatStoreLocked(ctx context.Context, store m
 					pending_run_key=excluded.pending_run_key,
 					last_run_at_ms=excluded.last_run_at_ms,
 					last_result=excluded.last_result,
-					last_error=excluded.last_error,
-					processed_run_keys_json=excluded.processed_run_keys_json
+					last_error=excluded.last_error
 			`,
-				scope.bridgeID, scope.loginID, state.AgentID, state.Enabled, state.IntervalMs, activeHoursJSON,
-				state.RoomID, state.Revision, state.NextRunAtMs, state.PendingDelayID, state.PendingDelayKind,
-				state.PendingRunKey, state.LastRunAtMs, state.LastResult, state.LastError, processedJSON,
+				scope.bridgeID, scope.loginID, state.AgentID, state.Enabled, state.IntervalMs,
+				activeStart, activeEnd, activeTimezone,
+				state.RoomID, state.Revision, nullableInt64ValueForZero(state.NextRunAtMs), state.PendingDelayID, state.PendingDelayKind,
+				state.PendingRunKey, nullableInt64ValueForZero(state.LastRunAtMs), state.LastResult, state.LastError,
 			); err != nil {
+				return err
+			}
+			if err := replaceHeartbeatRunKeys(ctx, scope, state.AgentID, state.ProcessedRunKeys); err != nil {
 				return err
 			}
 		}
@@ -311,26 +349,181 @@ func (s *schedulerRuntime) saveHeartbeatStoreLocked(ctx context.Context, store m
 	})
 }
 
-func schedulerMarshalJSON(value any) (string, error) {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return "", err
-	}
-	return string(data), nil
-}
-
-func schedulerMarshalNullableJSON(value any) (string, error) {
-	if value == nil {
-		return "", nil
-	}
-	return schedulerMarshalJSON(value)
-}
-
-func schedulerUnmarshalJSON(raw string, target any) error {
-	if raw == "" {
+func buildCronDelivery(mode, channel, to string, bestEffort sql.NullBool) *integrationcron.Delivery {
+	mode = strings.TrimSpace(mode)
+	channel = strings.TrimSpace(channel)
+	to = strings.TrimSpace(to)
+	if mode == "" && channel == "" && to == "" && !bestEffort.Valid {
 		return nil
 	}
-	return json.Unmarshal([]byte(raw), target)
+	delivery := &integrationcron.Delivery{
+		Mode:    integrationcron.DeliveryMode(mode),
+		Channel: channel,
+		To:      to,
+	}
+	if bestEffort.Valid {
+		value := bestEffort.Bool
+		delivery.BestEffort = &value
+	}
+	return delivery
+}
+
+func flattenCronDelivery(delivery *integrationcron.Delivery) (string, string, string, any) {
+	if delivery == nil {
+		return "", "", "", nil
+	}
+	return string(delivery.Mode), delivery.Channel, delivery.To, nullableBoolValue(delivery.BestEffort)
+}
+
+func flattenHeartbeatActiveHours(cfg *HeartbeatActiveHoursConfig) (string, string, string) {
+	if cfg == nil {
+		return "", "", ""
+	}
+	return cfg.Start, cfg.End, cfg.Timezone
+}
+
+func loadCronRunKeys(ctx context.Context, scope *schedulerDBScope, jobID string) ([]string, error) {
+	rows, err := scope.db.Query(ctx, `
+		SELECT run_key
+		FROM ai_cron_job_run_keys
+		WHERE bridge_id=$1 AND login_id=$2 AND job_id=$3
+		ORDER BY run_index
+	`, scope.bridgeID, scope.loginID, jobID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var keys []string
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, err
+		}
+		keys = append(keys, key)
+	}
+	return keys, rows.Err()
+}
+
+func replaceCronRunKeys(ctx context.Context, scope *schedulerDBScope, jobID string, keys []string) error {
+	if _, err := scope.db.Exec(ctx, `
+		DELETE FROM ai_cron_job_run_keys
+		WHERE bridge_id=$1 AND login_id=$2 AND job_id=$3
+	`, scope.bridgeID, scope.loginID, jobID); err != nil {
+		return err
+	}
+	for idx, key := range keys {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if _, err := scope.db.Exec(ctx, `
+			INSERT INTO ai_cron_job_run_keys (
+				bridge_id, login_id, job_id, run_index, run_key
+			) VALUES ($1, $2, $3, $4, $5)
+		`, scope.bridgeID, scope.loginID, jobID, idx, key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func loadHeartbeatRunKeys(ctx context.Context, scope *schedulerDBScope, agentID string) ([]string, error) {
+	rows, err := scope.db.Query(ctx, `
+		SELECT run_key
+		FROM ai_managed_heartbeat_run_keys
+		WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3
+		ORDER BY run_index
+	`, scope.bridgeID, scope.loginID, agentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var keys []string
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, err
+		}
+		keys = append(keys, key)
+	}
+	return keys, rows.Err()
+}
+
+func replaceHeartbeatRunKeys(ctx context.Context, scope *schedulerDBScope, agentID string, keys []string) error {
+	if _, err := scope.db.Exec(ctx, `
+		DELETE FROM ai_managed_heartbeat_run_keys
+		WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3
+	`, scope.bridgeID, scope.loginID, agentID); err != nil {
+		return err
+	}
+	for idx, key := range keys {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if _, err := scope.db.Exec(ctx, `
+			INSERT INTO ai_managed_heartbeat_run_keys (
+				bridge_id, login_id, agent_id, run_index, run_key
+			) VALUES ($1, $2, $3, $4, $5)
+		`, scope.bridgeID, scope.loginID, agentID, idx, key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func nullableInt64Pointer(value sql.NullInt64) *int64 {
+	if !value.Valid {
+		return nil
+	}
+	v := value.Int64
+	return &v
+}
+
+func nullableIntPointer(value sql.NullInt64) *int {
+	if !value.Valid {
+		return nil
+	}
+	v := int(value.Int64)
+	return &v
+}
+
+func nullableBoolPointer(value sql.NullBool) *bool {
+	if !value.Valid {
+		return nil
+	}
+	v := value.Bool
+	return &v
+}
+
+func nullableInt64Value(value *int64) any {
+	if value == nil {
+		return nil
+	}
+	return *value
+}
+
+func nullableInt64ValueForZero(value int64) any {
+	if value == 0 {
+		return nil
+	}
+	return value
+}
+
+func nullableIntValue(value *int) any {
+	if value == nil {
+		return nil
+	}
+	return int64(*value)
+}
+
+func nullableBoolValue(value *bool) any {
+	if value == nil {
+		return nil
+	}
+	return *value
 }
 
 func deleteMissingCronRows(ctx context.Context, scope *schedulerDBScope, keep map[string]struct{}) error {
@@ -348,6 +541,9 @@ func deleteMissingCronRows(ctx context.Context, scope *schedulerDBScope, keep ma
 			continue
 		}
 		if _, err := scope.db.Exec(ctx, `DELETE FROM ai_cron_jobs WHERE bridge_id=$1 AND login_id=$2 AND job_id=$3`, scope.bridgeID, scope.loginID, jobID); err != nil {
+			return err
+		}
+		if _, err := scope.db.Exec(ctx, `DELETE FROM ai_cron_job_run_keys WHERE bridge_id=$1 AND login_id=$2 AND job_id=$3`, scope.bridgeID, scope.loginID, jobID); err != nil {
 			return err
 		}
 	}
@@ -369,6 +565,9 @@ func deleteMissingHeartbeatRows(ctx context.Context, scope *schedulerDBScope, ke
 			continue
 		}
 		if _, err := scope.db.Exec(ctx, `DELETE FROM ai_managed_heartbeats WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`, scope.bridgeID, scope.loginID, agentID); err != nil {
+			return err
+		}
+		if _, err := scope.db.Exec(ctx, `DELETE FROM ai_managed_heartbeat_run_keys WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`, scope.bridgeID, scope.loginID, agentID); err != nil {
 			return err
 		}
 	}

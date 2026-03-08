@@ -3,15 +3,9 @@ package connector
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"maps"
 	"slices"
 	"strings"
-)
-
-const (
-	modelCatalogStoreKey    = "models/catalog.json"
-	modelCatalogStoreKeyAlt = "models.json"
 )
 
 const defaultModelCatalogMode = "merge"
@@ -24,76 +18,6 @@ type ModelCatalogEntry struct {
 	MaxOutputTokens int      `json:"maxTokens,omitempty"`
 	Reasoning       bool     `json:"reasoning,omitempty"`
 	Input           []string `json:"input,omitempty"`
-}
-
-func (oc *AIClient) ensureModelCatalogVFS(ctx context.Context) (bool, error) {
-	if oc == nil || oc.UserLogin == nil {
-		return false, nil
-	}
-	loginMeta := loginMetadata(oc.UserLogin)
-	if loginMeta == nil {
-		return false, nil
-	}
-
-	implicit := oc.implicitModelCatalogEntries(loginMeta)
-	explicit := explicitModelCatalogEntries(oc.connector.Config.Models)
-	if len(implicit) == 0 && len(explicit) == 0 {
-		return false, nil
-	}
-
-	mode := defaultModelCatalogMode
-	if oc.connector.Config.Models != nil {
-		if trimmed := strings.ToLower(strings.TrimSpace(oc.connector.Config.Models.Mode)); trimmed != "" {
-			switch trimmed {
-			case "replace":
-				mode = "replace"
-			case "merge":
-				mode = defaultModelCatalogMode
-			}
-		}
-	}
-
-	var existing []ModelCatalogEntry
-	if mode == defaultModelCatalogMode {
-		existing = oc.loadModelCatalog(ctx, false)
-	}
-
-	merged := mergeCatalogEntries(existing, implicit, explicit)
-	if len(merged) == 0 {
-		return false, nil
-	}
-
-	payload := struct {
-		Models []ModelCatalogEntry `json:"models"`
-	}{
-		Models: merged,
-	}
-	raw, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		return false, err
-	}
-	content := string(raw) + "\n"
-
-	backend := oc.bridgeStateBackend()
-	if backend == nil {
-		return false, nil
-	}
-	if existing, found, err := backend.Read(ctx, modelCatalogStoreKey); err == nil && found {
-		if string(existing) == content {
-			return false, nil
-		}
-	}
-
-	if err := backend.Write(ctx, modelCatalogStoreKey, []byte(content)); err != nil {
-		return false, err
-	}
-
-	oc.modelCatalogMu.Lock()
-	oc.modelCatalogLoaded = false
-	oc.modelCatalogCache = nil
-	oc.modelCatalogMu.Unlock()
-
-	return true, nil
 }
 
 func mergeCatalogEntries(existing []ModelCatalogEntry, implicit []ModelCatalogEntry, explicit []ModelCatalogEntry) []ModelCatalogEntry {
@@ -295,29 +219,7 @@ func (oc *AIClient) loadModelCatalog(ctx context.Context, useCache bool) []Model
 		oc.modelCatalogMu.Unlock()
 	}
 
-	backend := oc.bridgeStateBackend()
-	if backend == nil {
-		return nil
-	}
-	data, found, err := backend.Read(ctx, modelCatalogStoreKey)
-	if err != nil || !found {
-		data, found, err = backend.Read(ctx, modelCatalogStoreKeyAlt)
-	}
-	if err != nil || !found {
-		if useCache {
-			oc.modelCatalogMu.Lock()
-			oc.modelCatalogLoaded = true
-			oc.modelCatalogCache = nil
-			oc.modelCatalogMu.Unlock()
-		}
-		return nil
-	}
-
-	var raw any
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil
-	}
-	entries := parseModelCatalog(raw)
+	entries := oc.derivedModelCatalogEntries()
 	if useCache {
 		oc.modelCatalogMu.Lock()
 		oc.modelCatalogLoaded = true
@@ -327,98 +229,29 @@ func (oc *AIClient) loadModelCatalog(ctx context.Context, useCache bool) []Model
 	return entries
 }
 
-func parseModelCatalog(raw any) []ModelCatalogEntry {
-	if raw == nil {
+func (oc *AIClient) derivedModelCatalogEntries() []ModelCatalogEntry {
+	if oc == nil || oc.UserLogin == nil || oc.connector == nil {
 		return nil
 	}
-	switch value := raw.(type) {
-	case []any:
-		return coerceModelEntries(value)
-	case map[string]any:
-		if models, ok := value["models"].([]any); ok {
-			return coerceModelEntries(models)
-		}
-	}
-	return nil
-}
-
-func coerceModelEntries(items []any) []ModelCatalogEntry {
-	out := make([]ModelCatalogEntry, 0, len(items))
-	for _, item := range items {
-		entryMap, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		id := strings.TrimSpace(asString(entryMap["id"]))
-		provider := strings.TrimSpace(asString(entryMap["provider"]))
-		if id == "" || provider == "" {
-			continue
-		}
-		name := strings.TrimSpace(asString(entryMap["name"]))
-		if name == "" {
-			name = id
-		}
-		out = append(out, ModelCatalogEntry{
-			ID:              id,
-			Name:            name,
-			Provider:        provider,
-			ContextWindow:   asInt(entryMap["contextWindow"]),
-			MaxOutputTokens: asInt(valueOr(entryMap, "maxTokens", "max_output_tokens")),
-			Reasoning:       asBool(entryMap["reasoning"]),
-			Input:           asStringSlice(entryMap["input"]),
-		})
-	}
-	return out
-}
-
-func valueOr(m map[string]any, keys ...string) any {
-	for _, key := range keys {
-		if value, ok := m[key]; ok {
-			return value
-		}
-	}
-	return nil
-}
-
-func asString(value any) string {
-	if s, ok := value.(string); ok {
-		return s
-	}
-	return ""
-}
-
-func asInt(value any) int {
-	switch v := value.(type) {
-	case float64:
-		return int(v)
-	case int:
-		return v
-	case int64:
-		return int(v)
-	default:
-		return 0
-	}
-}
-
-func asBool(value any) bool {
-	if v, ok := value.(bool); ok {
-		return v
-	}
-	return false
-}
-
-func asStringSlice(value any) []string {
-	list, ok := value.([]any)
-	if !ok {
+	loginMeta := loginMetadata(oc.UserLogin)
+	if loginMeta == nil {
 		return nil
 	}
-	out := make([]string, 0, len(list))
-	for _, item := range list {
-		if str, ok := item.(string); ok {
-			out = append(out, str)
+
+	implicit := oc.implicitModelCatalogEntries(loginMeta)
+	explicit := explicitModelCatalogEntries(oc.connector.Config.Models)
+	mode := defaultModelCatalogMode
+	if oc.connector != nil && oc.connector.Config.Models != nil {
+		switch strings.ToLower(strings.TrimSpace(oc.connector.Config.Models.Mode)) {
+		case "replace":
+			mode = "replace"
 		}
 	}
-	return out
+
+	if mode == "replace" {
+		return mergeCatalogEntries(nil, nil, explicit)
+	}
+	return mergeCatalogEntries(nil, implicit, explicit)
 }
 
 func catalogInputIncludes(entry *ModelCatalogEntry, label string) bool {

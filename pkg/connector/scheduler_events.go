@@ -7,6 +7,8 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
+
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 func init() {
@@ -34,6 +36,14 @@ func (oc *OpenAIConnector) handleScheduleTickEvent(ctx context.Context, evt *eve
 	portal, err := oc.br.GetPortalByMXID(ctx, evt.RoomID)
 	if err != nil || portal == nil {
 		oc.br.Log.Warn().Err(err).Stringer("room_id", evt.RoomID).Msg("Failed to resolve portal for schedule tick")
+		return
+	}
+	if kind := moduleRoomKind(portalMeta(portal)); kind != "cron" && kind != "heartbeat" {
+		oc.br.Log.Warn().Stringer("portal", portal.PortalKey).Stringer("room_id", evt.RoomID).Msg("Ignoring schedule tick for non-scheduler room")
+		return
+	}
+	if !bridgeadapter.IsMatrixBotUser(ctx, oc.br, evt.Sender) || oc.br.Bot == nil || evt.Sender != oc.br.Bot.GetMXID() {
+		oc.br.Log.Warn().Stringer("portal", portal.PortalKey).Stringer("sender", evt.Sender).Msg("Ignoring schedule tick from non-bot sender")
 		return
 	}
 	login := resolvePortalLogin(oc.br, portal)

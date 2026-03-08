@@ -132,6 +132,18 @@ func (i *Integration) executeCronCommand(ctx context.Context, call iruntime.Comm
 			reply("Cron add failed: %s", err.Error())
 			return nil
 		}
+		deps := i.buildToolExecDeps(ctx, iruntime.ToolScope{
+			Client: call.Scope.Client,
+			Portal: call.Scope.Portal,
+			Meta:   call.Scope.Meta,
+		})
+		injectToolContext(&input, deps.ResolveCreateContext)
+		if input.Delivery != nil && strings.EqualFold(strings.TrimSpace(string(input.Delivery.Mode)), "announce") && deps.ValidateDeliveryTo != nil {
+			if err := deps.ValidateDeliveryTo(input.Delivery.To); err != nil {
+				reply("Cron add failed: %s", err.Error())
+				return nil
+			}
+		}
 		job, err := scheduler.CronAdd(ctx, input)
 		if err != nil {
 			reply("Cron add failed: %s", err.Error())
@@ -144,9 +156,9 @@ func (i *Integration) executeCronCommand(ctx context.Context, call iruntime.Comm
 			return nil
 		}
 		jobID := strings.TrimSpace(call.Args[1])
-		rawJSON := strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(call.RawArgs, action), jobID))
+		rawJSON := strings.TrimSpace(strings.Join(call.Args[2:], " "))
 		if rawJSON == "" {
-			rawJSON = strings.TrimSpace(strings.Join(call.Args[2:], " "))
+			rawJSON = strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(call.RawArgs, action), jobID))
 		}
 		var raw map[string]any
 		if err := json.Unmarshal([]byte(rawJSON), &raw); err != nil {
@@ -157,6 +169,17 @@ func (i *Integration) executeCronCommand(ctx context.Context, call iruntime.Comm
 		if err != nil {
 			reply("Cron update failed: %s", err.Error())
 			return nil
+		}
+		deps := i.buildToolExecDeps(ctx, iruntime.ToolScope{
+			Client: call.Scope.Client,
+			Portal: call.Scope.Portal,
+			Meta:   call.Scope.Meta,
+		})
+		if patch.Delivery != nil && patch.Delivery.To != nil && deps.ValidateDeliveryTo != nil {
+			if err := deps.ValidateDeliveryTo(*patch.Delivery.To); err != nil {
+				reply("Cron update failed: %s", err.Error())
+				return nil
+			}
 		}
 		job, err := scheduler.CronUpdate(ctx, jobID, patch)
 		if err != nil {

@@ -15,6 +15,39 @@ var (
 	agentIDInvalidChars = regexp.MustCompile(`[^a-z0-9_-]+`)
 	agentIDLeadingDash  = regexp.MustCompile(`^-+`)
 	agentIDTrailingDash = regexp.MustCompile(`-+$`)
+	allowedCronJobKeys  = map[string]struct{}{
+		"agentId":        {},
+		"name":           {},
+		"description":    {},
+		"enabled":        {},
+		"deleteAfterRun": {},
+		"schedule":       {},
+		"payload":        {},
+		"delivery":       {},
+		"state":          {},
+	}
+	allowedCronScheduleKeys = map[string]struct{}{
+		"kind":     {},
+		"at":       {},
+		"everyMs":  {},
+		"anchorMs": {},
+		"expr":     {},
+		"tz":       {},
+	}
+	allowedCronPayloadKeys = map[string]struct{}{
+		"kind":                       {},
+		"message":                    {},
+		"model":                      {},
+		"thinking":                   {},
+		"timeoutSeconds":             {},
+		"allowUnsafeExternalContent": {},
+	}
+	allowedCronDeliveryKeys = map[string]struct{}{
+		"mode":       {},
+		"channel":    {},
+		"to":         {},
+		"bestEffort": {},
+	}
 )
 
 const defaultAgentID = "main"
@@ -30,11 +63,14 @@ func sanitizeAgentID(raw string) string {
 	}
 	cleaned := agentIDInvalidChars.ReplaceAllString(lowered, "-")
 	cleaned = agentIDLeadingDash.ReplaceAllString(cleaned, "")
+	cleaned = strings.TrimLeft(cleaned, "_")
 	cleaned = agentIDTrailingDash.ReplaceAllString(cleaned, "")
 	if len(cleaned) > 64 {
 		cleaned = cleaned[:64]
+		cleaned = strings.TrimLeft(cleaned, "_")
+		cleaned = agentIDTrailingDash.ReplaceAllString(cleaned, "")
 	}
-	if cleaned == "" {
+	if cleaned == "" || !agentIDValidRe.MatchString(cleaned) {
 		return defaultAgentID
 	}
 	return cleaned
@@ -105,13 +141,7 @@ func normalizeCronJobInputRaw(raw any, applyDefaults bool) map[string]any {
 	if !ok {
 		return nil
 	}
-	if _, ok := base["wakeMode"]; ok {
-		return nil
-	}
-	if _, ok := base["sessionTarget"]; ok {
-		return nil
-	}
-	if _, ok := base["isolation"]; ok {
+	if !hasOnlyAllowedKeys(base, allowedCronJobKeys) {
 		return nil
 	}
 	next := maps.Clone(base)
@@ -123,7 +153,11 @@ func normalizeCronJobInputRaw(raw any, applyDefaults bool) map[string]any {
 		case string:
 			trimmed := strings.TrimSpace(v)
 			if trimmed == "" {
-				delete(next, "agentId")
+				if applyDefaults {
+					delete(next, "agentId")
+				} else {
+					next["agentId"] = ""
+				}
 			} else {
 				next["agentId"] = sanitizeAgentID(trimmed)
 			}
@@ -144,16 +178,25 @@ func normalizeCronJobInputRaw(raw any, applyDefaults bool) map[string]any {
 	}
 	if schedRaw, ok := base["schedule"]; ok {
 		if schedMap, ok := schedRaw.(map[string]any); ok {
+			if !hasOnlyAllowedKeys(schedMap, allowedCronScheduleKeys) {
+				return nil
+			}
 			next["schedule"] = coerceScheduleMap(schedMap)
 		}
 	}
 	if deliveryRaw, ok := base["delivery"]; ok {
 		if deliveryMap, ok := deliveryRaw.(map[string]any); ok {
+			if !hasOnlyAllowedKeys(deliveryMap, allowedCronDeliveryKeys) {
+				return nil
+			}
 			next["delivery"] = coerceDeliveryMap(deliveryMap)
 		}
 	}
 	if payloadRaw, ok := base["payload"]; ok {
 		if payloadMap, ok := payloadRaw.(map[string]any); ok {
+			if !hasOnlyAllowedKeys(payloadMap, allowedCronPayloadKeys) {
+				return nil
+			}
 			next["payload"] = maps.Clone(payloadMap)
 		}
 	}
@@ -169,6 +212,15 @@ func normalizeCronJobInputRaw(raw any, applyDefaults bool) map[string]any {
 		}
 	}
 	return next
+}
+
+func hasOnlyAllowedKeys(input map[string]any, allowed map[string]struct{}) bool {
+	for key := range input {
+		if _, ok := allowed[key]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func unwrapCronJob(raw any) (map[string]any, bool) {

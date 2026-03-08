@@ -12,10 +12,10 @@ var (
 	emptyChecklistItemRE = regexp.MustCompile(`^[-*+]\s*(\[[\sXx]?\]\s*)?$`)
 )
 
-// DefaultHeartbeatPrompt is the OpenClaw default heartbeat prompt.
+// DefaultHeartbeatPrompt is the default heartbeat prompt.
 const DefaultHeartbeatPrompt = "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK."
 
-// DefaultHeartbeatEvery is the default heartbeat interval (OpenClaw).
+// DefaultHeartbeatEvery is the default heartbeat interval.
 const DefaultHeartbeatEvery = "30m"
 
 // IsHeartbeatContentEffectivelyEmpty checks if HEARTBEAT.md has actionable content.

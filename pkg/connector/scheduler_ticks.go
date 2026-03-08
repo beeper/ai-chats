@@ -29,16 +29,16 @@ func (s *schedulerRuntime) scheduleTickLocked(ctx context.Context, roomID id.Roo
 	return resp, nil
 }
 
-func (s *schedulerRuntime) delayedEventExistsLocked(ctx context.Context, delayID string) bool {
+func (s *schedulerRuntime) delayedEventExistsLocked(ctx context.Context, delayID string) (bool, error) {
 	intent := s.intentClient()
 	if intent == nil || strings.TrimSpace(delayID) == "" {
-		return false
+		return false, nil
 	}
 	resp, err := intent.DelayedEvents(ctx, &mautrix.ReqDelayedEvents{DelayID: id.DelayID(delayID)})
 	if err != nil {
-		return false
+		return false, err
 	}
-	return resp != nil
+	return resp != nil, nil
 }
 
 func (s *schedulerRuntime) cancelPendingDelayLocked(ctx context.Context, delayID string) error {
@@ -105,10 +105,11 @@ func resolveScheduledCronTimeoutSeconds(client *AIClient, override *int) int {
 
 func truncateSchedulePreview(text string) string {
 	text = strings.Join(strings.Fields(strings.TrimSpace(text)), " ")
-	if len(text) <= 160 {
+	runes := []rune(text)
+	if len(runes) <= 160 {
 		return text
 	}
-	return strings.TrimSpace(text[:159]) + "..."
+	return strings.TrimSpace(string(runes[:159])) + "..."
 }
 
 func appendMissingDisabledTool(existing []string, toolName string) []string {
@@ -155,13 +156,6 @@ func shortTickKind(kind string) string {
 	default:
 		return "run"
 	}
-}
-
-func derefString(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return *value
 }
 
 func max64(a, b int64) int64 {
