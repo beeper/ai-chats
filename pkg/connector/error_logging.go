@@ -10,19 +10,31 @@ import (
 )
 
 func logResponsesFailure(log zerolog.Logger, err error, params responses.ResponseNewParams, meta *PortalMetadata, messages []openai.ChatCompletionMessageParamUnion, stage string) {
-	event := log.Error().Err(err).Str("stage", stage)
-	addRequestSummary(event, meta, messages)
-	addResponsesParamsSummary(event, params)
-	addOpenAIErrorFields(event, err)
-	event.Msg("Responses API failure")
+	logProviderFailure(log, err, meta, messages, stage, "Responses API failure", func(event *zerolog.Event) {
+		addResponsesParamsSummary(event, params)
+	})
 }
 
 func logChatCompletionsFailure(log zerolog.Logger, err error, params openai.ChatCompletionNewParams, meta *PortalMetadata, messages []openai.ChatCompletionMessageParamUnion, stage string) {
+	logProviderFailure(log, err, meta, messages, stage, "Chat Completions failure", func(event *zerolog.Event) {
+		addChatParamsSummary(event, params)
+	})
+}
+
+func logProviderFailure(
+	log zerolog.Logger,
+	err error,
+	meta *PortalMetadata,
+	messages []openai.ChatCompletionMessageParamUnion,
+	stage string,
+	msg string,
+	addSummary func(*zerolog.Event),
+) {
 	event := log.Error().Err(err).Str("stage", stage)
 	addRequestSummary(event, meta, messages)
-	addChatParamsSummary(event, params)
+	addSummary(event)
 	addOpenAIErrorFields(event, err)
-	event.Msg("Chat Completions failure")
+	event.Msg(msg)
 }
 
 func addRequestSummary(event *zerolog.Event, meta *PortalMetadata, messages []openai.ChatCompletionMessageParamUnion) {

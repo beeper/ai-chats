@@ -112,13 +112,8 @@ func (oc *AIClient) enqueueSteerQueue(roomID id.RoomID, item pendingQueueItem) b
 		return false
 	}
 	for _, existing := range run.steerQueue {
-		if !item.allowDuplicate {
-			if item.messageID != "" && existing.messageID == item.messageID {
-				return false
-			}
-			if item.messageID == "" && existing.messageID == "" && item.pending.MessageBody != "" && existing.pending.MessageBody == item.pending.MessageBody {
-				return false
-			}
+		if pendingQueueItemsConflict(item, existing) {
+			return false
 		}
 	}
 	run.steerQueue = append(run.steerQueue, item)

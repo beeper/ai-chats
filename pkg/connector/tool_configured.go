@@ -14,37 +14,51 @@ import (
 // prerequisites like API keys and service initialization.
 
 func (oc *AIClient) effectiveSearchConfig(_ context.Context) *search.Config {
-	var cfg *search.Config
-	var meta *UserLoginMetadata
-	var connector *OpenAIConnector
-	if oc != nil {
-		connector = oc.connector
-		if connector != nil {
-			cfg = mapSearchConfig(connector.Config.Tools.Search)
-		}
-		if oc.UserLogin != nil {
-			meta = loginMetadata(oc.UserLogin)
-		}
-	}
-	cfg = applyLoginTokensToSearchConfig(cfg, meta, connector)
-	return search.ApplyEnvDefaults(cfg).WithDefaults()
+	return effectiveToolConfig(
+		oc,
+		func(connector *OpenAIConnector) *search.Config {
+			if connector == nil {
+				return nil
+			}
+			return mapSearchConfig(connector.Config.Tools.Search)
+		},
+		applyLoginTokensToSearchConfig,
+		func(cfg *search.Config) *search.Config { return search.ApplyEnvDefaults(cfg).WithDefaults() },
+	)
 }
 
 func (oc *AIClient) effectiveFetchConfig(_ context.Context) *fetch.Config {
-	var cfg *fetch.Config
+	return effectiveToolConfig(
+		oc,
+		func(connector *OpenAIConnector) *fetch.Config {
+			if connector == nil {
+				return nil
+			}
+			return mapFetchConfig(connector.Config.Tools.Fetch)
+		},
+		applyLoginTokensToFetchConfig,
+		func(cfg *fetch.Config) *fetch.Config { return fetch.ApplyEnvDefaults(cfg).WithDefaults() },
+	)
+}
+
+func effectiveToolConfig[T any](
+	oc *AIClient,
+	load func(*OpenAIConnector) *T,
+	applyTokens func(*T, *UserLoginMetadata, *OpenAIConnector) *T,
+	withDefaults func(*T) *T,
+) *T {
+	var cfg *T
 	var meta *UserLoginMetadata
 	var connector *OpenAIConnector
 	if oc != nil {
 		connector = oc.connector
-		if connector != nil {
-			cfg = mapFetchConfig(connector.Config.Tools.Fetch)
-		}
+		cfg = load(connector)
 		if oc.UserLogin != nil {
 			meta = loginMetadata(oc.UserLogin)
 		}
 	}
-	cfg = applyLoginTokensToFetchConfig(cfg, meta, connector)
-	return fetch.ApplyEnvDefaults(cfg).WithDefaults()
+	cfg = applyTokens(cfg, meta, connector)
+	return withDefaults(cfg)
 }
 
 func (oc *AIClient) isWebSearchConfigured(ctx context.Context) (bool, string) {

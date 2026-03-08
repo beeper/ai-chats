@@ -114,38 +114,11 @@ func deriveToolDescriptorForOutputItem(item responses.ResponseOutputItemUnion, s
 		desc.input = map[string]any{}
 		desc.ok = true
 	case "local_shell_call":
-		desc.callID = strings.TrimSpace(item.CallID)
-		if desc.callID == "" {
-			desc.callID = item.ID
-		}
-		desc.toolName = "local_shell"
-		desc.toolType = ToolTypeProvider
-		desc.providerExecuted = true
-		desc.dynamic = true
-		desc.input = responseOutputItemToMap(item)
-		desc.ok = true
+		desc = providerDynamicResponseToolDescriptor(item, "local_shell")
 	case "shell_call":
-		desc.callID = strings.TrimSpace(item.CallID)
-		if desc.callID == "" {
-			desc.callID = item.ID
-		}
-		desc.toolName = "shell"
-		desc.toolType = ToolTypeProvider
-		desc.providerExecuted = true
-		desc.dynamic = true
-		desc.input = responseOutputItemToMap(item)
-		desc.ok = true
+		desc = providerDynamicResponseToolDescriptor(item, "shell")
 	case "apply_patch_call":
-		desc.callID = strings.TrimSpace(item.CallID)
-		if desc.callID == "" {
-			desc.callID = item.ID
-		}
-		desc.toolName = "apply_patch"
-		desc.toolType = ToolTypeProvider
-		desc.providerExecuted = true
-		desc.dynamic = true
-		desc.input = responseOutputItemToMap(item)
-		desc.ok = true
+		desc = providerDynamicResponseToolDescriptor(item, "apply_patch")
 	case "custom_tool_call":
 		desc.callID = strings.TrimSpace(item.CallID)
 		if desc.callID == "" {
@@ -194,6 +167,23 @@ func deriveToolDescriptorForOutputItem(item responses.ResponseOutputItemUnion, s
 		desc.itemID = desc.callID
 	}
 	return desc
+}
+
+func providerDynamicResponseToolDescriptor(item responses.ResponseOutputItemUnion, toolName string) responseToolDescriptor {
+	callID := strings.TrimSpace(item.CallID)
+	if callID == "" {
+		callID = item.ID
+	}
+	return responseToolDescriptor{
+		itemID:           item.ID,
+		callID:           callID,
+		toolName:         toolName,
+		toolType:         ToolTypeProvider,
+		input:            responseOutputItemToMap(item),
+		providerExecuted: true,
+		dynamic:          true,
+		ok:               true,
+	}
 }
 
 func outputItemLooksDenied(item responses.ResponseOutputItemUnion) bool {

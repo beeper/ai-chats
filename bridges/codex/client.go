@@ -1168,12 +1168,9 @@ func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2
 			Text string `json:"text"`
 		}
 		_ = json.Unmarshal(raw, &it)
-		text := strings.TrimSpace(it.Text)
-		if text == "" {
+		if !cc.emitTrimmedProviderToolTextOutput(ctx, portal, state, itemID, "plan", "text", it.Text) {
 			return
 		}
-		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, text, true, false)
-		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "plan", map[string]any{"text": text}))
 	case "enteredReviewMode":
 		var it map[string]any
 		_ = json.Unmarshal(raw, &it)
@@ -1184,12 +1181,9 @@ func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2
 			Review string `json:"review"`
 		}
 		_ = json.Unmarshal(raw, &it)
-		text := strings.TrimSpace(it.Review)
-		if text == "" {
+		if !cc.emitTrimmedProviderToolTextOutput(ctx, portal, state, itemID, "review", "review", it.Review) {
 			return
 		}
-		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, text, true, false)
-		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "review", map[string]any{"review": text}))
 	case "contextCompaction":
 		var it map[string]any
 		_ = json.Unmarshal(raw, &it)
@@ -1197,6 +1191,24 @@ func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2
 		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "contextCompaction", it))
 		cc.sendSystemNoticeOnce(ctx, portal, state, "compaction:completed:"+itemID, "Codex finished compacting context.")
 	}
+}
+
+func (cc *CodexClient) emitTrimmedProviderToolTextOutput(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	itemID string,
+	toolName string,
+	field string,
+	value string,
+) bool {
+	text := strings.TrimSpace(value)
+	if text == "" {
+		return false
+	}
+	cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, text, true, false)
+	state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, toolName, map[string]any{field: text}))
+	return true
 }
 
 func (cc *CodexClient) ensureRPC(ctx context.Context) error {
