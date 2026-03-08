@@ -34,20 +34,18 @@ func LoadOrCreateClient(
 	}
 
 	mu.Lock()
+	defer mu.Unlock()
 	if existing := clients[loginID]; existing != nil {
 		if reuse != nil && reuse(existing) {
-			mu.Unlock()
 			return existing, nil
 		}
 		delete(clients, loginID)
 	}
 	client, err := create()
 	if err != nil {
-		mu.Unlock()
 		return nil, err
 	}
 	clients[loginID] = client
-	mu.Unlock()
 	return client, nil
 }
 
@@ -75,9 +73,7 @@ func StopClients(mu *sync.Mutex, clients *map[networkid.UserLoginID]bridgev2.Net
 	mu.Unlock()
 
 	for _, client := range cloned {
-		if dc, ok := client.(interface{ Disconnect() }); ok {
-			dc.Disconnect()
-		}
+		client.Disconnect()
 	}
 }
 

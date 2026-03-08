@@ -35,6 +35,8 @@ func ApprovalErrorToastText(err error) string {
 		return "That approval request was already handled."
 	case errors.Is(err, ErrApprovalMissingID):
 		return "Missing approval ID."
+	case errors.Is(err, ErrApprovalMissingRoom):
+		return "Missing room ID."
 	default:
 		return strings.TrimSpace(err.Error())
 	}

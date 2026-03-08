@@ -9,11 +9,11 @@ import (
 )
 
 func MatrixMessageID(eventID id.EventID) networkid.MessageID {
-	return networkid.MessageID(fmt.Sprintf("mx:%s", string(eventID)))
+	return networkid.MessageID("mx:" + string(eventID))
 }
 
 func HumanUserID(prefix string, loginID networkid.UserLoginID) networkid.UserID {
-	return networkid.UserID(fmt.Sprintf("%s:%s", prefix, loginID))
+	return networkid.UserID(prefix + ":" + string(loginID))
 }
 
 func SingleLoginFlow(enabled bool, flow bridgev2.LoginFlow) []bridgev2.LoginFlow {
