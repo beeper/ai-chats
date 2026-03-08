@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -346,12 +347,7 @@ func providerSupportsCapability(providerID string, capability MediaUnderstanding
 	if !ok {
 		return false
 	}
-	for _, cap := range caps {
-		if cap == capability {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(caps, capability)
 }
 
 var hasBinaryCache sync.Map
@@ -373,10 +369,8 @@ func fileExists(path string) bool {
 	if strings.TrimSpace(path) == "" {
 		return false
 	}
-	if _, err := os.Stat(path); err == nil {
-		return true
-	}
-	return false
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 func resolveLocalWhisperCPPEntry() *MediaUnderstandingModelConfig {

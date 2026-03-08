@@ -41,9 +41,7 @@ func normalizeMediaProviderID(id string) string {
 	switch normalized {
 	case "gemini":
 		return "google"
-	case "beeper":
-		return "openrouter"
-	case "magic_proxy":
+	case "beeper", "magic_proxy":
 		return "openrouter"
 	default:
 		return normalized

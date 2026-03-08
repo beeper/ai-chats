@@ -333,27 +333,29 @@ func supportsGeminiImageGen(btc *BridgeToolContext) bool {
 }
 
 func normalizeOpenAIModel(model string) string {
-	if strings.TrimSpace(model) == "" {
+	model = strings.TrimSpace(model)
+	if model == "" {
 		return defaultOpenAIImageModel
 	}
 	_, actual := ParseModelPrefix(model)
 	actual = strings.TrimSpace(actual)
 	actual = strings.TrimPrefix(actual, "openai/")
 	if actual == "" {
-		return strings.TrimSpace(model)
+		return model
 	}
 	return actual
 }
 
 func normalizeGeminiModel(model string) string {
-	if strings.TrimSpace(model) == "" {
+	model = strings.TrimSpace(model)
+	if model == "" {
 		return defaultGeminiImageModel
 	}
 	_, actual := ParseModelPrefix(model)
 	actual = strings.TrimSpace(actual)
 	actual = strings.TrimPrefix(actual, "google/")
 	if actual == "" {
-		return strings.TrimSpace(model)
+		return model
 	}
 	return actual
 }
@@ -1020,17 +1022,12 @@ func loadGeminiInputs(ctx context.Context, btc *BridgeToolContext, refs []string
 }
 
 func loadInputImageBase64(ctx context.Context, btc *BridgeToolContext, ref string) (string, string, error) {
-	if strings.TrimSpace(ref) == "" {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
 		return "", "", errors.New("empty image reference")
 	}
-
-	ref = strings.TrimSpace(ref)
 	if strings.HasPrefix(ref, "data:") {
-		b64Data, mimeType, err := media.ParseDataURI(ref)
-		if err != nil {
-			return "", "", err
-		}
-		return b64Data, mimeType, nil
+		return media.ParseDataURI(ref)
 	}
 
 	if strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://") {
@@ -1053,11 +1050,7 @@ func loadInputImageBase64(ctx context.Context, btc *BridgeToolContext, ref strin
 	}
 
 	if strings.HasPrefix(ref, "mxc://") {
-		b64Data, mimeType, err := btc.Client.downloadAndEncodeMedia(ctx, ref, nil, imageInputMaxSizeMB)
-		if err != nil {
-			return "", "", err
-		}
-		return b64Data, mimeType, nil
+		return btc.Client.downloadAndEncodeMedia(ctx, ref, nil, imageInputMaxSizeMB)
 	}
 
 	if isLocalImageRef(ref) {
@@ -1065,11 +1058,7 @@ func loadInputImageBase64(ctx context.Context, btc *BridgeToolContext, ref strin
 		if err != nil {
 			return "", "", err
 		}
-		b64Data, mimeType, err := btc.Client.downloadAndEncodeMedia(ctx, resolved, nil, imageInputMaxSizeMB)
-		if err != nil {
-			return "", "", err
-		}
-		return b64Data, mimeType, nil
+		return btc.Client.downloadAndEncodeMedia(ctx, resolved, nil, imageInputMaxSizeMB)
 	}
 
 	return "", "", fmt.Errorf("unsupported image reference: %s", ref)

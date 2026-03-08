@@ -33,9 +33,6 @@ func normalizeMCPServerKind(kind string) string {
 	if value == "" {
 		return mcpServerKindGeneric
 	}
-	if value == "generic" {
-		return mcpServerKindGeneric
-	}
 	return value
 }
 
@@ -44,26 +41,11 @@ func normalizeMCPServerAuthType(authType string) string {
 	if value == "" {
 		return "bearer"
 	}
-	switch value {
-	case "bearer", "apikey", "api_key", "api-key", "none":
-		return value
-	default:
-		return value
-	}
+	return value
 }
 
 func normalizeMCPServerTransport(transport string) string {
-	value := strings.TrimSpace(strings.ToLower(transport))
-	switch value {
-	case "":
-		return ""
-	case mcpTransportStreamableHTTP:
-		return mcpTransportStreamableHTTP
-	case mcpTransportStdio:
-		return mcpTransportStdio
-	default:
-		return value
-	}
+	return strings.TrimSpace(strings.ToLower(transport))
 }
 
 func normalizeMCPCommandArgs(args []string) []string {
@@ -115,11 +97,6 @@ func mcpServerUsesStdio(cfg MCPServerConfig) bool {
 	return normalizeMCPServerConfig(cfg).Transport == mcpTransportStdio
 }
 
-func mcpServerUsesHTTPTransport(cfg MCPServerConfig) bool {
-	normalized := normalizeMCPServerConfig(cfg)
-	return normalized.Transport == mcpTransportStreamableHTTP
-}
-
 func mcpServerHasTarget(cfg MCPServerConfig) bool {
 	normalized := normalizeMCPServerConfig(cfg)
 	if normalized.Transport == mcpTransportStdio {
@@ -130,7 +107,7 @@ func mcpServerHasTarget(cfg MCPServerConfig) bool {
 
 func mcpServerNeedsToken(cfg MCPServerConfig) bool {
 	normalized := normalizeMCPServerConfig(cfg)
-	return mcpServerUsesHTTPTransport(normalized) && normalized.AuthType != "none"
+	return normalized.Transport == mcpTransportStreamableHTTP && normalized.AuthType != "none"
 }
 
 func mcpServerTargetLabel(cfg MCPServerConfig) string {

@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -124,10 +125,5 @@ func capabilityInList(capability MediaUnderstandingCapability, list []string) bo
 }
 
 func capabilityInCapabilities(capability MediaUnderstandingCapability, list []MediaUnderstandingCapability) bool {
-	for _, entry := range list {
-		if entry == capability {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(list, capability)
 }

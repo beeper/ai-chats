@@ -1068,9 +1068,6 @@ func (oc *AIClient) focusDesktop(ctx context.Context, instance string, params de
 	if err != nil {
 		return nil, err
 	}
-	if client == nil {
-		return nil, errors.New("desktop API token is not set")
-	}
 
 	body := beeperdesktopapi.FocusParams{}
 	if chatID := strings.TrimSpace(params.ChatID); chatID != "" {

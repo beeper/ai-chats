@@ -85,8 +85,7 @@ func copyStringMap(src map[string]string) map[string]string {
 }
 
 func (oc *AIClient) mcpRequestTimeout() time.Duration {
-	timeoutSeconds := defaultMCPTimeoutSeconds
-	return time.Duration(timeoutSeconds) * time.Second
+	return time.Duration(defaultMCPTimeoutSeconds) * time.Second
 }
 
 func (oc *AIClient) mcpHTTPClientForServer(server namedMCPServer) (*http.Client, error) {
@@ -102,17 +101,6 @@ func (oc *AIClient) mcpHTTPClientForServer(server namedMCPServer) (*http.Client,
 		},
 	}
 	return client, nil
-}
-
-func mcpLoggingMiddleware() mcp.Middleware {
-	return func(next mcp.MethodHandler) mcp.MethodHandler {
-		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
-			start := time.Now()
-			result, err := next(ctx, method, req)
-			_ = start // latency available via time.Since(start) if a logger is wired in
-			return result, err
-		}
-	}
 }
 
 func (oc *AIClient) newMCPSession(ctx context.Context, server namedMCPServer) (*mcp.ClientSession, error) {
@@ -131,7 +119,6 @@ func (oc *AIClient) newMCPSession(ctx context.Context, server namedMCPServer) (*
 		Name:    "ai-bridge",
 		Version: "1.0.0",
 	}, nil)
-	client.AddSendingMiddleware(mcpLoggingMiddleware())
 
 	var (
 		session *mcp.ClientSession
@@ -363,10 +350,6 @@ func (oc *AIClient) mcpServerForTool(ctx context.Context, toolName string) (name
 		return namedMCPServer{}, false
 	}
 	return servers[0], true
-}
-
-func (oc *AIClient) isMCPToolName(name string) bool {
-	return oc.hasCachedMCPTool(name)
 }
 
 func (oc *AIClient) shouldUseMCPTool(ctx context.Context, toolName string) bool {

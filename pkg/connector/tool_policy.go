@@ -86,7 +86,7 @@ func (oc *AIClient) isToolAvailable(meta *PortalMetadata, toolName string) (bool
 			return false, SourceModelLimit, "No vision-capable model available"
 		}
 	}
-	if oc.isMCPToolName(toolName) {
+	if oc.hasCachedMCPTool(toolName) {
 		if !oc.isMCPConfigured() {
 			return false, SourceProviderLimit, "MCP tool bridge is not configured"
 		}
