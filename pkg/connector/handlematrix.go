@@ -922,6 +922,9 @@ func (oc *AIClient) dispatchMediaUnderstandingFallback(
 		oc.loggerForContext(ctx).Warn().Err(err).Msg(failureLog)
 		return nil, messageSendStatusError(err, userError, "")
 	}
+	if description == "" {
+		return nil, messageSendStatusError(errors.New(emptyResult), userError, "")
+	}
 
 	combined := buildMessage(caption, hasUserCaption, description)
 	if combined == "" {

@@ -42,9 +42,17 @@ func (oc *AIClient) buildStreamUIMessage(state *streamingState, meta *PortalMeta
 		uiMessage["metadata"] = msgconv.MergeUIMessageMetadata(metadata, oc.buildUIMessageMetadata(state, meta, true))
 		return msgconv.AppendUIMessageArtifacts(uiMessage, sourceParts, fileParts)
 	}
+	var parts []map[string]any
+	if text := state.accumulated.String(); text != "" {
+		parts = append(parts, map[string]any{"type": "text", "text": text})
+	}
+	if reasoning := state.reasoning.String(); reasoning != "" {
+		parts = append(parts, map[string]any{"type": "reasoning", "reasoning": reasoning})
+	}
 	return msgconv.BuildUIMessage(msgconv.UIMessageParams{
 		TurnID:     state.turnID,
 		Role:       "assistant",
+		Parts:      parts,
 		Metadata:   oc.buildUIMessageMetadata(state, meta, true),
 		SourceURLs: sourceParts,
 		FileParts:  fileParts,
