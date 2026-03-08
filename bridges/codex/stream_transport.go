@@ -2,12 +2,11 @@ package codex
 
 import (
 	"context"
-	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
 )
 
@@ -15,34 +14,17 @@ func (cc *CodexClient) sendDebouncedStreamEdit(ctx context.Context, portal *brid
 	if cc == nil || state == nil || portal == nil {
 		return nil
 	}
-	content := streamtransport.BuildDebouncedEditContent(streamtransport.DebouncedEditParams{
-		PortalMXID:   portal.MXID.String(),
-		Force:        force,
-		SuppressSend: state.suppressSend,
-		VisibleBody:  state.visibleAccumulated.String(),
-		FallbackBody: state.accumulated.String(),
+	return bridgeadapter.SendDebouncedStreamEdit(bridgeadapter.SendDebouncedStreamEditParams{
+		Login:            cc.UserLogin,
+		Portal:           portal,
+		Sender:           cc.senderForPortal(),
+		NetworkMessageID: state.networkMessageID,
+		SuppressSend:     state.suppressSend,
+		VisibleBody:      state.visibleAccumulated.String(),
+		FallbackBody:     state.accumulated.String(),
+		LogKey:           "codex_edit_target",
+		Force:            force,
 	})
-	if content == nil || state.networkMessageID == "" {
-		return nil
-	}
-	sender := cc.senderForPortal()
-	cc.UserLogin.QueueRemoteEvent(&CodexRemoteEdit{
-		Portal:        portal.PortalKey,
-		Sender:        sender,
-		TargetMessage: state.networkMessageID,
-		Timestamp:     time.Now(),
-		LogKey:        "codex_edit_target",
-		PreBuilt: streamtransport.BuildConvertedEdit(&event.MessageEventContent{
-			MsgType:       event.MsgText,
-			Body:          content.Body,
-			Format:        content.Format,
-			FormattedBody: content.FormattedBody,
-		}, map[string]any{
-			"com.beeper.dont_render_edited": true,
-			"m.mentions":                    map[string]any{},
-		}),
-	})
-	return nil
 }
 
 func (cc *CodexClient) ensureStreamSession(ctx context.Context, portal *bridgev2.Portal, state *streamingState) *streamtransport.StreamSession {

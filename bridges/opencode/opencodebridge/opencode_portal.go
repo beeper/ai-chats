@@ -6,12 +6,11 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/ai-bridge/bridges/opencode/opencode"
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 func (b *Bridge) ensureOpenCodeSessionPortal(ctx context.Context, inst *openCodeInstance, session opencode.Session) error {
@@ -133,49 +132,16 @@ func (b *Bridge) composeOpenCodeChatInfo(title, instanceID string) *bridgev2.Cha
 	if login == nil {
 		return nil
 	}
-	displayName := b.opencodeDisplayName(instanceID)
-	ownUserID := b.host.HumanUserID(login.ID)
-	members := bridgev2.ChatMemberMap{
-		ownUserID: {
-			EventSender: bridgev2.EventSender{
-				IsFromMe:    true,
-				SenderLogin: login.ID,
-			},
-			Membership: event.MembershipJoin,
-		},
-		OpenCodeUserID(instanceID): {
-			EventSender: bridgev2.EventSender{
-				Sender:      OpenCodeUserID(instanceID),
-				SenderLogin: login.ID,
-			},
-			Membership: event.MembershipJoin,
-			UserInfo: &bridgev2.UserInfo{
-				Name:  ptr.Ptr(displayName),
-				IsBot: ptr.Ptr(true),
-			},
-			MemberEventExtra: map[string]any{
-				"displayname": displayName,
-			},
-		},
-	}
-
-	return &bridgev2.ChatInfo{
-		Name:  ptr.Ptr(title),
-		Type:  ptr.Ptr(database.RoomTypeDM),
-		Topic: nil,
-		Members: &bridgev2.ChatMemberList{
-			IsFull:      true,
-			OtherUserID: OpenCodeUserID(instanceID),
-			MemberMap:   members,
-			PowerLevels: &bridgev2.PowerLevelOverrides{
-				Events: map[event.Type]int{
-					b.host.RoomCapabilitiesEventType(): 100,
-					b.host.RoomSettingsEventType():     0,
-				},
-			},
-		},
-		CanBackfill: true,
-	}
+	return bridgeadapter.BuildDMChatInfo(bridgeadapter.DMChatInfoParams{
+		Title:             title,
+		HumanUserID:       b.host.HumanUserID(login.ID),
+		LoginID:           login.ID,
+		BotUserID:         OpenCodeUserID(instanceID),
+		BotDisplayName:    b.opencodeDisplayName(instanceID),
+		CanBackfill:       true,
+		CapabilitiesEvent: b.host.RoomCapabilitiesEventType(),
+		SettingsEvent:     b.host.RoomSettingsEventType(),
+	})
 }
 
 func (b *Bridge) createOpenCodeSessionChat(ctx context.Context, instanceID, title string, pendingTitle bool) (*bridgev2.CreateChatResponse, error) {
