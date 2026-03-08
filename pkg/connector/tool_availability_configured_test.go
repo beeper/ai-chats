@@ -6,9 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
+
+	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
 )
 
 func boolPtr(v bool) *bool {
