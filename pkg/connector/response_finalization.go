@@ -18,7 +18,6 @@ import (
 	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
 	"github.com/beeper/ai-bridge/pkg/shared/citations"
 	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
-	"github.com/beeper/ai-bridge/pkg/shared/streamui"
 )
 
 const maxSafeEditPayloadBytes = 54 * 1024
@@ -600,25 +599,7 @@ func buildSourceParts(cits []citations.SourceCitation, documents []citations.Sou
 }
 
 func (oc *AIClient) buildFinalEditUIMessage(state *streamingState, meta *PortalMetadata, linkPreviews []*event.BeeperLinkPreview) map[string]any {
-	if state == nil {
-		return nil
-	}
-	if uiMessage := streamui.SnapshotCanonicalUIMessage(&state.ui); len(uiMessage) > 0 {
-		metadata, _ := uiMessage["metadata"].(map[string]any)
-		uiMessage["metadata"] = msgconv.MergeUIMessageMetadata(metadata, oc.buildUIMessageMetadata(state, meta, true))
-		return msgconv.AppendUIMessageArtifacts(
-			uiMessage,
-			buildSourceParts(state.sourceCitations, state.sourceDocuments, linkPreviews),
-			citations.GeneratedFilesToParts(state.generatedFiles),
-		)
-	}
-	return msgconv.BuildUIMessage(msgconv.UIMessageParams{
-		TurnID:     state.turnID,
-		Role:       "assistant",
-		Metadata:   oc.buildUIMessageMetadata(state, meta, true),
-		SourceURLs: buildSourceParts(state.sourceCitations, state.sourceDocuments, linkPreviews),
-		FileParts:  citations.GeneratedFilesToParts(state.generatedFiles),
-	})
+	return oc.buildStreamUIMessage(state, meta, linkPreviews)
 }
 
 // sendFinalAssistantTurnContent is a helper for simple mode that sends content without directive processing.

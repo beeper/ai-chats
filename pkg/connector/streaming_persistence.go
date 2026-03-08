@@ -11,9 +11,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
-	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
-	"github.com/beeper/ai-bridge/pkg/shared/citations"
-	"github.com/beeper/ai-bridge/pkg/shared/streamui"
 )
 
 // saveAssistantMessage saves the completed assistant message to the database.
@@ -152,31 +149,5 @@ func thinkingTokenCount(model string, content string) int {
 }
 
 func (oc *AIClient) buildCanonicalUIMessage(state *streamingState, meta *PortalMetadata) map[string]any {
-	if state == nil {
-		return nil
-	}
-	if uiMessage := streamui.SnapshotCanonicalUIMessage(&state.ui); len(uiMessage) > 0 {
-		metadata, _ := uiMessage["metadata"].(map[string]any)
-		uiMessage["metadata"] = msgconv.MergeUIMessageMetadata(metadata, msgconv.BuildUIMessageMetadata(msgconv.UIMessageMetadataParams{
-			TurnID:           state.turnID,
-			AgentID:          state.agentID,
-			Model:            oc.effectiveModel(meta),
-			FinishReason:     state.finishReason,
-			PromptTokens:     state.promptTokens,
-			CompletionTokens: state.completionTokens,
-			ReasoningTokens:  state.reasoningTokens,
-			StartedAtMs:      state.startedAtMs,
-			FirstTokenAtMs:   state.firstTokenAtMs,
-			CompletedAtMs:    state.completedAtMs,
-			IncludeUsage:     true,
-		}))
-		return msgconv.AppendUIMessageArtifacts(uiMessage, buildSourceParts(state.sourceCitations, state.sourceDocuments, nil), citations.GeneratedFilesToParts(state.generatedFiles))
-	}
-	return msgconv.BuildUIMessage(msgconv.UIMessageParams{
-		TurnID:     state.turnID,
-		Role:       "assistant",
-		Metadata:   oc.buildUIMessageMetadata(state, meta, true),
-		SourceURLs: buildSourceParts(state.sourceCitations, state.sourceDocuments, nil),
-		FileParts:  citations.GeneratedFilesToParts(state.generatedFiles),
-	})
+	return oc.buildStreamUIMessage(state, meta, nil)
 }

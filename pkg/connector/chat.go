@@ -1209,34 +1209,18 @@ func (oc *AIClient) composeChatInfo(title, modelID string) *bridgev2.ChatInfo {
 	if title == "" {
 		title = modelName
 	}
-	members := bridgev2.ChatMemberMap{
-		humanUserID(oc.UserLogin.ID): {
-			EventSender: bridgev2.EventSender{
-				IsFromMe:    true,
-				SenderLogin: oc.UserLogin.ID,
-			},
-			Membership: event.MembershipJoin,
-		},
-		modelUserID(modelID): modelJoinMember(oc.UserLogin.ID, modelID, modelName, modelInfo),
-	}
-	return &bridgev2.ChatInfo{
-		Name:  ptr.Ptr(title),
-		Topic: nil, // Topic managed via Matrix events, not system prompt
-		Type:  ptr.Ptr(database.RoomTypeDM),
-		Members: &bridgev2.ChatMemberList{
-			IsFull:      true,
-			OtherUserID: modelUserID(modelID),
-			MemberMap:   members,
-			// Set power levels so only bridge bot can modify room_capabilities (100)
-			// while any user can modify room_settings (0)
-			PowerLevels: &bridgev2.PowerLevelOverrides{
-				Events: map[event.Type]int{
-					RoomCapabilitiesEventType: 100, // Only bridge bot
-					RoomSettingsEventType:     0,   // Any user
-				},
-			},
-		},
-	}
+	chatInfo := bridgeadapter.BuildDMChatInfo(bridgeadapter.DMChatInfoParams{
+		Title:             title,
+		HumanUserID:       humanUserID(oc.UserLogin.ID),
+		LoginID:           oc.UserLogin.ID,
+		BotUserID:         modelUserID(modelID),
+		BotDisplayName:    modelName,
+		CapabilitiesEvent: RoomCapabilitiesEventType,
+		SettingsEvent:     RoomSettingsEventType,
+	})
+	// Override bot member with model-specific UserInfo and extra fields.
+	chatInfo.Members.MemberMap[modelUserID(modelID)] = modelJoinMember(oc.UserLogin.ID, modelID, modelName, modelInfo)
+	return chatInfo
 }
 
 func (oc *AIClient) applyAgentChatInfo(chatInfo *bridgev2.ChatInfo, agentID, agentName, modelID string) {

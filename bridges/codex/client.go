@@ -1482,44 +1482,15 @@ func (cc *CodexClient) composeCodexChatInfo(title string) *bridgev2.ChatInfo {
 	if title == "" {
 		title = "Codex"
 	}
-	members := bridgev2.ChatMemberMap{
-		humanUserID(cc.UserLogin.ID): {
-			EventSender: bridgev2.EventSender{
-				IsFromMe:    true,
-				SenderLogin: cc.UserLogin.ID,
-			},
-			Membership: event.MembershipJoin,
-		},
-		codexGhostID: {
-			EventSender: bridgev2.EventSender{
-				Sender:      codexGhostID,
-				SenderLogin: cc.UserLogin.ID,
-			},
-			Membership: event.MembershipJoin,
-			UserInfo: &bridgev2.UserInfo{
-				Name:  ptr.Ptr("Codex"),
-				IsBot: ptr.Ptr(true),
-			},
-			MemberEventExtra: map[string]any{
-				"displayname": "Codex",
-			},
-		},
-	}
-	return &bridgev2.ChatInfo{
-		Name: ptr.Ptr(title),
-		Type: ptr.Ptr(database.RoomTypeDM),
-		Members: &bridgev2.ChatMemberList{
-			IsFull:      true,
-			OtherUserID: codexGhostID,
-			MemberMap:   members,
-			PowerLevels: &bridgev2.PowerLevelOverrides{
-				Events: map[event.Type]int{
-					matrixevents.RoomCapabilitiesEventType: 100,
-					matrixevents.RoomSettingsEventType:     0,
-				},
-			},
-		},
-	}
+	return bridgeadapter.BuildDMChatInfo(bridgeadapter.DMChatInfoParams{
+		Title:             title,
+		HumanUserID:       humanUserID(cc.UserLogin.ID),
+		LoginID:           cc.UserLogin.ID,
+		BotUserID:         codexGhostID,
+		BotDisplayName:    "Codex",
+		CapabilitiesEvent: matrixevents.RoomCapabilitiesEventType,
+		SettingsEvent:     matrixevents.RoomSettingsEventType,
+	})
 }
 
 func (cc *CodexClient) buildSandboxPolicy(cwd string) map[string]any {
