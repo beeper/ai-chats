@@ -192,8 +192,6 @@ type PortalMetadata struct {
 	LastRoomStateSync   int64             `json:"last_room_state_sync,omitempty"` // Track when we've synced room state
 	PDFConfig           *PDFConfig        `json:"pdf_config,omitempty"`           // Per-room PDF processing configuration
 
-	ConversationMode          string           `json:"conversation_mode,omitempty"`
-	LastResponseID            string           `json:"last_response_id,omitempty"`
 	EmitThinking              bool             `json:"emit_thinking,omitempty"`
 	EmitToolArgs              bool             `json:"emit_tool_args,omitempty"`
 	ThinkingLevel             string           `json:"thinking_level,omitempty"`   // off|minimal|low|medium|high|xhigh

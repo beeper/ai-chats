@@ -4,10 +4,11 @@ import (
 	"strings"
 
 	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/responses"
 )
 
-// MessageRole represents the role of a message sender
+// MessageRole represents the role of a legacy unified message sender.
 type MessageRole string
 
 const (
@@ -17,7 +18,7 @@ const (
 	RoleTool      MessageRole = "tool"
 )
 
-// ContentPartType identifies the type of content in a message
+// ContentPartType identifies the type of content in a legacy unified message.
 type ContentPartType string
 
 const (
@@ -28,7 +29,7 @@ const (
 	ContentTypeVideo ContentPartType = "video"
 )
 
-// ContentPart represents a single piece of content (text, image, PDF, audio, or video)
+// ContentPart represents a legacy piece of content (text, image, PDF, audio, or video).
 type ContentPart struct {
 	Type        ContentPartType
 	Text        string
@@ -38,21 +39,88 @@ type ContentPart struct {
 	PDFURL      string
 	PDFB64      string
 	AudioB64    string
-	AudioFormat string // wav, mp3, webm, ogg, flac
+	AudioFormat string
 	VideoURL    string
 	VideoB64    string
 }
 
-// UnifiedMessage is a provider-agnostic message format
+// PromptRole is the canonical provider-agnostic role used by PromptContext.
+type PromptRole string
+
+const (
+	PromptRoleUser       PromptRole = "user"
+	PromptRoleAssistant  PromptRole = "assistant"
+	PromptRoleToolResult PromptRole = "tool_result"
+)
+
+// PromptBlockType identifies the type of content in a prompt message.
+//
+// Audio/video are retained as compatibility block types for the existing
+// media-understanding call sites while the wider connector migrates.
+type PromptBlockType string
+
+const (
+	PromptBlockText     PromptBlockType = "text"
+	PromptBlockImage    PromptBlockType = "image"
+	PromptBlockFile     PromptBlockType = "file"
+	PromptBlockThinking PromptBlockType = "thinking"
+	PromptBlockToolCall PromptBlockType = "tool_call"
+	PromptBlockAudio    PromptBlockType = "audio"
+	PromptBlockVideo    PromptBlockType = "video"
+)
+
+// PromptBlock is the canonical provider-agnostic content unit.
+type PromptBlock struct {
+	Type PromptBlockType
+
+	Text string
+
+	ImageURL string
+	ImageB64 string
+	MimeType string
+
+	FileURL  string
+	FileB64  string
+	Filename string
+
+	ToolCallID        string
+	ToolName          string
+	ToolCallArguments string
+
+	AudioB64    string
+	AudioFormat string
+
+	VideoURL string
+	VideoB64 string
+}
+
+// PromptMessage is the canonical provider-agnostic prompt message.
+type PromptMessage struct {
+	Role       PromptRole
+	Blocks     []PromptBlock
+	ToolCallID string
+	ToolName   string
+	IsError    bool
+}
+
+// PromptContext is the canonical provider-facing prompt representation.
+type PromptContext struct {
+	SystemPrompt    string
+	DeveloperPrompt string
+	Messages        []PromptMessage
+	Tools           []ToolDefinition
+}
+
+// UnifiedMessage is the legacy provider-agnostic message format used by a few call sites.
 type UnifiedMessage struct {
 	Role       MessageRole
 	Content    []ContentPart
-	ToolCalls  []ToolCallResult // For assistant messages with tool calls
-	ToolCallID string           // For tool result messages
-	Name       string           // Optional name for the message sender
+	ToolCalls  []ToolCallResult
+	ToolCallID string
+	Name       string
 }
 
-// Text returns the text content of a message (concatenating all text parts)
+// Text returns the text content of a legacy message.
 func (m *UnifiedMessage) Text() string {
 	var texts []string
 	for _, part := range m.Content {
@@ -63,7 +131,7 @@ func (m *UnifiedMessage) Text() string {
 	return strings.Join(texts, "\n")
 }
 
-// HasImages returns true if the message contains image content
+// HasImages returns true if the message contains image content.
 func (m *UnifiedMessage) HasImages() bool {
 	for _, part := range m.Content {
 		if part.Type == ContentTypeImage {
@@ -73,7 +141,7 @@ func (m *UnifiedMessage) HasImages() bool {
 	return false
 }
 
-// HasMultimodalContent returns true if the message contains any non-text content
+// HasMultimodalContent returns true if the message contains any non-text content.
 func (m *UnifiedMessage) HasMultimodalContent() bool {
 	for _, part := range m.Content {
 		switch part.Type {
@@ -84,46 +152,163 @@ func (m *UnifiedMessage) HasMultimodalContent() bool {
 	return false
 }
 
-// ToOpenAIResponsesInput converts unified messages to OpenAI Responses API format.
-// Supports text + image/PDF inputs for user messages; audio/video are intentionally
-// excluded (caller should fall back to Chat Completions for those).
-func ToOpenAIResponsesInput(messages []UnifiedMessage) responses.ResponseInputParam {
-	var result responses.ResponseInputParam
+// Text returns the text content of a canonical prompt message.
+func (m PromptMessage) Text() string {
+	var texts []string
+	for _, block := range m.Blocks {
+		switch block.Type {
+		case PromptBlockText, PromptBlockThinking:
+			if strings.TrimSpace(block.Text) != "" {
+				texts = append(texts, block.Text)
+			}
+		}
+	}
+	return strings.Join(texts, "\n")
+}
 
+// ToPromptContext converts legacy UnifiedMessage payloads into the canonical prompt model.
+// System messages are lifted into PromptContext.SystemPrompt.
+func ToPromptContext(systemPrompt string, tools []ToolDefinition, messages []UnifiedMessage) PromptContext {
+	ctx := PromptContext{
+		SystemPrompt: strings.TrimSpace(systemPrompt),
+		Tools:        append([]ToolDefinition(nil), tools...),
+	}
+
+	systemParts := make([]string, 0, len(messages))
 	for _, msg := range messages {
 		switch msg.Role {
 		case RoleSystem:
-			result = append(result, responses.ResponseInputItemUnionParam{
-				OfMessage: &responses.EasyInputMessageParam{
-					Role: responses.EasyInputMessageRoleSystem,
-					Content: responses.EasyInputMessageContentUnionParam{
-						OfString: openai.String(msg.Text()),
-					},
+			if text := strings.TrimSpace(msg.Text()); text != "" {
+				systemParts = append(systemParts, text)
+			}
+		case RoleUser, RoleAssistant, RoleTool:
+			ctx.Messages = append(ctx.Messages, unifiedMessageToPromptMessage(msg))
+		}
+	}
+	if len(systemParts) > 0 {
+		systemText := strings.Join(systemParts, "\n\n")
+		if ctx.SystemPrompt == "" {
+			ctx.SystemPrompt = systemText
+		} else {
+			ctx.SystemPrompt = strings.TrimSpace(systemText + "\n\n" + ctx.SystemPrompt)
+		}
+	}
+	return ctx
+}
+
+func unifiedMessageToPromptMessage(msg UnifiedMessage) PromptMessage {
+	pm := PromptMessage{
+		Blocks: make([]PromptBlock, 0, len(msg.Content)+len(msg.ToolCalls)),
+	}
+	switch msg.Role {
+	case RoleUser:
+		pm.Role = PromptRoleUser
+	case RoleAssistant:
+		pm.Role = PromptRoleAssistant
+	case RoleTool:
+		pm.Role = PromptRoleToolResult
+		pm.ToolCallID = msg.ToolCallID
+		pm.ToolName = msg.Name
+	}
+
+	for _, part := range msg.Content {
+		pm.Blocks = append(pm.Blocks, contentPartToPromptBlock(part))
+	}
+	for _, call := range msg.ToolCalls {
+		pm.Blocks = append(pm.Blocks, PromptBlock{
+			Type:              PromptBlockToolCall,
+			ToolCallID:        call.ID,
+			ToolName:          call.Name,
+			ToolCallArguments: call.Arguments,
+		})
+	}
+
+	return pm
+}
+
+func contentPartToPromptBlock(part ContentPart) PromptBlock {
+	switch part.Type {
+	case ContentTypeText:
+		return PromptBlock{Type: PromptBlockText, Text: part.Text}
+	case ContentTypeImage:
+		return PromptBlock{
+			Type:     PromptBlockImage,
+			ImageURL: part.ImageURL,
+			ImageB64: part.ImageB64,
+			MimeType: part.MimeType,
+		}
+	case ContentTypePDF:
+		return PromptBlock{
+			Type:     PromptBlockFile,
+			FileURL:  part.PDFURL,
+			FileB64:  part.PDFB64,
+			Filename: "document.pdf",
+			MimeType: part.MimeType,
+		}
+	case ContentTypeAudio:
+		return PromptBlock{
+			Type:        PromptBlockAudio,
+			AudioB64:    part.AudioB64,
+			AudioFormat: part.AudioFormat,
+			MimeType:    part.MimeType,
+		}
+	case ContentTypeVideo:
+		return PromptBlock{
+			Type:     PromptBlockVideo,
+			VideoURL: part.VideoURL,
+			VideoB64: part.VideoB64,
+			MimeType: part.MimeType,
+		}
+	default:
+		return PromptBlock{Type: PromptBlockText, Text: part.Text}
+	}
+}
+
+// ToOpenAIResponsesInput converts legacy unified messages to OpenAI Responses input.
+func ToOpenAIResponsesInput(messages []UnifiedMessage) responses.ResponseInputParam {
+	return PromptContextToResponsesInput(ToPromptContext("", nil, messages))
+}
+
+// PromptContextToResponsesInput converts the canonical prompt model into Responses input items.
+func PromptContextToResponsesInput(ctx PromptContext) responses.ResponseInputParam {
+	var result responses.ResponseInputParam
+
+	if strings.TrimSpace(ctx.DeveloperPrompt) != "" {
+		result = append(result, responses.ResponseInputItemUnionParam{
+			OfMessage: &responses.EasyInputMessageParam{
+				Role: responses.EasyInputMessageRoleDeveloper,
+				Content: responses.EasyInputMessageContentUnionParam{
+					OfString: openai.String(ctx.DeveloperPrompt),
 				},
-			})
-		case RoleUser:
+			},
+		})
+	}
+
+	for _, msg := range ctx.Messages {
+		switch msg.Role {
+		case PromptRoleUser:
 			var contentParts responses.ResponseInputMessageContentListParam
 			hasMultimodal := false
 			textContent := ""
 
-			for _, part := range msg.Content {
-				switch part.Type {
-				case ContentTypeText:
-					if strings.TrimSpace(part.Text) == "" {
+			for _, block := range msg.Blocks {
+				switch block.Type {
+				case PromptBlockText:
+					if strings.TrimSpace(block.Text) == "" {
 						continue
 					}
 					if textContent != "" {
 						textContent += "\n"
 					}
-					textContent += part.Text
-				case ContentTypeImage:
-					imageURL := strings.TrimSpace(part.ImageURL)
-					if imageURL == "" && part.ImageB64 != "" {
-						mimeType := part.MimeType
+					textContent += block.Text
+				case PromptBlockImage:
+					imageURL := strings.TrimSpace(block.ImageURL)
+					if imageURL == "" && block.ImageB64 != "" {
+						mimeType := block.MimeType
 						if mimeType == "" {
 							mimeType = "image/jpeg"
 						}
-						imageURL = buildDataURL(mimeType, part.ImageB64)
+						imageURL = buildDataURL(mimeType, block.ImageB64)
 					}
 					if imageURL == "" {
 						continue
@@ -135,9 +320,9 @@ func ToOpenAIResponsesInput(messages []UnifiedMessage) responses.ResponseInputPa
 							Detail:   responses.ResponseInputImageDetailAuto,
 						},
 					})
-				case ContentTypePDF:
-					fileData := strings.TrimSpace(part.PDFB64)
-					fileURL := strings.TrimSpace(part.PDFURL)
+				case PromptBlockFile:
+					fileData := strings.TrimSpace(block.FileB64)
+					fileURL := strings.TrimSpace(block.FileURL)
 					if fileData == "" && fileURL == "" {
 						continue
 					}
@@ -149,12 +334,14 @@ func ToOpenAIResponsesInput(messages []UnifiedMessage) responses.ResponseInputPa
 					if fileURL != "" {
 						fileParam.FileURL = openai.String(fileURL)
 					}
-					fileParam.Filename = openai.String("document.pdf")
+					if strings.TrimSpace(block.Filename) != "" {
+						fileParam.Filename = openai.String(block.Filename)
+					}
 					contentParts = append(contentParts, responses.ResponseInputContentUnionParam{
 						OfInputFile: fileParam,
 					})
-				case ContentTypeAudio, ContentTypeVideo:
-					// Unsupported in Responses API; caller should fall back.
+				case PromptBlockAudio, PromptBlockVideo:
+					// Unsupported in Responses API; caller should fall back to Chat Completions.
 				}
 			}
 
@@ -184,29 +371,227 @@ func ToOpenAIResponsesInput(messages []UnifiedMessage) responses.ResponseInputPa
 					},
 				})
 			}
-		case RoleAssistant:
+		case PromptRoleAssistant:
+			textParts := make([]string, 0, len(msg.Blocks))
+			for _, block := range msg.Blocks {
+				switch block.Type {
+				case PromptBlockText:
+					if strings.TrimSpace(block.Text) != "" {
+						textParts = append(textParts, block.Text)
+					}
+				case PromptBlockToolCall:
+					callID := strings.TrimSpace(block.ToolCallID)
+					name := strings.TrimSpace(block.ToolName)
+					args := strings.TrimSpace(block.ToolCallArguments)
+					if callID == "" || name == "" {
+						continue
+					}
+					if args == "" {
+						args = "{}"
+					}
+					result = appendAssistantTextItem(result, textParts)
+					textParts = textParts[:0]
+					result = append(result, responses.ResponseInputItemParamOfFunctionCall(args, callID, name))
+				}
+			}
+			result = appendAssistantTextItem(result, textParts)
+		case PromptRoleToolResult:
+			callID := strings.TrimSpace(msg.ToolCallID)
+			output := strings.TrimSpace(msg.Text())
+			if callID == "" || output == "" {
+				continue
+			}
 			result = append(result, responses.ResponseInputItemUnionParam{
-				OfMessage: &responses.EasyInputMessageParam{
-					Role: responses.EasyInputMessageRoleAssistant,
-					Content: responses.EasyInputMessageContentUnionParam{
-						OfString: openai.String(msg.Text()),
+				OfFunctionCallOutput: &responses.ResponseInputItemFunctionCallOutputParam{
+					CallID: callID,
+					Output: responses.ResponseInputItemFunctionCallOutputOutputUnionParam{
+						OfString: openai.String(output),
 					},
 				},
 			})
-		case RoleTool:
-			// Tool results via function_call_output
-			if msg.ToolCallID != "" {
-				result = append(result, responses.ResponseInputItemUnionParam{
-					OfFunctionCallOutput: &responses.ResponseInputItemFunctionCallOutputParam{
-						CallID: msg.ToolCallID,
-						Output: responses.ResponseInputItemFunctionCallOutputOutputUnionParam{
-							OfString: openai.String(msg.Text()),
-						},
-					},
-				})
-			}
 		}
 	}
 
 	return result
+}
+
+func appendAssistantTextItem(result responses.ResponseInputParam, textParts []string) responses.ResponseInputParam {
+	text := strings.TrimSpace(strings.Join(textParts, ""))
+	if text == "" {
+		return result
+	}
+	return append(result, responses.ResponseInputItemUnionParam{
+		OfMessage: &responses.EasyInputMessageParam{
+			Role: responses.EasyInputMessageRoleAssistant,
+			Content: responses.EasyInputMessageContentUnionParam{
+				OfString: openai.String(text),
+			},
+		},
+	})
+}
+
+// PromptContextToChatCompletionMessages converts the canonical prompt model into Chat Completions messages.
+func PromptContextToChatCompletionMessages(ctx PromptContext, supportsVideoURL bool) []openai.ChatCompletionMessageParamUnion {
+	result := make([]openai.ChatCompletionMessageParamUnion, 0, len(ctx.Messages)+2)
+	if strings.TrimSpace(ctx.SystemPrompt) != "" {
+		result = append(result, openai.SystemMessage(ctx.SystemPrompt))
+	}
+	if strings.TrimSpace(ctx.DeveloperPrompt) != "" {
+		result = append(result, openai.ChatCompletionMessageParamUnion{
+			OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
+				Content: openai.ChatCompletionDeveloperMessageParamContentUnion{
+					OfString: openai.String(ctx.DeveloperPrompt),
+				},
+			},
+		})
+	}
+
+	for _, msg := range ctx.Messages {
+		switch msg.Role {
+		case PromptRoleUser:
+			if promptMessageHasMultimodal(msg) {
+				result = append(result, openai.ChatCompletionMessageParamUnion{
+					OfUser: &openai.ChatCompletionUserMessageParam{
+						Content: openai.ChatCompletionUserMessageParamContentUnion{
+							OfArrayOfContentParts: promptBlocksToChatCompletionContentParts(msg.Blocks, supportsVideoURL),
+						},
+					},
+				})
+			} else {
+				result = append(result, openai.UserMessage(msg.Text()))
+			}
+		case PromptRoleAssistant:
+			assistant := &openai.ChatCompletionAssistantMessageParam{
+				Content: openai.ChatCompletionAssistantMessageParamContentUnion{
+					OfString: openai.String(msg.Text()),
+				},
+			}
+			for _, block := range msg.Blocks {
+				if block.Type != PromptBlockToolCall {
+					continue
+				}
+				args := strings.TrimSpace(block.ToolCallArguments)
+				if args == "" {
+					args = "{}"
+				}
+				assistant.ToolCalls = append(assistant.ToolCalls, openai.ChatCompletionMessageToolCallUnionParam{
+					OfFunction: &openai.ChatCompletionMessageFunctionToolCallParam{
+						ID: block.ToolCallID,
+						Function: openai.ChatCompletionMessageFunctionToolCallFunctionParam{
+							Name:      block.ToolName,
+							Arguments: args,
+						},
+						Type: "function",
+					},
+				})
+			}
+			result = append(result, openai.ChatCompletionMessageParamUnion{OfAssistant: assistant})
+		case PromptRoleToolResult:
+			result = append(result, openai.ToolMessage(msg.Text(), msg.ToolCallID))
+		}
+	}
+
+	return result
+}
+
+func promptMessageHasMultimodal(msg PromptMessage) bool {
+	for _, block := range msg.Blocks {
+		switch block.Type {
+		case PromptBlockImage, PromptBlockFile, PromptBlockAudio, PromptBlockVideo:
+			return true
+		}
+	}
+	return false
+}
+
+func promptBlocksToChatCompletionContentParts(blocks []PromptBlock, supportsVideoURL bool) []openai.ChatCompletionContentPartUnionParam {
+	result := make([]openai.ChatCompletionContentPartUnionParam, 0, len(blocks))
+	for _, block := range blocks {
+		switch block.Type {
+		case PromptBlockText:
+			if strings.TrimSpace(block.Text) == "" {
+				continue
+			}
+			result = append(result, openai.ChatCompletionContentPartUnionParam{
+				OfText: &openai.ChatCompletionContentPartTextParam{Text: block.Text},
+			})
+		case PromptBlockImage:
+			imageURL := strings.TrimSpace(block.ImageURL)
+			if imageURL == "" && block.ImageB64 != "" {
+				mimeType := block.MimeType
+				if mimeType == "" {
+					mimeType = "image/jpeg"
+				}
+				imageURL = buildDataURL(mimeType, block.ImageB64)
+			}
+			if imageURL == "" {
+				continue
+			}
+			result = append(result, openai.ChatCompletionContentPartUnionParam{
+				OfImageURL: &openai.ChatCompletionContentPartImageParam{
+					ImageURL: openai.ChatCompletionContentPartImageImageURLParam{URL: imageURL},
+				},
+			})
+		case PromptBlockFile:
+			file := openai.ChatCompletionContentPartFileFileParam{}
+			if strings.TrimSpace(block.FileB64) != "" {
+				file.FileData = param.NewOpt(block.FileB64)
+			}
+			if strings.TrimSpace(block.Filename) != "" {
+				file.Filename = param.NewOpt(block.Filename)
+			}
+			result = append(result, openai.ChatCompletionContentPartUnionParam{
+				OfFile: &openai.ChatCompletionContentPartFileParam{File: file},
+			})
+		case PromptBlockAudio:
+			if strings.TrimSpace(block.AudioB64) == "" {
+				continue
+			}
+			format := strings.TrimSpace(block.AudioFormat)
+			if format == "" {
+				format = "mp3"
+			}
+			result = append(result, openai.ChatCompletionContentPartUnionParam{
+				OfInputAudio: &openai.ChatCompletionContentPartInputAudioParam{
+					InputAudio: openai.ChatCompletionContentPartInputAudioInputAudioParam{
+						Data:   block.AudioB64,
+						Format: format,
+					},
+				},
+			})
+		case PromptBlockVideo:
+			videoURL := strings.TrimSpace(block.VideoURL)
+			if videoURL == "" && block.VideoB64 != "" {
+				mimeType := strings.TrimSpace(block.MimeType)
+				if mimeType == "" {
+					mimeType = "video/mp4"
+				}
+				videoURL = buildDataURL(mimeType, block.VideoB64)
+			}
+			if videoURL == "" {
+				continue
+			}
+			if supportsVideoURL {
+				result = append(result, param.Override[openai.ChatCompletionContentPartUnionParam](map[string]any{
+					"type": "video_url",
+					"video_url": map[string]any{
+						"url": videoURL,
+					},
+				}))
+			}
+		}
+	}
+	return result
+}
+
+func hasUnsupportedResponsesPromptContext(ctx PromptContext) bool {
+	for _, msg := range ctx.Messages {
+		for _, block := range msg.Blocks {
+			switch block.Type {
+			case PromptBlockAudio, PromptBlockVideo:
+				return true
+			}
+		}
+	}
+	return false
 }

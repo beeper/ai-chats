@@ -422,7 +422,7 @@ func (oc *AIClient) streamingResponse(
 		return false, nil, &PreDeltaError{Err: initErr}
 	}
 
-	// Store base input for OpenRouter stateless continuations
+	// Store base input for stateless Responses continuations.
 	if params.Input.OfInputItemList != nil {
 		state.baseInput = params.Input.OfInputItemList
 	}
@@ -475,7 +475,7 @@ func (oc *AIClient) streamingResponse(
 	// If there are pending tool outputs or MCP approvals, send them back to the API for continuation.
 	// This loop continues until the model generates a response without additional tool actions.
 	continuationRound := 0
-	for (len(state.pendingFunctionOutputs) > 0 || len(state.pendingMcpApprovals) > 0) && state.responseID != "" {
+	for len(state.pendingFunctionOutputs) > 0 || len(state.pendingMcpApprovals) > 0 {
 		// Check for context cancellation before starting a new continuation round
 		if ctx.Err() != nil {
 			state.finishReason = "cancelled"
@@ -499,8 +499,8 @@ func (oc *AIClient) streamingResponse(
 		log.Debug().
 			Int("pending_outputs", len(state.pendingFunctionOutputs)).
 			Int("pending_approvals", len(state.pendingMcpApprovals)).
-			Str("previous_response_id", state.responseID).
-			Msg("Continuing response with pending tool actions")
+			Int("base_input_items", len(state.baseInput)).
+			Msg("Continuing stateless response with pending tool actions")
 
 		pendingOutputs := slices.Clone(state.pendingFunctionOutputs)
 		pendingApprovals := slices.Clone(state.pendingMcpApprovals)
@@ -533,8 +533,8 @@ func (oc *AIClient) streamingResponse(
 		// Build continuation request with tool outputs + approval responses
 		continuationParams := oc.buildContinuationParams(ctx, state, meta, pendingOutputs, approvalInputs)
 
-		// OpenRouter Responses API is stateless; persist tool calls in base input.
-		if oc.isOpenRouterProvider() && len(state.baseInput) > 0 {
+		// Persist tool calls and outputs in local base input for the next stateless continuation.
+		if len(state.baseInput) > 0 {
 			for _, output := range pendingOutputs {
 				if output.name != "" {
 					args := output.arguments

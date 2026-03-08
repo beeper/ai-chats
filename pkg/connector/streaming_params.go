@@ -25,30 +25,14 @@ func (oc *AIClient) buildResponsesAPIParams(ctx context.Context, portal *bridgev
 	}
 
 	systemPrompt := oc.effectivePrompt(meta)
+	if systemPrompt != "" {
+		params.Instructions = openai.String(systemPrompt)
+	}
 
-	// Use previous_response_id if in "responses" mode and ID exists.
-	// OpenRouter's Responses API is stateless, so always send full history there.
-	usePreviousResponse := meta.ConversationMode == "responses" && meta.LastResponseID != "" && !oc.isOpenRouterProvider()
-	if usePreviousResponse {
-		params.PreviousResponseID = openai.String(meta.LastResponseID)
-		if systemPrompt != "" {
-			params.Instructions = openai.String(systemPrompt)
-		}
-		// Still need to pass the latest user message as input
-		if len(messages) > 0 {
-			latestMsg := messages[len(messages)-1]
-			input := oc.convertToResponsesInput([]openai.ChatCompletionMessageParamUnion{latestMsg}, meta)
-			params.Input = responses.ResponseNewParamsInputUnion{
-				OfInputItemList: input,
-			}
-		}
-		log.Debug().Str("previous_response_id", meta.LastResponseID).Msg("Using previous_response_id for context")
-	} else {
-		// Build full message history
-		input := oc.convertToResponsesInput(messages, meta)
-		params.Input = responses.ResponseNewParamsInputUnion{
-			OfInputItemList: input,
-		}
+	// Build full message history for every request.
+	input := oc.convertToResponsesInput(messages, meta)
+	params.Input = responses.ResponseNewParamsInputUnion{
+		OfInputItemList: input,
 	}
 
 	// Add reasoning effort if configured (uses inheritance: room → user → default)

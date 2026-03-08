@@ -22,16 +22,11 @@ type AIProvider interface {
 // GenerateParams contains parameters for generation requests
 type GenerateParams struct {
 	Model               string
-	Messages            []UnifiedMessage
-	SystemPrompt        string
+	Context             PromptContext
 	Temperature         float64
 	MaxCompletionTokens int
-	Tools               []ToolDefinition
 	ReasoningEffort     string // none, low, medium, high (for reasoning models)
-
-	// Responses API specific
-	PreviousResponseID string // For conversation continuation
-	WebSearchEnabled   bool
+	WebSearchEnabled    bool
 }
 
 // GenerateResponse contains the result of a non-streaming generation

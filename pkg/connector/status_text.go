@@ -107,19 +107,14 @@ func (oc *AIClient) buildStatusText(
 		sendLabel = "off"
 	}
 	responseMode := string(oc.getAgentResponseMode(meta))
-	conversationMode := strings.TrimSpace(meta.ConversationMode)
-	if conversationMode == "" {
-		conversationMode = "default"
-	}
 	sb.WriteString(fmt.Sprintf(
-		"Options: think=%s reasoning=%s verbose=%s elevated=%s send=%s response=%s conversation=%s\n",
+		"Options: think=%s reasoning=%s verbose=%s elevated=%s send=%s response=%s\n",
 		thinking,
 		reasoning,
 		verbose,
 		elevated,
 		sendLabel,
 		responseMode,
-		conversationMode,
 	))
 
 	queueDepth := 0
@@ -268,13 +263,6 @@ func (oc *AIClient) buildContextStatus(ctx context.Context, portal *bridgev2.Por
 	if meta.SessionResetAt > 0 {
 		sb.WriteString(fmt.Sprintf("Session reset: %s\n", time.UnixMilli(meta.SessionResetAt).Format(time.RFC3339)))
 	}
-	if strings.TrimSpace(meta.ConversationMode) != "" {
-		sb.WriteString(fmt.Sprintf("Conversation mode: %s\n", meta.ConversationMode))
-	}
-	if meta.LastResponseID != "" {
-		sb.WriteString(fmt.Sprintf("Last response ID: %s\n", meta.LastResponseID))
-	}
-
 	return strings.TrimSpace(sb.String())
 }
 

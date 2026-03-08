@@ -258,9 +258,6 @@ func (oc *OpenAIConnector) processRoomSettingsContent(
 	if content.ReasoningEffort != "" {
 		changes = append(changes, fmt.Sprintf("reasoning_effort=%s", content.ReasoningEffort))
 	}
-	if content.ConversationMode != "" {
-		changes = append(changes, fmt.Sprintf("conversation_mode=%s", content.ConversationMode))
-	}
 	if len(changes) > 0 {
 		client.sendSystemNotice(ctx, portal, fmt.Sprintf("Configuration updated: %s", strings.Join(changes, ", ")))
 	}

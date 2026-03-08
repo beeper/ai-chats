@@ -34,7 +34,6 @@ func addRequestSummary(event *zerolog.Event, meta *PortalMetadata, messages []op
 	event.Bool("has_multimodal", hasMultimodalContent(messages))
 	if meta != nil {
 		event.Bool("tool_calling", meta.Capabilities.SupportsToolCalling)
-		event.Str("conversation_mode", meta.ConversationMode)
 	}
 }
 
@@ -44,9 +43,6 @@ func addResponsesParamsSummary(event *zerolog.Event, params responses.ResponseNe
 	}
 	if params.Model != "" {
 		event.Str("model", string(params.Model))
-	}
-	if params.PreviousResponseID.Valid() {
-		event.Bool("uses_previous_response_id", true)
 	}
 	if params.MaxOutputTokens.Valid() {
 		event.Int64("max_output_tokens", params.MaxOutputTokens.Value)

@@ -248,7 +248,7 @@ func (oc *AIClient) analyzeImageWithModel(
 
 	resp, err := oc.provider.Generate(ctx, GenerateParams{
 		Model:               modelIDForAPI,
-		Messages:            messages,
+		Context:             ToPromptContext("", nil, messages),
 		MaxCompletionTokens: defaultImageUnderstandingLimit,
 	})
 	if err != nil {
@@ -307,7 +307,7 @@ func (oc *AIClient) analyzeAudioWithModel(
 
 	resp, err := oc.provider.Generate(ctx, GenerateParams{
 		Model:               modelIDForAPI,
-		Messages:            messages,
+		Context:             ToPromptContext("", nil, messages),
 		MaxCompletionTokens: defaultImageUnderstandingLimit,
 	})
 	if err != nil {

@@ -109,14 +109,6 @@ func (oc *AIClient) saveAssistantMessage(
 	}
 
 	oc.notifySessionMutation(ctx, portal, meta, false)
-
-	// Save LastResponseID for "responses" mode context chaining (OpenAI-only)
-	if meta.ConversationMode == "responses" && state.responseID != "" && !oc.isOpenRouterProvider() {
-		meta.LastResponseID = state.responseID
-		if err := portal.Save(ctx); err != nil {
-			log.Warn().Err(err).Msg("Failed to save portal after storing response ID")
-		}
-	}
 }
 
 // insertAssistantMessage is the fallback path for saving assistant messages when no

@@ -672,7 +672,6 @@ func cloneForkPortalMetadata(src *PortalMetadata, slug, title string) *PortalMet
 		MaxCompletionTokens: src.MaxCompletionTokens,
 		ReasoningEffort:     src.ReasoningEffort,
 		Capabilities:        src.Capabilities,
-		ConversationMode:    src.ConversationMode,
 		AgentID:             src.AgentID,
 		AgentPrompt:         src.AgentPrompt,
 		IsSimpleMode:        src.IsSimpleMode,
@@ -1309,9 +1308,6 @@ func (oc *AIClient) updatePortalConfig(ctx context.Context, portal *bridgev2.Por
 	if config.ReasoningEffort != "" {
 		meta.ReasoningEffort = config.ReasoningEffort
 	}
-	if config.ConversationMode != "" {
-		meta.ConversationMode = config.ConversationMode
-	}
 	if config.AgentID != "" {
 		meta.AgentID = config.AgentID
 	}
@@ -1726,7 +1722,6 @@ func (oc *AIClient) broadcastSettings(ctx context.Context, portal *bridgev2.Port
 		MaxContextMessages:  meta.MaxContextMessages,
 		MaxCompletionTokens: meta.MaxCompletionTokens,
 		ReasoningEffort:     meta.ReasoningEffort,
-		ConversationMode:    meta.ConversationMode,
 		AgentID:             meta.AgentID,
 	}
 

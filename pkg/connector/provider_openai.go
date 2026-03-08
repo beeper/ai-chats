@@ -214,7 +214,7 @@ func (o *OpenAIProvider) buildResponsesParams(params GenerateParams) responses.R
 	responsesParams := responses.ResponseNewParams{
 		Model: params.Model,
 		Input: responses.ResponseNewParamsInputUnion{
-			OfInputItemList: ToOpenAIResponsesInput(params.Messages),
+			OfInputItemList: PromptContextToResponsesInput(params.Context),
 		},
 	}
 
@@ -224,14 +224,14 @@ func (o *OpenAIProvider) buildResponsesParams(params GenerateParams) responses.R
 	}
 
 	// Set system prompt via instructions
-	if params.SystemPrompt != "" {
-		responsesParams.Instructions = openai.String(params.SystemPrompt)
+	if params.Context.SystemPrompt != "" {
+		responsesParams.Instructions = openai.String(params.Context.SystemPrompt)
 	}
 
 	// Set tools
-	if len(params.Tools) > 0 {
+	if len(params.Context.Tools) > 0 {
 		strictMode := resolveToolStrictMode(isOpenRouterBaseURL(o.baseURL))
-		responsesParams.Tools = ToOpenAITools(params.Tools, strictMode, &o.log)
+		responsesParams.Tools = ToOpenAITools(params.Context.Tools, strictMode, &o.log)
 	}
 
 	// Handle reasoning effort for o1/o3 models
@@ -239,11 +239,6 @@ func (o *OpenAIProvider) buildResponsesParams(params GenerateParams) responses.R
 		responsesParams.Reasoning = responses.ReasoningParam{
 			Effort: effort,
 		}
-	}
-
-	// Previous response for conversation continuation
-	if params.PreviousResponseID != "" {
-		responsesParams.PreviousResponseID = openai.String(params.PreviousResponseID)
 	}
 
 	// Web search
@@ -362,7 +357,7 @@ func (o *OpenAIProvider) GenerateStream(ctx context.Context, params GeneratePara
 func (o *OpenAIProvider) Generate(ctx context.Context, params GenerateParams) (*GenerateResponse, error) {
 	// Responses input supports images and PDFs but not audio/video, so fall back to
 	// Chat Completions when unsupported media is present.
-	if hasUnsupportedResponsesUnifiedMessages(params.Messages) {
+	if hasUnsupportedResponsesPromptContext(params.Context) {
 		return o.generateChatCompletions(ctx, params)
 	}
 
@@ -429,7 +424,7 @@ func (o *OpenAIProvider) Generate(ctx context.Context, params GenerateParams) (*
 }
 
 func (o *OpenAIProvider) generateChatCompletions(ctx context.Context, params GenerateParams) (*GenerateResponse, error) {
-	chatMessages := toChatCompletionMessages(params.Messages, isOpenRouterBaseURL(o.baseURL))
+	chatMessages := PromptContextToChatCompletionMessages(params.Context, isOpenRouterBaseURL(o.baseURL))
 	if len(chatMessages) == 0 {
 		return nil, errors.New("no chat messages for completion")
 	}
@@ -444,8 +439,8 @@ func (o *OpenAIProvider) generateChatCompletions(ctx context.Context, params Gen
 	if params.Temperature > 0 {
 		req.Temperature = openai.Float(params.Temperature)
 	}
-	if len(params.Tools) > 0 {
-		req.Tools = ToOpenAIChatTools(params.Tools, &o.log)
+	if len(params.Context.Tools) > 0 {
+		req.Tools = ToOpenAIChatTools(params.Context.Tools, &o.log)
 		req.Tools = dedupeChatToolParams(req.Tools)
 	}
 
@@ -876,153 +871,6 @@ func ToOpenAIChatTools(tools []ToolDefinition, log *zerolog.Logger) []openai.Cha
 		})
 	}
 
-	return result
-}
-
-func hasUnsupportedResponsesUnifiedMessages(messages []UnifiedMessage) bool {
-	for _, msg := range messages {
-		for _, part := range msg.Content {
-			switch part.Type {
-			case ContentTypeAudio, ContentTypeVideo:
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func toChatCompletionMessages(messages []UnifiedMessage, supportsVideoURL bool) []openai.ChatCompletionMessageParamUnion {
-	result := make([]openai.ChatCompletionMessageParamUnion, 0, len(messages))
-	for _, msg := range messages {
-		switch msg.Role {
-		case RoleSystem:
-			result = append(result, openai.SystemMessage(msg.Text()))
-		case RoleUser:
-			if msg.HasMultimodalContent() {
-				parts := toChatCompletionContentParts(msg.Content, supportsVideoURL)
-				result = append(result, openai.ChatCompletionMessageParamUnion{
-					OfUser: &openai.ChatCompletionUserMessageParam{
-						Content: openai.ChatCompletionUserMessageParamContentUnion{
-							OfArrayOfContentParts: parts,
-						},
-					},
-				})
-			} else {
-				result = append(result, openai.UserMessage(msg.Text()))
-			}
-		case RoleAssistant:
-			result = append(result, openai.AssistantMessage(msg.Text()))
-		case RoleTool:
-			result = append(result, openai.ToolMessage(msg.Text(), msg.ToolCallID))
-		}
-	}
-	return result
-}
-
-func toChatCompletionContentParts(parts []ContentPart, supportsVideoURL bool) []openai.ChatCompletionContentPartUnionParam {
-	result := make([]openai.ChatCompletionContentPartUnionParam, 0, len(parts))
-	for _, part := range parts {
-		switch part.Type {
-		case ContentTypeText:
-			if strings.TrimSpace(part.Text) == "" {
-				continue
-			}
-			result = append(result, openai.ChatCompletionContentPartUnionParam{
-				OfText: &openai.ChatCompletionContentPartTextParam{
-					Text: part.Text,
-				},
-			})
-		case ContentTypeImage:
-			imageURL := strings.TrimSpace(part.ImageURL)
-			if imageURL == "" && part.ImageB64 != "" {
-				mimeType := part.MimeType
-				if mimeType == "" {
-					mimeType = "image/jpeg"
-				}
-				imageURL = buildDataURL(mimeType, part.ImageB64)
-			}
-			if imageURL == "" {
-				continue
-			}
-			result = append(result, openai.ChatCompletionContentPartUnionParam{
-				OfImageURL: &openai.ChatCompletionContentPartImageParam{
-					ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
-						URL: imageURL,
-					},
-				},
-			})
-		case ContentTypePDF:
-			if part.PDFB64 != "" {
-				result = append(result, openai.ChatCompletionContentPartUnionParam{
-					OfFile: &openai.ChatCompletionContentPartFileParam{
-						File: openai.ChatCompletionContentPartFileFileParam{
-							FileData: param.NewOpt(part.PDFB64),
-							Filename: param.NewOpt("document.pdf"),
-						},
-					},
-				})
-			} else if part.PDFURL != "" {
-				result = append(result, openai.ChatCompletionContentPartUnionParam{
-					OfText: &openai.ChatCompletionContentPartTextParam{
-						Text: part.PDFURL,
-					},
-				})
-			}
-		case ContentTypeAudio:
-			if part.AudioB64 == "" {
-				continue
-			}
-			format := part.AudioFormat
-			if format == "" {
-				format = "mp3"
-			}
-			result = append(result, openai.ChatCompletionContentPartUnionParam{
-				OfInputAudio: &openai.ChatCompletionContentPartInputAudioParam{
-					InputAudio: openai.ChatCompletionContentPartInputAudioInputAudioParam{
-						Data:   part.AudioB64,
-						Format: format,
-					},
-				},
-			})
-		case ContentTypeVideo:
-			if supportsVideoURL {
-				url := strings.TrimSpace(part.VideoURL)
-				if url == "" && part.VideoB64 != "" {
-					mimeType := part.MimeType
-					if mimeType == "" {
-						mimeType = "video/mp4"
-					}
-					url = buildDataURL(mimeType, part.VideoB64)
-				}
-				if url == "" {
-					continue
-				}
-				result = append(result, param.Override[openai.ChatCompletionContentPartUnionParam](map[string]any{
-					"type": "video_url",
-					"video_url": map[string]any{
-						"url": url,
-					},
-				}))
-				continue
-			}
-			text := strings.TrimSpace(part.VideoURL)
-			if text == "" && part.VideoB64 != "" {
-				mimeType := part.MimeType
-				if mimeType == "" {
-					mimeType = "video/mp4"
-				}
-				text = "Video data URL: " + buildDataURL(mimeType, part.VideoB64)
-			}
-			if text == "" {
-				continue
-			}
-			result = append(result, openai.ChatCompletionContentPartUnionParam{
-				OfText: &openai.ChatCompletionContentPartTextParam{
-					Text: text,
-				},
-			})
-		}
-	}
 	return result
 }
 

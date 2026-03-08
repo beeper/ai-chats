@@ -395,7 +395,6 @@ func fnCommands(ce *commands.Event) {
 			"- `!ai system-prompt [text]`\n" +
 			"- `!ai context [1-100]`\n" +
 			"- `!ai tokens [1-16384]`\n" +
-			"- `!ai mode [messages|responses]`\n" +
 			"- `!ai tools [on|off] [tool]`\n" +
 			"- `!ai typing [never|instant|thinking|message|off|reset|interval <seconds>]`\n" +
 			"- `!ai debounce [ms|off|default]`\n\n" +
@@ -439,20 +438,15 @@ func fnConfig(ce *commands.Event) {
 		return
 	}
 
-	mode := meta.ConversationMode
-	if mode == "" {
-		mode = "messages"
-	}
-
 	roomCaps := client.getRoomCapabilities(ce.Ctx, meta)
 	tempLabel := "provider default"
 	if temp := client.effectiveTemperature(meta); temp > 0 {
 		tempLabel = fmt.Sprintf("%.2f", temp)
 	}
 	config := fmt.Sprintf(
-		"Current configuration:\n• Model: %s\n• Temperature: %s\n• Context: %d messages\n• Max tokens: %d\n• Vision: %v\n• Mode: %s",
+		"Current configuration:\n• Model: %s\n• Temperature: %s\n• Context: %d messages\n• Max tokens: %d\n• Vision: %v",
 		client.effectiveModel(meta), tempLabel, client.historyLimit(ce.Ctx, ce.Portal, meta),
-		client.effectiveMaxTokens(meta), roomCaps.SupportsVision, mode)
+		client.effectiveMaxTokens(meta), roomCaps.SupportsVision)
 	ce.Reply(config)
 }
 
@@ -922,48 +916,6 @@ func fnTools(ce *commands.Event) {
 
 	// Run async to avoid blocking
 	go client.handleToolsCommand(ce.Ctx, ce.Portal, meta, ce.RawArgs)
-}
-
-// CommandMode handles the !ai mode command
-var _ = registerAICommand(commandregistry.Definition{
-	Name:           "mode",
-	Description:    "Set conversation mode (messages|responses)",
-	Args:           "[_mode_]",
-	Section:        HelpSectionAI,
-	RequiresPortal: true,
-	RequiresLogin:  true,
-	Handler:        fnMode,
-})
-
-func fnMode(ce *commands.Event) {
-	client, meta, ok := requireClientMeta(ce)
-	if !ok {
-		return
-	}
-
-	mode := meta.ConversationMode
-	if mode == "" {
-		mode = "messages"
-	}
-
-	if len(ce.Args) == 0 {
-		ce.Reply("Conversation modes:\n• messages - Build full message history for each request (default)\n• responses - Use OpenAI's previous_response_id for context chaining\n\nCurrent mode: %s", mode)
-		return
-	}
-
-	newMode := strings.ToLower(ce.Args[0])
-	if newMode != "messages" && newMode != "responses" {
-		ce.Reply("Invalid mode. Use 'messages' or 'responses'.")
-		return
-	}
-
-	meta.ConversationMode = newMode
-	if newMode == "messages" {
-		meta.LastResponseID = ""
-	}
-	client.savePortalQuiet(ce.Ctx, ce.Portal, "mode change")
-	_ = client.BroadcastRoomState(ce.Ctx, ce.Portal)
-	ce.Reply("Conversation mode set to %s.", newMode)
 }
 
 // CommandNew handles the !ai new command

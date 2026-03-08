@@ -31,21 +31,18 @@ func (oc *AIClient) buildContinuationParams(
 	}
 
 	isOpenRouter := oc.isOpenRouterProvider()
-	if !isOpenRouter {
-		params.PreviousResponseID = openai.String(state.responseID)
-	}
 
 	// Build function call outputs as input
 	var input responses.ResponseInputParam
-	if isOpenRouter && len(state.baseInput) > 0 {
-		// OpenRouter Responses API is stateless: include full history plus tool calls.
+	if len(state.baseInput) > 0 {
+		// All Responses continuations are stateless: include the accumulated local history.
 		input = append(input, state.baseInput...)
 	}
 	for _, approval := range approvalInputs {
 		input = append(input, approval)
 	}
 	for _, output := range pendingOutputs {
-		if isOpenRouter && output.name != "" {
+		if output.name != "" {
 			args := output.arguments
 			if strings.TrimSpace(args) == "" {
 				args = "{}"
@@ -59,7 +56,7 @@ func (oc *AIClient) buildContinuationParams(
 		steerInput := oc.buildSteerInputItems(steerItems, meta)
 		if len(steerInput) > 0 {
 			input = append(input, steerInput...)
-			if isOpenRouter && len(state.baseInput) > 0 {
+			if len(state.baseInput) > 0 {
 				state.baseInput = append(state.baseInput, steerInput...)
 			}
 		}

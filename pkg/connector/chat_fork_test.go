@@ -13,11 +13,10 @@ func TestCloneForkPortalMetadata_PreservesSimpleMode(t *testing.T) {
 		Capabilities: ModelCapabilities{
 			SupportsToolCalling: true,
 		},
-		ConversationMode: "responses",
-		AgentID:          "beeper",
-		AgentPrompt:      "agent prompt",
-		IsSimpleMode:     true,
-		GroupActivation:  "always", // Not copied in fork metadata.
+		AgentID:         "beeper",
+		AgentPrompt:     "agent prompt",
+		IsSimpleMode:    true,
+		GroupActivation: "always", // Not copied in fork metadata.
 	}
 
 	got := cloneForkPortalMetadata(src, "chat-99", "Forked Chat")

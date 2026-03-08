@@ -732,7 +732,7 @@ func (oc *AIClient) describeImageWithEntry(
 	} else {
 		resp, err = oc.provider.Generate(ctx, GenerateParams{
 			Model:               modelIDForAPI,
-			Messages:            messages,
+			Context:             ToPromptContext("", nil, messages),
 			MaxCompletionTokens: defaultImageUnderstandingLimit,
 		})
 	}
@@ -887,7 +887,7 @@ func (oc *AIClient) describeVideoWithEntry(
 		} else {
 			resp, err = oc.provider.Generate(ctx, GenerateParams{
 				Model:               modelIDForAPI,
-				Messages:            messages,
+				Context:             ToPromptContext("", nil, messages),
 				MaxCompletionTokens: defaultImageUnderstandingLimit,
 			})
 		}
@@ -955,7 +955,7 @@ func (oc *AIClient) generateWithOpenRouter(
 	}
 	return provider.Generate(ctx, GenerateParams{
 		Model:               modelID,
-		Messages:            messages,
+		Context:             ToPromptContext("", nil, messages),
 		MaxCompletionTokens: defaultImageUnderstandingLimit,
 	})
 }

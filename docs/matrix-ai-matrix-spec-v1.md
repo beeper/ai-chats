@@ -325,7 +325,6 @@ Fields (see `RoomSettingsEventContent` in `pkg/connector/events.go`):
 - `max_context_messages?: number`
 - `max_completion_tokens?: number`
 - `reasoning_effort?: string`
-- `conversation_mode?: string` (`"messages"` or `"responses"`)
 - `agent_id?: string`
 - `emit_thinking?: boolean`
 - `emit_tool_args?: boolean`
@@ -335,7 +334,6 @@ Example:
 {
   "model": "openai/gpt-5",
   "temperature": 0.7,
-  "conversation_mode": "responses",
   "agent_id": "boss"
 }
 ```

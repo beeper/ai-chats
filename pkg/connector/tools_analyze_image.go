@@ -100,7 +100,7 @@ func executeAnalyzeImage(ctx context.Context, args map[string]any) (string, erro
 	// Call the AI provider for vision analysis
 	resp, err := btc.Client.provider.Generate(ctx, GenerateParams{
 		Model:               btc.Client.modelIDForAPI(modelID),
-		Messages:            messages,
+		Context:             ToPromptContext("", nil, messages),
 		MaxCompletionTokens: 4096,
 	})
 	if err != nil {

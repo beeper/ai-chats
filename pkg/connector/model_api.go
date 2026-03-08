@@ -25,14 +25,8 @@ func (oc *AIClient) resolveModelAPI(meta *PortalMetadata) ModelAPI {
 	modelID := oc.effectiveModel(meta)
 	if info := oc.findModelInfo(modelID); info != nil {
 		if api := normalizeModelAPI(info.API); api != "" {
-			if oc.isOpenRouterProvider() && api == ModelAPIResponses {
-				return ModelAPIChatCompletions
-			}
 			return api
 		}
-	}
-	if oc.isOpenRouterProvider() {
-		return ModelAPIChatCompletions
 	}
 	return ModelAPIResponses
 }
