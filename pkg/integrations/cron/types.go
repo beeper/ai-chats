@@ -1,71 +1,102 @@
 package cron
 
-import (
-	"context"
+type Schedule struct {
+	Kind     string `json:"kind"`
+	At       string `json:"at,omitempty"`
+	EveryMs  int64  `json:"everyMs,omitempty"`
+	AnchorMs *int64 `json:"anchorMs,omitempty"`
+	Expr     string `json:"expr,omitempty"`
+	TZ       string `json:"tz,omitempty"`
+}
 
-	croncore "github.com/beeper/ai-bridge/pkg/cron"
-)
-
-// Public aliases so hosts can depend on integrations/cron without importing pkg/cron.
-type (
-	Job                       = croncore.CronJob
-	JobCreate                 = croncore.CronJobCreate
-	JobPatch                  = croncore.CronJobPatch
-	Schedule                  = croncore.CronSchedule
-	RunLogEntry               = croncore.CronRunLogEntry
-	Event                     = croncore.CronEvent
-	Delivery                  = croncore.CronDelivery
-	DeliveryMode              = croncore.CronDeliveryMode
-	SessionTarget             = croncore.CronSessionTarget
-	Payload                   = croncore.CronPayload
-	WakeMode                  = croncore.CronWakeMode
-	Service                   = croncore.CronService
-	StoreLogBackend           = croncore.StoreBackend
-	TimestampValidationResult = croncore.TimestampValidationResult
-	HeartbeatRunResult        = croncore.HeartbeatRunResult
-)
+type DeliveryMode string
 
 const (
-	SessionIsolated   = croncore.CronSessionIsolated
-	SessionMain       = croncore.CronSessionMain
-	DeliveryNone      = croncore.CronDeliveryNone
-	DeliveryAnnounce  = croncore.CronDeliveryAnnounce
-	WakeNextHeartbeat = croncore.CronWakeNextHeartbeat
-	WakeNow           = croncore.CronWakeNow
+	DeliveryNone     DeliveryMode = "none"
+	DeliveryAnnounce DeliveryMode = "announce"
 )
 
-func NormalizeJobCreateRaw(raw map[string]any) (JobCreate, error) {
-	return croncore.NormalizeCronJobCreateRaw(raw)
+type Delivery struct {
+	Mode       DeliveryMode `json:"mode"`
+	Channel    string       `json:"channel,omitempty"`
+	To         string       `json:"to,omitempty"`
+	BestEffort *bool        `json:"bestEffort,omitempty"`
 }
 
-func NormalizeJobPatchRaw(raw map[string]any) (JobPatch, error) {
-	return croncore.NormalizeCronJobPatchRaw(raw)
+type DeliveryPatch struct {
+	Mode       *DeliveryMode `json:"mode,omitempty"`
+	Channel    *string       `json:"channel,omitempty"`
+	To         *string       `json:"to,omitempty"`
+	BestEffort *bool         `json:"bestEffort,omitempty"`
 }
 
-func ValidateSchedule(s Schedule) TimestampValidationResult {
-	return croncore.ValidateSchedule(s)
+type Payload struct {
+	Kind                string `json:"kind"`
+	Message             string `json:"message,omitempty"`
+	Model               string `json:"model,omitempty"`
+	Thinking            string `json:"thinking,omitempty"`
+	TimeoutSeconds      *int   `json:"timeoutSeconds,omitempty"`
+	AllowUnsafeExternal *bool  `json:"allowUnsafeExternalContent,omitempty"`
 }
 
-func ValidateScheduleTimestamp(s Schedule, nowMs int64) TimestampValidationResult {
-	return croncore.ValidateScheduleTimestamp(s, nowMs)
+type PayloadPatch struct {
+	Kind                string  `json:"kind"`
+	Message             *string `json:"message,omitempty"`
+	Model               *string `json:"model,omitempty"`
+	Thinking            *string `json:"thinking,omitempty"`
+	TimeoutSeconds      *int    `json:"timeoutSeconds,omitempty"`
+	AllowUnsafeExternal *bool   `json:"allowUnsafeExternalContent,omitempty"`
 }
 
-func ResolveRunLogPath(storePath, jobID string) string {
-	return croncore.ResolveCronRunLogPath(storePath, jobID)
+type JobState struct {
+	NextRunAtMs    *int64 `json:"nextRunAtMs,omitempty"`
+	RunningAtMs    *int64 `json:"runningAtMs,omitempty"`
+	LastRunAtMs    *int64 `json:"lastRunAtMs,omitempty"`
+	LastStatus     string `json:"lastStatus,omitempty"`
+	LastError      string `json:"lastError,omitempty"`
+	LastDurationMs *int64 `json:"lastDurationMs,omitempty"`
 }
 
-func ResolveRunLogDir(storePath string) string {
-	return croncore.ResolveCronRunLogDir(storePath)
+type Job struct {
+	ID             string    `json:"id"`
+	AgentID        string    `json:"agentId,omitempty"`
+	Name           string    `json:"name"`
+	Description    string    `json:"description,omitempty"`
+	Enabled        bool      `json:"enabled"`
+	DeleteAfterRun bool      `json:"deleteAfterRun,omitempty"`
+	CreatedAtMs    int64     `json:"createdAtMs"`
+	UpdatedAtMs    int64     `json:"updatedAtMs"`
+	Schedule       Schedule  `json:"schedule"`
+	Payload        Payload   `json:"payload"`
+	Delivery       *Delivery `json:"delivery,omitempty"`
+	State          JobState  `json:"state"`
 }
 
-func ParseRunLogEntries(raw string, limit int, jobID string) []RunLogEntry {
-	return croncore.ParseCronRunLogEntries(raw, limit, jobID)
+type JobCreate struct {
+	AgentID        *string   `json:"agentId,omitempty"`
+	Name           string    `json:"name,omitempty"`
+	Description    *string   `json:"description,omitempty"`
+	Enabled        *bool     `json:"enabled,omitempty"`
+	DeleteAfterRun *bool     `json:"deleteAfterRun,omitempty"`
+	Schedule       Schedule  `json:"schedule"`
+	Payload        Payload   `json:"payload"`
+	Delivery       *Delivery `json:"delivery,omitempty"`
+	State          *JobState `json:"state,omitempty"`
 }
 
-func ReadRunLogEntries(ctx context.Context, backend StoreLogBackend, path string, limit int, jobID string) ([]RunLogEntry, error) {
-	return croncore.ReadCronRunLogEntries(ctx, backend, path, limit, jobID)
+type JobPatch struct {
+	AgentID        *string        `json:"agentId,omitempty"`
+	Name           *string        `json:"name,omitempty"`
+	Description    *string        `json:"description,omitempty"`
+	Enabled        *bool          `json:"enabled,omitempty"`
+	DeleteAfterRun *bool          `json:"deleteAfterRun,omitempty"`
+	Schedule       *Schedule      `json:"schedule,omitempty"`
+	Payload        *PayloadPatch  `json:"payload,omitempty"`
+	Delivery       *DeliveryPatch `json:"delivery,omitempty"`
+	State          *JobState      `json:"state,omitempty"`
 }
 
-func AppendRunLog(ctx context.Context, backend StoreLogBackend, path string, entry RunLogEntry, maxBytes int64, maxEntries int) error {
-	return croncore.AppendCronRunLog(ctx, backend, path, entry, maxBytes, maxEntries)
+type TimestampValidationResult struct {
+	Ok      bool
+	Message string
 }

@@ -32,7 +32,7 @@ providers:
     # Options: pdf-text (free), mistral-ocr (OCR, paid, default), native
     default_pdf_engine: "mistral-ocr"
 
-# Optional model catalog seeding (OpenClaw-style).
+# Optional model catalog seeding.
 # models:
 #   mode: "merge" # merge | replace
 #   providers:
@@ -52,7 +52,7 @@ default_system_prompt: |
   Follow the user's intent and be accurate.
 model_cache_duration: 6h
 
-# Optional message rendering settings (OpenClaw-style).
+# Optional message rendering settings.
 messages:
   # Prefix applied to outbound replies (and heartbeat ok acks).
   responsePrefix: ""
@@ -62,7 +62,7 @@ messages:
     historyLimit: 20
   groupChat:
     historyLimit: 50
-  # Queue behavior while the agent is busy (OpenClaw-style).
+  # Queue behavior while the agent is busy.
   queue:
     # Modes: collect, followup, steer, steer-backlog, interrupt
     mode: "collect"
@@ -73,12 +73,12 @@ messages:
     # Drop policy when cap is exceeded: summarize, old, new
     drop: "summarize"
 
-# Command authorization settings (OpenClaw-style).
+# Command authorization settings.
 commands:
   # Optional allowlist for owner-only tools/commands (Matrix IDs, or "matrix:@user:server").
   ownerAllowFrom: []
 
-# Tool approval gating (Clawdbot-style approvals).
+# Tool approval gating.
 tool_approvals:
   enabled: true
   ttlSeconds: 600
@@ -97,14 +97,12 @@ channels:
     # Response prefix override for Matrix rooms.
     responsePrefix: ""
 
-# Session store configuration (OpenClaw-style).
+# Session configuration.
 session:
   # Scope for session state: per-sender (default) or global.
   scope: "per-sender"
   # Main session key alias (default: "main").
   mainKey: "main"
-  # Optional virtual path for sessions.json (supports {agentId}).
-  store: ""
 
 # External tool providers (search + fetch). Proxy is optional.
 tools:
@@ -155,7 +153,7 @@ tools:
       enabled: false
       allow_models: []
 
-  # Media understanding/transcription (OpenClaw-style).
+  # Media understanding/transcription.
   # Supports provider/CLI entries and per-capability defaults.
   media:
     concurrency: 2
@@ -236,12 +234,12 @@ recall_search:
   experimental:
     session_memory: false
 
-# Recall configuration (OpenClaw-style).
+# Recall configuration.
 # recall:
 #   citations: "auto" # auto | on | off
-#   inject_context: false # default false (clawdbot-aligned). when true, injects MEMORY.md snippets as extra system context.
+#   inject_context: false # default false. when true, injects MEMORY.md snippets as extra system context.
 
-  # Tool policy (OpenClaw-style). Controls allow/deny lists and profiles.
+  # Tool policy. Controls allow/deny lists and profiles.
   # tool_policy:
   #   profile: "full"
   #   # group:openclaw is the strict OpenClaw native tool set.
@@ -252,7 +250,7 @@ recall_search:
   #     tools:
   #       deny: ["sessions_list", "sessions_history", "sessions_send"]
 
-  # Agent defaults (OpenClaw-style).
+  # Agent defaults.
   # agents:
   #   defaults:
   #     subagents:
@@ -269,11 +267,11 @@ recall_search:
   #         at: "21:00"
   #         duration: "15m"
 
-# Context pruning configuration (OpenClaw-style).
+# Context pruning configuration.
 # Reduces token usage by intelligently truncating old tool results.
 pruning:
   # Pruning mode: off | cache-ttl
-  # cache-ttl aligns with clawdbot defaults.
+  # cache-ttl is the default pruning mode.
   mode: "cache-ttl"
 
   # Refresh interval for cache-ttl mode.
@@ -360,7 +358,7 @@ pruning:
   # identifier_instructions: "Keep ticket IDs, hashes, and hostnames unchanged."
 
   # Optional pre-compaction overflow flush turn.
-  # Enabled by default (OpenClaw parity). Disable explicitly if you want no pre-flush.
+  # Enabled by default. Disable explicitly if you want no pre-flush.
   overflow_flush:
     enabled: true
     soft_threshold_tokens: 4000

@@ -2,8 +2,6 @@ package cron
 
 import (
 	"strings"
-
-	croncore "github.com/beeper/ai-bridge/pkg/cron"
 )
 
 type DeliveryTarget struct {
@@ -22,7 +20,7 @@ type DeliveryResolverDeps struct {
 	IsLoggedIn          func() bool
 }
 
-func ResolveCronDeliveryTarget(agentID string, delivery *croncore.CronDelivery, deps DeliveryResolverDeps) DeliveryTarget {
+func ResolveCronDeliveryTarget(agentID string, delivery *Delivery, deps DeliveryResolverDeps) DeliveryTarget {
 	if delivery == nil {
 		return DeliveryTarget{Reason: "no-delivery"}
 	}

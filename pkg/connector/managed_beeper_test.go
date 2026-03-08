@@ -15,9 +15,9 @@ func TestResolveManagedBeeperAuthConfigOverridesRuntime(t *testing.T) {
 				Token:    "config-token",
 			},
 		},
-		runtimeMatrixUserMXID:    "@runtime:beeper.com",
-		runtimeMatrixAccessToken: "runtime-token",
-		runtimeMatrixHomeserver:  "https://matrix.runtime.com",
+		localAIBridgeLoginUserMXID:   "@runtime:beeper.com",
+		localAIBridgeLoginToken:      "runtime-token",
+		localAIBridgeLoginHomeserver: "https://matrix.runtime.com",
 	}
 
 	auth := oc.resolveManagedBeeperAuth()
@@ -39,8 +39,8 @@ func TestResolveManagedBeeperAuthUsesRuntimeForMissingConfigFields(t *testing.T)
 				UserMXID: "@config:beeper.com",
 			},
 		},
-		runtimeMatrixAccessToken: "runtime-token",
-		runtimeMatrixHomeserver:  "matrix.runtime.com",
+		localAIBridgeLoginToken:      "runtime-token",
+		localAIBridgeLoginHomeserver: "matrix.runtime.com",
 	}
 
 	auth := oc.resolveManagedBeeperAuth()
@@ -60,7 +60,7 @@ func TestResolveManagedBeeperAuthUsesRuntimeForMissingConfigFields(t *testing.T)
 
 func TestGetLoginFlowsHidesManagedBeeperFlowWhenAuthAvailable(t *testing.T) {
 	oc := &OpenAIConnector{}
-	oc.SetMatrixCredentials(id.UserID("@user:beeper.com"), "runtime-token", "https://matrix.beeper.com")
+	oc.SetLocalAIBridgeLogin(id.UserID("@user:beeper.com"), "runtime-token", "https://matrix.beeper.com")
 
 	flows := oc.GetLoginFlows()
 	for _, flow := range flows {

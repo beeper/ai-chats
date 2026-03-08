@@ -140,7 +140,7 @@ Default heartbeat prompt:
 
 You are free to edit `HEARTBEAT.md` with a short checklist or reminders. Keep it small to limit token burn.
 
-### Heartbeat vs Cron: When to Use Each
+### Heartbeat And Cron: When to Use Each
 
 **Use heartbeat when:**
 
@@ -152,15 +152,16 @@ You are free to edit `HEARTBEAT.md` with a short checklist or reminders. Keep it
 **Use cron when:**
 
 - Exact timing matters ("9:00 AM sharp every Monday")
-- Task needs isolation from main session history
+- Task should run in its own hidden background room
 - You want a different model or thinking level for the task
 - One-shot reminders ("remind me in 20 minutes")
-- Output should deliver directly to a channel without main session involvement
+- Output should deliver directly to a channel without using the active chat
 - Short-interval polling or testing (intervals as low as a few seconds are supported)
 
 Notes:
-- `wakeMode` only affects whether a heartbeat is triggered after a job enqueues events. It does not change whether the cron scheduler runs.
-- For isolated `announce` delivery, `delivery.to` should be a Matrix room ID like `!room:server`. Omit `delivery.to` to route to the last active room (fallback: default chat).
+- Cron jobs use the shared delayed-event scheduler backend.
+- For true channel-targeted `announce` delivery, set `delivery.to` to a Matrix room ID like `!room:server`.
+- If `delivery.to` is omitted, delivery falls back to the source room when the job is created from a normal chat. Internal/background creation falls back to the last active room, then the default chat.
 
 **Tip:** Batch similar periodic checks into `HEARTBEAT.md` instead of creating multiple cron jobs. Use cron for precise schedules and standalone tasks.
 

@@ -4,19 +4,17 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	croncore "github.com/beeper/ai-bridge/pkg/cron"
 )
 
-func formatCronStatusText(enabled bool, storePath string, jobCount int, nextWakeAtMs *int64) string {
+func formatCronStatusText(enabled bool, backend string, jobCount int, nextRunAtMs *int64) string {
 	next := "none"
-	if nextWakeAtMs != nil && *nextWakeAtMs > 0 {
-		next = fmt.Sprintf("%s (%d)", formatUnixMs(*nextWakeAtMs), *nextWakeAtMs)
+	if nextRunAtMs != nil && *nextRunAtMs > 0 {
+		next = fmt.Sprintf("%s (%d)", formatUnixMs(*nextRunAtMs), *nextRunAtMs)
 	}
-	return fmt.Sprintf("Cron: enabled=%v jobs=%d store=%s next=%s", enabled, jobCount, strings.TrimSpace(storePath), next)
+	return fmt.Sprintf("Cron: enabled=%v jobs=%d backend=%s next=%s", enabled, jobCount, strings.TrimSpace(backend), next)
 }
 
-func formatCronJobListText(jobs []croncore.CronJob) string {
+func formatCronJobListText(jobs []Job) string {
 	if len(jobs) == 0 {
 		return "Cron jobs: (none)"
 	}
@@ -26,10 +24,6 @@ func formatCronJobListText(jobs []croncore.CronJob) string {
 		id := cronShortID(job.ID)
 		name := strings.TrimSpace(job.Name)
 		sched := formatCronSchedule(job.Schedule)
-		target := "main"
-		if job.SessionTarget != "" {
-			target = string(job.SessionTarget)
-		}
 		deliver := ""
 		if job.Delivery != nil {
 			to := strings.TrimSpace(job.Delivery.To)
@@ -57,56 +51,11 @@ func formatCronJobListText(jobs []croncore.CronJob) string {
 		if status != "" {
 			state += " last=" + status
 		}
-		b.WriteString(fmt.Sprintf("- %s %s schedule=%s target=%s%s%s\n", id, name, sched, target, deliver, state))
+		b.WriteString(fmt.Sprintf("- %s %s schedule=%s%s%s\n", id, name, sched, deliver, state))
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
-
-func formatCronRunsText(jobID string, entries []croncore.CronRunLogEntry) string {
-	jobID = strings.TrimSpace(jobID)
-	if len(entries) == 0 {
-		if jobID != "" {
-			return fmt.Sprintf("Cron runs (%s): (none)", cronShortID(jobID))
-		}
-		return "Cron runs: (none)"
-	}
-	var b strings.Builder
-	label := jobID
-	if label != "" {
-		label = cronShortID(label)
-	}
-	b.WriteString(fmt.Sprintf("Cron runs (%s):\n", label))
-	for _, e := range entries {
-		ts := "unknown-time"
-		if e.TS > 0 {
-			ts = formatUnixMs(e.TS)
-		}
-		status := strings.TrimSpace(e.Status)
-		if status == "" {
-			status = "unknown"
-		}
-		action := strings.TrimSpace(e.Action)
-		if action == "" {
-			action = "unknown"
-		}
-		dur := ""
-		if e.DurationMs > 0 {
-			dur = " duration=" + formatDurationMs(e.DurationMs)
-		}
-		errText := strings.TrimSpace(e.Error)
-		if errText != "" {
-			errText = " error=" + errText
-		}
-		summary := strings.TrimSpace(e.Summary)
-		if summary != "" {
-			summary = " " + summary
-		}
-		b.WriteString(fmt.Sprintf("- %s action=%s status=%s%s%s%s\n", ts, action, status, dur, errText, summary))
-	}
-	return strings.TrimRight(b.String(), "\n")
-}
-
-func formatCronSchedule(s croncore.CronSchedule) string {
+func formatCronSchedule(s Schedule) string {
 	switch strings.ToLower(strings.TrimSpace(s.Kind)) {
 	case "every":
 		return fmt.Sprintf("every %s", formatDurationMs(s.EveryMs))

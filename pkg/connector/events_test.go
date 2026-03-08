@@ -42,8 +42,8 @@ func TestBuildCommandDescriptionContent_ValidMSC4391(t *testing.T) {
 	handler := &commands.FullHandler{
 		Name: "cron",
 		Help: commands.HelpMeta{
-			Description: "Inspect/manage cron jobs",
-			Args:        "[status|list|runs|run|remove] [...]",
+			Description: "Inspect/manage scheduled jobs",
+			Args:        "[status|list|add|update|run|remove] ...",
 		},
 	}
 

@@ -42,7 +42,7 @@ func resolveHeartbeatConfig(cfg *Config, agentID string) *HeartbeatConfig {
 		return base
 	}
 	merged := *base
-	// Override with explicitly provided fields (OpenClaw-style)
+	// Override only the fields explicitly provided on the agent-specific config.
 	if override.Every != nil {
 		merged.Every = override.Every
 	}

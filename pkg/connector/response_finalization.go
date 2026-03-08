@@ -245,7 +245,7 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 
 	hb := state.heartbeat
 	durationMs := time.Now().UnixMilli() - state.startedAtMs
-	storeRef := sessionStoreRef{AgentID: hb.StoreAgentID, Path: hb.StorePath}
+	storeRef := sessionStoreRef{AgentID: hb.StoreAgentID}
 	rawContent := state.accumulated.String()
 	ackMax := hb.AckMaxChars
 	if ackMax < 0 {

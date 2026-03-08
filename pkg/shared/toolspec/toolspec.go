@@ -16,7 +16,7 @@ const (
 	MessageDescription = "Send messages and channel actions. Supports actions: send, delete, react, poll, pin, threads, focus, and more."
 
 	CronName        = "cron"
-	CronDescription = "Manage cron jobs and wake events.\n\nACTIONS:\n- status: Check cron scheduler status\n- list: List jobs (use includeDisabled:true to include disabled)\n- add: Create job (requires job object, see schema below)\n- update: Modify job (requires jobId + patch object)\n- remove: Delete job (requires jobId)\n- run: Trigger job immediately (requires jobId)\n- runs: Get job run history (requires jobId)\n- wake: Send wake event (requires text, optional mode)\n\nJOB SCHEMA (for add action):\n{\n  \"name\": \"string (optional)\",\n  \"schedule\": { ... },      // Required: when to run\n  \"payload\": { ... },       // Required: what to execute\n  \"delivery\": { ... },      // Optional: announce summary (isolated only)\n  \"sessionTarget\": \"main\" | \"isolated\",  // Optional (defaults inferred)\n  \"enabled\": true | false   // Optional, default true\n}\n\nSCHEDULE TYPES (schedule.kind):\n- \"at\": One-shot at absolute time\n  { \"kind\": \"at\", \"at\": \"<ISO-8601 timestamp>\" }\n- \"every\": Recurring interval\n  { \"kind\": \"every\", \"everyMs\": <interval-ms>, \"anchorMs\": <optional-start-ms> }\n  Minimum: 1000ms (1 second). Short intervals like 5s, 10s, 30s are fully supported.\n- \"cron\": Cron expression\n  { \"kind\": \"cron\", \"expr\": \"<cron-expression>\", \"tz\": \"<optional-timezone>\" }\n\nISO timestamps without an explicit timezone are treated as UTC.\n\nPAYLOAD TYPES (payload.kind):\n- \"systemEvent\": Injects text as system event into session\n  { \"kind\": \"systemEvent\", \"text\": \"<message>\" }\n- \"agentTurn\": Runs agent with message (isolated sessions only)\n  { \"kind\": \"agentTurn\", \"message\": \"<prompt>\", \"model\": \"<optional>\", \"thinking\": \"<optional>\", \"timeoutSeconds\": <optional> }\n\nDELIVERY (isolated-only, top-level):\n  { \"mode\": \"none|announce\", \"to\": \"<!room-id:server>\", \"bestEffort\": <optional-bool> }\n  - delivery.to: Matrix room ID (e.g. !abcdef:server.com). Omit to auto-route to the room where the job was created or last active room.\n  - Default for isolated agentTurn jobs (when delivery omitted): \"announce\"\n  - If the task needs to send to a specific chat/recipient, set delivery.to here; do not call messaging tools inside the run.\n\nCRITICAL CONSTRAINTS:\n- sessionTarget=\"main\" REQUIRES payload.kind=\"systemEvent\"\n- sessionTarget=\"isolated\" REQUIRES payload.kind=\"agentTurn\"\nDefault: prefer isolated agentTurn jobs unless the user explicitly wants a main-session system event.\n\nWAKE MODES (for wake action):\n- \"next-heartbeat\" (default): Wake on next heartbeat\n- \"now\": Wake immediately\n\nUse contextMessages (0-10) to add previous messages as context to the job text."
+	CronDescription = "Manage scheduler-backed jobs that run in hidden background rooms.\n\nACTIONS:\n- status: Check scheduler status\n- list: List jobs (use includeDisabled:true to include disabled)\n- add: Create job (requires job object, see schema below)\n- update: Modify job (requires jobId + patch object)\n- remove: Delete job (requires jobId)\n- run: Trigger job immediately (requires jobId)\n\nJOB SCHEMA (for add action):\n{\n  \"name\": \"string (optional)\",\n  \"schedule\": { ... },\n  \"payload\": { ... },\n  \"delivery\": { ... },\n  \"enabled\": true | false\n}\n\nSCHEDULE TYPES (schedule.kind):\n- \"at\": One-shot at absolute time\n  { \"kind\": \"at\", \"at\": \"<ISO-8601 timestamp>\" }\n- \"every\": Recurring interval\n  { \"kind\": \"every\", \"everyMs\": <interval-ms>, \"anchorMs\": <optional-start-ms> }\n- \"cron\": Cron expression\n  { \"kind\": \"cron\", \"expr\": \"<cron-expression>\", \"tz\": \"<optional-timezone>\" }\n\nPAYLOAD:\n- \"agentTurn\": Run the agent inside a hidden background room\n  { \"kind\": \"agentTurn\", \"message\": \"<prompt>\", \"model\": \"<optional>\", \"thinking\": \"<optional>\", \"timeoutSeconds\": <optional> }\n\nDELIVERY:\n  { \"mode\": \"none|announce\", \"to\": \"<!room-id:server>\", \"bestEffort\": <optional-bool> }\n  - delivery.to: Matrix room ID (e.g. !abcdef:server.com). Omit to use the last active room or default chat.\n\nUse contextMessages (0-10) to add recent chat context to the scheduled payload."
 
 	SessionStatusName        = "session_status"
 	SessionStatusDescription = "Show a /status-equivalent session status card (usage + time + cost when available). Use for model-use questions (📊 session_status). Optional: set per-session model override (model=default resets overrides)."
@@ -441,20 +441,8 @@ func CronSchema() map[string]any {
 		"properties": map[string]any{
 			"action": map[string]any{
 				"type":        "string",
-				"enum":        []string{"status", "list", "add", "update", "remove", "run", "runs", "wake"},
-				"description": "Action to perform: status, list, add, update, remove, run, runs, wake.",
-			},
-			"gatewayUrl": map[string]any{
-				"type":        "string",
-				"description": "Optional gateway URL override.",
-			},
-			"gatewayToken": map[string]any{
-				"type":        "string",
-				"description": "Optional gateway auth token.",
-			},
-			"timeoutMs": map[string]any{
-				"type":        "number",
-				"description": "Optional timeout for gateway call.",
+				"enum":        []string{"status", "list", "add", "update", "remove", "run"},
+				"description": "Action to perform: status, list, add, update, remove, run.",
 			},
 			"includeDisabled": map[string]any{
 				"type":        "boolean",
@@ -474,20 +462,11 @@ func CronSchema() map[string]any {
 				"additionalProperties": true,
 				"description":          "Patch object for update.",
 			},
-			"text": map[string]any{
-				"type":        "string",
-				"description": "Text for wake action (system event).",
-			},
-			"mode": map[string]any{
-				"type":        "string",
-				"enum":        []string{"now", "next-heartbeat"},
-				"description": "Wake mode (now|next-heartbeat).",
-			},
 			"contextMessages": map[string]any{
 				"type":        "number",
 				"minimum":     0,
 				"maximum":     10,
-				"description": "For add: include recent context lines appended to systemEvent text.",
+				"description": "For add: include recent context lines appended to payload.message.",
 			},
 		},
 		"required": []string{"action"},
