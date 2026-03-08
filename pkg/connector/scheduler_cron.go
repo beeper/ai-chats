@@ -648,18 +648,18 @@ func applyScheduledCronPatch(record scheduledCronJob, patch integrationcron.JobP
 func computeInitialCronDue(job integrationcron.Job, nowMs int64) *int64 {
 	switch strings.ToLower(strings.TrimSpace(job.Schedule.Kind)) {
 	case "at":
-		atMs, ok := parseScheduleAt(job.Schedule.At)
+		runAtMs, ok := parseScheduleAt(job.Schedule.At)
 		if !ok {
 			return nil
 		}
 		if job.State.LastRunAtMs != nil && *job.State.LastRunAtMs > 0 {
 			return nil
 		}
-		if atMs <= nowMs {
+		if runAtMs <= nowMs {
 			val := nowMs
 			return &val
 		}
-		return &atMs
+		return &runAtMs
 	default:
 		return integrationcron.ComputeNextRunAtMs(job.Schedule, nowMs)
 	}

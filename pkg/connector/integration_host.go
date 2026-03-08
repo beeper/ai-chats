@@ -36,13 +36,6 @@ func (h *runtimeIntegrationHost) Logger() integrationruntime.Logger {
 
 func (h *runtimeIntegrationHost) Now() time.Time { return time.Now() }
 
-func (h *runtimeIntegrationHost) StoreBackend() integrationruntime.StoreBackend {
-	if h == nil || h.client == nil {
-		return nil
-	}
-	return &hostStoreBackend{backend: &lazyStoreBackend{client: h.client}}
-}
-
 func (h *runtimeIntegrationHost) PortalResolver() integrationruntime.PortalResolver {
 	if h == nil || h.client == nil {
 		return nil
@@ -55,13 +48,6 @@ func (h *runtimeIntegrationHost) Dispatch() integrationruntime.Dispatch {
 		return nil
 	}
 	return &hostDispatch{client: h.client}
-}
-
-func (h *runtimeIntegrationHost) SessionStore() integrationruntime.SessionStore {
-	if h == nil || h.client == nil {
-		return nil
-	}
-	return &hostSessionStore{client: h.client}
 }
 
 func (h *runtimeIntegrationHost) Heartbeat() integrationruntime.Heartbeat {
@@ -851,39 +837,6 @@ func (h *runtimeIntegrationHost) LoginDB() any {
 
 // ---- Core Host sub-adapters ----
 
-type hostStoreBackend struct {
-	backend *lazyStoreBackend
-}
-
-func (s *hostStoreBackend) Read(ctx context.Context, key string) ([]byte, bool, error) {
-	if s == nil || s.backend == nil {
-		return nil, false, fmt.Errorf("store not available")
-	}
-	return s.backend.Read(ctx, key)
-}
-
-func (s *hostStoreBackend) Write(ctx context.Context, key string, data []byte) error {
-	if s == nil || s.backend == nil {
-		return fmt.Errorf("store not available")
-	}
-	return s.backend.Write(ctx, key, data)
-}
-
-func (s *hostStoreBackend) List(ctx context.Context, prefix string) ([]integrationruntime.StoreEntry, error) {
-	if s == nil || s.backend == nil {
-		return nil, fmt.Errorf("store not available")
-	}
-	entries, err := s.backend.List(ctx, prefix)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]integrationruntime.StoreEntry, 0, len(entries))
-	for _, e := range entries {
-		out = append(out, integrationruntime.StoreEntry{Key: e.Key, Data: e.Data})
-	}
-	return out, nil
-}
-
 type hostPortalResolver struct {
 	client *AIClient
 }
@@ -938,21 +891,6 @@ func (d *hostDispatch) SendAssistantMessage(ctx context.Context, portal any, bod
 		return fmt.Errorf("missing portal")
 	}
 	return d.client.sendPlainAssistantMessageWithResult(ctx, p, body)
-}
-
-type hostSessionStore struct {
-	client *AIClient
-}
-
-func (s *hostSessionStore) Update(ctx context.Context, key string, updater func(raw map[string]any) map[string]any) {
-	if s == nil || s.client == nil || updater == nil {
-		return
-	}
-	backend := s.client.bridgeStateBackend()
-	if backend == nil {
-		return
-	}
-	updateSessionStoreEntry(ctx, backend, key, updater)
 }
 
 type hostHeartbeat struct {
@@ -1144,24 +1082,4 @@ func portalKeyFromParts(client *AIClient, portalID string, receiver string) netw
 
 func portalRoomIDFromString(roomID string) id.RoomID {
 	return id.RoomID(roomID)
-}
-
-func updateSessionStoreEntry(ctx context.Context, backend bridgeStoreBackend, key string, updater func(raw map[string]any) map[string]any) {
-	if backend == nil || updater == nil || strings.TrimSpace(key) == "" {
-		return
-	}
-	storeKey := "session:" + key
-	existing := make(map[string]any)
-	if data, ok, err := backend.Read(ctx, storeKey); err == nil && ok && len(data) > 0 {
-		_ = json.Unmarshal(data, &existing)
-	}
-	updated := updater(existing)
-	if updated == nil {
-		return
-	}
-	data, err := json.Marshal(updated)
-	if err != nil {
-		return
-	}
-	_ = backend.Write(ctx, storeKey, data)
 }

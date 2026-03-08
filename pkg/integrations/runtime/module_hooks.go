@@ -153,28 +153,13 @@ type LoginPurgeIntegration interface {
 type Host interface {
 	Logger() Logger
 	Now() time.Time
-	StoreBackend() StoreBackend
 	PortalResolver() PortalResolver
 	Dispatch() Dispatch
-	SessionStore() SessionStore
 	Heartbeat() Heartbeat
 	ToolExec() ToolExec
 	PromptContext() PromptContext
 	DBAccess() DBAccess
 	ConfigLookup() ConfigLookup
-}
-
-// StoreEntry mirrors state-store entries in a generic form.
-type StoreEntry struct {
-	Key  string
-	Data []byte
-}
-
-// StoreBackend exposes generic key-value state storage.
-type StoreBackend interface {
-	Read(ctx context.Context, key string) ([]byte, bool, error)
-	Write(ctx context.Context, key string, data []byte) error
-	List(ctx context.Context, prefix string) ([]StoreEntry, error)
 }
 
 // PortalResolver provides room/portal lookup utilities.
@@ -188,11 +173,6 @@ type PortalResolver interface {
 type Dispatch interface {
 	DispatchInternalMessage(ctx context.Context, portal any, meta any, message string, source string) error
 	SendAssistantMessage(ctx context.Context, portal any, body string) error
-}
-
-// SessionStore provides per-module session metadata persistence.
-type SessionStore interface {
-	Update(ctx context.Context, key string, updater func(raw map[string]any) map[string]any)
 }
 
 // Heartbeat exposes generic heartbeat controls.

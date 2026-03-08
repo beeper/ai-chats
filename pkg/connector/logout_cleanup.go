@@ -41,9 +41,24 @@ func purgeLoginDataBestEffort(ctx context.Context, login *bridgev2.UserLogin) {
 		logger = zerolog.Ctx(ctx)
 	}
 
-	// Bridge-internal KV state (integration state, model catalog, etc.)
 	bestEffortExec(ctx, db, logger,
-		`DELETE FROM ai_bridge_state WHERE bridge_id=$1 AND login_id=$2`,
+		`DELETE FROM ai_sessions WHERE bridge_id=$1 AND login_id=$2`,
+		bridgeID, loginID,
+	)
+	bestEffortExec(ctx, db, logger,
+		`DELETE FROM ai_cron_jobs WHERE bridge_id=$1 AND login_id=$2`,
+		bridgeID, loginID,
+	)
+	bestEffortExec(ctx, db, logger,
+		`DELETE FROM ai_managed_heartbeats WHERE bridge_id=$1 AND login_id=$2`,
+		bridgeID, loginID,
+	)
+	bestEffortExec(ctx, db, logger,
+		`DELETE FROM ai_system_events WHERE bridge_id=$1 AND login_id=$2`,
+		bridgeID, loginID,
+	)
+	bestEffortExec(ctx, db, logger,
+		`DELETE FROM ai_model_catalog_entries WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
 }

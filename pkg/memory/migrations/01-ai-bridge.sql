@@ -88,15 +88,6 @@ CREATE TABLE IF NOT EXISTS ai_memory_session_files (
 
 CREATE INDEX IF NOT EXISTS idx_ai_memory_session_files_path ON ai_memory_session_files(path);
 
-CREATE TABLE IF NOT EXISTS ai_bridge_state (
-  bridge_id TEXT NOT NULL,
-  login_id TEXT NOT NULL,
-  store_key TEXT NOT NULL,
-  content TEXT NOT NULL,
-  updated_at INTEGER NOT NULL,
-  PRIMARY KEY (bridge_id, login_id, store_key)
-);
-
 CREATE TABLE IF NOT EXISTS ai_cron_jobs (
   bridge_id TEXT NOT NULL,
   login_id TEXT NOT NULL,
@@ -156,3 +147,45 @@ CREATE TABLE IF NOT EXISTS ai_system_events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ai_system_events_lookup ON ai_system_events(bridge_id, login_id, session_key);
+
+CREATE TABLE IF NOT EXISTS ai_sessions (
+  bridge_id TEXT NOT NULL,
+  login_id TEXT NOT NULL,
+  store_agent_id TEXT NOT NULL,
+  session_key TEXT NOT NULL,
+  session_id TEXT NOT NULL DEFAULT '',
+  updated_at_ms INTEGER NOT NULL DEFAULT 0,
+  last_heartbeat_text TEXT NOT NULL DEFAULT '',
+  last_heartbeat_sent_at_ms INTEGER NOT NULL DEFAULT 0,
+  last_channel TEXT NOT NULL DEFAULT '',
+  last_to TEXT NOT NULL DEFAULT '',
+  last_account_id TEXT NOT NULL DEFAULT '',
+  last_thread_id TEXT NOT NULL DEFAULT '',
+  queue_mode TEXT NOT NULL DEFAULT '',
+  queue_debounce_ms INTEGER,
+  queue_cap INTEGER,
+  queue_drop TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (bridge_id, login_id, store_agent_id, session_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_sessions_lookup
+  ON ai_sessions(bridge_id, login_id, store_agent_id);
+
+CREATE INDEX IF NOT EXISTS idx_ai_sessions_updated
+  ON ai_sessions(bridge_id, login_id, store_agent_id, updated_at_ms);
+
+CREATE TABLE IF NOT EXISTS ai_model_catalog_entries (
+  bridge_id TEXT NOT NULL,
+  login_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  name TEXT NOT NULL DEFAULT '',
+  context_window INTEGER NOT NULL DEFAULT 0,
+  max_output_tokens INTEGER NOT NULL DEFAULT 0,
+  reasoning INTEGER NOT NULL DEFAULT 0,
+  input_json TEXT NOT NULL DEFAULT '[]',
+  PRIMARY KEY (bridge_id, login_id, provider, model_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_model_catalog_lookup
+  ON ai_model_catalog_entries(bridge_id, login_id, provider);

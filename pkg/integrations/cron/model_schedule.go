@@ -15,12 +15,12 @@ func ComputeNextRunAtMs(schedule Schedule, nowMs int64) *int64 {
 	kind := strings.TrimSpace(schedule.Kind)
 	switch kind {
 	case "at":
-		atMs, ok := parseAbsoluteTimeMs(schedule.At)
+		runAtMs, ok := parseAbsoluteTimeMs(schedule.At)
 		if !ok {
 			return nil
 		}
-		if atMs > nowMs {
-			return &atMs
+		if runAtMs > nowMs {
+			return &runAtMs
 		}
 		return nil
 	case "every":
@@ -109,17 +109,17 @@ func ValidateScheduleTimestamp(schedule Schedule, nowMs int64) TimestampValidati
 		nowMs = time.Now().UnixMilli()
 	}
 	atRaw := strings.TrimSpace(schedule.At)
-	atMs, ok := parseAbsoluteTimeMs(atRaw)
+	runAtMs, ok := parseAbsoluteTimeMs(atRaw)
 	if !ok {
 		return TimestampValidationResult{
 			Ok:      false,
 			Message: fmt.Sprintf("Invalid schedule.at: expected ISO-8601 timestamp (got %v)", schedule.At),
 		}
 	}
-	diffMs := atMs - nowMs
+	diffMs := runAtMs - nowMs
 	if diffMs < -oneMinuteMs {
 		nowDate := time.UnixMilli(nowMs).UTC().Format("2006-01-02T15:04:05.000Z")
-		atDate := time.UnixMilli(atMs).UTC().Format("2006-01-02T15:04:05.000Z")
+		atDate := time.UnixMilli(runAtMs).UTC().Format("2006-01-02T15:04:05.000Z")
 		minutesAgo := int64(-diffMs / oneMinuteMs)
 		return TimestampValidationResult{
 			Ok: false,
@@ -132,7 +132,7 @@ func ValidateScheduleTimestamp(schedule Schedule, nowMs int64) TimestampValidati
 		}
 	}
 	if diffMs > tenYearsMs {
-		atDate := time.UnixMilli(atMs).UTC().Format("2006-01-02T15:04:05.000Z")
+		atDate := time.UnixMilli(runAtMs).UTC().Format("2006-01-02T15:04:05.000Z")
 		yearsAhead := int64(diffMs / int64(365.25*24*60*60*1000))
 		return TimestampValidationResult{
 			Ok: false,

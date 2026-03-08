@@ -97,14 +97,12 @@ channels:
     # Response prefix override for Matrix rooms.
     responsePrefix: ""
 
-# Session store configuration (OpenClaw-style).
+# Session configuration (OpenClaw-style).
 session:
   # Scope for session state: per-sender (default) or global.
   scope: "per-sender"
   # Main session key alias (default: "main").
   mainKey: "main"
-  # Optional virtual path for sessions.json (supports {agentId}).
-  store: ""
 
 # External tool providers (search + fetch). Proxy is optional.
 tools:

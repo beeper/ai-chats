@@ -227,7 +227,6 @@ type QueueConfig struct {
 type SessionConfig struct {
 	Scope   string `yaml:"scope"`
 	MainKey string `yaml:"mainKey"`
-	Store   string `yaml:"store"`
 }
 
 // ToolProvidersConfig configures external tool providers like search and fetch.
@@ -557,7 +556,6 @@ func upgradeConfig(helper configupgrade.Helper) {
 	// Session configuration (OpenClaw-style)
 	helper.Copy(configupgrade.Str, "session", "scope")
 	helper.Copy(configupgrade.Str, "session", "mainKey")
-	helper.Copy(configupgrade.Str, "session", "store")
 
 	// Agents heartbeat configuration
 	helper.Copy(configupgrade.Str, "agents", "defaults", "heartbeat", "every")

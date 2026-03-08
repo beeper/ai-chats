@@ -31,12 +31,6 @@ func TestUpgradeV1Fresh(t *testing.T) {
 		t.Fatalf("upgrade failed: %v", err)
 	}
 
-	if exists, err := bridgeDB.TableExists(ctx, "ai_bridge_state"); err != nil {
-		t.Fatalf("check ai_bridge_state existence failed: %v", err)
-	} else if !exists {
-		t.Fatalf("expected ai_bridge_state to exist")
-	}
-
 	var version int
 	if err := bridgeDB.QueryRow(ctx, "SELECT version FROM ai_bridge_version").Scan(&version); err != nil {
 		t.Fatalf("read ai_bridge_version failed: %v", err)
@@ -52,10 +46,11 @@ func TestUpgradeV1Fresh(t *testing.T) {
 		"ai_memory_embedding_cache",
 		"ai_memory_session_state",
 		"ai_memory_session_files",
-		"ai_bridge_state",
 		"ai_cron_jobs",
 		"ai_managed_heartbeats",
 		"ai_system_events",
+		"ai_sessions",
+		"ai_model_catalog_entries",
 	} {
 		exists, err := bridgeDB.TableExists(ctx, table)
 		if err != nil {

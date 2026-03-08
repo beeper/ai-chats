@@ -38,17 +38,16 @@ func (oc *AIClient) heartbeatSessionPreamble(agentID string) (cfg *Config, resol
 			storeAgentID = resolvedAgent
 		}
 	}
-	storeRef = sessionStoreRef{
-		AgentID: storeAgentID,
-		Path:    resolveSessionStorePath(cfg, storeAgentID),
-	}
+	storeRef = sessionStoreRef{AgentID: storeAgentID}
 	return cfg, resolvedAgent, storeRef, mainSessionKey, scope
 }
 
 func (oc *AIClient) resolveHeartbeatSession(agentID string, heartbeat *HeartbeatConfig) heartbeatSessionResolution {
 	cfg, resolvedAgent, storeRef, mainSessionKey, scope := oc.heartbeatSessionPreamble(agentID)
-	store, _ := oc.loadSessionStore(context.Background(), storeRef)
-	mainEntry, hasMain := store.Sessions[mainSessionKey]
+	mainEntry, hasMain := oc.getSessionEntry(context.Background(), storeRef, mainSessionKey)
+	lookup := func(key string) (sessionEntry, bool) {
+		return oc.getSessionEntry(context.Background(), storeRef, key)
+	}
 	if scope == sessionScopeGlobal {
 		if hasMain {
 			entry := mainEntry
@@ -70,7 +69,7 @@ func (oc *AIClient) resolveHeartbeatSession(agentID string, heartbeat *Heartbeat
 	}
 
 	if strings.HasPrefix(trimmed, "!") {
-		if entry, ok := store.Sessions[trimmed]; ok {
+		if entry, ok := lookup(trimmed); ok {
 			copyEntry := entry
 			return heartbeatSessionResolution{StoreRef: storeRef, SessionKey: trimmed, Entry: &copyEntry}
 		}
@@ -85,7 +84,7 @@ func (oc *AIClient) resolveHeartbeatSession(agentID string, heartbeat *Heartbeat
 	if canonical != sessionScopeGlobal {
 		sessionAgent := resolveAgentIdFromSessionKey(canonical)
 		if sessionAgent == resolvedAgent {
-			if entry, ok := store.Sessions[canonical]; ok {
+			if entry, ok := lookup(canonical); ok {
 				copyEntry := entry
 				return heartbeatSessionResolution{StoreRef: storeRef, SessionKey: canonical, Entry: &copyEntry}
 			}
