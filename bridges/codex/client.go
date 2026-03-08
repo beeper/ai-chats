@@ -1679,21 +1679,10 @@ func (cc *CodexClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Po
 	if portal == nil || portal.MXID == "" || cc.UserLogin == nil || cc.UserLogin.Bridge == nil {
 		return
 	}
-	converted := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:   networkid.PartID("0"),
-			Type: event.EventMessage,
-			Content: &event.MessageEventContent{
-				MsgType:  event.MsgNotice,
-				Body:     strings.TrimSpace(message),
-				Mentions: &event.Mentions{},
-			},
-		}},
-	}
 	bg := cc.backgroundContext(ctx)
 	sendCtx, cancel := context.WithTimeout(bg, 10*time.Second)
 	defer cancel()
-	cc.sendViaPortal(sendCtx, portal, converted, "")
+	cc.sendViaPortal(sendCtx, portal, bridgeadapter.BuildSystemNotice(strings.TrimSpace(message)), "")
 }
 
 func (cc *CodexClient) sendApprovalRequestFallbackEvent(
@@ -2269,7 +2258,7 @@ func (cc *CodexClient) handleApprovalRequest(
 }
 
 func (cc *CodexClient) tryApprovalDecisionEvent(ctx context.Context, msg *bridgev2.MatrixMessage) (bool, *bridgev2.MatrixMessageResponse) {
-	raw, ok := parseCodexApprovalDecision(msg.Event)
+	raw, ok := bridgeadapter.ParseApprovalDecisionEvent(msg.Event)
 	if !ok {
 		return false, nil
 	}
@@ -2293,17 +2282,6 @@ func (cc *CodexClient) tryApprovalDecisionEvent(ctx context.Context, msg *bridge
 		cc.sendSystemNotice(ctx, msg.Portal, bridgeadapter.ApprovalErrorToastText(err))
 	}
 	return true, &bridgev2.MatrixMessageResponse{Pending: false}
-}
-
-func parseCodexApprovalDecision(evt *event.Event) (map[string]any, bool) {
-	if evt == nil || evt.Content.Raw == nil {
-		return nil, false
-	}
-	raw, ok := evt.Content.Raw["com.beeper.ai.approval_decision"].(map[string]any)
-	if !ok {
-		return nil, false
-	}
-	return raw, true
 }
 
 func (cc *CodexClient) handleCommandApprovalRequest(ctx context.Context, req codexrpc.Request) (any, *codexrpc.RPCError) {
