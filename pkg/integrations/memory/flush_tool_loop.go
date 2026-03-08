@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -54,7 +55,7 @@ func RunFlushToolLoop(
 	flushCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	chat := append([]openai.ChatCompletionMessageParamUnion{}, messages...)
+	chat := slices.Clone(messages)
 	for range maxTurns {
 		assistant, calls, done, err := deps.NextTurn(flushCtx, model, chat)
 		if err != nil {

@@ -8,7 +8,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 
 	"github.com/beeper/ai-bridge/bridges/opencode/opencodebridge"
@@ -216,8 +215,7 @@ func (oc *OpenCodeClient) queueFinalStreamEdit(ctx context.Context, portal *brid
 		TargetMessage: state.networkMessageID,
 		Timestamp:     time.Now(),
 		LogKey:        "opencode_edit_target",
-		PreBuilt: streamtransport.BuildConvertedEdit(&event.MessageEventContent{
-			MsgType:       event.MsgText,
+		PreBuilt: streamtransport.BuildRenderedConvertedEdit(streamtransport.RenderedMarkdownContent{
 			Body:          rendered.Body,
 			Format:        rendered.Format,
 			FormattedBody: rendered.FormattedBody,

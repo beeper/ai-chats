@@ -2570,7 +2570,7 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 
 	// Create user message for database
 	userMessage := &database.Message{
-		ID:       networkid.MessageID(fmt.Sprintf("mx:%s", string(last.Event.ID))),
+		ID:       bridgeadapter.MatrixMessageID(last.Event.ID),
 		MXID:     last.Event.ID,
 		Room:     last.Portal.PortalKey,
 		SenderID: humanUserID(oc.UserLogin.ID),

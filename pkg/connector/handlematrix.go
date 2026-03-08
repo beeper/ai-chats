@@ -313,7 +313,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	}
 	logCtx.Debug().Int("prompt_messages", len(promptContext.Messages)).Msg("Built prompt for inbound message")
 	userMessage := &database.Message{
-		ID:       networkid.MessageID(fmt.Sprintf("mx:%s", string(eventID))),
+		ID:       bridgeadapter.MatrixMessageID(eventID),
 		MXID:     eventID,
 		Room:     portal.PortalKey,
 		SenderID: humanUserID(oc.UserLogin.ID),
@@ -722,7 +722,7 @@ func (oc *AIClient) handleMediaMessage(
 			return nil, messageSendStatusError(err, "Couldn't prepare the message. Try again.", "")
 		}
 		userMessage := &database.Message{
-			ID:       networkid.MessageID(fmt.Sprintf("mx:%s", string(eventID))),
+			ID:       bridgeadapter.MatrixMessageID(eventID),
 			MXID:     eventID,
 			Room:     portal.PortalKey,
 			SenderID: humanUserID(oc.UserLogin.ID),
@@ -858,7 +858,7 @@ func (oc *AIClient) handleMediaMessage(
 	}
 
 	userMessage := &database.Message{
-		ID:        networkid.MessageID(fmt.Sprintf("mx:%s", string(eventID))),
+		ID:        bridgeadapter.MatrixMessageID(eventID),
 		MXID:      eventID,
 		Room:      portal.PortalKey,
 		SenderID:  humanUserID(oc.UserLogin.ID),
@@ -1018,7 +1018,7 @@ func (oc *AIClient) handleTextFileMessage(
 	}
 
 	userMessage := &database.Message{
-		ID:       networkid.MessageID(fmt.Sprintf("mx:%s", string(eventID))),
+		ID:       bridgeadapter.MatrixMessageID(eventID),
 		MXID:     eventID,
 		Room:     portal.PortalKey,
 		SenderID: humanUserID(oc.UserLogin.ID),
@@ -1220,8 +1220,8 @@ func (oc *AIClient) handleToolsCommand(
 		return
 	}
 
-	parts := strings.SplitN(arg, " ", 2)
-	action := strings.ToLower(parts[0])
+	action, _, _ := strings.Cut(arg, " ")
+	action = strings.ToLower(action)
 
 	switch action {
 	case "list":

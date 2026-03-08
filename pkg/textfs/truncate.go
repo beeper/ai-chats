@@ -75,7 +75,7 @@ func TruncateHead(content string, maxLines, maxBytes int) Truncation {
 	outputLines := make([]string, 0, maxLines)
 	outputBytes := 0
 	truncatedBy := "lines"
-	for i := 0; i < len(lines) && i < maxLines; i++ {
+	for i := range min(len(lines), maxLines) {
 		line := lines[i]
 		lineBytes := len(line)
 		if i > 0 {

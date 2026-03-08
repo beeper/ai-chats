@@ -12,6 +12,8 @@ import (
 	"github.com/openai/openai-go/v3/shared"
 	"github.com/rs/zerolog"
 
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/status"
@@ -153,26 +155,20 @@ func (oc *AIClient) setModelTyping(ctx context.Context, portal *bridgev2.Portal,
 }
 
 func (oc *AIClient) sendPendingStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, message string) {
-	if portal == nil || portal.Bridge == nil || evt == nil {
-		return
-	}
 	status := bridgev2.MessageStatus{
 		Status:    event.MessageStatusPending,
 		Message:   message,
 		IsCertain: true,
 	}
-	portal.Bridge.Matrix.SendMessageStatus(ctx, &status, bridgev2.StatusEventInfoFromEvent(evt))
+	bridgeadapter.SendMatrixMessageStatus(ctx, portal, evt, status)
 }
 
 func (oc *AIClient) sendSuccessStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event) {
-	if portal == nil || portal.Bridge == nil || evt == nil {
-		return
-	}
 	status := bridgev2.MessageStatus{
 		Status:    event.MessageStatusSuccess,
 		IsCertain: true,
 	}
-	portal.Bridge.Matrix.SendMessageStatus(ctx, &status, bridgev2.StatusEventInfoFromEvent(evt))
+	bridgeadapter.SendMatrixMessageStatus(ctx, portal, evt, status)
 }
 
 const autoGreetingDelay = 5 * time.Second

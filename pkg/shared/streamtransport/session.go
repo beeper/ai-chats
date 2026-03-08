@@ -275,7 +275,7 @@ func (s *StreamSession) sendEphemeralWithRetry(ephemeralSender bridgev2.Ephemera
 		}
 		return false
 	}
-	for i := 0; i < nonFallbackRetryCount; i++ {
+	for range nonFallbackRetryCount {
 		if s.IsClosed() {
 			return false
 		}

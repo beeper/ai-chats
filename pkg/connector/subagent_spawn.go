@@ -12,11 +12,10 @@ import (
 	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/agents"
 	"github.com/beeper/ai-bridge/pkg/agents/tools"
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 func normalizeAgentID(value string) string {
@@ -345,7 +344,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 		}
 	}
 
-	eventID := id.EventID(fmt.Sprintf("$subagent-%s", uuid.NewString()))
+	eventID := bridgeadapter.NewEventID("subagent")
 	promptMessages, err := oc.buildPrompt(ctx, childPortal, childMeta, task, eventID)
 	if err != nil {
 		return tools.JSONResult(map[string]any{
@@ -355,7 +354,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 	}
 
 	userMessage := &database.Message{
-		ID:       networkid.MessageID(fmt.Sprintf("mx:%s", eventID)),
+		ID:       bridgeadapter.MatrixMessageID(eventID),
 		MXID:     eventID,
 		Room:     childPortal.PortalKey,
 		SenderID: humanUserID(oc.UserLogin.ID),

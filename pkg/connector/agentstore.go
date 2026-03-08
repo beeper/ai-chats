@@ -14,10 +14,9 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/google/uuid"
-
 	"github.com/beeper/ai-bridge/pkg/agents"
 	"github.com/beeper/ai-bridge/pkg/agents/tools"
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 // AgentStoreAdapter implements agents.AgentStore with UserLogin metadata as source of truth.
@@ -383,7 +382,7 @@ func (b *BossStoreAdapter) RunInternalCommand(ctx context.Context, roomID string
 	runCtx := b.store.client.backgroundContext(ctx)
 	logCopy := b.store.client.log.With().Str("mx_command", cmdName).Logger()
 	captureBot := newCaptureMatrixAPI(b.store.client.UserLogin.Bridge.Bot)
-	eventID := id.EventID(fmt.Sprintf("$internal-%s", uuid.NewString()))
+	eventID := bridgeadapter.NewEventID("internal")
 	ce := &commands.Event{
 		Bot:        captureBot,
 		Bridge:     b.store.client.UserLogin.Bridge,

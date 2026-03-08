@@ -99,20 +99,14 @@ func (oc *OpenCodeConnector) LoadUserLogin(_ context.Context, login *bridgev2.Us
 		return nil
 	}
 
-	client, err := bridgeadapter.LoadOrCreateClient(
+	client, err := bridgeadapter.LoadOrCreateTypedClient(
 		&oc.clientsMu,
 		oc.clients,
-		login.ID,
-		func(existingAPI bridgev2.NetworkAPI) bool {
-			existing, ok := existingAPI.(*OpenCodeClient)
-			if !ok || existing == nil {
-				return false
-			}
+		login,
+		func(existing *OpenCodeClient, login *bridgev2.UserLogin) {
 			existing.UserLogin = login
-			login.Client = existing
-			return true
 		},
-		func() (bridgev2.NetworkAPI, error) {
+		func() (*OpenCodeClient, error) {
 			return newOpenCodeClient(login, oc)
 		},
 	)

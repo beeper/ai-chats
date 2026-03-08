@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/openai/openai-go/v3"
@@ -128,7 +129,7 @@ func buildFlushPrompt(base []openai.ChatCompletionMessageParamUnion, settings *F
 	if settings == nil {
 		return nil
 	}
-	trimmed := append([]openai.ChatCompletionMessageParamUnion{}, base...)
+	trimmed := slices.Clone(base)
 	if strings.TrimSpace(settings.SystemPrompt) != "" {
 		insertAt := 0
 		for insertAt < len(trimmed) && trimmed[insertAt].OfSystem != nil {

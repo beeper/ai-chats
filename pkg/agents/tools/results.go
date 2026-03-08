@@ -32,7 +32,7 @@ func ErrorResult(toolName, message string) *Result {
 func mustJSON(v any) string {
 	data, err := json.Marshal(v)
 	if err != nil {
-		return fmt.Sprintf(`{"error":"failed to marshal: %s"}`, err.Error())
+		return fmt.Sprintf(`{"error":"failed to marshal: %s"}`, err)
 	}
 	return string(data)
 }

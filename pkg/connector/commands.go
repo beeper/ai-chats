@@ -86,7 +86,7 @@ func isValidAgentID(agentID string) bool {
 	if agentID == "" {
 		return false
 	}
-	for i := 0; i < len(agentID); i++ {
+	for i := range len(agentID) {
 		ch := agentID[i]
 		if (ch < 'a' || ch > 'z') && (ch < '0' || ch > '9') && ch != '-' {
 			return false

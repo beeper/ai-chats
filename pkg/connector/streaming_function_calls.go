@@ -26,8 +26,7 @@ func (oc *AIClient) processToolMediaResult(
 	logSuffix string,
 ) (string, ResultStatus) {
 	// TTS audio (AUDIO: prefix)
-	if strings.HasPrefix(result, TTSResultPrefix) {
-		audioB64 := strings.TrimPrefix(result, TTSResultPrefix)
+	if audioB64, ok := strings.CutPrefix(result, TTSResultPrefix); ok {
 		audioData, err := base64.StdEncoding.DecodeString(audioB64)
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to decode TTS audio" + logSuffix)
@@ -51,8 +50,7 @@ func (oc *AIClient) processToolMediaResult(
 	}
 
 	// Multiple images (IMAGES: prefix)
-	if strings.HasPrefix(result, ImagesResultPrefix) {
-		payload := strings.TrimPrefix(result, ImagesResultPrefix)
+	if payload, ok := strings.CutPrefix(result, ImagesResultPrefix); ok {
 		var images []string
 		if err := json.Unmarshal([]byte(payload), &images); err != nil {
 			log.Warn().Err(err).Msg("Failed to parse generated images payload" + logSuffix)
@@ -85,8 +83,7 @@ func (oc *AIClient) processToolMediaResult(
 	}
 
 	// Single image (IMAGE: prefix)
-	if strings.HasPrefix(result, ImageResultPrefix) {
-		imageB64 := strings.TrimPrefix(result, ImageResultPrefix)
+	if imageB64, ok := strings.CutPrefix(result, ImageResultPrefix); ok {
 		imageData, mimeType, err := decodeBase64Image(imageB64)
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to decode generated image" + logSuffix)
@@ -229,7 +226,7 @@ func (oc *AIClient) handleFunctionCallArgumentsDone(
 			result, err = oc.executeBuiltinTool(toolCtx, portal, toolName, argsJSON)
 			if err != nil {
 				log.Warn().Err(err).Str("tool", toolName).Msg("Tool execution failed" + logSuffix)
-				result = fmt.Sprintf("Error: %s", err.Error())
+				result = fmt.Sprintf("Error: %s", err)
 				resultStatus = ResultStatusError
 			}
 		}

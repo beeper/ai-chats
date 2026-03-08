@@ -70,8 +70,7 @@ func SendDebouncedStreamEdit(p SendDebouncedStreamEditParams) error {
 		TargetMessage: p.NetworkMessageID,
 		Timestamp:     time.Now(),
 		LogKey:        p.LogKey,
-		PreBuilt: streamtransport.BuildConvertedEdit(&event.MessageEventContent{
-			MsgType:       event.MsgText,
+		PreBuilt: streamtransport.BuildRenderedConvertedEdit(streamtransport.RenderedMarkdownContent{
 			Body:          content.Body,
 			Format:        content.Format,
 			FormattedBody: content.FormattedBody,

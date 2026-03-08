@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/ptr"
 
@@ -1116,7 +1115,7 @@ func (oc *AIClient) copyMessagesToChat(
 		// Create remote message for bridging
 		remoteMsg := &OpenAIRemoteMessage{
 			PortalKey: destPortal.PortalKey,
-			ID:        networkid.MessageID(fmt.Sprintf("fork:%s", uuid.NewString())),
+			ID:        bridgeadapter.NewMessageID("fork"),
 			Sender:    sender,
 			Content:   srcMeta.Body,
 			Timestamp: srcMsg.Timestamp,

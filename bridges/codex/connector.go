@@ -314,20 +314,14 @@ func (cc *CodexConnector) loadCodexUserLogin(login *bridgev2.UserLogin) error {
 		return nil
 	}
 
-	client, err := bridgeadapter.LoadOrCreateClient(
+	client, err := bridgeadapter.LoadOrCreateTypedClient(
 		&cc.clientsMu,
 		cc.clients,
-		login.ID,
-		func(existingAPI bridgev2.NetworkAPI) bool {
-			existing, ok := existingAPI.(*CodexClient)
-			if !ok || existing == nil {
-				return false
-			}
+		login,
+		func(existing *CodexClient, login *bridgev2.UserLogin) {
 			existing.UserLogin = login
-			login.Client = existing
-			return true
 		},
-		func() (bridgev2.NetworkAPI, error) {
+		func() (*CodexClient, error) {
 			return newCodexClient(login, cc)
 		},
 	)
@@ -336,9 +330,7 @@ func (cc *CodexConnector) loadCodexUserLogin(login *bridgev2.UserLogin) error {
 		return nil
 	}
 	login.Client = client
-	if codexClient, ok := client.(*CodexClient); ok {
-		codexClient.scheduleBootstrap()
-	}
+	client.scheduleBootstrap()
 	return nil
 }
 

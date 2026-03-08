@@ -71,29 +71,24 @@ func GetBridgeToolContext(ctx context.Context) *BridgeToolContext {
 	return contextValue[*BridgeToolContext](ctx, bridgeToolContextKey{})
 }
 
-var (
-	builtinToolsOnce      sync.Once
-	builtinToolsCached    []ToolDefinition
-	builtinToolsByNameMap map[string]*ToolDefinition
-)
-
-func initBuiltinTools() {
-	builtinToolsCached = buildBuiltinToolDefinitions()
-	builtinToolsByNameMap = make(map[string]*ToolDefinition, len(builtinToolsCached))
-	for i := range builtinToolsCached {
-		builtinToolsByNameMap[builtinToolsCached[i].Name] = &builtinToolsCached[i]
+var builtinToolsInit = sync.OnceValues(func() ([]ToolDefinition, map[string]*ToolDefinition) {
+	tools := buildBuiltinToolDefinitions()
+	byName := make(map[string]*ToolDefinition, len(tools))
+	for i := range tools {
+		byName[tools[i].Name] = &tools[i]
 	}
-}
+	return tools, byName
+})
 
-// The result is computed once and cached for the process lifetime.
+// BuiltinTools returns all builtin tool definitions (computed once and cached).
 func BuiltinTools() []ToolDefinition {
-	builtinToolsOnce.Do(initBuiltinTools)
-	return builtinToolsCached
+	tools, _ := builtinToolsInit()
+	return tools
 }
 
 func GetBuiltinTool(name string) *ToolDefinition {
-	builtinToolsOnce.Do(initBuiltinTools)
-	return builtinToolsByNameMap[name]
+	_, byName := builtinToolsInit()
+	return byName[name]
 }
 
 const ToolNameMessage = toolspec.MessageName

@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/openai/openai-go/v3"
@@ -131,27 +132,6 @@ func (m *UnifiedMessage) Text() string {
 	return strings.Join(texts, "\n")
 }
 
-// HasImages returns true if the message contains image content.
-func (m *UnifiedMessage) HasImages() bool {
-	for _, part := range m.Content {
-		if part.Type == ContentTypeImage {
-			return true
-		}
-	}
-	return false
-}
-
-// HasMultimodalContent returns true if the message contains any non-text content.
-func (m *UnifiedMessage) HasMultimodalContent() bool {
-	for _, part := range m.Content {
-		switch part.Type {
-		case ContentTypeImage, ContentTypePDF, ContentTypeAudio, ContentTypeVideo:
-			return true
-		}
-	}
-	return false
-}
-
 // Text returns the text content of a canonical prompt message.
 func (m PromptMessage) Text() string {
 	var texts []string
@@ -171,7 +151,7 @@ func (m PromptMessage) Text() string {
 func ToPromptContext(systemPrompt string, tools []ToolDefinition, messages []UnifiedMessage) PromptContext {
 	ctx := PromptContext{
 		SystemPrompt: strings.TrimSpace(systemPrompt),
-		Tools:        append([]ToolDefinition(nil), tools...),
+		Tools:        slices.Clone(tools),
 	}
 
 	systemParts := make([]string, 0, len(messages))
@@ -455,10 +435,11 @@ func joinChatText[T any](parts []T, extract func(T) string) string {
 
 func inferPromptMimeTypeFromDataURL(value string) string {
 	value = strings.TrimSpace(value)
-	if !strings.HasPrefix(value, "data:") {
+	rest, ok := strings.CutPrefix(value, "data:")
+	if !ok {
 		return ""
 	}
-	value = strings.TrimPrefix(value, "data:")
+	value = rest
 	idx := strings.Index(value, ";")
 	if idx <= 0 {
 		return ""

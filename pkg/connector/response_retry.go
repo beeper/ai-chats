@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 
 	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
@@ -448,7 +449,7 @@ func (oc *AIClient) truncateOversizedToolResultsForOverflow(
 		}
 	}
 
-	out := append([]openai.ChatCompletionMessageParamUnion{}, prompt...)
+	out := slices.Clone(prompt)
 	truncated := 0
 	for i, msg := range out {
 		if msg.OfTool == nil {

@@ -487,7 +487,7 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 
 	// Save user message immediately; we return Pending=true.
 	userMsg := &database.Message{
-		ID:        networkid.MessageID(fmt.Sprintf("mx:%s", string(msg.Event.ID))),
+		ID:        bridgeadapter.MatrixMessageID(msg.Event.ID),
 		MXID:      msg.Event.ID,
 		Room:      portal.PortalKey,
 		SenderID:  humanUserID(cc.UserLogin.ID),
@@ -1125,33 +1125,15 @@ func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2
 		}
 		state.toolCalls = append(state.toolCalls, tc)
 	case "collabToolCall":
-		var it map[string]any
-		_ = json.Unmarshal(raw, &it)
-		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, it, true, false)
-		newDocs, newFiles := collectToolOutputArtifacts(state, it)
-		emitNewArtifacts(ctx, portal, cc.uiEmitter(state), newDocs, newFiles)
-		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "collabToolCall", it))
+		cc.emitProviderJSONToolOutput(ctx, portal, state, itemID, "collabToolCall", raw, providerJSONToolOutputOptions{collectArtifacts: true})
 	case "webSearch":
-		var it map[string]any
-		_ = json.Unmarshal(raw, &it)
-		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, it, true, false)
-		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "webSearch", it))
-		// Extract web search citations and emit source-url stream events.
-		if outputJSON, err := json.Marshal(it); err == nil {
-			collectToolOutputCitations(state, "webSearch", string(outputJSON))
-			for _, citation := range state.sourceCitations {
-				cc.uiEmitter(state).EmitUISourceURL(ctx, portal, citation)
-			}
-		}
-		newDocs, newFiles := collectToolOutputArtifacts(state, it)
-		emitNewArtifacts(ctx, portal, cc.uiEmitter(state), newDocs, newFiles)
+		cc.emitProviderJSONToolOutput(ctx, portal, state, itemID, "webSearch", raw, providerJSONToolOutputOptions{
+			collectArtifacts:        true,
+			collectCitations:        true,
+			appendBeforeSideEffects: true,
+		})
 	case "imageView":
-		var it map[string]any
-		_ = json.Unmarshal(raw, &it)
-		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, it, true, false)
-		newDocs, newFiles := collectToolOutputArtifacts(state, it)
-		emitNewArtifacts(ctx, portal, cc.uiEmitter(state), newDocs, newFiles)
-		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "imageView", it))
+		cc.emitProviderJSONToolOutput(ctx, portal, state, itemID, "imageView", raw, providerJSONToolOutputOptions{collectArtifacts: true})
 	case "plan":
 		var it struct {
 			Text string `json:"text"`
@@ -1161,10 +1143,7 @@ func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2
 			return
 		}
 	case "enteredReviewMode":
-		var it map[string]any
-		_ = json.Unmarshal(raw, &it)
-		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, it, true, false)
-		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "review", it))
+		cc.emitProviderJSONToolOutput(ctx, portal, state, itemID, "review", raw, providerJSONToolOutputOptions{})
 	case "exitedReviewMode":
 		var it struct {
 			Review string `json:"review"`
@@ -1174,11 +1153,49 @@ func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2
 			return
 		}
 	case "contextCompaction":
-		var it map[string]any
-		_ = json.Unmarshal(raw, &it)
-		cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, it, true, false)
-		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, "contextCompaction", it))
+		cc.emitProviderJSONToolOutput(ctx, portal, state, itemID, "contextCompaction", raw, providerJSONToolOutputOptions{})
 		cc.sendSystemNoticeOnce(ctx, portal, state, "compaction:completed:"+itemID, "Codex finished compacting context.")
+	}
+}
+
+type providerJSONToolOutputOptions struct {
+	collectArtifacts        bool
+	collectCitations        bool
+	appendBeforeSideEffects bool
+}
+
+func (cc *CodexClient) emitProviderJSONToolOutput(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	itemID string,
+	toolName string,
+	raw []byte,
+	opts providerJSONToolOutputOptions,
+) {
+	var it map[string]any
+	_ = json.Unmarshal(raw, &it)
+	cc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, itemID, it, true, false)
+	appendToolCall := func() {
+		state.toolCalls = append(state.toolCalls, newProviderToolCall(itemID, toolName, it))
+	}
+	if opts.appendBeforeSideEffects {
+		appendToolCall()
+	}
+	if opts.collectCitations {
+		if outputJSON, err := json.Marshal(it); err == nil {
+			collectToolOutputCitations(state, toolName, string(outputJSON))
+			for _, citation := range state.sourceCitations {
+				cc.uiEmitter(state).EmitUISourceURL(ctx, portal, citation)
+			}
+		}
+	}
+	if opts.collectArtifacts {
+		newDocs, newFiles := collectToolOutputArtifacts(state, it)
+		emitNewArtifacts(ctx, portal, cc.uiEmitter(state), newDocs, newFiles)
+	}
+	if !opts.appendBeforeSideEffects {
+		appendToolCall()
 	}
 }
 
@@ -1730,23 +1747,20 @@ func (cc *CodexClient) sendApprovalRequestFallbackEvent(
 }
 
 func (cc *CodexClient) sendPendingStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, message string) {
-	if portal == nil || portal.Bridge == nil || evt == nil {
-		return
-	}
 	st := bridgev2.MessageStatus{
 		Status:    event.MessageStatusPending,
 		Message:   message,
 		IsCertain: true,
 	}
-	portal.Bridge.Matrix.SendMessageStatus(ctx, &st, bridgev2.StatusEventInfoFromEvent(evt))
+	bridgeadapter.SendMatrixMessageStatus(ctx, portal, evt, st)
 }
 
 func (cc *CodexClient) markMessageSendSuccess(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, state *streamingState) {
-	if portal == nil || portal.Bridge == nil || evt == nil || state == nil {
+	if state == nil {
 		return
 	}
 	st := bridgev2.MessageStatus{Status: event.MessageStatusSuccess, IsCertain: true}
-	portal.Bridge.Matrix.SendMessageStatus(ctx, &st, bridgev2.StatusEventInfoFromEvent(evt))
+	bridgeadapter.SendMatrixMessageStatus(ctx, portal, evt, st)
 }
 
 func (cc *CodexClient) acquireRoomIfQueueEmpty(roomID id.RoomID) bool {
@@ -1976,8 +1990,7 @@ func (cc *CodexClient) sendFinalAssistantTurn(ctx context.Context, portal *bridg
 		TargetMessage: state.networkMessageID,
 		Timestamp:     time.Now(),
 		LogKey:        "codex_edit_target",
-		PreBuilt: streamtransport.BuildConvertedEdit(&event.MessageEventContent{
-			MsgType:       event.MsgText,
+		PreBuilt: streamtransport.BuildRenderedConvertedEdit(streamtransport.RenderedMarkdownContent{
 			Body:          rendered.Body,
 			Format:        rendered.Format,
 			FormattedBody: rendered.FormattedBody,

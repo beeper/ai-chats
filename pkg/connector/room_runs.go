@@ -147,7 +147,7 @@ func (oc *AIClient) roomRunStatusEvents(roomID id.RoomID) []*event.Event {
 		return nil
 	}
 	run.mu.Lock()
-	events := append([]*event.Event(nil), run.statusEvents...)
+	events := slices.Clone(run.statusEvents)
 	run.mu.Unlock()
 	return events
 }

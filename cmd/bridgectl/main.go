@@ -1071,7 +1071,7 @@ func setPath(root map[string]any, parts []string, value any) {
 		return
 	}
 	cur := root
-	for i := 0; i < len(parts)-1; i++ {
+	for i := range len(parts) - 1 {
 		key := parts[i]
 		next, ok := cur[key]
 		if !ok {
