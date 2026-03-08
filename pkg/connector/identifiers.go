@@ -27,30 +27,8 @@ func nthLoginID(providerSlug string, mxid id.UserID, ordinal int) networkid.User
 	return networkid.UserLoginID(fmt.Sprintf("%s:%d", base, ordinal))
 }
 
-func nextLoginID(user *bridgev2.User, providerSlug string, mxid id.UserID) networkid.UserLoginID {
-	used := map[string]struct{}{}
-	if user != nil {
-		for _, existing := range user.GetUserLogins() {
-			if existing == nil {
-				continue
-			}
-			used[string(existing.ID)] = struct{}{}
-		}
-	}
-	for ordinal := 1; ; ordinal++ {
-		loginID := nthLoginID(providerSlug, mxid, ordinal)
-		if _, ok := used[string(loginID)]; !ok {
-			return loginID
-		}
-	}
-}
-
 func providerLoginID(provider string, mxid id.UserID, ordinal int) networkid.UserLoginID {
 	return nthLoginID(providerSlug(provider), mxid, ordinal)
-}
-
-func nextProviderLoginID(user *bridgev2.User, provider string, mxid id.UserID) networkid.UserLoginID {
-	return nextLoginID(user, providerSlug(provider), mxid)
 }
 
 func managedBeeperLoginID(mxid id.UserID) networkid.UserLoginID {
