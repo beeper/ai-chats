@@ -735,6 +735,7 @@ func (oc *AIClient) dispatchOrQueueCore(
 		oc.sendQueueRejectedStatus(ctx, portal, evt, queueItem.pending.StatusEvents, "Couldn't queue the message. Try again.")
 		return false
 	}
+	oc.sendQueueAcceptedSuccess(ctx, portal, evt, queueItem.pending.StatusEvents)
 	if hasDBMessage && !messageSaved {
 		oc.saveUserMessage(ctx, evt, userMessage)
 	}

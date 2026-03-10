@@ -214,9 +214,6 @@ func (oc *AIClient) dispatchQueuedPrompt(
 	}
 	oc.log.Debug().Stringer("room_id", roomID).Str("message_id", item.messageID).Int("prompt_len", len(promptContext.Messages)).Msg("Dispatching queued prompt")
 	runCtx := oc.attachRoomRun(ctx, roomID)
-	if item.pending.Event != nil {
-		oc.sendQueueAcceptedSuccess(ctx, item.pending.Portal, item.pending.Event, item.pending.StatusEvents)
-	}
 	runCtx = context.WithValue(runCtx, queueAcceptedStatusKey{}, true)
 	if item.pending.InboundContext != nil {
 		runCtx = withInboundContext(runCtx, *item.pending.InboundContext)
