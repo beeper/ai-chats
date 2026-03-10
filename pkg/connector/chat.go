@@ -507,11 +507,6 @@ func modelJoinMember(loginID networkid.UserLoginID, modelID, modelName string, i
 	}
 }
 
-// createAgentChat creates a new chat room for an agent
-func (oc *AIClient) createAgentChat(ctx context.Context, agent *agents.AgentDefinition) (*bridgev2.CreateChatResponse, error) {
-	return oc.createAgentChatWithModel(ctx, agent, "", false)
-}
-
 func (oc *AIClient) createAgentChatWithModel(ctx context.Context, agent *agents.AgentDefinition, modelID string, applyModelOverride bool) (*bridgev2.CreateChatResponse, error) {
 	if modelID == "" {
 		modelID = oc.agentDefaultModel(agent)
@@ -727,11 +722,11 @@ func (oc *AIClient) resolveNewChatTarget(
 	if len(args) >= 2 {
 		cmd := strings.ToLower(args[0])
 		if cmd != "agent" {
-			return nil, "", fmt.Errorf(usage)
+			return nil, "", errors.New(usage)
 		}
 		targetID := args[1]
 		if targetID == "" || len(args) > 2 {
-			return nil, "", fmt.Errorf(usage)
+			return nil, "", errors.New(usage)
 		}
 		store := NewAgentStoreAdapter(oc)
 		agent, err := store.GetAgentByID(ctx, targetID)
@@ -744,7 +739,7 @@ func (oc *AIClient) resolveNewChatTarget(
 		}
 		return agent, modelID, nil
 	} else if len(args) == 1 {
-		return nil, "", fmt.Errorf(usage)
+		return nil, "", errors.New(usage)
 	}
 
 	if meta == nil {

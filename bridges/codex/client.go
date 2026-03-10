@@ -69,6 +69,7 @@ type codexPendingMessage struct {
 type codexPendingQueue []*codexPendingMessage
 
 type CodexClient struct {
+	bridgeadapter.BaseReactionHandler
 	UserLogin *bridgev2.UserLogin
 	connector *CodexConnector
 	log       zerolog.Logger
@@ -133,6 +134,7 @@ func newCodexClient(login *bridgev2.UserLogin, connector *CodexConnector) (*Code
 		activeRooms:     make(map[id.RoomID]bool),
 		pendingMessages: make(map[id.RoomID]codexPendingQueue),
 	}
+	cc.BaseReactionHandler.Target = cc
 	cc.approvalPrompts = bridgeadapter.NewApprovalPromptManager(bridgeadapter.ApprovalPromptManagerConfig{
 		Login:             func() *bridgev2.UserLogin { return cc.UserLogin },
 		Sender:            func(_ *bridgev2.Portal) bridgev2.EventSender { return cc.senderForPortal() },
@@ -241,6 +243,12 @@ func (cc *CodexClient) Disconnect() {
 
 func (cc *CodexClient) IsLoggedIn() bool {
 	return cc.loggedIn.Load()
+}
+
+func (cc *CodexClient) GetUserLogin() *bridgev2.UserLogin { return cc.UserLogin }
+
+func (cc *CodexClient) GetApprovalPrompts() *bridgeadapter.ApprovalPromptManager {
+	return cc.approvalPrompts
 }
 
 func (cc *CodexClient) LogoutRemote(ctx context.Context) {

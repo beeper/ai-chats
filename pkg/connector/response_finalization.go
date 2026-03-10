@@ -2,7 +2,6 @@ package connector
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"time"
 
@@ -20,46 +19,6 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/citations"
 	"github.com/beeper/agentremote/pkg/shared/streamtransport"
 )
-
-const maxSafeEditPayloadBytes = 54 * 1024
-
-func estimateFinalEditEventSizeBytes(rendered event.MessageEventContent, topLevelExtra map[string]any, fullFallback bool) int {
-	topBody := "* AI response"
-	topFormat := event.Format("")
-	topFormatted := ""
-	if fullFallback {
-		topBody = "* " + rendered.Body
-		if rendered.Format != "" && rendered.FormattedBody != "" {
-			topFormat = rendered.Format
-			topFormatted = "* " + rendered.FormattedBody
-		}
-	}
-
-	raw := map[string]any{
-		"msgtype": event.MsgText,
-		"body":    topBody,
-		"m.new_content": map[string]any{
-			"msgtype":        event.MsgText,
-			"body":           rendered.Body,
-			"format":         rendered.Format,
-			"formatted_body": rendered.FormattedBody,
-			"m.mentions":     map[string]any{},
-		},
-		"m.mentions": map[string]any{},
-	}
-	if topFormat != "" {
-		raw["format"] = topFormat
-		raw["formatted_body"] = topFormatted
-	}
-	for key, value := range topLevelExtra {
-		raw[key] = value
-	}
-	encoded, err := json.Marshal(raw)
-	if err != nil {
-		return 0
-	}
-	return len(encoded)
-}
 
 // sendContinuationMessage sends overflow text as a new (non-edit) message from the bot.
 func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev2.Portal, body string) {

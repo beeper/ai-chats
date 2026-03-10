@@ -68,6 +68,7 @@ type openClawCapabilityProfile struct {
 }
 
 type OpenClawClient struct {
+	bridgeadapter.BaseReactionHandler
 	UserLogin *bridgev2.UserLogin
 	connector *OpenClawConnector
 
@@ -143,6 +144,7 @@ func newOpenClawClient(login *bridgev2.UserLogin, connector *OpenClawConnector) 
 		toolCatalog:          make(map[string]gatewayToolsCatalogResponse),
 		toolCatalogFetchedAt: make(map[string]time.Time),
 	}
+	client.BaseReactionHandler.Target = client
 	client.approvalPrompts = bridgeadapter.NewApprovalPromptManager(bridgeadapter.ApprovalPromptManagerConfig{
 		Login:    func() *bridgev2.UserLogin { return client.UserLogin },
 		Sender:   func(_ *bridgev2.Portal) bridgev2.EventSender { return client.senderForAgent("gateway", false) },
@@ -267,6 +269,12 @@ func (oc *OpenClawClient) connectLoop(ctx context.Context) {
 }
 
 func (oc *OpenClawClient) IsLoggedIn() bool { return oc.loggedIn.Load() }
+
+func (oc *OpenClawClient) GetUserLogin() *bridgev2.UserLogin { return oc.UserLogin }
+
+func (oc *OpenClawClient) GetApprovalPrompts() *bridgeadapter.ApprovalPromptManager {
+	return oc.approvalPrompts
+}
 
 func (oc *OpenClawClient) LogoutRemote(_ context.Context) {}
 

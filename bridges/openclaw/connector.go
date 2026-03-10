@@ -10,7 +10,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote/pkg/bridgeadapter"
 )
@@ -21,6 +20,7 @@ var (
 )
 
 type OpenClawConnector struct {
+	bridgeadapter.BaseConnectorMethods
 	br     *bridgev2.Bridge
 	Config Config
 
@@ -29,7 +29,9 @@ type OpenClawConnector struct {
 }
 
 func NewConnector() *OpenClawConnector {
-	return &OpenClawConnector{}
+	return &OpenClawConnector{
+		BaseConnectorMethods: bridgeadapter.BaseConnectorMethods{ProtocolID: "ai-openclaw"},
+	}
 }
 
 func (oc *OpenClawConnector) Init(bridge *bridgev2.Bridge) {
@@ -58,16 +60,6 @@ func (oc *OpenClawConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilit
 	return caps
 }
 
-func (oc *OpenClawConnector) GetBridgeInfoVersion() (info, capabilities int) {
-	return bridgeadapter.DefaultBridgeInfoVersion()
-}
-
-func (oc *OpenClawConnector) FillPortalBridgeInfo(portal *bridgev2.Portal, content *event.BridgeEventContent) {
-	if portal == nil {
-		return
-	}
-	bridgeadapter.ApplyAIBridgeInfo(content, "ai-openclaw", portal.RoomType, bridgeadapter.AIRoomKindAgent)
-}
 
 func (oc *OpenClawConnector) GetName() bridgev2.BridgeName {
 	return bridgev2.BridgeName{

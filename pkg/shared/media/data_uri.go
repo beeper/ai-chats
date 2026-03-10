@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -31,6 +32,36 @@ func ParseDataURI(dataURI string) (string, string, error) {
 	}
 
 	return data, mimeType, nil
+}
+
+// DecodeDataURI decodes a data URI (both base64 and percent-encoded) and returns
+// the decoded bytes plus the mime type extracted from the URI header.
+// It returns an empty mime type string if no media type is specified in the URI.
+func DecodeDataURI(raw string) ([]byte, string, error) {
+	rest, ok := strings.CutPrefix(raw, "data:")
+	if !ok {
+		return nil, "", errors.New("not a data URI")
+	}
+	meta, payload, ok := strings.Cut(rest, ",")
+	if !ok {
+		return nil, "", errors.New("invalid data URI: no comma separator")
+	}
+	mimeType := ""
+	if meta != "" {
+		mimeType = strings.TrimSpace(strings.Split(meta, ";")[0])
+	}
+	if strings.Contains(meta, ";base64") {
+		decoded, err := base64.StdEncoding.DecodeString(payload)
+		if err != nil {
+			return nil, "", fmt.Errorf("base64 decode failed: %w", err)
+		}
+		return decoded, mimeType, nil
+	}
+	decoded, err := url.PathUnescape(payload)
+	if err != nil {
+		return nil, "", fmt.Errorf("percent-decode failed: %w", err)
+	}
+	return []byte(decoded), mimeType, nil
 }
 
 // DecodeBase64 decodes raw/base64 data or data URIs and returns bytes plus mime type.

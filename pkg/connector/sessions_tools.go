@@ -407,9 +407,9 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 					return toolsErrorResult(resolveErr)
 				}
 				desktopInstance = resolvedInstance
-				chatID, desktopKey, desktopErr = oc.resolveDesktopSessionByLabel(ctx, resolvedInstance, label)
+				chatID, desktopKey, desktopErr = oc.resolveDesktopSessionByLabelWithOptions(ctx, resolvedInstance, label, desktopLabelResolveOptions{})
 			} else {
-				desktopInstance, chatID, desktopKey, desktopErr = oc.resolveDesktopSessionByLabelAnyInstance(ctx, label)
+				desktopInstance, chatID, desktopKey, desktopErr = oc.resolveDesktopSessionByLabelAnyInstanceWithOptions(ctx, label, desktopLabelResolveOptions{})
 			}
 			if desktopErr != nil {
 				return toolsErrorResult(desktopErr)

@@ -29,6 +29,7 @@ var _ bridgev2.ContactListingNetworkAPI = (*OpenCodeClient)(nil)
 var _ bridgev2.ReactionHandlingNetworkAPI = (*OpenCodeClient)(nil)
 
 type OpenCodeClient struct {
+	bridgeadapter.BaseReactionHandler
 	UserLogin *bridgev2.UserLogin
 	connector *OpenCodeConnector
 	bridge    *opencodebridge.Bridge
@@ -84,6 +85,7 @@ func newOpenCodeClient(login *bridgev2.UserLogin, connector *OpenCodeConnector) 
 		streamSessions: make(map[string]*streamtransport.StreamSession),
 		streamStates:   make(map[string]*openCodeStreamState),
 	}
+	client.BaseReactionHandler.Target = client
 	client.bridge = opencodebridge.NewBridge(client)
 	return client, nil
 }
@@ -125,6 +127,15 @@ func (oc *OpenCodeClient) Disconnect() {
 
 func (oc *OpenCodeClient) IsLoggedIn() bool {
 	return oc.loggedIn.Load()
+}
+
+func (oc *OpenCodeClient) GetUserLogin() *bridgev2.UserLogin { return oc.UserLogin }
+
+func (oc *OpenCodeClient) GetApprovalPrompts() *bridgeadapter.ApprovalPromptManager {
+	if oc.bridge == nil {
+		return nil
+	}
+	return oc.bridge.ApprovalPrompts()
 }
 
 func (oc *OpenCodeClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {

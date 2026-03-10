@@ -10,6 +10,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
+
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
 )
 
 // Host provides the minimal surface area the OpenCode bridge needs
@@ -113,6 +115,14 @@ func (b *Bridge) HandleApprovalPromptReaction(ctx context.Context, msg *bridgev2
 		return false
 	}
 	return b.manager.handleApprovalPromptReaction(ctx, msg, targetEventID, emoji)
+}
+
+// ApprovalPrompts returns the manager's ApprovalPromptManager, or nil if unavailable.
+func (b *Bridge) ApprovalPrompts() *bridgeadapter.ApprovalPromptManager {
+	if b == nil || b.manager == nil {
+		return nil
+	}
+	return b.manager.approvalPrompts
 }
 
 func (b *Bridge) RestoreConnections(ctx context.Context) error {

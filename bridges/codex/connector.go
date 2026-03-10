@@ -15,7 +15,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote/bridges/codex/codexrpc"
 	"github.com/beeper/agentremote/pkg/aidb"
@@ -29,6 +28,7 @@ var (
 
 // CodexConnector runs the dedicated Codex bridge surface.
 type CodexConnector struct {
+	bridgeadapter.BaseConnectorMethods
 	br     *bridgev2.Bridge
 	Config Config
 	db     *dbutil.Database
@@ -263,20 +263,6 @@ func (cc *CodexConnector) applyRuntimeDefaults() {
 	}
 }
 
-func (cc *CodexConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
-	return bridgeadapter.DefaultNetworkCapabilities()
-}
-
-func (cc *CodexConnector) GetBridgeInfoVersion() (info, capabilities int) {
-	return bridgeadapter.DefaultBridgeInfoVersion()
-}
-
-func (cc *CodexConnector) FillPortalBridgeInfo(portal *bridgev2.Portal, content *event.BridgeEventContent) {
-	if portal == nil {
-		return
-	}
-	bridgeadapter.ApplyAIBridgeInfo(content, "ai-codex", portal.RoomType, bridgeadapter.AIRoomKindAgent)
-}
 
 func (cc *CodexConnector) GetName() bridgev2.BridgeName {
 	return bridgev2.BridgeName{

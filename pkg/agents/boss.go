@@ -21,12 +21,6 @@ var BossAgent = &AgentDefinition{
 	PromptMode:   PromptModeFull,
 	IsPreset:     true,
 }
-
-// GetBossAgent returns a copy of the Boss agent definition.
-func GetBossAgent() *AgentDefinition {
-	return BossAgent.Clone()
-}
-
 // IsBossAgent checks if an agent ID is the Boss agent.
 func IsBossAgent(agentID string) bool {
 	return agentID == BossAgent.ID

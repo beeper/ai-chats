@@ -2,7 +2,6 @@ package bridgeadapter
 
 import (
 	"context"
-	"errors"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -62,12 +61,4 @@ func RedactApprovalPromptReactions(
 		}
 	}
 	return firstErr
-}
-
-func IsApprovalDecisionTerminalError(err error) bool {
-	return errors.Is(err, ErrApprovalAlreadyHandled) ||
-		errors.Is(err, ErrApprovalExpired) ||
-		errors.Is(err, ErrApprovalUnknown) ||
-		errors.Is(err, ErrApprovalWrongRoom) ||
-		errors.Is(err, ErrApprovalOnlyOwner)
 }

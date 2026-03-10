@@ -80,26 +80,6 @@ func FormatProxyError(proxyErr *ProxyError) string {
 	}
 }
 
-// FallbackReasoningLevel returns a lower reasoning level to try when the current one fails.
-// Returns empty string if there's no fallback available (already at "none" or unknown level).
-func FallbackReasoningLevel(current string) string {
-	// Reasoning level hierarchy: xhigh -> high -> medium -> low -> none
-	switch current {
-	case "xhigh":
-		return "high"
-	case "high":
-		return "medium"
-	case "medium":
-		return "low"
-	case "low":
-		return "none"
-	case "none", "":
-		return "" // No fallback available
-	default:
-		return "medium" // Unknown level, try medium
-	}
-}
-
 // containsAnyPattern checks if the lowercased error message contains any of the given patterns.
 func containsAnyPattern(err error, patterns []string) bool {
 	if err == nil {

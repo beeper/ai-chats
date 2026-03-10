@@ -295,7 +295,11 @@ func decodeOpenClawDataOrBase64(raw, fallbackMime string) ([]byte, string, error
 		return nil, "", errors.New("missing attachment data")
 	}
 	if strings.HasPrefix(raw, "data:") {
-		return decodeOpenClawDataURL(raw)
+		data, mimeType, err := media.DecodeDataURI(raw)
+		if err != nil {
+			return nil, "", err
+		}
+		return data, stringutil.NormalizeMimeType(mimeType), nil
 	}
 	decoded, err := base64.StdEncoding.DecodeString(raw)
 	if err != nil {
@@ -352,34 +356,6 @@ func downloadOpenClawAttachmentURL(ctx context.Context, rawURL, fallbackMime str
 		mimeType = http.DetectContentType(data)
 	}
 	return data, mimeType, nil
-}
-
-func decodeOpenClawDataURL(raw string) ([]byte, string, error) {
-	if !strings.HasPrefix(raw, "data:") {
-		return nil, "", errors.New("not a data URL")
-	}
-	comma := strings.IndexByte(raw, ',')
-	if comma < 0 {
-		return nil, "", errors.New("invalid data URL")
-	}
-	meta := raw[len("data:"):comma]
-	payload := raw[comma+1:]
-	mimeType := ""
-	if meta != "" {
-		mimeType = strings.TrimSpace(strings.Split(meta, ";")[0])
-	}
-	if strings.Contains(meta, ";base64") {
-		decoded, err := base64.StdEncoding.DecodeString(payload)
-		if err != nil {
-			return nil, "", err
-		}
-		return decoded, stringutil.NormalizeMimeType(mimeType), nil
-	}
-	decoded, err := url.PathUnescape(payload)
-	if err != nil {
-		return nil, "", err
-	}
-	return []byte(decoded), stringutil.NormalizeMimeType(mimeType), nil
 }
 
 func messageTypeForMIME(mimeType string) event.MessageType {

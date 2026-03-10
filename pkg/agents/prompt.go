@@ -77,16 +77,6 @@ type ElevatedInfo struct {
 	DefaultLevel string // "on" | "off" | "ask" | "full"
 }
 
-// SubagentPromptParams contains inputs for building a subagent system prompt.
-// Matches OpenClaw's buildSubagentSystemPrompt from subagent-announce.ts.
-type SubagentPromptParams struct {
-	RequesterSessionKey string // Session key of the agent that spawned this subagent
-	RequesterChannel    string // Channel the requester is on (e.g., "matrix", "signal")
-	ChildSessionKey     string // Session key of this subagent
-	Label               string // Optional label for the task
-	Task                string // Description of the task to complete
-}
-
 // SilentReplyToken is the expected response when the agent has nothing to say.
 const SilentReplyToken = "NO_REPLY"
 

@@ -813,7 +813,7 @@ func (oc *AIClient) handleMediaMessage(
 
 		// If model lacks audio but agent supports audio understanding, analyze audio first.
 		if msgType == event.MsgAudio {
-			audioModel, audioFallback := oc.resolveAudioModelForInput(ctx, meta)
+			audioModel, audioFallback := oc.resolveModelForCapability(ctx, meta, func(caps ModelCapabilities) bool { return caps.SupportsAudio }, oc.resolveAudioUnderstandingModel)
 			if resp, err := oc.dispatchMediaUnderstandingFallback(
 				ctx,
 				audioModel,

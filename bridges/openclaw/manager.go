@@ -403,6 +403,20 @@ func parseOpenClawControlCommand(body string, msgType event.MessageType, evtType
 	}
 }
 
+func (m *openClawManager) applySessionPatch(ctx context.Context, portal *bridgev2.Portal, gateway *gatewayWSClient, sessionKey, apiKey, displayName string, command *openClawControlCommand) error {
+	value := any(nil)
+	notice := "OpenClaw " + displayName + " cleared."
+	if !command.Clear {
+		value = command.Value
+		notice = "OpenClaw " + displayName + " set to " + command.Value + "."
+	}
+	if err := gateway.PatchSession(ctx, sessionKey, map[string]any{apiKey: value}); err != nil {
+		return err
+	}
+	m.client.sendSystemNoticeViaPortal(ctx, portal, notice)
+	return nil
+}
+
 func (m *openClawManager) handleControlCommand(ctx context.Context, msg *bridgev2.MatrixMessage, gateway *gatewayWSClient, body string) (bool, error) {
 	if msg == nil || msg.Portal == nil || gateway == nil {
 		return false, nil
@@ -424,49 +438,21 @@ func (m *openClawManager) handleControlCommand(ctx context.Context, msg *bridgev
 		}
 		m.client.sendSystemNoticeViaPortal(ctx, msg.Portal, "OpenClaw session reset.")
 	case "label":
-		value := any(nil)
-		notice := "OpenClaw session label cleared."
-		if !command.Clear {
-			value = command.Value
-			notice = "OpenClaw session label set to " + command.Value + "."
-		}
-		if err := gateway.PatchSession(ctx, sessionKey, map[string]any{"label": value}); err != nil {
+		if err := m.applySessionPatch(ctx, msg.Portal, gateway, sessionKey, "label", "label", command); err != nil {
 			return true, err
 		}
-		m.client.sendSystemNoticeViaPortal(ctx, msg.Portal, notice)
 	case "thinking":
-		value := any(nil)
-		notice := "OpenClaw thinking level cleared."
-		if !command.Clear {
-			value = command.Value
-			notice = "OpenClaw thinking level set to " + command.Value + "."
-		}
-		if err := gateway.PatchSession(ctx, sessionKey, map[string]any{"thinkingLevel": value}); err != nil {
+		if err := m.applySessionPatch(ctx, msg.Portal, gateway, sessionKey, "thinkingLevel", "thinking level", command); err != nil {
 			return true, err
 		}
-		m.client.sendSystemNoticeViaPortal(ctx, msg.Portal, notice)
 	case "verbose":
-		value := any(nil)
-		notice := "OpenClaw verbose level cleared."
-		if !command.Clear {
-			value = command.Value
-			notice = "OpenClaw verbose level set to " + command.Value + "."
-		}
-		if err := gateway.PatchSession(ctx, sessionKey, map[string]any{"verboseLevel": value}); err != nil {
+		if err := m.applySessionPatch(ctx, msg.Portal, gateway, sessionKey, "verboseLevel", "verbose level", command); err != nil {
 			return true, err
 		}
-		m.client.sendSystemNoticeViaPortal(ctx, msg.Portal, notice)
 	case "reasoning":
-		value := any(nil)
-		notice := "OpenClaw reasoning level cleared."
-		if !command.Clear {
-			value = command.Value
-			notice = "OpenClaw reasoning level set to " + command.Value + "."
-		}
-		if err := gateway.PatchSession(ctx, sessionKey, map[string]any{"reasoningLevel": value}); err != nil {
+		if err := m.applySessionPatch(ctx, msg.Portal, gateway, sessionKey, "reasoningLevel", "reasoning level", command); err != nil {
 			return true, err
 		}
-		m.client.sendSystemNoticeViaPortal(ctx, msg.Portal, notice)
 	default:
 		return false, nil
 	}

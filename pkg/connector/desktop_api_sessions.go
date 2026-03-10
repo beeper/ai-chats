@@ -594,10 +594,6 @@ func topDesktopChatLabels(chats []beeperdesktopapi.Chat, accounts map[string]bee
 	return labels
 }
 
-func (oc *AIClient) resolveDesktopSessionByLabel(ctx context.Context, instance, label string) (string, string, error) {
-	return oc.resolveDesktopSessionByLabelWithOptions(ctx, instance, label, desktopLabelResolveOptions{})
-}
-
 func (oc *AIClient) resolveDesktopSessionByLabelAnyInstanceWithOptions(ctx context.Context, label string, opts desktopLabelResolveOptions) (string, string, string, error) {
 	instances := oc.desktopAPIInstanceNames()
 	if len(instances) == 0 {
@@ -638,10 +634,6 @@ func (oc *AIClient) resolveDesktopSessionByLabelAnyInstanceWithOptions(ctx conte
 		return "", "", "", lastErr
 	}
 	return "", "", "", fmt.Errorf("no session found for label '%s'", strings.TrimSpace(label))
-}
-
-func (oc *AIClient) resolveDesktopSessionByLabelAnyInstance(ctx context.Context, label string) (string, string, string, error) {
-	return oc.resolveDesktopSessionByLabelAnyInstanceWithOptions(ctx, label, desktopLabelResolveOptions{})
 }
 
 func (oc *AIClient) sendDesktopMessage(ctx context.Context, instance, chatID string, req desktopSendMessageRequest) (string, error) {
