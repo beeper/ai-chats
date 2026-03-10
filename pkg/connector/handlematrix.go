@@ -110,10 +110,6 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 
-	if handled, resp := oc.tryApprovalDecisionEvent(ctx, msg, portal); handled {
-		return resp, nil
-	}
-
 	rawBody := strings.TrimSpace(msg.Content.Body)
 	if msg.Content.MsgType == event.MsgLocation && strings.TrimSpace(msg.Content.GeoURI) != "" {
 		rawMap := msg.Event.Content.Raw

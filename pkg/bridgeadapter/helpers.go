@@ -192,6 +192,30 @@ func SendViaPortal(p SendViaPortalParams) (id.EventID, networkid.MessageID, erro
 	return result.EventID, p.MsgID, nil
 }
 
+// RedactEventAsSender redacts an event ID in a room using the intent resolved for sender.
+func RedactEventAsSender(
+	ctx context.Context,
+	login *bridgev2.UserLogin,
+	portal *bridgev2.Portal,
+	sender bridgev2.EventSender,
+	targetEventID id.EventID,
+) error {
+	if login == nil || portal == nil || portal.MXID == "" || targetEventID == "" {
+		return fmt.Errorf("invalid redaction target")
+	}
+	intent, ok := portal.GetIntentFor(ctx, sender, login, bridgev2.RemoteEventMessageRemove)
+	if !ok || intent == nil {
+		return fmt.Errorf("intent resolution failed")
+	}
+	_, err := intent.SendMessage(ctx, portal.MXID, event.EventRedaction, &event.Content{
+		Parsed: &event.RedactionEventContent{Redacts: targetEventID},
+	}, nil)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func BuildChatInfoWithFallback(metaTitle, portalName, fallbackTitle, portalTopic string) *bridgev2.ChatInfo {
 	title := metaTitle
 	if title == "" {

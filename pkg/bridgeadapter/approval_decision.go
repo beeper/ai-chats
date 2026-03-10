@@ -22,6 +22,11 @@ func ParseApprovalDecisionEvent(evt *event.Event) (map[string]any, bool) {
 	if !ok {
 		return nil, false
 	}
+	// Request prompts also use com.beeper.ai.approval_decision metadata.
+	// Treat only payloads with an explicit boolean decision as decision events.
+	if _, hasApproved := raw["approved"].(bool); !hasApproved {
+		return nil, false
+	}
 	return raw, true
 }
 

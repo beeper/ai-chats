@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"mime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -566,7 +567,11 @@ func normalizeHistoryLimit(count int) int {
 }
 
 func (m *openClawManager) convertHistoryMessage(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, message map[string]any) (*bridgev2.ConvertedMessage, bridgev2.EventSender, networkid.MessageID) {
-	role := strings.ToLower(strings.TrimSpace(stringValue(message["role"])))
+	message = normalizeOpenClawLiveMessage(0, message)
+	if len(message) == 0 {
+		return nil, bridgev2.EventSender{}, ""
+	}
+	role := openClawMessageRole(message)
 	text := extractMessageText(message)
 	attachmentBlocks := extractAttachmentMetadata(message)
 	if role == "toolresult" && strings.TrimSpace(text) == "" {
@@ -705,11 +710,14 @@ func buildOpenClawHistoryMessageMetadata(message map[string]any, meta *PortalMet
 
 func historyFingerprintMessageID(sessionKey, role string, ts time.Time, text string, raw map[string]any) networkid.MessageID {
 	hashSource := map[string]any{
-		"sessionKey":  sessionKey,
-		"role":        role,
-		"timestamp":   ts.UnixMilli(),
-		"text":        text,
-		"attachments": extractAttachmentMetadata(raw),
+		"sessionKey":   sessionKey,
+		"role":         role,
+		"timestamp":    ts.UnixMilli(),
+		"text":         text,
+		"attachments":  extractAttachmentMetadata(raw),
+		"turnId":       historyMessageTurnID(raw),
+		"messageId":    openClawMessageStringField(raw, "id"),
+		"messageRunId": openClawMessageStringField(raw, "runId", "run_id"),
 	}
 	data, _ := json.Marshal(hashSource)
 	sum := sha256.Sum256(data)
@@ -819,6 +827,39 @@ func normalizeOpenClawLiveMessage(eventTS int64, message map[string]any) map[str
 	for key, value := range message {
 		normalized[key] = value
 	}
+	if nested := jsonutil.ToMap(normalized["message"]); len(nested) > 0 {
+		for _, key := range []string{
+			"role",
+			"text",
+			"content",
+			"timestamp",
+			"turnId",
+			"turn_id",
+			"runId",
+			"run_id",
+			"id",
+			"sessionKey",
+			"session_key",
+			"sessionId",
+			"session_id",
+			"agentId",
+			"agent_id",
+			"agent",
+			"usage",
+			"model",
+			"stopReason",
+			"stop_reason",
+			"error",
+			"errorMessage",
+		} {
+			if _, has := normalized[key]; has {
+				continue
+			}
+			if value, ok := nested[key]; ok {
+				normalized[key] = value
+			}
+		}
+	}
 	if _, ok := normalized["timestamp"]; !ok && eventTS > 0 {
 		normalized["timestamp"] = eventTS
 	}
@@ -826,11 +867,23 @@ func normalizeOpenClawLiveMessage(eventTS int64, message map[string]any) map[str
 }
 
 func isOpenClawDirectChatEvent(state string, message map[string]any) bool {
-	if !strings.EqualFold(strings.TrimSpace(state), "final") || len(message) == 0 {
+	if len(message) == 0 {
 		return false
 	}
-	role := strings.ToLower(strings.TrimSpace(stringValue(message["role"])))
-	return role != "" && role != "assistant"
+	role := openClawMessageRole(message)
+	if role == "" || role == "assistant" {
+		return false
+	}
+	normalizedState := strings.ToLower(strings.TrimSpace(state))
+	if normalizedState == "" {
+		return role == "user"
+	}
+	switch normalizedState {
+	case "final", "done", "complete", "completed":
+		return true
+	default:
+		return role == "user"
+	}
 }
 
 func openClawApprovalDecisionStatus(decision string) (bool, string) {
@@ -918,7 +971,30 @@ func (m *openClawManager) handleApprovalRequest(ctx context.Context, payload gat
 		CreatedAtMs: payload.CreatedAtMs,
 		ExpiresAtMs: payload.ExpiresAtMs,
 	})
-	m.client.sendApprovalRequestFallbackEvent(ctx, portal, payload.ID, body)
+	toolName := "exec"
+	toolCallID := strings.TrimSpace(payload.ID)
+	turnID := ""
+	if pending := m.approvals.Get(strings.TrimSpace(payload.ID)); pending != nil {
+		if data, _ := pending.Data.(*openClawPendingApprovalData); data != nil {
+			if strings.TrimSpace(data.ToolCallID) != "" {
+				toolCallID = strings.TrimSpace(data.ToolCallID)
+			}
+			if strings.TrimSpace(data.ToolName) != "" {
+				toolName = strings.TrimSpace(data.ToolName)
+			}
+			turnID = strings.TrimSpace(data.TurnID)
+		}
+	}
+	m.client.sendApprovalRequestFallbackEvent(
+		ctx,
+		portal,
+		payload.ID,
+		toolCallID,
+		toolName,
+		turnID,
+		body,
+		time.UnixMilli(payload.ExpiresAtMs),
+	)
 }
 
 func (m *openClawManager) handleApprovalResolved(ctx context.Context, payload gatewayApprovalResolvedEvent) {
@@ -956,6 +1032,9 @@ func (m *openClawManager) handleApprovalResolved(ctx context.Context, payload ga
 	} else {
 		m.client.sendSystemNoticeViaPortal(ctx, portal, openClawApprovalResolvedText(payload.Decision))
 	}
+	if m.client != nil && m.client.approvalPrompts != nil {
+		m.client.approvalPrompts.Drop(approvalID)
+	}
 	m.approvals.Drop(approvalID)
 }
 
@@ -973,6 +1052,9 @@ func (m *openClawManager) handleChatEvent(ctx context.Context, payload gatewayCh
 	if isOpenClawDirectChatEvent(payload.State, payload.Message) {
 		m.handleDirectChatEvent(ctx, portal, meta, payload, eventTS)
 		return
+	}
+	if openClawIsTerminalChatState(payload.State) {
+		m.emitLatestUserMessageFromHistory(ctx, portal, meta, payload)
 	}
 	agentID := resolveOpenClawAgentID(meta, payload.SessionKey, payload.Message)
 	maybePersistPortalAgentID(ctx, portal, meta, agentID)
@@ -993,7 +1075,7 @@ func (m *openClawManager) handleChatEvent(ctx context.Context, payload gatewayCh
 		}
 		return
 	}
-	if payload.State == "final" || payload.State == "aborted" || payload.State == "error" {
+	if openClawIsTerminalChatState(payload.State) {
 		m.ensureStreamStart(ctx, portal, meta, turnID, payload.RunID, agentID, eventTS, messageMetadata)
 		if usage := normalizeOpenClawUsage(payload.Usage); len(usage) > 0 {
 			reasoningTokens := int64(0)
@@ -1076,6 +1158,45 @@ func (m *openClawManager) handleDirectChatEvent(ctx context.Context, portal *bri
 			meta.OpenClawLastPreviewAt = time.Now().UnixMilli()
 		}
 		_ = portal.Save(ctx)
+	}
+}
+
+func (m *openClawManager) emitLatestUserMessageFromHistory(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, payload gatewayChatEvent) {
+	gateway := m.gatewayClient()
+	if gateway == nil || portal == nil {
+		return
+	}
+	history, err := gateway.RecentHistory(ctx, payload.SessionKey, 8)
+	if err != nil || history == nil || len(history.Messages) == 0 {
+		return
+	}
+	for idx := len(history.Messages) - 1; idx >= 0; idx-- {
+		message := normalizeOpenClawLiveMessage(payload.TS, history.Messages[idx])
+		if openClawMessageRole(message) != "user" {
+			continue
+		}
+		converted, sender, messageID := m.convertHistoryMessage(ctx, portal, meta, message)
+		if converted == nil || messageID == "" {
+			return
+		}
+		eventTS := extractOpenClawEventTimestamp(payload.TS, message)
+		m.client.UserLogin.QueueRemoteEvent(&OpenClawRemoteMessage{
+			portal:    portal.PortalKey,
+			id:        messageID,
+			sender:    sender,
+			timestamp: eventTS,
+			preBuilt:  converted,
+		})
+		if text := strings.TrimSpace(extractMessageText(message)); text != "" {
+			meta.OpenClawPreviewSnippet = text
+			if !eventTS.IsZero() {
+				meta.OpenClawLastPreviewAt = eventTS.UnixMilli()
+			} else {
+				meta.OpenClawLastPreviewAt = time.Now().UnixMilli()
+			}
+			_ = portal.Save(ctx)
+		}
+		return
 	}
 }
 
@@ -1491,15 +1612,61 @@ func extractMessageTimestamp(message map[string]any) time.Time {
 	if ts, ok := message["timestamp"].(int); ok && ts > 0 {
 		return time.UnixMilli(int64(ts))
 	}
+	if ts, ok := message["timestamp"].(string); ok {
+		ts = strings.TrimSpace(ts)
+		if ts != "" {
+			if unixMilli, err := strconv.ParseInt(ts, 10, 64); err == nil && unixMilli > 0 {
+				return time.UnixMilli(unixMilli)
+			}
+			if parsed, err := time.Parse(time.RFC3339Nano, ts); err == nil {
+				return parsed
+			}
+			if parsed, err := time.Parse(time.RFC3339, ts); err == nil {
+				return parsed
+			}
+		}
+	}
 	return openClawMissingMessageTimestamp
+}
+
+func openClawMessageStringField(message map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(stringValue(message[key])); value != "" {
+			return value
+		}
+	}
+	nested := jsonutil.ToMap(message["message"])
+	for _, key := range keys {
+		if value := strings.TrimSpace(stringValue(nested[key])); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func openClawMessageRole(message map[string]any) string {
+	role := strings.ToLower(strings.TrimSpace(openClawMessageStringField(message, "role")))
+	if role == "human" {
+		return "user"
+	}
+	return role
+}
+
+func openClawIsTerminalChatState(state string) bool {
+	switch strings.ToLower(strings.TrimSpace(state)) {
+	case "final", "done", "complete", "completed", "aborted", "error":
+		return true
+	default:
+		return false
+	}
 }
 
 func historyMessageTurnID(message map[string]any) string {
 	return strings.TrimSpace(stringsTrimDefault(
-		stringValue(message["turnId"]),
+		openClawMessageStringField(message, "turnId", "turn_id"),
 		stringsTrimDefault(
-			stringValue(message["turn_id"]),
-			stringsTrimDefault(stringValue(message["runId"]), stringValue(message["run_id"])),
+			openClawMessageStringField(message, "runId", "run_id"),
+			openClawMessageStringField(message, "id"),
 		),
 	))
 }

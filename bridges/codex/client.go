@@ -37,6 +37,7 @@ var _ bridgev2.NetworkAPI = (*CodexClient)(nil)
 var _ bridgev2.DeleteChatHandlingNetworkAPI = (*CodexClient)(nil)
 var _ bridgev2.IdentifierResolvingNetworkAPI = (*CodexClient)(nil)
 var _ bridgev2.ContactListingNetworkAPI = (*CodexClient)(nil)
+var _ bridgev2.ReactionHandlingNetworkAPI = (*CodexClient)(nil)
 
 const codexGhostID = networkid.UserID("codex")
 
@@ -95,7 +96,8 @@ type CodexClient struct {
 	loadedMu      sync.Mutex
 	loadedThreads map[string]bool // threadId -> loaded via thread/start|thread/resume
 
-	approvals *bridgeadapter.ApprovalManager[ToolApprovalDecisionCodex]
+	approvals       *bridgeadapter.ApprovalManager[ToolApprovalDecisionCodex]
+	approvalPrompts *bridgeadapter.ApprovalPromptStore
 
 	scheduleBootstrapOnce func() // starts bootstrap goroutine exactly once
 
@@ -125,6 +127,7 @@ func newCodexClient(login *bridgev2.UserLogin, connector *CodexConnector) (*Code
 		notifCh:         make(chan codexNotif, 4096),
 		notifDone:       make(chan struct{}),
 		approvals:       bridgeadapter.NewApprovalManager[ToolApprovalDecisionCodex](),
+		approvalPrompts: bridgeadapter.NewApprovalPromptStore(),
 		loadedThreads:   make(map[string]bool),
 		activeTurns:     make(map[string]*codexActiveTurn),
 		turnSubs:        make(map[string]chan codexNotif),
@@ -438,10 +441,6 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 	if msg.Content.RelatesTo != nil && msg.Content.RelatesTo.GetReplaceID() != "" {
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
-	if handled, resp := cc.tryApprovalDecisionEvent(ctx, msg); handled {
-		return resp, nil
-	}
-
 	body := strings.TrimSpace(msg.Content.Body)
 	if body == "" {
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
@@ -1716,6 +1715,7 @@ func (cc *CodexClient) sendApprovalRequestFallbackEvent(
 	approvalID string,
 	toolCallID string,
 	toolName string,
+	ttlSeconds int,
 ) {
 	if portal == nil || portal.MXID == "" || state == nil {
 		return
@@ -1729,48 +1729,42 @@ func (cc *CodexClient) sendApprovalRequestFallbackEvent(
 	if toolName == "" {
 		toolName = "tool"
 	}
+	expiresAt := time.Now().Add(10 * time.Minute)
+	if ttlSeconds > 0 {
+		expiresAt = time.Now().Add(time.Duration(ttlSeconds) * time.Second)
+	}
+	prompt := bridgeadapter.BuildApprovalPromptMessage(bridgeadapter.ApprovalPromptMessageParams{
+		ApprovalID:     approvalID,
+		ToolCallID:     toolCallID,
+		ToolName:       toolName,
+		TurnID:         state.turnID,
+		ReplyToEventID: state.initialEventID,
+		ExpiresAt:      expiresAt,
+	})
+	if cc.approvalPrompts != nil {
+		cc.approvalPrompts.Register(bridgeadapter.ApprovalPromptRegistration{
+			ApprovalID: approvalID,
+			RoomID:     portal.MXID,
+			OwnerMXID:  cc.UserLogin.UserMXID,
+			ToolCallID: toolCallID,
+			ToolName:   toolName,
+			TurnID:     state.turnID,
+			ExpiresAt:  expiresAt,
+			Options:    prompt.Options,
+		})
+	}
 
-	uiMessage := map[string]any{
-		"id":   approvalID,
-		"role": "assistant",
-		"metadata": map[string]any{
-			"turn_id":    state.turnID,
-			"approvalId": approvalID,
-		},
-		"parts": []map[string]any{{
-			"type":       "dynamic-tool",
-			"toolName":   toolName,
-			"toolCallId": toolCallID,
-			"state":      "approval-requested",
-			"approval": map[string]any{
-				"id": approvalID,
-			},
-		}},
-	}
-	raw := map[string]any{
-		"msgtype":                event.MsgNotice,
-		"body":                   "Tool approval required",
-		"m.mentions":             map[string]any{},
-		matrixevents.BeeperAIKey: uiMessage,
-	}
-	if state.initialEventID != "" {
-		raw["m.relates_to"] = map[string]any{
-			"m.in_reply_to": map[string]any{
-				"event_id": state.initialEventID.String(),
-			},
-		}
-	}
 	converted := &bridgev2.ConvertedMessage{
 		Parts: []*bridgev2.ConvertedMessagePart{{
 			ID:      networkid.PartID("0"),
 			Type:    event.EventMessage,
-			Content: &event.MessageEventContent{MsgType: event.MsgNotice, Body: "Tool approval required"},
-			Extra:   raw,
+			Content: &event.MessageEventContent{MsgType: event.MsgNotice, Body: prompt.Body},
+			Extra:   prompt.Raw,
 			DBMetadata: &MessageMetadata{
 				BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
 					Role:               "assistant",
 					CanonicalSchema:    "ai-sdk-ui-message-v1",
-					CanonicalUIMessage: uiMessage,
+					CanonicalUIMessage: prompt.UIMessage,
 				},
 				ExcludeFromHistory: true,
 			},
@@ -1779,8 +1773,31 @@ func (cc *CodexClient) sendApprovalRequestFallbackEvent(
 	bg := cc.backgroundContext(ctx)
 	sendCtx, cancel := context.WithTimeout(bg, 10*time.Second)
 	defer cancel()
-	if _, _, err := cc.sendViaPortal(sendCtx, portal, converted, ""); err != nil {
+	eventID, msgID, err := cc.sendViaPortal(sendCtx, portal, converted, "")
+	if err != nil {
 		cc.loggerForContext(ctx).Warn().Err(err).Str("approval_id", approvalID).Msg("Failed to send approval request fallback event")
+		return
+	}
+	if cc.approvalPrompts != nil {
+		cc.approvalPrompts.BindPromptEvent(approvalID, eventID)
+	}
+	seenKeys := map[string]struct{}{}
+	for _, option := range prompt.Options {
+		for _, key := range bridgeadapter.ApprovalOptionPrefillKeys(option) {
+			if _, exists := seenKeys[key]; exists || key == "" {
+				continue
+			}
+			seenKeys[key] = struct{}{}
+			cc.UserLogin.QueueRemoteEvent(&bridgeadapter.RemoteReaction{
+				Portal:        portal.PortalKey,
+				Sender:        cc.senderForPortal(),
+				TargetMessage: msgID,
+				Emoji:         key,
+				EmojiID:       networkid.EmojiID(key),
+				Timestamp:     time.Now(),
+				LogKey:        "codex_reaction_target",
+			})
+		}
 	}
 }
 
@@ -1967,7 +1984,7 @@ func (cc *CodexClient) emitUIToolApprovalRequest(
 	approvalID, toolCallID, toolName string, ttlSeconds int,
 ) {
 	cc.uiEmitter(state).EmitUIToolApprovalRequest(ctx, portal, approvalID, toolCallID, toolName, ttlSeconds)
-	cc.sendApprovalRequestFallbackEvent(ctx, portal, state, approvalID, toolCallID, toolName)
+	cc.sendApprovalRequestFallbackEvent(ctx, portal, state, approvalID, toolCallID, toolName, ttlSeconds)
 }
 
 func (cc *CodexClient) emitUIFinish(ctx context.Context, portal *bridgev2.Portal, state *streamingState, model string, finishReason string) {
@@ -2183,10 +2200,19 @@ func (cc *CodexClient) resolveToolApproval(roomID id.RoomID, approvalID string, 
 	if d != nil && d.RoomID != "" && d.RoomID != roomID {
 		return bridgeadapter.ErrApprovalWrongRoom
 	}
-	return cc.approvals.Resolve(approvalID, decision)
+	if err := cc.approvals.Resolve(approvalID, decision); err != nil {
+		return err
+	}
+	if cc.approvalPrompts != nil {
+		cc.approvalPrompts.Drop(approvalID)
+	}
+	return nil
 }
 
 func (cc *CodexClient) waitToolApproval(ctx context.Context, approvalID string) (ToolApprovalDecisionCodex, bool) {
+	if cc != nil && cc.approvalPrompts != nil {
+		defer cc.approvalPrompts.Drop(strings.TrimSpace(approvalID))
+	}
 	return cc.approvals.Wait(ctx, approvalID)
 }
 
@@ -2242,33 +2268,6 @@ func (cc *CodexClient) handleApprovalRequest(
 		return map[string]any{"decision": "accept"}, nil
 	}
 	return map[string]any{"decision": "decline"}, nil
-}
-
-func (cc *CodexClient) tryApprovalDecisionEvent(ctx context.Context, msg *bridgev2.MatrixMessage) (bool, *bridgev2.MatrixMessageResponse) {
-	raw, ok := bridgeadapter.ParseApprovalDecisionEvent(msg.Event)
-	if !ok {
-		return false, nil
-	}
-	decision, ok := bridgeadapter.ParseApprovalDecision(raw)
-	if !ok {
-		cc.loggerForContext(ctx).Warn().
-			Str("sender", msg.Event.Sender.String()).
-			Msg("codex approval decision missing required fields")
-		return true, &bridgev2.MatrixMessageResponse{Pending: false}
-	}
-	err := cc.resolveToolApproval(msg.Portal.MXID, decision.ApprovalID, ToolApprovalDecisionCodex{
-		Approve:   decision.Approved,
-		Reason:    decision.Reason,
-		DecidedAt: time.Now(),
-		DecidedBy: msg.Event.Sender,
-	})
-	if err != nil {
-		cc.loggerForContext(ctx).Warn().Err(err).
-			Str("approval_id", decision.ApprovalID).
-			Msg("codex approval decision: failed to resolve")
-		cc.sendSystemNotice(ctx, msg.Portal, bridgeadapter.ApprovalErrorToastText(err))
-	}
-	return true, &bridgev2.MatrixMessageResponse{Pending: false}
 }
 
 func (cc *CodexClient) handleCommandApprovalRequest(ctx context.Context, req codexrpc.Request) (any, *codexrpc.RPCError) {

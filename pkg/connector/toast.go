@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -27,6 +28,7 @@ func (oc *AIClient) sendApprovalRequestFallbackEvent(
 	toolCallID string,
 	toolName string,
 	replyToEventID id.EventID,
+	ttlSeconds int,
 ) {
 	if oc == nil || portal == nil || portal.MXID == "" {
 		return
@@ -44,14 +46,69 @@ func (oc *AIClient) sendApprovalRequestFallbackEvent(
 	if state != nil {
 		turnID = state.turnID
 	}
-	uiMessage := buildApprovalSnapshotUIMessage(approvalID, toolCallID, toolName, turnID, "approval-requested", "")
+	expiresAt := time.Now().Add(10 * time.Minute)
+	if ttlSeconds > 0 {
+		expiresAt = time.Now().Add(time.Duration(ttlSeconds) * time.Second)
+	}
+	prompt := bridgeadapter.BuildApprovalPromptMessage(bridgeadapter.ApprovalPromptMessageParams{
+		ApprovalID:     approvalID,
+		ToolCallID:     toolCallID,
+		ToolName:       toolName,
+		TurnID:         turnID,
+		ReplyToEventID: replyToEventID,
+		ExpiresAt:      expiresAt,
+	})
+	uiMessage := prompt.UIMessage
+	if oc.approvalPrompts != nil {
+		oc.approvalPrompts.Register(bridgeadapter.ApprovalPromptRegistration{
+			ApprovalID: approvalID,
+			RoomID:     portal.MXID,
+			OwnerMXID:  oc.UserLogin.UserMXID,
+			ToolCallID: toolCallID,
+			ToolName:   toolName,
+			TurnID:     turnID,
+			ExpiresAt:  expiresAt,
+			Options:    prompt.Options,
+		})
+	}
 	converted := &bridgev2.ConvertedMessage{
 		Parts: []*bridgev2.ConvertedMessagePart{
-			buildApprovalSnapshotPart("Tool approval required", uiMessage, "", replyToEventID),
+			{
+				ID:      networkid.PartID("0"),
+				Type:    event.EventMessage,
+				Content: &event.MessageEventContent{MsgType: event.MsgNotice, Body: prompt.Body},
+				Extra:   prompt.Raw,
+				DBMetadata: &MessageMetadata{
+					BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
+						Role:               "assistant",
+						CanonicalSchema:    "ai-sdk-ui-message-v1",
+						CanonicalUIMessage: uiMessage,
+					},
+					ExcludeFromHistory: true,
+				},
+			},
 		},
 	}
-	if _, _, err := oc.sendViaPortal(ctx, portal, converted, ""); err != nil {
+	eventID, _, err := oc.sendViaPortal(ctx, portal, converted, "")
+	if err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Str("approval_id", approvalID).Msg("Failed to send approval request fallback event")
+		return
+	}
+	if oc.approvalPrompts != nil {
+		oc.approvalPrompts.BindPromptEvent(approvalID, eventID)
+	}
+	seenKeys := map[string]struct{}{}
+	for _, option := range prompt.Options {
+		for _, key := range bridgeadapter.ApprovalOptionPrefillKeys(option) {
+			if key == "" {
+				continue
+			}
+			if _, exists := seenKeys[key]; exists {
+				continue
+			}
+			seenKeys[key] = struct{}{}
+			oc.sendReaction(ctx, portal, eventID, key)
+		}
 	}
 }
 

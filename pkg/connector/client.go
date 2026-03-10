@@ -336,6 +336,8 @@ type AIClient struct {
 
 	// Tool approvals (e.g. OpenAI MCP approval requests)
 	approvals *bridgeadapter.ApprovalManager[toolApprovalResolution]
+	// Matrix approval prompt metadata keyed by approval ID / prompt event ID.
+	approvalPrompts *bridgeadapter.ApprovalPromptStore
 
 	streamFallbackToDebounced atomic.Bool
 
@@ -404,6 +406,7 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 		userTypingState:     make(map[id.RoomID]userTypingState),
 		queueTyping:         make(map[id.RoomID]*TypingController),
 		approvals:           bridgeadapter.NewApprovalManager[toolApprovalResolution](),
+		approvalPrompts:     bridgeadapter.NewApprovalPromptStore(),
 	}
 
 	// Initialize inbound message processing with config values

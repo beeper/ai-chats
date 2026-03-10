@@ -26,7 +26,6 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/pkg/bridgeadapter"
-	"github.com/beeper/agentremote/pkg/matrixevents"
 	"github.com/beeper/agentremote/pkg/shared/streamtransport"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 )
@@ -34,6 +33,7 @@ import (
 var _ bridgev2.NetworkAPI = (*OpenClawClient)(nil)
 var _ bridgev2.BackfillingNetworkAPI = (*OpenClawClient)(nil)
 var _ bridgev2.DeleteChatHandlingNetworkAPI = (*OpenClawClient)(nil)
+var _ bridgev2.ReactionHandlingNetworkAPI = (*OpenClawClient)(nil)
 
 const openClawCapabilityBaseID = "com.beeper.ai.capabilities.2026_03_09+openclaw"
 
@@ -53,7 +53,7 @@ var openClawBaseCaps = &event.RoomFeatures{
 	Thread:              event.CapLevelRejected,
 	Edit:                event.CapLevelRejected,
 	Delete:              event.CapLevelRejected,
-	Reaction:            event.CapLevelRejected,
+	Reaction:            event.CapLevelFullySupported,
 	ReadReceipts:        true,
 	TypingNotifications: true,
 	DeleteChat:          true,
@@ -98,6 +98,7 @@ type OpenClawClient struct {
 	streamSessions            map[string]*streamtransport.StreamSession
 	streamStates              map[string]*openClawStreamState
 	streamFallbackToDebounced atomic.Bool
+	approvalPrompts           *bridgeadapter.ApprovalPromptStore
 }
 
 type openClawStreamState struct {
@@ -141,6 +142,7 @@ func newOpenClawClient(login *bridgev2.UserLogin, connector *OpenClawConnector) 
 		streamStates:         make(map[string]*openClawStreamState),
 		toolCatalog:          make(map[string]gatewayToolsCatalogResponse),
 		toolCatalogFetchedAt: make(map[string]time.Time),
+		approvalPrompts:      bridgeadapter.NewApprovalPromptStore(),
 	}
 	client.manager = newOpenClawManager(client)
 	return client, nil
@@ -253,32 +255,11 @@ func (oc *OpenClawClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 	if msg == nil || msg.Portal == nil {
 		return nil, errors.New("missing portal context")
 	}
-	if handled, resp := oc.tryApprovalDecisionEvent(ctx, msg); handled {
-		return resp, nil
-	}
 	meta := portalMeta(msg.Portal)
 	if !meta.IsOpenClawRoom {
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 	return oc.manager.HandleMatrixMessage(ctx, msg)
-}
-
-func (oc *OpenClawClient) tryApprovalDecisionEvent(ctx context.Context, msg *bridgev2.MatrixMessage) (bool, *bridgev2.MatrixMessageResponse) {
-	if oc == nil || oc.manager == nil || msg == nil || msg.Event == nil || msg.Portal == nil {
-		return false, nil
-	}
-	raw, ok := msg.Event.Content.Raw["com.beeper.ai.approval_decision"].(map[string]any)
-	if !ok {
-		return false, nil
-	}
-	decision, ok := bridgeadapter.ParseApprovalDecision(raw)
-	if !ok {
-		return true, &bridgev2.MatrixMessageResponse{Pending: false}
-	}
-	if err := oc.manager.ResolveApprovalDecision(ctx, msg.Portal, decision); err != nil {
-		oc.sendSystemNoticeViaPortal(ctx, msg.Portal, bridgeadapter.ApprovalErrorToastText(err))
-	}
-	return true, &bridgev2.MatrixMessageResponse{Pending: false}
 }
 
 func (oc *OpenClawClient) FetchMessages(ctx context.Context, params bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {
@@ -857,49 +838,85 @@ func (oc *OpenClawClient) sendSystemNoticeViaPortal(ctx context.Context, portal 
 	})
 }
 
-func (oc *OpenClawClient) sendApprovalRequestFallbackEvent(ctx context.Context, portal *bridgev2.Portal, approvalID, body string) {
-	uiMessage := map[string]any{
-		"id":   approvalID,
-		"role": "assistant",
-		"metadata": map[string]any{
-			"approvalId": approvalID,
-		},
-		"parts": []map[string]any{{
-			"type":       "dynamic-tool",
-			"toolName":   "exec",
-			"toolCallId": approvalID,
-			"state":      "approval-requested",
-			"approval": map[string]any{
-				"id": approvalID,
-			},
-		}},
+func (oc *OpenClawClient) sendApprovalRequestFallbackEvent(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	approvalID, toolCallID, toolName, turnID, body string,
+	expiresAt time.Time,
+) {
+	if oc == nil || portal == nil || portal.MXID == "" {
+		return
+	}
+	prompt := bridgeadapter.BuildApprovalPromptMessage(bridgeadapter.ApprovalPromptMessageParams{
+		ApprovalID: approvalID,
+		ToolCallID: toolCallID,
+		ToolName:   toolName,
+		TurnID:     turnID,
+		Body:       body,
+		ExpiresAt:  expiresAt,
+	})
+	if oc.approvalPrompts != nil {
+		oc.approvalPrompts.Register(bridgeadapter.ApprovalPromptRegistration{
+			ApprovalID: approvalID,
+			RoomID:     portal.MXID,
+			OwnerMXID:  oc.UserLogin.UserMXID,
+			ToolCallID: toolCallID,
+			ToolName:   toolName,
+			TurnID:     turnID,
+			ExpiresAt:  expiresAt,
+			Options:    prompt.Options,
+		})
 	}
 	converted := &bridgev2.ConvertedMessage{
 		Parts: []*bridgev2.ConvertedMessagePart{{
 			ID:      networkid.PartID("0"),
 			Type:    event.EventMessage,
-			Content: &event.MessageEventContent{MsgType: event.MsgNotice, Body: body},
-			Extra: map[string]any{
-				"msgtype":                event.MsgNotice,
-				"body":                   body,
-				"m.mentions":             map[string]any{},
-				matrixevents.BeeperAIKey: uiMessage,
-			},
+			Content: &event.MessageEventContent{MsgType: event.MsgNotice, Body: prompt.Body},
+			Extra:   prompt.Raw,
 			DBMetadata: &MessageMetadata{
 				Role:               "assistant",
 				ExcludeFromHistory: true,
 				CanonicalSchema:    "ai-sdk-ui-message-v1",
-				CanonicalUIMessage: uiMessage,
+				CanonicalUIMessage: prompt.UIMessage,
 			},
 		}},
 	}
-	oc.UserLogin.QueueRemoteEvent(&OpenClawRemoteMessage{
-		portal:    portal.PortalKey,
-		id:        newOpenClawMessageID(),
-		sender:    oc.senderForAgent("gateway", false),
-		timestamp: time.Now(),
-		preBuilt:  converted,
+	eventID, msgID, err := bridgeadapter.SendViaPortal(bridgeadapter.SendViaPortalParams{
+		Login:     oc.UserLogin,
+		Portal:    portal,
+		Sender:    oc.senderForAgent("gateway", false),
+		IDPrefix:  "openclaw",
+		LogKey:    "openclaw_msg_id",
+		Converted: converted,
 	})
+	if err != nil {
+		oc.Log().Warn().Err(err).Str("approval_id", approvalID).Msg("Failed to send OpenClaw approval fallback prompt")
+		return
+	}
+	if oc.approvalPrompts != nil {
+		oc.approvalPrompts.BindPromptEvent(approvalID, eventID)
+	}
+	seenKeys := map[string]struct{}{}
+	for _, option := range prompt.Options {
+		for _, key := range bridgeadapter.ApprovalOptionPrefillKeys(option) {
+			if key == "" {
+				continue
+			}
+			if _, exists := seenKeys[key]; exists {
+				continue
+			}
+			seenKeys[key] = struct{}{}
+			oc.UserLogin.QueueRemoteEvent(&bridgeadapter.RemoteReaction{
+				Portal:        portal.PortalKey,
+				Sender:        oc.senderForAgent("gateway", false),
+				TargetMessage: msgID,
+				Emoji:         key,
+				EmojiID:       networkid.EmojiID(key),
+				Timestamp:     time.Now(),
+				LogKey:        "openclaw_reaction_target",
+			})
+		}
+	}
 }
 
 func (oc *OpenClawClient) DownloadAndEncodeMedia(ctx context.Context, mediaURL string, file *event.EncryptedFileInfo, maxMB int) (string, string, error) {

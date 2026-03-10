@@ -108,6 +108,13 @@ func (b *Bridge) ResolveApprovalDecision(ctx context.Context, roomID id.RoomID, 
 	})
 }
 
+func (b *Bridge) HandleApprovalPromptReaction(ctx context.Context, msg *bridgev2.MatrixReaction, targetEventID id.EventID, emoji string) bool {
+	if b == nil || b.manager == nil {
+		return false
+	}
+	return b.manager.handleApprovalPromptReaction(ctx, msg, targetEventID, emoji)
+}
+
 func (b *Bridge) RestoreConnections(ctx context.Context) error {
 	if b == nil || b.manager == nil {
 		return nil

@@ -26,6 +26,7 @@ var _ bridgev2.BackfillingNetworkAPI = (*OpenCodeClient)(nil)
 var _ bridgev2.DeleteChatHandlingNetworkAPI = (*OpenCodeClient)(nil)
 var _ bridgev2.IdentifierResolvingNetworkAPI = (*OpenCodeClient)(nil)
 var _ bridgev2.ContactListingNetworkAPI = (*OpenCodeClient)(nil)
+var _ bridgev2.ReactionHandlingNetworkAPI = (*OpenCodeClient)(nil)
 
 type OpenCodeClient struct {
 	UserLogin *bridgev2.UserLogin
@@ -130,9 +131,6 @@ func (oc *OpenCodeClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 	if msg == nil || msg.Portal == nil {
 		return nil, errors.New("missing portal context")
 	}
-	if handled, resp := oc.tryApprovalDecisionEvent(ctx, msg); handled {
-		return resp, nil
-	}
 	if oc.bridge == nil {
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
@@ -141,32 +139,6 @@ func (oc *OpenCodeClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 	return oc.bridge.HandleMatrixMessage(ctx, msg, msg.Portal, oc.PortalMeta(msg.Portal))
-}
-
-func (oc *OpenCodeClient) tryApprovalDecisionEvent(ctx context.Context, msg *bridgev2.MatrixMessage) (bool, *bridgev2.MatrixMessageResponse) {
-	if oc == nil || oc.bridge == nil || msg == nil || msg.Event == nil || msg.Portal == nil {
-		return false, nil
-	}
-	raw, ok := bridgeadapter.ParseApprovalDecisionEvent(msg.Event)
-	if !ok {
-		return false, nil
-	}
-	decision, ok := bridgeadapter.ParseApprovalDecision(raw)
-	if !ok {
-		oc.Log().Warn().
-			Str("event_id", msg.Event.ID.String()).
-			Str("sender", msg.Event.Sender.String()).
-			Msg("OpenCode approval decision missing required fields")
-		return true, &bridgev2.MatrixMessageResponse{Pending: false}
-	}
-	err := oc.bridge.ResolveApprovalDecision(ctx, msg.Portal.MXID, decision.ApprovalID, decision.Approved, decision.Always, decision.Reason, msg.Event.Sender)
-	if err != nil {
-		oc.Log().Warn().Err(err).
-			Str("approval_id", decision.ApprovalID).
-			Msg("OpenCode approval decision failed")
-		oc.sendSystemNoticeViaPortal(ctx, msg.Portal, bridgeadapter.ApprovalErrorToastText(err))
-	}
-	return true, &bridgev2.MatrixMessageResponse{Pending: false}
 }
 
 func (oc *OpenCodeClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2.MatrixDeleteChat) error {
@@ -216,7 +188,7 @@ func (oc *OpenCodeClient) GetCapabilities(_ context.Context, _ *bridgev2.Portal)
 		Thread:              event.CapLevelFullySupported,
 		Edit:                event.CapLevelRejected,
 		Delete:              event.CapLevelRejected,
-		Reaction:            event.CapLevelRejected,
+		Reaction:            event.CapLevelFullySupported,
 		ReadReceipts:        true,
 		TypingNotifications: true,
 		DeleteChat:          true,

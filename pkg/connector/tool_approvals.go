@@ -126,6 +126,9 @@ func (oc *AIClient) resolveToolApproval(
 	if err := oc.approvals.Resolve(approvalID, resolution); err != nil {
 		return err
 	}
+	if oc.approvalPrompts != nil {
+		oc.approvalPrompts.Drop(approvalID)
+	}
 	oc.Log().Debug().Str("approval_id", approvalID).Str("tool", d.ToolName).Str("state", string(decision.State)).Msg("tool approval decision delivered")
 	return nil
 }
@@ -138,6 +141,11 @@ func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (to
 	if approvalID == "" {
 		return toolApprovalResolution{}, nil, false
 	}
+	defer func() {
+		if oc.approvalPrompts != nil {
+			oc.approvalPrompts.Drop(approvalID)
+		}
+	}()
 
 	p := oc.approvals.Get(approvalID)
 	if p == nil {
