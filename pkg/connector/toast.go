@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -34,10 +33,6 @@ func (oc *AIClient) sendApprovalRequestFallbackEvent(
 	if state != nil {
 		turnID = state.turnID
 	}
-	expiresAt := time.Now().Add(10 * time.Minute)
-	if ttlSeconds > 0 {
-		expiresAt = time.Now().Add(time.Duration(ttlSeconds) * time.Second)
-	}
 	oc.approvalPrompts.SendPrompt(ctx, portal, bridgeadapter.SendPromptParams{
 		ApprovalPromptMessageParams: bridgeadapter.ApprovalPromptMessageParams{
 			ApprovalID:     approvalID,
@@ -45,7 +40,7 @@ func (oc *AIClient) sendApprovalRequestFallbackEvent(
 			ToolName:       toolName,
 			TurnID:         turnID,
 			ReplyToEventID: replyToEventID,
-			ExpiresAt:      expiresAt,
+			ExpiresAt:      bridgeadapter.ComputeApprovalExpiry(ttlSeconds),
 		},
 		RoomID:    portal.MXID,
 		OwnerMXID: oc.UserLogin.UserMXID,

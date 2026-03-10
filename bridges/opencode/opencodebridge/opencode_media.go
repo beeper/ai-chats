@@ -2,10 +2,8 @@ package opencodebridge
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
 	"mime"
 	"net/http"
 	"net/url"
@@ -13,12 +11,12 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote/bridges/opencode/opencode"
+	"github.com/beeper/agentremote/pkg/shared/media"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
@@ -81,13 +79,14 @@ func downloadOpenCodeFile(ctx context.Context, fileURL, fallbackMime string, max
 		maxBytes = int64(maxSizeMB * 1024 * 1024)
 	}
 	if strings.HasPrefix(fileURL, "data:") {
-		data, mimeType, err := decodeOpenCodeDataURL(fileURL)
+		data, mimeType, err := media.DecodeDataURI(fileURL)
 		if err != nil {
 			return nil, "", err
 		}
 		if maxBytes > 0 && int64(len(data)) > maxBytes {
 			return nil, "", fmt.Errorf("file too large: %d bytes (max %d MB)", len(data), maxSizeMB)
 		}
+		mimeType = stringutil.NormalizeMimeType(mimeType)
 		if mimeType == "" {
 			mimeType = stringutil.NormalizeMimeType(fallbackMime)
 		}
@@ -123,66 +122,7 @@ func downloadOpenCodeFile(ctx context.Context, fileURL, fallbackMime string, max
 		return data, mimeType, nil
 	}
 
-	client := &http.Client{Timeout: 60 * time.Second}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fileURL, nil)
-	if err != nil {
-		return nil, "", err
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, "", fmt.Errorf("file download failed with status %d", resp.StatusCode)
-	}
-	if maxBytes > 0 && resp.ContentLength > 0 && resp.ContentLength > maxBytes {
-		return nil, "", fmt.Errorf("file too large: %d bytes (max %d MB)", resp.ContentLength, maxSizeMB)
-	}
-	var reader io.Reader = resp.Body
-	if maxBytes > 0 {
-		reader = io.LimitReader(resp.Body, maxBytes+1)
-	}
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, "", err
-	}
-	if maxBytes > 0 && int64(len(data)) > maxBytes {
-		return nil, "", fmt.Errorf("file too large: %d bytes (max %d MB)", len(data), maxSizeMB)
-	}
-	mimeType := stringutil.NormalizeMimeType(resp.Header.Get("Content-Type"))
-	if mimeType == "" {
-		mimeType = stringutil.NormalizeMimeType(fallbackMime)
-	}
-	return data, mimeType, nil
-}
-
-func decodeOpenCodeDataURL(raw string) ([]byte, string, error) {
-	rest, ok := strings.CutPrefix(raw, "data:")
-	if !ok {
-		return nil, "", errors.New("not a data URL")
-	}
-	meta, payload, ok := strings.Cut(rest, ",")
-	if !ok {
-		return nil, "", errors.New("invalid data URL")
-	}
-	isBase64 := strings.Contains(meta, ";base64")
-	mimeType := ""
-	if meta != "" {
-		mimeType = strings.TrimSpace(strings.Split(meta, ";")[0])
-	}
-	if isBase64 {
-		decoded, err := base64.StdEncoding.DecodeString(payload)
-		if err != nil {
-			return nil, "", err
-		}
-		return decoded, stringutil.NormalizeMimeType(mimeType), nil
-	}
-	decoded, err := url.PathUnescape(payload)
-	if err != nil {
-		return nil, "", err
-	}
-	return []byte(decoded), stringutil.NormalizeMimeType(mimeType), nil
+	return media.DownloadURL(ctx, fileURL, fallbackMime, maxBytes)
 }
 
 func filenameFromOpenCodeURL(raw string) string {

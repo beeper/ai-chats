@@ -927,20 +927,19 @@ func (m *OpenCodeManager) resolvePermissionDecision(ctx context.Context, roomID 
 	if m == nil || m.bridge == nil || m.bridge.host == nil {
 		return errors.New("bridge not available")
 	}
-	approvalID = strings.TrimSpace(approvalID)
-	if approvalID == "" {
-		return bridgeadapter.ErrApprovalMissingID
-	}
-	if strings.TrimSpace(roomID.String()) == "" {
-		return bridgeadapter.ErrApprovalMissingRoom
-	}
 	login := m.bridge.host.Login()
-	if login == nil || decision.DecidedBy == "" || decision.DecidedBy != login.UserMXID {
-		return bridgeadapter.ErrApprovalOnlyOwner
+	ownerMXID := id.UserID("")
+	if login != nil {
+		ownerMXID = login.UserMXID
 	}
-	pending := m.approvals.Get(approvalID)
-	if pending == nil {
-		return fmt.Errorf("%w: %s", bridgeadapter.ErrApprovalUnknown, approvalID)
+	v, err := bridgeadapter.ValidateApprovalRequest(approvalID, roomID, decision.DecidedBy, ownerMXID)
+	if err != nil {
+		return err
+	}
+	approvalID = v.ApprovalID
+	pending, err := bridgeadapter.CheckApprovalPending(m.approvals, approvalID)
+	if err != nil {
+		return err
 	}
 	ref, _ := pending.Data.(*permissionApprovalRef)
 	if ref == nil {
@@ -948,8 +947,8 @@ func (m *OpenCodeManager) resolvePermissionDecision(ctx context.Context, roomID 
 		m.approvalPrompts.Drop(approvalID)
 		return fmt.Errorf("%w: %s", bridgeadapter.ErrApprovalUnknown, approvalID)
 	}
-	if ref.RoomID != "" && ref.RoomID != roomID {
-		return bridgeadapter.ErrApprovalWrongRoom
+	if err := bridgeadapter.CheckApprovalRoomID(ref.RoomID, roomID); err != nil {
+		return err
 	}
 	inst, err := m.requireConnectedInstance(ref.InstanceID)
 	if err != nil {

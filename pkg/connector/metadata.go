@@ -199,6 +199,14 @@ type PortalMetadata struct {
 
 }
 
+// SetModuleMeta sets a key in the ModuleMeta map, initializing the map if necessary.
+func (m *PortalMetadata) SetModuleMeta(key string, value any) {
+	if m.ModuleMeta == nil {
+		m.ModuleMeta = make(map[string]any)
+	}
+	m.ModuleMeta[key] = value
+}
+
 func isSimpleMode(meta *PortalMetadata) bool {
 	return meta != nil && meta.ResolvedTarget != nil && meta.ResolvedTarget.Kind == ResolvedTargetModel
 }

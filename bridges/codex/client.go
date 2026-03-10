@@ -1745,11 +1745,6 @@ func (cc *CodexClient) sendApprovalRequestFallbackEvent(
 	if state == nil {
 		return
 	}
-	now := time.Now()
-	expiresAt := now.Add(10 * time.Minute)
-	if ttlSeconds > 0 {
-		expiresAt = now.Add(time.Duration(ttlSeconds) * time.Second)
-	}
 	cc.approvalPrompts.SendPrompt(ctx, portal, bridgeadapter.SendPromptParams{
 		ApprovalPromptMessageParams: bridgeadapter.ApprovalPromptMessageParams{
 			ApprovalID:     approvalID,
@@ -1757,7 +1752,7 @@ func (cc *CodexClient) sendApprovalRequestFallbackEvent(
 			ToolName:       toolName,
 			TurnID:         state.turnID,
 			ReplyToEventID: state.initialEventID,
-			ExpiresAt:      expiresAt,
+			ExpiresAt:      bridgeadapter.ComputeApprovalExpiry(ttlSeconds),
 		},
 		RoomID:    portal.MXID,
 		OwnerMXID: cc.UserLogin.UserMXID,
@@ -2034,31 +2029,9 @@ func (cc *CodexClient) sendContinuationMessage(ctx context.Context, portal *brid
 	if portal == nil || portal.MXID == "" {
 		return
 	}
-	rendered := format.RenderMarkdown(body, true, true)
-	raw := map[string]any{
-		"msgtype":                 event.MsgText,
-		"body":                    rendered.Body,
-		"format":                  rendered.Format,
-		"formatted_body":          rendered.FormattedBody,
-		"com.beeper.continuation": true,
-		"m.mentions":              map[string]any{},
-	}
-	sender := cc.senderForPortal()
-	cc.UserLogin.QueueRemoteEvent(&CodexRemoteMessage{
-		Portal:    portal.PortalKey,
-		ID:        bridgeadapter.NewMessageID("codex"),
-		Sender:    sender,
-		Timestamp: time.Now(),
-		LogKey:    "codex_msg_id",
-		PreBuilt: &bridgev2.ConvertedMessage{
-			Parts: []*bridgev2.ConvertedMessagePart{{
-				ID:      networkid.PartID("0"),
-				Type:    event.EventMessage,
-				Content: &event.MessageEventContent{MsgType: event.MsgText, Body: body},
-				Extra:   raw,
-			}},
-		},
-	})
+	msg := bridgeadapter.BuildContinuationMessage(body, cc.senderForPortal(), "codex", "codex_msg_id")
+	msg.Portal = portal.PortalKey
+	cc.UserLogin.QueueRemoteEvent(msg)
 	cc.loggerForContext(ctx).Debug().Int("body_len", len(body)).Msg("Queued continuation message for oversized response")
 }
 
@@ -2068,18 +2041,8 @@ func (cc *CodexClient) saveAssistantMessage(ctx context.Context, portal *bridgev
 	}
 	log := cc.loggerForContext(ctx)
 
-	// Collect generated file references for multimodal history re-injection.
-	var genFiles []GeneratedFileRef
-	if len(state.generatedFiles) > 0 {
-		genFiles = make([]GeneratedFileRef, 0, len(state.generatedFiles))
-		for _, f := range state.generatedFiles {
-			genFiles = append(genFiles, GeneratedFileRef{URL: f.URL, MimeType: f.MediaType})
-		}
-	}
-
 	fullMeta := &MessageMetadata{
-		BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
-			Role:               "assistant",
+		BaseMessageMetadata: bridgeadapter.BuildAssistantBaseMetadata(bridgeadapter.AssistantMetadataParams{
 			Body:               state.accumulated.String(),
 			FinishReason:       finishReason,
 			TurnID:             state.turnID,
@@ -2089,12 +2052,12 @@ func (cc *CodexClient) saveAssistantMessage(ctx context.Context, portal *bridgev
 			CompletedAtMs:      state.completedAtMs,
 			CanonicalSchema:    "ai-sdk-ui-message-v1",
 			CanonicalUIMessage: cc.buildCanonicalUIMessage(state, model, finishReason),
-			GeneratedFiles:     genFiles,
+			GeneratedFiles:     bridgeadapter.GeneratedFileRefsFromParts(state.generatedFiles),
 			ThinkingContent:    state.reasoning.String(),
 			PromptTokens:       state.promptTokens,
 			CompletionTokens:   state.completionTokens,
 			ReasoningTokens:    state.reasoningTokens,
-		},
+		}),
 		Model:              model,
 		FirstTokenAtMs:     state.firstTokenAtMs,
 		HasToolCalls:       len(state.toolCalls) > 0,
@@ -2144,24 +2107,20 @@ func (cc *CodexClient) resolveToolApproval(roomID id.RoomID, approvalID string, 
 	if cc == nil || cc.UserLogin == nil {
 		return errors.New("bridge not available")
 	}
-	approvalID = strings.TrimSpace(approvalID)
-	if approvalID == "" {
-		return bridgeadapter.ErrApprovalMissingID
+	v, err := bridgeadapter.ValidateApprovalRequest(approvalID, roomID, decision.DecidedBy, cc.UserLogin.UserMXID)
+	if err != nil {
+		return err
 	}
-	if strings.TrimSpace(roomID.String()) == "" {
-		return bridgeadapter.ErrApprovalMissingRoom
-	}
-	if decision.DecidedBy == "" || decision.DecidedBy != cc.UserLogin.UserMXID {
-		return bridgeadapter.ErrApprovalOnlyOwner
-	}
-
-	p := cc.approvals.Get(approvalID)
-	if p == nil {
-		return fmt.Errorf("%w: %s", bridgeadapter.ErrApprovalUnknown, approvalID)
+	approvalID = v.ApprovalID
+	p, err := bridgeadapter.CheckApprovalPending(cc.approvals, approvalID)
+	if err != nil {
+		return err
 	}
 	d, _ := p.Data.(*pendingToolApprovalDataCodex)
-	if d != nil && d.RoomID != "" && d.RoomID != roomID {
-		return bridgeadapter.ErrApprovalWrongRoom
+	if d != nil {
+		if err := bridgeadapter.CheckApprovalRoomID(d.RoomID, roomID); err != nil {
+			return err
+		}
 	}
 	if err := cc.approvals.Resolve(approvalID, decision); err != nil {
 		return err

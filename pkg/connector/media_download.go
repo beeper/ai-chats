@@ -4,17 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"mime"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/agentremote/pkg/shared/media"
 )
 
 func (oc *AIClient) downloadMediaBytes(
@@ -76,37 +76,9 @@ func (oc *AIClient) downloadMediaBytes(
 		return data, mimeType, nil
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+	data, mimeType, err := media.DownloadURL(ctx, downloadURL, fallbackMime, int64(maxBytes))
 	if err != nil {
 		return nil, "", err
-	}
-	client := &http.Client{Timeout: 60 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to download media: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, "", fmt.Errorf("media download failed: HTTP %d", resp.StatusCode)
-	}
-	if maxBytes > 0 && resp.ContentLength > 0 && resp.ContentLength > int64(maxBytes) {
-		return nil, "", fmt.Errorf("media too large: %d bytes (max %d)", resp.ContentLength, maxBytes)
-	}
-
-	var reader io.Reader = resp.Body
-	if maxBytes > 0 {
-		reader = io.LimitReader(resp.Body, int64(maxBytes)+1)
-	}
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to read media: %w", err)
-	}
-	if maxBytes > 0 && len(data) > maxBytes {
-		return nil, "", fmt.Errorf("media too large (max %d bytes)", maxBytes)
-	}
-	mimeType := resp.Header.Get("Content-Type")
-	if mimeType == "" {
-		mimeType = http.DetectContentType(data)
 	}
 	mimeType = normalizeFallbackMime(mimeType, fallbackMime)
 	return data, mimeType, nil

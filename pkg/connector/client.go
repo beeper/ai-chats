@@ -1304,8 +1304,7 @@ func (oc *AIClient) effectiveModelForAPI(meta *PortalMetadata) string {
 	modelID := oc.effectiveModel(meta)
 
 	// OpenRouter and Beeper route through a gateway that expects the full model ID
-	loginMeta := loginMetadata(oc.UserLogin)
-	if loginMeta.Provider == ProviderOpenRouter || loginMeta.Provider == ProviderBeeper || loginMeta.Provider == ProviderMagicProxy {
+	if oc.isOpenRouterProvider() {
 		return modelID
 	}
 
@@ -1318,8 +1317,7 @@ func (oc *AIClient) effectiveModelForAPI(meta *PortalMetadata) string {
 // For OpenRouter/Beeper, returns the full model ID.
 // For direct providers, strips the prefix (e.g., "openai/gpt-5.2" → "gpt-5.2").
 func (oc *AIClient) modelIDForAPI(modelID string) string {
-	loginMeta := loginMetadata(oc.UserLogin)
-	if loginMeta.Provider == ProviderOpenRouter || loginMeta.Provider == ProviderBeeper || loginMeta.Provider == ProviderMagicProxy {
+	if oc.isOpenRouterProvider() {
 		return modelID
 	}
 	_, actualModel := ParseModelPrefix(modelID)

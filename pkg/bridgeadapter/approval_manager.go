@@ -3,9 +3,12 @@ package bridgeadapter
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
+
+	"maunium.net/go/mautrix/id"
 )
 
 // Shared sentinel errors for approval resolution.
@@ -40,6 +43,52 @@ func ApprovalErrorToastText(err error) string {
 	default:
 		return strings.TrimSpace(err.Error())
 	}
+}
+
+// ValidatedApproval holds the sanitised inputs after ValidateApprovalRequest succeeds.
+type ValidatedApproval struct {
+	ApprovalID string // trimmed
+}
+
+// ValidateApprovalRequest performs the common prelude checks shared by every
+// approval-resolution code path:
+//   - approvalID must be non-empty (after trimming)
+//   - roomID must be non-empty
+//   - decidedBy must match ownerMXID
+//
+// On success the returned ValidatedApproval contains the trimmed approval ID.
+func ValidateApprovalRequest(approvalID string, roomID id.RoomID, decidedBy, ownerMXID id.UserID) (ValidatedApproval, error) {
+	approvalID = strings.TrimSpace(approvalID)
+	if approvalID == "" {
+		return ValidatedApproval{}, ErrApprovalMissingID
+	}
+	if strings.TrimSpace(roomID.String()) == "" {
+		return ValidatedApproval{}, ErrApprovalMissingRoom
+	}
+	if decidedBy == "" || decidedBy != ownerMXID {
+		return ValidatedApproval{}, ErrApprovalOnlyOwner
+	}
+	return ValidatedApproval{ApprovalID: approvalID}, nil
+}
+
+// CheckApprovalPending looks up the approval in the manager and returns the
+// PendingApproval, or a formatted ErrApprovalUnknown error if not found.
+func CheckApprovalPending[D any](m *ApprovalManager[D], approvalID string) (*PendingApproval[D], error) {
+	p := m.Get(approvalID)
+	if p == nil {
+		return nil, fmt.Errorf("%w: %s", ErrApprovalUnknown, approvalID)
+	}
+	return p, nil
+}
+
+// CheckApprovalRoomID verifies that dataRoomID (from the pending approval's
+// stored data) matches the request roomID. An empty dataRoomID is treated as
+// "any room" and always passes.
+func CheckApprovalRoomID(dataRoomID, requestRoomID id.RoomID) error {
+	if dataRoomID != "" && dataRoomID != requestRoomID {
+		return ErrApprovalWrongRoom
+	}
+	return nil
 }
 
 // ApprovalManager[D] manages pending approvals with channel-based resolution.

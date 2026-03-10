@@ -3,7 +3,6 @@ package connector
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -95,24 +94,18 @@ func (oc *AIClient) resolveToolApproval(
 	if oc == nil || oc.UserLogin == nil {
 		return errors.New("bridge not available")
 	}
-	approvalID = strings.TrimSpace(approvalID)
-	if approvalID == "" {
-		return bridgeadapter.ErrApprovalMissingID
+	v, err := bridgeadapter.ValidateApprovalRequest(approvalID, roomID, decidedBy, oc.UserLogin.UserMXID)
+	if err != nil {
+		return err
 	}
-	if strings.TrimSpace(roomID.String()) == "" {
-		return bridgeadapter.ErrApprovalMissingRoom
-	}
-	if decidedBy == "" || decidedBy != oc.UserLogin.UserMXID {
-		return bridgeadapter.ErrApprovalOnlyOwner
-	}
-
-	p := oc.approvals.Get(approvalID)
-	if p == nil {
-		return fmt.Errorf("%w: %s", bridgeadapter.ErrApprovalUnknown, approvalID)
+	approvalID = v.ApprovalID
+	p, err := bridgeadapter.CheckApprovalPending(oc.approvals, approvalID)
+	if err != nil {
+		return err
 	}
 	d := approvalData(p)
-	if d.RoomID != roomID {
-		return bridgeadapter.ErrApprovalWrongRoom
+	if err := bridgeadapter.CheckApprovalRoomID(d.RoomID, roomID); err != nil {
+		return err
 	}
 
 	decision.Reason = strings.TrimSpace(decision.Reason)

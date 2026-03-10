@@ -1,5 +1,7 @@
 package bridgeadapter
 
+import "github.com/beeper/agentremote/pkg/shared/citations"
+
 // BaseMessageMetadata contains fields common to all bridge MessageMetadata structs.
 // Embed this in each bridge's MessageMetadata to share CopyFrom logic.
 type BaseMessageMetadata struct {
@@ -160,4 +162,68 @@ type ToolCallMetadata struct {
 type GeneratedFileRef struct {
 	URL      string `json:"url"`
 	MimeType string `json:"mime_type"`
+}
+
+// GeneratedFileRefsFromParts converts citations.GeneratedFilePart values into
+// GeneratedFileRef values suitable for message metadata storage.
+func GeneratedFileRefsFromParts(parts []citations.GeneratedFilePart) []GeneratedFileRef {
+	if len(parts) == 0 {
+		return nil
+	}
+	refs := make([]GeneratedFileRef, len(parts))
+	for i, f := range parts {
+		refs[i] = GeneratedFileRef{URL: f.URL, MimeType: f.MediaType}
+	}
+	return refs
+}
+
+// AssistantMetadataParams holds the bridge-agnostic fields needed to populate
+// an assistant message's BaseMessageMetadata. Each bridge extracts these from
+// its own streamingState type and passes them here.
+type AssistantMetadataParams struct {
+	Body             string
+	FinishReason     string
+	TurnID           string
+	AgentID          string
+	StartedAtMs      int64
+	CompletedAtMs    int64
+	ThinkingContent  string
+	PromptTokens     int64
+	CompletionTokens int64
+	ReasoningTokens  int64
+	ToolCalls        []ToolCallMetadata
+	GeneratedFiles   []GeneratedFileRef
+
+	// Canonical prompt schema (used by pkg/connector).
+	CanonicalPromptSchema   string
+	CanonicalPromptMessages []map[string]any
+
+	// Canonical UI message schema (used by codex, opencode).
+	CanonicalSchema    string
+	CanonicalUIMessage map[string]any
+}
+
+// BuildAssistantBaseMetadata constructs a BaseMessageMetadata for an assistant
+// message from the given params. This deduplicates the common field-population
+// logic shared across bridge saveAssistantMessage implementations.
+func BuildAssistantBaseMetadata(p AssistantMetadataParams) BaseMessageMetadata {
+	return BaseMessageMetadata{
+		Role:                    "assistant",
+		Body:                    p.Body,
+		FinishReason:            p.FinishReason,
+		TurnID:                  p.TurnID,
+		AgentID:                 p.AgentID,
+		ToolCalls:               p.ToolCalls,
+		StartedAtMs:             p.StartedAtMs,
+		CompletedAtMs:           p.CompletedAtMs,
+		GeneratedFiles:          p.GeneratedFiles,
+		ThinkingContent:         p.ThinkingContent,
+		PromptTokens:            p.PromptTokens,
+		CompletionTokens:        p.CompletionTokens,
+		ReasoningTokens:         p.ReasoningTokens,
+		CanonicalPromptSchema:   p.CanonicalPromptSchema,
+		CanonicalPromptMessages: p.CanonicalPromptMessages,
+		CanonicalSchema:         p.CanonicalSchema,
+		CanonicalUIMessage:      p.CanonicalUIMessage,
+	}
 }

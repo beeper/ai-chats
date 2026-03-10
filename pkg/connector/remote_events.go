@@ -53,23 +53,16 @@ func (r *AIRemoteMessageRemove) GetTargetMessage() networkid.MessageID {
 // NewAITextMessage creates a RemoteMessage for a plain text assistant message.
 func NewAITextMessage(
 	portal *bridgev2.Portal,
-	login *bridgev2.UserLogin,
 	text string,
-	meta *PortalMetadata,
-	agentID string,
-	modelID string,
+	sender bridgev2.EventSender,
 ) *bridgeadapter.RemoteMessage {
 	rendered := msgconv.BuildPlainMessageContent(msgconv.PlainMessageContentParams{
 		Text: text,
 	})
-	senderID := modelUserID(modelID)
-	if agentID != "" {
-		senderID = agentUserIDForLogin(login.ID, agentID)
-	}
 	return &bridgeadapter.RemoteMessage{
 		Portal:    portal.PortalKey,
 		ID:        bridgeadapter.NewMessageID("ai"),
-		Sender:    bridgev2.EventSender{Sender: senderID, SenderLogin: login.ID},
+		Sender:    sender,
 		Timestamp: time.Now(),
 		LogKey:    "ai_msg_id",
 		PreBuilt: &bridgev2.ConvertedMessage{

@@ -11,6 +11,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/pkg/matrixevents"
@@ -336,5 +337,45 @@ func UpsertAssistantMessage(ctx context.Context, p UpsertAssistantMessageParams)
 		p.Logger.Warn().Err(err).Msg("Failed to insert assistant message to database")
 	} else {
 		p.Logger.Debug().Str("msg_id", string(assistantMsg.ID)).Msg("Inserted assistant message to database")
+	}
+}
+
+// DefaultApprovalExpiry is the fallback expiry duration when no TTL is specified.
+const DefaultApprovalExpiry = 10 * time.Minute
+
+// ComputeApprovalExpiry returns the expiry time based on ttlSeconds, falling
+// back to DefaultApprovalExpiry when ttlSeconds <= 0.
+func ComputeApprovalExpiry(ttlSeconds int) time.Time {
+	if ttlSeconds > 0 {
+		return time.Now().Add(time.Duration(ttlSeconds) * time.Second)
+	}
+	return time.Now().Add(DefaultApprovalExpiry)
+}
+
+// BuildContinuationMessage constructs a ConvertedMessage for overflow
+// continuation text, flagged with "com.beeper.continuation".
+func BuildContinuationMessage(body string, sender bridgev2.EventSender, idPrefix, logKey string) *RemoteMessage {
+	rendered := format.RenderMarkdown(body, true, true)
+	raw := map[string]any{
+		"msgtype":                 event.MsgText,
+		"body":                    rendered.Body,
+		"format":                  rendered.Format,
+		"formatted_body":          rendered.FormattedBody,
+		"com.beeper.continuation": true,
+		"m.mentions":              map[string]any{},
+	}
+	return &RemoteMessage{
+		ID:        NewMessageID(idPrefix),
+		Sender:    sender,
+		Timestamp: time.Now(),
+		LogKey:    logKey,
+		PreBuilt: &bridgev2.ConvertedMessage{
+			Parts: []*bridgev2.ConvertedMessagePart{{
+				ID:      networkid.PartID("0"),
+				Type:    event.EventMessage,
+				Content: &event.MessageEventContent{MsgType: event.MsgText, Body: body},
+				Extra:   raw,
+			}},
+		},
 	}
 }

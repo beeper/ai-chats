@@ -9,31 +9,41 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 )
 
+func (s *schedulerRuntime) ensureScheduledRoomLocked(ctx context.Context, portalID, displayName, agentID string, moduleMeta map[string]any) (string, error) {
+	portal, err := s.getOrCreateScheduledPortal(ctx, portalID, displayName, func(meta *PortalMetadata) {
+		for k, v := range moduleMeta {
+			meta.SetModuleMeta(k, v)
+		}
+	})
+	if err != nil {
+		return "", err
+	}
+	portal.OtherUserID = s.client.agentUserID(normalizeAgentID(agentID))
+	if err := portal.Save(ctx); err != nil {
+		return "", err
+	}
+	return portal.MXID.String(), nil
+}
+
 func (s *schedulerRuntime) ensureCronRoomLocked(ctx context.Context, record *scheduledCronJob) error {
 	if record == nil {
 		return nil
 	}
 	portalID := fmt.Sprintf("cron:%s:%s", normalizeAgentID(record.Job.AgentID), strings.TrimSpace(record.Job.ID))
-	portal, err := s.getOrCreateScheduledPortal(ctx, portalID, fmt.Sprintf("Cron: %s", strings.TrimSpace(record.Job.Name)), func(meta *PortalMetadata) {
-		if meta.ModuleMeta == nil {
-			meta.ModuleMeta = make(map[string]any)
-		}
-		meta.ModuleMeta["cron"] = map[string]any{
+	displayName := fmt.Sprintf("Cron: %s", strings.TrimSpace(record.Job.Name))
+	roomID, err := s.ensureScheduledRoomLocked(ctx, portalID, displayName, record.Job.AgentID, map[string]any{
+		"cron": map[string]any{
 			"is_internal_room": true,
 			"backend":          "hungry",
 			"job_id":           record.Job.ID,
 			"revision":         record.Revision,
 			"managed":          true,
-		}
+		},
 	})
 	if err != nil {
 		return err
 	}
-	portal.OtherUserID = s.client.agentUserID(normalizeAgentID(record.Job.AgentID))
-	if err := portal.Save(ctx); err != nil {
-		return err
-	}
-	record.RoomID = portal.MXID.String()
+	record.RoomID = roomID
 	return nil
 }
 
@@ -42,26 +52,20 @@ func (s *schedulerRuntime) ensureHeartbeatRoomLocked(ctx context.Context, state 
 		return nil
 	}
 	portalID := fmt.Sprintf("heartbeat:%s", normalizeAgentID(state.AgentID))
-	portal, err := s.getOrCreateScheduledPortal(ctx, portalID, fmt.Sprintf("Heartbeat: %s", state.AgentID), func(meta *PortalMetadata) {
-		if meta.ModuleMeta == nil {
-			meta.ModuleMeta = make(map[string]any)
-		}
-		meta.ModuleMeta["heartbeat"] = map[string]any{
+	displayName := fmt.Sprintf("Heartbeat: %s", state.AgentID)
+	roomID, err := s.ensureScheduledRoomLocked(ctx, portalID, displayName, state.AgentID, map[string]any{
+		"heartbeat": map[string]any{
 			"is_internal_room": true,
 			"backend":          "hungry",
 			"agent_id":         state.AgentID,
 			"revision":         state.Revision,
 			"managed":          true,
-		}
+		},
 	})
 	if err != nil {
 		return err
 	}
-	portal.OtherUserID = s.client.agentUserID(normalizeAgentID(state.AgentID))
-	if err := portal.Save(ctx); err != nil {
-		return err
-	}
-	state.RoomID = portal.MXID.String()
+	state.RoomID = roomID
 	return nil
 }
 

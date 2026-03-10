@@ -24,18 +24,8 @@ func (oc *AIClient) saveAssistantMessage(
 ) {
 	modelID := oc.effectiveModel(meta)
 
-	// Collect generated file references for multimodal history re-injection.
-	var genFiles []GeneratedFileRef
-	if len(state.generatedFiles) > 0 {
-		genFiles = make([]GeneratedFileRef, 0, len(state.generatedFiles))
-		for _, f := range state.generatedFiles {
-			genFiles = append(genFiles, GeneratedFileRef{URL: f.URL, MimeType: f.MediaType})
-		}
-	}
-
 	fullMeta := &MessageMetadata{
-		BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
-			Role:                    "assistant",
+		BaseMessageMetadata: bridgeadapter.BuildAssistantBaseMetadata(bridgeadapter.AssistantMetadataParams{
 			Body:                    state.accumulated.String(),
 			FinishReason:            state.finishReason,
 			TurnID:                  state.turnID,
@@ -45,12 +35,12 @@ func (oc *AIClient) saveAssistantMessage(
 			CompletedAtMs:           state.completedAtMs,
 			CanonicalPromptSchema:   canonicalPromptSchemaV1,
 			CanonicalPromptMessages: encodePromptMessages(assistantPromptMessagesFromState(state)),
-			GeneratedFiles:          genFiles,
+			GeneratedFiles:          bridgeadapter.GeneratedFileRefsFromParts(state.generatedFiles),
 			ThinkingContent:         state.reasoning.String(),
 			PromptTokens:            state.promptTokens,
 			CompletionTokens:        state.completionTokens,
 			ReasoningTokens:         state.reasoningTokens,
-		},
+		}),
 		CompletionID:       state.responseID,
 		Model:              modelID,
 		FirstTokenAtMs:     state.firstTokenAtMs,
@@ -70,12 +60,9 @@ func (oc *AIClient) saveAssistantMessage(
 
 	usageMetaUpdated := false
 	if meta != nil && (state.promptTokens > 0 || state.completionTokens > 0) {
-		if meta.ModuleMeta == nil {
-			meta.ModuleMeta = make(map[string]any, 4)
-		}
-		meta.ModuleMeta["compaction_last_prompt_tokens"] = state.promptTokens
-		meta.ModuleMeta["compaction_last_completion_tokens"] = state.completionTokens
-		meta.ModuleMeta["compaction_last_usage_at"] = time.Now().UnixMilli()
+		meta.SetModuleMeta("compaction_last_prompt_tokens", state.promptTokens)
+		meta.SetModuleMeta("compaction_last_completion_tokens", state.completionTokens)
+		meta.SetModuleMeta("compaction_last_usage_at", time.Now().UnixMilli())
 		usageMetaUpdated = true
 	}
 	if usageMetaUpdated && portal != nil {

@@ -15,7 +15,6 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/pkg/agents"
 	"github.com/beeper/agentremote/pkg/bridgeadapter"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
@@ -135,20 +134,13 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		Int("raw_len", len(rawBodyOriginal)).
 		Msg("Inbound message metadata resolved")
 
-	var agentDef *agents.AgentDefinition
-	if agentID := resolveAgentID(meta); agentID != "" {
-		store := NewAgentStoreAdapter(oc)
-		if agent, err := store.GetAgentByID(ctx, agentID); err == nil {
-			agentDef = agent
-		}
-	}
-	mentionRegexes := buildMentionRegexes(&oc.connector.Config, agentDef)
+	mc := oc.resolveMentionContext(ctx, portal, meta, msg.Event, msg.Content.Mentions, rawBody)
 
 	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
 
 	commandBody := rawBody
 	if isGroup {
-		commandBody = stripMentionPatterns(commandBody, mentionRegexes)
+		commandBody = stripMentionPatterns(commandBody, mc.MentionRegexes)
 	}
 	if !commandAuthorized && airuntime.IsAbortTriggerText(commandBody) {
 		logCtx.Debug().Msg("Ignoring abort trigger from unauthorized sender")
@@ -168,26 +160,10 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		return nil, bridgeadapter.UnsupportedMessageStatus(errors.New("empty messages are not supported"))
 	}
 
-	// Mention detection (OpenClaw-style)
-	replyCtx := extractInboundReplyContext(msg.Event)
-	botMXID := oc.resolveBotMXID(ctx, portal, meta)
-	explicitMention := false
-	hasExplicit := false
-	if msg.Content.Mentions != nil {
-		hasExplicit = true
-		if msg.Content.Mentions.Room || (botMXID != "" && msg.Content.Mentions.Has(botMXID)) {
-			explicitMention = true
-		}
-	}
-	if !explicitMention && replyCtx.ReplyTo != "" {
-		if oc.isReplyToBot(ctx, portal, replyCtx.ReplyTo) {
-			explicitMention = true
-		}
-	}
-	wasMentioned := explicitMention || matchesMentionPatterns(rawBody, mentionRegexes)
+	wasMentioned := mc.WasMentioned
 	groupActivation := oc.resolveGroupActivation(meta)
 	requireMention := isGroup && groupActivation != "always"
-	canDetectMention := len(mentionRegexes) > 0 || hasExplicit
+	canDetectMention := len(mc.MentionRegexes) > 0 || mc.HasExplicit
 	shouldBypassMention := groupActivation == "always"
 	if isGroup && requireMention && !wasMentioned && !shouldBypassMention {
 		logCtx.Debug().
@@ -678,29 +654,8 @@ func (oc *AIClient) handleMediaMessage(
 		caption = config.defaultCaption
 	}
 
-	agentDef := (*agents.AgentDefinition)(nil)
-	if agentID := resolveAgentID(meta); agentID != "" {
-		store := NewAgentStoreAdapter(oc)
-		if agent, err := store.GetAgentByID(ctx, agentID); err == nil {
-			agentDef = agent
-		}
-	}
-	mentionRegexes := buildMentionRegexes(&oc.connector.Config, agentDef)
-	replyCtx := extractInboundReplyContext(msg.Event)
-	botMXID := oc.resolveBotMXID(ctx, portal, meta)
-	explicitMention := false
-	if msg.Content.Mentions != nil {
-		if msg.Content.Mentions.Room || (botMXID != "" && msg.Content.Mentions.Has(botMXID)) {
-			explicitMention = true
-		}
-	}
-	if !explicitMention && replyCtx.ReplyTo != "" {
-		if oc.isReplyToBot(ctx, portal, replyCtx.ReplyTo) {
-			explicitMention = true
-		}
-	}
-	wasMentioned := explicitMention || matchesMentionPatterns(rawCaption, mentionRegexes)
-	typingCtx := &TypingContext{IsGroup: isGroup, WasMentioned: wasMentioned}
+	mc := oc.resolveMentionContext(ctx, portal, meta, msg.Event, msg.Content.Mentions, rawCaption)
+	typingCtx := &TypingContext{IsGroup: isGroup, WasMentioned: mc.WasMentioned}
 
 	// Get encrypted file info if present (for E2EE rooms)
 	var encryptedFile *event.EncryptedFileInfo
@@ -976,29 +931,8 @@ func (oc *AIClient) handleTextFileMessage(
 		roomName = oc.matrixRoomDisplayName(ctx, portal)
 	}
 	senderName := oc.matrixDisplayName(ctx, portal.MXID, msg.Event.Sender)
-	agentDef := (*agents.AgentDefinition)(nil)
-	if agentID := resolveAgentID(meta); agentID != "" {
-		store := NewAgentStoreAdapter(oc)
-		if agent, err := store.GetAgentByID(ctx, agentID); err == nil {
-			agentDef = agent
-		}
-	}
-	mentionRegexes := buildMentionRegexes(&oc.connector.Config, agentDef)
-	replyCtx := extractInboundReplyContext(msg.Event)
-	botMXID := oc.resolveBotMXID(ctx, portal, meta)
-	explicitMention := false
-	if msg.Content.Mentions != nil {
-		if msg.Content.Mentions.Room || (botMXID != "" && msg.Content.Mentions.Has(botMXID)) {
-			explicitMention = true
-		}
-	}
-	if !explicitMention && replyCtx.ReplyTo != "" {
-		if oc.isReplyToBot(ctx, portal, replyCtx.ReplyTo) {
-			explicitMention = true
-		}
-	}
-	wasMentioned := explicitMention || matchesMentionPatterns(rawCaption, mentionRegexes)
-	typingCtx := &TypingContext{IsGroup: isGroup, WasMentioned: wasMentioned}
+	mc := oc.resolveMentionContext(ctx, portal, meta, msg.Event, msg.Content.Mentions, rawCaption)
+	typingCtx := &TypingContext{IsGroup: isGroup, WasMentioned: mc.WasMentioned}
 
 	var encryptedFile *event.EncryptedFileInfo
 	if msg.Content.File != nil {
