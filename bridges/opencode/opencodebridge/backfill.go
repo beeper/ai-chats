@@ -6,7 +6,6 @@ import (
 	"errors"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -16,6 +15,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote/bridges/opencode/opencode"
+	"github.com/beeper/agentremote/pkg/shared/backfillutil"
 )
 
 type backfillMessageEntry struct {
@@ -86,7 +86,7 @@ func (b *Bridge) FetchMessages(ctx context.Context, params bridgev2.FetchMessage
 	} else {
 		end := len(entries)
 		if params.Cursor != "" {
-			if idx, ok := parseBackfillCursor(params.Cursor); ok {
+			if idx, ok := backfillutil.ParseCursor(params.Cursor); ok {
 				if idx >= 0 && idx <= len(entries) {
 					end = idx
 				}
@@ -113,7 +113,7 @@ func (b *Bridge) FetchMessages(ctx context.Context, params bridgev2.FetchMessage
 		}
 		hasMore = start > 0
 		if hasMore {
-			cursor = formatBackfillCursor(start)
+			cursor = backfillutil.FormatCursor(start)
 		}
 	}
 
@@ -186,21 +186,6 @@ func findAnchorIndex(entries []backfillMessageEntry, anchor *database.Message) (
 		}
 	}
 	return 0, false
-}
-
-func parseBackfillCursor(cursor networkid.PaginationCursor) (int, bool) {
-	if cursor == "" {
-		return 0, false
-	}
-	idx, err := strconv.Atoi(string(cursor))
-	if err != nil {
-		return 0, false
-	}
-	return idx, true
-}
-
-func formatBackfillCursor(idx int) networkid.PaginationCursor {
-	return networkid.PaginationCursor(strconv.Itoa(idx))
 }
 
 func openCodeMessageTime(msg opencode.MessageWithParts) time.Time {

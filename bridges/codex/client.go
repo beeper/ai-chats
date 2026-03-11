@@ -2162,6 +2162,16 @@ func (cc *CodexClient) handleApprovalRequest(
 
 	cc.emitUIToolApprovalRequest(ctx, active.portal, active.state, approvalID, toolCallID, toolName, presentation, ttlSeconds)
 
+	emitOutcome := func(approved bool, reason string) (any, *codexrpc.RPCError) {
+		cc.uiEmitter(active.state).EmitUIToolApprovalResponse(ctx, active.portal, approvalID, toolCallID, approved, reason)
+		streamui.RecordApprovalResponse(&active.state.ui, approvalID, toolCallID, approved, reason)
+		if approved {
+			return map[string]any{"decision": "accept"}, nil
+		}
+		cc.uiEmitter(active.state).EmitUIToolOutputDenied(ctx, active.portal, toolCallID)
+		return map[string]any{"decision": "decline"}, nil
+	}
+
 	if active.meta != nil {
 		if lvl, _ := stringutil.NormalizeElevatedLevel(active.meta.ElevatedLevel); lvl == "full" {
 			cc.approvalFlow.FinishResolved(approvalID, bridgeadapter.ApprovalDecisionPayload{
@@ -2169,26 +2179,23 @@ func (cc *CodexClient) handleApprovalRequest(
 				Approved:   true,
 				Reason:     "auto-approved",
 			})
-			cc.uiEmitter(active.state).EmitUIToolApprovalResponse(ctx, active.portal, approvalID, toolCallID, true, "auto-approved")
-			streamui.RecordApprovalResponse(&active.state.ui, approvalID, toolCallID, true, "auto-approved")
-			return map[string]any{"decision": "accept"}, nil
+			return emitOutcome(true, "auto-approved")
 		}
 	}
 
 	decision, ok := cc.waitToolApproval(ctx, approvalID)
 	if !ok {
-		cc.uiEmitter(active.state).EmitUIToolApprovalResponse(ctx, active.portal, approvalID, toolCallID, false, "timeout")
-		streamui.RecordApprovalResponse(&active.state.ui, approvalID, toolCallID, false, "timeout")
-		cc.uiEmitter(active.state).EmitUIToolOutputDenied(ctx, active.portal, toolCallID)
-		return map[string]any{"decision": "decline"}, nil
+		return emitOutcome(false, "timeout")
 	}
-	cc.uiEmitter(active.state).EmitUIToolApprovalResponse(ctx, active.portal, approvalID, toolCallID, decision.Approved, decision.Reason)
-	streamui.RecordApprovalResponse(&active.state.ui, approvalID, toolCallID, decision.Approved, decision.Reason)
-	if decision.Approved {
-		return map[string]any{"decision": "accept"}, nil
+	return emitOutcome(decision.Approved, decision.Reason)
+}
+
+func addOptionalDetail(input map[string]any, details []bridgeadapter.ApprovalDetail, key, label string, ptr *string) (map[string]any, []bridgeadapter.ApprovalDetail) {
+	if v := bridgeadapter.ValueSummary(ptr); v != "" {
+		input[key] = v
+		details = append(details, bridgeadapter.ApprovalDetail{Label: label, Value: v})
 	}
-	cc.uiEmitter(active.state).EmitUIToolOutputDenied(ctx, active.portal, toolCallID)
-	return map[string]any{"decision": "decline"}, nil
+	return input, details
 }
 
 func (cc *CodexClient) handleCommandApprovalRequest(ctx context.Context, req codexrpc.Request) (any, *codexrpc.RPCError) {
@@ -2201,21 +2208,9 @@ func (cc *CodexClient) handleCommandApprovalRequest(ctx context.Context, req cod
 		_ = json.Unmarshal(raw, &p)
 		input := map[string]any{}
 		details := make([]bridgeadapter.ApprovalDetail, 0, 3)
-		if p.Command != nil && strings.TrimSpace(*p.Command) != "" {
-			command := strings.TrimSpace(*p.Command)
-			input["command"] = command
-			details = append(details, bridgeadapter.ApprovalDetail{Label: "Command", Value: command})
-		}
-		if p.Cwd != nil && strings.TrimSpace(*p.Cwd) != "" {
-			cwd := strings.TrimSpace(*p.Cwd)
-			input["cwd"] = cwd
-			details = append(details, bridgeadapter.ApprovalDetail{Label: "Working directory", Value: cwd})
-		}
-		if p.Reason != nil && strings.TrimSpace(*p.Reason) != "" {
-			reason := strings.TrimSpace(*p.Reason)
-			input["reason"] = reason
-			details = append(details, bridgeadapter.ApprovalDetail{Label: "Reason", Value: reason})
-		}
+		input, details = addOptionalDetail(input, details, "command", "Command", p.Command)
+		input, details = addOptionalDetail(input, details, "cwd", "Working directory", p.Cwd)
+		input, details = addOptionalDetail(input, details, "reason", "Reason", p.Reason)
 		return input, bridgeadapter.ApprovalPromptPresentation{
 			Title:       "Codex command execution",
 			Details:     details,
@@ -2233,16 +2228,8 @@ func (cc *CodexClient) handleFileChangeApprovalRequest(ctx context.Context, req 
 		_ = json.Unmarshal(raw, &p)
 		input := map[string]any{}
 		details := make([]bridgeadapter.ApprovalDetail, 0, 2)
-		if p.GrantRoot != nil && strings.TrimSpace(*p.GrantRoot) != "" {
-			root := strings.TrimSpace(*p.GrantRoot)
-			input["grantRoot"] = root
-			details = append(details, bridgeadapter.ApprovalDetail{Label: "Grant root", Value: root})
-		}
-		if p.Reason != nil && strings.TrimSpace(*p.Reason) != "" {
-			reason := strings.TrimSpace(*p.Reason)
-			input["reason"] = reason
-			details = append(details, bridgeadapter.ApprovalDetail{Label: "Reason", Value: reason})
-		}
+		input, details = addOptionalDetail(input, details, "grantRoot", "Grant root", p.GrantRoot)
+		input, details = addOptionalDetail(input, details, "reason", "Reason", p.Reason)
 		return input, bridgeadapter.ApprovalPromptPresentation{
 			Title:       "Codex file change",
 			Details:     details,

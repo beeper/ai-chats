@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -72,31 +71,7 @@ func buildOpenCodeApprovalPresentation(req opencode.PermissionRequest) bridgeada
 		}
 	}
 	if len(req.Metadata) > 0 {
-		keys := make([]string, 0, len(req.Metadata))
-		for key := range req.Metadata {
-			key = strings.TrimSpace(key)
-			if key != "" {
-				keys = append(keys, key)
-			}
-		}
-		sort.Strings(keys)
-		for idx, key := range keys {
-			if idx >= 4 {
-				details = append(details, bridgeadapter.ApprovalDetail{
-					Label: "Metadata",
-					Value: fmt.Sprintf("%d additional field(s)", len(keys)-idx),
-				})
-				break
-			}
-			value := strings.TrimSpace(fmt.Sprintf("%v", req.Metadata[key]))
-			if value == "" {
-				continue
-			}
-			details = append(details, bridgeadapter.ApprovalDetail{
-				Label: "Metadata " + key,
-				Value: value,
-			})
-		}
+		details = bridgeadapter.AppendDetailsFromMap(details, "Metadata", req.Metadata, 4)
 	}
 	return bridgeadapter.ApprovalPromptPresentation{
 		Title:       title,

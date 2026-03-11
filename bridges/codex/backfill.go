@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"strconv"
+	"sort"
 	"strings"
 	"time"
 
@@ -16,6 +16,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote/pkg/bridgeadapter"
+	"github.com/beeper/agentremote/pkg/shared/backfillutil"
 )
 
 const codexThreadListPageSize = 100
@@ -540,7 +541,7 @@ func codexPaginateBackfill(entries []codexBackfillEntry, params bridgev2.FetchMe
 
 	end := len(entries)
 	if params.Cursor != "" {
-		if idx, ok := parseCodexBackfillCursor(params.Cursor); ok && idx >= 0 && idx <= len(entries) {
+		if idx, ok := backfillutil.ParseCursor(params.Cursor); ok && idx >= 0 && idx <= len(entries) {
 			end = idx
 		}
 	} else if params.AnchorMessage != nil {
@@ -563,7 +564,7 @@ func codexPaginateBackfill(entries []codexBackfillEntry, params bridgev2.FetchMe
 	hasMore := start > 0
 	cursor := networkid.PaginationCursor("")
 	if hasMore {
-		cursor = formatCodexBackfillCursor(start)
+		cursor = backfillutil.FormatCursor(start)
 	}
 	return entries[start:end], cursor, hasMore
 }
@@ -584,25 +585,7 @@ func codexIndexAtOrAfter(entries []codexBackfillEntry, anchor time.Time) int {
 	if anchor.IsZero() {
 		return 0
 	}
-	for idx, entry := range entries {
-		if !entry.Timestamp.Before(anchor) {
-			return idx
-		}
-	}
-	return len(entries)
-}
-
-func parseCodexBackfillCursor(cursor networkid.PaginationCursor) (int, bool) {
-	if cursor == "" {
-		return 0, false
-	}
-	idx, err := strconv.Atoi(string(cursor))
-	if err != nil {
-		return 0, false
-	}
-	return idx, true
-}
-
-func formatCodexBackfillCursor(idx int) networkid.PaginationCursor {
-	return networkid.PaginationCursor(strconv.Itoa(idx))
+	return sort.Search(len(entries), func(i int) bool {
+		return !entries[i].Timestamp.Before(anchor)
+	})
 }
