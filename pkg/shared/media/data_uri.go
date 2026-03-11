@@ -5,8 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 )
+
+func hasBase64Token(metadata string) bool {
+	for _, token := range strings.Split(metadata, ";")[1:] {
+		if strings.EqualFold(strings.TrimSpace(token), "base64") {
+			return true
+		}
+	}
+	return false
+}
 
 // ParseDataURI parses a base64 data URI and returns raw base64 data and mime type.
 func ParseDataURI(dataURI string) (string, string, error) {
@@ -21,16 +31,43 @@ func ParseDataURI(dataURI string) (string, string, error) {
 		return "", "", errors.New("invalid data URI: no comma separator")
 	}
 
-	if !strings.Contains(metadata, ";base64") {
+	if !hasBase64Token(metadata) {
 		return "", "", errors.New("only base64 data URIs are supported")
 	}
 
-	mimeType := strings.Split(metadata, ";")[0]
-	if mimeType == "" {
-		mimeType = "application/octet-stream"
-	}
+	mimeType := strings.TrimSpace(strings.Split(metadata, ";")[0])
 
 	return data, mimeType, nil
+}
+
+// DecodeDataURI decodes a data URI (both base64 and percent-encoded) and returns
+// the decoded bytes plus the mime type extracted from the URI header.
+// It returns an empty mime type string if no media type is specified in the URI.
+func DecodeDataURI(raw string) ([]byte, string, error) {
+	rest, ok := strings.CutPrefix(raw, "data:")
+	if !ok {
+		return nil, "", errors.New("not a data URI")
+	}
+	meta, payload, ok := strings.Cut(rest, ",")
+	if !ok {
+		return nil, "", errors.New("invalid data URI: no comma separator")
+	}
+	mimeType := ""
+	if meta != "" {
+		mimeType = strings.TrimSpace(strings.Split(meta, ";")[0])
+	}
+	if hasBase64Token(meta) {
+		decoded, err := base64.StdEncoding.DecodeString(payload)
+		if err != nil {
+			return nil, "", fmt.Errorf("base64 decode failed: %w", err)
+		}
+		return decoded, mimeType, nil
+	}
+	decoded, err := url.PathUnescape(payload)
+	if err != nil {
+		return nil, "", fmt.Errorf("percent-decode failed: %w", err)
+	}
+	return []byte(decoded), mimeType, nil
 }
 
 // DecodeBase64 decodes raw/base64 data or data URIs and returns bytes plus mime type.

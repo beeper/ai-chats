@@ -15,7 +15,6 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/pkg/agents"
 	"github.com/beeper/agentremote/pkg/bridgeadapter"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
@@ -110,10 +109,6 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 
-	if handled, resp := oc.tryApprovalDecisionEvent(ctx, msg, portal); handled {
-		return resp, nil
-	}
-
 	rawBody := strings.TrimSpace(msg.Content.Body)
 	if msg.Content.MsgType == event.MsgLocation && strings.TrimSpace(msg.Content.GeoURI) != "" {
 		rawMap := msg.Event.Content.Raw
@@ -139,20 +134,13 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		Int("raw_len", len(rawBodyOriginal)).
 		Msg("Inbound message metadata resolved")
 
-	var agentDef *agents.AgentDefinition
-	if agentID := resolveAgentID(meta); agentID != "" {
-		store := NewAgentStoreAdapter(oc)
-		if agent, err := store.GetAgentByID(ctx, agentID); err == nil {
-			agentDef = agent
-		}
-	}
-	mentionRegexes := buildMentionRegexes(&oc.connector.Config, agentDef)
+	mc := oc.resolveMentionContext(ctx, portal, meta, msg.Event, msg.Content.Mentions, rawBody)
 
 	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
 
 	commandBody := rawBody
 	if isGroup {
-		commandBody = stripMentionPatterns(commandBody, mentionRegexes)
+		commandBody = stripMentionPatterns(commandBody, mc.MentionRegexes)
 	}
 	if !commandAuthorized && airuntime.IsAbortTriggerText(commandBody) {
 		logCtx.Debug().Msg("Ignoring abort trigger from unauthorized sender")
@@ -172,26 +160,10 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		return nil, bridgeadapter.UnsupportedMessageStatus(errors.New("empty messages are not supported"))
 	}
 
-	// Mention detection (OpenClaw-style)
-	replyCtx := extractInboundReplyContext(msg.Event)
-	botMXID := oc.resolveBotMXID(ctx, portal, meta)
-	explicitMention := false
-	hasExplicit := false
-	if msg.Content.Mentions != nil {
-		hasExplicit = true
-		if msg.Content.Mentions.Room || (botMXID != "" && msg.Content.Mentions.Has(botMXID)) {
-			explicitMention = true
-		}
-	}
-	if !explicitMention && replyCtx.ReplyTo != "" {
-		if oc.isReplyToBot(ctx, portal, replyCtx.ReplyTo) {
-			explicitMention = true
-		}
-	}
-	wasMentioned := explicitMention || matchesMentionPatterns(rawBody, mentionRegexes)
+	wasMentioned := mc.WasMentioned
 	groupActivation := oc.resolveGroupActivation(meta)
 	requireMention := isGroup && groupActivation != "always"
-	canDetectMention := len(mentionRegexes) > 0 || hasExplicit
+	canDetectMention := len(mc.MentionRegexes) > 0 || mc.HasExplicit
 	shouldBypassMention := groupActivation == "always"
 	if isGroup && requireMention && !wasMentioned && !shouldBypassMention {
 		logCtx.Debug().
@@ -682,29 +654,8 @@ func (oc *AIClient) handleMediaMessage(
 		caption = config.defaultCaption
 	}
 
-	agentDef := (*agents.AgentDefinition)(nil)
-	if agentID := resolveAgentID(meta); agentID != "" {
-		store := NewAgentStoreAdapter(oc)
-		if agent, err := store.GetAgentByID(ctx, agentID); err == nil {
-			agentDef = agent
-		}
-	}
-	mentionRegexes := buildMentionRegexes(&oc.connector.Config, agentDef)
-	replyCtx := extractInboundReplyContext(msg.Event)
-	botMXID := oc.resolveBotMXID(ctx, portal, meta)
-	explicitMention := false
-	if msg.Content.Mentions != nil {
-		if msg.Content.Mentions.Room || (botMXID != "" && msg.Content.Mentions.Has(botMXID)) {
-			explicitMention = true
-		}
-	}
-	if !explicitMention && replyCtx.ReplyTo != "" {
-		if oc.isReplyToBot(ctx, portal, replyCtx.ReplyTo) {
-			explicitMention = true
-		}
-	}
-	wasMentioned := explicitMention || matchesMentionPatterns(rawCaption, mentionRegexes)
-	typingCtx := &TypingContext{IsGroup: isGroup, WasMentioned: wasMentioned}
+	mc := oc.resolveMentionContext(ctx, portal, meta, msg.Event, msg.Content.Mentions, rawCaption)
+	typingCtx := &TypingContext{IsGroup: isGroup, WasMentioned: mc.WasMentioned}
 
 	// Get encrypted file info if present (for E2EE rooms)
 	var encryptedFile *event.EncryptedFileInfo
@@ -817,7 +768,7 @@ func (oc *AIClient) handleMediaMessage(
 
 		// If model lacks audio but agent supports audio understanding, analyze audio first.
 		if msgType == event.MsgAudio {
-			audioModel, audioFallback := oc.resolveAudioModelForInput(ctx, meta)
+			audioModel, audioFallback := oc.resolveModelForCapability(ctx, meta, func(caps ModelCapabilities) bool { return caps.SupportsAudio }, oc.resolveAudioUnderstandingModel)
 			if resp, err := oc.dispatchMediaUnderstandingFallback(
 				ctx,
 				audioModel,
@@ -980,29 +931,8 @@ func (oc *AIClient) handleTextFileMessage(
 		roomName = oc.matrixRoomDisplayName(ctx, portal)
 	}
 	senderName := oc.matrixDisplayName(ctx, portal.MXID, msg.Event.Sender)
-	agentDef := (*agents.AgentDefinition)(nil)
-	if agentID := resolveAgentID(meta); agentID != "" {
-		store := NewAgentStoreAdapter(oc)
-		if agent, err := store.GetAgentByID(ctx, agentID); err == nil {
-			agentDef = agent
-		}
-	}
-	mentionRegexes := buildMentionRegexes(&oc.connector.Config, agentDef)
-	replyCtx := extractInboundReplyContext(msg.Event)
-	botMXID := oc.resolveBotMXID(ctx, portal, meta)
-	explicitMention := false
-	if msg.Content.Mentions != nil {
-		if msg.Content.Mentions.Room || (botMXID != "" && msg.Content.Mentions.Has(botMXID)) {
-			explicitMention = true
-		}
-	}
-	if !explicitMention && replyCtx.ReplyTo != "" {
-		if oc.isReplyToBot(ctx, portal, replyCtx.ReplyTo) {
-			explicitMention = true
-		}
-	}
-	wasMentioned := explicitMention || matchesMentionPatterns(rawCaption, mentionRegexes)
-	typingCtx := &TypingContext{IsGroup: isGroup, WasMentioned: wasMentioned}
+	mc := oc.resolveMentionContext(ctx, portal, meta, msg.Event, msg.Content.Mentions, rawCaption)
+	typingCtx := &TypingContext{IsGroup: isGroup, WasMentioned: mc.WasMentioned}
 
 	var encryptedFile *event.EncryptedFileInfo
 	if msg.Content.File != nil {
@@ -1142,13 +1072,14 @@ func (oc *AIClient) sendAckReaction(ctx context.Context, portal *bridgev2.Portal
 
 	sender := oc.senderForPortal(ctx, portal)
 	emojiID := networkid.EmojiID(emoji)
-	result := oc.UserLogin.QueueRemoteEvent(&AIRemoteReaction{
-		portal:        portal.PortalKey,
-		sender:        sender,
-		targetMessage: targetPart.ID,
-		emoji:         emoji,
-		emojiID:       emojiID,
-		timestamp:     time.Now(),
+	result := oc.UserLogin.QueueRemoteEvent(&bridgeadapter.RemoteReaction{
+		Portal:        portal.PortalKey,
+		Sender:        sender,
+		TargetMessage: targetPart.ID,
+		Emoji:         emoji,
+		EmojiID:       emojiID,
+		Timestamp:     time.Now(),
+		LogKey:        "ai_reaction_target",
 	})
 	if !result.Success {
 		oc.loggerForContext(ctx).Warn().
@@ -1207,11 +1138,12 @@ func (oc *AIClient) removeAckReaction(ctx context.Context, portal *bridgev2.Port
 	}
 
 	sender := oc.senderForPortal(ctx, portal)
-	oc.UserLogin.QueueRemoteEvent(&AIRemoteReactionRemove{
-		portal:        portal.PortalKey,
-		sender:        sender,
-		targetMessage: entry.targetNetworkID,
-		emojiID:       networkid.EmojiID(entry.emoji),
+	oc.UserLogin.QueueRemoteEvent(&bridgeadapter.RemoteReactionRemove{
+		Portal:        portal.PortalKey,
+		Sender:        sender,
+		TargetMessage: entry.targetNetworkID,
+		EmojiID:       networkid.EmojiID(entry.emoji),
+		LogKey:        "ai_reaction_remove_target",
 	})
 
 	oc.loggerForContext(ctx).Debug().
@@ -1300,68 +1232,4 @@ func (oc *AIClient) buildContextForRegenerate(
 		}},
 	})
 	return promptContext, nil
-}
-
-func (oc *AIClient) tryApprovalDecisionEvent(
-	ctx context.Context,
-	msg *bridgev2.MatrixMessage,
-	portal *bridgev2.Portal,
-) (bool, *bridgev2.MatrixMessageResponse) {
-	decisionPayload, ok := parseApprovalDecisionMetadata(msg.Event)
-	if !ok {
-		return false, nil
-	}
-	decision, ok := bridgeadapter.ParseApprovalDecision(decisionPayload)
-	if !ok {
-		oc.loggerForContext(ctx).Warn().
-			Str("sender", msg.Event.Sender.String()).
-			Msg("approval decision event missing required fields")
-		return true, &bridgev2.MatrixMessageResponse{Pending: false}
-	}
-
-	state := airuntime.ToolApprovalDenied
-	if decision.Approved {
-		state = airuntime.ToolApprovalApproved
-	}
-	err := oc.resolveToolApproval(
-		portal.MXID,
-		decision.ApprovalID,
-		airuntime.ToolApprovalDecision{State: state, Reason: decision.Reason},
-		decision.Always,
-		msg.Event.Sender,
-	)
-	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).
-			Str("approval_id", decision.ApprovalID).
-			Msg("approval decision: failed to resolve")
-		oc.sendApprovalRejectionEvent(ctx, portal, decision.ApprovalID, err, approvalDecisionReplyTarget(msg.Event))
-	}
-	return true, &bridgev2.MatrixMessageResponse{Pending: false}
-}
-
-func parseApprovalDecisionMetadata(evt *event.Event) (map[string]any, bool) {
-	if evt == nil || evt.Content.Raw == nil {
-		return nil, false
-	}
-	actionResponse, ok := evt.Content.Raw["com.beeper.ai.approval_decision"].(map[string]any)
-	if !ok {
-		return nil, false
-	}
-	return actionResponse, true
-}
-
-func approvalDecisionReplyTarget(evt *event.Event) id.EventID {
-	if evt == nil || evt.Content.Raw == nil {
-		return ""
-	}
-	relatesTo, ok := evt.Content.Raw["m.relates_to"].(map[string]any)
-	if !ok {
-		return ""
-	}
-	inReplyTo, ok := relatesTo["m.in_reply_to"].(map[string]any)
-	if !ok {
-		return ""
-	}
-	eventID, _ := inReplyTo["event_id"].(string)
-	return id.EventID(strings.TrimSpace(eventID))
 }

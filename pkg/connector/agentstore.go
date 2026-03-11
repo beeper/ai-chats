@@ -510,8 +510,8 @@ func (b *BossStoreAdapter) CreateRoom(ctx context.Context, room tools.RoomData) 
 		return "", fmt.Errorf("agent '%s' not found: %w", room.AgentID, err)
 	}
 
-	// Create the portal via createAgentChat
-	resp, err := b.store.client.createAgentChat(ctx, agent)
+	// Create the portal via createAgentChatWithModel
+	resp, err := b.store.client.createAgentChatWithModel(ctx, agent, "", false)
 	if err != nil {
 		return "", fmt.Errorf("failed to create room: %w", err)
 	}
@@ -584,7 +584,7 @@ func (b *BossStoreAdapter) ModifyRoom(ctx context.Context, roomID string, update
 		if err != nil {
 			return fmt.Errorf("agent '%s' not found: %w", updates.AgentID, err)
 		}
-		portal.OtherUserID = agentUserID(agent.ID)
+		portal.OtherUserID = b.store.client.agentUserID(agent.ID)
 		pm.ResolvedTarget = resolveTargetFromGhostID(portal.OtherUserID)
 		modelID := b.store.client.effectiveModel(pm)
 		agentName := b.store.client.resolveAgentDisplayName(ctx, agent)

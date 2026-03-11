@@ -9,7 +9,7 @@ import (
 )
 
 func TestFillPortalBridgeInfoSetsAIRoomType(t *testing.T) {
-	conn := &OpenClawConnector{}
+	conn := NewConnector()
 	portal := &bridgev2.Portal{Portal: &database.Portal{RoomType: database.RoomTypeDM}}
 	meta := portalMeta(portal)
 	meta.IsOpenClawRoom = true
@@ -32,7 +32,7 @@ func TestFillPortalBridgeInfoSetsAIRoomType(t *testing.T) {
 }
 
 func TestGetCapabilitiesDisablesDisappearingMessages(t *testing.T) {
-	conn := &OpenClawConnector{}
+	conn := NewConnector()
 	caps := conn.GetCapabilities()
 	if caps.DisappearingMessages {
 		t.Fatal("expected disappearing messages to be disabled")

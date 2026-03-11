@@ -13,7 +13,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/commands"
 	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/bridgev2/matrix"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
@@ -122,15 +121,10 @@ func (oc *OpenAIConnector) applyRuntimeDefaults() {
 
 // registerCustomEventHandlers registers connector-owned event handlers.
 func (oc *OpenAIConnector) registerCustomEventHandlers() {
-	// Type assert the Matrix connector to get the concrete type with EventProcessor
-	matrixConnector, ok := oc.br.Matrix.(*matrix.Connector)
-	if !ok {
+	if !registerScheduleTickEventHandler(oc.br, oc.handleScheduleTickEvent) {
 		oc.br.Log.Warn().Msg("Cannot register custom event handlers: Matrix connector type assertion failed")
 		return
 	}
-
-	// Register handler for internal scheduler delayed ticks.
-	matrixConnector.EventProcessor.On(ScheduleTickEventType, oc.handleScheduleTickEvent)
 
 	oc.br.Log.Info().Msg("Registered connector event handlers")
 }

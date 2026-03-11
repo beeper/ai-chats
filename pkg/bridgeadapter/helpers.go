@@ -11,6 +11,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/pkg/matrixevents"
@@ -192,6 +193,27 @@ func SendViaPortal(p SendViaPortalParams) (id.EventID, networkid.MessageID, erro
 	return result.EventID, p.MsgID, nil
 }
 
+// RedactEventAsSender redacts an event ID in a room using the intent resolved for sender.
+func RedactEventAsSender(
+	ctx context.Context,
+	login *bridgev2.UserLogin,
+	portal *bridgev2.Portal,
+	sender bridgev2.EventSender,
+	targetEventID id.EventID,
+) error {
+	if login == nil || portal == nil || portal.MXID == "" || targetEventID == "" {
+		return fmt.Errorf("invalid redaction target")
+	}
+	intent, ok := portal.GetIntentFor(ctx, sender, login, bridgev2.RemoteEventMessageRemove)
+	if !ok || intent == nil {
+		return fmt.Errorf("intent resolution failed")
+	}
+	_, err := intent.SendMessage(ctx, portal.MXID, event.EventRedaction, &event.Content{
+		Parsed: &event.RedactionEventContent{Redacts: targetEventID},
+	}, nil)
+	return err
+}
+
 func BuildChatInfoWithFallback(metaTitle, portalName, fallbackTitle, portalTopic string) *bridgev2.ChatInfo {
 	title := metaTitle
 	if title == "" {
@@ -204,6 +226,15 @@ func BuildChatInfoWithFallback(metaTitle, portalName, fallbackTitle, portalTopic
 	return &bridgev2.ChatInfo{
 		Name:  ptr.Ptr(title),
 		Topic: ptr.NonZero(portalTopic),
+	}
+}
+
+// BuildBotUserInfo returns a UserInfo for an AI bot ghost with the given name and identifiers.
+func BuildBotUserInfo(name string, identifiers ...string) *bridgev2.UserInfo {
+	return &bridgev2.UserInfo{
+		Name:        ptr.Ptr(name),
+		IsBot:       ptr.Ptr(true),
+		Identifiers: identifiers,
 	}
 }
 
@@ -238,6 +269,7 @@ func SendAIRoomInfo(ctx context.Context, portal *bridgev2.Portal, aiKind string)
 	if aiKind == "" {
 		aiKind = AIRoomKindAgent
 	}
+	//lint:ignore SA1019 bridgev2 currently exposes room-meta sending via portal internals
 	return portal.Internal().SendRoomMeta(
 		ctx,
 		nil,
@@ -315,5 +347,46 @@ func UpsertAssistantMessage(ctx context.Context, p UpsertAssistantMessageParams)
 		p.Logger.Warn().Err(err).Msg("Failed to insert assistant message to database")
 	} else {
 		p.Logger.Debug().Str("msg_id", string(assistantMsg.ID)).Msg("Inserted assistant message to database")
+	}
+}
+
+// DefaultApprovalExpiry is the fallback expiry duration when no TTL is specified.
+const DefaultApprovalExpiry = 10 * time.Minute
+
+// ComputeApprovalExpiry returns the expiry time based on ttlSeconds, falling
+// back to DefaultApprovalExpiry when ttlSeconds <= 0.
+func ComputeApprovalExpiry(ttlSeconds int) time.Time {
+	if ttlSeconds > 0 {
+		return time.Now().Add(time.Duration(ttlSeconds) * time.Second)
+	}
+	return time.Now().Add(DefaultApprovalExpiry)
+}
+
+// BuildContinuationMessage constructs a ConvertedMessage for overflow
+// continuation text, flagged with "com.beeper.continuation".
+func BuildContinuationMessage(portal networkid.PortalKey, body string, sender bridgev2.EventSender, idPrefix, logKey string) *RemoteMessage {
+	rendered := format.RenderMarkdown(body, true, true)
+	raw := map[string]any{
+		"msgtype":                 event.MsgText,
+		"body":                    rendered.Body,
+		"format":                  rendered.Format,
+		"formatted_body":          rendered.FormattedBody,
+		"com.beeper.continuation": true,
+		"m.mentions":              map[string]any{},
+	}
+	return &RemoteMessage{
+		Portal:    portal,
+		ID:        NewMessageID(idPrefix),
+		Sender:    sender,
+		Timestamp: time.Now(),
+		LogKey:    logKey,
+		PreBuilt: &bridgev2.ConvertedMessage{
+			Parts: []*bridgev2.ConvertedMessagePart{{
+				ID:      networkid.PartID("0"),
+				Type:    event.EventMessage,
+				Content: &event.MessageEventContent{MsgType: event.MsgText, Body: body},
+				Extra:   raw,
+			}},
+		},
 	}
 }

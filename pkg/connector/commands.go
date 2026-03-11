@@ -64,6 +64,10 @@ func getAIClient(ce *commands.Event) *AIClient {
 	return client
 }
 
+func hasLoginForCommand(ce *commands.Event) bool {
+	return getAIClient(ce) != nil
+}
+
 func getPortalMeta(ce *commands.Event) *PortalMetadata {
 	if ce.Portal == nil {
 		return nil

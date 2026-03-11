@@ -43,6 +43,9 @@ func markCommandFailure(ce *commands.Event, message string, reason event.Message
 }
 
 func registerAICommand(def commandregistry.Definition) *commands.FullHandler {
+	if def.RequiresLogin && def.HasLogin == nil {
+		def.HasLogin = hasLoginForCommand
+	}
 	return aiCommandRegistry.Register(def)
 }
 

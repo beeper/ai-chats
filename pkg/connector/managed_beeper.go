@@ -55,10 +55,21 @@ func (oc *OpenAIConnector) getPreferredUserLogin(ctx context.Context, user *brid
 	if user == nil {
 		return nil
 	}
-	if managed := oc.getManagedBeeperLogin(ctx, user); managed != nil {
-		return managed
+
+	var managed *bridgev2.UserLogin
+	if oc != nil {
+		managed = oc.getManagedBeeperLogin(ctx, user)
 	}
-	return user.GetDefaultLogin()
+	defaultLogin := user.GetDefaultLogin()
+	allLogins := user.GetUserLogins()
+	preferred := selectPreferredUserLogin(managed, defaultLogin, allLogins, oc.isSelectableUserLogin)
+	if preferred != nil {
+		return preferred
+	}
+	if defaultLogin != nil {
+		return defaultLogin
+	}
+	return managed
 }
 
 func (oc *OpenAIConnector) reconcileManagedBeeperLogin(ctx context.Context) (*bridgev2.UserLogin, error) {
@@ -87,6 +98,12 @@ func (oc *OpenAIConnector) reconcileManagedBeeperLoginForUser(ctx context.Contex
 	login, err := oc.br.GetExistingUserLoginByID(ctx, loginID)
 	if err != nil {
 		return nil, err
+	}
+	if login == nil {
+		login, err = oc.br.GetExistingUserLoginByID(ctx, legacyManagedBeeperLoginID(user.MXID))
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	effectiveToken := auth.Token
@@ -155,4 +172,59 @@ func (oc *OpenAIConnector) reconcileManagedBeeperLoginForUser(ctx context.Contex
 	}
 
 	return login, nil
+}
+
+func (oc *OpenAIConnector) isSelectableUserLogin(login *bridgev2.UserLogin) bool {
+	if login == nil || login.Client == nil {
+		return false
+	}
+	meta := loginMetadata(login)
+	if meta == nil || strings.TrimSpace(meta.Provider) == "" {
+		return false
+	}
+	if login.BridgeState != nil {
+		switch login.BridgeState.GetPrev().StateEvent {
+		case status.StateBadCredentials, status.StateLoggedOut:
+			return false
+		}
+	}
+	if oc != nil {
+		if strings.TrimSpace(oc.resolveProviderAPIKey(meta)) == "" {
+			return false
+		}
+		switch meta.Provider {
+		case ProviderBeeper:
+			if oc.resolveBeeperBaseURL(meta) == "" {
+				return false
+			}
+		case ProviderMagicProxy:
+			if normalizeMagicProxyBaseURL(meta.BaseURL) == "" {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func selectPreferredUserLogin(
+	managed *bridgev2.UserLogin,
+	defaultLogin *bridgev2.UserLogin,
+	allLogins []*bridgev2.UserLogin,
+	isSelectable func(*bridgev2.UserLogin) bool,
+) *bridgev2.UserLogin {
+	if managed != nil && (isSelectable == nil || isSelectable(managed)) {
+		return managed
+	}
+	if defaultLogin != nil && defaultLogin != managed && (isSelectable == nil || isSelectable(defaultLogin)) {
+		return defaultLogin
+	}
+	for _, login := range allLogins {
+		if login == nil || login == managed {
+			continue
+		}
+		if isSelectable == nil || isSelectable(login) {
+			return login
+		}
+	}
+	return nil
 }

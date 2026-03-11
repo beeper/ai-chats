@@ -2,14 +2,13 @@ package opencodebridge
 
 import (
 	"context"
-	"time"
-
-	"maunium.net/go/mautrix/id"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
+
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
 )
 
 // Host provides the minimal surface area the OpenCode bridge needs
@@ -89,23 +88,12 @@ func (b *Bridge) AbortSession(ctx context.Context, instanceID, sessionID string)
 	return b.manager.AbortSession(ctx, instanceID, sessionID)
 }
 
-func (b *Bridge) ResolveApprovalDecision(ctx context.Context, roomID id.RoomID, approvalID string, approved, always bool, reason string, decidedBy id.UserID) error {
+// ApprovalHandler returns the manager's ApprovalFlow as an ApprovalReactionHandler, or nil if unavailable.
+func (b *Bridge) ApprovalHandler() bridgeadapter.ApprovalReactionHandler {
 	if b == nil || b.manager == nil {
-		return ErrUnavailable
+		return nil
 	}
-	response := "reject"
-	if approved {
-		response = "once"
-		if always {
-			response = "always"
-		}
-	}
-	return b.manager.resolvePermissionDecision(ctx, roomID, approvalID, permissionDecision{
-		Response:  response,
-		Reason:    reason,
-		DecidedAt: time.Now(),
-		DecidedBy: decidedBy,
-	})
+	return b.manager.approvalFlow
 }
 
 func (b *Bridge) RestoreConnections(ctx context.Context) error {

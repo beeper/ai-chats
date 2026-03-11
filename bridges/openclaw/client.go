@@ -2,14 +2,12 @@ package openclaw
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -26,14 +24,14 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/pkg/bridgeadapter"
-	"github.com/beeper/agentremote/pkg/matrixevents"
-	"github.com/beeper/agentremote/pkg/shared/streamtransport"
+	"github.com/beeper/agentremote/pkg/shared/cachedvalue"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 )
 
 var _ bridgev2.NetworkAPI = (*OpenClawClient)(nil)
 var _ bridgev2.BackfillingNetworkAPI = (*OpenClawClient)(nil)
 var _ bridgev2.DeleteChatHandlingNetworkAPI = (*OpenClawClient)(nil)
+var _ bridgev2.ReactionHandlingNetworkAPI = (*OpenClawClient)(nil)
 
 const openClawCapabilityBaseID = "com.beeper.ai.capabilities.2026_03_09+openclaw"
 
@@ -53,7 +51,7 @@ var openClawBaseCaps = &event.RoomFeatures{
 	Thread:              event.CapLevelRejected,
 	Edit:                event.CapLevelRejected,
 	Delete:              event.CapLevelRejected,
-	Reaction:            event.CapLevelRejected,
+	Reaction:            event.CapLevelFullySupported,
 	ReadReceipts:        true,
 	TypingNotifications: true,
 	DeleteChat:          true,
@@ -68,6 +66,7 @@ type openClawCapabilityProfile struct {
 }
 
 type OpenClawClient struct {
+	bridgeadapter.BaseReactionHandler
 	UserLogin *bridgev2.UserLogin
 	connector *OpenClawConnector
 
@@ -79,25 +78,14 @@ type OpenClawClient struct {
 
 	loggedIn atomic.Bool
 
-	agentCatalogMu        sync.RWMutex
-	agentCatalog          []gatewayAgentSummary
-	agentCatalogDefaultID string
-	agentCatalogMainKey   string
-	agentCatalogScope     string
-	agentCatalogFetchedAt time.Time
+	agentCache *cachedvalue.CachedValue[agentCatalogEntry]
+	modelCache *cachedvalue.CachedValue[[]gatewayModelChoice]
 
-	modelCatalogMu        sync.RWMutex
-	modelCatalog          []gatewayModelChoice
-	modelCatalogFetchedAt time.Time
+	toolCacheMu sync.Mutex
+	toolCaches  map[string]*cachedvalue.CachedValue[gatewayToolsCatalogResponse]
 
-	toolCatalogMu        sync.RWMutex
-	toolCatalog          map[string]gatewayToolsCatalogResponse
-	toolCatalogFetchedAt map[string]time.Time
-
-	streamMu                  sync.Mutex
-	streamSessions            map[string]*streamtransport.StreamSession
-	streamStates              map[string]*openClawStreamState
-	streamFallbackToDebounced atomic.Bool
+	bridgeadapter.BaseStreamState
+	streamStates map[string]*openClawStreamState
 }
 
 type openClawStreamState struct {
@@ -135,18 +123,21 @@ func newOpenClawClient(login *bridgev2.UserLogin, connector *OpenClawConnector) 
 		return nil, errors.New("missing login")
 	}
 	client := &OpenClawClient{
-		UserLogin:            login,
-		connector:            connector,
-		streamSessions:       make(map[string]*streamtransport.StreamSession),
-		streamStates:         make(map[string]*openClawStreamState),
-		toolCatalog:          make(map[string]gatewayToolsCatalogResponse),
-		toolCatalogFetchedAt: make(map[string]time.Time),
+		UserLogin:    login,
+		connector:    connector,
+		streamStates: make(map[string]*openClawStreamState),
+		agentCache:   cachedvalue.New[agentCatalogEntry](openClawAgentCatalogTTL),
+		modelCache:   cachedvalue.New[[]gatewayModelChoice](openClawMetadataCatalogTTL),
+		toolCaches:   make(map[string]*cachedvalue.CachedValue[gatewayToolsCatalogResponse]),
 	}
+	client.InitStreamState()
+	client.BaseReactionHandler.Target = client
 	client.manager = newOpenClawManager(client)
 	return client, nil
 }
 
 func (oc *OpenClawClient) Connect(ctx context.Context) {
+	oc.ResetStreamShutdown()
 	oc.connectMu.Lock()
 	if oc.connectCancel != nil {
 		oc.connectMu.Unlock()
@@ -172,6 +163,7 @@ func (oc *OpenClawClient) Connect(ctx context.Context) {
 }
 
 func (oc *OpenClawClient) Disconnect() {
+	oc.BeginStreamShutdown()
 	oc.connectMu.Lock()
 	cancel := oc.connectCancel
 	oc.connectCancel = nil
@@ -184,19 +176,10 @@ func (oc *OpenClawClient) Disconnect() {
 		oc.manager.Stop()
 	}
 	oc.loggedIn.Store(false)
-	oc.streamMu.Lock()
-	sessions := make([]*streamtransport.StreamSession, 0, len(oc.streamSessions))
-	for _, s := range oc.streamSessions {
-		if s != nil {
-			sessions = append(sessions, s)
-		}
-	}
-	oc.streamSessions = make(map[string]*streamtransport.StreamSession)
+	oc.CloseAllSessions()
+	oc.StreamMu.Lock()
 	oc.streamStates = make(map[string]*openClawStreamState)
-	oc.streamMu.Unlock()
-	for _, s := range sessions {
-		s.End(context.Background(), streamtransport.EndReasonDisconnect)
-	}
+	oc.StreamMu.Unlock()
 	if oc.UserLogin != nil {
 		oc.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Message: "Disconnected"})
 	}
@@ -243,6 +226,15 @@ func (oc *OpenClawClient) connectLoop(ctx context.Context) {
 
 func (oc *OpenClawClient) IsLoggedIn() bool { return oc.loggedIn.Load() }
 
+func (oc *OpenClawClient) GetUserLogin() *bridgev2.UserLogin { return oc.UserLogin }
+
+func (oc *OpenClawClient) GetApprovalHandler() bridgeadapter.ApprovalReactionHandler {
+	if oc.manager == nil {
+		return nil
+	}
+	return oc.manager.approvalFlow
+}
+
 func (oc *OpenClawClient) LogoutRemote(_ context.Context) {}
 
 func (oc *OpenClawClient) IsThisUser(_ context.Context, userID networkid.UserID) bool {
@@ -253,32 +245,11 @@ func (oc *OpenClawClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 	if msg == nil || msg.Portal == nil {
 		return nil, errors.New("missing portal context")
 	}
-	if handled, resp := oc.tryApprovalDecisionEvent(ctx, msg); handled {
-		return resp, nil
-	}
 	meta := portalMeta(msg.Portal)
 	if !meta.IsOpenClawRoom {
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 	return oc.manager.HandleMatrixMessage(ctx, msg)
-}
-
-func (oc *OpenClawClient) tryApprovalDecisionEvent(ctx context.Context, msg *bridgev2.MatrixMessage) (bool, *bridgev2.MatrixMessageResponse) {
-	if oc == nil || oc.manager == nil || msg == nil || msg.Event == nil || msg.Portal == nil {
-		return false, nil
-	}
-	raw, ok := msg.Event.Content.Raw["com.beeper.ai.approval_decision"].(map[string]any)
-	if !ok {
-		return false, nil
-	}
-	decision, ok := bridgeadapter.ParseApprovalDecision(raw)
-	if !ok {
-		return true, &bridgev2.MatrixMessageResponse{Pending: false}
-	}
-	if err := oc.manager.ResolveApprovalDecision(ctx, msg.Portal, decision); err != nil {
-		oc.sendSystemNoticeViaPortal(ctx, msg.Portal, bridgeadapter.ApprovalErrorToastText(err))
-	}
-	return true, &bridgev2.MatrixMessageResponse{Pending: false}
 }
 
 func (oc *OpenClawClient) FetchMessages(ctx context.Context, params bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {
@@ -449,11 +420,11 @@ func openClawCapabilityID(profile openClawCapabilityProfile) string {
 
 func (oc *OpenClawClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
 	if ghost == nil {
-		return &bridgev2.UserInfo{Name: ptr.Ptr("OpenClaw"), IsBot: ptr.Ptr(true)}, nil
+		return bridgeadapter.BuildBotUserInfo("OpenClaw"), nil
 	}
 	agentID, ok := parseOpenClawGhostID(string(ghost.ID))
 	if !ok {
-		return &bridgev2.UserInfo{Name: ptr.Ptr("OpenClaw"), IsBot: ptr.Ptr(true)}, nil
+		return bridgeadapter.BuildBotUserInfo("OpenClaw"), nil
 	}
 	current := ghostMeta(ghost)
 	configured, err := oc.agentCatalogEntryByID(ctx, agentID)
@@ -857,82 +828,31 @@ func (oc *OpenClawClient) sendSystemNoticeViaPortal(ctx context.Context, portal 
 	})
 }
 
-func (oc *OpenClawClient) sendApprovalRequestFallbackEvent(ctx context.Context, portal *bridgev2.Portal, approvalID, body string) {
-	uiMessage := map[string]any{
-		"id":   approvalID,
-		"role": "assistant",
-		"metadata": map[string]any{
-			"approvalId": approvalID,
+func (oc *OpenClawClient) sendApprovalRequestFallbackEvent(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	approvalID, toolCallID, toolName, turnID, body string,
+	expiresAt time.Time,
+) {
+	if oc.manager == nil || oc.manager.approvalFlow == nil {
+		return
+	}
+	oc.manager.approvalFlow.SendPrompt(ctx, portal, bridgeadapter.SendPromptParams{
+		ApprovalPromptMessageParams: bridgeadapter.ApprovalPromptMessageParams{
+			ApprovalID: approvalID,
+			ToolCallID: toolCallID,
+			ToolName:   toolName,
+			TurnID:     turnID,
+			Body:       body,
+			ExpiresAt:  expiresAt,
 		},
-		"parts": []map[string]any{{
-			"type":       "dynamic-tool",
-			"toolName":   "exec",
-			"toolCallId": approvalID,
-			"state":      "approval-requested",
-			"approval": map[string]any{
-				"id": approvalID,
-			},
-		}},
-	}
-	converted := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:      networkid.PartID("0"),
-			Type:    event.EventMessage,
-			Content: &event.MessageEventContent{MsgType: event.MsgNotice, Body: body},
-			Extra: map[string]any{
-				"msgtype":                event.MsgNotice,
-				"body":                   body,
-				"m.mentions":             map[string]any{},
-				matrixevents.BeeperAIKey: uiMessage,
-			},
-			DBMetadata: &MessageMetadata{
-				Role:               "assistant",
-				ExcludeFromHistory: true,
-				CanonicalSchema:    "ai-sdk-ui-message-v1",
-				CanonicalUIMessage: uiMessage,
-			},
-		}},
-	}
-	oc.UserLogin.QueueRemoteEvent(&OpenClawRemoteMessage{
-		portal:    portal.PortalKey,
-		id:        newOpenClawMessageID(),
-		sender:    oc.senderForAgent("gateway", false),
-		timestamp: time.Now(),
-		preBuilt:  converted,
+		RoomID:    portal.MXID,
+		OwnerMXID: oc.UserLogin.UserMXID,
 	})
 }
 
 func (oc *OpenClawClient) DownloadAndEncodeMedia(ctx context.Context, mediaURL string, file *event.EncryptedFileInfo, maxMB int) (string, string, error) {
-	if strings.TrimSpace(mediaURL) == "" {
-		return "", "", errors.New("missing media URL")
-	}
-	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.Bot == nil {
-		return "", "", errors.New("bridge is unavailable")
-	}
-	maxBytes := int64(0)
-	if maxMB > 0 {
-		maxBytes = int64(maxMB) * 1024 * 1024
-	}
-	var encoded string
-	err := oc.UserLogin.Bridge.Bot.DownloadMediaToFile(ctx, id.ContentURIString(mediaURL), file, false, func(f *os.File) error {
-		var reader io.Reader = f
-		if maxBytes > 0 {
-			reader = io.LimitReader(f, maxBytes+1)
-		}
-		data, err := io.ReadAll(reader)
-		if err != nil {
-			return err
-		}
-		if maxBytes > 0 && int64(len(data)) > maxBytes {
-			return errors.New("media exceeds max size")
-		}
-		encoded = base64.StdEncoding.EncodeToString(data)
-		return nil
-	})
-	if err != nil {
-		return "", "", err
-	}
-	return encoded, "application/octet-stream", nil
+	return bridgeadapter.DownloadAndEncodeMedia(ctx, oc.UserLogin, mediaURL, file, maxMB)
 }
 
 func stringsTrimDefault(value, fallback string) string {

@@ -2,7 +2,6 @@ package connector
 
 import (
 	"context"
-	"errors"
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -27,80 +26,35 @@ func (oc *AIClient) sendApprovalRequestFallbackEvent(
 	toolCallID string,
 	toolName string,
 	replyToEventID id.EventID,
+	ttlSeconds int,
 ) {
-	if oc == nil || portal == nil || portal.MXID == "" {
-		return
-	}
-	approvalID = strings.TrimSpace(approvalID)
-	toolCallID = strings.TrimSpace(toolCallID)
-	toolName = strings.TrimSpace(toolName)
-	if approvalID == "" || toolCallID == "" {
-		return
-	}
-	if toolName == "" {
-		toolName = "tool"
-	}
 	turnID := ""
 	if state != nil {
 		turnID = state.turnID
 	}
-	uiMessage := buildApprovalSnapshotUIMessage(approvalID, toolCallID, toolName, turnID, "approval-requested", "")
-	converted := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{
-			buildApprovalSnapshotPart("Tool approval required", uiMessage, "", replyToEventID),
+	oc.approvalFlow.SendPrompt(ctx, portal, bridgeadapter.SendPromptParams{
+		ApprovalPromptMessageParams: bridgeadapter.ApprovalPromptMessageParams{
+			ApprovalID:     approvalID,
+			ToolCallID:     toolCallID,
+			ToolName:       toolName,
+			TurnID:         turnID,
+			ReplyToEventID: replyToEventID,
+			ExpiresAt:      bridgeadapter.ComputeApprovalExpiry(ttlSeconds),
 		},
-	}
-	if _, _, err := oc.sendViaPortal(ctx, portal, converted, ""); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Str("approval_id", approvalID).Msg("Failed to send approval request fallback event")
-	}
-}
-
-// sendApprovalRejectionEvent sends a combined toast + com.beeper.ai snapshot
-// marking an approval as output-denied. This is used when resolveToolApproval
-// fails (expired/unknown/already-handled) so the desktop can close the modal
-// instead of retrying in a loop.
-func (oc *AIClient) sendApprovalRejectionEvent(ctx context.Context, portal *bridgev2.Portal, approvalID string, err error, replyToEventID id.EventID) {
-	if oc == nil || portal == nil || portal.MXID == "" {
-		return
-	}
-	approvalID = strings.TrimSpace(approvalID)
-	if approvalID == "" {
-		return
-	}
-
-	errorText := "Expired"
-	switch {
-	case errors.Is(err, bridgeadapter.ErrApprovalAlreadyHandled):
-		errorText = "Already handled"
-	case errors.Is(err, bridgeadapter.ErrApprovalOnlyOwner):
-		errorText = "Denied"
-	case errors.Is(err, bridgeadapter.ErrApprovalWrongRoom):
-		errorText = "Denied"
-	}
-
-	toastText := bridgeadapter.ApprovalErrorToastText(err)
-	toolCallID, toolName, turnID := oc.lookupApprovalSnapshotInfo(approvalID)
-	uiMessage := buildApprovalSnapshotUIMessage(approvalID, toolCallID, toolName, turnID, "output-denied", errorText)
-	converted := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{
-			buildApprovalSnapshotPart(toastText, uiMessage, toastText, replyToEventID),
-		},
-	}
-	if _, _, sendErr := oc.sendViaPortal(ctx, portal, converted, ""); sendErr != nil {
-		oc.loggerForContext(ctx).Warn().Err(sendErr).Msg("Failed to send approval rejection event")
-	}
+		RoomID:    portal.MXID,
+		OwnerMXID: oc.UserLogin.UserMXID,
+	})
 }
 
 func (oc *AIClient) lookupApprovalSnapshotInfo(approvalID string) (toolCallID, toolName, turnID string) {
-	if oc == nil || oc.approvals == nil {
+	if oc == nil || oc.approvalFlow == nil {
 		return "", "", ""
 	}
-	p := oc.approvals.Get(strings.TrimSpace(approvalID))
-	if p == nil {
+	p := oc.approvalFlow.Get(strings.TrimSpace(approvalID))
+	if p == nil || p.Data == nil {
 		return "", "", ""
 	}
-	data := approvalData(p)
-	return strings.TrimSpace(data.ToolCallID), strings.TrimSpace(data.ToolName), strings.TrimSpace(data.TurnID)
+	return strings.TrimSpace(p.Data.ToolCallID), strings.TrimSpace(p.Data.ToolName), strings.TrimSpace(p.Data.TurnID)
 }
 
 func buildApprovalSnapshotUIMessage(approvalID, toolCallID, toolName, turnID, state, errorText string) map[string]any {

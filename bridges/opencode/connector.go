@@ -11,7 +11,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote/pkg/bridgeadapter"
 )
@@ -22,6 +21,7 @@ var (
 )
 
 type OpenCodeConnector struct {
+	bridgeadapter.BaseConnectorMethods
 	br     *bridgev2.Bridge
 	Config Config
 
@@ -30,7 +30,9 @@ type OpenCodeConnector struct {
 }
 
 func NewConnector() *OpenCodeConnector {
-	return &OpenCodeConnector{}
+	return &OpenCodeConnector{
+		BaseConnectorMethods: bridgeadapter.BaseConnectorMethods{ProtocolID: "ai-opencode"},
+	}
 }
 
 func (oc *OpenCodeConnector) Init(bridge *bridgev2.Bridge) {
@@ -50,21 +52,6 @@ func (oc *OpenCodeConnector) Start(_ context.Context) error {
 
 func (oc *OpenCodeConnector) Stop(_ context.Context) {
 	bridgeadapter.StopClients(&oc.clientsMu, &oc.clients)
-}
-
-func (oc *OpenCodeConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
-	return bridgeadapter.DefaultNetworkCapabilities()
-}
-
-func (oc *OpenCodeConnector) GetBridgeInfoVersion() (info, capabilities int) {
-	return bridgeadapter.DefaultBridgeInfoVersion()
-}
-
-func (oc *OpenCodeConnector) FillPortalBridgeInfo(portal *bridgev2.Portal, content *event.BridgeEventContent) {
-	if portal == nil {
-		return
-	}
-	bridgeadapter.ApplyAIBridgeInfo(content, "ai-opencode", portal.RoomType, bridgeadapter.AIRoomKindAgent)
 }
 
 func (oc *OpenCodeConnector) GetName() bridgev2.BridgeName {
@@ -97,24 +84,11 @@ func (oc *OpenCodeConnector) LoadUserLogin(_ context.Context, login *bridgev2.Us
 		login.Client = &bridgeadapter.BrokenLoginClient{UserLogin: login, Reason: "This bridge only supports OpenCode logins."}
 		return nil
 	}
-
-	client, err := bridgeadapter.LoadOrCreateTypedClient(
-		&oc.clientsMu,
-		oc.clients,
-		login,
-		func(existing *OpenCodeClient, login *bridgev2.UserLogin) {
-			existing.UserLogin = login
-		},
-		func() (*OpenCodeClient, error) {
-			return newOpenCodeClient(login, oc)
-		},
-	)
-	if err != nil {
-		login.Client = &bridgeadapter.BrokenLoginClient{UserLogin: login, Reason: "Couldn't initialize OpenCode for this login."}
-		return nil
-	}
-	login.Client = client
-	return nil
+	return bridgeadapter.LoadUserLogin(login, bridgeadapter.LoadUserLoginConfig[*OpenCodeClient]{
+		Mu: &oc.clientsMu, Clients: oc.clients, BridgeName: "OpenCode",
+		Update: func(e *OpenCodeClient, l *bridgev2.UserLogin) { e.UserLogin = l },
+		Create: func(l *bridgev2.UserLogin) (*OpenCodeClient, error) { return newOpenCodeClient(l, oc) },
+	})
 }
 
 func (oc *OpenCodeConnector) GetLoginFlows() []bridgev2.LoginFlow {

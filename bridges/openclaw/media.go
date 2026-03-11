@@ -5,20 +5,18 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
-	"mime"
 	"net/http"
 	"net/url"
 	"path"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/pkg/shared/jsonutil"
+	"github.com/beeper/agentremote/pkg/shared/media"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
@@ -295,7 +293,11 @@ func decodeOpenClawDataOrBase64(raw, fallbackMime string) ([]byte, string, error
 		return nil, "", errors.New("missing attachment data")
 	}
 	if strings.HasPrefix(raw, "data:") {
-		return decodeOpenClawDataURL(raw)
+		data, mimeType, err := media.DecodeDataURI(raw)
+		if err != nil {
+			return nil, "", err
+		}
+		return data, stringutil.NormalizeMimeType(mimeType), nil
 	}
 	decoded, err := base64.StdEncoding.DecodeString(raw)
 	if err != nil {
@@ -308,7 +310,7 @@ func decodeOpenClawDataOrBase64(raw, fallbackMime string) ([]byte, string, error
 	return decoded, mimeType, nil
 }
 
-func downloadOpenClawAttachmentURL(ctx context.Context, rawURL, fallbackMime string, maxBytes int64, maxSizeMB int) ([]byte, string, error) {
+func downloadOpenClawAttachmentURL(ctx context.Context, rawURL, fallbackMime string, maxBytes int64, _ int) ([]byte, string, error) {
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
 		return nil, "", errors.New("missing attachment URL")
@@ -316,93 +318,15 @@ func downloadOpenClawAttachmentURL(ctx context.Context, rawURL, fallbackMime str
 	if strings.HasPrefix(rawURL, "file://") || strings.HasPrefix(rawURL, "/") {
 		return nil, "", errors.New("local file access is not permitted")
 	}
-
-	client := &http.Client{Timeout: 60 * time.Second}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return nil, "", err
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, "", fmt.Errorf("file download failed with status %d", resp.StatusCode)
-	}
-	if maxBytes > 0 && resp.ContentLength > 0 && resp.ContentLength > maxBytes {
-		return nil, "", fmt.Errorf("file too large: %d bytes (max %d MB)", resp.ContentLength, maxSizeMB)
-	}
-	var reader io.Reader = resp.Body
-	if maxBytes > 0 {
-		reader = io.LimitReader(resp.Body, maxBytes+1)
-	}
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, "", err
-	}
-	if maxBytes > 0 && int64(len(data)) > maxBytes {
-		return nil, "", fmt.Errorf("file too large: %d bytes (max %d MB)", len(data), maxSizeMB)
-	}
-	mimeType := stringutil.NormalizeMimeType(resp.Header.Get("Content-Type"))
-	if mimeType == "" {
-		mimeType = stringutil.NormalizeMimeType(fallbackMime)
-	}
-	if mimeType == "" {
-		mimeType = http.DetectContentType(data)
-	}
-	return data, mimeType, nil
-}
-
-func decodeOpenClawDataURL(raw string) ([]byte, string, error) {
-	if !strings.HasPrefix(raw, "data:") {
-		return nil, "", errors.New("not a data URL")
-	}
-	comma := strings.IndexByte(raw, ',')
-	if comma < 0 {
-		return nil, "", errors.New("invalid data URL")
-	}
-	meta := raw[len("data:"):comma]
-	payload := raw[comma+1:]
-	mimeType := ""
-	if meta != "" {
-		mimeType = strings.TrimSpace(strings.Split(meta, ";")[0])
-	}
-	if strings.Contains(meta, ";base64") {
-		decoded, err := base64.StdEncoding.DecodeString(payload)
-		if err != nil {
-			return nil, "", err
-		}
-		return decoded, stringutil.NormalizeMimeType(mimeType), nil
-	}
-	decoded, err := url.PathUnescape(payload)
-	if err != nil {
-		return nil, "", err
-	}
-	return []byte(decoded), stringutil.NormalizeMimeType(mimeType), nil
+	return media.DownloadURL(ctx, rawURL, fallbackMime, maxBytes)
 }
 
 func messageTypeForMIME(mimeType string) event.MessageType {
-	mimeType = stringutil.NormalizeMimeType(mimeType)
-	switch {
-	case strings.HasPrefix(mimeType, "image/"):
-		return event.MsgImage
-	case strings.HasPrefix(mimeType, "audio/"):
-		return event.MsgAudio
-	case strings.HasPrefix(mimeType, "video/"):
-		return event.MsgVideo
-	default:
-		return event.MsgFile
-	}
+	return media.MessageTypeForMIME(mimeType)
 }
 
 func fallbackFilenameForMIME(mimeType string) string {
-	mimeType = stringutil.NormalizeMimeType(mimeType)
-	exts, _ := mime.ExtensionsByType(mimeType)
-	if len(exts) > 0 {
-		return "file" + exts[0]
-	}
-	return "file"
+	return media.FallbackFilenameForMIME(mimeType)
 }
 
 func openClawMessageExtra(content *event.MessageEventContent) map[string]any {

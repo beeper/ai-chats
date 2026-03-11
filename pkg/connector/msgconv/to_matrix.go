@@ -154,41 +154,6 @@ func BuildUIMessage(p UIMessageParams) map[string]any {
 	return msg
 }
 
-type UserUIMessageParams struct {
-	MessageID string
-	Text      string
-	MediaURL  string
-	MimeType  string
-	Metadata  map[string]any
-}
-
-func BuildUserUIMessage(p UserUIMessageParams) map[string]any {
-	parts := make([]map[string]any, 0, 2)
-	if strings.TrimSpace(p.Text) != "" {
-		parts = append(parts, map[string]any{
-			"type": "text",
-			"text": p.Text,
-		})
-	}
-	if strings.TrimSpace(p.MediaURL) != "" {
-		part := map[string]any{
-			"type":      "file",
-			"url":       strings.TrimSpace(p.MediaURL),
-			"mediaType": strings.TrimSpace(p.MimeType),
-		}
-		if part["mediaType"] == "" {
-			part["mediaType"] = "application/octet-stream"
-		}
-		parts = append(parts, part)
-	}
-	return BuildUIMessage(UIMessageParams{
-		TurnID:   p.MessageID,
-		Role:     "user",
-		Metadata: p.Metadata,
-		Parts:    parts,
-	})
-}
-
 // MergeUIMessageMetadata deep-merges message-level metadata maps.
 func MergeUIMessageMetadata(base, update map[string]any) map[string]any {
 	return jsonutil.MergeRecursive(base, update)

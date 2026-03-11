@@ -187,17 +187,6 @@ func providerMatches(info ModelInfo, provider string) bool {
 	}
 }
 
-// resolveAudioModelForInput returns the model to use for audio analysis.
-// The second return value is true when a fallback model (not the effective model) is used.
-func (oc *AIClient) resolveAudioModelForInput(ctx context.Context, meta *PortalMetadata) (string, bool) {
-	return oc.resolveModelForCapability(
-		ctx,
-		meta,
-		func(caps ModelCapabilities) bool { return caps.SupportsAudio },
-		oc.resolveAudioUnderstandingModel,
-	)
-}
-
 func (oc *AIClient) analyzeImageWithModel(
 	ctx context.Context,
 	modelID string,

@@ -241,10 +241,7 @@ func (h *runtimeIntegrationHost) SetModuleMeta(meta any, key string, value any) 
 	if m == nil {
 		return
 	}
-	if m.ModuleMeta == nil {
-		m.ModuleMeta = make(map[string]any)
-	}
-	m.ModuleMeta[key] = value
+	m.SetModuleMeta(key, value)
 }
 
 func (h *runtimeIntegrationHost) IsSimpleMode(meta any) bool {

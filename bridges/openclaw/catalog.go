@@ -4,38 +4,30 @@ import (
 	"context"
 	"strings"
 	"time"
+
+	"github.com/beeper/agentremote/pkg/shared/cachedvalue"
 )
 
 const openClawMetadataCatalogTTL = 5 * time.Minute
 
 func (oc *OpenClawClient) loadModelCatalog(ctx context.Context, force bool) ([]gatewayModelChoice, error) {
-	now := time.Now()
-	oc.modelCatalogMu.RLock()
-	if !force && len(oc.modelCatalog) > 0 && now.Sub(oc.modelCatalogFetchedAt) < openClawMetadataCatalogTTL {
-		cached := cloneGatewayModelChoices(oc.modelCatalog)
-		oc.modelCatalogMu.RUnlock()
-		return cached, nil
+	if oc.modelCache == nil {
+		return nil, nil
 	}
-	cached := cloneGatewayModelChoices(oc.modelCatalog)
-	oc.modelCatalogMu.RUnlock()
-
-	var gateway *gatewayWSClient
-	if oc.manager != nil {
-		gateway = oc.manager.gatewayClient()
-	}
-	if !oc.IsLoggedIn() || gateway == nil {
-		return cached, nil
-	}
-	resp, err := gateway.ListModels(ctx)
-	if err != nil {
-		return cached, err
-	}
-	models := cloneGatewayModelChoices(resp.Models)
-	oc.modelCatalogMu.Lock()
-	oc.modelCatalog = cloneGatewayModelChoices(models)
-	oc.modelCatalogFetchedAt = now
-	oc.modelCatalogMu.Unlock()
-	return models, nil
+	return oc.modelCache.GetOrFetch(force, cloneGatewayModelChoices, func() ([]gatewayModelChoice, error) {
+		var gateway *gatewayWSClient
+		if oc.manager != nil {
+			gateway = oc.manager.gatewayClient()
+		}
+		if !oc.IsLoggedIn() || gateway == nil {
+			return nil, nil
+		}
+		resp, err := gateway.ListModels(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return resp.Models, nil
+	})
 }
 
 func (oc *OpenClawClient) loadToolsCatalog(ctx context.Context, agentID string, force bool) (*gatewayToolsCatalogResponse, error) {
@@ -43,56 +35,61 @@ func (oc *OpenClawClient) loadToolsCatalog(ctx context.Context, agentID string, 
 	if agentID == "" || strings.EqualFold(agentID, "gateway") {
 		return nil, nil
 	}
-	now := time.Now()
-	oc.toolCatalogMu.RLock()
-	if !force {
-		if cachedAt, ok := oc.toolCatalogFetchedAt[agentID]; ok && now.Sub(cachedAt) < openClawMetadataCatalogTTL {
-			if cached, ok := oc.toolCatalog[agentID]; ok {
-				cloned := cloneGatewayToolsCatalogResponse(cached)
-				oc.toolCatalogMu.RUnlock()
-				return &cloned, nil
-			}
+	cache := oc.getToolCache(agentID)
+	result, err := cache.GetOrFetch(force, cloneGatewayToolsCatalogResponse, func() (gatewayToolsCatalogResponse, error) {
+		var gateway *gatewayWSClient
+		if oc.manager != nil {
+			gateway = oc.manager.gatewayClient()
 		}
-	}
-	var cached *gatewayToolsCatalogResponse
-	if value, ok := oc.toolCatalog[agentID]; ok {
-		cloned := cloneGatewayToolsCatalogResponse(value)
-		cached = &cloned
-	}
-	oc.toolCatalogMu.RUnlock()
-
-	var gateway *gatewayWSClient
-	if oc.manager != nil {
-		gateway = oc.manager.gatewayClient()
-	}
-	if !oc.IsLoggedIn() || gateway == nil {
-		return cached, nil
-	}
-	resp, err := gateway.GetToolsCatalog(ctx, agentID)
+		if !oc.IsLoggedIn() || gateway == nil {
+			return gatewayToolsCatalogResponse{}, nil
+		}
+		resp, err := gateway.GetToolsCatalog(ctx, agentID)
+		if err != nil {
+			return gatewayToolsCatalogResponse{}, err
+		}
+		return *resp, nil
+	})
 	if err != nil {
-		return cached, err
+		if result.AgentID != "" || len(result.Groups) > 0 {
+			return &result, nil
+		}
+		return nil, err
 	}
-	normalized := cloneGatewayToolsCatalogResponse(*resp)
-	oc.toolCatalogMu.Lock()
-	if oc.toolCatalog == nil {
-		oc.toolCatalog = make(map[string]gatewayToolsCatalogResponse)
+	if result.AgentID == "" && len(result.Groups) == 0 {
+		return nil, nil
 	}
-	if oc.toolCatalogFetchedAt == nil {
-		oc.toolCatalogFetchedAt = make(map[string]time.Time)
+	return &result, nil
+}
+
+func (oc *OpenClawClient) getToolCache(agentID string) *cachedvalue.CachedValue[gatewayToolsCatalogResponse] {
+	oc.toolCacheMu.Lock()
+	defer oc.toolCacheMu.Unlock()
+	if oc.toolCaches == nil {
+		oc.toolCaches = make(map[string]*cachedvalue.CachedValue[gatewayToolsCatalogResponse])
 	}
-	oc.toolCatalog[agentID] = normalized
-	oc.toolCatalogFetchedAt[agentID] = now
-	oc.toolCatalogMu.Unlock()
-	return &normalized, nil
+	if c, ok := oc.toolCaches[agentID]; ok {
+		return c
+	}
+	c := cachedvalue.New[gatewayToolsCatalogResponse](openClawMetadataCatalogTTL)
+	oc.toolCaches[agentID] = c
+	return c
+}
+
+// agentDefaultID returns the default agent ID from the agent catalog cache.
+func (oc *OpenClawClient) agentDefaultID() string {
+	if oc.agentCache == nil {
+		return ""
+	}
+	entry := oc.agentCache.Read(func(e agentCatalogEntry) agentCatalogEntry { return e })
+	return strings.TrimSpace(entry.DefaultID)
 }
 
 func (oc *OpenClawClient) enrichPortalMetadata(ctx context.Context, meta *PortalMetadata) {
 	if oc == nil || meta == nil {
 		return
 	}
-	oc.agentCatalogMu.RLock()
-	defaultAgentID := strings.TrimSpace(oc.agentCatalogDefaultID)
-	oc.agentCatalogMu.RUnlock()
+	defaultAgentID := oc.agentDefaultID()
 	if defaultAgentID != "" && meta.OpenClawDefaultAgentID == "" {
 		meta.OpenClawDefaultAgentID = defaultAgentID
 	}
@@ -160,6 +157,9 @@ func summarizeToolsCatalog(resp gatewayToolsCatalogResponse) (int, string) {
 }
 
 func cloneGatewayModelChoices(models []gatewayModelChoice) []gatewayModelChoice {
+	if models == nil {
+		return nil
+	}
 	cloned := make([]gatewayModelChoice, len(models))
 	for i := range models {
 		cloned[i] = models[i]

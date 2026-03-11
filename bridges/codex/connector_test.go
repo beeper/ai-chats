@@ -9,7 +9,7 @@ import (
 )
 
 func TestFillPortalBridgeInfoSetsAIRoomType(t *testing.T) {
-	conn := &CodexConnector{}
+	conn := NewConnector()
 	portal := &bridgev2.Portal{Portal: &database.Portal{RoomType: database.RoomTypeDM}}
 	content := &event.BridgeEventContent{}
 
@@ -23,7 +23,7 @@ func TestFillPortalBridgeInfoSetsAIRoomType(t *testing.T) {
 }
 
 func TestGetCapabilitiesEnablesContactListProvisioning(t *testing.T) {
-	conn := &CodexConnector{}
+	conn := NewConnector()
 	caps := conn.GetCapabilities()
 	if caps == nil {
 		t.Fatal("expected capabilities")

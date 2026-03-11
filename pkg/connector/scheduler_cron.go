@@ -327,7 +327,7 @@ func (s *schedulerRuntime) executeCronJob(ctx context.Context, record *scheduled
 		meta = &PortalMetadata{}
 	}
 	if portal.OtherUserID == "" {
-		portal.OtherUserID = agentUserID(normalizedCronAgentID(&record.Job.AgentID))
+		portal.OtherUserID = s.client.agentUserID(normalizedCronAgentID(&record.Job.AgentID))
 	}
 	meta.ResolvedTarget = resolveTargetFromGhostID(portal.OtherUserID)
 	if model := strings.TrimSpace(record.Job.Payload.Model); model != "" {

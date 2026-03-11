@@ -147,7 +147,7 @@ func (oc *AIClient) senderForPortal(ctx context.Context, portal *bridgev2.Portal
 	}
 	senderID := modelUserID(modelID)
 	if agentID != "" {
-		senderID = agentUserID(agentID)
+		senderID = oc.agentUserID(agentID)
 	}
 	return bridgev2.EventSender{Sender: senderID, SenderLogin: oc.UserLogin.ID}
 }

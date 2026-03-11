@@ -10,6 +10,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
@@ -33,8 +34,9 @@ var beeperDomains = []string{
 }
 
 var (
-	_ bridgev2.LoginProcess          = (*OpenAILogin)(nil)
-	_ bridgev2.LoginProcessUserInput = (*OpenAILogin)(nil)
+	_ bridgev2.LoginProcess             = (*OpenAILogin)(nil)
+	_ bridgev2.LoginProcessWithOverride = (*OpenAILogin)(nil)
+	_ bridgev2.LoginProcessUserInput    = (*OpenAILogin)(nil)
 )
 
 // OpenAILogin maps a Matrix user to a synthetic OpenAI "login".
@@ -42,6 +44,24 @@ type OpenAILogin struct {
 	User      *bridgev2.User
 	Connector *OpenAIConnector
 	FlowID    string
+	Override  *bridgev2.UserLogin
+}
+
+func normalizeProvider(provider string) string {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case ProviderBeeper:
+		return ProviderBeeper
+	case ProviderOpenAI:
+		return ProviderOpenAI
+	case ProviderOpenRouter:
+		return ProviderOpenRouter
+	case ProviderMagicProxy:
+		return ProviderMagicProxy
+	case FlowCustom:
+		return FlowCustom
+	default:
+		return strings.TrimSpace(provider)
+	}
 }
 
 func (ol *OpenAILogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
@@ -72,6 +92,20 @@ func (ol *OpenAILogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 }
 
 func (ol *OpenAILogin) Cancel() {}
+
+func (ol *OpenAILogin) StartWithOverride(ctx context.Context, old *bridgev2.UserLogin) (*bridgev2.LoginStep, error) {
+	if old == nil {
+		return ol.Start(ctx)
+	}
+	if ol.User == nil || old.UserMXID != ol.User.MXID {
+		return nil, errors.New("invalid relogin target")
+	}
+	if old.ID == managedBeeperLoginID(old.UserMXID) || old.ID == legacyManagedBeeperLoginID(old.UserMXID) {
+		return nil, errors.New("managed Beeper Cloud logins are controlled by bridge configuration")
+	}
+	ol.Override = old
+	return ol.Start(ctx)
+}
 
 func (ol *OpenAILogin) SubmitUserInput(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
 	switch ol.FlowID {
@@ -197,10 +231,83 @@ func (ol *OpenAILogin) credentialsStep() *bridgev2.LoginStep {
 }
 
 func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseURL string, serviceTokens *ServiceTokens) (*bridgev2.LoginStep, error) {
+	provider = normalizeProvider(provider)
 	apiKey = strings.TrimSpace(apiKey)
 	baseURL = stringutil.NormalizeBaseURL(baseURL)
 	if ol.User == nil {
 		return nil, errors.New("missing user context for login")
+	}
+
+	override := ol.Override
+	if override != nil {
+		overrideMeta := loginMetadata(override)
+		if overrideMeta == nil {
+			return nil, errors.New("missing relogin metadata")
+		}
+		if !strings.EqualFold(normalizeProvider(overrideMeta.Provider), provider) {
+			return nil, fmt.Errorf("can't relogin %s account with %s credentials", overrideMeta.Provider, provider)
+		}
+	}
+
+	loginID, ordinal, err := ol.resolveLoginTarget(ctx, provider)
+	if err != nil {
+		return nil, err
+	}
+
+	remoteNameBase := formatRemoteName(provider, apiKey)
+	remoteName := remoteNameBase
+	if override != nil && strings.TrimSpace(override.RemoteName) != "" {
+		remoteName = override.RemoteName
+	} else if ordinal > 1 {
+		remoteName = fmt.Sprintf("%s (%d)", remoteNameBase, ordinal)
+	}
+
+	meta := &UserLoginMetadata{}
+	if override != nil {
+		meta, err = cloneUserLoginMetadata(loginMetadata(override))
+		if err != nil {
+			return nil, fmt.Errorf("failed to clone relogin metadata: %w", err)
+		}
+	}
+	if meta == nil {
+		meta = &UserLoginMetadata{}
+	}
+	meta.Provider = provider
+	meta.APIKey = apiKey
+	meta.BaseURL = baseURL
+	if serviceTokens != nil && !serviceTokensEmpty(serviceTokens) {
+		meta.ServiceTokens = mergeServiceTokens(meta.ServiceTokens, serviceTokens)
+	}
+	if err := ol.validateLoginMetadata(ctx, loginID, meta); err != nil {
+		return nil, err
+	}
+
+	login, err := ol.User.NewLogin(ctx, &database.UserLogin{
+		ID:         loginID,
+		RemoteName: remoteName,
+		Metadata:   meta,
+	}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create login: %w", err)
+	}
+
+	// Trigger connection in background with a long-lived context
+	// (the request context gets cancelled after login returns)
+	go login.Client.Connect(login.Log.WithContext(context.Background()))
+
+	return &bridgev2.LoginStep{
+		Type:   bridgev2.LoginStepTypeComplete,
+		StepID: "io.ai-bridge.openai.complete",
+		CompleteParams: &bridgev2.LoginCompleteParams{
+			UserLoginID: login.ID,
+			UserLogin:   login,
+		},
+	}, nil
+}
+
+func (ol *OpenAILogin) resolveLoginTarget(ctx context.Context, provider string) (networkid.UserLoginID, int, error) {
+	if ol.Override != nil {
+		return ol.Override.ID, 1, nil
 	}
 
 	dupCount := 0
@@ -244,58 +351,37 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 		}
 	}
 
-	remoteNameBase := formatRemoteName(provider, apiKey)
-	remoteName := remoteNameBase
-	if ordinal > 1 {
-		remoteName = fmt.Sprintf("%s (%d)", remoteNameBase, ordinal)
-	}
+	return loginID, ordinal, nil
+}
 
-	meta := &UserLoginMetadata{
-		Provider: provider,
-		APIKey:   apiKey,
-		BaseURL:  baseURL,
+func (ol *OpenAILogin) validateLoginMetadata(ctx context.Context, loginID networkid.UserLoginID, meta *UserLoginMetadata) error {
+	if ol == nil || ol.User == nil || ol.Connector == nil || meta == nil {
+		return nil
 	}
-	if serviceTokens != nil && !serviceTokensEmpty(serviceTokens) {
-		meta.ServiceTokens = serviceTokens
+	tempDBLogin := &database.UserLogin{
+		ID:       loginID,
+		UserMXID: ol.User.MXID,
+		Metadata: meta,
 	}
-	login, err := ol.User.NewLogin(ctx, &database.UserLogin{
-		ID:         loginID,
-		RemoteName: remoteName,
-		Metadata:   meta,
-	}, nil)
+	tempLogin := &bridgev2.UserLogin{
+		UserLogin: tempDBLogin,
+		Bridge:    ol.User.Bridge,
+		User:      ol.User,
+		Log:       ol.User.Log.With().Str("login_id", string(loginID)).Str("component", "ai-login-validation").Logger(),
+	}
+	tempClient, err := newAIClient(tempLogin, ol.Connector, ol.Connector.resolveProviderAPIKey(meta))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create login: %w", err)
+		return fmt.Errorf("failed to initialize login client: %w", err)
 	}
 
-	// Load login (which validates and caches the client internally)
-	err = ol.Connector.LoadUserLogin(ctx, login)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load client: %w", err)
+	valCtx, valCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer valCancel()
+
+	_, valErr := tempClient.provider.ListModels(valCtx)
+	if valErr != nil && IsAuthError(valErr) {
+		return errors.New("invalid API key: authentication failed")
 	}
-
-	// Validate API key by attempting to list models (lightweight check)
-	if aiClient, ok := login.Client.(*AIClient); ok {
-		valCtx, valCancel := context.WithTimeout(ctx, 5*time.Second)
-		_, valErr := aiClient.listAvailableModels(valCtx, true)
-		valCancel()
-		if valErr != nil && IsAuthError(valErr) {
-			return nil, errors.New("invalid API key: authentication failed")
-		}
-		// Non-auth errors (network, timeout) are acceptable - the key may still be valid
-	}
-
-	// Trigger connection in background with a long-lived context
-	// (the request context gets cancelled after login returns)
-	go login.Client.Connect(login.Log.WithContext(context.Background()))
-
-	return &bridgev2.LoginStep{
-		Type:   bridgev2.LoginStepTypeComplete,
-		StepID: "io.ai-bridge.openai.complete",
-		CompleteParams: &bridgev2.LoginCompleteParams{
-			UserLoginID: login.ID,
-			UserLogin:   login,
-		},
-	}, nil
+	return nil
 }
 
 func serviceTokensEmpty(tokens *ServiceTokens) bool {
@@ -361,9 +447,38 @@ func (ol *OpenAILogin) resolveCustomLogin(input map[string]string) (string, stri
 		return "", "", nil, &ErrOpenAIOrOpenRouterRequired
 	}
 
+	preferredProvider := ""
+	if ol.Override != nil {
+		if overrideMeta := loginMetadata(ol.Override); overrideMeta != nil {
+			preferredProvider = normalizeProvider(overrideMeta.Provider)
+		}
+	}
+
 	provider := ProviderOpenAI
 	apiKey := openaiToken
-	if openrouterToken != "" {
+	switch preferredProvider {
+	case ProviderOpenAI:
+		if openaiToken == "" {
+			return "", "", nil, &ErrOpenAIOrOpenRouterRequired
+		}
+	case ProviderOpenRouter:
+		if openrouterToken == "" {
+			return "", "", nil, &ErrOpenAIOrOpenRouterRequired
+		}
+		provider = ProviderOpenRouter
+		apiKey = openrouterToken
+	case "":
+		if openrouterToken != "" {
+			provider = ProviderOpenRouter
+			apiKey = openrouterToken
+		}
+	default:
+		if openrouterToken != "" {
+			provider = ProviderOpenRouter
+			apiKey = openrouterToken
+		}
+	}
+	if provider == ProviderOpenAI && openaiToken == "" && openrouterToken != "" {
 		provider = ProviderOpenRouter
 		apiKey = openrouterToken
 	}

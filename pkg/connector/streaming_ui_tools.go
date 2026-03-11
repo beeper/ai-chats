@@ -30,5 +30,5 @@ func (oc *AIClient) emitUIToolApprovalRequest(
 
 	// Emit stream event for real-time UI
 	oc.uiEmitter(state).EmitUIToolApprovalRequest(ctx, portal, approvalID, toolCallID, toolName, ttlSeconds)
-	oc.sendApprovalRequestFallbackEvent(ctx, portal, state, approvalID, toolCallID, toolName, targetEventID)
+	oc.sendApprovalRequestFallbackEvent(ctx, portal, state, approvalID, toolCallID, toolName, targetEventID, ttlSeconds)
 }

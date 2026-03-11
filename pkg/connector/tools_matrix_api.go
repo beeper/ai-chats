@@ -11,6 +11,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
 )
 
 func getMatrixConnector(btc *BridgeToolContext) bridgev2.MatrixConnector {
@@ -146,11 +148,12 @@ func removeMatrixReactions(ctx context.Context, btc *BridgeToolContext, eventID 
 		if emojiID == "" {
 			emojiID = networkid.EmojiID(reaction.Emoji)
 		}
-		btc.Client.UserLogin.QueueRemoteEvent(&AIRemoteReactionRemove{
-			portal:        btc.Portal.PortalKey,
-			sender:        sender,
-			targetMessage: targetPart.ID,
-			emojiID:       emojiID,
+		btc.Client.UserLogin.QueueRemoteEvent(&bridgeadapter.RemoteReactionRemove{
+			Portal:        btc.Portal.PortalKey,
+			Sender:        sender,
+			TargetMessage: targetPart.ID,
+			EmojiID:       emojiID,
+			LogKey:        "ai_reaction_remove_target",
 		})
 		removed++
 	}

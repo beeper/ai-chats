@@ -3,6 +3,8 @@ package connector
 import (
 	"testing"
 
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
 )
 
@@ -55,8 +57,23 @@ func TestResolveManagedBeeperAuthDoesNotUseRuntimeFallback(t *testing.T) {
 
 func TestManagedBeeperLoginID(t *testing.T) {
 	got := managedBeeperLoginID(id.UserID("@user:beeper.com"))
-	want := "beeper:@user:beeper.com"
+	want := "managed-beeper:@user:beeper.com"
 	if string(got) != want {
 		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
+func TestSelectPreferredUserLoginFallsBackFromBrokenManaged(t *testing.T) {
+	managed := &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: managedBeeperLoginID(id.UserID("@user:beeper.com"))}}
+	manual := &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: providerLoginID(ProviderOpenAI, id.UserID("@user:beeper.com"), 1)}}
+
+	selected := selectPreferredUserLogin(
+		managed,
+		managed,
+		[]*bridgev2.UserLogin{managed, manual},
+		func(login *bridgev2.UserLogin) bool { return login == manual },
+	)
+	if selected != manual {
+		t.Fatalf("expected manual login fallback, got %#v", selected)
 	}
 }

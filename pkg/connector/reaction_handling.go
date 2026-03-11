@@ -3,52 +3,18 @@ package connector
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"time"
 
 	"go.mau.fi/util/variationselector"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/pkg/bridgeadapter"
 )
 
-func ensureReactionContent(msg *bridgev2.MatrixReaction) *event.ReactionEventContent {
-	if msg == nil {
-		return nil
-	}
-	if msg.Content != nil {
-		return msg.Content
-	}
-	if msg.Event == nil || len(msg.Event.Content.VeryRaw) == 0 {
-		return nil
-	}
-	var parsed event.ReactionEventContent
-	if err := json.Unmarshal(msg.Event.Content.VeryRaw, &parsed); err != nil {
-		return nil
-	}
-	msg.Content = &parsed
-	return msg.Content
-}
-
-func (oc *AIClient) PreHandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (bridgev2.MatrixReactionPreResponse, error) {
-	if msg == nil || msg.Event == nil {
-		return bridgev2.MatrixReactionPreResponse{}, bridgev2.ErrReactionsNotSupported
-	}
-	content := ensureReactionContent(msg)
-	if content == nil {
-		return bridgev2.MatrixReactionPreResponse{}, bridgev2.ErrReactionsNotSupported
-	}
-
-	emoji := variationselector.Remove(content.RelatesTo.Key)
-	return bridgev2.MatrixReactionPreResponse{
-		SenderID:     oc.matrixSenderID(msg.Event.Sender),
-		Emoji:        emoji,
-		MaxReactions: 1,
-	}, nil
+func (oc *AIClient) PreHandleMatrixReaction(_ context.Context, msg *bridgev2.MatrixReaction) (bridgev2.MatrixReactionPreResponse, error) {
+	return bridgeadapter.PreHandleApprovalReaction(msg)
 }
 
 func (oc *AIClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (*database.Reaction, error) {
@@ -59,32 +25,20 @@ func (oc *AIClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Matr
 		return &database.Reaction{}, nil
 	}
 
-	content := ensureReactionContent(msg)
-
-	emoji := ""
-	if msg.PreHandleResp != nil {
-		emoji = msg.PreHandleResp.Emoji
-	}
-	if emoji == "" && content != nil {
-		emoji = variationselector.Remove(content.RelatesTo.Key)
-	}
-
-	targetEventID := id.EventID("")
-	if msg.TargetMessage != nil && msg.TargetMessage.MXID != "" {
-		targetEventID = msg.TargetMessage.MXID
-	} else if content != nil && content.RelatesTo.EventID != "" {
-		targetEventID = content.RelatesTo.EventID
+	rc := bridgeadapter.ExtractReactionContext(msg)
+	if oc.approvalFlow.HandleReaction(ctx, msg, rc.TargetEventID, rc.Emoji) {
+		return &database.Reaction{}, nil
 	}
 
 	messageID := ""
 	if msg.TargetMessage != nil && msg.TargetMessage.MXID != "" {
 		messageID = msg.TargetMessage.MXID.String()
-	} else if targetEventID != "" {
-		messageID = targetEventID.String()
+	} else if rc.TargetEventID != "" {
+		messageID = rc.TargetEventID.String()
 	}
 
 	feedback := ReactionFeedback{
-		Emoji:     emoji,
+		Emoji:     rc.Emoji,
 		Timestamp: time.UnixMilli(msg.Event.Timestamp),
 		Sender:    oc.matrixDisplayName(ctx, msg.Portal.MXID, msg.Event.Sender),
 		MessageID: messageID,
@@ -139,13 +93,6 @@ func (oc *AIClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev
 	EnqueueReactionFeedback(msg.Portal.MXID, feedback)
 
 	return nil
-}
-
-func (oc *AIClient) matrixSenderID(userID id.UserID) networkid.UserID {
-	if userID == "" {
-		return ""
-	}
-	return networkid.UserID("mxid:" + userID.String())
 }
 
 func (oc *AIClient) matrixDisplayName(ctx context.Context, roomID id.RoomID, userID id.UserID) string {

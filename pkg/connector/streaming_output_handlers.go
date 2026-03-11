@@ -12,6 +12,7 @@ import (
 	"github.com/openai/openai-go/v3/responses"
 	"maunium.net/go/mautrix/bridgev2"
 
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 )
@@ -237,13 +238,13 @@ func (oc *AIClient) gateMcpToolApproval(
 			oc.emitUIToolApprovalRequest(ctx, portal, state, approvalID, tool.callID, tool.toolName, tool.eventID, oc.toolApprovalsTTLSeconds())
 		}
 	} else {
-		if err := oc.resolveToolApproval(
-			state.roomID,
-			approvalID,
-			airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalApproved, Reason: "auto_approved"},
-			false,
-			oc.UserLogin.UserMXID,
-		); err != nil {
+		if err := oc.approvalFlow.Resolve(approvalID, bridgeadapter.ApprovalDecisionPayload{
+			ApprovalID: approvalID,
+			Approved:   true,
+			Reason:     "auto_approved",
+		}); err != nil {
+			delete(state.pendingMcpApprovalsSeen, approvalID)
+			oc.uiEmitter(state).EmitUIToolOutputError(ctx, portal, tool.callID, "failed to auto-approve MCP tool call", true)
 			oc.loggerForContext(ctx).Warn().Err(err).Str("approval_id", approvalID).Msg("Failed to auto-approve MCP tool call")
 		}
 	}

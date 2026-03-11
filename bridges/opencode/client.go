@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"sync/atomic"
 
 	"go.mau.fi/util/ptr"
@@ -17,7 +16,6 @@ import (
 
 	"github.com/beeper/agentremote/bridges/opencode/opencodebridge"
 	"github.com/beeper/agentremote/pkg/bridgeadapter"
-	"github.com/beeper/agentremote/pkg/shared/streamtransport"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 )
 
@@ -26,18 +24,18 @@ var _ bridgev2.BackfillingNetworkAPI = (*OpenCodeClient)(nil)
 var _ bridgev2.DeleteChatHandlingNetworkAPI = (*OpenCodeClient)(nil)
 var _ bridgev2.IdentifierResolvingNetworkAPI = (*OpenCodeClient)(nil)
 var _ bridgev2.ContactListingNetworkAPI = (*OpenCodeClient)(nil)
+var _ bridgev2.ReactionHandlingNetworkAPI = (*OpenCodeClient)(nil)
 
 type OpenCodeClient struct {
+	bridgeadapter.BaseReactionHandler
+	bridgeadapter.BaseStreamState
 	UserLogin *bridgev2.UserLogin
 	connector *OpenCodeConnector
 	bridge    *opencodebridge.Bridge
 
 	loggedIn atomic.Bool
 
-	streamMu                  sync.Mutex
-	streamSessions            map[string]*streamtransport.StreamSession
-	streamStates              map[string]*openCodeStreamState
-	streamFallbackToDebounced atomic.Bool
+	streamStates map[string]*openCodeStreamState
 }
 
 type openCodeStreamState struct {
@@ -78,16 +76,18 @@ func newOpenCodeClient(login *bridgev2.UserLogin, connector *OpenCodeConnector) 
 		return nil, errors.New("missing connector")
 	}
 	client := &OpenCodeClient{
-		UserLogin:      login,
-		connector:      connector,
-		streamSessions: make(map[string]*streamtransport.StreamSession),
-		streamStates:   make(map[string]*openCodeStreamState),
+		UserLogin:    login,
+		connector:    connector,
+		streamStates: make(map[string]*openCodeStreamState),
 	}
+	client.InitStreamState()
+	client.BaseReactionHandler.Target = client
 	client.bridge = opencodebridge.NewBridge(client)
 	return client, nil
 }
 
 func (oc *OpenCodeClient) Connect(ctx context.Context) {
+	oc.ResetStreamShutdown()
 	oc.loggedIn.Store(true)
 	oc.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected, Message: "Connected"})
 	if oc.bridge != nil {
@@ -100,20 +100,12 @@ func (oc *OpenCodeClient) Connect(ctx context.Context) {
 }
 
 func (oc *OpenCodeClient) Disconnect() {
+	oc.BeginStreamShutdown()
 	oc.loggedIn.Store(false)
-	oc.streamMu.Lock()
-	sessions := make([]*streamtransport.StreamSession, 0, len(oc.streamSessions))
-	for _, s := range oc.streamSessions {
-		if s != nil {
-			sessions = append(sessions, s)
-		}
-	}
-	oc.streamSessions = make(map[string]*streamtransport.StreamSession)
+	oc.CloseAllSessions()
+	oc.StreamMu.Lock()
 	oc.streamStates = make(map[string]*openCodeStreamState)
-	oc.streamMu.Unlock()
-	for _, s := range sessions {
-		s.End(context.Background(), streamtransport.EndReasonDisconnect)
-	}
+	oc.StreamMu.Unlock()
 	if oc.bridge != nil {
 		oc.bridge.DisconnectAll()
 	}
@@ -126,12 +118,18 @@ func (oc *OpenCodeClient) IsLoggedIn() bool {
 	return oc.loggedIn.Load()
 }
 
+func (oc *OpenCodeClient) GetUserLogin() *bridgev2.UserLogin { return oc.UserLogin }
+
+func (oc *OpenCodeClient) GetApprovalHandler() bridgeadapter.ApprovalReactionHandler {
+	if oc.bridge == nil {
+		return nil
+	}
+	return oc.bridge.ApprovalHandler()
+}
+
 func (oc *OpenCodeClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
 	if msg == nil || msg.Portal == nil {
 		return nil, errors.New("missing portal context")
-	}
-	if handled, resp := oc.tryApprovalDecisionEvent(ctx, msg); handled {
-		return resp, nil
 	}
 	if oc.bridge == nil {
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
@@ -141,32 +139,6 @@ func (oc *OpenCodeClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 	return oc.bridge.HandleMatrixMessage(ctx, msg, msg.Portal, oc.PortalMeta(msg.Portal))
-}
-
-func (oc *OpenCodeClient) tryApprovalDecisionEvent(ctx context.Context, msg *bridgev2.MatrixMessage) (bool, *bridgev2.MatrixMessageResponse) {
-	if oc == nil || oc.bridge == nil || msg == nil || msg.Event == nil || msg.Portal == nil {
-		return false, nil
-	}
-	raw, ok := bridgeadapter.ParseApprovalDecisionEvent(msg.Event)
-	if !ok {
-		return false, nil
-	}
-	decision, ok := bridgeadapter.ParseApprovalDecision(raw)
-	if !ok {
-		oc.Log().Warn().
-			Str("event_id", msg.Event.ID.String()).
-			Str("sender", msg.Event.Sender.String()).
-			Msg("OpenCode approval decision missing required fields")
-		return true, &bridgev2.MatrixMessageResponse{Pending: false}
-	}
-	err := oc.bridge.ResolveApprovalDecision(ctx, msg.Portal.MXID, decision.ApprovalID, decision.Approved, decision.Always, decision.Reason, msg.Event.Sender)
-	if err != nil {
-		oc.Log().Warn().Err(err).
-			Str("approval_id", decision.ApprovalID).
-			Msg("OpenCode approval decision failed")
-		oc.sendSystemNoticeViaPortal(ctx, msg.Portal, bridgeadapter.ApprovalErrorToastText(err))
-	}
-	return true, &bridgev2.MatrixMessageResponse{Pending: false}
 }
 
 func (oc *OpenCodeClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2.MatrixDeleteChat) error {
@@ -216,24 +188,20 @@ func (oc *OpenCodeClient) GetCapabilities(_ context.Context, _ *bridgev2.Portal)
 		Thread:              event.CapLevelFullySupported,
 		Edit:                event.CapLevelRejected,
 		Delete:              event.CapLevelRejected,
-		Reaction:            event.CapLevelRejected,
+		Reaction:            event.CapLevelFullySupported,
 		ReadReceipts:        true,
 		TypingNotifications: true,
 		DeleteChat:          true,
 	}
 }
 
-func defaultOpenCodeUserInfo() *bridgev2.UserInfo {
-	return &bridgev2.UserInfo{Name: ptr.Ptr("OpenCode"), IsBot: ptr.Ptr(true)}
-}
-
 func (oc *OpenCodeClient) GetUserInfo(_ context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
 	if ghost == nil {
-		return defaultOpenCodeUserInfo(), nil
+		return bridgeadapter.BuildBotUserInfo("OpenCode"), nil
 	}
 	instanceID, ok := opencodebridge.ParseOpenCodeGhostID(string(ghost.ID))
 	if !ok {
-		return defaultOpenCodeUserInfo(), nil
+		return bridgeadapter.BuildBotUserInfo("OpenCode"), nil
 	}
 	display := "OpenCode"
 	if oc.bridge != nil {
@@ -241,11 +209,7 @@ func (oc *OpenCodeClient) GetUserInfo(_ context.Context, ghost *bridgev2.Ghost) 
 			display = name
 		}
 	}
-	return &bridgev2.UserInfo{
-		Name:        ptr.Ptr(display),
-		IsBot:       ptr.Ptr(true),
-		Identifiers: []string{"opencode:" + instanceID},
-	}, nil
+	return bridgeadapter.BuildBotUserInfo(display, "opencode:"+instanceID), nil
 }
 
 func (oc *OpenCodeClient) ResolveIdentifier(ctx context.Context, identifier string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
@@ -325,9 +289,5 @@ func (oc *OpenCodeClient) GetChatInfo(_ context.Context, portal *bridgev2.Portal
 	if !meta.IsOpenCodeRoom {
 		return nil, nil
 	}
-	title := strings.TrimSpace(meta.Title)
-	if title == "" {
-		title = "OpenCode"
-	}
-	return &bridgev2.ChatInfo{Name: ptr.Ptr(title)}, nil
+	return bridgeadapter.BuildChatInfoWithFallback(meta.Title, portal.Name, "OpenCode", portal.Topic), nil
 }

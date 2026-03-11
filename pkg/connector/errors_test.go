@@ -16,7 +16,7 @@ func testOpenAIError(statusCode int, code, typ, message string) *openai.Error {
 		Type:       typ,
 		Message:    message,
 		Request: &http.Request{
-			Method: "POST",
+			Method: http.MethodPost,
 			URL:    &url.URL{Scheme: "https", Host: "example.test", Path: "/responses"},
 		},
 		Response: &http.Response{

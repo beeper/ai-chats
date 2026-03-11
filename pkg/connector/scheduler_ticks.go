@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix"
-	"maunium.net/go/mautrix/appservice"
-	"maunium.net/go/mautrix/bridgev2/matrix"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -53,15 +51,11 @@ func (s *schedulerRuntime) cancelPendingDelayLocked(ctx context.Context, delayID
 	return err
 }
 
-func (s *schedulerRuntime) intentClient() *appservice.IntentAPI {
+func (s *schedulerRuntime) intentClient() schedulerDelayedEventIntent {
 	if s == nil || s.client == nil || s.client.UserLogin == nil || s.client.UserLogin.Bridge == nil {
 		return nil
 	}
-	bot, ok := s.client.UserLogin.Bridge.Bot.(*matrix.ASIntent)
-	if !ok || bot == nil {
-		return nil
-	}
-	return bot.Matrix
+	return resolveSchedulerDelayedEventIntent(s.client.UserLogin)
 }
 
 func appendRunKey(existing []string, runKey string) []string {

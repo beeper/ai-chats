@@ -93,10 +93,12 @@ func (oc *AIClient) defaultChatPortal() *bridgev2.Portal {
 			Receiver: oc.UserLogin.ID,
 		}
 		if portal, err := oc.UserLogin.Bridge.GetPortalByKey(ctx, portalKey); err == nil && portal != nil {
-			return portal
+			if isDefaultChatCandidate(portal) {
+				return portal
+			}
 		}
 	}
-	if portal, err := oc.UserLogin.Bridge.GetExistingPortalByKey(ctx, defaultChatPortalKey(oc.UserLogin.ID)); err == nil && portal != nil {
+	if portal, err := oc.UserLogin.Bridge.GetExistingPortalByKey(ctx, defaultChatPortalKey(oc.UserLogin.ID)); err == nil && portal != nil && isDefaultChatCandidate(portal) {
 		return portal
 	}
 	return nil

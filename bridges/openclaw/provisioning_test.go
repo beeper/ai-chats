@@ -3,7 +3,8 @@ package openclaw
 import (
 	"context"
 	"testing"
-	"time"
+
+	"github.com/beeper/agentremote/pkg/shared/cachedvalue"
 )
 
 func TestOpenClawDMAgentSessionKey(t *testing.T) {
@@ -139,11 +140,14 @@ func TestLoadAgentCatalogFallsBackToDiscoveredSessionAgents(t *testing.T) {
 }
 
 func TestLoadAgentCatalogMergesDiscoveredSessionAgentsIntoFreshCache(t *testing.T) {
-	oc := &OpenClawClient{
-		agentCatalog: []gatewayAgentSummary{
+	agentCache := cachedvalue.New[agentCatalogEntry](openClawAgentCatalogTTL)
+	agentCache.Update(agentCatalogEntry{
+		Agents: []gatewayAgentSummary{
 			{ID: "alpha", Name: "Alpha"},
 		},
-		agentCatalogFetchedAt: time.Now(),
+	})
+	oc := &OpenClawClient{
+		agentCache: agentCache,
 		manager: &openClawManager{
 			sessions: map[string]gatewaySessionRow{
 				"agent:main:matrix-dm": {Key: "agent:main:matrix-dm"},

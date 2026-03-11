@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"encoding/base64"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
+	"github.com/beeper/agentremote/pkg/agents"
 	"github.com/beeper/agentremote/pkg/bridgeadapter"
 )
 
@@ -32,6 +34,10 @@ func providerLoginID(provider string, mxid id.UserID, ordinal int) networkid.Use
 }
 
 func managedBeeperLoginID(mxid id.UserID) networkid.UserLoginID {
+	return baseLoginID("managed-beeper", mxid)
+}
+
+func legacyManagedBeeperLoginID(mxid id.UserID) networkid.UserLoginID {
 	return baseLoginID("beeper", mxid)
 }
 
@@ -69,9 +75,24 @@ func modelUserID(modelID string) networkid.UserID {
 	return networkid.UserID(fmt.Sprintf("model-%s", url.PathEscape(modelID)))
 }
 
+func agentUsesGlobalGhostIdentity(agentID string) bool {
+	normalized := normalizeAgentID(agentID)
+	return agents.IsPreset(normalized) || agents.IsBossAgent(normalized)
+}
+
 // Format: "agent-{agent-id}"
 func agentUserID(agentID string) networkid.UserID {
 	return networkid.UserID(fmt.Sprintf("agent-%s", url.PathEscape(agentID)))
+}
+
+// Format: "agent-login-{base64-login-id}:{agent-id}"
+func agentUserIDForLogin(loginID networkid.UserLoginID, agentID string) networkid.UserID {
+	normalized := normalizeAgentID(agentID)
+	if normalized == "" || loginID == "" || agentUsesGlobalGhostIdentity(normalized) {
+		return agentUserID(normalized)
+	}
+	encodedLoginID := base64.RawURLEncoding.EncodeToString([]byte(loginID))
+	return networkid.UserID(fmt.Sprintf("agent-login-%s:%s", encodedLoginID, url.PathEscape(normalized)))
 }
 
 // parseModelFromGhostID extracts the model ID from a ghost ID (format: "model-{escaped-model-id}")
@@ -92,10 +113,24 @@ func parseAgentFromGhostID(ghostID string) (agentID string, ok bool) {
 	if strings.Contains(ghostID, ":model-") {
 		return "", false
 	}
+	if suffix, hasPrefix := strings.CutPrefix(ghostID, "agent-login-"); hasPrefix {
+		encodedLoginID, encodedAgentID, found := strings.Cut(suffix, ":")
+		if !found || encodedLoginID == "" || encodedAgentID == "" {
+			return "", false
+		}
+		if _, err := base64.RawURLEncoding.DecodeString(encodedLoginID); err != nil {
+			return "", false
+		}
+		agentID, err := url.PathUnescape(encodedAgentID)
+		if err == nil && strings.TrimSpace(agentID) != "" {
+			return strings.TrimSpace(agentID), true
+		}
+		return "", false
+	}
 	if suffix, hasPrefix := strings.CutPrefix(ghostID, "agent-"); hasPrefix {
 		agentID, err := url.PathUnescape(suffix)
 		if err == nil {
-			return agentID, true
+			return strings.TrimSpace(agentID), true
 		}
 	}
 	return "", false

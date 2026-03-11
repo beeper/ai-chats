@@ -12,6 +12,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote/pkg/connector/msgconv"
+	"github.com/beeper/agentremote/pkg/shared/cachedvalue"
 )
 
 func TestOpenClawAgentIDFromSessionKey(t *testing.T) {
@@ -426,15 +427,16 @@ func TestSummarizeOpenClawOriginStructured(t *testing.T) {
 
 func TestOpenClawGetCapabilitiesUsesSelectedModelModalities(t *testing.T) {
 	oc := &OpenClawClient{
-		modelCatalog: []gatewayModelChoice{
-			{
-				ID:        "gpt-5",
-				Provider:  "openai",
-				Reasoning: true,
-				Input:     []string{"text", "image"},
-			},
-		},
+		modelCache: cachedvalue.New[[]gatewayModelChoice](5 * time.Minute),
 	}
+	oc.modelCache.Update([]gatewayModelChoice{
+		{
+			ID:        "gpt-5",
+			Provider:  "openai",
+			Reasoning: true,
+			Input:     []string{"text", "image"},
+		},
+	})
 	portal := &bridgev2.Portal{
 		Portal: &database.Portal{
 			Metadata: &PortalMetadata{
@@ -468,14 +470,15 @@ func TestOpenClawGetCapabilitiesUsesSelectedModelModalities(t *testing.T) {
 
 func TestOpenClawGetCapabilitiesRejectsUnsupportedMediaWhenKnown(t *testing.T) {
 	oc := &OpenClawClient{
-		modelCatalog: []gatewayModelChoice{
-			{
-				ID:       "gpt-5-mini",
-				Provider: "openai",
-				Input:    []string{"text"},
-			},
-		},
+		modelCache: cachedvalue.New[[]gatewayModelChoice](5 * time.Minute),
 	}
+	oc.modelCache.Update([]gatewayModelChoice{
+		{
+			ID:       "gpt-5-mini",
+			Provider: "openai",
+			Input:    []string{"text"},
+		},
+	})
 	portal := &bridgev2.Portal{
 		Portal: &database.Portal{
 			Metadata: &PortalMetadata{
@@ -539,15 +542,16 @@ func TestOpenClawSessionResyncProjectsTypeTopicAndCapabilities(t *testing.T) {
 				ID: networkid.UserLoginID("login-1"),
 			},
 		},
-		modelCatalog: []gatewayModelChoice{
-			{
-				ID:        "gpt-5",
-				Provider:  "openai",
-				Reasoning: true,
-				Input:     []string{"text", "image"},
-			},
-		},
+		modelCache: cachedvalue.New[[]gatewayModelChoice](5 * time.Minute),
 	}
+	oc.modelCache.Update([]gatewayModelChoice{
+		{
+			ID:        "gpt-5",
+			Provider:  "openai",
+			Reasoning: true,
+			Input:     []string{"text", "image"},
+		},
+	})
 	evt := &OpenClawSessionResyncEvent{
 		client: oc,
 		session: gatewaySessionRow{

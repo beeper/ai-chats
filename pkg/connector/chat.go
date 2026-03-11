@@ -209,15 +209,8 @@ func (oc *AIClient) SearchUsers(ctx context.Context, query string) ([]*bridgev2.
 		}
 
 		modelID := oc.agentDefaultModel(agent)
-		userID := agentUserID(agent.ID)
-		ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, userID)
-		if err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).Str("agent", agent.ID).Msg("Failed to get ghost for search result")
-			continue
-		}
-
+		userID := oc.agentUserID(agent.ID)
 		displayName := agentName
-		oc.ensureAgentGhostDisplayName(ctx, agent.ID, modelID, agentName)
 
 		results = append(results, &bridgev2.ResolveIdentifierResponse{
 			UserID: userID,
@@ -226,7 +219,6 @@ func (oc *AIClient) SearchUsers(ctx context.Context, query string) ([]*bridgev2.
 				IsBot:       ptr.Ptr(true),
 				Identifiers: agentContactIdentifiers(agent.ID, modelID, oc.findModelInfo(modelID)),
 			},
-			Ghost: ghost,
 		})
 		seen[userID] = struct{}{}
 	}
@@ -245,12 +237,6 @@ func (oc *AIClient) SearchUsers(ctx context.Context, query string) ([]*bridgev2.
 			if _, ok := seen[userID]; ok {
 				continue
 			}
-			ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, userID)
-			if err != nil {
-				oc.loggerForContext(ctx).Warn().Err(err).Str("model", model.ID).Msg("Failed to get ghost for model search result")
-				continue
-			}
-			oc.ensureGhostDisplayNameWithGhost(ctx, ghost, model.ID, model)
 			results = append(results, &bridgev2.ResolveIdentifierResponse{
 				UserID: userID,
 				UserInfo: &bridgev2.UserInfo{
@@ -258,7 +244,6 @@ func (oc *AIClient) SearchUsers(ctx context.Context, query string) ([]*bridgev2.
 					IsBot:       ptr.Ptr(false),
 					Identifiers: modelContactIdentifiers(model.ID, model),
 				},
-				Ghost: ghost,
 			})
 			seen[userID] = struct{}{}
 		}
@@ -287,19 +272,11 @@ func (oc *AIClient) GetContactList(ctx context.Context) ([]*bridgev2.ResolveIden
 	contacts := make([]*bridgev2.ResolveIdentifierResponse, 0, len(agentsMap))
 
 	for _, agent := range agentsMap {
-		// Get or create ghost for this agent
 		modelID := oc.agentDefaultModel(agent)
-		userID := agentUserID(agent.ID)
-		ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, userID)
-		if err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).Str("agent", agent.ID).Msg("Failed to get ghost for agent")
-			continue
-		}
+		userID := oc.agentUserID(agent.ID)
 
-		// Update ghost display name
 		agentName := oc.resolveAgentDisplayName(ctx, agent)
 		displayName := agentName
-		oc.ensureAgentGhostDisplayName(ctx, agent.ID, modelID, agentName)
 
 		contacts = append(contacts, &bridgev2.ResolveIdentifierResponse{
 			UserID: userID,
@@ -308,7 +285,6 @@ func (oc *AIClient) GetContactList(ctx context.Context) ([]*bridgev2.ResolveIden
 				IsBot:       ptr.Ptr(true),
 				Identifiers: agentContactIdentifiers(agent.ID, modelID, oc.findModelInfo(modelID)),
 			},
-			Ghost: ghost,
 		})
 	}
 
@@ -323,15 +299,6 @@ func (oc *AIClient) GetContactList(ctx context.Context) ([]*bridgev2.ResolveIden
 				continue
 			}
 			userID := modelUserID(model.ID)
-			ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, userID)
-			if err != nil {
-				oc.loggerForContext(ctx).Warn().Err(err).Str("model", model.ID).Msg("Failed to get ghost for model")
-				continue
-			}
-
-			// Ensure ghost display name is set before returning
-			oc.ensureGhostDisplayNameWithGhost(ctx, ghost, model.ID, model)
-
 			contacts = append(contacts, &bridgev2.ResolveIdentifierResponse{
 				UserID: userID,
 				UserInfo: &bridgev2.UserInfo{
@@ -339,7 +306,6 @@ func (oc *AIClient) GetContactList(ctx context.Context) ([]*bridgev2.ResolveIden
 					IsBot:       ptr.Ptr(false),
 					Identifiers: modelContactIdentifiers(model.ID, model),
 				},
-				Ghost: ghost,
 			})
 		}
 	}
@@ -457,7 +423,7 @@ func (oc *AIClient) resolveAgentIdentifierWithModel(ctx context.Context, agent *
 	if modelID == "" {
 		modelID = oc.agentDefaultModel(agent)
 	}
-	userID := agentUserID(agent.ID)
+	userID := oc.agentUserID(agent.ID)
 	ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ghost: %w", err)
@@ -541,11 +507,6 @@ func modelJoinMember(loginID networkid.UserLoginID, modelID, modelName string, i
 	}
 }
 
-// createAgentChat creates a new chat room for an agent
-func (oc *AIClient) createAgentChat(ctx context.Context, agent *agents.AgentDefinition) (*bridgev2.CreateChatResponse, error) {
-	return oc.createAgentChatWithModel(ctx, agent, "", false)
-}
-
 func (oc *AIClient) createAgentChatWithModel(ctx context.Context, agent *agents.AgentDefinition, modelID string, applyModelOverride bool) (*bridgev2.CreateChatResponse, error) {
 	if modelID == "" {
 		modelID = oc.agentDefaultModel(agent)
@@ -563,7 +524,7 @@ func (oc *AIClient) createAgentChatWithModel(ctx context.Context, agent *agents.
 	// Set agent-specific metadata
 	pm := portalMeta(portal)
 
-	agentGhostID := agentUserID(agent.ID)
+	agentGhostID := oc.agentUserID(agent.ID)
 
 	// Update the OtherUserID to be the agent ghost
 	portal.OtherUserID = agentGhostID
@@ -756,21 +717,21 @@ func (oc *AIClient) resolveNewChatTarget(
 	meta *PortalMetadata,
 	args []string,
 ) (*agents.AgentDefinition, string, error) {
-	const usage = "Usage: !ai new [agent <agent_id>]"
+	const usage = "usage: !ai new [agent <agent_id>]"
 
 	if len(args) >= 2 {
 		cmd := strings.ToLower(args[0])
 		if cmd != "agent" {
-			return nil, "", fmt.Errorf(usage)
+			return nil, "", errors.New(usage)
 		}
 		targetID := args[1]
 		if targetID == "" || len(args) > 2 {
-			return nil, "", fmt.Errorf(usage)
+			return nil, "", errors.New(usage)
 		}
 		store := NewAgentStoreAdapter(oc)
 		agent, err := store.GetAgentByID(ctx, targetID)
 		if err != nil || agent == nil {
-			return nil, "", fmt.Errorf("Agent not found: %s", targetID)
+			return nil, "", fmt.Errorf("agent not found: %s", targetID)
 		}
 		modelID, err := oc.resolveAgentModelForNewChat(ctx, agent, "")
 		if err != nil {
@@ -778,18 +739,18 @@ func (oc *AIClient) resolveNewChatTarget(
 		}
 		return agent, modelID, nil
 	} else if len(args) == 1 {
-		return nil, "", fmt.Errorf(usage)
+		return nil, "", errors.New(usage)
 	}
 
 	if meta == nil {
-		return nil, "", fmt.Errorf("Couldn't resolve the current chat target.")
+		return nil, "", fmt.Errorf("couldn't resolve the current chat target")
 	}
 	agentID := resolveAgentID(meta)
 	if agentID != "" {
 		store := NewAgentStoreAdapter(oc)
 		agent, err := store.GetAgentByID(ctx, agentID)
 		if err != nil || agent == nil {
-			return nil, "", fmt.Errorf("Agent not found: %s", agentID)
+			return nil, "", fmt.Errorf("agent not found: %s", agentID)
 		}
 		modelID, err := oc.resolveAgentModelForNewChat(ctx, agent, oc.effectiveModel(meta))
 		if err != nil {
@@ -800,10 +761,10 @@ func (oc *AIClient) resolveNewChatTarget(
 
 	modelID := oc.effectiveModel(meta)
 	if modelID == "" {
-		return nil, "", fmt.Errorf("No model configured for this room.")
+		return nil, "", fmt.Errorf("no model configured for this room")
 	}
 	if ok, _ := oc.validateModel(ctx, modelID); !ok {
-		return nil, "", fmt.Errorf("That model isn't available: %s", modelID)
+		return nil, "", fmt.Errorf("that model isn't available: %s", modelID)
 	}
 	return nil, modelID, nil
 }
@@ -969,7 +930,7 @@ func (oc *AIClient) applyAgentChatInfo(chatInfo *bridgev2.ChatInfo, agentID, age
 		modelID = oc.effectiveModel(nil)
 	}
 
-	agentGhostID := agentUserID(agentID)
+	agentGhostID := oc.agentUserID(agentID)
 	agentDisplayName := agentName
 
 	members := chatInfo.Members
@@ -1064,7 +1025,7 @@ func (oc *AIClient) bootstrap(ctx context.Context) {
 	// Create default chat room with Beep agent
 	if err := oc.ensureDefaultChat(logCtx); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure default chat")
-		// Continue anyway - default chat is optional
+		return
 	}
 
 	// Mark bootstrap as complete only after successful completion
@@ -1120,6 +1081,7 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 	oc.loggerForContext(ctx).Debug().Msg("Ensuring default AI chat room exists")
 	loginMeta := loginMetadata(oc.UserLogin)
 	defaultPortalKey := defaultChatPortalKey(oc.UserLogin.ID)
+	deterministicPortalBlocked := false
 
 	if loginMeta.DefaultChatPortalID != "" {
 		portalKey := networkid.PortalKey{
@@ -1130,20 +1092,29 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 		if err != nil {
 			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to load default chat portal by ID")
 		} else if portal != nil {
-			if portal.MXID != "" {
-				oc.loggerForContext(ctx).Debug().Stringer("portal", portal.PortalKey).Msg("Existing default chat already has MXID")
+			if !isDefaultChatCandidate(portal) {
+				deterministicPortalBlocked = portal.PortalKey == defaultPortalKey
+				oc.loggerForContext(ctx).Warn().Stringer("portal", portal.PortalKey).Msg("Ignoring hidden portal stored as default chat")
+				loginMeta.DefaultChatPortalID = ""
+				if err := oc.UserLogin.Save(ctx); err != nil {
+					oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to clear hidden default chat portal ID")
+				}
+			} else {
+				if portal.MXID != "" {
+					oc.loggerForContext(ctx).Debug().Stringer("portal", portal.PortalKey).Msg("Existing default chat already has MXID")
+					return nil
+				}
+				info := oc.chatInfoFromPortal(ctx, portal)
+				oc.loggerForContext(ctx).Info().Stringer("portal", portal.PortalKey).Msg("Default chat missing MXID; creating Matrix room")
+				err := portal.CreateMatrixRoom(ctx, oc.UserLogin, info)
+				if err != nil {
+					oc.loggerForContext(ctx).Err(err).Msg("Failed to create Matrix room for default chat")
+					return err
+				}
+				sendAIPortalInfo(ctx, portal, portalMeta(portal))
+				oc.sendWelcomeMessage(ctx, portal)
 				return nil
 			}
-			info := oc.chatInfoFromPortal(ctx, portal)
-			oc.loggerForContext(ctx).Info().Stringer("portal", portal.PortalKey).Msg("Default chat missing MXID; creating Matrix room")
-			err := portal.CreateMatrixRoom(ctx, oc.UserLogin, info)
-			if err != nil {
-				oc.loggerForContext(ctx).Err(err).Msg("Failed to create Matrix room for default chat")
-			} else {
-				sendAIPortalInfo(ctx, portal, portalMeta(portal))
-			}
-			oc.sendWelcomeMessage(ctx, portal)
-			return err
 		}
 	}
 
@@ -1151,8 +1122,11 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 		portal, err := oc.UserLogin.Bridge.GetExistingPortalByKey(ctx, defaultPortalKey)
 		if err != nil {
 			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to load default chat portal by deterministic key")
-		} else if portal != nil {
+		} else if portal != nil && isDefaultChatCandidate(portal) {
 			return oc.ensureExistingChatPortalReady(ctx, loginMeta, portal, "Existing default chat already has MXID", "Default chat missing MXID; creating Matrix room", "Failed to create Matrix room for default chat")
+		} else if portal != nil {
+			deterministicPortalBlocked = true
+			oc.loggerForContext(ctx).Warn().Stringer("portal", portal.PortalKey).Msg("Ignoring hidden deterministic default chat portal")
 		}
 	}
 
@@ -1162,19 +1136,7 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 		return err
 	}
 
-	var defaultPortal *bridgev2.Portal
-	var minIdx int
-	for _, portal := range portals {
-		pm := portalMeta(portal)
-		if idx, ok := parseChatSlug(pm.Slug); ok {
-			if defaultPortal == nil || idx < minIdx {
-				minIdx = idx
-				defaultPortal = portal
-			}
-		} else if defaultPortal == nil {
-			defaultPortal = portal
-		}
-	}
+	defaultPortal := chooseDefaultChatPortal(portals)
 
 	if defaultPortal != nil {
 		return oc.ensureExistingChatPortalReady(ctx, loginMeta, defaultPortal, "Existing chat already has MXID", "Existing portal missing MXID; creating Matrix room", "Failed to create Matrix room for existing portal")
@@ -1192,14 +1154,17 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 		modelID = oc.effectiveModel(nil)
 	}
 
-	portal, chatInfo, err := oc.initPortalForChat(ctx, PortalInitOpts{
-		ModelID:   modelID,
-		Title:     "New AI Chat",
-		PortalKey: &defaultPortalKey,
-	})
+	initOpts := PortalInitOpts{
+		ModelID: modelID,
+		Title:   "New AI Chat",
+	}
+	if !deterministicPortalBlocked {
+		initOpts.PortalKey = &defaultPortalKey
+	}
+	portal, chatInfo, err := oc.initPortalForChat(ctx, initOpts)
 	if err != nil {
 		existingPortal, existingErr := oc.UserLogin.Bridge.GetExistingPortalByKey(ctx, defaultPortalKey)
-		if existingErr == nil && existingPortal != nil {
+		if !deterministicPortalBlocked && existingErr == nil && existingPortal != nil {
 			loginMeta.DefaultChatPortalID = string(existingPortal.PortalKey.ID)
 			if err := oc.UserLogin.Save(ctx); err != nil {
 				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist default chat portal ID")
@@ -1228,7 +1193,7 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 	pm := portalMeta(portal)
 
 	// Update the OtherUserID to be the agent ghost
-	agentGhostID := agentUserID(beeperAgent.ID)
+	agentGhostID := oc.agentUserID(beeperAgent.ID)
 	portal.OtherUserID = agentGhostID
 	pm.ResolvedTarget = resolveTargetFromGhostID(agentGhostID)
 
@@ -1258,6 +1223,9 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 }
 
 func (oc *AIClient) ensureExistingChatPortalReady(ctx context.Context, loginMeta *UserLoginMetadata, portal *bridgev2.Portal, readyMsg string, createMsg string, errMsg string) error {
+	if !isDefaultChatCandidate(portal) {
+		return fmt.Errorf("portal %s is hidden and can't be selected as default chat", portal.PortalKey)
+	}
 	if loginMeta != nil {
 		loginMeta.DefaultChatPortalID = string(portal.PortalKey.ID)
 		if err := oc.UserLogin.Save(ctx); err != nil {
@@ -1278,6 +1246,34 @@ func (oc *AIClient) ensureExistingChatPortalReady(ctx context.Context, loginMeta
 	sendAIPortalInfo(ctx, portal, portalMeta(portal))
 	oc.sendWelcomeMessage(ctx, portal)
 	return nil
+}
+
+func isDefaultChatCandidate(portal *bridgev2.Portal) bool {
+	return portal != nil && !shouldExcludeModelVisiblePortal(portalMeta(portal))
+}
+
+func chooseDefaultChatPortal(portals []*bridgev2.Portal) *bridgev2.Portal {
+	var defaultPortal *bridgev2.Portal
+	var (
+		minIdx   int
+		haveSlug bool
+	)
+	for _, portal := range portals {
+		if !isDefaultChatCandidate(portal) {
+			continue
+		}
+		pm := portalMeta(portal)
+		if idx, ok := parseChatSlug(pm.Slug); ok {
+			if !haveSlug || idx < minIdx {
+				minIdx = idx
+				defaultPortal = portal
+				haveSlug = true
+			}
+		} else if defaultPortal == nil && !haveSlug {
+			defaultPortal = portal
+		}
+	}
+	return defaultPortal
 }
 
 func (oc *AIClient) listAllChatPortals(ctx context.Context) ([]*bridgev2.Portal, error) {

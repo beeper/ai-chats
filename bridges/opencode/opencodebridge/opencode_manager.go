@@ -22,10 +22,10 @@ import (
 // OpenCodeManager coordinates connections to OpenCode server instances,
 // dispatches SSE events, and manages session lifecycle.
 type OpenCodeManager struct {
-	bridge    *Bridge
-	mu        sync.RWMutex
-	instances map[string]*openCodeInstance
-	approvals *bridgeadapter.ApprovalManager[permissionDecision]
+	bridge       *Bridge
+	mu           sync.RWMutex
+	instances    map[string]*openCodeInstance
+	approvalFlow *bridgeadapter.ApprovalFlow[*permissionApprovalRef]
 }
 
 type permissionApprovalRef struct {
@@ -37,19 +37,70 @@ type permissionApprovalRef struct {
 	PermissionID string
 }
 
-type permissionDecision struct {
-	Response  string
-	Reason    string
-	DecidedAt time.Time
-	DecidedBy id.UserID
-}
-
 func NewOpenCodeManager(bridge *Bridge) *OpenCodeManager {
-	return &OpenCodeManager{
+	mgr := &OpenCodeManager{
 		bridge:    bridge,
 		instances: make(map[string]*openCodeInstance),
-		approvals: bridgeadapter.NewApprovalManager[permissionDecision](),
 	}
+	mgr.approvalFlow = bridgeadapter.NewApprovalFlow(bridgeadapter.ApprovalFlowConfig[*permissionApprovalRef]{
+		Login: func() *bridgev2.UserLogin {
+			if bridge != nil && bridge.host != nil {
+				return bridge.host.Login()
+			}
+			return nil
+		},
+		Sender: func(portal *bridgev2.Portal) bridgev2.EventSender {
+			if bridge == nil || bridge.host == nil {
+				return bridgev2.EventSender{}
+			}
+			meta := bridge.portalMeta(portal)
+			return bridge.host.SenderForOpenCode(meta.InstanceID, false)
+		},
+		BackgroundContext: func(ctx context.Context) context.Context {
+			if bridge != nil && bridge.host != nil {
+				return bridge.host.BackgroundContext(ctx)
+			}
+			return ctx
+		},
+		RoomIDFromData: func(data *permissionApprovalRef) id.RoomID {
+			if data == nil {
+				return ""
+			}
+			return data.RoomID
+		},
+		DeliverDecision: func(ctx context.Context, portal *bridgev2.Portal, pending *bridgeadapter.Pending[*permissionApprovalRef], decision bridgeadapter.ApprovalDecisionPayload) error {
+			ref := pending.Data
+			if ref == nil {
+				return bridgeadapter.ErrApprovalUnknown
+			}
+			response := "reject"
+			if decision.Approved {
+				response = "once"
+				if decision.Always {
+					response = "always"
+				}
+			}
+			inst, err := mgr.requireConnectedInstance(ref.InstanceID)
+			if err != nil {
+				return err
+			}
+			if err := inst.client.RespondPermission(ctx, ref.SessionID, ref.PermissionID, response); err != nil {
+				if opencode.IsAuthError(err) {
+					mgr.setConnected(inst, false)
+				}
+				return fmt.Errorf("respond to permission: %w", err)
+			}
+			return nil
+		},
+		SendNotice: func(ctx context.Context, portal *bridgev2.Portal, msg string) {
+			if bridge != nil && bridge.host != nil {
+				bridge.host.SendSystemNotice(ctx, portal, msg)
+			}
+		},
+		IDPrefix: "opencode",
+		LogKey:   "opencode_msg_id",
+	})
+	return mgr
 }
 
 func (m *OpenCodeManager) log() *zerolog.Logger {
@@ -765,7 +816,7 @@ func (m *OpenCodeManager) handlePermissionAskedEvent(ctx context.Context, inst *
 		return
 	}
 	approvalID := strings.TrimSpace(req.ID)
-	_, created := m.approvals.Register(approvalID, 10*time.Minute, &permissionApprovalRef{
+	_, created := m.approvalFlow.Register(approvalID, 10*time.Minute, &permissionApprovalRef{
 		RoomID:       portal.MXID,
 		InstanceID:   inst.cfg.ID,
 		SessionID:    req.SessionID,
@@ -788,6 +839,23 @@ func (m *OpenCodeManager) handlePermissionAskedEvent(ctx context.Context, inst *
 		"toolCallId": toolCallID,
 		"toolName":   toolName,
 	})
+	ownerMXID := id.UserID("")
+	if m.bridge != nil && m.bridge.host != nil {
+		if login := m.bridge.host.Login(); login != nil {
+			ownerMXID = login.UserMXID
+		}
+	}
+	m.approvalFlow.SendPrompt(ctx, portal, bridgeadapter.SendPromptParams{
+		ApprovalPromptMessageParams: bridgeadapter.ApprovalPromptMessageParams{
+			ApprovalID: approvalID,
+			ToolCallID: toolCallID,
+			ToolName:   toolName,
+			TurnID:     turnID,
+			ExpiresAt:  time.Now().Add(10 * time.Minute),
+		},
+		RoomID:    portal.MXID,
+		OwnerMXID: ownerMXID,
+	})
 }
 
 func (m *OpenCodeManager) handlePermissionRepliedEvent(ctx context.Context, inst *openCodeInstance, evt opencode.Event) {
@@ -800,27 +868,38 @@ func (m *OpenCodeManager) handlePermissionRepliedEvent(ctx context.Context, inst
 		m.log().Warn().Err(err).Msg("Failed to decode permission reply event")
 		return
 	}
-	pending := m.approvals.Get(strings.TrimSpace(payload.RequestID))
+	pending := m.approvalFlow.Get(strings.TrimSpace(payload.RequestID))
 	if pending == nil {
 		return
 	}
-	ref, _ := pending.Data.(*permissionApprovalRef)
+	ref := pending.Data
 	if ref == nil {
-		m.approvals.Drop(payload.RequestID)
+		m.approvalFlow.Drop(payload.RequestID)
 		return
 	}
+	reply := strings.ToLower(strings.TrimSpace(payload.Reply))
+	approved := reply != "reject"
+	turnID := opencodeMessageStreamTurnID(ref.SessionID, ref.MessageID)
+	portal := m.bridge.findOpenCodePortal(ctx, inst.cfg.ID, ref.SessionID)
+	if portal != nil {
+		m.ensureStepStarted(ctx, inst, portal, ref.SessionID, ref.MessageID)
+		m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, m.bridge.portalAgentID(portal), map[string]any{
+			"type":       "tool-approval-response",
+			"approvalId": strings.TrimSpace(payload.RequestID),
+			"toolCallId": ref.ToolCallID,
+			"approved":   approved,
+			"reason":     reply,
+		})
+	}
 	if strings.EqualFold(strings.TrimSpace(payload.Reply), "reject") {
-		portal := m.bridge.findOpenCodePortal(ctx, inst.cfg.ID, ref.SessionID)
 		if portal != nil {
-			m.ensureStepStarted(ctx, inst, portal, ref.SessionID, ref.MessageID)
-			turnID := opencodeMessageStreamTurnID(ref.SessionID, ref.MessageID)
 			m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, m.bridge.portalAgentID(portal), map[string]any{
 				"type":       "tool-output-denied",
 				"toolCallId": ref.ToolCallID,
 			})
 		}
 	}
-	m.approvals.Drop(payload.RequestID)
+	m.approvalFlow.Drop(payload.RequestID)
 }
 
 func (m *OpenCodeManager) handleQuestionAskedEvent(ctx context.Context, inst *openCodeInstance, evt opencode.Event) {
@@ -852,58 +931,6 @@ func (m *OpenCodeManager) handleQuestionAskedEvent(ctx context.Context, inst *op
 			Str("request_id", req.ID).
 			Msg("Failed to reject unsupported question request")
 	}
-}
-
-func (m *OpenCodeManager) resolvePermissionDecision(ctx context.Context, roomID id.RoomID, approvalID string, decision permissionDecision) error {
-	if m == nil || m.bridge == nil || m.bridge.host == nil {
-		return errors.New("bridge not available")
-	}
-	approvalID = strings.TrimSpace(approvalID)
-	if approvalID == "" {
-		return bridgeadapter.ErrApprovalMissingID
-	}
-	if strings.TrimSpace(roomID.String()) == "" {
-		return bridgeadapter.ErrApprovalMissingRoom
-	}
-	login := m.bridge.host.Login()
-	if login == nil || decision.DecidedBy == "" || decision.DecidedBy != login.UserMXID {
-		return bridgeadapter.ErrApprovalOnlyOwner
-	}
-	pending := m.approvals.Get(approvalID)
-	if pending == nil {
-		return fmt.Errorf("%w: %s", bridgeadapter.ErrApprovalUnknown, approvalID)
-	}
-	ref, _ := pending.Data.(*permissionApprovalRef)
-	if ref == nil {
-		m.approvals.Drop(approvalID)
-		return fmt.Errorf("%w: %s", bridgeadapter.ErrApprovalUnknown, approvalID)
-	}
-	if ref.RoomID != "" && ref.RoomID != roomID {
-		return bridgeadapter.ErrApprovalWrongRoom
-	}
-	inst, err := m.requireConnectedInstance(ref.InstanceID)
-	if err != nil {
-		return err
-	}
-	if err := inst.client.RespondPermission(ctx, ref.SessionID, ref.PermissionID, decision.Response); err != nil {
-		if opencode.IsAuthError(err) {
-			m.setConnected(inst, false)
-		}
-		return fmt.Errorf("respond to permission: %w", err)
-	}
-	m.approvals.Drop(approvalID)
-	if decision.Response == "reject" {
-		portal := m.bridge.findOpenCodePortal(ctx, ref.InstanceID, ref.SessionID)
-		if portal != nil {
-			m.ensureStepStarted(ctx, inst, portal, ref.SessionID, ref.MessageID)
-			turnID := opencodeMessageStreamTurnID(ref.SessionID, ref.MessageID)
-			m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, m.bridge.portalAgentID(portal), map[string]any{
-				"type":       "tool-output-denied",
-				"toolCallId": ref.ToolCallID,
-			})
-		}
-	}
-	return nil
 }
 
 // ---------- message/part processing ----------

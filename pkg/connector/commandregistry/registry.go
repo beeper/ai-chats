@@ -18,6 +18,7 @@ type Definition struct {
 
 	RequiresPortal bool
 	RequiresLogin  bool
+	HasLogin       func(*commands.Event) bool
 	Handler        func(*commands.Event)
 }
 
@@ -38,7 +39,7 @@ func (d Definition) FullHandler() *commands.FullHandler {
 					ce.MessageStatus.IsCertain = true
 				}
 				ce.Reply("That command can only be ran in portal rooms.")
-			case d.RequiresLogin && (ce.User == nil || ce.User.GetDefaultLogin() == nil):
+			case d.RequiresLogin && (ce.User == nil || (d.HasLogin != nil && !d.HasLogin(ce)) || (d.HasLogin == nil && ce.User.GetDefaultLogin() == nil)):
 				if ce.MessageStatus != nil {
 					ce.MessageStatus.Status = event.MessageStatusFail
 					ce.MessageStatus.ErrorReason = event.MessageStatusNoPermission
@@ -56,6 +57,8 @@ func (d Definition) FullHandler() *commands.FullHandler {
 			Description: d.Description,
 			Args:        d.Args,
 		},
+		RequiresPortal: false,
+		RequiresLogin:  false,
 	}
 }
 

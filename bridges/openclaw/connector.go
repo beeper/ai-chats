@@ -10,7 +10,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote/pkg/bridgeadapter"
 )
@@ -21,6 +20,7 @@ var (
 )
 
 type OpenClawConnector struct {
+	bridgeadapter.BaseConnectorMethods
 	br     *bridgev2.Bridge
 	Config Config
 
@@ -29,7 +29,9 @@ type OpenClawConnector struct {
 }
 
 func NewConnector() *OpenClawConnector {
-	return &OpenClawConnector{}
+	return &OpenClawConnector{
+		BaseConnectorMethods: bridgeadapter.BaseConnectorMethods{ProtocolID: "ai-openclaw"},
+	}
 }
 
 func (oc *OpenClawConnector) Init(bridge *bridgev2.Bridge) {
@@ -56,17 +58,6 @@ func (oc *OpenClawConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilit
 	// OpenClaw supports session reset/delete, but not timer-backed disappearing messages.
 	caps.DisappearingMessages = false
 	return caps
-}
-
-func (oc *OpenClawConnector) GetBridgeInfoVersion() (info, capabilities int) {
-	return bridgeadapter.DefaultBridgeInfoVersion()
-}
-
-func (oc *OpenClawConnector) FillPortalBridgeInfo(portal *bridgev2.Portal, content *event.BridgeEventContent) {
-	if portal == nil {
-		return
-	}
-	bridgeadapter.ApplyAIBridgeInfo(content, "ai-openclaw", portal.RoomType, bridgeadapter.AIRoomKindAgent)
 }
 
 func (oc *OpenClawConnector) GetName() bridgev2.BridgeName {
@@ -96,39 +87,14 @@ func (oc *OpenClawConnector) GetDBMetaTypes() database.MetaTypes {
 func (oc *OpenClawConnector) LoadUserLogin(_ context.Context, login *bridgev2.UserLogin) error {
 	meta := loginMetadata(login)
 	if !strings.EqualFold(strings.TrimSpace(meta.Provider), ProviderOpenClaw) {
-		login.Client = &bridgeadapter.BrokenLoginClient{
-			UserLogin: login,
-			Reason:    "This bridge only supports OpenClaw logins.",
-		}
+		login.Client = &bridgeadapter.BrokenLoginClient{UserLogin: login, Reason: "This bridge only supports OpenClaw logins."}
 		return nil
 	}
-
-	client, err := bridgeadapter.LoadOrCreateClient(
-		&oc.clientsMu,
-		oc.clients,
-		login.ID,
-		func(existingAPI bridgev2.NetworkAPI) bool {
-			existing, ok := existingAPI.(*OpenClawClient)
-			if !ok || existing == nil {
-				return false
-			}
-			existing.UserLogin = login
-			login.Client = existing
-			return true
-		},
-		func() (bridgev2.NetworkAPI, error) {
-			return newOpenClawClient(login, oc)
-		},
-	)
-	if err != nil {
-		login.Client = &bridgeadapter.BrokenLoginClient{
-			UserLogin: login,
-			Reason:    "Couldn't initialize OpenClaw for this login.",
-		}
-		return nil
-	}
-	login.Client = client
-	return nil
+	return bridgeadapter.LoadUserLogin(login, bridgeadapter.LoadUserLoginConfig[*OpenClawClient]{
+		Mu: &oc.clientsMu, Clients: oc.clients, BridgeName: "OpenClaw",
+		Update: func(e *OpenClawClient, l *bridgev2.UserLogin) { e.UserLogin = l },
+		Create: func(l *bridgev2.UserLogin) (*OpenClawClient, error) { return newOpenClawClient(l, oc) },
+	})
 }
 
 func (oc *OpenClawConnector) GetLoginFlows() []bridgev2.LoginFlow {

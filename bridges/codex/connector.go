@@ -15,7 +15,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote/bridges/codex/codexrpc"
 	"github.com/beeper/agentremote/pkg/aidb"
@@ -29,6 +28,7 @@ var (
 
 // CodexConnector runs the dedicated Codex bridge surface.
 type CodexConnector struct {
+	bridgeadapter.BaseConnectorMethods
 	br     *bridgev2.Bridge
 	Config Config
 	db     *dbutil.Database
@@ -65,7 +65,7 @@ func (cc *CodexConnector) Start(ctx context.Context) error {
 	}
 
 	cc.applyRuntimeDefaults()
-	cc.primeUserLoginCache(ctx)
+	bridgeadapter.PrimeUserLoginCache(ctx, cc.br)
 	cc.autoProvisionExistingCodex(ctx)
 
 	return nil
@@ -83,10 +83,6 @@ func (cc *CodexConnector) bridgeDB() *dbutil.Database {
 		return cc.db
 	}
 	return nil
-}
-
-func (cc *CodexConnector) primeUserLoginCache(ctx context.Context) {
-	bridgeadapter.PrimeUserLoginCache(ctx, cc.br)
 }
 
 // autoProvisionExistingCodex checks whether the system `codex` CLI is already
@@ -263,21 +259,6 @@ func (cc *CodexConnector) applyRuntimeDefaults() {
 	}
 }
 
-func (cc *CodexConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
-	return bridgeadapter.DefaultNetworkCapabilities()
-}
-
-func (cc *CodexConnector) GetBridgeInfoVersion() (info, capabilities int) {
-	return bridgeadapter.DefaultBridgeInfoVersion()
-}
-
-func (cc *CodexConnector) FillPortalBridgeInfo(portal *bridgev2.Portal, content *event.BridgeEventContent) {
-	if portal == nil {
-		return
-	}
-	bridgeadapter.ApplyAIBridgeInfo(content, "ai-codex", portal.RoomType, bridgeadapter.AIRoomKindAgent)
-}
-
 func (cc *CodexConnector) GetName() bridgev2.BridgeName {
 	return bridgev2.BridgeName{
 		DisplayName:          "Codex Bridge",
@@ -308,33 +289,19 @@ func (cc *CodexConnector) LoadUserLogin(_ context.Context, login *bridgev2.UserL
 		login.Client = newBrokenLoginClient(login, cc, "This bridge only supports Codex logins.")
 		return nil
 	}
-	return cc.loadCodexUserLogin(login)
-}
-
-func (cc *CodexConnector) loadCodexUserLogin(login *bridgev2.UserLogin) error {
 	if !cc.codexEnabled() {
 		login.Client = newBrokenLoginClient(login, cc, "Codex integration is disabled in the configuration.")
 		return nil
 	}
-
-	client, err := bridgeadapter.LoadOrCreateTypedClient(
-		&cc.clientsMu,
-		cc.clients,
-		login,
-		func(existing *CodexClient, login *bridgev2.UserLogin) {
-			existing.UserLogin = login
+	return bridgeadapter.LoadUserLogin(login, bridgeadapter.LoadUserLoginConfig[*CodexClient]{
+		Mu: &cc.clientsMu, Clients: cc.clients, BridgeName: "Codex",
+		MakeBroken: func(l *bridgev2.UserLogin, reason string) *bridgeadapter.BrokenLoginClient {
+			return newBrokenLoginClient(l, cc, reason)
 		},
-		func() (*CodexClient, error) {
-			return newCodexClient(login, cc)
-		},
-	)
-	if err != nil {
-		login.Client = newBrokenLoginClient(login, cc, "Couldn't initialize Codex for this login. Remove and re-add the account.")
-		return nil
-	}
-	login.Client = client
-	client.scheduleBootstrap()
-	return nil
+		Update:    func(e *CodexClient, l *bridgev2.UserLogin) { e.UserLogin = l },
+		Create:    func(l *bridgev2.UserLogin) (*CodexClient, error) { return newCodexClient(l, cc) },
+		AfterLoad: func(c *CodexClient) { c.scheduleBootstrap() },
+	})
 }
 
 func (cc *CodexConnector) GetLoginFlows() []bridgev2.LoginFlow {
