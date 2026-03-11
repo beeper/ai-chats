@@ -11,7 +11,7 @@ import (
 // needs to validate and route approval reactions.
 type ReactionTarget interface {
 	GetUserLogin() *bridgev2.UserLogin
-	GetApprovalPrompts() *ApprovalPromptManager
+	GetApprovalHandler() ApprovalReactionHandler
 }
 
 // BaseReactionHandler is an embeddable mixin that implements the three reaction
@@ -35,8 +35,8 @@ func (h BaseReactionHandler) HandleMatrixReaction(ctx context.Context, msg *brid
 		return &database.Reaction{}, nil
 	}
 	rc := ExtractReactionContext(msg)
-	if prompts := h.Target.GetApprovalPrompts(); prompts != nil {
-		prompts.HandleReaction(ctx, msg, rc.TargetEventID, rc.Emoji)
+	if handler := h.Target.GetApprovalHandler(); handler != nil {
+		handler.HandleReaction(ctx, msg, rc.TargetEventID, rc.Emoji)
 	}
 	return &database.Reaction{}, nil
 }

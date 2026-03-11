@@ -65,7 +65,7 @@ func (cc *CodexConnector) Start(ctx context.Context) error {
 	}
 
 	cc.applyRuntimeDefaults()
-	cc.primeUserLoginCache(ctx)
+	bridgeadapter.PrimeUserLoginCache(ctx, cc.br)
 	cc.autoProvisionExistingCodex(ctx)
 
 	return nil
@@ -83,10 +83,6 @@ func (cc *CodexConnector) bridgeDB() *dbutil.Database {
 		return cc.db
 	}
 	return nil
-}
-
-func (cc *CodexConnector) primeUserLoginCache(ctx context.Context) {
-	bridgeadapter.PrimeUserLoginCache(ctx, cc.br)
 }
 
 // autoProvisionExistingCodex checks whether the system `codex` CLI is already

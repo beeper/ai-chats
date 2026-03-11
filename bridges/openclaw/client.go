@@ -853,7 +853,10 @@ func (oc *OpenClawClient) sendApprovalRequestFallbackEvent(
 	approvalID, toolCallID, toolName, turnID, body string,
 	expiresAt time.Time,
 ) {
-	oc.approvalPrompts.SendPrompt(ctx, portal, bridgeadapter.SendPromptParams{
+	if oc.manager == nil || oc.manager.approvalFlow == nil {
+		return
+	}
+	oc.manager.approvalFlow.SendPrompt(ctx, portal, bridgeadapter.SendPromptParams{
 		ApprovalPromptMessageParams: bridgeadapter.ApprovalPromptMessageParams{
 			ApprovalID: approvalID,
 			ToolCallID: toolCallID,

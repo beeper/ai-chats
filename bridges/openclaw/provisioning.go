@@ -97,12 +97,8 @@ func (oc *OpenClawClient) mergeDiscoveredSessionAgents(agents []gatewayAgentSumm
 	return merged
 }
 
-func (oc *OpenClawClient) refreshAgentCatalog(ctx context.Context) ([]gatewayAgentSummary, error) {
-	return oc.loadAgentCatalog(ctx, false)
-}
-
 func (oc *OpenClawClient) agentCatalogEntryByID(ctx context.Context, agentID string) (*gatewayAgentSummary, error) {
-	agents, err := oc.refreshAgentCatalog(ctx)
+	agents, err := oc.loadAgentCatalog(ctx, false)
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +158,7 @@ func (oc *OpenClawClient) configuredAgentUserInfo(ctx context.Context, agent gat
 }
 
 func (oc *OpenClawClient) GetContactList(ctx context.Context) ([]*bridgev2.ResolveIdentifierResponse, error) {
-	agents, err := oc.refreshAgentCatalog(ctx)
+	agents, err := oc.loadAgentCatalog(ctx, false)
 	if err != nil {
 		return nil, err
 	}
@@ -190,7 +186,7 @@ func (oc *OpenClawClient) GetContactList(ctx context.Context) ([]*bridgev2.Resol
 }
 
 func (oc *OpenClawClient) SearchUsers(ctx context.Context, query string) ([]*bridgev2.ResolveIdentifierResponse, error) {
-	agents, err := oc.refreshAgentCatalog(ctx)
+	agents, err := oc.loadAgentCatalog(ctx, false)
 	if err != nil {
 		return nil, err
 	}
