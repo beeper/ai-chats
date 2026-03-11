@@ -243,6 +243,8 @@ func (oc *AIClient) gateMcpToolApproval(
 			Approved:   true,
 			Reason:     "auto_approved",
 		}); err != nil {
+			delete(state.pendingMcpApprovalsSeen, approvalID)
+			oc.uiEmitter(state).EmitUIToolOutputError(ctx, portal, tool.callID, "failed to auto-approve MCP tool call", true)
 			oc.loggerForContext(ctx).Warn().Err(err).Str("approval_id", approvalID).Msg("Failed to auto-approve MCP tool call")
 		}
 	}

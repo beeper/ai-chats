@@ -47,6 +47,23 @@ type OpenAILogin struct {
 	Override  *bridgev2.UserLogin
 }
 
+func normalizeProvider(provider string) string {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case ProviderBeeper:
+		return ProviderBeeper
+	case ProviderOpenAI:
+		return ProviderOpenAI
+	case ProviderOpenRouter:
+		return ProviderOpenRouter
+	case ProviderMagicProxy:
+		return ProviderMagicProxy
+	case FlowCustom:
+		return FlowCustom
+	default:
+		return strings.TrimSpace(provider)
+	}
+}
+
 func (ol *OpenAILogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 	step := ol.credentialsStep()
 	if step != nil {
@@ -83,7 +100,7 @@ func (ol *OpenAILogin) StartWithOverride(ctx context.Context, old *bridgev2.User
 	if ol.User == nil || old.UserMXID != ol.User.MXID {
 		return nil, errors.New("invalid relogin target")
 	}
-	if old.ID == managedBeeperLoginID(old.UserMXID) {
+	if old.ID == managedBeeperLoginID(old.UserMXID) || old.ID == legacyManagedBeeperLoginID(old.UserMXID) {
 		return nil, errors.New("managed Beeper Cloud logins are controlled by bridge configuration")
 	}
 	ol.Override = old
@@ -214,6 +231,7 @@ func (ol *OpenAILogin) credentialsStep() *bridgev2.LoginStep {
 }
 
 func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseURL string, serviceTokens *ServiceTokens) (*bridgev2.LoginStep, error) {
+	provider = normalizeProvider(provider)
 	apiKey = strings.TrimSpace(apiKey)
 	baseURL = stringutil.NormalizeBaseURL(baseURL)
 	if ol.User == nil {
@@ -226,7 +244,7 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 		if overrideMeta == nil {
 			return nil, errors.New("missing relogin metadata")
 		}
-		if !strings.EqualFold(strings.TrimSpace(overrideMeta.Provider), strings.TrimSpace(provider)) {
+		if !strings.EqualFold(normalizeProvider(overrideMeta.Provider), provider) {
 			return nil, fmt.Errorf("can't relogin %s account with %s credentials", overrideMeta.Provider, provider)
 		}
 	}
@@ -244,11 +262,16 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 		remoteName = fmt.Sprintf("%s (%d)", remoteNameBase, ordinal)
 	}
 
-	meta := &UserLoginMetadata{
-		Provider: provider,
-		APIKey:   apiKey,
-		BaseURL:  baseURL,
+	meta := &UserLoginMetadata{}
+	if override != nil {
+		meta = cloneUserLoginMetadata(loginMetadata(override))
 	}
+	if meta == nil {
+		meta = &UserLoginMetadata{}
+	}
+	meta.Provider = provider
+	meta.APIKey = apiKey
+	meta.BaseURL = baseURL
 	if serviceTokens != nil && !serviceTokensEmpty(serviceTokens) {
 		meta.ServiceTokens = serviceTokens
 	}
@@ -421,9 +444,38 @@ func (ol *OpenAILogin) resolveCustomLogin(input map[string]string) (string, stri
 		return "", "", nil, &ErrOpenAIOrOpenRouterRequired
 	}
 
+	preferredProvider := ""
+	if ol.Override != nil {
+		if overrideMeta := loginMetadata(ol.Override); overrideMeta != nil {
+			preferredProvider = normalizeProvider(overrideMeta.Provider)
+		}
+	}
+
 	provider := ProviderOpenAI
 	apiKey := openaiToken
-	if openrouterToken != "" {
+	switch preferredProvider {
+	case ProviderOpenAI:
+		if openaiToken == "" {
+			return "", "", nil, &ErrOpenAIOrOpenRouterRequired
+		}
+	case ProviderOpenRouter:
+		if openrouterToken == "" {
+			return "", "", nil, &ErrOpenAIOrOpenRouterRequired
+		}
+		provider = ProviderOpenRouter
+		apiKey = openrouterToken
+	case "":
+		if openrouterToken != "" {
+			provider = ProviderOpenRouter
+			apiKey = openrouterToken
+		}
+	default:
+		if openrouterToken != "" {
+			provider = ProviderOpenRouter
+			apiKey = openrouterToken
+		}
+	}
+	if provider == ProviderOpenAI && openaiToken == "" && openrouterToken != "" {
 		provider = ProviderOpenRouter
 		apiKey = openrouterToken
 	}

@@ -25,8 +25,7 @@ func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev
 	if portal == nil || portal.MXID == "" {
 		return
 	}
-	msg := bridgeadapter.BuildContinuationMessage(body, oc.senderForPortal(ctx, portal), "ai", "ai_msg_id")
-	msg.Portal = portal.PortalKey
+	msg := bridgeadapter.BuildContinuationMessage(portal.PortalKey, body, oc.senderForPortal(ctx, portal), "ai", "ai_msg_id")
 	oc.UserLogin.QueueRemoteEvent(msg)
 	oc.loggerForContext(ctx).Debug().Int("body_len", len(body)).Msg("Queued continuation message for oversized response")
 }

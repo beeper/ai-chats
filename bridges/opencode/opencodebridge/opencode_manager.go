@@ -90,24 +90,6 @@ func NewOpenCodeManager(bridge *Bridge) *OpenCodeManager {
 				}
 				return fmt.Errorf("respond to permission: %w", err)
 			}
-			turnID := opencodeMessageStreamTurnID(ref.SessionID, ref.MessageID)
-			approved := response != "reject"
-			if portal != nil {
-				mgr.ensureStepStarted(ctx, inst, portal, ref.SessionID, ref.MessageID)
-				mgr.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, mgr.bridge.portalAgentID(portal), map[string]any{
-					"type":       "tool-approval-response",
-					"approvalId": strings.TrimSpace(decision.ApprovalID),
-					"toolCallId": ref.ToolCallID,
-					"approved":   approved,
-					"reason":     strings.TrimSpace(decision.Reason),
-				})
-			}
-			if response == "reject" && portal != nil {
-				mgr.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, mgr.bridge.portalAgentID(portal), map[string]any{
-					"type":       "tool-output-denied",
-					"toolCallId": ref.ToolCallID,
-				})
-			}
 			return nil
 		},
 		SendNotice: func(ctx context.Context, portal *bridgev2.Portal, msg string) {

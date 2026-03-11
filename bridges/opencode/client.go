@@ -87,6 +87,7 @@ func newOpenCodeClient(login *bridgev2.UserLogin, connector *OpenCodeConnector) 
 }
 
 func (oc *OpenCodeClient) Connect(ctx context.Context) {
+	oc.ResetStreamShutdown()
 	oc.loggedIn.Store(true)
 	oc.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected, Message: "Connected"})
 	if oc.bridge != nil {
@@ -99,6 +100,7 @@ func (oc *OpenCodeClient) Connect(ctx context.Context) {
 }
 
 func (oc *OpenCodeClient) Disconnect() {
+	oc.BeginStreamShutdown()
 	oc.loggedIn.Store(false)
 	oc.CloseAllSessions()
 	oc.StreamMu.Lock()

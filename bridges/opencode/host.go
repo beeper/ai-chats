@@ -65,6 +65,9 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 	if oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.Bot == nil {
 		return
 	}
+	if oc.IsStreamShuttingDown() {
+		return
+	}
 
 	oc.StreamMu.Lock()
 	state := oc.streamStates[turnID]
@@ -110,6 +113,9 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 	streamui.ApplyChunk(&state.ui, part)
 	oc.StreamMu.Unlock()
 
+	if oc.IsStreamShuttingDown() {
+		return
+	}
 	if needPlaceholder {
 		pmeta := oc.PortalMeta(portal)
 		instanceID := ""
@@ -171,6 +177,10 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 	}
 
 	oc.StreamMu.Lock()
+	if oc.IsStreamShuttingDown() {
+		oc.StreamMu.Unlock()
+		return
+	}
 	state = oc.streamStates[turnID]
 	if state == nil {
 		state = &openCodeStreamState{

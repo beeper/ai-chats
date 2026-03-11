@@ -8,17 +8,16 @@ import (
 
 type MessageMetadata struct {
 	bridgeadapter.BaseMessageMetadata
-	SessionID          string  `json:"session_id,omitempty"`
-	MessageID          string  `json:"message_id,omitempty"`
-	ParentMessageID    string  `json:"parent_message_id,omitempty"`
-	Agent              string  `json:"agent,omitempty"`
-	ModelID            string  `json:"model_id,omitempty"`
-	ProviderID         string  `json:"provider_id,omitempty"`
-	Mode               string  `json:"mode,omitempty"`
-	ErrorText          string  `json:"error_text,omitempty"`
-	Cost               float64 `json:"cost,omitempty"`
-	TotalTokens        int64   `json:"total_tokens,omitempty"`
-	ExcludeFromHistory bool    `json:"exclude_from_history,omitempty"`
+	SessionID       string  `json:"session_id,omitempty"`
+	MessageID       string  `json:"message_id,omitempty"`
+	ParentMessageID string  `json:"parent_message_id,omitempty"`
+	Agent           string  `json:"agent,omitempty"`
+	ModelID         string  `json:"model_id,omitempty"`
+	ProviderID      string  `json:"provider_id,omitempty"`
+	Mode            string  `json:"mode,omitempty"`
+	ErrorText       string  `json:"error_text,omitempty"`
+	Cost            float64 `json:"cost,omitempty"`
+	TotalTokens     int64   `json:"total_tokens,omitempty"`
 }
 
 type ToolCallMetadata = bridgeadapter.ToolCallMetadata
@@ -62,8 +61,5 @@ func (mm *MessageMetadata) CopyFrom(other any) {
 	}
 	if src.TotalTokens != 0 {
 		mm.TotalTokens = src.TotalTokens
-	}
-	if src.ExcludeFromHistory {
-		mm.ExcludeFromHistory = true
 	}
 }

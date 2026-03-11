@@ -967,25 +967,27 @@ func (m *openClawManager) handleApprovalRequest(ctx context.Context, payload gat
 	if command != "" {
 		body = "Tool approval required: " + command
 	}
-	m.approvalFlow.Register(payload.ID, time.Until(time.UnixMilli(payload.ExpiresAtMs)), &openClawPendingApprovalData{
+	pending, created := m.approvalFlow.Register(payload.ID, time.Until(time.UnixMilli(payload.ExpiresAtMs)), &openClawPendingApprovalData{
 		SessionKey:  sessionKey,
 		Command:     command,
 		CreatedAtMs: payload.CreatedAtMs,
 		ExpiresAtMs: payload.ExpiresAtMs,
 	})
+	if !created {
+		return
+	}
 	toolName := "exec"
 	toolCallID := strings.TrimSpace(payload.ID)
 	turnID := ""
-	if pending := m.approvalFlow.Get(strings.TrimSpace(payload.ID)); pending != nil {
-		if data := pending.Data; data != nil {
-			if strings.TrimSpace(data.ToolCallID) != "" {
-				toolCallID = strings.TrimSpace(data.ToolCallID)
-			}
-			if strings.TrimSpace(data.ToolName) != "" {
-				toolName = strings.TrimSpace(data.ToolName)
-			}
-			turnID = strings.TrimSpace(data.TurnID)
+	if pending != nil && pending.Data != nil {
+		data := pending.Data
+		if strings.TrimSpace(data.ToolCallID) != "" {
+			toolCallID = strings.TrimSpace(data.ToolCallID)
 		}
+		if strings.TrimSpace(data.ToolName) != "" {
+			toolName = strings.TrimSpace(data.ToolName)
+		}
+		turnID = strings.TrimSpace(data.TurnID)
 	}
 	m.client.sendApprovalRequestFallbackEvent(
 		ctx,

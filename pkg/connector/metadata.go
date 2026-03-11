@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"encoding/json"
 	"maps"
 	"slices"
 
@@ -201,10 +202,30 @@ type PortalMetadata struct {
 
 // SetModuleMeta sets a key in the ModuleMeta map, initializing the map if necessary.
 func (m *PortalMetadata) SetModuleMeta(key string, value any) {
+	if m == nil {
+		return
+	}
 	if m.ModuleMeta == nil {
 		m.ModuleMeta = make(map[string]any)
 	}
 	m.ModuleMeta[key] = value
+}
+
+func cloneUserLoginMetadata(src *UserLoginMetadata) *UserLoginMetadata {
+	if src == nil {
+		return &UserLoginMetadata{}
+	}
+	data, err := json.Marshal(src)
+	if err != nil {
+		clone := *src
+		return &clone
+	}
+	var clone UserLoginMetadata
+	if err = json.Unmarshal(data, &clone); err != nil {
+		fallback := *src
+		return &fallback
+	}
+	return &clone
 }
 
 func isSimpleMode(meta *PortalMetadata) bool {

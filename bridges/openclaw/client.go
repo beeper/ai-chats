@@ -137,6 +137,7 @@ func newOpenClawClient(login *bridgev2.UserLogin, connector *OpenClawConnector) 
 }
 
 func (oc *OpenClawClient) Connect(ctx context.Context) {
+	oc.ResetStreamShutdown()
 	oc.connectMu.Lock()
 	if oc.connectCancel != nil {
 		oc.connectMu.Unlock()
@@ -162,6 +163,7 @@ func (oc *OpenClawClient) Connect(ctx context.Context) {
 }
 
 func (oc *OpenClawClient) Disconnect() {
+	oc.BeginStreamShutdown()
 	oc.connectMu.Lock()
 	cancel := oc.connectCancel
 	oc.connectCancel = nil

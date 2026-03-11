@@ -2016,8 +2016,7 @@ func (cc *CodexClient) sendContinuationMessage(ctx context.Context, portal *brid
 	if portal == nil || portal.MXID == "" {
 		return
 	}
-	msg := bridgeadapter.BuildContinuationMessage(body, cc.senderForPortal(), "codex", "codex_msg_id")
-	msg.Portal = portal.PortalKey
+	msg := bridgeadapter.BuildContinuationMessage(portal.PortalKey, body, cc.senderForPortal(), "codex", "codex_msg_id")
 	cc.UserLogin.QueueRemoteEvent(msg)
 	cc.loggerForContext(ctx).Debug().Int("body_len", len(body)).Msg("Queued continuation message for oversized response")
 }

@@ -37,6 +37,10 @@ func managedBeeperLoginID(mxid id.UserID) networkid.UserLoginID {
 	return baseLoginID("managed-beeper", mxid)
 }
 
+func legacyManagedBeeperLoginID(mxid id.UserID) networkid.UserLoginID {
+	return baseLoginID("beeper", mxid)
+}
+
 func providerSlug(provider string) string {
 	switch strings.TrimSpace(provider) {
 	case ProviderBeeper:
@@ -110,8 +114,11 @@ func parseAgentFromGhostID(ghostID string) (agentID string, ok bool) {
 		return "", false
 	}
 	if suffix, hasPrefix := strings.CutPrefix(ghostID, "agent-login-"); hasPrefix {
-		_, encodedAgentID, found := strings.Cut(suffix, ":")
-		if !found {
+		encodedLoginID, encodedAgentID, found := strings.Cut(suffix, ":")
+		if !found || encodedLoginID == "" || encodedAgentID == "" {
+			return "", false
+		}
+		if _, err := base64.RawURLEncoding.DecodeString(encodedLoginID); err != nil {
 			return "", false
 		}
 		agentID, err := url.PathUnescape(encodedAgentID)

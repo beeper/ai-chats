@@ -50,7 +50,14 @@ func DecodeDataURI(raw string) ([]byte, string, error) {
 	if meta != "" {
 		mimeType = strings.TrimSpace(strings.Split(meta, ";")[0])
 	}
-	if strings.Contains(meta, ";base64") {
+	isBase64 := false
+	for _, token := range strings.Split(meta, ";")[1:] {
+		if strings.EqualFold(strings.TrimSpace(token), "base64") {
+			isBase64 = true
+			break
+		}
+	}
+	if isBase64 {
 		decoded, err := base64.StdEncoding.DecodeString(payload)
 		if err != nil {
 			return nil, "", fmt.Errorf("base64 decode failed: %w", err)

@@ -82,6 +82,9 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 	if oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.Bot == nil {
 		return
 	}
+	if oc.IsStreamShuttingDown() {
+		return
+	}
 
 	turnID = strings.TrimSpace(turnID)
 	agentID = stringsTrimDefault(agentID, "gateway")
@@ -132,11 +135,18 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 	}
 	oc.StreamMu.Unlock()
 
+	if oc.IsStreamShuttingDown() {
+		return
+	}
 	if needPlaceholder {
 		oc.ensureStreamPlaceholder(portal, turnID, agentID)
 	}
 
 	oc.StreamMu.Lock()
+	if oc.IsStreamShuttingDown() {
+		oc.StreamMu.Unlock()
+		return
+	}
 	state = oc.ensureStreamStateLocked(portal, turnID, agentID, sessionKey)
 	session := oc.StreamSessions[turnID]
 	if session == nil {

@@ -364,7 +364,7 @@ func ComputeApprovalExpiry(ttlSeconds int) time.Time {
 
 // BuildContinuationMessage constructs a ConvertedMessage for overflow
 // continuation text, flagged with "com.beeper.continuation".
-func BuildContinuationMessage(body string, sender bridgev2.EventSender, idPrefix, logKey string) *RemoteMessage {
+func BuildContinuationMessage(portal networkid.PortalKey, body string, sender bridgev2.EventSender, idPrefix, logKey string) *RemoteMessage {
 	rendered := format.RenderMarkdown(body, true, true)
 	raw := map[string]any{
 		"msgtype":                 event.MsgText,
@@ -375,6 +375,7 @@ func BuildContinuationMessage(body string, sender bridgev2.EventSender, idPrefix
 		"m.mentions":              map[string]any{},
 	}
 	return &RemoteMessage{
+		Portal:    portal,
 		ID:        NewMessageID(idPrefix),
 		Sender:    sender,
 		Timestamp: time.Now(),

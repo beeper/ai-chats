@@ -1081,6 +1081,7 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 	oc.loggerForContext(ctx).Debug().Msg("Ensuring default AI chat room exists")
 	loginMeta := loginMetadata(oc.UserLogin)
 	defaultPortalKey := defaultChatPortalKey(oc.UserLogin.ID)
+	deterministicPortalBlocked := false
 
 	if loginMeta.DefaultChatPortalID != "" {
 		portalKey := networkid.PortalKey{
@@ -1092,6 +1093,7 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to load default chat portal by ID")
 		} else if portal != nil {
 			if !isDefaultChatCandidate(portal) {
+				deterministicPortalBlocked = portal.PortalKey == defaultPortalKey
 				oc.loggerForContext(ctx).Warn().Stringer("portal", portal.PortalKey).Msg("Ignoring hidden portal stored as default chat")
 				loginMeta.DefaultChatPortalID = ""
 				if err := oc.UserLogin.Save(ctx); err != nil {
@@ -1122,6 +1124,9 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to load default chat portal by deterministic key")
 		} else if portal != nil && isDefaultChatCandidate(portal) {
 			return oc.ensureExistingChatPortalReady(ctx, loginMeta, portal, "Existing default chat already has MXID", "Default chat missing MXID; creating Matrix room", "Failed to create Matrix room for default chat")
+		} else if portal != nil {
+			deterministicPortalBlocked = true
+			oc.loggerForContext(ctx).Warn().Stringer("portal", portal.PortalKey).Msg("Ignoring hidden deterministic default chat portal")
 		}
 	}
 
@@ -1149,14 +1154,17 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 		modelID = oc.effectiveModel(nil)
 	}
 
-	portal, chatInfo, err := oc.initPortalForChat(ctx, PortalInitOpts{
-		ModelID:   modelID,
-		Title:     "New AI Chat",
-		PortalKey: &defaultPortalKey,
-	})
+	initOpts := PortalInitOpts{
+		ModelID: modelID,
+		Title:   "New AI Chat",
+	}
+	if !deterministicPortalBlocked {
+		initOpts.PortalKey = &defaultPortalKey
+	}
+	portal, chatInfo, err := oc.initPortalForChat(ctx, initOpts)
 	if err != nil {
 		existingPortal, existingErr := oc.UserLogin.Bridge.GetExistingPortalByKey(ctx, defaultPortalKey)
-		if existingErr == nil && existingPortal != nil {
+		if !deterministicPortalBlocked && existingErr == nil && existingPortal != nil {
 			loginMeta.DefaultChatPortalID = string(existingPortal.PortalKey.ID)
 			if err := oc.UserLogin.Save(ctx); err != nil {
 				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist default chat portal ID")
@@ -1246,18 +1254,22 @@ func isDefaultChatCandidate(portal *bridgev2.Portal) bool {
 
 func chooseDefaultChatPortal(portals []*bridgev2.Portal) *bridgev2.Portal {
 	var defaultPortal *bridgev2.Portal
-	var minIdx int
+	var (
+		minIdx   int
+		haveSlug bool
+	)
 	for _, portal := range portals {
 		if !isDefaultChatCandidate(portal) {
 			continue
 		}
 		pm := portalMeta(portal)
 		if idx, ok := parseChatSlug(pm.Slug); ok {
-			if defaultPortal == nil || idx < minIdx {
+			if !haveSlug || idx < minIdx {
 				minIdx = idx
 				defaultPortal = portal
+				haveSlug = true
 			}
-		} else if defaultPortal == nil {
+		} else if defaultPortal == nil && !haveSlug {
 			defaultPortal = portal
 		}
 	}

@@ -25,6 +25,9 @@ func New[T any](ttl time.Duration) *CachedValue[T] {
 // with the error. The clone function is applied to the returned value to
 // prevent callers from mutating the cache.
 func (c *CachedValue[T]) GetOrFetch(force bool, clone func(T) T, fetch func() (T, error)) (T, error) {
+	if clone == nil {
+		clone = func(v T) T { return v }
+	}
 	c.mu.RLock()
 	if !force && c.hasValue && time.Since(c.fetchedAt) < c.ttl {
 		val := clone(c.value)
@@ -70,6 +73,9 @@ func (c *CachedValue[T]) Read(clone func(T) T) T {
 	if !c.hasValue {
 		var zero T
 		return zero
+	}
+	if clone == nil {
+		return c.value
 	}
 	return clone(c.value)
 }
