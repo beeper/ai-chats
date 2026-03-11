@@ -26,45 +26,44 @@ type openClawAgentProfile struct {
 	Emoji     string
 }
 
+// agentCatalogEntry bundles the cached agent list with metadata returned by the gateway.
+type agentCatalogEntry struct {
+	Agents    []gatewayAgentSummary
+	DefaultID string
+}
+
+func cloneAgentCatalogEntry(e agentCatalogEntry) agentCatalogEntry {
+	return agentCatalogEntry{
+		Agents:    cloneGatewayAgentSummaries(e.Agents),
+		DefaultID: e.DefaultID,
+	}
+}
+
 func (oc *OpenClawClient) loadAgentCatalog(ctx context.Context, force bool) ([]gatewayAgentSummary, error) {
-	now := time.Now()
-	oc.agentCatalogMu.RLock()
-	if !force && len(oc.agentCatalog) > 0 && now.Sub(oc.agentCatalogFetchedAt) < openClawAgentCatalogTTL {
-		cached := oc.mergeDiscoveredSessionAgents(cloneGatewayAgentSummaries(oc.agentCatalog))
-		oc.agentCatalogMu.RUnlock()
-		return cached, nil
+	if oc.agentCache == nil {
+		return oc.mergeDiscoveredSessionAgents(nil), nil
 	}
-	cached := oc.mergeDiscoveredSessionAgents(cloneGatewayAgentSummaries(oc.agentCatalog))
-	oc.agentCatalogMu.RUnlock()
-
-	var gateway *gatewayWSClient
-	if oc.manager != nil {
-		gateway = oc.manager.gatewayClient()
-	}
-	if !oc.IsLoggedIn() || gateway == nil {
-		if len(cached) > 0 {
-			return cached, nil
+	entry, err := oc.agentCache.GetOrFetch(force, cloneAgentCatalogEntry, func() (agentCatalogEntry, error) {
+		var gateway *gatewayWSClient
+		if oc.manager != nil {
+			gateway = oc.manager.gatewayClient()
 		}
-		return nil, bridgev2.WrapRespErr(errors.New("you must be logged in to list contacts"), mautrix.MForbidden)
-	}
-
-	resp, err := gateway.ListAgents(ctx)
-	if err != nil {
-		if len(cached) > 0 {
-			return cached, nil
+		if !oc.IsLoggedIn() || gateway == nil {
+			return agentCatalogEntry{}, bridgev2.WrapRespErr(errors.New("you must be logged in to list contacts"), mautrix.MForbidden)
 		}
+		resp, err := gateway.ListAgents(ctx)
+		if err != nil {
+			return agentCatalogEntry{}, err
+		}
+		return agentCatalogEntry{
+			Agents:    normalizeGatewayAgentSummaries(resp.Agents),
+			DefaultID: strings.TrimSpace(resp.DefaultID),
+		}, nil
+	})
+	if err != nil && len(entry.Agents) == 0 {
 		return nil, err
 	}
-	agents := normalizeGatewayAgentSummaries(resp.Agents)
-	agents = oc.mergeDiscoveredSessionAgents(agents)
-	oc.agentCatalogMu.Lock()
-	oc.agentCatalog = cloneGatewayAgentSummaries(agents)
-	oc.agentCatalogDefaultID = strings.TrimSpace(resp.DefaultID)
-	oc.agentCatalogMainKey = strings.TrimSpace(resp.MainKey)
-	oc.agentCatalogScope = strings.TrimSpace(resp.Scope)
-	oc.agentCatalogFetchedAt = now
-	oc.agentCatalogMu.Unlock()
-	return cloneGatewayAgentSummaries(agents), nil
+	return oc.mergeDiscoveredSessionAgents(entry.Agents), nil
 }
 
 func (oc *OpenClawClient) mergeDiscoveredSessionAgents(agents []gatewayAgentSummary) []gatewayAgentSummary {
@@ -162,10 +161,7 @@ func (oc *OpenClawClient) GetContactList(ctx context.Context) ([]*bridgev2.Resol
 	if err != nil {
 		return nil, err
 	}
-	oc.agentCatalogMu.RLock()
-	defaultID := strings.TrimSpace(oc.agentCatalogDefaultID)
-	oc.agentCatalogMu.RUnlock()
-	sorted := sortConfiguredAgents(agents, defaultID, "")
+	sorted := sortConfiguredAgents(agents, oc.agentDefaultID(), "")
 	out := make([]*bridgev2.ResolveIdentifierResponse, 0, len(sorted))
 	for i := range sorted {
 		agentID := strings.TrimSpace(sorted[i].ID)
@@ -190,10 +186,7 @@ func (oc *OpenClawClient) SearchUsers(ctx context.Context, query string) ([]*bri
 	if err != nil {
 		return nil, err
 	}
-	oc.agentCatalogMu.RLock()
-	defaultID := strings.TrimSpace(oc.agentCatalogDefaultID)
-	oc.agentCatalogMu.RUnlock()
-	matches := sortConfiguredAgents(agents, defaultID, query)
+	matches := sortConfiguredAgents(agents, oc.agentDefaultID(), query)
 	out := make([]*bridgev2.ResolveIdentifierResponse, 0, len(matches))
 	for i := range matches {
 		agentID := strings.TrimSpace(matches[i].ID)

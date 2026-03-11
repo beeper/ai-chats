@@ -2,9 +2,7 @@ package bridgeadapter
 
 import (
 	"fmt"
-	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"go.mau.fi/util/variationselector"
@@ -213,101 +211,6 @@ type ApprovalPromptRegistration struct {
 	PromptEventID id.EventID
 }
 
-type ApprovalPromptStore struct {
-	mu         sync.RWMutex
-	byApproval map[string]*ApprovalPromptRegistration
-	byEventID  map[id.EventID]string
-}
-
-func NewApprovalPromptStore() *ApprovalPromptStore {
-	return &ApprovalPromptStore{
-		byApproval: make(map[string]*ApprovalPromptRegistration),
-		byEventID:  make(map[id.EventID]string),
-	}
-}
-
-func (s *ApprovalPromptStore) Register(reg ApprovalPromptRegistration) {
-	if s == nil {
-		return
-	}
-	reg.ApprovalID = strings.TrimSpace(reg.ApprovalID)
-	if reg.ApprovalID == "" {
-		return
-	}
-	reg.ToolCallID = strings.TrimSpace(reg.ToolCallID)
-	reg.ToolName = strings.TrimSpace(reg.ToolName)
-	reg.TurnID = strings.TrimSpace(reg.TurnID)
-	if len(reg.Options) == 0 {
-		reg.Options = normalizeApprovalOptions(reg.Options)
-	}
-
-	now := time.Now()
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if prev := s.byApproval[reg.ApprovalID]; prev != nil && prev.PromptEventID != "" {
-		delete(s.byEventID, prev.PromptEventID)
-	}
-	copyReg := reg
-	s.byApproval[reg.ApprovalID] = &copyReg
-	if reg.PromptEventID != "" {
-		s.byEventID[reg.PromptEventID] = reg.ApprovalID
-	}
-	// Opportunistic sweep: remove up to 10 expired entries to prevent unbounded growth.
-	swept := 0
-	for aid, entry := range s.byApproval {
-		if swept >= 10 {
-			break
-		}
-		if !entry.ExpiresAt.IsZero() && now.After(entry.ExpiresAt) {
-			if entry.PromptEventID != "" {
-				delete(s.byEventID, entry.PromptEventID)
-			}
-			delete(s.byApproval, aid)
-			swept++
-		}
-	}
-}
-
-func (s *ApprovalPromptStore) BindPromptEvent(approvalID string, eventID id.EventID) bool {
-	if s == nil {
-		return false
-	}
-	approvalID = strings.TrimSpace(approvalID)
-	eventID = id.EventID(strings.TrimSpace(eventID.String()))
-	if approvalID == "" || eventID == "" {
-		return false
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	entry := s.byApproval[approvalID]
-	if entry == nil {
-		return false
-	}
-	if entry.PromptEventID != "" {
-		delete(s.byEventID, entry.PromptEventID)
-	}
-	entry.PromptEventID = eventID
-	s.byEventID[eventID] = approvalID
-	return true
-}
-
-func (s *ApprovalPromptStore) Drop(approvalID string) {
-	if s == nil {
-		return
-	}
-	approvalID = strings.TrimSpace(approvalID)
-	if approvalID == "" {
-		return
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	entry := s.byApproval[approvalID]
-	if entry != nil && entry.PromptEventID != "" {
-		delete(s.byEventID, entry.PromptEventID)
-	}
-	delete(s.byApproval, approvalID)
-}
-
 type ApprovalPromptReactionMatch struct {
 	KnownPrompt   bool
 	ShouldResolve bool
@@ -315,62 +218,6 @@ type ApprovalPromptReactionMatch struct {
 	Decision      ApprovalDecisionPayload
 	RejectReason  string
 	Prompt        ApprovalPromptRegistration
-}
-
-func (s *ApprovalPromptStore) MatchReaction(targetEventID id.EventID, sender id.UserID, key string, now time.Time) ApprovalPromptReactionMatch {
-	if s == nil || targetEventID == "" || key == "" {
-		return ApprovalPromptReactionMatch{}
-	}
-	targetEventID = id.EventID(strings.TrimSpace(targetEventID.String()))
-	key = normalizeReactionKey(key)
-	if targetEventID == "" || key == "" {
-		return ApprovalPromptReactionMatch{}
-	}
-
-	s.mu.RLock()
-	approvalID := s.byEventID[targetEventID]
-	entry := s.byApproval[approvalID]
-	if entry == nil {
-		s.mu.RUnlock()
-		return ApprovalPromptReactionMatch{}
-	}
-	promptCopy := *entry
-	s.mu.RUnlock()
-	promptCopy.Options = slices.Clone(promptCopy.Options)
-
-	sender = id.UserID(strings.TrimSpace(sender.String()))
-
-	match := ApprovalPromptReactionMatch{
-		KnownPrompt: true,
-		ApprovalID:  approvalID,
-		Prompt:      promptCopy,
-	}
-	if promptCopy.OwnerMXID != "" && sender != promptCopy.OwnerMXID {
-		match.RejectReason = RejectReasonOwnerOnly
-		return match
-	}
-	if !promptCopy.ExpiresAt.IsZero() && !now.IsZero() && now.After(promptCopy.ExpiresAt) {
-		match.RejectReason = RejectReasonExpired
-		s.Drop(approvalID)
-		return match
-	}
-	for _, opt := range promptCopy.Options {
-		for _, optKey := range opt.allKeys() {
-			if key != optKey {
-				continue
-			}
-			match.ShouldResolve = true
-			match.Decision = ApprovalDecisionPayload{
-				ApprovalID: promptCopy.ApprovalID,
-				Approved:   opt.Approved,
-				Always:     opt.Always,
-				Reason:     opt.decisionReason(),
-			}
-			return match
-		}
-	}
-	match.RejectReason = RejectReasonInvalidOption
-	return match
 }
 
 func optionsToRaw(options []ApprovalOption) []map[string]any {

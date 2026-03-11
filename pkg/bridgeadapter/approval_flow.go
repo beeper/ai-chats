@@ -43,9 +43,6 @@ type ApprovalFlowConfig[D any] struct {
 	// SendNotice sends a system notice to a portal. Used for error toasts.
 	SendNotice func(ctx context.Context, portal *bridgev2.Portal, msg string)
 
-	// SendMsg sends a ConvertedMessage to a portal. If nil, SendViaPortal is used.
-	SendMsg func(ctx context.Context, portal *bridgev2.Portal, converted *bridgev2.ConvertedMessage) (id.EventID, networkid.MessageID, error)
-
 	// DBMetadata produces bridge-specific metadata for the approval prompt message.
 	// If nil, a default *BaseMessageMetadata is used.
 	DBMetadata func(prompt ApprovalPromptMessage) any
@@ -67,7 +64,10 @@ type Pending[D any] struct {
 type ApprovalFlow[D any] struct {
 	mu      sync.Mutex
 	pending map[string]*Pending[D]
-	prompts *ApprovalPromptStore
+
+	// Prompt store (inlined from ApprovalPromptStore).
+	promptsByApproval map[string]*ApprovalPromptRegistration
+	promptsByEventID  map[id.EventID]string
 
 	login           func() *bridgev2.UserLogin
 	sender          func(portal *bridgev2.Portal) bridgev2.EventSender
@@ -75,7 +75,6 @@ type ApprovalFlow[D any] struct {
 	roomIDFromData  func(data D) id.RoomID
 	deliverDecision func(ctx context.Context, portal *bridgev2.Portal, pending *Pending[D], decision ApprovalDecisionPayload) error
 	sendNotice      func(ctx context.Context, portal *bridgev2.Portal, msg string)
-	sendMsg         func(ctx context.Context, portal *bridgev2.Portal, converted *bridgev2.ConvertedMessage) (id.EventID, networkid.MessageID, error)
 	dbMetadata      func(prompt ApprovalPromptMessage) any
 	idPrefix        string
 	logKey          string
@@ -89,19 +88,19 @@ func NewApprovalFlow[D any](cfg ApprovalFlowConfig[D]) *ApprovalFlow[D] {
 		timeout = 10 * time.Second
 	}
 	return &ApprovalFlow[D]{
-		pending:         make(map[string]*Pending[D]),
-		prompts:         NewApprovalPromptStore(),
-		login:           cfg.Login,
-		sender:          cfg.Sender,
-		backgroundCtx:   cfg.BackgroundContext,
-		roomIDFromData:  cfg.RoomIDFromData,
-		deliverDecision: cfg.DeliverDecision,
-		sendNotice:      cfg.SendNotice,
-		sendMsg:         cfg.SendMsg,
-		dbMetadata:      cfg.DBMetadata,
-		idPrefix:        cfg.IDPrefix,
-		logKey:          cfg.LogKey,
-		sendTimeout:     timeout,
+		pending:           make(map[string]*Pending[D]),
+		promptsByApproval: make(map[string]*ApprovalPromptRegistration),
+		promptsByEventID:  make(map[id.EventID]string),
+		login:             cfg.Login,
+		sender:            cfg.Sender,
+		backgroundCtx:     cfg.BackgroundContext,
+		roomIDFromData:    cfg.RoomIDFromData,
+		deliverDecision:   cfg.DeliverDecision,
+		sendNotice:        cfg.SendNotice,
+		dbMetadata:        cfg.DBMetadata,
+		idPrefix:          cfg.IDPrefix,
+		logKey:            cfg.LogKey,
+		sendTimeout:       timeout,
 	}
 }
 
@@ -165,8 +164,8 @@ func (f *ApprovalFlow[D]) Drop(approvalID string) {
 	}
 	f.mu.Lock()
 	delete(f.pending, approvalID)
+	f.dropPromptLocked(approvalID)
 	f.mu.Unlock()
-	f.prompts.Drop(approvalID)
 }
 
 // FindByData iterates pending approvals and returns the id of the first one
@@ -241,6 +240,142 @@ func (f *ApprovalFlow[D]) Wait(ctx context.Context, approvalID string) (Approval
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Prompt store (inlined)
+// ---------------------------------------------------------------------------
+
+// registerPrompt adds or replaces a prompt registration.
+// Must be called with f.mu held.
+func (f *ApprovalFlow[D]) registerPromptLocked(reg ApprovalPromptRegistration) {
+	reg.ApprovalID = strings.TrimSpace(reg.ApprovalID)
+	if reg.ApprovalID == "" {
+		return
+	}
+	reg.ToolCallID = strings.TrimSpace(reg.ToolCallID)
+	reg.ToolName = strings.TrimSpace(reg.ToolName)
+	reg.TurnID = strings.TrimSpace(reg.TurnID)
+	if len(reg.Options) == 0 {
+		reg.Options = normalizeApprovalOptions(reg.Options)
+	}
+
+	if prev := f.promptsByApproval[reg.ApprovalID]; prev != nil && prev.PromptEventID != "" {
+		delete(f.promptsByEventID, prev.PromptEventID)
+	}
+	copyReg := reg
+	f.promptsByApproval[reg.ApprovalID] = &copyReg
+	if reg.PromptEventID != "" {
+		f.promptsByEventID[reg.PromptEventID] = reg.ApprovalID
+	}
+
+	// Opportunistic sweep: remove up to 10 expired entries to prevent unbounded growth.
+	now := time.Now()
+	swept := 0
+	for aid, entry := range f.promptsByApproval {
+		if swept >= 10 {
+			break
+		}
+		if !entry.ExpiresAt.IsZero() && now.After(entry.ExpiresAt) {
+			if entry.PromptEventID != "" {
+				delete(f.promptsByEventID, entry.PromptEventID)
+			}
+			delete(f.promptsByApproval, aid)
+			swept++
+		}
+	}
+}
+
+// bindPromptEventLocked associates an event ID with a prompt registration.
+// Must be called with f.mu held.
+func (f *ApprovalFlow[D]) bindPromptEventLocked(approvalID string, eventID id.EventID) bool {
+	approvalID = strings.TrimSpace(approvalID)
+	eventID = id.EventID(strings.TrimSpace(eventID.String()))
+	if approvalID == "" || eventID == "" {
+		return false
+	}
+	entry := f.promptsByApproval[approvalID]
+	if entry == nil {
+		return false
+	}
+	if entry.PromptEventID != "" {
+		delete(f.promptsByEventID, entry.PromptEventID)
+	}
+	entry.PromptEventID = eventID
+	f.promptsByEventID[eventID] = approvalID
+	return true
+}
+
+// dropPromptLocked removes a prompt registration.
+// Must be called with f.mu held.
+func (f *ApprovalFlow[D]) dropPromptLocked(approvalID string) {
+	approvalID = strings.TrimSpace(approvalID)
+	if approvalID == "" {
+		return
+	}
+	entry := f.promptsByApproval[approvalID]
+	if entry != nil && entry.PromptEventID != "" {
+		delete(f.promptsByEventID, entry.PromptEventID)
+	}
+	delete(f.promptsByApproval, approvalID)
+}
+
+// matchReaction checks whether a reaction targets a known approval prompt.
+func (f *ApprovalFlow[D]) matchReaction(targetEventID id.EventID, sender id.UserID, key string, now time.Time) ApprovalPromptReactionMatch {
+	if targetEventID == "" || key == "" {
+		return ApprovalPromptReactionMatch{}
+	}
+	targetEventID = id.EventID(strings.TrimSpace(targetEventID.String()))
+	key = normalizeReactionKey(key)
+	if targetEventID == "" || key == "" {
+		return ApprovalPromptReactionMatch{}
+	}
+
+	f.mu.Lock()
+	approvalID := f.promptsByEventID[targetEventID]
+	entry := f.promptsByApproval[approvalID]
+	if entry == nil {
+		f.mu.Unlock()
+		return ApprovalPromptReactionMatch{}
+	}
+	promptCopy := *entry
+	f.mu.Unlock()
+
+	sender = id.UserID(strings.TrimSpace(sender.String()))
+
+	match := ApprovalPromptReactionMatch{
+		KnownPrompt: true,
+		ApprovalID:  approvalID,
+		Prompt:      promptCopy,
+	}
+	if promptCopy.OwnerMXID != "" && sender != promptCopy.OwnerMXID {
+		match.RejectReason = RejectReasonOwnerOnly
+		return match
+	}
+	if !promptCopy.ExpiresAt.IsZero() && !now.IsZero() && now.After(promptCopy.ExpiresAt) {
+		match.RejectReason = RejectReasonExpired
+		f.mu.Lock()
+		f.dropPromptLocked(approvalID)
+		f.mu.Unlock()
+		return match
+	}
+	for _, opt := range promptCopy.Options {
+		for _, optKey := range opt.allKeys() {
+			if key != optKey {
+				continue
+			}
+			match.ShouldResolve = true
+			match.Decision = ApprovalDecisionPayload{
+				ApprovalID: promptCopy.ApprovalID,
+				Approved:   opt.Approved,
+				Always:     opt.Always,
+				Reason:     opt.decisionReason(),
+			}
+			return match
+		}
+	}
+	match.RejectReason = RejectReasonInvalidOption
+	return match
+}
+
 // SendPromptParams holds the parameters for sending an approval prompt.
 type SendPromptParams struct {
 	ApprovalPromptMessageParams
@@ -259,14 +394,15 @@ func (f *ApprovalFlow[D]) SendPrompt(ctx context.Context, portal *bridgev2.Porta
 	if f == nil || portal == nil || portal.MXID == "" {
 		return
 	}
-	login := f.loginOrNil()
+	login := f.login()
 	if login == nil {
 		return
 	}
 
 	prompt := BuildApprovalPromptMessage(params.ApprovalPromptMessageParams)
 
-	f.prompts.Register(ApprovalPromptRegistration{
+	f.mu.Lock()
+	f.registerPromptLocked(ApprovalPromptRegistration{
 		ApprovalID: strings.TrimSpace(params.ApprovalID),
 		RoomID:     params.RoomID,
 		OwnerMXID:  params.OwnerMXID,
@@ -276,6 +412,7 @@ func (f *ApprovalFlow[D]) SendPrompt(ctx context.Context, portal *bridgev2.Porta
 		ExpiresAt:  params.ExpiresAt,
 		Options:    prompt.Options,
 	})
+	f.mu.Unlock()
 
 	var dbMeta any
 	if f.dbMetadata != nil {
@@ -304,7 +441,10 @@ func (f *ApprovalFlow[D]) SendPrompt(ctx context.Context, portal *bridgev2.Porta
 		return
 	}
 
-	f.prompts.BindPromptEvent(strings.TrimSpace(params.ApprovalID), eventID)
+	f.mu.Lock()
+	f.bindPromptEventLocked(strings.TrimSpace(params.ApprovalID), eventID)
+	f.mu.Unlock()
+
 	f.sendPrefillReactions(ctx, portal, login, msgID, prompt.Options)
 }
 
@@ -319,7 +459,7 @@ func (f *ApprovalFlow[D]) HandleReaction(ctx context.Context, msg *bridgev2.Matr
 	if f == nil || msg == nil || msg.Event == nil || msg.Portal == nil {
 		return false
 	}
-	match := f.prompts.MatchReaction(targetEventID, msg.Event.Sender, emoji, time.Now())
+	match := f.matchReaction(targetEventID, msg.Event.Sender, emoji, time.Now())
 	if !match.KnownPrompt {
 		return false
 	}
@@ -363,7 +503,6 @@ func (f *ApprovalFlow[D]) HandleReaction(ctx context.Context, msg *bridgev2.Matr
 			case p.ch <- match.Decision:
 				keepEventID = msg.Event.ID
 			default:
-				// Already handled.
 				if f.sendNotice != nil {
 					f.sendNotice(ctx, msg.Portal, ApprovalErrorToastText(ErrApprovalAlreadyHandled))
 				}
@@ -383,86 +522,81 @@ func (f *ApprovalFlow[D]) HandleReaction(ctx context.Context, msg *bridgev2.Matr
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-func (f *ApprovalFlow[D]) loginOrNil() *bridgev2.UserLogin {
-	if f == nil || f.login == nil {
-		return nil
+func (f *ApprovalFlow[D]) handleRejectedReaction(ctx context.Context, msg *bridgev2.MatrixReaction, match ApprovalPromptReactionMatch) {
+	if f.sendNotice != nil {
+		switch match.RejectReason {
+		case RejectReasonExpired:
+			f.sendNotice(ctx, msg.Portal, ApprovalErrorToastText(ErrApprovalExpired))
+		case RejectReasonOwnerOnly:
+			f.sendNotice(ctx, msg.Portal, ApprovalErrorToastText(ErrApprovalOnlyOwner))
+		}
 	}
-	return f.login()
+	f.redactSingleReaction(msg)
 }
 
-func (f *ApprovalFlow[D]) bgCtx(ctx context.Context) context.Context {
-	if f.backgroundCtx != nil {
-		return f.backgroundCtx(ctx)
-	}
-	return ctx
+func (f *ApprovalFlow[D]) redactSingleReaction(msg *bridgev2.MatrixReaction) {
+	login := f.login()
+	sender := f.senderOrEmpty(msg.Portal)
+	triggerID := msg.Event.ID
+	portal := msg.Portal
+	go func() {
+		ctx := context.Background()
+		if f.backgroundCtx != nil {
+			ctx = f.backgroundCtx(ctx)
+		}
+		_ = RedactEventAsSender(ctx, login, portal, sender, triggerID)
+	}()
 }
 
-func (f *ApprovalFlow[D]) senderFor(portal *bridgev2.Portal) bridgev2.EventSender {
+func (f *ApprovalFlow[D]) redactPromptReactions(msg *bridgev2.MatrixReaction, keepEventID id.EventID) {
+	login := f.login()
+	sender := f.senderOrEmpty(msg.Portal)
+	portal := msg.Portal
+	target := msg.TargetMessage
+	triggerID := msg.Event.ID
+	go func() {
+		ctx := context.Background()
+		if f.backgroundCtx != nil {
+			ctx = f.backgroundCtx(ctx)
+		}
+		_ = RedactApprovalPromptReactions(ctx, login, portal, sender, target, triggerID, keepEventID)
+	}()
+}
+
+func (f *ApprovalFlow[D]) senderOrEmpty(portal *bridgev2.Portal) bridgev2.EventSender {
 	if f.sender != nil {
 		return f.sender(portal)
 	}
 	return bridgev2.EventSender{}
 }
 
-func (f *ApprovalFlow[D]) handleRejectedReaction(ctx context.Context, msg *bridgev2.MatrixReaction, match ApprovalPromptReactionMatch) {
-	if match.RejectReason == RejectReasonExpired && f.sendNotice != nil {
-		f.sendNotice(ctx, msg.Portal, ApprovalErrorToastText(ErrApprovalExpired))
-	} else if match.RejectReason == RejectReasonOwnerOnly && f.sendNotice != nil {
-		f.sendNotice(ctx, msg.Portal, ApprovalErrorToastText(ErrApprovalOnlyOwner))
-	}
-	f.redactSingleReaction(msg)
-}
-
-func (f *ApprovalFlow[D]) redactSingleReaction(msg *bridgev2.MatrixReaction) {
-	login := f.loginOrNil()
-	sender := f.senderFor(msg.Portal)
-	triggerID := msg.Event.ID
-	portal := msg.Portal
-	go func() {
-		redactCtx := f.bgCtx(context.Background())
-		_ = RedactEventAsSender(redactCtx, login, portal, sender, triggerID)
-	}()
-}
-
-func (f *ApprovalFlow[D]) redactPromptReactions(msg *bridgev2.MatrixReaction, keepEventID id.EventID) {
-	login := f.loginOrNil()
-	sender := f.senderFor(msg.Portal)
-	portal := msg.Portal
-	target := msg.TargetMessage
-	triggerID := msg.Event.ID
-	go func() {
-		redactCtx := f.bgCtx(context.Background())
-		_ = RedactApprovalPromptReactions(redactCtx, login, portal, sender, target, triggerID, keepEventID)
-	}()
-}
-
 func (f *ApprovalFlow[D]) send(ctx context.Context, portal *bridgev2.Portal, converted *bridgev2.ConvertedMessage) (id.EventID, networkid.MessageID, error) {
-	sendCtx := f.bgCtx(ctx)
+	sendCtx := ctx
+	if f.backgroundCtx != nil {
+		sendCtx = f.backgroundCtx(ctx)
+	}
 	sendCtx, cancel := context.WithTimeout(sendCtx, f.sendTimeout)
 	defer cancel()
 
-	if f.sendMsg != nil {
-		return f.sendMsg(sendCtx, portal, converted)
-	}
-	login := f.loginOrNil()
+	login := f.login()
 	if login == nil {
 		return "", "", nil
 	}
 	return SendViaPortal(SendViaPortalParams{
 		Login:     login,
 		Portal:    portal,
-		Sender:    f.senderFor(portal),
+		Sender:    f.senderOrEmpty(portal),
 		IDPrefix:  f.idPrefix,
 		LogKey:    f.logKey,
 		Converted: converted,
 	})
 }
 
-func (f *ApprovalFlow[D]) sendPrefillReactions(ctx context.Context, portal *bridgev2.Portal, login *bridgev2.UserLogin, msgID networkid.MessageID, options []ApprovalOption) {
+func (f *ApprovalFlow[D]) sendPrefillReactions(_ context.Context, portal *bridgev2.Portal, login *bridgev2.UserLogin, msgID networkid.MessageID, options []ApprovalOption) {
 	if login == nil || portal == nil || msgID == "" {
 		return
 	}
-	sender := f.senderFor(portal)
+	sender := f.senderOrEmpty(portal)
 	now := time.Now()
 	seenKeys := map[string]struct{}{}
 	for _, option := range options {

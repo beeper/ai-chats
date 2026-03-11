@@ -24,6 +24,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/pkg/bridgeadapter"
+	"github.com/beeper/agentremote/pkg/shared/cachedvalue"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 )
 
@@ -77,20 +78,11 @@ type OpenClawClient struct {
 
 	loggedIn atomic.Bool
 
-	agentCatalogMu        sync.RWMutex
-	agentCatalog          []gatewayAgentSummary
-	agentCatalogDefaultID string
-	agentCatalogMainKey   string
-	agentCatalogScope     string
-	agentCatalogFetchedAt time.Time
+	agentCache *cachedvalue.CachedValue[agentCatalogEntry]
+	modelCache *cachedvalue.CachedValue[[]gatewayModelChoice]
 
-	modelCatalogMu        sync.RWMutex
-	modelCatalog          []gatewayModelChoice
-	modelCatalogFetchedAt time.Time
-
-	toolCatalogMu        sync.RWMutex
-	toolCatalog          map[string]gatewayToolsCatalogResponse
-	toolCatalogFetchedAt map[string]time.Time
+	toolCacheMu sync.Mutex
+	toolCaches  map[string]*cachedvalue.CachedValue[gatewayToolsCatalogResponse]
 
 	bridgeadapter.BaseStreamState
 	streamStates map[string]*openClawStreamState
@@ -131,11 +123,12 @@ func newOpenClawClient(login *bridgev2.UserLogin, connector *OpenClawConnector) 
 		return nil, errors.New("missing login")
 	}
 	client := &OpenClawClient{
-		UserLogin:            login,
-		connector:            connector,
-		streamStates:         make(map[string]*openClawStreamState),
-		toolCatalog:          make(map[string]gatewayToolsCatalogResponse),
-		toolCatalogFetchedAt: make(map[string]time.Time),
+		UserLogin:    login,
+		connector:    connector,
+		streamStates: make(map[string]*openClawStreamState),
+		agentCache:   cachedvalue.New[agentCatalogEntry](openClawAgentCatalogTTL),
+		modelCache:   cachedvalue.New[[]gatewayModelChoice](openClawMetadataCatalogTTL),
+		toolCaches:   make(map[string]*cachedvalue.CachedValue[gatewayToolsCatalogResponse]),
 	}
 	client.InitStreamState()
 	client.BaseReactionHandler.Target = client
