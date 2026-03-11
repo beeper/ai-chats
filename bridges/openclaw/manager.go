@@ -873,18 +873,18 @@ func isOpenClawDirectChatEvent(state string, message map[string]any) bool {
 		return false
 	}
 	role := openClawMessageRole(message)
-	if role == "" || role == "assistant" {
+	if role != "user" {
 		return false
 	}
 	normalizedState := strings.ToLower(strings.TrimSpace(state))
 	if normalizedState == "" {
-		return role == "user"
+		return true
 	}
 	switch normalizedState {
 	case "final", "done", "complete", "completed":
 		return true
 	default:
-		return role == "user"
+		return true
 	}
 }
 

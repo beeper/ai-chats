@@ -1109,11 +1109,11 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 				err := portal.CreateMatrixRoom(ctx, oc.UserLogin, info)
 				if err != nil {
 					oc.loggerForContext(ctx).Err(err).Msg("Failed to create Matrix room for default chat")
-				} else {
-					sendAIPortalInfo(ctx, portal, portalMeta(portal))
+					return err
 				}
+				sendAIPortalInfo(ctx, portal, portalMeta(portal))
 				oc.sendWelcomeMessage(ctx, portal)
-				return err
+				return nil
 			}
 		}
 	}

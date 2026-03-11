@@ -180,6 +180,7 @@ type heartbeatSkipParams struct {
 	preview   string // truncated to 200 chars
 	to        string // target room string for the event
 	silent    bool   // for the event payload & outcome
+	sent      bool   // whether this branch emitted a visible message
 }
 
 // skipHeartbeatRun executes the common heartbeat-skip path shared by all early-
@@ -220,7 +221,14 @@ func (oc *AIClient) skipHeartbeatRun(
 		DurationMs:    durationMs,
 		IndicatorType: p.indicator,
 	})
-	sendOutcome(HeartbeatRunOutcome{Status: "ran", Reason: p.reason, Silent: p.silent, Skipped: true})
+	sendOutcome(HeartbeatRunOutcome{
+		Status:  "ran",
+		Reason:  p.reason,
+		Preview: preview,
+		Sent:    p.sent,
+		Silent:  p.silent,
+		Skipped: true,
+	})
 }
 
 // sendFinalHeartbeatTurn handles heartbeat-specific response delivery.
@@ -312,6 +320,7 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 			indicator: indicator,
 			to:        hb.TargetRoom.String(),
 			silent:    silent,
+			sent:      !silent,
 		})
 		return
 	}
@@ -331,6 +340,7 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 				indicator: indicator,
 				preview:   cleaned,
 				to:        "",
+				silent:    true,
 			})
 			return
 		}
@@ -343,6 +353,7 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 			restore: false,
 			preview: previewText(),
 			to:      hb.TargetRoom.String(),
+			silent:  true,
 		})
 		return
 	}
@@ -359,6 +370,7 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 			indicator: indicator,
 			preview:   previewText(),
 			to:        hb.TargetRoom.String(),
+			silent:    true,
 		})
 		return
 	}

@@ -264,7 +264,10 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 
 	meta := &UserLoginMetadata{}
 	if override != nil {
-		meta = cloneUserLoginMetadata(loginMetadata(override))
+		meta, err = cloneUserLoginMetadata(loginMetadata(override))
+		if err != nil {
+			return nil, fmt.Errorf("failed to clone relogin metadata: %w", err)
+		}
 	}
 	if meta == nil {
 		meta = &UserLoginMetadata{}
@@ -273,7 +276,7 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 	meta.APIKey = apiKey
 	meta.BaseURL = baseURL
 	if serviceTokens != nil && !serviceTokensEmpty(serviceTokens) {
-		meta.ServiceTokens = serviceTokens
+		meta.ServiceTokens = mergeServiceTokens(meta.ServiceTokens, serviceTokens)
 	}
 	if err := ol.validateLoginMetadata(ctx, loginID, meta); err != nil {
 		return nil, err
