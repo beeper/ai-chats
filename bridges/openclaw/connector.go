@@ -60,7 +60,6 @@ func (oc *OpenClawConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilit
 	return caps
 }
 
-
 func (oc *OpenClawConnector) GetName() bridgev2.BridgeName {
 	return bridgev2.BridgeName{
 		DisplayName:          "OpenClaw Bridge",

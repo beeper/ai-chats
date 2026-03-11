@@ -504,7 +504,6 @@ func (m *openClawManager) handleControlCommand(ctx context.Context, msg *bridgev
 	return true, nil
 }
 
-
 func (m *openClawManager) FetchMessages(ctx context.Context, params bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {
 	gateway, err := m.requireGateway()
 	if err != nil {

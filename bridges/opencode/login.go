@@ -318,5 +318,3 @@ func resolveManagedOpenCodeDirectory(input string) (string, error) {
 	}
 	return abs, nil
 }
-
-

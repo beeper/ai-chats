@@ -951,7 +951,6 @@ func (m *OpenCodeManager) handleQuestionAskedEvent(ctx context.Context, inst *op
 	}
 }
 
-
 // ---------- message/part processing ----------
 
 func (m *OpenCodeManager) handleMessageEvent(ctx context.Context, inst *openCodeInstance, msg opencode.Message) {

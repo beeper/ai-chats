@@ -125,7 +125,7 @@ func newCodexClient(login *bridgev2.UserLogin, connector *CodexConnector) (*Code
 		log:             log,
 		notifCh:         make(chan codexNotif, 4096),
 		notifDone:       make(chan struct{}),
-		loadedThreads: make(map[string]bool),
+		loadedThreads:   make(map[string]bool),
 		activeTurns:     make(map[string]*codexActiveTurn),
 		turnSubs:        make(map[string]chan codexNotif),
 		activeRooms:     make(map[id.RoomID]bool),

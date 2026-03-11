@@ -269,6 +269,7 @@ func SendAIRoomInfo(ctx context.Context, portal *bridgev2.Portal, aiKind string)
 	if aiKind == "" {
 		aiKind = AIRoomKindAgent
 	}
+	//lint:ignore SA1019 bridgev2 currently exposes room-meta sending via portal internals
 	return portal.Internal().SendRoomMeta(
 		ctx,
 		nil,

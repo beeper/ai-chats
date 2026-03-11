@@ -570,14 +570,7 @@ func (f *ApprovalFlow[D]) senderOrEmpty(portal *bridgev2.Portal) bridgev2.EventS
 	return bridgev2.EventSender{}
 }
 
-func (f *ApprovalFlow[D]) send(ctx context.Context, portal *bridgev2.Portal, converted *bridgev2.ConvertedMessage) (id.EventID, networkid.MessageID, error) {
-	sendCtx := ctx
-	if f.backgroundCtx != nil {
-		sendCtx = f.backgroundCtx(ctx)
-	}
-	sendCtx, cancel := context.WithTimeout(sendCtx, f.sendTimeout)
-	defer cancel()
-
+func (f *ApprovalFlow[D]) send(_ context.Context, portal *bridgev2.Portal, converted *bridgev2.ConvertedMessage) (id.EventID, networkid.MessageID, error) {
 	login := f.login()
 	if login == nil {
 		return "", "", nil

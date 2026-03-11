@@ -259,7 +259,6 @@ func (cc *CodexConnector) applyRuntimeDefaults() {
 	}
 }
 
-
 func (cc *CodexConnector) GetName() bridgev2.BridgeName {
 	return bridgev2.BridgeName{
 		DisplayName:          "Codex Bridge",

@@ -1802,44 +1802,6 @@ func isImageMimeType(mimeType string) bool {
 	return strings.HasPrefix(mimeType, "image/")
 }
 
-// downloadHistoryImage downloads an image from an mxc:// URL and returns it as an image content
-// part for inclusion in a multimodal prompt. Returns nil on failure (graceful fallback to text-only).
-func (oc *AIClient) downloadHistoryImage(ctx context.Context, mediaURL, mimeType string) *openai.ChatCompletionContentPartUnionParam {
-	if mediaURL == "" {
-		return nil
-	}
-	b64Data, actualMimeType, err := oc.downloadMediaBase64(ctx, mediaURL, nil, 20, mimeType)
-	if err != nil {
-		oc.log.Debug().Err(err).Str("url", mediaURL).Msg("Failed to download history image, falling back to text-only")
-		return nil
-	}
-	dataURL := buildDataURL(actualMimeType, b64Data)
-	return &openai.ChatCompletionContentPartUnionParam{
-		OfImageURL: &openai.ChatCompletionContentPartImageParam{
-			ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
-				URL:    dataURL,
-				Detail: "auto",
-			},
-		},
-	}
-}
-
-// buildSyntheticGeneratedImagesMessage creates a synthetic user message containing images
-// downloadGeneratedFileImages downloads images from GeneratedFileRef entries and returns
-// the content parts. Skips non-image files and download failures gracefully.
-func (oc *AIClient) downloadGeneratedFileImages(ctx context.Context, files []GeneratedFileRef) []openai.ChatCompletionContentPartUnionParam {
-	var parts []openai.ChatCompletionContentPartUnionParam
-	for _, f := range files {
-		if !isImageMimeType(f.MimeType) {
-			continue
-		}
-		if imgPart := oc.downloadHistoryImage(ctx, f.URL, f.MimeType); imgPart != nil {
-			parts = append(parts, *imgPart)
-		}
-	}
-	return parts
-}
-
 // updateAssistantGeneratedFiles finds the most recent assistant message with tool calls
 // in the portal and appends the given GeneratedFileRef entries to its metadata.
 // This is used by async image generation to link generated images back to the assistant

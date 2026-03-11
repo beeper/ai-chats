@@ -2,7 +2,6 @@ package connector
 
 import (
 	"context"
-	"errors"
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -45,42 +44,6 @@ func (oc *AIClient) sendApprovalRequestFallbackEvent(
 		RoomID:    portal.MXID,
 		OwnerMXID: oc.UserLogin.UserMXID,
 	})
-}
-
-// sendApprovalRejectionEvent sends a combined toast + com.beeper.ai snapshot
-// marking an approval as output-denied. This is used when resolveToolApproval
-// fails (expired/unknown/already-handled) so the desktop can close the modal
-// instead of retrying in a loop.
-func (oc *AIClient) sendApprovalRejectionEvent(ctx context.Context, portal *bridgev2.Portal, approvalID string, err error, replyToEventID id.EventID) {
-	if oc == nil || portal == nil || portal.MXID == "" {
-		return
-	}
-	approvalID = strings.TrimSpace(approvalID)
-	if approvalID == "" {
-		return
-	}
-
-	errorText := "Expired"
-	switch {
-	case errors.Is(err, bridgeadapter.ErrApprovalAlreadyHandled):
-		errorText = "Already handled"
-	case errors.Is(err, bridgeadapter.ErrApprovalOnlyOwner):
-		errorText = "Denied"
-	case errors.Is(err, bridgeadapter.ErrApprovalWrongRoom):
-		errorText = "Denied"
-	}
-
-	toastText := bridgeadapter.ApprovalErrorToastText(err)
-	toolCallID, toolName, turnID := oc.lookupApprovalSnapshotInfo(approvalID)
-	uiMessage := buildApprovalSnapshotUIMessage(approvalID, toolCallID, toolName, turnID, "output-denied", errorText)
-	converted := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{
-			buildApprovalSnapshotPart(toastText, uiMessage, toastText, replyToEventID),
-		},
-	}
-	if _, _, sendErr := oc.sendViaPortal(ctx, portal, converted, ""); sendErr != nil {
-		oc.loggerForContext(ctx).Warn().Err(sendErr).Msg("Failed to send approval rejection event")
-	}
 }
 
 func (oc *AIClient) lookupApprovalSnapshotInfo(approvalID string) (toolCallID, toolName, turnID string) {

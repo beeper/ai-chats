@@ -21,6 +21,7 @@ var BossAgent = &AgentDefinition{
 	PromptMode:   PromptModeFull,
 	IsPreset:     true,
 }
+
 // IsBossAgent checks if an agent ID is the Boss agent.
 func IsBossAgent(agentID string) bool {
 	return agentID == BossAgent.ID

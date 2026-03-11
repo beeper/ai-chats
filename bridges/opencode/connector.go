@@ -54,7 +54,6 @@ func (oc *OpenCodeConnector) Stop(_ context.Context) {
 	bridgeadapter.StopClients(&oc.clientsMu, &oc.clients)
 }
 
-
 func (oc *OpenCodeConnector) GetName() bridgev2.BridgeName {
 	return bridgev2.BridgeName{
 		DisplayName:          "OpenCode Bridge",

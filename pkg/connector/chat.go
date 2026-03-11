@@ -717,7 +717,7 @@ func (oc *AIClient) resolveNewChatTarget(
 	meta *PortalMetadata,
 	args []string,
 ) (*agents.AgentDefinition, string, error) {
-	const usage = "Usage: !ai new [agent <agent_id>]"
+	const usage = "usage: !ai new [agent <agent_id>]"
 
 	if len(args) >= 2 {
 		cmd := strings.ToLower(args[0])
@@ -731,7 +731,7 @@ func (oc *AIClient) resolveNewChatTarget(
 		store := NewAgentStoreAdapter(oc)
 		agent, err := store.GetAgentByID(ctx, targetID)
 		if err != nil || agent == nil {
-			return nil, "", fmt.Errorf("Agent not found: %s", targetID)
+			return nil, "", fmt.Errorf("agent not found: %s", targetID)
 		}
 		modelID, err := oc.resolveAgentModelForNewChat(ctx, agent, "")
 		if err != nil {
@@ -743,14 +743,14 @@ func (oc *AIClient) resolveNewChatTarget(
 	}
 
 	if meta == nil {
-		return nil, "", fmt.Errorf("Couldn't resolve the current chat target.")
+		return nil, "", fmt.Errorf("couldn't resolve the current chat target")
 	}
 	agentID := resolveAgentID(meta)
 	if agentID != "" {
 		store := NewAgentStoreAdapter(oc)
 		agent, err := store.GetAgentByID(ctx, agentID)
 		if err != nil || agent == nil {
-			return nil, "", fmt.Errorf("Agent not found: %s", agentID)
+			return nil, "", fmt.Errorf("agent not found: %s", agentID)
 		}
 		modelID, err := oc.resolveAgentModelForNewChat(ctx, agent, oc.effectiveModel(meta))
 		if err != nil {
@@ -761,10 +761,10 @@ func (oc *AIClient) resolveNewChatTarget(
 
 	modelID := oc.effectiveModel(meta)
 	if modelID == "" {
-		return nil, "", fmt.Errorf("No model configured for this room.")
+		return nil, "", fmt.Errorf("no model configured for this room")
 	}
 	if ok, _ := oc.validateModel(ctx, modelID); !ok {
-		return nil, "", fmt.Errorf("That model isn't available: %s", modelID)
+		return nil, "", fmt.Errorf("that model isn't available: %s", modelID)
 	}
 	return nil, modelID, nil
 }
