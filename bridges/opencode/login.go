@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -34,13 +33,10 @@ const (
 )
 
 type OpenCodeLogin struct {
+	bridgeadapter.BaseLoginProcess
 	User      *bridgev2.User
 	Connector *OpenCodeConnector
 	FlowID    string
-
-	bgMu     sync.Mutex
-	bgCtx    context.Context
-	bgCancel context.CancelFunc
 }
 
 func (ol *OpenCodeLogin) validate() error {
@@ -162,7 +158,7 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 			return nil, fmt.Errorf("failed to load client: %w", err)
 		}
 		if existing.Client != nil {
-			go existing.Client.Connect(existing.Log.WithContext(ol.backgroundProcessContext()))
+			go existing.Client.Connect(existing.Log.WithContext(ol.BackgroundProcessContext()))
 		}
 		return openCodeCompleteStep(existing), nil
 	}
@@ -184,7 +180,7 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 		return nil, fmt.Errorf("failed to load client: %w", err)
 	}
 	if login.Client != nil {
-		go login.Client.Connect(login.Log.WithContext(ol.backgroundProcessContext()))
+		go login.Client.Connect(login.Log.WithContext(ol.BackgroundProcessContext()))
 	}
 	return openCodeCompleteStep(login), nil
 }
@@ -323,22 +319,4 @@ func resolveManagedOpenCodeDirectory(input string) (string, error) {
 	return abs, nil
 }
 
-func (ol *OpenCodeLogin) backgroundProcessContext() context.Context {
-	ol.bgMu.Lock()
-	defer ol.bgMu.Unlock()
-	if ol.bgCtx == nil || ol.bgCancel == nil {
-		ol.bgCtx, ol.bgCancel = context.WithCancel(context.Background())
-	}
-	return ol.bgCtx
-}
 
-func (ol *OpenCodeLogin) Cancel() {
-	ol.bgMu.Lock()
-	cancel := ol.bgCancel
-	ol.bgCancel = nil
-	ol.bgCtx = nil
-	ol.bgMu.Unlock()
-	if cancel != nil {
-		cancel()
-	}
-}

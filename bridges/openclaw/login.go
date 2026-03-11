@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
+
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
 )
 
 var (
@@ -57,6 +58,7 @@ type openClawPendingLogin struct {
 }
 
 type OpenClawLogin struct {
+	bridgeadapter.BaseLoginProcess
 	User      *bridgev2.User
 	Connector *OpenClawConnector
 
@@ -68,10 +70,6 @@ type OpenClawLogin struct {
 	pollEvery  time.Duration
 	returnWait time.Duration
 	waitFor    time.Duration
-
-	bgMu     sync.Mutex
-	bgCtx    context.Context
-	bgCancel context.CancelFunc
 }
 
 func (ol *OpenClawLogin) validate() error {
@@ -189,7 +187,7 @@ func (ol *OpenClawLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) 
 	for {
 		select {
 		case <-tick.C:
-			deviceToken, err := ol.preflightGatewayLogin(ol.backgroundProcessContext(), ol.pending.gatewayURL, ol.pending.token, ol.pending.password)
+			deviceToken, err := ol.preflightGatewayLogin(ol.BackgroundProcessContext(), ol.pending.gatewayURL, ol.pending.token, ol.pending.password)
 			if err == nil {
 				return ol.completeLogin(ol.pending, deviceToken)
 			}
@@ -214,25 +212,9 @@ func (ol *OpenClawLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) 
 }
 
 func (ol *OpenClawLogin) Cancel() {
-	ol.bgMu.Lock()
-	cancel := ol.bgCancel
-	ol.bgCancel = nil
-	ol.bgCtx = nil
-	ol.bgMu.Unlock()
+	ol.BaseLoginProcess.Cancel()
 	ol.pending = nil
 	ol.waitUntil = time.Time{}
-	if cancel != nil {
-		cancel()
-	}
-}
-
-func (ol *OpenClawLogin) backgroundProcessContext() context.Context {
-	ol.bgMu.Lock()
-	defer ol.bgMu.Unlock()
-	if ol.bgCtx == nil || ol.bgCancel == nil {
-		ol.bgCtx, ol.bgCancel = context.WithCancel(context.Background())
-	}
-	return ol.bgCtx
 }
 
 func (ol *OpenClawLogin) pollInterval() time.Duration {
@@ -281,7 +263,7 @@ func (ol *OpenClawLogin) completeLogin(pending *openClawPendingLogin, deviceToke
 	if pending == nil {
 		return nil, errors.New("missing pending OpenClaw login details")
 	}
-	persistCtx := ol.backgroundProcessContext()
+	persistCtx := ol.BackgroundProcessContext()
 	log := ol.User.Log.With().Str("component", "openclaw_login").Str("gateway_url", pending.gatewayURL).Logger()
 	remoteName := openClawRemoteName(pending.gatewayURL, pending.label)
 	loginID := nextOpenClawUserLoginID(ol.User)
@@ -307,7 +289,7 @@ func (ol *OpenClawLogin) completeLogin(pending *openClawPendingLogin, deviceToke
 	log.Debug().Str("login_id", string(login.ID)).Msg("Loaded OpenClaw user login client")
 	if login.Client != nil {
 		log.Debug().Str("login_id", string(login.ID)).Msg("Starting OpenClaw user login connect loop")
-		go login.Client.Connect(login.Log.WithContext(ol.backgroundProcessContext()))
+		go login.Client.Connect(login.Log.WithContext(ol.BackgroundProcessContext()))
 	}
 	ol.pending = nil
 	ol.step = ""

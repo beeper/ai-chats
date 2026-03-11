@@ -85,24 +85,11 @@ func (oc *OpenCodeConnector) LoadUserLogin(_ context.Context, login *bridgev2.Us
 		login.Client = &bridgeadapter.BrokenLoginClient{UserLogin: login, Reason: "This bridge only supports OpenCode logins."}
 		return nil
 	}
-
-	client, err := bridgeadapter.LoadOrCreateTypedClient(
-		&oc.clientsMu,
-		oc.clients,
-		login,
-		func(existing *OpenCodeClient, login *bridgev2.UserLogin) {
-			existing.UserLogin = login
-		},
-		func() (*OpenCodeClient, error) {
-			return newOpenCodeClient(login, oc)
-		},
-	)
-	if err != nil {
-		login.Client = &bridgeadapter.BrokenLoginClient{UserLogin: login, Reason: "Couldn't initialize OpenCode for this login."}
-		return nil
-	}
-	login.Client = client
-	return nil
+	return bridgeadapter.LoadUserLogin(login, bridgeadapter.LoadUserLoginConfig[*OpenCodeClient]{
+		Mu: &oc.clientsMu, Clients: oc.clients, BridgeName: "OpenCode",
+		Update: func(e *OpenCodeClient, l *bridgev2.UserLogin) { e.UserLogin = l },
+		Create: func(l *bridgev2.UserLogin) (*OpenCodeClient, error) { return newOpenCodeClient(l, oc) },
+	})
 }
 
 func (oc *OpenCodeConnector) GetLoginFlows() []bridgev2.LoginFlow {

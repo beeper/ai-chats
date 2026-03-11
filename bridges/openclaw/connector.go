@@ -88,39 +88,14 @@ func (oc *OpenClawConnector) GetDBMetaTypes() database.MetaTypes {
 func (oc *OpenClawConnector) LoadUserLogin(_ context.Context, login *bridgev2.UserLogin) error {
 	meta := loginMetadata(login)
 	if !strings.EqualFold(strings.TrimSpace(meta.Provider), ProviderOpenClaw) {
-		login.Client = &bridgeadapter.BrokenLoginClient{
-			UserLogin: login,
-			Reason:    "This bridge only supports OpenClaw logins.",
-		}
+		login.Client = &bridgeadapter.BrokenLoginClient{UserLogin: login, Reason: "This bridge only supports OpenClaw logins."}
 		return nil
 	}
-
-	client, err := bridgeadapter.LoadOrCreateClient(
-		&oc.clientsMu,
-		oc.clients,
-		login.ID,
-		func(existingAPI bridgev2.NetworkAPI) bool {
-			existing, ok := existingAPI.(*OpenClawClient)
-			if !ok || existing == nil {
-				return false
-			}
-			existing.UserLogin = login
-			login.Client = existing
-			return true
-		},
-		func() (bridgev2.NetworkAPI, error) {
-			return newOpenClawClient(login, oc)
-		},
-	)
-	if err != nil {
-		login.Client = &bridgeadapter.BrokenLoginClient{
-			UserLogin: login,
-			Reason:    "Couldn't initialize OpenClaw for this login.",
-		}
-		return nil
-	}
-	login.Client = client
-	return nil
+	return bridgeadapter.LoadUserLogin(login, bridgeadapter.LoadUserLoginConfig[*OpenClawClient]{
+		Mu: &oc.clientsMu, Clients: oc.clients, BridgeName: "OpenClaw",
+		Update: func(e *OpenClawClient, l *bridgev2.UserLogin) { e.UserLogin = l },
+		Create: func(l *bridgev2.UserLogin) (*OpenClawClient, error) { return newOpenClawClient(l, oc) },
+	})
 }
 
 func (oc *OpenClawConnector) GetLoginFlows() []bridgev2.LoginFlow {

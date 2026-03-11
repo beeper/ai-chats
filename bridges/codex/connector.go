@@ -290,33 +290,19 @@ func (cc *CodexConnector) LoadUserLogin(_ context.Context, login *bridgev2.UserL
 		login.Client = newBrokenLoginClient(login, cc, "This bridge only supports Codex logins.")
 		return nil
 	}
-	return cc.loadCodexUserLogin(login)
-}
-
-func (cc *CodexConnector) loadCodexUserLogin(login *bridgev2.UserLogin) error {
 	if !cc.codexEnabled() {
 		login.Client = newBrokenLoginClient(login, cc, "Codex integration is disabled in the configuration.")
 		return nil
 	}
-
-	client, err := bridgeadapter.LoadOrCreateTypedClient(
-		&cc.clientsMu,
-		cc.clients,
-		login,
-		func(existing *CodexClient, login *bridgev2.UserLogin) {
-			existing.UserLogin = login
+	return bridgeadapter.LoadUserLogin(login, bridgeadapter.LoadUserLoginConfig[*CodexClient]{
+		Mu: &cc.clientsMu, Clients: cc.clients, BridgeName: "Codex",
+		MakeBroken: func(l *bridgev2.UserLogin, reason string) *bridgeadapter.BrokenLoginClient {
+			return newBrokenLoginClient(l, cc, reason)
 		},
-		func() (*CodexClient, error) {
-			return newCodexClient(login, cc)
-		},
-	)
-	if err != nil {
-		login.Client = newBrokenLoginClient(login, cc, "Couldn't initialize Codex for this login. Remove and re-add the account.")
-		return nil
-	}
-	login.Client = client
-	client.scheduleBootstrap()
-	return nil
+		Update:    func(e *CodexClient, l *bridgev2.UserLogin) { e.UserLogin = l },
+		Create:    func(l *bridgev2.UserLogin) (*CodexClient, error) { return newCodexClient(l, cc) },
+		AfterLoad: func(c *CodexClient) { c.scheduleBootstrap() },
+	})
 }
 
 func (cc *CodexConnector) GetLoginFlows() []bridgev2.LoginFlow {
