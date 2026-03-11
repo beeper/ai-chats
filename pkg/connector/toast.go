@@ -33,7 +33,7 @@ func (oc *AIClient) sendApprovalRequestFallbackEvent(
 	if state != nil {
 		turnID = state.turnID
 	}
-	oc.approvalPrompts.SendPrompt(ctx, portal, bridgeadapter.SendPromptParams{
+	oc.approvalFlow.SendPrompt(ctx, portal, bridgeadapter.SendPromptParams{
 		ApprovalPromptMessageParams: bridgeadapter.ApprovalPromptMessageParams{
 			ApprovalID:     approvalID,
 			ToolCallID:     toolCallID,
@@ -84,15 +84,14 @@ func (oc *AIClient) sendApprovalRejectionEvent(ctx context.Context, portal *brid
 }
 
 func (oc *AIClient) lookupApprovalSnapshotInfo(approvalID string) (toolCallID, toolName, turnID string) {
-	if oc == nil || oc.approvals == nil {
+	if oc == nil || oc.approvalFlow == nil {
 		return "", "", ""
 	}
-	p := oc.approvals.Get(strings.TrimSpace(approvalID))
-	if p == nil {
+	p := oc.approvalFlow.Get(strings.TrimSpace(approvalID))
+	if p == nil || p.Data == nil {
 		return "", "", ""
 	}
-	data := approvalData(p)
-	return strings.TrimSpace(data.ToolCallID), strings.TrimSpace(data.ToolName), strings.TrimSpace(data.TurnID)
+	return strings.TrimSpace(p.Data.ToolCallID), strings.TrimSpace(p.Data.ToolName), strings.TrimSpace(p.Data.TurnID)
 }
 
 func buildApprovalSnapshotUIMessage(approvalID, toolCallID, toolName, turnID, state, errorText string) map[string]any {

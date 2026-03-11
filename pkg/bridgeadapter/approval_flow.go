@@ -182,9 +182,11 @@ func (f *ApprovalFlow[D]) FindByData(predicate func(data D) bool) string {
 	return ""
 }
 
-// Resolve programmatically delivers a decision to a pending approval's channel
-// and drops it from both stores. Use this when a decision arrives from an
-// external source (e.g. the upstream server) rather than a Matrix reaction.
+// Resolve programmatically delivers a decision to a pending approval's channel.
+// Use this when a decision arrives from an external source (e.g. the upstream
+// server or auto-approval) rather than a Matrix reaction.
+// Unlike HandleReaction, Resolve does NOT drop the pending entry — the caller
+// (typically Wait or an explicit Drop) is responsible for cleanup.
 func (f *ApprovalFlow[D]) Resolve(approvalID string, decision ApprovalDecisionPayload) error {
 	approvalID = strings.TrimSpace(approvalID)
 	if approvalID == "" {
@@ -202,10 +204,8 @@ func (f *ApprovalFlow[D]) Resolve(approvalID string, decision ApprovalDecisionPa
 	}
 	select {
 	case p.ch <- decision:
-		f.Drop(approvalID)
 		return nil
 	default:
-		f.Drop(approvalID)
 		return ErrApprovalAlreadyHandled
 	}
 }

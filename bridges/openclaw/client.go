@@ -2,14 +2,12 @@ package openclaw
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -26,7 +24,6 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/pkg/bridgeadapter"
-	"github.com/beeper/agentremote/pkg/shared/streamtransport"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 )
 
@@ -95,10 +92,8 @@ type OpenClawClient struct {
 	toolCatalog          map[string]gatewayToolsCatalogResponse
 	toolCatalogFetchedAt map[string]time.Time
 
-	streamMu                  sync.Mutex
-	streamSessions            map[string]*streamtransport.StreamSession
-	streamStates              map[string]*openClawStreamState
-	streamFallbackToDebounced atomic.Bool
+	bridgeadapter.BaseStreamState
+	streamStates map[string]*openClawStreamState
 }
 
 type openClawStreamState struct {
@@ -138,11 +133,11 @@ func newOpenClawClient(login *bridgev2.UserLogin, connector *OpenClawConnector) 
 	client := &OpenClawClient{
 		UserLogin:            login,
 		connector:            connector,
-		streamSessions:       make(map[string]*streamtransport.StreamSession),
 		streamStates:         make(map[string]*openClawStreamState),
 		toolCatalog:          make(map[string]gatewayToolsCatalogResponse),
 		toolCatalogFetchedAt: make(map[string]time.Time),
 	}
+	client.InitStreamState()
 	client.BaseReactionHandler.Target = client
 	client.manager = newOpenClawManager(client)
 	return client, nil
@@ -186,19 +181,10 @@ func (oc *OpenClawClient) Disconnect() {
 		oc.manager.Stop()
 	}
 	oc.loggedIn.Store(false)
-	oc.streamMu.Lock()
-	sessions := make([]*streamtransport.StreamSession, 0, len(oc.streamSessions))
-	for _, s := range oc.streamSessions {
-		if s != nil {
-			sessions = append(sessions, s)
-		}
-	}
-	oc.streamSessions = make(map[string]*streamtransport.StreamSession)
+	oc.CloseAllSessions()
+	oc.StreamMu.Lock()
 	oc.streamStates = make(map[string]*openClawStreamState)
-	oc.streamMu.Unlock()
-	for _, s := range sessions {
-		s.End(context.Background(), streamtransport.EndReasonDisconnect)
-	}
+	oc.StreamMu.Unlock()
 	if oc.UserLogin != nil {
 		oc.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Message: "Disconnected"})
 	}
@@ -439,11 +425,11 @@ func openClawCapabilityID(profile openClawCapabilityProfile) string {
 
 func (oc *OpenClawClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
 	if ghost == nil {
-		return &bridgev2.UserInfo{Name: ptr.Ptr("OpenClaw"), IsBot: ptr.Ptr(true)}, nil
+		return bridgeadapter.BuildBotUserInfo("OpenClaw"), nil
 	}
 	agentID, ok := parseOpenClawGhostID(string(ghost.ID))
 	if !ok {
-		return &bridgev2.UserInfo{Name: ptr.Ptr("OpenClaw"), IsBot: ptr.Ptr(true)}, nil
+		return bridgeadapter.BuildBotUserInfo("OpenClaw"), nil
 	}
 	current := ghostMeta(ghost)
 	configured, err := oc.agentCatalogEntryByID(ctx, agentID)
@@ -871,36 +857,7 @@ func (oc *OpenClawClient) sendApprovalRequestFallbackEvent(
 }
 
 func (oc *OpenClawClient) DownloadAndEncodeMedia(ctx context.Context, mediaURL string, file *event.EncryptedFileInfo, maxMB int) (string, string, error) {
-	if strings.TrimSpace(mediaURL) == "" {
-		return "", "", errors.New("missing media URL")
-	}
-	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.Bot == nil {
-		return "", "", errors.New("bridge is unavailable")
-	}
-	maxBytes := int64(0)
-	if maxMB > 0 {
-		maxBytes = int64(maxMB) * 1024 * 1024
-	}
-	var encoded string
-	err := oc.UserLogin.Bridge.Bot.DownloadMediaToFile(ctx, id.ContentURIString(mediaURL), file, false, func(f *os.File) error {
-		var reader io.Reader = f
-		if maxBytes > 0 {
-			reader = io.LimitReader(f, maxBytes+1)
-		}
-		data, err := io.ReadAll(reader)
-		if err != nil {
-			return err
-		}
-		if maxBytes > 0 && int64(len(data)) > maxBytes {
-			return errors.New("media exceeds max size")
-		}
-		encoded = base64.StdEncoding.EncodeToString(data)
-		return nil
-	})
-	if err != nil {
-		return "", "", err
-	}
-	return encoded, "application/octet-stream", nil
+	return bridgeadapter.DownloadAndEncodeMedia(ctx, oc.UserLogin, mediaURL, file, maxMB)
 }
 
 func stringsTrimDefault(value, fallback string) string {

@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -362,15 +361,7 @@ func (cc *CodexClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal)
 }
 
 func (cc *CodexClient) GetUserInfo(_ context.Context, _ *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
-	return defaultCodexUserInfo(), nil
-}
-
-func defaultCodexUserInfo() *bridgev2.UserInfo {
-	return &bridgev2.UserInfo{
-		Name:        ptr.Ptr("Codex"),
-		IsBot:       ptr.Ptr(true),
-		Identifiers: []string{"codex"},
-	}
+	return bridgeadapter.BuildBotUserInfo("Codex", "codex"), nil
 }
 
 func (cc *CodexClient) ResolveIdentifier(ctx context.Context, identifier string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
@@ -408,7 +399,7 @@ func (cc *CodexClient) ResolveIdentifier(ctx context.Context, identifier string,
 
 	return &bridgev2.ResolveIdentifierResponse{
 		UserID:   codexGhostID,
-		UserInfo: defaultCodexUserInfo(),
+		UserInfo: bridgeadapter.BuildBotUserInfo("Codex", "codex"),
 		Ghost:    ghost,
 		Chat:     chat,
 	}, nil

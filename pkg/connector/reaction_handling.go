@@ -26,7 +26,7 @@ func (oc *AIClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Matr
 	}
 
 	rc := bridgeadapter.ExtractReactionContext(msg)
-	if oc.approvalPrompts.HandleReaction(ctx, msg, rc.TargetEventID, rc.Emoji) {
+	if oc.approvalFlow.HandleReaction(ctx, msg, rc.TargetEventID, rc.Emoji) {
 		return &database.Reaction{}, nil
 	}
 

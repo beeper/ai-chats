@@ -2,10 +2,7 @@ package opencode
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
-	"io"
-	"os"
 	"strings"
 	"time"
 
@@ -69,7 +66,7 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 		return
 	}
 
-	oc.streamMu.Lock()
+	oc.StreamMu.Lock()
 	state := oc.streamStates[turnID]
 	if state == nil {
 		state = &openCodeStreamState{
@@ -111,7 +108,7 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 		}
 	}
 	streamui.ApplyChunk(&state.ui, part)
-	oc.streamMu.Unlock()
+	oc.StreamMu.Unlock()
 
 	if needPlaceholder {
 		pmeta := oc.PortalMeta(portal)
@@ -162,18 +159,18 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 			PreBuilt:  converted,
 		})
 		if result.Success && result.EventID != "" {
-			oc.streamMu.Lock()
+			oc.StreamMu.Lock()
 			st := oc.streamStates[turnID]
 			if st != nil && st.initialEventID == "" {
 				st.initialEventID = result.EventID
 				st.networkMessageID = msgID
 				st.targetEventID = result.EventID.String()
 			}
-			oc.streamMu.Unlock()
+			oc.StreamMu.Unlock()
 		}
 	}
 
-	oc.streamMu.Lock()
+	oc.StreamMu.Lock()
 	state = oc.streamStates[turnID]
 	if state == nil {
 		state = &openCodeStreamState{
@@ -183,14 +180,14 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 		}
 		oc.streamStates[turnID] = state
 	}
-	session := oc.streamSessions[turnID]
+	session := oc.StreamSessions[turnID]
 	if session == nil {
 		session = streamtransport.NewStreamSession(streamtransport.StreamSessionParams{
 			TurnID:  turnID,
 			AgentID: state.agentID,
 			GetTargetEventID: func() string {
-				oc.streamMu.Lock()
-				defer oc.streamMu.Unlock()
+				oc.StreamMu.Lock()
+				defer oc.StreamMu.Unlock()
 				st := oc.streamStates[turnID]
 				if st == nil {
 					return ""
@@ -202,8 +199,8 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 			},
 			GetSuppressSend: func() bool { return false },
 			NextSeq: func() int {
-				oc.streamMu.Lock()
-				defer oc.streamMu.Unlock()
+				oc.StreamMu.Lock()
+				defer oc.StreamMu.Unlock()
 				st := oc.streamStates[turnID]
 				if st == nil {
 					return 0
@@ -211,13 +208,13 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 				st.sequenceNum++
 				return st.sequenceNum
 			},
-			RuntimeFallbackFlag: &oc.streamFallbackToDebounced,
+			RuntimeFallbackFlag: &oc.StreamFallbackToDebounced,
 			GetEphemeralSender: func(callCtx context.Context) (bridgev2.EphemeralSendingMatrixAPI, bool) {
 				ephemeralSender, ok := any(oc.UserLogin.Bridge.Bot).(bridgev2.EphemeralSendingMatrixAPI)
 				return ephemeralSender, ok
 			},
 			SendDebouncedEdit: func(callCtx context.Context, force bool) error {
-				oc.streamMu.Lock()
+				oc.StreamMu.Lock()
 				st := oc.streamStates[turnID]
 				var visibleBody, fallbackBody string
 				var netMsgID networkid.MessageID
@@ -228,7 +225,7 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 					netMsgID = st.networkMessageID
 					uiMessage = oc.currentCanonicalUIMessage(st)
 				}
-				oc.streamMu.Unlock()
+				oc.StreamMu.Unlock()
 				content := streamtransport.BuildDebouncedEditContent(streamtransport.DebouncedEditParams{
 					PortalMXID:   portal.MXID.String(),
 					Force:        force,
@@ -273,9 +270,9 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 			},
 			Logger: oc.Log(),
 		})
-		oc.streamSessions[turnID] = session
+		oc.StreamSessions[turnID] = session
 	}
-	oc.streamMu.Unlock()
+	oc.StreamMu.Unlock()
 	session.EmitPart(ctx, part)
 }
 
@@ -283,11 +280,11 @@ func (oc *OpenCodeClient) FinishOpenCodeStream(turnID string) {
 	if turnID == "" {
 		return
 	}
-	oc.streamMu.Lock()
-	session := oc.streamSessions[turnID]
+	oc.StreamMu.Lock()
+	session := oc.StreamSessions[turnID]
 	state := oc.streamStates[turnID]
-	delete(oc.streamSessions, turnID)
-	oc.streamMu.Unlock()
+	delete(oc.StreamSessions, turnID)
+	oc.StreamMu.Unlock()
 	if state != nil {
 		portal := state.portal
 		if portal != nil {
@@ -295,49 +292,16 @@ func (oc *OpenCodeClient) FinishOpenCodeStream(turnID string) {
 			oc.persistStreamDBMetadata(oc.BackgroundContext(context.Background()), portal, state, oc.buildStreamDBMetadata(state))
 		}
 	}
-	oc.streamMu.Lock()
+	oc.StreamMu.Lock()
 	delete(oc.streamStates, turnID)
-	oc.streamMu.Unlock()
+	oc.StreamMu.Unlock()
 	if session != nil {
 		session.End(oc.BackgroundContext(context.Background()), streamtransport.EndReasonFinish)
 	}
 }
 
 func (oc *OpenCodeClient) DownloadAndEncodeMedia(ctx context.Context, mediaURL string, file *event.EncryptedFileInfo, maxMB int) (string, string, error) {
-	if strings.TrimSpace(mediaURL) == "" {
-		return "", "", errors.New("missing media URL")
-	}
-	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.Bot == nil {
-		return "", "", errors.New("bridge is unavailable")
-	}
-	maxBytes := int64(0)
-	if maxMB > 0 {
-		maxBytes = int64(maxMB) * 1024 * 1024
-	}
-	var encoded string
-	errMediaTooLarge := errors.New("media exceeds max size")
-	err := oc.UserLogin.Bridge.Bot.DownloadMediaToFile(ctx, id.ContentURIString(mediaURL), file, false, func(f *os.File) error {
-		var reader io.Reader = f
-		if maxBytes > 0 {
-			reader = io.LimitReader(f, maxBytes+1)
-		}
-		data, err := io.ReadAll(reader)
-		if err != nil {
-			return err
-		}
-		if maxBytes > 0 && int64(len(data)) > maxBytes {
-			return errMediaTooLarge
-		}
-		encoded = base64.StdEncoding.EncodeToString(data)
-		return nil
-	})
-	if errors.Is(err, errMediaTooLarge) {
-		return "", "", errMediaTooLarge
-	}
-	if err != nil {
-		return "", "", err
-	}
-	return encoded, "application/octet-stream", nil
+	return bridgeadapter.DownloadAndEncodeMedia(ctx, oc.UserLogin, mediaURL, file, maxMB)
 }
 
 func (oc *OpenCodeClient) SetRoomName(_ context.Context, _ *bridgev2.Portal, _ string) error {

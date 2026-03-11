@@ -87,7 +87,7 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 	agentID = stringsTrimDefault(agentID, "gateway")
 	sessionKey = strings.TrimSpace(sessionKey)
 
-	oc.streamMu.Lock()
+	oc.StreamMu.Lock()
 	state := oc.ensureStreamStateLocked(portal, turnID, agentID, sessionKey)
 	if metadata, _ := part["messageMetadata"].(map[string]any); len(metadata) > 0 {
 		oc.applyStreamMessageMetadata(state, metadata)
@@ -130,22 +130,22 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 	if needPlaceholder {
 		state.placeholderPending = true
 	}
-	oc.streamMu.Unlock()
+	oc.StreamMu.Unlock()
 
 	if needPlaceholder {
 		oc.ensureStreamPlaceholder(portal, turnID, agentID)
 	}
 
-	oc.streamMu.Lock()
+	oc.StreamMu.Lock()
 	state = oc.ensureStreamStateLocked(portal, turnID, agentID, sessionKey)
-	session := oc.streamSessions[turnID]
+	session := oc.StreamSessions[turnID]
 	if session == nil {
 		session = streamtransport.NewStreamSession(streamtransport.StreamSessionParams{
 			TurnID:  turnID,
 			AgentID: state.agentID,
 			GetTargetEventID: func() string {
-				oc.streamMu.Lock()
-				defer oc.streamMu.Unlock()
+				oc.StreamMu.Lock()
+				defer oc.StreamMu.Unlock()
 				if current := oc.streamStates[turnID]; current != nil {
 					return current.targetEventID
 				}
@@ -156,8 +156,8 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 			},
 			GetSuppressSend: func() bool { return false },
 			NextSeq: func() int {
-				oc.streamMu.Lock()
-				defer oc.streamMu.Unlock()
+				oc.StreamMu.Lock()
+				defer oc.StreamMu.Unlock()
 				if current := oc.streamStates[turnID]; current != nil {
 					current.sequenceNum++
 					return current.sequenceNum
@@ -170,16 +170,16 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 				return ephemeralSender, ok
 			},
 			SendDebouncedEdit: func(callCtx context.Context, force bool) error {
-				oc.streamMu.Lock()
+				oc.StreamMu.Lock()
 				current := oc.streamStates[turnID]
-				oc.streamMu.Unlock()
+				oc.StreamMu.Unlock()
 				return oc.queueDebouncedStreamEdit(callCtx, portal, current, force)
 			},
 			Logger: oc.Log(),
 		})
-		oc.streamSessions[turnID] = session
+		oc.StreamSessions[turnID] = session
 	}
-	oc.streamMu.Unlock()
+	oc.StreamMu.Unlock()
 	session.EmitPart(ctx, part)
 }
 
@@ -189,10 +189,10 @@ func (oc *OpenClawClient) FinishStream(turnID, finishReason string) {
 		return
 	}
 
-	oc.streamMu.Lock()
-	session := oc.streamSessions[turnID]
+	oc.StreamMu.Lock()
+	session := oc.StreamSessions[turnID]
 	state := oc.streamStates[turnID]
-	delete(oc.streamSessions, turnID)
+	delete(oc.StreamSessions, turnID)
 	if state != nil {
 		if state.finishReason == "" {
 			state.finishReason = strings.TrimSpace(finishReason)
@@ -201,7 +201,7 @@ func (oc *OpenClawClient) FinishStream(turnID, finishReason string) {
 			state.completedAtMs = openClawStreamMessageTimestamp(state).UnixMilli()
 		}
 	}
-	oc.streamMu.Unlock()
+	oc.StreamMu.Unlock()
 
 	if state != nil && state.portal != nil {
 		ctx := oc.BackgroundContext(context.Background())
@@ -209,9 +209,9 @@ func (oc *OpenClawClient) FinishStream(turnID, finishReason string) {
 		oc.persistStreamDBMetadata(ctx, state.portal, state, oc.buildStreamDBMetadata(state))
 	}
 
-	oc.streamMu.Lock()
+	oc.StreamMu.Lock()
 	delete(oc.streamStates, turnID)
-	oc.streamMu.Unlock()
+	oc.StreamMu.Unlock()
 
 	if session != nil {
 		session.End(oc.BackgroundContext(context.Background()), streamtransport.EndReasonFinish)
@@ -225,8 +225,8 @@ func (oc *OpenClawClient) computeVisibleDelta(turnID, text string) string {
 		return text
 	}
 
-	oc.streamMu.Lock()
-	defer oc.streamMu.Unlock()
+	oc.StreamMu.Lock()
+	defer oc.StreamMu.Unlock()
 	state := oc.streamStates[turnID]
 	if state == nil {
 		state = &openClawStreamState{turnID: turnID}
@@ -252,8 +252,8 @@ func (oc *OpenClawClient) isStreamActive(turnID string) bool {
 	if turnID == "" {
 		return false
 	}
-	oc.streamMu.Lock()
-	defer oc.streamMu.Unlock()
+	oc.StreamMu.Lock()
+	defer oc.StreamMu.Unlock()
 	_, ok := oc.streamStates[turnID]
 	return ok
 }
@@ -290,10 +290,10 @@ func (oc *OpenClawClient) ensureStreamStateLocked(portal *bridgev2.Portal, turnI
 }
 
 func (oc *OpenClawClient) ensureStreamPlaceholder(portal *bridgev2.Portal, turnID, agentID string) {
-	oc.streamMu.Lock()
+	oc.StreamMu.Lock()
 	state := oc.streamStates[turnID]
 	if state == nil || state.initialEventID != "" {
-		oc.streamMu.Unlock()
+		oc.StreamMu.Unlock()
 		return
 	}
 	uiMessage := oc.currentCanonicalUIMessage(state)
@@ -302,7 +302,7 @@ func (oc *OpenClawClient) ensureStreamPlaceholder(portal *bridgev2.Portal, turnI
 	sessionID := state.sessionID
 	sessionKey := state.sessionKey
 	messageTS := openClawStreamMessageTimestamp(state)
-	oc.streamMu.Unlock()
+	oc.StreamMu.Unlock()
 
 	msgID := newOpenClawMessageID()
 	converted := &bridgev2.ConvertedMessage{
@@ -341,8 +341,8 @@ func (oc *OpenClawClient) ensureStreamPlaceholder(portal *bridgev2.Portal, turnI
 }
 
 func (oc *OpenClawClient) applyStreamPlaceholderResult(turnID string, msgID networkid.MessageID, result bridgev2.EventHandlingResult) {
-	oc.streamMu.Lock()
-	defer oc.streamMu.Unlock()
+	oc.StreamMu.Lock()
+	defer oc.StreamMu.Unlock()
 
 	state := oc.streamStates[turnID]
 	if state == nil {

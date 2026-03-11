@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"sync/atomic"
 
 	"go.mau.fi/util/ptr"
@@ -17,7 +16,6 @@ import (
 
 	"github.com/beeper/agentremote/bridges/opencode/opencodebridge"
 	"github.com/beeper/agentremote/pkg/bridgeadapter"
-	"github.com/beeper/agentremote/pkg/shared/streamtransport"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 )
 
@@ -30,16 +28,14 @@ var _ bridgev2.ReactionHandlingNetworkAPI = (*OpenCodeClient)(nil)
 
 type OpenCodeClient struct {
 	bridgeadapter.BaseReactionHandler
+	bridgeadapter.BaseStreamState
 	UserLogin *bridgev2.UserLogin
 	connector *OpenCodeConnector
 	bridge    *opencodebridge.Bridge
 
 	loggedIn atomic.Bool
 
-	streamMu                  sync.Mutex
-	streamSessions            map[string]*streamtransport.StreamSession
-	streamStates              map[string]*openCodeStreamState
-	streamFallbackToDebounced atomic.Bool
+	streamStates map[string]*openCodeStreamState
 }
 
 type openCodeStreamState struct {
@@ -80,11 +76,11 @@ func newOpenCodeClient(login *bridgev2.UserLogin, connector *OpenCodeConnector) 
 		return nil, errors.New("missing connector")
 	}
 	client := &OpenCodeClient{
-		UserLogin:      login,
-		connector:      connector,
-		streamSessions: make(map[string]*streamtransport.StreamSession),
-		streamStates:   make(map[string]*openCodeStreamState),
+		UserLogin:    login,
+		connector:    connector,
+		streamStates: make(map[string]*openCodeStreamState),
 	}
+	client.InitStreamState()
 	client.BaseReactionHandler.Target = client
 	client.bridge = opencodebridge.NewBridge(client)
 	return client, nil
@@ -104,19 +100,10 @@ func (oc *OpenCodeClient) Connect(ctx context.Context) {
 
 func (oc *OpenCodeClient) Disconnect() {
 	oc.loggedIn.Store(false)
-	oc.streamMu.Lock()
-	sessions := make([]*streamtransport.StreamSession, 0, len(oc.streamSessions))
-	for _, s := range oc.streamSessions {
-		if s != nil {
-			sessions = append(sessions, s)
-		}
-	}
-	oc.streamSessions = make(map[string]*streamtransport.StreamSession)
+	oc.CloseAllSessions()
+	oc.StreamMu.Lock()
 	oc.streamStates = make(map[string]*openCodeStreamState)
-	oc.streamMu.Unlock()
-	for _, s := range sessions {
-		s.End(context.Background(), streamtransport.EndReasonDisconnect)
-	}
+	oc.StreamMu.Unlock()
 	if oc.bridge != nil {
 		oc.bridge.DisconnectAll()
 	}
@@ -206,17 +193,13 @@ func (oc *OpenCodeClient) GetCapabilities(_ context.Context, _ *bridgev2.Portal)
 	}
 }
 
-func defaultOpenCodeUserInfo() *bridgev2.UserInfo {
-	return &bridgev2.UserInfo{Name: ptr.Ptr("OpenCode"), IsBot: ptr.Ptr(true)}
-}
-
 func (oc *OpenCodeClient) GetUserInfo(_ context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
 	if ghost == nil {
-		return defaultOpenCodeUserInfo(), nil
+		return bridgeadapter.BuildBotUserInfo("OpenCode"), nil
 	}
 	instanceID, ok := opencodebridge.ParseOpenCodeGhostID(string(ghost.ID))
 	if !ok {
-		return defaultOpenCodeUserInfo(), nil
+		return bridgeadapter.BuildBotUserInfo("OpenCode"), nil
 	}
 	display := "OpenCode"
 	if oc.bridge != nil {
@@ -224,11 +207,7 @@ func (oc *OpenCodeClient) GetUserInfo(_ context.Context, ghost *bridgev2.Ghost) 
 			display = name
 		}
 	}
-	return &bridgev2.UserInfo{
-		Name:        ptr.Ptr(display),
-		IsBot:       ptr.Ptr(true),
-		Identifiers: []string{"opencode:" + instanceID},
-	}, nil
+	return bridgeadapter.BuildBotUserInfo(display, "opencode:"+instanceID), nil
 }
 
 func (oc *OpenCodeClient) ResolveIdentifier(ctx context.Context, identifier string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
@@ -308,9 +287,5 @@ func (oc *OpenCodeClient) GetChatInfo(_ context.Context, portal *bridgev2.Portal
 	if !meta.IsOpenCodeRoom {
 		return nil, nil
 	}
-	title := strings.TrimSpace(meta.Title)
-	if title == "" {
-		title = "OpenCode"
-	}
-	return &bridgev2.ChatInfo{Name: ptr.Ptr(title)}, nil
+	return bridgeadapter.BuildChatInfoWithFallback(meta.Title, portal.Name, "OpenCode", portal.Topic), nil
 }

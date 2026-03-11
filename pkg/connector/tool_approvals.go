@@ -2,7 +2,6 @@ package connector
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
@@ -27,7 +26,7 @@ type toolApprovalResolution struct {
 }
 
 // pendingToolApprovalData holds bridge-specific metadata stored in
-// ApprovalManager's PendingApproval.Data field.
+// ApprovalFlow's Pending.Data field.
 type pendingToolApprovalData struct {
 	ApprovalID string
 	RoomID     id.RoomID
@@ -61,7 +60,7 @@ type ToolApprovalParams struct {
 	TTL time.Duration
 }
 
-func (oc *AIClient) registerToolApproval(params ToolApprovalParams) (*bridgeadapter.PendingApproval[toolApprovalResolution], bool) {
+func (oc *AIClient) registerToolApproval(params ToolApprovalParams) (*bridgeadapter.Pending[*pendingToolApprovalData], bool) {
 	if oc == nil {
 		return nil, false
 	}
@@ -77,51 +76,11 @@ func (oc *AIClient) registerToolApproval(params ToolApprovalParams) (*bridgeadap
 		Action:       strings.TrimSpace(params.Action),
 		RequestedAt:  time.Now(),
 	}
-	p, created := oc.approvals.Register(params.ApprovalID, params.TTL, data)
+	p, created := oc.approvalFlow.Register(params.ApprovalID, params.TTL, data)
 	if created {
 		oc.Log().Debug().Str("approval_id", params.ApprovalID).Str("tool", params.ToolName).Dur("ttl", params.TTL).Msg("tool approval registered")
 	}
 	return p, created
-}
-
-func (oc *AIClient) resolveToolApproval(
-	roomID id.RoomID,
-	approvalID string,
-	decision airuntime.ToolApprovalDecision,
-	always bool,
-	decidedBy id.UserID,
-) error {
-	if oc == nil || oc.UserLogin == nil {
-		return errors.New("bridge not available")
-	}
-	v, err := bridgeadapter.ValidateApprovalRequest(approvalID, roomID, decidedBy, oc.UserLogin.UserMXID)
-	if err != nil {
-		return err
-	}
-	approvalID = v.ApprovalID
-	p, err := bridgeadapter.CheckApprovalPending(oc.approvals, approvalID)
-	if err != nil {
-		return err
-	}
-	d := approvalData(p)
-	if err := bridgeadapter.CheckApprovalRoomID(d.RoomID, roomID); err != nil {
-		return err
-	}
-
-	decision.Reason = strings.TrimSpace(decision.Reason)
-	if strings.TrimSpace(string(decision.State)) == "" {
-		decision.State = airuntime.ToolApprovalDenied
-	}
-	resolution := toolApprovalResolution{
-		Decision: decision,
-		Always:   always,
-	}
-	if err := oc.approvals.Resolve(approvalID, resolution); err != nil {
-		return err
-	}
-	oc.approvalPrompts.Drop(approvalID)
-	oc.Log().Debug().Str("approval_id", approvalID).Str("tool", d.ToolName).Str("state", string(decision.State)).Msg("tool approval decision delivered")
-	return nil
 }
 
 func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (toolApprovalResolution, *pendingToolApprovalData, bool) {
@@ -133,18 +92,18 @@ func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (to
 		return toolApprovalResolution{}, nil, false
 	}
 	defer func() {
-		oc.approvalPrompts.Drop(approvalID)
+		oc.approvalFlow.Drop(approvalID)
 	}()
 
-	p := oc.approvals.Get(approvalID)
+	p := oc.approvalFlow.Get(approvalID)
 	if p == nil {
 		return toolApprovalResolution{}, nil, false
 	}
-	d := approvalData(p)
+	d := p.Data
 
 	oc.Log().Debug().Str("approval_id", approvalID).Str("tool", d.ToolName).Msg("tool approval wait started")
 
-	resolution, ok := oc.approvals.Wait(ctx, approvalID)
+	decision, ok := oc.approvalFlow.Wait(ctx, approvalID)
 	if !ok {
 		reason := "timeout"
 		if ctx.Err() != nil {
@@ -152,6 +111,16 @@ func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (to
 		}
 		oc.Log().Debug().Str("approval_id", approvalID).Str("tool", d.ToolName).Str("reason", reason).Msg("tool approval wait ended without decision")
 		return toolApprovalResolution{}, d, false
+	}
+
+	// Convert ApprovalDecisionPayload to toolApprovalResolution.
+	state := airuntime.ToolApprovalDenied
+	if decision.Approved {
+		state = airuntime.ToolApprovalApproved
+	}
+	resolution := toolApprovalResolution{
+		Decision: airuntime.ToolApprovalDecision{State: state, Reason: decision.Reason},
+		Always:   decision.Always,
 	}
 
 	oc.Log().Debug().Str("approval_id", approvalID).Str("tool", d.ToolName).Str("state", string(resolution.Decision.State)).Msg("tool approval decision received")
@@ -165,17 +134,6 @@ func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (to
 
 func approvalAllowed(decision airuntime.ToolApprovalDecision) bool {
 	return decision.State == airuntime.ToolApprovalApproved
-}
-
-// approvalData extracts the pendingToolApprovalData from a PendingApproval.
-func approvalData(p *bridgeadapter.PendingApproval[toolApprovalResolution]) *pendingToolApprovalData {
-	if p == nil || p.Data == nil {
-		return &pendingToolApprovalData{}
-	}
-	if d, ok := p.Data.(*pendingToolApprovalData); ok {
-		return d
-	}
-	return &pendingToolApprovalData{}
 }
 
 // isBuiltinToolDenied checks whether a builtin tool call requires user approval

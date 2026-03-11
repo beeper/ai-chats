@@ -229,6 +229,15 @@ func BuildChatInfoWithFallback(metaTitle, portalName, fallbackTitle, portalTopic
 	}
 }
 
+// BuildBotUserInfo returns a UserInfo for an AI bot ghost with the given name and identifiers.
+func BuildBotUserInfo(name string, identifiers ...string) *bridgev2.UserInfo {
+	return &bridgev2.UserInfo{
+		Name:        ptr.Ptr(name),
+		IsBot:       ptr.Ptr(true),
+		Identifiers: identifiers,
+	}
+}
+
 func NormalizeAIRoomTypeV2(roomType database.RoomType, aiKind string) string {
 	if aiKind != "" && aiKind != AIRoomKindAgent {
 		return "group"
