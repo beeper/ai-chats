@@ -20,6 +20,37 @@ func MatrixSenderID(userID id.UserID) networkid.UserID {
 	return networkid.UserID("mxid:" + userID.String())
 }
 
+// EnsureSyntheticReactionSenderGhost ensures the backing ghost row exists for
+// the synthetic Matrix-side sender namespace (mxid:<user>) used for local
+// Matrix reaction pre-handling.
+func EnsureSyntheticReactionSenderGhost(ctx context.Context, login *bridgev2.UserLogin, userID id.UserID) error {
+	if login == nil || login.Bridge == nil || login.Bridge.DB == nil || login.Bridge.DB.Ghost == nil {
+		return nil
+	}
+	senderID := MatrixSenderID(userID)
+	if senderID == "" {
+		return nil
+	}
+	existing, err := login.Bridge.DB.Ghost.GetByID(ctx, senderID)
+	if err != nil {
+		return err
+	}
+	if existing != nil {
+		return nil
+	}
+	if err = login.Bridge.DB.Ghost.Insert(ctx, &database.Ghost{
+		ID: senderID,
+	}); err == nil {
+		return nil
+	}
+	// Another concurrent handler may have inserted the row first.
+	existing, lookupErr := login.Bridge.DB.Ghost.GetByID(ctx, senderID)
+	if lookupErr == nil && existing != nil {
+		return nil
+	}
+	return err
+}
+
 // EnsureReactionContent lazily parses the reaction content from a MatrixReaction.
 func EnsureReactionContent(msg *bridgev2.MatrixReaction) *event.ReactionEventContent {
 	if msg == nil {

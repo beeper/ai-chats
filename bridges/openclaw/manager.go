@@ -1092,15 +1092,12 @@ func (m *openClawManager) handleChatEvent(ctx context.Context, payload gatewayCh
 		return
 	}
 	isTerminal := openClawIsTerminalChatState(payload.State)
-	if isTerminal {
-		m.emitLatestUserMessageFromHistory(ctx, portal, meta, payload)
-	}
 	agentID := resolveOpenClawAgentID(meta, payload.SessionKey, payload.Message)
 	maybePersistPortalAgentID(ctx, portal, meta, agentID)
 	turnID := stringsTrimDefault(payload.RunID, "openclaw:"+payload.SessionKey)
 	messageMetadata := openClawStreamMessageMetadata(meta, payload, agentID, turnID)
 	if payload.State == "delta" {
-		m.ensureStreamStart(ctx, portal, meta, turnID, payload.RunID, agentID, eventTS, messageMetadata)
+		m.ensureStreamStart(ctx, portal, meta, turnID, payload.RunID, agentID, eventTS, messageMetadata, &payload)
 		m.startRunRecovery(ctx, portal, meta, turnID, payload.RunID, agentID)
 		text := extractMessageText(payload.Message)
 		delta := m.client.computeVisibleDelta(turnID, text)
@@ -1115,7 +1112,7 @@ func (m *openClawManager) handleChatEvent(ctx context.Context, payload gatewayCh
 		return
 	}
 	if isTerminal {
-		m.ensureStreamStart(ctx, portal, meta, turnID, payload.RunID, agentID, eventTS, messageMetadata)
+		m.ensureStreamStart(ctx, portal, meta, turnID, payload.RunID, agentID, eventTS, messageMetadata, &payload)
 		if usage := normalizeOpenClawUsage(payload.Usage); len(usage) > 0 {
 			reasoningTokens := int64(0)
 			if value, ok := openClawUsageInt64(usage, "prompt_tokens"); ok {
@@ -1288,7 +1285,7 @@ func shouldMirrorLatestUserMessageFromHistory(payload gatewayChatEvent, message 
 	return eventTS.Sub(messageTS) <= openClawHistoryMirrorFallbackWindow
 }
 
-func (m *openClawManager) ensureStreamStart(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, turnID, runID, agentID string, eventTS time.Time, messageMetadata map[string]any) {
+func (m *openClawManager) ensureStreamStart(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, turnID, runID, agentID string, eventTS time.Time, messageMetadata map[string]any, payload *gatewayChatEvent) {
 	if strings.TrimSpace(turnID) == "" {
 		return
 	}
@@ -1299,6 +1296,9 @@ func (m *openClawManager) ensureStreamStart(ctx context.Context, portal *bridgev
 	}
 	m.started[turnID] = struct{}{}
 	m.mu.Unlock()
+	if payload != nil {
+		m.emitLatestUserMessageFromHistory(ctx, portal, meta, *payload)
+	}
 	if agentID == "" {
 		agentID = resolveOpenClawAgentID(meta, meta.OpenClawSessionKey, nil)
 	}
@@ -1347,7 +1347,7 @@ func (m *openClawManager) handleAgentEvent(ctx context.Context, payload gatewayA
 		agentMetadata["session_key"] = payload.SessionKey
 	}
 	eventTS := extractOpenClawEventTimestamp(payload.TS, nil)
-	m.ensureStreamStart(ctx, portal, meta, turnID, payload.RunID, agentID, eventTS, agentMetadata)
+	m.ensureStreamStart(ctx, portal, meta, turnID, payload.RunID, agentID, eventTS, agentMetadata, nil)
 	m.startRunRecovery(ctx, portal, meta, turnID, payload.RunID, agentID)
 	stream := strings.ToLower(strings.TrimSpace(payload.Stream))
 	switch stream {

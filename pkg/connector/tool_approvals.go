@@ -197,6 +197,7 @@ func (oc *AIClient) isBuiltinToolDenied(
 	if !ok {
 		decision = airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalTimedOut, Reason: "timeout"}
 	}
+	oc.uiEmitter(state).EmitUIToolApprovalResponse(ctx, portal, approvalID, tool.callID, approvalAllowed(decision), decision.Reason)
 	streamui.RecordApprovalResponse(&state.ui, approvalID, tool.callID, approvalAllowed(decision), decision.Reason)
 	if !approvalAllowed(decision) {
 		oc.uiEmitter(state).EmitUIToolOutputDenied(ctx, portal, tool.callID)

@@ -129,6 +129,37 @@ func (e *Emitter) EmitUIToolApprovalRequest(
 	})
 }
 
+// EmitUIToolApprovalResponse sends a "tool-approval-response" event.
+func (e *Emitter) EmitUIToolApprovalResponse(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	approvalID, toolCallID string,
+	approved bool,
+	reason string,
+) {
+	approvalID = strings.TrimSpace(approvalID)
+	toolCallID = strings.TrimSpace(toolCallID)
+	if approvalID == "" {
+		return
+	}
+	if toolCallID == "" && e.State != nil {
+		toolCallID = strings.TrimSpace(e.State.UIToolCallIDByApproval[approvalID])
+	}
+	if toolCallID == "" {
+		return
+	}
+	part := map[string]any{
+		"type":       "tool-approval-response",
+		"approvalId": approvalID,
+		"toolCallId": toolCallID,
+		"approved":   approved,
+	}
+	if trimmedReason := strings.TrimSpace(reason); trimmedReason != "" {
+		part["reason"] = trimmedReason
+	}
+	e.Emit(ctx, portal, part)
+}
+
 // EmitUIToolOutputAvailable sends a "tool-output-available" event.
 func (e *Emitter) EmitUIToolOutputAvailable(ctx context.Context, portal *bridgev2.Portal, toolCallID string, output any, providerExecuted, preliminary bool) {
 	toolCallID = strings.TrimSpace(toolCallID)

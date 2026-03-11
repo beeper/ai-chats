@@ -16,6 +16,9 @@ import (
 const ApprovalDecisionKey = "com.beeper.ai.approval_decision"
 
 const (
+	ApprovalPromptStateRequested = "approval-requested"
+	ApprovalPromptStateResponded = "approval-responded"
+
 	RejectReasonOwnerOnly     = "only_owner"
 	RejectReasonExpired       = "expired"
 	RejectReasonInvalidOption = "invalid_option"
@@ -247,7 +250,7 @@ func BuildApprovalPromptMessage(params ApprovalPromptMessageParams) ApprovalProm
 			"type":       "dynamic-tool",
 			"toolName":   toolName,
 			"toolCallId": toolCallID,
-			"state":      "approval-requested",
+			"state":      ApprovalPromptStateRequested,
 			"approval": map[string]any{
 				"id": approvalID,
 			},
@@ -333,7 +336,7 @@ func BuildApprovalResponsePromptMessage(params ApprovalResponsePromptMessagePara
 			"type":       "dynamic-tool",
 			"toolName":   toolName,
 			"toolCallId": toolCallID,
-			"state":      "approval-response",
+			"state":      ApprovalPromptStateResponded,
 			"approval":   approvalPayload,
 		}},
 	}

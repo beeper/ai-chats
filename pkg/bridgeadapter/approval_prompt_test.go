@@ -93,6 +93,17 @@ func TestBuildApprovalResponsePromptMessage_ContainsDecision(t *testing.T) {
 	if approvalRaw["reason"] != "deny" {
 		t.Fatalf("expected reason=deny, got %#v", approvalRaw["reason"])
 	}
+	uiParts, _ := msg.UIMessage["parts"].([]map[string]any)
+	if len(uiParts) != 1 {
+		t.Fatalf("expected one ui part, got %#v", msg.UIMessage["parts"])
+	}
+	if uiParts[0]["state"] != ApprovalPromptStateResponded {
+		t.Fatalf("expected responded state, got %#v", uiParts[0]["state"])
+	}
+	approval, _ := uiParts[0]["approval"].(map[string]any)
+	if approval["approved"] != false || approval["reason"] != "deny" {
+		t.Fatalf("expected approval payload with approved=false reason=deny, got %#v", approval)
+	}
 }
 
 func TestApprovalFlow_MatchReactionOwnerOnly(t *testing.T) {

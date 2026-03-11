@@ -515,6 +515,7 @@ func (oc *AIClient) streamingResponse(
 				decision = airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalTimedOut, Reason: "timeout"}
 			}
 			approved := approvalAllowed(decision)
+			oc.uiEmitter(state).EmitUIToolApprovalResponse(ctx, portal, approval.approvalID, approval.toolCallID, approved, decision.Reason)
 			streamui.RecordApprovalResponse(&state.ui, approval.approvalID, approval.toolCallID, approved, decision.Reason)
 			item := responses.ResponseInputItemParamOfMcpApprovalResponse(approval.approvalID, approved)
 			if decision.Reason != "" && item.OfMcpApprovalResponse != nil {

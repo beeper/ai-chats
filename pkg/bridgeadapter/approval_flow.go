@@ -81,6 +81,11 @@ type ApprovalFlow[D any] struct {
 	idPrefix        string
 	logKey          string
 	sendTimeout     time.Duration
+
+	// Test hooks (nil in production).
+	testResolvePortal                 func(ctx context.Context, login *bridgev2.UserLogin, roomID id.RoomID) (*bridgev2.Portal, error)
+	testEditPromptToResolvedState     func(ctx context.Context, login *bridgev2.UserLogin, portal *bridgev2.Portal, sender bridgev2.EventSender, prompt ApprovalPromptRegistration, decision ApprovalDecisionPayload)
+	testRedactPromptPlaceholderReacts func(ctx context.Context, login *bridgev2.UserLogin, portal *bridgev2.Portal, sender bridgev2.EventSender, prompt ApprovalPromptRegistration) error
 }
 
 // NewApprovalFlow creates an ApprovalFlow from the given config.
@@ -645,7 +650,7 @@ func (f *ApprovalFlow[D]) finalize(approvalID string, decision *ApprovalDecision
 		if f.backgroundCtx != nil {
 			ctx = f.backgroundCtx(ctx)
 		}
-		portal, err := login.Bridge.GetPortalByMXID(ctx, prompt.RoomID)
+		portal, err := f.resolvePortalByRoomID(ctx, login, prompt.RoomID)
 		if err != nil || portal == nil || portal.MXID == "" {
 			return
 		}
@@ -654,10 +659,25 @@ func (f *ApprovalFlow[D]) finalize(approvalID string, decision *ApprovalDecision
 			sender.Sender = prompt.PromptSenderID
 		}
 		if resolved && decision != nil {
-			f.editPromptToResolvedState(ctx, login, portal, sender, prompt, *decision)
+			if f.testEditPromptToResolvedState != nil {
+				f.testEditPromptToResolvedState(ctx, login, portal, sender, prompt, *decision)
+			} else {
+				f.editPromptToResolvedState(ctx, login, portal, sender, prompt, *decision)
+			}
+		}
+		if f.testRedactPromptPlaceholderReacts != nil {
+			_ = f.testRedactPromptPlaceholderReacts(ctx, login, portal, sender, prompt)
+			return
 		}
 		_ = RedactApprovalPromptPlaceholderReactions(ctx, login, portal, sender, prompt)
 	}(*prompt, decision, resolved)
+}
+
+func (f *ApprovalFlow[D]) resolvePortalByRoomID(ctx context.Context, login *bridgev2.UserLogin, roomID id.RoomID) (*bridgev2.Portal, error) {
+	if f.testResolvePortal != nil {
+		return f.testResolvePortal(ctx, login, roomID)
+	}
+	return login.Bridge.GetPortalByMXID(ctx, roomID)
 }
 
 func (f *ApprovalFlow[D]) editPromptToResolvedState(

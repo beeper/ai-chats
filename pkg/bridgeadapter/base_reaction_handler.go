@@ -34,6 +34,8 @@ func (h BaseReactionHandler) HandleMatrixReaction(ctx context.Context, msg *brid
 	if login != nil && IsMatrixBotUser(ctx, login.Bridge, msg.Event.Sender) {
 		return &database.Reaction{}, nil
 	}
+	// Best-effort persistence guard for reaction.sender_id -> ghost.id FK.
+	_ = EnsureSyntheticReactionSenderGhost(ctx, login, msg.Event.Sender)
 	rc := ExtractReactionContext(msg)
 	if handler := h.Target.GetApprovalHandler(); handler != nil {
 		handler.HandleReaction(ctx, msg, rc.TargetEventID, rc.Emoji)

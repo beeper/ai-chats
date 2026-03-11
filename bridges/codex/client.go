@@ -2169,6 +2169,7 @@ func (cc *CodexClient) handleApprovalRequest(
 				Approved:   true,
 				Reason:     "auto-approved",
 			})
+			cc.uiEmitter(active.state).EmitUIToolApprovalResponse(ctx, active.portal, approvalID, toolCallID, true, "auto-approved")
 			streamui.RecordApprovalResponse(&active.state.ui, approvalID, toolCallID, true, "auto-approved")
 			return map[string]any{"decision": "accept"}, nil
 		}
@@ -2176,13 +2177,17 @@ func (cc *CodexClient) handleApprovalRequest(
 
 	decision, ok := cc.waitToolApproval(ctx, approvalID)
 	if !ok {
+		cc.uiEmitter(active.state).EmitUIToolApprovalResponse(ctx, active.portal, approvalID, toolCallID, false, "timeout")
 		streamui.RecordApprovalResponse(&active.state.ui, approvalID, toolCallID, false, "timeout")
+		cc.uiEmitter(active.state).EmitUIToolOutputDenied(ctx, active.portal, toolCallID)
 		return map[string]any{"decision": "decline"}, nil
 	}
+	cc.uiEmitter(active.state).EmitUIToolApprovalResponse(ctx, active.portal, approvalID, toolCallID, decision.Approved, decision.Reason)
 	streamui.RecordApprovalResponse(&active.state.ui, approvalID, toolCallID, decision.Approved, decision.Reason)
 	if decision.Approved {
 		return map[string]any{"decision": "accept"}, nil
 	}
+	cc.uiEmitter(active.state).EmitUIToolOutputDenied(ctx, active.portal, toolCallID)
 	return map[string]any{"decision": "decline"}, nil
 }
 
