@@ -224,7 +224,6 @@ func (b *Bridge) buildMediaParts(ctx context.Context, msg *bridgev2.MatrixMessag
 	return parts, titleCandidate, nil
 }
 
-
 func (b *Bridge) maybeFinalizeOpenCodeTitle(ctx context.Context, portal *bridgev2.Portal, meta *PortalMeta, title string) {
 	if b == nil || portal == nil || meta == nil {
 		return

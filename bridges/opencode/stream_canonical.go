@@ -10,14 +10,13 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/format"
 
-	"github.com/beeper/agentremote/bridges/opencode/opencodebridge"
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/bridges/ai/msgconv"
 	"github.com/beeper/agentremote/pkg/matrixevents"
 	"github.com/beeper/agentremote/pkg/shared/maputil"
-	"github.com/beeper/agentremote/turns"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/turns"
 )
 
 func (oc *OpenCodeClient) applyStreamMessageMetadata(state *openCodeStreamState, metadata map[string]any) {
@@ -147,7 +146,7 @@ func (oc *OpenCodeClient) buildStreamDBMetadata(state *openCodeStreamState) *Mes
 		return nil
 	}
 	uiMessage := oc.currentCanonicalUIMessage(state)
-	thinking := opencodebridge.CanonicalReasoningText(uiMessage)
+	thinking := CanonicalReasoningText(uiMessage)
 	return &MessageMetadata{
 		BaseMessageMetadata: agentremote.BaseMessageMetadata{
 			Role:               stringutil.FirstNonEmpty(state.role, "assistant"),
@@ -163,8 +162,8 @@ func (oc *OpenCodeClient) buildStreamDBMetadata(state *openCodeStreamState) *Mes
 			StartedAtMs:        state.startedAtMs,
 			CompletedAtMs:      state.completedAtMs,
 			ThinkingContent:    thinking,
-			ToolCalls:          opencodebridge.CanonicalToolCalls(uiMessage),
-			GeneratedFiles:     opencodebridge.CanonicalGeneratedFiles(uiMessage),
+			ToolCalls:          CanonicalToolCalls(uiMessage),
+			GeneratedFiles:     CanonicalGeneratedFiles(uiMessage),
 		},
 		SessionID:       state.sessionID,
 		MessageID:       state.messageID,

@@ -11,8 +11,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote/bridges/opencode/api"
 	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/bridges/opencode/api"
 )
 
 // Host provides the minimal surface area the OpenCode bridge needs

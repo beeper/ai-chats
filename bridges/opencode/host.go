@@ -12,15 +12,14 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/bridges/opencode/opencodebridge"
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/bridges/ai/msgconv"
 	"github.com/beeper/agentremote/pkg/matrixevents"
-	"github.com/beeper/agentremote/turns"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
+	"github.com/beeper/agentremote/turns"
 )
 
-var _ opencodebridge.Host = (*OpenCodeClient)(nil)
+var _ Host = (*OpenCodeClient)(nil)
 
 func (oc *OpenCodeClient) Log() *zerolog.Logger {
 	if oc == nil || oc.UserLogin == nil {
@@ -358,7 +357,7 @@ func (oc *OpenCodeClient) SenderForOpenCode(instanceID string, fromMe bool) brid
 		return bridgev2.EventSender{Sender: humanUserID(oc.UserLogin.ID), SenderLogin: oc.UserLogin.ID, IsFromMe: true}
 	}
 	return bridgev2.EventSender{
-		Sender:      opencodebridge.OpenCodeUserID(instanceID),
+		Sender:      OpenCodeUserID(instanceID),
 		SenderLogin: oc.UserLogin.ID,
 		IsFromMe:    false,
 		ForceDMUser: true,
@@ -379,12 +378,12 @@ func (oc *OpenCodeClient) CleanupPortal(ctx context.Context, portal *bridgev2.Po
 	}
 }
 
-func (oc *OpenCodeClient) PortalMeta(portal *bridgev2.Portal) *opencodebridge.PortalMeta {
+func (oc *OpenCodeClient) PortalMeta(portal *bridgev2.Portal) *PortalMeta {
 	if portal == nil {
 		return nil
 	}
 	meta := portalMeta(portal)
-	return &opencodebridge.PortalMeta{
+	return &PortalMeta{
 		IsOpenCodeRoom: meta.IsOpenCodeRoom,
 		InstanceID:     meta.OpenCodeInstanceID,
 		SessionID:      meta.OpenCodeSessionID,
@@ -398,7 +397,7 @@ func (oc *OpenCodeClient) PortalMeta(portal *bridgev2.Portal) *opencodebridge.Po
 	}
 }
 
-func (oc *OpenCodeClient) SetPortalMeta(portal *bridgev2.Portal, meta *opencodebridge.PortalMeta) {
+func (oc *OpenCodeClient) SetPortalMeta(portal *bridgev2.Portal, meta *PortalMeta) {
 	if portal == nil || meta == nil {
 		return
 	}
@@ -427,7 +426,7 @@ func (oc *OpenCodeClient) DefaultAgentID() string {
 	return "opencode"
 }
 
-func (oc *OpenCodeClient) OpenCodeInstances() map[string]*opencodebridge.OpenCodeInstance {
+func (oc *OpenCodeClient) OpenCodeInstances() map[string]*OpenCodeInstance {
 	if oc == nil || oc.UserLogin == nil {
 		return nil
 	}
@@ -438,7 +437,7 @@ func (oc *OpenCodeClient) OpenCodeInstances() map[string]*opencodebridge.OpenCod
 	return meta.OpenCodeInstances
 }
 
-func (oc *OpenCodeClient) SaveOpenCodeInstances(ctx context.Context, instances map[string]*opencodebridge.OpenCodeInstance) error {
+func (oc *OpenCodeClient) SaveOpenCodeInstances(ctx context.Context, instances map[string]*OpenCodeInstance) error {
 	if oc == nil || oc.UserLogin == nil {
 		return nil
 	}

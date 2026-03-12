@@ -5,13 +5,11 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"github.com/beeper/agentremote"
-
-	"github.com/beeper/agentremote/bridges/opencode/opencodebridge"
 )
 
 type UserLoginMetadata struct {
-	Provider          string                                      `json:"provider,omitempty"`
-	OpenCodeInstances map[string]*opencodebridge.OpenCodeInstance `json:"opencode_instances,omitempty"`
+	Provider          string                       `json:"provider,omitempty"`
+	OpenCodeInstances map[string]*OpenCodeInstance `json:"opencode_instances,omitempty"`
 }
 
 type PortalMetadata struct {
@@ -26,8 +24,6 @@ type PortalMetadata struct {
 	AgentID              string `json:"agent_id,omitempty"`
 	VerboseLevel         string `json:"verbose_level,omitempty"`
 }
-
-type MessageMetadata = opencodebridge.MessageMetadata
 
 type GhostMetadata struct{}
 

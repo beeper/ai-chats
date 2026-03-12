@@ -7,18 +7,18 @@ import (
 )
 
 type ApprovalRecord struct {
-	ApprovalID     string
-	Kind           string
-	RoomID         string
-	TurnID         string
-	ToolCallID     string
-	ToolName       string
-	RequestJSON    string
-	Status         string
-	Reason         string
-	ExpiresAtMs    int64
-	CreatedAtMs    int64
-	UpdatedAtMs    int64
+	ApprovalID  string
+	Kind        string
+	RoomID      string
+	TurnID      string
+	ToolCallID  string
+	ToolName    string
+	RequestJSON string
+	Status      string
+	Reason      string
+	ExpiresAtMs int64
+	CreatedAtMs int64
+	UpdatedAtMs int64
 }
 
 type ApprovalStore struct {
@@ -87,4 +87,3 @@ func (s *ApprovalStore) Get(ctx context.Context, approvalID string) (ApprovalRec
 	}
 	return record, true, nil
 }
-

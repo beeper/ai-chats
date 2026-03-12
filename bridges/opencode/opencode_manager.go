@@ -15,8 +15,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/bridges/opencode/api"
 	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/bridges/opencode/api"
 )
 
 // OpenCodeManager coordinates connections to OpenCode server instances,
@@ -774,7 +774,7 @@ func (m *OpenCodeManager) handleMessageRemovedEvent(ctx context.Context, inst *o
 func (m *OpenCodeManager) handlePartUpdatedEvent(ctx context.Context, inst *openCodeInstance, evt api.Event) {
 	var payload struct {
 		Part  api.Part `json:"part"`
-		Delta string        `json:"delta"`
+		Delta string   `json:"delta"`
 	}
 	if err := json.Unmarshal(evt.Properties, &payload); err != nil {
 		m.log().Warn().Err(err).Msg("Failed to decode part update event")

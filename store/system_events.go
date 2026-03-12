@@ -91,4 +91,3 @@ func (s *SystemEventStore) Load(ctx context.Context) ([]SystemEventQueue, error)
 	}
 	return queues, rows.Err()
 }
-

@@ -10,10 +10,11 @@ import (
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/ptr"
 
-	"github.com/beeper/agentremote/pkg/shared/openclawconv"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+
+	"github.com/beeper/agentremote/pkg/shared/openclawconv"
 )
 
 type OpenClawSessionResyncEvent struct {

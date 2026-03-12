@@ -13,9 +13,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 
-	openCodeAPI "github.com/beeper/agentremote/bridges/opencode/api"
-	"github.com/beeper/agentremote/bridges/opencode/opencodebridge"
 	"github.com/beeper/agentremote"
+	openCodeAPI "github.com/beeper/agentremote/bridges/opencode/api"
 )
 
 var (
@@ -27,8 +26,8 @@ const (
 	FlowOpenCodeRemote  = "opencode_remote"
 	FlowOpenCodeManaged = "opencode_managed"
 
-	openCodeLoginStepRemoteCredentials  = "io.ai-bridge.api.enter_remote_credentials"
-	openCodeLoginStepManagedCredentials = "io.ai-bridge.api.enter_managed_credentials"
+	openCodeLoginStepRemoteCredentials  = "io.ai-bridge.opencode.enter_remote_credentials"
+	openCodeLoginStepManagedCredentials = "io.ai-bridge.opencode.enter_managed_credentials"
 	defaultOpenCodeUsername             = "opencode"
 )
 
@@ -119,7 +118,7 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 	}
 
 	var (
-		instances  map[string]*opencodebridge.OpenCodeInstance
+		instances  map[string]*OpenCodeInstance
 		remoteName string
 		instanceID string
 		err        error
@@ -185,7 +184,7 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 	return openCodeCompleteStep(login), nil
 }
 
-func (ol *OpenCodeLogin) buildRemoteInstances(input map[string]string) (map[string]*opencodebridge.OpenCodeInstance, string, string, error) {
+func (ol *OpenCodeLogin) buildRemoteInstances(input map[string]string) (map[string]*OpenCodeInstance, string, string, error) {
 	normalizedURL, err := openCodeAPI.NormalizeBaseURL(input["url"])
 	if err != nil {
 		return nil, "", "", fmt.Errorf("invalid url: %w", err)
@@ -195,11 +194,11 @@ func (ol *OpenCodeLogin) buildRemoteInstances(input map[string]string) (map[stri
 		username = defaultOpenCodeUsername
 	}
 	password := strings.TrimSpace(input["password"])
-	instanceID := opencodebridge.OpenCodeInstanceID(normalizedURL, username)
-	return map[string]*opencodebridge.OpenCodeInstance{
+	instanceID := OpenCodeInstanceID(normalizedURL, username)
+	return map[string]*OpenCodeInstance{
 		instanceID: {
 			ID:          instanceID,
-			Mode:        opencodebridge.OpenCodeModeRemote,
+			Mode:        OpenCodeModeRemote,
 			URL:         normalizedURL,
 			Username:    username,
 			Password:    password,
@@ -208,7 +207,7 @@ func (ol *OpenCodeLogin) buildRemoteInstances(input map[string]string) (map[stri
 	}, openCodeRemoteName(normalizedURL, username), instanceID, nil
 }
 
-func (ol *OpenCodeLogin) buildManagedInstances(input map[string]string) (map[string]*opencodebridge.OpenCodeInstance, string, string, error) {
+func (ol *OpenCodeLogin) buildManagedInstances(input map[string]string) (map[string]*OpenCodeInstance, string, string, error) {
 	binaryPath, err := resolveManagedOpenCodeBinary(input["binary_path"])
 	if err != nil {
 		return nil, "", "", err
@@ -217,11 +216,11 @@ func (ol *OpenCodeLogin) buildManagedInstances(input map[string]string) (map[str
 	if err != nil {
 		return nil, "", "", err
 	}
-	instanceID := opencodebridge.OpenCodeManagedLauncherID(string(ol.User.MXID))
-	return map[string]*opencodebridge.OpenCodeInstance{
+	instanceID := OpenCodeManagedLauncherID(string(ol.User.MXID))
+	return map[string]*OpenCodeInstance{
 		instanceID: {
 			ID:               instanceID,
-			Mode:             opencodebridge.OpenCodeModeManagedLauncher,
+			Mode:             OpenCodeModeManagedLauncher,
 			BinaryPath:       binaryPath,
 			DefaultDirectory: defaultPath,
 		},
@@ -231,7 +230,7 @@ func (ol *OpenCodeLogin) buildManagedInstances(input map[string]string) (map[str
 func openCodeCompleteStep(login *bridgev2.UserLogin) *bridgev2.LoginStep {
 	return &bridgev2.LoginStep{
 		Type:   bridgev2.LoginStepTypeComplete,
-		StepID: "io.ai-bridge.api.complete",
+		StepID: "io.ai-bridge.opencode.complete",
 		CompleteParams: &bridgev2.LoginCompleteParams{
 			UserLoginID: login.ID,
 			UserLogin:   login,

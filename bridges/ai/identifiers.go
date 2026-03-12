@@ -13,8 +13,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/pkg/agents"
 	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/pkg/agents"
 )
 
 func baseLoginID(providerSlug string, mxid id.UserID) networkid.UserLoginID {

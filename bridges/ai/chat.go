@@ -9,9 +9,9 @@ import (
 
 	"go.mau.fi/util/ptr"
 
+	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/agents"
 	"github.com/beeper/agentremote/pkg/agents/tools"
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	"github.com/beeper/agentremote/pkg/shared/toolspec"
 

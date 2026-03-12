@@ -16,8 +16,8 @@ import (
 	"github.com/beeper/agentremote/pkg/matrixevents"
 	"github.com/beeper/agentremote/pkg/shared/maputil"
 	"github.com/beeper/agentremote/pkg/shared/openclawconv"
-	"github.com/beeper/agentremote/turns"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
+	"github.com/beeper/agentremote/turns"
 )
 
 func openClawStreamPartTimestamp(part map[string]any) time.Time {

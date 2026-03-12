@@ -14,9 +14,9 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
+	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/agents"
 	"github.com/beeper/agentremote/pkg/agents/tools"
-	"github.com/beeper/agentremote"
 )
 
 // AgentStoreAdapter implements agents.AgentStore with UserLogin metadata as source of truth.

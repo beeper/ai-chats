@@ -14,7 +14,6 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/bridges/opencode/opencodebridge"
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 )
@@ -31,7 +30,7 @@ type OpenCodeClient struct {
 	agentremote.BaseStreamState
 	UserLogin *bridgev2.UserLogin
 	connector *OpenCodeConnector
-	bridge    *opencodebridge.Bridge
+	bridge    *Bridge
 
 	loggedIn atomic.Bool
 
@@ -82,7 +81,7 @@ func newOpenCodeClient(login *bridgev2.UserLogin, connector *OpenCodeConnector) 
 	}
 	client.InitStreamState()
 	client.BaseReactionHandler.Target = client
-	client.bridge = opencodebridge.NewBridge(client)
+	client.bridge = NewBridge(client)
 	return client, nil
 }
 
@@ -199,7 +198,7 @@ func (oc *OpenCodeClient) GetUserInfo(_ context.Context, ghost *bridgev2.Ghost) 
 	if ghost == nil {
 		return agentremote.BuildBotUserInfo("OpenCode"), nil
 	}
-	instanceID, ok := opencodebridge.ParseOpenCodeGhostID(string(ghost.ID))
+	instanceID, ok := ParseOpenCodeGhostID(string(ghost.ID))
 	if !ok {
 		return agentremote.BuildBotUserInfo("OpenCode"), nil
 	}
@@ -216,7 +215,7 @@ func (oc *OpenCodeClient) ResolveIdentifier(ctx context.Context, identifier stri
 	if oc.bridge == nil {
 		return nil, errors.New("login unavailable")
 	}
-	instanceID, ok := opencodebridge.ParseOpenCodeIdentifier(identifier)
+	instanceID, ok := ParseOpenCodeIdentifier(identifier)
 	if !ok {
 		return nil, fmt.Errorf("unknown identifier: %s", identifier)
 	}
@@ -224,7 +223,7 @@ func (oc *OpenCodeClient) ResolveIdentifier(ctx context.Context, identifier stri
 	if cfg == nil {
 		return nil, errors.New("OpenCode instance not found")
 	}
-	userID := opencodebridge.OpenCodeUserID(instanceID)
+	userID := OpenCodeUserID(instanceID)
 	ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get OpenCode ghost: %w", err)

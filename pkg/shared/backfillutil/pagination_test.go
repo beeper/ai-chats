@@ -79,7 +79,7 @@ func TestPaginateForwardTimeFallback(t *testing.T) {
 }
 
 func noAnchor(*database.Message) (int, bool) { return 0, false }
-func noTimeAnchor(*database.Message) int      { return 0 }
+func noTimeAnchor(*database.Message) int     { return 0 }
 func anchorAt(idx int) func(*database.Message) (int, bool) {
 	return func(*database.Message) (int, bool) { return idx, true }
 }

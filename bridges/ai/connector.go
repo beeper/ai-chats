@@ -16,8 +16,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote/pkg/aidb"
 	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/pkg/aidb"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 )
 

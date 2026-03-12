@@ -85,29 +85,29 @@ type GhostMetadata struct {
 }
 
 type MessageMetadata struct {
-	Role               string                           `json:"role,omitempty"`
-	Body               string                           `json:"body,omitempty"`
-	SessionID          string                           `json:"session_id,omitempty"`
-	SessionKey         string                           `json:"session_key,omitempty"`
-	RunID              string                           `json:"run_id,omitempty"`
-	TurnID             string                           `json:"turn_id,omitempty"`
-	AgentID            string                           `json:"agent_id,omitempty"`
-	FinishReason       string                           `json:"finish_reason,omitempty"`
-	ErrorText          string                           `json:"error_text,omitempty"`
-	PromptTokens       int64                            `json:"prompt_tokens,omitempty"`
-	CompletionTokens   int64                            `json:"completion_tokens,omitempty"`
-	ReasoningTokens    int64                            `json:"reasoning_tokens,omitempty"`
-	TotalTokens        int64                            `json:"total_tokens,omitempty"`
-	CanonicalSchema    string                           `json:"canonical_schema,omitempty"`
-	CanonicalUIMessage map[string]any                   `json:"canonical_ui_message,omitempty"`
-	ThinkingContent    string                           `json:"thinking_content,omitempty"`
+	Role               string                         `json:"role,omitempty"`
+	Body               string                         `json:"body,omitempty"`
+	SessionID          string                         `json:"session_id,omitempty"`
+	SessionKey         string                         `json:"session_key,omitempty"`
+	RunID              string                         `json:"run_id,omitempty"`
+	TurnID             string                         `json:"turn_id,omitempty"`
+	AgentID            string                         `json:"agent_id,omitempty"`
+	FinishReason       string                         `json:"finish_reason,omitempty"`
+	ErrorText          string                         `json:"error_text,omitempty"`
+	PromptTokens       int64                          `json:"prompt_tokens,omitempty"`
+	CompletionTokens   int64                          `json:"completion_tokens,omitempty"`
+	ReasoningTokens    int64                          `json:"reasoning_tokens,omitempty"`
+	TotalTokens        int64                          `json:"total_tokens,omitempty"`
+	CanonicalSchema    string                         `json:"canonical_schema,omitempty"`
+	CanonicalUIMessage map[string]any                 `json:"canonical_ui_message,omitempty"`
+	ThinkingContent    string                         `json:"thinking_content,omitempty"`
 	ToolCalls          []agentremote.ToolCallMetadata `json:"tool_calls,omitempty"`
 	GeneratedFiles     []agentremote.GeneratedFileRef `json:"generated_files,omitempty"`
-	Attachments        []map[string]any                 `json:"attachments,omitempty"`
-	StartedAtMs        int64                            `json:"started_at_ms,omitempty"`
-	FirstTokenAtMs     int64                            `json:"first_token_at_ms,omitempty"`
-	CompletedAtMs      int64                            `json:"completed_at_ms,omitempty"`
-	ExcludeFromHistory bool                             `json:"exclude_from_history,omitempty"`
+	Attachments        []map[string]any               `json:"attachments,omitempty"`
+	StartedAtMs        int64                          `json:"started_at_ms,omitempty"`
+	FirstTokenAtMs     int64                          `json:"first_token_at_ms,omitempty"`
+	CompletedAtMs      int64                          `json:"completed_at_ms,omitempty"`
+	ExcludeFromHistory bool                           `json:"exclude_from_history,omitempty"`
 }
 
 func (mm *MessageMetadata) CopyFrom(other any) {

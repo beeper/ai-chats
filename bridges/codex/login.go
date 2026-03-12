@@ -16,8 +16,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 
-	"github.com/beeper/agentremote/bridges/codex/codexrpc"
 	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/bridges/codex/codexrpc"
 )
 
 var (

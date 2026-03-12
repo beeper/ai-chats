@@ -12,8 +12,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/bridges/codex/codexrpc"
 	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/bridges/codex/codexrpc"
 )
 
 func newTestCodexClient(owner id.UserID) *CodexClient {

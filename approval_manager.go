@@ -9,4 +9,3 @@ type ApprovalManager[D any] struct {
 func NewApprovalManager[D any](cfg ApprovalFlowConfig[D]) *ApprovalManager[D] {
 	return &ApprovalManager[D]{ApprovalFlow: NewApprovalFlow(cfg)}
 }
-

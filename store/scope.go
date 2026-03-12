@@ -52,4 +52,3 @@ func (s *Scope) SystemEvents() *SystemEventStore {
 func (s *Scope) Approvals() *ApprovalStore {
 	return &ApprovalStore{scope: s}
 }
-

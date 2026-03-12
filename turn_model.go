@@ -44,17 +44,17 @@ type ToolExecutionState struct {
 type TurnEventType string
 
 const (
-	TurnEventStart                  TurnEventType = "turn_start"
-	TurnEventMessageStart           TurnEventType = "message_start"
-	TurnEventMessageUpdate          TurnEventType = "message_update"
-	TurnEventMessageEnd             TurnEventType = "message_end"
-	TurnEventToolExecutionStart     TurnEventType = "tool_execution_start"
-	TurnEventToolExecutionUpdate    TurnEventType = "tool_execution_update"
-	TurnEventToolExecutionApproval  TurnEventType = "tool_execution_approval_required"
-	TurnEventToolExecutionEnd       TurnEventType = "tool_execution_end"
-	TurnEventEnd                    TurnEventType = "turn_end"
-	TurnEventAbort                  TurnEventType = "turn_abort"
-	TurnEventError                  TurnEventType = "turn_error"
+	TurnEventStart                 TurnEventType = "turn_start"
+	TurnEventMessageStart          TurnEventType = "message_start"
+	TurnEventMessageUpdate         TurnEventType = "message_update"
+	TurnEventMessageEnd            TurnEventType = "message_end"
+	TurnEventToolExecutionStart    TurnEventType = "tool_execution_start"
+	TurnEventToolExecutionUpdate   TurnEventType = "tool_execution_update"
+	TurnEventToolExecutionApproval TurnEventType = "tool_execution_approval_required"
+	TurnEventToolExecutionEnd      TurnEventType = "tool_execution_end"
+	TurnEventEnd                   TurnEventType = "turn_end"
+	TurnEventAbort                 TurnEventType = "turn_abort"
+	TurnEventError                 TurnEventType = "turn_error"
 )
 
 // TurnEvent is the canonical internal event emitted by a managed turn.
@@ -70,20 +70,20 @@ type TurnEvent struct {
 // TurnSnapshot is the durable in-memory representation of a turn as events are
 // applied. Bridges can project this state into Matrix/Beeper payloads.
 type TurnSnapshot struct {
-	TurnID          string
-	AgentID         string
-	VisibleText     string
-	ReasoningText   string
-	Messages        []AgentMessage
-	ToolExecutions  []ToolExecutionState
-	Events          []TurnEvent
-	StartedAtMs     int64
-	FirstTokenAtMs  int64
-	CompletedAtMs   int64
-	FinishReason    string
-	LastError       string
+	TurnID           string
+	AgentID          string
+	VisibleText      string
+	ReasoningText    string
+	Messages         []AgentMessage
+	ToolExecutions   []ToolExecutionState
+	Events           []TurnEvent
+	StartedAtMs      int64
+	FirstTokenAtMs   int64
+	CompletedAtMs    int64
+	FinishReason     string
+	LastError        string
 	NetworkMessageID string
-	TargetEventID   string
+	TargetEventID    string
 }
 
 // TurnManager tracks active turns for a runtime.
@@ -256,4 +256,3 @@ func stringValue(values map[string]any, key string) string {
 	raw, _ := values[key].(string)
 	return strings.TrimSpace(raw)
 }
-

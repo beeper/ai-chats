@@ -326,7 +326,6 @@ func messageTypeForMIME(mimeType string) event.MessageType {
 	return media.MessageTypeForMIME(mimeType)
 }
 
-
 func openClawMessageExtra(content *event.MessageEventContent) map[string]any {
 	extra := map[string]any{
 		"msgtype":    content.MsgType,

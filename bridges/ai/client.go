@@ -25,8 +25,8 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/pkg/agents"
 	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/pkg/agents"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
