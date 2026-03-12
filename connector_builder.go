@@ -13,20 +13,20 @@ type ConnectorSpec struct {
 	ProtocolID string
 	AIRoomKind string
 
-	Init func(*bridgev2.Bridge)
+	Init  func(*bridgev2.Bridge)
 	Start func(context.Context) error
-	Stop func(context.Context)
+	Stop  func(context.Context)
 
-	Name      func() bridgev2.BridgeName
-	Config    func() (example string, data any, upgrader configupgrade.Upgrader)
-	DBMeta    func() database.MetaTypes
-	LoadLogin func(context.Context, *bridgev2.UserLogin) error
-	LoginFlows func() []bridgev2.LoginFlow
+	Name        func() bridgev2.BridgeName
+	Config      func() (example string, data any, upgrader configupgrade.Upgrader)
+	DBMeta      func() database.MetaTypes
+	LoadLogin   func(context.Context, *bridgev2.UserLogin) error
+	LoginFlows  func() []bridgev2.LoginFlow
 	CreateLogin func(context.Context, *bridgev2.User, string) (bridgev2.LoginProcess, error)
 
-	Capabilities func() *bridgev2.NetworkGeneralCapabilities
+	Capabilities      func() *bridgev2.NetworkGeneralCapabilities
 	BridgeInfoVersion func() (info, capabilities int)
-	FillBridgeInfo func(*bridgev2.Portal, *event.BridgeEventContent)
+	FillBridgeInfo    func(*bridgev2.Portal, *event.BridgeEventContent)
 }
 
 type ConnectorBase struct {

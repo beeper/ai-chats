@@ -163,10 +163,10 @@ type fakeClient struct {
 	disconnected bool
 }
 
-func (c *fakeClient) Connect(context.Context) {}
-func (c *fakeClient) Disconnect()             { c.disconnected = true }
-func (c *fakeClient) IsLoggedIn() bool        { return true }
-func (c *fakeClient) LogoutRemote(context.Context) {}
+func (c *fakeClient) Connect(context.Context)                           {}
+func (c *fakeClient) Disconnect()                                       { c.disconnected = true }
+func (c *fakeClient) IsLoggedIn() bool                                  { return true }
+func (c *fakeClient) LogoutRemote(context.Context)                      {}
 func (c *fakeClient) IsThisUser(context.Context, networkid.UserID) bool { return false }
 func (c *fakeClient) GetChatInfo(context.Context, *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	return nil, nil
@@ -186,7 +186,7 @@ type fakeOtherClient struct{ fakeClient }
 type fakeLoginProcess struct{}
 
 func (*fakeLoginProcess) Start(context.Context) (*bridgev2.LoginStep, error) { return nil, nil }
-func (*fakeLoginProcess) Cancel()                                             {}
+func (*fakeLoginProcess) Cancel()                                            {}
 
 var _ bridgev2.NetworkAPI = (*fakeClient)(nil)
 

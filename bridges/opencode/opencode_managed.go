@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beeper/agentremote/managedruntime"
 	"github.com/beeper/agentremote/bridges/opencode/api"
+	"github.com/beeper/agentremote/managedruntime"
 )
 
 type managedOpenCodeProcess struct {
