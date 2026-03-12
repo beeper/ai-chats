@@ -492,6 +492,7 @@ type ApprovalPromptRegistration struct {
 	ToolCallID      string
 	ToolName        string
 	TurnID          string
+	PromptVersion   uint64
 	Presentation    ApprovalPromptPresentation
 	ExpiresAt       time.Time
 	Options         []ApprovalOption

@@ -192,7 +192,8 @@ func (f *ApprovalFlow[D]) FinishResolved(approvalID string, decision ApprovalDec
 }
 
 // ResolveExternal mirrors a concrete remote allow/deny decision into Matrix as
-// an owner-authored reaction when possible, then finalizes the approval.
+// an owner-authored reaction when possible, then finalizes the approval if the
+// decision was accepted by the internal delivery path.
 func (f *ApprovalFlow[D]) ResolveExternal(ctx context.Context, approvalID string, decision ApprovalDecisionPayload) {
 	if f == nil {
 		return
@@ -207,7 +208,9 @@ func (f *ApprovalFlow[D]) ResolveExternal(ctx context.Context, approvalID string
 	if prompt, ok := f.promptRegistration(approvalID); ok {
 		f.mirrorRemoteDecisionReaction(ctx, prompt, decision)
 	}
-	_ = f.Resolve(approvalID, decision)
+	if err := f.Resolve(approvalID, decision); err != nil {
+		return
+	}
 	f.FinishResolved(approvalID, decision)
 }
 
@@ -241,7 +244,7 @@ func (f *ApprovalFlow[D]) Resolve(approvalID string, decision ApprovalDecisionPa
 		return ErrApprovalUnknown
 	}
 	if time.Now().After(p.ExpiresAt) {
-		f.finishTimedOutApproval(approvalID)
+		f.finishTimedOutApproval(approvalID, 0)
 		return ErrApprovalExpired
 	}
 	select {
@@ -269,7 +272,7 @@ func (f *ApprovalFlow[D]) Wait(ctx context.Context, approvalID string) (Approval
 	}
 	timeout := time.Until(p.ExpiresAt)
 	if timeout <= 0 {
-		f.finishTimedOutApproval(approvalID)
+		f.finishTimedOutApproval(approvalID, 0)
 		return zero, false
 	}
 	timer := time.NewTimer(timeout)
@@ -299,7 +302,11 @@ func (f *ApprovalFlow[D]) registerPromptLocked(reg ApprovalPromptRegistration) {
 	reg.ToolName = strings.TrimSpace(reg.ToolName)
 	reg.TurnID = strings.TrimSpace(reg.TurnID)
 
-	if prev := f.promptsByApproval[reg.ApprovalID]; prev != nil && prev.PromptEventID != "" {
+	prev := f.promptsByApproval[reg.ApprovalID]
+	if reg.PromptVersion == 0 && prev != nil {
+		reg.PromptVersion = prev.PromptVersion
+	}
+	if prev != nil && prev.PromptEventID != "" {
 		delete(f.promptsByEventID, prev.PromptEventID)
 	}
 	copyReg := reg
@@ -325,26 +332,28 @@ func (f *ApprovalFlow[D]) registerPromptLocked(reg ApprovalPromptRegistration) {
 	}
 }
 
-// bindPromptEventLocked associates an event ID with a prompt registration.
+// bindPromptEventLocked associates an event ID with a prompt registration and
+// returns the prompt generation that should own any timeout goroutine.
 // Must be called with f.mu held.
-func (f *ApprovalFlow[D]) bindPromptIDsLocked(approvalID string, eventID id.EventID, messageID networkid.MessageID) bool {
+func (f *ApprovalFlow[D]) bindPromptIDsLocked(approvalID string, eventID id.EventID, messageID networkid.MessageID) (uint64, bool) {
 	approvalID = strings.TrimSpace(approvalID)
 	eventID = id.EventID(strings.TrimSpace(eventID.String()))
 	messageID = networkid.MessageID(strings.TrimSpace(string(messageID)))
 	if approvalID == "" || eventID == "" {
-		return false
+		return 0, false
 	}
 	entry := f.promptsByApproval[approvalID]
 	if entry == nil {
-		return false
+		return 0, false
 	}
 	if entry.PromptEventID != "" {
 		delete(f.promptsByEventID, entry.PromptEventID)
 	}
+	entry.PromptVersion++
 	entry.PromptEventID = eventID
 	entry.PromptMessageID = messageID
 	f.promptsByEventID[eventID] = approvalID
-	return true
+	return entry.PromptVersion, true
 }
 
 func (f *ApprovalFlow[D]) promptRegistration(approvalID string) (ApprovalPromptRegistration, bool) {
@@ -515,11 +524,14 @@ func (f *ApprovalFlow[D]) SendPrompt(ctx context.Context, portal *bridgev2.Porta
 	}
 
 	f.mu.Lock()
-	f.bindPromptIDsLocked(approvalID, eventID, msgID)
+	promptVersion, bound := f.bindPromptIDsLocked(approvalID, eventID, msgID)
 	f.mu.Unlock()
+	if !bound {
+		return
+	}
 
 	f.sendPrefillReactions(ctx, portal, login, msgID, prompt.Options)
-	f.schedulePromptTimeout(approvalID, params.ExpiresAt)
+	f.schedulePromptTimeout(approvalID, params.ExpiresAt, promptVersion)
 }
 
 // ---------------------------------------------------------------------------
@@ -676,14 +688,14 @@ func (f *ApprovalFlow[D]) sendPrefillReactions(_ context.Context, portal *bridge
 	}
 }
 
-func (f *ApprovalFlow[D]) schedulePromptTimeout(approvalID string, expiresAt time.Time) {
+func (f *ApprovalFlow[D]) schedulePromptTimeout(approvalID string, expiresAt time.Time, promptVersion uint64) {
 	approvalID = strings.TrimSpace(approvalID)
-	if approvalID == "" || expiresAt.IsZero() {
+	if approvalID == "" || expiresAt.IsZero() || promptVersion == 0 {
 		return
 	}
 	delay := time.Until(expiresAt)
 	if delay <= 0 {
-		f.finishTimedOutApproval(approvalID)
+		f.finishTimedOutApproval(approvalID, promptVersion)
 		return
 	}
 	f.mu.Lock()
@@ -692,22 +704,22 @@ func (f *ApprovalFlow[D]) schedulePromptTimeout(approvalID string, expiresAt tim
 	if p == nil {
 		return
 	}
-	go func() {
+	go func(promptVersion uint64) {
 		timer := time.NewTimer(delay)
 		defer timer.Stop()
 		select {
 		case <-timer.C:
-			f.finishTimedOutApproval(approvalID)
+			f.finishTimedOutApproval(approvalID, promptVersion)
 		case <-p.done:
 		}
-	}()
+	}(promptVersion)
 }
 
-func (f *ApprovalFlow[D]) finishTimedOutApproval(approvalID string) {
-	f.FinishResolved(approvalID, ApprovalDecisionPayload{
+func (f *ApprovalFlow[D]) finishTimedOutApproval(approvalID string, promptVersion uint64) {
+	f.finalizeWithPromptVersion(approvalID, &ApprovalDecisionPayload{
 		ApprovalID: approvalID,
 		Reason:     ApprovalReasonTimeout,
-	})
+	}, true, promptVersion)
 }
 
 func (f *ApprovalFlow[D]) cancelPendingTimeout(approvalID string) {
@@ -801,12 +813,23 @@ func (f *ApprovalFlow[D]) mirrorRemoteDecisionReaction(ctx context.Context, prom
 }
 
 func (f *ApprovalFlow[D]) finalize(approvalID string, decision *ApprovalDecisionPayload, resolved bool) {
+	f.finalizeWithPromptVersion(approvalID, decision, resolved, 0)
+}
+
+func (f *ApprovalFlow[D]) finalizeWithPromptVersion(approvalID string, decision *ApprovalDecisionPayload, resolved bool, promptVersion uint64) bool {
 	approvalID = strings.TrimSpace(approvalID)
 	if approvalID == "" {
-		return
+		return false
 	}
 	var prompt *ApprovalPromptRegistration
 	f.mu.Lock()
+	if promptVersion != 0 {
+		entry := f.promptsByApproval[approvalID]
+		if entry == nil || entry.PromptVersion != promptVersion {
+			f.mu.Unlock()
+			return false
+		}
+	}
 	if p := f.pending[approvalID]; p != nil {
 		select {
 		case <-p.done:
@@ -822,11 +845,11 @@ func (f *ApprovalFlow[D]) finalize(approvalID string, decision *ApprovalDecision
 	f.dropPromptLocked(approvalID)
 	f.mu.Unlock()
 	if prompt == nil {
-		return
+		return true
 	}
 	login := f.login()
 	if login == nil || login.Bridge == nil {
-		return
+		return true
 	}
 	go func(prompt ApprovalPromptRegistration, decision *ApprovalDecisionPayload, resolved bool) {
 		ctx := context.Background()
@@ -854,6 +877,7 @@ func (f *ApprovalFlow[D]) finalize(approvalID string, decision *ApprovalDecision
 		}
 		_ = RedactApprovalPromptPlaceholderReactions(ctx, login, portal, sender, prompt)
 	}(*prompt, decision, resolved)
+	return true
 }
 
 func (f *ApprovalFlow[D]) resolvePortalByRoomID(ctx context.Context, login *bridgev2.UserLogin, roomID id.RoomID) (*bridgev2.Portal, error) {

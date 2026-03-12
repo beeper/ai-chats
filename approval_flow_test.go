@@ -283,6 +283,113 @@ func TestApprovalFlow_ResolveExternalNotifiesWaiters(t *testing.T) {
 	}
 }
 
+func TestApprovalFlow_ResolveExternalDoesNotFinalizeWhenAlreadyHandled(t *testing.T) {
+	flow := NewApprovalFlow(ApprovalFlowConfig[*testApprovalFlowData]{
+		Login: func() *bridgev2.UserLogin { return nil },
+	})
+	if _, created := flow.Register("approval-1", time.Minute, &testApprovalFlowData{}); !created {
+		t.Fatalf("expected pending approval to be created")
+	}
+
+	flow.mu.Lock()
+	flow.registerPromptLocked(ApprovalPromptRegistration{
+		ApprovalID:    "approval-1",
+		PromptEventID: id.EventID("$prompt"),
+		Options:       DefaultApprovalOptions(),
+	})
+	flow.mu.Unlock()
+
+	firstDecision := ApprovalDecisionPayload{
+		ApprovalID: "approval-1",
+		Approved:   true,
+		Reason:     "allow_once",
+	}
+	if err := flow.Resolve("approval-1", firstDecision); err != nil {
+		t.Fatalf("expected initial resolve to succeed: %v", err)
+	}
+
+	flow.ResolveExternal(context.Background(), "approval-1", ApprovalDecisionPayload{
+		ApprovalID: "approval-1",
+		Approved:   false,
+		Reason:     "deny",
+	})
+
+	if flow.Get("approval-1") == nil {
+		t.Fatalf("expected duplicate external resolution to keep pending approval intact")
+	}
+	if _, ok := flow.promptRegistration("approval-1"); !ok {
+		t.Fatalf("expected duplicate external resolution to keep prompt registration intact")
+	}
+
+	decision, ok := flow.Wait(context.Background(), "approval-1")
+	if !ok {
+		t.Fatalf("expected waiter to receive the original decision")
+	}
+	if decision != firstDecision {
+		t.Fatalf("expected original decision %#v, got %#v", firstDecision, decision)
+	}
+}
+
+func TestApprovalFlow_SchedulePromptTimeoutIgnoresReplacedPrompt(t *testing.T) {
+	flow := NewApprovalFlow(ApprovalFlowConfig[*testApprovalFlowData]{
+		Login: func() *bridgev2.UserLogin { return nil },
+	})
+	if _, created := flow.Register("approval-1", time.Minute, &testApprovalFlowData{}); !created {
+		t.Fatalf("expected pending approval to be created")
+	}
+
+	firstExpiresAt := time.Now().Add(40 * time.Millisecond)
+	flow.mu.Lock()
+	flow.registerPromptLocked(ApprovalPromptRegistration{
+		ApprovalID: "approval-1",
+		ExpiresAt:  firstExpiresAt,
+	})
+	firstVersion, ok := flow.bindPromptIDsLocked("approval-1", id.EventID("$prompt-1"), networkid.MessageID("msg-1"))
+	flow.mu.Unlock()
+	if !ok {
+		t.Fatalf("expected initial prompt bind to succeed")
+	}
+	flow.schedulePromptTimeout("approval-1", firstExpiresAt, firstVersion)
+
+	time.Sleep(10 * time.Millisecond)
+
+	secondExpiresAt := time.Now().Add(160 * time.Millisecond)
+	flow.mu.Lock()
+	flow.registerPromptLocked(ApprovalPromptRegistration{
+		ApprovalID: "approval-1",
+		ExpiresAt:  secondExpiresAt,
+	})
+	secondVersion, ok := flow.bindPromptIDsLocked("approval-1", id.EventID("$prompt-2"), networkid.MessageID("msg-2"))
+	flow.mu.Unlock()
+	if !ok {
+		t.Fatalf("expected replacement prompt bind to succeed")
+	}
+	if secondVersion <= firstVersion {
+		t.Fatalf("expected replacement prompt version to advance: first=%d second=%d", firstVersion, secondVersion)
+	}
+	flow.schedulePromptTimeout("approval-1", secondExpiresAt, secondVersion)
+
+	time.Sleep(70 * time.Millisecond)
+
+	if flow.Get("approval-1") == nil {
+		t.Fatalf("expected stale timeout to leave pending approval intact")
+	}
+	if prompt, ok := flow.promptRegistration("approval-1"); !ok {
+		t.Fatalf("expected replacement prompt to remain registered")
+	} else if prompt.PromptEventID != id.EventID("$prompt-2") {
+		t.Fatalf("expected replacement prompt to remain active, got %q", prompt.PromptEventID)
+	}
+
+	time.Sleep(140 * time.Millisecond)
+
+	if flow.Get("approval-1") != nil {
+		t.Fatalf("expected active prompt timeout to finalize pending approval")
+	}
+	if _, ok := flow.promptRegistration("approval-1"); ok {
+		t.Fatalf("expected active prompt timeout to remove prompt registration")
+	}
+}
+
 func TestApprovalFlow_SendPromptSendFailureCleansUpRegistration(t *testing.T) {
 	owner := id.UserID("@owner:example.com")
 	roomID := id.RoomID("!room:example.com")
