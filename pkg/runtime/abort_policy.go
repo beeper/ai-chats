@@ -49,9 +49,9 @@ var abortTriggers = map[string]struct{}{
 
 func normalizeAbortTriggerText(text string) string {
 	cleaned := strings.ToLower(text)
-	cleaned = strings.ReplaceAll(cleaned, “\u2019”, “’”)
-	cleaned = strings.Join(strings.Fields(cleaned), “ “)
-	return strings.Trim(cleaned, “ \t\r\n.!?…,，。;；:：’\”””’’()[]{}”)
+	cleaned = strings.ReplaceAll(cleaned, "\u2019", "'")
+	cleaned = strings.Join(strings.Fields(cleaned), " ")
+	return strings.Trim(cleaned, " \t\r\n.!?\u2026,\uff0c\u3002;\uff1b:\uff1a'\"\u201c\u201d\u2018\u2019()[]{}")
 }
 
 func IsAbortTriggerText(text string) bool {

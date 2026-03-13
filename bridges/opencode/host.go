@@ -256,9 +256,9 @@ func (oc *OpenCodeClient) newSDKStreamTurn(ctx context.Context, portal *bridgev2
 	turn := conv.StartTurn(ctx, agent, nil)
 	turn.SetID(state.turnID)
 	turn.SetSender(sender)
-	turn.SetFinalMetadataBuilder(func(_ *bridgesdk.Turn, finishReason string) any {
+	turn.SetFinalMetadataProvider(bridgesdk.FinalMetadataProviderFunc(func(_ *bridgesdk.Turn, finishReason string) any {
 		return oc.buildSDKFinalMetadata(state, finishReason)
-	})
+	}))
 	return turn
 }
 

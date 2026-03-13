@@ -27,6 +27,15 @@ const memorySnippetMaxChars = 700
 
 var keywordTokenRE = regexp.MustCompile(`[A-Za-z0-9_]+`)
 
+// extractKeywordTokens extracts and lowercases keyword tokens from a query string.
+func extractKeywordTokens(query string) []string {
+	tokens := keywordTokenRE.FindAllString(query, -1)
+	for i, t := range tokens {
+		tokens[i] = strings.ToLower(strings.TrimSpace(t))
+	}
+	return tokens
+}
+
 const (
 	memoryStatusTimeout      = 3 * time.Second
 	memorySearchTimeout      = 10 * time.Second
@@ -514,12 +523,9 @@ func (m *MemorySearchManager) searchKeywordScan(ctx context.Context, query strin
 	if m == nil || m.db == nil || limit <= 0 {
 		return nil, nil
 	}
-	tokens := keywordTokenRE.FindAllString(query, -1)
+	tokens := extractKeywordTokens(query)
 	if len(tokens) == 0 {
 		return nil, nil
-	}
-	for i, t := range tokens {
-		tokens[i] = strings.ToLower(strings.TrimSpace(t))
 	}
 
 	scanLimit := max(200, min(1000, limit*10))
@@ -608,12 +614,9 @@ func (m *MemorySearchManager) searchKeywordFiles(ctx context.Context, query stri
 	if m == nil || m.db == nil || limit <= 0 {
 		return nil, nil
 	}
-	tokens := keywordTokenRE.FindAllString(query, -1)
+	tokens := extractKeywordTokens(query)
 	if len(tokens) == 0 {
 		return nil, nil
-	}
-	for i, t := range tokens {
-		tokens[i] = strings.ToLower(strings.TrimSpace(t))
 	}
 
 	overfetch := clampOverfetch(limit, 10)

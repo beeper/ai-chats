@@ -28,7 +28,6 @@ func ApplyEnvDefaults(cfg *Config) *Config {
 	if cfg == nil {
 		return ConfigFromEnv()
 	}
-	providerSet := strings.TrimSpace(cfg.Provider) != ""
 	current := cfg.WithDefaults()
 	envCfg := ConfigFromEnv()
 
@@ -39,10 +38,6 @@ func ApplyEnvDefaults(cfg *Config) *Config {
 	}
 	if current.Exa.BaseURL == "" {
 		current.Exa.BaseURL = envCfg.Exa.BaseURL
-	}
-
-	if !providerSet && strings.TrimSpace(current.Exa.APIKey) != "" {
-		current.Provider = ProviderExa
 	}
 
 	return current

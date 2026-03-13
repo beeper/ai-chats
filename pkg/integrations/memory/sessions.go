@@ -363,17 +363,7 @@ func (m *MemorySearchManager) removeStaleSessions(ctx context.Context, active ma
 		if _, ok := active[sessionKey]; ok {
 			continue
 		}
-		m.purgeSessionPath(ctx, path)
-		_, _ = m.db.Exec(ctx,
-			`DELETE FROM ai_memory_session_files
-             WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
-			m.baseArgs(sessionKey)...,
-		)
-		_, _ = m.db.Exec(ctx,
-			`DELETE FROM ai_memory_session_state
-             WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
-			m.baseArgs(sessionKey)...,
-		)
+		m.purgeSessionData(ctx, sessionKey, path)
 	}
 	return rows.Err()
 }

@@ -36,17 +36,13 @@ func (p *exaProvider) Fetch(ctx context.Context, req Request) (*Response, error)
 	payload := map[string]any{
 		"urls": []string{req.URL},
 	}
-	includeText := p.cfg.IncludeText || req.MaxChars > 0
-	if includeText {
+	if p.cfg.IncludeText || req.MaxChars > 0 {
 		if maxChars > 0 {
-			payload["text"] = map[string]any{
-				"maxCharacters": maxChars,
-			}
+			payload["text"] = map[string]any{"maxCharacters": maxChars}
 		} else {
 			payload["text"] = true
 		}
 	} else {
-		// Keep fetch useful when text is disabled in config.
 		payload["summary"] = map[string]any{}
 	}
 

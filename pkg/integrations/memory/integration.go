@@ -447,16 +447,11 @@ func (i *Integration) readMemoryPromptSection(ctx context.Context, scope iruntim
 }
 
 func (i *Integration) resolveMemorySearchConfig(agentID string) *ResolvedConfig {
-	cl := i.host.ConfigLookup()
-	if cl == nil {
+	rt := i.buildRuntime()
+	if rt == nil {
 		return nil
 	}
-	cfg := cl.ModuleConfig("memory_search")
-	agentCfg := cl.AgentModuleConfig(agentID, "memory_search")
-	resolved, err := resolveMemorySearchConfigFromMaps(cfg, agentCfg)
-	if err != nil {
-		return nil
-	}
+	resolved, _ := rt.ResolveConfig(agentID)
 	return resolved
 }
 

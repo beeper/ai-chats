@@ -129,41 +129,12 @@ func TestNewConnectorBaseUsesHooksAndCustomClients(t *testing.T) {
 	}
 }
 
-func TestTurnRequestApprovalUsesCustomRequester(t *testing.T) {
-	conv := NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &Config{}, nil)
-	turn := conv.StartTurn(context.Background(), &Agent{ID: "agent"}, nil)
-
-	called := false
-	turn.SetApprovalRequester(func(_ context.Context, gotTurn *Turn, req ApprovalRequest) ApprovalHandle {
-		called = true
-		if gotTurn != turn {
-			t.Fatalf("expected requester turn to match")
-		}
-		if req.ApprovalID != "approval-1" || req.ToolCallID != "tool-1" || req.ToolName != "search" {
-			t.Fatalf("unexpected approval request: %#v", req)
-		}
-		return &testApprovalHandle{id: "approval-1", toolCallID: req.ToolCallID}
-	})
-
-	handle := turn.RequestApproval(ApprovalRequest{
-		ApprovalID: "approval-1",
-		ToolCallID: "tool-1",
-		ToolName:   "search",
-	})
-	if !called {
-		t.Fatal("expected custom approval requester to be called")
-	}
-	if handle.ID() != "approval-1" || handle.ToolCallID() != "tool-1" {
-		t.Fatalf("unexpected handle: id=%q tool=%q", handle.ID(), handle.ToolCallID())
-	}
-}
-
 func TestApprovalControllerUsesCustomHandler(t *testing.T) {
 	conv := NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &Config{}, nil)
 	turn := conv.StartTurn(context.Background(), &Agent{ID: "agent"}, nil)
 
 	called := false
-	turn.Approvals().SetHandler(ApprovalHandlerFunc(func(_ context.Context, gotTurn *Turn, req ApprovalRequest) ApprovalHandle {
+	turn.Approvals().SetHandler(func(_ context.Context, gotTurn *Turn, req ApprovalRequest) ApprovalHandle {
 		called = true
 		if gotTurn != turn {
 			t.Fatalf("expected handler turn to match")
@@ -172,7 +143,7 @@ func TestApprovalControllerUsesCustomHandler(t *testing.T) {
 			t.Fatalf("unexpected approval request: %#v", req)
 		}
 		return &testApprovalHandle{id: "approval-2", toolCallID: req.ToolCallID}
-	}))
+	})
 
 	handle := turn.Approvals().Request(ApprovalRequest{
 		ApprovalID: "approval-2",

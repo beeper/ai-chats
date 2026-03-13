@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -67,9 +68,6 @@ func ApplyPatch(ctx context.Context, store *Store, input string) (*ApplyPatchRes
 	if store == nil {
 		return nil, errors.New("store required")
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	parsed, err := parsePatchText(input)
 	if err != nil {
 		return nil, err
@@ -78,27 +76,10 @@ func ApplyPatch(ctx context.Context, store *Store, input string) (*ApplyPatchRes
 		return nil, errors.New("no files were modified")
 	}
 
-	summary := ApplyPatchSummary{}
-	seen := map[string]map[string]struct{}{
-		"added":    {},
-		"modified": {},
-		"deleted":  {},
-	}
-	record := func(bucket, value string) {
-		if strings.TrimSpace(value) == "" {
-			return
-		}
-		if _, ok := seen[bucket][value]; ok {
-			return
-		}
-		seen[bucket][value] = struct{}{}
-		switch bucket {
-		case "added":
-			summary.Added = append(summary.Added, value)
-		case "modified":
-			summary.Modified = append(summary.Modified, value)
-		case "deleted":
-			summary.Deleted = append(summary.Deleted, value)
+	var summary ApplyPatchSummary
+	appendUnique := func(list *[]string, value string) {
+		if !slices.Contains(*list, value) {
+			*list = append(*list, value)
 		}
 	}
 
@@ -112,7 +93,7 @@ func ApplyPatch(ctx context.Context, store *Store, input string) (*ApplyPatchRes
 			if _, err := store.Write(ctx, path, hunk.contents); err != nil {
 				return nil, err
 			}
-			record("added", path)
+			appendUnique(&summary.Added, path)
 		case deleteFileHunk:
 			path, err := NormalizePath(hunk.path)
 			if err != nil {
@@ -126,7 +107,7 @@ func ApplyPatch(ctx context.Context, store *Store, input string) (*ApplyPatchRes
 			if err := store.Delete(ctx, path); err != nil {
 				return nil, err
 			}
-			record("deleted", path)
+			appendUnique(&summary.Deleted, path)
 		case updateFileHunk:
 			path, err := NormalizePath(hunk.path)
 			if err != nil {
@@ -154,21 +135,22 @@ func ApplyPatch(ctx context.Context, store *Store, input string) (*ApplyPatchRes
 				if err := store.Delete(ctx, path); err != nil {
 					return nil, err
 				}
-				record("modified", movePath)
+				appendUnique(&summary.Modified, movePath)
 			} else {
 				if _, err := store.Write(ctx, path, updated); err != nil {
 					return nil, err
 				}
-				record("modified", path)
+				appendUnique(&summary.Modified, path)
 			}
 		default:
 			return nil, errors.New("unsupported patch hunk")
 		}
 	}
 
-	result := &ApplyPatchResult{Summary: summary}
-	result.Text = formatPatchSummary(summary)
-	return result, nil
+	return &ApplyPatchResult{
+		Summary: summary,
+		Text:    formatPatchSummary(summary),
+	}, nil
 }
 
 type parsedPatch struct {
@@ -245,17 +227,17 @@ func parseOneHunk(lines []string, lineNumber int) (applyPatchHunk, int, error) {
 	}
 	firstLine := strings.TrimSpace(lines[0])
 	if targetPath, ok := strings.CutPrefix(firstLine, addFileMarker); ok {
-		contents := ""
+		var b strings.Builder
 		consumed := 1
 		for _, addLine := range lines[1:] {
-			if strings.HasPrefix(addLine, "+") {
-				contents += addLine[1:] + "\n"
-				consumed++
-			} else {
+			if !strings.HasPrefix(addLine, "+") {
 				break
 			}
+			b.WriteString(addLine[1:])
+			b.WriteByte('\n')
+			consumed++
 		}
-		return addFileHunk{path: targetPath, contents: contents}, consumed, nil
+		return addFileHunk{path: targetPath, contents: b.String()}, consumed, nil
 	}
 	if targetPath, ok := strings.CutPrefix(firstLine, deleteFileMarker); ok {
 		return deleteFileHunk{path: targetPath}, 1, nil

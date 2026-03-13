@@ -267,11 +267,6 @@ func (c *Conversation) StartTurn(ctx context.Context, agent *Agent, source *Sour
 	return newTurn(ctx, c, agent, source)
 }
 
-// StartTurnWithAgent is kept as a compatibility helper.
-func (c *Conversation) StartTurnWithAgent(ctx context.Context, agent *Agent) *Turn {
-	return newTurn(ctx, c, agent, nil)
-}
-
 // Session returns the session state from the client, if available.
 func (c *Conversation) Session() any {
 	if c.runtime == nil {

@@ -33,22 +33,15 @@ func NormalizeDir(raw string) (string, error) {
 	if trimmed == "" || trimmed == "." || trimmed == "/" {
 		return "", nil
 	}
-	cleaned, err := NormalizePath(trimmed)
-	if err != nil {
-		return "", err
-	}
-	return cleaned, nil
+	return NormalizePath(trimmed)
 }
 
 // IsMemoryPath returns true for MEMORY.md or memory/*.md.
 func IsMemoryPath(relPath string) bool {
-	normalized := strings.TrimSpace(relPath)
-	if normalized == "" {
+	normalized, err := NormalizePath(relPath)
+	if err != nil {
 		return false
 	}
-	normalized = strings.ReplaceAll(normalized, "\\", "/")
-	normalized = strings.TrimPrefix(normalized, "./")
-	normalized = strings.TrimLeft(normalized, "/")
 	if normalized == "MEMORY.md" || normalized == "memory.md" {
 		return true
 	}

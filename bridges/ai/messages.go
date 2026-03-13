@@ -9,42 +9,6 @@ import (
 	"github.com/openai/openai-go/v3/responses"
 )
 
-// MessageRole represents the role of a legacy unified message sender.
-type MessageRole string
-
-const (
-	RoleSystem    MessageRole = "system"
-	RoleUser      MessageRole = "user"
-	RoleAssistant MessageRole = "assistant"
-	RoleTool      MessageRole = "tool"
-)
-
-// ContentPartType identifies the type of content in a legacy unified message.
-type ContentPartType string
-
-const (
-	ContentTypeText  ContentPartType = "text"
-	ContentTypeImage ContentPartType = "image"
-	ContentTypePDF   ContentPartType = "pdf"
-	ContentTypeAudio ContentPartType = "audio"
-	ContentTypeVideo ContentPartType = "video"
-)
-
-// ContentPart represents a legacy piece of content (text, image, PDF, audio, or video).
-type ContentPart struct {
-	Type        ContentPartType
-	Text        string
-	ImageURL    string
-	ImageB64    string
-	MimeType    string
-	PDFURL      string
-	PDFB64      string
-	AudioB64    string
-	AudioFormat string
-	VideoURL    string
-	VideoB64    string
-}
-
 // PromptRole is the canonical provider-agnostic role used by PromptContext.
 type PromptRole string
 
@@ -112,26 +76,6 @@ type PromptContext struct {
 	Tools           []ToolDefinition
 }
 
-// UnifiedMessage is the legacy provider-agnostic message format used by a few call sites.
-type UnifiedMessage struct {
-	Role       MessageRole
-	Content    []ContentPart
-	ToolCalls  []ToolCallResult
-	ToolCallID string
-	Name       string
-}
-
-// Text returns the text content of a legacy message.
-func (m *UnifiedMessage) Text() string {
-	var texts []string
-	for _, part := range m.Content {
-		if part.Type == ContentTypeText {
-			texts = append(texts, part.Text)
-		}
-	}
-	return strings.Join(texts, "\n")
-}
-
 // Text returns the text content of a canonical prompt message.
 func (m PromptMessage) Text() string {
 	var texts []string
@@ -146,102 +90,31 @@ func (m PromptMessage) Text() string {
 	return strings.Join(texts, "\n")
 }
 
-// ToPromptContext converts legacy UnifiedMessage payloads into the canonical prompt model.
-// System messages are lifted into PromptContext.SystemPrompt.
-func ToPromptContext(systemPrompt string, tools []ToolDefinition, messages []UnifiedMessage) PromptContext {
-	ctx := PromptContext{
-		SystemPrompt: strings.TrimSpace(systemPrompt),
-		Tools:        slices.Clone(tools),
+func UserPromptContext(blocks ...PromptBlock) PromptContext {
+	return PromptContext{
+		Messages: []PromptMessage{{
+			Role:   PromptRoleUser,
+			Blocks: slices.Clone(blocks),
+		}},
 	}
+}
 
-	systemParts := make([]string, 0, len(messages))
-	for _, msg := range messages {
-		switch msg.Role {
-		case RoleSystem:
-			if text := strings.TrimSpace(msg.Text()); text != "" {
-				systemParts = append(systemParts, text)
+func promptContextHasBlockType(ctx PromptContext, kinds ...PromptBlockType) bool {
+	if len(kinds) == 0 {
+		return false
+	}
+	allowed := make(map[PromptBlockType]struct{}, len(kinds))
+	for _, kind := range kinds {
+		allowed[kind] = struct{}{}
+	}
+	for _, msg := range ctx.Messages {
+		for _, block := range msg.Blocks {
+			if _, ok := allowed[block.Type]; ok {
+				return true
 			}
-		case RoleUser, RoleAssistant, RoleTool:
-			ctx.Messages = append(ctx.Messages, unifiedMessageToPromptMessage(msg))
 		}
 	}
-	if len(systemParts) > 0 {
-		systemText := strings.Join(systemParts, "\n\n")
-		if ctx.SystemPrompt == "" {
-			ctx.SystemPrompt = systemText
-		} else {
-			ctx.SystemPrompt = strings.TrimSpace(systemText + "\n\n" + ctx.SystemPrompt)
-		}
-	}
-	return ctx
-}
-
-func unifiedMessageToPromptMessage(msg UnifiedMessage) PromptMessage {
-	pm := PromptMessage{
-		Blocks: make([]PromptBlock, 0, len(msg.Content)+len(msg.ToolCalls)),
-	}
-	switch msg.Role {
-	case RoleUser:
-		pm.Role = PromptRoleUser
-	case RoleAssistant:
-		pm.Role = PromptRoleAssistant
-	case RoleTool:
-		pm.Role = PromptRoleToolResult
-		pm.ToolCallID = msg.ToolCallID
-		pm.ToolName = msg.Name
-	}
-
-	for _, part := range msg.Content {
-		pm.Blocks = append(pm.Blocks, contentPartToPromptBlock(part))
-	}
-	for _, call := range msg.ToolCalls {
-		pm.Blocks = append(pm.Blocks, PromptBlock{
-			Type:              PromptBlockToolCall,
-			ToolCallID:        call.ID,
-			ToolName:          call.Name,
-			ToolCallArguments: call.Arguments,
-		})
-	}
-
-	return pm
-}
-
-func contentPartToPromptBlock(part ContentPart) PromptBlock {
-	switch part.Type {
-	case ContentTypeText:
-		return PromptBlock{Type: PromptBlockText, Text: part.Text}
-	case ContentTypeImage:
-		return PromptBlock{
-			Type:     PromptBlockImage,
-			ImageURL: part.ImageURL,
-			ImageB64: part.ImageB64,
-			MimeType: part.MimeType,
-		}
-	case ContentTypePDF:
-		return PromptBlock{
-			Type:     PromptBlockFile,
-			FileURL:  part.PDFURL,
-			FileB64:  part.PDFB64,
-			Filename: "document.pdf",
-			MimeType: part.MimeType,
-		}
-	case ContentTypeAudio:
-		return PromptBlock{
-			Type:        PromptBlockAudio,
-			AudioB64:    part.AudioB64,
-			AudioFormat: part.AudioFormat,
-			MimeType:    part.MimeType,
-		}
-	case ContentTypeVideo:
-		return PromptBlock{
-			Type:     PromptBlockVideo,
-			VideoURL: part.VideoURL,
-			VideoB64: part.VideoB64,
-			MimeType: part.MimeType,
-		}
-	default:
-		return PromptBlock{Type: PromptBlockText, Text: part.Text}
-	}
+	return false
 }
 
 // ChatMessagesToPromptContext converts chat-completions-shaped messages into the canonical prompt model.
@@ -436,10 +309,6 @@ func inferPromptMimeTypeFromDataURL(value string) string {
 }
 
 // ToOpenAIResponsesInput converts legacy unified messages to OpenAI Responses input.
-func ToOpenAIResponsesInput(messages []UnifiedMessage) responses.ResponseInputParam {
-	return PromptContextToResponsesInput(ToPromptContext("", nil, messages))
-}
-
 // PromptContextToResponsesInput converts the canonical prompt model into Responses input items.
 func PromptContextToResponsesInput(ctx PromptContext) responses.ResponseInputParam {
 	var result responses.ResponseInputParam

@@ -22,6 +22,19 @@ import (
 	"github.com/beeper/agentremote/turns"
 )
 
+type FinalMetadataProvider interface {
+	FinalMetadata(turn *Turn, finishReason string) any
+}
+
+type FinalMetadataProviderFunc func(turn *Turn, finishReason string) any
+
+func (f FinalMetadataProviderFunc) FinalMetadata(turn *Turn, finishReason string) any {
+	if f == nil {
+		return nil
+	}
+	return f(turn, finishReason)
+}
+
 type sdkApprovalHandle struct {
 	approvalID string
 	toolCallID string
@@ -105,9 +118,9 @@ type Turn struct {
 	startErr    error
 	mu          sync.Mutex
 
-	streamHook           func(turnID string, seq int, content map[string]any, txnID string) bool
-	approvalRequester    func(ctx context.Context, turn *Turn, req ApprovalRequest) ApprovalHandle
-	finalMetadataBuilder func(turn *Turn, finishReason string) any
+	streamHook            func(turnID string, seq int, content map[string]any, txnID string) bool
+	approvalRequester     func(ctx context.Context, turn *Turn, req ApprovalRequest) ApprovalHandle
+	finalMetadataProvider FinalMetadataProvider
 }
 
 func newTurn(ctx context.Context, conv *Conversation, agent *Agent, source *SourceRef) *Turn {
@@ -528,14 +541,9 @@ func (t *Turn) SetStreamHook(hook func(turnID string, seq int, content map[strin
 	t.streamHook = hook
 }
 
-// SetApprovalRequester overrides the default SDK approval flow for this turn.
-func (t *Turn) SetApprovalRequester(requester func(ctx context.Context, turn *Turn, req ApprovalRequest) ApprovalHandle) {
-	t.approvalRequester = requester
-}
-
-// SetFinalMetadataBuilder overrides the final DB metadata object persisted for the assistant message.
-func (t *Turn) SetFinalMetadataBuilder(builder func(turn *Turn, finishReason string) any) {
-	t.finalMetadataBuilder = builder
+// SetFinalMetadataProvider overrides the final DB metadata object persisted for the assistant message.
+func (t *Turn) SetFinalMetadataProvider(provider FinalMetadataProvider) {
+	t.finalMetadataProvider = provider
 }
 
 // SendStatus emits a bridge-level status update for the source event when possible.
@@ -581,8 +589,8 @@ func (t *Turn) persistFinalMessage(finishReason string) {
 	}
 	sender := t.resolveSender(t.turnCtx)
 	metadata := any(t.finalMetadata(finishReason))
-	if t.finalMetadataBuilder != nil {
-		if custom := t.finalMetadataBuilder(t, finishReason); custom != nil {
+	if t.finalMetadataProvider != nil {
+		if custom := t.finalMetadataProvider.FinalMetadata(t, finishReason); custom != nil {
 			metadata = custom
 		}
 	}

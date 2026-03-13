@@ -45,12 +45,8 @@ func (p *exaProvider) Search(ctx context.Context, req Request) (*Response, error
 			}
 		}
 		if p.cfg.Highlights {
-			highlightMaxChars := p.cfg.TextMaxCharacters
-			if highlightMaxChars <= 0 {
-				highlightMaxChars = 500
-			}
 			contents["highlights"] = map[string]any{
-				"maxCharacters": highlightMaxChars,
+				"maxCharacters": p.cfg.TextMaxCharacters,
 			}
 		}
 		payload["contents"] = contents

@@ -23,6 +23,21 @@ func (m *MemorySearchManager) purgeSessionPath(ctx context.Context, path string)
 	}
 }
 
+// purgeSessionData removes a session's file, state, and indexed chunks.
+func (m *MemorySearchManager) purgeSessionData(ctx context.Context, sessionKey, path string) {
+	m.purgeSessionPath(ctx, path)
+	_, _ = m.db.Exec(ctx,
+		`DELETE FROM ai_memory_session_files
+         WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
+		m.baseArgs(sessionKey)...,
+	)
+	_, _ = m.db.Exec(ctx,
+		`DELETE FROM ai_memory_session_state
+         WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
+		m.baseArgs(sessionKey)...,
+	)
+}
+
 // pruneExpiredSessions removes session files and their index entries that are older
 // than the configured retention window. No-op if retention_days is 0 (unlimited).
 func (m *MemorySearchManager) pruneExpiredSessions(ctx context.Context) {
@@ -50,16 +65,6 @@ func (m *MemorySearchManager) pruneExpiredSessions(ctx context.Context) {
 		if err := rows.Scan(&sessionKey, &path); err != nil {
 			return
 		}
-		m.purgeSessionPath(ctx, path)
-		_, _ = m.db.Exec(ctx,
-			`DELETE FROM ai_memory_session_files
-             WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
-			m.baseArgs(sessionKey)...,
-		)
-		_, _ = m.db.Exec(ctx,
-			`DELETE FROM ai_memory_session_state
-             WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
-			m.baseArgs(sessionKey)...,
-		)
+		m.purgeSessionData(ctx, sessionKey, path)
 	}
 }

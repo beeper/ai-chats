@@ -77,6 +77,23 @@ func TestTurnFinalMetadataMergesSupportedCallerMetadata(t *testing.T) {
 	}
 }
 
+func TestTurnPersistFinalMessageUsesFinalMetadataProvider(t *testing.T) {
+	login := &bridgev2.UserLogin{
+		UserLogin: &database.UserLogin{ID: "login-1"},
+	}
+	portal := &bridgev2.Portal{
+		Portal: &database.Portal{MXID: "!room:test"},
+	}
+	turn := newTurn(context.Background(), newConversation(context.Background(), portal, login, bridgev2.EventSender{}, nil), &Agent{ID: "agent"}, nil)
+	turn.SetFinalMetadataProvider(FinalMetadataProviderFunc(func(_ *Turn, finishReason string) any {
+		return map[string]any{"finish_reason": finishReason, "custom": true}
+	}))
+
+	if got := turn.finalMetadataProvider.FinalMetadata(turn, "completed"); got == nil {
+		t.Fatal("expected final metadata provider to be invoked")
+	}
+}
+
 func TestTurnRequestApprovalWaitsForResolvedDecision(t *testing.T) {
 	login := &bridgev2.UserLogin{
 		UserLogin: &database.UserLogin{
@@ -170,11 +187,11 @@ func TestTurnStreamSetTransportReceivesEvents(t *testing.T) {
 
 	var gotTurnID string
 	var gotContent map[string]any
-	turn.Stream().SetTransport(StreamTransportFunc(func(turnID string, _ int, content map[string]any, _ string) bool {
+	turn.Stream().SetTransport(func(turnID string, _ int, content map[string]any, _ string) bool {
 		gotTurnID = turnID
 		gotContent = content
 		return true
-	}))
+	})
 
 	if turn.streamHook == nil {
 		t.Fatal("expected stream transport to register a hook")

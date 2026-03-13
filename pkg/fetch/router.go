@@ -49,9 +49,6 @@ func normalizeRequest(req Request) Request {
 }
 
 func registerProviders(reg *registry.Registry[Provider], cfg *Config) {
-	if reg == nil || cfg == nil {
-		return
-	}
 	if p := newExaProvider(cfg); p != nil {
 		reg.Register(p)
 	}
