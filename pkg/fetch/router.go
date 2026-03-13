@@ -28,9 +28,9 @@ func Fetch(ctx context.Context, req Request, cfg *Config) (*Response, error) {
 			return provider.Fetch(ctx, req)
 		},
 		func(name string, resp *Response) {
-		if resp.Provider == "" {
-			resp.Provider = name
-		}
+			if resp.Provider == "" {
+				resp.Provider = name
+			}
 		},
 		errors.New("no fetch providers available"),
 	)

@@ -29,15 +29,15 @@ func Search(ctx context.Context, req Request, cfg *Config) (*Response, error) {
 			return provider.Search(ctx, req)
 		},
 		func(name string, resp *Response) {
-		if resp.Provider == "" {
-			resp.Provider = name
-		}
-		if resp.Query == "" {
-			resp.Query = req.Query
-		}
-		if resp.Count == 0 {
-			resp.Count = len(resp.Results)
-		}
+			if resp.Provider == "" {
+				resp.Provider = name
+			}
+			if resp.Query == "" {
+				resp.Query = req.Query
+			}
+			if resp.Count == 0 {
+				resp.Count = len(resp.Results)
+			}
 		},
 		errors.New("no search providers available"),
 	)

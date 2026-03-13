@@ -2,7 +2,7 @@ package citations
 
 import (
 	"net/url"
-	
+
 	"github.com/beeper/agentremote/pkg/shared/websearch"
 )
 
