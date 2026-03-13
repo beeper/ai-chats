@@ -72,7 +72,7 @@ func (oc *AIClient) buildMatrixInboundBody(
 		simpleCtx := runtimeparse.FinalizeInboundContext(runtimeparse.InboundContext{
 			Provider:        "matrix",
 			Surface:         "beeper-matrix",
-			ChatType:        map[bool]string{true: "group", false: "direct"}[isGroup],
+			ChatType:        chatTypeLabel(isGroup),
 			ChatID:          strings.TrimSpace(roomName),
 			Body:            rawBody,
 			RawBody:         rawBody,
@@ -119,7 +119,7 @@ func (oc *AIClient) buildMatrixInboundContext(
 	inbound := runtimeparse.InboundContext{
 		Provider:          "matrix",
 		Surface:           "beeper-matrix",
-		ChatType:          map[bool]string{true: "group", false: "direct"}[isGroup],
+		ChatType:          chatTypeLabel(isGroup),
 		ChatID:            chatID,
 		ConversationLabel: strings.TrimSpace(roomName),
 		SenderLabel:       strings.TrimSpace(senderName),
@@ -134,4 +134,11 @@ func (oc *AIClient) buildMatrixInboundContext(
 		BodyForCommands:   rawBody,
 	}
 	return runtimeparse.FinalizeInboundContext(inbound)
+}
+
+func chatTypeLabel(isGroup bool) string {
+	if isGroup {
+		return "group"
+	}
+	return "direct"
 }

@@ -3,6 +3,7 @@ package ai
 import (
 	"testing"
 
+	"github.com/beeper/agentremote/bridges/ai/msgconv"
 	"github.com/beeper/agentremote/pkg/shared/citations"
 )
 
@@ -24,9 +25,9 @@ func TestMapFinishReason(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := mapFinishReason(tc.input)
+			got := msgconv.MapFinishReason(tc.input)
 			if got != tc.expect {
-				t.Fatalf("mapFinishReason(%q) = %q, want %q", tc.input, got, tc.expect)
+				t.Fatalf("msgconv.MapFinishReason(%q) = %q, want %q", tc.input, got, tc.expect)
 			}
 		})
 	}
