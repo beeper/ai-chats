@@ -12,13 +12,13 @@ func (m *MemorySearchManager) purgeSessionPath(ctx context.Context, path string)
 	_, _ = m.db.Exec(ctx,
 		`DELETE FROM ai_memory_chunks
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND path=$4 AND source=$5`,
-		m.bridgeID, m.loginID, m.agentID, path, "sessions",
+		m.baseArgs(path, "sessions")...,
 	)
 	if m.ftsAvailable {
 		_, _ = m.db.Exec(ctx,
 			`DELETE FROM ai_memory_chunks_fts
              WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND path=$4 AND source=$5`,
-			m.bridgeID, m.loginID, m.agentID, path, "sessions",
+			m.baseArgs(path, "sessions")...
 		)
 	}
 }
@@ -38,7 +38,7 @@ func (m *MemorySearchManager) pruneExpiredSessions(ctx context.Context) {
 	rows, err := m.db.Query(ctx,
 		`SELECT session_key, path FROM ai_memory_session_files
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND updated_at < $4`,
-		m.bridgeID, m.loginID, m.agentID, cutoff,
+		m.baseArgs(cutoff)...
 	)
 	if err != nil {
 		return
@@ -54,12 +54,12 @@ func (m *MemorySearchManager) pruneExpiredSessions(ctx context.Context) {
 		_, _ = m.db.Exec(ctx,
 			`DELETE FROM ai_memory_session_files
              WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
-			m.bridgeID, m.loginID, m.agentID, sessionKey,
+			m.baseArgs(sessionKey)...,
 		)
 		_, _ = m.db.Exec(ctx,
 			`DELETE FROM ai_memory_session_state
              WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
-			m.bridgeID, m.loginID, m.agentID, sessionKey,
+			m.baseArgs(sessionKey)...,
 		)
 	}
 }

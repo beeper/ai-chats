@@ -65,7 +65,7 @@ func (m *MemorySearchManager) resetSessionState(ctx context.Context, sessionKey 
          ON CONFLICT (bridge_id, login_id, agent_id, session_key)
          DO UPDATE SET last_rowid=excluded.last_rowid, pending_bytes=excluded.pending_bytes,
            pending_messages=excluded.pending_messages, updated_at=excluded.updated_at`,
-		m.bridgeID, m.loginID, m.agentID, sessionKey, 0, 0, 0, time.Now().UnixMilli(),
+		m.baseArgs(sessionKey, 0, 0, 0, time.Now().UnixMilli())...
 	)
 	return err
 }

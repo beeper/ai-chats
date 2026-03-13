@@ -1,27 +1,7 @@
 package tools
 
-import (
-	"context"
-
-	"github.com/modelcontextprotocol/go-sdk/mcp"
-)
-
+// newConnectorOnlyTool creates a builtin tool that is only executable through
+// the connector runtime, not the local tool executor.
 func newConnectorOnlyTool(name, description, title string, schema map[string]any) *Tool {
-	return &Tool{
-		Tool: mcp.Tool{
-			Name:        name,
-			Description: description,
-			Annotations: &mcp.ToolAnnotations{Title: title},
-			InputSchema: schema,
-		},
-		Type:    ToolTypeBuiltin,
-		Group:   GroupWeb,
-		Execute: connectorOnlyPlaceholder(name),
-	}
-}
-
-func connectorOnlyPlaceholder(toolName string) func(context.Context, map[string]any) (*Result, error) {
-	return func(_ context.Context, _ map[string]any) (*Result, error) {
-		return ErrorResult(toolName, toolName+" is only available through the connector"), nil
-	}
+	return newUnavailableTool(name, description, title, schema, GroupWeb, name+" is only available through the connector")
 }

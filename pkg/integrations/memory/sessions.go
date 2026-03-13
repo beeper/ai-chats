@@ -228,26 +228,10 @@ func (m *MemorySearchManager) computeSessionDelta(ctx context.Context, portalKey
 		if rowid > maxRowID.Int64 {
 			maxRowID.Int64 = rowid
 		}
-		meta := parseSessionMetadata(rawMeta)
-		if meta == nil || !shouldIncludeSessionInHistory(meta) {
+		line := m.parseSessionMessageRow(rawMeta)
+		if line == "" {
 			continue
 		}
-		role := strings.ToLower(strings.TrimSpace(meta.Role))
-		if role != "user" && role != "assistant" {
-			continue
-		}
-		if role == "assistant" && meta.AgentID != "" && meta.AgentID != m.agentID {
-			continue
-		}
-		text := normalizeSessionText(meta.Body)
-		if text == "" {
-			continue
-		}
-		label := "User"
-		if role == "assistant" {
-			label = "Assistant"
-		}
-		line := label + ": " + text
 		deltaMessages++
 		deltaBytes += len(line) + 1
 	}
@@ -281,26 +265,11 @@ func (m *MemorySearchManager) buildSessionContent(ctx context.Context, portalKey
 		if rowid > maxRowID {
 			maxRowID = rowid
 		}
-		meta := parseSessionMetadata(rawMeta)
-		if meta == nil || !shouldIncludeSessionInHistory(meta) {
+		line := m.parseSessionMessageRow(rawMeta)
+		if line == "" {
 			continue
 		}
-		role := strings.ToLower(strings.TrimSpace(meta.Role))
-		if role != "user" && role != "assistant" {
-			continue
-		}
-		if role == "assistant" && meta.AgentID != "" && meta.AgentID != m.agentID {
-			continue
-		}
-		text := normalizeSessionText(meta.Body)
-		if text == "" {
-			continue
-		}
-		label := "User"
-		if role == "assistant" {
-			label = "Assistant"
-		}
-		lines = append(lines, label+": "+text)
+		lines = append(lines, line)
 	}
 	if err := rows.Err(); err != nil {
 		return "", 0, err
@@ -333,7 +302,7 @@ func (m *MemorySearchManager) upsertSessionFile(ctx context.Context, sessionKey,
 	row := m.db.QueryRow(ctx,
 		`SELECT path FROM ai_memory_session_files
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
-		m.bridgeID, m.loginID, m.agentID, sessionKey,
+		m.baseArgs(sessionKey)...,
 	)
 	switch err := row.Scan(&existingPath); err {
 	case nil:
@@ -352,7 +321,7 @@ func (m *MemorySearchManager) upsertSessionFile(ctx context.Context, sessionKey,
          ON CONFLICT (bridge_id, login_id, agent_id, session_key)
          DO UPDATE SET path=excluded.path, content=excluded.content, hash=excluded.hash,
            size=excluded.size, updated_at=excluded.updated_at`,
-		m.bridgeID, m.loginID, m.agentID, sessionKey, path, content, hash, size, time.Now().UnixMilli(),
+		m.baseArgs(sessionKey, path, content, hash, size, time.Now().UnixMilli())...
 	)
 	return err
 }
@@ -362,7 +331,7 @@ func (m *MemorySearchManager) deleteSessionFile(ctx context.Context, sessionKey 
 	row := m.db.QueryRow(ctx,
 		`SELECT path FROM ai_memory_session_files
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
-		m.bridgeID, m.loginID, m.agentID, sessionKey,
+		m.baseArgs(sessionKey)...,
 	)
 	if err := row.Scan(&path); err != nil && err != sql.ErrNoRows {
 		return err
@@ -371,7 +340,7 @@ func (m *MemorySearchManager) deleteSessionFile(ctx context.Context, sessionKey 
 	_, _ = m.db.Exec(ctx,
 		`DELETE FROM ai_memory_session_files
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
-		m.bridgeID, m.loginID, m.agentID, sessionKey,
+		m.baseArgs(sessionKey)...,
 	)
 	return nil
 }
@@ -380,7 +349,7 @@ func (m *MemorySearchManager) removeStaleSessions(ctx context.Context, active ma
 	rows, err := m.db.Query(ctx,
 		`SELECT session_key, path FROM ai_memory_session_files
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`,
-		m.bridgeID, m.loginID, m.agentID,
+		m.baseArgs()...,
 	)
 	if err != nil {
 		return err
@@ -399,15 +368,40 @@ func (m *MemorySearchManager) removeStaleSessions(ctx context.Context, active ma
 		_, _ = m.db.Exec(ctx,
 			`DELETE FROM ai_memory_session_files
              WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
-			m.bridgeID, m.loginID, m.agentID, sessionKey,
+			m.baseArgs(sessionKey)...,
 		)
 		_, _ = m.db.Exec(ctx,
 			`DELETE FROM ai_memory_session_state
              WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
-			m.bridgeID, m.loginID, m.agentID, sessionKey,
+			m.baseArgs(sessionKey)...,
 		)
 	}
 	return rows.Err()
+}
+
+// parseSessionMessageRow extracts a formatted "User: ..." or "Assistant: ..." line
+// from a raw message metadata blob. Returns "" if the row should be skipped.
+func (m *MemorySearchManager) parseSessionMessageRow(rawMeta []byte) string {
+	meta := parseSessionMetadata(rawMeta)
+	if meta == nil || !shouldIncludeSessionInHistory(meta) {
+		return ""
+	}
+	role := strings.ToLower(strings.TrimSpace(meta.Role))
+	if role != "user" && role != "assistant" {
+		return ""
+	}
+	if role == "assistant" && meta.AgentID != "" && meta.AgentID != m.agentID {
+		return ""
+	}
+	text := normalizeSessionText(meta.Body)
+	if text == "" {
+		return ""
+	}
+	label := "User"
+	if role == "assistant" {
+		label = "Assistant"
+	}
+	return label + ": " + text
 }
 
 type sessionMessageMetadata struct {
