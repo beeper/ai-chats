@@ -74,23 +74,13 @@ func (oc *AIClient) streamChatCompletions(
 		}
 		if oc.getModelCapabilitiesForMeta(meta).SupportsToolCalling && chatHasAgent {
 			if !hasBossAgent(meta) {
-				var enabledSessions []*tools.Tool
-				for _, tool := range tools.SessionTools() {
-					if oc.isToolEnabled(meta, tool.Name) {
-						enabledSessions = append(enabledSessions, tool)
-					}
-				}
+				enabledSessions := oc.filterEnabledTools(meta, tools.SessionTools())
 				if len(enabledSessions) > 0 {
 					params.Tools = append(params.Tools, bossToolsToChatTools(enabledSessions, &oc.log)...)
 				}
 			}
 			if hasBossAgent(meta) {
-				var enabledBoss []*tools.Tool
-				for _, tool := range tools.BossTools() {
-					if oc.isToolEnabled(meta, tool.Name) {
-						enabledBoss = append(enabledBoss, tool)
-					}
-				}
+				enabledBoss := oc.filterEnabledTools(meta, tools.BossTools())
 				params.Tools = append(params.Tools, bossToolsToChatTools(enabledBoss, &oc.log)...)
 			}
 			params.Tools = dedupeChatToolParams(params.Tools)

@@ -204,7 +204,6 @@ func (cc *CodexConnector) ensureHostAuthLoginForUserWithProbe(ctx context.Contex
 	}
 	meta := &UserLoginMetadata{
 		Provider:          ProviderCodex,
-		CodexHome:         "",
 		CodexAuthSource:   CodexAuthSourceHost,
 		CodexAuthMode:     strings.TrimSpace(probe.AuthMode),
 		CodexAccountEmail: strings.TrimSpace(probe.AccountEmail),
