@@ -79,31 +79,25 @@ func ApplyPatch(ctx context.Context, store *Store, input string) (*ApplyPatchRes
 	}
 
 	summary := ApplyPatchSummary{}
-	seenAdded := map[string]struct{}{}
-	seenModified := map[string]struct{}{}
-	seenDeleted := map[string]struct{}{}
-	record := func(bucket string, value string) {
+	seen := map[string]map[string]struct{}{
+		"added":    {},
+		"modified": {},
+		"deleted":  {},
+	}
+	record := func(bucket, value string) {
 		if strings.TrimSpace(value) == "" {
 			return
 		}
+		if _, ok := seen[bucket][value]; ok {
+			return
+		}
+		seen[bucket][value] = struct{}{}
 		switch bucket {
 		case "added":
-			if _, ok := seenAdded[value]; ok {
-				return
-			}
-			seenAdded[value] = struct{}{}
 			summary.Added = append(summary.Added, value)
 		case "modified":
-			if _, ok := seenModified[value]; ok {
-				return
-			}
-			seenModified[value] = struct{}{}
 			summary.Modified = append(summary.Modified, value)
 		case "deleted":
-			if _, ok := seenDeleted[value]; ok {
-				return
-			}
-			seenDeleted[value] = struct{}{}
 			summary.Deleted = append(summary.Deleted, value)
 		}
 	}

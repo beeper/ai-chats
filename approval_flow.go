@@ -474,9 +474,6 @@ func (f *ApprovalFlow[D]) dropPromptLocked(approvalID string) {
 
 // matchReaction checks whether a reaction targets a known approval prompt.
 func (f *ApprovalFlow[D]) matchReaction(targetEventID id.EventID, sender id.UserID, key string, now time.Time) ApprovalPromptReactionMatch {
-	if targetEventID == "" || key == "" {
-		return ApprovalPromptReactionMatch{}
-	}
 	targetEventID = id.EventID(strings.TrimSpace(targetEventID.String()))
 	key = normalizeReactionKey(key)
 	if targetEventID == "" || key == "" {

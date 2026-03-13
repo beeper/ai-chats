@@ -60,9 +60,9 @@ func (p *directProvider) Fetch(ctx context.Context, req Request) (*Response, err
 	maxChars := req.MaxChars
 	if maxChars <= 0 {
 		maxChars = p.cfg.MaxChars
-		if maxChars <= 0 {
-			maxChars = DefaultMaxChars
-		}
+	}
+	if maxChars <= 0 {
+		maxChars = DefaultMaxChars
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, int64(maxChars*2)))

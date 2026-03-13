@@ -40,14 +40,11 @@ func ApplyReplyToMode(payloads []ReplyPayload, policy ReplyThreadPolicy) []Reply
 			hasThreaded = true
 			out = append(out, payload)
 		case ReplyToModeOff:
-			isExplicit := payload.ReplyToTag || payload.ReplyToCurrent
-			if policy.AllowExplicitWhenModeOff && isExplicit {
-				out = append(out, payload)
-				continue
+			if !policy.AllowExplicitWhenModeOff || !(payload.ReplyToTag || payload.ReplyToCurrent) {
+				payload.ReplyToID = ""
+				payload.ReplyToCurrent = false
+				payload.ReplyToTag = false
 			}
-			payload.ReplyToID = ""
-			payload.ReplyToCurrent = false
-			payload.ReplyToTag = false
 			out = append(out, payload)
 		}
 	}

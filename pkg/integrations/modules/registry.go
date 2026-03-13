@@ -10,13 +10,6 @@ func BuiltinModules(host integrationruntime.Host) []integrationruntime.ModuleHoo
 		return nil
 	}
 	cfg := host.ConfigLookup()
-	isEnabled := func(name string) bool {
-		if cfg == nil {
-			return true
-		}
-		return cfg.ModuleEnabled(name)
-	}
-
 	out := make([]integrationruntime.ModuleHooks, 0, len(BuiltinFactories))
 	for _, factory := range BuiltinFactories {
 		if factory == nil {
@@ -26,7 +19,7 @@ func BuiltinModules(host integrationruntime.Host) []integrationruntime.ModuleHoo
 		if module == nil {
 			continue
 		}
-		if !isEnabled(module.Name()) {
+		if cfg != nil && !cfg.ModuleEnabled(module.Name()) {
 			continue
 		}
 		out = append(out, module)

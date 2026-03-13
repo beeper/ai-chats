@@ -111,19 +111,17 @@ func StripHeartbeatTokenWithMode(text string, mode StripHeartbeatMode, maxAckCha
 
 	origText, origDid := stripTokenAtEdges(trimmed, HeartbeatToken)
 	normText, normDid := stripTokenAtEdges(normalized, HeartbeatToken)
-	pickedText := ""
-	didStrip := false
-	if origDid && origText != "" {
-		pickedText = origText
-		didStrip = true
-	} else if normDid {
-		pickedText = normText
-		didStrip = true
-	}
 
-	if !didStrip {
+	var pickedText string
+	switch {
+	case origDid && origText != "":
+		pickedText = origText
+	case normDid:
+		pickedText = normText
+	default:
 		return false, trimmed, false
 	}
+
 	if pickedText == "" {
 		return true, "", true
 	}

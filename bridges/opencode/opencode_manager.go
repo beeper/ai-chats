@@ -123,16 +123,16 @@ func NewOpenCodeManager(bridge *Bridge) *OpenCodeManager {
 
 func (m *OpenCodeManager) log() *zerolog.Logger {
 	if m == nil || m.bridge == nil || m.bridge.host == nil {
-		logger := zerolog.Nop()
-		return &logger
+		l := zerolog.Nop()
+		return &l
 	}
 	base := m.bridge.host.Log()
 	if base == nil {
-		logger := zerolog.Nop()
-		return &logger
+		l := zerolog.Nop()
+		return &l
 	}
-	logger := base.With().Str("component", "opencode").Logger()
-	return &logger
+	l := base.With().Str("component", "opencode").Logger()
+	return &l
 }
 
 func (m *OpenCodeManager) getInstance(instanceID string) *openCodeInstance {
@@ -1151,24 +1151,12 @@ func (m *OpenCodeManager) handlePart(ctx context.Context, inst *openCodeInstance
 		m.handleToolPart(ctx, inst, portal, role, part)
 		return
 	}
-	state := inst.partState(part.SessionID, part.ID)
-	if state == nil {
+
+	isNew := inst.partState(part.SessionID, part.ID) == nil
+	if isNew {
 		inst.ensurePartState(part.SessionID, part.MessageID, part.ID, role, part.Type)
-		if part.Type == "file" {
-			m.emitArtifactStream(ctx, inst, portal, part)
-			return
-		}
-		if role != "user" {
-			if part.Type == "text" || part.Type == "reasoning" {
-				m.emitTextStreamEnd(ctx, inst, portal, part)
-				return
-			}
-			m.emitDataPartStream(ctx, inst, portal, part)
-			return
-		}
-		m.bridge.emitOpenCodePart(ctx, portal, inst.cfg.ID, part, role == "user")
-		return
 	}
+
 	if part.Type == "file" {
 		m.emitArtifactStream(ctx, inst, portal, part)
 		return
@@ -1181,8 +1169,14 @@ func (m *OpenCodeManager) handlePart(ctx context.Context, inst *openCodeInstance
 		m.emitDataPartStream(ctx, inst, portal, part)
 		return
 	}
+
+	// User-owned part handling.
+	if isNew {
+		m.bridge.emitOpenCodePart(ctx, portal, inst.cfg.ID, part, true)
+		return
+	}
 	if allowEdit && (part.Type == "text" || part.Type == "reasoning") {
-		m.bridge.emitOpenCodePartEdit(ctx, portal, inst.cfg.ID, part, role == "user")
+		m.bridge.emitOpenCodePartEdit(ctx, portal, inst.cfg.ID, part, true)
 	}
 	if part.Type == "text" || part.Type == "reasoning" {
 		m.emitTextStreamEnd(ctx, inst, portal, part)

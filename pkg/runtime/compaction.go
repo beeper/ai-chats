@@ -35,13 +35,7 @@ func ApplyCompaction(input CompactionInput) CompactionResult {
 		}
 	}
 
-	protected := input.ProtectedTail
-	if protected < 0 {
-		protected = 0
-	}
-	if protected > len(messages) {
-		protected = len(messages)
-	}
+	protected := max(0, min(input.ProtectedTail, len(messages)))
 	cutoff := len(messages) - protected
 
 	currentChars := originalChars
@@ -53,11 +47,14 @@ func ApplyCompaction(input CompactionInput) CompactionResult {
 		cutoff--
 	}
 
-	reason := "drop_oldest"
-	if droppedCount == 0 {
+	var reason string
+	switch {
+	case droppedCount == 0:
 		reason = "protected_tail_prevented_drop"
-	} else if currentChars > input.MaxChars {
+	case currentChars > input.MaxChars:
 		reason = "budget_exceeded_after_drop"
+	default:
+		reason = "drop_oldest"
 	}
 
 	return CompactionResult{

@@ -18,9 +18,7 @@ import (
 	"github.com/beeper/agentremote/turns"
 )
 
-const (
-	AIRoomKindAgent = "agent"
-)
+const AIRoomKindAgent = "agent"
 
 func BuildMetaTypes(portal, message, userLogin, ghost func() any) database.MetaTypes {
 	return database.MetaTypes{

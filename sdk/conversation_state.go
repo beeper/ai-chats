@@ -3,6 +3,7 @@ package sdk
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -25,12 +26,7 @@ func (s *sdkConversationState) clone() *sdkConversationState {
 		return &sdkConversationState{}
 	}
 	out := *s
-	if s.Metadata != nil {
-		out.Metadata = make(map[string]any, len(s.Metadata))
-		for k, v := range s.Metadata {
-			out.Metadata[k] = v
-		}
-	}
+	out.Metadata = maps.Clone(s.Metadata)
 	out.RoomAgents.AgentIDs = slices.Clone(s.RoomAgents.AgentIDs)
 	return &out
 }

@@ -611,7 +611,9 @@ func fillStringIfEmpty(dst *string, values ...string) {
 	}
 }
 
-var _ bridgev2.ContactListingNetworkAPI = (*OpenClawClient)(nil)
-var _ bridgev2.UserSearchingNetworkAPI = (*OpenClawClient)(nil)
-var _ bridgev2.IdentifierResolvingNetworkAPI = (*OpenClawClient)(nil)
-var _ bridgev2.GhostDMCreatingNetworkAPI = (*OpenClawClient)(nil)
+var (
+	_ bridgev2.ContactListingNetworkAPI    = (*OpenClawClient)(nil)
+	_ bridgev2.UserSearchingNetworkAPI     = (*OpenClawClient)(nil)
+	_ bridgev2.IdentifierResolvingNetworkAPI = (*OpenClawClient)(nil)
+	_ bridgev2.GhostDMCreatingNetworkAPI   = (*OpenClawClient)(nil)
+)

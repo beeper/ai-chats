@@ -24,7 +24,7 @@ func BuildFtsQuery(raw string) string {
 // BM25RankToScore normalizes an FTS5 bm25 rank into a 0-1-ish score.
 func BM25RankToScore(rank float64) float64 {
 	if math.IsNaN(rank) || math.IsInf(rank, 0) {
-		return 1.0 / 1000.0
+		rank = 999
 	}
 	if rank < 0 {
 		rank = 0

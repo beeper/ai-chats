@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -96,16 +97,8 @@ func (oc *OpenAIConnector) getLoginFlows() []bridgev2.LoginFlow {
 }
 
 func (oc *OpenAIConnector) createLogin(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
-	// Validate by checking if flowID is in available flows
 	flows := oc.getLoginFlows()
-	valid := false
-	for _, f := range flows {
-		if f.ID == flowID {
-			valid = true
-			break
-		}
-	}
-	if !valid {
+	if !slices.ContainsFunc(flows, func(f bridgev2.LoginFlow) bool { return f.ID == flowID }) {
 		return nil, fmt.Errorf("login flow %s is not available", flowID)
 	}
 	return &OpenAILogin{User: user, Connector: oc, FlowID: flowID}, nil

@@ -33,12 +33,14 @@ import (
 	"github.com/beeper/agentremote/turns"
 )
 
-var _ bridgev2.NetworkAPI = (*CodexClient)(nil)
-var _ bridgev2.BackfillingNetworkAPI = (*CodexClient)(nil)
-var _ bridgev2.DeleteChatHandlingNetworkAPI = (*CodexClient)(nil)
-var _ bridgev2.IdentifierResolvingNetworkAPI = (*CodexClient)(nil)
-var _ bridgev2.ContactListingNetworkAPI = (*CodexClient)(nil)
-var _ bridgev2.ReactionHandlingNetworkAPI = (*CodexClient)(nil)
+var (
+	_ bridgev2.NetworkAPI                    = (*CodexClient)(nil)
+	_ bridgev2.BackfillingNetworkAPI         = (*CodexClient)(nil)
+	_ bridgev2.DeleteChatHandlingNetworkAPI  = (*CodexClient)(nil)
+	_ bridgev2.IdentifierResolvingNetworkAPI = (*CodexClient)(nil)
+	_ bridgev2.ContactListingNetworkAPI      = (*CodexClient)(nil)
+	_ bridgev2.ReactionHandlingNetworkAPI    = (*CodexClient)(nil)
+)
 
 const codexGhostID = networkid.UserID("codex")
 

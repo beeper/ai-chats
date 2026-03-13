@@ -2,6 +2,7 @@ package sdk
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/beeper/agentremote"
 	"go.mau.fi/util/ptr"
@@ -24,19 +25,22 @@ func newLoginHandle(login *bridgev2.UserLogin, runtime conversationRuntime) *Log
 }
 
 // Conversation returns a Conversation for the given portal ID.
-func (l *LoginHandle) Conversation(ctx context.Context, portalID string) *Conversation {
+func (l *LoginHandle) Conversation(ctx context.Context, portalID string) (*Conversation, error) {
 	if l.login == nil || l.login.Bridge == nil {
-		return newConversation(ctx, nil, l.login, bridgev2.EventSender{}, l.runtime)
+		return nil, fmt.Errorf("login or bridge unavailable")
 	}
 	portalKey := networkid.PortalKey{
 		ID:       networkid.PortalID(portalID),
 		Receiver: l.login.ID,
 	}
 	portal, err := l.login.Bridge.GetExistingPortalByKey(ctx, portalKey)
-	if err != nil || portal == nil {
-		return newConversation(ctx, nil, l.login, bridgev2.EventSender{}, l.runtime)
+	if err != nil {
+		return nil, fmt.Errorf("portal lookup failed: %w", err)
 	}
-	return newConversation(ctx, portal, l.login, bridgev2.EventSender{}, l.runtime)
+	if portal == nil {
+		return nil, fmt.Errorf("portal %q not found", portalID)
+	}
+	return newConversation(ctx, portal, l.login, bridgev2.EventSender{}, l.runtime), nil
 }
 
 // ConversationByPortal returns a Conversation for the given bridgev2.Portal.

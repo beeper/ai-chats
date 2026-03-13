@@ -490,20 +490,23 @@ func (oc *OpenClawClient) displayNameForPortal(meta *PortalMetadata) string {
 	if meta == nil {
 		return "OpenClaw"
 	}
-	if strings.TrimSpace(meta.OpenClawDMTargetAgentName) != "" {
-		return strings.TrimSpace(meta.OpenClawDMTargetAgentName)
+	if trimmed := strings.TrimSpace(meta.OpenClawDMTargetAgentName); trimmed != "" {
+		return trimmed
 	}
-	if sourceLabel := openClawSourceLabel(meta.OpenClawSpace, meta.OpenClawGroupChannel, meta.OpenClawSubject); sourceLabel != "" {
-		for _, value := range []string{meta.OpenClawDerivedTitle, meta.OpenClawDisplayName, meta.OpenClawSessionLabel, sourceLabel, meta.OpenClawSubject, meta.LastTo, meta.OpenClawChannel, meta.OpenClawSessionKey} {
-			if strings.TrimSpace(value) != "" {
-				return strings.TrimSpace(value)
-			}
-		}
-		return "OpenClaw"
+	sourceLabel := openClawSourceLabel(meta.OpenClawSpace, meta.OpenClawGroupChannel, meta.OpenClawSubject)
+	candidates := []string{
+		meta.OpenClawDerivedTitle,
+		meta.OpenClawDisplayName,
+		meta.OpenClawSessionLabel,
+		sourceLabel,
+		meta.OpenClawSubject,
+		meta.LastTo,
+		meta.OpenClawChannel,
+		meta.OpenClawSessionKey,
 	}
-	for _, value := range []string{meta.OpenClawDerivedTitle, meta.OpenClawDisplayName, meta.OpenClawSessionLabel, meta.OpenClawSubject, meta.LastTo, meta.OpenClawChannel, meta.OpenClawSessionKey} {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
+	for _, value := range candidates {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
 		}
 	}
 	return "OpenClaw"
@@ -689,8 +692,7 @@ func (oc *OpenClawClient) displayNameForAgent(agentID string) string {
 }
 
 func (oc *OpenClawClient) formatAgentDisplayName(meta *GhostMetadata, agentID string) string {
-	name := ""
-	emoji := ""
+	var name, emoji string
 	if meta != nil {
 		name = strings.TrimSpace(meta.OpenClawAgentName)
 		emoji = strings.TrimSpace(meta.OpenClawAgentEmoji)

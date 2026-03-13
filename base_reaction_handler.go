@@ -37,10 +37,11 @@ func (h BaseReactionHandler) HandleMatrixReaction(ctx context.Context, msg *brid
 	}
 	// Best-effort persistence guard for reaction.sender_id -> ghost.id FK.
 	if err := EnsureSyntheticReactionSenderGhost(ctx, login, msg.Event.Sender); err != nil {
-		logger := LoggerFromContext(ctx, nil)
+		var fallback *zerolog.Logger
 		if login != nil && login.Bridge != nil {
-			logger = LoggerFromContext(ctx, &login.Bridge.Log)
+			fallback = &login.Bridge.Log
 		}
+		logger := LoggerFromContext(ctx, fallback)
 		if logger == nil {
 			nop := zerolog.Nop()
 			logger = &nop
