@@ -587,19 +587,19 @@ func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, met
 	turn := conv.StartTurn(ctx, codexSDKAgent(), source)
 	stream := turn.Stream()
 	approvals := turn.Approvals()
-	stream.SetTransport(bridgesdk.StreamTransportFunc(func(turnID string, seq int, content map[string]any, txnID string) bool {
+	stream.SetTransport(func(turnID string, seq int, content map[string]any, txnID string) bool {
 		if cc.streamEventHook == nil {
 			return false
 		}
 		cc.streamEventHook(turnID, seq, content, txnID)
 		return true
-	}))
-	approvals.SetHandler(bridgesdk.ApprovalHandlerFunc(func(callCtx context.Context, sdkTurn *bridgesdk.Turn, req bridgesdk.ApprovalRequest) bridgesdk.ApprovalHandle {
+	})
+	approvals.SetHandler(func(callCtx context.Context, sdkTurn *bridgesdk.Turn, req bridgesdk.ApprovalRequest) bridgesdk.ApprovalHandle {
 		return cc.requestSDKApproval(callCtx, portal, state, sdkTurn, req)
-	}))
-	turn.SetFinalMetadataProvider(bridgesdk.FinalMetadataProviderFunc(func(sdkTurn *bridgesdk.Turn, finishReason string) any {
+	})
+	turn.SetFinalMetadataBuilder(func(sdkTurn *bridgesdk.Turn, finishReason string) any {
 		return cc.buildSDKFinalMetadata(sdkTurn, state, model, finishReason)
-	}))
+	})
 	state.turn = turn
 	state.turnID = turn.ID()
 	state.agentID = string(codexGhostID)
