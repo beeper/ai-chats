@@ -1,0 +1,49 @@
+version: 2
+
+builds:
+  - id: agentremote
+    main: ./cmd/agentremote
+    binary: agentremote
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.Tag={{.Tag}}
+      - -X main.Commit={{.Commit}}
+      - -X main.BuildTime={{.Date}}
+
+archives:
+  - id: agentremote
+    builds:
+      - agentremote
+    format: tar.gz
+    name_template: "agentremote_{{ .Os }}_{{ .Arch }}"
+
+brews:
+  - name: agentremote
+    ids:
+      - agentremote
+    repository:
+      owner: beeper
+      name: homebrew-tap
+    homepage: https://github.com/beeper/agentremote
+    description: Unified AI bridge manager for Beeper
+    license: Apache-2.0
+    install: |
+      bin.install "agentremote"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
