@@ -346,10 +346,10 @@ func (t *Turn) ensureStarted() {
 	baseMeta := map[string]any{
 		"turnId": t.turnID,
 	}
-	if agent := t.resolveAgent(t.turnCtx); agent != nil {
-		baseMeta["agentId"] = agent.ID
-		if agent.ModelKey != "" {
-			baseMeta["modelKey"] = agent.ModelKey
+	if t.agent != nil {
+		baseMeta["agentId"] = t.agent.ID
+		if t.agent.ModelKey != "" {
+			baseMeta["modelKey"] = t.agent.ModelKey
 		}
 	}
 	t.emitter.EmitUIStart(t.turnCtx, t.conv.portal, baseMeta)

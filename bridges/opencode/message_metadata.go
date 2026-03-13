@@ -80,10 +80,6 @@ func buildMessageMetadataFromParams(p MessageMetadataParams) *MessageMetadata {
 	}
 }
 
-type ToolCallMetadata = agentremote.ToolCallMetadata
-
-type GeneratedFileRef = agentremote.GeneratedFileRef
-
 var _ database.MetaMerger = (*MessageMetadata)(nil)
 
 func (mm *MessageMetadata) CopyFrom(other any) {

@@ -360,7 +360,7 @@ func BuildSystemPrompt(params SystemPromptParams) string {
 		runtimeCapabilitiesLower[strings.ToLower(cap)] = true
 	}
 	inlineButtonsEnabled := runtimeCapabilitiesLower["inlinebuttons"]
-	messageChannelOptions := strings.Join(listDeliverableMessageChannels(), "|")
+	messageChannelOptions := "matrix"
 	isMinimal := promptMode == PromptModeMinimal
 
 	skillsSection := buildSkillsSection(skillsPrompt, isMinimal, readToolName)
@@ -657,17 +657,7 @@ func buildRuntimeLine(
 }
 
 func joinNonEmptyLines(lines []string) string {
-	filtered := make([]string, 0, len(lines))
-	for _, line := range lines {
-		if line != "" {
-			filtered = append(filtered, line)
-		}
-	}
-	return strings.Join(filtered, "\n")
-}
-
-func listDeliverableMessageChannels() []string {
-	return []string{"matrix"}
+	return strings.Join(filterNonEmpty(lines), "\n")
 }
 
 // filterNonEmpty returns a new slice containing only the non-empty trimmed values.

@@ -324,6 +324,37 @@ func resolveModelAPIForManifest(modelID string) string {
 	return "openai-completions"
 }
 
+// resolvedModel holds the resolved display name, capabilities, and API label
+// for a single model entry. Both Go and JSON generators use this to avoid
+// duplicating the resolution logic.
+type resolvedModel struct {
+	ID          string
+	DisplayName string
+	API         string
+	Caps        ModelCapabilities
+}
+
+// resolveAllModels iterates the model config, resolves display names and
+// capabilities from the API data, and returns them in sorted order.
+func resolveAllModels(apiModels map[string]OpenRouterModel) []resolvedModel {
+	modelIDs := slices.Sorted(maps.Keys(modelConfig.Models))
+	resolved := make([]resolvedModel, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		displayName := modelConfig.Models[modelID]
+		apiModel, hasAPIData := apiModels[modelID]
+		if displayName == "" && hasAPIData {
+			displayName = apiModel.Name
+		}
+		resolved = append(resolved, resolvedModel{
+			ID:          modelID,
+			DisplayName: displayName,
+			API:         resolveModelAPIForManifest(modelID),
+			Caps:        detectCapabilities(modelID, apiModel, hasAPIData),
+		})
+	}
+	return resolved
+}
+
 func generateGoFile(apiModels map[string]OpenRouterModel, outputPath string) error {
 	var buf strings.Builder
 
@@ -341,19 +372,7 @@ var ModelManifest = struct {
 	Models: map[string]ModelInfo{
 `)
 
-	// Get sorted model IDs for deterministic output
-	modelIDs := slices.Sorted(maps.Keys(modelConfig.Models))
-
-	for _, modelID := range modelIDs {
-		displayName := modelConfig.Models[modelID]
-		apiModel, hasAPIData := apiModels[modelID]
-		// Fallback to API name if display name override is empty
-		if displayName == "" && hasAPIData {
-			displayName = apiModel.Name
-		}
-		caps := detectCapabilities(modelID, apiModel, hasAPIData)
-		apiLabel := resolveModelAPIForManifest(modelID)
-
+	for _, m := range resolveAllModels(apiModels) {
 		buf.WriteString(fmt.Sprintf(`		%q: {
 			ID:                  %q,
 			Name:                %q,
@@ -372,21 +391,11 @@ var ModelManifest = struct {
 			AvailableTools:      %s,
 		},
 `,
-			modelID,
-			modelID,
-			displayName,
-			apiLabel,
-			caps.Vision,
-			caps.ToolCalling,
-			caps.Reasoning,
-			caps.WebSearch,
-			caps.ImageGen,
-			caps.Audio,
-			caps.Video,
-			caps.PDF,
-			caps.ContextWindow,
-			caps.MaxOutputTokens,
-			availableToolsGo(caps),
+			m.ID, m.ID, m.DisplayName, m.API,
+			m.Caps.Vision, m.Caps.ToolCalling, m.Caps.Reasoning, m.Caps.WebSearch,
+			m.Caps.ImageGen, m.Caps.Audio, m.Caps.Video, m.Caps.PDF,
+			m.Caps.ContextWindow, m.Caps.MaxOutputTokens,
+			availableToolsGo(m.Caps),
 		))
 	}
 
@@ -394,12 +403,9 @@ var ModelManifest = struct {
 	Aliases: map[string]string{
 `)
 
-	// Add aliases
 	aliasKeys := slices.Sorted(maps.Keys(modelConfig.Aliases))
 	for _, alias := range aliasKeys {
-		target := modelConfig.Aliases[alias]
-		buf.WriteString(fmt.Sprintf(`		%q: %q,
-`, alias, target))
+		fmt.Fprintf(&buf, "\t\t%q: %q,\n", alias, modelConfig.Aliases[alias])
 	}
 
 	buf.WriteString(`	},
@@ -413,7 +419,7 @@ var ModelManifest = struct {
 	return os.WriteFile(outputPath, formatted, 0644)
 }
 
-// JSONModelInfo mirrors the connector.ModelInfo struct for JSON output
+// JSONModelInfo mirrors the connector.ModelInfo struct for JSON output.
 type JSONModelInfo struct {
 	ID                  string   `json:"id"`
 	Name                string   `json:"name"`
@@ -433,56 +439,39 @@ type JSONModelInfo struct {
 	AvailableTools      []string `json:"available_tools,omitempty"`
 }
 
-// JSONManifest is the full manifest structure for JSON output
+// JSONManifest is the full manifest structure for JSON output.
 type JSONManifest struct {
 	Models  []JSONModelInfo   `json:"models"`
 	Aliases map[string]string `json:"aliases"`
 }
 
 func generateJSONFile(apiModels map[string]OpenRouterModel, outputPath string) error {
-	var models []JSONModelInfo
-
-	// Add OpenRouter models
-	modelIDs := slices.Sorted(maps.Keys(modelConfig.Models))
-	for _, modelID := range modelIDs {
-		displayName := modelConfig.Models[modelID]
-		apiModel, hasAPIData := apiModels[modelID]
-		// Fallback to API name if display name override is empty
-		if displayName == "" && hasAPIData {
-			displayName = apiModel.Name
-		}
-		caps := detectCapabilities(modelID, apiModel, hasAPIData)
-		apiLabel := resolveModelAPIForManifest(modelID)
-
+	resolved := resolveAllModels(apiModels)
+	models := make([]JSONModelInfo, 0, len(resolved))
+	for _, m := range resolved {
 		models = append(models, JSONModelInfo{
-			ID:                  modelID,
-			Name:                displayName,
+			ID:                  m.ID,
+			Name:                m.DisplayName,
 			Provider:            "openrouter",
-			API:                 apiLabel,
-			SupportsVision:      caps.Vision,
-			SupportsToolCalling: caps.ToolCalling,
-			SupportsReasoning:   caps.Reasoning,
-			SupportsWebSearch:   caps.WebSearch,
-			SupportsImageGen:    caps.ImageGen,
-			SupportsAudio:       caps.Audio,
-			SupportsVideo:       caps.Video,
-			SupportsPDF:         caps.PDF,
-			ContextWindow:       caps.ContextWindow,
-			MaxOutputTokens:     caps.MaxOutputTokens,
-			AvailableTools:      availableToolsJSON(caps),
+			API:                 m.API,
+			SupportsVision:      m.Caps.Vision,
+			SupportsToolCalling: m.Caps.ToolCalling,
+			SupportsReasoning:   m.Caps.Reasoning,
+			SupportsWebSearch:   m.Caps.WebSearch,
+			SupportsImageGen:    m.Caps.ImageGen,
+			SupportsAudio:       m.Caps.Audio,
+			SupportsVideo:       m.Caps.Video,
+			SupportsPDF:         m.Caps.PDF,
+			ContextWindow:       m.Caps.ContextWindow,
+			MaxOutputTokens:     m.Caps.MaxOutputTokens,
+			AvailableTools:      availableToolsJSON(m.Caps),
 		})
 	}
 
-	manifest := JSONManifest{
-		Models:  models,
-		Aliases: modelConfig.Aliases,
-	}
-
-	data, err := json.MarshalIndent(manifest, "", "  ")
+	data, err := json.MarshalIndent(JSONManifest{Models: models, Aliases: modelConfig.Aliases}, "", "  ")
 	if err != nil {
 		return err
 	}
-	data = append(data, '\n') // Add trailing newline
-
+	data = append(data, '\n')
 	return os.WriteFile(outputPath, data, 0644)
 }

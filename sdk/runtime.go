@@ -38,10 +38,14 @@ func (r *staticRuntime) approvalFlowValue() *agentremote.ApprovalFlow[*pendingSD
 }
 
 func (r *staticRuntime) providerIdentity() ProviderIdentity {
-	if r == nil || r.cfg == nil {
+	return resolveProviderIdentity(r.cfg)
+}
+
+func resolveProviderIdentity(cfg *Config) ProviderIdentity {
+	if cfg == nil {
 		return defaultProviderIdentity()
 	}
-	return normalizedProviderIdentity(r.cfg.ProviderIdentity)
+	return normalizedProviderIdentity(cfg.ProviderIdentity)
 }
 
 func defaultProviderIdentity() ProviderIdentity {

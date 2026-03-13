@@ -128,16 +128,6 @@ func pickBool(override, fallback *bool, defaultVal bool) bool {
 	return defaultVal
 }
 
-func pickString(override, fallback, defaultVal string) string {
-	if strings.TrimSpace(override) != "" {
-		return override
-	}
-	if strings.TrimSpace(fallback) != "" {
-		return fallback
-	}
-	return defaultVal
-}
-
 func pickInt(override, fallback, defaultVal int) int {
 	if override != 0 {
 		return override

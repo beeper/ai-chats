@@ -2070,10 +2070,6 @@ func openClawHistoryFallbackText(uiParts []map[string]any) string {
 	return ""
 }
 
-func isOpenClawAttachmentBlock(block map[string]any) bool {
-	return openclawconv.IsAttachmentBlock(block)
-}
-
 func resolveOpenClawAgentID(meta *PortalMetadata, sessionKey string, payload map[string]any) string {
 	for _, key := range []string{"agentId", "agent_id", "agent"} {
 		if payload != nil {

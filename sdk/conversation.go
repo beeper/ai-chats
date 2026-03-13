@@ -66,10 +66,11 @@ func (c *Conversation) state() *sdkConversationState {
 	if c == nil {
 		return &sdkConversationState{}
 	}
+	var store *conversationStateStore
 	if c.runtime != nil {
-		return loadConversationState(c.portal, c.runtime.conversationStore())
+		store = c.runtime.conversationStore()
 	}
-	return loadConversationState(c.portal, nil)
+	return loadConversationState(c.portal, store)
 }
 
 func (c *Conversation) saveState(ctx context.Context, state *sdkConversationState) error {
@@ -156,20 +157,6 @@ func (c *Conversation) currentRoomFeatures(ctx context.Context) *RoomFeatures {
 	return computeRoomFeaturesForAgents(agents)
 }
 
-func (c *Conversation) conversationStateSpec() ConversationSpec {
-	state := c.state()
-	return ConversationSpec{
-		PortalID:             c.ID,
-		Kind:                 state.Kind,
-		Visibility:           state.Visibility,
-		ParentConversationID: state.ParentConversationID,
-		ParentEventID:        state.ParentEventID,
-		Title:                c.Title,
-		ArchiveOnCompletion:  state.ArchiveOnCompletion,
-		Metadata:             maps.Clone(state.Metadata),
-	}
-}
-
 func (c *Conversation) aiRoomKind() string {
 	if c == nil {
 		return agentremote.AIRoomKindAgent
@@ -188,10 +175,6 @@ func (c *Conversation) Send(ctx context.Context, text string) error {
 
 // SendHTML sends a message with both plaintext and HTML body.
 func (c *Conversation) SendHTML(ctx context.Context, text, html string) error {
-	intent, err := c.getIntent(ctx)
-	if err != nil {
-		return err
-	}
 	content := &event.MessageEventContent{
 		MsgType: event.MsgText,
 		Body:    text,
@@ -200,9 +183,7 @@ func (c *Conversation) SendHTML(ctx context.Context, text, html string) error {
 		content.Format = event.FormatHTML
 		content.FormattedBody = html
 	}
-	wrappedContent := &event.Content{Parsed: content}
-	_, err = intent.SendMessage(ctx, c.portal.MXID, event.EventMessage, wrappedContent, nil)
-	return err
+	return c.sendMessageContent(ctx, content)
 }
 
 // SendMedia sends a media message.
@@ -244,16 +225,18 @@ func (c *Conversation) SendMedia(ctx context.Context, data []byte, mediaType, fi
 
 // SendNotice sends a notice message.
 func (c *Conversation) SendNotice(ctx context.Context, text string) error {
+	return c.sendMessageContent(ctx, &event.MessageEventContent{
+		MsgType: event.MsgNotice,
+		Body:    text,
+	})
+}
+
+func (c *Conversation) sendMessageContent(ctx context.Context, content *event.MessageEventContent) error {
 	intent, err := c.getIntent(ctx)
 	if err != nil {
 		return err
 	}
-	content := &event.MessageEventContent{
-		MsgType: event.MsgNotice,
-		Body:    text,
-	}
-	wrappedContent := &event.Content{Parsed: content}
-	_, err = intent.SendMessage(ctx, c.portal.MXID, event.EventMessage, wrappedContent, nil)
+	_, err = intent.SendMessage(ctx, c.portal.MXID, event.EventMessage, &event.Content{Parsed: content}, nil)
 	return err
 }
 
@@ -290,7 +273,17 @@ func (c *Conversation) LoginHandle() *LoginHandle {
 
 // Spec returns the current persisted conversation spec snapshot.
 func (c *Conversation) Spec() ConversationSpec {
-	return c.conversationStateSpec()
+	state := c.state()
+	return ConversationSpec{
+		PortalID:             c.ID,
+		Kind:                 state.Kind,
+		Visibility:           state.Visibility,
+		ParentConversationID: state.ParentConversationID,
+		ParentEventID:        state.ParentEventID,
+		Title:                c.Title,
+		ArchiveOnCompletion:  state.ArchiveOnCompletion,
+		Metadata:             maps.Clone(state.Metadata),
+	}
 }
 
 // EnsureRoomAgent ensures the agent is part of the room agent set.

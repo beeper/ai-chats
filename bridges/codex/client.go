@@ -2017,7 +2017,7 @@ func (cc *CodexClient) sendFinalAssistantTurn(ctx context.Context, portal *bridg
 
 	sender := cc.senderForPortal()
 	editTS := codexStreamEventTimestamp(state, true)
-	cc.UserLogin.QueueRemoteEvent(&CodexRemoteEdit{
+	cc.UserLogin.QueueRemoteEvent(&agentremote.RemoteEdit{
 		Portal:        portal.PortalKey,
 		Sender:        sender,
 		TargetMessage: state.networkMessageID,

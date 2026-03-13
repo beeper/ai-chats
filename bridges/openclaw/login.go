@@ -286,15 +286,12 @@ func (ol *OpenClawLogin) completeLogin(pending *openClawPendingLogin, deviceToke
 		return nil, fmt.Errorf("failed to create login: %w", err)
 	}
 	log.Debug().Str("login_id", string(login.ID)).Msg("Created OpenClaw user login")
-	log.Debug().Str("login_id", string(login.ID)).Msg("Loaded OpenClaw user login client")
 	if login.Client != nil {
-		log.Debug().Str("login_id", string(login.ID)).Msg("Starting OpenClaw user login connect loop")
 		go login.Client.Connect(login.Log.WithContext(ol.BackgroundProcessContext()))
 	}
 	ol.pending = nil
 	ol.step = ""
 	ol.waitUntil = time.Time{}
-	log.Debug().Str("login_id", string(login.ID)).Msg("Returning completed OpenClaw login step")
 	return &bridgev2.LoginStep{
 		Type:   bridgev2.LoginStepTypeComplete,
 		StepID: "io.ai-bridge.openclaw.complete",

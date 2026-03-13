@@ -53,10 +53,7 @@ type sdkClient struct {
 }
 
 func newSDKClient(login *bridgev2.UserLogin, cfg *Config) *sdkClient {
-	identity := defaultProviderIdentity()
-	if cfg != nil {
-		identity = normalizedProviderIdentity(cfg.ProviderIdentity)
-	}
+	identity := resolveProviderIdentity(cfg)
 	c := &sdkClient{
 		cfg:               cfg,
 		userLogin:         login,
@@ -111,10 +108,7 @@ func (c *sdkClient) approvalFlowValue() *agentremote.ApprovalFlow[*pendingSDKApp
 }
 
 func (c *sdkClient) providerIdentity() ProviderIdentity {
-	if c == nil || c.cfg == nil {
-		return defaultProviderIdentity()
-	}
-	return normalizedProviderIdentity(c.cfg.ProviderIdentity)
+	return resolveProviderIdentity(c.cfg)
 }
 
 func (c *sdkClient) getSession() any {

@@ -433,15 +433,6 @@ func (i *Integration) readMemoryPromptSection(ctx context.Context, scope iruntim
 	return fmt.Sprintf("## %s\n%s", path, text)
 }
 
-func (i *Integration) resolveMemorySearchConfig(agentID string) *ResolvedConfig {
-	rt := i.buildRuntime()
-	if rt == nil {
-		return nil
-	}
-	resolved, _ := rt.ResolveConfig(agentID)
-	return resolved
-}
-
 func (i *Integration) getManager(agentID string) (Manager, string) {
 	rt := i.buildRuntime()
 	if rt == nil {
