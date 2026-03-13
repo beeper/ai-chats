@@ -590,7 +590,7 @@ func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, met
 		return true
 	})
 	turn.SetApprovalRequester(func(callCtx context.Context, sdkTurn *bridgesdk.Turn, req bridgesdk.ApprovalRequest) bridgesdk.ApprovalHandle {
-		return cc.requestSDKApproval(callCtx, portal, state, sdkTurn, "", req)
+		return cc.requestSDKApproval(callCtx, portal, state, sdkTurn, req)
 	})
 	turn.SetFinalMetadataBuilder(func(sdkTurn *bridgesdk.Turn, finishReason string) any {
 		return cc.buildSDKFinalMetadata(sdkTurn, state, model, finishReason)
@@ -2180,12 +2180,12 @@ func (cc *CodexClient) requestSDKApproval(
 	portal *bridgev2.Portal,
 	state *streamingState,
 	turn *bridgesdk.Turn,
-	approvalID string,
 	req bridgesdk.ApprovalRequest,
 ) bridgesdk.ApprovalHandle {
 	if cc == nil || portal == nil {
 		return &codexSDKApprovalHandle{toolCallID: req.ToolCallID}
 	}
+	approvalID := strings.TrimSpace(req.ApprovalID)
 	if strings.TrimSpace(approvalID) == "" {
 		approvalID = fmt.Sprintf("codex-%d", time.Now().UnixNano())
 	}
@@ -2291,7 +2291,8 @@ func (cc *CodexClient) handleApprovalRequest(
 
 	inputMap, presentation := extractInput(req.Params)
 	cc.ensureUIToolInputStart(ctx, active.portal, active.state, toolCallID, toolName, true, inputMap)
-	handle := cc.requestSDKApproval(ctx, active.portal, active.state, active.state.turn, approvalID, bridgesdk.ApprovalRequest{
+	handle := cc.requestSDKApproval(ctx, active.portal, active.state, active.state.turn, bridgesdk.ApprovalRequest{
+		ApprovalID:   approvalID,
 		ToolCallID:   toolCallID,
 		ToolName:     toolName,
 		TTL:          10 * time.Minute,

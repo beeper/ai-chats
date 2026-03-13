@@ -138,13 +138,14 @@ func TestTurnRequestApprovalUsesCustomRequester(t *testing.T) {
 		if gotTurn != turn {
 			t.Fatalf("expected requester turn to match")
 		}
-		if req.ToolCallID != "tool-1" || req.ToolName != "search" {
+		if req.ApprovalID != "approval-1" || req.ToolCallID != "tool-1" || req.ToolName != "search" {
 			t.Fatalf("unexpected approval request: %#v", req)
 		}
 		return &testApprovalHandle{id: "approval-1", toolCallID: req.ToolCallID}
 	})
 
 	handle := turn.RequestApproval(ApprovalRequest{
+		ApprovalID: "approval-1",
 		ToolCallID: "tool-1",
 		ToolName:   "search",
 	})

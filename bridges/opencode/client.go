@@ -14,6 +14,7 @@ import (
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 var _ bridgev2.NetworkAPI = (*OpenCodeClient)(nil)
@@ -39,6 +40,7 @@ type openCodeStreamState struct {
 	portal               *bridgev2.Portal
 	turnID               string
 	agentID              string
+	turn                 *bridgesdk.Turn
 	initialEventID       id.EventID
 	networkMessageID     networkid.MessageID
 	sequenceNum          int

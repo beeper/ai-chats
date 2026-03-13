@@ -78,7 +78,11 @@ func (oc *OpenCodeClient) currentCanonicalUIMessage(state *openCodeStreamState) 
 	if state == nil {
 		return nil
 	}
-	uiMessage := streamui.SnapshotCanonicalUIMessage(&state.ui)
+	uiState := &state.ui
+	if state.turn != nil && state.turn.UIState() != nil {
+		uiState = state.turn.UIState()
+	}
+	uiMessage := streamui.SnapshotCanonicalUIMessage(uiState)
 	metadata := opencodeUIMessageMetadata(state)
 	if len(uiMessage) == 0 {
 		return msgconv.BuildUIMessage(msgconv.UIMessageParams{
@@ -174,6 +178,19 @@ func (oc *OpenCodeClient) buildStreamDBMetadata(state *openCodeStreamState) *Mes
 		Cost:            state.cost,
 		TotalTokens:     state.totalTokens,
 	}
+}
+
+func (oc *OpenCodeClient) buildSDKFinalMetadata(state *openCodeStreamState, finishReason string) any {
+	if state == nil {
+		return nil
+	}
+	if strings.TrimSpace(finishReason) != "" {
+		state.finishReason = strings.TrimSpace(finishReason)
+	}
+	if state.completedAtMs == 0 {
+		state.completedAtMs = time.Now().UnixMilli()
+	}
+	return oc.buildStreamDBMetadata(state)
 }
 
 func (oc *OpenCodeClient) persistStreamDBMetadata(ctx context.Context, portal *bridgev2.Portal, state *openCodeStreamState, meta *MessageMetadata) {

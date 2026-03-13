@@ -105,6 +105,7 @@ type ToolApprovalResponse struct {
 
 // ApprovalRequest describes a single approval request within a turn.
 type ApprovalRequest struct {
+	ApprovalID   string
 	ToolCallID   string
 	ToolName     string
 	TTL          time.Duration

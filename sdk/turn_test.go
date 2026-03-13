@@ -131,3 +131,35 @@ func TestTurnRequestApprovalWaitsForResolvedDecision(t *testing.T) {
 		t.Fatalf("unexpected approval reason %q", resp.Reason)
 	}
 }
+
+func TestTurnRequestApprovalUsesProvidedApprovalID(t *testing.T) {
+	login := &bridgev2.UserLogin{
+		UserLogin: &database.UserLogin{
+			UserMXID: "@owner:test",
+		},
+	}
+	runtime := &staticRuntime{
+		login: login,
+		approval: agentremote.NewApprovalFlow(agentremote.ApprovalFlowConfig[*pendingSDKApprovalData]{
+			Login: func() *bridgev2.UserLogin { return nil },
+		}),
+	}
+	portal := &bridgev2.Portal{
+		Portal: &database.Portal{
+			MXID: "!room:test",
+		},
+	}
+	turn := newTurn(context.Background(), newConversation(context.Background(), portal, login, bridgev2.EventSender{}, runtime), nil, nil)
+
+	handle := turn.RequestApproval(ApprovalRequest{
+		ApprovalID: "provider-approval-123",
+		ToolCallID: "tool-call-1",
+		ToolName:   "shell",
+	})
+	if handle.ID() != "provider-approval-123" {
+		t.Fatalf("expected provided approval id, got %q", handle.ID())
+	}
+	if runtime.approval.Get("provider-approval-123") == nil {
+		t.Fatal("expected approval to be registered under the provided id")
+	}
+}

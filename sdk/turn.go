@@ -356,6 +356,34 @@ func (t *Turn) WriteReasoning(text string) {
 	t.emitter.EmitUIReasoningDelta(t.turnCtx, t.conv.portal, text)
 }
 
+// FinishText closes the current text stream part, if one is open.
+func (t *Turn) FinishText() {
+	t.ensureStarted()
+	if t.state == nil || t.state.UITextID == "" {
+		return
+	}
+	partID := t.state.UITextID
+	t.emitter.Emit(t.turnCtx, t.conv.portal, map[string]any{
+		"type": "text-end",
+		"id":   partID,
+	})
+	t.state.UITextID = ""
+}
+
+// FinishReasoning closes the current reasoning stream part, if one is open.
+func (t *Turn) FinishReasoning() {
+	t.ensureStarted()
+	if t.state == nil || t.state.UIReasoningID == "" {
+		return
+	}
+	partID := t.state.UIReasoningID
+	t.emitter.Emit(t.turnCtx, t.conv.portal, map[string]any{
+		"type": "reasoning-end",
+		"id":   partID,
+	})
+	t.state.UIReasoningID = ""
+}
+
 // ToolStart begins a tool call.
 func (t *Turn) ToolStart(toolName, toolCallID string, providerExecuted bool) {
 	t.ensureStarted()
@@ -402,7 +430,10 @@ func (t *Turn) RequestApproval(req ApprovalRequest) ApprovalHandle {
 		return &sdkApprovalHandle{turn: t, toolCallID: req.ToolCallID}
 	}
 	approvalFlow := t.conv.runtime.approvalFlowValue()
-	approvalID := "sdk-" + uuid.NewString()
+	approvalID := strings.TrimSpace(req.ApprovalID)
+	if approvalID == "" {
+		approvalID = "sdk-" + uuid.NewString()
+	}
 	ttl := req.TTL
 	if ttl <= 0 {
 		ttl = agentremote.DefaultApprovalExpiry
@@ -636,6 +667,19 @@ func (t *Turn) Abort(reason string) {
 
 // ID returns the turn's unique identifier.
 func (t *Turn) ID() string { return t.turnID }
+
+// SetID overrides the turn identifier before the turn starts. Provider bridges
+// can use this to preserve upstream turn/message IDs in SDK-managed streams.
+func (t *Turn) SetID(turnID string) {
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" || t.started {
+		return
+	}
+	t.turnID = turnID
+	if t.state != nil {
+		t.state.TurnID = turnID
+	}
+}
 
 // Context returns the turn-scoped context.
 func (t *Turn) Context() context.Context { return t.turnCtx }
