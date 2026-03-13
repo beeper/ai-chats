@@ -117,6 +117,17 @@ func (p *exaProvider) Search(ctx context.Context, req Request) (*Response, error
 	}, nil
 }
 
+func descriptionFromEntry(highlights []string, text string) string {
+	if len(highlights) > 0 {
+		return strings.TrimSpace(highlights[0])
+	}
+	trimmed := strings.TrimSpace(text)
+	if len(trimmed) > 240 {
+		return trimmed[:240] + "..."
+	}
+	return trimmed
+}
+
 func resolveEndpoint(baseURL, path string) string {
 	base := stringutil.NormalizeBaseURL(baseURL)
 	if base == "" {

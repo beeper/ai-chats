@@ -558,7 +558,7 @@ func (t *Turn) SendStatus(status event.MessageStatus, message string) {
 
 func (t *Turn) finalMetadata(finishReason string) agentremote.BaseMessageMetadata {
 	uiMessage := streamui.SnapshotCanonicalUIMessage(t.state)
-	agentID := ""
+	var agentID string
 	if t.agent != nil {
 		agentID = t.agent.ID
 	}
