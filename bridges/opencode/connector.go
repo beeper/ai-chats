@@ -2,6 +2,7 @@ package opencode
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"sync"
 
@@ -111,7 +112,7 @@ func NewConnector() *OpenCodeConnector {
 			if !oc.openCodeEnabled() {
 				return nil, bridgev2.ErrNotLoggedIn
 			}
-			if !containsOpenCodeLoginFlow(loginFlows, flowID) {
+			if !slices.ContainsFunc(loginFlows, func(f bridgev2.LoginFlow) bool { return f.ID == flowID }) {
 				return nil, bridgev2.ErrInvalidLoginFlowID
 			}
 			return &OpenCodeLogin{User: user, Connector: oc, FlowID: flowID}, nil
@@ -123,13 +124,4 @@ func NewConnector() *OpenCodeConnector {
 
 func (oc *OpenCodeConnector) openCodeEnabled() bool {
 	return oc.Config.OpenCode.Enabled == nil || *oc.Config.OpenCode.Enabled
-}
-
-func containsOpenCodeLoginFlow(flows []bridgev2.LoginFlow, flowID string) bool {
-	for _, flow := range flows {
-		if flow.ID == flowID {
-			return true
-		}
-	}
-	return false
 }

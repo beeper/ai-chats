@@ -33,12 +33,7 @@ func (c openCodeAgentCatalog) ListAgents(_ context.Context, login *bridgev2.User
 	instanceIDs := sortedOpenCodeInstanceIDs(meta.OpenCodeInstances)
 	out := make([]*bridgesdk.Agent, 0, len(instanceIDs))
 	for _, instanceID := range instanceIDs {
-		displayName := "OpenCode"
-		if c.client != nil && c.client.bridge != nil {
-			if name := strings.TrimSpace(c.client.bridge.DisplayName(instanceID)); name != "" {
-				displayName = name
-			}
-		}
+		displayName := c.client.instanceDisplayName(instanceID)
 		out = append(out, openCodeSDKAgent(instanceID, displayName))
 	}
 	return out, nil
@@ -59,13 +54,7 @@ func (c openCodeAgentCatalog) ResolveAgent(ctx context.Context, login *bridgev2.
 	if _, ok := meta.OpenCodeInstances[instanceID]; !ok {
 		return nil, nil
 	}
-	displayName := "OpenCode"
-	if c.client != nil && c.client.bridge != nil {
-		if name := strings.TrimSpace(c.client.bridge.DisplayName(instanceID)); name != "" {
-			displayName = name
-		}
-	}
-	return openCodeSDKAgent(instanceID, displayName), nil
+	return openCodeSDKAgent(instanceID, c.client.instanceDisplayName(instanceID)), nil
 }
 
 func (oc *OpenCodeClient) sdkAgentCatalog() bridgesdk.AgentCatalog {

@@ -212,13 +212,7 @@ func (oc *OpenCodeClient) GetUserInfo(_ context.Context, ghost *bridgev2.Ghost) 
 	if !ok {
 		return openCodeSDKAgent("", "OpenCode").UserInfo(), nil
 	}
-	display := "OpenCode"
-	if oc.bridge != nil {
-		if name := strings.TrimSpace(oc.bridge.DisplayName(instanceID)); name != "" {
-			display = name
-		}
-	}
-	return openCodeSDKAgent(instanceID, display).UserInfo(), nil
+	return openCodeSDKAgent(instanceID, oc.instanceDisplayName(instanceID)).UserInfo(), nil
 }
 
 func (oc *OpenCodeClient) ResolveIdentifier(ctx context.Context, identifier string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {

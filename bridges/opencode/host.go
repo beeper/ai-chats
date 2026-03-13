@@ -246,13 +246,7 @@ func (oc *OpenCodeClient) newSDKStreamTurn(ctx context.Context, portal *bridgev2
 	if pmeta != nil {
 		instanceID = pmeta.InstanceID
 	}
-	displayName := "OpenCode"
-	if oc.bridge != nil {
-		if name := strings.TrimSpace(oc.bridge.DisplayName(instanceID)); name != "" {
-			displayName = name
-		}
-	}
-	agent := openCodeSDKAgent(instanceID, displayName)
+	agent := openCodeSDKAgent(instanceID, oc.instanceDisplayName(instanceID))
 	if strings.TrimSpace(state.agentID) != "" {
 		agent.ID = strings.TrimSpace(state.agentID)
 	}
