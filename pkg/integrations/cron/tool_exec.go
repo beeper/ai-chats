@@ -316,10 +316,7 @@ func buildReminderContextLines(lines []ReminderContextLine, count int) []string 
 	out := make([]string, 0, len(entries))
 	total := 0
 	for _, entry := range entries {
-		label := "User"
-		if entry.Role == "assistant" {
-			label = "Assistant"
-		}
+		label := roleLabel(entry.Role)
 		text := truncateContextText(entry.Text, reminderContextPerMessageMax)
 		line := fmt.Sprintf("- %s: %s", label, text)
 		total += len(line)
@@ -329,6 +326,13 @@ func buildReminderContextLines(lines []ReminderContextLine, count int) []string 
 		out = append(out, line)
 	}
 	return out
+}
+
+func roleLabel(role string) string {
+	if role == "assistant" {
+		return "Assistant"
+	}
+	return "User"
 }
 
 func normalizeContextText(raw string) string {

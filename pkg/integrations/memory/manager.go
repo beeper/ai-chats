@@ -909,26 +909,10 @@ func truncateSnippet(text string) string {
 }
 
 func isAllowedMemoryPath(path string, extraPaths []string) bool {
-	// Memory search indexes allowed text notes across the virtual workspace.
 	if ok, _, _ := textfs.IsAllowedTextNotePath(path); ok {
 		return true
 	}
-	if len(extraPaths) == 0 {
-		return false
-	}
-	normalizedExtra := normalizeExtraPaths(extraPaths)
-	for _, extra := range normalizedExtra {
-		if ok, _, _ := textfs.IsAllowedTextNotePath(extra); ok {
-			if strings.EqualFold(path, extra) {
-				return true
-			}
-			continue
-		}
-		if path == extra || strings.HasPrefix(path, extra+"/") {
-			return true
-		}
-	}
-	return false
+	return isExtraPath(path, normalizeExtraPaths(extraPaths))
 }
 
 func normalizeExtraPaths(paths []string) []string {

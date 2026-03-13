@@ -7,16 +7,11 @@ import (
 )
 
 func TestToOpenAIResponsesInput_MultimodalUser(t *testing.T) {
-	msg := UnifiedMessage{
-		Role: RoleUser,
-		Content: []ContentPart{
-			{Type: ContentTypeText, Text: "hello"},
-			{Type: ContentTypeImage, ImageB64: "aGVsbG8=", MimeType: "image/png"},
-			{Type: ContentTypePDF, PDFB64: "cGRm"},
-		},
-	}
-
-	input := ToOpenAIResponsesInput([]UnifiedMessage{msg})
+	input := PromptContextToResponsesInput(UserPromptContext(
+		PromptBlock{Type: PromptBlockText, Text: "hello"},
+		PromptBlock{Type: PromptBlockImage, ImageB64: "aGVsbG8=", MimeType: "image/png"},
+		PromptBlock{Type: PromptBlockFile, FileB64: "cGRm", Filename: "document.pdf"},
+	))
 	if len(input) != 1 {
 		t.Fatalf("expected 1 input item, got %d", len(input))
 	}

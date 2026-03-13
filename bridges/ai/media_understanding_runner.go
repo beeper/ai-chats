@@ -703,30 +703,25 @@ func (oc *AIClient) describeImageWithEntry(
 	b64Data := base64.StdEncoding.EncodeToString(rawData)
 	dataURL := buildDataURL(actualMime, b64Data)
 
-	messages := []UnifiedMessage{
-		{
-			Role: RoleUser,
-			Content: []ContentPart{
-				{
-					Type: ContentTypeText,
-					Text: prompt,
-				},
-				{
-					Type:     ContentTypeImage,
-					ImageURL: dataURL,
-					MimeType: actualMime,
-				},
-			},
+	ctxPrompt := UserPromptContext(
+		PromptBlock{
+			Type: PromptBlockText,
+			Text: prompt,
 		},
-	}
+		PromptBlock{
+			Type:     PromptBlockImage,
+			ImageURL: dataURL,
+			MimeType: actualMime,
+		},
+	)
 	modelIDForAPI := oc.modelIDForAPI(ResolveAlias(modelID))
 	var resp *GenerateResponse
 	if entryProvider == "openrouter" && normalizeMediaProviderID(loginMetadata(oc.UserLogin).Provider) != "openrouter" {
-		resp, err = oc.generateWithOpenRouter(ctx, modelIDForAPI, messages)
+		resp, err = oc.generateWithOpenRouter(ctx, modelIDForAPI, ctxPrompt)
 	} else {
 		resp, err = oc.provider.Generate(ctx, GenerateParams{
 			Model:               modelIDForAPI,
-			Context:             ToPromptContext("", nil, messages),
+			Context:             ctxPrompt,
 			MaxCompletionTokens: defaultImageUnderstandingLimit,
 		})
 	}
@@ -857,31 +852,26 @@ func (oc *AIClient) describeVideoWithEntry(
 		}
 		videoB64 := base64.StdEncoding.EncodeToString(data)
 
-		messages := []UnifiedMessage{
-			{
-				Role: RoleUser,
-				Content: []ContentPart{
-					{
-						Type: ContentTypeText,
-						Text: prompt,
-					},
-					{
-						Type:     ContentTypeVideo,
-						VideoB64: videoB64,
-						MimeType: actualMime,
-					},
-				},
+		ctxPrompt := UserPromptContext(
+			PromptBlock{
+				Type: PromptBlockText,
+				Text: prompt,
 			},
-		}
+			PromptBlock{
+				Type:     PromptBlockVideo,
+				VideoB64: videoB64,
+				MimeType: actualMime,
+			},
+		)
 		modelIDForAPI := oc.modelIDForAPI(ResolveAlias(modelID))
 		var resp *GenerateResponse
 		currentProvider := normalizeMediaProviderID(loginMetadata(oc.UserLogin).Provider)
 		if currentProvider != "" && currentProvider != providerID {
-			resp, err = oc.generateWithOpenRouter(ctx, modelIDForAPI, messages)
+			resp, err = oc.generateWithOpenRouter(ctx, modelIDForAPI, ctxPrompt)
 		} else {
 			resp, err = oc.provider.Generate(ctx, GenerateParams{
 				Model:               modelIDForAPI,
-				Context:             ToPromptContext("", nil, messages),
+				Context:             ctxPrompt,
 				MaxCompletionTokens: defaultImageUnderstandingLimit,
 			})
 		}
@@ -924,7 +914,7 @@ func (oc *AIClient) describeVideoWithEntry(
 func (oc *AIClient) generateWithOpenRouter(
 	ctx context.Context,
 	modelID string,
-	messages []UnifiedMessage,
+	promptContext PromptContext,
 ) (*GenerateResponse, error) {
 	if oc == nil || oc.connector == nil {
 		return nil, errors.New("missing connector")
@@ -949,25 +939,13 @@ func (oc *AIClient) generateWithOpenRouter(
 	}
 	params := GenerateParams{
 		Model:               modelID,
-		Context:             ToPromptContext("", nil, messages),
+		Context:             promptContext,
 		MaxCompletionTokens: defaultImageUnderstandingLimit,
 	}
-	if unifiedMessagesContainAudioOrVideo(messages) {
+	if promptContextHasBlockType(promptContext, PromptBlockAudio, PromptBlockVideo) {
 		return provider.generateChatCompletions(ctx, params)
 	}
 	return provider.Generate(ctx, params)
-}
-
-func unifiedMessagesContainAudioOrVideo(messages []UnifiedMessage) bool {
-	for _, msg := range messages {
-		for _, part := range msg.Content {
-			switch part.Type {
-			case ContentTypeAudio, ContentTypeVideo:
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func resolveOpenRouterMediaBaseURL(oc *AIClient) string {

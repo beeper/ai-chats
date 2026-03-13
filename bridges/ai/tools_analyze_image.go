@@ -79,28 +79,22 @@ func executeAnalyzeImage(ctx context.Context, args map[string]any) (string, erro
 		return "", errors.New("unsupported URL scheme, must be http://, https://, mxc://, or data URL")
 	}
 
-	// Build vision request with image and prompt
-	messages := []UnifiedMessage{
-		{
-			Role: RoleUser,
-			Content: []ContentPart{
-				{
-					Type:     ContentTypeImage,
-					ImageB64: imageB64,
-					MimeType: mimeType,
-				},
-				{
-					Type: ContentTypeText,
-					Text: prompt,
-				},
-			},
+	ctxPrompt := UserPromptContext(
+		PromptBlock{
+			Type:     PromptBlockImage,
+			ImageB64: imageB64,
+			MimeType: mimeType,
 		},
-	}
+		PromptBlock{
+			Type: PromptBlockText,
+			Text: prompt,
+		},
+	)
 
 	// Call the AI provider for vision analysis
 	resp, err := btc.Client.provider.Generate(ctx, GenerateParams{
 		Model:               btc.Client.modelIDForAPI(modelID),
-		Context:             ToPromptContext("", nil, messages),
+		Context:             ctxPrompt,
 		MaxCompletionTokens: 4096,
 	})
 	if err != nil {

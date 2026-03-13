@@ -218,26 +218,21 @@ func (oc *AIClient) analyzeImageWithModel(
 
 	dataURL := buildDataURL(actualMimeType, b64Data)
 
-	messages := []UnifiedMessage{
-		{
-			Role: RoleUser,
-			Content: []ContentPart{
-				{
-					Type:     ContentTypeImage,
-					ImageURL: dataURL,
-					MimeType: actualMimeType,
-				},
-				{
-					Type: ContentTypeText,
-					Text: prompt,
-				},
-			},
+	ctxPrompt := UserPromptContext(
+		PromptBlock{
+			Type:     PromptBlockImage,
+			ImageURL: dataURL,
+			MimeType: actualMimeType,
 		},
-	}
+		PromptBlock{
+			Type: PromptBlockText,
+			Text: prompt,
+		},
+	)
 
 	resp, err := oc.provider.Generate(ctx, GenerateParams{
 		Model:               modelIDForAPI,
-		Context:             ToPromptContext("", nil, messages),
+		Context:             ctxPrompt,
 		MaxCompletionTokens: defaultImageUnderstandingLimit,
 	})
 	if err != nil {
@@ -277,26 +272,21 @@ func (oc *AIClient) analyzeAudioWithModel(
 		format = "mp3"
 	}
 
-	messages := []UnifiedMessage{
-		{
-			Role: RoleUser,
-			Content: []ContentPart{
-				{
-					Type:        ContentTypeAudio,
-					AudioB64:    b64Data,
-					AudioFormat: format,
-				},
-				{
-					Type: ContentTypeText,
-					Text: prompt,
-				},
-			},
+	ctxPrompt := UserPromptContext(
+		PromptBlock{
+			Type:        PromptBlockAudio,
+			AudioB64:    b64Data,
+			AudioFormat: format,
 		},
-	}
+		PromptBlock{
+			Type: PromptBlockText,
+			Text: prompt,
+		},
+	)
 
 	params := GenerateParams{
 		Model:               modelIDForAPI,
-		Context:             ToPromptContext("", nil, messages),
+		Context:             ctxPrompt,
 		MaxCompletionTokens: defaultImageUnderstandingLimit,
 	}
 	var resp *GenerateResponse

@@ -65,14 +65,10 @@ func computeReplacements(originalLines []string, filePath string, chunks []updat
 		replacements = append(replacements, replacement{start: *found, oldLen: len(pattern), newLines: newSlice})
 		lineIndex = *found + len(pattern)
 	}
-	sortReplacements(replacements)
-	return replacements, nil
-}
-
-func sortReplacements(replacements []replacement) {
 	slices.SortFunc(replacements, func(a, b replacement) int {
 		return cmp.Compare(a.start, b.start)
 	})
+	return replacements, nil
 }
 
 func applyReplacements(lines []string, replacements []replacement) []string {
@@ -98,7 +94,7 @@ func seekSequence(lines []string, pattern []string, start int, eof bool) *int {
 	}
 	maxStart := len(lines) - len(pattern)
 	searchStart := start
-	if eof && len(lines) >= len(pattern) {
+	if eof {
 		searchStart = maxStart
 	}
 	if searchStart > maxStart {
@@ -131,8 +127,8 @@ func seekSequenceWithNormalize(lines []string, pattern []string, start int, maxS
 }
 
 func linesMatch(lines []string, pattern []string, start int, normalize func(string) string) bool {
-	for idx := 0; idx < len(pattern); idx++ {
-		if normalize(lines[start+idx]) != normalize(pattern[idx]) {
+	for i, p := range pattern {
+		if normalize(lines[start+i]) != normalize(p) {
 			return false
 		}
 	}
