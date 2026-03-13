@@ -166,8 +166,8 @@ func (c *BaseClient) HumanUserID() networkid.UserID {
 	return agentremote.HumanUserID(c.IDPrefix, c.UserLogin.ID)
 }
 
-// EnsureAgentGhost ensures the given agent member's ghost exists.
-func (c *BaseClient) EnsureAgentGhost(ctx context.Context, agent *AgentMember) error {
+// EnsureAgentGhost ensures the given agent ghost exists.
+func (c *BaseClient) EnsureAgentGhost(ctx context.Context, agent *Agent) error {
 	if agent == nil || c.UserLogin == nil {
 		return nil
 	}
@@ -193,6 +193,6 @@ func (c *BaseClient) NewConversation(ctx context.Context, portal *bridgev2.Porta
 }
 
 // StartTurn creates a new Turn for the given conversation.
-func (c *BaseClient) StartTurn(ctx context.Context, conv *Conversation) *Turn {
-	return newTurn(ctx, conv, nil)
+func (c *BaseClient) StartTurn(ctx context.Context, conv *Conversation, agent *Agent, source *SourceRef) *Turn {
+	return newTurn(ctx, conv, agent, source)
 }

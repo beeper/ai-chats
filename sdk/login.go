@@ -13,9 +13,9 @@ type sdkAutoLogin struct {
 
 func (l *sdkAutoLogin) Start(_ context.Context) (*bridgev2.LoginStep, error) {
 	return &bridgev2.LoginStep{
-		Type:         bridgev2.LoginStepTypeComplete,
-		StepID:       "sdk-auto",
-		Instructions: "Login handled by agentremote CLI",
+		Type:           bridgev2.LoginStepTypeComplete,
+		StepID:         "sdk-auto",
+		Instructions:   "Login handled by agentremote CLI",
 		CompleteParams: &bridgev2.LoginCompleteParams{},
 	}, nil
 }

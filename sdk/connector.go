@@ -15,9 +15,9 @@ import (
 
 type sdkConnector struct {
 	*agentremote.ConnectorBase
-	cfg    *Config
-	br     *bridgev2.Bridge
-	mu     sync.Mutex
+	cfg     *Config
+	br      *bridgev2.Bridge
+	mu      sync.Mutex
 	clients map[networkid.UserLoginID]bridgev2.NetworkAPI
 }
 

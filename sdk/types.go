@@ -8,6 +8,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
+
+	"github.com/beeper/agentremote"
 )
 
 // MessageType identifies the kind of message.
@@ -93,6 +95,23 @@ type ToolApprovalResponse struct {
 	Reason   string // allow_once, allow_always, deny, timeout, expired
 }
 
+// ApprovalRequest describes a single approval request within a turn.
+type ApprovalRequest struct {
+	ToolCallID   string
+	ToolName     string
+	TTL          time.Duration
+	Blocking     bool
+	Presentation *agentremote.ApprovalPromptPresentation
+	Metadata     map[string]any
+}
+
+// ApprovalHandle tracks an individual approval request.
+type ApprovalHandle interface {
+	ID() string
+	ToolCallID() string
+	Wait(ctx context.Context) (ToolApprovalResponse, error)
+}
+
 // Command defines a slash command that users can invoke.
 type Command struct {
 	Name        string
@@ -115,10 +134,90 @@ type RoomFeatures struct {
 	SupportsTyping       bool
 	SupportsReadReceipts bool
 	SupportsDeleteChat   bool
-	CustomCapabilityID   string             // for dynamic capability IDs
+	CustomCapabilityID   string              // for dynamic capability IDs
 	Custom               *event.RoomFeatures // escape hatch: override everything
 }
 
+// RoomAgentSet tracks the agents available in a conversation.
+type RoomAgentSet struct {
+	PrimaryAgentID string
+	AgentIDs       []string
+}
+
+// ConversationKind identifies the runtime shape of a conversation.
+type ConversationKind string
+
+const (
+	ConversationKindNormal    ConversationKind = "normal"
+	ConversationKindDelegated ConversationKind = "delegated"
+)
+
+// ConversationVisibility controls whether the room should be hidden in the client.
+type ConversationVisibility string
+
+const (
+	ConversationVisibilityNormal ConversationVisibility = "normal"
+	ConversationVisibilityHidden ConversationVisibility = "hidden"
+)
+
+// ConversationSpec describes how to resolve or create a conversation.
+type ConversationSpec struct {
+	PortalID             string
+	Kind                 ConversationKind
+	Visibility           ConversationVisibility
+	ParentConversationID string
+	ParentEventID        string
+	Title                string
+	PrimaryAgentID       string
+	Metadata             map[string]any
+	ArchiveOnCompletion  bool
+}
+
+// SourceKind identifies the origin of a turn.
+type SourceKind string
+
+const (
+	SourceKindUserMessage SourceKind = "user_message"
+	SourceKindProactive   SourceKind = "proactive"
+	SourceKindSystem      SourceKind = "system"
+	SourceKindBackfill    SourceKind = "backfill"
+	SourceKindDelegated   SourceKind = "delegated"
+	SourceKindSteering    SourceKind = "steering"
+	SourceKindFollowUp    SourceKind = "follow_up"
+)
+
+// SourceRef captures the source metadata that a turn should relate to.
+type SourceRef struct {
+	Kind                 SourceKind
+	EventID              string
+	ParentConversationID string
+	Metadata             map[string]any
+}
+
+// Convenience helpers for common source kinds.
+func UserMessageSource(eventID string) *SourceRef {
+	return &SourceRef{Kind: SourceKindUserMessage, EventID: eventID}
+}
+
+func ProactiveSource() *SourceRef {
+	return &SourceRef{Kind: SourceKindProactive}
+}
+
+func SystemSource(eventID string) *SourceRef {
+	return &SourceRef{Kind: SourceKindSystem, EventID: eventID}
+}
+
+func BackfillSource(eventID string) *SourceRef {
+	return &SourceRef{Kind: SourceKindBackfill, EventID: eventID}
+}
+
+func DelegatedSource(parentConversationID, eventID string) *SourceRef {
+	return &SourceRef{
+		Kind:                 SourceKindDelegated,
+		EventID:              eventID,
+		ParentConversationID: parentConversationID,
+	}
+}
 
 // ModelInfo describes an AI model.
 type ModelInfo struct {
@@ -135,7 +234,9 @@ type Config struct {
 	Description string
 
 	// Agent identity (optional, used for ghost sender)
-	Agent *AgentMember
+	Agent *Agent
+	// Optional agent catalog used for contact listing and room agent management.
+	AgentCatalog AgentCatalog
 
 	// Message handling (required)
 	// session is the value returned by OnConnect; conv is the conversation;
@@ -175,7 +276,7 @@ type Config struct {
 	RoomFeatures *RoomFeatures // nil = AI agent defaults
 
 	// Login — use bridgev2 types directly.
-	LoginFlows  []bridgev2.LoginFlow                                                                    // nil = single auto-login
+	LoginFlows  []bridgev2.LoginFlow                                                                         // nil = single auto-login
 	CreateLogin func(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) // nil = auto-login
 
 	// Backfill — use bridgev2 types directly.
@@ -185,12 +286,12 @@ type Config struct {
 	ImportTurns func(session any, conv *Conversation, params BackfillParams) ([]*ImportedTurn, error)
 
 	// Advanced
-	ProtocolID     string                     // default: "sdk-<Name>"
-	Port           int                        // default: 29400
-	DBName         string                     // default: "<Name>.db"
-	ConfigPath     string                     // default: auto-discover
-	DBMeta         func() database.MetaTypes  // nil = default
-	ExampleConfig  string                     // YAML
-	ConfigData     any                        // config struct pointer
+	ProtocolID     string                    // default: "sdk-<Name>"
+	Port           int                       // default: 29400
+	DBName         string                    // default: "<Name>.db"
+	ConfigPath     string                    // default: auto-discover
+	DBMeta         func() database.MetaTypes // nil = default
+	ExampleConfig  string                    // YAML
+	ConfigData     any                       // config struct pointer
 	ConfigUpgrader configupgrade.Upgrader
 }

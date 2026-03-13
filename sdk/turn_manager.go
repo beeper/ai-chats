@@ -1,66 +1,118 @@
 package sdk
 
 import (
+	"context"
 	"sync"
+	"time"
 )
 
-// TurnConfig configures per-room turn serialization.
+// TurnConfig configures helper-managed turn serialization and coalescing.
 type TurnConfig struct {
 	OneAtATime bool
 	DebounceMs int
 	QueueSize  int
 }
 
-// TurnManager serializes turns per room.
+type turnGate struct {
+	token chan struct{}
+}
+
+// TurnManager provides reusable per-key run helpers.
 type TurnManager struct {
-	cfg   *TurnConfig
+	cfg   TurnConfig
 	mu    sync.Mutex
-	rooms map[string]*roomTurnState
+	gates map[string]*turnGate
 }
 
-type roomTurnState struct {
-	active bool
-}
-
-// NewTurnManager creates a new TurnManager with the given configuration.
+// NewTurnManager creates a new helper-managed turn manager.
 func NewTurnManager(cfg *TurnConfig) *TurnManager {
-	if cfg == nil {
-		cfg = &TurnConfig{}
+	resolved := TurnConfig{
+		OneAtATime: true,
+	}
+	if cfg != nil {
+		resolved = *cfg
+		if !cfg.OneAtATime {
+			resolved.OneAtATime = false
+		}
 	}
 	return &TurnManager{
-		cfg:   cfg,
-		rooms: make(map[string]*roomTurnState),
+		cfg:   resolved,
+		gates: make(map[string]*turnGate),
 	}
 }
 
-// Acquire marks a room as having an active turn. If OneAtATime is enabled,
-// it blocks conceptually (currently just marks active).
-func (tm *TurnManager) Acquire(roomID string) {
+func (tm *TurnManager) gate(key string) *turnGate {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
-	state, ok := tm.rooms[roomID]
-	if !ok {
-		state = &roomTurnState{}
-		tm.rooms[roomID] = state
+	g := tm.gates[key]
+	if g != nil {
+		return g
 	}
-	state.active = true
+	g = &turnGate{token: make(chan struct{}, 1)}
+	g.token <- struct{}{}
+	tm.gates[key] = g
+	return g
 }
 
-// Release marks the room's turn as complete.
-func (tm *TurnManager) Release(roomID string) {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-	if state, ok := tm.rooms[roomID]; ok {
-		state.active = false
+// Acquire reserves the key until the returned release function is called.
+func (tm *TurnManager) Acquire(ctx context.Context, key string) (func(), error) {
+	if tm == nil || key == "" || !tm.cfg.OneAtATime {
+		return func() {}, nil
+	}
+	g := tm.gate(key)
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-g.token:
+		return func() {
+			select {
+			case g.token <- struct{}{}:
+			default:
+			}
+		}, nil
 	}
 }
 
-// IsActive returns whether a turn is currently active in the given room.
-func (tm *TurnManager) IsActive(roomID string) bool {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-	if state, ok := tm.rooms[roomID]; ok {
-		return state.active
+// Run serializes fn for the given key when one-at-a-time is enabled.
+func (tm *TurnManager) Run(ctx context.Context, key string, fn func(context.Context) error) error {
+	if fn == nil {
+		return nil
 	}
-	return false
+	release, err := tm.Acquire(ctx, key)
+	if err != nil {
+		return err
+	}
+	defer release()
+	return fn(ctx)
+}
+
+// IsActive reports whether the key currently has an active run.
+func (tm *TurnManager) IsActive(key string) bool {
+	if tm == nil || key == "" || !tm.cfg.OneAtATime {
+		return false
+	}
+	g := tm.gate(key)
+	select {
+	case token := <-g.token:
+		g.token <- token
+		return false
+	default:
+		return true
+	}
+}
+
+// DebounceWindow returns the configured debounce interval.
+func (tm *TurnManager) DebounceWindow() time.Duration {
+	if tm == nil || tm.cfg.DebounceMs <= 0 {
+		return 0
+	}
+	return time.Duration(tm.cfg.DebounceMs) * time.Millisecond
+}
+
+// QueueLimit returns the configured queue size hint.
+func (tm *TurnManager) QueueLimit() int {
+	if tm == nil {
+		return 0
+	}
+	return tm.cfg.QueueSize
 }

@@ -10,7 +10,10 @@ import (
 
 // BroadcastRoomCapabilities sends room capability state events for the given conversation.
 func BroadcastRoomCapabilities(ctx context.Context, conv *sdk.Conversation, features *sdk.RoomFeatures) error {
-	return conv.BroadcastCapabilities(ctx, features)
+	if features != nil {
+		return conv.BroadcastCapabilities(ctx)
+	}
+	return conv.BroadcastCapabilities(ctx)
 }
 
 // BroadcastCommandDescriptions sends MSC4391 command-description state events

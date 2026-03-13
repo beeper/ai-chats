@@ -40,11 +40,12 @@ type pendingSDKApprovalData struct {
 
 type sdkClient struct {
 	agentremote.ClientBase
-	connector    *sdkConnector
-	userLogin    *bridgev2.UserLogin
-	loggedIn     atomic.Bool
-	approvalFlow *agentremote.ApprovalFlow[*pendingSDKApprovalData]
-	turnManager  *TurnManager
+	connector         *sdkConnector
+	userLogin         *bridgev2.UserLogin
+	loggedIn          atomic.Bool
+	approvalFlow      *agentremote.ApprovalFlow[*pendingSDKApprovalData]
+	turnManager       *TurnManager
+	conversationState *conversationStateStore
 
 	sessionMu sync.RWMutex
 	session   any
@@ -52,8 +53,9 @@ type sdkClient struct {
 
 func newSDKClient(login *bridgev2.UserLogin, conn *sdkConnector) *sdkClient {
 	c := &sdkClient{
-		connector: conn,
-		userLogin: login,
+		connector:         conn,
+		userLogin:         login,
+		conversationState: newConversationStateStore(),
 	}
 	c.InitClientBase(login, c)
 	c.approvalFlow = agentremote.NewApprovalFlow(agentremote.ApprovalFlowConfig[*pendingSDKApprovalData]{
@@ -167,17 +169,8 @@ func (c *sdkClient) GetUserInfo(_ context.Context, ghost *bridgev2.Ghost) (*brid
 }
 
 func (c *sdkClient) GetCapabilities(_ context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
-	if c.cfg().GetCapabilities != nil {
-		conv := c.conv(context.Background(), portal)
-		rf := c.cfg().GetCapabilities(c.getSession(), conv)
-		if rf != nil {
-			return convertRoomFeatures(rf)
-		}
-	}
-	if c.cfg().RoomFeatures != nil {
-		return convertRoomFeatures(c.cfg().RoomFeatures)
-	}
-	return defaultSDKRoomFeatures()
+	conv := c.conv(context.Background(), portal)
+	return convertRoomFeatures(conv.currentRoomFeatures(context.Background()))
 }
 
 func (c *sdkClient) conv(ctx context.Context, portal *bridgev2.Portal) *Conversation {
@@ -189,26 +182,27 @@ func (c *sdkClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	if c.cfg().OnMessage == nil {
 		return nil, nil
 	}
+	runCtx := c.BackgroundContext(ctx)
 	sdkMsg := convertMatrixMessage(msg)
-	conv := c.conv(ctx, msg.Portal)
-	turn := newTurn(ctx, conv, c.cfg().Agent)
+	conv := c.conv(runCtx, msg.Portal)
 	session := c.getSession()
-
 	roomID := string(msg.Portal.ID)
-	if c.turnManager != nil {
-		c.turnManager.Acquire(roomID)
+	run := func(turnCtx context.Context) error {
+		var source *SourceRef
+		if msg.Event != nil {
+			source = UserMessageSource(msg.Event.ID.String())
+		}
+		turn := conv.StartDefaultTurn(turnCtx, source)
+		return c.cfg().OnMessage(session, conv, sdkMsg, turn)
 	}
-
 	go func() {
-		defer func() {
-			if c.turnManager != nil {
-				c.turnManager.Release(roomID)
-			}
-		}()
-		_ = c.cfg().OnMessage(session, conv, sdkMsg, turn)
+		if c.turnManager != nil {
+			_ = c.turnManager.Run(runCtx, roomID, run)
+			return
+		}
+		_ = run(runCtx)
 	}()
-
-	return &bridgev2.MatrixMessageResponse{}, nil
+	return &bridgev2.MatrixMessageResponse{Pending: true}, nil
 }
 
 func convertMatrixMessage(msg *bridgev2.MatrixMessage) *Message {
