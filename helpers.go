@@ -397,3 +397,13 @@ func BuildContinuationMessage(portal networkid.PortalKey, body string, sender br
 		},
 	}
 }
+
+// coalesceStrings returns the first non-empty string from the arguments.
+func coalesceStrings(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
