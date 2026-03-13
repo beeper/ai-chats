@@ -24,29 +24,22 @@ func ApplyReplyToMode(payloads []ReplyPayload, policy ReplyThreadPolicy) []Reply
 	out := make([]ReplyPayload, 0, len(payloads))
 	hasThreaded := false
 	for _, payload := range payloads {
-		if strings.TrimSpace(payload.ReplyToID) == "" {
-			out = append(out, payload)
-			continue
-		}
-		switch policy.Mode {
-		case ReplyToModeAll:
-			out = append(out, payload)
-		case ReplyToModeFirst:
-			if hasThreaded {
+		if strings.TrimSpace(payload.ReplyToID) != "" {
+			shouldClear := false
+			switch policy.Mode {
+			case ReplyToModeFirst:
+				shouldClear = hasThreaded
+				hasThreaded = true
+			case ReplyToModeOff:
+				shouldClear = !policy.AllowExplicitWhenModeOff || !(payload.ReplyToTag || payload.ReplyToCurrent)
+			}
+			if shouldClear {
 				payload.ReplyToID = ""
 				payload.ReplyToCurrent = false
 				payload.ReplyToTag = false
 			}
-			hasThreaded = true
-			out = append(out, payload)
-		case ReplyToModeOff:
-			if !policy.AllowExplicitWhenModeOff || !(payload.ReplyToTag || payload.ReplyToCurrent) {
-				payload.ReplyToID = ""
-				payload.ReplyToCurrent = false
-				payload.ReplyToTag = false
-			}
-			out = append(out, payload)
 		}
+		out = append(out, payload)
 	}
 	return out
 }

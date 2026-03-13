@@ -254,10 +254,6 @@ func (r *RemoteReactionRemove) GetRemovedEmojiID() networkid.EmojiID {
 	return r.EmojiID
 }
 
-// -----------------------------------------------------------------------
-// NewMessageID — generates a unique message ID with the given prefix
-// -----------------------------------------------------------------------
-
 // NewMessageID generates a unique message ID in the format "prefix:uuid".
 func NewMessageID(prefix string) networkid.MessageID {
 	return networkid.MessageID(fmt.Sprintf("%s:%s", prefix, uuid.NewString()))

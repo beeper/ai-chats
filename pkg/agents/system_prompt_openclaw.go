@@ -187,6 +187,14 @@ func buildDocsSection(isMinimal bool, hasBeeperDocs bool) []string {
 // BuildSystemPrompt assembles the complete prompt from params.
 // Matches OpenClaw's buildAgentSystemPrompt.
 func BuildSystemPrompt(params SystemPromptParams) string {
+	promptMode := params.PromptMode
+	if promptMode == "" {
+		promptMode = PromptModeFull
+	}
+	if promptMode == PromptModeNone {
+		return "You are a personal assistant running inside Beeper."
+	}
+
 	coreToolSummaries := map[string]string{
 		"read":             "Read file contents",
 		"write":            "Create or overwrite files",
@@ -309,8 +317,6 @@ func BuildSystemPrompt(params SystemPromptParams) string {
 
 	hasGateway := availableTools["gateway"]
 	readToolName := resolveToolName("read")
-	execToolName := resolveToolName("exec")
-	processToolName := resolveToolName("process")
 	extraSystemPrompt := strings.TrimSpace(params.ExtraSystemPrompt)
 	ownerNumbers := make([]string, 0, len(params.OwnerNumbers))
 	for _, value := range params.OwnerNumbers {
@@ -395,8 +401,8 @@ func BuildSystemPrompt(params SystemPromptParams) string {
 		toolingLines = strings.Join([]string{
 			"Pi lists the standard tools above. This runtime enables:",
 			"- apply_patch: apply multi-file patches",
-			fmt.Sprintf("- %s: run shell commands (supports background via yieldMs/background)", execToolName),
-			fmt.Sprintf("- %s: manage background exec sessions", processToolName),
+			fmt.Sprintf("- %s: run shell commands (supports background via yieldMs/background)", resolveToolName("exec")),
+			fmt.Sprintf("- %s: manage background exec sessions", resolveToolName("process")),
 			"- browser: control Beeper's dedicated browser",
 			"- canvas: present/eval/snapshot the Canvas",
 			"- nodes: list/describe/notify/camera/screen on paired nodes",

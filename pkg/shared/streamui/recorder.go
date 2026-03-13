@@ -12,7 +12,7 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 		return
 	}
 	state.InitMaps()
-	typ := trimString(chunk["type"]))
+	typ := trimString(chunk["type"])
 	if typ == "" {
 		return
 	}
@@ -20,7 +20,7 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 	switch typ {
 	case "start":
 		msg := ensureAssistantMessage(state)
-		if messageID := trimString(chunk["messageId"])); messageID != "" {
+		if messageID := trimString(chunk["messageId"]); messageID != "" {
 			msg["id"] = messageID
 		}
 		mergeMessageMetadata(msg, chunk["messageMetadata"])
@@ -31,13 +31,13 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 	case "finish-step":
 		// Stream-only marker; step-start is the persisted boundary.
 	case "text-start":
-		partID := trimString(chunk["id"]))
+		partID := trimString(chunk["id"])
 		if partID == "" {
 			return
 		}
 		state.UITextPartIndexByID[partID] = appendPart(state, newStreamingTextPart("text", jsonutil.DeepCloneMap(jsonutil.ToMap(chunk["providerMetadata"]))))
 	case "text-delta":
-		partID := trimString(chunk["id"]))
+		partID := trimString(chunk["id"])
 		if partID == "" {
 			return
 		}
@@ -45,7 +45,7 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 		part["state"] = "streaming"
 		part["text"] = stringValue(part["text"]) + stringValue(chunk["delta"])
 	case "text-end":
-		partID := trimString(chunk["id"]))
+		partID := trimString(chunk["id"])
 		if partID == "" {
 			return
 		}
@@ -53,13 +53,13 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 		part["state"] = "done"
 		delete(state.UITextPartIndexByID, partID)
 	case "reasoning-start":
-		partID := trimString(chunk["id"]))
+		partID := trimString(chunk["id"])
 		if partID == "" {
 			return
 		}
 		state.UIReasoningPartIndexByID[partID] = appendPart(state, newStreamingTextPart("reasoning", jsonutil.DeepCloneMap(jsonutil.ToMap(chunk["providerMetadata"]))))
 	case "reasoning-delta":
-		partID := trimString(chunk["id"]))
+		partID := trimString(chunk["id"])
 		if partID == "" {
 			return
 		}
@@ -67,7 +67,7 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 		part["state"] = "streaming"
 		part["text"] = stringValue(part["text"]) + stringValue(chunk["delta"])
 	case "reasoning-end":
-		partID := trimString(chunk["id"]))
+		partID := trimString(chunk["id"])
 		if partID == "" {
 			return
 		}
@@ -75,14 +75,14 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 		part["state"] = "done"
 		delete(state.UIReasoningPartIndexByID, partID)
 	case "tool-input-start":
-		toolCallID := trimString(chunk["toolCallId"]))
+		toolCallID := trimString(chunk["toolCallId"])
 		if toolCallID == "" {
 			return
 		}
-		part := ensureToolPart(state, toolCallID, trimString(chunk["toolName"])))
+		part := ensureToolPart(state, toolCallID, trimString(chunk["toolName"]))
 		part["state"] = "input-streaming"
 		part["input"] = ""
-		if title := trimString(chunk["title"])); title != "" {
+		if title := trimString(chunk["title"]); title != "" {
 			part["title"] = title
 		}
 		if providerExecuted, ok := boolValue(chunk["providerExecuted"]); ok {
@@ -92,11 +92,11 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 			part["callProviderMetadata"] = providerMetadata
 		}
 	case "tool-input-delta":
-		toolCallID := trimString(chunk["toolCallId"]))
+		toolCallID := trimString(chunk["toolCallId"])
 		if toolCallID == "" {
 			return
 		}
-		part := ensureToolPart(state, toolCallID, trimString(state.UIToolNameByToolCallID[toolCallID])))
+		part := ensureToolPart(state, toolCallID, trimString(state.UIToolNameByToolCallID[toolCallID]))
 		part["state"] = "input-streaming"
 		accumulated := state.UIToolInputTextByID[toolCallID] + stringValue(chunk["inputTextDelta"])
 		state.UIToolInputTextByID[toolCallID] = accumulated
@@ -106,14 +106,14 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 			part["input"] = accumulated
 		}
 	case "tool-input-available":
-		toolCallID := trimString(chunk["toolCallId"]))
+		toolCallID := trimString(chunk["toolCallId"])
 		if toolCallID == "" {
 			return
 		}
-		part := ensureToolPart(state, toolCallID, trimString(chunk["toolName"])))
+		part := ensureToolPart(state, toolCallID, trimString(chunk["toolName"]))
 		part["state"] = "input-available"
 		part["input"] = jsonutil.DeepCloneAny(chunk["input"])
-		if title := trimString(chunk["title"])); title != "" {
+		if title := trimString(chunk["title"]); title != "" {
 			part["title"] = title
 		}
 		if providerExecuted, ok := boolValue(chunk["providerExecuted"]); ok {
@@ -123,15 +123,15 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 			part["callProviderMetadata"] = providerMetadata
 		}
 	case "tool-input-error":
-		toolCallID := trimString(chunk["toolCallId"]))
+		toolCallID := trimString(chunk["toolCallId"])
 		if toolCallID == "" {
 			return
 		}
-		part := ensureToolPart(state, toolCallID, trimString(chunk["toolName"])))
+		part := ensureToolPart(state, toolCallID, trimString(chunk["toolName"]))
 		part["state"] = "output-error"
 		part["input"] = jsonutil.DeepCloneAny(chunk["input"])
 		part["errorText"] = stringValue(chunk["errorText"])
-		if title := trimString(chunk["title"])); title != "" {
+		if title := trimString(chunk["title"]); title != "" {
 			part["title"] = title
 		}
 		if providerExecuted, ok := boolValue(chunk["providerExecuted"]); ok {
@@ -141,27 +141,27 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 			part["callProviderMetadata"] = providerMetadata
 		}
 	case "tool-approval-request":
-		toolCallID := trimString(chunk["toolCallId"]))
+		toolCallID := trimString(chunk["toolCallId"])
 		if toolCallID == "" {
 			return
 		}
-		part := ensureToolPart(state, toolCallID, trimString(state.UIToolNameByToolCallID[toolCallID])))
+		part := ensureToolPart(state, toolCallID, trimString(state.UIToolNameByToolCallID[toolCallID]))
 		part["state"] = "approval-requested"
-		part["approval"] = map[string]any{"id": trimString(chunk["approvalId"]))}
+		part["approval"] = map[string]any{"id": trimString(chunk["approvalId"])}
 	case "tool-approval-response":
 		RecordApprovalResponse(
 			state,
-			trimString(chunk["approvalId"])),
-			trimString(chunk["toolCallId"])),
+			trimString(chunk["approvalId"]),
+			trimString(chunk["toolCallId"]),
 			boolValueOrDefault(chunk["approved"], false),
-			trimString(chunk["reason"])),
+			trimString(chunk["reason"]),
 		)
 	case "tool-output-available":
-		toolCallID := trimString(chunk["toolCallId"]))
+		toolCallID := trimString(chunk["toolCallId"])
 		if toolCallID == "" {
 			return
 		}
-		part := ensureToolPart(state, toolCallID, trimString(state.UIToolNameByToolCallID[toolCallID])))
+		part := ensureToolPart(state, toolCallID, trimString(state.UIToolNameByToolCallID[toolCallID]))
 		part["state"] = "output-available"
 		part["output"] = jsonutil.DeepCloneAny(chunk["output"])
 		if providerExecuted, ok := boolValue(chunk["providerExecuted"]); ok {
@@ -173,22 +173,22 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 			delete(part, "preliminary")
 		}
 	case "tool-output-error":
-		toolCallID := trimString(chunk["toolCallId"]))
+		toolCallID := trimString(chunk["toolCallId"])
 		if toolCallID == "" {
 			return
 		}
-		part := ensureToolPart(state, toolCallID, trimString(state.UIToolNameByToolCallID[toolCallID])))
+		part := ensureToolPart(state, toolCallID, trimString(state.UIToolNameByToolCallID[toolCallID]))
 		part["state"] = "output-error"
 		part["errorText"] = stringValue(chunk["errorText"])
 		if providerExecuted, ok := boolValue(chunk["providerExecuted"]); ok {
 			part["providerExecuted"] = providerExecuted
 		}
 	case "tool-output-denied":
-		toolCallID := trimString(chunk["toolCallId"]))
+		toolCallID := trimString(chunk["toolCallId"])
 		if toolCallID == "" {
 			return
 		}
-		part := ensureToolPart(state, toolCallID, trimString(state.UIToolNameByToolCallID[toolCallID])))
+		part := ensureToolPart(state, toolCallID, trimString(state.UIToolNameByToolCallID[toolCallID]))
 		part["state"] = "output-denied"
 	case "source-url", "source-document", "file":
 		appendPart(state, jsonutil.DeepCloneMap(jsonutil.ToMap(chunk)))
@@ -197,7 +197,7 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 	case "error":
 		setTerminalState(ensureAssistantMessage(state), "error", stringValue(chunk["errorText"]))
 	case "abort":
-		setTerminalState(ensureAssistantMessage(state), "abort", trimString(chunk["reason"])))
+		setTerminalState(ensureAssistantMessage(state), "abort", trimString(chunk["reason"]))
 	default:
 		if strings.HasPrefix(typ, "data-") {
 			if transient, ok := boolValue(chunk["transient"]); ok && transient {
@@ -251,10 +251,10 @@ func ensureAssistantMessage(state *UIState) map[string]any {
 			"parts": []any{},
 		}
 	}
-	if trimString(state.UICanonicalMessage["id"])) == "" {
+	if trimString(state.UICanonicalMessage["id"]) == "" {
 		state.UICanonicalMessage["id"] = state.TurnID
 	}
-	if trimString(state.UICanonicalMessage["role"])) == "" {
+	if trimString(state.UICanonicalMessage["role"]) == "" {
 		state.UICanonicalMessage["role"] = "assistant"
 	}
 	if _, ok := state.UICanonicalMessage["parts"].([]any); !ok {
@@ -337,15 +337,15 @@ func getPartAt(state *UIState, idx int) map[string]any {
 func appendOrReplaceDataPart(state *UIState, part map[string]any) {
 	msg := ensureAssistantMessage(state)
 	parts, _ := msg["parts"].([]any)
-	partType := trimString(part["type"]))
-	partID := trimString(part["id"]))
+	partType := trimString(part["type"])
+	partID := trimString(part["id"])
 	if partID != "" {
 		for idx, raw := range parts {
 			existing, ok := raw.(map[string]any)
 			if !ok {
 				continue
 			}
-			if trimString(existing["type"])) == partType && trimString(existing["id"])) == partID {
+			if trimString(existing["type"]) == partType && trimString(existing["id"]) == partID {
 				parts[idx] = part
 				msg["parts"] = parts
 				return
@@ -380,8 +380,8 @@ func setTerminalState(message map[string]any, typ string, reason string) {
 		metadata = map[string]any{}
 	}
 	terminal := map[string]any{"type": typ}
-	if strings.TrimSpace(reason) != "" && typ == "error" {
-		terminal["errorText"] = strings.TrimSpace(reason)
+	if reason = strings.TrimSpace(reason); reason != "" && typ == "error" {
+		terminal["errorText"] = reason
 	}
 	metadata["beeper_terminal_state"] = terminal
 	message["metadata"] = metadata
@@ -394,9 +394,9 @@ func stringValue(raw any) string {
 	return ""
 }
 
-// trimStringValue extracts a string from a dynamic value and trims whitespace.
+// trimString extracts a string from a dynamic value and trims whitespace.
 func trimString(raw any) string {
-	return trimString(raw))
+	return strings.TrimSpace(stringValue(raw))
 }
 
 func boolValue(raw any) (bool, bool) {

@@ -600,15 +600,9 @@ func StripPluginOnlyAllowlist(policy *ToolPolicy, groups PluginToolGroups, coreT
 			hasCoreEntry = true
 			continue
 		}
-		isPluginEntry := entry == "group:plugins"
-		if !isPluginEntry {
-			if _, ok := pluginIDs[entry]; ok {
-				isPluginEntry = true
-			}
-			if _, ok := pluginTools[entry]; ok {
-				isPluginEntry = true
-			}
-		}
+		_, isPluginID := pluginIDs[entry]
+		_, isPluginTool := pluginTools[entry]
+		isPluginEntry := entry == "group:plugins" || isPluginID || isPluginTool
 		expanded := ExpandToolGroups([]string{entry})
 		isCoreEntry := false
 		for _, name := range expanded {
