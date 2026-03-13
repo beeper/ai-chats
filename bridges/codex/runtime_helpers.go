@@ -4,10 +4,21 @@ import (
 	"context"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote"
 )
+
+const AIAuthFailed status.BridgeStateErrorCode = "ai-auth-failed"
+
+func messageStatusForError(_ error) event.MessageStatus {
+	return event.MessageStatusRetriable
+}
+
+func messageStatusReasonForError(_ error) event.MessageStatusReason {
+	return event.MessageStatusGenericError
+}
 
 func messageSendStatusError(err error, message string, reason event.MessageStatusReason) error {
 	return agentremote.MessageSendStatusError(err, message, reason, messageStatusForError, messageStatusReasonForError)

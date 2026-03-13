@@ -359,7 +359,9 @@ func (c *Conversation) SetRoomTopic(ctx context.Context, topic string) error {
 	return err
 }
 
-func (c *Conversation) broadcastCapabilities(ctx context.Context, features *RoomFeatures) error {
+// BroadcastCapabilities computes and sends room capability state events.
+func (c *Conversation) BroadcastCapabilities(ctx context.Context) error {
+	features := c.currentRoomFeatures(ctx)
 	if features == nil {
 		return nil
 	}
@@ -368,14 +370,8 @@ func (c *Conversation) broadcastCapabilities(ctx context.Context, features *Room
 		return err
 	}
 	rf := convertRoomFeatures(features)
-	content := &event.Content{Parsed: rf}
-	_, err = intent.SendState(ctx, c.portal.MXID, event.StateBeeperRoomFeatures, "", content, time.Time{})
+	_, err = intent.SendState(ctx, c.portal.MXID, event.StateBeeperRoomFeatures, "", &event.Content{Parsed: rf}, time.Time{})
 	return err
-}
-
-// BroadcastCapabilities computes and sends room capability state events.
-func (c *Conversation) BroadcastCapabilities(ctx context.Context) error {
-	return c.broadcastCapabilities(ctx, c.currentRoomFeatures(ctx))
 }
 
 // Portal returns the underlying bridgev2.Portal.

@@ -7,6 +7,8 @@ import (
 	"github.com/beeper/agentremote"
 )
 
+const aiCapabilityID = "com.beeper.ai.v1"
+
 func humanUserID(loginID networkid.UserLoginID) networkid.UserID {
 	return agentremote.HumanUserID("codex-user", loginID)
 }

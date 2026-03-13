@@ -160,10 +160,7 @@ func (s *StreamSession) End(ctx context.Context, _ EndReason) {
 }
 
 func (s *StreamSession) EmitPart(ctx context.Context, part map[string]any) {
-	if s.IsClosed() {
-		return
-	}
-	if part == nil {
+	if s.IsClosed() || part == nil {
 		return
 	}
 	if s.params.GetSuppressSend != nil && s.params.GetSuppressSend() {
@@ -309,13 +306,9 @@ func (s *StreamSession) sendEphemeralWithRetry(ephemeralSender bridgev2.Ephemera
 }
 
 func (s *StreamSession) useDebouncedMode() bool {
-	if s == nil {
-		return true
-	}
-	if s.localFallback.Load() {
-		return true
-	}
-	return s.params.RuntimeFallbackFlag != nil && s.params.RuntimeFallbackFlag.Load()
+	return s == nil ||
+		s.localFallback.Load() ||
+		(s.params.RuntimeFallbackFlag != nil && s.params.RuntimeFallbackFlag.Load())
 }
 
 func (s *StreamSession) fallbackToDebounced(ctx context.Context, reason string, err error, partType string) {
@@ -374,25 +367,25 @@ func (s *StreamSession) runDebouncedWorker() {
 		timerCh = nil
 	}
 
+	flushForced := func() {
+		stopTimer()
+		pending = false
+		_ = s.sendDebounced(context.Background(), true)
+		if s.params.ClearTurnGate != nil {
+			s.params.ClearTurnGate()
+		}
+	}
+
 	for {
 		select {
 		case <-s.workerStopCh:
-			stopTimer()
 			if pending {
-				_ = s.sendDebounced(context.Background(), true)
-				if s.params.ClearTurnGate != nil {
-					s.params.ClearTurnGate()
-				}
+				flushForced()
 			}
 			return
 		case req := <-s.debounceReqCh:
 			if req.force {
-				stopTimer()
-				pending = false
-				_ = s.sendDebounced(context.Background(), true)
-				if s.params.ClearTurnGate != nil {
-					s.params.ClearTurnGate()
-				}
+				flushForced()
 				continue
 			}
 			pending = true

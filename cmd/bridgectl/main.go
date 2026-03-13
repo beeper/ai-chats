@@ -946,27 +946,15 @@ func getDatabaseURI(configPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var doc map[string]any
+	var doc struct {
+		Database struct {
+			URI string `yaml:"uri"`
+		} `yaml:"database"`
+	}
 	if err = yaml.Unmarshal(data, &doc); err != nil {
 		return "", err
 	}
-	dbRaw, ok := doc["database"]
-	if !ok {
-		return "", nil
-	}
-	dbMap, ok := dbRaw.(map[string]any)
-	if !ok {
-		return "", nil
-	}
-	uriRaw, ok := dbMap["uri"]
-	if !ok {
-		return "", nil
-	}
-	uri, ok := uriRaw.(string)
-	if !ok {
-		return "", nil
-	}
-	return uri, nil
+	return doc.Database.URI, nil
 }
 
 func startBridgeProcess(meta *metadata) error {

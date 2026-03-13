@@ -168,10 +168,7 @@ func applyGhostMetadataUpdates(current, desired *GhostMetadata) bool {
 	changed = setIfChanged(&current.OpenClawAgentName, desired.OpenClawAgentName) || changed
 	changed = setIfChanged(&current.OpenClawAgentAvatarURL, desired.OpenClawAgentAvatarURL) || changed
 	changed = setIfChanged(&current.OpenClawAgentEmoji, desired.OpenClawAgentEmoji) || changed
-	if current.OpenClawAgentRole != desired.OpenClawAgentRole && desired.OpenClawAgentRole != "" {
-		current.OpenClawAgentRole = desired.OpenClawAgentRole
-		changed = true
-	}
+	changed = setIfChanged(&current.OpenClawAgentRole, desired.OpenClawAgentRole) || changed
 	if current.LastSeenAt != desired.LastSeenAt {
 		current.LastSeenAt = desired.LastSeenAt
 		changed = true
