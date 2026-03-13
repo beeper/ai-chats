@@ -62,12 +62,7 @@ func (oc *AIClient) buildResponsesAPIParams(ctx context.Context, portal *bridgev
 	if oc.getModelCapabilitiesForMeta(meta).SupportsToolCalling && hasAgent {
 		// Add session tools for non-boss agent rooms.
 		if !hasBossAgent(meta) {
-			var enabledSessions []*tools.Tool
-			for _, tool := range tools.SessionTools() {
-				if oc.isToolEnabled(meta, tool.Name) {
-					enabledSessions = append(enabledSessions, tool)
-				}
-			}
+			enabledSessions := oc.filterEnabledTools(meta, tools.SessionTools())
 			if len(enabledSessions) > 0 {
 				params.Tools = append(params.Tools, bossToolsToOpenAI(enabledSessions, strictMode, &oc.log)...)
 				log.Debug().Int("count", len(enabledSessions)).Msg("Added session tools")
@@ -77,12 +72,7 @@ func (oc *AIClient) buildResponsesAPIParams(ctx context.Context, portal *bridgev
 
 	// Add boss tools if this is a Boss room
 	if hasBossAgent(meta) {
-		var enabledBoss []*tools.Tool
-		for _, tool := range tools.BossTools() {
-			if oc.isToolEnabled(meta, tool.Name) {
-				enabledBoss = append(enabledBoss, tool)
-			}
-		}
+		enabledBoss := oc.filterEnabledTools(meta, tools.BossTools())
 		params.Tools = append(params.Tools, bossToolsToOpenAI(enabledBoss, strictMode, &oc.log)...)
 		log.Debug().Int("count", len(enabledBoss)).Msg("Added boss agent tools")
 	}
@@ -117,6 +107,17 @@ func resolveToolSchema(inputSchema any, toolName string, log *zerolog.Logger) ma
 		logSchemaSanitization(log, toolName, stripped)
 	}
 	return schema
+}
+
+// filterEnabledTools returns the subset of tools that are enabled for the current portal.
+func (oc *AIClient) filterEnabledTools(meta *PortalMetadata, allTools []*tools.Tool) []*tools.Tool {
+	var enabled []*tools.Tool
+	for _, tool := range allTools {
+		if oc.isToolEnabled(meta, tool.Name) {
+			enabled = append(enabled, tool)
+		}
+	}
+	return enabled
 }
 
 // bossToolsToOpenAI converts boss tools to OpenAI Responses API format.

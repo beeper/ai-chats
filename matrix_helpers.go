@@ -21,6 +21,20 @@ func LoggerFromContext(ctx context.Context, fallback *zerolog.Logger) *zerolog.L
 	return fallback
 }
 
+// loggerForLogin returns a logger from the context or the login's bridge logger,
+// falling back to a no-op logger if neither is available.
+func loggerForLogin(ctx context.Context, login *bridgev2.UserLogin) *zerolog.Logger {
+	var fallback *zerolog.Logger
+	if login != nil && login.Bridge != nil {
+		fallback = &login.Bridge.Log
+	}
+	if logger := LoggerFromContext(ctx, fallback); logger != nil {
+		return logger
+	}
+	nop := zerolog.Nop()
+	return &nop
+}
+
 // IsMatrixBotUser returns true if the given user ID belongs to the bridge bot or a ghost.
 func IsMatrixBotUser(ctx context.Context, bridge *bridgev2.Bridge, userID id.UserID) bool {
 	if userID == "" || bridge == nil {
