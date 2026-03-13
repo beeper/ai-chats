@@ -95,10 +95,12 @@ func newOpenClawManager(client *OpenClawClient) *openClawManager {
 		},
 		DBMetadata: func(prompt agentremote.ApprovalPromptMessage) any {
 			return &MessageMetadata{
-				Role:               "assistant",
-				ExcludeFromHistory: true,
-				CanonicalSchema:    "ai-sdk-ui-message-v1",
-				CanonicalUIMessage: prompt.UIMessage,
+				BaseMessageMetadata: agentremote.BaseMessageMetadata{
+					Role:               "assistant",
+					ExcludeFromHistory: true,
+					CanonicalSchema:    "ai-sdk-ui-message-v1",
+					CanonicalUIMessage: prompt.UIMessage,
+				},
 			}
 		},
 	})
@@ -623,12 +625,8 @@ func prepareOpenClawBackfillEntries(meta *PortalMetadata, history []map[string]a
 	})
 	var lastStreamOrder int64
 	for i := range entries {
-		order := entries[i].timestamp.UnixMilli() * 1000
-		if order <= lastStreamOrder {
-			order = lastStreamOrder + 1
-		}
-		entries[i].streamOrder = order
-		lastStreamOrder = order
+		lastStreamOrder = backfillutil.NextStreamOrder(lastStreamOrder, entries[i].timestamp)
+		entries[i].streamOrder = lastStreamOrder
 	}
 	return entries
 }
@@ -756,15 +754,17 @@ func (m *openClawManager) convertHistoryMessage(ctx context.Context, portal *bri
 
 func buildOpenClawHistoryMessageMetadata(message map[string]any, meta *PortalMetadata, role, agentID, text string, attachmentBlocks []map[string]any, uiMetadata, uiMessage map[string]any) *MessageMetadata {
 	metadata := &MessageMetadata{
-		Role:            role,
-		Body:            text,
-		SessionID:       meta.OpenClawSessionID,
-		SessionKey:      meta.OpenClawSessionKey,
-		AgentID:         agentID,
-		Attachments:     attachmentBlocks,
-		ThinkingContent: openClawCanonicalReasoningText(uiMessage),
-		ToolCalls:       openClawCanonicalToolCalls(uiMessage),
-		GeneratedFiles:  openClawCanonicalGeneratedFiles(uiMessage),
+		BaseMessageMetadata: agentremote.BaseMessageMetadata{
+			Role:            role,
+			Body:            text,
+			AgentID:         agentID,
+			ThinkingContent: agentremote.CanonicalReasoningText(agentremote.NormalizeUIParts(uiMessage["parts"])),
+			ToolCalls:       agentremote.CanonicalToolCalls(agentremote.NormalizeUIParts(uiMessage["parts"]), "openclaw"),
+			GeneratedFiles:  agentremote.CanonicalGeneratedFiles(agentremote.NormalizeUIParts(uiMessage["parts"])),
+		},
+		SessionID:   meta.OpenClawSessionID,
+		SessionKey:  meta.OpenClawSessionKey,
+		Attachments: attachmentBlocks,
 	}
 	if value := strings.TrimSpace(stringValue(uiMetadata["completion_id"])); value != "" {
 		metadata.RunID = value
@@ -1974,7 +1974,7 @@ func openClawHistoryUIParts(message map[string]any, role string) []map[string]an
 	}
 	openClawApplyHistoryChunks(state, message, role)
 	snapshot := streamui.SnapshotCanonicalUIMessage(state)
-	return normalizeOpenClawUIParts(snapshot["parts"])
+	return agentremote.NormalizeUIParts(snapshot["parts"])
 }
 
 func openClawApplyHistoryChunks(state *streamui.UIState, message map[string]any, role string) {
@@ -2084,24 +2084,6 @@ func openClawApplyHistoryToolResult(state *streamui.UIState, message map[string]
 	})
 }
 
-func normalizeOpenClawUIParts(raw any) []map[string]any {
-	switch typed := raw.(type) {
-	case []map[string]any:
-		return typed
-	case []any:
-		out := make([]map[string]any, 0, len(typed))
-		for _, item := range typed {
-			part := jsonutil.ToMap(item)
-			if len(part) == 0 {
-				continue
-			}
-			out = append(out, part)
-		}
-		return out
-	default:
-		return nil
-	}
-}
 
 func openClawHistoryFallbackText(uiParts []map[string]any) string {
 	for _, part := range uiParts {

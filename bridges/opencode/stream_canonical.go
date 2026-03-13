@@ -144,7 +144,7 @@ func (oc *OpenCodeClient) buildStreamDBMetadata(state *openCodeStreamState) *Mes
 		return nil
 	}
 	uiMessage := oc.currentCanonicalUIMessage(state)
-	thinking := CanonicalReasoningText(uiMessage)
+	thinking := agentremote.CanonicalReasoningText(agentremote.NormalizeUIParts(uiMessage["parts"]))
 	return &MessageMetadata{
 		BaseMessageMetadata: agentremote.BaseMessageMetadata{
 			Role:               stringutil.FirstNonEmpty(state.role, "assistant"),
@@ -160,8 +160,8 @@ func (oc *OpenCodeClient) buildStreamDBMetadata(state *openCodeStreamState) *Mes
 			StartedAtMs:        state.startedAtMs,
 			CompletedAtMs:      state.completedAtMs,
 			ThinkingContent:    thinking,
-			ToolCalls:          CanonicalToolCalls(uiMessage),
-			GeneratedFiles:     CanonicalGeneratedFiles(uiMessage),
+			ToolCalls:          agentremote.CanonicalToolCalls(agentremote.NormalizeUIParts(uiMessage["parts"]), "opencode"),
+			GeneratedFiles:     agentremote.CanonicalGeneratedFiles(agentremote.NormalizeUIParts(uiMessage["parts"])),
 		},
 		SessionID:       state.sessionID,
 		MessageID:       state.messageID,

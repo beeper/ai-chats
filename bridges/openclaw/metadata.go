@@ -85,29 +85,14 @@ type GhostMetadata struct {
 }
 
 type MessageMetadata struct {
-	Role               string                         `json:"role,omitempty"`
-	Body               string                         `json:"body,omitempty"`
-	SessionID          string                         `json:"session_id,omitempty"`
-	SessionKey         string                         `json:"session_key,omitempty"`
-	RunID              string                         `json:"run_id,omitempty"`
-	TurnID             string                         `json:"turn_id,omitempty"`
-	AgentID            string                         `json:"agent_id,omitempty"`
-	FinishReason       string                         `json:"finish_reason,omitempty"`
-	ErrorText          string                         `json:"error_text,omitempty"`
-	PromptTokens       int64                          `json:"prompt_tokens,omitempty"`
-	CompletionTokens   int64                          `json:"completion_tokens,omitempty"`
-	ReasoningTokens    int64                          `json:"reasoning_tokens,omitempty"`
-	TotalTokens        int64                          `json:"total_tokens,omitempty"`
-	CanonicalSchema    string                         `json:"canonical_schema,omitempty"`
-	CanonicalUIMessage map[string]any                 `json:"canonical_ui_message,omitempty"`
-	ThinkingContent    string                         `json:"thinking_content,omitempty"`
-	ToolCalls          []agentremote.ToolCallMetadata `json:"tool_calls,omitempty"`
-	GeneratedFiles     []agentremote.GeneratedFileRef `json:"generated_files,omitempty"`
-	Attachments        []map[string]any               `json:"attachments,omitempty"`
-	StartedAtMs        int64                          `json:"started_at_ms,omitempty"`
-	FirstTokenAtMs     int64                          `json:"first_token_at_ms,omitempty"`
-	CompletedAtMs      int64                          `json:"completed_at_ms,omitempty"`
-	ExcludeFromHistory bool                           `json:"exclude_from_history,omitempty"`
+	agentremote.BaseMessageMetadata
+	SessionID      string           `json:"session_id,omitempty"`
+	SessionKey     string           `json:"session_key,omitempty"`
+	RunID          string           `json:"run_id,omitempty"`
+	ErrorText      string           `json:"error_text,omitempty"`
+	TotalTokens    int64            `json:"total_tokens,omitempty"`
+	Attachments    []map[string]any `json:"attachments,omitempty"`
+	FirstTokenAtMs int64            `json:"first_token_at_ms,omitempty"`
 }
 
 func (mm *MessageMetadata) CopyFrom(other any) {
@@ -115,12 +100,7 @@ func (mm *MessageMetadata) CopyFrom(other any) {
 	if !ok || src == nil {
 		return
 	}
-	if src.Role != "" {
-		mm.Role = src.Role
-	}
-	if src.Body != "" {
-		mm.Body = src.Body
-	}
+	mm.BaseMessageMetadata.CopyFromBase(&src.BaseMessageMetadata)
 	if src.SessionID != "" {
 		mm.SessionID = src.SessionID
 	}
@@ -130,59 +110,17 @@ func (mm *MessageMetadata) CopyFrom(other any) {
 	if src.RunID != "" {
 		mm.RunID = src.RunID
 	}
-	if src.TurnID != "" {
-		mm.TurnID = src.TurnID
-	}
-	if src.AgentID != "" {
-		mm.AgentID = src.AgentID
-	}
-	if src.FinishReason != "" {
-		mm.FinishReason = src.FinishReason
-	}
 	if src.ErrorText != "" {
 		mm.ErrorText = src.ErrorText
-	}
-	if src.PromptTokens != 0 {
-		mm.PromptTokens = src.PromptTokens
-	}
-	if src.CompletionTokens != 0 {
-		mm.CompletionTokens = src.CompletionTokens
-	}
-	if src.ReasoningTokens != 0 {
-		mm.ReasoningTokens = src.ReasoningTokens
 	}
 	if src.TotalTokens != 0 {
 		mm.TotalTokens = src.TotalTokens
 	}
-	if src.CanonicalSchema != "" {
-		mm.CanonicalSchema = src.CanonicalSchema
-	}
-	if len(src.CanonicalUIMessage) > 0 {
-		mm.CanonicalUIMessage = src.CanonicalUIMessage
-	}
-	if src.ThinkingContent != "" {
-		mm.ThinkingContent = src.ThinkingContent
-	}
-	if len(src.ToolCalls) > 0 {
-		mm.ToolCalls = src.ToolCalls
-	}
-	if len(src.GeneratedFiles) > 0 {
-		mm.GeneratedFiles = src.GeneratedFiles
-	}
 	if len(src.Attachments) > 0 {
 		mm.Attachments = src.Attachments
 	}
-	if src.StartedAtMs != 0 {
-		mm.StartedAtMs = src.StartedAtMs
-	}
 	if src.FirstTokenAtMs != 0 {
 		mm.FirstTokenAtMs = src.FirstTokenAtMs
-	}
-	if src.CompletedAtMs != 0 {
-		mm.CompletedAtMs = src.CompletedAtMs
-	}
-	if src.ExcludeFromHistory {
-		mm.ExcludeFromHistory = true
 	}
 }
 

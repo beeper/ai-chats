@@ -170,13 +170,6 @@ func (o ApprovalOption) allKeys() []string {
 	}
 }
 
-func (o ApprovalOption) prefillKeys() []string {
-	keys := o.allKeys()
-	if len(keys) == 0 {
-		return nil
-	}
-	return keys
-}
 
 func ApprovalPromptOptions(allowAlways bool) []ApprovalOption {
 	options := []ApprovalOption{
@@ -322,12 +315,7 @@ func BuildApprovalPromptMessage(params ApprovalPromptMessageParams) ApprovalProm
 		toolName = "tool"
 	}
 	presentation := normalizeApprovalPromptPresentation(params.Presentation, toolName)
-	var options []ApprovalOption
-	if len(params.Options) > 0 {
-		options = normalizeApprovalOptions(params.Options, ApprovalPromptOptions(presentation.AllowAlways))
-	} else {
-		options = normalizeApprovalOptions(nil, ApprovalPromptOptions(presentation.AllowAlways))
-	}
+	options := normalizeApprovalOptions(params.Options, ApprovalPromptOptions(presentation.AllowAlways))
 	body := BuildApprovalPromptBody(presentation, options)
 	metadata := approvalMessageMetadata(approvalID, turnID, presentation, options, nil, params.ExpiresAt)
 	uiMessage := map[string]any{
@@ -394,12 +382,7 @@ func BuildApprovalResponsePromptMessage(params ApprovalResponsePromptMessagePara
 	if strings.TrimSpace(decision.Reason) != "" {
 		approvalPayload["reason"] = strings.TrimSpace(decision.Reason)
 	}
-	options := params.Options
-	if len(options) > 0 {
-		options = normalizeApprovalOptions(options, ApprovalPromptOptions(presentation.AllowAlways))
-	} else {
-		options = normalizeApprovalOptions(nil, ApprovalPromptOptions(presentation.AllowAlways))
-	}
+	options := normalizeApprovalOptions(params.Options, ApprovalPromptOptions(presentation.AllowAlways))
 	metadata := approvalMessageMetadata(approvalID, turnID, presentation, options, &decision, params.ExpiresAt)
 	uiMessage := map[string]any{
 		"id":       approvalID,

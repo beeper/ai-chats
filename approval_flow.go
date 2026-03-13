@@ -83,6 +83,10 @@ type ApprovalFlow[D any] struct {
 	logKey          string
 	sendTimeout     time.Duration
 
+	// Reaper goroutine fields.
+	reaperStop   chan struct{}
+	reaperNotify chan struct{}
+
 	// Test hooks (nil in production).
 	testResolvePortal                 func(ctx context.Context, login *bridgev2.UserLogin, roomID id.RoomID) (*bridgev2.Portal, error)
 	testEditPromptToResolvedState     func(ctx context.Context, login *bridgev2.UserLogin, portal *bridgev2.Portal, sender bridgev2.EventSender, prompt ApprovalPromptRegistration, decision ApprovalDecisionPayload)
@@ -92,12 +96,13 @@ type ApprovalFlow[D any] struct {
 }
 
 // NewApprovalFlow creates an ApprovalFlow from the given config.
+// Call Close() when the flow is no longer needed to stop the reaper goroutine.
 func NewApprovalFlow[D any](cfg ApprovalFlowConfig[D]) *ApprovalFlow[D] {
 	timeout := cfg.SendTimeout
 	if timeout <= 0 {
 		timeout = 10 * time.Second
 	}
-	return &ApprovalFlow[D]{
+	f := &ApprovalFlow[D]{
 		pending:           make(map[string]*Pending[D]),
 		promptsByApproval: make(map[string]*ApprovalPromptRegistration),
 		promptsByEventID:  make(map[id.EventID]string),
@@ -111,6 +116,105 @@ func NewApprovalFlow[D any](cfg ApprovalFlowConfig[D]) *ApprovalFlow[D] {
 		idPrefix:          cfg.IDPrefix,
 		logKey:            cfg.LogKey,
 		sendTimeout:       timeout,
+		reaperStop:        make(chan struct{}),
+		reaperNotify:      make(chan struct{}, 1),
+	}
+	go f.runReaper()
+	return f
+}
+
+// Close stops the reaper goroutine. Safe to call multiple times.
+func (f *ApprovalFlow[D]) Close() {
+	if f == nil {
+		return
+	}
+	select {
+	case <-f.reaperStop:
+	default:
+		close(f.reaperStop)
+	}
+}
+
+const reaperMaxInterval = 30 * time.Second
+
+func (f *ApprovalFlow[D]) runReaper() {
+	timer := time.NewTimer(reaperMaxInterval)
+	defer timer.Stop()
+	for {
+		select {
+		case <-f.reaperStop:
+			return
+		case <-timer.C:
+			f.reapExpired()
+			timer.Reset(f.nextReaperDelay())
+		case <-f.reaperNotify:
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			timer.Reset(f.nextReaperDelay())
+		}
+	}
+}
+
+// nextReaperDelay returns the duration until the earliest pending/prompt expiry,
+// capped at reaperMaxInterval.
+func (f *ApprovalFlow[D]) nextReaperDelay() time.Duration {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	earliest := time.Time{}
+	for _, p := range f.pending {
+		if !p.ExpiresAt.IsZero() && (earliest.IsZero() || p.ExpiresAt.Before(earliest)) {
+			earliest = p.ExpiresAt
+		}
+	}
+	for _, entry := range f.promptsByApproval {
+		if !entry.ExpiresAt.IsZero() && (earliest.IsZero() || entry.ExpiresAt.Before(earliest)) {
+			earliest = entry.ExpiresAt
+		}
+	}
+	if earliest.IsZero() {
+		return reaperMaxInterval
+	}
+	delay := time.Until(earliest)
+	if delay <= 0 {
+		return time.Millisecond
+	}
+	if delay > reaperMaxInterval {
+		return reaperMaxInterval
+	}
+	return delay
+}
+
+func (f *ApprovalFlow[D]) reapExpired() {
+	now := time.Now()
+	var expired []string
+	f.mu.Lock()
+	// Finalize pending approvals whose own TTL has elapsed.
+	for aid, p := range f.pending {
+		if !p.ExpiresAt.IsZero() && now.After(p.ExpiresAt) {
+			expired = append(expired, aid)
+		}
+	}
+	// Also finalize pending approvals whose associated prompt has expired.
+	for aid, entry := range f.promptsByApproval {
+		if !entry.ExpiresAt.IsZero() && now.After(entry.ExpiresAt) {
+			if _, hasPending := f.pending[aid]; hasPending {
+				expired = append(expired, aid)
+			} else {
+				// Orphan prompt — clean it up.
+				if entry.PromptEventID != "" {
+					delete(f.promptsByEventID, entry.PromptEventID)
+				}
+				delete(f.promptsByApproval, aid)
+			}
+		}
+	}
+	f.mu.Unlock()
+	for _, aid := range expired {
+		f.finishTimedOutApproval(aid, 0)
 	}
 }
 
@@ -313,22 +417,6 @@ func (f *ApprovalFlow[D]) registerPromptLocked(reg ApprovalPromptRegistration) {
 	f.promptsByApproval[reg.ApprovalID] = &copyReg
 	if reg.PromptEventID != "" {
 		f.promptsByEventID[reg.PromptEventID] = reg.ApprovalID
-	}
-
-	// Opportunistic sweep: remove up to 10 expired entries to prevent unbounded growth.
-	now := time.Now()
-	swept := 0
-	for aid, entry := range f.promptsByApproval {
-		if swept >= 10 {
-			break
-		}
-		if !entry.ExpiresAt.IsZero() && now.After(entry.ExpiresAt) {
-			if entry.PromptEventID != "" {
-				delete(f.promptsByEventID, entry.PromptEventID)
-			}
-			delete(f.promptsByApproval, aid)
-			swept++
-		}
 	}
 }
 
@@ -667,7 +755,7 @@ func (f *ApprovalFlow[D]) sendPrefillReactions(_ context.Context, portal *bridge
 	now := time.Now()
 	seenKeys := map[string]struct{}{}
 	for _, option := range options {
-		for _, key := range option.prefillKeys() {
+		for _, key := range option.allKeys() {
 			if key == "" {
 				continue
 			}
@@ -688,31 +776,20 @@ func (f *ApprovalFlow[D]) sendPrefillReactions(_ context.Context, portal *bridge
 	}
 }
 
-func (f *ApprovalFlow[D]) schedulePromptTimeout(approvalID string, expiresAt time.Time, promptVersion uint64) {
+func (f *ApprovalFlow[D]) schedulePromptTimeout(approvalID string, expiresAt time.Time, _ uint64) {
 	approvalID = strings.TrimSpace(approvalID)
-	if approvalID == "" || expiresAt.IsZero() || promptVersion == 0 {
+	if approvalID == "" || expiresAt.IsZero() {
 		return
 	}
-	delay := time.Until(expiresAt)
-	if delay <= 0 {
-		f.finishTimedOutApproval(approvalID, promptVersion)
+	if time.Until(expiresAt) <= 0 {
+		f.finishTimedOutApproval(approvalID, 0)
 		return
 	}
-	f.mu.Lock()
-	p := f.pending[approvalID]
-	f.mu.Unlock()
-	if p == nil {
-		return
+	// Wake the reaper so it picks up the new expiry promptly.
+	select {
+	case f.reaperNotify <- struct{}{}:
+	default:
 	}
-	go func(promptVersion uint64) {
-		timer := time.NewTimer(delay)
-		defer timer.Stop()
-		select {
-		case <-timer.C:
-			f.finishTimedOutApproval(approvalID, promptVersion)
-		case <-p.done:
-		}
-	}(promptVersion)
 }
 
 func (f *ApprovalFlow[D]) finishTimedOutApproval(approvalID string, promptVersion uint64) {
@@ -800,7 +877,7 @@ func (f *ApprovalFlow[D]) mirrorRemoteDecisionReaction(ctx context.Context, prom
 		}
 		targetMessage = target.ID
 	}
-	result := login.QueueRemoteEvent(&RemoteReaction{
+	login.QueueRemoteEvent(&RemoteReaction{
 		Portal:        portal.PortalKey,
 		Sender:        sender,
 		TargetMessage: targetMessage,
@@ -809,7 +886,6 @@ func (f *ApprovalFlow[D]) mirrorRemoteDecisionReaction(ctx context.Context, prom
 		Timestamp:     time.Now(),
 		LogKey:        f.logKey,
 	})
-	_ = result
 }
 
 func (f *ApprovalFlow[D]) finalize(approvalID string, decision *ApprovalDecisionPayload, resolved bool) {
@@ -864,20 +940,30 @@ func (f *ApprovalFlow[D]) finalizeWithPromptVersion(approvalID string, decision 
 		if prompt.PromptSenderID != "" {
 			sender.Sender = prompt.PromptSenderID
 		}
+		ac := approvalContext{ctx: ctx, login: login, portal: portal, sender: sender}
 		if resolved && decision != nil {
 			if f.testEditPromptToResolvedState != nil {
 				f.testEditPromptToResolvedState(ctx, login, portal, sender, prompt, *decision)
 			} else {
-				f.editPromptToResolvedState(ctx, login, portal, sender, prompt, *decision)
+				f.editPromptToResolvedState(ac, prompt, *decision)
 			}
 		}
 		if f.testRedactPromptPlaceholderReacts != nil {
 			_ = f.testRedactPromptPlaceholderReacts(ctx, login, portal, sender, prompt)
 			return
 		}
-		_ = RedactApprovalPromptPlaceholderReactions(ctx, login, portal, sender, prompt)
+		_ = RedactApprovalPromptPlaceholderReactions(ac.ctx, ac.login, ac.portal, ac.sender, prompt)
 	}(*prompt, decision, resolved)
 	return true
+}
+
+// approvalContext bundles the four values that are always passed together
+// through the approval resolution path.
+type approvalContext struct {
+	ctx    context.Context
+	login  *bridgev2.UserLogin
+	portal *bridgev2.Portal
+	sender bridgev2.EventSender
 }
 
 func (f *ApprovalFlow[D]) resolvePortalByRoomID(ctx context.Context, login *bridgev2.UserLogin, roomID id.RoomID) (*bridgev2.Portal, error) {
@@ -888,14 +974,11 @@ func (f *ApprovalFlow[D]) resolvePortalByRoomID(ctx context.Context, login *brid
 }
 
 func (f *ApprovalFlow[D]) editPromptToResolvedState(
-	ctx context.Context,
-	login *bridgev2.UserLogin,
-	portal *bridgev2.Portal,
-	sender bridgev2.EventSender,
+	ac approvalContext,
 	prompt ApprovalPromptRegistration,
 	decision ApprovalDecisionPayload,
 ) {
-	if login == nil || portal == nil || portal.MXID == "" || prompt.PromptMessageID == "" {
+	if ac.login == nil || ac.portal == nil || ac.portal.MXID == "" || prompt.PromptMessageID == "" {
 		return
 	}
 	response := BuildApprovalResponsePromptMessage(ApprovalResponsePromptMessageParams{
@@ -924,13 +1007,12 @@ func (f *ApprovalFlow[D]) editPromptToResolvedState(
 	if edit == nil {
 		return
 	}
-	result := login.QueueRemoteEvent(&RemoteEdit{
-		Portal:        portal.PortalKey,
-		Sender:        sender,
+	ac.login.QueueRemoteEvent(&RemoteEdit{
+		Portal:        ac.portal.PortalKey,
+		Sender:        ac.sender,
 		TargetMessage: prompt.PromptMessageID,
 		Timestamp:     time.Now(),
 		PreBuilt:      edit,
 		LogKey:        f.logKey,
 	})
-	_ = result
 }

@@ -81,16 +81,13 @@ func (cc *CodexClient) emitStreamEvent(ctx context.Context, portal *bridgev2.Por
 	if state == nil {
 		return
 	}
-	turns.EmitStreamEventWithSession(
-		ctx,
-		portal,
-		state.turnID,
-		state.suppressSend,
-		&state.loggedStreamStart,
-		cc.loggerForContext(ctx),
-		func() *turns.StreamSession { return cc.ensureStreamSession(ctx, portal, state) },
-		part,
-	)
+	turns.EmitStreamEvent(ctx, portal, turns.StreamEventState{
+		TurnID:        state.turnID,
+		SuppressSend:  state.suppressSend,
+		LoggedStart:   &state.loggedStreamStart,
+		EnsureSession: func() *turns.StreamSession { return cc.ensureStreamSession(ctx, portal, state) },
+		Logger:        cc.loggerForContext(ctx),
+	}, part)
 }
 
 func (cc *CodexClient) resolveStreamTargetEventID(

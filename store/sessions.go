@@ -109,10 +109,11 @@ func (s *SessionStore) Upsert(ctx context.Context, record SessionRecord) error {
 }
 
 func normalizeAgentID(agentID string) string {
-	if strings.TrimSpace(agentID) == "" {
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
 		return "beep"
 	}
-	return strings.TrimSpace(agentID)
+	return agentID
 }
 
 func nullableInt(raw sql.NullInt64) *int {

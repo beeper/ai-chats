@@ -64,16 +64,13 @@ func (oc *AIClient) emitStreamEvent(
 	if state == nil {
 		return
 	}
-	turns.EmitStreamEventWithSession(
-		ctx,
-		portal,
-		state.turnID,
-		state.suppressSend,
-		&state.loggedStreamStart,
-		oc.loggerForContext(ctx),
-		func() *turns.StreamSession { return oc.ensureStreamSession(ctx, portal, state) },
-		part,
-	)
+	turns.EmitStreamEvent(ctx, portal, turns.StreamEventState{
+		TurnID:        state.turnID,
+		SuppressSend:  state.suppressSend,
+		LoggedStart:   &state.loggedStreamStart,
+		EnsureSession: func() *turns.StreamSession { return oc.ensureStreamSession(ctx, portal, state) },
+		Logger:        oc.loggerForContext(ctx),
+	}, part)
 }
 
 func (oc *AIClient) resolveStreamTargetEventID(

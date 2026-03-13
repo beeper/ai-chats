@@ -468,7 +468,7 @@ func codexThreadBackfillEntriesWithTimings(thread codexThread, timings []codexTu
 			assistantTS = userTS.Add(time.Millisecond)
 		}
 		if userText != "" {
-			lastStreamOrder = codexNextStreamOrder(lastStreamOrder, userTS)
+			lastStreamOrder = backfillutil.NextStreamOrder(lastStreamOrder, userTS)
 			out = append(out, codexBackfillEntry{
 				MessageID:   codexBackfillMessageID(thread.ID, turnID, "user"),
 				Sender:      humanSender,
@@ -480,7 +480,7 @@ func codexThreadBackfillEntriesWithTimings(thread codexThread, timings []codexTu
 			})
 		}
 		if assistantText != "" {
-			lastStreamOrder = codexNextStreamOrder(lastStreamOrder, assistantTS)
+			lastStreamOrder = backfillutil.NextStreamOrder(lastStreamOrder, assistantTS)
 			out = append(out, codexBackfillEntry{
 				MessageID:   codexBackfillMessageID(thread.ID, turnID, "assistant"),
 				Sender:      codexSender,
@@ -669,16 +669,6 @@ func codexResolveTurnTimings(turns []codexTurn, timings []codexTurnTiming) []cod
 	return resolved
 }
 
-func codexNextStreamOrder(last int64, ts time.Time) int64 {
-	order := ts.UnixMilli() * 1000
-	if order <= 0 {
-		order = time.Now().UnixMilli() * 1000
-	}
-	if order <= last {
-		order = last + 1
-	}
-	return order
-}
 
 func codexTurnTextPair(turn codexTurn) (string, string) {
 	var userTextParts []string

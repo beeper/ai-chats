@@ -162,9 +162,10 @@ func (m *TurnManager) End(turnID string, reason turns.EndReason) {
 	if m == nil {
 		return
 	}
+	turnID = strings.TrimSpace(turnID)
 	m.mu.Lock()
-	turn := m.turns[strings.TrimSpace(turnID)]
-	delete(m.turns, strings.TrimSpace(turnID))
+	turn := m.turns[turnID]
+	delete(m.turns, turnID)
 	m.mu.Unlock()
 	if turn == nil {
 		return

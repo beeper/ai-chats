@@ -130,26 +130,6 @@ func EmitStreamEvent(ctx context.Context, portal *bridgev2.Portal, state StreamE
 	session.EmitPart(ctx, part)
 }
 
-// EmitStreamEventWithSession is a convenience wrapper for callers that only need
-// to provide the common stream state fields.
-func EmitStreamEventWithSession(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	turnID string,
-	suppressSend bool,
-	loggedStart *bool,
-	logger *zerolog.Logger,
-	ensureSession func() *StreamSession,
-	part map[string]any,
-) {
-	EmitStreamEvent(ctx, portal, StreamEventState{
-		TurnID:        turnID,
-		SuppressSend:  suppressSend,
-		LoggedStart:   loggedStart,
-		EnsureSession: ensureSession,
-		Logger:        logger,
-	}, part)
-}
 
 func (s *StreamSession) IsClosed() bool {
 	return s == nil || s.closed.Load()
@@ -219,17 +199,11 @@ func (s *StreamSession) EmitPart(ctx context.Context, part map[string]any) {
 	}
 	targetEventID, err := s.resolveTargetEventID(ctx, target)
 	if err != nil {
-		s.switchToDebounced(ctx, "target_event_lookup_failed", err)
-		if debounceEligible {
-			s.enqueueDebounced(forceDebounced)
-		}
+		s.fallbackToDebounced(ctx, "target_event_lookup_failed", err, partType)
 		return
 	}
 	if targetEventID == "" {
-		s.switchToDebounced(ctx, "missing_target_event_id", nil)
-		if debounceEligible {
-			s.enqueueDebounced(forceDebounced)
-		}
+		s.fallbackToDebounced(ctx, "missing_target_event_id", nil, partType)
 		return
 	}
 
@@ -253,18 +227,12 @@ func (s *StreamSession) EmitPart(ctx context.Context, part map[string]any) {
 	}
 
 	if s.params.GetEphemeralSender == nil {
-		s.switchToDebounced(ctx, "missing_ephemeral_sender_getter", nil)
-		if debounceEligible {
-			s.enqueueDebounced(forceDebounced)
-		}
+		s.fallbackToDebounced(ctx, "missing_ephemeral_sender_getter", nil, partType)
 		return
 	}
 	ephemeralSender, ok := s.params.GetEphemeralSender(ctx)
 	if !ok || ephemeralSender == nil {
-		s.switchToDebounced(ctx, "missing_ephemeral_sender", nil)
-		if debounceEligible {
-			s.enqueueDebounced(forceDebounced)
-		}
+		s.fallbackToDebounced(ctx, "missing_ephemeral_sender", nil, partType)
 		return
 	}
 	eventContent := &event.Content{Raw: content}
@@ -320,10 +288,7 @@ func (s *StreamSession) sendEphemeralWithRetry(ephemeralSender bridgev2.Ephemera
 		return true
 	}
 	if ShouldFallbackToDebounced(err) {
-		s.switchToDebounced(context.Background(), "ephemeral_send_unknown", err)
-		if eligible, force := debouncedPartMode(partType); eligible {
-			s.enqueueDebounced(force)
-		}
+		s.fallbackToDebounced(context.Background(), "ephemeral_send_unknown", err, partType)
 		return false
 	}
 	for range nonFallbackRetryCount {
@@ -336,10 +301,7 @@ func (s *StreamSession) sendEphemeralWithRetry(ephemeralSender bridgev2.Ephemera
 		}
 		err = retryErr
 		if ShouldFallbackToDebounced(err) {
-			s.switchToDebounced(context.Background(), "ephemeral_send_unknown_retry", err)
-			if eligible, force := debouncedPartMode(partType); eligible {
-				s.enqueueDebounced(force)
-			}
+			s.fallbackToDebounced(context.Background(), "ephemeral_send_unknown_retry", err, partType)
 			return false
 		}
 	}
@@ -355,6 +317,13 @@ func (s *StreamSession) useDebouncedMode() bool {
 		return true
 	}
 	return s.params.RuntimeFallbackFlag != nil && s.params.RuntimeFallbackFlag.Load()
+}
+
+func (s *StreamSession) fallbackToDebounced(ctx context.Context, reason string, err error, partType string) {
+	s.switchToDebounced(ctx, reason, err)
+	if eligible, force := debouncedPartMode(partType); eligible {
+		s.enqueueDebounced(force)
+	}
 }
 
 func (s *StreamSession) switchToDebounced(_ context.Context, reason string, err error) {
