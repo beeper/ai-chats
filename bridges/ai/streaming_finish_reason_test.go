@@ -95,7 +95,7 @@ func TestShouldContinueChatToolLoop(t *testing.T) {
 	}
 }
 
-func TestBuildCanonicalUIMessage_IncludesSourceAndFileParts(t *testing.T) {
+func TestBuildStreamUIMessage_IncludesSourceAndFileParts(t *testing.T) {
 	oc := &AIClient{}
 	state := &streamingState{
 		turnID: "turn-1",

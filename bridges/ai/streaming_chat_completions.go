@@ -102,6 +102,7 @@ func (a *chatCompletionsTurnAdapter) RunRound(
 					touchTyping()
 					delta := maybePrependTextSeparator(state, choice.Delta.Content)
 					state.accumulated.WriteString(delta)
+					roundDelta := delta
 
 					parsed := (*runtimeparse.StreamingDirectiveResult)(nil)
 					if state.replyAccumulator != nil {
@@ -110,9 +111,7 @@ func (a *chatCompletionsTurnAdapter) RunRound(
 					if parsed != nil {
 						oc.applyStreamingReplyTarget(state, parsed)
 						cleaned := parsed.Text
-						if cleaned != "" {
-							roundContent.WriteString(cleaned)
-						}
+						roundDelta = cleaned
 						if typingSignals != nil {
 							typingSignals.SignalTextDelta(cleaned)
 						}
@@ -136,6 +135,9 @@ func (a *chatCompletionsTurnAdapter) RunRound(
 							}
 							streamUI.TextDelta(ctx, cleaned)
 						}
+					}
+					if roundDelta != "" {
+						roundContent.WriteString(roundDelta)
 					}
 				}
 
@@ -186,9 +188,6 @@ func (a *chatCompletionsTurnAdapter) RunRound(
 						activeTools[toolIdx] = tool
 					}
 
-					if toolDelta.ID != "" && tool.callID == "" {
-						tool.callID = toolDelta.ID
-					}
 					if toolDelta.Function.Name != "" {
 						tool.toolName = toolDelta.Function.Name
 					}
@@ -286,10 +285,6 @@ func (a *chatCompletionsTurnAdapter) RunRound(
 
 	if shouldContinueChatToolLoop(state.finishReason, len(toolCallParams)) {
 		state.needsTextSeparator = true
-		if round >= maxStreamingToolRounds {
-			log.Warn().Int("rounds", round+1).Msg("Max tool call rounds reached; stopping chat completions continuation")
-			return false, nil, nil
-		}
 		assistantMsg := openai.ChatCompletionAssistantMessageParam{
 			ToolCalls: toolCallParams,
 		}
@@ -300,9 +295,19 @@ func (a *chatCompletionsTurnAdapter) RunRound(
 		for _, result := range toolResults {
 			currentMessages = append(currentMessages, openai.ToolMessage(result.output, result.callID))
 		}
+		if round >= maxStreamingToolRounds {
+			log.Warn().Int("rounds", round+1).Msg("Max tool call rounds reached; stopping chat completions continuation")
+			currentMessages = append(currentMessages, openai.AssistantMessage("Continuation stopped after reaching the maximum number of streaming tool rounds."))
+			a.messages = currentMessages
+			return false, nil, nil
+		}
 		if steerItems := oc.drainSteerQueue(state.roomID); len(steerItems) > 0 {
 			for _, item := range steerItems {
 				if item.pending.Type != pendingTypeText {
+					log.Debug().
+						Str("pending_type", string(item.pending.Type)).
+						Str("message_id", strings.TrimSpace(item.messageID)).
+						Msg("Skipping non-text steer queue item in chat completions continuation")
 					continue
 				}
 				prompt := strings.TrimSpace(item.prompt)

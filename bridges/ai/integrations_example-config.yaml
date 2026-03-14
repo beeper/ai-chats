@@ -21,7 +21,7 @@ providers:
     api_key: ""
     # Optional. Defaults to https://api.openai.com/v1
     base_url: "https://api.openai.com/v1"
-    default_model: "openai/gpt-5.2"
+    default_model: "openai/gpt-5.4"
   openrouter:
     # Optional. If set, overrides login-provided key.
     api_key: ""
@@ -125,7 +125,7 @@ tools:
     openrouter:
       api_key: ""
       base_url: "https://openrouter.ai/api/v1"
-      model: "openai/gpt-5.2"
+      model: "openai/gpt-5.4"
   fetch:
     provider: "exa"
     fallbacks: ["direct"]
@@ -293,7 +293,7 @@ pruning:
   summarization_enabled: true
 
   # Model to use for generating summaries (default: fast model)
-  summarization_model: "openai/gpt-5.2"
+  summarization_model: "openai/gpt-5.4"
 
   # Maximum tokens for generated summaries
   max_summary_tokens: 500

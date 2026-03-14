@@ -22,7 +22,7 @@ func (oc *AIClient) emitUIFinish(ctx context.Context, portal *bridgev2.Portal, s
 		state.session = nil
 	}
 
-	// Debounced done summary: always log the finish with event count.
+	// Debounced done summary: log the finish only when the stream start was previously logged.
 	if state.loggedStreamStart {
 		oc.loggerForContext(ctx).Info().
 			Str("turn_id", strings.TrimSpace(state.turnID)).
