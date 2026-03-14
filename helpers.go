@@ -221,6 +221,41 @@ func SendViaPortal(p SendViaPortalParams) (id.EventID, networkid.MessageID, erro
 	return result.EventID, p.MsgID, nil
 }
 
+// SendEditViaPortal queues a pre-built edit through bridgev2's remote event pipeline.
+func SendEditViaPortal(
+	login *bridgev2.UserLogin,
+	portal *bridgev2.Portal,
+	sender bridgev2.EventSender,
+	targetMessage networkid.MessageID,
+	logKey string,
+	converted *bridgev2.ConvertedEdit,
+) error {
+	if portal == nil || portal.MXID == "" {
+		return fmt.Errorf("invalid portal")
+	}
+	if login == nil || login.Bridge == nil {
+		return fmt.Errorf("bridge unavailable")
+	}
+	if targetMessage == "" {
+		return fmt.Errorf("invalid target message")
+	}
+	result := login.QueueRemoteEvent(&RemoteEdit{
+		Portal:        portal.PortalKey,
+		Sender:        sender,
+		TargetMessage: targetMessage,
+		Timestamp:     time.Now(),
+		LogKey:        logKey,
+		PreBuilt:      converted,
+	})
+	if !result.Success {
+		if result.Error != nil {
+			return fmt.Errorf("edit failed: %w", result.Error)
+		}
+		return fmt.Errorf("edit failed")
+	}
+	return nil
+}
+
 // RedactEventAsSender redacts an event ID in a room using the intent resolved for sender.
 func RedactEventAsSender(
 	ctx context.Context,

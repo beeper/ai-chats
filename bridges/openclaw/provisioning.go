@@ -335,35 +335,31 @@ func (oc *OpenClawClient) syntheticDMPortalInfo(agentID, displayName string) *br
 	if strings.TrimSpace(displayName) == "" {
 		displayName = oc.displayNameForAgent(agentID)
 	}
-	members := bridgev2.ChatMemberMap{
-		humanUserID(oc.UserLogin.ID): {
-			EventSender: bridgev2.EventSender{
-				Sender:      humanUserID(oc.UserLogin.ID),
-				SenderLogin: oc.UserLogin.ID,
-				IsFromMe:    true,
-			},
-			Membership: event.MembershipJoin,
-		},
-		openClawGhostUserID(agentID): {
-			EventSender: oc.senderForAgent(agentID, false),
-			Membership:  event.MembershipJoin,
-			UserInfo:    oc.sdkAgentForProfile(openClawAgentProfile{AgentID: agentID, Name: displayName}).UserInfo(),
-			MemberEventExtra: map[string]any{
-				"displayname": displayName,
-			},
+	chatInfo := agentremote.BuildLoginDMChatInfo(agentremote.LoginDMChatInfoParams{
+		Title:             displayName,
+		Login:             oc.UserLogin,
+		HumanUserIDPrefix: "openclaw-user",
+		BotUserID:         openClawGhostUserID(agentID),
+		BotDisplayName:    displayName,
+		CanBackfill:       true,
+	})
+	if chatInfo == nil || chatInfo.Members == nil || chatInfo.Members.MemberMap == nil {
+		return chatInfo
+	}
+	chatInfo.Topic = ptr.Ptr("OpenClaw agent DM")
+	chatInfo.Members.MemberMap[humanUserID(oc.UserLogin.ID)] = bridgev2.ChatMember{
+		EventSender: oc.senderForAgent(agentID, true),
+		Membership:  event.MembershipJoin,
+	}
+	chatInfo.Members.MemberMap[openClawGhostUserID(agentID)] = bridgev2.ChatMember{
+		EventSender: oc.senderForAgent(agentID, false),
+		Membership:  event.MembershipJoin,
+		UserInfo:    oc.sdkAgentForProfile(openClawAgentProfile{AgentID: agentID, Name: displayName}).UserInfo(),
+		MemberEventExtra: map[string]any{
+			"displayname": displayName,
 		},
 	}
-	return &bridgev2.ChatInfo{
-		Name:        ptr.Ptr(displayName),
-		Topic:       ptr.Ptr("OpenClaw agent DM"),
-		Type:        ptr.Ptr(database.RoomTypeDM),
-		CanBackfill: true,
-		Members: &bridgev2.ChatMemberList{
-			IsFull:      true,
-			OtherUserID: openClawGhostUserID(agentID),
-			MemberMap:   members,
-		},
-	}
+	return chatInfo
 }
 
 func (oc *OpenClawClient) resolveAgentProfile(ctx context.Context, agentID, sessionKey string, current *GhostMetadata, configured *gatewayAgentSummary) openClawAgentProfile {

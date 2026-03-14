@@ -12,7 +12,9 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/event"
 
+	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/openclawconv"
 )
 
@@ -112,15 +114,6 @@ func (evt *OpenClawSessionResyncEvent) GetChatInfo(ctx context.Context, portal *
 	portal.Metadata = meta
 
 	title := evt.client.displayNameForSession(evt.session)
-	memberMap := bridgev2.ChatMemberMap{
-		humanUserID(evt.client.UserLogin.ID): {
-			EventSender: bridgev2.EventSender{
-				Sender:      humanUserID(evt.client.UserLogin.ID),
-				SenderLogin: evt.client.UserLogin.ID,
-				IsFromMe:    true,
-			},
-		},
-	}
 	agentID := openclawconv.StringsTrimDefault(meta.OpenClawAgentID, "gateway")
 	if strings.TrimSpace(meta.OpenClawDMTargetAgentID) != "" {
 		agentID = strings.TrimSpace(meta.OpenClawDMTargetAgentID)
@@ -143,12 +136,42 @@ func (evt *OpenClawSessionResyncEvent) GetChatInfo(ctx context.Context, portal *
 	if isOpenClawSyntheticDMSessionKey(evt.session.Key) && strings.TrimSpace(meta.OpenClawDMTargetAgentName) != "" {
 		title = strings.TrimSpace(meta.OpenClawDMTargetAgentName)
 	}
-	memberMap[openClawGhostUserID(agentID)] = bridgev2.ChatMember{
-		EventSender: evt.client.senderForAgent(agentID, false),
-		UserInfo:    evt.client.userInfoForAgentProfile(profile),
-	}
 	roomType := openClawRoomType(meta)
 	evt.client.maybeRefreshPortalCapabilities(ctx, portal, &previous)
+	if roomType == database.RoomTypeDM {
+		chatInfo := agentremote.BuildLoginDMChatInfo(agentremote.LoginDMChatInfoParams{
+			Title:             title,
+			Login:             evt.client.UserLogin,
+			HumanUserIDPrefix: "openclaw-user",
+			BotUserID:         openClawGhostUserID(agentID),
+			BotDisplayName:    agentName,
+			CanBackfill:       true,
+		})
+		if chatInfo != nil {
+			chatInfo.Topic = ptr.NonZero(evt.client.topicForPortal(meta))
+			if chatInfo.Members != nil && chatInfo.Members.MemberMap != nil {
+				chatInfo.Members.MemberMap[humanUserID(evt.client.UserLogin.ID)] = bridgev2.ChatMember{
+					EventSender: evt.client.senderForAgent(agentID, true),
+					Membership:  event.MembershipJoin,
+				}
+				chatInfo.Members.MemberMap[openClawGhostUserID(agentID)] = bridgev2.ChatMember{
+					EventSender: evt.client.senderForAgent(agentID, false),
+					Membership:  event.MembershipJoin,
+					UserInfo:    evt.client.userInfoForAgentProfile(profile),
+				}
+			}
+		}
+		return chatInfo, nil
+	}
+	memberMap := bridgev2.ChatMemberMap{
+		humanUserID(evt.client.UserLogin.ID): {
+			EventSender: evt.client.senderForAgent(agentID, true),
+		},
+		openClawGhostUserID(agentID): {
+			EventSender: evt.client.senderForAgent(agentID, false),
+			UserInfo:    evt.client.userInfoForAgentProfile(profile),
+		},
+	}
 	return &bridgev2.ChatInfo{
 		Type:        ptr.Ptr(roomType),
 		Name:        ptr.Ptr(title),

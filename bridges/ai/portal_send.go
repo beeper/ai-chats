@@ -48,26 +48,7 @@ func (oc *AIClient) sendEditViaPortal(
 	targetMsgID networkid.MessageID,
 	converted *bridgev2.ConvertedEdit,
 ) error {
-	if portal == nil || portal.MXID == "" {
-		return fmt.Errorf("invalid portal")
-	}
-	sender := oc.senderForPortal(ctx, portal)
-	evt := &agentremote.RemoteEdit{
-		Portal:        portal.PortalKey,
-		Sender:        sender,
-		TargetMessage: targetMsgID,
-		Timestamp:     time.Now(),
-		LogKey:        "ai_edit_target",
-		PreBuilt:      converted,
-	}
-	result := oc.UserLogin.QueueRemoteEvent(evt)
-	if !result.Success {
-		if result.Error != nil {
-			return fmt.Errorf("edit failed: %w", result.Error)
-		}
-		return fmt.Errorf("edit failed")
-	}
-	return nil
+	return agentremote.SendEditViaPortal(oc.UserLogin, portal, oc.senderForPortal(ctx, portal), targetMsgID, "ai_edit_target", converted)
 }
 
 func (oc *AIClient) redactViaPortal(

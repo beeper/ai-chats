@@ -404,32 +404,31 @@ func (t *Turn) FinishReasoning() {
 
 // ToolStart begins a tool call.
 func (t *Turn) ToolStart(toolName, toolCallID string, providerExecuted bool) {
-	t.ensureStarted()
-	t.emitter.EnsureUIToolInputStart(t.turnCtx, t.conv.portal, toolCallID, toolName, providerExecuted, toolName, nil)
+	t.Tools().EnsureInputStart(toolCallID, nil, ToolInputOptions{
+		ToolName:         toolName,
+		ProviderExecuted: providerExecuted,
+		DisplayTitle:     toolName,
+	})
 }
 
 // ToolInputDelta sends a streaming tool input argument chunk.
 func (t *Turn) ToolInputDelta(toolCallID, delta string) {
-	t.ensureStarted()
-	t.emitter.EmitUIToolInputDelta(t.turnCtx, t.conv.portal, toolCallID, "", delta, false)
+	t.Tools().InputDelta(toolCallID, delta, false)
 }
 
 // ToolInput sends the complete tool input.
 func (t *Turn) ToolInput(toolCallID string, input any) {
-	t.ensureStarted()
-	t.emitter.EmitUIToolInputAvailable(t.turnCtx, t.conv.portal, toolCallID, "", input, false)
+	t.Tools().Input(toolCallID, "", input, false)
 }
 
 // ToolOutput sends the tool execution result.
 func (t *Turn) ToolOutput(toolCallID string, output any) {
-	t.ensureStarted()
-	t.emitter.EmitUIToolOutputAvailable(t.turnCtx, t.conv.portal, toolCallID, output, false, false)
+	t.Tools().Output(toolCallID, output, ToolOutputOptions{})
 }
 
 // ToolOutputError reports a tool execution error.
 func (t *Turn) ToolOutputError(toolCallID, errorText string) {
-	t.ensureStarted()
-	t.emitter.EmitUIToolOutputError(t.turnCtx, t.conv.portal, toolCallID, errorText, false)
+	t.Tools().OutputError(toolCallID, errorText, false)
 }
 
 // ToolDenied reports that the tool execution was denied by the user.
@@ -462,7 +461,7 @@ func (t *Turn) RequestApproval(req ApprovalRequest) ApprovalHandle {
 		ToolCallID: req.ToolCallID,
 		ToolName:   req.ToolName,
 	})
-	t.emitter.EmitUIToolApprovalRequest(t.turnCtx, t.conv.portal, approvalID, req.ToolCallID)
+	t.Approvals().EmitRequest(approvalID, req.ToolCallID)
 	presentation := agentremote.ApprovalPromptPresentation{
 		Title:       req.ToolName,
 		AllowAlways: true,
