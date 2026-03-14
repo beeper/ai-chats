@@ -451,25 +451,12 @@ func (oc *AIClient) handleProviderToolCompleted(
 
 	lifecycle := oc.toolLifecycle(portal, state)
 	if failureText != "" {
-		lifecycle.finalize(ctx, tool, toolFinalizeOptions{
-			providerExecuted: true,
-			status:           ToolStatusFailed,
-			resultStatus:     ResultStatusError,
-			errorText:        failureText,
-			input:            nil,
-		})
+		lifecycle.fail(ctx, tool, true, ResultStatusError, failureText, nil)
 		return
 	}
 
 	output := map[string]any{"status": "completed"}
-	lifecycle.finalize(ctx, tool, toolFinalizeOptions{
-		providerExecuted: true,
-		status:           ToolStatusCompleted,
-		resultStatus:     ResultStatusSuccess,
-		output:           output,
-		outputMap:        output,
-		input:            nil,
-	})
+	lifecycle.succeed(ctx, tool, true, output, output, nil)
 }
 
 // streamingResponse handles streaming using the Responses API

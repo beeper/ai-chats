@@ -1,45 +1,20 @@
-package ai
+package sdk
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/responses"
-
-	bridgesdk "github.com/beeper/agentremote/sdk"
 )
-
-type PromptRole = bridgesdk.PromptRole
-
-const (
-	PromptRoleUser       PromptRole = bridgesdk.PromptRoleUser
-	PromptRoleAssistant  PromptRole = bridgesdk.PromptRoleAssistant
-	PromptRoleToolResult PromptRole = bridgesdk.PromptRoleToolResult
-)
-
-type PromptBlockType = bridgesdk.PromptBlockType
-
-const (
-	PromptBlockText     PromptBlockType = bridgesdk.PromptBlockText
-	PromptBlockImage    PromptBlockType = bridgesdk.PromptBlockImage
-	PromptBlockFile     PromptBlockType = bridgesdk.PromptBlockFile
-	PromptBlockThinking PromptBlockType = bridgesdk.PromptBlockThinking
-	PromptBlockToolCall PromptBlockType = bridgesdk.PromptBlockToolCall
-	PromptBlockAudio    PromptBlockType = bridgesdk.PromptBlockAudio
-	PromptBlockVideo    PromptBlockType = bridgesdk.PromptBlockVideo
-)
-
-type PromptBlock = bridgesdk.PromptBlock
-type PromptMessage = bridgesdk.PromptMessage
 
 // PromptContext is the canonical provider-facing prompt representation.
 type PromptContext struct {
 	SystemPrompt    string
 	DeveloperPrompt string
 	Messages        []PromptMessage
-	Tools           []ToolDefinition
 }
 
 func UserPromptContext(blocks ...PromptBlock) PromptContext {
@@ -51,7 +26,7 @@ func UserPromptContext(blocks ...PromptBlock) PromptContext {
 	}
 }
 
-func promptContextHasBlockType(ctx PromptContext, kinds ...PromptBlockType) bool {
+func PromptContextHasBlockType(ctx PromptContext, kinds ...PromptBlockType) bool {
 	if len(kinds) == 0 {
 		return false
 	}
@@ -72,13 +47,11 @@ func promptContextHasBlockType(ctx PromptContext, kinds ...PromptBlockType) bool
 // ChatMessagesToPromptContext converts chat-completions-shaped messages into the canonical prompt model.
 func ChatMessagesToPromptContext(messages []openai.ChatCompletionMessageParamUnion) PromptContext {
 	var ctx PromptContext
-	for _, msg := range messages {
-		appendChatMessageToPromptContext(&ctx, msg)
-	}
+	AppendChatMessagesToPromptContext(&ctx, messages)
 	return ctx
 }
 
-func appendChatMessagesToPromptContext(ctx *PromptContext, messages []openai.ChatCompletionMessageParamUnion) {
+func AppendChatMessagesToPromptContext(ctx *PromptContext, messages []openai.ChatCompletionMessageParamUnion) {
 	if ctx == nil {
 		return
 	}
@@ -93,9 +66,9 @@ func appendChatMessageToPromptContext(ctx *PromptContext, msg openai.ChatComplet
 	}
 	switch {
 	case msg.OfSystem != nil:
-		appendPromptText(&ctx.SystemPrompt, extractChatSystemText(msg.OfSystem.Content))
+		AppendPromptText(&ctx.SystemPrompt, extractChatSystemText(msg.OfSystem.Content))
 	case msg.OfDeveloper != nil:
-		appendPromptText(&ctx.DeveloperPrompt, extractChatDeveloperText(msg.OfDeveloper.Content))
+		AppendPromptText(&ctx.DeveloperPrompt, extractChatDeveloperText(msg.OfDeveloper.Content))
 	case msg.OfUser != nil:
 		ctx.Messages = append(ctx.Messages, promptMessageFromChatUser(msg.OfUser))
 	case msg.OfAssistant != nil:
@@ -105,7 +78,7 @@ func appendChatMessageToPromptContext(ctx *PromptContext, msg openai.ChatComplet
 	}
 }
 
-func appendPromptText(dst *string, text string) {
+func AppendPromptText(dst *string, text string) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return
@@ -260,7 +233,10 @@ func inferPromptMimeTypeFromDataURL(value string) string {
 	return value[:idx]
 }
 
-// ToOpenAIResponsesInput converts legacy unified messages to OpenAI Responses input.
+func BuildDataURL(mimeType, b64Data string) string {
+	return fmt.Sprintf("data:%s;base64,%s", mimeType, b64Data)
+}
+
 // PromptContextToResponsesInput converts the canonical prompt model into Responses input items.
 func PromptContextToResponsesInput(ctx PromptContext) responses.ResponseInputParam {
 	var result responses.ResponseInputParam
@@ -300,7 +276,7 @@ func PromptContextToResponsesInput(ctx PromptContext) responses.ResponseInputPar
 						if mimeType == "" {
 							mimeType = "image/jpeg"
 						}
-						imageURL = buildDataURL(mimeType, block.ImageB64)
+						imageURL = BuildDataURL(mimeType, block.ImageB64)
 					}
 					if imageURL == "" {
 						continue
@@ -514,7 +490,7 @@ func promptBlocksToChatCompletionContentParts(blocks []PromptBlock, supportsVide
 				if mimeType == "" {
 					mimeType = "image/jpeg"
 				}
-				imageURL = buildDataURL(mimeType, block.ImageB64)
+				imageURL = BuildDataURL(mimeType, block.ImageB64)
 			}
 			if imageURL == "" {
 				continue
@@ -558,7 +534,7 @@ func promptBlocksToChatCompletionContentParts(blocks []PromptBlock, supportsVide
 				if mimeType == "" {
 					mimeType = "video/mp4"
 				}
-				videoURL = buildDataURL(mimeType, block.VideoB64)
+				videoURL = BuildDataURL(mimeType, block.VideoB64)
 			}
 			if videoURL == "" {
 				continue
@@ -576,14 +552,6 @@ func promptBlocksToChatCompletionContentParts(blocks []PromptBlock, supportsVide
 	return result
 }
 
-func hasUnsupportedResponsesPromptContext(ctx PromptContext) bool {
-	for _, msg := range ctx.Messages {
-		for _, block := range msg.Blocks {
-			switch block.Type {
-			case PromptBlockAudio, PromptBlockVideo:
-				return true
-			}
-		}
-	}
-	return false
+func HasUnsupportedResponsesPromptContext(ctx PromptContext) bool {
+	return PromptContextHasBlockType(ctx, PromptBlockAudio, PromptBlockVideo)
 }

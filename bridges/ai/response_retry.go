@@ -14,6 +14,7 @@ import (
 
 	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 const (
@@ -369,7 +370,7 @@ func (oc *AIClient) streamingResponseWithRetry(
 }
 
 func (oc *AIClient) selectResponseFn(meta *PortalMetadata, promptContext PromptContext) (responseFunc, string) {
-	if hasUnsupportedResponsesPromptContext(promptContext) {
+	if bridgesdk.HasUnsupportedResponsesPromptContext(promptContext.PromptContext) {
 		return oc.streamChatCompletions, "chat_completions"
 	}
 	modelID := ""

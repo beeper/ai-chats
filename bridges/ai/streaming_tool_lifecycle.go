@@ -92,6 +92,44 @@ func (l toolLifecycle) finalize(ctx context.Context, tool *activeToolCall, opts 
 	recordToolCallResult(l.state, tool, opts.status, opts.resultStatus, opts.errorText, outputMap, opts.input)
 }
 
+func (l toolLifecycle) fail(ctx context.Context, tool *activeToolCall, providerExecuted bool, resultStatus ResultStatus, errorText string, input map[string]any) {
+	l.finalize(ctx, tool, toolFinalizeOptions{
+		providerExecuted: providerExecuted,
+		status:           ToolStatusFailed,
+		resultStatus:     resultStatus,
+		errorText:        errorText,
+		input:            input,
+	})
+}
+
+func (l toolLifecycle) succeed(ctx context.Context, tool *activeToolCall, providerExecuted bool, output any, outputMap map[string]any, input map[string]any) {
+	l.finalize(ctx, tool, toolFinalizeOptions{
+		providerExecuted: providerExecuted,
+		status:           ToolStatusCompleted,
+		resultStatus:     ResultStatusSuccess,
+		output:           output,
+		outputMap:        outputMap,
+		input:            input,
+	})
+}
+
+func (l toolLifecycle) completeResult(
+	ctx context.Context,
+	tool *activeToolCall,
+	providerExecuted bool,
+	resultStatus ResultStatus,
+	errorText string,
+	output any,
+	outputMap map[string]any,
+	input map[string]any,
+) {
+	if resultStatus == ResultStatusSuccess {
+		l.succeed(ctx, tool, providerExecuted, output, outputMap, input)
+		return
+	}
+	l.fail(ctx, tool, providerExecuted, resultStatus, errorText, input)
+}
+
 func (l toolLifecycle) respondApproval(ctx context.Context, approvalID, toolCallID string, approved bool, reason string) {
 	l.oc.writer(l.state, l.portal).Approvals().Respond(ctx, approvalID, toolCallID, approved, reason)
 	if !approved {

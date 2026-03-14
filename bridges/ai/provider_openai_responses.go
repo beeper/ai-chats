@@ -8,6 +8,8 @@ import (
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/responses"
+
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 // reasoningEffortMap maps string effort levels to SDK constants.
@@ -22,7 +24,7 @@ func (o *OpenAIProvider) buildResponsesParams(params GenerateParams) responses.R
 	responsesParams := responses.ResponseNewParams{
 		Model: params.Model,
 		Input: responses.ResponseNewParamsInputUnion{
-			OfInputItemList: PromptContextToResponsesInput(params.Context),
+			OfInputItemList: bridgesdk.PromptContextToResponsesInput(params.Context.PromptContext),
 		},
 	}
 
@@ -141,7 +143,7 @@ func (o *OpenAIProvider) GenerateStream(ctx context.Context, params GeneratePara
 
 // Generate performs a non-streaming generation using the Responses API.
 func (o *OpenAIProvider) Generate(ctx context.Context, params GenerateParams) (*GenerateResponse, error) {
-	if hasUnsupportedResponsesPromptContext(params.Context) {
+	if bridgesdk.HasUnsupportedResponsesPromptContext(params.Context.PromptContext) {
 		return nil, fmt.Errorf("responses API does not support prompt context block types required by this request")
 	}
 

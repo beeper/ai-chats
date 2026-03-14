@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -83,6 +84,50 @@ func (oc *AIClient) registerToolApproval(params ToolApprovalParams) (*agentremot
 		oc.Log().Debug().Str("approval_id", params.ApprovalID).Str("tool", params.ToolName).Dur("ttl", params.TTL).Msg("tool approval registered")
 	}
 	return p, created
+}
+
+func (oc *AIClient) resolveToolApproval(approvalID string, approved bool, reason string) error {
+	if oc == nil || oc.approvalFlow == nil {
+		return fmt.Errorf("approval flow unavailable")
+	}
+	approvalID = strings.TrimSpace(approvalID)
+	if approvalID == "" {
+		return fmt.Errorf("approval ID is required")
+	}
+	return oc.approvalFlow.Resolve(approvalID, agentremote.ApprovalDecisionPayload{
+		ApprovalID: approvalID,
+		Approved:   approved,
+		Reason:     strings.TrimSpace(reason),
+	})
+}
+
+func (oc *AIClient) startToolApproval(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	params ToolApprovalParams,
+	targetEventID id.EventID,
+) error {
+	if _, created := oc.registerToolApproval(params); !created {
+		return fmt.Errorf("failed to register approval request")
+	}
+	if oc.emitUIToolApprovalRequest(
+		ctx,
+		portal,
+		state,
+		params.ApprovalID,
+		params.ToolCallID,
+		params.ToolName,
+		params.Presentation,
+		targetEventID,
+		int(params.TTL/time.Second),
+	) {
+		return nil
+	}
+	if err := oc.resolveToolApproval(params.ApprovalID, false, agentremote.ApprovalReasonDeliveryError); err != nil {
+		return fmt.Errorf("failed to resolve undeliverable approval prompt: %w", err)
+	}
+	return nil
 }
 
 func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (toolApprovalResolution, *pendingToolApprovalData, bool) {
@@ -177,7 +222,6 @@ func (oc *AIClient) isBuiltinToolDenied(
 	if state == nil || tool == nil {
 		return true
 	}
-	lifecycle := oc.toolLifecycle(portal, state)
 	required, action := oc.builtinToolApprovalRequirement(toolName, argsObj)
 	if required && oc.isBuiltinAlwaysAllowed(toolName, action) {
 		required = false
@@ -213,20 +257,12 @@ func (oc *AIClient) isBuiltinToolDenied(
 		Presentation: presentation,
 		TTL:          ttl,
 	}
-	if _, created := oc.registerToolApproval(params); !created {
+	if err := oc.startToolApproval(ctx, portal, state, params, id.EventID("")); err != nil {
 		oc.loggerForContext(ctx).Error().
 			Str("approval_id", params.ApprovalID).
 			Str("tool_name", params.ToolName).
-			Msg("tool approval: failed to register approval request")
-		return true
-	}
-	if !oc.emitUIToolApprovalRequest(ctx, portal, state, params.ApprovalID, params.ToolCallID, params.ToolName, params.Presentation, id.EventID(""), int(params.TTL/time.Second)) {
-		decision := airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalDenied, Reason: agentremote.ApprovalReasonDeliveryError}
-		oc.approvalFlow.FinishResolved(approvalID, agentremote.ApprovalDecisionPayload{
-			ApprovalID: approvalID,
-			Reason:     agentremote.ApprovalReasonDeliveryError,
-		})
-		lifecycle.respondApproval(ctx, approvalID, tool.callID, false, decision.Reason)
+			Err(err).
+			Msg("tool approval: failed to start approval request")
 		return true
 	}
 	decision := oc.waitForToolApprovalDecision(ctx, portal, state, approvalID, tool.callID)

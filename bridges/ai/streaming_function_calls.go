@@ -263,15 +263,16 @@ func (oc *AIClient) executeStreamingBuiltinTool(
 	if resultStatus == ResultStatusSuccess {
 		collectToolOutputCitations(state, toolName, result)
 	}
-	lifecycle.finalize(ctx, tool, toolFinalizeOptions{
-		providerExecuted: tool.toolType == ToolTypeProvider,
-		status:           ToolStatusCompleted,
-		resultStatus:     resultStatus,
-		errorText:        result,
-		output:           result,
-		outputMap:        map[string]any{"result": result},
-		input:            parseToolInputPayload(argsJSON),
-	})
+	lifecycle.completeResult(
+		ctx,
+		tool,
+		tool.toolType == ToolTypeProvider,
+		resultStatus,
+		result,
+		result,
+		map[string]any{"result": result},
+		parseToolInputPayload(argsJSON),
+	)
 
 	return streamingBuiltinToolExecution{
 		toolName:     toolName,

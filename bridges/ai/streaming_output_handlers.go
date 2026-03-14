@@ -12,7 +12,6 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 )
 
@@ -151,13 +150,7 @@ func (oc *AIClient) handleMCPCallFailedFromOutputItem(
 	if denied {
 		resultStatus = ResultStatusDenied
 	}
-	lifecycle.finalize(ctx, tool, toolFinalizeOptions{
-		providerExecuted: true,
-		status:           ToolStatusFailed,
-		resultStatus:     resultStatus,
-		errorText:        errorText,
-		input:            nil,
-	})
+	lifecycle.fail(ctx, tool, true, resultStatus, errorText, nil)
 }
 
 // gateMcpToolApproval handles an MCP approval request item: registers the
@@ -197,7 +190,7 @@ func (oc *AIClient) gateMcpToolApproval(
 		serverLabel: serverLabel,
 	})
 	ttl := time.Duration(oc.toolApprovalsTTLSeconds()) * time.Second
-	oc.registerToolApproval(ToolApprovalParams{
+	params := ToolApprovalParams{
 		ApprovalID:   approvalID,
 		RoomID:       state.roomID,
 		TurnID:       state.turnID,
@@ -208,7 +201,7 @@ func (oc *AIClient) gateMcpToolApproval(
 		ServerLabel:  serverLabel,
 		Presentation: presentation,
 		TTL:          ttl,
-	})
+	}
 
 	// If approvals are disabled, not required, or already always-allowed, auto-approve
 	// without prompting. Otherwise emit an approval request to the UI.
@@ -225,35 +218,21 @@ func (oc *AIClient) gateMcpToolApproval(
 	if needsApproval {
 		if !state.ui.UIToolApprovalRequested[approvalID] {
 			state.ui.UIToolApprovalRequested[approvalID] = true
-			if !oc.emitUIToolApprovalRequest(ctx, portal, state, approvalID, tool.callID, tool.toolName, presentation, "", oc.toolApprovalsTTLSeconds()) {
-				if err := oc.approvalFlow.Resolve(approvalID, agentremote.ApprovalDecisionPayload{
-					ApprovalID: approvalID,
-					Reason:     agentremote.ApprovalReasonDeliveryError,
-				}); err != nil {
-					delete(state.pendingMcpApprovalsSeen, approvalID)
-					oc.toolLifecycle(portal, state).finalize(ctx, tool, toolFinalizeOptions{
-						providerExecuted: true,
-						status:           ToolStatusFailed,
-						resultStatus:     ResultStatusError,
-						errorText:        "failed to deliver MCP approval prompt",
-					})
-					oc.loggerForContext(ctx).Warn().Err(err).Str("approval_id", approvalID).Msg("Failed to resolve undeliverable MCP approval prompt")
-				}
+			if err := oc.startToolApproval(ctx, portal, state, params, ""); err != nil {
+				delete(state.pendingMcpApprovalsSeen, approvalID)
+				oc.toolLifecycle(portal, state).fail(ctx, tool, true, ResultStatusError, "failed to deliver MCP approval prompt", nil)
+				oc.loggerForContext(ctx).Warn().Err(err).Str("approval_id", approvalID).Msg("Failed to start MCP approval prompt")
 			}
 		}
 	} else {
-		if err := oc.approvalFlow.Resolve(approvalID, agentremote.ApprovalDecisionPayload{
-			ApprovalID: approvalID,
-			Approved:   true,
-			Reason:     "auto_approved",
-		}); err != nil {
+		if _, created := oc.registerToolApproval(params); !created {
 			delete(state.pendingMcpApprovalsSeen, approvalID)
-			oc.toolLifecycle(portal, state).finalize(ctx, tool, toolFinalizeOptions{
-				providerExecuted: true,
-				status:           ToolStatusFailed,
-				resultStatus:     ResultStatusError,
-				errorText:        "failed to auto-approve MCP tool call",
-			})
+			oc.toolLifecycle(portal, state).fail(ctx, tool, true, ResultStatusError, "failed to register MCP approval request", nil)
+			return
+		}
+		if err := oc.resolveToolApproval(approvalID, true, "auto_approved"); err != nil {
+			delete(state.pendingMcpApprovalsSeen, approvalID)
+			oc.toolLifecycle(portal, state).fail(ctx, tool, true, ResultStatusError, "failed to auto-approve MCP tool call", nil)
 			oc.loggerForContext(ctx).Warn().Err(err).Str("approval_id", approvalID).Msg("Failed to auto-approve MCP tool call")
 		}
 	}
@@ -354,14 +333,11 @@ func (oc *AIClient) handleResponseOutputItemDone(
 		resultStatus = ResultStatusError
 		toolStatus = ToolStatusFailed
 	}
-	oc.toolLifecycle(portal, state).finalize(ctx, tool, toolFinalizeOptions{
-		providerExecuted: true,
-		status:           toolStatus,
-		resultStatus:     resultStatus,
-		errorText:        errorText,
-		output:           result,
-		input:            parseToolInputPayload(tool.input.String()),
-	})
+	if toolStatus == ToolStatusCompleted {
+		oc.toolLifecycle(portal, state).succeed(ctx, tool, true, result, nil, parseToolInputPayload(tool.input.String()))
+		return
+	}
+	oc.toolLifecycle(portal, state).fail(ctx, tool, true, resultStatus, errorText, parseToolInputPayload(tool.input.String()))
 }
 
 // Response stream output helpers.
