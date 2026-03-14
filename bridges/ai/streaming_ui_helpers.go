@@ -8,26 +8,24 @@ import (
 
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote/bridges/ai/msgconv"
-	"github.com/beeper/agentremote/pkg/shared/citations"
-	"github.com/beeper/agentremote/pkg/shared/streamui"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func (oc *AIClient) buildUIMessageMetadata(state *streamingState, meta *PortalMetadata, includeUsage bool) map[string]any {
-	return msgconv.BuildUIMessageMetadata(msgconv.UIMessageMetadataParams{
-		TurnID:           state.turnID,
-		AgentID:          state.agentID,
-		Model:            oc.effectiveModel(meta),
-		FinishReason:     state.finishReason,
-		PromptTokens:     state.promptTokens,
-		CompletionTokens: state.completionTokens,
-		ReasoningTokens:  state.reasoningTokens,
-		TotalTokens:      state.totalTokens,
-		StartedAtMs:      state.startedAtMs,
-		FirstTokenAtMs:   state.firstTokenAtMs,
-		CompletedAtMs:    state.completedAtMs,
-		IncludeUsage:     includeUsage,
-	})
+	td := buildCanonicalTurnData(state, meta, nil)
+	metadata := td.Metadata
+	if !includeUsage && len(metadata) > 0 {
+		metadata = map[string]any{
+			"turn_id":           metadata["turn_id"],
+			"agent_id":          metadata["agent_id"],
+			"model":             metadata["model"],
+			"finish_reason":     metadata["finish_reason"],
+			"started_at_ms":     metadata["started_at_ms"],
+			"first_token_at_ms": metadata["first_token_at_ms"],
+			"completed_at_ms":   metadata["completed_at_ms"],
+		}
+	}
+	return metadata
 }
 
 // buildStreamUIMessage constructs the canonical UI message for streaming edits and persistence.
@@ -36,28 +34,9 @@ func (oc *AIClient) buildStreamUIMessage(state *streamingState, meta *PortalMeta
 	if state == nil {
 		return nil
 	}
-	sourceParts := buildSourceParts(state.sourceCitations, state.sourceDocuments, linkPreviews)
-	fileParts := citations.GeneratedFilesToParts(state.generatedFiles)
-	if uiMessage := streamui.SnapshotCanonicalUIMessage(&state.ui); len(uiMessage) > 0 {
-		metadata, _ := uiMessage["metadata"].(map[string]any)
-		uiMessage["metadata"] = msgconv.MergeUIMessageMetadata(metadata, oc.buildUIMessageMetadata(state, meta, true))
-		return msgconv.AppendUIMessageArtifacts(uiMessage, sourceParts, fileParts)
-	}
-	var parts []map[string]any
-	if text := state.accumulated.String(); text != "" {
-		parts = append(parts, map[string]any{"type": "text", "text": text})
-	}
-	if reasoning := state.reasoning.String(); reasoning != "" {
-		parts = append(parts, map[string]any{"type": "reasoning", "reasoning": reasoning})
-	}
-	return msgconv.BuildUIMessage(msgconv.UIMessageParams{
-		TurnID:     state.turnID,
-		Role:       "assistant",
-		Parts:      parts,
-		Metadata:   oc.buildUIMessageMetadata(state, meta, true),
-		SourceURLs: sourceParts,
-		FileParts:  fileParts,
-	})
+	linkPreviewParts := buildSourceParts(nil, nil, linkPreviews)
+	turnData := buildCanonicalTurnData(state, meta, linkPreviewParts)
+	return sdk.UIMessageFromTurnData(turnData)
 }
 
 func buildCompactFinalUIMessage(uiMessage map[string]any) map[string]any {

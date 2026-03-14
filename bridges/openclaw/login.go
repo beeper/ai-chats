@@ -8,11 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/beeper/agentremote"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
-
-	"github.com/beeper/agentremote"
 )
 
 var (
@@ -268,10 +266,13 @@ func (ol *OpenClawLogin) completeLogin(pending *openClawPendingLogin, deviceToke
 	remoteName := openClawRemoteName(pending.gatewayURL, pending.label)
 	loginID := agentremote.NextUserLoginID(ol.User, "openclaw")
 	log.Debug().Str("login_id", string(loginID)).Str("remote_name", remoteName).Msg("Creating OpenClaw user login")
-	login, err := ol.User.NewLogin(persistCtx, &database.UserLogin{
-		ID:         loginID,
-		RemoteName: remoteName,
-		Metadata: &UserLoginMetadata{
+	login, step, err := agentremote.CreateAndCompleteLogin(
+		persistCtx,
+		ol.BackgroundProcessContext(),
+		ol.User,
+		"openclaw",
+		remoteName,
+		&UserLoginMetadata{
 			Provider:        ProviderOpenClaw,
 			GatewayURL:      pending.gatewayURL,
 			AuthMode:        pending.authMode,
@@ -280,7 +281,9 @@ func (ol *OpenClawLogin) completeLogin(pending *openClawPendingLogin, deviceToke
 			GatewayLabel:    pending.label,
 			DeviceToken:     deviceToken,
 		},
-	}, nil)
+		"io.ai-bridge.openclaw.complete",
+		nil,
+	)
 	if err != nil {
 		log.Debug().Err(err).Str("login_id", string(loginID)).Msg("OpenClaw user login creation failed")
 		return nil, fmt.Errorf("failed to create login: %w", err)
@@ -289,13 +292,7 @@ func (ol *OpenClawLogin) completeLogin(pending *openClawPendingLogin, deviceToke
 	ol.pending = nil
 	ol.step = ""
 	ol.waitUntil = time.Time{}
-	return agentremote.LoadConnectAndCompleteLogin(
-		persistCtx,
-		ol.BackgroundProcessContext(),
-		login,
-		"io.ai-bridge.openclaw.complete",
-		nil,
-	)
+	return step, nil
 }
 
 func openClawCredentialStep(authMode string) *bridgev2.LoginStep {

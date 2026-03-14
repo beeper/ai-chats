@@ -9,6 +9,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/sdk"
 )
 
 // saveAssistantMessage saves the completed assistant message to the database.
@@ -23,6 +24,8 @@ func (oc *AIClient) saveAssistantMessage(
 	meta *PortalMetadata,
 ) {
 	modelID := oc.effectiveModel(meta)
+	uiMessage := oc.buildCanonicalUIMessage(state, meta)
+	turnData := turnDataFromStreamingState(state, uiMessage)
 
 	fullMeta := &MessageMetadata{
 		BaseMessageMetadata: agentremote.BuildAssistantBaseMetadata(agentremote.AssistantMetadataParams{
@@ -40,6 +43,10 @@ func (oc *AIClient) saveAssistantMessage(
 			PromptTokens:            state.promptTokens,
 			CompletionTokens:        state.completionTokens,
 			ReasoningTokens:         state.reasoningTokens,
+			CanonicalTurnSchema:     sdk.CanonicalTurnDataSchemaV1,
+			CanonicalTurnData:       turnData.ToMap(),
+			CanonicalSchema:         "com.beeper.ai.message",
+			CanonicalUIMessage:      uiMessage,
 		}),
 		AssistantMessageMetadata: agentremote.AssistantMessageMetadata{
 			CompletionID:       state.responseID,

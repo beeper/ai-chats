@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 )
 
 // CompleteLoginStep builds the standard completion step for a loaded login.
@@ -42,4 +43,54 @@ func LoadConnectAndCompleteLogin(
 		go login.Client.Connect(login.Log.WithContext(connectCtx))
 	}
 	return CompleteLoginStep(stepID, login), nil
+}
+
+// CreateAndCompleteLogin creates a user login and returns the standard completion step.
+func CreateAndCompleteLogin(
+	persistCtx context.Context,
+	connectCtx context.Context,
+	user *bridgev2.User,
+	loginType string,
+	remoteName string,
+	metadata any,
+	stepID string,
+	load func(context.Context, *bridgev2.UserLogin) error,
+) (*bridgev2.UserLogin, *bridgev2.LoginStep, error) {
+	if user == nil {
+		return nil, nil, nil
+	}
+	login, err := user.NewLogin(persistCtx, &database.UserLogin{
+		ID:         NextUserLoginID(user, loginType),
+		RemoteName: remoteName,
+		Metadata:   metadata,
+	}, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	step, err := LoadConnectAndCompleteLogin(persistCtx, connectCtx, login, stepID, load)
+	if err != nil {
+		return nil, nil, err
+	}
+	return login, step, nil
+}
+
+// UpdateAndCompleteLogin saves an existing login and returns the standard completion step.
+func UpdateAndCompleteLogin(
+	persistCtx context.Context,
+	connectCtx context.Context,
+	login *bridgev2.UserLogin,
+	remoteName string,
+	metadata any,
+	stepID string,
+	load func(context.Context, *bridgev2.UserLogin) error,
+) (*bridgev2.LoginStep, error) {
+	if login == nil {
+		return nil, nil
+	}
+	login.RemoteName = remoteName
+	login.Metadata = metadata
+	if err := login.Save(persistCtx); err != nil {
+		return nil, err
+	}
+	return LoadConnectAndCompleteLogin(persistCtx, connectCtx, login, stepID, load)
 }

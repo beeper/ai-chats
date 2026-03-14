@@ -3,6 +3,7 @@ package ai
 import (
 	"strings"
 
+	"github.com/beeper/agentremote/sdk"
 	"maunium.net/go/mautrix/bridgev2/database"
 )
 
@@ -14,13 +15,13 @@ func ensureCanonicalUserMessage(msg *database.Message) {
 	if !ok || meta == nil || strings.TrimSpace(meta.Role) != "user" {
 		return
 	}
-	if len(meta.CanonicalPromptMessages) > 0 && meta.CanonicalPromptSchema == canonicalPromptSchemaV1 {
+	if (len(meta.CanonicalPromptMessages) > 0 && meta.CanonicalPromptSchema == canonicalPromptSchemaV1) ||
+		(len(meta.CanonicalTurnData) > 0 && meta.CanonicalTurnSchema == sdk.CanonicalTurnDataSchemaV1) {
 		return
 	}
 
 	body := strings.TrimSpace(meta.Body)
 	if body != "" {
-		meta.CanonicalPromptSchema = canonicalPromptSchemaV1
-		meta.CanonicalPromptMessages = encodePromptMessages(textPromptMessage(body))
+		setCanonicalPromptMessages(meta, textPromptMessage(body))
 	}
 }

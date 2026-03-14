@@ -10,11 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
-
 	"github.com/beeper/agentremote"
 	openCodeAPI "github.com/beeper/agentremote/bridges/opencode/api"
+	"maunium.net/go/mautrix/bridgev2"
 )
 
 var (
@@ -148,47 +146,38 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 		}
 		existingMeta.Provider = ProviderOpenCode
 		existingMeta.OpenCodeInstances = instances
-		existing.Metadata = existingMeta
-		existing.RemoteName = remoteName
-		if err := existing.Save(ctx); err != nil {
-			return nil, fmt.Errorf("failed to update existing login: %w", err)
-		}
-		step, err := agentremote.LoadConnectAndCompleteLogin(
+		step, err := agentremote.UpdateAndCompleteLogin(
 			ctx,
 			ol.BackgroundProcessContext(),
 			existing,
+			remoteName,
+			existingMeta,
 			"io.ai-bridge.opencode.complete",
 			ol.Connector.LoadUserLogin,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load client: %w", err)
+			return nil, fmt.Errorf("failed to update existing login: %w", err)
 		}
 		return step, nil
 	}
 
-	loginID := agentremote.NextUserLoginID(ol.User, "opencode")
-
-	login, err := ol.User.NewLogin(ctx, &database.UserLogin{
-		ID:         loginID,
-		RemoteName: remoteName,
-		Metadata: &UserLoginMetadata{
+	login, step, err := agentremote.CreateAndCompleteLogin(
+		ctx,
+		ol.BackgroundProcessContext(),
+		ol.User,
+		"opencode",
+		remoteName,
+		&UserLoginMetadata{
 			Provider:          ProviderOpenCode,
 			OpenCodeInstances: instances,
 		},
-	}, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create login: %w", err)
-	}
-	step, err := agentremote.LoadConnectAndCompleteLogin(
-		ctx,
-		ol.BackgroundProcessContext(),
-		login,
 		"io.ai-bridge.opencode.complete",
 		ol.Connector.LoadUserLogin,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load client: %w", err)
+		return nil, fmt.Errorf("failed to create login: %w", err)
 	}
+	_ = login
 	return step, nil
 }
 

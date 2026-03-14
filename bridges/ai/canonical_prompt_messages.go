@@ -3,6 +3,8 @@ package ai
 import (
 	"encoding/json"
 	"strings"
+
+	"github.com/beeper/agentremote/sdk"
 )
 
 const canonicalPromptSchemaV1 = "ai-bridge-prompt-v1"
@@ -38,6 +40,9 @@ func decodePromptMessages(raw []map[string]any) []PromptMessage {
 }
 
 func canonicalPromptMessages(meta *MessageMetadata) []PromptMessage {
+	if turnData, ok := canonicalTurnData(meta); ok {
+		return promptMessagesFromTurnData(turnData)
+	}
 	if meta == nil || meta.CanonicalPromptSchema != canonicalPromptSchemaV1 {
 		return nil
 	}
@@ -180,6 +185,10 @@ func canonicalPromptTail(ctx PromptContext, count int) []PromptMessage {
 func setCanonicalPromptMessages(meta *MessageMetadata, messages []PromptMessage) {
 	if meta == nil || len(messages) == 0 {
 		return
+	}
+	if turnData, ok := turnDataFromUserPromptMessages(messages); ok {
+		meta.CanonicalTurnSchema = sdk.CanonicalTurnDataSchemaV1
+		meta.CanonicalTurnData = turnData.ToMap()
 	}
 	meta.CanonicalPromptSchema = canonicalPromptSchemaV1
 	meta.CanonicalPromptMessages = encodePromptMessages(messages)

@@ -15,14 +15,16 @@ type BaseMessageMetadata struct {
 	AgentID                 string             `json:"agent_id,omitempty"`
 	CanonicalPromptSchema   string             `json:"canonical_prompt_schema,omitempty"`
 	CanonicalPromptMessages []map[string]any   `json:"canonical_prompt_messages,omitempty"`
+	CanonicalTurnSchema     string             `json:"canonical_turn_schema,omitempty"`
+	CanonicalTurnData       map[string]any     `json:"canonical_turn_data,omitempty"`
 	CanonicalSchema         string             `json:"canonical_schema,omitempty"`
 	CanonicalUIMessage      map[string]any     `json:"canonical_ui_message,omitempty"`
 	StartedAtMs             int64              `json:"started_at_ms,omitempty"`
 	CompletedAtMs           int64              `json:"completed_at_ms,omitempty"`
 	ThinkingContent         string             `json:"thinking_content,omitempty"`
 	ToolCalls               []ToolCallMetadata `json:"tool_calls,omitempty"`
-	GeneratedFiles     []GeneratedFileRef `json:"generated_files,omitempty"`
-	ExcludeFromHistory bool               `json:"exclude_from_history,omitempty"`
+	GeneratedFiles          []GeneratedFileRef `json:"generated_files,omitempty"`
+	ExcludeFromHistory      bool               `json:"exclude_from_history,omitempty"`
 }
 
 // AssistantMessageMetadata contains fields common to assistant messages across
@@ -98,6 +100,12 @@ func (b *BaseMessageMetadata) CopyFromBase(src *BaseMessageMetadata) {
 		for i, msg := range src.CanonicalPromptMessages {
 			b.CanonicalPromptMessages[i] = cloneJSONMap(msg)
 		}
+	}
+	if src.CanonicalTurnSchema != "" {
+		b.CanonicalTurnSchema = src.CanonicalTurnSchema
+	}
+	if len(src.CanonicalTurnData) > 0 {
+		b.CanonicalTurnData = cloneJSONMap(src.CanonicalTurnData)
 	}
 	if src.CanonicalSchema != "" {
 		b.CanonicalSchema = src.CanonicalSchema
@@ -233,6 +241,8 @@ type AssistantMetadataParams struct {
 	// Canonical prompt schema (used by the main AI bridge).
 	CanonicalPromptSchema   string
 	CanonicalPromptMessages []map[string]any
+	CanonicalTurnSchema     string
+	CanonicalTurnData       map[string]any
 
 	// Canonical UI message schema (used by codex, opencode).
 	CanonicalSchema    string
@@ -259,6 +269,8 @@ func BuildAssistantBaseMetadata(p AssistantMetadataParams) BaseMessageMetadata {
 		ReasoningTokens:         p.ReasoningTokens,
 		CanonicalPromptSchema:   p.CanonicalPromptSchema,
 		CanonicalPromptMessages: p.CanonicalPromptMessages,
+		CanonicalTurnSchema:     p.CanonicalTurnSchema,
+		CanonicalTurnData:       p.CanonicalTurnData,
 		CanonicalSchema:         p.CanonicalSchema,
 		CanonicalUIMessage:      p.CanonicalUIMessage,
 	}

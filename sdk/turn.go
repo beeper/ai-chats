@@ -570,19 +570,32 @@ func (t *Turn) SendStatus(status event.MessageStatus, message string) {
 
 func (t *Turn) finalMetadata(finishReason string) agentremote.BaseMessageMetadata {
 	uiMessage := streamui.SnapshotCanonicalUIMessage(t.state)
+	turnData, hasTurnData := TurnDataFromUIMessage(uiMessage)
 	var agentID string
 	if t.agent != nil {
 		agentID = t.agent.ID
 	}
+	var canonicalTurnData map[string]any
+	if hasTurnData {
+		if turnData.ID == "" {
+			turnData.ID = t.turnID
+		}
+		if turnData.Role == "" {
+			turnData.Role = "assistant"
+		}
+		canonicalTurnData = turnData.ToMap()
+	}
 	runtimeMeta := agentremote.BuildAssistantBaseMetadata(agentremote.AssistantMetadataParams{
-		Body:               strings.TrimSpace(t.visibleText.String()),
-		FinishReason:       finishReason,
-		TurnID:             t.turnID,
-		AgentID:            agentID,
-		StartedAtMs:        t.startedAtMs,
-		CompletedAtMs:      time.Now().UnixMilli(),
-		CanonicalSchema:    "com.beeper.ai.message",
-		CanonicalUIMessage: uiMessage,
+		Body:                strings.TrimSpace(t.visibleText.String()),
+		FinishReason:        finishReason,
+		TurnID:              t.turnID,
+		AgentID:             agentID,
+		StartedAtMs:         t.startedAtMs,
+		CompletedAtMs:       time.Now().UnixMilli(),
+		CanonicalTurnSchema: CanonicalTurnDataSchemaV1,
+		CanonicalTurnData:   canonicalTurnData,
+		CanonicalSchema:     "com.beeper.ai.message",
+		CanonicalUIMessage:  uiMessage,
 	})
 	merged := supportedBaseMetadataFromMap(t.metadata)
 	merged.CopyFromBase(&runtimeMeta)

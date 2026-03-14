@@ -12,12 +12,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rs/zerolog"
-	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
-
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/bridges/codex/codexrpc"
+	"github.com/rs/zerolog"
+	"maunium.net/go/mautrix/bridgev2"
 )
 
 var (
@@ -609,25 +607,20 @@ func (cl *CodexLogin) finishLogin(ctx context.Context) (*bridgev2.LoginStep, err
 		CodexAccountEmail: accountEmail,
 	}
 
-	login, err := cl.User.NewLogin(persistCtx, &database.UserLogin{
-		ID:         loginID,
-		RemoteName: remoteName,
-		Metadata:   meta,
-	}, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create login: %w", err)
-	}
-	log.Info().Str("user_login_id", string(login.ID)).Msg("Created new Codex login")
-	step, err := agentremote.LoadConnectAndCompleteLogin(
+	login, step, err := agentremote.CreateAndCompleteLogin(
 		persistCtx,
 		cl.backgroundProcessContext(),
-		login,
+		cl.User,
+		"codex",
+		remoteName,
+		meta,
 		"io.ai-bridge.codex.complete",
 		cl.Connector.LoadUserLogin,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load client: %w", err)
+		return nil, fmt.Errorf("failed to create login: %w", err)
 	}
+	log.Info().Str("user_login_id", string(login.ID)).Msg("Created new Codex login")
 
 	cl.mu.Lock()
 	cl.closeRPCLocked()
