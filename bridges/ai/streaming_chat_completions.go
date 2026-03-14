@@ -144,7 +144,7 @@ func (a *chatCompletionsTurnAdapter) RunRound(
 					}
 					if toolDelta.Function.Arguments != "" {
 						tool.input.WriteString(toolDelta.Function.Arguments)
-						streamUI.ToolInputDelta(ctx, tool.callID, tool.toolName, toolDelta.Function.Arguments, false)
+						streamUI.Tools().InputDelta(ctx, tool.callID, tool.toolName, toolDelta.Function.Arguments, false)
 					}
 				}
 

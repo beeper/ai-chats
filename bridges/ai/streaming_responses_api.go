@@ -18,6 +18,7 @@ import (
 
 	"github.com/beeper/agentremote"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 // responseStreamContext holds loop-invariant parameters for processing a Responses API
@@ -75,14 +76,14 @@ func (a *responsesTurnAdapter) startContinuationRound(ctx context.Context) (*sse
 			decision = airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalTimedOut, Reason: agentremote.ApprovalReasonTimeout}
 		}
 		approved := approvalAllowed(decision)
-		a.oc.semanticStream(state, a.portal).ToolApprovalResponse(ctx, approval.approvalID, approval.toolCallID, approved, decision.Reason)
+		a.oc.semanticStream(state, a.portal).Approvals().Respond(ctx, approval.approvalID, approval.toolCallID, approved, decision.Reason)
 		item := responses.ResponseInputItemParamOfMcpApprovalResponse(approval.approvalID, approved)
 		if decision.Reason != "" && item.OfMcpApprovalResponse != nil {
 			item.OfMcpApprovalResponse.Reason = param.NewOpt(decision.Reason)
 		}
 		approvalInputs = append(approvalInputs, item)
 		if !approved {
-			a.oc.semanticStream(state, a.portal).ToolOutputDenied(ctx, approval.toolCallID)
+			a.oc.semanticStream(state, a.portal).Tools().Denied(ctx, approval.toolCallID)
 		}
 	}
 
@@ -436,7 +437,7 @@ func (oc *AIClient) handleProviderToolInProgress(
 	toolType ToolType,
 ) {
 	tool := oc.ensureActiveToolCall(ctx, portal, state, meta, activeTools, itemID, toolName, toolType, "")
-	oc.semanticStream(state, portal).ToolInputDelta(ctx, tool.callID, tool.toolName, "", true)
+	oc.semanticStream(state, portal).Tools().InputDelta(ctx, tool.callID, tool.toolName, "", true)
 }
 
 // handleProviderToolCompleted finalizes a provider/MCP tool with a success or failure result.
@@ -461,13 +462,15 @@ func (oc *AIClient) handleProviderToolCompleted(
 	}
 
 	if failureText != "" {
-		oc.semanticStream(state, portal).ToolOutputError(ctx, tool.callID, failureText, true)
+		oc.semanticStream(state, portal).Tools().OutputError(ctx, tool.callID, failureText, true)
 		recordToolCallResult(state, tool, ToolStatusFailed, ResultStatusError, failureText, map[string]any{"error": failureText}, nil)
 		return
 	}
 
 	output := map[string]any{"status": "completed"}
-	oc.semanticStream(state, portal).ToolOutputAvailable(ctx, tool.callID, output, true, false)
+	oc.semanticStream(state, portal).Tools().Output(ctx, tool.callID, output, bridgesdk.ToolOutputOptions{
+		ProviderExecuted: true,
+	})
 	recordToolCallResult(state, tool, ToolStatusCompleted, ResultStatusSuccess, "", output, nil)
 }
 

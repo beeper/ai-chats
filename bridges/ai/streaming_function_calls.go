@@ -10,6 +10,8 @@ import (
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
+
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 // processToolMediaResult handles TTS audio (AUDIO: prefix), single image (IMAGE: prefix),
@@ -154,7 +156,7 @@ func (oc *AIClient) handleFunctionCallArgumentsDelta(
 	tool := oc.ensureActiveToolCall(ctx, portal, state, meta, activeTools, itemID, name, ToolTypeFunction, "")
 	tool.itemID = itemID
 	tool.input.WriteString(delta)
-	oc.semanticStream(state, portal).ToolInputDelta(ctx, tool.callID, name, delta, tool.toolType == ToolTypeProvider)
+	oc.semanticStream(state, portal).Tools().InputDelta(ctx, tool.callID, name, delta, tool.toolType == ToolTypeProvider)
 }
 
 func (oc *AIClient) handleFunctionCallArgumentsDone(
@@ -221,9 +223,9 @@ func (oc *AIClient) executeStreamingBuiltinTool(
 	var inputMap any
 	if err := json.Unmarshal([]byte(argsJSON), &inputMap); err != nil {
 		inputMap = argsJSON
-		oc.semanticStream(state, portal).ToolInputError(ctx, tool.callID, toolName, argsJSON, "Invalid JSON tool input", tool.toolType == ToolTypeProvider)
+		oc.semanticStream(state, portal).Tools().InputError(ctx, tool.callID, toolName, argsJSON, "Invalid JSON tool input", tool.toolType == ToolTypeProvider)
 	}
-	oc.semanticStream(state, portal).ToolInputAvailable(ctx, tool.callID, toolName, inputMap, tool.toolType == ToolTypeProvider)
+	oc.semanticStream(state, portal).Tools().Input(ctx, tool.callID, toolName, inputMap, tool.toolType == ToolTypeProvider)
 
 	resultStatus := ResultStatusSuccess
 	result := ""
@@ -262,9 +264,11 @@ func (oc *AIClient) executeStreamingBuiltinTool(
 	recordCompletedToolCall(ctx, oc, portal, state, tool, toolName, argsJSON, result, resultStatus)
 	if resultStatus == ResultStatusSuccess {
 		collectToolOutputCitations(state, toolName, result)
-		oc.semanticStream(state, portal).ToolOutputAvailable(ctx, tool.callID, result, tool.toolType == ToolTypeProvider, false)
+		oc.semanticStream(state, portal).Tools().Output(ctx, tool.callID, result, bridgesdk.ToolOutputOptions{
+			ProviderExecuted: tool.toolType == ToolTypeProvider,
+		})
 	} else if resultStatus != ResultStatusDenied {
-		oc.semanticStream(state, portal).ToolOutputError(ctx, tool.callID, result, tool.toolType == ToolTypeProvider)
+		oc.semanticStream(state, portal).Tools().OutputError(ctx, tool.callID, result, tool.toolType == ToolTypeProvider)
 	}
 
 	return streamingBuiltinToolExecution{

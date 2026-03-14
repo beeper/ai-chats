@@ -113,7 +113,7 @@ func TestTurnRequestApprovalWaitsForResolvedDecision(t *testing.T) {
 	}
 	turn := newTurn(context.Background(), newConversation(context.Background(), portal, login, bridgev2.EventSender{}, runtime), nil, nil)
 
-	handle := turn.RequestApproval(ApprovalRequest{
+	handle := turn.Approvals().Request(ApprovalRequest{
 		ToolCallID: "tool-call-1",
 		ToolName:   "shell",
 	})
@@ -168,7 +168,7 @@ func TestTurnRequestApprovalUsesProvidedApprovalID(t *testing.T) {
 	}
 	turn := newTurn(context.Background(), newConversation(context.Background(), portal, login, bridgev2.EventSender{}, runtime), nil, nil)
 
-	handle := turn.RequestApproval(ApprovalRequest{
+	handle := turn.Approvals().Request(ApprovalRequest{
 		ApprovalID: "provider-approval-123",
 		ToolCallID: "tool-call-1",
 		ToolName:   "shell",

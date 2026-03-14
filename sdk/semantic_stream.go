@@ -17,6 +17,14 @@ type SemanticStream struct {
 	Portal  *bridgev2.Portal
 }
 
+type semanticStreamAccessor struct {
+	stream *SemanticStream
+}
+
+func (a *semanticStreamAccessor) valid() bool {
+	return a != nil && a.stream != nil && a.stream.valid()
+}
+
 func (s *SemanticStream) valid() bool {
 	return s != nil && s.State != nil && s.Emitter != nil
 }
@@ -77,68 +85,97 @@ func (s *SemanticStream) Abort(ctx context.Context, reason string) {
 	s.Emitter.EmitUIAbort(ctx, s.Portal, reason)
 }
 
-func (s *SemanticStream) ToolInputStart(ctx context.Context, toolCallID, toolName string, providerExecuted bool, displayTitle string) {
-	if !s.valid() {
-		return
-	}
-	s.Emitter.EnsureUIToolInputStart(ctx, s.Portal, toolCallID, toolName, providerExecuted, displayTitle, nil)
+type SemanticToolsController struct {
+	semanticStreamAccessor
 }
 
-func (s *SemanticStream) ToolInputDelta(ctx context.Context, toolCallID, toolName, delta string, providerExecuted bool) {
-	if !s.valid() {
-		return
-	}
-	s.Emitter.EmitUIToolInputDelta(ctx, s.Portal, toolCallID, toolName, delta, providerExecuted)
+type SemanticApprovalController struct {
+	semanticStreamAccessor
 }
 
-func (s *SemanticStream) ToolInputAvailable(ctx context.Context, toolCallID, toolName string, input any, providerExecuted bool) {
-	if !s.valid() {
-		return
+func (s *SemanticStream) Tools() *SemanticToolsController {
+	if s == nil {
+		return nil
 	}
-	s.Emitter.EmitUIToolInputAvailable(ctx, s.Portal, toolCallID, toolName, input, providerExecuted)
+	return &SemanticToolsController{semanticStreamAccessor{stream: s}}
 }
 
-func (s *SemanticStream) ToolInputError(ctx context.Context, toolCallID, toolName, rawInput, errText string, providerExecuted bool) {
-	if !s.valid() {
-		return
+func (s *SemanticStream) Approvals() *SemanticApprovalController {
+	if s == nil {
+		return nil
 	}
-	s.Emitter.EmitUIToolInputError(ctx, s.Portal, toolCallID, toolName, rawInput, errText, providerExecuted)
+	return &SemanticApprovalController{semanticStreamAccessor{stream: s}}
 }
 
-func (s *SemanticStream) ToolOutputAvailable(ctx context.Context, toolCallID string, output any, providerExecuted, streaming bool) {
-	if !s.valid() {
+func (c *SemanticToolsController) EnsureInputStart(ctx context.Context, toolCallID string, input any, opts ToolInputOptions) {
+	if !c.valid() {
 		return
 	}
-	s.Emitter.EmitUIToolOutputAvailable(ctx, s.Portal, toolCallID, output, providerExecuted, streaming)
+	displayTitle := opts.DisplayTitle
+	if displayTitle == "" {
+		displayTitle = opts.ToolName
+	}
+	c.stream.Emitter.EnsureUIToolInputStart(ctx, c.stream.Portal, toolCallID, opts.ToolName, opts.ProviderExecuted, displayTitle, nil)
+	if input != nil {
+		c.stream.Emitter.EmitUIToolInputAvailable(ctx, c.stream.Portal, toolCallID, opts.ToolName, input, opts.ProviderExecuted)
+	}
 }
 
-func (s *SemanticStream) ToolOutputError(ctx context.Context, toolCallID, errText string, providerExecuted bool) {
-	if !s.valid() {
+func (c *SemanticToolsController) InputDelta(ctx context.Context, toolCallID, toolName, delta string, providerExecuted bool) {
+	if !c.valid() {
 		return
 	}
-	s.Emitter.EmitUIToolOutputError(ctx, s.Portal, toolCallID, errText, providerExecuted)
+	c.stream.Emitter.EmitUIToolInputDelta(ctx, c.stream.Portal, toolCallID, toolName, delta, providerExecuted)
 }
 
-func (s *SemanticStream) ToolOutputDenied(ctx context.Context, toolCallID string) {
-	if !s.valid() {
+func (c *SemanticToolsController) Input(ctx context.Context, toolCallID, toolName string, input any, providerExecuted bool) {
+	if !c.valid() {
 		return
 	}
-	s.Emitter.EmitUIToolOutputDenied(ctx, s.Portal, toolCallID)
+	c.stream.Emitter.EmitUIToolInputAvailable(ctx, c.stream.Portal, toolCallID, toolName, input, providerExecuted)
 }
 
-func (s *SemanticStream) ToolApprovalRequest(ctx context.Context, approvalID, toolCallID string) {
-	if !s.valid() {
+func (c *SemanticToolsController) InputError(ctx context.Context, toolCallID, toolName, rawInput, errText string, providerExecuted bool) {
+	if !c.valid() {
 		return
 	}
-	s.Emitter.EmitUIToolApprovalRequest(ctx, s.Portal, approvalID, toolCallID)
+	c.stream.Emitter.EmitUIToolInputError(ctx, c.stream.Portal, toolCallID, toolName, rawInput, errText, providerExecuted)
 }
 
-func (s *SemanticStream) ToolApprovalResponse(ctx context.Context, approvalID, toolCallID string, approved bool, reason string) {
-	if !s.valid() {
+func (c *SemanticToolsController) Output(ctx context.Context, toolCallID string, output any, opts ToolOutputOptions) {
+	if !c.valid() {
 		return
 	}
-	s.Emitter.EmitUIToolApprovalResponse(ctx, s.Portal, approvalID, toolCallID, approved, reason)
-	streamui.RecordApprovalResponse(s.State, approvalID, toolCallID, approved, reason)
+	c.stream.Emitter.EmitUIToolOutputAvailable(ctx, c.stream.Portal, toolCallID, output, opts.ProviderExecuted, opts.Streaming)
+}
+
+func (c *SemanticToolsController) OutputError(ctx context.Context, toolCallID, errText string, providerExecuted bool) {
+	if !c.valid() {
+		return
+	}
+	c.stream.Emitter.EmitUIToolOutputError(ctx, c.stream.Portal, toolCallID, errText, providerExecuted)
+}
+
+func (c *SemanticToolsController) Denied(ctx context.Context, toolCallID string) {
+	if !c.valid() {
+		return
+	}
+	c.stream.Emitter.EmitUIToolOutputDenied(ctx, c.stream.Portal, toolCallID)
+}
+
+func (a *SemanticApprovalController) EmitRequest(ctx context.Context, approvalID, toolCallID string) {
+	if !a.valid() {
+		return
+	}
+	a.stream.Emitter.EmitUIToolApprovalRequest(ctx, a.stream.Portal, approvalID, toolCallID)
+}
+
+func (a *SemanticApprovalController) Respond(ctx context.Context, approvalID, toolCallID string, approved bool, reason string) {
+	if !a.valid() {
+		return
+	}
+	a.stream.Emitter.EmitUIToolApprovalResponse(ctx, a.stream.Portal, approvalID, toolCallID, approved, reason)
+	streamui.RecordApprovalResponse(a.stream.State, approvalID, toolCallID, approved, reason)
 }
 
 func (s *SemanticStream) File(ctx context.Context, url, mediaType string) {

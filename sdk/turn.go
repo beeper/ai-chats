@@ -402,43 +402,8 @@ func (t *Turn) FinishReasoning() {
 	t.state.UIReasoningID = ""
 }
 
-// ToolStart begins a tool call.
-func (t *Turn) ToolStart(toolName, toolCallID string, providerExecuted bool) {
-	t.Tools().EnsureInputStart(toolCallID, nil, ToolInputOptions{
-		ToolName:         toolName,
-		ProviderExecuted: providerExecuted,
-		DisplayTitle:     toolName,
-	})
-}
-
-// ToolInputDelta sends a streaming tool input argument chunk.
-func (t *Turn) ToolInputDelta(toolCallID, delta string) {
-	t.Tools().InputDelta(toolCallID, delta, false)
-}
-
-// ToolInput sends the complete tool input.
-func (t *Turn) ToolInput(toolCallID string, input any) {
-	t.Tools().Input(toolCallID, "", input, false)
-}
-
-// ToolOutput sends the tool execution result.
-func (t *Turn) ToolOutput(toolCallID string, output any) {
-	t.Tools().Output(toolCallID, output, ToolOutputOptions{})
-}
-
-// ToolOutputError reports a tool execution error.
-func (t *Turn) ToolOutputError(toolCallID, errorText string) {
-	t.Tools().OutputError(toolCallID, errorText, false)
-}
-
-// ToolDenied reports that the tool execution was denied by the user.
-func (t *Turn) ToolDenied(toolCallID string) {
-	t.ensureStarted()
-	t.emitter.EmitUIToolOutputDenied(t.turnCtx, t.conv.portal, toolCallID)
-}
-
-// RequestApproval creates a new approval request and returns its handle.
-func (t *Turn) RequestApproval(req ApprovalRequest) ApprovalHandle {
+// requestApproval creates a new approval request and returns its handle.
+func (t *Turn) requestApproval(req ApprovalRequest) ApprovalHandle {
 	t.ensureStarted()
 	if t.approvalRequester != nil {
 		return t.approvalRequester(t.turnCtx, t, req)

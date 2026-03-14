@@ -136,7 +136,8 @@ func (c *ToolsController) Denied(toolCallID string) {
 	if !c.valid() {
 		return
 	}
-	c.turn.ToolDenied(toolCallID)
+	c.turn.ensureStarted()
+	c.turn.emitter.EmitUIToolOutputDenied(c.turn.turnCtx, c.portal(), toolCallID)
 }
 
 // ApprovalController is the turn-owned approval surface.
@@ -165,7 +166,7 @@ func (a *ApprovalController) Request(req ApprovalRequest) ApprovalHandle {
 	if !a.valid() {
 		return nil
 	}
-	return a.turn.RequestApproval(req)
+	return a.turn.requestApproval(req)
 }
 
 // EmitRequest emits the approval-request UI state for a provider-managed approval.
