@@ -204,7 +204,11 @@ func (oc *AIClient) waitForToolApprovalDecision(
 	if !ok && decision.Reason == "" {
 		decision = airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalTimedOut, Reason: agentremote.ApprovalReasonTimeout}
 	}
-	oc.toolLifecycle(portal, state).respondApproval(ctx, approvalID, toolCallID, approvalAllowed(decision), decision.Reason)
+	approved := approvalAllowed(decision)
+	oc.writer(state, portal).Approvals().Respond(ctx, approvalID, toolCallID, approved, decision.Reason)
+	if !approved {
+		oc.writer(state, portal).Tools().Denied(ctx, toolCallID)
+	}
 	return decision
 }
 

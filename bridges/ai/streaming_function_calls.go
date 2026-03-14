@@ -222,7 +222,7 @@ func (oc *AIClient) executeStreamingBuiltinTool(
 	var inputMap any
 	if err := json.Unmarshal([]byte(argsJSON), &inputMap); err != nil {
 		inputMap = argsJSON
-		lifecycle.emitInputError(ctx, tool, toolName, argsJSON, "Invalid JSON tool input", tool.toolType == ToolTypeProvider)
+		oc.writer(state, portal).Tools().InputError(ctx, tool.callID, toolName, argsJSON, "Invalid JSON tool input", tool.toolType == ToolTypeProvider)
 	}
 	lifecycle.emitInput(ctx, tool, toolName, inputMap, tool.toolType == ToolTypeProvider)
 

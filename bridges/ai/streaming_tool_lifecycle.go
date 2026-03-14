@@ -51,13 +51,6 @@ func (l toolLifecycle) emitInput(ctx context.Context, tool *activeToolCall, tool
 	l.oc.writer(l.state, l.portal).Tools().Input(ctx, tool.callID, toolName, input, providerExecuted)
 }
 
-func (l toolLifecycle) emitInputError(ctx context.Context, tool *activeToolCall, toolName, rawInput, errText string, providerExecuted bool) {
-	if tool == nil {
-		return
-	}
-	l.oc.writer(l.state, l.portal).Tools().InputError(ctx, tool.callID, toolName, rawInput, errText, providerExecuted)
-}
-
 type toolFinalizeOptions struct {
 	providerExecuted bool
 	status           ToolStatus
@@ -128,13 +121,6 @@ func (l toolLifecycle) completeResult(
 		return
 	}
 	l.fail(ctx, tool, providerExecuted, resultStatus, errorText, input)
-}
-
-func (l toolLifecycle) respondApproval(ctx context.Context, approvalID, toolCallID string, approved bool, reason string) {
-	l.oc.writer(l.state, l.portal).Approvals().Respond(ctx, approvalID, toolCallID, approved, reason)
-	if !approved {
-		l.oc.writer(l.state, l.portal).Tools().Denied(ctx, toolCallID)
-	}
 }
 
 func outputMapFromResult(result any, errorText string, resultStatus ResultStatus) map[string]any {
