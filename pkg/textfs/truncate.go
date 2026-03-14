@@ -24,13 +24,14 @@ type Truncation struct {
 }
 
 func FormatSize(bytes int) string {
-	if bytes < 1024 {
+	switch {
+	case bytes < 1024:
 		return fmt.Sprintf("%dB", bytes)
-	}
-	if bytes < 1024*1024 {
+	case bytes < 1024*1024:
 		return fmt.Sprintf("%.1fKB", float64(bytes)/1024)
+	default:
+		return fmt.Sprintf("%.1fMB", float64(bytes)/(1024*1024))
 	}
-	return fmt.Sprintf("%.1fMB", float64(bytes)/(1024*1024))
 }
 
 // TruncateHead keeps the first maxLines/maxBytes of content.

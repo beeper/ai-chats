@@ -26,10 +26,7 @@ func BM25RankToScore(rank float64) float64 {
 	if math.IsNaN(rank) || math.IsInf(rank, 0) {
 		rank = 999
 	}
-	if rank < 0 {
-		rank = 0
-	}
-	return 1 / (1 + rank)
+	return 1 / (1 + max(rank, 0))
 }
 
 // HybridKeywordResult holds a single keyword/FTS search result with a text relevance score.

@@ -124,9 +124,6 @@ func formatExaStatusError(targetURL string, statuses []exaContentStatus) string 
 
 	targetURL = strings.TrimSpace(targetURL)
 
-	// First, try to match the target URL specifically.
-	// If matched but not an error, return empty (success).
-	// If no URL match, fall back to the first error status.
 	var matched *exaContentStatus
 	var firstError *exaContentStatus
 	for i := range statuses {
@@ -149,11 +146,10 @@ func formatExaStatusError(targetURL string, statuses []exaContentStatus) string 
 	if matched == nil {
 		return ""
 	}
-	tag := "unknown error"
+	tag := "unknown_error"
 	if matched.Error != nil {
-		tag = strings.TrimSpace(matched.Error.Tag)
-		if tag == "" {
-			tag = "unknown_error"
+		if t := strings.TrimSpace(matched.Error.Tag); t != "" {
+			tag = t
 		}
 		if matched.Error.HTTPStatusCode != nil {
 			tag = fmt.Sprintf("%s (http %d)", tag, *matched.Error.HTTPStatusCode)

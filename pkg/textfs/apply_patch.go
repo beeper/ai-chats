@@ -338,15 +338,16 @@ func parseUpdateFileChunk(lines []string, lineNumber int, allowMissingContext bo
 }
 
 func formatPatchSummary(summary ApplyPatchSummary) string {
-	lines := []string{"Updated files:"}
+	var b strings.Builder
+	b.WriteString("Updated files:")
 	for _, file := range summary.Added {
-		lines = append(lines, "A "+file)
+		b.WriteString("\nA " + file)
 	}
 	for _, file := range summary.Modified {
-		lines = append(lines, "M "+file)
+		b.WriteString("\nM " + file)
 	}
 	for _, file := range summary.Deleted {
-		lines = append(lines, "D "+file)
+		b.WriteString("\nD " + file)
 	}
-	return strings.Join(lines, "\n")
+	return b.String()
 }

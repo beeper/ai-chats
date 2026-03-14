@@ -109,7 +109,7 @@ func (s *Store) WriteIfMissing(ctx context.Context, relPath, content string) (bo
 	}
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return false, nil
+		return false, err
 	}
 	return rows > 0, nil
 }

@@ -93,15 +93,12 @@ func ChunkMarkdown(content string, tokens, overlap int) []Chunk {
 }
 
 func splitLineSegments(line string, maxChars int) []string {
-	if line == "" {
-		return []string{""}
+	if len(line) <= maxChars {
+		return []string{line}
 	}
 	var segments []string
 	for start := 0; start < len(line); start += maxChars {
-		end := start + maxChars
-		if end > len(line) {
-			end = len(line)
-		}
+		end := min(start+maxChars, len(line))
 		segments = append(segments, line[start:end])
 	}
 	return segments
