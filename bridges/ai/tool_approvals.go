@@ -147,33 +147,6 @@ func approvalAllowed(decision airuntime.ToolApprovalDecision) bool {
 	return decision.State == airuntime.ToolApprovalApproved
 }
 
-func (oc *AIClient) requestToolApprovalPrompt(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	params ToolApprovalParams,
-	targetEventID id.EventID,
-) bool {
-	if _, created := oc.registerToolApproval(params); !created {
-		oc.loggerForContext(ctx).Error().
-			Str("approval_id", params.ApprovalID).
-			Str("tool_name", params.ToolName).
-			Msg("tool approval: failed to register approval request")
-		return false
-	}
-	return oc.emitUIToolApprovalRequest(
-		ctx,
-		portal,
-		state,
-		params.ApprovalID,
-		params.ToolCallID,
-		params.ToolName,
-		params.Presentation,
-		targetEventID,
-		int(params.TTL/time.Second),
-	)
-}
-
 func (oc *AIClient) waitForToolApprovalDecision(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -228,7 +201,7 @@ func (oc *AIClient) isBuiltinToolDenied(
 	approvalID := NewCallID()
 	ttl := time.Duration(oc.toolApprovalsTTLSeconds()) * time.Second
 	presentation := buildBuiltinApprovalPresentation(toolName, action, argsObj)
-	if !oc.requestToolApprovalPrompt(ctx, portal, state, ToolApprovalParams{
+	params := ToolApprovalParams{
 		ApprovalID:   approvalID,
 		RoomID:       state.roomID,
 		TurnID:       state.turnID,
@@ -239,7 +212,15 @@ func (oc *AIClient) isBuiltinToolDenied(
 		Action:       action,
 		Presentation: presentation,
 		TTL:          ttl,
-	}, "") {
+	}
+	if _, created := oc.registerToolApproval(params); !created {
+		oc.loggerForContext(ctx).Error().
+			Str("approval_id", params.ApprovalID).
+			Str("tool_name", params.ToolName).
+			Msg("tool approval: failed to register approval request")
+		return true
+	}
+	if !oc.emitUIToolApprovalRequest(ctx, portal, state, params.ApprovalID, params.ToolCallID, params.ToolName, params.Presentation, id.EventID(""), int(params.TTL/time.Second)) {
 		decision := airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalDenied, Reason: agentremote.ApprovalReasonDeliveryError}
 		oc.approvalFlow.FinishResolved(approvalID, agentremote.ApprovalDecisionPayload{
 			ApprovalID: approvalID,
