@@ -120,16 +120,7 @@ func ApplyStreamPart(turn *Turn, part map[string]any, opts PartApplyOptions) boo
 }
 
 func partString(part map[string]any, key string) string {
-	raw, ok := part[key]
-	if !ok {
-		return ""
-	}
-	switch v := raw.(type) {
-	case string:
-		return strings.TrimSpace(v)
-	default:
-		return ""
-	}
+	return strings.TrimSpace(stringValue(part[key]))
 }
 
 func partBool(part map[string]any, key string) bool {

@@ -43,17 +43,9 @@ func (r *staticRuntime) providerIdentity() ProviderIdentity {
 
 func resolveProviderIdentity(cfg *Config) ProviderIdentity {
 	if cfg == nil {
-		return defaultProviderIdentity()
+		return normalizedProviderIdentity(ProviderIdentity{})
 	}
 	return normalizedProviderIdentity(cfg.ProviderIdentity)
-}
-
-func defaultProviderIdentity() ProviderIdentity {
-	return ProviderIdentity{
-		IDPrefix:      "sdk",
-		LogKey:        "sdk_msg_id",
-		StatusNetwork: "sdk",
-	}
 }
 
 func normalizedProviderIdentity(identity ProviderIdentity) ProviderIdentity {

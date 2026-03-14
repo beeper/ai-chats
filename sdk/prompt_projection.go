@@ -106,7 +106,7 @@ func PromptMessagesFromTurnData(td TurnData) []PromptMessage {
 						ToolCallArguments: CanonicalToolArguments(part.Input),
 					})
 				}
-				outputText := strings.TrimSpace(formatCanonicalValue(part.Output))
+				outputText := strings.TrimSpace(FormatCanonicalValue(part.Output))
 				if outputText == "" {
 					outputText = strings.TrimSpace(part.ErrorText)
 				}
@@ -176,17 +176,13 @@ func TurnDataFromUserPromptMessages(messages []PromptMessage) (TurnData, bool) {
 }
 
 func CanonicalToolArguments(raw any) string {
-	if value := strings.TrimSpace(formatCanonicalValue(raw)); value != "" {
+	if value := strings.TrimSpace(FormatCanonicalValue(raw)); value != "" {
 		return value
 	}
 	return "{}"
 }
 
 func FormatCanonicalValue(raw any) string {
-	return formatCanonicalValue(raw)
-}
-
-func formatCanonicalValue(raw any) string {
 	switch typed := raw.(type) {
 	case nil:
 		return ""

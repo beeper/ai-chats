@@ -161,7 +161,7 @@ func (t *Turn) providerIdentity() ProviderIdentity {
 	if t.conv != nil && t.conv.runtime != nil {
 		return t.conv.runtime.providerIdentity()
 	}
-	return defaultProviderIdentity()
+	return normalizedProviderIdentity(ProviderIdentity{})
 }
 
 func (t *Turn) resolveAgent(ctx context.Context) *Agent {
