@@ -70,12 +70,20 @@ func ensureInstanceLayout(profile, instanceName string) (*instancePaths, error) 
 	return sp, nil
 }
 
-func loadAuthConfig(profile string) (authConfig, error) {
+func authStore(profile string) (beeperauth.Store, error) {
 	path, err := authConfigPath(profile)
+	if err != nil {
+		return beeperauth.Store{}, err
+	}
+	return beeperauth.Store{Path: path, MissingError: missingAuthError(profile)}, nil
+}
+
+func loadAuthConfig(profile string) (authConfig, error) {
+	store, err := authStore(profile)
 	if err != nil {
 		return authConfig{}, err
 	}
-	return cliutil.LoadAuth(path, missingAuthError(profile))
+	return beeperauth.Load(store)
 }
 
 func saveAuthConfig(profile string, cfg authConfig) error {
@@ -83,15 +91,15 @@ func saveAuthConfig(profile string, cfg authConfig) error {
 	if err != nil {
 		return err
 	}
-	return cliutil.SaveAuth(path, cfg)
+	return beeperauth.Save(path, cfg)
 }
 
 func getAuthOrEnv(profile string) (authConfig, error) {
-	path, err := authConfigPath(profile)
+	store, err := authStore(profile)
 	if err != nil {
 		return authConfig{}, err
 	}
-	return cliutil.ResolveAuth(path, missingAuthError(profile))
+	return beeperauth.ResolveFromEnvOrStore(store)
 }
 
 func listProfiles() ([]string, error) {

@@ -6,9 +6,8 @@ import (
 )
 
 const (
-	DefaultMaxLines   = 2000
-	DefaultMaxBytes   = 50 * 1024
-	GrepMaxLineLength = 500
+	DefaultMaxLines = 2000
+	DefaultMaxBytes = 50 * 1024
 )
 
 type Truncation struct {

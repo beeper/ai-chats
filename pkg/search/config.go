@@ -6,11 +6,10 @@ import (
 )
 
 const (
-	ProviderExa         = "exa"
-	DefaultSearchCount  = 5
-	MaxSearchCount      = 10
-	DefaultTimeoutSecs  = 30
-	DefaultCacheTtlSecs = 900
+	ProviderExa        = "exa"
+	DefaultSearchCount = 5
+	MaxSearchCount     = 10
+	DefaultTimeoutSecs = 30
 )
 
 var DefaultFallbackOrder = []string{
@@ -47,15 +46,13 @@ func (c *Config) WithDefaults() *Config {
 }
 
 func (c ExaConfig) withDefaults() ExaConfig {
-	exa.ApplyConfigDefaults(&c.BaseURL, nil, 0)
+	exa.ApplyConfigDefaults(&c.BaseURL, &c.TextMaxCharacters, 500)
 	if c.Type == "" {
 		c.Type = "auto"
 	}
 	if c.NumResults <= 0 {
 		c.NumResults = DefaultSearchCount
 	}
-	exa.ApplyConfigDefaults(nil, &c.TextMaxCharacters, 500)
-	// Highlights are always enabled as they significantly improve search result quality.
 	c.Highlights = true
 	return c
 }

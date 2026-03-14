@@ -6,8 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
-	"gopkg.in/yaml.v3"
 )
 
 type Metadata struct {
@@ -75,33 +73,6 @@ func PrintRuntimePaths(meta *Metadata) {
 	fmt.Printf("  registration: %s\n", meta.RegistrationPath)
 	fmt.Printf("  log: %s\n", meta.LogPath)
 	fmt.Printf("  pid: %s\n", meta.PIDPath)
-}
-
-func DatabaseURI(configPath string) (string, error) {
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return "", err
-	}
-	var doc struct {
-		Database struct {
-			URI string `yaml:"uri"`
-		} `yaml:"database"`
-	}
-	if err = yaml.Unmarshal(data, &doc); err != nil {
-		return "", err
-	}
-	return doc.Database.URI, nil
-}
-
-func ExpandPath(path string) (string, error) {
-	if len(path) >= 2 && path[:2] == "~/" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		path = filepath.Join(home, path[2:])
-	}
-	return filepath.Abs(path)
 }
 
 func ListDirectories(root string) ([]string, error) {
