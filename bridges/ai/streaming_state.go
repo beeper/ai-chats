@@ -143,16 +143,10 @@ func (oc *AIClient) setupEmitter(state *streamingState) {
 	if state == nil {
 		return
 	}
-	state.emitter = &streamui.Emitter{
-		State: &state.ui,
-		Emit: func(ctx context.Context, portal *bridgev2.Portal, part map[string]any) {
-			streamui.ApplyChunk(&state.ui, part)
-			oc.emitStreamEvent(ctx, portal, state, part)
-		},
-	}
+	state.emitter = oc.newStreamingEmitter(state)
 }
 
-func (oc *AIClient) uiEmitter(state *streamingState) *streamui.Emitter {
+func (oc *AIClient) newStreamingEmitter(state *streamingState) *streamui.Emitter {
 	if state == nil {
 		fallback := &streamui.UIState{}
 		fallback.InitMaps()
@@ -160,9 +154,6 @@ func (oc *AIClient) uiEmitter(state *streamingState) *streamui.Emitter {
 			State: fallback,
 			Emit:  func(context.Context, *bridgev2.Portal, map[string]any) {},
 		}
-	}
-	if state.emitter != nil {
-		return state.emitter
 	}
 	return &streamui.Emitter{
 		State: &state.ui,
@@ -174,17 +165,20 @@ func (oc *AIClient) uiEmitter(state *streamingState) *streamui.Emitter {
 }
 
 func (oc *AIClient) writer(state *streamingState, portal *bridgev2.Portal) *sdk.Writer {
-	emitter := oc.uiEmitter(state)
 	if state == nil {
+		emitter := oc.newStreamingEmitter(nil)
 		return &sdk.Writer{
 			State:   emitter.State,
 			Emitter: emitter,
 			Portal:  portal,
 		}
 	}
+	if state.emitter == nil {
+		state.emitter = oc.newStreamingEmitter(state)
+	}
 	return &sdk.Writer{
 		State:   &state.ui,
-		Emitter: emitter,
+		Emitter: state.emitter,
 		Portal:  portal,
 	}
 }

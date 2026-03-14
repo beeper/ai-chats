@@ -71,14 +71,6 @@ func (s *TurnStream) SetTransport(hook func(turnID string, seq int, content map[
 	s.turn.streamHook = hook
 }
 
-// Tools returns the turn's tool streaming controller.
-func (t *Turn) Tools() *ToolsController {
-	if t == nil {
-		return nil
-	}
-	return t.Writer().Tools()
-}
-
 // Approvals returns the turn's approval controller.
 func (t *Turn) Approvals() *ApprovalController {
 	if t == nil {

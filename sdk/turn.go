@@ -351,7 +351,7 @@ func (t *Turn) ensureStarted() {
 			baseMeta["modelKey"] = t.agent.ModelKey
 		}
 	}
-	t.emitter.EmitUIStart(t.turnCtx, t.conv.portal, baseMeta)
+	t.Writer().Start(t.turnCtx, baseMeta)
 }
 
 // requestApproval creates a new approval request and returns its handle.

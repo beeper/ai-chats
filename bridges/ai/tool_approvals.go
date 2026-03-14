@@ -161,6 +161,7 @@ func (oc *AIClient) isBuiltinToolDenied(
 	if state == nil || tool == nil {
 		return true
 	}
+	lifecycle := oc.toolLifecycle(portal, state)
 	required, action := oc.builtinToolApprovalRequirement(toolName, argsObj)
 	if required && oc.isBuiltinAlwaysAllowed(toolName, action) {
 		required = false
@@ -207,8 +208,7 @@ func (oc *AIClient) isBuiltinToolDenied(
 			ApprovalID: approvalID,
 			Reason:     agentremote.ApprovalReasonDeliveryError,
 		})
-		oc.writer(state, portal).Approvals().Respond(ctx, approvalID, tool.callID, false, decision.Reason)
-		oc.writer(state, portal).Tools().Denied(ctx, tool.callID)
+		lifecycle.respondApproval(ctx, approvalID, tool.callID, false, decision.Reason)
 		return true
 	}
 	resolution, _, ok := oc.waitToolApproval(ctx, approvalID)
@@ -218,9 +218,8 @@ func (oc *AIClient) isBuiltinToolDenied(
 			decision = airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalTimedOut, Reason: agentremote.ApprovalReasonTimeout}
 		}
 	}
-	oc.writer(state, portal).Approvals().Respond(ctx, approvalID, tool.callID, approvalAllowed(decision), decision.Reason)
+	lifecycle.respondApproval(ctx, approvalID, tool.callID, approvalAllowed(decision), decision.Reason)
 	if !approvalAllowed(decision) {
-		oc.writer(state, portal).Tools().Denied(ctx, tool.callID)
 		return true
 	}
 	return false

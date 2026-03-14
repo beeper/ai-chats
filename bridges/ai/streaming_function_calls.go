@@ -10,8 +10,6 @@ import (
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
-
-	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 // processToolMediaResult handles TTS audio (AUDIO: prefix), single image (IMAGE: prefix),
@@ -153,10 +151,10 @@ func (oc *AIClient) handleFunctionCallArgumentsDelta(
 	name string,
 	delta string,
 ) {
+	lifecycle := oc.toolLifecycle(portal, state)
 	tool := oc.ensureActiveToolCall(ctx, portal, state, meta, activeTools, itemID, name, ToolTypeFunction, "")
 	tool.itemID = itemID
-	tool.input.WriteString(delta)
-	oc.writer(state, portal).Tools().InputDelta(ctx, tool.callID, name, delta, tool.toolType == ToolTypeProvider)
+	lifecycle.appendInputDelta(ctx, tool, name, delta, tool.toolType == ToolTypeProvider)
 }
 
 func (oc *AIClient) handleFunctionCallArgumentsDone(
@@ -209,6 +207,7 @@ func (oc *AIClient) executeStreamingBuiltinTool(
 	approvalFallbackForNonObject bool,
 	logSuffix string,
 ) streamingBuiltinToolExecution {
+	lifecycle := oc.toolLifecycle(portal, state)
 	toolName := strings.TrimSpace(tool.toolName)
 	if toolName == "" {
 		toolName = strings.TrimSpace(fallbackName)
@@ -223,9 +222,9 @@ func (oc *AIClient) executeStreamingBuiltinTool(
 	var inputMap any
 	if err := json.Unmarshal([]byte(argsJSON), &inputMap); err != nil {
 		inputMap = argsJSON
-		oc.writer(state, portal).Tools().InputError(ctx, tool.callID, toolName, argsJSON, "Invalid JSON tool input", tool.toolType == ToolTypeProvider)
+		lifecycle.emitInputError(ctx, tool, toolName, argsJSON, "Invalid JSON tool input", tool.toolType == ToolTypeProvider)
 	}
-	oc.writer(state, portal).Tools().Input(ctx, tool.callID, toolName, inputMap, tool.toolType == ToolTypeProvider)
+	lifecycle.emitInput(ctx, tool, toolName, inputMap, tool.toolType == ToolTypeProvider)
 
 	resultStatus := ResultStatusSuccess
 	result := ""
@@ -261,15 +260,18 @@ func (oc *AIClient) executeStreamingBuiltinTool(
 	}
 
 	result, resultStatus = oc.processToolMediaResult(ctx, log, portal, state, argsJSON, result, resultStatus, logSuffix)
-	recordCompletedToolCall(ctx, oc, portal, state, tool, toolName, argsJSON, result, resultStatus)
 	if resultStatus == ResultStatusSuccess {
 		collectToolOutputCitations(state, toolName, result)
-		oc.writer(state, portal).Tools().Output(ctx, tool.callID, result, bridgesdk.ToolOutputOptions{
-			ProviderExecuted: tool.toolType == ToolTypeProvider,
-		})
-	} else if resultStatus != ResultStatusDenied {
-		oc.writer(state, portal).Tools().OutputError(ctx, tool.callID, result, tool.toolType == ToolTypeProvider)
 	}
+	lifecycle.finalize(ctx, tool, toolFinalizeOptions{
+		providerExecuted: tool.toolType == ToolTypeProvider,
+		status:           ToolStatusCompleted,
+		resultStatus:     resultStatus,
+		errorText:        result,
+		output:           result,
+		outputMap:        map[string]any{"result": result},
+		input:            parseToolInputPayload(argsJSON),
+	})
 
 	return streamingBuiltinToolExecution{
 		toolName:     toolName,
@@ -277,31 +279,6 @@ func (oc *AIClient) executeStreamingBuiltinTool(
 		result:       result,
 		resultStatus: resultStatus,
 	}
-}
-
-func recordCompletedToolCall(
-	ctx context.Context,
-	oc *AIClient,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	tool *activeToolCall,
-	toolName string,
-	argsJSON string,
-	result string,
-	resultStatus ResultStatus,
-) {
-	completedAt := time.Now().UnixMilli()
-	state.toolCalls = append(state.toolCalls, ToolCallMetadata{
-		CallID:        tool.callID,
-		ToolName:      toolName,
-		ToolType:      string(tool.toolType),
-		Input:         parseToolInputPayload(argsJSON),
-		Output:        map[string]any{"result": result},
-		Status:        string(ToolStatusCompleted),
-		ResultStatus:  string(resultStatus),
-		StartedAtMs:   tool.startedAtMs,
-		CompletedAtMs: completedAt,
-	})
 }
 
 // recordToolCallResult appends a ToolCallMetadata for a tool that has already been

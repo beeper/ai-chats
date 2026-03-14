@@ -18,7 +18,6 @@ import (
 
 	"github.com/beeper/agentremote"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
-	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 // responseStreamContext holds loop-invariant parameters for processing a Responses API
@@ -76,15 +75,12 @@ func (a *responsesTurnAdapter) startContinuationRound(ctx context.Context) (*sse
 			decision = airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalTimedOut, Reason: agentremote.ApprovalReasonTimeout}
 		}
 		approved := approvalAllowed(decision)
-		a.oc.writer(state, a.portal).Approvals().Respond(ctx, approval.approvalID, approval.toolCallID, approved, decision.Reason)
+		a.oc.toolLifecycle(a.portal, state).respondApproval(ctx, approval.approvalID, approval.toolCallID, approved, decision.Reason)
 		item := responses.ResponseInputItemParamOfMcpApprovalResponse(approval.approvalID, approved)
 		if decision.Reason != "" && item.OfMcpApprovalResponse != nil {
 			item.OfMcpApprovalResponse.Reason = param.NewOpt(decision.Reason)
 		}
 		approvalInputs = append(approvalInputs, item)
-		if !approved {
-			a.oc.writer(state, a.portal).Tools().Denied(ctx, approval.toolCallID)
-		}
 	}
 
 	continuationParams := a.oc.buildContinuationParams(ctx, state, a.meta, pendingOutputs, approvalInputs)
@@ -437,7 +433,7 @@ func (oc *AIClient) handleProviderToolInProgress(
 	toolType ToolType,
 ) {
 	tool := oc.ensureActiveToolCall(ctx, portal, state, meta, activeTools, itemID, toolName, toolType, "")
-	oc.writer(state, portal).Tools().InputDelta(ctx, tool.callID, tool.toolName, "", true)
+	oc.toolLifecycle(portal, state).appendInputDelta(ctx, tool, tool.toolName, "", true)
 }
 
 // handleProviderToolCompleted finalizes a provider/MCP tool with a success or failure result.
@@ -461,17 +457,27 @@ func (oc *AIClient) handleProviderToolCompleted(
 		return
 	}
 
+	lifecycle := oc.toolLifecycle(portal, state)
 	if failureText != "" {
-		oc.writer(state, portal).Tools().OutputError(ctx, tool.callID, failureText, true)
-		recordToolCallResult(state, tool, ToolStatusFailed, ResultStatusError, failureText, map[string]any{"error": failureText}, nil)
+		lifecycle.finalize(ctx, tool, toolFinalizeOptions{
+			providerExecuted: true,
+			status:           ToolStatusFailed,
+			resultStatus:     ResultStatusError,
+			errorText:        failureText,
+			input:            nil,
+		})
 		return
 	}
 
 	output := map[string]any{"status": "completed"}
-	oc.writer(state, portal).Tools().Output(ctx, tool.callID, output, bridgesdk.ToolOutputOptions{
-		ProviderExecuted: true,
+	lifecycle.finalize(ctx, tool, toolFinalizeOptions{
+		providerExecuted: true,
+		status:           ToolStatusCompleted,
+		resultStatus:     ResultStatusSuccess,
+		output:           output,
+		outputMap:        output,
+		input:            nil,
 	})
-	recordToolCallResult(state, tool, ToolStatusCompleted, ResultStatusSuccess, "", output, nil)
 }
 
 // streamingResponse handles streaming using the Responses API
