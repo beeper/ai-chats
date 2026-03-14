@@ -9,9 +9,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/beeper/agentremote/pkg/agents/agentconfig"
 	"github.com/beeper/agentremote/pkg/agents/toolpolicy"
 	"github.com/beeper/agentremote/pkg/shared/toolspec"
 )
+
+// SubagentConfig is an alias for the shared type to preserve API compatibility.
+type SubagentConfig = agentconfig.SubagentConfig
 
 // Boss tools for agent management.
 // These are executed via the executor when the Boss agent is active.
@@ -514,7 +518,7 @@ func (e *BossToolExecutor) ExecuteForkAgent(ctx context.Context, input map[strin
 		Model:        source.Model,
 		SystemPrompt: source.SystemPrompt,
 		Tools:        source.Tools.Clone(),
-		Subagents:    cloneSubagentConfig(source.Subagents),
+		Subagents:    agentconfig.CloneSubagentConfig(source.Subagents),
 		Temperature:  source.Temperature,
 		IsPreset:     false,
 		CreatedAt:    now,

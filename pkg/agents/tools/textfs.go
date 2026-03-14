@@ -17,4 +17,8 @@ var (
 		toolspec.EditName, toolspec.EditDescription, "Edit",
 		toolspec.EditSchema(), GroupFS, fsUnavailableMsg,
 	)
+	ApplyPatchTool = newUnavailableTool(
+		toolspec.ApplyPatchName, toolspec.ApplyPatchDescription, "Apply Patch",
+		toolspec.ApplyPatchSchema(), GroupFS, fsUnavailableMsg,
+	)
 )

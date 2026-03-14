@@ -601,7 +601,7 @@ func BuildSystemPrompt(params SystemPromptParams) string {
 		fmt.Sprintf("Reasoning: %s (hidden unless on/stream). Toggle !ai reasoning; !ai status shows Reasoning when enabled.", reasoningLevel),
 	)
 
-	return joinNonEmptyLines(lines)
+	return strings.Join(filterNonEmpty(lines), "\n")
 }
 
 func buildRuntimeLine(
@@ -654,10 +654,6 @@ func buildRuntimeLine(
 	}
 	parts = append(parts, fmt.Sprintf("thinking=%s", think))
 	return fmt.Sprintf("Runtime: %s", strings.Join(parts, " | "))
-}
-
-func joinNonEmptyLines(lines []string) string {
-	return strings.Join(filterNonEmpty(lines), "\n")
 }
 
 // filterNonEmpty returns a new slice containing only the non-empty trimmed values.

@@ -349,24 +349,20 @@ func globalAsToolPolicy(global *GlobalToolPolicyConfig) *ToolPolicyConfig {
 	return &global.ToolPolicyConfig
 }
 
-func normalizeProviderKey(value string) string {
-	return NormalizeToolName(value)
-}
-
 func resolveProviderToolPolicy(byProvider map[string]ToolPolicyConfig, provider string, modelID string) *ToolPolicyConfig {
 	if provider == "" || len(byProvider) == 0 {
 		return nil
 	}
 	lookup := make(map[string]ToolPolicyConfig, len(byProvider))
 	for key, value := range byProvider {
-		normalized := normalizeProviderKey(key)
+		normalized := NormalizeToolName(key)
 		if normalized == "" {
 			continue
 		}
 		lookup[normalized] = value
 	}
 
-	normalizedProvider := normalizeProviderKey(provider)
+	normalizedProvider := NormalizeToolName(provider)
 	rawModel := strings.ToLower(strings.TrimSpace(modelID))
 	fullModel := rawModel
 	if rawModel != "" && !strings.Contains(rawModel, "/") {

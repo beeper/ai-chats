@@ -13,4 +13,6 @@ var (
 	TTSTool           = newBuiltinTool(toolspec.TTSName, toolspec.TTSDescription, "TTS", toolspec.TTSSchema(), GroupMedia, nil)
 	GravatarFetchTool = newBuiltinTool(toolspec.GravatarFetchName, toolspec.GravatarFetchDescription, "Gravatar Fetch", toolspec.GravatarFetchSchema(), GroupOpenClaw, nil)
 	GravatarSetTool   = newBuiltinTool(toolspec.GravatarSetName, toolspec.GravatarSetDescription, "Gravatar Set", toolspec.GravatarSetSchema(), GroupOpenClaw, nil)
+	CronTool          = newBuiltinTool(toolspec.CronName, toolspec.CronDescription, "Scheduler", toolspec.CronSchema(), GroupOpenClaw, nil)
+	AgentsListTool    = newBuiltinTool("agents_list", "List agent ids you can target with sessions_spawn (based on allowlists).", "Agents List", toolspec.EmptyObjectSchema(), GroupSessions, nil)
 )
