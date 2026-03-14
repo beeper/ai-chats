@@ -5,9 +5,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/beeper/agentremote/pkg/shared/providerchain"
+	"github.com/beeper/agentremote/pkg/shared/providerresource"
 	"github.com/beeper/agentremote/pkg/shared/registry"
-	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 // Search executes a search using the configured provider chain.
@@ -18,13 +17,13 @@ func Search(ctx context.Context, req Request, cfg *Config) (*Response, error) {
 	cfg = cfg.WithDefaults()
 	req = normalizeRequest(req)
 
-	reg := registry.New[Provider]()
-	registerProviders(reg, cfg)
-	order := stringutil.BuildProviderOrder(cfg.Provider, cfg.Fallbacks, DefaultFallbackOrder)
-
-	return providerchain.RunFirst(
-		order,
-		reg.Get,
+	return providerresource.Run(
+		cfg.Provider,
+		cfg.Fallbacks,
+		DefaultFallbackOrder,
+		func(reg *registry.Registry[Provider]) {
+			registerProviders(reg, cfg)
+		},
 		func(provider Provider) (*Response, error) {
 			return provider.Search(ctx, req)
 		},

@@ -8,7 +8,6 @@ import (
 
 	"go.mau.fi/util/configupgrade"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"github.com/beeper/agentremote"
@@ -44,7 +43,7 @@ func NewConnector() *OpenCodeConnector {
 			Description: "Let the bridge spawn and manage OpenCode processes for you.",
 		},
 	}
-	oc.sdkConfig = &bridgesdk.Config{
+	oc.sdkConfig = bridgesdk.NewStandardConnectorConfig(bridgesdk.StandardConnectorConfigParams{
 		Name:             "opencode",
 		Description:      "A Matrix↔OpenCode bridge built on mautrix-go bridgev2.",
 		ProtocolID:       "ai-opencode",
@@ -63,27 +62,21 @@ func NewConnector() *OpenCodeConnector {
 			bridgesdk.ApplyBoolDefault(&oc.Config.OpenCode.Enabled, true)
 			return nil
 		},
-		BridgeName: func() bridgev2.BridgeName {
-			return bridgev2.BridgeName{
-				DisplayName:          "OpenCode Bridge",
-				NetworkURL:           "https://api.ai",
-				NetworkID:            "opencode",
-				BeeperBridgeType:     "opencode",
-				DefaultPort:          29347,
-				DefaultCommandPrefix: oc.Config.Bridge.CommandPrefix,
-			}
+		DisplayName:      "OpenCode Bridge",
+		NetworkURL:       "https://api.ai",
+		NetworkID:        "opencode",
+		BeeperBridgeType: "opencode",
+		DefaultPort:      29347,
+		DefaultCommandPrefix: func() string {
+			return oc.Config.Bridge.CommandPrefix
 		},
 		ExampleConfig:  exampleNetworkConfig,
 		ConfigData:     &oc.Config,
 		ConfigUpgrader: configupgrade.SimpleUpgrader(upgradeConfig),
-		DBMeta: func() database.MetaTypes {
-			return bridgesdk.BuildStandardMetaTypes(
-				func() any { return &PortalMetadata{} },
-				func() any { return &MessageMetadata{} },
-				func() any { return &UserLoginMetadata{} },
-				func() any { return &GhostMetadata{} },
-			)
-		},
+		NewPortal:      func() any { return &PortalMetadata{} },
+		NewMessage:     func() any { return &MessageMetadata{} },
+		NewLogin:       func() any { return &UserLoginMetadata{} },
+		NewGhost:       func() any { return &GhostMetadata{} },
 		AcceptLogin: func(login *bridgev2.UserLogin) (bool, string) {
 			meta := loginMetadata(login)
 			if !strings.EqualFold(strings.TrimSpace(meta.Provider), ProviderOpenCode) {
@@ -112,7 +105,7 @@ func NewConnector() *OpenCodeConnector {
 			}
 			return &OpenCodeLogin{User: user, Connector: oc, FlowID: flowID}, nil
 		},
-	}
+	})
 	oc.ConnectorBase = bridgesdk.NewConnectorBase(oc.sdkConfig)
 	return oc
 }

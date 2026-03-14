@@ -7,7 +7,6 @@ import (
 
 	"go.mau.fi/util/configupgrade"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"github.com/beeper/agentremote"
@@ -31,7 +30,7 @@ type OpenClawConnector struct {
 
 func NewConnector() *OpenClawConnector {
 	oc := &OpenClawConnector{}
-	oc.sdkConfig = &bridgesdk.Config{
+	oc.sdkConfig = bridgesdk.NewStandardConnectorConfig(bridgesdk.StandardConnectorConfigParams{
 		Name:             "openclaw",
 		Description:      "A Matrix↔OpenClaw bridge built on mautrix-go bridgev2.",
 		ProtocolID:       "ai-openclaw",
@@ -46,27 +45,21 @@ func NewConnector() *OpenClawConnector {
 			bridgesdk.ApplyBoolDefault(&oc.Config.OpenClaw.Enabled, true)
 			return nil
 		},
-		BridgeName: func() bridgev2.BridgeName {
-			return bridgev2.BridgeName{
-				DisplayName:          "OpenClaw Bridge",
-				NetworkURL:           "https://github.com/openclaw/openclaw",
-				NetworkID:            "openclaw",
-				BeeperBridgeType:     "openclaw",
-				DefaultPort:          29348,
-				DefaultCommandPrefix: oc.Config.Bridge.CommandPrefix,
-			}
+		DisplayName:      "OpenClaw Bridge",
+		NetworkURL:       "https://github.com/openclaw/openclaw",
+		NetworkID:        "openclaw",
+		BeeperBridgeType: "openclaw",
+		DefaultPort:      29348,
+		DefaultCommandPrefix: func() string {
+			return oc.Config.Bridge.CommandPrefix
 		},
 		ExampleConfig:  exampleNetworkConfig,
 		ConfigData:     &oc.Config,
 		ConfigUpgrader: configupgrade.SimpleUpgrader(upgradeConfig),
-		DBMeta: func() database.MetaTypes {
-			return bridgesdk.BuildStandardMetaTypes(
-				func() any { return &PortalMetadata{} },
-				func() any { return &MessageMetadata{} },
-				func() any { return &UserLoginMetadata{} },
-				func() any { return &GhostMetadata{} },
-			)
-		},
+		NewPortal:      func() any { return &PortalMetadata{} },
+		NewMessage:     func() any { return &MessageMetadata{} },
+		NewLogin:       func() any { return &UserLoginMetadata{} },
+		NewGhost:       func() any { return &GhostMetadata{} },
 		NetworkCapabilities: func() *bridgev2.NetworkGeneralCapabilities {
 			caps := agentremote.DefaultNetworkCapabilities()
 			caps.DisappearingMessages = false
@@ -95,7 +88,7 @@ func NewConnector() *OpenClawConnector {
 			}
 			return &OpenClawLogin{User: user, Connector: oc}, nil
 		},
-	}
+	})
 	oc.ConnectorBase = bridgesdk.NewConnectorBase(oc.sdkConfig)
 	return oc
 }

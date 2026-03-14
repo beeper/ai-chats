@@ -70,47 +70,6 @@ func (s *TurnStream) SetTransport(hook func(turnID string, seq int, content map[
 	s.turn.streamHook = hook
 }
 
-// TextDelta emits a text delta.
-func (s *TurnStream) TextDelta(text string) {
-	if !s.valid() {
-		return
-	}
-	s.turn.WriteText(text)
-}
-
-// ReasoningDelta emits a reasoning delta.
-func (s *TurnStream) ReasoningDelta(text string) {
-	if !s.valid() {
-		return
-	}
-	s.turn.WriteReasoning(text)
-}
-
-// Error emits a UI error event for the turn.
-func (s *TurnStream) Error(text string) {
-	if !s.valid() {
-		return
-	}
-	s.turn.ensureStarted()
-	s.turn.emitter.EmitUIError(s.turn.turnCtx, s.portal(), text)
-}
-
-// TextEnd closes the current text stream part.
-func (s *TurnStream) TextEnd() {
-	if !s.valid() {
-		return
-	}
-	s.turn.FinishText()
-}
-
-// ReasoningEnd closes the current reasoning stream part.
-func (s *TurnStream) ReasoningEnd() {
-	if !s.valid() {
-		return
-	}
-	s.turn.FinishReasoning()
-}
-
 // Tools returns the turn's tool streaming controller.
 func (t *Turn) Tools() *ToolsController {
 	if t == nil {
