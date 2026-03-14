@@ -1,7 +1,6 @@
 package ai
 
 import (
-	"context"
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -33,8 +32,4 @@ func applyAIBridgeInfo(portal *bridgev2.Portal, meta *PortalMetadata, content *e
 		return
 	}
 	agentremote.ApplyAIBridgeInfo(content, aiBridgeProtocolIDForPortal(portal), portal.RoomType, integrationPortalAIKind(meta))
-}
-
-func sendAIPortalInfo(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) bool {
-	return agentremote.SendAIRoomInfo(ctx, portal, integrationPortalAIKind(meta))
 }

@@ -526,7 +526,7 @@ func buildOpenAIImagesBaseURL(btc *BridgeToolContext) (string, error) {
 				return strings.TrimSuffix(strings.TrimSpace(svc.BaseURL), "/"), nil
 			}
 		}
-		base := normalizeMagicProxyBaseURL(loginMeta.BaseURL)
+		base := normalizeProxyBaseURL(loginMeta.BaseURL)
 		if base == "" {
 			return "", errors.New("magic proxy base_url is required for image generation")
 		}
@@ -650,7 +650,7 @@ func resolveOpenRouterImageGenEndpoint(btc *BridgeToolContext) (baseURL string, 
 	// Provider-specific per-login endpoints.
 	switch meta.Provider {
 	case ProviderMagicProxy:
-		base := normalizeMagicProxyBaseURL(meta.BaseURL)
+		base := normalizeProxyBaseURL(meta.BaseURL)
 		key := trim(meta.APIKey)
 		if base == "" || key == "" {
 			return "", "", false

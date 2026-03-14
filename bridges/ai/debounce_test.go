@@ -151,11 +151,11 @@ func TestDebouncer_FlushKey(t *testing.T) {
 	debouncer.EnqueueWithDelay("key1", DebounceEntry{RawBody: "msg1"}, true, 0)
 
 	// Manually flush before timer
-	debouncer.FlushKey("key1")
+	debouncer.flush("key1")
 
 	mu.Lock()
 	if len(flushed) != 1 {
-		t.Errorf("Expected 1 flush after FlushKey, got %d", len(flushed))
+		t.Errorf("Expected 1 flush after manual flush, got %d", len(flushed))
 	}
 	mu.Unlock()
 }

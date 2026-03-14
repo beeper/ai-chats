@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"maunium.net/go/mautrix/bridgev2"
+
+	"github.com/beeper/agentremote"
 )
 
 type portalRoomMaterializeOptions struct {
@@ -36,7 +38,7 @@ func (oc *AIClient) materializePortalRoom(
 		}
 		return err
 	}
-	sendAIPortalInfo(ctx, portal, portalMeta(portal))
+	agentremote.SendAIRoomInfo(ctx, portal, integrationPortalAIKind(portalMeta(portal)))
 	if opts.SendWelcome {
 		oc.sendWelcomeMessage(ctx, portal)
 	}

@@ -41,7 +41,7 @@ func decodePromptMessages(raw []map[string]any) []PromptMessage {
 
 func canonicalPromptMessages(meta *MessageMetadata) []PromptMessage {
 	if turnData, ok := canonicalTurnData(meta); ok {
-		return promptMessagesFromTurnData(turnData)
+		return sdk.PromptMessagesFromTurnData(turnData)
 	}
 	if meta == nil || meta.CanonicalPromptSchema != canonicalPromptSchemaV1 {
 		return nil
@@ -186,7 +186,7 @@ func setCanonicalPromptMessages(meta *MessageMetadata, messages []PromptMessage)
 	if meta == nil || len(messages) == 0 {
 		return
 	}
-	if turnData, ok := turnDataFromUserPromptMessages(messages); ok {
+	if turnData, ok := sdk.TurnDataFromUserPromptMessages(messages); ok {
 		meta.CanonicalTurnSchema = sdk.CanonicalTurnDataSchemaV1
 		meta.CanonicalTurnData = turnData.ToMap()
 	} else {

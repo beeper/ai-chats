@@ -52,10 +52,6 @@ func normalizeBeeperBaseURL(raw string) string {
 	return scheme + "://" + host + beeperBasePath
 }
 
-func normalizeMagicProxyBaseURL(raw string) string {
-	return normalizeProxyBaseURL(raw)
-}
-
 func normalizeProxyBaseURL(raw string) string {
 	base := strings.TrimSpace(raw)
 	if base == "" {
@@ -212,7 +208,7 @@ func (oc *OpenAIConnector) resolveServiceConfig(meta *UserLoginMetadata) Service
 	}
 
 	if meta.Provider == ProviderMagicProxy {
-		base := normalizeMagicProxyBaseURL(meta.BaseURL)
+		base := normalizeProxyBaseURL(meta.BaseURL)
 		if base != "" {
 			token := trimToken(meta.APIKey)
 			services[serviceOpenRouter] = ServiceConfig{

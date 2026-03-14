@@ -573,10 +573,6 @@ func buildSourceParts(cits []citations.SourceCitation, documents []citations.Sou
 	return parts
 }
 
-func (oc *AIClient) buildFinalEditUIMessage(state *streamingState, meta *PortalMetadata, linkPreviews []*event.BeeperLinkPreview) map[string]any {
-	return buildCompactFinalUIMessage(oc.buildStreamUIMessage(state, meta, linkPreviews))
-}
-
 func finalRenderedBodyFallback(state *streamingState) string {
 	if state == nil {
 		return "..."
@@ -628,7 +624,7 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 	intent, _ := oc.getIntentForPortal(ctx, portal, bridgev2.RemoteEventMessage)
 	linkPreviews := generateOutboundLinkPreviews(ctx, rendered.Body, intent, portal, state.sourceCitations, getLinkPreviewConfig(&oc.connector.Config))
 
-	uiMessage := oc.buildFinalEditUIMessage(state, meta, linkPreviews)
+	uiMessage := buildCompactFinalUIMessage(oc.buildStreamUIMessage(state, meta, linkPreviews))
 
 	topLevelExtra := buildFinalEditTopLevelExtra(uiMessage, linkPreviews, relatesTo)
 	sender := oc.senderForPortal(ctx, portal)

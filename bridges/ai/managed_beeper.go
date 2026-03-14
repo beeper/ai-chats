@@ -191,7 +191,7 @@ func (oc *OpenAIConnector) isSelectableUserLogin(login *bridgev2.UserLogin) bool
 				return false
 			}
 		case ProviderMagicProxy:
-			if normalizeMagicProxyBaseURL(meta.BaseURL) == "" {
+			if normalizeProxyBaseURL(meta.BaseURL) == "" {
 				return false
 			}
 		}

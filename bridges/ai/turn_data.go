@@ -15,14 +15,6 @@ func canonicalTurnData(meta *MessageMetadata) (sdk.TurnData, bool) {
 	return sdk.DecodeTurnData(meta.CanonicalTurnData)
 }
 
-func promptMessagesFromTurnData(td sdk.TurnData) []PromptMessage {
-	return sdk.PromptMessagesFromTurnData(td)
-}
-
-func turnDataFromUserPromptMessages(messages []PromptMessage) (sdk.TurnData, bool) {
-	return sdk.TurnDataFromUserPromptMessages(messages)
-}
-
 func turnDataFromStreamingState(state *streamingState, uiMessage map[string]any) sdk.TurnData {
 	return sdk.BuildTurnDataFromUIMessage(uiMessage, sdk.TurnDataBuildOptions{
 		ID:   state.turnID,

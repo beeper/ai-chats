@@ -11,7 +11,7 @@ func modelContactName(modelID string, info *ModelInfo) string {
 	if info != nil && info.Name != "" {
 		return info.Name
 	}
-	return GetModelDisplayName(modelID)
+	return ResolveAlias(modelID)
 }
 
 func modelContactProvider(modelID string, info *ModelInfo) string {

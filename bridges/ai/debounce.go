@@ -129,11 +129,6 @@ func (d *Debouncer) flush(key string) {
 	d.onFlush(entries)
 }
 
-// FlushKey flushes the pending buffer for a specific key, if one exists.
-func (d *Debouncer) FlushKey(key string) {
-	d.flush(key)
-}
-
 // FlushAll flushes all pending buffers (e.g., on shutdown).
 func (d *Debouncer) FlushAll() {
 	d.mu.Lock()

@@ -15,11 +15,7 @@ func (oc *AIClient) toolDescriptionForPortal(meta *PortalMetadata, toolName stri
 			return toolspec.ImageDescriptionVisionHint
 		}
 	case toolspec.WebSearchName:
-		return oc.resolveWebSearchDescription(fallback)
+		return stringutil.FirstNonEmpty(fallback, toolspec.WebSearchDescription)
 	}
 	return fallback
-}
-
-func (oc *AIClient) resolveWebSearchDescription(fallback string) string {
-	return stringutil.FirstNonEmpty(fallback, toolspec.WebSearchDescription)
 }

@@ -219,7 +219,7 @@ func (o *OpenAIProvider) ListModels(ctx context.Context) ([]ModelInfo, error) {
 			fullModelID := AddModelPrefix(BackendOpenAI, model.ID)
 			models = append(models, ModelInfo{
 				ID:                  fullModelID,
-				Name:                GetModelDisplayName(fullModelID),
+				Name:                ResolveAlias(fullModelID),
 				Provider:            "openai",
 				API:                 string(ModelAPIResponses),
 				SupportsVision:      strings.Contains(model.ID, "vision") || strings.Contains(model.ID, "4o") || strings.Contains(model.ID, "4-turbo"),

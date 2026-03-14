@@ -154,11 +154,6 @@ func BuildUIMessage(p UIMessageParams) map[string]any {
 	return msg
 }
 
-// MergeUIMessageMetadata deep-merges message-level metadata maps.
-func MergeUIMessageMetadata(base, update map[string]any) map[string]any {
-	return jsonutil.MergeRecursive(base, update)
-}
-
 func normalizeUIParts(raw any) []map[string]any {
 	switch typed := raw.(type) {
 	case nil:

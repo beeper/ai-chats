@@ -487,7 +487,7 @@ func initProviderForLogin(key string, meta *UserLoginMetadata, connector *OpenAI
 		return initOpenRouterProvider(key, connector.resolveOpenRouterBaseURL(), "", pdfEngine, ProviderOpenRouter, log)
 
 	case ProviderMagicProxy:
-		baseURL := normalizeMagicProxyBaseURL(meta.BaseURL)
+		baseURL := normalizeProxyBaseURL(meta.BaseURL)
 		if baseURL == "" {
 			return nil, errors.New("magic proxy base_url is required")
 		}

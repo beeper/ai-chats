@@ -1383,7 +1383,7 @@ func resolveOpenAITTSBaseURL(btc *BridgeToolContext, providerBaseURL string) (st
 		}
 
 		if meta.Provider == ProviderMagicProxy {
-			if root := normalizeMagicProxyBaseURL(meta.BaseURL); root != "" {
+			if root := normalizeProxyBaseURL(meta.BaseURL); root != "" {
 				return joinProxyPath(root, "/openai/v1"), true
 			}
 		}

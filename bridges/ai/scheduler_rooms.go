@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
+
+	"github.com/beeper/agentremote"
 )
 
 func (s *schedulerRuntime) ensureScheduledRoomLocked(ctx context.Context, portalID, displayName, agentID string, moduleMeta map[string]any) (string, error) {
@@ -104,6 +106,6 @@ func (s *schedulerRuntime) getOrCreateScheduledPortal(ctx context.Context, porta
 	if err := portal.CreateMatrixRoom(ctx, s.client.UserLogin, chatInfo); err != nil {
 		return nil, err
 	}
-	sendAIPortalInfo(ctx, portal, meta)
+	agentremote.SendAIRoomInfo(ctx, portal, integrationPortalAIKind(meta))
 	return portal, nil
 }

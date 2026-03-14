@@ -26,6 +26,16 @@ func ErrorResult(toolName, message string) *Result {
 	}
 }
 
+// JSONErrorResult creates a successful JSON payload whose body includes a
+// status=error marker. Use this when a tool contract expects structured JSON
+// output even for recoverable/user-facing failures.
+func JSONErrorResult(message string) *Result {
+	return JSONResult(map[string]any{
+		"status": "error",
+		"error":  message,
+	})
+}
+
 // mustJSON marshals payload to JSON, returning error message on failure.
 func mustJSON(v any) string {
 	data, err := json.Marshal(v)

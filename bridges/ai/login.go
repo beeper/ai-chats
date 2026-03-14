@@ -534,7 +534,7 @@ func parseMagicProxyLink(raw string) (string, string, error) {
 	if parsed.Path != "" {
 		baseURL += parsed.Path
 	}
-	baseURL = normalizeMagicProxyBaseURL(baseURL)
+	baseURL = normalizeProxyBaseURL(baseURL)
 	if baseURL == "" {
 		return "", "", &ErrBaseURLRequired
 	}

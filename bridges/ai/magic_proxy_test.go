@@ -6,7 +6,7 @@ import (
 )
 
 func TestNormalizeMagicProxyBaseURLPreservesPath(t *testing.T) {
-	got := normalizeMagicProxyBaseURL("bai.bt.hn/team/proxy/?foo=bar#token")
+	got := normalizeProxyBaseURL("bai.bt.hn/team/proxy/?foo=bar#token")
 	want := "https://bai.bt.hn/team/proxy"
 	if got != want {
 		t.Fatalf("unexpected normalized URL: got %q want %q", got, want)
@@ -14,7 +14,7 @@ func TestNormalizeMagicProxyBaseURLPreservesPath(t *testing.T) {
 }
 
 func TestNormalizeMagicProxyBaseURLStripsServicePath(t *testing.T) {
-	got := normalizeMagicProxyBaseURL("https://bai.bt.hn/team/proxy/openrouter/v1#token")
+	got := normalizeProxyBaseURL("https://bai.bt.hn/team/proxy/openrouter/v1#token")
 	want := "https://bai.bt.hn/team/proxy"
 	if got != want {
 		t.Fatalf("unexpected normalized URL: got %q want %q", got, want)

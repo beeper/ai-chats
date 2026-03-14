@@ -48,10 +48,6 @@ func stringifyJSONValue(value any) string {
 	return strings.TrimSpace(string(encoded))
 }
 
-func responseOutputItemToMap(item responses.ResponseOutputItemUnion) map[string]any {
-	return jsonutil.ToMap(item)
-}
-
 type responseToolDescriptor struct {
 	itemID           string
 	callID           string
@@ -179,7 +175,7 @@ func providerDynamicResponseToolDescriptor(item responses.ResponseOutputItemUnio
 		callID:           callID,
 		toolName:         toolName,
 		toolType:         ToolTypeProvider,
-		input:            responseOutputItemToMap(item),
+		input:            jsonutil.ToMap(item),
 		providerExecuted: true,
 		dynamic:          true,
 		ok:               true,
@@ -253,9 +249,9 @@ func responseOutputItemResultPayload(item responses.ResponseOutputItemUnion) any
 		if output := strings.TrimSpace(item.Output.OfString); output != "" {
 			return parseJSONOrRaw(output)
 		}
-		return responseOutputItemToMap(item)
+		return jsonutil.ToMap(item)
 	default:
-		if mapped := responseOutputItemToMap(item); len(mapped) > 0 {
+		if mapped := jsonutil.ToMap(item); len(mapped) > 0 {
 			return mapped
 		}
 		return map[string]any{"status": item.Status}
