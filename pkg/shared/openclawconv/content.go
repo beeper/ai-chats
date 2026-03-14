@@ -1,6 +1,7 @@
 package openclawconv
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -122,7 +123,7 @@ func stringValue(v any) string {
 	switch typed := v.(type) {
 	case string:
 		return typed
-	case interface{ String() string }:
+	case fmt.Stringer:
 		return typed.String()
 	default:
 		return ""

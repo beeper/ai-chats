@@ -30,9 +30,7 @@ func StartBridge(exe string, args []string, workDir, logPath, pidPath string) er
 	pid := cmd.Process.Pid
 	if err = os.WriteFile(pidPath, []byte(strconv.Itoa(pid)), 0o600); err != nil {
 		_ = logFile.Close()
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
+		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
 		return err
 	}

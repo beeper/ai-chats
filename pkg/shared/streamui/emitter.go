@@ -35,47 +35,28 @@ type UIState struct {
 	UIToolInputTextByID      map[string]string
 }
 
+// initMap initialises a nil map pointer so callers don't need nil checks.
+func initMap[K comparable, V any](m *map[K]V) {
+	if *m == nil {
+		*m = make(map[K]V)
+	}
+}
+
 // InitMaps initialises all nil maps so callers don't need nil checks.
 func (s *UIState) InitMaps() {
-	if s.UIToolStarted == nil {
-		s.UIToolStarted = make(map[string]bool)
-	}
-	if s.UISourceURLSeen == nil {
-		s.UISourceURLSeen = make(map[string]bool)
-	}
-	if s.UISourceDocumentSeen == nil {
-		s.UISourceDocumentSeen = make(map[string]bool)
-	}
-	if s.UIFileSeen == nil {
-		s.UIFileSeen = make(map[string]bool)
-	}
-	if s.UIToolOutputFinalized == nil {
-		s.UIToolOutputFinalized = make(map[string]bool)
-	}
-	if s.UIToolCallIDByApproval == nil {
-		s.UIToolCallIDByApproval = make(map[string]string)
-	}
-	if s.UIToolApprovalRequested == nil {
-		s.UIToolApprovalRequested = make(map[string]bool)
-	}
-	if s.UIToolNameByToolCallID == nil {
-		s.UIToolNameByToolCallID = make(map[string]string)
-	}
-	if s.UIToolTypeByToolCallID == nil {
-		s.UIToolTypeByToolCallID = make(map[string]matrixevents.ToolType)
-	}
-	if s.UITextPartIndexByID == nil {
-		s.UITextPartIndexByID = make(map[string]int)
-	}
-	if s.UIReasoningPartIndexByID == nil {
-		s.UIReasoningPartIndexByID = make(map[string]int)
-	}
-	if s.UIToolPartIndexByID == nil {
-		s.UIToolPartIndexByID = make(map[string]int)
-	}
-	if s.UIToolInputTextByID == nil {
-		s.UIToolInputTextByID = make(map[string]string)
-	}
+	initMap(&s.UIToolStarted)
+	initMap(&s.UISourceURLSeen)
+	initMap(&s.UISourceDocumentSeen)
+	initMap(&s.UIFileSeen)
+	initMap(&s.UIToolOutputFinalized)
+	initMap(&s.UIToolCallIDByApproval)
+	initMap(&s.UIToolApprovalRequested)
+	initMap(&s.UIToolNameByToolCallID)
+	initMap(&s.UIToolTypeByToolCallID)
+	initMap(&s.UITextPartIndexByID)
+	initMap(&s.UIReasoningPartIndexByID)
+	initMap(&s.UIToolPartIndexByID)
+	initMap(&s.UIToolInputTextByID)
 }
 
 // Emitter provides shared UI stream event emission.

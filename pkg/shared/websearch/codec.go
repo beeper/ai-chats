@@ -28,18 +28,33 @@ func RequestFromArgs(args map[string]any) (search.Request, error) {
 }
 
 // PayloadFromResponse converts a normalized search response into the common JSON payload shape.
+// Only non-zero fields are included to keep the payload compact.
 func PayloadFromResponse(resp *search.Response) map[string]any {
 	payload := map[string]any{
-		"query":      resp.Query,
-		"provider":   resp.Provider,
-		"count":      resp.Count,
-		"tookMs":     resp.TookMs,
-		"answer":     resp.Answer,
-		"summary":    resp.Summary,
-		"definition": resp.Definition,
-		"warning":    resp.Warning,
-		"noResults":  resp.NoResults,
-		"cached":     resp.Cached,
+		"query":    resp.Query,
+		"provider": resp.Provider,
+		"count":    resp.Count,
+	}
+	if resp.TookMs > 0 {
+		payload["tookMs"] = resp.TookMs
+	}
+	if resp.Answer != "" {
+		payload["answer"] = resp.Answer
+	}
+	if resp.Summary != "" {
+		payload["summary"] = resp.Summary
+	}
+	if resp.Definition != "" {
+		payload["definition"] = resp.Definition
+	}
+	if resp.Warning != "" {
+		payload["warning"] = resp.Warning
+	}
+	if resp.NoResults {
+		payload["noResults"] = true
+	}
+	if resp.Cached {
+		payload["cached"] = true
 	}
 
 	if len(resp.Results) > 0 {

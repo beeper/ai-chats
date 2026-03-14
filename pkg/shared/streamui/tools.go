@@ -18,11 +18,11 @@ func (e *Emitter) EnsureUIToolInputStart(
 	title string,
 	providerMetadata map[string]any,
 ) {
-	toolCallID = strings.TrimSpace(toolCallID)
-	if toolCallID == "" {
+	if e.State == nil {
 		return
 	}
-	if e.State == nil {
+	toolCallID = strings.TrimSpace(toolCallID)
+	if toolCallID == "" {
 		return
 	}
 	if strings.TrimSpace(toolName) != "" {

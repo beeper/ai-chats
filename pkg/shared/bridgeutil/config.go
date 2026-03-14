@@ -160,14 +160,7 @@ func SetPath(root map[string]any, parts []string, value any) {
 	cur := root
 	for i := range len(parts) - 1 {
 		key := parts[i]
-		next, ok := cur[key]
-		if !ok {
-			nm := map[string]any{}
-			cur[key] = nm
-			cur = nm
-			continue
-		}
-		nm, ok := next.(map[string]any)
+		nm, ok := cur[key].(map[string]any)
 		if !ok {
 			nm = map[string]any{}
 			cur[key] = nm

@@ -38,7 +38,6 @@ func Paginate(
 	}
 
 	if params.Forward {
-		params.Cursor = ""
 		return paginateForward(totalLen, count, params, findAnchor, indexAtOrAfter)
 	}
 	return paginateBackward(totalLen, count, params, findAnchor, indexAtOrAfter)

@@ -589,7 +589,6 @@ func MemorySearchSchema() map[string]any {
 				"description": "Minimum relevance score threshold (0-1, default: 0.35)",
 			},
 		},
-		"required": []string{},
 	}
 }
 
