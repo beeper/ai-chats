@@ -35,9 +35,7 @@ func (oc *AIClient) finalizeResponsesStream(
 		oc.uiEmitter(state).EmitUIFile(ctx, portal, mediaURL, mimeType)
 		log.Info().Stringer("event_id", eventID).Str("item_id", img.itemID).Msg("Sent generated image to Matrix")
 	}
-	oc.finalizeStreamingReplyAccumulator(state)
-	oc.emitUIFinish(ctx, portal, state, meta)
-	oc.persistTerminalAssistantTurn(ctx, log, portal, state, meta)
+	oc.completeStreamingSuccess(ctx, log, portal, state, meta)
 
 	log.Info().
 		Str("turn_id", state.turnID).
@@ -48,7 +46,4 @@ func (oc *AIClient) finalizeResponsesStream(
 		Str("response_id", state.responseID).
 		Int("images_sent", len(state.pendingImages)).
 		Msg("Responses API streaming finished")
-
-	oc.maybeGenerateTitle(ctx, portal, state.accumulated.String())
-	oc.recordProviderSuccess(ctx)
 }

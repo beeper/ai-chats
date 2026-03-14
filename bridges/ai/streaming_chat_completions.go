@@ -18,89 +18,75 @@ import (
 	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
 )
 
-func (oc *AIClient) streamChatCompletions(
+type chatCompletionsTurnAdapter struct {
+	streamingAdapterBase
+}
+
+func (a *chatCompletionsTurnAdapter) TrackRoomRunStreaming() bool {
+	return false
+}
+
+func (a *chatCompletionsTurnAdapter) RunRound(
 	ctx context.Context,
 	evt *event.Event,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	messages []openai.ChatCompletionMessageParamUnion,
+	round int,
 ) (bool, *ContextLengthError, error) {
-	portalID := ""
-	if portal != nil {
-		portalID = string(portal.ID)
+	oc := a.oc
+	log := a.log
+	portal := a.portal
+	meta := a.meta
+	state := a.state
+	typingSignals := a.typingSignals
+	touchTyping := a.touchTyping
+	isHeartbeat := a.isHeartbeat
+	currentMessages := a.messages
+
+	params := openai.ChatCompletionNewParams{
+		Model:    oc.effectiveModelForAPI(meta),
+		Messages: currentMessages,
 	}
-	log := zerolog.Ctx(ctx).With().
-		Str("action", "stream_chat_completions").
-		Str("portal", portalID).
-		Logger()
-
-	prep, messages, typingCleanup := oc.prepareStreamingRun(ctx, log, evt, portal, meta, messages)
-	defer typingCleanup()
-	state := prep.State
-	typingSignals := prep.TypingSignals
-	touchTyping := prep.TouchTyping
-	isHeartbeat := prep.IsHeartbeat
-
-	currentMessages := messages
-	// Tool loops can legitimately require several rounds (e.g. multi-step file ops).
-	// Keep a cap to prevent runaway loops, but 3 rounds is too low in practice.
-	maxToolRounds := 10
-
-	oc.emitUIStart(ctx, portal, state, meta)
-
-	for round := 0; ; round++ {
-		params := openai.ChatCompletionNewParams{
-			Model:    oc.effectiveModelForAPI(meta),
-			Messages: currentMessages,
-		}
-		params.StreamOptions = openai.ChatCompletionStreamOptionsParam{
-			IncludeUsage: param.NewOpt(true),
-		}
-		if maxTokens := oc.effectiveMaxTokens(meta); maxTokens > 0 {
-			params.MaxCompletionTokens = openai.Int(int64(maxTokens))
-		}
-		if temp := oc.effectiveTemperature(meta); temp > 0 {
-			params.Temperature = openai.Float(temp)
-		}
-		// Add builtin tools for this turn.
-		// In simple mode this is intentionally restricted to web_search.
-		enabledTools := oc.selectedBuiltinToolsForTurn(ctx, meta)
-		chatHasAgent := resolveAgentID(meta) != ""
-		if len(enabledTools) > 0 {
-			params.Tools = append(params.Tools, ToOpenAIChatTools(enabledTools, &oc.log)...)
-		}
-		if oc.getModelCapabilitiesForMeta(meta).SupportsToolCalling && chatHasAgent {
-			if !hasBossAgent(meta) {
-				enabledSessions := oc.filterEnabledTools(meta, tools.SessionTools())
-				if len(enabledSessions) > 0 {
-					params.Tools = append(params.Tools, bossToolsToChatTools(enabledSessions, &oc.log)...)
-				}
+	params.StreamOptions = openai.ChatCompletionStreamOptionsParam{
+		IncludeUsage: param.NewOpt(true),
+	}
+	if maxTokens := oc.effectiveMaxTokens(meta); maxTokens > 0 {
+		params.MaxCompletionTokens = openai.Int(int64(maxTokens))
+	}
+	if temp := oc.effectiveTemperature(meta); temp > 0 {
+		params.Temperature = openai.Float(temp)
+	}
+	enabledTools := oc.selectedBuiltinToolsForTurn(ctx, meta)
+	chatHasAgent := resolveAgentID(meta) != ""
+	if len(enabledTools) > 0 {
+		params.Tools = append(params.Tools, ToOpenAIChatTools(enabledTools, &oc.log)...)
+	}
+	if oc.getModelCapabilitiesForMeta(meta).SupportsToolCalling && chatHasAgent {
+		if !hasBossAgent(meta) {
+			enabledSessions := oc.filterEnabledTools(meta, tools.SessionTools())
+			if len(enabledSessions) > 0 {
+				params.Tools = append(params.Tools, bossToolsToChatTools(enabledSessions, &oc.log)...)
 			}
-			if hasBossAgent(meta) {
-				enabledBoss := oc.filterEnabledTools(meta, tools.BossTools())
-				params.Tools = append(params.Tools, bossToolsToChatTools(enabledBoss, &oc.log)...)
-			}
-			params.Tools = dedupeChatToolParams(params.Tools)
 		}
-
-		stream := oc.api.Chat.Completions.NewStreaming(ctx, params)
-		if stream == nil {
-			initErr := errors.New("chat completions streaming not available")
-			logChatCompletionsFailure(log, initErr, params, meta, currentMessages, "stream_init")
-			return false, nil, &PreDeltaError{Err: initErr}
+		if hasBossAgent(meta) {
+			enabledBoss := oc.filterEnabledTools(meta, tools.BossTools())
+			params.Tools = append(params.Tools, bossToolsToChatTools(enabledBoss, &oc.log)...)
 		}
+		params.Tools = dedupeChatToolParams(params.Tools)
+	}
 
-		// Track active tool calls by index
-		activeTools := make(map[int]*activeToolCall)
-		var roundContent strings.Builder
-		state.finishReason = ""
+	stream := oc.api.Chat.Completions.NewStreaming(ctx, params)
+	if stream == nil {
+		initErr := errors.New("chat completions streaming not available")
+		logChatCompletionsFailure(log, initErr, params, meta, currentMessages, "stream_init")
+		return false, nil, &PreDeltaError{Err: initErr}
+	}
 
-		oc.uiEmitter(state).EmitUIStepStart(ctx, portal)
+	activeTools := make(map[int]*activeToolCall)
+	var roundContent strings.Builder
+	state.finishReason = ""
 
-		for stream.Next() {
-			chunk := stream.Current()
-			oc.markMessageSendSuccess(ctx, portal, evt, state)
-
+	_, cle, err := runStreamingStep(ctx, oc, portal, state, evt, stream,
+		func(openai.ChatCompletionChunk) bool { return true },
+		func(chunk openai.ChatCompletionChunk) (bool, *ContextLengthError, error) {
 			if chunk.Usage.TotalTokens > 0 || chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 {
 				state.promptTokens = chunk.Usage.PromptTokens
 				state.completionTokens = chunk.Usage.CompletionTokens
@@ -157,7 +143,6 @@ func (oc *AIClient) streamChatCompletions(
 					oc.uiEmitter(state).EmitUITextDelta(ctx, portal, choice.Delta.Refusal)
 				}
 
-				// Handle tool calls from Chat Completions API
 				for _, toolDelta := range choice.Delta.ToolCalls {
 					touchTyping()
 					if typingSignals != nil {
@@ -178,17 +163,12 @@ func (oc *AIClient) streamChatCompletions(
 						activeTools[toolIdx] = tool
 					}
 
-					// Capture tool ID if provided (used by OpenAI for tracking)
 					if toolDelta.ID != "" && tool.callID == "" {
 						tool.callID = toolDelta.ID
 					}
-
-					// Update tool name if provided in this delta
 					if toolDelta.Function.Name != "" {
 						tool.toolName = toolDelta.Function.Name
 					}
-
-					// Accumulate arguments
 					if toolDelta.Function.Arguments != "" {
 						tool.input.WriteString(toolDelta.Function.Arguments)
 						oc.uiEmitter(state).EmitUIToolInputDelta(ctx, portal, tool.callID, tool.toolName, toolDelta.Function.Arguments, false)
@@ -199,151 +179,166 @@ func (oc *AIClient) streamChatCompletions(
 					state.finishReason = string(choice.FinishReason)
 				}
 			}
-
-		}
-
-		oc.uiEmitter(state).EmitUIStepFinish(ctx, portal)
-
-		if err := stream.Err(); err != nil {
-			if errors.Is(err, context.Canceled) {
-				return false, nil, oc.finishStreamingCancelled(ctx, log, portal, state, meta, err)
+			return false, nil, nil
+		}, func(stepErr error) (*ContextLengthError, error) {
+			if errors.Is(stepErr, context.Canceled) {
+				return nil, oc.finishStreamingCancelled(ctx, log, portal, state, meta, stepErr)
 			}
-			if cle := ParseContextLengthError(err); cle != nil {
-				return false, cle, nil
+			if cle := ParseContextLengthError(stepErr); cle != nil {
+				return cle, nil
 			}
-			logChatCompletionsFailure(log, err, params, meta, currentMessages, "stream_err")
-			return false, nil, oc.finishStreamingError(ctx, log, portal, state, meta, err)
-		}
+			logChatCompletionsFailure(log, stepErr, params, meta, currentMessages, "stream_err")
+			return nil, oc.finishStreamingError(ctx, log, portal, state, meta, stepErr)
+		})
+	if cle != nil || err != nil {
+		return false, cle, err
+	}
 
-		// Execute any accumulated tool calls
-		type chatToolResult struct {
-			callID string
-			output string
-		}
-		toolCallParams := make([]openai.ChatCompletionMessageToolCallUnionParam, 0, len(activeTools))
-		toolResults := make([]chatToolResult, 0, len(activeTools))
+	type chatToolResult struct {
+		callID string
+		output string
+	}
+	toolCallParams := make([]openai.ChatCompletionMessageToolCallUnionParam, 0, len(activeTools))
+	toolResults := make([]chatToolResult, 0, len(activeTools))
 
-		if len(activeTools) > 0 {
-			keys := make([]int, 0, len(activeTools))
-			for key := range activeTools {
-				keys = append(keys, key)
+	if len(activeTools) > 0 {
+		keys := make([]int, 0, len(activeTools))
+		for key := range activeTools {
+			keys = append(keys, key)
+		}
+		sort.Ints(keys)
+		for _, key := range keys {
+			tool := activeTools[key]
+			if tool == nil {
+				continue
 			}
-			sort.Ints(keys)
-			for _, key := range keys {
-				tool := activeTools[key]
-				if tool == nil {
+			if tool.callID == "" {
+				tool.callID = NewCallID()
+			}
+			toolName := strings.TrimSpace(tool.toolName)
+			if toolName == "" {
+				toolName = "unknown_tool"
+			}
+			tool.toolName = toolName
+
+			argsJSON := normalizeToolArgsJSON(tool.input.String())
+			toolCallParams = append(toolCallParams, openai.ChatCompletionMessageToolCallUnionParam{
+				OfFunction: &openai.ChatCompletionMessageFunctionToolCallParam{
+					ID: tool.callID,
+					Function: openai.ChatCompletionMessageFunctionToolCallFunctionParam{
+						Name:      toolName,
+						Arguments: argsJSON,
+					},
+					Type: constant.ValueOf[constant.Function](),
+				},
+			})
+
+			touchTyping()
+			if typingSignals != nil {
+				typingSignals.SignalToolStart()
+			}
+			toolCtx := WithBridgeToolContext(ctx, &BridgeToolContext{
+				Client:        oc,
+				Portal:        portal,
+				Meta:          meta,
+				SourceEventID: state.sourceEventID,
+				SenderID:      state.senderID,
+			})
+
+			execution := oc.executeStreamingBuiltinTool(
+				toolCtx,
+				log,
+				portal,
+				state,
+				meta,
+				tool,
+				toolName,
+				argsJSON,
+				false,
+				" (Chat Completions)",
+			)
+			toolResults = append(toolResults, chatToolResult{callID: tool.callID, output: execution.result})
+		}
+	}
+
+	if shouldContinueChatToolLoop(state.finishReason, len(toolCallParams)) {
+		state.needsTextSeparator = true
+		if round >= maxStreamingToolRounds {
+			log.Warn().Int("rounds", round+1).Msg("Max tool call rounds reached; stopping chat completions continuation")
+			return false, nil, nil
+		}
+		assistantMsg := openai.ChatCompletionAssistantMessageParam{
+			ToolCalls: toolCallParams,
+		}
+		if content := strings.TrimSpace(roundContent.String()); content != "" {
+			assistantMsg.Content.OfString = param.NewOpt(content)
+		}
+		currentMessages = append(currentMessages, openai.ChatCompletionMessageParamUnion{OfAssistant: &assistantMsg})
+		for _, result := range toolResults {
+			currentMessages = append(currentMessages, openai.ToolMessage(result.output, result.callID))
+		}
+		if steerItems := oc.drainSteerQueue(state.roomID); len(steerItems) > 0 {
+			for _, item := range steerItems {
+				if item.pending.Type != pendingTypeText {
 					continue
 				}
-				if tool.callID == "" {
-					tool.callID = NewCallID()
+				prompt := strings.TrimSpace(item.prompt)
+				if prompt == "" {
+					prompt = item.pending.MessageBody
 				}
-				toolName := strings.TrimSpace(tool.toolName)
-				if toolName == "" {
-					toolName = "unknown_tool"
+				prompt = strings.TrimSpace(prompt)
+				if prompt == "" {
+					continue
 				}
-				tool.toolName = toolName
-
-				argsJSON := normalizeToolArgsJSON(tool.input.String())
-				toolCallParams = append(toolCallParams, openai.ChatCompletionMessageToolCallUnionParam{
-					OfFunction: &openai.ChatCompletionMessageFunctionToolCallParam{
-						ID: tool.callID,
-						Function: openai.ChatCompletionMessageFunctionToolCallFunctionParam{
-							Name:      toolName,
-							Arguments: argsJSON,
-						},
-						Type: constant.ValueOf[constant.Function](),
-					},
-				})
-
-				touchTyping()
-				if typingSignals != nil {
-					typingSignals.SignalToolStart()
-				}
-				// Wrap context with bridge info for tools that need it (e.g., channel-edit, react)
-				toolCtx := WithBridgeToolContext(ctx, &BridgeToolContext{
-					Client:        oc,
-					Portal:        portal,
-					Meta:          meta,
-					SourceEventID: state.sourceEventID,
-					SenderID:      state.senderID,
-				})
-
-				execution := oc.executeStreamingBuiltinTool(
-					toolCtx,
-					log,
-					portal,
-					state,
-					meta,
-					tool,
-					toolName,
-					argsJSON,
-					false,
-					" (Chat Completions)",
-				)
-				toolResults = append(toolResults, chatToolResult{callID: tool.callID, output: execution.result})
+				currentMessages = append(currentMessages, openai.UserMessage(prompt))
 			}
 		}
-
-		// Continue if tools were requested.
-		// Some Anthropic-compatible adapters may emit `tool_use` (or omit finish reason)
-		// even when tool calls are present.
-		if shouldContinueChatToolLoop(state.finishReason, len(toolCallParams)) {
-			// Ensure the next assistant text delta can't get glued to the previous text.
-			state.needsTextSeparator = true
-			if round >= maxToolRounds {
-				log.Warn().Int("rounds", round+1).Msg("Max tool call rounds reached; stopping chat completions continuation")
-				break
-			}
-			assistantMsg := openai.ChatCompletionAssistantMessageParam{
-				ToolCalls: toolCallParams,
-			}
-			if content := strings.TrimSpace(roundContent.String()); content != "" {
-				assistantMsg.Content.OfString = param.NewOpt(content)
-			}
-			currentMessages = append(currentMessages, openai.ChatCompletionMessageParamUnion{OfAssistant: &assistantMsg})
-			for _, result := range toolResults {
-				currentMessages = append(currentMessages, openai.ToolMessage(result.output, result.callID))
-			}
-			if steerItems := oc.drainSteerQueue(state.roomID); len(steerItems) > 0 {
-				for _, item := range steerItems {
-					if item.pending.Type != pendingTypeText {
-						continue
-					}
-					prompt := strings.TrimSpace(item.prompt)
-					if prompt == "" {
-						prompt = item.pending.MessageBody
-					}
-					prompt = strings.TrimSpace(prompt)
-					if prompt == "" {
-						continue
-					}
-					currentMessages = append(currentMessages, openai.UserMessage(prompt))
-				}
-			}
-			continue
-		}
-
-		break
+		a.messages = currentMessages
+		return true, nil, nil
 	}
 
-	state.completedAtMs = time.Now().UnixMilli()
-	if state.finishReason == "" {
-		state.finishReason = "stop"
-	}
-	oc.finalizeStreamingReplyAccumulator(state)
-	oc.emitUIFinish(ctx, portal, state, meta)
-	oc.persistTerminalAssistantTurn(ctx, log, portal, state, meta)
+	a.messages = currentMessages
+	return false, nil, nil
+}
 
-	log.Info().
+func (a *chatCompletionsTurnAdapter) Finalize(ctx context.Context) {
+	oc := a.oc
+	state := a.state
+	portal := a.portal
+	meta := a.meta
+
+	oc.completeStreamingSuccess(ctx, a.log, portal, state, meta)
+
+	a.log.Info().
 		Str("turn_id", state.turnID).
 		Str("finish_reason", state.finishReason).
 		Int("content_length", state.accumulated.Len()).
 		Int("tool_calls", len(state.toolCalls)).
 		Msg("Chat Completions streaming finished")
 
-	oc.maybeGenerateTitle(ctx, portal, state.accumulated.String())
-	oc.recordProviderSuccess(ctx)
-	return true, nil, nil
+}
+
+func (oc *AIClient) streamChatCompletions(
+	ctx context.Context,
+	evt *event.Event,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+	messages []openai.ChatCompletionMessageParamUnion,
+) (bool, *ContextLengthError, error) {
+	portalID := ""
+	if portal != nil {
+		portalID = string(portal.ID)
+	}
+	log := zerolog.Ctx(ctx).With().
+		Str("action", "stream_chat_completions").
+		Str("portal", portalID).
+		Logger()
+
+	return oc.runStreamingTurn(ctx, log, evt, portal, meta, messages, func(prep streamingRunPrep, pruned []openai.ChatCompletionMessageParamUnion) streamingTurnAdapter {
+		return &chatCompletionsTurnAdapter{
+			streamingAdapterBase: newStreamingAdapterBase(oc, log, portal, meta, prep, pruned),
+		}
+	})
 }
 
 // convertToResponsesInput converts Chat Completion messages to Responses API input items

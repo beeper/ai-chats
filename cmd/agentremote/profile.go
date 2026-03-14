@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/beeper/agentremote/cmd/internal/beeperauth"
+	"github.com/beeper/agentremote/cmd/internal/cliutil"
 )
 
 const defaultProfile = "default"
@@ -48,29 +49,14 @@ func instanceRoot(profile string) (string, error) {
 	return filepath.Join(root, "instances"), nil
 }
 
-type instancePaths struct {
-	Root             string
-	ConfigPath       string
-	RegistrationPath string
-	LogPath          string
-	PIDPath          string
-	MetaPath         string
-}
+type instancePaths = cliutil.StatePaths
 
 func getInstancePaths(profile, instanceName string) (*instancePaths, error) {
 	root, err := instanceRoot(profile)
 	if err != nil {
 		return nil, err
 	}
-	dir := filepath.Join(root, instanceName)
-	return &instancePaths{
-		Root:             dir,
-		ConfigPath:       filepath.Join(dir, "config.yaml"),
-		RegistrationPath: filepath.Join(dir, "registration.yaml"),
-		LogPath:          filepath.Join(dir, "bridge.log"),
-		PIDPath:          filepath.Join(dir, "bridge.pid"),
-		MetaPath:         filepath.Join(dir, "meta.json"),
-	}, nil
+	return cliutil.BuildStatePaths(root, instanceName), nil
 }
 
 func ensureInstanceLayout(profile, instanceName string) (*instancePaths, error) {
@@ -78,18 +64,18 @@ func ensureInstanceLayout(profile, instanceName string) (*instancePaths, error) 
 	if err != nil {
 		return nil, err
 	}
-	if err = os.MkdirAll(sp.Root, 0o700); err != nil {
+	if err = cliutil.EnsureStateLayout(sp); err != nil {
 		return nil, err
 	}
 	return sp, nil
 }
 
 func loadAuthConfig(profile string) (authConfig, error) {
-	store, err := authStore(profile)
+	path, err := authConfigPath(profile)
 	if err != nil {
 		return authConfig{}, err
 	}
-	return beeperauth.Load(store)
+	return cliutil.LoadAuth(path, missingAuthError(profile))
 }
 
 func saveAuthConfig(profile string, cfg authConfig) error {
@@ -97,15 +83,15 @@ func saveAuthConfig(profile string, cfg authConfig) error {
 	if err != nil {
 		return err
 	}
-	return beeperauth.Save(path, cfg)
+	return cliutil.SaveAuth(path, cfg)
 }
 
 func getAuthOrEnv(profile string) (authConfig, error) {
-	store, err := authStore(profile)
+	path, err := authConfigPath(profile)
 	if err != nil {
 		return authConfig{}, err
 	}
-	return beeperauth.ResolveFromEnvOrStore(store)
+	return cliutil.ResolveAuth(path, missingAuthError(profile))
 }
 
 func listProfiles() ([]string, error) {
@@ -113,21 +99,7 @@ func listProfiles() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	profilesDir := filepath.Join(root, "profiles")
-	entries, err := os.ReadDir(profilesDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	var profiles []string
-	for _, e := range entries {
-		if e.IsDir() {
-			profiles = append(profiles, e.Name())
-		}
-	}
-	return profiles, nil
+	return cliutil.ListDirectories(filepath.Join(root, "profiles"))
 }
 
 func listInstancesForProfile(profile string) ([]string, error) {
@@ -135,20 +107,7 @@ func listInstancesForProfile(profile string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	var instances []string
-	for _, e := range entries {
-		if e.IsDir() {
-			instances = append(instances, e.Name())
-		}
-	}
-	return instances, nil
+	return cliutil.ListDirectories(root)
 }
 
 func authStore(profile string) (beeperauth.Store, error) {
@@ -156,10 +115,11 @@ func authStore(profile string) (beeperauth.Store, error) {
 	if err != nil {
 		return beeperauth.Store{}, err
 	}
-	return beeperauth.Store{
-		Path: path,
-		MissingError: func() error {
-			return fmt.Errorf("not logged in (profile %q). Run: agentremote login --profile %s", profile, profile)
-		},
-	}, nil
+	return cliutil.Store(path, missingAuthError(profile)), nil
+}
+
+func missingAuthError(profile string) func() error {
+	return func() error {
+		return fmt.Errorf("not logged in (profile %q). Run: agentremote login --profile %s", profile, profile)
+	}
 }

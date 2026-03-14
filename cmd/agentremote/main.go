@@ -17,6 +17,7 @@ import (
 	"github.com/beeper/bridge-manager/api/beeperapi"
 
 	"github.com/beeper/agentremote/cmd/internal/beeperauth"
+	"github.com/beeper/agentremote/cmd/internal/cliutil"
 	"github.com/beeper/agentremote/cmd/internal/selfhost"
 	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 )
@@ -27,16 +28,7 @@ var (
 	BuildTime = "unknown"
 )
 
-type metadata struct {
-	Instance         string    `json:"instance"`
-	BridgeType       string    `json:"bridge_type"`
-	BeeperBridgeName string    `json:"beeper_bridge_name"`
-	ConfigPath       string    `json:"config_path"`
-	RegistrationPath string    `json:"registration_path"`
-	LogPath          string    `json:"log_path"`
-	PIDPath          string    `json:"pid_path"`
-	UpdatedAt        time.Time `json:"updated_at"`
-}
+type metadata = cliutil.Metadata
 
 func main() {
 	if err := run(); err != nil {
@@ -368,7 +360,7 @@ func cmdStart(args []string) error {
 		return err
 	}
 	fmt.Printf("started %s\n", instName)
-	printRuntimePaths(meta)
+	cliutil.PrintRuntimePaths(meta)
 	if *wait {
 		return waitForBridge(*profile, beeperName, *waitTimeout)
 	}
@@ -428,7 +420,7 @@ func cmdRun(args []string) error {
 	}
 	argv := []string{exe, "__bridge", bridgeType, "-c", meta.ConfigPath}
 	fmt.Printf("running %s in foreground\n", instName)
-	printRuntimePaths(meta)
+	cliutil.PrintRuntimePaths(meta)
 	if err = os.Chdir(filepath.Dir(meta.ConfigPath)); err != nil {
 		return fmt.Errorf("failed to chdir: %w", err)
 	}
@@ -452,7 +444,7 @@ func cmdStop(args []string) error {
 		return err
 	}
 	pidPath := sp.PIDPath
-	if meta, err := readMetadata(sp); err == nil {
+	if meta, err := cliutil.ReadMetadata(sp.MetaPath); err == nil {
 		pidPath = meta.PIDPath
 	}
 	stopped, err := bridgeutil.StopByPIDFile(pidPath)
@@ -733,7 +725,7 @@ func cmdDelete(args []string) error {
 		fmt.Fprintf(os.Stderr, "warning: failed to stop: %v\n", err)
 	}
 	if *remote {
-		meta, readErr := readMetadata(sp)
+		meta, readErr := cliutil.ReadMetadata(sp.MetaPath)
 		if readErr == nil {
 			if err := deleteRemoteBridge(*profile, meta.BeeperBridgeName); err != nil {
 				fmt.Fprintf(os.Stderr, "warning: failed to delete remote bridge: %v\n", err)
@@ -798,7 +790,7 @@ func ensureInitialized(instName, bridgeType, beeperName string, sp *instancePath
 	if err = bridgeutil.ApplyConfigOverrides(meta.ConfigPath, overrides); err != nil {
 		return nil, err
 	}
-	if err = writeMetadata(meta, sp.MetaPath); err != nil {
+	if err = cliutil.WriteMetadata(meta, sp.MetaPath); err != nil {
 		return nil, err
 	}
 	return meta, nil
@@ -806,9 +798,9 @@ func ensureInitialized(instName, bridgeType, beeperName string, sp *instancePath
 
 func readOrSynthesizeMetadata(instName, bridgeType, beeperName string, sp *instancePaths) (*metadata, error) {
 	m := metadata{UpdatedAt: time.Now().UTC()}
-	if data, err := os.ReadFile(sp.MetaPath); err == nil {
+	if meta, err := cliutil.ReadMetadata(sp.MetaPath); err == nil {
 		// Ignore unmarshal errors; fall through to a fresh metadata.
-		_ = json.Unmarshal(data, &m)
+		m = *meta
 	}
 	// Always override paths and identity from current arguments so stale
 	// metadata files don't strand an instance on old paths.
@@ -820,27 +812,6 @@ func readOrSynthesizeMetadata(instName, bridgeType, beeperName string, sp *insta
 	m.LogPath = sp.LogPath
 	m.PIDPath = sp.PIDPath
 	return &m, nil
-}
-
-func readMetadata(sp *instancePaths) (*metadata, error) {
-	data, err := os.ReadFile(sp.MetaPath)
-	if err != nil {
-		return nil, err
-	}
-	var m metadata
-	if err = json.Unmarshal(data, &m); err != nil {
-		return nil, err
-	}
-	return &m, nil
-}
-
-func writeMetadata(meta *metadata, path string) error {
-	meta.UpdatedAt = time.Now().UTC()
-	data, err := json.MarshalIndent(meta, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0o600)
 }
 
 func generateExampleConfig(meta *metadata) error {
@@ -891,12 +862,4 @@ func startBridgeProcess(meta *metadata, bridgeType string) error {
 		return fmt.Errorf("failed to find own executable: %w", err)
 	}
 	return bridgeutil.StartBridgeFromConfig(exe, []string{"__bridge", bridgeType, "-c", meta.ConfigPath}, meta.ConfigPath, meta.LogPath, meta.PIDPath)
-}
-
-func printRuntimePaths(meta *metadata) {
-	fmt.Printf("paths:\n")
-	fmt.Printf("  config: %s\n", meta.ConfigPath)
-	fmt.Printf("  registration: %s\n", meta.RegistrationPath)
-	fmt.Printf("  log: %s\n", meta.LogPath)
-	fmt.Printf("  pid: %s\n", meta.PIDPath)
 }

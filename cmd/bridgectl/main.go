@@ -18,6 +18,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/beeper/agentremote/cmd/internal/beeperauth"
+	"github.com/beeper/agentremote/cmd/internal/cliutil"
 	"github.com/beeper/agentremote/cmd/internal/selfhost"
 	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 )
@@ -42,18 +43,7 @@ type instanceConfig struct {
 
 type authConfig = beeperauth.Config
 
-type metadata struct {
-	Instance         string    `json:"instance"`
-	BridgeType       string    `json:"bridge_type"`
-	RepoPath         string    `json:"repo_path"`
-	BinaryPath       string    `json:"binary_path"`
-	ConfigPath       string    `json:"config_path"`
-	RegistrationPath string    `json:"registration_path"`
-	LogPath          string    `json:"log_path"`
-	PIDPath          string    `json:"pid_path"`
-	BeeperBridgeName string    `json:"beeper_bridge_name"`
-	UpdatedAt        time.Time `json:"updated_at"`
-}
+type metadata = cliutil.Metadata
 
 func main() {
 	if err := run(); err != nil {
@@ -217,7 +207,7 @@ func cmdUp(args []string) error {
 		return err
 	}
 	fmt.Printf("started %s\n", instance)
-	printRuntimePaths(meta)
+	cliutil.PrintRuntimePaths(meta)
 	return nil
 }
 
@@ -254,7 +244,7 @@ func cmdRun(args []string) error {
 	}
 	argv := []string{meta.BinaryPath, "-c", meta.ConfigPath}
 	fmt.Printf("running %s in foreground\n", instance)
-	printRuntimePaths(meta)
+	cliutil.PrintRuntimePaths(meta)
 	if err = os.Chdir(filepath.Dir(meta.ConfigPath)); err != nil {
 		return fmt.Errorf("failed to chdir: %w", err)
 	}
@@ -540,7 +530,7 @@ func cmdDoctor(args []string) error {
 	fmt.Println("manifest:", *manifestPath)
 	fmt.Printf("instances: %d\n", len(mf.Instances))
 	for name, cfg := range mf.Instances {
-		repo, err := expandPath(cfg.RepoPath)
+		repo, err := cliutil.ExpandPath(cfg.RepoPath)
 		if err != nil {
 			fmt.Printf("- %s: invalid repo_path: %v\n", name, err)
 			continue
@@ -652,29 +642,15 @@ func loadInstance(manifestPath, instance string) (*manifest, instanceConfig, err
 	return mf, cfg, nil
 }
 
-type statePaths struct {
-	Root             string
-	ConfigPath       string
-	RegistrationPath string
-	LogPath          string
-	PIDPath          string
-	MetaPath         string
-}
+type statePaths = cliutil.StatePaths
 
 func instancePaths(instance string) (*statePaths, error) {
 	stateRoot, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
 	}
-	root := filepath.Join(stateRoot, ".local", "share", "ai-bridge-manager", "instances", instance)
-	return &statePaths{
-		Root:             root,
-		ConfigPath:       filepath.Join(root, "config.yaml"),
-		RegistrationPath: filepath.Join(root, "registration.yaml"),
-		LogPath:          filepath.Join(root, "bridge.log"),
-		PIDPath:          filepath.Join(root, "bridge.pid"),
-		MetaPath:         filepath.Join(root, "meta.json"),
-	}, nil
+	root := filepath.Join(stateRoot, ".local", "share", "ai-bridge-manager", "instances")
+	return cliutil.BuildStatePaths(root, instance), nil
 }
 
 func ensureInstanceLayout(instance string) (*statePaths, error) {
@@ -682,7 +658,7 @@ func ensureInstanceLayout(instance string) (*statePaths, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = os.MkdirAll(sp.Root, 0o700); err != nil {
+	if err = cliutil.EnsureStateLayout(sp); err != nil {
 		return nil, err
 	}
 	return sp, nil
@@ -701,14 +677,14 @@ func ensureInitialized(instance string, cfg instanceConfig, sp *statePaths) (*me
 	if err = bridgeutil.ApplyConfigOverrides(meta.ConfigPath, cfg.ConfigOverrides); err != nil {
 		return nil, err
 	}
-	if err = writeMetadata(meta, sp.MetaPath); err != nil {
+	if err = cliutil.WriteMetadata(meta, sp.MetaPath); err != nil {
 		return nil, err
 	}
 	return meta, nil
 }
 
 func readOrSynthesizeMetadata(instance string, cfg instanceConfig, sp *statePaths) (*metadata, error) {
-	repo, err := expandPath(cfg.RepoPath)
+	repo, err := cliutil.ExpandPath(cfg.RepoPath)
 	if err != nil {
 		return nil, err
 	}
@@ -720,8 +696,8 @@ func readOrSynthesizeMetadata(instance string, cfg instanceConfig, sp *statePath
 		binPath = filepath.Join(repo, binPath)
 	}
 	m := metadata{UpdatedAt: time.Now().UTC()}
-	if data, err := os.ReadFile(sp.MetaPath); err == nil {
-		_ = json.Unmarshal(data, &m)
+	if meta, err := cliutil.ReadMetadata(sp.MetaPath); err == nil {
+		m = *meta
 	}
 	// Always refresh from current manifest so moving the checkout doesn't
 	// strand an instance on stale absolute paths from an older clone.
@@ -737,17 +713,8 @@ func readOrSynthesizeMetadata(instance string, cfg instanceConfig, sp *statePath
 	return &m, nil
 }
 
-func writeMetadata(meta *metadata, path string) error {
-	meta.UpdatedAt = time.Now().UTC()
-	data, err := json.MarshalIndent(meta, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0o600)
-}
-
 func ensureBuilt(cfg instanceConfig) error {
-	repo, err := expandPath(cfg.RepoPath)
+	repo, err := cliutil.ExpandPath(cfg.RepoPath)
 	if err != nil {
 		return err
 	}
@@ -797,33 +764,6 @@ func deleteRemoteBridge(name string) error {
 	return selfhost.DeleteRemoteBridge(context.Background(), auth, saveAuthConfig, name)
 }
 
-func printRuntimePaths(meta *metadata) {
-	fmt.Printf("paths:\n")
-	fmt.Printf("  config: %s\n", meta.ConfigPath)
-	fmt.Printf("  registration: %s\n", meta.RegistrationPath)
-	fmt.Printf("  log: %s\n", meta.LogPath)
-	fmt.Printf("  pid: %s\n", meta.PIDPath)
-	if dbURI, err := getDatabaseURI(meta.ConfigPath); err == nil && dbURI != "" {
-		fmt.Printf("  database.uri: %s\n", dbURI)
-	}
-}
-
-func getDatabaseURI(configPath string) (string, error) {
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return "", err
-	}
-	var doc struct {
-		Database struct {
-			URI string `yaml:"uri"`
-		} `yaml:"database"`
-	}
-	if err = yaml.Unmarshal(data, &doc); err != nil {
-		return "", err
-	}
-	return doc.Database.URI, nil
-}
-
 func startBridgeProcess(meta *metadata) error {
 	if _, err := os.Stat(meta.BinaryPath); err != nil {
 		return fmt.Errorf("binary not found: %w", err)
@@ -838,19 +778,12 @@ func requiredInstanceArg(args []string) (string, error) {
 	return args[0], nil
 }
 
-func expandPath(p string) (string, error) {
-	if rest, ok := strings.CutPrefix(p, "~/"); ok {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		p = filepath.Join(home, rest)
-	}
-	return filepath.Abs(p)
-}
-
 func getAuthOrEnv() (authConfig, error) {
-	return beeperauth.ResolveFromEnvOrStore(authStore())
+	path, err := authConfigPath()
+	if err != nil {
+		return authConfig{}, err
+	}
+	return cliutil.ResolveAuth(path, missingAuthError)
 }
 
 func authConfigPath() (string, error) {
@@ -862,7 +795,11 @@ func authConfigPath() (string, error) {
 }
 
 func loadAuthConfig() (authConfig, error) {
-	return beeperauth.Load(authStore())
+	path, err := authConfigPath()
+	if err != nil {
+		return authConfig{}, err
+	}
+	return cliutil.LoadAuth(path, missingAuthError)
 }
 
 func saveAuthConfig(cfg authConfig) error {
@@ -870,7 +807,7 @@ func saveAuthConfig(cfg authConfig) error {
 	if err != nil {
 		return err
 	}
-	return beeperauth.Save(path, cfg)
+	return cliutil.SaveAuth(path, cfg)
 }
 
 func authStore() beeperauth.Store {
@@ -880,10 +817,13 @@ func authStore() beeperauth.Store {
 			MissingError: func() error { return err },
 		}
 	}
-	return beeperauth.Store{
-		Path: path,
-		MissingError: func() error {
-			return fmt.Errorf("failed to read auth config (%s). run auth set-token or set BEEPER_ACCESS_TOKEN", path)
-		},
+	return cliutil.Store(path, missingAuthError)
+}
+
+func missingAuthError() error {
+	path, err := authConfigPath()
+	if err != nil {
+		return err
 	}
+	return fmt.Errorf("failed to read auth config (%s). run auth set-token or set BEEPER_ACCESS_TOKEN", path)
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/packages/param"
+	"github.com/openai/openai-go/v3/packages/ssestream"
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
@@ -23,14 +24,173 @@ import (
 // responseStreamContext holds loop-invariant parameters for processing a Responses API
 // stream.  Only streamEvent and isContinuation change per event.
 type responseStreamContext struct {
-	log           zerolog.Logger
-	portal        *bridgev2.Portal
-	state         *streamingState
-	meta          *PortalMetadata
-	activeTools   map[string]*activeToolCall
-	typingSignals *TypingSignaler
-	touchTyping   func()
-	isHeartbeat   bool
+	base        *streamingAdapterBase
+	activeTools map[string]*activeToolCall
+}
+
+type responsesTurnAdapter struct {
+	streamingAdapterBase
+	params      responses.ResponseNewParams
+	initialized bool
+	rsc         *responseStreamContext
+}
+
+func (a *responsesTurnAdapter) TrackRoomRunStreaming() bool {
+	return true
+}
+
+func (a *responsesTurnAdapter) startInitialRound(ctx context.Context) (*ssestream.Stream[responses.ResponseStreamEventUnion], error) {
+	if !a.initialized {
+		a.params = a.oc.buildResponsesAPIParams(ctx, a.portal, a.meta, a.messages)
+		if a.oc.isOpenRouterProvider() {
+			ctx = WithPDFEngine(ctx, a.oc.effectivePDFEngine(a.meta))
+		}
+		a.initialized = true
+	}
+	stream := a.oc.api.Responses.NewStreaming(ctx, a.params)
+	if stream == nil {
+		return nil, errors.New("responses streaming not available")
+	}
+	if a.params.Input.OfInputItemList != nil {
+		a.state.baseInput = a.params.Input.OfInputItemList
+	}
+	return stream, nil
+}
+
+func (a *responsesTurnAdapter) startContinuationRound(ctx context.Context) (*ssestream.Stream[responses.ResponseStreamEventUnion], responses.ResponseNewParams, error) {
+	state := a.state
+	if ctx.Err() != nil {
+		if state.hasInitialMessageTarget() && state.accumulated.Len() > 0 {
+			a.oc.flushPartialStreamingMessage(context.Background(), a.portal, state, a.meta)
+		}
+		return nil, responses.ResponseNewParams{}, ctx.Err()
+	}
+	pendingOutputs := slices.Clone(state.pendingFunctionOutputs)
+	pendingApprovals := slices.Clone(state.pendingMcpApprovals)
+
+	approvalInputs := make([]responses.ResponseInputItemUnionParam, 0, len(pendingApprovals))
+	for _, approval := range pendingApprovals {
+		resolution, _, ok := a.oc.waitToolApproval(ctx, approval.approvalID)
+		decision := resolution.Decision
+		if !ok && decision.Reason == "" {
+			decision = airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalTimedOut, Reason: agentremote.ApprovalReasonTimeout}
+		}
+		approved := approvalAllowed(decision)
+		a.oc.uiEmitter(state).EmitUIToolApprovalResponse(ctx, a.portal, approval.approvalID, approval.toolCallID, approved, decision.Reason)
+		streamui.RecordApprovalResponse(&state.ui, approval.approvalID, approval.toolCallID, approved, decision.Reason)
+		item := responses.ResponseInputItemParamOfMcpApprovalResponse(approval.approvalID, approved)
+		if decision.Reason != "" && item.OfMcpApprovalResponse != nil {
+			item.OfMcpApprovalResponse.Reason = param.NewOpt(decision.Reason)
+		}
+		approvalInputs = append(approvalInputs, item)
+		if !approved {
+			a.oc.uiEmitter(state).EmitUIToolOutputDenied(ctx, a.portal, approval.toolCallID)
+		}
+	}
+
+	continuationParams := a.oc.buildContinuationParams(ctx, state, a.meta, pendingOutputs, approvalInputs)
+	if len(state.baseInput) > 0 {
+		for _, output := range pendingOutputs {
+			if output.name != "" {
+				args := output.arguments
+				if strings.TrimSpace(args) == "" {
+					args = "{}"
+				}
+				state.baseInput = append(state.baseInput, responses.ResponseInputItemParamOfFunctionCall(args, output.callID, output.name))
+			}
+			state.baseInput = append(state.baseInput, buildFunctionCallOutputItem(output.callID, output.output, true))
+		}
+		for _, approval := range approvalInputs {
+			state.baseInput = append(state.baseInput, approval)
+		}
+	}
+
+	state.needsTextSeparator = true
+	stream := a.oc.api.Responses.NewStreaming(ctx, continuationParams)
+	if stream == nil {
+		return nil, continuationParams, errors.New("continuation streaming not available")
+	}
+	state.pendingFunctionOutputs = nil
+	state.pendingMcpApprovals = nil
+	return stream, continuationParams, nil
+}
+
+func (a *responsesTurnAdapter) RunRound(
+	ctx context.Context,
+	evt *event.Event,
+	round int,
+) (bool, *ContextLengthError, error) {
+	state := a.state
+	var (
+		stream *ssestream.Stream[responses.ResponseStreamEventUnion]
+		params responses.ResponseNewParams
+		err    error
+	)
+
+	if round == 0 {
+		stream, err = a.startInitialRound(ctx)
+		params = a.params
+		if err != nil {
+			logResponsesFailure(a.log, err, params, a.meta, a.messages, "stream_init")
+			return false, nil, &PreDeltaError{Err: err}
+		}
+	} else {
+		if len(state.pendingFunctionOutputs) == 0 && len(state.pendingMcpApprovals) == 0 {
+			return false, nil, nil
+		}
+		if round > maxStreamingToolRounds {
+			err = fmt.Errorf("max responses tool call rounds reached (%d)", maxStreamingToolRounds)
+			a.log.Warn().Err(err).Int("pending_outputs", len(state.pendingFunctionOutputs)).Msg("Stopping responses continuation loop")
+			return false, nil, a.oc.finishStreamingError(ctx, a.log, a.portal, state, a.meta, err)
+		}
+		a.log.Debug().
+			Int("pending_outputs", len(state.pendingFunctionOutputs)).
+			Int("pending_approvals", len(state.pendingMcpApprovals)).
+			Int("base_input_items", len(state.baseInput)).
+			Msg("Continuing stateless response with pending tool actions")
+		stream, params, err = a.startContinuationRound(ctx)
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return false, nil, a.oc.finishStreamingCancelled(ctx, a.log, a.portal, state, a.meta, err)
+			}
+			logResponsesFailure(a.log, err, params, a.meta, a.messages, "continuation_init")
+			return false, nil, a.oc.finishStreamingError(ctx, a.log, a.portal, state, a.meta, err)
+		}
+	}
+
+	activeTools := make(map[string]*activeToolCall)
+	a.rsc.activeTools = activeTools
+	done, cle, err := runStreamingStep(ctx, a.oc, a.portal, state, evt, stream,
+		func(streamEvent responses.ResponseStreamEventUnion) bool { return streamEvent.Type != "error" },
+		func(streamEvent responses.ResponseStreamEventUnion) (bool, *ContextLengthError, error) {
+			done, cle, evtErr := a.oc.processResponseStreamEvent(ctx, a.rsc, streamEvent, round > 0)
+			if done && evtErr != nil {
+				stage := "stream_event_error"
+				if round > 0 {
+					stage = "continuation_event_error"
+				}
+				logResponsesFailure(a.log, evtErr, params, a.meta, a.messages, stage)
+			}
+			return done, cle, evtErr
+		},
+		func(stepErr error) (*ContextLengthError, error) {
+			stage := "stream_err"
+			if round > 0 {
+				stage = "continuation_err"
+			}
+			logResponsesFailure(a.log, stepErr, params, a.meta, a.messages, stage)
+			return a.oc.handleResponsesStreamErr(ctx, a.portal, state, a.meta, stepErr, round == 0)
+		},
+	)
+	if cle != nil || err != nil || done {
+		return false, cle, err
+	}
+
+	return hasPendingStreamingContinuation(state), nil, nil
+}
+
+func (a *responsesTurnAdapter) Finalize(ctx context.Context) {
+	a.oc.finalizeResponsesStream(ctx, a.log, a.portal, a.state, a.meta)
 }
 
 // processResponseStreamEvent handles a single Responses API stream event.
@@ -43,14 +203,14 @@ func (oc *AIClient) processResponseStreamEvent(
 	streamEvent responses.ResponseStreamEventUnion,
 	isContinuation bool,
 ) (done bool, cle *ContextLengthError, err error) {
-	log := rsc.log
-	portal := rsc.portal
-	state := rsc.state
-	meta := rsc.meta
+	log := rsc.base.log
+	portal := rsc.base.portal
+	state := rsc.base.state
+	meta := rsc.base.meta
 	activeTools := rsc.activeTools
-	typingSignals := rsc.typingSignals
-	touchTyping := rsc.touchTyping
-	isHeartbeat := rsc.isHeartbeat
+	typingSignals := rsc.base.typingSignals
+	touchTyping := rsc.base.touchTyping
+	isHeartbeat := rsc.base.isHeartbeat
 	contSuffix := ""
 	if isContinuation {
 		contSuffix = " (continuation)"
@@ -331,197 +491,14 @@ func (oc *AIClient) streamingResponse(
 	log := zerolog.Ctx(ctx).With().
 		Str("portal_id", portalID).
 		Logger()
-	// Tool loops can legitimately require several rounds (e.g. multi-step file ops).
-	// Keep a cap to prevent runaway loops, but 3 rounds is too low in practice.
-	maxToolRounds := 10
-
-	prep, messages, typingCleanup := oc.prepareStreamingRun(ctx, log, evt, portal, meta, messages)
-	defer typingCleanup()
-	state := prep.State
-	typingSignals := prep.TypingSignals
-	touchTyping := prep.TouchTyping
-	isHeartbeat := prep.IsHeartbeat
-
-	if state.roomID != "" {
-		oc.markRoomRunStreaming(state.roomID, true)
-		defer oc.markRoomRunStreaming(state.roomID, false)
-	}
-
-	// Build Responses API params using shared helper
-	params := oc.buildResponsesAPIParams(ctx, portal, meta, messages)
-
-	// Inject per-room PDF engine into context for OpenRouter/Beeper providers
-	if oc.isOpenRouterProvider() {
-		ctx = WithPDFEngine(ctx, oc.effectivePDFEngine(meta))
-	}
-
-	stream := oc.api.Responses.NewStreaming(ctx, params)
-	if stream == nil {
-		initErr := errors.New("responses streaming not available")
-		logResponsesFailure(log, initErr, params, meta, messages, "stream_init")
-		return false, nil, &PreDeltaError{Err: initErr}
-	}
-
-	// Store base input for stateless Responses continuations.
-	if params.Input.OfInputItemList != nil {
-		state.baseInput = params.Input.OfInputItemList
-	}
-
-	// Track active tool calls
-	activeTools := make(map[string]*activeToolCall)
-
-	// Emit AI SDK UI stream start and first step
-	oc.emitUIStart(ctx, portal, state, meta)
-	oc.uiEmitter(state).EmitUIStepStart(ctx, portal)
-
-	rsc := &responseStreamContext{
-		log:           log,
-		portal:        portal,
-		state:         state,
-		meta:          meta,
-		activeTools:   activeTools,
-		typingSignals: typingSignals,
-		touchTyping:   touchTyping,
-		isHeartbeat:   isHeartbeat,
-	}
-
-	// Process stream events - no debouncing, stream every delta immediately
-	for stream.Next() {
-		streamEvent := stream.Current()
-		if streamEvent.Type != "error" {
-			oc.markMessageSendSuccess(ctx, portal, evt, state)
+	return oc.runStreamingTurn(ctx, log, evt, portal, meta, messages, func(prep streamingRunPrep, pruned []openai.ChatCompletionMessageParamUnion) streamingTurnAdapter {
+		base := newStreamingAdapterBase(oc, log, portal, meta, prep, pruned)
+		return &responsesTurnAdapter{
+			streamingAdapterBase: base,
+			rsc: &responseStreamContext{
+				base:        &base,
+				activeTools: make(map[string]*activeToolCall),
+			},
 		}
-		done, cle, evtErr := oc.processResponseStreamEvent(ctx, rsc, streamEvent, false)
-		if done {
-			if evtErr != nil {
-				logResponsesFailure(log, evtErr, params, meta, messages, "stream_event_error")
-			}
-			return false, cle, evtErr
-		}
-	}
-
-	oc.uiEmitter(state).EmitUIStepFinish(ctx, portal)
-
-	// Check for stream errors
-	if err := stream.Err(); err != nil {
-		logResponsesFailure(log, err, params, meta, messages, "stream_err")
-		cle, handledErr := oc.handleResponsesStreamErr(ctx, portal, state, meta, err, true)
-		if cle != nil {
-			return false, cle, nil
-		}
-		return false, nil, handledErr
-	}
-
-	// If there are pending tool outputs or MCP approvals, send them back to the API for continuation.
-	// This loop continues until the model generates a response without additional tool actions.
-	continuationRound := 0
-	for len(state.pendingFunctionOutputs) > 0 || len(state.pendingMcpApprovals) > 0 {
-		// Check for context cancellation before starting a new continuation round
-		if ctx.Err() != nil {
-			if state.hasInitialMessageTarget() && state.accumulated.Len() > 0 {
-				oc.flushPartialStreamingMessage(context.Background(), portal, state, meta)
-			}
-			return false, nil, oc.finishStreamingCancelled(ctx, log, portal, state, meta, ctx.Err())
-		}
-
-		continuationRound++
-		if continuationRound > maxToolRounds {
-			err := fmt.Errorf("max responses tool call rounds reached (%d)", maxToolRounds)
-			log.Warn().Err(err).Int("pending_outputs", len(state.pendingFunctionOutputs)).Msg("Stopping responses continuation loop")
-			return false, nil, oc.finishStreamingError(ctx, log, portal, state, meta, err)
-		}
-		log.Debug().
-			Int("pending_outputs", len(state.pendingFunctionOutputs)).
-			Int("pending_approvals", len(state.pendingMcpApprovals)).
-			Int("base_input_items", len(state.baseInput)).
-			Msg("Continuing stateless response with pending tool actions")
-
-		pendingOutputs := slices.Clone(state.pendingFunctionOutputs)
-		pendingApprovals := slices.Clone(state.pendingMcpApprovals)
-
-		approvalInputs := make([]responses.ResponseInputItemUnionParam, 0, len(pendingApprovals))
-		for _, approval := range pendingApprovals {
-			resolution, _, ok := oc.waitToolApproval(ctx, approval.approvalID)
-			decision := resolution.Decision
-			if !ok {
-				if decision.Reason == "" {
-					decision = airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalTimedOut, Reason: agentremote.ApprovalReasonTimeout}
-				}
-			}
-			approved := approvalAllowed(decision)
-			oc.uiEmitter(state).EmitUIToolApprovalResponse(ctx, portal, approval.approvalID, approval.toolCallID, approved, decision.Reason)
-			streamui.RecordApprovalResponse(&state.ui, approval.approvalID, approval.toolCallID, approved, decision.Reason)
-			item := responses.ResponseInputItemParamOfMcpApprovalResponse(approval.approvalID, approved)
-			if decision.Reason != "" && item.OfMcpApprovalResponse != nil {
-				item.OfMcpApprovalResponse.Reason = param.NewOpt(decision.Reason)
-			}
-			approvalInputs = append(approvalInputs, item)
-
-			if !approved {
-				// Optimistically mark as denied in the UI; the provider may emit a denial later as well.
-				oc.uiEmitter(state).EmitUIToolOutputDenied(ctx, portal, approval.toolCallID)
-			}
-		}
-
-		// Build continuation request with tool outputs + approval responses
-		continuationParams := oc.buildContinuationParams(ctx, state, meta, pendingOutputs, approvalInputs)
-
-		// Persist tool calls and outputs in local base input for the next stateless continuation.
-		if len(state.baseInput) > 0 {
-			for _, output := range pendingOutputs {
-				if output.name != "" {
-					args := output.arguments
-					if strings.TrimSpace(args) == "" {
-						args = "{}"
-					}
-					state.baseInput = append(state.baseInput, responses.ResponseInputItemParamOfFunctionCall(args, output.callID, output.name))
-				}
-				state.baseInput = append(state.baseInput, buildFunctionCallOutputItem(output.callID, output.output, true))
-			}
-			for _, approval := range approvalInputs {
-				state.baseInput = append(state.baseInput, approval)
-			}
-		}
-
-		// Reset active tools for new iteration
-		activeTools = make(map[string]*activeToolCall)
-		rsc.activeTools = activeTools
-
-		// Start continuation stream
-		// Ensure the next assistant text delta can't get glued to the previous text.
-		state.needsTextSeparator = true
-		stream = oc.api.Responses.NewStreaming(ctx, continuationParams)
-		if stream == nil {
-			initErr := errors.New("continuation streaming not available")
-			logResponsesFailure(log, initErr, continuationParams, meta, messages, "continuation_init")
-			return false, nil, oc.finishStreamingError(ctx, log, portal, state, meta, initErr)
-		}
-		// Clear pending inputs only once continuation stream has actually started.
-		state.pendingFunctionOutputs = nil
-		state.pendingMcpApprovals = nil
-		oc.uiEmitter(state).EmitUIStepStart(ctx, portal)
-
-		// Process continuation stream events
-		for stream.Next() {
-			streamEvent := stream.Current()
-			done, _, evtErr := oc.processResponseStreamEvent(ctx, rsc, streamEvent, true)
-			if done {
-				if evtErr != nil {
-					logResponsesFailure(log, evtErr, continuationParams, meta, messages, "continuation_event_error")
-				}
-				return false, nil, evtErr
-			}
-		}
-
-		oc.uiEmitter(state).EmitUIStepFinish(ctx, portal)
-
-		if err := stream.Err(); err != nil {
-			logResponsesFailure(log, err, continuationParams, meta, messages, "continuation_err")
-			_, handledErr := oc.handleResponsesStreamErr(ctx, portal, state, meta, err, false)
-			return false, nil, handledErr
-		}
-	}
-
-	oc.finalizeResponsesStream(ctx, log, portal, state, meta)
-	return true, nil, nil
+	})
 }
