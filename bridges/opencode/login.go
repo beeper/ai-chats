@@ -10,9 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"maunium.net/go/mautrix/bridgev2"
+
 	"github.com/beeper/agentremote"
 	openCodeAPI "github.com/beeper/agentremote/bridges/opencode/api"
-	"maunium.net/go/mautrix/bridgev2"
 )
 
 var (

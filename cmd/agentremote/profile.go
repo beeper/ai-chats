@@ -110,14 +110,6 @@ func listInstancesForProfile(profile string) ([]string, error) {
 	return cliutil.ListDirectories(root)
 }
 
-func authStore(profile string) (beeperauth.Store, error) {
-	path, err := authConfigPath(profile)
-	if err != nil {
-		return beeperauth.Store{}, err
-	}
-	return cliutil.Store(path, missingAuthError(profile)), nil
-}
-
 func missingAuthError(profile string) func() error {
 	return func() error {
 		return fmt.Errorf("not logged in (profile %q). Run: agentremote login --profile %s", profile, profile)

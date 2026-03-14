@@ -6,10 +6,8 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
@@ -40,9 +38,6 @@ type openCodeStreamState struct {
 	turnID               string
 	agentID              string
 	turn                 *bridgesdk.Turn
-	initialEventID       id.EventID
-	networkMessageID     networkid.MessageID
-	sequenceNum          int
 	lastRemoteEventOrder int64
 	accumulated          strings.Builder
 	visible              strings.Builder

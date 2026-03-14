@@ -810,16 +810,6 @@ func saveAuthConfig(cfg authConfig) error {
 	return cliutil.SaveAuth(path, cfg)
 }
 
-func authStore() beeperauth.Store {
-	path, err := authConfigPath()
-	if err != nil {
-		return beeperauth.Store{
-			MissingError: func() error { return err },
-		}
-	}
-	return cliutil.Store(path, missingAuthError)
-}
-
 func missingAuthError() error {
 	path, err := authConfigPath()
 	if err != nil {

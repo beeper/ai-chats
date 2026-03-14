@@ -3,8 +3,9 @@ package ai
 import (
 	"strings"
 
-	"github.com/beeper/agentremote/sdk"
 	"maunium.net/go/mautrix/bridgev2/database"
+
+	"github.com/beeper/agentremote/sdk"
 )
 
 func ensureCanonicalUserMessage(msg *database.Message) {

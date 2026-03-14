@@ -8,9 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beeper/agentremote"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
+
+	"github.com/beeper/agentremote"
 )
 
 var (

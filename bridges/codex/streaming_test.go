@@ -4,11 +4,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beeper/agentremote"
-	"github.com/beeper/agentremote/pkg/shared/streamui"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/pkg/shared/streamui"
 )
 
 func TestCodex_StreamChunks_BasicOrderingAndSeq(t *testing.T) {

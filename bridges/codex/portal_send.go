@@ -2,7 +2,6 @@ package codex
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -40,21 +39,6 @@ func (cc *CodexClient) sendViaPortalWithOrdering(
 		StreamOrder: streamOrder,
 		Converted:   converted,
 	})
-}
-
-// getCodexIntentForPortal resolves the Matrix intent for the Codex ghost.
-// Use this when you need an intent for non-message operations (e.g. UploadMedia, debounced edits).
-func (cc *CodexClient) getCodexIntentForPortal(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	evtType bridgev2.RemoteEventType,
-) (bridgev2.MatrixAPI, error) {
-	sender := cc.senderForPortal()
-	intent, ok := portal.GetIntentFor(ctx, sender, cc.UserLogin, evtType)
-	if !ok {
-		return nil, fmt.Errorf("intent resolution failed")
-	}
-	return intent, nil
 }
 
 // senderForPortal returns the EventSender for the Codex ghost.

@@ -16,7 +16,7 @@ type ClientBase struct {
 	loginMu sync.RWMutex
 	login   *bridgev2.UserLogin
 
-	loggedIn         atomic.Bool
+	loggedIn          atomic.Bool
 	HumanUserIDPrefix string
 }
 

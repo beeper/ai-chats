@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -19,7 +18,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote"
@@ -30,7 +28,6 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	bridgesdk "github.com/beeper/agentremote/sdk"
-	"github.com/beeper/agentremote/turns"
 )
 
 var (
@@ -105,8 +102,6 @@ type CodexClient struct {
 	roomMu          sync.Mutex
 	activeRooms     map[id.RoomID]bool
 	pendingMessages map[id.RoomID]codexPendingQueue
-
-	streamFallbackToDebounced atomic.Bool
 }
 
 func newCodexClient(login *bridgev2.UserLogin, connector *CodexConnector) (*CodexClient, error) {
@@ -1915,91 +1910,6 @@ func (cc *CodexClient) emitUIToolApprovalRequest(
 	})
 }
 
-func (cc *CodexClient) buildCanonicalUIMessage(state *streamingState, model string, finishReason string) map[string]any {
-	if state != nil && state.turn != nil {
-		if uiMessage := streamui.SnapshotCanonicalUIMessage(state.turn.UIState()); len(uiMessage) > 0 {
-			metadata, _ := uiMessage["metadata"].(map[string]any)
-			uiMessage["metadata"] = msgconv.MergeUIMessageMetadata(metadata, cc.buildUIMessageMetadata(state, model, true, finishReason))
-			return msgconv.AppendUIMessageArtifacts(
-				uiMessage,
-				citations.BuildSourceParts(state.sourceCitations, state.sourceDocuments),
-				citations.GeneratedFilesToParts(state.generatedFiles),
-			)
-		}
-	}
-	return msgconv.BuildUIMessage(msgconv.UIMessageParams{
-		TurnID:     state.turnID,
-		Role:       "assistant",
-		Metadata:   cc.buildUIMessageMetadata(state, model, true, finishReason),
-		SourceURLs: citations.BuildSourceParts(state.sourceCitations, state.sourceDocuments),
-		FileParts:  citations.GeneratedFilesToParts(state.generatedFiles),
-	})
-}
-
-func (cc *CodexClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2.Portal, state *streamingState, model string, finishReason string) {
-	if portal == nil || portal.MXID == "" || state == nil || !state.hasEditTarget() {
-		return
-	}
-	if state.suppressSend {
-		return
-	}
-	rendered := format.RenderMarkdown(state.accumulated.String(), true, true)
-
-	// Safety-split oversized responses into multiple Matrix events
-	var continuationBody string
-	if len(rendered.Body) > turns.MaxMatrixEventBodyBytes {
-		firstBody, rest := turns.SplitAtMarkdownBoundary(rendered.Body, turns.MaxMatrixEventBodyBytes)
-		continuationBody = rest
-		rendered = format.RenderMarkdown(firstBody, true, true)
-	}
-
-	uiMessage := cc.buildCanonicalUIMessage(state, model, finishReason)
-	topLevelExtra := map[string]any{
-		matrixevents.BeeperAIKey:        uiMessage,
-		"com.beeper.dont_render_edited": true,
-		"m.mentions":                    map[string]any{},
-	}
-
-	sender := cc.senderForPortal()
-	editTS := codexStreamEventTimestamp(state, true)
-	cc.UserLogin.QueueRemoteEvent(&agentremote.RemoteEdit{
-		Portal:        portal.PortalKey,
-		Sender:        sender,
-		TargetMessage: state.networkMessageID,
-		Timestamp:     editTS,
-		StreamOrder:   codexNextLiveStreamOrder(state, editTS),
-		LogKey:        "codex_edit_target",
-		PreBuilt: turns.BuildRenderedConvertedEdit(turns.RenderedMarkdownContent{
-			Body:          rendered.Body,
-			Format:        rendered.Format,
-			FormattedBody: rendered.FormattedBody,
-		}, topLevelExtra),
-	})
-	cc.loggerForContext(ctx).Debug().
-		Str("initial_event_id", state.initialEventID.String()).
-		Str("turn_id", state.turnID).
-		Bool("has_thinking", state.reasoning.Len() > 0).
-		Int("tool_calls", len(state.toolCalls)).
-		Msg("Queued final assistant turn edit")
-
-	// Send continuation messages for overflow
-	for continuationBody != "" {
-		var chunk string
-		chunk, continuationBody = turns.SplitAtMarkdownBoundary(continuationBody, turns.MaxMatrixEventBodyBytes)
-		cc.sendContinuationMessage(ctx, portal, chunk)
-	}
-}
-
-// sendContinuationMessage sends overflow text as a new (non-edit) message from the bot.
-func (cc *CodexClient) sendContinuationMessage(ctx context.Context, portal *bridgev2.Portal, body string) {
-	if portal == nil || portal.MXID == "" {
-		return
-	}
-	msg := agentremote.BuildContinuationMessage(portal.PortalKey, body, cc.senderForPortal(), "codex", "codex_msg_id")
-	cc.UserLogin.QueueRemoteEvent(msg)
-	cc.loggerForContext(ctx).Debug().Int("body_len", len(body)).Msg("Queued continuation message for oversized response")
-}
-
 func buildMessageMetadata(state *streamingState, turnID string, model string, finishReason string, canonicalUIMessage map[string]any) *MessageMetadata {
 	return &MessageMetadata{
 		BaseMessageMetadata: agentremote.BuildAssistantBaseMetadata(agentremote.AssistantMetadataParams{
@@ -2025,25 +1935,6 @@ func buildMessageMetadata(state *streamingState, turnID string, model string, fi
 			ThinkingTokenCount: len(strings.Fields(state.reasoning.String())),
 		},
 	}
-}
-
-func (cc *CodexClient) saveAssistantMessage(ctx context.Context, portal *bridgev2.Portal, state *streamingState, model string, finishReason string) {
-	if portal == nil || state == nil || !state.hasEditTarget() {
-		return
-	}
-	log := cc.loggerForContext(ctx)
-
-	fullMeta := buildMessageMetadata(state, state.turnID, model, finishReason, cc.buildCanonicalUIMessage(state, model, finishReason))
-
-	agentremote.UpsertAssistantMessage(ctx, agentremote.UpsertAssistantMessageParams{
-		Login:            cc.UserLogin,
-		Portal:           portal,
-		SenderID:         codexGhostID,
-		NetworkMessageID: state.networkMessageID,
-		InitialEventID:   state.initialEventID,
-		Metadata:         fullMeta,
-		Logger:           *log,
-	})
 }
 
 func (cc *CodexClient) buildSDKFinalMetadata(turn *bridgesdk.Turn, state *streamingState, model string, finishReason string) any {

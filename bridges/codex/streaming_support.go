@@ -33,7 +33,6 @@ type streamingState struct {
 	networkMessageID     networkid.MessageID
 	lastRemoteEventOrder int64
 	firstToken           bool
-	suppressSend         bool
 
 	turn *bridgesdk.Turn
 
@@ -49,10 +48,6 @@ func (s *streamingState) recordFirstToken() {
 	}
 	s.firstToken = false
 	s.firstTokenAtMs = time.Now().UnixMilli()
-}
-
-func (s *streamingState) hasEditTarget() bool {
-	return s != nil && s.networkMessageID != ""
 }
 
 func newStreamingState(sourceEventID id.EventID) *streamingState {

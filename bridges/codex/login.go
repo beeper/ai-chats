@@ -12,10 +12,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/beeper/agentremote"
-	"github.com/beeper/agentremote/bridges/codex/codexrpc"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
+
+	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/bridges/codex/codexrpc"
 )
 
 var (

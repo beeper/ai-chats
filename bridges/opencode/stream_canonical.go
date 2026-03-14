@@ -1,21 +1,14 @@
 package opencode
 
 import (
-	"context"
 	"strings"
 	"time"
 
-	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/format"
-
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/bridges/ai/msgconv"
-	"github.com/beeper/agentremote/pkg/matrixevents"
 	"github.com/beeper/agentremote/pkg/shared/backfillutil"
 	"github.com/beeper/agentremote/pkg/shared/maputil"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
-	"github.com/beeper/agentremote/turns"
 )
 
 func (oc *OpenCodeClient) applyStreamMessageMetadata(state *openCodeStreamState, metadata map[string]any) {
@@ -178,62 +171,4 @@ func (oc *OpenCodeClient) buildSDKFinalMetadata(state *openCodeStreamState, fini
 		state.completedAtMs = time.Now().UnixMilli()
 	}
 	return oc.buildStreamDBMetadata(state)
-}
-
-func (oc *OpenCodeClient) persistStreamDBMetadata(ctx context.Context, portal *bridgev2.Portal, state *openCodeStreamState, meta *MessageMetadata) {
-	if oc == nil || portal == nil || state == nil || meta == nil {
-		return
-	}
-	agentremote.UpdateExistingMessageMetadata(
-		ctx,
-		oc.UserLogin,
-		portal,
-		state.networkMessageID,
-		state.initialEventID,
-		meta,
-		oc.Log(),
-		"Failed to load OpenCode stream message for metadata update",
-		"Failed to persist OpenCode stream metadata",
-	)
-}
-
-func (oc *OpenCodeClient) queueFinalStreamEdit(ctx context.Context, portal *bridgev2.Portal, state *openCodeStreamState) {
-	if oc == nil || portal == nil || portal.MXID == "" || state == nil || state.networkMessageID == "" {
-		return
-	}
-	body := strings.TrimSpace(state.visible.String())
-	if body == "" {
-		body = strings.TrimSpace(state.accumulated.String())
-	}
-	if body == "" {
-		body = "..."
-	}
-	rendered := format.RenderMarkdown(body, true, true)
-	uiMessage := oc.currentCanonicalUIMessage(state)
-	topLevelExtra := map[string]any{
-		matrixevents.BeeperAIKey:        uiMessage,
-		"com.beeper.dont_render_edited": true,
-		"m.mentions":                    map[string]any{},
-	}
-
-	pmeta := oc.PortalMeta(portal)
-	instanceID := ""
-	if pmeta != nil {
-		instanceID = pmeta.InstanceID
-	}
-	sender := oc.SenderForOpenCode(instanceID, false)
-	eventTS := openCodeStreamEventTimestamp(state, true)
-	oc.UserLogin.QueueRemoteEvent(&agentremote.RemoteEdit{
-		Portal:        portal.PortalKey,
-		Sender:        sender,
-		TargetMessage: state.networkMessageID,
-		Timestamp:     eventTS,
-		StreamOrder:   openCodeNextStreamOrder(state, eventTS),
-		LogKey:        "opencode_edit_target",
-		PreBuilt: turns.BuildRenderedConvertedEdit(turns.RenderedMarkdownContent{
-			Body:          rendered.Body,
-			Format:        rendered.Format,
-			FormattedBody: rendered.FormattedBody,
-		}, topLevelExtra),
-	})
 }

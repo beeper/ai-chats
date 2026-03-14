@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -20,7 +19,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/cachedvalue"
@@ -89,33 +87,28 @@ type OpenClawClient struct {
 }
 
 type openClawStreamState struct {
-	portal                    *bridgev2.Portal
-	turnID                    string
-	agentID                   string
-	turn                      *bridgesdk.Turn
-	sessionKey                string
-	messageTS                 time.Time
-	placeholderPending        bool
-	initialEventID            id.EventID
-	networkMessageID          networkid.MessageID
-	sequenceNum               int
-	accumulated               strings.Builder
-	visible                   strings.Builder
-	ui                        streamui.UIState
-	lastVisibleText           string
-	role                      string
-	runID                     string
-	sessionID                 string
-	finishReason              string
-	errorText                 string
-	promptTokens              int64
-	completionTokens          int64
-	reasoningTokens           int64
-	totalTokens               int64
-	startedAtMs               int64
-	firstTokenAtMs            int64
-	completedAtMs             int64
-	streamFallbackToDebounced atomic.Bool
+	portal           *bridgev2.Portal
+	turnID           string
+	agentID          string
+	turn             *bridgesdk.Turn
+	sessionKey       string
+	messageTS        time.Time
+	accumulated      strings.Builder
+	visible          strings.Builder
+	ui               streamui.UIState
+	lastVisibleText  string
+	role             string
+	runID            string
+	sessionID        string
+	finishReason     string
+	errorText        string
+	promptTokens     int64
+	completionTokens int64
+	reasoningTokens  int64
+	totalTokens      int64
+	startedAtMs      int64
+	firstTokenAtMs   int64
+	completedAtMs    int64
 }
 
 func newOpenClawClient(login *bridgev2.UserLogin, connector *OpenClawConnector) (*OpenClawClient, error) {
@@ -677,21 +670,6 @@ func (oc *OpenClawClient) displayNameForAgent(agentID string) string {
 		return "OpenClaw"
 	}
 	return agentID
-}
-
-func (oc *OpenClawClient) formatAgentDisplayName(meta *GhostMetadata, agentID string) string {
-	var name, emoji string
-	if meta != nil {
-		name = strings.TrimSpace(meta.OpenClawAgentName)
-		emoji = strings.TrimSpace(meta.OpenClawAgentEmoji)
-	}
-	if name == "" {
-		name = oc.displayNameForAgent(agentID)
-	}
-	if emoji != "" && !strings.HasPrefix(name, emoji) {
-		return emoji + " " + name
-	}
-	return name
 }
 
 func (oc *OpenClawClient) lookupAgentIdentity(ctx context.Context, agentID, sessionKey string) *gatewayAgentIdentity {
