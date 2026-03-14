@@ -69,13 +69,8 @@ func (a *responsesTurnAdapter) startContinuationRound(ctx context.Context) (*sse
 
 	approvalInputs := make([]responses.ResponseInputItemUnionParam, 0, len(pendingApprovals))
 	for _, approval := range pendingApprovals {
-		resolution, _, ok := a.oc.waitToolApproval(ctx, approval.approvalID)
-		decision := resolution.Decision
-		if !ok && decision.Reason == "" {
-			decision = airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalTimedOut, Reason: agentremote.ApprovalReasonTimeout}
-		}
+		decision := a.oc.waitForToolApprovalDecision(ctx, a.portal, state, approval.approvalID, approval.toolCallID)
 		approved := approvalAllowed(decision)
-		a.oc.toolLifecycle(a.portal, state).respondApproval(ctx, approval.approvalID, approval.toolCallID, approved, decision.Reason)
 		item := responses.ResponseInputItemParamOfMcpApprovalResponse(approval.approvalID, approved)
 		if decision.Reason != "" && item.OfMcpApprovalResponse != nil {
 			item.OfMcpApprovalResponse.Reason = param.NewOpt(decision.Reason)

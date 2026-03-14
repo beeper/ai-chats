@@ -147,6 +147,49 @@ func approvalAllowed(decision airuntime.ToolApprovalDecision) bool {
 	return decision.State == airuntime.ToolApprovalApproved
 }
 
+func (oc *AIClient) requestToolApprovalPrompt(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	params ToolApprovalParams,
+	targetEventID id.EventID,
+) bool {
+	if _, created := oc.registerToolApproval(params); !created {
+		oc.loggerForContext(ctx).Error().
+			Str("approval_id", params.ApprovalID).
+			Str("tool_name", params.ToolName).
+			Msg("tool approval: failed to register approval request")
+		return false
+	}
+	return oc.emitUIToolApprovalRequest(
+		ctx,
+		portal,
+		state,
+		params.ApprovalID,
+		params.ToolCallID,
+		params.ToolName,
+		params.Presentation,
+		targetEventID,
+		int(params.TTL/time.Second),
+	)
+}
+
+func (oc *AIClient) waitForToolApprovalDecision(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	approvalID string,
+	toolCallID string,
+) airuntime.ToolApprovalDecision {
+	resolution, _, ok := oc.waitToolApproval(ctx, approvalID)
+	decision := resolution.Decision
+	if !ok && decision.Reason == "" {
+		decision = airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalTimedOut, Reason: agentremote.ApprovalReasonTimeout}
+	}
+	oc.toolLifecycle(portal, state).respondApproval(ctx, approvalID, toolCallID, approvalAllowed(decision), decision.Reason)
+	return decision
+}
+
 // isBuiltinToolDenied checks whether a builtin tool call requires user approval
 // and, if so, registers the approval, emits a UI request, and waits for a decision.
 // Returns true if the tool call was denied and should not be executed.
@@ -185,7 +228,7 @@ func (oc *AIClient) isBuiltinToolDenied(
 	approvalID := NewCallID()
 	ttl := time.Duration(oc.toolApprovalsTTLSeconds()) * time.Second
 	presentation := buildBuiltinApprovalPresentation(toolName, action, argsObj)
-	if _, created := oc.registerToolApproval(ToolApprovalParams{
+	if !oc.requestToolApprovalPrompt(ctx, portal, state, ToolApprovalParams{
 		ApprovalID:   approvalID,
 		RoomID:       state.roomID,
 		TurnID:       state.turnID,
@@ -196,13 +239,7 @@ func (oc *AIClient) isBuiltinToolDenied(
 		Action:       action,
 		Presentation: presentation,
 		TTL:          ttl,
-	}); !created {
-		oc.loggerForContext(ctx).Error().
-			Str("tool_name", toolName).
-			Msg("tool approval: failed to register builtin approval request")
-		return true
-	}
-	if !oc.emitUIToolApprovalRequest(ctx, portal, state, approvalID, tool.callID, toolName, presentation, "", oc.toolApprovalsTTLSeconds()) {
+	}, "") {
 		decision := airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalDenied, Reason: agentremote.ApprovalReasonDeliveryError}
 		oc.approvalFlow.FinishResolved(approvalID, agentremote.ApprovalDecisionPayload{
 			ApprovalID: approvalID,
@@ -211,14 +248,7 @@ func (oc *AIClient) isBuiltinToolDenied(
 		lifecycle.respondApproval(ctx, approvalID, tool.callID, false, decision.Reason)
 		return true
 	}
-	resolution, _, ok := oc.waitToolApproval(ctx, approvalID)
-	decision := resolution.Decision
-	if !ok {
-		if decision.Reason == "" {
-			decision = airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalTimedOut, Reason: agentremote.ApprovalReasonTimeout}
-		}
-	}
-	lifecycle.respondApproval(ctx, approvalID, tool.callID, approvalAllowed(decision), decision.Reason)
+	decision := oc.waitForToolApprovalDecision(ctx, portal, state, approvalID, tool.callID)
 	if !approvalAllowed(decision) {
 		return true
 	}

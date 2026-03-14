@@ -30,6 +30,39 @@ func NewConnectorBase(cfg *Config) *agentremote.ConnectorBase {
 	if protocolID == "" {
 		protocolID = "sdk-" + cfg.Name
 	}
+	loadLogin := cfg.LoadLogin
+	if loadLogin == nil {
+		loadLogin = agentremote.TypedClientLoader(agentremote.TypedClientLoaderSpec[bridgev2.NetworkAPI]{
+			Accept: cfg.AcceptLogin,
+			LoadUserLoginConfig: agentremote.LoadUserLoginConfig[bridgev2.NetworkAPI]{
+				Mu:         mu,
+				Clients:    *clientsRef,
+				ClientsRef: clientsRef,
+				BridgeName: cfg.Name,
+				MakeBroken: cfg.MakeBrokenLogin,
+				Update: func(client bridgev2.NetworkAPI, login *bridgev2.UserLogin) {
+					if cfg.UpdateClient != nil {
+						cfg.UpdateClient(client, login)
+						return
+					}
+					if typed, ok := client.(*sdkClient); ok {
+						typed.SetUserLogin(login)
+					}
+				},
+				Create: func(login *bridgev2.UserLogin) (bridgev2.NetworkAPI, error) {
+					if cfg.CreateClient != nil {
+						return cfg.CreateClient(login)
+					}
+					return newSDKClient(login, cfg), nil
+				},
+				AfterLoad: func(client bridgev2.NetworkAPI) {
+					if cfg.AfterLoadClient != nil {
+						cfg.AfterLoadClient(client)
+					}
+				},
+			},
+		})
+	}
 	return agentremote.NewConnector(agentremote.ConnectorSpec{
 		ProtocolID: protocolID,
 		Init: func(bridge *bridgev2.Bridge) {
@@ -107,37 +140,11 @@ func NewConnectorBase(cfg *Config) *agentremote.ConnectorBase {
 			}
 			agentremote.ApplyAIBridgeInfo(content, protocolID, portal.RoomType, agentremote.AIRoomKindAgent)
 		},
-		LoadLogin: agentremote.TypedClientLoader(agentremote.TypedClientLoaderSpec[bridgev2.NetworkAPI]{
-			Accept: cfg.AcceptLogin,
-			LoadUserLoginConfig: agentremote.LoadUserLoginConfig[bridgev2.NetworkAPI]{
-				Mu:         mu,
-				Clients:    *clientsRef,
-				ClientsRef: clientsRef,
-				BridgeName: cfg.Name,
-				MakeBroken: cfg.MakeBrokenLogin,
-				Update: func(client bridgev2.NetworkAPI, login *bridgev2.UserLogin) {
-					if cfg.UpdateClient != nil {
-						cfg.UpdateClient(client, login)
-						return
-					}
-					if typed, ok := client.(*sdkClient); ok {
-						typed.SetUserLogin(login)
-					}
-				},
-				Create: func(login *bridgev2.UserLogin) (bridgev2.NetworkAPI, error) {
-					if cfg.CreateClient != nil {
-						return cfg.CreateClient(login)
-					}
-					return newSDKClient(login, cfg), nil
-				},
-				AfterLoad: func(client bridgev2.NetworkAPI) {
-					if cfg.AfterLoadClient != nil {
-						cfg.AfterLoadClient(client)
-					}
-				},
-			},
-		}),
+		LoadLogin: loadLogin,
 		LoginFlows: func() []bridgev2.LoginFlow {
+			if cfg.GetLoginFlows != nil {
+				return cfg.GetLoginFlows()
+			}
 			if len(cfg.LoginFlows) > 0 {
 				return cfg.LoginFlows
 			}

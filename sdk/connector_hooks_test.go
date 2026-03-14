@@ -129,6 +129,50 @@ func TestNewConnectorBaseUsesHooksAndCustomClients(t *testing.T) {
 	}
 }
 
+func TestNewConnectorBaseUsesCustomLoadLoginAndLoginFlows(t *testing.T) {
+	loadCalled := 0
+	cfg := &Config{
+		Name: "custom-load",
+		LoadLogin: func(_ context.Context, login *bridgev2.UserLogin) error {
+			loadCalled++
+			login.Client = &testSDKClient{}
+			return nil
+		},
+		GetLoginFlows: func() []bridgev2.LoginFlow {
+			return []bridgev2.LoginFlow{{
+				ID:   "custom",
+				Name: "Custom",
+			}}
+		},
+		BridgeName: func() bridgev2.BridgeName {
+			return bridgev2.BridgeName{
+				DisplayName: "Custom Load",
+				NetworkIcon: "mxc://icon",
+			}
+		},
+	}
+
+	conn := NewConnectorBase(cfg)
+	login := &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: "ok"}}
+	if err := conn.LoadUserLogin(context.Background(), login); err != nil {
+		t.Fatalf("load login returned error: %v", err)
+	}
+	if loadCalled != 1 {
+		t.Fatalf("expected custom load login to be called once, got %d", loadCalled)
+	}
+	if _, ok := login.Client.(*testSDKClient); !ok {
+		t.Fatalf("expected custom load login to set testSDKClient, got %T", login.Client)
+	}
+
+	flows := conn.GetLoginFlows()
+	if len(flows) != 1 || flows[0].ID != "custom" {
+		t.Fatalf("unexpected login flows: %#v", flows)
+	}
+	if got := conn.GetName().NetworkIcon; got != "mxc://icon" {
+		t.Fatalf("expected network icon to round-trip, got %q", got)
+	}
+}
+
 func TestApprovalControllerUsesCustomHandler(t *testing.T) {
 	conv := NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &Config{}, nil)
 	turn := conv.StartTurn(context.Background(), &Agent{ID: "agent"}, nil)

@@ -22,6 +22,8 @@ const (
 	PromptBlockFile     PromptBlockType = "file"
 	PromptBlockThinking PromptBlockType = "thinking"
 	PromptBlockToolCall PromptBlockType = "tool_call"
+	PromptBlockAudio    PromptBlockType = "audio"
+	PromptBlockVideo    PromptBlockType = "video"
 )
 
 type PromptBlock struct {
@@ -30,14 +32,22 @@ type PromptBlock struct {
 	Text string
 
 	ImageURL string
+	ImageB64 string
 	MimeType string
 
 	FileURL  string
+	FileB64  string
 	Filename string
 
 	ToolCallID        string
 	ToolName          string
 	ToolCallArguments string
+
+	AudioB64    string
+	AudioFormat string
+
+	VideoURL string
+	VideoB64 string
 }
 
 type PromptMessage struct {
@@ -46,6 +56,19 @@ type PromptMessage struct {
 	ToolCallID string
 	ToolName   string
 	IsError    bool
+}
+
+func (m PromptMessage) Text() string {
+	var texts []string
+	for _, block := range m.Blocks {
+		switch block.Type {
+		case PromptBlockText, PromptBlockThinking:
+			if strings.TrimSpace(block.Text) != "" {
+				texts = append(texts, block.Text)
+			}
+		}
+	}
+	return strings.Join(texts, "\n")
 }
 
 func PromptMessagesFromTurnData(td TurnData) []PromptMessage {
@@ -62,15 +85,39 @@ func PromptMessagesFromTurnData(td TurnData) []PromptMessage {
 					msg.Blocks = append(msg.Blocks, PromptBlock{Type: PromptBlockText, Text: part.Text})
 				}
 			case "image":
-				if strings.TrimSpace(part.URL) != "" {
-					msg.Blocks = append(msg.Blocks, PromptBlock{Type: PromptBlockImage, ImageURL: part.URL, MimeType: part.MediaType})
+				if strings.TrimSpace(part.URL) != "" || promptExtraString(part.Extra, "imageB64") != "" {
+					msg.Blocks = append(msg.Blocks, PromptBlock{
+						Type:     PromptBlockImage,
+						ImageURL: part.URL,
+						ImageB64: promptExtraString(part.Extra, "imageB64"),
+						MimeType: part.MediaType,
+					})
 				}
 			case "file":
-				if strings.TrimSpace(part.URL) != "" || strings.TrimSpace(part.Filename) != "" {
+				if strings.TrimSpace(part.URL) != "" || strings.TrimSpace(part.Filename) != "" || promptExtraString(part.Extra, "fileB64") != "" {
 					msg.Blocks = append(msg.Blocks, PromptBlock{
 						Type:     PromptBlockFile,
 						FileURL:  part.URL,
+						FileB64:  promptExtraString(part.Extra, "fileB64"),
 						Filename: part.Filename,
+						MimeType: part.MediaType,
+					})
+				}
+			case "audio":
+				if promptExtraString(part.Extra, "audioB64") != "" {
+					msg.Blocks = append(msg.Blocks, PromptBlock{
+						Type:        PromptBlockAudio,
+						AudioB64:    promptExtraString(part.Extra, "audioB64"),
+						AudioFormat: promptExtraString(part.Extra, "audioFormat"),
+						MimeType:    part.MediaType,
+					})
+				}
+			case "video":
+				if strings.TrimSpace(part.URL) != "" || promptExtraString(part.Extra, "videoB64") != "" {
+					msg.Blocks = append(msg.Blocks, PromptBlock{
+						Type:     PromptBlockVideo,
+						VideoURL: part.URL,
+						VideoB64: promptExtraString(part.Extra, "videoB64"),
 						MimeType: part.MediaType,
 					})
 				}
@@ -158,17 +205,48 @@ func TurnDataFromUserPromptMessages(messages []PromptMessage) (TurnData, bool) {
 				td.Parts = append(td.Parts, TurnPart{Type: "text", Text: block.Text})
 			}
 		case PromptBlockImage:
-			if strings.TrimSpace(block.ImageURL) != "" {
-				td.Parts = append(td.Parts, TurnPart{Type: "image", URL: block.ImageURL, MediaType: block.MimeType})
+			if strings.TrimSpace(block.ImageURL) != "" || strings.TrimSpace(block.ImageB64) != "" {
+				part := TurnPart{Type: "image", URL: block.ImageURL, MediaType: block.MimeType}
+				if strings.TrimSpace(block.ImageB64) != "" {
+					part.Extra = map[string]any{"imageB64": block.ImageB64}
+				}
+				td.Parts = append(td.Parts, part)
 			}
 		case PromptBlockFile:
-			if strings.TrimSpace(block.FileURL) != "" || strings.TrimSpace(block.Filename) != "" {
-				td.Parts = append(td.Parts, TurnPart{
+			if strings.TrimSpace(block.FileURL) != "" || strings.TrimSpace(block.FileB64) != "" || strings.TrimSpace(block.Filename) != "" {
+				part := TurnPart{
 					Type:      "file",
 					URL:       block.FileURL,
 					Filename:  block.Filename,
 					MediaType: block.MimeType,
+				}
+				if strings.TrimSpace(block.FileB64) != "" {
+					part.Extra = map[string]any{"fileB64": block.FileB64}
+				}
+				td.Parts = append(td.Parts, part)
+			}
+		case PromptBlockAudio:
+			if strings.TrimSpace(block.AudioB64) != "" {
+				td.Parts = append(td.Parts, TurnPart{
+					Type:      "audio",
+					MediaType: block.MimeType,
+					Extra: map[string]any{
+						"audioB64":    block.AudioB64,
+						"audioFormat": block.AudioFormat,
+					},
 				})
+			}
+		case PromptBlockVideo:
+			if strings.TrimSpace(block.VideoURL) != "" || strings.TrimSpace(block.VideoB64) != "" {
+				part := TurnPart{
+					Type:      "video",
+					URL:       block.VideoURL,
+					MediaType: block.MimeType,
+				}
+				if strings.TrimSpace(block.VideoB64) != "" {
+					part.Extra = map[string]any{"videoB64": block.VideoB64}
+				}
+				td.Parts = append(td.Parts, part)
 			}
 		}
 	}
@@ -195,4 +273,12 @@ func FormatCanonicalValue(raw any) string {
 		}
 		return string(data)
 	}
+}
+
+func promptExtraString(extra map[string]any, key string) string {
+	if len(extra) == 0 {
+		return ""
+	}
+	value, _ := extra[key].(string)
+	return strings.TrimSpace(value)
 }

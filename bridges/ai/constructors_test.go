@@ -1,0 +1,74 @@
+package ai
+
+import (
+	"context"
+	"testing"
+
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
+
+	"github.com/beeper/agentremote"
+)
+
+func TestNewAIConnectorUsesSDKConfig(t *testing.T) {
+	conn := NewAIConnector()
+	if conn.sdkConfig == nil {
+		t.Fatal("expected sdkConfig to be initialized")
+	}
+	if conn.ConnectorBase == nil {
+		t.Fatal("expected ConnectorBase to be initialized")
+	}
+
+	name := conn.GetName()
+	if name.DisplayName != "Beeper Cloud" {
+		t.Fatalf("unexpected display name %q", name.DisplayName)
+	}
+	if name.NetworkURL != "https://www.beeper.com/ai" {
+		t.Fatalf("unexpected network url %q", name.NetworkURL)
+	}
+	if name.NetworkIcon != "mxc://beeper.com/51a668657dd9e0132cc823ad9402c6c2d0fc3321" {
+		t.Fatalf("unexpected network icon %q", name.NetworkIcon)
+	}
+	if name.NetworkID != "ai" || name.BeeperBridgeType != "ai" {
+		t.Fatalf("unexpected bridge identity: %#v", name)
+	}
+	if name.DefaultPort != 29345 {
+		t.Fatalf("unexpected default port %d", name.DefaultPort)
+	}
+}
+
+func TestNewAIConnectorLoginFlowsRemainDynamic(t *testing.T) {
+	conn := NewAIConnector()
+
+	flows := conn.GetLoginFlows()
+	if len(flows) != 3 || flows[0].ID != ProviderBeeper {
+		t.Fatalf("expected Beeper login flow when managed auth is absent, got %#v", flows)
+	}
+
+	conn.Config.Beeper.UserMXID = "@user:example.com"
+	conn.Config.Beeper.BaseURL = "https://api.beeper.com"
+	conn.Config.Beeper.Token = "secret"
+
+	flows = conn.GetLoginFlows()
+	if len(flows) != 2 {
+		t.Fatalf("expected managed auth to hide Beeper login flow, got %#v", flows)
+	}
+	for _, flow := range flows {
+		if flow.ID == ProviderBeeper {
+			t.Fatalf("expected Beeper flow to be hidden when managed auth is configured: %#v", flows)
+		}
+	}
+}
+
+func TestNewAIConnectorLoadLoginUsesCustomLoader(t *testing.T) {
+	conn := NewAIConnector()
+	conn.Init(nil)
+
+	login := &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: "login-1"}}
+	if err := conn.LoadUserLogin(context.Background(), login); err != nil {
+		t.Fatalf("load login returned error: %v", err)
+	}
+	if _, ok := login.Client.(*agentremote.BrokenLoginClient); !ok {
+		t.Fatalf("expected broken login client for missing API key, got %T", login.Client)
+	}
+}

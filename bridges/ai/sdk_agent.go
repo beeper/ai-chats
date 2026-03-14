@@ -8,6 +8,16 @@ import (
 	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
+func (oc *AIClient) sdkAgentCatalog() bridgesdk.AgentCatalog {
+	if oc == nil {
+		return aiAgentCatalog{}
+	}
+	return aiAgentCatalog{
+		client:    oc,
+		connector: oc.connector,
+	}
+}
+
 func (oc *AIClient) sdkAgentForDefinition(ctx context.Context, agent *agents.AgentDefinition) *bridgesdk.Agent {
 	if agent == nil {
 		return nil

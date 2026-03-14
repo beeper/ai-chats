@@ -17,8 +17,14 @@ import (
 
 func NewAIConnector() *OpenAIConnector {
 	oc := &OpenAIConnector{}
-	oc.ConnectorBase = agentremote.NewConnector(agentremote.ConnectorSpec{
-		Init: func(bridge *bridgev2.Bridge) {
+	oc.sdkConfig = bridgesdk.NewStandardConnectorConfig(bridgesdk.StandardConnectorConfigParams{
+		Name:          "ai",
+		Description:   "A Matrix↔AI bridge built on mautrix-go bridgev2.",
+		ProtocolID:    "ai",
+		AgentCatalog:  aiAgentCatalog{connector: oc},
+		ClientCacheMu: &oc.clientsMu,
+		ClientCache:   &oc.clients,
+		InitConnector: func(bridge *bridgev2.Bridge) {
 			bridgev2.PortalEventBuffer = 0
 			oc.br = bridge
 			oc.db = nil
@@ -28,9 +34,8 @@ func NewAIConnector() *OpenAIConnector {
 					dbutil.ZeroLogger(bridge.Log.With().Str("db_section", "ai_bridge").Logger()),
 				)
 			}
-			agentremote.EnsureClientMap(&oc.clientsMu, &oc.clients)
 		},
-		Start: func(ctx context.Context) error {
+		StartConnector: func(ctx context.Context, _ *bridgev2.Bridge) error {
 			db := oc.bridgeDB()
 			if err := aidb.Upgrade(ctx, db, "ai_bridge", "ai bridge database not initialized"); err != nil {
 				return err
@@ -50,47 +55,33 @@ func NewAIConnector() *OpenAIConnector {
 			oc.initProvisioning()
 			return nil
 		},
-		Stop: func(context.Context) {
-			agentremote.StopClients(&oc.clientsMu, &oc.clients)
+		DisplayName:      "Beeper Cloud",
+		NetworkURL:       "https://www.beeper.com/ai",
+		NetworkIcon:      "mxc://beeper.com/51a668657dd9e0132cc823ad9402c6c2d0fc3321",
+		NetworkID:        "ai",
+		BeeperBridgeType: "ai",
+		DefaultPort:      29345,
+		DefaultCommandPrefix: func() string {
+			return oc.Config.Bridge.CommandPrefix
 		},
-		Name: func() bridgev2.BridgeName {
-			return bridgev2.BridgeName{
-				DisplayName:          "Beeper Cloud",
-				NetworkURL:           "https://www.beeper.com/ai",
-				NetworkIcon:          "mxc://beeper.com/51a668657dd9e0132cc823ad9402c6c2d0fc3321",
-				NetworkID:            "ai",
-				BeeperBridgeType:     "ai",
-				DefaultPort:          29345,
-				DefaultCommandPrefix: oc.Config.Bridge.CommandPrefix,
-			}
-		},
-		Config: func() (example string, data any, upgrader configupgrade.Upgrader) {
-			return exampleNetworkConfig, &oc.Config, configupgrade.SimpleUpgrader(upgradeConfig)
-		},
-		DBMeta: func() database.MetaTypes {
-			return bridgesdk.BuildStandardMetaTypes(
-				func() any { return &PortalMetadata{} },
-				func() any { return &MessageMetadata{} },
-				func() any { return &UserLoginMetadata{} },
-				func() any { return &GhostMetadata{} },
-			)
-		},
-		BridgeInfoVersion: func() (info, capabilities int) {
-			return agentremote.DefaultBridgeInfoVersion()
-		},
+		ExampleConfig:  exampleNetworkConfig,
+		ConfigData:     &oc.Config,
+		ConfigUpgrader: configupgrade.SimpleUpgrader(upgradeConfig),
+		NewPortal:      func() any { return &PortalMetadata{} },
+		NewMessage:     func() any { return &MessageMetadata{} },
+		NewLogin:       func() any { return &UserLoginMetadata{} },
+		NewGhost:       func() any { return &GhostMetadata{} },
 		FillBridgeInfo: func(portal *bridgev2.Portal, content *event.BridgeEventContent) {
 			applyAIBridgeInfo(portal, portalMeta(portal), content)
 		},
 		LoadLogin: func(_ context.Context, login *bridgev2.UserLogin) error {
-			meta := loginMetadata(login)
-			return oc.loadAIUserLogin(login, meta)
+			return oc.loadAIUserLogin(login, loginMetadata(login))
 		},
-		LoginFlows: func() []bridgev2.LoginFlow {
-			return oc.getLoginFlows()
-		},
+		GetLoginFlows: oc.getLoginFlows,
 		CreateLogin: func(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
 			return oc.createLogin(ctx, user, flowID)
 		},
 	})
+	oc.ConnectorBase = bridgesdk.NewConnectorBase(oc.sdkConfig)
 	return oc
 }

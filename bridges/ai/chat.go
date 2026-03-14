@@ -14,6 +14,7 @@ import (
 	"github.com/beeper/agentremote/pkg/agents/tools"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	"github.com/beeper/agentremote/pkg/shared/toolspec"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
@@ -174,6 +175,38 @@ func agentContactIdentifiers(agentID, modelID string, info *ModelInfo) []string 
 	return stringutil.DedupeStrings(identifiers)
 }
 
+func agentMatchesQuery(query string, agent *bridgesdk.Agent) bool {
+	if query == "" || agent == nil {
+		return false
+	}
+	matches := []string{agent.ID, agent.Name, agent.Description}
+	matches = append(matches, agent.Identifiers...)
+	for _, candidate := range matches {
+		if strings.Contains(strings.ToLower(strings.TrimSpace(candidate)), query) {
+			return true
+		}
+	}
+	return false
+}
+
+func catalogAgentID(agent *bridgesdk.Agent) string {
+	if agent == nil {
+		return ""
+	}
+	if agentID, ok := parseAgentFromGhostID(strings.TrimSpace(agent.ID)); ok {
+		return agentID
+	}
+	for _, identifier := range agent.Identifiers {
+		if agentID, ok := parseAgentFromGhostID(strings.TrimSpace(identifier)); ok {
+			return agentID
+		}
+		if normalized := normalizeAgentID(identifier); normalized != "" {
+			return normalized
+		}
+	}
+	return ""
+}
+
 // SearchUsers searches available AI models and agents by name/ID.
 func (oc *AIClient) SearchUsers(ctx context.Context, query string) ([]*bridgev2.ResolveIdentifierResponse, error) {
 	oc.loggerForContext(ctx).Debug().Str("query", query).Msg("Model/agent search requested")
@@ -186,36 +219,23 @@ func (oc *AIClient) SearchUsers(ctx context.Context, query string) ([]*bridgev2.
 		return nil, nil
 	}
 
-	// Load agents
-	store := NewAgentStoreAdapter(oc)
-	agentsMap, err := store.LoadAgents(ctx)
+	agentsList, err := oc.sdkAgentCatalog().ListAgents(ctx, oc.UserLogin)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load agents: %w", err)
 	}
 
-	// Filter agents by query (match ID, name, or description)
 	var results []*bridgev2.ResolveIdentifierResponse
 	seen := make(map[networkid.UserID]struct{})
-	for _, agent := range agentsMap {
-		agentName := oc.resolveAgentDisplayName(ctx, agent)
-		// Check if query matches agent ID, name, or description (case-insensitive)
-		if !strings.Contains(strings.ToLower(agent.ID), query) &&
-			!strings.Contains(strings.ToLower(agentName), query) &&
-			!strings.Contains(strings.ToLower(agent.Description), query) {
+	for _, agent := range agentsList {
+		if !agentMatchesQuery(query, agent) {
 			continue
 		}
-
-		userID := oc.agentUserID(agent.ID)
-		sdkAgent := oc.sdkAgentForDefinition(ctx, agent)
-		if sdkAgent == nil {
+		resp := sdkResolveResponseForAgent(agent)
+		if resp == nil {
 			continue
 		}
-
-		results = append(results, &bridgev2.ResolveIdentifierResponse{
-			UserID:   userID,
-			UserInfo: sdkAgent.UserInfo(),
-		})
-		seen[userID] = struct{}{}
+		results = append(results, resp)
+		seen[resp.UserID] = struct{}{}
 	}
 
 	// Filter models by query (match ID, display name, aliases, provider URIs)
@@ -255,28 +275,17 @@ func (oc *AIClient) GetContactList(ctx context.Context) ([]*bridgev2.ResolveIden
 		return nil, mautrix.MForbidden.WithMessage("You must be logged in to list contacts")
 	}
 
-	// Load agents
-	store := NewAgentStoreAdapter(oc)
-	agentsMap, err := store.LoadAgents(ctx)
+	agentsList, err := oc.sdkAgentCatalog().ListAgents(ctx, oc.UserLogin)
 	if err != nil {
 		oc.loggerForContext(ctx).Error().Err(err).Msg("Failed to load agents")
 		return nil, fmt.Errorf("failed to load agents: %w", err)
 	}
 
-	// Create a contact for each agent
-	contacts := make([]*bridgev2.ResolveIdentifierResponse, 0, len(agentsMap))
-
-	for _, agent := range agentsMap {
-		userID := oc.agentUserID(agent.ID)
-		sdkAgent := oc.sdkAgentForDefinition(ctx, agent)
-		if sdkAgent == nil {
-			continue
+	contacts := make([]*bridgev2.ResolveIdentifierResponse, 0, len(agentsList))
+	for _, agent := range agentsList {
+		if resp := sdkResolveResponseForAgent(agent); resp != nil {
+			contacts = append(contacts, resp)
 		}
-
-		contacts = append(contacts, &bridgev2.ResolveIdentifierResponse{
-			UserID:   userID,
-			UserInfo: sdkAgent.UserInfo(),
-		})
 	}
 
 	// Add contacts for available models
@@ -312,8 +321,6 @@ func (oc *AIClient) ResolveIdentifier(ctx context.Context, identifier string, cr
 		return nil, bridgev2.WrapRespErr(errors.New("identifier is required"), mautrix.MInvalidParam)
 	}
 
-	store := NewAgentStoreAdapter(oc)
-
 	// Check if identifier is a model ghost ID (model-{id}).
 	if modelID := parseModelFromGhostID(id); modelID != "" {
 		resolved, valid, err := oc.resolveModelID(ctx, modelID)
@@ -333,19 +340,13 @@ func (oc *AIClient) ResolveIdentifier(ctx context.Context, identifier string, cr
 		return resp, nil
 	}
 
-	// Check if identifier is an agent ghost ID (agent-{id})
-	if agentID, ok := parseAgentFromGhostID(id); ok {
-		agent, err := store.GetAgentByID(ctx, agentID)
-		if err != nil || agent == nil {
-			return nil, bridgev2.WrapRespErr(fmt.Errorf("agent '%s' not found", agentID), mautrix.MNotFound)
+	if catalogAgent, err := oc.sdkAgentCatalog().ResolveAgent(ctx, oc.UserLogin, id); err == nil && catalogAgent != nil {
+		agentID := catalogAgentID(catalogAgent)
+		agent, resolveErr := NewAgentStoreAdapter(oc).GetAgentByID(ctx, agentID)
+		if resolveErr == nil && agent != nil {
+			return oc.resolveAgentIdentifier(ctx, agent, "", createChat)
 		}
-		return oc.resolveAgentIdentifier(ctx, agent, "", createChat)
-	}
-
-	// Try to find as agent first (bare agent ID like "beeper", "boss")
-	agent, err := store.GetAgentByID(ctx, id)
-	if err == nil && agent != nil {
-		return oc.resolveAgentIdentifier(ctx, agent, "", createChat)
+		return nil, bridgev2.WrapRespErr(fmt.Errorf("agent '%s' not found", agentID), mautrix.MNotFound)
 	}
 
 	// Allow explicit model aliases that resolve through configured catalog/aliases.

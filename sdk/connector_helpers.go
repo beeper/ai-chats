@@ -10,6 +10,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote"
 )
@@ -92,6 +93,7 @@ type StandardConnectorConfigParams struct {
 	StopConnector        func(ctx context.Context, br *bridgev2.Bridge)
 	DisplayName          string
 	NetworkURL           string
+	NetworkIcon          string
 	NetworkID            string
 	BeeperBridgeType     string
 	DefaultPort          uint16
@@ -107,10 +109,12 @@ type StandardConnectorConfigParams struct {
 	FillBridgeInfo       func(portal *bridgev2.Portal, content *event.BridgeEventContent)
 	AcceptLogin          func(login *bridgev2.UserLogin) (bool, string)
 	MakeBrokenLogin      func(login *bridgev2.UserLogin, reason string) *agentremote.BrokenLoginClient
+	LoadLogin            func(ctx context.Context, login *bridgev2.UserLogin) error
 	CreateClient         func(login *bridgev2.UserLogin) (bridgev2.NetworkAPI, error)
 	UpdateClient         func(client bridgev2.NetworkAPI, login *bridgev2.UserLogin)
 	AfterLoadClient      func(client bridgev2.NetworkAPI)
 	LoginFlows           []bridgev2.LoginFlow
+	GetLoginFlows        func() []bridgev2.LoginFlow
 	CreateLogin          func(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error)
 }
 
@@ -133,6 +137,7 @@ func NewStandardConnectorConfig(p StandardConnectorConfigParams) *Config {
 			return bridgev2.BridgeName{
 				DisplayName:          p.DisplayName,
 				NetworkURL:           p.NetworkURL,
+				NetworkIcon:          id.ContentURIString(p.NetworkIcon),
 				NetworkID:            p.NetworkID,
 				BeeperBridgeType:     p.BeeperBridgeType,
 				DefaultPort:          p.DefaultPort,
@@ -149,10 +154,12 @@ func NewStandardConnectorConfig(p StandardConnectorConfigParams) *Config {
 		FillBridgeInfo:      p.FillBridgeInfo,
 		AcceptLogin:         p.AcceptLogin,
 		MakeBrokenLogin:     p.MakeBrokenLogin,
+		LoadLogin:           p.LoadLogin,
 		CreateClient:        p.CreateClient,
 		UpdateClient:        p.UpdateClient,
 		AfterLoadClient:     p.AfterLoadClient,
 		LoginFlows:          p.LoginFlows,
+		GetLoginFlows:       p.GetLoginFlows,
 		CreateLogin:         p.CreateLogin,
 	}
 }

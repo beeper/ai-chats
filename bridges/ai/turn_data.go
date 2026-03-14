@@ -16,81 +16,11 @@ func canonicalTurnData(meta *MessageMetadata) (sdk.TurnData, bool) {
 }
 
 func promptMessagesFromTurnData(td sdk.TurnData) []PromptMessage {
-	return bridgePromptMessagesFromSDK(sdk.PromptMessagesFromTurnData(td))
+	return sdk.PromptMessagesFromTurnData(td)
 }
 
 func turnDataFromUserPromptMessages(messages []PromptMessage) (sdk.TurnData, bool) {
-	return sdk.TurnDataFromUserPromptMessages(sdkPromptMessagesFromBridge(messages))
-}
-
-func bridgePromptMessagesFromSDK(messages []sdk.PromptMessage) []PromptMessage {
-	if len(messages) == 0 {
-		return nil
-	}
-	out := make([]PromptMessage, 0, len(messages))
-	for _, msg := range messages {
-		next := PromptMessage{
-			Role:       PromptRole(msg.Role),
-			ToolCallID: msg.ToolCallID,
-			ToolName:   msg.ToolName,
-			IsError:    msg.IsError,
-		}
-		next.Blocks = make([]PromptBlock, 0, len(msg.Blocks))
-		for _, block := range msg.Blocks {
-			next.Blocks = append(next.Blocks, PromptBlock{
-				Type:              PromptBlockType(block.Type),
-				Text:              block.Text,
-				ImageURL:          block.ImageURL,
-				MimeType:          block.MimeType,
-				FileURL:           block.FileURL,
-				Filename:          block.Filename,
-				ToolCallID:        block.ToolCallID,
-				ToolName:          block.ToolName,
-				ToolCallArguments: block.ToolCallArguments,
-			})
-		}
-		out = append(out, next)
-	}
-	return out
-}
-
-func sdkPromptMessagesFromBridge(messages []PromptMessage) []sdk.PromptMessage {
-	if len(messages) == 0 {
-		return nil
-	}
-	out := make([]sdk.PromptMessage, 0, len(messages))
-	for _, msg := range messages {
-		next := sdk.PromptMessage{
-			Role:       sdk.PromptRole(msg.Role),
-			ToolCallID: msg.ToolCallID,
-			ToolName:   msg.ToolName,
-			IsError:    msg.IsError,
-		}
-		next.Blocks = make([]sdk.PromptBlock, 0, len(msg.Blocks))
-		for _, block := range msg.Blocks {
-			imageURL := strings.TrimSpace(block.ImageURL)
-			if imageURL == "" && strings.TrimSpace(block.ImageB64) != "" {
-				mimeType := block.MimeType
-				if mimeType == "" {
-					mimeType = "image/jpeg"
-				}
-				imageURL = buildDataURL(mimeType, block.ImageB64)
-			}
-			next.Blocks = append(next.Blocks, sdk.PromptBlock{
-				Type:              sdk.PromptBlockType(block.Type),
-				Text:              block.Text,
-				ImageURL:          imageURL,
-				MimeType:          block.MimeType,
-				FileURL:           block.FileURL,
-				Filename:          block.Filename,
-				ToolCallID:        block.ToolCallID,
-				ToolName:          block.ToolName,
-				ToolCallArguments: block.ToolCallArguments,
-			})
-		}
-		out = append(out, next)
-	}
-	return out
+	return sdk.TurnDataFromUserPromptMessages(messages)
 }
 
 func turnDataFromStreamingState(state *streamingState, uiMessage map[string]any) sdk.TurnData {

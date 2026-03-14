@@ -96,6 +96,10 @@ func (l toolLifecycle) finalize(ctx context.Context, tool *activeToolCall, opts 
 	recordToolCallResult(l.state, tool, opts.status, opts.resultStatus, opts.errorText, outputMap, opts.input)
 }
 
+func (l toolLifecycle) requestApproval(ctx context.Context, approvalID, toolCallID string) {
+	l.writer().Approvals().EmitRequest(ctx, approvalID, toolCallID)
+}
+
 func (l toolLifecycle) respondApproval(ctx context.Context, approvalID, toolCallID string, approved bool, reason string) {
 	l.writer().Approvals().Respond(ctx, approvalID, toolCallID, approved, reason)
 	if !approved {

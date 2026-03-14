@@ -282,9 +282,10 @@ type Config struct {
 	RoomFeatures *RoomFeatures // nil = AI agent defaults
 
 	// Login — use bridgev2 types directly.
-	LoginFlows  []bridgev2.LoginFlow                                                                         // nil = single auto-login
-	CreateLogin func(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) // nil = auto-login
-	AcceptLogin func(login *bridgev2.UserLogin) (bool, string)
+	LoginFlows    []bridgev2.LoginFlow // nil = single auto-login
+	GetLoginFlows func() []bridgev2.LoginFlow
+	CreateLogin   func(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) // nil = auto-login
+	AcceptLogin   func(login *bridgev2.UserLogin) (bool, string)
 
 	// Connector lifecycle and overrides.
 	InitConnector       func(br *bridgev2.Bridge)
@@ -295,6 +296,7 @@ type Config struct {
 	BridgeInfoVersion   func() (info, capabilities int)
 	FillBridgeInfo      func(portal *bridgev2.Portal, content *event.BridgeEventContent)
 	MakeBrokenLogin     func(login *bridgev2.UserLogin, reason string) *agentremote.BrokenLoginClient
+	LoadLogin           func(ctx context.Context, login *bridgev2.UserLogin) error
 	CreateClient        func(login *bridgev2.UserLogin) (bridgev2.NetworkAPI, error)
 	UpdateClient        func(client bridgev2.NetworkAPI, login *bridgev2.UserLogin)
 	AfterLoadClient     func(client bridgev2.NetworkAPI)

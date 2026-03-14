@@ -7,65 +7,32 @@ import (
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/responses"
+
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
-// PromptRole is the canonical provider-agnostic role used by PromptContext.
-type PromptRole string
+type PromptRole = bridgesdk.PromptRole
 
 const (
-	PromptRoleUser       PromptRole = "user"
-	PromptRoleAssistant  PromptRole = "assistant"
-	PromptRoleToolResult PromptRole = "tool_result"
+	PromptRoleUser       PromptRole = bridgesdk.PromptRoleUser
+	PromptRoleAssistant  PromptRole = bridgesdk.PromptRoleAssistant
+	PromptRoleToolResult PromptRole = bridgesdk.PromptRoleToolResult
 )
 
-// PromptBlockType identifies the type of content in a prompt message.
-//
-// Audio/video remain explicit block types for media-understanding call sites.
-type PromptBlockType string
+type PromptBlockType = bridgesdk.PromptBlockType
 
 const (
-	PromptBlockText     PromptBlockType = "text"
-	PromptBlockImage    PromptBlockType = "image"
-	PromptBlockFile     PromptBlockType = "file"
-	PromptBlockThinking PromptBlockType = "thinking"
-	PromptBlockToolCall PromptBlockType = "tool_call"
-	PromptBlockAudio    PromptBlockType = "audio"
-	PromptBlockVideo    PromptBlockType = "video"
+	PromptBlockText     PromptBlockType = bridgesdk.PromptBlockText
+	PromptBlockImage    PromptBlockType = bridgesdk.PromptBlockImage
+	PromptBlockFile     PromptBlockType = bridgesdk.PromptBlockFile
+	PromptBlockThinking PromptBlockType = bridgesdk.PromptBlockThinking
+	PromptBlockToolCall PromptBlockType = bridgesdk.PromptBlockToolCall
+	PromptBlockAudio    PromptBlockType = bridgesdk.PromptBlockAudio
+	PromptBlockVideo    PromptBlockType = bridgesdk.PromptBlockVideo
 )
 
-// PromptBlock is the canonical provider-agnostic content unit.
-type PromptBlock struct {
-	Type PromptBlockType
-
-	Text string
-
-	ImageURL string
-	ImageB64 string
-	MimeType string
-
-	FileURL  string
-	FileB64  string
-	Filename string
-
-	ToolCallID        string
-	ToolName          string
-	ToolCallArguments string
-
-	AudioB64    string
-	AudioFormat string
-
-	VideoURL string
-	VideoB64 string
-}
-
-// PromptMessage is the canonical provider-agnostic prompt message.
-type PromptMessage struct {
-	Role       PromptRole
-	Blocks     []PromptBlock
-	ToolCallID string
-	ToolName   string
-	IsError    bool
-}
+type PromptBlock = bridgesdk.PromptBlock
+type PromptMessage = bridgesdk.PromptMessage
 
 // PromptContext is the canonical provider-facing prompt representation.
 type PromptContext struct {
@@ -73,20 +40,6 @@ type PromptContext struct {
 	DeveloperPrompt string
 	Messages        []PromptMessage
 	Tools           []ToolDefinition
-}
-
-// Text returns the text content of a canonical prompt message.
-func (m PromptMessage) Text() string {
-	var texts []string
-	for _, block := range m.Blocks {
-		switch block.Type {
-		case PromptBlockText, PromptBlockThinking:
-			if strings.TrimSpace(block.Text) != "" {
-				texts = append(texts, block.Text)
-			}
-		}
-	}
-	return strings.Join(texts, "\n")
 }
 
 func UserPromptContext(blocks ...PromptBlock) PromptContext {

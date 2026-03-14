@@ -35,9 +35,10 @@ var (
 // OpenAIConnector wires mautrix bridgev2 to the OpenAI chat APIs.
 type OpenAIConnector struct {
 	*agentremote.ConnectorBase
-	br     *bridgev2.Bridge
-	Config Config
-	db     *dbutil.Database
+	br        *bridgev2.Bridge
+	Config    Config
+	db        *dbutil.Database
+	sdkConfig *bridgesdk.Config
 
 	clientsMu sync.Mutex
 	clients   map[networkid.UserLoginID]bridgev2.NetworkAPI

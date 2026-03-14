@@ -52,6 +52,7 @@ func (a *chatCompletionsTurnAdapter) RunRound(
 		params.Temperature = openai.Float(temp)
 	}
 	streamUI := oc.writer(state, portal)
+	lifecycle := oc.toolLifecycle(portal, state)
 	params.Tools = oc.selectedChatStreamingTools(ctx, meta)
 
 	stream := oc.api.Chat.Completions.NewStreaming(ctx, params)
@@ -144,7 +145,7 @@ func (a *chatCompletionsTurnAdapter) RunRound(
 					}
 					if toolDelta.Function.Arguments != "" {
 						tool.input.WriteString(toolDelta.Function.Arguments)
-						streamUI.Tools().InputDelta(ctx, tool.callID, tool.toolName, toolDelta.Function.Arguments, false)
+						lifecycle.appendInputDelta(ctx, tool, tool.toolName, toolDelta.Function.Arguments, false)
 					}
 				}
 
