@@ -160,3 +160,18 @@ func TestExecuteCommand_StatusDeepAliasUsesLexicalStatusOutput(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatStatusLines_UnlimitedCacheOutput(t *testing.T) {
+	lines := formatStatusLines(&MemorySearchStatus{
+		Cache: &MemorySearchCacheStatus{
+			Enabled:    true,
+			Entries:    4,
+			MaxEntries: UnlimitedCacheEntries,
+		},
+	})
+
+	output := strings.Join(lines, "\n")
+	if !strings.Contains(output, "Cache enabled: true (entries=4 max=unlimited)") {
+		t.Fatalf("expected unlimited cache output, got:\n%s", output)
+	}
+}

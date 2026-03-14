@@ -470,10 +470,17 @@ func formatStatusLines(status *MemorySearchStatus) []string {
 		}
 	}
 	if status.Cache != nil {
-		lines = append(lines, fmt.Sprintf("Cache enabled: %t (entries=%d max=%d)", status.Cache.Enabled, status.Cache.Entries, status.Cache.MaxEntries))
+		lines = append(lines, fmt.Sprintf("Cache enabled: %t (entries=%d max=%s)", status.Cache.Enabled, status.Cache.Entries, formatCacheMaxEntries(status.Cache.MaxEntries)))
 	}
 	if status.Fallback != nil {
 		lines = append(lines, fmt.Sprintf("Fallback: %s (%s)", status.Fallback.From, status.Fallback.Reason))
 	}
 	return lines
+}
+
+func formatCacheMaxEntries(maxEntries int) string {
+	if maxEntries == UnlimitedCacheEntries {
+		return "unlimited"
+	}
+	return fmt.Sprintf("%d", maxEntries)
 }

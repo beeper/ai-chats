@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/openai/openai-go/v3/responses"
+	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/beeper/agentremote"
@@ -34,6 +35,10 @@ func (oc *AIClient) upsertActiveToolFromDescriptor(
 	}
 	tool, ok := activeTools[desc.itemID]
 	created := !ok || tool == nil
+	if ok && tool == nil {
+		// A nil map entry is unexpected here; recreate it so streaming can continue.
+		zerolog.Ctx(ctx).Warn().Str("item_id", desc.itemID).Msg("active tool map contained nil entry")
+	}
 	if !ok || tool == nil {
 		tool = &activeToolCall{
 			callID:      SanitizeToolCallID(desc.callID, "strict"),

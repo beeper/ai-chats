@@ -566,8 +566,9 @@ func (h *runtimeIntegrationHost) IsToolEnabled(meta any, toolName string) bool {
 }
 
 func (h *runtimeIntegrationHost) AllToolDefinitions() []integrationruntime.ToolDefinition {
-	out := make([]integrationruntime.ToolDefinition, 0, len(BuiltinTools()))
-	out = append(out, BuiltinTools()...)
+	defs := BuiltinTools()
+	out := make([]integrationruntime.ToolDefinition, 0, len(defs))
+	out = append(out, defs...)
 	return out
 }
 
@@ -892,7 +893,13 @@ func (h *runtimeIntegrationHost) ExecuteBuiltinTool(ctx context.Context, scope i
 		return "", fmt.Errorf("missing client")
 	}
 	portal, _ := scope.Portal.(*bridgev2.Portal)
-	return h.client.executeBuiltinTool(ctx, portal, name, rawArgsJSON)
+	meta, _ := scope.Meta.(*PortalMetadata)
+	toolCtx := WithBridgeToolContext(ctx, &BridgeToolContext{
+		Client: h.client,
+		Portal: portal,
+		Meta:   meta,
+	})
+	return h.client.executeBuiltinTool(toolCtx, portal, name, rawArgsJSON)
 }
 
 func (h *runtimeIntegrationHost) ResolveWorkspaceDir() string {

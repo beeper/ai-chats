@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"context"
 	"testing"
 
 	"github.com/openai/openai-go/v3/responses"
@@ -50,5 +51,31 @@ func TestDeriveToolDescriptorForOutputItem_FunctionCallParsesArgumentsJSON(t *te
 	}
 	if got := input["count"]; got != float64(10) {
 		t.Fatalf("expected count 10, got %#v", got)
+	}
+}
+
+func TestUpsertActiveToolFromDescriptor_RecreatesNilMapEntry(t *testing.T) {
+	oc := &AIClient{}
+	state := newStreamingState(context.Background(), nil, "", "", "")
+	activeTools := map[string]*activeToolCall{"item_123": nil}
+
+	tool, created := oc.upsertActiveToolFromDescriptor(context.Background(), nil, state, activeTools, responseToolDescriptor{
+		ok:       true,
+		itemID:   "item_123",
+		callID:   "call_123",
+		toolName: "web_search",
+		toolType: ToolTypeFunction,
+	})
+	if !created {
+		t.Fatalf("expected nil map entry to be recreated")
+	}
+	if tool == nil {
+		t.Fatal("expected tool to be recreated")
+	}
+	if activeTools["item_123"] == nil {
+		t.Fatal("expected recreated tool to be stored back into the map")
+	}
+	if tool.callID == "" || tool.toolName != "web_search" {
+		t.Fatalf("expected recreated tool to be populated, got %#v", tool)
 	}
 }

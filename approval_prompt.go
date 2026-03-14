@@ -165,18 +165,18 @@ func (o ApprovalOption) allKeys() []string {
 func ApprovalPromptOptions(allowAlways bool) []ApprovalOption {
 	options := []ApprovalOption{
 		{
-			ID:       "allow_once",
+			ID:       ApprovalReasonAllowOnce,
 			Key:      ApprovalReactionKeyAllowOnce,
 			Label:    "Approve once",
 			Approved: true,
-			Reason:   "allow_once",
+			Reason:   ApprovalReasonAllowOnce,
 		},
 		{
-			ID:       "deny",
+			ID:       ApprovalReasonDeny,
 			Key:      ApprovalReactionKeyDeny,
 			Label:    "Deny",
 			Approved: false,
-			Reason:   "deny",
+			Reason:   ApprovalReasonDeny,
 		},
 	}
 	if !allowAlways {
@@ -185,12 +185,12 @@ func ApprovalPromptOptions(allowAlways bool) []ApprovalOption {
 	return []ApprovalOption{
 		options[0],
 		{
-			ID:       "allow_always",
+			ID:       ApprovalReasonAllowAlways,
 			Key:      ApprovalReactionKeyAllowAlways,
 			Label:    "Always allow",
 			Approved: true,
 			Always:   true,
-			Reason:   "allow_always",
+			Reason:   ApprovalReasonAllowAlways,
 		},
 		options[1],
 	}

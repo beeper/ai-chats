@@ -78,7 +78,7 @@ type HybridConfig struct {
 
 type CacheConfig struct {
 	Enabled    bool
-	MaxEntries int
+	MaxEntries int // -1 means unlimited; 0 is normalized to -1 for backward compatibility.
 }
 
 type ExperimentalConfig struct {

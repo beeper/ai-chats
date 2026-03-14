@@ -35,12 +35,21 @@ func TestPromptContextToResponsesInput_MultimodalUser(t *testing.T) {
 	for _, part := range parts {
 		if part.OfInputText != nil {
 			foundText = true
+			if part.OfInputText.Text != "hello" {
+				t.Fatalf("expected text part to preserve content, got %#v", part.OfInputText.Text)
+			}
 		}
 		if part.OfInputImage != nil {
 			foundImage = true
+			if part.OfInputImage.ImageURL.Value != "data:image/png;base64,aGVsbG8=" {
+				t.Fatalf("expected image part data URL to preserve content, got %#v", part.OfInputImage.ImageURL.Value)
+			}
 		}
 		if part.OfInputFile != nil {
 			foundFile = true
+			if part.OfInputFile.Filename.Value != "document.pdf" {
+				t.Fatalf("expected file part filename document.pdf, got %#v", part.OfInputFile.Filename.Value)
+			}
 		}
 	}
 

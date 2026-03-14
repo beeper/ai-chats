@@ -26,6 +26,7 @@ func runStreamingStep[T any](
 	handleErr func(error) (cle *ContextLengthError, err error),
 ) (bool, *ContextLengthError, error) {
 	oc.uiEmitter(state).EmitUIStepStart(ctx, portal)
+	defer oc.uiEmitter(state).EmitUIStepFinish(ctx, portal)
 	for stream.Next() {
 		current := stream.Current()
 		if shouldMarkSuccess == nil || shouldMarkSuccess(current) {
@@ -42,6 +43,5 @@ func runStreamingStep[T any](
 			return false, cle, handledErr
 		}
 	}
-	oc.uiEmitter(state).EmitUIStepFinish(ctx, portal)
 	return false, nil, nil
 }

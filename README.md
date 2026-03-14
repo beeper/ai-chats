@@ -108,7 +108,7 @@ func main() {
 			ID:           "openai-simple-agent",
 			Name:         "OpenAI Simple",
 			Description:  "Minimal bridge example using openai-go",
-			ModelKey:     "openai/gpt-5-mini",
+			ModelKey:     "openai/gpt-4o-mini",
 			Capabilities: sdk.BaseAgentCapabilities(),
 		},
 		OnConnect: func(ctx context.Context, login *sdk.LoginInfo) (any, error) {
@@ -118,7 +118,7 @@ func main() {
 			client := session.(*openai.Client)
 
 			resp, err := client.Chat.Completions.New(turn.Context(), openai.ChatCompletionNewParams{
-				Model: "gpt-5-mini",
+				Model: "gpt-4o-mini",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					openai.SystemMessage("You are a helpful assistant replying through Beeper."),
 					openai.UserMessage(msg.Text),

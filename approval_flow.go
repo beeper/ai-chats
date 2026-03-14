@@ -165,6 +165,16 @@ func (f *ApprovalFlow[D]) ensureReaperRunning() {
 	}
 }
 
+func (f *ApprovalFlow[D]) wakeReaper() {
+	if f == nil {
+		return
+	}
+	select {
+	case f.reaperNotify <- struct{}{}:
+	default:
+	}
+}
+
 const reaperMaxInterval = 30 * time.Second
 
 func (f *ApprovalFlow[D]) runReaper() {
@@ -286,6 +296,7 @@ func (f *ApprovalFlow[D]) Register(approvalID string, ttl time.Duration, data D)
 		done:      make(chan struct{}),
 	}
 	f.pending[approvalID] = p
+	f.wakeReaper()
 	return p, true
 }
 
@@ -427,12 +438,22 @@ func (f *ApprovalFlow[D]) Wait(ctx context.Context, approvalID string) (Approval
 	}
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
+	clearPending := func() {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if p := f.pending[approvalID]; p != nil {
+			p.closeDone()
+			delete(f.pending, approvalID)
+		}
+	}
 	select {
 	case d := <-p.ch:
 		return d, true
 	case <-timer.C:
+		clearPending()
 		return zero, false
 	case <-ctx.Done():
+		clearPending()
 		return zero, false
 	}
 }
@@ -680,7 +701,8 @@ func (f *ApprovalFlow[D]) HandleReaction(ctx context.Context, msg *bridgev2.Matr
 	if f == nil || msg == nil || msg.Event == nil || msg.Portal == nil {
 		return false
 	}
-	match := f.matchReaction(targetEventID, msg.Event.Sender, emoji, time.Now())
+	now := time.Now()
+	match := f.matchReaction(targetEventID, msg.Event.Sender, emoji, now)
 	if !match.KnownPrompt {
 		return false
 	}
@@ -696,6 +718,14 @@ func (f *ApprovalFlow[D]) HandleReaction(ctx context.Context, msg *bridgev2.Matr
 	p := f.pending[approvalID]
 	f.mu.Unlock()
 
+	if p != nil && !p.ExpiresAt.IsZero() && now.After(p.ExpiresAt) {
+		f.finishTimedOutApproval(approvalID)
+		if f.sendNotice != nil {
+			f.sendNotice(ctx, msg.Portal, ApprovalErrorToastText(ErrApprovalExpired))
+		}
+		f.redactSingleReaction(msg)
+		return true
+	}
 	if p != nil && f.roomIDFromData != nil {
 		dataRoomID := f.roomIDFromData(p.Data)
 		if dataRoomID != "" && dataRoomID != msg.Portal.MXID {
@@ -839,10 +869,7 @@ func (f *ApprovalFlow[D]) schedulePromptTimeout(approvalID string, expiresAt tim
 		return
 	}
 	// Wake the reaper so it picks up the new expiry promptly.
-	select {
-	case f.reaperNotify <- struct{}{}:
-	default:
-	}
+	f.wakeReaper()
 }
 
 func (f *ApprovalFlow[D]) finishTimedOutApproval(approvalID string) {

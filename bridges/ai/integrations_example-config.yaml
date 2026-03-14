@@ -201,7 +201,7 @@ tools:
       candidate_multiplier: 4
   cache:
     enabled: true
-    max_entries: 0
+    max_entries: -1 # Unlimited when cache.enabled is true; experimental.session_memory does not change cache size semantics.
   experimental:
     session_memory: false
 

@@ -10,5 +10,6 @@ const (
 	DefaultMinScore                = 0.35
 	DefaultHybridCandidateMultiple = 4
 	DefaultCacheEnabled            = true
+	UnlimitedCacheEntries          = -1
 	DefaultMemorySource            = "memory"
 )

@@ -62,7 +62,7 @@ func MergeSearchConfig(defaults *agents.MemorySearchConfig, overrides *agents.Me
 
 	cache := CacheConfig{
 		Enabled:    pickBool(o.cacheEnabled, d.cacheEnabled, DefaultCacheEnabled),
-		MaxEntries: pickInt(o.cacheMaxEntries, d.cacheMaxEntries, 0),
+		MaxEntries: normalizeCacheMaxEntries(pickInt(o.cacheMaxEntries, d.cacheMaxEntries, UnlimitedCacheEntries)),
 	}
 
 	query.MinScore = min(max(query.MinScore, 0.0), 1.0)
@@ -148,6 +148,13 @@ func pickFloat(override, fallback, defaultVal float64) float64 {
 		return fallback
 	}
 	return defaultVal
+}
+
+func normalizeCacheMaxEntries(value int) int {
+	if value <= 0 {
+		return UnlimitedCacheEntries
+	}
+	return value
 }
 
 type searchFields struct {

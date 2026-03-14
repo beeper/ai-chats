@@ -134,7 +134,7 @@ func (oc *AIClient) ensureActiveToolCall(
 		}
 		activeTools[itemID] = tool
 
-		if meta != nil && !state.hasInitialMessageTarget() && !state.suppressSend {
+		if meta != nil && state != nil && !state.hasInitialMessageTarget() && !state.suppressSend {
 			oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
 		}
 	}

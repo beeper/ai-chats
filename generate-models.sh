@@ -11,7 +11,7 @@ set -e
 # Parse arguments
 OPENROUTER_TOKEN=""
 OUTPUT_FILE="bridges/ai/beeper_models_generated.go"
-JSON_FILE="pkg/connector/beeper_models.json"
+JSON_FILE="pkg/ai/beeper_models.json"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -29,7 +29,7 @@ while [[ $# -gt 0 ]]; do
       echo "Options:"
       echo "  --openrouter-token=TOKEN  OpenRouter API token (required)"
       echo "  --output=FILE             Output file path (default: bridges/ai/beeper_models_generated.go)"
-      echo "  --json=FILE               Output JSON path (default: pkg/connector/beeper_models.json)"
+      echo "  --json=FILE               Output JSON path (default: pkg/ai/beeper_models.json)"
       exit 0
       ;;
     --json=*)

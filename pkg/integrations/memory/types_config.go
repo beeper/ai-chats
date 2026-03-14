@@ -23,5 +23,6 @@ const (
 	DefaultMinScore                = memorycore.DefaultMinScore
 	DefaultHybridCandidateMultiple = memorycore.DefaultHybridCandidateMultiple
 	DefaultCacheEnabled            = memorycore.DefaultCacheEnabled
+	UnlimitedCacheEntries          = memorycore.UnlimitedCacheEntries
 	DefaultMemorySource            = memorycore.DefaultMemorySource
 )

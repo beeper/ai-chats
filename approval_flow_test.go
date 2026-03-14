@@ -15,6 +15,20 @@ import (
 
 type testApprovalFlowData struct{}
 
+func waitForCondition(t *testing.T, timeout time.Duration, cond func() bool, message string) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !cond() {
+		t.Fatalf("%s", message)
+	}
+}
+
 func TestApprovalFlow_FinishResolvedQueuesEditAndPlaceholderCleanup(t *testing.T) {
 	owner := id.UserID("@owner:example.com")
 	roomID := id.RoomID("!room:example.com")
@@ -302,7 +316,9 @@ func TestApprovalFlow_ResolveExternalNotifiesWaiters(t *testing.T) {
 		})
 	}()
 
-	decision, ok := flow.Wait(context.Background(), "approval-1")
+	waitCtx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	decision, ok := flow.Wait(waitCtx, "approval-1")
 	if !ok {
 		t.Fatalf("expected ResolveExternal to notify waiter")
 	}
@@ -382,7 +398,9 @@ func TestApprovalFlow_SchedulePromptTimeoutIgnoresReplacedPrompt(t *testing.T) {
 	}
 	flow.schedulePromptTimeout("approval-1", firstExpiresAt)
 
-	time.Sleep(10 * time.Millisecond)
+	waitForCondition(t, 50*time.Millisecond, func() bool {
+		return flow.Get("approval-1") != nil
+	}, "expected pending approval to remain registered before replacement")
 
 	secondExpiresAt := time.Now().Add(160 * time.Millisecond)
 	flow.mu.Lock()
@@ -400,25 +418,15 @@ func TestApprovalFlow_SchedulePromptTimeoutIgnoresReplacedPrompt(t *testing.T) {
 	}
 	flow.schedulePromptTimeout("approval-1", secondExpiresAt)
 
-	time.Sleep(70 * time.Millisecond)
+	waitForCondition(t, 100*time.Millisecond, func() bool {
+		prompt, ok := flow.promptRegistration("approval-1")
+		return flow.Get("approval-1") != nil && ok && prompt.PromptEventID == id.EventID("$prompt-2")
+	}, "expected replacement prompt to remain active after stale timeout window")
 
-	if flow.Get("approval-1") == nil {
-		t.Fatalf("expected stale timeout to leave pending approval intact")
-	}
-	if prompt, ok := flow.promptRegistration("approval-1"); !ok {
-		t.Fatalf("expected replacement prompt to remain registered")
-	} else if prompt.PromptEventID != id.EventID("$prompt-2") {
-		t.Fatalf("expected replacement prompt to remain active, got %q", prompt.PromptEventID)
-	}
-
-	time.Sleep(140 * time.Millisecond)
-
-	if flow.Get("approval-1") != nil {
-		t.Fatalf("expected active prompt timeout to finalize pending approval")
-	}
-	if _, ok := flow.promptRegistration("approval-1"); ok {
-		t.Fatalf("expected active prompt timeout to remove prompt registration")
-	}
+	waitForCondition(t, 300*time.Millisecond, func() bool {
+		_, ok := flow.promptRegistration("approval-1")
+		return flow.Get("approval-1") == nil && !ok
+	}, "expected active prompt timeout to finalize pending approval and remove prompt registration")
 }
 
 func TestApprovalFlow_SendPromptSendFailureCleansUpRegistration(t *testing.T) {

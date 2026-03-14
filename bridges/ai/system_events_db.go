@@ -149,7 +149,7 @@ func loadSystemEventsSnapshot(ctx context.Context, scope *systemEventsDBScope) (
 		return nil, nil
 	}
 	rows, err := scope.db.Query(ctx, `
-		SELECT session_key, event_index, text, ts, last_text
+		SELECT session_key, text, ts, last_text
 		FROM ai_system_events
 		WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3
 		ORDER BY session_key, event_index
@@ -168,7 +168,7 @@ func loadSystemEventsSnapshot(ctx context.Context, scope *systemEventsDBScope) (
 			ts         int64
 			lastText   string
 		)
-		if err := rows.Scan(&sessionKey, new(int), &text, &ts, &lastText); err != nil {
+		if err := rows.Scan(&sessionKey, &text, &ts, &lastText); err != nil {
 			return nil, err
 		}
 		if current == nil || current.SessionKey != sessionKey {
