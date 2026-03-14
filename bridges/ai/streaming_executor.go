@@ -71,7 +71,7 @@ func (oc *AIClient) runStreamingTurn(
 		}
 	}
 
-	oc.emitUIStart(ctx, portal, state, meta)
+	oc.uiEmitter(state).EmitUIStart(ctx, portal, oc.buildUIMessageMetadata(state, meta, false))
 	for round := 0; ; round++ {
 		continueLoop, cle, err := adapter.RunRound(ctx, evt, round)
 		if cle != nil || err != nil {

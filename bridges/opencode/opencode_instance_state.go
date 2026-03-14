@@ -198,10 +198,6 @@ func (inst *openCodeInstance) partCallStatus(sessionID, partID string) string {
 
 // ---------- part-state setters ----------
 
-func (inst *openCodeInstance) setPartCallSent(sessionID, partID string) {
-	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.callSent = true })
-}
-
 func (inst *openCodeInstance) setPartTextStreamStarted(sessionID, partID, kind string) {
 	inst.withPartState(sessionID, partID, func(ps *openCodePartState) {
 		if kind == "reasoning" {
@@ -230,30 +226,6 @@ func (inst *openCodeInstance) appendPartTextContent(sessionID, partID, kind, del
 			ps.textContent += delta
 		}
 	})
-}
-
-func (inst *openCodeInstance) setPartStreamInputStarted(sessionID, partID string) {
-	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.streamInputStarted = true })
-}
-
-func (inst *openCodeInstance) setPartStreamInputAvailable(sessionID, partID string) {
-	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.streamInputAvailable = true })
-}
-
-func (inst *openCodeInstance) setPartStreamOutputAvailable(sessionID, partID string) {
-	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.streamOutputAvailable = true })
-}
-
-func (inst *openCodeInstance) setPartStreamOutputError(sessionID, partID string) {
-	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.streamOutputError = true })
-}
-
-func (inst *openCodeInstance) setPartCallStatus(sessionID, partID, status string) {
-	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.callStatus = status })
-}
-
-func (inst *openCodeInstance) setPartResultSent(sessionID, partID string) {
-	inst.withPartState(sessionID, partID, func(ps *openCodePartState) { ps.resultSent = true })
 }
 
 func (inst *openCodeInstance) markPartArtifactStreamSent(sessionID, partID string) bool {

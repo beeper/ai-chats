@@ -1187,13 +1187,15 @@ func (m *OpenCodeManager) handleToolPart(ctx context.Context, inst *openCodeInst
 	callSent, resultSent := inst.partFlags(part.SessionID, part.ID)
 	callStatus := inst.partCallStatus(part.SessionID, part.ID)
 	if !callSent && status != "" {
-		inst.setPartCallSent(part.SessionID, part.ID)
-		inst.setPartCallStatus(part.SessionID, part.ID, status)
+		inst.withPartState(part.SessionID, part.ID, func(ps *openCodePartState) {
+			ps.callSent = true
+			ps.callStatus = status
+		})
 	} else if callSent && status != "" && status != callStatus {
-		inst.setPartCallStatus(part.SessionID, part.ID, status)
+		inst.withPartState(part.SessionID, part.ID, func(ps *openCodePartState) { ps.callStatus = status })
 	}
 	if !resultSent && (status == "completed" || status == "error") {
-		inst.setPartResultSent(part.SessionID, part.ID)
+		inst.withPartState(part.SessionID, part.ID, func(ps *openCodePartState) { ps.resultSent = true })
 	}
 	if part.State == nil || len(part.State.Attachments) == 0 {
 		return

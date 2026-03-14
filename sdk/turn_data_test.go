@@ -1,6 +1,10 @@
 package sdk
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/beeper/agentremote"
+)
 
 func TestTurnDataFromUIMessageRoundTrip(t *testing.T) {
 	ui := map[string]any{
@@ -41,5 +45,50 @@ func TestTurnDataFromUIMessageRoundTrip(t *testing.T) {
 	parts, ok := roundTrip["parts"].([]any)
 	if !ok || len(parts) != 2 {
 		t.Fatalf("expected 2 round-trip parts, got %#v", roundTrip["parts"])
+	}
+}
+
+func TestBuildTurnDataFromUIMessageMergesRuntimeState(t *testing.T) {
+	ui := map[string]any{
+		"id":   "turn-1",
+		"role": "assistant",
+		"parts": []any{
+			map[string]any{"type": "text", "text": "hello"},
+		},
+	}
+
+	td := BuildTurnDataFromUIMessage(ui, TurnDataBuildOptions{
+		Metadata:  map[string]any{"finish_reason": "stop"},
+		Reasoning: "thinking",
+		ToolCalls: []agentremote.ToolCallMetadata{{
+			CallID:   "tool-1",
+			ToolName: "search",
+			ToolType: "function",
+			Status:   "output-available",
+			Output:   map[string]any{"ok": true},
+		}},
+		GeneratedFiles: []agentremote.GeneratedFileRef{{
+			URL:      "mxc://file",
+			MimeType: "image/png",
+		}},
+		ArtifactParts: []map[string]any{
+			{"type": "source-url", "url": "https://example.com", "title": "Example"},
+		},
+	})
+
+	if td.Metadata["finish_reason"] != "stop" {
+		t.Fatalf("expected metadata merge, got %#v", td.Metadata)
+	}
+	if !TurnDataHasPartType(td, "reasoning") {
+		t.Fatalf("expected reasoning part, got %#v", td.Parts)
+	}
+	if !TurnDataHasToolCall(td, "tool-1") {
+		t.Fatalf("expected tool part, got %#v", td.Parts)
+	}
+	if !TurnDataHasURLPart(td, "file", "mxc://file") {
+		t.Fatalf("expected generated file part, got %#v", td.Parts)
+	}
+	if !TurnDataHasURLPart(td, "source-url", "https://example.com") {
+		t.Fatalf("expected source-url part, got %#v", td.Parts)
 	}
 }

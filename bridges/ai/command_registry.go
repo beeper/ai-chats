@@ -115,11 +115,6 @@ func registerModuleCommands(defs []integrationruntime.CommandDefinition) {
 	}
 }
 
-// registerCommands registers all AI commands with the command processor.
-func (oc *OpenAIConnector) registerCommands(proc *commands.Processor) {
-	registerCommandsWithOwnerGuard(proc, &oc.Config, &oc.br.Log, HelpSectionAI)
-}
-
 func registerCommandsWithOwnerGuard(proc *commands.Processor, cfg *Config, log *zerolog.Logger, section commands.HelpSection) {
 	handlers := aiCommandRegistry.All()
 	if len(handlers) > 0 {

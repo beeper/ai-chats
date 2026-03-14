@@ -129,11 +129,6 @@ func (d *Debouncer) flush(key string) {
 	d.onFlush(entries)
 }
 
-// FlushKey immediately flushes the buffer for a key (e.g., when media arrives).
-func (d *Debouncer) flush(key string) {
-	d.flush(key)
-}
-
 // FlushAll flushes all pending buffers (e.g., on shutdown).
 func (d *Debouncer) FlushAll() {
 	d.mu.Lock()

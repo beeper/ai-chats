@@ -93,7 +93,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		// Flush any pending debounced messages for this room+sender before processing media
 		if oc.inboundDebouncer != nil {
 			debounceKey := BuildDebounceKey(portal.MXID, msg.Event.Sender)
-			oc.inboundDebouncer.FlushKey(debounceKey)
+			oc.inboundDebouncer.flush(debounceKey)
 		}
 		oc.sendPendingStatus(ctx, portal, msg.Event, "Processing...")
 		pendingSent := true
@@ -263,7 +263,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	}
 	if debounceKey != "" {
 		// Flush any pending debounced messages for this room+sender before immediate processing
-		oc.inboundDebouncer.FlushKey(debounceKey)
+		oc.inboundDebouncer.flush(debounceKey)
 	}
 
 	// Not debouncing - process immediately

@@ -41,7 +41,7 @@ func NewAIConnector() *OpenAIConnector {
 				return err
 			}
 			if proc, ok := oc.br.Commands.(*commands.Processor); ok {
-				oc.registerCommands(proc)
+				registerCommandsWithOwnerGuard(proc, &oc.Config, &oc.br.Log, HelpSectionAI)
 				oc.br.Log.Info().Msg("Registered AI commands with command processor")
 			} else {
 				oc.br.Log.Warn().Type("commands_type", oc.br.Commands).Msg("Failed to register AI commands: command processor type assertion failed")

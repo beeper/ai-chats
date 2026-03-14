@@ -19,7 +19,3 @@ func (oc *AIClient) emitUIRuntimeMetadata(
 	}
 	oc.uiEmitter(state).EmitUIMessageMetadata(ctx, portal, base)
 }
-
-func (oc *AIClient) emitUIStart(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata) {
-	oc.uiEmitter(state).EmitUIStart(ctx, portal, oc.buildUIMessageMetadata(state, meta, false))
-}

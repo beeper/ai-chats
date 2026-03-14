@@ -50,7 +50,7 @@ func (m *OpenCodeManager) emitToolStreamDelta(ctx context.Context, inst *openCod
 			"title":            streamui.ToolDisplayTitle(toolName),
 			"providerExecuted": false,
 		})
-		inst.setPartStreamInputStarted(part.SessionID, part.ID)
+		inst.withPartState(part.SessionID, part.ID, func(ps *openCodePartState) { ps.streamInputStarted = true })
 	}
 	m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
 		"type":           "tool-input-delta",
@@ -82,7 +82,7 @@ func (m *OpenCodeManager) emitToolStreamState(ctx context.Context, inst *openCod
 				"title":            streamui.ToolDisplayTitle(toolName),
 				"providerExecuted": false,
 			})
-			inst.setPartStreamInputStarted(part.SessionID, part.ID)
+			inst.withPartState(part.SessionID, part.ID, func(ps *openCodePartState) { ps.streamInputStarted = true })
 		}
 		m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
 			"type":             "tool-input-available",
@@ -91,7 +91,7 @@ func (m *OpenCodeManager) emitToolStreamState(ctx context.Context, inst *openCod
 			"input":            part.State.Input,
 			"providerExecuted": false,
 		})
-		inst.setPartStreamInputAvailable(part.SessionID, part.ID)
+		inst.withPartState(part.SessionID, part.ID, func(ps *openCodePartState) { ps.streamInputAvailable = true })
 	}
 
 	if part.State.Output != "" && !sf.outputAvailable {
@@ -101,7 +101,7 @@ func (m *OpenCodeManager) emitToolStreamState(ctx context.Context, inst *openCod
 			"output":           part.State.Output,
 			"providerExecuted": false,
 		})
-		inst.setPartStreamOutputAvailable(part.SessionID, part.ID)
+		inst.withPartState(part.SessionID, part.ID, func(ps *openCodePartState) { ps.streamOutputAvailable = true })
 	}
 
 	if part.State.Error != "" && !sf.outputError {
@@ -111,7 +111,7 @@ func (m *OpenCodeManager) emitToolStreamState(ctx context.Context, inst *openCod
 			"errorText":        part.State.Error,
 			"providerExecuted": false,
 		})
-		inst.setPartStreamOutputError(part.SessionID, part.ID)
+		inst.withPartState(part.SessionID, part.ID, func(ps *openCodePartState) { ps.streamOutputError = true })
 	}
 }
 
