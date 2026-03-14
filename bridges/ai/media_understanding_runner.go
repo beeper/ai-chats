@@ -17,6 +17,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 type mediaUnderstandingResult struct {
@@ -701,9 +702,9 @@ func (oc *AIClient) describeImageWithEntry(
 		actualMime = "image/jpeg"
 	}
 	b64Data := base64.StdEncoding.EncodeToString(rawData)
-	dataURL := buildDataURL(actualMime, b64Data)
+	dataURL := bridgesdk.BuildDataURL(actualMime, b64Data)
 
-	ctxPrompt := UserPromptContext(
+	ctxPrompt := PromptContext{PromptContext: bridgesdk.UserPromptContext(
 		PromptBlock{
 			Type: PromptBlockText,
 			Text: prompt,
@@ -713,7 +714,7 @@ func (oc *AIClient) describeImageWithEntry(
 			ImageURL: dataURL,
 			MimeType: actualMime,
 		},
-	)
+	)}
 	modelIDForAPI := oc.modelIDForAPI(ResolveAlias(modelID))
 	var resp *GenerateResponse
 	if entryProvider == "openrouter" && normalizeMediaProviderID(loginMetadata(oc.UserLogin).Provider) != "openrouter" {
@@ -852,7 +853,7 @@ func (oc *AIClient) describeVideoWithEntry(
 		}
 		videoB64 := base64.StdEncoding.EncodeToString(data)
 
-		ctxPrompt := UserPromptContext(
+		ctxPrompt := PromptContext{PromptContext: bridgesdk.UserPromptContext(
 			PromptBlock{
 				Type: PromptBlockText,
 				Text: prompt,
@@ -862,7 +863,7 @@ func (oc *AIClient) describeVideoWithEntry(
 				VideoB64: videoB64,
 				MimeType: actualMime,
 			},
-		)
+		)}
 		modelIDForAPI := oc.modelIDForAPI(ResolveAlias(modelID))
 		var resp *GenerateResponse
 		currentProvider := normalizeMediaProviderID(loginMetadata(oc.UserLogin).Provider)
@@ -942,7 +943,7 @@ func (oc *AIClient) generateWithOpenRouter(
 		Context:             promptContext,
 		MaxCompletionTokens: defaultImageUnderstandingLimit,
 	}
-	if promptContextHasBlockType(promptContext, PromptBlockAudio, PromptBlockVideo) {
+	if bridgesdk.PromptContextHasBlockType(promptContext.PromptContext, PromptBlockAudio, PromptBlockVideo) {
 		return provider.generateChatCompletions(ctx, params)
 	}
 	return provider.Generate(ctx, params)

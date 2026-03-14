@@ -4,10 +4,12 @@ import (
 	"testing"
 
 	"github.com/openai/openai-go/v3/responses"
+
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 func TestPromptContextToResponsesInput_MultimodalUser(t *testing.T) {
-	input := PromptContextToResponsesInput(UserPromptContext(
+	input := bridgesdk.PromptContextToResponsesInput(bridgesdk.UserPromptContext(
 		PromptBlock{Type: PromptBlockText, Text: "hello"},
 		PromptBlock{Type: PromptBlockImage, ImageB64: "aGVsbG8=", MimeType: "image/png"},
 		PromptBlock{Type: PromptBlockFile, FileB64: "cGRm", Filename: "document.pdf"},

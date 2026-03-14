@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/event"
+
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 func (oc *AIClient) canUseMediaUnderstanding(meta *PortalMetadata) bool {
@@ -216,9 +218,9 @@ func (oc *AIClient) analyzeImageWithModel(
 		actualMimeType = "image/jpeg"
 	}
 
-	dataURL := buildDataURL(actualMimeType, b64Data)
+	dataURL := bridgesdk.BuildDataURL(actualMimeType, b64Data)
 
-	ctxPrompt := UserPromptContext(
+	ctxPrompt := PromptContext{PromptContext: bridgesdk.UserPromptContext(
 		PromptBlock{
 			Type:     PromptBlockImage,
 			ImageURL: dataURL,
@@ -228,7 +230,7 @@ func (oc *AIClient) analyzeImageWithModel(
 			Type: PromptBlockText,
 			Text: prompt,
 		},
-	)
+	)}
 
 	resp, err := oc.provider.Generate(ctx, GenerateParams{
 		Model:               modelIDForAPI,
@@ -272,7 +274,7 @@ func (oc *AIClient) analyzeAudioWithModel(
 		format = "mp3"
 	}
 
-	ctxPrompt := UserPromptContext(
+	ctxPrompt := PromptContext{PromptContext: bridgesdk.UserPromptContext(
 		PromptBlock{
 			Type:        PromptBlockAudio,
 			AudioB64:    b64Data,
@@ -282,7 +284,7 @@ func (oc *AIClient) analyzeAudioWithModel(
 			Type: PromptBlockText,
 			Text: prompt,
 		},
-	)
+	)}
 
 	params := GenerateParams{
 		Model:               modelIDForAPI,

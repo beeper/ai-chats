@@ -2,7 +2,6 @@ package ai
 
 import (
 	"context"
-	"fmt"
 
 	"maunium.net/go/mautrix/event"
 )
@@ -22,8 +21,4 @@ func (oc *AIClient) downloadMediaBase64(
 		actualMimeType = fallbackMime
 	}
 	return b64Data, actualMimeType, nil
-}
-
-func buildDataURL(mimeType, b64Data string) string {
-	return fmt.Sprintf("data:%s;base64,%s", mimeType, b64Data)
 }
