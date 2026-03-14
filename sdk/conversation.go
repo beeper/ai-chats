@@ -241,8 +241,8 @@ func (c *Conversation) sendMessageContent(ctx context.Context, content *event.Me
 }
 
 // Stream starts a new streaming response in this conversation.
-func (c *Conversation) Stream(ctx context.Context) *Stream {
-	return newStream(ctx, c, nil, nil)
+func (c *Conversation) Stream(ctx context.Context) *Turn {
+	return newTurn(ctx, c, nil, nil)
 }
 
 // StartTurn creates a new Turn for this conversation.

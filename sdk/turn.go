@@ -681,22 +681,6 @@ func (t *Turn) Abort(reason string) {
 // ID returns the turn's unique identifier.
 func (t *Turn) ID() string { return t.turnID }
 
-// SetAgent overrides the turn agent before the turn starts.
-func (t *Turn) SetAgent(agent *Agent) {
-	if t == nil || t.started {
-		return
-	}
-	t.agent = agent
-}
-
-// SetSource overrides the turn source before the turn starts.
-func (t *Turn) SetSource(source *SourceRef) {
-	if t == nil || t.started {
-		return
-	}
-	t.source = source
-}
-
 // SetID overrides the turn identifier before the turn starts. Provider bridges
 // can use this to preserve upstream turn/message IDs in SDK-managed streams.
 func (t *Turn) SetID(turnID string) {
