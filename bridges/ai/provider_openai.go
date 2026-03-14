@@ -13,9 +13,7 @@ import (
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
-	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/responses"
-	"github.com/openai/openai-go/v3/shared/constant"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/random"
 
@@ -538,70 +536,12 @@ func MakeToolDedupMiddleware(log zerolog.Logger) option.Middleware {
 
 // ToOpenAITools converts tool definitions to OpenAI Responses API format
 func ToOpenAITools(tools []ToolDefinition, strictMode ToolStrictMode, log *zerolog.Logger) []responses.ToolUnionParam {
-	if len(tools) == 0 {
-		return nil
-	}
-
-	var result []responses.ToolUnionParam
-	for _, tool := range tools {
-		schema := tool.Parameters
-		var stripped []string
-		if schema != nil {
-			schema, stripped = sanitizeToolSchemaWithReport(schema)
-			logSchemaSanitization(log, tool.Name, stripped)
-		}
-		strict := shouldUseStrictMode(strictMode, schema)
-		toolParam := responses.ToolUnionParam{
-			OfFunction: &responses.FunctionToolParam{
-				Name:       tool.Name,
-				Parameters: schema,
-				Strict:     param.NewOpt(strict),
-				Type:       constant.ValueOf[constant.Function](),
-			},
-		}
-
-		// Add description if available (SDK helper doesn't support this directly)
-		if tool.Description != "" {
-			toolParam.OfFunction.Description = openai.String(tool.Description)
-		}
-
-		result = append(result, toolParam)
-	}
-
-	return result
+	return descriptorsToResponsesTools(toolDescriptorsFromDefinitions(tools, log), strictMode)
 }
 
 // ToOpenAIChatTools converts tool definitions to OpenAI Chat Completions tool format.
 func ToOpenAIChatTools(tools []ToolDefinition, log *zerolog.Logger) []openai.ChatCompletionToolUnionParam {
-	if len(tools) == 0 {
-		return nil
-	}
-
-	var result []openai.ChatCompletionToolUnionParam
-	for _, tool := range tools {
-		schema := tool.Parameters
-		var stripped []string
-		if schema != nil {
-			schema, stripped = sanitizeToolSchemaWithReport(schema)
-			logSchemaSanitization(log, tool.Name, stripped)
-		}
-		function := openai.FunctionDefinitionParam{
-			Name:       tool.Name,
-			Parameters: schema,
-		}
-		if tool.Description != "" {
-			function.Description = openai.String(tool.Description)
-		}
-
-		result = append(result, openai.ChatCompletionToolUnionParam{
-			OfFunction: &openai.ChatCompletionFunctionToolParam{
-				Function: function,
-				Type:     constant.ValueOf[constant.Function](),
-			},
-		})
-	}
-
-	return result
+	return descriptorsToChatTools(toolDescriptorsFromDefinitions(tools, log))
 }
 
 // dedupeToolParams removes tools with duplicate identifiers to satisfy providers

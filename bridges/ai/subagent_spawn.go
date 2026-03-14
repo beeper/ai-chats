@@ -314,16 +314,15 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 	}
 	oc.savePortalQuiet(ctx, childPortal, "subagent spawn metadata")
 
-	if err := childPortal.CreateMatrixRoom(ctx, oc.UserLogin, chatResp.PortalInfo); err != nil {
-		cleanupPortal(ctx, oc, childPortal, "failed to create subagent Matrix room")
+	if err := oc.materializePortalRoom(ctx, childPortal, chatResp.PortalInfo, portalRoomMaterializeOptions{
+		CleanupOnCreateError: "failed to create subagent Matrix room",
+		SendWelcome:          true,
+	}); err != nil {
 		return tools.JSONResult(map[string]any{
 			"status": "error",
 			"error":  err.Error(),
 		}), nil
 	}
-	sendAIPortalInfo(ctx, childPortal, childMeta)
-
-	oc.sendWelcomeMessage(ctx, childPortal)
 	if roomName != "" {
 		if err := oc.setRoomNameNoSave(ctx, childPortal, roomName); err != nil {
 			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to set subagent room name")

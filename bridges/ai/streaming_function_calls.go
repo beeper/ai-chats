@@ -185,15 +185,45 @@ func (oc *AIClient) handleFunctionCallArgumentsDone(
 ) {
 	tool := oc.ensureFunctionCallTool(ctx, portal, state, meta, activeTools, itemID, name, arguments)
 	tool.itemID = itemID
+	execution := oc.executeStreamingBuiltinTool(ctx, log, portal, state, meta, tool, name, arguments, approvalFallbackForNonObject, logSuffix)
 
+	// Store result for API continuation.
+	tool.result = execution.result
+	state.pendingFunctionOutputs = append(state.pendingFunctionOutputs, functionCallOutput{
+		callID:    itemID,
+		name:      execution.toolName,
+		arguments: execution.argsJSON,
+		output:    execution.result,
+	})
+}
+
+type streamingBuiltinToolExecution struct {
+	toolName     string
+	argsJSON     string
+	result       string
+	resultStatus ResultStatus
+}
+
+func (oc *AIClient) executeStreamingBuiltinTool(
+	ctx context.Context,
+	log zerolog.Logger,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	meta *PortalMetadata,
+	tool *activeToolCall,
+	fallbackName string,
+	fallbackArguments string,
+	approvalFallbackForNonObject bool,
+	logSuffix string,
+) streamingBuiltinToolExecution {
 	toolName := strings.TrimSpace(tool.toolName)
 	if toolName == "" {
-		toolName = strings.TrimSpace(name)
+		toolName = strings.TrimSpace(fallbackName)
 	}
 	tool.toolName = toolName
 	argsJSON := strings.TrimSpace(tool.input.String())
 	if argsJSON == "" {
-		argsJSON = strings.TrimSpace(arguments)
+		argsJSON = strings.TrimSpace(fallbackArguments)
 	}
 	argsJSON = normalizeToolArgsJSON(argsJSON)
 
@@ -205,27 +235,21 @@ func (oc *AIClient) handleFunctionCallArgumentsDone(
 	oc.uiEmitter(state).EmitUIToolInputAvailable(ctx, portal, tool.callID, toolName, inputMap, tool.toolType == ToolTypeProvider)
 
 	resultStatus := ResultStatusSuccess
-	var result string
+	result := ""
 	if !oc.isToolEnabled(meta, toolName) {
 		resultStatus = ResultStatusError
 		result = fmt.Sprintf("Error: tool %s is disabled", toolName)
 	} else {
-		// Tool approval gating for dangerous builtin tools.
 		if argsObj, ok := inputMap.(map[string]any); ok {
 			if oc.isBuiltinToolDenied(ctx, portal, state, tool, toolName, argsObj) {
 				resultStatus = ResultStatusDenied
 				result = "Denied by user"
 			}
-		} else if approvalFallbackForNonObject {
-			if oc.isBuiltinToolDenied(ctx, portal, state, tool, toolName, nil) {
-				resultStatus = ResultStatusDenied
-				result = "Denied by user"
-			}
+		} else if approvalFallbackForNonObject && oc.isBuiltinToolDenied(ctx, portal, state, tool, toolName, nil) {
+			resultStatus = ResultStatusDenied
+			result = "Denied by user"
 		}
-
-		// If denied, skip tool execution but still send a tool result to the model.
 		if resultStatus != ResultStatusDenied {
-			// Wrap context with bridge info for tools that need it (e.g., channel-edit, react).
 			toolCtx := WithBridgeToolContext(ctx, &BridgeToolContext{
 				Client:        oc,
 				Portal:        portal,
@@ -244,25 +268,20 @@ func (oc *AIClient) handleFunctionCallArgumentsDone(
 	}
 
 	result, resultStatus = oc.processToolMediaResult(ctx, log, portal, state, argsJSON, result, resultStatus, logSuffix)
-
-	// Store result for API continuation.
-	tool.result = result
-	collectToolOutputCitations(state, toolName, result)
-	state.pendingFunctionOutputs = append(state.pendingFunctionOutputs, functionCallOutput{
-		callID:    itemID,
-		name:      toolName,
-		arguments: argsJSON,
-		output:    result,
-	})
-
-	// Emit UI tool output immediately so desktop sees completion without waiting for timeline event send.
+	recordCompletedToolCall(ctx, oc, portal, state, tool, toolName, argsJSON, result, resultStatus)
 	if resultStatus == ResultStatusSuccess {
+		collectToolOutputCitations(state, toolName, result)
 		oc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, tool.callID, result, tool.toolType == ToolTypeProvider, false)
 	} else if resultStatus != ResultStatusDenied {
 		oc.uiEmitter(state).EmitUIToolOutputError(ctx, portal, tool.callID, result, tool.toolType == ToolTypeProvider)
 	}
 
-	recordCompletedToolCall(ctx, oc, portal, state, tool, toolName, argsJSON, result, resultStatus)
+	return streamingBuiltinToolExecution{
+		toolName:     toolName,
+		argsJSON:     argsJSON,
+		result:       result,
+		resultStatus: resultStatus,
+	}
 }
 
 func recordCompletedToolCall(

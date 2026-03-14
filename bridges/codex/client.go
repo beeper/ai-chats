@@ -691,15 +691,15 @@ done:
 			StartedAtMs:   state.startedAtMs,
 			CompletedAtMs: state.completedAtMs,
 		})
-		}
-		if completedErr != "" {
-			state.turn.SetMetadata(cc.buildUIMessageMetadata(state, model, true, finishStatus))
-			state.turn.EndWithError(completedErr)
-			return
-		}
-		state.turn.SetMetadata(cc.buildUIMessageMetadata(state, model, true, finishStatus))
-		state.turn.End(finishStatus)
 	}
+	if completedErr != "" {
+		state.turn.SetMetadata(cc.buildUIMessageMetadata(state, model, true, finishStatus))
+		state.turn.EndWithError(completedErr)
+		return
+	}
+	state.turn.SetMetadata(cc.buildUIMessageMetadata(state, model, true, finishStatus))
+	state.turn.End(finishStatus)
+}
 
 func (cc *CodexClient) appendCodexToolOutput(state *streamingState, toolCallID, delta string) string {
 	if state == nil || toolCallID == "" {

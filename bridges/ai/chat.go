@@ -806,13 +806,10 @@ func (oc *AIClient) createAndOpenAgentChat(ctx context.Context, portal *bridgev2
 	}
 
 	chatInfo := chatResp.PortalInfo
-	if err := newPortal.CreateMatrixRoom(ctx, oc.UserLogin, chatInfo); err != nil {
+	if err := oc.materializePortalRoom(ctx, newPortal, chatInfo, portalRoomMaterializeOptions{SendWelcome: true}); err != nil {
 		oc.sendSystemNotice(ctx, portal, "Couldn't create the room: "+err.Error())
 		return
 	}
-	sendAIPortalInfo(ctx, newPortal, portalMeta(newPortal))
-
-	oc.sendWelcomeMessage(ctx, newPortal)
 
 	roomLink := fmt.Sprintf("https://matrix.to/#/%s", newPortal.MXID)
 	oc.sendSystemNotice(ctx, portal, fmt.Sprintf(
@@ -828,13 +825,10 @@ func (oc *AIClient) createAndOpenSimpleChat(ctx context.Context, portal *bridgev
 		return
 	}
 
-	if err := newPortal.CreateMatrixRoom(ctx, oc.UserLogin, chatInfo); err != nil {
+	if err := oc.materializePortalRoom(ctx, newPortal, chatInfo, portalRoomMaterializeOptions{SendWelcome: true}); err != nil {
 		oc.sendSystemNotice(ctx, portal, "Couldn't create the room: "+err.Error())
 		return
 	}
-	sendAIPortalInfo(ctx, newPortal, portalMeta(newPortal))
-
-	oc.sendWelcomeMessage(ctx, newPortal)
 
 	roomLink := fmt.Sprintf("https://matrix.to/#/%s", newPortal.MXID)
 	oc.sendSystemNotice(ctx, portal, fmt.Sprintf(
@@ -1097,13 +1091,11 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 				}
 				info := oc.chatInfoFromPortal(ctx, portal)
 				oc.loggerForContext(ctx).Info().Stringer("portal", portal.PortalKey).Msg("Default chat missing MXID; creating Matrix room")
-				err := portal.CreateMatrixRoom(ctx, oc.UserLogin, info)
+				err := oc.materializePortalRoom(ctx, portal, info, portalRoomMaterializeOptions{SendWelcome: true})
 				if err != nil {
 					oc.loggerForContext(ctx).Err(err).Msg("Failed to create Matrix room for default chat")
 					return err
 				}
-				sendAIPortalInfo(ctx, portal, portalMeta(portal))
-				oc.sendWelcomeMessage(ctx, portal)
 				return nil
 			}
 		}
@@ -1166,13 +1158,11 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 			}
 			info := oc.chatInfoFromPortal(ctx, existingPortal)
 			oc.loggerForContext(ctx).Info().Stringer("portal", existingPortal.PortalKey).Msg("Default chat missing MXID; creating Matrix room")
-			createErr := existingPortal.CreateMatrixRoom(ctx, oc.UserLogin, info)
+			createErr := oc.materializePortalRoom(ctx, existingPortal, info, portalRoomMaterializeOptions{SendWelcome: true})
 			if createErr != nil {
 				oc.loggerForContext(ctx).Err(createErr).Msg("Failed to create Matrix room for default chat")
 				return createErr
 			}
-			sendAIPortalInfo(ctx, existingPortal, portalMeta(existingPortal))
-			oc.sendWelcomeMessage(ctx, existingPortal)
 			oc.loggerForContext(ctx).Info().Stringer("portal", existingPortal.PortalKey).Msg("New AI Chat room created")
 			return nil
 		}
@@ -1202,13 +1192,11 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 	if err := oc.UserLogin.Save(ctx); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist default chat portal ID")
 	}
-	err = portal.CreateMatrixRoom(ctx, oc.UserLogin, chatInfo)
+	err = oc.materializePortalRoom(ctx, portal, chatInfo, portalRoomMaterializeOptions{SendWelcome: true})
 	if err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg("Failed to create Matrix room for default chat")
 		return err
 	}
-	sendAIPortalInfo(ctx, portal, portalMeta(portal))
-	oc.sendWelcomeMessage(ctx, portal)
 	oc.loggerForContext(ctx).Info().Stringer("portal", portal.PortalKey).Msg("New AI Chat room created")
 	return nil
 }
@@ -1229,13 +1217,11 @@ func (oc *AIClient) ensureExistingChatPortalReady(ctx context.Context, loginMeta
 	}
 	info := oc.chatInfoFromPortal(ctx, portal)
 	oc.loggerForContext(ctx).Info().Stringer("portal", portal.PortalKey).Msg(createMsg)
-	err := portal.CreateMatrixRoom(ctx, oc.UserLogin, info)
+	err := oc.materializePortalRoom(ctx, portal, info, portalRoomMaterializeOptions{SendWelcome: true})
 	if err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg(errMsg)
 		return err
 	}
-	sendAIPortalInfo(ctx, portal, portalMeta(portal))
-	oc.sendWelcomeMessage(ctx, portal)
 	return nil
 }
 

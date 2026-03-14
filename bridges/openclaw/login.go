@@ -286,20 +286,16 @@ func (ol *OpenClawLogin) completeLogin(pending *openClawPendingLogin, deviceToke
 		return nil, fmt.Errorf("failed to create login: %w", err)
 	}
 	log.Debug().Str("login_id", string(login.ID)).Msg("Created OpenClaw user login")
-	if login.Client != nil {
-		go login.Client.Connect(login.Log.WithContext(ol.BackgroundProcessContext()))
-	}
 	ol.pending = nil
 	ol.step = ""
 	ol.waitUntil = time.Time{}
-	return &bridgev2.LoginStep{
-		Type:   bridgev2.LoginStepTypeComplete,
-		StepID: "io.ai-bridge.openclaw.complete",
-		CompleteParams: &bridgev2.LoginCompleteParams{
-			UserLoginID: login.ID,
-			UserLogin:   login,
-		},
-	}, nil
+	return agentremote.LoadConnectAndCompleteLogin(
+		persistCtx,
+		ol.BackgroundProcessContext(),
+		login,
+		"io.ai-bridge.openclaw.complete",
+		nil,
+	)
 }
 
 func openClawCredentialStep(authMode string) *bridgev2.LoginStep {

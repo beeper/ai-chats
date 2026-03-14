@@ -2,13 +2,10 @@ package ai
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/openai/openai-go/v3"
-	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/openai/openai-go/v3/shared"
-	"github.com/openai/openai-go/v3/shared/constant"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 
@@ -84,31 +81,6 @@ func (oc *AIClient) buildResponsesAPIParams(ctx context.Context, portal *bridgev
 	return params
 }
 
-// resolveToolSchema converts a tool's InputSchema to map[string]any, sanitises it,
-// and logs any stripped keys. Shared by both Responses API and Chat Completions converters.
-func resolveToolSchema(inputSchema any, toolName string, log *zerolog.Logger) map[string]any {
-	var schema map[string]any
-	switch v := inputSchema.(type) {
-	case nil:
-		return nil
-	case map[string]any:
-		schema = v
-	default:
-		encoded, err := json.Marshal(v)
-		if err == nil {
-			if err := json.Unmarshal(encoded, &schema); err != nil {
-				return nil
-			}
-		}
-	}
-	if schema != nil {
-		var stripped []string
-		schema, stripped = sanitizeToolSchemaWithReport(schema)
-		logSchemaSanitization(log, toolName, stripped)
-	}
-	return schema
-}
-
 // filterEnabledTools returns the subset of tools that are enabled for the current portal.
 func (oc *AIClient) filterEnabledTools(meta *PortalMetadata, allTools []*tools.Tool) []*tools.Tool {
 	var enabled []*tools.Tool
@@ -122,44 +94,10 @@ func (oc *AIClient) filterEnabledTools(meta *PortalMetadata, allTools []*tools.T
 
 // bossToolsToOpenAI converts boss tools to OpenAI Responses API format.
 func bossToolsToOpenAI(bossTools []*tools.Tool, strictMode ToolStrictMode, log *zerolog.Logger) []responses.ToolUnionParam {
-	var result []responses.ToolUnionParam
-	for _, t := range bossTools {
-		schema := resolveToolSchema(t.InputSchema, t.Name, log)
-		strict := shouldUseStrictMode(strictMode, schema)
-		toolParam := responses.ToolUnionParam{
-			OfFunction: &responses.FunctionToolParam{
-				Name:       t.Name,
-				Parameters: schema,
-				Strict:     param.NewOpt(strict),
-				Type:       constant.ValueOf[constant.Function](),
-			},
-		}
-		if t.Description != "" && toolParam.OfFunction != nil {
-			toolParam.OfFunction.Description = openai.String(t.Description)
-		}
-		result = append(result, toolParam)
-	}
-	return result
+	return descriptorsToResponsesTools(toolDescriptorsFromBossTools(bossTools, log), strictMode)
 }
 
 // bossToolsToChatTools converts boss tools to OpenAI Chat Completions tool format.
 func bossToolsToChatTools(bossTools []*tools.Tool, log *zerolog.Logger) []openai.ChatCompletionToolUnionParam {
-	var result []openai.ChatCompletionToolUnionParam
-	for _, t := range bossTools {
-		schema := resolveToolSchema(t.InputSchema, t.Name, log)
-		function := openai.FunctionDefinitionParam{
-			Name:       t.Name,
-			Parameters: schema,
-		}
-		if t.Description != "" {
-			function.Description = openai.String(t.Description)
-		}
-		result = append(result, openai.ChatCompletionToolUnionParam{
-			OfFunction: &openai.ChatCompletionFunctionToolParam{
-				Function: function,
-				Type:     constant.ValueOf[constant.Function](),
-			},
-		})
-	}
-	return result
+	return descriptorsToChatTools(toolDescriptorsFromBossTools(bossTools, log))
 }

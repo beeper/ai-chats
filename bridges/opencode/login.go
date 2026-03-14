@@ -153,13 +153,17 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 		if err := existing.Save(ctx); err != nil {
 			return nil, fmt.Errorf("failed to update existing login: %w", err)
 		}
-		if err := ol.Connector.LoadUserLogin(ctx, existing); err != nil {
+		step, err := agentremote.LoadConnectAndCompleteLogin(
+			ctx,
+			ol.BackgroundProcessContext(),
+			existing,
+			"io.ai-bridge.opencode.complete",
+			ol.Connector.LoadUserLogin,
+		)
+		if err != nil {
 			return nil, fmt.Errorf("failed to load client: %w", err)
 		}
-		if existing.Client != nil {
-			go existing.Client.Connect(existing.Log.WithContext(ol.BackgroundProcessContext()))
-		}
-		return openCodeCompleteStep(existing), nil
+		return step, nil
 	}
 
 	loginID := agentremote.NextUserLoginID(ol.User, "opencode")
@@ -175,13 +179,17 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 	if err != nil {
 		return nil, fmt.Errorf("failed to create login: %w", err)
 	}
-	if err := ol.Connector.LoadUserLogin(ctx, login); err != nil {
+	step, err := agentremote.LoadConnectAndCompleteLogin(
+		ctx,
+		ol.BackgroundProcessContext(),
+		login,
+		"io.ai-bridge.opencode.complete",
+		ol.Connector.LoadUserLogin,
+	)
+	if err != nil {
 		return nil, fmt.Errorf("failed to load client: %w", err)
 	}
-	if login.Client != nil {
-		go login.Client.Connect(login.Log.WithContext(ol.BackgroundProcessContext()))
-	}
-	return openCodeCompleteStep(login), nil
+	return step, nil
 }
 
 func (ol *OpenCodeLogin) buildRemoteInstances(input map[string]string) (map[string]*OpenCodeInstance, string, string, error) {
@@ -225,17 +233,6 @@ func (ol *OpenCodeLogin) buildManagedInstances(input map[string]string) (map[str
 			DefaultDirectory: defaultPath,
 		},
 	}, openCodeManagedRemoteName(defaultPath), instanceID, nil
-}
-
-func openCodeCompleteStep(login *bridgev2.UserLogin) *bridgev2.LoginStep {
-	return &bridgev2.LoginStep{
-		Type:   bridgev2.LoginStepTypeComplete,
-		StepID: "io.ai-bridge.opencode.complete",
-		CompleteParams: &bridgev2.LoginCompleteParams{
-			UserLoginID: login.ID,
-			UserLogin:   login,
-		},
-	}
 }
 
 func openCodeRemoteName(baseURL, username string) string {

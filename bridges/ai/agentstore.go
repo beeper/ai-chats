@@ -538,14 +538,12 @@ func (b *BossStoreAdapter) CreateRoom(ctx context.Context, room tools.RoomData) 
 		}
 	}
 	// Create the Matrix room
-	if err := portal.CreateMatrixRoom(ctx, b.store.client.UserLogin, resp.PortalInfo); err != nil {
-		cleanupPortal(ctx, b.store.client, portal, "failed to create Matrix room")
+	if err := b.store.client.materializePortalRoom(ctx, portal, resp.PortalInfo, portalRoomMaterializeOptions{
+		CleanupOnCreateError: "failed to create Matrix room",
+		SendWelcome:          true,
+	}); err != nil {
 		return "", fmt.Errorf("failed to create Matrix room: %w", err)
 	}
-	sendAIPortalInfo(ctx, portal, pm)
-
-	// Send welcome message (excluded from LLM history)
-	b.store.client.sendWelcomeMessage(ctx, portal)
 
 	if room.Name != "" {
 		if err := b.store.client.setRoomNameNoSave(ctx, portal, room.Name); err != nil {

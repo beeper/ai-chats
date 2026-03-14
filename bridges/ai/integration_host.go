@@ -187,14 +187,10 @@ func (h *runtimeIntegrationHost) GetOrCreatePortal(ctx context.Context, portalID
 	p.Metadata = meta
 	p.Name = displayName
 	p.NameSet = true
-	if err := p.Save(ctx); err != nil {
-		return nil, "", fmt.Errorf("failed to save portal: %w", err)
-	}
 	chatInfo := &bridgev2.ChatInfo{Name: &p.Name}
-	if err := p.CreateMatrixRoom(ctx, h.client.UserLogin, chatInfo); err != nil {
+	if err := h.client.materializePortalRoom(ctx, p, chatInfo, portalRoomMaterializeOptions{SaveBefore: true}); err != nil {
 		return nil, "", fmt.Errorf("failed to create Matrix room: %w", err)
 	}
-	sendAIPortalInfo(ctx, p, portalMeta(p))
 	return p, p.MXID.String(), nil
 }
 

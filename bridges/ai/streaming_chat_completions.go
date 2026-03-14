@@ -2,9 +2,7 @@ package ai
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -16,9 +14,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 
-	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
-
 	"github.com/beeper/agentremote/pkg/agents/tools"
+	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
 )
 
 func (oc *AIClient) streamChatCompletions(
@@ -281,51 +278,19 @@ func (oc *AIClient) streamChatCompletions(
 					SenderID:      state.senderID,
 				})
 
-				result := ""
-				resultStatus := ResultStatusSuccess
-				if !oc.isToolEnabled(meta, toolName) {
-					result = fmt.Sprintf("Error: tool %s is not enabled", toolName)
-					resultStatus = ResultStatusError
-				} else {
-					// Tool approval gating for dangerous builtin tools.
-					var argsObj map[string]any
-					_ = json.Unmarshal([]byte(argsJSON), &argsObj)
-					if oc.isBuiltinToolDenied(ctx, portal, state, tool, toolName, argsObj) {
-						resultStatus = ResultStatusDenied
-						result = "Denied by user"
-					}
-
-					if resultStatus != ResultStatusDenied {
-						var err error
-						result, err = oc.executeBuiltinTool(toolCtx, portal, toolName, argsJSON)
-						if err != nil {
-							log.Warn().Err(err).Str("tool", toolName).Msg("Tool execution failed (Chat Completions)")
-							result = fmt.Sprintf("Error: %s", err.Error())
-							resultStatus = ResultStatusError
-						}
-					}
-
-					result, resultStatus = oc.processToolMediaResult(ctx, log, portal, state, argsJSON, result, resultStatus, " (Chat Completions)")
-				}
-
-				// Normalize input for storage
-				var inputMap any
-				if err := json.Unmarshal([]byte(argsJSON), &inputMap); err != nil {
-					inputMap = argsJSON
-					oc.uiEmitter(state).EmitUIToolInputError(ctx, portal, tool.callID, toolName, argsJSON, "Invalid JSON tool input", false)
-				}
-				oc.uiEmitter(state).EmitUIToolInputAvailable(ctx, portal, tool.callID, toolName, inputMap, false)
-
-				recordCompletedToolCall(ctx, oc, portal, state, tool, toolName, argsJSON, result, resultStatus)
-
-				if resultStatus == ResultStatusSuccess {
-					collectToolOutputCitations(state, toolName, result)
-					oc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, tool.callID, result, tool.toolType == ToolTypeProvider, false)
-				} else if resultStatus != ResultStatusDenied {
-					oc.uiEmitter(state).EmitUIToolOutputError(ctx, portal, tool.callID, result, tool.toolType == ToolTypeProvider)
-				}
-
-				toolResults = append(toolResults, chatToolResult{callID: tool.callID, output: result})
+				execution := oc.executeStreamingBuiltinTool(
+					toolCtx,
+					log,
+					portal,
+					state,
+					meta,
+					tool,
+					toolName,
+					argsJSON,
+					false,
+					" (Chat Completions)",
+				)
+				toolResults = append(toolResults, chatToolResult{callID: tool.callID, output: execution.result})
 			}
 		}
 

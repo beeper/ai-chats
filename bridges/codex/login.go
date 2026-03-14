@@ -618,23 +618,22 @@ func (cl *CodexLogin) finishLogin(ctx context.Context) (*bridgev2.LoginStep, err
 		return nil, fmt.Errorf("failed to create login: %w", err)
 	}
 	log.Info().Str("user_login_id", string(login.ID)).Msg("Created new Codex login")
-	if err := cl.Connector.LoadUserLogin(persistCtx, login); err != nil {
+	step, err := agentremote.LoadConnectAndCompleteLogin(
+		persistCtx,
+		cl.backgroundProcessContext(),
+		login,
+		"io.ai-bridge.codex.complete",
+		cl.Connector.LoadUserLogin,
+	)
+	if err != nil {
 		return nil, fmt.Errorf("failed to load client: %w", err)
 	}
-	go login.Client.Connect(login.Log.WithContext(cl.backgroundProcessContext()))
 
 	cl.mu.Lock()
 	cl.closeRPCLocked()
 	cl.mu.Unlock()
 
-	return &bridgev2.LoginStep{
-		Type:   bridgev2.LoginStepTypeComplete,
-		StepID: "io.ai-bridge.codex.complete",
-		CompleteParams: &bridgev2.LoginCompleteParams{
-			UserLoginID: login.ID,
-			UserLogin:   login,
-		},
-	}, nil
+	return step, nil
 }
 
 func (cl *CodexLogin) resolveCodexCommand() string {
