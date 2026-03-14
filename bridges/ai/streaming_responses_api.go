@@ -139,7 +139,7 @@ func (a *responsesTurnAdapter) RunRound(
 		if round > maxStreamingToolRounds {
 			err = fmt.Errorf("max responses tool call rounds reached (%d)", maxStreamingToolRounds)
 			a.log.Warn().Err(err).Int("pending_outputs", len(state.pendingFunctionOutputs)).Msg("Stopping responses continuation loop")
-			return false, nil, a.oc.finishStreamingError(ctx, a.log, a.portal, state, a.meta, err)
+			return false, nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, state, a.meta, "error", err)
 		}
 		a.log.Debug().
 			Int("pending_outputs", len(state.pendingFunctionOutputs)).
@@ -149,10 +149,10 @@ func (a *responsesTurnAdapter) RunRound(
 		stream, params, err = a.startContinuationRound(ctx)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
-				return false, nil, a.oc.finishStreamingCancelled(ctx, a.log, a.portal, state, a.meta, err)
+				return false, nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, state, a.meta, "cancelled", err)
 			}
 			logResponsesFailure(a.log, err, params, a.meta, a.messages, "continuation_init")
-			return false, nil, a.oc.finishStreamingError(ctx, a.log, a.portal, state, a.meta, err)
+			return false, nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, state, a.meta, "error", err)
 		}
 	}
 
@@ -407,7 +407,7 @@ func (oc *AIClient) processResponseStreamEvent(
 
 	case "error":
 		apiErr := fmt.Errorf("API error: %s", streamEvent.Message)
-		terminalErr := oc.finishStreamingError(ctx, log, portal, state, meta, apiErr)
+		terminalErr := oc.finishStreamingWithFailure(ctx, log, portal, state, meta, "error", apiErr)
 		// Check for context length error (only on initial stream, not continuation)
 		if !isContinuation {
 			if strings.Contains(streamEvent.Message, "context_length") || strings.Contains(streamEvent.Message, "token") {

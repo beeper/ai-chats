@@ -63,25 +63,11 @@ func formatMediaUnderstandingBody(body string, outputs []MediaUnderstandingOutpu
 		if count > 1 {
 			suffix = " " + strconv.Itoa(seen[output.Kind]) + "/" + strconv.Itoa(count)
 		}
-		switch output.Kind {
-		case MediaKindAudioTranscription:
+		title, kind := mediaKindTitleAndLabel(output.Kind)
+		if title != "" {
 			sections = append(sections, formatMediaSection(
-				"Audio"+suffix,
-				"Transcript",
-				output.Text,
-				userTextIfSingle(userText, len(filtered)),
-			))
-		case MediaKindImageDescription:
-			sections = append(sections, formatMediaSection(
-				"Image"+suffix,
-				"Description",
-				output.Text,
-				userTextIfSingle(userText, len(filtered)),
-			))
-		case MediaKindVideoDescription:
-			sections = append(sections, formatMediaSection(
-				"Video"+suffix,
-				"Description",
+				title+suffix,
+				kind,
 				output.Text,
 				userTextIfSingle(userText, len(filtered)),
 			))
@@ -89,6 +75,19 @@ func formatMediaUnderstandingBody(body string, outputs []MediaUnderstandingOutpu
 	}
 
 	return strings.TrimSpace(strings.Join(sections, "\n\n"))
+}
+
+func mediaKindTitleAndLabel(kind MediaUnderstandingKind) (string, string) {
+	switch kind {
+	case MediaKindAudioTranscription:
+		return "Audio", "Transcript"
+	case MediaKindImageDescription:
+		return "Image", "Description"
+	case MediaKindVideoDescription:
+		return "Video", "Description"
+	default:
+		return "", ""
+	}
 }
 
 func userTextIfSingle(userText string, count int) string {

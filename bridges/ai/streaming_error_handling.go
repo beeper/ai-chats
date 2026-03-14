@@ -29,33 +29,23 @@ func streamFailureError(state *streamingState, err error) error {
 	return &PreDeltaError{Err: err}
 }
 
-func (oc *AIClient) finishStreamingCancelled(
+func (oc *AIClient) finishStreamingWithFailure(
 	ctx context.Context,
 	log zerolog.Logger,
 	portal *bridgev2.Portal,
 	state *streamingState,
 	meta *PortalMetadata,
+	reason string,
 	err error,
 ) error {
-	state.finishReason = "cancelled"
+	state.finishReason = reason
 	state.completedAtMs = time.Now().UnixMilli()
-	oc.semanticStream(state, portal).Abort(ctx, "cancelled")
-	oc.emitUIFinish(ctx, portal, state, meta)
-	oc.persistTerminalAssistantTurn(ctx, log, portal, state, meta)
-	return streamFailureError(state, err)
-}
-
-func (oc *AIClient) finishStreamingError(
-	ctx context.Context,
-	log zerolog.Logger,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	meta *PortalMetadata,
-	err error,
-) error {
-	state.finishReason = "error"
-	state.completedAtMs = time.Now().UnixMilli()
-	oc.semanticStream(state, portal).Error(ctx, err.Error())
+	ss := oc.semanticStream(state, portal)
+	if reason == "cancelled" {
+		ss.Abort(ctx, "cancelled")
+	} else {
+		ss.Error(ctx, err.Error())
+	}
 	oc.emitUIFinish(ctx, portal, state, meta)
 	oc.persistTerminalAssistantTurn(ctx, log, portal, state, meta)
 	return streamFailureError(state, err)
@@ -70,7 +60,7 @@ func (oc *AIClient) handleResponsesStreamErr(
 	includeContextLength bool,
 ) (*ContextLengthError, error) {
 	if errors.Is(err, context.Canceled) {
-		return nil, oc.finishStreamingCancelled(context.Background(), *oc.loggerForContext(ctx), portal, state, meta, err)
+		return nil, oc.finishStreamingWithFailure(context.Background(), *oc.loggerForContext(ctx), portal, state, meta, "cancelled", err)
 	}
 
 	if includeContextLength {
@@ -80,5 +70,5 @@ func (oc *AIClient) handleResponsesStreamErr(
 		}
 	}
 
-	return nil, oc.finishStreamingError(ctx, *oc.loggerForContext(ctx), portal, state, meta, err)
+	return nil, oc.finishStreamingWithFailure(ctx, *oc.loggerForContext(ctx), portal, state, meta, "error", err)
 }

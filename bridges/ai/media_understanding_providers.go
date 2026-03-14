@@ -67,6 +67,17 @@ func readErrorResponse(res *http.Response) string {
 	return strings.TrimSpace(string(body))
 }
 
+func checkHTTPResponse(res *http.Response, label string) error {
+	if res.StatusCode >= 200 && res.StatusCode < 300 {
+		return nil
+	}
+	detail := readErrorResponse(res)
+	if detail != "" {
+		return fmt.Errorf("%s failed (HTTP %d): %s", label, res.StatusCode, detail)
+	}
+	return fmt.Errorf("%s failed (HTTP %d)", label, res.StatusCode)
+}
+
 func headerExists(headers http.Header, name string) bool {
 	_, ok := headers[http.CanonicalHeaderKey(name)]
 	return ok
@@ -174,12 +185,8 @@ func transcribeOpenAICompatibleAudio(ctx context.Context, params mediaAudioReque
 	if err != nil {
 		return "", err
 	}
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		detail := readErrorResponse(res)
-		if detail != "" {
-			return "", fmt.Errorf("audio transcription failed (HTTP %d): %s", res.StatusCode, detail)
-		}
-		return "", fmt.Errorf("audio transcription failed (HTTP %d)", res.StatusCode)
+	if err := checkHTTPResponse(res, "audio transcription"); err != nil {
+		return "", err
 	}
 	defer res.Body.Close()
 	var payload struct {
@@ -243,12 +250,8 @@ func transcribeDeepgramAudio(ctx context.Context, params mediaAudioRequest, quer
 	if err != nil {
 		return "", err
 	}
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		detail := readErrorResponse(res)
-		if detail != "" {
-			return "", fmt.Errorf("audio transcription failed (HTTP %d): %s", res.StatusCode, detail)
-		}
-		return "", fmt.Errorf("audio transcription failed (HTTP %d)", res.StatusCode)
+	if err := checkHTTPResponse(res, "audio transcription"); err != nil {
+		return "", err
 	}
 	defer res.Body.Close()
 	var payload struct {
@@ -313,12 +316,8 @@ func callGeminiGenerateContent(ctx context.Context, baseURL, model, apiKey strin
 	if err != nil {
 		return "", err
 	}
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		detail := readErrorResponse(res)
-		if detail != "" {
-			return "", fmt.Errorf("%s failed (HTTP %d): %s", errorLabel, res.StatusCode, detail)
-		}
-		return "", fmt.Errorf("%s failed (HTTP %d)", errorLabel, res.StatusCode)
+	if err := checkHTTPResponse(res, errorLabel); err != nil {
+		return "", err
 	}
 	defer res.Body.Close()
 	var payloadResp struct {

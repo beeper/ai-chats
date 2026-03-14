@@ -182,13 +182,13 @@ func (a *chatCompletionsTurnAdapter) RunRound(
 			return false, nil, nil
 		}, func(stepErr error) (*ContextLengthError, error) {
 			if errors.Is(stepErr, context.Canceled) {
-				return nil, oc.finishStreamingCancelled(ctx, log, portal, state, meta, stepErr)
+				return nil, oc.finishStreamingWithFailure(ctx, log, portal, state, meta, "cancelled", stepErr)
 			}
 			if cle := ParseContextLengthError(stepErr); cle != nil {
 				return cle, nil
 			}
 			logChatCompletionsFailure(log, stepErr, params, meta, currentMessages, "stream_err")
-			return nil, oc.finishStreamingError(ctx, log, portal, state, meta, stepErr)
+			return nil, oc.finishStreamingWithFailure(ctx, log, portal, state, meta, "error", stepErr)
 		})
 	if cle != nil || err != nil {
 		return false, cle, err

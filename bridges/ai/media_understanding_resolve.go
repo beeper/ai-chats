@@ -105,7 +105,7 @@ func resolveMediaEntries(cfg *MediaToolsConfig, capCfg *MediaUnderstandingConfig
 			if provider == "" {
 				continue
 			}
-			if caps, ok := mediaProviderCapabilities[provider]; ok && capabilityInCapabilities(capability, caps) {
+			if caps, ok := mediaProviderCapabilities[provider]; ok && slices.Contains(caps, capability) {
 				filtered = append(filtered, entry)
 			}
 			continue
@@ -122,8 +122,4 @@ func capabilityInList(capability MediaUnderstandingCapability, list []string) bo
 		}
 	}
 	return false
-}
-
-func capabilityInCapabilities(capability MediaUnderstandingCapability, list []MediaUnderstandingCapability) bool {
-	return slices.Contains(list, capability)
 }

@@ -24,7 +24,7 @@ func (oc *AIClient) saveAssistantMessage(
 	meta *PortalMetadata,
 ) {
 	modelID := oc.effectiveModel(meta)
-	uiMessage := oc.buildCanonicalUIMessage(state, meta)
+	uiMessage := oc.buildStreamUIMessage(state, meta, nil)
 	turnData := turnDataFromStreamingState(state, uiMessage)
 
 	fullMeta := &MessageMetadata{
@@ -91,8 +91,4 @@ func thinkingTokenCount(model string, content string) int {
 		return len(strings.Fields(content))
 	}
 	return len(tkm.Encode(content, nil, nil))
-}
-
-func (oc *AIClient) buildCanonicalUIMessage(state *streamingState, meta *PortalMetadata) map[string]any {
-	return oc.buildStreamUIMessage(state, meta, nil)
 }

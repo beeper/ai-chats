@@ -329,32 +329,21 @@ func buildMediaPromptFromCaption(caption string, hasUserCaption bool, defaultPro
 	return defaultPrompt
 }
 
-func buildImageUnderstandingPrompt(caption string, hasUserCaption bool) string {
-	return buildMediaPromptFromCaption(caption, hasUserCaption, defaultPromptByCapability[MediaCapabilityImage])
+func buildMediaUnderstandingPrompt(capability MediaUnderstandingCapability) func(string, bool) string {
+	return func(caption string, hasUserCaption bool) string {
+		return buildMediaPromptFromCaption(caption, hasUserCaption, defaultPromptByCapability[capability])
+	}
 }
 
-func buildAudioUnderstandingPrompt(caption string, hasUserCaption bool) string {
-	return buildMediaPromptFromCaption(caption, hasUserCaption, defaultPromptByCapability[MediaCapabilityAudio])
-}
-
-func buildImageUnderstandingMessage(caption string, hasUserCaption bool, description string) string {
-	if strings.TrimSpace(description) == "" {
-		return ""
+func buildMediaUnderstandingMessage(title, kind string) func(string, bool, string) string {
+	return func(caption string, hasUserCaption bool, text string) string {
+		if strings.TrimSpace(text) == "" {
+			return ""
+		}
+		userText := ""
+		if hasUserCaption {
+			userText = strings.TrimSpace(caption)
+		}
+		return formatMediaSection(title, kind, strings.TrimSpace(text), userText)
 	}
-	userText := ""
-	if hasUserCaption {
-		userText = strings.TrimSpace(caption)
-	}
-	return formatMediaSection("Image", "Description", strings.TrimSpace(description), userText)
-}
-
-func buildAudioUnderstandingMessage(caption string, hasUserCaption bool, transcript string) string {
-	if strings.TrimSpace(transcript) == "" {
-		return ""
-	}
-	userText := ""
-	if hasUserCaption {
-		userText = strings.TrimSpace(caption)
-	}
-	return formatMediaSection("Audio", "Transcript", strings.TrimSpace(transcript), userText)
 }
