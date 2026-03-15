@@ -291,6 +291,48 @@ func preparePendingQueueDispatchCandidate(candidate *pendingQueueDispatchCandida
 	return item, strings.TrimSpace(item.pending.MessageBody), true
 }
 
+func (oc *AIClient) getSteeringMessages(roomID id.RoomID) []string {
+	if oc == nil || roomID == "" {
+		return nil
+	}
+	steerItems := oc.drainSteerQueue(roomID)
+	if len(steerItems) == 0 {
+		return nil
+	}
+
+	messages := make([]string, 0, len(steerItems))
+	for _, item := range steerItems {
+		if item.pending.Type != pendingTypeText {
+			continue
+		}
+		prompt := strings.TrimSpace(item.prompt)
+		if prompt == "" {
+			prompt = item.pending.MessageBody
+		}
+		prompt = strings.TrimSpace(prompt)
+		if prompt == "" {
+			continue
+		}
+		messages = append(messages, prompt)
+	}
+	return messages
+}
+
+func buildSteeringUserMessages(prompts []string) []openai.ChatCompletionMessageParamUnion {
+	if len(prompts) == 0 {
+		return nil
+	}
+	messages := make([]openai.ChatCompletionMessageParamUnion, 0, len(prompts))
+	for _, prompt := range prompts {
+		prompt = strings.TrimSpace(prompt)
+		if prompt == "" {
+			continue
+		}
+		messages = append(messages, openai.UserMessage(prompt))
+	}
+	return messages
+}
+
 func (oc *AIClient) getFollowUpMessages(roomID id.RoomID) []openai.ChatCompletionMessageParamUnion {
 	if oc == nil || roomID == "" {
 		return nil

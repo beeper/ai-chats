@@ -10,10 +10,6 @@ import (
 
 const maxAgentLoopToolTurns = 10
 
-func hasPendingAgentLoopContinuation(state *streamingState) bool {
-	return state != nil && (len(state.pendingFunctionOutputs) > 0 || len(state.pendingMcpApprovals) > 0)
-}
-
 func runAgentLoopStreamStep[T any](
 	ctx context.Context,
 	oc *AIClient,

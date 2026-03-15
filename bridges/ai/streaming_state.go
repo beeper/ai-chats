@@ -110,6 +110,22 @@ func (s *streamingState) clearContinuationState() {
 	s.pendingSteeringPrompts = nil
 }
 
+func (s *streamingState) addPendingSteeringPrompts(prompts []string) {
+	if s == nil || len(prompts) == 0 {
+		return
+	}
+	s.pendingSteeringPrompts = append(s.pendingSteeringPrompts, prompts...)
+}
+
+func (s *streamingState) consumePendingSteeringPrompts() []string {
+	if s == nil || len(s.pendingSteeringPrompts) == 0 {
+		return nil
+	}
+	prompts := append([]string(nil), s.pendingSteeringPrompts...)
+	s.pendingSteeringPrompts = nil
+	return prompts
+}
+
 // trackFirstToken records the first-token timestamp once.
 func (s *streamingState) trackFirstToken() {
 	if s != nil && s.firstTokenAtMs == 0 {

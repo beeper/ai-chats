@@ -1635,15 +1635,6 @@ func (cc *CodexClient) buildSandboxPolicy(cwd string) map[string]any {
 	}
 }
 
-func (cc *CodexClient) buildThreadSessionParams(cwd string) map[string]any {
-	return map[string]any{
-		"approvalPolicy":         "untrusted",
-		"cwd":                    cwd,
-		"sandbox":                cc.buildSandboxPolicy(cwd),
-		"persistExtendedHistory": true,
-	}
-}
-
 func newRecoveredStreamingState(turnID, model string) *streamingState {
 	return &streamingState{
 		turnID:                 strings.TrimSpace(turnID),

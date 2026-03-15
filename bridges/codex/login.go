@@ -194,14 +194,6 @@ func (cl *CodexLogin) setLoginSession(loginID, authURL string) {
 	cl.mu.Unlock()
 }
 
-// closeRPCLocked closes and nils out the RPC client. Caller must hold cl.mu.
-func (cl *CodexLogin) closeRPCLocked() {
-	if cl.rpc != nil {
-		_ = cl.rpc.Close()
-		cl.rpc = nil
-	}
-}
-
 // signalStart sends a non-blocking signal on startCh.
 func (cl *CodexLogin) signalStart(err error) {
 	select {

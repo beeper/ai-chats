@@ -187,10 +187,10 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 		return false, cle, err
 	}
 	if done {
-		return hasPendingAgentLoopContinuation(state), nil, nil
+		return state != nil && (len(state.pendingFunctionOutputs) > 0 || len(state.pendingMcpApprovals) > 0), nil, nil
 	}
 
-	return hasPendingAgentLoopContinuation(state), nil, nil
+	return state != nil && (len(state.pendingFunctionOutputs) > 0 || len(state.pendingMcpApprovals) > 0), nil, nil
 }
 
 func (a *responsesTurnAdapter) FinalizeAgentLoop(ctx context.Context) {
@@ -198,10 +198,10 @@ func (a *responsesTurnAdapter) FinalizeAgentLoop(ctx context.Context) {
 }
 
 func (a *responsesTurnAdapter) ContinueAgentLoop(messages []openai.ChatCompletionMessageParamUnion) {
-	a.agentLoopProviderBase.ContinueAgentLoop(messages)
 	if len(messages) == 0 {
 		return
 	}
+	a.messages = append(a.messages, messages...)
 	a.state.baseInput = append(a.state.baseInput, a.oc.convertToResponsesInput(messages, a.meta)...)
 	a.hasFollowUp = true
 }
