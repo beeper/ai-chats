@@ -183,6 +183,11 @@ func cmdLogin(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	domain, err := beeperauth.DomainForEnv(*env)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Logging into %s (env: %s)\n", domain, *env)
 	cfg, err := beeperauth.Login(context.Background(), beeperauth.LoginParams{
 		Env:               *env,
 		Email:             *email,

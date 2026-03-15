@@ -11,7 +11,6 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote"
-	"github.com/beeper/agentremote/pkg/matrixevents"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	bridgesdk "github.com/beeper/agentremote/sdk"
 )
@@ -292,12 +291,4 @@ func (oc *OpenCodeClient) SaveOpenCodeInstances(ctx context.Context, instances m
 
 func (oc *OpenCodeClient) HumanUserID(loginID networkid.UserLoginID) networkid.UserID {
 	return humanUserID(loginID)
-}
-
-func (oc *OpenCodeClient) RoomCapabilitiesEventType() event.Type {
-	return matrixevents.RoomCapabilitiesEventType
-}
-
-func (oc *OpenCodeClient) RoomSettingsEventType() event.Type {
-	return matrixevents.RoomSettingsEventType
 }

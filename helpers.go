@@ -96,14 +96,12 @@ func SendDebouncedStreamEdit(p SendDebouncedStreamEditParams) error {
 
 // DMChatInfoParams holds the parameters for BuildDMChatInfo.
 type DMChatInfoParams struct {
-	Title             string
-	HumanUserID       networkid.UserID
-	LoginID           networkid.UserLoginID
-	BotUserID         networkid.UserID
-	BotDisplayName    string
-	CanBackfill       bool
-	CapabilitiesEvent event.Type
-	SettingsEvent     event.Type
+	Title          string
+	HumanUserID    networkid.UserID
+	LoginID        networkid.UserLoginID
+	BotUserID      networkid.UserID
+	BotDisplayName string
+	CanBackfill    bool
 }
 
 // BuildDMChatInfo creates a ChatInfo for a DM room between a human user and a bot ghost.
@@ -140,12 +138,6 @@ func BuildDMChatInfo(p DMChatInfoParams) *bridgev2.ChatInfo {
 			IsFull:      true,
 			OtherUserID: p.BotUserID,
 			MemberMap:   members,
-			PowerLevels: &bridgev2.PowerLevelOverrides{
-				Events: map[event.Type]int{
-					p.CapabilitiesEvent: 100,
-					p.SettingsEvent:     0,
-				},
-			},
 		},
 	}
 }
@@ -157,8 +149,6 @@ type LoginDMChatInfoParams struct {
 	BotUserID         networkid.UserID
 	BotDisplayName    string
 	CanBackfill       bool
-	CapabilitiesEvent event.Type
-	SettingsEvent     event.Type
 }
 
 func BuildLoginDMChatInfo(p LoginDMChatInfoParams) *bridgev2.ChatInfo {
@@ -166,14 +156,12 @@ func BuildLoginDMChatInfo(p LoginDMChatInfoParams) *bridgev2.ChatInfo {
 		return nil
 	}
 	return BuildDMChatInfo(DMChatInfoParams{
-		Title:             p.Title,
-		HumanUserID:       HumanUserID(p.HumanUserIDPrefix, p.Login.ID),
-		LoginID:           p.Login.ID,
-		BotUserID:         p.BotUserID,
-		BotDisplayName:    p.BotDisplayName,
-		CanBackfill:       p.CanBackfill,
-		CapabilitiesEvent: p.CapabilitiesEvent,
-		SettingsEvent:     p.SettingsEvent,
+		Title:          p.Title,
+		HumanUserID:    HumanUserID(p.HumanUserIDPrefix, p.Login.ID),
+		LoginID:        p.Login.ID,
+		BotUserID:      p.BotUserID,
+		BotDisplayName: p.BotDisplayName,
+		CanBackfill:    p.CanBackfill,
 	})
 }
 

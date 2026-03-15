@@ -401,6 +401,7 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 		userTypingState:     make(map[id.RoomID]userTypingState),
 		queueTyping:         make(map[id.RoomID]*TypingController),
 	}
+	oc.InitClientBase(login, oc)
 	oc.HumanUserIDPrefix = "openai-user"
 	oc.MessageIDPrefix = "ai"
 	oc.MessageLogKey = "ai_msg_id"
@@ -454,6 +455,15 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 	}
 
 	return oc, nil
+}
+
+func (oc *AIClient) SetUserLogin(login *bridgev2.UserLogin) {
+	oc.UserLogin = login
+	oc.ClientBase.SetUserLogin(login)
+}
+
+func (oc *AIClient) GetApprovalHandler() agentremote.ApprovalReactionHandler {
+	return oc.approvalFlow
 }
 
 const (

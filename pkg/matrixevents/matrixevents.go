@@ -15,11 +15,7 @@ var (
 
 	CompactionStatusEventType = event.Type{Type: "com.beeper.ai.compaction_status", Class: event.MessageEventType}
 
-	AIRoomInfoEventType        = event.Type{Type: "com.beeper.ai.info", Class: event.StateEventType}
-	RoomCapabilitiesEventType  = event.Type{Type: "com.beeper.ai.room_capabilities", Class: event.StateEventType}
-	RoomSettingsEventType      = event.Type{Type: "com.beeper.ai.room_settings", Class: event.StateEventType}
-	ModelCapabilitiesEventType = event.Type{Type: "com.beeper.ai.model_capabilities", Class: event.StateEventType}
-	AgentsEventType            = event.Type{Type: "com.beeper.ai.agents", Class: event.StateEventType}
+	AIRoomInfoEventType = event.Type{Type: "com.beeper.ai.info", Class: event.StateEventType}
 )
 
 // Relation types.

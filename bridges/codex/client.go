@@ -1618,8 +1618,6 @@ func (cc *CodexClient) composeCodexChatInfo(title string, canBackfill bool) *bri
 		BotUserID:         codexGhostID,
 		BotDisplayName:    "Codex",
 		CanBackfill:       canBackfill,
-		CapabilitiesEvent: matrixevents.RoomCapabilitiesEventType,
-		SettingsEvent:     matrixevents.RoomSettingsEventType,
 	})
 }
 

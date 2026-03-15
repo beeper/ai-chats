@@ -18,7 +18,7 @@ func reuseAIClient(login *bridgev2.UserLogin, client *AIClient, bootstrap bool) 
 	if login == nil || client == nil {
 		return
 	}
-	client.UserLogin = login
+	client.SetUserLogin(login)
 	login.Client = client
 	if bootstrap {
 		client.scheduleBootstrap()

@@ -13,7 +13,7 @@ import (
 // init registers custom AI event types with mautrix's TypeMap
 // so the state store can properly parse them during sync
 func init() {
-	event.TypeMap[AgentsEventType] = reflect.TypeOf(AgentsEventContent{})
+	event.TypeMap[AIRoomInfoEventType] = reflect.TypeOf(AIRoomInfoContent{})
 }
 
 // StreamEventMessageType is the unified event type for AI streaming updates (ephemeral).
@@ -22,8 +22,8 @@ var StreamEventMessageType = matrixevents.StreamEventMessageType
 // CompactionStatusEventType notifies clients about context compaction
 var CompactionStatusEventType = matrixevents.CompactionStatusEventType
 
-// AgentsEventType configures active agents in a room
-var AgentsEventType = matrixevents.AgentsEventType
+// AIRoomInfoEventType stores lightweight room metadata for AI rooms.
+var AIRoomInfoEventType = matrixevents.AIRoomInfoEventType
 
 type ToolStatus = matrixevents.ToolStatus
 
@@ -118,29 +118,9 @@ type ModelInfo struct {
 	AvailableTools      []string `json:"available_tools,omitempty"`
 }
 
-// AgentsEventContent configures active agents in a room
-type AgentsEventContent struct {
-	Agents        []AgentConfig        `json:"agents"`
-	Orchestration *OrchestrationConfig `json:"orchestration,omitempty"`
-}
-
-// AgentConfig describes an AI agent
-type AgentConfig struct {
-	AgentID     string   `json:"agent_id"`
-	Name        string   `json:"name"`
-	Model       string   `json:"model"`
-	UserID      string   `json:"user_id"` // Matrix user ID for this agent
-	Role        string   `json:"role"`    // "primary", "specialist"
-	Description string   `json:"description,omitempty"`
-	AvatarURL   string   `json:"avatar_url,omitempty"` // mxc:// URL
-	Triggers    []string `json:"triggers,omitempty"`   // e.g., ["@researcher", "/research"]
-}
-
-// OrchestrationConfig defines how agents work together
-type OrchestrationConfig struct {
-	Mode          string `json:"mode"` // "user_directed", "auto"
-	AllowParallel bool   `json:"allow_parallel"`
-	MaxConcurrent int    `json:"max_concurrent,omitempty"`
+// AIRoomInfoContent identifies the AI room surface for clients and sync state stores.
+type AIRoomInfoContent struct {
+	Type string `json:"type"`
 }
 
 // AgentDefinitionContent stores agent configuration in Matrix state events.

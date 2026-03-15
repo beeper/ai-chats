@@ -139,8 +139,6 @@ func (b *Bridge) composeOpenCodeChatInfo(title, instanceID string) *bridgev2.Cha
 		BotUserID:         OpenCodeUserID(instanceID),
 		BotDisplayName:    b.DisplayName(instanceID),
 		CanBackfill:       true,
-		CapabilitiesEvent: b.host.RoomCapabilitiesEventType(),
-		SettingsEvent:     b.host.RoomSettingsEventType(),
 	})
 }
 

@@ -1,11 +1,13 @@
 package ai
 
 import (
+	"reflect"
 	"testing"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote"
 )
@@ -62,5 +64,32 @@ func TestLoadAIUserLoginMissingAPIKeyEvictsCacheAndSetsBrokenClient(t *testing.T
 	}
 	if _, ok := login.Client.(*agentremote.BrokenLoginClient); !ok {
 		t.Fatalf("expected broken login client type, got %T", login.Client)
+	}
+}
+
+func TestReuseAIClientUpdatesClientBaseLogin(t *testing.T) {
+	login := testUserLoginWithMeta("login-2", &UserLoginMetadata{Provider: ProviderOpenAI})
+	client := &AIClient{}
+
+	reuseAIClient(login, client, false)
+
+	if client.UserLogin != login {
+		t.Fatal("expected user login to be updated on the client")
+	}
+	if client.GetUserLogin() != login {
+		t.Fatal("expected embedded ClientBase login to be updated")
+	}
+	if login.Client != client {
+		t.Fatal("expected login client reference to point at the reused client")
+	}
+}
+
+func TestAIRoomInfoEventTypeRegistered(t *testing.T) {
+	got, ok := event.TypeMap[AIRoomInfoEventType]
+	if !ok {
+		t.Fatal("expected AI room info event type to be registered")
+	}
+	if got != reflect.TypeOf(AIRoomInfoContent{}) {
+		t.Fatalf("unexpected registered type: %v", got)
 	}
 }

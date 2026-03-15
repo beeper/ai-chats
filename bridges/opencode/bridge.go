@@ -36,8 +36,6 @@ type Host interface {
 	OpenCodeInstances() map[string]*OpenCodeInstance
 	SaveOpenCodeInstances(ctx context.Context, instances map[string]*OpenCodeInstance) error
 	HumanUserID(loginID networkid.UserLoginID) networkid.UserID
-	RoomCapabilitiesEventType() event.Type
-	RoomSettingsEventType() event.Type
 	ensureStreamWriter(ctx context.Context, portal *bridgev2.Portal, turnID, agentID string) (*openCodeStreamState, *bridgesdk.Writer)
 	applyStreamMessageMetadata(state *openCodeStreamState, metadata map[string]any)
 }
