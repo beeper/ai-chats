@@ -317,7 +317,7 @@ func (t *Turn) defaultDebouncedEdit(identity ProviderIdentity) func(context.Cont
 			return nil
 		}
 		body := strings.TrimSpace(t.VisibleText())
-		uiMessage := streamui.SnapshotCanonicalUIMessage(t.state)
+		uiMessage := streamui.SnapshotUIMessage(t.state)
 		return agentremote.SendDebouncedStreamEdit(agentremote.SendDebouncedStreamEditParams{
 			Login:            t.conv.login,
 			Portal:           t.conv.portal,
@@ -513,7 +513,7 @@ func (t *Turn) SendStatus(status event.MessageStatus, message string) {
 }
 
 func (t *Turn) finalMetadata(finishReason string) agentremote.BaseMessageMetadata {
-	uiMessage := streamui.SnapshotCanonicalUIMessage(t.state)
+	uiMessage := streamui.SnapshotUIMessage(t.state)
 	snapshot := BuildTurnSnapshot(uiMessage, TurnDataBuildOptions{
 		ID:   t.turnID,
 		Role: "assistant",

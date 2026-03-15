@@ -36,7 +36,7 @@ func visibleStreamingText(state *streamingState) string {
 			return text
 		}
 	}
-	uiMessage := streamui.SnapshotCanonicalUIMessage(currentStreamingUIState(state))
+	uiMessage := streamui.SnapshotUIMessage(currentStreamingUIState(state))
 	if len(uiMessage) == 0 {
 		return ""
 	}
@@ -80,7 +80,7 @@ func (oc *AIClient) buildUIMessageMetadata(state *streamingState, meta *PortalMe
 	return metadata
 }
 
-// buildStreamUIMessage constructs the canonical UI message for streaming edits and persistence.
+// buildStreamUIMessage constructs the UI message projection for streaming edits and persistence.
 // linkPreviews may be nil for intermediate saves.
 func (oc *AIClient) buildStreamUIMessage(state *streamingState, meta *PortalMetadata, linkPreviews []*event.BeeperLinkPreview) map[string]any {
 	if state == nil {

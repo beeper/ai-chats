@@ -73,9 +73,9 @@ func TestHandleResponseLifecycleEventEmitsMetadataForCompleted(t *testing.T) {
 		Model:  "gpt-4.1",
 	})
 
-	message := streamui.SnapshotCanonicalUIMessage(state.turn.UIState())
+	message := streamui.SnapshotUIMessage(state.turn.UIState())
 	if message == nil {
-		t.Fatal("expected canonical UI message")
+		t.Fatal("expected UI message snapshot")
 	}
 	metadata, _ := message["metadata"].(map[string]any)
 	if metadata["response_id"] != "resp_123" {

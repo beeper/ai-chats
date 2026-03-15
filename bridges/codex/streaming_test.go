@@ -24,10 +24,10 @@ func TestCodex_StreamChunks_BasicOrderingAndSeq(t *testing.T) {
 	if uiState == nil || !uiState.UIStarted || !uiState.UIFinished {
 		t.Fatalf("expected turn UI state to be started and finished, got %#v", uiState)
 	}
-	uiMessage := streamui.SnapshotCanonicalUIMessage(uiState)
+	uiMessage := streamui.SnapshotUIMessage(uiState)
 	gotParts := agentremote.NormalizeUIParts(uiMessage["parts"])
 	if len(gotParts) == 0 {
-		t.Fatal("expected canonical UI parts")
+		t.Fatal("expected UI message parts")
 	}
 	seenText := false
 	for _, part := range gotParts {

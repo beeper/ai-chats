@@ -23,7 +23,7 @@ func TestApplyChunkToolApprovalResponse(t *testing.T) {
 		"reason":     "deny",
 	})
 
-	message := SnapshotCanonicalUIMessage(state)
+	message := SnapshotUIMessage(state)
 	parts, _ := message["parts"].([]any)
 	if len(parts) != 1 {
 		t.Fatalf("expected 1 part, got %d", len(parts))

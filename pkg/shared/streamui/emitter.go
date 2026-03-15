@@ -19,7 +19,7 @@ type UIState struct {
 	UIReasoningID            string
 	UIStepOpen               bool
 	UIStepCount              int
-	UICanonicalMessage       map[string]any
+	UIMessage                map[string]any
 	UIToolStarted            map[string]bool
 	UISourceURLSeen          map[string]bool
 	UISourceDocumentSeen     map[string]bool

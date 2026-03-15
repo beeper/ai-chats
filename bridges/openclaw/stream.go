@@ -339,7 +339,7 @@ func (oc *OpenClawClient) applyStreamMessageMetadata(state *openClawStreamState,
 	}
 }
 
-func (oc *OpenClawClient) currentCanonicalUIMessage(state *openClawStreamState) map[string]any {
+func (oc *OpenClawClient) currentUIMessage(state *openClawStreamState) map[string]any {
 	if state == nil {
 		return nil
 	}
@@ -347,7 +347,7 @@ func (oc *OpenClawClient) currentCanonicalUIMessage(state *openClawStreamState) 
 	if state.turn != nil && state.turn.UIState() != nil {
 		uiState = state.turn.UIState()
 	}
-	uiMessage := streamui.SnapshotCanonicalUIMessage(uiState)
+	uiMessage := streamui.SnapshotUIMessage(uiState)
 	update := msgconv.BuildUIMessageMetadata(msgconv.UIMessageMetadataParams{
 		TurnID:           state.turnID,
 		AgentID:          state.agentID,
@@ -385,7 +385,7 @@ func (oc *OpenClawClient) buildStreamDBMetadata(state *openClawStreamState) *Mes
 	if body == "" {
 		body = strings.TrimSpace(state.accumulated.String())
 	}
-	uiMessage := oc.currentCanonicalUIMessage(state)
+	uiMessage := oc.currentUIMessage(state)
 	snapshot := bridgesdk.BuildTurnSnapshot(uiMessage, bridgesdk.TurnDataBuildOptions{
 		ID:   state.turnID,
 		Role: openclawconv.StringsTrimDefault(state.role, "assistant"),

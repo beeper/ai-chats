@@ -1919,7 +1919,7 @@ func openClawHistoryUIParts(message map[string]any, role string) []map[string]an
 		),
 	}
 	openClawApplyHistoryChunks(state, message, role)
-	snapshot := streamui.SnapshotCanonicalUIMessage(state)
+	snapshot := streamui.SnapshotUIMessage(state)
 	return agentremote.NormalizeUIParts(snapshot["parts"])
 }
 

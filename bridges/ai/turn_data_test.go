@@ -57,7 +57,7 @@ func TestTurnDataFromStreamingStatePrefersVisibleText(t *testing.T) {
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-delta", "id": "text-visible", "delta": "Visible reply"})
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-end", "id": "text-visible"})
 
-	td := turnDataFromStreamingState(state, streamui.SnapshotCanonicalUIMessage(state.turn.UIState()))
+	td := turnDataFromStreamingState(state, streamui.SnapshotUIMessage(state.turn.UIState()))
 	if len(td.Parts) == 0 || td.Parts[0].Text != "Visible reply" {
 		t.Fatalf("expected visible turn text in first part, got %#v", td.Parts)
 	}

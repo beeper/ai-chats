@@ -67,7 +67,7 @@ func (oc *OpenCodeClient) applyStreamMessageMetadata(state *openCodeStreamState,
 	}
 }
 
-func (oc *OpenCodeClient) currentCanonicalUIMessage(state *openCodeStreamState) map[string]any {
+func (oc *OpenCodeClient) currentUIMessage(state *openCodeStreamState) map[string]any {
 	if state == nil {
 		return nil
 	}
@@ -75,7 +75,7 @@ func (oc *OpenCodeClient) currentCanonicalUIMessage(state *openCodeStreamState) 
 	if state.turn != nil && state.turn.UIState() != nil {
 		uiState = state.turn.UIState()
 	}
-	uiMessage := streamui.SnapshotCanonicalUIMessage(uiState)
+	uiMessage := streamui.SnapshotUIMessage(uiState)
 	metadata := opencodeUIMessageMetadata(state)
 	if len(uiMessage) == 0 {
 		return msgconv.BuildUIMessage(msgconv.UIMessageParams{
@@ -109,7 +109,7 @@ func (oc *OpenCodeClient) buildStreamDBMetadata(state *openCodeStreamState) *Mes
 	if state == nil {
 		return nil
 	}
-	uiMessage := oc.currentCanonicalUIMessage(state)
+	uiMessage := oc.currentUIMessage(state)
 	return buildMessageMetadataFromParams(MessageMetadataParams{
 		Role:             stringutil.FirstNonEmpty(state.role, "assistant"),
 		Body:             stringutil.FirstNonEmpty(state.visible.String(), state.accumulated.String()),

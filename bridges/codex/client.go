@@ -1961,11 +1961,11 @@ func (cc *CodexClient) buildUIMessageMetadata(state *streamingState, model strin
 	})
 }
 
-func buildMessageMetadata(state *streamingState, turnID string, model string, finishReason string, canonicalUIMessage map[string]any) *MessageMetadata {
+func buildMessageMetadata(state *streamingState, turnID string, model string, finishReason string, uiMessage map[string]any) *MessageMetadata {
 	if state != nil && strings.TrimSpace(state.currentModel) != "" {
 		model = state.currentModel
 	}
-	snapshot := bridgesdk.BuildTurnSnapshot(canonicalUIMessage, bridgesdk.TurnDataBuildOptions{
+	snapshot := bridgesdk.BuildTurnSnapshot(uiMessage, bridgesdk.TurnDataBuildOptions{
 		ID:             turnID,
 		Role:           "assistant",
 		Text:           state.accumulated.String(),
@@ -2002,7 +2002,7 @@ func (cc *CodexClient) buildSDKFinalMetadata(turn *bridgesdk.Turn, state *stream
 	if turn == nil || state == nil {
 		return &MessageMetadata{}
 	}
-	return buildMessageMetadata(state, turn.ID(), model, finishReason, streamui.SnapshotCanonicalUIMessage(turn.UIState()))
+	return buildMessageMetadata(state, turn.ID(), model, finishReason, streamui.SnapshotUIMessage(turn.UIState()))
 }
 
 // --- Approvals ---

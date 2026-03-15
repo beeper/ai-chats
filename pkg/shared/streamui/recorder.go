@@ -209,11 +209,11 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 	}
 }
 
-func SnapshotCanonicalUIMessage(state *UIState) map[string]any {
-	if state == nil || len(state.UICanonicalMessage) == 0 {
+func SnapshotUIMessage(state *UIState) map[string]any {
+	if state == nil || len(state.UIMessage) == 0 {
 		return nil
 	}
-	return jsonutil.DeepCloneMap(jsonutil.ToMap(state.UICanonicalMessage))
+	return jsonutil.DeepCloneMap(jsonutil.ToMap(state.UIMessage))
 }
 
 func RecordApprovalResponse(state *UIState, approvalID, toolCallID string, approved bool, reason string) {
@@ -245,23 +245,23 @@ func RecordApprovalResponse(state *UIState, approvalID, toolCallID string, appro
 }
 
 func ensureAssistantMessage(state *UIState) map[string]any {
-	if state.UICanonicalMessage == nil {
-		state.UICanonicalMessage = map[string]any{
+	if state.UIMessage == nil {
+		state.UIMessage = map[string]any{
 			"id":    state.TurnID,
 			"role":  "assistant",
 			"parts": []any{},
 		}
 	}
-	if stringutil.TrimString(state.UICanonicalMessage["id"]) == "" {
-		state.UICanonicalMessage["id"] = state.TurnID
+	if stringutil.TrimString(state.UIMessage["id"]) == "" {
+		state.UIMessage["id"] = state.TurnID
 	}
-	if stringutil.TrimString(state.UICanonicalMessage["role"]) == "" {
-		state.UICanonicalMessage["role"] = "assistant"
+	if stringutil.TrimString(state.UIMessage["role"]) == "" {
+		state.UIMessage["role"] = "assistant"
 	}
-	if _, ok := state.UICanonicalMessage["parts"].([]any); !ok {
-		state.UICanonicalMessage["parts"] = []any{}
+	if _, ok := state.UIMessage["parts"].([]any); !ok {
+		state.UIMessage["parts"] = []any{}
 	}
-	return state.UICanonicalMessage
+	return state.UIMessage
 }
 
 func appendPart(state *UIState, part map[string]any) int {

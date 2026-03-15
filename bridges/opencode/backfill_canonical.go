@@ -41,7 +41,7 @@ func buildCanonicalAssistantBackfill(msg api.MessageWithParts, agentID string) c
 	finishMeta := buildTurnFinishMetadata(&msg, agentID, finishReason)
 	opencodeReplayFinish(&state, finishReason, finishMeta)
 
-	uiMessage := streamui.SnapshotCanonicalUIMessage(&state)
+	uiMessage := streamui.SnapshotUIMessage(&state)
 	body := strings.TrimSpace(visible.String())
 	if body == "" {
 		body = "..."
