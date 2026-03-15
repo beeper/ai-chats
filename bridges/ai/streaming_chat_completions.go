@@ -180,7 +180,7 @@ func (a *chatCompletionsTurnAdapter) RunRound(
 		if round >= maxStreamingToolRounds {
 			log.Warn().Int("rounds", round+1).Msg("Max tool call rounds reached; stopping chat completions continuation")
 			currentMessages = append(currentMessages, openai.AssistantMessage("Continuation stopped after reaching the maximum number of streaming tool rounds."))
-			state.pendingFunctionOutputs = nil
+			state.clearContinuationState()
 			a.messages = currentMessages
 			return false, nil, nil
 		}
@@ -204,7 +204,10 @@ func (a *chatCompletionsTurnAdapter) RunRound(
 				currentMessages = append(currentMessages, openai.UserMessage(prompt))
 			}
 		}
-		state.pendingFunctionOutputs = nil
+		// Chat Completions does not support MCP approvals; clearContinuationState
+		// is safe here — it resets pendingFunctionOutputs (consumed above) and
+		// pendingMcpApprovals (always empty for Chat).
+		state.clearContinuationState()
 		a.messages = currentMessages
 		return true, nil, nil
 	}

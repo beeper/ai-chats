@@ -615,6 +615,7 @@ func (t *Turn) EndWithError(errText string) {
 		return
 	}
 	t.Writer().Error(t.turnCtx, errText)
+	t.SendStatus(event.MessageStatusFail, errText)
 	t.Writer().Finish(t.turnCtx, "error", t.metadata)
 	if t.session != nil {
 		t.session.End(t.turnCtx, turns.EndReasonError)

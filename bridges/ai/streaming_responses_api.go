@@ -106,8 +106,7 @@ func (a *responsesTurnAdapter) startContinuationRound(ctx context.Context) (*sse
 	if stream == nil {
 		return nil, continuationParams, errors.New("continuation streaming not available")
 	}
-	state.pendingFunctionOutputs = nil
-	state.pendingMcpApprovals = nil
+	state.clearContinuationState()
 	return stream, continuationParams, nil
 }
 
@@ -234,22 +233,22 @@ func (oc *AIClient) processResponseStreamEvent(
 		actions.outputItemDone(streamEvent.Item)
 
 	case "response.custom_tool_call_input.delta":
-		actions.customToolInputDelta(streamEvent.ItemID, streamEvent.Item, streamEvent.Delta)
+		actions.emitCustomToolInput(streamEvent.ItemID, streamEvent.Item, true, streamEvent.Delta)
 
 	case "response.custom_tool_call_input.done":
-		actions.customToolInputDone(streamEvent.ItemID, streamEvent.Item, streamEvent.Input)
+		actions.emitCustomToolInput(streamEvent.ItemID, streamEvent.Item, false, streamEvent.Input)
 
 	case "response.code_interpreter_call_code.delta":
-		actions.customToolInputDelta(streamEvent.ItemID, streamEvent.Item, streamEvent.Delta)
+		actions.emitCustomToolInput(streamEvent.ItemID, streamEvent.Item, true, streamEvent.Delta)
 
 	case "response.code_interpreter_call_code.done":
-		actions.customToolInputDone(streamEvent.ItemID, streamEvent.Item, streamEvent.Code)
+		actions.emitCustomToolInput(streamEvent.ItemID, streamEvent.Item, false, streamEvent.Code)
 
 	case "response.mcp_call_arguments.delta":
-		actions.customToolInputDelta(streamEvent.ItemID, streamEvent.Item, streamEvent.Delta)
+		actions.emitCustomToolInput(streamEvent.ItemID, streamEvent.Item, true, streamEvent.Delta)
 
 	case "response.mcp_call_arguments.done":
-		actions.customToolInputDone(streamEvent.ItemID, streamEvent.Item, streamEvent.Arguments)
+		actions.emitCustomToolInput(streamEvent.ItemID, streamEvent.Item, false, streamEvent.Arguments)
 
 	case "response.mcp_call.failed":
 		actions.mcpCallFailed(streamEvent.ItemID, streamEvent.Item)
@@ -286,44 +285,44 @@ func (oc *AIClient) processResponseStreamEvent(
 		actions.functionToolInputDone(streamEvent.ItemID, streamEvent.Name, streamEvent.Arguments)
 
 	case "response.file_search_call.searching", "response.file_search_call.in_progress":
-		actions.providerToolInProgress(streamEvent.ItemID, "file_search", ToolTypeProvider)
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "file_search", ToolTypeProvider, true, "")
 
 	case "response.file_search_call.completed":
-		actions.providerToolCompleted(streamEvent.ItemID, "file_search", ToolTypeProvider, "")
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "file_search", ToolTypeProvider, false, "")
 
 	case "response.code_interpreter_call.in_progress", "response.code_interpreter_call.interpreting":
-		actions.providerToolInProgress(streamEvent.ItemID, "code_interpreter", ToolTypeProvider)
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "code_interpreter", ToolTypeProvider, true, "")
 
 	case "response.code_interpreter_call.completed":
-		actions.providerToolCompleted(streamEvent.ItemID, "code_interpreter", ToolTypeProvider, "")
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "code_interpreter", ToolTypeProvider, false, "")
 
 	case "response.mcp_list_tools.in_progress":
-		actions.providerToolInProgress(streamEvent.ItemID, "mcp.list_tools", ToolTypeMCP)
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "mcp.list_tools", ToolTypeMCP, true, "")
 
 	case "response.mcp_list_tools.completed":
-		actions.providerToolCompleted(streamEvent.ItemID, "mcp.list_tools", ToolTypeMCP, "")
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "mcp.list_tools", ToolTypeMCP, false, "")
 
 	case "response.mcp_list_tools.failed":
-		actions.providerToolCompleted(streamEvent.ItemID, "mcp.list_tools", ToolTypeMCP, "MCP list tools failed")
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "mcp.list_tools", ToolTypeMCP, false, "MCP list tools failed")
 
 	case "response.mcp_call.in_progress":
-		actions.providerToolInProgress(streamEvent.ItemID, "mcp.call", ToolTypeMCP)
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "mcp.call", ToolTypeMCP, true, "")
 
 	case "response.mcp_call.completed":
-		actions.providerToolCompleted(streamEvent.ItemID, "mcp.call", ToolTypeMCP, "")
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "mcp.call", ToolTypeMCP, false, "")
 
 	case "response.web_search_call.searching", "response.web_search_call.in_progress":
-		actions.providerToolInProgress(streamEvent.ItemID, "web_search", ToolTypeProvider)
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "web_search", ToolTypeProvider, true, "")
 
 	case "response.web_search_call.completed":
-		actions.providerToolCompleted(streamEvent.ItemID, "web_search", ToolTypeProvider, "")
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "web_search", ToolTypeProvider, false, "")
 
 	case "response.image_generation_call.in_progress", "response.image_generation_call.generating":
-		actions.providerToolInProgress(streamEvent.ItemID, "image_generation", ToolTypeProvider)
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "image_generation", ToolTypeProvider, true, "")
 		log.Debug().Str("item_id", streamEvent.ItemID).Msg("Image generation in progress")
 
 	case "response.image_generation_call.completed":
-		actions.providerToolCompleted(streamEvent.ItemID, "image_generation", ToolTypeProvider, "")
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "image_generation", ToolTypeProvider, false, "")
 		log.Info().Str("item_id", streamEvent.ItemID).Msg("Image generation completed")
 
 	case "response.image_generation_call.partial_image":
@@ -355,7 +354,7 @@ func (oc *AIClient) processResponseStreamEvent(
 		if streamEvent.Response.ID != "" {
 			state.responseID = streamEvent.Response.ID
 		}
-		state.writer().MessageMetadata(ctx, oc.buildUIMessageMetadata(state, meta, true))
+		actions.finalizeMetadata()
 
 		if !isContinuation {
 			// Extract any generated images from response output

@@ -45,7 +45,7 @@ func TestRequestTurnApprovalWithoutApprovalFlowReturnsHandle(t *testing.T) {
 
 func TestStartStreamingMCPApprovalAutoApprovedEmitsApprovalRequest(t *testing.T) {
 	oc := newTestAIClient("@owner:example.com")
-	state := newStreamingState(context.Background(), nil, "", "", "")
+	state := newStreamingState(context.Background(), nil, "")
 	conv := bridgesdk.NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, nil, nil)
 	state.turn = conv.StartTurn(context.Background(), nil, nil)
 

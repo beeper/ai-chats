@@ -150,7 +150,7 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 	}
 
 	// Natural mode: process directives (OpenClaw-style)
-	directives := airuntime.ParseReplyDirectives(rawContent, state.sourceEventID.String())
+	directives := airuntime.ParseReplyDirectives(rawContent, state.sourceEventID().String())
 
 	// Handle silent replies - redact the streaming message
 	if directives.IsSilent {

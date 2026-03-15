@@ -255,8 +255,8 @@ func (oc *AIClient) executeStreamingBuiltinTool(
 				Client:        oc,
 				Portal:        portal,
 				Meta:          meta,
-				SourceEventID: state.sourceEventID,
-				SenderID:      state.senderID,
+				SourceEventID: state.sourceEventID(),
+				SenderID:      state.senderID(),
 			})
 			var err error
 			result, err = oc.executeBuiltinTool(toolCtx, portal, toolName, argsJSON)

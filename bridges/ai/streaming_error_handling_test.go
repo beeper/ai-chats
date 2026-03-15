@@ -13,7 +13,7 @@ import (
 )
 
 func newTestStreamingStateWithTurn() *streamingState {
-	state := newStreamingState(context.Background(), nil, "", "", "")
+	state := newStreamingState(context.Background(), nil, "")
 	conv := bridgesdk.NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, nil, nil)
 	state.turn = conv.StartTurn(context.Background(), nil, nil)
 	return state

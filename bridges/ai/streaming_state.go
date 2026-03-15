@@ -46,8 +46,6 @@ type streamingState struct {
 	statusSentIDs          map[id.EventID]bool
 
 	// Directive processing
-	sourceEventID    id.EventID // The triggering user message event ID (for [[reply_to_current]])
-	senderID         string     // The triggering sender ID (for owner-only tool gating)
 	replyTarget      ReplyTarget
 	replyAccumulator *runtimeparse.StreamingDirectiveAccumulator
 	// If true, prepend a separator before the next non-whitespace text delta.
@@ -63,6 +61,22 @@ type streamingState struct {
 	// Pending MCP approvals to resolve before the turn can continue.
 	pendingMcpApprovals     []mcpApprovalRequest
 	pendingMcpApprovalsSeen map[string]bool
+}
+
+// sourceEventID returns the triggering user message event ID from the turn's source ref.
+func (s *streamingState) sourceEventID() id.EventID {
+	if s == nil || s.turn == nil || s.turn.Source() == nil {
+		return ""
+	}
+	return id.EventID(s.turn.Source().EventID)
+}
+
+// senderID returns the triggering sender ID from the turn's source ref.
+func (s *streamingState) senderID() string {
+	if s == nil || s.turn == nil || s.turn.Source() == nil {
+		return ""
+	}
+	return s.turn.Source().SenderID
 }
 
 func (s *streamingState) hasInitialMessageTarget() bool {
@@ -84,6 +98,16 @@ func (s *streamingState) writer() *sdk.Writer {
 	return s.turn.Writer()
 }
 
+// clearContinuationState resets pending function outputs and MCP approvals
+// after they have been consumed for a continuation round.
+func (s *streamingState) clearContinuationState() {
+	if s == nil {
+		return
+	}
+	s.pendingFunctionOutputs = nil
+	s.pendingMcpApprovals = nil
+}
+
 // trackFirstToken records the first-token timestamp once.
 func (s *streamingState) trackFirstToken() {
 	if s != nil && s.firstTokenAtMs == 0 {
@@ -99,7 +123,7 @@ type mcpApprovalRequest struct {
 	handle      sdk.ApprovalHandle
 }
 
-func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID id.EventID, senderID string, roomID id.RoomID) *streamingState {
+func newStreamingState(ctx context.Context, meta *PortalMetadata, roomID id.RoomID) *streamingState {
 	agentID := ""
 	if meta != nil {
 		agentID = resolveAgentID(meta)
@@ -107,8 +131,6 @@ func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID 
 	state := &streamingState{
 		agentID:                 agentID,
 		startedAtMs:             time.Now().UnixMilli(),
-		sourceEventID:           sourceEventID,
-		senderID:                senderID,
 		roomID:                  roomID,
 		statusSentIDs:           make(map[id.EventID]bool),
 		replyAccumulator:        runtimeparse.NewStreamingDirectiveAccumulator(),
@@ -132,8 +154,8 @@ func (oc *AIClient) applyStreamingReplyTarget(state *streamingState, parsed *run
 	mode := runtimeparse.NormalizeReplyToMode(oc.resolveMatrixReplyToMode())
 	if parsed.ReplyToExplicitID != "" {
 		state.replyTarget.ReplyTo = id.EventID(strings.TrimSpace(parsed.ReplyToExplicitID))
-	} else if parsed.ReplyToCurrent && state.sourceEventID != "" {
-		state.replyTarget.ReplyTo = state.sourceEventID
+	} else if parsed.ReplyToCurrent && state.sourceEventID() != "" {
+		state.replyTarget.ReplyTo = state.sourceEventID()
 	}
 
 	applied := runtimeparse.ApplyReplyToMode([]runtimeparse.ReplyPayload{{

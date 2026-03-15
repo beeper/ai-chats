@@ -190,6 +190,7 @@ const (
 type SourceRef struct {
 	Kind                 SourceKind
 	EventID              string
+	SenderID             string
 	ParentConversationID string
 	Metadata             map[string]any
 }

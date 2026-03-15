@@ -195,6 +195,58 @@ func (a streamTurnActions) annotationAdded(annotation any, annotationIndex any) 
 	a.oc.handleResponseOutputAnnotationAdded(a.ctx, a.portal, a.state, annotation, annotationIndex)
 }
 
+// approvalRequested registers an MCP approval request through the actions layer.
+// When needsPrompt is false the approval is auto-resolved immediately.
+func (a streamTurnActions) approvalRequested(params ToolApprovalParams, needsPrompt bool) error {
+	handle, err := a.oc.startStreamingMCPApproval(a.ctx, a.portal, a.state, params, needsPrompt)
+	if err != nil {
+		return err
+	}
+	a.state.pendingMcpApprovals = append(a.state.pendingMcpApprovals, mcpApprovalRequest{
+		approvalID:  params.ApprovalID,
+		toolCallID:  params.ToolCallID,
+		toolName:    params.ToolName,
+		serverLabel: params.ServerLabel,
+		handle:      handle,
+	})
+	return nil
+}
+
+// toolResultCompleted finalises a tool call from a Responses API output item
+// through the actions layer, consolidating status-to-result mapping.
+func (a streamTurnActions) toolResultCompleted(tool *activeToolCall, item responses.ResponseOutputItemUnion) {
+	a.touch()
+	a.oc.toolLifecycle(a.portal, a.state).completeFromResponseItem(a.ctx, tool, item)
+}
+
+// emitProviderToolLifecycle handles the common in_progress/completed pattern for
+// provider-managed and MCP tool events, reducing repeated cases in the event switch.
+func (a streamTurnActions) emitProviderToolLifecycle(itemID, toolName string, toolType ToolType, isInProgress bool, failureText string) {
+	if isInProgress {
+		a.providerToolInProgress(itemID, toolName, toolType)
+	} else {
+		a.providerToolCompleted(itemID, toolName, toolType, failureText)
+	}
+}
+
+// emitCustomToolInput handles the common delta/done pattern for custom tool,
+// code interpreter, and MCP call argument events.
+func (a streamTurnActions) emitCustomToolInput(itemID string, item responses.ResponseOutputItemUnion, isDelta bool, content string) {
+	if isDelta {
+		a.customToolInputDelta(itemID, item, content)
+	} else {
+		a.customToolInputDone(itemID, item, content)
+	}
+}
+
+// finalizeMetadata emits a consolidated metadata update on the writer.
+func (a streamTurnActions) finalizeMetadata() {
+	if a.state == nil {
+		return
+	}
+	a.state.writer().MessageMetadata(a.ctx, a.oc.buildUIMessageMetadata(a.state, a.meta, true))
+}
+
 func chatToolRegistryKey(index int64) string {
 	return "chat-index:" + strconv.FormatInt(index, 10)
 }

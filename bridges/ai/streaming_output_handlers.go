@@ -244,8 +244,8 @@ func (oc *AIClient) gateMcpToolApproval(
 	if needsApproval && state.heartbeat != nil {
 		needsApproval = false
 	}
-	handle, err := oc.startStreamingMCPApproval(ctx, portal, state, params, needsApproval)
-	if err != nil {
+	actions := streamTurnActions{oc: oc, ctx: ctx, portal: portal, state: state}
+	if err := actions.approvalRequested(params, needsApproval); err != nil {
 		delete(state.pendingMcpApprovalsSeen, approvalID)
 		if uiState := currentStreamingUIState(state); uiState != nil {
 			delete(uiState.UIToolApprovalRequested, approvalID)
@@ -253,13 +253,6 @@ func (oc *AIClient) gateMcpToolApproval(
 		oc.toolLifecycle(portal, state).fail(ctx, tool, true, ResultStatusError, err.Error(), nil)
 		return
 	}
-	state.pendingMcpApprovals = append(state.pendingMcpApprovals, mcpApprovalRequest{
-		approvalID:  approvalID,
-		toolCallID:  tool.callID,
-		toolName:    tool.toolName,
-		serverLabel: serverLabel,
-		handle:      handle,
-	})
 }
 
 // resolveOutputItemTool performs the common setup shared by handleResponseOutputItemAdded
@@ -340,7 +333,8 @@ func (oc *AIClient) handleResponseOutputItemDone(
 			state.writer().File(ctx, file.URL, file.MediaType)
 		}
 	}
-	oc.toolLifecycle(portal, state).completeFromResponseItem(ctx, tool, item)
+	actions := streamTurnActions{oc: oc, ctx: ctx, portal: portal, state: state}
+	actions.toolResultCompleted(tool, item)
 }
 
 // Response stream output helpers.
