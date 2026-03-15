@@ -34,7 +34,7 @@ func turnDataFromStreamingState(state *streamingState, uiMessage map[string]any)
 			"source_event_id":     state.sourceEventID,
 			"generated_file_refs": agentremote.GeneratedFileRefsFromParts(state.generatedFiles),
 		},
-		Text:      state.accumulated.String(),
+		Text:      displayStreamingText(state),
 		Reasoning: state.reasoning.String(),
 		ToolCalls: state.toolCalls,
 	})

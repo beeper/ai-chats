@@ -562,10 +562,7 @@ func finalRenderedBodyFallback(state *streamingState) string {
 	if state == nil {
 		return "..."
 	}
-	if body := strings.TrimSpace(visibleStreamingText(state)); body != "" {
-		return body
-	}
-	if body := strings.TrimSpace(state.accumulated.String()); body != "" {
+	if body := strings.TrimSpace(displayStreamingText(state)); body != "" {
 		return body
 	}
 	return "..."

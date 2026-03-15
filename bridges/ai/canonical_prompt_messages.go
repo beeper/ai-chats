@@ -96,7 +96,7 @@ func assistantPromptMessagesFromState(state *streamingState) []PromptMessage {
 		Role:   PromptRoleAssistant,
 		Blocks: make([]PromptBlock, 0, 2+len(state.toolCalls)),
 	}
-	if text := strings.TrimSpace(state.accumulated.String()); text != "" {
+	if text := strings.TrimSpace(displayStreamingText(state)); text != "" {
 		assistant.Blocks = append(assistant.Blocks, PromptBlock{Type: PromptBlockText, Text: text})
 	}
 	if reasoning := strings.TrimSpace(state.reasoning.String()); reasoning != "" {

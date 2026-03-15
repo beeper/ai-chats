@@ -20,6 +20,13 @@ func currentStreamingUIState(state *streamingState) *streamui.UIState {
 	return state.turn.UIState()
 }
 
+func rawStreamingText(state *streamingState) string {
+	if state == nil {
+		return ""
+	}
+	return state.accumulated.String()
+}
+
 func visibleStreamingText(state *streamingState) string {
 	if state == nil {
 		return ""
@@ -44,6 +51,16 @@ func visibleStreamingText(state *streamingState) string {
 		}
 	}
 	return visible.String()
+}
+
+func displayStreamingText(state *streamingState) string {
+	if state == nil {
+		return ""
+	}
+	if text := visibleStreamingText(state); strings.TrimSpace(text) != "" {
+		return text
+	}
+	return rawStreamingText(state)
 }
 
 func (oc *AIClient) buildUIMessageMetadata(state *streamingState, meta *PortalMetadata, includeUsage bool) map[string]any {

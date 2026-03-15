@@ -26,6 +26,6 @@ func (oc *AIClient) completeStreamingSuccess(
 	state.writer().MessageMetadata(ctx, oc.buildUIMessageMetadata(state, meta, true))
 	state.turn.End(msgconv.MapFinishReason(state.finishReason))
 	oc.noteStreamingPersistenceSideEffects(ctx, portal, state, meta)
-	oc.maybeGenerateTitle(ctx, portal, state.accumulated.String())
+	oc.maybeGenerateTitle(ctx, portal, finalRenderedBodyFallback(state))
 	oc.recordProviderSuccess(ctx)
 }

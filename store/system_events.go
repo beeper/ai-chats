@@ -10,5 +10,3 @@ type SystemEventQueue struct {
 	Events     []SystemEvent
 	LastText   string
 }
-
-type SystemEventStore struct{}
