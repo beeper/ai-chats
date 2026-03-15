@@ -21,7 +21,13 @@ type ApprovalReactionHandler interface {
 	HandleReaction(ctx context.Context, msg *bridgev2.MatrixReaction, targetEventID id.EventID, emoji string) bool
 }
 
+// ApprovalReactionRemoveHandler is an optional extension for handling reaction removals.
+type ApprovalReactionRemoveHandler interface {
+	HandleReactionRemove(ctx context.Context, msg *bridgev2.MatrixReactionRemove) bool
+}
+
 const approvalWrongTargetMSSMessage = "React to the approval notice message to respond."
+const approvalResolvedMSSMessage = "That approval request was already handled and can't be changed."
 
 // ApprovalFlowConfig holds the bridge-specific callbacks for ApprovalFlow.
 type ApprovalFlowConfig[D any] struct {
@@ -64,6 +70,11 @@ type Pending[D any] struct {
 	done      chan struct{} // closed when the approval is finalized
 }
 
+type resolvedApprovalPrompt struct {
+	Prompt   ApprovalPromptRegistration
+	Decision ApprovalDecisionPayload
+}
+
 // closeDone marks the pending approval as finalized. Safe to call multiple times.
 func (p *Pending[D]) closeDone() {
 	select {
@@ -82,6 +93,8 @@ type ApprovalFlow[D any] struct {
 	// Prompt store (inlined from ApprovalPromptStore).
 	promptsByApproval map[string]*ApprovalPromptRegistration
 	promptsByEventID  map[id.EventID]string
+	resolvedByEventID map[id.EventID]*resolvedApprovalPrompt
+	resolvedByMsgID   map[networkid.MessageID]*resolvedApprovalPrompt
 
 	login           func() *bridgev2.UserLogin
 	sender          func(portal *bridgev2.Portal) bridgev2.EventSender
@@ -118,6 +131,8 @@ func NewApprovalFlow[D any](cfg ApprovalFlowConfig[D]) *ApprovalFlow[D] {
 		pending:           make(map[string]*Pending[D]),
 		promptsByApproval: make(map[string]*ApprovalPromptRegistration),
 		promptsByEventID:  make(map[id.EventID]string),
+		resolvedByEventID: make(map[id.EventID]*resolvedApprovalPrompt),
+		resolvedByMsgID:   make(map[networkid.MessageID]*resolvedApprovalPrompt),
 		login:             cfg.Login,
 		sender:            cfg.Sender,
 		backgroundCtx:     cfg.BackgroundContext,
@@ -528,6 +543,46 @@ func (f *ApprovalFlow[D]) promptRegistration(approvalID string) (ApprovalPromptR
 	return *entry, true
 }
 
+func (f *ApprovalFlow[D]) resolvedPromptByTarget(targetEventID id.EventID, targetMessageID networkid.MessageID) (resolvedApprovalPrompt, bool) {
+	if f == nil {
+		return resolvedApprovalPrompt{}, false
+	}
+	targetEventID = id.EventID(strings.TrimSpace(targetEventID.String()))
+	targetMessageID = networkid.MessageID(strings.TrimSpace(string(targetMessageID)))
+	if targetEventID == "" && targetMessageID == "" {
+		return resolvedApprovalPrompt{}, false
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if targetEventID != "" {
+		if entry := f.resolvedByEventID[targetEventID]; entry != nil {
+			return *entry, true
+		}
+	}
+	if targetMessageID != "" {
+		if entry := f.resolvedByMsgID[targetMessageID]; entry != nil {
+			return *entry, true
+		}
+	}
+	return resolvedApprovalPrompt{}, false
+}
+
+func (f *ApprovalFlow[D]) rememberResolvedPromptLocked(prompt ApprovalPromptRegistration, decision ApprovalDecisionPayload) {
+	if prompt.PromptEventID == "" && prompt.PromptMessageID == "" {
+		return
+	}
+	resolved := &resolvedApprovalPrompt{
+		Prompt:   prompt,
+		Decision: decision,
+	}
+	if prompt.PromptEventID != "" {
+		f.resolvedByEventID[prompt.PromptEventID] = resolved
+	}
+	if prompt.PromptMessageID != "" {
+		f.resolvedByMsgID[prompt.PromptMessageID] = resolved
+	}
+}
+
 // dropPromptLocked removes a prompt registration.
 // Must be called with f.mu held.
 func (f *ApprovalFlow[D]) dropPromptLocked(approvalID string) {
@@ -821,6 +876,9 @@ func (f *ApprovalFlow[D]) HandleReaction(ctx context.Context, msg *bridgev2.Matr
 	now := time.Now()
 	match := f.matchReaction(targetEventID, msg.Event.Sender, emoji, now)
 	if !match.KnownPrompt {
+		if isApprovalReactionKey(emoji) && f.handleResolvedApprovalReactionChange(ctx, msg.Portal, msg.Event, msg, targetEventID, "") {
+			return true
+		}
 		match = f.matchFallbackReaction(msg.Portal.MXID, msg.Event.Sender, emoji, now)
 		if !match.KnownPrompt {
 			if isApprovalReactionKey(emoji) && f.hasPendingApprovalForOwner(msg.Portal.MXID, msg.Event.Sender, now) {
@@ -909,6 +967,22 @@ func (f *ApprovalFlow[D]) HandleReaction(ctx context.Context, msg *bridgev2.Matr
 	return true
 }
 
+// HandleReactionRemove rejects post-resolution approval reaction removals so the
+// chosen terminal action stays immutable.
+func (f *ApprovalFlow[D]) HandleReactionRemove(ctx context.Context, msg *bridgev2.MatrixReactionRemove) bool {
+	if f == nil || msg == nil || msg.Event == nil || msg.Portal == nil || msg.TargetReaction == nil {
+		return false
+	}
+	emoji := msg.TargetReaction.Emoji
+	if emoji == "" {
+		emoji = string(msg.TargetReaction.EmojiID)
+	}
+	if !isApprovalReactionKey(emoji) {
+		return false
+	}
+	return f.handleResolvedApprovalReactionChange(ctx, msg.Portal, msg.Event, nil, "", msg.TargetReaction.MessageID)
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
@@ -925,13 +999,39 @@ func (f *ApprovalFlow[D]) handleRejectedReaction(ctx context.Context, msg *bridg
 	f.redactSingleReaction(msg)
 }
 
+func (f *ApprovalFlow[D]) handleResolvedApprovalReactionChange(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	evt *event.Event,
+	reaction *bridgev2.MatrixReaction,
+	targetEventID id.EventID,
+	targetMessageID networkid.MessageID,
+) bool {
+	if portal == nil || evt == nil {
+		return false
+	}
+	if _, ok := f.resolvedPromptByTarget(targetEventID, targetMessageID); !ok {
+		return false
+	}
+	f.sendMessageStatus(ctx, portal, evt, bridgev2.MessageStatus{
+		Status:      event.MessageStatusFail,
+		ErrorReason: event.MessageStatusGenericError,
+		Message:     approvalResolvedMSSMessage,
+		IsCertain:   true,
+	})
+	if reaction != nil {
+		f.redactSingleReaction(reaction)
+	}
+	return true
+}
+
 func (f *ApprovalFlow[D]) redactSingleReaction(msg *bridgev2.MatrixReaction) {
 	if f.testRedactSingleReaction != nil {
 		f.testRedactSingleReaction(msg)
 		return
 	}
 	login := f.login()
-	sender := f.senderOrEmpty(msg.Portal)
+	sender := f.reactionRedactionSender(msg)
 	triggerID := msg.Event.ID
 	portal := msg.Portal
 	go func() {
@@ -939,8 +1039,29 @@ func (f *ApprovalFlow[D]) redactSingleReaction(msg *bridgev2.MatrixReaction) {
 		if f.backgroundCtx != nil {
 			ctx = f.backgroundCtx(ctx)
 		}
+		if msg != nil && msg.Event != nil && msg.Event.Sender != "" {
+			_ = EnsureSyntheticReactionSenderGhost(ctx, login, msg.Event.Sender)
+		}
 		_ = RedactEventAsSender(ctx, login, portal, sender, triggerID)
 	}()
+}
+
+func (f *ApprovalFlow[D]) reactionRedactionSender(msg *bridgev2.MatrixReaction) bridgev2.EventSender {
+	if msg != nil && msg.Event != nil && msg.Event.Sender != "" {
+		return bridgev2.EventSender{
+			Sender: MatrixSenderID(msg.Event.Sender),
+			SenderLogin: func() networkid.UserLoginID {
+				if login := f.login(); login != nil {
+					return login.ID
+				}
+				return ""
+			}(),
+		}
+	}
+	if msg != nil {
+		return f.senderOrEmpty(msg.Portal)
+	}
+	return bridgev2.EventSender{}
 }
 
 func (f *ApprovalFlow[D]) sendMessageStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, status bridgev2.MessageStatus) {
@@ -1130,6 +1251,9 @@ func (f *ApprovalFlow[D]) finalizeWithPromptVersion(approvalID string, decision 
 		copyEntry := *entry
 		prompt = &copyEntry
 	}
+	if prompt != nil && resolved && decision != nil {
+		f.rememberResolvedPromptLocked(*prompt, *decision)
+	}
 	f.dropPromptLocked(approvalID)
 	f.mu.Unlock()
 	if prompt == nil {
@@ -1190,8 +1314,20 @@ func (f *ApprovalFlow[D]) editPromptToResolvedState(
 	prompt ApprovalPromptRegistration,
 	decision ApprovalDecisionPayload,
 ) {
-	if ac.login == nil || ac.portal == nil || ac.portal.MXID == "" || prompt.PromptMessageID == "" {
+	if ac.login == nil || ac.portal == nil || ac.portal.MXID == "" {
 		return
+	}
+	targetMessage := prompt.PromptMessageID
+	if targetMessage == "" {
+		receiver := ac.portal.Receiver
+		if receiver == "" {
+			receiver = ac.login.ID
+		}
+		target := resolveApprovalPromptMessage(ac.ctx, ac.login, receiver, prompt)
+		if target == nil {
+			return
+		}
+		targetMessage = target.ID
 	}
 	response := BuildApprovalResponsePromptMessage(ApprovalResponsePromptMessageParams{
 		ApprovalID:   prompt.ApprovalID,
@@ -1222,7 +1358,7 @@ func (f *ApprovalFlow[D]) editPromptToResolvedState(
 	ac.login.QueueRemoteEvent(&RemoteEdit{
 		Portal:        ac.portal.PortalKey,
 		Sender:        ac.sender,
-		TargetMessage: prompt.PromptMessageID,
+		TargetMessage: targetMessage,
 		Timestamp:     time.Now(),
 		PreBuilt:      edit,
 		LogKey:        f.logKey,

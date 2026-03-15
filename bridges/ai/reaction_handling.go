@@ -60,6 +60,9 @@ func (oc *AIClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev
 	if agentremote.IsMatrixBotUser(ctx, oc.UserLogin.Bridge, msg.Event.Sender) {
 		return nil
 	}
+	if oc.approvalFlow.HandleReactionRemove(ctx, msg) {
+		return nil
+	}
 
 	if err := oc.UserLogin.Bridge.DB.Reaction.Delete(ctx, msg.TargetReaction); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to delete reaction from database")

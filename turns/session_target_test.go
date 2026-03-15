@@ -116,7 +116,7 @@ func TestStreamSessionDoesNothingWithoutEditTarget(t *testing.T) {
 	}
 }
 
-func TestStreamSessionApprovalRequestPersistsCheckpointWithoutFallback(t *testing.T) {
+func TestStreamSessionApprovalRequestDoesNotPersistCheckpointWithoutFallback(t *testing.T) {
 	t.Helper()
 
 	var fallback atomic.Bool
@@ -161,19 +161,16 @@ func TestStreamSessionApprovalRequestPersistsCheckpointWithoutFallback(t *testin
 
 	select {
 	case force := <-debouncedForce:
-		if !force {
-			t.Fatal("expected approval checkpoint edit to be forced")
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("expected approval request to trigger a persisted checkpoint edit")
+		t.Fatalf("did not expect approval request to trigger a debounced checkpoint edit, got force=%v", force)
+	case <-time.After(200 * time.Millisecond):
 	}
 
 	if fallback.Load() {
-		t.Fatal("did not expect approval checkpoint edit to switch stream transport into fallback mode")
+		t.Fatal("did not expect approval request to switch stream transport into fallback mode")
 	}
 }
 
-func TestStreamSessionApprovalResponsePersistsCheckpointWithoutFallback(t *testing.T) {
+func TestStreamSessionApprovalResponseDoesNotPersistCheckpointWithoutFallback(t *testing.T) {
 	t.Helper()
 
 	var fallback atomic.Bool
@@ -219,14 +216,11 @@ func TestStreamSessionApprovalResponsePersistsCheckpointWithoutFallback(t *testi
 
 	select {
 	case force := <-debouncedForce:
-		if !force {
-			t.Fatal("expected approval resolution checkpoint edit to be forced")
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("expected approval response to trigger a persisted checkpoint edit")
+		t.Fatalf("did not expect approval response to trigger a debounced checkpoint edit, got force=%v", force)
+	case <-time.After(200 * time.Millisecond):
 	}
 
 	if fallback.Load() {
-		t.Fatal("did not expect approval resolution checkpoint edit to switch stream transport into fallback mode")
+		t.Fatal("did not expect approval response to switch stream transport into fallback mode")
 	}
 }

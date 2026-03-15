@@ -126,6 +126,31 @@ func TestIsApprovalPlaceholderReaction_ExcludesUserReaction(t *testing.T) {
 	}
 }
 
+func TestApprovalFlow_ReactionRedactionSenderUsesMatrixUser(t *testing.T) {
+	flow := NewApprovalFlow(ApprovalFlowConfig[*testApprovalFlowData]{
+		Login: func() *bridgev2.UserLogin {
+			return &bridgev2.UserLogin{
+				UserLogin: &database.UserLogin{ID: networkid.UserLoginID("login")},
+			}
+		},
+		Sender: func(*bridgev2.Portal) bridgev2.EventSender {
+			return bridgev2.EventSender{Sender: networkid.UserID("ghost:approval")}
+		},
+	})
+
+	sender := flow.reactionRedactionSender(&bridgev2.MatrixReaction{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.ReactionEventContent]{
+			Event: &event.Event{Sender: id.UserID("@owner:example.com")},
+		},
+	})
+	if sender.Sender != MatrixSenderID(id.UserID("@owner:example.com")) {
+		t.Fatalf("expected matrix sender, got %q", sender.Sender)
+	}
+	if sender.SenderLogin != networkid.UserLoginID("login") {
+		t.Fatalf("expected sender login to be preserved, got %q", sender.SenderLogin)
+	}
+}
+
 func TestApprovalFlow_HandleReaction_DeliveryErrorKeepsPending(t *testing.T) {
 	owner := id.UserID("@owner:example.com")
 	roomID := id.RoomID("!room:example.com")
@@ -231,6 +256,137 @@ func TestApprovalFlow_HandleReaction_UnknownPendingShowsUnknown(t *testing.T) {
 	}
 	if notice == "" {
 		t.Fatalf("expected unknown approval notice")
+	}
+}
+
+func TestApprovalFlow_HandleReaction_ResolvedPromptUsesMessageStatus(t *testing.T) {
+	owner := id.UserID("@owner:example.com")
+	roomID := id.RoomID("!room:example.com")
+	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
+	login := &bridgev2.UserLogin{
+		UserLogin: &database.UserLogin{
+			ID:       networkid.UserLoginID("login"),
+			UserMXID: owner,
+		},
+		Bridge: &bridgev2.Bridge{},
+	}
+
+	var redacted bool
+	var status bridgev2.MessageStatus
+	flow := NewApprovalFlow(ApprovalFlowConfig[*testApprovalFlowData]{
+		Login: func() *bridgev2.UserLogin { return login },
+	})
+	flow.testRedactSingleReaction = func(_ *bridgev2.MatrixReaction) {
+		redacted = true
+	}
+	flow.testSendMessageStatus = func(_ context.Context, gotPortal *bridgev2.Portal, evt *event.Event, gotStatus bridgev2.MessageStatus) {
+		if gotPortal != portal {
+			t.Fatalf("expected status portal %p, got %p", portal, gotPortal)
+		}
+		if evt == nil || evt.ID != id.EventID("$reaction") {
+			t.Fatalf("expected reaction event status target, got %#v", evt)
+		}
+		status = gotStatus
+	}
+	flow.mu.Lock()
+	flow.rememberResolvedPromptLocked(ApprovalPromptRegistration{
+		ApprovalID:      "approval-1",
+		RoomID:          roomID,
+		OwnerMXID:       owner,
+		PromptEventID:   id.EventID("$prompt"),
+		PromptMessageID: networkid.MessageID("msg-1"),
+		Options:         DefaultApprovalOptions(),
+	}, ApprovalDecisionPayload{
+		ApprovalID: "approval-1",
+		Approved:   true,
+		Reason:     ApprovalReasonAllowOnce,
+	})
+	flow.mu.Unlock()
+
+	msg := &bridgev2.MatrixReaction{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.ReactionEventContent]{
+			Event:  &event.Event{ID: id.EventID("$reaction"), Sender: owner},
+			Portal: portal,
+		},
+	}
+	if !flow.HandleReaction(context.Background(), msg, id.EventID("$prompt"), ApprovalReactionKeyDeny) {
+		t.Fatalf("expected resolved approval reaction to be handled")
+	}
+	if !redacted {
+		t.Fatalf("expected late approval reaction to be redacted")
+	}
+	if status.Status != event.MessageStatusFail {
+		t.Fatalf("expected fail status, got %#v", status)
+	}
+	if status.ErrorReason != event.MessageStatusGenericError {
+		t.Fatalf("expected generic error reason, got %#v", status)
+	}
+	if status.Message != approvalResolvedMSSMessage {
+		t.Fatalf("expected resolved approval status message, got %q", status.Message)
+	}
+}
+
+func TestApprovalFlow_HandleReactionRemove_ResolvedPromptUsesMessageStatus(t *testing.T) {
+	owner := id.UserID("@owner:example.com")
+	roomID := id.RoomID("!room:example.com")
+	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
+	login := &bridgev2.UserLogin{
+		UserLogin: &database.UserLogin{
+			ID:       networkid.UserLoginID("login"),
+			UserMXID: owner,
+		},
+		Bridge: &bridgev2.Bridge{},
+	}
+
+	var status bridgev2.MessageStatus
+	flow := NewApprovalFlow(ApprovalFlowConfig[*testApprovalFlowData]{
+		Login: func() *bridgev2.UserLogin { return login },
+	})
+	flow.testSendMessageStatus = func(_ context.Context, gotPortal *bridgev2.Portal, evt *event.Event, gotStatus bridgev2.MessageStatus) {
+		if gotPortal != portal {
+			t.Fatalf("expected status portal %p, got %p", portal, gotPortal)
+		}
+		if evt == nil || evt.ID != id.EventID("$redaction") {
+			t.Fatalf("expected redaction event status target, got %#v", evt)
+		}
+		status = gotStatus
+	}
+	flow.mu.Lock()
+	flow.rememberResolvedPromptLocked(ApprovalPromptRegistration{
+		ApprovalID:      "approval-1",
+		RoomID:          roomID,
+		OwnerMXID:       owner,
+		PromptEventID:   id.EventID("$prompt"),
+		PromptMessageID: networkid.MessageID("msg-1"),
+		Options:         DefaultApprovalOptions(),
+	}, ApprovalDecisionPayload{
+		ApprovalID: "approval-1",
+		Approved:   true,
+		Reason:     ApprovalReasonAllowOnce,
+	})
+	flow.mu.Unlock()
+
+	handled := flow.HandleReactionRemove(context.Background(), &bridgev2.MatrixReactionRemove{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.RedactionEventContent]{
+			Event:  &event.Event{ID: id.EventID("$redaction"), Sender: owner},
+			Portal: portal,
+		},
+		TargetReaction: &database.Reaction{
+			MessageID: networkid.MessageID("msg-1"),
+			Emoji:     ApprovalReactionKeyAllowOnce,
+		},
+	})
+	if !handled {
+		t.Fatalf("expected resolved approval reaction removal to be handled")
+	}
+	if status.Status != event.MessageStatusFail {
+		t.Fatalf("expected fail status, got %#v", status)
+	}
+	if status.ErrorReason != event.MessageStatusGenericError {
+		t.Fatalf("expected generic error reason, got %#v", status)
+	}
+	if status.Message != approvalResolvedMSSMessage {
+		t.Fatalf("expected resolved approval status message, got %q", status.Message)
 	}
 }
 

@@ -50,6 +50,9 @@ func (h BaseReactionHandler) HandleMatrixReaction(ctx context.Context, msg *brid
 	return &database.Reaction{}, nil
 }
 
-func (h BaseReactionHandler) HandleMatrixReactionRemove(_ context.Context, _ *bridgev2.MatrixReactionRemove) error {
+func (h BaseReactionHandler) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev2.MatrixReactionRemove) error {
+	if handler, ok := h.Target.GetApprovalHandler().(ApprovalReactionRemoveHandler); ok {
+		handler.HandleReactionRemove(ctx, msg)
+	}
 	return nil
 }

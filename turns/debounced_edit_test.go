@@ -37,7 +37,6 @@ func TestDebouncedPartMode_ToolEventsEligible(t *testing.T) {
 	toolForceEvents := []string{
 		"tool-input-start", "tool-input-available", "tool-input-error",
 		"tool-output-available", "tool-output-error", "tool-output-denied",
-		"tool-approval-request", "tool-approval-response",
 	}
 	for _, partType := range toolForceEvents {
 		eligible, force := debouncedPartMode(partType)
@@ -55,6 +54,16 @@ func TestDebouncedPartMode_ToolEventsEligible(t *testing.T) {
 	}
 	if force {
 		t.Error("expected tool-input-delta to NOT force immediate send")
+	}
+
+	for _, partType := range []string{"tool-approval-request", "tool-approval-response"} {
+		eligible, force := debouncedPartMode(partType)
+		if eligible {
+			t.Errorf("expected %q to be ineligible for debounced edits", partType)
+		}
+		if force {
+			t.Errorf("expected %q to not force debounced sends", partType)
+		}
 	}
 
 	eligible, _ = debouncedPartMode("unknown-part-type")
