@@ -193,8 +193,7 @@ func (cc *CodexClient) ensureCodexThreadPortal(ctx context.Context, existing *br
 			return nil, false, err
 		}
 	}
-	created := portal.MXID == ""
-
+	var created bool
 	if portal.Metadata == nil {
 		portal.Metadata = &PortalMetadata{}
 	}
