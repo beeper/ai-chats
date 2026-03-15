@@ -412,7 +412,7 @@ func debouncedPartMode(partType string) (eligible bool, force bool) {
 
 func shouldPersistDebouncedCheckpoint(partType string) bool {
 	switch partType {
-	case "tool-approval-request":
+	case "tool-approval-request", "tool-approval-response":
 		return true
 	default:
 		return false
