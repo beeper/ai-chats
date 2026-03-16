@@ -228,6 +228,18 @@ func earliestExpiry(a, b time.Time) time.Time {
 	return b
 }
 
+func approvalPendingResolved[D any](p *Pending[D]) bool {
+	if p == nil {
+		return false
+	}
+	select {
+	case <-p.done:
+		return true
+	default:
+		return false
+	}
+}
+
 // nextReaperDelay returns the duration until the earliest pending/prompt expiry,
 // capped at reaperMaxInterval.
 func (f *ApprovalFlow[D]) nextReaperDelay() time.Duration {
@@ -235,9 +247,15 @@ func (f *ApprovalFlow[D]) nextReaperDelay() time.Duration {
 	defer f.mu.Unlock()
 	earliest := time.Time{}
 	for _, p := range f.pending {
+		if approvalPendingResolved(p) {
+			continue
+		}
 		earliest = earliestExpiry(earliest, p.ExpiresAt)
 	}
-	for _, entry := range f.promptsByApproval {
+	for approvalID, entry := range f.promptsByApproval {
+		if approvalPendingResolved(f.pending[approvalID]) {
+			continue
+		}
 		earliest = earliestExpiry(earliest, entry.ExpiresAt)
 	}
 	if earliest.IsZero() {
@@ -259,12 +277,18 @@ func (f *ApprovalFlow[D]) reapExpired() {
 	f.mu.Lock()
 	// Finalize pending approvals whose own TTL has elapsed.
 	for aid, p := range f.pending {
+		if approvalPendingResolved(p) {
+			continue
+		}
 		if !p.ExpiresAt.IsZero() && now.After(p.ExpiresAt) {
 			expired = append(expired, aid)
 		}
 	}
 	// Also finalize pending approvals whose associated prompt has expired.
 	for aid, entry := range f.promptsByApproval {
+		if approvalPendingResolved(f.pending[aid]) {
+			continue
+		}
 		if !entry.ExpiresAt.IsZero() && now.After(entry.ExpiresAt) {
 			if _, hasPending := f.pending[aid]; hasPending {
 				expired = append(expired, aid)
@@ -448,6 +472,11 @@ func (f *ApprovalFlow[D]) Wait(ctx context.Context, approvalID string) (Approval
 	f.mu.Unlock()
 	if p == nil {
 		return zero, false
+	}
+	select {
+	case d := <-p.ch:
+		return d, true
+	default:
 	}
 	timeout := time.Until(p.ExpiresAt)
 	if timeout <= 0 {

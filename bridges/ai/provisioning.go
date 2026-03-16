@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exhttp"
+	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 
@@ -211,7 +212,7 @@ type agentUpsertRequest struct {
 	SystemPrompt    string                       `json:"system_prompt,omitempty"`
 	PromptMode      string                       `json:"prompt_mode,omitempty"`
 	Tools           *toolpolicy.ToolPolicyConfig `json:"tools,omitempty"`
-	Temperature     float64                      `json:"temperature,omitempty"`
+	Temperature     *float64                     `json:"temperature,omitempty"`
 	ReasoningEffort string                       `json:"reasoning_effort,omitempty"`
 	IdentityName    string                       `json:"identity_name,omitempty"`
 	IdentityPersona string                       `json:"identity_persona,omitempty"`
@@ -249,7 +250,7 @@ func normalizeAgentUpsertRequest(req agentUpsertRequest, pathID string) (*agents
 		ModelFallback:   normalizeStringList(req.ModelFallback),
 		SystemPrompt:    strings.TrimSpace(req.SystemPrompt),
 		PromptMode:      strings.TrimSpace(req.PromptMode),
-		Temperature:     req.Temperature,
+		Temperature:     ptr.Clone(req.Temperature),
 		ReasoningEffort: strings.TrimSpace(req.ReasoningEffort),
 		IdentityName:    strings.TrimSpace(req.IdentityName),
 		IdentityPersona: strings.TrimSpace(req.IdentityPersona),

@@ -337,12 +337,16 @@ func (oc *AIClient) getFollowUpMessages(roomID id.RoomID) []openai.ChatCompletio
 	if oc == nil || roomID == "" {
 		return nil
 	}
-	candidate, snapshot := oc.takePendingQueueDispatchCandidate(roomID, true)
+	snapshot := oc.getQueueSnapshot(roomID)
 	if snapshot == nil {
 		return nil
 	}
 	behavior := airuntime.ResolveQueueBehavior(snapshot.mode)
-	if !behavior.Followup || candidate == nil || len(candidate.items) == 0 {
+	if !behavior.Followup {
+		return nil
+	}
+	candidate, _ := oc.takePendingQueueDispatchCandidate(roomID, true)
+	if candidate == nil || len(candidate.items) == 0 {
 		return nil
 	}
 	for _, item := range candidate.items {

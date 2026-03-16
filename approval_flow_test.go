@@ -707,6 +707,43 @@ func TestApprovalFlow_ResolveExternalDoesNotFinalizeWhenAlreadyHandled(t *testin
 	}
 }
 
+func TestApprovalFlow_ResolvePreventsLaterTimeout(t *testing.T) {
+	flow := NewApprovalFlow(ApprovalFlowConfig[*testApprovalFlowData]{
+		Login: func() *bridgev2.UserLogin { return nil },
+	})
+	if _, created := flow.Register("approval-1", 25*time.Millisecond, &testApprovalFlowData{}); !created {
+		t.Fatalf("expected pending approval to be created")
+	}
+
+	flow.mu.Lock()
+	flow.registerPromptLocked(ApprovalPromptRegistration{
+		ApprovalID:    "approval-1",
+		PromptEventID: id.EventID("$prompt"),
+		Options:       DefaultApprovalOptions(),
+		ExpiresAt:     time.Now().Add(25 * time.Millisecond),
+	})
+	flow.mu.Unlock()
+
+	expected := ApprovalDecisionPayload{
+		ApprovalID: "approval-1",
+		Approved:   true,
+		Reason:     "allow_once",
+	}
+	if err := flow.Resolve("approval-1", expected); err != nil {
+		t.Fatalf("expected resolve to succeed: %v", err)
+	}
+
+	time.Sleep(40 * time.Millisecond)
+
+	decision, ok := flow.Wait(context.Background(), "approval-1")
+	if !ok {
+		t.Fatalf("expected waiter to receive resolved decision after original timeout")
+	}
+	if decision != expected {
+		t.Fatalf("expected decision %#v, got %#v", expected, decision)
+	}
+}
+
 func TestApprovalFlow_SchedulePromptTimeoutIgnoresReplacedPrompt(t *testing.T) {
 	flow := NewApprovalFlow(ApprovalFlowConfig[*testApprovalFlowData]{
 		Login: func() *bridgev2.UserLogin { return nil },

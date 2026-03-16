@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	bridgesdk "github.com/beeper/agentremote/sdk"
+	"go.mau.fi/util/ptr"
 )
 
 func TestGenerateStreamRejectsUnsupportedResponsesPromptContext(t *testing.T) {
@@ -30,5 +31,17 @@ func TestGenerateStreamRejectsUnsupportedResponsesPromptContext(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "responses API does not support prompt context block types required by this request") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestBuildResponsesParamsPreservesExplicitZeroTemperature(t *testing.T) {
+	provider := &OpenAIProvider{}
+	params := provider.buildResponsesParams(GenerateParams{
+		Model:       "gpt-5.2",
+		Temperature: ptr.Ptr(0.0),
+	})
+
+	if !params.Temperature.Valid() || params.Temperature.Value != 0 {
+		t.Fatalf("expected explicit zero temperature, got %#v", params.Temperature)
 	}
 }

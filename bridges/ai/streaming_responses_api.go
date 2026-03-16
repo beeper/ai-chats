@@ -381,6 +381,10 @@ func (oc *AIClient) processResponseStreamEvent(
 
 		if !isContinuation {
 			// Extract any generated images from response output
+			turnID := ""
+			if state.turn != nil {
+				turnID = state.turn.ID()
+			}
 			for _, output := range streamEvent.Response.Output {
 				if output.Type == "image_generation_call" {
 					imgOutput := output.AsImageGenerationCall()
@@ -388,7 +392,7 @@ func (oc *AIClient) processResponseStreamEvent(
 						state.pendingImages = append(state.pendingImages, generatedImage{
 							itemID:   imgOutput.ID,
 							imageB64: imgOutput.Result,
-							turnID:   state.turn.ID(),
+							turnID:   turnID,
 						})
 						log.Debug().Str("item_id", imgOutput.ID).Msg("Captured generated image from response")
 					}

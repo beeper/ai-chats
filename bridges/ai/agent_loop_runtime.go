@@ -26,10 +26,10 @@ func runAgentLoopStreamStep[T any](
 	defer writer.StepFinish(ctx)
 	for stream.Next() {
 		current := stream.Current()
-		if shouldMarkSuccess == nil || shouldMarkSuccess(current) {
+		done, cle, err := handleEvent(current)
+		if err == nil && cle == nil && (shouldMarkSuccess == nil || shouldMarkSuccess(current)) {
 			oc.markMessageSendSuccess(ctx, portal, evt, state)
 		}
-		done, cle, err := handleEvent(current)
 		if done || cle != nil || err != nil {
 			return done, cle, err
 		}

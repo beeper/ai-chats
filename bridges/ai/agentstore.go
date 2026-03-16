@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/commands"
@@ -258,7 +259,7 @@ func ToAgentDefinitionContent(agent *agents.AgentDefinition) *AgentDefinitionCon
 		SystemPrompt:    agent.SystemPrompt,
 		PromptMode:      string(agent.PromptMode),
 		Tools:           agent.Tools.Clone(),
-		Temperature:     agent.Temperature,
+		Temperature:     ptr.Clone(agent.Temperature),
 		ReasoningEffort: agent.ReasoningEffort,
 		HeartbeatPrompt: agent.HeartbeatPrompt,
 		IsPreset:        agent.IsPreset,
@@ -291,7 +292,7 @@ func FromAgentDefinitionContent(content *AgentDefinitionContent) *agents.AgentDe
 		SystemPrompt:    content.SystemPrompt,
 		PromptMode:      agents.PromptMode(content.PromptMode),
 		Tools:           content.Tools.Clone(),
-		Temperature:     content.Temperature,
+		Temperature:     ptr.Clone(content.Temperature),
 		ReasoningEffort: content.ReasoningEffort,
 		HeartbeatPrompt: content.HeartbeatPrompt,
 		IsPreset:        content.IsPreset,
@@ -648,7 +649,7 @@ func agentToToolsData(agent *agents.AgentDefinition) tools.AgentData {
 		SystemPrompt: agent.SystemPrompt,
 		Tools:        agent.Tools.Clone(),
 		Subagents:    agentconfig.CloneSubagentConfig(agent.Subagents),
-		Temperature:  agent.Temperature,
+		Temperature:  ptr.Clone(agent.Temperature),
 		IsPreset:     agent.IsPreset,
 		CreatedAt:    agent.CreatedAt,
 		UpdatedAt:    agent.UpdatedAt,
@@ -667,7 +668,7 @@ func toolsDataToAgent(data tools.AgentData) *agents.AgentDefinition {
 		SystemPrompt: data.SystemPrompt,
 		Tools:        data.Tools.Clone(),
 		Subagents:    agentconfig.CloneSubagentConfig(data.Subagents),
-		Temperature:  data.Temperature,
+		Temperature:  ptr.Clone(data.Temperature),
 		IsPreset:     data.IsPreset,
 		CreatedAt:    data.CreatedAt,
 		UpdatedAt:    data.UpdatedAt,

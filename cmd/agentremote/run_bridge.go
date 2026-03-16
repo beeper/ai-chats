@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"maunium.net/go/mautrix/bridgev2"
 )
 
 // cmdInternalBridge handles the hidden "__bridge" subcommand.
@@ -21,6 +23,9 @@ func cmdInternalBridge(args []string) error {
 	// Replace os.Args so mxmain sees: <binary> [bridge-flags...]
 	// e.g. agentremote __bridge ai -c config.yaml → ai -c config.yaml
 	os.Args = append([]string{def.Name}, args[1:]...)
+	if bridgeType == "ai" {
+		bridgev2.PortalEventBuffer = 0
+	}
 
 	m := def.Definition.NewMain(def.NewFunc())
 	m.InitVersion(Tag, Commit, BuildTime)

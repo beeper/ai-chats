@@ -26,7 +26,6 @@ func NewAIConnector() *OpenAIConnector {
 		ClientCacheMu: &oc.clientsMu,
 		ClientCache:   &oc.clients,
 		InitConnector: func(bridge *bridgev2.Bridge) {
-			bridgev2.PortalEventBuffer = 0
 			oc.br = bridge
 			oc.db = nil
 			if bridge != nil && bridge.DB != nil && bridge.DB.Database != nil {

@@ -13,12 +13,15 @@ import (
 )
 
 func testUserLoginWithMeta(loginID networkid.UserLoginID, meta *UserLoginMetadata) *bridgev2.UserLogin {
-	return &bridgev2.UserLogin{
+	login := &bridgev2.UserLogin{
 		UserLogin: &database.UserLogin{
-			ID:       loginID,
-			Metadata: meta,
+			ID: loginID,
 		},
 	}
+	if meta != nil {
+		login.UserLogin.Metadata = meta
+	}
+	return login
 }
 
 func TestAIClientNeedsRebuild(t *testing.T) {

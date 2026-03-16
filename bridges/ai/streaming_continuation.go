@@ -42,9 +42,7 @@ func (oc *AIClient) buildContinuationParams(
 		steerInput := oc.buildSteeringInputItems(steerPrompts, meta)
 		if len(steerInput) > 0 {
 			input = append(input, steerInput...)
-			if len(state.baseInput) > 0 {
-				state.baseInput = append(state.baseInput, steerInput...)
-			}
+			state.baseInput = append(state.baseInput, steerInput...)
 		}
 	}
 	return oc.buildResponsesAgentLoopParams(ctx, meta, input, true)

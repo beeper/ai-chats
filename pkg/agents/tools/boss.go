@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"go.mau.fi/util/ptr"
 
 	"github.com/beeper/agentremote/pkg/agents/agentconfig"
 	"github.com/beeper/agentremote/pkg/agents/toolpolicy"
@@ -102,7 +103,7 @@ type AgentData struct {
 	SystemPrompt string                       `json:"system_prompt,omitempty"`
 	Tools        *toolpolicy.ToolPolicyConfig `json:"tools,omitempty"`
 	Subagents    *agentconfig.SubagentConfig  `json:"subagents,omitempty"`
-	Temperature  float64                      `json:"temperature,omitempty"`
+	Temperature  *float64                     `json:"temperature,omitempty"`
 	IsPreset     bool                         `json:"is_preset,omitempty"`
 	CreatedAt    int64                        `json:"created_at"`
 	UpdatedAt    int64                        `json:"updated_at"`
@@ -510,7 +511,7 @@ func (e *BossToolExecutor) ExecuteForkAgent(ctx context.Context, input map[strin
 		SystemPrompt: source.SystemPrompt,
 		Tools:        source.Tools.Clone(),
 		Subagents:    agentconfig.CloneSubagentConfig(source.Subagents),
-		Temperature:  source.Temperature,
+		Temperature:  ptr.Clone(source.Temperature),
 		IsPreset:     false,
 		CreatedAt:    now,
 		UpdatedAt:    now,

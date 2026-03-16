@@ -31,6 +31,9 @@ func (o *OpenAIProvider) buildResponsesParams(params GenerateParams) responses.R
 	if params.MaxCompletionTokens > 0 {
 		responsesParams.MaxOutputTokens = openai.Int(int64(params.MaxCompletionTokens))
 	}
+	if params.Temperature != nil {
+		responsesParams.Temperature = openai.Float(*params.Temperature)
+	}
 	if params.Context.SystemPrompt != "" {
 		responsesParams.Instructions = openai.String(params.Context.SystemPrompt)
 	}

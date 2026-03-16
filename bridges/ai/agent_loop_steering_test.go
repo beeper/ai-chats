@@ -157,6 +157,28 @@ func TestGetFollowUpMessages_LeavesNonTextQueueItemsForBacklogProcessing(t *test
 	}
 }
 
+func TestGetFollowUpMessages_LeavesNonFollowupQueueUntouched(t *testing.T) {
+	roomID := id.RoomID("!room:example.com")
+	oc := &AIClient{
+		pendingQueues: map[id.RoomID]*pendingQueue{
+			roomID: {
+				mode: airuntime.QueueModeSteer,
+				items: []pendingQueueItem{
+					{pending: pendingMessage{Type: pendingTypeText, MessageBody: "stay queued"}},
+				},
+			},
+		},
+	}
+
+	messages := oc.getFollowUpMessages(roomID)
+	if len(messages) != 0 {
+		t.Fatalf("expected no follow-up messages for non-followup mode, got %#v", messages)
+	}
+	if snapshot := oc.getQueueSnapshot(roomID); snapshot == nil || len(snapshot.items) != 1 {
+		t.Fatalf("expected queue to remain untouched, got %#v", snapshot)
+	}
+}
+
 func TestBuildContinuationParams_UsesPendingSteeringPromptsBeforeDrainingQueue(t *testing.T) {
 	roomID := id.RoomID("!room:example.com")
 	oc := &AIClient{
@@ -178,6 +200,9 @@ func TestBuildContinuationParams_UsesPendingSteeringPromptsBeforeDrainingQueue(t
 	}
 	if pending := state.consumePendingSteeringPrompts(); len(pending) != 0 {
 		t.Fatalf("expected pending steering prompts to be consumed, got %#v", pending)
+	}
+	if len(state.baseInput) == 0 {
+		t.Fatal("expected steering input to persist in base input even when history starts empty")
 	}
 	if snapshot := oc.getRoomRun(roomID); snapshot == nil || len(snapshot.steerQueue) != 1 {
 		t.Fatalf("expected queued steering item to remain available, got %#v", snapshot)

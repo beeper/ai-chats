@@ -23,8 +23,8 @@ func (o *OpenAIProvider) generateChatCompletions(ctx context.Context, params Gen
 	if params.MaxCompletionTokens > 0 {
 		req.MaxCompletionTokens = openai.Int(int64(params.MaxCompletionTokens))
 	}
-	if params.Temperature > 0 {
-		req.Temperature = openai.Float(params.Temperature)
+	if params.Temperature != nil {
+		req.Temperature = openai.Float(*params.Temperature)
 	}
 	if len(params.Context.Tools) > 0 {
 		req.Tools = ToOpenAIChatTools(params.Context.Tools, resolveToolStrictMode(isOpenRouterBaseURL(o.baseURL)), &o.log)

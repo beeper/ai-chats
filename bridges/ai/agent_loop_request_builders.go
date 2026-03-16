@@ -15,7 +15,7 @@ import (
 type agentLoopRequestSettings struct {
 	model           string
 	maxTokens       int
-	temperature     float64
+	temperature     *float64
 	systemPrompt    string
 	reasoningEffort string
 }
@@ -92,8 +92,8 @@ func (oc *AIClient) buildChatCompletionsAgentLoopParams(
 	if settings.maxTokens > 0 {
 		params.MaxCompletionTokens = openai.Int(int64(settings.maxTokens))
 	}
-	if settings.temperature > 0 {
-		params.Temperature = openai.Float(settings.temperature)
+	if settings.temperature != nil {
+		params.Temperature = openai.Float(*settings.temperature)
 	}
 	return params
 }
@@ -115,6 +115,9 @@ func (oc *AIClient) buildResponsesAgentLoopParams(
 	}
 	if settings.maxTokens > 0 {
 		params.MaxOutputTokens = openai.Int(int64(settings.maxTokens))
+	}
+	if settings.temperature != nil {
+		params.Temperature = openai.Float(*settings.temperature)
 	}
 	if settings.systemPrompt != "" {
 		params.Instructions = openai.String(settings.systemPrompt)

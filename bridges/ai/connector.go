@@ -19,7 +19,6 @@ import (
 )
 
 const (
-	defaultTemperature          = 0.0 // Unset by default; provider/model default is used.
 	defaultMaxContextMessages   = 20
 	defaultGroupContextMessages = 20
 	defaultMaxTokens            = 16384

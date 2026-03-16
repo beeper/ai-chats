@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"slices"
 
+	"go.mau.fi/util/ptr"
+
 	"github.com/beeper/agentremote/pkg/agents/agentconfig"
 	"github.com/beeper/agentremote/pkg/agents/toolpolicy"
 )
@@ -32,7 +34,7 @@ type AgentDefinition struct {
 	Subagents *agentconfig.SubagentConfig `json:"subagents,omitempty"`
 
 	// Agent behavior
-	Temperature     float64      `json:"temperature,omitempty"`
+	Temperature     *float64     `json:"temperature,omitempty"`
 	ReasoningEffort string       `json:"reasoning_effort,omitempty"` // none, low, medium, high
 	ResponseMode    ResponseMode `json:"response_mode,omitempty"`    // natural (OpenClaw-style), raw (pass-through)
 	Identity        *Identity    `json:"identity,omitempty"`         // custom identity for prompt
@@ -178,7 +180,7 @@ func (a *AgentDefinition) Clone() *AgentDefinition {
 		PromptMode:      a.PromptMode,
 		Tools:           a.Tools.Clone(),
 		Subagents:       agentconfig.CloneSubagentConfig(a.Subagents),
-		Temperature:     a.Temperature,
+		Temperature:     ptr.Clone(a.Temperature),
 		ReasoningEffort: a.ReasoningEffort,
 		ResponseMode:    a.ResponseMode,
 		HeartbeatPrompt: a.HeartbeatPrompt,

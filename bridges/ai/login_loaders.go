@@ -57,15 +57,16 @@ func (oc *OpenAIConnector) lookupCachedAIClient(loginID networkid.UserLoginID) (
 
 func (oc *OpenAIConnector) evictCachedClient(loginID networkid.UserLoginID, expected bridgev2.NetworkAPI) {
 	oc.clientsMu.Lock()
-	defer oc.clientsMu.Unlock()
 	cachedAPI := oc.clients[loginID]
 	if expected != nil && cachedAPI != expected {
+		oc.clientsMu.Unlock()
 		return
 	}
+	delete(oc.clients, loginID)
+	oc.clientsMu.Unlock()
 	if cached, ok := cachedAPI.(*AIClient); ok && cached != nil {
 		cached.Disconnect()
 	}
-	delete(oc.clients, loginID)
 }
 
 func (oc *OpenAIConnector) publishOrReuseClient(login *bridgev2.UserLogin, created *AIClient, replace *AIClient) *AIClient {
@@ -73,17 +74,22 @@ func (oc *OpenAIConnector) publishOrReuseClient(login *bridgev2.UserLogin, creat
 		return nil
 	}
 	oc.clientsMu.Lock()
-	defer oc.clientsMu.Unlock()
 	if cached, ok := oc.clients[login.ID].(*AIClient); ok && cached != nil && cached != replace {
-		created.Disconnect()
 		reuseAIClient(login, cached, false)
+		oc.clientsMu.Unlock()
+		created.Disconnect()
 		return cached
 	}
+	var disconnectReplace *AIClient
 	if replace != nil && replace != created {
-		replace.Disconnect()
+		disconnectReplace = replace
 	}
 	oc.clients[login.ID] = created
 	reuseAIClient(login, created, false)
+	oc.clientsMu.Unlock()
+	if disconnectReplace != nil {
+		disconnectReplace.Disconnect()
+	}
 	return created
 }
 

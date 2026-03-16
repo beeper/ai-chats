@@ -717,7 +717,7 @@ func (oc *AIClient) describeImageWithEntry(
 	)}
 	modelIDForAPI := oc.modelIDForAPI(ResolveAlias(modelID))
 	var resp *GenerateResponse
-	if entryProvider == "openrouter" && normalizeMediaProviderID(loginMetadata(oc.UserLogin).Provider) != "openrouter" {
+	if entryProvider == "openrouter" {
 		resp, err = oc.generateWithOpenRouter(ctx, modelIDForAPI, ctxPrompt, capCfg, entry)
 	} else {
 		resp, err = oc.provider.Generate(ctx, GenerateParams{
@@ -866,16 +866,7 @@ func (oc *AIClient) describeVideoWithEntry(
 		)}
 		modelIDForAPI := oc.modelIDForAPI(ResolveAlias(modelID))
 		var resp *GenerateResponse
-		currentProvider := normalizeMediaProviderID(loginMetadata(oc.UserLogin).Provider)
-		if currentProvider != "" && currentProvider != providerID {
-			resp, err = oc.generateWithOpenRouter(ctx, modelIDForAPI, ctxPrompt, capCfg, entry)
-		} else {
-			resp, err = oc.provider.Generate(ctx, GenerateParams{
-				Model:               modelIDForAPI,
-				Context:             ctxPrompt,
-				MaxCompletionTokens: defaultImageUnderstandingLimit,
-			})
-		}
+		resp, err = oc.generateWithOpenRouter(ctx, modelIDForAPI, ctxPrompt, capCfg, entry)
 		if err != nil {
 			return nil, err
 		}

@@ -135,7 +135,7 @@ type AgentDefinitionContent struct {
 	SystemPrompt    string                       `json:"system_prompt,omitempty"`
 	PromptMode      string                       `json:"prompt_mode,omitempty"`
 	Tools           *toolpolicy.ToolPolicyConfig `json:"tools,omitempty"`
-	Temperature     float64                      `json:"temperature,omitempty"`
+	Temperature     *float64                     `json:"temperature,omitempty"`
 	ReasoningEffort string                       `json:"reasoning_effort,omitempty"`
 	IdentityName    string                       `json:"identity_name,omitempty"`
 	IdentityPersona string                       `json:"identity_persona,omitempty"`

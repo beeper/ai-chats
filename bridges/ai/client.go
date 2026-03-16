@@ -1381,8 +1381,15 @@ func (oc *AIClient) effectiveAgentPrompt(ctx context.Context, portal *bridgev2.P
 	return agents.BuildSystemPrompt(params)
 }
 
-func (oc *AIClient) effectiveTemperature(meta *PortalMetadata) float64 {
-	return defaultTemperature
+func (oc *AIClient) effectiveTemperature(meta *PortalMetadata) *float64 {
+	if meta != nil && meta.ResolvedTarget != nil && meta.ResolvedTarget.Kind == ResolvedTargetAgent {
+		store := NewAgentStoreAdapter(oc)
+		agent, err := store.GetAgentByID(context.Background(), meta.ResolvedTarget.AgentID)
+		if err == nil && agent != nil {
+			return ptr.Clone(agent.Temperature)
+		}
+	}
+	return nil
 }
 
 // defaultThinkLevel resolves the default think level in an OpenClaw-compatible way:
