@@ -11,7 +11,7 @@ import (
 //
 // Keep these values stable: clients may rely on them for rendering and behavior.
 var (
-	StreamEventMessageType = event.Type{Type: "com.beeper.ai.stream_event", Class: event.EphemeralEventType}
+	StreamEventMessageType = event.Type{Type: "com.beeper.llm", Class: event.EphemeralEventType}
 
 	CompactionStatusEventType = event.Type{Type: "com.beeper.ai.compaction_status", Class: event.MessageEventType}
 
@@ -70,7 +70,7 @@ type StreamEventOpts struct {
 	AgentID          string
 }
 
-// BuildStreamEventEnvelope builds the stable envelope for com.beeper.ai.stream_event payloads.
+// BuildStreamEventEnvelope builds the stable envelope for com.beeper.llm delta payloads.
 func BuildStreamEventEnvelope(turnID string, seq int, part map[string]any, opts StreamEventOpts) (map[string]any, error) {
 	turnID = strings.TrimSpace(turnID)
 	if turnID == "" {

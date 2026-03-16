@@ -10,12 +10,11 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
 	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 // createStreamingTurn builds an sdk.Turn configured with bridges/ai-specific
-// hooks for initial message sending, ephemeral delivery, and debounced edits.
+// hooks for initial message sending and shared stream transport delivery.
 func (oc *AIClient) createStreamingTurn(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -46,34 +45,19 @@ func (oc *AIClient) createStreamingTurn(
 		if !state.suppressSend {
 			oc.ensureGhostDisplayName(sendCtx, oc.effectiveModel(meta))
 		}
-		evtID, msgID := oc.sendInitialStreamMessage(sendCtx, portal, "...", turn.ID(), state.replyTarget, state.nextMessageTiming())
+		streamDescriptor, err := turn.StreamDescriptor(sendCtx)
+		if err != nil {
+			return "", "", err
+		}
+		evtID, msgID := oc.sendInitialStreamMessage(sendCtx, portal, "...", turn.ID(), state.replyTarget, state.nextMessageTiming(), streamDescriptor)
 		return evtID, msgID, nil
 	})
 
-	// Use model-specific intent for ephemeral streaming delivery.
-	turn.SetEphemeralSenderFunc(func(callCtx context.Context) (bridgev2.EphemeralSendingMatrixAPI, bool) {
-		intent, err := oc.getIntentForPortal(callCtx, portal, bridgev2.RemoteEventMessage)
-		if err != nil || intent == nil {
+	turn.SetStreamTransportFunc(func(callCtx context.Context) (bridgev2.StreamTransport, bool) {
+		if oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.Streams == nil {
 			return nil, false
 		}
-		ephemeralSender, ok := intent.(bridgev2.EphemeralSendingMatrixAPI)
-		return ephemeralSender, ok
-	})
-
-	// Use bridges/ai's debounced edit with directive-processed visible text.
-	turn.SetDebouncedEditFunc(func(callCtx context.Context, force bool) error {
-		return agentremote.SendDebouncedStreamEdit(agentremote.SendDebouncedStreamEditParams{
-			Login:            oc.UserLogin,
-			Portal:           portal,
-			Sender:           oc.senderForPortal(callCtx, portal),
-			NetworkMessageID: turn.NetworkMessageID(),
-			SuppressSend:     state.suppressSend,
-			VisibleBody:      visibleStreamingText(state),
-			FallbackBody:     state.accumulated.String(),
-			LogKey:           "ai_edit_target",
-			Force:            force,
-			UIMessage:        oc.buildStreamUIMessage(state, nil, nil),
-		})
+		return oc.UserLogin.Bridge.Streams, true
 	})
 
 	if state.suppressSend {

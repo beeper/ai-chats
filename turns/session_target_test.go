@@ -2,29 +2,109 @@ package turns
 
 import (
 	"context"
-	"sync/atomic"
 	"testing"
-	"time"
 
-	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
 
-func TestStreamSessionEmitPartUsesResolvedRelationTarget(t *testing.T) {
-	t.Helper()
+type testStreamTransport struct {
+	descriptor    *event.BeeperStreamInfo
+	startedRoom   id.RoomID
+	startedEvent  id.EventID
+	published     []map[string]any
+	finishedEvent id.EventID
+}
 
+func (tst *testStreamTransport) BuildDescriptor(context.Context, *bridgev2.StreamDescriptorRequest) (*event.BeeperStreamInfo, error) {
+	return tst.descriptor, nil
+}
+
+func (tst *testStreamTransport) Start(_ context.Context, req *bridgev2.StartStreamRequest) error {
+	tst.startedRoom = req.RoomID
+	tst.startedEvent = req.EventID
+	return nil
+}
+
+func (tst *testStreamTransport) Publish(_ context.Context, req *bridgev2.PublishStreamRequest) error {
+	tst.published = append(tst.published, req.Content)
+	return nil
+}
+
+func (tst *testStreamTransport) Finish(_ context.Context, req *bridgev2.FinishStreamRequest) error {
+	tst.finishedEvent = req.EventID
+	return nil
+}
+
+func (tst *testStreamTransport) HandleIncomingEvent(context.Context, *event.Event) bool {
+	return false
+}
+
+func TestStreamSessionDescriptorStartPublishFinish(t *testing.T) {
+	transport := &testStreamTransport{
+		descriptor: &event.BeeperStreamInfo{
+			UserID:   id.UserID("@bot:example.com"),
+			DeviceID: id.DeviceID("DEVICE"),
+			Type:     "com.beeper.llm",
+		},
+	}
+
+	session := NewStreamSession(StreamSessionParams{
+		TurnID: "turn-1",
+		GetRoomID: func() id.RoomID {
+			return id.RoomID("!room:example.com")
+		},
+		GetTargetEventID: func() id.EventID {
+			return id.EventID("$event-1")
+		},
+		GetStreamTransport: func(context.Context) (bridgev2.StreamTransport, bool) {
+			return transport, true
+		},
+		NextSeq: func() int { return 1 },
+	})
+
+	descriptor, err := session.Descriptor(context.Background())
+	if err != nil {
+		t.Fatalf("Descriptor() error = %v", err)
+	}
+	if descriptor == nil || descriptor.Type != "com.beeper.llm" {
+		t.Fatalf("unexpected descriptor: %#v", descriptor)
+	}
+
+	if err = session.Start(context.Background(), id.EventID("$event-1")); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	session.EmitPart(context.Background(), map[string]any{"type": "text-delta", "delta": "hello"})
+	session.End(context.Background(), EndReasonFinish)
+
+	if transport.startedRoom != id.RoomID("!room:example.com") || transport.startedEvent != id.EventID("$event-1") {
+		t.Fatalf("unexpected start target: %s %s", transport.startedRoom, transport.startedEvent)
+	}
+	if len(transport.published) != 1 {
+		t.Fatalf("expected one published update, got %d", len(transport.published))
+	}
+	if transport.finishedEvent != id.EventID("$event-1") {
+		t.Fatalf("unexpected finish target: %s", transport.finishedEvent)
+	}
+}
+
+func TestStreamSessionEmitPartUsesResolvedRelationTarget(t *testing.T) {
 	var gotContent map[string]any
 	session := NewStreamSession(StreamSessionParams{
-		TurnID:  "turn-1",
+		TurnID:  "turn-2",
 		AgentID: "agent-1",
 		GetStreamTarget: func() StreamTarget {
-			return StreamTarget{NetworkMessageID: networkid.MessageID("msg-1")}
+			return StreamTarget{NetworkMessageID: "msg-2"}
 		},
 		ResolveTargetEventID: func(context.Context, StreamTarget) (id.EventID, error) {
-			return id.EventID("$event-1"), nil
+			return id.EventID("$event-2"), nil
 		},
 		GetRoomID: func() id.RoomID {
 			return id.RoomID("!room:example.com")
+		},
+		GetStreamTransport: func(context.Context) (bridgev2.StreamTransport, bool) {
+			return &testStreamTransport{descriptor: &event.BeeperStreamInfo{Type: "com.beeper.llm"}}, true
 		},
 		NextSeq: func() int { return 1 },
 		SendHook: func(_ string, _ int, content map[string]any, _ string) bool {
@@ -38,189 +118,41 @@ func TestStreamSessionEmitPartUsesResolvedRelationTarget(t *testing.T) {
 	if gotContent == nil {
 		t.Fatal("expected stream content to be emitted")
 	}
-	relatesTo, ok := gotContent["m.relates_to"].(map[string]any)
+	deltas, ok := gotContent["com.beeper.llm.deltas"].([]map[string]any)
 	if !ok {
-		t.Fatalf("expected m.relates_to, got %#v", gotContent)
+		t.Fatalf("expected com.beeper.llm.deltas, got %#v", gotContent)
 	}
-	if relatesTo["event_id"] != "$event-1" {
+	if len(deltas) != 1 {
+		t.Fatalf("expected one delta, got %#v", deltas)
+	}
+	relatesTo, ok := deltas[0]["m.relates_to"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected m.relates_to in delta, got %#v", deltas[0])
+	}
+	if relatesTo["event_id"] != "$event-2" {
 		t.Fatalf("unexpected relation target: %#v", relatesTo)
 	}
 }
 
-func TestStreamSessionFallsBackToDebouncedWithoutResolvedEventID(t *testing.T) {
-	t.Helper()
-
-	debounced := make(chan struct{}, 1)
-	session := NewStreamSession(StreamSessionParams{
-		TurnID: "turn-2",
-		GetStreamTarget: func() StreamTarget {
-			return StreamTarget{NetworkMessageID: networkid.MessageID("msg-2")}
-		},
-		ResolveTargetEventID: func(context.Context, StreamTarget) (id.EventID, error) {
-			return "", nil
-		},
-		GetRoomID: func() id.RoomID {
-			return id.RoomID("!room:example.com")
-		},
-		NextSeq: func() int { return 1 },
-		SendDebouncedEdit: func(context.Context, bool) error {
-			debounced <- struct{}{}
-			return nil
-		},
-		SendHook: func(_ string, _ int, _ map[string]any, _ string) bool {
-			t.Fatal("did not expect hook send when target event is unresolved")
-			return false
-		},
-	})
-	defer session.End(context.Background(), EndReasonFinish)
-
-	session.EmitPart(context.Background(), map[string]any{"type": "finish"})
-
-	select {
-	case <-debounced:
-	case <-time.After(2 * time.Second):
-		t.Fatal("expected debounced fallback send")
-	}
-}
-
 func TestStreamSessionDoesNothingWithoutEditTarget(t *testing.T) {
-	t.Helper()
-
-	called := make(chan struct{}, 1)
+	called := false
 	session := NewStreamSession(StreamSessionParams{
 		TurnID: "turn-3",
 		GetStreamTarget: func() StreamTarget {
 			return StreamTarget{}
 		},
-		ResolveTargetEventID: func(context.Context, StreamTarget) (id.EventID, error) {
-			t.Fatal("did not expect target resolution without an edit target")
-			return "", nil
+		GetStreamTransport: func(context.Context) (bridgev2.StreamTransport, bool) {
+			return &testStreamTransport{descriptor: &event.BeeperStreamInfo{Type: "com.beeper.llm"}}, true
 		},
-		SendDebouncedEdit: func(context.Context, bool) error {
-			called <- struct{}{}
-			return nil
-		},
+		NextSeq: func() int { return 1 },
 		SendHook: func(_ string, _ int, _ map[string]any, _ string) bool {
-			called <- struct{}{}
+			called = true
 			return true
 		},
 	})
-	defer session.End(context.Background(), EndReasonFinish)
 
 	session.EmitPart(context.Background(), map[string]any{"type": "finish"})
-
-	select {
-	case <-called:
+	if called {
 		t.Fatal("did not expect stream send without an edit target")
-	case <-time.After(150 * time.Millisecond):
-	}
-}
-
-func TestStreamSessionApprovalRequestDoesNotPersistCheckpointWithoutFallback(t *testing.T) {
-	t.Helper()
-
-	var fallback atomic.Bool
-	hookCalled := make(chan struct{}, 1)
-	debouncedForce := make(chan bool, 1)
-
-	session := NewStreamSession(StreamSessionParams{
-		TurnID:  "turn-4",
-		AgentID: "agent-1",
-		GetStreamTarget: func() StreamTarget {
-			return StreamTarget{NetworkMessageID: networkid.MessageID("msg-4")}
-		},
-		ResolveTargetEventID: func(context.Context, StreamTarget) (id.EventID, error) {
-			return id.EventID("$event-4"), nil
-		},
-		GetRoomID: func() id.RoomID {
-			return id.RoomID("!room:example.com")
-		},
-		NextSeq:             func() int { return 1 },
-		RuntimeFallbackFlag: &fallback,
-		SendDebouncedEdit: func(_ context.Context, force bool) error {
-			debouncedForce <- force
-			return nil
-		},
-		SendHook: func(_ string, _ int, _ map[string]any, _ string) bool {
-			hookCalled <- struct{}{}
-			return true
-		},
-	})
-
-	session.EmitPart(context.Background(), map[string]any{
-		"type":       "tool-approval-request",
-		"approvalId": "approval-1",
-		"toolCallId": "tool-call-1",
-	})
-
-	select {
-	case <-hookCalled:
-	case <-time.After(2 * time.Second):
-		t.Fatal("expected approval request to be streamed")
-	}
-
-	select {
-	case force := <-debouncedForce:
-		t.Fatalf("did not expect approval request to trigger a debounced checkpoint edit, got force=%v", force)
-	case <-time.After(200 * time.Millisecond):
-	}
-
-	if fallback.Load() {
-		t.Fatal("did not expect approval request to switch stream transport into fallback mode")
-	}
-}
-
-func TestStreamSessionApprovalResponseDoesNotPersistCheckpointWithoutFallback(t *testing.T) {
-	t.Helper()
-
-	var fallback atomic.Bool
-	hookCalled := make(chan struct{}, 1)
-	debouncedForce := make(chan bool, 1)
-
-	session := NewStreamSession(StreamSessionParams{
-		TurnID:  "turn-5",
-		AgentID: "agent-1",
-		GetStreamTarget: func() StreamTarget {
-			return StreamTarget{NetworkMessageID: networkid.MessageID("msg-5")}
-		},
-		ResolveTargetEventID: func(context.Context, StreamTarget) (id.EventID, error) {
-			return id.EventID("$event-5"), nil
-		},
-		GetRoomID: func() id.RoomID {
-			return id.RoomID("!room:example.com")
-		},
-		NextSeq:             func() int { return 1 },
-		RuntimeFallbackFlag: &fallback,
-		SendDebouncedEdit: func(_ context.Context, force bool) error {
-			debouncedForce <- force
-			return nil
-		},
-		SendHook: func(_ string, _ int, _ map[string]any, _ string) bool {
-			hookCalled <- struct{}{}
-			return true
-		},
-	})
-
-	session.EmitPart(context.Background(), map[string]any{
-		"type":       "tool-approval-response",
-		"approvalId": "approval-1",
-		"toolCallId": "tool-call-1",
-		"approved":   true,
-	})
-
-	select {
-	case <-hookCalled:
-	case <-time.After(2 * time.Second):
-		t.Fatal("expected approval response to be streamed")
-	}
-
-	select {
-	case force := <-debouncedForce:
-		t.Fatalf("did not expect approval response to trigger a debounced checkpoint edit, got force=%v", force)
-	case <-time.After(200 * time.Millisecond):
-	}
-
-	if fallback.Load() {
-		t.Fatal("did not expect approval response to switch stream transport into fallback mode")
 	}
 }

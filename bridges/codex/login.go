@@ -263,7 +263,9 @@ func (cl *CodexLogin) backgroundProcessContext() context.Context {
 }
 
 func (cl *CodexLogin) initializeExperimental(mode string) bool {
-	return strings.TrimSpace(mode) == "chatgptAuthTokens"
+	// The bridge relies on persistExtendedHistory for thread recovery, which is
+	// gated behind the experimental API capability in current Codex app-server builds.
+	return true
 }
 
 func (cl *CodexLogin) cancelLoginAttempt(removeHome bool) {
