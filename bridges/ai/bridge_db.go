@@ -17,7 +17,7 @@ func (oc *OpenAIConnector) bridgeDB() *dbutil.Database {
 	if oc.br != nil && oc.br.DB != nil {
 		oc.db = aidb.NewChild(
 			oc.br.DB.Database,
-			dbutil.ZeroLogger(oc.br.Log.With().Str("db_section", "ai_bridge").Logger()),
+			dbutil.ZeroLogger(oc.br.Log.With().Str("db_section", "agentremote").Logger()),
 		)
 		return oc.db
 	}

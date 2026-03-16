@@ -1,10 +1,10 @@
-# MSC: ai-bridge MSC4391 Command Profile
+# MSC: AI Chats MSC4391 Command Profile
 
 ## Summary
 
-This document defines the specific command set that ai-bridge advertises via [MSC4391] bot command descriptions. Rather than introducing a custom `com.beeper.*` command system, ai-bridge adopts MSC4391 directly — broadcasting `org.matrix.msc4391.command_description` state events so that supporting clients can render slash commands with autocomplete and typed parameters.
+This document defines the specific command set that AI Chats advertises via [MSC4391] bot command descriptions. Rather than introducing a custom `com.beeper.*` command system, AI Chats adopts MSC4391 directly — broadcasting `org.matrix.msc4391.command_description` state events so that supporting clients can render slash commands with autocomplete and typed parameters.
 
-This is a profile document, not a new MSC. It specifies which commands ai-bridge publishes via MSC4391.
+This is a profile document, not a new MSC. It specifies which commands AI Chats publishes via MSC4391.
 
 ## Motivation
 
@@ -14,7 +14,7 @@ Text-based bot commands (`!ai status`, `!ai reset`) have several problems:
 - **Fragile parsing:** Free-text command parsing leads to ambiguous inputs and poor error messages. Typed parameters eliminate this class of bugs.
 - **No validation:** Without structured schemas, clients cannot validate arguments before sending. Invalid commands waste a round-trip.
 
-[MSC4391] solves these problems by letting bots advertise commands as room state events. Clients that support MSC4391 render them as slash commands with autocomplete. ai-bridge adopts this directly.
+[MSC4391] solves these problems by letting bots advertise commands as room state events. Clients that support MSC4391 render them as slash commands with autocomplete. AI Chats adopts this directly.
 
 ## Proposal
 
@@ -58,7 +58,7 @@ The `body` field MUST contain a text fallback for clients without MSC4391 suppor
 
 ### Command List
 
-Commands broadcast by ai-bridge:
+Commands broadcast by AI Chats:
 
 | Command | Description | Arguments |
 |---------|-------------|-----------|

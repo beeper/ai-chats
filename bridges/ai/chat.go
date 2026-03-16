@@ -1288,7 +1288,7 @@ func (oc *AIClient) listAllChatPortals(ctx context.Context) ([]*bridgev2.Portal,
 }
 
 // HandleMatrixMessageRemove handles message deletions from Matrix
-// For AI bridge, we just delete from our database - there's no "remote" to sync to
+// For AI Chats, delete only local state; there is no remote service to sync.
 func (oc *AIClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev2.MatrixMessageRemove) error {
 	oc.loggerForContext(ctx).Debug().
 		Stringer("event_id", msg.TargetMessage.MXID).
@@ -1306,7 +1306,7 @@ func (oc *AIClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev2
 }
 
 // HandleMatrixDisappearingTimer handles disappearing message timer changes from Matrix
-// For AI bridge, we just update the portal's disappear field - the bridge framework handles the actual deletion
+// For AI Chats, update only the portal disappear field; the bridge framework handles deletion.
 func (oc *AIClient) HandleMatrixDisappearingTimer(ctx context.Context, msg *bridgev2.MatrixDisappearingTimer) (bool, error) {
 	oc.loggerForContext(ctx).Debug().
 		Stringer("portal", msg.Portal.PortalKey).

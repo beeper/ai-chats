@@ -15,6 +15,7 @@ import (
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/agents"
+	"github.com/beeper/agentremote/pkg/agents/agentconfig"
 	"github.com/beeper/agentremote/pkg/agents/tools"
 )
 
@@ -53,7 +54,7 @@ func (oc *AIClient) resolveSubagentAllowlist(ctx context.Context, requesterAgent
 	return allowAny, allowSet
 }
 
-func subagentModel(agent *agents.AgentDefinition, defaults *agents.SubagentConfig) string {
+func subagentModel(agent *agents.AgentDefinition, defaults *agentconfig.SubagentConfig) string {
 	if agent != nil && agent.Subagents != nil && agent.Subagents.Model != "" {
 		return agent.Subagents.Model
 	}
@@ -63,7 +64,7 @@ func subagentModel(agent *agents.AgentDefinition, defaults *agents.SubagentConfi
 	return ""
 }
 
-func subagentThinking(agent *agents.AgentDefinition, defaults *agents.SubagentConfig) string {
+func subagentThinking(agent *agents.AgentDefinition, defaults *agentconfig.SubagentConfig) string {
 	if agent != nil && agent.Subagents != nil && agent.Subagents.Thinking != "" {
 		return agent.Subagents.Thinking
 	}
@@ -243,7 +244,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 		}), nil
 	}
 
-	defaultSubagents := (*agents.SubagentConfig)(nil)
+	defaultSubagents := (*agentconfig.SubagentConfig)(nil)
 	if oc.connector != nil && oc.connector.Config.Agents != nil && oc.connector.Config.Agents.Defaults != nil {
 		defaultSubagents = oc.connector.Config.Agents.Defaults.Subagents
 	}

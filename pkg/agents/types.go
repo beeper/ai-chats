@@ -78,9 +78,6 @@ const (
 	ResponseModeSimple ResponseMode = "simple"
 )
 
-// SubagentConfig is an alias for the shared type to preserve API compatibility.
-type SubagentConfig = agentconfig.SubagentConfig
-
 // Identity represents a custom agent persona.
 type Identity struct {
 	Name    string `json:"name,omitempty"`

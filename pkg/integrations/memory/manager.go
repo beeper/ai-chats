@@ -253,7 +253,7 @@ func (m *MemorySearchManager) StatusDetails(ctx context.Context) (*MemorySearchS
 	chunkArgs := m.baseArgs(sourceArgs...)
 	chunkArgs = append(chunkArgs, genArgs...)
 	row := m.db.QueryRow(statusCtx,
-		`SELECT COUNT(*) FROM ai_memory_chunks
+		`SELECT COUNT(*) FROM aichats_memory_chunks
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`+sourceSQL+genSQL,
 		chunkArgs...,
 	)
@@ -269,7 +269,7 @@ func (m *MemorySearchManager) StatusDetails(ctx context.Context) (*MemorySearchS
 	cacheStatus := &MemorySearchCacheStatus{Enabled: m.cfg.Cache.Enabled, MaxEntries: m.cfg.Cache.MaxEntries}
 	if m.cfg.Cache.Enabled {
 		row := m.db.QueryRow(statusCtx,
-			`SELECT COUNT(*) FROM ai_memory_embedding_cache
+			`SELECT COUNT(*) FROM aichats_memory_embedding_cache
              WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`,
 			m.baseArgs()...,
 		)
@@ -301,12 +301,12 @@ func buildSourceCounts(ctx context.Context, m *MemorySearchManager, indexGen str
 		switch source {
 		case "memory", "workspace":
 			_ = m.db.QueryRow(ctx,
-				`SELECT COUNT(*) FROM ai_memory_files WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND source=$4`,
+				`SELECT COUNT(*) FROM aichats_memory_files WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND source=$4`,
 				m.baseArgs(source)...,
 			).Scan(&count.Files)
 		case "sessions":
 			_ = m.db.QueryRow(ctx,
-				`SELECT COUNT(*) FROM ai_memory_session_files WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`,
+				`SELECT COUNT(*) FROM aichats_memory_session_files WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`,
 				m.baseArgs()...,
 			).Scan(&count.Files)
 		}
@@ -314,7 +314,7 @@ func buildSourceCounts(ctx context.Context, m *MemorySearchManager, indexGen str
 		args := m.baseArgs(source)
 		args = append(args, genArgs...)
 		_ = m.db.QueryRow(ctx,
-			`SELECT COUNT(*) FROM ai_memory_chunks WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND source=$4`+genSQL,
+			`SELECT COUNT(*) FROM aichats_memory_chunks WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND source=$4`+genSQL,
 			args...,
 		).Scan(&count.Chunks)
 		out = append(out, count)
@@ -471,7 +471,7 @@ func (m *MemorySearchManager) listRecentFiles(ctx context.Context, sources []str
 
 	rows, err := m.db.Query(ctx,
 		`SELECT path, source, substr(content, 1, 8192), length(content)
-         FROM ai_memory_files
+         FROM aichats_memory_files
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`+sourceSQL+pathSQL+`
          ORDER BY updated_at DESC
          LIMIT $`+fmt.Sprintf("%d", len(args)),
@@ -542,7 +542,7 @@ func (m *MemorySearchManager) searchKeywordScan(ctx context.Context, query strin
 
 	rows, err := m.db.Query(ctx,
 		`SELECT id, path, source, start_line, end_line, text
-         FROM ai_memory_chunks
+         FROM aichats_memory_chunks
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND model=$4`+sourceSQL+genSQL+pathSQL+strings.Join(whereParts, "")+`
          ORDER BY updated_at DESC
          LIMIT $`+fmt.Sprintf("%d", len(args)),
@@ -630,7 +630,7 @@ func (m *MemorySearchManager) searchKeywordFiles(ctx context.Context, query stri
 
 	rows, err := m.db.Query(ctx,
 		`SELECT path, source, substr(content, 1, 8192), length(content)
-         FROM ai_memory_files
+         FROM aichats_memory_files
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`+sourceSQL+pathSQL+strings.Join(whereParts, "")+`
          ORDER BY updated_at DESC
          LIMIT $`+fmt.Sprintf("%d", len(args)),

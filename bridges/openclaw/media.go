@@ -17,7 +17,6 @@ import (
 
 	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 	"github.com/beeper/agentremote/pkg/shared/media"
-	"github.com/beeper/agentremote/pkg/shared/openclawconv"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
@@ -114,7 +113,7 @@ func openClawAttachmentSourceFromBlock(block map[string]any) *openClawAttachment
 			FileName: openClawBlockFilename(block),
 		}
 	}
-	if rawURL := strings.TrimSpace(openclawconv.StringsTrimDefault(stringValue(block["url"]), stringValue(block["href"]))); rawURL != "" {
+	if rawURL := strings.TrimSpace(stringutil.TrimDefault(stringValue(block["url"]), stringValue(block["href"]))); rawURL != "" {
 		return &openClawAttachmentSource{
 			Kind:     "url",
 			URL:      rawURL,
@@ -151,16 +150,16 @@ func openClawAttachmentSourceFromValue(value any, block map[string]any) *openCla
 	}
 	sourceType := strings.ToLower(strings.TrimSpace(stringValue(source["type"])))
 	if sourceType == "" {
-		if rawURL := strings.TrimSpace(openclawconv.StringsTrimDefault(stringValue(source["url"]), stringValue(source["href"]))); rawURL != "" {
+		if rawURL := strings.TrimSpace(stringutil.TrimDefault(stringValue(source["url"]), stringValue(source["href"]))); rawURL != "" {
 			sourceType = "url"
-		} else if rawData := strings.TrimSpace(openclawconv.StringsTrimDefault(stringValue(source["data"]), stringValue(source["content"]))); rawData != "" {
+		} else if rawData := strings.TrimSpace(stringutil.TrimDefault(stringValue(source["data"]), stringValue(source["content"]))); rawData != "" {
 			sourceType = openClawAttachmentKindFromString(rawData)
 		}
 	}
 	result := &openClawAttachmentSource{
 		Kind:     sourceType,
-		URL:      strings.TrimSpace(openclawconv.StringsTrimDefault(stringValue(source["url"]), stringValue(source["href"]))),
-		Data:     strings.TrimSpace(openclawconv.StringsTrimDefault(stringValue(source["data"]), stringValue(source["content"]))),
+		URL:      strings.TrimSpace(stringutil.TrimDefault(stringValue(source["url"]), stringValue(source["href"]))),
+		Data:     strings.TrimSpace(stringutil.TrimDefault(stringValue(source["data"]), stringValue(source["content"]))),
 		MimeType: openClawSourceMimeType(source, block),
 		FileName: stringutil.FirstNonEmpty(stringValue(source["filename"]), stringValue(source["fileName"]), stringValue(source["name"]), stringValue(source["path"]), openClawBlockFilename(block)),
 	}

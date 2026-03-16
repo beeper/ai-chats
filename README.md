@@ -157,7 +157,7 @@ Each bridge has its own README with setup details and scope:
 
 | Bridge | Purpose |
 | --- | --- |
-| `ai` | General Matrix-to-AI bridge surface used by the project |
+| `ai` | AI Chats bridge surface used by the project |
 | [`codex`](./bridges/codex/README.md) | Connect the Codex CLI app-server to Beeper |
 | [`openclaw`](./bridges/openclaw/README.md) | Connect a self-hosted OpenClaw gateway to Beeper |
 | [`opencode`](./bridges/opencode/README.md) | Connect a self-hosted OpenCode server to Beeper |

@@ -1,4 +1,4 @@
-# Example configuration for the ai-bridge OpenAI Matrix bridge.
+# Example configuration for the AI Chats bridge.
 
 homeserver:
   address: https://matrix-client.example.com
@@ -10,7 +10,7 @@ appservice:
   address: http://localhost:29345
   hostname: 0.0.0.0
   port: 29345
-  database: openai-bridge.db
+  database: aichats.db
   id: openai-gpt
   bot:
     username: gptbridge
@@ -25,7 +25,7 @@ logging:
 
 database:
   type: sqlite3-fk-wal
-  uri: file:openai-bridge.db?_txlock=immediate
+  uri: file:aichats.db?_txlock=immediate
   max_open_conns: 1
   max_idle_conns: 1
 
@@ -39,7 +39,7 @@ encryption:
   delete_keys:
     ratchet_on_decrypt: false
 
-# AI bridge-specific options (shared with the embedded example in bridges/ai/integrations_config.go)
+# AI Chats-specific options (shared with the embedded example in bridges/ai/integrations_config.go)
 network:
   # Beeper Cloud credentials for automatic login (optional)
   beeper:
@@ -122,9 +122,9 @@ default_system_prompt: |
       image:
         enabled: true
         prompt: "Describe the image."
-        maxBytes: 10485760
-        maxChars: 500
-        timeoutSeconds: 60
+        max_bytes: 10485760
+        max_chars: 500
+        timeout_seconds: 60
         models:
           - provider: "openrouter"
             model: "google/gemini-3-flash-preview"
@@ -133,16 +133,16 @@ default_system_prompt: |
         prompt: "Transcribe the audio."
         language: ""
         # CLI transcription auto-detection (whisper/whisper.cpp) is not implemented yet.
-        maxBytes: 20971520
-        timeoutSeconds: 60
+        max_bytes: 20971520
+        timeout_seconds: 60
         models:
           - provider: "openai"
             model: "gpt-4o-mini-transcribe"
       video:
         enabled: true
         prompt: "Describe the video."
-        maxBytes: 52428800
-        timeoutSeconds: 120
+        max_bytes: 52428800
+        timeout_seconds: 120
         models:
           - provider: "openrouter"
             model: "google/gemini-3-flash-preview"
@@ -202,9 +202,9 @@ default_system_prompt: |
   #   defaults:
   #     subagents:
   #       model: "anthropic/claude-sonnet-4.5"
-  #       allowAgents: ["*"]
-  #     typingMode: "instant" # never|instant|thinking|message (message ignores NO_REPLY)
-  #     typingIntervalSeconds: 6 # refresh cadence, not start time (heartbeats never show typing)
+  #       allow_agents: ["*"]
+  #     typing_mode: "instant" # never|instant|thinking|message (message ignores NO_REPLY)
+  #     typing_interval_seconds: 6 # refresh cadence, not start time (heartbeats never show typing)
 
   # Context pruning configuration (OpenClaw-style).
   # Reduces token usage by intelligently truncating old tool results.

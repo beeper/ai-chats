@@ -23,7 +23,7 @@ func (s *schedulerRuntime) CronStatus(ctx context.Context) (bool, string, int, *
 
 	store, err := s.loadCronStoreLocked(ctx)
 	if err != nil {
-		return false, "sqlite:ai_cron_jobs", 0, nil, err
+		return false, "sqlite:aichats_cron_jobs", 0, nil, err
 	}
 	var next *int64
 	for i := range store.Jobs {
@@ -36,7 +36,7 @@ func (s *schedulerRuntime) CronStatus(ctx context.Context) (bool, string, int, *
 			next = &val
 		}
 	}
-	return true, "sqlite:ai_cron_jobs", len(store.Jobs), next, nil
+	return true, "sqlite:aichats_cron_jobs", len(store.Jobs), next, nil
 }
 
 func (s *schedulerRuntime) CronList(ctx context.Context, includeDisabled bool) ([]integrationcron.Job, error) {

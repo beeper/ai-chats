@@ -14,37 +14,37 @@ func PurgeTablesBestEffort(ctx context.Context, db *dbutil.Database, bridgeID, l
 		ctx = context.Background()
 	}
 	bestEffortExec(ctx, db,
-		`DELETE FROM ai_memory_chunks_fts WHERE bridge_id=$1 AND login_id=$2`,
+		`DELETE FROM aichats_memory_chunks_fts WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
 	bestEffortExec(ctx, db,
-		`DELETE FROM ai_memory_session_files WHERE bridge_id=$1 AND login_id=$2`,
+		`DELETE FROM aichats_memory_session_files WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
 	bestEffortExec(ctx, db,
-		`DELETE FROM ai_memory_session_state WHERE bridge_id=$1 AND login_id=$2`,
+		`DELETE FROM aichats_memory_session_state WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
 	bestEffortExec(ctx, db,
-		`DELETE FROM ai_memory_chunks_vec WHERE id IN (
-           SELECT id FROM ai_memory_chunks WHERE bridge_id=$1 AND login_id=$2
+		`DELETE FROM aichats_memory_chunks_vec WHERE id IN (
+           SELECT id FROM aichats_memory_chunks WHERE bridge_id=$1 AND login_id=$2
          )`,
 		bridgeID, loginID,
 	)
 	bestEffortExec(ctx, db,
-		`DELETE FROM ai_memory_embedding_cache WHERE bridge_id=$1 AND login_id=$2`,
+		`DELETE FROM aichats_memory_embedding_cache WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
 	bestEffortExec(ctx, db,
-		`DELETE FROM ai_memory_chunks WHERE bridge_id=$1 AND login_id=$2`,
+		`DELETE FROM aichats_memory_chunks WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
 	bestEffortExec(ctx, db,
-		`DELETE FROM ai_memory_files WHERE bridge_id=$1 AND login_id=$2`,
+		`DELETE FROM aichats_memory_files WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
 	bestEffortExec(ctx, db,
-		`DELETE FROM ai_memory_meta WHERE bridge_id=$1 AND login_id=$2`,
+		`DELETE FROM aichats_memory_meta WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
 }

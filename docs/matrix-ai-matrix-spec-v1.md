@@ -35,7 +35,7 @@ This document specifies a Matrix transport profile for real-time AI:
 - Tool approvals (MCP approvals + selected builtin tools).
 - Auxiliary `com.beeper.ai*` keys used for routing/metadata.
 
-This spec is intended to be usable by any Matrix bot/client/bridge. Where this document references "the bridge", it refers to the producing implementation (for this repo, `ai-bridge`).
+This spec is intended to be usable by any Matrix bot/client/bridge. Where this document references "the bridge", it refers to the producing implementation (for this repo, `AI Chats`).
 
 Upstream reference (AI SDK):
 - Normative message model target: Vercel AI SDK `ai@6.0.121`.
@@ -44,7 +44,7 @@ Upstream reference (AI SDK):
   - `packages/ai/src/ui-message-stream/ui-message-chunks.ts`
   - `packages/ai/src/ui-message-stream/json-to-sse-transform-stream.ts`
 
-Reference implementation in this repo (ai-bridge):
+Reference implementation in this repo (AI Chats):
 - Event type identifiers: `pkg/matrixevents/matrixevents.go`
 - Event payload structs (where defined): `bridges/ai/events.go`
 - Streaming envelope and emission: `pkg/matrixevents/matrixevents.go`, `bridges/ai/stream_events.go`
@@ -292,13 +292,13 @@ This bridge no longer uses custom room state for editable AI configuration. Room
 ## Tool Approvals
 Approvals are an owner-only gate for:
 - MCP approvals (OpenAI Responses `mcp_approval_request` items).
-- Selected builtin tool actions, configured via `network.tool_approvals.requireForTools`.
+- Selected builtin tool actions, configured via `network.tool_approvals.require_for_tools`.
 
 Config (see `config.example.yaml` and `bridges/ai/integrations_config.go`):
 - `network.tool_approvals.enabled` (default true)
-- `network.tool_approvals.ttlSeconds` (default 600)
-- `network.tool_approvals.requireForMcp` (default true)
-- `network.tool_approvals.requireForTools` (default list in code)
+- `network.tool_approvals.ttl_seconds` (default 600)
+- `network.tool_approvals.require_for_mcp` (default true)
+- `network.tool_approvals.require_for_tools` (default list in code)
 
 ### Approval Request Emission
 When approval is needed, the bridge emits:
@@ -360,7 +360,7 @@ Always-allow:
 - Approval events themselves remain the audit record for the concrete `approvalId`; persisted allow rules are derived from those events and do not change canonical replay history.
 
 TTL:
-- Pending approvals expire after `ttlSeconds`.
+- Pending approvals expire after `ttl_seconds`.
 
 <a id="other-keys"></a>
 ## Other Matrix Keys

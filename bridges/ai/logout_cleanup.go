@@ -42,19 +42,19 @@ func purgeLoginDataBestEffort(ctx context.Context, login *bridgev2.UserLogin) {
 	}
 
 	bestEffortExec(ctx, db, logger,
-		`DELETE FROM ai_sessions WHERE bridge_id=$1 AND login_id=$2`,
+		`DELETE FROM agentremote_sessions WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
 	bestEffortExec(ctx, db, logger,
-		`DELETE FROM ai_cron_jobs WHERE bridge_id=$1 AND login_id=$2`,
+		`DELETE FROM aichats_cron_jobs WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
 	bestEffortExec(ctx, db, logger,
-		`DELETE FROM ai_managed_heartbeats WHERE bridge_id=$1 AND login_id=$2`,
+		`DELETE FROM aichats_managed_heartbeats WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
 	bestEffortExec(ctx, db, logger,
-		`DELETE FROM ai_system_events WHERE bridge_id=$1 AND login_id=$2`,
+		`DELETE FROM aichats_system_events WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
 }

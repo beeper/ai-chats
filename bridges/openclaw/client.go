@@ -22,8 +22,8 @@ import (
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/cachedvalue"
-	"github.com/beeper/agentremote/pkg/shared/openclawconv"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
@@ -352,7 +352,7 @@ func (oc *OpenClawClient) GetChatInfo(ctx context.Context, portal *bridgev2.Port
 	oc.enrichPortalMetadata(ctx, meta)
 	title := oc.displayNameForPortal(meta)
 	roomType := openClawRoomType(meta)
-	agentID := openclawconv.StringsTrimDefault(meta.OpenClawDMTargetAgentID, meta.OpenClawAgentID)
+	agentID := stringutil.TrimDefault(meta.OpenClawDMTargetAgentID, meta.OpenClawAgentID)
 	if roomType == database.RoomTypeDM && agentID != "" {
 		info := oc.syntheticDMPortalInfo(agentID, title)
 		info.Topic = ptr.NonZero(oc.topicForPortal(meta))
@@ -542,7 +542,7 @@ func (oc *OpenClawClient) topicForPortal(meta *PortalMetadata) string {
 	parts = appendDedupedPart(parts, summarizeOpenClawOrigin(meta.OpenClawOrigin, meta.OpenClawChannel))
 	parts = appendDedupedPart(parts, meta.ModelProvider)
 	parts = appendDedupedPart(parts, meta.Model)
-	if preview := openclawconv.StringsTrimDefault(meta.OpenClawPreviewSnippet, meta.OpenClawLastMessagePreview); preview != "" {
+	if preview := stringutil.TrimDefault(meta.OpenClawPreviewSnippet, meta.OpenClawLastMessagePreview); preview != "" {
 		parts = appendDedupedPart(parts, "Recent: "+preview)
 	}
 	if meta.HistoryMode != "" {
@@ -629,25 +629,25 @@ func summarizeOpenClawOrigin(origin, channel string) string {
 		return compactOpenClawOrigin(origin)
 	}
 	parts := make([]string, 0, 5)
-	provider := openclawconv.StringsTrimDefault(stringValue(structured["provider"]), stringValue(structured["source"]))
+	provider := stringutil.TrimDefault(stringValue(structured["provider"]), stringValue(structured["source"]))
 	if provider != "" && !strings.EqualFold(provider, strings.TrimSpace(channel)) {
 		parts = appendDedupedPart(parts, provider)
 	}
-	parts = appendDedupedPart(parts, openclawconv.StringsTrimDefault(stringValue(structured["label"]), stringValue(structured["name"])))
-	parts = appendDedupedPart(parts, openclawconv.StringsTrimDefault(
-		openclawconv.StringsTrimDefault(stringValue(structured["workspace"]), stringValue(structured["space"])),
+	parts = appendDedupedPart(parts, stringutil.TrimDefault(stringValue(structured["label"]), stringValue(structured["name"])))
+	parts = appendDedupedPart(parts, stringutil.TrimDefault(
+		stringutil.TrimDefault(stringValue(structured["workspace"]), stringValue(structured["space"])),
 		stringValue(structured["team"]),
 	))
-	if value := openclawconv.StringsTrimDefault(
-		openclawconv.StringsTrimDefault(stringValue(structured["channel"]), stringValue(structured["channelId"])),
+	if value := stringutil.TrimDefault(
+		stringutil.TrimDefault(stringValue(structured["channel"]), stringValue(structured["channelId"])),
 		stringValue(structured["groupChannel"]),
 	); value != "" {
 		parts = appendDedupedPart(parts, "Channel "+value)
 	}
-	if value := openclawconv.StringsTrimDefault(stringValue(structured["threadId"]), stringValue(structured["threadID"])); value != "" {
+	if value := stringutil.TrimDefault(stringValue(structured["threadId"]), stringValue(structured["threadID"])); value != "" {
 		parts = appendDedupedPart(parts, "Thread "+value)
 	}
-	if value := openclawconv.StringsTrimDefault(stringValue(structured["account"]), stringValue(structured["accountId"])); value != "" {
+	if value := stringutil.TrimDefault(stringValue(structured["account"]), stringValue(structured["accountId"])); value != "" {
 		parts = appendDedupedPart(parts, "Account "+value)
 	}
 	if len(parts) == 0 {
@@ -692,7 +692,7 @@ func (oc *OpenClawClient) agentAvatar(meta *GhostMetadata, agentID string) *brid
 		return nil
 	}
 	return &bridgev2.Avatar{
-		ID: networkid.AvatarID("openclaw:" + openclawconv.StringsTrimDefault(meta.OpenClawAgentID, agentID) + ":" + avatarURL),
+		ID: networkid.AvatarID("openclaw:" + stringutil.TrimDefault(meta.OpenClawAgentID, agentID) + ":" + avatarURL),
 		Get: func(ctx context.Context) ([]byte, error) {
 			req, err := http.NewRequestWithContext(ctx, http.MethodGet, avatarURL, nil)
 			if err != nil {

@@ -9,6 +9,7 @@ import (
 	"go.mau.fi/util/ptr"
 
 	"github.com/beeper/agentremote/pkg/agents"
+	"github.com/beeper/agentremote/pkg/agents/agentconfig"
 	"github.com/beeper/agentremote/pkg/agents/toolpolicy"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/pkg/shared/bridgeconfig"
@@ -66,9 +67,9 @@ type IntegrationsConfig struct {
 // This gates OpenAI MCP approvals (mcp_approval_request) and selected dangerous builtin tools.
 type ToolApprovalsRuntimeConfig struct {
 	Enabled         *bool    `yaml:"enabled"`
-	TTLSeconds      int      `yaml:"ttlSeconds"`
-	RequireForMCP   *bool    `yaml:"requireForMcp"`
-	RequireForTools []string `yaml:"requireForTools"`
+	TTLSeconds      int      `yaml:"ttl_seconds"`
+	RequireForMCP   *bool    `yaml:"require_for_mcp"`
+	RequireForTools []string `yaml:"require_for_tools"`
 }
 
 func (c *ToolApprovalsRuntimeConfig) WithDefaults() *ToolApprovalsRuntimeConfig {
@@ -112,39 +113,39 @@ type AgentsConfig struct {
 
 // AgentDefaultsConfig defines default agent settings.
 type AgentDefaultsConfig struct {
-	Subagents         *agents.SubagentConfig `yaml:"subagents"`
-	SkipBootstrap     bool                   `yaml:"skip_bootstrap"`
-	BootstrapMaxChars int                    `yaml:"bootstrap_max_chars"`
-	TimeoutSeconds    int                    `yaml:"timeoutSeconds"`
-	SoulEvil          *agents.SoulEvilConfig `yaml:"soul_evil"`
-	Heartbeat         *HeartbeatConfig       `yaml:"heartbeat"`
-	UserTimezone      string                 `yaml:"userTimezone"`
-	EnvelopeTimezone  string                 `yaml:"envelopeTimezone"`  // local|utc|user|IANA
-	EnvelopeTimestamp string                 `yaml:"envelopeTimestamp"` // on|off
-	EnvelopeElapsed   string                 `yaml:"envelopeElapsed"`   // on|off
-	TypingMode        string                 `yaml:"typingMode"`        // never|instant|thinking|message
-	TypingIntervalSec *int                   `yaml:"typingIntervalSeconds"`
+	Subagents         *agentconfig.SubagentConfig `yaml:"subagents"`
+	SkipBootstrap     bool                        `yaml:"skip_bootstrap"`
+	BootstrapMaxChars int                         `yaml:"bootstrap_max_chars"`
+	TimeoutSeconds    int                         `yaml:"timeout_seconds"`
+	SoulEvil          *agents.SoulEvilConfig      `yaml:"soul_evil"`
+	Heartbeat         *HeartbeatConfig            `yaml:"heartbeat"`
+	UserTimezone      string                      `yaml:"user_timezone"`
+	EnvelopeTimezone  string                      `yaml:"envelope_timezone"`  // local|utc|user|IANA
+	EnvelopeTimestamp string                      `yaml:"envelope_timestamp"` // on|off
+	EnvelopeElapsed   string                      `yaml:"envelope_elapsed"`   // on|off
+	TypingMode        string                      `yaml:"typing_mode"`        // never|instant|thinking|message
+	TypingIntervalSec *int                        `yaml:"typing_interval_seconds"`
 }
 
 // AgentEntryConfig defines per-agent overrides.
 type AgentEntryConfig struct {
 	ID                string           `yaml:"id"`
 	Heartbeat         *HeartbeatConfig `yaml:"heartbeat"`
-	TypingMode        string           `yaml:"typingMode"` // never|instant|thinking|message
-	TypingIntervalSec *int             `yaml:"typingIntervalSeconds"`
+	TypingMode        string           `yaml:"typing_mode"` // never|instant|thinking|message
+	TypingIntervalSec *int             `yaml:"typing_interval_seconds"`
 }
 
 // HeartbeatConfig configures periodic heartbeat runs.
 type HeartbeatConfig struct {
 	Every            *string                     `yaml:"every"`
-	ActiveHours      *HeartbeatActiveHoursConfig `yaml:"activeHours"`
+	ActiveHours      *HeartbeatActiveHoursConfig `yaml:"active_hours"`
 	Model            *string                     `yaml:"model"`
 	Session          *string                     `yaml:"session"`
 	Target           *string                     `yaml:"target"`
 	To               *string                     `yaml:"to"`
 	Prompt           *string                     `yaml:"prompt"`
-	AckMaxChars      *int                        `yaml:"ackMaxChars"`
-	IncludeReasoning *bool                       `yaml:"includeReasoning"`
+	AckMaxChars      *int                        `yaml:"ack_max_chars"`
+	IncludeReasoning *bool                       `yaml:"include_reasoning"`
 }
 
 type HeartbeatActiveHoursConfig struct {
@@ -165,56 +166,56 @@ type ChannelDefaultsConfig struct {
 
 type ChannelConfig struct {
 	Heartbeat     *ChannelHeartbeatVisibilityConfig `yaml:"heartbeat"`
-	ReplyToMode   string                            `yaml:"replyToMode"`   // off|first|all (Matrix)
-	ThreadReplies string                            `yaml:"threadReplies"` // off|inbound|always (Matrix)
+	ReplyToMode   string                            `yaml:"reply_to_mode"`  // off|first|all (Matrix)
+	ThreadReplies string                            `yaml:"thread_replies"` // off|inbound|always (Matrix)
 }
 
 type ChannelHeartbeatVisibilityConfig struct {
-	ShowOk       *bool `yaml:"showOk"`
-	ShowAlerts   *bool `yaml:"showAlerts"`
-	UseIndicator *bool `yaml:"useIndicator"`
+	ShowOk       *bool `yaml:"show_ok"`
+	ShowAlerts   *bool `yaml:"show_alerts"`
+	UseIndicator *bool `yaml:"use_indicator"`
 }
 
 // MessagesConfig defines message rendering settings.
 type MessagesConfig struct {
-	AckReaction      string                 `yaml:"ackReaction"`
-	AckReactionScope string                 `yaml:"ackReactionScope"` // group-mentions|group-all|direct|all|off|none
-	RemoveAckAfter   bool                   `yaml:"removeAckAfter"`
-	GroupChat        *GroupChatConfig       `yaml:"groupChat"`
-	DirectChat       *DirectChatConfig      `yaml:"directChat"`
+	AckReaction      string                 `yaml:"ack_reaction"`
+	AckReactionScope string                 `yaml:"ack_reaction_scope"` // group-mentions|group-all|direct|all|off|none
+	RemoveAckAfter   bool                   `yaml:"remove_ack_after"`
+	GroupChat        *GroupChatConfig       `yaml:"group_chat"`
+	DirectChat       *DirectChatConfig      `yaml:"direct_chat"`
 	Queue            *QueueConfig           `yaml:"queue"`
 	InboundDebounce  *InboundDebounceConfig `yaml:"inbound"`
 }
 
 // CommandsConfig defines command authorization settings.
 type CommandsConfig struct {
-	OwnerAllowFrom []string `yaml:"ownerAllowFrom"`
+	OwnerAllowFrom []string `yaml:"owner_allow_from"`
 }
 
 // GroupChatConfig defines group chat settings.
 type GroupChatConfig struct {
-	MentionPatterns []string `yaml:"mentionPatterns"`
+	MentionPatterns []string `yaml:"mention_patterns"`
 	Activation      string   `yaml:"activation"` // mention|always
-	HistoryLimit    int      `yaml:"historyLimit"`
+	HistoryLimit    int      `yaml:"history_limit"`
 }
 
 // DirectChatConfig defines direct message defaults.
 type DirectChatConfig struct {
-	HistoryLimit int `yaml:"historyLimit"`
+	HistoryLimit int `yaml:"history_limit"`
 }
 
 // InboundDebounceConfig defines inbound debounce behavior.
 type InboundDebounceConfig struct {
-	DebounceMs int            `yaml:"debounceMs"`
-	ByChannel  map[string]int `yaml:"byChannel"`
+	DebounceMs int            `yaml:"debounce_ms"`
+	ByChannel  map[string]int `yaml:"by_channel"`
 }
 
 // QueueConfig defines queue behavior.
 type QueueConfig struct {
 	Mode                string            `yaml:"mode"`
-	ByChannel           map[string]string `yaml:"byChannel"`
-	DebounceMs          *int              `yaml:"debounceMs"`
-	DebounceMsByChannel map[string]int    `yaml:"debounceMsByChannel"`
+	ByChannel           map[string]string `yaml:"by_channel"`
+	DebounceMs          *int              `yaml:"debounce_ms"`
+	DebounceMsByChannel map[string]int    `yaml:"debounce_ms_by_channel"`
 	Cap                 *int              `yaml:"cap"`
 	Drop                string            `yaml:"drop"`
 }
@@ -222,7 +223,7 @@ type QueueConfig struct {
 // SessionConfig configures session behavior.
 type SessionConfig struct {
 	Scope   string `yaml:"scope"`
-	MainKey string `yaml:"mainKey"`
+	MainKey string `yaml:"main_key"`
 }
 
 // ToolProvidersConfig configures external tool providers like search and fetch.
@@ -253,8 +254,8 @@ type ApplyPatchToolsConfig struct {
 // MediaUnderstandingScopeMatch defines match criteria for media understanding scope rules.
 type MediaUnderstandingScopeMatch struct {
 	Channel   string `yaml:"channel"`
-	ChatType  string `yaml:"chatType"`
-	KeyPrefix string `yaml:"keyPrefix"`
+	ChatType  string `yaml:"chat_type"`
+	KeyPrefix string `yaml:"key_prefix"`
 }
 
 // MediaUnderstandingScopeRule defines a single allow/deny rule.
@@ -272,7 +273,7 @@ type MediaUnderstandingScopeConfig struct {
 // MediaUnderstandingAttachmentsConfig controls how media attachments are selected.
 type MediaUnderstandingAttachmentsConfig struct {
 	Mode           string `yaml:"mode"`
-	MaxAttachments int    `yaml:"maxAttachments"`
+	MaxAttachments int    `yaml:"max_attachments"`
 	Prefer         string `yaml:"prefer"`
 }
 
@@ -285,15 +286,15 @@ type MediaUnderstandingModelConfig struct {
 	Command          string                    `yaml:"command"`
 	Args             []string                  `yaml:"args"`
 	Prompt           string                    `yaml:"prompt"`
-	MaxChars         int                       `yaml:"maxChars"`
-	MaxBytes         int                       `yaml:"maxBytes"`
-	TimeoutSeconds   int                       `yaml:"timeoutSeconds"`
+	MaxChars         int                       `yaml:"max_chars"`
+	MaxBytes         int                       `yaml:"max_bytes"`
+	TimeoutSeconds   int                       `yaml:"timeout_seconds"`
 	Language         string                    `yaml:"language"`
-	ProviderOptions  map[string]map[string]any `yaml:"providerOptions"`
-	BaseURL          string                    `yaml:"baseUrl"`
+	ProviderOptions  map[string]map[string]any `yaml:"provider_options"`
+	BaseURL          string                    `yaml:"base_url"`
 	Headers          map[string]string         `yaml:"headers"`
 	Profile          string                    `yaml:"profile"`
-	PreferredProfile string                    `yaml:"preferredProfile"`
+	PreferredProfile string                    `yaml:"preferred_profile"`
 }
 
 func (c MediaUnderstandingModelConfig) ResolvedType() MediaUnderstandingEntryType {
@@ -311,13 +312,13 @@ func (c MediaUnderstandingModelConfig) ResolvedType() MediaUnderstandingEntryTyp
 type MediaUnderstandingConfig struct {
 	Enabled         *bool                                `yaml:"enabled"`
 	Scope           *MediaUnderstandingScopeConfig       `yaml:"scope"`
-	MaxBytes        int                                  `yaml:"maxBytes"`
-	MaxChars        int                                  `yaml:"maxChars"`
+	MaxBytes        int                                  `yaml:"max_bytes"`
+	MaxChars        int                                  `yaml:"max_chars"`
 	Prompt          string                               `yaml:"prompt"`
-	TimeoutSeconds  int                                  `yaml:"timeoutSeconds"`
+	TimeoutSeconds  int                                  `yaml:"timeout_seconds"`
 	Language        string                               `yaml:"language"`
-	ProviderOptions map[string]map[string]any            `yaml:"providerOptions"`
-	BaseURL         string                               `yaml:"baseUrl"`
+	ProviderOptions map[string]map[string]any            `yaml:"provider_options"`
+	BaseURL         string                               `yaml:"base_url"`
 	Headers         map[string]string                    `yaml:"headers"`
 	Attachments     *MediaUnderstandingAttachmentsConfig `yaml:"attachments"`
 	Models          []MediaUnderstandingModelConfig      `yaml:"models"`
@@ -484,7 +485,10 @@ func upgradeConfig(helper configupgrade.Helper) {
 	helper.Copy(configupgrade.Bool, "memory", "inject_context")
 
 	// Tool approvals
-	helper.Copy(configupgrade.Map, "tool_approvals")
+	helper.Copy(configupgrade.Bool, "tool_approvals", "enabled")
+	helper.Copy(configupgrade.Int, "tool_approvals", "ttl_seconds")
+	helper.Copy(configupgrade.Bool, "tool_approvals", "require_for_mcp")
+	helper.Copy(configupgrade.List, "tool_approvals", "require_for_tools")
 
 	// Bridge-specific configuration
 	helper.Copy(configupgrade.Str, "bridge", "command_prefix")
@@ -540,41 +544,58 @@ func upgradeConfig(helper configupgrade.Helper) {
 	helper.Copy(configupgrade.Bool, "cron", "enabled")
 
 	// Messages configuration
-	helper.Copy(configupgrade.List, "commands", "ownerAllowFrom")
+	helper.Copy(configupgrade.Str, "messages", "ack_reaction")
+	helper.Copy(configupgrade.Str, "messages", "ack_reaction_scope")
+	helper.Copy(configupgrade.Bool, "messages", "remove_ack_after")
+	helper.Copy(configupgrade.Int, "messages", "group_chat", "history_limit")
+	helper.Copy(configupgrade.List, "messages", "group_chat", "mention_patterns")
+	helper.Copy(configupgrade.Str, "messages", "group_chat", "activation")
+	helper.Copy(configupgrade.Int, "messages", "direct_chat", "history_limit")
+	helper.Copy(configupgrade.Int, "messages", "inbound", "debounce_ms")
+	helper.Copy(configupgrade.Map, "messages", "inbound", "by_channel")
+	helper.Copy(configupgrade.List, "commands", "owner_allow_from")
 	helper.Copy(configupgrade.Str, "messages", "queue", "mode")
-	helper.Copy(configupgrade.Map, "messages", "queue", "byChannel")
-	helper.Copy(configupgrade.Int, "messages", "queue", "debounceMs")
-	helper.Copy(configupgrade.Map, "messages", "queue", "debounceMsByChannel")
+	helper.Copy(configupgrade.Map, "messages", "queue", "by_channel")
+	helper.Copy(configupgrade.Int, "messages", "queue", "debounce_ms")
+	helper.Copy(configupgrade.Map, "messages", "queue", "debounce_ms_by_channel")
 	helper.Copy(configupgrade.Int, "messages", "queue", "cap")
 	helper.Copy(configupgrade.Str, "messages", "queue", "drop")
 
 	// Session configuration
 	helper.Copy(configupgrade.Str, "session", "scope")
-	helper.Copy(configupgrade.Str, "session", "mainKey")
+	helper.Copy(configupgrade.Str, "session", "main_key")
 
 	// Agents heartbeat configuration
+	helper.Copy(configupgrade.Int, "agents", "defaults", "timeout_seconds")
+	helper.Copy(configupgrade.Str, "agents", "defaults", "user_timezone")
+	helper.Copy(configupgrade.Str, "agents", "defaults", "envelope_timezone")
+	helper.Copy(configupgrade.Str, "agents", "defaults", "envelope_timestamp")
+	helper.Copy(configupgrade.Str, "agents", "defaults", "envelope_elapsed")
+	helper.Copy(configupgrade.Str, "agents", "defaults", "typing_mode")
+	helper.Copy(configupgrade.Int, "agents", "defaults", "typing_interval_seconds")
+	helper.Copy(configupgrade.Map, "agents", "defaults", "subagents")
 	helper.Copy(configupgrade.Str, "agents", "defaults", "heartbeat", "every")
 	helper.Copy(configupgrade.Str, "agents", "defaults", "heartbeat", "prompt")
 	helper.Copy(configupgrade.Str, "agents", "defaults", "heartbeat", "model")
 	helper.Copy(configupgrade.Str, "agents", "defaults", "heartbeat", "session")
 	helper.Copy(configupgrade.Str, "agents", "defaults", "heartbeat", "target")
 	helper.Copy(configupgrade.Str, "agents", "defaults", "heartbeat", "to")
-	helper.Copy(configupgrade.Int, "agents", "defaults", "heartbeat", "ackMaxChars")
-	helper.Copy(configupgrade.Bool, "agents", "defaults", "heartbeat", "includeReasoning")
-	helper.Copy(configupgrade.Str, "agents", "defaults", "heartbeat", "activeHours", "start")
-	helper.Copy(configupgrade.Str, "agents", "defaults", "heartbeat", "activeHours", "end")
-	helper.Copy(configupgrade.Str, "agents", "defaults", "heartbeat", "activeHours", "timezone")
+	helper.Copy(configupgrade.Int, "agents", "defaults", "heartbeat", "ack_max_chars")
+	helper.Copy(configupgrade.Bool, "agents", "defaults", "heartbeat", "include_reasoning")
+	helper.Copy(configupgrade.Str, "agents", "defaults", "heartbeat", "active_hours", "start")
+	helper.Copy(configupgrade.Str, "agents", "defaults", "heartbeat", "active_hours", "end")
+	helper.Copy(configupgrade.Str, "agents", "defaults", "heartbeat", "active_hours", "timezone")
 	helper.Copy(configupgrade.List, "agents", "list")
 
 	// Channels heartbeat visibility
-	helper.Copy(configupgrade.Bool, "channels", "defaults", "heartbeat", "showOk")
-	helper.Copy(configupgrade.Bool, "channels", "defaults", "heartbeat", "showAlerts")
-	helper.Copy(configupgrade.Bool, "channels", "defaults", "heartbeat", "useIndicator")
-	helper.Copy(configupgrade.Bool, "channels", "matrix", "heartbeat", "showOk")
-	helper.Copy(configupgrade.Bool, "channels", "matrix", "heartbeat", "showAlerts")
-	helper.Copy(configupgrade.Bool, "channels", "matrix", "heartbeat", "useIndicator")
-	helper.Copy(configupgrade.Str, "channels", "matrix", "replyToMode")
-	helper.Copy(configupgrade.Str, "channels", "matrix", "threadReplies")
+	helper.Copy(configupgrade.Bool, "channels", "defaults", "heartbeat", "show_ok")
+	helper.Copy(configupgrade.Bool, "channels", "defaults", "heartbeat", "show_alerts")
+	helper.Copy(configupgrade.Bool, "channels", "defaults", "heartbeat", "use_indicator")
+	helper.Copy(configupgrade.Bool, "channels", "matrix", "heartbeat", "show_ok")
+	helper.Copy(configupgrade.Bool, "channels", "matrix", "heartbeat", "show_alerts")
+	helper.Copy(configupgrade.Bool, "channels", "matrix", "heartbeat", "use_indicator")
+	helper.Copy(configupgrade.Str, "channels", "matrix", "reply_to_mode")
+	helper.Copy(configupgrade.Str, "channels", "matrix", "thread_replies")
 
 	// Tools (search + fetch)
 	helper.Copy(configupgrade.Str, "tools", "search", "provider")
@@ -603,6 +624,13 @@ func upgradeConfig(helper configupgrade.Helper) {
 	helper.Copy(configupgrade.Int, "tools", "fetch", "direct", "max_redirects")
 	helper.Copy(configupgrade.Int, "tools", "fetch", "direct", "cache_ttl_seconds")
 	helper.Copy(configupgrade.Bool, "tools", "mcp", "enable_stdio")
+	helper.Copy(configupgrade.Int, "tools", "media", "image", "max_bytes")
+	helper.Copy(configupgrade.Int, "tools", "media", "image", "max_chars")
+	helper.Copy(configupgrade.Int, "tools", "media", "image", "timeout_seconds")
+	helper.Copy(configupgrade.Int, "tools", "media", "audio", "max_bytes")
+	helper.Copy(configupgrade.Int, "tools", "media", "audio", "timeout_seconds")
+	helper.Copy(configupgrade.Int, "tools", "media", "video", "max_bytes")
+	helper.Copy(configupgrade.Int, "tools", "media", "video", "timeout_seconds")
 
 	// Memory search configuration
 	helper.Copy(configupgrade.Bool, "memory_search", "enabled")
@@ -627,5 +655,9 @@ func upgradeConfig(helper configupgrade.Helper) {
 	helper.Copy(configupgrade.Bool, "memory_search", "experimental", "session_memory")
 
 	// Tool policy
-	helper.Copy(configupgrade.Map, "tool_policy")
+	helper.Copy(configupgrade.Str, "tool_policy", "profile")
+	helper.Copy(configupgrade.List, "tool_policy", "allow")
+	helper.Copy(configupgrade.List, "tool_policy", "also_allow")
+	helper.Copy(configupgrade.List, "tool_policy", "deny")
+	helper.Copy(configupgrade.Map, "tool_policy", "by_provider")
 }

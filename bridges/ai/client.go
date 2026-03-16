@@ -61,7 +61,7 @@ func cloneRejectAllMediaFeatures() *event.FileFeatures {
 	return rejectAllMediaFileFeatures.Clone()
 }
 
-// AI bridge capability constants
+// AI Chats capability constants
 const (
 	AIMaxTextLength        = 100000
 	AIEditMaxAge           = 24 * time.Hour
@@ -469,7 +469,7 @@ func (oc *AIClient) GetApprovalHandler() agentremote.ApprovalReactionHandler {
 
 const (
 	openRouterAppReferer = "https://developers.beeper.com/ai-bridge"
-	openRouterAppTitle   = "AI bridge for Beeper"
+	openRouterAppTitle   = "AI Chats for Beeper"
 )
 
 func openRouterHeaders() map[string]string {

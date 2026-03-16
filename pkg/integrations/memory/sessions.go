@@ -61,7 +61,7 @@ func (m *MemorySearchManager) syncSessions(ctx context.Context, force bool, sess
 	if !indexAll {
 		var count int
 		row := m.db.QueryRow(ctx,
-			`SELECT COUNT(*) FROM ai_memory_session_state WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`,
+			`SELECT COUNT(*) FROM aichats_memory_session_state WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`,
 			m.baseArgs()...,
 		)
 		if err := row.Scan(&count); err == nil && count == 0 {
@@ -71,7 +71,7 @@ func (m *MemorySearchManager) syncSessions(ctx context.Context, force bool, sess
 
 	dirtyFiles := 0
 	row := m.db.QueryRow(ctx,
-		`SELECT COUNT(*) FROM ai_memory_session_state
+		`SELECT COUNT(*) FROM aichats_memory_session_state
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3
            AND (pending_bytes > 0 OR pending_messages > 0)`,
 		m.baseArgs()...,
@@ -157,7 +157,7 @@ func (m *MemorySearchManager) loadSessionState(ctx context.Context, sessionKey s
 	var state sessionState
 	row := m.db.QueryRow(ctx,
 		`SELECT last_rowid, pending_bytes, pending_messages
-         FROM ai_memory_session_state
+         FROM aichats_memory_session_state
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
 		m.baseArgs(sessionKey)...,
 	)
@@ -173,7 +173,7 @@ func (m *MemorySearchManager) loadSessionState(ctx context.Context, sessionKey s
 
 func (m *MemorySearchManager) saveSessionState(ctx context.Context, sessionKey string, state sessionState) error {
 	_, err := m.db.Exec(ctx,
-		`INSERT INTO ai_memory_session_state
+		`INSERT INTO aichats_memory_session_state
            (bridge_id, login_id, agent_id, session_key, last_rowid, pending_bytes, pending_messages, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT (bridge_id, login_id, agent_id, session_key)
@@ -279,7 +279,7 @@ func (m *MemorySearchManager) buildSessionContent(ctx context.Context, portalKey
 func (m *MemorySearchManager) getSessionFileHash(ctx context.Context, sessionKey string) (string, error) {
 	var hash string
 	row := m.db.QueryRow(ctx,
-		`SELECT hash FROM ai_memory_session_files
+		`SELECT hash FROM aichats_memory_session_files
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
 		m.baseArgs(sessionKey)...,
 	)
@@ -296,7 +296,7 @@ func (m *MemorySearchManager) getSessionFileHash(ctx context.Context, sessionKey
 func (m *MemorySearchManager) upsertSessionFile(ctx context.Context, sessionKey, path, content, hash string) error {
 	var existingPath string
 	row := m.db.QueryRow(ctx,
-		`SELECT path FROM ai_memory_session_files
+		`SELECT path FROM aichats_memory_session_files
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
 		m.baseArgs(sessionKey)...,
 	)
@@ -310,7 +310,7 @@ func (m *MemorySearchManager) upsertSessionFile(ctx context.Context, sessionKey,
 		return err
 	}
 	_, err := m.db.Exec(ctx,
-		`INSERT INTO ai_memory_session_files
+		`INSERT INTO aichats_memory_session_files
            (bridge_id, login_id, agent_id, session_key, path, content, hash, size, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          ON CONFLICT (bridge_id, login_id, agent_id, session_key)
@@ -324,7 +324,7 @@ func (m *MemorySearchManager) upsertSessionFile(ctx context.Context, sessionKey,
 func (m *MemorySearchManager) deleteSessionFile(ctx context.Context, sessionKey string) error {
 	var path string
 	row := m.db.QueryRow(ctx,
-		`SELECT path FROM ai_memory_session_files
+		`SELECT path FROM aichats_memory_session_files
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
 		m.baseArgs(sessionKey)...,
 	)
@@ -333,7 +333,7 @@ func (m *MemorySearchManager) deleteSessionFile(ctx context.Context, sessionKey 
 	}
 	m.purgeSessionPath(ctx, path)
 	_, _ = m.db.Exec(ctx,
-		`DELETE FROM ai_memory_session_files
+		`DELETE FROM aichats_memory_session_files
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
 		m.baseArgs(sessionKey)...,
 	)
@@ -342,7 +342,7 @@ func (m *MemorySearchManager) deleteSessionFile(ctx context.Context, sessionKey 
 
 func (m *MemorySearchManager) removeStaleSessions(ctx context.Context, active map[string]sessionPortal) error {
 	rows, err := m.db.Query(ctx,
-		`SELECT session_key, path FROM ai_memory_session_files
+		`SELECT session_key, path FROM aichats_memory_session_files
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`,
 		m.baseArgs()...,
 	)

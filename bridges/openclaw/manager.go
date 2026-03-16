@@ -29,6 +29,7 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 	"github.com/beeper/agentremote/pkg/shared/openclawconv"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
@@ -798,15 +799,15 @@ func openClawStreamMessageMetadata(meta *PortalMetadata, payload gatewayChatEven
 		TurnID:       turnID,
 		AgentID:      agentID,
 		CompletionID: payload.RunID,
-		FinishReason: openclawconv.StringsTrimDefault(strings.TrimSpace(payload.StopReason), strings.TrimSpace(payload.State)),
+		FinishReason: stringutil.TrimDefault(strings.TrimSpace(payload.StopReason), strings.TrimSpace(payload.State)),
 		IncludeUsage: true,
 	}
 	applyNormalizedUsageToParams(normalizeOpenClawUsage(payload.Usage), &params)
 	metadata := msgconv.BuildUIMessageMetadata(params)
-	if sessionID := openclawconv.StringsTrimDefault(stringValue(payload.Message["sessionId"]), meta.OpenClawSessionID); sessionID != "" {
+	if sessionID := stringutil.TrimDefault(stringValue(payload.Message["sessionId"]), meta.OpenClawSessionID); sessionID != "" {
 		metadata["session_id"] = sessionID
 	}
-	if sessionKey := openclawconv.StringsTrimDefault(payload.SessionKey, meta.OpenClawSessionKey); sessionKey != "" {
+	if sessionKey := stringutil.TrimDefault(payload.SessionKey, meta.OpenClawSessionKey); sessionKey != "" {
 		metadata["session_key"] = sessionKey
 	}
 	if errorText := openClawErrorText(payload); errorText != "" {
@@ -912,7 +913,7 @@ func applyNormalizedUsageToParams(usage map[string]any, params *msgconv.UIMessag
 }
 
 func openClawErrorText(payload gatewayChatEvent) string {
-	return openclawconv.StringsTrimDefault(payload.ErrorMessage, strings.TrimSpace(payload.StopReason))
+	return stringutil.TrimDefault(payload.ErrorMessage, strings.TrimSpace(payload.StopReason))
 }
 
 func extractOpenClawEventTimestamp(eventTS int64, message map[string]any) time.Time {
@@ -1183,7 +1184,7 @@ func (m *openClawManager) handleChatEvent(ctx context.Context, payload gatewayCh
 	isTerminal := openClawIsTerminalChatState(payload.State)
 	agentID := resolveOpenClawAgentID(meta, payload.SessionKey, payload.Message)
 	maybePersistPortalAgentID(ctx, portal, meta, agentID)
-	turnID := openclawconv.StringsTrimDefault(payload.RunID, "openclaw:"+payload.SessionKey)
+	turnID := stringutil.TrimDefault(payload.RunID, "openclaw:"+payload.SessionKey)
 	messageMetadata := openClawStreamMessageMetadata(meta, payload, agentID, turnID)
 	if payload.State == "delta" {
 		m.ensureStreamStart(ctx, portal, meta, turnID, payload.RunID, agentID, eventTS, messageMetadata, &payload)
@@ -1240,7 +1241,7 @@ func (m *openClawManager) handleChatEvent(ctx context.Context, payload gatewayCh
 			m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
 				"timestamp": eventTS.UnixMilli(),
 				"type":      "abort",
-				"reason":    openclawconv.StringsTrimDefault(payload.StopReason, "aborted"),
+				"reason":    stringutil.TrimDefault(payload.StopReason, "aborted"),
 			})
 		}
 		m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
@@ -1402,7 +1403,7 @@ func (m *openClawManager) handleAgentEvent(ctx context.Context, payload gatewayA
 	meta := portalMeta(portal)
 	agentID := resolveOpenClawAgentID(meta, payload.SessionKey, payload.Data)
 	maybePersistPortalAgentID(ctx, portal, meta, agentID)
-	turnID := openclawconv.StringsTrimDefault(payload.RunID, openclawconv.StringsTrimDefault(payload.SourceRunID, "openclaw:"+payload.SessionKey))
+	turnID := stringutil.TrimDefault(payload.RunID, stringutil.TrimDefault(payload.SourceRunID, "openclaw:"+payload.SessionKey))
 	agentMetadata := msgconv.BuildUIMessageMetadata(msgconv.UIMessageMetadataParams{
 		TurnID:       turnID,
 		AgentID:      agentID,
@@ -1420,7 +1421,7 @@ func (m *openClawManager) handleAgentEvent(ctx context.Context, payload gatewayA
 	stream := strings.ToLower(strings.TrimSpace(payload.Stream))
 	switch stream {
 	case "reasoning":
-		if text := openclawconv.StringsTrimDefault(stringValue(payload.Data["text"]), stringValue(payload.Data["delta"])); text != "" {
+		if text := stringutil.TrimDefault(stringValue(payload.Data["text"]), stringValue(payload.Data["delta"])); text != "" {
 			m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
 				"timestamp": eventTS.UnixMilli(),
 				"type":      "reasoning-delta",
@@ -1429,8 +1430,8 @@ func (m *openClawManager) handleAgentEvent(ctx context.Context, payload gatewayA
 			})
 		}
 	case "tool":
-		toolCallID := openclawconv.StringsTrimDefault(stringValue(payload.Data["toolCallId"]), openclawconv.StringsTrimDefault(stringValue(payload.Data["toolUseId"]), stringValue(payload.Data["id"])))
-		toolName := openclawconv.StringsTrimDefault(stringValue(payload.Data["toolName"]), openclawconv.StringsTrimDefault(stringValue(payload.Data["name"]), "tool"))
+		toolCallID := stringutil.TrimDefault(stringValue(payload.Data["toolCallId"]), stringutil.TrimDefault(stringValue(payload.Data["toolUseId"]), stringValue(payload.Data["id"])))
+		toolName := stringutil.TrimDefault(stringValue(payload.Data["toolName"]), stringutil.TrimDefault(stringValue(payload.Data["name"]), "tool"))
 		if toolCallID != "" {
 			if input, ok := payload.Data["input"]; ok {
 				m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
@@ -1651,7 +1652,7 @@ func (m *openClawManager) waitForRunCompletion(ctx context.Context, portal *brid
 	if status == "error" {
 		m.client.EmitStreamPart(ctx, portal, turnID, agentID, meta.OpenClawSessionKey, map[string]any{
 			"type":      "error",
-			"errorText": openclawconv.StringsTrimDefault(waitResp.Error, "OpenClaw run failed"),
+			"errorText": stringutil.TrimDefault(waitResp.Error, "OpenClaw run failed"),
 		})
 	}
 	m.client.EmitStreamPart(ctx, portal, turnID, agentID, meta.OpenClawSessionKey, map[string]any{
@@ -1825,9 +1826,9 @@ func openClawIsTerminalChatState(state string) bool {
 }
 
 func historyMessageTurnID(message map[string]any) string {
-	return strings.TrimSpace(openclawconv.StringsTrimDefault(
+	return strings.TrimSpace(stringutil.TrimDefault(
 		openClawMessageStringField(message, "turnId", "turn_id"),
-		openclawconv.StringsTrimDefault(
+		stringutil.TrimDefault(
 			openClawMessageStringField(message, "runId", "run_id"),
 			openClawMessageStringField(message, "id"),
 		),
@@ -1870,7 +1871,7 @@ func (m *openClawManager) clearPendingPortalResync(sessionKey string) {
 }
 
 func stringValue(v any) string {
-	return openclawconv.StringValue(v)
+	return stringutil.StringValue(v)
 }
 
 func openClawAttachmentFallbackText(block map[string]any, err error) string {
@@ -1885,28 +1886,28 @@ func openClawAttachmentFallbackText(block map[string]any, err error) string {
 }
 
 func convertHistoryToCanonicalUI(message map[string]any, role string, meta *PortalMetadata) ([]map[string]any, map[string]any) {
-	agentID := resolveOpenClawAgentID(meta, openclawconv.StringsTrimDefault(meta.OpenClawSessionKey, stringValue(message["sessionKey"])), message)
-	turnID := strings.TrimSpace(openclawconv.StringsTrimDefault(
+	agentID := resolveOpenClawAgentID(meta, stringutil.TrimDefault(meta.OpenClawSessionKey, stringValue(message["sessionKey"])), message)
+	turnID := strings.TrimSpace(stringutil.TrimDefault(
 		stringValue(message["turnId"]),
-		openclawconv.StringsTrimDefault(stringValue(message["runId"]), stringValue(message["id"])),
+		stringutil.TrimDefault(stringValue(message["runId"]), stringValue(message["id"])),
 	))
 	params := msgconv.UIMessageMetadataParams{
 		TurnID:       turnID,
 		AgentID:      agentID,
-		Model:        openclawconv.StringsTrimDefault(stringValue(message["model"]), meta.Model),
-		FinishReason: openclawconv.StringsTrimDefault(stringValue(message["finishReason"]), stringValue(message["stopReason"])),
+		Model:        stringutil.TrimDefault(stringValue(message["model"]), meta.Model),
+		FinishReason: stringutil.TrimDefault(stringValue(message["finishReason"]), stringValue(message["stopReason"])),
 		CompletionID: stringValue(message["runId"]),
 		IncludeUsage: true,
 	}
 	applyNormalizedUsageToParams(normalizeOpenClawUsage(jsonutil.ToMap(message["usage"])), &params)
 	metadata := msgconv.BuildUIMessageMetadata(params)
-	if sessionID := openclawconv.StringsTrimDefault(stringValue(message["sessionId"]), meta.OpenClawSessionID); sessionID != "" {
+	if sessionID := stringutil.TrimDefault(stringValue(message["sessionId"]), meta.OpenClawSessionID); sessionID != "" {
 		metadata["session_id"] = sessionID
 	}
-	if sessionKey := openclawconv.StringsTrimDefault(stringValue(message["sessionKey"]), meta.OpenClawSessionKey); sessionKey != "" {
+	if sessionKey := stringutil.TrimDefault(stringValue(message["sessionKey"]), meta.OpenClawSessionKey); sessionKey != "" {
 		metadata["session_key"] = sessionKey
 	}
-	if errorText := openclawconv.StringsTrimDefault(stringValue(message["errorMessage"]), stringValue(message["error"])); errorText != "" {
+	if errorText := stringutil.TrimDefault(stringValue(message["errorMessage"]), stringValue(message["error"])); errorText != "" {
 		metadata["error_text"] = errorText
 	}
 	return openClawHistoryUIParts(message, role), metadata
@@ -1914,9 +1915,9 @@ func convertHistoryToCanonicalUI(message map[string]any, role string, meta *Port
 
 func openClawHistoryUIParts(message map[string]any, role string) []map[string]any {
 	state := &streamui.UIState{
-		TurnID: openclawconv.StringsTrimDefault(
+		TurnID: stringutil.TrimDefault(
 			stringValue(message["turnId"]),
-			openclawconv.StringsTrimDefault(stringValue(message["runId"]), "history"),
+			stringutil.TrimDefault(stringValue(message["runId"]), "history"),
 		),
 	}
 	openClawApplyHistoryChunks(state, message, role)
@@ -1939,7 +1940,7 @@ func openClawApplyHistoryChunks(state *streamui.UIState, message map[string]any,
 		blockType := strings.ToLower(strings.TrimSpace(stringValue(block["type"])))
 		switch blockType {
 		case "text", "input_text", "output_text":
-			text := strings.TrimSpace(openclawconv.StringsTrimDefault(stringValue(block["text"]), stringValue(block["content"])))
+			text := strings.TrimSpace(stringutil.TrimDefault(stringValue(block["text"]), stringValue(block["content"])))
 			if text == "" {
 				continue
 			}
@@ -1948,7 +1949,7 @@ func openClawApplyHistoryChunks(state *streamui.UIState, message map[string]any,
 			streamui.ApplyChunk(state, map[string]any{"type": "text-delta", "id": partID, "delta": text})
 			streamui.ApplyChunk(state, map[string]any{"type": "text-end", "id": partID})
 		case "reasoning", "thinking":
-			text := strings.TrimSpace(openclawconv.StringsTrimDefault(stringValue(block["text"]), stringValue(block["content"])))
+			text := strings.TrimSpace(stringutil.TrimDefault(stringValue(block["text"]), stringValue(block["content"])))
 			if text == "" {
 				continue
 			}
@@ -1957,11 +1958,11 @@ func openClawApplyHistoryChunks(state *streamui.UIState, message map[string]any,
 			streamui.ApplyChunk(state, map[string]any{"type": "reasoning-delta", "id": partID, "delta": text})
 			streamui.ApplyChunk(state, map[string]any{"type": "reasoning-end", "id": partID})
 		case "toolcall", "tooluse", "functioncall":
-			toolCallID := strings.TrimSpace(openclawconv.StringsTrimDefault(stringValue(block["id"]), stringValue(block["call_id"])))
+			toolCallID := strings.TrimSpace(stringutil.TrimDefault(stringValue(block["id"]), stringValue(block["call_id"])))
 			if toolCallID == "" {
 				toolCallID = fmt.Sprintf("tool-call-%d", idx)
 			}
-			toolName := strings.TrimSpace(openclawconv.StringsTrimDefault(stringValue(block["name"]), stringValue(block["toolName"])))
+			toolName := strings.TrimSpace(stringutil.TrimDefault(stringValue(block["name"]), stringValue(block["toolName"])))
 			input := jsonutil.ToMap(block["arguments"])
 			if len(input) == 0 {
 				input = jsonutil.ToMap(block["input"])
@@ -1969,10 +1970,10 @@ func openClawApplyHistoryChunks(state *streamui.UIState, message map[string]any,
 			streamui.ApplyChunk(state, map[string]any{
 				"type":       "tool-input-available",
 				"toolCallId": toolCallID,
-				"toolName":   openclawconv.StringsTrimDefault(toolName, "tool"),
+				"toolName":   stringutil.TrimDefault(toolName, "tool"),
 				"input":      input,
 			})
-			if approvalID := strings.TrimSpace(openclawconv.StringsTrimDefault(stringValue(block["approvalId"]), stringValue(jsonutil.ToMap(block["approval"])["id"]))); approvalID != "" {
+			if approvalID := strings.TrimSpace(stringutil.TrimDefault(stringValue(block["approvalId"]), stringValue(jsonutil.ToMap(block["approval"])["id"]))); approvalID != "" {
 				streamui.ApplyChunk(state, map[string]any{
 					"type":       "tool-approval-request",
 					"approvalId": approvalID,
@@ -1993,11 +1994,11 @@ func openClawApplyHistoryChunks(state *streamui.UIState, message map[string]any,
 }
 
 func openClawApplyHistoryToolResult(state *streamui.UIState, message map[string]any) {
-	toolCallID := strings.TrimSpace(openclawconv.StringsTrimDefault(stringValue(message["toolCallId"]), stringValue(message["toolUseId"])))
+	toolCallID := strings.TrimSpace(stringutil.TrimDefault(stringValue(message["toolCallId"]), stringValue(message["toolUseId"])))
 	if toolCallID == "" {
 		toolCallID = "tool-result"
 	}
-	toolName := strings.TrimSpace(openclawconv.StringsTrimDefault(stringValue(message["toolName"]), stringValue(message["name"])))
+	toolName := strings.TrimSpace(stringutil.TrimDefault(stringValue(message["toolName"]), stringValue(message["name"])))
 	if toolName != "" {
 		streamui.ApplyChunk(state, map[string]any{
 			"type":       "tool-input-available",
@@ -2006,7 +2007,7 @@ func openClawApplyHistoryToolResult(state *streamui.UIState, message map[string]
 			"input":      jsonutil.DeepCloneAny(jsonutil.ToMap(message["input"])),
 		})
 	}
-	if approvalID := strings.TrimSpace(openclawconv.StringsTrimDefault(stringValue(message["approvalId"]), stringValue(jsonutil.ToMap(message["approval"])["id"]))); approvalID != "" {
+	if approvalID := strings.TrimSpace(stringutil.TrimDefault(stringValue(message["approvalId"]), stringValue(jsonutil.ToMap(message["approval"])["id"]))); approvalID != "" {
 		streamui.ApplyChunk(state, map[string]any{
 			"type":       "tool-approval-request",
 			"approvalId": approvalID,
@@ -2017,13 +2018,13 @@ func openClawApplyHistoryToolResult(state *streamui.UIState, message map[string]
 		streamui.ApplyChunk(state, map[string]any{
 			"type":       "tool-output-error",
 			"toolCallId": toolCallID,
-			"errorText":  openclawconv.StringsTrimDefault(openclawconv.ExtractMessageText(message), stringValue(message["error"])),
+			"errorText":  stringutil.TrimDefault(openclawconv.ExtractMessageText(message), stringValue(message["error"])),
 		})
 		return
 	}
 	output := jsonutil.DeepCloneAny(message["details"])
 	if output == nil {
-		output = jsonutil.DeepCloneAny(openclawconv.StringsTrimDefault(openclawconv.ExtractMessageText(message), stringValue(message["result"])))
+		output = jsonutil.DeepCloneAny(stringutil.TrimDefault(openclawconv.ExtractMessageText(message), stringValue(message["result"])))
 	}
 	streamui.ApplyChunk(state, map[string]any{
 		"type":       "tool-output-available",
@@ -2041,7 +2042,7 @@ func openClawHistoryFallbackText(uiParts []map[string]any) string {
 				return text
 			}
 		case "dynamic-tool", "tool":
-			toolName := strings.TrimSpace(openclawconv.StringsTrimDefault(stringValue(part["toolName"]), "tool"))
+			toolName := strings.TrimSpace(stringutil.TrimDefault(stringValue(part["toolName"]), "tool"))
 			switch strings.TrimSpace(stringValue(part["state"])) {
 			case "approval-requested":
 				return "Tool approval required: " + toolName

@@ -1,6 +1,6 @@
-# Codex Bridge
+# Codex Companion
 
-The Codex bridge connects a local Codex CLI runtime to Beeper through AgentRemote.
+The Codex Companion bridge connects a local Codex CLI runtime to Beeper through AgentRemote.
 
 This is the bridge for people who want to run Codex on a workstation, laptop, or remote machine and use Beeper as the chat client. It exposes Codex conversations in Beeper with streaming responses, history, and tool approval flows, while keeping the actual runtime close to the code and credentials it needs.
 

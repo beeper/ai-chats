@@ -6,9 +6,9 @@ import "slices"
 
 // SubagentConfig configures default subagent behavior for an agent.
 type SubagentConfig struct {
-	Model       string   `json:"model,omitempty"`
-	Thinking    string   `json:"thinking,omitempty"`
-	AllowAgents []string `json:"allowAgents,omitempty"`
+	Model       string   `json:"model,omitempty" yaml:"model"`
+	Thinking    string   `json:"thinking,omitempty" yaml:"thinking"`
+	AllowAgents []string `json:"allowAgents,omitempty" yaml:"allow_agents"`
 }
 
 // CloneSubagentConfig returns a deep copy of the given config.

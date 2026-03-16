@@ -27,7 +27,7 @@ func setupVfsTimeoutDB(t *testing.T, dsn string) *database.Database {
 	}
 	ctx := context.Background()
 	_, err = db.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS ai_memory_files (
+		CREATE TABLE IF NOT EXISTS aichats_memory_files (
 			bridge_id TEXT NOT NULL,
 			login_id TEXT NOT NULL,
 			agent_id TEXT NOT NULL,

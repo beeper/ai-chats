@@ -103,10 +103,10 @@ var ToolProfiles = map[ToolProfileID]toolProfilePolicy{
 // ToolPolicyConfig matches OpenClaw's allow/deny policy (global or per-agent).
 type ToolPolicyConfig struct {
 	Allow      []string                    `json:"allow,omitempty" yaml:"allow"`
-	AlsoAllow  []string                    `json:"alsoAllow,omitempty" yaml:"alsoAllow"`
+	AlsoAllow  []string                    `json:"also_allow,omitempty" yaml:"also_allow"`
 	Deny       []string                    `json:"deny,omitempty" yaml:"deny"`
 	Profile    ToolProfileID               `json:"profile,omitempty" yaml:"profile"`
-	ByProvider map[string]ToolPolicyConfig `json:"byProvider,omitempty" yaml:"byProvider"`
+	ByProvider map[string]ToolPolicyConfig `json:"by_provider,omitempty" yaml:"by_provider"`
 }
 
 // GlobalToolPolicyConfig extends ToolPolicyConfig with subagent defaults.
@@ -224,16 +224,16 @@ func ResolveToolProfilePolicy(profile ToolProfileID) *ToolPolicy {
 	}
 }
 
-// MergeAlsoAllow appends alsoAllow into an allowlist if present.
-func MergeAlsoAllow(policy *ToolPolicy, alsoAllow []string) *ToolPolicy {
-	if policy == nil || len(alsoAllow) == 0 {
+// MergeAlsoAllow appends also_allow into an allowlist if present.
+func MergeAlsoAllow(policy *ToolPolicy, also_allow []string) *ToolPolicy {
+	if policy == nil || len(also_allow) == 0 {
 		return policy
 	}
 	if len(policy.Allow) == 0 {
 		return policy
 	}
 	merged := slices.Clone(policy.Allow)
-	merged = append(merged, alsoAllow...)
+	merged = append(merged, also_allow...)
 	return &ToolPolicy{
 		Allow: stringutil.DedupeStrings(merged),
 		Deny:  slices.Clone(policy.Deny),
@@ -250,7 +250,7 @@ func unionAllow(base []string, extra []string) []string {
 	return stringutil.DedupeStrings(append(base, extra...))
 }
 
-// PickToolPolicy merges allow/alsoAllow/deny into a resolved policy.
+// PickToolPolicy merges allow/also_allow/deny into a resolved policy.
 func PickToolPolicy(config *ToolPolicyConfig) *ToolPolicy {
 	if config == nil {
 		return nil
@@ -349,12 +349,12 @@ func globalAsToolPolicy(global *GlobalToolPolicyConfig) *ToolPolicyConfig {
 	return &global.ToolPolicyConfig
 }
 
-func resolveProviderToolPolicy(byProvider map[string]ToolPolicyConfig, provider string, modelID string) *ToolPolicyConfig {
-	if provider == "" || len(byProvider) == 0 {
+func resolveProviderToolPolicy(by_provider map[string]ToolPolicyConfig, provider string, modelID string) *ToolPolicyConfig {
+	if provider == "" || len(by_provider) == 0 {
 		return nil
 	}
-	lookup := make(map[string]ToolPolicyConfig, len(byProvider))
-	for key, value := range byProvider {
+	lookup := make(map[string]ToolPolicyConfig, len(by_provider))
+	for key, value := range by_provider {
 		if normalized := NormalizeToolName(key); normalized != "" {
 			lookup[normalized] = value
 		}

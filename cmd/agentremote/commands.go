@@ -460,7 +460,7 @@ func generateCommandHelp(c *cmdDef) string {
 
 func generateUsage() string {
 	var b strings.Builder
-	b.WriteString("agentremote - unified AI bridge manager for Beeper\n")
+	b.WriteString("agentremote - unified AgentRemote manager for Beeper\n")
 	b.WriteString("\nUsage: agentremote <command> [flags] [args]\n")
 
 	groups := []string{"Auth", "Bridges", "Other"}

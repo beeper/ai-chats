@@ -14,9 +14,6 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/toolspec"
 )
 
-// SubagentConfig is an alias for the shared type to preserve API compatibility.
-type SubagentConfig = agentconfig.SubagentConfig
-
 // Boss tools for agent management.
 // These are executed via the executor when the Boss agent is active.
 
@@ -35,7 +32,7 @@ func toolPolicySchema() map[string]any {
 				"items":       map[string]any{"type": "string"},
 				"description": "Explicit tool allowlist (supports wildcards like 'web_*' or group:... shorthands)",
 			},
-			"alsoAllow": map[string]any{
+			"also_allow": map[string]any{
 				"type":        "array",
 				"items":       map[string]any{"type": "string"},
 				"description": "Additional allowlist entries merged into allow",
@@ -45,7 +42,7 @@ func toolPolicySchema() map[string]any {
 				"items":       map[string]any{"type": "string"},
 				"description": "Explicit tool denylist (deny wins)",
 			},
-			"byProvider": map[string]any{
+			"by_provider": map[string]any{
 				"type":                 "object",
 				"additionalProperties": map[string]any{"type": "object"},
 				"description":          "Optional provider- or model-specific overrides keyed by provider or provider/model",
@@ -104,7 +101,7 @@ type AgentData struct {
 	Model        string                       `json:"model,omitempty"`
 	SystemPrompt string                       `json:"system_prompt,omitempty"`
 	Tools        *toolpolicy.ToolPolicyConfig `json:"tools,omitempty"`
-	Subagents    *SubagentConfig              `json:"subagents,omitempty"`
+	Subagents    *agentconfig.SubagentConfig  `json:"subagents,omitempty"`
 	Temperature  float64                      `json:"temperature,omitempty"`
 	IsPreset     bool                         `json:"is_preset,omitempty"`
 	CreatedAt    int64                        `json:"created_at"`
@@ -417,8 +414,8 @@ func readToolPolicyConfig(input map[string]any) (*toolpolicy.ToolPolicyConfig, e
 	return &cfg, nil
 }
 
-func readSubagentConfig(input map[string]any) (*SubagentConfig, error) {
-	var cfg SubagentConfig
+func readSubagentConfig(input map[string]any) (*agentconfig.SubagentConfig, error) {
+	var cfg agentconfig.SubagentConfig
 	if err := unmarshalParam(input, "subagents", &cfg); err != nil {
 		return nil, err
 	}

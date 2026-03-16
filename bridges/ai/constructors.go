@@ -20,7 +20,7 @@ func NewAIConnector() *OpenAIConnector {
 	}
 	oc.sdkConfig = bridgesdk.NewStandardConnectorConfig(bridgesdk.StandardConnectorConfigParams{
 		Name:          "ai",
-		Description:   "A Matrix↔AI bridge built on mautrix-go bridgev2.",
+		Description:   "AI Chats for Beeper, built on mautrix-go bridgev2.",
 		ProtocolID:    "ai",
 		AgentCatalog:  aiAgentCatalog{connector: oc},
 		ClientCacheMu: &oc.clientsMu,
@@ -32,13 +32,13 @@ func NewAIConnector() *OpenAIConnector {
 			if bridge != nil && bridge.DB != nil && bridge.DB.Database != nil {
 				oc.db = aidb.NewChild(
 					bridge.DB.Database,
-					dbutil.ZeroLogger(bridge.Log.With().Str("db_section", "ai_bridge").Logger()),
+					dbutil.ZeroLogger(bridge.Log.With().Str("db_section", "agentremote").Logger()),
 				)
 			}
 		},
 		StartConnector: func(ctx context.Context, _ *bridgev2.Bridge) error {
 			db := oc.bridgeDB()
-			if err := aidb.Upgrade(ctx, db, "ai_bridge", "ai bridge database not initialized"); err != nil {
+			if err := aidb.Upgrade(ctx, db, "agentremote", "AgentRemote database not initialized"); err != nil {
 				return err
 			}
 			oc.applyRuntimeDefaults()

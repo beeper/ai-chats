@@ -1,6 +1,6 @@
-# OpenClaw Bridge
+# OpenClaw Gateway
 
-The OpenClaw bridge connects a self-hosted OpenClaw gateway to Beeper through AgentRemote.
+The OpenClaw Gateway bridge connects a self-hosted OpenClaw gateway to Beeper through AgentRemote.
 
 This is the most direct way to expose OpenClaw sessions in Beeper while keeping the agent runtime on infrastructure you control. Run the gateway on a local machine, server, or private network, then use Beeper from mobile or desktop to talk to those agents remotely.
 

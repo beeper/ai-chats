@@ -46,7 +46,7 @@ func (s *schedulerRuntime) loadCronStoreLocked(ctx context.Context) (scheduledCr
 			delivery_mode, delivery_channel, delivery_to, delivery_best_effort,
 			state_next_run_at_ms, state_running_at_ms, state_last_run_at_ms, state_last_status, state_last_error, state_last_duration_ms,
 			room_id, revision, pending_delay_id, pending_delay_kind, pending_run_key, last_output_preview
-		FROM ai_cron_jobs
+		FROM aichats_cron_jobs
 		WHERE bridge_id=$1 AND login_id=$2
 		ORDER BY job_id
 	`, scope.bridgeID, scope.loginID)
@@ -153,7 +153,7 @@ func (s *schedulerRuntime) saveCronStoreLocked(ctx context.Context, store schedu
 		for _, record := range store.Jobs {
 			deliveryMode, deliveryChannel, deliveryTo, deliveryBestEffort := flattenCronDelivery(record.Job.Delivery)
 			if _, err := scope.db.Exec(ctx, `
-				INSERT INTO ai_cron_jobs (
+				INSERT INTO aichats_cron_jobs (
 					bridge_id, login_id, job_id, agent_id, name, description,
 					enabled, delete_after_run, created_at_ms, updated_at_ms,
 					schedule_kind, schedule_at, schedule_every_ms, schedule_anchor_ms, schedule_expr, schedule_tz,
@@ -236,7 +236,7 @@ func (s *schedulerRuntime) loadHeartbeatStoreLocked(ctx context.Context) (manage
 			active_hours_start, active_hours_end, active_hours_timezone,
 			room_id, revision, next_run_at_ms, pending_delay_id, pending_delay_kind, pending_run_key,
 			last_run_at_ms, last_result, last_error
-		FROM ai_managed_heartbeats
+		FROM aichats_managed_heartbeats
 		WHERE bridge_id=$1 AND login_id=$2
 		ORDER BY agent_id
 	`, scope.bridgeID, scope.loginID)
@@ -313,7 +313,7 @@ func (s *schedulerRuntime) saveHeartbeatStoreLocked(ctx context.Context, store m
 		for _, state := range store.Agents {
 			activeStart, activeEnd, activeTimezone := flattenHeartbeatActiveHours(state.ActiveHours)
 			if _, err := scope.db.Exec(ctx, `
-				INSERT INTO ai_managed_heartbeats (
+				INSERT INTO aichats_managed_heartbeats (
 					bridge_id, login_id, agent_id, enabled, interval_ms,
 					active_hours_start, active_hours_end, active_hours_timezone,
 					room_id, revision, next_run_at_ms, pending_delay_id, pending_delay_kind,
@@ -384,19 +384,19 @@ func flattenHeartbeatActiveHours(cfg *HeartbeatActiveHoursConfig) (string, strin
 }
 
 func loadCronRunKeys(ctx context.Context, scope *schedulerDBScope, jobID string) ([]string, error) {
-	return loadIndexedRunKeys(ctx, scope, "ai_cron_job_run_keys", "job_id", jobID)
+	return loadIndexedRunKeys(ctx, scope, "aichats_cron_job_run_keys", "job_id", jobID)
 }
 
 func replaceCronRunKeys(ctx context.Context, scope *schedulerDBScope, jobID string, keys []string) error {
-	return replaceIndexedRunKeys(ctx, scope, "ai_cron_job_run_keys", "job_id", jobID, keys)
+	return replaceIndexedRunKeys(ctx, scope, "aichats_cron_job_run_keys", "job_id", jobID, keys)
 }
 
 func loadHeartbeatRunKeys(ctx context.Context, scope *schedulerDBScope, agentID string) ([]string, error) {
-	return loadIndexedRunKeys(ctx, scope, "ai_managed_heartbeat_run_keys", "agent_id", agentID)
+	return loadIndexedRunKeys(ctx, scope, "aichats_managed_heartbeat_run_keys", "agent_id", agentID)
 }
 
 func replaceHeartbeatRunKeys(ctx context.Context, scope *schedulerDBScope, agentID string, keys []string) error {
-	return replaceIndexedRunKeys(ctx, scope, "ai_managed_heartbeat_run_keys", "agent_id", agentID, keys)
+	return replaceIndexedRunKeys(ctx, scope, "aichats_managed_heartbeat_run_keys", "agent_id", agentID, keys)
 }
 
 func nullableInt64Pointer(value sql.NullInt64) *int64 {
@@ -452,11 +452,11 @@ func nullableBoolValue(value *bool) any {
 }
 
 func deleteMissingCronRows(ctx context.Context, scope *schedulerDBScope, keep map[string]struct{}) error {
-	return deleteMissingScopedRows(ctx, scope, keep, "ai_cron_jobs", "job_id", "ai_cron_job_run_keys")
+	return deleteMissingScopedRows(ctx, scope, keep, "aichats_cron_jobs", "job_id", "aichats_cron_job_run_keys")
 }
 
 func deleteMissingHeartbeatRows(ctx context.Context, scope *schedulerDBScope, keep map[string]struct{}) error {
-	return deleteMissingScopedRows(ctx, scope, keep, "ai_managed_heartbeats", "agent_id", "ai_managed_heartbeat_run_keys")
+	return deleteMissingScopedRows(ctx, scope, keep, "aichats_managed_heartbeats", "agent_id", "aichats_managed_heartbeat_run_keys")
 }
 
 func loadIndexedRunKeys(ctx context.Context, scope *schedulerDBScope, table, idColumn, idValue string) ([]string, error) {

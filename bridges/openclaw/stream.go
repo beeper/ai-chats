@@ -10,8 +10,8 @@ import (
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/bridges/ai/msgconv"
 	"github.com/beeper/agentremote/pkg/shared/maputil"
-	"github.com/beeper/agentremote/pkg/shared/openclawconv"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
@@ -83,7 +83,7 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 	}
 
 	turnID = strings.TrimSpace(turnID)
-	agentID = openclawconv.StringsTrimDefault(agentID, "gateway")
+	agentID = stringutil.TrimDefault(agentID, "gateway")
 	sessionKey = strings.TrimSpace(sessionKey)
 
 	oc.StreamMu.Lock()
@@ -119,8 +119,8 @@ func (oc *OpenClawClient) newSDKStreamTurn(ctx context.Context, portal *bridgev2
 		return nil
 	}
 	profile := oc.resolveAgentProfile(ctx, state.agentID, state.sessionKey, nil, nil)
-	state.agentID = openclawconv.StringsTrimDefault(profile.AgentID, state.agentID)
-	state.agentID = openclawconv.StringsTrimDefault(state.agentID, "gateway")
+	state.agentID = stringutil.TrimDefault(profile.AgentID, state.agentID)
+	state.agentID = stringutil.TrimDefault(state.agentID, "gateway")
 	agent := oc.sdkAgentForProfile(profile)
 	sender := oc.senderForAgent(state.agentID, false)
 	conv := bridgesdk.NewConversation(ctx, oc.UserLogin, portal, sender, oc.connector.sdkConfig, oc)
@@ -245,7 +245,7 @@ func (oc *OpenClawClient) applyStreamPartStateLocked(state *openClawStreamState,
 			state.errorText = errText
 		}
 	case "abort":
-		state.finishReason = openclawconv.StringsTrimDefault(stringValue(part["reason"]), "aborted")
+		state.finishReason = stringutil.TrimDefault(stringValue(part["reason"]), "aborted")
 	case "finish":
 		if state.completedAtMs == 0 {
 			state.completedAtMs = time.Now().UnixMilli()
@@ -277,12 +277,12 @@ func finishOpenClawTurnFromState(state *openClawStreamState, turn *bridgesdk.Tur
 	}
 	switch strings.TrimSpace(state.finishReason) {
 	case "abort", "aborted":
-		turn.Abort(openclawconv.StringsTrimDefault(state.finishReason, "aborted"))
+		turn.Abort(stringutil.TrimDefault(state.finishReason, "aborted"))
 	case "error":
-		turn.EndWithError(openclawconv.StringsTrimDefault(state.errorText, "OpenClaw stream failed"))
+		turn.EndWithError(stringutil.TrimDefault(state.errorText, "OpenClaw stream failed"))
 	default:
-		reason := openclawconv.StringsTrimDefault(state.finishReason, strings.TrimSpace(fallbackReason))
-		turn.End(openclawconv.StringsTrimDefault(reason, "stop"))
+		reason := stringutil.TrimDefault(state.finishReason, strings.TrimSpace(fallbackReason))
+		turn.End(stringutil.TrimDefault(reason, "stop"))
 	}
 }
 
@@ -365,7 +365,7 @@ func (oc *OpenClawClient) currentUIMessage(state *openClawStreamState) map[strin
 	if len(uiMessage) == 0 {
 		return msgconv.BuildUIMessage(msgconv.UIMessageParams{
 			TurnID:   state.turnID,
-			Role:     openclawconv.StringsTrimDefault(state.role, "assistant"),
+			Role:     stringutil.TrimDefault(state.role, "assistant"),
 			Metadata: update,
 		})
 	}
@@ -388,7 +388,7 @@ func (oc *OpenClawClient) buildStreamDBMetadata(state *openClawStreamState) *Mes
 	uiMessage := oc.currentUIMessage(state)
 	snapshot := bridgesdk.BuildTurnSnapshot(uiMessage, bridgesdk.TurnDataBuildOptions{
 		ID:   state.turnID,
-		Role: openclawconv.StringsTrimDefault(state.role, "assistant"),
+		Role: stringutil.TrimDefault(state.role, "assistant"),
 		Text: body,
 		Metadata: map[string]any{
 			"turn_id":           state.turnID,
@@ -403,7 +403,7 @@ func (oc *OpenClawClient) buildStreamDBMetadata(state *openClawStreamState) *Mes
 	}, "openclaw")
 	return &MessageMetadata{
 		BaseMessageMetadata: agentremote.BaseMessageMetadata{
-			Role:              openclawconv.StringsTrimDefault(state.role, "assistant"),
+			Role:              stringutil.TrimDefault(state.role, "assistant"),
 			Body:              snapshot.Body,
 			TurnID:            state.turnID,
 			AgentID:           state.agentID,

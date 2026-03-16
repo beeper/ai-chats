@@ -16,6 +16,7 @@ import (
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/agents"
+	"github.com/beeper/agentremote/pkg/agents/agentconfig"
 	"github.com/beeper/agentremote/pkg/agents/tools"
 )
 
@@ -646,7 +647,7 @@ func agentToToolsData(agent *agents.AgentDefinition) tools.AgentData {
 		Model:        agent.Model.Primary,
 		SystemPrompt: agent.SystemPrompt,
 		Tools:        agent.Tools.Clone(),
-		Subagents:    subagentsToTools(agent.Subagents),
+		Subagents:    agentconfig.CloneSubagentConfig(agent.Subagents),
 		Temperature:  agent.Temperature,
 		IsPreset:     agent.IsPreset,
 		CreatedAt:    agent.CreatedAt,
@@ -665,7 +666,7 @@ func toolsDataToAgent(data tools.AgentData) *agents.AgentDefinition {
 		},
 		SystemPrompt: data.SystemPrompt,
 		Tools:        data.Tools.Clone(),
-		Subagents:    subagentsFromTools(data.Subagents),
+		Subagents:    agentconfig.CloneSubagentConfig(data.Subagents),
 		Temperature:  data.Temperature,
 		IsPreset:     data.IsPreset,
 		CreatedAt:    data.CreatedAt,

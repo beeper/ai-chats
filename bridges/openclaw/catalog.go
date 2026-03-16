@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/beeper/agentremote/pkg/shared/cachedvalue"
-	"github.com/beeper/agentremote/pkg/shared/openclawconv"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 const openClawMetadataCatalogTTL = 5 * time.Minute
@@ -97,7 +97,7 @@ func (oc *OpenClawClient) enrichPortalMetadata(ctx context.Context, meta *Portal
 	if models, err := oc.loadModelCatalog(ctx, false); err == nil && len(models) > 0 {
 		meta.OpenClawKnownModelCount = len(models)
 	}
-	agentID := openclawconv.StringsTrimDefault(meta.OpenClawAgentID, meta.OpenClawDMTargetAgentID)
+	agentID := stringutil.TrimDefault(meta.OpenClawAgentID, meta.OpenClawDMTargetAgentID)
 	if catalog, err := oc.loadToolsCatalog(ctx, agentID, false); err == nil && catalog != nil {
 		meta.OpenClawToolCount, meta.OpenClawToolProfile = summarizeToolsCatalog(*catalog)
 	}

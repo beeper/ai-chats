@@ -15,7 +15,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote"
-	"github.com/beeper/agentremote/pkg/shared/openclawconv"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
@@ -300,7 +300,7 @@ func (oc *OpenClawClient) createConfiguredAgentDM(ctx context.Context, agent gat
 	meta.OpenClawSessionKey = sessionKey
 	meta.OpenClawAgentID = agentID
 	meta.OpenClawDMTargetAgentID = agentID
-	meta.OpenClawDMTargetAgentName = openclawconv.StringsTrimDefault(oc.configuredAgentDisplayName(agent), meta.OpenClawDMTargetAgentName)
+	meta.OpenClawDMTargetAgentName = stringutil.TrimDefault(oc.configuredAgentDisplayName(agent), meta.OpenClawDMTargetAgentName)
 	meta.OpenClawDMCreatedFromContact = true
 	meta.HistoryMode = "recent_only"
 	meta.RecentHistoryLimit = openClawDefaultSessionLimit
@@ -434,7 +434,7 @@ func openClawAgentProfileFromSummary(agent *gatewayAgentSummary) openClawAgentPr
 	}
 	if agent.Identity != nil {
 		profile.Name = strings.TrimSpace(agent.Identity.Name)
-		profile.AvatarURL = openclawconv.StringsTrimDefault(agent.Identity.Avatar, strings.TrimSpace(agent.Identity.AvatarURL))
+		profile.AvatarURL = stringutil.TrimDefault(agent.Identity.Avatar, strings.TrimSpace(agent.Identity.AvatarURL))
 		profile.Emoji = strings.TrimSpace(agent.Identity.Emoji)
 	}
 	fillStringIfEmpty(&profile.Name, strings.TrimSpace(agent.Name))
@@ -511,8 +511,8 @@ func sortConfiguredAgents(agents []gatewayAgentSummary, defaultID, query string)
 			if strings.EqualFold(leftID, defaultID) != strings.EqualFold(rightID, defaultID) {
 				return strings.EqualFold(leftID, defaultID)
 			}
-			leftName := strings.ToLower(openclawconv.StringsTrimDefault(openClawAgentProfileFromSummary(&left).Name, leftID))
-			rightName := strings.ToLower(openclawconv.StringsTrimDefault(openClawAgentProfileFromSummary(&right).Name, rightID))
+			leftName := strings.ToLower(stringutil.TrimDefault(openClawAgentProfileFromSummary(&left).Name, leftID))
+			rightName := strings.ToLower(stringutil.TrimDefault(openClawAgentProfileFromSummary(&right).Name, rightID))
 			if leftName != rightName {
 				return leftName < rightName
 			}
@@ -523,8 +523,8 @@ func sortConfiguredAgents(agents []gatewayAgentSummary, defaultID, query string)
 		if leftScore != rightScore {
 			return leftScore < rightScore
 		}
-		leftName := strings.ToLower(openclawconv.StringsTrimDefault(openClawAgentProfileFromSummary(&left).Name, leftID))
-		rightName := strings.ToLower(openclawconv.StringsTrimDefault(openClawAgentProfileFromSummary(&right).Name, rightID))
+		leftName := strings.ToLower(stringutil.TrimDefault(openClawAgentProfileFromSummary(&left).Name, leftID))
+		rightName := strings.ToLower(stringutil.TrimDefault(openClawAgentProfileFromSummary(&right).Name, rightID))
 		if leftName != rightName {
 			return leftName < rightName
 		}

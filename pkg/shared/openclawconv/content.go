@@ -76,7 +76,7 @@ func ExtractMessageText(message map[string]any) string {
 	for _, block := range ContentBlocks(message) {
 		switch strings.ToLower(stringutil.TrimString(block["type"])) {
 		case "text", "input_text", "output_text":
-			if text := strings.TrimSpace(StringsTrimDefault(stringutil.StringValue(block["text"]), stringutil.StringValue(block["content"]))); text != "" {
+			if text := strings.TrimSpace(stringutil.TrimDefault(stringutil.StringValue(block["text"]), stringutil.StringValue(block["content"]))); text != "" {
 				parts = append(parts, text)
 			}
 		}
@@ -124,14 +124,4 @@ func IsAttachmentBlock(block map[string]any) bool {
 		}
 	}
 	return false
-}
-
-// StringValue delegates to stringutil.StringValue for backward compatibility.
-func StringValue(v any) string {
-	return stringutil.StringValue(v)
-}
-
-// StringsTrimDefault delegates to stringutil.TrimDefault for backward compatibility.
-func StringsTrimDefault(value, fallback string) string {
-	return stringutil.TrimDefault(value, fallback)
 }

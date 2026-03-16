@@ -119,7 +119,7 @@ func saveSystemEventsSnapshot(ctx context.Context, scope *systemEventsDBScope, q
 		return nil
 	}
 	return scope.db.DoTxn(ctx, nil, func(ctx context.Context) error {
-		if _, err := scope.db.Exec(ctx, `DELETE FROM ai_system_events WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`, scope.bridgeID, scope.loginID, scope.agentID); err != nil {
+		if _, err := scope.db.Exec(ctx, `DELETE FROM aichats_system_events WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`, scope.bridgeID, scope.loginID, scope.agentID); err != nil {
 			return err
 		}
 		for _, queue := range queues {
@@ -132,7 +132,7 @@ func saveSystemEventsSnapshot(ctx context.Context, scope *systemEventsDBScope, q
 					lastText = queue.LastText
 				}
 				if _, err := scope.db.Exec(ctx, `
-					INSERT INTO ai_system_events (
+					INSERT INTO aichats_system_events (
 						bridge_id, login_id, agent_id, session_key, event_index, text, ts, last_text
 					) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 				`, scope.bridgeID, scope.loginID, scope.agentID, queue.SessionKey, idx, evt.Text, evt.TS, lastText); err != nil {
@@ -150,7 +150,7 @@ func loadSystemEventsSnapshot(ctx context.Context, scope *systemEventsDBScope) (
 	}
 	rows, err := scope.db.Query(ctx, `
 		SELECT session_key, text, ts, last_text
-		FROM ai_system_events
+		FROM aichats_system_events
 		WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3
 		ORDER BY session_key, event_index
 	`, scope.bridgeID, scope.loginID, scope.agentID)

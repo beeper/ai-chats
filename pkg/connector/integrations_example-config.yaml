@@ -56,16 +56,16 @@ model_cache_duration: 6h
 messages:
   # History defaults for prompt construction.
   # Set 0 to disable.
-  directChat:
-    historyLimit: 20
-  groupChat:
-    historyLimit: 50
+  direct_chat:
+    history_limit: 20
+  group_chat:
+    history_limit: 50
   # Queue behavior while the agent is busy.
   queue:
     # Modes: collect, followup, steer, steer-backlog, interrupt
     mode: "collect"
     # Debounce time before draining queued messages (ms).
-    debounceMs: 1000
+    debounce_ms: 1000
     # Maximum queued messages before drop policy applies.
     cap: 20
     # Drop policy when cap is exceeded: summarize, old, new
@@ -74,33 +74,32 @@ messages:
 # Command authorization settings.
 commands:
   # Optional allowlist for owner-only tools/commands (Matrix IDs, or "matrix:@user:server").
-  ownerAllowFrom: []
+  owner_allow_from: []
 
 # Tool approval gating.
 tool_approvals:
   enabled: true
-  ttlSeconds: 600
-  requireForMcp: true
+  ttl_seconds: 600
+  require_for_mcp: true
   # List of builtin tool names that require approval (subject to per-tool action allowlists).
   # Note: `message` approvals apply to Desktop API routing too (e.g. action=send/reply/edit with desktop chat hints),
   # while Desktop read-only actions like desktop-search-* do not require approval.
-  requireForTools: ["message", "cron", "gravatar_set", "create_agent", "fork_agent", "edit_agent", "delete_agent", "modify_room", "sessions_send", "sessions_spawn", "run_internal_command"]
+  require_for_tools: ["message", "cron", "gravatar_set", "create_agent", "fork_agent", "edit_agent", "delete_agent", "modify_room", "sessions_send", "sessions_spawn", "run_internal_command"]
   # Fallback when approval times out: "deny" (default) | "allow".
   # Set to "allow" for cron/automated contexts where no human can respond.
-  askFallback: "deny"
 
 # Optional per-channel overrides.
 channels:
   matrix:
     # Matrix reply/thread behavior.
-    replyToMode: "first"
+    reply_to_mode: "first"
 
 # Session configuration.
 session:
   # Scope for session state: per-sender (default) or global.
   scope: "per-sender"
   # Main session key alias (default: "main").
-  mainKey: "main"
+  main_key: "main"
 
 # External tool providers (search + fetch). Proxy is optional.
 tools:
@@ -158,9 +157,9 @@ tools:
     image:
       enabled: true
       prompt: "Describe the image."
-      maxBytes: 10485760
-      maxChars: 500
-      timeoutSeconds: 60
+      max_bytes: 10485760
+      max_chars: 500
+      timeout_seconds: 60
       models:
         - provider: "openrouter"
           model: "google/gemini-3-flash-preview"
@@ -169,16 +168,16 @@ tools:
       prompt: "Transcribe the audio."
       language: ""
       # CLI transcription auto-detection (whisper/whisper.cpp) is not implemented yet.
-      maxBytes: 20971520
-      timeoutSeconds: 60
+      max_bytes: 20971520
+      timeout_seconds: 60
       models:
         - provider: "openai"
           model: "gpt-4o-mini-transcribe"
     video:
       enabled: true
       prompt: "Describe the video."
-      maxBytes: 52428800
-      timeoutSeconds: 120
+      max_bytes: 52428800
+      timeout_seconds: 120
       models:
         - provider: "openrouter"
           model: "google/gemini-3-flash-preview"
@@ -226,11 +225,11 @@ tools:
   #   defaults:
   #     subagents:
   #       model: "anthropic/claude-sonnet-4.5"
-  #       allowAgents: ["*"]
+  #       allow_agents: ["*"]
   #     skip_bootstrap: false
   #     bootstrap_max_chars: 20000
-  #     typingMode: "instant" # never|instant|thinking|message (message ignores NO_REPLY)
-  #     typingIntervalSeconds: 6 # refresh cadence, not start time (heartbeats never show typing)
+  #     typing_mode: "instant" # never|instant|thinking|message (message ignores NO_REPLY)
+  #     typing_interval_seconds: 6 # refresh cadence, not start time (heartbeats never show typing)
   #     soul_evil:
   #       file: "SOUL_EVIL.md"
   #       chance: 0.1

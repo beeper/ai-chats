@@ -61,11 +61,11 @@ func (oc *AIClient) resolveToolPolicies(meta *PortalMetadata) toolPolicyResoluti
 
 	resolvedPolicies := []*toolpolicy.ToolPolicy{
 		resolve.resolvePolicy(profilePolicy, resolvePolicyLabel("tools.profile", effective.Profile)),
-		resolve.resolvePolicy(providerProfilePolicy, resolvePolicyLabel("tools.byProvider.profile", effective.ProviderProfile)),
+		resolve.resolvePolicy(providerProfilePolicy, resolvePolicyLabel("tools.by_provider.profile", effective.ProviderProfile)),
 		resolve.resolvePolicy(effective.GlobalPolicy, "tools.allow"),
-		resolve.resolvePolicy(effective.GlobalProviderPolicy, "tools.byProvider.allow"),
+		resolve.resolvePolicy(effective.GlobalProviderPolicy, "tools.by_provider.allow"),
 		resolve.resolvePolicy(effective.AgentPolicy, resolveAgentPolicyLabel("agents.tools.allow", agent)),
-		resolve.resolvePolicy(effective.AgentProviderPolicy, resolveAgentPolicyLabel("agents.tools.byProvider.allow", agent)),
+		resolve.resolvePolicy(effective.AgentProviderPolicy, resolveAgentPolicyLabel("agents.tools.by_provider.allow", agent)),
 		resolve.resolvePolicy(resolveSubagentPolicy(meta, globalTools), "tools.subagents"),
 	}
 	allowed := resolve.applyPolicies(ctx.names, resolvedPolicies)
@@ -143,7 +143,7 @@ func (r *policyResolver) resolvePolicy(policy *toolpolicy.ToolPolicy, label stri
 	if len(unknownAllowlist) > 0 {
 		suffix := "These entries won't match any tool unless the plugin is enabled."
 		if stripped {
-			suffix = "Ignoring allowlist so core tools remain available. Use tools.alsoAllow for additive plugin tool enablement."
+			suffix = "Ignoring allowlist so core tools remain available. Use tools.also_allow for additive plugin tool enablement."
 		}
 		r.log.Warn().
 			Str("policy_label", label).

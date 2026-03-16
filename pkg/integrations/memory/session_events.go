@@ -56,7 +56,7 @@ func (m *MemorySearchManager) resetSessionState(ctx context.Context, sessionKey 
 		return nil
 	}
 	_, err := m.db.Exec(ctx,
-		`INSERT INTO ai_memory_session_state
+		`INSERT INTO aichats_memory_session_state
            (bridge_id, login_id, agent_id, session_key, last_rowid, pending_bytes, pending_messages, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT (bridge_id, login_id, agent_id, session_key)
