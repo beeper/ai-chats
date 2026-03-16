@@ -24,7 +24,7 @@ import (
 // AgentStoreAdapter implements agents.AgentStore with UserLogin metadata as source of truth.
 type AgentStoreAdapter struct {
 	client *AIClient
-	mu     sync.Mutex // protects read-modify-write operations on custom agents
+	mu     sync.RWMutex // protects custom agent metadata reads and writes
 }
 
 func NewAgentStoreAdapter(client *AIClient) *AgentStoreAdapter {
@@ -60,6 +60,9 @@ func (s *AgentStoreAdapter) LoadAgents(_ context.Context) (map[string]*agents.Ag
 }
 
 func (s *AgentStoreAdapter) loadCustomAgentsFromMetadata() map[string]*AgentDefinitionContent {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	meta := loginMetadata(s.client.UserLogin)
 	if meta == nil || len(meta.CustomAgents) == 0 {
 		return nil
@@ -75,6 +78,9 @@ func (s *AgentStoreAdapter) loadCustomAgentsFromMetadata() map[string]*AgentDefi
 }
 
 func (s *AgentStoreAdapter) loadCustomAgentFromMetadata(agentID string) *AgentDefinitionContent {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	meta := loginMetadata(s.client.UserLogin)
 	if meta == nil || meta.CustomAgents == nil {
 		return nil

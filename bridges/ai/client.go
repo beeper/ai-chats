@@ -481,6 +481,9 @@ func openRouterHeaders() map[string]string {
 
 // initProviderForLogin creates the appropriate provider based on login metadata.
 func initProviderForLogin(key string, meta *UserLoginMetadata, connector *OpenAIConnector, login *bridgev2.UserLogin, log zerolog.Logger) (*OpenAIProvider, error) {
+	if meta == nil {
+		return nil, errors.New("login metadata is required")
+	}
 	switch meta.Provider {
 	case ProviderBeeper:
 		beeperBaseURL := connector.resolveBeeperBaseURL(meta)

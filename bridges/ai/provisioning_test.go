@@ -59,7 +59,7 @@ func TestApplyProfilePayloadRejectsInvalidTimezone(t *testing.T) {
 }
 
 func TestNormalizeAgentUpsertRequestCreatesDefinition(t *testing.T) {
-	agent, err := normalizeAgentUpsertRequest(agentUpsertRequest{
+	agent := normalizeAgentUpsertRequest(agentUpsertRequest{
 		Name:            "Helper",
 		Description:     "Useful",
 		Model:           "openai/gpt-5.2",
@@ -70,9 +70,6 @@ func TestNormalizeAgentUpsertRequestCreatesDefinition(t *testing.T) {
 		IdentityName:    "Beep",
 		IdentityPersona: "Helpful assistant",
 	}, "")
-	if err != nil {
-		t.Fatalf("normalizeAgentUpsertRequest returned error: %v", err)
-	}
 	if agent == nil {
 		t.Fatal("expected agent definition")
 	}

@@ -90,20 +90,8 @@ func (a *responsesTurnAdapter) startContinuationRound(ctx context.Context) (*sse
 	}
 
 	continuationParams := a.oc.buildContinuationParams(ctx, state, a.meta, pendingOutputs, approvalInputs)
-	if len(state.baseInput) > 0 {
-		for _, output := range pendingOutputs {
-			if output.name != "" {
-				args := output.arguments
-				if strings.TrimSpace(args) == "" {
-					args = "{}"
-				}
-				state.baseInput = append(state.baseInput, responses.ResponseInputItemParamOfFunctionCall(args, output.callID, output.name))
-			}
-			state.baseInput = append(state.baseInput, buildFunctionCallOutputItem(output.callID, output.output, true))
-		}
-		for _, approval := range approvalInputs {
-			state.baseInput = append(state.baseInput, approval)
-		}
+	if continuationInput := continuationParams.Input.OfInputItemList; continuationInput != nil {
+		state.baseInput = slices.Clone(continuationInput)
 	}
 
 	state.needsTextSeparator = true

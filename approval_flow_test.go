@@ -29,6 +29,13 @@ func waitForCondition(t *testing.T, timeout time.Duration, cond func() bool, mes
 	}
 }
 
+func newTestApprovalFlow(t *testing.T, cfg ApprovalFlowConfig[*testApprovalFlowData]) *ApprovalFlow[*testApprovalFlowData] {
+	t.Helper()
+	flow := NewApprovalFlow(cfg)
+	t.Cleanup(flow.Close)
+	return flow
+}
+
 func TestApprovalFlow_FinishResolvedQueuesEditAndPlaceholderCleanup(t *testing.T) {
 	owner := id.UserID("@owner:example.com")
 	roomID := id.RoomID("!room:example.com")
@@ -41,7 +48,7 @@ func TestApprovalFlow_FinishResolvedQueuesEditAndPlaceholderCleanup(t *testing.T
 		Bridge: &bridgev2.Bridge{},
 	}
 
-	flow := NewApprovalFlow(ApprovalFlowConfig[*testApprovalFlowData]{
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
 		Login: func() *bridgev2.UserLogin { return login },
 	})
 	flow.testResolvePortal = func(_ context.Context, _ *bridgev2.UserLogin, _ id.RoomID) (*bridgev2.Portal, error) {
@@ -127,7 +134,7 @@ func TestIsApprovalPlaceholderReaction_ExcludesUserReaction(t *testing.T) {
 }
 
 func TestApprovalFlow_ReactionRedactionSenderUsesMatrixUser(t *testing.T) {
-	flow := NewApprovalFlow(ApprovalFlowConfig[*testApprovalFlowData]{
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
 		Login: func() *bridgev2.UserLogin {
 			return &bridgev2.UserLogin{
 				UserLogin: &database.UserLogin{ID: networkid.UserLoginID("login")},
@@ -164,7 +171,7 @@ func TestApprovalFlow_HandleReaction_DeliveryErrorKeepsPending(t *testing.T) {
 	}
 
 	var redacted bool
-	flow := NewApprovalFlow(ApprovalFlowConfig[*testApprovalFlowData]{
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
 		Login: func() *bridgev2.UserLogin { return login },
 		DeliverDecision: func(_ context.Context, _ *bridgev2.Portal, _ *Pending[*testApprovalFlowData], _ ApprovalDecisionPayload) error {
 			return errors.New("boom")
@@ -218,7 +225,7 @@ func TestApprovalFlow_HandleReaction_UnknownPendingShowsUnknown(t *testing.T) {
 
 	var redacted bool
 	var notice string
-	flow := NewApprovalFlow(ApprovalFlowConfig[*testApprovalFlowData]{
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
 		Login: func() *bridgev2.UserLogin { return login },
 		SendNotice: func(_ context.Context, _ *bridgev2.Portal, msg string) {
 			notice = msg
@@ -273,7 +280,7 @@ func TestApprovalFlow_HandleReaction_ResolvedPromptUsesMessageStatus(t *testing.
 
 	var redacted bool
 	var status bridgev2.MessageStatus
-	flow := NewApprovalFlow(ApprovalFlowConfig[*testApprovalFlowData]{
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
 		Login: func() *bridgev2.UserLogin { return login },
 	})
 	flow.testRedactSingleReaction = func(_ *bridgev2.MatrixReaction) {
@@ -339,7 +346,7 @@ func TestApprovalFlow_HandleReactionRemove_ResolvedPromptUsesMessageStatus(t *te
 	}
 
 	var status bridgev2.MessageStatus
-	flow := NewApprovalFlow(ApprovalFlowConfig[*testApprovalFlowData]{
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
 		Login: func() *bridgev2.UserLogin { return login },
 	})
 	flow.testSendMessageStatus = func(_ context.Context, gotPortal *bridgev2.Portal, evt *event.Event, gotStatus bridgev2.MessageStatus) {
@@ -390,6 +397,34 @@ func TestApprovalFlow_HandleReactionRemove_ResolvedPromptUsesMessageStatus(t *te
 	}
 }
 
+func TestApprovalFlow_ResolvedPromptLookupPrunesExpiredEntries(t *testing.T) {
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{})
+
+	flow.mu.Lock()
+	flow.rememberResolvedPromptLocked(ApprovalPromptRegistration{
+		ApprovalID:      "approval-1",
+		PromptEventID:   id.EventID("$prompt"),
+		PromptMessageID: networkid.MessageID("msg-1"),
+		ExpiresAt:       time.Now().Add(-time.Second),
+		Options:         DefaultApprovalOptions(),
+	}, ApprovalDecisionPayload{
+		ApprovalID: "approval-1",
+		Approved:   true,
+		Reason:     ApprovalReasonAllowOnce,
+	})
+	flow.mu.Unlock()
+
+	if _, ok := flow.resolvedPromptByTarget(id.EventID("$prompt"), ""); ok {
+		t.Fatal("expected expired resolved prompt lookup to be pruned")
+	}
+
+	flow.mu.Lock()
+	defer flow.mu.Unlock()
+	if len(flow.resolvedByEventID) != 0 || len(flow.resolvedByMsgID) != 0 {
+		t.Fatalf("expected expired resolved prompt entries to be removed, got event=%d msg=%d", len(flow.resolvedByEventID), len(flow.resolvedByMsgID))
+	}
+}
+
 func TestApprovalFlow_HandleReaction_WrongTargetUniqueApprovalMirrorsDecision(t *testing.T) {
 	owner := id.UserID("@owner:example.com")
 	roomID := id.RoomID("!room:example.com")
@@ -404,7 +439,7 @@ func TestApprovalFlow_HandleReaction_WrongTargetUniqueApprovalMirrorsDecision(t 
 
 	var redacted bool
 	mirrorCh := make(chan string, 1)
-	flow := NewApprovalFlow(ApprovalFlowConfig[*testApprovalFlowData]{
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
 		Login: func() *bridgev2.UserLogin { return login },
 	})
 	flow.testResolvePortal = func(_ context.Context, _ *bridgev2.UserLogin, _ id.RoomID) (*bridgev2.Portal, error) {
@@ -486,7 +521,7 @@ func TestApprovalFlow_HandleReaction_WrongTargetAmbiguousApprovalUsesMessageStat
 		statusEvt *event.Event
 		status    bridgev2.MessageStatus
 	)
-	flow := NewApprovalFlow(ApprovalFlowConfig[*testApprovalFlowData]{
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
 		Login: func() *bridgev2.UserLogin { return login },
 	})
 	flow.testRedactSingleReaction = func(_ *bridgev2.MatrixReaction) {
@@ -576,7 +611,7 @@ func TestApprovalFlow_ResolveExternalMirrorsRemoteDecision(t *testing.T) {
 		Bridge: &bridgev2.Bridge{},
 	}
 
-	flow := NewApprovalFlow(ApprovalFlowConfig[*testApprovalFlowData]{
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
 		Login: func() *bridgev2.UserLogin { return login },
 	})
 	flow.testResolvePortal = func(_ context.Context, _ *bridgev2.UserLogin, _ id.RoomID) (*bridgev2.Portal, error) {
@@ -632,7 +667,7 @@ func TestApprovalFlow_ResolveExternalMirrorsRemoteDecision(t *testing.T) {
 }
 
 func TestApprovalFlow_ResolveExternalNotifiesWaiters(t *testing.T) {
-	flow := NewApprovalFlow(ApprovalFlowConfig[*testApprovalFlowData]{})
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{})
 	if _, created := flow.Register("approval-1", time.Minute, &testApprovalFlowData{}); !created {
 		t.Fatalf("expected pending approval to be created")
 	}
@@ -660,8 +695,41 @@ func TestApprovalFlow_ResolveExternalNotifiesWaiters(t *testing.T) {
 	}
 }
 
+func TestApprovalFlow_WaitCancellationDoesNotRemovePending(t *testing.T) {
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{})
+	if _, created := flow.Register("approval-1", time.Minute, &testApprovalFlowData{}); !created {
+		t.Fatalf("expected pending approval to be created")
+	}
+
+	cancelledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if decision, ok := flow.Wait(cancelledCtx, "approval-1"); ok || decision != (ApprovalDecisionPayload{}) {
+		t.Fatalf("expected cancelled waiter to return zero decision, got %#v ok=%v", decision, ok)
+	}
+	if flow.Get("approval-1") == nil {
+		t.Fatal("expected cancelled waiter to leave pending approval registered")
+	}
+
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		_ = flow.Resolve("approval-1", ApprovalDecisionPayload{
+			ApprovalID: "approval-1",
+			Approved:   true,
+			Reason:     ApprovalReasonAllowOnce,
+		})
+	}()
+
+	decision, ok := flow.Wait(context.Background(), "approval-1")
+	if !ok {
+		t.Fatal("expected another waiter to still receive the decision")
+	}
+	if !decision.Approved || decision.Reason != ApprovalReasonAllowOnce {
+		t.Fatalf("unexpected waiter decision after cancellation: %#v", decision)
+	}
+}
+
 func TestApprovalFlow_ResolveExternalDoesNotFinalizeWhenAlreadyHandled(t *testing.T) {
-	flow := NewApprovalFlow(ApprovalFlowConfig[*testApprovalFlowData]{
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
 		Login: func() *bridgev2.UserLogin { return nil },
 	})
 	if _, created := flow.Register("approval-1", time.Minute, &testApprovalFlowData{}); !created {
@@ -708,7 +776,7 @@ func TestApprovalFlow_ResolveExternalDoesNotFinalizeWhenAlreadyHandled(t *testin
 }
 
 func TestApprovalFlow_ResolvePreventsLaterTimeout(t *testing.T) {
-	flow := NewApprovalFlow(ApprovalFlowConfig[*testApprovalFlowData]{
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
 		Login: func() *bridgev2.UserLogin { return nil },
 	})
 	if _, created := flow.Register("approval-1", 25*time.Millisecond, &testApprovalFlowData{}); !created {
@@ -744,8 +812,36 @@ func TestApprovalFlow_ResolvePreventsLaterTimeout(t *testing.T) {
 	}
 }
 
+func TestApprovalFlow_WaitTimeoutFinalizesPromptState(t *testing.T) {
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
+		Login: func() *bridgev2.UserLogin { return nil },
+	})
+	if _, created := flow.Register("approval-1", 25*time.Millisecond, &testApprovalFlowData{}); !created {
+		t.Fatalf("expected pending approval to be created")
+	}
+
+	flow.mu.Lock()
+	flow.registerPromptLocked(ApprovalPromptRegistration{
+		ApprovalID:    "approval-1",
+		PromptEventID: id.EventID("$prompt"),
+		ExpiresAt:     time.Now().Add(25 * time.Millisecond),
+		Options:       DefaultApprovalOptions(),
+	})
+	flow.mu.Unlock()
+
+	if decision, ok := flow.Wait(context.Background(), "approval-1"); ok || decision != (ApprovalDecisionPayload{}) {
+		t.Fatalf("expected wait timeout to return zero decision, got %#v ok=%v", decision, ok)
+	}
+	if flow.Get("approval-1") != nil {
+		t.Fatal("expected wait timeout to finalize pending approval")
+	}
+	if _, ok := flow.promptRegistration("approval-1"); ok {
+		t.Fatal("expected wait timeout to remove prompt registration")
+	}
+}
+
 func TestApprovalFlow_SchedulePromptTimeoutIgnoresReplacedPrompt(t *testing.T) {
-	flow := NewApprovalFlow(ApprovalFlowConfig[*testApprovalFlowData]{
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
 		Login: func() *bridgev2.UserLogin { return nil },
 	})
 	if _, created := flow.Register("approval-1", time.Minute, &testApprovalFlowData{}); !created {
@@ -806,7 +902,7 @@ func TestApprovalFlow_SendPromptSendFailureCleansUpRegistration(t *testing.T) {
 		},
 	}
 
-	flow := NewApprovalFlow(ApprovalFlowConfig[*testApprovalFlowData]{
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
 		Login:    func() *bridgev2.UserLogin { return login },
 		IDPrefix: "test",
 		LogKey:   "test_msg_id",

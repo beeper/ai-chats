@@ -71,8 +71,9 @@ type Pending[D any] struct {
 }
 
 type resolvedApprovalPrompt struct {
-	Prompt   ApprovalPromptRegistration
-	Decision ApprovalDecisionPayload
+	Prompt    ApprovalPromptRegistration
+	Decision  ApprovalDecisionPayload
+	ExpiresAt time.Time
 }
 
 // closeDone marks the pending approval as finalized. Safe to call multiple times.
@@ -273,7 +274,7 @@ func (f *ApprovalFlow[D]) nextReaperDelay() time.Duration {
 
 func (f *ApprovalFlow[D]) reapExpired() {
 	now := time.Now()
-	var expired []string
+	candidates := make(map[string]expiredApprovalCandidate[D])
 	f.mu.Lock()
 	// Finalize pending approvals whose own TTL has elapsed.
 	for aid, p := range f.pending {
@@ -281,17 +282,27 @@ func (f *ApprovalFlow[D]) reapExpired() {
 			continue
 		}
 		if !p.ExpiresAt.IsZero() && now.After(p.ExpiresAt) {
-			expired = append(expired, aid)
+			candidate := candidates[aid]
+			candidate.approvalID = aid
+			candidate.pending = p
+			candidate.expiredByPending = true
+			candidates[aid] = candidate
 		}
 	}
 	// Also finalize pending approvals whose associated prompt has expired.
 	for aid, entry := range f.promptsByApproval {
-		if approvalPendingResolved(f.pending[aid]) {
+		pending := f.pending[aid]
+		if approvalPendingResolved(pending) {
 			continue
 		}
 		if !entry.ExpiresAt.IsZero() && now.After(entry.ExpiresAt) {
-			if _, hasPending := f.pending[aid]; hasPending {
-				expired = append(expired, aid)
+			if pending != nil {
+				candidate := candidates[aid]
+				candidate.approvalID = aid
+				candidate.pending = pending
+				candidate.prompt = entry
+				candidate.expiredByPrompt = true
+				candidates[aid] = candidate
 			} else {
 				// Orphan prompt — clean it up.
 				if entry.PromptEventID != "" {
@@ -302,8 +313,48 @@ func (f *ApprovalFlow[D]) reapExpired() {
 		}
 	}
 	f.mu.Unlock()
-	for _, aid := range expired {
-		f.finishTimedOutApproval(aid)
+	for _, candidate := range candidates {
+		f.finalizeExpiredCandidate(now, candidate)
+	}
+}
+
+type expiredApprovalCandidate[D any] struct {
+	approvalID       string
+	pending          *Pending[D]
+	prompt           *ApprovalPromptRegistration
+	expiredByPending bool
+	expiredByPrompt  bool
+}
+
+func (f *ApprovalFlow[D]) finalizeExpiredCandidate(now time.Time, candidate expiredApprovalCandidate[D]) {
+	if candidate.approvalID == "" || candidate.pending == nil {
+		return
+	}
+	var promptVersion uint64
+	expiredByPending := false
+	expiredByPrompt := false
+
+	f.mu.Lock()
+	currentPending := f.pending[candidate.approvalID]
+	if currentPending == candidate.pending && !approvalPendingResolved(currentPending) {
+		if candidate.expiredByPending && !currentPending.ExpiresAt.IsZero() && now.After(currentPending.ExpiresAt) {
+			expiredByPending = true
+		}
+		if candidate.expiredByPrompt {
+			currentPrompt := f.promptsByApproval[candidate.approvalID]
+			if currentPrompt == candidate.prompt && currentPrompt != nil && !currentPrompt.ExpiresAt.IsZero() && now.After(currentPrompt.ExpiresAt) {
+				expiredByPrompt = true
+				promptVersion = currentPrompt.PromptVersion
+			}
+		}
+	}
+	f.mu.Unlock()
+
+	switch {
+	case expiredByPending:
+		f.finishTimedOutApproval(candidate.approvalID)
+	case expiredByPrompt:
+		f.finishTimedOutApprovalWithPromptVersion(candidate.approvalID, promptVersion)
 	}
 }
 
@@ -485,22 +536,13 @@ func (f *ApprovalFlow[D]) Wait(ctx context.Context, approvalID string) (Approval
 	}
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
-	clearPending := func() {
-		f.mu.Lock()
-		defer f.mu.Unlock()
-		if p := f.pending[approvalID]; p != nil {
-			p.closeDone()
-			delete(f.pending, approvalID)
-		}
-	}
 	select {
 	case d := <-p.ch:
 		return d, true
 	case <-timer.C:
-		clearPending()
+		f.finishTimedOutApproval(approvalID)
 		return zero, false
 	case <-ctx.Done():
-		clearPending()
 		return zero, false
 	}
 }
@@ -583,6 +625,7 @@ func (f *ApprovalFlow[D]) resolvedPromptByTarget(targetEventID id.EventID, targe
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.pruneExpiredResolvedPromptsLocked(time.Now())
 	if targetEventID != "" {
 		if entry := f.resolvedByEventID[targetEventID]; entry != nil {
 			return *entry, true
@@ -596,13 +639,33 @@ func (f *ApprovalFlow[D]) resolvedPromptByTarget(targetEventID id.EventID, targe
 	return resolvedApprovalPrompt{}, false
 }
 
+func (f *ApprovalFlow[D]) pruneExpiredResolvedPromptsLocked(now time.Time) {
+	if now.IsZero() {
+		now = time.Now()
+	}
+	for eventID, entry := range f.resolvedByEventID {
+		if entry == nil || entry.ExpiresAt.IsZero() || now.Before(entry.ExpiresAt) {
+			continue
+		}
+		delete(f.resolvedByEventID, eventID)
+	}
+	for messageID, entry := range f.resolvedByMsgID {
+		if entry == nil || entry.ExpiresAt.IsZero() || now.Before(entry.ExpiresAt) {
+			continue
+		}
+		delete(f.resolvedByMsgID, messageID)
+	}
+}
+
 func (f *ApprovalFlow[D]) rememberResolvedPromptLocked(prompt ApprovalPromptRegistration, decision ApprovalDecisionPayload) {
+	f.pruneExpiredResolvedPromptsLocked(time.Now())
 	if prompt.PromptEventID == "" && prompt.PromptMessageID == "" {
 		return
 	}
 	resolved := &resolvedApprovalPrompt{
-		Prompt:   prompt,
-		Decision: decision,
+		Prompt:    prompt,
+		Decision:  decision,
+		ExpiresAt: prompt.ExpiresAt,
 	}
 	if prompt.PromptEventID != "" {
 		f.resolvedByEventID[prompt.PromptEventID] = resolved
@@ -1170,10 +1233,14 @@ func (f *ApprovalFlow[D]) schedulePromptTimeout(approvalID string, expiresAt tim
 }
 
 func (f *ApprovalFlow[D]) finishTimedOutApproval(approvalID string) {
+	f.finishTimedOutApprovalWithPromptVersion(approvalID, 0)
+}
+
+func (f *ApprovalFlow[D]) finishTimedOutApprovalWithPromptVersion(approvalID string, promptVersion uint64) {
 	f.finalizeWithPromptVersion(approvalID, &ApprovalDecisionPayload{
 		ApprovalID: approvalID,
 		Reason:     ApprovalReasonTimeout,
-	}, true, 0)
+	}, true, promptVersion)
 }
 
 func (f *ApprovalFlow[D]) cancelPendingTimeout(approvalID string) {

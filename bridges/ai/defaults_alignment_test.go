@@ -42,6 +42,33 @@ func TestEffectiveTemperatureUsesExplicitAgentZero(t *testing.T) {
 	}
 }
 
+func TestEffectiveTemperatureUsesExplicitNonZero(t *testing.T) {
+	client := &AIClient{
+		connector: &OpenAIConnector{},
+		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
+			CustomAgents: map[string]*AgentDefinitionContent{
+				"agent-1": {
+					ID:          "agent-1",
+					Name:        "Agent One",
+					Model:       "openai/gpt-5.2",
+					Temperature: ptr.Ptr(0.7),
+				},
+			},
+		}}},
+	}
+	meta := &PortalMetadata{
+		ResolvedTarget: &ResolvedTarget{
+			Kind:    ResolvedTargetAgent,
+			AgentID: "agent-1",
+		},
+	}
+
+	got := client.effectiveTemperature(meta)
+	if got == nil || *got != 0.7 {
+		t.Fatalf("expected explicit non-zero temperature, got %#v", got)
+	}
+}
+
 func TestDefaultThinkLevelModelAware(t *testing.T) {
 	client := &AIClient{
 		connector: &OpenAIConnector{},

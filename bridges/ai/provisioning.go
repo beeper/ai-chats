@@ -233,7 +233,7 @@ func writeAgentError(w http.ResponseWriter, err error) {
 	}
 }
 
-func normalizeAgentUpsertRequest(req agentUpsertRequest, pathID string) (*agents.AgentDefinition, error) {
+func normalizeAgentUpsertRequest(req agentUpsertRequest, pathID string) *agents.AgentDefinition {
 	agentID := strings.TrimSpace(pathID)
 	if agentID == "" {
 		agentID = strings.TrimSpace(req.ID)
@@ -258,7 +258,7 @@ func normalizeAgentUpsertRequest(req agentUpsertRequest, pathID string) (*agents
 		MemorySearch:    req.MemorySearch,
 	}
 	content.Tools = req.Tools
-	return FromAgentDefinitionContent(content), nil
+	return FromAgentDefinitionContent(content)
 }
 
 func normalizeStringList(input []string) []string {
@@ -381,11 +381,8 @@ func (api *ProvisioningAPI) handleCreateAgent(w http.ResponseWriter, r *http.Req
 		mautrix.MBadJSON.WithMessage("Invalid JSON: %v.", err).Write(w)
 		return
 	}
-	agent, err := normalizeAgentUpsertRequest(req, "")
-	if err != nil {
-		mautrix.MBadJSON.WithMessage("Invalid agent payload: %v.", err).Write(w)
-		return
-	}
+	agent := normalizeAgentUpsertRequest(req, "")
+	var err error
 	if err = validateAgentModels(r.Context(), client, agent); err != nil {
 		mautrix.MInvalidParam.WithMessage("%v.", err).Write(w)
 		return
@@ -413,11 +410,8 @@ func (api *ProvisioningAPI) handleUpdateAgent(w http.ResponseWriter, r *http.Req
 		return
 	}
 	agentID := strings.TrimSpace(r.PathValue("agent_id"))
-	agent, err := normalizeAgentUpsertRequest(req, agentID)
-	if err != nil {
-		mautrix.MBadJSON.WithMessage("Invalid agent payload: %v.", err).Write(w)
-		return
-	}
+	agent := normalizeAgentUpsertRequest(req, agentID)
+	var err error
 	if err = validateAgentModels(r.Context(), client, agent); err != nil {
 		mautrix.MInvalidParam.WithMessage("%v.", err).Write(w)
 		return
