@@ -177,16 +177,6 @@ func (oc *AIClient) getQueueSnapshot(roomID id.RoomID) *pendingQueue {
 	return &clone
 }
 
-func (oc *AIClient) takeQueueSummary(roomID id.RoomID, noun string) string {
-	oc.pendingQueuesMu.Lock()
-	defer oc.pendingQueuesMu.Unlock()
-	queue := oc.pendingQueues[roomID]
-	if queue == nil {
-		return ""
-	}
-	return buildQueueSummaryPrompt(queue, noun)
-}
-
 func (oc *AIClient) consumeQueueSummary(roomID id.RoomID, noun string) string {
 	oc.pendingQueuesMu.Lock()
 	defer oc.pendingQueuesMu.Unlock()
