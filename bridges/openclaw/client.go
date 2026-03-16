@@ -777,13 +777,14 @@ func (oc *OpenClawClient) sendSystemNoticeViaPortal(ctx context.Context, portal 
 			Extra:   map[string]any{"msgtype": event.MsgNotice, "body": msg, "m.mentions": map[string]any{}},
 		}},
 	}
-	oc.UserLogin.QueueRemoteEvent(&OpenClawRemoteMessage{
-		portal:    portal.PortalKey,
-		id:        newOpenClawMessageID(),
-		sender:    oc.senderForAgent("gateway", false),
-		timestamp: time.Now(),
-		preBuilt:  converted,
-	})
+	oc.UserLogin.QueueRemoteEvent(buildOpenClawRemoteMessage(
+		portal.PortalKey,
+		newOpenClawMessageID(),
+		oc.senderForAgent("gateway", false),
+		time.Now(),
+		0,
+		converted,
+	))
 }
 
 func (oc *OpenClawClient) DownloadAndEncodeMedia(ctx context.Context, mediaURL string, file *event.EncryptedFileInfo, maxMB int) (string, string, error) {

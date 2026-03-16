@@ -3,14 +3,25 @@ package agentremote
 import (
 	"testing"
 	"time"
+
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 )
 
-func TestRemoteMessageGetStreamOrderUsesExplicitValue(t *testing.T) {
-	msg := &RemoteMessage{
-		Timestamp:   time.UnixMilli(1_000),
-		StreamOrder: 42,
-	}
-	if got := msg.GetStreamOrder(); got != 42 {
+func TestBuildReactionEventUsesExplicitStreamOrder(t *testing.T) {
+	evt := BuildReactionEvent(
+		networkid.PortalKey{},
+		bridgev2.EventSender{},
+		"target",
+		"ok",
+		"ok",
+		time.UnixMilli(1_000),
+		42,
+		"test_target",
+		nil,
+		nil,
+	)
+	if got := evt.GetStreamOrder(); got != 42 {
 		t.Fatalf("expected explicit stream order 42, got %d", got)
 	}
 }

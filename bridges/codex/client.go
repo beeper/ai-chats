@@ -481,6 +481,10 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 
+	if res, handled, err := cc.handleCodexCommand(ctx, portal, meta, body); handled {
+		return res, err
+	}
+
 	if meta.AwaitingCwdSetup {
 		return cc.handleWelcomeCodexMessage(ctx, portal, meta, body)
 	}

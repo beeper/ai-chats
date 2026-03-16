@@ -578,22 +578,19 @@ func TestOpenClawSessionResyncProjectsTypeTopicAndCapabilities(t *testing.T) {
 			Input:     []string{"text", "image"},
 		},
 	})
-	evt := &OpenClawSessionResyncEvent{
-		client: oc,
-		session: gatewaySessionRow{
-			Key:                "agent:main:discord:channel:123",
-			SessionID:          "sess-1",
-			DerivedTitle:       "Support Inbox",
-			LastMessagePreview: "hello there",
-			Channel:            "discord",
-			Space:              "Acme",
-			GroupChannel:       "support",
-			ChatType:           "channel",
-			Origin:             []byte(`{"provider":"discord","channel":"123"}`),
-			ModelProvider:      "openai",
-			Model:              "gpt-5",
-		},
-	}
+	evt := buildOpenClawSessionResyncEvent(oc, gatewaySessionRow{
+		Key:                "agent:main:discord:channel:123",
+		SessionID:          "sess-1",
+		DerivedTitle:       "Support Inbox",
+		LastMessagePreview: "hello there",
+		Channel:            "discord",
+		Space:              "Acme",
+		GroupChannel:       "support",
+		ChatType:           "channel",
+		Origin:             []byte(`{"provider":"discord","channel":"123"}`),
+		ModelProvider:      "openai",
+		Model:              "gpt-5",
+	})
 	portal := &bridgev2.Portal{
 		Portal: &database.Portal{
 			Metadata: &PortalMetadata{},
@@ -634,13 +631,11 @@ func TestOpenClawSessionResyncProjectsTypeTopicAndCapabilities(t *testing.T) {
 }
 
 func TestOpenClawSessionResyncCheckNeedsBackfill(t *testing.T) {
-	evt := &OpenClawSessionResyncEvent{
-		session: gatewaySessionRow{
-			UpdatedAt:          2_000,
-			LastMessagePreview: "hello",
-		},
+	session := gatewaySessionRow{
+		UpdatedAt:          2_000,
+		LastMessagePreview: "hello",
 	}
-	needs, err := evt.CheckNeedsBackfill(context.Background(), nil)
+	needs, err := openClawSessionNeedsBackfill(session, nil)
 	if err != nil {
 		t.Fatalf("CheckNeedsBackfill returned error: %v", err)
 	}
@@ -648,7 +643,7 @@ func TestOpenClawSessionResyncCheckNeedsBackfill(t *testing.T) {
 		t.Fatal("expected empty portal history to trigger backfill")
 	}
 
-	needs, err = evt.CheckNeedsBackfill(context.Background(), &database.Message{
+	needs, err = openClawSessionNeedsBackfill(session, &database.Message{
 		Timestamp: time.UnixMilli(1_000),
 	})
 	if err != nil {
@@ -658,7 +653,7 @@ func TestOpenClawSessionResyncCheckNeedsBackfill(t *testing.T) {
 		t.Fatal("expected newer session timestamp to trigger backfill")
 	}
 
-	needs, err = evt.CheckNeedsBackfill(context.Background(), &database.Message{
+	needs, err = openClawSessionNeedsBackfill(session, &database.Message{
 		Timestamp: time.UnixMilli(2_500),
 	})
 	if err != nil {

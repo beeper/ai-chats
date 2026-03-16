@@ -97,6 +97,45 @@ func (cc *CodexClient) syncCodexRoomTopic(ctx context.Context, portal *bridgev2.
 	}
 }
 
+func parseCodexCommand(body string) (string, string, bool) {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return "", "", false
+	}
+	fields := strings.Fields(body)
+	if len(fields) == 0 || !strings.EqualFold(fields[0], "!codex") {
+		return "", "", false
+	}
+	if len(fields) == 1 {
+		return "help", "", true
+	}
+	command := strings.ToLower(strings.TrimSpace(fields[1]))
+	args := strings.TrimSpace(strings.TrimPrefix(body, fields[0]))
+	args = strings.TrimSpace(strings.TrimPrefix(args, fields[1]))
+	return command, args, true
+}
+
+func codexCommandHelpText() string {
+	return strings.Join([]string{
+		"`!codex help` shows this message.",
+		"`!codex new` creates a fresh welcome room.",
+		"`!codex dirs` lists tracked directories.",
+		"`!codex import /abs/path` tracks a directory and imports stored Codex threads for it.",
+		"`!codex forget /abs/path` stops tracking a directory and unbridges imported rooms for it.",
+	}, "\n")
+}
+
+func (cc *CodexClient) resolveManagedPathArgument(args string, meta *PortalMetadata) (string, error) {
+	args = strings.TrimSpace(args)
+	if args != "" {
+		return resolveCodexWorkingDirectory(args)
+	}
+	if meta != nil && strings.TrimSpace(meta.CodexCwd) != "" {
+		return strings.TrimSpace(meta.CodexCwd), nil
+	}
+	return "", fmt.Errorf("path is required")
+}
+
 func (cc *CodexClient) welcomeCodexPortals(ctx context.Context) ([]*bridgev2.Portal, error) {
 	if cc == nil || cc.UserLogin == nil || cc.UserLogin.Bridge == nil || cc.UserLogin.Bridge.DB == nil {
 		return nil, nil
@@ -184,6 +223,163 @@ func (cc *CodexClient) ensureWelcomeCodexChat(ctx context.Context) error {
 	}
 	_, err = cc.createWelcomeCodexChat(ctx)
 	return err
+}
+
+func (cc *CodexClient) cleanupImportedPortalState(threadID string) {
+	threadID = strings.TrimSpace(threadID)
+	if threadID == "" || cc == nil {
+		return
+	}
+	cc.loadedMu.Lock()
+	delete(cc.loadedThreads, threadID)
+	cc.loadedMu.Unlock()
+
+	cc.activeMu.Lock()
+	for key, active := range cc.activeTurns {
+		if active != nil && strings.TrimSpace(active.threadID) == threadID {
+			delete(cc.activeTurns, key)
+		}
+	}
+	cc.activeMu.Unlock()
+}
+
+func (cc *CodexClient) deletePortalOnly(ctx context.Context, portal *bridgev2.Portal, reason string) {
+	if cc == nil || cc.UserLogin == nil || cc.UserLogin.Bridge == nil || portal == nil {
+		return
+	}
+	if portal.MXID != "" {
+		if err := portal.Delete(ctx); err != nil {
+			cc.log.Warn().Err(err).
+				Str("portal_id", string(portal.PortalKey.ID)).
+				Stringer("mxid", portal.MXID).
+				Str("reason", reason).
+				Msg("Failed to delete Matrix room during Codex cleanup")
+		}
+	}
+	if err := cc.UserLogin.Bridge.DB.Portal.Delete(ctx, portal.PortalKey); err != nil {
+		cc.log.Warn().Err(err).
+			Str("portal_id", string(portal.PortalKey.ID)).
+			Str("reason", reason).
+			Msg("Failed to delete Codex portal record")
+	}
+}
+
+func (cc *CodexClient) managedImportedPortalsForPath(ctx context.Context, path string) ([]*bridgev2.Portal, error) {
+	if cc == nil || cc.UserLogin == nil || cc.UserLogin.Bridge == nil || cc.UserLogin.Bridge.DB == nil {
+		return nil, nil
+	}
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil, nil
+	}
+	userPortals, err := cc.UserLogin.Bridge.DB.UserPortal.GetAllForLogin(ctx, cc.UserLogin.UserLogin)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*bridgev2.Portal, 0, len(userPortals))
+	for _, userPortal := range userPortals {
+		if userPortal == nil {
+			continue
+		}
+		portal, err := cc.UserLogin.Bridge.GetExistingPortalByKey(ctx, userPortal.Portal)
+		if err != nil || portal == nil {
+			continue
+		}
+		meta := portalMeta(portal)
+		if meta == nil || !meta.IsCodexRoom || !meta.ManagedImport || strings.TrimSpace(meta.CodexCwd) != path {
+			continue
+		}
+		out = append(out, portal)
+	}
+	return out, nil
+}
+
+func (cc *CodexClient) forgetManagedDirectory(ctx context.Context, path string) (int, error) {
+	portals, err := cc.managedImportedPortalsForPath(ctx, path)
+	if err != nil {
+		return 0, err
+	}
+	for _, portal := range portals {
+		meta := portalMeta(portal)
+		if meta != nil {
+			cc.cleanupImportedPortalState(meta.CodexThreadID)
+		}
+		cc.deletePortalOnly(ctx, portal, "codex directory forgotten")
+	}
+	return len(portals), nil
+}
+
+func (cc *CodexClient) handleCodexCommand(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, body string) (*bridgev2.MatrixMessageResponse, bool, error) {
+	command, args, ok := parseCodexCommand(body)
+	if !ok {
+		return nil, false, nil
+	}
+	if cc == nil || cc.UserLogin == nil || portal == nil {
+		return &bridgev2.MatrixMessageResponse{Pending: false}, true, nil
+	}
+
+	loginMeta := loginMetadata(cc.UserLogin)
+	switch command {
+	case "help":
+		cc.sendSystemNotice(ctx, portal, codexCommandHelpText())
+	case "new":
+		if _, err := cc.createWelcomeCodexChat(ctx); err != nil {
+			return nil, true, messageSendStatusError(err, "Failed to create a new welcome room.", "")
+		}
+		cc.sendSystemNotice(ctx, portal, "Created a new welcome room.")
+	case "dirs":
+		paths := managedCodexPaths(loginMeta)
+		if len(paths) == 0 {
+			cc.sendSystemNotice(ctx, portal, "No tracked directories yet.")
+			break
+		}
+		cc.sendSystemNotice(ctx, portal, "Tracked directories:\n"+strings.Join(paths, "\n"))
+	case "import":
+		path, err := cc.resolveManagedPathArgument(args, meta)
+		if err != nil {
+			cc.sendSystemNotice(ctx, portal, "Usage: `!codex import /abs/path`")
+			break
+		}
+		info, statErr := os.Stat(path)
+		if statErr != nil || !info.IsDir() {
+			cc.sendSystemNotice(ctx, portal, fmt.Sprintf("That path doesn't exist or isn't a directory: %s", path))
+			break
+		}
+		addManagedCodexPath(loginMeta, path)
+		if err := cc.UserLogin.Save(ctx); err != nil {
+			return nil, true, messageSendStatusError(err, "Failed to save tracked directories.", "")
+		}
+		total, created, err := cc.syncStoredCodexThreadsForPath(cc.backgroundContext(ctx), path)
+		if err != nil {
+			return nil, true, messageSendStatusError(err, "Failed to import stored Codex threads.", "")
+		}
+		if total == 0 {
+			cc.sendSystemNotice(ctx, portal, fmt.Sprintf("Tracked %s. No stored Codex threads matched yet.", path))
+			break
+		}
+		cc.sendSystemNotice(ctx, portal, fmt.Sprintf("Tracked %s. Found %d stored Codex thread(s); created %d new room(s).", path, total, created))
+	case "forget":
+		path, err := cc.resolveManagedPathArgument(args, meta)
+		if err != nil {
+			cc.sendSystemNotice(ctx, portal, "Usage: `!codex forget /abs/path`")
+			break
+		}
+		if !removeManagedCodexPath(loginMeta, path) {
+			cc.sendSystemNotice(ctx, portal, fmt.Sprintf("That directory is not tracked: %s", path))
+			break
+		}
+		if err := cc.UserLogin.Save(ctx); err != nil {
+			return nil, true, messageSendStatusError(err, "Failed to update tracked directories.", "")
+		}
+		removed, err := cc.forgetManagedDirectory(ctx, path)
+		if err != nil {
+			return nil, true, messageSendStatusError(err, "Failed to forget Codex directory.", "")
+		}
+		cc.sendSystemNotice(ctx, portal, fmt.Sprintf("Forgot %s and unbridged %d imported room(s).", path, removed))
+	default:
+		cc.sendSystemNotice(ctx, portal, codexCommandHelpText())
+	}
+	return &bridgev2.MatrixMessageResponse{Pending: false}, true, nil
 }
 
 func (cc *CodexClient) handleWelcomeCodexMessage(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, body string) (*bridgev2.MatrixMessageResponse, error) {

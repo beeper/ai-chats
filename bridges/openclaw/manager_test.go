@@ -3,6 +3,9 @@ package openclaw
 import (
 	"testing"
 	"time"
+
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 )
 
 func TestShouldMirrorLatestUserMessageFromHistory(t *testing.T) {
@@ -94,8 +97,8 @@ func TestShouldMirrorLatestUserMessageFromHistory(t *testing.T) {
 
 func TestOpenClawRemoteMessageGetStreamOrderUsesGatewaySeq(t *testing.T) {
 	ts := time.Date(2026, time.March, 12, 12, 0, 0, 0, time.UTC)
-	first := &OpenClawRemoteMessage{timestamp: ts, streamOrder: 10}
-	second := &OpenClawRemoteMessage{timestamp: ts, streamOrder: 11}
+	first := buildOpenClawRemoteMessage(networkid.PortalKey{}, "first", bridgev2.EventSender{}, ts, 10, nil)
+	second := buildOpenClawRemoteMessage(networkid.PortalKey{}, "second", bridgev2.EventSender{}, ts, 11, nil)
 	if first.GetStreamOrder() != 10 {
 		t.Fatalf("expected first stream order 10, got %d", first.GetStreamOrder())
 	}

@@ -198,7 +198,7 @@ func (m *openClawManager) syncSessions(ctx context.Context) error {
 	}
 	m.mu.Unlock()
 	for _, session := range sessions {
-		m.client.UserLogin.QueueRemoteEvent(&OpenClawSessionResyncEvent{client: m.client, session: session})
+		m.client.UserLogin.QueueRemoteEvent(buildOpenClawSessionResyncEvent(m.client, session))
 	}
 	meta := loginMetadata(m.client.UserLogin)
 	meta.SessionsSynced = true
@@ -1261,14 +1261,14 @@ func (m *openClawManager) handleDirectChatEvent(ctx context.Context, portal *bri
 	if converted == nil || messageID == "" {
 		return
 	}
-	m.client.UserLogin.QueueRemoteEvent(&OpenClawRemoteMessage{
-		portal:      portal.PortalKey,
-		id:          messageID,
-		sender:      sender,
-		timestamp:   eventTS,
-		streamOrder: payload.Seq * 2,
-		preBuilt:    converted,
-	})
+	m.client.UserLogin.QueueRemoteEvent(buildOpenClawRemoteMessage(
+		portal.PortalKey,
+		messageID,
+		sender,
+		eventTS,
+		payload.Seq*2,
+		converted,
+	))
 	if maybeUpdatePreviewSnippet(meta, openclawconv.ExtractMessageText(payload.Message), eventTS) {
 		_ = portal.Save(ctx)
 	}
@@ -1300,14 +1300,14 @@ func (m *openClawManager) emitLatestUserMessageFromHistory(ctx context.Context, 
 		m.lastEmittedUserMsg[payload.SessionKey] = messageID
 		m.mu.Unlock()
 		eventTS := extractOpenClawEventTimestamp(payload.TS, message)
-		m.client.UserLogin.QueueRemoteEvent(&OpenClawRemoteMessage{
-			portal:      portal.PortalKey,
-			id:          messageID,
-			sender:      sender,
-			timestamp:   eventTS,
-			streamOrder: payload.Seq*2 - 1,
-			preBuilt:    converted,
-		})
+		m.client.UserLogin.QueueRemoteEvent(buildOpenClawRemoteMessage(
+			portal.PortalKey,
+			messageID,
+			sender,
+			eventTS,
+			payload.Seq*2-1,
+			converted,
+		))
 		if maybeUpdatePreviewSnippet(meta, openclawconv.ExtractMessageText(message), eventTS) {
 			_ = portal.Save(ctx)
 		}
@@ -1730,7 +1730,7 @@ func (m *openClawManager) resolvePortal(ctx context.Context, sessionKey string) 
 		session = gatewaySessionRow{Key: sessionKey, SessionID: sessionKey}
 	}
 	if m.shouldQueuePortalResync(sessionKey) {
-		m.client.UserLogin.QueueRemoteEvent(&OpenClawSessionResyncEvent{client: m.client, session: session})
+		m.client.UserLogin.QueueRemoteEvent(buildOpenClawSessionResyncEvent(m.client, session))
 	}
 	portal, _ = m.client.UserLogin.Bridge.GetPortalByKey(ctx, key)
 	if portal != nil {
