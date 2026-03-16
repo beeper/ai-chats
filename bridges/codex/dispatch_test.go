@@ -4,6 +4,10 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/id"
 )
 
 func TestCodex_Dispatch_RoutesByThreadTurn(t *testing.T) {
@@ -121,5 +125,33 @@ func TestCodex_Dispatch_RoutesTurnCompletedByNestedTurnID(t *testing.T) {
 		}
 	case <-time.After(1 * time.Second):
 		t.Fatal("timeout waiting for turn/completed")
+	}
+}
+
+func TestCodexRestoreRecoveredActiveTurns_RegistersInProgressTurns(t *testing.T) {
+	roomID := id.RoomID("!room:example.com")
+	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
+	meta := &PortalMetadata{CodexThreadID: "thr1"}
+	cc := &CodexClient{
+		activeTurns: make(map[string]*codexActiveTurn),
+	}
+
+	cc.restoreRecoveredActiveTurns(portal, meta, codexThread{
+		ID: "thr1",
+		Turns: []codexTurn{
+			{ID: "turn-active", Status: "inProgress"},
+			{ID: "turn-done", Status: "completed"},
+		},
+	}, "gpt-5.1-codex")
+
+	active := cc.activeTurns[codexTurnKey("thr1", "turn-active")]
+	if active == nil {
+		t.Fatal("expected in-progress turn to be restored")
+	}
+	if active.state == nil || active.state.turnID != "turn-active" {
+		t.Fatalf("expected recovered streaming state for active turn, got %#v", active.state)
+	}
+	if _, ok := cc.activeTurns[codexTurnKey("thr1", "turn-done")]; ok {
+		t.Fatal("did not expect completed turn to be restored")
 	}
 }

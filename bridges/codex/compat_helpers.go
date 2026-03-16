@@ -4,15 +4,17 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote/pkg/bridgeadapter"
+	"github.com/beeper/agentremote"
 )
 
+const aiCapabilityID = "com.beeper.ai.v1"
+
 func humanUserID(loginID networkid.UserLoginID) networkid.UserID {
-	return bridgeadapter.HumanUserID("codex-user", loginID)
+	return agentremote.HumanUserID("codex-user", loginID)
 }
 
 // Minimal room capabilities for codex bridge rooms.
-var aiBaseCaps = &event.RoomFeatures{
+var aiBaseCaps = agentremote.BuildRoomFeatures(agentremote.RoomFeaturesParams{
 	ID:                  aiCapabilityID,
 	MaxTextLength:       100000,
 	Reply:               event.CapLevelFullySupported,
@@ -22,4 +24,4 @@ var aiBaseCaps = &event.RoomFeatures{
 	ReadReceipts:        true,
 	TypingNotifications: true,
 	DeleteChat:          true,
-}
+})

@@ -148,61 +148,90 @@ type LoginPurgeIntegration interface {
 	PurgeForLogin(ctx context.Context, scope LoginScope) error
 }
 
-// Host is the generic runtime host surface shared by modules.
-// Module packages may use additional optional interfaces via type assertions.
+// Host is the runtime surface shared by integration modules.
+// It is intentionally direct: modules call host methods rather than retrieving
+// nested capability objects or type-asserting optional host adapters.
 type Host interface {
 	Logger() Logger
+	RawLogger() any
 	Now() time.Time
-	PortalResolver() PortalResolver
-	Dispatch() Dispatch
-	Heartbeat() Heartbeat
-	ToolExec() ToolExec
-	PromptContext() PromptContext
-	DBAccess() DBAccess
-	ConfigLookup() ConfigLookup
-}
-
-// PortalResolver provides room/portal lookup utilities.
-type PortalResolver interface {
 	ResolvePortalByRoomID(ctx context.Context, roomID string) any
 	ResolveDefaultPortal(ctx context.Context) any
 	ResolveLastActivePortal(ctx context.Context, agentID string) any
-}
-
-// Dispatch provides generic event/message dispatch hooks.
-type Dispatch interface {
 	DispatchInternalMessage(ctx context.Context, portal any, meta any, message string, source string) error
 	SendAssistantMessage(ctx context.Context, portal any, body string) error
-}
-
-// Heartbeat exposes generic heartbeat controls.
-type Heartbeat interface {
 	RequestNow(ctx context.Context, reason string)
-}
-
-// ToolExec provides bridge tool runtime helpers.
-type ToolExec interface {
 	ToolDefinitionByName(name string) (ToolDefinition, bool)
 	ExecuteBuiltinTool(ctx context.Context, scope ToolScope, name string, rawArgsJSON string) (string, error)
-}
-
-// PromptContext provides prompt/workspace contextual helpers.
-type PromptContext interface {
 	ResolveWorkspaceDir() string
-}
-
-// DBAccess exposes bridge DB identity and low-level access.
-type DBAccess interface {
 	BridgeDB() any
 	BridgeID() string
 	LoginID() string
-}
-
-// ConfigLookup resolves integration/module config flags.
-type ConfigLookup interface {
 	ModuleEnabled(name string) bool
 	ModuleConfig(name string) map[string]any
 	AgentModuleConfig(agentID string, module string) map[string]any
+
+	GetOrCreatePortal(ctx context.Context, portalID string, receiver string, displayName string, setupMeta func(meta any)) (portal any, roomID string, err error)
+	SavePortal(ctx context.Context, portal any, reason string) error
+	PortalRoomID(portal any) string
+	PortalKeyString(portal any) string
+
+	GetModuleMeta(meta any, key string) any
+	SetModuleMeta(meta any, key string, value any)
+	IsSimpleMode(meta any) bool
+	AgentIDFromMeta(meta any) string
+	CompactionCount(meta any) int
+	IsGroupChat(ctx context.Context, portal any) bool
+	IsInternalRoom(meta any) bool
+	PortalMeta(portal any) any
+	CloneMeta(portal any) any
+	SetMetaField(meta any, key string, value any)
+
+	RecentMessages(ctx context.Context, portal any, count int) []MessageSummary
+	LastAssistantMessage(ctx context.Context, portal any) (id string, timestamp int64)
+	WaitForAssistantMessage(ctx context.Context, portal any, afterID string, afterTS int64) (*AssistantMessageInfo, bool)
+
+	RunHeartbeatOnce(ctx context.Context, reason string) (status string, reasonMsg string)
+	ResolveHeartbeatSessionPortal(agentID string) (portal any, sessionKey string, err error)
+	ResolveHeartbeatSessionKey(agentID string) string
+	HeartbeatAckMaxChars(agentID string) int
+	EnqueueSystemEvent(sessionKey string, text string, agentID string)
+	PersistSystemEvents()
+	ResolveLastTarget(agentID string) (channel string, target string, ok bool)
+
+	ResolveAgentID(raw string, fallbackDefault string) string
+	NormalizeAgentID(raw string) string
+	AgentExists(normalizedID string) bool
+	DefaultAgentID() string
+	AgentTimeoutSeconds() int
+	UserTimezone() (tz string, loc *time.Location)
+	NormalizeThinkingLevel(raw string) (string, bool)
+
+	EffectiveModel(meta any) string
+	ContextWindow(meta any) int
+
+	MergeDisconnectContext(ctx context.Context) (context.Context, context.CancelFunc)
+	BackgroundContext(ctx context.Context) context.Context
+
+	NewCompletion(ctx context.Context, model string, messages []openai.ChatCompletionMessageParamUnion, toolParams any) (*CompletionResult, error)
+
+	IsToolEnabled(meta any, toolName string) bool
+	AllToolDefinitions() []ToolDefinition
+	ExecuteToolInContext(ctx context.Context, portal any, meta any, name string, argsJSON string) (string, error)
+	ToolsToOpenAIParams(tools []ToolDefinition) any
+
+	ReadTextFile(ctx context.Context, agentID string, path string) (content string, filePath string, found bool, err error)
+	WriteTextFile(ctx context.Context, portal any, meta any, agentID string, mode string, path string, content string, maxBytes int) (finalPath string, err error)
+
+	SmartTruncatePrompt(prompt []openai.ChatCompletionMessageParamUnion, ratio float64) []openai.ChatCompletionMessageParamUnion
+	EstimateTokens(prompt []openai.ChatCompletionMessageParamUnion, model string) int
+	CompactorReserveTokens() int
+	SilentReplyToken() string
+	OverflowFlushConfig() (enabled *bool, softThresholdTokens int, prompt string, systemPrompt string)
+
+	IsLoggedIn() bool
+	SessionPortals(ctx context.Context, loginID string, agentID string) ([]SessionPortalInfo, error)
+	LoginDB() any
 }
 
 // Logger is a minimal structured logger abstraction.

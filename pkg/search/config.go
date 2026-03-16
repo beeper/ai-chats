@@ -1,18 +1,15 @@
 package search
 
 import (
-	"slices"
-	"strings"
-
 	"github.com/beeper/agentremote/pkg/shared/exa"
+	"github.com/beeper/agentremote/pkg/shared/providerkit"
 )
 
 const (
-	ProviderExa         = "exa"
-	DefaultSearchCount  = 5
-	MaxSearchCount      = 10
-	DefaultTimeoutSecs  = 30
-	DefaultCacheTtlSecs = 900
+	ProviderExa        = "exa"
+	DefaultSearchCount = 5
+	MaxSearchCount     = 10
+	DefaultTimeoutSecs = 30
 )
 
 var DefaultFallbackOrder = []string{
@@ -43,30 +40,19 @@ func (c *Config) WithDefaults() *Config {
 	if c == nil {
 		c = &Config{}
 	}
-	if strings.TrimSpace(c.Provider) == "" {
-		c.Provider = ProviderExa
-	}
-	if len(c.Fallbacks) == 0 {
-		c.Fallbacks = slices.Clone(DefaultFallbackOrder)
-	}
+	providerkit.ApplyDefaults(&c.Provider, &c.Fallbacks, ProviderExa, DefaultFallbackOrder)
 	c.Exa = c.Exa.withDefaults()
 	return c
 }
 
 func (c ExaConfig) withDefaults() ExaConfig {
-	if c.BaseURL == "" {
-		c.BaseURL = exa.DefaultBaseURL
-	}
+	exa.ApplyConfigDefaults(&c.BaseURL, &c.TextMaxCharacters, 500)
 	if c.Type == "" {
 		c.Type = "auto"
 	}
 	if c.NumResults <= 0 {
 		c.NumResults = DefaultSearchCount
 	}
-	if c.TextMaxCharacters <= 0 {
-		c.TextMaxCharacters = 500
-	}
-	// Highlights are always enabled as they significantly improve search result quality.
 	c.Highlights = true
 	return c
 }

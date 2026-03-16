@@ -11,6 +11,8 @@ import (
 
 const moduleName = "cron"
 
+// cronSchedulerHost stays local to avoid importing cron job types into the
+// generic runtime package, which would create a package cycle.
 type cronSchedulerHost interface {
 	CronStatus(ctx context.Context) (enabled bool, backend string, jobCount int, nextRun *int64, err error)
 	CronList(ctx context.Context, includeDisabled bool) ([]Job, error)
@@ -25,10 +27,9 @@ type Integration struct {
 }
 
 func New(host iruntime.Host) iruntime.ModuleHooks {
-	if host == nil {
-		return nil
-	}
-	return &Integration{host: host}
+	return iruntime.ModuleOrNil(host, func(host iruntime.Host) *Integration {
+		return &Integration{host: host}
+	})
 }
 
 func (i *Integration) Name() string { return moduleName }
@@ -46,18 +47,23 @@ func (i *Integration) ToolDefinitions(_ context.Context, _ iruntime.ToolScope) [
 }
 
 func (i *Integration) ExecuteTool(ctx context.Context, call iruntime.ToolCall) (bool, string, error) {
-	if !strings.EqualFold(strings.TrimSpace(call.Name), toolspec.CronName) {
+	if !iruntime.MatchesName(call.Name, toolspec.CronName) {
 		return false, "", nil
 	}
 	result, err := ExecuteTool(ctx, call.Args, i.buildToolExecDeps(ctx, call.Scope))
 	return true, result, err
 }
 
+func (i *Integration) scheduler() cronSchedulerHost {
+	scheduler, _ := i.host.(cronSchedulerHost)
+	return scheduler
+}
+
 func (i *Integration) ToolAvailability(_ context.Context, _ iruntime.ToolScope, toolName string) (bool, bool, iruntime.SettingSource, string) {
-	if !strings.EqualFold(strings.TrimSpace(toolName), toolspec.CronName) {
+	if !iruntime.MatchesName(toolName, toolspec.CronName) {
 		return false, false, iruntime.SourceGlobalDefault, ""
 	}
-	if _, ok := i.host.(cronSchedulerHost); !ok {
+	if i.scheduler() == nil {
 		return true, false, iruntime.SourceProviderLimit, "Scheduler not available"
 	}
 	return true, true, iruntime.SourceGlobalDefault, ""
@@ -74,7 +80,7 @@ func (i *Integration) CommandDefinitions(_ context.Context, _ iruntime.CommandSc
 }
 
 func (i *Integration) ExecuteCommand(ctx context.Context, call iruntime.CommandCall) (bool, error) {
-	if strings.ToLower(strings.TrimSpace(call.Name)) != moduleName {
+	if !iruntime.MatchesName(call.Name, moduleName) {
 		return false, nil
 	}
 	return true, i.executeCronCommand(ctx, call)
@@ -85,8 +91,8 @@ func (i *Integration) executeCronCommand(ctx context.Context, call iruntime.Comm
 	if reply == nil {
 		reply = func(string, ...any) {}
 	}
-	scheduler, ok := i.host.(cronSchedulerHost)
-	if !ok {
+	scheduler := i.scheduler()
+	if scheduler == nil {
 		reply("Scheduler not available.")
 		return nil
 	}
@@ -132,11 +138,7 @@ func (i *Integration) executeCronCommand(ctx context.Context, call iruntime.Comm
 			reply("Cron add failed: %s", err.Error())
 			return nil
 		}
-		deps := i.buildToolExecDeps(ctx, iruntime.ToolScope{
-			Client: call.Scope.Client,
-			Portal: call.Scope.Portal,
-			Meta:   call.Scope.Meta,
-		})
+		deps := i.buildToolExecDeps(ctx, commandScopeToToolScope(call.Scope))
 		injectToolContext(&input, deps.ResolveCreateContext)
 		if input.Delivery != nil && strings.EqualFold(strings.TrimSpace(string(input.Delivery.Mode)), "announce") && deps.ValidateDeliveryTo != nil {
 			if err := deps.ValidateDeliveryTo(input.Delivery.To); err != nil {
@@ -167,11 +169,7 @@ func (i *Integration) executeCronCommand(ctx context.Context, call iruntime.Comm
 			reply("Cron update failed: %s", err.Error())
 			return nil
 		}
-		deps := i.buildToolExecDeps(ctx, iruntime.ToolScope{
-			Client: call.Scope.Client,
-			Portal: call.Scope.Portal,
-			Meta:   call.Scope.Meta,
-		})
+		deps := i.buildToolExecDeps(ctx, commandScopeToToolScope(call.Scope))
 		if patch.Delivery != nil && patch.Delivery.To != nil && deps.ValidateDeliveryTo != nil {
 			if err := deps.ValidateDeliveryTo(*patch.Delivery.To); err != nil {
 				reply("Cron update failed: %s", err.Error())
@@ -224,42 +222,36 @@ func (i *Integration) executeCronCommand(ctx context.Context, call iruntime.Comm
 }
 
 func (i *Integration) buildToolExecDeps(ctx context.Context, scope iruntime.ToolScope) ToolExecDeps {
-	scheduler, _ := i.host.(cronSchedulerHost)
+	scheduler := i.scheduler()
 	deps := ToolExecDeps{
 		NowMs: func() int64 { return i.host.Now().UnixMilli() },
 		ResolveCreateContext: func() ToolCreateContext {
-			agentID := "default"
-			if ah, ok := i.host.(iruntime.AgentHelper); ok {
-				if metaAccess, ok := i.host.(iruntime.MetadataAccess); ok && scope.Meta != nil {
-					if resolved := strings.TrimSpace(metaAccess.AgentIDFromMeta(scope.Meta)); resolved != "" {
-						agentID = resolved
-					} else {
-						agentID = ah.DefaultAgentID()
-					}
-				} else {
-					agentID = ah.DefaultAgentID()
+			agentID := i.host.DefaultAgentID()
+			if scope.Meta != nil {
+				if resolved := strings.TrimSpace(i.host.AgentIDFromMeta(scope.Meta)); resolved != "" {
+					agentID = resolved
 				}
 			}
 			roomID := ""
-			if portalManager, ok := i.host.(iruntime.PortalManager); ok && scope.Portal != nil {
-				roomID = portalManager.PortalRoomID(scope.Portal)
+			if scope.Portal != nil {
+				roomID = i.host.PortalRoomID(scope.Portal)
 			}
 			sourceInternal := false
-			if metaAccess, ok := i.host.(iruntime.MetadataAccess); ok && scope.Meta != nil {
-				sourceInternal = metaAccess.IsInternalRoom(scope.Meta)
+			if scope.Meta != nil {
+				sourceInternal = i.host.IsInternalRoom(scope.Meta)
 			}
 			return ToolCreateContext{AgentID: agentID, SourceInternal: sourceInternal, SourceRoomID: roomID}
 		},
 		ResolveReminderLines: func(count int) []ReminderContextLine {
-			if mh, ok := i.host.(iruntime.MessageHelper); ok && scope.Portal != nil {
-				msgs := mh.RecentMessages(ctx, scope.Portal, count)
-				lines := make([]ReminderContextLine, 0, len(msgs))
-				for _, msg := range msgs {
-					lines = append(lines, ReminderContextLine{Role: msg.Role, Text: msg.Body})
-				}
-				return lines
+			if scope.Portal == nil {
+				return nil
 			}
-			return nil
+			msgs := i.host.RecentMessages(ctx, scope.Portal, count)
+			lines := make([]ReminderContextLine, 0, len(msgs))
+			for _, msg := range msgs {
+				lines = append(lines, ReminderContextLine{Role: msg.Role, Text: msg.Body})
+			}
+			return lines
 		},
 		ValidateDeliveryTo: ValidateDeliveryTo,
 	}
@@ -287,6 +279,16 @@ func (i *Integration) buildToolExecDeps(ctx context.Context, scope iruntime.Tool
 	return deps
 }
 
-var _ iruntime.ToolIntegration = (*Integration)(nil)
-var _ iruntime.CommandIntegration = (*Integration)(nil)
-var _ iruntime.LifecycleIntegration = (*Integration)(nil)
+func commandScopeToToolScope(scope iruntime.CommandScope) iruntime.ToolScope {
+	return iruntime.ToolScope{
+		Client: scope.Client,
+		Portal: scope.Portal,
+		Meta:   scope.Meta,
+	}
+}
+
+var (
+	_ iruntime.ToolIntegration      = (*Integration)(nil)
+	_ iruntime.CommandIntegration   = (*Integration)(nil)
+	_ iruntime.LifecycleIntegration = (*Integration)(nil)
+)

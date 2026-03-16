@@ -6,12 +6,7 @@ import "github.com/beeper/agentremote/pkg/shared/maputil"
 func ParseCountAndIgnoredOptions(args map[string]any) (int, []string) {
 	count := 5
 	if v, ok := maputil.IntArg(args, "count"); ok {
-		count = v
-	}
-	if count < 1 {
-		count = 1
-	} else if count > 10 {
-		count = 10
+		count = max(1, min(v, 10))
 	}
 
 	var ignoredOptions []string

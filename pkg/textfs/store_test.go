@@ -21,7 +21,7 @@ func setupTextfsDB(t *testing.T) *dbutil.Database {
 	}
 	ctx := context.Background()
 	_, err = db.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS ai_memory_files (
+		CREATE TABLE IF NOT EXISTS aichats_memory_files (
 			bridge_id TEXT NOT NULL,
 			login_id TEXT NOT NULL,
 			agent_id TEXT NOT NULL,
@@ -135,8 +135,5 @@ func TestNormalizePathAndDir(t *testing.T) {
 	}
 	if normalized, err := NormalizePath("file://MEMORY.md"); err != nil || normalized != "MEMORY.md" {
 		t.Fatalf("unexpected normalization: %q err=%v", normalized, err)
-	}
-	if dir, err := NormalizeDir("/"); err != nil || dir != "" {
-		t.Fatalf("unexpected dir normalization: %q err=%v", dir, err)
 	}
 }

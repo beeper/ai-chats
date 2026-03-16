@@ -70,7 +70,8 @@ func jsonBlock(title string, payload map[string]any) string {
 }
 
 func setIfNotEmpty(target map[string]any, key, value string) {
-	if strings.TrimSpace(value) != "" {
-		target[key] = strings.TrimSpace(value)
+	trimmed := strings.TrimSpace(value)
+	if trimmed != "" {
+		target[key] = trimmed
 	}
 }

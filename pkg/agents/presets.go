@@ -1,5 +1,7 @@
 package agents
 
+import "slices"
+
 // Model constants for preset agents (aligned with clawdbot recommended models).
 const (
 	ModelClaudeSonnet = "anthropic/claude-sonnet-4.5"
@@ -29,10 +31,7 @@ func GetPresetByID(id string) *AgentDefinition {
 
 // IsPreset checks if an agent ID corresponds to a preset agent.
 func IsPreset(agentID string) bool {
-	for _, preset := range PresetAgents {
-		if preset.ID == agentID {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(PresetAgents, func(a *AgentDefinition) bool {
+		return a.ID == agentID
+	})
 }

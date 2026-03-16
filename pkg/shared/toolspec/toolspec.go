@@ -59,16 +59,9 @@ const (
 
 // CalculatorSchema returns the JSON schema for the calculator tool.
 func CalculatorSchema() map[string]any {
-	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"expression": map[string]any{
-				"type":        "string",
-				"description": "A mathematical expression to evaluate, e.g. '2 + 3 * 4' or '100 / 5'",
-			},
-		},
-		"required": []string{"expression"},
-	}
+	return ObjectSchema(map[string]any{
+		"expression": StringProperty("A mathematical expression to evaluate, e.g. '2 + 3 * 4' or '100 / 5'"),
+	}, "expression")
 }
 
 // WebSearchSchema returns the JSON schema for the web search tool.
@@ -150,51 +143,25 @@ func WriteSchema() map[string]any {
 
 // EditSchema returns the JSON schema for the edit tool.
 func EditSchema() map[string]any {
-	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"path": map[string]any{
-				"type":        "string",
-				"description": "Path to the file to edit (relative or absolute)",
-			},
-			"oldText": map[string]any{
-				"type":        "string",
-				"description": "Exact text to find and replace (must match exactly)",
-			},
-			"newText": map[string]any{
-				"type":        "string",
-				"description": "New text to replace the old text with",
-			},
-		},
-		"required": []string{"path", "oldText", "newText"},
-	}
+	return ObjectSchema(map[string]any{
+		"path":    StringProperty("Path to the file to edit (relative or absolute)"),
+		"oldText": StringProperty("Exact text to find and replace (must match exactly)"),
+		"newText": StringProperty("New text to replace the old text with"),
+	}, "path", "oldText", "newText")
 }
 
 // GravatarFetchSchema returns the JSON schema for the Gravatar fetch tool.
 func GravatarFetchSchema() map[string]any {
-	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"email": map[string]any{
-				"type":        "string",
-				"description": "Email address to fetch from Gravatar. If omitted, uses the stored Gravatar email.",
-			},
-		},
-	}
+	return ObjectSchema(map[string]any{
+		"email": StringProperty("Email address to fetch from Gravatar. If omitted, uses the stored Gravatar email."),
+	})
 }
 
 // GravatarSetSchema returns the JSON schema for the Gravatar set tool.
 func GravatarSetSchema() map[string]any {
-	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"email": map[string]any{
-				"type":        "string",
-				"description": "Email address to set as the primary Gravatar profile.",
-			},
-		},
-		"required": []string{"email"},
-	}
+	return ObjectSchema(map[string]any{
+		"email": StringProperty("Email address to set as the primary Gravatar profile."),
+	}, "email")
 }
 
 // MessageSchema returns the JSON schema for the message tool.
@@ -622,66 +589,35 @@ func MemorySearchSchema() map[string]any {
 				"description": "Minimum relevance score threshold (0-1, default: 0.35)",
 			},
 		},
-		"required": []string{},
 	}
 }
 
 // MemoryGetSchema returns the JSON schema for the memory_get tool.
 func MemoryGetSchema() map[string]any {
-	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"path": map[string]any{
-				"type":        "string",
-				"description": "Path to a memory file (e.g., 'MEMORY.md' or 'memory/2026-02-03.md')",
-			},
-			"from": map[string]any{
-				"type":        "number",
-				"description": "Optional: starting line (ignored for Matrix)",
-			},
-			"lines": map[string]any{
-				"type":        "number",
-				"description": "Optional: number of lines (ignored for Matrix)",
-			},
-		},
-		"required": []string{"path"},
-	}
+	return ObjectSchema(map[string]any{
+		"path":  StringProperty("Path to a memory file (e.g., 'MEMORY.md' or 'memory/2026-02-03.md')"),
+		"from":  NumberProperty("Optional: starting line (ignored for Matrix)"),
+		"lines": NumberProperty("Optional: number of lines (ignored for Matrix)"),
+	}, "path")
 }
 
 // BeeperDocsSchema returns the JSON schema for the beeper_docs tool.
 func BeeperDocsSchema() map[string]any {
-	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"query": map[string]any{
-				"type":        "string",
-				"description": "Search query for Beeper help documentation.",
-			},
-			"count": map[string]any{
-				"type":        "number",
-				"description": "Number of results to return (1-10).",
-				"minimum":     1,
-				"maximum":     10,
-			},
+	return ObjectSchema(map[string]any{
+		"query": StringProperty("Search query for Beeper help documentation."),
+		"count": map[string]any{
+			"type":        "number",
+			"description": "Number of results to return (1-10).",
+			"minimum":     1,
+			"maximum":     10,
 		},
-		"required": []string{"query"},
-	}
+	}, "query")
 }
 
 // BeeperSendFeedbackSchema returns the JSON schema for the beeper_send_feedback tool.
 func BeeperSendFeedbackSchema() map[string]any {
-	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"text": map[string]any{
-				"type":        "string",
-				"description": "The feedback or bug report text to submit.",
-			},
-			"type": map[string]any{
-				"type":        "string",
-				"description": "Feedback type: 'problem' (default), 'suggestion', or 'question'.",
-			},
-		},
-		"required": []string{"text"},
-	}
+	return ObjectSchema(map[string]any{
+		"text": StringProperty("The feedback or bug report text to submit."),
+		"type": StringProperty("Feedback type: 'problem' (default), 'suggestion', or 'question'."),
+	}, "text")
 }

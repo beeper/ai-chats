@@ -22,34 +22,25 @@ type ReplyThreadPolicy struct {
 
 func ApplyReplyToMode(payloads []ReplyPayload, policy ReplyThreadPolicy) []ReplyPayload {
 	out := make([]ReplyPayload, 0, len(payloads))
-	hasThreaded := false
+	seenFirst := false
 	for _, payload := range payloads {
-		if strings.TrimSpace(payload.ReplyToID) == "" {
-			out = append(out, payload)
-			continue
-		}
-		switch policy.Mode {
-		case ReplyToModeAll:
-			out = append(out, payload)
-		case ReplyToModeFirst:
-			if hasThreaded {
+		if strings.TrimSpace(payload.ReplyToID) != "" {
+			clear := false
+			switch policy.Mode {
+			case ReplyToModeFirst:
+				clear = seenFirst
+				seenFirst = true
+			case ReplyToModeOff:
+				isExplicit := payload.ReplyToTag || payload.ReplyToCurrent
+				clear = !policy.AllowExplicitWhenModeOff || !isExplicit
+			}
+			if clear {
 				payload.ReplyToID = ""
 				payload.ReplyToCurrent = false
 				payload.ReplyToTag = false
 			}
-			hasThreaded = true
-			out = append(out, payload)
-		case ReplyToModeOff:
-			isExplicit := payload.ReplyToTag || payload.ReplyToCurrent
-			if policy.AllowExplicitWhenModeOff && isExplicit {
-				out = append(out, payload)
-				continue
-			}
-			payload.ReplyToID = ""
-			payload.ReplyToCurrent = false
-			payload.ReplyToTag = false
-			out = append(out, payload)
 		}
+		out = append(out, payload)
 	}
 	return out
 }
@@ -95,7 +86,7 @@ func ResolveInboundReplyTarget(mode ThreadReplyMode, replyToID, threadRootID, ev
 			ThreadRoot: root,
 			Reason:     "threading_always",
 		}
-	default:
+	default: // ThreadReplyModeInbound
 		if threadRootID != "" {
 			return ReplyTargetDecision{
 				ReplyToID:  threadRootID,
@@ -104,9 +95,8 @@ func ResolveInboundReplyTarget(mode ThreadReplyMode, replyToID, threadRootID, ev
 			}
 		}
 		return ReplyTargetDecision{
-			ReplyToID:  replyToID,
-			ThreadRoot: "",
-			Reason:     "threading_inbound_reply",
+			ReplyToID: replyToID,
+			Reason:    "threading_inbound_reply",
 		}
 	}
 }

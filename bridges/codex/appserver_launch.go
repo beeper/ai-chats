@@ -2,8 +2,9 @@ package codex
 
 import (
 	"fmt"
-	"net"
 	"strings"
+
+	"github.com/beeper/agentremote/managedruntime"
 )
 
 type appServerLaunch struct {
@@ -17,7 +18,7 @@ func (cc *CodexConnector) resolveAppServerLaunch() (appServerLaunch, error) {
 		listen = strings.TrimSpace(cc.Config.Codex.Listen)
 	}
 	if listen == "" {
-		wsURL, err := allocateLoopbackWebSocketURL()
+		wsURL, err := managedruntime.AllocateLoopbackWebSocketURL()
 		if err != nil {
 			return appServerLaunch{}, err
 		}
@@ -36,17 +37,4 @@ func (cc *CodexConnector) resolveAppServerLaunch() (appServerLaunch, error) {
 	default:
 		return appServerLaunch{}, fmt.Errorf("unsupported codex.listen value %q (expected ws://IP:PORT, or blank for auto loopback websocket)", listen)
 	}
-}
-
-func allocateLoopbackWebSocketURL() (string, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return "", fmt.Errorf("allocate loopback websocket listener: %w", err)
-	}
-	addr, ok := l.Addr().(*net.TCPAddr)
-	_ = l.Close()
-	if !ok || addr == nil || addr.Port == 0 {
-		return "", fmt.Errorf("allocate loopback websocket listener: missing TCP port")
-	}
-	return fmt.Sprintf("ws://127.0.0.1:%d", addr.Port), nil
 }

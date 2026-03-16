@@ -38,7 +38,7 @@ func TestUpgradeV1Fresh(t *testing.T) {
 		t.Fatalf("expected child DB")
 	}
 
-	if err := Upgrade(ctx, bridgeDB, "ai_bridge", "database not initialized"); err != nil {
+	if err := Upgrade(ctx, bridgeDB, "agentremote", "database not initialized"); err != nil {
 		t.Fatalf("upgrade failed: %v", err)
 	}
 
@@ -51,18 +51,19 @@ func TestUpgradeV1Fresh(t *testing.T) {
 	}
 
 	for _, table := range []string{
-		"ai_memory_files",
-		"ai_memory_chunks",
-		"ai_memory_meta",
-		"ai_memory_embedding_cache",
-		"ai_memory_session_state",
-		"ai_memory_session_files",
-		"ai_cron_jobs",
-		"ai_cron_job_run_keys",
-		"ai_managed_heartbeats",
-		"ai_managed_heartbeat_run_keys",
-		"ai_system_events",
-		"ai_sessions",
+		"aichats_memory_files",
+		"aichats_memory_chunks",
+		"aichats_memory_meta",
+		"aichats_memory_embedding_cache",
+		"aichats_memory_session_state",
+		"aichats_memory_session_files",
+		"aichats_cron_jobs",
+		"aichats_cron_job_run_keys",
+		"aichats_managed_heartbeats",
+		"aichats_managed_heartbeat_run_keys",
+		"aichats_system_events",
+		"agentremote_sessions",
+		"agentremote_approvals",
 	} {
 		exists, err := bridgeDB.TableExists(ctx, table)
 		if err != nil {
@@ -81,10 +82,10 @@ func TestNewChildUpgrade(t *testing.T) {
 	if bridgeDB == nil {
 		t.Fatalf("expected child DB")
 	}
-	if err := Upgrade(ctx, bridgeDB, "ai_bridge", "database not initialized"); err != nil {
+	if err := Upgrade(ctx, bridgeDB, "agentremote", "database not initialized"); err != nil {
 		t.Fatalf("upgrade failed: %v", err)
 	}
-	if err := Upgrade(ctx, bridgeDB, "ai_bridge", "database not initialized"); err != nil {
+	if err := Upgrade(ctx, bridgeDB, "agentremote", "database not initialized"); err != nil {
 		t.Fatalf("second upgrade failed: %v", err)
 	}
 

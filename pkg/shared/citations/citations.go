@@ -124,24 +124,6 @@ func AppendUniqueCitation(citations []SourceCitation, c SourceCitation) []Source
 	return append(citations, c)
 }
 
-// BuildSourceParts converts citations and documents into stream-event source
-// parts. This is the base version without link-preview enrichment; callers
-// needing preview data should use the connector-specific variant.
-func BuildSourceParts(citations []SourceCitation, documents []SourceDocument) []map[string]any {
-	if len(citations) == 0 && len(documents) == 0 {
-		return nil
-	}
-	parts := make([]map[string]any, 0, len(citations)+len(documents))
-	seen := make(map[string]struct{}, len(citations)+len(documents))
-	for _, c := range citations {
-		AppendSourceURLPart(&parts, seen, c.URL, c.Title, ProviderMetadata(c))
-	}
-	for _, d := range documents {
-		AppendSourceDocumentPart(&parts, seen, d)
-	}
-	return parts
-}
-
 // AppendSourceURLPart appends a deduplicated source-url part to parts.
 func AppendSourceURLPart(parts *[]map[string]any, seen map[string]struct{}, url, title string, providerMetadata map[string]any) {
 	url = strings.TrimSpace(url)
@@ -201,24 +183,4 @@ func sourceDocumentKey(doc SourceDocument) string {
 		}
 	}
 	return ""
-}
-
-// GeneratedFilesToParts converts generated files into stream-event parts.
-func GeneratedFilesToParts(files []GeneratedFilePart) []map[string]any {
-	if len(files) == 0 {
-		return nil
-	}
-	parts := make([]map[string]any, 0, len(files))
-	for _, file := range files {
-		url := strings.TrimSpace(file.URL)
-		if url == "" {
-			continue
-		}
-		parts = append(parts, map[string]any{
-			"type":      "file",
-			"url":       url,
-			"mediaType": strings.TrimSpace(file.MediaType),
-		})
-	}
-	return parts
 }

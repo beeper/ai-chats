@@ -2,30 +2,27 @@ package search
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/beeper/agentremote/pkg/shared/exa"
-	"github.com/beeper/agentremote/pkg/shared/httputil"
-	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 type exaProvider struct {
 	cfg ExaConfig
 }
 
-func (p *exaProvider) Name() string {
-	return ProviderExa
+func newExaProvider(cfg *Config) *exaProvider {
+	if cfg == nil {
+		return nil
+	}
+	return exa.NewProvider(cfg.Exa.Enabled, cfg.Exa.APIKey, func() *exaProvider {
+		return &exaProvider{cfg: cfg.Exa}
+	})
 }
 
 func (p *exaProvider) Search(ctx context.Context, req Request) (*Response, error) {
-	endpoint := resolveEndpoint(p.cfg.BaseURL, "/search")
-	if endpoint == "" {
-		return nil, errors.New("exa base_url is empty")
-	}
 	numResults := p.cfg.NumResults
 	if req.Count > 0 {
 		numResults = req.Count
@@ -53,23 +50,14 @@ func (p *exaProvider) Search(ctx context.Context, req Request) (*Response, error
 			}
 		}
 		if p.cfg.Highlights {
-			highlightMaxChars := p.cfg.TextMaxCharacters
-			if highlightMaxChars <= 0 {
-				highlightMaxChars = 500
-			}
 			contents["highlights"] = map[string]any{
-				"maxCharacters": highlightMaxChars,
+				"maxCharacters": p.cfg.TextMaxCharacters,
 			}
 		}
 		payload["contents"] = contents
 	}
 
 	start := time.Now()
-	data, _, err := httputil.PostJSON(ctx, endpoint, exa.AuthHeaders(p.cfg.BaseURL, p.cfg.APIKey), payload, DefaultTimeoutSecs)
-	if err != nil {
-		return nil, err
-	}
-
 	var resp struct {
 		Results []struct {
 			ID            string   `json:"id"`
@@ -84,20 +72,13 @@ func (p *exaProvider) Search(ctx context.Context, req Request) (*Response, error
 		} `json:"results"`
 		CostDollars map[string]any `json:"costDollars"`
 	}
-	if err := json.Unmarshal(data, &resp); err != nil {
+	if err := exa.PostAndDecodeJSON(ctx, p.cfg.BaseURL, "/search", p.cfg.APIKey, payload, DefaultTimeoutSecs, &resp); err != nil {
 		return nil, err
 	}
 
 	results := make([]Result, 0, len(resp.Results))
 	for _, entry := range resp.Results {
-		desc := ""
-		if len(entry.Highlights) > 0 {
-			desc = strings.TrimSpace(entry.Highlights[0])
-		} else if text := strings.TrimSpace(entry.Text); len(text) > 240 {
-			desc = text[:240] + "..."
-		} else if text != "" {
-			desc = text
-		}
+		desc := descriptionFromEntry(entry.Highlights, entry.Text)
 		results = append(results, Result{
 			ID:          strings.TrimSpace(entry.ID),
 			Title:       strings.TrimSpace(entry.Title),
@@ -124,12 +105,15 @@ func (p *exaProvider) Search(ctx context.Context, req Request) (*Response, error
 	}, nil
 }
 
-func resolveEndpoint(baseURL, path string) string {
-	base := stringutil.NormalizeBaseURL(baseURL)
-	if base == "" {
-		return ""
+func descriptionFromEntry(highlights []string, text string) string {
+	if len(highlights) > 0 {
+		return strings.TrimSpace(highlights[0])
 	}
-	return base + path
+	trimmed := strings.TrimSpace(text)
+	if len(trimmed) > 240 {
+		return trimmed[:240] + "..."
+	}
+	return trimmed
 }
 
 func resolveSiteName(raw string) string {

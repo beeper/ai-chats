@@ -9,6 +9,23 @@ import (
 	"strings"
 )
 
+// parseDataURIHeader splits a data URI into its metadata, payload, and
+// extracted MIME type. Returns an error if the input is not a valid data URI.
+func parseDataURIHeader(raw string) (metadata, payload, mimeType string, err error) {
+	rest, ok := strings.CutPrefix(raw, "data:")
+	if !ok {
+		return "", "", "", errors.New("not a data URI")
+	}
+	metadata, payload, ok = strings.Cut(rest, ",")
+	if !ok {
+		return "", "", "", errors.New("invalid data URI: no comma separator")
+	}
+	if metadata != "" {
+		mimeType = strings.TrimSpace(strings.Split(metadata, ";")[0])
+	}
+	return metadata, payload, mimeType, nil
+}
+
 func hasBase64Token(metadata string) bool {
 	for _, token := range strings.Split(metadata, ";")[1:] {
 		if strings.EqualFold(strings.TrimSpace(token), "base64") {
@@ -20,43 +37,25 @@ func hasBase64Token(metadata string) bool {
 
 // ParseDataURI parses a base64 data URI and returns raw base64 data and mime type.
 func ParseDataURI(dataURI string) (string, string, error) {
-	// Format: data:[<mediatype>][;base64],<data>
-	rest, ok := strings.CutPrefix(dataURI, "data:")
-	if !ok {
-		return "", "", errors.New("not a data URI")
+	metadata, payload, mimeType, err := parseDataURIHeader(dataURI)
+	if err != nil {
+		return "", "", err
 	}
-
-	metadata, data, ok := strings.Cut(rest, ",")
-	if !ok {
-		return "", "", errors.New("invalid data URI: no comma separator")
-	}
-
 	if !hasBase64Token(metadata) {
 		return "", "", errors.New("only base64 data URIs are supported")
 	}
-
-	mimeType := strings.TrimSpace(strings.Split(metadata, ";")[0])
-
-	return data, mimeType, nil
+	return payload, mimeType, nil
 }
 
 // DecodeDataURI decodes a data URI (both base64 and percent-encoded) and returns
 // the decoded bytes plus the mime type extracted from the URI header.
 // It returns an empty mime type string if no media type is specified in the URI.
 func DecodeDataURI(raw string) ([]byte, string, error) {
-	rest, ok := strings.CutPrefix(raw, "data:")
-	if !ok {
-		return nil, "", errors.New("not a data URI")
+	metadata, payload, mimeType, err := parseDataURIHeader(raw)
+	if err != nil {
+		return nil, "", err
 	}
-	meta, payload, ok := strings.Cut(rest, ",")
-	if !ok {
-		return nil, "", errors.New("invalid data URI: no comma separator")
-	}
-	mimeType := ""
-	if meta != "" {
-		mimeType = strings.TrimSpace(strings.Split(meta, ";")[0])
-	}
-	if hasBase64Token(meta) {
+	if hasBase64Token(metadata) {
 		decoded, err := base64.StdEncoding.DecodeString(payload)
 		if err != nil {
 			return nil, "", fmt.Errorf("base64 decode failed: %w", err)

@@ -65,15 +65,15 @@ func ExecuteTool(ctx context.Context, args map[string]any, deps ToolExecDeps) (s
 		if err != nil {
 			return errorJSON(err.Error()), nil
 		}
-		out := map[string]any{
-			"enabled": enabled,
-			"backend": backend,
-			"jobs":    jobCount,
-		}
+		var nextRunAtMs any
 		if nextRun != nil {
-			out["nextRunAtMs"] = *nextRun
-		} else {
-			out["nextRunAtMs"] = nil
+			nextRunAtMs = *nextRun
+		}
+		out := map[string]any{
+			"enabled":     enabled,
+			"backend":     backend,
+			"jobs":        jobCount,
+			"nextRunAtMs": nextRunAtMs,
 		}
 		return agenttools.JSONResult(out).Text(), nil
 	case "list":
@@ -117,7 +117,7 @@ func ExecuteTool(ctx context.Context, args map[string]any, deps ToolExecDeps) (s
 		}
 		contextMessages := agenttools.ReadIntDefault(args, "contextMessages", 0)
 		if contextMessages > 0 {
-			lines := []ReminderContextLine(nil)
+			var lines []ReminderContextLine
 			if deps.ResolveReminderLines != nil {
 				lines = deps.ResolveReminderLines(contextMessages)
 			}
@@ -286,13 +286,10 @@ func stripExistingReminderContext(text string) string {
 }
 
 func buildReminderContextLines(lines []ReminderContextLine, count int) []string {
-	maxMessages := count
-	if maxMessages <= 0 {
+	if count <= 0 {
 		return nil
 	}
-	if maxMessages > reminderContextMessagesMax {
-		maxMessages = reminderContextMessagesMax
-	}
+	maxMessages := min(count, reminderContextMessagesMax)
 	if len(lines) == 0 {
 		return nil
 	}
@@ -319,10 +316,7 @@ func buildReminderContextLines(lines []ReminderContextLine, count int) []string 
 	out := make([]string, 0, len(entries))
 	total := 0
 	for _, entry := range entries {
-		label := "User"
-		if entry.Role == "assistant" {
-			label = "Assistant"
-		}
+		label := roleLabel(entry.Role)
 		text := truncateContextText(entry.Text, reminderContextPerMessageMax)
 		line := fmt.Sprintf("- %s: %s", label, text)
 		total += len(line)
@@ -332,6 +326,13 @@ func buildReminderContextLines(lines []ReminderContextLine, count int) []string 
 		out = append(out, line)
 	}
 	return out
+}
+
+func roleLabel(role string) string {
+	if role == "assistant" {
+		return "Assistant"
+	}
+	return "User"
 }
 
 func normalizeContextText(raw string) string {

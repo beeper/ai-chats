@@ -2,9 +2,9 @@ package opencode
 
 import "testing"
 
-func TestCurrentCanonicalUIMessageFallbackIncludesModelAndUsage(t *testing.T) {
+func TestCurrentUIMessageFallbackIncludesModelAndUsage(t *testing.T) {
 	oc := &OpenCodeClient{}
-	ui := oc.currentCanonicalUIMessage(&openCodeStreamState{
+	ui := oc.currentUIMessage(&openCodeStreamState{
 		turnID:           "turn-1",
 		agentID:          "agent-1",
 		modelID:          "gpt-4.1",

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/beeper/agentremote/pkg/shared/jsonutil"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 var (
@@ -12,12 +13,11 @@ var (
 	invalidAgentIDRe = regexp.MustCompile(`[^a-z0-9_-]+`)
 )
 
-func AgentIDFromSessionKey(sessionKey string) string {
-	parts := strings.Split(strings.TrimSpace(sessionKey), ":")
-	if len(parts) < 3 || !strings.EqualFold(parts[0], "agent") {
-		return ""
-	}
-	agentID := strings.TrimSpace(parts[1])
+// CanonicalAgentID normalizes an agent ID to lowercase, replacing invalid
+// characters with hyphens and trimming to 64 characters. Returns "" for
+// empty input.
+func CanonicalAgentID(agentID string) string {
+	agentID = strings.TrimSpace(agentID)
 	if agentID == "" {
 		return ""
 	}
@@ -31,6 +31,14 @@ func AgentIDFromSessionKey(sessionKey string) string {
 		normalized = normalized[:64]
 	}
 	return normalized
+}
+
+func AgentIDFromSessionKey(sessionKey string) string {
+	parts := strings.Split(strings.TrimSpace(sessionKey), ":")
+	if len(parts) < 3 || !strings.EqualFold(parts[0], "agent") {
+		return ""
+	}
+	return CanonicalAgentID(parts[1])
 }
 
 func ContentBlocks(message map[string]any) []map[string]any {
@@ -61,14 +69,14 @@ func ExtractMessageText(message map[string]any) string {
 	if message == nil {
 		return ""
 	}
-	if text := strings.TrimSpace(StringValue(message["text"])); text != "" {
+	if text := stringutil.TrimString(message["text"]); text != "" {
 		return text
 	}
 	var parts []string
 	for _, block := range ContentBlocks(message) {
-		switch strings.ToLower(strings.TrimSpace(StringValue(block["type"]))) {
+		switch strings.ToLower(stringutil.TrimString(block["type"])) {
 		case "text", "input_text", "output_text":
-			if text := strings.TrimSpace(StringsTrimDefault(StringValue(block["text"]), StringValue(block["content"]))); text != "" {
+			if text := strings.TrimSpace(stringutil.TrimDefault(stringutil.StringValue(block["text"]), stringutil.StringValue(block["content"]))); text != "" {
 				parts = append(parts, text)
 			}
 		}
@@ -77,19 +85,19 @@ func ExtractMessageText(message map[string]any) string {
 }
 
 func ExtractAttachmentBlocks(message map[string]any) []map[string]any {
-	blocks := ContentBlocks(message)
-	out := make([]map[string]any, 0)
-	for _, block := range blocks {
-		if !IsAttachmentBlock(block) {
-			continue
+	var out []map[string]any
+	for _, block := range ContentBlocks(message) {
+		if IsAttachmentBlock(block) {
+			out = append(out, block)
 		}
-		out = append(out, block)
 	}
 	return out
 }
 
 func IsAttachmentBlock(block map[string]any) bool {
-	blockType := strings.ToLower(strings.TrimSpace(StringValue(block["type"])))
+	str := func(key string) string { return stringutil.TrimString(block[key]) }
+
+	blockType := strings.ToLower(str("type"))
 	switch blockType {
 	case "", "text", "input_text", "output_text", "toolcall", "tooluse", "functioncall", "source-url", "source_document", "source-document", "reasoning":
 		return false
@@ -100,43 +108,20 @@ func IsAttachmentBlock(block map[string]any) bool {
 		return true
 	}
 	for _, key := range []string{"file", "image_url", "imageUrl", "asset", "blob", "src"} {
-		value := block[key]
-		if strings.TrimSpace(StringValue(value)) != "" {
-			return true
-		}
-		if len(jsonutil.ToMap(value)) > 0 {
+		if str(key) != "" || len(jsonutil.ToMap(block[key])) > 0 {
 			return true
 		}
 	}
-	if strings.TrimSpace(StringValue(block["url"])) != "" || strings.TrimSpace(StringValue(block["href"])) != "" {
+	if str("url") != "" || str("href") != "" {
 		return true
 	}
-	if strings.TrimSpace(StringValue(block["content"])) != "" || strings.TrimSpace(StringValue(block["data"])) != "" {
+	if str("content") != "" || str("data") != "" {
 		return true
 	}
-	if strings.TrimSpace(StringValue(block["fileName"])) != "" || strings.TrimSpace(StringValue(block["filename"])) != "" {
-		if strings.TrimSpace(StringValue(block["mimeType"])) != "" || strings.TrimSpace(StringValue(block["mediaType"])) != "" || strings.TrimSpace(StringValue(block["contentType"])) != "" {
+	if str("fileName") != "" || str("filename") != "" {
+		if str("mimeType") != "" || str("mediaType") != "" || str("contentType") != "" {
 			return true
 		}
 	}
 	return false
-}
-
-func StringValue(v any) string {
-	switch typed := v.(type) {
-	case string:
-		return typed
-	case interface{ String() string }:
-		return typed.String()
-	default:
-		return ""
-	}
-}
-
-func StringsTrimDefault(value, fallback string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return fallback
-	}
-	return value
 }

@@ -28,22 +28,10 @@ func formatCronTime(timezone string) string {
 		}
 	}
 	now := time.Now().In(loc)
-	weekday := now.Format("Monday")
-	month := now.Format("January")
 	day := now.Day()
-	ordinal := dayOrdinal(day)
-	year := now.Year()
-	hour := now.Hour()
-	minute := now.Minute()
-	suffix := "AM"
-	if hour >= 12 {
-		suffix = "PM"
-	}
-	hour12 := hour % 12
-	if hour12 == 0 {
-		hour12 = 12
-	}
-	return fmt.Sprintf("%s, %s %d%s, %d — %d:%02d %s (%s)", weekday, month, day, ordinal, year, hour12, minute, suffix, loc.String())
+	timeStr := now.Format("3:04 PM")
+	return fmt.Sprintf("%s, %s %d%s, %d — %s (%s)",
+		now.Format("Monday"), now.Format("January"), day, dayOrdinal(day), now.Year(), timeStr, loc.String())
 }
 
 func WrapSafeExternalPrompt(message string) string {

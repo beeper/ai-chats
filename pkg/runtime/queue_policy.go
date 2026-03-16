@@ -7,6 +7,8 @@ func NormalizeQueueMode(raw string) (QueueMode, bool) {
 	switch cleaned {
 	case "interrupt":
 		return QueueModeInterrupt, true
+	case "backlog":
+		return QueueModeBacklog, true
 	case "steer":
 		return QueueModeSteer, true
 	case "followup":
@@ -60,11 +62,7 @@ func ResolveQueueOverflow(capacity int, currentLen int, policy QueueDropPolicy) 
 		return QueueOverflowResult{KeepNew: true}
 	}
 	if policy == QueueDropNew {
-		return QueueOverflowResult{
-			KeepNew:         false,
-			ItemsToDrop:     0,
-			ShouldSummarize: false,
-		}
+		return QueueOverflowResult{}
 	}
 	dropCount := currentLen - capacity + 1
 	if dropCount < 1 {
@@ -84,22 +82,24 @@ func DecideQueueAction(mode QueueMode, hasActiveRun bool, isHeartbeat bool) Queu
 	if isHeartbeat {
 		return QueueDecision{Action: QueueActionEnqueue, Reason: "heartbeat_backlog"}
 	}
-	switch mode {
-	case QueueModeInterrupt:
+	if mode == QueueModeInterrupt {
 		return QueueDecision{Action: QueueActionInterruptAndRun, Reason: "interrupt_mode"}
-	case QueueModeSteer:
-		return QueueDecision{Action: QueueActionEnqueue, Reason: "steer_mode"}
-	case QueueModeFollowup:
-		return QueueDecision{Action: QueueActionEnqueue, Reason: "followup_mode"}
-	case QueueModeCollect:
-		return QueueDecision{Action: QueueActionEnqueue, Reason: "collect_mode"}
-	case QueueModeSteerBacklog:
-		return QueueDecision{Action: QueueActionEnqueue, Reason: "steer_backlog_mode"}
-	case QueueModeBacklog:
-		return QueueDecision{Action: QueueActionEnqueue, Reason: "backlog_mode"}
-	default:
-		return QueueDecision{Action: QueueActionEnqueue, Reason: "default_backlog"}
 	}
+
+	reason := "default_backlog"
+	switch mode {
+	case QueueModeSteer:
+		reason = "steer_mode"
+	case QueueModeFollowup:
+		reason = "followup_mode"
+	case QueueModeCollect:
+		reason = "collect_mode"
+	case QueueModeSteerBacklog:
+		reason = "steer_backlog_mode"
+	case QueueModeBacklog:
+		reason = "backlog_mode"
+	}
+	return QueueDecision{Action: QueueActionEnqueue, Reason: reason}
 }
 
 // ElideQueueText truncates text to the given character limit with an ellipsis.

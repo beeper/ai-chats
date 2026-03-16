@@ -8,7 +8,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"go.mau.fi/util/ptr"
 
+	"github.com/beeper/agentremote/pkg/agents/agentconfig"
 	"github.com/beeper/agentremote/pkg/agents/toolpolicy"
 	"github.com/beeper/agentremote/pkg/shared/toolspec"
 )
@@ -31,7 +33,7 @@ func toolPolicySchema() map[string]any {
 				"items":       map[string]any{"type": "string"},
 				"description": "Explicit tool allowlist (supports wildcards like 'web_*' or group:... shorthands)",
 			},
-			"alsoAllow": map[string]any{
+			"also_allow": map[string]any{
 				"type":        "array",
 				"items":       map[string]any{"type": "string"},
 				"description": "Additional allowlist entries merged into allow",
@@ -41,7 +43,7 @@ func toolPolicySchema() map[string]any {
 				"items":       map[string]any{"type": "string"},
 				"description": "Explicit tool denylist (deny wins)",
 			},
-			"byProvider": map[string]any{
+			"by_provider": map[string]any{
 				"type":                 "object",
 				"additionalProperties": map[string]any{"type": "object"},
 				"description":          "Optional provider- or model-specific overrides keyed by provider or provider/model",
@@ -100,8 +102,8 @@ type AgentData struct {
 	Model        string                       `json:"model,omitempty"`
 	SystemPrompt string                       `json:"system_prompt,omitempty"`
 	Tools        *toolpolicy.ToolPolicyConfig `json:"tools,omitempty"`
-	Subagents    *SubagentConfig              `json:"subagents,omitempty"`
-	Temperature  float64                      `json:"temperature,omitempty"`
+	Subagents    *agentconfig.SubagentConfig  `json:"subagents,omitempty"`
+	Temperature  *float64                     `json:"temperature,omitempty"`
 	IsPreset     bool                         `json:"is_preset,omitempty"`
 	CreatedAt    int64                        `json:"created_at"`
 	UpdatedAt    int64                        `json:"updated_at"`
@@ -357,19 +359,18 @@ func SessionTools() []*Tool {
 	}
 }
 
-// toolNameSet builds a name lookup set from a tool list.
-func toolNameSet(tools []*Tool) map[string]struct{} {
+var (
+	sessionToolNames = buildNameSet(SessionTools())
+	bossToolNames    = buildNameSet(BossTools())
+)
+
+func buildNameSet(tools []*Tool) map[string]struct{} {
 	m := make(map[string]struct{}, len(tools))
 	for _, t := range tools {
 		m[t.Name] = struct{}{}
 	}
 	return m
 }
-
-var (
-	sessionToolNames = toolNameSet(SessionTools())
-	bossToolNames    = toolNameSet(BossTools())
-)
 
 // IsSessionTool checks if a tool name is a session tool.
 func IsSessionTool(toolName string) bool {
@@ -414,8 +415,8 @@ func readToolPolicyConfig(input map[string]any) (*toolpolicy.ToolPolicyConfig, e
 	return &cfg, nil
 }
 
-func readSubagentConfig(input map[string]any) (*SubagentConfig, error) {
-	var cfg SubagentConfig
+func readSubagentConfig(input map[string]any) (*agentconfig.SubagentConfig, error) {
+	var cfg agentconfig.SubagentConfig
 	if err := unmarshalParam(input, "subagents", &cfg); err != nil {
 		return nil, err
 	}
@@ -462,9 +463,7 @@ func (e *BossToolExecutor) ExecuteCreateAgent(ctx context.Context, input map[str
 	}
 
 	agentID := uuid.NewString()
-
 	now := time.Now().Unix()
-
 	agent := AgentData{
 		ID:           agentID,
 		Name:         name,
@@ -502,11 +501,8 @@ func (e *BossToolExecutor) ExecuteForkAgent(ctx context.Context, input map[strin
 	}
 
 	newName := ReadStringDefault(input, "new_name", fmt.Sprintf("%s (Fork)", source.Name))
-
 	agentID := uuid.NewString()
-
 	now := time.Now().Unix()
-
 	forked := AgentData{
 		ID:           agentID,
 		Name:         newName,
@@ -514,8 +510,8 @@ func (e *BossToolExecutor) ExecuteForkAgent(ctx context.Context, input map[strin
 		Model:        source.Model,
 		SystemPrompt: source.SystemPrompt,
 		Tools:        source.Tools.Clone(),
-		Subagents:    cloneSubagentConfig(source.Subagents),
-		Temperature:  source.Temperature,
+		Subagents:    agentconfig.CloneSubagentConfig(source.Subagents),
+		Temperature:  ptr.Clone(source.Temperature),
 		IsPreset:     false,
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -549,28 +545,29 @@ func (e *BossToolExecutor) ExecuteEditAgent(ctx context.Context, input map[strin
 		return ErrorResult("edit_agent", "cannot modify preset agents - fork it first"), nil
 	}
 
-	// Apply updates
-	if name, _ := ReadString(input, "name", false); name != "" {
-		agent.Name = name
+	applyStringUpdate := func(key string, dest *string) {
+		if v, _ := ReadString(input, key, false); v != "" {
+			*dest = v
+		}
 	}
-	if desc, _ := ReadString(input, "description", false); desc != "" {
-		agent.Description = desc
-	}
-	if model, _ := ReadString(input, "model", false); model != "" {
-		agent.Model = model
-	}
-	if prompt, _ := ReadString(input, "system_prompt", false); prompt != "" {
-		agent.SystemPrompt = prompt
-	}
-	if toolsConfig, err := readToolPolicyConfig(input); err == nil && toolsConfig != nil {
-		agent.Tools = toolsConfig
-	} else if err != nil {
+	applyStringUpdate("name", &agent.Name)
+	applyStringUpdate("description", &agent.Description)
+	applyStringUpdate("model", &agent.Model)
+	applyStringUpdate("system_prompt", &agent.SystemPrompt)
+
+	toolsConfig, err := readToolPolicyConfig(input)
+	if err != nil {
 		return ErrorResult("edit_agent", fmt.Sprintf("invalid tools config: %v", err)), nil
 	}
-	if subagentsConfig, err := readSubagentConfig(input); err == nil && subagentsConfig != nil {
-		agent.Subagents = subagentsConfig
-	} else if err != nil {
+	if toolsConfig != nil {
+		agent.Tools = toolsConfig
+	}
+	subagentsConfig, err := readSubagentConfig(input)
+	if err != nil {
 		return ErrorResult("edit_agent", fmt.Sprintf("invalid subagents config: %v", err)), nil
+	}
+	if subagentsConfig != nil {
+		agent.Subagents = subagentsConfig
 	}
 
 	agent.UpdatedAt = time.Now().Unix()
@@ -668,9 +665,9 @@ func (e *BossToolExecutor) ExecuteRunInternalCommand(ctx context.Context, input 
 		return ErrorResult("run_internal_command", err.Error()), nil
 	}
 
-	roomID := ReadStringDefault(input, "room_id", "")
-	if roomID == "" {
-		return ErrorResult("run_internal_command", "room_id is required"), nil
+	roomID, err := ReadString(input, "room_id", true)
+	if err != nil {
+		return ErrorResult("run_internal_command", err.Error()), nil
 	}
 
 	message, err := e.store.RunInternalCommand(ctx, roomID, command)
@@ -693,17 +690,15 @@ func (e *BossToolExecutor) ExecuteModifyRoom(ctx context.Context, input map[stri
 		return ErrorResult("modify_room", err.Error()), nil
 	}
 
-	updates := RoomData{}
-
-	if name, _ := ReadString(input, "name", false); name != "" {
-		updates.Name = name
+	var updates RoomData
+	applyStringUpdate := func(key string, dest *string) {
+		if v, _ := ReadString(input, key, false); v != "" {
+			*dest = v
+		}
 	}
-	if agentID, _ := ReadString(input, "agent_id", false); agentID != "" {
-		updates.AgentID = agentID
-	}
-	if prompt, _ := ReadString(input, "system_prompt", false); prompt != "" {
-		updates.SystemPrompt = prompt
-	}
+	applyStringUpdate("name", &updates.Name)
+	applyStringUpdate("agent_id", &updates.AgentID)
+	applyStringUpdate("system_prompt", &updates.SystemPrompt)
 
 	if err := e.store.ModifyRoom(ctx, roomID, updates); err != nil {
 		return ErrorResult("modify_room", fmt.Sprintf("failed to modify room: %v", err)), nil

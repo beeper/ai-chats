@@ -35,7 +35,7 @@ This document specifies a Matrix transport profile for real-time AI:
 - Tool approvals (MCP approvals + selected builtin tools).
 - Auxiliary `com.beeper.ai*` keys used for routing/metadata.
 
-This spec is intended to be usable by any Matrix bot/client/bridge. Where this document references "the bridge", it refers to the producing implementation (for this repo, `ai-bridge`).
+This spec is intended to be usable by any Matrix bot/client/bridge. Where this document references "the bridge", it refers to the producing implementation (for this repo, `AI Chats`).
 
 Upstream reference (AI SDK):
 - Normative message model target: Vercel AI SDK `ai@6.0.121`.
@@ -44,15 +44,15 @@ Upstream reference (AI SDK):
   - `packages/ai/src/ui-message-stream/ui-message-chunks.ts`
   - `packages/ai/src/ui-message-stream/json-to-sse-transform-stream.ts`
 
-Reference implementation in this repo (ai-bridge):
+Reference implementation in this repo (AI Chats):
 - Event type identifiers: `pkg/matrixevents/matrixevents.go`
-- Event payload structs (where defined): `pkg/connector/events.go`
-- Streaming envelope and emission: `pkg/matrixevents/matrixevents.go`, `pkg/connector/stream_events.go`
-- Tool call/result projections: `pkg/connector/tool_execution.go`
-- Compaction status emission: `pkg/connector/response_retry.go`
-- State broadcast: `pkg/connector/chat.go`
-- Approvals: `pkg/connector/tool_approvals*.go`, `pkg/connector/handlematrix.go`, `pkg/connector/handler_interfaces.go`, `pkg/connector/streaming_ui_tools.go`
-- Shared approval manager + approval-decision parser: `pkg/bridgeadapter/approval_manager.go`, `pkg/bridgeadapter/approval_decision.go`
+- Event payload structs (where defined): `bridges/ai/events.go`
+- Streaming envelope and emission: `pkg/matrixevents/matrixevents.go`, `bridges/ai/stream_events.go`
+- Tool call/result projections: `bridges/ai/tool_execution.go`
+- Compaction status emission: `bridges/ai/response_retry.go`
+- State broadcast: `bridges/ai/chat.go`
+- Approvals: `bridges/ai/tool_approvals*.go`, `bridges/ai/handlematrix.go`, `bridges/ai/handler_interfaces.go`, `bridges/ai/streaming_ui_tools.go`
+- Shared approval manager + approval-decision parser: `approval_manager.go`, `approval_decision.go`
 
 <a id="compatibility"></a>
 ## Compatibility
@@ -65,7 +65,6 @@ Reference implementation in this repo (ai-bridge):
 ## Terminology
 - `turn_id`: Unique ID for a single assistant response "turn".
 - `seq`: Per-turn monotonic sequence number for stream events.
-- `target_event`: Matrix event ID that a stream relates to (typically the placeholder timeline event).
 - `call_id` / `toolCallId`: Tool invocation identifier.
 - `timeline`: persisted Matrix events.
 - `ephemeral`: non-persisted events (dropped by servers/clients that don't support them).
@@ -88,7 +87,6 @@ Authoritative identifiers are defined in `pkg/matrixevents/matrixevents.go`.
 | Key | Where it appears | Purpose | Spec section |
 | --- | --- | --- | --- |
 | `com.beeper.ai` | `m.room.message` | Canonical assistant `UIMessage` | [Canonical](#canonical) |
-| `com.beeper.ai.approval_decision` | `m.room.message` | Owner approval response for pending tool requests | [Approvals](#approvals-decision) |
 | `com.beeper.ai.model_id` | `m.room.message` | Routing/display hint | [Other keys](#other-keys-routing) |
 | `com.beeper.ai.agent` | `m.room.message`, `m.room.member` | Routing hint or agent definition | [Other keys](#other-keys-agent) |
 | `com.beeper.ai.image_generation` | `m.room.message` (image) | Generated-image tag/metadata | [Other keys](#other-keys-media) |
@@ -145,9 +143,8 @@ Content:
 - `turn_id: string` (REQUIRED)
 - `seq: integer` (REQUIRED, starts at 1, strictly increasing per `turn_id`)
 - `part: UIMessageChunk` (REQUIRED)
-- `target_event?: string` (RECOMMENDED)
+- `m.relates_to: { rel_type: "m.reference", event_id: string }` (REQUIRED)
 - `agent_id?: string` (OPTIONAL)
-- `m.relates_to?: { rel_type: "m.reference", event_id: string }` (RECOMMENDED when `target_event` is present)
 
 ### SSE Mapping
 AI SDK UI streams emit SSE frames:
@@ -179,6 +176,7 @@ Producers MAY emit any valid AI SDK `UIMessageChunk` type:
 - `tool-input-available`
 - `tool-input-error`
 - `tool-approval-request`
+- `tool-approval-response`
 - `tool-output-available`
 - `tool-output-error`
 - `tool-output-denied`
@@ -212,11 +210,15 @@ Per turn:
 - `seq` MUST be strictly increasing.
 - Duplicate/stale events (`seq <= last_applied_seq`) MUST be ignored.
 - Out-of-order events SHOULD be buffered briefly and applied in `seq` order.
+- Producers MUST NOT emit ephemeral stream events until the canonical assistant timeline message has a concrete Matrix event ID.
+- Producers MUST buffer debounced/final timeline edits until the placeholder's Matrix event ID is resolved, because `m.replace` requires `m.relates_to.event_id`.
+- If neither a bridge-side message ID nor a Matrix event ID exists, producers MUST buffer or fail the turn and MUST NOT emit stream events or edits.
 
-Recommended lifecycle:
+Required lifecycle:
 1. Send initial placeholder `m.room.message` with seed `com.beeper.ai`.
-2. Emit `com.beeper.ai.stream_event` chunks (monotonic `seq`).
-3. Emit final timeline edit (`m.replace`) containing final fallback text + full final `com.beeper.ai`.
+2. Resolve/store the placeholder's Matrix event ID.
+3. Emit `com.beeper.ai.stream_event` chunks (monotonic `seq`) only after `m.relates_to.event_id` can reference that message.
+4. Emit final timeline edit (`m.replace`) containing final fallback text + full final `com.beeper.ai`.
 
 Terminal chunks:
 - The stream SHOULD end with one of: `finish`, `abort`, `error`.
@@ -243,7 +245,6 @@ sequenceDiagram
 {
   "turn_id": "turn_123",
   "seq": 7,
-  "target_event": "$initial_event",
   "m.relates_to": { "rel_type": "m.reference", "event_id": "$initial_event" },
   "part": { "type": "text-delta", "id": "text-turn_123", "delta": "hello" }
 }
@@ -291,22 +292,29 @@ This bridge no longer uses custom room state for editable AI configuration. Room
 ## Tool Approvals
 Approvals are an owner-only gate for:
 - MCP approvals (OpenAI Responses `mcp_approval_request` items).
-- Selected builtin tool actions, configured via `network.tool_approvals.requireForTools`.
+- Selected builtin tool actions, configured via `network.tool_approvals.require_for_tools`.
 
-Config (see `pkg/connector/example-config.yaml`):
+Config (see `config.example.yaml` and `bridges/ai/integrations_config.go`):
 - `network.tool_approvals.enabled` (default true)
-- `network.tool_approvals.ttlSeconds` (default 600)
-- `network.tool_approvals.requireForMcp` (default true)
-- `network.tool_approvals.requireForTools` (default list in code)
+- `network.tool_approvals.ttl_seconds` (default 600)
+- `network.tool_approvals.require_for_mcp` (default true)
+- `network.tool_approvals.require_for_tools` (default list in code)
 
 ### Approval Request Emission
 When approval is needed, the bridge emits:
 1. An ephemeral stream chunk (`com.beeper.ai.stream_event`) where `part.type = "tool-approval-request"` containing:
    - `approvalId: string`
    - `toolCallId: string`
-2. A timeline-visible fallback notice (for clients that drop/ignore ephemeral events).
+2. A timeline-visible canonical approval notice.
    - The notice is an `m.room.message` with `msgtype = "m.notice"`, SHOULD reply to the originating assistant turn via `m.relates_to.m.in_reply_to`, and includes a complete `com.beeper.ai` `UIMessage` using the canonical shape defined above (`id`, `role`, optional `metadata`, `parts`).
-   - That fallback `UIMessage.metadata` contains `approvalId` and its `parts` contains a `dynamic-tool` part with:
+   - The notice body MUST list the canonical reaction keys for the available options.
+   - The bridge MUST send bridge-authored placeholder `m.reaction` events on the notice, one for each allowed option key, using `m.annotation` as the relation type.
+   - `UIMessage.metadata.approval` SHOULD include:
+     - `id: string`
+     - `options: [{ id, key, label, approved, always?, reason? }]`
+     - `presentation`
+     - `expiresAt` when known
+   - The `dynamic-tool` part contains:
      - `state = "approval-requested"`
      - `toolCallId: string`
      - `toolName: string`
@@ -318,48 +326,41 @@ Canonical approval data in persisted `dynamic-tool` parts follows the AI SDK:
 
 <a id="approvals-decision"></a>
 ### Approving / Denying
-Approvals are resolved through a canonical owner reply event:
+Approvals are resolved through reactions on the canonical approval notice:
 
-1. **Bridge sends** canonical tool state in `com.beeper.ai` and/or `com.beeper.ai.stream_event` with:
-   - `part.type = "tool-approval-request"` during streaming
-   - a persisted `dynamic-tool` part with approval metadata in the final `UIMessage`
-
-2. **Client sends** a standard `m.room.message` whose content includes `com.beeper.ai.approval_decision` and SHOULD reply to the originating assistant turn via `m.relates_to.m.in_reply_to`:
+1. **Bridge sends** the canonical approval notice and placeholder reactions for the allowed option keys.
+2. **Owner reacts** to that notice using one of the advertised option keys:
 
 ```json
 {
-  "type": "m.room.message",
+  "type": "m.reaction",
   "content": {
-    "msgtype": "m.text",
-    "body": "Approved",
     "m.relates_to": {
-      "m.in_reply_to": { "event_id": "$assistant_turn" }
-    },
-    "com.beeper.ai.approval_decision": {
-      "approvalId": "abc123",
-      "approved": true,
-      "always": false
+      "rel_type": "m.annotation",
+      "event_id": "$approval_notice",
+      "key": "approval.allow_once"
     }
   }
 }
 ```
 
 Rules:
-- `approvalId` is required.
-- `approved` is required and is the canonical allow/deny decision.
-- `always` is optional and, when `true`, persists an allow rule for future matching approvals.
-- `reason` is optional.
-- Approval decision events are control events. They MUST NOT create a user turn in canonical replay history.
-- Timeline fallback notices are UI affordances only. They MUST NOT be projected into provider replay history.
+- The approval notice is the canonical Matrix artifact. Rich clients MAY also observe mirrored `tool-approval-request` and `tool-approval-response` stream parts. A `tool-approval-response` chunk carries `approvalId`, `toolCallId`, `approved`, and optional `reason`.
+- Only owner reactions with an advertised option key can resolve the approval.
+- Non-owner reactions and invalid keys MUST be rejected and SHOULD be redacted.
+- On terminal completion, the bridge MUST edit the approval notice into its final state and redact all bridge-authored placeholder reactions.
+- The resolving owner reaction MUST remain visible.
+- If the approval was resolved outside Matrix, the bridge SHOULD mirror the owner's chosen reaction into Matrix before terminal cleanup so the notice stays in sync.
+- Approval notices and their terminal edits remain excluded from provider replay history.
 
 Always-allow:
-- `always: true` persists an allow rule in login metadata, scoped to the current login/account for the current bridge implementation.
+- Reacting with the `allow always` option persists an allow rule in login metadata, scoped to the current login/account for the current bridge implementation.
 - A stored rule matches on the approval target identity emitted by the bridge for that login: at minimum `toolName`, plus any bridge-emitted qualifier needed to distinguish separate approval surfaces for that login (for example agent/model or room-scoped tool routing).
 - Rules are allow-only. If multiple stored rules match, the most specific rule for the current login wins; otherwise any matching allow rule MAY be applied.
 - Approval events themselves remain the audit record for the concrete `approvalId`; persisted allow rules are derived from those events and do not change canonical replay history.
 
 TTL:
-- Pending approvals expire after `ttlSeconds`.
+- Pending approvals expire after `ttl_seconds`.
 
 <a id="other-keys"></a>
 ## Other Matrix Keys
@@ -372,7 +373,7 @@ The bridge may set:
 
 <a id="other-keys-agent"></a>
 ### Agent Definitions in `m.room.member` (Builder room)
-Agent definitions can be stored in member state (see `AgentMemberContent` in `pkg/connector/events.go`):
+Agent definitions can be stored in member state (see `AgentMemberContent` in `bridges/ai/events.go`):
 - `com.beeper.ai.agent: AgentDefinitionContent`
 
 Example:
@@ -409,7 +410,7 @@ Examples:
 <a id="impl-notes"></a>
 ## Implementation Notes
 - Desktop consumes `com.beeper.ai.stream_event.part` as an AI SDK `UIMessageChunk` and reconstructs a live `UIMessage`.
-- Matrix envelope concerns (`turn_id`, `seq`, `target_event`) remain bridge/client responsibilities.
+- Matrix envelope concerns (`turn_id`, `seq`, `m.relates_to`) remain bridge/client responsibilities.
 - Consumers should prefer AI SDK-compatible chunk semantics (metadata merge, tool partial JSON handling, step boundaries).
 
 <a id="forward-compat"></a>

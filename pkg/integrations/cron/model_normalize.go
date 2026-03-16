@@ -268,29 +268,26 @@ func coerceScheduleAt(schedule map[string]any) (string, bool) {
 
 func coerceDeliveryMap(delivery map[string]any) map[string]any {
 	next := maps.Clone(delivery)
-	if rawMode, ok := delivery["mode"].(string); ok {
-		mode := normalizeString(rawMode)
-		if mode != "" {
-			next["mode"] = mode
-		} else {
-			delete(next, "mode")
-		}
-	}
-	if rawChannel, ok := delivery["channel"].(string); ok {
-		channel := normalizeString(rawChannel)
-		if channel != "" {
-			next["channel"] = channel
-		} else {
-			delete(next, "channel")
-		}
-	}
-	if rawTo, ok := delivery["to"].(string); ok {
-		to := strings.TrimSpace(rawTo)
-		if to != "" {
-			next["to"] = to
-		} else {
-			delete(next, "to")
-		}
-	}
+	coerceStringField(next, delivery, "mode", true)
+	coerceStringField(next, delivery, "channel", true)
+	coerceStringField(next, delivery, "to", false)
 	return next
+}
+
+// coerceStringField normalizes a string field in a map: trims whitespace, optionally
+// lowercases, and deletes the key if the result is empty.
+func coerceStringField(dst map[string]any, src map[string]any, key string, lowercase bool) {
+	raw, ok := src[key].(string)
+	if !ok {
+		return
+	}
+	val := strings.TrimSpace(raw)
+	if lowercase {
+		val = strings.ToLower(val)
+	}
+	if val != "" {
+		dst[key] = val
+	} else {
+		delete(dst, key)
+	}
 }

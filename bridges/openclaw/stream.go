@@ -6,17 +6,13 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/format"
-	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/pkg/connector/msgconv"
-	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/bridges/ai/msgconv"
 	"github.com/beeper/agentremote/pkg/shared/maputil"
-	"github.com/beeper/agentremote/pkg/shared/streamtransport"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 func openClawStreamPartTimestamp(part map[string]any) time.Time {
@@ -87,110 +83,26 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 	}
 
 	turnID = strings.TrimSpace(turnID)
-	agentID = stringsTrimDefault(agentID, "gateway")
+	agentID = stringutil.TrimDefault(agentID, "gateway")
 	sessionKey = strings.TrimSpace(sessionKey)
 
 	oc.StreamMu.Lock()
 	state := oc.ensureStreamStateLocked(portal, turnID, agentID, sessionKey)
-	if metadata, _ := part["messageMetadata"].(map[string]any); len(metadata) > 0 {
-		oc.applyStreamMessageMetadata(state, metadata)
-	}
-	partType := strings.TrimSpace(stringValue(part["type"]))
-	partTS := openClawStreamPartTimestamp(part)
-	applyOpenClawStreamPartTimestamp(state, partType, partTS)
-	if state.startedAtMs == 0 && partType == "start" {
-		state.startedAtMs = time.Now().UnixMilli()
-	}
-	switch partType {
-	case "text-delta":
-		if delta := stringValue(part["delta"]); delta != "" {
-			state.visible.WriteString(delta)
-			state.accumulated.WriteString(delta)
-			if state.firstTokenAtMs == 0 {
-				state.firstTokenAtMs = time.Now().UnixMilli()
-			}
-		}
-	case "reasoning-delta":
-		if delta := stringValue(part["delta"]); delta != "" {
-			state.accumulated.WriteString(delta)
-			if state.firstTokenAtMs == 0 {
-				state.firstTokenAtMs = time.Now().UnixMilli()
-			}
-		}
-	case "error":
-		if errText := strings.TrimSpace(stringValue(part["errorText"])); errText != "" {
-			state.errorText = errText
-		}
-	case "abort":
-		state.finishReason = stringsTrimDefault(stringValue(part["reason"]), "aborted")
-	case "finish":
-		if state.completedAtMs == 0 {
-			state.completedAtMs = time.Now().UnixMilli()
-		}
-	}
-	streamui.ApplyChunk(&state.ui, part)
-	needPlaceholder := state.networkMessageID == "" && !state.placeholderPending
-	if needPlaceholder {
-		state.placeholderPending = true
+	oc.applyStreamPartStateLocked(state, part)
+	turn := state.turn
+	if turn == nil {
+		turn = oc.newSDKStreamTurn(ctx, portal, state)
+		state.turn = turn
 	}
 	oc.StreamMu.Unlock()
 
 	if oc.IsStreamShuttingDown() {
 		return
 	}
-	if needPlaceholder {
-		oc.ensureStreamPlaceholder(portal, turnID, agentID)
-	}
-
-	oc.StreamMu.Lock()
-	if oc.IsStreamShuttingDown() {
-		oc.StreamMu.Unlock()
+	if turn == nil {
 		return
 	}
-	state = oc.ensureStreamStateLocked(portal, turnID, agentID, sessionKey)
-	session := oc.StreamSessions[turnID]
-	if session == nil {
-		session = streamtransport.NewStreamSession(streamtransport.StreamSessionParams{
-			TurnID:  turnID,
-			AgentID: state.agentID,
-			GetTargetEventID: func() string {
-				oc.StreamMu.Lock()
-				defer oc.StreamMu.Unlock()
-				if current := oc.streamStates[turnID]; current != nil {
-					return current.targetEventID
-				}
-				return ""
-			},
-			GetRoomID: func() id.RoomID {
-				return portal.MXID
-			},
-			GetSuppressSend: func() bool { return false },
-			NextSeq: func() int {
-				oc.StreamMu.Lock()
-				defer oc.StreamMu.Unlock()
-				if current := oc.streamStates[turnID]; current != nil {
-					current.sequenceNum++
-					return current.sequenceNum
-				}
-				return 0
-			},
-			RuntimeFallbackFlag: &state.streamFallbackToDebounced,
-			GetEphemeralSender: func(callCtx context.Context) (bridgev2.EphemeralSendingMatrixAPI, bool) {
-				ephemeralSender, ok := any(oc.UserLogin.Bridge.Bot).(bridgev2.EphemeralSendingMatrixAPI)
-				return ephemeralSender, ok
-			},
-			SendDebouncedEdit: func(callCtx context.Context, force bool) error {
-				oc.StreamMu.Lock()
-				current := oc.streamStates[turnID]
-				oc.StreamMu.Unlock()
-				return oc.queueDebouncedStreamEdit(callCtx, portal, current, force)
-			},
-			Logger: oc.Log(),
-		})
-		oc.StreamSessions[turnID] = session
-	}
-	oc.StreamMu.Unlock()
-	session.EmitPart(ctx, part)
+	bridgesdk.ApplyStreamPart(turn, part, bridgesdk.PartApplyOptions{})
 }
 
 func (oc *OpenClawClient) FinishStream(turnID, finishReason string) {
@@ -198,34 +110,34 @@ func (oc *OpenClawClient) FinishStream(turnID, finishReason string) {
 	if turnID == "" {
 		return
 	}
+	state, turn := oc.popStreamTurn(turnID, finishReason)
+	finishOpenClawTurnFromState(state, turn, finishReason)
+}
 
-	oc.StreamMu.Lock()
-	session := oc.StreamSessions[turnID]
-	state := oc.streamStates[turnID]
-	delete(oc.StreamSessions, turnID)
-	if state != nil {
-		if state.finishReason == "" {
+func (oc *OpenClawClient) newSDKStreamTurn(ctx context.Context, portal *bridgev2.Portal, state *openClawStreamState) *bridgesdk.Turn {
+	if oc == nil || portal == nil || state == nil || oc.connector == nil || oc.connector.sdkConfig == nil {
+		return nil
+	}
+	profile := oc.resolveAgentProfile(ctx, state.agentID, state.sessionKey, nil, nil)
+	state.agentID = stringutil.TrimDefault(profile.AgentID, state.agentID)
+	state.agentID = stringutil.TrimDefault(state.agentID, "gateway")
+	agent := oc.sdkAgentForProfile(profile)
+	sender := oc.senderForAgent(state.agentID, false)
+	conv := bridgesdk.NewConversation(ctx, oc.UserLogin, portal, sender, oc.connector.sdkConfig, oc)
+	_ = conv.EnsureRoomAgent(ctx, agent)
+	turn := conv.StartTurn(ctx, agent, nil)
+	turn.SetID(state.turnID)
+	turn.SetSender(sender)
+	turn.SetFinalMetadataProvider(bridgesdk.FinalMetadataProviderFunc(func(_ *bridgesdk.Turn, finishReason string) any {
+		if strings.TrimSpace(finishReason) != "" {
 			state.finishReason = strings.TrimSpace(finishReason)
 		}
 		if state.completedAtMs == 0 {
-			state.completedAtMs = openClawStreamMessageTimestamp(state).UnixMilli()
+			state.completedAtMs = time.Now().UnixMilli()
 		}
-	}
-	oc.StreamMu.Unlock()
-
-	if state != nil && state.portal != nil {
-		ctx := oc.BackgroundContext(context.Background())
-		oc.queueFinalStreamEdit(ctx, state.portal, state)
-		oc.persistStreamDBMetadata(ctx, state.portal, state, oc.buildStreamDBMetadata(state))
-	}
-
-	oc.StreamMu.Lock()
-	delete(oc.streamStates, turnID)
-	oc.StreamMu.Unlock()
-
-	if session != nil {
-		session.End(oc.BackgroundContext(context.Background()), streamtransport.EndReasonFinish)
-	}
+		return oc.buildStreamDBMetadata(state)
+	}))
+	return turn
 }
 
 func (oc *OpenClawClient) computeVisibleDelta(turnID, text string) string {
@@ -299,80 +211,79 @@ func (oc *OpenClawClient) ensureStreamStateLocked(portal *bridgev2.Portal, turnI
 	return state
 }
 
-func (oc *OpenClawClient) ensureStreamPlaceholder(portal *bridgev2.Portal, turnID, agentID string) {
-	oc.StreamMu.Lock()
-	state := oc.streamStates[turnID]
-	if state == nil || state.initialEventID != "" {
-		oc.StreamMu.Unlock()
+func (oc *OpenClawClient) applyStreamPartStateLocked(state *openClawStreamState, part map[string]any) {
+	if state == nil || len(part) == 0 {
 		return
 	}
-	uiMessage := oc.currentCanonicalUIMessage(state)
-	startedAtMs := state.startedAtMs
-	runID := state.runID
-	sessionID := state.sessionID
-	sessionKey := state.sessionKey
-	messageTS := openClawStreamMessageTimestamp(state)
-	oc.StreamMu.Unlock()
-
-	msgID := newOpenClawMessageID()
-	converted := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:      networkid.PartID("0"),
-			Type:    event.EventMessage,
-			Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "..."},
-			Extra: map[string]any{
-				"msgtype":                event.MsgText,
-				"body":                   "...",
-				"m.mentions":             map[string]any{},
-				matrixevents.BeeperAIKey: uiMessage,
-			},
-			DBMetadata: &MessageMetadata{
-				Role:               "assistant",
-				Body:               "...",
-				RunID:              runID,
-				TurnID:             turnID,
-				AgentID:            agentID,
-				SessionID:          sessionID,
-				SessionKey:         sessionKey,
-				CanonicalSchema:    "ai-sdk-ui-message-v1",
-				CanonicalUIMessage: uiMessage,
-				StartedAtMs:        startedAtMs,
-			},
-		}},
+	if metadata, _ := part["messageMetadata"].(map[string]any); len(metadata) > 0 {
+		oc.applyStreamMessageMetadata(state, metadata)
 	}
-	result := oc.UserLogin.QueueRemoteEvent(&OpenClawRemoteMessage{
-		portal:    portal.PortalKey,
-		id:        msgID,
-		sender:    oc.senderForAgent(agentID, false),
-		timestamp: messageTS,
-		preBuilt:  converted,
-	})
-	oc.applyStreamPlaceholderResult(turnID, msgID, result)
+	partType := strings.TrimSpace(stringValue(part["type"]))
+	partTS := openClawStreamPartTimestamp(part)
+	applyOpenClawStreamPartTimestamp(state, partType, partTS)
+	if state.startedAtMs == 0 && partType == "start" {
+		state.startedAtMs = time.Now().UnixMilli()
+	}
+	switch partType {
+	case "text-delta":
+		if delta := stringValue(part["delta"]); delta != "" {
+			state.visible.WriteString(delta)
+			state.accumulated.WriteString(delta)
+			if state.firstTokenAtMs == 0 {
+				state.firstTokenAtMs = time.Now().UnixMilli()
+			}
+		}
+	case "reasoning-delta":
+		if delta := stringValue(part["delta"]); delta != "" {
+			state.accumulated.WriteString(delta)
+			if state.firstTokenAtMs == 0 {
+				state.firstTokenAtMs = time.Now().UnixMilli()
+			}
+		}
+	case "error":
+		if errText := strings.TrimSpace(stringValue(part["errorText"])); errText != "" {
+			state.errorText = errText
+		}
+	case "abort":
+		state.finishReason = stringutil.TrimDefault(stringValue(part["reason"]), "aborted")
+	case "finish":
+		if state.completedAtMs == 0 {
+			state.completedAtMs = time.Now().UnixMilli()
+		}
+	}
+	streamui.ApplyChunk(&state.ui, part)
 }
 
-func (oc *OpenClawClient) applyStreamPlaceholderResult(turnID string, msgID networkid.MessageID, result bridgev2.EventHandlingResult) {
+func (oc *OpenClawClient) popStreamTurn(turnID, finishReason string) (*openClawStreamState, *bridgesdk.Turn) {
 	oc.StreamMu.Lock()
 	defer oc.StreamMu.Unlock()
-
 	state := oc.streamStates[turnID]
+	delete(oc.streamStates, turnID)
 	if state == nil {
-		return
+		return nil, nil
 	}
-	state.placeholderPending = false
-	if !result.Success {
-		return
+	if state.finishReason == "" {
+		state.finishReason = strings.TrimSpace(finishReason)
 	}
+	if state.completedAtMs == 0 {
+		state.completedAtMs = openClawStreamMessageTimestamp(state).UnixMilli()
+	}
+	return state, state.turn
+}
 
-	state.networkMessageID = msgID
-	if result.EventID != "" {
-		state.initialEventID = result.EventID
-		state.targetEventID = result.EventID.String()
+func finishOpenClawTurnFromState(state *openClawStreamState, turn *bridgesdk.Turn, fallbackReason string) {
+	if state == nil || turn == nil {
 		return
 	}
-
-	// Without a concrete target event ID, ephemeral stream events cannot be
-	// correlated to the placeholder message, so stay on edit-based streaming.
-	state.streamFallbackToDebounced.Store(true)
+	switch strings.TrimSpace(state.finishReason) {
+	case "abort", "aborted":
+		turn.Abort(stringutil.TrimDefault(state.finishReason, "aborted"))
+	case "error":
+		turn.EndWithError(stringutil.TrimDefault(state.errorText, "OpenClaw stream failed"))
+	default:
+		reason := stringutil.TrimDefault(state.finishReason, strings.TrimSpace(fallbackReason))
+		turn.End(stringutil.TrimDefault(reason, "stop"))
+	}
 }
 
 func (oc *OpenClawClient) applyStreamMessageMetadata(state *openClawStreamState, metadata map[string]any) {
@@ -428,11 +339,15 @@ func (oc *OpenClawClient) applyStreamMessageMetadata(state *openClawStreamState,
 	}
 }
 
-func (oc *OpenClawClient) currentCanonicalUIMessage(state *openClawStreamState) map[string]any {
+func (oc *OpenClawClient) currentUIMessage(state *openClawStreamState) map[string]any {
 	if state == nil {
 		return nil
 	}
-	uiMessage := streamui.SnapshotCanonicalUIMessage(&state.ui)
+	uiState := &state.ui
+	if state.turn != nil && state.turn.UIState() != nil {
+		uiState = state.turn.UIState()
+	}
+	uiMessage := streamui.SnapshotUIMessage(uiState)
 	update := msgconv.BuildUIMessageMetadata(msgconv.UIMessageMetadataParams{
 		TurnID:           state.turnID,
 		AgentID:          state.agentID,
@@ -450,7 +365,7 @@ func (oc *OpenClawClient) currentCanonicalUIMessage(state *openClawStreamState) 
 	if len(uiMessage) == 0 {
 		return msgconv.BuildUIMessage(msgconv.UIMessageParams{
 			TurnID:   state.turnID,
-			Role:     stringsTrimDefault(state.role, "assistant"),
+			Role:     stringutil.TrimDefault(state.role, "assistant"),
 			Metadata: update,
 		})
 	}
@@ -470,158 +385,44 @@ func (oc *OpenClawClient) buildStreamDBMetadata(state *openClawStreamState) *Mes
 	if body == "" {
 		body = strings.TrimSpace(state.accumulated.String())
 	}
-	uiMessage := oc.currentCanonicalUIMessage(state)
+	uiMessage := oc.currentUIMessage(state)
+	snapshot := bridgesdk.BuildTurnSnapshot(uiMessage, bridgesdk.TurnDataBuildOptions{
+		ID:   state.turnID,
+		Role: stringutil.TrimDefault(state.role, "assistant"),
+		Text: body,
+		Metadata: map[string]any{
+			"turn_id":           state.turnID,
+			"agent_id":          state.agentID,
+			"finish_reason":     state.finishReason,
+			"prompt_tokens":     state.promptTokens,
+			"completion_tokens": state.completionTokens,
+			"reasoning_tokens":  state.reasoningTokens,
+			"started_at_ms":     state.startedAtMs,
+			"completed_at_ms":   state.completedAtMs,
+		},
+	}, "openclaw")
 	return &MessageMetadata{
-		Role:               stringsTrimDefault(state.role, "assistant"),
-		Body:               body,
-		SessionID:          state.sessionID,
-		SessionKey:         state.sessionKey,
-		RunID:              state.runID,
-		TurnID:             state.turnID,
-		AgentID:            state.agentID,
-		FinishReason:       state.finishReason,
-		ErrorText:          state.errorText,
-		PromptTokens:       state.promptTokens,
-		CompletionTokens:   state.completionTokens,
-		ReasoningTokens:    state.reasoningTokens,
-		TotalTokens:        state.totalTokens,
-		CanonicalSchema:    "ai-sdk-ui-message-v1",
-		CanonicalUIMessage: uiMessage,
-		ThinkingContent:    openClawCanonicalReasoningText(uiMessage),
-		ToolCalls:          openClawCanonicalToolCalls(uiMessage),
-		GeneratedFiles:     openClawCanonicalGeneratedFiles(uiMessage),
-		StartedAtMs:        state.startedAtMs,
-		FirstTokenAtMs:     state.firstTokenAtMs,
-		CompletedAtMs:      state.completedAtMs,
-	}
-}
-
-func (oc *OpenClawClient) persistStreamDBMetadata(ctx context.Context, portal *bridgev2.Portal, state *openClawStreamState, meta *MessageMetadata) {
-	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || portal == nil || state == nil || meta == nil {
-		return
-	}
-	receiver := portal.Receiver
-	if receiver == "" {
-		receiver = oc.UserLogin.ID
-	}
-	var existing *database.Message
-	var err error
-	if state.networkMessageID != "" {
-		existing, err = oc.UserLogin.Bridge.DB.Message.GetPartByID(ctx, receiver, state.networkMessageID, networkid.PartID("0"))
-	}
-	if existing == nil && state.initialEventID != "" {
-		existing, err = oc.UserLogin.Bridge.DB.Message.GetPartByMXID(ctx, state.initialEventID)
-	}
-	if err != nil {
-		oc.Log().Warn().
-			Err(err).
-			Str("receiver", string(receiver)).
-			Str("network_message_id", string(state.networkMessageID)).
-			Stringer("initial_event_id", state.initialEventID).
-			Msg("Failed to load OpenClaw stream message for metadata update")
-		return
-	}
-	if existing == nil {
-		return
-	}
-	existing.Metadata = meta
-	if err := oc.UserLogin.Bridge.DB.Message.Update(ctx, existing); err != nil {
-		oc.Log().Warn().
-			Err(err).
-			Str("receiver", string(receiver)).
-			Str("network_message_id", string(state.networkMessageID)).
-			Stringer("initial_event_id", state.initialEventID).
-			Msg("Failed to persist OpenClaw stream metadata")
-	}
-}
-
-func (oc *OpenClawClient) queueDebouncedStreamEdit(ctx context.Context, portal *bridgev2.Portal, state *openClawStreamState, force bool) error {
-	if oc == nil || portal == nil || portal.MXID == "" || state == nil || state.networkMessageID == "" {
-		return nil
-	}
-	visibleBody := strings.TrimSpace(state.lastVisibleText)
-	if visibleBody == "" {
-		visibleBody = strings.TrimSpace(state.visible.String())
-	}
-	fallbackBody := strings.TrimSpace(state.accumulated.String())
-	content := streamtransport.BuildDebouncedEditContent(streamtransport.DebouncedEditParams{
-		PortalMXID:   portal.MXID.String(),
-		Force:        force,
-		SuppressSend: false,
-		VisibleBody:  visibleBody,
-		FallbackBody: fallbackBody,
-	})
-	if content == nil {
-		return nil
-	}
-	oc.UserLogin.QueueRemoteEvent(&OpenClawRemoteEdit{
-		portal:        portal.PortalKey,
-		sender:        oc.senderForAgent(state.agentID, false),
-		targetMessage: state.networkMessageID,
-		timestamp:     openClawStreamMessageTimestamp(state),
-		preBuilt: &bridgev2.ConvertedEdit{
-			ModifiedParts: []*bridgev2.ConvertedEditPart{{
-				Type: event.EventMessage,
-				Content: &event.MessageEventContent{
-					MsgType:       event.MsgText,
-					Body:          content.Body,
-					Format:        content.Format,
-					FormattedBody: content.FormattedBody,
-				},
-				Extra: map[string]any{"m.mentions": map[string]any{}},
-				TopLevelExtra: map[string]any{
-					"body":                          content.Body,
-					matrixevents.BeeperAIKey:        oc.currentCanonicalUIMessage(state),
-					"com.beeper.dont_render_edited": true,
-					"format":                        content.Format,
-					"formatted_body":                content.FormattedBody,
-					"m.mentions":                    map[string]any{},
-				},
-			}},
+		BaseMessageMetadata: agentremote.BaseMessageMetadata{
+			Role:              stringutil.TrimDefault(state.role, "assistant"),
+			Body:              snapshot.Body,
+			TurnID:            state.turnID,
+			AgentID:           state.agentID,
+			FinishReason:      state.finishReason,
+			PromptTokens:      state.promptTokens,
+			CompletionTokens:  state.completionTokens,
+			ReasoningTokens:   state.reasoningTokens,
+			CanonicalTurnData: snapshot.TurnData.ToMap(),
+			ThinkingContent:   snapshot.ThinkingContent,
+			ToolCalls:         snapshot.ToolCalls,
+			GeneratedFiles:    snapshot.GeneratedFiles,
+			StartedAtMs:       state.startedAtMs,
+			CompletedAtMs:     state.completedAtMs,
 		},
-	})
-	return nil
-}
-
-func (oc *OpenClawClient) queueFinalStreamEdit(ctx context.Context, portal *bridgev2.Portal, state *openClawStreamState) {
-	if oc == nil || portal == nil || portal.MXID == "" || state == nil || state.networkMessageID == "" {
-		return
+		SessionID:      state.sessionID,
+		SessionKey:     state.sessionKey,
+		RunID:          state.runID,
+		ErrorText:      state.errorText,
+		TotalTokens:    state.totalTokens,
+		FirstTokenAtMs: state.firstTokenAtMs,
 	}
-	body := strings.TrimSpace(state.lastVisibleText)
-	if body == "" {
-		body = strings.TrimSpace(state.visible.String())
-	}
-	if body == "" {
-		body = strings.TrimSpace(state.accumulated.String())
-	}
-	if body == "" {
-		body = "..."
-	}
-	rendered := format.RenderMarkdown(body, true, true)
-	oc.UserLogin.QueueRemoteEvent(&OpenClawRemoteEdit{
-		portal:        portal.PortalKey,
-		sender:        oc.senderForAgent(state.agentID, false),
-		targetMessage: state.networkMessageID,
-		timestamp:     openClawStreamMessageTimestamp(state),
-		preBuilt: &bridgev2.ConvertedEdit{
-			ModifiedParts: []*bridgev2.ConvertedEditPart{{
-				Type: event.EventMessage,
-				Content: &event.MessageEventContent{
-					MsgType:       event.MsgText,
-					Body:          body,
-					Format:        rendered.Format,
-					FormattedBody: rendered.FormattedBody,
-				},
-				Extra: map[string]any{"m.mentions": map[string]any{}},
-				TopLevelExtra: map[string]any{
-					"body":                          body,
-					matrixevents.BeeperAIKey:        oc.currentCanonicalUIMessage(state),
-					"com.beeper.dont_render_edited": true,
-					"format":                        rendered.Format,
-					"formatted_body":                rendered.FormattedBody,
-					"m.mentions":                    map[string]any{},
-				},
-			}},
-		},
-	})
 }

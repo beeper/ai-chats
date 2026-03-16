@@ -1,4 +1,4 @@
-# Example configuration for the ai-bridge OpenAI Matrix bridge.
+# Example configuration for the AI Chats bridge.
 
 homeserver:
   address: https://matrix-client.example.com
@@ -10,7 +10,7 @@ appservice:
   address: http://localhost:29345
   hostname: 0.0.0.0
   port: 29345
-  database: openai-bridge.db
+  database: aichats.db
   id: openai-gpt
   bot:
     username: gptbridge
@@ -25,7 +25,7 @@ logging:
 
 database:
   type: sqlite3-fk-wal
-  uri: file:openai-bridge.db?_txlock=immediate
+  uri: file:aichats.db?_txlock=immediate
   max_open_conns: 1
   max_idle_conns: 1
 
@@ -39,7 +39,7 @@ encryption:
   delete_keys:
     ratchet_on_decrypt: false
 
-# Connector-specific options (identical to pkg/connector/example-config.yaml)
+# AI Chats-specific options (shared with the embedded example in bridges/ai/integrations_config.go)
 network:
   # Beeper Cloud credentials for automatic login (optional)
   beeper:
@@ -122,9 +122,9 @@ default_system_prompt: |
       image:
         enabled: true
         prompt: "Describe the image."
-        maxBytes: 10485760
-        maxChars: 500
-        timeoutSeconds: 60
+        max_bytes: 10485760
+        max_chars: 500
+        timeout_seconds: 60
         models:
           - provider: "openrouter"
             model: "google/gemini-3-flash-preview"
@@ -133,16 +133,16 @@ default_system_prompt: |
         prompt: "Transcribe the audio."
         language: ""
         # CLI transcription auto-detection (whisper/whisper.cpp) is not implemented yet.
-        maxBytes: 20971520
-        timeoutSeconds: 60
+        max_bytes: 20971520
+        timeout_seconds: 60
         models:
           - provider: "openai"
             model: "gpt-4o-mini-transcribe"
       video:
         enabled: true
         prompt: "Describe the video."
-        maxBytes: 52428800
-        timeoutSeconds: 120
+        max_bytes: 52428800
+        timeout_seconds: 120
         models:
           - provider: "openrouter"
             model: "google/gemini-3-flash-preview"
@@ -150,25 +150,11 @@ default_system_prompt: |
   # Memory search configuration (OpenClaw-style).
   # Indexes MEMORY.md + memory/*.md stored in the bridge DB.
   # Per-agent overrides can be set via agent definitions.
-  # Current runtime behavior is lexical-only; provider/model/remote/vector
-  # settings are retained for compatibility with existing configs.
+  # Current runtime behavior is lexical-only.
   memory_search:
     enabled: true
     sources: ["memory"]
     extra_paths: []
-    provider: "auto" # retained for compatibility; runtime currently uses builtin lexical search
-    model: ""        # retained for compatibility; not used by lexical runtime
-    fallback: "none"
-    remote:
-      base_url: ""   # retained for compatibility; not used by lexical runtime
-      api_key: ""    # retained for compatibility; not used by lexical runtime
-      headers: {}
-      batch:
-        enabled: true
-        wait: true
-        concurrency: 2
-        poll_interval_ms: 2000
-        timeout_minutes: 60
     local:
       model_path: ""
       model_cache_dir: ""
@@ -177,9 +163,6 @@ default_system_prompt: |
     store:
       driver: "sqlite"
       path: ""
-      vector:
-        enabled: true       # retained for compatibility; runtime currently does not use vector search
-        extension_path: ""
     chunking:
       tokens: 400
       overlap: 80
@@ -196,13 +179,10 @@ default_system_prompt: |
       max_results: 6
       min_score: 0.35
       hybrid:
-        enabled: true
-        vector_weight: 0.7
-        text_weight: 0.3
         candidate_multiplier: 4
     cache:
       enabled: true
-      max_entries: 0
+      max_entries: -1 # Unlimited when cache.enabled is true; experimental.session_memory does not change cache size semantics.
     experimental:
       session_memory: false
 
@@ -222,9 +202,9 @@ default_system_prompt: |
   #   defaults:
   #     subagents:
   #       model: "anthropic/claude-sonnet-4.5"
-  #       allowAgents: ["*"]
-  #     typingMode: "instant" # never|instant|thinking|message (message ignores NO_REPLY)
-  #     typingIntervalSeconds: 6 # refresh cadence, not start time (heartbeats never show typing)
+  #       allow_agents: ["*"]
+  #     typing_mode: "instant" # never|instant|thinking|message (message ignores NO_REPLY)
+  #     typing_interval_seconds: 6 # refresh cadence, not start time (heartbeats never show typing)
 
   # Context pruning configuration (OpenClaw-style).
   # Reduces token usage by intelligently truncating old tool results.

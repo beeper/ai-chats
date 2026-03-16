@@ -42,7 +42,7 @@ func (s *Store) Read(ctx context.Context, relPath string) (*FileEntry, bool, err
 	var entry FileEntry
 	row := s.db.QueryRow(ctx,
 		`SELECT path, content, hash, source, updated_at
-         FROM ai_memory_files
+         FROM aichats_memory_files
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND path=$4`,
 		s.bridgeID, s.loginID, s.agentID, path,
 	)
@@ -64,7 +64,7 @@ func (s *Store) Write(ctx context.Context, relPath, content string) (*FileEntry,
 	updatedAt := time.Now().UnixMilli()
 	source := ClassifySource(path)
 	_, err = s.db.Exec(ctx,
-		`INSERT INTO ai_memory_files
+		`INSERT INTO aichats_memory_files
            (bridge_id, login_id, agent_id, path, source, content, hash, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT (bridge_id, login_id, agent_id, path)
@@ -94,7 +94,7 @@ func (s *Store) WriteIfMissing(ctx context.Context, relPath, content string) (bo
 	updatedAt := time.Now().UnixMilli()
 	source := ClassifySource(path)
 	result, err := s.db.Exec(ctx,
-		`INSERT INTO ai_memory_files
+		`INSERT INTO aichats_memory_files
            (bridge_id, login_id, agent_id, path, source, content, hash, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT (bridge_id, login_id, agent_id, path)
@@ -109,7 +109,7 @@ func (s *Store) WriteIfMissing(ctx context.Context, relPath, content string) (bo
 	}
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return false, nil
+		return false, err
 	}
 	return rows > 0, nil
 }
@@ -120,7 +120,7 @@ func (s *Store) Delete(ctx context.Context, relPath string) error {
 		return err
 	}
 	_, err = s.db.Exec(ctx,
-		`DELETE FROM ai_memory_files WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND path=$4`,
+		`DELETE FROM aichats_memory_files WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND path=$4`,
 		s.bridgeID, s.loginID, s.agentID, path,
 	)
 	return err
@@ -129,7 +129,7 @@ func (s *Store) Delete(ctx context.Context, relPath string) error {
 func (s *Store) List(ctx context.Context) ([]FileEntry, error) {
 	rows, err := s.db.Query(ctx,
 		`SELECT path, content, hash, source, updated_at
-         FROM ai_memory_files
+         FROM aichats_memory_files
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`,
 		s.bridgeID, s.loginID, s.agentID,
 	)

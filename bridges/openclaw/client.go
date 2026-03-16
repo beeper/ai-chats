@@ -8,10 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -21,31 +19,26 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/pkg/bridgeadapter"
+	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/cachedvalue"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
-var _ bridgev2.NetworkAPI = (*OpenClawClient)(nil)
-var _ bridgev2.BackfillingNetworkAPI = (*OpenClawClient)(nil)
-var _ bridgev2.DeleteChatHandlingNetworkAPI = (*OpenClawClient)(nil)
-var _ bridgev2.ReactionHandlingNetworkAPI = (*OpenClawClient)(nil)
+var (
+	_ bridgev2.NetworkAPI                   = (*OpenClawClient)(nil)
+	_ bridgev2.BackfillingNetworkAPI        = (*OpenClawClient)(nil)
+	_ bridgev2.DeleteChatHandlingNetworkAPI = (*OpenClawClient)(nil)
+	_ bridgev2.ReactionHandlingNetworkAPI   = (*OpenClawClient)(nil)
+)
 
 const openClawCapabilityBaseID = "com.beeper.ai.capabilities.2026_03_09+openclaw"
 
-var openClawBaseCaps = &event.RoomFeatures{
-	ID: openClawCapabilityBaseID,
-	File: event.FileFeatureMap{
-		event.MsgImage:      openClawRejectedFileFeatures(),
-		event.MsgVideo:      openClawRejectedFileFeatures(),
-		event.MsgAudio:      openClawRejectedFileFeatures(),
-		event.MsgFile:       openClawRejectedFileFeatures(),
-		event.CapMsgVoice:   openClawRejectedFileFeatures(),
-		event.CapMsgGIF:     openClawRejectedFileFeatures(),
-		event.CapMsgSticker: openClawRejectedFileFeatures(),
-	},
+var openClawBaseCaps = agentremote.BuildRoomFeatures(agentremote.RoomFeaturesParams{
+	ID:                  openClawCapabilityBaseID,
+	File:                agentremote.BuildMediaFileFeatureMap(openClawRejectedFileFeatures),
 	MaxTextLength:       100000,
 	Reply:               event.CapLevelFullySupported,
 	Thread:              event.CapLevelRejected,
@@ -55,7 +48,7 @@ var openClawBaseCaps = &event.RoomFeatures{
 	ReadReceipts:        true,
 	TypingNotifications: true,
 	DeleteChat:          true,
-}
+})
 
 type openClawCapabilityProfile struct {
 	SupportsVision    bool
@@ -66,7 +59,7 @@ type openClawCapabilityProfile struct {
 }
 
 type OpenClawClient struct {
-	bridgeadapter.BaseReactionHandler
+	agentremote.ClientBase
 	UserLogin *bridgev2.UserLogin
 	connector *OpenClawConnector
 
@@ -76,46 +69,38 @@ type OpenClawClient struct {
 	connectCancel context.CancelFunc
 	connectSeq    uint64
 
-	loggedIn atomic.Bool
-
 	agentCache *cachedvalue.CachedValue[agentCatalogEntry]
 	modelCache *cachedvalue.CachedValue[[]gatewayModelChoice]
 
 	toolCacheMu sync.Mutex
 	toolCaches  map[string]*cachedvalue.CachedValue[gatewayToolsCatalogResponse]
 
-	bridgeadapter.BaseStreamState
 	streamStates map[string]*openClawStreamState
 }
 
 type openClawStreamState struct {
-	portal                    *bridgev2.Portal
-	turnID                    string
-	agentID                   string
-	sessionKey                string
-	messageTS                 time.Time
-	placeholderPending        bool
-	targetEventID             string
-	initialEventID            id.EventID
-	networkMessageID          networkid.MessageID
-	sequenceNum               int
-	accumulated               strings.Builder
-	visible                   strings.Builder
-	ui                        streamui.UIState
-	lastVisibleText           string
-	role                      string
-	runID                     string
-	sessionID                 string
-	finishReason              string
-	errorText                 string
-	promptTokens              int64
-	completionTokens          int64
-	reasoningTokens           int64
-	totalTokens               int64
-	startedAtMs               int64
-	firstTokenAtMs            int64
-	completedAtMs             int64
-	streamFallbackToDebounced atomic.Bool
+	portal           *bridgev2.Portal
+	turnID           string
+	agentID          string
+	turn             *bridgesdk.Turn
+	sessionKey       string
+	messageTS        time.Time
+	accumulated      strings.Builder
+	visible          strings.Builder
+	ui               streamui.UIState
+	lastVisibleText  string
+	role             string
+	runID            string
+	sessionID        string
+	finishReason     string
+	errorText        string
+	promptTokens     int64
+	completionTokens int64
+	reasoningTokens  int64
+	totalTokens      int64
+	startedAtMs      int64
+	firstTokenAtMs   int64
+	completedAtMs    int64
 }
 
 func newOpenClawClient(login *bridgev2.UserLogin, connector *OpenClawConnector) (*OpenClawClient, error) {
@@ -130,10 +115,17 @@ func newOpenClawClient(login *bridgev2.UserLogin, connector *OpenClawConnector) 
 		modelCache:   cachedvalue.New[[]gatewayModelChoice](openClawMetadataCatalogTTL),
 		toolCaches:   make(map[string]*cachedvalue.CachedValue[gatewayToolsCatalogResponse]),
 	}
-	client.InitStreamState()
-	client.BaseReactionHandler.Target = client
+	client.InitClientBase(login, client)
+	client.HumanUserIDPrefix = "openclaw-user"
+	client.MessageIDPrefix = "openclaw"
+	client.MessageLogKey = "openclaw_msg_id"
 	client.manager = newOpenClawManager(client)
 	return client, nil
+}
+
+func (oc *OpenClawClient) SetUserLogin(login *bridgev2.UserLogin) {
+	oc.UserLogin = login
+	oc.ClientBase.SetUserLogin(login)
 }
 
 func (oc *OpenClawClient) Connect(ctx context.Context) {
@@ -164,24 +156,51 @@ func (oc *OpenClawClient) Connect(ctx context.Context) {
 
 func (oc *OpenClawClient) Disconnect() {
 	oc.BeginStreamShutdown()
-	oc.connectMu.Lock()
-	cancel := oc.connectCancel
-	oc.connectCancel = nil
-	oc.connectSeq++
-	oc.connectMu.Unlock()
+	cancel := oc.detachConnectCancel()
 	if cancel != nil {
 		cancel()
 	}
 	if oc.manager != nil {
 		oc.manager.Stop()
+		if oc.manager.approvalFlow != nil {
+			oc.manager.approvalFlow.Close()
+		}
 	}
-	oc.loggedIn.Store(false)
+	oc.SetLoggedIn(false)
+	abortTurns(oc.drainStreamTurns(), "disconnect")
 	oc.CloseAllSessions()
-	oc.StreamMu.Lock()
-	oc.streamStates = make(map[string]*openClawStreamState)
-	oc.StreamMu.Unlock()
 	if oc.UserLogin != nil {
 		oc.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Message: "Disconnected"})
+	}
+}
+
+func (oc *OpenClawClient) detachConnectCancel() context.CancelFunc {
+	oc.connectMu.Lock()
+	defer oc.connectMu.Unlock()
+	cancel := oc.connectCancel
+	oc.connectCancel = nil
+	oc.connectSeq++
+	return cancel
+}
+
+func (oc *OpenClawClient) drainStreamTurns() []*bridgesdk.Turn {
+	oc.StreamMu.Lock()
+	defer oc.StreamMu.Unlock()
+	activeTurns := make([]*bridgesdk.Turn, 0, len(oc.streamStates))
+	for _, state := range oc.streamStates {
+		if state != nil && state.turn != nil {
+			activeTurns = append(activeTurns, state.turn)
+		}
+	}
+	oc.streamStates = make(map[string]*openClawStreamState)
+	return activeTurns
+}
+
+func abortTurns(turns []*bridgesdk.Turn, reason string) {
+	for _, turn := range turns {
+		if turn != nil {
+			turn.Abort(reason)
+		}
 	}
 }
 
@@ -197,7 +216,7 @@ func (oc *OpenClawClient) connectLoop(ctx context.Context) {
 		}
 		if err == nil {
 			if connected {
-				oc.loggedIn.Store(false)
+				oc.SetLoggedIn(false)
 			}
 			return
 		}
@@ -207,7 +226,7 @@ func (oc *OpenClawClient) connectLoop(ctx context.Context) {
 		retryDelay := openClawReconnectDelay(attempt)
 		attempt++
 		state, retry := classifyOpenClawConnectionError(err, retryDelay)
-		oc.loggedIn.Store(false)
+		oc.SetLoggedIn(false)
 		if oc.UserLogin != nil {
 			oc.UserLogin.BridgeState.Send(state)
 		}
@@ -224,11 +243,9 @@ func (oc *OpenClawClient) connectLoop(ctx context.Context) {
 	}
 }
 
-func (oc *OpenClawClient) IsLoggedIn() bool { return oc.loggedIn.Load() }
-
 func (oc *OpenClawClient) GetUserLogin() *bridgev2.UserLogin { return oc.UserLogin }
 
-func (oc *OpenClawClient) GetApprovalHandler() bridgeadapter.ApprovalReactionHandler {
+func (oc *OpenClawClient) GetApprovalHandler() agentremote.ApprovalReactionHandler {
 	if oc.manager == nil {
 		return nil
 	}
@@ -236,10 +253,6 @@ func (oc *OpenClawClient) GetApprovalHandler() bridgeadapter.ApprovalReactionHan
 }
 
 func (oc *OpenClawClient) LogoutRemote(_ context.Context) {}
-
-func (oc *OpenClawClient) IsThisUser(_ context.Context, userID networkid.UserID) bool {
-	return userID == humanUserID(oc.UserLogin.ID)
-}
 
 func (oc *OpenClawClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
 	if msg == nil || msg.Portal == nil {
@@ -298,15 +311,7 @@ func (oc *OpenClawClient) GetCapabilities(ctx context.Context, portal *bridgev2.
 	profile := oc.openClawCapabilityProfile(ctx, portalMeta(portal))
 	caps.ID = openClawCapabilityID(profile)
 	if !profile.MediaKnown {
-		for _, msgType := range []event.MessageType{
-			event.MsgImage,
-			event.MsgVideo,
-			event.MsgAudio,
-			event.MsgFile,
-			event.CapMsgVoice,
-			event.CapMsgGIF,
-			event.CapMsgSticker,
-		} {
+		for _, msgType := range agentremote.MediaMessageTypes {
 			caps.File[msgType] = openClawFileFeatures.Clone()
 		}
 		return caps
@@ -347,7 +352,7 @@ func (oc *OpenClawClient) GetChatInfo(ctx context.Context, portal *bridgev2.Port
 	oc.enrichPortalMetadata(ctx, meta)
 	title := oc.displayNameForPortal(meta)
 	roomType := openClawRoomType(meta)
-	agentID := stringsTrimDefault(meta.OpenClawDMTargetAgentID, meta.OpenClawAgentID)
+	agentID := stringutil.TrimDefault(meta.OpenClawDMTargetAgentID, meta.OpenClawAgentID)
 	if roomType == database.RoomTypeDM && agentID != "" {
 		info := oc.syntheticDMPortalInfo(agentID, title)
 		info.Topic = ptr.NonZero(oc.topicForPortal(meta))
@@ -395,6 +400,7 @@ func (oc *OpenClawClient) openClawCapabilityProfile(ctx context.Context, meta *P
 }
 
 func openClawCapabilityID(profile openClawCapabilityProfile) string {
+	// Suffixes are appended in alphabetical order so no sorting is needed.
 	var suffixes []string
 	if profile.SupportsAudio {
 		suffixes = append(suffixes, "audio")
@@ -414,17 +420,16 @@ func openClawCapabilityID(profile openClawCapabilityProfile) string {
 	if len(suffixes) == 0 {
 		return openClawCapabilityBaseID
 	}
-	sort.Strings(suffixes)
 	return openClawCapabilityBaseID + "+" + strings.Join(suffixes, "+")
 }
 
 func (oc *OpenClawClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
 	if ghost == nil {
-		return bridgeadapter.BuildBotUserInfo("OpenClaw"), nil
+		return agentremote.BuildBotUserInfo("OpenClaw"), nil
 	}
 	agentID, ok := parseOpenClawGhostID(string(ghost.ID))
 	if !ok {
-		return bridgeadapter.BuildBotUserInfo("OpenClaw"), nil
+		return agentremote.BuildBotUserInfo("OpenClaw"), nil
 	}
 	current := ghostMeta(ghost)
 	configured, err := oc.agentCatalogEntryByID(ctx, agentID)
@@ -448,8 +453,10 @@ func (oc *OpenClawClient) BackgroundContext(ctx context.Context) context.Context
 	if ctx != nil {
 		return ctx
 	}
-	if oc != nil && oc.UserLogin != nil && oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.BackgroundCtx != nil {
-		return oc.UserLogin.Bridge.BackgroundCtx
+	if oc != nil && oc.UserLogin != nil && oc.UserLogin.Bridge != nil {
+		if bgCtx := oc.UserLogin.Bridge.BackgroundCtx; bgCtx != nil {
+			return bgCtx
+		}
 	}
 	return context.Background()
 }
@@ -464,29 +471,20 @@ func (oc *OpenClawClient) portalKeyForSession(sessionKey string) networkid.Porta
 }
 
 func (oc *OpenClawClient) displayNameForSession(session gatewaySessionRow) string {
-	if strings.TrimSpace(session.DerivedTitle) != "" {
-		return strings.TrimSpace(session.DerivedTitle)
-	}
-	if strings.TrimSpace(session.DisplayName) != "" {
-		return strings.TrimSpace(session.DisplayName)
-	}
-	if strings.TrimSpace(session.Label) != "" {
-		return strings.TrimSpace(session.Label)
-	}
-	if sourceLabel := openClawSourceLabel(session.Space, session.GroupChannel, session.Subject); sourceLabel != "" {
-		return sourceLabel
-	}
-	if strings.TrimSpace(session.Subject) != "" {
-		return strings.TrimSpace(session.Subject)
-	}
-	if strings.TrimSpace(session.LastTo) != "" {
-		return strings.TrimSpace(session.LastTo)
-	}
-	if strings.TrimSpace(session.Channel) != "" {
-		return strings.TrimSpace(session.Channel)
-	}
-	if strings.TrimSpace(session.Key) != "" {
-		return strings.TrimSpace(session.Key)
+	sourceLabel := openClawSourceLabel(session.Space, session.GroupChannel, session.Subject)
+	for _, value := range []string{
+		session.DerivedTitle,
+		session.DisplayName,
+		session.Label,
+		sourceLabel,
+		session.Subject,
+		session.LastTo,
+		session.Channel,
+		session.Key,
+	} {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
 	}
 	return "OpenClaw"
 }
@@ -495,23 +493,39 @@ func (oc *OpenClawClient) displayNameForPortal(meta *PortalMetadata) string {
 	if meta == nil {
 		return "OpenClaw"
 	}
-	if strings.TrimSpace(meta.OpenClawDMTargetAgentName) != "" {
-		return strings.TrimSpace(meta.OpenClawDMTargetAgentName)
+	if trimmed := strings.TrimSpace(meta.OpenClawDMTargetAgentName); trimmed != "" {
+		return trimmed
 	}
-	if sourceLabel := openClawSourceLabel(meta.OpenClawSpace, meta.OpenClawGroupChannel, meta.OpenClawSubject); sourceLabel != "" {
-		for _, value := range []string{meta.OpenClawDerivedTitle, meta.OpenClawDisplayName, meta.OpenClawSessionLabel, sourceLabel, meta.OpenClawSubject, meta.LastTo, meta.OpenClawChannel, meta.OpenClawSessionKey} {
-			if strings.TrimSpace(value) != "" {
-				return strings.TrimSpace(value)
-			}
-		}
-		return "OpenClaw"
+	sourceLabel := openClawSourceLabel(meta.OpenClawSpace, meta.OpenClawGroupChannel, meta.OpenClawSubject)
+	candidates := []string{
+		meta.OpenClawDerivedTitle,
+		meta.OpenClawDisplayName,
+		meta.OpenClawSessionLabel,
+		sourceLabel,
+		meta.OpenClawSubject,
+		meta.LastTo,
+		meta.OpenClawChannel,
+		meta.OpenClawSessionKey,
 	}
-	for _, value := range []string{meta.OpenClawDerivedTitle, meta.OpenClawDisplayName, meta.OpenClawSessionLabel, meta.OpenClawSubject, meta.LastTo, meta.OpenClawChannel, meta.OpenClawSessionKey} {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
+	for _, value := range candidates {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
 		}
 	}
 	return "OpenClaw"
+}
+
+func appendDedupedPart(parts []string, value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return parts
+	}
+	for _, existing := range parts {
+		if strings.EqualFold(existing, value) {
+			return parts
+		}
+	}
+	return append(parts, value)
 }
 
 func (oc *OpenClawClient) topicForPortal(meta *PortalMetadata) string {
@@ -522,39 +536,27 @@ func (oc *OpenClawClient) topicForPortal(meta *PortalMetadata) string {
 		return "OpenClaw agent DM"
 	}
 	parts := make([]string, 0, 8)
-	appendPart := func(value string) {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			return
-		}
-		for _, existing := range parts {
-			if strings.EqualFold(existing, value) {
-				return
-			}
-		}
-		parts = append(parts, value)
-	}
-	appendPart(normalizeOpenClawChatType(meta.OpenClawChatType))
-	appendPart(meta.OpenClawChannel)
-	appendPart(openClawSourceLabel(meta.OpenClawSpace, meta.OpenClawGroupChannel, meta.OpenClawSubject))
-	appendPart(summarizeOpenClawOrigin(meta.OpenClawOrigin, meta.OpenClawChannel))
-	appendPart(meta.ModelProvider)
-	appendPart(meta.Model)
-	if preview := stringsTrimDefault(meta.OpenClawPreviewSnippet, meta.OpenClawLastMessagePreview); strings.TrimSpace(preview) != "" {
-		appendPart("Recent: " + strings.TrimSpace(preview))
+	parts = appendDedupedPart(parts, normalizeOpenClawChatType(meta.OpenClawChatType))
+	parts = appendDedupedPart(parts, meta.OpenClawChannel)
+	parts = appendDedupedPart(parts, openClawSourceLabel(meta.OpenClawSpace, meta.OpenClawGroupChannel, meta.OpenClawSubject))
+	parts = appendDedupedPart(parts, summarizeOpenClawOrigin(meta.OpenClawOrigin, meta.OpenClawChannel))
+	parts = appendDedupedPart(parts, meta.ModelProvider)
+	parts = appendDedupedPart(parts, meta.Model)
+	if preview := stringutil.TrimDefault(meta.OpenClawPreviewSnippet, meta.OpenClawLastMessagePreview); preview != "" {
+		parts = appendDedupedPart(parts, "Recent: "+preview)
 	}
 	if meta.HistoryMode != "" {
-		appendPart("History: " + meta.HistoryMode)
+		parts = appendDedupedPart(parts, "History: "+meta.HistoryMode)
 	}
 	if meta.OpenClawToolCount > 0 {
-		toolSummary := "Tools: " + fmt.Sprintf("%d", meta.OpenClawToolCount)
+		toolSummary := fmt.Sprintf("Tools: %d", meta.OpenClawToolCount)
 		if profile := strings.TrimSpace(meta.OpenClawToolProfile); profile != "" {
 			toolSummary += " (" + profile + ")"
 		}
-		appendPart(toolSummary)
+		parts = appendDedupedPart(parts, toolSummary)
 	}
 	if meta.OpenClawKnownModelCount > 0 {
-		appendPart(fmt.Sprintf("Models: %d", meta.OpenClawKnownModelCount))
+		parts = appendDedupedPart(parts, fmt.Sprintf("Models: %d", meta.OpenClawKnownModelCount))
 	}
 	return strings.Join(parts, " | ")
 }
@@ -577,16 +579,11 @@ func openClawRoomType(meta *PortalMetadata) database.RoomType {
 		return database.RoomTypeDM
 	}
 	switch normalizeOpenClawChatType(meta.OpenClawChatType) {
-	case "direct":
-		return database.RoomTypeDM
 	case "group", "channel":
 		return database.RoomTypeDefault
 	}
 	if strings.TrimSpace(meta.OpenClawSpace) != "" || strings.TrimSpace(meta.OpenClawGroupChannel) != "" {
 		return database.RoomTypeDefault
-	}
-	if strings.TrimSpace(meta.OpenClawDMTargetAgentID) != "" || isOpenClawSyntheticDMSessionKey(meta.OpenClawSessionKey) {
-		return database.RoomTypeDM
 	}
 	return database.RoomTypeDM
 }
@@ -607,10 +604,7 @@ func openClawSourceLabel(space, groupChannel, subject string) string {
 	if space != "" {
 		return space
 	}
-	if subject != "" {
-		return subject
-	}
-	return ""
+	return subject
 }
 
 func compactOpenClawOrigin(origin string) string {
@@ -630,51 +624,31 @@ func summarizeOpenClawOrigin(origin, channel string) string {
 	if origin == "" {
 		return ""
 	}
-	var legacy string
-	if err := json.Unmarshal([]byte(origin), &legacy); err == nil {
-		legacy = strings.TrimSpace(legacy)
-		if legacy == "" || strings.EqualFold(legacy, strings.TrimSpace(channel)) {
-			return ""
-		}
-		return compactOpenClawOrigin(legacy)
-	}
 	var structured map[string]any
 	if err := json.Unmarshal([]byte(origin), &structured); err != nil || len(structured) == 0 {
 		return compactOpenClawOrigin(origin)
 	}
 	parts := make([]string, 0, 5)
-	appendPart := func(value string) {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			return
-		}
-		for _, existing := range parts {
-			if strings.EqualFold(existing, value) {
-				return
-			}
-		}
-		parts = append(parts, value)
-	}
-	provider := strings.TrimSpace(stringsTrimDefault(stringValue(structured["provider"]), stringValue(structured["source"])))
+	provider := stringutil.TrimDefault(stringValue(structured["provider"]), stringValue(structured["source"]))
 	if provider != "" && !strings.EqualFold(provider, strings.TrimSpace(channel)) {
-		appendPart(provider)
+		parts = appendDedupedPart(parts, provider)
 	}
-	appendPart(stringsTrimDefault(stringValue(structured["label"]), stringValue(structured["name"])))
-	appendPart(stringsTrimDefault(
-		stringsTrimDefault(stringValue(structured["workspace"]), stringValue(structured["space"])),
+	parts = appendDedupedPart(parts, stringutil.TrimDefault(stringValue(structured["label"]), stringValue(structured["name"])))
+	parts = appendDedupedPart(parts, stringutil.TrimDefault(
+		stringutil.TrimDefault(stringValue(structured["workspace"]), stringValue(structured["space"])),
 		stringValue(structured["team"]),
 	))
-	if value := stringsTrimDefault(
-		stringsTrimDefault(stringValue(structured["channel"]), stringValue(structured["channelId"])),
+	if value := stringutil.TrimDefault(
+		stringutil.TrimDefault(stringValue(structured["channel"]), stringValue(structured["channelId"])),
 		stringValue(structured["groupChannel"]),
 	); value != "" {
-		appendPart("Channel " + value)
+		parts = appendDedupedPart(parts, "Channel "+value)
 	}
-	if value := stringsTrimDefault(stringValue(structured["threadId"]), stringValue(structured["threadID"])); value != "" {
-		appendPart("Thread " + value)
+	if value := stringutil.TrimDefault(stringValue(structured["threadId"]), stringValue(structured["threadID"])); value != "" {
+		parts = appendDedupedPart(parts, "Thread "+value)
 	}
-	if value := stringsTrimDefault(stringValue(structured["account"]), stringValue(structured["accountId"])); value != "" {
-		appendPart("Account " + value)
+	if value := stringutil.TrimDefault(stringValue(structured["account"]), stringValue(structured["accountId"])); value != "" {
+		parts = appendDedupedPart(parts, "Account "+value)
 	}
 	if len(parts) == 0 {
 		return compactOpenClawOrigin(origin)
@@ -683,30 +657,14 @@ func summarizeOpenClawOrigin(origin, channel string) string {
 }
 
 func (oc *OpenClawClient) displayNameForAgent(agentID string) string {
-	if strings.TrimSpace(agentID) == "" || strings.EqualFold(strings.TrimSpace(agentID), "gateway") {
-		meta := loginMetadata(oc.UserLogin)
-		if label := strings.TrimSpace(meta.GatewayLabel); label != "" {
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" || strings.EqualFold(agentID, "gateway") {
+		if label := strings.TrimSpace(loginMetadata(oc.UserLogin).GatewayLabel); label != "" {
 			return label
 		}
 		return "OpenClaw"
 	}
-	return strings.TrimSpace(agentID)
-}
-
-func (oc *OpenClawClient) formatAgentDisplayName(meta *GhostMetadata, agentID string) string {
-	name := ""
-	emoji := ""
-	if meta != nil {
-		name = strings.TrimSpace(meta.OpenClawAgentName)
-		emoji = strings.TrimSpace(meta.OpenClawAgentEmoji)
-	}
-	if name == "" {
-		name = oc.displayNameForAgent(agentID)
-	}
-	if emoji != "" && !strings.HasPrefix(name, emoji) {
-		return emoji + " " + name
-	}
-	return name
+	return agentID
 }
 
 func (oc *OpenClawClient) lookupAgentIdentity(ctx context.Context, agentID, sessionKey string) *gatewayAgentIdentity {
@@ -734,7 +692,7 @@ func (oc *OpenClawClient) agentAvatar(meta *GhostMetadata, agentID string) *brid
 		return nil
 	}
 	return &bridgev2.Avatar{
-		ID: networkid.AvatarID("openclaw:" + stringsTrimDefault(meta.OpenClawAgentID, agentID) + ":" + avatarURL),
+		ID: networkid.AvatarID("openclaw:" + stringutil.TrimDefault(meta.OpenClawAgentID, agentID) + ":" + avatarURL),
 		Get: func(ctx context.Context) ([]byte, error) {
 			req, err := http.NewRequestWithContext(ctx, http.MethodGet, avatarURL, nil)
 			if err != nil {
@@ -819,46 +777,16 @@ func (oc *OpenClawClient) sendSystemNoticeViaPortal(ctx context.Context, portal 
 			Extra:   map[string]any{"msgtype": event.MsgNotice, "body": msg, "m.mentions": map[string]any{}},
 		}},
 	}
-	oc.UserLogin.QueueRemoteEvent(&OpenClawRemoteMessage{
-		portal:    portal.PortalKey,
-		id:        newOpenClawMessageID(),
-		sender:    oc.senderForAgent("gateway", false),
-		timestamp: time.Now(),
-		preBuilt:  converted,
-	})
-}
-
-func (oc *OpenClawClient) sendApprovalRequestFallbackEvent(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	approvalID, toolCallID, toolName, turnID, body string,
-	expiresAt time.Time,
-) {
-	if oc.manager == nil || oc.manager.approvalFlow == nil {
-		return
-	}
-	oc.manager.approvalFlow.SendPrompt(ctx, portal, bridgeadapter.SendPromptParams{
-		ApprovalPromptMessageParams: bridgeadapter.ApprovalPromptMessageParams{
-			ApprovalID: approvalID,
-			ToolCallID: toolCallID,
-			ToolName:   toolName,
-			TurnID:     turnID,
-			Body:       body,
-			ExpiresAt:  expiresAt,
-		},
-		RoomID:    portal.MXID,
-		OwnerMXID: oc.UserLogin.UserMXID,
-	})
+	oc.UserLogin.QueueRemoteEvent(buildOpenClawRemoteMessage(
+		portal.PortalKey,
+		newOpenClawMessageID(),
+		oc.senderForAgent("gateway", false),
+		time.Now(),
+		0,
+		converted,
+	))
 }
 
 func (oc *OpenClawClient) DownloadAndEncodeMedia(ctx context.Context, mediaURL string, file *event.EncryptedFileInfo, maxMB int) (string, string, error) {
-	return bridgeadapter.DownloadAndEncodeMedia(ctx, oc.UserLogin, mediaURL, file, maxMB)
-}
-
-func stringsTrimDefault(value, fallback string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return fallback
-	}
-	return value
+	return agentremote.DownloadAndEncodeMedia(ctx, oc.UserLogin, mediaURL, file, maxMB)
 }

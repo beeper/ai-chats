@@ -10,8 +10,6 @@ import (
 )
 
 func TestExaProviderFetchUsesConfigMaxCharsByDefault(t *testing.T) {
-	t.Helper()
-
 	var gotBody map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("x-api-key") != "test-key" {
@@ -57,8 +55,6 @@ func TestExaProviderFetchUsesConfigMaxCharsByDefault(t *testing.T) {
 }
 
 func TestExaProviderFetchUsesRequestMaxCharsOverride(t *testing.T) {
-	t.Helper()
-
 	var gotBody map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
@@ -91,8 +87,6 @@ func TestExaProviderFetchUsesRequestMaxCharsOverride(t *testing.T) {
 }
 
 func TestExaProviderFetchRespectsIncludeTextFalse(t *testing.T) {
-	t.Helper()
-
 	var gotBody map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
@@ -127,8 +121,6 @@ func TestExaProviderFetchRespectsIncludeTextFalse(t *testing.T) {
 }
 
 func TestExaProviderFetchReturnsStatusErrors(t *testing.T) {
-	t.Helper()
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"results":[],"statuses":[{"id":"https://example.com","status":"error","error":{"tag":"CRAWL_TIMEOUT","httpStatusCode":408}}]}`))

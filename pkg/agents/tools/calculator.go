@@ -4,24 +4,19 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
-
 	"github.com/beeper/agentremote/pkg/shared/calc"
 	"github.com/beeper/agentremote/pkg/shared/toolspec"
 )
 
 // Calculator is the calculator tool definition.
-var Calculator = &Tool{
-	Tool: mcp.Tool{
-		Name:        toolspec.CalculatorName,
-		Description: toolspec.CalculatorDescription,
-		Annotations: &mcp.ToolAnnotations{Title: "Calculator"},
-		InputSchema: toolspec.CalculatorSchema(),
-	},
-	Type:    ToolTypeBuiltin,
-	Group:   GroupCalc,
-	Execute: executeCalculator,
-}
+var Calculator = newBuiltinTool(
+	toolspec.CalculatorName,
+	toolspec.CalculatorDescription,
+	"Calculator",
+	toolspec.CalculatorSchema(),
+	GroupCalc,
+	executeCalculator,
+)
 
 // executeCalculator evaluates a simple arithmetic expression.
 func executeCalculator(ctx context.Context, args map[string]any) (*Result, error) {

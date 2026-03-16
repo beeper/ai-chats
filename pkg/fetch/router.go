@@ -3,10 +3,10 @@ package fetch
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 
-	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/pkg/shared/providerresource"
+	"github.com/beeper/agentremote/pkg/shared/registry"
 )
 
 // Fetch executes a fetch using the configured provider chain.
@@ -17,59 +17,40 @@ func Fetch(ctx context.Context, req Request, cfg *Config) (*Response, error) {
 	cfg = cfg.WithDefaults()
 	req = normalizeRequest(req)
 
-	registry := NewRegistry()
-	registerProviders(registry, cfg)
-	order := buildOrder(cfg)
-
-	var lastErr error
-	for _, name := range order {
-		provider, ok := registry.Get(name)
-		if !ok {
-			continue
-		}
-		resp, err := provider.Fetch(ctx, req)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		if resp == nil {
-			lastErr = fmt.Errorf("provider %s returned empty response", name)
-			continue
-		}
-		if resp.Provider == "" {
-			resp.Provider = name
-		}
-		return resp, nil
-	}
-	if lastErr != nil {
-		return nil, lastErr
-	}
-	return nil, errors.New("no fetch providers available")
+	return providerresource.Run(
+		cfg.Provider,
+		cfg.Fallbacks,
+		DefaultFallbackOrder,
+		func(reg *registry.Registry[Provider]) {
+			registerProviders(reg, cfg)
+		},
+		func(provider Provider) (*Response, error) {
+			return provider.Fetch(ctx, req)
+		},
+		func(name string, resp *Response) {
+			if resp.Provider == "" {
+				resp.Provider = name
+			}
+		},
+		errors.New("no fetch providers available"),
+	)
 }
 
 func normalizeRequest(req Request) Request {
 	if req.ExtractMode == "" {
 		req.ExtractMode = "markdown"
 	}
-	// Let providers apply their own defaults when max chars is not specified.
 	if req.MaxChars < 0 {
 		req.MaxChars = 0
 	}
 	return req
 }
 
-func buildOrder(cfg *Config) []string {
-	return stringutil.BuildProviderOrder(cfg.Provider, cfg.Fallbacks, DefaultFallbackOrder)
-}
-
-func registerProviders(registry *Registry, cfg *Config) {
-	if registry == nil || cfg == nil {
-		return
-	}
+func registerProviders(reg *registry.Registry[Provider], cfg *Config) {
 	if p := newExaProvider(cfg); p != nil {
-		registry.Register(p)
+		reg.Register(p)
 	}
 	if p := newDirectProvider(cfg); p != nil {
-		registry.Register(p)
+		reg.Register(p)
 	}
 }

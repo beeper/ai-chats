@@ -1,8 +1,6 @@
 package stringutil
 
-import (
-	"strings"
-)
+import "strings"
 
 // NormalizeBaseURL trims whitespace and trailing slashes from a URL.
 func NormalizeBaseURL(value string) string {

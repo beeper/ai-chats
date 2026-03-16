@@ -11,11 +11,9 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 
-	openCodeAPI "github.com/beeper/agentremote/bridges/opencode/opencode"
-	"github.com/beeper/agentremote/bridges/opencode/opencodebridge"
-	"github.com/beeper/agentremote/pkg/bridgeadapter"
+	"github.com/beeper/agentremote"
+	openCodeAPI "github.com/beeper/agentremote/bridges/opencode/api"
 )
 
 var (
@@ -33,7 +31,7 @@ const (
 )
 
 type OpenCodeLogin struct {
-	bridgeadapter.BaseLoginProcess
+	agentremote.BaseLoginProcess
 	User      *bridgev2.User
 	Connector *OpenCodeConnector
 	FlowID    string
@@ -119,7 +117,7 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 	}
 
 	var (
-		instances  map[string]*opencodebridge.OpenCodeInstance
+		instances  map[string]*OpenCodeInstance
 		remoteName string
 		instanceID string
 		err        error
@@ -149,43 +147,41 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 		}
 		existingMeta.Provider = ProviderOpenCode
 		existingMeta.OpenCodeInstances = instances
-		existing.Metadata = existingMeta
-		existing.RemoteName = remoteName
-		if err := existing.Save(ctx); err != nil {
+		step, err := agentremote.UpdateAndCompleteLogin(
+			ctx,
+			ol.BackgroundProcessContext(),
+			existing,
+			remoteName,
+			existingMeta,
+			"io.ai-bridge.opencode.complete",
+			ol.Connector.LoadUserLogin,
+		)
+		if err != nil {
 			return nil, fmt.Errorf("failed to update existing login: %w", err)
 		}
-		if err := ol.Connector.LoadUserLogin(ctx, existing); err != nil {
-			return nil, fmt.Errorf("failed to load client: %w", err)
-		}
-		if existing.Client != nil {
-			go existing.Client.Connect(existing.Log.WithContext(ol.BackgroundProcessContext()))
-		}
-		return openCodeCompleteStep(existing), nil
+		return step, nil
 	}
 
-	loginID := bridgeadapter.NextUserLoginID(ol.User, "opencode")
-
-	login, err := ol.User.NewLogin(ctx, &database.UserLogin{
-		ID:         loginID,
-		RemoteName: remoteName,
-		Metadata: &UserLoginMetadata{
+	_, step, err := agentremote.CreateAndCompleteLogin(
+		ctx,
+		ol.BackgroundProcessContext(),
+		ol.User,
+		"opencode",
+		remoteName,
+		&UserLoginMetadata{
 			Provider:          ProviderOpenCode,
 			OpenCodeInstances: instances,
 		},
-	}, nil)
+		"io.ai-bridge.opencode.complete",
+		ol.Connector.LoadUserLogin,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create login: %w", err)
 	}
-	if err := ol.Connector.LoadUserLogin(ctx, login); err != nil {
-		return nil, fmt.Errorf("failed to load client: %w", err)
-	}
-	if login.Client != nil {
-		go login.Client.Connect(login.Log.WithContext(ol.BackgroundProcessContext()))
-	}
-	return openCodeCompleteStep(login), nil
+	return step, nil
 }
 
-func (ol *OpenCodeLogin) buildRemoteInstances(input map[string]string) (map[string]*opencodebridge.OpenCodeInstance, string, string, error) {
+func (ol *OpenCodeLogin) buildRemoteInstances(input map[string]string) (map[string]*OpenCodeInstance, string, string, error) {
 	normalizedURL, err := openCodeAPI.NormalizeBaseURL(input["url"])
 	if err != nil {
 		return nil, "", "", fmt.Errorf("invalid url: %w", err)
@@ -195,11 +191,11 @@ func (ol *OpenCodeLogin) buildRemoteInstances(input map[string]string) (map[stri
 		username = defaultOpenCodeUsername
 	}
 	password := strings.TrimSpace(input["password"])
-	instanceID := opencodebridge.OpenCodeInstanceID(normalizedURL, username)
-	return map[string]*opencodebridge.OpenCodeInstance{
+	instanceID := OpenCodeInstanceID(normalizedURL, username)
+	return map[string]*OpenCodeInstance{
 		instanceID: {
 			ID:          instanceID,
-			Mode:        opencodebridge.OpenCodeModeRemote,
+			Mode:        OpenCodeModeRemote,
 			URL:         normalizedURL,
 			Username:    username,
 			Password:    password,
@@ -208,7 +204,7 @@ func (ol *OpenCodeLogin) buildRemoteInstances(input map[string]string) (map[stri
 	}, openCodeRemoteName(normalizedURL, username), instanceID, nil
 }
 
-func (ol *OpenCodeLogin) buildManagedInstances(input map[string]string) (map[string]*opencodebridge.OpenCodeInstance, string, string, error) {
+func (ol *OpenCodeLogin) buildManagedInstances(input map[string]string) (map[string]*OpenCodeInstance, string, string, error) {
 	binaryPath, err := resolveManagedOpenCodeBinary(input["binary_path"])
 	if err != nil {
 		return nil, "", "", err
@@ -217,26 +213,15 @@ func (ol *OpenCodeLogin) buildManagedInstances(input map[string]string) (map[str
 	if err != nil {
 		return nil, "", "", err
 	}
-	instanceID := opencodebridge.OpenCodeManagedLauncherID(string(ol.User.MXID))
-	return map[string]*opencodebridge.OpenCodeInstance{
+	instanceID := OpenCodeManagedLauncherID(string(ol.User.MXID))
+	return map[string]*OpenCodeInstance{
 		instanceID: {
 			ID:               instanceID,
-			Mode:             opencodebridge.OpenCodeModeManagedLauncher,
+			Mode:             OpenCodeModeManagedLauncher,
 			BinaryPath:       binaryPath,
 			DefaultDirectory: defaultPath,
 		},
 	}, openCodeManagedRemoteName(defaultPath), instanceID, nil
-}
-
-func openCodeCompleteStep(login *bridgev2.UserLogin) *bridgev2.LoginStep {
-	return &bridgev2.LoginStep{
-		Type:   bridgev2.LoginStepTypeComplete,
-		StepID: "io.ai-bridge.opencode.complete",
-		CompleteParams: &bridgev2.LoginCompleteParams{
-			UserLoginID: login.ID,
-			UserLogin:   login,
-		},
-	}
 }
 
 func openCodeRemoteName(baseURL, username string) string {
@@ -292,18 +277,9 @@ func resolveManagedOpenCodeDirectory(input string) (string, error) {
 	if value == "" {
 		return "", errors.New("default_path is required")
 	}
-	if rest, ok := strings.CutPrefix(value, "~/"); ok {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("invalid default path: %w", err)
-		}
-		value = filepath.Join(home, rest)
-	} else if value == "~" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("invalid default path: %w", err)
-		}
-		value = home
+	value, err := agentremote.ExpandUserHome(value)
+	if err != nil {
+		return "", fmt.Errorf("invalid default path: %w", err)
 	}
 	abs, err := filepath.Abs(value)
 	if err != nil {

@@ -1,17 +1,19 @@
 package tools
 
 import (
+	"context"
 	"sync"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/beeper/agentremote/pkg/agents/toolpolicy"
 )
 
 var toolLookup = sync.OnceValue(func() map[string]*Tool {
-	m := make(map[string]*Tool)
-	for _, tool := range AllTools() {
-		if _, exists := m[tool.Name]; !exists {
-			m[tool.Name] = tool
-		}
+	all := AllTools()
+	m := make(map[string]*Tool, len(all))
+	for _, tool := range all {
+		m[tool.Name] = tool
 	}
 	return m
 })
@@ -33,7 +35,7 @@ const (
 
 // BuiltinTools returns all locally-executable builtin tools.
 func BuiltinTools() []*Tool {
-	tools := []*Tool{
+	return []*Tool{
 		Calculator,
 		WebSearch,
 		MessageTool,
@@ -54,7 +56,6 @@ func BuiltinTools() []*Tool {
 		WriteTool,
 		EditTool,
 	}
-	return tools
 }
 
 // AllTools returns all tools (builtin + provider markers).
@@ -82,16 +83,27 @@ func AllTools() []*Tool {
 // DefaultRegistry returns a registry with all default tools registered.
 func DefaultRegistry() *Registry {
 	reg := NewRegistry()
-
-	// Register all tools
 	for _, tool := range AllTools() {
 		reg.Register(tool)
 	}
-
 	return reg
 }
 
 // GetTool returns any tool by name (builtin or provider).
 func GetTool(name string) *Tool {
 	return toolLookup()[name]
+}
+
+func newBuiltinTool(name, description, title string, schema map[string]any, group string, execute func(context.Context, map[string]any) (*Result, error)) *Tool {
+	return &Tool{
+		Tool: mcp.Tool{
+			Name:        name,
+			Description: description,
+			Annotations: &mcp.ToolAnnotations{Title: title},
+			InputSchema: schema,
+		},
+		Type:    ToolTypeBuiltin,
+		Group:   group,
+		Execute: execute,
+	}
 }

@@ -9,8 +9,6 @@ import (
 )
 
 func TestExaProviderSearchUsesHighlightMaxCharacters(t *testing.T) {
-	t.Helper()
-
 	var gotBody map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("x-api-key") != "test-key" {

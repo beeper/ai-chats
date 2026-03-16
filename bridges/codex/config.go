@@ -13,7 +13,6 @@ const ProviderCodex = "codex"
 type Config struct {
 	Bridge             bridgeconfig.BridgeConfig `yaml:"bridge"`
 	Codex              *CodexConfig              `yaml:"codex"`
-	Owners             []string                  `yaml:"owners"`
 	ModelCacheDuration time.Duration             `yaml:"model_cache_duration"`
 }
 

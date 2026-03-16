@@ -8,18 +8,5 @@ func ParseReplyDirectives(raw string, currentMessageID string) ReplyDirectiveRes
 		StripReplyTags:      true,
 		NormalizeWhitespace: true,
 	})
-	text := parsed.Text
-	isSilent := IsSilentReplyText(text, SilentReplyToken)
-	if isSilent {
-		text = ""
-	}
-	return ReplyDirectiveResult{
-		Text:              text,
-		ReplyToID:         parsed.ReplyToID,
-		ReplyToExplicitID: parsed.ReplyToExplicitID,
-		ReplyToCurrent:    parsed.ReplyToCurrent,
-		HasReplyTag:       parsed.HasReplyTag,
-		AudioAsVoice:      parsed.AudioAsVoice,
-		IsSilent:          isSilent,
-	}
+	return parsed.toReplyResult()
 }

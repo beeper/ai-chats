@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
+
+	"github.com/beeper/agentremote/pkg/agents/tools"
 )
 
 // EnsureUIToolInputStart sends "tool-input-start" once per toolCallID.
@@ -12,16 +14,15 @@ func (e *Emitter) EnsureUIToolInputStart(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	toolCallID, toolName string,
-	providerExecuted, dynamic bool,
+	providerExecuted bool,
 	title string,
 	providerMetadata map[string]any,
 ) {
-	toolCallID = strings.TrimSpace(toolCallID)
-	if toolCallID == "" {
+	if e.State == nil {
 		return
 	}
-	_ = dynamic
-	if e.State == nil {
+	toolCallID = strings.TrimSpace(toolCallID)
+	if toolCallID == "" {
 		return
 	}
 	if strings.TrimSpace(toolName) != "" {
@@ -36,8 +37,8 @@ func (e *Emitter) EnsureUIToolInputStart(
 		"toolCallId":       toolCallID,
 		"toolName":         toolName,
 		"providerExecuted": providerExecuted,
+		"dynamic":          true,
 	}
-	part["dynamic"] = true
 	if strings.TrimSpace(title) != "" {
 		part["title"] = title
 	}
@@ -53,7 +54,7 @@ func (e *Emitter) EmitUIToolInputDelta(ctx context.Context, portal *bridgev2.Por
 	if toolCallID == "" {
 		return
 	}
-	e.EnsureUIToolInputStart(ctx, portal, toolCallID, toolName, providerExecuted, false, ToolDisplayTitle(toolName), nil)
+	e.EnsureUIToolInputStart(ctx, portal, toolCallID, toolName, providerExecuted, ToolDisplayTitle(toolName), nil)
 	if delta != "" {
 		e.Emit(ctx, portal, map[string]any{
 			"type":           "tool-input-delta",
@@ -69,7 +70,7 @@ func (e *Emitter) EmitUIToolInputAvailable(ctx context.Context, portal *bridgev2
 	if toolCallID == "" {
 		return
 	}
-	e.EnsureUIToolInputStart(ctx, portal, toolCallID, toolName, providerExecuted, true, ToolDisplayTitle(toolName), nil)
+	e.EnsureUIToolInputStart(ctx, portal, toolCallID, toolName, providerExecuted, ToolDisplayTitle(toolName), nil)
 	e.Emit(ctx, portal, map[string]any{
 		"type":             "tool-input-available",
 		"toolCallId":       toolCallID,
@@ -87,13 +88,13 @@ func (e *Emitter) EmitUIToolInputError(
 	toolCallID, toolName string,
 	input any,
 	errorText string,
-	providerExecuted, dynamic bool,
+	providerExecuted bool,
 ) {
 	toolCallID = strings.TrimSpace(toolCallID)
 	if toolCallID == "" {
 		return
 	}
-	e.EnsureUIToolInputStart(ctx, portal, toolCallID, toolName, providerExecuted, true, ToolDisplayTitle(toolName), nil)
+	e.EnsureUIToolInputStart(ctx, portal, toolCallID, toolName, providerExecuted, ToolDisplayTitle(toolName), nil)
 	part := map[string]any{
 		"type":             "tool-input-error",
 		"toolCallId":       toolCallID,
@@ -110,17 +111,15 @@ func (e *Emitter) EmitUIToolInputError(
 func (e *Emitter) EmitUIToolApprovalRequest(
 	ctx context.Context,
 	portal *bridgev2.Portal,
-	approvalID, toolCallID, toolName string,
-	ttlSeconds int,
+	approvalID, toolCallID string,
 ) {
 	if strings.TrimSpace(approvalID) == "" || strings.TrimSpace(toolCallID) == "" {
 		return
 	}
-	_ = toolName
-	_ = ttlSeconds
 	if e.State == nil {
 		return
 	}
+	e.State.UIToolApprovalRequested[approvalID] = true
 	e.State.UIToolCallIDByApproval[approvalID] = toolCallID
 	e.Emit(ctx, portal, map[string]any{
 		"type":       "tool-approval-request",
@@ -129,17 +128,58 @@ func (e *Emitter) EmitUIToolApprovalRequest(
 	})
 }
 
+// EmitUIToolApprovalResponse sends a "tool-approval-response" event.
+func (e *Emitter) EmitUIToolApprovalResponse(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	approvalID, toolCallID string,
+	approved bool,
+	reason string,
+) {
+	approvalID = strings.TrimSpace(approvalID)
+	toolCallID = strings.TrimSpace(toolCallID)
+	if approvalID == "" {
+		return
+	}
+	if toolCallID == "" && e.State != nil {
+		toolCallID = strings.TrimSpace(e.State.UIToolCallIDByApproval[approvalID])
+	}
+	if toolCallID == "" {
+		return
+	}
+	part := map[string]any{
+		"type":       "tool-approval-response",
+		"approvalId": approvalID,
+		"toolCallId": toolCallID,
+		"approved":   approved,
+	}
+	if trimmedReason := strings.TrimSpace(reason); trimmedReason != "" {
+		part["reason"] = trimmedReason
+	}
+	e.Emit(ctx, portal, part)
+}
+
+// markToolOutputFinalized returns true if the tool call has already been
+// finalized (and should be skipped). Otherwise it marks it as finalized.
+func (e *Emitter) markToolOutputFinalized(toolCallID string) bool {
+	if e.State == nil {
+		return false
+	}
+	if e.State.UIToolOutputFinalized[toolCallID] {
+		return true
+	}
+	e.State.UIToolOutputFinalized[toolCallID] = true
+	return false
+}
+
 // EmitUIToolOutputAvailable sends a "tool-output-available" event.
 func (e *Emitter) EmitUIToolOutputAvailable(ctx context.Context, portal *bridgev2.Portal, toolCallID string, output any, providerExecuted, preliminary bool) {
 	toolCallID = strings.TrimSpace(toolCallID)
 	if toolCallID == "" {
 		return
 	}
-	if e.State != nil && !preliminary {
-		if e.State.UIToolOutputFinalized[toolCallID] {
-			return
-		}
-		e.State.UIToolOutputFinalized[toolCallID] = true
+	if !preliminary && e.markToolOutputFinalized(toolCallID) {
+		return
 	}
 	part := map[string]any{
 		"type":             "tool-output-available",
@@ -155,14 +195,12 @@ func (e *Emitter) EmitUIToolOutputAvailable(ctx context.Context, portal *bridgev
 
 // EmitUIToolOutputDenied sends a "tool-output-denied" event.
 func (e *Emitter) EmitUIToolOutputDenied(ctx context.Context, portal *bridgev2.Portal, toolCallID string) {
-	if strings.TrimSpace(toolCallID) == "" {
+	toolCallID = strings.TrimSpace(toolCallID)
+	if toolCallID == "" {
 		return
 	}
-	if e.State != nil {
-		if e.State.UIToolOutputFinalized[toolCallID] {
-			return
-		}
-		e.State.UIToolOutputFinalized[toolCallID] = true
+	if e.markToolOutputFinalized(toolCallID) {
+		return
 	}
 	e.Emit(ctx, portal, map[string]any{
 		"type":       "tool-output-denied",
@@ -176,11 +214,8 @@ func (e *Emitter) EmitUIToolOutputError(ctx context.Context, portal *bridgev2.Po
 	if toolCallID == "" {
 		return
 	}
-	if e.State != nil {
-		if e.State.UIToolOutputFinalized[toolCallID] {
-			return
-		}
-		e.State.UIToolOutputFinalized[toolCallID] = true
+	if e.markToolOutputFinalized(toolCallID) {
+		return
 	}
 	e.Emit(ctx, portal, map[string]any{
 		"type":             "tool-output-error",
@@ -190,11 +225,15 @@ func (e *Emitter) EmitUIToolOutputError(ctx context.Context, portal *bridgev2.Po
 	})
 }
 
-// ToolDisplayTitle returns toolName or a fallback "tool" for display.
+// ToolDisplayTitle returns toolName, its annotation title if available, or a
+// fallback "tool" for display.
 func ToolDisplayTitle(toolName string) string {
 	toolName = strings.TrimSpace(toolName)
 	if toolName == "" {
 		return "tool"
+	}
+	if t := tools.GetTool(toolName); t != nil && t.Annotations != nil && t.Annotations.Title != "" {
+		return t.Annotations.Title
 	}
 	return toolName
 }

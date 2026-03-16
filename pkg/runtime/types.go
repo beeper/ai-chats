@@ -90,10 +90,9 @@ const (
 const (
 	DefaultQueueDebounceMs = 1000
 	DefaultQueueCap        = 20
+	DefaultQueueDrop       = QueueDropSummarize
+	DefaultQueueMode       = QueueModeCollect
 )
-
-const DefaultQueueDrop = QueueDropSummarize
-const DefaultQueueMode = QueueModeCollect
 
 // QueueSettings is the canonical runtime queue configuration.
 type QueueSettings struct {

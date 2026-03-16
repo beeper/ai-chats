@@ -1,0 +1,645 @@
+package ai
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/responses"
+	"github.com/openai/openai-go/v3/shared"
+	"github.com/rs/zerolog"
+
+	"github.com/beeper/agentremote"
+
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/bridgev2/status"
+	"maunium.net/go/mautrix/event"
+)
+
+func (oc *AIClient) dispatchCompletionInternal(
+	ctx context.Context,
+	sourceEvent *event.Event,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+	promptContext PromptContext,
+) {
+	runCtx := oc.backgroundContext(ctx)
+
+	// Always use streaming responses
+	oc.runAgentLoopWithRetry(runCtx, sourceEvent, portal, meta, promptContext)
+}
+
+func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, err error) {
+	if bridgeState, shouldMarkLoggedOut, ok := bridgeStateForError(err); ok {
+		if shouldMarkLoggedOut {
+			oc.SetLoggedIn(false)
+		}
+		oc.UserLogin.BridgeState.Send(bridgeState)
+	}
+
+	if portal == nil || portal.Bridge == nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to send message via OpenAI")
+		return
+	}
+
+	// Use FormatUserFacingError for consistent, user-friendly error messages
+	errorMessage := FormatUserFacingError(err)
+
+	if evt != nil {
+		status := messageStatusForError(err)
+		reason := messageStatusReasonForError(err)
+
+		msgStatus := bridgev2.WrapErrorInStatus(err).
+			WithStatus(status).
+			WithErrorReason(reason).
+			WithMessage(errorMessage).
+			WithIsCertain(true).
+			WithSendNotice(true)
+		portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, bridgev2.StatusEventInfoFromEvent(evt))
+		for _, extra := range statusEventsFromContext(ctx) {
+			if extra != nil {
+				portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, bridgev2.StatusEventInfoFromEvent(extra))
+			}
+		}
+	}
+
+	// Some clients don't surface message status errors, so also send a notice.
+	oc.sendSystemNotice(ctx, portal, fmt.Sprintf("Couldn't complete the request: %s", errorMessage))
+
+	// Track consecutive failures for provider health monitoring
+	oc.recordProviderError(ctx)
+}
+
+func bridgeStateForError(err error) (status.BridgeState, bool, bool) {
+	if err == nil {
+		return status.BridgeState{}, false, false
+	}
+
+	if IsAuthError(err) {
+		return status.BridgeState{
+			StateEvent: status.StateBadCredentials,
+			Error:      AIAuthFailed,
+			Message:    "Authentication failed. Sign in again.",
+			Info: map[string]any{
+				"error": err.Error(),
+			},
+		}, true, true
+	}
+
+	if IsPermissionDeniedError(err) {
+		return status.BridgeState{
+			StateEvent: status.StateUnknownError,
+			Error:      AIProviderError,
+			Message:    FormatUserFacingError(err),
+			Info: map[string]any{
+				"error": err.Error(),
+			},
+		}, false, true
+	}
+
+	if IsBillingError(err) {
+		return status.BridgeState{
+			StateEvent: status.StateTransientDisconnect,
+			Error:      AIBillingError,
+			Message:    "There's a billing issue with the AI provider. Check your account or credits.",
+		}, false, true
+	}
+
+	if IsRateLimitError(err) || IsOverloadedError(err) {
+		return status.BridgeState{
+			StateEvent: status.StateTransientDisconnect,
+			Error:      AIRateLimited,
+			Message:    "You're sending requests too quickly. Wait a moment, then try again.",
+		}, false, true
+	}
+
+	return status.BridgeState{}, false, false
+}
+
+// recordProviderError increments the consecutive error counter and escalates to a
+// bridge state warning after repeated failures.
+func (oc *AIClient) recordProviderError(ctx context.Context) {
+	meta := loginMetadata(oc.UserLogin)
+	meta.ConsecutiveErrors++
+	meta.LastErrorAt = time.Now().Unix()
+	_ = oc.UserLogin.Save(ctx)
+
+	const healthWarningThreshold = 5
+	if meta.ConsecutiveErrors >= healthWarningThreshold {
+		oc.UserLogin.BridgeState.Send(status.BridgeState{
+			StateEvent: status.StateTransientDisconnect,
+			Error:      AIProviderError,
+			Message:    fmt.Sprintf("The AI provider failed %d requests in a row", meta.ConsecutiveErrors),
+		})
+	}
+}
+
+func (oc *AIClient) recordProviderSuccess(ctx context.Context) {
+	meta := loginMetadata(oc.UserLogin)
+	if meta.ConsecutiveErrors == 0 {
+		return
+	}
+	wasUnhealthy := meta.ConsecutiveErrors >= 5
+	meta.ConsecutiveErrors = 0
+	meta.LastErrorAt = 0
+	_ = oc.UserLogin.Save(ctx)
+
+	// Restore connected state if we were in a degraded state
+	if wasUnhealthy && oc.IsLoggedIn() {
+		oc.UserLogin.BridgeState.Send(status.BridgeState{
+			StateEvent: status.StateConnected,
+			Message:    "Connected",
+		})
+	}
+}
+
+func (oc *AIClient) setModelTyping(ctx context.Context, portal *bridgev2.Portal, typing bool) {
+	if portal == nil || portal.MXID == "" {
+		return
+	}
+	intent, err := oc.getIntentForPortal(ctx, portal, bridgev2.RemoteEventMessage)
+	if err != nil || intent == nil {
+		return
+	}
+	var timeout time.Duration
+	if typing {
+		timeout = 30 * time.Second
+	} else {
+		timeout = 0 // Zero timeout stops typing
+	}
+	if err := intent.MarkTyping(ctx, portal.MXID, bridgev2.TypingTypeText, timeout); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Bool("typing", typing).Msg("Failed to set typing indicator")
+	}
+}
+
+func (oc *AIClient) sendPendingStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, message string) {
+	status := bridgev2.MessageStatus{
+		Status:    event.MessageStatusPending,
+		Message:   message,
+		IsCertain: true,
+	}
+	agentremote.SendMatrixMessageStatus(ctx, portal, evt, status)
+}
+
+func (oc *AIClient) sendSuccessStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event) {
+	status := bridgev2.MessageStatus{
+		Status:    event.MessageStatusSuccess,
+		IsCertain: true,
+	}
+	agentremote.SendMatrixMessageStatus(ctx, portal, evt, status)
+}
+
+const autoGreetingDelay = 5 * time.Second
+
+func (oc *AIClient) hasPortalMessages(ctx context.Context, portal *bridgev2.Portal) bool {
+	if oc == nil || portal == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil {
+		return true
+	}
+
+	// Use a small lookback window so we can ignore "non-user" internal messages (e.g. welcome notices,
+	// subagent triggers) when deciding whether the chat is "empty enough" to auto-greet.
+	history, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, 10)
+	if err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to check portal message history")
+		// Best-effort: if the DB is temporarily unavailable, prefer still scheduling the greeting.
+		// The goroutine re-checks message history before dispatching.
+		return false
+	}
+	for _, msg := range history {
+		meta, ok := msg.Metadata.(*MessageMetadata)
+		if !ok || meta == nil {
+			// Some bridge-generated events may be stored with nil/unknown metadata (e.g. notices/state echoes).
+			// Only treat them as "conversation has started" if they look like user/assistant messages by sender.
+			if msg.SenderID == humanUserID(oc.UserLogin.ID) {
+				return true
+			}
+			if portal.OtherUserID != "" && msg.SenderID == portal.OtherUserID {
+				return true
+			}
+			continue
+		}
+		if meta.ExcludeFromHistory {
+			continue
+		}
+		role := strings.TrimSpace(strings.ToLower(meta.Role))
+		if role != "user" && role != "assistant" {
+			continue
+		}
+		if strings.TrimSpace(meta.Body) == "" {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func isInternalControlRoom(meta *PortalMetadata) bool {
+	if meta == nil {
+		return false
+	}
+	return isModuleInternalRoom(meta)
+}
+
+func autoGreetingBlockReason(meta *PortalMetadata) string {
+	switch {
+	case isInternalControlRoom(meta):
+		return "internal-control-room"
+	case resolveAgentID(meta) == "":
+		return "no-agent"
+	}
+	return ""
+}
+
+func (oc *AIClient) scheduleAutoGreeting(ctx context.Context, portal *bridgev2.Portal) {
+	if oc == nil || portal == nil || portal.MXID == "" {
+		return
+	}
+	meta := portalMeta(portal)
+	if autoGreetingBlockReason(meta) != "" {
+		return
+	}
+	if oc.hasPortalMessages(ctx, portal) {
+		return
+	}
+
+	portalKey := portal.PortalKey
+	roomID := portal.MXID
+	go func() {
+		oc.Log().Debug().Stringer("room_id", roomID).Msg("auto-greeting loop started")
+		bgCtx := oc.backgroundContext(ctx)
+		for {
+			delay := autoGreetingDelay
+			if roomID != "" {
+				if state, ok := oc.getUserTypingState(roomID); ok && !state.lastActivity.IsZero() {
+					if since := time.Since(state.lastActivity); since < autoGreetingDelay {
+						delay = autoGreetingDelay - since
+					}
+				}
+			}
+			timer := time.NewTimer(delay)
+			<-timer.C
+			timer.Stop()
+
+			current, err := oc.UserLogin.Bridge.GetPortalByKey(bgCtx, portalKey)
+			if err != nil || current == nil {
+				oc.Log().Debug().Stringer("room_id", roomID).Msg("auto-greeting loop exiting: portal not found")
+				return
+			}
+			currentMeta := portalMeta(current)
+			if currentMeta != nil && currentMeta.AutoGreetingSent {
+				oc.Log().Debug().Stringer("room_id", roomID).Msg("auto-greeting loop exiting: already sent")
+				return
+			}
+			if reason := autoGreetingBlockReason(currentMeta); reason != "" {
+				oc.Log().Debug().Stringer("room_id", roomID).Str("reason", reason).Msg("auto-greeting loop exiting: blocked by portal state")
+				return
+			}
+			if oc.hasPortalMessages(bgCtx, current) {
+				oc.Log().Debug().Stringer("room_id", roomID).Msg("auto-greeting loop exiting: portal has messages")
+				return
+			}
+			if oc.isUserTyping(current.MXID) || !oc.userIdleFor(current.MXID, autoGreetingDelay) {
+				continue
+			}
+
+			currentMeta.AutoGreetingSent = true
+			if err := current.Save(bgCtx); err != nil {
+				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist auto greeting state")
+				return
+			}
+			if _, _, err := oc.dispatchInternalMessage(bgCtx, current, currentMeta, autoGreetingPrompt, "auto-greeting", true); err != nil {
+				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to dispatch auto greeting")
+			}
+			return
+		}
+	}()
+}
+
+// This is primarily for rooms created via provisioning (ResolveIdentifier/CreateDM),
+// where the room creation happens in bridgev2 internals and we don't have a direct hook
+// after CreateMatrixRoom succeeds.
+func (oc *AIClient) scheduleWelcomeMessage(ctx context.Context, portalKey networkid.PortalKey) {
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
+		return
+	}
+	if portalKey.ID == "" {
+		return
+	}
+	bgCtx := oc.backgroundContext(ctx)
+	go func() {
+		oc.Log().Debug().Str("portal_id", string(portalKey.ID)).Msg("welcome message schedule started")
+		deadline := time.Now().Add(45 * time.Second)
+		for time.Now().Before(deadline) {
+			current, err := oc.UserLogin.Bridge.GetPortalByKey(bgCtx, portalKey)
+			if err != nil || current == nil {
+				oc.Log().Debug().Str("portal_id", string(portalKey.ID)).Msg("welcome message schedule exiting: portal not found")
+				return
+			}
+			meta := portalMeta(current)
+			if meta != nil && meta.WelcomeSent {
+				oc.Log().Debug().Str("portal_id", string(portalKey.ID)).Msg("welcome message schedule exiting: already sent")
+				return
+			}
+			if current.MXID == "" {
+				time.Sleep(150 * time.Millisecond)
+				continue
+			}
+			oc.sendWelcomeMessage(bgCtx, current)
+			oc.Log().Debug().Str("portal_id", string(portalKey.ID)).Msg("welcome message sent")
+			return
+		}
+		oc.Log().Debug().Str("portal_id", string(portalKey.ID)).Msg("welcome message schedule timed out waiting for room ID")
+	}()
+}
+
+func (oc *AIClient) sendWelcomeMessage(ctx context.Context, portal *bridgev2.Portal) {
+	if oc == nil || portal == nil {
+		return
+	}
+	// We can't send a room notice (or schedule greeting timers) until the Matrix room exists.
+	if portal.MXID == "" {
+		return
+	}
+	if oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.Bot == nil {
+		return
+	}
+	meta := portalMeta(portal)
+	if meta == nil {
+		return
+	}
+	if meta.WelcomeSent {
+		return
+	}
+
+	// Mark as sent BEFORE queuing to prevent duplicate welcome messages on race.
+	// Use a background context so "new chat" UX isn't sensitive to request cancellation/timeouts.
+	meta.WelcomeSent = true
+	bgCtx, cancel := context.WithTimeout(oc.backgroundContext(ctx), 10*time.Second)
+	defer cancel()
+	if err := portal.Save(bgCtx); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist welcome message state")
+		// Still send the welcome notice and schedule greeting; duplicates are preferable to missing UX.
+	}
+
+	if resolveAgentID(meta) == "" {
+		modelID := oc.effectiveModel(meta)
+		displayName := modelContactName(modelID, oc.findModelInfo(modelID))
+		oc.sendSystemNotice(bgCtx, portal, fmt.Sprintf("You are chatting with %s. AI can make mistakes.", displayName))
+	} else {
+		oc.sendSystemNotice(bgCtx, portal, "AI can make mistakes.")
+	}
+
+	if err := oc.BroadcastRoomState(bgCtx, portal); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to broadcast room state")
+	}
+
+	oc.scheduleAutoGreeting(bgCtx, portal)
+}
+
+func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Portal, assistantResponse string) {
+	meta := portalMeta(portal)
+
+	if !oc.isOpenRouterProvider() {
+		return
+	}
+
+	// Skip if title was already generated
+	if meta.TitleGenerated {
+		return
+	}
+
+	// Generate title in background to not block the message flow
+	go func() {
+		// Use a bounded timeout to prevent goroutine leaks if the API blocks
+		bgCtx, cancel := context.WithTimeout(oc.backgroundContext(ctx), 15*time.Second)
+		defer cancel()
+
+		// Fetch the last user message from database
+		messages, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(bgCtx, portal.PortalKey, 10)
+		if err != nil {
+			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to get messages for title generation")
+			return
+		}
+
+		var userMessage string
+		for _, msg := range messages {
+			msgMeta, ok := msg.Metadata.(*MessageMetadata)
+			if ok && msgMeta != nil && msgMeta.Role == "user" && msgMeta.Body != "" {
+				userMessage = msgMeta.Body
+				break
+			}
+		}
+
+		if userMessage == "" {
+			oc.loggerForContext(ctx).Debug().Msg("No user message found for title generation")
+			return
+		}
+
+		title, err := oc.generateRoomTitle(bgCtx, userMessage, assistantResponse)
+		if err != nil {
+			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to generate room title")
+			return
+		}
+
+		if title == "" {
+			return
+		}
+
+		if err := oc.setRoomName(bgCtx, portal, title, true); err != nil {
+			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to set room name")
+		}
+	}()
+}
+
+// Priority: UserLoginMetadata.TitleGenerationModel > provider-specific default > current model
+func (oc *AIClient) getTitleGenerationModel() string {
+	meta := loginMetadata(oc.UserLogin)
+
+	if meta.Provider != ProviderOpenRouter && meta.Provider != ProviderBeeper && meta.Provider != ProviderMagicProxy {
+		return ""
+	}
+
+	// Use configured title generation model if set
+	if meta.TitleGenerationModel != "" {
+		return meta.TitleGenerationModel
+	}
+
+	// Provider-specific default for title generation (only reached for OpenRouter/Beeper/MagicProxy)
+	return "google/gemini-2.5-flash"
+}
+
+// Uses Responses API for OpenRouter compatibility (the PDF plugins middleware adds a 'plugins'
+// field that is only valid for Responses API, not Chat Completions API)
+func (oc *AIClient) generateRoomTitle(ctx context.Context, userMessage, assistantResponse string) (string, error) {
+	model := oc.getTitleGenerationModel()
+	if model == "" {
+		return "", errors.New("title generation disabled for this provider")
+	}
+
+	oc.loggerForContext(ctx).Debug().Str("model", model).Msg("Generating room title")
+
+	params := responses.ResponseNewParams{
+		Model: shared.ResponsesModel(model),
+		Input: responses.ResponseNewParamsInputUnion{
+			OfString: openai.String(fmt.Sprintf(
+				"Generate a very short title (3-5 words max) that summarizes this conversation. Reply with ONLY the title, no quotes, no punctuation at the end.\n\nUser: %s\n\nAssistant: %s",
+				userMessage, assistantResponse,
+			)),
+		},
+		MaxOutputTokens: openai.Int(20),
+	}
+
+	// Disable reasoning for title generation to keep it fast and cheap.
+	if oc.isOpenRouterProvider() {
+		params.Reasoning = shared.ReasoningParam{
+			Effort: shared.ReasoningEffortNone,
+		}
+	}
+
+	// Use Responses API for OpenRouter compatibility (plugins field is only valid here)
+	resp, err := oc.api.Responses.New(ctx, params)
+	if err != nil && params.Reasoning.Effort != "" {
+		oc.loggerForContext(ctx).Warn().Err(err).Str("model", model).Msg("Title generation failed with reasoning disabled; retrying without reasoning param")
+		params.Reasoning = shared.ReasoningParam{}
+		resp, err = oc.api.Responses.New(ctx, params)
+	}
+	if err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Str("model", model).Msg("Title generation API call failed")
+		return "", err
+	}
+
+	title := extractTitleFromResponse(resp)
+
+	if title == "" {
+		oc.loggerForContext(ctx).Warn().
+			Str("model", model).
+			Int("output_items", len(resp.Output)).
+			Str("status", string(resp.Status)).
+			Msg("Title generation returned no content")
+		return "", errors.New("no response from model")
+	}
+
+	title = strings.TrimSpace(title)
+	title = strings.Trim(title, "\"'")
+	if len(title) > 50 {
+		title = title[:50]
+	}
+	return title, nil
+}
+
+func extractTitleFromResponse(resp *responses.Response) string {
+	var content strings.Builder
+	var reasoning strings.Builder
+
+	for _, item := range resp.Output {
+		switch item := item.AsAny().(type) {
+		case responses.ResponseOutputMessage:
+			for _, part := range item.Content {
+				// OpenRouter sometimes returns "text" instead of "output_text".
+				if part.Type == "output_text" || part.Type == "text" {
+					if part.Text != "" {
+						content.WriteString(part.Text)
+					}
+					continue
+				}
+				if part.Text != "" {
+					content.WriteString(part.Text)
+				}
+				if part.Type == "refusal" && part.Refusal != "" {
+					content.WriteString(part.Refusal)
+				}
+			}
+		case responses.ResponseReasoningItem:
+			for _, summary := range item.Summary {
+				if summary.Text != "" {
+					reasoning.WriteString(summary.Text)
+				}
+			}
+		}
+	}
+
+	if content.Len() > 0 {
+		return content.String()
+	}
+	if reasoning.Len() > 0 {
+		return reasoning.String()
+	}
+	return ""
+}
+
+func (oc *AIClient) setRoomName(ctx context.Context, portal *bridgev2.Portal, name string, save bool) error {
+	if portal.MXID == "" {
+		return errors.New("portal has no Matrix room ID")
+	}
+
+	bot := oc.UserLogin.Bridge.Bot
+	_, err := bot.SendState(ctx, portal.MXID, event.StateRoomName, "", &event.Content{
+		Parsed: &event.RoomNameEventContent{Name: name},
+	}, time.Time{})
+
+	if err != nil {
+		return fmt.Errorf("failed to set room name: %w", err)
+	}
+
+	// Update portal metadata
+	meta := portalMeta(portal)
+	meta.Title = name
+	meta.TitleGenerated = true
+	if save {
+		if err := portal.Save(ctx); err != nil {
+			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to save portal after setting room name")
+		}
+	}
+
+	oc.loggerForContext(ctx).Debug().Str("name", name).Msg("Set Matrix room name")
+	return nil
+}
+
+func (oc *AIClient) setRoomTopic(ctx context.Context, portal *bridgev2.Portal, topic string) error {
+	if portal.MXID == "" {
+		return errors.New("portal has no Matrix room ID")
+	}
+
+	bot := oc.UserLogin.Bridge.Bot
+	_, err := bot.SendState(ctx, portal.MXID, event.StateTopic, "", &event.Content{
+		Parsed: &event.TopicEventContent{Topic: topic},
+	}, time.Time{})
+
+	if err != nil {
+		return fmt.Errorf("failed to set room topic: %w", err)
+	}
+
+	portal.Topic = topic
+	if err := portal.Save(ctx); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to save portal after setting room topic")
+	}
+
+	oc.loggerForContext(ctx).Debug().Str("topic", topic).Msg("Set Matrix room topic")
+	return nil
+}
+
+func (oc *AIClient) getModelContextWindow(meta *PortalMetadata) int {
+	modelID := oc.effectiveModel(meta)
+
+	// Check cached model info first
+	loginMeta := loginMetadata(oc.UserLogin)
+	if loginMeta.ModelCache != nil {
+		for _, m := range loginMeta.ModelCache.Models {
+			if m.ID == modelID {
+				return m.ContextWindow
+			}
+		}
+	}
+
+	// Fallback: check model catalog
+	if info := oc.findModelInfoInCatalog(modelID); info != nil {
+		return info.ContextWindow
+	}
+
+	// Default for unknown models
+	return 128000
+}

@@ -30,24 +30,16 @@ func init() {
 }
 
 func openClawReconnectDelay(attempt int) time.Duration {
-	if attempt < 0 {
-		attempt = 0
-	}
-	if attempt > 6 {
-		attempt = 6
-	}
-	delay := time.Second * time.Duration(1<<attempt)
-	if delay > openClawMaxReconnectDelay {
-		return openClawMaxReconnectDelay
-	}
-	return delay
+	attempt = max(attempt, 0)
+	attempt = min(attempt, 6)
+	return min(time.Second*time.Duration(1<<attempt), openClawMaxReconnectDelay)
 }
 
 func classifyOpenClawConnectionError(err error, retryDelay time.Duration) (status.BridgeState, bool) {
 	state := status.BridgeState{
 		StateEvent: status.StateTransientDisconnect,
 		Error:      openClawTransientDisconnect,
-		Message:    "Disconnected from OpenClaw gateway, retrying",
+		Message:    "Disconnected from OpenClaw gateway",
 	}
 	var rpcErr *gatewayRPCError
 	switch {
@@ -72,28 +64,26 @@ func classifyOpenClawConnectionError(err error, retryDelay time.Duration) (statu
 	}
 	if retryDelay > 0 {
 		state.Info["retry_in_ms"] = retryDelay.Milliseconds()
-		state.Message = fmt.Sprintf("Disconnected from OpenClaw gateway, retrying in %s", retryDelay)
 	}
 	if closeStatus := websocket.CloseStatus(err); closeStatus != -1 {
 		state.Info["websocket_close_status"] = int(closeStatus)
 		switch closeStatus {
 		case websocket.StatusNormalClosure:
 			state.Error = openClawGatewayClosedError
-			state.Message = "OpenClaw gateway closed the connection, retrying"
+			state.Message = "OpenClaw gateway closed the connection"
 		case websocket.StatusPolicyViolation:
 			state.Error = openClawConnectError
-			state.Message = "OpenClaw gateway rejected the connection, retrying"
-		}
-		if retryDelay > 0 {
-			state.Message = fmt.Sprintf("%s in %s", strings.TrimSuffix(state.Message, ", retrying"), retryDelay)
+			state.Message = "OpenClaw gateway rejected the connection"
 		}
 	}
 	if strings.Contains(strings.ToLower(err.Error()), "dial gateway websocket") {
 		state.Error = openClawConnectError
-		state.Message = "Failed to connect to OpenClaw gateway, retrying"
-		if retryDelay > 0 {
-			state.Message = fmt.Sprintf("Failed to connect to OpenClaw gateway, retrying in %s", retryDelay)
-		}
+		state.Message = "Failed to connect to OpenClaw gateway"
+	}
+	if retryDelay > 0 {
+		state.Message = fmt.Sprintf("%s, retrying in %s", state.Message, retryDelay)
+	} else {
+		state.Message += ", retrying"
 	}
 	return state, true
 }

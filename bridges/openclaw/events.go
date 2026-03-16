@@ -12,145 +12,165 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/bridgev2/simplevent"
+	"maunium.net/go/mautrix/event"
+
+	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/pkg/shared/openclawconv"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
-type OpenClawSessionResyncEvent struct {
-	client  *OpenClawClient
-	session gatewaySessionRow
+func openClawSessionLogContext(session gatewaySessionRow) func(zerolog.Context) zerolog.Context {
+	return func(c zerolog.Context) zerolog.Context {
+		return c.Str("session_key", session.Key).Str("session_id", session.SessionID)
+	}
 }
 
-var (
-	_ bridgev2.RemoteChatResyncWithInfo       = (*OpenClawSessionResyncEvent)(nil)
-	_ bridgev2.RemoteChatResyncBackfill       = (*OpenClawSessionResyncEvent)(nil)
-	_ bridgev2.RemoteEventThatMayCreatePortal = (*OpenClawSessionResyncEvent)(nil)
-)
-
-func (evt *OpenClawSessionResyncEvent) GetType() bridgev2.RemoteEventType {
-	return bridgev2.RemoteEventChatResync
-}
-
-func (evt *OpenClawSessionResyncEvent) ShouldCreatePortal() bool {
-	return true
-}
-
-func (evt *OpenClawSessionResyncEvent) GetPortalKey() networkid.PortalKey {
-	return evt.client.portalKeyForSession(evt.session.Key)
-}
-
-func (evt *OpenClawSessionResyncEvent) AddLogContext(c zerolog.Context) zerolog.Context {
-	return c.Str("session_key", evt.session.Key).Str("session_id", evt.session.SessionID)
-}
-
-func (evt *OpenClawSessionResyncEvent) GetSender() bridgev2.EventSender {
-	return bridgev2.EventSender{}
-}
-
-func (evt *OpenClawSessionResyncEvent) CheckNeedsBackfill(_ context.Context, latestMessage *database.Message) (bool, error) {
-	latestSessionTS := openClawSessionTimestamp(evt.session)
+func openClawSessionNeedsBackfill(session gatewaySessionRow, latestMessage *database.Message) (bool, error) {
+	latestSessionTS := openClawSessionTimestamp(session)
 	if latestMessage == nil {
-		return !latestSessionTS.IsZero() || strings.TrimSpace(evt.session.LastMessagePreview) != "", nil
+		return !latestSessionTS.IsZero() || strings.TrimSpace(session.LastMessagePreview) != "", nil
 	} else if latestSessionTS.IsZero() {
 		return false, nil
 	}
 	return latestSessionTS.After(latestMessage.Timestamp), nil
 }
 
-func (evt *OpenClawSessionResyncEvent) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
+func buildOpenClawSessionResyncEvent(client *OpenClawClient, session gatewaySessionRow) *simplevent.ChatResync {
+	return &simplevent.ChatResync{
+		EventMeta: simplevent.EventMeta{
+			Type:         bridgev2.RemoteEventChatResync,
+			PortalKey:    client.portalKeyForSession(session.Key),
+			CreatePortal: true,
+			Timestamp:    openClawSessionTimestamp(session),
+			LogContext:   openClawSessionLogContext(session),
+		},
+		GetChatInfoFunc: func(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
+			return getOpenClawSessionChatInfo(ctx, portal, client, session)
+		},
+		CheckNeedsBackfillFunc: func(_ context.Context, latestMessage *database.Message) (bool, error) {
+			return openClawSessionNeedsBackfill(session, latestMessage)
+		},
+	}
+}
+
+func getOpenClawSessionChatInfo(ctx context.Context, portal *bridgev2.Portal, client *OpenClawClient, session gatewaySessionRow) (*bridgev2.ChatInfo, error) {
 	if portal == nil {
 		return nil, fmt.Errorf("missing portal")
 	}
 	meta := portalMeta(portal)
 	previous := *meta
 	meta.IsOpenClawRoom = true
-	meta.OpenClawGatewayID = evt.client.gatewayID()
-	meta.OpenClawSessionID = evt.session.SessionID
-	meta.OpenClawSessionKey = evt.session.Key
-	meta.OpenClawSessionKind = evt.session.Kind
-	meta.OpenClawSessionLabel = evt.session.Label
-	meta.OpenClawDisplayName = evt.session.DisplayName
-	meta.OpenClawDerivedTitle = evt.session.DerivedTitle
-	meta.OpenClawLastMessagePreview = evt.session.LastMessagePreview
-	meta.OpenClawChannel = evt.session.Channel
-	meta.OpenClawSubject = evt.session.Subject
-	meta.OpenClawGroupChannel = evt.session.GroupChannel
-	meta.OpenClawSpace = evt.session.Space
-	meta.OpenClawChatType = evt.session.ChatType
-	meta.OpenClawOrigin = evt.session.OriginString()
-	meta.OpenClawAgentID = stringsTrimDefault(meta.OpenClawAgentID, openClawAgentIDFromSessionKey(evt.session.Key))
-	if isOpenClawSyntheticDMSessionKey(evt.session.Key) {
-		meta.OpenClawDMTargetAgentID = stringsTrimDefault(meta.OpenClawDMTargetAgentID, openClawAgentIDFromSessionKey(evt.session.Key))
+	meta.OpenClawGatewayID = client.gatewayID()
+	meta.OpenClawSessionID = session.SessionID
+	meta.OpenClawSessionKey = session.Key
+	meta.OpenClawSessionKind = session.Kind
+	meta.OpenClawSessionLabel = session.Label
+	meta.OpenClawDisplayName = session.DisplayName
+	meta.OpenClawDerivedTitle = session.DerivedTitle
+	meta.OpenClawLastMessagePreview = session.LastMessagePreview
+	meta.OpenClawChannel = session.Channel
+	meta.OpenClawSubject = session.Subject
+	meta.OpenClawGroupChannel = session.GroupChannel
+	meta.OpenClawSpace = session.Space
+	meta.OpenClawChatType = session.ChatType
+	meta.OpenClawOrigin = session.OriginString()
+	meta.OpenClawAgentID = stringutil.TrimDefault(meta.OpenClawAgentID, openclawconv.AgentIDFromSessionKey(session.Key))
+	if isOpenClawSyntheticDMSessionKey(session.Key) {
+		meta.OpenClawDMTargetAgentID = stringutil.TrimDefault(meta.OpenClawDMTargetAgentID, openclawconv.AgentIDFromSessionKey(session.Key))
 	}
-	meta.OpenClawSystemSent = evt.session.SystemSent
-	meta.OpenClawAbortedLastRun = evt.session.AbortedLastRun
-	meta.ThinkingLevel = evt.session.ThinkingLevel
-	meta.VerboseLevel = evt.session.VerboseLevel
-	meta.ReasoningLevel = evt.session.ReasoningLevel
-	meta.ElevatedLevel = evt.session.ElevatedLevel
-	meta.SendPolicy = evt.session.SendPolicy
-	meta.InputTokens = evt.session.InputTokens
-	meta.OutputTokens = evt.session.OutputTokens
-	meta.TotalTokens = evt.session.TotalTokens
-	meta.TotalTokensFresh = evt.session.TotalTokensFresh
-	meta.ResponseUsage = evt.session.ResponseUsage
-	meta.ModelProvider = evt.session.ModelProvider
-	meta.Model = evt.session.Model
-	meta.ContextTokens = evt.session.ContextTokens
-	meta.DeliveryContext = evt.session.DeliveryContext
-	meta.LastChannel = evt.session.LastChannel
-	meta.LastTo = evt.session.LastTo
-	meta.LastAccountID = evt.session.LastAccountID
-	meta.SessionUpdatedAt = evt.session.UpdatedAt
-	meta.OpenClawPreviewSnippet = stringsTrimDefault(meta.OpenClawPreviewSnippet, evt.session.LastMessagePreview)
+	meta.OpenClawSystemSent = session.SystemSent
+	meta.OpenClawAbortedLastRun = session.AbortedLastRun
+	meta.ThinkingLevel = session.ThinkingLevel
+	meta.VerboseLevel = session.VerboseLevel
+	meta.ReasoningLevel = session.ReasoningLevel
+	meta.ElevatedLevel = session.ElevatedLevel
+	meta.SendPolicy = session.SendPolicy
+	meta.InputTokens = session.InputTokens
+	meta.OutputTokens = session.OutputTokens
+	meta.TotalTokens = session.TotalTokens
+	meta.TotalTokensFresh = session.TotalTokensFresh
+	meta.ResponseUsage = session.ResponseUsage
+	meta.ModelProvider = session.ModelProvider
+	meta.Model = session.Model
+	meta.ContextTokens = session.ContextTokens
+	meta.DeliveryContext = session.DeliveryContext
+	meta.LastChannel = session.LastChannel
+	meta.LastTo = session.LastTo
+	meta.LastAccountID = session.LastAccountID
+	meta.SessionUpdatedAt = session.UpdatedAt
+	meta.OpenClawPreviewSnippet = stringutil.TrimDefault(meta.OpenClawPreviewSnippet, session.LastMessagePreview)
 	if meta.OpenClawPreviewSnippet != "" && meta.OpenClawLastPreviewAt == 0 {
 		meta.OpenClawLastPreviewAt = time.Now().UnixMilli()
 	}
 	meta.HistoryMode = "recent_only"
 	meta.RecentHistoryLimit = openClawDefaultSessionLimit
-	evt.client.enrichPortalMetadata(ctx, meta)
+	client.enrichPortalMetadata(ctx, meta)
 	portal.Metadata = meta
 
-	title := evt.client.displayNameForSession(evt.session)
-	memberMap := bridgev2.ChatMemberMap{
-		humanUserID(evt.client.UserLogin.ID): {
-			EventSender: bridgev2.EventSender{
-				Sender:      humanUserID(evt.client.UserLogin.ID),
-				SenderLogin: evt.client.UserLogin.ID,
-				IsFromMe:    true,
-			},
-		},
-	}
-	agentID := stringsTrimDefault(meta.OpenClawAgentID, "gateway")
+	title := client.displayNameForSession(session)
+	agentID := stringutil.TrimDefault(meta.OpenClawAgentID, "gateway")
 	if strings.TrimSpace(meta.OpenClawDMTargetAgentID) != "" {
 		agentID = strings.TrimSpace(meta.OpenClawDMTargetAgentID)
 		meta.OpenClawAgentID = agentID
 	}
-	identity := evt.client.lookupAgentIdentity(ctx, agentID, evt.session.Key)
+	identity := client.lookupAgentIdentity(ctx, agentID, session.Key)
 	if identity != nil && strings.TrimSpace(identity.AgentID) != "" {
 		agentID = strings.TrimSpace(identity.AgentID)
 		meta.OpenClawAgentID = agentID
 	}
-	configured, err := evt.client.agentCatalogEntryByID(ctx, agentID)
+	configured, err := client.agentCatalogEntryByID(ctx, agentID)
 	if err != nil {
-		evt.client.Log().Debug().Err(err).Str("agent_id", agentID).Msg("Failed to refresh OpenClaw agent catalog during session resync")
+		client.Log().Debug().Err(err).Str("agent_id", agentID).Msg("Failed to refresh OpenClaw agent catalog during session resync")
 	}
-	profile := evt.client.resolveAgentProfile(ctx, agentID, evt.session.Key, nil, configured)
-	agentName := evt.client.displayNameFromAgentProfile(profile)
+	profile := client.resolveAgentProfile(ctx, agentID, session.Key, nil, configured)
+	agentName := client.displayNameFromAgentProfile(profile)
 	if strings.TrimSpace(meta.OpenClawDMTargetAgentName) == "" && strings.TrimSpace(meta.OpenClawDMTargetAgentID) == agentID {
 		meta.OpenClawDMTargetAgentName = agentName
 	}
-	if isOpenClawSyntheticDMSessionKey(evt.session.Key) && strings.TrimSpace(meta.OpenClawDMTargetAgentName) != "" {
+	if isOpenClawSyntheticDMSessionKey(session.Key) && strings.TrimSpace(meta.OpenClawDMTargetAgentName) != "" {
 		title = strings.TrimSpace(meta.OpenClawDMTargetAgentName)
 	}
-	memberMap[openClawGhostUserID(agentID)] = bridgev2.ChatMember{
-		EventSender: evt.client.senderForAgent(agentID, false),
-		UserInfo:    evt.client.userInfoForAgentProfile(profile),
-	}
 	roomType := openClawRoomType(meta)
-	evt.client.maybeRefreshPortalCapabilities(ctx, portal, &previous)
+	client.maybeRefreshPortalCapabilities(ctx, portal, &previous)
+	if roomType == database.RoomTypeDM {
+		chatInfo := agentremote.BuildLoginDMChatInfo(agentremote.LoginDMChatInfoParams{
+			Title:             title,
+			Login:             client.UserLogin,
+			HumanUserIDPrefix: "openclaw-user",
+			BotUserID:         openClawGhostUserID(agentID),
+			BotDisplayName:    agentName,
+			CanBackfill:       true,
+		})
+		if chatInfo != nil {
+			chatInfo.Topic = ptr.NonZero(client.topicForPortal(meta))
+			if chatInfo.Members != nil && chatInfo.Members.MemberMap != nil {
+				chatInfo.Members.MemberMap[humanUserID(client.UserLogin.ID)] = bridgev2.ChatMember{
+					EventSender: client.senderForAgent(agentID, true),
+					Membership:  event.MembershipJoin,
+				}
+				chatInfo.Members.MemberMap[openClawGhostUserID(agentID)] = bridgev2.ChatMember{
+					EventSender: client.senderForAgent(agentID, false),
+					Membership:  event.MembershipJoin,
+					UserInfo:    client.userInfoForAgentProfile(profile),
+				}
+			}
+		}
+		return chatInfo, nil
+	}
+	memberMap := bridgev2.ChatMemberMap{
+		humanUserID(client.UserLogin.ID): {
+			EventSender: client.senderForAgent(agentID, true),
+		},
+		openClawGhostUserID(agentID): {
+			EventSender: client.senderForAgent(agentID, false),
+			UserInfo:    client.userInfoForAgentProfile(profile),
+		},
+	}
 	return &bridgev2.ChatInfo{
 		Type:        ptr.Ptr(roomType),
 		Name:        ptr.Ptr(title),
-		Topic:       ptr.NonZero(evt.client.topicForPortal(meta)),
+		Topic:       ptr.NonZero(client.topicForPortal(meta)),
 		CanBackfill: true,
 		Members: &bridgev2.ChatMemberList{
 			IsFull:    true,
@@ -159,83 +179,34 @@ func (evt *OpenClawSessionResyncEvent) GetChatInfo(ctx context.Context, portal *
 	}, nil
 }
 
-type OpenClawRemoteMessage struct {
-	portal    networkid.PortalKey
-	id        networkid.MessageID
-	sender    bridgev2.EventSender
-	timestamp time.Time
-	preBuilt  *bridgev2.ConvertedMessage
-}
-
-var (
-	_ bridgev2.RemoteMessage              = (*OpenClawRemoteMessage)(nil)
-	_ bridgev2.RemoteEventWithTimestamp   = (*OpenClawRemoteMessage)(nil)
-	_ bridgev2.RemoteEventWithStreamOrder = (*OpenClawRemoteMessage)(nil)
-)
-
-func (m *OpenClawRemoteMessage) GetType() bridgev2.RemoteEventType {
-	return bridgev2.RemoteEventMessage
-}
-func (m *OpenClawRemoteMessage) GetPortalKey() networkid.PortalKey { return m.portal }
-func (m *OpenClawRemoteMessage) GetSender() bridgev2.EventSender   { return m.sender }
-func (m *OpenClawRemoteMessage) GetID() networkid.MessageID        { return m.id }
-func (m *OpenClawRemoteMessage) AddLogContext(c zerolog.Context) zerolog.Context {
-	return c.Str("openclaw_msg_id", string(m.id))
-}
-func (m *OpenClawRemoteMessage) GetTimestamp() time.Time {
-	if m.timestamp.IsZero() {
-		return time.Now()
+func buildOpenClawRemoteMessage(
+	portal networkid.PortalKey,
+	messageID networkid.MessageID,
+	sender bridgev2.EventSender,
+	timestamp time.Time,
+	streamOrder int64,
+	preBuilt *bridgev2.ConvertedMessage,
+) *simplevent.PreConvertedMessage {
+	if timestamp.IsZero() {
+		timestamp = time.Now()
 	}
-	return m.timestamp
-}
-func (m *OpenClawRemoteMessage) GetStreamOrder() int64 {
-	return m.GetTimestamp().UnixMilli()
-}
-func (m *OpenClawRemoteMessage) ConvertMessage(_ context.Context, _ *bridgev2.Portal, _ bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
-	return m.preBuilt, nil
-}
-
-type OpenClawRemoteEdit struct {
-	portal        networkid.PortalKey
-	sender        bridgev2.EventSender
-	targetMessage networkid.MessageID
-	timestamp     time.Time
-	preBuilt      *bridgev2.ConvertedEdit
-}
-
-var (
-	_ bridgev2.RemoteEdit                 = (*OpenClawRemoteEdit)(nil)
-	_ bridgev2.RemoteEventWithTimestamp   = (*OpenClawRemoteEdit)(nil)
-	_ bridgev2.RemoteEventWithStreamOrder = (*OpenClawRemoteEdit)(nil)
-)
-
-func (e *OpenClawRemoteEdit) GetType() bridgev2.RemoteEventType { return bridgev2.RemoteEventEdit }
-func (e *OpenClawRemoteEdit) GetPortalKey() networkid.PortalKey { return e.portal }
-func (e *OpenClawRemoteEdit) GetSender() bridgev2.EventSender   { return e.sender }
-func (e *OpenClawRemoteEdit) GetTargetMessage() networkid.MessageID {
-	return e.targetMessage
-}
-func (e *OpenClawRemoteEdit) AddLogContext(c zerolog.Context) zerolog.Context {
-	return c.Str("openclaw_edit_target", string(e.targetMessage))
-}
-func (e *OpenClawRemoteEdit) GetTimestamp() time.Time {
-	if e.timestamp.IsZero() {
-		return time.Now()
+	if streamOrder == 0 {
+		streamOrder = timestamp.UnixMilli()
 	}
-	return e.timestamp
-}
-func (e *OpenClawRemoteEdit) GetStreamOrder() int64 {
-	return e.GetTimestamp().UnixMilli()
-}
-func (e *OpenClawRemoteEdit) ConvertEdit(_ context.Context, _ *bridgev2.Portal, _ bridgev2.MatrixAPI, existing []*database.Message) (*bridgev2.ConvertedEdit, error) {
-	if e.preBuilt != nil && len(existing) > 0 {
-		for i, part := range e.preBuilt.ModifiedParts {
-			if part.Part == nil && i < len(existing) {
-				part.Part = existing[i]
-			}
-		}
+	return &simplevent.PreConvertedMessage{
+		EventMeta: simplevent.EventMeta{
+			Type:        bridgev2.RemoteEventMessage,
+			PortalKey:   portal,
+			Sender:      sender,
+			Timestamp:   timestamp,
+			StreamOrder: streamOrder,
+			LogContext: func(c zerolog.Context) zerolog.Context {
+				return c.Str("openclaw_msg_id", string(messageID))
+			},
+		},
+		ID:   messageID,
+		Data: preBuilt,
 	}
-	return e.preBuilt, nil
 }
 
 func newOpenClawMessageID() networkid.MessageID {

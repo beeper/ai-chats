@@ -3,16 +3,14 @@ package opencode
 import (
 	"context"
 	"slices"
-	"strings"
 	"sync"
 
 	"go.mau.fi/util/configupgrade"
-	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
-	"github.com/beeper/agentremote/pkg/bridgeadapter"
+	"github.com/beeper/agentremote"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 var (
@@ -21,81 +19,18 @@ var (
 )
 
 type OpenCodeConnector struct {
-	bridgeadapter.BaseConnectorMethods
-	br     *bridgev2.Bridge
-	Config Config
+	*agentremote.ConnectorBase
+	br        *bridgev2.Bridge
+	Config    Config
+	sdkConfig *bridgesdk.Config
 
 	clientsMu sync.Mutex
 	clients   map[networkid.UserLoginID]bridgev2.NetworkAPI
 }
 
 func NewConnector() *OpenCodeConnector {
-	return &OpenCodeConnector{
-		BaseConnectorMethods: bridgeadapter.BaseConnectorMethods{ProtocolID: "ai-opencode"},
-	}
-}
-
-func (oc *OpenCodeConnector) Init(bridge *bridgev2.Bridge) {
-	oc.br = bridge
-	bridgeadapter.EnsureClientMap(&oc.clientsMu, &oc.clients)
-}
-
-func (oc *OpenCodeConnector) Start(_ context.Context) error {
-	if oc.Config.Bridge.CommandPrefix == "" {
-		oc.Config.Bridge.CommandPrefix = "!opencode"
-	}
-	if oc.Config.OpenCode.Enabled == nil {
-		oc.Config.OpenCode.Enabled = ptr.Ptr(true)
-	}
-	return nil
-}
-
-func (oc *OpenCodeConnector) Stop(_ context.Context) {
-	bridgeadapter.StopClients(&oc.clientsMu, &oc.clients)
-}
-
-func (oc *OpenCodeConnector) GetName() bridgev2.BridgeName {
-	return bridgev2.BridgeName{
-		DisplayName:          "OpenCode Bridge",
-		NetworkURL:           "https://opencode.ai",
-		NetworkID:            "opencode",
-		BeeperBridgeType:     "opencode",
-		DefaultPort:          29347,
-		DefaultCommandPrefix: oc.Config.Bridge.CommandPrefix,
-	}
-}
-
-func (oc *OpenCodeConnector) GetConfig() (example string, data any, upgrader configupgrade.Upgrader) {
-	return exampleNetworkConfig, &oc.Config, configupgrade.SimpleUpgrader(upgradeConfig)
-}
-
-func (oc *OpenCodeConnector) GetDBMetaTypes() database.MetaTypes {
-	return bridgeadapter.BuildMetaTypes(
-		func() any { return &PortalMetadata{} },
-		func() any { return &MessageMetadata{} },
-		func() any { return &UserLoginMetadata{} },
-		func() any { return &GhostMetadata{} },
-	)
-}
-
-func (oc *OpenCodeConnector) LoadUserLogin(_ context.Context, login *bridgev2.UserLogin) error {
-	meta := loginMetadata(login)
-	if !strings.EqualFold(strings.TrimSpace(meta.Provider), ProviderOpenCode) {
-		login.Client = &bridgeadapter.BrokenLoginClient{UserLogin: login, Reason: "This bridge only supports OpenCode logins."}
-		return nil
-	}
-	return bridgeadapter.LoadUserLogin(login, bridgeadapter.LoadUserLoginConfig[*OpenCodeClient]{
-		Mu: &oc.clientsMu, Clients: oc.clients, BridgeName: "OpenCode",
-		Update: func(e *OpenCodeClient, l *bridgev2.UserLogin) { e.UserLogin = l },
-		Create: func(l *bridgev2.UserLogin) (*OpenCodeClient, error) { return newOpenCodeClient(l, oc) },
-	})
-}
-
-func (oc *OpenCodeConnector) GetLoginFlows() []bridgev2.LoginFlow {
-	if !oc.openCodeEnabled() {
-		return nil
-	}
-	return []bridgev2.LoginFlow{
+	oc := &OpenCodeConnector{}
+	loginFlows := []bridgev2.LoginFlow{
 		{
 			ID:          FlowOpenCodeRemote,
 			Name:        "Remote OpenCode",
@@ -107,18 +42,60 @@ func (oc *OpenCodeConnector) GetLoginFlows() []bridgev2.LoginFlow {
 			Description: "Let the bridge spawn and manage OpenCode processes for you.",
 		},
 	}
-}
-
-func (oc *OpenCodeConnector) CreateLogin(_ context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
-	if !oc.openCodeEnabled() {
-		return nil, bridgev2.ErrNotLoggedIn
-	}
-	if !slices.ContainsFunc(oc.GetLoginFlows(), func(flow bridgev2.LoginFlow) bool {
-		return flow.ID == flowID
-	}) {
-		return nil, bridgev2.ErrInvalidLoginFlowID
-	}
-	return &OpenCodeLogin{User: user, Connector: oc, FlowID: flowID}, nil
+	oc.sdkConfig = bridgesdk.NewStandardConnectorConfig(bridgesdk.StandardConnectorConfigParams{
+		Name:             "opencode",
+		Description:      "A Matrix↔OpenCode bridge built on mautrix-go bridgev2.",
+		ProtocolID:       "ai-opencode",
+		AgentCatalog:     openCodeAgentCatalog{},
+		ProviderIdentity: bridgesdk.ProviderIdentity{IDPrefix: "opencode", LogKey: "opencode_msg_id", StatusNetwork: "opencode"},
+		ClientCacheMu:    &oc.clientsMu,
+		ClientCache:      &oc.clients,
+		GetCapabilities: func(session any, _ *bridgesdk.Conversation) *bridgesdk.RoomFeatures {
+			return &bridgesdk.RoomFeatures{Custom: openCodeMatrixRoomFeatures()}
+		},
+		InitConnector: func(bridge *bridgev2.Bridge) {
+			oc.br = bridge
+		},
+		StartConnector: func(_ context.Context, _ *bridgev2.Bridge) error {
+			bridgesdk.ApplyDefaultCommandPrefix(&oc.Config.Bridge.CommandPrefix, "!opencode")
+			bridgesdk.ApplyBoolDefault(&oc.Config.OpenCode.Enabled, true)
+			return nil
+		},
+		DisplayName:      "OpenCode Bridge",
+		NetworkURL:       "https://api.ai",
+		NetworkID:        "opencode",
+		BeeperBridgeType: "opencode",
+		DefaultPort:      29347,
+		DefaultCommandPrefix: func() string {
+			return oc.Config.Bridge.CommandPrefix
+		},
+		ExampleConfig:  exampleNetworkConfig,
+		ConfigData:     &oc.Config,
+		ConfigUpgrader: configupgrade.SimpleUpgrader(upgradeConfig),
+		NewPortal:      func() any { return &PortalMetadata{} },
+		NewMessage:     func() any { return &MessageMetadata{} },
+		NewLogin:       func() any { return &UserLoginMetadata{} },
+		NewGhost:       func() any { return &GhostMetadata{} },
+		AcceptLogin: func(login *bridgev2.UserLogin) (bool, string) {
+			return bridgesdk.AcceptProviderLogin(login, ProviderOpenCode, "This bridge only supports OpenCode logins.", oc.openCodeEnabled, "OpenCode integration is disabled in the configuration.", func(login *bridgev2.UserLogin) string {
+				return loginMetadata(login).Provider
+			})
+		},
+		CreateClient: bridgesdk.TypedClientCreator(func(login *bridgev2.UserLogin) (*OpenCodeClient, error) { return newOpenCodeClient(login, oc) }),
+		UpdateClient: bridgesdk.TypedClientUpdater[*OpenCodeClient](),
+		LoginFlows:   loginFlows,
+		CreateLogin: func(_ context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
+			if !oc.openCodeEnabled() {
+				return nil, bridgev2.ErrNotLoggedIn
+			}
+			if !slices.ContainsFunc(loginFlows, func(f bridgev2.LoginFlow) bool { return f.ID == flowID }) {
+				return nil, bridgev2.ErrInvalidLoginFlowID
+			}
+			return &OpenCodeLogin{User: user, Connector: oc, FlowID: flowID}, nil
+		},
+	})
+	oc.ConnectorBase = bridgesdk.NewConnectorBase(oc.sdkConfig)
+	return oc
 }
 
 func (oc *OpenCodeConnector) openCodeEnabled() bool {

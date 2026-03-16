@@ -7,23 +7,36 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
+
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
+
+func newHookableStreamingState(turnID string) *streamingState {
+	return &streamingState{
+		turnID:           turnID,
+		initialEventID:   id.EventID("$event"),
+		networkMessageID: networkid.MessageID("codex:test"),
+	}
+}
+
+func attachTestTurn(state *streamingState, portal *bridgev2.Portal) {
+	if state == nil {
+		return
+	}
+	conv := bridgesdk.NewConversation(context.Background(), nil, portal, bridgev2.EventSender{}, &bridgesdk.Config{}, nil)
+	turn := conv.StartTurn(context.Background(), nil, nil)
+	turn.SetID(state.turnID)
+	state.turn = turn
+}
 
 func TestCodex_Mapping_AgentMessageDelta_EmitsTextStartThenDelta(t *testing.T) {
 	cc := &CodexClient{}
-	var got []string
-	cc.streamEventHook = func(turnID string, seq int, content map[string]any, txnID string) {
-		_ = turnID
-		_ = seq
-		_ = txnID
-		part, _ := content["part"].(map[string]any)
-		typ, _ := part["type"].(string)
-		got = append(got, typ)
-	}
 
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	state := &streamingState{turnID: "turn_1"}
+	state := newHookableStreamingState("turn_1")
+	attachTestTurn(state, portal)
 	threadID := "thr_1"
 	turnID := "turn_1_server"
 
@@ -39,25 +52,17 @@ func TestCodex_Mapping_AgentMessageDelta_EmitsTextStartThenDelta(t *testing.T) {
 		Params: raw,
 	})
 
-	if len(got) != 2 || got[0] != "text-start" || got[1] != "text-delta" {
-		t.Fatalf("expected [text-start text-delta], got %v", got)
+	if got := state.accumulated.String(); got != "hi" {
+		t.Fatalf("expected accumulated text %q, got %q", "hi", got)
 	}
 }
 
 func TestCodex_Mapping_ReasoningSummaryDelta_EmitsReasoningStartThenDelta(t *testing.T) {
 	cc := &CodexClient{}
-	var got []string
-	cc.streamEventHook = func(turnID string, seq int, content map[string]any, txnID string) {
-		_ = turnID
-		_ = seq
-		_ = txnID
-		part, _ := content["part"].(map[string]any)
-		typ, _ := part["type"].(string)
-		got = append(got, typ)
-	}
 
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	state := &streamingState{turnID: "turn_1"}
+	state := newHookableStreamingState("turn_1")
+	attachTestTurn(state, portal)
 	threadID := "thr_1"
 	turnID := "turn_1_server"
 
@@ -72,25 +77,17 @@ func TestCodex_Mapping_ReasoningSummaryDelta_EmitsReasoningStartThenDelta(t *tes
 		Params: raw,
 	})
 
-	if len(got) != 2 || got[0] != "reasoning-start" || got[1] != "reasoning-delta" {
-		t.Fatalf("expected [reasoning-start reasoning-delta], got %v", got)
+	if got := state.reasoning.String(); got != "think" {
+		t.Fatalf("expected reasoning text %q, got %q", "think", got)
 	}
 }
 
 func TestCodex_Mapping_ItemStartedCommandExecution_EmitsToolInputStartAndAvailable(t *testing.T) {
 	cc := &CodexClient{}
-	var got []string
-	cc.streamEventHook = func(turnID string, seq int, content map[string]any, txnID string) {
-		_ = turnID
-		_ = seq
-		_ = txnID
-		part, _ := content["part"].(map[string]any)
-		typ, _ := part["type"].(string)
-		got = append(got, typ)
-	}
 
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	state := &streamingState{turnID: "turn_1"}
+	state := newHookableStreamingState("turn_1")
+	attachTestTurn(state, portal)
 	threadID := "thr_1"
 	turnID := "turn_1_server"
 
@@ -112,29 +109,17 @@ func TestCodex_Mapping_ItemStartedCommandExecution_EmitsToolInputStartAndAvailab
 		Params: raw,
 	})
 
-	if len(got) != 2 || got[0] != "tool-input-start" || got[1] != "tool-input-available" {
-		t.Fatalf("expected [tool-input-start tool-input-available], got %v", got)
+	if state.turn == nil {
+		t.Fatal("expected SDK turn to exist")
 	}
 }
 
 func TestCodex_Mapping_CommandOutputDelta_IsBuffered(t *testing.T) {
 	cc := &CodexClient{}
-	var gotOutputs []string
-	cc.streamEventHook = func(turnID string, seq int, content map[string]any, txnID string) {
-		_ = turnID
-		_ = seq
-		_ = txnID
-		part, _ := content["part"].(map[string]any)
-		if part["type"] != "tool-output-available" {
-			return
-		}
-		if out, ok := part["output"].(string); ok {
-			gotOutputs = append(gotOutputs, out)
-		}
-	}
 
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	state := &streamingState{turnID: "turn_1"}
+	state := newHookableStreamingState("turn_1")
+	attachTestTurn(state, portal)
 	threadID := "thr_1"
 	turnID := "turn_1_server"
 
@@ -159,28 +144,17 @@ func TestCodex_Mapping_CommandOutputDelta_IsBuffered(t *testing.T) {
 		Params: raw2,
 	})
 
-	if len(gotOutputs) < 2 {
-		t.Fatalf("expected at least 2 tool outputs, got %v", gotOutputs)
-	}
-	if gotOutputs[len(gotOutputs)-1] != "hello world" {
-		t.Fatalf("expected buffered output 'hello world', got %q", gotOutputs[len(gotOutputs)-1])
+	if got := state.codexToolOutputBuffers["it_cmd"].String(); got != "hello world" {
+		t.Fatalf("expected buffered output 'hello world', got %q", got)
 	}
 }
 
 func TestCodex_Mapping_TurnDiffUpdated_EmitsToolOutput(t *testing.T) {
 	cc := &CodexClient{}
-	var got []string
-	cc.streamEventHook = func(turnID string, seq int, content map[string]any, txnID string) {
-		_ = turnID
-		_ = seq
-		_ = txnID
-		part, _ := content["part"].(map[string]any)
-		typ, _ := part["type"].(string)
-		got = append(got, typ)
-	}
 
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	state := &streamingState{turnID: "turn_1"}
+	state := newHookableStreamingState("turn_1")
+	attachTestTurn(state, portal)
 	threadID := "thr_1"
 	turnID := "turn_1_server"
 
@@ -195,28 +169,56 @@ func TestCodex_Mapping_TurnDiffUpdated_EmitsToolOutput(t *testing.T) {
 	})
 
 	// tool-input-start, tool-input-available, tool-output-available
-	if len(got) < 3 {
-		t.Fatalf("expected >=3 parts, got %v", got)
+	if state.codexLatestDiff != "diff --git a/x b/x" {
+		t.Fatalf("expected diff to be stored, got %q", state.codexLatestDiff)
 	}
-	if got[0] != "tool-input-start" || got[1] != "tool-input-available" || got[2] != "tool-output-available" {
-		t.Fatalf("unexpected part types: %v", got)
+}
+
+func TestCodex_Mapping_ModelRerouted_UpdatesCurrentModel(t *testing.T) {
+	cc := &CodexClient{
+		activeTurns: make(map[string]*codexActiveTurn),
+	}
+
+	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
+	state := newHookableStreamingState("turn_1")
+	state.currentModel = "gpt-5.1-codex"
+	attachTestTurn(state, portal)
+	threadID := "thr_1"
+	turnID := "turn_1_server"
+	cc.activeTurns[codexTurnKey(threadID, turnID)] = &codexActiveTurn{
+		portal:   portal,
+		state:    state,
+		threadID: threadID,
+		turnID:   turnID,
+		model:    state.currentModel,
+	}
+
+	raw, _ := json.Marshal(map[string]any{
+		"threadId":  threadID,
+		"turnId":    turnID,
+		"fromModel": "gpt-5.1-codex",
+		"toModel":   "gpt-5-mini",
+		"reason":    "safety",
+	})
+	cc.handleNotif(context.Background(), portal, nil, state, "gpt-5.1-codex", threadID, turnID, codexNotif{
+		Method: "model/rerouted",
+		Params: raw,
+	})
+
+	if state.currentModel != "gpt-5-mini" {
+		t.Fatalf("expected current model to be updated, got %q", state.currentModel)
+	}
+	if active := cc.activeTurns[codexTurnKey(threadID, turnID)]; active == nil || active.model != "gpt-5-mini" {
+		t.Fatalf("expected active turn model to be updated, got %#v", active)
 	}
 }
 
 func TestCodex_Mapping_ContextCompaction_EmitsToolParts(t *testing.T) {
 	cc := &CodexClient{}
-	var got []string
-	cc.streamEventHook = func(turnID string, seq int, content map[string]any, txnID string) {
-		_ = turnID
-		_ = seq
-		_ = txnID
-		part, _ := content["part"].(map[string]any)
-		typ, _ := part["type"].(string)
-		got = append(got, typ)
-	}
 
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	state := &streamingState{turnID: "turn_1"}
+	state := newHookableStreamingState("turn_1")
+	attachTestTurn(state, portal)
 	threadID := "thr_1"
 	turnID := "turn_1_server"
 
@@ -235,28 +237,20 @@ func TestCodex_Mapping_ContextCompaction_EmitsToolParts(t *testing.T) {
 	})
 
 	// started => tool-input-start/tool-input-available, completed => tool-output-available
-	if len(got) < 3 {
-		t.Fatalf("expected >=3 parts, got %v", got)
+	if len(state.toolCalls) == 0 {
+		t.Fatal("expected completed tool call metadata")
 	}
-	if got[0] != "tool-input-start" || got[1] != "tool-input-available" || got[2] != "tool-output-available" {
-		t.Fatalf("unexpected part types: %v", got)
+	if state.toolCalls[len(state.toolCalls)-1].ToolName != "contextCompaction" {
+		t.Fatalf("expected contextCompaction tool call, got %#v", state.toolCalls[len(state.toolCalls)-1])
 	}
 }
 
 func TestCodex_Mapping_ReviewMode_EmitsReviewToolOutput(t *testing.T) {
 	cc := &CodexClient{}
-	var gotTypes []string
-	cc.streamEventHook = func(turnID string, seq int, content map[string]any, txnID string) {
-		_ = turnID
-		_ = seq
-		_ = txnID
-		part, _ := content["part"].(map[string]any)
-		typ, _ := part["type"].(string)
-		gotTypes = append(gotTypes, typ)
-	}
 
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	state := &streamingState{turnID: "turn_1"}
+	state := newHookableStreamingState("turn_1")
+	attachTestTurn(state, portal)
 	threadID := "thr_1"
 	turnID := "turn_1_server"
 
@@ -274,15 +268,10 @@ func TestCodex_Mapping_ReviewMode_EmitsReviewToolOutput(t *testing.T) {
 	})
 	cc.handleNotif(context.Background(), portal, nil, state, "model", threadID, turnID, codexNotif{Method: "item/completed", Params: rawCompleted})
 
-	// At least one tool output should be present.
-	seenOutput := false
-	for _, typ := range gotTypes {
-		if typ == "tool-output-available" {
-			seenOutput = true
-			break
-		}
+	if len(state.toolCalls) == 0 {
+		t.Fatal("expected review tool call metadata")
 	}
-	if !seenOutput {
-		t.Fatalf("expected tool-output-available, got %v", gotTypes)
+	if state.toolCalls[len(state.toolCalls)-1].ToolName != "review" {
+		t.Fatalf("expected review tool call, got %#v", state.toolCalls[len(state.toolCalls)-1])
 	}
 }

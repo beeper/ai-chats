@@ -11,7 +11,7 @@ import (
 
 type mockManager struct {
 	status        ProviderStatus
-	statusDetails *StatusDetails
+	statusDetails *MemorySearchStatus
 }
 
 func (m mockManager) Status() ProviderStatus {
@@ -26,7 +26,7 @@ func (m mockManager) ReadFile(context.Context, string, *int, *int) (map[string]a
 	return nil, nil
 }
 
-func (m mockManager) StatusDetails(context.Context) (*StatusDetails, error) {
+func (m mockManager) StatusDetails(context.Context) (*MemorySearchStatus, error) {
 	return m.statusDetails, nil
 }
 
@@ -35,7 +35,7 @@ func (m mockManager) SyncWithProgress(context.Context, func(int, int, string)) e
 }
 
 func TestFormatStatusLines_LexicalModeOutput(t *testing.T) {
-	lines := formatStatusLines(&StatusDetails{
+	lines := formatStatusLines(&MemorySearchStatus{
 		Provider:     "builtin",
 		Model:        "lexical",
 		WorkspaceDir: "/workspace",
@@ -95,7 +95,7 @@ func TestFormatStatusLines_LexicalModeOutput(t *testing.T) {
 
 func TestExecuteCommand_StatusDeepAliasUsesLexicalStatusOutput(t *testing.T) {
 	manager := mockManager{
-		statusDetails: &StatusDetails{
+		statusDetails: &MemorySearchStatus{
 			Provider:     "builtin",
 			Model:        "lexical",
 			WorkspaceDir: "/workspace",
@@ -123,7 +123,7 @@ func TestExecuteCommand_StatusDeepAliasUsesLexicalStatusOutput(t *testing.T) {
 	}
 
 	handled, err := ExecuteCommand(context.Background(), call, CommandExecDeps{
-		GetManager: func(iruntime.ToolScope) (Manager, string) {
+		GetManager: func(iruntime.ToolScope) (execManager, string) {
 			return manager, ""
 		},
 	})
@@ -158,5 +158,20 @@ func TestExecuteCommand_StatusDeepAliasUsesLexicalStatusOutput(t *testing.T) {
 		if strings.Contains(output, needle) {
 			t.Fatalf("did not expect command output to contain %q, got:\n%s", needle, output)
 		}
+	}
+}
+
+func TestFormatStatusLines_UnlimitedCacheOutput(t *testing.T) {
+	lines := formatStatusLines(&MemorySearchStatus{
+		Cache: &MemorySearchCacheStatus{
+			Enabled:    true,
+			Entries:    4,
+			MaxEntries: UnlimitedCacheEntries,
+		},
+	})
+
+	output := strings.Join(lines, "\n")
+	if !strings.Contains(output, "Cache enabled: true (entries=4 max=unlimited)") {
+		t.Fatalf("expected unlimited cache output, got:\n%s", output)
 	}
 }

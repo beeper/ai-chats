@@ -23,32 +23,15 @@ func NormalizePath(raw string) (string, error) {
 	if strings.HasPrefix(cleaned, "..") || strings.Contains(cleaned, "/..") {
 		return "", errors.New("path escapes virtual root")
 	}
-	cleaned = strings.TrimSuffix(cleaned, "/")
-	return cleaned, nil
-}
-
-// NormalizeDir normalizes a directory path; empty means root.
-func NormalizeDir(raw string) (string, error) {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" || trimmed == "." || trimmed == "/" {
-		return "", nil
-	}
-	cleaned, err := NormalizePath(trimmed)
-	if err != nil {
-		return "", err
-	}
 	return cleaned, nil
 }
 
 // IsMemoryPath returns true for MEMORY.md or memory/*.md.
 func IsMemoryPath(relPath string) bool {
-	normalized := strings.TrimSpace(relPath)
-	if normalized == "" {
+	normalized, err := NormalizePath(relPath)
+	if err != nil {
 		return false
 	}
-	normalized = strings.ReplaceAll(normalized, "\\", "/")
-	normalized = strings.TrimPrefix(normalized, "./")
-	normalized = strings.TrimLeft(normalized, "/")
 	if normalized == "MEMORY.md" || normalized == "memory.md" {
 		return true
 	}

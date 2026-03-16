@@ -31,14 +31,10 @@ func AllowedNoteExtensions() []string {
 // IsAllowedTextNotePath checks whether a virtual path is allowed for note indexing/reading.
 // It requires an explicit file extension in the allowlist.
 func IsAllowedTextNotePath(relPath string) (ok bool, ext string, reason string) {
-	normalized := strings.TrimSpace(relPath)
-	if normalized == "" {
+	normalized, err := NormalizePath(relPath)
+	if err != nil {
 		return false, "", "empty_path"
 	}
-	normalized = strings.ReplaceAll(normalized, "\\", "/")
-	normalized = strings.TrimPrefix(normalized, "./")
-	normalized = strings.TrimLeft(normalized, "/")
-
 	ext = strings.ToLower(path.Ext(normalized))
 	if ext == "" {
 		return false, "", "missing_extension"

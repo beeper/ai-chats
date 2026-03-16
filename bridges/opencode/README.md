@@ -1,6 +1,6 @@
-# OpenCode Bridge
+# OpenCode Companion
 
-The OpenCode bridge connects a self-hosted OpenCode server to Beeper through AgentRemote.
+The OpenCode Companion bridge connects a self-hosted OpenCode server to Beeper through AgentRemote.
 
 It is built for setups where OpenCode is already running on a machine you trust and you want Beeper to become the front end. That can be a local development machine, a lab box, or an office server that you reach from your phone.
 

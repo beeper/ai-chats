@@ -8,7 +8,6 @@ import (
 )
 
 // JSONResult creates a structured JSON result from any payload.
-// Following clawdbot's jsonResult pattern.
 func JSONResult(payload any) *Result {
 	return &Result{
 		Status:  ResultSuccess,
@@ -17,8 +16,7 @@ func JSONResult(payload any) *Result {
 	}
 }
 
-// ErrorResult creates an error result.
-// Follows clawdbot pattern: don't throw, return structured errors.
+// ErrorResult creates an error result with structured metadata.
 func ErrorResult(toolName, message string) *Result {
 	return &Result{
 		Status:  ResultError,
@@ -26,6 +24,16 @@ func ErrorResult(toolName, message string) *Result {
 		Details: map[string]any{"tool": toolName, "error": message},
 		Error:   message,
 	}
+}
+
+// JSONErrorResult creates a successful JSON payload whose body includes a
+// status=error marker. Use this when a tool contract expects structured JSON
+// output even for recoverable/user-facing failures.
+func JSONErrorResult(message string) *Result {
+	return JSONResult(map[string]any{
+		"status": "error",
+		"error":  message,
+	})
 }
 
 // mustJSON marshals payload to JSON, returning error message on failure.

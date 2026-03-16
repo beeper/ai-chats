@@ -2,23 +2,21 @@ package codex
 
 import (
 	"context"
-	"fmt"
 	"os/exec"
-	"slices"
 	"strings"
 	"sync"
 	"time"
 
-	"go.mau.fi/util/configupgrade"
 	"go.mau.fi/util/dbutil"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/id"
 
+	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/bridges/codex/codexrpc"
-	"github.com/beeper/agentremote/pkg/aidb"
-	"github.com/beeper/agentremote/pkg/bridgeadapter"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 var (
@@ -28,10 +26,11 @@ var (
 
 // CodexConnector runs the dedicated Codex bridge surface.
 type CodexConnector struct {
-	bridgeadapter.BaseConnectorMethods
-	br     *bridgev2.Bridge
-	Config Config
-	db     *dbutil.Database
+	*agentremote.ConnectorBase
+	br        *bridgev2.Bridge
+	Config    Config
+	sdkConfig *bridgesdk.Config
+	db        *dbutil.Database
 
 	clientsMu sync.Mutex
 	clients   map[networkid.UserLoginID]bridgev2.NetworkAPI
@@ -41,84 +40,86 @@ const (
 	FlowCodexAPIKey                = "codex_api_key"
 	FlowCodexChatGPT               = "codex_chatgpt"
 	FlowCodexChatGPTExternalTokens = "codex_chatgpt_external_tokens"
+	hostAuthLoginPrefix            = "codex_host"
+	hostAuthRemoteName             = "Codex (host auth)"
 )
 
-func (cc *CodexConnector) Init(bridge *bridgev2.Bridge) {
-	cc.br = bridge
-	if bridge != nil && bridge.DB != nil && bridge.DB.Database != nil {
-		cc.db = aidb.NewChild(
-			bridge.DB.Database,
-			dbutil.ZeroLogger(bridge.Log.With().Str("db_section", "codex_bridge").Logger()),
-		)
-	}
-	bridgeadapter.EnsureClientMap(&cc.clientsMu, &cc.clients)
-}
-
-func (cc *CodexConnector) Stop(ctx context.Context) {
-	bridgeadapter.StopClients(&cc.clientsMu, &cc.clients)
-}
-
-func (cc *CodexConnector) Start(ctx context.Context) error {
-	db := cc.bridgeDB()
-	if err := aidb.Upgrade(ctx, db, "codex_bridge", "codex bridge database not initialized"); err != nil {
-		return err
-	}
-
-	cc.applyRuntimeDefaults()
-	bridgeadapter.PrimeUserLoginCache(ctx, cc.br)
-	cc.autoProvisionExistingCodex(ctx)
-
-	return nil
+type hostAuthProbe struct {
+	AuthMode     string
+	AccountEmail string
 }
 
 func (cc *CodexConnector) bridgeDB() *dbutil.Database {
-	if cc.db != nil {
-		return cc.db
-	}
-	if cc.br != nil && cc.br.DB != nil {
-		cc.db = aidb.NewChild(
-			cc.br.DB.Database,
-			dbutil.ZeroLogger(cc.br.Log.With().Str("db_section", "codex_bridge").Logger()),
-		)
-		return cc.db
-	}
-	return nil
+	return cc.db
 }
 
-// autoProvisionExistingCodex checks whether the system `codex` CLI is already
-// authenticated and, if so, creates a Codex login for every Matrix user that
-// doesn't already have one. This lets users skip the manual login step when
-// codex is pre-authenticated (e.g. via `codex auth login`).
-func (cc *CodexConnector) autoProvisionExistingCodex(ctx context.Context) {
-	if !cc.codexEnabled() {
+// reconcileHostAuthLogins ensures a deterministic host-auth Codex login exists
+// for all known Matrix users when the local/default Codex auth is already valid.
+func (cc *CodexConnector) reconcileHostAuthLogins(ctx context.Context) {
+	if !cc.codexEnabled() || cc.br == nil || cc.br.DB == nil {
 		return
 	}
-	cmd := "codex"
-	if cc.Config.Codex != nil && strings.TrimSpace(cc.Config.Codex.Command) != "" {
-		cmd = strings.TrimSpace(cc.Config.Codex.Command)
+
+	probe, err := cc.probeHostAuth(ctx)
+	if err != nil {
+		cc.br.Log.Debug().Err(err).Msg("Host-auth reconcile: failed to probe Codex auth")
+		return
 	}
+	if probe == nil {
+		return
+	}
+
+	userIDs, err := cc.getKnownUserIDs(ctx)
+	if err != nil {
+		cc.br.Log.Warn().Err(err).Msg("Host-auth reconcile: failed to list known users")
+		return
+	}
+	for _, mxid := range userIDs {
+		user, err := cc.br.GetUserByMXID(ctx, mxid)
+		if err != nil || user == nil {
+			continue
+		}
+		if err := cc.ensureHostAuthLoginForUserWithProbe(ctx, user, probe); err != nil {
+			cc.br.Log.Warn().
+				Err(err).
+				Stringer("mxid", mxid).
+				Msg("Host-auth reconcile: failed to ensure host-auth login")
+		}
+	}
+}
+
+func (cc *CodexConnector) getKnownUserIDs(ctx context.Context) ([]id.UserID, error) {
+	if cc == nil || cc.br == nil || cc.br.DB == nil {
+		return nil, nil
+	}
+	rows, err := cc.br.DB.Query(ctx, `SELECT mxid FROM "user" WHERE bridge_id=$1`, cc.br.ID)
+	return dbutil.NewRowIterWithError(rows, dbutil.ScanSingleColumn[id.UserID], err).AsList()
+}
+
+func (cc *CodexConnector) probeHostAuth(ctx context.Context) (*hostAuthProbe, error) {
+	if cc == nil || !cc.codexEnabled() {
+		return nil, nil
+	}
+	cmd := cc.resolveCodexCommand()
 	if _, err := exec.LookPath(cmd); err != nil {
-		return
+		return nil, nil
 	}
 
 	launch, err := cc.resolveAppServerLaunch()
 	if err != nil {
-		return
+		return nil, err
 	}
 
-	// Spawn a temporary app-server without CODEX_HOME override so it picks up
-	// the system's default Codex auth (~/.codex or $CODEX_HOME).
 	probeCtx, probeCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer probeCancel()
 	rpc, err := codexrpc.StartProcess(probeCtx, codexrpc.ProcessConfig{
 		Command:      cmd,
 		Args:         launch.Args,
-		Env:          nil, // inherit system env — use default Codex auth
+		Env:          nil, // inherit system env and use host/default Codex auth state
 		WebSocketURL: launch.WebSocketURL,
 	})
 	if err != nil {
-		cc.br.Log.Debug().Err(err).Msg("Auto-provision: failed to start probe codex app-server")
-		return
+		return nil, err
 	}
 	defer func() { _ = rpc.Close() }()
 
@@ -127,124 +128,139 @@ func (cc *CodexConnector) autoProvisionExistingCodex(ctx context.Context) {
 	_, err = rpc.Initialize(initCtx, codexrpc.ClientInfo{Name: ci.Name, Title: ci.Title, Version: ci.Version}, false)
 	initCancel()
 	if err != nil {
-		cc.br.Log.Debug().Err(err).Msg("Auto-provision: codex initialize failed")
-		return
+		return nil, err
 	}
 
 	var resp struct {
-		Account *codexAccountInfo `json:"account"`
+		Account            *codexAccountInfo `json:"account"`
+		RequiresOpenaiAuth bool              `json:"requiresOpenaiAuth"`
 	}
 	readCtx, readCancel := context.WithTimeout(probeCtx, 10*time.Second)
 	err = rpc.Call(readCtx, "account/read", map[string]any{"refreshToken": false}, &resp)
 	readCancel()
-	if err != nil || resp.Account == nil {
-		cc.br.Log.Debug().Err(err).Msg("Auto-provision: system codex is not authenticated")
-		return
-	}
-
-	cc.br.Log.Debug().
-		Str("account_type", resp.Account.Type).
-		Str("account_email", resp.Account.Email).
-		Msg("Auto-provision: detected existing Codex authentication")
-
-	userIDs, err := cc.br.DB.UserLogin.GetAllUserIDsWithLogins(ctx)
 	if err != nil {
-		cc.br.Log.Warn().Err(err).Msg("Auto-provision: failed to list user IDs")
-		return
+		return nil, err
+	}
+	if resp.Account == nil {
+		return nil, nil
 	}
 
-	for _, mxid := range userIDs {
-		user, err := cc.br.GetUserByMXID(ctx, mxid)
-		if err != nil || user == nil {
-			continue
-		}
-
-		// Check if this user already has a Codex login.
-		hasCodex := false
-		for _, existing := range user.GetUserLogins() {
-			if existing == nil || existing.Metadata == nil {
-				continue
-			}
-			meta, ok := existing.Metadata.(*UserLoginMetadata)
-			if !ok || meta == nil {
-				continue
-			}
-			if strings.EqualFold(strings.TrimSpace(meta.Provider), ProviderCodex) {
-				hasCodex = true
-				break
-			}
-		}
-		if hasCodex {
-			continue
-		}
-
-		// Use a deterministic instance ID so restarts won't create duplicates.
-		loginID := bridgeadapter.MakeUserLoginID("codex", mxid, 1)
-
-		// If this login already exists in the DB (e.g. from a previous run), skip creation.
-		existing, err := cc.br.GetExistingUserLoginByID(ctx, loginID)
-		if err != nil {
-			cc.br.Log.Debug().Err(err).Stringer("mxid", mxid).Msg("Auto-provision: failed to check existing login")
-			continue
-		}
-		if existing != nil {
-			continue
-		}
-
-		meta := &UserLoginMetadata{
-			Provider:          ProviderCodex,
-			CodexHome:         "",    // empty = use system default
-			CodexHomeManaged:  false, // don't delete the user's own Codex home on logout
-			CodexAuthMode:     resp.Account.Type,
-			CodexAccountEmail: resp.Account.Email,
-		}
-
-		login, err := user.NewLogin(ctx, &database.UserLogin{
-			ID:         loginID,
-			RemoteName: "Codex",
-			Metadata:   meta,
-		}, nil)
-		if err != nil {
-			cc.br.Log.Warn().Err(err).Stringer("mxid", mxid).Msg("Auto-provision: failed to create login")
-			continue
-		}
-
-		if err := cc.LoadUserLogin(ctx, login); err != nil {
-			cc.br.Log.Warn().Err(err).Stringer("mxid", mxid).Msg("Auto-provision: failed to load login")
-			continue
-		}
-
-		cc.br.Log.Info().
-			Stringer("mxid", mxid).
-			Str("login_id", string(login.ID)).
-			Msg("Auto-provisioned Codex login for user")
+	probe := &hostAuthProbe{
+		AuthMode:     strings.TrimSpace(resp.Account.Type),
+		AccountEmail: strings.TrimSpace(resp.Account.Email),
 	}
+	return probe, nil
+}
+
+func (cc *CodexConnector) ensureHostAuthLoginForUser(ctx context.Context, user *bridgev2.User) error {
+	probe, err := cc.probeHostAuth(ctx)
+	if err != nil || probe == nil {
+		return err
+	}
+	return cc.ensureHostAuthLoginForUserWithProbe(ctx, user, probe)
+}
+
+func (cc *CodexConnector) ensureHostAuthLoginForUserWithProbe(ctx context.Context, user *bridgev2.User, probe *hostAuthProbe) error {
+	if cc == nil || cc.br == nil || user == nil || probe == nil {
+		return nil
+	}
+	loginID := cc.hostAuthLoginID(user.MXID)
+	if hasManagedCodexLogin(user.GetUserLogins(), loginID) {
+		cc.br.Log.Debug().
+			Stringer("mxid", user.MXID).
+			Msg("Host-auth reconcile: skipping host-auth login because a managed Codex login exists")
+		return nil
+	}
+	existing, err := cc.br.GetExistingUserLoginByID(ctx, loginID)
+	if err != nil {
+		return err
+	}
+	meta := &UserLoginMetadata{
+		Provider:          ProviderCodex,
+		CodexAuthSource:   CodexAuthSourceHost,
+		CodexAuthMode:     strings.TrimSpace(probe.AuthMode),
+		CodexAccountEmail: strings.TrimSpace(probe.AccountEmail),
+	}
+	login, err := user.NewLogin(ctx, &database.UserLogin{
+		ID:         loginID,
+		RemoteName: hostAuthRemoteName,
+		Metadata:   meta,
+	}, nil)
+	if err != nil {
+		return err
+	}
+	if client, ok := login.Client.(*CodexClient); ok && client != nil && !client.IsLoggedIn() {
+		bg := context.Background()
+		if cc.br.BackgroundCtx != nil {
+			bg = cc.br.BackgroundCtx
+		}
+		go login.Client.Connect(login.Log.WithContext(bg))
+	}
+	logger := cc.br.Log.With().
+		Stringer("mxid", user.MXID).
+		Str("login_id", string(login.ID)).
+		Logger()
+	if existing == nil {
+		logger.Info().Msg("Host-auth reconcile: created host-auth Codex login")
+	} else {
+		logger.Debug().Msg("Host-auth reconcile: updated host-auth Codex login metadata")
+	}
+	return nil
+}
+
+func (cc *CodexConnector) hostAuthLoginID(mxid id.UserID) networkid.UserLoginID {
+	return agentremote.MakeUserLoginID(hostAuthLoginPrefix, mxid, 1)
+}
+
+func hasManagedCodexLogin(logins []*bridgev2.UserLogin, exceptID networkid.UserLoginID) bool {
+	for _, existing := range logins {
+		if existing == nil || existing.ID == exceptID || existing.Metadata == nil {
+			continue
+		}
+		meta, ok := existing.Metadata.(*UserLoginMetadata)
+		if !ok || meta == nil {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(meta.Provider), ProviderCodex) && isManagedAuthLogin(meta) {
+			return true
+		}
+	}
+	return false
+}
+
+func resolveCodexCommandFromConfig(cfg *CodexConfig) string {
+	if cfg == nil {
+		return "codex"
+	}
+	if cmd := strings.TrimSpace(cfg.Command); cmd != "" {
+		return cmd
+	}
+	return "codex"
+}
+
+func (cc *CodexConnector) resolveCodexCommand() string {
+	if cc == nil {
+		return "codex"
+	}
+	return resolveCodexCommandFromConfig(cc.Config.Codex)
 }
 
 func (cc *CodexConnector) applyRuntimeDefaults() {
 	if cc.Config.ModelCacheDuration == 0 {
 		cc.Config.ModelCacheDuration = 6 * time.Hour
 	}
-	if cc.Config.Bridge.CommandPrefix == "" {
-		cc.Config.Bridge.CommandPrefix = "!ai"
-	}
+	bridgesdk.ApplyDefaultCommandPrefix(&cc.Config.Bridge.CommandPrefix, "!ai")
 	if cc.Config.Codex == nil {
 		cc.Config.Codex = &CodexConfig{}
 	}
-	if cc.Config.Codex.Enabled == nil {
-		v := true
-		cc.Config.Codex.Enabled = &v
-	}
+	bridgesdk.ApplyBoolDefault(&cc.Config.Codex.Enabled, true)
 	if strings.TrimSpace(cc.Config.Codex.Command) == "" {
 		cc.Config.Codex.Command = "codex"
 	}
 	if strings.TrimSpace(cc.Config.Codex.DefaultModel) == "" {
 		cc.Config.Codex.DefaultModel = "gpt-5.1-codex"
 	}
-	if cc.Config.Codex.NetworkAccess == nil {
-		v := true
-		cc.Config.Codex.NetworkAccess = &v
-	}
+	bridgesdk.ApplyBoolDefault(&cc.Config.Codex.NetworkAccess, true)
 	if cc.Config.Codex.ClientInfo == nil {
 		cc.Config.Codex.ClientInfo = &CodexClientInfo{}
 	}
@@ -259,84 +275,9 @@ func (cc *CodexConnector) applyRuntimeDefaults() {
 	}
 }
 
-func (cc *CodexConnector) GetName() bridgev2.BridgeName {
-	return bridgev2.BridgeName{
-		DisplayName:          "Codex Bridge",
-		NetworkURL:           "https://github.com/openai/codex",
-		NetworkID:            "codex",
-		BeeperBridgeType:     "codex",
-		DefaultPort:          29346,
-		DefaultCommandPrefix: cc.Config.Bridge.CommandPrefix,
-	}
-}
-
-func (cc *CodexConnector) GetConfig() (example string, data any, upgrader configupgrade.Upgrader) {
-	return exampleNetworkConfig, &cc.Config, configupgrade.SimpleUpgrader(upgradeConfig)
-}
-
-func (cc *CodexConnector) GetDBMetaTypes() database.MetaTypes {
-	return bridgeadapter.BuildMetaTypes(
-		func() any { return &PortalMetadata{} },
-		func() any { return &MessageMetadata{} },
-		func() any { return &UserLoginMetadata{} },
-		func() any { return &GhostMetadata{} },
-	)
-}
-
-func (cc *CodexConnector) LoadUserLogin(_ context.Context, login *bridgev2.UserLogin) error {
-	meta := loginMetadata(login)
-	if !strings.EqualFold(strings.TrimSpace(meta.Provider), ProviderCodex) {
-		login.Client = newBrokenLoginClient(login, cc, "This bridge only supports Codex logins.")
-		return nil
-	}
-	if !cc.codexEnabled() {
-		login.Client = newBrokenLoginClient(login, cc, "Codex integration is disabled in the configuration.")
-		return nil
-	}
-	return bridgeadapter.LoadUserLogin(login, bridgeadapter.LoadUserLoginConfig[*CodexClient]{
-		Mu: &cc.clientsMu, Clients: cc.clients, BridgeName: "Codex",
-		MakeBroken: func(l *bridgev2.UserLogin, reason string) *bridgeadapter.BrokenLoginClient {
-			return newBrokenLoginClient(l, cc, reason)
-		},
-		Update:    func(e *CodexClient, l *bridgev2.UserLogin) { e.UserLogin = l },
-		Create:    func(l *bridgev2.UserLogin) (*CodexClient, error) { return newCodexClient(l, cc) },
-		AfterLoad: func(c *CodexClient) { c.scheduleBootstrap() },
-	})
-}
-
-func (cc *CodexConnector) GetLoginFlows() []bridgev2.LoginFlow {
-	if !cc.codexEnabled() {
-		return nil
-	}
-	return []bridgev2.LoginFlow{
-		{
-			ID:          FlowCodexAPIKey,
-			Name:        "API Key",
-			Description: "Sign in with an OpenAI API key using codex app-server.",
-		},
-		{
-			ID:          FlowCodexChatGPT,
-			Name:        "ChatGPT",
-			Description: "Open browser login and authenticate with your ChatGPT account.",
-		},
-		{
-			ID:          FlowCodexChatGPTExternalTokens,
-			Name:        "ChatGPT external tokens",
-			Description: "Provide externally managed ChatGPT id/access tokens.",
-		},
-	}
-}
-
-func (cc *CodexConnector) CreateLogin(_ context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
-	if !cc.codexEnabled() {
-		return nil, fmt.Errorf("login flow %s is not available", flowID)
-	}
-	if !slices.ContainsFunc(cc.GetLoginFlows(), func(f bridgev2.LoginFlow) bool { return f.ID == flowID }) {
-		return nil, fmt.Errorf("login flow %s is not available", flowID)
-	}
-	return &CodexLogin{User: user, Connector: cc, FlowID: flowID}, nil
-}
-
 func (cc *CodexConnector) codexEnabled() bool {
-	return cc.Config.Codex == nil || cc.Config.Codex.Enabled == nil || *cc.Config.Codex.Enabled
+	if cc.Config.Codex == nil || cc.Config.Codex.Enabled == nil {
+		return true
+	}
+	return *cc.Config.Codex.Enabled
 }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -58,6 +58,7 @@ func EnsureBootstrapFiles(ctx context.Context, store *textfs.Store) (bool, error
 	if store == nil {
 		return false, errors.New("textfs store is required")
 	}
+
 	brandNew := true
 	for _, name := range coreBootstrapFiles {
 		_, found, err := store.Read(ctx, name)
@@ -69,23 +70,17 @@ func EnsureBootstrapFiles(ctx context.Context, store *textfs.Store) (bool, error
 		}
 	}
 
-	for _, name := range coreBootstrapFiles {
+	filesToWrite := coreBootstrapFiles
+	if brandNew {
+		filesToWrite = append(slices.Clone(coreBootstrapFiles), DefaultBootstrapFilename)
+	}
+	for _, name := range filesToWrite {
 		content, err := loadWorkspaceTemplate(name)
 		if err != nil {
 			return brandNew, fmt.Errorf("loading template %s: %w", name, err)
 		}
 		if _, err := store.WriteIfMissing(ctx, name, content); err != nil {
 			return brandNew, fmt.Errorf("writing bootstrap file %s: %w", name, err)
-		}
-	}
-
-	if brandNew {
-		content, err := loadWorkspaceTemplate(DefaultBootstrapFilename)
-		if err != nil {
-			return brandNew, fmt.Errorf("loading template %s: %w", DefaultBootstrapFilename, err)
-		}
-		if _, err := store.WriteIfMissing(ctx, DefaultBootstrapFilename, content); err != nil {
-			return brandNew, fmt.Errorf("writing bootstrap file %s: %w", DefaultBootstrapFilename, err)
 		}
 	}
 
@@ -186,18 +181,16 @@ func TrimBootstrapContent(content, fileName string, maxChars int) TrimBootstrapR
 		}
 	}
 
-	headChars := int(math.Floor(float64(maxChars) * bootstrapHeadRatio))
-	tailChars := int(math.Floor(float64(maxChars) * bootstrapTailRatio))
+	headChars := int(float64(maxChars) * bootstrapHeadRatio)
+	tailChars := int(float64(maxChars) * bootstrapTailRatio)
 	head := trimmed[:headChars]
 	tail := trimmed[len(trimmed)-tailChars:]
 
-	marker := strings.Join([]string{
-		"",
-		fmt.Sprintf("[...truncated, read %s for full content...]", fileName),
-		fmt.Sprintf("…(truncated %s: kept %d+%d chars of %d)…", fileName, headChars, tailChars, len(trimmed)),
-		"",
-	}, "\n")
-	contentWithMarker := strings.Join([]string{head, marker, tail}, "\n")
+	marker := fmt.Sprintf(
+		"\n[...truncated, read %s for full content...]\n…(truncated %s: kept %d+%d chars of %d)…\n",
+		fileName, fileName, headChars, tailChars, len(trimmed),
+	)
+	contentWithMarker := head + "\n" + marker + "\n" + tail
 	return TrimBootstrapResult{
 		Content:        contentWithMarker,
 		Truncated:      true,

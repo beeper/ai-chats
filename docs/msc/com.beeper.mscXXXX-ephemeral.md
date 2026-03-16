@@ -30,7 +30,7 @@ Use cases that require custom ephemeral events include:
 | TTL | Not specified | Servers SHOULD expire events. Recommended TTL: 2 minutes. |
 | Timestamp | `origin_server_ts` on event | `?ts=` query param on PUT, stored as `origin_server_ts` |
 | Response | `{}` | `{}` (empty body) |
-| Built-in type blocking | Rejects `m.*` types | No type restriction (power levels apply) |
+| Built-in type blocking | Rejects `m.*` types | Rejects built-in `m.*` ephemeral types except `m.room.encrypted` |
 | Sync delivery | `ephemeral` section of `/sync` rooms | Same — delivered in `rooms.join.{roomId}.ephemeral.events[]` |
 
 ### Client-Server API
@@ -55,6 +55,7 @@ PUT /_matrix/client/unstable/com.beeper.ephemeral/rooms/{roomId}/ephemeral/{even
 
 **Constraints:**
 - Maximum content size: 64KB. Servers MUST reject requests exceeding this limit with `M_TOO_LARGE`.
+- Event types: Servers MUST accept `m.room.encrypted` and custom non-`m.*` event types. Servers MUST reject other built-in `m.*` ephemeral event types.
 - Deduplication: Servers MUST deduplicate on the composite key `(room_id, sender, event_type, txn_id)`. Duplicate sends MUST be silently accepted and return `200 OK`.
 
 **Response:** `200 OK`

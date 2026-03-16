@@ -20,17 +20,15 @@ var identityPlaceholderValues = map[string]struct{}{
 	"workspace-relative path, http(s) url, or data uri":             {},
 }
 
+var dashReplacer = strings.NewReplacer("\u2013", "-", "\u2014", "-")
+
 func normalizeIdentityValue(value string) string {
-	normalized := strings.TrimSpace(value)
-	normalized = strings.Trim(normalized, "*_")
+	normalized := strings.Trim(strings.TrimSpace(value), "*_")
 	if strings.HasPrefix(normalized, "(") && strings.HasSuffix(normalized, ")") {
 		normalized = strings.TrimSpace(normalized[1 : len(normalized)-1])
 	}
-	replacer := strings.NewReplacer("\u2013", "-", "\u2014", "-")
-	normalized = replacer.Replace(normalized)
-	normalized = strings.Join(strings.Fields(normalized), " ")
-	normalized = strings.ToLower(normalized)
-	return normalized
+	normalized = dashReplacer.Replace(normalized)
+	return strings.ToLower(strings.Join(strings.Fields(normalized), " "))
 }
 
 func isIdentityPlaceholder(value string) bool {

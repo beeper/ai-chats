@@ -103,20 +103,16 @@ var ToolProfiles = map[ToolProfileID]toolProfilePolicy{
 // ToolPolicyConfig matches OpenClaw's allow/deny policy (global or per-agent).
 type ToolPolicyConfig struct {
 	Allow      []string                    `json:"allow,omitempty" yaml:"allow"`
-	AlsoAllow  []string                    `json:"alsoAllow,omitempty" yaml:"alsoAllow"`
+	AlsoAllow  []string                    `json:"also_allow,omitempty" yaml:"also_allow"`
 	Deny       []string                    `json:"deny,omitempty" yaml:"deny"`
 	Profile    ToolProfileID               `json:"profile,omitempty" yaml:"profile"`
-	ByProvider map[string]ToolPolicyConfig `json:"byProvider,omitempty" yaml:"byProvider"`
+	ByProvider map[string]ToolPolicyConfig `json:"by_provider,omitempty" yaml:"by_provider"`
 }
 
 // GlobalToolPolicyConfig extends ToolPolicyConfig with subagent defaults.
 type GlobalToolPolicyConfig struct {
-	Allow      []string                    `json:"allow,omitempty" yaml:"allow"`
-	AlsoAllow  []string                    `json:"alsoAllow,omitempty" yaml:"alsoAllow"`
-	Deny       []string                    `json:"deny,omitempty" yaml:"deny"`
-	Profile    ToolProfileID               `json:"profile,omitempty" yaml:"profile"`
-	ByProvider map[string]ToolPolicyConfig `json:"byProvider,omitempty" yaml:"byProvider"`
-	Subagents  *SubagentToolPolicyConfig   `json:"subagents,omitempty" yaml:"subagents"`
+	ToolPolicyConfig `yaml:",inline"`
+	Subagents        *SubagentToolPolicyConfig `json:"subagents,omitempty" yaml:"subagents"`
 }
 
 // SubagentToolPolicyConfig configures subagent tool defaults.
@@ -228,16 +224,16 @@ func ResolveToolProfilePolicy(profile ToolProfileID) *ToolPolicy {
 	}
 }
 
-// MergeAlsoAllow appends alsoAllow into an allowlist if present.
-func MergeAlsoAllow(policy *ToolPolicy, alsoAllow []string) *ToolPolicy {
-	if policy == nil || len(alsoAllow) == 0 {
+// MergeAlsoAllow appends also_allow into an allowlist if present.
+func MergeAlsoAllow(policy *ToolPolicy, also_allow []string) *ToolPolicy {
+	if policy == nil || len(also_allow) == 0 {
 		return policy
 	}
 	if len(policy.Allow) == 0 {
 		return policy
 	}
 	merged := slices.Clone(policy.Allow)
-	merged = append(merged, alsoAllow...)
+	merged = append(merged, also_allow...)
 	return &ToolPolicy{
 		Allow: stringutil.DedupeStrings(merged),
 		Deny:  slices.Clone(policy.Deny),
@@ -254,7 +250,7 @@ func unionAllow(base []string, extra []string) []string {
 	return stringutil.DedupeStrings(append(base, extra...))
 }
 
-// PickToolPolicy merges allow/alsoAllow/deny into a resolved policy.
+// PickToolPolicy merges allow/also_allow/deny into a resolved policy.
 func PickToolPolicy(config *ToolPolicyConfig) *ToolPolicy {
 	if config == nil {
 		return nil
@@ -296,15 +292,23 @@ func ResolveEffectiveToolPolicy(params struct {
 	agentTools := params.Agent
 	globalPolicy := globalAsToolPolicy(globalTools)
 
-	profile := ToolProfileID("")
+	var profile ToolProfileID
 	if agentTools != nil && agentTools.Profile != "" {
 		profile = agentTools.Profile
 	} else if globalTools != nil {
 		profile = globalTools.Profile
 	}
 
-	providerPolicy := resolveProviderToolPolicy(globalTools, params.ModelProvider, params.ModelID)
-	agentProviderPolicy := resolveProviderToolPolicy(agentTools, params.ModelProvider, params.ModelID)
+	var globalByProvider map[string]ToolPolicyConfig
+	if globalTools != nil {
+		globalByProvider = globalTools.ByProvider
+	}
+	var agentByProvider map[string]ToolPolicyConfig
+	if agentTools != nil {
+		agentByProvider = agentTools.ByProvider
+	}
+	providerPolicy := resolveProviderToolPolicy(globalByProvider, params.ModelProvider, params.ModelID)
+	agentProviderPolicy := resolveProviderToolPolicy(agentByProvider, params.ModelProvider, params.ModelID)
 
 	return EffectiveToolPolicy{
 		GlobalPolicy:         PickToolPolicy(globalPolicy),
@@ -342,67 +346,35 @@ func globalAsToolPolicy(global *GlobalToolPolicyConfig) *ToolPolicyConfig {
 	if global == nil {
 		return nil
 	}
-	return &ToolPolicyConfig{
-		Allow:      global.Allow,
-		AlsoAllow:  global.AlsoAllow,
-		Deny:       global.Deny,
-		Profile:    global.Profile,
-		ByProvider: global.ByProvider,
-	}
+	return &global.ToolPolicyConfig
 }
 
-func normalizeProviderKey(value string) string {
-	return strings.ToLower(strings.TrimSpace(value))
-}
-
-func resolveProviderToolPolicy(base any, provider string, modelID string) *ToolPolicyConfig {
-	if provider == "" || base == nil {
+func resolveProviderToolPolicy(by_provider map[string]ToolPolicyConfig, provider string, modelID string) *ToolPolicyConfig {
+	if provider == "" || len(by_provider) == 0 {
 		return nil
 	}
-	var byProvider map[string]ToolPolicyConfig
-	switch cfg := base.(type) {
-	case *GlobalToolPolicyConfig:
-		if cfg == nil {
-			return nil
+	lookup := make(map[string]ToolPolicyConfig, len(by_provider))
+	for key, value := range by_provider {
+		if normalized := NormalizeToolName(key); normalized != "" {
+			lookup[normalized] = value
 		}
-		byProvider = cfg.ByProvider
-	case *ToolPolicyConfig:
-		if cfg == nil {
-			return nil
-		}
-		byProvider = cfg.ByProvider
-	}
-	if len(byProvider) == 0 {
-		return nil
-	}
-	lookup := make(map[string]ToolPolicyConfig, len(byProvider))
-	for key, value := range byProvider {
-		normalized := normalizeProviderKey(key)
-		if normalized == "" {
-			continue
-		}
-		lookup[normalized] = value
 	}
 
-	normalizedProvider := normalizeProviderKey(provider)
+	normalizedProvider := NormalizeToolName(provider)
 	rawModel := strings.ToLower(strings.TrimSpace(modelID))
-	fullModel := rawModel
-	if rawModel != "" && !strings.Contains(rawModel, "/") {
-		fullModel = normalizedProvider + "/" + rawModel
-	}
 
-	var candidates []string
-	if fullModel != "" {
-		candidates = append(candidates, fullModel)
-	}
-	if normalizedProvider != "" {
-		candidates = append(candidates, normalizedProvider)
-	}
-
-	for _, key := range candidates {
-		if match, ok := lookup[key]; ok {
+	// Try full model path first (e.g. "anthropic/claude-sonnet-4.5"), then provider alone.
+	if rawModel != "" {
+		fullModel := rawModel
+		if !strings.Contains(rawModel, "/") {
+			fullModel = normalizedProvider + "/" + rawModel
+		}
+		if match, ok := lookup[fullModel]; ok {
 			return &match
 		}
+	}
+	if match, ok := lookup[normalizedProvider]; ok {
+		return &match
 	}
 	return nil
 }
@@ -618,15 +590,9 @@ func StripPluginOnlyAllowlist(policy *ToolPolicy, groups PluginToolGroups, coreT
 			hasCoreEntry = true
 			continue
 		}
-		isPluginEntry := entry == "group:plugins"
-		if !isPluginEntry {
-			if _, ok := pluginIDs[entry]; ok {
-				isPluginEntry = true
-			}
-			if _, ok := pluginTools[entry]; ok {
-				isPluginEntry = true
-			}
-		}
+		_, isPluginID := pluginIDs[entry]
+		_, isPluginTool := pluginTools[entry]
+		isPluginEntry := entry == "group:plugins" || isPluginID || isPluginTool
 		expanded := ExpandToolGroups([]string{entry})
 		isCoreEntry := false
 		for _, name := range expanded {

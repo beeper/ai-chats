@@ -13,6 +13,12 @@ func ClassifyFallbackError(err error) FailureClass {
 		(strings.Contains(text, "model") && strings.Contains(text, "not found")),
 		(strings.Contains(text, "model") && strings.Contains(text, "not available")):
 		return FailureClassProviderHard
+	case strings.Contains(text, "access_denied"),
+		strings.Contains(text, "feature flag"),
+		strings.Contains(text, "require a subscription"),
+		strings.Contains(text, "requires a subscription"),
+		strings.Contains(text, "permission_error"):
+		return FailureClassProviderHard
 	case strings.Contains(text, "api key"), strings.Contains(text, "invalid_api_key"),
 		strings.Contains(text, "authentication"), strings.Contains(text, "unauthorized"),
 		strings.Contains(text, "forbidden"), strings.Contains(text, "permission"):

@@ -83,7 +83,8 @@ func ValidateSchedule(schedule Schedule) TimestampValidationResult {
 			}
 		}
 	}
-	if kind == "cron" {
+	switch kind {
+	case "cron":
 		expr := strings.TrimSpace(schedule.Expr)
 		if expr == "" {
 			return TimestampValidationResult{
@@ -97,8 +98,8 @@ func ValidateSchedule(schedule Schedule) TimestampValidationResult {
 				Message: fmt.Sprintf("Invalid schedule.expr: %s", err.Error()),
 			}
 		}
-	}
-	if kind == "every" {
+		return TimestampValidationResult{Ok: true}
+	case "every":
 		if schedule.EveryMs <= 0 {
 			return TimestampValidationResult{
 				Ok:      false,
@@ -106,19 +107,18 @@ func ValidateSchedule(schedule Schedule) TimestampValidationResult {
 			}
 		}
 		return TimestampValidationResult{Ok: true}
-	}
-	if kind == "at" {
+	case "at":
 		return TimestampValidationResult{Ok: true}
-	}
-	if kind == "" {
+	case "":
 		return TimestampValidationResult{
 			Ok:      false,
 			Message: "schedule.kind is required",
 		}
-	}
-	return TimestampValidationResult{
-		Ok:      false,
-		Message: fmt.Sprintf("unsupported schedule.kind %q", kind),
+	default:
+		return TimestampValidationResult{
+			Ok:      false,
+			Message: fmt.Sprintf("unsupported schedule.kind %q", kind),
+		}
 	}
 }
 

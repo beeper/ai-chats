@@ -56,17 +56,19 @@ func (e *Emitter) EmitUISourceDocument(ctx context.Context, portal *bridgev2.Por
 		return
 	}
 	e.State.UISourceDocumentSeen[key] = true
+	mediaType := strings.TrimSpace(doc.MediaType)
+	if mediaType == "" {
+		mediaType = "application/octet-stream"
+	}
+	title := strings.TrimSpace(doc.Title)
+	if title == "" {
+		title = key
+	}
 	part := map[string]any{
 		"type":      "source-document",
 		"sourceId":  fmt.Sprintf("source-doc-%d", len(e.State.UISourceDocumentSeen)),
-		"mediaType": strings.TrimSpace(doc.MediaType),
-		"title":     strings.TrimSpace(doc.Title),
-	}
-	if part["mediaType"] == "" {
-		part["mediaType"] = "application/octet-stream"
-	}
-	if title, _ := part["title"].(string); title == "" {
-		part["title"] = key
+		"mediaType": mediaType,
+		"title":     title,
 	}
 	if filename := strings.TrimSpace(doc.Filename); filename != "" {
 		part["filename"] = filename

@@ -65,15 +65,7 @@ func TestBuildConnectParamsUsesOperatorClientShape(t *testing.T) {
 	}
 }
 
-func TestGatewaySessionOriginStringSupportsLegacyAndStructuredOrigin(t *testing.T) {
-	var legacy gatewaySessionsListResponse
-	if err := json.Unmarshal([]byte(`{"sessions":[{"key":"k","kind":"direct","origin":"slack"}]}`), &legacy); err != nil {
-		t.Fatalf("unmarshal legacy response failed: %v", err)
-	}
-	if got := legacy.Sessions[0].OriginString(); got != "slack" {
-		t.Fatalf("unexpected legacy origin: %q", got)
-	}
-
+func TestGatewaySessionOriginStringParsesStructuredOrigin(t *testing.T) {
 	var structured gatewaySessionsListResponse
 	if err := json.Unmarshal([]byte(`{"sessions":[{"key":"k","kind":"direct","origin":{"label":"Support","provider":"slack","threadId":123}}]}`), &structured); err != nil {
 		t.Fatalf("unmarshal structured response failed: %v", err)

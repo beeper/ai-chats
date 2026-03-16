@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/beeper/agentremote/pkg/shared/openclawconv"
 )
 
 func TestGatewaySmoke(t *testing.T) {
@@ -52,7 +54,7 @@ func TestGatewaySmoke(t *testing.T) {
 			t.Fatal("expected non-nil history response")
 		}
 
-		agentID := openClawAgentIDFromSessionKey(sessionKey)
+		agentID := openclawconv.AgentIDFromSessionKey(sessionKey)
 		if agentID != "" {
 			identity, err := client.GetAgentIdentity(ctx, agentID, sessionKey)
 			if err != nil {
@@ -70,7 +72,7 @@ func TestGatewaySmoke(t *testing.T) {
 	}
 	if dmAgentID != "" {
 		dmSessionKey := openClawDMAgentSessionKey(dmAgentID)
-		if openClawAgentIDFromSessionKey(dmSessionKey) != dmAgentID {
+		if openclawconv.AgentIDFromSessionKey(dmSessionKey) != dmAgentID {
 			t.Fatalf("expected synthetic dm session key for %q, got %q", dmAgentID, dmSessionKey)
 		}
 		if message := strings.TrimSpace(os.Getenv("OPENCLAW_SMOKE_SEND_MESSAGE")); message != "" {

@@ -1,110 +1,18 @@
 package tools
 
-import (
-	"github.com/modelcontextprotocol/go-sdk/mcp"
-
-	"github.com/beeper/agentremote/pkg/shared/toolspec"
-)
+import "github.com/beeper/agentremote/pkg/shared/toolspec"
 
 var (
-	MessageTool = &Tool{
-		Tool: mcp.Tool{
-			Name:        toolspec.MessageName,
-			Description: toolspec.MessageDescription,
-			Annotations: &mcp.ToolAnnotations{Title: "Message"},
-			InputSchema: toolspec.MessageSchema(),
-		},
-		Type:  ToolTypeBuiltin,
-		Group: GroupMessaging,
-	}
-	WebFetchTool = &Tool{
-		Tool: mcp.Tool{
-			Name:        toolspec.WebFetchName,
-			Description: toolspec.WebFetchDescription,
-			Annotations: &mcp.ToolAnnotations{Title: "Web Fetch"},
-			InputSchema: toolspec.WebFetchSchema(),
-		},
-		Type:  ToolTypeBuiltin,
-		Group: GroupWeb,
-	}
-	SessionStatusTool = &Tool{
-		Tool: mcp.Tool{
-			Name:        toolspec.SessionStatusName,
-			Description: toolspec.SessionStatusDescription,
-			Annotations: &mcp.ToolAnnotations{Title: "Session Status"},
-			InputSchema: toolspec.SessionStatusSchema(),
-		},
-		Type:  ToolTypeBuiltin,
-		Group: GroupStatus,
-	}
-	MemorySearchTool = &Tool{
-		Tool: mcp.Tool{
-			Name:        toolspec.MemorySearchName,
-			Description: toolspec.MemorySearchDescription,
-			Annotations: &mcp.ToolAnnotations{Title: "Memory Search"},
-			InputSchema: toolspec.MemorySearchSchema(),
-		},
-		Type:  ToolTypeBuiltin,
-		Group: GroupMemory,
-	}
-	MemoryGetTool = &Tool{
-		Tool: mcp.Tool{
-			Name:        toolspec.MemoryGetName,
-			Description: toolspec.MemoryGetDescription,
-			Annotations: &mcp.ToolAnnotations{Title: "Memory Get"},
-			InputSchema: toolspec.MemoryGetSchema(),
-		},
-		Type:  ToolTypeBuiltin,
-		Group: GroupMemory,
-	}
-	ImageTool = &Tool{
-		Tool: mcp.Tool{
-			Name:        toolspec.ImageName,
-			Description: toolspec.ImageDescription,
-			Annotations: &mcp.ToolAnnotations{Title: "Image"},
-			InputSchema: toolspec.ImageSchema(),
-		},
-		Type:  ToolTypeBuiltin,
-		Group: GroupMedia,
-	}
-	ImageGenerateTool = &Tool{
-		Tool: mcp.Tool{
-			Name:        toolspec.ImageGenerateName,
-			Description: toolspec.ImageGenerateDescription,
-			Annotations: &mcp.ToolAnnotations{Title: "Image Generate"},
-			InputSchema: toolspec.ImageGenerateSchema(),
-		},
-		Type:  ToolTypeBuiltin,
-		Group: GroupMedia,
-	}
-	TTSTool = &Tool{
-		Tool: mcp.Tool{
-			Name:        toolspec.TTSName,
-			Description: toolspec.TTSDescription,
-			Annotations: &mcp.ToolAnnotations{Title: "TTS"},
-			InputSchema: toolspec.TTSSchema(),
-		},
-		Type:  ToolTypeBuiltin,
-		Group: GroupMedia,
-	}
-	GravatarFetchTool = &Tool{
-		Tool: mcp.Tool{
-			Name:        toolspec.GravatarFetchName,
-			Description: toolspec.GravatarFetchDescription,
-			Annotations: &mcp.ToolAnnotations{Title: "Gravatar Fetch"},
-			InputSchema: toolspec.GravatarFetchSchema(),
-		},
-		Type:  ToolTypeBuiltin,
-		Group: GroupOpenClaw,
-	}
-	GravatarSetTool = &Tool{
-		Tool: mcp.Tool{
-			Name:        toolspec.GravatarSetName,
-			Description: toolspec.GravatarSetDescription,
-			Annotations: &mcp.ToolAnnotations{Title: "Gravatar Set"},
-			InputSchema: toolspec.GravatarSetSchema(),
-		},
-		Type:  ToolTypeBuiltin,
-		Group: GroupOpenClaw,
-	}
+	MessageTool       = newBuiltinTool(toolspec.MessageName, toolspec.MessageDescription, "Message", toolspec.MessageSchema(), GroupMessaging, nil)
+	WebFetchTool      = newBuiltinTool(toolspec.WebFetchName, toolspec.WebFetchDescription, "Web Fetch", toolspec.WebFetchSchema(), GroupWeb, nil)
+	SessionStatusTool = newBuiltinTool(toolspec.SessionStatusName, toolspec.SessionStatusDescription, "Session Status", toolspec.SessionStatusSchema(), GroupStatus, nil)
+	MemorySearchTool  = newBuiltinTool(toolspec.MemorySearchName, toolspec.MemorySearchDescription, "Memory Search", toolspec.MemorySearchSchema(), GroupMemory, nil)
+	MemoryGetTool     = newBuiltinTool(toolspec.MemoryGetName, toolspec.MemoryGetDescription, "Memory Get", toolspec.MemoryGetSchema(), GroupMemory, nil)
+	ImageTool         = newBuiltinTool(toolspec.ImageName, toolspec.ImageDescription, "Image", toolspec.ImageSchema(), GroupMedia, nil)
+	ImageGenerateTool = newBuiltinTool(toolspec.ImageGenerateName, toolspec.ImageGenerateDescription, "Image Generate", toolspec.ImageGenerateSchema(), GroupMedia, nil)
+	TTSTool           = newBuiltinTool(toolspec.TTSName, toolspec.TTSDescription, "TTS", toolspec.TTSSchema(), GroupMedia, nil)
+	GravatarFetchTool = newBuiltinTool(toolspec.GravatarFetchName, toolspec.GravatarFetchDescription, "Gravatar Fetch", toolspec.GravatarFetchSchema(), GroupOpenClaw, nil)
+	GravatarSetTool   = newBuiltinTool(toolspec.GravatarSetName, toolspec.GravatarSetDescription, "Gravatar Set", toolspec.GravatarSetSchema(), GroupOpenClaw, nil)
+	CronTool          = newBuiltinTool(toolspec.CronName, toolspec.CronDescription, "Scheduler", toolspec.CronSchema(), GroupOpenClaw, nil)
+	AgentsListTool    = newBuiltinTool("agents_list", "List agent ids you can target with sessions_spawn (based on allowlists).", "Agents List", toolspec.EmptyObjectSchema(), GroupSessions, nil)
 )

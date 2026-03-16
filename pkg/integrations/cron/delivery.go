@@ -1,8 +1,6 @@
 package cron
 
-import (
-	"strings"
-)
+import "strings"
 
 type DeliveryTarget struct {
 	Portal  any
@@ -36,27 +34,7 @@ func ResolveCronDeliveryTarget(agentID string, delivery *Delivery, deps Delivery
 
 	target := strings.TrimSpace(delivery.To)
 	if target == "" && lowered == "last" {
-		if deps.ResolveLastTarget != nil {
-			lastChannel, candidate, ok := deps.ResolveLastTarget(agentID)
-			if ok {
-				lastChannel = strings.TrimSpace(lastChannel)
-				candidate = strings.TrimSpace(candidate)
-				if (lastChannel == "" || strings.EqualFold(lastChannel, "matrix")) && candidate != "" {
-					if strings.HasPrefix(candidate, "!") {
-						if deps.IsStaleTarget != nil && deps.IsStaleTarget(candidate, agentID) {
-							candidate = ""
-						}
-					}
-					target = candidate
-				}
-			}
-		}
-		if target == "" && deps.LastActiveRoomID != nil {
-			target = strings.TrimSpace(deps.LastActiveRoomID(agentID))
-		}
-		if target == "" && deps.DefaultChatRoomID != nil {
-			target = strings.TrimSpace(deps.DefaultChatRoomID())
-		}
+		target = resolveLastTarget(agentID, deps)
 	}
 
 	if target == "" {
@@ -76,4 +54,30 @@ func ResolveCronDeliveryTarget(agentID string, delivery *Delivery, deps Delivery
 		return DeliveryTarget{Channel: "matrix", Reason: "channel-not-ready"}
 	}
 	return DeliveryTarget{Portal: portal, RoomID: target, Channel: "matrix"}
+}
+
+func resolveLastTarget(agentID string, deps DeliveryResolverDeps) string {
+	if deps.ResolveLastTarget != nil {
+		lastChannel, candidate, ok := deps.ResolveLastTarget(agentID)
+		if ok {
+			lastChannel = strings.TrimSpace(lastChannel)
+			candidate = strings.TrimSpace(candidate)
+			isMatrix := lastChannel == "" || strings.EqualFold(lastChannel, "matrix")
+			isStale := strings.HasPrefix(candidate, "!") && deps.IsStaleTarget != nil && deps.IsStaleTarget(candidate, agentID)
+			if isMatrix && candidate != "" && !isStale {
+				return candidate
+			}
+		}
+	}
+	if deps.LastActiveRoomID != nil {
+		if target := strings.TrimSpace(deps.LastActiveRoomID(agentID)); target != "" {
+			return target
+		}
+	}
+	if deps.DefaultChatRoomID != nil {
+		if target := strings.TrimSpace(deps.DefaultChatRoomID()); target != "" {
+			return target
+		}
+	}
+	return ""
 }

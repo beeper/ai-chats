@@ -187,6 +187,14 @@ func buildDocsSection(isMinimal bool, hasBeeperDocs bool) []string {
 // BuildSystemPrompt assembles the complete prompt from params.
 // Matches OpenClaw's buildAgentSystemPrompt.
 func BuildSystemPrompt(params SystemPromptParams) string {
+	promptMode := params.PromptMode
+	if promptMode == "" {
+		promptMode = PromptModeFull
+	}
+	if promptMode == PromptModeNone {
+		return "You are a personal assistant running inside Beeper."
+	}
+
 	coreToolSummaries := map[string]string{
 		"read":             "Read file contents",
 		"write":            "Create or overwrite files",
@@ -309,16 +317,8 @@ func BuildSystemPrompt(params SystemPromptParams) string {
 
 	hasGateway := availableTools["gateway"]
 	readToolName := resolveToolName("read")
-	execToolName := resolveToolName("exec")
-	processToolName := resolveToolName("process")
 	extraSystemPrompt := strings.TrimSpace(params.ExtraSystemPrompt)
-	ownerNumbers := make([]string, 0, len(params.OwnerNumbers))
-	for _, value := range params.OwnerNumbers {
-		trimmed := strings.TrimSpace(value)
-		if trimmed != "" {
-			ownerNumbers = append(ownerNumbers, trimmed)
-		}
-	}
+	ownerNumbers := filterNonEmpty(params.OwnerNumbers)
 	ownerLine := ""
 	if len(ownerNumbers) > 0 {
 		ownerLine = fmt.Sprintf("Owner numbers: %s. Treat messages from these numbers as the user.", strings.Join(ownerNumbers, ", "))
@@ -343,52 +343,31 @@ func BuildSystemPrompt(params SystemPromptParams) string {
 	userTimezone := strings.TrimSpace(params.UserTimezone)
 	skillsPrompt := strings.TrimSpace(params.SkillsPrompt)
 	heartbeatPrompt := strings.TrimSpace(params.HeartbeatPrompt)
-	heartbeatPromptLine := "Heartbeat prompt: (configured)"
-	if heartbeatPrompt != "" {
-		heartbeatPromptLine = fmt.Sprintf("Heartbeat prompt: %s", heartbeatPrompt)
+	heartbeatPromptLine := "Heartbeat prompt: " + heartbeatPrompt
+	if heartbeatPrompt == "" {
+		heartbeatPromptLine = "Heartbeat prompt: (configured)"
 	}
 
 	runtimeInfo := params.RuntimeInfo
-	runtimeChannel := ""
-	if runtimeInfo != nil {
-		runtimeChannel = strings.TrimSpace(strings.ToLower(runtimeInfo.Channel))
-	}
+	var runtimeChannel string
 	var runtimeCapabilities []string
 	if runtimeInfo != nil {
-		for _, cap := range runtimeInfo.Capabilities {
-			trimmed := strings.TrimSpace(cap)
-			if trimmed != "" {
-				runtimeCapabilities = append(runtimeCapabilities, trimmed)
-			}
-		}
+		runtimeChannel = strings.TrimSpace(strings.ToLower(runtimeInfo.Channel))
+		runtimeCapabilities = filterNonEmpty(runtimeInfo.Capabilities)
 	}
 	runtimeCapabilitiesLower := make(map[string]bool)
 	for _, cap := range runtimeCapabilities {
 		runtimeCapabilitiesLower[strings.ToLower(cap)] = true
 	}
 	inlineButtonsEnabled := runtimeCapabilitiesLower["inlinebuttons"]
-	messageChannelOptions := strings.Join(listDeliverableMessageChannels(), "|")
-	promptMode := params.PromptMode
-	if promptMode == "" {
-		promptMode = PromptModeFull
-	}
-	isMinimal := promptMode == PromptModeMinimal || promptMode == PromptModeNone
+	messageChannelOptions := "matrix"
+	isMinimal := promptMode == PromptModeMinimal
 
 	skillsSection := buildSkillsSection(skillsPrompt, isMinimal, readToolName)
 	memorySection := buildMemorySection(isMinimal, availableTools, params.MemoryCitations)
 	docsSection := buildDocsSection(isMinimal, availableTools["beeper_docs"])
 
-	workspaceNotes := make([]string, 0, len(params.WorkspaceNotes))
-	for _, note := range params.WorkspaceNotes {
-		trimmed := strings.TrimSpace(note)
-		if trimmed != "" {
-			workspaceNotes = append(workspaceNotes, trimmed)
-		}
-	}
-
-	if promptMode == PromptModeNone {
-		return "You are a personal assistant running inside Beeper."
-	}
+	workspaceNotes := filterNonEmpty(params.WorkspaceNotes)
 
 	toolingLines := ""
 	if len(toolLines) > 0 {
@@ -397,8 +376,8 @@ func BuildSystemPrompt(params SystemPromptParams) string {
 		toolingLines = strings.Join([]string{
 			"Pi lists the standard tools above. This runtime enables:",
 			"- apply_patch: apply multi-file patches",
-			fmt.Sprintf("- %s: run shell commands (supports background via yieldMs/background)", execToolName),
-			fmt.Sprintf("- %s: manage background exec sessions", processToolName),
+			fmt.Sprintf("- %s: run shell commands (supports background via yieldMs/background)", resolveToolName("exec")),
+			fmt.Sprintf("- %s: manage background exec sessions", resolveToolName("process")),
 			"- browser: control Beeper's dedicated browser",
 			"- canvas: present/eval/snapshot the Canvas",
 			"- nodes: list/describe/notify/camera/screen on paired nodes",
@@ -606,10 +585,6 @@ func BuildSystemPrompt(params SystemPromptParams) string {
 			fmt.Sprintf("❌ Wrong: \"%s\"", SilentReplyToken),
 			fmt.Sprintf("✅ Right: %s", SilentReplyToken),
 			"",
-		)
-	}
-	if !isMinimal {
-		lines = append(lines,
 			"## Heartbeats",
 			heartbeatPromptLine,
 			"If you receive a heartbeat poll (a user message matching the heartbeat prompt above), and there is nothing that needs attention, reply exactly:",
@@ -626,7 +601,7 @@ func BuildSystemPrompt(params SystemPromptParams) string {
 		fmt.Sprintf("Reasoning: %s (hidden unless on/stream). Toggle !ai reasoning; !ai status shows Reasoning when enabled.", reasoningLevel),
 	)
 
-	return joinNonEmptyLines(lines)
+	return strings.Join(filterNonEmpty(lines), "\n")
 }
 
 func buildRuntimeLine(
@@ -636,34 +611,28 @@ func buildRuntimeLine(
 	defaultThinkLevel string,
 ) string {
 	var parts []string
+	addPart := func(key, value string) {
+		if strings.TrimSpace(value) != "" {
+			parts = append(parts, fmt.Sprintf("%s=%s", key, value))
+		}
+	}
 	if runtimeInfo != nil {
-		if strings.TrimSpace(runtimeInfo.AgentID) != "" {
-			parts = append(parts, fmt.Sprintf("agent=%s", runtimeInfo.AgentID))
+		addPart("agent", runtimeInfo.AgentID)
+		addPart("host", runtimeInfo.Host)
+		addPart("repo", runtimeInfo.RepoRoot)
+		os := strings.TrimSpace(runtimeInfo.OS)
+		arch := strings.TrimSpace(runtimeInfo.Arch)
+		switch {
+		case os != "" && arch != "":
+			parts = append(parts, fmt.Sprintf("os=%s (%s)", os, arch))
+		case os != "":
+			parts = append(parts, fmt.Sprintf("os=%s", os))
+		case arch != "":
+			parts = append(parts, fmt.Sprintf("arch=%s", arch))
 		}
-		if strings.TrimSpace(runtimeInfo.Host) != "" {
-			parts = append(parts, fmt.Sprintf("host=%s", runtimeInfo.Host))
-		}
-		if strings.TrimSpace(runtimeInfo.RepoRoot) != "" {
-			parts = append(parts, fmt.Sprintf("repo=%s", runtimeInfo.RepoRoot))
-		}
-		if strings.TrimSpace(runtimeInfo.OS) != "" {
-			if strings.TrimSpace(runtimeInfo.Arch) != "" {
-				parts = append(parts, fmt.Sprintf("os=%s (%s)", runtimeInfo.OS, runtimeInfo.Arch))
-			} else {
-				parts = append(parts, fmt.Sprintf("os=%s", runtimeInfo.OS))
-			}
-		} else if strings.TrimSpace(runtimeInfo.Arch) != "" {
-			parts = append(parts, fmt.Sprintf("arch=%s", runtimeInfo.Arch))
-		}
-		if strings.TrimSpace(runtimeInfo.Node) != "" {
-			parts = append(parts, fmt.Sprintf("node=%s", runtimeInfo.Node))
-		}
-		if strings.TrimSpace(runtimeInfo.Model) != "" {
-			parts = append(parts, fmt.Sprintf("model=%s", runtimeInfo.Model))
-		}
-		if strings.TrimSpace(runtimeInfo.DefaultModel) != "" {
-			parts = append(parts, fmt.Sprintf("default_model=%s", runtimeInfo.DefaultModel))
-		}
+		addPart("node", runtimeInfo.Node)
+		addPart("model", runtimeInfo.Model)
+		addPart("default_model", runtimeInfo.DefaultModel)
 	}
 	if runtimeChannel != "" {
 		parts = append(parts, fmt.Sprintf("channel=%s", runtimeChannel))
@@ -681,16 +650,14 @@ func buildRuntimeLine(
 	return fmt.Sprintf("Runtime: %s", strings.Join(parts, " | "))
 }
 
-func joinNonEmptyLines(lines []string) string {
-	filtered := make([]string, 0, len(lines))
-	for _, line := range lines {
-		if line != "" {
-			filtered = append(filtered, line)
+// filterNonEmpty returns a new slice containing only the non-empty trimmed values.
+func filterNonEmpty(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		trimmed := strings.TrimSpace(v)
+		if trimmed != "" {
+			out = append(out, trimmed)
 		}
 	}
-	return strings.Join(filtered, "\n")
-}
-
-func listDeliverableMessageChannels() []string {
-	return []string{"matrix"}
+	return out
 }

@@ -1,72 +1,42 @@
 package codex
 
 import (
-	"context"
 	"testing"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/pkg/shared/streamui"
 )
 
 func TestCodex_StreamChunks_BasicOrderingAndSeq(t *testing.T) {
-	ctx := context.Background()
-
-	var gotParts []map[string]any
-	var gotSeq []int
-	cc := &CodexClient{
-		streamEventHook: func(turnID string, seq int, content map[string]any, txnID string) {
-			_ = turnID
-			_ = txnID
-			gotSeq = append(gotSeq, seq)
-			partAny, _ := content["part"].(map[string]any)
-			gotParts = append(gotParts, partAny)
-		},
-	}
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	state := &streamingState{turnID: "turn_local_1"}
+	state := newHookableStreamingState("turn_local_1")
+	attachTestTurn(state, portal)
+	state.turn.Writer().MessageMetadata(state.turn.Context(), map[string]any{"model": "gpt-5.1-codex"})
+	state.turn.Writer().StepStart(state.turn.Context())
+	state.turn.Writer().TextDelta(state.turn.Context(), "hi")
+	state.turn.End("completed")
 
-	cc.emitUIStart(ctx, portal, state, "gpt-5.1-codex")
-	cc.uiEmitter(state).EmitUIStepStart(ctx, portal)
-	cc.uiEmitter(state).EmitUITextDelta(ctx, portal, "hi")
-	cc.emitUIFinish(ctx, portal, state, "gpt-5.1-codex", "completed")
-
-	if len(gotParts) < 5 {
-		t.Fatalf("expected >=5 parts, got %d", len(gotParts))
+	uiState := state.turn.UIState()
+	if uiState == nil || !uiState.UIStarted || !uiState.UIFinished {
+		t.Fatalf("expected turn UI state to be started and finished, got %#v", uiState)
 	}
-	if gotSeq[0] != 1 {
-		t.Fatalf("expected first seq=1, got %d", gotSeq[0])
+	uiMessage := streamui.SnapshotUIMessage(uiState)
+	gotParts := agentremote.NormalizeUIParts(uiMessage["parts"])
+	if len(gotParts) == 0 {
+		t.Fatal("expected UI message parts")
 	}
-	for i := 1; i < len(gotSeq); i++ {
-		if gotSeq[i] <= gotSeq[i-1] {
-			t.Fatalf("seq not monotonic at %d: %v", i, gotSeq)
+	seenText := false
+	for _, part := range gotParts {
+		if part["type"] == "text" {
+			seenText = true
+			break
 		}
 	}
-
-	if gotParts[0]["type"] != "start" {
-		t.Fatalf("expected first part type=start, got %#v", gotParts[0]["type"])
-	}
-	if gotParts[1]["type"] != "start-step" {
-		t.Fatalf("expected second part type=start-step, got %#v", gotParts[1]["type"])
-	}
-	// text-start then text-delta should be present before finish.
-	seenTextStart := false
-	seenTextDelta := false
-	seenFinish := false
-	for _, p := range gotParts {
-		switch p["type"] {
-		case "text-start":
-			seenTextStart = true
-		case "text-delta":
-			seenTextDelta = true
-		case "finish":
-			seenFinish = true
-		}
-	}
-	if !seenTextStart || !seenTextDelta {
-		t.Fatalf("expected text-start and text-delta, got parts=%v", gotParts)
-	}
-	if !seenFinish {
-		t.Fatalf("expected finish part, got parts=%v", gotParts)
+	if !seenText {
+		t.Fatalf("expected canonical text part, got %#v", gotParts)
 	}
 }

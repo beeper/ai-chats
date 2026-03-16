@@ -8,14 +8,7 @@ const ApplyPatchDescription = "Apply a patch to one or more files using the appl
 
 // ApplyPatchSchema returns the JSON schema for the apply_patch tool.
 func ApplyPatchSchema() map[string]any {
-	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"input": map[string]any{
-				"type":        "string",
-				"description": "Patch content using the *** Begin Patch/End Patch format.",
-			},
-		},
-		"required": []string{"input"},
-	}
+	return ObjectSchema(map[string]any{
+		"input": StringProperty("Patch content using the *** Begin Patch/End Patch format."),
+	}, "input")
 }

@@ -65,7 +65,7 @@ func splitPromptByTokenShare(prompt []openai.ChatCompletionMessageParamUnion, pa
 	current := make([]openai.ChatCompletionMessageParamUnion, 0, len(prompt)/parts+1)
 	currentTokens := 0
 	for _, msg := range prompt {
-		msgTokens := estimatePromptTokensForCompaction([]openai.ChatCompletionMessageParamUnion{msg})
+		msgTokens := max(EstimateMessageChars(msg)/CharsPerTokenEstimate, 3)
 		if len(chunks) < parts-1 && len(current) > 0 && float64(currentTokens+msgTokens) > targetTokens {
 			chunks = append(chunks, current)
 			current = make([]openai.ChatCompletionMessageParamUnion, 0, len(prompt)/parts+1)
@@ -146,11 +146,7 @@ func pruneHistoryForContextSharePrompt(
 		dropped := chunks[0]
 		droppedCount += len(dropped)
 		droppedTokens += estimatePromptTokensForCompaction(dropped)
-		rest := make([]openai.ChatCompletionMessageParamUnion, 0, len(kept)-len(dropped))
-		for _, chunk := range chunks[1:] {
-			rest = append(rest, chunk...)
-		}
-		kept = repairOrphanToolResults(rest)
+		kept = repairOrphanToolResults(slices.Concat(chunks[1:]...))
 	}
 
 	finalPrompt := slices.Clone(prompt[:preambleEnd])
@@ -165,41 +161,44 @@ func pruneHistoryForContextSharePrompt(
 	}
 }
 
+func insufficientPromptResult(
+	prompt []openai.ChatCompletionMessageParamUnion,
+	totalChars int,
+	droppedCount int,
+	applied bool,
+) OverflowCompactionResult {
+	return OverflowCompactionResult{
+		Prompt: prompt,
+		Decision: CompactionDecision{
+			Applied:       applied,
+			DroppedCount:  droppedCount,
+			OriginalChars: totalChars,
+			FinalChars:    totalChars,
+			Reason:        "insufficient_prompt",
+		},
+	}
+}
+
 // CompactPromptOnOverflow applies deterministic compaction + smart truncation for overflow retries.
 func CompactPromptOnOverflow(input OverflowCompactionInput) OverflowCompactionResult {
 	workingPrompt := slices.Clone(input.Prompt)
 	if len(workingPrompt) <= 2 {
 		_, totalChars := PromptTextPayloads(workingPrompt)
-		decision := CompactionDecision{
-			Applied:       false,
-			DroppedCount:  0,
-			OriginalChars: totalChars,
-			FinalChars:    totalChars,
-			Reason:        "insufficient_prompt",
-		}
-		return OverflowCompactionResult{
-			Prompt:   workingPrompt,
-			Decision: decision,
-			Success:  false,
-		}
+		return insufficientPromptResult(workingPrompt, totalChars, 0, false)
 	}
 
 	protectedTail := input.ProtectedTail
 	if protectedTail <= 0 {
 		protectedTail = 3
 	}
-	reserve := input.ReserveTokens
-	if reserve < 0 {
-		reserve = 0
-	}
+	reserve := max(input.ReserveTokens, 0)
+	keepRecent := max(input.KeepRecentTokens, 0)
+
 	mode := strings.ToLower(strings.TrimSpace(input.CompactionMode))
 	if mode == "" {
 		mode = "safeguard"
 	}
-	keepRecent := input.KeepRecentTokens
-	if keepRecent < 0 {
-		keepRecent = 0
-	}
+
 	maxHistoryShare := input.MaxHistoryShare
 	if maxHistoryShare <= 0 || maxHistoryShare >= 1 {
 		maxHistoryShare = 0.5
@@ -208,20 +207,9 @@ func CompactPromptOnOverflow(input OverflowCompactionInput) OverflowCompactionRe
 	if historyPrune.Applied {
 		workingPrompt = historyPrune.Prompt
 	}
-	charInputs, totalChars := PromptTextPayloads(workingPrompt)
+	textPayloads, totalChars := PromptTextPayloads(workingPrompt)
 	if totalChars <= 0 {
-		decision := CompactionDecision{
-			Applied:       historyPrune.Applied,
-			DroppedCount:  historyPrune.DroppedCount,
-			OriginalChars: totalChars,
-			FinalChars:    totalChars,
-			Reason:        "insufficient_prompt",
-		}
-		return OverflowCompactionResult{
-			Prompt:   workingPrompt,
-			Decision: decision,
-			Success:  false,
-		}
+		return insufficientPromptResult(workingPrompt, totalChars, historyPrune.DroppedCount, historyPrune.Applied)
 	}
 	currentPromptTokens := input.CurrentPromptTokens
 	if currentPromptTokens <= 0 {
@@ -239,24 +227,10 @@ func CompactPromptOnOverflow(input OverflowCompactionInput) OverflowCompactionRe
 		}
 	}
 	if mode == "safeguard" && keepRecent > 0 {
-		avgChars := 1
-		if len(charInputs) > 0 {
-			avgChars = totalChars / len(charInputs)
-			if avgChars <= 0 {
-				avgChars = 1
-			}
-		}
+		avgChars := max(totalChars/max(len(textPayloads), 1), 1)
 		keepRecentChars := keepRecent * CharsPerTokenEstimate
-		if keepRecentChars > 0 {
-			derivedTail := keepRecentChars / avgChars
-			if derivedTail > protectedTail {
-				protectedTail = derivedTail
-			}
-			// Safeguard mode avoids collapsing recent context too aggressively.
-			if maxChars > 0 && maxChars < keepRecentChars {
-				maxChars = keepRecentChars
-			}
-		}
+		protectedTail = max(protectedTail, keepRecentChars/avgChars)
+		maxChars = max(maxChars, keepRecentChars)
 	}
 	if input.RequestedTokens > input.ContextWindowTokens && input.ContextWindowTokens > 0 {
 		targetKeep := float64(input.ContextWindowTokens) / float64(input.RequestedTokens)
@@ -271,7 +245,7 @@ func CompactPromptOnOverflow(input OverflowCompactionInput) OverflowCompactionRe
 	maxChars = max(maxChars, 1)
 
 	compaction := ApplyCompaction(CompactionInput{
-		Messages:      charInputs,
+		Messages:      textPayloads,
 		MaxChars:      maxChars,
 		ProtectedTail: protectedTail,
 	})
@@ -318,33 +292,27 @@ func CompactPromptOnOverflow(input OverflowCompactionInput) OverflowCompactionRe
 	ratio = max(0.1, min(ratio, 0.85))
 
 	compacted := SmartTruncatePrompt(workingPrompt, ratio)
+	if len(compacted) == 0 || len(compacted) >= len(workingPrompt) {
+		compacted = SmartTruncatePrompt(workingPrompt, 0.5)
+	}
 	if len(compacted) == 0 {
 		compacted = workingPrompt
 	}
-	if len(compacted) >= len(workingPrompt) {
-		compacted = SmartTruncatePrompt(workingPrompt, 0.5)
-		if len(compacted) == 0 {
-			compacted = workingPrompt
-		}
-	}
 	if input.Summarization {
-		maxSummaryTokens := input.MaxSummaryTokens
-		if maxSummaryTokens <= 0 {
-			maxSummaryTokens = 500
-		}
-		compacted = injectCompactionSummary(compacted, input.Prompt, decision.DroppedCount, maxSummaryTokens)
+		compacted = injectCompactionSummary(compacted, input.Prompt, decision.DroppedCount, max(input.MaxSummaryTokens, 500))
 	}
 	if strings.TrimSpace(input.RefreshPrompt) != "" {
 		compacted = injectCompactionRefreshPrompt(compacted, input.RefreshPrompt)
 	}
 	if historyPrune.Applied {
 		decision.Applied = true
-		if decision.Reason == "history_share_prune" || decision.DroppedCount == 0 {
+		switch {
+		case decision.Reason == "history_share_prune", decision.DroppedCount == 0:
 			decision.DroppedCount = historyPrune.DroppedCount
-		} else {
+		default:
 			decision.DroppedCount += historyPrune.DroppedCount
 		}
-		if decision.Reason == "within_budget" || strings.TrimSpace(decision.Reason) == "" {
+		if decision.Reason == "within_budget" || decision.Reason == "" {
 			decision.Reason = "history_share_prune"
 		}
 	}
@@ -361,15 +329,12 @@ func CompactPromptOnOverflow(input OverflowCompactionInput) OverflowCompactionRe
 
 // preambleEndIndex returns the index after the last leading system/developer message.
 func preambleEndIndex(prompt []openai.ChatCompletionMessageParamUnion) int {
-	i := 0
-	for i < len(prompt) {
-		if prompt[i].OfSystem != nil || prompt[i].OfDeveloper != nil {
-			i++
-			continue
+	for i, msg := range prompt {
+		if msg.OfSystem == nil && msg.OfDeveloper == nil {
+			return i
 		}
-		break
 	}
-	return i
+	return len(prompt)
 }
 
 // insertAfterPreamble inserts a message after all leading system/developer messages.
@@ -410,9 +375,7 @@ func injectCompactionSummary(
 	if droppedCount <= 0 {
 		return compacted
 	}
-	if droppedCount > len(original) {
-		droppedCount = len(original)
-	}
+	droppedCount = min(droppedCount, len(original))
 	summary := buildCompactionSummaryText(original[:droppedCount], maxSummaryTokens)
 	if summary == "" {
 		return compacted
@@ -430,10 +393,7 @@ func buildCompactionSummaryText(
 	if maxSummaryTokens <= 0 {
 		maxSummaryTokens = 500
 	}
-	maxChars := maxSummaryTokens * CharsPerTokenEstimate
-	if maxChars < 240 {
-		maxChars = 240
-	}
+	maxChars := max(maxSummaryTokens*CharsPerTokenEstimate, 240)
 	var b strings.Builder
 	b.WriteString("[Compaction summary of earlier context]\n")
 	for _, msg := range dropped {

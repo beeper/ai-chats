@@ -3,14 +3,11 @@ package memory
 import (
 	"cmp"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -19,20 +16,30 @@ import (
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/dbutil"
 
+	iruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 	memorycore "github.com/beeper/agentremote/pkg/memory"
+	pkgruntime "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/pkg/textfs"
 )
 
 const memorySnippetMaxChars = 700
 
-var keywordTokenRE = regexp.MustCompile(`[A-Za-z0-9_]+`)
+func extractKeywordTokens(query string) []string {
+	tokens := memorycore.TokenRE.FindAllString(query, -1)
+	for i, t := range tokens {
+		tokens[i] = strings.ToLower(strings.TrimSpace(t))
+	}
+	return tokens
+}
 
-const memoryStatusTimeout = 3 * time.Second
-const memorySearchTimeout = 10 * time.Second
-const memoryManagerInitTimeout = 10 * time.Second
+const (
+	memoryStatusTimeout      = 3 * time.Second
+	memorySearchTimeout      = 10 * time.Second
+	memoryManagerInitTimeout = 10 * time.Second
+)
 
 type MemorySearchManager struct {
-	runtime      Runtime
+	host         iruntime.Host
 	db           *dbutil.Database
 	bridgeID     string
 	loginID      string
@@ -55,6 +62,12 @@ type MemorySearchManager struct {
 	intervalStop      chan struct{}
 	closeIntervalStop func() // closes intervalStop channel exactly once
 	mu                sync.Mutex
+}
+
+// baseArgs returns the common (bridge_id, login_id, agent_id) query parameters,
+// optionally followed by any extra arguments.
+func (m *MemorySearchManager) baseArgs(extra ...any) []any {
+	return append([]any{m.bridgeID, m.loginID, m.agentID}, extra...)
 }
 
 type MemorySearchStatus struct {
@@ -98,24 +111,28 @@ var memoryManagerCache = struct {
 	managers: make(map[string]*MemorySearchManager),
 }
 
-func GetMemorySearchManager(runtime Runtime, agentID string) (*MemorySearchManager, string) {
-	if runtime == nil {
+func GetMemorySearchManager(host iruntime.Host, agentID string) (*MemorySearchManager, string) {
+	if host == nil {
 		return nil, "memory search unavailable"
 	}
-	db := runtime.BridgeDB()
+	rawDB := host.BridgeDB()
+	if rawDB == nil {
+		return nil, "memory search unavailable"
+	}
+	db, _ := rawDB.(*dbutil.Database)
 	if db == nil {
 		return nil, "memory search unavailable"
 	}
-	cfg, err := runtime.ResolveConfig(agentID)
-	if err != nil || cfg == nil {
-		if err != nil {
-			return nil, err.Error()
-		}
+	cfg, err := resolveMemorySearchConfigFromMaps(host.ModuleConfig(moduleName), host.AgentModuleConfig(agentID, moduleName))
+	if err != nil {
+		return nil, err.Error()
+	}
+	if cfg == nil {
 		return nil, "memory search disabled"
 	}
 
-	bridgeID := runtime.BridgeID()
-	loginID := runtime.LoginID()
+	bridgeID := host.BridgeID()
+	loginID := host.LoginID()
 	if agentID == "" {
 		agentID = "default"
 	}
@@ -129,7 +146,7 @@ func GetMemorySearchManager(runtime Runtime, agentID string) (*MemorySearchManag
 	}
 
 	manager := &MemorySearchManager{
-		runtime:  runtime,
+		host:     host,
 		db:       db,
 		bridgeID: bridgeID,
 		loginID:  loginID,
@@ -139,7 +156,7 @@ func GetMemorySearchManager(runtime Runtime, agentID string) (*MemorySearchManag
 			Provider: "builtin",
 			Model:    "lexical",
 		},
-		log: runtime.Logger().With().Str("component", "memory").Logger(),
+		log: iruntime.ZerologFromHost(host).With().Str("component", "memory").Logger(),
 	}
 	manager.startIntervalSync = sync.OnceFunc(func() {
 		interval := time.Duration(manager.cfg.Sync.IntervalMinutes) * time.Minute
@@ -207,21 +224,18 @@ func (m *MemorySearchManager) StatusDetails(ctx context.Context) (*MemorySearchS
 	if m == nil {
 		return nil, errors.New("memory search unavailable")
 	}
-	// Memory status reflects the current lexical-only runtime behavior.
-	// Keep the report truthful and avoid placeholder vector/embedding fields.
 	statusCtx, cancel := context.WithTimeout(ctx, memoryStatusTimeout)
 	defer cancel()
 	start := time.Now()
 
-	// Snapshot mutable fields under mu to avoid data races with sync().
 	m.mu.Lock()
 	dirty := m.dirty
 	indexGen := m.indexGen
 	m.mu.Unlock()
 
 	workspaceDir := ""
-	if m.runtime != nil {
-		workspaceDir = m.runtime.ResolvePromptWorkspaceDir()
+	if m.host != nil {
+		workspaceDir = m.host.ResolveWorkspaceDir()
 	}
 	status := &MemorySearchStatus{
 		Dirty:        dirty,
@@ -236,11 +250,10 @@ func (m *MemorySearchManager) StatusDetails(ctx context.Context) (*MemorySearchS
 
 	genSQL, genArgs := generationFilterSQL(5, indexGen)
 	sourceSQL, sourceArgs := sourceFilterSQL(4, m.cfg.Sources)
-	chunkArgs := []any{m.bridgeID, m.loginID, m.agentID}
-	chunkArgs = append(chunkArgs, sourceArgs...)
+	chunkArgs := m.baseArgs(sourceArgs...)
 	chunkArgs = append(chunkArgs, genArgs...)
 	row := m.db.QueryRow(statusCtx,
-		`SELECT COUNT(*) FROM ai_memory_chunks
+		`SELECT COUNT(*) FROM aichats_memory_chunks
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`+sourceSQL+genSQL,
 		chunkArgs...,
 	)
@@ -256,9 +269,9 @@ func (m *MemorySearchManager) StatusDetails(ctx context.Context) (*MemorySearchS
 	cacheStatus := &MemorySearchCacheStatus{Enabled: m.cfg.Cache.Enabled, MaxEntries: m.cfg.Cache.MaxEntries}
 	if m.cfg.Cache.Enabled {
 		row := m.db.QueryRow(statusCtx,
-			`SELECT COUNT(*) FROM ai_memory_embedding_cache
+			`SELECT COUNT(*) FROM aichats_memory_embedding_cache
              WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`,
-			m.bridgeID, m.loginID, m.agentID,
+			m.baseArgs()...,
 		)
 		_ = row.Scan(&cacheStatus.Entries)
 	}
@@ -288,20 +301,20 @@ func buildSourceCounts(ctx context.Context, m *MemorySearchManager, indexGen str
 		switch source {
 		case "memory", "workspace":
 			_ = m.db.QueryRow(ctx,
-				`SELECT COUNT(*) FROM ai_memory_files WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND source=$4`,
-				m.bridgeID, m.loginID, m.agentID, source,
+				`SELECT COUNT(*) FROM aichats_memory_files WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND source=$4`,
+				m.baseArgs(source)...,
 			).Scan(&count.Files)
 		case "sessions":
 			_ = m.db.QueryRow(ctx,
-				`SELECT COUNT(*) FROM ai_memory_session_files WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`,
-				m.bridgeID, m.loginID, m.agentID,
+				`SELECT COUNT(*) FROM aichats_memory_session_files WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`,
+				m.baseArgs()...,
 			).Scan(&count.Files)
 		}
 		genSQL, genArgs := generationFilterSQL(5, indexGen)
-		args := []any{m.bridgeID, m.loginID, m.agentID, source}
+		args := m.baseArgs(source)
 		args = append(args, genArgs...)
 		_ = m.db.QueryRow(ctx,
-			`SELECT COUNT(*) FROM ai_memory_chunks WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND source=$4`+genSQL,
+			`SELECT COUNT(*) FROM aichats_memory_chunks WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND source=$4`+genSQL,
 			args...,
 		).Scan(&count.Chunks)
 		out = append(out, count)
@@ -314,9 +327,6 @@ func (m *MemorySearchManager) Search(ctx context.Context, query string, opts mem
 		return nil, errors.New("memory search unavailable")
 	}
 
-	// Snapshot indexGen under mu to avoid data races with sync().
-	// TryLock: if sync() holds mu we read a potentially stale value, which is
-	// acceptable — the generation filter only affects which chunks are returned.
 	var indexGen string
 	var shouldSync bool
 	if m.mu.TryLock() {
@@ -450,25 +460,18 @@ func (m *MemorySearchManager) listRecentFiles(ctx context.Context, sources []str
 		limit = 200
 	}
 
-	baseArgs := []any{m.bridgeID, m.loginID, m.agentID}
+	queryArgs := m.baseArgs()
 	sourceSQL, sourceArgs := sourceFilterSQL(4, sources)
 	pathSQL, pathArgs := pathPrefixFilterSQL(4+len(sourceArgs), pathPrefix)
-	// Overfetch and filter client-side (extension allowlist, size cap).
-	overfetch := limit * 5
-	if overfetch < 50 {
-		overfetch = 50
-	}
-	if overfetch > 500 {
-		overfetch = 500
-	}
+	overfetch := clampOverfetch(limit, 5)
 
-	args := append(baseArgs, sourceArgs...)
+	args := append(queryArgs, sourceArgs...)
 	args = append(args, pathArgs...)
 	args = append(args, overfetch)
 
 	rows, err := m.db.Query(ctx,
 		`SELECT path, source, substr(content, 1, 8192), length(content)
-         FROM ai_memory_files
+         FROM aichats_memory_files
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`+sourceSQL+pathSQL+`
          ORDER BY updated_at DESC
          LIMIT $`+fmt.Sprintf("%d", len(args)),
@@ -514,28 +517,18 @@ func (m *MemorySearchManager) searchKeywordScan(ctx context.Context, query strin
 	if m == nil || m.db == nil || limit <= 0 {
 		return nil, nil
 	}
-	tokens := keywordTokenRE.FindAllString(query, -1)
+	tokens := extractKeywordTokens(query)
 	if len(tokens) == 0 {
 		return nil, nil
 	}
-	for i, t := range tokens {
-		tokens[i] = strings.ToLower(strings.TrimSpace(t))
-	}
 
-	// Scan more rows than we return so we can rank matches in-process.
-	scanLimit := limit * 10
-	if scanLimit < 200 {
-		scanLimit = 200
-	}
-	if scanLimit > 1000 {
-		scanLimit = 1000
-	}
+	scanLimit := max(200, min(1000, limit*10))
 
-	baseArgs := []any{m.bridgeID, m.loginID, m.agentID, m.status.Model}
+	scanArgs := m.baseArgs(m.status.Model)
 	sourceSQL, sourceArgs := sourceFilterSQL(5, sources)
 	genSQL, genArgs := generationFilterSQL(5+len(sourceArgs), indexGen)
 	pathSQL, pathArgs := pathPrefixFilterSQL(5+len(sourceArgs)+len(genArgs), pathPrefix)
-	args := append(baseArgs, sourceArgs...)
+	args := append(scanArgs, sourceArgs...)
 	args = append(args, genArgs...)
 	args = append(args, pathArgs...)
 
@@ -549,7 +542,7 @@ func (m *MemorySearchManager) searchKeywordScan(ctx context.Context, query strin
 
 	rows, err := m.db.Query(ctx,
 		`SELECT id, path, source, start_line, end_line, text
-         FROM ai_memory_chunks
+         FROM aichats_memory_chunks
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND model=$4`+sourceSQL+genSQL+pathSQL+strings.Join(whereParts, "")+`
          ORDER BY updated_at DESC
          LIMIT $`+fmt.Sprintf("%d", len(args)),
@@ -615,27 +608,17 @@ func (m *MemorySearchManager) searchKeywordFiles(ctx context.Context, query stri
 	if m == nil || m.db == nil || limit <= 0 {
 		return nil, nil
 	}
-	tokens := keywordTokenRE.FindAllString(query, -1)
+	tokens := extractKeywordTokens(query)
 	if len(tokens) == 0 {
 		return nil, nil
 	}
-	for i, t := range tokens {
-		tokens[i] = strings.ToLower(strings.TrimSpace(t))
-	}
 
-	// Overfetch so we can filter by allowlist + size cap without running multiple queries.
-	overfetch := limit * 10
-	if overfetch < 50 {
-		overfetch = 50
-	}
-	if overfetch > 500 {
-		overfetch = 500
-	}
+	overfetch := clampOverfetch(limit, 10)
 
-	baseArgs := []any{m.bridgeID, m.loginID, m.agentID}
+	fileArgs := m.baseArgs()
 	sourceSQL, sourceArgs := sourceFilterSQL(4, sources)
 	pathSQL, pathArgs := pathPrefixFilterSQL(4+len(sourceArgs), pathPrefix)
-	args := append(baseArgs, sourceArgs...)
+	args := append(fileArgs, sourceArgs...)
 	args = append(args, pathArgs...)
 
 	whereParts := make([]string, 0, len(tokens))
@@ -647,7 +630,7 @@ func (m *MemorySearchManager) searchKeywordFiles(ctx context.Context, query stri
 
 	rows, err := m.db.Query(ctx,
 		`SELECT path, source, substr(content, 1, 8192), length(content)
-         FROM ai_memory_files
+         FROM aichats_memory_files
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`+sourceSQL+pathSQL+strings.Join(whereParts, "")+`
          ORDER BY updated_at DESC
          LIMIT $`+fmt.Sprintf("%d", len(args)),
@@ -828,27 +811,9 @@ func memoryManagerCacheKey(bridgeID, loginID, agentID string, cfg *memorycore.Re
 	slices.Sort(sources)
 	slices.Sort(extra)
 	payload := map[string]any{
-		"sources":       sources,
-		"extraPaths":    extra,
-		"provider":      cfg.Provider,
-		"model":         cfg.Model,
-		"fallback":      cfg.Fallback,
-		"remoteBase":    cfg.Remote.BaseURL,
-		"remoteHeaders": sortedHeaderNames(cfg.Remote.Headers),
-		"remoteBatch": map[string]any{
-			"enabled":        cfg.Remote.Batch.Enabled,
-			"wait":           cfg.Remote.Batch.Wait,
-			"concurrency":    cfg.Remote.Batch.Concurrency,
-			"poll":           cfg.Remote.Batch.PollIntervalMs,
-			"timeoutMinutes": cfg.Remote.Batch.TimeoutMinutes,
-		},
-		"remoteKey": hashString(cfg.Remote.APIKey),
-		"store": map[string]any{
-			"driver":        cfg.Store.Driver,
-			"path":          cfg.Store.Path,
-			"vectorEnabled": cfg.Store.Vector.Enabled,
-			"vectorExt":     cfg.Store.Vector.ExtensionPath,
-		},
+		"sources":      sources,
+		"extraPaths":   extra,
+		"store":        map[string]any{"driver": cfg.Store.Driver, "path": cfg.Store.Path},
 		"chunking":     cfg.Chunking,
 		"sync":         cfg.Sync,
 		"query":        cfg.Query,
@@ -856,42 +821,15 @@ func memoryManagerCacheKey(bridgeID, loginID, agentID string, cfg *memorycore.Re
 		"experimental": cfg.Experimental,
 	}
 	raw, _ := json.Marshal(payload)
-	sum := sha256.Sum256(raw)
-	return fmt.Sprintf("%s:%s:%s:%s", bridgeID, loginID, agentID, hex.EncodeToString(sum[:]))
+	return fmt.Sprintf("%s:%s:%s:%s", bridgeID, loginID, agentID, memorycore.HashText(string(raw)))
 }
 
-func sortedHeaderNames(headers map[string]string) []string {
-	if len(headers) == 0 {
-		return nil
-	}
-	keys := make([]string, 0, len(headers))
-	for key := range headers {
-		trimmed := strings.ToLower(strings.TrimSpace(key))
-		if trimmed == "" {
-			continue
-		}
-		keys = append(keys, trimmed)
-	}
-	slices.Sort(keys)
-	return keys
-}
-
-func hashString(value string) string {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return ""
-	}
-	sum := sha256.Sum256([]byte(trimmed))
-	return hex.EncodeToString(sum[:])
+func clampOverfetch(limit, multiplier int) int {
+	return max(50, min(500, limit*multiplier))
 }
 
 func normalizeNewlines(text string) string {
-	if text == "" {
-		return ""
-	}
-	text = strings.ReplaceAll(text, "\r\n", "\n")
-	text = strings.ReplaceAll(text, "\r", "\n")
-	return text
+	return pkgruntime.NormalizeInboundTextNewlines(text)
 }
 
 // truncateSnippet truncates text to memorySnippetMaxChars, counting supplementary
@@ -916,26 +854,10 @@ func truncateSnippet(text string) string {
 }
 
 func isAllowedMemoryPath(path string, extraPaths []string) bool {
-	// Memory search indexes allowed text notes across the virtual workspace.
 	if ok, _, _ := textfs.IsAllowedTextNotePath(path); ok {
 		return true
 	}
-	if len(extraPaths) == 0 {
-		return false
-	}
-	normalizedExtra := normalizeExtraPaths(extraPaths)
-	for _, extra := range normalizedExtra {
-		if ok, _, _ := textfs.IsAllowedTextNotePath(extra); ok {
-			if strings.EqualFold(path, extra) {
-				return true
-			}
-			continue
-		}
-		if path == extra || strings.HasPrefix(path, extra+"/") {
-			return true
-		}
-	}
-	return false
+	return isExtraPath(path, normalizeExtraPaths(extraPaths))
 }
 
 func normalizeExtraPaths(paths []string) []string {

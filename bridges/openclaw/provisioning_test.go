@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/beeper/agentremote/pkg/shared/cachedvalue"
+	"github.com/beeper/agentremote/pkg/shared/openclawconv"
 )
 
 func TestOpenClawDMAgentSessionKey(t *testing.T) {
@@ -15,7 +16,7 @@ func TestOpenClawDMAgentSessionKey(t *testing.T) {
 	if !isOpenClawSyntheticDMSessionKey(got) {
 		t.Fatalf("expected %q to be recognized as a synthetic dm session key", got)
 	}
-	if agentID := openClawAgentIDFromSessionKey(got); agentID != "main" {
+	if agentID := openclawconv.AgentIDFromSessionKey(got); agentID != "main" {
 		t.Fatalf("expected session key to resolve to canonical agent id, got %q", agentID)
 	}
 }

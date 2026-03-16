@@ -26,6 +26,43 @@ type InlineDirectiveParseResult struct {
 	IsSilent          bool
 }
 
+// toStreamingResult converts the parse result into a StreamingDirectiveResult,
+// applying silent-reply detection and clearing the text when silent.
+func (p *InlineDirectiveParseResult) toStreamingResult() *StreamingDirectiveResult {
+	text := p.Text
+	isSilent := isSilentForStreaming(text)
+	if isSilent {
+		text = ""
+	}
+	return &StreamingDirectiveResult{
+		Text:              text,
+		ReplyToExplicitID: p.ReplyToExplicitID,
+		ReplyToCurrent:    p.ReplyToCurrent,
+		HasReplyTag:       p.HasReplyTag,
+		AudioAsVoice:      p.AudioAsVoice,
+		IsSilent:          isSilent,
+	}
+}
+
+// toReplyResult converts the parse result into a ReplyDirectiveResult,
+// applying silent-reply detection and clearing the text when silent.
+func (p *InlineDirectiveParseResult) toReplyResult() ReplyDirectiveResult {
+	text := p.Text
+	isSilent := IsSilentReplyText(text, SilentReplyToken)
+	if isSilent {
+		text = ""
+	}
+	return ReplyDirectiveResult{
+		Text:              text,
+		ReplyToID:         p.ReplyToID,
+		ReplyToExplicitID: p.ReplyToExplicitID,
+		ReplyToCurrent:    p.ReplyToCurrent,
+		HasReplyTag:       p.HasReplyTag,
+		AudioAsVoice:      p.AudioAsVoice,
+		IsSilent:          isSilent,
+	}
+}
+
 var (
 	audioTagRE          = regexp.MustCompile(`(?i)\[\[\s*audio_as_voice\s*\]\]`)
 	replyTagRE          = regexp.MustCompile(`(?i)\[\[\s*(?:reply_to_current|reply_to\s*:\s*([^\]\n]+))\s*\]\]`)
@@ -38,14 +75,11 @@ func ParseInlineDirectives(text string, options InlineDirectiveParseOptions) Inl
 		return InlineDirectiveParseResult{}
 	}
 
-	stripAudio := true
-	stripReply := true
-	// Keep a compatibility guard for zero-value options while preserving
-	// OpenClaw defaults (strip audio/reply tags by default).
-	if options.StripAudioTag || options.StripReplyTags || options.NormalizeWhitespace || options.SilentToken != "" || options.CurrentMessageID != "" {
-		stripAudio = options.StripAudioTag
-		stripReply = options.StripReplyTags
-	}
+	// When no explicit options are set, default to stripping both audio and reply tags.
+	defaultStrip := !options.StripAudioTag && !options.StripReplyTags && !options.NormalizeWhitespace &&
+		options.SilentToken == "" && options.CurrentMessageID == ""
+	stripAudio := defaultStrip || options.StripAudioTag
+	stripReply := defaultStrip || options.StripReplyTags
 
 	cleaned := text
 	result := InlineDirectiveParseResult{}
@@ -75,7 +109,6 @@ func ParseInlineDirectives(text string, options InlineDirectiveParseOptions) Inl
 		return match
 	})
 
-	// OpenClaw normalizes whitespace after inline tag stripping.
 	cleaned = normalizeDirectiveWhitespace(cleaned)
 
 	if explicit != "" {
@@ -92,7 +125,9 @@ func ParseInlineDirectives(text string, options InlineDirectiveParseOptions) Inl
 	return result
 }
 
-var nonUpperUnderscoreRE = regexp.MustCompile(`[^A-Z_]`)
+func isSilentForStreaming(text string) bool {
+	return IsSilentReplyText(text, SilentReplyToken) || IsSilentReplyPrefixText(text, SilentReplyToken)
+}
 
 // IsSilentReplyText checks whether text is exactly the silent reply token (modulo whitespace).
 func IsSilentReplyText(text, token string) bool {
@@ -118,10 +153,19 @@ func IsSilentReplyPrefixText(text, token string) bool {
 	if normalized == "" || !strings.Contains(normalized, "_") {
 		return false
 	}
-	if nonUpperUnderscoreRE.MatchString(normalized) {
+	if !isUpperUnderscoreOnly(normalized) {
 		return false
 	}
 	return strings.HasPrefix(strings.ToUpper(token), normalized)
+}
+
+func isUpperUnderscoreOnly(s string) bool {
+	for _, c := range s {
+		if !((c >= 'A' && c <= 'Z') || c == '_') {
+			return false
+		}
+	}
+	return true
 }
 
 func normalizeDirectiveWhitespace(text string) string {

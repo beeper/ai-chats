@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -67,9 +68,6 @@ func ApplyPatch(ctx context.Context, store *Store, input string) (*ApplyPatchRes
 	if store == nil {
 		return nil, errors.New("store required")
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	parsed, err := parsePatchText(input)
 	if err != nil {
 		return nil, err
@@ -78,33 +76,10 @@ func ApplyPatch(ctx context.Context, store *Store, input string) (*ApplyPatchRes
 		return nil, errors.New("no files were modified")
 	}
 
-	summary := ApplyPatchSummary{}
-	seenAdded := map[string]struct{}{}
-	seenModified := map[string]struct{}{}
-	seenDeleted := map[string]struct{}{}
-	record := func(bucket string, value string) {
-		if strings.TrimSpace(value) == "" {
-			return
-		}
-		switch bucket {
-		case "added":
-			if _, ok := seenAdded[value]; ok {
-				return
-			}
-			seenAdded[value] = struct{}{}
-			summary.Added = append(summary.Added, value)
-		case "modified":
-			if _, ok := seenModified[value]; ok {
-				return
-			}
-			seenModified[value] = struct{}{}
-			summary.Modified = append(summary.Modified, value)
-		case "deleted":
-			if _, ok := seenDeleted[value]; ok {
-				return
-			}
-			seenDeleted[value] = struct{}{}
-			summary.Deleted = append(summary.Deleted, value)
+	var summary ApplyPatchSummary
+	appendUnique := func(list *[]string, value string) {
+		if !slices.Contains(*list, value) {
+			*list = append(*list, value)
 		}
 	}
 
@@ -118,7 +93,7 @@ func ApplyPatch(ctx context.Context, store *Store, input string) (*ApplyPatchRes
 			if _, err := store.Write(ctx, path, hunk.contents); err != nil {
 				return nil, err
 			}
-			record("added", path)
+			appendUnique(&summary.Added, path)
 		case deleteFileHunk:
 			path, err := NormalizePath(hunk.path)
 			if err != nil {
@@ -132,7 +107,7 @@ func ApplyPatch(ctx context.Context, store *Store, input string) (*ApplyPatchRes
 			if err := store.Delete(ctx, path); err != nil {
 				return nil, err
 			}
-			record("deleted", path)
+			appendUnique(&summary.Deleted, path)
 		case updateFileHunk:
 			path, err := NormalizePath(hunk.path)
 			if err != nil {
@@ -160,21 +135,22 @@ func ApplyPatch(ctx context.Context, store *Store, input string) (*ApplyPatchRes
 				if err := store.Delete(ctx, path); err != nil {
 					return nil, err
 				}
-				record("modified", movePath)
+				appendUnique(&summary.Modified, movePath)
 			} else {
 				if _, err := store.Write(ctx, path, updated); err != nil {
 					return nil, err
 				}
-				record("modified", path)
+				appendUnique(&summary.Modified, path)
 			}
 		default:
 			return nil, errors.New("unsupported patch hunk")
 		}
 	}
 
-	result := &ApplyPatchResult{Summary: summary}
-	result.Text = formatPatchSummary(summary)
-	return result, nil
+	return &ApplyPatchResult{
+		Summary: summary,
+		Text:    formatPatchSummary(summary),
+	}, nil
 }
 
 type parsedPatch struct {
@@ -212,22 +188,24 @@ func parsePatchText(input string) (*parsedPatch, error) {
 }
 
 func checkPatchBoundariesLenient(lines []string) ([]string, error) {
-	outerErr := checkPatchBoundariesStrict(lines)
-	if outerErr == nil {
+	if err := checkPatchBoundariesStrict(lines); err == nil {
 		return lines, nil
 	}
-	if len(lines) >= 4 {
-		first := strings.TrimSpace(lines[0])
-		last := strings.TrimSpace(lines[len(lines)-1])
-		if (first == "<<EOF" || first == "<<'EOF'" || first == "<<\"EOF\"") && strings.HasSuffix(last, "EOF") {
-			inner := lines[1 : len(lines)-1]
-			if err := checkPatchBoundariesStrict(inner); err != nil {
-				return nil, err
-			}
-			return inner, nil
-		}
+	// Try stripping heredoc wrappers (<<EOF ... EOF).
+	if len(lines) < 4 {
+		return nil, checkPatchBoundariesStrict(lines)
 	}
-	return nil, outerErr
+	first := strings.TrimSpace(lines[0])
+	last := strings.TrimSpace(lines[len(lines)-1])
+	isHeredoc := (first == "<<EOF" || first == "<<'EOF'" || first == "<<\"EOF\"") && strings.HasSuffix(last, "EOF")
+	if !isHeredoc {
+		return nil, checkPatchBoundariesStrict(lines)
+	}
+	inner := lines[1 : len(lines)-1]
+	if err := checkPatchBoundariesStrict(inner); err != nil {
+		return nil, err
+	}
+	return inner, nil
 }
 
 func checkPatchBoundariesStrict(lines []string) error {
@@ -251,17 +229,17 @@ func parseOneHunk(lines []string, lineNumber int) (applyPatchHunk, int, error) {
 	}
 	firstLine := strings.TrimSpace(lines[0])
 	if targetPath, ok := strings.CutPrefix(firstLine, addFileMarker); ok {
-		contents := ""
+		var b strings.Builder
 		consumed := 1
 		for _, addLine := range lines[1:] {
-			if strings.HasPrefix(addLine, "+") {
-				contents += addLine[1:] + "\n"
-				consumed++
-			} else {
+			if !strings.HasPrefix(addLine, "+") {
 				break
 			}
+			b.WriteString(addLine[1:])
+			b.WriteByte('\n')
+			consumed++
 		}
-		return addFileHunk{path: targetPath, contents: contents}, consumed, nil
+		return addFileHunk{path: targetPath, contents: b.String()}, consumed, nil
 	}
 	if targetPath, ok := strings.CutPrefix(firstLine, deleteFileMarker); ok {
 		return deleteFileHunk{path: targetPath}, 1, nil
@@ -362,15 +340,17 @@ func parseUpdateFileChunk(lines []string, lineNumber int, allowMissingContext bo
 }
 
 func formatPatchSummary(summary ApplyPatchSummary) string {
-	lines := []string{"Updated files:"}
-	for _, file := range summary.Added {
-		lines = append(lines, "A "+file)
+	var b strings.Builder
+	b.WriteString("Updated files:")
+	writePaths := func(prefix string, paths []string) {
+		for _, path := range paths {
+			b.WriteString("\n")
+			b.WriteString(prefix)
+			b.WriteString(path)
+		}
 	}
-	for _, file := range summary.Modified {
-		lines = append(lines, "M "+file)
-	}
-	for _, file := range summary.Deleted {
-		lines = append(lines, "D "+file)
-	}
-	return strings.Join(lines, "\n")
+	writePaths("A ", summary.Added)
+	writePaths("M ", summary.Modified)
+	writePaths("D ", summary.Deleted)
+	return b.String()
 }

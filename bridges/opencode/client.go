@@ -3,37 +3,32 @@ package opencode
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
-	"sync/atomic"
 
-	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/bridges/opencode/opencodebridge"
-	"github.com/beeper/agentremote/pkg/bridgeadapter"
+	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
-var _ bridgev2.NetworkAPI = (*OpenCodeClient)(nil)
-var _ bridgev2.BackfillingNetworkAPI = (*OpenCodeClient)(nil)
-var _ bridgev2.DeleteChatHandlingNetworkAPI = (*OpenCodeClient)(nil)
-var _ bridgev2.IdentifierResolvingNetworkAPI = (*OpenCodeClient)(nil)
-var _ bridgev2.ContactListingNetworkAPI = (*OpenCodeClient)(nil)
-var _ bridgev2.ReactionHandlingNetworkAPI = (*OpenCodeClient)(nil)
+var (
+	_ bridgev2.NetworkAPI                    = (*OpenCodeClient)(nil)
+	_ bridgev2.BackfillingNetworkAPI         = (*OpenCodeClient)(nil)
+	_ bridgev2.DeleteChatHandlingNetworkAPI  = (*OpenCodeClient)(nil)
+	_ bridgev2.IdentifierResolvingNetworkAPI = (*OpenCodeClient)(nil)
+	_ bridgev2.ContactListingNetworkAPI      = (*OpenCodeClient)(nil)
+	_ bridgev2.UserSearchingNetworkAPI       = (*OpenCodeClient)(nil)
+	_ bridgev2.ReactionHandlingNetworkAPI    = (*OpenCodeClient)(nil)
+)
 
 type OpenCodeClient struct {
-	bridgeadapter.BaseReactionHandler
-	bridgeadapter.BaseStreamState
+	agentremote.ClientBase
 	UserLogin *bridgev2.UserLogin
 	connector *OpenCodeConnector
-	bridge    *opencodebridge.Bridge
-
-	loggedIn atomic.Bool
+	bridge    *Bridge
 
 	streamStates map[string]*openCodeStreamState
 }
@@ -42,10 +37,7 @@ type openCodeStreamState struct {
 	portal           *bridgev2.Portal
 	turnID           string
 	agentID          string
-	targetEventID    string
-	initialEventID   id.EventID
-	networkMessageID networkid.MessageID
-	sequenceNum      int
+	turn             *bridgesdk.Turn
 	accumulated      strings.Builder
 	visible          strings.Builder
 	ui               streamui.UIState
@@ -80,15 +72,22 @@ func newOpenCodeClient(login *bridgev2.UserLogin, connector *OpenCodeConnector) 
 		connector:    connector,
 		streamStates: make(map[string]*openCodeStreamState),
 	}
-	client.InitStreamState()
-	client.BaseReactionHandler.Target = client
-	client.bridge = opencodebridge.NewBridge(client)
+	client.InitClientBase(login, client)
+	client.HumanUserIDPrefix = "opencode-user"
+	client.MessageIDPrefix = "opencode"
+	client.MessageLogKey = "opencode_msg_id"
+	client.bridge = NewBridge(client)
 	return client, nil
+}
+
+func (oc *OpenCodeClient) SetUserLogin(login *bridgev2.UserLogin) {
+	oc.UserLogin = login
+	oc.ClientBase.SetUserLogin(login)
 }
 
 func (oc *OpenCodeClient) Connect(ctx context.Context) {
 	oc.ResetStreamShutdown()
-	oc.loggedIn.Store(true)
+	oc.SetLoggedIn(true)
 	oc.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected, Message: "Connected"})
 	if oc.bridge != nil {
 		go func() {
@@ -101,8 +100,12 @@ func (oc *OpenCodeClient) Connect(ctx context.Context) {
 
 func (oc *OpenCodeClient) Disconnect() {
 	oc.BeginStreamShutdown()
-	oc.loggedIn.Store(false)
+	oc.SetLoggedIn(false)
 	oc.CloseAllSessions()
+	oc.abortActiveTurns()
+	if oc.bridge != nil && oc.bridge.manager != nil && oc.bridge.manager.approvalFlow != nil {
+		oc.bridge.manager.approvalFlow.Close()
+	}
 	oc.StreamMu.Lock()
 	oc.streamStates = make(map[string]*openCodeStreamState)
 	oc.StreamMu.Unlock()
@@ -114,13 +117,23 @@ func (oc *OpenCodeClient) Disconnect() {
 	}
 }
 
-func (oc *OpenCodeClient) IsLoggedIn() bool {
-	return oc.loggedIn.Load()
+func (oc *OpenCodeClient) abortActiveTurns() {
+	oc.StreamMu.Lock()
+	turns := make([]*bridgesdk.Turn, 0, len(oc.streamStates))
+	for _, state := range oc.streamStates {
+		if state != nil && state.turn != nil {
+			turns = append(turns, state.turn)
+		}
+	}
+	oc.StreamMu.Unlock()
+	for _, turn := range turns {
+		turn.Abort("disconnect")
+	}
 }
 
 func (oc *OpenCodeClient) GetUserLogin() *bridgev2.UserLogin { return oc.UserLogin }
 
-func (oc *OpenCodeClient) GetApprovalHandler() bridgeadapter.ApprovalReactionHandler {
+func (oc *OpenCodeClient) GetApprovalHandler() agentremote.ApprovalReactionHandler {
 	if oc.bridge == nil {
 		return nil
 	}
@@ -134,11 +147,11 @@ func (oc *OpenCodeClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 	if oc.bridge == nil {
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
-	meta := portalMeta(msg.Portal)
-	if !meta.IsOpenCodeRoom {
+	pmeta := oc.PortalMeta(msg.Portal)
+	if pmeta == nil || !pmeta.IsOpenCodeRoom {
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
-	return oc.bridge.HandleMatrixMessage(ctx, msg, msg.Portal, oc.PortalMeta(msg.Portal))
+	return oc.bridge.HandleMatrixMessage(ctx, msg, msg.Portal, pmeta)
 }
 
 func (oc *OpenCodeClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2.MatrixDeleteChat) error {
@@ -152,11 +165,7 @@ func (oc *OpenCodeClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 	if oc.bridge == nil {
 		return nil, nil
 	}
-	if params.Portal == nil {
-		return nil, nil
-	}
-	meta := portalMeta(params.Portal)
-	if !meta.IsOpenCodeRoom {
+	if params.Portal == nil || !portalMeta(params.Portal).IsOpenCodeRoom {
 		return nil, nil
 	}
 	return oc.bridge.FetchMessages(ctx, params)
@@ -171,18 +180,10 @@ var openCodeFileFeatures = &event.FileFeatures{
 	MaxSize:          50 * 1024 * 1024,
 }
 
-func (oc *OpenCodeClient) GetCapabilities(_ context.Context, _ *bridgev2.Portal) *event.RoomFeatures {
-	return &event.RoomFeatures{
-		ID: "com.beeper.ai.capabilities.2026_02_17+opencode",
-		File: event.FileFeatureMap{
-			event.MsgImage:      openCodeFileFeatures,
-			event.MsgVideo:      openCodeFileFeatures,
-			event.MsgAudio:      openCodeFileFeatures,
-			event.MsgFile:       openCodeFileFeatures,
-			event.CapMsgVoice:   openCodeFileFeatures,
-			event.CapMsgGIF:     openCodeFileFeatures,
-			event.CapMsgSticker: openCodeFileFeatures,
-		},
+func openCodeMatrixRoomFeatures() *event.RoomFeatures {
+	return agentremote.BuildRoomFeatures(agentremote.RoomFeaturesParams{
+		ID:                  "com.beeper.ai.capabilities.2026_02_17+opencode",
+		File:                agentremote.BuildMediaFileFeatureMap(func() *event.FileFeatures { return openCodeFileFeatures }),
 		MaxTextLength:       100000,
 		Reply:               event.CapLevelFullySupported,
 		Thread:              event.CapLevelFullySupported,
@@ -192,102 +193,38 @@ func (oc *OpenCodeClient) GetCapabilities(_ context.Context, _ *bridgev2.Portal)
 		ReadReceipts:        true,
 		TypingNotifications: true,
 		DeleteChat:          true,
-	}
+	})
+}
+
+func (oc *OpenCodeClient) GetCapabilities(_ context.Context, _ *bridgev2.Portal) *event.RoomFeatures {
+	return openCodeMatrixRoomFeatures()
 }
 
 func (oc *OpenCodeClient) GetUserInfo(_ context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
 	if ghost == nil {
-		return bridgeadapter.BuildBotUserInfo("OpenCode"), nil
+		return openCodeSDKAgent("", "OpenCode").UserInfo(), nil
 	}
-	instanceID, ok := opencodebridge.ParseOpenCodeGhostID(string(ghost.ID))
+	instanceID, ok := ParseOpenCodeGhostID(string(ghost.ID))
 	if !ok {
-		return bridgeadapter.BuildBotUserInfo("OpenCode"), nil
+		return openCodeSDKAgent("", "OpenCode").UserInfo(), nil
 	}
-	display := "OpenCode"
-	if oc.bridge != nil {
-		if name := strings.TrimSpace(oc.bridge.DisplayName(instanceID)); name != "" {
-			display = name
-		}
-	}
-	return bridgeadapter.BuildBotUserInfo(display, "opencode:"+instanceID), nil
-}
-
-func (oc *OpenCodeClient) ResolveIdentifier(ctx context.Context, identifier string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
-	if oc.bridge == nil {
-		return nil, errors.New("login unavailable")
-	}
-	instanceID, ok := opencodebridge.ParseOpenCodeIdentifier(identifier)
-	if !ok {
-		return nil, fmt.Errorf("unknown identifier: %s", identifier)
-	}
-	cfg := oc.bridge.InstanceConfig(instanceID)
-	if cfg == nil {
-		return nil, errors.New("OpenCode instance not found")
-	}
-	userID := opencodebridge.OpenCodeUserID(instanceID)
-	ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get OpenCode ghost: %w", err)
-	}
-	oc.bridge.EnsureGhostDisplayName(ctx, instanceID)
-
-	var chat *bridgev2.CreateChatResponse
-	if createChat {
-		chat, err = oc.bridge.CreateSessionChat(ctx, instanceID, "", true)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create OpenCode chat: %w", err)
-		}
-	}
-
-	displayName := oc.bridge.DisplayName(instanceID)
-	if displayName == "" {
-		displayName = "OpenCode"
-	}
-	return &bridgev2.ResolveIdentifierResponse{
-		UserID: userID,
-		UserInfo: &bridgev2.UserInfo{
-			Name:        ptr.Ptr(displayName),
-			IsBot:       ptr.Ptr(true),
-			Identifiers: []string{"opencode:" + instanceID},
-		},
-		Ghost: ghost,
-		Chat:  chat,
-	}, nil
-}
-
-func (oc *OpenCodeClient) GetContactList(ctx context.Context) ([]*bridgev2.ResolveIdentifierResponse, error) {
-	meta := loginMetadata(oc.UserLogin)
-	if meta == nil || len(meta.OpenCodeInstances) == 0 {
-		return nil, nil
-	}
-	out := make([]*bridgev2.ResolveIdentifierResponse, 0, len(meta.OpenCodeInstances))
-	for instanceID := range meta.OpenCodeInstances {
-		resp, err := oc.ResolveIdentifier(ctx, "opencode:"+instanceID, false)
-		if err == nil && resp != nil {
-			out = append(out, resp)
-		}
-	}
-	return out, nil
+	return openCodeSDKAgent(instanceID, oc.instanceDisplayName(instanceID)).UserInfo(), nil
 }
 
 func (oc *OpenCodeClient) LogoutRemote(_ context.Context) {
 	oc.Disconnect()
 	if oc.connector != nil && oc.UserLogin != nil {
-		bridgeadapter.RemoveClientFromCache(&oc.connector.clientsMu, oc.connector.clients, oc.UserLogin.ID)
+		agentremote.RemoveClientFromCache(&oc.connector.clientsMu, oc.connector.clients, oc.UserLogin.ID)
 	}
-}
-
-func (oc *OpenCodeClient) IsThisUser(_ context.Context, userID networkid.UserID) bool {
-	return userID == humanUserID(oc.UserLogin.ID)
 }
 
 func (oc *OpenCodeClient) GetChatInfo(_ context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	if portal == nil {
 		return nil, nil
 	}
-	meta := portalMeta(portal)
-	if !meta.IsOpenCodeRoom {
+	pmeta := portalMeta(portal)
+	if !pmeta.IsOpenCodeRoom {
 		return nil, nil
 	}
-	return bridgeadapter.BuildChatInfoWithFallback(meta.Title, portal.Name, "OpenCode", portal.Topic), nil
+	return agentremote.BuildChatInfoWithFallback(pmeta.Title, portal.Name, "OpenCode", portal.Topic), nil
 }

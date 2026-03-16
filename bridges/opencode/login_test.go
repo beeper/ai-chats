@@ -7,7 +7,7 @@ import (
 )
 
 func TestGetLoginFlowsIncludesRemoteAndManaged(t *testing.T) {
-	connector := &OpenCodeConnector{}
+	connector := NewConnector()
 	flows := connector.GetLoginFlows()
 	if len(flows) != 2 {
 		t.Fatalf("expected 2 login flows, got %d", len(flows))

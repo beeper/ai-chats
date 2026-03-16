@@ -135,8 +135,7 @@ func buildFlushPrompt(base []openai.ChatCompletionMessageParamUnion, settings *F
 		for insertAt < len(trimmed) && trimmed[insertAt].OfSystem != nil {
 			insertAt++
 		}
-		systemMsg := openai.SystemMessage(settings.SystemPrompt)
-		trimmed = append(trimmed[:insertAt], append([]openai.ChatCompletionMessageParamUnion{systemMsg}, trimmed[insertAt:]...)...)
+		trimmed = slices.Insert(trimmed, insertAt, openai.SystemMessage(settings.SystemPrompt))
 	}
 	if strings.TrimSpace(settings.Prompt) != "" {
 		trimmed = append(trimmed, openai.UserMessage(settings.Prompt))

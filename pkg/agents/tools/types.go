@@ -1,6 +1,5 @@
-// Package tools provides the tool system for AI agents.
-// It follows patterns from pi-agent and clawdbot for tool registration,
-// execution, and policy enforcement.
+// Package tools provides the tool system for AI agents,
+// including tool registration, execution, and policy enforcement.
 package tools
 
 import (
@@ -32,7 +31,7 @@ const (
 	ToolTypeMCP ToolType = "mcp"
 )
 
-// Result standardizes tool output following clawdbot's jsonResult pattern.
+// Result standardizes tool output with structured content blocks and metadata.
 type Result struct {
 	Status  ResultStatus   `json:"status"`            // success, error, partial
 	Content []ContentBlock `json:"content,omitempty"` // Multi-block: text, images

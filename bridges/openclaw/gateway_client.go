@@ -84,17 +84,13 @@ func (row gatewaySessionRow) OriginString() string {
 	if len(row.Origin) == 0 || string(row.Origin) == "null" {
 		return ""
 	}
-	var rawString string
-	if err := json.Unmarshal(row.Origin, &rawString); err == nil {
-		return strings.TrimSpace(rawString)
-	}
 	compact := make(map[string]any)
 	if err := json.Unmarshal(row.Origin, &compact); err != nil {
-		return strings.TrimSpace(string(row.Origin))
+		return ""
 	}
 	encoded, err := json.Marshal(compact)
 	if err != nil {
-		return strings.TrimSpace(string(row.Origin))
+		return ""
 	}
 	return string(encoded)
 }

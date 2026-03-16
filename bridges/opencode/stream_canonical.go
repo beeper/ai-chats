@@ -1,21 +1,11 @@
 package opencode
 
 import (
-	"context"
 	"strings"
 	"time"
 
-	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/format"
-
-	"github.com/beeper/agentremote/bridges/opencode/opencodebridge"
-	"github.com/beeper/agentremote/pkg/bridgeadapter"
-	"github.com/beeper/agentremote/pkg/connector/msgconv"
-	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/agentremote/bridges/ai/msgconv"
 	"github.com/beeper/agentremote/pkg/shared/maputil"
-	"github.com/beeper/agentremote/pkg/shared/streamtransport"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
@@ -77,11 +67,15 @@ func (oc *OpenCodeClient) applyStreamMessageMetadata(state *openCodeStreamState,
 	}
 }
 
-func (oc *OpenCodeClient) currentCanonicalUIMessage(state *openCodeStreamState) map[string]any {
+func (oc *OpenCodeClient) currentUIMessage(state *openCodeStreamState) map[string]any {
 	if state == nil {
 		return nil
 	}
-	uiMessage := streamui.SnapshotCanonicalUIMessage(&state.ui)
+	uiState := &state.ui
+	if state.turn != nil && state.turn.UIState() != nil {
+		uiState = state.turn.UIState()
+	}
+	uiMessage := streamui.SnapshotUIMessage(uiState)
 	metadata := opencodeUIMessageMetadata(state)
 	if len(uiMessage) == 0 {
 		return msgconv.BuildUIMessage(msgconv.UIMessageParams{
@@ -115,113 +109,41 @@ func (oc *OpenCodeClient) buildStreamDBMetadata(state *openCodeStreamState) *Mes
 	if state == nil {
 		return nil
 	}
-	uiMessage := oc.currentCanonicalUIMessage(state)
-	thinking := opencodebridge.CanonicalReasoningText(uiMessage)
-	return &MessageMetadata{
-		BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
-			Role:               stringutil.FirstNonEmpty(state.role, "assistant"),
-			Body:               stringutil.FirstNonEmpty(state.visible.String(), state.accumulated.String()),
-			FinishReason:       state.finishReason,
-			PromptTokens:       state.promptTokens,
-			CompletionTokens:   state.completionTokens,
-			ReasoningTokens:    state.reasoningTokens,
-			TurnID:             state.turnID,
-			AgentID:            state.agentID,
-			CanonicalSchema:    "ai-sdk-ui-message-v1",
-			CanonicalUIMessage: uiMessage,
-			StartedAtMs:        state.startedAtMs,
-			CompletedAtMs:      state.completedAtMs,
-			ThinkingContent:    thinking,
-			ToolCalls:          opencodebridge.CanonicalToolCalls(uiMessage),
-			GeneratedFiles:     opencodebridge.CanonicalGeneratedFiles(uiMessage),
-		},
-		SessionID:       state.sessionID,
-		MessageID:       state.messageID,
-		ParentMessageID: state.parentMessageID,
-		Agent:           state.agent,
-		ModelID:         state.modelID,
-		ProviderID:      state.providerID,
-		Mode:            state.mode,
-		ErrorText:       state.errorText,
-		Cost:            state.cost,
-		TotalTokens:     state.totalTokens,
-	}
-}
-
-func (oc *OpenCodeClient) persistStreamDBMetadata(ctx context.Context, portal *bridgev2.Portal, state *openCodeStreamState, meta *MessageMetadata) {
-	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || portal == nil || state == nil || meta == nil {
-		return
-	}
-	receiver := portal.Receiver
-	if receiver == "" {
-		receiver = oc.UserLogin.ID
-	}
-	var existing *database.Message
-	var err error
-	if state.networkMessageID != "" {
-		existing, err = oc.UserLogin.Bridge.DB.Message.GetPartByID(ctx, receiver, state.networkMessageID, networkid.PartID("0"))
-	}
-	if existing == nil && state.initialEventID != "" {
-		existing, err = oc.UserLogin.Bridge.DB.Message.GetPartByMXID(ctx, state.initialEventID)
-	}
-	if err != nil {
-		oc.Log().Warn().
-			Err(err).
-			Str("receiver", string(receiver)).
-			Str("network_message_id", string(state.networkMessageID)).
-			Stringer("initial_event_id", state.initialEventID).
-			Msg("Failed to load OpenCode stream message for metadata update")
-		return
-	}
-	if existing == nil {
-		return
-	}
-	existing.Metadata = meta
-	if err := oc.UserLogin.Bridge.DB.Message.Update(ctx, existing); err != nil {
-		oc.Log().Warn().
-			Err(err).
-			Str("receiver", string(receiver)).
-			Str("network_message_id", string(state.networkMessageID)).
-			Stringer("initial_event_id", state.initialEventID).
-			Msg("Failed to persist OpenCode stream metadata")
-	}
-}
-
-func (oc *OpenCodeClient) queueFinalStreamEdit(ctx context.Context, portal *bridgev2.Portal, state *openCodeStreamState) {
-	if oc == nil || portal == nil || portal.MXID == "" || state == nil || state.networkMessageID == "" {
-		return
-	}
-	body := strings.TrimSpace(state.visible.String())
-	if body == "" {
-		body = strings.TrimSpace(state.accumulated.String())
-	}
-	if body == "" {
-		body = "..."
-	}
-	rendered := format.RenderMarkdown(body, true, true)
-	uiMessage := oc.currentCanonicalUIMessage(state)
-	topLevelExtra := map[string]any{
-		matrixevents.BeeperAIKey:        uiMessage,
-		"com.beeper.dont_render_edited": true,
-		"m.mentions":                    map[string]any{},
-	}
-
-	pmeta := oc.PortalMeta(portal)
-	instanceID := ""
-	if pmeta != nil {
-		instanceID = pmeta.InstanceID
-	}
-	sender := oc.SenderForOpenCode(instanceID, false)
-	oc.UserLogin.QueueRemoteEvent(&OpenCodeRemoteEdit{
-		Portal:        portal.PortalKey,
-		Sender:        sender,
-		TargetMessage: state.networkMessageID,
-		Timestamp:     time.Now(),
-		LogKey:        "opencode_edit_target",
-		PreBuilt: streamtransport.BuildRenderedConvertedEdit(streamtransport.RenderedMarkdownContent{
-			Body:          rendered.Body,
-			Format:        rendered.Format,
-			FormattedBody: rendered.FormattedBody,
-		}, topLevelExtra),
+	uiMessage := oc.currentUIMessage(state)
+	return buildMessageMetadataFromParams(MessageMetadataParams{
+		Role:             stringutil.FirstNonEmpty(state.role, "assistant"),
+		Body:             stringutil.FirstNonEmpty(state.visible.String(), state.accumulated.String()),
+		FinishReason:     state.finishReason,
+		PromptTokens:     state.promptTokens,
+		CompletionTokens: state.completionTokens,
+		ReasoningTokens:  state.reasoningTokens,
+		TurnID:           state.turnID,
+		AgentID:          state.agentID,
+		UIMessage:        uiMessage,
+		StartedAtMs:      state.startedAtMs,
+		CompletedAtMs:    state.completedAtMs,
+		SessionID:        state.sessionID,
+		MessageID:        state.messageID,
+		ParentMessageID:  state.parentMessageID,
+		Agent:            state.agent,
+		ModelID:          state.modelID,
+		ProviderID:       state.providerID,
+		Mode:             state.mode,
+		ErrorText:        state.errorText,
+		Cost:             state.cost,
+		TotalTokens:      state.totalTokens,
 	})
+}
+
+func (oc *OpenCodeClient) buildSDKFinalMetadata(state *openCodeStreamState, finishReason string) any {
+	if state == nil {
+		return nil
+	}
+	if trimmed := strings.TrimSpace(finishReason); trimmed != "" {
+		state.finishReason = trimmed
+	}
+	if state.completedAtMs == 0 {
+		state.completedAtMs = time.Now().UnixMilli()
+	}
+	return oc.buildStreamDBMetadata(state)
 }

@@ -16,15 +16,23 @@ import (
 
 const commandMaxBytes = 256 * 1024
 
+type execManager interface {
+	Status() ProviderStatus
+	Search(ctx context.Context, query string, opts SearchOptions) ([]SearchResult, error)
+	ReadFile(ctx context.Context, relPath string, from, lines *int) (map[string]any, error)
+	StatusDetails(ctx context.Context) (*MemorySearchStatus, error)
+	SyncWithProgress(ctx context.Context, onProgress func(completed, total int, label string)) error
+}
+
 type ToolExecDeps struct {
-	GetManager             func(scope iruntime.ToolScope) (Manager, string)
+	GetManager             func(scope iruntime.ToolScope) (execManager, string)
 	ResolveSessionKey      func(scope iruntime.ToolScope) string
 	ResolveCitationsMode   func(scope iruntime.ToolScope) string
 	ShouldIncludeCitations func(ctx context.Context, scope iruntime.ToolScope, mode string) bool
 }
 
 type CommandExecDeps struct {
-	GetManager        func(scope iruntime.ToolScope) (Manager, string)
+	GetManager        func(scope iruntime.ToolScope) (execManager, string)
 	ResolveSessionKey func(scope iruntime.ToolScope) string
 	SplitQuotedArgs   func(raw string) ([]string, error)
 	WriteFile         func(ctx context.Context, scope iruntime.CommandScope, mode string, path string, content string, maxBytes int) (updatedPath string, err error)
@@ -73,7 +81,7 @@ func executeSearchTool(ctx context.Context, scope iruntime.ToolScope, args map[s
 
 	manager, errMsg := deps.GetManager(scope)
 	if manager == nil {
-		return marshalSearch(searchOutput{
+		return marshalJSON(searchOutput{
 			Results:  []SearchResult{},
 			Disabled: true,
 			Error:    errMsgOrDefault(errMsg),
@@ -102,7 +110,7 @@ func executeSearchTool(ctx context.Context, scope iruntime.ToolScope, args map[s
 	defer cancel()
 	results, searchErr := manager.Search(searchCtx, query, opts)
 	if searchErr != nil {
-		return marshalSearch(searchOutput{
+		return marshalJSON(searchOutput{
 			Results:  []SearchResult{},
 			Disabled: true,
 			Error:    searchErr.Error(),
@@ -120,7 +128,7 @@ func executeSearchTool(ctx context.Context, scope iruntime.ToolScope, args map[s
 	decorated := decorateSearchResults(results, includeCitations)
 	status := manager.Status()
 
-	return marshalSearch(searchOutput{
+	return marshalJSON(searchOutput{
 		Results:   decorated,
 		Provider:  status.Provider,
 		Model:     status.Model,
@@ -139,7 +147,7 @@ func executeGetTool(ctx context.Context, scope iruntime.ToolScope, args map[stri
 	}
 	manager, errMsg := deps.GetManager(scope)
 	if manager == nil {
-		return marshalGet(getOutput{
+		return marshalJSON(getOutput{
 			Path:     path,
 			Text:     "",
 			Disabled: true,
@@ -156,7 +164,7 @@ func executeGetTool(ctx context.Context, scope iruntime.ToolScope, args map[stri
 	}
 	result, readErr := manager.ReadFile(ctx, path, from, lines)
 	if readErr != nil {
-		return marshalGet(getOutput{
+		return marshalJSON(getOutput{
 			Path:     path,
 			Text:     "",
 			Disabled: true,
@@ -168,7 +176,7 @@ func executeGetTool(ctx context.Context, scope iruntime.ToolScope, args map[stri
 	if strings.TrimSpace(resolvedPath) == "" {
 		resolvedPath = path
 	}
-	return marshalGet(getOutput{
+	return marshalJSON(getOutput{
 		Path: resolvedPath,
 		Text: text,
 	}), nil
@@ -400,37 +408,29 @@ func readStringList(args map[string]any, key string) []string {
 	if args == nil {
 		return nil
 	}
-	raw := args[key]
-	switch list := raw.(type) {
+	var items []string
+	switch list := args[key].(type) {
 	case []any:
-		out := make([]string, 0, len(list))
 		for _, item := range list {
 			if s, ok := item.(string); ok {
-				if trimmed := strings.TrimSpace(s); trimmed != "" {
-					out = append(out, trimmed)
-				}
+				items = append(items, s)
 			}
 		}
-		return out
 	case []string:
-		out := make([]string, 0, len(list))
-		for _, item := range list {
-			if trimmed := strings.TrimSpace(item); trimmed != "" {
-				out = append(out, trimmed)
-			}
-		}
-		return out
+		items = list
 	default:
 		return nil
 	}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		if trimmed := strings.TrimSpace(item); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }
 
-func marshalSearch(payload searchOutput) string {
-	blob, _ := json.MarshalIndent(payload, "", "  ")
-	return string(blob)
-}
-
-func marshalGet(payload getOutput) string {
+func marshalJSON(payload any) string {
 	blob, _ := json.MarshalIndent(payload, "", "  ")
 	return string(blob)
 }
@@ -443,7 +443,7 @@ func errMsgOrDefault(raw string) string {
 	return trimmed
 }
 
-func formatStatusLines(status *StatusDetails) []string {
+func formatStatusLines(status *MemorySearchStatus) []string {
 	if status == nil {
 		return []string{"Memory status unavailable."}
 	}
@@ -470,10 +470,17 @@ func formatStatusLines(status *StatusDetails) []string {
 		}
 	}
 	if status.Cache != nil {
-		lines = append(lines, fmt.Sprintf("Cache enabled: %t (entries=%d max=%d)", status.Cache.Enabled, status.Cache.Entries, status.Cache.MaxEntries))
+		lines = append(lines, fmt.Sprintf("Cache enabled: %t (entries=%d max=%s)", status.Cache.Enabled, status.Cache.Entries, formatCacheMaxEntries(status.Cache.MaxEntries)))
 	}
 	if status.Fallback != nil {
 		lines = append(lines, fmt.Sprintf("Fallback: %s (%s)", status.Fallback.From, status.Fallback.Reason))
 	}
 	return lines
+}
+
+func formatCacheMaxEntries(maxEntries int) string {
+	if maxEntries == UnlimitedCacheEntries {
+		return "unlimited"
+	}
+	return fmt.Sprintf("%d", maxEntries)
 }

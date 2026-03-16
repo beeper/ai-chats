@@ -14,12 +14,7 @@ func ContainsMessageIDHint(value string) bool {
 }
 
 func NormalizeHintMessageID(value string) string {
-	candidate := strings.TrimSpace(value)
-	if candidate == "" {
-		return ""
-	}
-	candidate = strings.Trim(candidate, "`\"'<>")
-	candidate = strings.TrimSpace(candidate)
+	candidate := strings.TrimSpace(strings.Trim(strings.TrimSpace(value), "`\"'<>"))
 	if candidate == "" {
 		return ""
 	}

@@ -26,12 +26,9 @@ func (r *Registry) Register(tool *Tool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	name := tool.Name
-	r.tools[name] = tool
-
-	// Add to group if specified
+	r.tools[tool.Name] = tool
 	if tool.Group != "" {
-		r.groups[tool.Group] = append(r.groups[tool.Group], name)
+		r.groups[tool.Group] = append(r.groups[tool.Group], tool.Name)
 	}
 }
 
@@ -44,8 +41,6 @@ func (r *Registry) All() []*Tool {
 	for _, tool := range r.tools {
 		tools = append(tools, tool)
 	}
-
-	// Sort by name for consistent ordering
 	slices.SortFunc(tools, func(a, b *Tool) int {
 		return cmp.Compare(a.Name, b.Name)
 	})

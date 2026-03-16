@@ -60,9 +60,6 @@ func (p *directProvider) Fetch(ctx context.Context, req Request) (*Response, err
 	maxChars := req.MaxChars
 	if maxChars <= 0 {
 		maxChars = p.cfg.MaxChars
-		if maxChars <= 0 {
-			maxChars = DefaultMaxChars
-		}
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, int64(maxChars*2)))
@@ -73,15 +70,15 @@ func (p *directProvider) Fetch(ctx context.Context, req Request) (*Response, err
 	contentType := normalizeContentType(resp.Header.Get("Content-Type"))
 	text := string(body)
 	extractor := "basic"
-	if strings.Contains(contentType, "text/html") {
+	switch {
+	case strings.Contains(contentType, "text/html"):
+		text = extractTextFromHTML(text)
 		if strings.EqualFold(req.ExtractMode, "text") {
-			text = extractTextFromHTML(text)
 			extractor = "basic-text"
 		} else {
-			text = extractTextFromHTML(text)
 			extractor = "basic-markdown"
 		}
-	} else if strings.Contains(contentType, "application/json") {
+	case strings.Contains(contentType, "application/json"):
 		var decoded any
 		if err := json.Unmarshal(body, &decoded); err == nil {
 			pretty, _ := json.MarshalIndent(decoded, "", "  ")
@@ -90,13 +87,11 @@ func (p *directProvider) Fetch(ctx context.Context, req Request) (*Response, err
 		}
 	}
 
-	truncated := false
 	rawLength := len(text)
-	if maxChars > 0 && len(text) > maxChars {
+	truncated := maxChars > 0 && len(text) > maxChars
+	if truncated {
 		text = text[:maxChars] + "...[truncated]"
-		truncated = true
 	}
-	wrappedLength := len(text)
 
 	finalURL := req.URL
 	if resp.Request != nil && resp.Request.URL != nil {
@@ -113,7 +108,7 @@ func (p *directProvider) Fetch(ctx context.Context, req Request) (*Response, err
 		Truncated:     truncated,
 		Length:        len(text),
 		RawLength:     rawLength,
-		WrappedLength: wrappedLength,
+		WrappedLength: len(text),
 		FetchedAt:     time.Now().UTC().Format(time.RFC3339),
 		TookMs:        time.Since(start).Milliseconds(),
 		Text:          text,
@@ -125,8 +120,8 @@ func normalizeContentType(value string) string {
 	if value == "" {
 		return "application/octet-stream"
 	}
-	parts := strings.Split(value, ";")
-	return strings.TrimSpace(parts[0])
+	ct, _, _ := strings.Cut(value, ";")
+	return strings.TrimSpace(ct)
 }
 
 var fetchBlockedCIDRs = []*net.IPNet{
@@ -173,38 +168,34 @@ func isAllowedURL(rawURL string) bool {
 }
 
 func extractTextFromHTML(html string) string {
-	html = removeHTMLElement(html, "script")
-	html = removeHTMLElement(html, "style")
-	html = removeHTMLElement(html, "noscript")
+	for _, tag := range []string{"script", "style", "noscript"} {
+		html = removeHTMLElement(html, tag)
+	}
 
 	var result strings.Builder
 	inTag := false
 	lastWasSpace := false
 	for _, r := range html {
-		if r == '<' {
+		switch {
+		case r == '<':
 			inTag = true
-			continue
-		}
-		if r == '>' {
+		case r == '>':
 			inTag = false
 			if !lastWasSpace {
 				result.WriteRune(' ')
 				lastWasSpace = true
 			}
-			continue
-		}
-		if inTag {
-			continue
-		}
-		if r == '\n' || r == '\r' || r == '\t' || r == ' ' {
+		case inTag:
+			// skip characters inside tags
+		case r == '\n' || r == '\r' || r == '\t' || r == ' ':
 			if !lastWasSpace {
 				result.WriteRune(' ')
 				lastWasSpace = true
 			}
-			continue
+		default:
+			result.WriteRune(r)
+			lastWasSpace = false
 		}
-		result.WriteRune(r)
-		lastWasSpace = false
 	}
 	return strings.TrimSpace(result.String())
 }
@@ -224,7 +215,7 @@ func removeHTMLElement(html, tag string) string {
 		}
 		end += start + len(closeTag)
 		html = html[:start] + html[end:]
-		lower = strings.ToLower(html)
+		lower = lower[:start] + lower[end:]
 	}
 	return html
 }

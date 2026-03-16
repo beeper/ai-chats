@@ -15,11 +15,7 @@ var (
 
 	CompactionStatusEventType = event.Type{Type: "com.beeper.ai.compaction_status", Class: event.MessageEventType}
 
-	AIRoomInfoEventType        = event.Type{Type: "com.beeper.ai.info", Class: event.StateEventType}
-	RoomCapabilitiesEventType  = event.Type{Type: "com.beeper.ai.room_capabilities", Class: event.StateEventType}
-	RoomSettingsEventType      = event.Type{Type: "com.beeper.ai.room_settings", Class: event.StateEventType}
-	ModelCapabilitiesEventType = event.Type{Type: "com.beeper.ai.model_capabilities", Class: event.StateEventType}
-	AgentsEventType            = event.Type{Type: "com.beeper.ai.agents", Class: event.StateEventType}
+	AIRoomInfoEventType = event.Type{Type: "com.beeper.ai.info", Class: event.StateEventType}
 )
 
 // Relation types.
@@ -30,9 +26,7 @@ const (
 )
 
 // Content field keys.
-const (
-	BeeperAIKey = "com.beeper.ai"
-)
+const BeeperAIKey = "com.beeper.ai"
 
 // CommandDescriptionEventType is the state event type for MSC4391 command descriptions.
 // Already accepted in gomuks/mautrix-go ecosystem.
@@ -72,8 +66,8 @@ const (
 )
 
 type StreamEventOpts struct {
-	TargetEventID string
-	AgentID       string
+	RelatesToEventID string
+	AgentID          string
 }
 
 // BuildStreamEventEnvelope builds the stable envelope for com.beeper.ai.stream_event payloads.
@@ -95,12 +89,13 @@ func BuildStreamEventEnvelope(turnID string, seq int, part map[string]any, opts 
 		"part":    part,
 	}
 
-	if target := strings.TrimSpace(opts.TargetEventID); target != "" {
-		content["target_event"] = target
-		content["m.relates_to"] = map[string]any{
-			"rel_type": RelReference,
-			"event_id": target,
-		}
+	target := strings.TrimSpace(opts.RelatesToEventID)
+	if target == "" {
+		return nil, fmt.Errorf("stream event envelope: missing m.relates_to event_id")
+	}
+	content["m.relates_to"] = map[string]any{
+		"rel_type": RelReference,
+		"event_id": target,
 	}
 	if agentID := strings.TrimSpace(opts.AgentID); agentID != "" {
 		content["agent_id"] = agentID

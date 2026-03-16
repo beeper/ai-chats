@@ -1,6 +1,10 @@
 package runtime
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
+)
 
 type streamingPendingReplyState struct {
 	explicitID string
@@ -38,13 +42,7 @@ func (acc *StreamingDirectiveAccumulator) Consume(raw string, final bool) *Strea
 	parsed := ParseStreamingChunk(combined)
 	hasTag := acc.activeReply.hasTag || acc.pendingReply.hasTag || parsed.HasReplyTag
 	sawCurrent := acc.activeReply.sawCurrent || acc.pendingReply.sawCurrent || parsed.ReplyToCurrent
-	explicitID := parsed.ReplyToExplicitID
-	if explicitID == "" {
-		explicitID = acc.pendingReply.explicitID
-	}
-	if explicitID == "" {
-		explicitID = acc.activeReply.explicitID
-	}
+	explicitID := stringutil.FirstNonEmpty(parsed.ReplyToExplicitID, acc.pendingReply.explicitID, acc.activeReply.explicitID)
 
 	result := &StreamingDirectiveResult{
 		Text:              parsed.Text,
@@ -66,7 +64,6 @@ func (acc *StreamingDirectiveAccumulator) Consume(raw string, final bool) *Strea
 		return nil
 	}
 
-	// Keep reply directive context sticky across the full streamed assistant message.
 	acc.activeReply = streamingPendingReplyState{
 		explicitID: explicitID,
 		sawCurrent: sawCurrent,
@@ -80,7 +77,7 @@ func (acc *StreamingDirectiveAccumulator) Consume(raw string, final bool) *Strea
 func ParseStreamingChunk(raw string) *StreamingDirectiveResult {
 	if !strings.Contains(raw, "[[") {
 		parsed := &StreamingDirectiveResult{Text: raw}
-		if IsSilentReplyText(raw, SilentReplyToken) || IsSilentReplyPrefixText(raw, SilentReplyToken) {
+		if isSilentForStreaming(raw) {
 			parsed.IsSilent = true
 			parsed.Text = ""
 		}
@@ -92,19 +89,7 @@ func ParseStreamingChunk(raw string) *StreamingDirectiveResult {
 		StripReplyTags:      true,
 		NormalizeWhitespace: true,
 	})
-	text := parsed.Text
-	isSilent := IsSilentReplyText(text, SilentReplyToken) || IsSilentReplyPrefixText(text, SilentReplyToken)
-	if isSilent {
-		text = ""
-	}
-	return &StreamingDirectiveResult{
-		Text:              text,
-		ReplyToExplicitID: parsed.ReplyToExplicitID,
-		ReplyToCurrent:    parsed.ReplyToCurrent,
-		HasReplyTag:       parsed.HasReplyTag,
-		AudioAsVoice:      parsed.AudioAsVoice,
-		IsSilent:          isSilent,
-	}
+	return parsed.toStreamingResult()
 }
 
 // HasRenderableStreamingContent checks whether a streaming result has text or audio to render.

@@ -1,61 +1,42 @@
 package citations
 
 import (
-	"encoding/json"
 	"net/url"
-	"strings"
 
-	"github.com/beeper/agentremote/pkg/shared/maputil"
+	"github.com/beeper/agentremote/pkg/shared/websearch"
 )
 
 // ExtractWebSearchCitations parses a JSON tool output containing web search results
 // and returns the extracted source citations. The output is expected to be a JSON object
 // with a "results" array of objects containing url, title, description, etc.
 func ExtractWebSearchCitations(output string) []SourceCitation {
-	output = strings.TrimSpace(output)
-	if output == "" || !strings.HasPrefix(output, "{") {
+	results := websearch.ResultsFromJSON(output)
+	if len(results) == 0 {
 		return nil
 	}
 
-	var payload map[string]any
-	if err := json.Unmarshal([]byte(output), &payload); err != nil {
-		return nil
-	}
-
-	rawResults, ok := payload["results"].([]any)
-	if !ok || len(rawResults) == 0 {
-		return nil
-	}
-
-	result := make([]SourceCitation, 0, len(rawResults))
-	for _, rawResult := range rawResults {
-		entry, ok := rawResult.(map[string]any)
-		if !ok {
+	citations := make([]SourceCitation, 0, len(results))
+	for _, r := range results {
+		if r.URL == "" {
 			continue
 		}
-		urlStr := maputil.StringArg(entry, "url")
-		if urlStr == "" {
-			continue
-		}
-		parsed, err := url.Parse(urlStr)
+		parsed, err := url.Parse(r.URL)
 		if err != nil {
 			continue
 		}
-		switch parsed.Scheme {
-		case "http", "https":
-		default:
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
 			continue
 		}
-		result = append(result, SourceCitation{
-			URL:         urlStr,
-			Title:       maputil.StringArg(entry, "title"),
-			Description: maputil.StringArg(entry, "description"),
-			Published:   maputil.StringArg(entry, "published"),
-			SiteName:    maputil.StringArg(entry, "siteName"),
-			Author:      maputil.StringArg(entry, "author"),
-			Image:       maputil.StringArg(entry, "image"),
-			Favicon:     maputil.StringArg(entry, "favicon"),
+		citations = append(citations, SourceCitation{
+			URL:         r.URL,
+			Title:       r.Title,
+			Description: r.Description,
+			Published:   r.Published,
+			SiteName:    r.SiteName,
+			Author:      r.Author,
+			Image:       r.Image,
+			Favicon:     r.Favicon,
 		})
 	}
-	return result
+	return citations
 }

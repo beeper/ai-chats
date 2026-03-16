@@ -55,6 +55,7 @@ func formatCronJobListText(jobs []Job) string {
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
+
 func formatCronSchedule(s Schedule) string {
 	switch strings.ToLower(strings.TrimSpace(s.Kind)) {
 	case "every":
@@ -87,16 +88,16 @@ func formatDurationMs(ms int64) string {
 		return "0ms"
 	}
 	d := time.Duration(ms) * time.Millisecond
-	if d%time.Hour == 0 {
-		return fmt.Sprintf("%dh", int64(d/time.Hour))
+	switch {
+	case d%time.Hour == 0:
+		return fmt.Sprintf("%dh", d/time.Hour)
+	case d%time.Minute == 0:
+		return fmt.Sprintf("%dm", d/time.Minute)
+	case d%time.Second == 0:
+		return fmt.Sprintf("%ds", d/time.Second)
+	default:
+		return d.String()
 	}
-	if d%time.Minute == 0 {
-		return fmt.Sprintf("%dm", int64(d/time.Minute))
-	}
-	if d%time.Second == 0 {
-		return fmt.Sprintf("%ds", int64(d/time.Second))
-	}
-	return d.String()
 }
 
 func formatUnixMs(ms int64) string {

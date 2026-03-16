@@ -4,23 +4,18 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"time"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/bridges/opencode/opencodebridge"
-	"github.com/beeper/agentremote/pkg/bridgeadapter"
-	"github.com/beeper/agentremote/pkg/connector/msgconv"
-	"github.com/beeper/agentremote/pkg/matrixevents"
-	"github.com/beeper/agentremote/pkg/shared/streamtransport"
-	"github.com/beeper/agentremote/pkg/shared/streamui"
+	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
-var _ opencodebridge.Host = (*OpenCodeClient)(nil)
+var _ Host = (*OpenCodeClient)(nil)
 
 func (oc *OpenCodeClient) Log() *zerolog.Logger {
 	if oc == nil || oc.UserLogin == nil {
@@ -31,20 +26,8 @@ func (oc *OpenCodeClient) Log() *zerolog.Logger {
 	return &l
 }
 
-func (oc *OpenCodeClient) Login() *bridgev2.UserLogin {
-	return oc.UserLogin
-}
-
 func (oc *OpenCodeClient) BackgroundContext(ctx context.Context) context.Context {
-	if ctx != nil {
-		return ctx
-	}
-	if oc != nil && oc.UserLogin != nil && oc.UserLogin.Bridge != nil {
-		if bg := oc.UserLogin.Bridge.BackgroundCtx; bg != nil {
-			return bg
-		}
-	}
-	return context.Background()
+	return oc.ClientBase.BackgroundContext(ctx)
 }
 
 func (oc *OpenCodeClient) SendSystemNotice(ctx context.Context, portal *bridgev2.Portal, msg string) {
@@ -54,7 +37,7 @@ func (oc *OpenCodeClient) SendSystemNotice(ctx context.Context, portal *bridgev2
 	oc.sendSystemNoticeViaPortal(ctx, portal, msg)
 }
 
-func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *bridgev2.Portal, turnID, agentID, targetEventID string, part map[string]any) {
+func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *bridgev2.Portal, turnID, agentID string, part map[string]any) {
 	if oc == nil || portal == nil || portal.MXID == "" {
 		return
 	}
@@ -69,31 +52,17 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 		return
 	}
 
+	agentID = strings.TrimSpace(agentID)
+	ctx = oc.BackgroundContext(ctx)
+
+	state, turn := oc.ensureStreamTurn(ctx, portal, turnID, agentID)
+	if state == nil || turn == nil {
+		return
+	}
 	oc.StreamMu.Lock()
-	state := oc.streamStates[turnID]
-	if state == nil {
-		state = &openCodeStreamState{
-			portal:        portal,
-			turnID:        turnID,
-			agentID:       strings.TrimSpace(agentID),
-			targetEventID: strings.TrimSpace(targetEventID),
-		}
-		state.ui.TurnID = turnID
-		oc.streamStates[turnID] = state
-	}
-	if state.targetEventID == "" && strings.TrimSpace(targetEventID) != "" {
-		state.targetEventID = strings.TrimSpace(targetEventID)
-	}
-	if state.portal == nil {
-		state.portal = portal
-	}
-	if state.ui.TurnID == "" {
-		state.ui.TurnID = turnID
-	}
 	if metadata, _ := part["messageMetadata"].(map[string]any); len(metadata) > 0 {
 		oc.applyStreamMessageMetadata(state, metadata)
 	}
-	needPlaceholder := state.initialEventID == ""
 	partType, _ := part["type"].(string)
 	switch strings.TrimSpace(partType) {
 	case "text-delta":
@@ -109,209 +78,114 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 		if errText, _ := part["errorText"].(string); strings.TrimSpace(errText) != "" {
 			state.errorText = strings.TrimSpace(errText)
 		}
+	case "finish":
+		if finishReason, _ := part["finishReason"].(string); strings.TrimSpace(finishReason) != "" {
+			state.finishReason = strings.TrimSpace(finishReason)
+		}
+	case "abort":
+		state.finishReason = "abort"
 	}
-	streamui.ApplyChunk(&state.ui, part)
 	oc.StreamMu.Unlock()
 
-	if oc.IsStreamShuttingDown() {
+	if oc.IsStreamShuttingDown() || turn == nil {
 		return
 	}
-	if needPlaceholder {
-		pmeta := oc.PortalMeta(portal)
-		instanceID := ""
-		if pmeta != nil {
-			instanceID = pmeta.InstanceID
-		}
-		sender := oc.SenderForOpenCode(instanceID, false)
-		msgID := bridgeadapter.NewMessageID("opencode")
-		uiMessage := msgconv.BuildUIMessage(msgconv.UIMessageParams{
-			TurnID: turnID,
-			Role:   "assistant",
-			Metadata: msgconv.BuildUIMessageMetadata(msgconv.UIMessageMetadataParams{
-				TurnID:      turnID,
-				AgentID:     strings.TrimSpace(agentID),
-				StartedAtMs: state.startedAtMs,
-			}),
-		})
-		extra := map[string]any{
-			"msgtype":                event.MsgText,
-			"body":                   "...",
-			matrixevents.BeeperAIKey: uiMessage,
-			"m.mentions":             map[string]any{},
-		}
-		converted := &bridgev2.ConvertedMessage{
-			Parts: []*bridgev2.ConvertedMessagePart{{
-				ID:      networkid.PartID("0"),
-				Type:    event.EventMessage,
-				Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "..."},
-				Extra:   extra,
-				DBMetadata: &MessageMetadata{
-					BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
-						Role:               "assistant",
-						TurnID:             turnID,
-						AgentID:            strings.TrimSpace(agentID),
-						CanonicalSchema:    "ai-sdk-ui-message-v1",
-						CanonicalUIMessage: uiMessage,
-					},
-				},
-			}},
-		}
-		result := oc.UserLogin.QueueRemoteEvent(&OpenCodeRemoteMessage{
-			Portal:    portal.PortalKey,
-			ID:        msgID,
-			Sender:    sender,
-			Timestamp: time.Now(),
-			LogKey:    "opencode_msg_id",
-			PreBuilt:  converted,
-		})
-		if result.Success && result.EventID != "" {
-			oc.StreamMu.Lock()
-			st := oc.streamStates[turnID]
-			if st != nil && st.initialEventID == "" {
-				st.initialEventID = result.EventID
-				st.networkMessageID = msgID
-				st.targetEventID = result.EventID.String()
-			}
-			oc.StreamMu.Unlock()
-		}
+	bridgesdk.ApplyStreamPart(turn, part, bridgesdk.PartApplyOptions{
+		ResetMetadataOnStartMarkers:     true,
+		ResetMetadataOnEmptyMessageMeta: true,
+		ResetMetadataOnEmptyTextDelta:   true,
+		ResetMetadataOnAbort:            true,
+		ResetMetadataOnDataParts:        true,
+		HandleTerminalEvents:            true,
+		DefaultFinishReason:             "stop",
+	})
+}
+
+func (oc *OpenCodeClient) ensureStreamTurn(ctx context.Context, portal *bridgev2.Portal, turnID, agentID string) (*openCodeStreamState, *bridgesdk.Turn) {
+	if oc == nil || portal == nil || portal.MXID == "" {
+		return nil, nil
 	}
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" || oc.IsStreamShuttingDown() {
+		return nil, nil
+	}
+	ctx = oc.BackgroundContext(ctx)
+	agentID = strings.TrimSpace(agentID)
 
 	oc.StreamMu.Lock()
-	if oc.IsStreamShuttingDown() {
-		oc.StreamMu.Unlock()
-		return
-	}
-	state = oc.streamStates[turnID]
+	defer oc.StreamMu.Unlock()
+
+	state := oc.streamStates[turnID]
 	if state == nil {
 		state = &openCodeStreamState{
-			turnID:        turnID,
-			agentID:       strings.TrimSpace(agentID),
-			targetEventID: strings.TrimSpace(targetEventID),
+			portal:  portal,
+			turnID:  turnID,
+			agentID: agentID,
 		}
+		state.ui.TurnID = turnID
 		oc.streamStates[turnID] = state
 	}
-	session := oc.StreamSessions[turnID]
-	if session == nil {
-		session = streamtransport.NewStreamSession(streamtransport.StreamSessionParams{
-			TurnID:  turnID,
-			AgentID: state.agentID,
-			GetTargetEventID: func() string {
-				oc.StreamMu.Lock()
-				defer oc.StreamMu.Unlock()
-				st := oc.streamStates[turnID]
-				if st == nil {
-					return ""
-				}
-				return st.targetEventID
-			},
-			GetRoomID: func() id.RoomID {
-				return portal.MXID
-			},
-			GetSuppressSend: func() bool { return false },
-			NextSeq: func() int {
-				oc.StreamMu.Lock()
-				defer oc.StreamMu.Unlock()
-				st := oc.streamStates[turnID]
-				if st == nil {
-					return 0
-				}
-				st.sequenceNum++
-				return st.sequenceNum
-			},
-			RuntimeFallbackFlag: &oc.StreamFallbackToDebounced,
-			GetEphemeralSender: func(callCtx context.Context) (bridgev2.EphemeralSendingMatrixAPI, bool) {
-				ephemeralSender, ok := any(oc.UserLogin.Bridge.Bot).(bridgev2.EphemeralSendingMatrixAPI)
-				return ephemeralSender, ok
-			},
-			SendDebouncedEdit: func(callCtx context.Context, force bool) error {
-				oc.StreamMu.Lock()
-				st := oc.streamStates[turnID]
-				var visibleBody, fallbackBody string
-				var netMsgID networkid.MessageID
-				var uiMessage map[string]any
-				if st != nil {
-					visibleBody = st.visible.String()
-					fallbackBody = st.accumulated.String()
-					netMsgID = st.networkMessageID
-					uiMessage = oc.currentCanonicalUIMessage(st)
-				}
-				oc.StreamMu.Unlock()
-				content := streamtransport.BuildDebouncedEditContent(streamtransport.DebouncedEditParams{
-					PortalMXID:   portal.MXID.String(),
-					Force:        force,
-					SuppressSend: false,
-					VisibleBody:  visibleBody,
-					FallbackBody: fallbackBody,
-				})
-				if content == nil || netMsgID == "" {
-					return nil
-				}
-				pmeta := oc.PortalMeta(portal)
-				instanceID := ""
-				if pmeta != nil {
-					instanceID = pmeta.InstanceID
-				}
-				sender := oc.SenderForOpenCode(instanceID, false)
-				oc.UserLogin.QueueRemoteEvent(&OpenCodeRemoteEdit{
-					Portal:        portal.PortalKey,
-					Sender:        sender,
-					TargetMessage: netMsgID,
-					Timestamp:     time.Now(),
-					LogKey:        "opencode_edit_target",
-					PreBuilt: &bridgev2.ConvertedEdit{
-						ModifiedParts: []*bridgev2.ConvertedEditPart{{
-							Type: event.EventMessage,
-							Content: &event.MessageEventContent{
-								MsgType:       event.MsgText,
-								Body:          content.Body,
-								Format:        content.Format,
-								FormattedBody: content.FormattedBody,
-							},
-							Extra: map[string]any{"m.mentions": map[string]any{}},
-							TopLevelExtra: map[string]any{
-								matrixevents.BeeperAIKey:        uiMessage,
-								"com.beeper.dont_render_edited": true,
-								"m.mentions":                    map[string]any{},
-							},
-						}},
-					},
-				})
-				return nil
-			},
-			Logger: oc.Log(),
-		})
-		oc.StreamSessions[turnID] = session
+	if state.portal == nil {
+		state.portal = portal
 	}
-	oc.StreamMu.Unlock()
-	session.EmitPart(ctx, part)
+	if state.agentID == "" {
+		state.agentID = agentID
+	}
+	if state.turn == nil {
+		state.turn = oc.newSDKStreamTurn(ctx, portal, state)
+	}
+	return state, state.turn
+}
+
+func (oc *OpenCodeClient) ensureStreamWriter(ctx context.Context, portal *bridgev2.Portal, turnID, agentID string) (*openCodeStreamState, *bridgesdk.Writer) {
+	state, turn := oc.ensureStreamTurn(ctx, portal, turnID, agentID)
+	if state == nil || turn == nil {
+		return state, nil
+	}
+	return state, turn.Writer()
 }
 
 func (oc *OpenCodeClient) FinishOpenCodeStream(turnID string) {
+	turnID = strings.TrimSpace(turnID)
 	if turnID == "" {
 		return
 	}
 	oc.StreamMu.Lock()
-	session := oc.StreamSessions[turnID]
 	state := oc.streamStates[turnID]
-	delete(oc.StreamSessions, turnID)
-	oc.StreamMu.Unlock()
-	if state != nil {
-		portal := state.portal
-		if portal != nil {
-			oc.queueFinalStreamEdit(oc.BackgroundContext(context.Background()), portal, state)
-			oc.persistStreamDBMetadata(oc.BackgroundContext(context.Background()), portal, state, oc.buildStreamDBMetadata(state))
-		}
-	}
-	oc.StreamMu.Lock()
 	delete(oc.streamStates, turnID)
 	oc.StreamMu.Unlock()
-	if session != nil {
-		session.End(oc.BackgroundContext(context.Background()), streamtransport.EndReasonFinish)
+	if state != nil && state.turn != nil {
+		state.turn.End(stringutil.FirstNonEmpty(strings.TrimSpace(state.finishReason), "stop"))
 	}
 }
 
+func (oc *OpenCodeClient) newSDKStreamTurn(ctx context.Context, portal *bridgev2.Portal, state *openCodeStreamState) *bridgesdk.Turn {
+	if oc == nil || portal == nil || state == nil || oc.connector == nil || oc.connector.sdkConfig == nil {
+		return nil
+	}
+	pmeta := oc.PortalMeta(portal)
+	var instanceID string
+	if pmeta != nil {
+		instanceID = pmeta.InstanceID
+	}
+	agent := openCodeSDKAgent(instanceID, oc.instanceDisplayName(instanceID))
+	if state.agentID != "" {
+		agent.ID = state.agentID
+	}
+	sender := oc.SenderForOpenCode(instanceID, false)
+	conv := bridgesdk.NewConversation(ctx, oc.UserLogin, portal, sender, oc.connector.sdkConfig, oc)
+	_ = conv.EnsureRoomAgent(ctx, agent)
+	turn := conv.StartTurn(ctx, agent, nil)
+	turn.SetID(state.turnID)
+	turn.SetSender(sender)
+	turn.SetFinalMetadataProvider(bridgesdk.FinalMetadataProviderFunc(func(_ *bridgesdk.Turn, finishReason string) any {
+		return oc.buildSDKFinalMetadata(state, finishReason)
+	}))
+	return turn
+}
+
 func (oc *OpenCodeClient) DownloadAndEncodeMedia(ctx context.Context, mediaURL string, file *event.EncryptedFileInfo, maxMB int) (string, string, error) {
-	return bridgeadapter.DownloadAndEncodeMedia(ctx, oc.UserLogin, mediaURL, file, maxMB)
+	return agentremote.DownloadAndEncodeMedia(ctx, oc.UserLogin, mediaURL, file, maxMB)
 }
 
 func (oc *OpenCodeClient) SetRoomName(_ context.Context, _ *bridgev2.Portal, _ string) error {
@@ -323,7 +197,7 @@ func (oc *OpenCodeClient) SenderForOpenCode(instanceID string, fromMe bool) brid
 		return bridgev2.EventSender{Sender: humanUserID(oc.UserLogin.ID), SenderLogin: oc.UserLogin.ID, IsFromMe: true}
 	}
 	return bridgev2.EventSender{
-		Sender:      opencodebridge.OpenCodeUserID(instanceID),
+		Sender:      OpenCodeUserID(instanceID),
 		SenderLogin: oc.UserLogin.ID,
 		IsFromMe:    false,
 		ForceDMUser: true,
@@ -344,12 +218,12 @@ func (oc *OpenCodeClient) CleanupPortal(ctx context.Context, portal *bridgev2.Po
 	}
 }
 
-func (oc *OpenCodeClient) PortalMeta(portal *bridgev2.Portal) *opencodebridge.PortalMeta {
+func (oc *OpenCodeClient) PortalMeta(portal *bridgev2.Portal) *PortalMeta {
 	if portal == nil {
 		return nil
 	}
 	meta := portalMeta(portal)
-	return &opencodebridge.PortalMeta{
+	return &PortalMeta{
 		IsOpenCodeRoom: meta.IsOpenCodeRoom,
 		InstanceID:     meta.OpenCodeInstanceID,
 		SessionID:      meta.OpenCodeSessionID,
@@ -363,7 +237,7 @@ func (oc *OpenCodeClient) PortalMeta(portal *bridgev2.Portal) *opencodebridge.Po
 	}
 }
 
-func (oc *OpenCodeClient) SetPortalMeta(portal *bridgev2.Portal, meta *opencodebridge.PortalMeta) {
+func (oc *OpenCodeClient) SetPortalMeta(portal *bridgev2.Portal, meta *PortalMeta) {
 	if portal == nil || meta == nil {
 		return
 	}
@@ -392,7 +266,7 @@ func (oc *OpenCodeClient) DefaultAgentID() string {
 	return "opencode"
 }
 
-func (oc *OpenCodeClient) OpenCodeInstances() map[string]*opencodebridge.OpenCodeInstance {
+func (oc *OpenCodeClient) OpenCodeInstances() map[string]*OpenCodeInstance {
 	if oc == nil || oc.UserLogin == nil {
 		return nil
 	}
@@ -403,7 +277,7 @@ func (oc *OpenCodeClient) OpenCodeInstances() map[string]*opencodebridge.OpenCod
 	return meta.OpenCodeInstances
 }
 
-func (oc *OpenCodeClient) SaveOpenCodeInstances(ctx context.Context, instances map[string]*opencodebridge.OpenCodeInstance) error {
+func (oc *OpenCodeClient) SaveOpenCodeInstances(ctx context.Context, instances map[string]*OpenCodeInstance) error {
 	if oc == nil || oc.UserLogin == nil {
 		return nil
 	}
@@ -417,12 +291,4 @@ func (oc *OpenCodeClient) SaveOpenCodeInstances(ctx context.Context, instances m
 
 func (oc *OpenCodeClient) HumanUserID(loginID networkid.UserLoginID) networkid.UserID {
 	return humanUserID(loginID)
-}
-
-func (oc *OpenCodeClient) RoomCapabilitiesEventType() event.Type {
-	return matrixevents.RoomCapabilitiesEventType
-}
-
-func (oc *OpenCodeClient) RoomSettingsEventType() event.Type {
-	return matrixevents.RoomSettingsEventType
 }

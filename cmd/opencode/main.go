@@ -1,9 +1,8 @@
 package main
 
 import (
-	"maunium.net/go/mautrix/bridgev2/matrix/mxmain"
-
 	"github.com/beeper/agentremote/bridges/opencode"
+	"github.com/beeper/agentremote/cmd/internal/bridgeentry"
 )
 
 var (
@@ -12,15 +11,6 @@ var (
 	BuildTime = "unknown"
 )
 
-var m = mxmain.BridgeMain{
-	Name:        "opencode",
-	Description: "A Matrix↔OpenCode bridge built on mautrix-go bridgev2.",
-	URL:         "https://github.com/beeper/agentremote",
-	Version:     "0.1.0",
-	Connector:   opencode.NewConnector(),
-}
-
 func main() {
-	m.InitVersion(Tag, Commit, BuildTime)
-	m.Run()
+	bridgeentry.Run(bridgeentry.OpenCode, opencode.NewConnector(), Tag, Commit, BuildTime)
 }

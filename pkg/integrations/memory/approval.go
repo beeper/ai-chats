@@ -29,9 +29,8 @@ func (i *Integration) ToolApprovalRequirement(toolName string, args map[string]a
 }
 
 func isManagedPath(path string) bool {
-	trimmed := strings.TrimSpace(strings.ToLower(path))
-	if trimmed == "" {
+	if path == "" {
 		return false
 	}
-	return trimmed == FilePath || strings.HasPrefix(trimmed, RootPath)
+	return path == FilePath || strings.HasPrefix(path, RootPath)
 }

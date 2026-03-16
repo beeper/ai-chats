@@ -16,10 +16,17 @@ func TestBuildStreamEventEnvelope_RequiresSeq(t *testing.T) {
 	}
 }
 
+func TestBuildStreamEventEnvelope_RequiresRelatesToEventID(t *testing.T) {
+	_, err := BuildStreamEventEnvelope("turn1", 1, map[string]any{"type": "text-delta"}, StreamEventOpts{})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+}
+
 func TestBuildStreamEventEnvelope_IncludesRelatesTo(t *testing.T) {
 	content, err := BuildStreamEventEnvelope("turn1", 2, map[string]any{"type": "text-delta"}, StreamEventOpts{
-		TargetEventID: "$event",
-		AgentID:       "agent1",
+		RelatesToEventID: "$event",
+		AgentID:          "agent1",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -39,6 +46,9 @@ func TestBuildStreamEventEnvelope_IncludesRelatesTo(t *testing.T) {
 	}
 	if rt["rel_type"] != RelReference || rt["event_id"] != "$event" {
 		t.Fatalf("unexpected m.relates_to: %#v", rt)
+	}
+	if _, ok := content["target_event"]; ok {
+		t.Fatalf("did not expect target_event mirror: %#v", content)
 	}
 }
 

@@ -9,7 +9,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 )
 
-const VersionTable = "ai_bridge_version"
+const VersionTable = "agentremote_version"
 
 var Upgrades dbutil.UpgradeTable
 
@@ -20,7 +20,7 @@ func init() {
 	Upgrades.RegisterFS(rawUpgrades)
 }
 
-// NewChild creates a child DB using the shared AI bridge schema.
+// NewChild creates a child DB using the shared AgentRemote child schema.
 func NewChild(base *dbutil.Database, log dbutil.DatabaseLogger) *dbutil.Database {
 	if base == nil {
 		return nil

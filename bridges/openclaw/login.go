@@ -10,9 +10,8 @@ import (
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 
-	"github.com/beeper/agentremote/pkg/bridgeadapter"
+	"github.com/beeper/agentremote"
 )
 
 var (
@@ -58,7 +57,7 @@ type openClawPendingLogin struct {
 }
 
 type OpenClawLogin struct {
-	bridgeadapter.BaseLoginProcess
+	agentremote.BaseLoginProcess
 	User      *bridgev2.User
 	Connector *OpenClawConnector
 
@@ -266,12 +265,15 @@ func (ol *OpenClawLogin) completeLogin(pending *openClawPendingLogin, deviceToke
 	persistCtx := ol.BackgroundProcessContext()
 	log := ol.User.Log.With().Str("component", "openclaw_login").Str("gateway_url", pending.gatewayURL).Logger()
 	remoteName := openClawRemoteName(pending.gatewayURL, pending.label)
-	loginID := nextOpenClawUserLoginID(ol.User)
+	loginID := agentremote.NextUserLoginID(ol.User, "openclaw")
 	log.Debug().Str("login_id", string(loginID)).Str("remote_name", remoteName).Msg("Creating OpenClaw user login")
-	login, err := ol.User.NewLogin(persistCtx, &database.UserLogin{
-		ID:         loginID,
-		RemoteName: remoteName,
-		Metadata: &UserLoginMetadata{
+	login, step, err := agentremote.CreateAndCompleteLogin(
+		persistCtx,
+		ol.BackgroundProcessContext(),
+		ol.User,
+		"openclaw",
+		remoteName,
+		&UserLoginMetadata{
 			Provider:        ProviderOpenClaw,
 			GatewayURL:      pending.gatewayURL,
 			AuthMode:        pending.authMode,
@@ -280,29 +282,18 @@ func (ol *OpenClawLogin) completeLogin(pending *openClawPendingLogin, deviceToke
 			GatewayLabel:    pending.label,
 			DeviceToken:     deviceToken,
 		},
-	}, nil)
+		"io.ai-bridge.openclaw.complete",
+		nil,
+	)
 	if err != nil {
 		log.Debug().Err(err).Str("login_id", string(loginID)).Msg("OpenClaw user login creation failed")
 		return nil, fmt.Errorf("failed to create login: %w", err)
 	}
 	log.Debug().Str("login_id", string(login.ID)).Msg("Created OpenClaw user login")
-	log.Debug().Str("login_id", string(login.ID)).Msg("Loaded OpenClaw user login client")
-	if login.Client != nil {
-		log.Debug().Str("login_id", string(login.ID)).Msg("Starting OpenClaw user login connect loop")
-		go login.Client.Connect(login.Log.WithContext(ol.BackgroundProcessContext()))
-	}
 	ol.pending = nil
 	ol.step = ""
 	ol.waitUntil = time.Time{}
-	log.Debug().Str("login_id", string(login.ID)).Msg("Returning completed OpenClaw login step")
-	return &bridgev2.LoginStep{
-		Type:   bridgev2.LoginStepTypeComplete,
-		StepID: "io.ai-bridge.openclaw.complete",
-		CompleteParams: &bridgev2.LoginCompleteParams{
-			UserLoginID: login.ID,
-			UserLogin:   login,
-		},
-	}, nil
+	return step, nil
 }
 
 func openClawCredentialStep(authMode string) *bridgev2.LoginStep {

@@ -188,8 +188,12 @@ func hasGeneratedFile(existing []citations.GeneratedFilePart, file citations.Gen
 	return false
 }
 
+func normalizeToolAlias(name string) string {
+	return strings.TrimSpace(strings.ToLower(name))
+}
+
 func extractWebSearchCitationsFromToolOutput(toolName, output string) []citations.SourceCitation {
-	if normalizeToolAlias(strings.TrimSpace(toolName)) != "websearch" {
+	if normalizeToolAlias(toolName) != "websearch" {
 		return nil
 	}
 	return citations.ExtractWebSearchCitations(output)

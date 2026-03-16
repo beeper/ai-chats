@@ -2,9 +2,7 @@ package memory
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -12,6 +10,8 @@ import (
 	"unicode"
 
 	"maunium.net/go/mautrix/bridgev2/networkid"
+
+	memorycore "github.com/beeper/agentremote/pkg/memory"
 )
 
 type sessionState struct {
@@ -26,26 +26,30 @@ type sessionPortal struct {
 }
 
 func (m *MemorySearchManager) activeSessionPortals(ctx context.Context) (map[string]sessionPortal, error) {
-	if m == nil || m.runtime == nil {
+	if m == nil || m.host == nil {
 		return nil, errors.New("memory search unavailable")
 	}
-	items, err := m.runtime.ListSessionPortals(ctx, m.loginID, m.agentID)
+	infos, err := m.host.SessionPortals(ctx, m.loginID, m.agentID)
 	if err != nil {
 		return nil, err
 	}
-	active := make(map[string]sessionPortal, len(items))
-	for _, item := range items {
-		key := strings.TrimSpace(item.Key)
+	active := make(map[string]sessionPortal, len(infos))
+	for _, info := range infos {
+		key := strings.TrimSpace(info.Key)
 		if key == "" {
 			continue
 		}
-		active[key] = sessionPortal{key: key, portalKey: item.PortalKey}
+		portalKey, ok := info.PortalKey.(networkid.PortalKey)
+		if !ok {
+			continue
+		}
+		active[key] = sessionPortal{key: key, portalKey: portalKey}
 	}
 	return active, nil
 }
 
 func (m *MemorySearchManager) syncSessions(ctx context.Context, force bool, sessionKey, generation string) error {
-	if m == nil || m.runtime == nil {
+	if m == nil || m.host == nil {
 		return errors.New("memory search unavailable")
 	}
 	active, err := m.activeSessionPortals(ctx)
@@ -57,8 +61,8 @@ func (m *MemorySearchManager) syncSessions(ctx context.Context, force bool, sess
 	if !indexAll {
 		var count int
 		row := m.db.QueryRow(ctx,
-			`SELECT COUNT(*) FROM ai_memory_session_state WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`,
-			m.bridgeID, m.loginID, m.agentID,
+			`SELECT COUNT(*) FROM aichats_memory_session_state WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`,
+			m.baseArgs()...,
 		)
 		if err := row.Scan(&count); err == nil && count == 0 {
 			indexAll = true
@@ -67,10 +71,10 @@ func (m *MemorySearchManager) syncSessions(ctx context.Context, force bool, sess
 
 	dirtyFiles := 0
 	row := m.db.QueryRow(ctx,
-		`SELECT COUNT(*) FROM ai_memory_session_state
+		`SELECT COUNT(*) FROM aichats_memory_session_state
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3
            AND (pending_bytes > 0 OR pending_messages > 0)`,
-		m.bridgeID, m.loginID, m.agentID,
+		m.baseArgs()...,
 	)
 	_ = row.Scan(&dirtyFiles)
 
@@ -109,17 +113,9 @@ func (m *MemorySearchManager) syncSessions(ctx context.Context, force bool, sess
 		if !shouldIndex {
 			thresholdBytes := m.cfg.Sync.Sessions.DeltaBytes
 			thresholdMessages := m.cfg.Sync.Sessions.DeltaMessages
-			bytesHit := thresholdBytes <= 0 && state.pendingBytes > 0
-			if thresholdBytes > 0 && state.pendingBytes >= thresholdBytes {
-				bytesHit = true
-			}
-			messagesHit := thresholdMessages <= 0 && state.pendingMessages > 0
-			if thresholdMessages > 0 && state.pendingMessages >= thresholdMessages {
-				messagesHit = true
-			}
-			if bytesHit || messagesHit {
-				shouldIndex = true
-			}
+			bytesHit := state.pendingBytes > 0 && (thresholdBytes <= 0 || state.pendingBytes >= thresholdBytes)
+			messagesHit := state.pendingMessages > 0 && (thresholdMessages <= 0 || state.pendingMessages >= thresholdMessages)
+			shouldIndex = bytesHit || messagesHit
 		}
 
 		if shouldIndex {
@@ -130,7 +126,7 @@ func (m *MemorySearchManager) syncSessions(ctx context.Context, force bool, sess
 				_ = m.deleteSessionFile(ctx, key)
 			} else {
 				path := sessionPathForKey(key)
-				hash := hashSessionContent(content)
+				hash := memorycore.HashText(content)
 				existingHash, _ := m.getSessionFileHash(ctx, key)
 				if needsFullReindex || indexAll || existingHash == "" || existingHash != hash {
 					if err := m.upsertSessionFile(ctx, key, path, content, hash); err != nil {
@@ -161,9 +157,9 @@ func (m *MemorySearchManager) loadSessionState(ctx context.Context, sessionKey s
 	var state sessionState
 	row := m.db.QueryRow(ctx,
 		`SELECT last_rowid, pending_bytes, pending_messages
-         FROM ai_memory_session_state
+         FROM aichats_memory_session_state
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
-		m.bridgeID, m.loginID, m.agentID, sessionKey,
+		m.baseArgs(sessionKey)...,
 	)
 	switch err := row.Scan(&state.lastRowID, &state.pendingBytes, &state.pendingMessages); err {
 	case nil:
@@ -177,14 +173,15 @@ func (m *MemorySearchManager) loadSessionState(ctx context.Context, sessionKey s
 
 func (m *MemorySearchManager) saveSessionState(ctx context.Context, sessionKey string, state sessionState) error {
 	_, err := m.db.Exec(ctx,
-		`INSERT INTO ai_memory_session_state
+		`INSERT INTO aichats_memory_session_state
            (bridge_id, login_id, agent_id, session_key, last_rowid, pending_bytes, pending_messages, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT (bridge_id, login_id, agent_id, session_key)
          DO UPDATE SET last_rowid=excluded.last_rowid, pending_bytes=excluded.pending_bytes,
            pending_messages=excluded.pending_messages, updated_at=excluded.updated_at`,
-		m.bridgeID, m.loginID, m.agentID, sessionKey,
-		state.lastRowID, state.pendingBytes, state.pendingMessages, time.Now().UnixMilli(),
+		m.baseArgs(sessionKey,
+			state.lastRowID, state.pendingBytes, state.pendingMessages, time.Now().UnixMilli(),
+		)...,
 	)
 	return err
 }
@@ -227,26 +224,10 @@ func (m *MemorySearchManager) computeSessionDelta(ctx context.Context, portalKey
 		if rowid > maxRowID.Int64 {
 			maxRowID.Int64 = rowid
 		}
-		meta := parseSessionMetadata(rawMeta)
-		if meta == nil || !shouldIncludeSessionInHistory(meta) {
+		line := m.parseSessionMessageRow(rawMeta)
+		if line == "" {
 			continue
 		}
-		role := strings.ToLower(strings.TrimSpace(meta.Role))
-		if role != "user" && role != "assistant" {
-			continue
-		}
-		if role == "assistant" && meta.AgentID != "" && meta.AgentID != m.agentID {
-			continue
-		}
-		text := normalizeSessionText(meta.Body)
-		if text == "" {
-			continue
-		}
-		label := "User"
-		if role == "assistant" {
-			label = "Assistant"
-		}
-		line := label + ": " + text
 		deltaMessages++
 		deltaBytes += len(line) + 1
 	}
@@ -280,26 +261,11 @@ func (m *MemorySearchManager) buildSessionContent(ctx context.Context, portalKey
 		if rowid > maxRowID {
 			maxRowID = rowid
 		}
-		meta := parseSessionMetadata(rawMeta)
-		if meta == nil || !shouldIncludeSessionInHistory(meta) {
+		line := m.parseSessionMessageRow(rawMeta)
+		if line == "" {
 			continue
 		}
-		role := strings.ToLower(strings.TrimSpace(meta.Role))
-		if role != "user" && role != "assistant" {
-			continue
-		}
-		if role == "assistant" && meta.AgentID != "" && meta.AgentID != m.agentID {
-			continue
-		}
-		text := normalizeSessionText(meta.Body)
-		if text == "" {
-			continue
-		}
-		label := "User"
-		if role == "assistant" {
-			label = "Assistant"
-		}
-		lines = append(lines, label+": "+text)
+		lines = append(lines, line)
 	}
 	if err := rows.Err(); err != nil {
 		return "", 0, err
@@ -313,9 +279,9 @@ func (m *MemorySearchManager) buildSessionContent(ctx context.Context, portalKey
 func (m *MemorySearchManager) getSessionFileHash(ctx context.Context, sessionKey string) (string, error) {
 	var hash string
 	row := m.db.QueryRow(ctx,
-		`SELECT hash FROM ai_memory_session_files
+		`SELECT hash FROM aichats_memory_session_files
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
-		m.bridgeID, m.loginID, m.agentID, sessionKey,
+		m.baseArgs(sessionKey)...,
 	)
 	switch err := row.Scan(&hash); err {
 	case nil:
@@ -330,9 +296,9 @@ func (m *MemorySearchManager) getSessionFileHash(ctx context.Context, sessionKey
 func (m *MemorySearchManager) upsertSessionFile(ctx context.Context, sessionKey, path, content, hash string) error {
 	var existingPath string
 	row := m.db.QueryRow(ctx,
-		`SELECT path FROM ai_memory_session_files
+		`SELECT path FROM aichats_memory_session_files
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
-		m.bridgeID, m.loginID, m.agentID, sessionKey,
+		m.baseArgs(sessionKey)...,
 	)
 	switch err := row.Scan(&existingPath); err {
 	case nil:
@@ -343,15 +309,14 @@ func (m *MemorySearchManager) upsertSessionFile(ctx context.Context, sessionKey,
 	default:
 		return err
 	}
-	size := len([]byte(content))
 	_, err := m.db.Exec(ctx,
-		`INSERT INTO ai_memory_session_files
+		`INSERT INTO aichats_memory_session_files
            (bridge_id, login_id, agent_id, session_key, path, content, hash, size, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          ON CONFLICT (bridge_id, login_id, agent_id, session_key)
          DO UPDATE SET path=excluded.path, content=excluded.content, hash=excluded.hash,
            size=excluded.size, updated_at=excluded.updated_at`,
-		m.bridgeID, m.loginID, m.agentID, sessionKey, path, content, hash, size, time.Now().UnixMilli(),
+		m.baseArgs(sessionKey, path, content, hash, len(content), time.Now().UnixMilli())...,
 	)
 	return err
 }
@@ -359,27 +324,27 @@ func (m *MemorySearchManager) upsertSessionFile(ctx context.Context, sessionKey,
 func (m *MemorySearchManager) deleteSessionFile(ctx context.Context, sessionKey string) error {
 	var path string
 	row := m.db.QueryRow(ctx,
-		`SELECT path FROM ai_memory_session_files
+		`SELECT path FROM aichats_memory_session_files
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
-		m.bridgeID, m.loginID, m.agentID, sessionKey,
+		m.baseArgs(sessionKey)...,
 	)
 	if err := row.Scan(&path); err != nil && err != sql.ErrNoRows {
 		return err
 	}
 	m.purgeSessionPath(ctx, path)
 	_, _ = m.db.Exec(ctx,
-		`DELETE FROM ai_memory_session_files
+		`DELETE FROM aichats_memory_session_files
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
-		m.bridgeID, m.loginID, m.agentID, sessionKey,
+		m.baseArgs(sessionKey)...,
 	)
 	return nil
 }
 
 func (m *MemorySearchManager) removeStaleSessions(ctx context.Context, active map[string]sessionPortal) error {
 	rows, err := m.db.Query(ctx,
-		`SELECT session_key, path FROM ai_memory_session_files
+		`SELECT session_key, path FROM aichats_memory_session_files
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`,
-		m.bridgeID, m.loginID, m.agentID,
+		m.baseArgs()...,
 	)
 	if err != nil {
 		return err
@@ -394,19 +359,30 @@ func (m *MemorySearchManager) removeStaleSessions(ctx context.Context, active ma
 		if _, ok := active[sessionKey]; ok {
 			continue
 		}
-		m.purgeSessionPath(ctx, path)
-		_, _ = m.db.Exec(ctx,
-			`DELETE FROM ai_memory_session_files
-             WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
-			m.bridgeID, m.loginID, m.agentID, sessionKey,
-		)
-		_, _ = m.db.Exec(ctx,
-			`DELETE FROM ai_memory_session_state
-             WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
-			m.bridgeID, m.loginID, m.agentID, sessionKey,
-		)
+		m.purgeSessionData(ctx, sessionKey, path)
 	}
 	return rows.Err()
+}
+
+// parseSessionMessageRow extracts a formatted "User: ..." or "Assistant: ..." line
+// from a raw message metadata blob. Returns "" if the row should be skipped.
+func (m *MemorySearchManager) parseSessionMessageRow(rawMeta []byte) string {
+	meta := parseSessionMetadata(rawMeta)
+	if !shouldIncludeSessionInHistory(meta) {
+		return ""
+	}
+	if meta.Role == "assistant" && meta.AgentID != "" && meta.AgentID != m.agentID {
+		return ""
+	}
+	text := normalizeSessionText(meta.Body)
+	if text == "" {
+		return ""
+	}
+	label := "User"
+	if meta.Role == "assistant" {
+		label = "Assistant"
+	}
+	return label + ": " + text
 }
 
 type sessionMessageMetadata struct {
@@ -428,21 +404,14 @@ func parseSessionMetadata(raw []byte) *sessionMessageMetadata {
 }
 
 func shouldIncludeSessionInHistory(meta *sessionMessageMetadata) bool {
-	if meta == nil || meta.Body == "" {
-		return false
-	}
-	if meta.ExcludeFromHistory {
-		return false
-	}
-	if meta.Role != "user" && meta.Role != "assistant" {
-		return false
-	}
-	return true
+	return meta != nil &&
+		meta.Body != "" &&
+		!meta.ExcludeFromHistory &&
+		(meta.Role == "user" || meta.Role == "assistant")
 }
 
 func normalizeSessionText(text string) string {
-	text = strings.ReplaceAll(text, "\r\n", "\n")
-	text = strings.ReplaceAll(text, "\r", "\n")
+	text = normalizeNewlines(text)
 	var b strings.Builder
 	prevSpace := false
 	for _, r := range text {
@@ -467,9 +436,4 @@ func sessionPathForKey(sessionKey string) string {
 	cleaned = strings.ReplaceAll(cleaned, "/", "_")
 	cleaned = strings.ReplaceAll(cleaned, "\\", "_")
 	return "sessions/" + cleaned + ".jsonl"
-}
-
-func hashSessionContent(content string) string {
-	sum := sha256.Sum256([]byte(content))
-	return hex.EncodeToString(sum[:])
 }

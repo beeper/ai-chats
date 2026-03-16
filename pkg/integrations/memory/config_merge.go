@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/beeper/agentremote/pkg/agents"
-	"github.com/beeper/agentremote/pkg/shared/httputil"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
@@ -15,34 +14,6 @@ func MergeSearchConfig(defaults *agents.MemorySearchConfig, overrides *agents.Me
 
 	enabled := pickBool(o.enabled, d.enabled, true)
 	sessionMemory := pickBool(o.sessionMemory, d.sessionMemory, false)
-	provider := pickString(o.provider, d.provider, "auto")
-	fallback := pickString(o.fallback, d.fallback, "none")
-
-	hasRemoteConfig := d.hasRemote || o.hasRemote
-	includeRemote := hasRemoteConfig || provider == "openai" || provider == "gemini" || provider == "auto"
-
-	remote := RemoteConfig{}
-	if includeRemote {
-		remote.BaseURL = pickString(o.remoteBaseURL, d.remoteBaseURL, "")
-		remote.APIKey = pickString(o.remoteAPIKey, d.remoteAPIKey, "")
-		remote.Headers = httputil.MergeHeaders(d.remoteHeaders, o.remoteHeaders)
-		remote.Batch = BatchConfig{
-			Enabled:        pickBool(o.batchEnabled, d.batchEnabled, true),
-			Wait:           pickBool(o.batchWait, d.batchWait, true),
-			Concurrency:    max(1, pickInt(o.batchConcurrency, d.batchConcurrency, 2)),
-			PollIntervalMs: max(100, pickInt(o.batchPoll, d.batchPoll, 2000)),
-			TimeoutMinutes: max(1, pickInt(o.batchTimeout, d.batchTimeout, 60)),
-		}
-	}
-
-	modelDefault := ""
-	switch provider {
-	case "gemini":
-		modelDefault = DefaultGeminiEmbeddingModel
-	case "openai":
-		modelDefault = DefaultOpenAIEmbeddingModel
-	}
-	model := pickString(o.model, d.model, modelDefault)
 
 	rawSources := slices.Concat(d.sources, o.sources)
 	sources := normalizeSources(rawSources, sessionMemory)
@@ -50,15 +21,9 @@ func MergeSearchConfig(defaults *agents.MemorySearchConfig, overrides *agents.Me
 	rawExtraPaths := slices.Concat(d.extraPaths, o.extraPaths)
 	extraPaths := stringutil.DedupeStrings(rawExtraPaths)
 
-	vector := VectorConfig{
-		Enabled:       pickBool(o.vectorEnabled, d.vectorEnabled, true),
-		ExtensionPath: pickString(o.vectorExtension, d.vectorExtension, ""),
-	}
-
 	store := StoreConfig{
 		Driver: "sqlite",
 		Path:   "",
-		Vector: vector,
 	}
 
 	chunkTokens := pickInt(o.chunkTokens, d.chunkTokens, DefaultChunkTokens)
@@ -91,29 +56,16 @@ func MergeSearchConfig(defaults *agents.MemorySearchConfig, overrides *agents.Me
 		MinScore:         pickFloat(o.queryMinScore, d.queryMinScore, DefaultMinScore),
 		MaxInjectedChars: pickInt(o.queryMaxInjectedChars, d.queryMaxInjectedChars, 0),
 		Hybrid: HybridConfig{
-			Enabled:             pickBool(o.hybridEnabled, d.hybridEnabled, DefaultHybridEnabled),
-			VectorWeight:        pickFloat(o.hybridVectorWeight, d.hybridVectorWeight, DefaultHybridVectorWeight),
-			TextWeight:          pickFloat(o.hybridTextWeight, d.hybridTextWeight, DefaultHybridTextWeight),
 			CandidateMultiplier: pickInt(o.hybridCandidateMultiplier, d.hybridCandidateMultiplier, DefaultHybridCandidateMultiple),
 		},
 	}
 
 	cache := CacheConfig{
 		Enabled:    pickBool(o.cacheEnabled, d.cacheEnabled, DefaultCacheEnabled),
-		MaxEntries: pickInt(o.cacheMaxEntries, d.cacheMaxEntries, 0),
+		MaxEntries: normalizeCacheMaxEntries(pickInt(o.cacheMaxEntries, d.cacheMaxEntries, UnlimitedCacheEntries)),
 	}
 
 	query.MinScore = min(max(query.MinScore, 0.0), 1.0)
-	vectorWeight := min(max(query.Hybrid.VectorWeight, 0.0), 1.0)
-	textWeight := min(max(query.Hybrid.TextWeight, 0.0), 1.0)
-	sum := vectorWeight + textWeight
-	if sum <= 0 {
-		query.Hybrid.VectorWeight = DefaultHybridVectorWeight
-		query.Hybrid.TextWeight = DefaultHybridTextWeight
-	} else {
-		query.Hybrid.VectorWeight = vectorWeight / sum
-		query.Hybrid.TextWeight = textWeight / sum
-	}
 	query.Hybrid.CandidateMultiplier = min(max(query.Hybrid.CandidateMultiplier, 1), 20)
 	sync.Sessions.DeltaBytes = max(0, sync.Sessions.DeltaBytes)
 	sync.Sessions.DeltaMessages = max(0, sync.Sessions.DeltaMessages)
@@ -125,10 +77,6 @@ func MergeSearchConfig(defaults *agents.MemorySearchConfig, overrides *agents.Me
 		Enabled:      enabled,
 		Sources:      sources,
 		ExtraPaths:   extraPaths,
-		Provider:     provider,
-		Model:        model,
-		Fallback:     fallback,
-		Remote:       remote,
 		Store:        store,
 		Chunking:     ChunkingConfig{Tokens: chunkTokens, Overlap: chunkOverlap},
 		Sync:         sync,
@@ -147,25 +95,27 @@ func normalizeSources(input []string, sessionMemoryEnabled bool) []string {
 	if len(input) == 0 {
 		input = []string{DefaultMemorySource, "workspace"}
 	}
-	normalized := make(map[string]bool)
+	seen := make(map[string]struct{})
+	var out []string
 	for _, source := range input {
-		switch strings.ToLower(strings.TrimSpace(source)) {
-		case "memory":
-			normalized["memory"] = true
-		case "workspace":
-			normalized["workspace"] = true
+		key := strings.ToLower(strings.TrimSpace(source))
+		switch key {
+		case "memory", "workspace":
 		case "sessions":
-			if sessionMemoryEnabled {
-				normalized["sessions"] = true
+			if !sessionMemoryEnabled {
+				continue
 			}
+		default:
+			continue
 		}
-	}
-	if len(normalized) == 0 {
-		normalized["memory"] = true
-	}
-	out := make([]string, 0, len(normalized))
-	for key := range normalized {
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
 		out = append(out, key)
+	}
+	if len(out) == 0 {
+		return []string{"memory"}
 	}
 	return out
 }
@@ -176,16 +126,6 @@ func pickBool(override, fallback *bool, defaultVal bool) bool {
 	}
 	if fallback != nil {
 		return *fallback
-	}
-	return defaultVal
-}
-
-func pickString(override, fallback, defaultVal string) string {
-	if strings.TrimSpace(override) != "" {
-		return override
-	}
-	if strings.TrimSpace(fallback) != "" {
-		return fallback
 	}
 	return defaultVal
 }
@@ -210,16 +150,18 @@ func pickFloat(override, fallback, defaultVal float64) float64 {
 	return defaultVal
 }
 
+func normalizeCacheMaxEntries(value int) int {
+	if value <= 0 {
+		return UnlimitedCacheEntries
+	}
+	return value
+}
+
 type searchFields struct {
 	enabled                   *bool
 	sessionMemory             *bool
-	provider                  string
-	model                     string
-	fallback                  string
 	sources                   []string
 	extraPaths                []string
-	vectorEnabled             *bool
-	vectorExtension           string
 	chunkTokens               int
 	chunkOverlap              int
 	syncOnStart               *bool
@@ -233,21 +175,9 @@ type searchFields struct {
 	queryMaxResults           int
 	queryMinScore             float64
 	queryMaxInjectedChars     int
-	hybridEnabled             *bool
-	hybridVectorWeight        float64
-	hybridTextWeight          float64
 	hybridCandidateMultiplier int
 	cacheEnabled              *bool
 	cacheMaxEntries           int
-	remoteBaseURL             string
-	remoteAPIKey              string
-	remoteHeaders             map[string]string
-	hasRemote                 bool
-	batchEnabled              *bool
-	batchWait                 *bool
-	batchConcurrency          int
-	batchPoll                 int
-	batchTimeout              int
 }
 
 func extractFields(cfg *agents.MemorySearchConfig) searchFields {
@@ -256,17 +186,10 @@ func extractFields(cfg *agents.MemorySearchConfig) searchFields {
 		return f
 	}
 	f.enabled = cfg.Enabled
-	f.provider = cfg.Provider
-	f.model = cfg.Model
-	f.fallback = cfg.Fallback
 	f.sources = cfg.Sources
 	f.extraPaths = cfg.ExtraPaths
 	if cfg.Experimental != nil {
 		f.sessionMemory = cfg.Experimental.SessionMemory
-	}
-	if cfg.Store != nil && cfg.Store.Vector != nil {
-		f.vectorEnabled = cfg.Store.Vector.Enabled
-		f.vectorExtension = cfg.Store.Vector.ExtensionPath
 	}
 	if cfg.Chunking != nil {
 		f.chunkTokens = cfg.Chunking.Tokens
@@ -289,28 +212,12 @@ func extractFields(cfg *agents.MemorySearchConfig) searchFields {
 		f.queryMinScore = cfg.Query.MinScore
 		f.queryMaxInjectedChars = cfg.Query.MaxInjectedChars
 		if cfg.Query.Hybrid != nil {
-			f.hybridEnabled = cfg.Query.Hybrid.Enabled
-			f.hybridVectorWeight = cfg.Query.Hybrid.VectorWeight
-			f.hybridTextWeight = cfg.Query.Hybrid.TextWeight
 			f.hybridCandidateMultiplier = cfg.Query.Hybrid.CandidateMultiplier
 		}
 	}
 	if cfg.Cache != nil {
 		f.cacheEnabled = cfg.Cache.Enabled
 		f.cacheMaxEntries = cfg.Cache.MaxEntries
-	}
-	if cfg.Remote != nil {
-		f.remoteBaseURL = cfg.Remote.BaseURL
-		f.remoteAPIKey = cfg.Remote.APIKey
-		f.remoteHeaders = cfg.Remote.Headers
-		f.hasRemote = cfg.Remote.BaseURL != "" || cfg.Remote.APIKey != "" || len(cfg.Remote.Headers) > 0
-		if cfg.Remote.Batch != nil {
-			f.batchEnabled = cfg.Remote.Batch.Enabled
-			f.batchWait = cfg.Remote.Batch.Wait
-			f.batchConcurrency = cfg.Remote.Batch.Concurrency
-			f.batchPoll = cfg.Remote.Batch.PollIntervalMs
-			f.batchTimeout = cfg.Remote.Batch.TimeoutMinutes
-		}
 	}
 	return f
 }

@@ -1,10 +1,8 @@
 package fetch
 
 import (
-	"slices"
-	"strings"
-
 	"github.com/beeper/agentremote/pkg/shared/exa"
+	"github.com/beeper/agentremote/pkg/shared/providerkit"
 )
 
 const (
@@ -50,24 +48,14 @@ func (c *Config) WithDefaults() *Config {
 	if c == nil {
 		c = &Config{}
 	}
-	if strings.TrimSpace(c.Provider) == "" {
-		c.Provider = ProviderExa
-	}
-	if len(c.Fallbacks) == 0 {
-		c.Fallbacks = slices.Clone(DefaultFallbackOrder)
-	}
+	providerkit.ApplyDefaults(&c.Provider, &c.Fallbacks, ProviderExa, DefaultFallbackOrder)
 	c.Exa = c.Exa.withDefaults()
 	c.Direct = c.Direct.withDefaults()
 	return c
 }
 
 func (c ExaConfig) withDefaults() ExaConfig {
-	if c.BaseURL == "" {
-		c.BaseURL = exa.DefaultBaseURL
-	}
-	if c.TextMaxCharacters <= 0 {
-		c.TextMaxCharacters = 5_000
-	}
+	exa.ApplyConfigDefaults(&c.BaseURL, &c.TextMaxCharacters, 5_000)
 	return c
 }
 

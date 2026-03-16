@@ -2,15 +2,12 @@ package fetch
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/beeper/agentremote/pkg/shared/exa"
-	"github.com/beeper/agentremote/pkg/shared/httputil"
-	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 type exaProvider struct {
@@ -21,14 +18,9 @@ func newExaProvider(cfg *Config) Provider {
 	if cfg == nil {
 		return nil
 	}
-	if !stringutil.BoolPtrOr(cfg.Exa.Enabled, true) {
-		return nil
-	}
-	apiKey := strings.TrimSpace(cfg.Exa.APIKey)
-	if apiKey == "" {
-		return nil
-	}
-	return &exaProvider{cfg: cfg.Exa}
+	return exa.NewProvider(cfg.Exa.Enabled, cfg.Exa.APIKey, func() Provider {
+		return &exaProvider{cfg: cfg.Exa}
+	})
 }
 
 func (p *exaProvider) Name() string {
@@ -36,11 +28,6 @@ func (p *exaProvider) Name() string {
 }
 
 func (p *exaProvider) Fetch(ctx context.Context, req Request) (*Response, error) {
-	base := stringutil.NormalizeBaseURL(p.cfg.BaseURL)
-	if base == "" {
-		return nil, errors.New("exa base_url is empty")
-	}
-	endpoint := base + "/contents"
 	maxChars := req.MaxChars
 	if maxChars <= 0 {
 		maxChars = p.cfg.TextMaxCharacters
@@ -48,26 +35,17 @@ func (p *exaProvider) Fetch(ctx context.Context, req Request) (*Response, error)
 	payload := map[string]any{
 		"urls": []string{req.URL},
 	}
-	includeText := p.cfg.IncludeText || req.MaxChars > 0
-	if includeText {
+	if p.cfg.IncludeText || req.MaxChars > 0 {
 		if maxChars > 0 {
-			payload["text"] = map[string]any{
-				"maxCharacters": maxChars,
-			}
+			payload["text"] = map[string]any{"maxCharacters": maxChars}
 		} else {
 			payload["text"] = true
 		}
 	} else {
-		// Keep fetch useful when text is disabled in config.
 		payload["summary"] = map[string]any{}
 	}
 
 	start := time.Now()
-	data, _, err := httputil.PostJSON(ctx, endpoint, exa.AuthHeaders(p.cfg.BaseURL, p.cfg.APIKey), payload, DefaultTimeoutSecs)
-	if err != nil {
-		return nil, err
-	}
-
 	var resp struct {
 		Results []struct {
 			URL         string   `json:"url"`
@@ -80,7 +58,7 @@ func (p *exaProvider) Fetch(ctx context.Context, req Request) (*Response, error)
 		Statuses    []exaContentStatus `json:"statuses"`
 		CostDollars map[string]any     `json:"costDollars"`
 	}
-	if err := json.Unmarshal(data, &resp); err != nil {
+	if err := exa.PostAndDecodeJSON(ctx, p.cfg.BaseURL, "/contents", p.cfg.APIKey, payload, DefaultTimeoutSecs, &resp); err != nil {
 		return nil, err
 	}
 	statusErr := formatExaStatusError(req.URL, resp.Statuses)
@@ -143,50 +121,47 @@ func formatExaStatusError(targetURL string, statuses []exaContentStatus) string 
 	if len(statuses) == 0 {
 		return ""
 	}
-
 	targetURL = strings.TrimSpace(targetURL)
+
 	var matched *exaContentStatus
+	var firstError *exaContentStatus
 	for i := range statuses {
-		status := statuses[i]
-		if strings.EqualFold(strings.TrimSpace(status.ID), targetURL) {
-			if !strings.EqualFold(strings.TrimSpace(status.Status), "error") {
+		s := &statuses[i]
+		isError := strings.EqualFold(s.Status, "error")
+		if strings.EqualFold(s.ID, targetURL) {
+			if !isError {
 				return ""
 			}
-			matched = &status
+			matched = s
 			break
+		}
+		if isError && firstError == nil {
+			firstError = s
 		}
 	}
 	if matched == nil {
-		for i := range statuses {
-			status := statuses[i]
-			if strings.EqualFold(strings.TrimSpace(status.Status), "error") {
-				matched = &status
-				break
-			}
-		}
+		matched = firstError
 	}
 	if matched == nil {
 		return ""
 	}
-	if matched.Error == nil {
-		if matched.ID == "" {
-			return "unknown error"
-		}
-		return fmt.Sprintf("%s: unknown error", matched.ID)
-	}
-
-	tag := strings.TrimSpace(matched.Error.Tag)
-	if tag == "" {
-		tag = "unknown_error"
-	}
-	if matched.Error.HTTPStatusCode != nil {
-		if matched.ID == "" {
-			return fmt.Sprintf("%s (http %d)", tag, *matched.Error.HTTPStatusCode)
-		}
-		return fmt.Sprintf("%s: %s (http %d)", matched.ID, tag, *matched.Error.HTTPStatusCode)
-	}
+	tag := formatExaErrorTag(matched.Error)
 	if matched.ID == "" {
 		return tag
 	}
 	return fmt.Sprintf("%s: %s", matched.ID, tag)
+}
+
+func formatExaErrorTag(info *exaStatusInfo) string {
+	if info == nil {
+		return "unknown_error"
+	}
+	tag := strings.TrimSpace(info.Tag)
+	if tag == "" {
+		tag = "unknown_error"
+	}
+	if info.HTTPStatusCode != nil {
+		return fmt.Sprintf("%s (http %d)", tag, *info.HTTPStatusCode)
+	}
+	return tag
 }

@@ -42,7 +42,7 @@ func (oc *OpenClawClient) buildOpenClawAttachmentContent(ctx context.Context, po
 	}
 	filename := openClawAttachmentFilename(source)
 	if filename == "" {
-		filename = fallbackFilenameForMIME(mimeType)
+		filename = media.FallbackFilenameForMIME(mimeType)
 	}
 	uri, file, err := oc.UserLogin.Bridge.Bot.UploadMedia(ctx, portal.MXID, data, filename, mimeType)
 	if err != nil {
@@ -50,7 +50,7 @@ func (oc *OpenClawClient) buildOpenClawAttachmentContent(ctx context.Context, po
 	}
 
 	content := &event.MessageEventContent{
-		MsgType:  messageTypeForMIME(mimeType),
+		MsgType:  media.MessageTypeForMIME(mimeType),
 		Body:     filename,
 		FileName: filename,
 		Info: &event.FileInfo{
@@ -113,7 +113,7 @@ func openClawAttachmentSourceFromBlock(block map[string]any) *openClawAttachment
 			FileName: openClawBlockFilename(block),
 		}
 	}
-	if rawURL := strings.TrimSpace(stringsTrimDefault(stringValue(block["url"]), stringValue(block["href"]))); rawURL != "" {
+	if rawURL := strings.TrimSpace(stringutil.TrimDefault(stringValue(block["url"]), stringValue(block["href"]))); rawURL != "" {
 		return &openClawAttachmentSource{
 			Kind:     "url",
 			URL:      rawURL,
@@ -150,18 +150,18 @@ func openClawAttachmentSourceFromValue(value any, block map[string]any) *openCla
 	}
 	sourceType := strings.ToLower(strings.TrimSpace(stringValue(source["type"])))
 	if sourceType == "" {
-		if rawURL := strings.TrimSpace(stringsTrimDefault(stringValue(source["url"]), stringValue(source["href"]))); rawURL != "" {
+		if rawURL := strings.TrimSpace(stringutil.TrimDefault(stringValue(source["url"]), stringValue(source["href"]))); rawURL != "" {
 			sourceType = "url"
-		} else if rawData := strings.TrimSpace(stringsTrimDefault(stringValue(source["data"]), stringValue(source["content"]))); rawData != "" {
+		} else if rawData := strings.TrimSpace(stringutil.TrimDefault(stringValue(source["data"]), stringValue(source["content"]))); rawData != "" {
 			sourceType = openClawAttachmentKindFromString(rawData)
 		}
 	}
 	result := &openClawAttachmentSource{
 		Kind:     sourceType,
-		URL:      strings.TrimSpace(stringsTrimDefault(stringValue(source["url"]), stringValue(source["href"]))),
-		Data:     strings.TrimSpace(stringsTrimDefault(stringValue(source["data"]), stringValue(source["content"]))),
+		URL:      strings.TrimSpace(stringutil.TrimDefault(stringValue(source["url"]), stringValue(source["href"]))),
+		Data:     strings.TrimSpace(stringutil.TrimDefault(stringValue(source["data"]), stringValue(source["content"]))),
 		MimeType: openClawSourceMimeType(source, block),
-		FileName: stringsTrimDefault(stringsTrimDefault(stringsTrimDefault(stringValue(source["filename"]), stringValue(source["fileName"])), stringsTrimDefault(stringValue(source["name"]), stringValue(source["path"]))), openClawBlockFilename(block)),
+		FileName: stringutil.FirstNonEmpty(stringValue(source["filename"]), stringValue(source["fileName"]), stringValue(source["name"]), stringValue(source["path"]), openClawBlockFilename(block)),
 	}
 	switch result.Kind {
 	case "base64", "url":
@@ -205,30 +205,21 @@ func openClawBlockFilename(block map[string]any) string {
 }
 
 func openClawBlockMimeType(block map[string]any) string {
-	return stringutil.NormalizeMimeType(
-		stringsTrimDefault(
-			stringsTrimDefault(
-				stringsTrimDefault(stringValue(block["contentType"]), stringValue(block["mimeType"])),
-				stringValue(block["mime_type"]),
-			),
-			stringsTrimDefault(stringValue(block["mediaType"]), stringValue(block["media_type"])),
-		),
-	)
+	for _, key := range []string{"contentType", "mimeType", "mime_type", "mediaType", "media_type"} {
+		if value := strings.TrimSpace(stringValue(block[key])); value != "" {
+			return stringutil.NormalizeMimeType(value)
+		}
+	}
+	return ""
 }
 
 func openClawSourceMimeType(source, block map[string]any) string {
-	return stringutil.NormalizeMimeType(
-		stringsTrimDefault(
-			stringsTrimDefault(
-				stringsTrimDefault(stringValue(source["contentType"]), stringValue(source["mimeType"])),
-				stringValue(source["mime_type"]),
-			),
-			stringsTrimDefault(
-				stringsTrimDefault(stringValue(source["mediaType"]), stringValue(source["media_type"])),
-				openClawBlockMimeType(block),
-			),
-		),
-	)
+	for _, key := range []string{"contentType", "mimeType", "mime_type", "mediaType", "media_type"} {
+		if value := strings.TrimSpace(stringValue(source[key])); value != "" {
+			return stringutil.NormalizeMimeType(value)
+		}
+	}
+	return openClawBlockMimeType(block)
 }
 
 func openClawAttachmentFilename(source *openClawAttachmentSource) string {
@@ -281,7 +272,7 @@ func downloadOpenClawAttachment(ctx context.Context, source *openClawAttachmentS
 		}
 		return data, mimeType, nil
 	case "url":
-		return downloadOpenClawAttachmentURL(ctx, source.URL, source.MimeType, maxBytes, maxSizeMB)
+		return downloadOpenClawAttachmentURL(ctx, source.URL, source.MimeType, maxBytes)
 	default:
 		return nil, "", fmt.Errorf("unsupported attachment source kind %q", source.Kind)
 	}
@@ -310,7 +301,7 @@ func decodeOpenClawDataOrBase64(raw, fallbackMime string) ([]byte, string, error
 	return decoded, mimeType, nil
 }
 
-func downloadOpenClawAttachmentURL(ctx context.Context, rawURL, fallbackMime string, maxBytes int64, _ int) ([]byte, string, error) {
+func downloadOpenClawAttachmentURL(ctx context.Context, rawURL, fallbackMime string, maxBytes int64) ([]byte, string, error) {
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
 		return nil, "", errors.New("missing attachment URL")
@@ -319,14 +310,6 @@ func downloadOpenClawAttachmentURL(ctx context.Context, rawURL, fallbackMime str
 		return nil, "", errors.New("local file access is not permitted")
 	}
 	return media.DownloadURL(ctx, rawURL, fallbackMime, maxBytes)
-}
-
-func messageTypeForMIME(mimeType string) event.MessageType {
-	return media.MessageTypeForMIME(mimeType)
-}
-
-func fallbackFilenameForMIME(mimeType string) string {
-	return media.FallbackFilenameForMIME(mimeType)
 }
 
 func openClawMessageExtra(content *event.MessageEventContent) map[string]any {

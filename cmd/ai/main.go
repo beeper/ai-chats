@@ -1,9 +1,10 @@
 package main
 
 import (
-	"maunium.net/go/mautrix/bridgev2/matrix/mxmain"
+	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote/pkg/connector"
+	aibridge "github.com/beeper/agentremote/bridges/ai"
+	"github.com/beeper/agentremote/cmd/internal/bridgeentry"
 )
 
 // Information to find out exactly which commit the bridge was built from.
@@ -14,15 +15,7 @@ var (
 	BuildTime = "unknown"
 )
 
-var m = mxmain.BridgeMain{
-	Name:        "ai",
-	Description: "A Matrix↔AI bridge for Beeper built on mautrix-go bridgev2.",
-	URL:         "https://github.com/beeper/agentremote",
-	Version:     "0.1.0",
-	Connector:   connector.NewAIConnector(),
-}
-
 func main() {
-	m.InitVersion(Tag, Commit, BuildTime)
-	m.Run()
+	bridgev2.PortalEventBuffer = 0
+	bridgeentry.Run(bridgeentry.AI, aibridge.NewAIConnector(), Tag, Commit, BuildTime)
 }

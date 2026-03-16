@@ -1,5 +1,13 @@
 package fetch
 
+import "context"
+
+// Provider fetches readable content for a given backend.
+type Provider interface {
+	Name() string
+	Fetch(ctx context.Context, req Request) (*Response, error)
+}
+
 // Request represents a normalized fetch request.
 type Request struct {
 	URL         string

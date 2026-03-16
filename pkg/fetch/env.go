@@ -2,44 +2,41 @@ package fetch
 
 import (
 	"os"
-	"strings"
 
-	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/pkg/shared/exa"
+	"github.com/beeper/agentremote/pkg/shared/providerkit"
+	"github.com/beeper/agentremote/pkg/shared/providerresource"
 )
 
 // ConfigFromEnv builds a fetch config using environment variables.
 func ConfigFromEnv() *Config {
-	cfg := (&Config{}).WithDefaults()
-
-	if provider := strings.TrimSpace(os.Getenv("FETCH_PROVIDER")); provider != "" {
-		cfg.Provider = provider
-	}
-	if fallbacks := strings.TrimSpace(os.Getenv("FETCH_FALLBACKS")); fallbacks != "" {
-		cfg.Fallbacks = stringutil.SplitCSV(fallbacks)
-	}
-
-	cfg.Exa.APIKey = stringutil.EnvOr(cfg.Exa.APIKey, os.Getenv("EXA_API_KEY"))
-	cfg.Exa.BaseURL = stringutil.EnvOr(cfg.Exa.BaseURL, os.Getenv("EXA_BASE_URL"))
-
-	return cfg
+	cfg := &Config{}
+	providerkit.ApplyNamedEnv(&cfg.Provider, &cfg.Fallbacks, os.Getenv("FETCH_PROVIDER"), os.Getenv("FETCH_FALLBACKS"))
+	exa.ApplyEnv(&cfg.Exa.APIKey, &cfg.Exa.BaseURL)
+	return cfg.WithDefaults()
 }
 
 // ApplyEnvDefaults fills empty config fields from environment variables.
 func ApplyEnvDefaults(cfg *Config) *Config {
-	if cfg == nil {
-		return ConfigFromEnv()
-	}
-	current := cfg.WithDefaults()
-	envCfg := ConfigFromEnv()
-
-	// WithDefaults already fills Provider and Fallbacks, so only credentials
-	// need merging from the environment.
-	if current.Exa.APIKey == "" {
-		current.Exa.APIKey = envCfg.Exa.APIKey
-	}
-	if current.Exa.BaseURL == "" {
-		current.Exa.BaseURL = envCfg.Exa.BaseURL
-	}
-
-	return current
+	return providerresource.ApplyEnvDefaults(
+		cfg,
+		ConfigFromEnv,
+		func(current *Config) *Config { return current.WithDefaults() },
+		func(current *Config) bool { return current != nil && current.Provider != "" },
+		func(current *Config) bool { return current != nil && len(current.Fallbacks) > 0 },
+		func(current, env *Config, hasProvider, hasFallbacks bool) {
+			if !hasProvider {
+				current.Provider = env.Provider
+			}
+			if !hasFallbacks {
+				current.Fallbacks = env.Fallbacks
+			}
+			if current.Exa.APIKey == "" {
+				current.Exa.APIKey = env.Exa.APIKey
+			}
+			if current.Exa.BaseURL == "" {
+				current.Exa.BaseURL = env.Exa.BaseURL
+			}
+		},
+	)
 }

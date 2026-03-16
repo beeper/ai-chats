@@ -6,11 +6,11 @@ import (
 	"strings"
 )
 
-var tokenRE = regexp.MustCompile(`[A-Za-z0-9_]+`)
+var TokenRE = regexp.MustCompile(`[A-Za-z0-9_]+`)
 
 // BuildFtsQuery builds a simple AND query for FTS5 from raw input.
 func BuildFtsQuery(raw string) string {
-	tokens := tokenRE.FindAllString(raw, -1)
+	tokens := TokenRE.FindAllString(raw, -1)
 	if len(tokens) == 0 {
 		return ""
 	}
@@ -24,12 +24,9 @@ func BuildFtsQuery(raw string) string {
 // BM25RankToScore normalizes an FTS5 bm25 rank into a 0-1-ish score.
 func BM25RankToScore(rank float64) float64 {
 	if math.IsNaN(rank) || math.IsInf(rank, 0) {
-		return 1.0 / 1000.0
+		rank = 999
 	}
-	if rank < 0 {
-		rank = 0
-	}
-	return 1 / (1 + rank)
+	return 1 / (1 + max(rank, 0))
 }
 
 // HybridKeywordResult holds a single keyword/FTS search result with a text relevance score.

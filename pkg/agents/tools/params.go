@@ -8,7 +8,6 @@ import (
 )
 
 // ReadString reads a string parameter from input.
-// Following clawdbot's readStringParam pattern.
 func ReadString(params map[string]any, key string, required bool) (string, error) {
 	v, ok := params[key]
 	if !ok || v == nil {
@@ -37,19 +36,17 @@ func ReadStringDefault(params map[string]any, key, defaultVal string) string {
 }
 
 // ReadNumber reads a numeric parameter from input.
-// Following clawdbot's readNumberParam pattern.
 func ReadNumber(params map[string]any, key string, required bool) (float64, error) {
-	v, ok := maputil.NumberArg(params, key)
-	if ok {
+	if v, ok := maputil.NumberArg(params, key); ok {
 		return v, nil
 	}
-	if required {
-		if _, exists := params[key]; !exists || params[key] == nil {
-			return 0, fmt.Errorf("parameter %q is required", key)
-		}
-		return 0, fmt.Errorf("parameter %q must be a number", key)
+	if !required {
+		return 0, nil
 	}
-	return 0, nil
+	if _, exists := params[key]; !exists || params[key] == nil {
+		return 0, fmt.Errorf("parameter %q is required", key)
+	}
+	return 0, fmt.Errorf("parameter %q must be a number", key)
 }
 
 // ReadInt reads an integer parameter from input.

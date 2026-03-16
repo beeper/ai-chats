@@ -1,6 +1,5 @@
 // Package agents provides the agent system for AI-powered assistants.
 // An agent is a persistent entity defined by system prompt, tools, and a swappable model.
-// This follows patterns from pi-agent and clawdbot for agent definition and execution.
 package agents
 
 import (
@@ -8,6 +7,9 @@ import (
 	"reflect"
 	"slices"
 
+	"go.mau.fi/util/ptr"
+
+	"github.com/beeper/agentremote/pkg/agents/agentconfig"
 	"github.com/beeper/agentremote/pkg/agents/toolpolicy"
 )
 
@@ -29,10 +31,10 @@ type AgentDefinition struct {
 	Tools *toolpolicy.ToolPolicyConfig `json:"tools,omitempty"`
 
 	// Subagent defaults (OpenClaw-style)
-	Subagents *SubagentConfig `json:"subagents,omitempty"`
+	Subagents *agentconfig.SubagentConfig `json:"subagents,omitempty"`
 
 	// Agent behavior
-	Temperature     float64      `json:"temperature,omitempty"`
+	Temperature     *float64     `json:"temperature,omitempty"`
 	ReasoningEffort string       `json:"reasoning_effort,omitempty"` // none, low, medium, high
 	ResponseMode    ResponseMode `json:"response_mode,omitempty"`    // natural (OpenClaw-style), raw (pass-through)
 	Identity        *Identity    `json:"identity,omitempty"`         // custom identity for prompt
@@ -84,22 +86,11 @@ type Identity struct {
 	Persona string `json:"persona,omitempty"`
 }
 
-// SubagentConfig configures default subagent behavior for an agent.
-type SubagentConfig struct {
-	Model       string   `json:"model,omitempty"`
-	Thinking    string   `json:"thinking,omitempty"`
-	AllowAgents []string `json:"allowAgents,omitempty"`
-}
-
 // MemorySearchConfig configures semantic memory search (OpenClaw-style).
 type MemorySearchConfig struct {
 	Enabled      *bool                           `json:"enabled,omitempty"`
 	Sources      []string                        `json:"sources,omitempty"`
 	ExtraPaths   []string                        `json:"extra_paths,omitempty"`
-	Provider     string                          `json:"provider,omitempty"`
-	Model        string                          `json:"model,omitempty"`
-	Remote       *MemorySearchRemoteConfig       `json:"remote,omitempty"`
-	Fallback     string                          `json:"fallback,omitempty"`
 	Store        *MemorySearchStoreConfig        `json:"store,omitempty"`
 	Chunking     *MemorySearchChunkingConfig     `json:"chunking,omitempty"`
 	Sync         *MemorySearchSyncConfig         `json:"sync,omitempty"`
@@ -108,30 +99,9 @@ type MemorySearchConfig struct {
 	Experimental *MemorySearchExperimentalConfig `json:"experimental,omitempty"`
 }
 
-type MemorySearchRemoteConfig struct {
-	BaseURL string                   `json:"base_url,omitempty"`
-	APIKey  string                   `json:"api_key,omitempty"`
-	Headers map[string]string        `json:"headers,omitempty"`
-	Batch   *MemorySearchBatchConfig `json:"batch,omitempty"`
-}
-
-type MemorySearchBatchConfig struct {
-	Enabled        *bool `json:"enabled,omitempty"`
-	Wait           *bool `json:"wait,omitempty"`
-	Concurrency    int   `json:"concurrency,omitempty"`
-	PollIntervalMs int   `json:"poll_interval_ms,omitempty"`
-	TimeoutMinutes int   `json:"timeout_minutes,omitempty"`
-}
-
 type MemorySearchStoreConfig struct {
-	Driver string                    `json:"driver,omitempty"`
-	Path   string                    `json:"path,omitempty"`
-	Vector *MemorySearchVectorConfig `json:"vector,omitempty"`
-}
-
-type MemorySearchVectorConfig struct {
-	Enabled       *bool  `json:"enabled,omitempty"`
-	ExtensionPath string `json:"extension_path,omitempty"`
+	Driver string `json:"driver,omitempty"`
+	Path   string `json:"path,omitempty"`
 }
 
 type MemorySearchChunkingConfig struct {
@@ -162,10 +132,7 @@ type MemorySearchQueryConfig struct {
 }
 
 type MemorySearchHybridConfig struct {
-	Enabled             *bool   `json:"enabled,omitempty"`
-	VectorWeight        float64 `json:"vector_weight,omitempty"`
-	TextWeight          float64 `json:"text_weight,omitempty"`
-	CandidateMultiplier int     `json:"candidate_multiplier,omitempty"`
+	CandidateMultiplier int `json:"candidate_multiplier,omitempty"`
 }
 
 type MemorySearchCacheConfig struct {
@@ -212,8 +179,8 @@ func (a *AgentDefinition) Clone() *AgentDefinition {
 		SystemPrompt:    a.SystemPrompt,
 		PromptMode:      a.PromptMode,
 		Tools:           a.Tools.Clone(),
-		Subagents:       cloneSubagentConfig(a.Subagents),
-		Temperature:     a.Temperature,
+		Subagents:       agentconfig.CloneSubagentConfig(a.Subagents),
+		Temperature:     ptr.Clone(a.Temperature),
 		ReasoningEffort: a.ReasoningEffort,
 		ResponseMode:    a.ResponseMode,
 		HeartbeatPrompt: a.HeartbeatPrompt,
@@ -257,20 +224,6 @@ func cloneMemorySearchValue(src any) any {
 		return src
 	}
 	return target.Elem().Interface()
-}
-
-func cloneSubagentConfig(cfg *SubagentConfig) *SubagentConfig {
-	if cfg == nil {
-		return nil
-	}
-	out := &SubagentConfig{
-		Model:    cfg.Model,
-		Thinking: cfg.Thinking,
-	}
-	if len(cfg.AllowAgents) > 0 {
-		out.AllowAgents = slices.Clone(cfg.AllowAgents)
-	}
-	return out
 }
 
 // Clone creates a copy of the model config.
