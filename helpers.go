@@ -19,7 +19,6 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/pkg/matrixevents"
-	"github.com/beeper/agentremote/turns"
 )
 
 const AIRoomKindAgent = "agent"
@@ -46,55 +45,6 @@ func BuildSystemNotice(body string) *bridgev2.ConvertedMessage {
 			},
 		}},
 	}
-}
-
-// SendDebouncedStreamEditParams holds the parameters for SendDebouncedStreamEdit.
-type SendDebouncedStreamEditParams struct {
-	Login            *bridgev2.UserLogin
-	Portal           *bridgev2.Portal
-	Sender           bridgev2.EventSender
-	NetworkMessageID networkid.MessageID
-	SuppressSend     bool
-	VisibleBody      string
-	FallbackBody     string
-	LogKey           string
-	Force            bool
-	UIMessage        map[string]any
-}
-
-// SendDebouncedStreamEdit builds and queues a debounced stream edit via the bridge pipeline.
-func SendDebouncedStreamEdit(p SendDebouncedStreamEditParams) error {
-	if p.Login == nil || p.Portal == nil {
-		return nil
-	}
-	content := turns.BuildDebouncedEditContent(turns.DebouncedEditParams{
-		PortalMXID:   p.Portal.MXID.String(),
-		Force:        p.Force,
-		SuppressSend: p.SuppressSend,
-		VisibleBody:  p.VisibleBody,
-		FallbackBody: p.FallbackBody,
-	})
-	if content == nil || p.NetworkMessageID == "" {
-		return nil
-	}
-	timing := ResolveEventTiming(time.Now(), 0)
-	topLevelExtra := map[string]any{
-		"com.beeper.dont_render_edited": true,
-		"m.mentions":                    map[string]any{},
-	}
-	if len(p.UIMessage) > 0 {
-		topLevelExtra[matrixevents.BeeperAIKey] = p.UIMessage
-	}
-	p.Login.QueueRemoteEvent(&RemoteEdit{
-		Portal:        p.Portal.PortalKey,
-		Sender:        p.Sender,
-		TargetMessage: p.NetworkMessageID,
-		Timestamp:     timing.Timestamp,
-		StreamOrder:   timing.StreamOrder,
-		LogKey:        p.LogKey,
-		PreBuilt:      turns.BuildRenderedConvertedEdit(*content, topLevelExtra),
-	})
-	return nil
 }
 
 // DMChatInfoParams holds the parameters for BuildDMChatInfo.

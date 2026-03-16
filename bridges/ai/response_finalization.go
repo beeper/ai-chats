@@ -59,7 +59,7 @@ func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev
 
 // sendInitialStreamMessage sends the first message in a streaming session via bridgev2's pipeline.
 // Returns the event ID and network message ID.
-func (oc *AIClient) sendInitialStreamMessage(ctx context.Context, portal *bridgev2.Portal, content string, turnID string, replyTarget ReplyTarget, timing agentremote.EventTiming) (id.EventID, networkid.MessageID) {
+func (oc *AIClient) sendInitialStreamMessage(ctx context.Context, portal *bridgev2.Portal, content string, turnID string, replyTarget ReplyTarget, timing agentremote.EventTiming, streamDescriptor *event.BeeperStreamInfo) (id.EventID, networkid.MessageID) {
 	relatesTo := buildReplyRelatesTo(replyTarget)
 
 	uiMessage := map[string]any{
@@ -77,6 +77,9 @@ func (oc *AIClient) sendInitialStreamMessage(ctx context.Context, portal *bridge
 		BeeperAIKey:  uiMessage,
 		"m.mentions": map[string]any{},
 	}
+	if streamDescriptor != nil {
+		eventRaw["com.beeper.stream"] = streamDescriptor
+	}
 	if relatesTo != nil {
 		eventRaw["m.relates_to"] = relatesTo
 	}
@@ -86,7 +89,7 @@ func (oc *AIClient) sendInitialStreamMessage(ctx context.Context, portal *bridge
 		Parts: []*bridgev2.ConvertedMessagePart{{
 			ID:         networkid.PartID("0"),
 			Type:       event.EventMessage,
-			Content:    &event.MessageEventContent{MsgType: event.MsgText, Body: content},
+			Content:    &event.MessageEventContent{MsgType: event.MsgText, Body: content, BeeperStream: streamDescriptor},
 			Extra:      eventRaw,
 			DBMetadata: &MessageMetadata{BaseMessageMetadata: agentremote.BaseMessageMetadata{Role: "assistant", TurnID: turnID}},
 		}},

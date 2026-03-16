@@ -15,6 +15,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/pkg/matrixevents"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 	"github.com/beeper/agentremote/turns"
 )
@@ -116,12 +117,11 @@ type Turn struct {
 	mu          sync.Mutex
 
 	streamHook            func(turnID string, seq int, content map[string]any, txnID string) bool
+	streamTransportFunc   func(ctx context.Context) (bridgev2.StreamTransport, bool)
 	approvalRequester     func(ctx context.Context, turn *Turn, req ApprovalRequest) ApprovalHandle
 	finalMetadataProvider FinalMetadataProvider
 	sendFunc              func(ctx context.Context) (id.EventID, networkid.MessageID, error)
 	suppressSend          bool
-	ephemeralSenderFunc   func(ctx context.Context) (bridgev2.EphemeralSendingMatrixAPI, bool)
-	debouncedEditFunc     func(ctx context.Context, force bool) error
 }
 
 func newTurn(ctx context.Context, conv *Conversation, agent *Agent, source *SourceRef) *Turn {
@@ -194,18 +194,25 @@ func (t *Turn) buildPlaceholderMessage() *bridgev2.ConvertedMessage {
 	extra := map[string]any{
 		"m.mentions": map[string]any{},
 	}
+	msgContent := &event.MessageEventContent{
+		MsgType: event.MsgText,
+		Body:    "...",
+	}
+	if t.session != nil {
+		if descriptor, err := t.session.Descriptor(t.turnCtx); err == nil && descriptor != nil {
+			msgContent.BeeperStream = descriptor
+			extra["com.beeper.stream"] = descriptor
+		}
+	}
 	if relatesTo := t.buildRelatesTo(); relatesTo != nil {
 		extra["m.relates_to"] = relatesTo
 	}
 	return &bridgev2.ConvertedMessage{
 		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:   networkid.PartID("0"),
-			Type: event.EventMessage,
-			Content: &event.MessageEventContent{
-				MsgType: event.MsgText,
-				Body:    "...",
-			},
-			Extra: extra,
+			ID:      networkid.PartID("0"),
+			Type:    event.EventMessage,
+			Content: msgContent,
+			Extra:   extra,
 		}},
 	}
 }
@@ -250,17 +257,6 @@ func (t *Turn) ensureSession() {
 			logger = t.conv.login.Log.With().Str("component", "sdk_turn").Logger()
 		}
 		sender := t.resolveSender(t.turnCtx)
-		identity := t.providerIdentity()
-
-		ephemeralSender := t.defaultEphemeralSender
-		if t.ephemeralSenderFunc != nil {
-			ephemeralSender = t.ephemeralSenderFunc
-		}
-
-		debouncedEdit := t.defaultDebouncedEdit(identity)
-		if t.debouncedEditFunc != nil {
-			debouncedEdit = t.debouncedEditFunc
-		}
 
 		t.session = turns.NewStreamSession(turns.StreamSessionParams{
 			TurnID:  t.turnID,
@@ -284,13 +280,17 @@ func (t *Turn) ensureSession() {
 				}
 				return t.conv.portal.MXID
 			},
-			GetSuppressSend:     func() bool { return t.suppressSend },
-			NextSeq:             t.nextSeq,
-			RuntimeFallbackFlag: &t.conv.runtimeFallback,
-			GetEphemeralSender:  ephemeralSender,
-			SendDebouncedEdit:   debouncedEdit,
-			SendHook:            t.streamHook,
-			Logger:              &logger,
+			GetTargetEventID: func() id.EventID { return t.initialEventID },
+			GetSuppressSend:  func() bool { return t.suppressSend },
+			GetStreamType: func() string {
+				return matrixevents.StreamEventMessageType.Type
+			},
+			NextSeq: t.nextSeq,
+			GetStreamTransport: func(callCtx context.Context) (bridgev2.StreamTransport, bool) {
+				return t.defaultStreamTransport(callCtx)
+			},
+			SendHook: t.streamHook,
+			Logger:   &logger,
 		})
 	})
 }
@@ -303,33 +303,14 @@ func (t *Turn) nextSeq() int {
 	return t.state.UIStepCount
 }
 
-func (t *Turn) defaultEphemeralSender(callCtx context.Context) (bridgev2.EphemeralSendingMatrixAPI, bool) {
-	if t.conv == nil || t.conv.login == nil || t.conv.login.Bridge == nil || t.conv.login.Bridge.Bot == nil {
+func (t *Turn) defaultStreamTransport(_ context.Context) (bridgev2.StreamTransport, bool) {
+	if t.streamTransportFunc != nil {
+		return t.streamTransportFunc(t.turnCtx)
+	}
+	if t.conv == nil || t.conv.login == nil || t.conv.login.Bridge == nil || t.conv.login.Bridge.Streams == nil {
 		return nil, false
 	}
-	ephemeralSender, ok := any(t.conv.login.Bridge.Bot).(bridgev2.EphemeralSendingMatrixAPI)
-	return ephemeralSender, ok
-}
-
-func (t *Turn) defaultDebouncedEdit(identity ProviderIdentity) func(context.Context, bool) error {
-	return func(callCtx context.Context, force bool) error {
-		if t.conv == nil || t.conv.login == nil || t.conv.portal == nil {
-			return nil
-		}
-		body := strings.TrimSpace(t.VisibleText())
-		uiMessage := streamui.SnapshotUIMessage(t.state)
-		return agentremote.SendDebouncedStreamEdit(agentremote.SendDebouncedStreamEditParams{
-			Login:            t.conv.login,
-			Portal:           t.conv.portal,
-			Sender:           t.resolveSender(callCtx),
-			NetworkMessageID: t.networkMessageID,
-			VisibleBody:      body,
-			FallbackBody:     body,
-			LogKey:           identity.LogKey,
-			Force:            force,
-			UIMessage:        uiMessage,
-		})
-	}
+	return t.conv.login.Bridge.Streams, true
 }
 
 func (t *Turn) ensureStarted() {
@@ -352,6 +333,11 @@ func (t *Turn) ensureStarted() {
 			if err == nil {
 				t.initialEventID = evtID
 				t.networkMessageID = msgID
+				if t.session != nil {
+					if streamErr := t.session.Start(t.turnCtx, evtID); streamErr != nil && t.startErr == nil {
+						t.startErr = streamErr
+					}
+				}
 			} else if t.startErr == nil {
 				t.startErr = err
 			}
@@ -371,6 +357,11 @@ func (t *Turn) ensureStarted() {
 			if err == nil {
 				t.initialEventID = evtID
 				t.networkMessageID = msgID
+				if t.session != nil {
+					if streamErr := t.session.Start(t.turnCtx, evtID); streamErr != nil && t.startErr == nil {
+						t.startErr = streamErr
+					}
+				}
 			} else if t.startErr == nil {
 				t.startErr = err
 			}
@@ -486,16 +477,9 @@ func (t *Turn) SetStreamTransport(fn func(ctx context.Context, portal *bridgev2.
 	}
 }
 
-// SetEphemeralSenderFunc overrides how the Turn's stream session resolves the
-// ephemeral sender (used for ephemeral event delivery during streaming).
-func (t *Turn) SetEphemeralSenderFunc(fn func(ctx context.Context) (bridgev2.EphemeralSendingMatrixAPI, bool)) {
-	t.ephemeralSenderFunc = fn
-}
-
-// SetDebouncedEditFunc overrides how the Turn's stream session sends debounced
-// edits (used as fallback when ephemeral delivery is unavailable).
-func (t *Turn) SetDebouncedEditFunc(fn func(ctx context.Context, force bool) error) {
-	t.debouncedEditFunc = fn
+// SetStreamTransportFunc overrides how the Turn resolves the shared stream transport.
+func (t *Turn) SetStreamTransportFunc(fn func(ctx context.Context) (bridgev2.StreamTransport, bool)) {
+	t.streamTransportFunc = fn
 }
 
 // SendStatus emits a bridge-level status update for the source event when possible.
@@ -675,6 +659,15 @@ func (t *Turn) UIState() *streamui.UIState { return t.state }
 
 // Session returns the underlying turns.StreamSession.
 func (t *Turn) Session() *turns.StreamSession { return t.session }
+
+// StreamDescriptor returns the com.beeper.stream descriptor for the turn's placeholder message.
+func (t *Turn) StreamDescriptor(ctx context.Context) (*event.BeeperStreamInfo, error) {
+	t.ensureSession()
+	if t.session == nil {
+		return nil, context.Canceled
+	}
+	return t.session.Descriptor(ctx)
+}
 
 // Err returns any startup error encountered by the turn transport.
 func (t *Turn) Err() error {

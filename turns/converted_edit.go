@@ -5,19 +5,16 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
-// RenderedMarkdownContent holds pre-rendered markdown for building converted edits.
-type RenderedMarkdownContent struct {
-	Body          string
-	Format        event.Format
-	FormattedBody string
-}
-
-// BuildRenderedConvertedEdit wraps rendered markdown into a standard Matrix edit.
-func BuildRenderedConvertedEdit(rendered RenderedMarkdownContent, topLevelExtra map[string]any) *bridgev2.ConvertedEdit {
-	return BuildConvertedEdit(&event.MessageEventContent{
-		MsgType:       event.MsgText,
-		Body:          rendered.Body,
-		Format:        rendered.Format,
-		FormattedBody: rendered.FormattedBody,
-	}, topLevelExtra)
+// BuildConvertedEdit wraps a message content payload into a single-part Matrix edit.
+func BuildConvertedEdit(content *event.MessageEventContent, topLevelExtra map[string]any) *bridgev2.ConvertedEdit {
+	if content == nil {
+		return nil
+	}
+	return &bridgev2.ConvertedEdit{
+		ModifiedParts: []*bridgev2.ConvertedEditPart{{
+			Type:          event.EventMessage,
+			Content:       content,
+			TopLevelExtra: topLevelExtra,
+		}},
+	}
 }

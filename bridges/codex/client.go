@@ -1333,7 +1333,9 @@ func (cc *CodexClient) ensureRPC(ctx context.Context) error {
 	defer cancelInit()
 	ci := cc.connector.Config.Codex.ClientInfo
 	_, err = rpc.InitializeWithOptions(initCtx, codexrpc.ClientInfo{Name: ci.Name, Title: ci.Title, Version: ci.Version}, codexrpc.InitializeOptions{
-		ExperimentalAPI: strings.EqualFold(strings.TrimSpace(meta.CodexAuthMode), "chatgptAuthTokens"),
+		// Thread recovery uses persistExtendedHistory, which currently requires
+		// the experimental API capability during initialize.
+		ExperimentalAPI: true,
 	})
 	if err != nil {
 		_ = rpc.Close()
@@ -1556,11 +1558,18 @@ func resolveCodexWorkingDirectory(raw string) (string, error) {
 	return agentremote.NormalizeAbsolutePath(raw)
 }
 
+func (cc *CodexClient) buildSandboxMode() string {
+	return "workspace-write"
+}
+
 func (cc *CodexClient) buildSandboxPolicy(cwd string) map[string]any {
 	return map[string]any{
-		"type":          "workspaceWrite",
-		"writableRoots": []string{cwd},
-		"networkAccess": cc.codexNetworkAccess(),
+		"type":                "workspaceWrite",
+		"writableRoots":       []string{cwd},
+		"readOnlyAccess":      map[string]any{"type": "fullAccess"},
+		"networkAccess":       cc.codexNetworkAccess(),
+		"excludeTmpdirEnvVar": false,
+		"excludeSlashTmp":     false,
 	}
 }
 
@@ -1638,7 +1647,7 @@ func (cc *CodexClient) ensureCodexThread(ctx context.Context, portal *bridgev2.P
 		"model":                  model,
 		"cwd":                    meta.CodexCwd,
 		"approvalPolicy":         "untrusted",
-		"sandbox":                cc.buildSandboxPolicy(meta.CodexCwd),
+		"sandbox":                cc.buildSandboxMode(),
 		"experimentalRawEvents":  false,
 		"persistExtendedHistory": true,
 	}, &resp)
@@ -1688,7 +1697,7 @@ func (cc *CodexClient) ensureCodexThreadLoaded(ctx context.Context, portal *brid
 		"model":                  cc.connector.Config.Codex.DefaultModel,
 		"cwd":                    meta.CodexCwd,
 		"approvalPolicy":         "untrusted",
-		"sandbox":                cc.buildSandboxPolicy(meta.CodexCwd),
+		"sandbox":                cc.buildSandboxMode(),
 		"persistExtendedHistory": true,
 	}, &resp)
 	if err != nil {
