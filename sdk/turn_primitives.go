@@ -1,6 +1,8 @@
 package sdk
 
 import (
+	"strings"
+
 	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/beeper/agentremote/pkg/shared/streamui"
@@ -58,8 +60,26 @@ func (t *Turn) VisibleText() string {
 		return ""
 	}
 	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.visibleText.String()
+	text := t.visibleText.String()
+	t.mu.Unlock()
+	if text != "" {
+		return text
+	}
+	uiMessage := streamui.SnapshotUIMessage(t.UIState())
+	if len(uiMessage) == 0 {
+		return ""
+	}
+	td, ok := TurnDataFromUIMessage(uiMessage)
+	if !ok {
+		return ""
+	}
+	var visible strings.Builder
+	for _, part := range td.Parts {
+		if part.Type == "text" {
+			visible.WriteString(part.Text)
+		}
+	}
+	return visible.String()
 }
 
 func turnPortal(t *Turn) *bridgev2.Portal {
