@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"maps"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -44,6 +45,7 @@ type FinalEditPayload struct {
 	Content       *event.MessageEventContent
 	TopLevelExtra map[string]any
 	ReplyTo       id.EventID
+	ThreadRoot    id.EventID
 }
 
 type sdkApprovalHandle struct {
@@ -138,6 +140,9 @@ type Turn struct {
 	finalEditPayload      *FinalEditPayload
 	sendFunc              func(ctx context.Context) (id.EventID, networkid.MessageID, error)
 	suppressSend          bool
+	suppressFinalEdit     bool
+	idleTimer             *time.Timer
+	idleTimerSeq          uint64
 }
 
 func newTurn(ctx context.Context, conv *Conversation, agent *Agent, source *SourceRef) *Turn {
@@ -354,10 +359,13 @@ func (t *Turn) defaultStreamTransport(_ context.Context) (bridgev2.StreamTranspo
 }
 
 func (t *Turn) ensureStarted() {
+	t.mu.Lock()
 	if t.started || t.ended {
+		t.mu.Unlock()
 		return
 	}
 	t.started = true
+	t.mu.Unlock()
 	if t.conv != nil {
 		if agent := t.resolveAgent(t.turnCtx); agent != nil {
 			t.agent = agent
@@ -371,19 +379,7 @@ func (t *Turn) ensureStarted() {
 		if t.sendFunc != nil {
 			evtID, msgID, err := t.sendFunc(t.turnCtx)
 			if err == nil {
-				t.initialEventID = evtID
-				t.networkMessageID = msgID
-				t.logStreamDebug("placeholder_sent",
-					"event_id", evtID.String(),
-					"network_message_id", string(msgID),
-					"room_id", t.roomID().String(),
-				)
-				if evtID != "" && t.session != nil {
-					if streamErr := t.session.Start(t.turnCtx, evtID); streamErr != nil && t.startErr == nil {
-						t.startErr = streamErr
-					}
-				}
-				t.ensureStreamStartedAsync()
+				t.applyPlaceholderSendResult(evtID, msgID)
 			} else if t.startErr == nil {
 				t.startErr = err
 			}
@@ -401,19 +397,7 @@ func (t *Turn) ensureStarted() {
 				Converted:   t.buildPlaceholderMessage(),
 			})
 			if err == nil {
-				t.initialEventID = evtID
-				t.networkMessageID = msgID
-				t.logStreamDebug("placeholder_sent",
-					"event_id", evtID.String(),
-					"network_message_id", string(msgID),
-					"room_id", t.roomID().String(),
-				)
-				if evtID != "" && t.session != nil {
-					if streamErr := t.session.Start(t.turnCtx, evtID); streamErr != nil && t.startErr == nil {
-						t.startErr = streamErr
-					}
-				}
-				t.ensureStreamStartedAsync()
+				t.applyPlaceholderSendResult(evtID, msgID)
 			} else if t.startErr == nil {
 				t.startErr = err
 			}
@@ -429,6 +413,24 @@ func (t *Turn) ensureStarted() {
 		}
 	}
 	t.Writer().Start(t.turnCtx, baseMeta)
+}
+
+func (t *Turn) applyPlaceholderSendResult(evtID id.EventID, msgID networkid.MessageID) {
+	t.mu.Lock()
+	t.initialEventID = evtID
+	t.networkMessageID = msgID
+	t.mu.Unlock()
+	t.logStreamDebug("placeholder_sent",
+		"event_id", evtID.String(),
+		"network_message_id", string(msgID),
+		"room_id", t.roomID().String(),
+	)
+	if evtID != "" && t.session != nil {
+		if streamErr := t.session.Start(t.turnCtx, evtID); streamErr != nil && t.startErr == nil {
+			t.startErr = streamErr
+		}
+	}
+	t.ensureStreamStartedAsync()
 }
 
 // requestApproval creates a new approval request and returns its handle.
@@ -510,6 +512,12 @@ func (t *Turn) SetFinalEditPayload(payload *FinalEditPayload) {
 	t.finalEditPayload = payload
 }
 
+// SetSuppressFinalEdit disables the SDK's automatic final edit construction
+// when the bridge does not provide an explicit final edit payload.
+func (t *Turn) SetSuppressFinalEdit(suppress bool) {
+	t.suppressFinalEdit = suppress
+}
+
 // SetSendFunc overrides the default placeholder message sending in ensureStarted.
 // The function should send the initial message and return the event/message IDs.
 func (t *Turn) SetSendFunc(fn func(ctx context.Context) (id.EventID, networkid.MessageID, error)) {
@@ -523,10 +531,18 @@ func (t *Turn) SetSuppressSend(suppress bool) {
 }
 
 // InitialEventID returns the Matrix event ID of the placeholder message.
-func (t *Turn) InitialEventID() id.EventID { return t.initialEventID }
+func (t *Turn) InitialEventID() id.EventID {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.initialEventID
+}
 
 // NetworkMessageID returns the bridge network message ID of the placeholder.
-func (t *Turn) NetworkMessageID() networkid.MessageID { return t.networkMessageID }
+func (t *Turn) NetworkMessageID() networkid.MessageID {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.networkMessageID
+}
 
 // SetStreamTransport overrides the stream delivery mechanism. The provided
 // function is called for every emitted part instead of the default session-
@@ -614,7 +630,14 @@ func (t *Turn) persistFinalMessage(finishReason string) {
 }
 
 func (t *Turn) buildFinalEdit() (networkid.MessageID, *bridgev2.ConvertedEdit) {
-	if t == nil || t.finalEditPayload == nil || t.finalEditPayload.Content == nil {
+	if t == nil {
+		return "", nil
+	}
+	payload := t.finalEditPayload
+	if (payload == nil || payload.Content == nil) && !t.suppressFinalEdit {
+		payload = t.defaultFinalEditPayload()
+	}
+	if payload == nil || payload.Content == nil {
 		return "", nil
 	}
 	target := t.networkMessageID
@@ -624,7 +647,7 @@ func (t *Turn) buildFinalEdit() (networkid.MessageID, *bridgev2.ConvertedEdit) {
 	if target == "" {
 		return "", nil
 	}
-	topLevelExtra := maps.Clone(t.finalEditPayload.TopLevelExtra)
+	topLevelExtra := maps.Clone(payload.TopLevelExtra)
 	if topLevelExtra == nil {
 		topLevelExtra = map[string]any{}
 	}
@@ -633,13 +656,20 @@ func (t *Turn) buildFinalEdit() (networkid.MessageID, *bridgev2.ConvertedEdit) {
 			"rel_type": matrixevents.RelReplace,
 			"event_id": t.initialEventID.String(),
 		}
-		if t.finalEditPayload.ReplyTo != "" {
+		if payload.ReplyTo != "" {
 			topLevelExtra["m.relates_to"].(map[string]any)["m.in_reply_to"] = map[string]any{
-				"event_id": t.finalEditPayload.ReplyTo.String(),
+				"event_id": payload.ReplyTo.String(),
+			}
+		}
+		if payload.ThreadRoot != "" {
+			topLevelExtra["m.relates_to"].(map[string]any)["m.thread"] = map[string]any{
+				"rel_type":        "m.thread",
+				"event_id":        payload.ThreadRoot.String(),
+				"is_falling_back": true,
 			}
 		}
 	}
-	return target, turns.BuildConvertedEdit(t.finalEditPayload.Content, topLevelExtra)
+	return target, turns.BuildConvertedEdit(payload.Content, topLevelExtra)
 }
 
 func (t *Turn) sendFinalEdit() {
@@ -682,32 +712,38 @@ func supportedBaseMetadataFromMap(metadata map[string]any) agentremote.BaseMessa
 
 // End finishes the turn with a reason.
 func (t *Turn) End(finishReason string) {
+	t.mu.Lock()
 	if t.ended {
+		t.mu.Unlock()
 		return
 	}
-	defer t.cancel()
 	if !t.started {
 		t.ended = true
+		t.mu.Unlock()
+		t.cancel()
 		return
 	}
 	t.ended = true
+	t.mu.Unlock()
+	t.stopIdleTimeout()
+	defer t.cancel()
 	t.Writer().Finish(t.turnCtx, finishReason, t.metadata)
-	t.flushPendingStream()
-	t.sendFinalEdit()
-	if t.session != nil {
-		t.session.End(t.turnCtx, turns.EndReasonFinish)
-	}
-	t.persistFinalMessage(finishReason)
+	t.finalizeTurn(turns.EndReasonFinish, finishReason)
 }
 
 // EndWithError finishes the turn with an error.
 func (t *Turn) EndWithError(errText string) {
+	t.mu.Lock()
 	if t.ended {
+		t.mu.Unlock()
 		return
 	}
-	defer t.cancel()
 	t.ended = true
-	if !t.started {
+	started := t.started
+	t.mu.Unlock()
+	t.stopIdleTimeout()
+	defer t.cancel()
+	if !started {
 		// No content was ever written — skip placeholder message creation.
 		// Still send a fail status if we have a source event.
 		t.SendStatus(event.MessageStatusFail, errText)
@@ -716,33 +752,37 @@ func (t *Turn) EndWithError(errText string) {
 	t.Writer().Error(t.turnCtx, errText)
 	t.SendStatus(event.MessageStatusFail, errText)
 	t.Writer().Finish(t.turnCtx, "error", t.metadata)
-	t.flushPendingStream()
-	t.sendFinalEdit()
-	if t.session != nil {
-		t.session.End(t.turnCtx, turns.EndReasonError)
-	}
-	t.persistFinalMessage("error")
+	t.finalizeTurn(turns.EndReasonError, "error")
 }
 
 // Abort aborts the turn.
 func (t *Turn) Abort(reason string) {
+	t.mu.Lock()
 	if t.ended {
+		t.mu.Unlock()
 		return
 	}
-	defer t.cancel()
 	t.ended = true
-	if !t.started {
+	started := t.started
+	t.mu.Unlock()
+	t.stopIdleTimeout()
+	defer t.cancel()
+	if !started {
 		// No content was ever written — skip placeholder message creation.
 		t.SendStatus(event.MessageStatusRetriable, reason)
 		return
 	}
 	t.Writer().Abort(t.turnCtx, reason)
+	t.finalizeTurn(turns.EndReasonDisconnect, "abort")
+}
+
+func (t *Turn) finalizeTurn(endReason turns.EndReason, finishReason string) {
 	t.flushPendingStream()
 	t.sendFinalEdit()
 	if t.session != nil {
-		t.session.End(t.turnCtx, turns.EndReasonDisconnect)
+		t.session.End(t.turnCtx, endReason)
 	}
-	t.persistFinalMessage("abort")
+	t.persistFinalMessage(finishReason)
 }
 
 // ID returns the turn's unique identifier.
@@ -805,13 +845,95 @@ func (t *Turn) emitPart(callCtx context.Context, _ *bridgev2.Portal, part map[st
 		"room_id", t.roomID().String(),
 		"event_id", t.initialEventID.String(),
 		"network_message_id", string(t.networkMessageID),
-		"part_keys", mapKeys(part),
+		"part_keys", slices.Collect(maps.Keys(part)),
 	)
 	t.ensureStarted()
+	t.resetIdleTimeout()
 	streamui.ApplyChunk(t.state, part)
 	if deliver != nil {
 		deliver()
 	}
+}
+
+func (t *Turn) defaultFinalEditPayload() *FinalEditPayload {
+	if t == nil {
+		return nil
+	}
+	body := strings.TrimSpace(t.VisibleText())
+	uiMessage := BuildCompactFinalUIMessage(streamui.SnapshotUIMessage(t.state))
+	if body == "" && !hasMeaningfulFinalUIMessage(uiMessage) {
+		return nil
+	}
+	if body == "" {
+		body = "..."
+	}
+	return &FinalEditPayload{
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgText,
+			Body:    body,
+		},
+		TopLevelExtra: BuildDefaultFinalEditTopLevelExtra(uiMessage),
+	}
+}
+
+func (t *Turn) resolvedIdleTimeout() time.Duration {
+	const defaultIdleTimeout = time.Minute
+	if t == nil || t.conv == nil || t.conv.runtime == nil || t.conv.runtime.config() == nil || t.conv.runtime.config().TurnManagement == nil {
+		return defaultIdleTimeout
+	}
+	timeoutMs := t.conv.runtime.config().TurnManagement.IdleTimeoutMs
+	switch {
+	case timeoutMs < 0:
+		return 0
+	case timeoutMs == 0:
+		return defaultIdleTimeout
+	default:
+		return time.Duration(timeoutMs) * time.Millisecond
+	}
+}
+
+func (t *Turn) resetIdleTimeout() {
+	timeout := t.resolvedIdleTimeout()
+	if timeout <= 0 {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if !t.started || t.ended {
+		return
+	}
+	if t.idleTimer != nil {
+		t.idleTimer.Stop()
+	}
+	t.idleTimerSeq++
+	seq := t.idleTimerSeq
+	t.idleTimer = time.AfterFunc(timeout, func() {
+		t.handleIdleTimeout(seq)
+	})
+}
+
+func (t *Turn) stopIdleTimeout() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.idleTimerSeq++
+	if t.idleTimer != nil {
+		t.idleTimer.Stop()
+		t.idleTimer = nil
+	}
+}
+
+func (t *Turn) handleIdleTimeout(seq uint64) {
+	t.mu.Lock()
+	if !t.started || t.ended || t.idleTimerSeq != seq {
+		t.mu.Unlock()
+		return
+	}
+	t.mu.Unlock()
+	t.logStreamDebug("idle_timeout",
+		"turn_id", t.turnID,
+		"room_id", t.roomID().String(),
+	)
+	t.Abort("timeout")
 }
 
 func (t *Turn) roomID() id.RoomID {
@@ -823,6 +945,9 @@ func (t *Turn) roomID() id.RoomID {
 
 func (t *Turn) logStreamDebug(reason string, kv ...any) {
 	if t == nil || t.conv == nil || t.conv.login == nil {
+		return
+	}
+	if !t.conv.login.Log.Debug().Enabled() {
 		return
 	}
 	logEvt := t.conv.login.Log.Debug().Str("component", "sdk_turn").Str("reason", reason)
@@ -843,17 +968,6 @@ func (t *Turn) logStreamDebug(reason string, kv ...any) {
 		}
 	}
 	logEvt.Msg("SDK turn diagnostic")
-}
-
-func mapKeys(input map[string]any) []string {
-	if len(input) == 0 {
-		return nil
-	}
-	keys := make([]string, 0, len(input))
-	for key := range input {
-		keys = append(keys, key)
-	}
-	return keys
 }
 
 func (t *Turn) ensureStreamStartedAsync() {

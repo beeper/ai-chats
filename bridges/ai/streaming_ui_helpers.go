@@ -2,7 +2,6 @@ package ai
 
 import (
 	"maps"
-	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -10,7 +9,6 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote/pkg/shared/streamui"
-	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	"github.com/beeper/agentremote/sdk"
 )
 
@@ -74,47 +72,7 @@ func (oc *AIClient) buildStreamUIMessage(state *streamingState, meta *PortalMeta
 }
 
 func buildCompactFinalUIMessage(uiMessage map[string]any) map[string]any {
-	if len(uiMessage) == 0 {
-		return nil
-	}
-	out := map[string]any{}
-	for key, value := range uiMessage {
-		if key != "parts" {
-			out[key] = value
-		}
-	}
-
-	rawParts, ok := uiMessage["parts"].([]any)
-	if !ok {
-		if typed, ok := uiMessage["parts"].([]map[string]any); ok {
-			rawParts = make([]any, 0, len(typed))
-			for _, part := range typed {
-				rawParts = append(rawParts, part)
-			}
-		}
-	}
-	if len(rawParts) == 0 {
-		return out
-	}
-
-	parts := make([]any, 0, len(rawParts))
-	for _, raw := range rawParts {
-		part, ok := raw.(map[string]any)
-		if !ok {
-			continue
-		}
-		partType := strings.TrimSpace(stringutil.StringValue(part["type"]))
-		switch partType {
-		case "text", "reasoning", "step-start":
-			continue
-		default:
-			parts = append(parts, part)
-		}
-	}
-	if len(parts) > 0 {
-		out["parts"] = slices.Clone(parts)
-	}
-	return out
+	return sdk.BuildCompactFinalUIMessage(uiMessage)
 }
 
 func shouldContinueChatToolLoop(finishReason string, toolCallCount int) bool {

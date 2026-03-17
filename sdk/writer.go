@@ -72,7 +72,7 @@ func (w *Writer) MessageMetadata(ctx context.Context, metadata map[string]any) {
 }
 
 func (w *Writer) Start(ctx context.Context, metadata map[string]any) {
-	if !w.ready() {
+	if !w.valid() {
 		return
 	}
 	w.Emitter.EmitUIStart(emitCtx(ctx), w.Portal, metadata)

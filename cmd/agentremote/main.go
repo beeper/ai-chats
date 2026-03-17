@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -315,14 +316,23 @@ func parseBridgeFlags(fs *flag.FlagSet) (*string, *string, *string) {
 	return profile, name, env
 }
 
+func availableBridgeNames() string {
+	names := make([]string, 0, len(bridgeRegistry))
+	for name := range bridgeRegistry {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	return strings.Join(names, ", ")
+}
+
 func resolveBridgeArgs(fs *flag.FlagSet) (bridgeType string, err error) {
 	posArgs := fs.Args()
 	if len(posArgs) != 1 {
-		return "", fmt.Errorf("expected exactly one bridge type argument (available: ai, codex, opencode, openclaw)")
+		return "", fmt.Errorf("expected exactly one bridge type argument (available: %s)", availableBridgeNames())
 	}
 	bridgeType = posArgs[0]
 	if _, ok := bridgeRegistry[bridgeType]; !ok {
-		return "", fmt.Errorf("unknown bridge type %q (available: ai, codex, opencode, openclaw)", bridgeType)
+		return "", fmt.Errorf("unknown bridge type %q (available: %s)", bridgeType, availableBridgeNames())
 	}
 	return bridgeType, nil
 }

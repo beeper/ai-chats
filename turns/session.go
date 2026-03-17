@@ -3,6 +3,7 @@ package turns
 import (
 	"context"
 	"maps"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -53,6 +54,8 @@ type StreamSession struct {
 	streamStarted bool
 	targetEventID id.EventID
 	pendingParts  []pendingStreamPart
+
+	flushMu sync.Mutex
 
 	descriptorOnce sync.Once
 	descriptor     *event.BeeperStreamInfo
@@ -114,16 +117,33 @@ func (s *StreamSession) Start(ctx context.Context, targetEventID id.EventID) err
 	if err != nil {
 		return err
 	}
-	s.streamMu.Lock()
-	pendingCount := len(s.pendingParts)
-	if s.streamStarted && s.targetEventID == targetEventID {
-		s.streamMu.Unlock()
+	alreadyStarted, pendingCount, err := s.tryStart(ctx, transport, roomID, targetEventID, descriptor)
+	if err != nil {
+		return err
+	}
+	if alreadyStarted {
 		s.logDebug("stream_already_started", nil,
-			"room_id", s.roomID().String(),
+			"room_id", roomID.String(),
 			"event_id", targetEventID.String(),
 			"pending_count", pendingCount,
 		)
-		return s.FlushPending(ctx)
+	} else {
+		s.logDebug("stream_started", nil,
+			"room_id", roomID.String(),
+			"event_id", targetEventID.String(),
+			"pending_count", pendingCount,
+			"stream_type", s.streamType(),
+		)
+	}
+	return s.FlushPending(ctx)
+}
+
+func (s *StreamSession) tryStart(ctx context.Context, transport bridgev2.StreamTransport, roomID id.RoomID, targetEventID id.EventID, descriptor *event.BeeperStreamInfo) (alreadyStarted bool, pendingCount int, err error) {
+	s.streamMu.Lock()
+	defer s.streamMu.Unlock()
+	pendingCount = len(s.pendingParts)
+	if s.streamStarted && s.targetEventID == targetEventID {
+		return true, pendingCount, nil
 	}
 	err = transport.Start(ctx, &bridgev2.StartStreamRequest{
 		RoomID:     roomID,
@@ -132,19 +152,11 @@ func (s *StreamSession) Start(ctx context.Context, targetEventID id.EventID) err
 		Descriptor: descriptor,
 	})
 	if err != nil {
-		s.streamMu.Unlock()
-		return err
+		return false, pendingCount, err
 	}
 	s.streamStarted = true
 	s.targetEventID = targetEventID
-	s.streamMu.Unlock()
-	s.logDebug("stream_started", nil,
-		"room_id", roomID.String(),
-		"event_id", targetEventID.String(),
-		"pending_count", pendingCount,
-		"stream_type", s.streamType(),
-	)
-	return s.FlushPending(ctx)
+	return false, pendingCount, nil
 }
 
 func (s *StreamSession) EnsureStarted(ctx context.Context) (bool, error) {
@@ -230,12 +242,15 @@ func (s *StreamSession) FlushPending(ctx context.Context) error {
 	if s == nil || s.IsClosed() {
 		return context.Canceled
 	}
+	s.flushMu.Lock()
+	defer s.flushMu.Unlock()
 	targetEventID, err := s.currentTargetEventID(ctx)
 	if err != nil || targetEventID == "" {
 		return err
 	}
+	roomID := s.roomID()
 	s.logDebug("stream_flush_begin", nil,
-		"room_id", s.roomID().String(),
+		"room_id", roomID.String(),
 		"event_id", targetEventID.String(),
 		"pending_count", s.pendingCount(),
 	)
@@ -243,13 +258,13 @@ func (s *StreamSession) FlushPending(ctx context.Context) error {
 		pending, ok := s.dequeuePendingPart()
 		if !ok {
 			s.logDebug("stream_flush_complete", nil,
-				"room_id", s.roomID().String(),
+				"room_id", roomID.String(),
 				"event_id", targetEventID.String(),
 			)
 			return nil
 		}
 		s.logDebug("stream_publish_pending_part", nil,
-			"room_id", s.roomID().String(),
+			"room_id", roomID.String(),
 			"event_id", targetEventID.String(),
 			"seq", pending.seq,
 			"pending_count", s.pendingCount(),
@@ -356,7 +371,7 @@ func (s *StreamSession) dequeuePendingPart() (pendingStreamPart, bool) {
 func (s *StreamSession) requeuePendingFront(pending pendingStreamPart) {
 	s.streamMu.Lock()
 	defer s.streamMu.Unlock()
-	s.pendingParts = append([]pendingStreamPart{pending}, s.pendingParts...)
+	s.pendingParts = slices.Insert(s.pendingParts, 0, pending)
 }
 
 func (s *StreamSession) pendingCount() int {

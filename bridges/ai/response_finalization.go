@@ -567,12 +567,14 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 		})
 	}
 	oc.recordAgentActivity(ctx, portal, meta)
-	oc.loggerForContext(ctx).Debug().
-		Str("initial_event_id", state.turn.InitialEventID().String()).
-		Str("turn_id", state.turn.ID()).
-		Str("mode", strings.TrimSpace(mode)).
-		Int("link_previews", len(linkPreviews)).
-		Msg("Queued final assistant turn edit")
+	if state != nil && state.turn != nil {
+		oc.loggerForContext(ctx).Debug().
+			Str("initial_event_id", state.turn.InitialEventID().String()).
+			Str("turn_id", state.turn.ID()).
+			Str("mode", strings.TrimSpace(mode)).
+			Int("link_previews", len(linkPreviews)).
+			Msg("Queued final assistant turn edit")
+	}
 
 	// Send continuation messages for overflow
 	for continuationBody != "" {
@@ -583,11 +585,7 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 }
 
 func buildFinalEditTopLevelExtra(uiMessage map[string]any, linkPreviews []*event.BeeperLinkPreview) map[string]any {
-	topLevelExtra := map[string]any{
-		"com.beeper.dont_render_edited": true,
-		"com.beeper.ai":                 uiMessage,
-		"m.mentions":                    map[string]any{},
-	}
+	topLevelExtra := sdk.BuildDefaultFinalEditTopLevelExtra(uiMessage)
 	if len(linkPreviews) > 0 {
 		topLevelExtra["com.beeper.linkpreviews"] = PreviewsToMapSlice(linkPreviews)
 	}

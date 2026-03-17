@@ -71,12 +71,20 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 	state := oc.ensureStreamStateLocked(portal, turnID, agentID, sessionKey)
 	oc.applyStreamPartStateLocked(state, part)
 	turn := state.turn
+	needsTurn := turn == nil
 	partType := strings.TrimSpace(stringValue(part["type"]))
-	if turn == nil {
-		turn = oc.newSDKStreamTurn(ctx, portal, state)
-		state.turn = turn
-	}
 	oc.StreamMu.Unlock()
+
+	if needsTurn {
+		turn = oc.newSDKStreamTurn(ctx, portal, state)
+		oc.StreamMu.Lock()
+		if state.turn == nil {
+			state.turn = turn
+		} else {
+			turn = state.turn
+		}
+		oc.StreamMu.Unlock()
+	}
 
 	if oc.IsStreamShuttingDown() {
 		return

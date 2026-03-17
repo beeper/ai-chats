@@ -150,10 +150,8 @@ func (oc *OpenCodeClient) FinishOpenCodeStream(turnID string) {
 		return
 	}
 	oc.StreamMu.Lock()
-	state := oc.streamStates[turnID]
 	delete(oc.streamStates, turnID)
 	oc.StreamMu.Unlock()
-	_ = state
 }
 
 func (oc *OpenCodeClient) newSDKStreamTurn(ctx context.Context, portal *bridgev2.Portal, state *openCodeStreamState) *bridgesdk.Turn {

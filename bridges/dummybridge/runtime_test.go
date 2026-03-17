@@ -2,6 +2,7 @@ package dummybridge
 
 import (
 	"context"
+	"math/rand"
 	"strings"
 	"testing"
 	"time"
@@ -224,6 +225,31 @@ func TestRunRandomUsesSingleTurnAndFinishes(t *testing.T) {
 	}
 	if len(snapshotParts(turn)) == 0 {
 		t.Fatal("expected random run to emit parts")
+	}
+}
+
+func TestBuildLoremTextProducesCleanSentenceLikeOutput(t *testing.T) {
+	text := buildLoremText(140, rand.New(rand.NewSource(7)))
+	if text == "" {
+		t.Fatal("expected lorem text")
+	}
+	if first := text[0]; first < 'A' || first > 'Z' {
+		t.Fatalf("expected text to start with an uppercase letter, got %q", text)
+	}
+	if strings.Contains(text, "  ") {
+		t.Fatalf("expected no repeated spaces, got %q", text)
+	}
+	if last := text[len(text)-1]; (last >= 'a' && last <= 'z') || (last >= 'A' && last <= 'Z') {
+		t.Fatalf("expected text to end cleanly, got %q", text)
+	}
+}
+
+func TestBuildLoremTextVariesAcrossCalls(t *testing.T) {
+	rng := rand.New(rand.NewSource(11))
+	first := buildLoremText(160, rng)
+	second := buildLoremText(160, rng)
+	if first == second {
+		t.Fatalf("expected distinct lorem passages, got %q", first)
 	}
 }
 

@@ -25,9 +25,8 @@ func (m *OpenCodeManager) ensureTurnStarted(ctx context.Context, inst *openCodeI
 		}
 		return
 	}
-	_, writer := m.mustStreamWriter(ctx, portal, sessionID, messageID)
+	streamState, writer := m.mustStreamWriter(ctx, portal, sessionID, messageID)
 	if len(metadata) > 0 {
-		streamState, _ := m.mustStreamWriter(ctx, portal, sessionID, messageID)
 		m.bridge.host.applyStreamMessageMetadata(streamState, metadata)
 		writer.MessageMetadata(ctx, metadata)
 	} else {

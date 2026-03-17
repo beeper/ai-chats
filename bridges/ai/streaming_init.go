@@ -46,9 +46,6 @@ func (oc *AIClient) createStreamingTurn(
 		BeeperAIKey:  map[string]any{"id": turn.ID(), "role": "assistant", "metadata": map[string]any{"turn_id": turn.ID()}, "parts": []any{}},
 		"m.mentions": map[string]any{},
 	}
-	if relatesTo := buildReplyRelatesTo(state.replyTarget); relatesTo != nil {
-		placeholderExtra["m.relates_to"] = relatesTo
-	}
 	turn.SetPlaceholderMessagePayload(&bridgesdk.PlaceholderMessagePayload{
 		Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "..."},
 		Extra:   placeholderExtra,
@@ -116,6 +113,12 @@ func (oc *AIClient) prepareStreamingRun(
 	state.replyTarget = oc.resolveInitialReplyTarget(evt)
 	if isSimpleMode(meta) {
 		state.replyTarget = ReplyTarget{}
+	}
+	if state.replyTarget.ThreadRoot != "" {
+		turn.SetThread(state.replyTarget.ThreadRoot)
+	}
+	if state.replyTarget.ReplyTo != "" {
+		turn.SetReplyTo(state.replyTarget.ReplyTo)
 	}
 
 	// Ensure model ghost is in the room before any operations

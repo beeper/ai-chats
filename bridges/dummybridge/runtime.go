@@ -22,6 +22,24 @@ const (
 	defaultChunkMax = 96
 )
 
+var loremSentenceCorpus = []string{
+	"Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
+	"Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+	"Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.",
+	"Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.",
+	"Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
+	"Integer nec odio praesent libero sed cursus ante dapibus diam.",
+	"Nulla quis sem at nibh elementum imperdiet duis sagittis ipsum.",
+	"Praesent mauris fusce nec tellus sed augue semper porta.",
+	"Mauris massa vestibulum lacinia arcu eget nulla.",
+	"Class aptent taciti sociosqu ad litora torquent per conubia nostra.",
+	"In consectetur orci eu erat varius, vitae facilisis lorem blandit.",
+	"Curabitur ullamcorper ultricies nisi nam eget dui etiam rhoncus.",
+	"Donec sodales sagittis magna sed consequat leo eget bibendum sodales.",
+	"Aliquam lorem ante dapibus in viverra quis feugiat a tellus.",
+	"Phasellus viverra nulla ut metus varius laoreet quisque rutrum.",
+}
+
 type commonCommandOptions struct {
 	ReasoningChars    int
 	Steps             int
@@ -154,17 +172,17 @@ func (dc *DummyBridgeConnector) onMessage(session any, conv *bridgesdk.Conversat
 	}
 	text := strings.TrimSpace(msg.Text)
 	if text == "" {
-		return conv.SendNotice(context.Background(), helpText())
+		return conv.SendNotice(turn.Context(), helpText())
 	}
 	cmd, err := parseCommand(text)
 	if err != nil {
-		return conv.SendNotice(context.Background(), fmt.Sprintf("%s\n\n%s", err.Error(), helpText()))
+		return conv.SendNotice(turn.Context(), fmt.Sprintf("%s\n\n%s", err.Error(), helpText()))
 	}
 	if cmd == nil {
-		return conv.SendNotice(context.Background(), helpText())
+		return conv.SendNotice(turn.Context(), helpText())
 	}
 	if cmd.Name == "help" {
-		return conv.SendNotice(context.Background(), helpText())
+		return conv.SendNotice(turn.Context(), helpText())
 	}
 	dummy, err := sessionFromAny(session)
 	if err != nil {
@@ -185,7 +203,7 @@ func (dc *DummyBridgeConnector) onMessage(session any, conv *bridgesdk.Conversat
 	case cmd.Chaos != nil:
 		runErr = runner.runChaos(turn.Context(), conv, turn, *cmd.Chaos, log)
 	default:
-		runErr = conv.SendNotice(context.Background(), helpText())
+		runErr = conv.SendNotice(turn.Context(), helpText())
 	}
 	if runErr != nil {
 		log.Warn().Err(runErr).Dur("elapsed", runner.runtime.now().Sub(started)).Msg("DummyBridge demo command failed")
@@ -573,23 +591,12 @@ func parseCommonOptions(tokens []string) (commonCommandOptions, error) {
 }
 
 func validateCommonOptions(opts commonCommandOptions) error {
-	terminals := 0
-	if opts.Abort {
-		terminals++
-	}
-	if opts.Error {
-		terminals++
-	}
-	if opts.FinishReason != "" && opts.FinishReason != "stop" {
-		terminals++
-	}
 	if opts.Abort && opts.Error {
 		return fmt.Errorf("--abort and --error cannot be combined.")
 	}
 	if (opts.Abort || opts.Error) && opts.FinishReason != "stop" {
 		return fmt.Errorf("--finish cannot be combined with --abort or --error.")
 	}
-	_ = terminals
 	if opts.ChunkMin <= 0 || opts.ChunkMax < opts.ChunkMin {
 		return fmt.Errorf("invalid chunk size range %d:%d.", opts.ChunkMin, opts.ChunkMax)
 	}
@@ -711,17 +718,17 @@ func parseDurationRangeMS(raw string) (time.Duration, time.Duration, error) {
 func parseIntRange(raw string, label string) (int, int, error) {
 	minRaw, maxRaw, ok := strings.Cut(strings.TrimSpace(raw), ":")
 	if !ok {
-		value, err := parsePositiveInt(raw, label)
+		value, err := parseNonNegativeInt(raw, label)
 		if err != nil {
 			return 0, 0, err
 		}
 		return value, value, nil
 	}
-	minValue, err := parsePositiveInt(minRaw, label)
+	minValue, err := parseNonNegativeInt(minRaw, label)
 	if err != nil {
 		return 0, 0, err
 	}
-	maxValue, err := parsePositiveInt(maxRaw, label)
+	maxValue, err := parseNonNegativeInt(maxRaw, label)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -735,12 +742,13 @@ func (r demoRunner) runLorem(ctx context.Context, turn *bridgesdk.Turn, cmd lore
 	started := r.runtime.now()
 	opts := cmd.Options
 	rng := rngForOptions(opts.SeedSet, opts.Seed, started.UnixNano())
+	contentRNG := rand.New(rand.NewSource(rng.Int63()))
 	stepCount := cmd.Options.Steps
 	if stepCount <= 0 {
 		stepCount = 1
 	}
-	text := buildLoremText(cmd.Chars)
-	reasoning := buildLoremText(cmd.Options.ReasoningChars)
+	text := buildLoremText(cmd.Chars, contentRNG)
+	reasoning := buildLoremText(cmd.Options.ReasoningChars, contentRNG)
 	for step := 0; step < stepCount; step++ {
 		if cmd.Options.Steps > 0 {
 			turn.Writer().StepStart(ctx)
@@ -769,9 +777,10 @@ func (r demoRunner) runTools(ctx context.Context, turn *bridgesdk.Turn, cmd tool
 	started := r.runtime.now()
 	opts := cmd.Options
 	rng := rngForOptions(opts.SeedSet, opts.Seed, started.UnixNano())
-	phaseCount := maxInt(len(cmd.Tools)+1, maxInt(opts.Steps, 1))
-	text := buildLoremText(cmd.Chars)
-	reasoning := buildLoremText(cmd.Options.ReasoningChars)
+	contentRNG := rand.New(rand.NewSource(rng.Int63()))
+	phaseCount := max(len(cmd.Tools)+1, max(opts.Steps, 1))
+	text := buildLoremText(cmd.Chars, contentRNG)
+	reasoning := buildLoremText(cmd.Options.ReasoningChars, contentRNG)
 	for phase := 0; phase < phaseCount; phase++ {
 		turn.Writer().StepStart(ctx)
 		r.emitCommonDecorations(ctx, turn, opts, cmd.Chars, phase, phaseCount)
@@ -802,8 +811,6 @@ func (r demoRunner) runRandom(ctx context.Context, turn *bridgesdk.Turn, cmd ran
 		seed = started.UnixNano()
 	}
 	rng := rand.New(rand.NewSource(seed))
-	baseText := buildLoremText(1600)
-	baseReasoning := buildLoremText(1200)
 	var stepOpen bool
 	for action := 0; action < cmd.Actions; action++ {
 		if action > 0 {
@@ -817,12 +824,14 @@ func (r demoRunner) runRandom(ctx context.Context, turn *bridgesdk.Turn, cmd ran
 		switch kind {
 		case randomActionText:
 			chars := 40 + rng.Intn(160)
-			if err := r.streamVisibleText(ctx, turn, sampleTextWindow(baseText, rng, chars), rng, commonCommandOptions{}); err != nil {
+			text := buildLoremText(chars, rand.New(rand.NewSource(rng.Int63())))
+			if err := r.streamVisibleText(ctx, turn, text, rng, commonCommandOptions{}); err != nil {
 				return err
 			}
 		case randomActionReasoning:
 			chars := 30 + rng.Intn(120)
-			if err := r.streamReasoning(ctx, turn, sampleTextWindow(baseReasoning, rng, chars), rng, commonCommandOptions{}); err != nil {
+			reasoning := buildLoremText(chars, rand.New(rand.NewSource(rng.Int63())))
+			if err := r.streamReasoning(ctx, turn, reasoning, rng, commonCommandOptions{}); err != nil {
 				return err
 			}
 		case randomActionStep:
@@ -905,13 +914,14 @@ func (r demoRunner) runChaos(ctx context.Context, conv *bridgesdk.Conversation, 
 			if childIndex > 0 {
 				delay := r.sampleDelay(staggerRNG, cmd.StaggerMin, cmd.StaggerMax)
 				if err := r.runtime.sleep(ctx, delay); err != nil {
+					t.Abort("context cancelled")
 					errCh <- err
 					return
 				}
 			}
 			randomCmd := randomCommand{
 				Duration:      cmd.Duration,
-				Actions:       maxInt(3, minInt(cmd.MaxActions, int(cmd.Duration/time.Second))),
+				Actions:       max(3, min(cmd.MaxActions, int(cmd.Duration/time.Second))),
 				Profile:       cmd.Profile,
 				DelayMin:      180 * time.Millisecond,
 				DelayMax:      900 * time.Millisecond,
@@ -1177,21 +1187,28 @@ func randomToolName(rng *rand.Rand) string {
 	return names[rng.Intn(len(names))]
 }
 
-func buildLoremText(chars int) string {
+func buildLoremText(chars int, rng *rand.Rand) string {
 	if chars <= 0 {
 		return ""
 	}
-	const base = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. "
+	if rng == nil {
+		rng = rand.New(rand.NewSource(int64(chars)))
+	}
 	var sb strings.Builder
-	sb.Grow(chars)
-	for sb.Len() < chars {
-		sb.WriteString(base)
+	sb.Grow(chars + 128)
+	lastIndex := -1
+	for sb.Len() < chars+64 {
+		index := rng.Intn(len(loremSentenceCorpus))
+		if len(loremSentenceCorpus) > 1 && index == lastIndex {
+			index = (index + 1 + rng.Intn(len(loremSentenceCorpus)-1)) % len(loremSentenceCorpus)
+		}
+		if sb.Len() > 0 {
+			sb.WriteByte(' ')
+		}
+		sb.WriteString(loremSentenceCorpus[index])
+		lastIndex = index
 	}
-	text := sb.String()
-	if len(text) > chars {
-		text = text[:chars]
-	}
-	return text
+	return trimLoremText(sb.String(), chars)
 }
 
 func rngForOptions(seedSet bool, seed, fallback int64) *rand.Rand {
@@ -1211,7 +1228,7 @@ func chunkText(text string, rng *rand.Rand, minChunk, maxChunk int) []string {
 	if maxChunk < minChunk {
 		maxChunk = minChunk
 	}
-	chunks := make([]string, 0, maxInt(1, len(text)/maxChunk+1))
+	chunks := make([]string, 0, max(1, len(text)/maxChunk+1))
 	for len(text) > 0 {
 		size := minChunk
 		if maxChunk > minChunk {
@@ -1257,23 +1274,53 @@ func sliceByStep(text string, parts, index int) string {
 	return text[start:end]
 }
 
-func sampleTextWindow(text string, rng *rand.Rand, chars int) string {
-	if chars <= 0 || text == "" {
-		return ""
-	}
-	if chars >= len(text) {
-		return text[:chars]
-	}
-	start := rng.Intn(len(text) - chars + 1)
-	return text[start : start+chars]
-}
-
 func (r demoRunner) sampleDelay(rng *rand.Rand, minDelay, maxDelay time.Duration) time.Duration {
 	if maxDelay <= minDelay {
 		return minDelay
 	}
 	diff := maxDelay - minDelay
 	return minDelay + time.Duration(rng.Int63n(int64(diff)+1))
+}
+
+func trimLoremText(text string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	text = strings.TrimSpace(text)
+	if len(text) <= limit {
+		return text
+	}
+	if limit < 24 {
+		return trimTrailingPunctuation(trimToWordBoundary(text[:limit]))
+	}
+	minCutoff := max(1, (limit*3)/4)
+	for i := min(limit, len(text)); i >= minCutoff; i-- {
+		switch text[i-1] {
+		case '.', '!', '?':
+			return strings.TrimSpace(text[:i])
+		}
+	}
+	for i := min(limit, len(text)); i >= minCutoff; i-- {
+		if text[i-1] == ' ' {
+			return trimTrailingPunctuation(strings.TrimSpace(text[:i]))
+		}
+	}
+	return trimTrailingPunctuation(strings.TrimSpace(text[:limit]))
+}
+
+func trimToWordBoundary(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	if idx := strings.LastIndexByte(text, ' '); idx > 0 {
+		return strings.TrimSpace(text[:idx])
+	}
+	return text
+}
+
+func trimTrailingPunctuation(text string) string {
+	return strings.TrimRight(strings.TrimSpace(text), ",;:")
 }
 
 func sanitizeToolName(name string) string {
@@ -1284,20 +1331,6 @@ func sanitizeToolName(name string) string {
 		return "tool"
 	}
 	return name
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func snapshotParts(turn *bridgesdk.Turn) []map[string]any {

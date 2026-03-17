@@ -195,6 +195,8 @@ When using this mode, the sender encrypts the `com.beeper.stream.update` payload
   "type": "m.room.encrypted",
   "content": {
     "algorithm": "com.beeper.stream.v1.aes-gcm",
+    "room_id": "!meow",
+    "event_id": "$foobar",
     "iv": "svNAxzmSqyRdMU3O",
     "ciphertext": "vrKgF7jsQyd9CKnXLqVjAI9mSLH1okmtu0Puu4Tl4uh+HjrR4JhhD0DhT2ioxiUZMaqgYuERuXThAkpebpFFs0kwT0Bp8sC+NyCXHw8apLWxbUxMZ1FMUvyV5fIR6l6RXS50gA"
   }
@@ -204,6 +206,7 @@ When using this mode, the sender encrypts the `com.beeper.stream.update` payload
 Requirements:
 
 - `key` is 32 random bytes encoded as unpadded standard base64.
+- `room_id` and `event_id` are included in the encrypted event envelope so receivers can route the payload to the correct stream key without trial-decrypting every active stream.
 - `iv` is 12 random bytes encoded as unpadded standard base64.
 - `ciphertext` is AES-GCM ciphertext followed by the 16-byte authentication tag, encoded as unpadded standard base64.
 

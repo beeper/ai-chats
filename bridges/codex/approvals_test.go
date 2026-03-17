@@ -12,8 +12,37 @@ import (
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/bridges/codex/codexrpc"
-	bridgesdk "github.com/beeper/agentremote/sdk"
 )
+
+type approvalTestFixture struct {
+	ctx    context.Context
+	cc     *CodexClient
+	portal *bridgev2.Portal
+	meta   *PortalMetadata
+	state  *streamingState
+}
+
+func newApprovalTestFixture(t *testing.T) approvalTestFixture {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	t.Cleanup(cancel)
+	cc := newTestCodexClient(id.UserID("@owner:example.com"))
+	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
+	meta := &PortalMetadata{}
+	state := &streamingState{turnID: "turn_local", initialEventID: id.EventID("$event")}
+	attachTestTurn(state, portal)
+	cc.activeTurns = map[string]*codexActiveTurn{
+		codexTurnKey("thr_1", "turn_1"): {
+			portal:   portal,
+			meta:     meta,
+			state:    state,
+			threadID: "thr_1",
+			turnID:   "turn_1",
+			model:    "gpt-5.1-codex",
+		},
+	}
+	return approvalTestFixture{ctx: ctx, cc: cc, portal: portal, meta: meta, state: state}
+}
 
 func newTestCodexClient(owner id.UserID) *CodexClient {
 	ul := &bridgev2.UserLogin{}
@@ -50,36 +79,9 @@ func waitForPendingApproval(t *testing.T, ctx context.Context, cc *CodexClient, 
 	}
 }
 
-func attachApprovalTestTurn(state *streamingState, portal *bridgev2.Portal) {
-	if state == nil {
-		return
-	}
-	conv := bridgesdk.NewConversation(context.Background(), nil, portal, bridgev2.EventSender{}, &bridgesdk.Config{}, nil)
-	turn := conv.StartTurn(context.Background(), nil, nil)
-	turn.SetID(state.turnID)
-	state.turn = turn
-}
-
 func TestCodex_CommandApproval_RequestBlocksUntilApproved(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	t.Cleanup(cancel)
-
-	cc := newTestCodexClient(id.UserID("@owner:example.com"))
-
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	meta := &PortalMetadata{}
-	state := &streamingState{turnID: "turn_local", initialEventID: id.EventID("$event")}
-	attachApprovalTestTurn(state, portal)
-	cc.activeTurns = map[string]*codexActiveTurn{
-		codexTurnKey("thr_1", "turn_1"): {
-			portal:   portal,
-			meta:     meta,
-			state:    state,
-			threadID: "thr_1",
-			turnID:   "turn_1",
-			model:    "gpt-5.1-codex",
-		},
-	}
+	f := newApprovalTestFixture(t)
+	ctx, cc, state := f.ctx, f.cc, f.state
 
 	params := map[string]any{
 		"threadId": "thr_1",
@@ -136,25 +138,8 @@ func TestCodex_CommandApproval_RequestBlocksUntilApproved(t *testing.T) {
 }
 
 func TestCodex_CommandApproval_DenyEmitsResponseThenOutputDenied(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	t.Cleanup(cancel)
-
-	cc := newTestCodexClient(id.UserID("@owner:example.com"))
-
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	meta := &PortalMetadata{}
-	state := &streamingState{turnID: "turn_local", initialEventID: id.EventID("$event")}
-	attachApprovalTestTurn(state, portal)
-	cc.activeTurns = map[string]*codexActiveTurn{
-		codexTurnKey("thr_1", "turn_1"): {
-			portal:   portal,
-			meta:     meta,
-			state:    state,
-			threadID: "thr_1",
-			turnID:   "turn_1",
-			model:    "gpt-5.1-codex",
-		},
-	}
+	f := newApprovalTestFixture(t)
+	ctx, cc, state := f.ctx, f.cc, f.state
 
 	paramsRaw, _ := json.Marshal(map[string]any{
 		"threadId": "thr_1",
@@ -202,25 +187,8 @@ func TestCodex_CommandApproval_DenyEmitsResponseThenOutputDenied(t *testing.T) {
 }
 
 func TestCodex_CommandApproval_AllowAlwaysMapsToSessionAcceptance(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	t.Cleanup(cancel)
-
-	cc := newTestCodexClient(id.UserID("@owner:example.com"))
-
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	meta := &PortalMetadata{}
-	state := &streamingState{turnID: "turn_local", initialEventID: id.EventID("$event")}
-	attachApprovalTestTurn(state, portal)
-	cc.activeTurns = map[string]*codexActiveTurn{
-		codexTurnKey("thr_1", "turn_1"): {
-			portal:   portal,
-			meta:     meta,
-			state:    state,
-			threadID: "thr_1",
-			turnID:   "turn_1",
-			model:    "gpt-5.1-codex",
-		},
-	}
+	f := newApprovalTestFixture(t)
+	ctx, cc := f.ctx, f.cc
 
 	paramsRaw, _ := json.Marshal(map[string]any{
 		"threadId": "thr_1",
@@ -261,23 +229,8 @@ func TestCodex_CommandApproval_AllowAlwaysMapsToSessionAcceptance(t *testing.T) 
 }
 
 func TestCodex_CommandApproval_AllowAlwaysMapsToSessionDecision(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	t.Cleanup(cancel)
-
-	cc := newTestCodexClient(id.UserID("@owner:example.com"))
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	state := &streamingState{turnID: "turn_local", initialEventID: id.EventID("$event")}
-	attachApprovalTestTurn(state, portal)
-	cc.activeTurns = map[string]*codexActiveTurn{
-		codexTurnKey("thr_1", "turn_1"): {
-			portal:   portal,
-			meta:     &PortalMetadata{},
-			state:    state,
-			threadID: "thr_1",
-			turnID:   "turn_1",
-			model:    "gpt-5.1-codex",
-		},
-	}
+	f := newApprovalTestFixture(t)
+	ctx, cc := f.ctx, f.cc
 
 	paramsRaw, _ := json.Marshal(map[string]any{
 		"threadId": "thr_1",
@@ -314,23 +267,8 @@ func TestCodex_CommandApproval_AllowAlwaysMapsToSessionDecision(t *testing.T) {
 }
 
 func TestCodex_CommandApproval_UsesExplicitApprovalID(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	t.Cleanup(cancel)
-
-	cc := newTestCodexClient(id.UserID("@owner:example.com"))
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	state := &streamingState{turnID: "turn_local", initialEventID: id.EventID("$event")}
-	attachApprovalTestTurn(state, portal)
-	cc.activeTurns = map[string]*codexActiveTurn{
-		codexTurnKey("thr_1", "turn_1"): {
-			portal:   portal,
-			meta:     &PortalMetadata{},
-			state:    state,
-			threadID: "thr_1",
-			turnID:   "turn_1",
-			model:    "gpt-5.1-codex",
-		},
-	}
+	f := newApprovalTestFixture(t)
+	ctx, cc := f.ctx, f.cc
 
 	paramsRaw, _ := json.Marshal(map[string]any{
 		"threadId":   "thr_1",
@@ -400,25 +338,8 @@ func TestCodex_CommandApproval_AutoApproveInFullElevated(t *testing.T) {
 }
 
 func TestCodex_PermissionsApproval_AllowAlwaysMapsToSessionScope(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	t.Cleanup(cancel)
-
-	cc := newTestCodexClient(id.UserID("@owner:example.com"))
-
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	meta := &PortalMetadata{}
-	state := &streamingState{turnID: "turn_local", initialEventID: id.EventID("$event")}
-	attachApprovalTestTurn(state, portal)
-	cc.activeTurns = map[string]*codexActiveTurn{
-		codexTurnKey("thr_1", "turn_1"): {
-			portal:   portal,
-			meta:     meta,
-			state:    state,
-			threadID: "thr_1",
-			turnID:   "turn_1",
-			model:    "gpt-5.1-codex",
-		},
-	}
+	f := newApprovalTestFixture(t)
+	ctx, cc := f.ctx, f.cc
 
 	paramsRaw, _ := json.Marshal(map[string]any{
 		"threadId": "thr_1",
@@ -468,22 +389,8 @@ func TestCodex_PermissionsApproval_AllowAlwaysMapsToSessionScope(t *testing.T) {
 }
 
 func TestCodex_FileChangeApproval_AllowAlwaysMapsToSessionDecision(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	t.Cleanup(cancel)
-
-	cc := newTestCodexClient(id.UserID("@owner:example.com"))
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	state := &streamingState{turnID: "turn_local", initialEventID: id.EventID("$event")}
-	attachApprovalTestTurn(state, portal)
-	cc.activeTurns = map[string]*codexActiveTurn{
-		codexTurnKey("thr_1", "turn_1"): {
-			portal:   portal,
-			meta:     &PortalMetadata{},
-			state:    state,
-			threadID: "thr_1",
-			turnID:   "turn_1",
-		},
-	}
+	f := newApprovalTestFixture(t)
+	ctx, cc := f.ctx, f.cc
 
 	paramsRaw, _ := json.Marshal(map[string]any{
 		"threadId": "thr_1",
@@ -520,22 +427,8 @@ func TestCodex_FileChangeApproval_AllowAlwaysMapsToSessionDecision(t *testing.T)
 }
 
 func TestCodex_PermissionsApproval_ApproveSessionReturnsRequestedPermissions(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	t.Cleanup(cancel)
-
-	cc := newTestCodexClient(id.UserID("@owner:example.com"))
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	state := &streamingState{turnID: "turn_local", initialEventID: id.EventID("$event")}
-	attachApprovalTestTurn(state, portal)
-	cc.activeTurns = map[string]*codexActiveTurn{
-		codexTurnKey("thr_1", "turn_1"): {
-			portal:   portal,
-			meta:     &PortalMetadata{},
-			state:    state,
-			threadID: "thr_1",
-			turnID:   "turn_1",
-		},
-	}
+	f := newApprovalTestFixture(t)
+	ctx, cc := f.ctx, f.cc
 
 	paramsRaw, _ := json.Marshal(map[string]any{
 		"threadId": "thr_1",
@@ -582,24 +475,8 @@ func TestCodex_PermissionsApproval_ApproveSessionReturnsRequestedPermissions(t *
 }
 
 func TestCodex_PermissionsApproval_DenyReturnsEmptyTurnScope(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	t.Cleanup(cancel)
-
-	cc := newTestCodexClient(id.UserID("@owner:example.com"))
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	meta := &PortalMetadata{}
-	state := &streamingState{turnID: "turn_local", initialEventID: id.EventID("$event")}
-	attachApprovalTestTurn(state, portal)
-	cc.activeTurns = map[string]*codexActiveTurn{
-		codexTurnKey("thr_1", "turn_1"): {
-			portal:   portal,
-			meta:     meta,
-			state:    state,
-			threadID: "thr_1",
-			turnID:   "turn_1",
-			model:    "gpt-5.1-codex",
-		},
-	}
+	f := newApprovalTestFixture(t)
+	ctx, cc := f.ctx, f.cc
 
 	paramsRaw, _ := json.Marshal(map[string]any{
 		"threadId":    "thr_1",

@@ -48,26 +48,23 @@ func (s *streamingState) recordFirstToken() {
 }
 
 func (s *streamingState) currentTurnID() string {
-	if s != nil && s.turn != nil {
-		return strings.TrimSpace(s.turn.ID())
-	}
 	if s == nil {
 		return ""
+	}
+	if s.turn != nil {
+		return strings.TrimSpace(s.turn.ID())
 	}
 	return strings.TrimSpace(s.turnID)
 }
 
 func (s *streamingState) currentReplyTargetEventID() id.EventID {
-	if s != nil && s.turn != nil {
+	if s == nil {
+		return ""
+	}
+	if s.turn != nil {
 		if source := s.turn.Source(); source != nil && strings.TrimSpace(source.EventID) != "" {
 			return id.EventID(source.EventID)
 		}
-		if eventID := s.turn.InitialEventID(); eventID != "" {
-			return eventID
-		}
-	}
-	if s == nil {
-		return ""
 	}
 	return s.initialEventID
 }

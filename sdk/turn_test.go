@@ -2,6 +2,7 @@ package sdk
 
 import (
 	"context"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/agentremote/pkg/shared/citations"
 	"github.com/beeper/agentremote/turns"
 )
 
@@ -366,6 +368,7 @@ func TestTurnBuildFinalEditAddsReplaceRelation(t *testing.T) {
 	turn := newTurn(context.Background(), nil, nil, nil)
 	turn.initialEventID = id.EventID("$event-1")
 	turn.networkMessageID = "msg-1"
+	turn.Writer().TextDelta(turn.Context(), "streamed")
 	turn.SetFinalEditPayload(&FinalEditPayload{
 		Content: &event.MessageEventContent{
 			MsgType: event.MsgText,
@@ -397,6 +400,123 @@ func TestTurnBuildFinalEditAddsReplaceRelation(t *testing.T) {
 	inReply, ok := gotRelatesTo["m.in_reply_to"].(map[string]any)
 	if !ok || inReply["event_id"] != "$reply-1" {
 		t.Fatalf("expected reply override in relation, got %#v", gotRelatesTo)
+	}
+	if body := edit.ModifiedParts[0].Content.Body; body != "done" {
+		t.Fatalf("expected explicit payload body to win, got %q", body)
+	}
+}
+
+func TestTurnBuildFinalEditDefaultsToVisibleText(t *testing.T) {
+	turn := newTurn(context.Background(), nil, nil, nil)
+	turn.initialEventID = id.EventID("$event-text")
+	turn.networkMessageID = "msg-text"
+	turn.Writer().TextDelta(turn.Context(), "hello")
+	turn.Writer().FinishText(turn.Context())
+
+	target, edit := turn.buildFinalEdit()
+	if target != "msg-text" {
+		t.Fatalf("expected network target msg-text, got %q", target)
+	}
+	if edit == nil || len(edit.ModifiedParts) != 1 {
+		t.Fatalf("expected single modified part, got %#v", edit)
+	}
+	if body := edit.ModifiedParts[0].Content.Body; body != "hello" {
+		t.Fatalf("expected visible text body, got %q", body)
+	}
+	extra := edit.ModifiedParts[0].TopLevelExtra
+	if extra["com.beeper.dont_render_edited"] != true {
+		t.Fatalf("expected dont_render_edited marker, got %#v", extra)
+	}
+	rawAI, ok := extra[matrixevents.BeeperAIKey].(map[string]any)
+	if !ok {
+		t.Fatalf("expected compact %s payload, got %#v", matrixevents.BeeperAIKey, extra[matrixevents.BeeperAIKey])
+	}
+	if parts, ok := rawAI["parts"].([]any); ok {
+		for _, raw := range parts {
+			part, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			if partType := strings.TrimSpace(stringValue(part["type"])); partType == "text" || partType == "reasoning" {
+				t.Fatalf("expected compact final payload without textual parts, got %#v", part)
+			}
+		}
+	}
+}
+
+func TestTurnBuildFinalEditDefaultsToEllipsisForArtifacts(t *testing.T) {
+	turn := newTurn(context.Background(), nil, nil, nil)
+	turn.initialEventID = id.EventID("$event-artifact")
+	turn.networkMessageID = "msg-artifact"
+	turn.Writer().SourceURL(turn.Context(), citations.SourceCitation{
+		URL:   "https://example.com",
+		Title: "Example",
+	})
+
+	_, edit := turn.buildFinalEdit()
+	if edit == nil || len(edit.ModifiedParts) != 1 {
+		t.Fatalf("expected single modified part, got %#v", edit)
+	}
+	if body := edit.ModifiedParts[0].Content.Body; body != "..." {
+		t.Fatalf("expected ellipsis body for artifact-only turn, got %q", body)
+	}
+	rawAI, ok := edit.ModifiedParts[0].TopLevelExtra[matrixevents.BeeperAIKey].(map[string]any)
+	if !ok {
+		t.Fatalf("expected compact ai payload, got %#v", edit.ModifiedParts[0].TopLevelExtra)
+	}
+	parts, _ := rawAI["parts"].([]any)
+	if len(parts) == 0 {
+		t.Fatalf("expected artifact part in compact payload, got %#v", rawAI)
+	}
+}
+
+func TestTurnSuppressFinalEditSkipsAutomaticPayload(t *testing.T) {
+	turn := newTurn(context.Background(), nil, nil, nil)
+	turn.initialEventID = id.EventID("$event-suppressed")
+	turn.networkMessageID = "msg-suppressed"
+	turn.Writer().TextDelta(turn.Context(), "hello")
+	turn.SetSuppressFinalEdit(true)
+
+	target, edit := turn.buildFinalEdit()
+	if target != "" || edit != nil {
+		t.Fatalf("expected automatic final edit to be suppressed, got target=%q edit=%#v", target, edit)
+	}
+}
+
+func TestTurnIdleTimeoutAbortsStuckTurn(t *testing.T) {
+	conv := NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &Config{
+		TurnManagement: &TurnConfig{IdleTimeoutMs: 20},
+	}, nil)
+	turn := conv.StartTurn(context.Background(), nil, nil)
+	turn.Writer().TextDelta(turn.Context(), "hello")
+
+	waitForTurnEnd(t, turn, 300*time.Millisecond)
+	if !turn.ended {
+		t.Fatal("expected idle timeout to end the turn")
+	}
+	ui := turn.UIState().UIMessage
+	metadata, _ := ui["metadata"].(map[string]any)
+	terminal, _ := metadata["beeper_terminal_state"].(map[string]any)
+	if terminal["type"] != "abort" {
+		t.Fatalf("expected abort timeout terminal state, got %#v", terminal)
+	}
+}
+
+func TestTurnIdleTimeoutResetsOnActivity(t *testing.T) {
+	conv := NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &Config{
+		TurnManagement: &TurnConfig{IdleTimeoutMs: 40},
+	}, nil)
+	turn := conv.StartTurn(context.Background(), nil, nil)
+	turn.Writer().TextDelta(turn.Context(), "a")
+	time.Sleep(20 * time.Millisecond)
+	turn.Writer().TextDelta(turn.Context(), "b")
+	time.Sleep(20 * time.Millisecond)
+	if turn.ended {
+		t.Fatal("expected activity to reset the idle timeout")
+	}
+	waitForTurnEnd(t, turn, 300*time.Millisecond)
+	if !turn.ended {
+		t.Fatal("expected turn to end after activity stops")
 	}
 }
 
@@ -465,5 +585,16 @@ func TestTurnWriterStartTriggersLazyPlaceholderSend(t *testing.T) {
 	}
 	if turn.NetworkMessageID() != networkid.MessageID("msg-1") {
 		t.Fatalf("expected placeholder network message id to be stored, got %q", turn.NetworkMessageID())
+	}
+}
+
+func waitForTurnEnd(t *testing.T, turn *Turn, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if turn.ended {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }

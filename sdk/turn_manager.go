@@ -11,6 +11,9 @@ type TurnConfig struct {
 	OneAtATime bool
 	DebounceMs int
 	QueueSize  int
+	// IdleTimeoutMs aborts turns that stop emitting streamed parts for too long.
+	// Zero uses the SDK default; a negative value disables the watchdog.
+	IdleTimeoutMs int
 
 	// KeyFunc customizes the serialization key. By default, the portal ID is
 	// used directly. Multi-agent rooms can return "roomID:agentID" so that

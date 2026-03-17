@@ -262,7 +262,7 @@ func (cl *CodexLogin) backgroundProcessContext() context.Context {
 	return context.Background()
 }
 
-func (cl *CodexLogin) initializeExperimental(mode string) bool {
+func (cl *CodexLogin) initializeExperimental(_ string) bool {
 	// The bridge relies on persistExtendedHistory for thread recovery, which is
 	// gated behind the experimental API capability in current Codex app-server builds.
 	return true
