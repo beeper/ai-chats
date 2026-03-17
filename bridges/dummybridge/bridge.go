@@ -49,10 +49,9 @@ func (dc *DummyBridgeConnector) onConnect(ctx context.Context, info *bridgesdk.L
 	if err := dummySDKAgent().EnsureGhost(ctx, login); err != nil {
 		return nil, fmt.Errorf("ensure ghost: %w", err)
 	}
-	if err := dc.ensureInitialRoom(ctx, login, &log); err != nil {
+	if err := dc.ensureInitialRoom(ctx, login); err != nil {
 		return nil, err
 	}
-	log.Info().Msg("DummyBridge connected")
 	return &dummySession{
 		login:         login,
 		acceptedValue: loginMetadata(login).AcceptedString,
@@ -61,11 +60,7 @@ func (dc *DummyBridgeConnector) onConnect(ctx context.Context, info *bridgesdk.L
 }
 
 func (dc *DummyBridgeConnector) onDisconnect(session any) {
-	dummy, err := sessionFromAny(session)
-	if err != nil {
-		return
-	}
-	dummy.log.Debug().Msg("DummyBridge disconnected")
+	_, _ = sessionFromAny(session)
 }
 
 func (dc *DummyBridgeConnector) getContactList(ctx context.Context, session any) ([]*bridgev2.ResolveIdentifierResponse, error) {
@@ -176,7 +171,7 @@ func (dc *DummyBridgeConnector) contactResponse(ctx context.Context, login *brid
 	}, nil
 }
 
-func (dc *DummyBridgeConnector) ensureInitialRoom(ctx context.Context, login *bridgev2.UserLogin, log *zerolog.Logger) error {
+func (dc *DummyBridgeConnector) ensureInitialRoom(ctx context.Context, login *bridgev2.UserLogin) error {
 	dc.chatMu.Lock()
 	defer dc.chatMu.Unlock()
 
@@ -197,9 +192,6 @@ func (dc *DummyBridgeConnector) ensureInitialRoom(ctx context.Context, login *br
 	}
 	if _, err := dc.ensureChatForIndexLocked(ctx, login, 1); err != nil {
 		return err
-	}
-	if log != nil {
-		log.Info().Int("chat_index", 1).Msg("DummyBridge ensured initial demo room")
 	}
 	return nil
 }

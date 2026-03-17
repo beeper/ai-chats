@@ -29,7 +29,7 @@ type OpenCodeClient struct {
 	connector *OpenCodeConnector
 	bridge    *Bridge
 
-	streamStates map[string]*openCodeStreamState
+	streamHost *agentremote.StreamTurnHost[openCodeStreamState]
 }
 
 type openCodeStreamState struct {
@@ -62,10 +62,17 @@ func newOpenCodeClient(login *bridgev2.UserLogin, connector *OpenCodeConnector) 
 		return nil, errors.New("missing connector")
 	}
 	client := &OpenCodeClient{
-		UserLogin:    login,
-		connector:    connector,
-		streamStates: make(map[string]*openCodeStreamState),
+		UserLogin: login,
+		connector: connector,
 	}
+	client.streamHost = agentremote.NewStreamTurnHost(agentremote.StreamTurnHostCallbacks[openCodeStreamState]{
+		GetAborter: func(s *openCodeStreamState) agentremote.Aborter {
+			if s.turn == nil {
+				return nil
+			}
+			return s.turn
+		},
+	})
 	client.InitClientBase(login, client)
 	client.HumanUserIDPrefix = "opencode-user"
 	client.MessageIDPrefix = "opencode"
@@ -96,32 +103,15 @@ func (oc *OpenCodeClient) Disconnect() {
 	oc.BeginStreamShutdown()
 	oc.SetLoggedIn(false)
 	oc.CloseAllSessions()
-	oc.abortActiveTurns()
+	oc.streamHost.DrainAndAbort("disconnect")
 	if oc.bridge != nil && oc.bridge.manager != nil && oc.bridge.manager.approvalFlow != nil {
 		oc.bridge.manager.approvalFlow.Close()
 	}
-	oc.StreamMu.Lock()
-	oc.streamStates = make(map[string]*openCodeStreamState)
-	oc.StreamMu.Unlock()
 	if oc.bridge != nil {
 		oc.bridge.DisconnectAll()
 	}
 	if oc.UserLogin != nil {
 		oc.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Message: "Disconnected"})
-	}
-}
-
-func (oc *OpenCodeClient) abortActiveTurns() {
-	oc.StreamMu.Lock()
-	turns := make([]*bridgesdk.Turn, 0, len(oc.streamStates))
-	for _, state := range oc.streamStates {
-		if state != nil && state.turn != nil {
-			turns = append(turns, state.turn)
-		}
-	}
-	oc.StreamMu.Unlock()
-	for _, turn := range turns {
-		turn.Abort("disconnect")
 	}
 }
 

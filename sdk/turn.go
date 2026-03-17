@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"maps"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -420,11 +419,6 @@ func (t *Turn) applyPlaceholderSendResult(evtID id.EventID, msgID networkid.Mess
 	t.initialEventID = evtID
 	t.networkMessageID = msgID
 	t.mu.Unlock()
-	t.logStreamDebug("placeholder_sent",
-		"event_id", evtID.String(),
-		"network_message_id", string(msgID),
-		"room_id", t.roomID().String(),
-	)
 	if evtID != "" && t.session != nil {
 		if streamErr := t.session.Start(t.turnCtx, evtID); streamErr != nil && t.startErr == nil {
 			t.startErr = streamErr
@@ -839,12 +833,6 @@ func (t *Turn) emitPart(callCtx context.Context, _ *bridgev2.Portal, part map[st
 	if part == nil {
 		return
 	}
-	t.logStreamDebug("emit_part_begin",
-		"room_id", t.roomID().String(),
-		"event_id", t.initialEventID.String(),
-		"network_message_id", string(t.networkMessageID),
-		"part_keys", slices.Collect(maps.Keys(part)),
-	)
 	t.ensureStarted()
 	t.resetIdleTimeout()
 	streamui.ApplyChunk(t.state, part)
@@ -904,13 +892,6 @@ func (t *Turn) ensureDefaultFinalEditPayload(finishReason, fallbackBody string) 
 		return
 	}
 	t.finalEditPayload = payload
-	t.logStreamDebug("final_edit_synthesized",
-		"finish_reason", strings.TrimSpace(finishReason),
-		"body_len", len(strings.TrimSpace(payload.Content.Body)),
-		"room_id", t.roomID().String(),
-		"event_id", t.initialEventID.String(),
-		"network_message_id", string(t.networkMessageID),
-	)
 }
 
 func (t *Turn) resolvedIdleTimeout() time.Duration {
@@ -966,10 +947,6 @@ func (t *Turn) handleIdleTimeout(seq uint64) {
 		return
 	}
 	t.mu.Unlock()
-	t.logStreamDebug("idle_timeout",
-		"turn_id", t.turnID,
-		"room_id", t.roomID().String(),
-	)
 	t.Abort("timeout")
 }
 
@@ -978,33 +955,6 @@ func (t *Turn) roomID() id.RoomID {
 		return ""
 	}
 	return t.conv.portal.MXID
-}
-
-func (t *Turn) logStreamDebug(reason string, kv ...any) {
-	if t == nil || t.conv == nil || t.conv.login == nil {
-		return
-	}
-	if !t.conv.login.Log.Debug().Enabled() {
-		return
-	}
-	logEvt := t.conv.login.Log.Debug().Str("component", "sdk_turn").Str("reason", reason)
-	for i := 0; i+1 < len(kv); i += 2 {
-		key, ok := kv[i].(string)
-		if !ok || key == "" {
-			continue
-		}
-		switch value := kv[i+1].(type) {
-		case string:
-			logEvt = logEvt.Str(key, value)
-		case []string:
-			logEvt = logEvt.Strs(key, value)
-		case int:
-			logEvt = logEvt.Int(key, value)
-		default:
-			logEvt = logEvt.Interface(key, value)
-		}
-	}
-	logEvt.Msg("SDK turn diagnostic")
 }
 
 func (t *Turn) ensureStreamStartedAsync() {
@@ -1026,20 +976,7 @@ func (t *Turn) awaitStreamStart() {
 	for {
 		started, err := t.session.EnsureStarted(t.turnCtx)
 		if err == nil && started {
-			t.logStreamDebug("placeholder_stream_ready",
-				"event_id", t.InitialEventID().String(),
-				"network_message_id", string(t.NetworkMessageID()),
-				"room_id", t.roomID().String(),
-			)
 			return
-		}
-		if err != nil && err != context.Canceled {
-			t.logStreamDebug("placeholder_stream_start_retry_failed",
-				"error", err.Error(),
-				"event_id", t.InitialEventID().String(),
-				"network_message_id", string(t.NetworkMessageID()),
-				"room_id", t.roomID().String(),
-			)
 		}
 		select {
 		case <-t.turnCtx.Done():

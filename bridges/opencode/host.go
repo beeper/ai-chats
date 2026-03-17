@@ -55,12 +55,12 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 	if state == nil || turn == nil {
 		return
 	}
-	oc.StreamMu.Lock()
+	oc.streamHost.Lock()
 	if metadata, _ := part["messageMetadata"].(map[string]any); len(metadata) > 0 {
 		oc.applyStreamMessageMetadata(state, metadata)
 	}
 	state.stream.ApplyPart(part, time.Time{})
-	oc.StreamMu.Unlock()
+	oc.streamHost.Unlock()
 
 	if oc.IsStreamShuttingDown() || turn == nil {
 		return
@@ -87,10 +87,10 @@ func (oc *OpenCodeClient) ensureStreamTurn(ctx context.Context, portal *bridgev2
 	ctx = oc.BackgroundContext(ctx)
 	agentID = strings.TrimSpace(agentID)
 
-	oc.StreamMu.Lock()
-	defer oc.StreamMu.Unlock()
+	oc.streamHost.Lock()
+	defer oc.streamHost.Unlock()
 
-	state := oc.streamStates[turnID]
+	state := oc.streamHost.GetLocked(turnID)
 	if state == nil {
 		state = &openCodeStreamState{
 			portal:  portal,
@@ -98,7 +98,7 @@ func (oc *OpenCodeClient) ensureStreamTurn(ctx context.Context, portal *bridgev2
 			agentID: agentID,
 		}
 		state.ui.TurnID = turnID
-		oc.streamStates[turnID] = state
+		oc.streamHost.SetLocked(turnID, state)
 	}
 	if state.portal == nil {
 		state.portal = portal
@@ -125,9 +125,9 @@ func (oc *OpenCodeClient) FinishOpenCodeStream(turnID string) {
 	if turnID == "" {
 		return
 	}
-	oc.StreamMu.Lock()
-	delete(oc.streamStates, turnID)
-	oc.StreamMu.Unlock()
+	oc.streamHost.Lock()
+	oc.streamHost.DeleteLocked(turnID)
+	oc.streamHost.Unlock()
 }
 
 func (oc *OpenCodeClient) newSDKStreamTurn(ctx context.Context, portal *bridgev2.Portal, state *openCodeStreamState) *bridgesdk.Turn {

@@ -191,7 +191,6 @@ func (dc *DummyBridgeConnector) onMessage(session any, conv *bridgesdk.Conversat
 	log := dummy.log.With().Str("command", cmd.Name).Str("turn_id", turn.ID()).Logger()
 	runner := demoRunner{runtime: defaultDemoRuntime()}
 	started := runner.runtime.now()
-	log.Info().Msg("DummyBridge demo command started")
 	var runErr error
 	switch {
 	case cmd.Lorem != nil:
@@ -738,7 +737,7 @@ func parseIntRange(raw string, label string) (int, int, error) {
 	return minValue, maxValue, nil
 }
 
-func (r demoRunner) runLorem(ctx context.Context, turn *bridgesdk.Turn, cmd loremCommand, log zerolog.Logger) error {
+func (r demoRunner) runLorem(ctx context.Context, turn *bridgesdk.Turn, cmd loremCommand, _ zerolog.Logger) error {
 	started := r.runtime.now()
 	opts := cmd.Options
 	rng := rngForOptions(opts.SeedSet, opts.Seed, started.UnixNano())
@@ -768,12 +767,11 @@ func (r demoRunner) runLorem(ctx context.Context, turn *bridgesdk.Turn, cmd lore
 			turn.Writer().StepFinish(ctx)
 		}
 	}
-	log.Info().Dur("elapsed", r.runtime.now().Sub(started)).Int("chars", cmd.Chars).Msg("DummyBridge lorem stream completed")
 	r.finishTurn(turn, opts)
 	return nil
 }
 
-func (r demoRunner) runTools(ctx context.Context, turn *bridgesdk.Turn, cmd toolsCommand, log zerolog.Logger) error {
+func (r demoRunner) runTools(ctx context.Context, turn *bridgesdk.Turn, cmd toolsCommand, _ zerolog.Logger) error {
 	started := r.runtime.now()
 	opts := cmd.Options
 	rng := rngForOptions(opts.SeedSet, opts.Seed, started.UnixNano())
@@ -793,13 +791,12 @@ func (r demoRunner) runTools(ctx context.Context, turn *bridgesdk.Turn, cmd tool
 			return err
 		}
 		if phase < len(cmd.Tools) {
-			if err := r.runToolSpec(ctx, turn, cmd.Tools[phase], rng, opts, log); err != nil {
+			if err := r.runToolSpec(ctx, turn, cmd.Tools[phase], rng, opts, zerolog.Nop()); err != nil {
 				return err
 			}
 		}
 		turn.Writer().StepFinish(ctx)
 	}
-	log.Info().Dur("elapsed", r.runtime.now().Sub(started)).Int("tools", len(cmd.Tools)).Msg("DummyBridge tool stream completed")
 	r.finishTurn(turn, opts)
 	return nil
 }
@@ -820,7 +817,6 @@ func (r demoRunner) runRandom(ctx context.Context, turn *bridgesdk.Turn, cmd ran
 			}
 		}
 		kind := chooseRandomAction(cmd, rng)
-		log.Debug().Int("action_index", action+1).Str("action", string(kind)).Msg("DummyBridge random action")
 		switch kind {
 		case randomActionText:
 			chars := 40 + rng.Intn(160)
@@ -879,7 +875,6 @@ func (r demoRunner) runRandom(ctx context.Context, turn *bridgesdk.Turn, cmd ran
 			turn.Writer().Data(ctx, "random-transient", map[string]any{"action": action + 1}, true)
 		}
 	}
-	log.Info().Dur("elapsed", r.runtime.now().Sub(started)).Int("actions", cmd.Actions).Int64("seed", seed).Msg("DummyBridge random stream completed")
 	switch chooseRandomTerminal(cmd, rng) {
 	case "abort":
 		turn.Abort("DummyBridge random mode aborted")
@@ -944,18 +939,16 @@ func (r demoRunner) runChaos(ctx context.Context, conv *bridgesdk.Conversation, 
 			return err
 		}
 	}
-	log.Info().Dur("elapsed", r.runtime.now().Sub(started)).Int("turns", cmd.Turns).Int64("seed", baseSeed).Msg("DummyBridge chaos stream completed")
 	return nil
 }
 
-func (r demoRunner) runToolSpec(ctx context.Context, turn *bridgesdk.Turn, spec toolSpec, rng *rand.Rand, opts commonCommandOptions, log zerolog.Logger) error {
+func (r demoRunner) runToolSpec(ctx context.Context, turn *bridgesdk.Turn, spec toolSpec, rng *rand.Rand, opts commonCommandOptions, _ zerolog.Logger) error {
 	toolCallID := fmt.Sprintf("dummy-tool-%d-%s", spec.SequenceIndex, sanitizeToolName(spec.Name))
 	input := map[string]any{
 		"tool":     spec.Name,
 		"sequence": spec.SequenceIndex,
 		"tags":     spec.Tags,
 	}
-	toolLog := log.With().Str("tool_name", spec.Name).Str("tool_call_id", toolCallID).Logger()
 	if spec.InputError {
 		turn.Writer().Tools().InputError(ctx, toolCallID, spec.Name, fmt.Sprintf("%v", input), "DummyBridge synthetic input error", spec.Provider)
 	} else if spec.Delta {
@@ -994,17 +987,14 @@ func (r demoRunner) runToolSpec(ctx context.Context, turn *bridgesdk.Turn, spec 
 				AllowAlways: true,
 			},
 		})
-		toolLog.Info().Msg("DummyBridge waiting for tool approval")
 		resp, err := handle.Wait(ctx)
 		if err != nil {
 			return err
 		}
 		if !resp.Approved {
-			toolLog.Warn().Str("reason", resp.Reason).Msg("DummyBridge tool approval denied")
 			turn.Writer().Tools().Denied(ctx, toolCallID)
 			return nil
 		}
-		toolLog.Info().Str("reason", resp.Reason).Msg("DummyBridge tool approval granted")
 	}
 	if spec.Deny {
 		turn.Writer().Tools().Denied(ctx, toolCallID)

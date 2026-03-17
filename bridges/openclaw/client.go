@@ -74,7 +74,7 @@ type OpenClawClient struct {
 	toolCacheMu sync.Mutex
 	toolCaches  map[string]*cachedvalue.CachedValue[gatewayToolsCatalogResponse]
 
-	streamStates map[string]*openClawStreamState
+	streamHost *agentremote.StreamTurnHost[openClawStreamState]
 }
 
 type openClawStreamState struct {
@@ -99,13 +99,20 @@ func newOpenClawClient(login *bridgev2.UserLogin, connector *OpenClawConnector) 
 		return nil, errors.New("missing login")
 	}
 	client := &OpenClawClient{
-		UserLogin:    login,
-		connector:    connector,
-		streamStates: make(map[string]*openClawStreamState),
-		agentCache:   cachedvalue.New[agentCatalogEntry](openClawAgentCatalogTTL),
-		modelCache:   cachedvalue.New[[]gatewayModelChoice](openClawMetadataCatalogTTL),
-		toolCaches:   make(map[string]*cachedvalue.CachedValue[gatewayToolsCatalogResponse]),
+		UserLogin:  login,
+		connector:  connector,
+		agentCache: cachedvalue.New[agentCatalogEntry](openClawAgentCatalogTTL),
+		modelCache: cachedvalue.New[[]gatewayModelChoice](openClawMetadataCatalogTTL),
+		toolCaches: make(map[string]*cachedvalue.CachedValue[gatewayToolsCatalogResponse]),
 	}
+	client.streamHost = agentremote.NewStreamTurnHost(agentremote.StreamTurnHostCallbacks[openClawStreamState]{
+		GetAborter: func(s *openClawStreamState) agentremote.Aborter {
+			if s.turn == nil {
+				return nil
+			}
+			return s.turn
+		},
+	})
 	client.InitClientBase(login, client)
 	client.HumanUserIDPrefix = "openclaw-user"
 	client.MessageIDPrefix = "openclaw"
@@ -158,7 +165,7 @@ func (oc *OpenClawClient) Disconnect() {
 		}
 	}
 	oc.SetLoggedIn(false)
-	abortTurns(oc.drainStreamTurns(), "disconnect")
+	oc.streamHost.DrainAndAbort("disconnect")
 	oc.CloseAllSessions()
 	if oc.UserLogin != nil {
 		oc.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Message: "Disconnected"})
@@ -172,27 +179,6 @@ func (oc *OpenClawClient) detachConnectCancel() context.CancelFunc {
 	oc.connectCancel = nil
 	oc.connectSeq++
 	return cancel
-}
-
-func (oc *OpenClawClient) drainStreamTurns() []*bridgesdk.Turn {
-	oc.StreamMu.Lock()
-	defer oc.StreamMu.Unlock()
-	activeTurns := make([]*bridgesdk.Turn, 0, len(oc.streamStates))
-	for _, state := range oc.streamStates {
-		if state != nil && state.turn != nil {
-			activeTurns = append(activeTurns, state.turn)
-		}
-	}
-	oc.streamStates = make(map[string]*openClawStreamState)
-	return activeTurns
-}
-
-func abortTurns(turns []*bridgesdk.Turn, reason string) {
-	for _, turn := range turns {
-		if turn != nil {
-			turn.Abort(reason)
-		}
-	}
 }
 
 func (oc *OpenClawClient) connectLoop(ctx context.Context) {

@@ -7,6 +7,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
+	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 	bridgesdk "github.com/beeper/agentremote/sdk"
 )
@@ -18,12 +19,28 @@ func newOpenClawTestTurn(turnID string) *bridgesdk.Turn {
 	return turn
 }
 
-func TestComputeVisibleDeltaTracksPrefixOnly(t *testing.T) {
-	oc := &OpenClawClient{
-		streamStates: map[string]*openClawStreamState{
-			"turn-1": {turnID: "turn-1"},
+func newOpenClawTestClient(states map[string]*openClawStreamState) *OpenClawClient {
+	oc := &OpenClawClient{}
+	oc.streamHost = agentremote.NewStreamTurnHost(agentremote.StreamTurnHostCallbacks[openClawStreamState]{
+		GetAborter: func(s *openClawStreamState) agentremote.Aborter {
+			if s.turn == nil {
+				return nil
+			}
+			return s.turn
 		},
+	})
+	for k, v := range states {
+		oc.streamHost.Lock()
+		oc.streamHost.SetLocked(k, v)
+		oc.streamHost.Unlock()
 	}
+	return oc
+}
+
+func TestComputeVisibleDeltaTracksPrefixOnly(t *testing.T) {
+	oc := newOpenClawTestClient(map[string]*openClawStreamState{
+		"turn-1": {turnID: "turn-1"},
+	})
 
 	if got := oc.computeVisibleDelta("turn-1", "hello"); got != "hello" {
 		t.Fatalf("expected first delta to be full text, got %q", got)
@@ -37,11 +54,9 @@ func TestComputeVisibleDeltaTracksPrefixOnly(t *testing.T) {
 }
 
 func TestIsStreamActiveReflectsStatePresence(t *testing.T) {
-	oc := &OpenClawClient{
-		streamStates: map[string]*openClawStreamState{
-			"turn-2": {turnID: "turn-2"},
-		},
-	}
+	oc := newOpenClawTestClient(map[string]*openClawStreamState{
+		"turn-2": {turnID: "turn-2"},
+	})
 	if !oc.isStreamActive("turn-2") {
 		t.Fatal("expected active stream state")
 	}
@@ -150,42 +165,15 @@ func TestApplyStreamPartStateLockedUpdatesLifecycleFields(t *testing.T) {
 	}
 }
 
-func TestCompleteStreamTurnRemovesTrackedState(t *testing.T) {
-	turn := newOpenClawTestTurn("turn-1")
-	state := &openClawStreamState{
-		turnID: "turn-1",
-		turn:   turn,
-	}
-	state.stream.SetFinishReason("stop")
-	oc := &OpenClawClient{
-		streamStates: map[string]*openClawStreamState{
-			"turn-1": state,
-		},
-	}
+func TestDrainAndAbortResetsMap(t *testing.T) {
+	// Use states without real turns to avoid nil-cancel panics in unit tests.
+	oc := newOpenClawTestClient(map[string]*openClawStreamState{
+		"turn-a": {turnID: "turn-a"},
+		"turn-b": {turnID: "turn-b"},
+	})
 
-	oc.completeStreamTurn("turn-1", state, turn)
-	if _, ok := oc.streamStates["turn-1"]; ok {
-		t.Fatal("expected turn state to be removed after completion")
-	}
-}
-
-func TestDrainStreamTurnsResetsMapAndReturnsActiveTurns(t *testing.T) {
-	active := new(bridgesdk.Turn)
-	oc := &OpenClawClient{
-		streamStates: map[string]*openClawStreamState{
-			"turn-active": {turnID: "turn-active", turn: active},
-			"turn-empty":  {turnID: "turn-empty"},
-		},
-	}
-
-	turns := oc.drainStreamTurns()
-	if len(turns) != 1 {
-		t.Fatalf("expected exactly 1 active turn, got %d", len(turns))
-	}
-	if turns[0] != active {
-		t.Fatal("expected returned turn pointer to match active state")
-	}
-	if len(oc.streamStates) != 0 {
-		t.Fatalf("expected stream state map to be reset, got %d entries", len(oc.streamStates))
+	oc.streamHost.DrainAndAbort("disconnect")
+	if oc.streamHost.IsActive("turn-a") || oc.streamHost.IsActive("turn-b") {
+		t.Fatal("expected stream state map to be cleared after drain")
 	}
 }

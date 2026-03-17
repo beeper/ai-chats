@@ -117,23 +117,9 @@ func (s *StreamSession) Start(ctx context.Context, targetEventID id.EventID) err
 	if err != nil {
 		return err
 	}
-	alreadyStarted, pendingCount, err := s.tryStart(ctx, transport, roomID, targetEventID, descriptor)
+	_, _, err = s.tryStart(ctx, transport, roomID, targetEventID, descriptor)
 	if err != nil {
 		return err
-	}
-	if alreadyStarted {
-		s.logDebug("stream_already_started", nil,
-			"room_id", roomID.String(),
-			"event_id", targetEventID.String(),
-			"pending_count", pendingCount,
-		)
-	} else {
-		s.logDebug("stream_started", nil,
-			"room_id", roomID.String(),
-			"event_id", targetEventID.String(),
-			"pending_count", pendingCount,
-			"stream_type", s.streamType(),
-		)
 	}
 	return s.FlushPending(ctx)
 }
@@ -186,11 +172,7 @@ func (s *StreamSession) End(ctx context.Context, _ EndReason) {
 	s.streamMu.Lock()
 	targetEventID := s.targetEventID
 	started := s.streamStarted
-	hasPending := len(s.pendingParts) > 0
 	s.streamMu.Unlock()
-	if !started && hasPending {
-		s.logWarn("stream_target_never_resolved", nil)
-	}
 	if !started || targetEventID == "" {
 		return
 	}
@@ -217,10 +199,6 @@ func (s *StreamSession) EmitPart(ctx context.Context, part map[string]any) {
 
 	seq := s.params.NextSeq()
 	s.enqueuePendingPart(seq, part)
-	s.logDebug("stream_part_enqueued", nil,
-		"seq", seq,
-		"pending_count", s.pendingCount(),
-	)
 
 	targetEventID, err := s.currentTargetEventID(ctx)
 	if err != nil {
@@ -228,13 +206,10 @@ func (s *StreamSession) EmitPart(ctx context.Context, part map[string]any) {
 		return
 	}
 	if targetEventID == "" {
-		s.logDebug("stream_target_event_id_pending", nil,
-			"pending_count", s.pendingCount(),
-		)
 		return
 	}
 	if err = s.Start(ctx, targetEventID); err != nil {
-		s.logWarn("stream_start_failed", err)
+		s.logWarn("stream_start_failed", err, "event_id", targetEventID.String())
 	}
 }
 
@@ -248,31 +223,15 @@ func (s *StreamSession) FlushPending(ctx context.Context) error {
 	if err != nil || targetEventID == "" {
 		return err
 	}
-	roomID := s.roomID()
-	s.logDebug("stream_flush_begin", nil,
-		"room_id", roomID.String(),
-		"event_id", targetEventID.String(),
-		"pending_count", s.pendingCount(),
-	)
 	for {
 		pending, ok := s.dequeuePendingPart()
 		if !ok {
-			s.logDebug("stream_flush_complete", nil,
-				"room_id", roomID.String(),
-				"event_id", targetEventID.String(),
-			)
 			return nil
 		}
-		s.logDebug("stream_publish_pending_part", nil,
-			"room_id", roomID.String(),
-			"event_id", targetEventID.String(),
-			"seq", pending.seq,
-			"pending_count", s.pendingCount(),
-		)
 		err = s.publishPendingPart(ctx, targetEventID, pending)
 		if err != nil {
 			s.requeuePendingFront(pending)
-			s.logWarn("stream_publish_failed", err)
+			s.logWarn("stream_publish_failed", err, "event_id", targetEventID.String(), "seq", pending.seq)
 			return err
 		}
 	}
@@ -284,9 +243,6 @@ func (s *StreamSession) currentTargetEventID(ctx context.Context) (id.EventID, e
 	}
 	if s.params.GetTargetEventID != nil {
 		if eventID := s.params.GetTargetEventID(); eventID != "" {
-			s.logDebug("stream_target_event_id_immediate", nil,
-				"event_id", eventID.String(),
-			)
 			return eventID, nil
 		}
 	}
@@ -302,10 +258,6 @@ func (s *StreamSession) currentTargetEventID(ctx context.Context) (id.EventID, e
 	s.targetMu.Lock()
 	if resolved, ok := s.resolvedTargetIDs[target]; ok {
 		s.targetMu.Unlock()
-		s.logDebug("stream_target_event_id_cached", nil,
-			"event_id", resolved.String(),
-			"network_message_id", string(target.NetworkMessageID),
-		)
 		return resolved, nil
 	}
 	s.targetMu.Unlock()
@@ -320,10 +272,6 @@ func (s *StreamSession) currentTargetEventID(ctx context.Context) (id.EventID, e
 	s.targetMu.Lock()
 	s.resolvedTargetIDs[target] = resolved
 	s.targetMu.Unlock()
-	s.logDebug("stream_target_event_id_resolved", nil,
-		"event_id", resolved.String(),
-		"network_message_id", string(target.NetworkMessageID),
-	)
 	return resolved, nil
 }
 
@@ -409,7 +357,7 @@ func (s *StreamSession) publishPendingPart(ctx context.Context, targetEventID id
 	})
 }
 
-func (s *StreamSession) logWarn(reason string, err error) {
+func (s *StreamSession) logWarn(reason string, err error, kv ...any) {
 	if s == nil || s.params.Logger == nil {
 		return
 	}
@@ -417,16 +365,11 @@ func (s *StreamSession) logWarn(reason string, err error) {
 	if err != nil {
 		logEvt = logEvt.Err(err)
 	}
-	logEvt.Msg("Stream transport operation failed")
-}
-
-func (s *StreamSession) logDebug(reason string, err error, kv ...any) {
-	if s == nil || s.params.Logger == nil {
-		return
+	if turnID := strings.TrimSpace(s.params.TurnID); turnID != "" {
+		logEvt = logEvt.Str("turn_id", turnID)
 	}
-	logEvt := s.params.Logger.Debug().Str("reason", reason)
-	if err != nil {
-		logEvt = logEvt.Err(err)
+	if roomID := s.roomID(); roomID != "" {
+		logEvt = logEvt.Str("room_id", roomID.String())
 	}
 	for i := 0; i+1 < len(kv); i += 2 {
 		key, ok := kv[i].(string)
@@ -446,5 +389,5 @@ func (s *StreamSession) logDebug(reason string, err error, kv ...any) {
 			logEvt = logEvt.Interface(key, value)
 		}
 	}
-	logEvt.Msg("Stream transport diagnostic")
+	logEvt.Msg("Stream transport operation failed")
 }

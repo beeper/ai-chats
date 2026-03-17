@@ -49,22 +49,22 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 	agentID = stringutil.TrimDefault(agentID, "gateway")
 	sessionKey = strings.TrimSpace(sessionKey)
 
-	oc.StreamMu.Lock()
+	oc.streamHost.Lock()
 	state := oc.ensureStreamStateLocked(portal, turnID, agentID, sessionKey)
 	oc.applyStreamPartStateLocked(state, part)
 	turn := state.turn
 	needsTurn := turn == nil
-	oc.StreamMu.Unlock()
+	oc.streamHost.Unlock()
 
 	if needsTurn {
 		turn = oc.newSDKStreamTurn(ctx, portal, state)
-		oc.StreamMu.Lock()
+		oc.streamHost.Lock()
 		if state.turn == nil {
 			state.turn = turn
 		} else {
 			turn = state.turn
 		}
-		oc.StreamMu.Unlock()
+		oc.streamHost.Unlock()
 	}
 
 	if oc.IsStreamShuttingDown() {
@@ -101,12 +101,7 @@ func (oc *OpenClawClient) newSDKStreamTurn(ctx context.Context, portal *bridgev2
 			state.stream.SetCompletedAtMs(time.Now().UnixMilli())
 		}
 		meta := oc.buildStreamDBMetadata(state)
-		// Clean up the stream state entry now that the turn is finalized.
-		oc.StreamMu.Lock()
-		if oc.streamStates[state.turnID] == state {
-			delete(oc.streamStates, state.turnID)
-		}
-		oc.StreamMu.Unlock()
+		oc.streamHost.DeleteIfMatch(state.turnID, state)
 		return meta
 	}))
 	return turn
@@ -119,12 +114,12 @@ func (oc *OpenClawClient) computeVisibleDelta(turnID, text string) string {
 		return text
 	}
 
-	oc.StreamMu.Lock()
-	defer oc.StreamMu.Unlock()
-	state := oc.streamStates[turnID]
+	oc.streamHost.Lock()
+	defer oc.streamHost.Unlock()
+	state := oc.streamHost.GetLocked(turnID)
 	if state == nil {
 		state = &openClawStreamState{turnID: turnID}
-		oc.streamStates[turnID] = state
+		oc.streamHost.SetLocked(turnID, state)
 	}
 	if text == state.stream.LastVisibleText() {
 		return ""
@@ -145,14 +140,11 @@ func (oc *OpenClawClient) isStreamActive(turnID string) bool {
 	if turnID == "" {
 		return false
 	}
-	oc.StreamMu.Lock()
-	defer oc.StreamMu.Unlock()
-	_, ok := oc.streamStates[turnID]
-	return ok
+	return oc.streamHost.IsActive(turnID)
 }
 
 func (oc *OpenClawClient) ensureStreamStateLocked(portal *bridgev2.Portal, turnID, agentID, sessionKey string) *openClawStreamState {
-	state := oc.streamStates[turnID]
+	state := oc.streamHost.GetLocked(turnID)
 	if state == nil {
 		state = &openClawStreamState{
 			portal:     portal,
@@ -161,7 +153,7 @@ func (oc *OpenClawClient) ensureStreamStateLocked(portal *bridgev2.Portal, turnI
 			sessionKey: sessionKey,
 			role:       "assistant",
 		}
-		oc.streamStates[turnID] = state
+		oc.streamHost.SetLocked(turnID, state)
 	}
 	if state.portal == nil {
 		state.portal = portal
