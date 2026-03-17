@@ -2,6 +2,7 @@ package turns
 
 import (
 	"context"
+	"maps"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -51,10 +52,16 @@ type StreamSession struct {
 	streamMu      sync.Mutex
 	streamStarted bool
 	targetEventID id.EventID
+	pendingParts  []pendingStreamPart
 
 	descriptorOnce sync.Once
 	descriptor     *event.BeeperStreamInfo
 	descriptorErr  error
+}
+
+type pendingStreamPart struct {
+	seq  int
+	part map[string]any
 }
 
 func NewStreamSession(params StreamSessionParams) *StreamSession {
@@ -108,9 +115,15 @@ func (s *StreamSession) Start(ctx context.Context, targetEventID id.EventID) err
 		return err
 	}
 	s.streamMu.Lock()
-	defer s.streamMu.Unlock()
+	pendingCount := len(s.pendingParts)
 	if s.streamStarted && s.targetEventID == targetEventID {
-		return nil
+		s.streamMu.Unlock()
+		s.logDebug("stream_already_started", nil,
+			"room_id", s.roomID().String(),
+			"event_id", targetEventID.String(),
+			"pending_count", pendingCount,
+		)
+		return s.FlushPending(ctx)
 	}
 	err = transport.Start(ctx, &bridgev2.StartStreamRequest{
 		RoomID:     roomID,
@@ -119,11 +132,33 @@ func (s *StreamSession) Start(ctx context.Context, targetEventID id.EventID) err
 		Descriptor: descriptor,
 	})
 	if err != nil {
+		s.streamMu.Unlock()
 		return err
 	}
 	s.streamStarted = true
 	s.targetEventID = targetEventID
-	return nil
+	s.streamMu.Unlock()
+	s.logDebug("stream_started", nil,
+		"room_id", roomID.String(),
+		"event_id", targetEventID.String(),
+		"pending_count", pendingCount,
+		"stream_type", s.streamType(),
+	)
+	return s.FlushPending(ctx)
+}
+
+func (s *StreamSession) EnsureStarted(ctx context.Context) (bool, error) {
+	if s == nil || s.IsClosed() {
+		return false, context.Canceled
+	}
+	targetEventID, err := s.currentTargetEventID(ctx)
+	if err != nil {
+		return false, err
+	}
+	if targetEventID == "" {
+		return false, nil
+	}
+	return true, s.Start(ctx, targetEventID)
 }
 
 func (s *StreamSession) End(ctx context.Context, _ EndReason) {
@@ -139,7 +174,11 @@ func (s *StreamSession) End(ctx context.Context, _ EndReason) {
 	s.streamMu.Lock()
 	targetEventID := s.targetEventID
 	started := s.streamStarted
+	hasPending := len(s.pendingParts) > 0
 	s.streamMu.Unlock()
+	if !started && hasPending {
+		s.logWarn("stream_target_never_resolved", nil)
+	}
 	if !started || targetEventID == "" {
 		return
 	}
@@ -164,44 +203,63 @@ func (s *StreamSession) EmitPart(ctx context.Context, part map[string]any) {
 		return
 	}
 
+	seq := s.params.NextSeq()
+	s.enqueuePendingPart(seq, part)
+	s.logDebug("stream_part_enqueued", nil,
+		"seq", seq,
+		"pending_count", s.pendingCount(),
+	)
+
 	targetEventID, err := s.currentTargetEventID(ctx)
-	if err != nil || targetEventID == "" {
-		s.logWarn("missing_target_event_id", err)
+	if err != nil {
+		s.logWarn("resolve_target_event_id_failed", err)
+		return
+	}
+	if targetEventID == "" {
+		s.logDebug("stream_target_event_id_pending", nil,
+			"pending_count", s.pendingCount(),
+		)
 		return
 	}
 	if err = s.Start(ctx, targetEventID); err != nil {
 		s.logWarn("stream_start_failed", err)
-		return
 	}
+}
 
-	seq := s.params.NextSeq()
-	delta, err := matrixevents.BuildStreamEventEnvelope(strings.TrimSpace(s.params.TurnID), seq, part, matrixevents.StreamEventOpts{
-		RelatesToEventID: string(targetEventID),
-		AgentID:          strings.TrimSpace(s.params.AgentID),
-	})
-	if err != nil {
-		s.logWarn("build_stream_event_failed", err)
-		return
+func (s *StreamSession) FlushPending(ctx context.Context) error {
+	if s == nil || s.IsClosed() {
+		return context.Canceled
 	}
-	content := map[string]any{
-		"com.beeper.llm.deltas": []map[string]any{delta},
+	targetEventID, err := s.currentTargetEventID(ctx)
+	if err != nil || targetEventID == "" {
+		return err
 	}
-	txnID := matrixevents.BuildStreamEventTxnID(s.params.TurnID, seq)
-	if s.params.SendHook != nil && s.params.SendHook(s.params.TurnID, seq, content, txnID) {
-		return
-	}
-	transport, ok := s.params.GetStreamTransport(ctx)
-	if !ok || transport == nil {
-		s.logWarn("missing_stream_transport", nil)
-		return
-	}
-	err = transport.Publish(ctx, &bridgev2.PublishStreamRequest{
-		RoomID:  s.roomID(),
-		EventID: targetEventID,
-		Content: content,
-	})
-	if err != nil {
-		s.logWarn("stream_publish_failed", err)
+	s.logDebug("stream_flush_begin", nil,
+		"room_id", s.roomID().String(),
+		"event_id", targetEventID.String(),
+		"pending_count", s.pendingCount(),
+	)
+	for {
+		pending, ok := s.dequeuePendingPart()
+		if !ok {
+			s.logDebug("stream_flush_complete", nil,
+				"room_id", s.roomID().String(),
+				"event_id", targetEventID.String(),
+			)
+			return nil
+		}
+		s.logDebug("stream_publish_pending_part", nil,
+			"room_id", s.roomID().String(),
+			"event_id", targetEventID.String(),
+			"seq", pending.seq,
+			"pending_count", s.pendingCount(),
+		)
+		err = s.publishPendingPart(ctx, targetEventID, pending)
+		if err != nil {
+			s.requeuePendingFront(pending)
+			s.logWarn("stream_publish_failed", err)
+			return err
+		}
 	}
 }
 
@@ -211,6 +269,9 @@ func (s *StreamSession) currentTargetEventID(ctx context.Context) (id.EventID, e
 	}
 	if s.params.GetTargetEventID != nil {
 		if eventID := s.params.GetTargetEventID(); eventID != "" {
+			s.logDebug("stream_target_event_id_immediate", nil,
+				"event_id", eventID.String(),
+			)
 			return eventID, nil
 		}
 	}
@@ -226,6 +287,10 @@ func (s *StreamSession) currentTargetEventID(ctx context.Context) (id.EventID, e
 	s.targetMu.Lock()
 	if resolved, ok := s.resolvedTargetIDs[target]; ok {
 		s.targetMu.Unlock()
+		s.logDebug("stream_target_event_id_cached", nil,
+			"event_id", resolved.String(),
+			"network_message_id", string(target.NetworkMessageID),
+		)
 		return resolved, nil
 	}
 	s.targetMu.Unlock()
@@ -240,6 +305,10 @@ func (s *StreamSession) currentTargetEventID(ctx context.Context) (id.EventID, e
 	s.targetMu.Lock()
 	s.resolvedTargetIDs[target] = resolved
 	s.targetMu.Unlock()
+	s.logDebug("stream_target_event_id_resolved", nil,
+		"event_id", resolved.String(),
+		"network_message_id", string(target.NetworkMessageID),
+	)
 	return resolved, nil
 }
 
@@ -261,6 +330,70 @@ func (s *StreamSession) streamType() string {
 	return streamType
 }
 
+func (s *StreamSession) enqueuePendingPart(seq int, part map[string]any) {
+	if s == nil || seq <= 0 || part == nil {
+		return
+	}
+	s.streamMu.Lock()
+	defer s.streamMu.Unlock()
+	s.pendingParts = append(s.pendingParts, pendingStreamPart{
+		seq:  seq,
+		part: maps.Clone(part),
+	})
+}
+
+func (s *StreamSession) dequeuePendingPart() (pendingStreamPart, bool) {
+	s.streamMu.Lock()
+	defer s.streamMu.Unlock()
+	if len(s.pendingParts) == 0 {
+		return pendingStreamPart{}, false
+	}
+	pending := s.pendingParts[0]
+	s.pendingParts = s.pendingParts[1:]
+	return pending, true
+}
+
+func (s *StreamSession) requeuePendingFront(pending pendingStreamPart) {
+	s.streamMu.Lock()
+	defer s.streamMu.Unlock()
+	s.pendingParts = append([]pendingStreamPart{pending}, s.pendingParts...)
+}
+
+func (s *StreamSession) pendingCount() int {
+	if s == nil {
+		return 0
+	}
+	s.streamMu.Lock()
+	defer s.streamMu.Unlock()
+	return len(s.pendingParts)
+}
+
+func (s *StreamSession) publishPendingPart(ctx context.Context, targetEventID id.EventID, pending pendingStreamPart) error {
+	delta, err := matrixevents.BuildStreamEventEnvelope(strings.TrimSpace(s.params.TurnID), pending.seq, pending.part, matrixevents.StreamEventOpts{
+		RelatesToEventID: string(targetEventID),
+		AgentID:          strings.TrimSpace(s.params.AgentID),
+	})
+	if err != nil {
+		return err
+	}
+	content := map[string]any{
+		"com.beeper.llm.deltas": []map[string]any{delta},
+	}
+	txnID := matrixevents.BuildStreamEventTxnID(s.params.TurnID, pending.seq)
+	if s.params.SendHook != nil && s.params.SendHook(s.params.TurnID, pending.seq, content, txnID) {
+		return nil
+	}
+	transport, ok := s.params.GetStreamTransport(ctx)
+	if !ok || transport == nil {
+		return context.Canceled
+	}
+	return transport.Publish(ctx, &bridgev2.PublishStreamRequest{
+		RoomID:  s.roomID(),
+		EventID: targetEventID,
+		Content: content,
+	})
+}
+
 func (s *StreamSession) logWarn(reason string, err error) {
 	if s == nil || s.params.Logger == nil {
 		return
@@ -270,4 +403,33 @@ func (s *StreamSession) logWarn(reason string, err error) {
 		logEvt = logEvt.Err(err)
 	}
 	logEvt.Msg("Stream transport operation failed")
+}
+
+func (s *StreamSession) logDebug(reason string, err error, kv ...any) {
+	if s == nil || s.params.Logger == nil {
+		return
+	}
+	logEvt := s.params.Logger.Debug().Str("reason", reason)
+	if err != nil {
+		logEvt = logEvt.Err(err)
+	}
+	for i := 0; i+1 < len(kv); i += 2 {
+		key, ok := kv[i].(string)
+		if !ok || key == "" {
+			continue
+		}
+		switch value := kv[i+1].(type) {
+		case string:
+			logEvt = logEvt.Str(key, value)
+		case int:
+			logEvt = logEvt.Int(key, value)
+		case int64:
+			logEvt = logEvt.Int64(key, value)
+		case bool:
+			logEvt = logEvt.Bool(key, value)
+		default:
+			logEvt = logEvt.Interface(key, value)
+		}
+	}
+	logEvt.Msg("Stream transport diagnostic")
 }

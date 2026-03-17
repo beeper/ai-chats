@@ -123,6 +123,7 @@ type Turn struct {
 	networkMessageID networkid.MessageID
 	initialEventID   id.EventID
 	sessionOnce      sync.Once
+	streamStartOnce  sync.Once
 
 	visibleText strings.Builder
 	metadata    map[string]any
@@ -164,10 +165,11 @@ func newTurn(ctx context.Context, conv *Conversation, agent *Agent, source *Sour
 	t.emitter = &streamui.Emitter{
 		State: state,
 		Emit: func(callCtx context.Context, portal *bridgev2.Portal, part map[string]any) {
-			streamui.ApplyChunk(t.state, part)
-			if t.session != nil {
-				t.session.EmitPart(callCtx, part)
-			}
+			t.emitPart(callCtx, portal, part, func() {
+				if t.session != nil {
+					t.session.EmitPart(callCtx, part)
+				}
+			})
 		},
 	}
 	return t
@@ -224,6 +226,16 @@ func (t *Turn) buildPlaceholderMessage() *bridgev2.ConvertedMessage {
 	}
 	if _, ok := extra["m.mentions"]; !ok {
 		extra["m.mentions"] = map[string]any{}
+	}
+	if _, ok := extra[matrixevents.BeeperAIKey]; !ok {
+		extra[matrixevents.BeeperAIKey] = map[string]any{
+			"id":   t.turnID,
+			"role": "assistant",
+			"metadata": map[string]any{
+				"turn_id": t.turnID,
+			},
+			"parts": []any{},
+		}
 	}
 	if t.session != nil {
 		if descriptor, err := t.session.Descriptor(t.turnCtx); err == nil && descriptor != nil {
@@ -361,11 +373,17 @@ func (t *Turn) ensureStarted() {
 			if err == nil {
 				t.initialEventID = evtID
 				t.networkMessageID = msgID
-				if t.session != nil {
+				t.logStreamDebug("placeholder_sent",
+					"event_id", evtID.String(),
+					"network_message_id", string(msgID),
+					"room_id", t.roomID().String(),
+				)
+				if evtID != "" && t.session != nil {
 					if streamErr := t.session.Start(t.turnCtx, evtID); streamErr != nil && t.startErr == nil {
 						t.startErr = streamErr
 					}
 				}
+				t.ensureStreamStartedAsync()
 			} else if t.startErr == nil {
 				t.startErr = err
 			}
@@ -385,11 +403,17 @@ func (t *Turn) ensureStarted() {
 			if err == nil {
 				t.initialEventID = evtID
 				t.networkMessageID = msgID
-				if t.session != nil {
+				t.logStreamDebug("placeholder_sent",
+					"event_id", evtID.String(),
+					"network_message_id", string(msgID),
+					"room_id", t.roomID().String(),
+				)
+				if evtID != "" && t.session != nil {
 					if streamErr := t.session.Start(t.turnCtx, evtID); streamErr != nil && t.startErr == nil {
 						t.startErr = streamErr
 					}
 				}
+				t.ensureStreamStartedAsync()
 			} else if t.startErr == nil {
 				t.startErr = err
 			}
@@ -512,8 +536,9 @@ func (t *Turn) SetStreamTransport(fn func(ctx context.Context, portal *bridgev2.
 		return
 	}
 	t.emitter.Emit = func(callCtx context.Context, portal *bridgev2.Portal, part map[string]any) {
-		streamui.ApplyChunk(t.state, part)
-		fn(callCtx, portal, part)
+		t.emitPart(callCtx, portal, part, func() {
+			fn(callCtx, portal, part)
+		})
 	}
 }
 
@@ -667,6 +692,7 @@ func (t *Turn) End(finishReason string) {
 	}
 	t.ended = true
 	t.Writer().Finish(t.turnCtx, finishReason, t.metadata)
+	t.flushPendingStream()
 	t.sendFinalEdit()
 	if t.session != nil {
 		t.session.End(t.turnCtx, turns.EndReasonFinish)
@@ -690,6 +716,7 @@ func (t *Turn) EndWithError(errText string) {
 	t.Writer().Error(t.turnCtx, errText)
 	t.SendStatus(event.MessageStatusFail, errText)
 	t.Writer().Finish(t.turnCtx, "error", t.metadata)
+	t.flushPendingStream()
 	t.sendFinalEdit()
 	if t.session != nil {
 		t.session.End(t.turnCtx, turns.EndReasonError)
@@ -710,6 +737,7 @@ func (t *Turn) Abort(reason string) {
 		return
 	}
 	t.Writer().Abort(t.turnCtx, reason)
+	t.flushPendingStream()
 	t.sendFinalEdit()
 	if t.session != nil {
 		t.session.End(t.turnCtx, turns.EndReasonDisconnect)
@@ -767,4 +795,114 @@ func (t *Turn) StreamDescriptor(ctx context.Context) (*event.BeeperStreamInfo, e
 // Err returns any startup error encountered by the turn transport.
 func (t *Turn) Err() error {
 	return t.startErr
+}
+
+func (t *Turn) emitPart(callCtx context.Context, _ *bridgev2.Portal, part map[string]any, deliver func()) {
+	if part == nil {
+		return
+	}
+	t.logStreamDebug("emit_part_begin",
+		"room_id", t.roomID().String(),
+		"event_id", t.initialEventID.String(),
+		"network_message_id", string(t.networkMessageID),
+		"part_keys", mapKeys(part),
+	)
+	t.ensureStarted()
+	streamui.ApplyChunk(t.state, part)
+	if deliver != nil {
+		deliver()
+	}
+}
+
+func (t *Turn) roomID() id.RoomID {
+	if t == nil || t.conv == nil || t.conv.portal == nil {
+		return ""
+	}
+	return t.conv.portal.MXID
+}
+
+func (t *Turn) logStreamDebug(reason string, kv ...any) {
+	if t == nil || t.conv == nil || t.conv.login == nil {
+		return
+	}
+	logEvt := t.conv.login.Log.Debug().Str("component", "sdk_turn").Str("reason", reason)
+	for i := 0; i+1 < len(kv); i += 2 {
+		key, ok := kv[i].(string)
+		if !ok || key == "" {
+			continue
+		}
+		switch value := kv[i+1].(type) {
+		case string:
+			logEvt = logEvt.Str(key, value)
+		case []string:
+			logEvt = logEvt.Strs(key, value)
+		case int:
+			logEvt = logEvt.Int(key, value)
+		default:
+			logEvt = logEvt.Interface(key, value)
+		}
+	}
+	logEvt.Msg("SDK turn diagnostic")
+}
+
+func mapKeys(input map[string]any) []string {
+	if len(input) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(input))
+	for key := range input {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+func (t *Turn) ensureStreamStartedAsync() {
+	if t == nil || t.session == nil {
+		return
+	}
+	t.streamStartOnce.Do(func() {
+		go t.awaitStreamStart()
+	})
+}
+
+func (t *Turn) awaitStreamStart() {
+	if t == nil || t.session == nil {
+		return
+	}
+	ticker := time.NewTicker(15 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		started, err := t.session.EnsureStarted(t.turnCtx)
+		if err == nil && started {
+			t.logStreamDebug("placeholder_stream_ready",
+				"event_id", t.InitialEventID().String(),
+				"network_message_id", string(t.NetworkMessageID()),
+				"room_id", t.roomID().String(),
+			)
+			return
+		}
+		if err != nil && err != context.Canceled {
+			t.logStreamDebug("placeholder_stream_start_retry_failed",
+				"error", err.Error(),
+				"event_id", t.InitialEventID().String(),
+				"network_message_id", string(t.NetworkMessageID()),
+				"room_id", t.roomID().String(),
+			)
+		}
+		select {
+		case <-t.turnCtx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func (t *Turn) flushPendingStream() {
+	if t == nil || t.session == nil {
+		return
+	}
+	if err := t.session.FlushPending(t.turnCtx); err != nil && t.startErr == nil {
+		t.startErr = err
+	}
 }

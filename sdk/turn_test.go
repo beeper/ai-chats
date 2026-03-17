@@ -2,16 +2,44 @@ package sdk
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/agentremote/turns"
 )
+
+type testStreamTransport struct {
+	descriptor   *event.BeeperStreamInfo
+	startedRoom  id.RoomID
+	startedEvent id.EventID
+}
+
+func (tst *testStreamTransport) BuildDescriptor(context.Context, *bridgev2.StreamDescriptorRequest) (*event.BeeperStreamInfo, error) {
+	return tst.descriptor, nil
+}
+
+func (tst *testStreamTransport) Start(_ context.Context, req *bridgev2.StartStreamRequest) error {
+	tst.startedRoom = req.RoomID
+	tst.startedEvent = req.EventID
+	return nil
+}
+
+func (tst *testStreamTransport) Publish(context.Context, *bridgev2.PublishStreamRequest) error {
+	return nil
+}
+
+func (tst *testStreamTransport) Finish(context.Context, *bridgev2.FinishStreamRequest) error {
+	return nil
+}
 
 func TestTurnBuildRelatesToDefaultsToSourceEvent(t *testing.T) {
 	turn := newTurn(context.Background(), nil, nil, UserMessageSource("$source"))
@@ -251,6 +279,89 @@ func TestTurnBuildPlaceholderMessageUsesConfiguredPayload(t *testing.T) {
 	}
 }
 
+func TestTurnBuildPlaceholderMessageSeedsAIContentByDefault(t *testing.T) {
+	turn := newTurn(context.Background(), nil, nil, nil)
+	turn.SetPlaceholderMessagePayload(&PlaceholderMessagePayload{
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgText,
+			Body:    "Pondering...",
+		},
+		Extra: map[string]any{
+			"body": "Pondering...",
+		},
+	})
+
+	msg := turn.buildPlaceholderMessage()
+	if msg == nil || len(msg.Parts) != 1 {
+		t.Fatalf("expected single placeholder part, got %#v", msg)
+	}
+	part := msg.Parts[0]
+	rawAI, ok := part.Extra[matrixevents.BeeperAIKey].(map[string]any)
+	if !ok {
+		t.Fatalf("expected %s payload map, got %#v", matrixevents.BeeperAIKey, part.Extra[matrixevents.BeeperAIKey])
+	}
+	if rawAI["id"] != turn.ID() {
+		t.Fatalf("expected ai id %q, got %#v", turn.ID(), rawAI["id"])
+	}
+	if rawAI["role"] != "assistant" {
+		t.Fatalf("expected assistant role, got %#v", rawAI["role"])
+	}
+	metadata, ok := rawAI["metadata"].(map[string]any)
+	if !ok || metadata["turn_id"] != turn.ID() {
+		t.Fatalf("expected turn metadata, got %#v", rawAI["metadata"])
+	}
+	parts, ok := rawAI["parts"].([]any)
+	if !ok || len(parts) != 0 {
+		t.Fatalf("expected empty parts array, got %#v", rawAI["parts"])
+	}
+}
+
+func TestTurnEnsureStreamStartedAsyncStartsAfterTargetResolution(t *testing.T) {
+	turn := newTurn(context.Background(), nil, nil, nil)
+	turn.networkMessageID = "msg-async"
+
+	transport := &testStreamTransport{descriptor: &event.BeeperStreamInfo{Type: "com.beeper.llm"}}
+	var resolved atomic.Bool
+
+	turn.session = turns.NewStreamSession(turns.StreamSessionParams{
+		TurnID: "turn-async",
+		GetStreamTarget: func() turns.StreamTarget {
+			return turns.StreamTarget{NetworkMessageID: turn.networkMessageID}
+		},
+		ResolveTargetEventID: func(context.Context, turns.StreamTarget) (id.EventID, error) {
+			if !resolved.Load() {
+				return "", nil
+			}
+			return id.EventID("$event-async"), nil
+		},
+		GetRoomID: func() id.RoomID {
+			return id.RoomID("!room:test")
+		},
+		GetTargetEventID: func() id.EventID { return turn.initialEventID },
+		GetStreamTransport: func(context.Context) (bridgev2.StreamTransport, bool) {
+			return transport, true
+		},
+		NextSeq: func() int { return 1 },
+	})
+
+	turn.ensureStreamStartedAsync()
+	time.Sleep(25 * time.Millisecond)
+	if transport.startedEvent != "" {
+		t.Fatalf("expected stream not to start before target resolution, got %s", transport.startedEvent)
+	}
+
+	resolved.Store(true)
+
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if transport.startedEvent == id.EventID("$event-async") {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("expected async stream start for resolved target, got %s", transport.startedEvent)
+}
+
 func TestTurnBuildFinalEditAddsReplaceRelation(t *testing.T) {
 	turn := newTurn(context.Background(), nil, nil, nil)
 	turn.initialEventID = id.EventID("$event-1")
@@ -329,5 +440,30 @@ func TestTurnSourceRefCarriesSenderID(t *testing.T) {
 	}
 	if turn.Source().EventID != "$evt1" {
 		t.Fatalf("expected event id, got %q", turn.Source().EventID)
+	}
+}
+
+func TestTurnWriterStartTriggersLazyPlaceholderSend(t *testing.T) {
+	turn := newTurn(context.Background(), nil, nil, nil)
+
+	sendCalls := 0
+	turn.SetSendFunc(func(context.Context) (id.EventID, networkid.MessageID, error) {
+		sendCalls++
+		return "", networkid.MessageID("msg-1"), nil
+	})
+
+	turn.Writer().Start(turn.Context(), map[string]any{"turnId": turn.ID()})
+
+	if sendCalls != 1 {
+		t.Fatalf("expected placeholder send to happen once, got %d", sendCalls)
+	}
+	if !turn.started {
+		t.Fatal("expected turn to be marked started after Writer().Start()")
+	}
+	if !turn.UIState().UIStarted {
+		t.Fatal("expected UI start marker to be applied")
+	}
+	if turn.NetworkMessageID() != networkid.MessageID("msg-1") {
+		t.Fatalf("expected placeholder network message id to be stored, got %q", turn.NetworkMessageID())
 	}
 }
