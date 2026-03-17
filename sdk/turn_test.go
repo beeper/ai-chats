@@ -7,6 +7,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote"
@@ -214,6 +215,77 @@ func TestTurnStreamSetTransportReceivesEvents(t *testing.T) {
 	}
 	if gotContent["delta"] != "hello" {
 		t.Fatalf("expected text delta payload, got %#v", gotContent)
+	}
+}
+
+func TestTurnBuildPlaceholderMessageUsesConfiguredPayload(t *testing.T) {
+	turn := newTurn(context.Background(), nil, nil, nil)
+	turn.SetPlaceholderMessagePayload(&PlaceholderMessagePayload{
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgText,
+			Body:    "Pondering...",
+		},
+		Extra: map[string]any{
+			"body":          "Pondering...",
+			"com.beeper.ai": map[string]any{"id": turn.ID()},
+		},
+		DBMetadata: map[string]any{"custom": true},
+	})
+
+	msg := turn.buildPlaceholderMessage()
+	if msg == nil || len(msg.Parts) != 1 {
+		t.Fatalf("expected single placeholder part, got %#v", msg)
+	}
+	part := msg.Parts[0]
+	if part.Content.Body != "Pondering..." {
+		t.Fatalf("expected placeholder body override, got %#v", part.Content.Body)
+	}
+	if got := part.Extra["body"]; got != "Pondering..." {
+		t.Fatalf("expected placeholder extra body, got %#v", got)
+	}
+	if part.DBMetadata == nil {
+		t.Fatalf("expected placeholder DB metadata")
+	}
+	if _, ok := part.Extra["m.mentions"]; !ok {
+		t.Fatalf("expected m.mentions default to be preserved")
+	}
+}
+
+func TestTurnBuildFinalEditAddsReplaceRelation(t *testing.T) {
+	turn := newTurn(context.Background(), nil, nil, nil)
+	turn.initialEventID = id.EventID("$event-1")
+	turn.networkMessageID = "msg-1"
+	turn.SetFinalEditPayload(&FinalEditPayload{
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgText,
+			Body:    "done",
+		},
+		TopLevelExtra: map[string]any{
+			"com.beeper.ai": map[string]any{"id": turn.ID()},
+		},
+		ReplyTo: id.EventID("$reply-1"),
+	})
+
+	target, edit := turn.buildFinalEdit()
+	if target != "msg-1" {
+		t.Fatalf("expected network target msg-1, got %q", target)
+	}
+	if edit == nil || len(edit.ModifiedParts) != 1 {
+		t.Fatalf("expected single modified part, got %#v", edit)
+	}
+	gotRelatesTo, ok := edit.ModifiedParts[0].TopLevelExtra["m.relates_to"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected m.relates_to in top-level extra, got %#v", edit.ModifiedParts[0].TopLevelExtra)
+	}
+	if gotRelatesTo["rel_type"] != "m.replace" {
+		t.Fatalf("expected m.replace relation, got %#v", gotRelatesTo)
+	}
+	if gotRelatesTo["event_id"] != "$event-1" {
+		t.Fatalf("expected replace target event id, got %#v", gotRelatesTo)
+	}
+	inReply, ok := gotRelatesTo["m.in_reply_to"].(map[string]any)
+	if !ok || inReply["event_id"] != "$reply-1" {
+		t.Fatalf("expected reply override in relation, got %#v", gotRelatesTo)
 	}
 }
 

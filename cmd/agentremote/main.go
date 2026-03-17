@@ -864,18 +864,49 @@ func cmdInstances(args []string) error {
 	return nil
 }
 
+func printRunningInstances(profile string) error {
+	instances, err := listInstancesForProfile(profile)
+	if err != nil {
+		return err
+	}
+
+	found := false
+	fmt.Printf("Running bridges (profile: %s):\n", profile)
+	for _, inst := range instances {
+		sp, err := getInstancePaths(profile, inst)
+		if err != nil {
+			return err
+		}
+		running, pid := bridgeutil.ProcessAliveFromPIDFile(sp.PIDPath)
+		if !running {
+			continue
+		}
+		found = true
+		fmt.Printf("  %s: %s\n", inst, colorLocal(true, pid))
+		fmt.Printf("    config: %s\n", dim(sp.ConfigPath))
+	}
+	if !found {
+		fmt.Println("  none")
+	}
+	return nil
+}
+
 func cmdDelete(args []string) error {
 	fs := newFlagSet("delete")
 	profile := fs.String("profile", defaultProfile, "profile name")
-	remote := fs.Bool("remote", false, "also delete remote beeper bridge")
+	remote := fs.Bool("remote", false, "deprecated: remote deletion always happens")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	posArgs := fs.Args()
+	if len(posArgs) == 0 {
+		return printRunningInstances(*profile)
+	}
 	if len(posArgs) != 1 {
-		return fmt.Errorf("expected exactly one instance name argument")
+		return fmt.Errorf("expected at most one instance name argument")
 	}
 	instName := posArgs[0]
+	_ = *remote
 
 	sp, err := getInstancePaths(*profile, instName)
 	if err != nil {
@@ -885,12 +916,10 @@ func cmdDelete(args []string) error {
 	if _, err := bridgeutil.StopByPIDFile(sp.PIDPath); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: failed to stop: %v\n", err)
 	}
-	if *remote {
-		meta, readErr := cliutil.ReadMetadata(sp.MetaPath)
-		if readErr == nil {
-			if err := deleteRemoteBridge(*profile, meta.BeeperBridgeName); err != nil {
-				fmt.Fprintf(os.Stderr, "warning: failed to delete remote bridge: %v\n", err)
-			}
+	meta, readErr := cliutil.ReadMetadata(sp.MetaPath)
+	if readErr == nil {
+		if err := deleteRemoteBridge(*profile, meta.BeeperBridgeName); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to delete remote bridge: %v\n", err)
 		}
 	}
 	if err := os.RemoveAll(sp.Root); err != nil {

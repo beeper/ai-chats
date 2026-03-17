@@ -22,7 +22,6 @@ import (
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/cachedvalue"
-	"github.com/beeper/agentremote/pkg/shared/streamui"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	bridgesdk "github.com/beeper/agentremote/sdk"
 )
@@ -87,7 +86,6 @@ type openClawStreamState struct {
 	messageTS        time.Time
 	accumulated      strings.Builder
 	visible          strings.Builder
-	ui               streamui.UIState
 	lastVisibleText  string
 	role             string
 	runID            string

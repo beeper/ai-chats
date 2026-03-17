@@ -49,22 +49,22 @@ func (m *OpenCodeManager) emitTextStreamDeltaForKind(ctx context.Context, inst *
 		return
 	}
 	m.closeStepIfOpen(ctx, inst, portal, part.SessionID, part.MessageID)
-	m.ensureTurnStarted(ctx, inst, portal, part.SessionID, part.MessageID, nil)
 
 	started, _ := inst.partTextStreamFlags(part.SessionID, part.ID).forKind(kind)
-	streamState, writer := m.mustStreamWriter(ctx, portal, part.SessionID, part.MessageID)
-	if kind == "reasoning" {
-		writer.ReasoningDelta(ctx, delta)
-		streamState.accumulated.WriteString(delta)
-	} else {
-		writer.TextDelta(ctx, delta)
-		streamState.visible.WriteString(delta)
-		streamState.accumulated.WriteString(delta)
-	}
-	_ = partID
+	turnID := partTurnID(part)
+	agentID := m.bridge.portalAgentID(portal)
 	if !started {
+		m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
+			"type": kind + "-start",
+			"id":   partID,
+		})
 		inst.setPartTextStreamStarted(part.SessionID, part.ID, kind)
 	}
+	m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
+		"type":  kind + "-delta",
+		"id":    partID,
+		"delta": delta,
+	})
 	inst.appendPartTextContent(part.SessionID, part.ID, kind, delta)
 }
 
@@ -87,12 +87,9 @@ func (m *OpenCodeManager) emitTextStreamEnd(ctx context.Context, inst *openCodeI
 	if !started || ended {
 		return
 	}
-	_, writer := m.mustStreamWriter(ctx, portal, part.SessionID, part.MessageID)
-	if kind == "reasoning" {
-		writer.FinishReasoning(ctx)
-	} else {
-		writer.FinishText(ctx)
-	}
-	_ = partID
+	m.bridge.emitOpenCodeStreamEvent(ctx, portal, partTurnID(part), m.bridge.portalAgentID(portal), map[string]any{
+		"type": kind + "-end",
+		"id":   partID,
+	})
 	inst.setPartTextStreamEnded(part.SessionID, part.ID, kind)
 }

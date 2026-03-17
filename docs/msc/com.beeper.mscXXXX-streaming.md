@@ -1,148 +1,252 @@
-# MSC: AI Streaming Profile
+# MSC: Message-Anchored AI Streaming
 
 ## Summary
 
-This proposal defines an application-level streaming profile on top of [com.beeper.ephemeral](com.beeper.mscXXXX-ephemeral.md) for real-time AI output in Matrix rooms. It specifies an envelope convention for ordered, resumable streaming of AI assistant responses using ephemeral events.
+This proposal defines an application-level streaming profile for real-time AI output in Matrix rooms.
 
-The profile covers the transport envelope and delivery semantics. The authoritative chunk type catalog is maintained in the [AI Matrix Spec](../matrix-ai-matrix-spec-v1.md#streaming).
+Instead of broadcasting every token into room-scoped ephemeral events, the sender publishes a normal placeholder `m.room.message` that carries a `com.beeper.stream` descriptor. Clients that care about live progress subscribe to that descriptor over `to_device`, and the sender delivers buffered and incremental updates directly to those devices. The final assistant message still lands in the room timeline as a normal edit of the placeholder.
+
+The profile covers transport, subscription, completion, and optional custom encryption. The authoritative chunk catalog for `com.beeper.llm` remains in the [AI Matrix Spec](../matrix-ai-matrix-spec-v1.md#streaming).
 
 ## Motivation
 
-AI model responses are generated token-by-token and can take tens of seconds to complete. Without real-time streaming, users stare at a blank screen until the full response is ready — a poor experience that makes the assistant feel unresponsive.
+AI model responses are generated token-by-token and can take tens of seconds to complete. Users should see progress quickly, but room-wide streaming transport has a few practical problems:
 
-Streaming addresses this with three key benefits:
+- **Unnecessary fanout:** Most joined devices are not actively viewing the room.
+- **Server support burden:** Custom room-ephemeral support is not universally available.
+- **Per-room delivery overhead:** High-frequency token traffic does not need to be delivered to every client.
 
-- **Latency perception:** Users see output within milliseconds of generation starting, even when the full response takes 30+ seconds.
-- **Progressive rendering:** Clients can render text, reasoning traces, and tool calls incrementally as they arrive.
-- **Multi-step agent visibility:** When an AI assistant executes multiple tool calls in sequence, streaming lets users observe each step in real time rather than waiting for the entire chain to complete.
+Anchoring the stream in a timeline placeholder solves those problems:
 
-Matrix has no built-in mechanism for high-frequency, ordered, non-persisted event delivery within a room. This profile combines `com.beeper.ephemeral` transport with an application-level envelope to provide exactly that.
+- **Timeline-first UX:** Clients can render a room preview such as "Generating response..." from the placeholder alone.
+- **Opt-in live delivery:** Only actively viewing devices subscribe.
+- **Strong completion signal:** The final `m.replace` edit removes the stream descriptor, so even non-subscribed clients can tell the stream ended.
 
 ## Proposal
 
-### Event Type
+### Placeholder Descriptor
 
-```
-com.beeper.ai.stream_event
-```
-
-This event type is sent via the `com.beeper.ephemeral` transport endpoint.
-
-### Envelope Schema
+The sender starts by sending a placeholder `m.room.message` in the room timeline. The message includes a `com.beeper.stream` object:
 
 ```json
 {
-  "turn_id": "turn_123",
-  "seq": 7,
-  "part": {
-    "type": "text-delta",
-    "id": "text-turn_123",
-    "delta": "hello"
-  },
-  "target_event": "$initial_event",
-  "agent_id": "researcher",
-  "m.relates_to": {
-    "rel_type": "m.reference",
-    "event_id": "$initial_event"
+  "type": "m.room.message",
+  "room_id": "!meow",
+  "event_id": "$foobar",
+  "sender": "@ai_chatgpt:beeper.local",
+  "content": {
+    "msgtype": "m.text",
+    "body": "Pondering...",
+    "com.beeper.stream": {
+      "user_id": "@aibot:beeper.local",
+      "device_id": "ABCD1234",
+      "type": "com.beeper.llm",
+      "expiry": 1800000
+    }
   }
 }
 ```
 
-### Fields
+Fields:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `turn_id` | string | yes | Identifier for the conversation turn. All stream events for one assistant response share the same `turn_id`. |
-| `seq` | integer | yes | Monotonically increasing sequence number (starts at 1). Used for ordering and gap detection. |
-| `part` | object | yes | Streaming chunk object. Structure depends on the `type` field within. |
-| `target_event` | string | no | Event ID of the timeline message being streamed into. Set once the first timeline event is sent. |
-| `agent_id` | string | no | Identifier of the agent producing this stream (for multi-agent rooms). |
-| `m.relates_to` | object | no | Standard Matrix relation. When `target_event` is set, includes `rel_type: "m.reference"`. |
+| `user_id` | string | yes | Matrix user that accepts subscriptions and publishes updates. This may differ from the placeholder message sender when bridge bot/device identities differ. |
+| `device_id` | string | yes | Device that accepts subscriptions and sends updates. |
+| `type` | string | yes | Stream payload family. This proposal currently defines `com.beeper.llm`. |
+| `expiry` | integer | no | Maximum age in milliseconds for treating the descriptor as live. Clients SHOULD ignore stale descriptors after this window. |
+| `encryption` | object | no | Optional custom symmetric encryption parameters. See [Custom encryption](#custom-encryption). |
 
-### Part Types
+If a message containing `com.beeper.stream` is the latest relevant event in a room, clients MAY show a room-list or timeline preview such as "Generating response...".
 
-The `part` field carries a streaming chunk. The complete list of supported chunk types is maintained in the [AI Matrix Spec](../matrix-ai-matrix-spec-v1.md#streaming). Key categories:
+### Subscription Request
 
-| Category | Chunk types |
-|----------|-------------|
-| Lifecycle | `start`, `start-step`, `finish-step`, `message-metadata`, `finish`, `abort`, `error` |
-| Text | `text-start`, `text-delta`, `text-end` |
-| Reasoning | `reasoning-start`, `reasoning-delta`, `reasoning-end` |
-| Tool input | `tool-input-start`, `tool-input-delta`, `tool-input-available`, `tool-input-error` |
-| Tool output | `tool-approval-request`, `tool-output-available`, `tool-output-error`, `tool-output-denied` |
-| Sources | `source-url`, `source-document`, `file` |
-| Bridge-specific | `data-tool-progress`, `data-tool-call-event`, `data-image_generation_partial`, `data-annotation` |
+When a client opens the room and sees an unexpired stream descriptor, it subscribes with a `to_device` event:
 
-Consumers MUST accept all valid chunk types and MUST ignore unknown future types.
-
-### Transaction ID Convention
-
-Stream events MUST use the following transaction ID format:
-
-```
-ai_stream_{turn_id}_{seq}
+```json
+{
+  "type": "com.beeper.stream.subscribe",
+  "sender": "@you:beeper.com",
+  "to_user_id": "@aibot:beeper.local",
+  "to_device_id": "ABCD1234",
+  "content": {
+    "room_id": "!meow",
+    "event_id": "$foobar",
+    "device_id": "4321EFGH",
+    "expiry": 300000
+  }
+}
 ```
 
-This ensures idempotent delivery via the `com.beeper.ephemeral` deduplication mechanism (composite key on `room_id`, `sender`, `event_type`, `txn_id`).
+Fields:
 
-### E2EE
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `room_id` | string | yes | Room containing the placeholder message. |
+| `event_id` | string | yes | Placeholder event ID being subscribed to. |
+| `device_id` | string | yes | Subscriber device that should receive updates. |
+| `expiry` | integer | no | Requested subscription lifetime in milliseconds. Clients SHOULD renew before expiry if still viewing the stream. |
 
-Inherited from the transport layer. When the room is encrypted, clients MUST encrypt stream event content using the room's Megolm session per [MSC3673]. Receiving clients decrypt using shared room keys.
+The sender SHOULD verify that the subscription targets a live placeholder message it controls and SHOULD clamp the granted expiry to a sender-defined maximum.
 
-### Fallback: Debounced Timeline Edits
+### Stream Update Delivery
 
-When ephemeral delivery is unavailable (server returns `404`, `405`, `501`, or `M_UNRECOGNIZED`), the sender SHOULD fall back to debounced `m.replace` edits on the timeline message. The sender SHOULD auto-detect this on first failure and switch to timeline edits for the remainder of the turn.
+After receiving a valid subscription, the sender sends a buffered snapshot of stream state so far to the subscribing device, then continues sending incremental updates while the subscription is active:
+
+```json
+{
+  "type": "com.beeper.stream.update",
+  "sender": "@aibot:beeper.local",
+  "to_user_id": "@you:beeper.com",
+  "to_device_id": "4321EFGH",
+  "content": {
+    "room_id": "!meow",
+    "event_id": "$foobar",
+    "com.beeper.llm.deltas": [
+      {
+        "turn_id": "turn_123",
+        "seq": 7,
+        "part": {
+          "type": "text-delta",
+          "id": "text-turn_123",
+          "delta": "hello"
+        },
+        "m.relates_to": {
+          "rel_type": "m.reference",
+          "event_id": "$foobar"
+        }
+      }
+    ]
+  }
+}
+```
+
+For a descriptor with `type = X`, update content uses the field `X + ".deltas"`. This proposal defines `com.beeper.llm.deltas` for AI SDK-compatible streaming chunks.
+
+Each entry in `com.beeper.llm.deltas` uses the stable envelope defined by the AI profile:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `turn_id` | string | yes | Identifier for the assistant turn. |
+| `seq` | integer | yes | Monotonically increasing per `turn_id`. |
+| `part` | object | yes | AI SDK-compatible streaming chunk. |
+| `m.relates_to` | object | yes | `m.reference` pointing at the placeholder event. |
+| `agent_id` | string | no | Multi-agent routing hint. |
+
+For `com.beeper.llm`, producers SHOULD send buffered deltas in-order and receivers SHOULD ignore duplicates where `seq <= last_applied_seq`.
+
+### Completion
+
+When the stream is complete, the sender edits the original message:
+
+```json
+{
+  "type": "m.room.message",
+  "room_id": "!meow",
+  "sender": "@ai_chatgpt:beeper.local",
+  "content": {
+    "m.relates_to": {
+      "rel_type": "m.replace",
+      "event_id": "$foobar"
+    },
+    "m.new_content": {
+      "msgtype": "m.text",
+      "body": "Result of pondering is here"
+    }
+  }
+}
+```
+
+The terminal edit is authoritative. It SHOULD remove `com.beeper.stream` from the message content and include the finalized assistant state. Clients MUST treat the removal of `com.beeper.stream`, or the arrival of the final edit, as the end of the live stream.
 
 ### Client Behavior
 
-1. Subscribe to `com.beeper.ai.stream_event` in `/sync` ephemeral events.
-2. Group events by `turn_id`.
-3. Order by `seq` within each turn; ignore events with `seq <= last_applied_seq`.
-4. Apply `part` content incrementally using the chunk type semantics.
-5. When `target_event` appears, associate the stream with the timeline message.
-6. Terminal chunks (`finish`, `abort`, `error`) signal end of stream.
+1. Observe placeholder `m.room.message` events for `com.beeper.stream`.
+2. If the descriptor is unexpired and the room is actively viewed, send `com.beeper.stream.subscribe` to the advertised `user_id` and `device_id`.
+3. Apply the initial buffered `com.beeper.stream.update`, then subsequent incremental updates.
+4. Re-subscribe before subscription expiry if the room remains active.
+5. Stop rendering the stream when the placeholder is edited to remove `com.beeper.stream`, when the descriptor has expired, or when the client leaves the room.
 
-### Resilience
+## Custom Encryption
 
-- Gaps in `seq` indicate missed events (ephemeral events have no delivery guarantee).
-- Clients SHOULD gracefully degrade: if stream events are missed, the finalized timeline message (`m.replace` edit) contains the complete content.
-- `target_event` allows late-joining clients to skip the stream and read the persisted message directly.
+`to_device` updates can use normal Olm encryption. In encrypted rooms, that is the default and recommended transport.
+
+As an optional optimization, the placeholder descriptor MAY expose a symmetric key:
+
+```json
+{
+  "com.beeper.stream": {
+    "user_id": "@aibot:beeper.local",
+    "device_id": "ABCD1234",
+    "type": "com.beeper.llm",
+    "expiry": 1800000,
+    "encryption": {
+      "algorithm": "com.beeper.stream.v1.aes-gcm",
+      "key": "57v+6jXy1NOiFzkrrg+nga0VN7+RURdrCEbm+8OrCDA"
+    }
+  }
+}
+```
+
+When using this mode, the sender encrypts the `com.beeper.stream.update` payload once and sends the same ciphertext to every subscriber:
+
+```json
+{
+  "type": "m.room.encrypted",
+  "content": {
+    "algorithm": "com.beeper.stream.v1.aes-gcm",
+    "iv": "svNAxzmSqyRdMU3O",
+    "ciphertext": "vrKgF7jsQyd9CKnXLqVjAI9mSLH1okmtu0Puu4Tl4uh+HjrR4JhhD0DhT2ioxiUZMaqgYuERuXThAkpebpFFs0kwT0Bp8sC+NyCXHw8apLWxbUxMZ1FMUvyV5fIR6l6RXS50gA"
+  }
+}
+```
+
+Requirements:
+
+- `key` is 32 random bytes encoded as unpadded standard base64.
+- `iv` is 12 random bytes encoded as unpadded standard base64.
+- `ciphertext` is AES-GCM ciphertext followed by the 16-byte authentication tag, encoded as unpadded standard base64.
+
+This is an optimization, not the baseline transport.
 
 ## Potential Issues
 
-- **No delivery guarantee:** Ephemeral events are best-effort. Clients that miss stream events rely on the final timeline edit for complete content. This means streaming is a progressive enhancement, not the authoritative source.
-- **Sequence gaps:** Network issues or server load may cause `seq` gaps. Clients MUST handle missing sequence numbers gracefully rather than blocking on them.
-- **Ordering across federation:** Federated servers may deliver ephemeral events out of order. The `seq` field allows receivers to reorder, but significant delays may cause visual jitter.
+- **Sender-side subscriber tracking:** The sender must keep short-lived subscriber state per placeholder event.
+- **Metadata exposure:** The placeholder reveals that a stream exists and identifies the serving device.
+- **Late subscribers:** Clients may receive only buffered state retained by the sender, not an authoritative replay log.
+- **Descriptor staleness:** If the sender crashes and never edits the placeholder, clients rely on `expiry` to stop subscribing.
 
 ## Alternatives
 
+### Room ephemerals
+
+Room-scoped ephemeral events can broadcast updates to all joined clients, but they require homeserver support and deliver high-frequency traffic to devices that may not be viewing the room.
+
 ### Timeline edits only
 
-Using `m.replace` edits for every chunk would persist each intermediate state and generate excessive server load. Ephemeral events avoid this by keeping intermediate states transient — only the final content is persisted.
-
-### `to_device` events
-
-`to_device` messages could deliver stream chunks directly to specific devices. However, they bypass room membership semantics, cannot be aggregated by the server, and would require separate delivery logic per device rather than leveraging the existing `/sync` room ephemeral pipeline.
+Streaming entirely through `m.replace` edits would persist every intermediate state and create unnecessary room traffic. The placeholder-plus-subscription model keeps the timeline authoritative without persisting every token.
 
 ## Security Considerations
 
-- **Stream events in encrypted rooms:** Stream events in encrypted rooms MUST be encrypted using Megolm per [MSC3673]. Implementations MUST NOT send plaintext stream events in encrypted rooms.
-- **`agent_id` spoofing:** In multi-agent rooms, a malicious client could send stream events with a forged `agent_id`. Clients SHOULD verify that stream events originate from an expected sender (e.g. the bridge bot user) before rendering them.
-- **Content size:** Individual stream events SHOULD be small (typically under 1KB). Servers MAY reject ephemeral events exceeding the 64KB transport limit.
+- **Authorization:** Senders SHOULD only honor subscriptions from users who are entitled to view the placeholder message.
+- **Validation:** `room_id` and `event_id` in subscriptions and updates MUST match the anchored placeholder.
+- **Expiry enforcement:** Senders SHOULD cap subscription lifetimes and discard expired subscribers.
+- **Custom AES mode:** Anyone who can read the placeholder descriptor can decrypt stream updates when the symmetric key mode is used. This is acceptable only because anyone who can read the placeholder is also allowed to subscribe.
+- **Key/IV reuse:** AES-GCM senders MUST generate a fresh random IV for every encrypted update. Implementations that approach AES-GCM limits for a single key MUST rotate keys.
 
 ## Unstable Prefix
 
-While this proposal is not yet part of the Matrix specification, implementations MUST use the following unstable prefix:
+While this proposal is not yet part of the Matrix specification, implementations MUST use the following unstable identifiers:
 
 | Unstable | Stable (future) |
 |----------|----------------|
-| `com.beeper.ai.stream_event` | `m.ai.stream_event` |
+| `com.beeper.stream` | `m.stream` |
+| `com.beeper.stream.subscribe` | `m.stream.subscribe` |
+| `com.beeper.stream.update` | `m.stream.update` |
+| `com.beeper.stream.v1.aes-gcm` | `m.stream.v1.aes-gcm` |
 
 ## Dependencies
 
-- [com.beeper.ephemeral](com.beeper.mscXXXX-ephemeral.md): Custom room ephemeral events — the transport layer.
-- [MSC2477]: User-defined ephemeral events — the upstream proposal that `com.beeper.ephemeral` implements.
-- [MSC3673]: Encrypted ephemeral data units — E2EE for ephemeral events.
-
-[MSC2477]: https://github.com/matrix-org/matrix-spec-proposals/pull/2477
-[MSC3673]: https://github.com/matrix-org/matrix-spec-proposals/pull/3673
+- Matrix timeline messaging (`m.room.message`, `m.replace`) for the placeholder and final state.
+- Matrix `to_device` delivery for subscriptions and live updates.
+- Standard Olm `to_device` encryption, or the optional AES-GCM mode defined above.

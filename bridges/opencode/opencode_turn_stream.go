@@ -91,8 +91,11 @@ func (m *OpenCodeManager) emitTurnFinish(ctx context.Context, inst *openCodeInst
 	if len(metadata) > 0 {
 		m.applyTurnMetadata(ctx, portal, sessionID, messageID, metadata)
 	}
-	streamState, _ := m.mustStreamWriter(ctx, portal, sessionID, messageID)
-	streamState.finishReason = finishReason
+	m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, m.bridge.portalAgentID(portal), map[string]any{
+		"type":            "finish",
+		"finishReason":    finishReason,
+		"messageMetadata": metadata,
+	})
 	m.bridge.finishOpenCodeStream(turnID)
 	state.finished = true
 	inst.removeTurnState(sessionID, messageID)

@@ -42,7 +42,7 @@ This will:
 - `./tools/bridges stop <instance>`
 - `./tools/bridges stop-all`
 - `./tools/bridges restart <bridge>`
-- `./tools/bridges delete <instance> [--remote]`
+- `./tools/bridges delete [instance]`
 - `./tools/bridges doctor`
 - `./tools/bridges completion <bash|zsh|fish>`
 

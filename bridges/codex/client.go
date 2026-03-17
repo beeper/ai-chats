@@ -569,13 +569,12 @@ func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, met
 	source := bridgesdk.UserMessageSource(sourceEvent.ID.String())
 	turn := conv.StartTurn(ctx, codexSDKAgent(), source)
 	approvals := turn.Approvals()
-	turn.SetStreamHook(func(turnID string, seq int, content map[string]any, txnID string) bool {
-		if cc.streamEventHook == nil {
-			return false
-		}
-		cc.streamEventHook(turnID, seq, content, txnID)
-		return true
-	})
+	if cc.streamEventHook != nil {
+		turn.SetStreamHook(func(turnID string, seq int, content map[string]any, txnID string) bool {
+			cc.streamEventHook(turnID, seq, content, txnID)
+			return true
+		})
+	}
 	approvals.SetHandler(func(callCtx context.Context, sdkTurn *bridgesdk.Turn, req bridgesdk.ApprovalRequest) bridgesdk.ApprovalHandle {
 		return cc.requestSDKApproval(callCtx, portal, state, sdkTurn, req)
 	})
@@ -583,9 +582,7 @@ func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, met
 		return cc.buildSDKFinalMetadata(sdkTurn, state, codexStateModel(state, model), finishReason)
 	}))
 	state.turn = turn
-	state.turnID = turn.ID()
 	state.agentID = string(codexGhostID)
-	state.initialEventID = sourceEvent.ID
 	turn.Writer().MessageMetadata(ctx, cc.buildUIMessageMetadata(state, codexStateModel(state, model), false, ""))
 	turn.Writer().StepStart(ctx)
 
@@ -1889,7 +1886,7 @@ func (cc *CodexClient) buildUIMessageMetadata(state *streamingState, model strin
 		model = state.currentModel
 	}
 	return msgconv.BuildUIMessageMetadata(msgconv.UIMessageMetadataParams{
-		TurnID:           state.turnID,
+		TurnID:           state.currentTurnID(),
 		AgentID:          state.agentID,
 		Model:            strings.TrimSpace(model),
 		FinishReason:     finishReason,
@@ -2063,8 +2060,8 @@ func (cc *CodexClient) sendSDKApprovalPrompt(
 	if state == nil {
 		return
 	}
-	params.TurnID = state.turnID
-	params.ReplyToEventID = state.initialEventID
+	params.TurnID = state.currentTurnID()
+	params.ReplyToEventID = state.currentReplyTargetEventID()
 	params.ExpiresAt = agentremote.ComputeApprovalExpiry(int(ttl / time.Second))
 	cc.approvalFlow.SendPrompt(ctx, portal, agentremote.SendPromptParams{
 		ApprovalPromptMessageParams: params,

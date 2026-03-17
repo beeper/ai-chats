@@ -7,7 +7,6 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
 	bridgesdk "github.com/beeper/agentremote/sdk"
@@ -15,9 +14,8 @@ import (
 
 func newHookableStreamingState(turnID string) *streamingState {
 	return &streamingState{
-		turnID:           turnID,
-		initialEventID:   id.EventID("$event"),
-		networkMessageID: networkid.MessageID("codex:test"),
+		turnID:         turnID,
+		initialEventID: id.EventID("$event"),
 	}
 }
 

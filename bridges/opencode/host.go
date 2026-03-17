@@ -11,7 +11,6 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote"
-	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
@@ -154,9 +153,7 @@ func (oc *OpenCodeClient) FinishOpenCodeStream(turnID string) {
 	state := oc.streamStates[turnID]
 	delete(oc.streamStates, turnID)
 	oc.StreamMu.Unlock()
-	if state != nil && state.turn != nil {
-		state.turn.End(stringutil.FirstNonEmpty(strings.TrimSpace(state.finishReason), "stop"))
-	}
+	_ = state
 }
 
 func (oc *OpenCodeClient) newSDKStreamTurn(ctx context.Context, portal *bridgev2.Portal, state *openCodeStreamState) *bridgesdk.Turn {

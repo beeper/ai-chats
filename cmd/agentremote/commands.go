@@ -277,16 +277,17 @@ func initCommands() {
 		},
 		{
 			Name: "delete", Group: "Bridges",
-			Description: "Delete a bridge instance",
-			Usage:       "agentremote delete <instance> [flags]",
+			Description: "Delete a bridge instance locally and remotely",
+			Usage:       "agentremote delete [instance] [flags]",
 			PosArgs:     "instance",
 			Flags: []flagDef{
 				{Name: "profile", Help: "Profile name", Default: "default"},
-				{Name: "remote", Help: "Also delete the remote bridge from Beeper", IsBool: true},
+				{Name: "remote", Help: "Deprecated: remote deletion always happens", IsBool: true},
 			},
 			Examples: []string{
+				"agentremote delete",
 				"agentremote delete ai",
-				"agentremote delete codex-test --remote",
+				"agentremote delete codex-test",
 			},
 			Run: cmdDelete,
 		},

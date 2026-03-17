@@ -3,9 +3,6 @@ package msgconv
 import (
 	"strings"
 
-	"maunium.net/go/mautrix/id"
-
-	"github.com/beeper/agentremote/pkg/matrixevents"
 	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 )
 
@@ -111,23 +108,6 @@ func BuildUIMessage(p UIMessageParams) map[string]any {
 		msg["metadata"] = p.Metadata
 	}
 	return msg
-}
-
-// RelatesToReplace builds a m.relates_to payload for an edit (m.replace) event.
-func RelatesToReplace(initialEventID id.EventID, replyTo id.EventID) map[string]any {
-	if initialEventID == "" {
-		return nil
-	}
-	rel := map[string]any{
-		"rel_type": matrixevents.RelReplace,
-		"event_id": initialEventID.String(),
-	}
-	if replyTo != "" {
-		rel["m.in_reply_to"] = map[string]any{
-			"event_id": replyTo.String(),
-		}
-	}
-	return rel
 }
 
 // MapFinishReason normalizes provider-specific finish reasons to standard values.

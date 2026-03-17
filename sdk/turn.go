@@ -3,6 +3,7 @@ package sdk
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +32,18 @@ func (f FinalMetadataProviderFunc) FinalMetadata(turn *Turn, finishReason string
 		return nil
 	}
 	return f(turn, finishReason)
+}
+
+type PlaceholderMessagePayload struct {
+	Content    *event.MessageEventContent
+	Extra      map[string]any
+	DBMetadata any
+}
+
+type FinalEditPayload struct {
+	Content       *event.MessageEventContent
+	TopLevelExtra map[string]any
+	ReplyTo       id.EventID
 }
 
 type sdkApprovalHandle struct {
@@ -120,6 +133,8 @@ type Turn struct {
 	streamTransportFunc   func(ctx context.Context) (bridgev2.StreamTransport, bool)
 	approvalRequester     func(ctx context.Context, turn *Turn, req ApprovalRequest) ApprovalHandle
 	finalMetadataProvider FinalMetadataProvider
+	placeholderPayload    *PlaceholderMessagePayload
+	finalEditPayload      *FinalEditPayload
 	sendFunc              func(ctx context.Context) (id.EventID, networkid.MessageID, error)
 	suppressSend          bool
 }
@@ -191,12 +206,24 @@ func (t *Turn) resolveSender(ctx context.Context) bridgev2.EventSender {
 }
 
 func (t *Turn) buildPlaceholderMessage() *bridgev2.ConvertedMessage {
-	extra := map[string]any{
-		"m.mentions": map[string]any{},
+	extra := map[string]any{"m.mentions": map[string]any{}}
+	msgContent := &event.MessageEventContent{MsgType: event.MsgText, Body: "..."}
+	var dbMetadata any
+	if t.placeholderPayload != nil {
+		if t.placeholderPayload.Content != nil {
+			cloned := *t.placeholderPayload.Content
+			msgContent = &cloned
+		}
+		if len(t.placeholderPayload.Extra) > 0 {
+			extra = maps.Clone(t.placeholderPayload.Extra)
+			if extra == nil {
+				extra = map[string]any{}
+			}
+		}
+		dbMetadata = t.placeholderPayload.DBMetadata
 	}
-	msgContent := &event.MessageEventContent{
-		MsgType: event.MsgText,
-		Body:    "...",
+	if _, ok := extra["m.mentions"]; !ok {
+		extra["m.mentions"] = map[string]any{}
 	}
 	if t.session != nil {
 		if descriptor, err := t.session.Descriptor(t.turnCtx); err == nil && descriptor != nil {
@@ -209,10 +236,11 @@ func (t *Turn) buildPlaceholderMessage() *bridgev2.ConvertedMessage {
 	}
 	return &bridgev2.ConvertedMessage{
 		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:      networkid.PartID("0"),
-			Type:    event.EventMessage,
-			Content: msgContent,
-			Extra:   extra,
+			ID:         networkid.PartID("0"),
+			Type:       event.EventMessage,
+			Content:    msgContent,
+			Extra:      extra,
+			DBMetadata: dbMetadata,
 		}},
 	}
 }
@@ -307,10 +335,10 @@ func (t *Turn) defaultStreamTransport(_ context.Context) (bridgev2.StreamTranspo
 	if t.streamTransportFunc != nil {
 		return t.streamTransportFunc(t.turnCtx)
 	}
-	if t.conv == nil || t.conv.login == nil || t.conv.login.Bridge == nil || t.conv.login.Bridge.Streams == nil {
+	if t.conv == nil || t.conv.login == nil || t.conv.login.BeeperStream == nil {
 		return nil, false
 	}
-	return t.conv.login.Bridge.Streams, true
+	return t.conv.login.BeeperStream, true
 }
 
 func (t *Turn) ensureStarted() {
@@ -446,6 +474,18 @@ func (t *Turn) SetFinalMetadataProvider(provider FinalMetadataProvider) {
 	t.finalMetadataProvider = provider
 }
 
+// SetPlaceholderMessagePayload overrides the placeholder message content while
+// leaving stream descriptor attachment and relation wiring to the SDK.
+func (t *Turn) SetPlaceholderMessagePayload(payload *PlaceholderMessagePayload) {
+	t.placeholderPayload = payload
+}
+
+// SetFinalEditPayload stores the final edit payload that the SDK should send
+// when the turn completes.
+func (t *Turn) SetFinalEditPayload(payload *FinalEditPayload) {
+	t.finalEditPayload = payload
+}
+
 // SetSendFunc overrides the default placeholder message sending in ensureStarted.
 // The function should send the initial message and return the event/message IDs.
 func (t *Turn) SetSendFunc(fn func(ctx context.Context) (id.EventID, networkid.MessageID, error)) {
@@ -548,6 +588,58 @@ func (t *Turn) persistFinalMessage(finishReason string) {
 	})
 }
 
+func (t *Turn) buildFinalEdit() (networkid.MessageID, *bridgev2.ConvertedEdit) {
+	if t == nil || t.finalEditPayload == nil || t.finalEditPayload.Content == nil {
+		return "", nil
+	}
+	target := t.networkMessageID
+	if target == "" {
+		target = agentremote.MatrixMessageID(t.initialEventID)
+	}
+	if target == "" {
+		return "", nil
+	}
+	topLevelExtra := maps.Clone(t.finalEditPayload.TopLevelExtra)
+	if topLevelExtra == nil {
+		topLevelExtra = map[string]any{}
+	}
+	if t.initialEventID != "" {
+		topLevelExtra["m.relates_to"] = map[string]any{
+			"rel_type": matrixevents.RelReplace,
+			"event_id": t.initialEventID.String(),
+		}
+		if t.finalEditPayload.ReplyTo != "" {
+			topLevelExtra["m.relates_to"].(map[string]any)["m.in_reply_to"] = map[string]any{
+				"event_id": t.finalEditPayload.ReplyTo.String(),
+			}
+		}
+	}
+	return target, turns.BuildConvertedEdit(t.finalEditPayload.Content, topLevelExtra)
+}
+
+func (t *Turn) sendFinalEdit() {
+	if t == nil || t.conv == nil || t.conv.login == nil || t.conv.portal == nil {
+		return
+	}
+	target, edit := t.buildFinalEdit()
+	if target == "" || edit == nil {
+		return
+	}
+	sender := t.resolveSender(t.turnCtx)
+	if err := agentremote.SendEditViaPortal(
+		t.conv.login,
+		t.conv.portal,
+		sender,
+		target,
+		time.Now(),
+		0,
+		"sdk_edit_target",
+		edit,
+	); err != nil && t.conv.login != nil {
+		t.conv.login.Log.Warn().Err(err).Str("component", "sdk_turn").Msg("Failed to send final turn edit")
+	}
+}
+
 func supportedBaseMetadataFromMap(metadata map[string]any) agentremote.BaseMessageMetadata {
 	if len(metadata) == 0 {
 		return agentremote.BaseMessageMetadata{}
@@ -575,6 +667,7 @@ func (t *Turn) End(finishReason string) {
 	}
 	t.ended = true
 	t.Writer().Finish(t.turnCtx, finishReason, t.metadata)
+	t.sendFinalEdit()
 	if t.session != nil {
 		t.session.End(t.turnCtx, turns.EndReasonFinish)
 	}
@@ -597,6 +690,7 @@ func (t *Turn) EndWithError(errText string) {
 	t.Writer().Error(t.turnCtx, errText)
 	t.SendStatus(event.MessageStatusFail, errText)
 	t.Writer().Finish(t.turnCtx, "error", t.metadata)
+	t.sendFinalEdit()
 	if t.session != nil {
 		t.session.End(t.turnCtx, turns.EndReasonError)
 	}
@@ -616,6 +710,7 @@ func (t *Turn) Abort(reason string) {
 		return
 	}
 	t.Writer().Abort(t.turnCtx, reason)
+	t.sendFinalEdit()
 	if t.session != nil {
 		t.session.End(t.turnCtx, turns.EndReasonDisconnect)
 	}

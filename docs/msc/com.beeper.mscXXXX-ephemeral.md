@@ -4,7 +4,7 @@
 
 `com.beeper.ephemeral` provides a transport for custom ephemeral events in Matrix rooms. This is an implementation of [MSC2477] with a `com.beeper` unstable prefix, plus transparent E2EE support following the [MSC3673] pattern.
 
-Ephemeral events are short-lived, non-persisted events delivered via `/sync` to joined room members. They are useful for real-time features like AI streaming, live indicators, and collaborative cursors.
+Ephemeral events are short-lived, non-persisted events delivered via `/sync` to joined room members. They are useful for real-time features like room-scoped AI telemetry, live indicators, and collaborative cursors.
 
 ## Motivation
 
@@ -12,7 +12,7 @@ Matrix currently provides only a limited set of built-in ephemeral events — pr
 
 Use cases that require custom ephemeral events include:
 
-- **AI streaming:** Token-by-token delivery of AI model output for progressive rendering (see [com.beeper.ai.stream_event](com.beeper.mscXXXX-streaming.md)).
+- **Transient room-scoped AI telemetry:** Implementations that want every joined client to observe non-persisted AI status can use ephemeral events. The AI streaming profile in this repo now prefers message-anchored `to_device` delivery instead of room ephemerals.
 - **Collaborative cursors:** Real-time cursor position sharing in shared editing contexts.
 - **Custom presence:** Application-specific presence or activity indicators beyond `m.presence`.
 

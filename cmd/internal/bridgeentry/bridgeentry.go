@@ -42,6 +42,12 @@ var (
 		Port:        29348,
 		DBName:      "openclaw.db",
 	}
+	DummyBridge = Definition{
+		Name:        "dummybridge",
+		Description: "A Matrix↔DummyBridge demo bridge built on the AgentRemote SDK.",
+		Port:        29349,
+		DBName:      "dummybridge.db",
+	}
 )
 
 func (d Definition) NewMain(connector bridgev2.NetworkConnector) *mxmain.BridgeMain {
