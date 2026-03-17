@@ -1,6 +1,7 @@
 package sdk
 
 import (
+	"maps"
 	"strings"
 
 	"github.com/beeper/agentremote/pkg/matrixevents"
@@ -71,7 +72,7 @@ func hasMeaningfulFinalUIMessage(uiMessage map[string]any) bool {
 	}
 	for key, value := range uiMessage {
 		switch key {
-		case "id", "role":
+		case "id", "role", "metadata":
 			continue
 		case "parts":
 			switch typed := value.(type) {
@@ -84,16 +85,6 @@ func hasMeaningfulFinalUIMessage(uiMessage map[string]any) bool {
 					return true
 				}
 			}
-		case "metadata":
-			if typed, ok := value.(map[string]any); ok {
-				if len(typed) > 0 {
-					return true
-				}
-				continue
-			}
-			if value != nil {
-				return true
-			}
 		default:
 			if value != nil {
 				return true
@@ -101,4 +92,22 @@ func hasMeaningfulFinalUIMessage(uiMessage map[string]any) bool {
 		}
 	}
 	return false
+}
+
+func withFinalEditFinishReason(uiMessage map[string]any, finishReason string) map[string]any {
+	if len(uiMessage) == 0 || strings.TrimSpace(finishReason) == "" {
+		return uiMessage
+	}
+	out := maps.Clone(uiMessage)
+	metadata, _ := out["metadata"].(map[string]any)
+	if metadata == nil {
+		metadata = map[string]any{}
+	} else {
+		metadata = maps.Clone(metadata)
+	}
+	if strings.TrimSpace(stringValue(metadata["finish_reason"])) == "" {
+		metadata["finish_reason"] = strings.TrimSpace(finishReason)
+	}
+	out["metadata"] = metadata
+	return out
 }

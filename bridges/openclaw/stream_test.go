@@ -60,7 +60,7 @@ func TestBuildStreamDBMetadataIncludesToolCalls(t *testing.T) {
 		role:       "assistant",
 		turn:       newOpenClawTestTurn("turn-3"),
 	}
-	state.visible.WriteString("running")
+	state.stream.ApplyPart(map[string]any{"type": "text-delta", "delta": "running"}, time.Time{})
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{
 		"type": "reasoning-start",
 		"id":   "reasoning-1",
@@ -131,32 +131,32 @@ func TestApplyStreamPartStateLockedUpdatesLifecycleFields(t *testing.T) {
 		"delta":     "hello",
 		"timestamp": float64(time.Now().UnixMilli()),
 	})
-	if got := state.visible.String(); got != "hello" {
+	if got := state.stream.VisibleText(); got != "hello" {
 		t.Fatalf("expected visible text to accumulate delta, got %q", got)
 	}
-	if got := state.accumulated.String(); got != "hello" {
+	if got := state.stream.AccumulatedText(); got != "hello" {
 		t.Fatalf("expected accumulated text to include delta, got %q", got)
 	}
-	if state.startedAtMs == 0 || state.firstTokenAtMs == 0 {
-		t.Fatalf("expected lifecycle timestamps to be tracked, got started=%d first_token=%d", state.startedAtMs, state.firstTokenAtMs)
+	if state.stream.StartedAtMs() == 0 || state.stream.FirstTokenAtMs() == 0 {
+		t.Fatalf("expected lifecycle timestamps to be tracked, got started=%d first_token=%d", state.stream.StartedAtMs(), state.stream.FirstTokenAtMs())
 	}
 
 	oc.applyStreamPartStateLocked(state, map[string]any{
 		"type":      "error",
 		"errorText": "boom",
 	})
-	if state.errorText != "boom" {
-		t.Fatalf("expected error text to be captured, got %q", state.errorText)
+	if state.stream.ErrorText() != "boom" {
+		t.Fatalf("expected error text to be captured, got %q", state.stream.ErrorText())
 	}
 }
 
 func TestCompleteStreamTurnRemovesTrackedState(t *testing.T) {
 	turn := newOpenClawTestTurn("turn-1")
 	state := &openClawStreamState{
-		turnID:       "turn-1",
-		turn:         turn,
-		finishReason: "stop",
+		turnID: "turn-1",
+		turn:   turn,
 	}
+	state.stream.SetFinishReason("stop")
 	oc := &OpenClawClient{
 		streamStates: map[string]*openClawStreamState{
 			"turn-1": state,

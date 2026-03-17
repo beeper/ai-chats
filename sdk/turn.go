@@ -634,9 +634,6 @@ func (t *Turn) buildFinalEdit() (networkid.MessageID, *bridgev2.ConvertedEdit) {
 		return "", nil
 	}
 	payload := t.finalEditPayload
-	if (payload == nil || payload.Content == nil) && !t.suppressFinalEdit {
-		payload = t.defaultFinalEditPayload()
-	}
 	if payload == nil || payload.Content == nil {
 		return "", nil
 	}
@@ -728,7 +725,7 @@ func (t *Turn) End(finishReason string) {
 	t.stopIdleTimeout()
 	defer t.cancel()
 	t.Writer().Finish(t.turnCtx, finishReason, t.metadata)
-	t.finalizeTurn(turns.EndReasonFinish, finishReason)
+	t.finalizeTurn(turns.EndReasonFinish, finishReason, "")
 }
 
 // EndWithError finishes the turn with an error.
@@ -752,7 +749,7 @@ func (t *Turn) EndWithError(errText string) {
 	t.Writer().Error(t.turnCtx, errText)
 	t.SendStatus(event.MessageStatusFail, errText)
 	t.Writer().Finish(t.turnCtx, "error", t.metadata)
-	t.finalizeTurn(turns.EndReasonError, "error")
+	t.finalizeTurn(turns.EndReasonError, "error", errText)
 }
 
 // Abort aborts the turn.
@@ -773,11 +770,12 @@ func (t *Turn) Abort(reason string) {
 		return
 	}
 	t.Writer().Abort(t.turnCtx, reason)
-	t.finalizeTurn(turns.EndReasonDisconnect, "abort")
+	t.finalizeTurn(turns.EndReasonDisconnect, "abort", reason)
 }
 
-func (t *Turn) finalizeTurn(endReason turns.EndReason, finishReason string) {
+func (t *Turn) finalizeTurn(endReason turns.EndReason, finishReason, fallbackBody string) {
 	t.flushPendingStream()
+	t.ensureDefaultFinalEditPayload(finishReason, fallbackBody)
 	t.sendFinalEdit()
 	if t.session != nil {
 		t.session.End(t.turnCtx, endReason)
@@ -855,17 +853,33 @@ func (t *Turn) emitPart(callCtx context.Context, _ *bridgev2.Portal, part map[st
 	}
 }
 
-func (t *Turn) defaultFinalEditPayload() *FinalEditPayload {
+func (t *Turn) defaultFinalEditPayload(finishReason, fallbackBody string) *FinalEditPayload {
 	if t == nil {
 		return nil
 	}
 	body := strings.TrimSpace(t.VisibleText())
+	fallbackBody = strings.TrimSpace(fallbackBody)
 	uiMessage := BuildCompactFinalUIMessage(streamui.SnapshotUIMessage(t.state))
-	if body == "" && !hasMeaningfulFinalUIMessage(uiMessage) {
+	if body == "" && fallbackBody == "" && !hasMeaningfulFinalUIMessage(uiMessage) {
 		return nil
 	}
 	if body == "" {
-		body = "..."
+		body = fallbackBody
+	}
+	if body == "" {
+		switch strings.TrimSpace(finishReason) {
+		case "error":
+			body = "Response failed"
+		case "abort", "disconnect":
+			body = "Response interrupted"
+		default:
+			body = "Completed response"
+		}
+	}
+	uiMessage = withFinalEditFinishReason(uiMessage, finishReason)
+	replyTo := t.replyTo
+	if replyTo == "" && t.source != nil && t.source.EventID != "" {
+		replyTo = id.EventID(t.source.EventID)
 	}
 	return &FinalEditPayload{
 		Content: &event.MessageEventContent{
@@ -873,7 +887,30 @@ func (t *Turn) defaultFinalEditPayload() *FinalEditPayload {
 			Body:    body,
 		},
 		TopLevelExtra: BuildDefaultFinalEditTopLevelExtra(uiMessage),
+		ReplyTo:       replyTo,
+		ThreadRoot:    t.threadRoot,
 	}
+}
+
+func (t *Turn) ensureDefaultFinalEditPayload(finishReason, fallbackBody string) {
+	if t == nil || t.suppressFinalEdit {
+		return
+	}
+	if t.finalEditPayload != nil && t.finalEditPayload.Content != nil {
+		return
+	}
+	payload := t.defaultFinalEditPayload(finishReason, fallbackBody)
+	if payload == nil || payload.Content == nil {
+		return
+	}
+	t.finalEditPayload = payload
+	t.logStreamDebug("final_edit_synthesized",
+		"finish_reason", strings.TrimSpace(finishReason),
+		"body_len", len(strings.TrimSpace(payload.Content.Body)),
+		"room_id", t.roomID().String(),
+		"event_id", t.initialEventID.String(),
+		"network_message_id", string(t.networkMessageID),
+	)
 }
 
 func (t *Turn) resolvedIdleTimeout() time.Duration {

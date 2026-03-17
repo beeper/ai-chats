@@ -84,21 +84,14 @@ type openClawStreamState struct {
 	turn             *bridgesdk.Turn
 	sessionKey       string
 	messageTS        time.Time
-	accumulated      strings.Builder
-	visible          strings.Builder
-	lastVisibleText  string
+	stream           bridgesdk.StreamPartState
 	role             string
 	runID            string
 	sessionID        string
-	finishReason     string
-	errorText        string
 	promptTokens     int64
 	completionTokens int64
 	reasoningTokens  int64
 	totalTokens      int64
-	startedAtMs      int64
-	firstTokenAtMs   int64
-	completedAtMs    int64
 }
 
 func newOpenClawClient(login *bridgev2.UserLogin, connector *OpenClawConnector) (*OpenClawClient, error) {
@@ -445,18 +438,6 @@ func (oc *OpenClawClient) Log() *zerolog.Logger {
 	}
 	l := oc.UserLogin.Log.With().Str("component", "openclaw").Logger()
 	return &l
-}
-
-func (oc *OpenClawClient) BackgroundContext(ctx context.Context) context.Context {
-	if ctx != nil {
-		return ctx
-	}
-	if oc != nil && oc.UserLogin != nil && oc.UserLogin.Bridge != nil {
-		if bgCtx := oc.UserLogin.Bridge.BackgroundCtx; bgCtx != nil {
-			return bgCtx
-		}
-	}
-	return context.Background()
 }
 
 func (oc *OpenClawClient) gatewayID() string {

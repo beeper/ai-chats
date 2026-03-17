@@ -412,6 +412,7 @@ func TestTurnBuildFinalEditDefaultsToVisibleText(t *testing.T) {
 	turn.networkMessageID = "msg-text"
 	turn.Writer().TextDelta(turn.Context(), "hello")
 	turn.Writer().FinishText(turn.Context())
+	turn.ensureDefaultFinalEditPayload("stop", "")
 
 	target, edit := turn.buildFinalEdit()
 	if target != "msg-text" {
@@ -442,9 +443,13 @@ func TestTurnBuildFinalEditDefaultsToVisibleText(t *testing.T) {
 			}
 		}
 	}
+	metadata, _ := rawAI["metadata"].(map[string]any)
+	if metadata["finish_reason"] != "stop" {
+		t.Fatalf("expected synthesized finish_reason metadata, got %#v", metadata)
+	}
 }
 
-func TestTurnBuildFinalEditDefaultsToEllipsisForArtifacts(t *testing.T) {
+func TestTurnBuildFinalEditDefaultsToGenericBodyForArtifacts(t *testing.T) {
 	turn := newTurn(context.Background(), nil, nil, nil)
 	turn.initialEventID = id.EventID("$event-artifact")
 	turn.networkMessageID = "msg-artifact"
@@ -452,13 +457,14 @@ func TestTurnBuildFinalEditDefaultsToEllipsisForArtifacts(t *testing.T) {
 		URL:   "https://example.com",
 		Title: "Example",
 	})
+	turn.ensureDefaultFinalEditPayload("stop", "")
 
 	_, edit := turn.buildFinalEdit()
 	if edit == nil || len(edit.ModifiedParts) != 1 {
 		t.Fatalf("expected single modified part, got %#v", edit)
 	}
-	if body := edit.ModifiedParts[0].Content.Body; body != "..." {
-		t.Fatalf("expected ellipsis body for artifact-only turn, got %q", body)
+	if body := edit.ModifiedParts[0].Content.Body; body != "Completed response" {
+		t.Fatalf("expected generic body for artifact-only turn, got %q", body)
 	}
 	rawAI, ok := edit.ModifiedParts[0].TopLevelExtra[matrixevents.BeeperAIKey].(map[string]any)
 	if !ok {
@@ -476,10 +482,40 @@ func TestTurnSuppressFinalEditSkipsAutomaticPayload(t *testing.T) {
 	turn.networkMessageID = "msg-suppressed"
 	turn.Writer().TextDelta(turn.Context(), "hello")
 	turn.SetSuppressFinalEdit(true)
+	turn.ensureDefaultFinalEditPayload("stop", "")
 
 	target, edit := turn.buildFinalEdit()
 	if target != "" || edit != nil {
 		t.Fatalf("expected automatic final edit to be suppressed, got target=%q edit=%#v", target, edit)
+	}
+}
+
+func TestTurnBuildFinalEditDoesNotSynthesizeForMetadataOnlyTurn(t *testing.T) {
+	turn := newTurn(context.Background(), nil, nil, nil)
+	turn.initialEventID = id.EventID("$event-meta")
+	turn.networkMessageID = "msg-meta"
+	turn.Writer().Start(turn.Context(), map[string]any{"turnId": turn.ID()})
+	turn.ensureDefaultFinalEditPayload("stop", "")
+
+	target, edit := turn.buildFinalEdit()
+	if target != "" || edit != nil {
+		t.Fatalf("expected no synthesized edit for metadata-only turn, got target=%q edit=%#v", target, edit)
+	}
+}
+
+func TestTurnBuildFinalEditUsesErrorTextFallback(t *testing.T) {
+	turn := newTurn(context.Background(), nil, nil, nil)
+	turn.initialEventID = id.EventID("$event-error")
+	turn.networkMessageID = "msg-error"
+	turn.Writer().Error(turn.Context(), "boom")
+	turn.ensureDefaultFinalEditPayload("error", "boom")
+
+	_, edit := turn.buildFinalEdit()
+	if edit == nil || len(edit.ModifiedParts) != 1 {
+		t.Fatalf("expected synthesized error edit, got %#v", edit)
+	}
+	if body := edit.ModifiedParts[0].Content.Body; body != "boom" {
+		t.Fatalf("expected error text fallback body, got %q", body)
 	}
 }
 

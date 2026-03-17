@@ -38,13 +38,11 @@ type OpenCodeLogin struct {
 }
 
 func (ol *OpenCodeLogin) validate() error {
-	if ol.User == nil {
-		return errors.New("missing user context for login")
+	var br *bridgev2.Bridge
+	if ol.Connector != nil {
+		br = ol.Connector.br
 	}
-	if ol.Connector == nil || ol.Connector.br == nil {
-		return errors.New("connector is not initialized")
-	}
-	return nil
+	return agentremote.ValidateLoginState(ol.User, br)
 }
 
 func (ol *OpenCodeLogin) Start(_ context.Context) (*bridgev2.LoginStep, error) {

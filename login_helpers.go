@@ -2,10 +2,23 @@ package agentremote
 
 import (
 	"context"
+	"errors"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 )
+
+// ValidateLoginState checks that the user and bridge are non-nil. This is the
+// common preamble shared by all bridge LoginProcess implementations.
+func ValidateLoginState(user *bridgev2.User, br *bridgev2.Bridge) error {
+	if user == nil {
+		return errors.New("missing user context for login")
+	}
+	if br == nil {
+		return errors.New("connector is not initialized")
+	}
+	return nil
+}
 
 // CompleteLoginStep builds the standard completion step for a loaded login.
 func CompleteLoginStep(stepID string, login *bridgev2.UserLogin) *bridgev2.LoginStep {

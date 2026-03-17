@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
@@ -23,10 +24,6 @@ func (oc *OpenCodeClient) Log() *zerolog.Logger {
 	}
 	l := oc.UserLogin.Log.With().Str("component", "opencode").Logger()
 	return &l
-}
-
-func (oc *OpenCodeClient) BackgroundContext(ctx context.Context) context.Context {
-	return oc.ClientBase.BackgroundContext(ctx)
 }
 
 func (oc *OpenCodeClient) SendSystemNotice(ctx context.Context, portal *bridgev2.Portal, msg string) {
@@ -62,28 +59,7 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 	if metadata, _ := part["messageMetadata"].(map[string]any); len(metadata) > 0 {
 		oc.applyStreamMessageMetadata(state, metadata)
 	}
-	partType, _ := part["type"].(string)
-	switch strings.TrimSpace(partType) {
-	case "text-delta":
-		if delta, _ := part["delta"].(string); delta != "" {
-			state.visible.WriteString(delta)
-			state.accumulated.WriteString(delta)
-		}
-	case "reasoning-delta":
-		if delta, _ := part["delta"].(string); delta != "" {
-			state.accumulated.WriteString(delta)
-		}
-	case "error":
-		if errText, _ := part["errorText"].(string); strings.TrimSpace(errText) != "" {
-			state.errorText = strings.TrimSpace(errText)
-		}
-	case "finish":
-		if finishReason, _ := part["finishReason"].(string); strings.TrimSpace(finishReason) != "" {
-			state.finishReason = strings.TrimSpace(finishReason)
-		}
-	case "abort":
-		state.finishReason = "abort"
-	}
+	state.stream.ApplyPart(part, time.Time{})
 	oc.StreamMu.Unlock()
 
 	if oc.IsStreamShuttingDown() || turn == nil {

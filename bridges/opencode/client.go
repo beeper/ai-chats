@@ -3,7 +3,6 @@ package opencode
 import (
 	"context"
 	"errors"
-	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/status"
@@ -38,8 +37,7 @@ type openCodeStreamState struct {
 	turnID           string
 	agentID          string
 	turn             *bridgesdk.Turn
-	accumulated      strings.Builder
-	visible          strings.Builder
+	stream           bridgesdk.StreamPartState
 	ui               streamui.UIState
 	role             string
 	sessionID        string
@@ -49,10 +47,6 @@ type openCodeStreamState struct {
 	modelID          string
 	providerID       string
 	mode             string
-	finishReason     string
-	errorText        string
-	startedAtMs      int64
-	completedAtMs    int64
 	promptTokens     int64
 	completionTokens int64
 	reasoningTokens  int64

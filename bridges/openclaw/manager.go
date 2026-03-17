@@ -1932,9 +1932,10 @@ func openClawApplyHistoryChunks(state *streamui.UIState, message map[string]any,
 		return
 	}
 	state.InitMaps()
+	replayer := bridgesdk.NewUIStateReplayer(state)
 	role = strings.ToLower(strings.TrimSpace(role))
 	if role == "toolresult" {
-		openClawApplyHistoryToolResult(state, message)
+		openClawApplyHistoryToolResult(replayer, message)
 		return
 	}
 	blocks := openclawconv.ContentBlocks(message)
@@ -1946,19 +1947,13 @@ func openClawApplyHistoryChunks(state *streamui.UIState, message map[string]any,
 			if text == "" {
 				continue
 			}
-			partID := fmt.Sprintf("text-%d", idx)
-			streamui.ApplyChunk(state, map[string]any{"type": "text-start", "id": partID})
-			streamui.ApplyChunk(state, map[string]any{"type": "text-delta", "id": partID, "delta": text})
-			streamui.ApplyChunk(state, map[string]any{"type": "text-end", "id": partID})
+			replayer.Text(fmt.Sprintf("text-%d", idx), text)
 		case "reasoning", "thinking":
 			text := strings.TrimSpace(stringutil.TrimDefault(stringValue(block["text"]), stringValue(block["content"])))
 			if text == "" {
 				continue
 			}
-			partID := fmt.Sprintf("reasoning-%d", idx)
-			streamui.ApplyChunk(state, map[string]any{"type": "reasoning-start", "id": partID})
-			streamui.ApplyChunk(state, map[string]any{"type": "reasoning-delta", "id": partID, "delta": text})
-			streamui.ApplyChunk(state, map[string]any{"type": "reasoning-end", "id": partID})
+			replayer.Reasoning(fmt.Sprintf("reasoning-%d", idx), text)
 		case "toolcall", "tooluse", "functioncall":
 			toolCallID := strings.TrimSpace(stringutil.TrimDefault(stringValue(block["id"]), stringValue(block["call_id"])))
 			if toolCallID == "" {
@@ -1969,70 +1964,42 @@ func openClawApplyHistoryChunks(state *streamui.UIState, message map[string]any,
 			if len(input) == 0 {
 				input = jsonutil.ToMap(block["input"])
 			}
-			streamui.ApplyChunk(state, map[string]any{
-				"type":       "tool-input-available",
-				"toolCallId": toolCallID,
-				"toolName":   stringutil.TrimDefault(toolName, "tool"),
-				"input":      input,
-			})
+			replayer.ToolInput(toolCallID, stringutil.TrimDefault(toolName, "tool"), input, false)
 			if approvalID := strings.TrimSpace(stringutil.TrimDefault(stringValue(block["approvalId"]), stringValue(jsonutil.ToMap(block["approval"])["id"]))); approvalID != "" {
-				streamui.ApplyChunk(state, map[string]any{
-					"type":       "tool-approval-request",
-					"approvalId": approvalID,
-					"toolCallId": toolCallID,
-				})
+				replayer.ApprovalRequest(approvalID, toolCallID)
 			}
 		case "toolresult", "tool_result", "tool-output":
-			openClawApplyHistoryToolResult(state, block)
+			openClawApplyHistoryToolResult(replayer, block)
 		}
 	}
 	if len(blocks) == 0 {
 		if text := strings.TrimSpace(openclawconv.ExtractMessageText(message)); text != "" {
-			streamui.ApplyChunk(state, map[string]any{"type": "text-start", "id": "text-history"})
-			streamui.ApplyChunk(state, map[string]any{"type": "text-delta", "id": "text-history", "delta": text})
-			streamui.ApplyChunk(state, map[string]any{"type": "text-end", "id": "text-history"})
+			replayer.Text("text-history", text)
 		}
 	}
 }
 
-func openClawApplyHistoryToolResult(state *streamui.UIState, message map[string]any) {
+func openClawApplyHistoryToolResult(replayer bridgesdk.UIStateReplayer, message map[string]any) {
 	toolCallID := strings.TrimSpace(stringutil.TrimDefault(stringValue(message["toolCallId"]), stringValue(message["toolUseId"])))
 	if toolCallID == "" {
 		toolCallID = "tool-result"
 	}
 	toolName := strings.TrimSpace(stringutil.TrimDefault(stringValue(message["toolName"]), stringValue(message["name"])))
 	if toolName != "" {
-		streamui.ApplyChunk(state, map[string]any{
-			"type":       "tool-input-available",
-			"toolCallId": toolCallID,
-			"toolName":   toolName,
-			"input":      jsonutil.DeepCloneAny(jsonutil.ToMap(message["input"])),
-		})
+		replayer.ToolInput(toolCallID, toolName, jsonutil.DeepCloneAny(jsonutil.ToMap(message["input"])), false)
 	}
 	if approvalID := strings.TrimSpace(stringutil.TrimDefault(stringValue(message["approvalId"]), stringValue(jsonutil.ToMap(message["approval"])["id"]))); approvalID != "" {
-		streamui.ApplyChunk(state, map[string]any{
-			"type":       "tool-approval-request",
-			"approvalId": approvalID,
-			"toolCallId": toolCallID,
-		})
+		replayer.ApprovalRequest(approvalID, toolCallID)
 	}
 	if isError, _ := message["isError"].(bool); isError {
-		streamui.ApplyChunk(state, map[string]any{
-			"type":       "tool-output-error",
-			"toolCallId": toolCallID,
-			"errorText":  stringutil.TrimDefault(openclawconv.ExtractMessageText(message), stringValue(message["error"])),
-		})
+		replayer.ToolOutputError(toolCallID, stringutil.TrimDefault(openclawconv.ExtractMessageText(message), stringValue(message["error"])), false)
 		return
 	}
 	output := jsonutil.DeepCloneAny(message["details"])
 	if output == nil {
 		output = jsonutil.DeepCloneAny(stringutil.TrimDefault(openclawconv.ExtractMessageText(message), stringValue(message["result"])))
 	}
-	streamui.ApplyChunk(state, map[string]any{
-		"type":       "tool-output-available",
-		"toolCallId": toolCallID,
-		"output":     output,
-	})
+	replayer.ToolOutput(toolCallID, output, false)
 }
 
 func openClawHistoryFallbackText(uiParts []map[string]any) string {

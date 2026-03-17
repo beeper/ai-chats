@@ -87,7 +87,11 @@ func ApplyStreamPart(turn *Turn, part map[string]any, opts PartApplyOptions) boo
 		if finishReason == "" {
 			finishReason = "stop"
 		}
-		app.turn.End(finishReason)
+		if finishReason == "error" {
+			app.turn.EndWithError(app.s("errorText"))
+		} else {
+			app.turn.End(finishReason)
+		}
 	case "abort":
 		if !app.opts.HandleTerminalEvents {
 			return false

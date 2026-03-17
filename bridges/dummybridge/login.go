@@ -2,7 +2,6 @@ package dummybridge
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -25,13 +24,11 @@ type DummyBridgeLogin struct {
 }
 
 func (dl *DummyBridgeLogin) validate() error {
-	if dl.User == nil {
-		return errors.New("missing user context for login")
+	var br *bridgev2.Bridge
+	if dl.Connector != nil {
+		br = dl.Connector.br
 	}
-	if dl.Connector == nil || dl.Connector.br == nil {
-		return errors.New("connector is not initialized")
-	}
-	return nil
+	return agentremote.ValidateLoginState(dl.User, br)
 }
 
 func (dl *DummyBridgeLogin) Start(_ context.Context) (*bridgev2.LoginStep, error) {

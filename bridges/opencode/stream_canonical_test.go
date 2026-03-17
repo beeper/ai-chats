@@ -4,18 +4,19 @@ import "testing"
 
 func TestCurrentUIMessageFallbackIncludesModelAndUsage(t *testing.T) {
 	oc := &OpenCodeClient{}
-	ui := oc.currentUIMessage(&openCodeStreamState{
+	state := &openCodeStreamState{
 		turnID:           "turn-1",
 		agentID:          "agent-1",
 		modelID:          "gpt-4.1",
-		finishReason:     "stop",
 		promptTokens:     11,
 		completionTokens: 7,
 		reasoningTokens:  3,
 		totalTokens:      21,
-		startedAtMs:      1000,
-		completedAtMs:    2000,
-	})
+	}
+	state.stream.SetFinishReason("stop")
+	state.stream.SetStartedAtMs(1000)
+	state.stream.SetCompletedAtMs(2000)
+	ui := oc.currentUIMessage(state)
 
 	metadata, ok := ui["metadata"].(map[string]any)
 	if !ok {

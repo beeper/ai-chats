@@ -39,16 +39,16 @@ func (oc *OpenCodeClient) applyStreamMessageMetadata(state *openCodeStreamState,
 		state.mode = value
 	}
 	if value := maputil.StringArg(metadata, "finish_reason"); value != "" {
-		state.finishReason = value
+		state.stream.SetFinishReason(value)
 	}
 	if value := maputil.StringArg(metadata, "error_text"); value != "" {
-		state.errorText = value
+		state.stream.SetErrorText(value)
 	}
 	if value, ok := maputil.NumberArg(metadata, "started_at"); ok {
-		state.startedAtMs = int64(value)
+		state.stream.SetStartedAtMs(int64(value))
 	}
 	if value, ok := maputil.NumberArg(metadata, "completed_at"); ok {
-		state.completedAtMs = int64(value)
+		state.stream.SetCompletedAtMs(int64(value))
 	}
 	if value, ok := maputil.NumberArg(metadata, "prompt_tokens"); ok {
 		state.promptTokens = int64(value)
@@ -94,13 +94,13 @@ func opencodeUIMessageMetadata(state *openCodeStreamState) map[string]any {
 		TurnID:           state.turnID,
 		AgentID:          state.agentID,
 		Model:            state.modelID,
-		FinishReason:     state.finishReason,
+		FinishReason:     state.stream.FinishReason(),
 		PromptTokens:     state.promptTokens,
 		CompletionTokens: state.completionTokens,
 		ReasoningTokens:  state.reasoningTokens,
 		TotalTokens:      state.totalTokens,
-		StartedAtMs:      state.startedAtMs,
-		CompletedAtMs:    state.completedAtMs,
+		StartedAtMs:      state.stream.StartedAtMs(),
+		CompletedAtMs:    state.stream.CompletedAtMs(),
 		IncludeUsage:     true,
 	})
 }
@@ -112,16 +112,16 @@ func (oc *OpenCodeClient) buildStreamDBMetadata(state *openCodeStreamState) *Mes
 	uiMessage := oc.currentUIMessage(state)
 	return buildMessageMetadataFromParams(MessageMetadataParams{
 		Role:             stringutil.FirstNonEmpty(state.role, "assistant"),
-		Body:             stringutil.FirstNonEmpty(state.visible.String(), state.accumulated.String()),
-		FinishReason:     state.finishReason,
+		Body:             stringutil.FirstNonEmpty(state.stream.VisibleText(), state.stream.AccumulatedText()),
+		FinishReason:     state.stream.FinishReason(),
 		PromptTokens:     state.promptTokens,
 		CompletionTokens: state.completionTokens,
 		ReasoningTokens:  state.reasoningTokens,
 		TurnID:           state.turnID,
 		AgentID:          state.agentID,
 		UIMessage:        uiMessage,
-		StartedAtMs:      state.startedAtMs,
-		CompletedAtMs:    state.completedAtMs,
+		StartedAtMs:      state.stream.StartedAtMs(),
+		CompletedAtMs:    state.stream.CompletedAtMs(),
 		SessionID:        state.sessionID,
 		MessageID:        state.messageID,
 		ParentMessageID:  state.parentMessageID,
@@ -129,7 +129,7 @@ func (oc *OpenCodeClient) buildStreamDBMetadata(state *openCodeStreamState) *Mes
 		ModelID:          state.modelID,
 		ProviderID:       state.providerID,
 		Mode:             state.mode,
-		ErrorText:        state.errorText,
+		ErrorText:        state.stream.ErrorText(),
 		Cost:             state.cost,
 		TotalTokens:      state.totalTokens,
 	})
@@ -140,10 +140,10 @@ func (oc *OpenCodeClient) buildSDKFinalMetadata(state *openCodeStreamState, fini
 		return nil
 	}
 	if trimmed := strings.TrimSpace(finishReason); trimmed != "" {
-		state.finishReason = trimmed
+		state.stream.SetFinishReason(trimmed)
 	}
-	if state.completedAtMs == 0 {
-		state.completedAtMs = time.Now().UnixMilli()
+	if state.stream.CompletedAtMs() == 0 {
+		state.stream.SetCompletedAtMs(time.Now().UnixMilli())
 	}
 	return oc.buildStreamDBMetadata(state)
 }

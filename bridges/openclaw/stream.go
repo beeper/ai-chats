@@ -25,30 +25,12 @@ func openClawStreamPartTimestamp(part map[string]any) time.Time {
 	return time.Time{}
 }
 
-func applyOpenClawStreamPartTimestamp(state *openClawStreamState, partType string, ts time.Time) {
+func applyOpenClawStreamPartTimestamp(state *openClawStreamState, ts time.Time) {
 	if state == nil || ts.IsZero() {
 		return
 	}
-	tsMillis := ts.UnixMilli()
 	if state.messageTS.IsZero() || ts.Before(state.messageTS) {
 		state.messageTS = ts
-	}
-	switch partType {
-	case "start":
-		if state.startedAtMs == 0 || tsMillis < state.startedAtMs {
-			state.startedAtMs = tsMillis
-		}
-	case "text-delta", "reasoning-delta":
-		if state.startedAtMs == 0 || tsMillis < state.startedAtMs {
-			state.startedAtMs = tsMillis
-		}
-		if state.firstTokenAtMs == 0 || tsMillis < state.firstTokenAtMs {
-			state.firstTokenAtMs = tsMillis
-		}
-	case "abort", "error", "finish":
-		if state.completedAtMs == 0 || tsMillis > state.completedAtMs {
-			state.completedAtMs = tsMillis
-		}
 	}
 }
 
@@ -72,7 +54,6 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 	oc.applyStreamPartStateLocked(state, part)
 	turn := state.turn
 	needsTurn := turn == nil
-	partType := strings.TrimSpace(stringValue(part["type"]))
 	oc.StreamMu.Unlock()
 
 	if needsTurn {
@@ -92,29 +73,10 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 	if turn == nil {
 		return
 	}
-	bridgesdk.ApplyStreamPart(turn, part, bridgesdk.PartApplyOptions{})
-	if partType == "finish" {
-		oc.completeStreamTurn(turnID, state, turn)
-	}
-}
-
-func (oc *OpenClawClient) completeStreamTurn(turnID string, state *openClawStreamState, turn *bridgesdk.Turn) {
-	if strings.TrimSpace(turnID) == "" || state == nil || turn == nil {
-		return
-	}
-	switch strings.TrimSpace(state.finishReason) {
-	case "abort", "aborted":
-		turn.Abort(stringutil.TrimDefault(state.finishReason, "aborted"))
-	case "error":
-		turn.EndWithError(stringutil.TrimDefault(state.errorText, "OpenClaw stream failed"))
-	default:
-		turn.End(stringutil.TrimDefault(state.finishReason, "stop"))
-	}
-	oc.StreamMu.Lock()
-	if oc.streamStates[turnID] == state {
-		delete(oc.streamStates, turnID)
-	}
-	oc.StreamMu.Unlock()
+	bridgesdk.ApplyStreamPart(turn, part, bridgesdk.PartApplyOptions{
+		HandleTerminalEvents: true,
+		DefaultFinishReason:  "stop",
+	})
 }
 
 func (oc *OpenClawClient) newSDKStreamTurn(ctx context.Context, portal *bridgev2.Portal, state *openClawStreamState) *bridgesdk.Turn {
@@ -133,12 +95,19 @@ func (oc *OpenClawClient) newSDKStreamTurn(ctx context.Context, portal *bridgev2
 	turn.SetSender(sender)
 	turn.SetFinalMetadataProvider(bridgesdk.FinalMetadataProviderFunc(func(_ *bridgesdk.Turn, finishReason string) any {
 		if strings.TrimSpace(finishReason) != "" {
-			state.finishReason = strings.TrimSpace(finishReason)
+			state.stream.SetFinishReason(strings.TrimSpace(finishReason))
 		}
-		if state.completedAtMs == 0 {
-			state.completedAtMs = time.Now().UnixMilli()
+		if state.stream.CompletedAtMs() == 0 {
+			state.stream.SetCompletedAtMs(time.Now().UnixMilli())
 		}
-		return oc.buildStreamDBMetadata(state)
+		meta := oc.buildStreamDBMetadata(state)
+		// Clean up the stream state entry now that the turn is finalized.
+		oc.StreamMu.Lock()
+		if oc.streamStates[state.turnID] == state {
+			delete(oc.streamStates, state.turnID)
+		}
+		oc.StreamMu.Unlock()
+		return meta
 	}))
 	return turn
 }
@@ -157,11 +126,11 @@ func (oc *OpenClawClient) computeVisibleDelta(turnID, text string) string {
 		state = &openClawStreamState{turnID: turnID}
 		oc.streamStates[turnID] = state
 	}
-	if text == state.lastVisibleText {
+	if text == state.stream.LastVisibleText() {
 		return ""
 	}
-	prev := state.lastVisibleText
-	state.lastVisibleText = text
+	prev := state.stream.LastVisibleText()
+	state.stream.SetLastVisibleText(text)
 	if prev == "" {
 		return text
 	}
@@ -216,45 +185,9 @@ func (oc *OpenClawClient) applyStreamPartStateLocked(state *openClawStreamState,
 	if metadata, _ := part["messageMetadata"].(map[string]any); len(metadata) > 0 {
 		oc.applyStreamMessageMetadata(state, metadata)
 	}
-	partType := strings.TrimSpace(stringValue(part["type"]))
 	partTS := openClawStreamPartTimestamp(part)
-	applyOpenClawStreamPartTimestamp(state, partType, partTS)
-	if state.startedAtMs == 0 && partType == "start" {
-		state.startedAtMs = time.Now().UnixMilli()
-	}
-	switch partType {
-	case "text-delta":
-		if delta := stringValue(part["delta"]); delta != "" {
-			state.visible.WriteString(delta)
-			state.accumulated.WriteString(delta)
-			if state.firstTokenAtMs == 0 {
-				state.firstTokenAtMs = time.Now().UnixMilli()
-			}
-		}
-	case "reasoning-delta":
-		if delta := stringValue(part["delta"]); delta != "" {
-			state.accumulated.WriteString(delta)
-			if state.firstTokenAtMs == 0 {
-				state.firstTokenAtMs = time.Now().UnixMilli()
-			}
-		}
-	case "error":
-		if errText := strings.TrimSpace(stringValue(part["errorText"])); errText != "" {
-			state.errorText = errText
-		}
-	case "abort":
-		state.finishReason = stringutil.TrimDefault(stringValue(part["reason"]), "aborted")
-	case "finish":
-		if finishReason := strings.TrimSpace(stringValue(part["finishReason"])); finishReason != "" {
-			state.finishReason = finishReason
-		}
-		if errText := strings.TrimSpace(stringValue(part["errorText"])); errText != "" {
-			state.errorText = errText
-		}
-		if state.completedAtMs == 0 {
-			state.completedAtMs = time.Now().UnixMilli()
-		}
-	}
+	applyOpenClawStreamPartTimestamp(state, partTS)
+	state.stream.ApplyPart(part, partTS)
 }
 
 func (oc *OpenClawClient) applyStreamMessageMetadata(state *openClawStreamState, metadata map[string]any) {
@@ -277,20 +210,20 @@ func (oc *OpenClawClient) applyStreamMessageMetadata(state *openClawStreamState,
 		state.agentID = value
 	}
 	if value := maputil.StringArg(metadata, "finish_reason"); value != "" {
-		state.finishReason = value
+		state.stream.SetFinishReason(value)
 	}
 	if value := maputil.StringArg(metadata, "error_text"); value != "" {
-		state.errorText = value
+		state.stream.SetErrorText(value)
 	}
 	if timing, _ := metadata["timing"].(map[string]any); len(timing) > 0 {
 		if value, ok := maputil.NumberArg(timing, "started_at"); ok {
-			state.startedAtMs = int64(value)
+			state.stream.SetStartedAtMs(int64(value))
 		}
 		if value, ok := maputil.NumberArg(timing, "first_token_at"); ok {
-			state.firstTokenAtMs = int64(value)
+			state.stream.SetFirstTokenAtMs(int64(value))
 		}
 		if value, ok := maputil.NumberArg(timing, "completed_at"); ok {
-			state.completedAtMs = int64(value)
+			state.stream.SetCompletedAtMs(int64(value))
 		}
 	}
 	if usage, _ := metadata["usage"].(map[string]any); len(usage) > 0 {
@@ -323,15 +256,15 @@ func (oc *OpenClawClient) currentUIMessage(state *openClawStreamState) map[strin
 	update := msgconv.BuildUIMessageMetadata(msgconv.UIMessageMetadataParams{
 		TurnID:           state.turnID,
 		AgentID:          state.agentID,
-		FinishReason:     state.finishReason,
+		FinishReason:     state.stream.FinishReason(),
 		CompletionID:     state.runID,
 		PromptTokens:     state.promptTokens,
 		CompletionTokens: state.completionTokens,
 		ReasoningTokens:  state.reasoningTokens,
 		TotalTokens:      state.totalTokens,
-		StartedAtMs:      state.startedAtMs,
-		FirstTokenAtMs:   state.firstTokenAtMs,
-		CompletedAtMs:    state.completedAtMs,
+		StartedAtMs:      state.stream.StartedAtMs(),
+		FirstTokenAtMs:   state.stream.FirstTokenAtMs(),
+		CompletedAtMs:    state.stream.CompletedAtMs(),
 		IncludeUsage:     true,
 	})
 	if len(uiMessage) == 0 {
@@ -350,12 +283,12 @@ func (oc *OpenClawClient) buildStreamDBMetadata(state *openClawStreamState) *Mes
 	if state == nil {
 		return nil
 	}
-	body := strings.TrimSpace(state.lastVisibleText)
+	body := strings.TrimSpace(state.stream.LastVisibleText())
 	if body == "" {
-		body = strings.TrimSpace(state.visible.String())
+		body = strings.TrimSpace(state.stream.VisibleText())
 	}
 	if body == "" {
-		body = strings.TrimSpace(state.accumulated.String())
+		body = strings.TrimSpace(state.stream.AccumulatedText())
 	}
 	uiMessage := oc.currentUIMessage(state)
 	snapshot := bridgesdk.BuildTurnSnapshot(uiMessage, bridgesdk.TurnDataBuildOptions{
@@ -365,12 +298,12 @@ func (oc *OpenClawClient) buildStreamDBMetadata(state *openClawStreamState) *Mes
 		Metadata: map[string]any{
 			"turn_id":           state.turnID,
 			"agent_id":          state.agentID,
-			"finish_reason":     state.finishReason,
+			"finish_reason":     state.stream.FinishReason(),
 			"prompt_tokens":     state.promptTokens,
 			"completion_tokens": state.completionTokens,
 			"reasoning_tokens":  state.reasoningTokens,
-			"started_at_ms":     state.startedAtMs,
-			"completed_at_ms":   state.completedAtMs,
+			"started_at_ms":     state.stream.StartedAtMs(),
+			"completed_at_ms":   state.stream.CompletedAtMs(),
 		},
 	}, "openclaw")
 	return &MessageMetadata{
@@ -379,7 +312,7 @@ func (oc *OpenClawClient) buildStreamDBMetadata(state *openClawStreamState) *Mes
 			Body:              snapshot.Body,
 			TurnID:            state.turnID,
 			AgentID:           state.agentID,
-			FinishReason:      state.finishReason,
+			FinishReason:      state.stream.FinishReason(),
 			PromptTokens:      state.promptTokens,
 			CompletionTokens:  state.completionTokens,
 			ReasoningTokens:   state.reasoningTokens,
@@ -387,14 +320,14 @@ func (oc *OpenClawClient) buildStreamDBMetadata(state *openClawStreamState) *Mes
 			ThinkingContent:   snapshot.ThinkingContent,
 			ToolCalls:         snapshot.ToolCalls,
 			GeneratedFiles:    snapshot.GeneratedFiles,
-			StartedAtMs:       state.startedAtMs,
-			CompletedAtMs:     state.completedAtMs,
+			StartedAtMs:       state.stream.StartedAtMs(),
+			CompletedAtMs:     state.stream.CompletedAtMs(),
 		},
 		SessionID:      state.sessionID,
 		SessionKey:     state.sessionKey,
 		RunID:          state.runID,
-		ErrorText:      state.errorText,
+		ErrorText:      state.stream.ErrorText(),
 		TotalTokens:    state.totalTokens,
-		FirstTokenAtMs: state.firstTokenAtMs,
+		FirstTokenAtMs: state.stream.FirstTokenAtMs(),
 	}
 }
