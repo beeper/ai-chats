@@ -12,10 +12,10 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote"
-	"github.com/beeper/agentremote/bridges/ai/msgconv"
 	"github.com/beeper/agentremote/pkg/agents"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/pkg/shared/citations"
+	"github.com/beeper/agentremote/sdk"
 	"github.com/beeper/agentremote/turns"
 )
 
@@ -55,53 +55,6 @@ func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev
 	}
 	oc.UserLogin.QueueRemoteEvent(msg)
 	oc.loggerForContext(ctx).Debug().Int("body_len", len(body)).Msg("Queued continuation message for oversized response")
-}
-
-// sendInitialStreamMessage sends the first message in a streaming session via bridgev2's pipeline.
-// Returns the event ID and network message ID.
-func (oc *AIClient) sendInitialStreamMessage(ctx context.Context, portal *bridgev2.Portal, content string, turnID string, replyTarget ReplyTarget, timing agentremote.EventTiming, streamDescriptor *event.BeeperStreamInfo) (id.EventID, networkid.MessageID) {
-	relatesTo := buildReplyRelatesTo(replyTarget)
-
-	uiMessage := map[string]any{
-		"id":   turnID,
-		"role": "assistant",
-		"metadata": map[string]any{
-			"turn_id": turnID,
-		},
-		"parts": []any{},
-	}
-
-	eventRaw := map[string]any{
-		"msgtype":    event.MsgText,
-		"body":       content,
-		BeeperAIKey:  uiMessage,
-		"m.mentions": map[string]any{},
-	}
-	if streamDescriptor != nil {
-		eventRaw["com.beeper.stream"] = streamDescriptor
-	}
-	if relatesTo != nil {
-		eventRaw["m.relates_to"] = relatesTo
-	}
-
-	msgID := agentremote.NewMessageID("ai")
-	converted := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:         networkid.PartID("0"),
-			Type:       event.EventMessage,
-			Content:    &event.MessageEventContent{MsgType: event.MsgText, Body: content, BeeperStream: streamDescriptor},
-			Extra:      eventRaw,
-			DBMetadata: &MessageMetadata{BaseMessageMetadata: agentremote.BaseMessageMetadata{Role: "assistant", TurnID: turnID}},
-		}},
-	}
-
-	eventID, _, err := oc.sendViaPortalWithTiming(ctx, portal, converted, msgID, timing.Timestamp, timing.StreamOrder)
-	if err != nil {
-		oc.loggerForContext(ctx).Error().Err(err).Msg("Failed to send initial streaming message")
-		return "", ""
-	}
-	oc.loggerForContext(ctx).Info().Stringer("event_id", eventID).Str("turn_id", turnID).Msg("Initial streaming message sent")
-	return eventID, msgID
 }
 
 // flushPartialStreamingMessage saves the partially accumulated assistant message on context cancellation.
@@ -593,13 +546,6 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 	if replyToEventID != nil {
 		replyTo = *replyToEventID
 	}
-	relatesTo := msgconv.RelatesToReplace(state.turn.InitialEventID(), replyTo)
-	if relatesTo == nil && state.turn.NetworkMessageID() != "" {
-		oc.loggerForContext(ctx).Debug().
-			Str("turn_id", state.turn.ID()).
-			Str("target_message_id", string(state.turn.NetworkMessageID())).
-			Msg("Final assistant edit using network target without initial event ID")
-	}
 
 	// Generate link previews for URLs in the response
 	intent, _ := oc.getIntentForPortal(ctx, portal, bridgev2.RemoteEventMessage)
@@ -607,40 +553,17 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 
 	uiMessage := buildCompactFinalUIMessage(oc.buildStreamUIMessage(state, meta, linkPreviews))
 
-	topLevelExtra := buildFinalEditTopLevelExtra(uiMessage, linkPreviews, relatesTo)
-	sender := oc.senderForPortal(ctx, portal)
-	editContent := &bridgev2.ConvertedEdit{
-		ModifiedParts: []*bridgev2.ConvertedEditPart{{
-			Part: nil,
-			Type: event.EventMessage,
+	topLevelExtra := buildFinalEditTopLevelExtra(uiMessage, linkPreviews)
+	if state != nil && state.turn != nil {
+		state.turn.SetFinalEditPayload(&sdk.FinalEditPayload{
 			Content: &event.MessageEventContent{
 				MsgType:       event.MsgText,
 				Body:          rendered.Body,
 				Format:        rendered.Format,
 				FormattedBody: rendered.FormattedBody,
 			},
-			Extra:         nil,
 			TopLevelExtra: topLevelExtra,
-		}},
-	}
-	editTarget := state.turn.NetworkMessageID()
-	if editTarget == "" {
-		editTarget = agentremote.MatrixMessageID(state.turn.InitialEventID())
-	}
-	if editTarget == "" {
-		oc.loggerForContext(ctx).Warn().
-			Str("turn_id", state.turn.ID()).
-			Msg("Skipping final assistant edit: no network or initial event target")
-	} else {
-		timing := state.nextMessageTiming()
-		oc.UserLogin.QueueRemoteEvent(&agentremote.RemoteEdit{
-			Portal:        portal.PortalKey,
-			Sender:        sender,
-			TargetMessage: editTarget,
-			Timestamp:     timing.Timestamp,
-			StreamOrder:   timing.StreamOrder,
-			LogKey:        "ai_edit_target",
-			PreBuilt:      editContent,
+			ReplyTo:       replyTo,
 		})
 	}
 	oc.recordAgentActivity(ctx, portal, meta)
@@ -659,7 +582,7 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 	}
 }
 
-func buildFinalEditTopLevelExtra(uiMessage map[string]any, linkPreviews []*event.BeeperLinkPreview, relatesTo map[string]any) map[string]any {
+func buildFinalEditTopLevelExtra(uiMessage map[string]any, linkPreviews []*event.BeeperLinkPreview) map[string]any {
 	topLevelExtra := map[string]any{
 		"com.beeper.dont_render_edited": true,
 		"com.beeper.ai":                 uiMessage,
@@ -667,9 +590,6 @@ func buildFinalEditTopLevelExtra(uiMessage map[string]any, linkPreviews []*event
 	}
 	if len(linkPreviews) > 0 {
 		topLevelExtra["com.beeper.linkpreviews"] = PreviewsToMapSlice(linkPreviews)
-	}
-	if relatesTo != nil {
-		topLevelExtra["m.relates_to"] = relatesTo
 	}
 	return topLevelExtra
 }

@@ -5,6 +5,7 @@ import (
 
 	aibridge "github.com/beeper/agentremote/bridges/ai"
 	"github.com/beeper/agentremote/bridges/codex"
+	"github.com/beeper/agentremote/bridges/dummybridge"
 	"github.com/beeper/agentremote/bridges/openclaw"
 	"github.com/beeper/agentremote/bridges/opencode"
 	"github.com/beeper/agentremote/cmd/internal/bridgeentry"
@@ -31,6 +32,10 @@ var bridgeRegistry = map[string]bridgeDef{
 	"openclaw": {
 		Definition: bridgeentry.OpenClaw,
 		NewFunc:    func() bridgev2.NetworkConnector { return openclaw.NewConnector() },
+	},
+	"dummybridge": {
+		Definition: bridgeentry.DummyBridge,
+		NewFunc:    func() bridgev2.NetworkConnector { return dummybridge.NewConnector() },
 	},
 }
 

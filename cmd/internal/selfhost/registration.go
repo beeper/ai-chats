@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/beeper/bridge-manager/api/beeperapi"
@@ -100,12 +101,84 @@ func DeleteRemoteBridge(ctx context.Context, auth beeperauth.Config, saveAuth fu
 		hc := hungryapi.NewClient(auth.Domain, auth.Username, auth.Token)
 		deleteCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
-		if err := hc.DeleteAppService(deleteCtx, beeperName); err != nil {
+		if err := hc.DeleteAppService(deleteCtx, beeperName); err != nil && !isRemoteNotFoundError(err) {
 			fmt.Fprintf(os.Stderr, "warning: failed to delete appservice: %v\n", err)
 		}
 	}
-	if err := beeperapi.DeleteBridge(auth.Domain, beeperName, auth.Token); err != nil {
+	if err := beeperapi.DeleteBridge(auth.Domain, beeperName, auth.Token); err != nil && !isRemoteNotFoundError(err) {
 		return fmt.Errorf("failed to delete bridge in beeper api: %w", err)
 	}
+	fmt.Printf("Waiting for remote bridge %q deletion to complete...\n", beeperName)
+	if err := waitForRemoteBridgeDeletion(ctx, auth, beeperName); err != nil {
+		return err
+	}
 	return nil
+}
+
+func waitForRemoteBridgeDeletion(ctx context.Context, auth beeperauth.Config, beeperName string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(1500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		bridgeGone, appserviceGone, err := remoteBridgeDeleted(waitCtx, auth, beeperName)
+		if err != nil {
+			return err
+		}
+		if bridgeGone && appserviceGone {
+			return nil
+		}
+
+		select {
+		case <-waitCtx.Done():
+			return fmt.Errorf("timed out waiting for remote bridge %q deletion to complete", beeperName)
+		case <-ticker.C:
+		}
+	}
+}
+
+func remoteBridgeDeleted(ctx context.Context, auth beeperauth.Config, beeperName string) (bridgeGone bool, appserviceGone bool, err error) {
+	bridgeGone = true
+	appserviceGone = auth.Username == ""
+
+	who, err := beeperapi.Whoami(auth.Domain, auth.Token)
+	if err != nil {
+		return false, false, fmt.Errorf("failed to verify remote bridge deletion: %w", err)
+	}
+	if who != nil && who.User.Bridges != nil {
+		_, exists := who.User.Bridges[beeperName]
+		bridgeGone = !exists
+	}
+
+	if auth.Username == "" {
+		return bridgeGone, appserviceGone, nil
+	}
+
+	hc := hungryapi.NewClient(auth.Domain, auth.Username, auth.Token)
+	checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	_, err = hc.GetAppService(checkCtx, beeperName)
+	if err == nil {
+		appserviceGone = false
+		return bridgeGone, appserviceGone, nil
+	}
+	if isRemoteNotFoundError(err) {
+		appserviceGone = true
+		return bridgeGone, appserviceGone, nil
+	}
+	return false, false, fmt.Errorf("failed to verify remote appservice deletion: %w", err)
+}
+
+func isRemoteNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "404") ||
+		strings.Contains(msg, "not found") ||
+		strings.Contains(msg, "m_not_found")
 }

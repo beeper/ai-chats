@@ -52,25 +52,6 @@ func applyOpenClawStreamPartTimestamp(state *openClawStreamState, partType strin
 	}
 }
 
-func openClawStreamMessageTimestamp(state *openClawStreamState) time.Time {
-	if state == nil {
-		return time.Now()
-	}
-	if !state.messageTS.IsZero() {
-		return state.messageTS
-	}
-	if state.startedAtMs > 0 {
-		return time.UnixMilli(state.startedAtMs)
-	}
-	if state.firstTokenAtMs > 0 {
-		return time.UnixMilli(state.firstTokenAtMs)
-	}
-	if state.completedAtMs > 0 {
-		return time.UnixMilli(state.completedAtMs)
-	}
-	return time.Now()
-}
-
 func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.Portal, turnID, agentID, sessionKey string, part map[string]any) {
 	if oc == nil || portal == nil || portal.MXID == "" || strings.TrimSpace(turnID) == "" || part == nil {
 		return
@@ -90,6 +71,7 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 	state := oc.ensureStreamStateLocked(portal, turnID, agentID, sessionKey)
 	oc.applyStreamPartStateLocked(state, part)
 	turn := state.turn
+	partType := strings.TrimSpace(stringValue(part["type"]))
 	if turn == nil {
 		turn = oc.newSDKStreamTurn(ctx, portal, state)
 		state.turn = turn
@@ -103,15 +85,28 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 		return
 	}
 	bridgesdk.ApplyStreamPart(turn, part, bridgesdk.PartApplyOptions{})
+	if partType == "finish" {
+		oc.completeStreamTurn(turnID, state, turn)
+	}
 }
 
-func (oc *OpenClawClient) FinishStream(turnID, finishReason string) {
-	turnID = strings.TrimSpace(turnID)
-	if turnID == "" {
+func (oc *OpenClawClient) completeStreamTurn(turnID string, state *openClawStreamState, turn *bridgesdk.Turn) {
+	if strings.TrimSpace(turnID) == "" || state == nil || turn == nil {
 		return
 	}
-	state, turn := oc.popStreamTurn(turnID, finishReason)
-	finishOpenClawTurnFromState(state, turn, finishReason)
+	switch strings.TrimSpace(state.finishReason) {
+	case "abort", "aborted":
+		turn.Abort(stringutil.TrimDefault(state.finishReason, "aborted"))
+	case "error":
+		turn.EndWithError(stringutil.TrimDefault(state.errorText, "OpenClaw stream failed"))
+	default:
+		turn.End(stringutil.TrimDefault(state.finishReason, "stop"))
+	}
+	oc.StreamMu.Lock()
+	if oc.streamStates[turnID] == state {
+		delete(oc.streamStates, turnID)
+	}
+	oc.StreamMu.Unlock()
 }
 
 func (oc *OpenClawClient) newSDKStreamTurn(ctx context.Context, portal *bridgev2.Portal, state *openClawStreamState) *bridgesdk.Turn {
@@ -152,7 +147,6 @@ func (oc *OpenClawClient) computeVisibleDelta(turnID, text string) string {
 	state := oc.streamStates[turnID]
 	if state == nil {
 		state = &openClawStreamState{turnID: turnID}
-		state.ui.TurnID = turnID
 		oc.streamStates[turnID] = state
 	}
 	if text == state.lastVisibleText {
@@ -190,7 +184,6 @@ func (oc *OpenClawClient) ensureStreamStateLocked(portal *bridgev2.Portal, turnI
 			sessionKey: sessionKey,
 			role:       "assistant",
 		}
-		state.ui.TurnID = turnID
 		oc.streamStates[turnID] = state
 	}
 	if state.portal == nil {
@@ -201,9 +194,6 @@ func (oc *OpenClawClient) ensureStreamStateLocked(portal *bridgev2.Portal, turnI
 	}
 	if state.sessionKey == "" {
 		state.sessionKey = sessionKey
-	}
-	if state.ui.TurnID == "" {
-		state.ui.TurnID = turnID
 	}
 	if state.role == "" {
 		state.role = "assistant"
@@ -247,42 +237,15 @@ func (oc *OpenClawClient) applyStreamPartStateLocked(state *openClawStreamState,
 	case "abort":
 		state.finishReason = stringutil.TrimDefault(stringValue(part["reason"]), "aborted")
 	case "finish":
+		if finishReason := strings.TrimSpace(stringValue(part["finishReason"])); finishReason != "" {
+			state.finishReason = finishReason
+		}
+		if errText := strings.TrimSpace(stringValue(part["errorText"])); errText != "" {
+			state.errorText = errText
+		}
 		if state.completedAtMs == 0 {
 			state.completedAtMs = time.Now().UnixMilli()
 		}
-	}
-	streamui.ApplyChunk(&state.ui, part)
-}
-
-func (oc *OpenClawClient) popStreamTurn(turnID, finishReason string) (*openClawStreamState, *bridgesdk.Turn) {
-	oc.StreamMu.Lock()
-	defer oc.StreamMu.Unlock()
-	state := oc.streamStates[turnID]
-	delete(oc.streamStates, turnID)
-	if state == nil {
-		return nil, nil
-	}
-	if state.finishReason == "" {
-		state.finishReason = strings.TrimSpace(finishReason)
-	}
-	if state.completedAtMs == 0 {
-		state.completedAtMs = openClawStreamMessageTimestamp(state).UnixMilli()
-	}
-	return state, state.turn
-}
-
-func finishOpenClawTurnFromState(state *openClawStreamState, turn *bridgesdk.Turn, fallbackReason string) {
-	if state == nil || turn == nil {
-		return
-	}
-	switch strings.TrimSpace(state.finishReason) {
-	case "abort", "aborted":
-		turn.Abort(stringutil.TrimDefault(state.finishReason, "aborted"))
-	case "error":
-		turn.EndWithError(stringutil.TrimDefault(state.errorText, "OpenClaw stream failed"))
-	default:
-		reason := stringutil.TrimDefault(state.finishReason, strings.TrimSpace(fallbackReason))
-		turn.End(stringutil.TrimDefault(reason, "stop"))
 	}
 }
 
@@ -343,7 +306,8 @@ func (oc *OpenClawClient) currentUIMessage(state *openClawStreamState) map[strin
 	if state == nil {
 		return nil
 	}
-	uiState := &state.ui
+	uiState := &streamui.UIState{TurnID: state.turnID}
+	uiState.InitMaps()
 	if state.turn != nil && state.turn.UIState() != nil {
 		uiState = state.turn.UIState()
 	}

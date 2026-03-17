@@ -1,12 +1,22 @@
 package openclaw
 
 import (
+	"context"
 	"testing"
 	"time"
+
+	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 	bridgesdk "github.com/beeper/agentremote/sdk"
 )
+
+func newOpenClawTestTurn(turnID string) *bridgesdk.Turn {
+	conv := bridgesdk.NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &bridgesdk.Config{}, nil)
+	turn := conv.StartTurn(context.Background(), nil, nil)
+	turn.SetID(turnID)
+	return turn
+}
 
 func TestComputeVisibleDeltaTracksPrefixOnly(t *testing.T) {
 	oc := &OpenClawClient{
@@ -48,33 +58,34 @@ func TestBuildStreamDBMetadataIncludesToolCalls(t *testing.T) {
 		sessionID:  "sess-1",
 		sessionKey: "agent:main:matrix-dm",
 		role:       "assistant",
+		turn:       newOpenClawTestTurn("turn-3"),
 	}
 	state.visible.WriteString("running")
-	streamui.ApplyChunk(&state.ui, map[string]any{
+	streamui.ApplyChunk(state.turn.UIState(), map[string]any{
 		"type": "reasoning-start",
 		"id":   "reasoning-1",
 	})
-	streamui.ApplyChunk(&state.ui, map[string]any{
+	streamui.ApplyChunk(state.turn.UIState(), map[string]any{
 		"type":  "reasoning-delta",
 		"id":    "reasoning-1",
 		"delta": "thinking",
 	})
-	streamui.ApplyChunk(&state.ui, map[string]any{
+	streamui.ApplyChunk(state.turn.UIState(), map[string]any{
 		"type": "reasoning-end",
 		"id":   "reasoning-1",
 	})
-	streamui.ApplyChunk(&state.ui, map[string]any{
+	streamui.ApplyChunk(state.turn.UIState(), map[string]any{
 		"type":       "tool-input-available",
 		"toolCallId": "call-1",
 		"toolName":   "bash",
 		"input":      map[string]any{"cmd": "pwd"},
 	})
-	streamui.ApplyChunk(&state.ui, map[string]any{
+	streamui.ApplyChunk(state.turn.UIState(), map[string]any{
 		"type":       "tool-output-available",
 		"toolCallId": "call-1",
 		"output":     map[string]any{"stdout": "/tmp"},
 	})
-	streamui.ApplyChunk(&state.ui, map[string]any{
+	streamui.ApplyChunk(state.turn.UIState(), map[string]any{
 		"type":      "file",
 		"url":       "mxc://example.org/out",
 		"mediaType": "image/png",
@@ -139,32 +150,22 @@ func TestApplyStreamPartStateLockedUpdatesLifecycleFields(t *testing.T) {
 	}
 }
 
-func TestPopStreamTurnFinalizesAndRemovesState(t *testing.T) {
-	turn := new(bridgesdk.Turn)
+func TestCompleteStreamTurnRemovesTrackedState(t *testing.T) {
+	turn := newOpenClawTestTurn("turn-1")
+	state := &openClawStreamState{
+		turnID:       "turn-1",
+		turn:         turn,
+		finishReason: "stop",
+	}
 	oc := &OpenClawClient{
 		streamStates: map[string]*openClawStreamState{
-			"turn-1": {
-				turnID: "turn-1",
-				turn:   turn,
-			},
+			"turn-1": state,
 		},
 	}
 
-	state, gotTurn := oc.popStreamTurn("turn-1", "stop")
-	if gotTurn != turn {
-		t.Fatal("expected popStreamTurn to return tracked turn pointer")
-	}
-	if state == nil {
-		t.Fatal("expected stream state to be returned")
-	}
-	if state.finishReason != "stop" {
-		t.Fatalf("expected finish reason to be set from fallback, got %q", state.finishReason)
-	}
-	if state.completedAtMs == 0 {
-		t.Fatal("expected completed timestamp to be set")
-	}
+	oc.completeStreamTurn("turn-1", state, turn)
 	if _, ok := oc.streamStates["turn-1"]; ok {
-		t.Fatal("expected turn state to be removed after pop")
+		t.Fatal("expected turn state to be removed after completion")
 	}
 }
 

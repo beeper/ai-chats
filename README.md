@@ -222,10 +222,10 @@ Common commands:
 Reset all local bridge state and registrations:
 
 ```bash
-./tools/bridges delete --remote ai
-./tools/bridges delete --remote codex
-./tools/bridges delete --remote openclaw
-./tools/bridges delete --remote opencode
+./tools/bridges delete ai
+./tools/bridges delete codex
+./tools/bridges delete openclaw
+./tools/bridges delete opencode
 ./tools/bridges logout
 ```
 

@@ -3,10 +3,10 @@ package ai
 import (
 	"context"
 
+	"github.com/beeper/agentremote"
 	"github.com/openai/openai-go/v3"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
@@ -40,24 +40,29 @@ func (oc *AIClient) createStreamingTurn(
 	turn.Approvals().SetHandler(func(callCtx context.Context, sdkTurn *bridgesdk.Turn, req bridgesdk.ApprovalRequest) bridgesdk.ApprovalHandle {
 		return oc.requestTurnApproval(callCtx, portal, state, sdkTurn, req)
 	})
-	// Use bridges/ai's own initial message sending.
-	turn.SetSendFunc(func(sendCtx context.Context) (id.EventID, networkid.MessageID, error) {
-		if !state.suppressSend {
-			oc.ensureGhostDisplayName(sendCtx, oc.effectiveModel(meta))
-		}
-		streamDescriptor, err := turn.StreamDescriptor(sendCtx)
-		if err != nil {
-			return "", "", err
-		}
-		evtID, msgID := oc.sendInitialStreamMessage(sendCtx, portal, "...", turn.ID(), state.replyTarget, state.nextMessageTiming(), streamDescriptor)
-		return evtID, msgID, nil
+	placeholderExtra := map[string]any{
+		"msgtype":    event.MsgText,
+		"body":       "...",
+		BeeperAIKey:  map[string]any{"id": turn.ID(), "role": "assistant", "metadata": map[string]any{"turn_id": turn.ID()}, "parts": []any{}},
+		"m.mentions": map[string]any{},
+	}
+	if relatesTo := buildReplyRelatesTo(state.replyTarget); relatesTo != nil {
+		placeholderExtra["m.relates_to"] = relatesTo
+	}
+	turn.SetPlaceholderMessagePayload(&bridgesdk.PlaceholderMessagePayload{
+		Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "..."},
+		Extra:   placeholderExtra,
+		DBMetadata: &MessageMetadata{BaseMessageMetadata: agentremote.BaseMessageMetadata{
+			Role:   "assistant",
+			TurnID: turn.ID(),
+		}},
 	})
 
 	turn.SetStreamTransportFunc(func(callCtx context.Context) (bridgev2.StreamTransport, bool) {
-		if oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.Streams == nil {
+		if oc.UserLogin == nil || oc.UserLogin.BeeperStream == nil {
 			return nil, false
 		}
-		return oc.UserLogin.Bridge.Streams, true
+		return oc.UserLogin.BeeperStream, true
 	})
 
 	if state.suppressSend {

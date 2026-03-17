@@ -1247,9 +1247,10 @@ func (m *openClawManager) handleChatEvent(ctx context.Context, payload gatewayCh
 		m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
 			"timestamp":       eventTS.UnixMilli(),
 			"type":            "finish",
+			"finishReason":    payload.State,
+			"errorText":       openClawErrorText(payload),
 			"messageMetadata": messageMetadata,
 		})
-		m.client.FinishStream(turnID, payload.State)
 		m.clearStartedTurn(turnID)
 		m.untrackWaitingRun(payload.RunID)
 		meta.LastLiveSeq = payload.Seq
@@ -1657,9 +1658,10 @@ func (m *openClawManager) waitForRunCompletion(ctx context.Context, portal *brid
 	}
 	m.client.EmitStreamPart(ctx, portal, turnID, agentID, meta.OpenClawSessionKey, map[string]any{
 		"type":            "finish",
+		"finishReason":    status,
+		"errorText":       strings.TrimSpace(waitResp.Error),
 		"messageMetadata": metadata,
 	})
-	m.client.FinishStream(turnID, status)
 	m.clearStartedTurn(turnID)
 }
 

@@ -136,12 +136,8 @@ func TestBuildFinalEditTopLevelExtra_KeepsMatrixFallbackFields(t *testing.T) {
 		"id":   "turn-3",
 		"role": "assistant",
 	}
-	relatesTo := map[string]any{
-		"rel_type": "m.replace",
-		"event_id": "$orig",
-	}
 
-	extra := buildFinalEditTopLevelExtra(uiMessage, nil, relatesTo)
+	extra := buildFinalEditTopLevelExtra(uiMessage, nil)
 
 	if _, ok := extra["body"]; ok {
 		t.Fatalf("expected body fallback to come from Matrix edit content, got %#v", extra["body"])
@@ -159,15 +155,8 @@ func TestBuildFinalEditTopLevelExtra_KeepsMatrixFallbackFields(t *testing.T) {
 	if got := gotUIMessage["id"]; got != "turn-3" {
 		t.Fatalf("expected UIMessage id, got %#v", got)
 	}
-	gotRelatesTo, ok := extra["m.relates_to"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected relates_to map, got %T", extra["m.relates_to"])
-	}
-	if got := gotRelatesTo["rel_type"]; got != "m.replace" {
-		t.Fatalf("expected m.replace relation type, got %#v", got)
-	}
-	if got := gotRelatesTo["event_id"]; got != "$orig" {
-		t.Fatalf("expected relation event id, got %#v", got)
+	if _, ok := extra["m.relates_to"]; ok {
+		t.Fatalf("expected SDK to inject m.relates_to, got %#v", extra["m.relates_to"])
 	}
 	if _, ok := extra["m.mentions"]; !ok {
 		t.Fatalf("expected m.mentions to be present")

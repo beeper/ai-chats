@@ -6,7 +6,7 @@
 > Status: *Draft* (unreleased), proposed v1.
 > This is a highly experimental profile.
 > It relies on homeserver/client support for custom event types and rendering/consumption.
-> Streaming transport is adaptive: ephemeral-first with debounced timeline-edit fallback when ephemeral delivery is unsupported.
+> Streaming transport is message-anchored: a placeholder `m.room.message` advertises `com.beeper.stream`, live deltas flow over `to_device`, and completion is signaled by a final timeline edit.
 > This repo contains one experimental implementation, but the transport profile is not bridge-specific: any Matrix bot/client/bridge can emit and consume these events.
 
 ## Contents
@@ -27,9 +27,10 @@
 ## Scope
 This document specifies a Matrix transport profile for real-time AI:
 - Canonical assistant content in `m.room.message` (`com.beeper.ai` as AI SDK-compatible `UIMessage`).
-- Streaming deltas via adaptive transport:
-  - primary: ephemeral events (`com.beeper.ai.stream_event` with AI SDK `UIMessageChunk`)
-  - fallback: debounced `m.replace` timeline edits when ephemeral delivery is unavailable
+- Streaming deltas via message-anchored transport:
+  - placeholder `m.room.message` carrying `com.beeper.stream`
+  - `to_device` subscription and update events (`com.beeper.stream.subscribe`, `com.beeper.stream.update`)
+  - final `m.replace` timeline edit with canonical content
 - `com.beeper.ai.*` timeline projection events (tool call/result, compaction status, etc).
 - standard Matrix room features for capability advertising.
 - Tool approvals (MCP approvals + selected builtin tools).
@@ -47,7 +48,7 @@ Upstream reference (AI SDK):
 Reference implementation in this repo (AI Chats):
 - Event type identifiers: `pkg/matrixevents/matrixevents.go`
 - Event payload structs (where defined): `bridges/ai/events.go`
-- Streaming envelope and emission: `pkg/matrixevents/matrixevents.go`, `bridges/ai/stream_events.go`
+- Streaming envelope and emission: `pkg/matrixevents/matrixevents.go`, `turns/session.go`, `sdk/turn.go`
 - Tool call/result projections: `bridges/ai/tool_execution.go`
 - Compaction status emission: `bridges/ai/response_retry.go`
 - State broadcast: `bridges/ai/chat.go`
@@ -57,17 +58,18 @@ Reference implementation in this repo (AI Chats):
 <a id="compatibility"></a>
 ## Compatibility
 - Homeserver support for custom event types is required.
-- Ephemeral support is optional but recommended; when unavailable, implementations should fall back to debounced timeline edits.
-- Clients must explicitly implement rendering/consumption of these custom types.
+- Clients that want live streaming must implement `com.beeper.stream` descriptor handling plus `to_device` subscribe/update flows.
+- Non-supporting clients still interoperate through placeholder fallback text and the final timeline edit.
 - Non-supporting clients should fall back to `m.room.message.body` where available.
 
 <a id="terminology"></a>
 ## Terminology
 - `turn_id`: Unique ID for a single assistant response "turn".
-- `seq`: Per-turn monotonic sequence number for stream events.
+- `seq`: Per-turn monotonic sequence number for streamed deltas.
 - `call_id` / `toolCallId`: Tool invocation identifier.
 - `timeline`: persisted Matrix events.
-- `ephemeral`: non-persisted events (dropped by servers/clients that don't support them).
+- `stream descriptor`: `com.beeper.stream` object attached to the placeholder timeline event.
+- `subscription`: A short-lived `to_device` request to receive live updates for one placeholder event.
 - `m.reference`: relation used to link events to a target event ID.
 - `m.replace`: relation used to edit/replace an earlier timeline message.
 
@@ -78,8 +80,9 @@ Authoritative identifiers are defined in `pkg/matrixevents/matrixevents.go`.
 ### Event Types
 | Event type | Class | Persistence | Primary purpose | Spec section |
 | --- | --- | --- | --- | --- |
-| `m.room.message` | message | timeline | Canonical assistant message carrier (`com.beeper.ai`) | [Canonical](#canonical) |
-| `com.beeper.ai.stream_event` | ephemeral | ephemeral | Streaming `UIMessageChunk` deltas | [Streaming](#streaming) |
+| `m.room.message` | message | timeline | Canonical assistant message carrier; placeholder also carries `com.beeper.stream` | [Canonical](#canonical) |
+| `com.beeper.stream.subscribe` | to-device | transient | Subscribe one device to a placeholder-backed live stream | [Streaming](#streaming) |
+| `com.beeper.stream.update` | to-device | transient | Deliver buffered or incremental stream deltas | [Streaming](#streaming) |
 | `com.beeper.ai.compaction_status` | message | timeline | Context compaction lifecycle/status | [Projections](#projection-compaction) |
 | `com.beeper.ai.agents` | state | state | Agent definitions for the room | — |
 
@@ -87,6 +90,7 @@ Authoritative identifiers are defined in `pkg/matrixevents/matrixevents.go`.
 | Key | Where it appears | Purpose | Spec section |
 | --- | --- | --- | --- |
 | `com.beeper.ai` | `m.room.message` | Canonical assistant `UIMessage` | [Canonical](#canonical) |
+| `com.beeper.stream` | `m.room.message` | Active live-stream descriptor for a placeholder message | [Streaming](#streaming) |
 | `com.beeper.ai.model_id` | `m.room.message` | Routing/display hint | [Other keys](#other-keys-routing) |
 | `com.beeper.ai.agent` | `m.room.message`, `m.room.member` | Routing hint or agent definition | [Other keys](#other-keys-agent) |
 | `com.beeper.ai.image_generation` | `m.room.message` (image) | Generated-image tag/metadata | [Other keys](#other-keys-media) |
@@ -134,12 +138,72 @@ Send assistant turns as standard `m.room.message` events:
 
 <a id="streaming"></a>
 ## Streaming
-Streaming uses ephemeral `com.beeper.ai.stream_event` events.
+Streaming uses a placeholder timeline event plus `to_device` subscribe/update traffic.
 
-### Envelope
-Event type: `com.beeper.ai.stream_event` (ephemeral)
+### Placeholder Descriptor
+The sender starts the turn by sending a placeholder `m.room.message`. While the turn is live, that message carries `com.beeper.stream`:
+
+```json
+{
+  "msgtype": "m.text",
+  "body": "Thinking...",
+  "com.beeper.ai": {
+    "id": "turn_123",
+    "role": "assistant",
+    "metadata": { "turn_id": "turn_123" },
+    "parts": []
+  },
+  "com.beeper.stream": {
+    "user_id": "@aibot:beeper.local",
+    "device_id": "ABCD1234",
+    "type": "com.beeper.llm",
+    "expiry": 1800000
+  }
+}
+```
+
+Descriptor fields:
+- `user_id: string` (REQUIRED)
+- `device_id: string` (REQUIRED)
+- `type: string` (REQUIRED, currently `com.beeper.llm`)
+- `expiry?: integer` (milliseconds; clients SHOULD stop subscribing after this age)
+- `encryption?: object` (OPTIONAL custom symmetric encryption descriptor; see MSC doc)
+
+If the most recent assistant placeholder in a room still contains `com.beeper.stream`, clients MAY render a preview such as "Generating response...".
+
+### Subscription
+Clients subscribe with `to_device` event type `com.beeper.stream.subscribe`:
+
+```json
+{
+  "type": "com.beeper.stream.subscribe",
+  "content": {
+    "room_id": "!meow",
+    "event_id": "$foobar",
+    "device_id": "4321EFGH",
+    "expiry": 300000
+  }
+}
+```
 
 Content:
+- `room_id: string` (REQUIRED)
+- `event_id: string` (REQUIRED; placeholder event ID)
+- `device_id: string` (REQUIRED; subscriber device)
+- `expiry?: integer` (OPTIONAL requested subscription lifetime in milliseconds)
+
+### Update Delivery
+The sender replies with `to_device` event type `com.beeper.stream.update`.
+
+Content:
+- `room_id: string` (REQUIRED)
+- `event_id: string` (REQUIRED)
+- `com.beeper.llm.deltas: object[]` (REQUIRED for `type = "com.beeper.llm"`)
+
+The sender MUST first send buffered state accumulated so far to the new subscriber, then MAY continue with incremental updates while the subscription is active.
+
+### `com.beeper.llm` Delta Envelope
+Each entry in `com.beeper.llm.deltas` is:
 - `turn_id: string` (REQUIRED)
 - `seq: integer` (REQUIRED, starts at 1, strictly increasing per `turn_id`)
 - `part: UIMessageChunk` (REQUIRED)
@@ -152,12 +216,12 @@ AI SDK UI streams emit SSE frames:
 - terminal sentinel `data: [DONE]`
 
 Mapping:
-1. For each SSE JSON chunk, send one `com.beeper.ai.stream_event` with `part = <chunk>`.
+1. For each SSE JSON chunk, append one entry to `com.beeper.llm.deltas` with `part = <chunk>`.
 2. `data: [DONE]` is transport-level termination and does not require a Matrix event.
 
 Implications:
 - Producers MUST NOT remap chunk payload schemas.
-- Consumers MUST process `part` as AI SDK `UIMessageChunk`.
+- Consumers MUST process each delta `part` as AI SDK `UIMessageChunk`.
 
 ### Chunk Compatibility
 Producers MAY emit any valid AI SDK `UIMessageChunk` type:
@@ -208,17 +272,18 @@ This bridge emits some `data-*` chunks in `part` for UI coordination. Clients th
 ### Ordering and Lifecycle
 Per turn:
 - `seq` MUST be strictly increasing.
-- Duplicate/stale events (`seq <= last_applied_seq`) MUST be ignored.
-- Out-of-order events SHOULD be buffered briefly and applied in `seq` order.
-- Producers MUST NOT emit ephemeral stream events until the canonical assistant timeline message has a concrete Matrix event ID.
-- Producers MUST buffer debounced/final timeline edits until the placeholder's Matrix event ID is resolved, because `m.replace` requires `m.relates_to.event_id`.
-- If neither a bridge-side message ID nor a Matrix event ID exists, producers MUST buffer or fail the turn and MUST NOT emit stream events or edits.
+- Duplicate/stale deltas (`seq <= last_applied_seq`) MUST be ignored.
+- Out-of-order deltas SHOULD be buffered briefly and applied in `seq` order.
+- Producers MUST NOT advertise or publish a live stream until the canonical assistant placeholder has a concrete Matrix event ID.
+- Producers MUST buffer the final timeline edit until the placeholder's Matrix event ID is resolved, because `m.replace` requires `m.relates_to.event_id`.
+- If neither a bridge-side message ID nor a Matrix event ID exists, producers MUST buffer or fail the turn and MUST NOT start live delivery.
 
 Required lifecycle:
-1. Send initial placeholder `m.room.message` with seed `com.beeper.ai`.
+1. Send initial placeholder `m.room.message` with seed `com.beeper.ai` and `com.beeper.stream`.
 2. Resolve/store the placeholder's Matrix event ID.
-3. Emit `com.beeper.ai.stream_event` chunks (monotonic `seq`) only after `m.relates_to.event_id` can reference that message.
-4. Emit final timeline edit (`m.replace`) containing final fallback text + full final `com.beeper.ai`.
+3. Accept `com.beeper.stream.subscribe` requests for that placeholder.
+4. Send buffered `com.beeper.stream.update` state, then incremental updates (monotonic `seq`) while subscribed.
+5. Emit final timeline edit (`m.replace`) containing final fallback text + full final `com.beeper.ai`, and remove `com.beeper.stream`.
 
 Terminal chunks:
 - The stream SHOULD end with one of: `finish`, `abort`, `error`.
@@ -230,11 +295,11 @@ sequenceDiagram
   participant H as Homeserver
   participant B as Bridge
 
-  B->>H: m.room.message (placeholder + com.beeper.ai seed)
+  B->>H: m.room.message (placeholder + com.beeper.ai + com.beeper.stream)
   H->>C: timeline placeholder
-  loop stream chunks
-    B->>H: com.beeper.ai.stream_event (turn_id, seq, part)
-    H->>C: ephemeral stream_event
+  C->>B: to_device com.beeper.stream.subscribe
+  loop subscribed updates
+    B->>C: to_device com.beeper.stream.update (com.beeper.llm.deltas)
   end
   B->>H: m.room.message (m.replace final + com.beeper.ai final)
   H->>C: timeline edit
@@ -243,10 +308,16 @@ sequenceDiagram
 ### Streaming Example
 ```json
 {
-  "turn_id": "turn_123",
-  "seq": 7,
-  "m.relates_to": { "rel_type": "m.reference", "event_id": "$initial_event" },
-  "part": { "type": "text-delta", "id": "text-turn_123", "delta": "hello" }
+  "room_id": "!meow",
+  "event_id": "$foobar",
+  "com.beeper.llm.deltas": [
+    {
+      "turn_id": "turn_123",
+      "seq": 7,
+      "m.relates_to": { "rel_type": "m.reference", "event_id": "$foobar" },
+      "part": { "type": "text-delta", "id": "text-turn_123", "delta": "hello" }
+    }
+  ]
 }
 ```
 
@@ -302,7 +373,7 @@ Config (see `config.example.yaml` and `bridges/ai/integrations_config.go`):
 
 ### Approval Request Emission
 When approval is needed, the bridge emits:
-1. An ephemeral stream chunk (`com.beeper.ai.stream_event`) where `part.type = "tool-approval-request"` containing:
+1. A live stream delta delivered in `com.beeper.stream.update`, where one `com.beeper.llm.deltas[*].part.type = "tool-approval-request"` and contains:
    - `approvalId: string`
    - `toolCallId: string`
 2. A timeline-visible canonical approval notice.
@@ -345,7 +416,7 @@ Approvals are resolved through reactions on the canonical approval notice:
 ```
 
 Rules:
-- The approval notice is the canonical Matrix artifact. Rich clients MAY also observe mirrored `tool-approval-request` and `tool-approval-response` stream parts. A `tool-approval-response` chunk carries `approvalId`, `toolCallId`, `approved`, and optional `reason`.
+- The approval notice is the canonical Matrix artifact. Rich clients MAY also observe mirrored `tool-approval-request` and `tool-approval-response` stream parts inside `com.beeper.stream.update`. A `tool-approval-response` chunk carries `approvalId`, `toolCallId`, `approved`, and optional `reason`.
 - Only owner reactions with an advertised option key can resolve the approval.
 - Non-owner reactions and invalid keys MUST be rejected and SHOULD be redacted.
 - On terminal completion, the bridge MUST edit the approval notice into its final state and redact all bridge-authored placeholder reactions.
@@ -409,8 +480,8 @@ Examples:
 
 <a id="impl-notes"></a>
 ## Implementation Notes
-- Desktop consumes `com.beeper.ai.stream_event.part` as an AI SDK `UIMessageChunk` and reconstructs a live `UIMessage`.
-- Matrix envelope concerns (`turn_id`, `seq`, `m.relates_to`) remain bridge/client responsibilities.
+- Desktop consumes `com.beeper.llm.deltas[*].part` as an AI SDK `UIMessageChunk` and reconstructs a live `UIMessage`.
+- Matrix envelope concerns (`turn_id`, `seq`, `m.relates_to`) remain bridge/client responsibilities inside each delta entry.
 - Consumers should prefer AI SDK-compatible chunk semantics (metadata merge, tool partial JSON handling, step boundaries).
 
 <a id="forward-compat"></a>

@@ -4,7 +4,6 @@ import (
 	"strings"
 	"time"
 
-	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote"
@@ -30,7 +29,6 @@ type streamingState struct {
 	sourceDocuments  []citations.SourceDocument
 	generatedFiles   []citations.GeneratedFilePart
 	initialEventID   id.EventID
-	networkMessageID networkid.MessageID
 	firstToken       bool
 
 	turn *bridgesdk.Turn
@@ -47,6 +45,31 @@ func (s *streamingState) recordFirstToken() {
 	}
 	s.firstToken = false
 	s.firstTokenAtMs = time.Now().UnixMilli()
+}
+
+func (s *streamingState) currentTurnID() string {
+	if s != nil && s.turn != nil {
+		return strings.TrimSpace(s.turn.ID())
+	}
+	if s == nil {
+		return ""
+	}
+	return strings.TrimSpace(s.turnID)
+}
+
+func (s *streamingState) currentReplyTargetEventID() id.EventID {
+	if s != nil && s.turn != nil {
+		if source := s.turn.Source(); source != nil && strings.TrimSpace(source.EventID) != "" {
+			return id.EventID(source.EventID)
+		}
+		if eventID := s.turn.InitialEventID(); eventID != "" {
+			return eventID
+		}
+	}
+	if s == nil {
+		return ""
+	}
+	return s.initialEventID
 }
 
 func newStreamingState(sourceEventID id.EventID) *streamingState {
