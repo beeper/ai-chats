@@ -156,3 +156,43 @@ func TestStreamSessionDoesNothingWithoutEditTarget(t *testing.T) {
 		t.Fatal("did not expect stream send without an edit target")
 	}
 }
+
+func TestStreamSessionBuffersUntilTargetEventIDExists(t *testing.T) {
+	transport := &testStreamTransport{descriptor: &event.BeeperStreamInfo{Type: "com.beeper.llm"}}
+	var targetEventID id.EventID
+	var seq int
+
+	session := NewStreamSession(StreamSessionParams{
+		TurnID: "turn-buffered",
+		GetRoomID: func() id.RoomID {
+			return id.RoomID("!room:example.com")
+		},
+		GetTargetEventID: func() id.EventID {
+			return targetEventID
+		},
+		GetStreamTransport: func(context.Context) (bridgev2.StreamTransport, bool) {
+			return transport, true
+		},
+		NextSeq: func() int {
+			seq++
+			return seq
+		},
+	})
+
+	session.EmitPart(context.Background(), map[string]any{"type": "text-delta", "delta": "hello"})
+	if len(transport.published) != 0 {
+		t.Fatalf("expected part to stay buffered, got %#v", transport.published)
+	}
+
+	targetEventID = id.EventID("$event-buffered")
+	if err := session.Start(context.Background(), targetEventID); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	if transport.startedEvent != targetEventID {
+		t.Fatalf("expected stream start target %s, got %s", targetEventID, transport.startedEvent)
+	}
+	if len(transport.published) != 1 {
+		t.Fatalf("expected one buffered publish after target resolution, got %d", len(transport.published))
+	}
+}
