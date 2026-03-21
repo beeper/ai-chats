@@ -36,7 +36,7 @@ type StreamSessionParams struct {
 	GetStreamType        func() string
 	NextSeq              func() int
 
-	GetStreamTransport func(ctx context.Context) (bridgev2.StreamTransport, bool)
+	GetStreamPublisher func(ctx context.Context) (bridgev2.BeeperStreamPublisher, bool)
 	ClearTurnGate      func()
 	SendHook           func(turnID string, seq int, content map[string]any, txnID string) bool
 	Logger             *zerolog.Logger
@@ -83,8 +83,8 @@ func (s *StreamSession) Descriptor(ctx context.Context) (*event.BeeperStreamInfo
 		return nil, context.Canceled
 	}
 	s.descriptorOnce.Do(func() {
-		transport, ok := s.params.GetStreamTransport(ctx)
-		if !ok || transport == nil {
+		publisher, ok := s.params.GetStreamPublisher(ctx)
+		if !ok || publisher == nil {
 			s.descriptorErr = context.Canceled
 			return
 		}
@@ -93,10 +93,7 @@ func (s *StreamSession) Descriptor(ctx context.Context) (*event.BeeperStreamInfo
 			s.descriptorErr = context.Canceled
 			return
 		}
-		s.descriptor, s.descriptorErr = transport.BuildDescriptor(ctx, &bridgev2.StreamDescriptorRequest{
-			RoomID: roomID,
-			Type:   s.streamType(),
-		})
+		s.descriptor, s.descriptorErr = publisher.NewDescriptor(ctx, roomID, s.streamType())
 	})
 	return s.descriptor, s.descriptorErr
 }
@@ -109,34 +106,35 @@ func (s *StreamSession) Start(ctx context.Context, targetEventID id.EventID) err
 	if roomID == "" || targetEventID == "" {
 		return context.Canceled
 	}
-	transport, ok := s.params.GetStreamTransport(ctx)
-	if !ok || transport == nil {
+	publisher, ok := s.params.GetStreamPublisher(ctx)
+	if !ok || publisher == nil {
 		return context.Canceled
 	}
 	descriptor, err := s.Descriptor(ctx)
 	if err != nil {
 		return err
 	}
-	_, _, err = s.tryStart(ctx, transport, roomID, targetEventID, descriptor)
+	_, _, err = s.tryStart(ctx, publisher, roomID, targetEventID, descriptor)
 	if err != nil {
 		return err
 	}
 	return s.FlushPending(ctx)
 }
 
-func (s *StreamSession) tryStart(ctx context.Context, transport bridgev2.StreamTransport, roomID id.RoomID, targetEventID id.EventID, descriptor *event.BeeperStreamInfo) (alreadyStarted bool, pendingCount int, err error) {
+func (s *StreamSession) tryStart(
+	ctx context.Context,
+	publisher bridgev2.BeeperStreamPublisher,
+	roomID id.RoomID,
+	targetEventID id.EventID,
+	descriptor *event.BeeperStreamInfo,
+) (alreadyStarted bool, pendingCount int, err error) {
 	s.streamMu.Lock()
 	defer s.streamMu.Unlock()
 	pendingCount = len(s.pendingParts)
 	if s.streamStarted && s.targetEventID == targetEventID {
 		return true, pendingCount, nil
 	}
-	err = transport.Start(ctx, &bridgev2.StartStreamRequest{
-		RoomID:     roomID,
-		EventID:    targetEventID,
-		Type:       s.streamType(),
-		Descriptor: descriptor,
-	})
+	err = publisher.Register(ctx, roomID, targetEventID, descriptor)
 	if err != nil {
 		return false, pendingCount, err
 	}
@@ -176,14 +174,11 @@ func (s *StreamSession) End(ctx context.Context, _ EndReason) {
 	if !started || targetEventID == "" {
 		return
 	}
-	transport, ok := s.params.GetStreamTransport(ctx)
-	if !ok || transport == nil {
+	publisher, ok := s.params.GetStreamPublisher(ctx)
+	if !ok || publisher == nil {
 		return
 	}
-	_ = transport.Finish(ctx, &bridgev2.FinishStreamRequest{
-		RoomID:  s.roomID(),
-		EventID: targetEventID,
-	})
+	publisher.Unregister(s.roomID(), targetEventID)
 }
 
 func (s *StreamSession) EmitPart(ctx context.Context, part map[string]any) {
@@ -339,22 +334,29 @@ func (s *StreamSession) publishPendingPart(ctx context.Context, targetEventID id
 	if err != nil {
 		return err
 	}
+	deltaKey := s.streamType() + ".deltas"
+	if descriptorType := strings.TrimSpace(s.descriptorType()); descriptorType != "" {
+		deltaKey = descriptorType + ".deltas"
+	}
 	content := map[string]any{
-		"com.beeper.llm.deltas": []map[string]any{delta},
+		deltaKey: []map[string]any{delta},
 	}
 	txnID := matrixevents.BuildStreamEventTxnID(s.params.TurnID, pending.seq)
 	if s.params.SendHook != nil && s.params.SendHook(s.params.TurnID, pending.seq, content, txnID) {
 		return nil
 	}
-	transport, ok := s.params.GetStreamTransport(ctx)
-	if !ok || transport == nil {
+	publisher, ok := s.params.GetStreamPublisher(ctx)
+	if !ok || publisher == nil {
 		return context.Canceled
 	}
-	return transport.Publish(ctx, &bridgev2.PublishStreamRequest{
-		RoomID:  s.roomID(),
-		EventID: targetEventID,
-		Content: content,
-	})
+	return publisher.Publish(ctx, s.roomID(), targetEventID, content)
+}
+
+func (s *StreamSession) descriptorType() string {
+	if s == nil || s.descriptor == nil {
+		return ""
+	}
+	return s.descriptor.Type
 }
 
 func (s *StreamSession) logWarn(reason string, err error, kv ...any) {

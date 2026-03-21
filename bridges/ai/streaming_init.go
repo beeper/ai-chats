@@ -55,11 +55,15 @@ func (oc *AIClient) createStreamingTurn(
 		}},
 	})
 
-	turn.SetStreamTransportFunc(func(callCtx context.Context) (bridgev2.StreamTransport, bool) {
-		if oc.UserLogin == nil || oc.UserLogin.BeeperStream == nil {
+	turn.SetStreamPublisherFunc(func(callCtx context.Context) (bridgev2.BeeperStreamPublisher, bool) {
+		if oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.Matrix == nil {
 			return nil, false
 		}
-		return oc.UserLogin.BeeperStream, true
+		publisher := oc.UserLogin.Bridge.GetBeeperStreamPublisher()
+		if publisher == nil {
+			return nil, false
+		}
+		return publisher, true
 	})
 
 	if state.suppressSend {
