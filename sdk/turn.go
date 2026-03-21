@@ -132,7 +132,7 @@ type Turn struct {
 	mu          sync.Mutex
 
 	streamHook            func(turnID string, seq int, content map[string]any, txnID string) bool
-	streamTransportFunc   func(ctx context.Context) (bridgev2.StreamTransport, bool)
+	streamPublisherFunc   func(ctx context.Context) (bridgev2.BeeperStreamPublisher, bool)
 	approvalRequester     func(ctx context.Context, turn *Turn, req ApprovalRequest) ApprovalHandle
 	finalMetadataProvider FinalMetadataProvider
 	placeholderPayload    *PlaceholderMessagePayload
@@ -330,8 +330,8 @@ func (t *Turn) ensureSession() {
 				return matrixevents.StreamEventMessageType.Type
 			},
 			NextSeq: t.nextSeq,
-			GetStreamTransport: func(callCtx context.Context) (bridgev2.StreamTransport, bool) {
-				return t.defaultStreamTransport(callCtx)
+			GetStreamPublisher: func(callCtx context.Context) (bridgev2.BeeperStreamPublisher, bool) {
+				return t.defaultStreamPublisher(callCtx)
 			},
 			SendHook: t.streamHook,
 			Logger:   &logger,
@@ -347,14 +347,18 @@ func (t *Turn) nextSeq() int {
 	return t.state.UIStepCount
 }
 
-func (t *Turn) defaultStreamTransport(_ context.Context) (bridgev2.StreamTransport, bool) {
-	if t.streamTransportFunc != nil {
-		return t.streamTransportFunc(t.turnCtx)
+func (t *Turn) defaultStreamPublisher(callCtx context.Context) (bridgev2.BeeperStreamPublisher, bool) {
+	if t.streamPublisherFunc != nil {
+		return t.streamPublisherFunc(callCtx)
 	}
-	if t.conv == nil || t.conv.login == nil || t.conv.login.BeeperStream == nil {
+	if t.conv == nil || t.conv.login == nil || t.conv.login.Bridge == nil || t.conv.login.Bridge.Matrix == nil {
 		return nil, false
 	}
-	return t.conv.login.BeeperStream, true
+	publisher := t.conv.login.Bridge.GetBeeperStreamPublisher()
+	if publisher == nil {
+		return nil, false
+	}
+	return publisher, true
 }
 
 func (t *Turn) ensureStarted() {
@@ -552,9 +556,9 @@ func (t *Turn) SetStreamTransport(fn func(ctx context.Context, portal *bridgev2.
 	}
 }
 
-// SetStreamTransportFunc overrides how the Turn resolves the shared stream transport.
-func (t *Turn) SetStreamTransportFunc(fn func(ctx context.Context) (bridgev2.StreamTransport, bool)) {
-	t.streamTransportFunc = fn
+// SetStreamPublisherFunc overrides how the Turn resolves the shared stream publisher.
+func (t *Turn) SetStreamPublisherFunc(fn func(ctx context.Context) (bridgev2.BeeperStreamPublisher, bool)) {
+	t.streamPublisherFunc = fn
 }
 
 // SendStatus emits a bridge-level status update for the source event when possible.

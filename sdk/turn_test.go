@@ -20,27 +20,23 @@ import (
 )
 
 type testStreamTransport struct {
-	descriptor   *event.BeeperStreamInfo
-	startedRoom  id.RoomID
 	startedEvent id.EventID
 }
 
-func (tst *testStreamTransport) BuildDescriptor(context.Context, *bridgev2.StreamDescriptorRequest) (*event.BeeperStreamInfo, error) {
-	return tst.descriptor, nil
+func (tst *testStreamTransport) NewDescriptor(_ context.Context, _ id.RoomID, streamType string) (*event.BeeperStreamInfo, error) {
+	return &event.BeeperStreamInfo{Type: streamType}, nil
 }
 
-func (tst *testStreamTransport) Start(_ context.Context, req *bridgev2.StartStreamRequest) error {
-	tst.startedRoom = req.RoomID
-	tst.startedEvent = req.EventID
+func (tst *testStreamTransport) Register(_ context.Context, _ id.RoomID, eventID id.EventID, _ *event.BeeperStreamInfo) error {
+	tst.startedEvent = eventID
 	return nil
 }
 
-func (tst *testStreamTransport) Publish(context.Context, *bridgev2.PublishStreamRequest) error {
+func (tst *testStreamTransport) Publish(context.Context, id.RoomID, id.EventID, map[string]any) error {
 	return nil
 }
 
-func (tst *testStreamTransport) Finish(context.Context, *bridgev2.FinishStreamRequest) error {
-	return nil
+func (tst *testStreamTransport) Unregister(id.RoomID, id.EventID) {
 }
 
 func TestTurnBuildRelatesToDefaultsToSourceEvent(t *testing.T) {
@@ -322,8 +318,9 @@ func TestTurnEnsureStreamStartedAsyncStartsAfterTargetResolution(t *testing.T) {
 	turn := newTurn(context.Background(), nil, nil, nil)
 	turn.networkMessageID = "msg-async"
 
-	transport := &testStreamTransport{descriptor: &event.BeeperStreamInfo{Type: "com.beeper.llm"}}
+	transport := &testStreamTransport{}
 	var resolved atomic.Bool
+	var sentCount atomic.Int32
 
 	turn.session = turns.NewStreamSession(turns.StreamSessionParams{
 		TurnID: "turn-async",
@@ -340,28 +337,33 @@ func TestTurnEnsureStreamStartedAsyncStartsAfterTargetResolution(t *testing.T) {
 			return id.RoomID("!room:test")
 		},
 		GetTargetEventID: func() id.EventID { return turn.initialEventID },
-		GetStreamTransport: func(context.Context) (bridgev2.StreamTransport, bool) {
+		GetStreamPublisher: func(context.Context) (bridgev2.BeeperStreamPublisher, bool) {
 			return transport, true
 		},
 		NextSeq: func() int { return 1 },
+		SendHook: func(_ string, _ int, _ map[string]any, _ string) bool {
+			sentCount.Add(1)
+			return true
+		},
 	})
 
+	turn.session.EmitPart(context.Background(), map[string]any{"type": "text-delta", "delta": "hello"})
 	turn.ensureStreamStartedAsync()
 	time.Sleep(25 * time.Millisecond)
-	if transport.startedEvent != "" {
-		t.Fatalf("expected stream not to start before target resolution, got %s", transport.startedEvent)
+	if sentCount.Load() != 0 {
+		t.Fatalf("expected stream not to flush before target resolution, got %d sends", sentCount.Load())
 	}
 
 	resolved.Store(true)
 
 	deadline := time.Now().Add(500 * time.Millisecond)
 	for time.Now().Before(deadline) {
-		if transport.startedEvent == id.EventID("$event-async") {
+		if sentCount.Load() == 1 && transport.startedEvent == id.EventID("$event-async") {
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatalf("expected async stream start for resolved target, got %s", transport.startedEvent)
+	t.Fatalf("expected async stream start to flush pending part after target resolution, got sends=%d started=%s", sentCount.Load(), transport.startedEvent)
 }
 
 func TestTurnBuildFinalEditAddsReplaceRelation(t *testing.T) {

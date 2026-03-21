@@ -9,7 +9,7 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-type testStreamTransport struct {
+type testStreamPublisher struct {
 	descriptor    *event.BeeperStreamInfo
 	startedRoom   id.RoomID
 	startedEvent  id.EventID
@@ -17,36 +17,40 @@ type testStreamTransport struct {
 	finishedEvent id.EventID
 }
 
-func (tst *testStreamTransport) BuildDescriptor(context.Context, *bridgev2.StreamDescriptorRequest) (*event.BeeperStreamInfo, error) {
-	return tst.descriptor, nil
+func (tst *testStreamPublisher) NewDescriptor(_ context.Context, _ id.RoomID, streamType string) (*event.BeeperStreamInfo, error) {
+	if tst.descriptor == nil {
+		return &event.BeeperStreamInfo{
+			UserID: id.UserID("@bot:example.com"),
+			Type:   streamType,
+		}, nil
+	}
+	descriptor := *tst.descriptor
+	if descriptor.Type == "" {
+		descriptor.Type = streamType
+	}
+	return &descriptor, nil
 }
 
-func (tst *testStreamTransport) Start(_ context.Context, req *bridgev2.StartStreamRequest) error {
-	tst.startedRoom = req.RoomID
-	tst.startedEvent = req.EventID
+func (tst *testStreamPublisher) Register(_ context.Context, roomID id.RoomID, eventID id.EventID, _ *event.BeeperStreamInfo) error {
+	tst.startedRoom = roomID
+	tst.startedEvent = eventID
 	return nil
 }
 
-func (tst *testStreamTransport) Publish(_ context.Context, req *bridgev2.PublishStreamRequest) error {
-	tst.published = append(tst.published, req.Content)
+func (tst *testStreamPublisher) Publish(_ context.Context, _ id.RoomID, _ id.EventID, content map[string]any) error {
+	tst.published = append(tst.published, content)
 	return nil
 }
 
-func (tst *testStreamTransport) Finish(_ context.Context, req *bridgev2.FinishStreamRequest) error {
-	tst.finishedEvent = req.EventID
-	return nil
-}
-
-func (tst *testStreamTransport) HandleIncomingEvent(context.Context, *event.Event) bool {
-	return false
+func (tst *testStreamPublisher) Unregister(_ id.RoomID, eventID id.EventID) {
+	tst.finishedEvent = eventID
 }
 
 func TestStreamSessionDescriptorStartPublishFinish(t *testing.T) {
-	transport := &testStreamTransport{
+	publisher := &testStreamPublisher{
 		descriptor: &event.BeeperStreamInfo{
-			UserID:   id.UserID("@bot:example.com"),
-			DeviceID: id.DeviceID("DEVICE"),
-			Type:     "com.beeper.llm",
+			UserID: id.UserID("@bot:example.com"),
+			Type:   "com.beeper.llm",
 		},
 	}
 
@@ -58,8 +62,8 @@ func TestStreamSessionDescriptorStartPublishFinish(t *testing.T) {
 		GetTargetEventID: func() id.EventID {
 			return id.EventID("$event-1")
 		},
-		GetStreamTransport: func(context.Context) (bridgev2.StreamTransport, bool) {
-			return transport, true
+		GetStreamPublisher: func(context.Context) (bridgev2.BeeperStreamPublisher, bool) {
+			return publisher, true
 		},
 		NextSeq: func() int { return 1 },
 	})
@@ -76,20 +80,28 @@ func TestStreamSessionDescriptorStartPublishFinish(t *testing.T) {
 		t.Fatalf("Start() error = %v", err)
 	}
 	session.EmitPart(context.Background(), map[string]any{"type": "text-delta", "delta": "hello"})
+	if session.pendingCount() != 0 {
+		t.Fatalf("expected no buffered parts after publish, got %d", session.pendingCount())
+	}
 	session.End(context.Background(), EndReasonFinish)
-
-	if transport.startedRoom != id.RoomID("!room:example.com") || transport.startedEvent != id.EventID("$event-1") {
-		t.Fatalf("unexpected start target: %s %s", transport.startedRoom, transport.startedEvent)
+	if publisher.startedRoom != id.RoomID("!room:example.com") || publisher.startedEvent != id.EventID("$event-1") {
+		t.Fatalf("unexpected start target: %s %s", publisher.startedRoom, publisher.startedEvent)
 	}
-	if len(transport.published) != 1 {
-		t.Fatalf("expected one published update, got %d", len(transport.published))
+	if len(publisher.published) != 1 {
+		t.Fatalf("expected one published update, got %d", len(publisher.published))
 	}
-	if transport.finishedEvent != id.EventID("$event-1") {
-		t.Fatalf("unexpected finish target: %s", transport.finishedEvent)
+	if publisher.finishedEvent != id.EventID("$event-1") {
+		t.Fatalf("unexpected finish target: %s", publisher.finishedEvent)
+	}
+	if !session.IsClosed() {
+		t.Fatal("expected session to be closed after End")
 	}
 }
 
 func TestStreamSessionEmitPartUsesResolvedRelationTarget(t *testing.T) {
+	publisher := &testStreamPublisher{
+		descriptor: &event.BeeperStreamInfo{Type: "com.beeper.llm"},
+	}
 	var gotContent map[string]any
 	session := NewStreamSession(StreamSessionParams{
 		TurnID:  "turn-2",
@@ -103,8 +115,11 @@ func TestStreamSessionEmitPartUsesResolvedRelationTarget(t *testing.T) {
 		GetRoomID: func() id.RoomID {
 			return id.RoomID("!room:example.com")
 		},
-		GetStreamTransport: func(context.Context) (bridgev2.StreamTransport, bool) {
-			return &testStreamTransport{descriptor: &event.BeeperStreamInfo{Type: "com.beeper.llm"}}, true
+		GetStreamType: func() string {
+			return "com.beeper.llm"
+		},
+		GetStreamPublisher: func(context.Context) (bridgev2.BeeperStreamPublisher, bool) {
+			return publisher, true
 		},
 		NextSeq: func() int { return 1 },
 		SendHook: func(_ string, _ int, content map[string]any, _ string) bool {
@@ -134,15 +149,53 @@ func TestStreamSessionEmitPartUsesResolvedRelationTarget(t *testing.T) {
 	}
 }
 
+func TestStreamSessionUsesConfiguredStreamTypeDeltaKey(t *testing.T) {
+	publisher := &testStreamPublisher{
+		descriptor: &event.BeeperStreamInfo{Type: "com.beeper.live_location"},
+	}
+	var gotContent map[string]any
+	session := NewStreamSession(StreamSessionParams{
+		TurnID: "turn-custom",
+		GetRoomID: func() id.RoomID {
+			return id.RoomID("!room:example.com")
+		},
+		GetTargetEventID: func() id.EventID {
+			return id.EventID("$event-custom")
+		},
+		GetStreamType: func() string {
+			return "com.beeper.live_location"
+		},
+		GetStreamPublisher: func(context.Context) (bridgev2.BeeperStreamPublisher, bool) {
+			return publisher, true
+		},
+		NextSeq: func() int { return 1 },
+		SendHook: func(_ string, _ int, content map[string]any, _ string) bool {
+			gotContent = content
+			return true
+		},
+	})
+
+	session.EmitPart(context.Background(), map[string]any{"type": "text-delta", "delta": "hello"})
+	if gotContent == nil {
+		t.Fatal("expected stream content to be emitted")
+	}
+	if _, ok := gotContent["com.beeper.live_location.deltas"]; !ok {
+		t.Fatalf("expected custom stream delta key, got %#v", gotContent)
+	}
+}
+
 func TestStreamSessionDoesNothingWithoutEditTarget(t *testing.T) {
+	publisher := &testStreamPublisher{
+		descriptor: &event.BeeperStreamInfo{Type: "com.beeper.llm"},
+	}
 	called := false
 	session := NewStreamSession(StreamSessionParams{
 		TurnID: "turn-3",
 		GetStreamTarget: func() StreamTarget {
 			return StreamTarget{}
 		},
-		GetStreamTransport: func(context.Context) (bridgev2.StreamTransport, bool) {
-			return &testStreamTransport{descriptor: &event.BeeperStreamInfo{Type: "com.beeper.llm"}}, true
+		GetStreamPublisher: func(context.Context) (bridgev2.BeeperStreamPublisher, bool) {
+			return publisher, true
 		},
 		NextSeq: func() int { return 1 },
 		SendHook: func(_ string, _ int, _ map[string]any, _ string) bool {
@@ -158,9 +211,12 @@ func TestStreamSessionDoesNothingWithoutEditTarget(t *testing.T) {
 }
 
 func TestStreamSessionBuffersUntilTargetEventIDExists(t *testing.T) {
-	transport := &testStreamTransport{descriptor: &event.BeeperStreamInfo{Type: "com.beeper.llm"}}
+	publisher := &testStreamPublisher{
+		descriptor: &event.BeeperStreamInfo{Type: "com.beeper.llm"},
+	}
 	var targetEventID id.EventID
 	var seq int
+	sendCount := 0
 
 	session := NewStreamSession(StreamSessionParams{
 		TurnID: "turn-buffered",
@@ -170,29 +226,38 @@ func TestStreamSessionBuffersUntilTargetEventIDExists(t *testing.T) {
 		GetTargetEventID: func() id.EventID {
 			return targetEventID
 		},
-		GetStreamTransport: func(context.Context) (bridgev2.StreamTransport, bool) {
-			return transport, true
+		GetStreamPublisher: func(context.Context) (bridgev2.BeeperStreamPublisher, bool) {
+			return publisher, true
 		},
 		NextSeq: func() int {
 			seq++
 			return seq
 		},
+		SendHook: func(_ string, _ int, _ map[string]any, _ string) bool {
+			sendCount++
+			return true
+		},
 	})
 
 	session.EmitPart(context.Background(), map[string]any{"type": "text-delta", "delta": "hello"})
-	if len(transport.published) != 0 {
-		t.Fatalf("expected part to stay buffered, got %#v", transport.published)
+	if sendCount != 0 {
+		t.Fatalf("expected part to stay buffered until target is resolved, got %d sends", sendCount)
+	}
+	if session.pendingCount() != 1 {
+		t.Fatalf("expected one pending part before stream start, got %d", session.pendingCount())
 	}
 
 	targetEventID = id.EventID("$event-buffered")
 	if err := session.Start(context.Background(), targetEventID); err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
-
-	if transport.startedEvent != targetEventID {
-		t.Fatalf("expected stream start target %s, got %s", targetEventID, transport.startedEvent)
+	if publisher.startedEvent != targetEventID {
+		t.Fatalf("expected stream start target %s, got %s", targetEventID, publisher.startedEvent)
 	}
-	if len(transport.published) != 1 {
-		t.Fatalf("expected one buffered publish after target resolution, got %d", len(transport.published))
+	if sendCount != 1 {
+		t.Fatalf("expected one buffered publish after target resolution, got %d", sendCount)
+	}
+	if session.pendingCount() != 0 {
+		t.Fatalf("expected no pending parts after stream start, got %d", session.pendingCount())
 	}
 }
