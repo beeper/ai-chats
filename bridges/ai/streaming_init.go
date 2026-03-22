@@ -3,12 +3,13 @@ package ai
 import (
 	"context"
 
-	"github.com/beeper/agentremote"
 	"github.com/openai/openai-go/v3"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/agentremote"
 
 	bridgesdk "github.com/beeper/agentremote/sdk"
 )

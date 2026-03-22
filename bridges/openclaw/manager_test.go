@@ -4,10 +4,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beeper/agentremote"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+
+	"github.com/beeper/agentremote"
 )
 
 func TestShouldMirrorLatestUserMessageFromHistory(t *testing.T) {

@@ -1,8 +1,9 @@
 package dummybridge
 
 import (
-	bridgesdk "github.com/beeper/agentremote/sdk"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 const (
