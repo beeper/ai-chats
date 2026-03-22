@@ -41,7 +41,7 @@ The sender starts by sending a placeholder `m.room.message` in the room timeline
       "user_id": "@aibot:beeper.local",
       "device_id": "ABCD1234",
       "type": "com.beeper.llm",
-      "expiry": 1800000
+      "expiry_ms": 1800000
     }
   }
 }
@@ -54,7 +54,7 @@ Fields:
 | `user_id` | string | yes | Matrix user that accepts subscriptions and publishes updates. This may differ from the placeholder message sender when bridge bot/device identities differ. |
 | `device_id` | string | yes | Device that accepts subscriptions and sends updates. |
 | `type` | string | yes | Stream payload family. This proposal currently defines `com.beeper.llm`. |
-| `expiry` | integer | no | Maximum age in milliseconds for treating the descriptor as live. Clients SHOULD ignore stale descriptors after this window. |
+| `expiry_ms` | integer | no | Maximum age in milliseconds for treating the descriptor as live. Clients SHOULD ignore stale descriptors after this window. |
 | `encryption` | object | no | Optional custom symmetric encryption parameters. See [Custom encryption](#custom-encryption). |
 
 If a message containing `com.beeper.stream` is the latest relevant event in a room, clients MAY show a room-list or timeline preview such as "Generating response...".
@@ -73,7 +73,7 @@ When a client opens the room and sees an unexpired stream descriptor, it subscri
     "room_id": "!meow",
     "event_id": "$foobar",
     "device_id": "4321EFGH",
-    "expiry": 300000
+    "expiry_ms": 300000
   }
 }
 ```
@@ -85,7 +85,7 @@ Fields:
 | `room_id` | string | yes | Room containing the placeholder message. |
 | `event_id` | string | yes | Placeholder event ID being subscribed to. |
 | `device_id` | string | yes | Subscriber device that should receive updates. |
-| `expiry` | integer | no | Requested subscription lifetime in milliseconds. Clients SHOULD renew before expiry if still viewing the stream. |
+| `expiry_ms` | integer | no | Requested subscription lifetime in milliseconds. Clients SHOULD renew before expiry if still viewing the stream. |
 
 The sender SHOULD verify that the subscription targets a live placeholder message it controls and SHOULD clamp the granted expiry to a sender-defined maximum.
 
@@ -179,7 +179,7 @@ As an optional optimization, the placeholder descriptor MAY expose a symmetric k
     "user_id": "@aibot:beeper.local",
     "device_id": "ABCD1234",
     "type": "com.beeper.llm",
-    "expiry": 1800000,
+    "expiry_ms": 1800000,
     "encryption": {
       "algorithm": "com.beeper.stream.v1.aes-gcm",
       "key": "57v+6jXy1NOiFzkrrg+nga0VN7+RURdrCEbm+8OrCDA"
@@ -217,7 +217,7 @@ This is an optimization, not the baseline transport.
 - **Sender-side subscriber tracking:** The sender must keep short-lived subscriber state per placeholder event.
 - **Metadata exposure:** The placeholder reveals that a stream exists and identifies the serving device.
 - **Late subscribers:** Clients may receive only buffered state retained by the sender, not an authoritative replay log.
-- **Descriptor staleness:** If the sender crashes and never edits the placeholder, clients rely on `expiry` to stop subscribing.
+- **Descriptor staleness:** If the sender crashes and never edits the placeholder, clients rely on `expiry_ms` to stop subscribing.
 
 ## Alternatives
 

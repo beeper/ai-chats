@@ -53,7 +53,7 @@ Reference implementation in this repo (AI Chats):
 - Compaction status emission: `bridges/ai/response_retry.go`
 - State broadcast: `bridges/ai/chat.go`
 - Approvals: `bridges/ai/tool_approvals*.go`, `bridges/ai/handlematrix.go`, `bridges/ai/handler_interfaces.go`, `bridges/ai/streaming_ui_tools.go`
-- Shared approval manager + approval-decision parser: `approval_manager.go`, `approval_decision.go`
+- Shared approval manager and reaction handling: `approval_manager.go`, `approval_decision.go`
 
 <a id="compatibility"></a>
 ## Compatibility
@@ -157,7 +157,7 @@ The sender starts the turn by sending a placeholder `m.room.message`. While the 
     "user_id": "@aibot:beeper.local",
     "device_id": "ABCD1234",
     "type": "com.beeper.llm",
-    "expiry": 1800000
+    "expiry_ms": 1800000
   }
 }
 ```
@@ -166,7 +166,7 @@ Descriptor fields:
 - `user_id: string` (REQUIRED)
 - `device_id: string` (REQUIRED)
 - `type: string` (REQUIRED, currently `com.beeper.llm`)
-- `expiry?: integer` (milliseconds; clients SHOULD stop subscribing after this age)
+- `expiry_ms?: integer` (milliseconds; clients SHOULD stop subscribing after this age)
 - `encryption?: object` (OPTIONAL custom symmetric encryption descriptor; see MSC doc)
 
 If the most recent assistant placeholder in a room still contains `com.beeper.stream`, clients MAY render a preview such as "Generating response...".
@@ -181,7 +181,7 @@ Clients subscribe with `to_device` event type `com.beeper.stream.subscribe`:
     "room_id": "!meow",
     "event_id": "$foobar",
     "device_id": "4321EFGH",
-    "expiry": 300000
+    "expiry_ms": 300000
   }
 }
 ```
@@ -190,7 +190,7 @@ Content:
 - `room_id: string` (REQUIRED)
 - `event_id: string` (REQUIRED; placeholder event ID)
 - `device_id: string` (REQUIRED; subscriber device)
-- `expiry?: integer` (OPTIONAL requested subscription lifetime in milliseconds)
+- `expiry_ms?: integer` (OPTIONAL requested subscription lifetime in milliseconds)
 
 ### Update Delivery
 The sender replies with `to_device` event type `com.beeper.stream.update`.
@@ -417,6 +417,7 @@ Approvals are resolved through reactions on the canonical approval notice:
 
 Rules:
 - The approval notice is the canonical Matrix artifact. Rich clients MAY also observe mirrored `tool-approval-request` and `tool-approval-response` stream parts inside `com.beeper.stream.update`. A `tool-approval-response` chunk carries `approvalId`, `toolCallId`, `approved`, and optional `reason`.
+- Clients MUST NOT send legacy timeline approval decision payloads such as `com.beeper.ai.approval_decision`; owner reactions on the approval notice are the only Matrix approval action.
 - Only owner reactions with an advertised option key can resolve the approval.
 - Non-owner reactions and invalid keys MUST be rejected and SHOULD be redacted.
 - On terminal completion, the bridge MUST edit the approval notice into its final state and redact all bridge-authored placeholder reactions.
