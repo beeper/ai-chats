@@ -38,6 +38,7 @@ type openClawManager struct {
 
 	mu                 sync.RWMutex
 	gateway            *gatewayWSClient
+	compat             *openClawGatewayCompatibilityReport
 	sessions           map[string]gatewaySessionRow
 	approvalFlow       *agentremote.ApprovalFlow[*openClawPendingApprovalData]
 	waiting            map[string]struct{}
@@ -45,8 +46,21 @@ type openClawManager struct {
 	resyncing          map[string]time.Time
 	lastEmittedUserMsg map[string]networkid.MessageID
 	approvalHints      map[string]openClawPendingApprovalData
+	historyCache       map[openClawHistoryCacheKey]openClawHistoryCacheEntry
 
 	cancel context.CancelFunc
+}
+
+type openClawHistoryCacheKey struct {
+	SessionKey string
+	Cursor     string
+	Limit      int
+}
+
+type openClawHistoryCacheEntry struct {
+	CreatedAt time.Time
+	ExpiresAt time.Time
+	History   *gatewaySessionHistoryResponse
 }
 
 type openClawPendingApprovalData struct {
@@ -71,6 +85,7 @@ func newOpenClawManager(client *OpenClawClient) *openClawManager {
 		resyncing:          make(map[string]time.Time),
 		lastEmittedUserMsg: make(map[string]networkid.MessageID),
 		approvalHints:      make(map[string]openClawPendingApprovalData),
+		historyCache:       make(map[openClawHistoryCacheKey]openClawHistoryCacheEntry),
 	}
 	mgr.approvalFlow = agentremote.NewApprovalFlow(agentremote.ApprovalFlowConfig[*openClawPendingApprovalData]{
 		Login:    func() *bridgev2.UserLogin { return client.UserLogin },
@@ -110,6 +125,34 @@ func newOpenClawManager(client *OpenClawClient) *openClawManager {
 	return mgr
 }
 
+var (
+	openClawRequiredGatewayMethods = []string{
+		"sessions.list",
+		"sessions.patch",
+		"sessions.resolve",
+		"chat.send",
+		"chat.abort",
+		"agents.list",
+		"models.list",
+		"agent.identity.get",
+		"exec.approval.list",
+	}
+	openClawRequiredGatewayEvents = []string{
+		"chat",
+		"agent",
+		"exec.approval.requested",
+		"exec.approval.resolved",
+	}
+)
+
+const (
+	openClawHistoryCacheTTL            = 45 * time.Second
+	openClawHistoryCacheMaxEntries     = 128
+	openClawBackgroundBackfillSettle   = 2 * time.Second
+	openClawBackgroundBackfillPasses   = 3
+	openClawBackgroundBackfillInterval = 8 * time.Second
+)
+
 func (m *openClawManager) Start(ctx context.Context) (bool, error) {
 	meta := loginMetadata(m.client.UserLogin)
 	cfg := gatewayConnectConfig{
@@ -142,15 +185,28 @@ func (m *openClawManager) Start(ctx context.Context) (bool, error) {
 		m.started = make(map[string]struct{})
 		m.resyncing = make(map[string]time.Time)
 		m.approvalHints = make(map[string]openClawPendingApprovalData)
+		m.historyCache = make(map[openClawHistoryCacheKey]openClawHistoryCacheEntry)
 		m.mu.Unlock()
 	}()
 	m.mu.Lock()
 	m.gateway = gw
+	m.compat = nil
 	m.cancel = cancel
 	m.mu.Unlock()
+	report, compatErr := m.validateGatewayCompatibility(ctx, gw)
+	m.mu.Lock()
+	m.compat = report
+	m.mu.Unlock()
+	if compatErr != nil {
+		return false, compatErr
+	}
 	if err = m.syncSessions(ctx); err != nil {
 		return false, err
 	}
+	if err = m.rehydratePendingApprovals(ctx); err != nil {
+		return false, err
+	}
+	m.seedBackgroundBackfill(ctx)
 	if _, err := m.client.loadAgentCatalog(m.client.BackgroundContext(ctx), true); err != nil {
 		m.client.Log().Debug().Err(err).Msg("Failed to refresh OpenClaw agent catalog on connect")
 	}
@@ -179,6 +235,8 @@ func (m *openClawManager) Stop() {
 	m.started = make(map[string]struct{})
 	m.resyncing = make(map[string]time.Time)
 	m.approvalHints = make(map[string]openClawPendingApprovalData)
+	m.historyCache = make(map[openClawHistoryCacheKey]openClawHistoryCacheEntry)
+	m.compat = nil
 	m.mu.Unlock()
 	if cancel != nil {
 		cancel()
@@ -212,6 +270,182 @@ func (m *openClawManager) syncSessions(ctx context.Context) error {
 	meta.SessionsSynced = true
 	meta.LastSyncAt = time.Now().UnixMilli()
 	return m.client.UserLogin.Save(ctx)
+}
+
+func (m *openClawManager) validateGatewayCompatibility(ctx context.Context, gateway *gatewayWSClient) (*openClawGatewayCompatibilityReport, error) {
+	report := &openClawGatewayCompatibilityReport{}
+	if gateway == nil {
+		return report, &openClawCompatibilityError{Report: *report}
+	}
+	hello := gateway.Hello()
+	if hello == nil {
+		report.HistoryEndpointError = "missing gateway hello payload"
+		return report, &openClawCompatibilityError{Report: *report}
+	}
+	if version := strings.TrimSpace(stringValue(hello.Server["version"])); version != "" {
+		report.ServerVersion = version
+	}
+	report.MissingMethods = findMissingGatewayFeatures(hello.Features.Methods, openClawRequiredGatewayMethods)
+	report.MissingEvents = findMissingGatewayFeatures(hello.Features.Events, openClawRequiredGatewayEvents)
+	historyProbe := gateway.ProbeSessionHistory(ctx)
+	report.HistoryEndpointOK = historyProbe.HistoryEndpointOK
+	report.HistoryEndpointCode = historyProbe.HistoryEndpointCode
+	report.HistoryEndpointError = historyProbe.HistoryEndpointError
+	if report.Compatible() {
+		return report, nil
+	}
+	return report, &openClawCompatibilityError{Report: *report}
+}
+
+func findMissingGatewayFeatures(have, required []string) []string {
+	seen := make(map[string]struct{}, len(have))
+	for _, item := range have {
+		if trimmed := strings.TrimSpace(item); trimmed != "" {
+			seen[strings.ToLower(trimmed)] = struct{}{}
+		}
+	}
+	var missing []string
+	for _, item := range required {
+		if _, ok := seen[strings.ToLower(strings.TrimSpace(item))]; !ok {
+			missing = append(missing, item)
+		}
+	}
+	return missing
+}
+
+func (m *openClawManager) rehydratePendingApprovals(ctx context.Context) error {
+	gateway, err := m.requireGateway()
+	if err != nil {
+		return err
+	}
+	approvals, err := gateway.ListPendingApprovals(ctx)
+	if err != nil {
+		return err
+	}
+	upstream := make(map[string]gatewayApprovalRequestEvent, len(approvals))
+	for _, approval := range approvals {
+		approval.ID = strings.TrimSpace(approval.ID)
+		if approval.ID == "" {
+			continue
+		}
+		upstream[approval.ID] = approval
+		m.handleApprovalRequest(ctx, approval)
+	}
+	for _, approvalID := range m.approvalFlow.PendingIDs() {
+		if _, ok := upstream[approvalID]; ok {
+			continue
+		}
+		m.expireLocalApproval(ctx, approvalID)
+	}
+	return nil
+}
+
+func (m *openClawManager) expireLocalApproval(ctx context.Context, approvalID string) {
+	approvalID = strings.TrimSpace(approvalID)
+	if approvalID == "" {
+		return
+	}
+	pending := m.approvalFlow.Get(approvalID)
+	sessionKey := ""
+	if pending != nil && pending.Data != nil {
+		sessionKey = strings.TrimSpace(pending.Data.SessionKey)
+	}
+	if sessionKey == "" {
+		sessionKey = strings.TrimSpace(m.approvalHint(approvalID).SessionKey)
+	}
+	if sessionKey != "" {
+		if portal := m.resolvePortal(ctx, sessionKey); portal != nil && portal.MXID != "" {
+			m.client.sendNoticeViaPortal(ctx, portal, "OpenClaw approval expired", m.approvalSenderForPortal(portal))
+		}
+	}
+	m.approvalFlow.ResolveExternal(ctx, approvalID, agentremote.ApprovalDecisionPayload{
+		ApprovalID: approvalID,
+		Approved:   false,
+		Reason:     "expired",
+		ResolvedBy: agentremote.ApprovalResolutionOriginAgent,
+	})
+	m.clearApprovalHint(approvalID)
+}
+
+func (m *openClawManager) seedBackgroundBackfill(ctx context.Context) {
+	if m == nil || m.client == nil || m.client.UserLogin == nil {
+		return
+	}
+	if !m.client.UserLogin.Bridge.Config.Backfill.Enabled || !m.client.UserLogin.Bridge.Config.Backfill.Queue.Enabled {
+		return
+	}
+	sessions := m.sortedSessionsByActivity()
+	if len(sessions) == 0 {
+		return
+	}
+	go func() {
+		timer := time.NewTimer(openClawBackgroundBackfillSettle)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+		for pass := 0; pass < openClawBackgroundBackfillPasses; pass++ {
+			if ctx.Err() != nil {
+				return
+			}
+			for _, session := range sessions {
+				if ctx.Err() != nil {
+					return
+				}
+				m.ensureBackgroundBackfillTask(ctx, session.Key)
+			}
+			m.client.UserLogin.Bridge.WakeupBackfillQueue()
+			if pass == openClawBackgroundBackfillPasses-1 {
+				return
+			}
+			timer.Reset(openClawBackgroundBackfillInterval)
+			select {
+			case <-ctx.Done():
+				return
+			case <-timer.C:
+			}
+		}
+	}()
+}
+
+func (m *openClawManager) sortedSessionsByActivity() []gatewaySessionRow {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	sessions := make([]gatewaySessionRow, 0, len(m.sessions))
+	for _, session := range m.sessions {
+		sessions = append(sessions, session)
+	}
+	sort.SliceStable(sessions, func(i, j int) bool {
+		if sessions[i].UpdatedAt != sessions[j].UpdatedAt {
+			return sessions[i].UpdatedAt > sessions[j].UpdatedAt
+		}
+		return strings.TrimSpace(sessions[i].Key) < strings.TrimSpace(sessions[j].Key)
+	})
+	return sessions
+}
+
+func (m *openClawManager) ensureBackgroundBackfillTask(ctx context.Context, sessionKey string) {
+	sessionKey = strings.TrimSpace(sessionKey)
+	if sessionKey == "" || m.client == nil || m.client.UserLogin == nil {
+		return
+	}
+	key := m.client.portalKeyForSession(sessionKey)
+	portal, err := m.client.UserLogin.Bridge.GetExistingPortalByKey(ctx, key)
+	if err != nil || portal == nil || portal.MXID == "" {
+		return
+	}
+	meta := portalMeta(portal)
+	if strings.TrimSpace(meta.BackgroundBackfillStatus) == "" || meta.BackgroundBackfillStatus == "failed" {
+		meta.BackgroundBackfillStatus = "pending"
+		meta.BackgroundBackfillError = ""
+		_ = portal.Save(ctx)
+	}
+	if err = m.client.UserLogin.Bridge.DB.BackfillTask.EnsureExists(ctx, portal.PortalKey, m.client.UserLogin.ID); err != nil {
+		return
+	}
+	_ = m.client.UserLogin.Bridge.DB.BackfillTask.MarkNotDone(ctx, portal.PortalKey, m.client.UserLogin.ID)
 }
 
 func (m *openClawManager) gatewayClient() *gatewayWSClient {
@@ -532,6 +766,7 @@ func (m *openClawManager) FetchMessages(ctx context.Context, params bridgev2.Fet
 		return nil, err
 	}
 	meta := portalMeta(params.Portal)
+	m.markBackgroundBackfillFetch(params.Portal, meta, params.Task)
 	var (
 		entries          []openClawBackfillEntry
 		cursor           networkid.PaginationCursor
@@ -542,14 +777,16 @@ func (m *openClawManager) FetchMessages(ctx context.Context, params bridgev2.Fet
 	if params.Forward || params.AnchorMessage != nil || cursorMode == openClawForwardHistoryCursorPrefix {
 		allMessages, loadErr := m.loadAllHistoryMessages(ctx, gateway, meta.OpenClawSessionKey)
 		if loadErr != nil {
+			m.markBackgroundBackfillError(params.Portal, meta, params.Task, loadErr)
 			return nil, loadErr
 		}
 		allEntries := prepareOpenClawBackfillEntries(meta, allMessages)
 		entries, cursor, hasMore = paginateOpenClawBackfillEntries(allEntries, params, cursorMode, cursorSeq)
 		approxTotalCount = len(allEntries)
 	} else {
-		history, historyErr := gateway.SessionHistory(ctx, meta.OpenClawSessionKey, normalizeHistoryLimit(params.Count), formatOpenClawBackwardCursor(cursorSeq))
+		history, historyErr := m.loadBackwardHistoryPage(ctx, gateway, meta.OpenClawSessionKey, normalizeHistoryLimit(params.Count), formatOpenClawBackwardCursor(cursorSeq), params.Task == nil)
 		if historyErr != nil {
+			m.markBackgroundBackfillError(params.Portal, meta, params.Task, historyErr)
 			return nil, historyErr
 		}
 		entries = prepareOpenClawBackfillEntries(meta, history.Messages)
@@ -580,8 +817,12 @@ func (m *openClawManager) FetchMessages(ctx context.Context, params bridgev2.Fet
 		})
 	}
 	meta.LastHistorySyncAt = time.Now().UnixMilli()
+	m.completeBackgroundBackfillFetch(params.Portal, meta, params.Task, cursor, hasMore)
 	if err := params.Portal.Save(ctx); err != nil {
 		m.client.Log().Warn().Err(err).Str("session_key", meta.OpenClawSessionKey).Msg("Failed saving OpenClaw portal metadata after history fetch")
+	}
+	if params.Task == nil && !params.Forward && params.AnchorMessage == nil && hasMore && strings.TrimSpace(string(cursor)) != "" {
+		go m.prefetchBackwardHistoryPage(m.client.BackgroundContext(ctx), meta.OpenClawSessionKey, normalizeHistoryLimit(params.Count), formatOpenClawBackwardCursor(parseOpenClawCursorSeq(string(cursor))))
 	}
 	return &bridgev2.FetchMessagesResponse{
 		Messages:                backfill,
@@ -797,6 +1038,129 @@ func normalizeHistoryLimit(count int) int {
 	return min(count, openClawMaxHistoryPageLimit)
 }
 
+func (m *openClawManager) loadBackwardHistoryPage(ctx context.Context, gateway *gatewayWSClient, sessionKey string, limit int, cursor string, allowCache bool) (*gatewaySessionHistoryResponse, error) {
+	limit = normalizeHistoryLimit(limit)
+	cacheKey := openClawHistoryCacheKey{
+		SessionKey: strings.TrimSpace(sessionKey),
+		Cursor:     strings.TrimSpace(cursor),
+		Limit:      limit,
+	}
+	if allowCache {
+		if history := m.cachedBackwardHistoryPage(cacheKey); history != nil {
+			return history, nil
+		}
+	}
+	history, err := gateway.SessionHistory(ctx, sessionKey, limit, cursor)
+	if err != nil {
+		return nil, err
+	}
+	if allowCache {
+		m.storeBackwardHistoryPage(cacheKey, history)
+	}
+	return history, nil
+}
+
+func (m *openClawManager) cachedBackwardHistoryPage(key openClawHistoryCacheKey) *gatewaySessionHistoryResponse {
+	now := time.Now()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	entry, ok := m.historyCache[key]
+	if !ok {
+		return nil
+	}
+	if now.After(entry.ExpiresAt) {
+		delete(m.historyCache, key)
+		return nil
+	}
+	return cloneGatewaySessionHistory(entry.History)
+}
+
+func (m *openClawManager) storeBackwardHistoryPage(key openClawHistoryCacheKey, history *gatewaySessionHistoryResponse) {
+	if history == nil {
+		return
+	}
+	now := time.Now()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.historyCache[key] = openClawHistoryCacheEntry{
+		CreatedAt: now,
+		ExpiresAt: now.Add(openClawHistoryCacheTTL),
+		History:   cloneGatewaySessionHistory(history),
+	}
+	if len(m.historyCache) <= openClawHistoryCacheMaxEntries {
+		return
+	}
+	var (
+		oldestKey   openClawHistoryCacheKey
+		oldestEntry openClawHistoryCacheEntry
+		found       bool
+	)
+	for candidateKey, candidateEntry := range m.historyCache {
+		if !found || candidateEntry.CreatedAt.Before(oldestEntry.CreatedAt) {
+			oldestKey = candidateKey
+			oldestEntry = candidateEntry
+			found = true
+		}
+	}
+	if found {
+		delete(m.historyCache, oldestKey)
+	}
+}
+
+func cloneGatewaySessionHistory(history *gatewaySessionHistoryResponse) *gatewaySessionHistoryResponse {
+	if history == nil {
+		return nil
+	}
+	clone := *history
+	if len(history.Messages) > 0 {
+		clone.Messages = make([]map[string]any, len(history.Messages))
+		for i, message := range history.Messages {
+			clone.Messages[i] = jsonutil.DeepCloneMap(message)
+		}
+	}
+	if len(history.Items) > 0 {
+		clone.Items = make([]map[string]any, len(history.Items))
+		for i, item := range history.Items {
+			clone.Items[i] = jsonutil.DeepCloneMap(item)
+		}
+	}
+	return &clone
+}
+
+func (m *openClawManager) prefetchBackwardHistoryPage(ctx context.Context, sessionKey string, limit int, cursor string) {
+	gateway := m.gatewayClient()
+	if gateway == nil {
+		return
+	}
+	cacheKey := openClawHistoryCacheKey{
+		SessionKey: strings.TrimSpace(sessionKey),
+		Cursor:     strings.TrimSpace(cursor),
+		Limit:      normalizeHistoryLimit(limit),
+	}
+	if m.cachedBackwardHistoryPage(cacheKey) != nil {
+		return
+	}
+	history, err := gateway.SessionHistory(ctx, sessionKey, cacheKey.Limit, cursor)
+	if err != nil {
+		return
+	}
+	m.storeBackwardHistoryPage(cacheKey, history)
+}
+
+func (m *openClawManager) invalidateHistoryCache(sessionKey string) {
+	sessionKey = strings.TrimSpace(sessionKey)
+	if sessionKey == "" {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for key := range m.historyCache {
+		if key.SessionKey == sessionKey {
+			delete(m.historyCache, key)
+		}
+	}
+}
+
 func (m *openClawManager) loadAllHistoryMessages(ctx context.Context, gateway *gatewayWSClient, sessionKey string) ([]map[string]any, error) {
 	cursor := ""
 	pages := make([][]map[string]any, 0, 4)
@@ -823,6 +1187,42 @@ func (m *openClawManager) loadAllHistoryMessages(ctx context.Context, gateway *g
 		all = append(all, pages[i]...)
 	}
 	return all, nil
+}
+
+func (m *openClawManager) markBackgroundBackfillFetch(portal *bridgev2.Portal, meta *PortalMetadata, task *database.BackfillTask) {
+	if portal == nil || meta == nil || task == nil {
+		return
+	}
+	now := time.Now().UnixMilli()
+	if meta.BackgroundBackfillStartedAt == 0 {
+		meta.BackgroundBackfillStartedAt = now
+	}
+	meta.BackgroundBackfillStatus = "running"
+	meta.BackgroundBackfillError = ""
+	meta.BackgroundBackfillCursor = strings.TrimSpace(string(task.Cursor))
+}
+
+func (m *openClawManager) completeBackgroundBackfillFetch(portal *bridgev2.Portal, meta *PortalMetadata, task *database.BackfillTask, cursor networkid.PaginationCursor, hasMore bool) {
+	if portal == nil || meta == nil || task == nil {
+		return
+	}
+	meta.BackgroundBackfillCursor = strings.TrimSpace(string(cursor))
+	meta.BackgroundBackfillError = ""
+	if hasMore {
+		meta.BackgroundBackfillStatus = "running"
+		return
+	}
+	meta.BackgroundBackfillStatus = "complete"
+	meta.BackgroundBackfillCompletedAt = time.Now().UnixMilli()
+	meta.BackgroundBackfillCursor = ""
+}
+
+func (m *openClawManager) markBackgroundBackfillError(portal *bridgev2.Portal, meta *PortalMetadata, task *database.BackfillTask, err error) {
+	if portal == nil || meta == nil || task == nil || err == nil {
+		return
+	}
+	meta.BackgroundBackfillStatus = "failed"
+	meta.BackgroundBackfillError = strings.TrimSpace(err.Error())
 }
 
 func openClawHistoryMessageSeq(message map[string]any) int64 {
@@ -1424,9 +1824,6 @@ func (m *openClawManager) handleApprovalRequest(ctx context.Context, payload gat
 	}
 	mergeOpenClawApprovalData(data, hint)
 	pending, created := m.approvalFlow.Register(payload.ID, time.Until(time.UnixMilli(payload.ExpiresAtMs)), data)
-	if !created {
-		return
-	}
 	if pending != nil && pending.Data != nil {
 		mergeOpenClawApprovalData(pending.Data, hint)
 		data = pending.Data
@@ -1434,6 +1831,9 @@ func (m *openClawManager) handleApprovalRequest(ctx context.Context, payload gat
 	m.setApprovalHint(payload.ID, func(existing *openClawPendingApprovalData) {
 		mergeOpenClawApprovalData(existing, *data)
 	})
+	if !created {
+		return
+	}
 	go m.sendApprovalPromptWhenReady(m.client.BackgroundContext(ctx), portal, payload.ID)
 }
 
@@ -1527,6 +1927,7 @@ func (m *openClawManager) handleChatEvent(ctx context.Context, payload gatewayCh
 		return
 	}
 	if isTerminal {
+		m.invalidateHistoryCache(payload.SessionKey)
 		m.ensureStreamStart(ctx, portal, meta, turnID, payload.RunID, agentID, eventTS, messageMetadata, &payload)
 		if usage := normalizeOpenClawUsage(payload.Usage); len(usage) > 0 {
 			reasoningTokens := int64(0)
@@ -1588,6 +1989,7 @@ func (m *openClawManager) handleDirectChatEvent(ctx context.Context, portal *bri
 	if converted == nil || messageID == "" {
 		return
 	}
+	m.invalidateHistoryCache(payload.SessionKey)
 	m.client.UserLogin.QueueRemoteEvent(buildOpenClawRemoteMessage(
 		portal.PortalKey,
 		messageID,

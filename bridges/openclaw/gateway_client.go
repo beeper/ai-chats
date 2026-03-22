@@ -44,6 +44,34 @@ type gatewayConnectConfig struct {
 	DeviceToken string
 }
 
+type gatewayHelloFeatures struct {
+	Methods []string `json:"methods,omitempty"`
+	Events  []string `json:"events,omitempty"`
+}
+
+type gatewayHello struct {
+	Type     string               `json:"type,omitempty"`
+	Protocol int                  `json:"protocol,omitempty"`
+	Server   map[string]any       `json:"server,omitempty"`
+	Features gatewayHelloFeatures `json:"features,omitempty"`
+	Auth     struct {
+		DeviceToken string `json:"deviceToken,omitempty"`
+	} `json:"auth,omitempty"`
+}
+
+type openClawGatewayCompatibilityReport struct {
+	ServerVersion        string
+	MissingMethods       []string
+	MissingEvents        []string
+	HistoryEndpointOK    bool
+	HistoryEndpointCode  int
+	HistoryEndpointError string
+}
+
+func (r openClawGatewayCompatibilityReport) Compatible() bool {
+	return len(r.MissingMethods) == 0 && len(r.MissingEvents) == 0 && r.HistoryEndpointOK
+}
+
 type gatewaySessionRow struct {
 	Key                string          `json:"key"`
 	SpawnedBy          string          `json:"spawnedBy,omitempty"`
@@ -181,6 +209,10 @@ type gatewayApprovalResolvedEvent struct {
 	ResolvedBy string         `json:"resolvedBy,omitempty"`
 	TS         int64          `json:"ts,omitempty"`
 	Request    map[string]any `json:"request"`
+}
+
+type gatewayApprovalListResponse struct {
+	Approvals []gatewayApprovalRequestEvent `json:"approvals"`
 }
 
 type gatewayChatEvent struct {
@@ -397,6 +429,8 @@ type gatewayWSClient struct {
 	readStarted  atomic.Bool
 	lastErrMu    sync.Mutex
 	lastErr      error
+	helloMu      sync.RWMutex
+	hello        *gatewayHello
 }
 
 func newGatewayWSClient(cfg gatewayConnectConfig) *gatewayWSClient {
@@ -462,6 +496,10 @@ func (c *gatewayWSClient) Connect(ctx context.Context) (string, error) {
 		return "", rpcErr
 	}
 
+	hello := parseGatewayHello(res.Payload)
+	c.helloMu.Lock()
+	c.hello = hello
+	c.helloMu.Unlock()
 	deviceToken := parseHelloDeviceToken(res.Payload)
 	c.readStarted.Store(true)
 	go c.readLoop()
@@ -488,6 +526,18 @@ func (c *gatewayWSClient) LastError() error {
 	c.lastErrMu.Lock()
 	defer c.lastErrMu.Unlock()
 	return c.lastErr
+}
+
+func (c *gatewayWSClient) Hello() *gatewayHello {
+	c.helloMu.RLock()
+	defer c.helloMu.RUnlock()
+	if c.hello == nil {
+		return nil
+	}
+	clone := *c.hello
+	clone.Features.Methods = append([]string(nil), c.hello.Features.Methods...)
+	clone.Features.Events = append([]string(nil), c.hello.Features.Events...)
+	return &clone
 }
 
 func (c *gatewayWSClient) setLastError(err error) {
@@ -529,21 +579,65 @@ func (c *gatewayWSClient) ListSessions(ctx context.Context, limit int) ([]gatewa
 	return resp.Sessions, nil
 }
 
-func (c *gatewayWSClient) RecentHistory(ctx context.Context, sessionKey string, limit int) (*gatewayHistoryResponse, error) {
-	if limit <= 0 {
-		limit = openClawMaxHistoryPageLimit
-	}
-	var resp gatewayHistoryResponse
-	if err := c.Request(ctx, "chat.history", map[string]any{
-		"sessionKey": strings.TrimSpace(sessionKey),
-		"limit":      limit,
-	}, &resp); err != nil {
+func (c *gatewayWSClient) SessionHistory(ctx context.Context, sessionKey string, limit int, cursor string) (*gatewaySessionHistoryResponse, error) {
+	base, err := c.sessionHistoryURL(sessionKey, limit, cursor)
+	if err != nil {
 		return nil, err
 	}
-	return &resp, nil
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("build session history request: %w", err)
+	}
+	return c.doSessionHistoryRequest(req)
 }
 
-func (c *gatewayWSClient) SessionHistory(ctx context.Context, sessionKey string, limit int, cursor string) (*gatewaySessionHistoryResponse, error) {
+func (c *gatewayWSClient) ProbeSessionHistory(ctx context.Context) openClawGatewayCompatibilityReport {
+	base, err := c.sessionHistoryURL("agent:main:__beeper_probe__", 1, "")
+	if err != nil {
+		return openClawGatewayCompatibilityReport{
+			HistoryEndpointError: err.Error(),
+		}
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base.String(), nil)
+	if err != nil {
+		return openClawGatewayCompatibilityReport{
+			HistoryEndpointError: err.Error(),
+		}
+	}
+	req.Header.Set("Accept", "application/json")
+	history, statusCode, reqErr := c.doSessionHistoryRequestWithStatus(req)
+	report := openClawGatewayCompatibilityReport{
+		HistoryEndpointCode: statusCode,
+	}
+	if reqErr == nil {
+		report.HistoryEndpointOK = true
+		return report
+	}
+	report.HistoryEndpointError = reqErr.Error()
+	if statusCode == http.StatusNotFound {
+		var errPayload struct {
+			Error struct {
+				Type string `json:"type,omitempty"`
+			} `json:"error,omitempty"`
+		}
+		if history != nil && len(history.Messages) == 0 {
+			report.HistoryEndpointOK = true
+			return report
+		}
+		_ = errPayload
+	}
+	return report
+}
+
+func (c *gatewayWSClient) ListPendingApprovals(ctx context.Context) ([]gatewayApprovalRequestEvent, error) {
+	var resp gatewayApprovalListResponse
+	if err := c.Request(ctx, "exec.approval.list", map[string]any{}, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Approvals, nil
+}
+
+func (c *gatewayWSClient) sessionHistoryURL(sessionKey string, limit int, cursor string) (*url.URL, error) {
 	baseURL, err := normalizeGatewayHTTPURL(c.cfg.URL)
 	if err != nil {
 		return nil, err
@@ -561,12 +655,18 @@ func (c *gatewayWSClient) SessionHistory(ctx context.Context, sessionKey string,
 		query.Set("cursor", trimmedCursor)
 	}
 	base.RawQuery = query.Encode()
+	return base, nil
+}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base.String(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("build session history request: %w", err)
+func (c *gatewayWSClient) doSessionHistoryRequest(req *http.Request) (*gatewaySessionHistoryResponse, error) {
+	history, _, err := c.doSessionHistoryRequestWithStatus(req)
+	return history, err
+}
+
+func (c *gatewayWSClient) doSessionHistoryRequestWithStatus(req *http.Request) (*gatewaySessionHistoryResponse, int, error) {
+	if req == nil {
+		return nil, 0, errors.New("session history request is required")
 	}
-	req.Header.Set("Accept", "application/json")
 	if authToken := c.httpBearerAuthToken(); authToken != "" {
 		req.Header.Set("Authorization", "Bearer "+authToken)
 	}
@@ -574,31 +674,37 @@ func (c *gatewayWSClient) SessionHistory(ctx context.Context, sessionKey string,
 
 	resp, err := (&http.Client{Timeout: openClawDefaultRequestTimout}).Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("request session history: %w", err)
+		return nil, 0, fmt.Errorf("request session history: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		var errPayload struct {
-			Error struct {
-				Message string `json:"message,omitempty"`
-			} `json:"error,omitempty"`
-		}
-		_ = json.NewDecoder(resp.Body).Decode(&errPayload)
-		if msg := strings.TrimSpace(errPayload.Error.Message); msg != "" {
-			return nil, fmt.Errorf("session history request failed: %s", msg)
-		}
-		return nil, fmt.Errorf("session history request failed: http %d", resp.StatusCode)
-	}
-
 	var history gatewaySessionHistoryResponse
 	if err = json.NewDecoder(resp.Body).Decode(&history); err != nil {
-		return nil, fmt.Errorf("decode session history response: %w", err)
+		return nil, resp.StatusCode, fmt.Errorf("decode session history response: %w", err)
 	}
 	if len(history.Messages) == 0 && len(history.Items) > 0 {
 		history.Messages = history.Items
 	}
-	return &history, nil
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return &history, resp.StatusCode, nil
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		var errPayload struct {
+			Error struct {
+				Type    string `json:"type,omitempty"`
+				Message string `json:"message,omitempty"`
+			} `json:"error,omitempty"`
+		}
+		data, _ := json.Marshal(history)
+		_ = json.Unmarshal(data, &errPayload)
+		if strings.EqualFold(strings.TrimSpace(errPayload.Error.Type), "not_found") {
+			return &history, resp.StatusCode, fmt.Errorf("session history request failed: not_found")
+		}
+	}
+	if len(history.Messages) == 0 && len(history.Items) == 0 && !history.HasMore {
+		return &history, resp.StatusCode, fmt.Errorf("session history request failed: http %d", resp.StatusCode)
+	}
+	return &history, resp.StatusCode, fmt.Errorf("session history request failed: http %d", resp.StatusCode)
 }
 
 func (c *gatewayWSClient) PreviewSessions(ctx context.Context, keys []string, limit, maxChars int) (*gatewaySessionsPreviewResponse, error) {
@@ -1085,15 +1191,35 @@ func buildPatchSessionParams(key string, patch map[string]any) map[string]any {
 }
 
 func parseHelloDeviceToken(payload json.RawMessage) string {
+	hello := parseGatewayHello(payload)
+	if hello == nil {
+		return ""
+	}
+	return strings.TrimSpace(hello.Auth.DeviceToken)
+}
+
+func parseGatewayHello(payload json.RawMessage) *gatewayHello {
 	var hello struct {
-		Auth struct {
+		Type     string               `json:"type,omitempty"`
+		Protocol int                  `json:"protocol,omitempty"`
+		Server   map[string]any       `json:"server,omitempty"`
+		Features gatewayHelloFeatures `json:"features,omitempty"`
+		Auth     struct {
 			DeviceToken string `json:"deviceToken"`
 		} `json:"auth"`
 	}
 	if err := json.Unmarshal(payload, &hello); err != nil {
-		return ""
+		return nil
 	}
-	return strings.TrimSpace(hello.Auth.DeviceToken)
+	return &gatewayHello{
+		Type:     strings.TrimSpace(hello.Type),
+		Protocol: hello.Protocol,
+		Server:   hello.Server,
+		Features: gatewayHelloFeatures{Methods: append([]string(nil), hello.Features.Methods...), Events: append([]string(nil), hello.Features.Events...)},
+		Auth: struct {
+			DeviceToken string `json:"deviceToken,omitempty"`
+		}{DeviceToken: strings.TrimSpace(hello.Auth.DeviceToken)},
+	}
 }
 
 func loadOrCreateGatewayDeviceIdentity() (*gatewayDeviceIdentity, error) {

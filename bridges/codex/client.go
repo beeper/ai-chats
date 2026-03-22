@@ -1563,7 +1563,6 @@ func (cc *CodexClient) buildSandboxPolicy(cwd string) map[string]any {
 	return map[string]any{
 		"type":                "workspaceWrite",
 		"writableRoots":       []string{cwd},
-		"readOnlyAccess":      map[string]any{"type": "fullAccess"},
 		"networkAccess":       cc.codexNetworkAccess(),
 		"excludeTmpdirEnvVar": false,
 		"excludeSlashTmp":     false,

@@ -261,3 +261,64 @@ func TestStreamSessionBuffersUntilTargetEventIDExists(t *testing.T) {
 		t.Fatalf("expected no pending parts after stream start, got %d", session.pendingCount())
 	}
 }
+
+func TestStreamSessionDescriptorRetriesAfterPublisherBecomesAvailable(t *testing.T) {
+	publisher := &testStreamPublisher{
+		descriptor: &event.BeeperStreamInfo{Type: "com.beeper.llm"},
+	}
+	var current bridgev2.BeeperStreamPublisher
+
+	session := NewStreamSession(StreamSessionParams{
+		TurnID: "turn-retry",
+		GetRoomID: func() id.RoomID {
+			return id.RoomID("!room:example.com")
+		},
+		GetStreamPublisher: func(context.Context) (bridgev2.BeeperStreamPublisher, bool) {
+			if current == nil {
+				return nil, false
+			}
+			return current, true
+		},
+	})
+
+	if _, err := session.Descriptor(context.Background()); err != ErrNoPublisher {
+		t.Fatalf("expected ErrNoPublisher before publisher is ready, got %v", err)
+	}
+
+	current = publisher
+
+	descriptor, err := session.Descriptor(context.Background())
+	if err != nil {
+		t.Fatalf("Descriptor() after publisher ready error = %v", err)
+	}
+	if descriptor == nil || descriptor.Type != "com.beeper.llm" {
+		t.Fatalf("unexpected descriptor after retry: %#v", descriptor)
+	}
+}
+
+func TestStreamSessionHookOnlyFlushesWithoutPublisher(t *testing.T) {
+	var sent map[string]any
+	session := NewStreamSession(StreamSessionParams{
+		TurnID: "turn-hook-only",
+		GetTargetEventID: func() id.EventID {
+			return id.EventID("$event-hook-only")
+		},
+		NextSeq: func() int { return 1 },
+		SendHook: func(_ string, _ int, content map[string]any, _ string) bool {
+			sent = content
+			return true
+		},
+	})
+
+	session.EmitPart(context.Background(), map[string]any{"type": "text-delta", "delta": "hello"})
+
+	if sent == nil {
+		t.Fatal("expected hook-only stream session to flush content")
+	}
+	if session.pendingCount() != 0 {
+		t.Fatalf("expected no pending parts after hook-only flush, got %d", session.pendingCount())
+	}
+	if !session.streamStarted {
+		t.Fatal("expected session to mark stream as started in hook-only mode")
+	}
+}

@@ -114,6 +114,9 @@ func getOpenClawSessionChatInfo(ctx context.Context, portal *bridgev2.Portal, cl
 	}
 	meta.HistoryMode = "paginated"
 	meta.RecentHistoryLimit = 0
+	if strings.TrimSpace(meta.BackgroundBackfillStatus) == "" {
+		meta.BackgroundBackfillStatus = "pending"
+	}
 	client.enrichPortalMetadata(ctx, meta)
 	portal.Metadata = meta
 

@@ -2,6 +2,7 @@ package dummybridge
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"strings"
 	"testing"
@@ -38,6 +39,19 @@ func testRunner() demoRunner {
 			},
 		},
 	}
+}
+
+type advancingRuntime struct {
+	now        time.Time
+	sleepCalls int
+}
+
+func (r *advancingRuntime) nowFn() time.Time { return r.now }
+
+func (r *advancingRuntime) sleepFn(_ context.Context, delay time.Duration) error {
+	r.sleepCalls++
+	r.now = r.now.Add(delay)
+	return nil
 }
 
 func newTestTurn() *bridgesdk.Turn {
@@ -112,6 +126,39 @@ func TestParseRandomCommandRejectsUnknownProfile(t *testing.T) {
 	_, err := parseCommand("stream-random 5 --profile=nope")
 	if err == nil {
 		t.Fatal("expected invalid profile error")
+	}
+}
+
+func TestParseCommandRejectsOversizedDemoInputs(t *testing.T) {
+	toolSpecs := fmt.Sprintf("stream-tools 10%s", strings.Repeat(" shell", maxDemoToolSpecs+1))
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "lorem chars", input: fmt.Sprintf("stream-lorem %d", maxDemoChars+1), want: "character count"},
+		{name: "tool count", input: toolSpecs, want: "tool spec count"},
+		{name: "steps", input: fmt.Sprintf("stream-lorem 10 --steps=%d", maxDemoSteps+1), want: "steps"},
+		{name: "sources", input: fmt.Sprintf("stream-lorem 10 --sources=%d", maxDemoCollections+1), want: "sources"},
+		{name: "delay range", input: fmt.Sprintf("stream-lorem 10 --delay-ms=0:%d", int(maxDemoDelay/time.Millisecond)+1), want: "delay range"},
+		{name: "chunk range", input: fmt.Sprintf("stream-lorem 10 --chunk-chars=1:%d", maxDemoChunkChars+1), want: "chunk size range"},
+		{name: "random duration", input: fmt.Sprintf("stream-random %d", maxDemoDurationSeconds+1), want: "duration seconds"},
+		{name: "random actions", input: fmt.Sprintf("stream-random --actions=%d", maxDemoRandomActions+1), want: "actions"},
+		{name: "chaos turns", input: fmt.Sprintf("stream-chaos %d", maxDemoChaosTurns+1), want: "turn count"},
+		{name: "chaos duration", input: fmt.Sprintf("stream-chaos 3 %d", maxDemoDurationSeconds+1), want: "duration seconds"},
+		{name: "chaos max actions", input: fmt.Sprintf("stream-chaos --max-actions=%d", maxDemoChaosActions+1), want: "max-actions"},
+		{name: "chaos stagger", input: fmt.Sprintf("stream-chaos --stagger-ms=0:%d", int(maxDemoStagger/time.Millisecond)+1), want: "stagger range"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := parseCommand(tt.input)
+			if err == nil {
+				t.Fatalf("expected parse error for %q", tt.input)
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("parse error %q does not contain %q", err.Error(), tt.want)
+			}
+		})
 	}
 }
 
@@ -225,6 +272,35 @@ func TestRunRandomUsesSingleTurnAndFinishes(t *testing.T) {
 	}
 	if len(snapshotParts(turn)) == 0 {
 		t.Fatal("expected random run to emit parts")
+	}
+}
+
+func TestRunRandomStopsWhenDurationExpires(t *testing.T) {
+	turn := newTestTurn()
+	rt := &advancingRuntime{now: time.Unix(0, 0)}
+	runner := demoRunner{
+		runtime: demoRuntime{
+			now:   rt.nowFn,
+			sleep: rt.sleepFn,
+		},
+	}
+	cmd := randomCommand{
+		Duration: 5 * time.Millisecond,
+		Actions:  5,
+		Profile:  "balanced",
+		DelayMin: 10 * time.Millisecond,
+		DelayMax: 10 * time.Millisecond,
+		Seed:     99,
+		SeedSet:  true,
+	}
+	if err := runner.runRandom(context.Background(), turn, cmd, zerolog.Nop()); err != nil {
+		t.Fatalf("runRandom returned error: %v", err)
+	}
+	if rt.sleepCalls != 1 {
+		t.Fatalf("expected one inter-action sleep before duration expired, got %d", rt.sleepCalls)
+	}
+	if !turn.UIState().UIFinished {
+		t.Fatal("expected random run to finish the turn")
 	}
 }
 

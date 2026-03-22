@@ -32,7 +32,7 @@ func (s *StreamPartState) ApplyPart(part map[string]any, partTimestamp time.Time
 			s.startedAtMs = timestampMillis(partTimestamp, nowMillis)
 		}
 	case "text-delta":
-		if delta := strings.TrimSpace(stringValue(part["delta"])); delta != "" {
+		if delta := stringValue(part["delta"]); delta != "" {
 			s.visible.WriteString(delta)
 			s.accumulated.WriteString(delta)
 			if s.firstTokenAtMs == 0 {
@@ -43,7 +43,7 @@ func (s *StreamPartState) ApplyPart(part map[string]any, partTimestamp time.Time
 			}
 		}
 	case "reasoning-delta":
-		if delta := strings.TrimSpace(stringValue(part["delta"])); delta != "" {
+		if delta := stringValue(part["delta"]); delta != "" {
 			s.accumulated.WriteString(delta)
 			if s.firstTokenAtMs == 0 {
 				s.firstTokenAtMs = timestampMillis(partTimestamp, nowMillis)

@@ -13,6 +13,7 @@ import (
 const (
 	openClawPairingRequiredError status.BridgeStateErrorCode = "openclaw-pairing-required"
 	openClawAuthFailedError      status.BridgeStateErrorCode = "openclaw-auth-failed"
+	openClawIncompatibleError    status.BridgeStateErrorCode = "openclaw-incompatible-gateway"
 	openClawConnectError         status.BridgeStateErrorCode = "openclaw-connect-error"
 	openClawTransientDisconnect  status.BridgeStateErrorCode = "openclaw-transient-disconnect"
 	openClawGatewayClosedError   status.BridgeStateErrorCode = "openclaw-gateway-closed"
@@ -23,10 +24,39 @@ func init() {
 	status.BridgeStateHumanErrors.Update(status.BridgeStateErrorMap{
 		openClawPairingRequiredError: "OpenClaw device pairing is required.",
 		openClawAuthFailedError:      "OpenClaw authentication failed. Please relogin.",
+		openClawIncompatibleError:    "OpenClaw gateway is incompatible with this bridge version.",
 		openClawConnectError:         "Failed to connect to OpenClaw gateway. Retrying.",
 		openClawTransientDisconnect:  "Disconnected from OpenClaw gateway. Retrying.",
 		openClawGatewayClosedError:   "OpenClaw gateway closed the connection. Retrying.",
 	})
+}
+
+type openClawCompatibilityError struct {
+	Report openClawGatewayCompatibilityReport
+}
+
+func (e *openClawCompatibilityError) Error() string {
+	if e == nil {
+		return "OpenClaw gateway is incompatible"
+	}
+	parts := make([]string, 0, 3)
+	if len(e.Report.MissingMethods) > 0 {
+		parts = append(parts, "missing methods: "+strings.Join(e.Report.MissingMethods, ", "))
+	}
+	if len(e.Report.MissingEvents) > 0 {
+		parts = append(parts, "missing events: "+strings.Join(e.Report.MissingEvents, ", "))
+	}
+	if !e.Report.HistoryEndpointOK {
+		if e.Report.HistoryEndpointError != "" {
+			parts = append(parts, "history endpoint: "+e.Report.HistoryEndpointError)
+		} else if e.Report.HistoryEndpointCode != 0 {
+			parts = append(parts, fmt.Sprintf("history endpoint: http %d", e.Report.HistoryEndpointCode))
+		}
+	}
+	if len(parts) == 0 {
+		return "OpenClaw gateway is incompatible"
+	}
+	return "OpenClaw gateway is incompatible: " + strings.Join(parts, "; ")
 }
 
 func openClawReconnectDelay(attempt int) time.Duration {
@@ -42,7 +72,24 @@ func classifyOpenClawConnectionError(err error, retryDelay time.Duration) (statu
 		Message:    "Disconnected from OpenClaw gateway",
 	}
 	var rpcErr *gatewayRPCError
+	var compatErr *openClawCompatibilityError
 	switch {
+	case errors.As(err, &compatErr):
+		state.StateEvent = status.StateBadCredentials
+		state.Error = openClawIncompatibleError
+		state.Message = strings.TrimSpace(err.Error())
+		state.UserAction = status.UserActionRestart
+		if compatErr != nil {
+			state.Info = map[string]any{
+				"server_version":        compatErr.Report.ServerVersion,
+				"missing_methods":       compatErr.Report.MissingMethods,
+				"missing_events":        compatErr.Report.MissingEvents,
+				"history_endpoint_ok":   compatErr.Report.HistoryEndpointOK,
+				"history_endpoint_code": compatErr.Report.HistoryEndpointCode,
+				"history_endpoint_err":  compatErr.Report.HistoryEndpointError,
+			}
+		}
+		return state, false
 	case errors.As(err, &rpcErr) && rpcErr.IsPairingRequired():
 		state.StateEvent = status.StateBadCredentials
 		state.Error = openClawPairingRequiredError

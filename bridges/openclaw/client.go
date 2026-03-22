@@ -27,10 +27,11 @@ import (
 )
 
 var (
-	_ bridgev2.NetworkAPI                   = (*OpenClawClient)(nil)
-	_ bridgev2.BackfillingNetworkAPI        = (*OpenClawClient)(nil)
-	_ bridgev2.DeleteChatHandlingNetworkAPI = (*OpenClawClient)(nil)
-	_ bridgev2.ReactionHandlingNetworkAPI   = (*OpenClawClient)(nil)
+	_ bridgev2.NetworkAPI                      = (*OpenClawClient)(nil)
+	_ bridgev2.BackfillingNetworkAPI           = (*OpenClawClient)(nil)
+	_ bridgev2.BackfillingNetworkAPIWithLimits = (*OpenClawClient)(nil)
+	_ bridgev2.DeleteChatHandlingNetworkAPI    = (*OpenClawClient)(nil)
+	_ bridgev2.ReactionHandlingNetworkAPI      = (*OpenClawClient)(nil)
 )
 
 const openClawCapabilityBaseID = "com.beeper.ai.capabilities.2026_03_09+openclaw"
@@ -250,6 +251,10 @@ func (oc *OpenClawClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 		return nil, nil
 	}
 	return oc.manager.FetchMessages(ctx, params)
+}
+
+func (oc *OpenClawClient) GetBackfillMaxBatchCount(_ context.Context, _ *bridgev2.Portal, _ *database.BackfillTask) int {
+	return -1
 }
 
 func (oc *OpenClawClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2.MatrixDeleteChat) error {

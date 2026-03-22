@@ -2,6 +2,7 @@ package agentremote
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -482,6 +483,17 @@ func (f *ApprovalFlow[D]) FindByData(predicate func(data D) bool) string {
 		}
 	}
 	return ""
+}
+
+func (f *ApprovalFlow[D]) PendingIDs() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	ids := make([]string, 0, len(f.pending))
+	for id := range f.pending {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 // Resolve programmatically delivers a decision to a pending approval's channel.

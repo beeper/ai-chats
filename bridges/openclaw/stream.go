@@ -3,6 +3,7 @@ package openclaw
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -14,6 +15,22 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	bridgesdk "github.com/beeper/agentremote/sdk"
 )
+
+var openClawNewSDKStreamTurn = (*OpenClawClient).newSDKStreamTurn
+
+type openClawStreamTurnGate struct {
+	mu       sync.Mutex
+	cond     *sync.Cond
+	creating bool
+}
+
+func newOpenClawStreamTurnGate() *openClawStreamTurnGate {
+	gate := &openClawStreamTurnGate{}
+	gate.cond = sync.NewCond(&gate.mu)
+	return gate
+}
+
+var openClawStreamTurnGates sync.Map
 
 func openClawStreamPartTimestamp(part map[string]any) time.Time {
 	if len(part) == 0 {
@@ -52,20 +69,9 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 	oc.streamHost.Lock()
 	state := oc.ensureStreamStateLocked(portal, turnID, agentID, sessionKey)
 	oc.applyStreamPartStateLocked(state, part)
-	turn := state.turn
-	needsTurn := turn == nil
 	oc.streamHost.Unlock()
 
-	if needsTurn {
-		turn = oc.newSDKStreamTurn(ctx, portal, state)
-		oc.streamHost.Lock()
-		if state.turn == nil {
-			state.turn = turn
-		} else {
-			turn = state.turn
-		}
-		oc.streamHost.Unlock()
-	}
+	turn := oc.ensureSDKStreamTurn(ctx, portal, state)
 
 	if oc.IsStreamShuttingDown() {
 		return
@@ -77,6 +83,41 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 		HandleTerminalEvents: true,
 		DefaultFinishReason:  "stop",
 	})
+}
+
+func (oc *OpenClawClient) ensureSDKStreamTurn(ctx context.Context, portal *bridgev2.Portal, state *openClawStreamState) *bridgesdk.Turn {
+	if oc == nil || state == nil {
+		return nil
+	}
+
+	gateAny, _ := openClawStreamTurnGates.LoadOrStore(state, newOpenClawStreamTurnGate())
+	gate := gateAny.(*openClawStreamTurnGate)
+
+	gate.mu.Lock()
+	for state.turn == nil && gate.creating {
+		gate.cond.Wait()
+	}
+	if state.turn != nil {
+		turn := state.turn
+		gate.mu.Unlock()
+		return turn
+	}
+	gate.creating = true
+	gate.mu.Unlock()
+
+	turn := openClawNewSDKStreamTurn(oc, ctx, portal, state)
+
+	gate.mu.Lock()
+	if state.turn == nil {
+		state.turn = turn
+	} else {
+		turn = state.turn
+	}
+	gate.creating = false
+	gate.cond.Broadcast()
+	gate.mu.Unlock()
+	openClawStreamTurnGates.Delete(state)
+	return turn
 }
 
 func (oc *OpenClawClient) newSDKStreamTurn(ctx context.Context, portal *bridgev2.Portal, state *openClawStreamState) *bridgesdk.Turn {

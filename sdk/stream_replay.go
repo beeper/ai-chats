@@ -71,7 +71,6 @@ func (r UIStateReplayer) StepFinish() {
 
 func (r UIStateReplayer) Text(partID, text string) {
 	partID = strings.TrimSpace(partID)
-	text = strings.TrimSpace(text)
 	if partID == "" || text == "" {
 		return
 	}
@@ -82,7 +81,6 @@ func (r UIStateReplayer) Text(partID, text string) {
 
 func (r UIStateReplayer) Reasoning(partID, text string) {
 	partID = strings.TrimSpace(partID)
-	text = strings.TrimSpace(text)
 	if partID == "" || text == "" {
 		return
 	}
@@ -107,7 +105,6 @@ func (r UIStateReplayer) ToolInput(toolCallID, toolName string, input any, provi
 
 func (r UIStateReplayer) ToolInputText(toolCallID, toolName, inputText string, providerExecuted bool) {
 	toolCallID = strings.TrimSpace(toolCallID)
-	inputText = strings.TrimSpace(inputText)
 	if toolCallID == "" || inputText == "" {
 		return
 	}

@@ -14,6 +14,11 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 )
 
+var (
+	beeperWhoami    = beeperapi.Whoami
+	hungryNewClient = hungryapi.NewClient
+)
+
 type RegistrationParams struct {
 	Auth             beeperauth.Config
 	SaveAuth         func(beeperauth.Config) error
@@ -26,7 +31,7 @@ type RegistrationParams struct {
 
 func EnsureRegistration(ctx context.Context, params RegistrationParams) error {
 	auth := params.Auth
-	who, err := beeperapi.Whoami(auth.Domain, auth.Token)
+	who, err := beeperWhoami(auth.Domain, auth.Token)
 	if err != nil {
 		return fmt.Errorf("whoami failed: %w", err)
 	}
@@ -38,7 +43,7 @@ func EnsureRegistration(ctx context.Context, params RegistrationParams) error {
 			}
 		}
 	}
-	hc := hungryapi.NewClient(auth.Domain, auth.Username, auth.Token)
+	hc := hungryNewClient(auth.Domain, auth.Username, auth.Token)
 	regCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
@@ -87,7 +92,7 @@ func EnsureRegistration(ctx context.Context, params RegistrationParams) error {
 
 func DeleteRemoteBridge(ctx context.Context, auth beeperauth.Config, saveAuth func(beeperauth.Config) error, beeperName string) error {
 	if auth.Username == "" {
-		who, err := beeperapi.Whoami(auth.Domain, auth.Token)
+		who, err := beeperWhoami(auth.Domain, auth.Token)
 		if err == nil {
 			auth.Username = who.UserInfo.Username
 			if saveAuth != nil {
@@ -98,7 +103,7 @@ func DeleteRemoteBridge(ctx context.Context, auth beeperauth.Config, saveAuth fu
 		}
 	}
 	if auth.Username != "" {
-		hc := hungryapi.NewClient(auth.Domain, auth.Username, auth.Token)
+		hc := hungryNewClient(auth.Domain, auth.Username, auth.Token)
 		deleteCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 		if err := hc.DeleteAppService(deleteCtx, beeperName); err != nil && !isRemoteNotFoundError(err) {
@@ -143,9 +148,7 @@ func waitForRemoteBridgeDeletion(ctx context.Context, auth beeperauth.Config, be
 
 func remoteBridgeDeleted(ctx context.Context, auth beeperauth.Config, beeperName string) (bridgeGone bool, appserviceGone bool, err error) {
 	bridgeGone = true
-	appserviceGone = auth.Username == ""
-
-	who, err := beeperapi.Whoami(auth.Domain, auth.Token)
+	who, err := beeperWhoami(auth.Domain, auth.Token)
 	if err != nil {
 		return false, false, fmt.Errorf("failed to verify remote bridge deletion: %w", err)
 	}
@@ -155,10 +158,10 @@ func remoteBridgeDeleted(ctx context.Context, auth beeperauth.Config, beeperName
 	}
 
 	if auth.Username == "" {
-		return bridgeGone, appserviceGone, nil
+		return false, false, fmt.Errorf("failed to verify remote appservice deletion: username unavailable")
 	}
 
-	hc := hungryapi.NewClient(auth.Domain, auth.Username, auth.Token)
+	hc := hungryNewClient(auth.Domain, auth.Username, auth.Token)
 	checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	_, err = hc.GetAppService(checkCtx, beeperName)
