@@ -879,7 +879,7 @@ func paginateOpenClawBackfillEntries(entries []openClawBackfillEntry, params bri
 		return entries[start:end], cursor, hasMore
 	}
 	if params.AnchorMessage != nil || (cursorMode == openClawBackwardHistoryCursorPrefix && cursorSeq > 0) {
-		end := len(entries)
+		var end int
 		if cursorMode == openClawBackwardHistoryCursorPrefix && cursorSeq > 0 {
 			end = sort.Search(len(entries), func(i int) bool {
 				return entries[i].sequence >= cursorSeq

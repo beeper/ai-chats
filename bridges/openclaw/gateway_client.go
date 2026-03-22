@@ -147,14 +147,6 @@ type gatewayAbortResponse struct {
 	Aborted bool `json:"aborted,omitempty"`
 }
 
-type gatewayHistoryResponse struct {
-	SessionKey    string           `json:"sessionKey,omitempty"`
-	SessionID     string           `json:"sessionId,omitempty"`
-	ThinkingLevel string           `json:"thinkingLevel,omitempty"`
-	VerboseLevel  string           `json:"verboseLevel,omitempty"`
-	Messages      []map[string]any `json:"messages"`
-}
-
 type gatewaySessionHistoryResponse struct {
 	SessionKey string           `json:"sessionKey,omitempty"`
 	Items      []map[string]any `json:"items"`

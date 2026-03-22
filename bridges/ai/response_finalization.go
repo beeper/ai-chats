@@ -554,7 +554,11 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 
 	// Generate link previews for URLs in the response
 	intent, _ := oc.getIntentForPortal(ctx, portal, bridgev2.RemoteEventMessage)
-	linkPreviews := generateOutboundLinkPreviews(ctx, rendered.Body, intent, portal, state.sourceCitations, getLinkPreviewConfig(&oc.connector.Config))
+	var sourceCitations []citations.SourceCitation
+	if state != nil {
+		sourceCitations = state.sourceCitations
+	}
+	linkPreviews := generateOutboundLinkPreviews(ctx, rendered.Body, intent, portal, sourceCitations, getLinkPreviewConfig(&oc.connector.Config))
 
 	uiMessage := buildCompactFinalUIMessage(oc.buildStreamUIMessage(state, meta, linkPreviews))
 

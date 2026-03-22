@@ -280,7 +280,7 @@ func helpText() string {
 
 func parseLoremCommand(tokens []string) (*loremCommand, error) {
 	if len(tokens) == 0 {
-		return nil, fmt.Errorf("stream-lorem requires a character count.")
+		return nil, fmt.Errorf("stream-lorem requires a character count")
 	}
 	count, err := parsePositiveInt(tokens[0], "character count")
 	if err != nil {
@@ -298,7 +298,7 @@ func parseLoremCommand(tokens []string) (*loremCommand, error) {
 
 func parseToolsCommand(tokens []string) (*toolsCommand, error) {
 	if len(tokens) < 2 {
-		return nil, fmt.Errorf("stream-tools requires a character count and at least one tool.")
+		return nil, fmt.Errorf("stream-tools requires a character count and at least one tool")
 	}
 	count, err := parsePositiveInt(tokens[0], "character count")
 	if err != nil {
@@ -317,7 +317,7 @@ func parseToolsCommand(tokens []string) (*toolsCommand, error) {
 		}
 	}
 	if len(toolTokens) == 0 {
-		return nil, fmt.Errorf("stream-tools requires at least one tool spec.")
+		return nil, fmt.Errorf("stream-tools requires at least one tool spec")
 	}
 	if err := validateMaxIntValue(len(toolTokens), maxDemoToolSpecs, "tool spec count"); err != nil {
 		return nil, err
@@ -362,7 +362,7 @@ func parseRandomCommand(tokens []string) (*randomCommand, error) {
 		switch key {
 		case "actions":
 			if !hasValue {
-				return nil, fmt.Errorf("%s requires a value.", token)
+				return nil, fmt.Errorf("%s requires a value", token)
 			}
 			n, err := parsePositiveInt(value, "actions")
 			if err != nil {
@@ -374,18 +374,18 @@ func parseRandomCommand(tokens []string) (*randomCommand, error) {
 			cmd.Actions = n
 		case "profile":
 			if !hasValue {
-				return nil, fmt.Errorf("%s requires a value.", token)
+				return nil, fmt.Errorf("%s requires a value", token)
 			}
 			profile := strings.TrimSpace(strings.ToLower(value))
 			switch profile {
 			case "balanced", "tools", "artifacts", "terminals":
 				cmd.Profile = profile
 			default:
-				return nil, fmt.Errorf("unknown random profile %q.", value)
+				return nil, fmt.Errorf("unknown random profile %q", value)
 			}
 		case "delay-ms":
 			if !hasValue {
-				return nil, fmt.Errorf("%s requires a value.", token)
+				return nil, fmt.Errorf("%s requires a value", token)
 			}
 			minDelay, maxDelay, err := parseDurationRangeMS(value)
 			if err != nil {
@@ -397,7 +397,7 @@ func parseRandomCommand(tokens []string) (*randomCommand, error) {
 			cmd.DelayMin, cmd.DelayMax = minDelay, maxDelay
 		case "seed":
 			if !hasValue {
-				return nil, fmt.Errorf("%s requires a value.", token)
+				return nil, fmt.Errorf("%s requires a value", token)
 			}
 			seed, err := parseInt64(value, "seed")
 			if err != nil {
@@ -412,7 +412,7 @@ func parseRandomCommand(tokens []string) (*randomCommand, error) {
 		case "allow-approval":
 			cmd.AllowApproval = true
 		default:
-			return nil, fmt.Errorf("unknown random option %q.", token)
+			return nil, fmt.Errorf("unknown random option %q", token)
 		}
 	}
 	return cmd, nil
@@ -455,18 +455,18 @@ func parseChaosCommand(tokens []string) (*chaosCommand, error) {
 		switch key {
 		case "profile":
 			if !hasValue {
-				return nil, fmt.Errorf("%s requires a value.", token)
+				return nil, fmt.Errorf("%s requires a value", token)
 			}
 			profile := strings.TrimSpace(strings.ToLower(value))
 			switch profile {
 			case "balanced", "tools", "artifacts", "terminals":
 				cmd.Profile = profile
 			default:
-				return nil, fmt.Errorf("unknown chaos profile %q.", value)
+				return nil, fmt.Errorf("unknown chaos profile %q", value)
 			}
 		case "seed":
 			if !hasValue {
-				return nil, fmt.Errorf("%s requires a value.", token)
+				return nil, fmt.Errorf("%s requires a value", token)
 			}
 			seed, err := parseInt64(value, "seed")
 			if err != nil {
@@ -476,7 +476,7 @@ func parseChaosCommand(tokens []string) (*chaosCommand, error) {
 			cmd.SeedSet = true
 		case "stagger-ms":
 			if !hasValue {
-				return nil, fmt.Errorf("%s requires a value.", token)
+				return nil, fmt.Errorf("%s requires a value", token)
 			}
 			minDelay, maxDelay, err := parseDurationRangeMS(value)
 			if err != nil {
@@ -488,7 +488,7 @@ func parseChaosCommand(tokens []string) (*chaosCommand, error) {
 			cmd.StaggerMin, cmd.StaggerMax = minDelay, maxDelay
 		case "max-actions":
 			if !hasValue {
-				return nil, fmt.Errorf("%s requires a value.", token)
+				return nil, fmt.Errorf("%s requires a value", token)
 			}
 			n, err := parsePositiveInt(value, "max-actions")
 			if err != nil {
@@ -505,11 +505,11 @@ func parseChaosCommand(tokens []string) (*chaosCommand, error) {
 		case "allow-approval":
 			cmd.AllowApproval = true
 		default:
-			return nil, fmt.Errorf("unknown chaos option %q.", token)
+			return nil, fmt.Errorf("unknown chaos option %q", token)
 		}
 	}
 	if cmd.Turns < 1 {
-		return nil, fmt.Errorf("stream-chaos requires at least one turn.")
+		return nil, fmt.Errorf("stream-chaos requires at least one turn")
 	}
 	return cmd, nil
 }
@@ -527,7 +527,7 @@ func parseCommonOptions(tokens []string) (commonCommandOptions, error) {
 		switch key {
 		case "reasoning":
 			if !hasValue {
-				return opts, fmt.Errorf("%s requires a value.", token)
+				return opts, fmt.Errorf("%s requires a value", token)
 			}
 			n, err := parseNonNegativeInt(value, "reasoning")
 			if err != nil {
@@ -539,7 +539,7 @@ func parseCommonOptions(tokens []string) (commonCommandOptions, error) {
 			opts.ReasoningChars = n
 		case "steps":
 			if !hasValue {
-				return opts, fmt.Errorf("%s requires a value.", token)
+				return opts, fmt.Errorf("%s requires a value", token)
 			}
 			n, err := parsePositiveInt(value, "steps")
 			if err != nil {
@@ -551,7 +551,7 @@ func parseCommonOptions(tokens []string) (commonCommandOptions, error) {
 			opts.Steps = n
 		case "sources":
 			if !hasValue {
-				return opts, fmt.Errorf("%s requires a value.", token)
+				return opts, fmt.Errorf("%s requires a value", token)
 			}
 			n, err := parseNonNegativeInt(value, "sources")
 			if err != nil {
@@ -563,7 +563,7 @@ func parseCommonOptions(tokens []string) (commonCommandOptions, error) {
 			opts.Sources = n
 		case "documents":
 			if !hasValue {
-				return opts, fmt.Errorf("%s requires a value.", token)
+				return opts, fmt.Errorf("%s requires a value", token)
 			}
 			n, err := parseNonNegativeInt(value, "documents")
 			if err != nil {
@@ -575,7 +575,7 @@ func parseCommonOptions(tokens []string) (commonCommandOptions, error) {
 			opts.Documents = n
 		case "files":
 			if !hasValue {
-				return opts, fmt.Errorf("%s requires a value.", token)
+				return opts, fmt.Errorf("%s requires a value", token)
 			}
 			n, err := parseNonNegativeInt(value, "files")
 			if err != nil {
@@ -589,17 +589,17 @@ func parseCommonOptions(tokens []string) (commonCommandOptions, error) {
 			opts.Meta = true
 		case "data":
 			if !hasValue {
-				return opts, fmt.Errorf("%s requires a value.", token)
+				return opts, fmt.Errorf("%s requires a value", token)
 			}
 			opts.DataName = strings.TrimSpace(value)
 		case "data-transient":
 			if !hasValue {
-				return opts, fmt.Errorf("%s requires a value.", token)
+				return opts, fmt.Errorf("%s requires a value", token)
 			}
 			opts.DataTransientName = strings.TrimSpace(value)
 		case "delay-ms":
 			if !hasValue {
-				return opts, fmt.Errorf("%s requires a value.", token)
+				return opts, fmt.Errorf("%s requires a value", token)
 			}
 			minDelay, maxDelay, err := parseDurationRangeMS(value)
 			if err != nil {
@@ -611,7 +611,7 @@ func parseCommonOptions(tokens []string) (commonCommandOptions, error) {
 			opts.DelayMin, opts.DelayMax = minDelay, maxDelay
 		case "chunk-chars":
 			if !hasValue {
-				return opts, fmt.Errorf("%s requires a value.", token)
+				return opts, fmt.Errorf("%s requires a value", token)
 			}
 			minChunk, maxChunk, err := parseIntRange(value, "chunk-chars")
 			if err != nil {
@@ -623,7 +623,7 @@ func parseCommonOptions(tokens []string) (commonCommandOptions, error) {
 			opts.ChunkMin, opts.ChunkMax = minChunk, maxChunk
 		case "seed":
 			if !hasValue {
-				return opts, fmt.Errorf("%s requires a value.", token)
+				return opts, fmt.Errorf("%s requires a value", token)
 			}
 			seed, err := parseInt64(value, "seed")
 			if err != nil {
@@ -633,11 +633,11 @@ func parseCommonOptions(tokens []string) (commonCommandOptions, error) {
 			opts.SeedSet = true
 		case "finish":
 			if !hasValue {
-				return opts, fmt.Errorf("%s requires a value.", token)
+				return opts, fmt.Errorf("%s requires a value", token)
 			}
 			reason := normalizeFinishReason(value)
 			if reason == "" {
-				return opts, fmt.Errorf("unsupported finish reason %q.", value)
+				return opts, fmt.Errorf("unsupported finish reason %q", value)
 			}
 			opts.FinishReason = reason
 		case "abort":
@@ -645,7 +645,7 @@ func parseCommonOptions(tokens []string) (commonCommandOptions, error) {
 		case "error":
 			opts.Error = true
 		default:
-			return opts, fmt.Errorf("unknown option %q.", token)
+			return opts, fmt.Errorf("unknown option %q", token)
 		}
 	}
 	if err := validateCommonOptions(opts); err != nil {
@@ -660,16 +660,16 @@ func validateCommonOptions(opts commonCommandOptions) error {
 		finishReason = "stop"
 	}
 	if opts.Abort && opts.Error {
-		return fmt.Errorf("--abort and --error cannot be combined.")
+		return fmt.Errorf("--abort and --error cannot be combined")
 	}
 	if (opts.Abort || opts.Error) && finishReason != "stop" {
-		return fmt.Errorf("--finish cannot be combined with --abort or --error.")
+		return fmt.Errorf("--finish cannot be combined with --abort or --error")
 	}
 	if opts.ChunkMin <= 0 || opts.ChunkMax < opts.ChunkMin {
-		return fmt.Errorf("invalid chunk size range %d:%d.", opts.ChunkMin, opts.ChunkMax)
+		return fmt.Errorf("invalid chunk size range %d:%d", opts.ChunkMin, opts.ChunkMax)
 	}
 	if opts.DelayMin < 0 || opts.DelayMax < opts.DelayMin {
-		return fmt.Errorf("invalid delay range %s:%s.", opts.DelayMin, opts.DelayMax)
+		return fmt.Errorf("invalid delay range %s:%s", opts.DelayMin, opts.DelayMax)
 	}
 	if err := validateMaxIntValue(opts.ReasoningChars, maxDemoReasoningChars, "reasoning"); err != nil {
 		return err
@@ -717,13 +717,13 @@ func validateRandomCommand(cmd randomCommand) error {
 		return err
 	}
 	if cmd.Duration > maxDemoDuration {
-		return fmt.Errorf("duration %s exceeds the maximum of %s.", cmd.Duration, maxDemoDuration)
+		return fmt.Errorf("duration %s exceeds the maximum of %s", cmd.Duration, maxDemoDuration)
 	}
 	if err := validateMaxDurationRange(cmd.DelayMin, cmd.DelayMax, maxDemoDelay, "delay range"); err != nil {
 		return err
 	}
 	if cmd.DelayMin < 0 || cmd.DelayMax < cmd.DelayMin {
-		return fmt.Errorf("invalid delay range %s:%s.", cmd.DelayMin, cmd.DelayMax)
+		return fmt.Errorf("invalid delay range %s:%s", cmd.DelayMin, cmd.DelayMax)
 	}
 	return nil
 }
@@ -733,7 +733,7 @@ func validateChaosCommand(cmd chaosCommand) error {
 		return err
 	}
 	if cmd.Duration > maxDemoDuration {
-		return fmt.Errorf("duration %s exceeds the maximum of %s.", cmd.Duration, maxDemoDuration)
+		return fmt.Errorf("duration %s exceeds the maximum of %s", cmd.Duration, maxDemoDuration)
 	}
 	if err := validateMaxIntValue(cmd.MaxActions, maxDemoChaosActions, "max-actions"); err != nil {
 		return err
@@ -742,28 +742,28 @@ func validateChaosCommand(cmd chaosCommand) error {
 		return err
 	}
 	if cmd.StaggerMin < 0 || cmd.StaggerMax < cmd.StaggerMin {
-		return fmt.Errorf("invalid stagger range %s:%s.", cmd.StaggerMin, cmd.StaggerMax)
+		return fmt.Errorf("invalid stagger range %s:%s", cmd.StaggerMin, cmd.StaggerMax)
 	}
 	return nil
 }
 
 func validateMaxIntValue(value, max int, label string) error {
 	if value > max {
-		return fmt.Errorf("%s %d exceeds the maximum of %d.", label, value, max)
+		return fmt.Errorf("%s %d exceeds the maximum of %d", label, value, max)
 	}
 	return nil
 }
 
 func validateMaxIntRange(minValue, maxValue, max int, label string) error {
 	if minValue > max || maxValue > max {
-		return fmt.Errorf("invalid %s %d:%d; maximum is %d.", label, minValue, maxValue, max)
+		return fmt.Errorf("invalid %s %d:%d; maximum is %d", label, minValue, maxValue, max)
 	}
 	return nil
 }
 
 func validateMaxDurationRange(minValue, maxValue, max time.Duration, label string) error {
 	if minValue > max || maxValue > max {
-		return fmt.Errorf("invalid %s %s:%s; maximum is %s.", label, minValue, maxValue, max)
+		return fmt.Errorf("invalid %s %s:%s; maximum is %s", label, minValue, maxValue, max)
 	}
 	return nil
 }
@@ -772,7 +772,7 @@ func parseToolSpec(raw string, idx int) (toolSpec, error) {
 	parts := strings.Split(raw, "#")
 	name := strings.TrimSpace(parts[0])
 	if name == "" {
-		return toolSpec{}, fmt.Errorf("tool spec %q is missing a tool name.", raw)
+		return toolSpec{}, fmt.Errorf("tool spec %q is missing a tool name", raw)
 	}
 	spec := toolSpec{
 		Name:          name,
@@ -802,7 +802,7 @@ func parseToolSpec(raw string, idx int) (toolSpec, error) {
 		case "provider":
 			spec.Provider = true
 		default:
-			return toolSpec{}, fmt.Errorf("unknown tool tag %q in %q.", tag, raw)
+			return toolSpec{}, fmt.Errorf("unknown tool tag %q in %q", tag, raw)
 		}
 	}
 	finalStates := 0
@@ -816,7 +816,7 @@ func parseToolSpec(raw string, idx int) (toolSpec, error) {
 		finalStates++
 	}
 	if finalStates > 1 {
-		return toolSpec{}, fmt.Errorf("tool spec %q has conflicting final state tags.", raw)
+		return toolSpec{}, fmt.Errorf("tool spec %q has conflicting final state tags", raw)
 	}
 	return spec, nil
 }
@@ -848,7 +848,7 @@ func parseOptionToken(token string) (string, string, bool) {
 func parsePositiveInt(raw string, label string) (int, error) {
 	value, err := strconv.Atoi(strings.TrimSpace(raw))
 	if err != nil || value <= 0 {
-		return 0, fmt.Errorf("invalid %s %q.", label, raw)
+		return 0, fmt.Errorf("invalid %s %q", label, raw)
 	}
 	return value, nil
 }
@@ -856,7 +856,7 @@ func parsePositiveInt(raw string, label string) (int, error) {
 func parseNonNegativeInt(raw string, label string) (int, error) {
 	value, err := strconv.Atoi(strings.TrimSpace(raw))
 	if err != nil || value < 0 {
-		return 0, fmt.Errorf("invalid %s %q.", label, raw)
+		return 0, fmt.Errorf("invalid %s %q", label, raw)
 	}
 	return value, nil
 }
@@ -864,7 +864,7 @@ func parseNonNegativeInt(raw string, label string) (int, error) {
 func parseInt64(raw string, label string) (int64, error) {
 	value, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("invalid %s %q.", label, raw)
+		return 0, fmt.Errorf("invalid %s %q", label, raw)
 	}
 	return value, nil
 }
@@ -895,7 +895,7 @@ func parseIntRange(raw string, label string) (int, int, error) {
 		return 0, 0, err
 	}
 	if maxValue < minValue {
-		return 0, 0, fmt.Errorf("invalid %s range %q.", label, raw)
+		return 0, 0, fmt.Errorf("invalid %s range %q", label, raw)
 	}
 	return minValue, maxValue, nil
 }
