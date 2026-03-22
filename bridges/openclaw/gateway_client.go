@@ -497,10 +497,7 @@ func (c *gatewayWSClient) Connect(ctx context.Context) (string, error) {
 	}
 
 	hello := parseGatewayHello(res.Payload)
-	c.helloMu.Lock()
-	c.hello = hello
-	c.helloMu.Unlock()
-	deviceToken := parseHelloDeviceToken(res.Payload)
+	deviceToken := c.applyHelloPayload(res.Payload, hello)
 	c.readStarted.Store(true)
 	go c.readLoop()
 	go c.pingLoop()
@@ -1185,9 +1182,26 @@ func buildPatchSessionParams(key string, patch map[string]any) map[string]any {
 	params := make(map[string]any, len(patch)+1)
 	params["key"] = strings.TrimSpace(key)
 	for patchKey, patchValue := range patch {
+		if patchKey == "key" {
+			continue
+		}
 		params[patchKey] = patchValue
 	}
 	return params
+}
+
+func (c *gatewayWSClient) applyHelloPayload(payload json.RawMessage, hello *gatewayHello) string {
+	if hello == nil {
+		hello = parseGatewayHello(payload)
+	}
+	c.helloMu.Lock()
+	c.hello = hello
+	c.helloMu.Unlock()
+	deviceToken := parseHelloDeviceToken(payload)
+	if deviceToken != "" {
+		c.cfg.DeviceToken = deviceToken
+	}
+	return deviceToken
 }
 
 func parseHelloDeviceToken(payload json.RawMessage) string {

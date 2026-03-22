@@ -9,7 +9,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
-	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/agents"
@@ -100,7 +99,7 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 			cleanedRaw = finalRenderedBodyFallback(state)
 		}
 		rendered := format.RenderMarkdown(cleanedRaw, true, true)
-		oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, cleanedRaw, rendered, nil, "simple")
+		oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, cleanedRaw, rendered, ReplyTarget{}, "simple")
 		return
 	}
 
@@ -125,11 +124,7 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 
 	finalReplyTarget := oc.resolveFinalReplyTarget(meta, state, &directives)
 	rendered := format.RenderMarkdown(cleanedContent, true, true)
-	var replyToPtr *id.EventID
-	if finalReplyTarget.ReplyTo != "" {
-		replyToPtr = &finalReplyTarget.ReplyTo
-	}
-	oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, cleanedContent, rendered, replyToPtr, "natural")
+	oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, cleanedContent, rendered, finalReplyTarget, "natural")
 }
 
 // heartbeatSkipParams captures the per-branch differences for the common
@@ -346,7 +341,7 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 			oc.sendPlainAssistantMessage(ctx, portal, cleaned)
 		} else {
 			rendered := format.RenderMarkdown(cleaned, true, true)
-			oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, cleaned, rendered, nil, "heartbeat")
+			oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, cleaned, rendered, ReplyTarget{}, "heartbeat")
 		}
 	}
 
@@ -532,19 +527,29 @@ func (oc *AIClient) persistTerminalAssistantTurn(ctx context.Context, portal *br
 	}
 }
 
+func buildFinalEditPayload(rendered event.MessageEventContent, topLevelExtra map[string]any, replyTarget ReplyTarget) *sdk.FinalEditPayload {
+	content := rendered
+	return &sdk.FinalEditPayload{
+		Content: &event.MessageEventContent{
+			MsgType:       content.MsgType,
+			Body:          content.Body,
+			Format:        content.Format,
+			FormattedBody: content.FormattedBody,
+		},
+		TopLevelExtra: topLevelExtra,
+		ReplyTo:       replyTarget.ReplyTo,
+		ThreadRoot:    replyTarget.ThreadRoot,
+	}
+}
+
 // sendFinalAssistantTurnContent is a helper for simple mode that sends content without directive processing.
-func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata, markdown string, rendered event.MessageEventContent, replyToEventID *id.EventID, mode string) {
+func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata, markdown string, rendered event.MessageEventContent, replyTarget ReplyTarget, mode string) {
 	// Safety-split oversized responses into multiple Matrix events
 	var continuationBody string
 	if len(rendered.Body) > turns.MaxMatrixEventBodyBytes {
 		firstBody, rest := turns.SplitAtMarkdownBoundary(markdown, turns.MaxMatrixEventBodyBytes)
 		continuationBody = rest
 		rendered = format.RenderMarkdown(firstBody, true, true)
-	}
-
-	var replyTo id.EventID
-	if replyToEventID != nil {
-		replyTo = *replyToEventID
 	}
 
 	// Generate link previews for URLs in the response
@@ -555,16 +560,7 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 
 	topLevelExtra := buildFinalEditTopLevelExtra(uiMessage, linkPreviews)
 	if state != nil && state.turn != nil {
-		state.turn.SetFinalEditPayload(&sdk.FinalEditPayload{
-			Content: &event.MessageEventContent{
-				MsgType:       event.MsgText,
-				Body:          rendered.Body,
-				Format:        rendered.Format,
-				FormattedBody: rendered.FormattedBody,
-			},
-			TopLevelExtra: topLevelExtra,
-			ReplyTo:       replyTo,
-		})
+		state.turn.SetFinalEditPayload(buildFinalEditPayload(rendered, topLevelExtra, replyTarget))
 	}
 	oc.recordAgentActivity(ctx, portal, meta)
 	if state != nil && state.turn != nil {

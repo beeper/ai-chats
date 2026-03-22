@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/pkg/shared/citations"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
@@ -160,5 +162,34 @@ func TestBuildFinalEditTopLevelExtra_KeepsMatrixFallbackFields(t *testing.T) {
 	}
 	if _, ok := extra["m.mentions"]; !ok {
 		t.Fatalf("expected m.mentions to be present")
+	}
+}
+
+func TestBuildFinalEditPayload_PreservesReplyTarget(t *testing.T) {
+	topLevelExtra := map[string]any{
+		"com.beeper.ai": map[string]any{"id": "turn-4"},
+	}
+	replyTarget := ReplyTarget{
+		ReplyTo:    id.EventID("$reply"),
+		ThreadRoot: id.EventID("$thread"),
+	}
+
+	payload := buildFinalEditPayload(event.MessageEventContent{
+		MsgType:       event.MsgText,
+		Body:          "done",
+		Format:        event.FormatHTML,
+		FormattedBody: "<p>done</p>",
+	}, topLevelExtra, replyTarget)
+	if payload == nil || payload.Content == nil {
+		t.Fatalf("expected final edit payload")
+	}
+	if payload.ReplyTo != id.EventID("$reply") {
+		t.Fatalf("expected reply target to be preserved, got %q", payload.ReplyTo)
+	}
+	if payload.ThreadRoot != id.EventID("$thread") {
+		t.Fatalf("expected thread root to be preserved, got %q", payload.ThreadRoot)
+	}
+	if payload.Content.Body != "done" {
+		t.Fatalf("expected payload body to be preserved, got %q", payload.Content.Body)
 	}
 }

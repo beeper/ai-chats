@@ -295,6 +295,26 @@ func (t *Turn) buildRelatesTo() map[string]any {
 	return nil
 }
 
+func buildPayloadRelatesTo(replyTo, threadRoot id.EventID) *event.RelatesTo {
+	if threadRoot != "" {
+		rel := &event.RelatesTo{
+			Type:          event.RelThread,
+			EventID:       threadRoot,
+			IsFallingBack: true,
+		}
+		if replyTo != "" {
+			rel.InReplyTo = &event.InReplyTo{EventID: replyTo}
+		}
+		return rel
+	}
+	if replyTo != "" {
+		return &event.RelatesTo{
+			InReplyTo: &event.InReplyTo{EventID: replyTo},
+		}
+	}
+	return nil
+}
+
 func (t *Turn) ensureSession() {
 	t.sessionOnce.Do(func() {
 		var logger zerolog.Logger
@@ -652,6 +672,10 @@ func (t *Turn) buildFinalEdit() (networkid.MessageID, *bridgev2.ConvertedEdit) {
 	if target == "" {
 		return "", nil
 	}
+	content := *payload.Content
+	if relatesTo := buildPayloadRelatesTo(payload.ReplyTo, payload.ThreadRoot); relatesTo != nil {
+		content.RelatesTo = relatesTo
+	}
 	topLevelExtra := maps.Clone(payload.TopLevelExtra)
 	if topLevelExtra == nil {
 		topLevelExtra = map[string]any{}
@@ -662,7 +686,7 @@ func (t *Turn) buildFinalEdit() (networkid.MessageID, *bridgev2.ConvertedEdit) {
 			"event_id": t.initialEventID.String(),
 		}
 	}
-	return target, turns.BuildConvertedEdit(payload.Content, topLevelExtra)
+	return target, turns.BuildConvertedEdit(&content, topLevelExtra)
 }
 
 func (t *Turn) sendFinalEdit() {

@@ -407,6 +407,41 @@ func TestTurnBuildFinalEditAddsReplaceRelation(t *testing.T) {
 	}
 }
 
+func TestTurnBuildFinalEditPreservesThreadReplyInNewContent(t *testing.T) {
+	turn := newTurn(context.Background(), nil, nil, nil)
+	turn.initialEventID = id.EventID("$event-1")
+	turn.networkMessageID = "msg-1"
+	turn.SetFinalEditPayload(&FinalEditPayload{
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgText,
+			Body:    "done",
+		},
+		ReplyTo:    id.EventID("$reply-1"),
+		ThreadRoot: id.EventID("$thread-1"),
+	})
+
+	_, edit := turn.buildFinalEdit()
+	if edit == nil || len(edit.ModifiedParts) != 1 {
+		t.Fatalf("expected single modified part, got %#v", edit)
+	}
+	rel := edit.ModifiedParts[0].Content.RelatesTo
+	if rel == nil {
+		t.Fatalf("expected reply relation in edited content")
+	}
+	if rel.Type != event.RelThread {
+		t.Fatalf("expected thread relation, got %#v", rel)
+	}
+	if rel.EventID != id.EventID("$thread-1") {
+		t.Fatalf("expected thread root, got %q", rel.EventID)
+	}
+	if rel.InReplyTo == nil || rel.InReplyTo.EventID != id.EventID("$reply-1") {
+		t.Fatalf("expected reply target in thread relation, got %#v", rel.InReplyTo)
+	}
+	if !rel.IsFallingBack {
+		t.Fatalf("expected thread fallback reply to be preserved")
+	}
+}
+
 func TestTurnAwaitStreamStartStopsOnPermanentError(t *testing.T) {
 	turn := newTurn(context.Background(), nil, nil, nil)
 	turn.session = turns.NewStreamSession(turns.StreamSessionParams{

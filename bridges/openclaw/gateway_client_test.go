@@ -99,6 +99,33 @@ func TestBuildPatchSessionParamsFlattensPatchFields(t *testing.T) {
 	}
 }
 
+func TestBuildPatchSessionParamsReservesMethodKey(t *testing.T) {
+	params := buildPatchSessionParams(" session-1 ", map[string]any{
+		"key":           "overridden",
+		"thinkingLevel": "medium",
+	})
+
+	if got := params["key"]; got != "session-1" {
+		t.Fatalf("expected method key to win, got %v", got)
+	}
+	if got := params["thinkingLevel"]; got != "medium" {
+		t.Fatalf("unexpected thinkingLevel: %v", got)
+	}
+}
+
+func TestApplyHelloPayloadPersistsDeviceToken(t *testing.T) {
+	client := newGatewayWSClient(gatewayConnectConfig{})
+	payload := json.RawMessage(`{"type":"hello-ok","auth":{"deviceToken":"persist-me"}}`)
+
+	deviceToken := client.applyHelloPayload(payload, nil)
+	if deviceToken != "persist-me" {
+		t.Fatalf("expected device token from hello payload, got %q", deviceToken)
+	}
+	if got := client.cfg.DeviceToken; got != "persist-me" {
+		t.Fatalf("expected client config to persist device token, got %q", got)
+	}
+}
+
 func TestSessionHistoryUsesHTTPEndpointAndBearerAuth(t *testing.T) {
 	var gotAuth string
 	var gotPath string
