@@ -1,38 +1,32 @@
-# OpenCode Companion
+# OpenCode Bridge
 
-The OpenCode Companion bridge connects a self-hosted OpenCode server to Beeper through AgentRemote.
+The OpenCode bridge connects Beeper to OpenCode.
 
-It is built for setups where OpenCode is already running on a machine you trust and you want Beeper to become the front end. That can be a local development machine, a lab box, or an office server that you reach from your phone.
+It supports two modes:
 
-## What It Does
+- remote: connect to an existing OpenCode server over HTTP
+- managed: let the bridge launch `opencode` locally and keep a default working directory
 
-- Connects to an OpenCode server over HTTP
-- Subscribes to the OpenCode event stream for live updates
-- Maps OpenCode sessions into Beeper rooms
-- Streams responses, titles, and session events into chat
-- Keeps the bridge usable even when the remote instance temporarily disconnects
+## What it does
 
-## Login Model
+- maps OpenCode sessions into Beeper rooms
+- streams replies and session updates into chat
+- keeps reconnect logic inside the bridge instead of requiring a separate UI
 
-The bridge asks for:
+## Login flow
 
-- Server URL
-- Optional username
-- Optional password for HTTP basic auth
+Remote mode asks for:
 
-Multiple OpenCode instances can be tracked per login, which is useful if you talk to different machines or environments.
+- server URL
+- optional basic-auth username
+- optional basic-auth password
 
-## Best Fit
+Managed mode asks for:
 
-Use this bridge when:
+- path to the `opencode` binary
+- default working directory
 
-- You run OpenCode yourself and want Beeper access from anywhere
-- You want a simple remote interface for agent sessions without exposing a separate UI
-- You want to keep the runtime and credentials on the host machine
-
-## Run It
-
-From the repo root:
+## Run
 
 ```bash
 ./tools/bridges run opencode
@@ -43,8 +37,3 @@ Or:
 ```bash
 ./run.sh opencode
 ```
-
-## Notes
-
-- OpenCode uses an HTTP API plus event streaming rather than the local Codex app-server flow.
-- In AgentRemote terms, this is the bridge for turning a private OpenCode deployment into a Beeper-accessible agent endpoint.

@@ -1,39 +1,24 @@
-# OpenClaw Gateway
+# OpenClaw Bridge
 
-The OpenClaw Gateway bridge connects a self-hosted OpenClaw gateway to Beeper through AgentRemote.
+The OpenClaw bridge connects Beeper to a self-hosted OpenClaw gateway.
 
-This is the most direct way to expose OpenClaw sessions in Beeper while keeping the agent runtime on infrastructure you control. Run the gateway on a local machine, server, or private network, then use Beeper from mobile or desktop to talk to those agents remotely.
+## What it does
 
-## What It Does
+- connects to a gateway over `ws`, `wss`, `http`, or `https`
+- syncs OpenClaw sessions into Beeper rooms
+- streams replies, approvals, and session updates into chat
 
-- Connects to an OpenClaw gateway over `ws`, `wss`, `http`, or `https`
-- Syncs OpenClaw sessions into Beeper rooms
-- Streams responses and updates live
-- Carries tool calls, approvals, and agent state into chat
-- Preserves per-session metadata, usage, and history context
-
-## Login Model
+## Login flow
 
 The bridge asks for:
 
-- Gateway URL
-- Optional gateway token
-- Optional gateway password
-- Optional label for distinguishing multiple gateways
+- gateway URL
+- auth mode: none, token, or password
+- optional label
 
-That makes it a good fit for private deployments where the gateway is reachable only on a LAN, VPN, Tailscale network, or internal hostname.
+If the gateway requires device pairing, the login waits for approval and surfaces the request ID.
 
-## Best Fit
-
-Use this bridge when:
-
-- You already run OpenClaw and want Beeper as the client
-- Your agents live behind a firewall and should stay there
-- You want streaming and approvals without building a separate mobile UI
-
-## Run It
-
-From the repo root:
+## Run
 
 ```bash
 ./tools/bridges run openclaw
@@ -44,8 +29,3 @@ Or:
 ```bash
 ./run.sh openclaw
 ```
-
-## Notes
-
-- The bridge is intentionally focused on OpenClaw as a remote runtime, not a hosted SaaS workflow.
-- It is a core example of the AgentRemote model: keep the gateway private, use Beeper as the interface.
