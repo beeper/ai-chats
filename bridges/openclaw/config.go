@@ -19,7 +19,15 @@ type Config struct {
 }
 
 type OpenClawConfig struct {
-	Enabled *bool `yaml:"enabled"`
+	Enabled   *bool                   `yaml:"enabled"`
+	Discovery OpenClawDiscoveryConfig `yaml:"discovery"`
+}
+
+type OpenClawDiscoveryConfig struct {
+	Enabled           *bool  `yaml:"enabled"`
+	TimeoutMS         int    `yaml:"timeout_ms"`
+	WideAreaDomain    string `yaml:"wide_area_domain"`
+	PrefillTTLSeconds int    `yaml:"prefill_ttl_seconds"`
 }
 
 func upgradeConfig(_ configupgrade.Helper) {}

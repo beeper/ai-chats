@@ -20,20 +20,14 @@ var (
 	_ bridgev2.LoginProcessDisplayAndWait = (*OpenClawLogin)(nil)
 )
 
-const openClawLoginStepCredentials = "io.ai-bridge.openclaw.enter_credentials"
-
 const (
-	openClawLoginStepAuthMode          = "io.ai-bridge.openclaw.choose_auth_mode"
-	openClawLoginStepCredentialsNoAuth = "io.ai-bridge.openclaw.enter_credentials.none"
-	openClawLoginStepCredentialsToken  = "io.ai-bridge.openclaw.enter_credentials.token"
-	openClawLoginStepCredentialsPass   = "io.ai-bridge.openclaw.enter_credentials.password"
-	openClawLoginStepPairingWait       = "io.ai-bridge.openclaw.wait_for_pairing"
+	openClawLoginStepCredentials = "io.ai-bridge.openclaw.enter_credentials"
+	openClawLoginStepPairingWait = "io.ai-bridge.openclaw.wait_for_pairing"
 )
 
 type openClawLoginState string
 
 const (
-	openClawLoginStateAuthMode    openClawLoginState = "auth_mode"
 	openClawLoginStateCredentials openClawLoginState = "credentials"
 	openClawLoginStatePairingWait openClawLoginState = "pairing_wait"
 )
@@ -49,7 +43,6 @@ const (
 
 type openClawPendingLogin struct {
 	gatewayURL string
-	authMode   string
 	token      string
 	password   string
 	label      string
@@ -61,14 +54,15 @@ type OpenClawLogin struct {
 	User      *bridgev2.User
 	Connector *OpenClawConnector
 
-	step       openClawLoginState
-	authMode   string
-	pending    *openClawPendingLogin
-	waitUntil  time.Time
-	preflight  func(context.Context, string, string, string) (string, error)
-	pollEvery  time.Duration
-	returnWait time.Duration
-	waitFor    time.Duration
+	step         openClawLoginState
+	pending      *openClawPendingLogin
+	waitUntil    time.Time
+	prefillURL   string
+	prefillLabel string
+	preflight    func(context.Context, string, string, string) (string, error)
+	pollEvery    time.Duration
+	returnWait   time.Duration
+	waitFor      time.Duration
 }
 
 func (ol *OpenClawLogin) validate() error {
@@ -83,26 +77,10 @@ func (ol *OpenClawLogin) Start(_ context.Context) (*bridgev2.LoginStep, error) {
 	if err := ol.validate(); err != nil {
 		return nil, err
 	}
-	ol.step = openClawLoginStateAuthMode
-	ol.authMode = ""
+	ol.step = openClawLoginStateCredentials
 	ol.pending = nil
 	ol.waitUntil = time.Time{}
-	return &bridgev2.LoginStep{
-		Type:         bridgev2.LoginStepTypeUserInput,
-		StepID:       openClawLoginStepAuthMode,
-		Instructions: "Choose how the bridge should authenticate to your OpenClaw gateway.",
-		UserInputParams: &bridgev2.LoginUserInputParams{
-			Fields: []bridgev2.LoginInputDataField{
-				{
-					Type:        bridgev2.LoginInputFieldTypeSelect,
-					ID:          "auth_mode",
-					Name:        "Authentication Mode",
-					Description: "Pick the gateway auth mode first so the next step only asks for the fields that matter.",
-					Options:     []string{"No auth", "Token", "Password"},
-				},
-			},
-		},
-	}, nil
+	return openClawCredentialStep(ol.prefillURL, ol.prefillLabel), nil
 }
 
 func (ol *OpenClawLogin) SubmitUserInput(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
@@ -110,35 +88,22 @@ func (ol *OpenClawLogin) SubmitUserInput(ctx context.Context, input map[string]s
 		return nil, err
 	}
 	switch ol.step {
-	case "", openClawLoginStateAuthMode:
-		authMode, err := normalizeOpenClawAuthMode(input["auth_mode"])
-		if err != nil {
-			return nil, err
-		}
-		ol.step = openClawLoginStateCredentials
-		ol.authMode = authMode
-		return openClawCredentialStep(authMode), nil
-	case openClawLoginStateCredentials:
+	case "", openClawLoginStateCredentials:
 	default:
 		return nil, errors.New("login process is in an invalid state")
 	}
 
-	authMode, err := normalizeOpenClawAuthMode(ol.authMode)
-	if err != nil {
-		return nil, err
-	}
 	normalizedURL, err := normalizeOpenClawLoginURL(input["url"])
 	if err != nil {
 		return nil, err
 	}
-	token, password, err := normalizeOpenClawAuthCredentials(authMode, input)
+	token, password, err := normalizeOpenClawAuthCredentials(input)
 	if err != nil {
 		return nil, err
 	}
 	label := strings.TrimSpace(input["label"])
 	pending := &openClawPendingLogin{
 		gatewayURL: normalizedURL,
-		authMode:   authMode,
 		token:      token,
 		password:   password,
 		label:      label,
@@ -210,6 +175,7 @@ func (ol *OpenClawLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) 
 
 func (ol *OpenClawLogin) Cancel() {
 	ol.BaseLoginProcess.Cancel()
+	ol.step = ""
 	ol.pending = nil
 	ol.waitUntil = time.Time{}
 }
@@ -274,7 +240,6 @@ func (ol *OpenClawLogin) completeLogin(pending *openClawPendingLogin, deviceToke
 		&UserLoginMetadata{
 			Provider:        ProviderOpenClaw,
 			GatewayURL:      pending.gatewayURL,
-			AuthMode:        pending.authMode,
 			GatewayToken:    pending.token,
 			GatewayPassword: pending.password,
 			GatewayLabel:    pending.label,
@@ -294,89 +259,55 @@ func (ol *OpenClawLogin) completeLogin(pending *openClawPendingLogin, deviceToke
 	return step, nil
 }
 
-func openClawCredentialStep(authMode string) *bridgev2.LoginStep {
-	fields := []bridgev2.LoginInputDataField{
-		{
-			Type:         bridgev2.LoginInputFieldTypeURL,
-			ID:           "url",
-			Name:         "Gateway URL",
-			Description:  "OpenClaw gateway URL, e.g. ws://localhost:18789 or https://gateway.example.com",
-			DefaultValue: "ws://127.0.0.1:18789",
-		},
+func openClawCredentialStep(defaultURL, defaultLabel string) *bridgev2.LoginStep {
+	defaultURL = strings.TrimSpace(defaultURL)
+	if defaultURL == "" {
+		defaultURL = "ws://127.0.0.1:18789"
 	}
-	stepID := openClawLoginStepCredentials
-	instructions := "Enter your OpenClaw gateway details."
-	switch authMode {
-	case "token":
-		stepID = openClawLoginStepCredentialsToken
-		instructions = "Enter the OpenClaw gateway URL and shared token."
-		fields = append(fields, bridgev2.LoginInputDataField{
-			Type:        bridgev2.LoginInputFieldTypeToken,
-			ID:          "token",
-			Name:        "Gateway Token",
-			Description: "Shared gateway token or operator device token.",
-		})
-	case "password":
-		stepID = openClawLoginStepCredentialsPass
-		instructions = "Enter the OpenClaw gateway URL and shared password."
-		fields = append(fields, bridgev2.LoginInputDataField{
-			Type:        bridgev2.LoginInputFieldTypePassword,
-			ID:          "password",
-			Name:        "Gateway Password",
-			Description: "Shared password for the gateway.",
-		})
-	default:
-		stepID = openClawLoginStepCredentialsNoAuth
-		instructions = "Enter the OpenClaw gateway URL."
-	}
-	fields = append(fields, bridgev2.LoginInputDataField{
-		Type:        bridgev2.LoginInputFieldTypeUsername,
-		ID:          "label",
-		Name:        "Gateway Label",
-		Description: "Optional label to distinguish multiple gateways.",
-	})
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeUserInput,
-		StepID:       stepID,
-		Instructions: instructions,
+		StepID:       openClawLoginStepCredentials,
+		Instructions: "Enter your OpenClaw gateway details. Leave token and password empty for no auth, or provide exactly one of them.",
 		UserInputParams: &bridgev2.LoginUserInputParams{
-			Fields: fields,
+			Fields: []bridgev2.LoginInputDataField{
+				{
+					Type:         bridgev2.LoginInputFieldTypeURL,
+					ID:           "url",
+					Name:         "Gateway URL",
+					Description:  "OpenClaw gateway URL, e.g. ws://localhost:18789 or https://gateway.example.com",
+					DefaultValue: defaultURL,
+				},
+				{
+					Type:        bridgev2.LoginInputFieldTypeToken,
+					ID:          "token",
+					Name:        "Gateway Token",
+					Description: "Optional shared gateway token or operator device token. Do not fill both token and password.",
+				},
+				{
+					Type:        bridgev2.LoginInputFieldTypePassword,
+					ID:          "password",
+					Name:        "Gateway Password",
+					Description: "Optional shared password for the gateway. Do not fill both token and password.",
+				},
+				{
+					Type:         bridgev2.LoginInputFieldTypeUsername,
+					ID:           "label",
+					Name:         "Gateway Label",
+					Description:  "Optional label to distinguish multiple gateways.",
+					DefaultValue: strings.TrimSpace(defaultLabel),
+				},
+			},
 		},
 	}
 }
 
-func normalizeOpenClawAuthMode(raw string) (string, error) {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "", "none", "no auth":
-		return "none", nil
-	case "token":
-		return "token", nil
-	case "password":
-		return "password", nil
-	default:
-		return "", fmt.Errorf("unsupported auth mode %q", raw)
-	}
-}
-
-func normalizeOpenClawAuthCredentials(authMode string, input map[string]string) (string, string, error) {
+func normalizeOpenClawAuthCredentials(input map[string]string) (string, string, error) {
 	token := strings.TrimSpace(input["token"])
 	password := strings.TrimSpace(input["password"])
-	switch authMode {
-	case "none":
-		return "", "", nil
-	case "token":
-		if token == "" {
-			return "", "", errors.New("gateway token is required")
-		}
-		return token, "", nil
-	case "password":
-		if password == "" {
-			return "", "", errors.New("gateway password is required")
-		}
-		return "", password, nil
-	default:
-		return "", "", fmt.Errorf("unsupported auth mode %q", authMode)
+	if token != "" && password != "" {
+		return "", "", errors.New("provide either a gateway token or a gateway password, not both")
 	}
+	return token, password, nil
 }
 
 func (ol *OpenClawLogin) preflightGatewayLogin(ctx context.Context, gatewayURL, token, password string) (string, error) {

@@ -3,10 +3,12 @@ package openclaw
 import (
 	"context"
 	"sync"
+	"time"
 
 	"go.mau.fi/util/configupgrade"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote"
 	bridgesdk "github.com/beeper/agentremote/sdk"
@@ -25,6 +27,16 @@ type OpenClawConnector struct {
 
 	clientsMu sync.Mutex
 	clients   map[networkid.UserLoginID]bridgev2.NetworkAPI
+
+	prefillsMu sync.Mutex
+	prefills   map[string]openClawLoginPrefill
+}
+
+type openClawLoginPrefill struct {
+	UserMXID  id.UserID
+	URL       string
+	Label     string
+	ExpiresAt time.Time
 }
 
 func NewConnector() *OpenClawConnector {
@@ -42,6 +54,14 @@ func NewConnector() *OpenClawConnector {
 		StartConnector: func(_ context.Context, _ *bridgev2.Bridge) error {
 			bridgesdk.ApplyDefaultCommandPrefix(&oc.Config.Bridge.CommandPrefix, "!openclaw")
 			bridgesdk.ApplyBoolDefault(&oc.Config.OpenClaw.Enabled, true)
+			bridgesdk.ApplyBoolDefault(&oc.Config.OpenClaw.Discovery.Enabled, true)
+			if oc.Config.OpenClaw.Discovery.TimeoutMS <= 0 {
+				oc.Config.OpenClaw.Discovery.TimeoutMS = 2000
+			}
+			if oc.Config.OpenClaw.Discovery.PrefillTTLSeconds <= 0 {
+				oc.Config.OpenClaw.Discovery.PrefillTTLSeconds = 300
+			}
+			oc.initProvisioning()
 			return nil
 		},
 		DisplayName:      "OpenClaw Bridge",
@@ -79,10 +99,22 @@ func NewConnector() *OpenClawConnector {
 			Description: "Create a login for an OpenClaw gateway.",
 		}),
 		CreateLogin: func(_ context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
-			if err := agentremote.ValidateSingleLoginFlow(flowID, ProviderOpenClaw, oc.openClawEnabled()); err != nil {
-				return nil, err
+			if !oc.openClawEnabled() {
+				return nil, bridgev2.ErrInvalidLoginFlowID
 			}
-			return &OpenClawLogin{User: user, Connector: oc}, nil
+			if flowID == ProviderOpenClaw {
+				return &OpenClawLogin{User: user, Connector: oc}, nil
+			}
+			prefill, ok := oc.loginPrefill(flowID, user)
+			if !ok {
+				return nil, bridgev2.ErrInvalidLoginFlowID
+			}
+			return &OpenClawLogin{
+				User:         user,
+				Connector:    oc,
+				prefillURL:   prefill.URL,
+				prefillLabel: prefill.Label,
+			}, nil
 		},
 	})
 	oc.ConnectorBase = bridgesdk.NewConnectorBase(oc.sdkConfig)

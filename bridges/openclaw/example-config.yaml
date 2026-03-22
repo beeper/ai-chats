@@ -2,3 +2,10 @@ bridge:
   command_prefix: "!openclaw"
 openclaw:
   enabled: true
+  discovery:
+    enabled: true
+    timeout_ms: 2000
+    # Optional. When set, clients can request wide-area discovery in addition to local mDNS.
+    wide_area_domain: ""
+    # Ephemeral prefilled login flow lifetime returned by discovery responses.
+    prefill_ttl_seconds: 300
