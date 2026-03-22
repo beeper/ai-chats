@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"runtime"
@@ -188,6 +189,53 @@ func TestSessionHistoryFallsBackToItemsArray(t *testing.T) {
 	}
 }
 
+func TestSessionHistoryFallsBackToChatHistoryRPC(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("<html>control-ui</html>"))
+	}))
+	defer server.Close()
+
+	client := newGatewayWSClient(gatewayConnectConfig{URL: server.URL})
+	client.hello = &gatewayHello{
+		Features: gatewayHelloFeatures{Methods: []string{"chat.history"}},
+	}
+	client.requestFn = func(ctx context.Context, method string, params map[string]any, out any) error {
+		if method != "chat.history" {
+			t.Fatalf("unexpected method %q", method)
+		}
+		resp, ok := out.(*gatewaySessionHistoryResponse)
+		if !ok {
+			t.Fatalf("unexpected response type %T", out)
+		}
+		*resp = gatewaySessionHistoryResponse{
+			Messages: []map[string]any{
+				{"role": "assistant", "text": "one", "__openclaw": map[string]any{"seq": 1}},
+				{"role": "assistant", "text": "two", "__openclaw": map[string]any{"seq": 2}},
+				{"role": "assistant", "text": "three", "__openclaw": map[string]any{"seq": 3}},
+			},
+		}
+		return nil
+	}
+
+	history, err := client.SessionHistory(context.Background(), "agent:main:test", 2, "4")
+	if err != nil {
+		t.Fatalf("SessionHistory returned error: %v", err)
+	}
+	if history == nil || len(history.Messages) != 2 {
+		t.Fatalf("expected paginated rpc fallback history, got %#v", history)
+	}
+	if got := history.Messages[0]["text"]; got != "two" {
+		t.Fatalf("unexpected first fallback message: %v", got)
+	}
+	if got := history.Messages[1]["text"]; got != "three" {
+		t.Fatalf("unexpected second fallback message: %v", got)
+	}
+	if !history.HasMore || history.NextCursor != "2" {
+		t.Fatalf("expected local pagination markers, got %#v", history)
+	}
+}
+
 func TestProbeSessionHistoryAcceptsSemanticNotFound(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -221,5 +269,69 @@ func TestProbeSessionHistoryRejectsGeneric404(t *testing.T) {
 	}
 	if report.HistoryEndpointCode != http.StatusNotFound {
 		t.Fatalf("unexpected history probe status: %d", report.HistoryEndpointCode)
+	}
+}
+
+func TestProbeSessionHistoryAcceptsRPCFallback(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("<html>control-ui</html>"))
+	}))
+	defer server.Close()
+
+	client := newGatewayWSClient(gatewayConnectConfig{URL: server.URL})
+	client.hello = &gatewayHello{
+		Features: gatewayHelloFeatures{Methods: []string{"chat.history"}},
+	}
+	report := client.ProbeSessionHistory(context.Background())
+	if !report.HistoryEndpointOK {
+		t.Fatalf("expected rpc fallback probe to be accepted, got %#v", report)
+	}
+	if !strings.Contains(report.HistoryEndpointError, "invalid character '<'") {
+		t.Fatalf("expected original http failure to be preserved, got %#v", report)
+	}
+}
+
+func TestRequestUsesOverrideWhenProvided(t *testing.T) {
+	client := newGatewayWSClient(gatewayConnectConfig{})
+	client.requestFn = func(ctx context.Context, method string, params map[string]any, out any) error {
+		if method != "models.list" {
+			t.Fatalf("unexpected method %q", method)
+		}
+		resp, ok := out.(*gatewayModelsListResponse)
+		if !ok {
+			t.Fatalf("unexpected out type %T", out)
+		}
+		resp.Models = []gatewayModelChoice{{ID: "model-1"}}
+		return nil
+	}
+
+	var resp gatewayModelsListResponse
+	if err := client.Request(context.Background(), "models.list", nil, &resp); err != nil {
+		t.Fatalf("Request returned error: %v", err)
+	}
+	if len(resp.Models) != 1 || resp.Models[0].ID != "model-1" {
+		t.Fatalf("unexpected request override response: %#v", resp)
+	}
+}
+
+func TestSessionHistoryReturnsCombinedFallbackErrors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("<html>control-ui</html>"))
+	}))
+	defer server.Close()
+
+	client := newGatewayWSClient(gatewayConnectConfig{URL: server.URL})
+	client.hello = &gatewayHello{
+		Features: gatewayHelloFeatures{Methods: []string{"chat.history"}},
+	}
+	client.requestFn = func(ctx context.Context, method string, params map[string]any, out any) error {
+		return errors.New("rpc unavailable")
+	}
+
+	_, err := client.SessionHistory(context.Background(), "agent:main:test", 10, "")
+	if err == nil || !strings.Contains(err.Error(), "chat.history fallback failed") {
+		t.Fatalf("expected combined fallback error, got %v", err)
 	}
 }

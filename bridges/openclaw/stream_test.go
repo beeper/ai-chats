@@ -216,6 +216,62 @@ func TestApplyStreamPartStateLockedUpdatesLifecycleFields(t *testing.T) {
 	}
 }
 
+func TestBuildStreamDBMetadataFinalizesPreliminaryToolOutput(t *testing.T) {
+	turn := newOpenClawTestTurn("turn-tool-seq")
+	parts := []map[string]any{
+		{
+			"type":             "tool-input-available",
+			"toolCallId":       "call-2",
+			"toolName":         "fetch",
+			"input":            map[string]any{"url": "https://example.com"},
+			"providerExecuted": true,
+		},
+		{
+			"type":             "tool-output-available",
+			"toolCallId":       "call-2",
+			"output":           map[string]any{"status": "running"},
+			"providerExecuted": true,
+			"preliminary":      true,
+		},
+		{
+			"type":             "tool-output-available",
+			"toolCallId":       "call-2",
+			"output":           map[string]any{"status": 200},
+			"providerExecuted": true,
+		},
+	}
+	for _, part := range parts {
+		bridgesdk.ApplyStreamPart(turn, part, bridgesdk.PartApplyOptions{})
+	}
+
+	oc := &OpenClawClient{}
+	state := &openClawStreamState{
+		turnID:     "turn-tool-seq",
+		agentID:    "main",
+		sessionID:  "sess-1",
+		sessionKey: "agent:main:matrix-dm",
+		role:       "assistant",
+		turn:       turn,
+	}
+	meta := oc.buildStreamDBMetadata(state)
+	if meta == nil {
+		t.Fatal("expected metadata")
+	}
+	if len(meta.ToolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %#v", meta.ToolCalls)
+	}
+	call := meta.ToolCalls[0]
+	if call.ToolName != "fetch" || call.CallID != "call-2" {
+		t.Fatalf("unexpected tool identity: %#v", call)
+	}
+	if call.Status != "output-available" || call.ResultStatus != "completed" {
+		t.Fatalf("unexpected final tool state: %#v", call)
+	}
+	if call.Output["status"] != 200 {
+		t.Fatalf("unexpected final tool output: %#v", call.Output)
+	}
+}
+
 func TestDrainAndAbortResetsMap(t *testing.T) {
 	// Use states without real turns to avoid nil-cancel panics in unit tests.
 	oc := newOpenClawTestClient(map[string]*openClawStreamState{

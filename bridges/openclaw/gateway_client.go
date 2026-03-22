@@ -60,16 +60,18 @@ type gatewayHello struct {
 }
 
 type openClawGatewayCompatibilityReport struct {
-	ServerVersion        string
-	MissingMethods       []string
-	MissingEvents        []string
-	HistoryEndpointOK    bool
-	HistoryEndpointCode  int
-	HistoryEndpointError string
+	ServerVersion          string
+	MissingMethods         []string
+	MissingEvents          []string
+	RequiredMissingMethods []string
+	RequiredMissingEvents  []string
+	HistoryEndpointOK      bool
+	HistoryEndpointCode    int
+	HistoryEndpointError   string
 }
 
 func (r openClawGatewayCompatibilityReport) Compatible() bool {
-	return len(r.MissingMethods) == 0 && len(r.MissingEvents) == 0 && r.HistoryEndpointOK
+	return len(r.RequiredMissingMethods) == 0 && len(r.RequiredMissingEvents) == 0
 }
 
 type gatewaySessionRow struct {
@@ -416,6 +418,7 @@ type gatewayWSClient struct {
 	writeMu   sync.Mutex
 	pendingMu sync.Mutex
 	pending   map[string]chan gatewayResponseFrame
+	requestFn func(ctx context.Context, method string, params map[string]any, out any) error
 
 	conn         *websocket.Conn
 	events       chan gatewayEvent
@@ -427,7 +430,14 @@ type gatewayWSClient struct {
 	lastErr      error
 	helloMu      sync.RWMutex
 	hello        *gatewayHello
+	historyMode  atomic.Int32
 }
+
+const (
+	openClawHistoryModeUnknown int32 = iota
+	openClawHistoryModeHTTP
+	openClawHistoryModeRPC
+)
 
 func newGatewayWSClient(cfg gatewayConnectConfig) *gatewayWSClient {
 	return &gatewayWSClient{
@@ -533,6 +543,40 @@ func (c *gatewayWSClient) Hello() *gatewayHello {
 	return &clone
 }
 
+func (c *gatewayWSClient) SupportsMethod(method string) bool {
+	method = strings.ToLower(strings.TrimSpace(method))
+	if method == "" {
+		return false
+	}
+	hello := c.Hello()
+	if hello == nil {
+		return false
+	}
+	for _, candidate := range hello.Features.Methods {
+		if strings.EqualFold(strings.TrimSpace(candidate), method) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *gatewayWSClient) SupportsEvent(evt string) bool {
+	evt = strings.ToLower(strings.TrimSpace(evt))
+	if evt == "" {
+		return false
+	}
+	hello := c.Hello()
+	if hello == nil {
+		return false
+	}
+	for _, candidate := range hello.Features.Events {
+		if strings.EqualFold(strings.TrimSpace(candidate), evt) {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *gatewayWSClient) setLastError(err error) {
 	c.lastErrMu.Lock()
 	defer c.lastErrMu.Unlock()
@@ -573,15 +617,37 @@ func (c *gatewayWSClient) ListSessions(ctx context.Context, limit int) ([]gatewa
 }
 
 func (c *gatewayWSClient) SessionHistory(ctx context.Context, sessionKey string, limit int, cursor string) (*gatewaySessionHistoryResponse, error) {
-	base, err := c.sessionHistoryURL(sessionKey, limit, cursor)
-	if err != nil {
-		return nil, err
+	var httpErr error
+	if c.historyMode.Load() != openClawHistoryModeRPC {
+		base, err := c.sessionHistoryURL(sessionKey, limit, cursor)
+		if err != nil {
+			httpErr = err
+		} else {
+			req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, base.String(), nil)
+			if reqErr != nil {
+				httpErr = fmt.Errorf("build session history request: %w", reqErr)
+			} else {
+				history, historyErr := c.doSessionHistoryRequest(req)
+				if historyErr == nil {
+					c.historyMode.Store(openClawHistoryModeHTTP)
+					return history, nil
+				}
+				httpErr = historyErr
+			}
+		}
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base.String(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("build session history request: %w", err)
+	if !c.SupportsMethod("chat.history") {
+		return nil, httpErr
 	}
-	return c.doSessionHistoryRequest(req)
+	history, rpcErr := c.sessionHistoryViaRPC(ctx, sessionKey, limit, cursor)
+	if rpcErr == nil {
+		c.historyMode.Store(openClawHistoryModeRPC)
+		return history, nil
+	}
+	if httpErr != nil {
+		return nil, fmt.Errorf("http history failed: %v; chat.history fallback failed: %w", httpErr, rpcErr)
+	}
+	return nil, rpcErr
 }
 
 func (c *gatewayWSClient) ProbeSessionHistory(ctx context.Context) openClawGatewayCompatibilityReport {
@@ -604,6 +670,7 @@ func (c *gatewayWSClient) ProbeSessionHistory(ctx context.Context) openClawGatew
 	}
 	if reqErr == nil {
 		report.HistoryEndpointOK = true
+		c.historyMode.Store(openClawHistoryModeHTTP)
 		return report
 	}
 	report.HistoryEndpointError = reqErr.Error()
@@ -612,13 +679,21 @@ func (c *gatewayWSClient) ProbeSessionHistory(ctx context.Context) openClawGatew
 		// treat the endpoint as compatible when the semantic error type matches.
 		if history != nil && strings.EqualFold(strings.TrimSpace(history.Error.Type), "not_found") {
 			report.HistoryEndpointOK = true
+			c.historyMode.Store(openClawHistoryModeHTTP)
 			return report
 		}
+	}
+	if c.SupportsMethod("chat.history") {
+		report.HistoryEndpointOK = true
+		c.historyMode.Store(openClawHistoryModeRPC)
 	}
 	return report
 }
 
 func (c *gatewayWSClient) ListPendingApprovals(ctx context.Context) ([]gatewayApprovalRequestEvent, error) {
+	if !c.SupportsMethod("exec.approval.list") {
+		return nil, nil
+	}
 	var resp gatewayApprovalListResponse
 	if err := c.Request(ctx, "exec.approval.list", map[string]any{}, &resp); err != nil {
 		return nil, err
@@ -689,6 +764,9 @@ func (c *gatewayWSClient) doSessionHistoryRequestWithStatus(req *http.Request) (
 }
 
 func (c *gatewayWSClient) PreviewSessions(ctx context.Context, keys []string, limit, maxChars int) (*gatewaySessionsPreviewResponse, error) {
+	if !c.SupportsMethod("sessions.preview") {
+		return nil, nil
+	}
 	filtered := make([]string, 0, len(keys))
 	for _, key := range keys {
 		if trimmed := strings.TrimSpace(key); trimmed != "" {
@@ -716,6 +794,9 @@ func (c *gatewayWSClient) PreviewSessions(ctx context.Context, keys []string, li
 }
 
 func (c *gatewayWSClient) ResolveSessionKey(ctx context.Context, key string) (string, error) {
+	if !c.SupportsMethod("sessions.resolve") {
+		return strings.TrimSpace(key), nil
+	}
 	var resp gatewayResolveSessionResponse
 	if err := c.Request(ctx, "sessions.resolve", map[string]any{
 		"key": strings.TrimSpace(key),
@@ -746,6 +827,9 @@ func (c *gatewayWSClient) DeleteSession(ctx context.Context, key string, deleteT
 }
 
 func (c *gatewayWSClient) ListAgents(ctx context.Context) (*gatewayAgentsListResponse, error) {
+	if !c.SupportsMethod("agents.list") {
+		return &gatewayAgentsListResponse{}, nil
+	}
 	var resp gatewayAgentsListResponse
 	if err := c.Request(ctx, "agents.list", map[string]any{}, &resp); err != nil {
 		return nil, err
@@ -762,6 +846,9 @@ func (c *gatewayWSClient) ListAgents(ctx context.Context) (*gatewayAgentsListRes
 }
 
 func (c *gatewayWSClient) ListModels(ctx context.Context) (*gatewayModelsListResponse, error) {
+	if !c.SupportsMethod("models.list") {
+		return &gatewayModelsListResponse{}, nil
+	}
 	var resp gatewayModelsListResponse
 	if err := c.Request(ctx, "models.list", map[string]any{}, &resp); err != nil {
 		return nil, err
@@ -783,6 +870,9 @@ func (c *gatewayWSClient) ListModels(ctx context.Context) (*gatewayModelsListRes
 }
 
 func (c *gatewayWSClient) GetToolsCatalog(ctx context.Context, agentID string) (*gatewayToolsCatalogResponse, error) {
+	if !c.SupportsMethod("tools.catalog") {
+		return &gatewayToolsCatalogResponse{}, nil
+	}
 	params := map[string]any{}
 	if trimmed := strings.TrimSpace(agentID); trimmed != "" {
 		params["agentId"] = trimmed
@@ -834,6 +924,9 @@ func (c *gatewayWSClient) ResolveApproval(ctx context.Context, approvalID, decis
 }
 
 func (c *gatewayWSClient) GetAgentIdentity(ctx context.Context, agentID, sessionKey string) (*gatewayAgentIdentity, error) {
+	if !c.SupportsMethod("agent.identity.get") {
+		return nil, nil
+	}
 	params := map[string]any{}
 	if strings.TrimSpace(agentID) != "" {
 		params["agentId"] = strings.TrimSpace(agentID)
@@ -852,6 +945,9 @@ func (c *gatewayWSClient) GetAgentIdentity(ctx context.Context, agentID, session
 }
 
 func (c *gatewayWSClient) WaitForRun(ctx context.Context, runID string, timeout time.Duration) (*gatewayWaitRunResponse, error) {
+	if !c.SupportsMethod("agent.wait") {
+		return nil, nil
+	}
 	runID = strings.TrimSpace(runID)
 	if runID == "" {
 		return nil, errors.New("run id is required")
@@ -884,6 +980,9 @@ func normalizeGatewayAgentIdentity(identity *gatewayAgentIdentity) *gatewayAgent
 }
 
 func (c *gatewayWSClient) Request(ctx context.Context, method string, params map[string]any, out any) error {
+	if c.requestFn != nil {
+		return c.requestFn(ctx, method, params, out)
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -926,6 +1025,132 @@ func (c *gatewayWSClient) Request(ctx context.Context, method string, params map
 	case <-c.closeCh:
 		return errors.New("gateway connection closed")
 	}
+}
+
+func (c *gatewayWSClient) sessionHistoryViaRPC(ctx context.Context, sessionKey string, limit int, cursor string) (*gatewaySessionHistoryResponse, error) {
+	sessionKey = strings.TrimSpace(sessionKey)
+	if sessionKey == "" {
+		return nil, errors.New("session key is required")
+	}
+	var resp gatewaySessionHistoryResponse
+	if err := c.Request(ctx, "chat.history", map[string]any{
+		"sessionKey": sessionKey,
+		"limit":      openClawMaxHistoryPageLimit,
+	}, &resp); err != nil {
+		return nil, err
+	}
+	if len(resp.Messages) == 0 && len(resp.Items) > 0 {
+		resp.Messages = resp.Items
+	}
+	resp.SessionKey = sessionKey
+	return paginateGatewayHistoryResponse(&resp, limit, cursor), nil
+}
+
+func paginateGatewayHistoryResponse(history *gatewaySessionHistoryResponse, limit int, cursor string) *gatewaySessionHistoryResponse {
+	if history == nil {
+		return nil
+	}
+	limit = normalizeGatewayHistoryLimit(limit)
+	cursorSeq := parseGatewayHistoryCursor(cursor)
+	messages := history.Messages
+	endExclusive := len(messages)
+	if cursorSeq > 0 {
+		endExclusive = 0
+		for idx, message := range messages {
+			if gatewayHistoryMessageSeq(message, idx) >= cursorSeq {
+				endExclusive = idx
+				break
+			}
+			endExclusive = idx + 1
+		}
+	}
+	start := 0
+	if limit > 0 && endExclusive > limit {
+		start = endExclusive - limit
+	}
+	paged := &gatewaySessionHistoryResponse{
+		SessionKey: strings.TrimSpace(history.SessionKey),
+		Messages:   cloneGatewayHistorySlice(messages[start:endExclusive]),
+		HasMore:    start > 0,
+	}
+	paged.Items = cloneGatewayHistorySlice(paged.Messages)
+	if paged.HasMore && start < len(messages) {
+		paged.NextCursor = fmt.Sprintf("%d", gatewayHistoryMessageSeq(messages[start], start))
+	}
+	return paged
+}
+
+func normalizeGatewayHistoryLimit(limit int) int {
+	if limit <= 0 || limit > openClawMaxHistoryPageLimit {
+		return openClawMaxHistoryPageLimit
+	}
+	return limit
+}
+
+func parseGatewayHistoryCursor(cursor string) int64 {
+	cursor = strings.TrimSpace(cursor)
+	cursor = strings.TrimPrefix(cursor, "seq:")
+	if cursor == "" {
+		return 0
+	}
+	var value int64
+	_, _ = fmt.Sscanf(cursor, "%d", &value)
+	if value < 0 {
+		return 0
+	}
+	return value
+}
+
+func gatewayHistoryMessageSeq(message map[string]any, idx int) int64 {
+	meta, _ := message["__openclaw"].(map[string]any)
+	switch seq := meta["seq"].(type) {
+	case float64:
+		if seq > 0 {
+			return int64(seq)
+		}
+	case int64:
+		if seq > 0 {
+			return seq
+		}
+	case int:
+		if seq > 0 {
+			return int64(seq)
+		}
+	}
+	return int64(idx + 1)
+}
+
+func cloneGatewayHistorySlice(messages []map[string]any) []map[string]any {
+	if len(messages) == 0 {
+		return nil
+	}
+	cloned := make([]map[string]any, len(messages))
+	for i, message := range messages {
+		cloned[i] = cloneGatewayHistoryMap(message)
+	}
+	return cloned
+}
+
+func cloneGatewayHistoryMap(message map[string]any) map[string]any {
+	if message == nil {
+		return nil
+	}
+	data, err := json.Marshal(message)
+	if err != nil {
+		cloned := make(map[string]any, len(message))
+		for key, value := range message {
+			cloned[key] = value
+		}
+		return cloned
+	}
+	var cloned map[string]any
+	if err = json.Unmarshal(data, &cloned); err != nil {
+		cloned = make(map[string]any, len(message))
+		for key, value := range message {
+			cloned[key] = value
+		}
+	}
+	return cloned
 }
 
 func (c *gatewayWSClient) writeJSON(ctx context.Context, value any) error {

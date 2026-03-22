@@ -211,15 +211,182 @@ func TestAttachApprovalContextKeepsHintsAndPendingData(t *testing.T) {
 	_ = agentremote.ErrApprovalUnknown
 }
 
-func TestOpenClawRequiredGatewayMethodsIncludeRuntimeRPCs(t *testing.T) {
+func TestOpenClawRequiredGatewayMethodsCoverCoreChatSessionFlow(t *testing.T) {
 	required := make(map[string]struct{}, len(openClawRequiredGatewayMethods))
 	for _, method := range openClawRequiredGatewayMethods {
 		required[method] = struct{}{}
 	}
-	for _, method := range []string{"exec.approval.resolve", "agent.wait"} {
+	for _, method := range []string{"sessions.list", "chat.send"} {
 		if _, ok := required[method]; !ok {
 			t.Fatalf("expected required gateway methods to include %q", method)
 		}
+	}
+}
+
+func TestShouldEmitOpenClawRawAgentDataSuppressesAssistantTextSnapshots(t *testing.T) {
+	if shouldEmitOpenClawRawAgentData("assistant", map[string]any{"text": "pretty good"}) {
+		t.Fatal("expected assistant text snapshots to be suppressed")
+	}
+	if shouldEmitOpenClawRawAgentData("assistant", map[string]any{"delta": " good"}) {
+		t.Fatal("expected assistant delta snapshots to be suppressed")
+	}
+	if !shouldEmitOpenClawRawAgentData("assistant", map[string]any{"phase": "start"}) {
+		t.Fatal("expected non-text assistant payloads to remain available as raw data")
+	}
+	if !shouldEmitOpenClawRawAgentData("lifecycle", map[string]any{"phase": "start"}) {
+		t.Fatal("expected non-assistant streams to keep raw data")
+	}
+}
+
+func TestValidateGatewayCompatibilityAllowsOptionalGaps(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("<html>control-ui</html>"))
+	}))
+	defer server.Close()
+
+	mgr := newOpenClawManager(&OpenClawClient{})
+	gateway := newGatewayWSClient(gatewayConnectConfig{URL: server.URL})
+	gateway.hello = &gatewayHello{
+		Server: map[string]any{"version": "test"},
+		Features: gatewayHelloFeatures{
+			Methods: []string{"sessions.list", "chat.send", "chat.history"},
+			Events:  []string{"chat"},
+		},
+	}
+
+	report, err := mgr.validateGatewayCompatibility(context.Background(), gateway)
+	if err != nil {
+		t.Fatalf("validateGatewayCompatibility returned error: %v", err)
+	}
+	if report == nil || !report.Compatible() {
+		t.Fatalf("expected compatibility report to accept optional gaps, got %#v", report)
+	}
+	if !containsString(report.MissingMethods, "agents.list") {
+		t.Fatalf("expected optional missing methods to be reported, got %#v", report)
+	}
+	if !containsString(report.MissingEvents, "agent") {
+		t.Fatalf("expected optional missing events to be reported, got %#v", report)
+	}
+}
+
+func TestOpenClawBuildToolStreamUpdateFromStartArgs(t *testing.T) {
+	update := openClawBuildToolStreamUpdate(time.UnixMilli(1_700_000_000_000), map[string]any{
+		"phase":      "start",
+		"toolCallId": "tool-1",
+		"name":       "read",
+		"args":       map[string]any{"path": "/tmp/example.txt"},
+	})
+
+	if len(update.Parts) != 1 {
+		t.Fatalf("expected 1 part, got %#v", update.Parts)
+	}
+	part := update.Parts[0]
+	if part["type"] != "tool-input-available" {
+		t.Fatalf("unexpected part type: %#v", part)
+	}
+	if part["toolName"] != "read" || part["toolCallId"] != "tool-1" {
+		t.Fatalf("unexpected tool identity: %#v", part)
+	}
+	input, _ := part["input"].(map[string]any)
+	if input["path"] != "/tmp/example.txt" {
+		t.Fatalf("unexpected tool input: %#v", input)
+	}
+}
+
+func TestOpenClawBuildToolStreamUpdateFromStartWithoutArgs(t *testing.T) {
+	update := openClawBuildToolStreamUpdate(time.UnixMilli(1_700_000_000_000), map[string]any{
+		"phase":      "start",
+		"toolCallId": "tool-2",
+		"name":       "exec",
+	})
+
+	if len(update.Parts) != 1 {
+		t.Fatalf("expected 1 part, got %#v", update.Parts)
+	}
+	part := update.Parts[0]
+	if part["type"] != "tool-input-start" {
+		t.Fatalf("unexpected part type: %#v", part)
+	}
+	if part["toolName"] != "exec" || part["toolCallId"] != "tool-2" {
+		t.Fatalf("unexpected tool identity: %#v", part)
+	}
+}
+
+func TestOpenClawBuildToolStreamUpdateFromPartialResult(t *testing.T) {
+	update := openClawBuildToolStreamUpdate(time.UnixMilli(1_700_000_000_000), map[string]any{
+		"phase":         "update",
+		"toolCallId":    "tool-3",
+		"name":          "fetch",
+		"partialResult": map[string]any{"status": "running"},
+	})
+
+	if len(update.Parts) != 1 {
+		t.Fatalf("expected 1 part, got %#v", update.Parts)
+	}
+	part := update.Parts[0]
+	if part["type"] != "tool-output-available" {
+		t.Fatalf("unexpected part type: %#v", part)
+	}
+	if preliminary, _ := part["preliminary"].(bool); !preliminary {
+		t.Fatalf("expected preliminary output, got %#v", part)
+	}
+	output, _ := part["output"].(map[string]any)
+	if output["status"] != "running" {
+		t.Fatalf("unexpected partial output: %#v", output)
+	}
+}
+
+func TestOpenClawBuildToolStreamUpdateFromFinalResult(t *testing.T) {
+	update := openClawBuildToolStreamUpdate(time.UnixMilli(1_700_000_000_000), map[string]any{
+		"phase":      "result",
+		"toolCallId": "tool-4",
+		"name":       "fetch",
+		"result":     map[string]any{"status": 200},
+	})
+
+	if len(update.Parts) != 1 {
+		t.Fatalf("expected 1 part, got %#v", update.Parts)
+	}
+	part := update.Parts[0]
+	if part["type"] != "tool-output-available" {
+		t.Fatalf("unexpected part type: %#v", part)
+	}
+	if preliminary, _ := part["preliminary"].(bool); preliminary {
+		t.Fatalf("did not expect final output to be preliminary: %#v", part)
+	}
+	if !update.HasFinalOutput {
+		t.Fatalf("expected final output marker, got %#v", update)
+	}
+	output, _ := update.FinalOutput.(map[string]any)
+	if output["status"] != 200 {
+		t.Fatalf("unexpected final output: %#v", output)
+	}
+}
+
+func TestOpenClawBuildToolStreamUpdateFromErrorResult(t *testing.T) {
+	update := openClawBuildToolStreamUpdate(time.UnixMilli(1_700_000_000_000), map[string]any{
+		"phase":      "result",
+		"toolCallId": "tool-5",
+		"name":       "exec",
+		"isError":    true,
+		"result": map[string]any{
+			"error": "permission denied",
+		},
+	})
+
+	if len(update.Parts) != 1 {
+		t.Fatalf("expected 1 part, got %#v", update.Parts)
+	}
+	part := update.Parts[0]
+	if part["type"] != "tool-output-error" {
+		t.Fatalf("unexpected part type: %#v", part)
+	}
+	if part["errorText"] != "permission denied" {
+		t.Fatalf("unexpected error text: %#v", part)
+	}
+	if update.HasFinalOutput {
+		t.Fatalf("did not expect final output on error: %#v", update)
 	}
 }
 
@@ -251,4 +418,13 @@ func TestLoadAllHistoryMessagesStopsWhenCursorRepeats(t *testing.T) {
 	if len(messages) != 2 {
 		t.Fatalf("expected both fetched pages before loop exit, got %#v", messages)
 	}
+}
+
+func containsString(values []string, needle string) bool {
+	for _, value := range values {
+		if value == needle {
+			return true
+		}
+	}
+	return false
 }

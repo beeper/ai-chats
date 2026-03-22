@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/beeper/agentremote/pkg/shared/cachedvalue"
+	"github.com/beeper/agentremote/pkg/shared/openclawconv"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
@@ -118,10 +119,16 @@ func (oc *OpenClawClient) previewSessionSnippet(ctx context.Context, sessionKey 
 		return ""
 	}
 	resp, err := gateway.PreviewSessions(ctx, []string{sessionKey}, 6, 240)
-	if err != nil || resp == nil {
+	if err == nil && resp != nil {
+		if snippet := previewSnippetForSession(*resp, sessionKey); snippet != "" {
+			return snippet
+		}
+	}
+	history, err := gateway.SessionHistory(ctx, sessionKey, 6, "")
+	if err != nil || history == nil {
 		return ""
 	}
-	return previewSnippetForSession(*resp, sessionKey)
+	return previewSnippetFromHistory(history.Messages)
 }
 
 func previewSnippetForSession(resp gatewaySessionsPreviewResponse, sessionKey string) string {
@@ -140,6 +147,18 @@ func previewSnippetForSession(resp gatewaySessionsPreviewResponse, sessionKey st
 		return strings.TrimSpace(strings.Join(parts, " "))
 	}
 	return ""
+}
+
+func previewSnippetFromHistory(messages []map[string]any) string {
+	var parts []string
+	for _, message := range messages {
+		text := strings.TrimSpace(openclawconv.ExtractMessageText(message))
+		if text == "" {
+			continue
+		}
+		parts = append(parts, text)
+	}
+	return strings.TrimSpace(strings.Join(parts, " "))
 }
 
 func summarizeToolsCatalog(resp gatewayToolsCatalogResponse) (int, string) {
