@@ -60,3 +60,16 @@ func TestStreamPartStateAppliesTerminalFields(t *testing.T) {
 		t.Fatalf("expected stop finish reason, got %q", state.FinishReason())
 	}
 }
+
+func TestStreamPartStateNilAccessorsReturnZeroValues(t *testing.T) {
+	var state *StreamPartState
+	if got := state.VisibleText(); got != "" {
+		t.Fatalf("expected empty visible text for nil state, got %q", got)
+	}
+	if got := state.AccumulatedText(); got != "" {
+		t.Fatalf("expected empty accumulated text for nil state, got %q", got)
+	}
+	if got := state.LastVisibleText(); got != "" {
+		t.Fatalf("expected empty last visible text for nil state, got %q", got)
+	}
+}

@@ -93,12 +93,16 @@ func EnsureRegistration(ctx context.Context, params RegistrationParams) error {
 func DeleteRemoteBridge(ctx context.Context, auth beeperauth.Config, saveAuth func(beeperauth.Config) error, beeperName string) error {
 	if auth.Username == "" {
 		who, err := beeperWhoami(auth.Domain, auth.Token)
-		if err == nil {
-			auth.Username = who.UserInfo.Username
-			if saveAuth != nil {
-				if err := saveAuth(auth); err != nil {
-					fmt.Fprintf(os.Stderr, "warning: failed to save auth config: %v\n", err)
-				}
+		if err != nil {
+			return fmt.Errorf("failed username discovery for remote bridge deletion: %w", err)
+		}
+		if who == nil || strings.TrimSpace(who.UserInfo.Username) == "" {
+			return fmt.Errorf("failed username discovery for remote bridge deletion: empty username")
+		}
+		auth.Username = who.UserInfo.Username
+		if saveAuth != nil {
+			if err := saveAuth(auth); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: failed to save auth config: %v\n", err)
 			}
 		}
 	}
@@ -147,12 +151,15 @@ func waitForRemoteBridgeDeletion(ctx context.Context, auth beeperauth.Config, be
 }
 
 func remoteBridgeDeleted(ctx context.Context, auth beeperauth.Config, beeperName string) (bridgeGone bool, appserviceGone bool, err error) {
-	bridgeGone = true
+	bridgeGone = false
 	who, err := beeperWhoami(auth.Domain, auth.Token)
 	if err != nil {
 		return false, false, fmt.Errorf("failed to verify remote bridge deletion: %w", err)
 	}
-	if who != nil && who.User.Bridges != nil {
+	if who == nil {
+		return false, false, fmt.Errorf("unable to verify remote bridge deletion: beeperWhoami returned nil")
+	}
+	if who.User.Bridges != nil {
 		_, exists := who.User.Bridges[beeperName]
 		bridgeGone = !exists
 	}

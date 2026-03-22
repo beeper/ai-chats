@@ -72,18 +72,22 @@ func (h *StreamTurnHost[S]) IsActive(turnID string) bool {
 // turn with the given reason. This is the standard disconnect cleanup path.
 func (h *StreamTurnHost[S]) DrainAndAbort(reason string) {
 	h.mu.Lock()
-	aborters := make([]Aborter, 0, len(h.states))
+	states := make([]*S, 0, len(h.states))
 	for _, state := range h.states {
 		if state != nil {
-			if h.callbacks.GetAborter != nil {
-				if a := h.callbacks.GetAborter(state); a != nil {
-					aborters = append(aborters, a)
-				}
-			}
+			states = append(states, state)
 		}
 	}
 	h.states = make(map[string]*S)
 	h.mu.Unlock()
+	aborters := make([]Aborter, 0, len(states))
+	for _, state := range states {
+		if h.callbacks.GetAborter != nil {
+			if a := h.callbacks.GetAborter(state); a != nil {
+				aborters = append(aborters, a)
+			}
+		}
+	}
 	for _, a := range aborters {
 		a.Abort(reason)
 	}

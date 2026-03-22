@@ -144,6 +144,9 @@ func (s *StreamSession) Start(ctx context.Context, targetEventID id.EventID) err
 	if !publisherAvailable && !hookAvailable {
 		return ErrNoPublisher
 	}
+	if publisherAvailable && roomID == "" && !hookAvailable {
+		return ErrNoRoomID
+	}
 
 	var descriptor *event.BeeperStreamInfo
 	var err error
@@ -173,14 +176,19 @@ func (s *StreamSession) tryStart(
 	if s.streamStarted && s.targetEventID == targetEventID {
 		return true, pendingCount, nil
 	}
-	if publisher != nil && roomID != "" && descriptor != nil {
+	s.targetEventID = targetEventID
+	if publisher != nil {
+		if roomID == "" || descriptor == nil {
+			return false, pendingCount, nil
+		}
 		err = publisher.Register(ctx, roomID, targetEventID, descriptor)
 		if err != nil {
 			return false, pendingCount, err
 		}
+		s.streamStarted = true
+		return false, pendingCount, nil
 	}
 	s.streamStarted = true
-	s.targetEventID = targetEventID
 	return false, pendingCount, nil
 }
 
@@ -285,6 +293,12 @@ func (s *StreamSession) currentTargetEventID(ctx context.Context) (id.EventID, e
 			return eventID, nil
 		}
 	}
+	s.streamMu.Lock()
+	if eventID := s.targetEventID; eventID != "" {
+		s.streamMu.Unlock()
+		return eventID, nil
+	}
+	s.streamMu.Unlock()
 
 	target := StreamTarget{}
 	if s.params.GetStreamTarget != nil {

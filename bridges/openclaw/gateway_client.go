@@ -153,6 +153,10 @@ type gatewaySessionHistoryResponse struct {
 	Messages   []map[string]any `json:"messages"`
 	NextCursor string           `json:"nextCursor,omitempty"`
 	HasMore    bool             `json:"hasMore,omitempty"`
+	Error      struct {
+		Type    string `json:"type,omitempty"`
+		Message string `json:"message,omitempty"`
+	} `json:"error,omitempty"`
 }
 
 type gatewaySessionPreviewItem struct {
@@ -604,16 +608,12 @@ func (c *gatewayWSClient) ProbeSessionHistory(ctx context.Context) openClawGatew
 	}
 	report.HistoryEndpointError = reqErr.Error()
 	if statusCode == http.StatusNotFound {
-		var errPayload struct {
-			Error struct {
-				Type string `json:"type,omitempty"`
-			} `json:"error,omitempty"`
-		}
-		if history != nil && len(history.Messages) == 0 {
+		// Keep the empty-history fallback for legacy payload shapes, but only
+		// treat the endpoint as compatible when the semantic error type matches.
+		if history != nil && strings.EqualFold(strings.TrimSpace(history.Error.Type), "not_found") {
 			report.HistoryEndpointOK = true
 			return report
 		}
-		_ = errPayload
 	}
 	return report
 }
@@ -635,7 +635,7 @@ func (c *gatewayWSClient) sessionHistoryURL(sessionKey string, limit int, cursor
 	if err != nil {
 		return nil, fmt.Errorf("invalid gateway url: %w", err)
 	}
-	base.Path = strings.TrimRight(base.Path, "/") + "/sessions/" + url.PathEscape(strings.TrimSpace(sessionKey)) + "/history"
+	base.Path = strings.TrimRight(base.Path, "/") + "/sessions/" + strings.TrimSpace(sessionKey) + "/history"
 	query := base.Query()
 	if limit > 0 {
 		query.Set("limit", fmt.Sprintf("%d", min(limit, openClawMaxHistoryPageLimit)))
@@ -678,15 +678,7 @@ func (c *gatewayWSClient) doSessionHistoryRequestWithStatus(req *http.Request) (
 		return &history, resp.StatusCode, nil
 	}
 	if resp.StatusCode == http.StatusNotFound {
-		var errPayload struct {
-			Error struct {
-				Type    string `json:"type,omitempty"`
-				Message string `json:"message,omitempty"`
-			} `json:"error,omitempty"`
-		}
-		data, _ := json.Marshal(history)
-		_ = json.Unmarshal(data, &errPayload)
-		if strings.EqualFold(strings.TrimSpace(errPayload.Error.Type), "not_found") {
+		if strings.EqualFold(strings.TrimSpace(history.Error.Type), "not_found") {
 			return &history, resp.StatusCode, fmt.Errorf("session history request failed: not_found")
 		}
 	}

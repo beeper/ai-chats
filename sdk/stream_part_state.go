@@ -101,11 +101,26 @@ func (s *StreamPartState) applyPartTimestamp(partType string, ts time.Time) {
 	}
 }
 
-func (s *StreamPartState) VisibleText() string { return s.visible.String() }
+func (s *StreamPartState) VisibleText() string {
+	if s == nil {
+		return ""
+	}
+	return s.visible.String()
+}
 
-func (s *StreamPartState) AccumulatedText() string { return s.accumulated.String() }
+func (s *StreamPartState) AccumulatedText() string {
+	if s == nil {
+		return ""
+	}
+	return s.accumulated.String()
+}
 
-func (s *StreamPartState) LastVisibleText() string { return s.lastVisibleText }
+func (s *StreamPartState) LastVisibleText() string {
+	if s == nil {
+		return ""
+	}
+	return s.lastVisibleText
+}
 
 func (s *StreamPartState) SetLastVisibleText(text string) {
 	s.lastVisibleText = strings.TrimSpace(text)

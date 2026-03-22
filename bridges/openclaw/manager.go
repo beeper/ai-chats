@@ -136,6 +136,8 @@ var (
 		"models.list",
 		"agent.identity.get",
 		"exec.approval.list",
+		"exec.approval.resolve",
+		"agent.wait",
 	}
 	openClawRequiredGatewayEvents = []string{
 		"chat",
@@ -734,6 +736,7 @@ func (m *openClawManager) handleControlCommand(ctx context.Context, msg *bridgev
 		if err := gateway.ResetSession(ctx, sessionKey); err != nil {
 			return true, err
 		}
+		m.invalidateHistoryCache(sessionKey)
 		m.client.sendSystemNoticeViaPortal(ctx, msg.Portal, "OpenClaw session reset.")
 	case "label":
 		if err := m.applySessionPatch(ctx, msg.Portal, gateway, sessionKey, "label", "label", command); err != nil {
@@ -778,6 +781,7 @@ func (m *openClawManager) FetchMessages(ctx context.Context, params bridgev2.Fet
 		allMessages, loadErr := m.loadAllHistoryMessages(ctx, gateway, meta.OpenClawSessionKey)
 		if loadErr != nil {
 			m.markBackgroundBackfillError(params.Portal, meta, params.Task, loadErr)
+			m.saveHistoryPortalState(ctx, params.Portal, meta.OpenClawSessionKey, "after history fetch error")
 			return nil, loadErr
 		}
 		allEntries := prepareOpenClawBackfillEntries(meta, allMessages)
@@ -787,6 +791,7 @@ func (m *openClawManager) FetchMessages(ctx context.Context, params bridgev2.Fet
 		history, historyErr := m.loadBackwardHistoryPage(ctx, gateway, meta.OpenClawSessionKey, normalizeHistoryLimit(params.Count), formatOpenClawBackwardCursor(cursorSeq), params.Task == nil)
 		if historyErr != nil {
 			m.markBackgroundBackfillError(params.Portal, meta, params.Task, historyErr)
+			m.saveHistoryPortalState(ctx, params.Portal, meta.OpenClawSessionKey, "after history fetch error")
 			return nil, historyErr
 		}
 		entries = prepareOpenClawBackfillEntries(meta, history.Messages)
@@ -818,9 +823,7 @@ func (m *openClawManager) FetchMessages(ctx context.Context, params bridgev2.Fet
 	}
 	meta.LastHistorySyncAt = time.Now().UnixMilli()
 	m.completeBackgroundBackfillFetch(params.Portal, meta, params.Task, cursor, hasMore)
-	if err := params.Portal.Save(ctx); err != nil {
-		m.client.Log().Warn().Err(err).Str("session_key", meta.OpenClawSessionKey).Msg("Failed saving OpenClaw portal metadata after history fetch")
-	}
+	m.saveHistoryPortalState(ctx, params.Portal, meta.OpenClawSessionKey, "after history fetch")
 	if params.Task == nil && !params.Forward && params.AnchorMessage == nil && hasMore && strings.TrimSpace(string(cursor)) != "" {
 		go m.prefetchBackwardHistoryPage(m.client.BackgroundContext(ctx), meta.OpenClawSessionKey, normalizeHistoryLimit(params.Count), formatOpenClawBackwardCursor(parseOpenClawCursorSeq(string(cursor))))
 	}
@@ -1161,8 +1164,18 @@ func (m *openClawManager) invalidateHistoryCache(sessionKey string) {
 	}
 }
 
+func (m *openClawManager) saveHistoryPortalState(ctx context.Context, portal *bridgev2.Portal, sessionKey, action string) {
+	if portal == nil {
+		return
+	}
+	if err := portal.Save(ctx); err != nil {
+		m.client.Log().Warn().Err(err).Str("session_key", sessionKey).Msg("Failed saving OpenClaw portal metadata " + action)
+	}
+}
+
 func (m *openClawManager) loadAllHistoryMessages(ctx context.Context, gateway *gatewayWSClient, sessionKey string) ([]map[string]any, error) {
 	cursor := ""
+	prevCursor := ""
 	pages := make([][]map[string]any, 0, 4)
 	for {
 		history, err := gateway.SessionHistory(ctx, sessionKey, openClawMaxHistoryPageLimit, cursor)
@@ -1173,10 +1186,16 @@ func (m *openClawManager) loadAllHistoryMessages(ctx context.Context, gateway *g
 			break
 		}
 		pages = append(pages, history.Messages)
-		if !history.HasMore || strings.TrimSpace(history.NextCursor) == "" {
+		nextCursor := strings.TrimSpace(history.NextCursor)
+		if !history.HasMore || nextCursor == "" {
 			break
 		}
-		cursor = history.NextCursor
+		currentCursor := strings.TrimSpace(cursor)
+		if nextCursor == currentCursor || (prevCursor != "" && nextCursor == prevCursor) {
+			break
+		}
+		prevCursor = currentCursor
+		cursor = nextCursor
 	}
 	total := 0
 	for _, page := range pages {

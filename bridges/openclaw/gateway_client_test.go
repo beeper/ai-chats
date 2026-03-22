@@ -154,6 +154,9 @@ func TestSessionHistoryUsesHTTPEndpointAndBearerAuth(t *testing.T) {
 	if gotAuth != "Bearer shared-token" {
 		t.Fatalf("unexpected auth header: %q", gotAuth)
 	}
+	if strings.Contains(gotPath, "%253A") {
+		t.Fatalf("session path was double-escaped: %q", gotPath)
+	}
 	if gotPath != "/sessions/agent%3Amain%3Atest/history" && gotPath != "/sessions/agent:main:test/history" {
 		t.Fatalf("unexpected path: %q", gotPath)
 	}
@@ -182,5 +185,41 @@ func TestSessionHistoryFallsBackToItemsArray(t *testing.T) {
 	}
 	if history == nil || len(history.Messages) != 1 {
 		t.Fatalf("expected items to populate messages: %#v", history)
+	}
+}
+
+func TestProbeSessionHistoryAcceptsSemanticNotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":{"type":"not_found","message":"missing"}}`))
+	}))
+	defer server.Close()
+
+	client := newGatewayWSClient(gatewayConnectConfig{URL: server.URL})
+	report := client.ProbeSessionHistory(context.Background())
+	if !report.HistoryEndpointOK {
+		t.Fatalf("expected semantic not_found to be accepted, got %#v", report)
+	}
+	if report.HistoryEndpointCode != http.StatusNotFound {
+		t.Fatalf("unexpected history probe status: %d", report.HistoryEndpointCode)
+	}
+}
+
+func TestProbeSessionHistoryRejectsGeneric404(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"messages":[]}`))
+	}))
+	defer server.Close()
+
+	client := newGatewayWSClient(gatewayConnectConfig{URL: server.URL})
+	report := client.ProbeSessionHistory(context.Background())
+	if report.HistoryEndpointOK {
+		t.Fatalf("expected generic 404 to be rejected, got %#v", report)
+	}
+	if report.HistoryEndpointCode != http.StatusNotFound {
+		t.Fatalf("unexpected history probe status: %d", report.HistoryEndpointCode)
 	}
 }

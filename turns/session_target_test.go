@@ -13,6 +13,8 @@ type testStreamPublisher struct {
 	descriptor    *event.BeeperStreamInfo
 	startedRoom   id.RoomID
 	startedEvent  id.EventID
+	registerCalls int
+	registerErr   error
 	published     []map[string]any
 	finishedEvent id.EventID
 }
@@ -32,9 +34,10 @@ func (tst *testStreamPublisher) NewDescriptor(_ context.Context, _ id.RoomID, st
 }
 
 func (tst *testStreamPublisher) Register(_ context.Context, roomID id.RoomID, eventID id.EventID, _ *event.BeeperStreamInfo) error {
+	tst.registerCalls++
 	tst.startedRoom = roomID
 	tst.startedEvent = eventID
-	return nil
+	return tst.registerErr
 }
 
 func (tst *testStreamPublisher) Publish(_ context.Context, _ id.RoomID, _ id.EventID, content map[string]any) error {
@@ -320,5 +323,87 @@ func TestStreamSessionHookOnlyFlushesWithoutPublisher(t *testing.T) {
 	}
 	if !session.streamStarted {
 		t.Fatal("expected session to mark stream as started in hook-only mode")
+	}
+}
+
+func TestStreamSessionRetriesRegisterWhenRoomBecomesAvailable(t *testing.T) {
+	publisher := &testStreamPublisher{
+		descriptor: &event.BeeperStreamInfo{Type: "com.beeper.llm"},
+	}
+	roomID := id.RoomID("")
+	sendCount := 0
+	session := NewStreamSession(StreamSessionParams{
+		TurnID: "turn-register-retry",
+		GetRoomID: func() id.RoomID {
+			return roomID
+		},
+		GetTargetEventID: func() id.EventID {
+			return id.EventID("$event-register-retry")
+		},
+		GetStreamPublisher: func(context.Context) (bridgev2.BeeperStreamPublisher, bool) {
+			return publisher, true
+		},
+		NextSeq: func() int { return 1 },
+		SendHook: func(_ string, _ int, _ map[string]any, _ string) bool {
+			sendCount++
+			return true
+		},
+	})
+
+	session.EmitPart(context.Background(), map[string]any{"type": "text-delta", "delta": "hello"})
+	if session.streamStarted {
+		t.Fatal("expected session to remain unstarted until publisher registration succeeds")
+	}
+	if sendCount != 1 {
+		t.Fatalf("expected hook to flush while waiting for room id, got %d sends", sendCount)
+	}
+	if publisher.registerCalls != 0 {
+		t.Fatalf("expected no register attempts before room is available, got %d", publisher.registerCalls)
+	}
+
+	roomID = id.RoomID("!room:example.com")
+	if err := session.Start(context.Background(), id.EventID("$event-register-retry")); err != nil {
+		t.Fatalf("Start() after room became available error = %v", err)
+	}
+	if !session.streamStarted {
+		t.Fatal("expected session to start after publisher registration succeeds")
+	}
+	if publisher.registerCalls != 1 {
+		t.Fatalf("expected one register attempt after room became available, got %d", publisher.registerCalls)
+	}
+}
+
+func TestStreamSessionCurrentTargetFallsBackToStartedTarget(t *testing.T) {
+	publisher := &testStreamPublisher{
+		descriptor: &event.BeeperStreamInfo{Type: "com.beeper.llm"},
+	}
+	sendCount := 0
+	session := NewStreamSession(StreamSessionParams{
+		TurnID: "turn-target-fallback",
+		GetRoomID: func() id.RoomID {
+			return id.RoomID("!room:example.com")
+		},
+		GetTargetEventID: func() id.EventID {
+			return ""
+		},
+		GetStreamPublisher: func(context.Context) (bridgev2.BeeperStreamPublisher, bool) {
+			return publisher, true
+		},
+		NextSeq: func() int { return 1 },
+		SendHook: func(_ string, _ int, _ map[string]any, _ string) bool {
+			sendCount++
+			return true
+		},
+	})
+
+	if err := session.Start(context.Background(), id.EventID("$event-target-fallback")); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	session.EmitPart(context.Background(), map[string]any{"type": "text-delta", "delta": "hello"})
+	if sendCount != 1 {
+		t.Fatalf("expected emit to reuse stored target event id, got %d sends", sendCount)
+	}
+	if session.pendingCount() != 0 {
+		t.Fatalf("expected no buffered parts after fallback publish, got %d", session.pendingCount())
 	}
 }

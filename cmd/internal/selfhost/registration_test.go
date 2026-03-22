@@ -33,7 +33,7 @@ func TestRemoteBridgeDeletedFailsClosedWithoutUsername(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error when username is unavailable")
 	}
-	if !strings.Contains(err.Error(), "username unavailable") {
-		t.Fatalf("error %q does not mention username unavailability", err.Error())
+	if !strings.Contains(err.Error(), "beeperWhoami returned nil") {
+		t.Fatalf("error %q does not mention unverifiable bridge deletion", err.Error())
 	}
 }

@@ -58,8 +58,21 @@ func newTestTurn() *bridgesdk.Turn {
 	cfg := &bridgesdk.Config{
 		ProviderIdentity: bridgesdk.ProviderIdentity{IDPrefix: "dummybridge", StatusNetwork: "dummybridge"},
 	}
+	// These tests only exercise turn-local streaming behavior. Login/portal are
+	// intentionally nil and EventSender is empty because conv.StartTurn and the
+	// dummy SDK agent paths under test never dereference transport state.
 	conv := bridgesdk.NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, cfg, nil)
 	return conv.StartTurn(context.Background(), dummySDKAgent(), nil)
+}
+
+func assertTerminalState(t *testing.T, turn *bridgesdk.Turn, expectedType string) {
+	t.Helper()
+	ui := turn.UIState().UIMessage
+	metadata, _ := ui["metadata"].(map[string]any)
+	terminal, _ := metadata["beeper_terminal_state"].(map[string]any)
+	if terminal["type"] != expectedType {
+		t.Fatalf("expected %s terminal state, got %#v", expectedType, terminal)
+	}
 }
 
 func findPartByType(parts []map[string]any, partType string) map[string]any {
@@ -346,12 +359,7 @@ func TestRunLoremErrorSetsTerminalErrorState(t *testing.T) {
 	if err := testRunner().runLorem(context.Background(), turn, cmd, zerolog.Nop()); err != nil {
 		t.Fatalf("runLorem returned error: %v", err)
 	}
-	ui := turn.UIState().UIMessage
-	metadata, _ := ui["metadata"].(map[string]any)
-	terminal, _ := metadata["beeper_terminal_state"].(map[string]any)
-	if terminal["type"] != "error" {
-		t.Fatalf("expected error terminal state, got %#v", terminal)
-	}
+	assertTerminalState(t, turn, "error")
 }
 
 func TestRunLoremAbortSetsTerminalAbortState(t *testing.T) {
@@ -371,10 +379,5 @@ func TestRunLoremAbortSetsTerminalAbortState(t *testing.T) {
 	if err := testRunner().runLorem(context.Background(), turn, cmd, zerolog.Nop()); err != nil {
 		t.Fatalf("runLorem returned error: %v", err)
 	}
-	ui := turn.UIState().UIMessage
-	metadata, _ := ui["metadata"].(map[string]any)
-	terminal, _ := metadata["beeper_terminal_state"].(map[string]any)
-	if terminal["type"] != "abort" {
-		t.Fatalf("expected abort terminal state, got %#v", terminal)
-	}
+	assertTerminalState(t, turn, "abort")
 }

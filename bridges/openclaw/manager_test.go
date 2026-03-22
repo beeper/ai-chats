@@ -1,6 +1,9 @@
 package openclaw
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -206,4 +209,46 @@ func TestAttachApprovalContextKeepsHintsAndPendingData(t *testing.T) {
 	}
 
 	_ = agentremote.ErrApprovalUnknown
+}
+
+func TestOpenClawRequiredGatewayMethodsIncludeRuntimeRPCs(t *testing.T) {
+	required := make(map[string]struct{}, len(openClawRequiredGatewayMethods))
+	for _, method := range openClawRequiredGatewayMethods {
+		required[method] = struct{}{}
+	}
+	for _, method := range []string{"exec.approval.resolve", "agent.wait"} {
+		if _, ok := required[method]; !ok {
+			t.Fatalf("expected required gateway methods to include %q", method)
+		}
+	}
+}
+
+func TestLoadAllHistoryMessagesStopsWhenCursorRepeats(t *testing.T) {
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("cursor") {
+		case "":
+			_, _ = w.Write([]byte(`{"messages":[{"role":"assistant","text":"first"}],"nextCursor":"stuck","hasMore":true}`))
+		case "stuck":
+			_, _ = w.Write([]byte(`{"messages":[{"role":"assistant","text":"second"}],"nextCursor":"stuck","hasMore":true}`))
+		default:
+			t.Fatalf("unexpected cursor %q", r.URL.Query().Get("cursor"))
+		}
+	}))
+	defer server.Close()
+
+	mgr := newOpenClawManager(&OpenClawClient{})
+	gateway := newGatewayWSClient(gatewayConnectConfig{URL: server.URL})
+	messages, err := mgr.loadAllHistoryMessages(context.Background(), gateway, "agent:main:test")
+	if err != nil {
+		t.Fatalf("loadAllHistoryMessages returned error: %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("expected repeated cursor to stop after 2 calls, got %d", calls)
+	}
+	if len(messages) != 2 {
+		t.Fatalf("expected both fetched pages before loop exit, got %#v", messages)
+	}
 }
