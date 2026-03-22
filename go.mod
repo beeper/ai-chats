@@ -21,10 +21,8 @@ require (
 	go.mau.fi/util v0.9.7
 	golang.org/x/image v0.35.0
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.26.4-0.20260305215735-7836f35a1a74
+	maunium.net/go/mautrix v0.26.5-0.20260322120516-fcf7539a7af5
 )
-
-replace maunium.net/go/mautrix => /Users/batuhan/Projects/texts/beeper-workspace/mautrix/go
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
