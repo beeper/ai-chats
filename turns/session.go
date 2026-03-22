@@ -422,7 +422,7 @@ func (s *StreamSession) logWarn(reason string, err error, kv ...any) {
 		logEvt = logEvt.Str("turn_id", turnID)
 	}
 	if roomID := s.roomID(); roomID != "" {
-		logEvt = logEvt.Str("room_id", roomID.String())
+		logEvt = logEvt.Stringer("room_id", roomID)
 	}
 	for i := 0; i+1 < len(kv); i += 2 {
 		key, ok := kv[i].(string)
