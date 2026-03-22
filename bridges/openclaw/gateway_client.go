@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -26,16 +27,74 @@ import (
 
 const (
 	openClawProtocolVersion      = 3
-	openClawGatewayClientID      = "gateway-client"
-	openClawGatewayClientMode    = "backend"
-	openClawGatewayDisplayName   = "ai-bridge openclaw"
-	openClawGatewayDeviceFamily  = "bridge"
+	openClawGatewayClientID      = "beeper-bridge"
+	openClawGatewayClientMode    = "ui"
+	openClawGatewayDisplayName   = "Beeper"
 	openClawGatewayWSReadLimit   = 32 * 1024 * 1024
 	openClawGatewayPingInterval  = 30 * time.Second
 	openClawGatewayPingTimeout   = 10 * time.Second
 	openClawMaxHistoryPageLimit  = 1000
 	openClawDefaultRequestTimout = 30 * time.Second
 )
+
+type gatewayClientIdentity struct {
+	ID           string
+	DisplayName  string
+	Version      string
+	Platform     string
+	Mode         string
+	DeviceFamily string
+	InstanceID   string
+	UserAgent    string
+}
+
+func resolveGatewayClientIdentity() gatewayClientIdentity {
+	version := resolveGatewayClientVersion()
+	return gatewayClientIdentity{
+		ID:           openClawGatewayClientID,
+		DisplayName:  openClawGatewayDisplayName,
+		Version:      version,
+		Platform:     resolveGatewayClientPlatform(),
+		Mode:         openClawGatewayClientMode,
+		DeviceFamily: resolveGatewayClientDeviceFamily(),
+		InstanceID:   uuid.NewString(),
+		UserAgent:    "Beeper bridge/" + version,
+	}
+}
+
+func resolveGatewayClientVersion() string {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		if version := strings.TrimSpace(info.Main.Version); version != "" && version != "(devel)" {
+			return version
+		}
+	}
+	return "dev"
+}
+
+func resolveGatewayClientPlatform() string {
+	switch runtime.GOOS {
+	case "darwin":
+		return "macos"
+	default:
+		return runtime.GOOS
+	}
+}
+
+func resolveGatewayClientDeviceFamily() string {
+	switch runtime.GOOS {
+	case "darwin":
+		return "Mac"
+	case "linux":
+		return "Linux"
+	case "windows":
+		return "Windows"
+	default:
+		if runtime.GOOS == "" {
+			return "Device"
+		}
+		return strings.ToUpper(runtime.GOOS[:1]) + runtime.GOOS[1:]
+	}
+}
 
 type gatewayConnectConfig struct {
 	URL         string
@@ -454,9 +513,10 @@ func (c *gatewayWSClient) Connect(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	clientIdentity := resolveGatewayClientIdentity()
 	conn, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
 		CompressionMode: websocket.CompressionDisabled,
-		HTTPHeader:      http.Header{"User-Agent": []string{"ai-bridge/openclaw"}},
+		HTTPHeader:      http.Header{"User-Agent": []string{clientIdentity.UserAgent}},
 	})
 	if err != nil {
 		return "", fmt.Errorf("dial gateway websocket: %w", err)
@@ -734,7 +794,7 @@ func (c *gatewayWSClient) doSessionHistoryRequestWithStatus(req *http.Request) (
 	if authToken := c.httpBearerAuthToken(); authToken != "" {
 		req.Header.Set("Authorization", "Bearer "+authToken)
 	}
-	req.Header.Set("User-Agent", "ai-bridge/openclaw")
+	req.Header.Set("User-Agent", resolveGatewayClientIdentity().UserAgent)
 
 	resp, err := (&http.Client{Timeout: openClawDefaultRequestTimout}).Do(req)
 	if err != nil {
@@ -1299,6 +1359,7 @@ func (c *gatewayWSClient) failPending(err error) {
 }
 
 func (c *gatewayWSClient) buildConnectParams(identity *gatewayDeviceIdentity, nonce string) (map[string]any, error) {
+	clientIdentity := resolveGatewayClientIdentity()
 	scopes := []string{"operator.read", "operator.write", "operator.approvals"}
 	sharedToken := strings.TrimSpace(c.cfg.Token)
 	deviceToken := strings.TrimSpace(c.cfg.DeviceToken)
@@ -1310,12 +1371,13 @@ func (c *gatewayWSClient) buildConnectParams(identity *gatewayDeviceIdentity, no
 		"minProtocol": openClawProtocolVersion,
 		"maxProtocol": openClawProtocolVersion,
 		"client": map[string]any{
-			"id":           openClawGatewayClientID,
-			"displayName":  openClawGatewayDisplayName,
-			"version":      "0.1.0",
-			"platform":     runtime.GOOS,
-			"mode":         openClawGatewayClientMode,
-			"deviceFamily": openClawGatewayDeviceFamily,
+			"id":           clientIdentity.ID,
+			"displayName":  clientIdentity.DisplayName,
+			"version":      clientIdentity.Version,
+			"platform":     clientIdentity.Platform,
+			"mode":         clientIdentity.Mode,
+			"deviceFamily": clientIdentity.DeviceFamily,
+			"instanceId":   clientIdentity.InstanceID,
 		},
 		"role":        "operator",
 		"scopes":      scopes,
@@ -1323,7 +1385,7 @@ func (c *gatewayWSClient) buildConnectParams(identity *gatewayDeviceIdentity, no
 		"commands":    []string{},
 		"permissions": map[string]bool{},
 		"locale":      "en-US",
-		"userAgent":   "ai-bridge/openclaw",
+		"userAgent":   clientIdentity.UserAgent,
 	}
 	if authToken != "" {
 		auth := map[string]any{"token": authToken}
@@ -1335,7 +1397,7 @@ func (c *gatewayWSClient) buildConnectParams(identity *gatewayDeviceIdentity, no
 		params["auth"] = map[string]any{"password": strings.TrimSpace(c.cfg.Password)}
 	}
 	signedAtMs := time.Now().UnixMilli()
-	device, err := buildSignedGatewayDevice(identity, authToken, scopes, signedAtMs, nonce)
+	device, err := buildSignedGatewayDevice(identity, clientIdentity, authToken, scopes, signedAtMs, nonce)
 	if err != nil {
 		return nil, err
 	}
@@ -1496,7 +1558,7 @@ func gatewayDeviceIdentityPath() (string, error) {
 	return filepath.Join(stateDir, "identity", "device.json"), nil
 }
 
-func buildSignedGatewayDevice(identity *gatewayDeviceIdentity, authToken string, scopes []string, signedAtMs int64, nonce string) (map[string]any, error) {
+func buildSignedGatewayDevice(identity *gatewayDeviceIdentity, clientIdentity gatewayClientIdentity, authToken string, scopes []string, signedAtMs int64, nonce string) (map[string]any, error) {
 	pub, err := base64.StdEncoding.DecodeString(identity.PublicKey)
 	if err != nil {
 		return nil, err
@@ -1508,15 +1570,15 @@ func buildSignedGatewayDevice(identity *gatewayDeviceIdentity, authToken string,
 	payload := strings.Join([]string{
 		"v3",
 		identity.DeviceID,
-		openClawGatewayClientID,
-		openClawGatewayClientMode,
+		clientIdentity.ID,
+		clientIdentity.Mode,
 		"operator",
 		strings.Join(scopes, ","),
 		fmt.Sprintf("%d", signedAtMs),
 		authToken,
 		nonce,
-		strings.ToLower(runtime.GOOS),
-		openClawGatewayDeviceFamily,
+		strings.ToLower(clientIdentity.Platform),
+		strings.ToLower(clientIdentity.DeviceFamily),
 	}, "|")
 	signature := ed25519.Sign(ed25519.PrivateKey(priv), []byte(payload))
 	return map[string]any{

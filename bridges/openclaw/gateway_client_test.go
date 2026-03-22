@@ -7,9 +7,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -45,8 +45,17 @@ func TestBuildConnectParamsUsesOperatorClientShape(t *testing.T) {
 	if got := clientParams["mode"]; got != openClawGatewayClientMode {
 		t.Fatalf("unexpected client mode: %v", got)
 	}
-	if got := clientParams["platform"]; got != runtime.GOOS {
+	if got := clientParams["displayName"]; got != openClawGatewayDisplayName {
+		t.Fatalf("unexpected client display name: %v", got)
+	}
+	if got := clientParams["platform"]; got != resolveGatewayClientPlatform() {
 		t.Fatalf("unexpected client platform: %v", got)
+	}
+	if got := clientParams["deviceFamily"]; got != resolveGatewayClientDeviceFamily() {
+		t.Fatalf("unexpected client device family: %v", got)
+	}
+	if got, ok := clientParams["instanceId"].(string); !ok || strings.TrimSpace(got) == "" {
+		t.Fatalf("expected non-empty instance id, got %#v", clientParams["instanceId"])
 	}
 	if _, ok := clientParams["commands"]; ok {
 		t.Fatalf("commands should not be nested in client params: %#v", clientParams)
@@ -67,6 +76,61 @@ func TestBuildConnectParamsUsesOperatorClientShape(t *testing.T) {
 	}
 	if _, ok := params["permissions"].(map[string]bool); !ok {
 		t.Fatalf("expected top-level permissions map, got %#v", params["permissions"])
+	}
+	if got, ok := params["scopes"].([]string); !ok || len(got) != 3 {
+		t.Fatalf("expected least-privilege scopes, got %#v", params["scopes"])
+	}
+	if got := params["userAgent"]; got != "Beeper bridge/"+resolveGatewayClientVersion() {
+		t.Fatalf("unexpected user agent: %#v", got)
+	}
+}
+
+func TestBuildConnectParamsSignsVisibleClientMetadata(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey returned error: %v", err)
+	}
+
+	client := newGatewayWSClient(gatewayConnectConfig{
+		URL:   "ws://127.0.0.1:18789",
+		Token: "shared-token",
+	})
+	params, err := client.buildConnectParams(&gatewayDeviceIdentity{
+		Version:    1,
+		DeviceID:   "device-id",
+		PublicKey:  base64.StdEncoding.EncodeToString(pub),
+		PrivateKey: base64.StdEncoding.EncodeToString(priv),
+	}, "nonce")
+	if err != nil {
+		t.Fatalf("buildConnectParams returned error: %v", err)
+	}
+
+	clientParams := params["client"].(map[string]any)
+	deviceParams, ok := params["device"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected device params map, got %#v", params["device"])
+	}
+
+	sigEncoded, _ := deviceParams["signature"].(string)
+	sig, err := base64.RawURLEncoding.DecodeString(sigEncoded)
+	if err != nil {
+		t.Fatalf("decode signature: %v", err)
+	}
+	payload := strings.Join([]string{
+		"v3",
+		"device-id",
+		clientParams["id"].(string),
+		clientParams["mode"].(string),
+		"operator",
+		strings.Join(params["scopes"].([]string), ","),
+		fmt.Sprintf("%d", deviceParams["signedAt"].(int64)),
+		"shared-token",
+		deviceParams["nonce"].(string),
+		strings.ToLower(clientParams["platform"].(string)),
+		strings.ToLower(clientParams["deviceFamily"].(string)),
+	}, "|")
+	if !ed25519.Verify(pub, []byte(payload), sig) {
+		t.Fatal("expected device signature to cover visible client metadata")
 	}
 }
 

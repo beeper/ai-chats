@@ -132,7 +132,6 @@ var (
 	}
 	openClawPreferredGatewayMethods = []string{
 		"sessions.list",
-		"sessions.patch",
 		"sessions.resolve",
 		"chat.send",
 		"chat.abort",
@@ -566,17 +565,6 @@ func (m *openClawManager) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 		return nil, err
 	}
 	meta := portalMeta(msg.Portal)
-	body := strings.TrimSpace(msg.Content.Body)
-	if isOpenClawAbortCommand(body, msg.Content.MsgType, msg.Event.Type) {
-		if err := gateway.AbortRun(ctx, meta.OpenClawSessionKey, ""); err != nil {
-			return nil, err
-		}
-		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
-	}
-	if handled, err := m.handleControlCommand(ctx, msg, gateway, body); handled || err != nil {
-		return &bridgev2.MatrixMessageResponse{Pending: false}, err
-	}
-
 	attachments, text, err := m.buildOutboundPayload(ctx, msg)
 	if err != nil {
 		return nil, err
@@ -659,127 +647,6 @@ func (m *openClawManager) buildOutboundPayload(ctx context.Context, msg *bridgev
 	default:
 		return nil, "", fmt.Errorf("unsupported message type %s", msgType)
 	}
-}
-
-func isOpenClawAbortCommand(body string, msgType event.MessageType, evtType event.Type) bool {
-	if evtType == event.EventSticker || msgType == event.MsgImage || msgType == event.MsgVideo || msgType == event.MsgAudio || msgType == event.MsgFile {
-		return false
-	}
-	body = strings.ToLower(strings.TrimSpace(body))
-	switch body {
-	case "stop", "/stop", "stop run", "stop action", "please stop", "stop openclaw":
-		return true
-	default:
-		return false
-	}
-}
-
-type openClawControlCommand struct {
-	Action string
-	Value  string
-	Clear  bool
-}
-
-func parseOpenClawControlCommand(body string, msgType event.MessageType, evtType event.Type) (*openClawControlCommand, bool) {
-	if evtType == event.EventSticker || msgType == event.MsgImage || msgType == event.MsgVideo || msgType == event.MsgAudio || msgType == event.MsgFile {
-		return nil, false
-	}
-	body = strings.TrimSpace(body)
-	if !strings.HasPrefix(body, "/") {
-		return nil, false
-	}
-	fields := strings.Fields(body)
-	if len(fields) == 0 {
-		return nil, false
-	}
-	cmd := strings.ToLower(strings.TrimPrefix(fields[0], "/"))
-	rest := strings.TrimSpace(strings.TrimPrefix(body, fields[0]))
-	switch cmd {
-	case "reset":
-		if rest != "" {
-			return nil, false
-		}
-		return &openClawControlCommand{Action: "reset"}, true
-	case "rename", "label":
-		if rest == "" {
-			return nil, false
-		}
-		if strings.EqualFold(rest, "clear") || rest == "-" {
-			return &openClawControlCommand{Action: "label", Clear: true}, true
-		}
-		return &openClawControlCommand{Action: "label", Value: rest}, true
-	case "thinking", "verbose", "reasoning":
-		if rest == "" {
-			return nil, false
-		}
-		value := strings.ToLower(strings.TrimSpace(rest))
-		if value == "inherit" || value == "default" || value == "-" {
-			return &openClawControlCommand{Action: cmd, Clear: true}, true
-		}
-		return &openClawControlCommand{Action: cmd, Value: value}, true
-	default:
-		return nil, false
-	}
-}
-
-func (m *openClawManager) applySessionPatch(ctx context.Context, portal *bridgev2.Portal, gateway *gatewayWSClient, sessionKey, apiKey, displayName string, command *openClawControlCommand) error {
-	var patchValue any
-	notice := "OpenClaw " + displayName + " cleared."
-	if !command.Clear {
-		patchValue = command.Value
-		notice = "OpenClaw " + displayName + " set to " + command.Value + "."
-	}
-	if err := gateway.PatchSession(ctx, sessionKey, map[string]any{apiKey: patchValue}); err != nil {
-		return err
-	}
-	m.client.sendSystemNoticeViaPortal(ctx, portal, notice)
-	return nil
-}
-
-func (m *openClawManager) handleControlCommand(ctx context.Context, msg *bridgev2.MatrixMessage, gateway *gatewayWSClient, body string) (bool, error) {
-	if msg == nil || msg.Portal == nil || gateway == nil {
-		return false, nil
-	}
-	command, ok := parseOpenClawControlCommand(body, msg.Content.MsgType, msg.Event.Type)
-	if !ok {
-		return false, nil
-	}
-	meta := portalMeta(msg.Portal)
-	sessionKey := strings.TrimSpace(meta.OpenClawSessionKey)
-	if sessionKey == "" {
-		m.client.sendSystemNoticeViaPortal(ctx, msg.Portal, "OpenClaw session key is unavailable for this room.")
-		return true, nil
-	}
-	switch command.Action {
-	case "reset":
-		if err := gateway.ResetSession(ctx, sessionKey); err != nil {
-			return true, err
-		}
-		m.invalidateHistoryCache(sessionKey)
-		m.client.sendSystemNoticeViaPortal(ctx, msg.Portal, "OpenClaw session reset.")
-	case "label":
-		if err := m.applySessionPatch(ctx, msg.Portal, gateway, sessionKey, "label", "label", command); err != nil {
-			return true, err
-		}
-	case "thinking":
-		if err := m.applySessionPatch(ctx, msg.Portal, gateway, sessionKey, "thinkingLevel", "thinking level", command); err != nil {
-			return true, err
-		}
-	case "verbose":
-		if err := m.applySessionPatch(ctx, msg.Portal, gateway, sessionKey, "verboseLevel", "verbose level", command); err != nil {
-			return true, err
-		}
-	case "reasoning":
-		if err := m.applySessionPatch(ctx, msg.Portal, gateway, sessionKey, "reasoningLevel", "reasoning level", command); err != nil {
-			return true, err
-		}
-	default:
-		return false, nil
-	}
-	if err := m.syncSessions(ctx); err != nil {
-		m.client.Log().Debug().Err(err).Str("session_key", sessionKey).Msg("Failed to refresh OpenClaw sessions after control command")
-	}
-	return true, nil
 }
 
 func (m *openClawManager) FetchMessages(ctx context.Context, params bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {
