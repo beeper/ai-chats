@@ -23,6 +23,21 @@ func TestStreamPartStateAppliesTextAndReasoning(t *testing.T) {
 	}
 }
 
+func TestStreamPartStatePreservesWhitespaceDeltas(t *testing.T) {
+	var state StreamPartState
+	ts := time.Now()
+
+	state.ApplyPart(map[string]any{"type": "text-delta", "delta": " hello\n"}, ts)
+	state.ApplyPart(map[string]any{"type": "reasoning-delta", "delta": "\n  thinking "}, ts.Add(time.Millisecond))
+
+	if got := state.VisibleText(); got != " hello\n" {
+		t.Fatalf("expected visible text with whitespace preserved, got %q", got)
+	}
+	if got := state.AccumulatedText(); got != " hello\n\n  thinking " {
+		t.Fatalf("expected accumulated text with whitespace preserved, got %q", got)
+	}
+}
+
 func TestStreamPartStateAppliesTerminalFields(t *testing.T) {
 	var state StreamPartState
 	ts := time.Now()

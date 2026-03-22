@@ -31,7 +31,7 @@ func NewStreamTurnHost[S any](cb StreamTurnHostCallbacks[S]) *StreamTurnHost[S] 
 }
 
 // Lock acquires the host mutex.
-func (h *StreamTurnHost[S]) Lock()   { h.mu.Lock() }
+func (h *StreamTurnHost[S]) Lock() { h.mu.Lock() }
 
 // Unlock releases the host mutex.
 func (h *StreamTurnHost[S]) Unlock() { h.mu.Unlock() }
@@ -75,8 +75,10 @@ func (h *StreamTurnHost[S]) DrainAndAbort(reason string) {
 	aborters := make([]Aborter, 0, len(h.states))
 	for _, state := range h.states {
 		if state != nil {
-			if a := h.callbacks.GetAborter(state); a != nil {
-				aborters = append(aborters, a)
+			if h.callbacks.GetAborter != nil {
+				if a := h.callbacks.GetAborter(state); a != nil {
+					aborters = append(aborters, a)
+				}
 			}
 		}
 	}

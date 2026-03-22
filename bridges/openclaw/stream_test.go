@@ -2,15 +2,66 @@ package openclaw
 
 import (
 	"context"
+	"os"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 	bridgesdk "github.com/beeper/agentremote/sdk"
 )
+
+type testMatrixAPI struct{}
+
+func (testMatrixAPI) GetMXID() id.UserID   { return "" }
+func (testMatrixAPI) IsDoublePuppet() bool { return false }
+func (testMatrixAPI) SendMessage(context.Context, id.RoomID, event.Type, *event.Content, *bridgev2.MatrixSendExtra) (*mautrix.RespSendEvent, error) {
+	return nil, nil
+}
+func (testMatrixAPI) SendState(context.Context, id.RoomID, event.Type, string, *event.Content, time.Time) (*mautrix.RespSendEvent, error) {
+	return nil, nil
+}
+func (testMatrixAPI) MarkRead(context.Context, id.RoomID, id.EventID, time.Time) error { return nil }
+func (testMatrixAPI) MarkUnread(context.Context, id.RoomID, bool) error                { return nil }
+func (testMatrixAPI) MarkTyping(context.Context, id.RoomID, bridgev2.TypingType, time.Duration) error {
+	return nil
+}
+func (testMatrixAPI) DownloadMedia(context.Context, id.ContentURIString, *event.EncryptedFileInfo) ([]byte, error) {
+	return nil, nil
+}
+func (testMatrixAPI) DownloadMediaToFile(context.Context, id.ContentURIString, *event.EncryptedFileInfo, bool, func(*os.File) error) error {
+	return nil
+}
+func (testMatrixAPI) UploadMedia(context.Context, id.RoomID, []byte, string, string) (id.ContentURIString, *event.EncryptedFileInfo, error) {
+	return "", nil, nil
+}
+func (testMatrixAPI) UploadMediaStream(context.Context, id.RoomID, int64, bool, bridgev2.FileStreamCallback) (id.ContentURIString, *event.EncryptedFileInfo, error) {
+	return "", nil, nil
+}
+func (testMatrixAPI) SetDisplayName(context.Context, string) error            { return nil }
+func (testMatrixAPI) SetAvatarURL(context.Context, id.ContentURIString) error { return nil }
+func (testMatrixAPI) SetExtraProfileMeta(context.Context, any) error          { return nil }
+func (testMatrixAPI) CreateRoom(context.Context, *mautrix.ReqCreateRoom) (id.RoomID, error) {
+	return "", nil
+}
+func (testMatrixAPI) DeleteRoom(context.Context, id.RoomID, bool) error { return nil }
+func (testMatrixAPI) EnsureJoined(context.Context, id.RoomID, ...bridgev2.EnsureJoinedParams) error {
+	return nil
+}
+func (testMatrixAPI) EnsureInvited(context.Context, id.RoomID, id.UserID) error     { return nil }
+func (testMatrixAPI) TagRoom(context.Context, id.RoomID, event.RoomTag, bool) error { return nil }
+func (testMatrixAPI) MuteRoom(context.Context, id.RoomID, time.Time) error          { return nil }
+func (testMatrixAPI) GetEvent(context.Context, id.RoomID, id.EventID) (*event.Event, error) {
+	return nil, nil
+}
 
 func newOpenClawTestTurn(turnID string) *bridgesdk.Turn {
 	conv := bridgesdk.NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &bridgesdk.Config{}, nil)
@@ -175,5 +226,65 @@ func TestDrainAndAbortResetsMap(t *testing.T) {
 	oc.streamHost.DrainAndAbort("disconnect")
 	if oc.streamHost.IsActive("turn-a") || oc.streamHost.IsActive("turn-b") {
 		t.Fatal("expected stream state map to be cleared after drain")
+	}
+}
+
+func TestDrainAndAbortHandlesNilCallbacks(t *testing.T) {
+	host := agentremote.NewStreamTurnHost(agentremote.StreamTurnHostCallbacks[openClawStreamState]{})
+	host.Lock()
+	host.SetLocked("turn-a", &openClawStreamState{turnID: "turn-a"})
+	host.Unlock()
+
+	host.DrainAndAbort("disconnect")
+	if host.IsActive("turn-a") {
+		t.Fatal("expected stream state map to be cleared after drain")
+	}
+}
+
+func TestEmitStreamPartSerializesTurnCreation(t *testing.T) {
+	oc := newOpenClawTestClient(map[string]*openClawStreamState{})
+	oc.UserLogin = &bridgev2.UserLogin{Bridge: &bridgev2.Bridge{Bot: testMatrixAPI{}}}
+	oc.connector = &OpenClawConnector{}
+	oc.connector.sdkConfig = &bridgesdk.Config{}
+
+	original := openClawNewSDKStreamTurn
+	defer func() { openClawNewSDKStreamTurn = original }()
+
+	var calls int32
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	openClawNewSDKStreamTurn = func(_ *OpenClawClient, _ context.Context, _ *bridgev2.Portal, state *openClawStreamState) *bridgesdk.Turn {
+		if atomic.AddInt32(&calls, 1) == 1 {
+			close(entered)
+			<-release
+		}
+		return newOpenClawTestTurn(state.turnID)
+	}
+
+	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: "!room:example.org"}}
+	part := map[string]any{"type": "text-delta", "delta": "hello"}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		oc.EmitStreamPart(context.Background(), portal, "turn-race", "agent-1", "session-1", part)
+	}()
+
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the first turn creation to start")
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		oc.EmitStreamPart(context.Background(), portal, "turn-race", "agent-1", "session-1", part)
+	}()
+	close(release)
+	wg.Wait()
+
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Fatalf("expected a single turn creation, got %d", got)
 	}
 }

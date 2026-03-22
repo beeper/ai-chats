@@ -35,12 +35,7 @@ func TestBuildSandboxPolicy(t *testing.T) {
 	if len(roots) != 1 || roots[0] != cwd {
 		t.Fatalf("writableRoots = %#v, want [%q]", roots, cwd)
 	}
-
-	access, ok := got["readOnlyAccess"].(map[string]any)
-	if !ok {
-		t.Fatalf("readOnlyAccess type = %T, want map[string]any", got["readOnlyAccess"])
-	}
-	if access["type"] != "fullAccess" {
-		t.Fatalf("readOnlyAccess.type = %#v, want %q", access["type"], "fullAccess")
+	if _, ok := got["readOnlyAccess"]; ok {
+		t.Fatalf("unexpected readOnlyAccess in sandbox policy: %#v", got["readOnlyAccess"])
 	}
 }

@@ -95,3 +95,32 @@ func TestUIStateReplayerToolInputTextAndDefaults(t *testing.T) {
 		t.Fatalf("expected tool output-error state, got %#v", parts[0])
 	}
 }
+
+func TestUIStateReplayerPreservesWhitespacePayloads(t *testing.T) {
+	state := &streamui.UIState{TurnID: "turn-3"}
+	replayer := NewUIStateReplayer(state)
+
+	replayer.Start(nil)
+	replayer.Text("text-1", " hello\n")
+	replayer.Reasoning("reasoning-1", "\nthink ")
+	replayer.ToolInputText("call-1", "bash", "  line 1\nline 2  ", false)
+	replayer.Finish("stop", nil)
+
+	td, ok := TurnDataFromUIMessage(streamui.SnapshotUIMessage(state))
+	if !ok {
+		t.Fatal("expected turn data from replayed UI message")
+	}
+	if len(td.Parts) != 3 {
+		t.Fatalf("expected 3 parts, got %#v", td.Parts)
+	}
+	if td.Parts[0].Text != " hello\n" {
+		t.Fatalf("expected whitespace-preserved text, got %q", td.Parts[0].Text)
+	}
+	if td.Parts[1].Text != "\nthink " {
+		t.Fatalf("expected whitespace-preserved reasoning, got %q", td.Parts[1].Text)
+	}
+	input, ok := td.Parts[2].Input.(string)
+	if !ok || input != "  line 1\nline 2  " {
+		t.Fatalf("expected whitespace-preserved tool input, got %#v", td.Parts[2].Input)
+	}
+}

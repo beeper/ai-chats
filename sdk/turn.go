@@ -3,6 +3,7 @@ package sdk
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"maps"
 	"strings"
 	"sync"
@@ -306,7 +307,7 @@ func (t *Turn) ensureSession() {
 			TurnID:  t.turnID,
 			AgentID: strings.TrimSpace(string(sender.Sender)),
 			GetStreamTarget: func() turns.StreamTarget {
-				return turns.StreamTarget{NetworkMessageID: t.networkMessageID}
+				return turns.StreamTarget{NetworkMessageID: t.NetworkMessageID()}
 			},
 			ResolveTargetEventID: func(callCtx context.Context, target turns.StreamTarget) (id.EventID, error) {
 				if t.conv == nil || t.conv.login == nil || t.conv.login.Bridge == nil {
@@ -324,8 +325,8 @@ func (t *Turn) ensureSession() {
 				}
 				return t.conv.portal.MXID
 			},
-			GetTargetEventID: func() id.EventID { return t.initialEventID },
-			GetSuppressSend:  func() bool { return t.suppressSend },
+			GetTargetEventID: func() id.EventID { return t.InitialEventID() },
+			GetSuppressSend:  t.SuppressSend,
 			GetStreamType: func() string {
 				return matrixevents.StreamEventMessageType.Type
 			},
@@ -378,7 +379,7 @@ func (t *Turn) ensureStarted() {
 		}
 	}
 	t.ensureSession()
-	if !t.suppressSend {
+	if !t.SuppressSend() {
 		if t.sendFunc != nil {
 			evtID, msgID, err := t.sendFunc(t.turnCtx)
 			if err == nil {
@@ -525,7 +526,16 @@ func (t *Turn) SetSendFunc(fn func(ctx context.Context) (id.EventID, networkid.M
 // SetSuppressSend prevents the turn from sending any messages to the room.
 // The turn still tracks state and emits UI events for local consumption.
 func (t *Turn) SetSuppressSend(suppress bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.suppressSend = suppress
+}
+
+// SuppressSend reports whether room sends are currently suppressed.
+func (t *Turn) SuppressSend() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.suppressSend
 }
 
 // InitialEventID returns the Matrix event ID of the placeholder message.
@@ -650,18 +660,6 @@ func (t *Turn) buildFinalEdit() (networkid.MessageID, *bridgev2.ConvertedEdit) {
 		topLevelExtra["m.relates_to"] = map[string]any{
 			"rel_type": matrixevents.RelReplace,
 			"event_id": t.initialEventID.String(),
-		}
-		if payload.ReplyTo != "" {
-			topLevelExtra["m.relates_to"].(map[string]any)["m.in_reply_to"] = map[string]any{
-				"event_id": payload.ReplyTo.String(),
-			}
-		}
-		if payload.ThreadRoot != "" {
-			topLevelExtra["m.relates_to"].(map[string]any)["m.thread"] = map[string]any{
-				"rel_type":        "m.thread",
-				"event_id":        payload.ThreadRoot.String(),
-				"is_falling_back": true,
-			}
 		}
 	}
 	return target, turns.BuildConvertedEdit(payload.Content, topLevelExtra)
@@ -980,6 +978,13 @@ func (t *Turn) awaitStreamStart() {
 	for {
 		started, err := t.session.EnsureStarted(t.turnCtx)
 		if err == nil && started {
+			return
+		}
+		if err != nil && (errors.Is(err, turns.ErrClosed) ||
+			errors.Is(err, turns.ErrNoPublisher) ||
+			errors.Is(err, turns.ErrNoRoomID) ||
+			errors.Is(err, turns.ErrNoTargetEventID) ||
+			errors.Is(err, context.Canceled)) {
 			return
 		}
 		select {

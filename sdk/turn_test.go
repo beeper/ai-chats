@@ -399,12 +399,36 @@ func TestTurnBuildFinalEditAddsReplaceRelation(t *testing.T) {
 	if gotRelatesTo["event_id"] != "$event-1" {
 		t.Fatalf("expected replace target event id, got %#v", gotRelatesTo)
 	}
-	inReply, ok := gotRelatesTo["m.in_reply_to"].(map[string]any)
-	if !ok || inReply["event_id"] != "$reply-1" {
-		t.Fatalf("expected reply override in relation, got %#v", gotRelatesTo)
+	if _, ok := gotRelatesTo["m.in_reply_to"]; ok {
+		t.Fatalf("expected edit relation to omit reply override, got %#v", gotRelatesTo)
 	}
 	if body := edit.ModifiedParts[0].Content.Body; body != "done" {
 		t.Fatalf("expected explicit payload body to win, got %q", body)
+	}
+}
+
+func TestTurnAwaitStreamStartStopsOnPermanentError(t *testing.T) {
+	turn := newTurn(context.Background(), nil, nil, nil)
+	turn.session = turns.NewStreamSession(turns.StreamSessionParams{
+		TurnID: "turn-no-publisher",
+		GetRoomID: func() id.RoomID {
+			return id.RoomID("!room:test")
+		},
+		GetTargetEventID: func() id.EventID {
+			return id.EventID("$event-no-publisher")
+		},
+	})
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		turn.awaitStreamStart()
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("expected awaitStreamStart to stop on permanent error")
 	}
 }
 

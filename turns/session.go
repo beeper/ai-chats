@@ -2,6 +2,7 @@ package turns
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"slices"
 	"strings"
@@ -22,6 +23,13 @@ const (
 	EndReasonFinish     EndReason = "finish"
 	EndReasonDisconnect EndReason = "disconnect"
 	EndReasonError      EndReason = "error"
+)
+
+var (
+	ErrClosed          = errors.New("stream session closed")
+	ErrNoPublisher     = errors.New("stream session has no publisher")
+	ErrNoRoomID        = errors.New("stream session has no room id")
+	ErrNoTargetEventID = errors.New("stream session has no target event id")
 )
 
 type StreamSessionParams struct {
@@ -57,9 +65,9 @@ type StreamSession struct {
 
 	flushMu sync.Mutex
 
-	descriptorOnce sync.Once
-	descriptor     *event.BeeperStreamInfo
-	descriptorErr  error
+	descriptorMu     sync.Mutex
+	descriptor       *event.BeeperStreamInfo
+	descriptorLoaded bool
 }
 
 type pendingStreamPart struct {
@@ -80,39 +88,70 @@ func (s *StreamSession) IsClosed() bool {
 
 func (s *StreamSession) Descriptor(ctx context.Context) (*event.BeeperStreamInfo, error) {
 	if s == nil {
-		return nil, context.Canceled
+		return nil, ErrClosed
 	}
-	s.descriptorOnce.Do(func() {
-		publisher, ok := s.params.GetStreamPublisher(ctx)
-		if !ok || publisher == nil {
-			s.descriptorErr = context.Canceled
-			return
-		}
-		roomID := s.roomID()
-		if roomID == "" {
-			s.descriptorErr = context.Canceled
-			return
-		}
-		s.descriptor, s.descriptorErr = publisher.NewDescriptor(ctx, roomID, s.streamType())
-	})
-	return s.descriptor, s.descriptorErr
+	s.descriptorMu.Lock()
+	if s.descriptorLoaded {
+		descriptor := s.descriptor
+		s.descriptorMu.Unlock()
+		return descriptor, nil
+	}
+	s.descriptorMu.Unlock()
+
+	if s.params.GetStreamPublisher == nil {
+		return nil, ErrNoPublisher
+	}
+	publisher, ok := s.params.GetStreamPublisher(ctx)
+	if !ok || publisher == nil {
+		return nil, ErrNoPublisher
+	}
+	roomID := s.roomID()
+	if roomID == "" {
+		return nil, ErrNoRoomID
+	}
+	descriptor, err := publisher.NewDescriptor(ctx, roomID, s.streamType())
+	if err != nil {
+		return nil, err
+	}
+	s.descriptorMu.Lock()
+	defer s.descriptorMu.Unlock()
+	if s.descriptorLoaded {
+		return s.descriptor, nil
+	}
+	s.descriptor = descriptor
+	s.descriptorLoaded = true
+	return s.descriptor, nil
 }
 
 func (s *StreamSession) Start(ctx context.Context, targetEventID id.EventID) error {
 	if s == nil || s.IsClosed() {
-		return context.Canceled
+		return ErrClosed
 	}
+	if targetEventID == "" {
+		return ErrNoTargetEventID
+	}
+	var (
+		publisher bridgev2.BeeperStreamPublisher
+		ok        bool
+	)
+	if s.params.GetStreamPublisher != nil {
+		publisher, ok = s.params.GetStreamPublisher(ctx)
+	}
+	publisherAvailable := ok && publisher != nil
+	hookAvailable := s.params.SendHook != nil
 	roomID := s.roomID()
-	if roomID == "" || targetEventID == "" {
-		return context.Canceled
+
+	if !publisherAvailable && !hookAvailable {
+		return ErrNoPublisher
 	}
-	publisher, ok := s.params.GetStreamPublisher(ctx)
-	if !ok || publisher == nil {
-		return context.Canceled
-	}
-	descriptor, err := s.Descriptor(ctx)
-	if err != nil {
-		return err
+
+	var descriptor *event.BeeperStreamInfo
+	var err error
+	if publisherAvailable && roomID != "" {
+		descriptor, err = s.Descriptor(ctx)
+		if err != nil {
+			return err
+		}
 	}
 	_, _, err = s.tryStart(ctx, publisher, roomID, targetEventID, descriptor)
 	if err != nil {
@@ -134,9 +173,11 @@ func (s *StreamSession) tryStart(
 	if s.streamStarted && s.targetEventID == targetEventID {
 		return true, pendingCount, nil
 	}
-	err = publisher.Register(ctx, roomID, targetEventID, descriptor)
-	if err != nil {
-		return false, pendingCount, err
+	if publisher != nil && roomID != "" && descriptor != nil {
+		err = publisher.Register(ctx, roomID, targetEventID, descriptor)
+		if err != nil {
+			return false, pendingCount, err
+		}
 	}
 	s.streamStarted = true
 	s.targetEventID = targetEventID
@@ -145,7 +186,7 @@ func (s *StreamSession) tryStart(
 
 func (s *StreamSession) EnsureStarted(ctx context.Context) (bool, error) {
 	if s == nil || s.IsClosed() {
-		return false, context.Canceled
+		return false, ErrClosed
 	}
 	targetEventID, err := s.currentTargetEventID(ctx)
 	if err != nil {
@@ -172,6 +213,9 @@ func (s *StreamSession) End(ctx context.Context, _ EndReason) {
 	started := s.streamStarted
 	s.streamMu.Unlock()
 	if !started || targetEventID == "" {
+		return
+	}
+	if s.params.GetStreamPublisher == nil {
 		return
 	}
 	publisher, ok := s.params.GetStreamPublisher(ctx)
@@ -210,7 +254,7 @@ func (s *StreamSession) EmitPart(ctx context.Context, part map[string]any) {
 
 func (s *StreamSession) FlushPending(ctx context.Context) error {
 	if s == nil || s.IsClosed() {
-		return context.Canceled
+		return ErrClosed
 	}
 	s.flushMu.Lock()
 	defer s.flushMu.Unlock()
@@ -345,11 +389,18 @@ func (s *StreamSession) publishPendingPart(ctx context.Context, targetEventID id
 	if s.params.SendHook != nil && s.params.SendHook(s.params.TurnID, pending.seq, content, txnID) {
 		return nil
 	}
+	if s.params.GetStreamPublisher == nil {
+		return ErrNoPublisher
+	}
 	publisher, ok := s.params.GetStreamPublisher(ctx)
 	if !ok || publisher == nil {
-		return context.Canceled
+		return ErrNoPublisher
 	}
-	return publisher.Publish(ctx, s.roomID(), targetEventID, content)
+	roomID := s.roomID()
+	if roomID == "" {
+		return ErrNoRoomID
+	}
+	return publisher.Publish(ctx, roomID, targetEventID, content)
 }
 
 func (s *StreamSession) descriptorType() string {

@@ -20,6 +20,20 @@ import (
 const (
 	defaultChunkMin = 24
 	defaultChunkMax = 96
+
+	maxDemoChars           = 8192
+	maxDemoReasoningChars  = 8192
+	maxDemoToolSpecs       = 16
+	maxDemoSteps           = 32
+	maxDemoCollections     = 16
+	maxDemoRandomActions   = 64
+	maxDemoChaosTurns      = 16
+	maxDemoChaosActions    = 64
+	maxDemoDuration        = 5 * time.Minute
+	maxDemoDelay           = 30 * time.Second
+	maxDemoChunkChars      = 512
+	maxDemoStagger         = 30 * time.Second
+	maxDemoDurationSeconds = int(maxDemoDuration / time.Second)
 )
 
 var loremSentenceCorpus = []string{
@@ -272,6 +286,9 @@ func parseLoremCommand(tokens []string) (*loremCommand, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := validateMaxIntValue(count, maxDemoChars, "character count"); err != nil {
+		return nil, err
+	}
 	opts, err := parseCommonOptions(tokens[1:])
 	if err != nil {
 		return nil, err
@@ -287,6 +304,9 @@ func parseToolsCommand(tokens []string) (*toolsCommand, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := validateMaxIntValue(count, maxDemoChars, "character count"); err != nil {
+		return nil, err
+	}
 	toolTokens := make([]string, 0, len(tokens))
 	optTokens := make([]string, 0, len(tokens))
 	for _, token := range tokens[1:] {
@@ -298,6 +318,9 @@ func parseToolsCommand(tokens []string) (*toolsCommand, error) {
 	}
 	if len(toolTokens) == 0 {
 		return nil, fmt.Errorf("stream-tools requires at least one tool spec.")
+	}
+	if err := validateMaxIntValue(len(toolTokens), maxDemoToolSpecs, "tool spec count"); err != nil {
+		return nil, err
 	}
 	opts, err := parseCommonOptions(optTokens)
 	if err != nil {
@@ -328,6 +351,9 @@ func parseRandomCommand(tokens []string) (*randomCommand, error) {
 		if err != nil {
 			return nil, err
 		}
+		if err := validateMaxIntValue(seconds, maxDemoDurationSeconds, "duration seconds"); err != nil {
+			return nil, err
+		}
 		cmd.Duration = futureDuration(seconds)
 		rest = rest[1:]
 	}
@@ -340,6 +366,9 @@ func parseRandomCommand(tokens []string) (*randomCommand, error) {
 			}
 			n, err := parsePositiveInt(value, "actions")
 			if err != nil {
+				return nil, err
+			}
+			if err := validateMaxIntValue(n, maxDemoRandomActions, "actions"); err != nil {
 				return nil, err
 			}
 			cmd.Actions = n
@@ -360,6 +389,9 @@ func parseRandomCommand(tokens []string) (*randomCommand, error) {
 			}
 			minDelay, maxDelay, err := parseDurationRangeMS(value)
 			if err != nil {
+				return nil, err
+			}
+			if err := validateMaxDurationRange(minDelay, maxDelay, maxDemoDelay, "delay range"); err != nil {
 				return nil, err
 			}
 			cmd.DelayMin, cmd.DelayMax = minDelay, maxDelay
@@ -401,12 +433,18 @@ func parseChaosCommand(tokens []string) (*chaosCommand, error) {
 		if err != nil {
 			return nil, err
 		}
+		if err := validateMaxIntValue(n, maxDemoChaosTurns, "turn count"); err != nil {
+			return nil, err
+		}
 		cmd.Turns = n
 		rest = rest[1:]
 	}
 	if len(rest) > 0 && !strings.HasPrefix(rest[0], "--") {
 		seconds, err := parsePositiveInt(rest[0], "duration")
 		if err != nil {
+			return nil, err
+		}
+		if err := validateMaxIntValue(seconds, maxDemoDurationSeconds, "duration seconds"); err != nil {
 			return nil, err
 		}
 		cmd.Duration = futureDuration(seconds)
@@ -444,6 +482,9 @@ func parseChaosCommand(tokens []string) (*chaosCommand, error) {
 			if err != nil {
 				return nil, err
 			}
+			if err := validateMaxDurationRange(minDelay, maxDelay, maxDemoStagger, "stagger range"); err != nil {
+				return nil, err
+			}
 			cmd.StaggerMin, cmd.StaggerMax = minDelay, maxDelay
 		case "max-actions":
 			if !hasValue {
@@ -451,6 +492,9 @@ func parseChaosCommand(tokens []string) (*chaosCommand, error) {
 			}
 			n, err := parsePositiveInt(value, "max-actions")
 			if err != nil {
+				return nil, err
+			}
+			if err := validateMaxIntValue(n, maxDemoChaosActions, "max-actions"); err != nil {
 				return nil, err
 			}
 			cmd.MaxActions = n
@@ -489,6 +533,9 @@ func parseCommonOptions(tokens []string) (commonCommandOptions, error) {
 			if err != nil {
 				return opts, err
 			}
+			if err := validateMaxIntValue(n, maxDemoReasoningChars, "reasoning"); err != nil {
+				return opts, err
+			}
 			opts.ReasoningChars = n
 		case "steps":
 			if !hasValue {
@@ -496,6 +543,9 @@ func parseCommonOptions(tokens []string) (commonCommandOptions, error) {
 			}
 			n, err := parsePositiveInt(value, "steps")
 			if err != nil {
+				return opts, err
+			}
+			if err := validateMaxIntValue(n, maxDemoSteps, "steps"); err != nil {
 				return opts, err
 			}
 			opts.Steps = n
@@ -507,6 +557,9 @@ func parseCommonOptions(tokens []string) (commonCommandOptions, error) {
 			if err != nil {
 				return opts, err
 			}
+			if err := validateMaxIntValue(n, maxDemoCollections, "sources"); err != nil {
+				return opts, err
+			}
 			opts.Sources = n
 		case "documents":
 			if !hasValue {
@@ -516,6 +569,9 @@ func parseCommonOptions(tokens []string) (commonCommandOptions, error) {
 			if err != nil {
 				return opts, err
 			}
+			if err := validateMaxIntValue(n, maxDemoCollections, "documents"); err != nil {
+				return opts, err
+			}
 			opts.Documents = n
 		case "files":
 			if !hasValue {
@@ -523,6 +579,9 @@ func parseCommonOptions(tokens []string) (commonCommandOptions, error) {
 			}
 			n, err := parseNonNegativeInt(value, "files")
 			if err != nil {
+				return opts, err
+			}
+			if err := validateMaxIntValue(n, maxDemoCollections, "files"); err != nil {
 				return opts, err
 			}
 			opts.Files = n
@@ -546,6 +605,9 @@ func parseCommonOptions(tokens []string) (commonCommandOptions, error) {
 			if err != nil {
 				return opts, err
 			}
+			if err := validateMaxDurationRange(minDelay, maxDelay, maxDemoDelay, "delay range"); err != nil {
+				return opts, err
+			}
 			opts.DelayMin, opts.DelayMax = minDelay, maxDelay
 		case "chunk-chars":
 			if !hasValue {
@@ -553,6 +615,9 @@ func parseCommonOptions(tokens []string) (commonCommandOptions, error) {
 			}
 			minChunk, maxChunk, err := parseIntRange(value, "chunk-chars")
 			if err != nil {
+				return opts, err
+			}
+			if err := validateMaxIntRange(minChunk, maxChunk, maxDemoChunkChars, "chunk size range"); err != nil {
 				return opts, err
 			}
 			opts.ChunkMin, opts.ChunkMax = minChunk, maxChunk
@@ -590,10 +655,14 @@ func parseCommonOptions(tokens []string) (commonCommandOptions, error) {
 }
 
 func validateCommonOptions(opts commonCommandOptions) error {
+	finishReason := strings.TrimSpace(opts.FinishReason)
+	if finishReason == "" {
+		finishReason = "stop"
+	}
 	if opts.Abort && opts.Error {
 		return fmt.Errorf("--abort and --error cannot be combined.")
 	}
-	if (opts.Abort || opts.Error) && opts.FinishReason != "stop" {
+	if (opts.Abort || opts.Error) && finishReason != "stop" {
 		return fmt.Errorf("--finish cannot be combined with --abort or --error.")
 	}
 	if opts.ChunkMin <= 0 || opts.ChunkMax < opts.ChunkMin {
@@ -601,6 +670,100 @@ func validateCommonOptions(opts commonCommandOptions) error {
 	}
 	if opts.DelayMin < 0 || opts.DelayMax < opts.DelayMin {
 		return fmt.Errorf("invalid delay range %s:%s.", opts.DelayMin, opts.DelayMax)
+	}
+	if err := validateMaxIntValue(opts.ReasoningChars, maxDemoReasoningChars, "reasoning"); err != nil {
+		return err
+	}
+	if err := validateMaxIntValue(opts.Steps, maxDemoSteps, "steps"); err != nil {
+		return err
+	}
+	if err := validateMaxIntValue(opts.Sources, maxDemoCollections, "sources"); err != nil {
+		return err
+	}
+	if err := validateMaxIntValue(opts.Documents, maxDemoCollections, "documents"); err != nil {
+		return err
+	}
+	if err := validateMaxIntValue(opts.Files, maxDemoCollections, "files"); err != nil {
+		return err
+	}
+	if err := validateMaxIntRange(opts.ChunkMin, opts.ChunkMax, maxDemoChunkChars, "chunk size range"); err != nil {
+		return err
+	}
+	if err := validateMaxDurationRange(opts.DelayMin, opts.DelayMax, maxDemoDelay, "delay range"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateLoremCommand(cmd loremCommand) error {
+	if err := validateMaxIntValue(cmd.Chars, maxDemoChars, "character count"); err != nil {
+		return err
+	}
+	return validateCommonOptions(cmd.Options)
+}
+
+func validateToolsCommand(cmd toolsCommand) error {
+	if err := validateMaxIntValue(cmd.Chars, maxDemoChars, "character count"); err != nil {
+		return err
+	}
+	if err := validateMaxIntValue(len(cmd.Tools), maxDemoToolSpecs, "tool spec count"); err != nil {
+		return err
+	}
+	return validateCommonOptions(cmd.Options)
+}
+
+func validateRandomCommand(cmd randomCommand) error {
+	if err := validateMaxIntValue(cmd.Actions, maxDemoRandomActions, "actions"); err != nil {
+		return err
+	}
+	if cmd.Duration > maxDemoDuration {
+		return fmt.Errorf("duration %s exceeds the maximum of %s.", cmd.Duration, maxDemoDuration)
+	}
+	if err := validateMaxDurationRange(cmd.DelayMin, cmd.DelayMax, maxDemoDelay, "delay range"); err != nil {
+		return err
+	}
+	if cmd.DelayMin < 0 || cmd.DelayMax < cmd.DelayMin {
+		return fmt.Errorf("invalid delay range %s:%s.", cmd.DelayMin, cmd.DelayMax)
+	}
+	return nil
+}
+
+func validateChaosCommand(cmd chaosCommand) error {
+	if err := validateMaxIntValue(cmd.Turns, maxDemoChaosTurns, "turn count"); err != nil {
+		return err
+	}
+	if cmd.Duration > maxDemoDuration {
+		return fmt.Errorf("duration %s exceeds the maximum of %s.", cmd.Duration, maxDemoDuration)
+	}
+	if err := validateMaxIntValue(cmd.MaxActions, maxDemoChaosActions, "max-actions"); err != nil {
+		return err
+	}
+	if err := validateMaxDurationRange(cmd.StaggerMin, cmd.StaggerMax, maxDemoStagger, "stagger range"); err != nil {
+		return err
+	}
+	if cmd.StaggerMin < 0 || cmd.StaggerMax < cmd.StaggerMin {
+		return fmt.Errorf("invalid stagger range %s:%s.", cmd.StaggerMin, cmd.StaggerMax)
+	}
+	return nil
+}
+
+func validateMaxIntValue(value, max int, label string) error {
+	if value > max {
+		return fmt.Errorf("%s %d exceeds the maximum of %d.", label, value, max)
+	}
+	return nil
+}
+
+func validateMaxIntRange(minValue, maxValue, max int, label string) error {
+	if minValue > max || maxValue > max {
+		return fmt.Errorf("invalid %s %d:%d; maximum is %d.", label, minValue, maxValue, max)
+	}
+	return nil
+}
+
+func validateMaxDurationRange(minValue, maxValue, max time.Duration, label string) error {
+	if minValue > max || maxValue > max {
+		return fmt.Errorf("invalid %s %s:%s; maximum is %s.", label, minValue, maxValue, max)
 	}
 	return nil
 }
@@ -738,6 +901,9 @@ func parseIntRange(raw string, label string) (int, int, error) {
 }
 
 func (r demoRunner) runLorem(ctx context.Context, turn *bridgesdk.Turn, cmd loremCommand, _ zerolog.Logger) error {
+	if err := validateLoremCommand(cmd); err != nil {
+		return err
+	}
 	started := r.runtime.now()
 	opts := cmd.Options
 	rng := rngForOptions(opts.SeedSet, opts.Seed, started.UnixNano())
@@ -772,6 +938,9 @@ func (r demoRunner) runLorem(ctx context.Context, turn *bridgesdk.Turn, cmd lore
 }
 
 func (r demoRunner) runTools(ctx context.Context, turn *bridgesdk.Turn, cmd toolsCommand, _ zerolog.Logger) error {
+	if err := validateToolsCommand(cmd); err != nil {
+		return err
+	}
 	started := r.runtime.now()
 	opts := cmd.Options
 	rng := rngForOptions(opts.SeedSet, opts.Seed, started.UnixNano())
@@ -802,18 +971,40 @@ func (r demoRunner) runTools(ctx context.Context, turn *bridgesdk.Turn, cmd tool
 }
 
 func (r demoRunner) runRandom(ctx context.Context, turn *bridgesdk.Turn, cmd randomCommand, log zerolog.Logger) error {
+	if err := validateRandomCommand(cmd); err != nil {
+		return err
+	}
 	started := r.runtime.now()
 	seed := cmd.Seed
 	if !cmd.SeedSet {
 		seed = started.UnixNano()
 	}
 	rng := rand.New(rand.NewSource(seed))
+	var deadline time.Time
+	if cmd.Duration > 0 {
+		deadline = started.Add(cmd.Duration)
+	}
 	var stepOpen bool
 	for action := 0; action < cmd.Actions; action++ {
+		if !deadline.IsZero() && !r.runtime.now().Before(deadline) {
+			break
+		}
 		if action > 0 {
 			delay := r.sampleDelay(rng, cmd.DelayMin, cmd.DelayMax)
+			if !deadline.IsZero() {
+				remaining := deadline.Sub(r.runtime.now())
+				if remaining <= 0 {
+					break
+				}
+				if delay > remaining {
+					delay = remaining
+				}
+			}
 			if err := r.runtime.sleep(ctx, delay); err != nil {
 				return err
+			}
+			if !deadline.IsZero() && !r.runtime.now().Before(deadline) {
+				break
 			}
 		}
 		kind := chooseRandomAction(cmd, rng)
@@ -887,6 +1078,9 @@ func (r demoRunner) runRandom(ctx context.Context, turn *bridgesdk.Turn, cmd ran
 }
 
 func (r demoRunner) runChaos(ctx context.Context, conv *bridgesdk.Conversation, turn *bridgesdk.Turn, cmd chaosCommand, log zerolog.Logger) error {
+	if err := validateChaosCommand(cmd); err != nil {
+		return err
+	}
 	started := r.runtime.now()
 	baseSeed := cmd.Seed
 	if !cmd.SeedSet {
