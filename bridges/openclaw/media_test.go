@@ -278,7 +278,7 @@ func TestPrepareOpenClawBackfillEntriesStableStreamOrder(t *testing.T) {
 		Forward:       true,
 		Count:         10,
 		AnchorMessage: &database.Message{ID: entries[0].messageID, Timestamp: entries[0].timestamp},
-	})
+	}, "", 0)
 	if len(batch) != 1 || batch[0].messageID != entries[1].messageID {
 		t.Fatalf("expected forward pagination to skip anchor, got %#v", batch)
 	}
@@ -363,9 +363,9 @@ func TestTopicForPortal(t *testing.T) {
 		ModelProvider:              "openai",
 		Model:                      "gpt-5",
 		OpenClawLastMessagePreview: "hello there",
-		HistoryMode:                "recent_only",
+		HistoryMode:                "paginated",
 	})
-	want := "channel | discord | Acme#support | openai | gpt-5 | Recent: hello there | History: recent_only"
+	want := "channel | discord | Acme#support | openai | gpt-5 | Recent: hello there | History: paginated"
 	if topic != want {
 		t.Fatalf("unexpected topic: %q", topic)
 	}
@@ -378,12 +378,12 @@ func TestTopicForPortalWithPreviewAndCatalogCounts(t *testing.T) {
 		OpenClawChannel:         "discord",
 		OpenClawOrigin:          "{\"provider\":\"discord\",\"channel\":\"123\"}",
 		OpenClawPreviewSnippet:  "preview text",
-		HistoryMode:             "recent_only",
+		HistoryMode:             "paginated",
 		OpenClawToolProfile:     "default",
 		OpenClawToolCount:       3,
 		OpenClawKnownModelCount: 7,
 	})
-	want := "group | discord | Origin: Channel 123 | Recent: preview text | History: recent_only | Tools: 3 (default) | Models: 7"
+	want := "group | discord | Origin: Channel 123 | Recent: preview text | History: paginated | Tools: 3 (default) | Models: 7"
 	if topic != want {
 		t.Fatalf("unexpected topic: %q", topic)
 	}
@@ -610,7 +610,7 @@ func TestOpenClawSessionResyncProjectsTypeTopicAndCapabilities(t *testing.T) {
 	if info.Topic == nil {
 		t.Fatal("expected topic")
 	}
-	wantTopic := "channel | discord | Acme#support | Origin: Channel 123 | openai | gpt-5 | Recent: hello there | History: recent_only | Models: 1"
+	wantTopic := "channel | discord | Acme#support | Origin: Channel 123 | openai | gpt-5 | Recent: hello there | History: paginated | Models: 1"
 	if *info.Topic != wantTopic {
 		t.Fatalf("unexpected topic: %q", *info.Topic)
 	}

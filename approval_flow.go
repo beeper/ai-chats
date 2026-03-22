@@ -115,7 +115,7 @@ type ApprovalFlow[D any] struct {
 	// Test hooks (nil in production).
 	testResolvePortal                 func(ctx context.Context, login *bridgev2.UserLogin, roomID id.RoomID) (*bridgev2.Portal, error)
 	testEditPromptToResolvedState     func(ctx context.Context, login *bridgev2.UserLogin, portal *bridgev2.Portal, sender bridgev2.EventSender, prompt ApprovalPromptRegistration, decision ApprovalDecisionPayload)
-	testRedactPromptPlaceholderReacts func(ctx context.Context, login *bridgev2.UserLogin, portal *bridgev2.Portal, sender bridgev2.EventSender, prompt ApprovalPromptRegistration) error
+	testRedactPromptPlaceholderReacts func(ctx context.Context, login *bridgev2.UserLogin, portal *bridgev2.Portal, sender bridgev2.EventSender, prompt ApprovalPromptRegistration, opts ApprovalPromptReactionCleanupOptions) error
 	testMirrorRemoteDecisionReaction  func(ctx context.Context, login *bridgev2.UserLogin, portal *bridgev2.Portal, sender bridgev2.EventSender, prompt ApprovalPromptRegistration, reactionKey string)
 	testRedactSingleReaction          func(msg *bridgev2.MatrixReaction)
 	testSendMessageStatus             func(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, status bridgev2.MessageStatus)
@@ -447,9 +447,9 @@ func (f *ApprovalFlow[D]) FinishResolved(approvalID string, decision ApprovalDec
 	f.finalizeWithPromptVersion(approvalID, &decision, true, 0)
 }
 
-// ResolveExternal mirrors a concrete remote allow/deny decision into Matrix as
-// an owner-authored reaction when possible, then finalizes the approval if the
-// decision was accepted by the internal delivery path.
+// ResolveExternal finalizes a remote allow/deny decision. The bridge declares
+// whether the decision originated from the user or the agent/system and the
+// shared approval flow manages the terminal Matrix reactions accordingly.
 func (f *ApprovalFlow[D]) ResolveExternal(ctx context.Context, approvalID string, decision ApprovalDecisionPayload) {
 	if f == nil {
 		return
@@ -458,11 +458,14 @@ func (f *ApprovalFlow[D]) ResolveExternal(ctx context.Context, approvalID string
 	if !ok {
 		return
 	}
+	if normalizeApprovalResolutionOrigin(decision.ResolvedBy) == "" {
+		decision.ResolvedBy = ApprovalResolutionOriginAgent
+	}
 	prompt, hasPrompt := f.promptRegistration(approvalID)
 	if err := f.Resolve(approvalID, decision); err != nil {
 		return
 	}
-	if hasPrompt {
+	if hasPrompt && decision.ResolvedBy == ApprovalResolutionOriginUser {
 		f.mirrorRemoteDecisionReaction(ctx, prompt, decision)
 	}
 	f.FinishResolved(approvalID, decision)
@@ -736,6 +739,7 @@ func (f *ApprovalFlow[D]) matchReaction(targetEventID id.EventID, sender id.User
 				Approved:   opt.Approved,
 				Always:     opt.Always,
 				Reason:     opt.decisionReason(),
+				ResolvedBy: ApprovalResolutionOriginUser,
 			}
 			return match
 		}
@@ -787,6 +791,7 @@ func (f *ApprovalFlow[D]) matchFallbackReaction(roomID id.RoomID, sender id.User
 					Approved:   opt.Approved,
 					Always:     opt.Always,
 					Reason:     opt.decisionReason(),
+					ResolvedBy: ApprovalResolutionOriginUser,
 				}
 				break
 			}
@@ -1284,7 +1289,24 @@ func approvalOptionKeyForDecision(options []ApprovalOption, decision ApprovalDec
 	return ""
 }
 
+func approvalCleanupOptions(prompt ApprovalPromptRegistration, decision *ApprovalDecisionPayload, sender bridgev2.EventSender) ApprovalPromptReactionCleanupOptions {
+	if decision == nil || normalizeApprovalResolutionOrigin(decision.ResolvedBy) != ApprovalResolutionOriginAgent {
+		return ApprovalPromptReactionCleanupOptions{}
+	}
+	reactionKey := approvalOptionKeyForDecision(prompt.Options, *decision)
+	if reactionKey == "" {
+		return ApprovalPromptReactionCleanupOptions{}
+	}
+	return ApprovalPromptReactionCleanupOptions{
+		PreserveSenderID: approvalPromptPlaceholderSenderID(prompt, sender),
+		PreserveKey:      reactionKey,
+	}
+}
+
 func (f *ApprovalFlow[D]) mirrorRemoteDecisionReaction(ctx context.Context, prompt ApprovalPromptRegistration, decision ApprovalDecisionPayload) {
+	if normalizeApprovalResolutionOrigin(decision.ResolvedBy) != ApprovalResolutionOriginUser {
+		return
+	}
 	reactionKey := approvalOptionKeyForDecision(prompt.Options, decision)
 	if reactionKey == "" {
 		return
@@ -1379,6 +1401,7 @@ func (f *ApprovalFlow[D]) finalizeWithPromptVersion(approvalID string, decision 
 			sender.Sender = prompt.PromptSenderID
 		}
 		ac := approvalContext{ctx: ctx, login: login, portal: portal, sender: sender}
+		cleanupOpts := approvalCleanupOptions(prompt, decision, sender)
 		if resolved && decision != nil {
 			if f.testEditPromptToResolvedState != nil {
 				f.testEditPromptToResolvedState(ctx, login, portal, sender, prompt, *decision)
@@ -1387,10 +1410,10 @@ func (f *ApprovalFlow[D]) finalizeWithPromptVersion(approvalID string, decision 
 			}
 		}
 		if f.testRedactPromptPlaceholderReacts != nil {
-			_ = f.testRedactPromptPlaceholderReacts(ctx, login, portal, sender, prompt)
+			_ = f.testRedactPromptPlaceholderReacts(ctx, login, portal, sender, prompt, cleanupOpts)
 			return
 		}
-		_ = RedactApprovalPromptPlaceholderReactions(ac.ctx, ac.login, ac.portal, ac.sender, prompt)
+		_ = RedactApprovalPromptPlaceholderReactions(ac.ctx, ac.login, ac.portal, ac.sender, prompt, cleanupOpts)
 	}(*prompt, decision, resolved)
 	return true
 }

@@ -33,7 +33,7 @@ const (
 	openClawGatewayWSReadLimit   = 32 * 1024 * 1024
 	openClawGatewayPingInterval  = 30 * time.Second
 	openClawGatewayPingTimeout   = 10 * time.Second
-	openClawDefaultSessionLimit  = 1000
+	openClawMaxHistoryPageLimit  = 1000
 	openClawDefaultRequestTimout = 30 * time.Second
 )
 
@@ -46,6 +46,7 @@ type gatewayConnectConfig struct {
 
 type gatewaySessionRow struct {
 	Key                string          `json:"key"`
+	SpawnedBy          string          `json:"spawnedBy,omitempty"`
 	Kind               string          `json:"kind"`
 	Label              string          `json:"label,omitempty"`
 	DisplayName        string          `json:"displayName,omitempty"`
@@ -62,6 +63,7 @@ type gatewaySessionRow struct {
 	SystemSent         bool            `json:"systemSent,omitempty"`
 	AbortedLastRun     bool            `json:"abortedLastRun,omitempty"`
 	ThinkingLevel      string          `json:"thinkingLevel,omitempty"`
+	FastMode           bool            `json:"fastMode,omitempty"`
 	VerboseLevel       string          `json:"verboseLevel,omitempty"`
 	ReasoningLevel     string          `json:"reasoningLevel,omitempty"`
 	ElevatedLevel      string          `json:"elevatedLevel,omitempty"`
@@ -70,6 +72,13 @@ type gatewaySessionRow struct {
 	OutputTokens       int64           `json:"outputTokens,omitempty"`
 	TotalTokens        int64           `json:"totalTokens,omitempty"`
 	TotalTokensFresh   bool            `json:"totalTokensFresh,omitempty"`
+	EstimatedCostUSD   float64         `json:"estimatedCostUsd,omitempty"`
+	Status             string          `json:"status,omitempty"`
+	StartedAt          int64           `json:"startedAt,omitempty"`
+	EndedAt            int64           `json:"endedAt,omitempty"`
+	RuntimeMs          int64           `json:"runtimeMs,omitempty"`
+	ParentSessionKey   string          `json:"parentSessionKey,omitempty"`
+	ChildSessions      []string        `json:"childSessions,omitempty"`
 	ResponseUsage      string          `json:"responseUsage,omitempty"`
 	ModelProvider      string          `json:"modelProvider,omitempty"`
 	Model              string          `json:"model,omitempty"`
@@ -116,6 +125,14 @@ type gatewayHistoryResponse struct {
 	ThinkingLevel string           `json:"thinkingLevel,omitempty"`
 	VerboseLevel  string           `json:"verboseLevel,omitempty"`
 	Messages      []map[string]any `json:"messages"`
+}
+
+type gatewaySessionHistoryResponse struct {
+	SessionKey string           `json:"sessionKey,omitempty"`
+	Items      []map[string]any `json:"items"`
+	Messages   []map[string]any `json:"messages"`
+	NextCursor string           `json:"nextCursor,omitempty"`
+	HasMore    bool             `json:"hasMore,omitempty"`
 }
 
 type gatewaySessionPreviewItem struct {
@@ -498,15 +515,15 @@ func (c *gatewayWSClient) shutdown(err error, closeCode websocket.StatusCode, re
 }
 
 func (c *gatewayWSClient) ListSessions(ctx context.Context, limit int) ([]gatewaySessionRow, error) {
-	if limit <= 0 {
-		limit = openClawDefaultSessionLimit
-	}
-	var resp gatewaySessionsListResponse
-	if err := c.Request(ctx, "sessions.list", map[string]any{
-		"limit":          limit,
+	params := map[string]any{
 		"includeGlobal":  true,
 		"includeUnknown": true,
-	}, &resp); err != nil {
+	}
+	if limit > 0 {
+		params["limit"] = limit
+	}
+	var resp gatewaySessionsListResponse
+	if err := c.Request(ctx, "sessions.list", params, &resp); err != nil {
 		return nil, err
 	}
 	return resp.Sessions, nil
@@ -514,7 +531,7 @@ func (c *gatewayWSClient) ListSessions(ctx context.Context, limit int) ([]gatewa
 
 func (c *gatewayWSClient) RecentHistory(ctx context.Context, sessionKey string, limit int) (*gatewayHistoryResponse, error) {
 	if limit <= 0 {
-		limit = openClawDefaultSessionLimit
+		limit = openClawMaxHistoryPageLimit
 	}
 	var resp gatewayHistoryResponse
 	if err := c.Request(ctx, "chat.history", map[string]any{
@@ -524,6 +541,64 @@ func (c *gatewayWSClient) RecentHistory(ctx context.Context, sessionKey string, 
 		return nil, err
 	}
 	return &resp, nil
+}
+
+func (c *gatewayWSClient) SessionHistory(ctx context.Context, sessionKey string, limit int, cursor string) (*gatewaySessionHistoryResponse, error) {
+	baseURL, err := normalizeGatewayHTTPURL(c.cfg.URL)
+	if err != nil {
+		return nil, err
+	}
+	base, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid gateway url: %w", err)
+	}
+	base.Path = strings.TrimRight(base.Path, "/") + "/sessions/" + url.PathEscape(strings.TrimSpace(sessionKey)) + "/history"
+	query := base.Query()
+	if limit > 0 {
+		query.Set("limit", fmt.Sprintf("%d", min(limit, openClawMaxHistoryPageLimit)))
+	}
+	if trimmedCursor := strings.TrimSpace(cursor); trimmedCursor != "" {
+		query.Set("cursor", trimmedCursor)
+	}
+	base.RawQuery = query.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("build session history request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	if authToken := c.httpBearerAuthToken(); authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+authToken)
+	}
+	req.Header.Set("User-Agent", "ai-bridge/openclaw")
+
+	resp, err := (&http.Client{Timeout: openClawDefaultRequestTimout}).Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request session history: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		var errPayload struct {
+			Error struct {
+				Message string `json:"message,omitempty"`
+			} `json:"error,omitempty"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&errPayload)
+		if msg := strings.TrimSpace(errPayload.Error.Message); msg != "" {
+			return nil, fmt.Errorf("session history request failed: %s", msg)
+		}
+		return nil, fmt.Errorf("session history request failed: http %d", resp.StatusCode)
+	}
+
+	var history gatewaySessionHistoryResponse
+	if err = json.NewDecoder(resp.Body).Decode(&history); err != nil {
+		return nil, fmt.Errorf("decode session history response: %w", err)
+	}
+	if len(history.Messages) == 0 && len(history.Items) > 0 {
+		history.Messages = history.Items
+	}
+	return &history, nil
 }
 
 func (c *gatewayWSClient) PreviewSessions(ctx context.Context, keys []string, limit, maxChars int) (*gatewaySessionsPreviewResponse, error) {
@@ -565,10 +640,7 @@ func (c *gatewayWSClient) ResolveSessionKey(ctx context.Context, key string) (st
 
 func (c *gatewayWSClient) PatchSession(ctx context.Context, key string, patch map[string]any) error {
 	var resp gatewaySessionsPatchResponse
-	return c.Request(ctx, "sessions.patch", map[string]any{
-		"key":   strings.TrimSpace(key),
-		"patch": patch,
-	}, &resp)
+	return c.Request(ctx, "sessions.patch", buildPatchSessionParams(key, patch), &resp)
 }
 
 func (c *gatewayWSClient) ResetSession(ctx context.Context, key string) error {
@@ -974,6 +1046,42 @@ func normalizeGatewayWSURL(raw string) (string, error) {
 		return "", fmt.Errorf("unsupported gateway url scheme %q", parsed.Scheme)
 	}
 	return parsed.String(), nil
+}
+
+func normalizeGatewayHTTPURL(raw string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "", fmt.Errorf("invalid gateway url: %w", err)
+	}
+	switch parsed.Scheme {
+	case "http", "https":
+	case "ws":
+		parsed.Scheme = "http"
+	case "wss":
+		parsed.Scheme = "https"
+	default:
+		return "", fmt.Errorf("unsupported gateway url scheme %q", parsed.Scheme)
+	}
+	return parsed.String(), nil
+}
+
+func (c *gatewayWSClient) httpBearerAuthToken() string {
+	if token := strings.TrimSpace(c.cfg.Token); token != "" {
+		return token
+	}
+	if deviceToken := strings.TrimSpace(c.cfg.DeviceToken); deviceToken != "" {
+		return deviceToken
+	}
+	return strings.TrimSpace(c.cfg.Password)
+}
+
+func buildPatchSessionParams(key string, patch map[string]any) map[string]any {
+	params := make(map[string]any, len(patch)+1)
+	params["key"] = strings.TrimSpace(key)
+	for patchKey, patchValue := range patch {
+		params[patchKey] = patchValue
+	}
+	return params
 }
 
 func parseHelloDeviceToken(payload json.RawMessage) string {

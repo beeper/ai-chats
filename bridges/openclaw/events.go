@@ -64,6 +64,7 @@ func getOpenClawSessionChatInfo(ctx context.Context, portal *bridgev2.Portal, cl
 	meta.OpenClawGatewayID = client.gatewayID()
 	meta.OpenClawSessionID = session.SessionID
 	meta.OpenClawSessionKey = session.Key
+	meta.OpenClawSpawnedBy = session.SpawnedBy
 	meta.OpenClawSessionKind = session.Kind
 	meta.OpenClawSessionLabel = session.Label
 	meta.OpenClawDisplayName = session.DisplayName
@@ -82,6 +83,7 @@ func getOpenClawSessionChatInfo(ctx context.Context, portal *bridgev2.Portal, cl
 	meta.OpenClawSystemSent = session.SystemSent
 	meta.OpenClawAbortedLastRun = session.AbortedLastRun
 	meta.ThinkingLevel = session.ThinkingLevel
+	meta.FastMode = session.FastMode
 	meta.VerboseLevel = session.VerboseLevel
 	meta.ReasoningLevel = session.ReasoningLevel
 	meta.ElevatedLevel = session.ElevatedLevel
@@ -90,6 +92,13 @@ func getOpenClawSessionChatInfo(ctx context.Context, portal *bridgev2.Portal, cl
 	meta.OutputTokens = session.OutputTokens
 	meta.TotalTokens = session.TotalTokens
 	meta.TotalTokensFresh = session.TotalTokensFresh
+	meta.EstimatedCostUSD = session.EstimatedCostUSD
+	meta.Status = session.Status
+	meta.StartedAt = session.StartedAt
+	meta.EndedAt = session.EndedAt
+	meta.RuntimeMs = session.RuntimeMs
+	meta.ParentSessionKey = session.ParentSessionKey
+	meta.ChildSessions = append(meta.ChildSessions[:0], session.ChildSessions...)
 	meta.ResponseUsage = session.ResponseUsage
 	meta.ModelProvider = session.ModelProvider
 	meta.Model = session.Model
@@ -103,8 +112,8 @@ func getOpenClawSessionChatInfo(ctx context.Context, portal *bridgev2.Portal, cl
 	if meta.OpenClawPreviewSnippet != "" && meta.OpenClawLastPreviewAt == 0 {
 		meta.OpenClawLastPreviewAt = time.Now().UnixMilli()
 	}
-	meta.HistoryMode = "recent_only"
-	meta.RecentHistoryLimit = openClawDefaultSessionLimit
+	meta.HistoryMode = "paginated"
+	meta.RecentHistoryLimit = 0
 	client.enrichPortalMetadata(ctx, meta)
 	portal.Metadata = meta
 

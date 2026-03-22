@@ -44,12 +44,14 @@ type openClawManager struct {
 	started            map[string]struct{}
 	resyncing          map[string]time.Time
 	lastEmittedUserMsg map[string]networkid.MessageID
+	approvalHints      map[string]openClawPendingApprovalData
 
 	cancel context.CancelFunc
 }
 
 type openClawPendingApprovalData struct {
 	SessionKey   string
+	AgentID      string
 	TurnID       string
 	ToolCallID   string
 	ToolName     string
@@ -68,10 +70,11 @@ func newOpenClawManager(client *OpenClawClient) *openClawManager {
 		started:            make(map[string]struct{}),
 		resyncing:          make(map[string]time.Time),
 		lastEmittedUserMsg: make(map[string]networkid.MessageID),
+		approvalHints:      make(map[string]openClawPendingApprovalData),
 	}
 	mgr.approvalFlow = agentremote.NewApprovalFlow(agentremote.ApprovalFlowConfig[*openClawPendingApprovalData]{
 		Login:    func() *bridgev2.UserLogin { return client.UserLogin },
-		Sender:   func(_ *bridgev2.Portal) bridgev2.EventSender { return client.senderForAgent("gateway", false) },
+		Sender:   func(portal *bridgev2.Portal) bridgev2.EventSender { return mgr.approvalSenderForPortal(portal) },
 		IDPrefix: "openclaw",
 		LogKey:   "openclaw_msg_id",
 		RoomIDFromData: func(data *openClawPendingApprovalData) id.RoomID {
@@ -93,7 +96,7 @@ func newOpenClawManager(client *OpenClawClient) *openClawManager {
 				agentremote.DecisionToString(decision, "allow-once", "allow-always", "deny"))
 		},
 		SendNotice: func(ctx context.Context, portal *bridgev2.Portal, msg string) {
-			client.sendSystemNoticeViaPortal(ctx, portal, msg)
+			client.sendNoticeViaPortal(ctx, portal, msg, mgr.approvalSenderForPortal(portal))
 		},
 		DBMetadata: func(prompt agentremote.ApprovalPromptMessage) any {
 			return &MessageMetadata{
@@ -138,6 +141,7 @@ func (m *openClawManager) Start(ctx context.Context) (bool, error) {
 		m.cancel = nil
 		m.started = make(map[string]struct{})
 		m.resyncing = make(map[string]time.Time)
+		m.approvalHints = make(map[string]openClawPendingApprovalData)
 		m.mu.Unlock()
 	}()
 	m.mu.Lock()
@@ -174,6 +178,7 @@ func (m *openClawManager) Stop() {
 	m.gateway = nil
 	m.started = make(map[string]struct{})
 	m.resyncing = make(map[string]time.Time)
+	m.approvalHints = make(map[string]openClawPendingApprovalData)
 	m.mu.Unlock()
 	if cancel != nil {
 		cancel()
@@ -188,15 +193,17 @@ func (m *openClawManager) syncSessions(ctx context.Context) error {
 	if gateway == nil {
 		return errors.New("gateway client is unavailable")
 	}
-	sessions, err := gateway.ListSessions(ctx, openClawDefaultSessionLimit)
+	sessions, err := gateway.ListSessions(ctx, 0)
 	if err != nil {
 		return err
 	}
 	m.mu.Lock()
+	refreshed := make(map[string]gatewaySessionRow, len(sessions))
 	for _, session := range sessions {
-		m.sessions[session.Key] = session
+		refreshed[session.Key] = session
 		delete(m.resyncing, session.Key)
 	}
+	m.sessions = refreshed
 	m.mu.Unlock()
 	for _, session := range sessions {
 		m.client.UserLogin.QueueRemoteEvent(buildOpenClawSessionResyncEvent(m.client, session))
@@ -211,6 +218,21 @@ func (m *openClawManager) gatewayClient() *gatewayWSClient {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.gateway
+}
+
+func (m *openClawManager) approvalSenderForPortal(portal *bridgev2.Portal) bridgev2.EventSender {
+	if portal == nil {
+		return m.client.senderForAgent("gateway", false)
+	}
+	meta := portalMeta(portal)
+	agentID := strings.TrimSpace(meta.OpenClawDMTargetAgentID)
+	if agentID == "" {
+		agentID = resolveOpenClawAgentID(meta, meta.OpenClawSessionKey, nil)
+	}
+	if agentID == "" {
+		agentID = "gateway"
+	}
+	return m.client.senderForAgent(agentID, false)
 }
 
 func (m *openClawManager) discoveredAgentIDs() []string {
@@ -510,21 +532,38 @@ func (m *openClawManager) FetchMessages(ctx context.Context, params bridgev2.Fet
 		return nil, err
 	}
 	meta := portalMeta(params.Portal)
-	history, err := gateway.RecentHistory(ctx, meta.OpenClawSessionKey, openClawDefaultSessionLimit)
-	if err != nil {
-		return nil, err
+	var (
+		entries          []openClawBackfillEntry
+		cursor           networkid.PaginationCursor
+		hasMore          bool
+		approxTotalCount int
+	)
+	cursorMode, cursorSeq := parseOpenClawHistoryCursor(params.Cursor)
+	if params.Forward || params.AnchorMessage != nil || cursorMode == openClawForwardHistoryCursorPrefix {
+		allMessages, loadErr := m.loadAllHistoryMessages(ctx, gateway, meta.OpenClawSessionKey)
+		if loadErr != nil {
+			return nil, loadErr
+		}
+		allEntries := prepareOpenClawBackfillEntries(meta, allMessages)
+		entries, cursor, hasMore = paginateOpenClawBackfillEntries(allEntries, params, cursorMode, cursorSeq)
+		approxTotalCount = len(allEntries)
+	} else {
+		history, historyErr := gateway.SessionHistory(ctx, meta.OpenClawSessionKey, normalizeHistoryLimit(params.Count), formatOpenClawBackwardCursor(cursorSeq))
+		if historyErr != nil {
+			return nil, historyErr
+		}
+		entries = prepareOpenClawBackfillEntries(meta, history.Messages)
+		hasMore = history.HasMore
+		cursor = networkid.PaginationCursor(openClawBackwardCursor(parseOpenClawCursorSeq(history.NextCursor)))
+		if len(entries) > 0 && cursor == "" && hasMore {
+			cursor = networkid.PaginationCursor(openClawBackwardCursor(entries[0].sequence))
+		}
+		if len(entries) > 0 {
+			if newestSeq := entries[len(entries)-1].sequence; newestSeq > 0 {
+				approxTotalCount = int(newestSeq)
+			}
+		}
 	}
-	if strings.TrimSpace(history.SessionID) != "" {
-		meta.OpenClawSessionID = strings.TrimSpace(history.SessionID)
-	}
-	if strings.TrimSpace(history.ThinkingLevel) != "" {
-		meta.ThinkingLevel = strings.TrimSpace(history.ThinkingLevel)
-	}
-	if strings.TrimSpace(history.VerboseLevel) != "" {
-		meta.VerboseLevel = strings.TrimSpace(history.VerboseLevel)
-	}
-	allEntries := prepareOpenClawBackfillEntries(meta, history.Messages)
-	entries, cursor, hasMore := paginateOpenClawBackfillEntries(allEntries, params)
 	backfill := make([]*bridgev2.BackfillMessage, 0, len(entries))
 	for _, entry := range entries {
 		converted, sender, messageID := m.convertHistoryMessage(ctx, params.Portal, meta, entry.message)
@@ -550,20 +589,77 @@ func (m *openClawManager) FetchMessages(ctx context.Context, params bridgev2.Fet
 		HasMore:                 hasMore,
 		Forward:                 params.Forward,
 		AggressiveDeduplication: true,
-		ApproxTotalCount:        len(allEntries),
+		ApproxTotalCount:        approxTotalCount,
 	}, nil
 }
+
+const (
+	openClawBackwardHistoryCursorPrefix = "seq:"
+	openClawForwardHistoryCursorPrefix  = "after:"
+)
 
 type openClawBackfillEntry struct {
 	message     map[string]any
 	messageID   networkid.MessageID
 	timestamp   time.Time
 	streamOrder int64
+	sequence    int64
 }
 
-func paginateOpenClawBackfillEntries(entries []openClawBackfillEntry, params bridgev2.FetchMessagesParams) ([]openClawBackfillEntry, networkid.PaginationCursor, bool) {
+func paginateOpenClawBackfillEntries(entries []openClawBackfillEntry, params bridgev2.FetchMessagesParams, cursorMode string, cursorSeq int64) ([]openClawBackfillEntry, networkid.PaginationCursor, bool) {
 	if len(entries) == 0 {
 		return nil, "", false
+	}
+	if params.Forward {
+		start := 0
+		switch {
+		case cursorMode == openClawForwardHistoryCursorPrefix && cursorSeq > 0:
+			start = sort.Search(len(entries), func(i int) bool {
+				return entries[i].sequence > cursorSeq
+			})
+		case params.AnchorMessage != nil:
+			if idx, ok := findOpenClawAnchorIndex(entries, params.AnchorMessage); ok {
+				start = idx + 1
+			} else {
+				start = backfillutil.IndexAtOrAfter(len(entries), func(i int) time.Time {
+					return entries[i].timestamp
+				}, params.AnchorMessage.Timestamp)
+			}
+		}
+		if start >= len(entries) {
+			return nil, "", false
+		}
+		end := min(len(entries), start+normalizeHistoryLimit(params.Count))
+		hasMore := end < len(entries)
+		cursor := networkid.PaginationCursor("")
+		if hasMore && entries[end-1].sequence > 0 {
+			cursor = networkid.PaginationCursor(openClawForwardCursor(entries[end-1].sequence))
+		}
+		return entries[start:end], cursor, hasMore
+	}
+	if params.AnchorMessage != nil || (cursorMode == openClawBackwardHistoryCursorPrefix && cursorSeq > 0) {
+		end := len(entries)
+		if cursorMode == openClawBackwardHistoryCursorPrefix && cursorSeq > 0 {
+			end = sort.Search(len(entries), func(i int) bool {
+				return entries[i].sequence >= cursorSeq
+			})
+		} else if idx, ok := findOpenClawAnchorIndex(entries, params.AnchorMessage); ok {
+			end = idx
+		} else {
+			end = backfillutil.IndexAtOrAfter(len(entries), func(i int) time.Time {
+				return entries[i].timestamp
+			}, params.AnchorMessage.Timestamp)
+		}
+		if end <= 0 {
+			return nil, "", false
+		}
+		start := max(0, end-normalizeHistoryLimit(params.Count))
+		hasMore := start > 0
+		cursor := networkid.PaginationCursor("")
+		if hasMore && entries[start].sequence > 0 {
+			cursor = networkid.PaginationCursor(openClawBackwardCursor(entries[start].sequence))
+		}
+		return entries[start:end], cursor, hasMore
 	}
 	result := backfillutil.Paginate(
 		len(entries),
@@ -584,6 +680,51 @@ func paginateOpenClawBackfillEntries(entries []openClawBackfillEntry, params bri
 		},
 	)
 	return entries[result.Start:result.End], result.Cursor, result.HasMore
+}
+
+func parseOpenClawHistoryCursor(cursor networkid.PaginationCursor) (string, int64) {
+	trimmed := strings.TrimSpace(string(cursor))
+	switch {
+	case strings.HasPrefix(trimmed, openClawForwardHistoryCursorPrefix):
+		return openClawForwardHistoryCursorPrefix, parseOpenClawCursorSeq(strings.TrimPrefix(trimmed, openClawForwardHistoryCursorPrefix))
+	case trimmed != "":
+		return openClawBackwardHistoryCursorPrefix, parseOpenClawCursorSeq(trimmed)
+	default:
+		return "", 0
+	}
+}
+
+func parseOpenClawCursorSeq(raw string) int64 {
+	raw = strings.TrimSpace(strings.TrimPrefix(raw, openClawBackwardHistoryCursorPrefix))
+	if raw == "" {
+		return 0
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || value <= 0 {
+		return 0
+	}
+	return value
+}
+
+func formatOpenClawBackwardCursor(seq int64) string {
+	if seq <= 0 {
+		return ""
+	}
+	return strconv.FormatInt(seq, 10)
+}
+
+func openClawBackwardCursor(seq int64) string {
+	if seq <= 0 {
+		return ""
+	}
+	return openClawBackwardHistoryCursorPrefix + strconv.FormatInt(seq, 10)
+}
+
+func openClawForwardCursor(seq int64) string {
+	if seq <= 0 {
+		return ""
+	}
+	return openClawForwardHistoryCursorPrefix + strconv.FormatInt(seq, 10)
 }
 
 func prepareOpenClawBackfillEntries(meta *PortalMetadata, history []map[string]any) []openClawBackfillEntry {
@@ -607,13 +748,18 @@ func prepareOpenClawBackfillEntries(meta *PortalMetadata, history []map[string]a
 			}
 		}
 		messageID := historyFingerprintMessageID(meta.OpenClawSessionKey, role, timestamp, text, normalized)
+		sequence := openClawHistoryMessageSeq(normalized)
 		entries = append(entries, openClawBackfillEntry{
 			message:   normalized,
 			messageID: messageID,
 			timestamp: timestamp,
+			sequence:  sequence,
 		})
 	}
 	sort.SliceStable(entries, func(i, j int) bool {
+		if entries[i].sequence > 0 && entries[j].sequence > 0 && entries[i].sequence != entries[j].sequence {
+			return entries[i].sequence < entries[j].sequence
+		}
 		if c := entries[i].timestamp.Compare(entries[j].timestamp); c != 0 {
 			return c < 0
 		}
@@ -621,6 +767,11 @@ func prepareOpenClawBackfillEntries(meta *PortalMetadata, history []map[string]a
 	})
 	var lastStreamOrder int64
 	for i := range entries {
+		if entries[i].sequence > 0 {
+			entries[i].streamOrder = entries[i].sequence
+			lastStreamOrder = entries[i].streamOrder
+			continue
+		}
 		lastStreamOrder = backfillutil.NextStreamOrder(lastStreamOrder, entries[i].timestamp)
 		entries[i].streamOrder = lastStreamOrder
 	}
@@ -641,9 +792,57 @@ func findOpenClawAnchorIndex(entries []openClawBackfillEntry, anchor *database.M
 
 func normalizeHistoryLimit(count int) int {
 	if count <= 0 {
-		return openClawDefaultSessionLimit
+		return openClawMaxHistoryPageLimit
 	}
-	return min(count, openClawDefaultSessionLimit)
+	return min(count, openClawMaxHistoryPageLimit)
+}
+
+func (m *openClawManager) loadAllHistoryMessages(ctx context.Context, gateway *gatewayWSClient, sessionKey string) ([]map[string]any, error) {
+	cursor := ""
+	pages := make([][]map[string]any, 0, 4)
+	for {
+		history, err := gateway.SessionHistory(ctx, sessionKey, openClawMaxHistoryPageLimit, cursor)
+		if err != nil {
+			return nil, err
+		}
+		if history == nil || len(history.Messages) == 0 {
+			break
+		}
+		pages = append(pages, history.Messages)
+		if !history.HasMore || strings.TrimSpace(history.NextCursor) == "" {
+			break
+		}
+		cursor = history.NextCursor
+	}
+	total := 0
+	for _, page := range pages {
+		total += len(page)
+	}
+	all := make([]map[string]any, 0, total)
+	for i := len(pages) - 1; i >= 0; i-- {
+		all = append(all, pages[i]...)
+	}
+	return all, nil
+}
+
+func openClawHistoryMessageSeq(message map[string]any) int64 {
+	meta := jsonutil.ToMap(message["__openclaw"])
+	switch seq := meta["seq"].(type) {
+	case int:
+		return int64(seq)
+	case int64:
+		return seq
+	case float64:
+		if seq > 0 {
+			return int64(seq)
+		}
+	case string:
+		value, err := strconv.ParseInt(strings.TrimSpace(seq), 10, 64)
+		if err == nil && value > 0 {
+			return value
+		}
+	}
+	return 0
 }
 
 func (m *openClawManager) convertHistoryMessage(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, message map[string]any) (*bridgev2.ConvertedMessage, bridgev2.EventSender, networkid.MessageID) {
@@ -1033,6 +1232,129 @@ func openClawApprovalResolvedText(decision string) string {
 	}
 }
 
+func mergeOpenClawApprovalData(dst *openClawPendingApprovalData, src openClawPendingApprovalData) {
+	if dst == nil {
+		return
+	}
+	if strings.TrimSpace(src.SessionKey) != "" {
+		dst.SessionKey = strings.TrimSpace(src.SessionKey)
+	}
+	if strings.TrimSpace(src.AgentID) != "" {
+		dst.AgentID = strings.TrimSpace(src.AgentID)
+	}
+	if strings.TrimSpace(src.TurnID) != "" {
+		dst.TurnID = strings.TrimSpace(src.TurnID)
+	}
+	if strings.TrimSpace(src.ToolCallID) != "" {
+		dst.ToolCallID = strings.TrimSpace(src.ToolCallID)
+	}
+	if strings.TrimSpace(src.ToolName) != "" {
+		dst.ToolName = strings.TrimSpace(src.ToolName)
+	}
+	if strings.TrimSpace(src.Command) != "" {
+		dst.Command = strings.TrimSpace(src.Command)
+	}
+	if strings.TrimSpace(src.Presentation.Title) != "" {
+		dst.Presentation = src.Presentation
+	}
+	if src.CreatedAtMs != 0 {
+		dst.CreatedAtMs = src.CreatedAtMs
+	}
+	if src.ExpiresAtMs != 0 {
+		dst.ExpiresAtMs = src.ExpiresAtMs
+	}
+}
+
+func (m *openClawManager) approvalHint(approvalID string) openClawPendingApprovalData {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.approvalHints[strings.TrimSpace(approvalID)]
+}
+
+func (m *openClawManager) setApprovalHint(approvalID string, update func(*openClawPendingApprovalData)) {
+	approvalID = strings.TrimSpace(approvalID)
+	if approvalID == "" || update == nil {
+		return
+	}
+	m.mu.Lock()
+	hint := m.approvalHints[approvalID]
+	update(&hint)
+	m.approvalHints[approvalID] = hint
+	m.mu.Unlock()
+}
+
+func (m *openClawManager) clearApprovalHint(approvalID string) {
+	approvalID = strings.TrimSpace(approvalID)
+	if approvalID == "" {
+		return
+	}
+	m.mu.Lock()
+	delete(m.approvalHints, approvalID)
+	m.mu.Unlock()
+}
+
+func (m *openClawManager) sendApprovalPrompt(ctx context.Context, portal *bridgev2.Portal, approvalID string, data *openClawPendingApprovalData) {
+	if portal == nil || portal.MXID == "" || data == nil {
+		return
+	}
+	toolCallID := strings.TrimSpace(data.ToolCallID)
+	if toolCallID == "" {
+		toolCallID = strings.TrimSpace(approvalID)
+	}
+	toolName := strings.TrimSpace(data.ToolName)
+	if toolName == "" {
+		toolName = "exec"
+	}
+	presentation := data.Presentation
+	if strings.TrimSpace(presentation.Title) == "" {
+		presentation = openClawApprovalPresentation(map[string]any{
+			"sessionKey": data.SessionKey,
+			"agentId":    data.AgentID,
+		}, data.Command)
+	}
+	if strings.TrimSpace(data.AgentID) != "" {
+		meta := portalMeta(portal)
+		if meta.OpenClawAgentID != strings.TrimSpace(data.AgentID) {
+			meta.OpenClawAgentID = strings.TrimSpace(data.AgentID)
+			_ = portal.Save(ctx)
+		}
+	}
+	m.approvalFlow.SendPrompt(ctx, portal, agentremote.SendPromptParams{
+		ApprovalPromptMessageParams: agentremote.ApprovalPromptMessageParams{
+			ApprovalID:   approvalID,
+			ToolCallID:   toolCallID,
+			ToolName:     toolName,
+			TurnID:       strings.TrimSpace(data.TurnID),
+			Presentation: presentation,
+			ExpiresAt:    time.UnixMilli(data.ExpiresAtMs),
+		},
+		RoomID:    portal.MXID,
+		OwnerMXID: m.client.UserLogin.UserMXID,
+	})
+}
+
+func (m *openClawManager) sendApprovalPromptWhenReady(ctx context.Context, portal *bridgev2.Portal, approvalID string) {
+	deadline := time.Now().Add(350 * time.Millisecond)
+	for {
+		pending := m.approvalFlow.Get(approvalID)
+		if pending == nil || pending.Data == nil {
+			return
+		}
+		data := pending.Data
+		if strings.TrimSpace(data.ToolCallID) != "" || strings.TrimSpace(data.TurnID) != "" || time.Now().After(deadline) {
+			m.sendApprovalPrompt(ctx, portal, approvalID, data)
+			return
+		}
+		timer := time.NewTimer(25 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+	}
+}
+
 func (m *openClawManager) eventLoop(ctx context.Context, events <-chan gatewayEvent) {
 	for {
 		select {
@@ -1073,7 +1395,11 @@ func (m *openClawManager) handleEvent(ctx context.Context, evt gatewayEvent) {
 }
 
 func (m *openClawManager) handleApprovalRequest(ctx context.Context, payload gatewayApprovalRequestEvent) {
+	hint := m.approvalHint(payload.ID)
 	sessionKey := strings.TrimSpace(stringValue(payload.Request["sessionKey"]))
+	if sessionKey == "" {
+		sessionKey = strings.TrimSpace(hint.SessionKey)
+	}
 	if sessionKey == "" {
 		return
 	}
@@ -1081,46 +1407,34 @@ func (m *openClawManager) handleApprovalRequest(ctx context.Context, payload gat
 	if portal == nil || portal.MXID == "" {
 		return
 	}
+	agentID := resolveOpenClawAgentID(portalMeta(portal), sessionKey, payload.Request)
+	if strings.TrimSpace(hint.AgentID) != "" {
+		agentID = strings.TrimSpace(hint.AgentID)
+	}
+	maybePersistPortalAgentID(ctx, portal, portalMeta(portal), agentID)
 	command := strings.TrimSpace(stringValue(payload.Request["command"]))
 	presentation := openClawApprovalPresentation(payload.Request, command)
-	pending, created := m.approvalFlow.Register(payload.ID, time.Until(time.UnixMilli(payload.ExpiresAtMs)), &openClawPendingApprovalData{
+	data := &openClawPendingApprovalData{
 		SessionKey:   sessionKey,
+		AgentID:      agentID,
 		Command:      command,
 		Presentation: presentation,
 		CreatedAtMs:  payload.CreatedAtMs,
 		ExpiresAtMs:  payload.ExpiresAtMs,
-	})
+	}
+	mergeOpenClawApprovalData(data, hint)
+	pending, created := m.approvalFlow.Register(payload.ID, time.Until(time.UnixMilli(payload.ExpiresAtMs)), data)
 	if !created {
 		return
 	}
-	toolName := "exec"
-	toolCallID := strings.TrimSpace(payload.ID)
-	turnID := ""
 	if pending != nil && pending.Data != nil {
-		data := pending.Data
-		if strings.TrimSpace(data.ToolCallID) != "" {
-			toolCallID = strings.TrimSpace(data.ToolCallID)
-		}
-		if strings.TrimSpace(data.ToolName) != "" {
-			toolName = strings.TrimSpace(data.ToolName)
-		}
-		if strings.TrimSpace(data.Presentation.Title) != "" {
-			presentation = data.Presentation
-		}
-		turnID = strings.TrimSpace(data.TurnID)
+		mergeOpenClawApprovalData(pending.Data, hint)
+		data = pending.Data
 	}
-	m.approvalFlow.SendPrompt(ctx, portal, agentremote.SendPromptParams{
-		ApprovalPromptMessageParams: agentremote.ApprovalPromptMessageParams{
-			ApprovalID:   payload.ID,
-			ToolCallID:   toolCallID,
-			ToolName:     toolName,
-			TurnID:       turnID,
-			Presentation: presentation,
-			ExpiresAt:    time.UnixMilli(payload.ExpiresAtMs),
-		},
-		RoomID:    portal.MXID,
-		OwnerMXID: m.client.UserLogin.UserMXID,
+	m.setApprovalHint(payload.ID, func(existing *openClawPendingApprovalData) {
+		mergeOpenClawApprovalData(existing, *data)
 	})
+	go m.sendApprovalPromptWhenReady(m.client.BackgroundContext(ctx), portal, payload.ID)
 }
 
 func (m *openClawManager) handleApprovalResolved(ctx context.Context, payload gatewayApprovalResolvedEvent) {
@@ -1138,15 +1452,24 @@ func (m *openClawManager) handleApprovalResolved(ctx context.Context, payload ga
 		sessionKey = strings.TrimSpace(data.SessionKey)
 	}
 	if sessionKey == "" {
+		sessionKey = strings.TrimSpace(m.approvalHint(approvalID).SessionKey)
+	}
+	if sessionKey == "" {
+		m.clearApprovalHint(approvalID)
 		m.approvalFlow.Drop(approvalID)
 		return
 	}
 	portal := m.resolvePortal(ctx, sessionKey)
 	if portal == nil || portal.MXID == "" {
+		m.clearApprovalHint(approvalID)
 		m.approvalFlow.Drop(approvalID)
 		return
 	}
 	approved, reason := openClawApprovalDecisionStatus(payload.Decision)
+	resolvedBy := agentremote.ApprovalResolutionOriginFromString(payload.ResolvedBy)
+	if resolvedBy == "" {
+		resolvedBy = agentremote.ApprovalResolutionOriginAgent
+	}
 	if data != nil && strings.TrimSpace(data.TurnID) != "" && strings.TrimSpace(data.ToolCallID) != "" {
 		m.client.EmitStreamPart(ctx, portal, data.TurnID, resolveOpenClawAgentID(portalMeta(portal), sessionKey, payload.Request), sessionKey, map[string]any{
 			"type":       "tool-approval-response",
@@ -1156,14 +1479,16 @@ func (m *openClawManager) handleApprovalResolved(ctx context.Context, payload ga
 			"reason":     reason,
 		})
 	} else {
-		m.client.sendSystemNoticeViaPortal(ctx, portal, openClawApprovalResolvedText(payload.Decision))
+		m.client.sendNoticeViaPortal(ctx, portal, openClawApprovalResolvedText(payload.Decision), m.approvalSenderForPortal(portal))
 	}
 	m.approvalFlow.ResolveExternal(ctx, approvalID, agentremote.ApprovalDecisionPayload{
 		ApprovalID: approvalID,
 		Approved:   approved,
 		Always:     strings.EqualFold(strings.TrimSpace(payload.Decision), "allow-always"),
 		Reason:     reason,
+		ResolvedBy: resolvedBy,
 	})
+	m.clearApprovalHint(approvalID)
 }
 
 func (m *openClawManager) handleChatEvent(ctx context.Context, payload gatewayChatEvent) {
@@ -1281,7 +1606,7 @@ func (m *openClawManager) emitLatestUserMessageFromHistory(ctx context.Context, 
 	if gateway == nil || portal == nil {
 		return
 	}
-	history, err := gateway.RecentHistory(ctx, payload.SessionKey, 8)
+	history, err := gateway.SessionHistory(ctx, payload.SessionKey, 8, "")
 	if err != nil || history == nil || len(history.Messages) == 0 {
 		return
 	}
@@ -1445,7 +1770,7 @@ func (m *openClawManager) handleAgentEvent(ctx context.Context, payload gatewayA
 				})
 			}
 			if approvalID := strings.TrimSpace(stringValue(payload.Data["approvalId"])); approvalID != "" {
-				m.attachApprovalContext(approvalID, payload.SessionKey, turnID, toolCallID, toolName)
+				m.attachApprovalContext(approvalID, payload.SessionKey, agentID, turnID, toolCallID, toolName)
 				m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
 					"timestamp":  eventTS.UnixMilli(),
 					"type":       "tool-approval-request",
@@ -1555,27 +1880,31 @@ func isOpenClawSpawnedSessionKey(sessionKey string) bool {
 	return strings.Contains(sessionKey, ":subagent:") || strings.Contains(sessionKey, ":acp:")
 }
 
-func (m *openClawManager) attachApprovalContext(approvalID, sessionKey, turnID, toolCallID, toolName string) {
+func (m *openClawManager) attachApprovalContext(approvalID, sessionKey, agentID, turnID, toolCallID, toolName string) {
 	approvalID = strings.TrimSpace(approvalID)
 	if approvalID == "" {
 		return
 	}
+	m.setApprovalHint(approvalID, func(hint *openClawPendingApprovalData) {
+		mergeOpenClawApprovalData(hint, openClawPendingApprovalData{
+			SessionKey: strings.TrimSpace(sessionKey),
+			AgentID:    strings.TrimSpace(agentID),
+			TurnID:     strings.TrimSpace(turnID),
+			ToolCallID: strings.TrimSpace(toolCallID),
+			ToolName:   strings.TrimSpace(toolName),
+		})
+	})
 	m.approvalFlow.SetData(approvalID, func(pending *openClawPendingApprovalData) *openClawPendingApprovalData {
 		if pending == nil {
 			pending = &openClawPendingApprovalData{}
 		}
-		if strings.TrimSpace(sessionKey) != "" {
-			pending.SessionKey = strings.TrimSpace(sessionKey)
-		}
-		if strings.TrimSpace(turnID) != "" {
-			pending.TurnID = strings.TrimSpace(turnID)
-		}
-		if strings.TrimSpace(toolCallID) != "" {
-			pending.ToolCallID = strings.TrimSpace(toolCallID)
-		}
-		if strings.TrimSpace(toolName) != "" {
-			pending.ToolName = strings.TrimSpace(toolName)
-		}
+		mergeOpenClawApprovalData(pending, openClawPendingApprovalData{
+			SessionKey: strings.TrimSpace(sessionKey),
+			AgentID:    strings.TrimSpace(agentID),
+			TurnID:     strings.TrimSpace(turnID),
+			ToolCallID: strings.TrimSpace(toolCallID),
+			ToolName:   strings.TrimSpace(toolName),
+		})
 		return pending
 	})
 }
@@ -1670,7 +1999,7 @@ func (m *openClawManager) recoverRunText(ctx context.Context, sessionKey, turnID
 	if gateway == nil || strings.TrimSpace(sessionKey) == "" {
 		return ""
 	}
-	history, err := gateway.RecentHistory(ctx, sessionKey, 25)
+	history, err := gateway.SessionHistory(ctx, sessionKey, 25, "")
 	if err != nil || history == nil {
 		return ""
 	}

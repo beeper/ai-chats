@@ -46,9 +46,9 @@ func TestGatewaySmoke(t *testing.T) {
 		sessionKey = sessions[0].Key
 	}
 	if sessionKey != "" {
-		history, err := client.RecentHistory(ctx, sessionKey, 10)
+		history, err := client.SessionHistory(ctx, sessionKey, 10, "")
 		if err != nil {
-			t.Fatalf("chat.history: %v", err)
+			t.Fatalf("session history: %v", err)
 		}
 		if history == nil {
 			t.Fatal("expected non-nil history response")

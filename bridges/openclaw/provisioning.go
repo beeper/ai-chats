@@ -302,8 +302,8 @@ func (oc *OpenClawClient) createConfiguredAgentDM(ctx context.Context, agent gat
 	meta.OpenClawDMTargetAgentID = agentID
 	meta.OpenClawDMTargetAgentName = stringutil.TrimDefault(oc.configuredAgentDisplayName(agent), meta.OpenClawDMTargetAgentName)
 	meta.OpenClawDMCreatedFromContact = true
-	meta.HistoryMode = "recent_only"
-	meta.RecentHistoryLimit = openClawDefaultSessionLimit
+	meta.HistoryMode = "paginated"
+	meta.RecentHistoryLimit = 0
 	portal.RoomType = database.RoomTypeDM
 	portal.OtherUserID = openClawGhostUserID(agentID)
 	portal.Name = meta.OpenClawDMTargetAgentName

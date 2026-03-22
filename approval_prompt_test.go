@@ -149,6 +149,9 @@ func TestApprovalFlow_MatchReactionOwnerOnly(t *testing.T) {
 	if !ownerMatch.Decision.Approved {
 		t.Fatalf("expected approved decision, got %#v", ownerMatch.Decision)
 	}
+	if ownerMatch.Decision.ResolvedBy != ApprovalResolutionOriginUser {
+		t.Fatalf("expected direct Matrix approval to be user-resolved, got %#v", ownerMatch.Decision.ResolvedBy)
+	}
 
 	otherMatch := flow.matchReaction(id.EventID("$prompt"), id.UserID("@other:example.com"), ApprovalReactionKeyAllowOnce, time.Now())
 	if !otherMatch.KnownPrompt || otherMatch.ShouldResolve {

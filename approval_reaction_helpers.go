@@ -129,6 +129,29 @@ func isApprovalPlaceholderReaction(reaction *database.Reaction, prompt ApprovalP
 	return strings.TrimSpace(string(reaction.SenderID)) == placeholderSenderID
 }
 
+type ApprovalPromptReactionCleanupOptions struct {
+	PreserveSenderID networkid.UserID
+	PreserveKey      string
+}
+
+func shouldPreserveApprovalReaction(
+	reaction *database.Reaction,
+	opts ApprovalPromptReactionCleanupOptions,
+) bool {
+	if reaction == nil {
+		return false
+	}
+	preserveSenderID := strings.TrimSpace(string(opts.PreserveSenderID))
+	preserveKey := normalizeReactionKey(opts.PreserveKey)
+	if preserveSenderID == "" || preserveKey == "" {
+		return false
+	}
+	if strings.TrimSpace(string(reaction.SenderID)) != preserveSenderID {
+		return false
+	}
+	return normalizeReactionKey(reaction.Emoji) == preserveKey || normalizeReactionKey(string(reaction.EmojiID)) == preserveKey
+}
+
 func resolveApprovalPromptMessage(
 	ctx context.Context,
 	login *bridgev2.UserLogin,
@@ -160,6 +183,7 @@ func RedactApprovalPromptPlaceholderReactions(
 	portal *bridgev2.Portal,
 	sender bridgev2.EventSender,
 	prompt ApprovalPromptRegistration,
+	opts ApprovalPromptReactionCleanupOptions,
 ) error {
 	if login == nil || portal == nil || portal.MXID == "" {
 		return nil
@@ -182,6 +206,9 @@ func RedactApprovalPromptPlaceholderReactions(
 	var firstErr error
 	for _, reaction := range reactions {
 		if reaction == nil || reaction.MXID == "" || !isApprovalPlaceholderReaction(reaction, prompt, sender) {
+			continue
+		}
+		if shouldPreserveApprovalReaction(reaction, opts) {
 			continue
 		}
 		if redactErr := RedactEventAsSender(ctx, login, portal, sender, reaction.MXID); redactErr != nil && firstErr == nil {

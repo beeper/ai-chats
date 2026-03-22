@@ -730,7 +730,7 @@ func (oc *OpenClawClient) senderForAgent(agentID string, fromMe bool) bridgev2.E
 	}
 }
 
-func (oc *OpenClawClient) sendSystemNoticeViaPortal(ctx context.Context, portal *bridgev2.Portal, msg string) {
+func (oc *OpenClawClient) sendNoticeViaPortal(ctx context.Context, portal *bridgev2.Portal, msg string, sender bridgev2.EventSender) {
 	if portal == nil || strings.TrimSpace(msg) == "" {
 		return
 	}
@@ -745,11 +745,15 @@ func (oc *OpenClawClient) sendSystemNoticeViaPortal(ctx context.Context, portal 
 	oc.UserLogin.QueueRemoteEvent(buildOpenClawRemoteMessage(
 		portal.PortalKey,
 		newOpenClawMessageID(),
-		oc.senderForAgent("gateway", false),
+		sender,
 		time.Now(),
 		0,
 		converted,
 	))
+}
+
+func (oc *OpenClawClient) sendSystemNoticeViaPortal(ctx context.Context, portal *bridgev2.Portal, msg string) {
+	oc.sendNoticeViaPortal(ctx, portal, msg, oc.senderForAgent("gateway", false))
 }
 
 func (oc *OpenClawClient) DownloadAndEncodeMedia(ctx context.Context, mediaURL string, file *event.EncryptedFileInfo, maxMB int) (string, string, error) {

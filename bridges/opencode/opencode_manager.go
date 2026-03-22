@@ -821,9 +821,11 @@ func (m *OpenCodeManager) handlePermissionAskedEvent(ctx context.Context, inst *
 
 func (m *OpenCodeManager) handlePermissionRepliedEvent(ctx context.Context, inst *openCodeInstance, evt api.Event) {
 	var payload struct {
-		SessionID string `json:"sessionID"`
-		RequestID string `json:"requestID"`
-		Reply     string `json:"reply"`
+		SessionID  string `json:"sessionID"`
+		RequestID  string `json:"requestID"`
+		Reply      string `json:"reply"`
+		Source     string `json:"source,omitempty"`
+		ResolvedBy string `json:"resolvedBy,omitempty"`
 	}
 	if err := json.Unmarshal(evt.Properties, &payload); err != nil {
 		m.log().Warn().Err(err).Msg("Failed to decode permission reply event")
@@ -841,6 +843,13 @@ func (m *OpenCodeManager) handlePermissionRepliedEvent(ctx context.Context, inst
 	}
 	reply := strings.ToLower(strings.TrimSpace(payload.Reply))
 	approved := reply != "reject"
+	resolvedBy := agentremote.ApprovalResolutionOriginFromString(payload.ResolvedBy)
+	if resolvedBy == "" {
+		resolvedBy = agentremote.ApprovalResolutionOriginFromString(payload.Source)
+	}
+	if resolvedBy == "" {
+		resolvedBy = agentremote.ApprovalResolutionOriginUser
+	}
 	turnID := opencodeMessageStreamTurnID(ref.SessionID, ref.MessageID)
 	portal := m.bridge.findOpenCodePortal(ctx, inst.cfg.ID, ref.SessionID)
 	if portal != nil {
@@ -864,6 +873,7 @@ func (m *OpenCodeManager) handlePermissionRepliedEvent(ctx context.Context, inst
 		Approved:   approved,
 		Always:     reply == "always",
 		Reason:     reply,
+		ResolvedBy: resolvedBy,
 	})
 }
 

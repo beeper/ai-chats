@@ -17,12 +17,40 @@ const (
 	ApprovalReasonDeliveryError = "delivery_error"
 )
 
+type ApprovalResolutionOrigin string
+
+const (
+	ApprovalResolutionOriginUser  ApprovalResolutionOrigin = "user"
+	ApprovalResolutionOriginAgent ApprovalResolutionOrigin = "agent"
+)
+
 // ApprovalDecisionPayload is the standardized decision type for all approval flows.
 type ApprovalDecisionPayload struct {
 	ApprovalID string
 	Approved   bool
 	Always     bool
 	Reason     string
+	ResolvedBy ApprovalResolutionOrigin
+}
+
+func normalizeApprovalResolutionOrigin(origin ApprovalResolutionOrigin) ApprovalResolutionOrigin {
+	switch origin {
+	case ApprovalResolutionOriginUser, ApprovalResolutionOriginAgent:
+		return origin
+	default:
+		return ""
+	}
+}
+
+func ApprovalResolutionOriginFromString(value string) ApprovalResolutionOrigin {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case string(ApprovalResolutionOriginUser):
+		return ApprovalResolutionOriginUser
+	case string(ApprovalResolutionOriginAgent):
+		return ApprovalResolutionOriginAgent
+	default:
+		return ""
+	}
 }
 
 // Shared sentinel errors for approval resolution.

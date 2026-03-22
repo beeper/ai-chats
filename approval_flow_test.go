@@ -63,7 +63,7 @@ func TestApprovalFlow_FinishResolvedQueuesEditAndPlaceholderCleanup(t *testing.T
 		}
 		editCh <- decision
 	}
-	flow.testRedactPromptPlaceholderReacts = func(_ context.Context, _ *bridgev2.UserLogin, _ *bridgev2.Portal, _ bridgev2.EventSender, _ ApprovalPromptRegistration) error {
+	flow.testRedactPromptPlaceholderReacts = func(_ context.Context, _ *bridgev2.UserLogin, _ *bridgev2.Portal, _ bridgev2.EventSender, _ ApprovalPromptRegistration, _ ApprovalPromptReactionCleanupOptions) error {
 		cleanupCh <- struct{}{}
 		return nil
 	}
@@ -459,7 +459,7 @@ func TestApprovalFlow_HandleReaction_WrongTargetUniqueApprovalMirrorsDecision(t 
 	}
 	flow.testEditPromptToResolvedState = func(context.Context, *bridgev2.UserLogin, *bridgev2.Portal, bridgev2.EventSender, ApprovalPromptRegistration, ApprovalDecisionPayload) {
 	}
-	flow.testRedactPromptPlaceholderReacts = func(context.Context, *bridgev2.UserLogin, *bridgev2.Portal, bridgev2.EventSender, ApprovalPromptRegistration) error {
+	flow.testRedactPromptPlaceholderReacts = func(context.Context, *bridgev2.UserLogin, *bridgev2.Portal, bridgev2.EventSender, ApprovalPromptRegistration, ApprovalPromptReactionCleanupOptions) error {
 		return nil
 	}
 
@@ -630,7 +630,7 @@ func TestApprovalFlow_ResolveExternalMirrorsRemoteDecision(t *testing.T) {
 	}
 	flow.testEditPromptToResolvedState = func(_ context.Context, _ *bridgev2.UserLogin, _ *bridgev2.Portal, _ bridgev2.EventSender, _ ApprovalPromptRegistration, _ ApprovalDecisionPayload) {
 	}
-	flow.testRedactPromptPlaceholderReacts = func(_ context.Context, _ *bridgev2.UserLogin, _ *bridgev2.Portal, _ bridgev2.EventSender, _ ApprovalPromptRegistration) error {
+	flow.testRedactPromptPlaceholderReacts = func(_ context.Context, _ *bridgev2.UserLogin, _ *bridgev2.Portal, _ bridgev2.EventSender, _ ApprovalPromptRegistration, _ ApprovalPromptReactionCleanupOptions) error {
 		return nil
 	}
 
@@ -654,6 +654,7 @@ func TestApprovalFlow_ResolveExternalMirrorsRemoteDecision(t *testing.T) {
 		Approved:   true,
 		Always:     true,
 		Reason:     "allow-always",
+		ResolvedBy: ApprovalResolutionOriginUser,
 	})
 
 	select {
@@ -663,6 +664,80 @@ func TestApprovalFlow_ResolveExternalMirrorsRemoteDecision(t *testing.T) {
 		}
 	case <-time.After(500 * time.Millisecond):
 		t.Fatalf("timed out waiting for mirrored remote reaction")
+	}
+}
+
+func TestApprovalFlow_ResolveExternalAgentKeepsSelectedPlaceholderReaction(t *testing.T) {
+	owner := id.UserID("@owner:example.com")
+	roomID := id.RoomID("!room:example.com")
+	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
+	login := &bridgev2.UserLogin{
+		UserLogin: &database.UserLogin{
+			ID:       networkid.UserLoginID("login"),
+			UserMXID: owner,
+		},
+		Bridge: &bridgev2.Bridge{},
+	}
+
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
+		Login: func() *bridgev2.UserLogin { return login },
+	})
+	flow.testResolvePortal = func(_ context.Context, _ *bridgev2.UserLogin, _ id.RoomID) (*bridgev2.Portal, error) {
+		return portal, nil
+	}
+
+	mirrorCalled := make(chan struct{}, 1)
+	cleanupCh := make(chan ApprovalPromptReactionCleanupOptions, 1)
+	flow.testMirrorRemoteDecisionReaction = func(context.Context, *bridgev2.UserLogin, *bridgev2.Portal, bridgev2.EventSender, ApprovalPromptRegistration, string) {
+		mirrorCalled <- struct{}{}
+	}
+	flow.testEditPromptToResolvedState = func(context.Context, *bridgev2.UserLogin, *bridgev2.Portal, bridgev2.EventSender, ApprovalPromptRegistration, ApprovalDecisionPayload) {
+	}
+	flow.testRedactPromptPlaceholderReacts = func(_ context.Context, _ *bridgev2.UserLogin, _ *bridgev2.Portal, sender bridgev2.EventSender, _ ApprovalPromptRegistration, opts ApprovalPromptReactionCleanupOptions) error {
+		if opts.PreserveSenderID != sender.Sender {
+			t.Fatalf("expected preserved sender %q, got %q", sender.Sender, opts.PreserveSenderID)
+		}
+		cleanupCh <- opts
+		return nil
+	}
+
+	if _, created := flow.Register("approval-1", time.Minute, &testApprovalFlowData{}); !created {
+		t.Fatalf("expected pending approval to be created")
+	}
+	flow.mu.Lock()
+	flow.registerPromptLocked(ApprovalPromptRegistration{
+		ApprovalID:      "approval-1",
+		RoomID:          roomID,
+		OwnerMXID:       owner,
+		ToolCallID:      "tool-1",
+		PromptEventID:   id.EventID("$prompt"),
+		PromptMessageID: networkid.MessageID("msg-1"),
+		PromptSenderID:  networkid.UserID("ghost:approval"),
+		Options:         DefaultApprovalOptions(),
+	})
+	flow.mu.Unlock()
+
+	flow.ResolveExternal(context.Background(), "approval-1", ApprovalDecisionPayload{
+		ApprovalID: "approval-1",
+		Approved:   true,
+		Always:     true,
+		Reason:     ApprovalReasonAllowAlways,
+		ResolvedBy: ApprovalResolutionOriginAgent,
+	})
+
+	select {
+	case <-mirrorCalled:
+		t.Fatalf("did not expect agent-origin decision to mirror a user reaction")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	select {
+	case opts := <-cleanupCh:
+		if opts.PreserveKey != ApprovalReactionKeyAllowAlways {
+			t.Fatalf("expected preserved key %q, got %q", ApprovalReactionKeyAllowAlways, opts.PreserveKey)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("timed out waiting for placeholder cleanup")
 	}
 }
 

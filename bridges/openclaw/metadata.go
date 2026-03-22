@@ -28,6 +28,7 @@ type PortalMetadata struct {
 	OpenClawGatewayID            string         `json:"openclaw_gateway_id,omitempty"`
 	OpenClawSessionID            string         `json:"openclaw_session_id,omitempty"`
 	OpenClawSessionKey           string         `json:"openclaw_session_key,omitempty"`
+	OpenClawSpawnedBy            string         `json:"openclaw_spawned_by,omitempty"`
 	OpenClawDMTargetAgentID      string         `json:"openclaw_dm_target_agent_id,omitempty"`
 	OpenClawDMTargetAgentName    string         `json:"openclaw_dm_target_agent_name,omitempty"`
 	OpenClawDMCreatedFromContact bool           `json:"openclaw_dm_created_from_contact,omitempty"`
@@ -46,6 +47,7 @@ type PortalMetadata struct {
 	OpenClawSystemSent           bool           `json:"openclaw_system_sent,omitempty"`
 	OpenClawAbortedLastRun       bool           `json:"openclaw_aborted_last_run,omitempty"`
 	ThinkingLevel                string         `json:"thinking_level,omitempty"`
+	FastMode                     bool           `json:"fast_mode,omitempty"`
 	VerboseLevel                 string         `json:"verbose_level,omitempty"`
 	ReasoningLevel               string         `json:"reasoning_level,omitempty"`
 	ElevatedLevel                string         `json:"elevated_level,omitempty"`
@@ -54,6 +56,13 @@ type PortalMetadata struct {
 	OutputTokens                 int64          `json:"output_tokens,omitempty"`
 	TotalTokens                  int64          `json:"total_tokens,omitempty"`
 	TotalTokensFresh             bool           `json:"total_tokens_fresh,omitempty"`
+	EstimatedCostUSD             float64        `json:"estimated_cost_usd,omitempty"`
+	Status                       string         `json:"status,omitempty"`
+	StartedAt                    int64          `json:"started_at,omitempty"`
+	EndedAt                      int64          `json:"ended_at,omitempty"`
+	RuntimeMs                    int64          `json:"runtime_ms,omitempty"`
+	ParentSessionKey             string         `json:"parent_session_key,omitempty"`
+	ChildSessions                []string       `json:"child_sessions,omitempty"`
 	ResponseUsage                string         `json:"response_usage,omitempty"`
 	ModelProvider                string         `json:"model_provider,omitempty"`
 	Model                        string         `json:"model,omitempty"`
