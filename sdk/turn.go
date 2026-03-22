@@ -976,13 +976,6 @@ func (t *Turn) handleIdleTimeout(seq uint64) {
 	t.Abort("timeout")
 }
 
-func (t *Turn) roomID() id.RoomID {
-	if t == nil || t.conv == nil || t.conv.portal == nil {
-		return ""
-	}
-	return t.conv.portal.MXID
-}
-
 func (t *Turn) ensureStreamStartedAsync() {
 	if t == nil || t.session == nil {
 		return
