@@ -1,6 +1,7 @@
 package openclaw
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -93,7 +94,7 @@ func TestProvisioningDiscoveryOptions(t *testing.T) {
 		},
 	}
 
-	req := httptest.NewRequest("GET", "/v1/discovery/gateways?timeout_ms=1500&wide_area=on", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/discovery/gateways?timeout_ms=1500&wide_area=on", nil)
 	opts, err := api.discoveryOptions(req)
 	if err != nil {
 		t.Fatalf("discoveryOptions returned error: %v", err)
@@ -105,13 +106,13 @@ func TestProvisioningDiscoveryOptions(t *testing.T) {
 		t.Fatalf("unexpected wide-area options: %#v", opts)
 	}
 
-	req = httptest.NewRequest("GET", "/v1/discovery/gateways?timeout_ms=0", nil)
+	req = httptest.NewRequest(http.MethodGet, "/v1/discovery/gateways?timeout_ms=0", nil)
 	if _, err := api.discoveryOptions(req); err == nil {
 		t.Fatal("expected invalid timeout to fail")
 	}
 
 	api.connector.Config.OpenClaw.Discovery.WideAreaDomain = ""
-	req = httptest.NewRequest("GET", "/v1/discovery/gateways?wide_area=on", nil)
+	req = httptest.NewRequest(http.MethodGet, "/v1/discovery/gateways?wide_area=on", nil)
 	if _, err := api.discoveryOptions(req); err == nil {
 		t.Fatal("expected wide_area=on without configured domain to fail")
 	}
