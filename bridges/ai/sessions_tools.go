@@ -72,7 +72,7 @@ func (oc *AIClient) executeSessionsList(ctx context.Context, portal *bridgev2.Po
 			continue
 		}
 		meta := portalMeta(candidate)
-		if shouldExcludeModelVisiblePortal(meta) {
+		if oc.shouldExcludeVisiblePortal(meta) {
 			continue
 		}
 		kind := resolveSessionKind(currentRoomID, candidate, meta)
@@ -541,7 +541,7 @@ func (oc *AIClient) resolveSessionPortalByLabel(ctx context.Context, label strin
 			continue
 		}
 		meta := portalMeta(candidate)
-		if shouldExcludeModelVisiblePortal(meta) {
+		if oc.shouldExcludeVisiblePortal(meta) {
 			continue
 		}
 		if filterAgent != "" {

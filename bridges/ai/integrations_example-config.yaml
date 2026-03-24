@@ -222,6 +222,7 @@ tools:
 
   # Agent defaults.
   # agents:
+  #   enabled: true
   #   defaults:
   #     subagents:
   #       model: "anthropic/claude-sonnet-4.5"

@@ -2,7 +2,6 @@ package ai
 
 import (
 	"context"
-	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -76,6 +75,9 @@ func (oc *OpenAIConnector) ValidateUserID(id networkid.UserID) bool {
 	if modelID := parseModelFromGhostID(string(id)); strings.TrimSpace(modelID) != "" {
 		return resolveModelIDFromManifest(modelID) != ""
 	}
+	if !oc.agentsEnabled() {
+		return false
+	}
 	if agentID, ok := parseAgentFromGhostID(string(id)); ok && isValidAgentID(strings.TrimSpace(agentID)) {
 		return true
 	}
@@ -98,7 +100,7 @@ func (oc *OpenAIConnector) getLoginFlows() []bridgev2.LoginFlow {
 func (oc *OpenAIConnector) createLogin(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
 	flows := oc.getLoginFlows()
 	if !slices.ContainsFunc(flows, func(f bridgev2.LoginFlow) bool { return f.ID == flowID }) {
-		return nil, fmt.Errorf("login flow %s is not available", flowID)
+		return nil, bridgev2.ErrInvalidLoginFlowID
 	}
 	return &OpenAILogin{User: user, Connector: oc, FlowID: flowID}, nil
 }

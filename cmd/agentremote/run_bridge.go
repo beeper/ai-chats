@@ -23,7 +23,7 @@ func cmdInternalBridge(args []string) error {
 	// Replace os.Args so mxmain sees: <binary> [bridge-flags...]
 	// e.g. agentremote __bridge ai -c config.yaml → ai -c config.yaml
 	os.Args = append([]string{def.Name}, args[1:]...)
-	if bridgeType == "ai" {
+	if bridgeType == "ai" || bridgeType == "agent" {
 		bridgev2.PortalEventBuffer = 0
 	}
 

@@ -222,6 +222,8 @@ type agentUpsertRequest struct {
 
 func writeAgentError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, errAgentsDisabled):
+		mautrix.MForbidden.WithMessage("%v.", err).Write(w)
 	case errors.Is(err, agents.ErrAgentNotFound):
 		mautrix.MNotFound.WithMessage("Agent not found.").Write(w)
 	case errors.Is(err, agents.ErrAgentIsPreset):
@@ -325,7 +327,10 @@ func agentResponse(agent *agents.AgentDefinition) *AgentDefinitionContent {
 	return ToAgentDefinitionContent(agent)
 }
 
-func listAgentsForResponse(ctx context.Context, store *AgentStoreAdapter) ([]*AgentDefinitionContent, error) {
+func listAgentsForResponse(ctx context.Context, client *AIClient, store *AgentStoreAdapter) ([]*AgentDefinitionContent, error) {
+	if client != nil && !client.agentsEnabled() {
+		return []*AgentDefinitionContent{}, nil
+	}
 	loaded, err := store.LoadAgents(ctx)
 	if err != nil {
 		return nil, err
@@ -349,7 +354,7 @@ func (api *ProvisioningAPI) handleListAgents(w http.ResponseWriter, r *http.Requ
 	if client == nil {
 		return
 	}
-	items, err := listAgentsForResponse(r.Context(), NewAgentStoreAdapter(client))
+	items, err := listAgentsForResponse(r.Context(), client, NewAgentStoreAdapter(client))
 	if err != nil {
 		mautrix.MUnknown.WithMessage("Couldn't list agents: %v.", err).Write(w)
 		return
@@ -360,6 +365,10 @@ func (api *ProvisioningAPI) handleListAgents(w http.ResponseWriter, r *http.Requ
 func (api *ProvisioningAPI) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 	_, client := api.getClient(w, r)
 	if client == nil {
+		return
+	}
+	if !client.agentsEnabled() {
+		writeAgentError(w, client.agentFeaturesDisabledErr())
 		return
 	}
 	agentID := strings.TrimSpace(r.PathValue("agent_id"))
@@ -374,6 +383,10 @@ func (api *ProvisioningAPI) handleGetAgent(w http.ResponseWriter, r *http.Reques
 func (api *ProvisioningAPI) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 	_, client := api.getClient(w, r)
 	if client == nil {
+		return
+	}
+	if !client.agentsEnabled() {
+		writeAgentError(w, client.agentFeaturesDisabledErr())
 		return
 	}
 	var req agentUpsertRequest
@@ -402,6 +415,10 @@ func (api *ProvisioningAPI) handleCreateAgent(w http.ResponseWriter, r *http.Req
 func (api *ProvisioningAPI) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	_, client := api.getClient(w, r)
 	if client == nil {
+		return
+	}
+	if !client.agentsEnabled() {
+		writeAgentError(w, client.agentFeaturesDisabledErr())
 		return
 	}
 	var req agentUpsertRequest
@@ -436,6 +453,10 @@ func (api *ProvisioningAPI) handleUpdateAgent(w http.ResponseWriter, r *http.Req
 func (api *ProvisioningAPI) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 	_, client := api.getClient(w, r)
 	if client == nil {
+		return
+	}
+	if !client.agentsEnabled() {
+		writeAgentError(w, client.agentFeaturesDisabledErr())
 		return
 	}
 	agentID := strings.TrimSpace(r.PathValue("agent_id"))

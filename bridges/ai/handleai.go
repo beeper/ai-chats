@@ -262,6 +262,9 @@ func (oc *AIClient) scheduleAutoGreeting(ctx context.Context, portal *bridgev2.P
 	if autoGreetingBlockReason(meta) != "" {
 		return
 	}
+	if oc.agentTargetBlocked(meta) {
+		return
+	}
 	if oc.hasPortalMessages(ctx, portal) {
 		return
 	}
@@ -296,6 +299,10 @@ func (oc *AIClient) scheduleAutoGreeting(ctx context.Context, portal *bridgev2.P
 			}
 			if reason := autoGreetingBlockReason(currentMeta); reason != "" {
 				oc.Log().Debug().Stringer("room_id", roomID).Str("reason", reason).Msg("auto-greeting loop exiting: blocked by portal state")
+				return
+			}
+			if oc.agentTargetBlocked(currentMeta) {
+				oc.Log().Debug().Stringer("room_id", roomID).Msg("auto-greeting loop exiting: agents disabled")
 				return
 			}
 			if oc.hasPortalMessages(bgCtx, current) {

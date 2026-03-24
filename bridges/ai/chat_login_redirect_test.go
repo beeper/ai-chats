@@ -7,6 +7,15 @@ import (
 	"testing"
 )
 
+func newDiscoveryTestClient(agentsEnabled bool) *AIClient {
+	client := newCatalogTestClient()
+	if !agentsEnabled {
+		disabled := false
+		client.connector.Config.Agents = &AgentsConfig{Enabled: &disabled}
+	}
+	return client
+}
+
 func TestSearchUsersRequiresLogin(t *testing.T) {
 	oc := &AIClient{}
 	_, err := oc.SearchUsers(context.Background(), "gpt")
@@ -26,6 +35,40 @@ func TestGetContactListRequiresLogin(t *testing.T) {
 	}
 	if !strings.Contains(strings.ToLower(err.Error()), "logged in") {
 		t.Fatalf("expected logged-in message, got: %v", err)
+	}
+}
+
+func TestSearchUsersDisabledKeepsModelsButHidesAgents(t *testing.T) {
+	oc := newDiscoveryTestClient(false)
+
+	results, err := oc.SearchUsers(context.Background(), "gpt")
+	if err != nil {
+		t.Fatalf("SearchUsers returned error: %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatal("expected model search results when agents are disabled")
+	}
+	for _, result := range results {
+		if result != nil && strings.HasPrefix(string(result.UserID), "agent-") {
+			t.Fatalf("expected agent results to be hidden, got %#v", result)
+		}
+	}
+}
+
+func TestGetContactListDisabledKeepsModelsButHidesAgents(t *testing.T) {
+	oc := newDiscoveryTestClient(false)
+
+	results, err := oc.GetContactList(context.Background())
+	if err != nil {
+		t.Fatalf("GetContactList returned error: %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatal("expected model contacts when agents are disabled")
+	}
+	for _, result := range results {
+		if result != nil && strings.HasPrefix(string(result.UserID), "agent-") {
+			t.Fatalf("expected agent contacts to be hidden, got %#v", result)
+		}
 	}
 }
 

@@ -77,3 +77,24 @@ func TestInboundConfig_WithDefaults_PartialValues(t *testing.T) {
 		t.Errorf("Expected default DefaultDebounceMs %d, got %d", DefaultDebounceMs, result.DefaultDebounceMs)
 	}
 }
+
+func TestConfigAgentsEnabledDefaultsToTrue(t *testing.T) {
+	if !(new(Config)).agentsEnabled() {
+		t.Fatal("expected agents to be enabled by default")
+	}
+	if (&Config{Agents: &AgentsConfig{}}).agentsEnabled() == false {
+		t.Fatal("expected missing agents.enabled to default to true")
+	}
+}
+
+func TestConfigAgentsEnabledCanBeDisabled(t *testing.T) {
+	disabled := false
+	cfg := &Config{
+		Agents: &AgentsConfig{
+			Enabled: &disabled,
+		},
+	}
+	if cfg.agentsEnabled() {
+		t.Fatal("expected agents to be disabled")
+	}
+}

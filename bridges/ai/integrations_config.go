@@ -107,6 +107,7 @@ func (c *ToolApprovalsRuntimeConfig) WithDefaults() *ToolApprovalsRuntimeConfig 
 
 // AgentsConfig configures agent defaults.
 type AgentsConfig struct {
+	Enabled  *bool                `yaml:"enabled"`
 	Defaults *AgentDefaultsConfig `yaml:"defaults"`
 	List     []AgentEntryConfig   `yaml:"list"`
 }
@@ -566,6 +567,7 @@ func upgradeConfig(helper configupgrade.Helper) {
 	helper.Copy(configupgrade.Str, "session", "main_key")
 
 	// Agents heartbeat configuration
+	helper.Copy(configupgrade.Bool, "agents", "enabled")
 	helper.Copy(configupgrade.Int, "agents", "defaults", "timeout_seconds")
 	helper.Copy(configupgrade.Str, "agents", "defaults", "user_timezone")
 	helper.Copy(configupgrade.Str, "agents", "defaults", "envelope_timezone")

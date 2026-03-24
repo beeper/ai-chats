@@ -21,6 +21,9 @@ func (oc *AIClient) recordAgentActivity(ctx context.Context, portal *bridgev2.Po
 	if heartbeatRunFromContext(ctx) != nil {
 		return
 	}
+	if oc.agentTargetBlocked(meta) {
+		return
+	}
 	agentID := normalizeAgentID(resolveAgentID(meta))
 	if agentID == "" {
 		return
@@ -93,12 +96,12 @@ func (oc *AIClient) defaultChatPortal() *bridgev2.Portal {
 			Receiver: oc.UserLogin.ID,
 		}
 		if portal, err := oc.UserLogin.Bridge.GetPortalByKey(ctx, portalKey); err == nil && portal != nil {
-			if isDefaultChatCandidate(portal) {
+			if oc.isDefaultChatCandidate(portal) {
 				return portal
 			}
 		}
 	}
-	if portal, err := oc.UserLogin.Bridge.GetExistingPortalByKey(ctx, defaultChatPortalKey(oc.UserLogin.ID)); err == nil && portal != nil && isDefaultChatCandidate(portal) {
+	if portal, err := oc.UserLogin.Bridge.GetExistingPortalByKey(ctx, defaultChatPortalKey(oc.UserLogin.ID)); err == nil && portal != nil && oc.isDefaultChatCandidate(portal) {
 		return portal
 	}
 	return nil

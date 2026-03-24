@@ -35,6 +35,10 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		return nil, errors.New("portal is nil")
 	}
 	meta := portalMeta(portal)
+	if err := oc.ensureAgentTargetAllowed(meta); err != nil {
+		oc.sendSystemNotice(ctx, portal, err.Error())
+		return nil, agentremote.UnsupportedMessageStatus(err)
+	}
 	if msg.Event == nil {
 		return nil, errors.New("missing message event")
 	}

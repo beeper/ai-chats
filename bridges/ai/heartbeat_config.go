@@ -7,7 +7,7 @@ import (
 )
 
 func hasExplicitHeartbeatAgents(cfg *Config) bool {
-	if cfg == nil || cfg.Agents == nil {
+	if cfg == nil || !cfg.agentsEnabled() || cfg.Agents == nil {
 		return false
 	}
 	for _, entry := range cfg.Agents.List {
@@ -78,6 +78,9 @@ func isHeartbeatEnabledForAgent(cfg *Config, agentID string) bool {
 	defaultAgent := normalizeAgentID(agents.DefaultAgentID)
 	if cfg == nil {
 		return resolved == defaultAgent
+	}
+	if !cfg.agentsEnabled() {
+		return false
 	}
 	if cfg.Agents == nil {
 		return resolved == defaultAgent

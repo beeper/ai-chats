@@ -101,6 +101,7 @@ func initCommands() {
 			},
 			Examples: []string{
 				"agentremote start ai",
+				"agentremote start agent",
 				"agentremote start codex --name test",
 				"agentremote start opencode --profile work",
 				"agentremote start ai --wait",
@@ -122,6 +123,7 @@ func initCommands() {
 			},
 			Examples: []string{
 				"agentremote up ai",
+				"agentremote up agent",
 				"agentremote up codex --name test",
 			},
 			Run: cmdUp,
@@ -138,6 +140,7 @@ func initCommands() {
 			},
 			Examples: []string{
 				"agentremote run ai",
+				"agentremote run agent",
 				"agentremote run codex --name dev",
 			},
 			Run: cmdRun,
@@ -154,6 +157,7 @@ func initCommands() {
 			},
 			Examples: []string{
 				"agentremote init ai",
+				"agentremote init agent",
 				"agentremote init openclaw --name dev",
 			},
 			Run: cmdInit,
@@ -240,6 +244,7 @@ func initCommands() {
 			},
 			Examples: []string{
 				"agentremote register ai",
+				"agentremote register agent",
 				"agentremote register codex --name dev --json",
 			},
 			Run: cmdRegister,

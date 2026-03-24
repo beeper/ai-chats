@@ -15,6 +15,25 @@ instances:
       bridge.permissions:
         "*": relay
         beeper.com: admin
+      network.agents.enabled: false
+
+  agent:
+    bridge_type: ai
+    mode: local-repo
+    repo_path: .
+    build_cmd: ./build.sh
+    binary_path: ./ai
+    beeper_bridge_name: sh-agent
+    config_overrides:
+      appservice.address: websocket
+      appservice.hostname: 127.0.0.1
+      appservice.port: 29350
+      database.type: sqlite3-fk-wal
+      database.uri: file:agent.db?_txlock=immediate
+      bridge.permissions:
+        "*": relay
+        beeper.com: admin
+      network.agents.enabled: true
 
   codex:
     bridge_type: codex

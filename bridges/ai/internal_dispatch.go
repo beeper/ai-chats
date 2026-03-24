@@ -31,6 +31,9 @@ func (oc *AIClient) dispatchInternalMessage(
 			return "", false, errors.New("missing portal metadata")
 		}
 	}
+	if err := oc.ensureAgentTargetAllowed(meta); err != nil {
+		return "", false, err
+	}
 	trimmed := strings.TrimSpace(body)
 	if trimmed == "" {
 		return "", false, errors.New("message body is required")

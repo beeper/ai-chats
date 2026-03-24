@@ -5,8 +5,12 @@ import (
 	"strings"
 	"testing"
 
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 )
 
 func TestDecodeBase64Image(t *testing.T) {
@@ -138,5 +142,30 @@ func TestMessageStatusReasonForError_AccessDenied403(t *testing.T) {
 	}
 	if got := messageStatusReasonForError(err); got != event.MessageStatusNoPermission {
 		t.Fatalf("expected no-permission reason, got %s", got)
+	}
+}
+
+func TestDispatchInternalMessageRejectsDisabledAgentRoom(t *testing.T) {
+	disabled := false
+	oc := &AIClient{
+		connector: &OpenAIConnector{
+			Config: Config{
+				Agents: &AgentsConfig{Enabled: &disabled},
+			},
+		},
+	}
+	portal := &bridgev2.Portal{
+		Portal: &database.Portal{
+			MXID:      id.RoomID("!room:example.com"),
+			PortalKey: networkid.PortalKey{ID: "openai:test"},
+		},
+	}
+
+	_, _, err := oc.dispatchInternalMessage(t.Context(), portal, agentModeTestMeta("beeper"), "hello", "test", false)
+	if err == nil {
+		t.Fatal("expected dispatchInternalMessage to fail")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "agents are disabled") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

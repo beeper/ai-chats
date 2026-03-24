@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -437,7 +438,7 @@ func cmdRun(args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to find own executable: %w", err)
 	}
-	argv := []string{exe, "__bridge", bridgeType, "-c", meta.ConfigPath}
+	argv := []string{exe, "__bridge", runtimeBridgeType(bridgeType), "-c", meta.ConfigPath}
 	fmt.Printf("running %s in foreground\n", instName)
 	cliutil.PrintRuntimePaths(meta)
 	if err = os.Chdir(filepath.Dir(meta.ConfigPath)); err != nil {
@@ -1120,6 +1121,7 @@ func ensureInitialized(instName, bridgeType, beeperName string, sp *instancePath
 			"beeper.com": "admin",
 		},
 	}
+	maps.Copy(overrides, def.ConfigOverrides)
 	if err = bridgeutil.ApplyConfigOverrides(meta.ConfigPath, overrides); err != nil {
 		return nil, err
 	}
@@ -1151,7 +1153,7 @@ func generateExampleConfig(meta *metadata) error {
 	if err != nil {
 		return fmt.Errorf("failed to find own executable: %w", err)
 	}
-	cmd := exec.Command(exe, "__bridge", meta.BridgeType, "-c", meta.ConfigPath, "-e")
+	cmd := exec.Command(exe, "__bridge", runtimeBridgeType(meta.BridgeType), "-c", meta.ConfigPath, "-e")
 	cmd.Dir = filepath.Dir(meta.ConfigPath)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -1185,7 +1187,7 @@ func ensureRegistration(profile, envOverride string, meta *metadata, bridgeType 
 		ConfigPath:       meta.ConfigPath,
 		RegistrationPath: meta.RegistrationPath,
 		BeeperBridgeName: meta.BeeperBridgeName,
-		BridgeType:       bridgeType,
+		BridgeType:       remoteBridgeType(bridgeType),
 		DBName:           bridgeRegistry[bridgeType].DBName,
 	})
 }
@@ -1210,5 +1212,5 @@ func startBridgeProcess(meta *metadata, bridgeType string) error {
 	if err != nil {
 		return fmt.Errorf("failed to find own executable: %w", err)
 	}
-	return bridgeutil.StartBridgeFromConfig(exe, []string{"__bridge", bridgeType, "-c", meta.ConfigPath}, meta.ConfigPath, meta.LogPath, meta.PIDPath)
+	return bridgeutil.StartBridgeFromConfig(exe, []string{"__bridge", runtimeBridgeType(bridgeType), "-c", meta.ConfigPath}, meta.ConfigPath, meta.LogPath, meta.PIDPath)
 }

@@ -24,6 +24,12 @@ var (
 		Port:        29345,
 		DBName:      "ai.db",
 	}
+	Agent = Definition{
+		Name:        "agent",
+		Description: "Agent-enabled mode for the AI bridge built on mautrix-go bridgev2.",
+		Port:        29350,
+		DBName:      "agent.db",
+	}
 	Codex = Definition{
 		Name:        "codex",
 		Description: "A Matrix↔Codex bridge built on mautrix-go bridgev2.",

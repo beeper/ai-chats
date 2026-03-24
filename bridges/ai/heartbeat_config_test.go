@@ -43,3 +43,18 @@ func TestIsHeartbeatEnabledForAgent_ExplicitAgentsMode(t *testing.T) {
 		t.Fatalf("expected agent without heartbeat block to be disabled in explicit heartbeat mode")
 	}
 }
+
+func TestIsHeartbeatEnabledForAgent_DisabledByConfig(t *testing.T) {
+	disabled := false
+	cfg := &Config{
+		Agents: &AgentsConfig{
+			Enabled: &disabled,
+		},
+	}
+	if isHeartbeatEnabledForAgent(cfg, normalizeAgentID(agents.DefaultAgentID)) {
+		t.Fatal("expected heartbeat to be disabled when agents are disabled")
+	}
+	if got := resolveHeartbeatAgents(cfg); len(got) != 0 {
+		t.Fatalf("expected no heartbeat agents when disabled, got %#v", got)
+	}
+}

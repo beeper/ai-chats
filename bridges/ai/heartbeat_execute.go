@@ -30,7 +30,7 @@ type heartbeatAgent struct {
 
 func resolveHeartbeatAgents(cfg *Config) []heartbeatAgent {
 	var list []heartbeatAgent
-	if cfg == nil {
+	if cfg == nil || !cfg.agentsEnabled() {
 		return list
 	}
 	if hasExplicitHeartbeatAgents(cfg) {
