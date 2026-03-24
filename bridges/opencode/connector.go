@@ -86,7 +86,7 @@ func NewConnector() *OpenCodeConnector {
 		LoginFlows:   loginFlows,
 		CreateLogin: func(_ context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
 			if !oc.openCodeEnabled() {
-				return nil, bridgev2.ErrNotLoggedIn
+				return nil, agentremote.NewLoginRespError(403, "OpenCode login is disabled in the configuration.", "OPENCODE", "LOGIN_DISABLED")
 			}
 			if !slices.ContainsFunc(loginFlows, func(f bridgev2.LoginFlow) bool { return f.ID == flowID }) {
 				return nil, bridgev2.ErrInvalidLoginFlowID

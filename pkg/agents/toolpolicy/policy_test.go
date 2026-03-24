@@ -55,7 +55,7 @@ func TestExpandToolGroups_OpenClawIsStrict(t *testing.T) {
 		}
 	}
 
-	// ai-bridge extras must NOT be part of strict group:openclaw.
+	// AgentRemote extras must NOT be part of strict group:openclaw.
 	mustNotContain := []string{"beeper_docs", "gravatar_fetch", "gravatar_set", "tts", "image_generate", "calculator"}
 	for _, name := range mustNotContain {
 		for _, entry := range got {
@@ -66,8 +66,8 @@ func TestExpandToolGroups_OpenClawIsStrict(t *testing.T) {
 	}
 }
 
-func TestExpandToolGroups_AIBridgeExtras(t *testing.T) {
-	got := ExpandToolGroups([]string{"group:ai-bridge"})
+func TestExpandToolGroups_AgentRemoteExtras(t *testing.T) {
+	got := ExpandToolGroups([]string{"group:agentremote"})
 	mustContain := []string{"beeper_docs", "gravatar_fetch", "gravatar_set", "tts", "image_generate", "calculator"}
 	for _, name := range mustContain {
 		found := false
@@ -78,7 +78,7 @@ func TestExpandToolGroups_AIBridgeExtras(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Fatalf("expected group:ai-bridge to include %q, got %#v", name, got)
+			t.Fatalf("expected group:agentremote to include %q, got %#v", name, got)
 		}
 	}
 }

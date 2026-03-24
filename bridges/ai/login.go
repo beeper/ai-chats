@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
+	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
@@ -37,6 +39,11 @@ var (
 	_ bridgev2.LoginProcess             = (*OpenAILogin)(nil)
 	_ bridgev2.LoginProcessWithOverride = (*OpenAILogin)(nil)
 	_ bridgev2.LoginProcessUserInput    = (*OpenAILogin)(nil)
+
+	errAIReloginTargetInvalid = agentremote.NewLoginRespError(http.StatusBadRequest, "Invalid relogin target.", "AI", "INVALID_RELOGIN_TARGET")
+	errAIManagedBeeperRelogin = agentremote.NewLoginRespError(http.StatusForbidden, "Managed Beeper Cloud logins are controlled by bridge configuration.", "AI", "MANAGED_BEEPER_RELOGIN_FORBIDDEN")
+	errAIMissingUserContext   = agentremote.NewLoginRespError(http.StatusInternalServerError, "Missing user context for login.", "AI", "MISSING_USER_CONTEXT")
+	errAIMissingReloginMeta   = agentremote.NewLoginRespError(http.StatusInternalServerError, "Missing relogin metadata.", "AI", "MISSING_RELOGIN_METADATA")
 )
 
 // OpenAILogin maps a Matrix user to a synthetic OpenAI "login".
@@ -87,7 +94,7 @@ func (ol *OpenAILogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 		}
 		return ol.finishLogin(ctx, provider, apiKey, "", serviceTokens)
 	default:
-		return nil, fmt.Errorf("login flow %s is not available", ol.FlowID)
+		return nil, bridgev2.ErrInvalidLoginFlowID
 	}
 }
 
@@ -98,10 +105,10 @@ func (ol *OpenAILogin) StartWithOverride(ctx context.Context, old *bridgev2.User
 		return ol.Start(ctx)
 	}
 	if ol.User == nil || old.UserMXID != ol.User.MXID {
-		return nil, errors.New("invalid relogin target")
+		return nil, errAIReloginTargetInvalid
 	}
 	if old.ID == managedBeeperLoginID(old.UserMXID) {
-		return nil, errors.New("managed Beeper Cloud logins are controlled by bridge configuration")
+		return nil, errAIManagedBeeperRelogin
 	}
 	ol.Override = old
 	return ol.Start(ctx)
@@ -155,7 +162,7 @@ func (ol *OpenAILogin) SubmitUserInput(ctx context.Context, input map[string]str
 		}
 		return ol.finishLogin(ctx, provider, apiKey, "", serviceTokens)
 	default:
-		return nil, fmt.Errorf("login flow %s is not available", ol.FlowID)
+		return nil, bridgev2.ErrInvalidLoginFlowID
 	}
 }
 
@@ -222,7 +229,7 @@ func (ol *OpenAILogin) credentialsStep() *bridgev2.LoginStep {
 
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeUserInput,
-		StepID:       "io.ai-bridge.openai.enter_credentials",
+		StepID:       "com.beeper.agentremote.openai.enter_credentials",
 		Instructions: "Enter your API credentials",
 		UserInputParams: &bridgev2.LoginUserInputParams{
 			Fields: fields,
@@ -235,17 +242,17 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 	apiKey = strings.TrimSpace(apiKey)
 	baseURL = stringutil.NormalizeBaseURL(baseURL)
 	if ol.User == nil {
-		return nil, errors.New("missing user context for login")
+		return nil, errAIMissingUserContext
 	}
 
 	override := ol.Override
 	if override != nil {
 		overrideMeta := loginMetadata(override)
 		if overrideMeta == nil {
-			return nil, errors.New("missing relogin metadata")
+			return nil, errAIMissingReloginMeta
 		}
 		if !strings.EqualFold(normalizeProvider(overrideMeta.Provider), provider) {
-			return nil, fmt.Errorf("can't relogin %s account with %s credentials", overrideMeta.Provider, provider)
+			return nil, agentremote.NewLoginRespError(http.StatusBadRequest, fmt.Sprintf("Can't relogin %s account with %s credentials.", overrideMeta.Provider, provider), "AI", "PROVIDER_MISMATCH")
 		}
 	}
 
@@ -266,7 +273,7 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 	if override != nil {
 		meta, err = cloneUserLoginMetadata(loginMetadata(override))
 		if err != nil {
-			return nil, fmt.Errorf("failed to clone relogin metadata: %w", err)
+			return nil, agentremote.WrapLoginRespError(fmt.Errorf("failed to clone relogin metadata: %w", err), http.StatusInternalServerError, "AI", "CLONE_RELOGIN_METADATA_FAILED")
 		}
 	}
 	if meta == nil {
@@ -288,7 +295,7 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 		Metadata:   meta,
 	}, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create login: %w", err)
+		return nil, agentremote.WrapLoginRespError(fmt.Errorf("failed to create login: %w", err), http.StatusInternalServerError, "AI", "CREATE_LOGIN_FAILED")
 	}
 
 	// Trigger connection in background with a long-lived context
@@ -297,7 +304,7 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 
 	return &bridgev2.LoginStep{
 		Type:   bridgev2.LoginStepTypeComplete,
-		StepID: "io.ai-bridge.openai.complete",
+		StepID: "com.beeper.agentremote.openai.complete",
 		CompleteParams: &bridgev2.LoginCompleteParams{
 			UserLoginID: login.ID,
 			UserLogin:   login,

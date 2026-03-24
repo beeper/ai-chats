@@ -72,7 +72,7 @@ func NewAIConnector() *OpenAIConnector {
 		NewLogin:       func() any { return &UserLoginMetadata{} },
 		NewGhost:       func() any { return &GhostMetadata{} },
 		FillBridgeInfo: func(portal *bridgev2.Portal, content *event.BridgeEventContent) {
-			applyAIBridgeInfo(portal, portalMeta(portal), content)
+			applyAgentRemoteBridgeInfo(portal, portalMeta(portal), content)
 		},
 		LoadLogin: func(_ context.Context, login *bridgev2.UserLogin) error {
 			return oc.loadAIUserLogin(login, loginMetadata(login))

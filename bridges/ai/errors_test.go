@@ -9,6 +9,18 @@ import (
 	"github.com/openai/openai-go/v3"
 )
 
+func TestAILoginErrorCodesUseAgentRemoteNamespace(t *testing.T) {
+	if ErrAPIKeyRequired.ErrCode != "COM.BEEPER.AGENTREMOTE.AI.API_KEY_REQUIRED" {
+		t.Fatalf("unexpected api key errcode: %q", ErrAPIKeyRequired.ErrCode)
+	}
+	if ErrBaseURLRequired.ErrCode != "COM.BEEPER.AGENTREMOTE.AI.BASE_URL_REQUIRED" {
+		t.Fatalf("unexpected base url errcode: %q", ErrBaseURLRequired.ErrCode)
+	}
+	if ErrOpenAIOrOpenRouterRequired.ErrCode != "COM.BEEPER.AGENTREMOTE.AI.OPENAI_OR_OPENROUTER_REQUIRED" {
+		t.Fatalf("unexpected openai/openrouter errcode: %q", ErrOpenAIOrOpenRouterRequired.ErrCode)
+	}
+}
+
 func testOpenAIError(statusCode int, code, typ, message string) *openai.Error {
 	return &openai.Error{
 		StatusCode: statusCode,

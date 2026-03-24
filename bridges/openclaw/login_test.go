@@ -103,6 +103,16 @@ func TestOpenClawLoginSubmitUserInputRejectsTokenAndPassword(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected SubmitUserInput to reject token+password")
 	}
+	var respErr bridgev2.RespError
+	if !errors.As(err, &respErr) {
+		t.Fatalf("expected RespError, got %T", err)
+	}
+	if respErr.StatusCode != 400 {
+		t.Fatalf("unexpected status code: %d", respErr.StatusCode)
+	}
+	if respErr.ErrCode != "COM.BEEPER.AGENTREMOTE.OPENCLAW.MIXED_AUTH" {
+		t.Fatalf("unexpected errcode: %q", respErr.ErrCode)
+	}
 }
 
 func TestOpenClawLoginSubmitUserInputPairingRequiredReturnsWaitStep(t *testing.T) {
@@ -208,5 +218,75 @@ func TestOpenClawLoginWaitMapsNonPairingErrors(t *testing.T) {
 	}
 	if respErr.StatusCode != 403 {
 		t.Fatalf("unexpected status code: %d", respErr.StatusCode)
+	}
+	if respErr.ErrCode != "COM.BEEPER.AGENTREMOTE.OPENCLAW.AUTH_FAILED" {
+		t.Fatalf("unexpected errcode: %q", respErr.ErrCode)
+	}
+}
+
+func TestOpenClawLoginSubmitUserInputRejectsInvalidState(t *testing.T) {
+	login := &OpenClawLogin{
+		User:      &bridgev2.User{},
+		Connector: &OpenClawConnector{br: &bridgev2.Bridge{}},
+		step:      openClawLoginStatePairingWait,
+	}
+	_, err := login.SubmitUserInput(context.Background(), map[string]string{"url": "ws://127.0.0.1:18789"})
+	var respErr bridgev2.RespError
+	if !errors.As(err, &respErr) {
+		t.Fatalf("expected RespError, got %T", err)
+	}
+	if respErr.ErrCode != "COM.BEEPER.AGENTREMOTE.OPENCLAW.INVALID_STATE" {
+		t.Fatalf("unexpected errcode: %q", respErr.ErrCode)
+	}
+}
+
+func TestOpenClawLoginWaitRequiresPairingState(t *testing.T) {
+	login := &OpenClawLogin{
+		User:      &bridgev2.User{},
+		Connector: &OpenClawConnector{br: &bridgev2.Bridge{}},
+	}
+	_, err := login.Wait(context.Background())
+	var respErr bridgev2.RespError
+	if !errors.As(err, &respErr) {
+		t.Fatalf("expected RespError, got %T", err)
+	}
+	if respErr.ErrCode != "COM.BEEPER.AGENTREMOTE.OPENCLAW.NOT_WAITING" {
+		t.Fatalf("unexpected errcode: %q", respErr.ErrCode)
+	}
+}
+
+func TestOpenClawLoginWaitTimeoutReturnsTypedError(t *testing.T) {
+	login := &OpenClawLogin{
+		User:      &bridgev2.User{},
+		Connector: &OpenClawConnector{br: &bridgev2.Bridge{}},
+		step:      openClawLoginStatePairingWait,
+		pending:   &openClawPendingLogin{gatewayURL: "ws://127.0.0.1:18789"},
+		waitUntil: time.Now().Add(-time.Second),
+	}
+	_, err := login.Wait(context.Background())
+	var respErr bridgev2.RespError
+	if !errors.As(err, &respErr) {
+		t.Fatalf("expected RespError, got %T", err)
+	}
+	if respErr.ErrCode != "COM.BEEPER.AGENTREMOTE.OPENCLAW.PAIRING_TIMEOUT" {
+		t.Fatalf("unexpected errcode: %q", respErr.ErrCode)
+	}
+}
+
+func TestOpenClawLoginCompleteLoginRequiresPendingState(t *testing.T) {
+	login := &OpenClawLogin{
+		User:      &bridgev2.User{},
+		Connector: &OpenClawConnector{br: &bridgev2.Bridge{}},
+	}
+	_, err := login.completeLogin(nil, "device-token")
+	var respErr bridgev2.RespError
+	if !errors.As(err, &respErr) {
+		t.Fatalf("expected RespError, got %T", err)
+	}
+	if respErr.StatusCode != 500 {
+		t.Fatalf("unexpected status code: %d", respErr.StatusCode)
+	}
+	if respErr.ErrCode != "COM.BEEPER.AGENTREMOTE.OPENCLAW.MISSING_PENDING_LOGIN" {
+		t.Fatalf("unexpected errcode: %q", respErr.ErrCode)
 	}
 }

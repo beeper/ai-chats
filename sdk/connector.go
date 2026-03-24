@@ -138,7 +138,7 @@ func NewConnectorBase(cfg *Config) *agentremote.ConnectorBase {
 			if portal == nil || content == nil || protocolID == "" {
 				return
 			}
-			agentremote.ApplyAIBridgeInfo(content, protocolID, portal.RoomType, agentremote.AIRoomKindAgent)
+			agentremote.ApplyAgentRemoteBridgeInfo(content, protocolID, portal.RoomType, agentremote.AIRoomKindAgent)
 		},
 		LoadLogin: loadLogin,
 		LoginFlows: func() []bridgev2.LoginFlow {

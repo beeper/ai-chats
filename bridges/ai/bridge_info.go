@@ -27,9 +27,9 @@ func aiBridgeProtocolIDForPortal(portal *bridgev2.Portal) string {
 	}
 }
 
-func applyAIBridgeInfo(portal *bridgev2.Portal, meta *PortalMetadata, content *event.BridgeEventContent) {
+func applyAgentRemoteBridgeInfo(portal *bridgev2.Portal, meta *PortalMetadata, content *event.BridgeEventContent) {
 	if portal == nil {
 		return
 	}
-	agentremote.ApplyAIBridgeInfo(content, aiBridgeProtocolIDForPortal(portal), portal.RoomType, integrationPortalAIKind(meta))
+	agentremote.ApplyAgentRemoteBridgeInfo(content, aiBridgeProtocolIDForPortal(portal), portal.RoomType, integrationPortalAIKind(meta))
 }

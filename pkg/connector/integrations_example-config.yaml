@@ -213,8 +213,8 @@ tools:
   # tool_policy:
   #   profile: "full"
   #   # group:openclaw is the strict OpenClaw native tool set.
-  #   # group:ai-bridge includes ai-bridge-only extras (beeper_docs, gravatar_*, tts, image_generate, calculator, etc).
-  #   allow: ["group:openclaw", "group:ai-bridge"]
+  #   # group:agentremote includes agentremote-only extras (beeper_docs, gravatar_*, tts, image_generate, calculator, etc).
+  #   allow: ["group:openclaw", "group:agentremote"]
   #   deny: []
   #   subagents:
   #     tools:

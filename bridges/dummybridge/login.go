@@ -3,6 +3,7 @@ package dummybridge
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -10,7 +11,7 @@ import (
 	"github.com/beeper/agentremote"
 )
 
-const dummyBridgeLoginStepInput = "io.ai-bridge.dummybridge.enter_value"
+const dummyBridgeLoginStepInput = "com.beeper.agentremote.dummybridge.enter_value"
 
 var (
 	_ bridgev2.LoginProcess          = (*DummyBridgeLogin)(nil)
@@ -72,11 +73,11 @@ func (dl *DummyBridgeLogin) SubmitUserInput(ctx context.Context, input map[strin
 			Provider:       ProviderDummyBridge,
 			AcceptedString: value,
 		},
-		"io.ai-bridge.dummybridge.complete",
+		"com.beeper.agentremote.dummybridge.complete",
 		dl.Connector.LoadUserLogin,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create dummybridge login: %w", err)
+		return nil, agentremote.WrapLoginRespError(fmt.Errorf("failed to create dummybridge login: %w", err), http.StatusInternalServerError, "DUMMYBRIDGE", "CREATE_LOGIN_FAILED")
 	}
 	return step, nil
 }

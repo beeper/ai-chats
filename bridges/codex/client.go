@@ -358,8 +358,8 @@ func (cc *CodexClient) purgeCodexCwdsBestEffort(ctx context.Context) {
 		if clean == "." || clean == string(os.PathSeparator) {
 			continue
 		}
-		// Safety: only delete dirs we created via os.MkdirTemp("", "ai-bridge-codex-*").
-		if !strings.HasPrefix(filepath.Base(clean), "ai-bridge-codex-") {
+		// Safety: only delete dirs we created via os.MkdirTemp("", "agentremote-codex-*").
+		if !strings.HasPrefix(filepath.Base(clean), "agentremote-codex-") {
 			continue
 		}
 		if !strings.HasPrefix(clean, tmp+string(os.PathSeparator)) {

@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
-	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/beeper/agentremote"
@@ -21,8 +21,8 @@ var (
 )
 
 const (
-	openClawLoginStepCredentials = "io.ai-bridge.openclaw.enter_credentials"
-	openClawLoginStepPairingWait = "io.ai-bridge.openclaw.wait_for_pairing"
+	openClawLoginStepCredentials = "com.beeper.agentremote.openclaw.enter_credentials"
+	openClawLoginStepPairingWait = "com.beeper.agentremote.openclaw.wait_for_pairing"
 )
 
 type openClawLoginState string
@@ -39,6 +39,15 @@ const (
 	openClawPreflightTimeout    = 20 * time.Second
 	openClawPreflightConnect    = 10 * time.Second
 	openClawPreflightList       = 10 * time.Second
+)
+
+var (
+	errOpenClawInvalidState = agentremote.NewLoginRespError(http.StatusBadRequest, "Login process is in an invalid state.", "OPENCLAW", "INVALID_STATE")
+	errOpenClawNotWaiting   = agentremote.NewLoginRespError(http.StatusBadRequest, "Login is not waiting for OpenClaw pairing.", "OPENCLAW", "NOT_WAITING")
+	errOpenClawTimedOut     = agentremote.NewLoginRespError(http.StatusBadRequest, "Timed out waiting for OpenClaw pairing approval.", "OPENCLAW", "PAIRING_TIMEOUT")
+	errOpenClawMissingLogin = agentremote.NewLoginRespError(http.StatusInternalServerError, "Missing pending OpenClaw login details.", "OPENCLAW", "MISSING_PENDING_LOGIN")
+	errOpenClawMixedAuth    = agentremote.NewLoginRespError(http.StatusBadRequest, "Provide either a gateway token or a gateway password, not both.", "OPENCLAW", "MIXED_AUTH")
+	errOpenClawMissingHost  = agentremote.NewLoginRespError(http.StatusBadRequest, "Gateway URL host is required.", "OPENCLAW", "MISSING_HOST")
 )
 
 type openClawPendingLogin struct {
@@ -90,7 +99,7 @@ func (ol *OpenClawLogin) SubmitUserInput(ctx context.Context, input map[string]s
 	switch ol.step {
 	case "", openClawLoginStateCredentials:
 	default:
-		return nil, errors.New("login process is in an invalid state")
+		return nil, errOpenClawInvalidState
 	}
 
 	normalizedURL, err := normalizeOpenClawLoginURL(input["url"])
@@ -128,7 +137,7 @@ func (ol *OpenClawLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) 
 		return nil, err
 	}
 	if ol.step != openClawLoginStatePairingWait || ol.pending == nil {
-		return nil, errors.New("login is not waiting for OpenClaw pairing")
+		return nil, errOpenClawNotWaiting
 	}
 	if ol.waitUntil.IsZero() {
 		ol.waitUntil = time.Now().Add(ol.waitDuration())
@@ -136,7 +145,7 @@ func (ol *OpenClawLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) 
 	remaining := time.Until(ol.waitUntil)
 	if remaining <= 0 {
 		ol.Cancel()
-		return nil, errors.New("timed out waiting for OpenClaw pairing approval")
+		return nil, errOpenClawTimedOut
 	}
 
 	deadline := time.NewTimer(remaining)
@@ -166,7 +175,7 @@ func (ol *OpenClawLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) 
 			return openClawPairingWaitStep(ol.pending.requestID, true), nil
 		case <-deadline.C:
 			ol.Cancel()
-			return nil, errors.New("timed out waiting for OpenClaw pairing approval")
+			return nil, errOpenClawTimedOut
 		case <-ctx.Done():
 			return openClawPairingWaitStep(ol.pending.requestID, true), nil
 		}
@@ -224,7 +233,7 @@ func openClawPairingWaitStep(requestID string, stillWaiting bool) *bridgev2.Logi
 
 func (ol *OpenClawLogin) completeLogin(pending *openClawPendingLogin, deviceToken string) (*bridgev2.LoginStep, error) {
 	if pending == nil {
-		return nil, errors.New("missing pending OpenClaw login details")
+		return nil, errOpenClawMissingLogin
 	}
 	persistCtx := ol.BackgroundProcessContext()
 	log := ol.User.Log.With().Str("component", "openclaw_login").Str("gateway_url", pending.gatewayURL).Logger()
@@ -245,12 +254,12 @@ func (ol *OpenClawLogin) completeLogin(pending *openClawPendingLogin, deviceToke
 			GatewayLabel:    pending.label,
 			DeviceToken:     deviceToken,
 		},
-		"io.ai-bridge.openclaw.complete",
+		"com.beeper.agentremote.openclaw.complete",
 		nil,
 	)
 	if err != nil {
 		log.Debug().Err(err).Str("login_id", string(loginID)).Msg("OpenClaw user login creation failed")
-		return nil, fmt.Errorf("failed to create login: %w", err)
+		return nil, agentremote.WrapLoginRespError(fmt.Errorf("failed to create login: %w", err), http.StatusInternalServerError, "OPENCLAW", "CREATE_LOGIN_FAILED")
 	}
 	log.Debug().Str("login_id", string(login.ID)).Msg("Created OpenClaw user login")
 	ol.pending = nil
@@ -305,7 +314,7 @@ func normalizeOpenClawAuthCredentials(input map[string]string) (string, string, 
 	token := strings.TrimSpace(input["token"])
 	password := strings.TrimSpace(input["password"])
 	if token != "" && password != "" {
-		return "", "", errors.New("provide either a gateway token or a gateway password, not both")
+		return "", "", errOpenClawMixedAuth
 	}
 	return token, password, nil
 }
@@ -369,24 +378,24 @@ func mapOpenClawLoginError(err error) error {
 			msg += " Approve the pending device with `openclaw devices list` and `openclaw devices approve <request-id>`"
 		}
 		msg += ", then try logging in again."
-		return bridgev2.WrapRespErr(errors.New(msg), mautrix.MForbidden)
+		return agentremote.NewLoginRespError(http.StatusForbidden, msg, "OPENCLAW", "PAIRING_REQUIRED")
 	case strings.HasPrefix(strings.ToUpper(strings.TrimSpace(rpcErr.DetailCode)), "AUTH_"):
-		return bridgev2.WrapRespErr(errors.New(rpcErr.Error()), mautrix.MForbidden)
+		return agentremote.NewLoginRespError(http.StatusForbidden, rpcErr.Error(), "OPENCLAW", "AUTH_FAILED")
 	default:
-		return rpcErr
+		return agentremote.WrapLoginRespError(rpcErr, http.StatusInternalServerError, "OPENCLAW", "GATEWAY_REQUEST_FAILED")
 	}
 }
 
 func normalizeOpenClawLoginURL(raw string) (string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
-		return "", fmt.Errorf("invalid url: %w", err)
+		return "", agentremote.WrapLoginRespError(fmt.Errorf("invalid url: %w", err), http.StatusBadRequest, "OPENCLAW", "INVALID_URL")
 	}
 	if parsed.Scheme == "" {
 		parsed.Scheme = "ws"
 	}
 	if parsed.Host == "" {
-		return "", errors.New("gateway url host is required")
+		return "", errOpenClawMissingHost
 	}
 	return parsed.String(), nil
 }

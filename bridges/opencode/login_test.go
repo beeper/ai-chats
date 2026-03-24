@@ -1,9 +1,13 @@
 package opencode
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"maunium.net/go/mautrix/bridgev2"
 )
 
 func TestGetLoginFlowsIncludesRemoteAndManaged(t *testing.T) {
@@ -48,5 +52,55 @@ func TestResolveManagedOpenCodeDirectoryExpandsBareTilde(t *testing.T) {
 	}
 	if got != home {
 		t.Fatalf("resolveManagedOpenCodeDirectory returned %q, want %q", got, home)
+	}
+}
+
+func TestOpenCodeLoginStartRejectsInvalidFlow(t *testing.T) {
+	login := &OpenCodeLogin{
+		User:      &bridgev2.User{},
+		Connector: &OpenCodeConnector{br: &bridgev2.Bridge{}},
+		FlowID:    "invalid",
+	}
+	_, err := login.Start(context.Background())
+	if !errors.Is(err, bridgev2.ErrInvalidLoginFlowID) {
+		t.Fatalf("expected invalid login flow error, got %v", err)
+	}
+}
+
+func TestBuildRemoteInstancesRejectsInvalidURL(t *testing.T) {
+	login := &OpenCodeLogin{}
+	_, _, _, err := login.buildRemoteInstances(map[string]string{"url": "://bad-url"})
+	var respErr bridgev2.RespError
+	if !errors.As(err, &respErr) {
+		t.Fatalf("expected RespError, got %T", err)
+	}
+	if respErr.ErrCode != "COM.BEEPER.AGENTREMOTE.OPENCODE.INVALID_URL" {
+		t.Fatalf("unexpected errcode: %q", respErr.ErrCode)
+	}
+}
+
+func TestResolveManagedOpenCodeDirectoryRejectsNonDirectory(t *testing.T) {
+	filePath := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(filePath, []byte("x"), 0o644); err != nil {
+		t.Fatalf("failed to create file: %v", err)
+	}
+	_, err := resolveManagedOpenCodeDirectory(filePath)
+	var respErr bridgev2.RespError
+	if !errors.As(err, &respErr) {
+		t.Fatalf("expected RespError, got %T", err)
+	}
+	if respErr.ErrCode != "COM.BEEPER.AGENTREMOTE.OPENCODE.DEFAULT_PATH_NOT_DIRECTORY" {
+		t.Fatalf("unexpected errcode: %q", respErr.ErrCode)
+	}
+}
+
+func TestResolveManagedOpenCodeDirectoryRejectsInaccessiblePath(t *testing.T) {
+	_, err := resolveManagedOpenCodeDirectory(filepath.Join(t.TempDir(), "missing"))
+	var respErr bridgev2.RespError
+	if !errors.As(err, &respErr) {
+		t.Fatalf("expected RespError, got %T", err)
+	}
+	if respErr.ErrCode != "COM.BEEPER.AGENTREMOTE.OPENCODE.DEFAULT_PATH_NOT_ACCESSIBLE" {
+		t.Fatalf("unexpected errcode: %q", respErr.ErrCode)
 	}
 }

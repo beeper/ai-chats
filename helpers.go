@@ -334,7 +334,7 @@ func NormalizeAIRoomTypeV2(roomType database.RoomType, aiKind string) string {
 	}
 }
 
-func ApplyAIBridgeInfo(content *event.BridgeEventContent, protocolID string, roomType database.RoomType, aiKind string) {
+func ApplyAgentRemoteBridgeInfo(content *event.BridgeEventContent, protocolID string, roomType database.RoomType, aiKind string) {
 	if content == nil {
 		return
 	}

@@ -137,6 +137,6 @@ func (c *ConnectorBase) FillPortalBridgeInfo(portal *bridgev2.Portal, content *e
 		return
 	}
 	if portal != nil && content != nil && c.spec.ProtocolID != "" {
-		ApplyAIBridgeInfo(content, c.spec.ProtocolID, portal.RoomType, c.spec.AIRoomKind)
+		ApplyAgentRemoteBridgeInfo(content, c.spec.ProtocolID, portal.RoomType, c.spec.AIRoomKind)
 	}
 }

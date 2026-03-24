@@ -28,8 +28,8 @@ func executeBeeperSendFeedback(ctx context.Context, args map[string]any) (string
 		feedbackType = strings.TrimSpace(t)
 	}
 
-	// Prepend ai-bridge tag
-	text = "ai-bridge: " + text
+	// Prepend agentremote tag
+	text = "agentremote: " + text
 
 	// Best-effort: include a stable login id (not PII) when available.
 	loginID := ""
@@ -46,7 +46,7 @@ func executeBeeperSendFeedback(ctx context.Context, args map[string]any) (string
 		"type":       feedbackType,
 		"app":        "beeper-a8c-desktop",
 		"os":         runtime.GOOS,
-		"user_agent": "ai-bridge/1.0",
+		"user_agent": "agentremote/1.0",
 	}
 	if loginID != "" {
 		fields["login_id"] = loginID
