@@ -42,6 +42,25 @@ normalize_version() {
 	esac
 }
 
+resolve_latest_version() {
+	api_url="https://api.github.com/repos/$OWNER/$REPO/releases/latest"
+
+	if need_cmd curl; then
+		response="$(curl -fsSL "$api_url")" || fail "no published GitHub release found for $OWNER/$REPO; create and publish a v* tag before using VERSION=latest"
+	elif need_cmd wget; then
+		response="$(wget -qO - "$api_url")" || fail "no published GitHub release found for $OWNER/$REPO; create and publish a v* tag before using VERSION=latest"
+	else
+		fail "curl or wget is required"
+	fi
+
+	version="$(printf '%s' "$response" | tr -d '\n' | sed -n 's/.*"tag_name":"\([^"]*\)".*/\1/p')"
+	if [ -z "$version" ]; then
+		fail "failed to resolve the latest release tag for $OWNER/$REPO"
+	fi
+
+	printf '%s\n' "$version"
+}
+
 asset_name() {
 	version_no_v="$1"
 	os="$2"
@@ -53,11 +72,29 @@ download() {
 	url="$1"
 	dest="$2"
 	if need_cmd curl; then
-		curl -fsSL "$url" -o "$dest"
+		if ! curl -fsSL "$url" -o "$dest"; then
+			case "$url" in
+				https://github.com/"$OWNER"/"$REPO"/releases/latest/download/*)
+					fail "no published GitHub release found for $OWNER/$REPO; create and publish a v* tag before using VERSION=latest"
+					;;
+				*)
+					fail "failed to download $url"
+					;;
+			esac
+		fi
 		return
 	fi
 	if need_cmd wget; then
-		wget -qO "$dest" "$url"
+		if ! wget -qO "$dest" "$url"; then
+			case "$url" in
+				https://github.com/"$OWNER"/"$REPO"/releases/latest/download/*)
+					fail "no published GitHub release found for $OWNER/$REPO; create and publish a v* tag before using VERSION=latest"
+					;;
+				*)
+					fail "failed to download $url"
+					;;
+			esac
+		fi
 		return
 	fi
 	fail "curl or wget is required"
@@ -148,7 +185,15 @@ path_hint() {
 main() {
 	os="$(detect_os)"
 	arch="$(detect_arch)"
-	version="$(normalize_version)"
+	requested_version="$(normalize_version)"
+	case "$requested_version" in
+		latest)
+			version="$(resolve_latest_version)"
+			;;
+		*)
+			version="$requested_version"
+			;;
+	esac
 	version_no_v="${version#v}"
 	bin_dir="$(pick_bindir)"
 	asset="$(asset_name "$version_no_v" "$os" "$arch")"
@@ -156,7 +201,7 @@ main() {
 	tmp_dir="$(mktemp -d)"
 	trap 'rm -rf "$tmp_dir"' EXIT INT TERM
 
-	case "$version" in
+	case "$requested_version" in
 		latest)
 			base_url="https://github.com/$OWNER/$REPO/releases/latest/download"
 			;;
