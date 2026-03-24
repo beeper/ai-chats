@@ -1,14 +1,15 @@
 # AgentRemote
 
-AgentRemote connects Beeper to self-hosted agent runtimes.
+AgentRemote securely brings agents to Beeper. You can connect agents like OpenClaw, OpenCode, Codex and more to Beeper with streaming, native interfaces for tool calls and approvals. You can run coding agents on your laptop and use your iPhone to manage them.
 
-It gives Matrix/Beeper chats a bridge layer for full history, live streaming, approvals, and remote access, while the actual runtime stays on your machine or network.
+AgentRemote can run on the same device as your agent and can work behind a firewall. It connects to Beeper Cloud directly and creates an E2EE tunnel. 
 
-This repository is still experimental.
+**This repository is still experimental. Expect everything to be broken for now.
+**
 
 ## Install
 
-Install the latest release with the one-liner:
+Install the latest release:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/beeper/agentremote/main/install.sh | sh
@@ -19,27 +20,21 @@ Other supported install paths:
 - Download a release archive from [GitHub Releases](https://github.com/beeper/agentremote/releases)
 - Install via Homebrew: `brew install --cask beeper/tap/agentremote`
 
-To pin a version or choose the install directory:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/beeper/agentremote/main/install.sh | VERSION=v0.1.0 BINDIR="$HOME/.local/bin" sh
-```
-
 The installed CLI stores profile state under `~/.config/agentremote/`.
 
 ## Included bridges
 
 | Bridge | What it connects |
 | --- | --- |
-| `ai` | The built-in Beeper AI chat surface in this repo |
-| [`codex`](./bridges/codex/README.md) | A local `codex app-server` runtime |
+| `ai` | Talk to any model on Beeper |
+| [`codex`](./bridges/codex/README.md) | A local `codex app-server` runtime, requires Codex to be installed |
 | [`opencode`](./bridges/opencode/README.md) | A remote OpenCode server or a bridge-managed local OpenCode process |
-| [`openclaw`](./bridges/openclaw/README.md) | A self-hosted OpenClaw gateway |
+| [`openclaw`](./bridges/openclaw/README.md) | Connect directly to OpenClaw Gateway, bring all your sessions to one app |
 
 ## Quick start
 
 ```bash
-agentremote login --env prod
+agentremote login
 agentremote list
 agentremote run codex
 ```
@@ -50,8 +45,6 @@ Useful commands:
 - `agentremote status` shows local and remote bridge state
 - `agentremote logs <instance> --follow` tails logs
 - `agentremote stop <instance>` stops a running instance
-
-For local development from a checkout, `./tools/bridges ...` remains a thin wrapper around `go run ./cmd/agentremote`.
 
 Instance state lives under `~/.config/agentremote/profiles/<profile>/instances/`.
 
