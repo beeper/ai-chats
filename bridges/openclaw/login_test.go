@@ -10,7 +10,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 )
 
-func TestOpenClawLoginStartUsesAuthModeSelect(t *testing.T) {
+func TestOpenClawLoginStartUsesSingleCredentialsStep(t *testing.T) {
 	login := &OpenClawLogin{
 		User:      &bridgev2.User{},
 		Connector: &OpenClawConnector{br: &bridgev2.Bridge{}},
@@ -20,101 +20,88 @@ func TestOpenClawLoginStartUsesAuthModeSelect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start returned error: %v", err)
 	}
-	if step.StepID != openClawLoginStepAuthMode {
+	if step.StepID != openClawLoginStepCredentials {
 		t.Fatalf("unexpected first step id: %q", step.StepID)
 	}
-	if step.UserInputParams == nil || len(step.UserInputParams.Fields) != 1 {
-		t.Fatalf("expected a single select field, got %#v", step.UserInputParams)
+	if step.UserInputParams == nil || len(step.UserInputParams.Fields) != 4 {
+		t.Fatalf("expected four credential fields, got %#v", step.UserInputParams)
 	}
-	field := step.UserInputParams.Fields[0]
-	if field.Type != bridgev2.LoginInputFieldTypeSelect {
-		t.Fatalf("expected select field, got %q", field.Type)
-	}
-	if len(field.Options) != 3 {
-		t.Fatalf("expected three auth mode options, got %#v", field.Options)
+	wantFieldIDs := []string{"url", "token", "password", "label"}
+	for i, field := range step.UserInputParams.Fields {
+		if field.ID != wantFieldIDs[i] {
+			t.Fatalf("unexpected field order: got %q want %q", field.ID, wantFieldIDs[i])
+		}
 	}
 }
 
-func TestOpenClawLoginSubmitUserInputReturnsModeSpecificFields(t *testing.T) {
-	cases := []struct {
-		name         string
-		inputMode    string
-		wantStepID   string
-		wantFieldIDs []string
-	}{
-		{
-			name:         "no auth",
-			inputMode:    "No auth",
-			wantStepID:   openClawLoginStepCredentialsNoAuth,
-			wantFieldIDs: []string{"url", "label"},
-		},
-		{
-			name:         "token",
-			inputMode:    "Token",
-			wantStepID:   openClawLoginStepCredentialsToken,
-			wantFieldIDs: []string{"url", "token", "label"},
-		},
-		{
-			name:         "password",
-			inputMode:    "Password",
-			wantStepID:   openClawLoginStepCredentialsPass,
-			wantFieldIDs: []string{"url", "password", "label"},
-		},
+func TestOpenClawLoginStartPrefillsDiscoveryValues(t *testing.T) {
+	login := &OpenClawLogin{
+		User:         &bridgev2.User{},
+		Connector:    &OpenClawConnector{br: &bridgev2.Bridge{}},
+		prefillURL:   "wss://gateway.local:443",
+		prefillLabel: "Studio",
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			login := &OpenClawLogin{
-				User:      &bridgev2.User{},
-				Connector: &OpenClawConnector{br: &bridgev2.Bridge{}},
-			}
-			if _, err := login.Start(context.Background()); err != nil {
-				t.Fatalf("Start returned error: %v", err)
-			}
-
-			step, err := login.SubmitUserInput(context.Background(), map[string]string{"auth_mode": tc.inputMode})
-			if err != nil {
-				t.Fatalf("SubmitUserInput returned error: %v", err)
-			}
-			if step.StepID != tc.wantStepID {
-				t.Fatalf("unexpected step id: got %q want %q", step.StepID, tc.wantStepID)
-			}
-			if step.UserInputParams == nil {
-				t.Fatalf("expected user input params for %s", tc.name)
-			}
-
-			gotFieldIDs := make([]string, 0, len(step.UserInputParams.Fields))
-			for _, field := range step.UserInputParams.Fields {
-				gotFieldIDs = append(gotFieldIDs, field.ID)
-			}
-			if len(gotFieldIDs) != len(tc.wantFieldIDs) {
-				t.Fatalf("unexpected field count: got %#v want %#v", gotFieldIDs, tc.wantFieldIDs)
-			}
-			for i := range gotFieldIDs {
-				if gotFieldIDs[i] != tc.wantFieldIDs[i] {
-					t.Fatalf("unexpected field ids: got %#v want %#v", gotFieldIDs, tc.wantFieldIDs)
-				}
-			}
-		})
+	step, err := login.Start(context.Background())
+	if err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+	fields := step.UserInputParams.Fields
+	if fields[0].DefaultValue != "wss://gateway.local:443" {
+		t.Fatalf("unexpected url default: %q", fields[0].DefaultValue)
+	}
+	if fields[3].DefaultValue != "Studio" {
+		t.Fatalf("unexpected label default: %q", fields[3].DefaultValue)
 	}
 }
 
 func TestNormalizeOpenClawAuthCredentials(t *testing.T) {
-	if _, _, err := normalizeOpenClawAuthCredentials("token", map[string]string{}); err == nil {
-		t.Fatal("expected token mode without token to fail")
-	}
-	if _, _, err := normalizeOpenClawAuthCredentials("password", map[string]string{}); err == nil {
-		t.Fatal("expected password mode without password to fail")
-	}
-	token, password, err := normalizeOpenClawAuthCredentials("none", map[string]string{
-		"token":    "abc",
-		"password": "secret",
-	})
+	token, password, err := normalizeOpenClawAuthCredentials(map[string]string{})
 	if err != nil {
-		t.Fatalf("none auth mode returned error: %v", err)
+		t.Fatalf("unexpected error for no-auth input: %v", err)
 	}
 	if token != "" || password != "" {
-		t.Fatalf("expected none auth mode to clear credentials, got token=%q password=%q", token, password)
+		t.Fatalf("expected empty credentials, got token=%q password=%q", token, password)
+	}
+
+	token, password, err = normalizeOpenClawAuthCredentials(map[string]string{"token": "abc"})
+	if err != nil {
+		t.Fatalf("unexpected error for token input: %v", err)
+	}
+	if token != "abc" || password != "" {
+		t.Fatalf("unexpected token credentials: token=%q password=%q", token, password)
+	}
+
+	token, password, err = normalizeOpenClawAuthCredentials(map[string]string{"password": "secret"})
+	if err != nil {
+		t.Fatalf("unexpected error for password input: %v", err)
+	}
+	if token != "" || password != "secret" {
+		t.Fatalf("unexpected password credentials: token=%q password=%q", token, password)
+	}
+
+	_, _, err = normalizeOpenClawAuthCredentials(map[string]string{"token": "abc", "password": "secret"})
+	if err == nil {
+		t.Fatal("expected token+password input to fail")
+	}
+}
+
+func TestOpenClawLoginSubmitUserInputRejectsTokenAndPassword(t *testing.T) {
+	login := &OpenClawLogin{
+		User:      &bridgev2.User{},
+		Connector: &OpenClawConnector{br: &bridgev2.Bridge{}},
+	}
+	if _, err := login.Start(context.Background()); err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+
+	_, err := login.SubmitUserInput(context.Background(), map[string]string{
+		"url":      "ws://127.0.0.1:18789",
+		"token":    "shared-token",
+		"password": "shared-password",
+	})
+	if err == nil {
+		t.Fatal("expected SubmitUserInput to reject token+password")
 	}
 }
 
@@ -134,16 +121,13 @@ func TestOpenClawLoginSubmitUserInputPairingRequiredReturnsWaitStep(t *testing.T
 	if _, err := login.Start(context.Background()); err != nil {
 		t.Fatalf("Start returned error: %v", err)
 	}
-	if _, err := login.SubmitUserInput(context.Background(), map[string]string{"auth_mode": "Token"}); err != nil {
-		t.Fatalf("auth mode SubmitUserInput returned error: %v", err)
-	}
 
 	step, err := login.SubmitUserInput(context.Background(), map[string]string{
 		"url":   "ws://127.0.0.1:18789",
 		"token": "shared-token",
 	})
 	if err != nil {
-		t.Fatalf("credentials SubmitUserInput returned error: %v", err)
+		t.Fatalf("SubmitUserInput returned error: %v", err)
 	}
 	if step.Type != bridgev2.LoginStepTypeDisplayAndWait {
 		t.Fatalf("unexpected step type: %q", step.Type)
@@ -172,7 +156,6 @@ func TestOpenClawLoginWaitReturnsStillWaitingStepOnContextDone(t *testing.T) {
 		step:      openClawLoginStatePairingWait,
 		pending: &openClawPendingLogin{
 			gatewayURL: "ws://127.0.0.1:18789",
-			authMode:   "token",
 			token:      "shared-token",
 			requestID:  "req-456",
 		},
@@ -203,7 +186,6 @@ func TestOpenClawLoginWaitMapsNonPairingErrors(t *testing.T) {
 		waitFor:    time.Second,
 		pending: &openClawPendingLogin{
 			gatewayURL: "ws://127.0.0.1:18789",
-			authMode:   "token",
 			token:      "shared-token",
 			requestID:  "req-789",
 		},

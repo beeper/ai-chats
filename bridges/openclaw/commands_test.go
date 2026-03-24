@@ -1,77 +1,56 @@
 package openclaw
 
 import (
+	"context"
 	"testing"
 
+	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 )
 
-func TestParseOpenClawControlCommand(t *testing.T) {
-	tests := []struct {
-		name    string
-		body    string
-		want    *openClawControlCommand
-		wantOK  bool
-		msgType event.MessageType
-		evtType event.Type
-	}{
-		{
-			name:   "reset",
-			body:   "/reset",
-			want:   &openClawControlCommand{Action: "reset"},
-			wantOK: true,
-		},
-		{
-			name:   "rename",
-			body:   "/rename Support Inbox",
-			want:   &openClawControlCommand{Action: "label", Value: "Support Inbox"},
-			wantOK: true,
-		},
-		{
-			name:   "clear label",
-			body:   "/label clear",
-			want:   &openClawControlCommand{Action: "label", Clear: true},
-			wantOK: true,
-		},
-		{
-			name:   "thinking value",
-			body:   "/thinking high",
-			want:   &openClawControlCommand{Action: "thinking", Value: "high"},
-			wantOK: true,
-		},
-		{
-			name:   "reasoning clear",
-			body:   "/reasoning default",
-			want:   &openClawControlCommand{Action: "reasoning", Clear: true},
-			wantOK: true,
-		},
-		{
-			name:   "non command",
-			body:   "hello",
-			wantOK: false,
-		},
-		{
-			name:    "media ignored",
-			body:    "/reset",
-			msgType: event.MsgImage,
-			wantOK:  false,
+func TestBuildOutboundPayloadPreservesSlashCommands(t *testing.T) {
+	mgr := newOpenClawManager(&OpenClawClient{})
+
+	msg := &bridgev2.MatrixMessage{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+			Event:   &event.Event{Type: event.EventMessage},
+			Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "/model openai/gpt-5"},
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, ok := parseOpenClawControlCommand(tt.body, tt.msgType, tt.evtType)
-			if ok != tt.wantOK {
-				t.Fatalf("unexpected ok: got %v want %v", ok, tt.wantOK)
-			}
-			if !tt.wantOK {
-				return
-			}
-			if got == nil {
-				t.Fatal("expected command")
-			}
-			if *got != *tt.want {
-				t.Fatalf("unexpected command: got %+v want %+v", *got, *tt.want)
-			}
-		})
+	attachments, text, err := mgr.buildOutboundPayload(context.Background(), msg)
+	if err != nil {
+		t.Fatalf("buildOutboundPayload returned error: %v", err)
+	}
+	if len(attachments) != 0 {
+		t.Fatalf("expected no attachments, got %#v", attachments)
+	}
+	if text != "/model openai/gpt-5" {
+		t.Fatalf("expected slash command to pass through unchanged, got %q", text)
+	}
+}
+
+func TestBuildOutboundPayloadPreservesStopCommand(t *testing.T) {
+	mgr := newOpenClawManager(&OpenClawClient{})
+
+	msg := &bridgev2.MatrixMessage{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+			Event:   &event.Event{Type: event.EventMessage},
+			Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "/stop"},
+		},
+	}
+	_, text, err := mgr.buildOutboundPayload(context.Background(), msg)
+	if err != nil {
+		t.Fatalf("buildOutboundPayload returned error: %v", err)
+	}
+	if text != "/stop" {
+		t.Fatalf("expected stop command to pass through unchanged, got %q", text)
+	}
+}
+
+func TestOpenClawPreferredGatewayMethodsDoNotRequireSessionPatch(t *testing.T) {
+	for _, method := range openClawPreferredGatewayMethods {
+		if method == "sessions.patch" {
+			t.Fatal("did not expect sessions.patch in preferred gateway methods")
+		}
 	}
 }

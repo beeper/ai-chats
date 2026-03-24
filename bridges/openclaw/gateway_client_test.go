@@ -6,9 +6,10 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -44,8 +45,17 @@ func TestBuildConnectParamsUsesOperatorClientShape(t *testing.T) {
 	if got := clientParams["mode"]; got != openClawGatewayClientMode {
 		t.Fatalf("unexpected client mode: %v", got)
 	}
-	if got := clientParams["platform"]; got != runtime.GOOS {
+	if got := clientParams["displayName"]; got != openClawGatewayDisplayName {
+		t.Fatalf("unexpected client display name: %v", got)
+	}
+	if got := clientParams["platform"]; got != resolveGatewayClientPlatform() {
 		t.Fatalf("unexpected client platform: %v", got)
+	}
+	if got := clientParams["deviceFamily"]; got != resolveGatewayClientDeviceFamily() {
+		t.Fatalf("unexpected client device family: %v", got)
+	}
+	if got, ok := clientParams["instanceId"].(string); !ok || strings.TrimSpace(got) == "" {
+		t.Fatalf("expected non-empty instance id, got %#v", clientParams["instanceId"])
 	}
 	if _, ok := clientParams["commands"]; ok {
 		t.Fatalf("commands should not be nested in client params: %#v", clientParams)
@@ -66,6 +76,61 @@ func TestBuildConnectParamsUsesOperatorClientShape(t *testing.T) {
 	}
 	if _, ok := params["permissions"].(map[string]bool); !ok {
 		t.Fatalf("expected top-level permissions map, got %#v", params["permissions"])
+	}
+	if got, ok := params["scopes"].([]string); !ok || len(got) != 3 {
+		t.Fatalf("expected least-privilege scopes, got %#v", params["scopes"])
+	}
+	if got := params["userAgent"]; got != "Beeper bridge/"+resolveGatewayClientVersion() {
+		t.Fatalf("unexpected user agent: %#v", got)
+	}
+}
+
+func TestBuildConnectParamsSignsVisibleClientMetadata(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey returned error: %v", err)
+	}
+
+	client := newGatewayWSClient(gatewayConnectConfig{
+		URL:   "ws://127.0.0.1:18789",
+		Token: "shared-token",
+	})
+	params, err := client.buildConnectParams(&gatewayDeviceIdentity{
+		Version:    1,
+		DeviceID:   "device-id",
+		PublicKey:  base64.StdEncoding.EncodeToString(pub),
+		PrivateKey: base64.StdEncoding.EncodeToString(priv),
+	}, "nonce")
+	if err != nil {
+		t.Fatalf("buildConnectParams returned error: %v", err)
+	}
+
+	clientParams := params["client"].(map[string]any)
+	deviceParams, ok := params["device"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected device params map, got %#v", params["device"])
+	}
+
+	sigEncoded, _ := deviceParams["signature"].(string)
+	sig, err := base64.RawURLEncoding.DecodeString(sigEncoded)
+	if err != nil {
+		t.Fatalf("decode signature: %v", err)
+	}
+	payload := strings.Join([]string{
+		"v3",
+		"device-id",
+		clientParams["id"].(string),
+		clientParams["mode"].(string),
+		"operator",
+		strings.Join(params["scopes"].([]string), ","),
+		fmt.Sprintf("%d", deviceParams["signedAt"].(int64)),
+		"shared-token",
+		deviceParams["nonce"].(string),
+		strings.ToLower(clientParams["platform"].(string)),
+		strings.ToLower(clientParams["deviceFamily"].(string)),
+	}, "|")
+	if !ed25519.Verify(pub, []byte(payload), sig) {
+		t.Fatal("expected device signature to cover visible client metadata")
 	}
 }
 
@@ -188,6 +253,53 @@ func TestSessionHistoryFallsBackToItemsArray(t *testing.T) {
 	}
 }
 
+func TestSessionHistoryFallsBackToChatHistoryRPC(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("<html>control-ui</html>"))
+	}))
+	defer server.Close()
+
+	client := newGatewayWSClient(gatewayConnectConfig{URL: server.URL})
+	client.hello = &gatewayHello{
+		Features: gatewayHelloFeatures{Methods: []string{"chat.history"}},
+	}
+	client.requestFn = func(ctx context.Context, method string, params map[string]any, out any) error {
+		if method != "chat.history" {
+			t.Fatalf("unexpected method %q", method)
+		}
+		resp, ok := out.(*gatewaySessionHistoryResponse)
+		if !ok {
+			t.Fatalf("unexpected response type %T", out)
+		}
+		*resp = gatewaySessionHistoryResponse{
+			Messages: []map[string]any{
+				{"role": "assistant", "text": "one", "__openclaw": map[string]any{"seq": 1}},
+				{"role": "assistant", "text": "two", "__openclaw": map[string]any{"seq": 2}},
+				{"role": "assistant", "text": "three", "__openclaw": map[string]any{"seq": 3}},
+			},
+		}
+		return nil
+	}
+
+	history, err := client.SessionHistory(context.Background(), "agent:main:test", 2, "4")
+	if err != nil {
+		t.Fatalf("SessionHistory returned error: %v", err)
+	}
+	if history == nil || len(history.Messages) != 2 {
+		t.Fatalf("expected paginated rpc fallback history, got %#v", history)
+	}
+	if got := history.Messages[0]["text"]; got != "two" {
+		t.Fatalf("unexpected first fallback message: %v", got)
+	}
+	if got := history.Messages[1]["text"]; got != "three" {
+		t.Fatalf("unexpected second fallback message: %v", got)
+	}
+	if !history.HasMore || history.NextCursor != "2" {
+		t.Fatalf("expected local pagination markers, got %#v", history)
+	}
+}
+
 func TestProbeSessionHistoryAcceptsSemanticNotFound(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -221,5 +333,69 @@ func TestProbeSessionHistoryRejectsGeneric404(t *testing.T) {
 	}
 	if report.HistoryEndpointCode != http.StatusNotFound {
 		t.Fatalf("unexpected history probe status: %d", report.HistoryEndpointCode)
+	}
+}
+
+func TestProbeSessionHistoryAcceptsRPCFallback(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("<html>control-ui</html>"))
+	}))
+	defer server.Close()
+
+	client := newGatewayWSClient(gatewayConnectConfig{URL: server.URL})
+	client.hello = &gatewayHello{
+		Features: gatewayHelloFeatures{Methods: []string{"chat.history"}},
+	}
+	report := client.ProbeSessionHistory(context.Background())
+	if !report.HistoryEndpointOK {
+		t.Fatalf("expected rpc fallback probe to be accepted, got %#v", report)
+	}
+	if !strings.Contains(report.HistoryEndpointError, "invalid character '<'") {
+		t.Fatalf("expected original http failure to be preserved, got %#v", report)
+	}
+}
+
+func TestRequestUsesOverrideWhenProvided(t *testing.T) {
+	client := newGatewayWSClient(gatewayConnectConfig{})
+	client.requestFn = func(ctx context.Context, method string, params map[string]any, out any) error {
+		if method != "models.list" {
+			t.Fatalf("unexpected method %q", method)
+		}
+		resp, ok := out.(*gatewayModelsListResponse)
+		if !ok {
+			t.Fatalf("unexpected out type %T", out)
+		}
+		resp.Models = []gatewayModelChoice{{ID: "model-1"}}
+		return nil
+	}
+
+	var resp gatewayModelsListResponse
+	if err := client.Request(context.Background(), "models.list", nil, &resp); err != nil {
+		t.Fatalf("Request returned error: %v", err)
+	}
+	if len(resp.Models) != 1 || resp.Models[0].ID != "model-1" {
+		t.Fatalf("unexpected request override response: %#v", resp)
+	}
+}
+
+func TestSessionHistoryReturnsCombinedFallbackErrors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("<html>control-ui</html>"))
+	}))
+	defer server.Close()
+
+	client := newGatewayWSClient(gatewayConnectConfig{URL: server.URL})
+	client.hello = &gatewayHello{
+		Features: gatewayHelloFeatures{Methods: []string{"chat.history"}},
+	}
+	client.requestFn = func(ctx context.Context, method string, params map[string]any, out any) error {
+		return errors.New("rpc unavailable")
+	}
+
+	_, err := client.SessionHistory(context.Background(), "agent:main:test", 10, "")
+	if err == nil || !strings.Contains(err.Error(), "chat.history fallback failed") {
+		t.Fatalf("expected combined fallback error, got %v", err)
 	}
 }

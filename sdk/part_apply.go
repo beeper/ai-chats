@@ -53,12 +53,13 @@ func ApplyStreamPart(turn *Turn, part map[string]any, opts PartApplyOptions) boo
 			ProviderExecuted: app.b("providerExecuted"),
 		})
 	case "tool-input-delta":
-		app.tools.InputDelta(app.ctx, app.s("toolCallId"), "", app.s("inputTextDelta"), app.b("providerExecuted"))
+		app.tools.InputDelta(app.ctx, app.s("toolCallId"), "", app.raw("inputTextDelta"), app.b("providerExecuted"))
 	case "tool-input-available":
 		app.tools.Input(app.ctx, app.s("toolCallId"), app.s("toolName"), app.part["input"], app.b("providerExecuted"))
 	case "tool-output-available":
 		app.tools.Output(app.ctx, app.s("toolCallId"), app.part["output"], ToolOutputOptions{
 			ProviderExecuted: app.b("providerExecuted"),
+			Streaming:        app.b("preliminary"),
 		})
 	case "tool-output-error":
 		app.tools.OutputError(app.ctx, app.s("toolCallId"), app.s("errorText"), app.b("providerExecuted"))
@@ -136,6 +137,10 @@ func (a partApplicator) s(key string) string {
 	return strings.TrimSpace(stringValue(a.part[key]))
 }
 
+func (a partApplicator) raw(key string) string {
+	return stringValue(a.part[key])
+}
+
 func (a partApplicator) b(key string) bool {
 	value, _ := a.part[key].(bool)
 	return value
@@ -157,7 +162,7 @@ func (a partApplicator) messageMetadata() {
 }
 
 func (a partApplicator) textDelta() {
-	if delta := a.s("delta"); delta != "" {
+	if delta := a.raw("delta"); delta != "" {
 		a.writer.TextDelta(a.ctx, delta)
 		return
 	}
@@ -165,7 +170,7 @@ func (a partApplicator) textDelta() {
 }
 
 func (a partApplicator) reasoningDelta() {
-	if delta := a.s("delta"); delta != "" {
+	if delta := a.raw("delta"); delta != "" {
 		a.writer.ReasoningDelta(a.ctx, delta)
 		return
 	}

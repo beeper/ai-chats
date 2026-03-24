@@ -1,256 +1,85 @@
 # AgentRemote
 
-AgentRemote brings all your agents into one app.
+AgentRemote connects Beeper to self-hosted agent runtimes.
 
-Beeper becomes the universal remote for agents.
+It gives Matrix/Beeper chats a bridge layer for full history, live streaming, approvals, and remote access, while the actual runtime stays on your machine or network.
 
-Connect agent runtimes to Beeper with full history, live streaming, tool approvals, and encrypted delivery.
+This repository is still experimental.
 
-Run the bridge next to your agent, then talk to it from Beeper on your phone or desktop.
+## Install
 
-## Why Use It
+Install the latest release with the one-liner:
 
-- Keep agents on your own machine, server, or private network
-- Use Beeper instead of building a separate web UI
-- Stream responses and approve tool calls in the same chat
-- Reach your agents from anywhere Beeper runs
-
-## Open Source Focus
-
-This repository is centered on the self-hosted path.
-
-That means:
-
-- local developer machines
-- homelabs
-- office servers
-- runtimes behind a firewall
-- private deployments that still want a polished remote interface
-
-There is a broader product direction around richer AI chats and more opinionated agent experiences. Open source here is focused on making the bridge layer for private deployments easy to run and hard to break.
-
-## AgentRemote SDK
-
-If you want to build your own bridge, start with the SDK in [`sdk/`](./sdk).
-
-The SDK handles the Matrix and Beeper side of the bridge for you:
-
-- bridge bootstrapping and registration
-- room and conversation wrappers
-- streaming turn lifecycle
-- tool approval UI
-- agent identity and capability metadata
-
-The main entrypoint is `sdk.New(sdk.Config{...})`.
-
-In practice, most custom bridges only need three things:
-
-- an `sdk.Agent` that represents the remote assistant in Beeper
-- an `OnConnect` hook that builds whatever runtime client you need
-- an `OnMessage` hook that turns an incoming Beeper message into model output
-
-### Minimal SDK Shape
-
-This is the smallest useful shape of a bridge:
-
-```go
-bridge := sdk.New(sdk.Config{
-	Name: "my-bridge",
-	Agent: &sdk.Agent{
-		ID:           "my-agent",
-		Name:         "My Agent",
-		Description:  "A custom agent exposed through Beeper",
-		ModelKey:     "openai/gpt-5-mini",
-		Capabilities: sdk.BaseAgentCapabilities(),
-	},
-	OnConnect: func(ctx context.Context, login *sdk.LoginInfo) (any, error) {
-		return newRuntimeClient(), nil
-	},
-	OnMessage: func(session any, conv *sdk.Conversation, msg *sdk.Message, turn *sdk.Turn) error {
-		turn.WriteText("hello from my bridge")
-		turn.End("stop")
-		return nil
-	},
-})
-
-bridge.Run()
+```bash
+curl -fsSL https://raw.githubusercontent.com/beeper/agentremote/main/install.sh | sh
 ```
 
-`turn` is the important piece here. You can write text and reasoning deltas into it, request approvals, attach sources/files, and then finalize the message with `turn.End(...)` or `turn.EndWithError(...)`.
+Other supported install paths:
 
-### Simple OpenAI SDK Bridge
+- Download a release archive from [GitHub Releases](https://github.com/beeper/agentremote/releases)
+- Install via Homebrew: `brew install --cask beeper/tap/agentremote`
 
-The example below is intentionally minimal. It uses the Go OpenAI SDK directly and lets AgentRemote handle the chat room, sender identity, and message lifecycle.
+To pin a version or choose the install directory:
 
-```go
-package main
-
-import (
-	"context"
-	"fmt"
-	"log"
-	"os"
-
-	"github.com/beeper/agentremote/sdk"
-	"github.com/openai/openai-go/v3"
-	"github.com/openai/openai-go/v3/option"
-)
-
-func main() {
-	if os.Getenv("OPENAI_API_KEY") == "" {
-		log.Fatal("OPENAI_API_KEY is required")
-	}
-
-	bridge := sdk.New(sdk.Config{
-		Name:        "openai-simple",
-		Description: "A minimal OpenAI-backed AgentRemote bridge",
-		Agent: &sdk.Agent{
-			ID:           "openai-simple-agent",
-			Name:         "OpenAI Simple",
-			Description:  "Minimal bridge example using openai-go",
-			ModelKey:     "openai/gpt-4o-mini",
-			Capabilities: sdk.BaseAgentCapabilities(),
-		},
-		OnConnect: func(ctx context.Context, login *sdk.LoginInfo) (any, error) {
-			return openai.NewClient(option.WithAPIKey(os.Getenv("OPENAI_API_KEY"))), nil
-		},
-		OnMessage: func(session any, conv *sdk.Conversation, msg *sdk.Message, turn *sdk.Turn) error {
-			client := session.(*openai.Client)
-
-			resp, err := client.Chat.Completions.New(turn.Context(), openai.ChatCompletionNewParams{
-				Model: "gpt-4o-mini",
-				Messages: []openai.ChatCompletionMessageParamUnion{
-					openai.SystemMessage("You are a helpful assistant replying through Beeper."),
-					openai.UserMessage(msg.Text),
-				},
-			})
-			if err != nil {
-				turn.EndWithError(err.Error())
-				return err
-			}
-			if len(resp.Choices) == 0 {
-				err := fmt.Errorf("openai returned no choices")
-				turn.EndWithError(err.Error())
-				return err
-			}
-
-			turn.WriteText(resp.Choices[0].Message.Content)
-			turn.End(resp.Choices[0].FinishReason)
-			return nil
-		},
-	})
-
-	bridge.Run()
-}
+```bash
+curl -fsSL https://raw.githubusercontent.com/beeper/agentremote/main/install.sh | VERSION=v0.1.0 BINDIR="$HOME/.local/bin" sh
 ```
 
-Useful details from that example:
+The installed CLI stores profile state under `~/.config/agentremote/`.
 
-- `OnConnect` returns the session object that will be passed back into every `OnMessage` call.
-- `sdk.Message` already gives you the normalized incoming Beeper message text.
-- `sdk.Turn` is where you stream or finalize the assistant reply.
-- If you want live token streaming later, switch the OpenAI call to `client.Chat.Completions.NewStreaming(...)` or `client.Responses.NewStreaming(...)` and forward deltas with `turn.WriteText(...)`.
+## Included bridges
 
-## Included Bridges
-
-Each bridge has its own README with setup details and scope:
-
-| Bridge | Purpose |
+| Bridge | What it connects |
 | --- | --- |
-| `ai` | AI Chats bridge surface used by the project |
-| [`codex`](./bridges/codex/README.md) | Connect the Codex CLI app-server to Beeper |
-| [`openclaw`](./bridges/openclaw/README.md) | Connect a self-hosted OpenClaw gateway to Beeper |
-| [`opencode`](./bridges/opencode/README.md) | Connect a self-hosted OpenCode server to Beeper |
+| `ai` | The built-in Beeper AI chat surface in this repo |
+| [`codex`](./bridges/codex/README.md) | A local `codex app-server` runtime |
+| [`opencode`](./bridges/opencode/README.md) | A remote OpenCode server or a bridge-managed local OpenCode process |
+| [`openclaw`](./bridges/openclaw/README.md) | A self-hosted OpenClaw gateway |
 
-## Quick Start
-
-Log into Beeper and start a bridge:
+## Quick start
 
 ```bash
-./tools/bridges login --env prod
-./tools/bridges run codex
+agentremote login --env prod
+agentremote list
+agentremote run codex
 ```
 
-Then open Beeper and use the connected bridge from chat.
+Useful commands:
 
-For a local Beeper environment:
+- `agentremote up <bridge>` starts a bridge in the background
+- `agentremote status` shows local and remote bridge state
+- `agentremote logs <instance> --follow` tails logs
+- `agentremote stop <instance>` stops a running instance
+
+For local development from a checkout, `./tools/bridges ...` remains a thin wrapper around `go run ./cmd/agentremote`.
+
+Instance state lives under `~/.config/agentremote/profiles/<profile>/instances/`.
+
+## Docker
+
+The CLI is also published as a multi-arch Linux container image:
 
 ```bash
-./tools/bridges login --env local
-./tools/bridges whoami
-./tools/bridges run codex
+docker run --rm -it \
+  -v "$(pwd):/data" \
+  ghcr.io/beeper/agentremote:latest help
 ```
 
-Configured instances live under `~/.config/agentremote/profiles/<profile>/instances/`:
+The container sets `HOME=/data`, so mounted state is persisted under `/data/.config/agentremote/`. See [`docker/agentremote/README.md`](./docker/agentremote/README.md) for usage details.
 
-- `ai`
-- `codex`
-- `openclaw`
-- `opencode`
+## SDK
 
-Run any of them directly:
+Custom bridges in this repo are built on [`sdk/`](./sdk), using:
 
-```bash
-./tools/bridges run ai
-./tools/bridges run codex
-./tools/bridges run openclaw
-./tools/bridges run opencode
-```
+- `bridgesdk.NewStandardConnectorConfig(...)`
+- `bridgesdk.NewConnectorBase(...)`
+- `sdk.Config`, `sdk.Agent`, `sdk.Conversation`, and `sdk.Turn`
 
-Or use the wrapper:
-
-```bash
-./run.sh ai
-./run.sh codex
-./run.sh openclaw
-./run.sh opencode
-```
-
-## Bridge Manager
-
-Common commands:
-
-```bash
-./tools/bridges list
-./tools/bridges status
-./tools/bridges logs codex --follow
-./tools/bridges restart codex
-./tools/bridges down codex
-./tools/bridges whoami
-```
-
-Reset all local bridge state and registrations:
-
-```bash
-./tools/bridges delete ai
-./tools/bridges delete codex
-./tools/bridges delete openclaw
-./tools/bridges delete opencode
-./tools/bridges logout
-```
+See [`bridges/dummybridge`](./bridges/dummybridge) for a minimal bridge example.
 
 ## Docs
 
-- [`docs/bridge-orchestrator.md`](./docs/bridge-orchestrator.md): local bridge management workflow
-- [`docs/matrix-ai-matrix-spec-v1.md`](./docs/matrix-ai-matrix-spec-v1.md): Matrix transport profile for streaming, approvals, state, and AI payloads
-- [`bridges/codex/README.md`](./bridges/codex/README.md): Codex bridge details
-- [`bridges/openclaw/README.md`](./bridges/openclaw/README.md): OpenClaw bridge details
-- [`bridges/opencode/README.md`](./bridges/opencode/README.md): OpenCode bridge details
-
-## Status
-
-Experimental and evolving quickly. The transport and bridge surfaces are real, but the project is still early.
-
-## Build
-
-Requires `libolm` for encryption support.
-
-```bash
-./build.sh
-```
-
-Or with Docker:
-
-```bash
-docker build -t agentremote .
-```
+- CLI reference: [`docs/bridge-orchestrator.md`](./docs/bridge-orchestrator.md)
+- Matrix transport surface: [`docs/matrix-ai-matrix-spec-v1.md`](./docs/matrix-ai-matrix-spec-v1.md)
+- Streaming note: [`docs/msc/com.beeper.mscXXXX-streaming.md`](./docs/msc/com.beeper.mscXXXX-streaming.md)
+- Command profile: [`docs/msc/com.beeper.mscXXXX-commands.md`](./docs/msc/com.beeper.mscXXXX-commands.md)

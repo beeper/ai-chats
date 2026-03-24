@@ -14,7 +14,6 @@ import (
 type UserLoginMetadata struct {
 	Provider        string `json:"provider,omitempty"`
 	GatewayURL      string `json:"gateway_url,omitempty"`
-	AuthMode        string `json:"auth_mode,omitempty"`
 	GatewayToken    string `json:"gateway_token,omitempty"`
 	GatewayPassword string `json:"gateway_password,omitempty"`
 	GatewayLabel    string `json:"gateway_label,omitempty"`

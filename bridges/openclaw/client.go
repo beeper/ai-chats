@@ -757,10 +757,6 @@ func (oc *OpenClawClient) sendNoticeViaPortal(ctx context.Context, portal *bridg
 	))
 }
 
-func (oc *OpenClawClient) sendSystemNoticeViaPortal(ctx context.Context, portal *bridgev2.Portal, msg string) {
-	oc.sendNoticeViaPortal(ctx, portal, msg, oc.senderForAgent("gateway", false))
-}
-
 func (oc *OpenClawClient) DownloadAndEncodeMedia(ctx context.Context, mediaURL string, file *event.EncryptedFileInfo, maxMB int) (string, string, error) {
 	return agentremote.DownloadAndEncodeMedia(ctx, oc.UserLogin, mediaURL, file, maxMB)
 }

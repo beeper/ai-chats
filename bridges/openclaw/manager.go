@@ -128,7 +128,10 @@ func newOpenClawManager(client *OpenClawClient) *openClawManager {
 var (
 	openClawRequiredGatewayMethods = []string{
 		"sessions.list",
-		"sessions.patch",
+		"chat.send",
+	}
+	openClawPreferredGatewayMethods = []string{
+		"sessions.list",
 		"sessions.resolve",
 		"chat.send",
 		"chat.abort",
@@ -140,6 +143,9 @@ var (
 		"agent.wait",
 	}
 	openClawRequiredGatewayEvents = []string{
+		"chat",
+	}
+	openClawPreferredGatewayEvents = []string{
 		"chat",
 		"agent",
 		"exec.approval.requested",
@@ -201,6 +207,16 @@ func (m *openClawManager) Start(ctx context.Context) (bool, error) {
 	m.mu.Unlock()
 	if compatErr != nil {
 		return false, compatErr
+	}
+	if report != nil && (!report.HistoryEndpointOK || len(report.MissingMethods) > 0 || len(report.MissingEvents) > 0) {
+		m.client.Log().Warn().
+			Str("server_version", report.ServerVersion).
+			Strs("missing_methods", report.MissingMethods).
+			Strs("missing_events", report.MissingEvents).
+			Bool("history_endpoint_ok", report.HistoryEndpointOK).
+			Int("history_endpoint_code", report.HistoryEndpointCode).
+			Str("history_endpoint_error", report.HistoryEndpointError).
+			Msg("OpenClaw gateway connected with compatibility fallbacks")
 	}
 	if err = m.syncSessions(ctx); err != nil {
 		return false, err
@@ -287,8 +303,10 @@ func (m *openClawManager) validateGatewayCompatibility(ctx context.Context, gate
 	if version := strings.TrimSpace(stringValue(hello.Server["version"])); version != "" {
 		report.ServerVersion = version
 	}
-	report.MissingMethods = findMissingGatewayFeatures(hello.Features.Methods, openClawRequiredGatewayMethods)
-	report.MissingEvents = findMissingGatewayFeatures(hello.Features.Events, openClawRequiredGatewayEvents)
+	report.RequiredMissingMethods = findMissingGatewayFeatures(hello.Features.Methods, openClawRequiredGatewayMethods)
+	report.RequiredMissingEvents = findMissingGatewayFeatures(hello.Features.Events, openClawRequiredGatewayEvents)
+	report.MissingMethods = findMissingGatewayFeatures(hello.Features.Methods, openClawPreferredGatewayMethods)
+	report.MissingEvents = findMissingGatewayFeatures(hello.Features.Events, openClawPreferredGatewayEvents)
 	historyProbe := gateway.ProbeSessionHistory(ctx)
 	report.HistoryEndpointOK = historyProbe.HistoryEndpointOK
 	report.HistoryEndpointCode = historyProbe.HistoryEndpointCode
@@ -547,17 +565,6 @@ func (m *openClawManager) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 		return nil, err
 	}
 	meta := portalMeta(msg.Portal)
-	body := strings.TrimSpace(msg.Content.Body)
-	if isOpenClawAbortCommand(body, msg.Content.MsgType, msg.Event.Type) {
-		if err := gateway.AbortRun(ctx, meta.OpenClawSessionKey, ""); err != nil {
-			return nil, err
-		}
-		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
-	}
-	if handled, err := m.handleControlCommand(ctx, msg, gateway, body); handled || err != nil {
-		return &bridgev2.MatrixMessageResponse{Pending: false}, err
-	}
-
 	attachments, text, err := m.buildOutboundPayload(ctx, msg)
 	if err != nil {
 		return nil, err
@@ -640,127 +647,6 @@ func (m *openClawManager) buildOutboundPayload(ctx context.Context, msg *bridgev
 	default:
 		return nil, "", fmt.Errorf("unsupported message type %s", msgType)
 	}
-}
-
-func isOpenClawAbortCommand(body string, msgType event.MessageType, evtType event.Type) bool {
-	if evtType == event.EventSticker || msgType == event.MsgImage || msgType == event.MsgVideo || msgType == event.MsgAudio || msgType == event.MsgFile {
-		return false
-	}
-	body = strings.ToLower(strings.TrimSpace(body))
-	switch body {
-	case "stop", "/stop", "stop run", "stop action", "please stop", "stop openclaw":
-		return true
-	default:
-		return false
-	}
-}
-
-type openClawControlCommand struct {
-	Action string
-	Value  string
-	Clear  bool
-}
-
-func parseOpenClawControlCommand(body string, msgType event.MessageType, evtType event.Type) (*openClawControlCommand, bool) {
-	if evtType == event.EventSticker || msgType == event.MsgImage || msgType == event.MsgVideo || msgType == event.MsgAudio || msgType == event.MsgFile {
-		return nil, false
-	}
-	body = strings.TrimSpace(body)
-	if !strings.HasPrefix(body, "/") {
-		return nil, false
-	}
-	fields := strings.Fields(body)
-	if len(fields) == 0 {
-		return nil, false
-	}
-	cmd := strings.ToLower(strings.TrimPrefix(fields[0], "/"))
-	rest := strings.TrimSpace(strings.TrimPrefix(body, fields[0]))
-	switch cmd {
-	case "reset":
-		if rest != "" {
-			return nil, false
-		}
-		return &openClawControlCommand{Action: "reset"}, true
-	case "rename", "label":
-		if rest == "" {
-			return nil, false
-		}
-		if strings.EqualFold(rest, "clear") || rest == "-" {
-			return &openClawControlCommand{Action: "label", Clear: true}, true
-		}
-		return &openClawControlCommand{Action: "label", Value: rest}, true
-	case "thinking", "verbose", "reasoning":
-		if rest == "" {
-			return nil, false
-		}
-		value := strings.ToLower(strings.TrimSpace(rest))
-		if value == "inherit" || value == "default" || value == "-" {
-			return &openClawControlCommand{Action: cmd, Clear: true}, true
-		}
-		return &openClawControlCommand{Action: cmd, Value: value}, true
-	default:
-		return nil, false
-	}
-}
-
-func (m *openClawManager) applySessionPatch(ctx context.Context, portal *bridgev2.Portal, gateway *gatewayWSClient, sessionKey, apiKey, displayName string, command *openClawControlCommand) error {
-	var patchValue any
-	notice := "OpenClaw " + displayName + " cleared."
-	if !command.Clear {
-		patchValue = command.Value
-		notice = "OpenClaw " + displayName + " set to " + command.Value + "."
-	}
-	if err := gateway.PatchSession(ctx, sessionKey, map[string]any{apiKey: patchValue}); err != nil {
-		return err
-	}
-	m.client.sendSystemNoticeViaPortal(ctx, portal, notice)
-	return nil
-}
-
-func (m *openClawManager) handleControlCommand(ctx context.Context, msg *bridgev2.MatrixMessage, gateway *gatewayWSClient, body string) (bool, error) {
-	if msg == nil || msg.Portal == nil || gateway == nil {
-		return false, nil
-	}
-	command, ok := parseOpenClawControlCommand(body, msg.Content.MsgType, msg.Event.Type)
-	if !ok {
-		return false, nil
-	}
-	meta := portalMeta(msg.Portal)
-	sessionKey := strings.TrimSpace(meta.OpenClawSessionKey)
-	if sessionKey == "" {
-		m.client.sendSystemNoticeViaPortal(ctx, msg.Portal, "OpenClaw session key is unavailable for this room.")
-		return true, nil
-	}
-	switch command.Action {
-	case "reset":
-		if err := gateway.ResetSession(ctx, sessionKey); err != nil {
-			return true, err
-		}
-		m.invalidateHistoryCache(sessionKey)
-		m.client.sendSystemNoticeViaPortal(ctx, msg.Portal, "OpenClaw session reset.")
-	case "label":
-		if err := m.applySessionPatch(ctx, msg.Portal, gateway, sessionKey, "label", "label", command); err != nil {
-			return true, err
-		}
-	case "thinking":
-		if err := m.applySessionPatch(ctx, msg.Portal, gateway, sessionKey, "thinkingLevel", "thinking level", command); err != nil {
-			return true, err
-		}
-	case "verbose":
-		if err := m.applySessionPatch(ctx, msg.Portal, gateway, sessionKey, "verboseLevel", "verbose level", command); err != nil {
-			return true, err
-		}
-	case "reasoning":
-		if err := m.applySessionPatch(ctx, msg.Portal, gateway, sessionKey, "reasoningLevel", "reasoning level", command); err != nil {
-			return true, err
-		}
-	default:
-		return false, nil
-	}
-	if err := m.syncSessions(ctx); err != nil {
-		m.client.Log().Debug().Err(err).Str("session_key", sessionKey).Msg("Failed to refresh OpenClaw sessions after control command")
-	}
-	return true, nil
 }
 
 func (m *openClawManager) FetchMessages(ctx context.Context, params bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {
@@ -2167,6 +2053,17 @@ func (m *openClawManager) handleAgentEvent(ctx context.Context, payload gatewayA
 	m.startRunRecovery(ctx, portal, meta, turnID, payload.RunID, agentID)
 	stream := strings.ToLower(strings.TrimSpace(payload.Stream))
 	switch stream {
+	case "assistant":
+		if !shouldEmitOpenClawRawAgentData(stream, payload.Data) {
+			return
+		}
+		m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
+			"timestamp": eventTS.UnixMilli(),
+			"type":      "data-openclaw-" + stream,
+			"id":        fmt.Sprintf("openclaw-%s-%d", stream, payload.Seq),
+			"data":      map[string]any{"stream": payload.Stream, "data": payload.Data},
+		})
+		return
 	case "reasoning":
 		if text := stringutil.TrimDefault(stringValue(payload.Data["text"]), stringValue(payload.Data["delta"])); text != "" {
 			m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
@@ -2180,17 +2077,13 @@ func (m *openClawManager) handleAgentEvent(ctx context.Context, payload gatewayA
 		toolCallID := stringutil.TrimDefault(stringValue(payload.Data["toolCallId"]), stringutil.TrimDefault(stringValue(payload.Data["toolUseId"]), stringValue(payload.Data["id"])))
 		toolName := stringutil.TrimDefault(stringValue(payload.Data["toolName"]), stringutil.TrimDefault(stringValue(payload.Data["name"]), "tool"))
 		if toolCallID != "" {
-			if input, ok := payload.Data["input"]; ok {
-				m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
-					"timestamp":        eventTS.UnixMilli(),
-					"type":             "tool-input-available",
-					"toolCallId":       toolCallID,
-					"toolName":         toolName,
-					"input":            input,
-					"providerExecuted": true,
-				})
+			update := openClawBuildToolStreamUpdate(eventTS, payload.Data)
+			emitted := false
+			for _, part := range update.Parts {
+				m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, part)
+				emitted = true
 			}
-			if approvalID := strings.TrimSpace(stringValue(payload.Data["approvalId"])); approvalID != "" {
+			if approvalID := strings.TrimSpace(stringutil.TrimDefault(stringValue(payload.Data["approvalId"]), stringValue(jsonutil.ToMap(payload.Data["approval"])["id"]))); approvalID != "" {
 				m.attachApprovalContext(approvalID, payload.SessionKey, agentID, turnID, toolCallID, toolName)
 				m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
 					"timestamp":  eventTS.UnixMilli(),
@@ -2198,36 +2091,14 @@ func (m *openClawManager) handleAgentEvent(ctx context.Context, payload gatewayA
 					"approvalId": approvalID,
 					"toolCallId": toolCallID,
 				})
+				emitted = true
 			}
-			if output, ok := payload.Data["output"]; ok {
-				m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
-					"timestamp":        eventTS.UnixMilli(),
-					"type":             "tool-output-available",
-					"toolCallId":       toolCallID,
-					"output":           output,
-					"providerExecuted": true,
-				})
-				m.ensureSpawnedSessionPortal(ctx, openClawSpawnedSessionKeyFromToolResult(toolName, output))
-			} else if result, ok := payload.Data["result"]; ok {
-				m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
-					"timestamp":        eventTS.UnixMilli(),
-					"type":             "tool-output-available",
-					"toolCallId":       toolCallID,
-					"output":           result,
-					"providerExecuted": true,
-				})
-				m.ensureSpawnedSessionPortal(ctx, openClawSpawnedSessionKeyFromToolResult(toolName, result))
+			if update.HasFinalOutput {
+				m.ensureSpawnedSessionPortal(ctx, openClawSpawnedSessionKeyFromToolResult(toolName, update.FinalOutput))
 			}
-			if errText := strings.TrimSpace(stringValue(payload.Data["error"])); errText != "" {
-				m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
-					"timestamp":        eventTS.UnixMilli(),
-					"type":             "tool-output-error",
-					"toolCallId":       toolCallID,
-					"errorText":        errText,
-					"providerExecuted": true,
-				})
+			if emitted {
+				return
 			}
-			return
 		}
 		fallthrough
 	default:
@@ -2238,6 +2109,14 @@ func (m *openClawManager) handleAgentEvent(ctx context.Context, payload gatewayA
 			"data":      map[string]any{"stream": payload.Stream, "data": payload.Data},
 		})
 	}
+}
+
+func shouldEmitOpenClawRawAgentData(stream string, data map[string]any) bool {
+	stream = strings.ToLower(strings.TrimSpace(stream))
+	if stream != "assistant" {
+		return true
+	}
+	return strings.TrimSpace(stringutil.TrimDefault(stringValue(data["text"]), stringValue(data["delta"]))) == ""
 }
 
 func (m *openClawManager) ensureSpawnedSessionPortal(ctx context.Context, sessionKey string) {
@@ -2289,6 +2168,127 @@ func openClawExtractSpawnedSessionKey(value any) string {
 		if isOpenClawSpawnedSessionKey(trimmed) {
 			return trimmed
 		}
+	}
+	return ""
+}
+
+type openClawToolStreamUpdate struct {
+	Parts          []map[string]any
+	FinalOutput    any
+	HasFinalOutput bool
+}
+
+func openClawBuildToolStreamUpdate(eventTS time.Time, data map[string]any) openClawToolStreamUpdate {
+	toolCallID := strings.TrimSpace(stringutil.TrimDefault(stringValue(data["toolCallId"]), stringutil.TrimDefault(stringValue(data["toolUseId"]), stringValue(data["id"]))))
+	if toolCallID == "" {
+		return openClawToolStreamUpdate{}
+	}
+	toolName := strings.TrimSpace(stringutil.TrimDefault(stringValue(data["toolName"]), stringutil.TrimDefault(stringValue(data["name"]), "tool")))
+	if toolName == "" {
+		toolName = "tool"
+	}
+	base := map[string]any{
+		"timestamp":        eventTS.UnixMilli(),
+		"toolCallId":       toolCallID,
+		"toolName":         toolName,
+		"providerExecuted": true,
+	}
+	partWithBase := func(partType string) map[string]any {
+		part := jsonutil.DeepCloneMap(base)
+		part["type"] = partType
+		return part
+	}
+
+	update := openClawToolStreamUpdate{}
+	switch strings.ToLower(strings.TrimSpace(stringValue(data["phase"]))) {
+	case "start":
+		part := partWithBase("tool-input-start")
+		if input, ok := openClawToolEventInput(data); ok {
+			part["type"] = "tool-input-available"
+			part["input"] = input
+		}
+		update.Parts = append(update.Parts, part)
+	case "update":
+		if output, ok := openClawToolEventPartialOutput(data); ok {
+			part := partWithBase("tool-output-available")
+			part["output"] = output
+			part["preliminary"] = true
+			update.Parts = append(update.Parts, part)
+		}
+	case "result":
+		if errText := openClawToolEventErrorText(data); errText != "" {
+			part := partWithBase("tool-output-error")
+			part["errorText"] = errText
+			update.Parts = append(update.Parts, part)
+			return update
+		}
+		if output, ok := openClawToolEventFinalOutput(data); ok {
+			part := partWithBase("tool-output-available")
+			part["output"] = output
+			update.Parts = append(update.Parts, part)
+			update.FinalOutput = output
+			update.HasFinalOutput = true
+		}
+	}
+	return update
+}
+
+func openClawToolEventInput(data map[string]any) (any, bool) {
+	input, ok := data["args"]
+	if !ok || input == nil {
+		return nil, false
+	}
+	return jsonutil.DeepCloneAny(input), true
+}
+
+func openClawToolEventPartialOutput(data map[string]any) (any, bool) {
+	output, ok := data["partialResult"]
+	if !ok || output == nil {
+		return nil, false
+	}
+	return jsonutil.DeepCloneAny(output), true
+}
+
+func openClawToolEventFinalOutput(data map[string]any) (any, bool) {
+	output, ok := data["result"]
+	if !ok || output == nil {
+		return nil, false
+	}
+	return jsonutil.DeepCloneAny(output), true
+}
+
+func openClawToolEventErrorText(data map[string]any) string {
+	isError, _ := data["isError"].(bool)
+	if !isError {
+		return ""
+	}
+	if text := openClawToolResultErrorText(data["result"]); text != "" {
+		return text
+	}
+	if text := strings.TrimSpace(stringValue(data["error"])); text != "" {
+		return text
+	}
+	return "OpenClaw tool failed"
+}
+
+func openClawToolResultErrorText(result any) string {
+	switch typed := result.(type) {
+	case map[string]any:
+		if text := strings.TrimSpace(openclawconv.ExtractMessageText(typed)); text != "" {
+			return text
+		}
+		for _, key := range []string{"error", "message"} {
+			if text := strings.TrimSpace(stringValue(typed[key])); text != "" {
+				return text
+			}
+		}
+		for _, key := range []string{"details", "result", "output"} {
+			if nested := openClawToolResultErrorText(typed[key]); nested != "" {
+				return nested
+			}
+		}
+	case string:
+		return strings.TrimSpace(typed)
 	}
 	return ""
 }

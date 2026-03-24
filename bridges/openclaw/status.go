@@ -81,12 +81,14 @@ func classifyOpenClawConnectionError(err error, retryDelay time.Duration) (statu
 		state.UserAction = status.UserActionRestart
 		if compatErr != nil {
 			state.Info = map[string]any{
-				"server_version":        compatErr.Report.ServerVersion,
-				"missing_methods":       compatErr.Report.MissingMethods,
-				"missing_events":        compatErr.Report.MissingEvents,
-				"history_endpoint_ok":   compatErr.Report.HistoryEndpointOK,
-				"history_endpoint_code": compatErr.Report.HistoryEndpointCode,
-				"history_endpoint_err":  compatErr.Report.HistoryEndpointError,
+				"server_version":           compatErr.Report.ServerVersion,
+				"missing_methods":          compatErr.Report.MissingMethods,
+				"missing_events":           compatErr.Report.MissingEvents,
+				"required_missing_methods": compatErr.Report.RequiredMissingMethods,
+				"required_missing_events":  compatErr.Report.RequiredMissingEvents,
+				"history_endpoint_ok":      compatErr.Report.HistoryEndpointOK,
+				"history_endpoint_code":    compatErr.Report.HistoryEndpointCode,
+				"history_endpoint_err":     compatErr.Report.HistoryEndpointError,
 			}
 		}
 		return state, false

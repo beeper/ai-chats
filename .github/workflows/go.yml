@@ -30,3 +30,26 @@ jobs:
 
       - name: Run pre-commit
         uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
+
+  package-smoke:
+    runs-on: ubuntu-latest
+    name: Package Smoke
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Build agentremote release binary
+        env:
+          CGO_ENABLED: "1"
+        run: go build -tags goolm -trimpath -o "$RUNNER_TEMP/agentremote" ./cmd/agentremote
+
+      - name: Validate install scripts
+        run: |
+          sh -n ./install.sh
+          sh -n ./tools/generate-homebrew-cask.sh

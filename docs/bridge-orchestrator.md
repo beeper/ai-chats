@@ -1,53 +1,60 @@
-# Bridge Orchestrator
+# AgentRemote CLI
 
-`tools/bridges` is a thin wrapper around `agentremote`, which manages isolated bridgev2 instances for Beeper from this repo.
+`./tools/bridges` is the local entrypoint for `agentremote`.
 
-## Auth
+It wraps:
+
+```bash
+go run ./cmd/agentremote ...
+```
+
+## Authentication
 
 Use one of:
 
-- `./tools/bridges login --env prod` for the email and code flow
+- `./tools/bridges login --env prod`
 - `./tools/bridges auth set-token --token syt_... --env prod`
-- Environment variables: `BEEPER_ACCESS_TOKEN`, optional `BEEPER_ENV`, `BEEPER_USERNAME`
+- `./tools/bridges whoami`
 
-## One-command startup
+Profiles default to `default`.
 
-```bash
-./tools/bridges up ai
-```
-
-This will:
-
-1. Create instance state under `~/.config/agentremote/profiles/default/instances/<instance>/`
-2. Generate config from the bridge binary with `-e` if needed
-3. Ensure Beeper appservice registration and sync config tokens
-4. Start the bridge process and write PID and log files
-
-## Core commands
+## Bridge lifecycle
 
 - `./tools/bridges list`
-- `./tools/bridges login`
-- `./tools/bridges logout`
-- `./tools/bridges whoami [--output json]`
-- `./tools/bridges profiles`
+- `./tools/bridges run <bridge>`
 - `./tools/bridges up <bridge>`
 - `./tools/bridges start <bridge>`
-- `./tools/bridges run <bridge>`
-- `./tools/bridges init <bridge>`
-- `./tools/bridges register <bridge>`
-- `./tools/bridges status [instance]`
-- `./tools/bridges instances`
-- `./tools/bridges logs <instance> [--follow]`
-- `./tools/bridges down <instance>`
 - `./tools/bridges stop <instance>`
-- `./tools/bridges stop-all`
+- `./tools/bridges down <instance>`
 - `./tools/bridges restart <bridge>`
 - `./tools/bridges delete [instance]`
+
+`up` is an alias of `start`. `down` is an alias of `stop`.
+
+## Inspection
+
+- `./tools/bridges status [instance...]`
+- `./tools/bridges instances`
+- `./tools/bridges logs <instance> --follow`
 - `./tools/bridges doctor`
+
+## Setup helpers
+
+- `./tools/bridges init <bridge>`
+- `./tools/bridges register <bridge>`
 - `./tools/bridges completion <bash|zsh|fish>`
 
-Shortcut wrapper:
+## Quick examples
 
-- `./run.sh ai|codex|opencode|openclaw`
-  - checks login and prompts with `login` if needed
-  - then runs the selected bridge instance
+```bash
+./tools/bridges login --env prod
+./tools/bridges up codex --wait
+./tools/bridges status codex
+./tools/bridges logs codex --follow
+```
+
+Local instance data is stored under:
+
+```text
+~/.config/agentremote/profiles/<profile>/instances/<instance>/
+```

@@ -1,0 +1,112 @@
+name: Publish AgentRemote Docker
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+
+env:
+  GHCR_REGISTRY: ghcr.io
+  GHCR_REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  build-docker:
+    runs-on: ${{ matrix.runs_on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runs_on: ubuntu-latest
+            target: amd64
+          - runs_on: ubuntu-arm64
+            target: arm64
+    name: build-agentremote-docker (${{ matrix.target }})
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Prepare build metadata
+        id: meta
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            version="${GITHUB_REF_NAME}"
+          else
+            version="${GITHUB_SHA}"
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ghcr
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.GHCR_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build agentremote image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/agentremote/Dockerfile
+          pull: true
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ env.GHCR_REGISTRY_IMAGE }}:${{ github.sha }}-${{ matrix.target }}
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            COMMIT=${{ github.sha }}
+            BUILD_TIME=${{ steps.meta.outputs.build_time }}
+          provenance: false
+          sbom: false
+
+  publish-manifests:
+    runs-on: ubuntu-latest
+    needs:
+      - build-docker
+    if: ${{ github.event_name != 'pull_request' }}
+
+    steps:
+      - name: Log in to ghcr
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.GHCR_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create sha manifest
+        run: |
+          set -euo pipefail
+          docker pull ${{ env.GHCR_REGISTRY_IMAGE }}:${{ github.sha }}-amd64
+          docker pull ${{ env.GHCR_REGISTRY_IMAGE }}:${{ github.sha }}-arm64
+          docker manifest create ${{ env.GHCR_REGISTRY_IMAGE }}:${{ github.sha }} \
+            ${{ env.GHCR_REGISTRY_IMAGE }}:${{ github.sha }}-amd64 \
+            ${{ env.GHCR_REGISTRY_IMAGE }}:${{ github.sha }}-arm64
+          docker manifest push ${{ env.GHCR_REGISTRY_IMAGE }}:${{ github.sha }}
+
+      - name: Create version manifest
+        if: ${{ github.ref_type == 'tag' }}
+        run: |
+          set -euo pipefail
+          docker manifest create ${{ env.GHCR_REGISTRY_IMAGE }}:${{ github.ref_name }} \
+            ${{ env.GHCR_REGISTRY_IMAGE }}:${{ github.sha }}-amd64 \
+            ${{ env.GHCR_REGISTRY_IMAGE }}:${{ github.sha }}-arm64
+          docker manifest push ${{ env.GHCR_REGISTRY_IMAGE }}:${{ github.ref_name }}
+
+      - name: Create latest manifest
+        if: ${{ github.ref == 'refs/heads/main' }}
+        run: |
+          set -euo pipefail
+          docker manifest create ${{ env.GHCR_REGISTRY_IMAGE }}:latest \
+            ${{ env.GHCR_REGISTRY_IMAGE }}:${{ github.sha }}-amd64 \
+            ${{ env.GHCR_REGISTRY_IMAGE }}:${{ github.sha }}-arm64
+          docker manifest push ${{ env.GHCR_REGISTRY_IMAGE }}:latest

@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -26,16 +27,74 @@ import (
 
 const (
 	openClawProtocolVersion      = 3
-	openClawGatewayClientID      = "gateway-client"
-	openClawGatewayClientMode    = "backend"
-	openClawGatewayDisplayName   = "ai-bridge openclaw"
-	openClawGatewayDeviceFamily  = "bridge"
+	openClawGatewayClientID      = "beeper-bridge"
+	openClawGatewayClientMode    = "ui"
+	openClawGatewayDisplayName   = "Beeper"
 	openClawGatewayWSReadLimit   = 32 * 1024 * 1024
 	openClawGatewayPingInterval  = 30 * time.Second
 	openClawGatewayPingTimeout   = 10 * time.Second
 	openClawMaxHistoryPageLimit  = 1000
 	openClawDefaultRequestTimout = 30 * time.Second
 )
+
+type gatewayClientIdentity struct {
+	ID           string
+	DisplayName  string
+	Version      string
+	Platform     string
+	Mode         string
+	DeviceFamily string
+	InstanceID   string
+	UserAgent    string
+}
+
+func resolveGatewayClientIdentity() gatewayClientIdentity {
+	version := resolveGatewayClientVersion()
+	return gatewayClientIdentity{
+		ID:           openClawGatewayClientID,
+		DisplayName:  openClawGatewayDisplayName,
+		Version:      version,
+		Platform:     resolveGatewayClientPlatform(),
+		Mode:         openClawGatewayClientMode,
+		DeviceFamily: resolveGatewayClientDeviceFamily(),
+		InstanceID:   uuid.NewString(),
+		UserAgent:    "Beeper bridge/" + version,
+	}
+}
+
+func resolveGatewayClientVersion() string {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		if version := strings.TrimSpace(info.Main.Version); version != "" && version != "(devel)" {
+			return version
+		}
+	}
+	return "dev"
+}
+
+func resolveGatewayClientPlatform() string {
+	switch runtime.GOOS {
+	case "darwin":
+		return "macos"
+	default:
+		return runtime.GOOS
+	}
+}
+
+func resolveGatewayClientDeviceFamily() string {
+	switch runtime.GOOS {
+	case "darwin":
+		return "Mac"
+	case "linux":
+		return "Linux"
+	case "windows":
+		return "Windows"
+	default:
+		if runtime.GOOS == "" {
+			return "Device"
+		}
+		return strings.ToUpper(runtime.GOOS[:1]) + runtime.GOOS[1:]
+	}
+}
 
 type gatewayConnectConfig struct {
 	URL         string
@@ -60,16 +119,18 @@ type gatewayHello struct {
 }
 
 type openClawGatewayCompatibilityReport struct {
-	ServerVersion        string
-	MissingMethods       []string
-	MissingEvents        []string
-	HistoryEndpointOK    bool
-	HistoryEndpointCode  int
-	HistoryEndpointError string
+	ServerVersion          string
+	MissingMethods         []string
+	MissingEvents          []string
+	RequiredMissingMethods []string
+	RequiredMissingEvents  []string
+	HistoryEndpointOK      bool
+	HistoryEndpointCode    int
+	HistoryEndpointError   string
 }
 
 func (r openClawGatewayCompatibilityReport) Compatible() bool {
-	return len(r.MissingMethods) == 0 && len(r.MissingEvents) == 0 && r.HistoryEndpointOK
+	return len(r.RequiredMissingMethods) == 0 && len(r.RequiredMissingEvents) == 0
 }
 
 type gatewaySessionRow struct {
@@ -416,6 +477,7 @@ type gatewayWSClient struct {
 	writeMu   sync.Mutex
 	pendingMu sync.Mutex
 	pending   map[string]chan gatewayResponseFrame
+	requestFn func(ctx context.Context, method string, params map[string]any, out any) error
 
 	conn         *websocket.Conn
 	events       chan gatewayEvent
@@ -427,7 +489,14 @@ type gatewayWSClient struct {
 	lastErr      error
 	helloMu      sync.RWMutex
 	hello        *gatewayHello
+	historyMode  atomic.Int32
 }
+
+const (
+	openClawHistoryModeUnknown int32 = iota
+	openClawHistoryModeHTTP
+	openClawHistoryModeRPC
+)
 
 func newGatewayWSClient(cfg gatewayConnectConfig) *gatewayWSClient {
 	return &gatewayWSClient{
@@ -444,9 +513,10 @@ func (c *gatewayWSClient) Connect(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	clientIdentity := resolveGatewayClientIdentity()
 	conn, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
 		CompressionMode: websocket.CompressionDisabled,
-		HTTPHeader:      http.Header{"User-Agent": []string{"ai-bridge/openclaw"}},
+		HTTPHeader:      http.Header{"User-Agent": []string{clientIdentity.UserAgent}},
 	})
 	if err != nil {
 		return "", fmt.Errorf("dial gateway websocket: %w", err)
@@ -533,6 +603,40 @@ func (c *gatewayWSClient) Hello() *gatewayHello {
 	return &clone
 }
 
+func (c *gatewayWSClient) SupportsMethod(method string) bool {
+	method = strings.ToLower(strings.TrimSpace(method))
+	if method == "" {
+		return false
+	}
+	hello := c.Hello()
+	if hello == nil {
+		return false
+	}
+	for _, candidate := range hello.Features.Methods {
+		if strings.EqualFold(strings.TrimSpace(candidate), method) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *gatewayWSClient) SupportsEvent(evt string) bool {
+	evt = strings.ToLower(strings.TrimSpace(evt))
+	if evt == "" {
+		return false
+	}
+	hello := c.Hello()
+	if hello == nil {
+		return false
+	}
+	for _, candidate := range hello.Features.Events {
+		if strings.EqualFold(strings.TrimSpace(candidate), evt) {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *gatewayWSClient) setLastError(err error) {
 	c.lastErrMu.Lock()
 	defer c.lastErrMu.Unlock()
@@ -573,15 +677,37 @@ func (c *gatewayWSClient) ListSessions(ctx context.Context, limit int) ([]gatewa
 }
 
 func (c *gatewayWSClient) SessionHistory(ctx context.Context, sessionKey string, limit int, cursor string) (*gatewaySessionHistoryResponse, error) {
-	base, err := c.sessionHistoryURL(sessionKey, limit, cursor)
-	if err != nil {
-		return nil, err
+	var httpErr error
+	if c.historyMode.Load() != openClawHistoryModeRPC {
+		base, err := c.sessionHistoryURL(sessionKey, limit, cursor)
+		if err != nil {
+			httpErr = err
+		} else {
+			req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, base.String(), nil)
+			if reqErr != nil {
+				httpErr = fmt.Errorf("build session history request: %w", reqErr)
+			} else {
+				history, historyErr := c.doSessionHistoryRequest(req)
+				if historyErr == nil {
+					c.historyMode.Store(openClawHistoryModeHTTP)
+					return history, nil
+				}
+				httpErr = historyErr
+			}
+		}
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base.String(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("build session history request: %w", err)
+	if !c.SupportsMethod("chat.history") {
+		return nil, httpErr
 	}
-	return c.doSessionHistoryRequest(req)
+	history, rpcErr := c.sessionHistoryViaRPC(ctx, sessionKey, limit, cursor)
+	if rpcErr == nil {
+		c.historyMode.Store(openClawHistoryModeRPC)
+		return history, nil
+	}
+	if httpErr != nil {
+		return nil, fmt.Errorf("http history failed: %v; chat.history fallback failed: %w", httpErr, rpcErr)
+	}
+	return nil, rpcErr
 }
 
 func (c *gatewayWSClient) ProbeSessionHistory(ctx context.Context) openClawGatewayCompatibilityReport {
@@ -604,6 +730,7 @@ func (c *gatewayWSClient) ProbeSessionHistory(ctx context.Context) openClawGatew
 	}
 	if reqErr == nil {
 		report.HistoryEndpointOK = true
+		c.historyMode.Store(openClawHistoryModeHTTP)
 		return report
 	}
 	report.HistoryEndpointError = reqErr.Error()
@@ -612,13 +739,21 @@ func (c *gatewayWSClient) ProbeSessionHistory(ctx context.Context) openClawGatew
 		// treat the endpoint as compatible when the semantic error type matches.
 		if history != nil && strings.EqualFold(strings.TrimSpace(history.Error.Type), "not_found") {
 			report.HistoryEndpointOK = true
+			c.historyMode.Store(openClawHistoryModeHTTP)
 			return report
 		}
+	}
+	if c.SupportsMethod("chat.history") {
+		report.HistoryEndpointOK = true
+		c.historyMode.Store(openClawHistoryModeRPC)
 	}
 	return report
 }
 
 func (c *gatewayWSClient) ListPendingApprovals(ctx context.Context) ([]gatewayApprovalRequestEvent, error) {
+	if !c.SupportsMethod("exec.approval.list") {
+		return nil, nil
+	}
 	var resp gatewayApprovalListResponse
 	if err := c.Request(ctx, "exec.approval.list", map[string]any{}, &resp); err != nil {
 		return nil, err
@@ -659,7 +794,7 @@ func (c *gatewayWSClient) doSessionHistoryRequestWithStatus(req *http.Request) (
 	if authToken := c.httpBearerAuthToken(); authToken != "" {
 		req.Header.Set("Authorization", "Bearer "+authToken)
 	}
-	req.Header.Set("User-Agent", "ai-bridge/openclaw")
+	req.Header.Set("User-Agent", resolveGatewayClientIdentity().UserAgent)
 
 	resp, err := (&http.Client{Timeout: openClawDefaultRequestTimout}).Do(req)
 	if err != nil {
@@ -689,6 +824,9 @@ func (c *gatewayWSClient) doSessionHistoryRequestWithStatus(req *http.Request) (
 }
 
 func (c *gatewayWSClient) PreviewSessions(ctx context.Context, keys []string, limit, maxChars int) (*gatewaySessionsPreviewResponse, error) {
+	if !c.SupportsMethod("sessions.preview") {
+		return nil, nil
+	}
 	filtered := make([]string, 0, len(keys))
 	for _, key := range keys {
 		if trimmed := strings.TrimSpace(key); trimmed != "" {
@@ -716,6 +854,9 @@ func (c *gatewayWSClient) PreviewSessions(ctx context.Context, keys []string, li
 }
 
 func (c *gatewayWSClient) ResolveSessionKey(ctx context.Context, key string) (string, error) {
+	if !c.SupportsMethod("sessions.resolve") {
+		return strings.TrimSpace(key), nil
+	}
 	var resp gatewayResolveSessionResponse
 	if err := c.Request(ctx, "sessions.resolve", map[string]any{
 		"key": strings.TrimSpace(key),
@@ -746,6 +887,9 @@ func (c *gatewayWSClient) DeleteSession(ctx context.Context, key string, deleteT
 }
 
 func (c *gatewayWSClient) ListAgents(ctx context.Context) (*gatewayAgentsListResponse, error) {
+	if !c.SupportsMethod("agents.list") {
+		return &gatewayAgentsListResponse{}, nil
+	}
 	var resp gatewayAgentsListResponse
 	if err := c.Request(ctx, "agents.list", map[string]any{}, &resp); err != nil {
 		return nil, err
@@ -762,6 +906,9 @@ func (c *gatewayWSClient) ListAgents(ctx context.Context) (*gatewayAgentsListRes
 }
 
 func (c *gatewayWSClient) ListModels(ctx context.Context) (*gatewayModelsListResponse, error) {
+	if !c.SupportsMethod("models.list") {
+		return &gatewayModelsListResponse{}, nil
+	}
 	var resp gatewayModelsListResponse
 	if err := c.Request(ctx, "models.list", map[string]any{}, &resp); err != nil {
 		return nil, err
@@ -783,6 +930,9 @@ func (c *gatewayWSClient) ListModels(ctx context.Context) (*gatewayModelsListRes
 }
 
 func (c *gatewayWSClient) GetToolsCatalog(ctx context.Context, agentID string) (*gatewayToolsCatalogResponse, error) {
+	if !c.SupportsMethod("tools.catalog") {
+		return &gatewayToolsCatalogResponse{}, nil
+	}
 	params := map[string]any{}
 	if trimmed := strings.TrimSpace(agentID); trimmed != "" {
 		params["agentId"] = trimmed
@@ -834,6 +984,9 @@ func (c *gatewayWSClient) ResolveApproval(ctx context.Context, approvalID, decis
 }
 
 func (c *gatewayWSClient) GetAgentIdentity(ctx context.Context, agentID, sessionKey string) (*gatewayAgentIdentity, error) {
+	if !c.SupportsMethod("agent.identity.get") {
+		return nil, nil
+	}
 	params := map[string]any{}
 	if strings.TrimSpace(agentID) != "" {
 		params["agentId"] = strings.TrimSpace(agentID)
@@ -852,6 +1005,9 @@ func (c *gatewayWSClient) GetAgentIdentity(ctx context.Context, agentID, session
 }
 
 func (c *gatewayWSClient) WaitForRun(ctx context.Context, runID string, timeout time.Duration) (*gatewayWaitRunResponse, error) {
+	if !c.SupportsMethod("agent.wait") {
+		return nil, nil
+	}
 	runID = strings.TrimSpace(runID)
 	if runID == "" {
 		return nil, errors.New("run id is required")
@@ -884,6 +1040,9 @@ func normalizeGatewayAgentIdentity(identity *gatewayAgentIdentity) *gatewayAgent
 }
 
 func (c *gatewayWSClient) Request(ctx context.Context, method string, params map[string]any, out any) error {
+	if c.requestFn != nil {
+		return c.requestFn(ctx, method, params, out)
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -926,6 +1085,132 @@ func (c *gatewayWSClient) Request(ctx context.Context, method string, params map
 	case <-c.closeCh:
 		return errors.New("gateway connection closed")
 	}
+}
+
+func (c *gatewayWSClient) sessionHistoryViaRPC(ctx context.Context, sessionKey string, limit int, cursor string) (*gatewaySessionHistoryResponse, error) {
+	sessionKey = strings.TrimSpace(sessionKey)
+	if sessionKey == "" {
+		return nil, errors.New("session key is required")
+	}
+	var resp gatewaySessionHistoryResponse
+	if err := c.Request(ctx, "chat.history", map[string]any{
+		"sessionKey": sessionKey,
+		"limit":      openClawMaxHistoryPageLimit,
+	}, &resp); err != nil {
+		return nil, err
+	}
+	if len(resp.Messages) == 0 && len(resp.Items) > 0 {
+		resp.Messages = resp.Items
+	}
+	resp.SessionKey = sessionKey
+	return paginateGatewayHistoryResponse(&resp, limit, cursor), nil
+}
+
+func paginateGatewayHistoryResponse(history *gatewaySessionHistoryResponse, limit int, cursor string) *gatewaySessionHistoryResponse {
+	if history == nil {
+		return nil
+	}
+	limit = normalizeGatewayHistoryLimit(limit)
+	cursorSeq := parseGatewayHistoryCursor(cursor)
+	messages := history.Messages
+	endExclusive := len(messages)
+	if cursorSeq > 0 {
+		endExclusive = 0
+		for idx, message := range messages {
+			if gatewayHistoryMessageSeq(message, idx) >= cursorSeq {
+				endExclusive = idx
+				break
+			}
+			endExclusive = idx + 1
+		}
+	}
+	start := 0
+	if limit > 0 && endExclusive > limit {
+		start = endExclusive - limit
+	}
+	paged := &gatewaySessionHistoryResponse{
+		SessionKey: strings.TrimSpace(history.SessionKey),
+		Messages:   cloneGatewayHistorySlice(messages[start:endExclusive]),
+		HasMore:    start > 0,
+	}
+	paged.Items = cloneGatewayHistorySlice(paged.Messages)
+	if paged.HasMore && start < len(messages) {
+		paged.NextCursor = fmt.Sprintf("%d", gatewayHistoryMessageSeq(messages[start], start))
+	}
+	return paged
+}
+
+func normalizeGatewayHistoryLimit(limit int) int {
+	if limit <= 0 || limit > openClawMaxHistoryPageLimit {
+		return openClawMaxHistoryPageLimit
+	}
+	return limit
+}
+
+func parseGatewayHistoryCursor(cursor string) int64 {
+	cursor = strings.TrimSpace(cursor)
+	cursor = strings.TrimPrefix(cursor, "seq:")
+	if cursor == "" {
+		return 0
+	}
+	var value int64
+	_, _ = fmt.Sscanf(cursor, "%d", &value)
+	if value < 0 {
+		return 0
+	}
+	return value
+}
+
+func gatewayHistoryMessageSeq(message map[string]any, idx int) int64 {
+	meta, _ := message["__openclaw"].(map[string]any)
+	switch seq := meta["seq"].(type) {
+	case float64:
+		if seq > 0 {
+			return int64(seq)
+		}
+	case int64:
+		if seq > 0 {
+			return seq
+		}
+	case int:
+		if seq > 0 {
+			return int64(seq)
+		}
+	}
+	return int64(idx + 1)
+}
+
+func cloneGatewayHistorySlice(messages []map[string]any) []map[string]any {
+	if len(messages) == 0 {
+		return nil
+	}
+	cloned := make([]map[string]any, len(messages))
+	for i, message := range messages {
+		cloned[i] = cloneGatewayHistoryMap(message)
+	}
+	return cloned
+}
+
+func cloneGatewayHistoryMap(message map[string]any) map[string]any {
+	if message == nil {
+		return nil
+	}
+	data, err := json.Marshal(message)
+	if err != nil {
+		cloned := make(map[string]any, len(message))
+		for key, value := range message {
+			cloned[key] = value
+		}
+		return cloned
+	}
+	var cloned map[string]any
+	if err = json.Unmarshal(data, &cloned); err != nil {
+		cloned = make(map[string]any, len(message))
+		for key, value := range message {
+			cloned[key] = value
+		}
+	}
+	return cloned
 }
 
 func (c *gatewayWSClient) writeJSON(ctx context.Context, value any) error {
@@ -1074,6 +1359,7 @@ func (c *gatewayWSClient) failPending(err error) {
 }
 
 func (c *gatewayWSClient) buildConnectParams(identity *gatewayDeviceIdentity, nonce string) (map[string]any, error) {
+	clientIdentity := resolveGatewayClientIdentity()
 	scopes := []string{"operator.read", "operator.write", "operator.approvals"}
 	sharedToken := strings.TrimSpace(c.cfg.Token)
 	deviceToken := strings.TrimSpace(c.cfg.DeviceToken)
@@ -1085,12 +1371,13 @@ func (c *gatewayWSClient) buildConnectParams(identity *gatewayDeviceIdentity, no
 		"minProtocol": openClawProtocolVersion,
 		"maxProtocol": openClawProtocolVersion,
 		"client": map[string]any{
-			"id":           openClawGatewayClientID,
-			"displayName":  openClawGatewayDisplayName,
-			"version":      "0.1.0",
-			"platform":     runtime.GOOS,
-			"mode":         openClawGatewayClientMode,
-			"deviceFamily": openClawGatewayDeviceFamily,
+			"id":           clientIdentity.ID,
+			"displayName":  clientIdentity.DisplayName,
+			"version":      clientIdentity.Version,
+			"platform":     clientIdentity.Platform,
+			"mode":         clientIdentity.Mode,
+			"deviceFamily": clientIdentity.DeviceFamily,
+			"instanceId":   clientIdentity.InstanceID,
 		},
 		"role":        "operator",
 		"scopes":      scopes,
@@ -1098,7 +1385,7 @@ func (c *gatewayWSClient) buildConnectParams(identity *gatewayDeviceIdentity, no
 		"commands":    []string{},
 		"permissions": map[string]bool{},
 		"locale":      "en-US",
-		"userAgent":   "ai-bridge/openclaw",
+		"userAgent":   clientIdentity.UserAgent,
 	}
 	if authToken != "" {
 		auth := map[string]any{"token": authToken}
@@ -1110,7 +1397,7 @@ func (c *gatewayWSClient) buildConnectParams(identity *gatewayDeviceIdentity, no
 		params["auth"] = map[string]any{"password": strings.TrimSpace(c.cfg.Password)}
 	}
 	signedAtMs := time.Now().UnixMilli()
-	device, err := buildSignedGatewayDevice(identity, authToken, scopes, signedAtMs, nonce)
+	device, err := buildSignedGatewayDevice(identity, clientIdentity, authToken, scopes, signedAtMs, nonce)
 	if err != nil {
 		return nil, err
 	}
@@ -1271,7 +1558,7 @@ func gatewayDeviceIdentityPath() (string, error) {
 	return filepath.Join(stateDir, "identity", "device.json"), nil
 }
 
-func buildSignedGatewayDevice(identity *gatewayDeviceIdentity, authToken string, scopes []string, signedAtMs int64, nonce string) (map[string]any, error) {
+func buildSignedGatewayDevice(identity *gatewayDeviceIdentity, clientIdentity gatewayClientIdentity, authToken string, scopes []string, signedAtMs int64, nonce string) (map[string]any, error) {
 	pub, err := base64.StdEncoding.DecodeString(identity.PublicKey)
 	if err != nil {
 		return nil, err
@@ -1283,15 +1570,15 @@ func buildSignedGatewayDevice(identity *gatewayDeviceIdentity, authToken string,
 	payload := strings.Join([]string{
 		"v3",
 		identity.DeviceID,
-		openClawGatewayClientID,
-		openClawGatewayClientMode,
+		clientIdentity.ID,
+		clientIdentity.Mode,
 		"operator",
 		strings.Join(scopes, ","),
 		fmt.Sprintf("%d", signedAtMs),
 		authToken,
 		nonce,
-		strings.ToLower(runtime.GOOS),
-		openClawGatewayDeviceFamily,
+		strings.ToLower(clientIdentity.Platform),
+		strings.ToLower(clientIdentity.DeviceFamily),
 	}, "|")
 	signature := ed25519.Sign(ed25519.PrivateKey(priv), []byte(payload))
 	return map[string]any{
