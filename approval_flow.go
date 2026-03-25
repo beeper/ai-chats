@@ -95,6 +95,7 @@ type ApprovalFlow[D any] struct {
 	// Prompt store (inlined from ApprovalPromptStore).
 	promptsByApproval map[string]*ApprovalPromptRegistration
 	promptsByEventID  map[id.EventID]string
+	promptsByMsgID    map[networkid.MessageID]string
 	resolvedByEventID map[id.EventID]*resolvedApprovalPrompt
 	resolvedByMsgID   map[networkid.MessageID]*resolvedApprovalPrompt
 
@@ -133,6 +134,7 @@ func NewApprovalFlow[D any](cfg ApprovalFlowConfig[D]) *ApprovalFlow[D] {
 		pending:           make(map[string]*Pending[D]),
 		promptsByApproval: make(map[string]*ApprovalPromptRegistration),
 		promptsByEventID:  make(map[id.EventID]string),
+		promptsByMsgID:    make(map[networkid.MessageID]string),
 		resolvedByEventID: make(map[id.EventID]*resolvedApprovalPrompt),
 		resolvedByMsgID:   make(map[networkid.MessageID]*resolvedApprovalPrompt),
 		login:             cfg.Login,
@@ -584,10 +586,16 @@ func (f *ApprovalFlow[D]) registerPromptLocked(reg ApprovalPromptRegistration) {
 	if prev != nil && prev.PromptEventID != "" {
 		delete(f.promptsByEventID, prev.PromptEventID)
 	}
+	if prev != nil && prev.PromptMessageID != "" {
+		delete(f.promptsByMsgID, prev.PromptMessageID)
+	}
 	copyReg := reg
 	f.promptsByApproval[reg.ApprovalID] = &copyReg
 	if reg.PromptEventID != "" {
 		f.promptsByEventID[reg.PromptEventID] = reg.ApprovalID
+	}
+	if reg.PromptMessageID != "" {
+		f.promptsByMsgID[reg.PromptMessageID] = reg.ApprovalID
 	}
 }
 
@@ -608,10 +616,16 @@ func (f *ApprovalFlow[D]) bindPromptIDsLocked(approvalID string, eventID id.Even
 	if entry.PromptEventID != "" {
 		delete(f.promptsByEventID, entry.PromptEventID)
 	}
+	if entry.PromptMessageID != "" {
+		delete(f.promptsByMsgID, entry.PromptMessageID)
+	}
 	entry.PromptVersion++
 	entry.PromptEventID = eventID
 	entry.PromptMessageID = messageID
 	f.promptsByEventID[eventID] = approvalID
+	if messageID != "" {
+		f.promptsByMsgID[messageID] = approvalID
+	}
 	return entry.PromptVersion, true
 }
 
@@ -625,7 +639,11 @@ func (f *ApprovalFlow[D]) bindPromptMessageIDLocked(approvalID string, messageID
 	if entry == nil {
 		return false
 	}
+	if entry.PromptMessageID != "" {
+		delete(f.promptsByMsgID, entry.PromptMessageID)
+	}
 	entry.PromptMessageID = messageID
+	f.promptsByMsgID[messageID] = approvalID
 	return true
 }
 
@@ -715,19 +733,33 @@ func (f *ApprovalFlow[D]) dropPromptLocked(approvalID string) {
 	if entry != nil && entry.PromptEventID != "" {
 		delete(f.promptsByEventID, entry.PromptEventID)
 	}
+	if entry != nil && entry.PromptMessageID != "" {
+		delete(f.promptsByMsgID, entry.PromptMessageID)
+	}
 	delete(f.promptsByApproval, approvalID)
 }
 
 // matchReaction checks whether a reaction targets a known approval prompt.
 func (f *ApprovalFlow[D]) matchReaction(targetEventID id.EventID, sender id.UserID, key string, now time.Time) ApprovalPromptReactionMatch {
+	return f.matchReactionTarget(targetEventID, "", sender, key, now)
+}
+
+func (f *ApprovalFlow[D]) matchReactionTarget(targetEventID id.EventID, targetMessageID networkid.MessageID, sender id.UserID, key string, now time.Time) ApprovalPromptReactionMatch {
 	targetEventID = id.EventID(strings.TrimSpace(targetEventID.String()))
+	targetMessageID = networkid.MessageID(strings.TrimSpace(string(targetMessageID)))
 	key = normalizeReactionKey(key)
-	if targetEventID == "" || key == "" {
+	if (targetEventID == "" && targetMessageID == "") || key == "" {
 		return ApprovalPromptReactionMatch{}
 	}
 
 	f.mu.Lock()
-	approvalID := f.promptsByEventID[targetEventID]
+	approvalID := ""
+	if targetEventID != "" {
+		approvalID = f.promptsByEventID[targetEventID]
+	}
+	if approvalID == "" && targetMessageID != "" {
+		approvalID = f.promptsByMsgID[targetMessageID]
+	}
 	entry := f.promptsByApproval[approvalID]
 	if entry == nil {
 		f.mu.Unlock()
@@ -751,67 +783,6 @@ func (f *ApprovalFlow[D]) matchReaction(targetEventID id.EventID, sender id.User
 		match.RejectReason = RejectReasonExpired
 		f.mu.Lock()
 		f.dropPromptLocked(approvalID)
-		f.mu.Unlock()
-		return match
-	}
-	for _, opt := range promptCopy.Options {
-		for _, optKey := range opt.allKeys() {
-			if key != optKey {
-				continue
-			}
-			match.ShouldResolve = true
-			match.Decision = ApprovalDecisionPayload{
-				ApprovalID: promptCopy.ApprovalID,
-				Approved:   opt.Approved,
-				Always:     opt.Always,
-				Reason:     opt.decisionReason(),
-				ResolvedBy: ApprovalResolutionOriginUser,
-			}
-			return match
-		}
-	}
-	match.RejectReason = RejectReasonInvalidOption
-	return match
-}
-
-func (f *ApprovalFlow[D]) matchReactionByMessageID(targetMessageID networkid.MessageID, sender id.UserID, key string, now time.Time) ApprovalPromptReactionMatch {
-	targetMessageID = networkid.MessageID(strings.TrimSpace(string(targetMessageID)))
-	key = normalizeReactionKey(key)
-	if targetMessageID == "" || key == "" {
-		return ApprovalPromptReactionMatch{}
-	}
-
-	f.mu.Lock()
-	var promptCopy ApprovalPromptRegistration
-	found := false
-	for approvalID, entry := range f.promptsByApproval {
-		if entry == nil || entry.PromptMessageID != targetMessageID {
-			continue
-		}
-		promptCopy = *entry
-		promptCopy.ApprovalID = approvalID
-		found = true
-		break
-	}
-	f.mu.Unlock()
-	if !found {
-		return ApprovalPromptReactionMatch{}
-	}
-
-	sender = id.UserID(strings.TrimSpace(sender.String()))
-	match := ApprovalPromptReactionMatch{
-		KnownPrompt: true,
-		ApprovalID:  promptCopy.ApprovalID,
-		Prompt:      promptCopy,
-	}
-	if promptCopy.OwnerMXID != "" && sender != promptCopy.OwnerMXID {
-		match.RejectReason = RejectReasonOwnerOnly
-		return match
-	}
-	if !promptCopy.ExpiresAt.IsZero() && !now.IsZero() && now.After(promptCopy.ExpiresAt) {
-		match.RejectReason = RejectReasonExpired
-		f.mu.Lock()
-		f.dropPromptLocked(promptCopy.ApprovalID)
 		f.mu.Unlock()
 		return match
 	}
@@ -1072,14 +1043,11 @@ func (f *ApprovalFlow[D]) HandleReaction(ctx context.Context, msg *bridgev2.Matr
 		return false
 	}
 	now := time.Now()
-	match := f.matchReaction(targetEventID, msg.Event.Sender, emoji, now)
 	targetMessageID := networkid.MessageID("")
 	if msg.TargetMessage != nil {
 		targetMessageID = msg.TargetMessage.ID
 	}
-	if !match.KnownPrompt && targetMessageID != "" {
-		match = f.matchReactionByMessageID(targetMessageID, msg.Event.Sender, emoji, now)
-	}
+	match := f.matchReactionTarget(targetEventID, targetMessageID, msg.Event.Sender, emoji, now)
 	if !match.KnownPrompt {
 		if isApprovalReactionKey(emoji) && f.handleResolvedApprovalReactionChange(ctx, msg.Portal, msg.Event, msg, targetEventID, targetMessageID) {
 			return true
