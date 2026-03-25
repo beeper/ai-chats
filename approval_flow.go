@@ -641,10 +641,8 @@ func (f *ApprovalFlow[D]) resolvedPromptByTarget(targetMessageID networkid.Messa
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.pruneExpiredResolvedPromptsLocked(time.Now())
-	if targetMessageID != "" {
-		if entry := f.resolvedByMsgID[targetMessageID]; entry != nil {
-			return *entry, true
-		}
+	if entry := f.resolvedByMsgID[targetMessageID]; entry != nil {
+		return *entry, true
 	}
 	return resolvedApprovalPrompt{}, false
 }
@@ -671,9 +669,7 @@ func (f *ApprovalFlow[D]) rememberResolvedPromptLocked(prompt ApprovalPromptRegi
 		Decision:  decision,
 		ExpiresAt: prompt.ExpiresAt,
 	}
-	if prompt.PromptMessageID != "" {
-		f.resolvedByMsgID[prompt.PromptMessageID] = resolved
-	}
+	f.resolvedByMsgID[prompt.PromptMessageID] = resolved
 }
 
 // dropPromptLocked removes a prompt registration.
