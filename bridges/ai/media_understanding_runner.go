@@ -600,7 +600,7 @@ func (oc *AIClient) runMediaUnderstandingEntry(
 			return nil, err
 		}
 		fileName := resolveMediaFileName(attachment.FileName, string(capability), attachment.URL)
-		tempDir, err := os.MkdirTemp("", "ai-bridge-media-*")
+		tempDir, err := os.MkdirTemp("", "agentremote-media-*")
 		if err != nil {
 			return nil, err
 		}

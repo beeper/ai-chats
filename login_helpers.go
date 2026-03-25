@@ -2,7 +2,7 @@ package agentremote
 
 import (
 	"context"
-	"errors"
+	"net/http"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -12,10 +12,10 @@ import (
 // common preamble shared by all bridge LoginProcess implementations.
 func ValidateLoginState(user *bridgev2.User, br *bridgev2.Bridge) error {
 	if user == nil {
-		return errors.New("missing user context for login")
+		return NewLoginRespError(http.StatusInternalServerError, "Missing user context for login.", "LOGIN", "MISSING_USER_CONTEXT")
 	}
 	if br == nil {
-		return errors.New("connector is not initialized")
+		return NewLoginRespError(http.StatusInternalServerError, "Connector is not initialized.", "LOGIN", "CONNECTOR_NOT_INITIALIZED")
 	}
 	return nil
 }

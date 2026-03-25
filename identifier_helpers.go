@@ -2,6 +2,7 @@ package agentremote
 
 import (
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -68,8 +69,11 @@ func SingleLoginFlow(enabled bool, flow bridgev2.LoginFlow) []bridgev2.LoginFlow
 }
 
 func ValidateSingleLoginFlow(flowID, expectedFlowID string, enabled bool) error {
-	if flowID != expectedFlowID || !enabled {
-		return fmt.Errorf("login flow %s is not available", flowID)
+	if flowID != expectedFlowID {
+		return bridgev2.ErrInvalidLoginFlowID
+	}
+	if !enabled {
+		return NewLoginRespError(http.StatusForbidden, "This login flow is disabled.", "LOGIN", "DISABLED")
 	}
 	return nil
 }

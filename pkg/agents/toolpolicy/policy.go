@@ -21,23 +21,26 @@ const (
 
 // Tool group constants for policy composition (OpenClaw-style shorthands).
 const (
-	GroupSearch     = "group:search"
-	GroupCalc       = "group:calc"
-	GroupBuilder    = "group:builder"
-	GroupMessaging  = "group:messaging"
-	GroupRuntime    = "group:runtime"
-	GroupSessions   = "group:sessions"
-	GroupMemory     = "group:memory"
-	GroupWeb        = "group:web"
-	GroupMedia      = "group:media"
-	GroupUI         = "group:ui"
-	GroupAutomation = "group:automation"
-	GroupNodes      = "group:nodes"
-	GroupStatus     = "group:status"
-	GroupOpenClaw   = "group:openclaw"
-	GroupAIBridge   = "group:ai-bridge"
-	GroupFS         = "group:fs"
+	GroupSearch      = "group:search"
+	GroupCalc        = "group:calc"
+	GroupBuilder     = "group:builder"
+	GroupMessaging   = "group:messaging"
+	GroupRuntime     = "group:runtime"
+	GroupSessions    = "group:sessions"
+	GroupMemory      = "group:memory"
+	GroupWeb         = "group:web"
+	GroupMedia       = "group:media"
+	GroupUI          = "group:ui"
+	GroupAutomation  = "group:automation"
+	GroupNodes       = "group:nodes"
+	GroupStatus      = "group:status"
+	GroupOpenClaw    = "group:openclaw"
+	GroupAgentRemote = "group:agentremote"
+	GroupAIBridge    = "group:ai-bridge"
+	GroupFS          = "group:fs"
 )
+
+var agentRemoteExtras = []string{"gravatar_fetch", "gravatar_set", "beeper_docs", "beeper_send_feedback", "image_generate", "tts", "calculator"}
 
 // ToolGroups maps group names to tool names for policy composition.
 var ToolGroups = map[string][]string{
@@ -55,7 +58,7 @@ var ToolGroups = map[string][]string{
 	GroupAutomation: {"cron", "gateway"},
 	GroupNodes:      {"nodes"},
 	GroupStatus:     {"session_status"},
-	// Strict OpenClaw native tool set (excludes provider plugins + ai-bridge-only tools).
+	// Strict OpenClaw native tool set (excludes provider plugins + agentremote-only tools).
 	GroupOpenClaw: {
 		"browser",
 		"canvas",
@@ -75,9 +78,10 @@ var ToolGroups = map[string][]string{
 		"web_fetch",
 		"image",
 	},
-	// ai-bridge extras (keep separate so group:openclaw stays portable with OpenClaw configs).
-	GroupAIBridge: {"gravatar_fetch", "gravatar_set", "beeper_docs", "beeper_send_feedback", "image_generate", "tts", "calculator"},
-	GroupFS:       {"read", "write", "edit", "apply_patch"},
+	// AgentRemote extras (keep separate so group:openclaw stays portable with OpenClaw configs).
+	GroupAgentRemote: agentRemoteExtras,
+	GroupAIBridge:    agentRemoteExtras,
+	GroupFS:          {"read", "write", "edit", "apply_patch"},
 }
 
 var ownerOnlyToolNames = map[string]struct{}{

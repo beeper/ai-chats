@@ -358,8 +358,8 @@ func (cc *CodexClient) purgeCodexCwdsBestEffort(ctx context.Context) {
 		if clean == "." || clean == string(os.PathSeparator) {
 			continue
 		}
-		// Safety: only delete dirs we created via os.MkdirTemp("", "ai-bridge-codex-*").
-		if !strings.HasPrefix(filepath.Base(clean), "ai-bridge-codex-") {
+		// Safety: only delete dirs we created in agentremote-codex temp roots.
+		if !isManagedCodexTempDirPath(clean) {
 			continue
 		}
 		if !strings.HasPrefix(clean, tmp+string(os.PathSeparator)) {
@@ -371,6 +371,15 @@ func (cc *CodexClient) purgeCodexCwdsBestEffort(ctx context.Context) {
 		seen[clean] = struct{}{}
 		_ = os.RemoveAll(clean)
 	}
+}
+
+func isManagedCodexTempDirPath(path string) bool {
+	for _, segment := range strings.Split(filepath.Clean(path), string(filepath.Separator)) {
+		if segment == "agentremote-codex" || strings.HasPrefix(segment, "agentremote-codex-") {
+			return true
+		}
+	}
+	return false
 }
 
 func (cc *CodexClient) GetChatInfo(_ context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {

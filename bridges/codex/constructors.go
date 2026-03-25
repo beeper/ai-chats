@@ -2,7 +2,6 @@ package codex
 
 import (
 	"context"
-	"fmt"
 	"slices"
 
 	"go.mau.fi/util/configupgrade"
@@ -72,7 +71,7 @@ func NewConnector() *CodexConnector {
 			if portal == nil {
 				return
 			}
-			agentremote.ApplyAIBridgeInfo(content, "ai-codex", portal.RoomType, agentremote.AIRoomKindAgent)
+			agentremote.ApplyAgentRemoteBridgeInfo(content, "ai-codex", portal.RoomType, agentremote.AIRoomKindAgent)
 		},
 		ExampleConfig:  exampleNetworkConfig,
 		ConfigData:     &cc.Config,
@@ -99,10 +98,10 @@ func NewConnector() *CodexConnector {
 		LoginFlows: loginFlows,
 		CreateLogin: func(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
 			if !cc.codexEnabled() {
-				return nil, fmt.Errorf("login flow %s is not available", flowID)
+				return nil, agentremote.NewLoginRespError(403, "Codex login is disabled in the configuration.", "CODEX", "LOGIN_DISABLED")
 			}
 			if !slices.ContainsFunc(loginFlows, func(f bridgev2.LoginFlow) bool { return f.ID == flowID }) {
-				return nil, fmt.Errorf("login flow %s is not available", flowID)
+				return nil, bridgev2.ErrInvalidLoginFlowID
 			}
 			if err := cc.ensureHostAuthLoginForUser(ctx, user); err != nil && cc.br != nil {
 				cc.br.Log.Debug().Err(err).Stringer("mxid", user.MXID).Msg("Host-auth reconcile: create-login reconcile failed")

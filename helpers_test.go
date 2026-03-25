@@ -29,9 +29,9 @@ func TestNormalizeAIRoomTypeV2(t *testing.T) {
 	}
 }
 
-func TestApplyAIBridgeInfo(t *testing.T) {
+func TestApplyAgentRemoteBridgeInfo(t *testing.T) {
 	content := &event.BridgeEventContent{}
-	ApplyAIBridgeInfo(content, "ai-codex", database.RoomTypeDM, AIRoomKindAgent)
+	ApplyAgentRemoteBridgeInfo(content, "ai-codex", database.RoomTypeDM, AIRoomKindAgent)
 
 	if content.Protocol.ID != "ai-codex" {
 		t.Fatalf("expected protocol id ai-codex, got %q", content.Protocol.ID)
