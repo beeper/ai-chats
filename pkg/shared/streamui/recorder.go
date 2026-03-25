@@ -83,15 +83,7 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 		part := ensureToolPart(state, toolCallID, stringutil.TrimString(chunk["toolName"]))
 		part["state"] = "input-streaming"
 		part["input"] = ""
-		if title := stringutil.TrimString(chunk["title"]); title != "" {
-			part["title"] = title
-		}
-		if providerExecuted, ok := boolValue(chunk["providerExecuted"]); ok {
-			part["providerExecuted"] = providerExecuted
-		}
-		if providerMetadata := jsonutil.DeepCloneMap(jsonutil.ToMap(chunk["providerMetadata"])); len(providerMetadata) > 0 {
-			part["callProviderMetadata"] = providerMetadata
-		}
+		applyToolInputMeta(part, chunk)
 	case "tool-input-delta":
 		toolCallID := stringutil.TrimString(chunk["toolCallId"])
 		if toolCallID == "" {
@@ -114,15 +106,7 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 		part := ensureToolPart(state, toolCallID, stringutil.TrimString(chunk["toolName"]))
 		part["state"] = "input-available"
 		part["input"] = jsonutil.DeepCloneAny(chunk["input"])
-		if title := stringutil.TrimString(chunk["title"]); title != "" {
-			part["title"] = title
-		}
-		if providerExecuted, ok := boolValue(chunk["providerExecuted"]); ok {
-			part["providerExecuted"] = providerExecuted
-		}
-		if providerMetadata := jsonutil.DeepCloneMap(jsonutil.ToMap(chunk["providerMetadata"])); len(providerMetadata) > 0 {
-			part["callProviderMetadata"] = providerMetadata
-		}
+		applyToolInputMeta(part, chunk)
 	case "tool-input-error":
 		toolCallID := stringutil.TrimString(chunk["toolCallId"])
 		if toolCallID == "" {
@@ -132,15 +116,7 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 		part["state"] = "output-error"
 		part["input"] = jsonutil.DeepCloneAny(chunk["input"])
 		part["errorText"] = stringutil.StringValue(chunk["errorText"])
-		if title := stringutil.TrimString(chunk["title"]); title != "" {
-			part["title"] = title
-		}
-		if providerExecuted, ok := boolValue(chunk["providerExecuted"]); ok {
-			part["providerExecuted"] = providerExecuted
-		}
-		if providerMetadata := jsonutil.DeepCloneMap(jsonutil.ToMap(chunk["providerMetadata"])); len(providerMetadata) > 0 {
-			part["callProviderMetadata"] = providerMetadata
-		}
+		applyToolInputMeta(part, chunk)
 	case "tool-approval-request":
 		toolCallID := stringutil.TrimString(chunk["toolCallId"])
 		if toolCallID == "" {
@@ -385,6 +361,18 @@ func setTerminalState(message map[string]any, typ string, reason string) {
 	}
 	metadata["beeper_terminal_state"] = terminal
 	message["metadata"] = metadata
+}
+
+func applyToolInputMeta(part, chunk map[string]any) {
+	if title := stringutil.TrimString(chunk["title"]); title != "" {
+		part["title"] = title
+	}
+	if providerExecuted, ok := boolValue(chunk["providerExecuted"]); ok {
+		part["providerExecuted"] = providerExecuted
+	}
+	if providerMetadata := jsonutil.DeepCloneMap(jsonutil.ToMap(chunk["providerMetadata"])); len(providerMetadata) > 0 {
+		part["callProviderMetadata"] = providerMetadata
+	}
 }
 
 func boolValue(raw any) (bool, bool) {

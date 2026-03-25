@@ -5,6 +5,7 @@ import (
 
 	"github.com/beeper/agentremote/pkg/shared/exa"
 	"github.com/beeper/agentremote/pkg/shared/providerkit"
+	"github.com/beeper/agentremote/pkg/shared/providerresource"
 )
 
 // ConfigFromEnv builds a search config using environment variables.
@@ -18,24 +19,25 @@ func ConfigFromEnv() *Config {
 
 // ApplyEnvDefaults fills empty config fields from environment variables.
 func ApplyEnvDefaults(cfg *Config) *Config {
-	if cfg == nil {
-		return ConfigFromEnv()
-	}
-	hasProvider := cfg.Provider != ""
-	hasFallbacks := len(cfg.Fallbacks) > 0
-	current := cfg.WithDefaults()
-	env := ConfigFromEnv()
-	if !hasProvider {
-		current.Provider = env.Provider
-	}
-	if !hasFallbacks {
-		current.Fallbacks = env.Fallbacks
-	}
-	if current.Exa.APIKey == "" {
-		current.Exa.APIKey = env.Exa.APIKey
-	}
-	if current.Exa.BaseURL == "" {
-		current.Exa.BaseURL = env.Exa.BaseURL
-	}
-	return current
+	return providerresource.ApplyEnvDefaults(
+		cfg,
+		ConfigFromEnv,
+		func(current *Config) *Config { return current.WithDefaults() },
+		func(current *Config) bool { return current != nil && current.Provider != "" },
+		func(current *Config) bool { return current != nil && len(current.Fallbacks) > 0 },
+		func(current, env *Config, hasProvider, hasFallbacks bool) {
+			if !hasProvider {
+				current.Provider = env.Provider
+			}
+			if !hasFallbacks {
+				current.Fallbacks = env.Fallbacks
+			}
+			if current.Exa.APIKey == "" {
+				current.Exa.APIKey = env.Exa.APIKey
+			}
+			if current.Exa.BaseURL == "" {
+				current.Exa.BaseURL = env.Exa.BaseURL
+			}
+		},
+	)
 }
