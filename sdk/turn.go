@@ -486,12 +486,14 @@ func (t *Turn) requestApproval(req ApprovalRequest) ApprovalHandle {
 	}
 	approvalFlow.SendPrompt(t.turnCtx, t.conv.portal, agentremote.SendPromptParams{
 		ApprovalPromptMessageParams: agentremote.ApprovalPromptMessageParams{
-			ApprovalID:   approvalID,
-			ToolCallID:   req.ToolCallID,
-			ToolName:     req.ToolName,
-			TurnID:       t.turnID,
-			Presentation: presentation,
-			ExpiresAt:    time.Now().Add(ttl),
+			ApprovalID:        approvalID,
+			ToolCallID:        req.ToolCallID,
+			ToolName:          req.ToolName,
+			TurnID:            t.turnID,
+			Presentation:      presentation,
+			ReplyToEventID:    t.InitialEventID(),
+			ThreadRootEventID: t.ThreadRoot(),
+			ExpiresAt:         time.Now().Add(ttl),
 		},
 		RoomID:    t.conv.portal.MXID,
 		OwnerMXID: t.conv.login.UserMXID,
@@ -563,6 +565,13 @@ func (t *Turn) InitialEventID() id.EventID {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.initialEventID
+}
+
+// ThreadRoot returns the Matrix thread root event ID for this turn.
+func (t *Turn) ThreadRoot() id.EventID {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.threadRoot
 }
 
 // NetworkMessageID returns the bridge network message ID of the placeholder.

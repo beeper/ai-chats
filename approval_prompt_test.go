@@ -6,15 +6,17 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
 
 func TestBuildApprovalPromptMessage_UsesStructuredPresentationAndMetadata(t *testing.T) {
 	msg := BuildApprovalPromptMessage(ApprovalPromptMessageParams{
-		ApprovalID: "approval-1",
-		ToolCallID: "tool-1",
-		ToolName:   "message",
-		TurnID:     "turn-1",
+		ApprovalID:     "approval-1",
+		ToolCallID:     "tool-1",
+		ToolName:       "message",
+		TurnID:         "turn-1",
+		ReplyToEventID: id.EventID("$assistant-turn"),
 		Presentation: ApprovalPromptPresentation{
 			Title:       "Send message",
 			AllowAlways: false,
@@ -37,8 +39,17 @@ func TestBuildApprovalPromptMessage_UsesStructuredPresentationAndMetadata(t *tes
 	if !strings.Contains(msg.Body, ApprovalReactionKeyAllowOnce) || !strings.Contains(msg.Body, ApprovalReactionKeyDeny) {
 		t.Fatalf("expected canonical reaction keys in body, got %q", msg.Body)
 	}
-	raw := msg.Raw
-	if _, ok := raw["com.beeper.ai.approval_decision"]; ok {
+	if msg.Content == nil {
+		t.Fatalf("expected typed content")
+	}
+	if msg.Content.MsgType != event.MsgNotice || msg.Content.Body != msg.Body {
+		t.Fatalf("unexpected content payload: %#v", msg.Content)
+	}
+	if msg.Content.Mentions == nil {
+		t.Fatalf("expected empty mentions to be preserved")
+	}
+	extra := msg.TopLevelExtra
+	if _, ok := extra["com.beeper.ai.approval_decision"]; ok {
 		t.Fatalf("did not expect legacy approval decision metadata on prompt")
 	}
 	meta, ok := msg.UIMessage["metadata"].(map[string]any)
@@ -55,12 +66,49 @@ func TestBuildApprovalPromptMessage_UsesStructuredPresentationAndMetadata(t *tes
 	if rendered, ok := approvalRaw["renderedKeys"].([]string); !ok || len(rendered) != 2 {
 		t.Fatalf("expected two rendered keys, got %#v", approvalRaw["renderedKeys"])
 	}
+	relatesTo := msg.Content.RelatesTo
+	if relatesTo == nil {
+		t.Fatalf("expected reply relation, got %#v", msg.Content.RelatesTo)
+	}
+	if relatesTo.GetReplyTo() != id.EventID("$assistant-turn") {
+		t.Fatalf("expected prompt to reply to assistant turn, got %#v", msg.Content.RelatesTo)
+	}
 	presentationRaw, ok := approvalRaw["presentation"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected presentation metadata, got %#v", approvalRaw["presentation"])
 	}
 	if presentationRaw["title"] != "Send message" {
 		t.Fatalf("expected presentation title, got %#v", presentationRaw["title"])
+	}
+}
+
+func TestBuildApprovalPromptMessage_UsesThreadRelationWhenThreadRootProvided(t *testing.T) {
+	msg := BuildApprovalPromptMessage(ApprovalPromptMessageParams{
+		ApprovalID:        "approval-1",
+		ToolCallID:        "tool-1",
+		ToolName:          "message",
+		TurnID:            "turn-1",
+		ReplyToEventID:    id.EventID("$assistant-turn"),
+		ThreadRootEventID: id.EventID("$thread-root"),
+		Presentation: ApprovalPromptPresentation{
+			Title: "Send message",
+		},
+	})
+	relatesTo := msg.Content.RelatesTo
+	if relatesTo == nil {
+		t.Fatalf("expected thread relation, got %#v", msg.Content.RelatesTo)
+	}
+	if relatesTo.Type != event.RelThread {
+		t.Fatalf("expected thread relation type, got %#v", relatesTo.Type)
+	}
+	if relatesTo.EventID != id.EventID("$thread-root") {
+		t.Fatalf("expected thread root target, got %#v", relatesTo.EventID)
+	}
+	if !relatesTo.IsFallingBack {
+		t.Fatalf("expected thread fallback reply, got %#v", relatesTo.IsFallingBack)
+	}
+	if relatesTo.GetReplyTo() != id.EventID("$assistant-turn") {
+		t.Fatalf("expected thread fallback reply to assistant turn, got %#v", relatesTo.GetReplyTo())
 	}
 }
 
@@ -109,7 +157,7 @@ func TestBuildApprovalResponsePromptMessage_ContainsDecision(t *testing.T) {
 			Reason:     "timeout",
 		},
 	})
-	if _, ok := msg.Raw["com.beeper.ai.approval_decision"]; ok {
+	if _, ok := msg.TopLevelExtra["com.beeper.ai.approval_decision"]; ok {
 		t.Fatalf("did not expect legacy approval decision metadata on response")
 	}
 	if !strings.Contains(msg.Body, "Decision: timed out") {

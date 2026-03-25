@@ -516,6 +516,21 @@ func TestApprovalPlaceholderReactionKey_PrefersAlias(t *testing.T) {
 	}
 }
 
+func TestApprovalReactionTargetMessageID_PrefersAssistantTurnTarget(t *testing.T) {
+	prompt := ApprovalPromptRegistration{
+		ReactionTargetMessageID: networkid.MessageID("assistant-msg"),
+		PromptMessageID:         networkid.MessageID("prompt-msg"),
+	}
+	if got := approvalReactionTargetMessageID(prompt); got != networkid.MessageID("assistant-msg") {
+		t.Fatalf("expected assistant-turn reaction target, got %q", got)
+	}
+
+	prompt.ReactionTargetMessageID = ""
+	if got := approvalReactionTargetMessageID(prompt); got != networkid.MessageID("prompt-msg") {
+		t.Fatalf("expected prompt fallback reaction target, got %q", got)
+	}
+}
+
 func TestApprovalFlow_ResolvedPromptLookupPrunesExpiredEntries(t *testing.T) {
 	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{})
 
