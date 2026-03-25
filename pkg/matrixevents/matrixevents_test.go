@@ -1,6 +1,11 @@
 package matrixevents
 
-import "testing"
+import (
+	"testing"
+
+	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
+)
 
 func TestBuildStreamEventEnvelope_RequiresTurnID(t *testing.T) {
 	_, err := BuildStreamEventEnvelope("  ", 1, map[string]any{"type": "text-delta"}, StreamEventOpts{})
@@ -40,11 +45,11 @@ func TestBuildStreamEventEnvelope_IncludesRelatesTo(t *testing.T) {
 	if content["agent_id"] != "agent1" {
 		t.Fatalf("agent_id mismatch")
 	}
-	rt, ok := content["m.relates_to"].(map[string]any)
+	rt, ok := content["m.relates_to"].(*event.RelatesTo)
 	if !ok {
 		t.Fatalf("missing m.relates_to")
 	}
-	if rt["rel_type"] != RelReference || rt["event_id"] != "$event" {
+	if rt.Type != event.RelReference || rt.EventID != id.EventID("$event") {
 		t.Fatalf("unexpected m.relates_to: %#v", rt)
 	}
 	if _, ok := content["target_event"]; ok {
