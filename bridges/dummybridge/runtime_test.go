@@ -317,28 +317,72 @@ func TestRunRandomStopsWhenDurationExpires(t *testing.T) {
 	}
 }
 
-func TestBuildLoremTextProducesCleanSentenceLikeOutput(t *testing.T) {
-	text := buildLoremText(140, rand.New(rand.NewSource(7)))
-	if text == "" {
-		t.Fatal("expected lorem text")
+func containsMarkdownSignal(text string) bool {
+	signals := []string{"[", "](", "**", "_", "\n- ", "\n> ", "```", "\n| "}
+	for _, signal := range signals {
+		if strings.Contains(text, signal) {
+			return true
+		}
 	}
-	if first := text[0]; first < 'A' || first > 'Z' {
-		t.Fatalf("expected text to start with an uppercase letter, got %q", text)
+	return false
+}
+
+func TestBuildDemoVisibleTextIsDeterministicForSeed(t *testing.T) {
+	first := buildDemoVisibleText(280, rand.New(rand.NewSource(7)))
+	second := buildDemoVisibleText(280, rand.New(rand.NewSource(7)))
+	if first == "" {
+		t.Fatal("expected demo text")
 	}
-	if strings.Contains(text, "  ") {
-		t.Fatalf("expected no repeated spaces, got %q", text)
+	if first != second {
+		t.Fatalf("expected deterministic output for seed, got %q vs %q", first, second)
 	}
-	if last := text[len(text)-1]; (last >= 'a' && last <= 'z') || (last >= 'A' && last <= 'Z') {
-		t.Fatalf("expected text to end cleanly, got %q", text)
+	if !containsMarkdownSignal(first) {
+		t.Fatalf("expected markdown signal in %q", first)
 	}
 }
 
-func TestBuildLoremTextVariesAcrossCalls(t *testing.T) {
+func TestBuildDemoVisibleTextVariesAcrossCalls(t *testing.T) {
 	rng := rand.New(rand.NewSource(11))
-	first := buildLoremText(160, rng)
-	second := buildLoremText(160, rng)
+	first := buildDemoVisibleText(220, rng)
+	second := buildDemoVisibleText(220, rng)
 	if first == second {
-		t.Fatalf("expected distinct lorem passages, got %q", first)
+		t.Fatalf("expected distinct demo passages, got %q", first)
+	}
+}
+
+func TestBuildDemoVisibleTextCanEmitTable(t *testing.T) {
+	for seed := int64(1); seed <= 64; seed++ {
+		text := buildDemoVisibleText(420, rand.New(rand.NewSource(seed)))
+		if strings.Contains(text, "\n| --- | --- | --- |") && strings.Count(text, "\n| ") >= 3 {
+			return
+		}
+	}
+	t.Fatal("expected at least one seeded demo passage to include a markdown table")
+}
+
+func TestRunLoremUsesRichVisibleText(t *testing.T) {
+	turn := newTestTurn()
+	cmd := loremCommand{
+		Chars: 260,
+		Options: commonCommandOptions{
+			DelayMin: 0,
+			DelayMax: 0,
+			ChunkMin: 24,
+			ChunkMax: 24,
+			Seed:     7,
+			SeedSet:  true,
+		},
+	}
+	if err := testRunner().runLorem(context.Background(), turn, cmd, zerolog.Nop()); err != nil {
+		t.Fatalf("runLorem returned error: %v", err)
+	}
+	part := findPartByType(snapshotParts(turn), "text")
+	if part == nil {
+		t.Fatal("expected text part")
+	}
+	text, _ := part["text"].(string)
+	if !containsMarkdownSignal(text) {
+		t.Fatalf("expected markdown-rich visible text, got %q", text)
 	}
 }
 

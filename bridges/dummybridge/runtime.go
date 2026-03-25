@@ -54,6 +54,75 @@ var loremSentenceCorpus = []string{
 	"Phasellus viverra nulla ut metus varius laoreet quisque rutrum.",
 }
 
+var demoMarkdownLabels = []string{
+	"release notes",
+	"ops runbook",
+	"incident log",
+	"design memo",
+	"qa checklist",
+	"support brief",
+}
+
+var demoMarkdownURLs = []string{
+	"https://dummybridge.local/docs/streaming",
+	"https://dummybridge.local/docs/markdown",
+	"https://dummybridge.local/runbooks/turns",
+	"https://dummybridge.local/notes/demo-output",
+	"https://dummybridge.local/reference/tooling",
+}
+
+var demoMarkdownEmphasis = []string{
+	"high-signal",
+	"operator-visible",
+	"tool-safe",
+	"incremental",
+	"review-ready",
+	"latency-sensitive",
+}
+
+var demoMarkdownListItems = []string{
+	"Confirm the seeded output changes shape between runs.",
+	"Surface enough formatting to stress the renderer.",
+	"Keep deltas readable while chunks arrive out of phase.",
+	"Preserve stable output for deterministic test fixtures.",
+	"Expose links, tables, and code blocks without extra flags.",
+	"Keep the generated prose plausible enough for manual inspection.",
+}
+
+var demoMarkdownQuoteCorpus = []string{
+	"Streaming output should feel alive, not like the same paragraph repeated forever.",
+	"Richer markdown gives the client something realistic to render while the turn is still open.",
+	"Deterministic variety is more useful than perfect prose in a demo bridge.",
+}
+
+var demoMarkdownCodeSnippets = []string{
+	"const preview = chunks.filter(Boolean).join(\"\");",
+	"writer.textDelta(\"| status | value |\\n| --- | --- |\\n\");",
+	"if (seeded) { return renderMarkdownBlocks(); }",
+}
+
+var demoMarkdownTableHeaders = [][]string{
+	{"Metric", "Value", "Notes"},
+	{"Phase", "Owner", "Status"},
+	{"Artifact", "State", "Latency"},
+}
+
+var demoMarkdownTableRows = [][]string{
+	{"stream", "warming", "steady deltas"},
+	{"renderer", "active", "accepts markdown"},
+	{"tool call", "complete", "output persisted"},
+	{"search step", "queued", "awaiting sources"},
+	{"summary", "ready", "links attached"},
+	{"review", "running", "formatting checks"},
+}
+
+type demoSegmentSpec struct {
+	name   string
+	weight int
+	minLen int
+	build  func(*rand.Rand, int) string
+}
+
 type commonCommandOptions struct {
 	ReasoningChars    int
 	Steps             int
@@ -912,7 +981,7 @@ func (r demoRunner) runLorem(ctx context.Context, turn *bridgesdk.Turn, cmd lore
 	if stepCount <= 0 {
 		stepCount = 1
 	}
-	text := buildLoremText(cmd.Chars, contentRNG)
+	text := buildDemoVisibleText(cmd.Chars, contentRNG)
 	reasoning := buildLoremText(cmd.Options.ReasoningChars, contentRNG)
 	for step := 0; step < stepCount; step++ {
 		if cmd.Options.Steps > 0 {
@@ -946,7 +1015,7 @@ func (r demoRunner) runTools(ctx context.Context, turn *bridgesdk.Turn, cmd tool
 	rng := rngForOptions(opts.SeedSet, opts.Seed, started.UnixNano())
 	contentRNG := rand.New(rand.NewSource(rng.Int63()))
 	phaseCount := max(len(cmd.Tools)+1, max(opts.Steps, 1))
-	text := buildLoremText(cmd.Chars, contentRNG)
+	text := buildDemoVisibleText(cmd.Chars, contentRNG)
 	reasoning := buildLoremText(cmd.Options.ReasoningChars, contentRNG)
 	for phase := 0; phase < phaseCount; phase++ {
 		turn.Writer().StepStart(ctx)
@@ -1011,7 +1080,7 @@ func (r demoRunner) runRandom(ctx context.Context, turn *bridgesdk.Turn, cmd ran
 		switch kind {
 		case randomActionText:
 			chars := 40 + rng.Intn(160)
-			text := buildLoremText(chars, rand.New(rand.NewSource(rng.Int63())))
+			text := buildDemoVisibleText(chars, rand.New(rand.NewSource(rng.Int63())))
 			if err := r.streamVisibleText(ctx, turn, text, rng, commonCommandOptions{}); err != nil {
 				return err
 			}
@@ -1395,6 +1464,137 @@ func buildLoremText(chars int, rng *rand.Rand) string {
 	return trimLoremText(sb.String(), chars)
 }
 
+func buildDemoVisibleText(chars int, rng *rand.Rand) string {
+	if chars <= 0 {
+		return ""
+	}
+	if rng == nil {
+		rng = rand.New(rand.NewSource(int64(chars)))
+	}
+	segments := demoVisibleSegmentSpecs()
+	var blocks []string
+	total := 0
+	target := chars + min(96, max(24, chars/6))
+	for total < chars {
+		remaining := target - total
+		block := chooseDemoSegment(segments, rng, max(remaining, 0))
+		if strings.TrimSpace(block) == "" {
+			block = buildLoremText(min(max(chars-total, 48), 160), rand.New(rand.NewSource(rng.Int63())))
+		}
+		blocks = append(blocks, block)
+		total += len(block)
+	}
+	return trimDemoVisibleText(strings.Join(blocks, "\n\n"), chars)
+}
+
+func demoVisibleSegmentSpecs() []demoSegmentSpec {
+	return []demoSegmentSpec{
+		{
+			name:   "paragraph",
+			weight: 5,
+			minLen: 48,
+			build: func(rng *rand.Rand, remaining int) string {
+				size := 72 + rng.Intn(96)
+				if remaining > 0 {
+					size = min(size, remaining+48)
+				}
+				return buildLoremText(max(size, 48), rand.New(rand.NewSource(rng.Int63())))
+			},
+		},
+		{
+			name:   "link-paragraph",
+			weight: 4,
+			minLen: 96,
+			build: func(rng *rand.Rand, _ int) string {
+				label := demoMarkdownLabels[rng.Intn(len(demoMarkdownLabels))]
+				url := demoMarkdownURLs[rng.Intn(len(demoMarkdownURLs))]
+				emphasis := demoMarkdownEmphasis[rng.Intn(len(demoMarkdownEmphasis))]
+				prefix := buildLoremText(72+rng.Intn(48), rand.New(rand.NewSource(rng.Int63())))
+				return fmt.Sprintf("%s Review the [%s](%s) entry for **%s** output and _staged_ formatting transitions.", prefix, label, url, emphasis)
+			},
+		},
+		{
+			name:   "list",
+			weight: 3,
+			minLen: 96,
+			build: func(rng *rand.Rand, _ int) string {
+				count := 2 + rng.Intn(3)
+				var lines []string
+				for i := 0; i < count; i++ {
+					item := demoMarkdownListItems[(rng.Intn(len(demoMarkdownListItems))+i)%len(demoMarkdownListItems)]
+					prefix := "-"
+					if rng.Intn(4) == 0 {
+						prefix = "- [x]"
+					}
+					lines = append(lines, fmt.Sprintf("%s %s", prefix, item))
+				}
+				return strings.Join(lines, "\n")
+			},
+		},
+		{
+			name:   "quote",
+			weight: 2,
+			minLen: 72,
+			build: func(rng *rand.Rand, _ int) string {
+				quote := demoMarkdownQuoteCorpus[rng.Intn(len(demoMarkdownQuoteCorpus))]
+				return fmt.Sprintf("> %s\n>\n> %s", quote, buildLoremText(48+rng.Intn(36), rand.New(rand.NewSource(rng.Int63()))))
+			},
+		},
+		{
+			name:   "code",
+			weight: 2,
+			minLen: 72,
+			build: func(rng *rand.Rand, _ int) string {
+				snippet := demoMarkdownCodeSnippets[rng.Intn(len(demoMarkdownCodeSnippets))]
+				return fmt.Sprintf("Use `%s` when the client needs a smaller incremental patch.\n\n```js\n%s\n```", sanitizeToolName(demoMarkdownLabels[rng.Intn(len(demoMarkdownLabels))]), snippet)
+			},
+		},
+		{
+			name:   "table",
+			weight: 2,
+			minLen: 180,
+			build: func(rng *rand.Rand, _ int) string {
+				header := demoMarkdownTableHeaders[rng.Intn(len(demoMarkdownTableHeaders))]
+				rowCount := 2 + rng.Intn(2)
+				var lines []string
+				lines = append(lines, fmt.Sprintf("| %s |", strings.Join(header, " | ")))
+				lines = append(lines, fmt.Sprintf("| %s |", strings.Join([]string{"---", "---", "---"}, " | ")))
+				for i := 0; i < rowCount; i++ {
+					row := demoMarkdownTableRows[(rng.Intn(len(demoMarkdownTableRows))+i)%len(demoMarkdownTableRows)]
+					lines = append(lines, fmt.Sprintf("| %s |", strings.Join(row, " | ")))
+				}
+				return strings.Join(lines, "\n")
+			},
+		},
+	}
+}
+
+func chooseDemoSegment(specs []demoSegmentSpec, rng *rand.Rand, remaining int) string {
+	candidates := make([]demoSegmentSpec, 0, len(specs))
+	totalWeight := 0
+	for _, spec := range specs {
+		if remaining > 0 && remaining < spec.minLen/2 {
+			continue
+		}
+		candidates = append(candidates, spec)
+		totalWeight += spec.weight
+	}
+	if len(candidates) == 0 {
+		candidates = specs
+		for _, spec := range candidates {
+			totalWeight += spec.weight
+		}
+	}
+	target := rng.Intn(totalWeight)
+	for _, spec := range candidates {
+		target -= spec.weight
+		if target < 0 {
+			return spec.build(rng, remaining)
+		}
+	}
+	return candidates[0].build(rng, remaining)
+}
+
 func rngForOptions(seedSet bool, seed, fallback int64) *rand.Rand {
 	if !seedSet {
 		seed = fallback
@@ -1490,6 +1690,40 @@ func trimLoremText(text string, limit int) string {
 		}
 	}
 	return trimTrailingPunctuation(strings.TrimSpace(text[:limit]))
+}
+
+func trimDemoVisibleText(text string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	text = strings.TrimSpace(text)
+	if len(text) <= limit {
+		return text
+	}
+	blocks := strings.Split(text, "\n\n")
+	if len(blocks) > 1 {
+		var kept []string
+		total := 0
+		for _, block := range blocks {
+			block = strings.TrimSpace(block)
+			if block == "" {
+				continue
+			}
+			nextLen := total + len(block)
+			if len(kept) > 0 {
+				nextLen += 2
+			}
+			if nextLen > limit {
+				break
+			}
+			kept = append(kept, block)
+			total = nextLen
+		}
+		if len(kept) > 0 {
+			return strings.Join(kept, "\n\n")
+		}
+	}
+	return trimLoremText(text, limit)
 }
 
 func trimToWordBoundary(text string) string {
