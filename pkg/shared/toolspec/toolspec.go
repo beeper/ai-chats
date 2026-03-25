@@ -66,62 +66,27 @@ func CalculatorSchema() map[string]any {
 
 // WebSearchSchema returns the JSON schema for the web search tool.
 func WebSearchSchema() map[string]any {
-	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"query": map[string]any{
-				"type":        "string",
-				"description": "Search query string.",
-			},
-			"count": map[string]any{
-				"type":        "number",
-				"description": "Number of results to return (1-10).",
-				"minimum":     1,
-				"maximum":     10,
-			},
-			"country": map[string]any{
-				"type":        "string",
-				"description": "2-letter country code for region-specific results (e.g., 'DE', 'US', 'ALL'). Default: 'US'.",
-			},
-			"search_lang": map[string]any{
-				"type":        "string",
-				"description": "ISO language code for search results (e.g., 'de', 'en', 'fr').",
-			},
-			"ui_lang": map[string]any{
-				"type":        "string",
-				"description": "ISO language code for UI elements.",
-			},
-			"freshness": map[string]any{
-				"type":        "string",
-				"description": "Filter results by discovery time (Brave only). Values: 'pd' (past 24h), 'pw' (past week), 'pm' (past month), 'py' (past year), or date range 'YYYY-MM-DDtoYYYY-MM-DD'.",
-			},
-		},
-		"required": []string{"query"},
-	}
+	return ObjectSchema(map[string]any{
+		"query":       StringProperty("Search query string."),
+		"count":       BoundedNumberProperty("Number of results to return (1-10).", 1, 10),
+		"country":     StringProperty("2-letter country code for region-specific results (e.g., 'DE', 'US', 'ALL'). Default: 'US'."),
+		"search_lang": StringProperty("ISO language code for search results (e.g., 'de', 'en', 'fr')."),
+		"ui_lang":     StringProperty("ISO language code for UI elements."),
+		"freshness":   StringProperty("Filter results by discovery time (Brave only). Values: 'pd' (past 24h), 'pw' (past week), 'pm' (past month), 'py' (past year), or date range 'YYYY-MM-DDtoYYYY-MM-DD'."),
+	}, "query")
 }
 
 // WebFetchSchema returns the JSON schema for the web fetch tool.
 func WebFetchSchema() map[string]any {
-	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"url": map[string]any{
-				"type":        "string",
-				"description": "HTTP or HTTPS URL to fetch.",
-			},
-			"maxChars": map[string]any{
-				"type":        "number",
-				"description": "Maximum characters to return (truncates when exceeded).",
-				"minimum":     100,
-			},
-			"extractMode": map[string]any{
-				"type":        "string",
-				"enum":        []string{"markdown", "text"},
-				"description": "Extraction mode (\"markdown\" or \"text\").",
-			},
+	return ObjectSchema(map[string]any{
+		"url": StringProperty("HTTP or HTTPS URL to fetch."),
+		"maxChars": map[string]any{
+			"type":        "number",
+			"description": "Maximum characters to return (truncates when exceeded).",
+			"minimum":     100,
 		},
-		"required": []string{"url"},
-	}
+		"extractMode": StringEnumProperty(`Extraction mode ("markdown" or "text").`, []string{"markdown", "text"}),
+	}, "url")
 }
 
 // ReadSchema returns the JSON schema for the read tool.
@@ -166,215 +131,69 @@ func GravatarSetSchema() map[string]any {
 
 // MessageSchema returns the JSON schema for the message tool.
 func MessageSchema() map[string]any {
-	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"action": map[string]any{
-				"type":        "string",
-				"enum":        []string{"send", "react", "reactions", "edit", "delete", "reply", "pin", "unpin", "list-pins", "thread-reply", "search", "read", "member-info", "channel-info", "channel-edit", "focus", "desktop-list-chats", "desktop-search-chats", "desktop-search-messages", "desktop-create-chat", "desktop-archive-chat", "desktop-set-reminder", "desktop-clear-reminder", "desktop-upload-asset", "desktop-download-asset"},
-				"description": "The action to perform",
-			},
-			"message": map[string]any{
-				"type":        "string",
-				"description": "For send/edit/reply/thread-reply: the message text",
-			},
-			"media": map[string]any{
-				"type":        "string",
-				"description": "Optional: media URL/path/data URL to send (image/audio/video/file).",
-			},
-			"filename": map[string]any{
-				"type":        "string",
-				"description": "Optional: filename for media uploads.",
-			},
-			"buffer": map[string]any{
-				"type":        "string",
-				"description": "Optional: base64 payload for attachments (optionally a data: URL).",
-			},
-			"mimeType": map[string]any{
-				"type":        "string",
-				"description": "Optional: content type override for attachments.",
-			},
-			"caption": map[string]any{
-				"type":        "string",
-				"description": "Optional: caption for media uploads.",
-			},
-			"path": map[string]any{
-				"type":        "string",
-				"description": "Optional: file path to upload (alias for media).",
-			},
-			"message_id": map[string]any{
-				"type":        "string",
-				"description": "Target message ID for react/reactions/edit/delete/reply/pin/unpin/thread-reply/read",
-			},
-			"emoji": map[string]any{
-				"type":        "string",
-				"description": "For action=react: the emoji to react with (empty to remove all reactions)",
-			},
-			"remove": map[string]any{
-				"type":        "boolean",
-				"description": "For action=react: set true to remove the reaction instead of adding",
-			},
-			"user_id": map[string]any{
-				"type":        "string",
-				"description": "For action=member-info: the Matrix user ID to look up (e.g., @user:server.com)",
-			},
-			"thread_id": map[string]any{
-				"type":        "string",
-				"description": "For action=thread-reply: the thread root message ID",
-			},
-			"asVoice": map[string]any{
-				"type":        "boolean",
-				"description": "Optional: send audio as a voice message (when media is audio).",
-			},
-			"silent": map[string]any{
-				"type":        "boolean",
-				"description": "Optional: send silently (ignored by bridge).",
-			},
-			"quoteText": map[string]any{
-				"type":        "string",
-				"description": "Optional: quote text for replies (ignored by bridge).",
-			},
-			"bestEffort": map[string]any{
-				"type":        "boolean",
-				"description": "Optional: best-effort delivery flag (ignored by bridge).",
-			},
-			"gifPlayback": map[string]any{
-				"type":        "boolean",
-				"description": "Optional: treat video media as GIF playback (sets MauGIF flag).",
-			},
-			"buttons": map[string]any{
-				"type":        "array",
-				"description": "Optional: inline keyboard buttons (ignored by bridge).",
+	return ObjectSchema(map[string]any{
+		"action":     StringEnumProperty("The action to perform", []string{"send", "react", "reactions", "edit", "delete", "reply", "pin", "unpin", "list-pins", "thread-reply", "search", "read", "member-info", "channel-info", "channel-edit", "focus", "desktop-list-chats", "desktop-search-chats", "desktop-search-messages", "desktop-create-chat", "desktop-archive-chat", "desktop-set-reminder", "desktop-clear-reminder", "desktop-upload-asset", "desktop-download-asset"}),
+		"message":    StringProperty("For send/edit/reply/thread-reply: the message text"),
+		"media":      StringProperty("Optional: media URL/path/data URL to send (image/audio/video/file)."),
+		"filename":   StringProperty("Optional: filename for media uploads."),
+		"buffer":     StringProperty("Optional: base64 payload for attachments (optionally a data: URL)."),
+		"mimeType":   StringProperty("Optional: content type override for attachments."),
+		"caption":    StringProperty("Optional: caption for media uploads."),
+		"path":       StringProperty("Optional: file path to upload (alias for media)."),
+		"message_id": StringProperty("Target message ID for react/reactions/edit/delete/reply/pin/unpin/thread-reply/read"),
+		"emoji":      StringProperty("For action=react: the emoji to react with (empty to remove all reactions)"),
+		"remove":     BooleanProperty("For action=react: set true to remove the reaction instead of adding"),
+		"user_id":    StringProperty("For action=member-info: the Matrix user ID to look up (e.g., @user:server.com)"),
+		"thread_id":  StringProperty("For action=thread-reply: the thread root message ID"),
+		"asVoice":    BooleanProperty("Optional: send audio as a voice message (when media is audio)."),
+		"silent":     BooleanProperty("Optional: send silently (ignored by bridge)."),
+		"quoteText":  StringProperty("Optional: quote text for replies (ignored by bridge)."),
+		"bestEffort": BooleanProperty("Optional: best-effort delivery flag (ignored by bridge)."),
+		"gifPlayback": BooleanProperty("Optional: treat video media as GIF playback (sets MauGIF flag)."),
+		"buttons": map[string]any{
+			"type":        "array",
+			"description": "Optional: inline keyboard buttons (ignored by bridge).",
+			"items": map[string]any{
+				"type": "array",
 				"items": map[string]any{
-					"type": "array",
-					"items": map[string]any{
-						"type": "object",
-						"properties": map[string]any{
-							"text": map[string]any{
-								"type":        "string",
-								"description": "Button label text.",
-							},
-							"callback_data": map[string]any{
-								"type":        "string",
-								"description": "Callback payload for button clicks.",
-							},
-							"url": map[string]any{
-								"type":        "string",
-								"description": "Optional URL to open when clicked.",
-							},
-						},
+					"type": "object",
+					"properties": map[string]any{
+						"text":          StringProperty("Button label text."),
+						"callback_data": StringProperty("Callback payload for button clicks."),
+						"url":           StringProperty("Optional URL to open when clicked."),
 					},
 				},
 			},
-			"card": map[string]any{
-				"type":        "object",
-				"description": "Optional: adaptive card payload (ignored by bridge).",
-			},
-			"query": map[string]any{
-				"type":        "string",
-				"description": "For action=search: search query to find messages",
-			},
-			"limit": map[string]any{
-				"type":        "number",
-				"description": "For action=search: max results to return (default: 20)",
-			},
-			"sessionKey": map[string]any{
-				"type":        "string",
-				"description": "Preferred canonical target (field 'sessionKey' from sessions_list). For desktop: desktop-api:<instance>:<chatId> or desktop-api:<chatId>.",
-			},
-			"instance": map[string]any{
-				"type":        "string",
-				"description": "For desktop actions: named instance (leave empty for default; only needed with multiple instances)",
-			},
-			"label": map[string]any{
-				"type":        "string",
-				"description": "Fallback desktop target by label/title (can be ambiguous; sessionKey is preferred)",
-			},
-			"chatId": map[string]any{
-				"type":        "string",
-				"description": "For action=focus: desktop chat ID",
-			},
-			"accountId": map[string]any{
-				"type":        "string",
-				"description": "For desktop targeting: account ID filter; for desktop-create-chat: source account ID",
-			},
-			"network": map[string]any{
-				"type":        "string",
-				"description": "For desktop targeting: network filter (e.g. whatsapp, instagram, imessage)",
-			},
-			"participantIds": map[string]any{
-				"type":        "array",
-				"description": "For desktop-create-chat: participant user IDs",
-				"items": map[string]any{
-					"type": "string",
-				},
-			},
-			"type": map[string]any{
-				"type":        "string",
-				"description": "For desktop-create-chat: chat type (single|group)",
-			},
-			"archived": map[string]any{
-				"type":        "boolean",
-				"description": "For desktop-archive-chat: true to archive, false to unarchive",
-			},
-			"remindAtMs": map[string]any{
-				"type":        "number",
-				"description": "For desktop-set-reminder: unix timestamp in milliseconds",
-			},
-			"dismissOnIncomingMessage": map[string]any{
-				"type":        "boolean",
-				"description": "For desktop-set-reminder: dismiss reminder if new message arrives",
-			},
-			"uploadID": map[string]any{
-				"type":        "string",
-				"description": "For desktop send action: upload ID from desktop-upload-asset",
-			},
-			"attachmentType": map[string]any{
-				"type":        "string",
-				"description": "For desktop send action: attachment type override (gif|voiceNote|sticker)",
-			},
-			"url": map[string]any{
-				"type":        "string",
-				"description": "For desktop-download-asset: mxc:// or localmxc:// URL",
-			},
-			"draftText": map[string]any{
-				"type":        "string",
-				"description": "For action=focus: draft text to prefill",
-			},
-			"draftAttachmentPath": map[string]any{
-				"type":        "string",
-				"description": "For action=focus: attachment file path to prefill",
-			},
-			"name": map[string]any{
-				"type":        "string",
-				"description": "For action=channel-edit: new channel/room name; for action=desktop-create-chat: optional chat title",
-			},
-			"topic": map[string]any{
-				"type":        "string",
-				"description": "For action=channel-edit: new channel/room topic",
-			},
-			"channel": map[string]any{
-				"type":        "string",
-				"description": "Optional: channel override (ignored by bridge; current room only).",
-			},
-			"target": map[string]any{
-				"type":        "string",
-				"description": "Optional: target override (ignored by bridge; current room only).",
-			},
-			"targets": map[string]any{
-				"type":        "array",
-				"description": "Optional: multi-target override (ignored by bridge; current room only).",
-				"items": map[string]any{
-					"type": "string",
-				},
-			},
-			"dryRun": map[string]any{
-				"type":        "boolean",
-				"description": "Optional: dry run (ignored by bridge).",
-			},
 		},
-		"required": []string{"action"},
-	}
+		"card": map[string]any{
+			"type":        "object",
+			"description": "Optional: adaptive card payload (ignored by bridge).",
+		},
+		"query":                   StringProperty("For action=search: search query to find messages"),
+		"limit":                   NumberProperty("For action=search: max results to return (default: 20)"),
+		"sessionKey":              StringProperty("Preferred canonical target (field 'sessionKey' from sessions_list). For desktop: desktop-api:<instance>:<chatId> or desktop-api:<chatId>."),
+		"instance":                StringProperty("For desktop actions: named instance (leave empty for default; only needed with multiple instances)"),
+		"label":                   StringProperty("Fallback desktop target by label/title (can be ambiguous; sessionKey is preferred)"),
+		"chatId":                  StringProperty("For action=focus: desktop chat ID"),
+		"accountId":               StringProperty("For desktop targeting: account ID filter; for desktop-create-chat: source account ID"),
+		"network":                 StringProperty("For desktop targeting: network filter (e.g. whatsapp, instagram, imessage)"),
+		"participantIds":          StringArrayProperty("For desktop-create-chat: participant user IDs"),
+		"type":                    StringProperty("For desktop-create-chat: chat type (single|group)"),
+		"archived":                BooleanProperty("For desktop-archive-chat: true to archive, false to unarchive"),
+		"remindAtMs":              NumberProperty("For desktop-set-reminder: unix timestamp in milliseconds"),
+		"dismissOnIncomingMessage": BooleanProperty("For desktop-set-reminder: dismiss reminder if new message arrives"),
+		"uploadID":                StringProperty("For desktop send action: upload ID from desktop-upload-asset"),
+		"attachmentType":          StringProperty("For desktop send action: attachment type override (gif|voiceNote|sticker)"),
+		"url":                     StringProperty("For desktop-download-asset: mxc:// or localmxc:// URL"),
+		"draftText":               StringProperty("For action=focus: draft text to prefill"),
+		"draftAttachmentPath":     StringProperty("For action=focus: attachment file path to prefill"),
+		"name":                    StringProperty("For action=channel-edit: new channel/room name; for action=desktop-create-chat: optional chat title"),
+		"topic":                   StringProperty("For action=channel-edit: new channel/room topic"),
+		"channel":                 StringProperty("Optional: channel override (ignored by bridge; current room only)."),
+		"target":                  StringProperty("Optional: target override (ignored by bridge; current room only)."),
+		"targets":                 StringArrayProperty("Optional: multi-target override (ignored by bridge; current room only)."),
+		"dryRun":                  BooleanProperty("Optional: dry run (ignored by bridge)."),
+	}, "action")
 }
 
 // CronSchema returns the JSON schema for the cron tool.
@@ -456,56 +275,17 @@ func ImageSchema() map[string]any {
 
 // ImageGenerateSchema returns the JSON schema for the image generation tool.
 func ImageGenerateSchema() map[string]any {
-	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"async": map[string]any{
-				"type":        "boolean",
-				"description": "Optional: if true, start image generation in the background and send results to the chat when ready (tool returns immediately).",
-			},
-			"prompt": map[string]any{
-				"type":        "string",
-				"description": "The text prompt describing the image to generate",
-			},
-			"model": map[string]any{
-				"type":        "string",
-				"description": "Optional: image model to use.",
-			},
-			"count": map[string]any{
-				"type":        "number",
-				"description": "Optional: number of images to generate (default: 1).",
-				"minimum":     1,
-				"maximum":     10,
-			},
-			"aspect_ratio": map[string]any{
-				"type":        "string",
-				"description": "Optional: desired aspect ratio (e.g., 1:1, 16:9, 4:3).",
-			},
-			"aspectRatio": map[string]any{
-				"type":        "string",
-				"description": "Optional: alias for aspect_ratio.",
-			},
-			"resolution": map[string]any{
-				"type":        "string",
-				"description": "Optional: output resolution. Examples: 1K, 2K, 4K.",
-			},
-			"input_images": map[string]any{
-				"type":        "array",
-				"description": "Optional: input images for editing/composition. Use mxc:// media URLs from the conversation (shown in [media_url: ...] tags or tool results). Also accepts file paths, web URLs, or data URIs.",
-				"items": map[string]any{
-					"type": "string",
-				},
-			},
-			"inputImages": map[string]any{
-				"type":        "array",
-				"description": "Optional: alias for input_images.",
-				"items": map[string]any{
-					"type": "string",
-				},
-			},
-		},
-		"required": []string{"prompt"},
-	}
+	return ObjectSchema(map[string]any{
+		"async":        BooleanProperty("Optional: if true, start image generation in the background and send results to the chat when ready (tool returns immediately)."),
+		"prompt":       StringProperty("The text prompt describing the image to generate"),
+		"model":        StringProperty("Optional: image model to use."),
+		"count":        BoundedNumberProperty("Optional: number of images to generate (default: 1).", 1, 10),
+		"aspect_ratio": StringProperty("Optional: desired aspect ratio (e.g., 1:1, 16:9, 4:3)."),
+		"aspectRatio":  StringProperty("Optional: alias for aspect_ratio."),
+		"resolution":   StringProperty("Optional: output resolution. Examples: 1K, 2K, 4K."),
+		"input_images": StringArrayProperty("Optional: input images for editing/composition. Use mxc:// media URLs from the conversation (shown in [media_url: ...] tags or tool results). Also accepts file paths, web URLs, or data URIs."),
+		"inputImages":  StringArrayProperty("Optional: alias for input_images."),
+	}, "prompt")
 }
 
 // TTSSchema returns the JSON schema for the tts tool.
@@ -555,41 +335,41 @@ func BooleanProperty(description string) map[string]any {
 	}
 }
 
+func StringEnumProperty(description string, enumValues []string) map[string]any {
+	return map[string]any{
+		"type":        "string",
+		"enum":        enumValues,
+		"description": description,
+	}
+}
+
+func BoundedNumberProperty(description string, minimum, maximum float64) map[string]any {
+	return map[string]any{
+		"type":        "number",
+		"description": description,
+		"minimum":     minimum,
+		"maximum":     maximum,
+	}
+}
+
+func StringArrayProperty(description string) map[string]any {
+	return map[string]any{
+		"type":        "array",
+		"description": description,
+		"items":       map[string]any{"type": "string"},
+	}
+}
+
 // MemorySearchSchema returns the JSON schema for the memory_search tool.
 func MemorySearchSchema() map[string]any {
-	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"mode": map[string]any{
-				"type":        "string",
-				"description": "Optional: search mode. auto (default), semantic, keyword, hybrid, or list (lists recent files; query optional).",
-				"enum":        []string{"auto", "semantic", "keyword", "hybrid", "list"},
-			},
-			"query": map[string]any{
-				"type":        "string",
-				"description": "Search query to find relevant memories. Required unless mode=list.",
-			},
-			"sources": map[string]any{
-				"type":        "array",
-				"description": "Optional: restrict to sources (e.g. ['memory','workspace']).",
-				"items": map[string]any{
-					"type": "string",
-				},
-			},
-			"pathPrefix": map[string]any{
-				"type":        "string",
-				"description": "Optional: restrict results to paths under this prefix (virtual paths). Examples: 'memory/', 'workspace/', 'SOUL.md'.",
-			},
-			"maxResults": map[string]any{
-				"type":        "number",
-				"description": "Maximum number of results to return (default: 6)",
-			},
-			"minScore": map[string]any{
-				"type":        "number",
-				"description": "Minimum relevance score threshold (0-1, default: 0.35)",
-			},
-		},
-	}
+	return ObjectSchema(map[string]any{
+		"mode":       StringEnumProperty("Optional: search mode. auto (default), semantic, keyword, hybrid, or list (lists recent files; query optional).", []string{"auto", "semantic", "keyword", "hybrid", "list"}),
+		"query":      StringProperty("Search query to find relevant memories. Required unless mode=list."),
+		"sources":    StringArrayProperty("Optional: restrict to sources (e.g. ['memory','workspace'])."),
+		"pathPrefix": StringProperty("Optional: restrict results to paths under this prefix (virtual paths). Examples: 'memory/', 'workspace/', 'SOUL.md'."),
+		"maxResults": NumberProperty("Maximum number of results to return (default: 6)"),
+		"minScore":   NumberProperty("Minimum relevance score threshold (0-1, default: 0.35)"),
+	})
 }
 
 // MemoryGetSchema returns the JSON schema for the memory_get tool.
@@ -605,12 +385,7 @@ func MemoryGetSchema() map[string]any {
 func BeeperDocsSchema() map[string]any {
 	return ObjectSchema(map[string]any{
 		"query": StringProperty("Search query for Beeper help documentation."),
-		"count": map[string]any{
-			"type":        "number",
-			"description": "Number of results to return (1-10).",
-			"minimum":     1,
-			"maximum":     10,
-		},
+		"count": BoundedNumberProperty("Number of results to return (1-10).", 1, 10),
 	}, "query")
 }
 
