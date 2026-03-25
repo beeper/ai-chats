@@ -23,6 +23,10 @@ const (
 	ApprovalReactionKeyAllowAlways = "approval.allow_always"
 	ApprovalReactionKeyDeny        = "approval.deny"
 
+	ApprovalReactionAliasAllowOnce   = "👍"
+	ApprovalReactionAliasAllowAlways = "♾️"
+	ApprovalReactionAliasDeny        = "👎"
+
 	RejectReasonOwnerOnly     = "only_owner"
 	RejectReasonExpired       = "expired"
 	RejectReasonInvalidOption = "invalid_option"
@@ -165,18 +169,20 @@ func (o ApprovalOption) allKeys() []string {
 func ApprovalPromptOptions(allowAlways bool) []ApprovalOption {
 	options := []ApprovalOption{
 		{
-			ID:       ApprovalReasonAllowOnce,
-			Key:      ApprovalReactionKeyAllowOnce,
-			Label:    "Approve once",
-			Approved: true,
-			Reason:   ApprovalReasonAllowOnce,
+			ID:          ApprovalReasonAllowOnce,
+			Key:         ApprovalReactionKeyAllowOnce,
+			FallbackKey: ApprovalReactionAliasAllowOnce,
+			Label:       "Approve once",
+			Approved:    true,
+			Reason:      ApprovalReasonAllowOnce,
 		},
 		{
-			ID:       ApprovalReasonDeny,
-			Key:      ApprovalReactionKeyDeny,
-			Label:    "Deny",
-			Approved: false,
-			Reason:   ApprovalReasonDeny,
+			ID:          ApprovalReasonDeny,
+			Key:         ApprovalReactionKeyDeny,
+			FallbackKey: ApprovalReactionAliasDeny,
+			Label:       "Deny",
+			Approved:    false,
+			Reason:      ApprovalReasonDeny,
 		},
 	}
 	if !allowAlways {
@@ -185,12 +191,13 @@ func ApprovalPromptOptions(allowAlways bool) []ApprovalOption {
 	return []ApprovalOption{
 		options[0],
 		{
-			ID:       ApprovalReasonAllowAlways,
-			Key:      ApprovalReactionKeyAllowAlways,
-			Label:    "Always allow",
-			Approved: true,
-			Always:   true,
-			Reason:   ApprovalReasonAllowAlways,
+			ID:          ApprovalReasonAllowAlways,
+			Key:         ApprovalReactionKeyAllowAlways,
+			FallbackKey: ApprovalReactionAliasAllowAlways,
+			Label:       "Always allow",
+			Approved:    true,
+			Always:      true,
+			Reason:      ApprovalReasonAllowAlways,
 		},
 		options[1],
 	}
@@ -256,14 +263,15 @@ func BuildApprovalResponseBody(presentation ApprovalPromptPresentation, decision
 }
 
 type ApprovalPromptMessageParams struct {
-	ApprovalID     string
-	ToolCallID     string
-	ToolName       string
-	TurnID         string
-	Presentation   ApprovalPromptPresentation
-	ReplyToEventID id.EventID
-	ExpiresAt      time.Time
-	Options        []ApprovalOption
+	ApprovalID        string
+	ToolCallID        string
+	ToolName          string
+	TurnID            string
+	Presentation      ApprovalPromptPresentation
+	ReplyToEventID    id.EventID
+	ThreadRootEventID id.EventID
+	ExpiresAt         time.Time
+	Options           []ApprovalOption
 }
 
 type ApprovalResponsePromptMessageParams struct {
@@ -278,11 +286,12 @@ type ApprovalResponsePromptMessageParams struct {
 }
 
 type ApprovalPromptMessage struct {
-	Body         string
-	UIMessage    map[string]any
-	Raw          map[string]any
-	Presentation ApprovalPromptPresentation
-	Options      []ApprovalOption
+	Content       *event.MessageEventContent
+	TopLevelExtra map[string]any
+	Body          string
+	UIMessage     map[string]any
+	Presentation  ApprovalPromptPresentation
+	Options       []ApprovalOption
 }
 
 type normalizedPromptFields struct {
@@ -336,26 +345,34 @@ func BuildApprovalPromptMessage(params ApprovalPromptMessageParams) ApprovalProm
 			},
 		}},
 	}
-	raw := map[string]any{
-		"msgtype":                event.MsgNotice,
-		"body":                   body,
-		"m.mentions":             map[string]any{},
-		matrixevents.BeeperAIKey: uiMessage,
+	content := &event.MessageEventContent{
+		MsgType:  event.MsgNotice,
+		Body:     body,
+		Mentions: &event.Mentions{},
 	}
-	if params.ReplyToEventID != "" {
-		raw["m.relates_to"] = map[string]any{
-			"m.in_reply_to": map[string]any{
-				"event_id": params.ReplyToEventID.String(),
-			},
-		}
+	if relatesTo := buildApprovalPromptRelatesTo(params.ReplyToEventID, params.ThreadRootEventID); relatesTo != nil {
+		content.RelatesTo = relatesTo
 	}
 	return ApprovalPromptMessage{
-		Body:         body,
-		UIMessage:    uiMessage,
-		Raw:          raw,
-		Presentation: presentation,
-		Options:      options,
+		Content:       content,
+		TopLevelExtra: approvalPromptTopLevelExtra(uiMessage),
+		Body:          body,
+		UIMessage:     uiMessage,
+		Presentation:  presentation,
+		Options:       options,
 	}
+}
+
+func buildApprovalPromptRelatesTo(replyToEventID, threadRootEventID id.EventID) *event.RelatesTo {
+	if threadRootEventID != "" {
+		rel := &event.RelatesTo{}
+		return rel.SetThread(threadRootEventID, replyToEventID)
+	}
+	if replyToEventID != "" {
+		rel := &event.RelatesTo{}
+		return rel.SetReplyTo(replyToEventID)
+	}
+	return nil
 }
 
 func BuildApprovalResponsePromptMessage(params ApprovalResponsePromptMessageParams) ApprovalPromptMessage {
@@ -392,18 +409,23 @@ func BuildApprovalResponsePromptMessage(params ApprovalResponsePromptMessagePara
 			"approval":   approvalPayload,
 		}},
 	}
-	raw := map[string]any{
-		"msgtype":                event.MsgNotice,
-		"body":                   body,
-		"m.mentions":             map[string]any{},
-		matrixevents.BeeperAIKey: uiMessage,
-	}
 	return ApprovalPromptMessage{
-		Body:         body,
-		UIMessage:    uiMessage,
-		Raw:          raw,
-		Presentation: presentation,
-		Options:      options,
+		Content: &event.MessageEventContent{
+			MsgType:  event.MsgNotice,
+			Body:     body,
+			Mentions: &event.Mentions{},
+		},
+		TopLevelExtra: approvalPromptTopLevelExtra(uiMessage),
+		Body:          body,
+		UIMessage:     uiMessage,
+		Presentation:  presentation,
+		Options:       options,
+	}
+}
+
+func approvalPromptTopLevelExtra(uiMessage map[string]any) map[string]any {
+	return map[string]any{
+		matrixevents.BeeperAIKey: uiMessage,
 	}
 }
 
@@ -467,19 +489,19 @@ func approvalDecisionOutcome(decision ApprovalDecisionPayload) (string, string) 
 }
 
 type ApprovalPromptRegistration struct {
-	ApprovalID      string
-	RoomID          id.RoomID
-	OwnerMXID       id.UserID
-	ToolCallID      string
-	ToolName        string
-	TurnID          string
-	PromptVersion   uint64
-	Presentation    ApprovalPromptPresentation
-	ExpiresAt       time.Time
-	Options         []ApprovalOption
-	PromptEventID   id.EventID
-	PromptMessageID networkid.MessageID
-	PromptSenderID  networkid.UserID
+	ApprovalID              string
+	RoomID                  id.RoomID
+	OwnerMXID               id.UserID
+	ToolCallID              string
+	ToolName                string
+	TurnID                  string
+	PromptVersion           uint64
+	Presentation            ApprovalPromptPresentation
+	ExpiresAt               time.Time
+	Options                 []ApprovalOption
+	ReactionTargetMessageID networkid.MessageID
+	PromptMessageID         networkid.MessageID
+	PromptSenderID          networkid.UserID
 }
 
 type ApprovalPromptReactionMatch struct {
@@ -653,5 +675,15 @@ func normalizeReactionKey(key string) string {
 
 func isApprovalReactionKey(key string) bool {
 	key = normalizeReactionKey(key)
-	return strings.HasPrefix(key, "approval.")
+	if strings.HasPrefix(key, "approval.") {
+		return true
+	}
+	for _, option := range DefaultApprovalOptions() {
+		for _, optionKey := range option.allKeys() {
+			if key == optionKey {
+				return true
+			}
+		}
+	}
+	return false
 }

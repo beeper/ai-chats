@@ -127,19 +127,20 @@ func approvalWaitReason(ctx context.Context) string {
 	return agentremote.ApprovalReasonTimeout
 }
 
-func resolveApprovalPromptContext(state *streamingState, turn *bridgesdk.Turn, fallbackTurnID string) (string, id.EventID) {
+func resolveApprovalPromptContext(state *streamingState, turn *bridgesdk.Turn, fallbackTurnID string) (string, id.EventID, id.EventID) {
 	turnID := strings.TrimSpace(fallbackTurnID)
 	replyTo := id.EventID("")
+	threadRoot := id.EventID("")
 	if turn != nil && turn.ID() != "" {
 		turnID = turn.ID()
 	}
 	if state == nil || state.turn == nil {
-		return turnID, replyTo
+		return turnID, replyTo, threadRoot
 	}
 	if state.turn.ID() != "" {
 		turnID = state.turn.ID()
 	}
-	return turnID, state.turn.InitialEventID()
+	return turnID, state.turn.InitialEventID(), state.replyTarget.ThreadRoot
 }
 
 type aiTurnApprovalHandle struct {
@@ -241,16 +242,17 @@ func (oc *AIClient) startTurnApproval(
 		_ = oc.resolveToolApproval(params.ApprovalID, false, agentremote.ApprovalReasonDeliveryError)
 		return handle, true
 	}
-	turnID, replyTo := resolveApprovalPromptContext(state, turn, params.TurnID)
+	turnID, replyTo, threadRoot := resolveApprovalPromptContext(state, turn, params.TurnID)
 	oc.approvalFlow.SendPrompt(ctx, portal, agentremote.SendPromptParams{
 		ApprovalPromptMessageParams: agentremote.ApprovalPromptMessageParams{
-			ApprovalID:     params.ApprovalID,
-			ToolCallID:     params.ToolCallID,
-			ToolName:       params.ToolName,
-			TurnID:         turnID,
-			Presentation:   params.Presentation,
-			ReplyToEventID: replyTo,
-			ExpiresAt:      time.Now().Add(params.TTL),
+			ApprovalID:        params.ApprovalID,
+			ToolCallID:        params.ToolCallID,
+			ToolName:          params.ToolName,
+			TurnID:            turnID,
+			Presentation:      params.Presentation,
+			ReplyToEventID:    replyTo,
+			ThreadRootEventID: threadRoot,
+			ExpiresAt:         time.Now().Add(params.TTL),
 		},
 		RoomID:    portal.MXID,
 		OwnerMXID: oc.UserLogin.UserMXID,

@@ -26,11 +26,12 @@ const (
 
 // ApprovalDecisionPayload is the standardized decision type for all approval flows.
 type ApprovalDecisionPayload struct {
-	ApprovalID string
-	Approved   bool
-	Always     bool
-	Reason     string
-	ResolvedBy ApprovalResolutionOrigin
+	ApprovalID  string
+	Approved    bool
+	Always      bool
+	Reason      string
+	ReactionKey string
+	ResolvedBy  ApprovalResolutionOrigin
 }
 
 func normalizeApprovalResolutionOrigin(origin ApprovalResolutionOrigin) ApprovalResolutionOrigin {

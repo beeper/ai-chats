@@ -2057,6 +2057,8 @@ func (cc *CodexClient) sendSDKApprovalPrompt(
 	}
 	if turn != nil {
 		params.TurnID = turn.ID()
+		params.ReplyToEventID = turn.InitialEventID()
+		params.ThreadRootEventID = turn.ThreadRoot()
 		params.ExpiresAt = time.Now().Add(ttl)
 		cc.approvalFlow.SendPrompt(turn.Context(), portal, agentremote.SendPromptParams{
 			ApprovalPromptMessageParams: params,

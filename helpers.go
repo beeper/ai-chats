@@ -468,13 +468,12 @@ func BuildContinuationMessage(
 	streamOrder int64,
 ) *simplevent.PreConvertedMessage {
 	rendered := format.RenderMarkdown(body, true, true)
-	raw := map[string]any{
-		"msgtype":                 event.MsgText,
-		"body":                    rendered.Body,
-		"format":                  rendered.Format,
-		"formatted_body":          rendered.FormattedBody,
-		"com.beeper.continuation": true,
-		"m.mentions":              map[string]any{},
+	content := &event.MessageEventContent{
+		MsgType:       event.MsgText,
+		Body:          rendered.Body,
+		Format:        rendered.Format,
+		FormattedBody: rendered.FormattedBody,
+		Mentions:      &event.Mentions{},
 	}
 	msgID := NewMessageID(idPrefix)
 	timing := ResolveEventTiming(timestamp, streamOrder)
@@ -494,8 +493,8 @@ func BuildContinuationMessage(
 			Parts: []*bridgev2.ConvertedMessagePart{{
 				ID:      networkid.PartID("0"),
 				Type:    event.EventMessage,
-				Content: &event.MessageEventContent{MsgType: event.MsgText, Body: body},
-				Extra:   raw,
+				Content: content,
+				Extra:   map[string]any{"com.beeper.continuation": true},
 			}},
 		},
 	}

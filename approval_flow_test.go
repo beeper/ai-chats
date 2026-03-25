@@ -36,6 +36,36 @@ func newTestApprovalFlow(t *testing.T, cfg ApprovalFlowConfig[*testApprovalFlowD
 	return flow
 }
 
+func testMatrixReaction(
+	portal *bridgev2.Portal,
+	sender id.UserID,
+	reactionID id.EventID,
+	targetEventID id.EventID,
+	targetMessageID networkid.MessageID,
+	key string,
+) *bridgev2.MatrixReaction {
+	return &bridgev2.MatrixReaction{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.ReactionEventContent]{
+			Event: &event.Event{
+				ID:     reactionID,
+				Sender: sender,
+			},
+			Content: &event.ReactionEventContent{
+				RelatesTo: event.RelatesTo{
+					Type:    event.RelAnnotation,
+					EventID: targetEventID,
+					Key:     key,
+				},
+			},
+			Portal: portal,
+		},
+		TargetMessage: &database.Message{
+			ID:   targetMessageID,
+			MXID: targetEventID,
+		},
+	}
+}
+
 func TestApprovalFlow_FinishResolvedQueuesEditAndPlaceholderCleanup(t *testing.T) {
 	owner := id.UserID("@owner:example.com")
 	roomID := id.RoomID("!room:example.com")
@@ -78,7 +108,6 @@ func TestApprovalFlow_FinishResolvedQueuesEditAndPlaceholderCleanup(t *testing.T
 		OwnerMXID:       owner,
 		ToolCallID:      "tool-1",
 		ToolName:        "exec",
-		PromptEventID:   id.EventID("$prompt"),
 		PromptMessageID: networkid.MessageID("msg-1"),
 		PromptSenderID:  networkid.UserID("ghost:approval"),
 		Options:         DefaultApprovalOptions(),
@@ -185,22 +214,17 @@ func TestApprovalFlow_HandleReaction_DeliveryErrorKeepsPending(t *testing.T) {
 	}
 	flow.mu.Lock()
 	flow.registerPromptLocked(ApprovalPromptRegistration{
-		ApprovalID:    "approval-1",
-		RoomID:        roomID,
-		OwnerMXID:     owner,
-		ToolCallID:    "tool-1",
-		PromptEventID: id.EventID("$prompt"),
-		Options:       DefaultApprovalOptions(),
+		ApprovalID:      "approval-1",
+		RoomID:          roomID,
+		OwnerMXID:       owner,
+		ToolCallID:      "tool-1",
+		PromptMessageID: networkid.MessageID("msg-1"),
+		Options:         DefaultApprovalOptions(),
 	})
 	flow.mu.Unlock()
 
-	msg := &bridgev2.MatrixReaction{
-		MatrixEventBase: bridgev2.MatrixEventBase[*event.ReactionEventContent]{
-			Event:  &event.Event{ID: id.EventID("$reaction"), Sender: owner},
-			Portal: portal,
-		},
-	}
-	if !flow.HandleReaction(context.Background(), msg, id.EventID("$prompt"), ApprovalReactionKeyAllowOnce) {
+	msg := testMatrixReaction(portal, owner, id.EventID("$reaction"), id.EventID("$prompt"), networkid.MessageID("msg-1"), ApprovalReactionKeyAllowOnce)
+	if !flow.HandleReaction(context.Background(), msg) {
 		t.Fatalf("expected approval reaction to be handled")
 	}
 	if flow.Get("approval-1") == nil {
@@ -240,22 +264,17 @@ func TestApprovalFlow_HandleReaction_UnknownPendingShowsUnknown(t *testing.T) {
 	}
 	flow.mu.Lock()
 	flow.registerPromptLocked(ApprovalPromptRegistration{
-		ApprovalID:    "approval-1",
-		RoomID:        roomID,
-		OwnerMXID:     owner,
-		ToolCallID:    "tool-1",
-		PromptEventID: id.EventID("$prompt"),
-		Options:       DefaultApprovalOptions(),
+		ApprovalID:      "approval-1",
+		RoomID:          roomID,
+		OwnerMXID:       owner,
+		ToolCallID:      "tool-1",
+		PromptMessageID: networkid.MessageID("msg-1"),
+		Options:         DefaultApprovalOptions(),
 	})
 	flow.mu.Unlock()
 
-	msg := &bridgev2.MatrixReaction{
-		MatrixEventBase: bridgev2.MatrixEventBase[*event.ReactionEventContent]{
-			Event:  &event.Event{ID: id.EventID("$reaction"), Sender: owner},
-			Portal: portal,
-		},
-	}
-	if !flow.HandleReaction(context.Background(), msg, id.EventID("$prompt"), ApprovalReactionKeyAllowOnce) {
+	msg := testMatrixReaction(portal, owner, id.EventID("$reaction"), id.EventID("$prompt"), networkid.MessageID("msg-1"), ApprovalReactionKeyAllowOnce)
+	if !flow.HandleReaction(context.Background(), msg) {
 		t.Fatalf("expected approval reaction to be handled")
 	}
 	if !redacted {
@@ -300,7 +319,6 @@ func TestApprovalFlow_HandleReaction_ResolvedPromptUsesMessageStatus(t *testing.
 		ApprovalID:      "approval-1",
 		RoomID:          roomID,
 		OwnerMXID:       owner,
-		PromptEventID:   id.EventID("$prompt"),
 		PromptMessageID: networkid.MessageID("msg-1"),
 		Options:         DefaultApprovalOptions(),
 	}, ApprovalDecisionPayload{
@@ -310,13 +328,8 @@ func TestApprovalFlow_HandleReaction_ResolvedPromptUsesMessageStatus(t *testing.
 	})
 	flow.mu.Unlock()
 
-	msg := &bridgev2.MatrixReaction{
-		MatrixEventBase: bridgev2.MatrixEventBase[*event.ReactionEventContent]{
-			Event:  &event.Event{ID: id.EventID("$reaction"), Sender: owner},
-			Portal: portal,
-		},
-	}
-	if !flow.HandleReaction(context.Background(), msg, id.EventID("$prompt"), ApprovalReactionKeyDeny) {
+	msg := testMatrixReaction(portal, owner, id.EventID("$reaction"), id.EventID("$prompt"), networkid.MessageID("msg-1"), ApprovalReactionKeyDeny)
+	if !flow.HandleReaction(context.Background(), msg) {
 		t.Fatalf("expected resolved approval reaction to be handled")
 	}
 	if !redacted {
@@ -330,6 +343,77 @@ func TestApprovalFlow_HandleReaction_ResolvedPromptUsesMessageStatus(t *testing.
 	}
 	if status.Message != approvalResolvedMSSMessage {
 		t.Fatalf("expected resolved approval status message, got %q", status.Message)
+	}
+}
+
+func TestApprovalFlow_HandleReaction_MatchesPromptByMessageID(t *testing.T) {
+	owner := id.UserID("@owner:example.com")
+	roomID := id.RoomID("!room:example.com")
+	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
+
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{})
+	if _, created := flow.Register("approval-1", time.Minute, &testApprovalFlowData{}); !created {
+		t.Fatalf("expected pending approval to be created")
+	}
+	flow.mu.Lock()
+	flow.registerPromptLocked(ApprovalPromptRegistration{
+		ApprovalID:      "approval-1",
+		RoomID:          roomID,
+		OwnerMXID:       owner,
+		ToolCallID:      "tool-1",
+		PromptMessageID: networkid.MessageID("msg-1"),
+		Options:         DefaultApprovalOptions(),
+	})
+	flow.mu.Unlock()
+
+	msg := testMatrixReaction(portal, owner, id.EventID("$reaction"), "", networkid.MessageID("msg-1"), ApprovalReactionKeyAllowOnce)
+	if !flow.HandleReaction(context.Background(), msg) {
+		t.Fatalf("expected approval reaction to be handled")
+	}
+	if pending := flow.Get("approval-1"); pending != nil {
+		t.Fatalf("expected pending approval to be finalized")
+	}
+}
+
+func TestApprovalFlow_HandleReaction_MatchesPromptByEventIDWhenMessageIDMissing(t *testing.T) {
+	owner := id.UserID("@owner:example.com")
+	roomID := id.RoomID("!room:example.com")
+	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
+
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{})
+	for _, approvalID := range []string{"approval-1", "approval-2"} {
+		if _, created := flow.Register(approvalID, time.Minute, &testApprovalFlowData{}); !created {
+			t.Fatalf("expected pending approval %s to be created", approvalID)
+		}
+	}
+	flow.mu.Lock()
+	flow.registerPromptLocked(ApprovalPromptRegistration{
+		ApprovalID:      "approval-1",
+		RoomID:          roomID,
+		OwnerMXID:       owner,
+		ToolCallID:      "tool-1",
+		PromptMessageID: networkid.MessageID("$prompt-1"),
+		Options:         DefaultApprovalOptions(),
+	})
+	flow.registerPromptLocked(ApprovalPromptRegistration{
+		ApprovalID:      "approval-2",
+		RoomID:          roomID,
+		OwnerMXID:       owner,
+		ToolCallID:      "tool-2",
+		PromptMessageID: networkid.MessageID("$prompt-2"),
+		Options:         DefaultApprovalOptions(),
+	})
+	flow.mu.Unlock()
+
+	msg := testMatrixReaction(portal, owner, id.EventID("$reaction"), id.EventID("$prompt-1"), "", ApprovalReactionKeyAllowOnce)
+	if !flow.HandleReaction(context.Background(), msg) {
+		t.Fatalf("expected approval reaction to be handled")
+	}
+	if pending := flow.Get("approval-1"); pending != nil {
+		t.Fatalf("expected targeted approval to be finalized")
+	}
+	if pending := flow.Get("approval-2"); pending == nil {
+		t.Fatalf("expected non-targeted approval to remain pending")
 	}
 }
 
@@ -363,7 +447,6 @@ func TestApprovalFlow_HandleReactionRemove_ResolvedPromptUsesMessageStatus(t *te
 		ApprovalID:      "approval-1",
 		RoomID:          roomID,
 		OwnerMXID:       owner,
-		PromptEventID:   id.EventID("$prompt"),
 		PromptMessageID: networkid.MessageID("msg-1"),
 		Options:         DefaultApprovalOptions(),
 	}, ApprovalDecisionPayload{
@@ -397,13 +480,236 @@ func TestApprovalFlow_HandleReactionRemove_ResolvedPromptUsesMessageStatus(t *te
 	}
 }
 
+func TestApprovalFlow_HandleReaction_ResolvedPromptUsesEventIDWhenMessageIDMissing(t *testing.T) {
+	owner := id.UserID("@owner:example.com")
+	roomID := id.RoomID("!room:example.com")
+	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
+	login := &bridgev2.UserLogin{
+		UserLogin: &database.UserLogin{
+			ID:       networkid.UserLoginID("login"),
+			UserMXID: owner,
+		},
+		Bridge: &bridgev2.Bridge{},
+	}
+
+	var redacted bool
+	var status bridgev2.MessageStatus
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
+		Login: func() *bridgev2.UserLogin { return login },
+	})
+	flow.testRedactSingleReaction = func(_ *bridgev2.MatrixReaction) {
+		redacted = true
+	}
+	flow.testSendMessageStatus = func(_ context.Context, gotPortal *bridgev2.Portal, evt *event.Event, gotStatus bridgev2.MessageStatus) {
+		if gotPortal != portal {
+			t.Fatalf("expected status portal %p, got %p", portal, gotPortal)
+		}
+		if evt == nil || evt.ID != id.EventID("$reaction") {
+			t.Fatalf("expected reaction event status target, got %#v", evt)
+		}
+		status = gotStatus
+	}
+	flow.mu.Lock()
+	flow.rememberResolvedPromptLocked(ApprovalPromptRegistration{
+		ApprovalID:      "approval-1",
+		RoomID:          roomID,
+		OwnerMXID:       owner,
+		PromptMessageID: networkid.MessageID("$prompt"),
+		Options:         DefaultApprovalOptions(),
+	}, ApprovalDecisionPayload{
+		ApprovalID: "approval-1",
+		Approved:   true,
+		Reason:     ApprovalReasonAllowOnce,
+	})
+	flow.mu.Unlock()
+
+	msg := testMatrixReaction(portal, owner, id.EventID("$reaction"), id.EventID("$prompt"), "", ApprovalReactionKeyDeny)
+	if !flow.HandleReaction(context.Background(), msg) {
+		t.Fatalf("expected resolved approval reaction to be handled")
+	}
+	if !redacted {
+		t.Fatalf("expected late approval reaction to be redacted")
+	}
+	if status.Status != event.MessageStatusFail {
+		t.Fatalf("expected fail status, got %#v", status)
+	}
+	if status.ErrorReason != event.MessageStatusGenericError {
+		t.Fatalf("expected generic error reason, got %#v", status)
+	}
+	if status.Message != approvalResolvedMSSMessage {
+		t.Fatalf("expected resolved approval status message, got %q", status.Message)
+	}
+}
+
+func TestApprovalFlow_HandleReactionRemove_ResolvedPromptUsesMessageStatusForAlias(t *testing.T) {
+	owner := id.UserID("@owner:example.com")
+	roomID := id.RoomID("!room:example.com")
+	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
+	login := &bridgev2.UserLogin{
+		UserLogin: &database.UserLogin{
+			ID:       networkid.UserLoginID("login"),
+			UserMXID: owner,
+		},
+		Bridge: &bridgev2.Bridge{},
+	}
+
+	var status bridgev2.MessageStatus
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
+		Login: func() *bridgev2.UserLogin { return login },
+	})
+	flow.testSendMessageStatus = func(_ context.Context, gotPortal *bridgev2.Portal, evt *event.Event, gotStatus bridgev2.MessageStatus) {
+		if gotPortal != portal {
+			t.Fatalf("expected status portal %p, got %p", portal, gotPortal)
+		}
+		if evt == nil || evt.ID != id.EventID("$redaction") {
+			t.Fatalf("expected redaction event status target, got %#v", evt)
+		}
+		status = gotStatus
+	}
+	flow.mu.Lock()
+	flow.rememberResolvedPromptLocked(ApprovalPromptRegistration{
+		ApprovalID:      "approval-1",
+		RoomID:          roomID,
+		OwnerMXID:       owner,
+		PromptMessageID: networkid.MessageID("msg-1"),
+		Options:         DefaultApprovalOptions(),
+	}, ApprovalDecisionPayload{
+		ApprovalID: "approval-1",
+		Approved:   true,
+		Reason:     ApprovalReasonAllowOnce,
+	})
+	flow.mu.Unlock()
+
+	handled := flow.HandleReactionRemove(context.Background(), &bridgev2.MatrixReactionRemove{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.RedactionEventContent]{
+			Event:  &event.Event{ID: id.EventID("$redaction"), Sender: owner},
+			Portal: portal,
+		},
+		TargetReaction: &database.Reaction{
+			MessageID: networkid.MessageID("msg-1"),
+			Emoji:     ApprovalReactionAliasAllowOnce,
+		},
+	})
+	if !handled {
+		t.Fatalf("expected resolved alias approval reaction removal to be handled")
+	}
+	if status.Status != event.MessageStatusFail {
+		t.Fatalf("expected fail status, got %#v", status)
+	}
+	if status.ErrorReason != event.MessageStatusGenericError {
+		t.Fatalf("expected generic error reason, got %#v", status)
+	}
+	if status.Message != approvalResolvedMSSMessage {
+		t.Fatalf("expected resolved approval status message, got %q", status.Message)
+	}
+}
+
+func TestApprovalPlaceholderReactionKey_PrefersAlias(t *testing.T) {
+	if got := approvalPlaceholderReactionKey(ApprovalOption{
+		Key:         ApprovalReactionKeyAllowOnce,
+		FallbackKey: ApprovalReactionAliasAllowOnce,
+	}); got != ApprovalReactionAliasAllowOnce {
+		t.Fatalf("expected placeholder alias %q, got %q", ApprovalReactionAliasAllowOnce, got)
+	}
+
+	if got := approvalPlaceholderReactionKey(ApprovalOption{
+		Key: ApprovalReactionKeyDeny,
+	}); got != ApprovalReactionKeyDeny {
+		t.Fatalf("expected canonical placeholder key %q, got %q", ApprovalReactionKeyDeny, got)
+	}
+}
+
+func TestApprovalOptionKeyForDecision_FallsBackToFallbackKey(t *testing.T) {
+	options := []ApprovalOption{
+		{
+			ID:          ApprovalReasonAllowOnce,
+			FallbackKey: ApprovalReactionAliasAllowOnce,
+			Approved:    true,
+			Reason:      ApprovalReasonAllowOnce,
+		},
+		{
+			ID:          ApprovalReasonAllowAlways,
+			FallbackKey: ApprovalReactionAliasAllowAlways,
+			Approved:    true,
+			Always:      true,
+			Reason:      ApprovalReasonAllowAlways,
+		},
+		{
+			ID:          ApprovalReasonDeny,
+			FallbackKey: ApprovalReactionAliasDeny,
+			Approved:    false,
+			Reason:      ApprovalReasonDeny,
+		},
+	}
+
+	for _, tc := range []struct {
+		name     string
+		decision ApprovalDecisionPayload
+		want     string
+	}{
+		{
+			name: "approved once",
+			decision: ApprovalDecisionPayload{
+				Approved: true,
+				Reason:   ApprovalReasonAllowOnce,
+			},
+			want: normalizeReactionKey(ApprovalReactionAliasAllowOnce),
+		},
+		{
+			name: "approved always",
+			decision: ApprovalDecisionPayload{
+				Approved: true,
+				Always:   true,
+				Reason:   ApprovalReasonAllowAlways,
+			},
+			want: normalizeReactionKey(ApprovalReactionAliasAllowAlways),
+		},
+		{
+			name: "denied",
+			decision: ApprovalDecisionPayload{
+				Approved: false,
+				Reason:   ApprovalReasonDeny,
+			},
+			want: normalizeReactionKey(ApprovalReactionAliasDeny),
+		},
+		{
+			name: "timeout remains empty",
+			decision: ApprovalDecisionPayload{
+				Approved: false,
+				Reason:   ApprovalReasonTimeout,
+			},
+			want: "",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := approvalOptionKeyForDecision(options, tc.decision); got != tc.want {
+				t.Fatalf("expected decision key %q, got %q", tc.want, got)
+			}
+		})
+	}
+}
+
+func TestApprovalReactionTargetMessageID_PrefersAssistantTurnTarget(t *testing.T) {
+	prompt := ApprovalPromptRegistration{
+		ReactionTargetMessageID: networkid.MessageID("assistant-msg"),
+		PromptMessageID:         networkid.MessageID("prompt-msg"),
+	}
+	if got := approvalReactionTargetMessageID(prompt); got != networkid.MessageID("assistant-msg") {
+		t.Fatalf("expected assistant-turn reaction target, got %q", got)
+	}
+
+	prompt.ReactionTargetMessageID = ""
+	if got := approvalReactionTargetMessageID(prompt); got != networkid.MessageID("prompt-msg") {
+		t.Fatalf("expected prompt fallback reaction target, got %q", got)
+	}
+}
+
 func TestApprovalFlow_ResolvedPromptLookupPrunesExpiredEntries(t *testing.T) {
 	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{})
 
 	flow.mu.Lock()
 	flow.rememberResolvedPromptLocked(ApprovalPromptRegistration{
 		ApprovalID:      "approval-1",
-		PromptEventID:   id.EventID("$prompt"),
 		PromptMessageID: networkid.MessageID("msg-1"),
 		ExpiresAt:       time.Now().Add(-time.Second),
 		Options:         DefaultApprovalOptions(),
@@ -414,14 +720,14 @@ func TestApprovalFlow_ResolvedPromptLookupPrunesExpiredEntries(t *testing.T) {
 	})
 	flow.mu.Unlock()
 
-	if _, ok := flow.resolvedPromptByTarget(id.EventID("$prompt"), ""); ok {
+	if _, ok := flow.resolvedPromptByTarget(networkid.MessageID("msg-1")); ok {
 		t.Fatal("expected expired resolved prompt lookup to be pruned")
 	}
 
 	flow.mu.Lock()
 	defer flow.mu.Unlock()
-	if len(flow.resolvedByEventID) != 0 || len(flow.resolvedByMsgID) != 0 {
-		t.Fatalf("expected expired resolved prompt entries to be removed, got event=%d msg=%d", len(flow.resolvedByEventID), len(flow.resolvedByMsgID))
+	if len(flow.resolvedByMsgID) != 0 {
+		t.Fatalf("expected expired resolved prompt entries to be removed, got msg=%d", len(flow.resolvedByMsgID))
 	}
 }
 
@@ -472,19 +778,13 @@ func TestApprovalFlow_HandleReaction_WrongTargetUniqueApprovalMirrorsDecision(t 
 		RoomID:          roomID,
 		OwnerMXID:       owner,
 		ToolCallID:      "tool-1",
-		PromptEventID:   id.EventID("$prompt"),
 		PromptMessageID: networkid.MessageID("msg-1"),
 		Options:         DefaultApprovalOptions(),
 	})
 	flow.mu.Unlock()
 
-	msg := &bridgev2.MatrixReaction{
-		MatrixEventBase: bridgev2.MatrixEventBase[*event.ReactionEventContent]{
-			Event:  &event.Event{ID: id.EventID("$reaction"), Sender: owner},
-			Portal: portal,
-		},
-	}
-	if !flow.HandleReaction(context.Background(), msg, id.EventID("$wrong-target"), ApprovalReactionKeyAllowOnce) {
+	msg := testMatrixReaction(portal, owner, id.EventID("$reaction"), id.EventID("$wrong-target"), "", ApprovalReactionKeyAllowOnce)
+	if !flow.HandleReaction(context.Background(), msg) {
 		t.Fatalf("expected wrong-target approval reaction to be handled")
 	}
 	if flow.Get("approval-1") != nil {
@@ -501,6 +801,70 @@ func TestApprovalFlow_HandleReaction_WrongTargetUniqueApprovalMirrorsDecision(t 
 		}
 	case <-time.After(500 * time.Millisecond):
 		t.Fatalf("timed out waiting for mirrored approval reaction")
+	}
+}
+
+func TestApprovalFlow_HandleReaction_WrongTargetUniqueApprovalPreservesAliasReaction(t *testing.T) {
+	owner := id.UserID("@owner:example.com")
+	roomID := id.RoomID("!room:example.com")
+	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
+	login := &bridgev2.UserLogin{
+		UserLogin: &database.UserLogin{
+			ID:       networkid.UserLoginID("login"),
+			UserMXID: owner,
+		},
+		Bridge: &bridgev2.Bridge{},
+	}
+
+	var redacted bool
+	mirrorCh := make(chan string, 1)
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
+		Login: func() *bridgev2.UserLogin { return login },
+	})
+	flow.testResolvePortal = func(_ context.Context, _ *bridgev2.UserLogin, _ id.RoomID) (*bridgev2.Portal, error) {
+		return portal, nil
+	}
+	flow.testRedactSingleReaction = func(_ *bridgev2.MatrixReaction) {
+		redacted = true
+	}
+	flow.testMirrorRemoteDecisionReaction = func(_ context.Context, _ *bridgev2.UserLogin, _ *bridgev2.Portal, _ bridgev2.EventSender, _ ApprovalPromptRegistration, reactionKey string) {
+		mirrorCh <- reactionKey
+	}
+	flow.testEditPromptToResolvedState = func(context.Context, *bridgev2.UserLogin, *bridgev2.Portal, bridgev2.EventSender, ApprovalPromptRegistration, ApprovalDecisionPayload) {
+	}
+	flow.testRedactPromptPlaceholderReacts = func(context.Context, *bridgev2.UserLogin, *bridgev2.Portal, bridgev2.EventSender, ApprovalPromptRegistration, ApprovalPromptReactionCleanupOptions) error {
+		return nil
+	}
+
+	if _, created := flow.Register("approval-1", time.Minute, &testApprovalFlowData{}); !created {
+		t.Fatalf("expected pending approval to be created")
+	}
+	flow.mu.Lock()
+	flow.registerPromptLocked(ApprovalPromptRegistration{
+		ApprovalID:      "approval-1",
+		RoomID:          roomID,
+		OwnerMXID:       owner,
+		ToolCallID:      "tool-1",
+		PromptMessageID: networkid.MessageID("msg-1"),
+		Options:         DefaultApprovalOptions(),
+	})
+	flow.mu.Unlock()
+
+	msg := testMatrixReaction(portal, owner, id.EventID("$reaction"), id.EventID("$wrong-target"), "", ApprovalReactionAliasAllowOnce)
+	if !flow.HandleReaction(context.Background(), msg) {
+		t.Fatalf("expected wrong-target alias approval reaction to be handled")
+	}
+	if !redacted {
+		t.Fatalf("expected wrong-target alias reaction to be redacted")
+	}
+
+	select {
+	case key := <-mirrorCh:
+		if key != ApprovalReactionAliasAllowOnce {
+			t.Fatalf("expected mirrored allow-once alias, got %q", key)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("timed out waiting for mirrored alias approval reaction")
 	}
 }
 
@@ -546,7 +910,6 @@ func TestApprovalFlow_HandleReaction_WrongTargetAmbiguousApprovalUsesMessageStat
 		RoomID:          roomID,
 		OwnerMXID:       owner,
 		ToolCallID:      "tool-1",
-		PromptEventID:   id.EventID("$prompt-1"),
 		PromptMessageID: networkid.MessageID("msg-1"),
 		Options:         DefaultApprovalOptions(),
 	})
@@ -555,19 +918,13 @@ func TestApprovalFlow_HandleReaction_WrongTargetAmbiguousApprovalUsesMessageStat
 		RoomID:          roomID,
 		OwnerMXID:       owner,
 		ToolCallID:      "tool-2",
-		PromptEventID:   id.EventID("$prompt-2"),
 		PromptMessageID: networkid.MessageID("msg-2"),
 		Options:         DefaultApprovalOptions(),
 	})
 	flow.mu.Unlock()
 
-	msg := &bridgev2.MatrixReaction{
-		MatrixEventBase: bridgev2.MatrixEventBase[*event.ReactionEventContent]{
-			Event:  &event.Event{ID: id.EventID("$reaction"), Sender: owner},
-			Portal: portal,
-		},
-	}
-	if !flow.HandleReaction(context.Background(), msg, id.EventID("$wrong-target"), ApprovalReactionKeyAllowOnce) {
+	msg := testMatrixReaction(portal, owner, id.EventID("$reaction"), id.EventID("$wrong-target"), "", ApprovalReactionKeyAllowOnce)
+	if !flow.HandleReaction(context.Background(), msg) {
 		t.Fatalf("expected ambiguous wrong-target approval reaction to be handled")
 	}
 	if !redacted {
@@ -643,7 +1000,6 @@ func TestApprovalFlow_ResolveExternalMirrorsRemoteDecision(t *testing.T) {
 		RoomID:          roomID,
 		OwnerMXID:       owner,
 		ToolCallID:      "tool-1",
-		PromptEventID:   id.EventID("$prompt"),
 		PromptMessageID: networkid.MessageID("msg-1"),
 		Options:         DefaultApprovalOptions(),
 	})
@@ -710,7 +1066,6 @@ func TestApprovalFlow_ResolveExternalAgentKeepsSelectedPlaceholderReaction(t *te
 		RoomID:          roomID,
 		OwnerMXID:       owner,
 		ToolCallID:      "tool-1",
-		PromptEventID:   id.EventID("$prompt"),
 		PromptMessageID: networkid.MessageID("msg-1"),
 		PromptSenderID:  networkid.UserID("ghost:approval"),
 		Options:         DefaultApprovalOptions(),
@@ -813,9 +1168,9 @@ func TestApprovalFlow_ResolveExternalDoesNotFinalizeWhenAlreadyHandled(t *testin
 
 	flow.mu.Lock()
 	flow.registerPromptLocked(ApprovalPromptRegistration{
-		ApprovalID:    "approval-1",
-		PromptEventID: id.EventID("$prompt"),
-		Options:       DefaultApprovalOptions(),
+		ApprovalID:      "approval-1",
+		PromptMessageID: networkid.MessageID("msg-1"),
+		Options:         DefaultApprovalOptions(),
 	})
 	flow.mu.Unlock()
 
@@ -860,10 +1215,10 @@ func TestApprovalFlow_ResolvePreventsLaterTimeout(t *testing.T) {
 
 	flow.mu.Lock()
 	flow.registerPromptLocked(ApprovalPromptRegistration{
-		ApprovalID:    "approval-1",
-		PromptEventID: id.EventID("$prompt"),
-		Options:       DefaultApprovalOptions(),
-		ExpiresAt:     time.Now().Add(25 * time.Millisecond),
+		ApprovalID:      "approval-1",
+		PromptMessageID: networkid.MessageID("msg-1"),
+		Options:         DefaultApprovalOptions(),
+		ExpiresAt:       time.Now().Add(25 * time.Millisecond),
 	})
 	flow.mu.Unlock()
 
@@ -897,10 +1252,10 @@ func TestApprovalFlow_WaitTimeoutFinalizesPromptState(t *testing.T) {
 
 	flow.mu.Lock()
 	flow.registerPromptLocked(ApprovalPromptRegistration{
-		ApprovalID:    "approval-1",
-		PromptEventID: id.EventID("$prompt"),
-		ExpiresAt:     time.Now().Add(25 * time.Millisecond),
-		Options:       DefaultApprovalOptions(),
+		ApprovalID:      "approval-1",
+		PromptMessageID: networkid.MessageID("msg-1"),
+		ExpiresAt:       time.Now().Add(25 * time.Millisecond),
+		Options:         DefaultApprovalOptions(),
 	})
 	flow.mu.Unlock()
 
@@ -929,7 +1284,7 @@ func TestApprovalFlow_SchedulePromptTimeoutIgnoresReplacedPrompt(t *testing.T) {
 		ApprovalID: "approval-1",
 		ExpiresAt:  firstExpiresAt,
 	})
-	firstVersion, ok := flow.bindPromptIDsLocked("approval-1", id.EventID("$prompt-1"), networkid.MessageID("msg-1"))
+	firstVersion, ok := flow.bindPromptTargetLocked("approval-1", networkid.MessageID("msg-1"))
 	flow.mu.Unlock()
 	if !ok {
 		t.Fatalf("expected initial prompt bind to succeed")
@@ -946,7 +1301,7 @@ func TestApprovalFlow_SchedulePromptTimeoutIgnoresReplacedPrompt(t *testing.T) {
 		ApprovalID: "approval-1",
 		ExpiresAt:  secondExpiresAt,
 	})
-	secondVersion, ok := flow.bindPromptIDsLocked("approval-1", id.EventID("$prompt-2"), networkid.MessageID("msg-2"))
+	secondVersion, ok := flow.bindPromptTargetLocked("approval-1", networkid.MessageID("msg-2"))
 	flow.mu.Unlock()
 	if !ok {
 		t.Fatalf("expected replacement prompt bind to succeed")
@@ -958,7 +1313,7 @@ func TestApprovalFlow_SchedulePromptTimeoutIgnoresReplacedPrompt(t *testing.T) {
 
 	waitForCondition(t, 100*time.Millisecond, func() bool {
 		prompt, ok := flow.promptRegistration("approval-1")
-		return flow.Get("approval-1") != nil && ok && prompt.PromptEventID == id.EventID("$prompt-2")
+		return flow.Get("approval-1") != nil && ok && prompt.PromptMessageID == networkid.MessageID("msg-2")
 	}, "expected replacement prompt to remain active after stale timeout window")
 
 	waitForCondition(t, 300*time.Millisecond, func() bool {

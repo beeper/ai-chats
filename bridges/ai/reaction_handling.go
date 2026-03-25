@@ -29,7 +29,7 @@ func (oc *AIClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Matr
 	}
 
 	rc := agentremote.ExtractReactionContext(msg)
-	if oc.approvalFlow.HandleReaction(ctx, msg, rc.TargetEventID, rc.Emoji) {
+	if oc.approvalFlow.HandleReaction(ctx, msg) {
 		return &database.Reaction{}, nil
 	}
 

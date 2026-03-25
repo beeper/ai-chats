@@ -33,58 +33,70 @@ func (oc *AIClient) sendGeneratedMedia(
 		return "", "", fmt.Errorf("upload failed: %w", err)
 	}
 
-	info := map[string]any{
-		"mimetype": mimeType,
-		"size":     len(data),
+	info := &event.FileInfo{
+		MimeType: mimeType,
+		Size:     len(data),
 	}
 
 	body := caption
-
-	rawContent := map[string]any{
-		"msgtype":    msgType,
-		"body":       body,
-		"filename":   fileName,
-		"info":       info,
-		"m.mentions": map[string]any{},
+	content := &event.MessageEventContent{
+		MsgType:  msgType,
+		Body:     body,
+		FileName: fileName,
+		Info:     info,
+		Mentions: &event.Mentions{},
 	}
-
 	if file != nil {
-		rawContent["file"] = file
+		content.File = file
 	} else {
-		rawContent["url"] = string(uri)
+		content.URL = uri
 	}
 
 	if msgType == event.MsgImage {
 		if w, h := analyzeImage(data); w > 0 && h > 0 {
-			info["w"] = w
-			info["h"] = h
+			info.Width = w
+			info.Height = h
 		}
 	}
 
 	if msgType == event.MsgVideo {
 		if w, h, dur := analyzeVideo(ctx, data); w > 0 && h > 0 {
-			info["w"] = w
-			info["h"] = h
+			info.Width = w
+			info.Height = h
 			if dur > 0 {
-				info["duration"] = dur
+				info.Duration = dur
 			}
 		}
 	}
 
-	populateAudioMessageContent(rawContent, info, data, mimeType, asVoice, msgType)
+	populateAudioMessageContent(content, data, mimeType, asVoice, msgType)
 
 	if turnID != "" && metadataKey != "" {
-		rawContent[metadataKey] = map[string]any{
+		rawMetadata := map[string]any{
 			"turn_id": turnID,
 		}
+		converted := &bridgev2.ConvertedMessage{
+			Parts: []*bridgev2.ConvertedMessagePart{{
+				ID:         networkid.PartID("0"),
+				Type:       event.EventMessage,
+				Content:    content,
+				Extra:      map[string]any{metadataKey: rawMetadata},
+				DBMetadata: nil,
+			}},
+		}
+
+		eventID, _, sendErr := oc.sendViaPortal(ctx, portal, converted, "")
+		if sendErr != nil {
+			return "", "", fmt.Errorf("send failed: %w", sendErr)
+		}
+		return eventID, string(uri), nil
 	}
 
 	converted := &bridgev2.ConvertedMessage{
 		Parts: []*bridgev2.ConvertedMessagePart{{
 			ID:      networkid.PartID("0"),
 			Type:    event.EventMessage,
-			Content: &event.MessageEventContent{MsgType: msgType, Body: body},
-			Extra:   rawContent,
+			Content: content,
 		}},
 	}
 
@@ -102,20 +114,17 @@ func extensionForMIME(mimeType, defaultExt string, overrides map[string]string) 
 	return defaultExt
 }
 
-func populateAudioMessageContent(rawContent map[string]any, info map[string]any, data []byte, mimeType string, asVoice bool, msgType event.MessageType) {
+func populateAudioMessageContent(content *event.MessageEventContent, data []byte, mimeType string, asVoice bool, msgType event.MessageType) {
 	if msgType != event.MsgAudio {
 		return
 	}
 	if durationMs, waveform := analyzeAudio(data, mimeType); durationMs > 0 || len(waveform) > 0 {
-		if durationMs > 0 {
-			info["duration"] = durationMs
-		}
-		rawContent["org.matrix.msc1767.audio"] = map[string]any{
-			"duration": durationMs,
-			"waveform": waveform,
+		content.MSC1767Audio = &event.MSC1767Audio{
+			Duration: durationMs,
+			Waveform: waveform,
 		}
 	}
 	if asVoice {
-		rawContent["org.matrix.msc3245.voice"] = map[string]any{}
+		content.MSC3245Voice = &event.MSC3245Voice{}
 	}
 }

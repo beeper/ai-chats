@@ -143,11 +143,11 @@ func TestStreamSessionEmitPartUsesResolvedRelationTarget(t *testing.T) {
 	if len(deltas) != 1 {
 		t.Fatalf("expected one delta, got %#v", deltas)
 	}
-	relatesTo, ok := deltas[0]["m.relates_to"].(map[string]any)
+	relatesTo, ok := deltas[0]["m.relates_to"].(*event.RelatesTo)
 	if !ok {
 		t.Fatalf("expected m.relates_to in delta, got %#v", deltas[0])
 	}
-	if relatesTo["event_id"] != "$event-2" {
+	if relatesTo.EventID != id.EventID("$event-2") {
 		t.Fatalf("unexpected relation target: %#v", relatesTo)
 	}
 }

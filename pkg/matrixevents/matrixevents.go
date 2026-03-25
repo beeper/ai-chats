@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 )
 
 // Event types shared across bridge/bot/modules.
@@ -93,9 +94,9 @@ func BuildStreamEventEnvelope(turnID string, seq int, part map[string]any, opts 
 	if target == "" {
 		return nil, fmt.Errorf("stream event envelope: missing m.relates_to event_id")
 	}
-	content["m.relates_to"] = map[string]any{
-		"rel_type": RelReference,
-		"event_id": target,
+	content["m.relates_to"] = &event.RelatesTo{
+		Type:    event.RelReference,
+		EventID: id.EventID(target),
 	}
 	if agentID := strings.TrimSpace(opts.AgentID); agentID != "" {
 		content["agent_id"] = agentID

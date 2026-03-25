@@ -58,7 +58,6 @@ func BuildCompactFinalUIMessage(uiMessage map[string]any) map[string]any {
 func BuildDefaultFinalEditTopLevelExtra(uiMessage map[string]any) map[string]any {
 	extra := map[string]any{
 		"com.beeper.dont_render_edited": true,
-		"m.mentions":                    map[string]any{},
 	}
 	if len(uiMessage) > 0 {
 		extra[matrixevents.BeeperAIKey] = uiMessage

@@ -42,7 +42,7 @@ func (tst *testStreamTransport) Unregister(id.RoomID, id.EventID) {
 func TestTurnBuildRelatesToDefaultsToSourceEvent(t *testing.T) {
 	turn := newTurn(context.Background(), nil, nil, UserMessageSource("$source"))
 	rel := turn.buildRelatesTo()
-	if rel == nil || rel["event_id"] != "$source" {
+	if rel == nil || rel.EventID != id.EventID("$source") {
 		t.Fatalf("expected source event relation, got %#v", rel)
 	}
 }
@@ -51,18 +51,16 @@ func TestTurnBuildRelatesToPrefersReplyAndThread(t *testing.T) {
 	turn := newTurn(context.Background(), nil, nil, UserMessageSource("$source"))
 	turn.SetReplyTo(id.EventID("$reply"))
 	rel := turn.buildRelatesTo()
-	inReply, ok := rel["m.in_reply_to"].(map[string]any)
-	if !ok || inReply["event_id"] != "$reply" {
+	if rel == nil || rel.InReplyTo == nil || rel.InReplyTo.EventID != id.EventID("$reply") {
 		t.Fatalf("expected explicit reply relation, got %#v", rel)
 	}
 
 	turn.SetThread(id.EventID("$thread"))
 	rel = turn.buildRelatesTo()
-	if rel["event_id"] != "$thread" {
+	if rel == nil || rel.EventID != id.EventID("$thread") {
 		t.Fatalf("expected thread root relation, got %#v", rel)
 	}
-	inReply, ok = rel["m.in_reply_to"].(map[string]any)
-	if !ok || inReply["event_id"] != "$reply" {
+	if rel.InReplyTo == nil || rel.InReplyTo.EventID != id.EventID("$reply") {
 		t.Fatalf("expected thread fallback reply, got %#v", rel)
 	}
 }
@@ -248,11 +246,11 @@ func TestTurnBuildPlaceholderMessageUsesConfiguredPayload(t *testing.T) {
 	turn := newTurn(context.Background(), nil, nil, nil)
 	turn.SetPlaceholderMessagePayload(&PlaceholderMessagePayload{
 		Content: &event.MessageEventContent{
-			MsgType: event.MsgText,
-			Body:    "Pondering...",
+			MsgType:  event.MsgText,
+			Body:     "Pondering...",
+			Mentions: &event.Mentions{},
 		},
 		Extra: map[string]any{
-			"body":          "Pondering...",
 			"com.beeper.ai": map[string]any{"id": turn.ID()},
 		},
 		DBMetadata: map[string]any{"custom": true},
@@ -266,14 +264,11 @@ func TestTurnBuildPlaceholderMessageUsesConfiguredPayload(t *testing.T) {
 	if part.Content.Body != "Pondering..." {
 		t.Fatalf("expected placeholder body override, got %#v", part.Content.Body)
 	}
-	if got := part.Extra["body"]; got != "Pondering..." {
-		t.Fatalf("expected placeholder extra body, got %#v", got)
-	}
 	if part.DBMetadata == nil {
 		t.Fatalf("expected placeholder DB metadata")
 	}
-	if _, ok := part.Extra["m.mentions"]; !ok {
-		t.Fatalf("expected m.mentions default to be preserved")
+	if part.Content.Mentions == nil {
+		t.Fatalf("expected typed mentions default to be preserved")
 	}
 }
 
@@ -281,12 +276,11 @@ func TestTurnBuildPlaceholderMessageSeedsAIContentByDefault(t *testing.T) {
 	turn := newTurn(context.Background(), nil, nil, nil)
 	turn.SetPlaceholderMessagePayload(&PlaceholderMessagePayload{
 		Content: &event.MessageEventContent{
-			MsgType: event.MsgText,
-			Body:    "Pondering...",
+			MsgType:  event.MsgText,
+			Body:     "Pondering...",
+			Mentions: &event.Mentions{},
 		},
-		Extra: map[string]any{
-			"body": "Pondering...",
-		},
+		Extra: map[string]any{},
 	})
 
 	msg := turn.buildPlaceholderMessage()
@@ -389,21 +383,24 @@ func TestTurnBuildFinalEditAddsReplaceRelation(t *testing.T) {
 	if edit == nil || len(edit.ModifiedParts) != 1 {
 		t.Fatalf("expected single modified part, got %#v", edit)
 	}
-	gotRelatesTo, ok := edit.ModifiedParts[0].TopLevelExtra["m.relates_to"].(map[string]any)
+	gotRelatesTo, ok := edit.ModifiedParts[0].TopLevelExtra["m.relates_to"].(*event.RelatesTo)
 	if !ok {
 		t.Fatalf("expected m.relates_to in top-level extra, got %#v", edit.ModifiedParts[0].TopLevelExtra)
 	}
-	if gotRelatesTo["rel_type"] != "m.replace" {
+	if gotRelatesTo.Type != event.RelReplace {
 		t.Fatalf("expected m.replace relation, got %#v", gotRelatesTo)
 	}
-	if gotRelatesTo["event_id"] != "$event-1" {
+	if gotRelatesTo.EventID != id.EventID("$event-1") {
 		t.Fatalf("expected replace target event id, got %#v", gotRelatesTo)
 	}
-	if _, ok := gotRelatesTo["m.in_reply_to"]; ok {
+	if gotRelatesTo.InReplyTo != nil {
 		t.Fatalf("expected edit relation to omit reply override, got %#v", gotRelatesTo)
 	}
 	if body := edit.ModifiedParts[0].Content.Body; body != "done" {
 		t.Fatalf("expected explicit payload body to win, got %q", body)
+	}
+	if edit.ModifiedParts[0].Content.Mentions == nil {
+		t.Fatalf("expected typed mentions on edited content")
 	}
 }
 

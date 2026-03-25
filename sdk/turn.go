@@ -213,8 +213,12 @@ func (t *Turn) resolveSender(ctx context.Context) bridgev2.EventSender {
 }
 
 func (t *Turn) buildPlaceholderMessage() *bridgev2.ConvertedMessage {
-	extra := map[string]any{"m.mentions": map[string]any{}}
-	msgContent := &event.MessageEventContent{MsgType: event.MsgText, Body: "..."}
+	extra := map[string]any{}
+	msgContent := &event.MessageEventContent{
+		MsgType:  event.MsgText,
+		Body:     "...",
+		Mentions: &event.Mentions{},
+	}
 	var dbMetadata any
 	if t.placeholderPayload != nil {
 		if t.placeholderPayload.Content != nil {
@@ -229,8 +233,8 @@ func (t *Turn) buildPlaceholderMessage() *bridgev2.ConvertedMessage {
 		}
 		dbMetadata = t.placeholderPayload.DBMetadata
 	}
-	if _, ok := extra["m.mentions"]; !ok {
-		extra["m.mentions"] = map[string]any{}
+	if msgContent.Mentions == nil {
+		msgContent.Mentions = &event.Mentions{}
 	}
 	if _, ok := extra[matrixevents.BeeperAIKey]; !ok {
 		extra[matrixevents.BeeperAIKey] = map[string]any{
@@ -245,11 +249,10 @@ func (t *Turn) buildPlaceholderMessage() *bridgev2.ConvertedMessage {
 	if t.session != nil {
 		if descriptor, err := t.session.Descriptor(t.turnCtx); err == nil && descriptor != nil {
 			msgContent.BeeperStream = descriptor
-			extra["com.beeper.stream"] = descriptor
 		}
 	}
 	if relatesTo := t.buildRelatesTo(); relatesTo != nil {
-		extra["m.relates_to"] = relatesTo
+		msgContent.RelatesTo = relatesTo
 	}
 	return &bridgev2.ConvertedMessage{
 		Parts: []*bridgev2.ConvertedMessagePart{{
@@ -262,35 +265,27 @@ func (t *Turn) buildPlaceholderMessage() *bridgev2.ConvertedMessage {
 	}
 }
 
-func (t *Turn) buildRelatesTo() map[string]any {
+func (t *Turn) buildRelatesTo() *event.RelatesTo {
 	if t.threadRoot != "" {
 		replyTo := t.replyTo
 		if replyTo == "" && t.source != nil && t.source.EventID != "" {
 			replyTo = id.EventID(t.source.EventID)
 		}
-		rel := map[string]any{
-			"rel_type":        "m.thread",
-			"event_id":        t.threadRoot.String(),
-			"is_falling_back": true,
+		rel := &event.RelatesTo{
+			Type:          event.RelThread,
+			EventID:       t.threadRoot,
+			IsFallingBack: true,
 		}
 		if replyTo != "" {
-			rel["m.in_reply_to"] = map[string]any{
-				"event_id": replyTo.String(),
-			}
+			rel.InReplyTo = &event.InReplyTo{EventID: replyTo}
 		}
 		return rel
 	}
 	if t.replyTo != "" {
-		return map[string]any{
-			"m.in_reply_to": map[string]any{
-				"event_id": t.replyTo.String(),
-			},
-		}
+		return &event.RelatesTo{InReplyTo: &event.InReplyTo{EventID: t.replyTo}}
 	}
 	if t.source != nil && t.source.EventID != "" {
-		return map[string]any{
-			"event_id": id.EventID(t.source.EventID).String(),
-		}
+		return &event.RelatesTo{EventID: id.EventID(t.source.EventID)}
 	}
 	return nil
 }
@@ -486,12 +481,14 @@ func (t *Turn) requestApproval(req ApprovalRequest) ApprovalHandle {
 	}
 	approvalFlow.SendPrompt(t.turnCtx, t.conv.portal, agentremote.SendPromptParams{
 		ApprovalPromptMessageParams: agentremote.ApprovalPromptMessageParams{
-			ApprovalID:   approvalID,
-			ToolCallID:   req.ToolCallID,
-			ToolName:     req.ToolName,
-			TurnID:       t.turnID,
-			Presentation: presentation,
-			ExpiresAt:    time.Now().Add(ttl),
+			ApprovalID:        approvalID,
+			ToolCallID:        req.ToolCallID,
+			ToolName:          req.ToolName,
+			TurnID:            t.turnID,
+			Presentation:      presentation,
+			ReplyToEventID:    t.InitialEventID(),
+			ThreadRootEventID: t.ThreadRoot(),
+			ExpiresAt:         time.Now().Add(ttl),
 		},
 		RoomID:    t.conv.portal.MXID,
 		OwnerMXID: t.conv.login.UserMXID,
@@ -563,6 +560,13 @@ func (t *Turn) InitialEventID() id.EventID {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.initialEventID
+}
+
+// ThreadRoot returns the Matrix thread root event ID for this turn.
+func (t *Turn) ThreadRoot() id.EventID {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.threadRoot
 }
 
 // NetworkMessageID returns the bridge network message ID of the placeholder.
@@ -673,6 +677,9 @@ func (t *Turn) buildFinalEdit() (networkid.MessageID, *bridgev2.ConvertedEdit) {
 		return "", nil
 	}
 	content := *payload.Content
+	if content.Mentions == nil {
+		content.Mentions = &event.Mentions{}
+	}
 	if relatesTo := buildPayloadRelatesTo(payload.ReplyTo, payload.ThreadRoot); relatesTo != nil {
 		content.RelatesTo = relatesTo
 	}
@@ -681,10 +688,7 @@ func (t *Turn) buildFinalEdit() (networkid.MessageID, *bridgev2.ConvertedEdit) {
 		topLevelExtra = map[string]any{}
 	}
 	if t.initialEventID != "" {
-		topLevelExtra["m.relates_to"] = map[string]any{
-			"rel_type": matrixevents.RelReplace,
-			"event_id": t.initialEventID.String(),
-		}
+		topLevelExtra["m.relates_to"] = (&event.RelatesTo{}).SetReplace(t.initialEventID)
 	}
 	return target, turns.BuildConvertedEdit(&content, topLevelExtra)
 }
@@ -897,8 +901,9 @@ func (t *Turn) defaultFinalEditPayload(finishReason, fallbackBody string) *Final
 	}
 	return &FinalEditPayload{
 		Content: &event.MessageEventContent{
-			MsgType: event.MsgText,
-			Body:    body,
+			MsgType:  event.MsgText,
+			Body:     body,
+			Mentions: &event.Mentions{},
 		},
 		TopLevelExtra: BuildDefaultFinalEditTopLevelExtra(uiMessage),
 		ReplyTo:       replyTo,

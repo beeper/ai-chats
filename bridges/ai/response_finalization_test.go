@@ -160,9 +160,6 @@ func TestBuildFinalEditTopLevelExtra_KeepsMatrixFallbackFields(t *testing.T) {
 	if _, ok := extra["m.relates_to"]; ok {
 		t.Fatalf("expected SDK to inject m.relates_to, got %#v", extra["m.relates_to"])
 	}
-	if _, ok := extra["m.mentions"]; !ok {
-		t.Fatalf("expected m.mentions to be present")
-	}
 }
 
 func TestBuildFinalEditPayload_PreservesReplyTarget(t *testing.T) {

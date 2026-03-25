@@ -422,13 +422,9 @@ func codexBackfillConvertedMessage(role, text, turnID string) *bridgev2.Converte
 			ID:   networkid.PartID("0"),
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
-				MsgType: event.MsgText,
-				Body:    text,
-			},
-			Extra: map[string]any{
-				"msgtype":    event.MsgText,
-				"body":       text,
-				"m.mentions": map[string]any{},
+				MsgType:  event.MsgText,
+				Body:     text,
+				Mentions: &event.Mentions{},
 			},
 			DBMetadata: &MessageMetadata{
 				BaseMessageMetadata: agentremote.BaseMessageMetadata{

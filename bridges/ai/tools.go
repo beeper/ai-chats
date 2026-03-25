@@ -434,20 +434,15 @@ func executeMessageSend(ctx context.Context, args map[string]any, btc *BridgeToo
 	bufferInput = strings.TrimSpace(bufferInput)
 	mediaInput := firstNonEmptyString(args["media"], args["path"])
 
-	var relatesTo map[string]any
+	var replyToEventID id.EventID
 	if replyID, ok := args["message_id"].(string); ok && strings.TrimSpace(replyID) != "" {
-		relatesTo = map[string]any{
-			"m.in_reply_to": map[string]any{
-				"event_id": strings.TrimSpace(replyID),
-			},
-		}
+		replyToEventID = id.EventID(strings.TrimSpace(replyID))
 	}
+	var threadRootEventID id.EventID
 	if threadID, ok := args["thread_id"].(string); ok && strings.TrimSpace(threadID) != "" {
-		relatesTo = map[string]any{
-			"rel_type": "m.thread",
-			"event_id": strings.TrimSpace(threadID),
-		}
+		threadRootEventID = id.EventID(strings.TrimSpace(threadID))
 	}
+	relatesTo := buildMessageRelatesTo(replyToEventID, threadRootEventID)
 
 	if bufferInput == "" && mediaInput == "" {
 		if message == "" {
@@ -499,60 +494,57 @@ func executeMessageSend(ctx context.Context, args map[string]any, btc *BridgeToo
 		return "", fmt.Errorf("upload failed: %w", err)
 	}
 
-	info := map[string]any{
-		"mimetype": mimeType,
-		"size":     len(data),
+	info := &event.FileInfo{
+		MimeType: mimeType,
+		Size:     len(data),
 	}
 	if gifPlayback && msgType == event.MsgVideo {
-		info["fi.mau.gif"] = true
-		info["is_animated"] = true
+		info.MauGIF = true
+		info.IsAnimated = true
 	}
 	if mimeType == "image/gif" {
-		info["is_animated"] = true
+		info.IsAnimated = true
 	}
 
-	rawContent := map[string]any{
-		"msgtype":    msgType,
-		"body":       caption,
-		"info":       info,
-		"m.mentions": map[string]any{},
-	}
-	if relatesTo != nil {
-		rawContent["m.relates_to"] = relatesTo
+	content := &event.MessageEventContent{
+		MsgType:   msgType,
+		Body:      caption,
+		Info:      info,
+		Mentions:  &event.Mentions{},
+		RelatesTo: relatesTo,
 	}
 	if fileName != "" {
-		rawContent["filename"] = fileName
+		content.FileName = fileName
 	}
 	if file != nil {
-		rawContent["file"] = file
+		content.File = file
 	} else {
-		rawContent["url"] = string(uri)
+		content.URL = uri
 	}
 	if msgType == event.MsgImage {
 		if w, h := analyzeImage(data); w > 0 && h > 0 {
-			info["w"] = w
-			info["h"] = h
+			info.Width = w
+			info.Height = h
 		}
 	}
 
 	if msgType == event.MsgVideo {
 		if w, h, dur := analyzeVideo(ctx, data); w > 0 && h > 0 {
-			info["w"] = w
-			info["h"] = h
+			info.Width = w
+			info.Height = h
 			if dur > 0 {
-				info["duration"] = dur
+				info.Duration = dur
 			}
 		}
 	}
 
-	populateAudioMessageContent(rawContent, info, data, mimeType, asVoice, msgType)
+	populateAudioMessageContent(content, data, mimeType, asVoice, msgType)
 
 	converted := &bridgev2.ConvertedMessage{
 		Parts: []*bridgev2.ConvertedMessagePart{{
 			ID:      networkid.PartID("0"),
 			Type:    event.EventMessage,
-			Content: &event.MessageEventContent{MsgType: msgType, Body: caption},
-			Extra:   rawContent,
+			Content: content,
 		}},
 	}
 	eventID, _, sendErr := btc.Client.sendViaPortal(ctx, btc.Portal, converted, "")
@@ -591,31 +583,17 @@ func executeMessageEdit(ctx context.Context, args map[string]any, btc *BridgeToo
 		return "", fmt.Errorf("target message not found for edit: %s", messageID)
 	}
 
-	editRaw := map[string]any{
-		"msgtype":        event.MsgText,
-		"body":           "* " + rendered.Body,
-		"format":         rendered.Format,
-		"formatted_body": "* " + rendered.FormattedBody,
-		"m.new_content": map[string]any{
-			"msgtype":        event.MsgText,
-			"body":           rendered.Body,
-			"format":         rendered.Format,
-			"formatted_body": rendered.FormattedBody,
-			"m.mentions":     map[string]any{},
-		},
-		"m.relates_to": map[string]any{
-			"rel_type": RelReplace,
-			"event_id": targetEventID.String(),
-		},
-		"m.mentions": map[string]any{},
-	}
-
 	editContent := &bridgev2.ConvertedEdit{
 		ModifiedParts: []*bridgev2.ConvertedEditPart{{
-			Part:    targetPart,
-			Type:    event.EventMessage,
-			Content: &event.MessageEventContent{MsgType: event.MsgText, Body: rendered.Body},
-			Extra:   editRaw,
+			Part: targetPart,
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType:       event.MsgText,
+				Body:          rendered.Body,
+				Format:        rendered.Format,
+				FormattedBody: rendered.FormattedBody,
+				Mentions:      &event.Mentions{},
+			},
 		}},
 	}
 
@@ -662,11 +640,7 @@ func executeMessageReply(ctx context.Context, args map[string]any, btc *BridgeTo
 	}
 
 	targetEventID := id.EventID(messageID)
-	respID, err := sendFormattedMessage(ctx, btc, message, map[string]any{
-		"m.in_reply_to": map[string]any{
-			"event_id": targetEventID.String(),
-		},
-	}, "failed to send reply")
+	respID, err := sendFormattedMessage(ctx, btc, message, buildMessageRelatesTo(targetEventID, ""), "failed to send reply")
 	if err != nil {
 		return "", err
 	}
@@ -763,10 +737,7 @@ func executeMessageThreadReply(ctx context.Context, args map[string]any, btc *Br
 	}
 
 	threadRootID := id.EventID(threadID)
-	respID, err := sendFormattedMessage(ctx, btc, message, map[string]any{
-		"rel_type": "m.thread",
-		"event_id": threadRootID.String(),
-	}, "failed to send thread reply")
+	respID, err := sendFormattedMessage(ctx, btc, message, buildMessageRelatesTo(threadRootID, threadRootID), "failed to send thread reply")
 	if err != nil {
 		return "", err
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"go.mau.fi/util/dbutil"
@@ -59,5 +60,28 @@ func TestEnsureSyntheticReactionSenderGhost_CreatesGhostRow(t *testing.T) {
 	}
 	if ghost.ID != senderID {
 		t.Fatalf("expected ghost id %q, got %q", senderID, ghost.ID)
+	}
+}
+
+func TestResolveApprovalReactionTargetMessageID_UsesReplyTargetEvent(t *testing.T) {
+	login := setupApprovalReactionTestLogin(t)
+	ctx := context.Background()
+
+	err := login.Bridge.DB.Message.Insert(ctx, &database.Message{
+		ID:         networkid.MessageID("assistant-msg"),
+		PartID:     networkid.PartID("0"),
+		MXID:       id.EventID("$assistant"),
+		Room:       networkid.PortalKey{ID: networkid.PortalID("portal"), Receiver: login.ID},
+		SenderID:   networkid.UserID("ghost:assistant"),
+		SenderMXID: id.UserID("@assistant:example.com"),
+		Timestamp:  time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("insert message: %v", err)
+	}
+
+	got := resolveApprovalReactionTargetMessageID(ctx, login, id.EventID("$assistant"))
+	if got != networkid.MessageID("assistant-msg") {
+		t.Fatalf("expected assistant target message id, got %q", got)
 	}
 }

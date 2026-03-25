@@ -53,6 +53,7 @@ func (oc *OpenClawClient) buildOpenClawAttachmentContent(ctx context.Context, po
 		MsgType:  media.MessageTypeForMIME(mimeType),
 		Body:     filename,
 		FileName: filename,
+		Mentions: &event.Mentions{},
 		Info: &event.FileInfo{
 			MimeType: mimeType,
 			Size:     len(data),
@@ -313,11 +314,7 @@ func downloadOpenClawAttachmentURL(ctx context.Context, rawURL, fallbackMime str
 }
 
 func openClawMessageExtra(content *event.MessageEventContent) map[string]any {
-	extra := map[string]any{
-		"msgtype":    content.MsgType,
-		"body":       content.Body,
-		"m.mentions": map[string]any{},
-	}
+	extra := map[string]any{}
 	if content.FileName != "" {
 		extra["filename"] = content.FileName
 	}
