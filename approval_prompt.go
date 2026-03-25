@@ -23,6 +23,10 @@ const (
 	ApprovalReactionKeyAllowAlways = "approval.allow_always"
 	ApprovalReactionKeyDeny        = "approval.deny"
 
+	ApprovalReactionAliasAllowOnce   = "👍"
+	ApprovalReactionAliasAllowAlways = "♾️"
+	ApprovalReactionAliasDeny        = "👎"
+
 	RejectReasonOwnerOnly     = "only_owner"
 	RejectReasonExpired       = "expired"
 	RejectReasonInvalidOption = "invalid_option"
@@ -165,18 +169,20 @@ func (o ApprovalOption) allKeys() []string {
 func ApprovalPromptOptions(allowAlways bool) []ApprovalOption {
 	options := []ApprovalOption{
 		{
-			ID:       ApprovalReasonAllowOnce,
-			Key:      ApprovalReactionKeyAllowOnce,
-			Label:    "Approve once",
-			Approved: true,
-			Reason:   ApprovalReasonAllowOnce,
+			ID:          ApprovalReasonAllowOnce,
+			Key:         ApprovalReactionKeyAllowOnce,
+			FallbackKey: ApprovalReactionAliasAllowOnce,
+			Label:       "Approve once",
+			Approved:    true,
+			Reason:      ApprovalReasonAllowOnce,
 		},
 		{
-			ID:       ApprovalReasonDeny,
-			Key:      ApprovalReactionKeyDeny,
-			Label:    "Deny",
-			Approved: false,
-			Reason:   ApprovalReasonDeny,
+			ID:          ApprovalReasonDeny,
+			Key:         ApprovalReactionKeyDeny,
+			FallbackKey: ApprovalReactionAliasDeny,
+			Label:       "Deny",
+			Approved:    false,
+			Reason:      ApprovalReasonDeny,
 		},
 	}
 	if !allowAlways {
@@ -185,12 +191,13 @@ func ApprovalPromptOptions(allowAlways bool) []ApprovalOption {
 	return []ApprovalOption{
 		options[0],
 		{
-			ID:       ApprovalReasonAllowAlways,
-			Key:      ApprovalReactionKeyAllowAlways,
-			Label:    "Always allow",
-			Approved: true,
-			Always:   true,
-			Reason:   ApprovalReasonAllowAlways,
+			ID:          ApprovalReasonAllowAlways,
+			Key:         ApprovalReactionKeyAllowAlways,
+			FallbackKey: ApprovalReactionAliasAllowAlways,
+			Label:       "Always allow",
+			Approved:    true,
+			Always:      true,
+			Reason:      ApprovalReasonAllowAlways,
 		},
 		options[1],
 	}
@@ -653,5 +660,15 @@ func normalizeReactionKey(key string) string {
 
 func isApprovalReactionKey(key string) bool {
 	key = normalizeReactionKey(key)
-	return strings.HasPrefix(key, "approval.")
+	if strings.HasPrefix(key, "approval.") {
+		return true
+	}
+	for _, option := range DefaultApprovalOptions() {
+		for _, optionKey := range option.allKeys() {
+			if key == optionKey {
+				return true
+			}
+		}
+	}
+	return false
 }

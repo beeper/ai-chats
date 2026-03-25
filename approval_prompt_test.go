@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 )
 
@@ -73,6 +74,24 @@ func TestApprovalPromptOptions_AllowAlwaysSwitch(t *testing.T) {
 	if got := ApprovalPromptOptions(true); got[0].Key != ApprovalReactionKeyAllowOnce || got[1].Key != ApprovalReactionKeyAllowAlways || got[2].Key != ApprovalReactionKeyDeny {
 		t.Fatalf("unexpected canonical option keys: %#v", got)
 	}
+	if got := ApprovalPromptOptions(true); got[0].FallbackKey != ApprovalReactionAliasAllowOnce || got[1].FallbackKey != ApprovalReactionAliasAllowAlways || got[2].FallbackKey != ApprovalReactionAliasDeny {
+		t.Fatalf("unexpected approval reaction aliases: %#v", got)
+	}
+}
+
+func TestIsApprovalReactionKey_AcceptsAliases(t *testing.T) {
+	for _, key := range []string{
+		ApprovalReactionKeyAllowOnce,
+		ApprovalReactionKeyAllowAlways,
+		ApprovalReactionKeyDeny,
+		ApprovalReactionAliasAllowOnce,
+		ApprovalReactionAliasAllowAlways,
+		ApprovalReactionAliasDeny,
+	} {
+		if !isApprovalReactionKey(key) {
+			t.Fatalf("expected %q to be recognized as approval reaction", key)
+		}
+	}
 }
 
 func TestBuildApprovalResponsePromptMessage_ContainsDecision(t *testing.T) {
@@ -130,19 +149,20 @@ func TestApprovalFlow_MatchReactionOwnerOnly(t *testing.T) {
 
 	flow.mu.Lock()
 	flow.registerPromptLocked(ApprovalPromptRegistration{
-		ApprovalID:    "approval-1",
-		RoomID:        id.RoomID("!room:example.com"),
-		OwnerMXID:     id.UserID("@owner:example.com"),
-		ToolCallID:    "tool-1",
-		PromptEventID: id.EventID("$prompt"),
-		ExpiresAt:     expires,
+		ApprovalID:      "approval-1",
+		RoomID:          id.RoomID("!room:example.com"),
+		OwnerMXID:       id.UserID("@owner:example.com"),
+		ToolCallID:      "tool-1",
+		PromptEventID:   id.EventID("$prompt"),
+		PromptMessageID: networkid.MessageID("msg-1"),
+		ExpiresAt:       expires,
 		Options: []ApprovalOption{
-			{ID: "allow_once", Key: ApprovalReactionKeyAllowOnce, Approved: true},
+			{ID: "allow_once", Key: ApprovalReactionKeyAllowOnce, FallbackKey: ApprovalReactionAliasAllowOnce, Approved: true},
 		},
 	})
 	flow.mu.Unlock()
 
-	ownerMatch := flow.matchReactionTarget("", id.EventID("$prompt"), id.UserID("@owner:example.com"), ApprovalReactionKeyAllowOnce, time.Now())
+	ownerMatch := flow.matchReactionTarget(networkid.MessageID("msg-1"), id.UserID("@owner:example.com"), ApprovalReactionKeyAllowOnce, time.Now())
 	if !ownerMatch.KnownPrompt || !ownerMatch.ShouldResolve {
 		t.Fatalf("expected owner reaction to resolve, got %#v", ownerMatch)
 	}
@@ -152,8 +172,19 @@ func TestApprovalFlow_MatchReactionOwnerOnly(t *testing.T) {
 	if ownerMatch.Decision.ResolvedBy != ApprovalResolutionOriginUser {
 		t.Fatalf("expected direct Matrix approval to be user-resolved, got %#v", ownerMatch.Decision.ResolvedBy)
 	}
+	if ownerMatch.Decision.ReactionKey != ApprovalReactionKeyAllowOnce {
+		t.Fatalf("expected canonical reaction key to be preserved, got %#v", ownerMatch.Decision.ReactionKey)
+	}
 
-	otherMatch := flow.matchReactionTarget("", id.EventID("$prompt"), id.UserID("@other:example.com"), ApprovalReactionKeyAllowOnce, time.Now())
+	aliasMatch := flow.matchReactionTarget(networkid.MessageID("msg-1"), id.UserID("@owner:example.com"), ApprovalReactionAliasAllowOnce, time.Now())
+	if !aliasMatch.KnownPrompt || !aliasMatch.ShouldResolve {
+		t.Fatalf("expected alias reaction to resolve, got %#v", aliasMatch)
+	}
+	if aliasMatch.Decision.ReactionKey != ApprovalReactionAliasAllowOnce {
+		t.Fatalf("expected alias reaction key to be preserved, got %#v", aliasMatch.Decision.ReactionKey)
+	}
+
+	otherMatch := flow.matchReactionTarget(networkid.MessageID("msg-1"), id.UserID("@other:example.com"), ApprovalReactionKeyAllowOnce, time.Now())
 	if !otherMatch.KnownPrompt || otherMatch.ShouldResolve {
 		t.Fatalf("expected non-owner reaction to be rejected, got %#v", otherMatch)
 	}
