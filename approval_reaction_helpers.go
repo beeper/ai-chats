@@ -87,16 +87,20 @@ func PreHandleApprovalReaction(msg *bridgev2.MatrixReaction) (bridgev2.MatrixRea
 	}, nil
 }
 
-// ReactionContext holds the extracted emoji and target event ID from a reaction.
+// ReactionContext holds the extracted emoji plus the target message/event IDs.
 type ReactionContext struct {
-	Emoji         string
-	TargetEventID id.EventID
+	TargetMessageID networkid.MessageID
+	Emoji           string
+	TargetEventID   id.EventID
 }
 
-// ExtractReactionContext pulls the emoji and target event ID from a MatrixReaction.
+// ExtractReactionContext pulls the emoji and target identifiers from a MatrixReaction.
 func ExtractReactionContext(msg *bridgev2.MatrixReaction) ReactionContext {
 	content := EnsureReactionContent(msg)
 	var rc ReactionContext
+	if msg != nil && msg.TargetMessage != nil {
+		rc.TargetMessageID = msg.TargetMessage.ID
+	}
 	if msg != nil && msg.PreHandleResp != nil {
 		rc.Emoji = msg.PreHandleResp.Emoji
 	}

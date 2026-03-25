@@ -43,9 +43,8 @@ func (h BaseReactionHandler) HandleMatrixReaction(ctx context.Context, msg *brid
 		}
 		logEvt.Msg("Failed to ensure synthetic Matrix reaction sender ghost")
 	}
-	rc := ExtractReactionContext(msg)
 	if handler := h.Target.GetApprovalHandler(); handler != nil {
-		handler.HandleReaction(ctx, msg, rc.TargetEventID, rc.Emoji)
+		handler.HandleReaction(ctx, msg)
 	}
 	return &database.Reaction{}, nil
 }

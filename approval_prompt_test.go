@@ -142,7 +142,7 @@ func TestApprovalFlow_MatchReactionOwnerOnly(t *testing.T) {
 	})
 	flow.mu.Unlock()
 
-	ownerMatch := flow.matchReaction(id.EventID("$prompt"), id.UserID("@owner:example.com"), ApprovalReactionKeyAllowOnce, time.Now())
+	ownerMatch := flow.matchReactionTarget("", id.EventID("$prompt"), id.UserID("@owner:example.com"), ApprovalReactionKeyAllowOnce, time.Now())
 	if !ownerMatch.KnownPrompt || !ownerMatch.ShouldResolve {
 		t.Fatalf("expected owner reaction to resolve, got %#v", ownerMatch)
 	}
@@ -153,7 +153,7 @@ func TestApprovalFlow_MatchReactionOwnerOnly(t *testing.T) {
 		t.Fatalf("expected direct Matrix approval to be user-resolved, got %#v", ownerMatch.Decision.ResolvedBy)
 	}
 
-	otherMatch := flow.matchReaction(id.EventID("$prompt"), id.UserID("@other:example.com"), ApprovalReactionKeyAllowOnce, time.Now())
+	otherMatch := flow.matchReactionTarget("", id.EventID("$prompt"), id.UserID("@other:example.com"), ApprovalReactionKeyAllowOnce, time.Now())
 	if !otherMatch.KnownPrompt || otherMatch.ShouldResolve {
 		t.Fatalf("expected non-owner reaction to be rejected, got %#v", otherMatch)
 	}
