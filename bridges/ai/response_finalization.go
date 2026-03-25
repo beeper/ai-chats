@@ -18,24 +18,12 @@ import (
 	"github.com/beeper/agentremote/turns"
 )
 
-func buildReplyRelatesTo(replyTarget ReplyTarget) map[string]any {
+func buildReplyRelatesTo(replyTarget ReplyTarget) *event.RelatesTo {
 	if replyTarget.ThreadRoot != "" {
-		replyTo := replyTarget.EffectiveReplyTo()
-		return map[string]any{
-			"rel_type":        RelThread,
-			"event_id":        replyTarget.ThreadRoot.String(),
-			"is_falling_back": true,
-			"m.in_reply_to": map[string]any{
-				"event_id": replyTo.String(),
-			},
-		}
+		return (&event.RelatesTo{}).SetThread(replyTarget.ThreadRoot, replyTarget.EffectiveReplyTo())
 	}
 	if replyTarget.ReplyTo != "" {
-		return map[string]any{
-			"m.in_reply_to": map[string]any{
-				"event_id": replyTarget.ReplyTo.String(),
-			},
-		}
+		return (&event.RelatesTo{}).SetReplyTo(replyTarget.ReplyTo)
 	}
 	return nil
 }
@@ -47,10 +35,7 @@ func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev
 	}
 	msg := agentremote.BuildContinuationMessage(portal.PortalKey, body, oc.senderForPortal(ctx, portal), "ai", "ai_msg_id", timing.Timestamp, timing.StreamOrder)
 	if relatesTo := buildReplyRelatesTo(replyTarget); relatesTo != nil && msg != nil && msg.Data != nil && len(msg.Data.Parts) > 0 {
-		if msg.Data.Parts[0].Extra == nil {
-			msg.Data.Parts[0].Extra = map[string]any{}
-		}
-		msg.Data.Parts[0].Extra["m.relates_to"] = relatesTo
+		msg.Data.Parts[0].Content.RelatesTo = relatesTo
 	}
 	oc.UserLogin.QueueRemoteEvent(msg)
 	oc.loggerForContext(ctx).Debug().Int("body_len", len(body)).Msg("Queued continuation message for oversized response")
@@ -396,20 +381,17 @@ func (oc *AIClient) sendPlainAssistantMessage(ctx context.Context, portal *bridg
 	}
 
 	rendered := format.RenderMarkdown(text, true, true)
-	eventRaw := map[string]any{
-		"msgtype":        event.MsgText,
-		"body":           rendered.Body,
-		"format":         rendered.Format,
-		"formatted_body": rendered.FormattedBody,
-		"m.mentions":     map[string]any{},
-	}
-
 	converted := &bridgev2.ConvertedMessage{
 		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:      networkid.PartID("0"),
-			Type:    event.EventMessage,
-			Content: &event.MessageEventContent{MsgType: event.MsgText, Body: rendered.Body},
-			Extra:   eventRaw,
+			ID:   networkid.PartID("0"),
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType:       event.MsgText,
+				Body:          rendered.Body,
+				Format:        rendered.Format,
+				FormattedBody: rendered.FormattedBody,
+				Mentions:      &event.Mentions{},
+			},
 		}},
 	}
 
@@ -585,7 +567,12 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 }
 
 func buildFinalEditTopLevelExtra(uiMessage map[string]any, linkPreviews []*event.BeeperLinkPreview) map[string]any {
-	topLevelExtra := sdk.BuildDefaultFinalEditTopLevelExtra(uiMessage)
+	topLevelExtra := map[string]any{
+		"com.beeper.dont_render_edited": true,
+	}
+	if len(uiMessage) > 0 {
+		topLevelExtra[BeeperAIKey] = uiMessage
+	}
 	if len(linkPreviews) > 0 {
 		topLevelExtra["com.beeper.linkpreviews"] = PreviewsToMapSlice(linkPreviews)
 	}

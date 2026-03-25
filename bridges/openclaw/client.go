@@ -743,8 +743,7 @@ func (oc *OpenClawClient) sendNoticeViaPortal(ctx context.Context, portal *bridg
 		Parts: []*bridgev2.ConvertedMessagePart{{
 			ID:      networkid.PartID("0"),
 			Type:    event.EventMessage,
-			Content: &event.MessageEventContent{MsgType: event.MsgNotice, Body: msg},
-			Extra:   map[string]any{"msgtype": event.MsgNotice, "body": msg, "m.mentions": map[string]any{}},
+			Content: &event.MessageEventContent{MsgType: event.MsgNotice, Body: msg, Mentions: &event.Mentions{}},
 		}},
 	}
 	oc.UserLogin.QueueRemoteEvent(buildOpenClawRemoteMessage(

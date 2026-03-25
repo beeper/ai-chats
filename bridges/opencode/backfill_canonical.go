@@ -233,6 +233,5 @@ func buildCanonicalBackfillPart(snapshot canonicalBackfillSnapshot) *event.Messa
 func canonicalBackfillExtra(snapshot canonicalBackfillSnapshot) map[string]any {
 	return map[string]any{
 		matrixevents.BeeperAIKey: snapshot.ui,
-		"m.mentions":             map[string]any{},
 	}
 }

@@ -42,14 +42,22 @@ func (oc *AIClient) createStreamingTurn(
 		return oc.requestTurnApproval(callCtx, portal, state, sdkTurn, req)
 	})
 	placeholderExtra := map[string]any{
-		"msgtype":    event.MsgText,
-		"body":       "...",
-		BeeperAIKey:  map[string]any{"id": turn.ID(), "role": "assistant", "metadata": map[string]any{"turn_id": turn.ID()}, "parts": []any{}},
-		"m.mentions": map[string]any{},
+		BeeperAIKey: map[string]any{
+			"id":   turn.ID(),
+			"role": "assistant",
+			"metadata": map[string]any{
+				"turn_id": turn.ID(),
+			},
+			"parts": []any{},
+		},
 	}
 	turn.SetPlaceholderMessagePayload(&bridgesdk.PlaceholderMessagePayload{
-		Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "..."},
-		Extra:   placeholderExtra,
+		Content: &event.MessageEventContent{
+			MsgType:  event.MsgText,
+			Body:     "...",
+			Mentions: &event.Mentions{},
+		},
+		Extra: placeholderExtra,
 		DBMetadata: &MessageMetadata{BaseMessageMetadata: agentremote.BaseMessageMetadata{
 			Role:   "assistant",
 			TurnID: turn.ID(),

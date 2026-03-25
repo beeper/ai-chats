@@ -1184,8 +1184,7 @@ func (m *openClawManager) convertHistoryMessage(ctx context.Context, portal *bri
 		parts = append(parts, &bridgev2.ConvertedMessagePart{
 			ID:      networkid.PartID("0"),
 			Type:    event.EventMessage,
-			Content: &event.MessageEventContent{MsgType: event.MsgText, Body: text},
-			Extra:   map[string]any{"msgtype": event.MsgText, "body": text, "m.mentions": map[string]any{}},
+			Content: &event.MessageEventContent{MsgType: event.MsgText, Body: text, Mentions: &event.Mentions{}},
 		})
 	} else if len(uiParts) > 0 {
 		fallbackText := openClawHistoryFallbackText(uiParts)
@@ -1193,8 +1192,7 @@ func (m *openClawManager) convertHistoryMessage(ctx context.Context, portal *bri
 			parts = append(parts, &bridgev2.ConvertedMessagePart{
 				ID:      networkid.PartID("0"),
 				Type:    event.EventMessage,
-				Content: &event.MessageEventContent{MsgType: event.MsgNotice, Body: fallbackText},
-				Extra:   map[string]any{"msgtype": event.MsgNotice, "body": fallbackText, "m.mentions": map[string]any{}},
+				Content: &event.MessageEventContent{MsgType: event.MsgNotice, Body: fallbackText, Mentions: &event.Mentions{}},
 			})
 		}
 	}
@@ -1205,8 +1203,7 @@ func (m *openClawManager) convertHistoryMessage(ctx context.Context, portal *bri
 			parts = append(parts, &bridgev2.ConvertedMessagePart{
 				ID:      networkid.PartID(fmt.Sprintf("attachment-fallback-%d", idx)),
 				Type:    event.EventMessage,
-				Content: &event.MessageEventContent{MsgType: event.MsgNotice, Body: fallbackText},
-				Extra:   map[string]any{"msgtype": event.MsgNotice, "body": fallbackText, "m.mentions": map[string]any{}},
+				Content: &event.MessageEventContent{MsgType: event.MsgNotice, Body: fallbackText, Mentions: &event.Mentions{}},
 			})
 			uiParts = append(uiParts, map[string]any{"type": "text", "text": fallbackText, "state": "done"})
 			continue
