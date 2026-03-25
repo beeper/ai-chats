@@ -333,6 +333,43 @@ func TestApprovalFlow_HandleReaction_ResolvedPromptUsesMessageStatus(t *testing.
 	}
 }
 
+func TestApprovalFlow_HandleReaction_MatchesPromptByMessageID(t *testing.T) {
+	owner := id.UserID("@owner:example.com")
+	roomID := id.RoomID("!room:example.com")
+	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
+
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{})
+	if _, created := flow.Register("approval-1", time.Minute, &testApprovalFlowData{}); !created {
+		t.Fatalf("expected pending approval to be created")
+	}
+	flow.mu.Lock()
+	flow.registerPromptLocked(ApprovalPromptRegistration{
+		ApprovalID:      "approval-1",
+		RoomID:          roomID,
+		OwnerMXID:       owner,
+		ToolCallID:      "tool-1",
+		PromptMessageID: networkid.MessageID("msg-1"),
+		Options:         DefaultApprovalOptions(),
+	})
+	flow.mu.Unlock()
+
+	msg := &bridgev2.MatrixReaction{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.ReactionEventContent]{
+			Event:  &event.Event{ID: id.EventID("$reaction"), Sender: owner},
+			Portal: portal,
+		},
+		TargetMessage: &database.Message{
+			ID: networkid.MessageID("msg-1"),
+		},
+	}
+	if !flow.HandleReaction(context.Background(), msg, "", ApprovalReactionKeyAllowOnce) {
+		t.Fatalf("expected approval reaction to be handled")
+	}
+	if pending := flow.Get("approval-1"); pending != nil {
+		t.Fatalf("expected pending approval to be finalized")
+	}
+}
+
 func TestApprovalFlow_HandleReactionRemove_ResolvedPromptUsesMessageStatus(t *testing.T) {
 	owner := id.UserID("@owner:example.com")
 	roomID := id.RoomID("!room:example.com")
