@@ -484,7 +484,6 @@ type ApprovalPromptRegistration struct {
 	Presentation    ApprovalPromptPresentation
 	ExpiresAt       time.Time
 	Options         []ApprovalOption
-	PromptEventID   id.EventID
 	PromptMessageID networkid.MessageID
 	PromptSenderID  networkid.UserID
 }

@@ -153,7 +153,6 @@ func TestApprovalFlow_MatchReactionOwnerOnly(t *testing.T) {
 		RoomID:          id.RoomID("!room:example.com"),
 		OwnerMXID:       id.UserID("@owner:example.com"),
 		ToolCallID:      "tool-1",
-		PromptEventID:   id.EventID("$prompt"),
 		PromptMessageID: networkid.MessageID("msg-1"),
 		ExpiresAt:       expires,
 		Options: []ApprovalOption{

@@ -162,19 +162,12 @@ func resolveApprovalPromptMessage(
 	receiver networkid.UserLoginID,
 	prompt ApprovalPromptRegistration,
 ) *database.Message {
-	if login == nil || login.Bridge == nil {
+	if login == nil || login.Bridge == nil || prompt.PromptMessageID == "" {
 		return nil
 	}
 	msgDB := login.Bridge.DB.Message
-	if prompt.PromptMessageID != "" {
-		if msg, err := msgDB.GetFirstPartByID(ctx, receiver, prompt.PromptMessageID); err == nil && msg != nil {
-			return msg
-		}
-	}
-	if prompt.PromptEventID != "" {
-		if msg, err := msgDB.GetPartByMXID(ctx, prompt.PromptEventID); err == nil && msg != nil {
-			return msg
-		}
+	if msg, err := msgDB.GetFirstPartByID(ctx, receiver, prompt.PromptMessageID); err == nil && msg != nil {
+		return msg
 	}
 	return nil
 }

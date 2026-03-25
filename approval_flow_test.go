@@ -108,7 +108,6 @@ func TestApprovalFlow_FinishResolvedQueuesEditAndPlaceholderCleanup(t *testing.T
 		OwnerMXID:       owner,
 		ToolCallID:      "tool-1",
 		ToolName:        "exec",
-		PromptEventID:   id.EventID("$prompt"),
 		PromptMessageID: networkid.MessageID("msg-1"),
 		PromptSenderID:  networkid.UserID("ghost:approval"),
 		Options:         DefaultApprovalOptions(),
@@ -219,7 +218,6 @@ func TestApprovalFlow_HandleReaction_DeliveryErrorKeepsPending(t *testing.T) {
 		RoomID:          roomID,
 		OwnerMXID:       owner,
 		ToolCallID:      "tool-1",
-		PromptEventID:   id.EventID("$prompt"),
 		PromptMessageID: networkid.MessageID("msg-1"),
 		Options:         DefaultApprovalOptions(),
 	})
@@ -270,7 +268,6 @@ func TestApprovalFlow_HandleReaction_UnknownPendingShowsUnknown(t *testing.T) {
 		RoomID:          roomID,
 		OwnerMXID:       owner,
 		ToolCallID:      "tool-1",
-		PromptEventID:   id.EventID("$prompt"),
 		PromptMessageID: networkid.MessageID("msg-1"),
 		Options:         DefaultApprovalOptions(),
 	})
@@ -322,7 +319,6 @@ func TestApprovalFlow_HandleReaction_ResolvedPromptUsesMessageStatus(t *testing.
 		ApprovalID:      "approval-1",
 		RoomID:          roomID,
 		OwnerMXID:       owner,
-		PromptEventID:   id.EventID("$prompt"),
 		PromptMessageID: networkid.MessageID("msg-1"),
 		Options:         DefaultApprovalOptions(),
 	}, ApprovalDecisionPayload{
@@ -409,7 +405,6 @@ func TestApprovalFlow_HandleReactionRemove_ResolvedPromptUsesMessageStatus(t *te
 		ApprovalID:      "approval-1",
 		RoomID:          roomID,
 		OwnerMXID:       owner,
-		PromptEventID:   id.EventID("$prompt"),
 		PromptMessageID: networkid.MessageID("msg-1"),
 		Options:         DefaultApprovalOptions(),
 	}, ApprovalDecisionPayload{
@@ -473,7 +468,6 @@ func TestApprovalFlow_HandleReactionRemove_ResolvedPromptUsesMessageStatusForAli
 		ApprovalID:      "approval-1",
 		RoomID:          roomID,
 		OwnerMXID:       owner,
-		PromptEventID:   id.EventID("$prompt"),
 		PromptMessageID: networkid.MessageID("msg-1"),
 		Options:         DefaultApprovalOptions(),
 	}, ApprovalDecisionPayload{
@@ -507,13 +501,27 @@ func TestApprovalFlow_HandleReactionRemove_ResolvedPromptUsesMessageStatusForAli
 	}
 }
 
+func TestApprovalPlaceholderReactionKey_PrefersAlias(t *testing.T) {
+	if got := approvalPlaceholderReactionKey(ApprovalOption{
+		Key:         ApprovalReactionKeyAllowOnce,
+		FallbackKey: ApprovalReactionAliasAllowOnce,
+	}); got != ApprovalReactionAliasAllowOnce {
+		t.Fatalf("expected placeholder alias %q, got %q", ApprovalReactionAliasAllowOnce, got)
+	}
+
+	if got := approvalPlaceholderReactionKey(ApprovalOption{
+		Key: ApprovalReactionKeyDeny,
+	}); got != ApprovalReactionKeyDeny {
+		t.Fatalf("expected canonical placeholder key %q, got %q", ApprovalReactionKeyDeny, got)
+	}
+}
+
 func TestApprovalFlow_ResolvedPromptLookupPrunesExpiredEntries(t *testing.T) {
 	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{})
 
 	flow.mu.Lock()
 	flow.rememberResolvedPromptLocked(ApprovalPromptRegistration{
 		ApprovalID:      "approval-1",
-		PromptEventID:   id.EventID("$prompt"),
 		PromptMessageID: networkid.MessageID("msg-1"),
 		ExpiresAt:       time.Now().Add(-time.Second),
 		Options:         DefaultApprovalOptions(),
@@ -582,7 +590,6 @@ func TestApprovalFlow_HandleReaction_WrongTargetUniqueApprovalMirrorsDecision(t 
 		RoomID:          roomID,
 		OwnerMXID:       owner,
 		ToolCallID:      "tool-1",
-		PromptEventID:   id.EventID("$prompt"),
 		PromptMessageID: networkid.MessageID("msg-1"),
 		Options:         DefaultApprovalOptions(),
 	})
@@ -650,7 +657,6 @@ func TestApprovalFlow_HandleReaction_WrongTargetUniqueApprovalPreservesAliasReac
 		RoomID:          roomID,
 		OwnerMXID:       owner,
 		ToolCallID:      "tool-1",
-		PromptEventID:   id.EventID("$prompt"),
 		PromptMessageID: networkid.MessageID("msg-1"),
 		Options:         DefaultApprovalOptions(),
 	})
@@ -716,7 +722,6 @@ func TestApprovalFlow_HandleReaction_WrongTargetAmbiguousApprovalUsesMessageStat
 		RoomID:          roomID,
 		OwnerMXID:       owner,
 		ToolCallID:      "tool-1",
-		PromptEventID:   id.EventID("$prompt-1"),
 		PromptMessageID: networkid.MessageID("msg-1"),
 		Options:         DefaultApprovalOptions(),
 	})
@@ -725,7 +730,6 @@ func TestApprovalFlow_HandleReaction_WrongTargetAmbiguousApprovalUsesMessageStat
 		RoomID:          roomID,
 		OwnerMXID:       owner,
 		ToolCallID:      "tool-2",
-		PromptEventID:   id.EventID("$prompt-2"),
 		PromptMessageID: networkid.MessageID("msg-2"),
 		Options:         DefaultApprovalOptions(),
 	})
@@ -808,7 +812,6 @@ func TestApprovalFlow_ResolveExternalMirrorsRemoteDecision(t *testing.T) {
 		RoomID:          roomID,
 		OwnerMXID:       owner,
 		ToolCallID:      "tool-1",
-		PromptEventID:   id.EventID("$prompt"),
 		PromptMessageID: networkid.MessageID("msg-1"),
 		Options:         DefaultApprovalOptions(),
 	})
@@ -875,7 +878,6 @@ func TestApprovalFlow_ResolveExternalAgentKeepsSelectedPlaceholderReaction(t *te
 		RoomID:          roomID,
 		OwnerMXID:       owner,
 		ToolCallID:      "tool-1",
-		PromptEventID:   id.EventID("$prompt"),
 		PromptMessageID: networkid.MessageID("msg-1"),
 		PromptSenderID:  networkid.UserID("ghost:approval"),
 		Options:         DefaultApprovalOptions(),
@@ -978,9 +980,9 @@ func TestApprovalFlow_ResolveExternalDoesNotFinalizeWhenAlreadyHandled(t *testin
 
 	flow.mu.Lock()
 	flow.registerPromptLocked(ApprovalPromptRegistration{
-		ApprovalID:    "approval-1",
-		PromptEventID: id.EventID("$prompt"),
-		Options:       DefaultApprovalOptions(),
+		ApprovalID:      "approval-1",
+		PromptMessageID: networkid.MessageID("msg-1"),
+		Options:         DefaultApprovalOptions(),
 	})
 	flow.mu.Unlock()
 
@@ -1025,10 +1027,10 @@ func TestApprovalFlow_ResolvePreventsLaterTimeout(t *testing.T) {
 
 	flow.mu.Lock()
 	flow.registerPromptLocked(ApprovalPromptRegistration{
-		ApprovalID:    "approval-1",
-		PromptEventID: id.EventID("$prompt"),
-		Options:       DefaultApprovalOptions(),
-		ExpiresAt:     time.Now().Add(25 * time.Millisecond),
+		ApprovalID:      "approval-1",
+		PromptMessageID: networkid.MessageID("msg-1"),
+		Options:         DefaultApprovalOptions(),
+		ExpiresAt:       time.Now().Add(25 * time.Millisecond),
 	})
 	flow.mu.Unlock()
 
@@ -1062,10 +1064,10 @@ func TestApprovalFlow_WaitTimeoutFinalizesPromptState(t *testing.T) {
 
 	flow.mu.Lock()
 	flow.registerPromptLocked(ApprovalPromptRegistration{
-		ApprovalID:    "approval-1",
-		PromptEventID: id.EventID("$prompt"),
-		ExpiresAt:     time.Now().Add(25 * time.Millisecond),
-		Options:       DefaultApprovalOptions(),
+		ApprovalID:      "approval-1",
+		PromptMessageID: networkid.MessageID("msg-1"),
+		ExpiresAt:       time.Now().Add(25 * time.Millisecond),
+		Options:         DefaultApprovalOptions(),
 	})
 	flow.mu.Unlock()
 
@@ -1094,7 +1096,7 @@ func TestApprovalFlow_SchedulePromptTimeoutIgnoresReplacedPrompt(t *testing.T) {
 		ApprovalID: "approval-1",
 		ExpiresAt:  firstExpiresAt,
 	})
-	firstVersion, ok := flow.bindPromptTargetLocked("approval-1", networkid.MessageID("msg-1"), id.EventID("$prompt-1"))
+	firstVersion, ok := flow.bindPromptTargetLocked("approval-1", networkid.MessageID("msg-1"))
 	flow.mu.Unlock()
 	if !ok {
 		t.Fatalf("expected initial prompt bind to succeed")
@@ -1111,7 +1113,7 @@ func TestApprovalFlow_SchedulePromptTimeoutIgnoresReplacedPrompt(t *testing.T) {
 		ApprovalID: "approval-1",
 		ExpiresAt:  secondExpiresAt,
 	})
-	secondVersion, ok := flow.bindPromptTargetLocked("approval-1", networkid.MessageID("msg-2"), id.EventID("$prompt-2"))
+	secondVersion, ok := flow.bindPromptTargetLocked("approval-1", networkid.MessageID("msg-2"))
 	flow.mu.Unlock()
 	if !ok {
 		t.Fatalf("expected replacement prompt bind to succeed")
@@ -1123,7 +1125,7 @@ func TestApprovalFlow_SchedulePromptTimeoutIgnoresReplacedPrompt(t *testing.T) {
 
 	waitForCondition(t, 100*time.Millisecond, func() bool {
 		prompt, ok := flow.promptRegistration("approval-1")
-		return flow.Get("approval-1") != nil && ok && prompt.PromptEventID == id.EventID("$prompt-2")
+		return flow.Get("approval-1") != nil && ok && prompt.PromptMessageID == networkid.MessageID("msg-2")
 	}, "expected replacement prompt to remain active after stale timeout window")
 
 	waitForCondition(t, 300*time.Millisecond, func() bool {

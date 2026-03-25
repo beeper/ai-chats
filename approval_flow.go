@@ -589,15 +589,13 @@ func (f *ApprovalFlow[D]) registerPromptLocked(reg ApprovalPromptRegistration) {
 	}
 }
 
-// bindPromptTargetLocked associates a prompt with its remote message ID and
-// optional Matrix event ID. It returns the prompt generation that should own
-// any timeout goroutine.
+// bindPromptTargetLocked associates a prompt with its remote message ID. It
+// returns the prompt generation that should own any timeout goroutine.
 // Must be called with f.mu held.
-func (f *ApprovalFlow[D]) bindPromptTargetLocked(approvalID string, messageID networkid.MessageID, eventID id.EventID) (uint64, bool) {
+func (f *ApprovalFlow[D]) bindPromptTargetLocked(approvalID string, messageID networkid.MessageID) (uint64, bool) {
 	approvalID = strings.TrimSpace(approvalID)
 	messageID = networkid.MessageID(strings.TrimSpace(string(messageID)))
-	eventID = id.EventID(strings.TrimSpace(eventID.String()))
-	if approvalID == "" {
+	if approvalID == "" || messageID == "" {
 		return 0, false
 	}
 	entry := f.promptsByApproval[approvalID]
@@ -609,10 +607,7 @@ func (f *ApprovalFlow[D]) bindPromptTargetLocked(approvalID string, messageID ne
 	}
 	entry.PromptVersion++
 	entry.PromptMessageID = messageID
-	entry.PromptEventID = eventID
-	if messageID != "" {
-		f.promptsByMsgID[messageID] = approvalID
-	}
+	f.promptsByMsgID[messageID] = approvalID
 	return entry.PromptVersion, true
 }
 
@@ -932,7 +927,7 @@ func (f *ApprovalFlow[D]) SendPrompt(ctx context.Context, portal *bridgev2.Porta
 		}},
 	}
 
-	eventID, msgID, err := f.send(ctx, portal, converted)
+	_, msgID, err := f.send(ctx, portal, converted)
 	if err != nil {
 		f.mu.Lock()
 		f.dropPromptLocked(approvalID)
@@ -944,27 +939,20 @@ func (f *ApprovalFlow[D]) SendPrompt(ctx context.Context, portal *bridgev2.Porta
 	}
 
 	f.mu.Lock()
-	_, bound := f.bindPromptTargetLocked(approvalID, msgID, eventID)
+	_, bound := f.bindPromptTargetLocked(approvalID, msgID)
+	if !bound {
+		f.dropPromptLocked(approvalID)
+		if hadPrevPrompt {
+			f.registerPromptLocked(prevPromptCopy)
+		}
+	}
 	f.mu.Unlock()
 	if !bound {
 		loggerForLogin(ctx, login).Warn().
-			Stringer("approval_event_id", eventID).
 			Str("approval_msg_id", string(msgID)).
 			Str("approval_id", approvalID).
-			Msg("Failed to bind approval prompt identifiers")
+			Msg("Failed to bind approval prompt message ID")
 		return
-	}
-	if msgID == "" {
-		loggerForLogin(ctx, login).Warn().
-			Str("approval_id", approvalID).
-			Stringer("approval_event_id", eventID).
-			Msg("Approval prompt missing remote message ID; placeholder reactions disabled")
-	}
-	if eventID == "" {
-		loggerForLogin(ctx, login).Warn().
-			Str("approval_id", approvalID).
-			Str("approval_msg_id", string(msgID)).
-			Msg("Approval prompt missing event ID; matching by remote message ID only")
 	}
 
 	f.sendPrefillReactions(ctx, portal, login, msgID, prompt.Options)
@@ -1219,10 +1207,7 @@ func (f *ApprovalFlow[D]) sendPrefillReactions(ctx context.Context, portal *brid
 	now := time.Now()
 	seen := map[string]struct{}{}
 	for _, option := range options {
-		key := normalizeReactionKey(option.Key)
-		if key == "" {
-			key = normalizeReactionKey(option.FallbackKey)
-		}
+		key := approvalPlaceholderReactionKey(option)
 		if key == "" {
 			continue
 		}
@@ -1325,6 +1310,13 @@ func approvalOptionKeyForDecision(options []ApprovalOption, decision ApprovalDec
 		}
 	}
 	return ""
+}
+
+func approvalPlaceholderReactionKey(option ApprovalOption) string {
+	if key := normalizeReactionKey(option.FallbackKey); key != "" {
+		return key
+	}
+	return normalizeReactionKey(option.Key)
 }
 
 func approvalReactionKeyForDecision(options []ApprovalOption, decision ApprovalDecisionPayload) string {
