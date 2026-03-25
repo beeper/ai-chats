@@ -102,16 +102,8 @@ func TurnDataFromUIMessage(uiMessage map[string]any) (TurnData, bool) {
 		Metadata: jsonutil.DeepCloneMap(jsonutil.ToMap(uiMessage["metadata"])),
 		Extra:    extraFields(uiMessage, "id", "role", "metadata", "parts"),
 	}
-	var partsRaw []any
-	switch typed := uiMessage["parts"].(type) {
-	case []any:
-		partsRaw = typed
-	case []map[string]any:
-		partsRaw = make([]any, 0, len(typed))
-		for _, part := range typed {
-			partsRaw = append(partsRaw, part)
-		}
-	default:
+	partsRaw := extractUIMessageParts(uiMessage)
+	if partsRaw == nil {
 		return td, td.Role != "" || td.ID != ""
 	}
 	td.Parts = make([]TurnPart, 0, len(partsRaw))
@@ -225,6 +217,22 @@ func UIMessageFromTurnData(td TurnData) map[string]any {
 	}
 	ui["parts"] = parts
 	return ui
+}
+
+// extractUIMessageParts normalises the "parts" field of a UI message into a
+// []any slice, handling both []any and []map[string]any representations.
+func extractUIMessageParts(uiMessage map[string]any) []any {
+	switch typed := uiMessage["parts"].(type) {
+	case []any:
+		return typed
+	case []map[string]any:
+		result := make([]any, len(typed))
+		for i, part := range typed {
+			result[i] = part
+		}
+		return result
+	}
+	return nil
 }
 
 func extraFields(raw map[string]any, knownKeys ...string) map[string]any {

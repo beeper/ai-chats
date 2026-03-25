@@ -20,16 +20,7 @@ func BuildCompactFinalUIMessage(uiMessage map[string]any) map[string]any {
 		}
 	}
 
-	var rawParts []any
-	switch typed := uiMessage["parts"].(type) {
-	case []any:
-		rawParts = typed
-	case []map[string]any:
-		rawParts = make([]any, 0, len(typed))
-		for _, part := range typed {
-			rawParts = append(rawParts, part)
-		}
-	}
+	rawParts := extractUIMessageParts(uiMessage)
 	if len(rawParts) == 0 {
 		return out
 	}
