@@ -502,6 +502,7 @@ func (cl *CodexLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 
 	overallTimeout := time.Until(cl.waitUntil)
 	if overallTimeout <= 0 {
+		cl.cancelLoginAttempt(true)
 		return nil, errCodexTimedOut
 	}
 	deadline := time.NewTimer(overallTimeout)

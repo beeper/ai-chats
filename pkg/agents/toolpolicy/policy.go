@@ -36,8 +36,11 @@ const (
 	GroupStatus      = "group:status"
 	GroupOpenClaw    = "group:openclaw"
 	GroupAgentRemote = "group:agentremote"
+	GroupAIBridge    = "group:ai-bridge"
 	GroupFS          = "group:fs"
 )
+
+var agentRemoteExtras = []string{"gravatar_fetch", "gravatar_set", "beeper_docs", "beeper_send_feedback", "image_generate", "tts", "calculator"}
 
 // ToolGroups maps group names to tool names for policy composition.
 var ToolGroups = map[string][]string{
@@ -76,7 +79,8 @@ var ToolGroups = map[string][]string{
 		"image",
 	},
 	// AgentRemote extras (keep separate so group:openclaw stays portable with OpenClaw configs).
-	GroupAgentRemote: {"gravatar_fetch", "gravatar_set", "beeper_docs", "beeper_send_feedback", "image_generate", "tts", "calculator"},
+	GroupAgentRemote: agentRemoteExtras,
+	GroupAIBridge:    agentRemoteExtras,
 	GroupFS:          {"read", "write", "edit", "apply_patch"},
 }
 

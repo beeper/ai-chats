@@ -3,6 +3,7 @@ package opencode
 import (
 	"context"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -67,40 +68,94 @@ func TestOpenCodeLoginStartRejectsInvalidFlow(t *testing.T) {
 	}
 }
 
-func TestBuildRemoteInstancesRejectsInvalidURL(t *testing.T) {
+func assertOpenCodeRespError(t *testing.T, err error, status int, code string) {
+	t.Helper()
+
+	var respErr bridgev2.RespError
+	if !errors.As(err, &respErr) {
+		t.Fatalf("expected RespError, got %T", err)
+	}
+	if respErr.StatusCode != status {
+		t.Fatalf("unexpected status code: %d", respErr.StatusCode)
+	}
+	if respErr.ErrCode != code {
+		t.Fatalf("unexpected errcode: %q", respErr.ErrCode)
+	}
+}
+
+func TestOpenCodeLoginValidationErrorMappings(t *testing.T) {
 	login := &OpenCodeLogin{}
-	_, _, _, err := login.buildRemoteInstances(map[string]string{"url": "://bad-url"})
-	var respErr bridgev2.RespError
-	if !errors.As(err, &respErr) {
-		t.Fatalf("expected RespError, got %T", err)
-	}
-	if respErr.ErrCode != "COM.BEEPER.AGENTREMOTE.OPENCODE.INVALID_URL" {
-		t.Fatalf("unexpected errcode: %q", respErr.ErrCode)
-	}
-}
 
-func TestResolveManagedOpenCodeDirectoryRejectsNonDirectory(t *testing.T) {
-	filePath := filepath.Join(t.TempDir(), "not-a-dir")
-	if err := os.WriteFile(filePath, []byte("x"), 0o644); err != nil {
-		t.Fatalf("failed to create file: %v", err)
+	tests := []struct {
+		name       string
+		run        func(t *testing.T) error
+		wantStatus int
+		wantCode   string
+	}{
+		{
+			name: "invalid URL",
+			run: func(t *testing.T) error {
+				t.Helper()
+				_, _, _, err := login.buildRemoteInstances(map[string]string{"url": "://bad-url"})
+				return err
+			},
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "COM.BEEPER.AGENTREMOTE.OPENCODE.INVALID_URL",
+		},
+		{
+			name: "invalid binary path",
+			run: func(t *testing.T) error {
+				t.Helper()
+				_, err := resolveManagedOpenCodeBinary(filepath.Join(t.TempDir(), "missing-opencode"))
+				return err
+			},
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "COM.BEEPER.AGENTREMOTE.OPENCODE.INVALID_BINARY_PATH",
+		},
+		{
+			name: "missing default path",
+			run: func(t *testing.T) error {
+				t.Helper()
+				orig := defaultManagedOpenCodeDirectoryFn
+				defaultManagedOpenCodeDirectoryFn = func() string { return "" }
+				t.Cleanup(func() {
+					defaultManagedOpenCodeDirectoryFn = orig
+				})
+				_, err := resolveManagedOpenCodeDirectory("")
+				return err
+			},
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "COM.BEEPER.AGENTREMOTE.OPENCODE.DEFAULT_PATH_REQUIRED",
+		},
+		{
+			name: "inaccessible default path",
+			run: func(t *testing.T) error {
+				t.Helper()
+				_, err := resolveManagedOpenCodeDirectory(filepath.Join(t.TempDir(), "missing"))
+				return err
+			},
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "COM.BEEPER.AGENTREMOTE.OPENCODE.DEFAULT_PATH_NOT_ACCESSIBLE",
+		},
+		{
+			name: "default path not directory",
+			run: func(t *testing.T) error {
+				t.Helper()
+				filePath := filepath.Join(t.TempDir(), "not-a-dir")
+				if err := os.WriteFile(filePath, []byte("x"), 0o644); err != nil {
+					t.Fatalf("failed to create file: %v", err)
+				}
+				_, err := resolveManagedOpenCodeDirectory(filePath)
+				return err
+			},
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "COM.BEEPER.AGENTREMOTE.OPENCODE.DEFAULT_PATH_NOT_DIRECTORY",
+		},
 	}
-	_, err := resolveManagedOpenCodeDirectory(filePath)
-	var respErr bridgev2.RespError
-	if !errors.As(err, &respErr) {
-		t.Fatalf("expected RespError, got %T", err)
-	}
-	if respErr.ErrCode != "COM.BEEPER.AGENTREMOTE.OPENCODE.DEFAULT_PATH_NOT_DIRECTORY" {
-		t.Fatalf("unexpected errcode: %q", respErr.ErrCode)
-	}
-}
 
-func TestResolveManagedOpenCodeDirectoryRejectsInaccessiblePath(t *testing.T) {
-	_, err := resolveManagedOpenCodeDirectory(filepath.Join(t.TempDir(), "missing"))
-	var respErr bridgev2.RespError
-	if !errors.As(err, &respErr) {
-		t.Fatalf("expected RespError, got %T", err)
-	}
-	if respErr.ErrCode != "COM.BEEPER.AGENTREMOTE.OPENCODE.DEFAULT_PATH_NOT_ACCESSIBLE" {
-		t.Fatalf("unexpected errcode: %q", respErr.ErrCode)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assertOpenCodeRespError(t, tc.run(t), tc.wantStatus, tc.wantCode)
+		})
 	}
 }

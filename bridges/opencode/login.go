@@ -30,8 +30,11 @@ const (
 
 	openCodeLoginStepRemoteCredentials  = "com.beeper.agentremote.opencode.enter_remote_credentials"
 	openCodeLoginStepManagedCredentials = "com.beeper.agentremote.opencode.enter_managed_credentials"
+	openCodeLoginStepComplete           = "com.beeper.agentremote.opencode.complete"
 	defaultOpenCodeUsername             = "opencode"
 )
+
+var defaultManagedOpenCodeDirectoryFn = defaultManagedOpenCodeDirectory
 
 type OpenCodeLogin struct {
 	agentremote.BaseLoginProcess
@@ -154,7 +157,7 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 			existing,
 			remoteName,
 			existingMeta,
-			"com.beeper.agentremote.opencode.complete",
+			openCodeLoginStepComplete,
 			ol.Connector.LoadUserLogin,
 		)
 		if err != nil {
@@ -173,7 +176,7 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 			Provider:          ProviderOpenCode,
 			OpenCodeInstances: instances,
 		},
-		"com.beeper.agentremote.opencode.complete",
+		openCodeLoginStepComplete,
 		ol.Connector.LoadUserLogin,
 	)
 	if err != nil {
@@ -273,7 +276,7 @@ func defaultManagedOpenCodeDirectory() string {
 func resolveManagedOpenCodeDirectory(input string) (string, error) {
 	value := strings.TrimSpace(input)
 	if value == "" {
-		value = defaultManagedOpenCodeDirectory()
+		value = defaultManagedOpenCodeDirectoryFn()
 	}
 	if value == "" {
 		return "", errOpenCodeDefaultPathRequired
