@@ -1537,20 +1537,8 @@ func (oc *AIClient) validateModel(ctx context.Context, modelID string) (bool, er
 	if modelID == "" {
 		return true, nil
 	}
-
-	// First check local model cache
-	models, err := oc.listAvailableModels(ctx, false)
-	if err == nil && len(models) > 0 {
-		for _, model := range models {
-			if model.ID == modelID {
-				return true, nil
-			}
-		}
-	}
-	if resolveModelIDFromManifest(modelID) != "" {
-		return true, nil
-	}
-	return false, nil
+	_, found, err := oc.resolveModelID(ctx, modelID)
+	return found, err
 }
 
 func candidateModelLookupIDs(modelID string) []string {
@@ -1708,6 +1696,65 @@ func (oc *AIClient) promptContextToDispatchMessages(
 	return promptMessages
 }
 
+type historyLoadResult struct {
+	rows      []*database.Message
+	hasVision bool
+	resetAt   int64
+}
+
+// fetchHistoryRows resolves the history limit, extracts the resetAt cutoff,
+// and fetches the last N messages. Returns nil when the history limit is zero.
+func (oc *AIClient) fetchHistoryRows(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+) (*historyLoadResult, error) {
+	historyLimit := oc.historyLimit(ctx, portal, meta)
+	if historyLimit <= 0 {
+		return nil, nil
+	}
+	resetAt := int64(0)
+	if meta != nil {
+		resetAt = meta.SessionResetAt
+	}
+	history, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, historyLimit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load prompt history: %w", err)
+	}
+	return &historyLoadResult{
+		rows:      history,
+		hasVision: oc.getModelCapabilitiesForMeta(meta).SupportsVision,
+		resetAt:   resetAt,
+	}, nil
+}
+
+func (oc *AIClient) loadHistoryMessages(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+) ([]PromptMessage, error) {
+	hr, err := oc.fetchHistoryRows(ctx, portal, meta)
+	if err != nil {
+		return nil, err
+	}
+	if hr == nil {
+		return nil, nil
+	}
+	var messages []PromptMessage
+	for i := len(hr.rows) - 1; i >= 0; i-- {
+		msgMeta := messageMeta(hr.rows[i])
+		if !shouldIncludeInHistory(msgMeta) {
+			continue
+		}
+		if hr.resetAt > 0 && hr.rows[i].Timestamp.UnixMilli() < hr.resetAt {
+			continue
+		}
+		injectImages := hr.hasVision && i < maxHistoryImageMessages
+		messages = append(messages, oc.historyMessageBundle(ctx, msgMeta, injectImages)...)
+	}
+	return messages, nil
+}
+
 func (oc *AIClient) buildBaseContext(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -1721,31 +1768,11 @@ func (oc *AIClient) buildBaseContext(
 
 	bridgesdk.AppendChatMessagesToPromptContext(&promptContext.PromptContext, oc.buildSystemMessages(ctx, portal, meta))
 
-	historyLimit := oc.historyLimit(ctx, portal, meta)
-	resetAt := int64(0)
-	if meta != nil {
-		resetAt = meta.SessionResetAt
+	historyMessages, err := oc.loadHistoryMessages(ctx, portal, meta)
+	if err != nil {
+		return PromptContext{}, err
 	}
-	if historyLimit > 0 {
-		history, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, historyLimit)
-		if err != nil {
-			return PromptContext{}, fmt.Errorf("failed to load prompt history: %w", err)
-		}
-
-		hasVision := oc.getModelCapabilitiesForMeta(meta).SupportsVision
-		for i := len(history) - 1; i >= 0; i-- {
-			msgMeta := messageMeta(history[i])
-			if !shouldIncludeInHistory(msgMeta) {
-				continue
-			}
-			if resetAt > 0 && history[i].Timestamp.UnixMilli() < resetAt {
-				continue
-			}
-			injectImages := hasVision && i < maxHistoryImageMessages
-			historyBundle := oc.historyMessageBundle(ctx, msgMeta, injectImages)
-			promptContext.Messages = append(promptContext.Messages, historyBundle...)
-		}
-	}
+	promptContext.Messages = append(promptContext.Messages, historyMessages...)
 
 	return promptContext, nil
 }
@@ -1777,6 +1804,57 @@ func (oc *AIClient) applyAbortHint(ctx context.Context, portal *bridgev2.Portal,
 	return note + "\n\n" + body
 }
 
+type inboundPromptResult struct {
+	PromptContext   PromptContext
+	ResolvedBody    string // user message after body override + abort hint
+	UntrustedPrefix string // context prefix to prepend (empty in simple mode)
+}
+
+// prepareInboundPromptContext builds the base context, resolves inbound context,
+// appends the meta system prompt, resolves body overrides, and applies the abort hint.
+// Callers must call applyUntrustedPrefix at the appropriate point in message assembly.
+func (oc *AIClient) prepareInboundPromptContext(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+	userText string,
+	eventID id.EventID,
+) (inboundPromptResult, error) {
+	promptContext, err := oc.buildBaseContext(ctx, portal, meta)
+	if err != nil {
+		return inboundPromptResult{}, err
+	}
+	inboundCtx := oc.resolvePromptInboundContext(ctx, portal, userText, eventID)
+
+	isSimple := isSimpleMode(meta)
+	if !isSimple {
+		bridgesdk.AppendPromptText(&promptContext.SystemPrompt, airuntime.BuildInboundMetaSystemPrompt(inboundCtx))
+	}
+
+	resolved := strings.TrimSpace(userText)
+	if body := strings.TrimSpace(inboundCtx.BodyForAgent); body != "" {
+		resolved = body
+	}
+
+	var untrustedPrefix string
+	if !isSimple {
+		resolved = oc.applyAbortHint(ctx, portal, meta, resolved)
+		untrustedPrefix = strings.TrimSpace(airuntime.BuildInboundUserContextPrefix(inboundCtx))
+	}
+
+	return inboundPromptResult{
+		PromptContext:   promptContext,
+		ResolvedBody:    resolved,
+		UntrustedPrefix: untrustedPrefix,
+	}, nil
+}
+
+func (r *inboundPromptResult) applyUntrustedPrefix() {
+	if r.UntrustedPrefix != "" {
+		r.ResolvedBody = r.UntrustedPrefix + "\n\n" + r.ResolvedBody
+	}
+}
+
 func (oc *AIClient) buildContextWithLinkContext(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -1785,25 +1863,15 @@ func (oc *AIClient) buildContextWithLinkContext(
 	rawEventContent map[string]any,
 	eventID id.EventID,
 ) (PromptContext, error) {
-	promptContext, err := oc.buildBaseContext(ctx, portal, meta)
+	result, err := oc.prepareInboundPromptContext(ctx, portal, meta, latest, eventID)
 	if err != nil {
 		return PromptContext{}, err
 	}
-	inboundCtx := oc.resolvePromptInboundContext(ctx, portal, latest, eventID)
 
 	isSimple := isSimpleMode(meta)
 	if !isSimple {
-		bridgesdk.AppendPromptText(&promptContext.SystemPrompt, airuntime.BuildInboundMetaSystemPrompt(inboundCtx))
-	}
-
-	finalMessage := strings.TrimSpace(latest)
-	if body := strings.TrimSpace(inboundCtx.BodyForAgent); body != "" {
-		finalMessage = body
-	}
-	if !isSimple {
-		finalMessage = oc.applyAbortHint(ctx, portal, meta, finalMessage)
 		if linkContext := oc.buildLinkContext(ctx, latest, rawEventContent); linkContext != "" {
-			finalMessage += linkContext
+			result.ResolvedBody += linkContext
 		}
 	}
 
@@ -1811,25 +1879,21 @@ func (oc *AIClient) buildContextWithLinkContext(
 		reactionFeedback := DrainReactionFeedback(portal.MXID)
 		if len(reactionFeedback) > 0 {
 			if feedbackText := FormatReactionFeedback(reactionFeedback); feedbackText != "" {
-				finalMessage = feedbackText + "\n" + finalMessage
+				result.ResolvedBody = feedbackText + "\n" + result.ResolvedBody
 			}
 		}
 	}
 
-	if !isSimple {
-		if untrustedPrefix := strings.TrimSpace(airuntime.BuildInboundUserContextPrefix(inboundCtx)); untrustedPrefix != "" {
-			finalMessage = untrustedPrefix + "\n\n" + finalMessage
-		}
-	}
+	result.applyUntrustedPrefix()
 
-	promptContext.Messages = append(promptContext.Messages, PromptMessage{
+	result.PromptContext.Messages = append(result.PromptContext.Messages, PromptMessage{
 		Role: PromptRoleUser,
 		Blocks: []PromptBlock{{
 			Type: PromptBlockText,
-			Text: finalMessage,
+			Text: result.ResolvedBody,
 		}},
 	})
-	return promptContext, nil
+	return result.PromptContext, nil
 }
 
 // buildLinkContext extracts URLs from the message, fetches previews, and returns formatted context.
@@ -1904,29 +1968,14 @@ func (oc *AIClient) buildContextWithMedia(
 	mediaType pendingMessageType,
 	eventID id.EventID,
 ) (PromptContext, error) {
-	promptContext, err := oc.buildBaseContext(ctx, portal, meta)
+	result, err := oc.prepareInboundPromptContext(ctx, portal, meta, caption, eventID)
 	if err != nil {
 		return PromptContext{}, err
 	}
-	isSimple := isSimpleMode(meta)
-	inboundCtx := oc.resolvePromptInboundContext(ctx, portal, caption, eventID)
-	if !isSimple {
-		bridgesdk.AppendPromptText(&promptContext.SystemPrompt, airuntime.BuildInboundMetaSystemPrompt(inboundCtx))
-	}
-
-	captionWithID := strings.TrimSpace(caption)
-	if body := strings.TrimSpace(inboundCtx.BodyForAgent); body != "" {
-		captionWithID = body
-	}
-	if !isSimple {
-		captionWithID = oc.applyAbortHint(ctx, portal, meta, captionWithID)
-		if untrustedPrefix := strings.TrimSpace(airuntime.BuildInboundUserContextPrefix(inboundCtx)); untrustedPrefix != "" {
-			captionWithID = untrustedPrefix + "\n\n" + captionWithID
-		}
-	}
+	result.applyUntrustedPrefix()
 	blocks := make([]PromptBlock, 0, 2)
-	if strings.TrimSpace(captionWithID) != "" {
-		blocks = append(blocks, PromptBlock{Type: PromptBlockText, Text: captionWithID})
+	if strings.TrimSpace(result.ResolvedBody) != "" {
+		blocks = append(blocks, PromptBlock{Type: PromptBlockText, Text: result.ResolvedBody})
 	}
 
 	switch mediaType {
@@ -1957,7 +2006,7 @@ func (oc *AIClient) buildContextWithMedia(
 		})
 
 	case pendingTypeAudio:
-		if strings.TrimSpace(captionWithID) == "" {
+		if strings.TrimSpace(result.ResolvedBody) == "" {
 			blocks = append(blocks, PromptBlock{
 				Type: PromptBlockText,
 				Text: fmt.Sprintf("Audio attachment: %s", mediaURL),
@@ -1965,7 +2014,7 @@ func (oc *AIClient) buildContextWithMedia(
 		}
 
 	case pendingTypeVideo:
-		if strings.TrimSpace(captionWithID) == "" {
+		if strings.TrimSpace(result.ResolvedBody) == "" {
 			blocks = append(blocks, PromptBlock{
 				Type: PromptBlockText,
 				Text: fmt.Sprintf("Video attachment: %s", mediaURL),
@@ -1975,11 +2024,11 @@ func (oc *AIClient) buildContextWithMedia(
 	default:
 		return PromptContext{}, fmt.Errorf("unsupported media type: %s", mediaType)
 	}
-	promptContext.Messages = append(promptContext.Messages, PromptMessage{
+	result.PromptContext.Messages = append(result.PromptContext.Messages, PromptMessage{
 		Role:   PromptRoleUser,
 		Blocks: blocks,
 	})
-	return promptContext, nil
+	return result.PromptContext, nil
 }
 
 // buildPromptUpToMessage builds a prompt including messages up to and including the specified message
@@ -1994,24 +2043,14 @@ func (oc *AIClient) buildContextUpToMessage(
 	isSimple := isSimpleMode(meta)
 	bridgesdk.AppendChatMessagesToPromptContext(&promptContext.PromptContext, oc.buildSystemMessages(ctx, portal, meta))
 
-	// Get history
-	historyLimit := oc.historyLimit(ctx, portal, meta)
-	resetAt := int64(0)
-	if meta != nil {
-		resetAt = meta.SessionResetAt
+	hr, err := oc.fetchHistoryRows(ctx, portal, meta)
+	if err != nil {
+		return PromptContext{}, err
 	}
-	if historyLimit > 0 {
-		history, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, historyLimit)
-		if err != nil {
-			return PromptContext{}, fmt.Errorf("failed to load prompt history: %w", err)
-		}
-
-		// Determine whether to inject images into history (requires vision-capable model).
-		hasVision := oc.getModelCapabilitiesForMeta(meta).SupportsVision
-
+	if hr != nil {
 		// Add messages up to the target message, replacing the target with newBody
-		for i := len(history) - 1; i >= 0; i-- {
-			msg := history[i]
+		for i := len(hr.rows) - 1; i >= 0; i-- {
+			msg := hr.rows[i]
 			msgMeta := messageMeta(msg)
 
 			// Stop after adding the target message
@@ -2027,16 +2066,14 @@ func (oc *AIClient) buildContextUpToMessage(
 				break
 			}
 
-			// Skip commands and non-conversation messages
 			if !shouldIncludeInHistory(msgMeta) {
 				continue
 			}
-			if resetAt > 0 && msg.Timestamp.UnixMilli() < resetAt {
+			if hr.resetAt > 0 && msg.Timestamp.UnixMilli() < hr.resetAt {
 				continue
 			}
 
-			// Only inject images for recent messages and vision-capable models.
-			injectImages := hasVision && i < maxHistoryImageMessages
+			injectImages := hr.hasVision && i < maxHistoryImageMessages
 			promptContext.Messages = append(promptContext.Messages, oc.historyMessageBundle(ctx, msgMeta, injectImages)...)
 		}
 	} else {
