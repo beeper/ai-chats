@@ -1013,9 +1013,14 @@ func (f *ApprovalFlow[D]) HandleReaction(ctx context.Context, msg *bridgev2.Matr
 	}
 	now := time.Now()
 	rc := ExtractReactionContext(msg)
-	match := f.matchReactionTarget(rc.TargetMessageID, msg.Event.Sender, rc.Emoji, now)
+	targetMessageID := rc.TargetMessageID
+	match := f.matchReactionTarget(targetMessageID, msg.Event.Sender, rc.Emoji, now)
+	if !match.KnownPrompt && targetMessageID == "" && rc.TargetEventID != "" {
+		targetMessageID = networkid.MessageID(strings.TrimSpace(rc.TargetEventID.String()))
+		match = f.matchReactionTarget(targetMessageID, msg.Event.Sender, rc.Emoji, now)
+	}
 	if !match.KnownPrompt {
-		if isApprovalReactionKey(rc.Emoji) && f.handleResolvedApprovalReactionChange(ctx, msg.Portal, msg.Event, msg, rc.TargetMessageID) {
+		if isApprovalReactionKey(rc.Emoji) && f.handleResolvedApprovalReactionChange(ctx, msg.Portal, msg.Event, msg, targetMessageID) {
 			return true
 		}
 		match = f.matchFallbackReaction(msg.Portal.MXID, msg.Event.Sender, rc.Emoji, now)
@@ -1347,19 +1352,26 @@ func (f *ApprovalFlow[D]) cancelPendingTimeout(approvalID string) {
 	}
 }
 
+func approvalOptionDecisionKey(option ApprovalOption) string {
+	if option.Key != "" {
+		return option.Key
+	}
+	return option.FallbackKey
+}
+
 func approvalOptionKeyForDecision(options []ApprovalOption, decision ApprovalDecisionPayload) string {
 	options = normalizeApprovalOptions(options, DefaultApprovalOptions())
 	if decision.Approved {
 		if decision.Always {
 			for _, option := range options {
 				if option.Approved && option.Always {
-					return option.Key
+					return approvalOptionDecisionKey(option)
 				}
 			}
 		}
 		for _, option := range options {
 			if option.Approved && !option.Always {
-				return option.Key
+				return approvalOptionDecisionKey(option)
 			}
 		}
 		return ""
@@ -1370,7 +1382,7 @@ func approvalOptionKeyForDecision(options []ApprovalOption, decision ApprovalDec
 	}
 	for _, option := range options {
 		if !option.Approved {
-			return option.Key
+			return approvalOptionDecisionKey(option)
 		}
 	}
 	return ""

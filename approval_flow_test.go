@@ -375,6 +375,48 @@ func TestApprovalFlow_HandleReaction_MatchesPromptByMessageID(t *testing.T) {
 	}
 }
 
+func TestApprovalFlow_HandleReaction_MatchesPromptByEventIDWhenMessageIDMissing(t *testing.T) {
+	owner := id.UserID("@owner:example.com")
+	roomID := id.RoomID("!room:example.com")
+	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
+
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{})
+	for _, approvalID := range []string{"approval-1", "approval-2"} {
+		if _, created := flow.Register(approvalID, time.Minute, &testApprovalFlowData{}); !created {
+			t.Fatalf("expected pending approval %s to be created", approvalID)
+		}
+	}
+	flow.mu.Lock()
+	flow.registerPromptLocked(ApprovalPromptRegistration{
+		ApprovalID:      "approval-1",
+		RoomID:          roomID,
+		OwnerMXID:       owner,
+		ToolCallID:      "tool-1",
+		PromptMessageID: networkid.MessageID("$prompt-1"),
+		Options:         DefaultApprovalOptions(),
+	})
+	flow.registerPromptLocked(ApprovalPromptRegistration{
+		ApprovalID:      "approval-2",
+		RoomID:          roomID,
+		OwnerMXID:       owner,
+		ToolCallID:      "tool-2",
+		PromptMessageID: networkid.MessageID("$prompt-2"),
+		Options:         DefaultApprovalOptions(),
+	})
+	flow.mu.Unlock()
+
+	msg := testMatrixReaction(portal, owner, id.EventID("$reaction"), id.EventID("$prompt-1"), "", ApprovalReactionKeyAllowOnce)
+	if !flow.HandleReaction(context.Background(), msg) {
+		t.Fatalf("expected approval reaction to be handled")
+	}
+	if pending := flow.Get("approval-1"); pending != nil {
+		t.Fatalf("expected targeted approval to be finalized")
+	}
+	if pending := flow.Get("approval-2"); pending == nil {
+		t.Fatalf("expected non-targeted approval to remain pending")
+	}
+}
+
 func TestApprovalFlow_HandleReactionRemove_ResolvedPromptUsesMessageStatus(t *testing.T) {
 	owner := id.UserID("@owner:example.com")
 	roomID := id.RoomID("!room:example.com")
@@ -426,6 +468,67 @@ func TestApprovalFlow_HandleReactionRemove_ResolvedPromptUsesMessageStatus(t *te
 	})
 	if !handled {
 		t.Fatalf("expected resolved approval reaction removal to be handled")
+	}
+	if status.Status != event.MessageStatusFail {
+		t.Fatalf("expected fail status, got %#v", status)
+	}
+	if status.ErrorReason != event.MessageStatusGenericError {
+		t.Fatalf("expected generic error reason, got %#v", status)
+	}
+	if status.Message != approvalResolvedMSSMessage {
+		t.Fatalf("expected resolved approval status message, got %q", status.Message)
+	}
+}
+
+func TestApprovalFlow_HandleReaction_ResolvedPromptUsesEventIDWhenMessageIDMissing(t *testing.T) {
+	owner := id.UserID("@owner:example.com")
+	roomID := id.RoomID("!room:example.com")
+	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
+	login := &bridgev2.UserLogin{
+		UserLogin: &database.UserLogin{
+			ID:       networkid.UserLoginID("login"),
+			UserMXID: owner,
+		},
+		Bridge: &bridgev2.Bridge{},
+	}
+
+	var redacted bool
+	var status bridgev2.MessageStatus
+	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
+		Login: func() *bridgev2.UserLogin { return login },
+	})
+	flow.testRedactSingleReaction = func(_ *bridgev2.MatrixReaction) {
+		redacted = true
+	}
+	flow.testSendMessageStatus = func(_ context.Context, gotPortal *bridgev2.Portal, evt *event.Event, gotStatus bridgev2.MessageStatus) {
+		if gotPortal != portal {
+			t.Fatalf("expected status portal %p, got %p", portal, gotPortal)
+		}
+		if evt == nil || evt.ID != id.EventID("$reaction") {
+			t.Fatalf("expected reaction event status target, got %#v", evt)
+		}
+		status = gotStatus
+	}
+	flow.mu.Lock()
+	flow.rememberResolvedPromptLocked(ApprovalPromptRegistration{
+		ApprovalID:      "approval-1",
+		RoomID:          roomID,
+		OwnerMXID:       owner,
+		PromptMessageID: networkid.MessageID("$prompt"),
+		Options:         DefaultApprovalOptions(),
+	}, ApprovalDecisionPayload{
+		ApprovalID: "approval-1",
+		Approved:   true,
+		Reason:     ApprovalReasonAllowOnce,
+	})
+	flow.mu.Unlock()
+
+	msg := testMatrixReaction(portal, owner, id.EventID("$reaction"), id.EventID("$prompt"), "", ApprovalReactionKeyDeny)
+	if !flow.HandleReaction(context.Background(), msg) {
+		t.Fatalf("expected resolved approval reaction to be handled")
+	}
+	if !redacted {
+		t.Fatalf("expected late approval reaction to be redacted")
 	}
 	if status.Status != event.MessageStatusFail {
 		t.Fatalf("expected fail status, got %#v", status)
@@ -513,6 +616,76 @@ func TestApprovalPlaceholderReactionKey_PrefersAlias(t *testing.T) {
 		Key: ApprovalReactionKeyDeny,
 	}); got != ApprovalReactionKeyDeny {
 		t.Fatalf("expected canonical placeholder key %q, got %q", ApprovalReactionKeyDeny, got)
+	}
+}
+
+func TestApprovalOptionKeyForDecision_FallsBackToFallbackKey(t *testing.T) {
+	options := []ApprovalOption{
+		{
+			ID:          ApprovalReasonAllowOnce,
+			FallbackKey: ApprovalReactionAliasAllowOnce,
+			Approved:    true,
+			Reason:      ApprovalReasonAllowOnce,
+		},
+		{
+			ID:          ApprovalReasonAllowAlways,
+			FallbackKey: ApprovalReactionAliasAllowAlways,
+			Approved:    true,
+			Always:      true,
+			Reason:      ApprovalReasonAllowAlways,
+		},
+		{
+			ID:          ApprovalReasonDeny,
+			FallbackKey: ApprovalReactionAliasDeny,
+			Approved:    false,
+			Reason:      ApprovalReasonDeny,
+		},
+	}
+
+	for _, tc := range []struct {
+		name     string
+		decision ApprovalDecisionPayload
+		want     string
+	}{
+		{
+			name: "approved once",
+			decision: ApprovalDecisionPayload{
+				Approved: true,
+				Reason:   ApprovalReasonAllowOnce,
+			},
+			want: normalizeReactionKey(ApprovalReactionAliasAllowOnce),
+		},
+		{
+			name: "approved always",
+			decision: ApprovalDecisionPayload{
+				Approved: true,
+				Always:   true,
+				Reason:   ApprovalReasonAllowAlways,
+			},
+			want: normalizeReactionKey(ApprovalReactionAliasAllowAlways),
+		},
+		{
+			name: "denied",
+			decision: ApprovalDecisionPayload{
+				Approved: false,
+				Reason:   ApprovalReasonDeny,
+			},
+			want: normalizeReactionKey(ApprovalReactionAliasDeny),
+		},
+		{
+			name: "timeout remains empty",
+			decision: ApprovalDecisionPayload{
+				Approved: false,
+				Reason:   ApprovalReasonTimeout,
+			},
+			want: "",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := approvalOptionKeyForDecision(options, tc.decision); got != tc.want {
+				t.Fatalf("expected decision key %q, got %q", tc.want, got)
+			}
+		})
 	}
 }
 
