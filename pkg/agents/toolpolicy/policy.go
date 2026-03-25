@@ -1,10 +1,10 @@
 package toolpolicy
 
 import (
-	"regexp"
 	"slices"
 	"strings"
 
+	"github.com/beeper/agentremote/pkg/shared/globmatch"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
@@ -383,72 +383,13 @@ func resolveProviderToolPolicy(by_provider map[string]ToolPolicyConfig, provider
 	return nil
 }
 
-type compiledPattern struct {
-	kind  string
-	value string
-	re    *regexp.Regexp
-}
-
-func compilePattern(pattern string) compiledPattern {
-	normalized := NormalizeToolName(pattern)
-	if normalized == "" {
-		return compiledPattern{kind: "exact", value: ""}
-	}
-	if normalized == "*" {
-		return compiledPattern{kind: "all"}
-	}
-	if !strings.Contains(normalized, "*") {
-		return compiledPattern{kind: "exact", value: normalized}
-	}
-	escaped := regexp.QuoteMeta(normalized)
-	re := regexp.MustCompile("^" + strings.ReplaceAll(escaped, "\\*", ".*") + "$")
-	return compiledPattern{kind: "regex", re: re}
-}
-
-func compilePatterns(patterns []string) []compiledPattern {
-	if len(patterns) == 0 {
-		return nil
-	}
-	expanded := ExpandToolGroups(patterns)
-	compiled := make([]compiledPattern, 0, len(expanded))
-	for _, pattern := range expanded {
-		entry := compilePattern(pattern)
-		if entry.kind == "exact" && entry.value == "" {
-			continue
-		}
-		compiled = append(compiled, entry)
-	}
-	return compiled
-}
-
-func matchesAny(name string, patterns []compiledPattern) bool {
-	for _, pattern := range patterns {
-		switch pattern.kind {
-		case "all":
-			return true
-		case "exact":
-			if name == pattern.value {
-				return true
-			}
-		case "regex":
-			if pattern.re != nil && pattern.re.MatchString(name) {
-				return true
-			}
-		}
-	}
-	return false
+// compilePatterns expands tool groups and compiles glob patterns.
+func compilePatterns(patterns []string) []globmatch.Pattern {
+	return globmatch.CompileAll(ExpandToolGroups(patterns))
 }
 
 func makeToolPolicyMatcher(policy *ToolPolicy) func(string) bool {
-	deny := compilePatterns(policy.Deny)
-	allow := compilePatterns(policy.Allow)
-	return func(name string) bool {
-		normalized := NormalizeToolName(name)
-		if matchesAny(normalized, deny) {
-			return false
-		}
-		return len(allow) == 0 || matchesAny(normalized, allow)
-	}
+	return globmatch.MakePredicate(compilePatterns(policy.Allow), compilePatterns(policy.Deny))
 }
 
 // FilterToolsByPolicy filters tools by policy.

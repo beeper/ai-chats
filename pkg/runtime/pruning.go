@@ -2,11 +2,11 @@ package runtime
 
 import (
 	"fmt"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/beeper/agentremote/pkg/shared/globmatch"
 	"github.com/openai/openai-go/v3"
 )
 
@@ -122,77 +122,15 @@ func analyzePruningMessage(msg openai.ChatCompletionMessageParamUnion) pruningMe
 	return info
 }
 
-type compiledPattern struct {
-	kind  string
-	value string
-	regex *regexp.Regexp
-}
-
-func compilePattern(pattern string) compiledPattern {
-	pattern = strings.TrimSpace(strings.ToLower(pattern))
-	if pattern == "" {
-		return compiledPattern{kind: "exact", value: ""}
-	}
-	if pattern == "*" {
-		return compiledPattern{kind: "all"}
-	}
-	if !strings.Contains(pattern, "*") {
-		return compiledPattern{kind: "exact", value: pattern}
-	}
-	escaped := regexp.QuoteMeta(pattern)
-	rePattern := "^" + strings.ReplaceAll(escaped, "\\*", ".*") + "$"
-	re, err := regexp.Compile(rePattern)
-	if err != nil {
-		return compiledPattern{kind: "exact", value: pattern}
-	}
-	return compiledPattern{kind: "regex", regex: re}
-}
-
-func (p compiledPattern) matches(toolName string) bool {
-	switch p.kind {
-	case "all":
-		return true
-	case "exact":
-		return toolName == p.value
-	case "regex":
-		return p.regex != nil && p.regex.MatchString(toolName)
-	}
-	return false
-}
-
-func matchesAnyPattern(toolName string, patterns []compiledPattern) bool {
-	for _, p := range patterns {
-		if p.matches(toolName) {
-			return true
-		}
-	}
-	return false
-}
-
 // BuildToolPrunablePredicate creates a predicate for tool pruning allow/deny lists.
 func BuildToolPrunablePredicate(config *PruningConfig) func(toolName string) bool {
 	if config == nil {
 		return func(string) bool { return true }
 	}
-
-	var allowPatterns, denyPatterns []compiledPattern
-	for _, p := range config.ToolsAllow {
-		allowPatterns = append(allowPatterns, compilePattern(p))
-	}
-	for _, p := range config.ToolsDeny {
-		denyPatterns = append(denyPatterns, compilePattern(p))
-	}
-
-	return func(toolName string) bool {
-		normalized := strings.TrimSpace(strings.ToLower(toolName))
-		if matchesAnyPattern(normalized, denyPatterns) {
-			return false
-		}
-		if len(allowPatterns) == 0 {
-			return true
-		}
-		return matchesAnyPattern(normalized, allowPatterns)
-	}
+	return globmatch.MakePredicate(
+		globmatch.CompileAll(config.ToolsAllow),
+		globmatch.CompileAll(config.ToolsDeny),
+	)
 }
 
 // SoftTrimToolResult truncates a large tool result while preserving head/tail context.
