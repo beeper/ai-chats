@@ -142,15 +142,7 @@ func appendCanonicalToolPart(replayer bridgesdk.UIStateReplayer, part api.Part) 
 }
 
 func appendCanonicalArtifactParts(replayer bridgesdk.UIStateReplayer, part api.Part) {
-	sourceURL := strings.TrimSpace(part.URL)
-	title := strings.TrimSpace(part.Filename)
-	if title == "" {
-		title = strings.TrimSpace(part.Name)
-	}
-	mediaType := strings.TrimSpace(part.Mime)
-	if mediaType == "" {
-		mediaType = "application/octet-stream"
-	}
+	sourceURL, title, mediaType := resolveArtifactFields(part)
 	replayer.Artifact(
 		"opencode-source-"+part.ID,
 		citations.SourceCitation{URL: sourceURL, Title: title},
