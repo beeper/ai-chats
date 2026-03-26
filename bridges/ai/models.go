@@ -16,7 +16,6 @@ const (
 	DefaultModelOpenAI = "openai/gpt-5.2"
 	// OpenRouter-compatible backends (OpenRouter + Magic Proxy) should default to Opus.
 	DefaultModelOpenRouter = "anthropic/claude-opus-4.6"
-	DefaultModelBeeper     = "anthropic/claude-opus-4.6"
 )
 
 // ParseModelPrefix extracts the backend and actual model ID from a prefixed model

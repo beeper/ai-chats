@@ -174,7 +174,7 @@ func pickModelFromList(models []ModelInfo, provider string, supports modelInfoFi
 
 func providerMatches(info ModelInfo, provider string) bool {
 	switch provider {
-	case ProviderOpenRouter, ProviderBeeper, ProviderMagicProxy:
+	case ProviderOpenRouter, ProviderMagicProxy:
 		if info.Provider != "" {
 			return info.Provider == "openrouter"
 		}

@@ -158,12 +158,7 @@ func shouldApplyExaProxyDefaults(meta *UserLoginMetadata) bool {
 	if meta == nil {
 		return false
 	}
-	switch meta.Provider {
-	case ProviderBeeper, ProviderMagicProxy:
-		return true
-	default:
-		return false
-	}
+	return meta.Provider == ProviderMagicProxy
 }
 
 func shouldForceExaProvider(apiKey, baseURL string, meta *UserLoginMetadata) bool {
@@ -219,10 +214,6 @@ func applyExaProxyDefaultsTo(baseURL *string, apiKey *string, meta *UserLoginMet
 	if *apiKey == "" {
 		if meta != nil && meta.Provider == ProviderMagicProxy {
 			if token := strings.TrimSpace(meta.APIKey); token != "" {
-				*apiKey = token
-			}
-		} else if meta != nil && meta.Provider == ProviderBeeper {
-			if token := connector.resolveBeeperToken(meta); token != "" {
 				*apiKey = token
 			}
 		}

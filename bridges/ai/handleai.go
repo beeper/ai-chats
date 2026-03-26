@@ -161,7 +161,7 @@ func (oc *AIClient) setModelTyping(ctx context.Context, portal *bridgev2.Portal,
 	if portal == nil || portal.MXID == "" {
 		return
 	}
-	intent, err := oc.getIntentForPortal(ctx, portal, bridgev2.RemoteEventMessage)
+	_, intent, err := oc.resolvePortalSenderAndIntent(ctx, portal, bridgev2.RemoteEventMessage, typing)
 	if err != nil || intent == nil {
 		return
 	}
@@ -459,7 +459,7 @@ func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Por
 func (oc *AIClient) getTitleGenerationModel() string {
 	meta := loginMetadata(oc.UserLogin)
 
-	if meta.Provider != ProviderOpenRouter && meta.Provider != ProviderBeeper && meta.Provider != ProviderMagicProxy {
+	if meta.Provider != ProviderOpenRouter && meta.Provider != ProviderMagicProxy {
 		return ""
 	}
 
@@ -468,7 +468,7 @@ func (oc *AIClient) getTitleGenerationModel() string {
 		return meta.TitleGenerationModel
 	}
 
-	// Provider-specific default for title generation (only reached for OpenRouter/Beeper/MagicProxy)
+	// Provider-specific default for title generation (only reached for OpenRouter-compatible providers)
 	return "google/gemini-2.5-flash"
 }
 

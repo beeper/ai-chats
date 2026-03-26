@@ -84,15 +84,10 @@ func (oc *OpenAIConnector) ValidateUserID(id networkid.UserID) bool {
 
 // Package-level flow definitions (use Provider* constants as flow IDs)
 func (oc *OpenAIConnector) getLoginFlows() []bridgev2.LoginFlow {
-	flows := make([]bridgev2.LoginFlow, 0, 3)
-	if !oc.hasManagedBeeperAuth() {
-		flows = append(flows, bridgev2.LoginFlow{ID: ProviderBeeper, Name: "Beeper Cloud"})
+	return []bridgev2.LoginFlow{
+		{ID: ProviderMagicProxy, Name: "Magic Proxy"},
+		{ID: FlowCustom, Name: "Manual"},
 	}
-	flows = append(flows,
-		bridgev2.LoginFlow{ID: ProviderMagicProxy, Name: "Magic Proxy"},
-		bridgev2.LoginFlow{ID: FlowCustom, Name: "Manual"},
-	)
-	return flows
 }
 
 func (oc *OpenAIConnector) createLogin(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {

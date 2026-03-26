@@ -33,14 +33,8 @@ func providerLoginID(provider string, mxid id.UserID, ordinal int) networkid.Use
 	return nthLoginID(providerSlug(provider), mxid, ordinal)
 }
 
-func managedBeeperLoginID(mxid id.UserID) networkid.UserLoginID {
-	return baseLoginID("managed-beeper", mxid)
-}
-
 func providerSlug(provider string) string {
 	switch strings.TrimSpace(provider) {
-	case ProviderBeeper:
-		return "beeper"
 	case ProviderOpenAI:
 		return "openai"
 	case ProviderOpenRouter:

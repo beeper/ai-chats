@@ -39,11 +39,11 @@ func (s *AgentStoreAdapter) LoadAgents(_ context.Context) (map[string]*agents.Ag
 
 	// Resolve login metadata for provider gating
 	loginMeta := loginMetadata(s.client.UserLogin)
-	isBeeperProvider := loginMeta != nil && (loginMeta.Provider == ProviderBeeper || loginMeta.Provider == ProviderMagicProxy)
+	isMagicProxyProvider := loginMeta != nil && loginMeta.Provider == ProviderMagicProxy
 
 	// Add all presets
 	for _, preset := range agents.PresetAgents {
-		if preset != nil && agents.IsBeeperHelp(preset.ID) && !isBeeperProvider {
+		if preset != nil && agents.IsBeeperHelp(preset.ID) && !isMagicProxyProvider {
 			continue
 		}
 		result[preset.ID] = preset.Clone()

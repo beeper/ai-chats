@@ -19,21 +19,11 @@ import (
 
 // Provider constants - all use OpenAI SDK with different base URLs
 const (
-	ProviderBeeper     = "beeper"      // Beeper's OpenRouter proxy
 	ProviderOpenAI     = "openai"      // Direct OpenAI API
 	ProviderOpenRouter = "openrouter"  // Direct OpenRouter API
 	ProviderMagicProxy = "magic_proxy" // Magic Proxy (OpenRouter-compatible)
 	FlowCustom         = "custom"      // Custom login flow (provider resolved during login)
 )
-
-const beeperBasePath = "/_matrix/client/unstable/com.beeper.ai"
-
-var beeperDomains = []string{
-	"beeper.com",
-	"beeper-dev.com",
-	"beeper-staging.com",
-	"beeper.localtest.me",
-}
 
 var (
 	_ bridgev2.LoginProcess             = (*OpenAILogin)(nil)
@@ -41,7 +31,6 @@ var (
 	_ bridgev2.LoginProcessUserInput    = (*OpenAILogin)(nil)
 
 	errAIReloginTargetInvalid = agentremote.NewLoginRespError(http.StatusBadRequest, "Invalid relogin target.", "AI", "INVALID_RELOGIN_TARGET")
-	errAIManagedBeeperRelogin = agentremote.NewLoginRespError(http.StatusForbidden, "Managed Beeper Cloud logins are controlled by bridge configuration.", "AI", "MANAGED_BEEPER_RELOGIN_FORBIDDEN")
 	errAIMissingUserContext   = agentremote.NewLoginRespError(http.StatusInternalServerError, "Missing user context for login.", "AI", "MISSING_USER_CONTEXT")
 	errAIMissingReloginMeta   = agentremote.NewLoginRespError(http.StatusInternalServerError, "Missing relogin metadata.", "AI", "MISSING_RELOGIN_METADATA")
 )
@@ -56,8 +45,6 @@ type OpenAILogin struct {
 
 func normalizeProvider(provider string) string {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case ProviderBeeper:
-		return ProviderBeeper
 	case ProviderOpenAI:
 		return ProviderOpenAI
 	case ProviderOpenRouter:
@@ -78,13 +65,6 @@ func (ol *OpenAILogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 	}
 
 	switch ol.FlowID {
-	case ProviderBeeper:
-		baseURL := ol.Connector.resolveBeeperBaseURL(nil)
-		apiKey := ol.Connector.resolveBeeperToken(nil)
-		if baseURL == "" || apiKey == "" {
-			return nil, &ErrBaseURLRequired
-		}
-		return ol.finishLogin(ctx, ProviderBeeper, apiKey, baseURL, nil)
 	case ProviderMagicProxy:
 		return nil, &ErrBaseURLRequired
 	case FlowCustom:
@@ -107,33 +87,12 @@ func (ol *OpenAILogin) StartWithOverride(ctx context.Context, old *bridgev2.User
 	if ol.User == nil || old.UserMXID != ol.User.MXID {
 		return nil, errAIReloginTargetInvalid
 	}
-	if old.ID == managedBeeperLoginID(old.UserMXID) {
-		return nil, errAIManagedBeeperRelogin
-	}
 	ol.Override = old
 	return ol.Start(ctx)
 }
 
 func (ol *OpenAILogin) SubmitUserInput(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
 	switch ol.FlowID {
-	case ProviderBeeper:
-		baseURL := stringutil.NormalizeBaseURL(ol.Connector.Config.Beeper.BaseURL)
-		if baseURL == "" {
-			domain := strings.TrimSpace(input["beeper_domain"])
-			if domain == "" {
-				return nil, &ErrBaseURLRequired
-			}
-			baseURL = beeperBaseURLFromDomain(domain)
-		}
-		baseURL = normalizeBeeperBaseURL(baseURL)
-		apiKey := strings.TrimSpace(ol.Connector.Config.Beeper.Token)
-		if apiKey == "" {
-			apiKey = strings.TrimSpace(input["beeper_token"])
-		}
-		if apiKey == "" {
-			return nil, &ErrAPIKeyRequired
-		}
-		return ol.finishLogin(ctx, ProviderBeeper, apiKey, baseURL, nil)
 	case ProviderMagicProxy:
 		link := strings.TrimSpace(input["magic_proxy_link"])
 		baseURL, apiKey, err := parseMagicProxyLink(link)
@@ -169,25 +128,6 @@ func (ol *OpenAILogin) SubmitUserInput(ctx context.Context, input map[string]str
 func (ol *OpenAILogin) credentialsStep() *bridgev2.LoginStep {
 	var fields []bridgev2.LoginInputDataField
 	switch ol.FlowID {
-	case ProviderBeeper:
-		if strings.TrimSpace(ol.Connector.Config.Beeper.BaseURL) == "" {
-			fields = append(fields, bridgev2.LoginInputDataField{
-				Type:         bridgev2.LoginInputFieldTypeSelect,
-				ID:           "beeper_domain",
-				Name:         "Beeper",
-				Description:  fmt.Sprintf("Select your Beeper domain (%s).", strings.Join(beeperDomains, ", ")),
-				DefaultValue: "beeper.com",
-				Options:      beeperDomains,
-			})
-		}
-		if strings.TrimSpace(ol.Connector.Config.Beeper.Token) == "" {
-			fields = append(fields, bridgev2.LoginInputDataField{
-				Type:        bridgev2.LoginInputFieldTypeToken,
-				ID:          "beeper_token",
-				Name:        "Beeper Cloud token",
-				Description: "Beeper Cloud uses your Matrix access token to connect to Beeper servers.",
-			})
-		}
 	case ProviderMagicProxy:
 		fields = append(fields, bridgev2.LoginInputDataField{
 			Type: bridgev2.LoginInputFieldTypeURL,
@@ -506,17 +446,6 @@ func (ol *OpenAILogin) resolveCustomLogin(input map[string]string) (string, stri
 	return provider, apiKey, serviceTokens, nil
 }
 
-func beeperBaseURLFromDomain(domain string) string {
-	domain = strings.TrimSpace(domain)
-	if domain == "" {
-		return ""
-	}
-	if !strings.HasPrefix(domain, "matrix.") {
-		domain = "matrix." + domain
-	}
-	return "https://" + domain + beeperBasePath
-}
-
 func parseMagicProxyLink(raw string) (string, string, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -569,8 +498,6 @@ func (ol *OpenAILogin) configHasExaKey() bool {
 // formatRemoteName generates a display name for the account based on provider.
 func formatRemoteName(provider, apiKey string) string {
 	switch provider {
-	case ProviderBeeper:
-		return "Beeper Cloud"
 	case ProviderOpenAI:
 		return fmt.Sprintf("OpenAI (%s)", maskAPIKey(apiKey))
 	case ProviderOpenRouter:

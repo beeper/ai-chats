@@ -42,9 +42,6 @@ func NewAIConnector() *OpenAIConnector {
 			}
 			oc.applyRuntimeDefaults()
 			oc.primeUserLoginCache(ctx)
-			if _, err := oc.reconcileManagedBeeperLogin(ctx); err != nil {
-				return err
-			}
 			if proc, ok := oc.br.Commands.(*commands.Processor); ok {
 				registerCommandsWithOwnerGuard(proc, &oc.Config, &oc.br.Log, HelpSectionAI)
 				oc.br.Log.Info().Msg("Registered AI commands with command processor")

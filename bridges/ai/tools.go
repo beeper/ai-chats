@@ -1319,7 +1319,7 @@ func generateTTSBase64(
 		return audioData, nil
 	}
 
-	return "", errors.New("TTS not available: requires Beeper/OpenAI provider or macOS")
+	return "", errors.New("TTS not available: requires Magic Proxy/OpenAI provider or macOS")
 }
 
 func resolveOpenAITTSBaseURL(btc *BridgeToolContext, providerBaseURL string) (string, bool) {
@@ -1327,20 +1327,19 @@ func resolveOpenAITTSBaseURL(btc *BridgeToolContext, providerBaseURL string) (st
 	lowerBaseURL := strings.ToLower(baseURL)
 
 	isOpenAIProvider := lowerBaseURL == "" || strings.Contains(lowerBaseURL, "openai.com")
-	isBeeperProvider := strings.Contains(lowerBaseURL, "beeper")
 
 	if btc == nil || btc.Client == nil {
-		return baseURL, isOpenAIProvider || isBeeperProvider
+		return baseURL, isOpenAIProvider
 	}
 
 	client := btc.Client
 	if client.UserLogin == nil || client.UserLogin.Metadata == nil {
-		return baseURL, isOpenAIProvider || isBeeperProvider
+		return baseURL, isOpenAIProvider
 	}
 
 	meta, ok := client.UserLogin.Metadata.(*UserLoginMetadata)
 	if !ok || meta == nil {
-		return baseURL, isOpenAIProvider || isBeeperProvider
+		return baseURL, isOpenAIProvider
 	}
 
 	switch meta.Provider {
@@ -1352,7 +1351,7 @@ func resolveOpenAITTSBaseURL(btc *BridgeToolContext, providerBaseURL string) (st
 			}
 		}
 		return baseURL, true
-	case ProviderBeeper, ProviderMagicProxy:
+	case ProviderMagicProxy:
 		if client.connector != nil {
 			services := client.connector.resolveServiceConfig(meta)
 			if svc, ok := services[serviceOpenAI]; ok {
@@ -1362,23 +1361,13 @@ func resolveOpenAITTSBaseURL(btc *BridgeToolContext, providerBaseURL string) (st
 				}
 			}
 		}
-
-		if meta.Provider == ProviderMagicProxy {
-			if root := normalizeProxyBaseURL(meta.BaseURL); root != "" {
-				return joinProxyPath(root, "/openai/v1"), true
-			}
-		}
-
-		if meta.Provider == ProviderBeeper && client.connector != nil {
-			base := stringutil.NormalizeBaseURL(client.connector.resolveBeeperBaseURL(meta))
-			if base != "" {
-				return base + "/openai/v1", true
-			}
+		if root := normalizeProxyBaseURL(meta.BaseURL); root != "" {
+			return joinProxyPath(root, "/openai/v1"), true
 		}
 
 		return baseURL, true
 	default:
-		return baseURL, isOpenAIProvider || isBeeperProvider
+		return baseURL, isOpenAIProvider
 	}
 }
 

@@ -91,8 +91,8 @@ func (oc *AIClient) isToolAvailable(meta *PortalMetadata, toolName string) (bool
 	}
 	if toolName == ToolNameBeeperDocs || toolName == ToolNameBeeperSendFeedback {
 		loginMeta := loginMetadata(oc.UserLogin)
-		if loginMeta == nil || (loginMeta.Provider != ProviderBeeper && loginMeta.Provider != ProviderMagicProxy) {
-			return false, SourceProviderLimit, "Beeper tools only available for Beeper/MagicProxy"
+		if loginMeta == nil || loginMeta.Provider != ProviderMagicProxy {
+			return false, SourceProviderLimit, "Beeper tools only available for Magic Proxy"
 		}
 	}
 	return true, SourceGlobalDefault, ""

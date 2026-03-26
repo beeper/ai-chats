@@ -49,20 +49,6 @@ func TestResolveOpenAIMediaBaseURLMagicProxyUsesOpenAIServicePath(t *testing.T) 
 	}
 }
 
-func TestResolveOpenAIMediaBaseURLBeeperUsesOpenAIServicePath(t *testing.T) {
-	meta := &UserLoginMetadata{
-		Provider: ProviderBeeper,
-		APIKey:   "tok",
-		BaseURL:  "https://matrix.example.com",
-	}
-	client := newMediaTestClient(meta, &OpenAIConnector{})
-
-	want := "https://matrix.example.com/_matrix/client/unstable/com.beeper.ai/openai/v1"
-	if got := resolveOpenAIMediaBaseURL(client); got != want {
-		t.Fatalf("unexpected base url: got %q want %q", got, want)
-	}
-}
-
 func TestResolveOpenRouterMediaConfigUsesEntryOverrides(t *testing.T) {
 	t.Setenv("OPENROUTER_API_KEY_SPECIAL_PROFILE", "entry-key")
 

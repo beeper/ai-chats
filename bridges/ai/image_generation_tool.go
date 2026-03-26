@@ -201,70 +201,6 @@ func resolveImageGenProvider(req imageGenRequest, btc *BridgeToolContext) (image
 			return imageGenProviderOpenAI, nil
 		}
 		return "", errors.New("image generation is not available for this login")
-	case ProviderBeeper:
-		// Beeper: prefer OpenRouter when the request is simple; otherwise use direct adapters.
-		openAISupported := supportsOpenAIImageGen(btc)
-		geminiSupported := supportsGeminiImageGen(btc)
-		openRouterSupported := supportsOpenRouterImageGen(btc)
-
-		if usesGeminiParams(req) {
-			if !geminiSupported {
-				return "", errors.New("gemini image generation is not available for this login")
-			}
-			return imageGenProviderGemini, nil
-		}
-		if usesOpenAIParams(req) {
-			if !openAISupported {
-				return "", errors.New("openai image generation is not available for this login")
-			}
-			return imageGenProviderOpenAI, nil
-		}
-		switch inferProviderFromModel(req.Model) {
-		case imageGenProviderOpenAI:
-			if openAISupported {
-				return imageGenProviderOpenAI, nil
-			}
-			if openRouterSupported {
-				return imageGenProviderOpenRouter, nil
-			}
-			if geminiSupported {
-				return imageGenProviderGemini, nil
-			}
-			return "", errors.New("openai image generation is not available for this login")
-		case imageGenProviderGemini:
-			// If no gemini-specific params, OpenRouter is sufficient.
-			if openRouterSupported && req.Count <= 1 {
-				return imageGenProviderOpenRouter, nil
-			}
-			if geminiSupported {
-				return imageGenProviderGemini, nil
-			}
-			if openAISupported {
-				return imageGenProviderOpenAI, nil
-			}
-			return "", errors.New("gemini image generation is not available for this login")
-		case imageGenProviderOpenRouter:
-			if openRouterSupported {
-				return imageGenProviderOpenRouter, nil
-			}
-			if openAISupported {
-				return imageGenProviderOpenAI, nil
-			}
-			if geminiSupported {
-				return imageGenProviderGemini, nil
-			}
-			return "", errors.New("openrouter image generation is not available for this login")
-		}
-		if openRouterSupported {
-			return imageGenProviderOpenRouter, nil
-		}
-		if openAISupported {
-			return imageGenProviderOpenAI, nil
-		}
-		if geminiSupported {
-			return imageGenProviderGemini, nil
-		}
-		return "", errors.New("image generation is not available for this login")
 	default:
 		return "", errors.New("unsupported provider for image generation")
 	}
@@ -301,10 +237,7 @@ func supportsOpenAIImageGen(btc *BridgeToolContext) bool {
 	}
 	loginMeta := loginMetadata(btc.Client.UserLogin)
 	switch loginMeta.Provider {
-	case ProviderOpenAI, ProviderBeeper, ProviderMagicProxy:
-		if loginMeta.Provider == ProviderBeeper {
-			return btc.Client.connector.resolveBeeperToken(loginMeta) != ""
-		}
+	case ProviderOpenAI, ProviderMagicProxy:
 		if loginMeta.Provider == ProviderMagicProxy {
 			// Magic Proxy uses a per-login token+base URL, not the OpenAI config key.
 			return strings.TrimSpace(loginMeta.APIKey) != "" && strings.TrimSpace(loginMeta.BaseURL) != ""
@@ -321,13 +254,6 @@ func supportsOpenRouterImageGen(btc *BridgeToolContext) bool {
 }
 
 func supportsGeminiImageGen(btc *BridgeToolContext) bool {
-	if btc == nil || btc.Client == nil || btc.Client.UserLogin == nil || btc.Client.UserLogin.Metadata == nil {
-		return false
-	}
-	loginMeta := loginMetadata(btc.Client.UserLogin)
-	if loginMeta.Provider == ProviderBeeper {
-		return btc.Client.connector.resolveBeeperToken(loginMeta) != ""
-	}
 	return false
 }
 
@@ -509,12 +435,6 @@ func isAllowedValue(value string, allowed map[string]bool) bool {
 func buildOpenAIImagesBaseURL(btc *BridgeToolContext) (string, error) {
 	loginMeta := loginMetadata(btc.Client.UserLogin)
 	switch loginMeta.Provider {
-	case ProviderBeeper:
-		base := strings.TrimSuffix(strings.TrimSpace(btc.Client.connector.resolveBeeperBaseURL(loginMeta)), "/")
-		if base == "" {
-			return "", errors.New("beeper base_url is required for image generation")
-		}
-		return base + "/openai/v1", nil
 	case ProviderOpenAI:
 		base := btc.Client.connector.resolveOpenAIBaseURL()
 		return strings.TrimSuffix(base, "/"), nil
@@ -536,17 +456,7 @@ func buildOpenAIImagesBaseURL(btc *BridgeToolContext) (string, error) {
 }
 
 func buildGeminiBaseURL(btc *BridgeToolContext) (string, error) {
-	loginMeta := loginMetadata(btc.Client.UserLogin)
-	switch loginMeta.Provider {
-	case ProviderBeeper:
-		base := strings.TrimSuffix(strings.TrimSpace(btc.Client.connector.resolveBeeperBaseURL(loginMeta)), "/")
-		if base == "" {
-			return "", errors.New("beeper base_url is required for gemini image generation")
-		}
-		return base + "/gemini/v1beta", nil
-	default:
-		return "", errors.New("gemini image generation not available for this provider")
-	}
+	return "", errors.New("gemini image generation not available for this provider")
 }
 
 func generateImagesForRequest(ctx context.Context, btc *BridgeToolContext, req imageGenRequest) ([]string, error) {
@@ -655,16 +565,6 @@ func resolveOpenRouterImageGenEndpoint(btc *BridgeToolContext) (baseURL string, 
 			return "", "", false
 		}
 		return joinProxyPath(base, "/openrouter/v1"), key, true
-	case ProviderBeeper:
-		if conn == nil {
-			return "", "", false
-		}
-		base := strings.TrimSuffix(trim(btc.Client.connector.resolveBeeperBaseURL(meta)), "/")
-		key := trim(btc.Client.connector.resolveBeeperToken(meta))
-		if base == "" || key == "" {
-			return "", "", false
-		}
-		return base + "/openrouter/v1", key, true
 	case ProviderOpenRouter:
 		if conn == nil {
 			return "", "", false

@@ -18,6 +18,23 @@ func TestOpenAILoginStartRejectsInvalidFlow(t *testing.T) {
 	}
 }
 
+func TestOpenAILoginStartReturnsManualCredentialsStep(t *testing.T) {
+	login := &OpenAILogin{
+		FlowID:    FlowCustom,
+		Connector: &OpenAIConnector{},
+	}
+	step, err := login.Start(context.Background())
+	if err != nil {
+		t.Fatalf("expected manual flow to return credentials step, got error %v", err)
+	}
+	if step == nil || step.Type != bridgev2.LoginStepTypeUserInput {
+		t.Fatalf("expected manual flow user-input step, got %#v", step)
+	}
+	if step.UserInputParams == nil || len(step.UserInputParams.Fields) == 0 {
+		t.Fatalf("expected manual flow to expose credential fields, got %#v", step)
+	}
+}
+
 func TestOpenAILoginStartWithOverrideRejectsInvalidTarget(t *testing.T) {
 	login := &OpenAILogin{User: &bridgev2.User{User: &database.User{MXID: id.UserID("@alice:example.com")}}}
 	old := &bridgev2.UserLogin{UserLogin: &database.UserLogin{UserMXID: id.UserID("@bob:example.com")}}
@@ -27,20 +44,6 @@ func TestOpenAILoginStartWithOverrideRejectsInvalidTarget(t *testing.T) {
 		t.Fatalf("expected RespError, got %T", err)
 	}
 	if respErr.ErrCode != "COM.BEEPER.AGENTREMOTE.AI.INVALID_RELOGIN_TARGET" {
-		t.Fatalf("unexpected errcode: %q", respErr.ErrCode)
-	}
-}
-
-func TestOpenAILoginStartWithOverrideRejectsManagedBeeperRelogin(t *testing.T) {
-	mxid := id.UserID("@alice:example.com")
-	login := &OpenAILogin{User: &bridgev2.User{User: &database.User{MXID: mxid}}}
-	old := &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: managedBeeperLoginID(mxid), UserMXID: mxid}}
-	_, err := login.StartWithOverride(context.Background(), old)
-	var respErr bridgev2.RespError
-	if !errors.As(err, &respErr) {
-		t.Fatalf("expected RespError, got %T", err)
-	}
-	if respErr.ErrCode != "COM.BEEPER.AGENTREMOTE.AI.MANAGED_BEEPER_RELOGIN_FORBIDDEN" {
 		t.Fatalf("unexpected errcode: %q", respErr.ErrCode)
 	}
 }

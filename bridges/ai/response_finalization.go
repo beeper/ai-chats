@@ -33,7 +33,12 @@ func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev
 	if portal == nil || portal.MXID == "" {
 		return
 	}
-	msg := agentremote.BuildContinuationMessage(portal.PortalKey, body, oc.senderForPortal(ctx, portal), "ai", "ai_msg_id", timing.Timestamp, timing.StreamOrder)
+	sender, _, err := oc.resolvePortalSenderAndIntent(ctx, portal, bridgev2.RemoteEventMessage, true)
+	if err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Int("body_len", len(body)).Msg("Failed to prepare continuation sender")
+		return
+	}
+	msg := agentremote.BuildContinuationMessage(portal.PortalKey, body, sender, "ai", "ai_msg_id", timing.Timestamp, timing.StreamOrder)
 	if relatesTo := buildReplyRelatesTo(replyTarget); relatesTo != nil && msg != nil && msg.Data != nil && len(msg.Data.Parts) > 0 {
 		msg.Data.Parts[0].Content.RelatesTo = relatesTo
 	}

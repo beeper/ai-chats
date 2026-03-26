@@ -2,11 +2,13 @@ package sdk
 
 import (
 	"context"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -18,6 +20,59 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/citations"
 	"github.com/beeper/agentremote/turns"
 )
+
+type sdkTestMatrixAPI struct {
+	joinedRooms []id.RoomID
+}
+
+func (stma *sdkTestMatrixAPI) GetMXID() id.UserID   { return "@ghost:test" }
+func (stma *sdkTestMatrixAPI) IsDoublePuppet() bool { return false }
+func (stma *sdkTestMatrixAPI) SendMessage(context.Context, id.RoomID, event.Type, *event.Content, *bridgev2.MatrixSendExtra) (*mautrix.RespSendEvent, error) {
+	return nil, nil
+}
+func (stma *sdkTestMatrixAPI) SendState(context.Context, id.RoomID, event.Type, string, *event.Content, time.Time) (*mautrix.RespSendEvent, error) {
+	return nil, nil
+}
+func (stma *sdkTestMatrixAPI) MarkRead(context.Context, id.RoomID, id.EventID, time.Time) error {
+	return nil
+}
+func (stma *sdkTestMatrixAPI) MarkUnread(context.Context, id.RoomID, bool) error { return nil }
+func (stma *sdkTestMatrixAPI) MarkTyping(context.Context, id.RoomID, bridgev2.TypingType, time.Duration) error {
+	return nil
+}
+func (stma *sdkTestMatrixAPI) DownloadMedia(context.Context, id.ContentURIString, *event.EncryptedFileInfo) ([]byte, error) {
+	return nil, nil
+}
+func (stma *sdkTestMatrixAPI) DownloadMediaToFile(context.Context, id.ContentURIString, *event.EncryptedFileInfo, bool, func(*os.File) error) error {
+	return nil
+}
+func (stma *sdkTestMatrixAPI) UploadMedia(context.Context, id.RoomID, []byte, string, string) (id.ContentURIString, *event.EncryptedFileInfo, error) {
+	return "", nil, nil
+}
+func (stma *sdkTestMatrixAPI) UploadMediaStream(context.Context, id.RoomID, int64, bool, bridgev2.FileStreamCallback) (id.ContentURIString, *event.EncryptedFileInfo, error) {
+	return "", nil, nil
+}
+func (stma *sdkTestMatrixAPI) SetDisplayName(context.Context, string) error            { return nil }
+func (stma *sdkTestMatrixAPI) SetAvatarURL(context.Context, id.ContentURIString) error { return nil }
+func (stma *sdkTestMatrixAPI) SetExtraProfileMeta(context.Context, any) error          { return nil }
+func (stma *sdkTestMatrixAPI) CreateRoom(context.Context, *mautrix.ReqCreateRoom) (id.RoomID, error) {
+	return "", nil
+}
+func (stma *sdkTestMatrixAPI) DeleteRoom(context.Context, id.RoomID, bool) error { return nil }
+func (stma *sdkTestMatrixAPI) EnsureJoined(_ context.Context, roomID id.RoomID, _ ...bridgev2.EnsureJoinedParams) error {
+	stma.joinedRooms = append(stma.joinedRooms, roomID)
+	return nil
+}
+func (stma *sdkTestMatrixAPI) EnsureInvited(context.Context, id.RoomID, id.UserID) error { return nil }
+func (stma *sdkTestMatrixAPI) TagRoom(context.Context, id.RoomID, event.RoomTag, bool) error {
+	return nil
+}
+func (stma *sdkTestMatrixAPI) MuteRoom(context.Context, id.RoomID, time.Time) error { return nil }
+func (stma *sdkTestMatrixAPI) GetEvent(context.Context, id.RoomID, id.EventID) (*event.Event, error) {
+	return nil, nil
+}
+
+var _ bridgev2.MatrixAPI = (*sdkTestMatrixAPI)(nil)
 
 type testStreamTransport struct {
 	startedEvent id.EventID
@@ -690,6 +745,30 @@ func TestTurnWriterStartTriggersLazyPlaceholderSend(t *testing.T) {
 	}
 	if turn.NetworkMessageID() != networkid.MessageID("msg-1") {
 		t.Fatalf("expected placeholder network message id to be stored, got %q", turn.NetworkMessageID())
+	}
+}
+
+func TestTurnWriterStartEnsuresSenderJoinedBeforePlaceholderSend(t *testing.T) {
+	login := &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: "login-1"}}
+	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: "!room:test"}}
+	intent := &sdkTestMatrixAPI{}
+	conv := newConversation(context.Background(), portal, login, bridgev2.EventSender{Sender: "agent-test", SenderLogin: login.ID}, nil)
+	conv.intentOverride = func(context.Context) (bridgev2.MatrixAPI, error) { return intent, nil }
+	turn := newTurn(context.Background(), conv, nil, nil)
+
+	sendCalls := 0
+	turn.SetSendFunc(func(context.Context) (id.EventID, networkid.MessageID, error) {
+		sendCalls++
+		if len(intent.joinedRooms) != 1 || intent.joinedRooms[0] != portal.MXID {
+			t.Fatalf("expected sender to be joined before placeholder send, got %#v", intent.joinedRooms)
+		}
+		return "", networkid.MessageID("msg-joined"), nil
+	})
+
+	turn.Writer().Start(turn.Context(), map[string]any{"turnId": turn.ID()})
+
+	if sendCalls != 1 {
+		t.Fatalf("expected placeholder send once, got %d", sendCalls)
 	}
 }
 

@@ -60,8 +60,6 @@ func (oc *AIClient) implicitModelCatalogEntries(meta *UserLoginMetadata) []Model
 	switch meta.Provider {
 	case ProviderMagicProxy, ProviderOpenRouter:
 		apiKey = oc.connector.resolveOpenRouterAPIKey(meta)
-	case ProviderBeeper:
-		apiKey = oc.connector.resolveBeeperToken(meta)
 	case ProviderOpenAI:
 		apiKey = oc.connector.resolveOpenAIAPIKey(meta)
 	default:
@@ -131,7 +129,7 @@ func explicitModelCatalogEntries(cfg *ModelsConfig) []ModelCatalogEntry {
 					providerID = parsedProvider
 					id = parsedID
 				}
-			} else if providerID != ProviderOpenRouter && providerID != ProviderBeeper && providerID != ProviderMagicProxy {
+			} else if providerID != ProviderOpenRouter && providerID != ProviderMagicProxy {
 				if parsedProvider, parsedID := splitModelProvider(id); parsedProvider != "" && parsedID != "" && parsedProvider == providerID {
 					id = parsedID
 				}
@@ -320,7 +318,7 @@ func normalizeCatalogModelID(entry ModelCatalogEntry) string {
 	if provider == ProviderOpenAI {
 		return ProviderOpenAI + "/" + id
 	}
-	if provider == ProviderOpenRouter || provider == ProviderBeeper || provider == ProviderMagicProxy {
+	if provider == ProviderOpenRouter || provider == ProviderMagicProxy {
 		return id
 	}
 	if provider != "" {

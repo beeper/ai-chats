@@ -27,6 +27,8 @@ type Conversation struct {
 	login   *bridgev2.UserLogin
 	sender  bridgev2.EventSender
 	runtime conversationRuntime
+
+	intentOverride func(context.Context) (bridgev2.MatrixAPI, error)
 }
 
 func newConversation(ctx context.Context, portal *bridgev2.Portal, login *bridgev2.UserLogin, sender bridgev2.EventSender, runtime conversationRuntime) *Conversation {
@@ -45,6 +47,9 @@ func newConversation(ctx context.Context, portal *bridgev2.Portal, login *bridge
 }
 
 func (c *Conversation) getIntent(ctx context.Context) (bridgev2.MatrixAPI, error) {
+	if c != nil && c.intentOverride != nil {
+		return c.intentOverride(ctx)
+	}
 	if c.portal == nil || c.login == nil {
 		return nil, fmt.Errorf("no portal or login")
 	}

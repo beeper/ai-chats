@@ -485,14 +485,6 @@ func initProviderForLogin(key string, meta *UserLoginMetadata, connector *OpenAI
 		return nil, errors.New("login metadata is required")
 	}
 	switch meta.Provider {
-	case ProviderBeeper:
-		beeperBaseURL := connector.resolveBeeperBaseURL(meta)
-		if beeperBaseURL == "" {
-			return nil, errors.New("beeper base_url is required for Beeper provider")
-		}
-		pdfEngine := connector.Config.Providers.Beeper.DefaultPDFEngine
-		return initOpenRouterProvider(key, beeperBaseURL+"/openrouter/v1", login.User.MXID.String(), pdfEngine, ProviderBeeper, log)
-
 	case ProviderOpenRouter:
 		pdfEngine := connector.Config.Providers.OpenRouter.DefaultPDFEngine
 		return initOpenRouterProvider(key, connector.resolveOpenRouterBaseURL(), "", pdfEngine, ProviderOpenRouter, log)
@@ -1142,7 +1134,7 @@ func (oc *AIClient) effectiveModelForAPI(meta *PortalMetadata) string {
 }
 
 // modelIDForAPI converts a full model ID to the provider-specific API model name.
-// For OpenRouter/Beeper, returns the full model ID.
+// For OpenRouter-compatible providers, returns the full model ID.
 // For direct providers, strips the prefix (e.g., "openai/gpt-5.2" → "gpt-5.2").
 func (oc *AIClient) modelIDForAPI(modelID string) string {
 	if oc.isOpenRouterProvider() {
@@ -1174,11 +1166,6 @@ func (oc *AIClient) defaultModelForProvider() string {
 			return providers.OpenRouter.DefaultModel
 		}
 		return DefaultModelOpenRouter
-	case ProviderBeeper:
-		if providers.Beeper.DefaultModel != "" {
-			return providers.Beeper.DefaultModel
-		}
-		return DefaultModelBeeper
 	default:
 		return DefaultModelOpenRouter
 	}
@@ -1469,10 +1456,10 @@ func (oc *AIClient) effectiveMaxTokens(meta *PortalMetadata) int {
 	return maxTokens
 }
 
-// isOpenRouterProvider checks if the current provider is OpenRouter or Beeper (which uses OpenRouter)
+// isOpenRouterProvider checks if the current provider uses the OpenRouter-compatible API surface.
 func (oc *AIClient) isOpenRouterProvider() bool {
 	loginMeta := loginMetadata(oc.UserLogin)
-	return loginMeta.Provider == ProviderOpenRouter || loginMeta.Provider == ProviderBeeper || loginMeta.Provider == ProviderMagicProxy
+	return loginMeta.Provider == ProviderOpenRouter || loginMeta.Provider == ProviderMagicProxy
 }
 
 // isGroupChat determines if the portal is a group chat.
@@ -1519,11 +1506,7 @@ func (oc *AIClient) effectivePDFEngine(meta *PortalMetadata) string {
 	// Provider-level config
 	loginMeta := loginMetadata(oc.UserLogin)
 	switch loginMeta.Provider {
-	case ProviderBeeper:
-		if engine := oc.connector.Config.Providers.Beeper.DefaultPDFEngine; engine != "" {
-			return engine
-		}
-	case ProviderOpenRouter:
+	case ProviderOpenRouter, ProviderMagicProxy:
 		if engine := oc.connector.Config.Providers.OpenRouter.DefaultPDFEngine; engine != "" {
 			return engine
 		}
@@ -2191,18 +2174,14 @@ func (oc *AIClient) ensureAgentGhostDisplayName(ctx context.Context, agentID, mo
 	}
 }
 
-// ensureModelInRoom ensures the current model's ghost is joined to the portal room.
-// This should be called before any operations that require the model to be in the room
-// (typing indicators, sending messages, etc.) to handle race conditions with model switching.
+// ensureModelInRoom ensures the current portal sender ghost is joined to the portal room.
+// The sender may be a model ghost or an agent ghost depending on the portal target.
 func (oc *AIClient) ensureModelInRoom(ctx context.Context, portal *bridgev2.Portal) error {
 	if portal == nil || portal.MXID == "" {
 		return errors.New("invalid portal")
 	}
-	intent, err := oc.getIntentForPortal(ctx, portal, bridgev2.RemoteEventMessage)
-	if err != nil {
-		return fmt.Errorf("failed to get intent: %w", err)
-	}
-	return intent.EnsureJoined(ctx, portal.MXID)
+	_, _, err := oc.resolvePortalSenderAndIntent(ctx, portal, bridgev2.RemoteEventMessage, true)
+	return err
 }
 
 func (oc *AIClient) loggerForContext(ctx context.Context) *zerolog.Logger {

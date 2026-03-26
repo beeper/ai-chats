@@ -8,72 +8,68 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-func TestResolveManagedBeeperAuthUsesConfig(t *testing.T) {
-	oc := &OpenAIConnector{
-		Config: Config{
-			Beeper: BeeperConfig{
-				UserMXID: "@config:beeper.com",
-				BaseURL:  "https://matrix.beeper.com",
-				Token:    "config-token",
-			},
+func TestSelectPreferredUserLoginPrefersDefaultMagicProxy(t *testing.T) {
+	magic := &bridgev2.UserLogin{
+		UserLogin: &database.UserLogin{
+			ID:       providerLoginID(ProviderMagicProxy, id.UserID("@user:beeper.com"), 1),
+			Metadata: &UserLoginMetadata{Provider: ProviderMagicProxy, BaseURL: "https://temporary-ai-proxy.beeper-tools.com", APIKey: "magic-key"},
 		},
 	}
-
-	auth := oc.resolveManagedBeeperAuth()
-	if auth.UserMXID != id.UserID("@config:beeper.com") {
-		t.Fatalf("expected config mxid, got %q", auth.UserMXID)
-	}
-	if auth.BaseURL != "https://matrix.beeper.com/_matrix/client/unstable/com.beeper.ai" {
-		t.Fatalf("unexpected base url: %q", auth.BaseURL)
-	}
-	if auth.Token != "config-token" {
-		t.Fatalf("expected config token, got %q", auth.Token)
-	}
-}
-
-func TestResolveManagedBeeperAuthDoesNotUseRuntimeFallback(t *testing.T) {
-	oc := &OpenAIConnector{
-		Config: Config{
-			Beeper: BeeperConfig{
-				UserMXID: "@config:beeper.com",
-			},
+	otherMagic := &bridgev2.UserLogin{
+		UserLogin: &database.UserLogin{
+			ID:       providerLoginID(ProviderMagicProxy, id.UserID("@user:beeper.com"), 2),
+			Metadata: &UserLoginMetadata{Provider: ProviderMagicProxy, BaseURL: "https://temporary-ai-proxy-2.beeper-tools.com", APIKey: "magic-key-2"},
 		},
 	}
-
-	auth := oc.resolveManagedBeeperAuth()
-	if auth.UserMXID != id.UserID("@config:beeper.com") {
-		t.Fatalf("expected config mxid, got %q", auth.UserMXID)
-	}
-	if auth.BaseURL != "" {
-		t.Fatalf("expected empty base url, got %q", auth.BaseURL)
-	}
-	if auth.Token != "" {
-		t.Fatalf("expected empty token, got %q", auth.Token)
-	}
-	if auth.Complete() {
-		t.Fatal("expected auth tuple to be incomplete")
-	}
-}
-
-func TestManagedBeeperLoginID(t *testing.T) {
-	got := managedBeeperLoginID(id.UserID("@user:beeper.com"))
-	want := "managed-beeper:@user:beeper.com"
-	if string(got) != want {
-		t.Fatalf("expected %q, got %q", want, got)
-	}
-}
-
-func TestSelectPreferredUserLoginFallsBackFromBrokenManaged(t *testing.T) {
-	managed := &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: managedBeeperLoginID(id.UserID("@user:beeper.com"))}}
-	manual := &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: providerLoginID(ProviderOpenAI, id.UserID("@user:beeper.com"), 1)}}
 
 	selected := selectPreferredUserLogin(
-		managed,
-		managed,
-		[]*bridgev2.UserLogin{managed, manual},
-		func(login *bridgev2.UserLogin) bool { return login == manual },
+		magic,
+		[]*bridgev2.UserLogin{magic, otherMagic},
+		func(login *bridgev2.UserLogin) bool { return true },
 	)
-	if selected != manual {
-		t.Fatalf("expected manual login fallback, got %#v", selected)
+	if selected != magic {
+		t.Fatalf("expected default magic proxy login, got %#v", selected)
+	}
+}
+
+func TestSelectPreferredUserLoginFallsBackToAnotherMagicProxy(t *testing.T) {
+	defaultMagic := &bridgev2.UserLogin{
+		UserLogin: &database.UserLogin{
+			ID:       providerLoginID(ProviderMagicProxy, id.UserID("@user:beeper.com"), 1),
+			Metadata: &UserLoginMetadata{Provider: ProviderMagicProxy, BaseURL: "https://temporary-ai-proxy.beeper-tools.com/openrouter/v1", APIKey: "magic-key"},
+		},
+	}
+	otherMagic := &bridgev2.UserLogin{
+		UserLogin: &database.UserLogin{
+			ID:       providerLoginID(ProviderMagicProxy, id.UserID("@user:beeper.com"), 2),
+			Metadata: &UserLoginMetadata{Provider: ProviderMagicProxy, BaseURL: "https://temporary-ai-proxy-2.beeper-tools.com/openrouter/v1", APIKey: "magic-key-2"},
+		},
+	}
+
+	selected := selectPreferredUserLogin(
+		defaultMagic,
+		[]*bridgev2.UserLogin{defaultMagic, otherMagic},
+		func(login *bridgev2.UserLogin) bool { return login == otherMagic },
+	)
+	if selected != otherMagic {
+		t.Fatalf("expected fallback magic proxy login, got %#v", selected)
+	}
+}
+
+func TestSelectPreferredUserLoginReturnsNilWithoutMagicProxy(t *testing.T) {
+	openAI := &bridgev2.UserLogin{
+		UserLogin: &database.UserLogin{
+			ID:       providerLoginID(ProviderOpenAI, id.UserID("@user:beeper.com"), 1),
+			Metadata: &UserLoginMetadata{Provider: ProviderOpenAI, APIKey: "openai-key"},
+		},
+	}
+
+	selected := selectPreferredUserLogin(
+		openAI,
+		[]*bridgev2.UserLogin{openAI},
+		func(login *bridgev2.UserLogin) bool { return false },
+	)
+	if selected != nil {
+		t.Fatalf("expected no preferred login without selectable magic proxy, got %#v", selected)
 	}
 }

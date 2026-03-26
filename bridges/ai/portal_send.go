@@ -15,6 +15,8 @@ import (
 	"github.com/beeper/agentremote"
 )
 
+type portalIntentGetter func(context.Context, *bridgev2.Portal, bridgev2.EventSender, bridgev2.RemoteEventType) (bridgev2.MatrixAPI, error)
+
 func ensureConvertedMessageParts(converted *bridgev2.ConvertedMessage) {
 	if converted == nil || len(converted.Parts) == 0 {
 		return
@@ -30,6 +32,45 @@ func ensureConvertedMessageParts(converted *bridgev2.ConvertedMessage) {
 		parts = append(parts, part)
 	}
 	converted.Parts = parts
+}
+
+func resolvePortalSenderAndIntent(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	sender bridgev2.EventSender,
+	evtType bridgev2.RemoteEventType,
+	ensureJoined bool,
+	getIntent portalIntentGetter,
+) (bridgev2.EventSender, bridgev2.MatrixAPI, error) {
+	if portal == nil || portal.MXID == "" {
+		return sender, nil, fmt.Errorf("invalid portal")
+	}
+	if getIntent == nil {
+		return sender, nil, fmt.Errorf("intent resolution unavailable")
+	}
+	intent, err := getIntent(ctx, portal, sender, evtType)
+	if err != nil {
+		return sender, nil, err
+	}
+	if intent == nil {
+		return sender, nil, fmt.Errorf("intent resolution failed")
+	}
+	if ensureJoined {
+		if err = intent.EnsureJoined(ctx, portal.MXID); err != nil {
+			return sender, nil, fmt.Errorf("ensure joined failed: %w", err)
+		}
+	}
+	return sender, intent, nil
+}
+
+func (oc *AIClient) resolvePortalSenderAndIntent(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	evtType bridgev2.RemoteEventType,
+	ensureJoined bool,
+) (bridgev2.EventSender, bridgev2.MatrixAPI, error) {
+	sender := oc.senderForPortal(ctx, portal)
+	return resolvePortalSenderAndIntent(ctx, portal, sender, evtType, ensureJoined, oc.getIntentForSender)
 }
 
 // sendViaPortal sends a pre-built message through bridgev2's QueueRemoteEvent pipeline.
@@ -57,7 +98,10 @@ func (oc *AIClient) sendViaPortalWithTiming(
 		return "", "", fmt.Errorf("invalid portal")
 	}
 	ensureConvertedMessageParts(converted)
-	sender := oc.senderForPortal(ctx, portal)
+	sender, _, err := oc.resolvePortalSenderAndIntent(ctx, portal, bridgev2.RemoteEventMessage, true)
+	if err != nil {
+		return "", "", err
+	}
 	return oc.ClientBase.SendViaPortalWithOptions(portal, sender, msgID, timestamp, streamOrder, converted)
 }
 
@@ -88,7 +132,10 @@ func (oc *AIClient) sendEditViaPortalWithTiming(
 	if targetMsgID == "" {
 		return fmt.Errorf("invalid target message")
 	}
-	sender := oc.senderForPortal(ctx, portal)
+	sender, _, err := oc.resolvePortalSenderAndIntent(ctx, portal, bridgev2.RemoteEventMessage, true)
+	if err != nil {
+		return err
+	}
 	return agentremote.SendEditViaPortal(oc.UserLogin, portal, sender, targetMsgID, timestamp, streamOrder, "ai_edit_target", converted)
 }
 
@@ -103,7 +150,10 @@ func (oc *AIClient) redactViaPortal(
 	if portal == nil || portal.MXID == "" {
 		return fmt.Errorf("invalid portal")
 	}
-	sender := oc.senderForPortal(ctx, portal)
+	sender, _, err := oc.resolvePortalSenderAndIntent(ctx, portal, bridgev2.RemoteEventMessage, true)
+	if err != nil {
+		return err
+	}
 	evt := &simplevent.MessageRemove{
 		EventMeta: simplevent.EventMeta{
 			Type:      bridgev2.RemoteEventMessageRemove,
@@ -152,6 +202,15 @@ func (oc *AIClient) getIntentForPortal(
 	evtType bridgev2.RemoteEventType,
 ) (bridgev2.MatrixAPI, error) {
 	sender := oc.senderForPortal(ctx, portal)
+	return oc.getIntentForSender(ctx, portal, sender, evtType)
+}
+
+func (oc *AIClient) getIntentForSender(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	sender bridgev2.EventSender,
+	evtType bridgev2.RemoteEventType,
+) (bridgev2.MatrixAPI, error) {
 	intent, ok := portal.GetIntentFor(ctx, sender, oc.UserLogin, evtType)
 	if !ok {
 		return nil, fmt.Errorf("intent resolution failed")

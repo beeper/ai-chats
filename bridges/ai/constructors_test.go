@@ -56,22 +56,11 @@ func TestNewAIConnectorLoginFlowsRemainDynamic(t *testing.T) {
 	conn := NewAIConnector()
 
 	flows := conn.GetLoginFlows()
-	if len(flows) != 3 || flows[0].ID != ProviderBeeper {
-		t.Fatalf("expected Beeper login flow when managed auth is absent, got %#v", flows)
-	}
-
-	conn.Config.Beeper.UserMXID = "@user:example.com"
-	conn.Config.Beeper.BaseURL = "https://api.beeper.com"
-	conn.Config.Beeper.Token = "secret"
-
-	flows = conn.GetLoginFlows()
 	if len(flows) != 2 {
-		t.Fatalf("expected managed auth to hide Beeper login flow, got %#v", flows)
+		t.Fatalf("expected Magic Proxy and Manual login flows, got %#v", flows)
 	}
-	for _, flow := range flows {
-		if flow.ID == ProviderBeeper {
-			t.Fatalf("expected Beeper flow to be hidden when managed auth is configured: %#v", flows)
-		}
+	if flows[0].ID != ProviderMagicProxy || flows[1].ID != FlowCustom {
+		t.Fatalf("unexpected login flows: %#v", flows)
 	}
 }
 
