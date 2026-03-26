@@ -23,6 +23,8 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/google/uuid"
+
+	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 )
 
 const (
@@ -604,33 +606,28 @@ func (c *gatewayWSClient) Hello() *gatewayHello {
 }
 
 func (c *gatewayWSClient) SupportsMethod(method string) bool {
-	method = strings.ToLower(strings.TrimSpace(method))
-	if method == "" {
-		return false
-	}
 	hello := c.Hello()
 	if hello == nil {
 		return false
 	}
-	for _, candidate := range hello.Features.Methods {
-		if strings.EqualFold(strings.TrimSpace(candidate), method) {
-			return true
-		}
-	}
-	return false
+	return supportsFeature(hello.Features.Methods, method)
 }
 
 func (c *gatewayWSClient) SupportsEvent(evt string) bool {
-	evt = strings.ToLower(strings.TrimSpace(evt))
-	if evt == "" {
-		return false
-	}
 	hello := c.Hello()
 	if hello == nil {
 		return false
 	}
-	for _, candidate := range hello.Features.Events {
-		if strings.EqualFold(strings.TrimSpace(candidate), evt) {
+	return supportsFeature(hello.Features.Events, evt)
+}
+
+func supportsFeature(list []string, name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	for _, candidate := range list {
+		if strings.EqualFold(strings.TrimSpace(candidate), name) {
 			return true
 		}
 	}
@@ -1162,20 +1159,8 @@ func parseGatewayHistoryCursor(cursor string) int64 {
 }
 
 func gatewayHistoryMessageSeq(message map[string]any, idx int) int64 {
-	meta, _ := message["__openclaw"].(map[string]any)
-	switch seq := meta["seq"].(type) {
-	case float64:
-		if seq > 0 {
-			return int64(seq)
-		}
-	case int64:
-		if seq > 0 {
-			return seq
-		}
-	case int:
-		if seq > 0 {
-			return int64(seq)
-		}
+	if seq := openClawHistoryMessageSeq(message); seq > 0 {
+		return seq
 	}
 	return int64(idx + 1)
 }
@@ -1186,29 +1171,7 @@ func cloneGatewayHistorySlice(messages []map[string]any) []map[string]any {
 	}
 	cloned := make([]map[string]any, len(messages))
 	for i, message := range messages {
-		cloned[i] = cloneGatewayHistoryMap(message)
-	}
-	return cloned
-}
-
-func cloneGatewayHistoryMap(message map[string]any) map[string]any {
-	if message == nil {
-		return nil
-	}
-	data, err := json.Marshal(message)
-	if err != nil {
-		cloned := make(map[string]any, len(message))
-		for key, value := range message {
-			cloned[key] = value
-		}
-		return cloned
-	}
-	var cloned map[string]any
-	if err = json.Unmarshal(data, &cloned); err != nil {
-		cloned = make(map[string]any, len(message))
-		for key, value := range message {
-			cloned[key] = value
-		}
+		cloned[i] = jsonutil.DeepCloneMap(message)
 	}
 	return cloned
 }
@@ -1406,33 +1369,35 @@ func (c *gatewayWSClient) buildConnectParams(identity *gatewayDeviceIdentity, no
 }
 
 func normalizeGatewayWSURL(raw string) (string, error) {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil {
-		return "", fmt.Errorf("invalid gateway url: %w", err)
-	}
-	switch parsed.Scheme {
-	case "ws", "wss":
-	case "http":
-		parsed.Scheme = "ws"
-	case "https":
-		parsed.Scheme = "wss"
-	default:
-		return "", fmt.Errorf("unsupported gateway url scheme %q", parsed.Scheme)
-	}
-	return parsed.String(), nil
+	return normalizeGatewayURL(raw, true)
 }
 
 func normalizeGatewayHTTPURL(raw string) (string, error) {
+	return normalizeGatewayURL(raw, false)
+}
+
+func normalizeGatewayURL(raw string, toWebSocket bool) (string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
 		return "", fmt.Errorf("invalid gateway url: %w", err)
 	}
 	switch parsed.Scheme {
-	case "http", "https":
+	case "http":
+		if toWebSocket {
+			parsed.Scheme = "ws"
+		}
+	case "https":
+		if toWebSocket {
+			parsed.Scheme = "wss"
+		}
 	case "ws":
-		parsed.Scheme = "http"
+		if !toWebSocket {
+			parsed.Scheme = "http"
+		}
 	case "wss":
-		parsed.Scheme = "https"
+		if !toWebSocket {
+			parsed.Scheme = "https"
+		}
 	default:
 		return "", fmt.Errorf("unsupported gateway url scheme %q", parsed.Scheme)
 	}

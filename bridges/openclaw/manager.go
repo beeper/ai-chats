@@ -1305,16 +1305,26 @@ func openClawStreamMessageMetadata(meta *PortalMetadata, payload gatewayChatEven
 	}
 	applyNormalizedUsageToParams(normalizeOpenClawUsage(payload.Usage), &params)
 	metadata := msgconv.BuildUIMessageMetadata(params)
-	if sessionID := stringutil.TrimDefault(stringValue(payload.Message["sessionId"]), meta.OpenClawSessionID); sessionID != "" {
-		metadata["session_id"] = sessionID
-	}
-	if sessionKey := stringutil.TrimDefault(payload.SessionKey, meta.OpenClawSessionKey); sessionKey != "" {
-		metadata["session_key"] = sessionKey
-	}
-	if errorText := openClawErrorText(payload); errorText != "" {
-		metadata["error_text"] = errorText
-	}
+	applyOpenClawSessionMetadata(metadata,
+		stringutil.TrimDefault(stringValue(payload.Message["sessionId"]), meta.OpenClawSessionID),
+		stringutil.TrimDefault(payload.SessionKey, meta.OpenClawSessionKey),
+		openClawErrorText(payload),
+	)
 	return metadata
+}
+
+// applyOpenClawSessionMetadata conditionally sets session_id, session_key, and
+// error_text on a UI message metadata map when the values are non-empty.
+func applyOpenClawSessionMetadata(m map[string]any, sessionID, sessionKey, errorText string) {
+	if sessionID != "" {
+		m["session_id"] = sessionID
+	}
+	if sessionKey != "" {
+		m["session_key"] = sessionKey
+	}
+	if errorText != "" {
+		m["error_text"] = errorText
+	}
 }
 
 func normalizeOpenClawUsage(raw map[string]any) map[string]any {
@@ -1363,22 +1373,42 @@ func openClawUsageInt64(raw map[string]any, key string) (int64, bool) {
 	return int64(value), ok
 }
 
+type parsedTokenUsage struct {
+	PromptTokens     int64
+	CompletionTokens int64
+	ReasoningTokens  int64
+	TotalTokens      int64
+}
+
+func parseTokenUsage(usage map[string]any) parsedTokenUsage {
+	var out parsedTokenUsage
+	if len(usage) == 0 {
+		return out
+	}
+	if value, ok := openClawUsageInt64(usage, "prompt_tokens"); ok {
+		out.PromptTokens = value
+	}
+	if value, ok := openClawUsageInt64(usage, "completion_tokens"); ok {
+		out.CompletionTokens = value
+	}
+	if value, ok := openClawUsageInt64(usage, "reasoning_tokens"); ok {
+		out.ReasoningTokens = value
+	}
+	if value, ok := openClawUsageInt64(usage, "total_tokens"); ok {
+		out.TotalTokens = value
+	}
+	return out
+}
+
 func applyUsageToMessageMetadata(usage map[string]any, metadata *MessageMetadata) {
 	if len(usage) == 0 || metadata == nil {
 		return
 	}
-	if value, ok := openClawUsageInt64(usage, "prompt_tokens"); ok {
-		metadata.PromptTokens = value
-	}
-	if value, ok := openClawUsageInt64(usage, "completion_tokens"); ok {
-		metadata.CompletionTokens = value
-	}
-	if value, ok := openClawUsageInt64(usage, "reasoning_tokens"); ok {
-		metadata.ReasoningTokens = value
-	}
-	if value, ok := openClawUsageInt64(usage, "total_tokens"); ok {
-		metadata.TotalTokens = value
-	}
+	parsed := parseTokenUsage(usage)
+	metadata.PromptTokens = parsed.PromptTokens
+	metadata.CompletionTokens = parsed.CompletionTokens
+	metadata.ReasoningTokens = parsed.ReasoningTokens
+	metadata.TotalTokens = parsed.TotalTokens
 }
 
 func maybeUpdatePreviewSnippet(meta *PortalMetadata, text string, eventTS time.Time) bool {
@@ -1399,18 +1429,11 @@ func applyNormalizedUsageToParams(usage map[string]any, params *msgconv.UIMessag
 	if len(usage) == 0 {
 		return
 	}
-	if value, ok := openClawUsageInt64(usage, "prompt_tokens"); ok {
-		params.PromptTokens = value
-	}
-	if value, ok := openClawUsageInt64(usage, "completion_tokens"); ok {
-		params.CompletionTokens = value
-	}
-	if value, ok := openClawUsageInt64(usage, "reasoning_tokens"); ok {
-		params.ReasoningTokens = value
-	}
-	if value, ok := openClawUsageInt64(usage, "total_tokens"); ok {
-		params.TotalTokens = value
-	}
+	parsed := parseTokenUsage(usage)
+	params.PromptTokens = parsed.PromptTokens
+	params.CompletionTokens = parsed.CompletionTokens
+	params.ReasoningTokens = parsed.ReasoningTokens
+	params.TotalTokens = parsed.TotalTokens
 }
 
 func openClawErrorText(payload gatewayChatEvent) string {
@@ -2007,12 +2030,7 @@ func (m *openClawManager) ensureStreamStart(ctx context.Context, portal *bridgev
 			AgentID:      agentID,
 			CompletionID: runID,
 		})
-		if meta.OpenClawSessionID != "" {
-			messageMetadata["session_id"] = meta.OpenClawSessionID
-		}
-		if meta.OpenClawSessionKey != "" {
-			messageMetadata["session_key"] = meta.OpenClawSessionKey
-		}
+		applyOpenClawSessionMetadata(messageMetadata, meta.OpenClawSessionID, meta.OpenClawSessionKey, "")
 	}
 	m.client.EmitStreamPart(ctx, portal, turnID, agentID, meta.OpenClawSessionKey, map[string]any{
 		"timestamp":       eventTS.UnixMilli(),
@@ -2039,12 +2057,7 @@ func (m *openClawManager) handleAgentEvent(ctx context.Context, payload gatewayA
 		AgentID:      agentID,
 		CompletionID: payload.RunID,
 	})
-	if meta.OpenClawSessionID != "" {
-		agentMetadata["session_id"] = meta.OpenClawSessionID
-	}
-	if payload.SessionKey != "" {
-		agentMetadata["session_key"] = payload.SessionKey
-	}
+	applyOpenClawSessionMetadata(agentMetadata, meta.OpenClawSessionID, payload.SessionKey, "")
 	eventTS := extractOpenClawEventTimestamp(payload.TS, nil)
 	m.ensureStreamStart(ctx, portal, meta, turnID, payload.RunID, agentID, eventTS, agentMetadata, nil)
 	m.startRunRecovery(ctx, portal, meta, turnID, payload.RunID, agentID)
@@ -2388,15 +2401,7 @@ func (m *openClawManager) waitForRunCompletion(ctx context.Context, portal *brid
 		CompletedAtMs: waitResp.EndedAt,
 		IncludeUsage:  true,
 	})
-	if meta.OpenClawSessionID != "" {
-		metadata["session_id"] = meta.OpenClawSessionID
-	}
-	if meta.OpenClawSessionKey != "" {
-		metadata["session_key"] = meta.OpenClawSessionKey
-	}
-	if strings.TrimSpace(waitResp.Error) != "" {
-		metadata["error_text"] = strings.TrimSpace(waitResp.Error)
-	}
+	applyOpenClawSessionMetadata(metadata, meta.OpenClawSessionID, meta.OpenClawSessionKey, strings.TrimSpace(waitResp.Error))
 	if status == "error" {
 		m.client.EmitStreamPart(ctx, portal, turnID, agentID, meta.OpenClawSessionKey, map[string]any{
 			"type":      "error",
@@ -2650,15 +2655,11 @@ func convertHistoryToCanonicalUI(message map[string]any, role string, meta *Port
 	}
 	applyNormalizedUsageToParams(normalizeOpenClawUsage(jsonutil.ToMap(message["usage"])), &params)
 	metadata := msgconv.BuildUIMessageMetadata(params)
-	if sessionID := stringutil.TrimDefault(stringValue(message["sessionId"]), meta.OpenClawSessionID); sessionID != "" {
-		metadata["session_id"] = sessionID
-	}
-	if sessionKey := stringutil.TrimDefault(stringValue(message["sessionKey"]), meta.OpenClawSessionKey); sessionKey != "" {
-		metadata["session_key"] = sessionKey
-	}
-	if errorText := stringutil.TrimDefault(stringValue(message["errorMessage"]), stringValue(message["error"])); errorText != "" {
-		metadata["error_text"] = errorText
-	}
+	applyOpenClawSessionMetadata(metadata,
+		stringutil.TrimDefault(stringValue(message["sessionId"]), meta.OpenClawSessionID),
+		stringutil.TrimDefault(stringValue(message["sessionKey"]), meta.OpenClawSessionKey),
+		stringutil.TrimDefault(stringValue(message["errorMessage"]), stringValue(message["error"])),
+	)
 	return openClawHistoryUIParts(message, role), metadata
 }
 
