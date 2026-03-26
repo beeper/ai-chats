@@ -10,7 +10,6 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
-	"io"
 	"math"
 	"net"
 	"net/http"
@@ -804,27 +803,14 @@ func callOpenAIImageGen(ctx context.Context, apiKey, baseURL string, params open
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/images/generations", bytes.NewReader(jsonBody))
+	body, statusCode, err := doJSONPost(ctx, imageGenHTTPClient, baseURL+"/images/generations", map[string]string{
+		"Authorization": "Bearer " + apiKey,
+	}, jsonBody)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, err
 	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-
-	resp, err := imageGenHTTPClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API error (%d): %s", resp.StatusCode, string(body))
+	if statusCode != http.StatusOK {
+		return nil, fmt.Errorf("API error (%d): %s", statusCode, string(body))
 	}
 
 	var result struct {
@@ -917,27 +903,14 @@ func callGeminiImageGen(ctx context.Context, btc *BridgeToolContext, baseURL, mo
 
 	endpoint := strings.TrimSuffix(baseURL, "/") + "/models/" + model + ":generateContent"
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(jsonBody))
+	body, statusCode, err := doJSONPost(ctx, imageGenHTTPClient, endpoint, map[string]string{
+		"Authorization": "Bearer " + btc.Client.apiKey,
+	}, jsonBody)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, err
 	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+btc.Client.apiKey)
-
-	resp, err := imageGenHTTPClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API error (%d): %s", resp.StatusCode, string(body))
+	if statusCode != http.StatusOK {
+		return nil, fmt.Errorf("API error (%d): %s", statusCode, string(body))
 	}
 
 	var result struct {

@@ -44,6 +44,29 @@ var imageFetchHTTPClient = &http.Client{Timeout: 30 * time.Second}
 var openRouterImageHTTPClient = &http.Client{Timeout: 120 * time.Second}
 var openAITTSHTTPClient = &http.Client{Timeout: 30 * time.Second}
 
+// doJSONPost sends a JSON POST request and returns the response body, status code, and any error.
+// Callers are responsible for status code validation.
+func doJSONPost(ctx context.Context, client *http.Client, endpoint string, headers map[string]string, body []byte) ([]byte, int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, resp.StatusCode, fmt.Errorf("failed to read response: %w", err)
+	}
+	return respBody, resp.StatusCode, nil
+}
+
 var validVoices = map[string]bool{
 	"alloy": true, "ash": true, "coral": true, "echo": true,
 	"fable": true, "onyx": true, "nova": true, "sage": true, "shimmer": true,
@@ -923,29 +946,16 @@ func callOpenRouterImageGen(ctx context.Context, apiKey, baseURL string, reqBody
 		return nil, fmt.Errorf("couldn't marshal the request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/chat/completions", bytes.NewReader(jsonBody))
+	body, statusCode, err := doJSONPost(ctx, openRouterImageHTTPClient, baseURL+"/chat/completions", map[string]string{
+		"Authorization": "Bearer " + apiKey,
+		"HTTP-Referer":  "https://beeper.com",
+		"X-Title":       "Beeper Cloud",
+	}, jsonBody)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't create the request: %w", err)
+		return nil, err
 	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("HTTP-Referer", "https://beeper.com")
-	req.Header.Set("X-Title", "Beeper Cloud")
-
-	resp, err := openRouterImageHTTPClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("couldn't read the response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API error (%d): %s", resp.StatusCode, string(body))
+	if statusCode != http.StatusOK {
+		return nil, fmt.Errorf("API error (%d): %s", statusCode, string(body))
 	}
 
 	var parsed any
@@ -1439,30 +1449,14 @@ func callOpenAITTS(ctx context.Context, apiKey, baseURL, text, model, voice stri
 		return "", fmt.Errorf("couldn't marshal the request: %w", err)
 	}
 
-	// Create HTTP request
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyJSON))
+	audioBytes, statusCode, err := doJSONPost(ctx, openAITTSHTTPClient, endpoint, map[string]string{
+		"Authorization": "Bearer " + apiKey,
+	}, bodyJSON)
 	if err != nil {
-		return "", fmt.Errorf("couldn't create the request: %w", err)
+		return "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := openAITTSHTTPClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Check response status
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("TTS API error (status %d): %s", resp.StatusCode, string(body))
-	}
-
-	// Read audio data
-	audioBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("couldn't read audio response: %w", err)
+	if statusCode < 200 || statusCode >= 300 {
+		return "", fmt.Errorf("TTS API error (status %d): %s", statusCode, string(audioBytes))
 	}
 
 	// Return base64 encoded audio
