@@ -316,6 +316,54 @@ func parseBridgeFlags(fs *flag.FlagSet) (*string, *string, *string) {
 	return profile, name, env
 }
 
+type bridgeSetup struct {
+	instName   string
+	beeperName string
+	bridgeType string
+	profile    string
+	meta       *metadata
+}
+
+// setupBridgeCmd consolidates the common setup sequence used by lifecycle
+// commands: parse bridge flags, resolve args, ensure layout & init, and
+// optionally ensure registration.
+func setupBridgeCmd(fs *flag.FlagSet, args []string, withRegistration bool, extraFlags func(*flag.FlagSet)) (*bridgeSetup, *string, error) {
+	profile, name, env := parseBridgeFlags(fs)
+	if extraFlags != nil {
+		extraFlags(fs)
+	}
+	if err := fs.Parse(args); err != nil {
+		return nil, nil, err
+	}
+	bridgeType, err := resolveBridgeArgs(fs)
+	if err != nil {
+		return nil, nil, err
+	}
+	instName := instanceDirName(bridgeType, *name)
+	beeperName := beeperBridgeName(bridgeType, *name)
+
+	sp, err := ensureInstanceLayout(*profile, instName)
+	if err != nil {
+		return nil, nil, err
+	}
+	meta, err := ensureInitialized(instName, bridgeType, beeperName, sp)
+	if err != nil {
+		return nil, nil, err
+	}
+	if withRegistration {
+		if err = ensureRegistration(*profile, *env, meta, bridgeType); err != nil {
+			return nil, nil, err
+		}
+	}
+	return &bridgeSetup{
+		instName:   instName,
+		beeperName: beeperName,
+		bridgeType: bridgeType,
+		profile:    *profile,
+		meta:       meta,
+	}, env, nil
+}
+
 func availableBridgeNames() string {
 	names := make([]string, 0, len(bridgeRegistry))
 	for name := range bridgeRegistry {
@@ -339,45 +387,30 @@ func resolveBridgeArgs(fs *flag.FlagSet) (bridgeType string, err error) {
 
 func cmdStart(args []string) error {
 	fs := newFlagSet("start")
-	profile, name, env := parseBridgeFlags(fs)
-	wait := fs.Bool("wait", false, "block until bridge is connected (timeout 60s)")
-	waitTimeout := fs.Duration("wait-timeout", 60*time.Second, "timeout for --wait")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	bridgeType, err := resolveBridgeArgs(fs)
+	var wait *bool
+	var waitTimeout *time.Duration
+	bs, env, err := setupBridgeCmd(fs, args, true, func(fs *flag.FlagSet) {
+		wait = fs.Bool("wait", false, "block until bridge is connected (timeout 60s)")
+		waitTimeout = fs.Duration("wait-timeout", 60*time.Second, "timeout for --wait")
+	})
 	if err != nil {
 		return err
 	}
-	instName := instanceDirName(bridgeType, *name)
-	beeperName := beeperBridgeName(bridgeType, *name)
-
-	sp, err := ensureInstanceLayout(*profile, instName)
-	if err != nil {
-		return err
-	}
-	meta, err := ensureInitialized(instName, bridgeType, beeperName, sp)
-	if err != nil {
-		return err
-	}
-	if err = ensureRegistration(*profile, *env, meta, bridgeType); err != nil {
-		return err
-	}
-	running, pid := bridgeutil.ProcessAliveFromPIDFile(meta.PIDPath)
+	running, pid := bridgeutil.ProcessAliveFromPIDFile(bs.meta.PIDPath)
 	if running {
-		fmt.Printf("%s already running (pid %d)\n", instName, pid)
+		fmt.Printf("%s already running (pid %d)\n", bs.instName, pid)
 		if *wait {
-			return waitForBridge(*profile, *env, beeperName, *waitTimeout)
+			return waitForBridge(bs.profile, *env, bs.beeperName, *waitTimeout)
 		}
 		return nil
 	}
-	if err = startBridgeProcess(meta, bridgeType); err != nil {
+	if err = startBridgeProcess(bs.meta, bs.bridgeType); err != nil {
 		return err
 	}
-	fmt.Printf("started %s\n", instName)
-	cliutil.PrintRuntimePaths(meta)
+	fmt.Printf("started %s\n", bs.instName)
+	cliutil.PrintRuntimePaths(bs.meta)
 	if *wait {
-		return waitForBridge(*profile, *env, beeperName, *waitTimeout)
+		return waitForBridge(bs.profile, *env, bs.beeperName, *waitTimeout)
 	}
 	return nil
 }
@@ -411,36 +444,18 @@ func waitForBridge(profile, envOverride, beeperName string, timeout time.Duratio
 
 func cmdRun(args []string) error {
 	fs := newFlagSet("run")
-	profile, name, env := parseBridgeFlags(fs)
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	bridgeType, err := resolveBridgeArgs(fs)
+	bs, _, err := setupBridgeCmd(fs, args, true, nil)
 	if err != nil {
-		return err
-	}
-	instName := instanceDirName(bridgeType, *name)
-	beeperName := beeperBridgeName(bridgeType, *name)
-
-	sp, err := ensureInstanceLayout(*profile, instName)
-	if err != nil {
-		return err
-	}
-	meta, err := ensureInitialized(instName, bridgeType, beeperName, sp)
-	if err != nil {
-		return err
-	}
-	if err = ensureRegistration(*profile, *env, meta, bridgeType); err != nil {
 		return err
 	}
 	exe, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to find own executable: %w", err)
 	}
-	argv := []string{exe, "__bridge", bridgeType, "-c", meta.ConfigPath}
-	fmt.Printf("running %s in foreground\n", instName)
-	cliutil.PrintRuntimePaths(meta)
-	if err = os.Chdir(filepath.Dir(meta.ConfigPath)); err != nil {
+	argv := []string{exe, "__bridge", bs.bridgeType, "-c", bs.meta.ConfigPath}
+	fmt.Printf("running %s in foreground\n", bs.instName)
+	cliutil.PrintRuntimePaths(bs.meta)
+	if err = os.Chdir(filepath.Dir(bs.meta.ConfigPath)); err != nil {
 		return fmt.Errorf("failed to chdir: %w", err)
 	}
 	return syscall.Exec(exe, argv, os.Environ())
@@ -448,27 +463,12 @@ func cmdRun(args []string) error {
 
 func cmdInit(args []string) error {
 	fs := newFlagSet("init")
-	profile, name, _ := parseBridgeFlags(fs)
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	bridgeType, err := resolveBridgeArgs(fs)
+	bs, _, err := setupBridgeCmd(fs, args, false, nil)
 	if err != nil {
 		return err
 	}
-	instName := instanceDirName(bridgeType, *name)
-	beeperName := beeperBridgeName(bridgeType, *name)
-
-	sp, err := ensureInstanceLayout(*profile, instName)
-	if err != nil {
-		return err
-	}
-	meta, err := ensureInitialized(instName, bridgeType, beeperName, sp)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("initialized %s\n", instName)
-	cliutil.PrintRuntimePaths(meta)
+	fmt.Printf("initialized %s\n", bs.instName)
+	cliutil.PrintRuntimePaths(bs.meta)
 	return nil
 }
 
@@ -761,45 +761,30 @@ func cmdLogs(args []string) error {
 
 func cmdRegister(args []string) error {
 	fs := newFlagSet("register")
-	profile, name, env := parseBridgeFlags(fs)
-	output := fs.String("output", "-", "output path for registration YAML")
-	jsonOut := fs.Bool("json", false, "print registration metadata as JSON")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	bridgeType, err := resolveBridgeArgs(fs)
+	var output *string
+	var jsonOut *bool
+	bs, _, err := setupBridgeCmd(fs, args, true, func(fs *flag.FlagSet) {
+		output = fs.String("output", "-", "output path for registration YAML")
+		jsonOut = fs.Bool("json", false, "print registration metadata as JSON")
+	})
 	if err != nil {
-		return err
-	}
-	instName := instanceDirName(bridgeType, *name)
-	beeperName := beeperBridgeName(bridgeType, *name)
-
-	sp, err := ensureInstanceLayout(*profile, instName)
-	if err != nil {
-		return err
-	}
-	meta, err := ensureInitialized(instName, bridgeType, beeperName, sp)
-	if err != nil {
-		return err
-	}
-	if err = ensureRegistration(*profile, *env, meta, bridgeType); err != nil {
 		return err
 	}
 	if *jsonOut {
 		payload := map[string]any{
-			"instance":     instName,
-			"bridge_name":  meta.BeeperBridgeName,
-			"bridge_type":  bridgeType,
-			"profile":      *profile,
-			"config":       meta.ConfigPath,
-			"registration": meta.RegistrationPath,
+			"instance":     bs.instName,
+			"bridge_name":  bs.meta.BeeperBridgeName,
+			"bridge_type":  bs.bridgeType,
+			"profile":      bs.profile,
+			"config":       bs.meta.ConfigPath,
+			"registration": bs.meta.RegistrationPath,
 		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		return enc.Encode(payload)
 	}
 	if *output != "-" {
-		data, err := os.ReadFile(meta.RegistrationPath)
+		data, err := os.ReadFile(bs.meta.RegistrationPath)
 		if err != nil {
 			return err
 		}
@@ -809,7 +794,7 @@ func cmdRegister(args []string) error {
 		fmt.Printf("registration written to %s\n", *output)
 		return nil
 	}
-	fmt.Printf("registration ensured for %s\n", instName)
+	fmt.Printf("registration ensured for %s\n", bs.instName)
 	return nil
 }
 
