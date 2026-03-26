@@ -237,6 +237,20 @@ func BuildDataURL(mimeType, b64Data string) string {
 	return fmt.Sprintf("data:%s;base64,%s", mimeType, b64Data)
 }
 
+// resolveBlockImageURL returns the image URL for a prompt block, falling back
+// to a base64 data URL when no explicit URL is provided.
+func resolveBlockImageURL(block PromptBlock) string {
+	imageURL := strings.TrimSpace(block.ImageURL)
+	if imageURL == "" && block.ImageB64 != "" {
+		mimeType := block.MimeType
+		if mimeType == "" {
+			mimeType = "image/jpeg"
+		}
+		imageURL = BuildDataURL(mimeType, block.ImageB64)
+	}
+	return imageURL
+}
+
 // PromptContextToResponsesInput converts the canonical prompt model into Responses input items.
 func PromptContextToResponsesInput(ctx PromptContext) responses.ResponseInputParam {
 	var result responses.ResponseInputParam
@@ -270,14 +284,7 @@ func PromptContextToResponsesInput(ctx PromptContext) responses.ResponseInputPar
 					}
 					textContent += block.Text
 				case PromptBlockImage:
-					imageURL := strings.TrimSpace(block.ImageURL)
-					if imageURL == "" && block.ImageB64 != "" {
-						mimeType := block.MimeType
-						if mimeType == "" {
-							mimeType = "image/jpeg"
-						}
-						imageURL = BuildDataURL(mimeType, block.ImageB64)
-					}
+					imageURL := resolveBlockImageURL(block)
 					if imageURL == "" {
 						continue
 					}
@@ -484,14 +491,7 @@ func promptBlocksToChatCompletionContentParts(blocks []PromptBlock, supportsVide
 				OfText: &openai.ChatCompletionContentPartTextParam{Text: block.Text},
 			})
 		case PromptBlockImage:
-			imageURL := strings.TrimSpace(block.ImageURL)
-			if imageURL == "" && block.ImageB64 != "" {
-				mimeType := block.MimeType
-				if mimeType == "" {
-					mimeType = "image/jpeg"
-				}
-				imageURL = BuildDataURL(mimeType, block.ImageB64)
-			}
+			imageURL := resolveBlockImageURL(block)
 			if imageURL == "" {
 				continue
 			}
