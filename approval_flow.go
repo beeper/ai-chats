@@ -773,19 +773,16 @@ func (f *ApprovalFlow[D]) matchReactionTarget(targetMessageID networkid.MessageI
 	return match
 }
 
-func (f *ApprovalFlow[D]) matchFallbackReaction(roomID id.RoomID, sender id.UserID, key string, now time.Time) ApprovalPromptReactionMatch {
-	roomID = id.RoomID(strings.TrimSpace(roomID.String()))
-	sender = id.UserID(strings.TrimSpace(sender.String()))
-	key = normalizeReactionKey(key)
-	if roomID == "" || sender == "" || key == "" {
-		return ApprovalPromptReactionMatch{}
-	}
-
-	var (
-		found      int
-		match      ApprovalPromptReactionMatch
-		expiredIDs []string
-	)
+// scanPromptsByRoom iterates promptsByApproval under f.mu, filtering for
+// entries in the given room that have a pending approval and match the sender
+// (or have no owner restriction). Expired prompts are dropped automatically.
+// The visit callback is called for each live match and receives the approvalID
+// and a copy of the entry; returning false stops the scan early.
+//
+// Locking: acquires and releases f.mu internally. The visit callback runs
+// under f.mu — it must not call methods that acquire the lock.
+func (f *ApprovalFlow[D]) scanPromptsByRoom(roomID id.RoomID, sender id.UserID, now time.Time, visit func(approvalID string, entry ApprovalPromptRegistration) bool) {
+	var expiredIDs []string
 
 	f.mu.Lock()
 	for approvalID, entry := range f.promptsByApproval {
@@ -802,7 +799,30 @@ func (f *ApprovalFlow[D]) matchFallbackReaction(roomID id.RoomID, sender id.User
 			expiredIDs = append(expiredIDs, approvalID)
 			continue
 		}
+		if !visit(approvalID, *entry) {
+			break
+		}
+	}
+	for _, approvalID := range expiredIDs {
+		f.dropPromptLocked(approvalID)
+	}
+	f.mu.Unlock()
+}
 
+func (f *ApprovalFlow[D]) matchFallbackReaction(roomID id.RoomID, sender id.UserID, key string, now time.Time) ApprovalPromptReactionMatch {
+	roomID = id.RoomID(strings.TrimSpace(roomID.String()))
+	sender = id.UserID(strings.TrimSpace(sender.String()))
+	key = normalizeReactionKey(key)
+	if roomID == "" || sender == "" || key == "" {
+		return ApprovalPromptReactionMatch{}
+	}
+
+	var (
+		found int
+		match ApprovalPromptReactionMatch
+	)
+
+	f.scanPromptsByRoom(roomID, sender, now, func(approvalID string, entry ApprovalPromptRegistration) bool {
 		var decision ApprovalDecisionPayload
 		matched := false
 		for _, opt := range entry.Options {
@@ -826,28 +846,25 @@ func (f *ApprovalFlow[D]) matchFallbackReaction(roomID id.RoomID, sender id.User
 			}
 		}
 		if !matched {
-			continue
+			return true // continue scanning
 		}
 
 		found++
 		if found > 1 {
 			match = ApprovalPromptReactionMatch{}
-			break
+			return false // stop scanning
 		}
 		match = ApprovalPromptReactionMatch{
 			KnownPrompt:            true,
 			ShouldResolve:          true,
 			ApprovalID:             approvalID,
 			Decision:               decision,
-			Prompt:                 *entry,
+			Prompt:                 entry,
 			MirrorDecisionReaction: true,
 			RedactResolvedReaction: true,
 		}
-	}
-	for _, approvalID := range expiredIDs {
-		f.dropPromptLocked(approvalID)
-	}
-	f.mu.Unlock()
+		return true // continue scanning to check for ambiguity
+	})
 
 	if found == 1 {
 		return match
@@ -862,32 +879,11 @@ func (f *ApprovalFlow[D]) hasPendingApprovalForOwner(roomID id.RoomID, sender id
 		return false
 	}
 
-	var expiredIDs []string
 	hasPending := false
-
-	f.mu.Lock()
-	for approvalID, entry := range f.promptsByApproval {
-		if entry == nil || entry.RoomID != roomID {
-			continue
-		}
-		if _, ok := f.pending[approvalID]; !ok {
-			continue
-		}
-		if entry.OwnerMXID != "" && sender != entry.OwnerMXID {
-			continue
-		}
-		if !entry.ExpiresAt.IsZero() && !now.IsZero() && now.After(entry.ExpiresAt) {
-			expiredIDs = append(expiredIDs, approvalID)
-			continue
-		}
+	f.scanPromptsByRoom(roomID, sender, now, func(_ string, _ ApprovalPromptRegistration) bool {
 		hasPending = true
-		break
-	}
-	for _, approvalID := range expiredIDs {
-		f.dropPromptLocked(approvalID)
-	}
-	f.mu.Unlock()
-
+		return false // stop scanning, one match is enough
+	})
 	return hasPending
 }
 
@@ -1184,6 +1180,30 @@ func resolveApprovalReactionTargetMessageID(
 	return msg.ID
 }
 
+// resolvePromptTargetMessage returns the remote message ID for a prompt,
+// trying the supplied primaryID first, then falling back to a database
+// lookup via resolveApprovalPromptMessage.
+func resolvePromptTargetMessage(
+	ctx context.Context,
+	login *bridgev2.UserLogin,
+	portal *bridgev2.Portal,
+	prompt ApprovalPromptRegistration,
+	primaryID networkid.MessageID,
+) networkid.MessageID {
+	if primaryID != "" {
+		return primaryID
+	}
+	receiver := portal.Receiver
+	if receiver == "" {
+		receiver = login.ID
+	}
+	target := resolveApprovalPromptMessage(ctx, login, receiver, prompt)
+	if target == nil {
+		return ""
+	}
+	return target.ID
+}
+
 func approvalReactionTargetMessageID(prompt ApprovalPromptRegistration) networkid.MessageID {
 	if prompt.ReactionTargetMessageID != "" {
 		return prompt.ReactionTargetMessageID
@@ -1459,17 +1479,9 @@ func (f *ApprovalFlow[D]) mirrorRemoteDecisionReaction(ctx context.Context, prom
 	if prompt.OwnerMXID != "" {
 		_ = EnsureSyntheticReactionSenderGhost(ctx, login, prompt.OwnerMXID)
 	}
-	targetMessage := approvalReactionTargetMessageID(prompt)
+	targetMessage := resolvePromptTargetMessage(ctx, login, portal, prompt, approvalReactionTargetMessageID(prompt))
 	if targetMessage == "" {
-		receiver := portal.Receiver
-		if receiver == "" {
-			receiver = login.ID
-		}
-		target := resolveApprovalPromptMessage(ctx, login, receiver, prompt)
-		if target == nil {
-			return
-		}
-		targetMessage = target.ID
+		return
 	}
 	login.QueueRemoteEvent(BuildReactionEvent(
 		portal.PortalKey,
@@ -1574,17 +1586,9 @@ func (f *ApprovalFlow[D]) editPromptToResolvedState(
 	if ac.login == nil || ac.portal == nil || ac.portal.MXID == "" {
 		return
 	}
-	targetMessage := prompt.PromptMessageID
+	targetMessage := resolvePromptTargetMessage(ac.ctx, ac.login, ac.portal, prompt, prompt.PromptMessageID)
 	if targetMessage == "" {
-		receiver := ac.portal.Receiver
-		if receiver == "" {
-			receiver = ac.login.ID
-		}
-		target := resolveApprovalPromptMessage(ac.ctx, ac.login, receiver, prompt)
-		if target == nil {
-			return
-		}
-		targetMessage = target.ID
+		return
 	}
 	response := BuildApprovalResponsePromptMessage(ApprovalResponsePromptMessageParams{
 		ApprovalID:   prompt.ApprovalID,

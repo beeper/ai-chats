@@ -327,24 +327,14 @@ func normalizePromptFields(approvalID, toolCallID, toolName, turnID string, pres
 
 func BuildApprovalPromptMessage(params ApprovalPromptMessageParams) ApprovalPromptMessage {
 	f := normalizePromptFields(params.ApprovalID, params.ToolCallID, params.ToolName, params.TurnID, params.Presentation, params.Options)
-	approvalID, toolCallID, toolName, turnID := f.approvalID, f.toolCallID, f.toolName, f.turnID
+	approvalID := f.approvalID
 	presentation, options := f.presentation, f.options
 	body := BuildApprovalPromptBody(presentation, options)
-	metadata := approvalMessageMetadata(approvalID, turnID, presentation, options, nil, params.ExpiresAt)
-	uiMessage := map[string]any{
-		"id":       approvalID,
-		"role":     "assistant",
-		"metadata": metadata,
-		"parts": []map[string]any{{
-			"type":       "dynamic-tool",
-			"toolName":   toolName,
-			"toolCallId": toolCallID,
-			"state":      ApprovalPromptStateRequested,
-			"approval": map[string]any{
-				"id": approvalID,
-			},
-		}},
+	metadata := approvalMessageMetadata(approvalID, f.turnID, presentation, options, nil, params.ExpiresAt)
+	approvalPayload := map[string]any{
+		"id": approvalID,
 	}
+	uiMessage := buildApprovalUIMessage(f, ApprovalPromptStateRequested, approvalPayload, metadata)
 	content := &event.MessageEventContent{
 		MsgType:  event.MsgNotice,
 		Body:     body,
@@ -377,8 +367,8 @@ func buildApprovalPromptRelatesTo(replyToEventID, threadRootEventID id.EventID) 
 
 func BuildApprovalResponsePromptMessage(params ApprovalResponsePromptMessageParams) ApprovalPromptMessage {
 	f := normalizePromptFields(params.ApprovalID, params.ToolCallID, params.ToolName, params.TurnID, params.Presentation, params.Options)
-	approvalID, toolCallID, toolName, turnID := f.approvalID, f.toolCallID, f.toolName, f.turnID
-	presentation := f.presentation
+	approvalID := f.approvalID
+	presentation, options := f.presentation, f.options
 	decision := params.Decision
 	decision.ApprovalID = strings.TrimSpace(decision.ApprovalID)
 	if decision.ApprovalID == "" {
@@ -395,20 +385,8 @@ func BuildApprovalResponsePromptMessage(params ApprovalResponsePromptMessagePara
 	if strings.TrimSpace(decision.Reason) != "" {
 		approvalPayload["reason"] = strings.TrimSpace(decision.Reason)
 	}
-	options := f.options
-	metadata := approvalMessageMetadata(approvalID, turnID, presentation, options, &decision, params.ExpiresAt)
-	uiMessage := map[string]any{
-		"id":       approvalID,
-		"role":     "assistant",
-		"metadata": metadata,
-		"parts": []map[string]any{{
-			"type":       "dynamic-tool",
-			"toolName":   toolName,
-			"toolCallId": toolCallID,
-			"state":      ApprovalPromptStateResponded,
-			"approval":   approvalPayload,
-		}},
-	}
+	metadata := approvalMessageMetadata(approvalID, f.turnID, presentation, options, &decision, params.ExpiresAt)
+	uiMessage := buildApprovalUIMessage(f, ApprovalPromptStateResponded, approvalPayload, metadata)
 	return ApprovalPromptMessage{
 		Content: &event.MessageEventContent{
 			MsgType:  event.MsgNotice,
@@ -420,6 +398,23 @@ func BuildApprovalResponsePromptMessage(params ApprovalResponsePromptMessagePara
 		UIMessage:     uiMessage,
 		Presentation:  presentation,
 		Options:       options,
+	}
+}
+
+// buildApprovalUIMessage constructs the UI message map shared by both
+// BuildApprovalPromptMessage and BuildApprovalResponsePromptMessage.
+func buildApprovalUIMessage(f normalizedPromptFields, state string, approvalPayload map[string]any, metadata map[string]any) map[string]any {
+	return map[string]any{
+		"id":       f.approvalID,
+		"role":     "assistant",
+		"metadata": metadata,
+		"parts": []map[string]any{{
+			"type":       "dynamic-tool",
+			"toolName":   f.toolName,
+			"toolCallId": f.toolCallID,
+			"state":      state,
+			"approval":   approvalPayload,
+		}},
 	}
 }
 
