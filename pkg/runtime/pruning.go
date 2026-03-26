@@ -6,8 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beeper/agentremote/pkg/shared/globmatch"
 	"github.com/openai/openai-go/v3"
+
+	"github.com/beeper/agentremote/pkg/shared/globmatch"
 )
 
 // PruningConfig configures context pruning behavior (OpenClaw-style).
