@@ -489,20 +489,29 @@ func (m *OpenCodeManager) UpdateSessionTitle(ctx context.Context, instanceID, se
 func (m *OpenCodeManager) syncSessions(ctx context.Context, inst *openCodeInstance, sessions []api.Session) (int, error) {
 	count := 0
 	for _, session := range sessions {
-		hadRoom := false
-		if portal := m.bridge.findOpenCodePortal(ctx, inst.cfg.ID, session.ID); portal != nil && portal.MXID != "" {
-			hadRoom = true
-		}
-		if err := m.bridge.ensureOpenCodeSessionPortal(ctx, inst, session); err != nil {
+		if err := m.syncSingleSession(ctx, inst, session); err != nil {
 			m.log().Warn().Err(err).Str("session", session.ID).Msg("Failed to sync OpenCode session")
 			continue
-		}
-		if hadRoom {
-			m.bridge.queueOpenCodeSessionResync(inst.cfg.ID, session)
 		}
 		count++
 	}
 	return count, nil
+}
+
+// syncSingleSession ensures the portal exists for a single session and queues
+// a resync if the room already existed before the call.
+func (m *OpenCodeManager) syncSingleSession(ctx context.Context, inst *openCodeInstance, session api.Session) error {
+	hadRoom := false
+	if portal := m.bridge.findOpenCodePortal(ctx, inst.cfg.ID, session.ID); portal != nil && portal.MXID != "" {
+		hadRoom = true
+	}
+	if err := m.bridge.ensureOpenCodeSessionPortal(ctx, inst, session); err != nil {
+		return err
+	}
+	if hadRoom {
+		m.bridge.queueOpenCodeSessionResync(inst.cfg.ID, session)
+	}
+	return nil
 }
 
 // ---------- event loop ----------
@@ -626,16 +635,8 @@ func (m *OpenCodeManager) handleSessionEvent(ctx context.Context, inst *openCode
 		m.log().Warn().Err(err).Msg("Failed to decode session event")
 		return
 	}
-	hadRoom := false
-	if portal := m.bridge.findOpenCodePortal(ctx, inst.cfg.ID, session.ID); portal != nil && portal.MXID != "" {
-		hadRoom = true
-	}
-	if err := m.bridge.ensureOpenCodeSessionPortal(ctx, inst, session); err != nil {
+	if err := m.syncSingleSession(ctx, inst, session); err != nil {
 		m.log().Warn().Err(err).Str("session", session.ID).Msg("Failed to ensure session portal")
-		return
-	}
-	if hadRoom {
-		m.bridge.queueOpenCodeSessionResync(inst.cfg.ID, session)
 	}
 }
 

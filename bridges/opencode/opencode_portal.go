@@ -19,6 +19,22 @@ func (b *Bridge) ensureOpenCodeSessionPortal(ctx context.Context, inst *openCode
 	return b.ensureOpenCodeSessionPortalWithRoom(ctx, inst, session, true)
 }
 
+// defaultPortalLifecycleOptions returns the standard PortalLifecycleOptions
+// shared by all OpenCode room creation paths.
+func (b *Bridge) defaultPortalLifecycleOptions(login *bridgev2.UserLogin, portal *bridgev2.Portal, chatInfo *bridgev2.ChatInfo) bridgesdk.PortalLifecycleOptions {
+	return bridgesdk.PortalLifecycleOptions{
+		Login:            login,
+		Portal:           portal,
+		ChatInfo:         chatInfo,
+		SaveBeforeCreate: true,
+		CleanupOnCreateError: func(ctx context.Context, portal *bridgev2.Portal) {
+			b.host.CleanupPortal(ctx, portal, "failed to create OpenCode room")
+		},
+		AIRoomKind:        agentremote.AIRoomKindAgent,
+		ForceCapabilities: true,
+	}
+}
+
 func (b *Bridge) ensureOpenCodeSessionPortalWithRoom(ctx context.Context, inst *openCodeInstance, session api.Session, createRoom bool) error {
 	if b == nil || b.host == nil || inst == nil {
 		return nil
@@ -74,17 +90,7 @@ func (b *Bridge) ensureOpenCodeSessionPortalWithRoom(ctx context.Context, inst *
 	if !createRoom && portal.MXID == "" {
 		return nil
 	}
-	_, err = bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
-		Login:            login,
-		Portal:           portal,
-		ChatInfo:         chatInfo,
-		SaveBeforeCreate: true,
-		CleanupOnCreateError: func(ctx context.Context, portal *bridgev2.Portal) {
-			b.host.CleanupPortal(ctx, portal, "failed to create OpenCode room")
-		},
-		AIRoomKind:        agentremote.AIRoomKindAgent,
-		ForceCapabilities: true,
-	})
+	_, err = bridgesdk.EnsurePortalLifecycle(ctx, b.defaultPortalLifecycleOptions(login, portal, chatInfo))
 	if err != nil {
 		return err
 	}
@@ -223,17 +229,7 @@ func (b *Bridge) createManagedLauncherChat(ctx context.Context, login *bridgev2.
 	b.host.SetPortalMeta(portal, meta)
 
 	chatInfo := b.composeOpenCodeChatInfo(displayTitle, instanceID)
-	_, err = bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
-		Login:            login,
-		Portal:           portal,
-		ChatInfo:         chatInfo,
-		SaveBeforeCreate: true,
-		CleanupOnCreateError: func(ctx context.Context, portal *bridgev2.Portal) {
-			b.host.CleanupPortal(ctx, portal, "failed to create OpenCode room")
-		},
-		AIRoomKind:        agentremote.AIRoomKindAgent,
-		ForceCapabilities: true,
-	})
+	_, err = bridgesdk.EnsurePortalLifecycle(ctx, b.defaultPortalLifecycleOptions(login, portal, chatInfo))
 	if err != nil {
 		return nil, err
 	}

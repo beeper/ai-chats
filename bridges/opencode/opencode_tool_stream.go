@@ -90,6 +90,22 @@ func (m *OpenCodeManager) emitToolStreamState(ctx context.Context, inst *openCod
 	}
 }
 
+// resolveArtifactFields extracts the sourceURL, title, and mediaType from an
+// OpenCode part, applying the same fallback logic used by both streaming and
+// canonical backfill paths.
+func resolveArtifactFields(part api.Part) (sourceURL, title, mediaType string) {
+	sourceURL = strings.TrimSpace(part.URL)
+	title = strings.TrimSpace(part.Filename)
+	if title == "" {
+		title = strings.TrimSpace(part.Name)
+	}
+	mediaType = strings.TrimSpace(part.Mime)
+	if mediaType == "" {
+		mediaType = "application/octet-stream"
+	}
+	return
+}
+
 func (m *OpenCodeManager) emitArtifactStream(ctx context.Context, inst *openCodeInstance, portal *bridgev2.Portal, part api.Part) {
 	if m == nil || m.bridge == nil || portal == nil || inst == nil {
 		return
@@ -97,18 +113,9 @@ func (m *OpenCodeManager) emitArtifactStream(ctx context.Context, inst *openCode
 	if state := inst.partState(part.SessionID, part.ID); state != nil && state.artifactStreamSent {
 		return
 	}
-	sourceURL := strings.TrimSpace(part.URL)
-	title := strings.TrimSpace(part.Filename)
-	if title == "" {
-		title = strings.TrimSpace(part.Name)
-	}
+	sourceURL, title, mediaType := resolveArtifactFields(part)
 	if sourceURL == "" && title == "" {
 		return
-	}
-
-	mediaType := strings.TrimSpace(part.Mime)
-	if mediaType == "" {
-		mediaType = "application/octet-stream"
 	}
 	_, writer := m.mustStreamWriter(ctx, portal, part.SessionID, part.MessageID)
 
