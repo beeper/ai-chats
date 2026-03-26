@@ -267,15 +267,11 @@ func TestRunToolsApprovalDeniedProducesDeniedToolState(t *testing.T) {
 func TestRunRandomUsesSingleTurnAndFinishes(t *testing.T) {
 	turn := newTestTurn()
 	cmd := randomCommand{
-		Duration:   2 * time.Second,
-		Actions:    4,
-		Profile:    "balanced",
-		DelayMin:   0,
-		DelayMax:   0,
-		Seed:       99,
-		SeedSet:    true,
-		AllowAbort: false,
-		AllowError: false,
+		Duration:            2 * time.Second,
+		Actions:             4,
+		DelayMin:            0,
+		DelayMax:            0,
+		sharedStreamOptions: sharedStreamOptions{Profile: "balanced", Seed: 99, SeedSet: true},
 	}
 	if err := testRunner().runRandom(context.Background(), turn, cmd, zerolog.Nop()); err != nil {
 		t.Fatalf("runRandom returned error: %v", err)
@@ -298,13 +294,11 @@ func TestRunRandomStopsWhenDurationExpires(t *testing.T) {
 		},
 	}
 	cmd := randomCommand{
-		Duration: 5 * time.Millisecond,
-		Actions:  5,
-		Profile:  "balanced",
-		DelayMin: 10 * time.Millisecond,
-		DelayMax: 10 * time.Millisecond,
-		Seed:     99,
-		SeedSet:  true,
+		Duration:            5 * time.Millisecond,
+		Actions:             5,
+		DelayMin:            10 * time.Millisecond,
+		DelayMax:            10 * time.Millisecond,
+		sharedStreamOptions: sharedStreamOptions{Profile: "balanced", Seed: 99, SeedSet: true},
 	}
 	if err := runner.runRandom(context.Background(), turn, cmd, zerolog.Nop()); err != nil {
 		t.Fatalf("runRandom returned error: %v", err)

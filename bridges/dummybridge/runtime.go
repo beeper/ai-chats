@@ -168,12 +168,8 @@ type toolsCommand struct {
 	Options commonCommandOptions
 }
 
-type randomCommand struct {
-	Duration      time.Duration
-	Actions       int
+type sharedStreamOptions struct {
 	Profile       string
-	DelayMin      time.Duration
-	DelayMax      time.Duration
 	Seed          int64
 	SeedSet       bool
 	AllowAbort    bool
@@ -181,18 +177,21 @@ type randomCommand struct {
 	AllowApproval bool
 }
 
+type randomCommand struct {
+	Duration time.Duration
+	Actions  int
+	DelayMin time.Duration
+	DelayMax time.Duration
+	sharedStreamOptions
+}
+
 type chaosCommand struct {
-	Turns         int
-	Duration      time.Duration
-	Profile       string
-	Seed          int64
-	SeedSet       bool
-	StaggerMin    time.Duration
-	StaggerMax    time.Duration
-	MaxActions    int
-	AllowAbort    bool
-	AllowError    bool
-	AllowApproval bool
+	Turns      int
+	Duration   time.Duration
+	StaggerMin time.Duration
+	StaggerMax time.Duration
+	MaxActions int
+	sharedStreamOptions
 }
 
 type parsedCommand struct {
@@ -408,11 +407,11 @@ func parseToolsCommand(tokens []string) (*toolsCommand, error) {
 
 func parseRandomCommand(tokens []string) (*randomCommand, error) {
 	cmd := &randomCommand{
-		Duration: 20 * time.Second,
-		Actions:  20,
-		Profile:  "balanced",
-		DelayMin: 350 * time.Millisecond,
-		DelayMax: 1150 * time.Millisecond,
+		Duration:            20 * time.Second,
+		Actions:             20,
+		DelayMin:            350 * time.Millisecond,
+		DelayMax:            1150 * time.Millisecond,
+		sharedStreamOptions: sharedStreamOptions{Profile: "balanced"},
 	}
 	rest := tokens
 	if len(rest) > 0 && !strings.HasPrefix(rest[0], "--") {
@@ -430,28 +429,11 @@ func parseRandomCommand(tokens []string) (*randomCommand, error) {
 		key, value, hasValue := parseOptionToken(token)
 		switch key {
 		case "actions":
-			if !hasValue {
-				return nil, fmt.Errorf("%s requires a value", token)
-			}
-			n, err := parsePositiveInt(value, "actions")
+			n, err := parseValidatedInt(value, hasValue, token, "actions", maxDemoRandomActions, false)
 			if err != nil {
 				return nil, err
 			}
-			if err := validateMaxIntValue(n, maxDemoRandomActions, "actions"); err != nil {
-				return nil, err
-			}
 			cmd.Actions = n
-		case "profile":
-			if !hasValue {
-				return nil, fmt.Errorf("%s requires a value", token)
-			}
-			profile := strings.TrimSpace(strings.ToLower(value))
-			switch profile {
-			case "balanced", "tools", "artifacts", "terminals":
-				cmd.Profile = profile
-			default:
-				return nil, fmt.Errorf("unknown random profile %q", value)
-			}
 		case "delay-ms":
 			if !hasValue {
 				return nil, fmt.Errorf("%s requires a value", token)
@@ -464,24 +446,14 @@ func parseRandomCommand(tokens []string) (*randomCommand, error) {
 				return nil, err
 			}
 			cmd.DelayMin, cmd.DelayMax = minDelay, maxDelay
-		case "seed":
-			if !hasValue {
-				return nil, fmt.Errorf("%s requires a value", token)
-			}
-			seed, err := parseInt64(value, "seed")
+		default:
+			handled, err := parseSharedStreamOption(key, value, hasValue, token, &cmd.sharedStreamOptions)
 			if err != nil {
 				return nil, err
 			}
-			cmd.Seed = seed
-			cmd.SeedSet = true
-		case "allow-abort":
-			cmd.AllowAbort = true
-		case "allow-error":
-			cmd.AllowError = true
-		case "allow-approval":
-			cmd.AllowApproval = true
-		default:
-			return nil, fmt.Errorf("unknown random option %q", token)
+			if !handled {
+				return nil, fmt.Errorf("unknown random option %q", token)
+			}
 		}
 	}
 	return cmd, nil
@@ -489,12 +461,12 @@ func parseRandomCommand(tokens []string) (*randomCommand, error) {
 
 func parseChaosCommand(tokens []string) (*chaosCommand, error) {
 	cmd := &chaosCommand{
-		Turns:      3,
-		Duration:   10 * time.Second,
-		Profile:    "balanced",
-		StaggerMin: 150 * time.Millisecond,
-		StaggerMax: 900 * time.Millisecond,
-		MaxActions: 10,
+		Turns:               3,
+		Duration:            10 * time.Second,
+		StaggerMin:          150 * time.Millisecond,
+		StaggerMax:          900 * time.Millisecond,
+		MaxActions:          10,
+		sharedStreamOptions: sharedStreamOptions{Profile: "balanced"},
 	}
 	rest := tokens
 	if len(rest) > 0 && !strings.HasPrefix(rest[0], "--") {
@@ -522,27 +494,6 @@ func parseChaosCommand(tokens []string) (*chaosCommand, error) {
 	for _, token := range rest {
 		key, value, hasValue := parseOptionToken(token)
 		switch key {
-		case "profile":
-			if !hasValue {
-				return nil, fmt.Errorf("%s requires a value", token)
-			}
-			profile := strings.TrimSpace(strings.ToLower(value))
-			switch profile {
-			case "balanced", "tools", "artifacts", "terminals":
-				cmd.Profile = profile
-			default:
-				return nil, fmt.Errorf("unknown chaos profile %q", value)
-			}
-		case "seed":
-			if !hasValue {
-				return nil, fmt.Errorf("%s requires a value", token)
-			}
-			seed, err := parseInt64(value, "seed")
-			if err != nil {
-				return nil, err
-			}
-			cmd.Seed = seed
-			cmd.SeedSet = true
 		case "stagger-ms":
 			if !hasValue {
 				return nil, fmt.Errorf("%s requires a value", token)
@@ -556,31 +507,60 @@ func parseChaosCommand(tokens []string) (*chaosCommand, error) {
 			}
 			cmd.StaggerMin, cmd.StaggerMax = minDelay, maxDelay
 		case "max-actions":
-			if !hasValue {
-				return nil, fmt.Errorf("%s requires a value", token)
-			}
-			n, err := parsePositiveInt(value, "max-actions")
+			n, err := parseValidatedInt(value, hasValue, token, "max-actions", maxDemoChaosActions, false)
 			if err != nil {
 				return nil, err
 			}
-			if err := validateMaxIntValue(n, maxDemoChaosActions, "max-actions"); err != nil {
+			cmd.MaxActions = n
+		default:
+			handled, err := parseSharedStreamOption(key, value, hasValue, token, &cmd.sharedStreamOptions)
+			if err != nil {
 				return nil, err
 			}
-			cmd.MaxActions = n
-		case "allow-abort":
-			cmd.AllowAbort = true
-		case "allow-error":
-			cmd.AllowError = true
-		case "allow-approval":
-			cmd.AllowApproval = true
-		default:
-			return nil, fmt.Errorf("unknown chaos option %q", token)
+			if !handled {
+				return nil, fmt.Errorf("unknown chaos option %q", token)
+			}
 		}
 	}
 	if cmd.Turns < 1 {
 		return nil, fmt.Errorf("stream-chaos requires at least one turn")
 	}
 	return cmd, nil
+}
+
+func parseSharedStreamOption(key, value string, hasValue bool, token string, opts *sharedStreamOptions) (bool, error) {
+	switch key {
+	case "profile":
+		if !hasValue {
+			return false, fmt.Errorf("%s requires a value", token)
+		}
+		p := strings.TrimSpace(strings.ToLower(value))
+		switch p {
+		case "balanced", "tools", "artifacts", "terminals":
+			opts.Profile = p
+		default:
+			return false, fmt.Errorf("unknown profile %q", value)
+		}
+	case "seed":
+		if !hasValue {
+			return false, fmt.Errorf("%s requires a value", token)
+		}
+		s, err := parseInt64(value, "seed")
+		if err != nil {
+			return false, err
+		}
+		opts.Seed = s
+		opts.SeedSet = true
+	case "allow-abort":
+		opts.AllowAbort = true
+	case "allow-error":
+		opts.AllowError = true
+	case "allow-approval":
+		opts.AllowApproval = true
+	default:
+		return false, nil
+	}
+	return true, nil
 }
 
 func parseCommonOptions(tokens []string) (commonCommandOptions, error) {
@@ -595,62 +575,32 @@ func parseCommonOptions(tokens []string) (commonCommandOptions, error) {
 		key, value, hasValue := parseOptionToken(token)
 		switch key {
 		case "reasoning":
-			if !hasValue {
-				return opts, fmt.Errorf("%s requires a value", token)
-			}
-			n, err := parseNonNegativeInt(value, "reasoning")
+			n, err := parseValidatedInt(value, hasValue, token, "reasoning", maxDemoReasoningChars, true)
 			if err != nil {
-				return opts, err
-			}
-			if err := validateMaxIntValue(n, maxDemoReasoningChars, "reasoning"); err != nil {
 				return opts, err
 			}
 			opts.ReasoningChars = n
 		case "steps":
-			if !hasValue {
-				return opts, fmt.Errorf("%s requires a value", token)
-			}
-			n, err := parsePositiveInt(value, "steps")
+			n, err := parseValidatedInt(value, hasValue, token, "steps", maxDemoSteps, false)
 			if err != nil {
-				return opts, err
-			}
-			if err := validateMaxIntValue(n, maxDemoSteps, "steps"); err != nil {
 				return opts, err
 			}
 			opts.Steps = n
 		case "sources":
-			if !hasValue {
-				return opts, fmt.Errorf("%s requires a value", token)
-			}
-			n, err := parseNonNegativeInt(value, "sources")
+			n, err := parseValidatedInt(value, hasValue, token, "sources", maxDemoCollections, true)
 			if err != nil {
-				return opts, err
-			}
-			if err := validateMaxIntValue(n, maxDemoCollections, "sources"); err != nil {
 				return opts, err
 			}
 			opts.Sources = n
 		case "documents":
-			if !hasValue {
-				return opts, fmt.Errorf("%s requires a value", token)
-			}
-			n, err := parseNonNegativeInt(value, "documents")
+			n, err := parseValidatedInt(value, hasValue, token, "documents", maxDemoCollections, true)
 			if err != nil {
-				return opts, err
-			}
-			if err := validateMaxIntValue(n, maxDemoCollections, "documents"); err != nil {
 				return opts, err
 			}
 			opts.Documents = n
 		case "files":
-			if !hasValue {
-				return opts, fmt.Errorf("%s requires a value", token)
-			}
-			n, err := parseNonNegativeInt(value, "files")
+			n, err := parseValidatedInt(value, hasValue, token, "files", maxDemoCollections, true)
 			if err != nil {
-				return opts, err
-			}
-			if err := validateMaxIntValue(n, maxDemoCollections, "files"); err != nil {
 				return opts, err
 			}
 			opts.Files = n
@@ -764,58 +714,6 @@ func validateCommonOptions(opts commonCommandOptions) error {
 	return nil
 }
 
-func validateLoremCommand(cmd loremCommand) error {
-	if err := validateMaxIntValue(cmd.Chars, maxDemoChars, "character count"); err != nil {
-		return err
-	}
-	return validateCommonOptions(cmd.Options)
-}
-
-func validateToolsCommand(cmd toolsCommand) error {
-	if err := validateMaxIntValue(cmd.Chars, maxDemoChars, "character count"); err != nil {
-		return err
-	}
-	if err := validateMaxIntValue(len(cmd.Tools), maxDemoToolSpecs, "tool spec count"); err != nil {
-		return err
-	}
-	return validateCommonOptions(cmd.Options)
-}
-
-func validateRandomCommand(cmd randomCommand) error {
-	if err := validateMaxIntValue(cmd.Actions, maxDemoRandomActions, "actions"); err != nil {
-		return err
-	}
-	if cmd.Duration > maxDemoDuration {
-		return fmt.Errorf("duration %s exceeds the maximum of %s", cmd.Duration, maxDemoDuration)
-	}
-	if err := validateMaxDurationRange(cmd.DelayMin, cmd.DelayMax, maxDemoDelay, "delay range"); err != nil {
-		return err
-	}
-	if cmd.DelayMin < 0 || cmd.DelayMax < cmd.DelayMin {
-		return fmt.Errorf("invalid delay range %s:%s", cmd.DelayMin, cmd.DelayMax)
-	}
-	return nil
-}
-
-func validateChaosCommand(cmd chaosCommand) error {
-	if err := validateMaxIntValue(cmd.Turns, maxDemoChaosTurns, "turn count"); err != nil {
-		return err
-	}
-	if cmd.Duration > maxDemoDuration {
-		return fmt.Errorf("duration %s exceeds the maximum of %s", cmd.Duration, maxDemoDuration)
-	}
-	if err := validateMaxIntValue(cmd.MaxActions, maxDemoChaosActions, "max-actions"); err != nil {
-		return err
-	}
-	if err := validateMaxDurationRange(cmd.StaggerMin, cmd.StaggerMax, maxDemoStagger, "stagger range"); err != nil {
-		return err
-	}
-	if cmd.StaggerMin < 0 || cmd.StaggerMax < cmd.StaggerMin {
-		return fmt.Errorf("invalid stagger range %s:%s", cmd.StaggerMin, cmd.StaggerMax)
-	}
-	return nil
-}
-
 func validateMaxIntValue(value, max int, label string) error {
 	if value > max {
 		return fmt.Errorf("%s %d exceeds the maximum of %d", label, value, max)
@@ -914,6 +812,26 @@ func parseOptionToken(token string) (string, string, bool) {
 	return strings.ToLower(strings.TrimSpace(key)), strings.TrimSpace(value), ok
 }
 
+func parseValidatedInt(value string, hasValue bool, token, label string, max int, allowZero bool) (int, error) {
+	if !hasValue {
+		return 0, fmt.Errorf("%s requires a value", token)
+	}
+	var n int
+	var err error
+	if allowZero {
+		n, err = parseNonNegativeInt(value, label)
+	} else {
+		n, err = parsePositiveInt(value, label)
+	}
+	if err != nil {
+		return 0, err
+	}
+	if err := validateMaxIntValue(n, max, label); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
 func parsePositiveInt(raw string, label string) (int, error) {
 	value, err := strconv.Atoi(strings.TrimSpace(raw))
 	if err != nil || value <= 0 {
@@ -970,9 +888,6 @@ func parseIntRange(raw string, label string) (int, int, error) {
 }
 
 func (r demoRunner) runLorem(ctx context.Context, turn *bridgesdk.Turn, cmd loremCommand, _ zerolog.Logger) error {
-	if err := validateLoremCommand(cmd); err != nil {
-		return err
-	}
 	started := r.runtime.now()
 	opts := cmd.Options
 	rng := rngForOptions(opts.SeedSet, opts.Seed, started.UnixNano())
@@ -1007,9 +922,6 @@ func (r demoRunner) runLorem(ctx context.Context, turn *bridgesdk.Turn, cmd lore
 }
 
 func (r demoRunner) runTools(ctx context.Context, turn *bridgesdk.Turn, cmd toolsCommand, _ zerolog.Logger) error {
-	if err := validateToolsCommand(cmd); err != nil {
-		return err
-	}
 	started := r.runtime.now()
 	opts := cmd.Options
 	rng := rngForOptions(opts.SeedSet, opts.Seed, started.UnixNano())
@@ -1040,9 +952,6 @@ func (r demoRunner) runTools(ctx context.Context, turn *bridgesdk.Turn, cmd tool
 }
 
 func (r demoRunner) runRandom(ctx context.Context, turn *bridgesdk.Turn, cmd randomCommand, log zerolog.Logger) error {
-	if err := validateRandomCommand(cmd); err != nil {
-		return err
-	}
 	started := r.runtime.now()
 	seed := cmd.Seed
 	if !cmd.SeedSet {
@@ -1147,9 +1056,6 @@ func (r demoRunner) runRandom(ctx context.Context, turn *bridgesdk.Turn, cmd ran
 }
 
 func (r demoRunner) runChaos(ctx context.Context, conv *bridgesdk.Conversation, turn *bridgesdk.Turn, cmd chaosCommand, log zerolog.Logger) error {
-	if err := validateChaosCommand(cmd); err != nil {
-		return err
-	}
 	started := r.runtime.now()
 	baseSeed := cmd.Seed
 	if !cmd.SeedSet {
@@ -1178,16 +1084,18 @@ func (r demoRunner) runChaos(ctx context.Context, conv *bridgesdk.Conversation, 
 				}
 			}
 			randomCmd := randomCommand{
-				Duration:      cmd.Duration,
-				Actions:       max(3, min(cmd.MaxActions, int(cmd.Duration/time.Second))),
-				Profile:       cmd.Profile,
-				DelayMin:      180 * time.Millisecond,
-				DelayMax:      900 * time.Millisecond,
-				Seed:          childSeed,
-				SeedSet:       true,
-				AllowAbort:    cmd.AllowAbort,
-				AllowError:    cmd.AllowError,
-				AllowApproval: cmd.AllowApproval,
+				Duration: cmd.Duration,
+				Actions:  max(3, min(cmd.MaxActions, int(cmd.Duration/time.Second))),
+				DelayMin: 180 * time.Millisecond,
+				DelayMax: 900 * time.Millisecond,
+				sharedStreamOptions: sharedStreamOptions{
+					Profile:       cmd.Profile,
+					Seed:          childSeed,
+					SeedSet:       true,
+					AllowAbort:    cmd.AllowAbort,
+					AllowError:    cmd.AllowError,
+					AllowApproval: cmd.AllowApproval,
+				},
 			}
 			if err := r.runRandom(ctx, t, randomCmd, childLog); err != nil {
 				errCh <- err
