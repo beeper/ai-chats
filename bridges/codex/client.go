@@ -676,15 +676,7 @@ done:
 	// If we observed turn-level diff updates, finalize them as a dedicated tool output.
 	if diff := strings.TrimSpace(state.codexLatestDiff); diff != "" {
 		diffToolID := fmt.Sprintf("diff-%s", turnID)
-		if state.turn != nil {
-			state.turn.Writer().Tools().EnsureInputStart(ctx, diffToolID, map[string]any{"turnId": turnID}, bridgesdk.ToolInputOptions{
-				ToolName:         "diff",
-				ProviderExecuted: true,
-			})
-			state.turn.Writer().Tools().Output(ctx, diffToolID, diff, bridgesdk.ToolOutputOptions{
-				ProviderExecuted: true,
-			})
-		}
+		emitDiffToolOutput(ctx, state, diffToolID, turnID, diff, false)
 		state.toolCalls = append(state.toolCalls, ToolCallMetadata{
 			CallID:        diffToolID,
 			ToolName:      "diff",
@@ -722,6 +714,21 @@ func (cc *CodexClient) appendCodexToolOutput(state *streamingState, toolCallID, 
 	return b.String()
 }
 
+// emitDiffToolOutput emits a diff tool output via the SDK writer.
+func emitDiffToolOutput(ctx context.Context, state *streamingState, diffToolID, turnID, diff string, streaming bool) {
+	if state == nil || state.turn == nil {
+		return
+	}
+	state.turn.Writer().Tools().EnsureInputStart(ctx, diffToolID, map[string]any{"turnId": turnID}, bridgesdk.ToolInputOptions{
+		ToolName:         "diff",
+		ProviderExecuted: true,
+	})
+	state.turn.Writer().Tools().Output(ctx, diffToolID, diff, bridgesdk.ToolOutputOptions{
+		ProviderExecuted: true,
+		Streaming:        streaming,
+	})
+}
+
 func codexStateModel(state *streamingState, fallback string) string {
 	if state != nil {
 		if model := strings.TrimSpace(state.currentModel); model != "" {
@@ -754,22 +761,35 @@ var codexSimpleOutputDeltaMethods = map[string]string{
 	"item/plan/delta":                   "plan",
 }
 
+type toolNameExtractor func(json.RawMessage) (name string, inputKey string)
+
 func (cc *CodexClient) handleSimpleOutputDelta(
 	ctx context.Context, state *streamingState,
 	params json.RawMessage, threadID, turnID, defaultToolName string,
+	extractName toolNameExtractor,
 ) {
 	f, ok := parseNotifFields(params, threadID, turnID)
 	if !ok {
 		return
 	}
+	toolName := defaultToolName
+	inputMap := map[string]any{}
+	if extractName != nil {
+		if name, key := extractName(params); name != "" {
+			toolName = name
+			if key != "" {
+				inputMap[key] = name
+			}
+		}
+	}
 	toolCallID := strings.TrimSpace(f.ItemID)
 	if toolCallID == "" {
-		toolCallID = defaultToolName
+		toolCallID = toolName
 	}
 	buf := cc.appendCodexToolOutput(state, toolCallID, f.Delta)
 	if state.turn != nil {
-		state.turn.Writer().Tools().EnsureInputStart(ctx, toolCallID, map[string]any{}, bridgesdk.ToolInputOptions{
-			ToolName:         defaultToolName,
+		state.turn.Writer().Tools().EnsureInputStart(ctx, toolCallID, inputMap, bridgesdk.ToolInputOptions{
+			ToolName:         toolName,
 			ProviderExecuted: true,
 		})
 		state.turn.Writer().Tools().Output(ctx, toolCallID, buf, bridgesdk.ToolOutputOptions{
@@ -781,7 +801,7 @@ func (cc *CodexClient) handleSimpleOutputDelta(
 
 func (cc *CodexClient) handleNotif(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, state *streamingState, model, threadID, turnID string, evt codexNotif) {
 	if defaultToolName, ok := codexSimpleOutputDeltaMethods[evt.Method]; ok {
-		cc.handleSimpleOutputDelta(ctx, state, evt.Params, threadID, turnID, defaultToolName)
+		cc.handleSimpleOutputDelta(ctx, state, evt.Params, threadID, turnID, defaultToolName, nil)
 		return
 	}
 	parseFields := func() (codexNotifFields, bool) {
@@ -844,33 +864,16 @@ func (cc *CodexClient) handleNotif(ctx context.Context, portal *bridgev2.Portal,
 		}
 		appendReasoningDelta(f.Delta)
 	case "item/mcpToolCall/outputDelta":
-		f, ok := parseFields()
-		if !ok {
-			return
-		}
-		var extra struct {
-			Tool string `json:"tool"`
-		}
-		_ = json.Unmarshal(evt.Params, &extra)
-		toolCallID := strings.TrimSpace(f.ItemID)
-		toolName := strings.TrimSpace(extra.Tool)
-		if toolName == "" {
-			toolName = "mcpToolCall"
-		}
-		if toolCallID == "" {
-			toolCallID = toolName
-		}
-		buf := cc.appendCodexToolOutput(state, toolCallID, f.Delta)
-		if state.turn != nil {
-			state.turn.Writer().Tools().EnsureInputStart(ctx, toolCallID, map[string]any{"tool": toolName}, bridgesdk.ToolInputOptions{
-				ToolName:         toolName,
-				ProviderExecuted: true,
-			})
-			state.turn.Writer().Tools().Output(ctx, toolCallID, buf, bridgesdk.ToolOutputOptions{
-				ProviderExecuted: true,
-				Streaming:        true,
-			})
-		}
+		cc.handleSimpleOutputDelta(ctx, state, evt.Params, threadID, turnID, "mcpToolCall", func(raw json.RawMessage) (string, string) {
+			var extra struct {
+				Tool string `json:"tool"`
+			}
+			_ = json.Unmarshal(raw, &extra)
+			if name := strings.TrimSpace(extra.Tool); name != "" {
+				return name, "tool"
+			}
+			return "", ""
+		})
 	case "model/rerouted":
 		f, ok := parseFields()
 		if !ok {
@@ -902,17 +905,7 @@ func (cc *CodexClient) handleNotif(ctx context.Context, portal *bridgev2.Portal,
 		}
 		_ = json.Unmarshal(evt.Params, &diffPayload)
 		state.codexLatestDiff = diffPayload.Diff
-		diffToolID := fmt.Sprintf("diff-%s", turnID)
-		if state.turn != nil {
-			state.turn.Writer().Tools().EnsureInputStart(ctx, diffToolID, map[string]any{"turnId": turnID}, bridgesdk.ToolInputOptions{
-				ToolName:         "diff",
-				ProviderExecuted: true,
-			})
-			state.turn.Writer().Tools().Output(ctx, diffToolID, diffPayload.Diff, bridgesdk.ToolOutputOptions{
-				ProviderExecuted: true,
-				Streaming:        true,
-			})
-		}
+		emitDiffToolOutput(ctx, state, fmt.Sprintf("diff-%s", turnID), turnID, diffPayload.Diff, true)
 	case "turn/plan/updated":
 		if _, ok := parseFields(); !ok {
 			return
@@ -2192,11 +2185,13 @@ func codexAppendPermissionDetails(details []agentremote.ApprovalDetail, permissi
 	return details
 }
 
-func (cc *CodexClient) handleApprovalRequest(
+// resolveApprovalForActiveTurn runs the full approval lifecycle for the active
+// turn matching the request. On error, active is nil when no matching turn exists.
+func (cc *CodexClient) resolveApprovalForActiveTurn(
 	ctx context.Context, req codexrpc.Request,
-	defaultToolName string,
-	extractInput func(json.RawMessage) (map[string]any, agentremote.ApprovalPromptPresentation, codexApprovalBehavior),
-) (any, *codexrpc.RPCError) {
+	toolName string, inputMap map[string]any,
+	presentation agentremote.ApprovalPromptPresentation,
+) (bridgesdk.ToolApprovalResponse, *codexActiveTurn, error) {
 	var params codexApprovalRequestParams
 	_ = json.Unmarshal(req.Params, &params)
 
@@ -2204,17 +2199,15 @@ func (cc *CodexClient) handleApprovalRequest(
 	active := cc.activeTurns[codexTurnKey(params.ThreadID, params.TurnID)]
 	cc.activeMu.Unlock()
 	if active == nil || params.ThreadID != active.threadID || params.TurnID != active.turnID {
-		return map[string]any{"decision": "decline"}, nil
+		return bridgesdk.ToolApprovalResponse{}, nil, errors.New("no active turn")
 	}
 
 	toolCallID := strings.TrimSpace(params.ItemID)
 	if toolCallID == "" {
-		toolCallID = defaultToolName
+		toolCallID = toolName
 	}
-	toolName := defaultToolName
 	approvalID := codexApprovalID(req, params.ApprovalID)
 
-	inputMap, presentation, behavior := extractInput(req.Params)
 	turn := (*bridgesdk.Turn)(nil)
 	if active.state != nil {
 		turn = active.state.turn
@@ -2244,7 +2237,21 @@ func (cc *CodexClient) handleApprovalRequest(
 	}
 
 	decision, err := handle.Wait(ctx)
+	return decision, active, err
+}
+
+func (cc *CodexClient) handleApprovalRequest(
+	ctx context.Context, req codexrpc.Request,
+	defaultToolName string,
+	extractInput func(json.RawMessage) (map[string]any, agentremote.ApprovalPromptPresentation, codexApprovalBehavior),
+) (any, *codexrpc.RPCError) {
+	inputMap, presentation, behavior := extractInput(req.Params)
+	decision, active, err := cc.resolveApprovalForActiveTurn(ctx, req, defaultToolName, inputMap, presentation)
 	if err != nil {
+		if active == nil {
+			// No active turn found.
+			return map[string]any{"decision": "decline"}, nil
+		}
 		return map[string]any{"decision": "cancel"}, nil
 	}
 	return map[string]any{"decision": codexApprovalResponseValue(decision.Approved, decision.Always, decision.Reason, behavior.AllowSession)}, nil
@@ -2318,24 +2325,11 @@ func (cc *CodexClient) handleFileChangeApprovalRequest(ctx context.Context, req 
 
 func (cc *CodexClient) handlePermissionsApprovalRequest(ctx context.Context, req codexrpc.Request) (any, *codexrpc.RPCError) {
 	var params struct {
-		codexApprovalRequestParams
 		Reason      *string        `json:"reason"`
 		Permissions map[string]any `json:"permissions"`
 	}
 	_ = json.Unmarshal(req.Params, &params)
 
-	cc.activeMu.Lock()
-	active := cc.activeTurns[codexTurnKey(params.ThreadID, params.TurnID)]
-	cc.activeMu.Unlock()
-	if active == nil || params.ThreadID != active.threadID || params.TurnID != active.turnID {
-		return map[string]any{"permissions": map[string]any{}, "scope": "turn"}, nil
-	}
-
-	toolCallID := strings.TrimSpace(params.ItemID)
-	if toolCallID == "" {
-		toolCallID = "permissions"
-	}
-	approvalID := codexApprovalID(req, params.ApprovalID)
 	input := map[string]any{}
 	details := make([]agentremote.ApprovalDetail, 0, 6)
 	input, details = agentremote.AddOptionalDetail(input, details, "reason", "Reason", params.Reason)
@@ -2344,42 +2338,14 @@ func (cc *CodexClient) handlePermissionsApprovalRequest(ctx context.Context, req
 		details = codexAppendPermissionDetails(details, params.Permissions)
 	}
 	details = codexSessionApprovalDetails(details)
-	turn := (*bridgesdk.Turn)(nil)
-	if active.state != nil {
-		turn = active.state.turn
-	}
-	if turn != nil {
-		turn.Writer().Tools().EnsureInputStart(ctx, toolCallID, input, bridgesdk.ToolInputOptions{
-			ToolName:         "permissions",
-			ProviderExecuted: true,
-		})
-	}
-	handle := cc.requestSDKApproval(ctx, active.portal, active.state, turn, bridgesdk.ApprovalRequest{
-		ApprovalID: approvalID,
-		ToolCallID: toolCallID,
-		ToolName:   "permissions",
-		TTL:        10 * time.Minute,
-		Presentation: &agentremote.ApprovalPromptPresentation{
-			Title:       "Codex permissions request",
-			Details:     details,
-			AllowAlways: true,
-		},
+
+	decision, _, err := cc.resolveApprovalForActiveTurn(ctx, req, "permissions", input, agentremote.ApprovalPromptPresentation{
+		Title:       "Codex permissions request",
+		Details:     details,
+		AllowAlways: true,
 	})
-	if active.meta != nil {
-		if lvl, _ := stringutil.NormalizeElevatedLevel(active.meta.ElevatedLevel); lvl == "full" {
-			_ = cc.approvalFlow.Resolve(handle.ID(), agentremote.ApprovalDecisionPayload{
-				ApprovalID: handle.ID(),
-				Approved:   true,
-				Reason:     agentremote.ApprovalReasonAutoApproved,
-			})
-		}
-	}
-	decision, err := handle.Wait(ctx)
 	if err != nil || !decision.Approved {
-		return map[string]any{
-			"permissions": map[string]any{},
-			"scope":       "turn",
-		}, nil
+		return map[string]any{"permissions": map[string]any{}, "scope": "turn"}, nil
 	}
 	scope := "turn"
 	if decision.Always {
