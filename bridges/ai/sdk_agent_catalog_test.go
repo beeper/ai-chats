@@ -13,11 +13,13 @@ import (
 )
 
 func newCatalogTestClient() *AIClient {
+	enabled := true
 	return &AIClient{
 		UserLogin: &bridgev2.UserLogin{
 			UserLogin: &database.UserLogin{
 				ID: "login-1",
 				Metadata: &UserLoginMetadata{
+					Agents: &enabled,
 					ModelCache: &ModelCache{
 						Models: []ModelInfo{{
 							ID:                  "openai/gpt-5",
