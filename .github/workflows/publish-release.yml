@@ -91,7 +91,7 @@ jobs:
 
     steps:
       - name: Download release artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist
           pattern: release-*
@@ -135,7 +135,7 @@ jobs:
 
       - name: Download release artifacts
         if: ${{ steps.tap-token.outputs.present == 'true' }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist
           pattern: release-*
