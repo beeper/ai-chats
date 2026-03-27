@@ -247,6 +247,9 @@ func (s *AgentStoreAdapter) GetAgentByID(ctx context.Context, agentID string) (*
 func (s *AgentStoreAdapter) GetAgentForRoom(ctx context.Context, meta *PortalMetadata) (*agents.AgentDefinition, error) {
 	agentID := resolveAgentID(meta)
 	if agentID == "" {
+		if !s.client.agentsEnabledForLogin() {
+			return nil, nil
+		}
 		agentID = agents.DefaultAgentID // Default to Beep
 	}
 

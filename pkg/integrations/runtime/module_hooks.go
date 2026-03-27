@@ -178,7 +178,6 @@ type Host interface {
 
 	GetModuleMeta(meta any, key string) any
 	SetModuleMeta(meta any, key string, value any)
-	IsSimpleMode(meta any) bool
 	AgentIDFromMeta(meta any) string
 	CompactionCount(meta any) int
 	IsGroupChat(ctx context.Context, portal any) bool

@@ -10,15 +10,9 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-func TestPrepareStreamingRun_SimpleModeClearsReplyTarget(t *testing.T) {
+func TestPrepareStreamingRun_ModelRoomKeepsReplyTarget(t *testing.T) {
 	oc := &AIClient{}
-	meta := &PortalMetadata{
-		ResolvedTarget: &ResolvedTarget{
-			Kind:    ResolvedTargetModel,
-			GhostID: modelUserID("openai/gpt-5.2"),
-			ModelID: "openai/gpt-5.2",
-		},
-	}
+	meta := modelModeTestMeta("openai/gpt-5.2")
 	evt := &event.Event{
 		ID:     id.EventID("$evt"),
 		Sender: id.UserID("@alice:example.com"),
@@ -46,12 +40,12 @@ func TestPrepareStreamingRun_SimpleModeClearsReplyTarget(t *testing.T) {
 	if prep.State == nil {
 		t.Fatalf("expected streaming state")
 	}
-	if prep.State.replyTarget.ReplyTo != "" || prep.State.replyTarget.ThreadRoot != "" {
-		t.Fatalf("expected empty reply target in simple mode, got %+v", prep.State.replyTarget)
+	if prep.State.replyTarget.ReplyTo == "" {
+		t.Fatalf("expected reply target to be preserved in model room, got %+v", prep.State.replyTarget)
 	}
 }
 
-func TestPrepareStreamingRun_NonSimpleKeepsReplyTarget(t *testing.T) {
+func TestPrepareStreamingRun_AgentRoomKeepsReplyTarget(t *testing.T) {
 	oc := &AIClient{}
 	meta := &PortalMetadata{}
 	evt := &event.Event{
@@ -82,6 +76,6 @@ func TestPrepareStreamingRun_NonSimpleKeepsReplyTarget(t *testing.T) {
 		t.Fatalf("expected streaming state")
 	}
 	if prep.State.replyTarget.ReplyTo == "" {
-		t.Fatalf("expected reply target to be preserved in non-simple mode")
+		t.Fatalf("expected reply target to be preserved in agent room")
 	}
 }

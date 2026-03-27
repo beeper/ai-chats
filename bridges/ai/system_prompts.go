@@ -63,17 +63,29 @@ func (oc *AIClient) buildAdditionalSystemPrompts(
 	return oc.additionalSystemMessages(ctx, portal, meta)
 }
 
+func (oc *AIClient) buildSystemMessages(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+) []openai.ChatCompletionMessageParamUnion {
+	var msgs []openai.ChatCompletionMessageParamUnion
+	systemPrompt := oc.effectiveAgentPrompt(ctx, portal, meta)
+	if systemPrompt == "" {
+		systemPrompt = oc.effectivePrompt(meta)
+	}
+	if systemPrompt != "" {
+		msgs = append(msgs, openai.SystemMessage(systemPrompt))
+	}
+	msgs = append(msgs, oc.buildAdditionalSystemPrompts(ctx, portal, meta)...)
+	return msgs
+}
+
 func (oc *AIClient) buildAdditionalSystemPromptsCore(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
 ) []openai.ChatCompletionMessageParamUnion {
 	var out []openai.ChatCompletionMessageParamUnion
-
-	// Simple mode: no extra system hints or context injection.
-	if isSimpleMode(meta) {
-		return nil
-	}
 
 	if meta != nil && portal != nil && oc.isGroupChat(ctx, portal) {
 		activation := oc.resolveGroupActivation(meta)

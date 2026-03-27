@@ -5,6 +5,10 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 )
 
 func TestSearchUsersRequiresLogin(t *testing.T) {
@@ -26,6 +30,87 @@ func TestGetContactListRequiresLogin(t *testing.T) {
 	}
 	if !strings.Contains(strings.ToLower(err.Error()), "logged in") {
 		t.Fatalf("expected logged-in message, got: %v", err)
+	}
+}
+
+func TestSearchUsersAndContactsHideAgentsWhenDisabled(t *testing.T) {
+	enabled := false
+	oc := &AIClient{
+		UserLogin: &bridgev2.UserLogin{
+			UserLogin: &database.UserLogin{
+				ID: "login-1",
+				Metadata: &UserLoginMetadata{
+					Agents: &enabled,
+					ModelCache: &ModelCache{
+						Models: []ModelInfo{{
+							ID:   "openai/gpt-5",
+							Name: "GPT-5",
+						}},
+						LastRefresh:   time.Now().Unix(),
+						CacheDuration: 3600,
+					},
+					CustomAgents: map[string]*AgentDefinitionContent{
+						"custom-agent": {
+							ID:    "custom-agent",
+							Name:  "Custom Agent",
+							Model: "openai/gpt-5",
+						},
+					},
+				},
+			},
+		},
+		connector: &OpenAIConnector{},
+	}
+	oc.SetLoggedIn(true)
+
+	searchResults, err := oc.SearchUsers(context.Background(), "custom")
+	if err != nil {
+		t.Fatalf("SearchUsers returned error: %v", err)
+	}
+	if len(searchResults) != 0 {
+		t.Fatalf("expected agent search results to be hidden, got %#v", searchResults)
+	}
+
+	searchResults, err = oc.SearchUsers(context.Background(), "gpt")
+	if err != nil {
+		t.Fatalf("SearchUsers returned error: %v", err)
+	}
+	if len(searchResults) != 1 || searchResults[0].UserID != modelUserID("openai/gpt-5") {
+		t.Fatalf("expected only model search result, got %#v", searchResults)
+	}
+
+	contacts, err := oc.GetContactList(context.Background())
+	if err != nil {
+		t.Fatalf("GetContactList returned error: %v", err)
+	}
+	if len(contacts) != 1 || contacts[0].UserID != modelUserID("openai/gpt-5") {
+		t.Fatalf("expected only model contact when agents are disabled, got %#v", contacts)
+	}
+}
+
+func TestCreateChatWithGhostRejectsAgentWhenDisabled(t *testing.T) {
+	enabled := false
+	oc := &AIClient{
+		UserLogin: &bridgev2.UserLogin{
+			UserLogin: &database.UserLogin{
+				ID: "login-1",
+				Metadata: &UserLoginMetadata{
+					Agents: &enabled,
+				},
+			},
+		},
+	}
+
+	_, err := oc.CreateChatWithGhost(context.Background(), &bridgev2.Ghost{
+		Ghost: &database.Ghost{
+			ID: agentUserID("beeper"),
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected agent ghost chat creation to be rejected")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "disabled") {
+		t.Fatalf("expected disabled error, got %v", err)
 	}
 }
 

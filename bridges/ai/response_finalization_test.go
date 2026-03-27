@@ -46,7 +46,7 @@ func TestBuildFinalEditUIMessage_IncludesSourceAndFileParts(t *testing.T) {
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-delta", "id": "text-1", "delta": "hello"})
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-end", "id": "text-1"})
 
-	ui := buildCompactFinalUIMessage(oc.buildStreamUIMessage(state, simpleModeTestMeta("openai/gpt-4.1"), nil))
+	ui := buildCompactFinalUIMessage(oc.buildStreamUIMessage(state, modelModeTestMeta("openai/gpt-4.1"), nil))
 	if ui == nil {
 		t.Fatalf("expected final edit UI message")
 	}
@@ -109,7 +109,7 @@ func TestBuildFinalEditUIMessage_OmitsTextAndReasoningParts(t *testing.T) {
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "reasoning-delta", "id": "reasoning-2", "delta": "thinking"})
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "reasoning-end", "id": "reasoning-2"})
 
-	ui := buildCompactFinalUIMessage(oc.buildStreamUIMessage(state, simpleModeTestMeta("openai/gpt-4.1"), nil))
+	ui := buildCompactFinalUIMessage(oc.buildStreamUIMessage(state, modelModeTestMeta("openai/gpt-4.1"), nil))
 	parts, _ := ui["parts"].([]any)
 	for _, rawPart := range parts {
 		part, _ := rawPart.(map[string]any)

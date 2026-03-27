@@ -30,9 +30,6 @@ const (
 	ToolNameWebSearch  = toolspec.WebSearchName
 )
 
-// defaultSimpleModeSystemPrompt is the default system prompt for simple mode rooms.
-const defaultSimpleModeSystemPrompt = "You are a helpful assistant."
-
 func hasAssignedAgent(meta *PortalMetadata) bool {
 	return resolveAgentID(meta) != ""
 }
@@ -48,6 +45,17 @@ func modelRedirectTarget(requested, resolved string) networkid.UserID {
 		return ""
 	}
 	return modelUserID(resolved)
+}
+
+func (oc *AIClient) agentsEnabledForLogin() bool {
+	if oc == nil || oc.UserLogin == nil {
+		return true
+	}
+	return agentsEnabled(loginMetadata(oc.UserLogin))
+}
+
+func agentChatsDisabledError() error {
+	return bridgev2.WrapRespErr(errors.New("agent chats are disabled for this login"), mautrix.MForbidden)
 }
 
 // buildAvailableTools returns a list of ToolInfo for all tools based on tool policy.
@@ -409,6 +417,9 @@ func (oc *AIClient) CreateChatWithGhost(ctx context.Context, ghost *bridgev2.Gho
 		return resp.Chat, nil
 	}
 	if agentID, ok := parseAgentFromGhostID(ghostID); ok {
+		if !oc.agentsEnabledForLogin() {
+			return nil, agentChatsDisabledError()
+		}
 		store := NewAgentStoreAdapter(oc)
 		agent, err := store.GetAgentByID(ctx, agentID)
 		if err != nil || agent == nil {
@@ -425,6 +436,12 @@ func (oc *AIClient) CreateChatWithGhost(ctx context.Context, ghost *bridgev2.Gho
 
 // resolveAgentIdentifier resolves an agent to a ghost and optionally creates a chat.
 func (oc *AIClient) resolveAgentIdentifier(ctx context.Context, agent *agents.AgentDefinition, modelID string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
+	if !oc.agentsEnabledForLogin() {
+		if createChat {
+			return nil, agentChatsDisabledError()
+		}
+		return nil, bridgev2.WrapRespErr(fmt.Errorf("agent '%s' not found", agent.ID), mautrix.MNotFound)
+	}
 	explicitModel := modelID != ""
 	if modelID == "" {
 		modelID = oc.agentDefaultModel(agent)
@@ -514,6 +531,9 @@ func modelJoinMember(loginID networkid.UserLoginID, modelID, modelName string, i
 }
 
 func (oc *AIClient) createAgentChatWithModel(ctx context.Context, agent *agents.AgentDefinition, modelID string, applyModelOverride bool) (*bridgev2.CreateChatResponse, error) {
+	if !oc.agentsEnabledForLogin() {
+		return nil, agentChatsDisabledError()
+	}
 	if modelID == "" {
 		modelID = oc.agentDefaultModel(agent)
 	}
@@ -577,7 +597,6 @@ func (oc *AIClient) createNewChat(ctx context.Context, modelID string) (*bridgev
 		return nil, err
 	}
 
-	// Keep simple mode chats non-agentic by default.
 	// Rooms created via provisioning (ResolveIdentifier/CreateDM) won't go through our explicit
 	// post-CreateMatrixRoom call sites. Schedule the welcome notice for when the Matrix room exists.
 	oc.scheduleWelcomeMessage(ctx, portal.PortalKey)
@@ -705,7 +724,7 @@ func (oc *AIClient) handleNewChat(
 		oc.createAndOpenAgentChat(runCtx, portal, agent, modelID, false)
 		return
 	}
-	oc.createAndOpenSimpleChat(runCtx, portal, modelID)
+	oc.createAndOpenModelChat(runCtx, portal, modelID)
 }
 
 func (oc *AIClient) validateNewChatCommand(
@@ -730,6 +749,9 @@ func (oc *AIClient) resolveNewChatTarget(
 		if cmd != "agent" {
 			return nil, "", errors.New(usage)
 		}
+		if !oc.agentsEnabledForLogin() {
+			return nil, "", errors.New("agent chats are disabled for this login")
+		}
 		targetID := args[1]
 		if targetID == "" || len(args) > 2 {
 			return nil, "", errors.New(usage)
@@ -753,6 +775,9 @@ func (oc *AIClient) resolveNewChatTarget(
 	}
 	agentID := resolveAgentID(meta)
 	if agentID != "" {
+		if !oc.agentsEnabledForLogin() {
+			return nil, "", errors.New("agent chats are disabled for this login")
+		}
 		store := NewAgentStoreAdapter(oc)
 		agent, err := store.GetAgentByID(ctx, agentID)
 		if err != nil || agent == nil {
@@ -833,13 +858,15 @@ func (oc *AIClient) createAndOpenAgentChat(ctx context.Context, portal *bridgev2
 	))
 }
 
-func (oc *AIClient) createAndOpenSimpleChat(ctx context.Context, portal *bridgev2.Portal, modelID string) {
-	newPortal, chatInfo, err := oc.createNewSimpleChat(ctx, modelID)
+func (oc *AIClient) createAndOpenModelChat(ctx context.Context, portal *bridgev2.Portal, modelID string) {
+	chatResp, err := oc.createNewChat(ctx, modelID)
 	if err != nil {
 		oc.sendSystemNotice(ctx, portal, "Couldn't create the chat: "+err.Error())
 		return
 	}
 
+	newPortal := chatResp.Portal
+	chatInfo := chatResp.PortalInfo
 	if err := oc.materializePortalRoom(ctx, newPortal, chatInfo, portalRoomMaterializeOptions{SendWelcome: true}); err != nil {
 		oc.sendSystemNotice(ctx, portal, "Couldn't create the room: "+err.Error())
 		return
@@ -850,19 +877,6 @@ func (oc *AIClient) createAndOpenSimpleChat(ctx context.Context, portal *bridgev
 		"New %s chat created.\nOpen: %s",
 		modelContactName(modelID, oc.findModelInfo(modelID)), roomLink,
 	))
-}
-
-// createNewSimpleChat creates a new simple mode chat portal with the specified model.
-func (oc *AIClient) createNewSimpleChat(ctx context.Context, modelID string) (*bridgev2.Portal, *bridgev2.ChatInfo, error) {
-	portal, chatInfo, err := oc.initPortalForChat(ctx, PortalInitOpts{
-		ModelID: modelID,
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Simple mode rooms are non-agentic. This disables directive processing.
-	return portal, chatInfo, nil
 }
 
 // chatInfoFromPortal builds ChatInfo from an existing portal
@@ -1023,10 +1037,12 @@ func (oc *AIClient) bootstrap(ctx context.Context) {
 		// Don't return - still create the default chat (matches other bridge patterns)
 	}
 
-	// Create default chat room with Beep agent
-	if err := oc.ensureDefaultChat(logCtx); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure default chat")
-		return
+	if oc.agentsEnabledForLogin() {
+		// Create default chat room with Beep agent
+		if err := oc.ensureDefaultChat(logCtx); err != nil {
+			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure default chat")
+			return
+		}
 	}
 
 	// Mark bootstrap as complete only after successful completion

@@ -80,19 +80,6 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 
 	rawContent := state.accumulated.String()
 
-	// Check response mode - simple mode skips directive processing
-	responseMode := oc.getAgentResponseMode(meta)
-	if responseMode == agents.ResponseModeSimple {
-		// Simple mode: send content directly without directive processing
-		cleanedRaw := airuntime.SanitizeChatMessageForDisplay(rawContent, false)
-		if strings.TrimSpace(cleanedRaw) == "" {
-			cleanedRaw = finalRenderedBodyFallback(state)
-		}
-		rendered := format.RenderMarkdown(cleanedRaw, true, true)
-		oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, cleanedRaw, rendered, ReplyTarget{}, "simple")
-		return
-	}
-
 	// Natural mode: process directives (OpenClaw-style)
 	directives := airuntime.ParseReplyDirectives(rawContent, state.sourceEventID().String())
 
@@ -529,7 +516,7 @@ func buildFinalEditPayload(rendered event.MessageEventContent, topLevelExtra map
 	}
 }
 
-// sendFinalAssistantTurnContent is a helper for simple mode that sends content without directive processing.
+// sendFinalAssistantTurnContent sends the final assistant content after directive processing.
 func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata, markdown string, rendered event.MessageEventContent, replyTarget ReplyTarget, mode string) {
 	// Safety-split oversized responses into multiple Matrix events
 	var continuationBody string
@@ -615,10 +602,6 @@ func generateOutboundLinkPreviews(ctx context.Context, text string, intent bridg
 // getAgentResponseMode returns the response mode for the current room target.
 // Defaults to ResponseModeNatural if no agent-specific mode is configured.
 func (oc *AIClient) getAgentResponseMode(meta *PortalMetadata) agents.ResponseMode {
-	if isSimpleMode(meta) {
-		return agents.ResponseModeSimple
-	}
-
 	agentID := resolveAgentID(meta)
 
 	if agentID != "" {

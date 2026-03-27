@@ -1078,14 +1078,11 @@ func (oc *AIClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal
 }
 
 func (oc *AIClient) supportsMessageActionsFeature(meta *PortalMetadata) bool {
-	if meta == nil || isSimpleMode(meta) {
+	if meta == nil {
 		return false
 	}
 	if oc == nil {
 		return true
-	}
-	if oc.getAgentResponseMode(meta) == agents.ResponseModeSimple {
-		return false
 	}
 	if oc.connector == nil {
 		return true
@@ -1744,11 +1741,7 @@ func (oc *AIClient) buildBaseContext(
 	meta *PortalMetadata,
 ) (PromptContext, error) {
 	var promptContext PromptContext
-	isSimple := isSimpleMode(meta)
-	if !isSimple {
-		bridgesdk.AppendChatMessagesToPromptContext(&promptContext.PromptContext, maybePrependSessionGreeting(ctx, portal, meta, nil, oc.log))
-	}
-
+	bridgesdk.AppendChatMessagesToPromptContext(&promptContext.PromptContext, maybePrependSessionGreeting(ctx, portal, meta, nil, oc.log))
 	bridgesdk.AppendChatMessagesToPromptContext(&promptContext.PromptContext, oc.buildSystemMessages(ctx, portal, meta))
 
 	historyMessages, err := oc.loadHistoryMessages(ctx, portal, meta)
@@ -1790,7 +1783,7 @@ func (oc *AIClient) applyAbortHint(ctx context.Context, portal *bridgev2.Portal,
 type inboundPromptResult struct {
 	PromptContext   PromptContext
 	ResolvedBody    string // user message after body override + abort hint
-	UntrustedPrefix string // context prefix to prepend (empty in simple mode)
+	UntrustedPrefix string // context prefix to prepend to the resolved user body
 }
 
 // prepareInboundPromptContext builds the base context, resolves inbound context,
@@ -1808,22 +1801,15 @@ func (oc *AIClient) prepareInboundPromptContext(
 		return inboundPromptResult{}, err
 	}
 	inboundCtx := oc.resolvePromptInboundContext(ctx, portal, userText, eventID)
-
-	isSimple := isSimpleMode(meta)
-	if !isSimple {
-		bridgesdk.AppendPromptText(&promptContext.SystemPrompt, airuntime.BuildInboundMetaSystemPrompt(inboundCtx))
-	}
+	bridgesdk.AppendPromptText(&promptContext.SystemPrompt, airuntime.BuildInboundMetaSystemPrompt(inboundCtx))
 
 	resolved := strings.TrimSpace(userText)
 	if body := strings.TrimSpace(inboundCtx.BodyForAgent); body != "" {
 		resolved = body
 	}
 
-	var untrustedPrefix string
-	if !isSimple {
-		resolved = oc.applyAbortHint(ctx, portal, meta, resolved)
-		untrustedPrefix = strings.TrimSpace(airuntime.BuildInboundUserContextPrefix(inboundCtx))
-	}
+	resolved = oc.applyAbortHint(ctx, portal, meta, resolved)
+	untrustedPrefix := strings.TrimSpace(airuntime.BuildInboundUserContextPrefix(inboundCtx))
 
 	return inboundPromptResult{
 		PromptContext:   promptContext,
@@ -1851,14 +1837,11 @@ func (oc *AIClient) buildContextWithLinkContext(
 		return PromptContext{}, err
 	}
 
-	isSimple := isSimpleMode(meta)
-	if !isSimple {
-		if linkContext := oc.buildLinkContext(ctx, latest, rawEventContent); linkContext != "" {
-			result.ResolvedBody += linkContext
-		}
+	if linkContext := oc.buildLinkContext(ctx, latest, rawEventContent); linkContext != "" {
+		result.ResolvedBody += linkContext
 	}
 
-	if !isSimple && portal != nil && portal.MXID != "" {
+	if portal != nil && portal.MXID != "" {
 		reactionFeedback := DrainReactionFeedback(portal.MXID)
 		if len(reactionFeedback) > 0 {
 			if feedbackText := FormatReactionFeedback(reactionFeedback); feedbackText != "" {
@@ -2023,7 +2006,6 @@ func (oc *AIClient) buildContextUpToMessage(
 	newBody string,
 ) (PromptContext, error) {
 	var promptContext PromptContext
-	isSimple := isSimpleMode(meta)
 	bridgesdk.AppendChatMessagesToPromptContext(&promptContext.PromptContext, oc.buildSystemMessages(ctx, portal, meta))
 
 	hr, err := oc.fetchHistoryRows(ctx, portal, meta)
@@ -2038,7 +2020,7 @@ func (oc *AIClient) buildContextUpToMessage(
 
 			// Stop after adding the target message
 			if msg.ID == targetMessageID {
-				body := cleanHistoryBody(newBody, isSimple, msg.MXID)
+				body := newBody
 				promptContext.Messages = append(promptContext.Messages, PromptMessage{
 					Role: PromptRoleUser,
 					Blocks: []PromptBlock{{

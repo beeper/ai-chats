@@ -23,7 +23,7 @@ func newTestAIClientWithConfig(cfg Config) *AIClient {
 
 func TestApplyPatchAvailability_DisabledByDefault(t *testing.T) {
 	oc := newTestAIClientWithConfig(Config{})
-	meta := simpleModeTestMeta("openai/gpt-5.2")
+	meta := modelModeTestMeta("openai/gpt-5.2")
 
 	available, _, _ := oc.isToolAvailable(meta, ToolNameApplyPatch)
 	if available {
@@ -42,7 +42,7 @@ func TestApplyPatchAvailability_EnabledWithoutAllowlist(t *testing.T) {
 			},
 		},
 	})
-	meta := simpleModeTestMeta("openai/gpt-5.2")
+	meta := modelModeTestMeta("openai/gpt-5.2")
 
 	available, _, _ := oc.isToolAvailable(meta, ToolNameApplyPatch)
 	if !available {
@@ -62,7 +62,7 @@ func TestApplyPatchAvailability_AllowlistMismatch(t *testing.T) {
 			},
 		},
 	})
-	meta := simpleModeTestMeta("openai/gpt-5.2")
+	meta := modelModeTestMeta("openai/gpt-5.2")
 
 	available, _, _ := oc.isToolAvailable(meta, ToolNameApplyPatch)
 	if available {

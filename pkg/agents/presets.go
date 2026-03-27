@@ -11,12 +11,11 @@ const (
 )
 
 // PresetAgents contains the default agent definitions:
-// Beeper AI (default), Beeper Search, Beeper Help, and Simple.
+// Beeper AI (default), Beeper Search, and Beeper Help.
 var PresetAgents = []*AgentDefinition{
 	BeeperAIAgent,
 	BeeperSearchAgent,
 	BeeperHelpAgent,
-	SimpleAgent,
 }
 
 // GetPresetByID returns a preset agent by ID.

@@ -86,7 +86,7 @@ func TestBuildStreamUIMessage_IncludesSourceAndFileParts(t *testing.T) {
 		MediaType: "image/png",
 	}}
 
-	ui := oc.buildStreamUIMessage(state, simpleModeTestMeta("openai/gpt-4.1"), nil)
+	ui := oc.buildStreamUIMessage(state, modelModeTestMeta("openai/gpt-4.1"), nil)
 	if ui == nil {
 		t.Fatalf("expected canonical message")
 	}

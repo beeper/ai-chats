@@ -21,6 +21,7 @@ var aiCommandRegistry = commandregistry.NewRegistry()
 var moduleCommandRegisterMu sync.Mutex
 var moduleCommandsRegistered = map[string]struct{}{}
 var allowedUserCommandNames = map[string]struct{}{
+	"agents": {},
 	"new":    {},
 	"reset":  {},
 	"status": {},

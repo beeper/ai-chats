@@ -2,11 +2,14 @@ package ai
 
 import (
 	"context"
-	"strings"
 	"testing"
+	"time"
+
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 )
 
-func TestSelectedBuiltinToolsForTurn_SimpleModeEnablesOnlyWebSearch(t *testing.T) {
+func TestSelectedBuiltinToolsForTurn_AgentRoomExposesBuiltinTools(t *testing.T) {
 	client := &AIClient{
 		connector: &OpenAIConnector{
 			Config: Config{
@@ -17,20 +20,28 @@ func TestSelectedBuiltinToolsForTurn_SimpleModeEnablesOnlyWebSearch(t *testing.T
 				},
 			},
 		},
+		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
+			ModelCache: &ModelCache{
+				Models: []ModelInfo{{
+					ID:                  "openai/gpt-5.2",
+					SupportsToolCalling: true,
+				}},
+				LastRefresh:   time.Now().Unix(),
+				CacheDuration: 3600,
+			},
+		}}},
 	}
 
-	meta := simpleModeTestMeta("openai/gpt-5.2")
+	meta := agentModeTestMeta("beeper")
+	meta.RuntimeModelOverride = "openai/gpt-5.2"
 
 	got := client.selectedBuiltinToolsForTurn(context.Background(), meta)
-	if len(got) != 1 {
-		t.Fatalf("expected exactly 1 tool for simple mode, got %d", len(got))
-	}
-	if strings.TrimSpace(got[0].Name) != ToolNameWebSearch {
-		t.Fatalf("expected simple mode tool %q, got %q", ToolNameWebSearch, got[0].Name)
+	if len(got) == 0 {
+		t.Fatalf("expected builtin tools for agent room")
 	}
 }
 
-func TestSelectedBuiltinToolsForTurn_NonAgentNonSimpleGetsNoTools(t *testing.T) {
+func TestSelectedBuiltinToolsForTurn_ModelRoomGetsNoTools(t *testing.T) {
 	client := &AIClient{
 		connector: &OpenAIConnector{
 			Config: Config{
@@ -47,6 +58,6 @@ func TestSelectedBuiltinToolsForTurn_NonAgentNonSimpleGetsNoTools(t *testing.T) 
 
 	got := client.selectedBuiltinToolsForTurn(context.Background(), meta)
 	if len(got) != 0 {
-		t.Fatalf("expected no builtin tools when room has no agent and is not simple mode, got %d", len(got))
+		t.Fatalf("expected no builtin tools when room has no assigned agent, got %d", len(got))
 	}
 }

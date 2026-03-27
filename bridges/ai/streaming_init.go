@@ -124,9 +124,6 @@ func (oc *AIClient) prepareStreamingRun(
 	state.turn = turn
 
 	state.replyTarget = oc.resolveInitialReplyTarget(evt)
-	if isSimpleMode(meta) {
-		state.replyTarget = ReplyTarget{}
-	}
 	if state.replyTarget.ThreadRoot != "" {
 		turn.SetThread(state.replyTarget.ThreadRoot)
 	}
