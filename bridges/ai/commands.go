@@ -132,9 +132,9 @@ func parseAgentsCommandArgs(args []string, currentlyEnabled bool) (enabled bool,
 		}
 		return false, false, "Agents are disabled for this login.", nil
 	case "on", "enable", "enabled", "true":
-		return true, currentlyEnabled != true, "Agents enabled for this login.", nil
+		return true, !currentlyEnabled, "Agents enabled for this login.", nil
 	case "off", "disable", "disabled", "false":
-		return false, currentlyEnabled != false, "Agents disabled for this login. New discovery and chat creation will use model rooms only.", nil
+		return false, currentlyEnabled, "Agents disabled for this login. New discovery and chat creation will use model rooms only.", nil
 	default:
 		return currentlyEnabled, false, "", errInvalidAgentsCommandUsage
 	}

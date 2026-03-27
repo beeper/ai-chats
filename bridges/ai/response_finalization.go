@@ -598,21 +598,3 @@ func generateOutboundLinkPreviews(ctx context.Context, text string, intent bridg
 	// Upload images to Matrix and get final previews
 	return UploadPreviewImages(ctx, previewsWithImages, intent, portal.MXID)
 }
-
-// getAgentResponseMode returns the response mode for the current room target.
-// Defaults to ResponseModeNatural if no agent-specific mode is configured.
-func (oc *AIClient) getAgentResponseMode(meta *PortalMetadata) agents.ResponseMode {
-	agentID := resolveAgentID(meta)
-
-	if agentID != "" {
-		store := NewAgentStoreAdapter(oc)
-		if agent, err := store.GetAgentByID(context.Background(), agentID); err == nil && agent != nil {
-			if agent.ResponseMode != "" {
-				return agent.ResponseMode
-			}
-		}
-	}
-
-	// Default to natural mode (OpenClaw-style)
-	return agents.ResponseModeNatural
-}
