@@ -22,6 +22,7 @@ type CodexConfig struct {
 	Command       string           `yaml:"command"`
 	Listen        string           `yaml:"listen"`
 	HomeBaseDir   string           `yaml:"home_base_dir"`
+	TrackedPaths  []string         `yaml:"tracked_paths"`
 	DefaultModel  string           `yaml:"default_model"`
 	NetworkAccess *bool            `yaml:"network_access"`
 	ClientInfo    *CodexClientInfo `yaml:"client_info"`
@@ -40,6 +41,7 @@ codex:
   enabled: true
   command: "codex"
   listen: ""
+  tracked_paths: []
   default_model: "gpt-5.1-codex"
   network_access: true
   client_info:

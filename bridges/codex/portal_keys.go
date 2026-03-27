@@ -8,13 +8,9 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 )
 
-func codexWelcomePortalKey(loginID networkid.UserLoginID, slug string) (networkid.PortalKey, error) {
-	slug = strings.TrimSpace(slug)
-	if slug == "" {
-		return networkid.PortalKey{}, fmt.Errorf("empty welcome slug")
-	}
+func codexWelcomePortalKey(loginID networkid.UserLoginID) (networkid.PortalKey, error) {
 	return networkid.PortalKey{
-		ID:       networkid.PortalID(fmt.Sprintf("codex:%s:welcome:%s", loginID, url.PathEscape(slug))),
+		ID:       networkid.PortalID(fmt.Sprintf("codex:%s:welcome", loginID)),
 		Receiver: loginID,
 	}, nil
 }
@@ -32,6 +28,17 @@ func codexThreadPortalKey(loginID networkid.UserLoginID, threadID string) (netwo
 				url.PathEscape(threadID),
 			),
 		),
+		Receiver: loginID,
+	}, nil
+}
+
+func codexWorkspacePortalKey(loginID networkid.UserLoginID, root string) (networkid.PortalKey, error) {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return networkid.PortalKey{}, fmt.Errorf("empty workspace root")
+	}
+	return networkid.PortalKey{
+		ID:       networkid.PortalID(fmt.Sprintf("codex:%s:workspace:%s", loginID, url.PathEscape(root))),
 		Receiver: loginID,
 	}, nil
 }
