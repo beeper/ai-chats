@@ -6,6 +6,8 @@ import (
 
 	"github.com/openai/openai-go/v3"
 	"github.com/rs/zerolog"
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -83,5 +85,43 @@ func TestPrepareStreamingRun_NonSimpleKeepsReplyTarget(t *testing.T) {
 	}
 	if prep.State.replyTarget.ReplyTo == "" {
 		t.Fatalf("expected reply target to be preserved in non-simple mode")
+	}
+}
+
+func TestPrepareStreamingRun_SnapshotsResponderFields(t *testing.T) {
+	oc := &AIClient{
+		connector: &OpenAIConnector{},
+		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
+			ModelCache: &ModelCache{Models: []ModelInfo{{
+				ID:            "openai/gpt-5.2",
+				ContextWindow: 400000,
+			}}},
+		}}},
+	}
+	meta := simpleModeTestMeta("openai/gpt-5.2")
+
+	prep, _, cleanup := oc.prepareStreamingRun(
+		context.Background(),
+		zerolog.Nop(),
+		nil,
+		nil,
+		meta,
+		[]openai.ChatCompletionMessageParamUnion{},
+	)
+	defer cleanup()
+
+	if prep.State == nil {
+		t.Fatalf("expected streaming state")
+	}
+	if prep.State.respondingModelID != "openai/gpt-5.2" {
+		t.Fatalf("expected responder model snapshot, got %q", prep.State.respondingModelID)
+	}
+	if prep.State.respondingContextLimit != 400000 {
+		t.Fatalf("expected responder context snapshot, got %d", prep.State.respondingContextLimit)
+	}
+
+	meta.ResolvedTarget.ModelID = "openai/gpt-4.1"
+	if prep.State.respondingModelID != "openai/gpt-5.2" {
+		t.Fatalf("expected snapshot to remain stable after metadata mutation, got %q", prep.State.respondingModelID)
 	}
 }

@@ -947,6 +947,21 @@ func (oc *AIClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*br
 
 	// Parse agent from ghost ID (format: "agent-{id}")
 	if agentID, ok := parseAgentFromGhostID(ghostID); ok {
+		if responder, err := oc.ResolveResponderForGhost(ctx, ghost.ID); err == nil && responder != nil {
+			store := NewAgentStoreAdapter(oc)
+			agent, getErr := store.GetAgentByID(ctx, agentID)
+			if getErr == nil && agent != nil {
+				if sdkAgent := oc.sdkAgentForDefinition(ctx, agent); sdkAgent != nil {
+					info := sdkAgent.UserInfo()
+					info.ExtraProfile = responderExtraProfile(responder)
+					info.ExtraUpdates = updateGhostLastSync
+					return info, nil
+				}
+			}
+			info := responderUserInfo(responder, agentContactIdentifiers(agentID, responder.ModelID, oc.findModelInfo(responder.ModelID)), true)
+			info.ExtraUpdates = updateGhostLastSync
+			return info, nil
+		}
 		store := NewAgentStoreAdapter(oc)
 		agent, err := store.GetAgentByID(ctx, agentID)
 		if err == nil && agent != nil {
@@ -967,6 +982,11 @@ func (oc *AIClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*br
 	// Parse model from ghost ID (format: "model-{escaped-model-id}")
 	if modelID := parseModelFromGhostID(ghostID); modelID != "" {
 		info := oc.findModelInfo(modelID)
+		if responder, err := oc.ResolveResponderForGhost(ctx, ghost.ID); err == nil && responder != nil {
+			userInfo := responderUserInfo(responder, modelContactIdentifiers(modelID, info), false)
+			userInfo.ExtraUpdates = updateGhostLastSync
+			return userInfo, nil
+		}
 		return &bridgev2.UserInfo{
 			Name:         ptr.Ptr(modelContactName(modelID, info)),
 			IsBot:        ptr.Ptr(false),
@@ -1096,25 +1116,11 @@ func (oc *AIClient) supportsMessageActionsFeature(meta *PortalMetadata) bool {
 // effectiveModel returns the full prefixed model ID (e.g., "openai/gpt-5.2")
 // based only on the resolved room target.
 func (oc *AIClient) effectiveModel(meta *PortalMetadata) string {
-	if meta != nil && strings.TrimSpace(meta.RuntimeModelOverride) != "" {
-		return ResolveAlias(meta.RuntimeModelOverride)
+	responder, err := oc.ResolveResponderForMeta(context.Background(), meta)
+	if err != nil || responder == nil {
+		return oc.defaultModelForProvider()
 	}
-	if meta != nil && meta.ResolvedTarget != nil {
-		switch meta.ResolvedTarget.Kind {
-		case ResolvedTargetModel:
-			return ResolveAlias(meta.ResolvedTarget.ModelID)
-		case ResolvedTargetAgent:
-			store := NewAgentStoreAdapter(oc)
-			agent, err := store.GetAgentByID(context.Background(), meta.ResolvedTarget.AgentID)
-			if err == nil && agent != nil && agent.Model.Primary != "" {
-				return ResolveAlias(agent.Model.Primary)
-			}
-			return ""
-		default:
-			return ""
-		}
-	}
-	return oc.defaultModelForProvider()
+	return responder.ModelID
 }
 
 // effectiveModelForAPI returns the actual model name to send to the API
@@ -1604,9 +1610,11 @@ func (oc *AIClient) listAvailableModels(ctx context.Context, forceRefresh bool) 
 	meta.ModelCache.Models = allModels
 	meta.ModelCache.LastRefresh = time.Now().Unix()
 
-	// Save metadata
-	if err := oc.UserLogin.Save(ctx); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to save model cache")
+	// Save metadata when the login is backed by a persisted row.
+	if oc.UserLogin != nil && oc.UserLogin.UserLogin != nil && oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.DB != nil {
+		if err := oc.UserLogin.Save(ctx); err != nil {
+			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to save model cache")
+		}
 	}
 
 	oc.loggerForContext(ctx).Info().Int("count", len(allModels)).Msg("Cached available models")

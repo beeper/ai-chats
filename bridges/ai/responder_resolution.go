@@ -1,0 +1,270 @@
+package ai
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"go.mau.fi/util/ptr"
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
+
+	"github.com/beeper/agentremote/pkg/agents"
+)
+
+type ResponderKind string
+
+const (
+	ResponderKindModel ResponderKind = "model"
+	ResponderKindAgent ResponderKind = "agent"
+)
+
+type ResponderInfo struct {
+	Kind                ResponderKind
+	GhostID             networkid.UserID
+	AgentID             string
+	ModelID             string
+	DisplayName         string
+	ContextLimit        int
+	MaxOutputTokens     int
+	SupportsReasoning   bool
+	SupportsToolCalling bool
+	SupportsImageGen    bool
+	SupportsVision      bool
+	SupportsAudio       bool
+	SupportsVideo       bool
+	SupportsPDF         bool
+}
+
+type ResponderResolveOptions struct {
+	RuntimeModelOverride string
+}
+
+func (oc *AIClient) ResolveResponderForMeta(ctx context.Context, meta *PortalMetadata) (*ResponderInfo, error) {
+	opts := ResponderResolveOptions{}
+	if meta != nil {
+		opts.RuntimeModelOverride = strings.TrimSpace(meta.RuntimeModelOverride)
+	}
+	return oc.resolveResponder(ctx, meta, opts)
+}
+
+func (oc *AIClient) ResolveResponderForGhost(ctx context.Context, ghostID networkid.UserID) (*ResponderInfo, error) {
+	target := resolveTargetFromGhostID(ghostID)
+	if target == nil {
+		return nil, fmt.Errorf("unsupported ghost target: %s", ghostID)
+	}
+	return oc.resolveResponder(ctx, &PortalMetadata{ResolvedTarget: target}, ResponderResolveOptions{})
+}
+
+func (oc *AIClient) ResolveResponderForAgent(ctx context.Context, agentID string, opts ResponderResolveOptions) (*ResponderInfo, error) {
+	agentID = normalizeAgentID(agentID)
+	if agentID == "" {
+		return nil, fmt.Errorf("agent id is required")
+	}
+	return oc.resolveResponder(ctx, &PortalMetadata{
+		ResolvedTarget: &ResolvedTarget{
+			Kind:    ResolvedTargetAgent,
+			GhostID: agentUserID(agentID),
+			AgentID: agentID,
+		},
+	}, opts)
+}
+
+func (oc *AIClient) ResolveResponderForModel(ctx context.Context, modelID string) (*ResponderInfo, error) {
+	modelID = strings.TrimSpace(ResolveAlias(modelID))
+	if modelID == "" {
+		return nil, fmt.Errorf("model id is required")
+	}
+	return oc.resolveResponder(ctx, &PortalMetadata{
+		ResolvedTarget: &ResolvedTarget{
+			Kind:    ResolvedTargetModel,
+			GhostID: modelUserID(modelID),
+			ModelID: modelID,
+		},
+	}, ResponderResolveOptions{})
+}
+
+func (oc *AIClient) resolveResponder(ctx context.Context, meta *PortalMetadata, opts ResponderResolveOptions) (*ResponderInfo, error) {
+	override := strings.TrimSpace(ResolveAlias(opts.RuntimeModelOverride))
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	var target *ResolvedTarget
+	if meta != nil {
+		target = meta.ResolvedTarget
+	}
+	if target == nil {
+		target = &ResolvedTarget{
+			Kind:    ResolvedTargetModel,
+			ModelID: oc.defaultModelForProvider(),
+		}
+	}
+
+	switch target.Kind {
+	case ResolvedTargetAgent:
+		agentID := normalizeAgentID(target.AgentID)
+		if agentID == "" {
+			return nil, fmt.Errorf("agent target missing agent id")
+		}
+		agent, err := NewAgentStoreAdapter(oc).GetAgentByID(ctx, agentID)
+		if err != nil {
+			return nil, fmt.Errorf("resolve agent %s: %w", agentID, err)
+		}
+		if agent == nil {
+			return nil, fmt.Errorf("agent not found: %s", agentID)
+		}
+		modelID := strings.TrimSpace(agent.Model.Primary)
+		if override != "" {
+			modelID = override
+		}
+		modelID = strings.TrimSpace(ResolveAlias(modelID))
+		if modelID == "" {
+			return nil, fmt.Errorf("agent %s has no model", agentID)
+		}
+		info := oc.responderModelInfo(modelID)
+		ghostID := target.GhostID
+		if ghostID == "" {
+			ghostID = agentUserID(agentID)
+		}
+		displayName := oc.resolveAgentDisplayName(ctx, agent)
+		if displayName == "" {
+			displayName = agent.EffectiveName()
+		}
+		if displayName == "" {
+			displayName = agentID
+		}
+		return &ResponderInfo{
+			Kind:                ResponderKindAgent,
+			GhostID:             ghostID,
+			AgentID:             agentID,
+			ModelID:             modelID,
+			DisplayName:         strings.TrimSpace(displayName),
+			ContextLimit:        responderContextLimit(info),
+			MaxOutputTokens:     responderMaxOutputTokens(info),
+			SupportsReasoning:   info != nil && info.SupportsReasoning,
+			SupportsToolCalling: info == nil || info.SupportsToolCalling,
+			SupportsImageGen:    info != nil && info.SupportsImageGen,
+			SupportsVision:      info != nil && info.SupportsVision,
+			SupportsAudio:       info != nil && info.SupportsAudio,
+			SupportsVideo:       info != nil && info.SupportsVideo,
+			SupportsPDF:         info != nil && info.SupportsPDF,
+		}, nil
+	case ResolvedTargetModel, ResolvedTargetUnknown:
+		modelID := strings.TrimSpace(target.ModelID)
+		if override != "" {
+			modelID = override
+		}
+		modelID = strings.TrimSpace(ResolveAlias(modelID))
+		if modelID == "" {
+			modelID = oc.defaultModelForProvider()
+		}
+		if modelID == "" {
+			return nil, fmt.Errorf("model target missing model id")
+		}
+		info := oc.responderModelInfo(modelID)
+		ghostID := target.GhostID
+		if ghostID == "" {
+			ghostID = modelUserID(modelID)
+		}
+		return &ResponderInfo{
+			Kind:                ResponderKindModel,
+			GhostID:             ghostID,
+			ModelID:             modelID,
+			DisplayName:         strings.TrimSpace(modelContactName(modelID, info)),
+			ContextLimit:        responderContextLimit(info),
+			MaxOutputTokens:     responderMaxOutputTokens(info),
+			SupportsReasoning:   info != nil && info.SupportsReasoning,
+			SupportsToolCalling: info == nil || info.SupportsToolCalling,
+			SupportsImageGen:    info != nil && info.SupportsImageGen,
+			SupportsVision:      info != nil && info.SupportsVision,
+			SupportsAudio:       info != nil && info.SupportsAudio,
+			SupportsVideo:       info != nil && info.SupportsVideo,
+			SupportsPDF:         info != nil && info.SupportsPDF,
+		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported target kind: %s", target.Kind)
+	}
+}
+
+func (oc *AIClient) responderModelInfo(modelID string) *ModelInfo {
+	modelID = strings.TrimSpace(ResolveAlias(modelID))
+	if modelID == "" {
+		return nil
+	}
+	return oc.findModelInfo(modelID)
+}
+
+func responderContextLimit(info *ModelInfo) int {
+	if info != nil && info.ContextWindow > 0 {
+		return info.ContextWindow
+	}
+	return 128000
+}
+
+func responderMaxOutputTokens(info *ModelInfo) int {
+	if info != nil && info.MaxOutputTokens > 0 {
+		return info.MaxOutputTokens
+	}
+	return 0
+}
+
+func responderInfoFromAgent(ctx context.Context, oc *AIClient, agent *agents.AgentDefinition, opts ResponderResolveOptions) (*ResponderInfo, error) {
+	if agent == nil {
+		return nil, fmt.Errorf("agent is required")
+	}
+	return oc.ResolveResponderForAgent(ctx, agent.ID, opts)
+}
+
+func (ri *ResponderInfo) ModelCapabilities() ModelCapabilities {
+	if ri == nil {
+		return ModelCapabilities{}
+	}
+	return ModelCapabilities{
+		SupportsVision:      ri.SupportsVision,
+		SupportsReasoning:   ri.SupportsReasoning,
+		SupportsPDF:         ri.SupportsPDF,
+		SupportsImageGen:    ri.SupportsImageGen,
+		SupportsAudio:       ri.SupportsAudio,
+		SupportsVideo:       ri.SupportsVideo,
+		SupportsToolCalling: ri.SupportsToolCalling,
+	}
+}
+
+func responderMetadataMap(responder *ResponderInfo) map[string]any {
+	if responder == nil {
+		return nil
+	}
+	metadata := map[string]any{
+		"com.beeper.ai.model_id":      responder.ModelID,
+		"com.beeper.ai.context_limit": responder.ContextLimit,
+		"com.beeper.ai.capabilities":  responder.ModelCapabilities(),
+	}
+	if responder.AgentID != "" {
+		metadata["com.beeper.ai.agent"] = responder.AgentID
+	}
+	return metadata
+}
+
+func responderExtraProfile(responder *ResponderInfo) database.ExtraProfile {
+	var extra database.ExtraProfile
+	for key, value := range responderMetadataMap(responder) {
+		if err := extra.Set(key, value); err != nil {
+			panic(err)
+		}
+	}
+	return extra
+}
+
+func responderUserInfo(responder *ResponderInfo, identifiers []string, isBot bool) *bridgev2.UserInfo {
+	if responder == nil {
+		return nil
+	}
+	return &bridgev2.UserInfo{
+		Name:         ptr.NonZero(strings.TrimSpace(responder.DisplayName)),
+		IsBot:        ptr.Ptr(isBot),
+		Identifiers:  identifiers,
+		ExtraProfile: responderExtraProfile(responder),
+	}
+}

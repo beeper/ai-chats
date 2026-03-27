@@ -30,6 +30,9 @@ func (oc *AIClient) sdkAgentForDefinition(ctx context.Context, agent *agents.Age
 		displayName = agent.ID
 	}
 	modelID := oc.agentDefaultModel(agent)
+	if responder, err := responderInfoFromAgent(ctx, oc, agent, ResponderResolveOptions{}); err == nil && responder != nil && responder.ModelID != "" {
+		modelID = responder.ModelID
+	}
 	return &bridgesdk.Agent{
 		ID:           string(oc.agentUserID(agent.ID)),
 		Name:         displayName,

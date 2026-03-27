@@ -180,13 +180,24 @@ func (oc *AIClient) modelContactResponse(ctx context.Context, model *ModelInfo) 
 	if model == nil || model.ID == "" {
 		return nil
 	}
+	var responder *ResponderInfo
+	var err error
+	if oc != nil {
+		responder, err = oc.ResolveResponderForModel(ctx, model.ID)
+	}
+	if err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Str("model", model.ID).Msg("Failed to resolve responder for model contact")
+	}
 	resp := &bridgev2.ResolveIdentifierResponse{
-		UserID: modelUserID(model.ID),
-		UserInfo: &bridgev2.UserInfo{
+		UserID:   modelUserID(model.ID),
+		UserInfo: responderUserInfo(responder, modelContactIdentifiers(model.ID, model), false),
+	}
+	if resp.UserInfo == nil {
+		resp.UserInfo = &bridgev2.UserInfo{
 			Name:        ptr.Ptr(modelContactName(model.ID, model)),
 			IsBot:       ptr.Ptr(false),
 			Identifiers: modelContactIdentifiers(model.ID, model),
-		},
+		}
 	}
 	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
 		return resp
@@ -201,8 +212,28 @@ func (oc *AIClient) modelContactResponse(ctx context.Context, model *ModelInfo) 
 }
 
 func (oc *AIClient) agentContactResponse(ctx context.Context, agent *bridgesdk.Agent) *bridgev2.ResolveIdentifierResponse {
-	resp := sdkResolveResponseForAgent(agent)
-	if resp == nil || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || resp.UserID == "" {
+	if agent == nil {
+		return nil
+	}
+	resp := &bridgev2.ResolveIdentifierResponse{
+		UserID: networkid.UserID(agent.ID),
+	}
+	if agentInfo := agent.UserInfo(); agentInfo != nil {
+		resp.UserInfo = agentInfo
+	}
+	if oc != nil {
+		if agentID := catalogAgentID(agent); agentID != "" {
+			responder, err := oc.ResolveResponderForAgent(ctx, agentID, ResponderResolveOptions{})
+			if err != nil {
+				oc.loggerForContext(ctx).Warn().Err(err).Str("agent", agentID).Msg("Failed to resolve responder for agent contact")
+			} else if resp.UserInfo == nil {
+				resp.UserInfo = responderUserInfo(responder, agent.Identifiers, true)
+			} else {
+				resp.UserInfo.ExtraProfile = responderExtraProfile(responder)
+			}
+		}
+	}
+	if resp.UserInfo == nil || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || resp.UserID == "" {
 		return resp
 	}
 	ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, resp.UserID)
@@ -436,8 +467,13 @@ func (oc *AIClient) resolveAgentIdentifier(ctx context.Context, agent *agents.Ag
 	}
 
 	agentName := oc.resolveAgentDisplayName(ctx, agent)
-	displayName := agentName
 	oc.ensureAgentGhostDisplayName(ctx, agent.ID, modelID, agentName)
+	responder, err := oc.ResolveResponderForAgent(ctx, agent.ID, ResponderResolveOptions{
+		RuntimeModelOverride: modelID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve agent responder: %w", err)
+	}
 
 	var chatResp *bridgev2.CreateChatResponse
 	if createChat {
@@ -449,14 +485,10 @@ func (oc *AIClient) resolveAgentIdentifier(ctx context.Context, agent *agents.Ag
 	}
 
 	return &bridgev2.ResolveIdentifierResponse{
-		UserID: userID,
-		UserInfo: &bridgev2.UserInfo{
-			Name:        ptr.Ptr(displayName),
-			IsBot:       ptr.Ptr(true),
-			Identifiers: agentContactIdentifiers(agent.ID, modelID, oc.findModelInfo(modelID)),
-		},
-		Ghost: ghost,
-		Chat:  chatResp,
+		UserID:   userID,
+		UserInfo: responderUserInfo(responder, agentContactIdentifiers(agent.ID, modelID, oc.findModelInfo(modelID)), true),
+		Ghost:    ghost,
+		Chat:     chatResp,
 	}, nil
 }
 
@@ -481,16 +513,27 @@ func (oc *AIClient) resolveModelIdentifier(ctx context.Context, modelID string, 
 		}
 	}
 
-	info := oc.findModelInfo(modelID)
+	responder, err := oc.ResolveResponderForModel(ctx, modelID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve model responder: %w", err)
+	}
 	return &bridgev2.ResolveIdentifierResponse{
 		UserID:   userID,
-		UserInfo: modelMemberUserInfo(modelID, info),
+		UserInfo: responderUserInfo(responder, modelContactIdentifiers(modelID, oc.findModelInfo(modelID)), false),
 		Ghost:    ghost,
 		Chat:     chatResp,
 	}, nil
 }
 
-func modelMemberUserInfo(modelID string, info *ModelInfo) *bridgev2.UserInfo {
+func (oc *AIClient) modelMemberUserInfo(ctx context.Context, modelID string, info *ModelInfo) *bridgev2.UserInfo {
+	responder, err := oc.ResolveResponderForModel(ctx, modelID)
+	if err == nil {
+		if userInfo := responderUserInfo(responder, modelContactIdentifiers(modelID, info), false); userInfo != nil {
+			return userInfo
+		}
+	} else {
+		oc.loggerForContext(ctx).Warn().Err(err).Str("model", modelID).Msg("Failed to resolve responder for model member info")
+	}
 	return &bridgev2.UserInfo{
 		Name:        ptr.Ptr(modelContactName(modelID, info)),
 		IsBot:       ptr.Ptr(false),
@@ -498,18 +541,24 @@ func modelMemberUserInfo(modelID string, info *ModelInfo) *bridgev2.UserInfo {
 	}
 }
 
-func modelJoinMember(loginID networkid.UserLoginID, modelID, modelName string, info *ModelInfo) bridgev2.ChatMember {
+func (oc *AIClient) modelJoinMember(ctx context.Context, loginID networkid.UserLoginID, modelID, modelName string, info *ModelInfo) bridgev2.ChatMember {
+	responder, err := oc.ResolveResponderForModel(ctx, modelID)
+	if err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Str("model", modelID).Msg("Failed to resolve responder for model join member")
+	}
+	memberExtra := responderMetadataMap(responder)
+	if memberExtra == nil {
+		memberExtra = map[string]any{}
+	}
+	memberExtra["displayname"] = modelName
 	return bridgev2.ChatMember{
 		EventSender: bridgev2.EventSender{
 			Sender:      modelUserID(modelID),
 			SenderLogin: loginID,
 		},
-		Membership: event.MembershipJoin,
-		UserInfo:   modelMemberUserInfo(modelID, info),
-		MemberEventExtra: map[string]any{
-			"displayname":            modelName,
-			"com.beeper.ai.model_id": modelID,
-		},
+		Membership:       event.MembershipJoin,
+		UserInfo:         oc.modelMemberUserInfo(ctx, modelID, info),
+		MemberEventExtra: memberExtra,
 	}
 }
 
@@ -682,7 +731,7 @@ func (oc *AIClient) initPortalForChat(ctx context.Context, opts PortalInitOpts) 
 	}
 	oc.ensureGhostDisplayName(ctx, modelID)
 
-	chatInfo := oc.composeChatInfo(title, modelID)
+	chatInfo := oc.composeChatInfo(ctx, title, modelID)
 	return portal, chatInfo, nil
 }
 
@@ -877,7 +926,7 @@ func (oc *AIClient) chatInfoFromPortal(ctx context.Context, portal *bridgev2.Por
 			title = modelContactName(modelID, oc.findModelInfo(modelID))
 		}
 	}
-	chatInfo := oc.composeChatInfo(title, modelID)
+	chatInfo := oc.composeChatInfo(ctx, title, modelID)
 
 	agentID := resolveAgentID(meta)
 	if agentID == "" {
@@ -901,7 +950,7 @@ func (oc *AIClient) chatInfoFromPortal(ctx context.Context, portal *bridgev2.Por
 }
 
 // composeChatInfo creates a ChatInfo struct for a chat
-func (oc *AIClient) composeChatInfo(title, modelID string) *bridgev2.ChatInfo {
+func (oc *AIClient) composeChatInfo(ctx context.Context, title, modelID string) *bridgev2.ChatInfo {
 	if modelID == "" {
 		modelID = oc.effectiveModel(nil)
 	}
@@ -918,7 +967,7 @@ func (oc *AIClient) composeChatInfo(title, modelID string) *bridgev2.ChatInfo {
 		BotDisplayName:    modelName,
 	})
 	// Override bot member with model-specific UserInfo and extra fields.
-	chatInfo.Members.MemberMap[modelUserID(modelID)] = modelJoinMember(oc.UserLogin.ID, modelID, modelName, modelInfo)
+	chatInfo.Members.MemberMap[modelUserID(modelID)] = oc.modelJoinMember(ctx, oc.UserLogin.ID, modelID, modelName, modelInfo)
 	return chatInfo
 }
 
@@ -956,16 +1005,25 @@ func (oc *AIClient) applyAgentChatInfo(chatInfo *bridgev2.ChatInfo, agentID, age
 		SenderLogin: oc.UserLogin.ID,
 	}
 	modelInfo := oc.findModelInfo(modelID)
-	agentMember.UserInfo = &bridgev2.UserInfo{
-		Name:        ptr.Ptr(agentDisplayName),
-		IsBot:       ptr.Ptr(true),
-		Identifiers: agentContactIdentifiers(agentID, modelID, modelInfo),
+	responder, err := oc.ResolveResponderForAgent(context.Background(), agentID, ResponderResolveOptions{
+		RuntimeModelOverride: modelID,
+	})
+	if err != nil {
+		oc.log.Warn().Err(err).Str("agent", agentID).Str("model", modelID).Msg("Failed to resolve responder for agent chat info")
 	}
-	agentMember.MemberEventExtra = map[string]any{
-		"displayname":            agentDisplayName,
-		"com.beeper.ai.model_id": modelID,
-		"com.beeper.ai.agent":    agentID,
+	agentMember.UserInfo = responderUserInfo(responder, agentContactIdentifiers(agentID, modelID, modelInfo), true)
+	if agentMember.UserInfo == nil {
+		agentMember.UserInfo = &bridgev2.UserInfo{
+			Name:        ptr.Ptr(agentDisplayName),
+			IsBot:       ptr.Ptr(true),
+			Identifiers: agentContactIdentifiers(agentID, modelID, modelInfo),
+		}
 	}
+	agentMember.MemberEventExtra = responderMetadataMap(responder)
+	if agentMember.MemberEventExtra == nil {
+		agentMember.MemberEventExtra = map[string]any{}
+	}
+	agentMember.MemberEventExtra["displayname"] = agentDisplayName
 
 	members.MemberMap = bridgev2.ChatMemberMap{
 		humanID:      humanMember,
