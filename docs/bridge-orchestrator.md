@@ -60,3 +60,10 @@ Local instance data is stored under:
 ```text
 ~/.config/agentremote/profiles/<profile>/instances/<instance>/
 ```
+
+Remote self-hosted bridge registrations are device-scoped per profile:
+
+```text
+sh-<device-id>-<bridge>
+sh-<device-id>-<bridge>-<name>
+```

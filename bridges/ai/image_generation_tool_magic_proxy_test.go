@@ -63,6 +63,27 @@ func TestResolveImageGenProviderMagicProxyProviderOpenAIStillRoutesToOpenRouter(
 	}
 }
 
+func TestResolveImageGenProviderMagicProxyProviderGeminiUsesGemini(t *testing.T) {
+	meta := &UserLoginMetadata{
+		Provider: ProviderMagicProxy,
+		APIKey:   "tok",
+		BaseURL:  "https://bai.bt.hn/team/proxy",
+	}
+	btc := newTTSTestBridgeContext(meta, &OpenAIConnector{})
+
+	got, err := resolveImageGenProvider(imageGenRequest{
+		Provider: "gemini",
+		Prompt:   "cat",
+		Count:    1,
+	}, btc)
+	if err != nil {
+		t.Fatalf("resolveImageGenProvider returned error: %v", err)
+	}
+	if got != imageGenProviderGemini {
+		t.Fatalf("expected provider %q, got %q", imageGenProviderGemini, got)
+	}
+}
+
 func TestBuildOpenAIImagesBaseURLMagicProxy(t *testing.T) {
 	meta := &UserLoginMetadata{
 		Provider: ProviderMagicProxy,
@@ -76,6 +97,23 @@ func TestBuildOpenAIImagesBaseURLMagicProxy(t *testing.T) {
 		t.Fatalf("buildOpenAIImagesBaseURL returned error: %v", err)
 	}
 	if baseURL != "https://bai.bt.hn/team/proxy/openai/v1" {
+		t.Fatalf("unexpected base url: %q", baseURL)
+	}
+}
+
+func TestBuildGeminiBaseURLMagicProxy(t *testing.T) {
+	meta := &UserLoginMetadata{
+		Provider: ProviderMagicProxy,
+		APIKey:   "tok",
+		BaseURL:  "https://bai.bt.hn/team/proxy",
+	}
+	btc := newTTSTestBridgeContext(meta, &OpenAIConnector{})
+
+	baseURL, err := buildGeminiBaseURL(btc)
+	if err != nil {
+		t.Fatalf("buildGeminiBaseURL returned error: %v", err)
+	}
+	if baseURL != "https://bai.bt.hn/team/proxy/gemini/v1beta" {
 		t.Fatalf("unexpected base url: %q", baseURL)
 	}
 }

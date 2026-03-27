@@ -246,7 +246,26 @@ func supportsOpenRouterImageGen(btc *BridgeToolContext) bool {
 }
 
 func supportsGeminiImageGen(btc *BridgeToolContext) bool {
-	return false
+	if btc == nil || btc.Client == nil || btc.Client.UserLogin == nil || btc.Client.UserLogin.Metadata == nil {
+		return false
+	}
+	loginMeta := loginMetadata(btc.Client.UserLogin)
+	if loginMeta == nil {
+		return false
+	}
+	switch loginMeta.Provider {
+	case ProviderMagicProxy:
+		if btc.Client.connector != nil {
+			services := btc.Client.connector.resolveServiceConfig(loginMeta)
+			if svc, ok := services[serviceGemini]; ok {
+				return strings.TrimSpace(svc.BaseURL) != "" && strings.TrimSpace(svc.APIKey) != ""
+			}
+		}
+		base := normalizeProxyBaseURL(loginMeta.BaseURL)
+		return base != "" && strings.TrimSpace(loginMeta.APIKey) != ""
+	default:
+		return false
+	}
 }
 
 func normalizeOpenAIModel(model string) string {
@@ -448,7 +467,29 @@ func buildOpenAIImagesBaseURL(btc *BridgeToolContext) (string, error) {
 }
 
 func buildGeminiBaseURL(btc *BridgeToolContext) (string, error) {
-	return "", errors.New("gemini image generation not available for this provider")
+	if btc == nil || btc.Client == nil || btc.Client.UserLogin == nil || btc.Client.UserLogin.Metadata == nil {
+		return "", errors.New("gemini image generation not available for this provider")
+	}
+	loginMeta := loginMetadata(btc.Client.UserLogin)
+	if loginMeta == nil {
+		return "", errors.New("gemini image generation not available for this provider")
+	}
+	switch loginMeta.Provider {
+	case ProviderMagicProxy:
+		if btc.Client.connector != nil {
+			services := btc.Client.connector.resolveServiceConfig(loginMeta)
+			if svc, ok := services[serviceGemini]; ok && strings.TrimSpace(svc.BaseURL) != "" {
+				return strings.TrimSuffix(strings.TrimSpace(svc.BaseURL), "/"), nil
+			}
+		}
+		base := normalizeProxyBaseURL(loginMeta.BaseURL)
+		if base == "" {
+			return "", errors.New("magic proxy base_url is required for image generation")
+		}
+		return joinProxyPath(base, "/gemini/v1beta"), nil
+	default:
+		return "", errors.New("gemini image generation not available for this provider")
+	}
 }
 
 func generateImagesForRequest(ctx context.Context, btc *BridgeToolContext, req imageGenRequest) ([]string, error) {

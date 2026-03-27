@@ -1,6 +1,8 @@
 package main
 
 import (
+	"strings"
+
 	"maunium.net/go/mautrix/bridgev2"
 
 	aibridge "github.com/beeper/agentremote/bridges/ai"
@@ -39,11 +41,12 @@ var bridgeRegistry = map[string]bridgeDef{
 	},
 }
 
-func beeperBridgeName(bridgeType, name string) string {
+func beeperBridgeName(deviceID, bridgeType, name string) string {
+	base := "sh-" + strings.TrimSpace(deviceID) + "-" + bridgeType
 	if name == "" {
-		return "sh-" + bridgeType
+		return base
 	}
-	return "sh-" + bridgeType + "-" + name
+	return base + "-" + name
 }
 
 func instanceDirName(bridgeType, name string) string {
@@ -51,4 +54,43 @@ func instanceDirName(bridgeType, name string) string {
 		return bridgeType
 	}
 	return bridgeType + "-" + name
+}
+
+func splitInstanceName(instanceName string) (bridgeType, name string, ok bool) {
+	instanceName = strings.TrimSpace(instanceName)
+	longest := ""
+	for candidate := range bridgeRegistry {
+		if instanceName == candidate || strings.HasPrefix(instanceName, candidate+"-") {
+			if len(candidate) > len(longest) {
+				longest = candidate
+			}
+		}
+	}
+	if longest == "" {
+		return "", "", false
+	}
+	if instanceName == longest {
+		return longest, "", true
+	}
+	return longest, strings.TrimPrefix(instanceName, longest+"-"), true
+}
+
+func remoteBridgeNameForLocalInstance(deviceID, instanceName string) (string, bool) {
+	bridgeType, name, ok := splitInstanceName(instanceName)
+	if !ok {
+		return "", false
+	}
+	return beeperBridgeName(deviceID, bridgeType, name), true
+}
+
+func localInstanceNameForRemoteBridge(deviceID, remoteName string) (string, bool) {
+	prefix := "sh-" + strings.TrimSpace(deviceID) + "-"
+	suffix, ok := strings.CutPrefix(remoteName, prefix)
+	if !ok {
+		return "", false
+	}
+	if _, _, ok := splitInstanceName(suffix); !ok {
+		return "", false
+	}
+	return suffix, true
 }

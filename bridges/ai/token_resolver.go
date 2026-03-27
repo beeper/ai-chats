@@ -10,6 +10,7 @@ import (
 const (
 	serviceOpenAI     = "openai"
 	serviceOpenRouter = "openrouter"
+	serviceGemini     = "gemini"
 	serviceExa        = "exa"
 )
 
@@ -148,6 +149,10 @@ func (oc *OpenAIConnector) resolveServiceConfig(meta *UserLoginMetadata) Service
 			}
 			services[serviceOpenAI] = ServiceConfig{
 				BaseURL: joinProxyPath(base, "/openai/v1"),
+				APIKey:  token,
+			}
+			services[serviceGemini] = ServiceConfig{
+				BaseURL: joinProxyPath(base, "/gemini/v1beta"),
 				APIKey:  token,
 			}
 			services[serviceExa] = ServiceConfig{

@@ -339,8 +339,12 @@ func setupBridgeCmd(fs *flag.FlagSet, args []string, withRegistration bool, extr
 	if err != nil {
 		return nil, nil, err
 	}
+	deviceID, err := ensureProfileDeviceID(*profile)
+	if err != nil {
+		return nil, nil, err
+	}
 	instName := instanceDirName(bridgeType, *name)
-	beeperName := beeperBridgeName(bridgeType, *name)
+	beeperName := beeperBridgeName(deviceID, bridgeType, *name)
 
 	sp, err := ensureInstanceLayout(*profile, instName)
 	if err != nil {
@@ -590,6 +594,10 @@ func cmdStatus(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	deviceID, err := ensureProfileDeviceID(*profile)
+	if err != nil {
+		return err
+	}
 
 	// Fetch remote bridges from server
 	var remoteBridges map[string]beeperapi.WhoamiBridge
@@ -621,7 +629,9 @@ func cmdStatus(args []string) error {
 		toShow = append(toShow, localInstances...)
 		for _, inst := range localInstances {
 			seen[inst] = true
-			seen["sh-"+inst] = true
+			if remoteName, ok := remoteBridgeNameForLocalInstance(deviceID, inst); ok {
+				seen[remoteName] = true
+			}
 		}
 		for name := range remoteBridges {
 			if !seen[name] {
@@ -644,14 +654,18 @@ func cmdStatus(args []string) error {
 	for _, inst := range toShow {
 		remoteName := inst
 		localName := inst
-		if cut, ok := strings.CutPrefix(inst, "sh-"); ok {
-			localName = cut
-		} else {
-			remoteName = "sh-" + inst
+		if strings.HasPrefix(inst, "sh-") {
+			if resolvedLocal, ok := localInstanceNameForRemoteBridge(deviceID, inst); ok {
+				localName = resolvedLocal
+			} else {
+				localName = ""
+			}
+		} else if resolvedRemote, ok := remoteBridgeNameForLocalInstance(deviceID, inst); ok {
+			remoteName = resolvedRemote
 		}
 
 		rb, hasRemote := remoteBridges[remoteName]
-		hasLocal := localSet[localName]
+		hasLocal := localName != "" && localSet[localName]
 
 		bs := bridgeStatus{Name: remoteName}
 		if hasRemote {
@@ -942,6 +956,10 @@ func cmdDoctor(args []string) error {
 	if err != nil {
 		return err
 	}
+	deviceID, err := ensureProfileDeviceID(*profile)
+	if err != nil {
+		return err
+	}
 	authCfg, authErr := loadAuthConfig(*profile)
 	instances, instErr := listInstancesForProfile(*profile)
 	if instErr != nil {
@@ -955,6 +973,7 @@ func cmdDoctor(args []string) error {
 	}
 	report := struct {
 		Profile   string          `json:"profile"`
+		DeviceID  string          `json:"device_id"`
 		AuthPath  string          `json:"auth_path"`
 		LoggedIn  bool            `json:"logged_in"`
 		UserID    string          `json:"user_id,omitempty"`
@@ -963,6 +982,7 @@ func cmdDoctor(args []string) error {
 		AuthError string          `json:"auth_error,omitempty"`
 	}{
 		Profile:  *profile,
+		DeviceID: deviceID,
 		AuthPath: authPath,
 		LoggedIn: authErr == nil,
 	}
@@ -990,6 +1010,7 @@ func cmdDoctor(args []string) error {
 		return enc.Encode(report)
 	}
 	fmt.Printf("Profile: %s\n", report.Profile)
+	fmt.Printf("Device ID: %s\n", report.DeviceID)
 	fmt.Printf("Auth path: %s\n", report.AuthPath)
 	if report.LoggedIn {
 		fmt.Printf("Logged in: yes (%s)\n", report.UserID)
