@@ -223,14 +223,6 @@ func inferProviderFromModel(model string) imageGenProvider {
 	return ""
 }
 
-func usesOpenAIParams(req imageGenRequest) bool {
-	return req.Size != "" || req.Quality != "" || req.Style != "" || req.Background != "" || req.OutputFormat != "" || req.Count > 1
-}
-
-func usesGeminiParams(req imageGenRequest) bool {
-	return req.AspectRatio != "" || req.Resolution != "" || len(req.InputImages) > 0
-}
-
 func supportsOpenAIImageGen(btc *BridgeToolContext) bool {
 	if btc == nil || btc.Client == nil || btc.Client.UserLogin == nil || btc.Client.UserLogin.Metadata == nil {
 		return false

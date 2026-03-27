@@ -65,10 +65,14 @@ func (oc *OpenAIConnector) initProvisioning() {
 	oc.br.Log.Info().Msg("Registered provisioning API endpoints for AI profile, agents, and MCP")
 }
 
-// getLogin gets the preferred user login from the request.
+// getLogin gets the default user login from the request.
 func (api *ProvisioningAPI) getLogin(w http.ResponseWriter, r *http.Request) *bridgev2.UserLogin {
 	user := api.prov.GetUser(r)
-	login := api.connector.getPreferredUserLogin(r.Context(), user)
+	if user == nil {
+		mautrix.MNotFound.WithMessage("No logins found.").Write(w)
+		return nil
+	}
+	login := user.GetDefaultLogin()
 	if login == nil {
 		mautrix.MNotFound.WithMessage("No logins found.").Write(w)
 		return nil

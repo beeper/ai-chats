@@ -43,9 +43,6 @@ func getAIClient(ce *commands.Event) *AIClient {
 	}
 
 	defaultLogin := ce.User.GetDefaultLogin()
-	if connector, ok := ce.Bridge.Network.(*OpenAIConnector); ok && connector != nil {
-		defaultLogin = connector.getPreferredUserLogin(ce.Ctx, ce.User)
-	}
 	br := ce.Bridge
 	if ce.User.Bridge != nil {
 		br = ce.User.Bridge
