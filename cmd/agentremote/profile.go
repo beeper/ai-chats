@@ -80,14 +80,6 @@ func ensureInstanceLayout(profile, instanceName string) (*instancePaths, error) 
 	return sp, nil
 }
 
-func authStore(profile string) (beeperauth.Store, error) {
-	path, err := authConfigPath(profile)
-	if err != nil {
-		return beeperauth.Store{}, err
-	}
-	return beeperauth.Store{Path: path, MissingError: missingAuthError(profile)}, nil
-}
-
 func loadProfileState(profile string) (*profileState, error) {
 	path, err := authConfigPath(profile)
 	if err != nil {
