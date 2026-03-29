@@ -250,8 +250,9 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	// Get raw event content for link previews
 	var rawEventContent map[string]any
 	if msg.Event != nil && msg.Event.Content.Raw != nil {
-		rawEventContent = msg.Event.Content.Raw
+		rawEventContent = clonePendingRawMap(msg.Event.Content.Raw)
 	}
+	pendingEvent := snapshotPendingEvent(msg.Event)
 
 	eventID := id.EventID("")
 	if msg.Event != nil {
@@ -279,7 +280,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	}
 
 	pending := pendingMessage{
-		Event:           msg.Event,
+		Event:           pendingEvent,
 		Portal:          portal,
 		Meta:            runMeta,
 		InboundContext:  &inboundCtx,
@@ -300,7 +301,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		enqueuedAt:      time.Now().UnixMilli(),
 		rawEventContent: rawEventContent,
 	}
-	dbMsg, isPending := oc.dispatchOrQueue(runCtx, msg.Event, portal, runMeta, userMessage, queueItem, queueSettings, promptContext)
+	dbMsg, isPending := oc.dispatchOrQueue(runCtx, pendingEvent, portal, runMeta, userMessage, queueItem, queueSettings, promptContext)
 
 	return &bridgev2.MatrixMessageResponse{
 		DB:      dbMsg,
@@ -435,8 +436,9 @@ func (oc *AIClient) regenerateFromEdit(
 
 	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
 	isGroup := oc.isGroupChat(ctx, portal)
+	pendingEvent := snapshotPendingEvent(evt)
 	pending := pendingMessage{
-		Event:       evt,
+		Event:       pendingEvent,
 		Portal:      portal,
 		Meta:        meta,
 		Type:        pendingTypeEditRegenerate,
@@ -453,7 +455,7 @@ func (oc *AIClient) regenerateFromEdit(
 		summaryLine: newBody,
 		enqueuedAt:  time.Now().UnixMilli(),
 	}
-	oc.dispatchOrQueueCore(ctx, evt, portal, meta, nil, queueItem, queueSettings, promptContext)
+	oc.dispatchOrQueueCore(ctx, pendingEvent, portal, meta, nil, queueItem, queueSettings, promptContext)
 
 	return nil
 }
@@ -599,6 +601,7 @@ func (oc *AIClient) handleMediaMessage(
 	if msg.Content.File != nil {
 		encryptedFile = msg.Content.File
 	}
+	pendingEvent := snapshotPendingEvent(msg.Event)
 
 	dispatchTextOnly := func(rawBody string) (*bridgev2.MatrixMessageResponse, error) {
 		inboundCtx := oc.buildMatrixInboundContext(portal, msg.Event, rawBody, senderName, roomName, isGroup)
@@ -623,7 +626,7 @@ func (oc *AIClient) handleMediaMessage(
 			userMessage.SendTxnID = networkid.RawTransactionID(msg.InputTransactionID)
 		}
 		pending := pendingMessage{
-			Event:          msg.Event,
+			Event:          pendingEvent,
 			Portal:         portal,
 			Meta:           meta,
 			InboundContext: &inboundCtx,
@@ -638,7 +641,7 @@ func (oc *AIClient) handleMediaMessage(
 			summaryLine: rawBody,
 			enqueuedAt:  time.Now().UnixMilli(),
 		}
-		dbMsg, isPending := oc.dispatchOrQueue(promptCtx, msg.Event, portal, meta, userMessage, queueItem, queueSettings, promptContext)
+		dbMsg, isPending := oc.dispatchOrQueue(promptCtx, pendingEvent, portal, meta, userMessage, queueItem, queueSettings, promptContext)
 		return &bridgev2.MatrixMessageResponse{
 			DB:      dbMsg,
 			Pending: isPending,
@@ -746,7 +749,7 @@ func (oc *AIClient) handleMediaMessage(
 	}
 
 	pending := pendingMessage{
-		Event:          msg.Event,
+		Event:          snapshotPendingEvent(msg.Event),
 		Portal:         portal,
 		Meta:           meta,
 		InboundContext: &captionInboundCtx,
@@ -764,7 +767,7 @@ func (oc *AIClient) handleMediaMessage(
 		summaryLine: rawCaption,
 		enqueuedAt:  time.Now().UnixMilli(),
 	}
-	dbMsg, isPending := oc.dispatchOrQueue(promptCtx, msg.Event, portal, meta, userMessage, queueItem, queueSettings, promptContext)
+	dbMsg, isPending := oc.dispatchOrQueue(promptCtx, pending.Event, portal, meta, userMessage, queueItem, queueSettings, promptContext)
 
 	return &bridgev2.MatrixMessageResponse{
 		DB:      dbMsg,
@@ -891,7 +894,7 @@ func (oc *AIClient) handleTextFileMessage(
 	}
 
 	pending := pendingMessage{
-		Event:          msg.Event,
+		Event:          snapshotPendingEvent(msg.Event),
 		Portal:         portal,
 		Meta:           meta,
 		InboundContext: &inboundCtx,
@@ -906,7 +909,7 @@ func (oc *AIClient) handleTextFileMessage(
 		summaryLine: strings.TrimSpace(rawCaption),
 		enqueuedAt:  time.Now().UnixMilli(),
 	}
-	dbMsg, isPending := oc.dispatchOrQueue(promptCtx, msg.Event, portal, meta, userMessage, queueItem, queueSettings, promptContext)
+	dbMsg, isPending := oc.dispatchOrQueue(promptCtx, pending.Event, portal, meta, userMessage, queueItem, queueSettings, promptContext)
 
 	return &bridgev2.MatrixMessageResponse{
 		DB:      dbMsg,

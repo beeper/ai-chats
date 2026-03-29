@@ -2018,8 +2018,9 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 	ctx = withInboundContext(ctx, inboundCtx)
 	rawEventContent := map[string]any(nil)
 	if last.Event != nil && last.Event.Content.Raw != nil {
-		rawEventContent = last.Event.Content.Raw
+		rawEventContent = clonePendingRawMap(last.Event.Content.Raw)
 	}
+	pendingEvent := snapshotPendingEvent(last.Event)
 
 	extraStatusEvents := make([]*event.Event, 0, len(entries)-1)
 	if len(entries) > 1 {
@@ -2077,7 +2078,7 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 	}
 
 	pending := pendingMessage{
-		Event:           last.Event,
+		Event:           pendingEvent,
 		Portal:          last.Portal,
 		Meta:            last.Meta,
 		InboundContext:  &inboundCtx,
@@ -2094,14 +2095,14 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 	}
 	queueItem := pendingQueueItem{
 		pending:         pending,
-		messageID:       string(last.Event.ID),
+		messageID:       string(pendingEvent.ID),
 		summaryLine:     combinedRaw,
 		enqueuedAt:      time.Now().UnixMilli(),
 		rawEventContent: rawEventContent,
 	}
 	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(statusCtx, last.Portal, last.Meta, "", airuntime.QueueInlineOptions{})
 
-	_, _ = oc.dispatchOrQueue(statusCtx, last.Event, last.Portal, last.Meta, nil, queueItem, queueSettings, promptContext)
+	_, _ = oc.dispatchOrQueue(statusCtx, pendingEvent, last.Portal, last.Meta, nil, queueItem, queueSettings, promptContext)
 
 }
 
