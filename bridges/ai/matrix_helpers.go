@@ -39,9 +39,9 @@ func (oc *AIClient) resolveBotMXID(ctx context.Context, portal *bridgev2.Portal,
 			return ghost.Intent.GetMXID()
 		}
 	}
-	modelID := oc.effectiveModel(meta)
-	if modelID != "" {
-		if ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, modelUserID(modelID)); err == nil && ghost != nil {
+	responder := oc.responderForMeta(ctx, meta)
+	if responder != nil && responder.GhostID != "" {
+		if ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, responder.GhostID); err == nil && ghost != nil {
 			return ghost.Intent.GetMXID()
 		}
 	}

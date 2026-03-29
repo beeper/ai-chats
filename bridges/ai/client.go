@@ -947,30 +947,43 @@ func (oc *AIClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*br
 
 	// Parse agent from ghost ID (format: "agent-{id}")
 	if agentID, ok := parseAgentFromGhostID(ghostID); ok {
+		responder, _ := oc.ResolveResponderForGhost(ctx, ghost.ID)
 		store := NewAgentStoreAdapter(oc)
-		agent, err := store.GetAgentByID(ctx, agentID)
-		if err == nil && agent != nil {
+		agent, agentErr := store.GetAgentByID(ctx, agentID)
+		if agentErr == nil && agent != nil {
 			if sdkAgent := oc.sdkAgentForDefinition(ctx, agent); sdkAgent != nil {
 				info := sdkAgent.UserInfo()
+				if responder != nil {
+					info.ExtraProfile = responderExtraProfile(responder)
+				}
 				info.ExtraUpdates = updateGhostLastSync
 				return info, nil
 			}
 		}
+		if responder != nil {
+			info := responderUserInfo(responder, agentContactIdentifiers(agentID), true)
+			info.ExtraUpdates = updateGhostLastSync
+			return info, nil
+		}
 		return &bridgev2.UserInfo{
 			Name:         ptr.Ptr("Unknown Agent"),
 			IsBot:        ptr.Ptr(true),
-			Identifiers:  stringutil.DedupeStrings([]string{agentID}),
+			Identifiers:  stringutil.DedupeStrings([]string{canonicalAgentIdentifier(agentID)}),
 			ExtraUpdates: updateGhostLastSync,
 		}, nil
 	}
 
 	// Parse model from ghost ID (format: "model-{escaped-model-id}")
 	if modelID := parseModelFromGhostID(ghostID); modelID != "" {
-		info := oc.findModelInfo(modelID)
+		if responder, err := oc.ResolveResponderForGhost(ctx, ghost.ID); err == nil && responder != nil {
+			userInfo := responderUserInfo(responder, modelContactIdentifiers(modelID), false)
+			userInfo.ExtraUpdates = updateGhostLastSync
+			return userInfo, nil
+		}
 		return &bridgev2.UserInfo{
-			Name:         ptr.Ptr(modelContactName(modelID, info)),
+			Name:         ptr.Ptr(modelContactName(modelID, oc.findModelInfo(modelID))),
 			IsBot:        ptr.Ptr(false),
-			Identifiers:  modelContactIdentifiers(modelID, info),
+			Identifiers:  modelContactIdentifiers(modelID),
 			ExtraUpdates: updateGhostLastSync,
 		}, nil
 	}
@@ -1093,25 +1106,11 @@ func (oc *AIClient) supportsMessageActionsFeature(meta *PortalMetadata) bool {
 // effectiveModel returns the full prefixed model ID (e.g., "openai/gpt-5.2")
 // based only on the resolved room target.
 func (oc *AIClient) effectiveModel(meta *PortalMetadata) string {
-	if meta != nil && strings.TrimSpace(meta.RuntimeModelOverride) != "" {
-		return ResolveAlias(meta.RuntimeModelOverride)
+	responder := oc.responderForMeta(context.Background(), meta)
+	if responder == nil {
+		return ""
 	}
-	if meta != nil && meta.ResolvedTarget != nil {
-		switch meta.ResolvedTarget.Kind {
-		case ResolvedTargetModel:
-			return ResolveAlias(meta.ResolvedTarget.ModelID)
-		case ResolvedTargetAgent:
-			store := NewAgentStoreAdapter(oc)
-			agent, err := store.GetAgentByID(context.Background(), meta.ResolvedTarget.AgentID)
-			if err == nil && agent != nil && agent.Model.Primary != "" {
-				return ResolveAlias(agent.Model.Primary)
-			}
-			return ""
-		default:
-			return ""
-		}
-	}
-	return oc.defaultModelForProvider()
+	return responder.ModelID
 }
 
 // effectiveModelForAPI returns the actual model name to send to the API
@@ -1316,7 +1315,7 @@ func (oc *AIClient) effectiveAgentPrompt(ctx context.Context, portal *bridgev2.P
 		params.ToolSummaries = toolSummaries
 	}
 
-	modelCaps := oc.getModelCapabilitiesForMeta(meta)
+	modelCaps := oc.getModelCapabilitiesForMeta(ctx, meta)
 
 	// Build capabilities list from model resolution
 	var caps []string
@@ -1390,7 +1389,7 @@ func (oc *AIClient) defaultThinkLevel(meta *PortalMetadata) string {
 	case "low", "medium", "high", "xhigh":
 		return effort
 	}
-	if caps := oc.getModelCapabilitiesForMeta(meta); caps.SupportsReasoning {
+	if caps := oc.getModelCapabilitiesForMeta(context.Background(), meta); caps.SupportsReasoning {
 		return "low"
 	}
 	if modelID := strings.TrimSpace(oc.effectiveModel(meta)); modelID != "" {
@@ -1402,7 +1401,7 @@ func (oc *AIClient) defaultThinkLevel(meta *PortalMetadata) string {
 }
 
 func (oc *AIClient) effectiveReasoningEffort(meta *PortalMetadata) string {
-	if !oc.getModelCapabilitiesForMeta(meta).SupportsReasoning {
+	if !oc.getModelCapabilitiesForMeta(context.Background(), meta).SupportsReasoning {
 		return ""
 	}
 	if meta != nil {
@@ -1601,9 +1600,11 @@ func (oc *AIClient) listAvailableModels(ctx context.Context, forceRefresh bool) 
 	meta.ModelCache.Models = allModels
 	meta.ModelCache.LastRefresh = time.Now().Unix()
 
-	// Save metadata
-	if err := oc.UserLogin.Save(ctx); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to save model cache")
+	// Save metadata when the login is backed by a persisted row.
+	if oc.UserLogin != nil && oc.UserLogin.UserLogin != nil && oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.DB != nil {
+		if err := oc.UserLogin.Save(ctx); err != nil {
+			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to save model cache")
+		}
 	}
 
 	oc.loggerForContext(ctx).Info().Int("count", len(allModels)).Msg("Cached available models")
@@ -1703,7 +1704,7 @@ func (oc *AIClient) fetchHistoryRows(
 	}
 	return &historyLoadResult{
 		rows:      history,
-		hasVision: oc.getModelCapabilitiesForMeta(meta).SupportsVision,
+		hasVision: oc.getModelCapabilitiesForMeta(ctx, meta).SupportsVision,
 		resetAt:   resetAt,
 	}, nil
 }
@@ -2094,6 +2095,9 @@ func getAudioFormat(mimeType string) string {
 // ensureGhostDisplayName ensures the ghost has its display name set before sending messages.
 // This fixes the issue where ghosts appear with raw user IDs instead of formatted names.
 func (oc *AIClient) ensureGhostDisplayName(ctx context.Context, modelID string) {
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
+		return
+	}
 	ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, modelUserID(modelID))
 	if err != nil || ghost == nil {
 		return
@@ -2110,7 +2114,7 @@ func (oc *AIClient) ensureGhostDisplayNameWithGhost(ctx context.Context, ghost *
 		ghost.UpdateInfo(ctx, &bridgev2.UserInfo{
 			Name:        ptr.Ptr(displayName),
 			IsBot:       ptr.Ptr(false),
-			Identifiers: modelContactIdentifiers(modelID, info),
+			Identifiers: modelContactIdentifiers(modelID),
 		})
 		oc.loggerForContext(ctx).Debug().Str("model", modelID).Str("name", displayName).Msg("Updated ghost display name")
 	}
@@ -2118,6 +2122,9 @@ func (oc *AIClient) ensureGhostDisplayNameWithGhost(ctx context.Context, ghost *
 
 // ensureAgentGhostDisplayName ensures the agent ghost has its display name set.
 func (oc *AIClient) ensureAgentGhostDisplayName(ctx context.Context, agentID, modelID, agentName string) {
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
+		return
+	}
 	ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, oc.agentUserID(agentID))
 	if err != nil || ghost == nil {
 		return
@@ -2149,7 +2156,7 @@ func (oc *AIClient) ensureAgentGhostDisplayName(ctx context.Context, agentID, mo
 		ghost.UpdateInfo(ctx, &bridgev2.UserInfo{
 			Name:        ptr.Ptr(displayName),
 			IsBot:       ptr.Ptr(true),
-			Identifiers: agentContactIdentifiers(agentID, modelID, oc.findModelInfo(modelID)),
+			Identifiers: agentContactIdentifiers(agentID),
 			Avatar:      avatar,
 		})
 		oc.loggerForContext(ctx).Debug().Str("agent", agentID).Str("model", modelID).Str("name", displayName).Msg("Updated agent ghost display name")
@@ -2185,28 +2192,6 @@ func (oc *AIClient) backgroundContext(ctx context.Context) context.Context {
 		base = withModelOverride(base, model)
 	}
 	return oc.loggerForContext(ctx).WithContext(base)
-}
-
-// getModelCapabilities computes capabilities for a model.
-// If info is provided, it uses the ModelInfo fields for accurate capability detection.
-// If info is missing, capabilities default to false (except tool calling).
-func getModelCapabilities(modelID string, info *ModelInfo) ModelCapabilities {
-	caps := ModelCapabilities{
-		SupportsToolCalling: true, // Default true, overridden by ModelInfo if available
-	}
-
-	// Use ModelInfo if available (more accurate than heuristics)
-	if info != nil {
-		caps.SupportsVision = info.SupportsVision
-		caps.SupportsPDF = info.SupportsPDF
-		caps.SupportsImageGen = info.SupportsImageGen
-		caps.SupportsToolCalling = info.SupportsToolCalling
-		caps.SupportsAudio = info.SupportsAudio
-		caps.SupportsVideo = info.SupportsVideo
-		caps.SupportsReasoning = info.SupportsReasoning
-	}
-
-	return caps
 }
 
 // buildDedupeKey creates a unique key for inbound message deduplication.

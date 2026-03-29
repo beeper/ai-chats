@@ -237,7 +237,7 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 	if shouldSkipMain && !hasContent && !hasReasoning {
 		silent := true
 		if hb.ShowOk && deliverable {
-			oc.sendPlainAssistantMessage(ctx, portal, agents.HeartbeatToken)
+			_ = oc.sendPlainAssistantMessage(ctx, portal, agents.HeartbeatToken)
 			silent = false
 		}
 		status := "ok-token"
@@ -311,12 +311,12 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 	}
 
 	if hasReasoning {
-		oc.sendPlainAssistantMessage(ctx, portal, reasoningText)
+		_ = oc.sendPlainAssistantMessage(ctx, portal, reasoningText)
 	}
 
 	if cleaned != "" {
 		if !state.hasInitialMessageTarget() {
-			oc.sendPlainAssistantMessage(ctx, portal, cleaned)
+			_ = oc.sendPlainAssistantMessage(ctx, portal, cleaned)
 		} else {
 			rendered := format.RenderMarkdown(cleaned, true, true)
 			oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, cleaned, rendered, ReplyTarget{}, "heartbeat")

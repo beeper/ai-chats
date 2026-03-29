@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"context"
 	"strings"
 
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
@@ -11,7 +12,7 @@ func (oc *AIClient) toolDescriptionForPortal(meta *PortalMetadata, toolName stri
 	name := strings.TrimSpace(toolName)
 	switch name {
 	case toolspec.ImageName:
-		if meta != nil && oc.getModelCapabilitiesForMeta(meta).SupportsVision {
+		if meta != nil && oc.getModelCapabilitiesForMeta(context.Background(), meta).SupportsVision {
 			return toolspec.ImageDescriptionVisionHint
 		}
 	case toolspec.WebSearchName:

@@ -64,7 +64,17 @@ func (oc *AIClient) resolveUnderstandingModel(
 		if resolved == "" {
 			continue
 		}
-		caps := getModelCapabilities(resolved, oc.findModelInfo(resolved))
+		responder := oc.responderForMeta(ctx, &PortalMetadata{
+			ResolvedTarget: &ResolvedTarget{
+				Kind:    ResolvedTargetModel,
+				ModelID: resolved,
+				GhostID: modelUserID(resolved),
+			},
+		})
+		if responder == nil {
+			continue
+		}
+		caps := responder.ModelCapabilities()
 		if supportsCaps(caps) {
 			return resolved
 		}
@@ -93,8 +103,13 @@ func (oc *AIClient) resolveModelForCapability(
 	supportsCaps modelCapsFilter,
 	fallback func(context.Context, *PortalMetadata) string,
 ) (string, bool) {
-	modelID := oc.effectiveModel(meta)
-	caps := getModelCapabilities(modelID, oc.findModelInfo(modelID))
+	responder := oc.responderForMeta(ctx, meta)
+	modelID := ""
+	caps := ModelCapabilities{}
+	if responder != nil {
+		modelID = responder.ModelID
+		caps = responder.ModelCapabilities()
+	}
 	if supportsCaps(caps) {
 		return modelID, false
 	}

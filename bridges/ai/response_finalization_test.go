@@ -120,6 +120,39 @@ func TestBuildFinalEditUIMessage_OmitsTextAndReasoningParts(t *testing.T) {
 	}
 }
 
+func TestBuildFinalEditUIMessage_UsesNestedUsageContextLimitFromSnapshot(t *testing.T) {
+	oc := &AIClient{}
+	state := testStreamingState("turn-usage")
+	state.respondingModelID = "openai/gpt-5.2"
+	state.respondingContextLimit = 400000
+	state.promptTokens = 100
+	state.completionTokens = 20
+	state.accumulated.WriteString("hello")
+	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "start", "messageId": "turn-usage"})
+	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-start", "id": "text-usage"})
+	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-delta", "id": "text-usage", "delta": "hello"})
+	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-end", "id": "text-usage"})
+
+	ui := buildCompactFinalUIMessage(oc.buildStreamUIMessage(state, modelModeTestMeta("openai/gpt-4.1"), nil))
+	metadata, ok := ui["metadata"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected metadata map, got %T", ui["metadata"])
+	}
+	if got := metadata["model"]; got != "openai/gpt-5.2" {
+		t.Fatalf("expected responder snapshot model, got %#v", got)
+	}
+	usage, ok := metadata["usage"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected usage map, got %T", metadata["usage"])
+	}
+	if got := usage["context_limit"]; got != float64(400000) {
+		t.Fatalf("expected context limit 400000, got %#v", got)
+	}
+	if _, ok := metadata["prompt_tokens"]; ok {
+		t.Fatalf("did not expect flat prompt_tokens in final UI metadata")
+	}
+}
+
 func TestFinalRenderedBodyFallback_UsesVisibleTurnText(t *testing.T) {
 	state := testStreamingState("turn-visible")
 	state.accumulated.WriteString("[[reply_to_current]] hidden")

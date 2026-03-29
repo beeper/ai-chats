@@ -78,7 +78,7 @@ var tinyPNG = []byte{
 func newTestImageServer() *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
-		w.Write(tinyPNG)
+		_, _ = w.Write(tinyPNG)
 	}))
 }
 

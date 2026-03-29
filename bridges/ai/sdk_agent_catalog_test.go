@@ -103,11 +103,19 @@ func TestAIAgentCatalogListsAndResolvesCustomAgents(t *testing.T) {
 	if resolved == nil || resolved.ID != customAgent.ID {
 		t.Fatalf("unexpected ghost-id resolution result: %#v", resolved)
 	}
-	if !slices.Contains(resolved.Identifiers, "custom-agent") {
-		t.Fatalf("expected raw agent id in identifiers, got %#v", resolved.Identifiers)
+	if !slices.Contains(resolved.Identifiers, "agent:custom-agent") {
+		t.Fatalf("expected canonical agent identifier in identifiers, got %#v", resolved.Identifiers)
 	}
 	if resolved.AvatarURL != "mxc://example.com/custom" {
 		t.Fatalf("expected avatar URL to be preserved, got %q", resolved.AvatarURL)
+	}
+
+	resolved, err = catalog.ResolveAgent(context.Background(), client.UserLogin, "agent:custom-agent")
+	if err != nil {
+		t.Fatalf("ResolveAgent returned error for canonical identifier: %v", err)
+	}
+	if resolved == nil || resolved.ID != customAgent.ID {
+		t.Fatalf("unexpected canonical-id resolution result: %#v", resolved)
 	}
 }
 

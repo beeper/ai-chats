@@ -12,17 +12,14 @@ import (
 )
 
 func (oc *AIClient) resolveToolPolicyModelContext(meta *PortalMetadata) (provider string, modelID string) {
-	modelID = oc.effectiveModel(meta)
+	responder := oc.responderForMeta(context.Background(), meta)
+	if responder != nil {
+		modelID = responder.ModelID
+	}
 	if _, actual := ParseModelPrefix(modelID); actual != modelID {
 		modelID = actual
 	}
-	provider, _ = splitModelProvider(modelID)
-	if provider == "" {
-		loginMeta := loginMetadata(oc.UserLogin)
-		if loginMeta != nil {
-			provider = loginMeta.Provider
-		}
-	}
+	provider = oc.responderProvider(responder)
 	return provider, modelID
 }
 
@@ -45,7 +42,7 @@ func (oc *AIClient) isToolAvailable(meta *PortalMetadata, toolName string) (bool
 		return available, source, reason
 	}
 
-	if !oc.getModelCapabilitiesForMeta(meta).SupportsToolCalling {
+	if !oc.getModelCapabilitiesForMeta(context.Background(), meta).SupportsToolCalling {
 		return false, SourceModelLimit, "Model does not support tools"
 	}
 

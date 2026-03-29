@@ -25,24 +25,9 @@ func turnDataFromStreamingState(state *streamingState, uiMessage map[string]any)
 		initialEventID = state.turn.InitialEventID().String()
 	}
 	return sdk.BuildTurnDataFromUIMessage(uiMessage, sdk.TurnDataBuildOptions{
-		ID:   turnID,
-		Role: "assistant",
-		Metadata: map[string]any{
-			"turn_id":             turnID,
-			"finish_reason":       state.finishReason,
-			"prompt_tokens":       state.promptTokens,
-			"completion_tokens":   state.completionTokens,
-			"reasoning_tokens":    state.reasoningTokens,
-			"response_id":         state.responseID,
-			"response_status":     canonicalResponseStatus(state),
-			"started_at_ms":       state.startedAtMs,
-			"completed_at_ms":     state.completedAtMs,
-			"first_token_at_ms":   state.firstTokenAtMs,
-			"network_message_id":  networkMessageID,
-			"initial_event_id":    initialEventID,
-			"source_event_id":     state.sourceEventID(),
-			"generated_file_refs": agentremote.GeneratedFileRefsFromParts(state.generatedFiles),
-		},
+		ID:        turnID,
+		Role:      "assistant",
+		Metadata:  buildAssistantTurnMetadata(state, turnID, networkMessageID, initialEventID),
 		Text:      displayStreamingText(state),
 		Reasoning: state.reasoning.String(),
 		ToolCalls: state.toolCalls,
@@ -100,7 +85,7 @@ func canonicalResponseStatus(state *streamingState) string {
 	}
 }
 
-func buildTurnDataMetadata(state *streamingState, meta *PortalMetadata) map[string]any {
+func buildTurnDataMetadata(state *streamingState, _ *PortalMetadata) map[string]any {
 	if state == nil {
 		return nil
 	}
@@ -108,23 +93,5 @@ func buildTurnDataMetadata(state *streamingState, meta *PortalMetadata) map[stri
 	if state.turn != nil {
 		turnID = state.turn.ID()
 	}
-	modelID := ""
-	if meta != nil && meta.ResolvedTarget != nil {
-		modelID = strings.TrimSpace(meta.ResolvedTarget.ModelID)
-	}
-	return map[string]any{
-		"turn_id":           turnID,
-		"agent_id":          state.agentID,
-		"model":             modelID,
-		"finish_reason":     state.finishReason,
-		"response_id":       state.responseID,
-		"response_status":   canonicalResponseStatus(state),
-		"prompt_tokens":     state.promptTokens,
-		"completion_tokens": state.completionTokens,
-		"reasoning_tokens":  state.reasoningTokens,
-		"total_tokens":      state.totalTokens,
-		"started_at_ms":     state.startedAtMs,
-		"first_token_at_ms": state.firstTokenAtMs,
-		"completed_at_ms":   state.completedAtMs,
-	}
+	return buildAssistantTurnMetadata(state, turnID, "", "")
 }

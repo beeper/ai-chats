@@ -28,6 +28,11 @@ type streamingState struct {
 	completedAtMs   int64
 	roomID          id.RoomID
 
+	respondingGhostID      string
+	respondingAgentID      string
+	respondingModelID      string
+	respondingContextLimit int
+
 	promptTokens     int64
 	completionTokens int64
 	reasoningTokens  int64
