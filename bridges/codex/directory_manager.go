@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote"

@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/bridges/opencode/api"
