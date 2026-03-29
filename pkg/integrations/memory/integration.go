@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openai/openai-go/v3"
 	"go.mau.fi/util/dbutil"
 
 	"github.com/beeper/agentremote/pkg/agents"
@@ -26,8 +25,8 @@ type ProviderStatus = memorycore.ProviderStatus
 type ResolvedConfig = memorycore.ResolvedConfig
 
 // Integration is the self-owned memory integration module.
-// It implements ToolIntegration, PromptIntegration, CommandIntegration,
-// EventIntegration, LoginPurgeIntegration, and LoginLifecycleIntegration
+// It implements ToolIntegration, CommandIntegration, EventIntegration,
+// LoginPurgeIntegration, and LoginLifecycleIntegration
 // directly, wiring all deps from Host
 // capability interfaces.
 type Integration struct {
@@ -78,12 +77,8 @@ func (i *Integration) ToolAvailability(_ context.Context, scope iruntime.ToolSco
 	return true, true, iruntime.SourceGlobalDefault, ""
 }
 
-func (i *Integration) AdditionalSystemMessages(_ context.Context, _ iruntime.PromptScope) []openai.ChatCompletionMessageParamUnion {
-	return nil
-}
-
-func (i *Integration) AugmentPrompt(ctx context.Context, scope iruntime.PromptScope, prompt []openai.ChatCompletionMessageParamUnion) []openai.ChatCompletionMessageParamUnion {
-	return AugmentPrompt(ctx, scope, prompt, PromptAugmentDeps{
+func (i *Integration) PromptContextText(ctx context.Context, portal any, meta any) string {
+	return BuildPromptContextText(ctx, portal, meta, PromptContextDeps{
 		ShouldInjectContext:   i.shouldInjectMemoryPromptContext,
 		ShouldBootstrap:       i.shouldBootstrapMemoryPromptContext,
 		ResolveBootstrapPaths: i.resolveMemoryBootstrapPaths,
@@ -279,7 +274,7 @@ func (i *Integration) buildOverflowDeps() OverflowDeps {
 	}
 }
 
-func (i *Integration) shouldInjectMemoryPromptContext(scope iruntime.PromptScope) bool {
+func (i *Integration) shouldInjectMemoryPromptContext(_ any, _ any) bool {
 	if cfg := i.host.ModuleConfig(moduleName); cfg != nil {
 		inject, _ := cfg["inject_context"].(bool)
 		return inject
@@ -287,15 +282,15 @@ func (i *Integration) shouldInjectMemoryPromptContext(scope iruntime.PromptScope
 	return false
 }
 
-func (i *Integration) shouldBootstrapMemoryPromptContext(scope iruntime.PromptScope) bool {
-	raw := i.host.GetModuleMeta(scope.Meta, "memory_bootstrap_at")
+func (i *Integration) shouldBootstrapMemoryPromptContext(_ any, meta any) bool {
+	raw := i.host.GetModuleMeta(meta, "memory_bootstrap_at")
 	if raw == nil {
 		return true
 	}
 	return toInt64(raw) == 0
 }
 
-func (i *Integration) resolveMemoryBootstrapPaths(_ iruntime.PromptScope) []string {
+func (i *Integration) resolveMemoryBootstrapPaths(_ any, _ any) []string {
 	_, loc := i.host.UserTimezone()
 	if loc == nil {
 		loc = time.UTC
@@ -309,18 +304,18 @@ func (i *Integration) resolveMemoryBootstrapPaths(_ iruntime.PromptScope) []stri
 	}
 }
 
-func (i *Integration) markMemoryPromptBootstrapped(ctx context.Context, scope iruntime.PromptScope) {
-	if scope.Portal == nil || scope.Meta == nil {
+func (i *Integration) markMemoryPromptBootstrapped(ctx context.Context, portal any, meta any) {
+	if portal == nil || meta == nil {
 		return
 	}
-	i.host.SetModuleMeta(scope.Meta, "memory_bootstrap_at", time.Now().UnixMilli())
-	_ = i.host.SavePortal(ctx, scope.Portal, "memory bootstrap")
+	i.host.SetModuleMeta(meta, "memory_bootstrap_at", time.Now().UnixMilli())
+	_ = i.host.SavePortal(ctx, portal, "memory bootstrap")
 }
 
-func (i *Integration) readMemoryPromptSection(ctx context.Context, scope iruntime.PromptScope, path string) string {
+func (i *Integration) readMemoryPromptSection(ctx context.Context, meta any, path string) string {
 	agentID := ""
-	if scope.Meta != nil {
-		agentID = i.host.AgentIDFromMeta(scope.Meta)
+	if meta != nil {
+		agentID = i.host.AgentIDFromMeta(meta)
 	}
 	content, filePath, found, err := i.host.ReadTextFile(ctx, agentID, path)
 	if err != nil || !found {

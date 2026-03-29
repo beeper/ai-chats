@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/packages/ssestream"
 	"github.com/openai/openai-go/v3/responses"
@@ -38,16 +37,15 @@ func (a *responsesTurnAdapter) TrackRoomRunStreaming() bool {
 
 func (a *responsesTurnAdapter) startInitialRound(ctx context.Context) (*ssestream.Stream[responses.ResponseStreamEventUnion], error) {
 	if !a.initialized {
-		promptContext := ChatMessagesToPromptContext(a.messages)
-		input := PromptContextToResponsesInput(promptContext)
-		a.params = a.oc.buildResponsesAgentLoopParams(ctx, a.meta, promptContext.SystemPrompt, input, false)
+		input := PromptContextToResponsesInput(a.prompt)
+		a.params = a.oc.buildResponsesAgentLoopParams(ctx, a.meta, a.prompt.SystemPrompt, input, false)
 		if len(a.params.Tools) > 0 {
 			zerolog.Ctx(ctx).Debug().Int("count", len(a.params.Tools)).Msg("Added streaming turn tools")
 		}
 		if a.oc.isOpenRouterProvider() {
 			ctx = WithPDFEngine(ctx, a.oc.effectivePDFEngine(a.meta))
 		}
-		a.state.baseSystemPrompt = promptContext.SystemPrompt
+		a.state.baseSystemPrompt = a.prompt.SystemPrompt
 		a.initialized = true
 	}
 	stream := a.oc.api.Responses.NewStreaming(ctx, a.params)
@@ -122,7 +120,7 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 		stream, err = a.startInitialRound(ctx)
 		params = a.params
 		if err != nil {
-			logResponsesFailure(a.log, err, params, a.meta, a.messages, "stream_init")
+			logResponsesFailure(a.log, err, params, a.meta, PromptContextToChatCompletionMessages(a.prompt, a.oc.isOpenRouterProvider()), "stream_init")
 			return false, nil, &PreDeltaError{Err: err}
 		}
 	} else {
@@ -144,7 +142,7 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 			if errors.Is(err, context.Canceled) {
 				return false, nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, state, a.meta, "cancelled", err)
 			}
-			logResponsesFailure(a.log, err, params, a.meta, a.messages, "continuation_init")
+			logResponsesFailure(a.log, err, params, a.meta, PromptContextToChatCompletionMessages(a.prompt, a.oc.isOpenRouterProvider()), "continuation_init")
 			return false, nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, state, a.meta, "error", err)
 		}
 	}
@@ -160,7 +158,7 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 				if round > 0 {
 					stage = "continuation_event_error"
 				}
-				logResponsesFailure(a.log, evtErr, params, a.meta, a.messages, stage)
+				logResponsesFailure(a.log, evtErr, params, a.meta, PromptContextToChatCompletionMessages(a.prompt, a.oc.isOpenRouterProvider()), stage)
 			}
 			return done, cle, evtErr
 		},
@@ -169,7 +167,7 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 			if round > 0 {
 				stage = "continuation_err"
 			}
-			logResponsesFailure(a.log, stepErr, params, a.meta, a.messages, stage)
+			logResponsesFailure(a.log, stepErr, params, a.meta, PromptContextToChatCompletionMessages(a.prompt, a.oc.isOpenRouterProvider()), stage)
 			return a.oc.handleResponsesStreamErr(ctx, a.portal, state, a.meta, stepErr, round == 0)
 		},
 	)
@@ -187,13 +185,12 @@ func (a *responsesTurnAdapter) FinalizeAgentLoop(ctx context.Context) {
 	a.oc.finalizeResponsesStream(ctx, a.log, a.portal, a.state, a.meta)
 }
 
-func (a *responsesTurnAdapter) ContinueAgentLoop(messages []openai.ChatCompletionMessageParamUnion) {
+func (a *responsesTurnAdapter) ContinueAgentLoop(messages []PromptMessage) {
 	if len(messages) == 0 {
 		return
 	}
-	a.messages = append(a.messages, messages...)
-	promptContext := ChatMessagesToPromptContext(messages)
-	a.state.baseInput = append(a.state.baseInput, PromptContextToResponsesInput(promptContext)...)
+	a.prompt.Messages = append(a.prompt.Messages, messages...)
+	a.state.baseInput = append(a.state.baseInput, PromptContextToResponsesInput(PromptContext{Messages: messages})...)
 	a.hasFollowUp = true
 }
 
@@ -474,6 +471,16 @@ func (oc *AIClient) runResponsesAgentLoop(
 	meta *PortalMetadata,
 	messages []openai.ChatCompletionMessageParamUnion,
 ) (bool, *ContextLengthError, error) {
+	return oc.runResponsesAgentLoopPrompt(ctx, evt, portal, meta, ChatMessagesToPromptContext(messages))
+}
+
+func (oc *AIClient) runResponsesAgentLoopPrompt(
+	ctx context.Context,
+	evt *event.Event,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+	prompt PromptContext,
+) (bool, *ContextLengthError, error) {
 	portalID := ""
 	if portal != nil {
 		portalID = string(portal.ID)
@@ -481,8 +488,8 @@ func (oc *AIClient) runResponsesAgentLoop(
 	log := zerolog.Ctx(ctx).With().
 		Str("portal_id", portalID).
 		Logger()
-	return oc.runAgentLoop(ctx, log, evt, portal, meta, messages, func(prep streamingRunPrep, pruned []openai.ChatCompletionMessageParamUnion) agentLoopProvider {
-		base := newAgentLoopProviderBase(oc, log, portal, meta, prep, pruned)
+	return oc.runAgentLoop(ctx, log, evt, portal, meta, prompt, func(prep streamingRunPrep, prompt PromptContext) agentLoopProvider {
+		base := newAgentLoopProviderBase(oc, log, portal, meta, prep, prompt)
 		return &responsesTurnAdapter{
 			agentLoopProviderBase: base,
 			rsc: &responseStreamContext{

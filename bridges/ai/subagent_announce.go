@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
@@ -142,9 +141,9 @@ func (oc *AIClient) runSubagentCompletion(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
-	prompt []openai.ChatCompletionMessageParamUnion,
+	prompt PromptContext,
 ) (bool, error) {
-	responseFn, logLabel := oc.selectAgentLoopRunFunc(meta, ChatMessagesToPromptContext(prompt))
+	responseFn, logLabel := oc.selectAgentLoopRunFunc(meta, prompt)
 	return oc.responseWithRetry(ctx, nil, portal, meta, prompt, responseFn, logLabel)
 }
 
@@ -153,7 +152,7 @@ func (oc *AIClient) runSubagentAndAnnounce(
 	run *subagentRun,
 	childPortal *bridgev2.Portal,
 	childMeta *PortalMetadata,
-	prompt []openai.ChatCompletionMessageParamUnion,
+	prompt PromptContext,
 ) {
 	if oc == nil || run == nil || childPortal == nil || childMeta == nil {
 		return

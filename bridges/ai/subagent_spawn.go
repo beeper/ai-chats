@@ -338,8 +338,6 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 			"error":  err.Error(),
 		}), nil
 	}
-	promptMessages := oc.promptContextToDispatchMessages(ctx, childPortal, childMeta, promptContext)
-
 	userMessage := &database.Message{
 		ID:       agentremote.MatrixMessageID(eventID),
 		MXID:     eventID,
@@ -370,7 +368,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 		Timeout:      runTimeout,
 	}
 	oc.registerSubagentRun(run)
-	oc.startSubagentRun(ctx, run, childPortal, childMeta, promptMessages)
+	oc.startSubagentRun(ctx, run, childPortal, childMeta, promptContext)
 
 	payload := map[string]any{
 		"status":          "accepted",
@@ -392,7 +390,7 @@ func (oc *AIClient) startSubagentRun(
 	run *subagentRun,
 	childPortal *bridgev2.Portal,
 	childMeta *PortalMetadata,
-	prompt []openai.ChatCompletionMessageParamUnion,
+	prompt PromptContext,
 ) {
 	if run == nil || childPortal == nil || childMeta == nil {
 		return

@@ -614,18 +614,20 @@ func injectSystemPromptAtFirstNonSystem(
 func (oc *AIClient) applyCompactionModelSummaryAndRefresh(
 	ctx context.Context,
 	meta *PortalMetadata,
-	originalPrompt []openai.ChatCompletionMessageParamUnion,
-	compactedPrompt []openai.ChatCompletionMessageParamUnion,
+	originalPrompt PromptContext,
+	compactedPrompt PromptContext,
 	decision airuntime.CompactionDecision,
 	contextWindowTokens int,
-) []openai.ChatCompletionMessageParamUnion {
-	out := compactedPrompt
+) PromptContext {
+	originalMessages := PromptContextToChatCompletionMessages(originalPrompt, false)
+	compactedMessages := PromptContextToChatCompletionMessages(compactedPrompt, false)
+	out := compactedMessages
 	if oc.pruningSummarizationEnabled() {
-		dropped := selectDroppedCompactionMessages(originalPrompt, compactedPrompt, decision.DroppedCount)
+		dropped := selectDroppedCompactionMessages(originalMessages, compactedMessages, decision.DroppedCount)
 		if len(dropped) > 0 {
 			model := resolveCompactionSummaryModel(oc.effectiveModel(meta), oc.pruningSummarizationModel())
 			allMessages := slices.Clone(dropped)
-			allMessages = append(allMessages, compactedPrompt...)
+			allMessages = append(allMessages, compactedMessages...)
 			adaptive := computeCompactionAdaptiveChunkRatio(allMessages, model, contextWindowTokens)
 			maxChunkTokens := int(math.Floor(float64(contextWindowTokens)*adaptive)) - compactionSummarizationOverhead
 			if maxChunkTokens <= 0 {
@@ -653,5 +655,5 @@ func (oc *AIClient) applyCompactionModelSummaryAndRefresh(
 	if refresh := strings.TrimSpace(oc.pruningPostCompactionRefreshPrompt()); refresh != "" {
 		out = injectSystemPromptAtFirstNonSystem(out, refresh)
 	}
-	return out
+	return ChatMessagesToPromptContext(out)
 }

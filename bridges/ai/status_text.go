@@ -228,13 +228,8 @@ func (oc *AIClient) estimatePromptTokens(ctx context.Context, portal *bridgev2.P
 	if err != nil {
 		return 0
 	}
-	prompt := oc.promptContextToDispatchMessages(ctx, portal, meta, promptContext)
 	modelID := oc.effectiveModel(meta)
-	count, err := EstimateTokens(prompt, modelID)
-	if err != nil {
-		return 0
-	}
-	return count
+	return estimatePromptContextTokensForModel(promptContext, modelID)
 }
 
 func (oc *AIClient) getSessionEntryMaybe(ctx context.Context, agentID, sessionKey string) *sessionEntry {

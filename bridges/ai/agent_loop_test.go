@@ -5,14 +5,13 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/event"
 )
 
 type fakeAgentLoopProvider struct {
 	track          bool
 	results        []fakeAgentLoopResult
-	followUps      map[int][]openai.ChatCompletionMessageParamUnion
+	followUps      map[int][]PromptMessage
 	finalizeCalls  int
 	continueCalls  int
 	roundsObserved []int
@@ -41,14 +40,14 @@ func (f *fakeAgentLoopProvider) FinalizeAgentLoop(context.Context) {
 	f.finalizeCalls++
 }
 
-func (f *fakeAgentLoopProvider) GetFollowUpMessages(_ context.Context) []openai.ChatCompletionMessageParamUnion {
+func (f *fakeAgentLoopProvider) GetFollowUpMessages(_ context.Context) []PromptMessage {
 	if len(f.roundsObserved) == 0 {
 		return nil
 	}
 	return f.followUps[f.roundsObserved[len(f.roundsObserved)-1]]
 }
 
-func (f *fakeAgentLoopProvider) ContinueAgentLoop(messages []openai.ChatCompletionMessageParamUnion) {
+func (f *fakeAgentLoopProvider) ContinueAgentLoop(messages []PromptMessage) {
 	if len(messages) > 0 {
 		f.continueCalls++
 	}
@@ -132,8 +131,14 @@ func TestExecuteAgentLoopRoundsContinuesForFollowUpMessages(t *testing.T) {
 			{continueLoop: false},
 			{continueLoop: false},
 		},
-		followUps: map[int][]openai.ChatCompletionMessageParamUnion{
-			0: {openai.UserMessage("follow up")},
+		followUps: map[int][]PromptMessage{
+			0: {{
+				Role: PromptRoleUser,
+				Blocks: []PromptBlock{{
+					Type: PromptBlockText,
+					Text: "follow up",
+				}},
+			}},
 		},
 	}
 

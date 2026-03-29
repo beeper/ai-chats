@@ -2,8 +2,6 @@ package runtime
 
 import (
 	"context"
-
-	"github.com/openai/openai-go/v3"
 )
 
 // SettingSource indicates where a setting value came from.
@@ -42,26 +40,12 @@ type ToolCall struct {
 	Scope       ToolScope
 }
 
-// PromptScope carries prompt-building context without coupling to connector internals.
-type PromptScope struct {
-	Client any
-	Portal any
-	Meta   any
-}
-
 // ToolIntegration is the pluggable surface for tool definitions/availability/execution.
 type ToolIntegration interface {
 	Name() string
 	ToolDefinitions(ctx context.Context, scope ToolScope) []ToolDefinition
 	ExecuteTool(ctx context.Context, call ToolCall) (handled bool, result string, err error)
 	ToolAvailability(ctx context.Context, scope ToolScope, toolName string) (known bool, available bool, source SettingSource, reason string)
-}
-
-// PromptIntegration is the pluggable surface for prompt/system message augmentation.
-type PromptIntegration interface {
-	Name() string
-	AdditionalSystemMessages(ctx context.Context, scope PromptScope) []openai.ChatCompletionMessageParamUnion
-	AugmentPrompt(ctx context.Context, scope PromptScope, prompt []openai.ChatCompletionMessageParamUnion) []openai.ChatCompletionMessageParamUnion
 }
 
 // ToolApprovalIntegration is an optional seam for tool approval policy overrides.

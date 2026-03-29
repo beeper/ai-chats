@@ -7,7 +7,6 @@ import (
 	"math"
 	"slices"
 
-	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
@@ -20,8 +19,7 @@ const (
 	maxRetryAttempts = 3 // Maximum retry attempts for context length errors
 )
 
-// responseFunc is the signature for response handlers that can be retried on context length errors
-type responseFunc func(ctx context.Context, evt *event.Event, portal *bridgev2.Portal, meta *PortalMetadata, prompt []openai.ChatCompletionMessageParamUnion) (bool, *ContextLengthError, error)
+type responseFuncCanonical func(ctx context.Context, evt *event.Event, portal *bridgev2.Portal, meta *PortalMetadata, prompt PromptContext) (bool, *ContextLengthError, error)
 
 // responseWithRetry wraps a response function with context length retry logic.
 // It performs one runtime compaction retry attempt.
@@ -30,11 +28,11 @@ func (oc *AIClient) responseWithRetry(
 	evt *event.Event,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
-	prompt []openai.ChatCompletionMessageParamUnion,
-	responseFn responseFunc,
+	prompt PromptContext,
+	responseFn responseFuncCanonical,
 	logLabel string,
 ) (bool, error) {
-	currentPrompt := prompt
+	currentPrompt := ClonePromptContext(prompt)
 	preflightFlushAttempted := false
 	overflowCompactionAttempts := 0
 	var lastCLE *ContextLengthError
@@ -71,7 +69,7 @@ func (oc *AIClient) responseWithRetry(
 			if meta != nil {
 				modelID = oc.effectiveModel(meta)
 			}
-			tokensBefore := estimatePromptTokensForModel(currentPrompt, modelID)
+			tokensBefore := estimatePromptContextTokensForModel(currentPrompt, modelID)
 
 			if overflowCompactionAttempts < maxRetryAttempts {
 				overflowCompactionAttempts++
@@ -87,19 +85,19 @@ func (oc *AIClient) responseWithRetry(
 					ContextWindowTokens: contextWindow,
 					RequestedTokens:     cle.RequestedTokens,
 					PromptTokens:        tokensBefore,
-					MessagesBefore:      len(currentPrompt),
+					MessagesBefore:      PromptContextMessageCount(currentPrompt),
 					TokensBefore:        tokensBefore,
 				})
 				oc.emitCompactionStatus(ctx, portal, &CompactionEvent{
 					Type:           CompactionEventStart,
 					SessionID:      sessionID,
-					MessagesBefore: len(currentPrompt),
+					MessagesBefore: PromptContextMessageCount(currentPrompt),
 				})
 
 				compacted, decision, compactionSuccess := oc.runtimeCompactOnOverflow(currentPrompt, contextWindow, cle.RequestedTokens, tokensBefore)
-				if compactionSuccess && len(compacted) > 2 {
+				if compactionSuccess && PromptContextMessageCount(compacted) > 2 {
 					compacted = oc.applyCompactionModelSummaryAndRefresh(ctx, meta, currentPrompt, compacted, decision, contextWindow)
-					tokensAfter := estimatePromptTokensForModel(compacted, modelID)
+					tokensAfter := estimatePromptContextTokensForModel(compacted, modelID)
 					if meta != nil {
 						meta.CompactionCount++
 						oc.savePortalQuiet(ctx, portal, "compaction count")
@@ -111,8 +109,8 @@ func (oc *AIClient) responseWithRetry(
 					oc.emitCompactionStatus(ctx, portal, &CompactionEvent{
 						Type:           CompactionEventEnd,
 						SessionID:      sessionID,
-						MessagesBefore: len(currentPrompt),
-						MessagesAfter:  len(compacted),
+						MessagesBefore: PromptContextMessageCount(currentPrompt),
+						MessagesAfter:  PromptContextMessageCount(compacted),
 						TokensBefore:   tokensBefore,
 						TokensAfter:    tokensAfter,
 						Summary:        summary,
@@ -126,8 +124,8 @@ func (oc *AIClient) responseWithRetry(
 						ContextWindowTokens: contextWindow,
 						RequestedTokens:     cle.RequestedTokens,
 						PromptTokens:        tokensAfter,
-						MessagesBefore:      len(currentPrompt),
-						MessagesAfter:       len(compacted),
+						MessagesBefore:      PromptContextMessageCount(currentPrompt),
+						MessagesAfter:       PromptContextMessageCount(compacted),
 						TokensBefore:        tokensBefore,
 						TokensAfter:         tokensAfter,
 						DroppedCount:        decision.DroppedCount,
@@ -136,8 +134,8 @@ func (oc *AIClient) responseWithRetry(
 					}, integrationruntime.CompactionLifecycleEnd, integrationruntime.CompactionLifecycleRefresh)
 
 					oc.loggerForContext(ctx).Info().
-						Int("messages_before", len(currentPrompt)).
-						Int("messages_after", len(compacted)).
+						Int("messages_before", PromptContextMessageCount(currentPrompt)).
+						Int("messages_after", PromptContextMessageCount(compacted)).
 						Int("tokens_before", tokensBefore).
 						Int("tokens_after", tokensAfter).
 						Int("dropped", decision.DroppedCount).
@@ -149,12 +147,12 @@ func (oc *AIClient) responseWithRetry(
 				// Compaction was insufficient. Try an explicit tool-result truncation pass.
 				truncatedPrompt, truncatedCount := oc.truncateOversizedToolResultsForOverflow(currentPrompt, contextWindow)
 				if truncatedCount > 0 {
-					tokensAfter := estimatePromptTokensForModel(truncatedPrompt, modelID)
+					tokensAfter := estimatePromptContextTokensForModel(truncatedPrompt, modelID)
 					oc.emitCompactionStatus(ctx, portal, &CompactionEvent{
 						Type:           CompactionEventEnd,
 						SessionID:      sessionID,
-						MessagesBefore: len(currentPrompt),
-						MessagesAfter:  len(truncatedPrompt),
+						MessagesBefore: PromptContextMessageCount(currentPrompt),
+						MessagesAfter:  PromptContextMessageCount(truncatedPrompt),
 						TokensBefore:   tokensBefore,
 						TokensAfter:    tokensAfter,
 						Summary:        fmt.Sprintf("Truncated %d oversized tool result(s).", truncatedCount),
@@ -169,8 +167,8 @@ func (oc *AIClient) responseWithRetry(
 						ContextWindowTokens: contextWindow,
 						RequestedTokens:     cle.RequestedTokens,
 						PromptTokens:        tokensAfter,
-						MessagesBefore:      len(currentPrompt),
-						MessagesAfter:       len(truncatedPrompt),
+						MessagesBefore:      PromptContextMessageCount(currentPrompt),
+						MessagesAfter:       PromptContextMessageCount(truncatedPrompt),
 						TokensBefore:        tokensBefore,
 						TokensAfter:         tokensAfter,
 						Reason:              "truncate_oversized_tool_results",
@@ -199,7 +197,7 @@ func (oc *AIClient) responseWithRetry(
 					ContextWindowTokens: contextWindow,
 					RequestedTokens:     cle.RequestedTokens,
 					PromptTokens:        tokensBefore,
-					MessagesBefore:      len(currentPrompt),
+					MessagesBefore:      PromptContextMessageCount(currentPrompt),
 					TokensBefore:        tokensBefore,
 					Reason:              "compaction did not reduce context sufficiently",
 					Error:               "compaction did not reduce context sufficiently",
@@ -235,7 +233,7 @@ func (oc *AIClient) runCompactionPreflightFlushHook(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
-	prompt []openai.ChatCompletionMessageParamUnion,
+	prompt PromptContext,
 	attempt int,
 ) {
 	if oc == nil || meta == nil {
@@ -246,7 +244,7 @@ func (oc *AIClient) runCompactionPreflightFlushHook(
 		contextWindow = 128000
 	}
 	modelID := oc.effectiveModel(meta)
-	promptTokens := estimatePromptTokensForModel(prompt, modelID)
+	promptTokens := estimatePromptContextTokensForModel(prompt, modelID)
 	projectedTokens := projectedCompactionFlushTokens(meta, promptTokens)
 	oc.emitCompactionLifecycle(ctx, integrationruntime.CompactionLifecycleEvent{
 		Client:              oc,
@@ -257,7 +255,7 @@ func (oc *AIClient) runCompactionPreflightFlushHook(
 		ContextWindowTokens: contextWindow,
 		RequestedTokens:     projectedTokens,
 		PromptTokens:        promptTokens,
-		MessagesBefore:      len(prompt),
+		MessagesBefore:      PromptContextMessageCount(prompt),
 		TokensBefore:        promptTokens,
 	})
 	oc.runCompactionFlushHook(ctx, portal, meta, prompt, &ContextLengthError{
@@ -313,7 +311,7 @@ func (oc *AIClient) runCompactionFlushHook(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
-	prompt []openai.ChatCompletionMessageParamUnion,
+	prompt PromptContext,
 	cle *ContextLengthError,
 	attempt int,
 ) {
@@ -342,7 +340,7 @@ func (oc *AIClient) runCompactionFlushHook(
 		Client:          oc,
 		Portal:          portal,
 		Meta:            meta,
-		Prompt:          prompt,
+		Prompt:          PromptContextToChatCompletionMessages(prompt, false),
 		RequestedTokens: cle.RequestedTokens,
 		ModelMaxTokens:  cle.ModelMaxTokens,
 		Attempt:         attempt,
@@ -356,9 +354,8 @@ func (oc *AIClient) runAgentLoopWithRetry(
 	meta *PortalMetadata,
 	promptContext PromptContext,
 ) {
-	prompt := oc.promptContextToDispatchMessages(ctx, portal, meta, promptContext)
 	responseFn, logLabel := oc.selectAgentLoopRunFunc(meta, promptContext)
-	success, err := oc.responseWithRetry(ctx, evt, portal, meta, prompt, responseFn, logLabel)
+	success, err := oc.responseWithRetry(ctx, evt, portal, meta, promptContext, responseFn, logLabel)
 	if success || err == nil {
 		return
 	}
@@ -368,7 +365,7 @@ func (oc *AIClient) runAgentLoopWithRetry(
 	oc.notifyMatrixSendFailure(ctx, portal, evt, err)
 }
 
-func (oc *AIClient) selectAgentLoopRunFunc(meta *PortalMetadata, promptContext PromptContext) (responseFunc, string) {
+func (oc *AIClient) selectAgentLoopRunFunc(meta *PortalMetadata, promptContext PromptContext) (responseFuncCanonical, string) {
 	if HasUnsupportedResponsesPromptContext(promptContext) {
 		return oc.runChatCompletionsAgentLoop, "chat_completions"
 	}
@@ -379,7 +376,7 @@ func (oc *AIClient) selectAgentLoopRunFunc(meta *PortalMetadata, promptContext P
 	switch oc.resolveModelAPI(meta) {
 	case ModelAPIChatCompletions:
 		if isDirectOpenAIModel(modelID) {
-			return func(context.Context, *event.Event, *bridgev2.Portal, *PortalMetadata, []openai.ChatCompletionMessageParamUnion) (bool, *ContextLengthError, error) {
+			return func(context.Context, *event.Event, *bridgev2.Portal, *PortalMetadata, PromptContext) (bool, *ContextLengthError, error) {
 				return false, nil, fmt.Errorf("invalid model configuration: direct OpenAI model %q cannot use chat_completions", modelID)
 			}, "invalid_model_api"
 		}
@@ -415,13 +412,14 @@ func (oc *AIClient) notifyContextLengthExceeded(
 }
 
 func (oc *AIClient) runtimeCompactOnOverflow(
-	prompt []openai.ChatCompletionMessageParamUnion,
+	prompt PromptContext,
 	contextWindowTokens int,
 	requestedTokens int,
 	currentPromptTokens int,
-) ([]openai.ChatCompletionMessageParamUnion, airuntime.CompactionDecision, bool) {
+) (PromptContext, airuntime.CompactionDecision, bool) {
+	serialized := PromptContextToChatCompletionMessages(prompt, false)
 	result := airuntime.CompactPromptOnOverflow(airuntime.OverflowCompactionInput{
-		Prompt:              prompt,
+		Prompt:              serialized,
 		ContextWindowTokens: contextWindowTokens,
 		RequestedTokens:     requestedTokens,
 		CurrentPromptTokens: currentPromptTokens,
@@ -434,14 +432,14 @@ func (oc *AIClient) runtimeCompactOnOverflow(
 		MaxHistoryShare:     oc.pruningMaxHistoryShare(),
 		ProtectedTail:       3,
 	})
-	return result.Prompt, result.Decision, result.Success
+	return ChatMessagesToPromptContext(result.Prompt), result.Decision, result.Success
 }
 
 func (oc *AIClient) truncateOversizedToolResultsForOverflow(
-	prompt []openai.ChatCompletionMessageParamUnion,
+	prompt PromptContext,
 	contextWindowTokens int,
-) ([]openai.ChatCompletionMessageParamUnion, int) {
-	if len(prompt) == 0 {
+) (PromptContext, int) {
+	if len(prompt.Messages) == 0 {
 		return prompt, 0
 	}
 	cfg := oc.pruningConfigOrDefault()
@@ -460,13 +458,13 @@ func (oc *AIClient) truncateOversizedToolResultsForOverflow(
 		}
 	}
 
-	out := slices.Clone(prompt)
+	out := ClonePromptContext(prompt)
 	truncated := 0
-	for i, msg := range out {
-		if msg.OfTool == nil {
+	for i, msg := range out.Messages {
+		if msg.Role != PromptRoleToolResult {
 			continue
 		}
-		content := airuntime.ExtractToolContent(msg.OfTool.Content)
+		content := strings.TrimSpace(msg.Text())
 		if len(content) <= thresholdChars {
 			continue
 		}
@@ -474,7 +472,7 @@ func (oc *AIClient) truncateOversizedToolResultsForOverflow(
 		if trimmed == content {
 			continue
 		}
-		out[i] = openai.ToolMessage(trimmed, msg.OfTool.ToolCallID)
+		out.Messages[i].Blocks = []PromptBlock{{Type: PromptBlockText, Text: trimmed}}
 		truncated++
 	}
 	return out, truncated

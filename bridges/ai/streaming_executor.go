@@ -14,8 +14,8 @@ import (
 type agentLoopProvider interface {
 	TrackRoomRunStreaming() bool
 	RunAgentTurn(ctx context.Context, evt *event.Event, round int) (continueLoop bool, cle *ContextLengthError, err error)
-	GetFollowUpMessages(ctx context.Context) []openai.ChatCompletionMessageParamUnion
-	ContinueAgentLoop(messages []openai.ChatCompletionMessageParamUnion)
+	GetFollowUpMessages(ctx context.Context) []PromptMessage
+	ContinueAgentLoop(messages []PromptMessage)
 	FinalizeAgentLoop(ctx context.Context)
 }
 
@@ -28,7 +28,7 @@ type agentLoopProviderBase struct {
 	typingSignals *TypingSignaler
 	touchTyping   func()
 	isHeartbeat   bool
-	messages      []openai.ChatCompletionMessageParamUnion
+	prompt        PromptContext
 }
 
 func newAgentLoopProviderBase(
@@ -37,7 +37,7 @@ func newAgentLoopProviderBase(
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
 	prep streamingRunPrep,
-	messages []openai.ChatCompletionMessageParamUnion,
+	prompt PromptContext,
 ) agentLoopProviderBase {
 	return agentLoopProviderBase{
 		oc:            oc,
@@ -48,22 +48,22 @@ func newAgentLoopProviderBase(
 		typingSignals: prep.TypingSignals,
 		touchTyping:   prep.TouchTyping,
 		isHeartbeat:   prep.IsHeartbeat,
-		messages:      messages,
+		prompt:        prompt,
 	}
 }
 
-func (a *agentLoopProviderBase) GetFollowUpMessages(context.Context) []openai.ChatCompletionMessageParamUnion {
+func (a *agentLoopProviderBase) GetFollowUpMessages(context.Context) []PromptMessage {
 	if a == nil || a.oc == nil || a.state == nil {
 		return nil
 	}
 	return a.oc.getFollowUpMessages(a.state.roomID)
 }
 
-func (a *agentLoopProviderBase) ContinueAgentLoop(messages []openai.ChatCompletionMessageParamUnion) {
+func (a *agentLoopProviderBase) ContinueAgentLoop(messages []PromptMessage) {
 	if a == nil || len(messages) == 0 {
 		return
 	}
-	a.messages = append(a.messages, messages...)
+	a.prompt.Messages = append(a.prompt.Messages, messages...)
 }
 
 func (oc *AIClient) runAgentLoop(
@@ -72,14 +72,15 @@ func (oc *AIClient) runAgentLoop(
 	evt *event.Event,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
-	messages []openai.ChatCompletionMessageParamUnion,
-	newProvider func(prep streamingRunPrep, pruned []openai.ChatCompletionMessageParamUnion) agentLoopProvider,
+	prompt PromptContext,
+	newProvider func(prep streamingRunPrep, prompt PromptContext) agentLoopProvider,
 ) (bool, *ContextLengthError, error) {
-	prep, pruned, typingCleanup := oc.prepareStreamingRun(ctx, log, evt, portal, meta, messages)
+	messages := PromptContextToChatCompletionMessages(prompt, oc.isOpenRouterProvider())
+	prep, _, typingCleanup := oc.prepareStreamingRun(ctx, log, evt, portal, meta, messages)
 	defer typingCleanup()
 
 	state := prep.State
-	provider := newProvider(prep, pruned)
+	provider := newProvider(prep, prompt)
 	if state.roomID != "" {
 		if provider.TrackRoomRunStreaming() {
 			oc.markRoomRunStreaming(state.roomID, true)

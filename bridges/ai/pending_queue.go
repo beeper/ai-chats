@@ -339,7 +339,28 @@ func buildSteeringUserMessages(prompts []string) []openai.ChatCompletionMessageP
 	return messages
 }
 
-func (oc *AIClient) getFollowUpMessages(roomID id.RoomID) []openai.ChatCompletionMessageParamUnion {
+func buildSteeringPromptMessages(prompts []string) []PromptMessage {
+	if len(prompts) == 0 {
+		return nil
+	}
+	messages := make([]PromptMessage, 0, len(prompts))
+	for _, prompt := range prompts {
+		prompt = strings.TrimSpace(prompt)
+		if prompt == "" {
+			continue
+		}
+		messages = append(messages, PromptMessage{
+			Role: PromptRoleUser,
+			Blocks: []PromptBlock{{
+				Type: PromptBlockText,
+				Text: prompt,
+			}},
+		})
+	}
+	return messages
+}
+
+func (oc *AIClient) getFollowUpMessages(roomID id.RoomID) []PromptMessage {
 	if oc == nil || roomID == "" {
 		return nil
 	}
@@ -362,7 +383,7 @@ func (oc *AIClient) getFollowUpMessages(roomID id.RoomID) []openai.ChatCompletio
 	if !ok {
 		return nil
 	}
-	return buildSteeringUserMessages([]string{prompt})
+	return buildSteeringPromptMessages([]string{prompt})
 }
 
 func (oc *AIClient) markQueueDraining(roomID id.RoomID) bool {

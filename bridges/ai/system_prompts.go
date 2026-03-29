@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 
-	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 
 	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
@@ -55,38 +54,19 @@ func buildSessionIdentityHint(portal *bridgev2.Portal, _ *PortalMetadata) string
 	return "sessionKey: " + session
 }
 
-func (oc *AIClient) buildAdditionalSystemPrompts(
+type memoryPromptAugmentor interface {
+	PromptContextText(ctx context.Context, portal any, meta any) string
+}
+
+func (oc *AIClient) buildAdditionalSystemPromptText(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
-) []openai.ChatCompletionMessageParamUnion {
-	return oc.additionalSystemMessages(ctx, portal, meta)
-}
-
-func systemMessageText(messages []openai.ChatCompletionMessageParamUnion) string {
-	var parts []string
-	for _, msg := range messages {
-		if msg.OfSystem == nil {
-			continue
-		}
-		if text := strings.TrimSpace(msg.OfSystem.Content.OfString.Value); text != "" {
-			parts = append(parts, text)
-			continue
-		}
-		if len(msg.OfSystem.Content.OfArrayOfContentParts) == 0 {
-			continue
-		}
-		var lines []string
-		for _, part := range msg.OfSystem.Content.OfArrayOfContentParts {
-			if text := strings.TrimSpace(part.Text); text != "" {
-				lines = append(lines, text)
-			}
-		}
-		if len(lines) > 0 {
-			parts = append(parts, strings.Join(lines, "\n"))
-		}
-	}
-	return strings.TrimSpace(strings.Join(parts, "\n\n"))
+) string {
+	return joinPromptFragments(
+		oc.buildAdditionalSystemPromptCoreText(ctx, portal, meta),
+		oc.buildMemoryPromptContextText(ctx, portal, meta),
+	)
 }
 
 func (oc *AIClient) buildSystemPromptText(
@@ -98,14 +78,7 @@ func (oc *AIClient) buildSystemPromptText(
 	if base == "" {
 		base = oc.effectivePrompt(meta)
 	}
-	fragments := []string{base, systemMessageText(oc.buildAdditionalSystemPrompts(ctx, portal, meta))}
-	var parts []string
-	for _, fragment := range fragments {
-		if text := strings.TrimSpace(fragment); text != "" {
-			parts = append(parts, text)
-		}
-	}
-	return strings.TrimSpace(strings.Join(parts, "\n\n"))
+	return joinPromptFragments(base, oc.buildAdditionalSystemPromptText(ctx, portal, meta))
 }
 
 func (oc *AIClient) buildConversationSystemPromptText(
@@ -121,34 +94,50 @@ func (oc *AIClient) buildConversationSystemPromptText(
 	return joinPromptFragments(sessionGreetingFragment(ctx, portal, meta, oc.log), base)
 }
 
-func (oc *AIClient) buildAdditionalSystemPromptsCore(
+func (oc *AIClient) buildAdditionalSystemPromptCoreText(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
-) []openai.ChatCompletionMessageParamUnion {
-	var out []openai.ChatCompletionMessageParamUnion
+) string {
+	var out []string
 
 	if meta != nil && portal != nil && oc.isGroupChat(ctx, portal) {
 		activation := oc.resolveGroupActivation(meta)
 		intro := buildGroupIntro(oc.matrixRoomDisplayName(ctx, portal), activation)
 		if strings.TrimSpace(intro) != "" {
-			out = append(out, openai.SystemMessage(intro))
+			out = append(out, intro)
 		}
 	}
 
 	if meta != nil {
 		if verboseHint := buildVerboseSystemHint(meta); verboseHint != "" {
-			out = append(out, openai.SystemMessage(verboseHint))
+			out = append(out, verboseHint)
 		}
 	}
 
 	if accountHint := oc.buildDesktopAccountHintPrompt(ctx); accountHint != "" {
-		out = append(out, openai.SystemMessage(accountHint))
+		out = append(out, accountHint)
 	}
 
 	if ident := buildSessionIdentityHint(portal, meta); ident != "" {
-		out = append(out, openai.SystemMessage(ident))
+		out = append(out, ident)
 	}
 
-	return out
+	return joinPromptFragments(out...)
+}
+
+func (oc *AIClient) buildMemoryPromptContextText(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+) string {
+	if oc == nil || len(oc.integrationModules) == 0 {
+		return ""
+	}
+	module := oc.integrationModules["memory"]
+	augmentor, ok := module.(memoryPromptAugmentor)
+	if !ok || augmentor == nil {
+		return ""
+	}
+	return strings.TrimSpace(augmentor.PromptContextText(ctx, portal, meta))
 }
