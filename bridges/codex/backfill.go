@@ -234,12 +234,15 @@ func (cc *CodexClient) ensureCodexThreadPortal(ctx context.Context, existing *br
 		meta.Slug = codexThreadSlug(threadID)
 	}
 
-	portal.RoomType = database.RoomTypeDM
-	portal.OtherUserID = codexGhostID
-
 	info := cc.composeCodexChatInfo(portal, title, true)
-	portal.Name = title
-	portal.NameSet = true
+	if err := agentremote.ConfigureDMPortal(ctx, agentremote.ConfigureDMPortalParams{
+		Portal:      portal,
+		Title:       title,
+		OtherUserID: codexGhostID,
+		Save:        false,
+	}); err != nil {
+		return nil, false, err
+	}
 	created, err = bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
 		Login:             cc.UserLogin,
 		Portal:            portal,

@@ -1,22 +1,6 @@
 package codex
 
-import (
-	"time"
-
-	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/id"
-)
-
-func (cc *CodexClient) sendViaPortal(
-	portal *bridgev2.Portal,
-	converted *bridgev2.ConvertedMessage,
-	msgID networkid.MessageID,
-	timestamp time.Time,
-	streamOrder int64,
-) (id.EventID, networkid.MessageID, error) {
-	return cc.ClientBase.SendViaPortalWithOptions(portal, cc.senderForPortal(), msgID, timestamp, streamOrder, converted)
-}
+import "maunium.net/go/mautrix/bridgev2"
 
 func (cc *CodexClient) senderForPortal() bridgev2.EventSender {
 	if cc == nil || cc.UserLogin == nil {

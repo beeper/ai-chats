@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
-	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
@@ -146,29 +144,18 @@ func getOpenClawSessionChatInfo(ctx context.Context, portal *bridgev2.Portal, cl
 	roomType := openClawRoomType(meta)
 	client.maybeRefreshPortalCapabilities(ctx, portal, &previous)
 	if roomType == database.RoomTypeDM {
-		chatInfo := agentremote.BuildLoginDMChatInfo(agentremote.LoginDMChatInfoParams{
+		return agentremote.BuildLoginDMChatInfo(agentremote.LoginDMChatInfoParams{
 			Title:             title,
+			Topic:             client.topicForPortal(meta),
 			Login:             client.UserLogin,
 			HumanUserIDPrefix: "openclaw-user",
+			HumanSender:       ptr.Ptr(client.senderForAgent(agentID, true)),
 			BotUserID:         openClawGhostUserID(agentID),
 			BotDisplayName:    agentName,
+			BotSender:         ptr.Ptr(client.senderForAgent(agentID, false)),
+			BotUserInfo:       client.userInfoForAgentProfile(profile),
 			CanBackfill:       true,
-		})
-		if chatInfo != nil {
-			chatInfo.Topic = ptr.NonZero(client.topicForPortal(meta))
-			if chatInfo.Members != nil && chatInfo.Members.MemberMap != nil {
-				chatInfo.Members.MemberMap[humanUserID(client.UserLogin.ID)] = bridgev2.ChatMember{
-					EventSender: client.senderForAgent(agentID, true),
-					Membership:  event.MembershipJoin,
-				}
-				chatInfo.Members.MemberMap[openClawGhostUserID(agentID)] = bridgev2.ChatMember{
-					EventSender: client.senderForAgent(agentID, false),
-					Membership:  event.MembershipJoin,
-					UserInfo:    client.userInfoForAgentProfile(profile),
-				}
-			}
-		}
-		return chatInfo, nil
+		}), nil
 	}
 	memberMap := bridgev2.ChatMemberMap{
 		humanUserID(client.UserLogin.ID): {
@@ -189,38 +176,4 @@ func getOpenClawSessionChatInfo(ctx context.Context, portal *bridgev2.Portal, cl
 			MemberMap: memberMap,
 		},
 	}, nil
-}
-
-func buildOpenClawRemoteMessage(
-	portal networkid.PortalKey,
-	messageID networkid.MessageID,
-	sender bridgev2.EventSender,
-	timestamp time.Time,
-	streamOrder int64,
-	preBuilt *bridgev2.ConvertedMessage,
-) *simplevent.PreConvertedMessage {
-	if timestamp.IsZero() {
-		timestamp = time.Now()
-	}
-	if streamOrder == 0 {
-		streamOrder = timestamp.UnixMilli()
-	}
-	return &simplevent.PreConvertedMessage{
-		EventMeta: simplevent.EventMeta{
-			Type:        bridgev2.RemoteEventMessage,
-			PortalKey:   portal,
-			Sender:      sender,
-			Timestamp:   timestamp,
-			StreamOrder: streamOrder,
-			LogContext: func(c zerolog.Context) zerolog.Context {
-				return c.Str("openclaw_msg_id", string(messageID))
-			},
-		},
-		ID:   messageID,
-		Data: preBuilt,
-	}
-}
-
-func newOpenClawMessageID() networkid.MessageID {
-	return networkid.MessageID("openclaw:" + uuid.NewString())
 }

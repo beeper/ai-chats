@@ -304,21 +304,16 @@ func (oc *OpenClawClient) createConfiguredAgentDM(ctx context.Context, agent gat
 	meta.OpenClawDMCreatedFromContact = true
 	meta.HistoryMode = "paginated"
 	meta.RecentHistoryLimit = 0
-	portal.RoomType = database.RoomTypeDM
-	portal.OtherUserID = openClawGhostUserID(agentID)
-	portal.Name = meta.OpenClawDMTargetAgentName
-	portal.Topic = "OpenClaw agent DM"
-	portal.NameSet = true
-	portal.TopicSet = true
-	if err := portal.Save(ctx); err != nil {
+	if err := agentremote.ConfigureDMPortal(ctx, agentremote.ConfigureDMPortalParams{
+		Portal:      portal,
+		Title:       meta.OpenClawDMTargetAgentName,
+		Topic:       "OpenClaw agent DM",
+		OtherUserID: openClawGhostUserID(agentID),
+		Save:        false,
+	}); err != nil {
 		return nil, fmt.Errorf("failed to save openclaw dm portal: %w", err)
 	}
-	chatInfo := oc.syntheticDMPortalInfo(agentID, meta.OpenClawDMTargetAgentName)
-	if chatInfo.Members != nil {
-		member := chatInfo.Members.MemberMap[openClawGhostUserID(agentID)]
-		member.UserInfo = info
-		chatInfo.Members.MemberMap[openClawGhostUserID(agentID)] = member
-	}
+	chatInfo := oc.syntheticDMPortalInfo(agentID, meta.OpenClawDMTargetAgentName, info)
 	_, err = bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
 		Login:             oc.UserLogin,
 		Portal:            portal,
@@ -337,35 +332,28 @@ func (oc *OpenClawClient) createConfiguredAgentDM(ctx context.Context, agent gat
 	}, nil
 }
 
-func (oc *OpenClawClient) syntheticDMPortalInfo(agentID, displayName string) *bridgev2.ChatInfo {
+func (oc *OpenClawClient) syntheticDMPortalInfo(agentID, displayName string, userInfo *bridgev2.UserInfo) *bridgev2.ChatInfo {
 	if strings.TrimSpace(displayName) == "" {
 		displayName = oc.displayNameForAgent(agentID)
 	}
-	chatInfo := agentremote.BuildLoginDMChatInfo(agentremote.LoginDMChatInfoParams{
+	if userInfo == nil {
+		userInfo = oc.sdkAgentForProfile(openClawAgentProfile{AgentID: agentID, Name: displayName}).UserInfo()
+	}
+	return agentremote.BuildLoginDMChatInfo(agentremote.LoginDMChatInfoParams{
 		Title:             displayName,
+		Topic:             "OpenClaw agent DM",
 		Login:             oc.UserLogin,
 		HumanUserIDPrefix: "openclaw-user",
+		HumanSender:       ptr.Ptr(oc.senderForAgent(agentID, true)),
 		BotUserID:         openClawGhostUserID(agentID),
 		BotDisplayName:    displayName,
-		CanBackfill:       true,
-	})
-	if chatInfo == nil || chatInfo.Members == nil || chatInfo.Members.MemberMap == nil {
-		return chatInfo
-	}
-	chatInfo.Topic = ptr.Ptr("OpenClaw agent DM")
-	chatInfo.Members.MemberMap[humanUserID(oc.UserLogin.ID)] = bridgev2.ChatMember{
-		EventSender: oc.senderForAgent(agentID, true),
-		Membership:  event.MembershipJoin,
-	}
-	chatInfo.Members.MemberMap[openClawGhostUserID(agentID)] = bridgev2.ChatMember{
-		EventSender: oc.senderForAgent(agentID, false),
-		Membership:  event.MembershipJoin,
-		UserInfo:    oc.sdkAgentForProfile(openClawAgentProfile{AgentID: agentID, Name: displayName}).UserInfo(),
-		MemberEventExtra: map[string]any{
+		BotSender:         ptr.Ptr(oc.senderForAgent(agentID, false)),
+		BotUserInfo:       userInfo,
+		BotMemberEventExtra: map[string]any{
 			"displayname": displayName,
 		},
-	}
-	return chatInfo
+		CanBackfill:       true,
+	})
 }
 
 func (oc *OpenClawClient) resolveAgentProfile(ctx context.Context, agentID, sessionKey string, current *GhostMetadata, configured *gatewayAgentSummary) openClawAgentProfile {

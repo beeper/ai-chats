@@ -111,7 +111,7 @@ func newOpenClawManager(client *OpenClawClient) *openClawManager {
 				agentremote.DecisionToString(decision, "allow-once", "allow-always", "deny"))
 		},
 		SendNotice: func(ctx context.Context, portal *bridgev2.Portal, msg string) {
-			client.sendNoticeViaPortal(ctx, portal, msg, mgr.approvalSenderForPortal(portal))
+			client.sendSystemNotice(ctx, portal, msg)
 		},
 		DBMetadata: func(prompt agentremote.ApprovalPromptMessage) any {
 			return &MessageMetadata{
@@ -375,7 +375,7 @@ func (m *openClawManager) expireLocalApproval(ctx context.Context, approvalID st
 	}
 	if sessionKey != "" {
 		if portal := m.resolvePortal(ctx, sessionKey); portal != nil && portal.MXID != "" {
-			m.client.sendNoticeViaPortal(ctx, portal, "OpenClaw approval expired", m.approvalSenderForPortal(portal))
+			m.client.sendSystemNotice(ctx, portal, "OpenClaw approval expired")
 		}
 	}
 	m.approvalFlow.ResolveExternal(ctx, approvalID, agentremote.ApprovalDecisionPayload{
@@ -1804,7 +1804,7 @@ func (m *openClawManager) handleApprovalResolved(ctx context.Context, payload ga
 			"reason":     reason,
 		})
 	} else {
-		m.client.sendNoticeViaPortal(ctx, portal, openClawApprovalResolvedText(payload.Decision), m.approvalSenderForPortal(portal))
+		m.client.sendSystemNotice(ctx, portal, openClawApprovalResolvedText(payload.Decision))
 	}
 	m.approvalFlow.ResolveExternal(ctx, approvalID, agentremote.ApprovalDecisionPayload{
 		ApprovalID: approvalID,
@@ -1915,14 +1915,15 @@ func (m *openClawManager) handleDirectChatEvent(ctx context.Context, portal *bri
 		return
 	}
 	m.invalidateHistoryCache(payload.SessionKey)
-	m.client.UserLogin.QueueRemoteEvent(buildOpenClawRemoteMessage(
-		portal.PortalKey,
-		messageID,
-		sender,
-		eventTS,
-		payload.Seq*2,
-		converted,
-	))
+	m.client.UserLogin.QueueRemoteEvent(agentremote.BuildPreConvertedRemoteMessage(agentremote.PreConvertedRemoteMessageParams{
+		PortalKey:   portal.PortalKey,
+		Sender:      sender,
+		MsgID:       messageID,
+		LogKey:      "openclaw_msg_id",
+		Timestamp:   eventTS,
+		StreamOrder: payload.Seq * 2,
+		Converted:   converted,
+	}))
 	if maybeUpdatePreviewSnippet(meta, openclawconv.ExtractMessageText(payload.Message), eventTS) {
 		_ = portal.Save(ctx)
 	}
@@ -1954,14 +1955,15 @@ func (m *openClawManager) emitLatestUserMessageFromHistory(ctx context.Context, 
 		m.lastEmittedUserMsg[payload.SessionKey] = messageID
 		m.mu.Unlock()
 		eventTS := extractOpenClawEventTimestamp(payload.TS, message)
-		m.client.UserLogin.QueueRemoteEvent(buildOpenClawRemoteMessage(
-			portal.PortalKey,
-			messageID,
-			sender,
-			eventTS,
-			payload.Seq*2-1,
-			converted,
-		))
+		m.client.UserLogin.QueueRemoteEvent(agentremote.BuildPreConvertedRemoteMessage(agentremote.PreConvertedRemoteMessageParams{
+			PortalKey:   portal.PortalKey,
+			Sender:      sender,
+			MsgID:       messageID,
+			LogKey:      "openclaw_msg_id",
+			Timestamp:   eventTS,
+			StreamOrder: payload.Seq*2 - 1,
+			Converted:   converted,
+		}))
 		if maybeUpdatePreviewSnippet(meta, openclawconv.ExtractMessageText(message), eventTS) {
 			_ = portal.Save(ctx)
 		}

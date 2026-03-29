@@ -76,12 +76,7 @@ func newSDKClient(login *bridgev2.UserLogin, cfg *Config) *sdkClient {
 			return data.RoomID
 		},
 		SendNotice: func(ctx context.Context, portal *bridgev2.Portal, msg string) {
-			// Best-effort notice via bot intent.
-			if login.Bridge != nil && login.Bridge.Bot != nil && portal != nil && portal.MXID != "" {
-				_, _ = login.Bridge.Bot.SendMessage(ctx, portal.MXID, event.EventMessage, &event.Content{
-					Parsed: &event.MessageEventContent{MsgType: event.MsgNotice, Body: msg},
-				}, nil)
-			}
+			_ = agentremote.SendSystemMessage(ctx, login, portal, bridgev2.EventSender{}, msg)
 		},
 	})
 	if cfg != nil && cfg.TurnManagement != nil {

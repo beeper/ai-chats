@@ -519,21 +519,6 @@ func modelMemberUserInfo(modelID string, info *ModelInfo) *bridgev2.UserInfo {
 	}
 }
 
-func modelJoinMember(loginID networkid.UserLoginID, modelID, modelName string, info *ModelInfo) bridgev2.ChatMember {
-	return bridgev2.ChatMember{
-		EventSender: bridgev2.EventSender{
-			Sender:      modelUserID(modelID),
-			SenderLogin: loginID,
-		},
-		Membership: event.MembershipJoin,
-		UserInfo:   modelMemberUserInfo(modelID, info),
-		MemberEventExtra: map[string]any{
-			"displayname":            modelName,
-			"com.beeper.ai.model_id": modelID,
-		},
-	}
-}
-
 func (oc *AIClient) createAgentChatWithModel(ctx context.Context, agent *agents.AgentDefinition, modelID string, applyModelOverride bool) (*bridgev2.CreateChatResponse, error) {
 	if !oc.agentsEnabledForLogin() {
 		return nil, agentChatsDisabledError()
@@ -691,16 +676,19 @@ func (oc *AIClient) initPortalForChat(ctx context.Context, opts PortalInitOpts) 
 	}
 	portal.Metadata = pmeta
 
-	portal.RoomType = database.RoomTypeDM
-	portal.OtherUserID = modelUserID(modelID)
-	portal.Name = title
-	portal.NameSet = true
-	defaultAvatar := strings.TrimSpace(agents.DefaultAgentAvatarMXC)
-	if defaultAvatar != "" {
-		portal.AvatarID = networkid.AvatarID(defaultAvatar)
-		portal.AvatarMXC = id.ContentURIString(defaultAvatar)
-	}
-	if err := portal.Save(ctx); err != nil {
+	if err := agentremote.ConfigureDMPortal(ctx, agentremote.ConfigureDMPortalParams{
+		Portal:      portal,
+		Title:       title,
+		OtherUserID: modelUserID(modelID),
+		Save:        true,
+		MutatePortal: func(portal *bridgev2.Portal) {
+			defaultAvatar := strings.TrimSpace(agents.DefaultAgentAvatarMXC)
+			if defaultAvatar != "" {
+				portal.AvatarID = networkid.AvatarID(defaultAvatar)
+				portal.AvatarMXC = id.ContentURIString(defaultAvatar)
+			}
+		},
+	}); err != nil {
 		return nil, nil, fmt.Errorf("failed to save portal: %w", err)
 	}
 	oc.ensureGhostDisplayName(ctx, modelID)
@@ -928,16 +916,18 @@ func (oc *AIClient) composeChatInfo(title, modelID string) *bridgev2.ChatInfo {
 	if title == "" {
 		title = modelName
 	}
-	chatInfo := agentremote.BuildLoginDMChatInfo(agentremote.LoginDMChatInfoParams{
+	return agentremote.BuildLoginDMChatInfo(agentremote.LoginDMChatInfoParams{
 		Title:             title,
 		Login:             oc.UserLogin,
 		HumanUserIDPrefix: oc.HumanUserIDPrefix,
 		BotUserID:         modelUserID(modelID),
 		BotDisplayName:    modelName,
+		BotUserInfo:       modelMemberUserInfo(modelID, modelInfo),
+		BotMemberEventExtra: map[string]any{
+			"displayname":            modelName,
+			"com.beeper.ai.model_id": modelID,
+		},
 	})
-	// Override bot member with model-specific UserInfo and extra fields.
-	chatInfo.Members.MemberMap[modelUserID(modelID)] = modelJoinMember(oc.UserLogin.ID, modelID, modelName, modelInfo)
-	return chatInfo
 }
 
 func (oc *AIClient) applyAgentChatInfo(chatInfo *bridgev2.ChatInfo, agentID, agentName, modelID string) {
@@ -1001,17 +991,10 @@ func (oc *AIClient) BroadcastRoomState(ctx context.Context, portal *bridgev2.Por
 
 // sendSystemNotice sends an informational notice to the room via the bridge bot.
 func (oc *AIClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Portal, message string) {
-	if portal == nil || portal.MXID == "" || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.Bot == nil {
+	if oc == nil {
 		return
 	}
-	_, err := oc.UserLogin.Bridge.Bot.SendMessage(ctx, portal.MXID, event.EventMessage, &event.Content{
-		Parsed: &event.MessageEventContent{
-			MsgType:  event.MsgNotice,
-			Body:     message,
-			Mentions: &event.Mentions{},
-		},
-	}, nil)
-	if err != nil {
+	if err := oc.ClientBase.SendSystemMessage(ctx, portal, message); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to send system notice")
 	}
 }
