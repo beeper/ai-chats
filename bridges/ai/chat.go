@@ -992,12 +992,19 @@ func (oc *AIClient) BroadcastRoomState(ctx context.Context, portal *bridgev2.Por
 	return nil
 }
 
-// sendSystemNotice sends an informational notice to the room via the portal pipeline.
+// sendSystemNotice sends an informational notice to the room via the bridge bot.
 func (oc *AIClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Portal, message string) {
-	if portal == nil || portal.MXID == "" {
+	if portal == nil || portal.MXID == "" || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.Bot == nil {
 		return
 	}
-	if _, _, err := oc.sendViaPortal(ctx, portal, agentremote.BuildSystemNotice(message), ""); err != nil {
+	_, err := oc.UserLogin.Bridge.Bot.SendMessage(ctx, portal.MXID, event.EventMessage, &event.Content{
+		Parsed: &event.MessageEventContent{
+			MsgType:  event.MsgNotice,
+			Body:     message,
+			Mentions: &event.Mentions{},
+		},
+	}, nil)
+	if err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to send system notice")
 	}
 }
