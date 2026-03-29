@@ -495,12 +495,19 @@ func (oc *AIClient) resolveAgentIdentifier(ctx context.Context, agent *agents.Ag
 	}
 
 	agentName := oc.resolveAgentDisplayName(ctx, agent)
+	if agentName == "" {
+		agentName = strings.TrimSpace(agent.EffectiveName())
+	}
+	if agentName == "" {
+		agentName = agent.ID
+	}
 	oc.ensureAgentGhostDisplayName(ctx, agent.ID, modelID, agentName)
 	responder, err := oc.ResolveResponderForAgent(ctx, agent.ID, ResponderResolveOptions{
 		RuntimeModelOverride: modelID,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve agent responder: %w", err)
+		oc.loggerForContext(ctx).Warn().Err(err).Str("agent", agent.ID).Msg("Failed to resolve responder for agent identifier")
+		responder = nil
 	}
 
 	var chatResp *bridgev2.CreateChatResponse
@@ -514,7 +521,7 @@ func (oc *AIClient) resolveAgentIdentifier(ctx context.Context, agent *agents.Ag
 
 	return &bridgev2.ResolveIdentifierResponse{
 		UserID:   userID,
-		UserInfo: responderUserInfo(responder, agentContactIdentifiers(agent.ID), true),
+		UserInfo: responderUserInfoOrDefault(responder, agentName, agentContactIdentifiers(agent.ID), true),
 		Ghost:    ghost,
 		Chat:     chatResp,
 	}, nil
