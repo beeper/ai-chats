@@ -79,9 +79,9 @@ func TestConversationStateRoundTripCarrierMetadata(t *testing.T) {
 			AgentIDs: []string{"agent-a"},
 		},
 	}
-	if !saveConversationStateToGenericMetadata(&holder, state) {
-		// Generic metadata intentionally doesn't support the carrier path.
-	}
+	// saveConversationStateToGenericMetadata intentionally returns false here
+	// because generic metadata doesn't support the carrier path.
+	_ = saveConversationStateToGenericMetadata(&holder, state)
 	carrier.SetSDKPortalMetadata(&SDKPortalMetadata{Conversation: *state})
 	loaded, ok := carrier.GetSDKPortalMetadata(), carrier.GetSDKPortalMetadata() != nil
 	if !ok || loaded == nil {

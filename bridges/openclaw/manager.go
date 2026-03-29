@@ -593,7 +593,9 @@ func (m *openClawManager) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 		return nil, err
 	}
 	if meta.OpenClawDMCreatedFromContact && meta.OpenClawSessionID == "" && isOpenClawSyntheticDMSessionKey(meta.OpenClawSessionKey) {
-		go m.syncSessions(m.client.BackgroundContext(ctx))
+		go func() {
+			_ = m.syncSessions(m.client.BackgroundContext(ctx))
+		}()
 	}
 	return &bridgev2.MatrixMessageResponse{Pending: true}, nil
 }

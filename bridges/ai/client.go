@@ -1886,27 +1886,6 @@ func (oc *AIClient) downloadAndEncodeMedia(ctx context.Context, mxcURL string, e
 	return base64.StdEncoding.EncodeToString(data), mimeType, nil
 }
 
-// getAudioFormat extracts the audio format from a MIME type for OpenRouter API
-func getAudioFormat(mimeType string) string {
-	switch mimeType {
-	case "audio/wav", "audio/x-wav":
-		return "wav"
-	case "audio/mpeg", "audio/mp3":
-		return "mp3"
-	case "audio/webm":
-		return "webm"
-	case "audio/ogg":
-		return "ogg"
-	case "audio/flac":
-		return "flac"
-	case "audio/mp4", "audio/x-m4a":
-		return "mp4"
-	default:
-		// Default to mp3 for unknown formats
-		return "mp3"
-	}
-}
-
 // ensureGhostDisplayName ensures the ghost has its display name set before sending messages.
 // This fixes the issue where ghosts appear with raw user IDs instead of formatted names.
 func (oc *AIClient) ensureGhostDisplayName(ctx context.Context, modelID string) {
