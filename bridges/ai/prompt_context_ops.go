@@ -26,7 +26,6 @@ func ClonePromptContext(ctx PromptContext) PromptContext {
 	return cloned
 }
 
-
 func PromptContextMessageCount(ctx PromptContext) int {
 	count := len(ctx.Messages)
 	if strings.TrimSpace(ctx.SystemPrompt) != "" {
