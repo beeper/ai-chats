@@ -315,7 +315,6 @@ type AIClient struct {
 	integrationOrder   []string
 
 	toolRegistry     *toolIntegrationRegistry
-	promptRegistry   *promptIntegrationRegistry
 	commandRegistry  *commandIntegrationRegistry
 	eventRegistry    *eventIntegrationRegistry
 	purgeRegistry    *purgeIntegrationRegistry
@@ -1681,20 +1680,6 @@ func (oc *AIClient) updateAssistantGeneratedFiles(ctx context.Context, portal *b
 		return
 	}
 	oc.Log().Warn().Msg("No assistant message found to update with async GeneratedFiles")
-}
-
-func (oc *AIClient) promptContextToDispatchMessages(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	promptContext PromptContext,
-) []openai.ChatCompletionMessageParamUnion {
-	promptMessages := PromptContextToChatCompletionMessages(promptContext, oc.isOpenRouterProvider())
-	promptMessages = oc.augmentPromptWithIntegrations(ctx, portal, meta, promptMessages)
-	if meta != nil && IsGoogleModel(oc.effectiveModel(meta)) {
-		promptMessages = SanitizeGoogleTurnOrdering(promptMessages)
-	}
-	return promptMessages
 }
 
 type historyLoadResult struct {

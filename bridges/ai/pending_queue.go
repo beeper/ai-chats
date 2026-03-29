@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
 
@@ -320,21 +319,6 @@ func (oc *AIClient) getSteeringMessages(roomID id.RoomID) []string {
 			continue
 		}
 		messages = append(messages, prompt)
-	}
-	return messages
-}
-
-func buildSteeringUserMessages(prompts []string) []openai.ChatCompletionMessageParamUnion {
-	if len(prompts) == 0 {
-		return nil
-	}
-	messages := make([]openai.ChatCompletionMessageParamUnion, 0, len(prompts))
-	for _, prompt := range prompts {
-		prompt = strings.TrimSpace(prompt)
-		if prompt == "" {
-			continue
-		}
-		messages = append(messages, openai.UserMessage(prompt))
 	}
 	return messages
 }

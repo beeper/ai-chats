@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openai/openai-go/v3"
 	"go.mau.fi/util/dbutil"
 
 	"github.com/beeper/agentremote/pkg/agents"

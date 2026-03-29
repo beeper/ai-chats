@@ -464,16 +464,6 @@ func (oc *AIClient) handleProviderToolCompleted(
 }
 
 // runResponsesAgentLoop handles the Responses API provider adapter under the canonical agent loop.
-func (oc *AIClient) runResponsesAgentLoop(
-	ctx context.Context,
-	evt *event.Event,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	messages []openai.ChatCompletionMessageParamUnion,
-) (bool, *ContextLengthError, error) {
-	return oc.runResponsesAgentLoopPrompt(ctx, evt, portal, meta, ChatMessagesToPromptContext(messages))
-}
-
 func (oc *AIClient) runResponsesAgentLoopPrompt(
 	ctx context.Context,
 	evt *event.Event,

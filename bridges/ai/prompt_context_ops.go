@@ -50,4 +50,3 @@ func NewUserTextPromptMessage(text string) PromptMessage {
 		}},
 	}
 }
-

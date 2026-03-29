@@ -53,15 +53,15 @@ func TestGetSteeringMessages_FiltersAndDrainsQueue(t *testing.T) {
 }
 
 func TestBuildSteeringUserMessages(t *testing.T) {
-	got := buildSteeringUserMessages([]string{"first", " ", "second"})
+	got := buildSteeringPromptMessages([]string{"first", " ", "second"})
 	if len(got) != 2 {
-		t.Fatalf("expected 2 steering user messages, got %d", len(got))
+		t.Fatalf("expected 2 steering prompt messages, got %d", len(got))
 	}
-	if got[0].OfUser == nil || got[0].OfUser.Content.OfString.Value != "first" {
-		t.Fatalf("unexpected first steering user message: %#v", got[0])
+	if got[0].Role != PromptRoleUser || got[0].Text() != "first" {
+		t.Fatalf("unexpected first steering prompt message: %#v", got[0])
 	}
-	if got[1].OfUser == nil || got[1].OfUser.Content.OfString.Value != "second" {
-		t.Fatalf("unexpected second steering user message: %#v", got[1])
+	if got[1].Role != PromptRoleUser || got[1].Text() != "second" {
+		t.Fatalf("unexpected second steering prompt message: %#v", got[1])
 	}
 }
 
@@ -79,7 +79,7 @@ func TestGetFollowUpMessages_ConsumesSingleQueuedTextMessage(t *testing.T) {
 	}
 
 	messages := oc.getFollowUpMessages(roomID)
-	if len(messages) != 1 || messages[0].OfUser == nil || messages[0].OfUser.Content.OfString.Value != "follow up" {
+	if len(messages) != 1 || messages[0].Role != PromptRoleUser || messages[0].Text() != "follow up" {
 		t.Fatalf("unexpected follow-up messages: %#v", messages)
 	}
 	if snapshot := oc.getQueueSnapshot(roomID); snapshot != nil {
@@ -102,11 +102,11 @@ func TestGetFollowUpMessages_CollectsQueuedTextMessages(t *testing.T) {
 	}
 
 	messages := oc.getFollowUpMessages(roomID)
-	if len(messages) != 1 || messages[0].OfUser == nil {
+	if len(messages) != 1 || messages[0].Role != PromptRoleUser {
 		t.Fatalf("expected one combined follow-up message, got %#v", messages)
 	}
-	if messages[0].OfUser.Content.OfString.Value != "[Queued messages while agent was busy]\n\n---\nQueued #1\nfirst\n\n---\nQueued #2\nsecond" {
-		t.Fatalf("unexpected combined follow-up prompt: %q", messages[0].OfUser.Content.OfString.Value)
+	if messages[0].Text() != "[Queued messages while agent was busy]\n\n---\nQueued #1\nfirst\n\n---\nQueued #2\nsecond" {
+		t.Fatalf("unexpected combined follow-up prompt: %q", messages[0].Text())
 	}
 }
 
@@ -128,11 +128,11 @@ func TestGetFollowUpMessages_CollectSummaryIsConsumed(t *testing.T) {
 	}
 
 	messages := oc.getFollowUpMessages(roomID)
-	if len(messages) != 1 || messages[0].OfUser == nil {
+	if len(messages) != 1 || messages[0].Role != PromptRoleUser {
 		t.Fatalf("expected one combined follow-up message, got %#v", messages)
 	}
-	if messages[0].OfUser.Content.OfString.Value != "[Queued messages while agent was busy]\n\n[Queue overflow] Dropped 2 messages due to cap.\nSummary:\n- older one\n- older two\n\n---\nQueued #1\nfirst\n\n---\nQueued #2\nsecond" {
-		t.Fatalf("unexpected combined follow-up prompt with summary: %q", messages[0].OfUser.Content.OfString.Value)
+	if messages[0].Text() != "[Queued messages while agent was busy]\n\n[Queue overflow] Dropped 2 messages due to cap.\nSummary:\n- older one\n- older two\n\n---\nQueued #1\nfirst\n\n---\nQueued #2\nsecond" {
+		t.Fatalf("unexpected combined follow-up prompt with summary: %q", messages[0].Text())
 	}
 
 	if again := oc.getFollowUpMessages(roomID); len(again) != 0 {
@@ -160,11 +160,11 @@ func TestGetFollowUpMessages_UsesSyntheticSummaryPrompt(t *testing.T) {
 	}
 
 	messages := oc.getFollowUpMessages(roomID)
-	if len(messages) != 1 || messages[0].OfUser == nil {
+	if len(messages) != 1 || messages[0].Role != PromptRoleUser {
 		t.Fatalf("expected one synthetic follow-up message, got %#v", messages)
 	}
-	if messages[0].OfUser.Content.OfString.Value != "[Queue overflow] Dropped 2 messages due to cap.\nSummary:\n- older one\n- older two" {
-		t.Fatalf("unexpected synthetic follow-up prompt: %q", messages[0].OfUser.Content.OfString.Value)
+	if messages[0].Text() != "[Queue overflow] Dropped 2 messages due to cap.\nSummary:\n- older one\n- older two" {
+		t.Fatalf("unexpected synthetic follow-up prompt: %q", messages[0].Text())
 	}
 }
 
@@ -185,19 +185,19 @@ func TestGetFollowUpMessages_SyntheticSummaryIsConsumedBeforeLatestMessage(t *te
 	}
 
 	first := oc.getFollowUpMessages(roomID)
-	if len(first) != 1 || first[0].OfUser == nil {
+	if len(first) != 1 || first[0].Role != PromptRoleUser {
 		t.Fatalf("expected one synthetic follow-up message, got %#v", first)
 	}
-	if first[0].OfUser.Content.OfString.Value != "[Queue overflow] Dropped 2 messages due to cap.\nSummary:\n- older one\n- older two" {
-		t.Fatalf("unexpected first synthetic follow-up prompt: %q", first[0].OfUser.Content.OfString.Value)
+	if first[0].Text() != "[Queue overflow] Dropped 2 messages due to cap.\nSummary:\n- older one\n- older two" {
+		t.Fatalf("unexpected first synthetic follow-up prompt: %q", first[0].Text())
 	}
 
 	second := oc.getFollowUpMessages(roomID)
-	if len(second) != 1 || second[0].OfUser == nil {
+	if len(second) != 1 || second[0].Role != PromptRoleUser {
 		t.Fatalf("expected queued latest message after summary, got %#v", second)
 	}
-	if second[0].OfUser.Content.OfString.Value != "latest" {
-		t.Fatalf("expected latest queued message after consuming summary, got %q", second[0].OfUser.Content.OfString.Value)
+	if second[0].Text() != "latest" {
+		t.Fatalf("expected latest queued message after consuming summary, got %q", second[0].Text())
 	}
 
 	if third := oc.getFollowUpMessages(roomID); len(third) != 0 {

@@ -367,7 +367,7 @@ func (oc *AIClient) runAgentLoopWithRetry(
 
 func (oc *AIClient) selectAgentLoopRunFunc(meta *PortalMetadata, promptContext PromptContext) (responseFuncCanonical, string) {
 	if HasUnsupportedResponsesPromptContext(promptContext) {
-		return oc.runChatCompletionsAgentLoop, "chat_completions"
+		return oc.runChatCompletionsAgentLoopPrompt, "chat_completions"
 	}
 	modelID := ""
 	if oc != nil {
@@ -380,9 +380,9 @@ func (oc *AIClient) selectAgentLoopRunFunc(meta *PortalMetadata, promptContext P
 				return false, nil, fmt.Errorf("invalid model configuration: direct OpenAI model %q cannot use chat_completions", modelID)
 			}, "invalid_model_api"
 		}
-		return oc.runChatCompletionsAgentLoop, "chat_completions"
+		return oc.runChatCompletionsAgentLoopPrompt, "chat_completions"
 	default:
-		return oc.runResponsesAgentLoop, "responses"
+		return oc.runResponsesAgentLoopPrompt, "responses"
 	}
 }
 

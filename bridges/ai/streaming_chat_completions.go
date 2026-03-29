@@ -216,16 +216,6 @@ func (a *chatCompletionsTurnAdapter) FinalizeAgentLoop(ctx context.Context) {
 
 }
 
-func (oc *AIClient) runChatCompletionsAgentLoop(
-	ctx context.Context,
-	evt *event.Event,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	messages []openai.ChatCompletionMessageParamUnion,
-) (bool, *ContextLengthError, error) {
-	return oc.runChatCompletionsAgentLoopPrompt(ctx, evt, portal, meta, ChatMessagesToPromptContext(messages))
-}
-
 func (oc *AIClient) runChatCompletionsAgentLoopPrompt(
 	ctx context.Context,
 	evt *event.Event,

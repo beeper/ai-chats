@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/beeper/agentremote"
@@ -78,46 +77,6 @@ func (r *toolIntegrationRegistry) availability(
 		}
 	}
 	return false, false, SourceGlobalDefault, ""
-}
-
-type promptIntegrationRegistry struct {
-	items []integrationruntime.PromptIntegration
-}
-
-func (r *promptIntegrationRegistry) register(integration integrationruntime.PromptIntegration) {
-	if integration == nil {
-		return
-	}
-	r.items = append(r.items, integration)
-}
-
-func (r *promptIntegrationRegistry) additionalMessages(
-	ctx context.Context,
-	scope integrationruntime.PromptScope,
-) []openai.ChatCompletionMessageParamUnion {
-	if r == nil {
-		return nil
-	}
-	var out []openai.ChatCompletionMessageParamUnion
-	for _, integration := range r.items {
-		out = append(out, integration.AdditionalSystemMessages(ctx, scope)...)
-	}
-	return out
-}
-
-func (r *promptIntegrationRegistry) augmentPrompt(
-	ctx context.Context,
-	scope integrationruntime.PromptScope,
-	prompt []openai.ChatCompletionMessageParamUnion,
-) []openai.ChatCompletionMessageParamUnion {
-	if r == nil {
-		return prompt
-	}
-	out := prompt
-	for _, integration := range r.items {
-		out = integration.AugmentPrompt(ctx, scope, out)
-	}
-	return out
 }
 
 type commandIntegrationRegistration struct {
@@ -266,14 +225,6 @@ func (oc *AIClient) toolScope(portal *bridgev2.Portal, meta *PortalMetadata) int
 	}
 }
 
-func (oc *AIClient) promptScope(portal *bridgev2.Portal, meta *PortalMetadata) integrationruntime.PromptScope {
-	return integrationruntime.PromptScope{
-		Client: oc,
-		Portal: portal,
-		Meta:   meta,
-	}
-}
-
 func (oc *AIClient) commandScope(portal *bridgev2.Portal, meta *PortalMetadata, evt any) integrationruntime.CommandScope {
 	return integrationruntime.CommandScope{
 		Client: oc,
@@ -288,7 +239,6 @@ func (oc *AIClient) initIntegrations() {
 		return
 	}
 	oc.toolRegistry = &toolIntegrationRegistry{}
-	oc.promptRegistry = &promptIntegrationRegistry{}
 	oc.commandRegistry = newCommandIntegrationRegistry()
 	oc.eventRegistry = &eventIntegrationRegistry{}
 	oc.purgeRegistry = &purgeIntegrationRegistry{}
@@ -307,9 +257,6 @@ func (oc *AIClient) initIntegrations() {
 		if toolIntegration, ok := module.(integrationruntime.ToolIntegration); ok {
 			oc.toolRegistry.register(toolIntegration)
 		}
-		if promptIntegration, ok := module.(integrationruntime.PromptIntegration); ok {
-			oc.promptRegistry.register(promptIntegration)
-		}
 		if commandIntegration, ok := module.(integrationruntime.CommandIntegration); ok {
 			defs := commandIntegration.CommandDefinitions(context.Background(), oc.commandScope(nil, nil, nil))
 			oc.commandRegistry.register(commandIntegration, defs)
@@ -325,11 +272,9 @@ func (oc *AIClient) initIntegrations() {
 		}
 	}
 
-	// Register core integrations after modules so module tool/prompt implementations take precedence.
+	// Register core integrations after modules so module tool implementations take precedence.
 	coreTools := &coreToolIntegration{client: oc}
-	corePrompts := &corePromptIntegration{client: oc}
 	oc.toolRegistry.register(coreTools)
-	oc.promptRegistry.register(corePrompts)
 
 	registerModuleCommands(oc.commandRegistry.definitions())
 }
@@ -523,35 +468,6 @@ func (oc *AIClient) executeIntegratedTool(
 	})
 }
 
-func (oc *AIClient) additionalSystemMessages(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-) []openai.ChatCompletionMessageParamUnion {
-	if oc == nil {
-		return nil
-	}
-	if oc.promptRegistry == nil {
-		return oc.buildAdditionalSystemPromptsCore(ctx, portal, meta)
-	}
-	return oc.promptRegistry.additionalMessages(ctx, oc.promptScope(portal, meta))
-}
-
-func (oc *AIClient) augmentPromptWithIntegrations(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	prompt []openai.ChatCompletionMessageParamUnion,
-) []openai.ChatCompletionMessageParamUnion {
-	if oc == nil {
-		return prompt
-	}
-	if oc.promptRegistry == nil {
-		return prompt
-	}
-	return oc.promptRegistry.augmentPrompt(ctx, oc.promptScope(portal, meta), prompt)
-}
-
 func (oc *AIClient) executeIntegratedCommand(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -710,30 +626,4 @@ func (c *coreToolIntegration) ToolAvailability(
 	_ string,
 ) (bool, bool, integrationruntime.SettingSource, string) {
 	return false, false, integrationruntime.SourceGlobalDefault, ""
-}
-
-type corePromptIntegration struct {
-	client *AIClient
-}
-
-func (c *corePromptIntegration) Name() string { return "core" }
-
-func (c *corePromptIntegration) AdditionalSystemMessages(
-	ctx context.Context,
-	scope integrationruntime.PromptScope,
-) []openai.ChatCompletionMessageParamUnion {
-	if c == nil || c.client == nil {
-		return nil
-	}
-	portal, _ := scope.Portal.(*bridgev2.Portal)
-	meta, _ := scope.Meta.(*PortalMetadata)
-	return c.client.buildAdditionalSystemPromptsCore(ctx, portal, meta)
-}
-
-func (c *corePromptIntegration) AugmentPrompt(
-	_ context.Context,
-	_ integrationruntime.PromptScope,
-	prompt []openai.ChatCompletionMessageParamUnion,
-) []openai.ChatCompletionMessageParamUnion {
-	return prompt
 }
