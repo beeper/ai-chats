@@ -336,7 +336,7 @@ func (oc *OpenClawClient) GetChatInfo(ctx context.Context, portal *bridgev2.Port
 	roomType := openClawRoomType(meta)
 	agentID := stringutil.TrimDefault(meta.OpenClawDMTargetAgentID, meta.OpenClawAgentID)
 	if roomType == database.RoomTypeDM && agentID != "" {
-		info := oc.syntheticDMPortalInfo(agentID, title, nil)
+		info := oc.buildOpenClawDMChatInfo(agentID, title, nil)
 		info.Topic = ptr.NonZero(oc.topicForPortal(meta))
 		info.Type = ptr.Ptr(roomType)
 		info.CanBackfill = true

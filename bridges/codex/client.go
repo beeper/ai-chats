@@ -1767,7 +1767,7 @@ func (cc *CodexClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Po
 	if cc == nil {
 		return
 	}
-	if err := agentremote.SendSystemMessage(ctx, cc.UserLogin, portal, bridgev2.EventSender{}, strings.TrimSpace(message)); err != nil {
+	if err := agentremote.SendSystemMessage(ctx, cc.UserLogin, portal, bridgev2.EventSender{}, message); err != nil {
 		cc.log.Warn().Err(err).Msg("Failed to send system notice")
 	}
 }

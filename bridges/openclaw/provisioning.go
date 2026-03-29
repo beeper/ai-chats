@@ -311,7 +311,7 @@ func (oc *OpenClawClient) createConfiguredAgentDM(ctx context.Context, agent gat
 	}); err != nil {
 		return nil, fmt.Errorf("failed to save openclaw dm portal: %w", err)
 	}
-	chatInfo := oc.syntheticDMPortalInfo(agentID, meta.OpenClawDMTargetAgentName, info)
+	chatInfo := oc.buildOpenClawDMChatInfo(agentID, meta.OpenClawDMTargetAgentName, info)
 	_, err = bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
 		Login:             oc.UserLogin,
 		Portal:            portal,
@@ -330,7 +330,7 @@ func (oc *OpenClawClient) createConfiguredAgentDM(ctx context.Context, agent gat
 	}, nil
 }
 
-func (oc *OpenClawClient) syntheticDMPortalInfo(agentID, displayName string, userInfo *bridgev2.UserInfo) *bridgev2.ChatInfo {
+func (oc *OpenClawClient) buildOpenClawDMChatInfo(agentID, displayName string, userInfo *bridgev2.UserInfo) *bridgev2.ChatInfo {
 	if strings.TrimSpace(displayName) == "" {
 		displayName = oc.displayNameForAgent(agentID)
 	}
