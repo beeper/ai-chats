@@ -17,12 +17,10 @@ func (oc *AIClient) buildContinuationParams(
 	pendingOutputs []functionCallOutput,
 	approvalInputs []responses.ResponseInputItemUnionParam,
 ) responses.ResponseNewParams {
-	currentPrompt := PromptContext{}
-	if prompt != nil {
-		currentPrompt = ClonePromptContext(*prompt)
-	}
 	var input responses.ResponseInputParam
-	input = append(input, promptContextToResponsesInput(currentPrompt)...)
+	if prompt != nil {
+		input = append(input, promptContextToResponsesInput(*prompt)...)
+	}
 	input = append(input, approvalInputs...)
 	for _, output := range pendingOutputs {
 		if output.name != "" {

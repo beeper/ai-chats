@@ -225,9 +225,13 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 		BaseURL: baseURL,
 	}
 	if serviceTokens != nil && !serviceTokensEmpty(serviceTokens) {
-		creds.ServiceTokens = serviceTokens
+		creds.ServiceTokens = cloneServiceTokens(serviceTokens)
 	}
-	meta.Credentials = mergeLoginCredentials(meta.Credentials, creds)
+	if loginCredentialsEmpty(creds) {
+		meta.Credentials = nil
+	} else {
+		meta.Credentials = creds
+	}
 	if err := ol.validateLoginMetadata(ctx, loginID, meta); err != nil {
 		return nil, err
 	}

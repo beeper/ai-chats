@@ -1,5 +1,7 @@
 package ai
 
+import "strings"
+
 type PromptRole string
 
 const (
@@ -40,18 +42,19 @@ type PromptMessage struct {
 }
 
 func (m PromptMessage) Text() string {
-	var text string
+	var sb strings.Builder
 	for _, block := range m.Blocks {
 		switch block.Type {
 		case PromptBlockText, PromptBlockThinking:
-			if text == "" {
-				text = block.Text
-			} else if block.Text != "" {
-				text += "\n" + block.Text
+			if block.Text != "" {
+				if sb.Len() > 0 {
+					sb.WriteByte('\n')
+				}
+				sb.WriteString(block.Text)
 			}
 		}
 	}
-	return text
+	return sb.String()
 }
 
 // PromptContext is the bridge-local prompt envelope used throughout bridges/ai.

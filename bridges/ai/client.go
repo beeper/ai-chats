@@ -1155,15 +1155,9 @@ func (oc *AIClient) defaultModelForProvider() string {
 	}
 	switch loginMeta.Provider {
 	case ProviderOpenAI:
-		if configured := strings.TrimSpace(oc.defaultModelSelection(ProviderOpenAI).Primary); configured != "" {
-			return configured
-		}
-		return DefaultModelOpenAI
+		return oc.defaultModelSelection(ProviderOpenAI).Primary
 	case ProviderOpenRouter, ProviderMagicProxy:
-		if configured := strings.TrimSpace(oc.defaultModelSelection(ProviderOpenRouter).Primary); configured != "" {
-			return configured
-		}
-		return DefaultModelOpenRouter
+		return oc.defaultModelSelection(ProviderOpenRouter).Primary
 	default:
 		return DefaultModelOpenRouter
 	}
@@ -1171,19 +1165,24 @@ func (oc *AIClient) defaultModelForProvider() string {
 
 func (oc *AIClient) defaultModelSelection(provider string) ModelSelectionConfig {
 	if oc == nil || oc.connector == nil || oc.connector.Config.Agents == nil || oc.connector.Config.Agents.Defaults == nil || oc.connector.Config.Agents.Defaults.Model == nil {
-		return ModelSelectionConfig{}
+		return ModelSelectionConfig{Primary: defaultModelForProviderName(provider)}
 	}
 	selection := *oc.connector.Config.Agents.Defaults.Model
-	if strings.TrimSpace(selection.Primary) != "" {
-		return selection
-	}
-	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case ProviderOpenAI:
-		selection.Primary = DefaultModelOpenAI
-	case ProviderOpenRouter, ProviderMagicProxy:
-		selection.Primary = DefaultModelOpenRouter
+	if strings.TrimSpace(selection.Primary) == "" {
+		selection.Primary = defaultModelForProviderName(provider)
 	}
 	return selection
+}
+
+func defaultModelForProviderName(provider string) string {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case ProviderOpenAI:
+		return DefaultModelOpenAI
+	case ProviderOpenRouter, ProviderMagicProxy:
+		return DefaultModelOpenRouter
+	default:
+		return DefaultModelOpenRouter
+	}
 }
 
 // effectivePrompt returns the base system prompt to use for non-agent rooms.
@@ -1511,11 +1510,8 @@ func (oc *AIClient) isGroupChat(ctx context.Context, portal *bridgev2.Portal) bo
 }
 
 func (oc *AIClient) defaultPDFEngine() string {
-	if oc != nil && oc.connector != nil && oc.connector.Config.Agents != nil &&
-		oc.connector.Config.Agents.Defaults != nil {
-		if engine := strings.TrimSpace(oc.connector.Config.Agents.Defaults.PDFEngine); engine != "" {
-			return engine
-		}
+	if oc != nil && oc.connector != nil {
+		return oc.connector.defaultPDFEngineForInit()
 	}
 	return "mistral-ocr"
 }
@@ -1841,7 +1837,7 @@ func (oc *AIClient) buildMediaTurnContext(
 	eventID id.EventID,
 ) (PromptContext, error) {
 	return oc.buildPromptContextForTurn(ctx, portal, meta, caption, eventID, currentTurnPromptOptions{
-		includeLinkScope: true,
+		currentTurnTextOptions: currentTurnTextOptions{includeLinkScope: true},
 		attachment: &turnAttachmentOptions{
 			mediaURL:      mediaURL,
 			mimeType:      mimeType,
@@ -1872,13 +1868,7 @@ func (oc *AIClient) buildContextUpToMessage(
 	base.Messages = append(base.Messages, historyMessages...)
 	body := strings.TrimSpace(newBody)
 	body = airuntime.SanitizeChatMessageForDisplay(body, true)
-	base.Messages = append(base.Messages, PromptMessage{
-		Role: PromptRoleUser,
-		Blocks: []PromptBlock{{
-			Type: PromptBlockText,
-			Text: body,
-		}},
-	})
+	base.Messages = append(base.Messages, newUserTextPromptMessage(body))
 	return base, nil
 }
 

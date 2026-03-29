@@ -182,19 +182,7 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 	promptContext, err := oc.buildHeartbeatTurnContext(context.Background(), sessionPortal, promptMeta, prompt)
 	if err != nil {
 		oc.log.Warn().Str("agent_id", agentID).Str("reason", reason).Err(err).Msg("Heartbeat failed to build prompt")
-		indicator := (*HeartbeatIndicatorType)(nil)
-		if hbCfg.UseIndicator {
-			indicator = resolveIndicatorType("failed")
-		}
-		oc.emitHeartbeatEvent(&HeartbeatEventPayload{
-			TS:            time.Now().UnixMilli(),
-			Status:        "failed",
-			Reason:        err.Error(),
-			Channel:       hbCfg.Channel,
-			To:            hbCfg.TargetRoom.String(),
-			DurationMs:    time.Now().UnixMilli() - startedAtMs,
-			IndicatorType: indicator,
-		})
+		oc.emitHeartbeatFailure(hbCfg, startedAtMs, err.Error())
 		return heartbeatRunResult{Status: "failed", Reason: err.Error()}
 	}
 
@@ -228,37 +216,29 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 		return heartbeatRunResult{Status: res.Status, Reason: res.Reason}
 	case <-done:
 		oc.log.Warn().Str("agent_id", agentID).Msg("Heartbeat failed: stream completed without outcome")
-		indicator := (*HeartbeatIndicatorType)(nil)
-		if hbCfg.UseIndicator {
-			indicator = resolveIndicatorType("failed")
-		}
-		oc.emitHeartbeatEvent(&HeartbeatEventPayload{
-			TS:            time.Now().UnixMilli(),
-			Status:        "failed",
-			Reason:        "stream-finished-without-outcome",
-			Channel:       hbCfg.Channel,
-			To:            hbCfg.TargetRoom.String(),
-			DurationMs:    time.Now().UnixMilli() - startedAtMs,
-			IndicatorType: indicator,
-		})
+		oc.emitHeartbeatFailure(hbCfg, startedAtMs, "stream-finished-without-outcome")
 		return heartbeatRunResult{Status: "failed", Reason: "heartbeat failed"}
 	case <-timeoutCtx.Done():
 		oc.log.Warn().Str("agent_id", agentID).Msg("Heartbeat timed out after 2 minutes")
-		indicator := (*HeartbeatIndicatorType)(nil)
-		if hbCfg.UseIndicator {
-			indicator = resolveIndicatorType("failed")
-		}
-		oc.emitHeartbeatEvent(&HeartbeatEventPayload{
-			TS:            time.Now().UnixMilli(),
-			Status:        "failed",
-			Reason:        "timeout",
-			Channel:       hbCfg.Channel,
-			To:            hbCfg.TargetRoom.String(),
-			DurationMs:    time.Now().UnixMilli() - startedAtMs,
-			IndicatorType: indicator,
-		})
+		oc.emitHeartbeatFailure(hbCfg, startedAtMs, "timeout")
 		return heartbeatRunResult{Status: "failed", Reason: "heartbeat timed out"}
 	}
+}
+
+func (oc *AIClient) emitHeartbeatFailure(hbCfg *HeartbeatRunConfig, startedAtMs int64, reason string) {
+	indicator := (*HeartbeatIndicatorType)(nil)
+	if hbCfg.UseIndicator {
+		indicator = resolveIndicatorType("failed")
+	}
+	oc.emitHeartbeatEvent(&HeartbeatEventPayload{
+		TS:            time.Now().UnixMilli(),
+		Status:        "failed",
+		Reason:        reason,
+		Channel:       hbCfg.Channel,
+		To:            hbCfg.TargetRoom.String(),
+		DurationMs:    time.Now().UnixMilli() - startedAtMs,
+		IndicatorType: indicator,
+	})
 }
 
 func drainHeartbeatSystemEvents(ownerKey string, primaryKey string, secondaryKey string) []SystemEvent {

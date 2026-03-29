@@ -670,27 +670,8 @@ func (oc *AIClient) describeImageWithEntry(
 		if actualMime == "" {
 			actualMime = mimeType
 		}
-		headers := mergeMediaHeaders(capCfg, entry)
-		apiKey := oc.resolveMediaProviderAPIKey("google", entry.Profile, entry.PreferredProfile)
-		if apiKey == "" && !hasProviderAuthHeader("google", headers) {
-			return nil, errors.New("missing API key for google image understanding")
-		}
-		request := mediaImageRequest{
-			APIKey:   apiKey,
-			BaseURL:  resolveMediaBaseURL(capCfg, entry),
-			Headers:  headers,
-			Model:    strings.TrimSpace(entry.Model),
-			Prompt:   prompt,
-			MimeType: actualMime,
-			Data:     data,
-			Timeout:  resolveMediaTimeoutSeconds(entry.TimeoutSeconds, capCfg, defaultTimeoutSecondsByCapability[MediaCapabilityImage]),
-		}
-		text, err := callGeminiForCapability(ctx, request, MediaCapabilityImage)
-		if err != nil {
-			return nil, err
-		}
-		text = truncateText(text, maxChars)
-		return buildMediaOutput(MediaCapabilityImage, text, "google", entry.Model, attachmentIndex), nil
+		timeout := resolveMediaTimeoutSeconds(entry.TimeoutSeconds, capCfg, defaultTimeoutSecondsByCapability[MediaCapabilityImage])
+		return oc.callGeminiMediaCapability(ctx, MediaCapabilityImage, entry, capCfg, data, actualMime, prompt, timeout, maxChars, attachmentIndex)
 	}
 
 	rawData, actualMime, err := oc.downloadMediaBytes(ctx, mediaURL, encryptedFile, maxBytes, mimeType)
@@ -852,13 +833,27 @@ func (oc *AIClient) describeVideoWithEntry(
 		return nil, fmt.Errorf("unsupported video provider: %s", providerID)
 	}
 
-	headers := mergeMediaHeaders(capCfg, entry)
-	apiKey := oc.resolveMediaProviderAPIKey(providerID, entry.Profile, entry.PreferredProfile)
-	if apiKey == "" && !hasProviderAuthHeader(providerID, headers) {
-		return nil, fmt.Errorf("missing API key for %s video description", providerID)
-	}
+	return oc.callGeminiMediaCapability(ctx, MediaCapabilityVideo, entry, capCfg, data, actualMime, prompt, timeout, maxChars, attachmentIndex)
+}
 
-	request := mediaVideoRequest{
+func (oc *AIClient) callGeminiMediaCapability(
+	ctx context.Context,
+	capability MediaUnderstandingCapability,
+	entry MediaUnderstandingModelConfig,
+	capCfg *MediaUnderstandingConfig,
+	data []byte,
+	actualMime string,
+	prompt string,
+	timeout time.Duration,
+	maxChars int,
+	attachmentIndex int,
+) (*MediaUnderstandingOutput, error) {
+	headers := mergeMediaHeaders(capCfg, entry)
+	apiKey := oc.resolveMediaProviderAPIKey("google", entry.Profile, entry.PreferredProfile)
+	if apiKey == "" && !hasProviderAuthHeader("google", headers) {
+		return nil, fmt.Errorf("missing API key for google %s", capability)
+	}
+	request := mediaRequestBase{
 		APIKey:   apiKey,
 		BaseURL:  resolveMediaBaseURL(capCfg, entry),
 		Headers:  headers,
@@ -868,13 +863,13 @@ func (oc *AIClient) describeVideoWithEntry(
 		Data:     data,
 		Timeout:  timeout,
 	}
-	text, err := callGeminiForCapability(ctx, request, MediaCapabilityVideo)
+	text, err := callGeminiForCapability(ctx, request, capability)
 	if err != nil {
 		return nil, err
 	}
 	text = strings.TrimSpace(text)
 	text = truncateText(text, maxChars)
-	return buildMediaOutput(MediaCapabilityVideo, text, providerID, entry.Model, attachmentIndex), nil
+	return buildMediaOutput(capability, text, "google", entry.Model, attachmentIndex), nil
 }
 
 func (oc *AIClient) generateWithOpenRouter(

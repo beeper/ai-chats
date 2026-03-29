@@ -333,13 +333,7 @@ func buildSteeringPromptMessages(prompts []string) []PromptMessage {
 		if prompt == "" {
 			continue
 		}
-		messages = append(messages, PromptMessage{
-			Role: PromptRoleUser,
-			Blocks: []PromptBlock{{
-				Type: PromptBlockText,
-				Text: prompt,
-			}},
-		})
+		messages = append(messages, newUserTextPromptMessage(prompt))
 	}
 	return messages
 }

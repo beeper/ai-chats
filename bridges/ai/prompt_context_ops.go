@@ -26,12 +26,6 @@ func ClonePromptContext(ctx PromptContext) PromptContext {
 	return cloned
 }
 
-func AppendPromptMessages(ctx *PromptContext, messages ...PromptMessage) {
-	if ctx == nil || len(messages) == 0 {
-		return
-	}
-	ctx.Messages = append(ctx.Messages, ClonePromptMessages(messages)...)
-}
 
 func PromptContextMessageCount(ctx PromptContext) int {
 	count := len(ctx.Messages)
@@ -41,7 +35,7 @@ func PromptContextMessageCount(ctx PromptContext) int {
 	return count
 }
 
-func NewUserTextPromptMessage(text string) PromptMessage {
+func newUserTextPromptMessage(text string) PromptMessage {
 	return PromptMessage{
 		Role: PromptRoleUser,
 		Blocks: []PromptBlock{{

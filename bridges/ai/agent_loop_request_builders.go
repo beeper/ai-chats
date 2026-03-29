@@ -119,8 +119,8 @@ func (oc *AIClient) buildResponsesAgentLoopParams(
 	if settings.temperature != nil {
 		params.Temperature = openai.Float(*settings.temperature)
 	}
-	if strings.TrimSpace(systemPrompt) != "" {
-		params.Instructions = openai.String(strings.TrimSpace(systemPrompt))
+	if trimmed := strings.TrimSpace(systemPrompt); trimmed != "" {
+		params.Instructions = openai.String(trimmed)
 	}
 	if effort, ok := reasoningEffortMap[settings.reasoningEffort]; ok {
 		params.Reasoning = shared.ReasoningParam{

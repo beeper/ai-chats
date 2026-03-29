@@ -3,7 +3,6 @@ package ai
 import (
 	"context"
 
-	"go.mau.fi/util/configupgrade"
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/commands"
@@ -61,13 +60,12 @@ func NewAIConnector() *OpenAIConnector {
 		DefaultCommandPrefix: func() string {
 			return bridgesdk.ResolveCommandPrefix(oc.Config.Bridge.CommandPrefix, "!ai")
 		},
-		ExampleConfig:  exampleNetworkConfig,
-		ConfigData:     &oc.Config,
-		ConfigUpgrader: configupgrade.SimpleUpgrader(upgradeConfig),
-		NewPortal:      func() any { return &PortalMetadata{} },
-		NewMessage:     func() any { return &MessageMetadata{} },
-		NewLogin:       func() any { return &UserLoginMetadata{} },
-		NewGhost:       func() any { return &GhostMetadata{} },
+		ExampleConfig: exampleNetworkConfig,
+		ConfigData:    &oc.Config,
+		NewPortal:     func() any { return &PortalMetadata{} },
+		NewMessage:    func() any { return &MessageMetadata{} },
+		NewLogin:      func() any { return &UserLoginMetadata{} },
+		NewGhost:      func() any { return &GhostMetadata{} },
 		FillBridgeInfo: func(portal *bridgev2.Portal, content *event.BridgeEventContent) {
 			applyAgentRemoteBridgeInfo(portal, portalMeta(portal), content)
 		},

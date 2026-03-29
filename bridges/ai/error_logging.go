@@ -55,7 +55,6 @@ func addRequestSummary(event *zerolog.Event, metadata *PortalMetadata, prompt Pr
 		}
 	}
 	event.Int("message_count", len(prompt.Messages))
-	event.Bool("has_audio", promptHasAudioContent(prompt))
 	event.Bool("has_multimodal", promptHasMultimodalContent(prompt))
 }
 

@@ -400,9 +400,6 @@ type mediaAudioRequest struct {
 	FileName string
 }
 
-type mediaVideoRequest = mediaRequestBase
-type mediaImageRequest = mediaRequestBase
-
 func resolveMediaFileName(fallback string, msgType string, mediaURL string) string {
 	base := strings.TrimSpace(fallback)
 	if base != "" {

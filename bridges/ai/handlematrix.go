@@ -1086,12 +1086,6 @@ func (oc *AIClient) buildContextForRegenerate(
 		return PromptContext{}, err
 	}
 	base.Messages = append(base.Messages, historyMessages...)
-	base.Messages = append(base.Messages, PromptMessage{
-		Role: PromptRoleUser,
-		Blocks: []PromptBlock{{
-			Type: PromptBlockText,
-			Text: latestUserBody,
-		}},
-	})
+	base.Messages = append(base.Messages, newUserTextPromptMessage(latestUserBody))
 	return base, nil
 }

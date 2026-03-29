@@ -40,12 +40,9 @@ type turnAttachmentOptions struct {
 }
 
 type currentTurnPromptOptions struct {
-	rawEventContent  map[string]any
-	includeLinkScope bool
-	prepend          []string
-	append           []string
-	leadingBlocks    []PromptBlock
-	attachment       *turnAttachmentOptions
+	currentTurnTextOptions
+	leadingBlocks []PromptBlock
+	attachment    *turnAttachmentOptions
 }
 
 func joinPromptFragments(parts ...string) string {
@@ -130,11 +127,11 @@ func (oc *AIClient) replayHistoryMessages(
 	skipAssistantID := networkid.MessageID("")
 	if opts.mode == historyReplayRegen {
 		for _, candidate := range candidates {
-			if skipUserID == "" && candidate.meta != nil && candidate.meta.Role == "user" {
+			if skipUserID == "" && candidate.meta != nil && candidate.meta.Role == string(PromptRoleUser) {
 				skipUserID = candidate.row.ID
 				continue
 			}
-			if skipAssistantID == "" && candidate.meta != nil && candidate.meta.Role == "assistant" {
+			if skipAssistantID == "" && candidate.meta != nil && candidate.meta.Role == string(PromptRoleAssistant) {
 				skipAssistantID = candidate.row.ID
 			}
 			if skipUserID != "" && skipAssistantID != "" {
@@ -215,12 +212,9 @@ func (oc *AIClient) buildPromptContextForTurn(
 		appendFragments = append(appendFragments, attachmentAppend...)
 	}
 
-	base, text, err := oc.buildCurrentTurnText(ctx, portal, meta, userText, eventID, currentTurnTextOptions{
-		rawEventContent:  opts.rawEventContent,
-		includeLinkScope: opts.includeLinkScope,
-		prepend:          opts.prepend,
-		append:           appendFragments,
-	})
+	textOpts := opts.currentTurnTextOptions
+	textOpts.append = appendFragments
+	base, text, err := oc.buildCurrentTurnText(ctx, portal, meta, userText, eventID, textOpts)
 	if err != nil {
 		return PromptContext{}, err
 	}
@@ -274,8 +268,10 @@ func (oc *AIClient) buildCurrentTurnWithLinks(
 	eventID id.EventID,
 ) (PromptContext, error) {
 	return oc.buildPromptContextForTurn(ctx, portal, meta, userText, eventID, currentTurnPromptOptions{
-		rawEventContent:  rawEventContent,
-		includeLinkScope: true,
+		currentTurnTextOptions: currentTurnTextOptions{
+			rawEventContent:  rawEventContent,
+			includeLinkScope: true,
+		},
 	})
 }
 

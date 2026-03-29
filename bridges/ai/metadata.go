@@ -211,33 +211,6 @@ func cloneServiceTokens(src *ServiceTokens) *ServiceTokens {
 	return &clone
 }
 
-func mergeLoginCredentials(existing, incoming *LoginCredentials) *LoginCredentials {
-	if incoming == nil {
-		return existing
-	}
-	if existing == nil {
-		clone := *incoming
-		clone.ServiceTokens = cloneServiceTokens(incoming.ServiceTokens)
-		if loginCredentialsEmpty(&clone) {
-			return nil
-		}
-		return &clone
-	}
-
-	merged := *existing
-	if strings.TrimSpace(incoming.APIKey) != "" {
-		merged.APIKey = incoming.APIKey
-	}
-	if strings.TrimSpace(incoming.BaseURL) != "" {
-		merged.BaseURL = incoming.BaseURL
-	}
-	merged.ServiceTokens = mergeServiceTokens(existing.ServiceTokens, incoming.ServiceTokens)
-	if loginCredentialsEmpty(&merged) {
-		return nil
-	}
-	return &merged
-}
-
 func serviceTokensEmpty(tokens *ServiceTokens) bool {
 	if tokens == nil {
 		return true
@@ -351,59 +324,6 @@ func cloneUserLoginMetadata(src *UserLoginMetadata) (*UserLoginMetadata, error) 
 		return nil, err
 	}
 	return &clone, nil
-}
-
-func mergeServiceTokens(existing, incoming *ServiceTokens) *ServiceTokens {
-	if incoming == nil {
-		return existing
-	}
-	if existing == nil {
-		clone := *incoming
-		if incoming.DesktopAPIInstances != nil {
-			clone.DesktopAPIInstances = maps.Clone(incoming.DesktopAPIInstances)
-		}
-		if incoming.MCPServers != nil {
-			clone.MCPServers = maps.Clone(incoming.MCPServers)
-		}
-		return &clone
-	}
-
-	merged := *existing
-	if incoming.OpenAI != "" {
-		merged.OpenAI = incoming.OpenAI
-	}
-	if incoming.OpenRouter != "" {
-		merged.OpenRouter = incoming.OpenRouter
-	}
-	if incoming.Exa != "" {
-		merged.Exa = incoming.Exa
-	}
-	if incoming.Brave != "" {
-		merged.Brave = incoming.Brave
-	}
-	if incoming.Perplexity != "" {
-		merged.Perplexity = incoming.Perplexity
-	}
-	if incoming.DesktopAPI != "" {
-		merged.DesktopAPI = incoming.DesktopAPI
-	}
-	if len(incoming.DesktopAPIInstances) > 0 {
-		if merged.DesktopAPIInstances == nil {
-			merged.DesktopAPIInstances = make(map[string]DesktopAPIInstance, len(incoming.DesktopAPIInstances))
-		}
-		for key, value := range incoming.DesktopAPIInstances {
-			merged.DesktopAPIInstances[key] = value
-		}
-	}
-	if len(incoming.MCPServers) > 0 {
-		if merged.MCPServers == nil {
-			merged.MCPServers = make(map[string]MCPServerConfig, len(incoming.MCPServers))
-		}
-		for key, value := range incoming.MCPServers {
-			merged.MCPServers[key] = value
-		}
-	}
-	return &merged
 }
 
 func agentsEnabled(meta *UserLoginMetadata) bool {
