@@ -691,7 +691,14 @@ func (t *Turn) buildFinalEdit() (networkid.MessageID, *bridgev2.ConvertedEdit) {
 	if t.initialEventID != "" {
 		topLevelExtra["m.relates_to"] = (&event.RelatesTo{}).SetReplace(t.initialEventID)
 	}
-	return target, turns.BuildConvertedEditWithExtra(&content, extra, topLevelExtra)
+	return target, &bridgev2.ConvertedEdit{
+		ModifiedParts: []*bridgev2.ConvertedEditPart{{
+			Type:          event.EventMessage,
+			Content:       &content,
+			Extra:         extra,
+			TopLevelExtra: topLevelExtra,
+		}},
+	}
 }
 
 func (t *Turn) sendFinalEdit() {
