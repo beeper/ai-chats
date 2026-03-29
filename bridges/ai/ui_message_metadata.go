@@ -14,20 +14,20 @@ type assistantUsageMetadata struct {
 }
 
 type assistantTurnMetadata struct {
-	TurnID          string                   `json:"turn_id,omitempty"`
-	AgentID         string                   `json:"agent_id,omitempty"`
-	Model           string                   `json:"model,omitempty"`
-	FinishReason    string                   `json:"finish_reason,omitempty"`
-	ResponseID      string                   `json:"response_id,omitempty"`
-	ResponseStatus  string                   `json:"response_status,omitempty"`
-	StartedAtMs     int64                    `json:"started_at_ms,omitempty"`
-	FirstTokenAtMs  int64                    `json:"first_token_at_ms,omitempty"`
-	CompletedAtMs   int64                    `json:"completed_at_ms,omitempty"`
-	NetworkMessageID string                  `json:"network_message_id,omitempty"`
-	InitialEventID  string                   `json:"initial_event_id,omitempty"`
-	SourceEventID   string                   `json:"source_event_id,omitempty"`
-	GeneratedFileRefs []GeneratedFileRef     `json:"generated_file_refs,omitempty"`
-	Usage           *assistantUsageMetadata  `json:"usage,omitempty"`
+	TurnID            string                  `json:"turn_id,omitempty"`
+	AgentID           string                  `json:"agent_id,omitempty"`
+	Model             string                  `json:"model,omitempty"`
+	FinishReason      string                  `json:"finish_reason,omitempty"`
+	ResponseID        string                  `json:"response_id,omitempty"`
+	ResponseStatus    string                  `json:"response_status,omitempty"`
+	StartedAtMs       int64                   `json:"started_at_ms,omitempty"`
+	FirstTokenAtMs    int64                   `json:"first_token_at_ms,omitempty"`
+	CompletedAtMs     int64                   `json:"completed_at_ms,omitempty"`
+	NetworkMessageID  string                  `json:"network_message_id,omitempty"`
+	InitialEventID    string                  `json:"initial_event_id,omitempty"`
+	SourceEventID     string                  `json:"source_event_id,omitempty"`
+	GeneratedFileRefs []GeneratedFileRef      `json:"generated_file_refs,omitempty"`
+	Usage             *assistantUsageMetadata `json:"usage,omitempty"`
 }
 
 func buildAssistantUsageMetadata(state *streamingState) *assistantUsageMetadata {

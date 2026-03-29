@@ -1,6 +1,9 @@
 package ai
 
-import "strings"
+import (
+	"context"
+	"strings"
+)
 
 type ModelAPI string
 
@@ -26,7 +29,7 @@ func normalizeModelAPI(value string) ModelAPI {
 }
 
 func (oc *AIClient) resolveModelAPI(meta *PortalMetadata) ModelAPI {
-	responder := oc.responderForMeta(nil, meta)
+	responder := oc.responderForMeta(context.Background(), meta)
 	modelID := ""
 	if responder != nil {
 		modelID = responder.ModelID

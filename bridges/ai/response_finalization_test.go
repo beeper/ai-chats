@@ -133,7 +133,7 @@ func TestBuildFinalEditUIMessage_UsesNestedUsageContextLimitFromSnapshot(t *test
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-delta", "id": "text-usage", "delta": "hello"})
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-end", "id": "text-usage"})
 
-	ui := buildCompactFinalUIMessage(oc.buildStreamUIMessage(state, simpleModeTestMeta("openai/gpt-4.1"), nil))
+	ui := buildCompactFinalUIMessage(oc.buildStreamUIMessage(state, modelModeTestMeta("openai/gpt-4.1"), nil))
 	metadata, ok := ui["metadata"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected metadata map, got %T", ui["metadata"])

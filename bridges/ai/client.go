@@ -2201,7 +2201,6 @@ func (oc *AIClient) backgroundContext(ctx context.Context) context.Context {
 	return oc.loggerForContext(ctx).WithContext(base)
 }
 
-
 // buildDedupeKey creates a unique key for inbound message deduplication.
 // Format: matrix|{loginID}|{roomID}|{eventID}
 func (oc *AIClient) buildDedupeKey(roomID id.RoomID, eventID id.EventID) string {

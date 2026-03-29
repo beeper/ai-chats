@@ -25,9 +25,9 @@ func turnDataFromStreamingState(state *streamingState, uiMessage map[string]any)
 		initialEventID = state.turn.InitialEventID().String()
 	}
 	return sdk.BuildTurnDataFromUIMessage(uiMessage, sdk.TurnDataBuildOptions{
-		ID:   turnID,
-		Role: "assistant",
-		Metadata: buildAssistantTurnMetadata(state, turnID, networkMessageID, initialEventID),
+		ID:        turnID,
+		Role:      "assistant",
+		Metadata:  buildAssistantTurnMetadata(state, turnID, networkMessageID, initialEventID),
 		Text:      displayStreamingText(state),
 		Reasoning: state.reasoning.String(),
 		ToolCalls: state.toolCalls,

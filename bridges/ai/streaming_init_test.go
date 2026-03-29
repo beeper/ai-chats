@@ -92,7 +92,7 @@ func TestPrepareStreamingRun_SnapshotsResponderFields(t *testing.T) {
 			}}},
 		}}},
 	}
-	meta := simpleModeTestMeta("openai/gpt-5.2")
+	meta := modelModeTestMeta("openai/gpt-5.2")
 
 	prep, _, cleanup := oc.prepareStreamingRun(
 		context.Background(),
