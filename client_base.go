@@ -82,14 +82,6 @@ func (c *ClientBase) HumanUserID() networkid.UserID {
 	return HumanUserID(c.HumanUserIDPrefix, login.ID)
 }
 
-func (c *ClientBase) SendSystemMessage(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	message string,
-) error {
-	return SendSystemMessage(ctx, c.GetUserLogin(), portal, bridgev2.EventSender{}, message)
-}
-
 func (c *ClientBase) SendViaPortal(
 	portal *bridgev2.Portal,
 	sender bridgev2.EventSender,

@@ -352,7 +352,7 @@ func (oc *OpenClawClient) syntheticDMPortalInfo(agentID, displayName string, use
 		BotMemberEventExtra: map[string]any{
 			"displayname": displayName,
 		},
-		CanBackfill:       true,
+		CanBackfill: true,
 	})
 }
 

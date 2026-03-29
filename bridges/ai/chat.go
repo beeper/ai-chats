@@ -994,7 +994,7 @@ func (oc *AIClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Porta
 	if oc == nil {
 		return
 	}
-	if err := oc.ClientBase.SendSystemMessage(ctx, portal, message); err != nil {
+	if err := agentremote.SendSystemMessage(ctx, oc.UserLogin, portal, bridgev2.EventSender{}, message); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to send system notice")
 	}
 }

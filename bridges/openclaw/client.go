@@ -739,7 +739,7 @@ func (oc *OpenClawClient) sendSystemNotice(ctx context.Context, portal *bridgev2
 	if oc == nil || portal == nil || strings.TrimSpace(msg) == "" {
 		return
 	}
-	if err := oc.ClientBase.SendSystemMessage(ctx, portal, msg); err != nil {
+	if err := agentremote.SendSystemMessage(ctx, oc.UserLogin, portal, bridgev2.EventSender{}, msg); err != nil {
 		if oc.UserLogin != nil {
 			oc.UserLogin.Log.Warn().Err(err).Msg("Failed to send system notice")
 		}

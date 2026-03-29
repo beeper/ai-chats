@@ -34,17 +34,17 @@ func BuildMetaTypes(portal, message, userLogin, ghost func() any) database.MetaT
 
 // DMChatInfoParams holds the parameters for BuildDMChatInfo.
 type DMChatInfoParams struct {
-	Title          string
-	Topic          string
-	HumanUserID    networkid.UserID
-	LoginID        networkid.UserLoginID
-	HumanSender    *bridgev2.EventSender
-	BotUserID      networkid.UserID
-	BotDisplayName string
-	BotSender      *bridgev2.EventSender
-	BotUserInfo    *bridgev2.UserInfo
+	Title               string
+	Topic               string
+	HumanUserID         networkid.UserID
+	LoginID             networkid.UserLoginID
+	HumanSender         *bridgev2.EventSender
+	BotUserID           networkid.UserID
+	BotDisplayName      string
+	BotSender           *bridgev2.EventSender
+	BotUserInfo         *bridgev2.UserInfo
 	BotMemberEventExtra map[string]any
-	CanBackfill    bool
+	CanBackfill         bool
 }
 
 // BuildDMChatInfo creates a ChatInfo for a DM room between a human user and a bot ghost.
@@ -80,7 +80,7 @@ func BuildDMChatInfo(p DMChatInfoParams) *bridgev2.ChatInfo {
 	members := bridgev2.ChatMemberMap{
 		p.HumanUserID: {
 			EventSender: humanSender,
-			Membership: event.MembershipJoin,
+			Membership:  event.MembershipJoin,
 		},
 		p.BotUserID: {
 			EventSender:      botSender,
@@ -103,17 +103,17 @@ func BuildDMChatInfo(p DMChatInfoParams) *bridgev2.ChatInfo {
 }
 
 type LoginDMChatInfoParams struct {
-	Title             string
-	Topic             string
-	Login             *bridgev2.UserLogin
-	HumanUserIDPrefix string
-	HumanSender       *bridgev2.EventSender
-	BotUserID         networkid.UserID
-	BotDisplayName    string
-	BotSender         *bridgev2.EventSender
-	BotUserInfo       *bridgev2.UserInfo
+	Title               string
+	Topic               string
+	Login               *bridgev2.UserLogin
+	HumanUserIDPrefix   string
+	HumanSender         *bridgev2.EventSender
+	BotUserID           networkid.UserID
+	BotDisplayName      string
+	BotSender           *bridgev2.EventSender
+	BotUserInfo         *bridgev2.UserInfo
 	BotMemberEventExtra map[string]any
-	CanBackfill       bool
+	CanBackfill         bool
 }
 
 func BuildLoginDMChatInfo(p LoginDMChatInfoParams) *bridgev2.ChatInfo {

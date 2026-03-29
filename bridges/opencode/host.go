@@ -30,7 +30,7 @@ func (oc *OpenCodeClient) SendSystemNotice(ctx context.Context, portal *bridgev2
 	if oc == nil {
 		return
 	}
-	if err := oc.ClientBase.SendSystemMessage(ctx, portal, msg); err != nil {
+	if err := agentremote.SendSystemMessage(ctx, oc.UserLogin, portal, bridgev2.EventSender{}, msg); err != nil {
 		oc.Log().Warn().Err(err).Msg("Failed to send system notice")
 	}
 }
