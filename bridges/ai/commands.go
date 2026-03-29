@@ -163,8 +163,10 @@ func fnAgents(ce *commands.Event) {
 	}
 
 	if changed {
+		prev := loginMeta.Agents
 		loginMeta.Agents = &enabled
 		if err := client.UserLogin.Save(ce.Ctx); err != nil {
+			loginMeta.Agents = prev
 			markCommandFailure(ce, "Couldn't save AI settings.", event.MessageStatusGenericError)
 			ce.Reply("Couldn't save AI settings.")
 			return
