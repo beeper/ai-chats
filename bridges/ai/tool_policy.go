@@ -12,11 +12,17 @@ import (
 )
 
 func (oc *AIClient) resolveToolPolicyModelContext(meta *PortalMetadata) (provider string, modelID string) {
-	modelID = oc.effectiveModel(meta)
+	responder := oc.responderForMeta(context.Background(), meta)
+	if responder != nil {
+		modelID = responder.ModelID
+		provider = oc.responderProvider(responder)
+	}
 	if _, actual := ParseModelPrefix(modelID); actual != modelID {
 		modelID = actual
 	}
-	provider, _ = splitModelProvider(modelID)
+	if provider == "" {
+		provider, _ = splitModelProvider(modelID)
+	}
 	if provider == "" {
 		loginMeta := loginMetadata(oc.UserLogin)
 		if loginMeta != nil {

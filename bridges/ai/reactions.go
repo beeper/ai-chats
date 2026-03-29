@@ -66,10 +66,9 @@ func (oc *AIClient) reactionSenderID(_ context.Context, portal *bridgev2.Portal)
 		return ""
 	}
 	meta := portalMeta(portal)
-	agentID := resolveAgentID(meta)
-	modelID := oc.effectiveModel(meta)
-	if agentID != "" {
-		return oc.agentUserID(agentID)
+	responder := oc.responderForMeta(context.Background(), meta)
+	if responder != nil && responder.GhostID != "" {
+		return responder.GhostID
 	}
-	return modelUserID(modelID)
+	return ""
 }

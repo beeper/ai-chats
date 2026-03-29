@@ -1113,9 +1113,9 @@ func (oc *AIClient) supportsMessageActionsFeature(meta *PortalMetadata) bool {
 // effectiveModel returns the full prefixed model ID (e.g., "openai/gpt-5.2")
 // based only on the resolved room target.
 func (oc *AIClient) effectiveModel(meta *PortalMetadata) string {
-	responder, err := oc.ResolveResponderForMeta(context.Background(), meta)
-	if err != nil || responder == nil {
-		return oc.defaultModelForProvider()
+	responder := oc.responderForMeta(context.Background(), meta)
+	if responder == nil {
+		return ""
 	}
 	return responder.ModelID
 }

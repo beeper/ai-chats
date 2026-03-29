@@ -24,8 +24,12 @@ func (oc *AIClient) buildStatusText(
 	var sb strings.Builder
 	sb.WriteString("Status\n")
 
-	modelID := oc.effectiveModel(meta)
-	provider := strings.TrimSpace(loginMetadata(oc.UserLogin).Provider)
+	responder := oc.responderForMeta(ctx, meta)
+	modelID := ""
+	if responder != nil {
+		modelID = responder.ModelID
+	}
+	provider := strings.TrimSpace(oc.responderProvider(responder))
 	if provider != "" {
 		sb.WriteString(fmt.Sprintf("Model: %s/%s\n", provider, modelID))
 	} else {
@@ -46,7 +50,10 @@ func (oc *AIClient) buildStatusText(
 		}
 	}
 
-	contextWindow := oc.getModelContextWindow(meta)
+	contextWindow := 128000
+	if responder != nil && responder.ContextLimit > 0 {
+		contextWindow = responder.ContextLimit
+	}
 	if estimate := oc.estimatePromptTokens(ctx, portal, meta); estimate > 0 {
 		sb.WriteString(fmt.Sprintf(
 			"Context: %s/%s (%s) compactions=%d\n",
@@ -78,7 +85,13 @@ func (oc *AIClient) buildStatusText(
 		sb.WriteString(fmt.Sprintf("Group activation: %s\n", activation))
 	}
 
-	caps := oc.getRoomCapabilities(ctx, meta)
+	caps := ModelCapabilities{}
+	if responder != nil {
+		caps = responder.ModelCapabilities()
+	}
+	if !caps.SupportsVision || !caps.SupportsAudio || !caps.SupportsVideo {
+		caps = oc.getRoomCapabilities(ctx, meta)
+	}
 	sb.WriteString(fmt.Sprintf(
 		"Features: tools=%t vision=%t audio=%t video=%t pdf=%t\n",
 		caps.SupportsToolCalling,
@@ -217,7 +230,8 @@ func (oc *AIClient) estimatePromptTokens(ctx context.Context, portal *bridgev2.P
 		return 0
 	}
 	prompt = oc.augmentPromptWithIntegrations(ctx, portal, meta, prompt)
-	count, err := EstimateTokens(prompt, oc.effectiveModel(meta))
+	modelID := oc.effectiveModel(meta)
+	count, err := EstimateTokens(prompt, modelID)
 	if err != nil {
 		return 0
 	}

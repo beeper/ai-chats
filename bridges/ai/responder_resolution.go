@@ -41,6 +41,57 @@ type ResponderResolveOptions struct {
 	RuntimeModelOverride string
 }
 
+func (oc *AIClient) responderForMeta(ctx context.Context, meta *PortalMetadata) *ResponderInfo {
+	responder, err := oc.ResolveResponderForMeta(ctx, meta)
+	if err == nil && responder != nil {
+		return responder
+	}
+	modelID := oc.defaultModelForProvider()
+	if meta != nil {
+		if override := strings.TrimSpace(ResolveAlias(meta.RuntimeModelOverride)); override != "" {
+			modelID = override
+		}
+	}
+	if modelID == "" {
+		return nil
+	}
+	info := oc.responderModelInfo(modelID)
+	return &ResponderInfo{
+		Kind:                ResponderKindModel,
+		GhostID:             modelUserID(modelID),
+		ModelID:             modelID,
+		DisplayName:         strings.TrimSpace(modelContactName(modelID, info)),
+		ContextLimit:        responderContextLimit(info),
+		MaxOutputTokens:     responderMaxOutputTokens(info),
+		SupportsReasoning:   info != nil && info.SupportsReasoning,
+		SupportsToolCalling: info == nil || info.SupportsToolCalling,
+		SupportsImageGen:    info != nil && info.SupportsImageGen,
+		SupportsVision:      info != nil && info.SupportsVision,
+		SupportsAudio:       info != nil && info.SupportsAudio,
+		SupportsVideo:       info != nil && info.SupportsVideo,
+		SupportsPDF:         info != nil && info.SupportsPDF,
+	}
+}
+
+func (oc *AIClient) responderProvider(responder *ResponderInfo) string {
+	if responder == nil {
+		loginMeta := loginMetadata(oc.UserLogin)
+		if loginMeta != nil {
+			return strings.TrimSpace(loginMeta.Provider)
+		}
+		return ""
+	}
+	provider, _ := splitModelProvider(responder.ModelID)
+	if provider != "" {
+		return provider
+	}
+	loginMeta := loginMetadata(oc.UserLogin)
+	if loginMeta != nil {
+		return strings.TrimSpace(loginMeta.Provider)
+	}
+	return ""
+}
+
 func (oc *AIClient) ResolveResponderForMeta(ctx context.Context, meta *PortalMetadata) (*ResponderInfo, error) {
 	opts := ResponderResolveOptions{}
 	if meta != nil {

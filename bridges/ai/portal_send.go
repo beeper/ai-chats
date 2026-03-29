@@ -219,17 +219,29 @@ func (oc *AIClient) getIntentForSender(
 }
 
 func (oc *AIClient) senderForPortal(ctx context.Context, portal *bridgev2.Portal) bridgev2.EventSender {
+	if portal != nil && portal.OtherUserID != "" {
+		return bridgev2.EventSender{Sender: portal.OtherUserID, SenderLogin: oc.UserLogin.ID}
+	}
 	meta := portalMeta(portal)
-	agentID := resolveAgentID(meta)
-	modelID := oc.effectiveModel(meta)
-	if agentID == "" {
-		if override, ok := modelOverrideFromContext(ctx); ok {
-			modelID = override
+	if override, ok := modelOverrideFromContext(ctx); ok {
+		if meta == nil {
+			meta = &PortalMetadata{RuntimeModelOverride: override}
+		} else {
+			cloned := *meta
+			cloned.RuntimeModelOverride = override
+			meta = &cloned
 		}
 	}
-	senderID := modelUserID(modelID)
-	if agentID != "" {
-		senderID = oc.agentUserID(agentID)
+	responder := oc.responderForMeta(ctx, meta)
+	senderID := networkid.UserID("")
+	if responder != nil {
+		senderID = responder.GhostID
+	} else if meta != nil {
+		if agentID := resolveAgentID(meta); agentID != "" {
+			senderID = oc.agentUserID(agentID)
+		} else if modelID := oc.effectiveModel(meta); modelID != "" {
+			senderID = modelUserID(modelID)
+		}
 	}
 	return bridgev2.EventSender{Sender: senderID, SenderLogin: oc.UserLogin.ID}
 }

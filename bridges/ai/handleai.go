@@ -623,8 +623,8 @@ func (oc *AIClient) setRoomTopic(ctx context.Context, portal *bridgev2.Portal, t
 }
 
 func (oc *AIClient) getModelContextWindow(meta *PortalMetadata) int {
-	responder, err := oc.ResolveResponderForMeta(context.Background(), meta)
-	if err == nil && responder != nil && responder.ContextLimit > 0 {
+	responder := oc.responderForMeta(context.Background(), meta)
+	if responder != nil && responder.ContextLimit > 0 {
 		return responder.ContextLimit
 	}
 	return 128000

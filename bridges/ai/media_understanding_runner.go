@@ -91,13 +91,20 @@ func (oc *AIClient) applyMediaUnderstandingForAttachments(
 
 	// Skip image understanding when the primary model supports vision.
 	if capability == MediaCapabilityImage {
-		if oc.modelSupportsVision(ctx, meta) {
+		responder := oc.responderForMeta(ctx, meta)
+		if responder != nil && responder.SupportsVision {
 			attachmentDecisions := make([]MediaUnderstandingAttachmentDecision, 0, len(selected))
+			modelID := ""
+			provider := normalizeMediaProviderID(loginMetadata(oc.UserLogin).Provider)
+			if responder != nil {
+				modelID = responder.ModelID
+				provider = normalizeMediaProviderID(oc.responderProvider(responder))
+			}
 			for _, attachment := range selected {
 				attempt := MediaUnderstandingModelDecision{
 					Type:     MediaEntryTypeProvider,
-					Provider: normalizeMediaProviderID(loginMetadata(oc.UserLogin).Provider),
-					Model:    oc.effectiveModel(meta),
+					Provider: provider,
+					Model:    modelID,
 					Outcome:  MediaOutcomeSkipped,
 					Reason:   "primary model supports vision",
 				}
@@ -269,13 +276,13 @@ func (oc *AIClient) resolveActiveMediaEntry(
 	if oc == nil || meta == nil {
 		return nil
 	}
-	modelID := strings.TrimSpace(oc.effectiveModel(meta))
-	if modelID == "" {
+	responder := oc.responderForMeta(context.Background(), meta)
+	if responder == nil || strings.TrimSpace(responder.ModelID) == "" {
 		return nil
 	}
-	providerID, model := splitModelProvider(modelID)
+	providerID, model := splitModelProvider(responder.ModelID)
 	if providerID == "" {
-		providerID = normalizeMediaProviderID(loginMetadata(oc.UserLogin).Provider)
+		providerID = normalizeMediaProviderID(oc.responderProvider(responder))
 	}
 	if providerID == "" {
 		return nil

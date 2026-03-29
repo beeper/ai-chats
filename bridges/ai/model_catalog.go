@@ -273,21 +273,20 @@ func (oc *AIClient) modelSupportsVision(ctx context.Context, meta *PortalMetadat
 	if oc == nil || meta == nil {
 		return false
 	}
-	modelID := strings.TrimSpace(oc.effectiveModel(meta))
-	if modelID == "" {
+	responder := oc.responderForMeta(ctx, meta)
+	if responder == nil || strings.TrimSpace(responder.ModelID) == "" {
 		return false
 	}
-	caps := getModelCapabilities(modelID, oc.findModelInfo(modelID))
-	if caps.SupportsVision {
+	if responder.SupportsVision {
 		return true
 	}
 	catalog := oc.loadModelCatalog(ctx, true)
 	if len(catalog) == 0 {
 		return false
 	}
-	provider, model := splitModelProvider(modelID)
+	provider, model := splitModelProvider(responder.ModelID)
 	if provider == "" {
-		provider = normalizeMediaProviderID(loginMetadata(oc.UserLogin).Provider)
+		provider = normalizeMediaProviderID(oc.responderProvider(responder))
 	}
 	if provider == "" {
 		return false

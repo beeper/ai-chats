@@ -3,18 +3,11 @@ package ai
 import "context"
 
 func (oc *AIClient) getModelCapabilitiesForMeta(meta *PortalMetadata) ModelCapabilities {
-	responder, err := oc.ResolveResponderForMeta(context.Background(), meta)
-	if err != nil || responder == nil {
+	responder := oc.responderForMeta(context.Background(), meta)
+	if responder == nil {
 		return ModelCapabilities{}
 	}
-	return ModelCapabilities{
-		SupportsVision:      responder.SupportsVision,
-		SupportsReasoning:   responder.SupportsReasoning,
-		SupportsPDF:         responder.SupportsPDF,
-		SupportsAudio:       responder.SupportsAudio,
-		SupportsVideo:       responder.SupportsVideo,
-		SupportsToolCalling: responder.SupportsToolCalling,
-	}
+	return responder.ModelCapabilities()
 }
 
 func (oc *AIClient) canRunMediaUnderstanding(ctx context.Context, meta *PortalMetadata, capability MediaUnderstandingCapability) bool {

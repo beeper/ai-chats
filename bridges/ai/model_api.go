@@ -26,7 +26,11 @@ func normalizeModelAPI(value string) ModelAPI {
 }
 
 func (oc *AIClient) resolveModelAPI(meta *PortalMetadata) ModelAPI {
-	modelID := oc.effectiveModel(meta)
+	responder := oc.responderForMeta(nil, meta)
+	modelID := ""
+	if responder != nil {
+		modelID = responder.ModelID
+	}
 	if info := oc.findModelInfo(modelID); info != nil {
 		if api := normalizeModelAPI(info.API); api != "" {
 			return api
