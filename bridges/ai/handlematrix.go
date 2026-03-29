@@ -573,7 +573,7 @@ func (oc *AIClient) handleMediaMessage(
 	}
 
 	// Check capability (PDF has special OpenRouter handling via file-parser plugin)
-	modelCaps := oc.getModelCapabilitiesForMeta(meta)
+	modelCaps := oc.getModelCapabilitiesForMeta(ctx, meta)
 	supportsMedia := config.capabilityCheck(&modelCaps)
 	if isPDF && !supportsMedia && oc.isOpenRouterProvider() {
 		supportsMedia = true // OpenRouter supports PDF via file-parser plugin
@@ -1117,7 +1117,7 @@ func (oc *AIClient) buildContextForRegenerate(
 		}
 
 		// Determine whether to inject images into history (requires vision-capable model).
-		hasVision := oc.getModelCapabilitiesForMeta(meta).SupportsVision
+		hasVision := oc.getModelCapabilitiesForMeta(ctx, meta).SupportsVision
 		historyBundles := make([][]PromptMessage, 0, len(history))
 
 		// Skip the most recent messages (last user and assistant) and build from older history

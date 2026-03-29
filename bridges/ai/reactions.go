@@ -61,15 +61,14 @@ func (oc *AIClient) sendReaction(ctx context.Context, portal *bridgev2.Portal, t
 	))
 }
 
-func (oc *AIClient) reactionSenderID(_ context.Context, portal *bridgev2.Portal) networkid.UserID {
+func (oc *AIClient) reactionSenderID(ctx context.Context, portal *bridgev2.Portal) networkid.UserID {
 	if portal == nil || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
 		return ""
 	}
 	meta := portalMeta(portal)
-	agentID := resolveAgentID(meta)
-	modelID := oc.effectiveModel(meta)
-	if agentID != "" {
-		return oc.agentUserID(agentID)
+	responder := oc.responderForMeta(ctx, meta)
+	if responder != nil && responder.GhostID != "" {
+		return responder.GhostID
 	}
-	return modelUserID(modelID)
+	return ""
 }

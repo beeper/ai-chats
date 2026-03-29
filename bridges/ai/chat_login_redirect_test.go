@@ -181,3 +181,30 @@ func TestParseModelFromGhostIDRejectsMalformedEscaping(t *testing.T) {
 		t.Fatalf("expected malformed ghost ID to be rejected, got %q", got)
 	}
 }
+
+func TestResolveIdentifierAcceptsCanonicalModelIdentifier(t *testing.T) {
+	oc := &AIClient{
+		UserLogin: &bridgev2.UserLogin{
+			UserLogin: &database.UserLogin{
+				ID: "login-1",
+				Metadata: &UserLoginMetadata{
+					ModelCache: &ModelCache{
+						Models: []ModelInfo{{
+							ID:   "openai/gpt-5",
+							Name: "GPT-5",
+						}},
+					},
+				},
+			},
+		},
+		connector: &OpenAIConnector{},
+	}
+
+	resp, err := oc.ResolveIdentifier(context.Background(), "model:openai/gpt-5", false)
+	if err != nil {
+		t.Fatalf("ResolveIdentifier returned error: %v", err)
+	}
+	if resp == nil || resp.UserID != modelUserID("openai/gpt-5") {
+		t.Fatalf("expected canonical model identifier to resolve to model ghost, got %#v", resp)
+	}
+}

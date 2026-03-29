@@ -12,7 +12,12 @@ import (
 )
 
 func TestGetCapabilities_ModelRoomAllowsReplyEditReaction(t *testing.T) {
-	oc := &AIClient{connector: &OpenAIConnector{}}
+	oc := &AIClient{
+		connector: &OpenAIConnector{},
+		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
+			ModelCache: &ModelCache{Models: []ModelInfo{{ID: "openai/gpt-5", SupportsToolCalling: true}}},
+		}}},
+	}
 	portal := &bridgev2.Portal{
 		Portal: &database.Portal{
 			OtherUserID: modelUserID("openai/gpt-5"),
@@ -41,7 +46,12 @@ func TestGetCapabilities_ModelRoomAllowsReplyEditReaction(t *testing.T) {
 }
 
 func TestGetCapabilities_AgentRoomEnablesReplyEditReaction(t *testing.T) {
-	oc := &AIClient{connector: &OpenAIConnector{}}
+	oc := &AIClient{
+		connector: &OpenAIConnector{},
+		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
+			ModelCache: &ModelCache{Models: []ModelInfo{{ID: DefaultModelOpenRouter, SupportsToolCalling: true}}},
+		}}},
+	}
 	portal := &bridgev2.Portal{
 		Portal: &database.Portal{
 			OtherUserID: agentUserID("beeper"),

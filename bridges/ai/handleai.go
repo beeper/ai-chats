@@ -623,23 +623,9 @@ func (oc *AIClient) setRoomTopic(ctx context.Context, portal *bridgev2.Portal, t
 }
 
 func (oc *AIClient) getModelContextWindow(meta *PortalMetadata) int {
-	modelID := oc.effectiveModel(meta)
-
-	// Check cached model info first
-	loginMeta := loginMetadata(oc.UserLogin)
-	if loginMeta.ModelCache != nil {
-		for _, m := range loginMeta.ModelCache.Models {
-			if m.ID == modelID {
-				return m.ContextWindow
-			}
-		}
+	responder := oc.responderForMeta(context.Background(), meta)
+	if responder != nil && responder.ContextLimit > 0 {
+		return responder.ContextLimit
 	}
-
-	// Fallback: check model catalog
-	if info := oc.findModelInfoInCatalog(modelID); info != nil {
-		return info.ContextWindow
-	}
-
-	// Default for unknown models
 	return 128000
 }

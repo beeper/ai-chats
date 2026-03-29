@@ -118,6 +118,14 @@ func (oc *AIClient) prepareStreamingRun(
 		roomID = portal.MXID
 	}
 	state := newStreamingState(ctx, meta, roomID)
+	if responder, err := oc.ResolveResponderForMeta(ctx, meta); err == nil && responder != nil {
+		state.respondingGhostID = string(responder.GhostID)
+		state.respondingAgentID = responder.AgentID
+		state.respondingModelID = responder.ModelID
+		state.respondingContextLimit = responder.ContextLimit
+	} else if err != nil {
+		log.Warn().Err(err).Msg("Failed to resolve responder for streaming turn")
+	}
 
 	// Create SDK Turn for writer/emitter/session management.
 	turn := oc.createStreamingTurn(ctx, portal, meta, state, sourceEventID, senderID)

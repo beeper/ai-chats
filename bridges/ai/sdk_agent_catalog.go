@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"github.com/beeper/agentremote/pkg/agents"
 	bridgesdk "github.com/beeper/agentremote/sdk"
@@ -98,18 +97,11 @@ func normalizedCatalogAgentIdentifier(identifier string) string {
 	if identifier == "" {
 		return ""
 	}
+	if agentID := parseCanonicalAgentIdentifier(identifier); agentID != "" {
+		return agentID
+	}
 	if agentID, ok := parseAgentFromGhostID(identifier); ok {
 		return agentID
 	}
 	return normalizeAgentID(identifier)
-}
-
-func sdkResolveResponseForAgent(agent *bridgesdk.Agent) *bridgev2.ResolveIdentifierResponse {
-	if agent == nil {
-		return nil
-	}
-	return &bridgev2.ResolveIdentifierResponse{
-		UserID:   networkid.UserID(agent.ID),
-		UserInfo: agent.UserInfo(),
-	}
 }

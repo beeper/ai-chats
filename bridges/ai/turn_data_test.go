@@ -62,3 +62,41 @@ func TestTurnDataFromStreamingStatePrefersVisibleText(t *testing.T) {
 		t.Fatalf("expected visible turn text in first part, got %#v", td.Parts)
 	}
 }
+
+func TestBuildTurnDataMetadataUsesResponderSnapshot(t *testing.T) {
+	state := testStreamingState("turn-metadata")
+	state.respondingAgentID = "agent-1"
+	state.respondingModelID = "openai/gpt-5.2"
+	state.respondingContextLimit = 400000
+	state.promptTokens = 120
+	state.completionTokens = 30
+	state.reasoningTokens = 5
+	state.totalTokens = 155
+
+	meta := buildTurnDataMetadata(state, &PortalMetadata{
+		ResolvedTarget: &ResolvedTarget{
+			Kind:    ResolvedTargetModel,
+			ModelID: "openai/gpt-4.1",
+		},
+	})
+
+	if got := meta["model"]; got != "openai/gpt-5.2" {
+		t.Fatalf("expected turn snapshot model, got %#v", got)
+	}
+	if got := meta["agent_id"]; got != "agent-1" {
+		t.Fatalf("expected turn snapshot agent id, got %#v", got)
+	}
+	usage, ok := meta["usage"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected nested usage map, got %T", meta["usage"])
+	}
+	if got := usage["context_limit"]; got != float64(400000) {
+		t.Fatalf("expected nested context limit, got %#v", got)
+	}
+	if got := usage["prompt_tokens"]; got != float64(120) {
+		t.Fatalf("expected nested prompt tokens, got %#v", got)
+	}
+	if _, ok := meta["prompt_tokens"]; ok {
+		t.Fatalf("did not expect flat prompt_tokens field, got %#v", meta["prompt_tokens"])
+	}
+}

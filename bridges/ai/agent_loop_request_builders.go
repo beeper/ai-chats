@@ -45,7 +45,7 @@ func (oc *AIClient) selectedStreamingToolDescriptors(
 	meta *PortalMetadata,
 	allowResolvedBossAgent bool,
 ) []openAIToolDescriptor {
-	if meta != nil && !oc.getModelCapabilitiesForMeta(meta).SupportsToolCalling {
+	if meta != nil && !oc.getModelCapabilitiesForMeta(ctx, meta).SupportsToolCalling {
 		return nil
 	}
 

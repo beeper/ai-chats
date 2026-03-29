@@ -43,7 +43,10 @@ func (oc *AIClient) buildStreamingMessageMetadata(state *streamingState, meta *P
 			snapshot.TurnData = sdk.TurnData{}
 		}
 	}
-	modelID := oc.effectiveModel(meta)
+	modelID := state.respondingModelID
+	if modelID == "" {
+		modelID = oc.effectiveModel(meta)
+	}
 	canonicalTurnData := map[string]any(nil)
 	if len(snapshot.TurnData.ToMap()) > 0 {
 		canonicalTurnData = snapshot.TurnData.ToMap()
@@ -115,9 +118,14 @@ func (oc *AIClient) saveAssistantMessage(
 	}
 
 	agentremote.UpsertAssistantMessage(ctx, agentremote.UpsertAssistantMessageParams{
-		Login:            oc.UserLogin,
-		Portal:           portal,
-		SenderID:         modelUserID(oc.effectiveModel(meta)),
+		Login:  oc.UserLogin,
+		Portal: portal,
+		SenderID: func() networkid.UserID {
+			if state.respondingGhostID != "" {
+				return networkid.UserID(state.respondingGhostID)
+			}
+			return modelUserID(oc.effectiveModel(meta))
+		}(),
 		NetworkMessageID: networkMessageID,
 		InitialEventID:   initialEventID,
 		Metadata:         fullMeta,

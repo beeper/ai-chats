@@ -112,7 +112,6 @@ func (oc *OpenAIConnector) loadAIUserLogin(login *bridgev2.UserLogin, meta *User
 
 	if cachedAPI != nil && existing == nil {
 		oc.evictCachedClient(login.ID, cachedAPI)
-		cachedAPI = nil
 	}
 
 	client, err := newAIClient(login, oc, key)

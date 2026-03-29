@@ -7,6 +7,36 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
+func canonicalModelIdentifier(modelID string) string {
+	modelID = strings.TrimSpace(ResolveAlias(modelID))
+	if modelID == "" {
+		return ""
+	}
+	return "model:" + modelID
+}
+
+func parseCanonicalModelIdentifier(identifier string) string {
+	if suffix, ok := strings.CutPrefix(strings.TrimSpace(identifier), "model:"); ok {
+		return strings.TrimSpace(ResolveAlias(suffix))
+	}
+	return ""
+}
+
+func canonicalAgentIdentifier(agentID string) string {
+	agentID = normalizeAgentID(agentID)
+	if agentID == "" {
+		return ""
+	}
+	return "agent:" + agentID
+}
+
+func parseCanonicalAgentIdentifier(identifier string) string {
+	if suffix, ok := strings.CutPrefix(strings.TrimSpace(identifier), "agent:"); ok {
+		return normalizeAgentID(suffix)
+	}
+	return ""
+}
+
 func modelContactName(modelID string, info *ModelInfo) string {
 	if info != nil && info.Name != "" {
 		return info.Name
@@ -24,23 +54,10 @@ func modelContactProvider(modelID string, info *ModelInfo) string {
 	return ""
 }
 
-func modelContactIdentifiers(modelID string, info *ModelInfo) []string {
-	identifiers := []string{modelID}
-	name := modelContactName(modelID, info)
-	if name != "" && name != modelID {
-		identifiers = append(identifiers, name)
-	}
-	if provider := modelContactProvider(modelID, info); provider != "" {
-		if name != "" {
-			identifiers = append(identifiers, provider+"/"+name)
-		}
-		lowerProvider := strings.ToLower(provider) + "/"
-		if !strings.HasPrefix(strings.ToLower(modelID), lowerProvider) {
-			identifiers = append(identifiers, provider+"/"+modelID)
-		}
-	}
-	if openRouterURL := modelContactOpenRouterURL(modelID, info); openRouterURL != "" {
-		identifiers = append(identifiers, "uri:"+openRouterURL)
+func modelContactIdentifiers(modelID string) []string {
+	identifiers := []string{}
+	if ident := canonicalModelIdentifier(modelID); ident != "" {
+		identifiers = append(identifiers, ident)
 	}
 	return stringutil.DedupeStrings(identifiers)
 }

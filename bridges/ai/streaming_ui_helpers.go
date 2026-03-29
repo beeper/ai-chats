@@ -52,10 +52,6 @@ func (oc *AIClient) buildUIMessageMetadata(state *streamingState, meta *PortalMe
 	if !includeUsage && len(metadata) > 0 {
 		metadata = maps.Clone(metadata)
 		delete(metadata, "usage")
-		delete(metadata, "prompt_tokens")
-		delete(metadata, "completion_tokens")
-		delete(metadata, "reasoning_tokens")
-		delete(metadata, "total_tokens")
 	}
 	return metadata
 }
