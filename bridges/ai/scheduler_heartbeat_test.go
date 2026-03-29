@@ -20,39 +20,26 @@ func testAgentPortal(portalID, roomID, agentID string, meta *PortalMetadata) *br
 	}
 }
 
-func TestResolveSchedulableHeartbeatAgents(t *testing.T) {
-	candidates := []heartbeatAgent{
-		{agentID: "beeper"},
-		{agentID: "worker"},
+func TestAgentHasUserChat(t *testing.T) {
+	portals := []*bridgev2.Portal{
+		testAgentPortal("chat-1", "!chat1:example.com", "beeper", &PortalMetadata{Title: "Chat"}),
+		testAgentPortal("heartbeat", "!hb:example.com", "beeper", &PortalMetadata{
+			ModuleMeta: map[string]any{"heartbeat": map[string]any{"is_internal_room": true}},
+		}),
+		testAgentPortal("subagent", "!sub:example.com", "beeper", &PortalMetadata{
+			SubagentParentRoomID: "!parent:example.com",
+		}),
 	}
 
-	got := resolveSchedulableHeartbeatAgents(candidates, func(agentID string) bool {
-		return agentID != "worker"
-	})
-	if len(got) != 1 || got[0].agentID != "beeper" {
-		t.Fatalf("expected only beeper to be schedulable, got %#v", got)
+	if !agentHasUserChat(portals, "beeper") {
+		t.Fatal("expected beeper to have a user chat")
 	}
-
-	got = resolveSchedulableHeartbeatAgents(candidates, func(string) bool { return true })
-	if len(got) != 2 {
-		t.Fatalf("expected both agents to be schedulable when they exist, got %#v", got)
+	if agentHasUserChat(portals, "worker") {
+		t.Fatal("expected worker to have no user chat")
 	}
-}
-
-func TestHeartbeatRoomsToCleanup(t *testing.T) {
-	activeHeartbeat := testAgentPortal("heartbeat-active", "!active:example.com", "beeper", &PortalMetadata{
-		ModuleMeta: map[string]any{"heartbeat": map[string]any{"is_internal_room": true}},
-	})
-	orphanHeartbeat := testAgentPortal("heartbeat-orphan", "!orphan:example.com", "worker", &PortalMetadata{
-		ModuleMeta: map[string]any{"heartbeat": map[string]any{"is_internal_room": true}},
-	})
-	visible := testAgentPortal("visible", "!visible:example.com", "beeper", &PortalMetadata{Title: "Visible"})
-
-	got := heartbeatRoomsToCleanup(
-		[]*bridgev2.Portal{activeHeartbeat, orphanHeartbeat, visible},
-		map[string]struct{}{"beeper": {}},
-	)
-	if len(got) != 1 || got[0] != orphanHeartbeat {
-		t.Fatalf("expected only orphan heartbeat room to be cleaned up, got %#v", got)
+	// Internal and subagent rooms should not count.
+	internalOnly := []*bridgev2.Portal{portals[1], portals[2]}
+	if agentHasUserChat(internalOnly, "beeper") {
+		t.Fatal("expected internal-only portals not to count as user chats")
 	}
 }

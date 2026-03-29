@@ -281,7 +281,10 @@ func mergeServiceTokens(existing, incoming *ServiceTokens) *ServiceTokens {
 }
 
 func agentsEnabled(meta *UserLoginMetadata) bool {
-	return meta == nil || meta.Agents == nil || *meta.Agents
+	if meta == nil || meta.Agents == nil {
+		return false
+	}
+	return *meta.Agents
 }
 
 func clonePortalMetadata(src *PortalMetadata) *PortalMetadata {

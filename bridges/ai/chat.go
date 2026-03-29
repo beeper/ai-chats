@@ -49,7 +49,7 @@ func modelRedirectTarget(requested, resolved string) networkid.UserID {
 
 func (oc *AIClient) agentsEnabledForLogin() bool {
 	if oc == nil || oc.UserLogin == nil {
-		return true
+		return false
 	}
 	return agentsEnabled(loginMetadata(oc.UserLogin))
 }

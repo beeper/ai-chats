@@ -10,10 +10,10 @@ import (
 )
 
 func (s *schedulerRuntime) RunHeartbeatSweep(ctx context.Context, reason string) (string, string) {
-	if s == nil || s.client == nil {
+	if s == nil || s.client == nil || !s.client.agentsEnabledForLogin() {
 		return "skipped", "disabled"
 	}
-	agents, _, err := s.resolveSchedulableHeartbeatAgents(ctx, nil)
+	agents, err := s.schedulableHeartbeatAgents(ctx)
 	if err != nil {
 		s.client.log.Warn().Err(err).Msg("Failed to resolve schedulable heartbeat agents")
 		return "skipped", "disabled"
@@ -51,7 +51,7 @@ func (s *schedulerRuntime) RequestHeartbeatNow(ctx context.Context, reason strin
 		s.client.log.Warn().Err(err).Msg("Failed to load managed heartbeat store")
 		return
 	}
-	agents, _, err := s.resolveSchedulableHeartbeatAgents(ctx, nil)
+	agents, err := s.schedulableHeartbeatAgents(ctx)
 	if err != nil {
 		s.client.log.Warn().Err(err).Msg("Failed to resolve schedulable heartbeat agents for immediate wake")
 		return
@@ -108,11 +108,7 @@ func (s *schedulerRuntime) reconcileHeartbeatLocked(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	portals, err := s.client.listAllChatPortals(ctx)
-	if err != nil {
-		return err
-	}
-	agents, _, err := s.resolveSchedulableHeartbeatAgents(ctx, portals)
+	agents, err := s.schedulableHeartbeatAgents(ctx)
 	if err != nil {
 		return err
 	}
@@ -141,7 +137,6 @@ func (s *schedulerRuntime) reconcileHeartbeatLocked(ctx context.Context) error {
 		}
 	}
 	store.Agents = retained
-	s.cleanupOrphanHeartbeatRoomsLocked(ctx, portals, active)
 	return s.saveHeartbeatStoreLocked(ctx, store)
 }
 
@@ -401,77 +396,52 @@ func findManagedHeartbeat(states []managedHeartbeatState, agentID string) int {
 	return -1
 }
 
-func (s *schedulerRuntime) resolveSchedulableHeartbeatAgents(
-	ctx context.Context,
-	portals []*bridgev2.Portal,
-) ([]heartbeatAgent, []*bridgev2.Portal, error) {
+// schedulableHeartbeatAgents returns heartbeat agents that are configured,
+// exist in the agent store, and have at least one user-facing chat portal.
+func (s *schedulerRuntime) schedulableHeartbeatAgents(ctx context.Context) ([]heartbeatAgent, error) {
 	if s == nil || s.client == nil || s.client.connector == nil {
-		return nil, portals, nil
+		return nil, nil
 	}
 	candidates := resolveHeartbeatAgents(&s.client.connector.Config)
 	if len(candidates) == 0 || !s.client.agentsEnabledForLogin() {
-		return nil, portals, nil
+		return nil, nil
 	}
-	if portals == nil {
-		var err error
-		portals, err = s.client.listAllChatPortals(ctx)
-		if err != nil {
-			return nil, nil, err
-		}
-	}
-	store := NewAgentStoreAdapter(s.client)
-	agentsMap, err := store.LoadAgents(ctx)
+	agentsMap, err := NewAgentStoreAdapter(s.client).LoadAgents(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return resolveSchedulableHeartbeatAgents(
-		candidates,
-		func(agentID string) bool {
-			_, ok := agentsMap[agentID]
-			return ok
-		},
-	), portals, nil
-}
-
-func resolveSchedulableHeartbeatAgents(
-	candidates []heartbeatAgent,
-	agentExists func(string) bool,
-) []heartbeatAgent {
+	portals, err := s.client.listAllChatPortals(ctx)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]heartbeatAgent, 0, len(candidates))
-	for _, candidate := range candidates {
-		if agentExists != nil && !agentExists(candidate.agentID) {
+	for _, c := range candidates {
+		if _, ok := agentsMap[c.agentID]; !ok {
 			continue
 		}
-		out = append(out, candidate)
+		if !agentHasUserChat(portals, c.agentID) {
+			continue
+		}
+		out = append(out, c)
 	}
-	return out
+	return out, nil
 }
 
-func (s *schedulerRuntime) cleanupOrphanHeartbeatRoomsLocked(
-	ctx context.Context,
-	portals []*bridgev2.Portal,
-	active map[string]struct{},
-) {
-	for _, portal := range heartbeatRoomsToCleanup(portals, active) {
-		cleanupPortal(ctx, s.client, portal, "orphan heartbeat cleanup")
+// agentHasUserChat returns true if the agent has at least one user-facing
+// (non-internal, non-subagent) chat portal.
+func agentHasUserChat(portals []*bridgev2.Portal, agentID string) bool {
+	target := normalizeAgentID(agentID)
+	for _, p := range portals {
+		if p == nil {
+			continue
+		}
+		meta := portalMeta(p)
+		if isModuleInternalRoom(meta) || (meta != nil && meta.SubagentParentRoomID != "") {
+			continue
+		}
+		if normalizeAgentID(resolveAgentID(meta)) == target {
+			return true
+		}
 	}
-}
-
-func heartbeatRoomsToCleanup(portals []*bridgev2.Portal, active map[string]struct{}) []*bridgev2.Portal {
-	var cleanup []*bridgev2.Portal
-	for _, portal := range portals {
-		if portal == nil {
-			continue
-		}
-		meta := portalMeta(portal)
-		if moduleRoomKind(meta) != "heartbeat" {
-			continue
-		}
-		agentID := normalizeAgentID(resolveAgentID(meta))
-		if _, ok := active[agentID]; ok {
-			continue
-		}
-		cleanup = append(cleanup, portal)
-	}
-	return cleanup
+	return false
 }
