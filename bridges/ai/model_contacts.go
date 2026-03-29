@@ -26,21 +26,11 @@ func modelContactProvider(modelID string, info *ModelInfo) string {
 
 func modelContactIdentifiers(modelID string, info *ModelInfo) []string {
 	identifiers := []string{modelID}
-	name := modelContactName(modelID, info)
-	if name != "" && name != modelID {
-		identifiers = append(identifiers, name)
-	}
 	if provider := modelContactProvider(modelID, info); provider != "" {
-		if name != "" {
-			identifiers = append(identifiers, provider+"/"+name)
-		}
 		lowerProvider := strings.ToLower(provider) + "/"
 		if !strings.HasPrefix(strings.ToLower(modelID), lowerProvider) {
 			identifiers = append(identifiers, provider+"/"+modelID)
 		}
-	}
-	if openRouterURL := modelContactOpenRouterURL(modelID, info); openRouterURL != "" {
-		identifiers = append(identifiers, "uri:"+openRouterURL)
 	}
 	return stringutil.DedupeStrings(identifiers)
 }
