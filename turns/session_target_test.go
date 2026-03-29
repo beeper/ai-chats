@@ -49,6 +49,15 @@ func (tst *testStreamPublisher) Unregister(_ id.RoomID, eventID id.EventID) {
 	tst.finishedEvent = eventID
 }
 
+func pendingPartCount(session *StreamSession) int {
+	if session == nil {
+		return 0
+	}
+	session.streamMu.Lock()
+	defer session.streamMu.Unlock()
+	return len(session.pendingParts)
+}
+
 func TestStreamSessionDescriptorStartPublishFinish(t *testing.T) {
 	publisher := &testStreamPublisher{
 		descriptor: &event.BeeperStreamInfo{
@@ -83,8 +92,8 @@ func TestStreamSessionDescriptorStartPublishFinish(t *testing.T) {
 		t.Fatalf("Start() error = %v", err)
 	}
 	session.EmitPart(context.Background(), map[string]any{"type": "text-delta", "delta": "hello"})
-	if session.pendingCount() != 0 {
-		t.Fatalf("expected no buffered parts after publish, got %d", session.pendingCount())
+	if pendingPartCount(session) != 0 {
+		t.Fatalf("expected no buffered parts after publish, got %d", pendingPartCount(session))
 	}
 	session.End(context.Background(), EndReasonFinish)
 	if publisher.startedRoom != id.RoomID("!room:example.com") || publisher.startedEvent != id.EventID("$event-1") {
@@ -246,8 +255,8 @@ func TestStreamSessionBuffersUntilTargetEventIDExists(t *testing.T) {
 	if sendCount != 0 {
 		t.Fatalf("expected part to stay buffered until target is resolved, got %d sends", sendCount)
 	}
-	if session.pendingCount() != 1 {
-		t.Fatalf("expected one pending part before stream start, got %d", session.pendingCount())
+	if pendingPartCount(session) != 1 {
+		t.Fatalf("expected one pending part before stream start, got %d", pendingPartCount(session))
 	}
 
 	targetEventID = id.EventID("$event-buffered")
@@ -260,8 +269,8 @@ func TestStreamSessionBuffersUntilTargetEventIDExists(t *testing.T) {
 	if sendCount != 1 {
 		t.Fatalf("expected one buffered publish after target resolution, got %d", sendCount)
 	}
-	if session.pendingCount() != 0 {
-		t.Fatalf("expected no pending parts after stream start, got %d", session.pendingCount())
+	if pendingPartCount(session) != 0 {
+		t.Fatalf("expected no pending parts after stream start, got %d", pendingPartCount(session))
 	}
 }
 
@@ -318,8 +327,8 @@ func TestStreamSessionHookOnlyFlushesWithoutPublisher(t *testing.T) {
 	if sent == nil {
 		t.Fatal("expected hook-only stream session to flush content")
 	}
-	if session.pendingCount() != 0 {
-		t.Fatalf("expected no pending parts after hook-only flush, got %d", session.pendingCount())
+	if pendingPartCount(session) != 0 {
+		t.Fatalf("expected no pending parts after hook-only flush, got %d", pendingPartCount(session))
 	}
 	if !session.streamStarted {
 		t.Fatal("expected session to mark stream as started in hook-only mode")
@@ -403,7 +412,7 @@ func TestStreamSessionCurrentTargetFallsBackToStartedTarget(t *testing.T) {
 	if sendCount != 1 {
 		t.Fatalf("expected emit to reuse stored target event id, got %d sends", sendCount)
 	}
-	if session.pendingCount() != 0 {
-		t.Fatalf("expected no buffered parts after fallback publish, got %d", session.pendingCount())
+	if pendingPartCount(session) != 0 {
+		t.Fatalf("expected no buffered parts after fallback publish, got %d", pendingPartCount(session))
 	}
 }

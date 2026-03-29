@@ -375,15 +375,6 @@ func (s *StreamSession) requeuePendingFront(pending pendingStreamPart) {
 	s.pendingParts = slices.Insert(s.pendingParts, 0, pending)
 }
 
-func (s *StreamSession) pendingCount() int {
-	if s == nil {
-		return 0
-	}
-	s.streamMu.Lock()
-	defer s.streamMu.Unlock()
-	return len(s.pendingParts)
-}
-
 func (s *StreamSession) publishPendingPart(ctx context.Context, targetEventID id.EventID, pending pendingStreamPart) error {
 	delta, err := matrixevents.BuildStreamEventEnvelope(strings.TrimSpace(s.params.TurnID), pending.seq, pending.part, matrixevents.StreamEventOpts{
 		RelatesToEventID: string(targetEventID),

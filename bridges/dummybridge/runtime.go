@@ -13,7 +13,6 @@ import (
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/citations"
-	"github.com/beeper/agentremote/pkg/shared/streamui"
 	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
@@ -1657,23 +1656,4 @@ func sanitizeToolName(name string) string {
 		return "tool"
 	}
 	return name
-}
-
-func snapshotParts(turn *bridgesdk.Turn) []map[string]any {
-	ui := streamui.SnapshotUIMessage(turn.UIState())
-	if ui == nil {
-		return nil
-	}
-	rawParts, ok := ui["parts"].([]any)
-	if !ok {
-		return nil
-	}
-	parts := make([]map[string]any, 0, len(rawParts))
-	for _, raw := range rawParts {
-		part, ok := raw.(map[string]any)
-		if ok {
-			parts = append(parts, part)
-		}
-	}
-	return parts
 }

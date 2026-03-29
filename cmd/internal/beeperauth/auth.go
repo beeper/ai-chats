@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -264,60 +262,4 @@ func newJSONRequest(ctx context.Context, method, requestURL, bearerToken string,
 		req.Header.Set("Authorization", "Bearer "+bearerToken)
 	}
 	return req, nil
-}
-
-func ResolveFromEnvOrStore(store Store) (Config, error) {
-	if tok := os.Getenv("BEEPER_ACCESS_TOKEN"); tok != "" {
-		env := os.Getenv("BEEPER_ENV")
-		if env == "" {
-			env = "prod"
-		}
-		domain, err := DomainForEnv(env)
-		if err != nil {
-			return Config{}, fmt.Errorf("invalid BEEPER_ENV %q", env)
-		}
-		return Config{
-			Env:      env,
-			Domain:   domain,
-			Username: os.Getenv("BEEPER_USERNAME"),
-			Token:    tok,
-		}, nil
-	}
-	return Load(store)
-}
-
-func Load(store Store) (Config, error) {
-	data, err := os.ReadFile(store.Path)
-	if err != nil {
-		if store.MissingError != nil {
-			return Config{}, store.MissingError()
-		}
-		return Config{}, err
-	}
-	var cfg Config
-	if err = json.Unmarshal(data, &cfg); err != nil {
-		return Config{}, err
-	}
-	if cfg.Token == "" || cfg.Domain == "" {
-		return Config{}, fmt.Errorf("invalid auth config at %s", store.Path)
-	}
-	return cfg, nil
-}
-
-func Save(path string, cfg Config) error {
-	if cfg.Domain == "" && cfg.Env != "" {
-		domain, err := DomainForEnv(cfg.Env)
-		if err != nil {
-			return err
-		}
-		cfg.Domain = domain
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0o600)
 }

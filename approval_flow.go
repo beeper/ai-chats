@@ -1608,9 +1608,6 @@ func (f *ApprovalFlow[D]) editPromptToResolvedState(
 			TopLevelExtra: response.TopLevelExtra,
 		}},
 	}
-	if edit == nil {
-		return
-	}
 	ac.login.QueueRemoteEvent(&RemoteEdit{
 		Portal:        ac.portal.PortalKey,
 		Sender:        ac.sender,
