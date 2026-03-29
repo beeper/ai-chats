@@ -16,7 +16,9 @@ import (
 	"time"
 
 	"github.com/beeper/bridge-manager/api/beeperapi"
+	"gopkg.in/yaml.v3"
 
+	codexbridge "github.com/beeper/agentremote/bridges/codex"
 	"github.com/beeper/agentremote/cmd/internal/beeperauth"
 	"github.com/beeper/agentremote/cmd/internal/cliutil"
 	"github.com/beeper/agentremote/cmd/internal/selfhost"
@@ -1083,6 +1085,147 @@ func cmdAuth(args []string) error {
 	default:
 		return fmt.Errorf("unknown auth subcommand %q", args[0])
 	}
+}
+
+func cmdCodex(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("codex requires subcommand: add|remove|dirs")
+	}
+	switch args[0] {
+	case "add":
+		return cmdCodexAddRemove(true, args[1:])
+	case "remove":
+		return cmdCodexAddRemove(false, args[1:])
+	case "dirs":
+		return cmdCodexDirs(args[1:])
+	default:
+		return fmt.Errorf("unknown codex subcommand %q", args[0])
+	}
+}
+
+func cmdCodexAddRemove(add bool, args []string) error {
+	name := "codex add"
+	if !add {
+		name = "codex remove"
+	}
+	fs := newFlagSet(name)
+	profile := fs.String("profile", defaultProfile, "profile name")
+	instanceName := fs.String("name", "", "instance name")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	pathArg := ""
+	if fs.NArg() > 1 {
+		return fmt.Errorf("expected at most one path argument")
+	}
+	if fs.NArg() == 1 {
+		pathArg = fs.Arg(0)
+	} else {
+		wd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		pathArg = wd
+	}
+	path, err := codexbridge.ResolveCodexWorkingDirectoryCLI(pathArg)
+	if err != nil {
+		return err
+	}
+	configPath, err := codexConfigPath(*profile, *instanceName)
+	if err != nil {
+		return err
+	}
+	paths, err := readCodexTrackedPaths(configPath)
+	if err != nil {
+		return err
+	}
+	if add {
+		if !slices.Contains(paths, path) {
+			paths = append(paths, path)
+		}
+	} else {
+		next := make([]string, 0, len(paths))
+		for _, existing := range paths {
+			if existing == path {
+				continue
+			}
+			next = append(next, existing)
+		}
+		paths = next
+	}
+	paths = codexbridge.NormalizeTrackedWorkspaceRootsCLI(paths)
+	if err := bridgeutil.ApplyConfigOverrides(configPath, map[string]any{
+		"codex.tracked_paths": paths,
+	}); err != nil {
+		return err
+	}
+	action := "Added"
+	if !add {
+		action = "Removed"
+	}
+	fmt.Printf("%s %s in %s\n", action, path, configPath)
+	fmt.Println("Restart required for local config changes to take effect.")
+	return nil
+}
+
+func cmdCodexDirs(args []string) error {
+	fs := newFlagSet("codex dirs")
+	profile := fs.String("profile", defaultProfile, "profile name")
+	instanceName := fs.String("name", "", "instance name")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("codex dirs does not take positional arguments")
+	}
+	configPath, err := codexConfigPath(*profile, *instanceName)
+	if err != nil {
+		return err
+	}
+	paths, err := readCodexTrackedPaths(configPath)
+	if err != nil {
+		return err
+	}
+	if len(paths) == 0 {
+		fmt.Println("No tracked Codex workspaces configured.")
+		return nil
+	}
+	for _, path := range paths {
+		fmt.Println(path)
+	}
+	return nil
+}
+
+func codexConfigPath(profile, name string) (string, error) {
+	instName := instanceDirName("codex", name)
+	sp, err := getInstancePaths(profile, instName)
+	if err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(sp.ConfigPath); err != nil {
+		return "", err
+	}
+	return sp.ConfigPath, nil
+}
+
+func readCodexTrackedPaths(configPath string) ([]string, error) {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, err
+	}
+	var doc map[string]any
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, err
+	}
+	rawCodex, _ := doc["codex"].(map[string]any)
+	rawPaths, _ := rawCodex["tracked_paths"].([]any)
+	paths := make([]string, 0, len(rawPaths))
+	for _, item := range rawPaths {
+		if str, ok := item.(string); ok {
+			paths = append(paths, str)
+		}
+	}
+	return codexbridge.NormalizeTrackedWorkspaceRootsCLI(paths), nil
 }
 
 func cmdCompletion(args []string) error {

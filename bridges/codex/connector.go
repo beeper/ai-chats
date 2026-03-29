@@ -260,6 +260,7 @@ func (cc *CodexConnector) applyRuntimeDefaults() {
 	if strings.TrimSpace(cc.Config.Codex.DefaultModel) == "" {
 		cc.Config.Codex.DefaultModel = "gpt-5.1-codex"
 	}
+	cc.Config.Codex.TrackedPaths = normalizeTrackedWorkspaceRoots(cc.Config.Codex.TrackedPaths)
 	bridgesdk.ApplyBoolDefault(&cc.Config.Codex.NetworkAccess, true)
 	if cc.Config.Codex.ClientInfo == nil {
 		cc.Config.Codex.ClientInfo = &CodexClientInfo{}

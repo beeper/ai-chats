@@ -88,6 +88,22 @@ func initCommands() {
 			Run: cmdProfiles,
 		},
 		{
+			Name: "codex", Group: "Bridges",
+			Description: "Manage tracked Codex workspaces in local config",
+			Usage:       "agentremote codex <add|remove|dirs> [path] [flags]",
+			Flags: []flagDef{
+				{Name: "profile", Help: "Profile name", Default: "default"},
+				{Name: "name", Help: "Instance name (for multiple Codex instances)"},
+			},
+			Examples: []string{
+				"agentremote codex add",
+				"agentremote codex add /abs/path",
+				"agentremote codex remove /abs/path --name dev",
+				"agentremote codex dirs",
+			},
+			Run: cmdCodex,
+		},
+		{
 			Name: "start", Group: "Bridges",
 			Description: "Start a bridge in the background",
 			Usage:       "agentremote start <bridge> [flags]",

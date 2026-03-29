@@ -493,9 +493,9 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 	if res, handled, err := cc.handleCodexCommand(ctx, portal, meta, body); handled {
 		return res, err
 	}
-
-	if meta.AwaitingCwdSetup {
-		return cc.handleWelcomeCodexMessage(ctx, portal, meta, body)
+	if !isCodexChatPortal(meta) {
+		cc.sendSystemNotice(ctx, portal, "Use `!codex help` for Codex workspace commands.")
+		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 
 	if err := cc.ensureRPC(cc.backgroundContext(ctx)); err != nil {
@@ -1502,12 +1502,12 @@ func (cc *CodexClient) backgroundContext(ctx context.Context) context.Context {
 func (cc *CodexClient) bootstrap(ctx context.Context) {
 	cc.waitForLoginPersisted(ctx)
 	syncSucceeded := true
-	if err := cc.ensureWelcomeCodexChat(cc.backgroundContext(ctx)); err != nil {
-		cc.log.Warn().Err(err).Msg("Failed to ensure default Codex chat during bootstrap")
+	if err := cc.reconcileTrackedWorkspacesFromConfig(cc.backgroundContext(ctx)); err != nil {
+		cc.log.Warn().Err(err).Msg("Failed to reconcile tracked Codex workspaces from config")
 		syncSucceeded = false
 	}
-	if err := cc.syncStoredCodexThreads(cc.backgroundContext(ctx)); err != nil {
-		cc.log.Warn().Err(err).Msg("Failed to sync Codex threads during bootstrap")
+	if err := cc.ensureWelcomeCodexChat(cc.backgroundContext(ctx)); err != nil {
+		cc.log.Warn().Err(err).Msg("Failed to ensure default Codex chat during bootstrap")
 		syncSucceeded = false
 	}
 	meta := loginMetadata(cc.UserLogin)
@@ -1619,6 +1619,7 @@ func (cc *CodexClient) ensureCodexThread(ctx context.Context, portal *bridgev2.P
 	if meta == nil || portal == nil {
 		return errors.New("missing portal/meta")
 	}
+	meta.PortalKind = codexPortalKindChat
 	if strings.TrimSpace(meta.CodexCwd) == "" {
 		return errors.New("codex working directory not set")
 	}
@@ -1656,6 +1657,7 @@ func (cc *CodexClient) ensureCodexThread(ctx context.Context, portal *bridgev2.P
 	if meta.CodexThreadID == "" {
 		return errors.New("codex returned empty thread id")
 	}
+	meta.WorkspaceRoot = cc.workspaceRootForCwd(meta.CodexCwd)
 	if err := portal.Save(ctx); err != nil {
 		return err
 	}
@@ -1664,7 +1666,7 @@ func (cc *CodexClient) ensureCodexThread(ctx context.Context, portal *bridgev2.P
 	cc.loadedMu.Unlock()
 	cc.restoreRecoveredActiveTurns(portal, meta, resp.Thread, resp.Model)
 	cc.syncCodexRoomTopic(ctx, portal, meta)
-	return nil
+	return cc.attachChatToWorkspaceSpace(ctx, portal, meta.WorkspaceRoot)
 }
 
 func (cc *CodexClient) ensureCodexThreadLoaded(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) error {
@@ -1706,7 +1708,8 @@ func (cc *CodexClient) ensureCodexThreadLoaded(ctx context.Context, portal *brid
 	cc.loadedMu.Unlock()
 	cc.restoreRecoveredActiveTurns(portal, meta, resp.Thread, resp.Model)
 	cc.syncCodexRoomTopic(ctx, portal, meta)
-	return nil
+	meta.WorkspaceRoot = cc.workspaceRootForCwd(meta.CodexCwd)
+	return cc.attachChatToWorkspaceSpace(ctx, portal, meta.WorkspaceRoot)
 }
 
 // HandleMatrixDeleteChat best-effort archives the Codex thread and removes the temp cwd.
@@ -1719,11 +1722,7 @@ func (cc *CodexClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2
 	if meta == nil || !meta.IsCodexRoom {
 		return nil
 	}
-	if meta.AwaitingCwdSetup {
-		go func() {
-			time.Sleep(1 * time.Second)
-			_ = cc.ensureWelcomeCodexChat(cc.backgroundContext(ctx))
-		}()
+	if !isCodexChatPortal(meta) {
 		return nil
 	}
 	if err := cc.ensureRPC(ctx); err != nil {

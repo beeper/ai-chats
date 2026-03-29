@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
@@ -17,9 +18,9 @@ import (
 )
 
 const (
-	codexPortalKindWelcome       = "welcome"
+	codexPortalKindWelcome        = "welcome"
 	codexPortalKindWorkspaceSpace = "workspace_space"
-	codexPortalKindChat          = "chat"
+	codexPortalKindChat           = "chat"
 )
 
 func normalizeTrackedWorkspaceRoots(paths []string) []string {
@@ -50,6 +51,10 @@ func normalizeTrackedWorkspaceRoots(paths []string) []string {
 	return out
 }
 
+func NormalizeTrackedWorkspaceRootsCLI(paths []string) []string {
+	return normalizeTrackedWorkspaceRoots(paths)
+}
+
 func workspaceContains(root, cwd string) bool {
 	root = filepath.Clean(strings.TrimSpace(root))
 	cwd = filepath.Clean(strings.TrimSpace(cwd))
@@ -63,6 +68,10 @@ func workspaceContains(root, cwd string) bool {
 		return strings.HasPrefix(cwd, root)
 	}
 	return strings.HasPrefix(cwd, root+string(filepath.Separator))
+}
+
+func ResolveCodexWorkingDirectoryCLI(raw string) (string, error) {
+	return resolveCodexWorkingDirectory(raw)
 }
 
 func longestMatchingWorkspaceRoot(roots []string, cwd string) string {
@@ -276,4 +285,247 @@ func resolveExistingDirectory(raw string) (string, error) {
 		return "", fmt.Errorf("%s is not a directory", path)
 	}
 	return path, nil
+}
+
+func (cc *CodexClient) clearChatRuntimeState(meta *PortalMetadata, portal *bridgev2.Portal) {
+	if cc == nil || meta == nil {
+		return
+	}
+	cc.cleanupImportedPortalState(meta.CodexThreadID)
+	if portal != nil && portal.MXID != "" {
+		cc.roomMu.Lock()
+		delete(cc.activeRooms, portal.MXID)
+		delete(cc.pendingMessages, portal.MXID)
+		cc.roomMu.Unlock()
+	}
+}
+
+func (cc *CodexClient) createFreshCodexChat(ctx context.Context, cwd string) (*bridgev2.Portal, error) {
+	if err := cc.ensureRPC(ctx); err != nil {
+		return nil, err
+	}
+	cwd = strings.TrimSpace(cwd)
+	if cwd == "" {
+		return nil, fmt.Errorf("working directory is required")
+	}
+	model := cc.connector.Config.Codex.DefaultModel
+	var resp struct {
+		Thread codexThread `json:"thread"`
+		Model  string      `json:"model"`
+	}
+	callCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	err := cc.rpc.Call(callCtx, "thread/start", map[string]any{
+		"model":                  model,
+		"cwd":                    cwd,
+		"approvalPolicy":         "untrusted",
+		"sandbox":                cc.buildSandboxMode(),
+		"experimentalRawEvents":  false,
+		"persistExtendedHistory": true,
+	}, &resp)
+	if err != nil {
+		return nil, err
+	}
+	resp.Thread.Cwd = cwd
+	portal, _, err := cc.ensureFreshThreadPortal(ctx, resp.Thread)
+	if err != nil {
+		return nil, err
+	}
+	cc.restoreRecoveredActiveTurns(portal, portalMeta(portal), resp.Thread, resp.Model)
+	return portal, nil
+}
+
+func (cc *CodexClient) ensureFreshThreadPortal(ctx context.Context, thread codexThread) (*bridgev2.Portal, bool, error) {
+	threadID := strings.TrimSpace(thread.ID)
+	if threadID == "" {
+		return nil, false, fmt.Errorf("missing thread id")
+	}
+	portalKey, err := codexThreadPortalKey(cc.UserLogin.ID, threadID)
+	if err != nil {
+		return nil, false, err
+	}
+	portal, err := cc.UserLogin.Bridge.GetPortalByKey(ctx, portalKey)
+	if err != nil {
+		return nil, false, err
+	}
+	meta := portalMeta(portal)
+	meta.IsCodexRoom = true
+	meta.PortalKind = codexPortalKindChat
+	meta.CodexThreadID = threadID
+	meta.CodexCwd = strings.TrimSpace(thread.Cwd)
+	meta.ManagedImport = false
+	meta.WorkspaceRoot = cc.workspaceRootForCwd(meta.CodexCwd)
+	title := codexThreadTitle(thread)
+	if title == "" {
+		title = codexTitleForPath(meta.CodexCwd)
+	}
+	meta.Title = title
+	if meta.Slug == "" {
+		meta.Slug = codexThreadSlug(threadID)
+	}
+	portal.RoomType = database.RoomTypeDM
+	portal.OtherUserID = codexGhostID
+	portal.Name = title
+	portal.NameSet = true
+	info := cc.composeCodexChatInfo(portal, title, true)
+	if meta.WorkspaceRoot != "" {
+		space, err := cc.ensureWorkspaceSpace(ctx, meta.WorkspaceRoot)
+		if err != nil {
+			return nil, false, err
+		}
+		info.ParentID = ptr.Ptr(space.PortalKey.ID)
+	}
+	created, err := bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
+		Login:             cc.UserLogin,
+		Portal:            portal,
+		ChatInfo:          info,
+		SaveBeforeCreate:  true,
+		AIRoomKind:        agentremote.AIRoomKindAgent,
+		ForceCapabilities: true,
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	if err := portal.Save(ctx); err != nil {
+		return nil, false, err
+	}
+	cc.loadedMu.Lock()
+	cc.loadedThreads[threadID] = true
+	cc.loadedMu.Unlock()
+	cc.syncCodexRoomTopic(ctx, portal, meta)
+	return portal, created, nil
+}
+
+func (cc *CodexClient) reconcileTrackedWorkspacesFromConfig(ctx context.Context) error {
+	if cc == nil || cc.UserLogin == nil {
+		return nil
+	}
+	meta := loginMetadata(cc.UserLogin)
+	desired := trackedWorkspaceRootsFromConfig(cc.connector.Config.Codex)
+	current := managedCodexPaths(meta)
+	if isManagedAuthLogin(meta) {
+		for _, root := range current {
+			if !slices.Contains(desired, root) {
+				if _, err := cc.untrackWorkspace(ctx, root, "startup"); err != nil {
+					return err
+				}
+			}
+		}
+		setTrackedWorkspaceRoots(meta, desired)
+		if err := cc.UserLogin.Save(ctx); err != nil {
+			return err
+		}
+	} else {
+		merged := slices.Clone(current)
+		for _, root := range desired {
+			if !slices.Contains(merged, root) {
+				merged = append(merged, root)
+			}
+		}
+		setTrackedWorkspaceRoots(meta, merged)
+		if err := cc.UserLogin.Save(ctx); err != nil {
+			return err
+		}
+	}
+	for _, root := range managedCodexPaths(meta) {
+		if err := cc.reconcileWorkspaceAdded(ctx, root); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (cc *CodexClient) trackWorkspace(ctx context.Context, root, source string) (bool, error) {
+	root = filepath.Clean(strings.TrimSpace(root))
+	if root == "" {
+		return false, fmt.Errorf("workspace root is required")
+	}
+	meta := loginMetadata(cc.UserLogin)
+	if hasManagedCodexPath(meta, root) {
+		return false, cc.reconcileWorkspaceAdded(ctx, root)
+	}
+	addManagedCodexPath(meta, root)
+	if err := cc.UserLogin.Save(ctx); err != nil {
+		return false, err
+	}
+	if cc.connector != nil && cc.connector.Config.Codex != nil && source != "startup" {
+		cc.connector.Config.Codex.TrackedPaths = normalizeTrackedWorkspaceRoots(append(cc.connector.Config.Codex.TrackedPaths, root))
+	}
+	return true, cc.reconcileWorkspaceAdded(ctx, root)
+}
+
+func (cc *CodexClient) untrackWorkspace(ctx context.Context, root, source string) (bool, error) {
+	root = filepath.Clean(strings.TrimSpace(root))
+	if root == "" {
+		return false, fmt.Errorf("workspace root is required")
+	}
+	meta := loginMetadata(cc.UserLogin)
+	if !removeManagedCodexPath(meta, root) {
+		return false, nil
+	}
+	if err := cc.UserLogin.Save(ctx); err != nil {
+		return false, err
+	}
+	if cc.connector != nil && cc.connector.Config.Codex != nil && source != "startup" {
+		next := make([]string, 0, len(cc.connector.Config.Codex.TrackedPaths))
+		for _, existing := range cc.connector.Config.Codex.TrackedPaths {
+			if filepath.Clean(strings.TrimSpace(existing)) == root {
+				continue
+			}
+			next = append(next, existing)
+		}
+		cc.connector.Config.Codex.TrackedPaths = normalizeTrackedWorkspaceRoots(next)
+	}
+	return true, cc.reconcileWorkspaceRemoved(ctx, root)
+}
+
+func (cc *CodexClient) reconcileWorkspaceAdded(ctx context.Context, root string) error {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return nil
+	}
+	if _, err := cc.ensureWorkspaceSpace(ctx, root); err != nil {
+		return err
+	}
+	portals, err := cc.allCodexPortals(ctx)
+	if err != nil {
+		return err
+	}
+	for _, portal := range portals {
+		meta := portalMeta(portal)
+		if meta == nil || !isCodexChatPortal(meta) {
+			continue
+		}
+		if !workspaceContains(root, meta.CodexCwd) {
+			continue
+		}
+		meta.WorkspaceRoot = root
+		if err := cc.attachChatToWorkspaceSpace(ctx, portal, root); err != nil {
+			return err
+		}
+	}
+	_, _, err = cc.syncStoredCodexThreadsForPath(ctx, root)
+	return err
+}
+
+func (cc *CodexClient) reconcileWorkspaceRemoved(ctx context.Context, root string) error {
+	portals, err := cc.allCodexPortals(ctx)
+	if err != nil {
+		return err
+	}
+	for _, portal := range portals {
+		meta := portalMeta(portal)
+		if meta == nil {
+			continue
+		}
+		if isWorkspaceSpacePortal(meta) && filepath.Clean(strings.TrimSpace(meta.WorkspaceRoot)) == filepath.Clean(root) {
+			continue
+		}
+		if !isCodexChatPortal(meta) || !workspaceContains(root, meta.CodexCwd) {
+			continue
+		}
+		cc.clearChatRuntimeState(meta, portal)
+		cc.deletePortalOnly(ctx, portal, "codex workspace removed")
+	}
+	return cc.deleteWorkspaceSpace(ctx, root)
 }

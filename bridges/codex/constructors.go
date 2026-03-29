@@ -48,6 +48,7 @@ func NewConnector() *CodexConnector {
 					dbutil.ZeroLogger(bridge.Log.With().Str("db_section", "codex_bridge").Logger()),
 				)
 			}
+			cc.initProvisioning()
 		},
 		StartConnector: func(ctx context.Context, _ *bridgev2.Bridge) error {
 			db := cc.bridgeDB()

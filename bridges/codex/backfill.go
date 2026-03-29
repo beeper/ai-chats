@@ -128,23 +128,25 @@ func (cc *CodexClient) syncStoredCodexThreadsForPath(ctx context.Context, cwd st
 	if cwd == "" {
 		return 0, 0, nil
 	}
-	threads, err := cc.listCodexThreads(ctx, cwd)
+	threads, err := cc.listCodexThreads(ctx, "")
 	if err != nil {
 		return 0, 0, err
-	}
-	if len(threads) == 0 {
-		return 0, 0, nil
 	}
 	portalsByThreadID, err := cc.existingCodexPortalsByThreadID(ctx)
 	if err != nil {
 		return 0, 0, err
 	}
 	createdCount := 0
+	total := 0
 	for _, thread := range threads {
 		threadID := strings.TrimSpace(thread.ID)
 		if threadID == "" {
 			continue
 		}
+		if !workspaceContains(cwd, thread.Cwd) {
+			continue
+		}
+		total++
 		portal, created, err := cc.ensureCodexThreadPortal(ctx, portalsByThreadID[threadID], thread)
 		if err != nil {
 			cc.log.Warn().Err(err).Str("thread_id", threadID).Str("cwd", cwd).Msg("Failed to sync Codex thread portal")
@@ -155,7 +157,7 @@ func (cc *CodexClient) syncStoredCodexThreadsForPath(ctx context.Context, cwd st
 			createdCount++
 		}
 	}
-	return len(threads), createdCount, nil
+	return total, createdCount, nil
 }
 
 func (cc *CodexClient) existingCodexPortalsByThreadID(ctx context.Context) (map[string]*bridgev2.Portal, error) {
@@ -218,12 +220,13 @@ func (cc *CodexClient) ensureCodexThreadPortal(ctx context.Context, existing *br
 	}
 	meta := portalMeta(portal)
 	meta.IsCodexRoom = true
+	meta.PortalKind = codexPortalKindChat
 	meta.CodexThreadID = threadID
 	meta.ManagedImport = true
 	if cwd := strings.TrimSpace(thread.Cwd); cwd != "" {
 		meta.CodexCwd = cwd
 	}
-	meta.AwaitingCwdSetup = strings.TrimSpace(meta.CodexCwd) == ""
+	meta.WorkspaceRoot = cc.workspaceRootForCwd(meta.CodexCwd)
 
 	title := codexThreadTitle(thread)
 	if title == "" {
@@ -252,9 +255,6 @@ func (cc *CodexClient) ensureCodexThreadPortal(ctx context.Context, existing *br
 		return nil, false, err
 	}
 	if created {
-		if meta.AwaitingCwdSetup {
-			cc.sendSystemNotice(ctx, portal, "This imported conversation needs a working directory. Send an absolute path or `~/...`.")
-		}
 	} else {
 		cc.UserLogin.Bridge.WakeupBackfillQueue()
 	}
@@ -262,6 +262,9 @@ func (cc *CodexClient) ensureCodexThreadPortal(ctx context.Context, existing *br
 		return nil, false, err
 	}
 	cc.syncCodexRoomTopic(ctx, portal, meta)
+	if err := cc.attachChatToWorkspaceSpace(ctx, portal, meta.WorkspaceRoot); err != nil {
+		return nil, false, err
+	}
 
 	return portal, created, nil
 }
