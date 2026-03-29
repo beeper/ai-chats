@@ -44,7 +44,7 @@ func (oc *AIClient) dispatchInternalMessage(
 
 	inboundCtx := oc.resolvePromptInboundContext(ctx, portal, trimmed, eventID)
 	promptCtx := withInboundContext(ctx, inboundCtx)
-	promptContext, err := oc.buildContextWithLinkContext(promptCtx, portal, meta, trimmed, nil, eventID)
+	promptContext, err := oc.buildCurrentTurnWithLinks(promptCtx, portal, meta, trimmed, nil, eventID)
 	if err != nil {
 		return eventID, false, err
 	}

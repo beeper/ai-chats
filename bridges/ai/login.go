@@ -369,8 +369,8 @@ func (ol *OpenAILogin) resolveCustomLogin(input map[string]string) (string, stri
 	if input == nil {
 		input = map[string]string{}
 	}
-	openrouterCfg := strings.TrimSpace(ol.Connector.Config.Providers.OpenRouter.APIKey)
-	openaiCfg := strings.TrimSpace(ol.Connector.Config.Providers.OpenAI.APIKey)
+	openrouterCfg := strings.TrimSpace(ol.Connector.modelProviderConfig(ProviderOpenRouter).APIKey)
+	openaiCfg := strings.TrimSpace(ol.Connector.modelProviderConfig(ProviderOpenAI).APIKey)
 
 	openrouterInput := ""
 	openaiInput := ""
@@ -478,18 +478,22 @@ func parseMagicProxyLink(raw string) (string, string, error) {
 }
 
 func (ol *OpenAILogin) configHasOpenRouterKey() bool {
-	return strings.TrimSpace(ol.Connector.Config.Providers.OpenRouter.APIKey) != ""
+	return strings.TrimSpace(ol.Connector.modelProviderConfig(ProviderOpenRouter).APIKey) != ""
 }
 
 func (ol *OpenAILogin) configHasOpenAIKey() bool {
-	return strings.TrimSpace(ol.Connector.Config.Providers.OpenAI.APIKey) != ""
+	return strings.TrimSpace(ol.Connector.modelProviderConfig(ProviderOpenAI).APIKey) != ""
 }
 
 func (ol *OpenAILogin) configHasExaKey() bool {
-	if ol.Connector.Config.Tools.Search != nil && strings.TrimSpace(ol.Connector.Config.Tools.Search.Exa.APIKey) != "" {
+	if ol.Connector.Config.Tools.Web != nil &&
+		ol.Connector.Config.Tools.Web.Search != nil &&
+		strings.TrimSpace(ol.Connector.Config.Tools.Web.Search.Exa.APIKey) != "" {
 		return true
 	}
-	if ol.Connector.Config.Tools.Fetch != nil && strings.TrimSpace(ol.Connector.Config.Tools.Fetch.Exa.APIKey) != "" {
+	if ol.Connector.Config.Tools.Web != nil &&
+		ol.Connector.Config.Tools.Web.Fetch != nil &&
+		strings.TrimSpace(ol.Connector.Config.Tools.Web.Fetch.Exa.APIKey) != "" {
 		return true
 	}
 	return false

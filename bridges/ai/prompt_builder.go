@@ -2,11 +2,13 @@ package ai
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
 
@@ -28,6 +30,22 @@ type currentTurnTextOptions struct {
 	includeLinkScope bool
 	prepend          []string
 	append           []string
+}
+
+type turnAttachmentOptions struct {
+	mediaURL      string
+	mimeType      string
+	encryptedFile *event.EncryptedFileInfo
+	mediaType     pendingMessageType
+}
+
+type currentTurnPromptOptions struct {
+	rawEventContent  map[string]any
+	includeLinkScope bool
+	prepend          []string
+	append           []string
+	leadingBlocks    []PromptBlock
+	attachment       *turnAttachmentOptions
 }
 
 func joinPromptFragments(parts ...string) string {
@@ -175,4 +193,97 @@ func (oc *AIClient) buildCurrentTurnText(
 
 	body := joinPromptFragments(append(append(prepend, result.ResolvedBody), appendParts...)...)
 	return result.PromptContext, body, nil
+}
+
+func (oc *AIClient) buildPromptContextForTurn(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+	userText string,
+	eventID id.EventID,
+	opts currentTurnPromptOptions,
+) (PromptContext, error) {
+	appendFragments := append([]string{}, opts.append...)
+	leadingBlocks := append([]PromptBlock{}, opts.leadingBlocks...)
+
+	if opts.attachment != nil {
+		attachmentBlocks, attachmentAppend, err := oc.normalizeTurnAttachment(ctx, *opts.attachment)
+		if err != nil {
+			return PromptContext{}, err
+		}
+		leadingBlocks = append(leadingBlocks, attachmentBlocks...)
+		appendFragments = append(appendFragments, attachmentAppend...)
+	}
+
+	base, text, err := oc.buildCurrentTurnText(ctx, portal, meta, userText, eventID, currentTurnTextOptions{
+		rawEventContent:  opts.rawEventContent,
+		includeLinkScope: opts.includeLinkScope,
+		prepend:          opts.prepend,
+		append:           appendFragments,
+	})
+	if err != nil {
+		return PromptContext{}, err
+	}
+
+	blocks := make([]PromptBlock, 0, len(leadingBlocks)+1)
+	if strings.TrimSpace(text) != "" {
+		blocks = append(blocks, PromptBlock{Type: PromptBlockText, Text: text})
+	}
+	blocks = append(blocks, leadingBlocks...)
+	base.Messages = append(base.Messages, PromptMessage{
+		Role:   PromptRoleUser,
+		Blocks: blocks,
+	})
+	return base, nil
+}
+
+func (oc *AIClient) normalizeTurnAttachment(ctx context.Context, opts turnAttachmentOptions) ([]PromptBlock, []string, error) {
+	switch opts.mediaType {
+	case pendingTypeImage:
+		b64Data, actualMimeType, err := oc.downloadMediaBase64(ctx, opts.mediaURL, opts.encryptedFile, 20, opts.mimeType)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to download image: %w", err)
+		}
+		return []PromptBlock{{
+			Type:     PromptBlockImage,
+			ImageB64: b64Data,
+			MimeType: actualMimeType,
+		}}, nil, nil
+	case pendingTypePDF:
+		content, truncated, err := oc.downloadPDFFile(ctx, opts.mediaURL, opts.encryptedFile, opts.mimeType)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to download PDF: %w", err)
+		}
+		filename := resolveMediaFileName("document.pdf", "pdf", opts.mediaURL)
+		return nil, []string{buildTextFileMessage("", false, filename, "application/pdf", content, truncated)}, nil
+	case pendingTypeAudio:
+		return nil, nil, fmt.Errorf("audio attachments must be preprocessed into text before prompt assembly")
+	case pendingTypeVideo:
+		return nil, nil, fmt.Errorf("video attachments must be preprocessed into text before prompt assembly")
+	default:
+		return nil, nil, fmt.Errorf("unsupported media type: %s", opts.mediaType)
+	}
+}
+
+func (oc *AIClient) buildCurrentTurnWithLinks(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+	userText string,
+	rawEventContent map[string]any,
+	eventID id.EventID,
+) (PromptContext, error) {
+	return oc.buildPromptContextForTurn(ctx, portal, meta, userText, eventID, currentTurnPromptOptions{
+		rawEventContent:  rawEventContent,
+		includeLinkScope: true,
+	})
+}
+
+func (oc *AIClient) buildHeartbeatTurnContext(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+	prompt string,
+) (PromptContext, error) {
+	return oc.buildPromptContextForTurn(ctx, portal, meta, prompt, "", currentTurnPromptOptions{})
 }

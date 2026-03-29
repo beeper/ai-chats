@@ -921,10 +921,7 @@ func (oc *AIClient) resolveOpenRouterMediaConfig(
 	if baseURL == "" {
 		baseURL = resolveOpenRouterMediaBaseURL(oc)
 	}
-	pdfEngine = oc.connector.Config.Providers.OpenRouter.DefaultPDFEngine
-	if pdfEngine == "" {
-		pdfEngine = "mistral-ocr"
-	}
+	pdfEngine = oc.defaultPDFEngine()
 	if oc.UserLogin != nil && oc.UserLogin.User != nil && oc.UserLogin.User.MXID != "" {
 		userID = oc.UserLogin.User.MXID.String()
 	}

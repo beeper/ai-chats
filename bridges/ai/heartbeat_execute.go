@@ -179,7 +179,7 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 		}
 	}
 
-	promptContext, err := oc.buildContextWithHeartbeat(context.Background(), sessionPortal, promptMeta, prompt)
+	promptContext, err := oc.buildHeartbeatTurnContext(context.Background(), sessionPortal, promptMeta, prompt)
 	if err != nil {
 		oc.log.Warn().Str("agent_id", agentID).Str("reason", reason).Err(err).Msg("Heartbeat failed to build prompt")
 		indicator := (*HeartbeatIndicatorType)(nil)
@@ -280,21 +280,6 @@ func systemEventsOwnerKey(oc *AIClient) string {
 		return ""
 	}
 	return string(oc.UserLogin.Bridge.DB.BridgeID) + "|" + string(oc.UserLogin.ID)
-}
-
-func (oc *AIClient) buildContextWithHeartbeat(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, prompt string) (PromptContext, error) {
-	base, text, err := oc.buildCurrentTurnText(ctx, portal, meta, prompt, "", currentTurnTextOptions{})
-	if err != nil {
-		return PromptContext{}, err
-	}
-	base.Messages = append(base.Messages, PromptMessage{
-		Role: PromptRoleUser,
-		Blocks: []PromptBlock{{
-			Type: PromptBlockText,
-			Text: text,
-		}},
-	})
-	return base, nil
 }
 
 func (oc *AIClient) resolveHeartbeatSessionPortal(agentID string, heartbeat *HeartbeatConfig) (*bridgev2.Portal, string, error) {

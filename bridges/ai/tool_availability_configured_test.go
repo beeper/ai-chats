@@ -21,7 +21,7 @@ func TestToolAvailable_WebSearch_RequiresAnyProviderKey(t *testing.T) {
 		connector: &OpenAIConnector{
 			Config: Config{
 				Tools: ToolProvidersConfig{
-					Search: &SearchConfig{},
+					Web: &WebToolsConfig{Search: &SearchConfig{}},
 				},
 			},
 		},
@@ -48,9 +48,9 @@ func TestToolAvailable_WebSearch_WithProviderKey(t *testing.T) {
 		connector: &OpenAIConnector{
 			Config: Config{
 				Tools: ToolProvidersConfig{
-					Search: &SearchConfig{
+					Web: &WebToolsConfig{Search: &SearchConfig{
 						Exa: ProviderExaConfig{APIKey: "test"},
-					},
+					}},
 				},
 			},
 		},
@@ -71,9 +71,9 @@ func TestToolAvailable_WebFetch_DirectDisabledAndNoExaKey(t *testing.T) {
 		connector: &OpenAIConnector{
 			Config: Config{
 				Tools: ToolProvidersConfig{
-					Fetch: &FetchConfig{
+					Web: &WebToolsConfig{Fetch: &FetchConfig{
 						Direct: ProviderDirectConfig{Enabled: boolPtr(false)},
-					},
+					}},
 				},
 			},
 		},

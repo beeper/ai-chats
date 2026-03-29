@@ -1,157 +1,101 @@
 # Connector-specific configuration lives under the `network:` section of the
 # main config file.
 
-# Beeper Cloud credentials for automatic login (optional).
-# If user_mxid, base_url, and token are set, users don't need to manually log in.
 beeper:
-  user_mxid: "" # Owning Matrix user for the built-in Beeper Cloud login.
-  base_url: ""  # Optional. If empty, login uses selected Beeper domain.
-  token: ""     # Beeper Matrix access token
+  user_mxid: ""
+  base_url: ""
+  token: ""
 
-# Per-provider default models and settings.
-# These are used when a room doesn't have a specific model configured.
-providers:
-  beeper:
-    default_model: "anthropic/claude-opus-4.6"
-    # PDF processing engine for OpenRouter's file-parser plugin.
-    # Options: pdf-text (free), mistral-ocr (OCR, paid, default), native
-    default_pdf_engine: "mistral-ocr"
-  openai:
-    # Optional. If set, overrides login-provided key.
-    api_key: ""
-    # Optional. Defaults to https://api.openai.com/v1
-    base_url: "https://api.openai.com/v1"
-    default_model: "openai/gpt-5.4"
-  openrouter:
-    # Optional. If set, overrides login-provided key.
-    api_key: ""
-    # Optional. Defaults to https://openrouter.ai/api/v1
-    base_url: "https://openrouter.ai/api/v1"
-    default_model: "anthropic/claude-opus-4.6"
-    # PDF processing engine for OpenRouter's file-parser plugin.
-    # Options: pdf-text (free), mistral-ocr (OCR, paid, default), native
-    default_pdf_engine: "mistral-ocr"
+models:
+  providers:
+    openai:
+      api_key: ""
+      base_url: "https://api.openai.com/v1"
+      models: []
+    openrouter:
+      api_key: ""
+      base_url: "https://openrouter.ai/api/v1"
+      models: []
+    magic_proxy:
+      api_key: ""
+      base_url: ""
+      models: []
 
-# Optional model catalog seeding.
-# models:
-#   mode: "merge" # merge | replace
-#   providers:
-#     openai:
-#       models:
-#         - id: "gpt-5.2"
-#           name: "GPT-5.2"
-#           reasoning: true
-#           input: ["text", "image"]
-#           context_window: 128000
-#           max_tokens: 8192
-
-# Global settings
 default_system_prompt: |
   You are a helpful, concise assistant.
   Ask clarifying questions when needed.
   Follow the user's intent and be accurate.
 model_cache_duration: 6h
 
-# Optional message rendering settings.
 messages:
-  # History defaults for prompt construction.
-  # Set 0 to disable.
   direct_chat:
     history_limit: 20
   group_chat:
     history_limit: 50
-  # Queue behavior while the agent is busy.
   queue:
-    # Modes: collect, followup, steer, steer-backlog, interrupt
     mode: "collect"
-    # Debounce time before draining queued messages (ms).
     debounce_ms: 1000
-    # Maximum queued messages before drop policy applies.
     cap: 20
-    # Drop policy when cap is exceeded: summarize, old, new
     drop: "summarize"
 
-# Command authorization settings.
 commands:
-  # Optional allowlist for owner-only tools/commands (Matrix IDs, or "matrix:@user:server").
   owner_allow_from: []
 
-# Tool approval gating.
 tool_approvals:
   enabled: true
   ttl_seconds: 600
   require_for_mcp: true
-  # List of builtin tool names that require approval (subject to per-tool action allowlists).
-  # Note: `message` approvals apply to Desktop API routing too (e.g. action=send/reply/edit with desktop chat hints),
-  # while Desktop read-only actions like desktop-search-* do not require approval.
   require_for_tools: ["message", "cron", "gravatar_set", "create_agent", "fork_agent", "edit_agent", "delete_agent", "modify_room", "sessions_send", "sessions_spawn", "run_internal_command"]
-  # Fallback when approval times out: "deny" (default) | "allow".
-  # Set to "allow" for cron/automated contexts where no human can respond.
 
-# Optional per-channel overrides.
 channels:
   matrix:
-    # Matrix reply/thread behavior.
     reply_to_mode: "first"
 
-# Session configuration.
 session:
-  # Scope for session state: per-sender (default) or global.
   scope: "per-sender"
-  # Main session key alias (default: "main").
   main_key: "main"
 
-# External tool providers (search + fetch). Proxy is optional.
 tools:
-  search:
-    provider: "openrouter"
-    fallbacks: ["exa", "brave", "perplexity"]
-    exa:
-      api_key: ""
-      base_url: "https://api.exa.ai"
-      type: "auto"
-      num_results: 5
-      include_text: false
-      text_max_chars: 500
-      highlights: true  # enabled by default; provides description snippets for source cards
-    brave:
-      api_key: ""
-      base_url: "https://api.search.brave.com/res/v1/web/search"
-    perplexity:
-      api_key: ""
-      base_url: "https://openrouter.ai/api/v1"
-      model: "perplexity/sonar-pro"
-    openrouter:
-      api_key: ""
-      base_url: "https://openrouter.ai/api/v1"
-      model: "openai/gpt-5.4"
-  fetch:
-    provider: "exa"
-    fallbacks: ["direct"]
-    exa:
-      api_key: ""
-      base_url: "https://api.exa.ai"
-      include_text: true
-      text_max_chars: 5000
-    direct:
-      enabled: true
-      timeout_seconds: 30
-      max_chars: 50000
-      max_redirects: 3
-
-  # Generic MCP behavior.
+  web:
+    search:
+      provider: "exa"
+      fallbacks: []
+      exa:
+        api_key: ""
+        base_url: "https://api.exa.ai"
+        type: "auto"
+        num_results: 5
+        include_text: false
+        text_max_chars: 500
+        highlights: true
+    fetch:
+      provider: "direct"
+      fallbacks: ["exa"]
+      exa:
+        api_key: ""
+        base_url: "https://api.exa.ai"
+        include_text: true
+        text_max_chars: 5000
+      direct:
+        enabled: true
+        timeout_seconds: 30
+        max_chars: 50000
+        max_redirects: 3
+  links:
+    enabled: true
+    max_urls_inbound: 3
+    max_urls_outbound: 5
+    fetch_timeout: 10s
+    max_content_chars: 500
+    max_page_bytes: 10485760
+    max_image_bytes: 5242880
+    cache_ttl: 1h
   mcp:
-    # Disabled by default for safety. Enable explicitly to allow local stdio MCP servers.
     enable_stdio: false
-
-  # Virtual filesystem tools.
   vfs:
     apply_patch:
       enabled: false
       allow_models: []
-
-  # Media understanding/transcription.
-  # Supports provider/CLI entries and per-capability defaults.
   media:
     concurrency: 2
     image:
@@ -167,7 +111,6 @@ tools:
       enabled: true
       prompt: "Transcribe the audio."
       language: ""
-      # CLI transcription auto-detection (whisper/whisper.cpp) is not implemented yet.
       max_bytes: 20971520
       timeout_seconds: 60
       models:
@@ -200,165 +143,51 @@ tools:
       candidate_multiplier: 4
   cache:
     enabled: true
-    max_entries: -1 # Unlimited when cache.enabled is true; experimental.session_memory does not change cache size semantics.
+    max_entries: -1
   experimental:
     session_memory: false
 
-# Recall configuration.
-# recall:
-#   citations: "auto" # auto | on | off
-#   inject_context: false # default false. when true, injects MEMORY.md snippets as extra system context.
+agents:
+  defaults:
+    model:
+      primary: ""
+      fallbacks: []
+    image_model:
+      primary: ""
+      fallbacks: []
+    image_generation_model:
+      primary: ""
+      fallbacks: []
+    pdf_model:
+      primary: ""
+      fallbacks: []
+    pdf_engine: "mistral-ocr"
+    compaction:
+      mode: "cache-ttl"
+      ttl: "1h"
+      enabled: true
+      soft_trim_ratio: 0.3
+      hard_clear_ratio: 0.5
+      keep_last_assistants: 3
+      min_prunable_chars: 50000
+      soft_trim_max_chars: 4000
+      soft_trim_head_chars: 1500
+      soft_trim_tail_chars: 1500
+      hard_clear_enabled: true
+      hard_clear_placeholder: "[Old tool result content cleared]"
+      summarization_enabled: true
+      summarization_model: "openai/gpt-5.2"
+      max_summary_tokens: 500
+      compaction_mode: "safeguard"
+      keep_recent_tokens: 20000
+      max_history_share: 0.5
+      reserve_tokens: 20000
+      reserve_tokens_floor: 20000
+      identifier_policy: "strict"
+      post_compaction_refresh_prompt: "[Post-compaction context refresh]\nRe-anchor to the latest user intent and preserve unresolved tasks and identifiers."
+      overflow_flush:
+        enabled: true
+        soft_threshold_tokens: 4000
+        prompt: "Pre-compaction overflow flush. Persist any durable notes now if your tools support it. If nothing to store, reply with NO_REPLY."
+        system_prompt: "Pre-compaction overflow flush turn. The session is near auto-compaction; persist durable notes if possible. You may reply, but usually NO_REPLY is correct."
 
-  # Tool policy. Controls allow/deny lists and profiles.
-  # tool_policy:
-  #   profile: "full"
-  #   # group:openclaw is the strict OpenClaw native tool set.
-  #   # group:ai-bridge includes ai-bridge-only extras (beeper_docs, gravatar_*, tts, image_generate, calculator, etc).
-  #   allow: ["group:openclaw", "group:ai-bridge"]
-  #   deny: []
-  #   subagents:
-  #     tools:
-  #       deny: ["sessions_list", "sessions_history", "sessions_send"]
-
-  # Agent defaults.
-  # agents:
-  #   defaults:
-  #     subagents:
-  #       model: "anthropic/claude-sonnet-4.5"
-  #       allow_agents: ["*"]
-  #     skip_bootstrap: false
-  #     bootstrap_max_chars: 20000
-  #     typing_mode: "instant" # never|instant|thinking|message (message ignores NO_REPLY)
-  #     typing_interval_seconds: 6 # refresh cadence, not start time (heartbeats never show typing)
-  #     soul_evil:
-  #       file: "SOUL_EVIL.md"
-  #       chance: 0.1
-  #       purge:
-  #         at: "21:00"
-  #         duration: "15m"
-
-# Context pruning configuration.
-# Reduces token usage by intelligently truncating old tool results.
-pruning:
-  # Pruning mode: off | cache-ttl
-  # cache-ttl is the default pruning mode.
-  mode: "cache-ttl"
-
-  # Refresh interval for cache-ttl mode.
-  ttl: "1h"
-
-  # Enable proactive context pruning
-  enabled: true
-
-  # Ratio of context window usage that triggers soft trimming (0.0-1.0)
-  # At 30% usage, large tool results start getting truncated
-  soft_trim_ratio: 0.3
-
-  # Ratio of context window usage that triggers hard clearing (0.0-1.0)
-  # At 50% usage, old tool results are replaced with placeholder
-  hard_clear_ratio: 0.5
-
-  # Number of recent assistant messages to protect from pruning
-  keep_last_assistants: 3
-
-  # Minimum total chars in prunable tool results before hard clear kicks in
-  min_prunable_chars: 50000
-
-  # Tool results larger than this are candidates for soft trimming
-  soft_trim_max_chars: 4000
-
-  # When soft trimming, keep this many chars from the start
-  soft_trim_head_chars: 1500
-
-  # When soft trimming, keep this many chars from the end
-  soft_trim_tail_chars: 1500
-
-  # Enable/disable hard clear phase
-  hard_clear_enabled: true
-
-  # Placeholder text for hard-cleared tool results
-  hard_clear_placeholder: "[Old tool result content cleared]"
-
-  # Tool patterns to allow/deny pruning (supports wildcards: list_*, *_search)
-  # Empty means all tools are prunable unless denied
-  # tools_allow: []
-  # tools_deny: []
-
-  # --- LLM-based summarization (compaction) ---
-  # When enabled, uses an LLM to generate intelligent summaries of compacted
-  # content instead of just using placeholder text. This preserves context better.
-
-  # Enable LLM summarization (default: true when pruning is enabled)
-  summarization_enabled: true
-
-  # Model to use for generating summaries (default: fast model)
-  summarization_model: "openai/gpt-5.4"
-
-  # Maximum tokens for generated summaries
-  max_summary_tokens: 500
-
-  # Compaction mode:
-  # - default: balanced reduction
-  # - safeguard: preserves recent context more aggressively
-  compaction_mode: "safeguard"
-
-  # Minimum recent token budget preserved during safeguard compaction
-  keep_recent_tokens: 20000
-
-  # Maximum ratio of context that history can consume (0.0-1.0)
-  # When exceeded, oldest messages are summarized to fit budget
-  max_history_share: 0.5
-
-  # Token budget reserved for compaction output
-  reserve_tokens: 20000
-  # Floor applied to reserve_tokens to avoid aggressive overfill
-  reserve_tokens_floor: 20000
-
-  # Optional post-compaction system context injected before retry
-  post_compaction_refresh_prompt: "[Post-compaction context refresh]\nRe-anchor to the latest user intent and preserve unresolved tasks and identifiers."
-
-  # Additional instructions for the summarization model
-  # custom_instructions: "Focus on preserving code decisions and TODOs"
-
-  # Identifier preservation policy for summaries:
-  # - strict (default): preserve opaque identifiers exactly
-  # - off: no special identifier-preservation instruction
-  # - custom: use identifier_instructions below
-  identifier_policy: "strict"
-  # identifier_instructions: "Keep ticket IDs, hashes, and hostnames unchanged."
-
-  # Optional pre-compaction overflow flush turn.
-  # Enabled by default. Disable explicitly if you want no pre-flush.
-  overflow_flush:
-    enabled: true
-    soft_threshold_tokens: 4000
-    prompt: "Pre-compaction overflow flush. Persist any durable notes now if your tools support it. If nothing to store, reply with NO_REPLY."
-    system_prompt: "Pre-compaction overflow flush turn. The session is near auto-compaction; persist durable notes if possible. You may reply, but usually NO_REPLY is correct."
-
-# Link preview configuration.
-# Automatically fetches metadata for URLs in messages to provide context to the AI
-# and generate rich previews in outgoing AI responses.
-link_previews:
-  # Enable link preview functionality (default: true)
-  enabled: true
-
-  # Maximum number of URLs to fetch from user messages for AI context (default: 3)
-  max_urls_inbound: 3
-
-  # Maximum number of URLs to preview in AI responses (default: 5)
-  max_urls_outbound: 5
-
-  # Timeout for fetching each URL (default: 10s)
-  fetch_timeout: 10s
-
-  # Maximum characters from description to include in context (default: 500)
-  max_content_chars: 500
-
-  # Maximum page size to download in bytes (default: 10MB)
-  max_page_bytes: 10485760
-
-  # Maximum image size to download in bytes (default: 5MB)
-  max_image_bytes: 5242880
-
-  # How long to cache URL previews (default: 1h)
-  cache_ttl: 1h

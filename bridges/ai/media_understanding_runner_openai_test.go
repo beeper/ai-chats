@@ -53,13 +53,7 @@ func TestResolveOpenRouterMediaConfigUsesEntryOverrides(t *testing.T) {
 	t.Setenv("OPENROUTER_API_KEY_SPECIAL_PROFILE", "entry-key")
 
 	client := newMediaTestClient(&UserLoginMetadata{Provider: ProviderOpenAI}, &OpenAIConnector{
-		Config: Config{
-			Providers: ProvidersConfig{
-				OpenRouter: ProviderConfig{
-					DefaultPDFEngine: "native",
-				},
-			},
-		},
+		Config: Config{},
 	})
 
 	cfg := &MediaUnderstandingConfig{
@@ -99,8 +93,8 @@ func TestResolveOpenRouterMediaConfigUsesEntryOverrides(t *testing.T) {
 	if headers["X-Title"] != openRouterAppTitle {
 		t.Fatalf("expected default OpenRouter title header, got %#v", headers)
 	}
-	if pdfEngine != "native" {
-		t.Fatalf("expected configured PDF engine, got %q", pdfEngine)
+	if pdfEngine != "mistral-ocr" {
+		t.Fatalf("expected default PDF engine, got %q", pdfEngine)
 	}
 }
 

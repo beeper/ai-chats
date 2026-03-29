@@ -14,9 +14,9 @@ func testToolSelectionClient(supportsToolCalling bool) *AIClient {
 		connector: &OpenAIConnector{
 			Config: Config{
 				Tools: ToolProvidersConfig{
-					Search: &SearchConfig{
+					Web: &WebToolsConfig{Search: &SearchConfig{
 						Exa: ProviderExaConfig{APIKey: "test"},
-					},
+					}},
 				},
 			},
 		},

@@ -258,7 +258,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		eventID = msg.Event.ID
 	}
 
-	promptContext, err := oc.buildContextWithLinkContext(runCtx, portal, runMeta, body, rawEventContent, eventID)
+	promptContext, err := oc.buildCurrentTurnWithLinks(runCtx, portal, runMeta, body, rawEventContent, eventID)
 	if err != nil {
 		return nil, messageSendStatusError(err, "Couldn't prepare the message. Try again.", "")
 	}
@@ -604,7 +604,7 @@ func (oc *AIClient) handleMediaMessage(
 		inboundCtx := oc.buildMatrixInboundContext(portal, msg.Event, rawBody, senderName, roomName, isGroup)
 		promptCtx := withInboundContext(ctx, inboundCtx)
 		body := oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, rawBody, senderName, roomName, isGroup)
-		promptContext, err := oc.buildContextWithLinkContext(promptCtx, portal, meta, body, nil, eventID)
+		promptContext, err := oc.buildCurrentTurnWithLinks(promptCtx, portal, meta, body, nil, eventID)
 		if err != nil {
 			return nil, messageSendStatusError(err, "Couldn't prepare the message. Try again.", "")
 		}
@@ -713,7 +713,7 @@ func (oc *AIClient) handleMediaMessage(
 	captionForPrompt := oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, caption, senderName, roomName, isGroup)
 	captionInboundCtx := oc.buildMatrixInboundContext(portal, msg.Event, caption, senderName, roomName, isGroup)
 	promptCtx := withInboundContext(ctx, captionInboundCtx)
-	promptContext, err := oc.buildContextWithMedia(promptCtx, portal, meta, captionForPrompt, string(mediaURL), mimeType, encryptedFile, config.msgType, eventID)
+	promptContext, err := oc.buildMediaTurnContext(promptCtx, portal, meta, captionForPrompt, string(mediaURL), mimeType, encryptedFile, config.msgType, eventID)
 	if err != nil {
 		return nil, messageSendStatusError(err, "Couldn't prepare the media message. Try again.", "")
 	}
@@ -870,7 +870,7 @@ func (oc *AIClient) handleTextFileMessage(
 
 	inboundCtx := oc.buildMatrixInboundContext(portal, msg.Event, combined, senderName, roomName, isGroup)
 	promptCtx := withInboundContext(ctx, inboundCtx)
-	promptContext, err := oc.buildContextWithLinkContext(promptCtx, portal, meta, combined, nil, eventID)
+	promptContext, err := oc.buildCurrentTurnWithLinks(promptCtx, portal, meta, combined, nil, eventID)
 	if err != nil {
 		return nil, messageSendStatusError(err, "Couldn't prepare the message. Try again.", "")
 	}

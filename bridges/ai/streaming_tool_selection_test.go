@@ -14,9 +14,9 @@ func TestSelectedBuiltinToolsForTurn_AgentRoomExposesBuiltinTools(t *testing.T) 
 		connector: &OpenAIConnector{
 			Config: Config{
 				Tools: ToolProvidersConfig{
-					Search: &SearchConfig{
+					Web: &WebToolsConfig{Search: &SearchConfig{
 						Exa: ProviderExaConfig{APIKey: "test-key"},
-					},
+					}},
 				},
 			},
 		},
@@ -46,9 +46,9 @@ func TestSelectedBuiltinToolsForTurn_ModelRoomGetsNoTools(t *testing.T) {
 		connector: &OpenAIConnector{
 			Config: Config{
 				Tools: ToolProvidersConfig{
-					Search: &SearchConfig{
+					Web: &WebToolsConfig{Search: &SearchConfig{
 						Exa: ProviderExaConfig{APIKey: "test-key"},
-					},
+					}},
 				},
 			},
 		},

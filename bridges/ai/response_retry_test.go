@@ -23,7 +23,9 @@ func newPruningTestClient(pruning *airuntime.PruningConfig, provider string) *AI
 		},
 		connector: &OpenAIConnector{
 			Config: Config{
-				Pruning: pruning,
+				Agents: &AgentsConfig{Defaults: &AgentDefaultsConfig{
+					Compaction: pruning,
+				}},
 			},
 		},
 		log: zerolog.Nop(),

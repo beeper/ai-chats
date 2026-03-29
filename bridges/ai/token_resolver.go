@@ -26,6 +26,13 @@ type ServiceConfig struct {
 
 type ServiceConfigMap map[string]ServiceConfig
 
+func (oc *OpenAIConnector) modelProviderConfig(provider string) ModelProviderConfig {
+	if oc == nil || oc.Config.Models == nil {
+		return ModelProviderConfig{}
+	}
+	return oc.Config.Models.Provider(provider)
+}
+
 func trimToken(value string) string {
 	return strings.TrimSpace(value)
 }
@@ -118,7 +125,7 @@ func (oc *OpenAIConnector) resolveExaProxyBaseURL(meta *UserLoginMetadata) strin
 }
 
 func (oc *OpenAIConnector) resolveOpenAIBaseURL() string {
-	base := strings.TrimSpace(oc.Config.Providers.OpenAI.BaseURL)
+	base := strings.TrimSpace(oc.modelProviderConfig(ProviderOpenAI).BaseURL)
 	if base == "" {
 		base = defaultOpenAIBaseURL
 	}
@@ -126,7 +133,7 @@ func (oc *OpenAIConnector) resolveOpenAIBaseURL() string {
 }
 
 func (oc *OpenAIConnector) resolveOpenRouterBaseURL() string {
-	base := strings.TrimSpace(oc.Config.Providers.OpenRouter.BaseURL)
+	base := strings.TrimSpace(oc.modelProviderConfig(ProviderOpenRouter).BaseURL)
 	if base == "" {
 		base = defaultOpenRouterBaseURL
 	}
@@ -190,7 +197,7 @@ func (oc *OpenAIConnector) resolveProviderAPIKey(meta *UserLoginMetadata) string
 			return trimToken(meta.ServiceTokens.OpenRouter)
 		}
 	case ProviderOpenRouter:
-		if key := trimToken(oc.Config.Providers.OpenRouter.APIKey); key != "" {
+		if key := trimToken(oc.modelProviderConfig(ProviderOpenRouter).APIKey); key != "" {
 			return key
 		}
 		if key := trimToken(meta.APIKey); key != "" {
@@ -200,7 +207,7 @@ func (oc *OpenAIConnector) resolveProviderAPIKey(meta *UserLoginMetadata) string
 			return trimToken(meta.ServiceTokens.OpenRouter)
 		}
 	case ProviderOpenAI:
-		if key := trimToken(oc.Config.Providers.OpenAI.APIKey); key != "" {
+		if key := trimToken(oc.modelProviderConfig(ProviderOpenAI).APIKey); key != "" {
 			return key
 		}
 		if key := trimToken(meta.APIKey); key != "" {
@@ -216,7 +223,7 @@ func (oc *OpenAIConnector) resolveProviderAPIKey(meta *UserLoginMetadata) string
 }
 
 func (oc *OpenAIConnector) resolveOpenAIAPIKey(meta *UserLoginMetadata) string {
-	if key := trimToken(oc.Config.Providers.OpenAI.APIKey); key != "" {
+	if key := trimToken(oc.modelProviderConfig(ProviderOpenAI).APIKey); key != "" {
 		return key
 	}
 	if meta == nil {
@@ -234,7 +241,7 @@ func (oc *OpenAIConnector) resolveOpenAIAPIKey(meta *UserLoginMetadata) string {
 }
 
 func (oc *OpenAIConnector) resolveOpenRouterAPIKey(meta *UserLoginMetadata) string {
-	if key := trimToken(oc.Config.Providers.OpenRouter.APIKey); key != "" {
+	if key := trimToken(oc.modelProviderConfig(ProviderOpenRouter).APIKey); key != "" {
 		return key
 	}
 	if meta == nil {

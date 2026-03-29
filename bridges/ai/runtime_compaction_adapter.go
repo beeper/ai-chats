@@ -30,8 +30,10 @@ type CompactionEvent struct {
 }
 
 func (oc *AIClient) pruningConfigOrDefault() *airuntime.PruningConfig {
-	if oc != nil && oc.connector != nil && oc.connector.Config.Pruning != nil {
-		return airuntime.ApplyPruningDefaults(oc.connector.Config.Pruning)
+	if oc != nil && oc.connector != nil && oc.connector.Config.Agents != nil &&
+		oc.connector.Config.Agents.Defaults != nil &&
+		oc.connector.Config.Agents.Defaults.Compaction != nil {
+		return airuntime.ApplyPruningDefaults(oc.connector.Config.Agents.Defaults.Compaction)
 	}
 	return airuntime.DefaultPruningConfig()
 }

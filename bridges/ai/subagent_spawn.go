@@ -331,7 +331,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 	}
 
 	eventID := agentremote.NewEventID("subagent")
-	promptContext, err := oc.buildContextWithLinkContext(ctx, childPortal, childMeta, task, nil, eventID)
+	promptContext, err := oc.buildCurrentTurnWithLinks(ctx, childPortal, childMeta, task, nil, eventID)
 	if err != nil {
 		return tools.JSONResult(map[string]any{
 			"status": "error",

@@ -60,9 +60,9 @@ func TestResolveOpenAITTSBaseURLOpenAIProviderUsesConfiguredBase(t *testing.T) {
 	meta := &UserLoginMetadata{Provider: ProviderOpenAI}
 	oc := &OpenAIConnector{
 		Config: Config{
-			Providers: ProvidersConfig{
-				OpenAI: ProviderConfig{BaseURL: "https://openai.example/v1"},
-			},
+			Models: &ModelsConfig{Providers: map[string]ModelProviderConfig{
+				ProviderOpenAI: {BaseURL: "https://openai.example/v1"},
+			}},
 		},
 	}
 	btc := newTTSTestBridgeContext(meta, oc)

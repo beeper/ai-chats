@@ -485,16 +485,14 @@ func initProviderForLogin(key string, meta *UserLoginMetadata, connector *OpenAI
 	}
 	switch meta.Provider {
 	case ProviderOpenRouter:
-		pdfEngine := connector.Config.Providers.OpenRouter.DefaultPDFEngine
-		return initOpenRouterProvider(key, connector.resolveOpenRouterBaseURL(), "", pdfEngine, ProviderOpenRouter, log)
+		return initOpenRouterProvider(key, connector.resolveOpenRouterBaseURL(), "", connector.defaultPDFEngineForInit(), ProviderOpenRouter, log)
 
 	case ProviderMagicProxy:
 		baseURL := normalizeProxyBaseURL(meta.BaseURL)
 		if baseURL == "" {
 			return nil, errors.New("magic proxy base_url is required")
 		}
-		pdfEngine := connector.Config.Providers.OpenRouter.DefaultPDFEngine
-		return initOpenRouterProvider(key, joinProxyPath(baseURL, "/openrouter/v1"), "", pdfEngine, ProviderMagicProxy, log)
+		return initOpenRouterProvider(key, joinProxyPath(baseURL, "/openrouter/v1"), "", connector.defaultPDFEngineForInit(), ProviderMagicProxy, log)
 
 	case ProviderOpenAI:
 		openaiURL := connector.resolveOpenAIBaseURL()
@@ -507,6 +505,15 @@ func initProviderForLogin(key string, meta *UserLoginMetadata, connector *OpenAI
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", meta.Provider)
 	}
+}
+
+func (oc *OpenAIConnector) defaultPDFEngineForInit() string {
+	if oc != nil && oc.Config.Agents != nil && oc.Config.Agents.Defaults != nil {
+		if engine := strings.TrimSpace(oc.Config.Agents.Defaults.PDFEngine); engine != "" {
+			return engine
+		}
+	}
+	return "mistral-ocr"
 }
 
 // initOpenRouterProvider creates an OpenRouter-compatible provider with PDF support.
@@ -792,9 +799,9 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 		}
 		switch item.pending.Type {
 		case pendingTypeText:
-			promptContext, err = oc.buildContextWithLinkContext(promptCtx, item.pending.Portal, metaSnapshot, prompt, item.rawEventContent, eventID)
+			promptContext, err = oc.buildCurrentTurnWithLinks(promptCtx, item.pending.Portal, metaSnapshot, prompt, item.rawEventContent, eventID)
 		case pendingTypeImage, pendingTypePDF, pendingTypeAudio, pendingTypeVideo:
-			promptContext, err = oc.buildContextWithMedia(promptCtx, item.pending.Portal, metaSnapshot, item.pending.MessageBody, item.pending.MediaURL, item.pending.MimeType, item.pending.EncryptedFile, item.pending.Type, eventID)
+			promptContext, err = oc.buildMediaTurnContext(promptCtx, item.pending.Portal, metaSnapshot, item.pending.MessageBody, item.pending.MediaURL, item.pending.MimeType, item.pending.EncryptedFile, item.pending.Type, eventID)
 		case pendingTypeRegenerate:
 			promptContext, err = oc.buildContextForRegenerate(promptCtx, item.pending.Portal, metaSnapshot, item.pending.MessageBody, item.pending.SourceEventID)
 		case pendingTypeEditRegenerate:
@@ -1147,22 +1154,37 @@ func (oc *AIClient) defaultModelForProvider() string {
 	if loginMeta == nil {
 		return DefaultModelOpenRouter
 	}
-	providers := oc.connector.Config.Providers
-
 	switch loginMeta.Provider {
 	case ProviderOpenAI:
-		if providers.OpenAI.DefaultModel != "" {
-			return providers.OpenAI.DefaultModel
+		if configured := strings.TrimSpace(oc.defaultModelSelection(ProviderOpenAI).Primary); configured != "" {
+			return configured
 		}
 		return DefaultModelOpenAI
 	case ProviderOpenRouter, ProviderMagicProxy:
-		if providers.OpenRouter.DefaultModel != "" {
-			return providers.OpenRouter.DefaultModel
+		if configured := strings.TrimSpace(oc.defaultModelSelection(ProviderOpenRouter).Primary); configured != "" {
+			return configured
 		}
 		return DefaultModelOpenRouter
 	default:
 		return DefaultModelOpenRouter
 	}
+}
+
+func (oc *AIClient) defaultModelSelection(provider string) ModelSelectionConfig {
+	if oc == nil || oc.connector == nil || oc.connector.Config.Agents == nil || oc.connector.Config.Agents.Defaults == nil || oc.connector.Config.Agents.Defaults.Model == nil {
+		return ModelSelectionConfig{}
+	}
+	selection := *oc.connector.Config.Agents.Defaults.Model
+	if strings.TrimSpace(selection.Primary) != "" {
+		return selection
+	}
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case ProviderOpenAI:
+		selection.Primary = DefaultModelOpenAI
+	case ProviderOpenRouter, ProviderMagicProxy:
+		selection.Primary = DefaultModelOpenRouter
+	}
+	return selection
 }
 
 // effectivePrompt returns the base system prompt to use for non-agent rooms.
@@ -1215,8 +1237,8 @@ func (oc *AIClient) profilePromptSupplement() string {
 func getLinkPreviewConfig(connectorConfig *Config) LinkPreviewConfig {
 	config := DefaultLinkPreviewConfig()
 
-	if connectorConfig.LinkPreviews != nil {
-		cfg := connectorConfig.LinkPreviews
+	if connectorConfig.Tools.Links != nil {
+		cfg := connectorConfig.Tools.Links
 		// Apply explicit settings only if they differ from zero values
 		if !cfg.Enabled {
 			config.Enabled = cfg.Enabled
@@ -1489,24 +1511,24 @@ func (oc *AIClient) isGroupChat(ctx context.Context, portal *bridgev2.Portal) bo
 	return len(members) > 2
 }
 
+func (oc *AIClient) defaultPDFEngine() string {
+	if oc != nil && oc.connector != nil && oc.connector.Config.Agents != nil &&
+		oc.connector.Config.Agents.Defaults != nil {
+		if engine := strings.TrimSpace(oc.connector.Config.Agents.Defaults.PDFEngine); engine != "" {
+			return engine
+		}
+	}
+	return "mistral-ocr"
+}
+
 // effectivePDFEngine returns the PDF engine to use for the given portal.
-// Priority: room-level PDFConfig > provider-level config > default "mistral-ocr"
+// Priority: room-level PDFConfig > agent defaults > default "mistral-ocr"
 func (oc *AIClient) effectivePDFEngine(meta *PortalMetadata) string {
 	// Room-level override
 	if meta != nil && meta.PDFConfig != nil && meta.PDFConfig.Engine != "" {
 		return meta.PDFConfig.Engine
 	}
-
-	// Provider-level config
-	loginMeta := loginMetadata(oc.UserLogin)
-	switch loginMeta.Provider {
-	case ProviderOpenRouter, ProviderMagicProxy:
-		if engine := oc.connector.Config.Providers.OpenRouter.DefaultPDFEngine; engine != "" {
-			return engine
-		}
-	}
-
-	return "mistral-ocr" // Default
+	return oc.defaultPDFEngine()
 }
 
 // validateModel checks if a model is available for this user
@@ -1707,18 +1729,6 @@ func (oc *AIClient) buildBaseContext(
 	return promptContext, nil
 }
 
-func (oc *AIClient) buildBasePrompt(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-) ([]openai.ChatCompletionMessageParamUnion, error) {
-	promptContext, err := oc.buildBaseContext(ctx, portal, meta)
-	if err != nil {
-		return nil, err
-	}
-	return oc.promptContextToDispatchMessages(ctx, portal, meta, promptContext), nil
-}
-
 func (oc *AIClient) applyAbortHint(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, body string) string {
 	if meta == nil || !meta.AbortedLastRun {
 		return body
@@ -1771,30 +1781,6 @@ func (oc *AIClient) prepareInboundPromptContext(
 		ResolvedBody:    resolved,
 		UntrustedPrefix: untrustedPrefix,
 	}, nil
-}
-func (oc *AIClient) buildContextWithLinkContext(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	latest string,
-	rawEventContent map[string]any,
-	eventID id.EventID,
-) (PromptContext, error) {
-	promptContext, text, err := oc.buildCurrentTurnText(ctx, portal, meta, latest, eventID, currentTurnTextOptions{
-		rawEventContent:  rawEventContent,
-		includeLinkScope: true,
-	})
-	if err != nil {
-		return PromptContext{}, err
-	}
-	promptContext.Messages = append(promptContext.Messages, PromptMessage{
-		Role: PromptRoleUser,
-		Blocks: []PromptBlock{{
-			Type: PromptBlockText,
-			Text: text,
-		}},
-	})
-	return promptContext, nil
 }
 
 // buildLinkContext extracts URLs from the message, fetches previews, and returns formatted context.
@@ -1857,8 +1843,8 @@ func (oc *AIClient) buildLinkContext(ctx context.Context, message string, rawEve
 	return FormatPreviewsForContext(allPreviews, config.MaxContentChars)
 }
 
-// buildPromptWithMedia builds a prompt with media content.
-func (oc *AIClient) buildContextWithMedia(
+// buildMediaTurnContext builds a prompt turn with media content.
+func (oc *AIClient) buildMediaTurnContext(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
@@ -1869,54 +1855,15 @@ func (oc *AIClient) buildContextWithMedia(
 	mediaType pendingMessageType,
 	eventID id.EventID,
 ) (PromptContext, error) {
-	appendBlocks := make([]string, 0, 1)
-	blocks := make([]PromptBlock, 0, 2)
-
-	switch mediaType {
-	case pendingTypeImage:
-		b64Data, actualMimeType, err := oc.downloadMediaBase64(ctx, mediaURL, encryptedFile, 20, mimeType) // 20MB limit for images
-		if err != nil {
-			return PromptContext{}, fmt.Errorf("failed to download image: %w", err)
-		}
-		blocks = append(blocks, PromptBlock{
-			Type:     PromptBlockImage,
-			ImageB64: b64Data,
-			MimeType: actualMimeType,
-		})
-
-	case pendingTypePDF:
-		content, truncated, err := oc.downloadPDFFile(ctx, mediaURL, encryptedFile, mimeType)
-		if err != nil {
-			return PromptContext{}, fmt.Errorf("failed to download PDF: %w", err)
-		}
-		filename := resolveMediaFileName("document.pdf", "pdf", mediaURL)
-		appendBlocks = append(appendBlocks, buildTextFileMessage("", false, filename, "application/pdf", content, truncated))
-
-	case pendingTypeAudio:
-		return PromptContext{}, fmt.Errorf("audio attachments must be preprocessed into text before prompt assembly")
-
-	case pendingTypeVideo:
-		return PromptContext{}, fmt.Errorf("video attachments must be preprocessed into text before prompt assembly")
-
-	default:
-		return PromptContext{}, fmt.Errorf("unsupported media type: %s", mediaType)
-	}
-
-	promptContext, text, err := oc.buildCurrentTurnText(ctx, portal, meta, caption, eventID, currentTurnTextOptions{
+	return oc.buildPromptContextForTurn(ctx, portal, meta, caption, eventID, currentTurnPromptOptions{
 		includeLinkScope: true,
-		append:           appendBlocks,
+		attachment: &turnAttachmentOptions{
+			mediaURL:      mediaURL,
+			mimeType:      mimeType,
+			encryptedFile: encryptedFile,
+			mediaType:     mediaType,
+		},
 	})
-	if err != nil {
-		return PromptContext{}, err
-	}
-	if strings.TrimSpace(text) != "" {
-		blocks = append([]PromptBlock{{Type: PromptBlockText, Text: text}}, blocks...)
-	}
-	promptContext.Messages = append(promptContext.Messages, PromptMessage{
-		Role:   PromptRoleUser,
-		Blocks: blocks,
-	})
-	return promptContext, nil
 }
 
 // buildPromptUpToMessage builds a prompt including messages up to and including the specified message
@@ -2133,7 +2080,7 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 	}
 
 	// Build prompt with combined body
-	promptContext, err := oc.buildContextWithLinkContext(statusCtx, last.Portal, last.Meta, combinedBody, rawEventContent, last.Event.ID)
+	promptContext, err := oc.buildCurrentTurnWithLinks(statusCtx, last.Portal, last.Meta, combinedBody, rawEventContent, last.Event.ID)
 	if err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg("Failed to build prompt for debounced messages")
 		oc.notifyMatrixSendFailure(statusCtx, last.Portal, last.Event, err)
