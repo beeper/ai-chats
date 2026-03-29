@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"go.mau.fi/util/ptr"
-
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/agents"
 	"github.com/beeper/agentremote/pkg/agents/tools"
@@ -207,24 +205,13 @@ func (oc *AIClient) modelContactResponse(ctx context.Context, model *ModelInfo) 
 	if model == nil || model.ID == "" {
 		return nil
 	}
-	var responder *ResponderInfo
-	var err error
-	if oc != nil {
-		responder, err = oc.ResolveResponderForModel(ctx, model.ID)
-	}
+	responder, err := oc.ResolveResponderForModel(ctx, model.ID)
 	if err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Str("model", model.ID).Msg("Failed to resolve responder for model contact")
 	}
 	resp := &bridgev2.ResolveIdentifierResponse{
 		UserID:   modelUserID(model.ID),
-		UserInfo: responderUserInfo(responder, modelContactIdentifiers(model.ID), false),
-	}
-	if resp.UserInfo == nil {
-		resp.UserInfo = &bridgev2.UserInfo{
-			Name:        ptr.Ptr(modelContactName(model.ID, model)),
-			IsBot:       ptr.Ptr(false),
-			Identifiers: modelContactIdentifiers(model.ID),
-		}
+		UserInfo: responderUserInfoOrDefault(responder, modelContactName(model.ID, model), modelContactIdentifiers(model.ID), false),
 	}
 	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
 		return resp
@@ -248,19 +235,17 @@ func (oc *AIClient) agentContactResponse(ctx context.Context, agent *bridgesdk.A
 	if agentInfo := agent.UserInfo(); agentInfo != nil {
 		resp.UserInfo = agentInfo
 	}
-	if oc != nil {
-		if agentID := catalogAgentID(agent); agentID != "" {
-			responder, err := oc.ResolveResponderForAgent(ctx, agentID, ResponderResolveOptions{})
-			if err != nil {
-				oc.loggerForContext(ctx).Warn().Err(err).Str("agent", agentID).Msg("Failed to resolve responder for agent contact")
-			} else if resp.UserInfo == nil {
-				resp.UserInfo = responderUserInfo(responder, agent.Identifiers, true)
-			} else {
-				resp.UserInfo.ExtraProfile = responderExtraProfile(responder)
-			}
+	if agentID := catalogAgentID(agent); agentID != "" {
+		responder, err := oc.ResolveResponderForAgent(ctx, agentID, ResponderResolveOptions{})
+		if err != nil {
+			oc.loggerForContext(ctx).Warn().Err(err).Str("agent", agentID).Msg("Failed to resolve responder for agent contact")
+		} else if resp.UserInfo == nil {
+			resp.UserInfo = responderUserInfo(responder, agent.Identifiers, true)
+		} else {
+			resp.UserInfo.ExtraProfile = responderExtraProfile(responder)
 		}
 	}
-	if resp.UserInfo == nil || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || resp.UserID == "" {
+	if resp.UserInfo == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || resp.UserID == "" {
 		return resp
 	}
 	ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, resp.UserID)
@@ -582,14 +567,7 @@ func (oc *AIClient) modelJoinMember(ctx context.Context, loginID networkid.UserL
 		memberExtra = map[string]any{}
 	}
 	memberExtra["displayname"] = modelName
-	userInfo := responderUserInfo(responder, modelContactIdentifiers(modelID), false)
-	if userInfo == nil {
-		userInfo = &bridgev2.UserInfo{
-			Name:        ptr.Ptr(modelContactName(modelID, info)),
-			IsBot:       ptr.Ptr(false),
-			Identifiers: modelContactIdentifiers(modelID),
-		}
-	}
+	userInfo := responderUserInfoOrDefault(responder, modelContactName(modelID, info), modelContactIdentifiers(modelID), false)
 	return bridgev2.ChatMember{
 		EventSender: bridgev2.EventSender{
 			Sender:      modelUserID(modelID),
@@ -1046,14 +1024,7 @@ func (oc *AIClient) applyAgentChatInfo(ctx context.Context, chatInfo *bridgev2.C
 	if err != nil {
 		oc.log.Warn().Err(err).Str("agent", agentID).Str("model", modelID).Msg("Failed to resolve responder for agent chat info")
 	}
-	agentMember.UserInfo = responderUserInfo(responder, agentContactIdentifiers(agentID), true)
-	if agentMember.UserInfo == nil {
-		agentMember.UserInfo = &bridgev2.UserInfo{
-			Name:        ptr.Ptr(agentDisplayName),
-			IsBot:       ptr.Ptr(true),
-			Identifiers: agentContactIdentifiers(agentID),
-		}
-	}
+	agentMember.UserInfo = responderUserInfoOrDefault(responder, agentDisplayName, agentContactIdentifiers(agentID), true)
 	agentMember.MemberEventExtra = responderMetadataMap(responder)
 	if agentMember.MemberEventExtra == nil {
 		agentMember.MemberEventExtra = map[string]any{}

@@ -30,9 +30,14 @@ func (oc *AIClient) buildStatusText(
 		modelID = responder.ModelID
 	}
 	provider := strings.TrimSpace(oc.responderProvider(responder))
-	if provider != "" {
+	switch {
+	case modelID == "" && provider != "":
+		sb.WriteString(fmt.Sprintf("Model: %s\n", provider))
+	case modelID == "":
+		sb.WriteString("Model: unknown\n")
+	case provider != "":
 		sb.WriteString(fmt.Sprintf("Model: %s/%s\n", provider, modelID))
-	} else {
+	default:
 		sb.WriteString(fmt.Sprintf("Model: %s\n", modelID))
 	}
 
@@ -85,19 +90,7 @@ func (oc *AIClient) buildStatusText(
 		sb.WriteString(fmt.Sprintf("Group activation: %s\n", activation))
 	}
 
-	caps := ModelCapabilities{}
-	if responder != nil {
-		caps = responder.ModelCapabilities()
-	}
-	if !caps.SupportsVision && oc.canRunMediaUnderstanding(ctx, meta, MediaCapabilityImage) {
-		caps.SupportsVision = true
-	}
-	if !caps.SupportsAudio && oc.canRunMediaUnderstanding(ctx, meta, MediaCapabilityAudio) {
-		caps.SupportsAudio = true
-	}
-	if !caps.SupportsVideo && oc.canRunMediaUnderstanding(ctx, meta, MediaCapabilityVideo) {
-		caps.SupportsVideo = true
-	}
+	caps := oc.getRoomCapabilities(ctx, meta)
 	sb.WriteString(fmt.Sprintf(
 		"Features: tools=%t vision=%t audio=%t video=%t pdf=%t\n",
 		caps.SupportsToolCalling,

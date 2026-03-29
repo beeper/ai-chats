@@ -9,8 +9,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-
-	"github.com/beeper/agentremote/pkg/agents"
 )
 
 type ResponderKind string
@@ -198,7 +196,7 @@ func (oc *AIClient) resolveResponder(ctx context.Context, meta *PortalMetadata, 
 		}
 		info := oc.responderModelInfo(modelID)
 		ghostID := target.GhostID
-		if ghostID == "" {
+		if ghostID == "" || override != "" {
 			ghostID = modelUserID(modelID)
 		}
 		ri := responderFromModelInfo(info)
@@ -217,7 +215,7 @@ func responderFromModelInfo(info *ModelInfo) ResponderInfo {
 		ContextLimit:        responderContextLimit(info),
 		MaxOutputTokens:     responderMaxOutputTokens(info),
 		SupportsReasoning:   info != nil && info.SupportsReasoning,
-		SupportsToolCalling: info == nil || info.SupportsToolCalling,
+		SupportsToolCalling: info != nil && info.SupportsToolCalling,
 		SupportsImageGen:    info != nil && info.SupportsImageGen,
 		SupportsVision:      info != nil && info.SupportsVision,
 		SupportsAudio:       info != nil && info.SupportsAudio,
@@ -246,13 +244,6 @@ func responderMaxOutputTokens(info *ModelInfo) int {
 		return info.MaxOutputTokens
 	}
 	return 0
-}
-
-func responderInfoFromAgent(ctx context.Context, oc *AIClient, agent *agents.AgentDefinition, opts ResponderResolveOptions) (*ResponderInfo, error) {
-	if agent == nil {
-		return nil, fmt.Errorf("agent is required")
-	}
-	return oc.ResolveResponderForAgent(ctx, agent.ID, opts)
 }
 
 func (ri *ResponderInfo) ModelCapabilities() ModelCapabilities {
@@ -288,9 +279,7 @@ func responderMetadataMap(responder *ResponderInfo) map[string]any {
 func responderExtraProfile(responder *ResponderInfo) database.ExtraProfile {
 	var extra database.ExtraProfile
 	for key, value := range responderMetadataMap(responder) {
-		if err := extra.Set(key, value); err != nil {
-			panic(err)
-		}
+		_ = extra.Set(key, value)
 	}
 	return extra
 }
@@ -304,5 +293,16 @@ func responderUserInfo(responder *ResponderInfo, identifiers []string, isBot boo
 		IsBot:        ptr.Ptr(isBot),
 		Identifiers:  identifiers,
 		ExtraProfile: responderExtraProfile(responder),
+	}
+}
+
+func responderUserInfoOrDefault(responder *ResponderInfo, fallbackName string, identifiers []string, isBot bool) *bridgev2.UserInfo {
+	if info := responderUserInfo(responder, identifiers, isBot); info != nil {
+		return info
+	}
+	return &bridgev2.UserInfo{
+		Name:        ptr.Ptr(fallbackName),
+		IsBot:       ptr.Ptr(isBot),
+		Identifiers: identifiers,
 	}
 }

@@ -947,29 +947,23 @@ func (oc *AIClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*br
 
 	// Parse agent from ghost ID (format: "agent-{id}")
 	if agentID, ok := parseAgentFromGhostID(ghostID); ok {
-		if responder, err := oc.ResolveResponderForGhost(ctx, ghost.ID); err == nil && responder != nil {
-			store := NewAgentStoreAdapter(oc)
-			agent, getErr := store.GetAgentByID(ctx, agentID)
-			if getErr == nil && agent != nil {
-				if sdkAgent := oc.sdkAgentForDefinition(ctx, agent); sdkAgent != nil {
-					info := sdkAgent.UserInfo()
-					info.ExtraProfile = responderExtraProfile(responder)
-					info.ExtraUpdates = updateGhostLastSync
-					return info, nil
-				}
-			}
-			info := responderUserInfo(responder, agentContactIdentifiers(agentID), true)
-			info.ExtraUpdates = updateGhostLastSync
-			return info, nil
-		}
+		responder, _ := oc.ResolveResponderForGhost(ctx, ghost.ID)
 		store := NewAgentStoreAdapter(oc)
-		agent, err := store.GetAgentByID(ctx, agentID)
-		if err == nil && agent != nil {
+		agent, agentErr := store.GetAgentByID(ctx, agentID)
+		if agentErr == nil && agent != nil {
 			if sdkAgent := oc.sdkAgentForDefinition(ctx, agent); sdkAgent != nil {
 				info := sdkAgent.UserInfo()
+				if responder != nil {
+					info.ExtraProfile = responderExtraProfile(responder)
+				}
 				info.ExtraUpdates = updateGhostLastSync
 				return info, nil
 			}
+		}
+		if responder != nil {
+			info := responderUserInfo(responder, agentContactIdentifiers(agentID), true)
+			info.ExtraUpdates = updateGhostLastSync
+			return info, nil
 		}
 		return &bridgev2.UserInfo{
 			Name:         ptr.Ptr("Unknown Agent"),
@@ -981,14 +975,13 @@ func (oc *AIClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*br
 
 	// Parse model from ghost ID (format: "model-{escaped-model-id}")
 	if modelID := parseModelFromGhostID(ghostID); modelID != "" {
-		info := oc.findModelInfo(modelID)
 		if responder, err := oc.ResolveResponderForGhost(ctx, ghost.ID); err == nil && responder != nil {
 			userInfo := responderUserInfo(responder, modelContactIdentifiers(modelID), false)
 			userInfo.ExtraUpdates = updateGhostLastSync
 			return userInfo, nil
 		}
 		return &bridgev2.UserInfo{
-			Name:         ptr.Ptr(modelContactName(modelID, info)),
+			Name:         ptr.Ptr(modelContactName(modelID, oc.findModelInfo(modelID))),
 			IsBot:        ptr.Ptr(false),
 			Identifiers:  modelContactIdentifiers(modelID),
 			ExtraUpdates: updateGhostLastSync,
