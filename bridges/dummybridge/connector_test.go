@@ -38,3 +38,10 @@ func TestGetCapabilitiesExposeProvisioningSearchAndContacts(t *testing.T) {
 		t.Fatal("expected search provisioning to be enabled")
 	}
 }
+
+func TestGetNameUsesDefaultCommandPrefixBeforeStartup(t *testing.T) {
+	conn := NewConnector()
+	if got := conn.GetName().DefaultCommandPrefix; got != "!dummybridge" {
+		t.Fatalf("expected default command prefix !dummybridge, got %q", got)
+	}
+}

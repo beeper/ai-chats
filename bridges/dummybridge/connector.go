@@ -52,7 +52,7 @@ func NewConnector() *DummyBridgeConnector {
 		BeeperBridgeType: "dummybridge",
 		DefaultPort:      29349,
 		DefaultCommandPrefix: func() string {
-			return dc.Config.Bridge.CommandPrefix
+			return bridgesdk.ResolveCommandPrefix(dc.Config.Bridge.CommandPrefix, "!dummybridge")
 		},
 		ExampleConfig:  exampleNetworkConfig,
 		ConfigData:     &dc.Config,

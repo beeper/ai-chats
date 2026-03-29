@@ -38,6 +38,13 @@ func TestGetCapabilitiesEnablesContactListProvisioning(t *testing.T) {
 	}
 }
 
+func TestGetNameUsesDefaultCommandPrefixBeforeStartup(t *testing.T) {
+	conn := NewConnector()
+	if got := conn.GetName().DefaultCommandPrefix; got != "!ai" {
+		t.Fatalf("expected default command prefix !ai, got %q", got)
+	}
+}
+
 func TestHostAuthLoginIDUsesDedicatedPrefix(t *testing.T) {
 	conn := NewConnector()
 	mxid := id.UserID("@alice:example.com")

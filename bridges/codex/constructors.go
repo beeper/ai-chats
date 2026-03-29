@@ -65,7 +65,7 @@ func NewConnector() *CodexConnector {
 		BeeperBridgeType: "codex",
 		DefaultPort:      29346,
 		DefaultCommandPrefix: func() string {
-			return cc.Config.Bridge.CommandPrefix
+			return bridgesdk.ResolveCommandPrefix(cc.Config.Bridge.CommandPrefix, "!ai")
 		},
 		FillBridgeInfo: func(portal *bridgev2.Portal, content *event.BridgeEventContent) {
 			if portal == nil {
