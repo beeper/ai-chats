@@ -54,6 +54,13 @@ func (oc *AIClient) agentsEnabledForLogin() bool {
 	return agentsEnabled(loginMetadata(oc.UserLogin))
 }
 
+func shouldEnsureDefaultChat(meta *UserLoginMetadata) bool {
+	if meta == nil {
+		return false
+	}
+	return meta.Agents == nil || *meta.Agents
+}
+
 func agentChatsDisabledError() error {
 	return bridgev2.WrapRespErr(errors.New("agent chats are disabled for this login"), mautrix.MForbidden)
 }
@@ -1041,7 +1048,7 @@ func (oc *AIClient) bootstrap(ctx context.Context) {
 		// Don't return - still create the default chat (matches other bridge patterns)
 	}
 
-	if oc.agentsEnabledForLogin() {
+	if shouldEnsureDefaultChat(meta) {
 		// Create default chat room with Beep agent
 		if err := oc.ensureDefaultChat(logCtx); err != nil {
 			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure default chat")

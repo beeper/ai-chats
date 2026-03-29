@@ -69,6 +69,7 @@ Envelope rules:
 The final timeline edit is the canonical result.
 
 The final `com.beeper.ai` payload is compacted before it is attached to the edit, dropping live-only parts that are useful during streaming but not in the stored message.
+In the replacement event, the canonical final payload lives in `m.new_content`; only Matrix edit fallback fields and the `m.replace` relation stay at the top level.
 
 ## Out of scope
 

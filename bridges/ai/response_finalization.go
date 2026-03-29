@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"maps"
 	"strings"
 	"time"
 
@@ -501,18 +502,26 @@ func (oc *AIClient) persistTerminalAssistantTurn(ctx context.Context, portal *br
 	}
 }
 
-func buildFinalEditPayload(rendered event.MessageEventContent, topLevelExtra map[string]any, replyTarget ReplyTarget) *sdk.FinalEditPayload {
+func buildFinalEditPayload(rendered event.MessageEventContent, topLevelExtra map[string]any) *sdk.FinalEditPayload {
 	content := rendered
+	content.RelatesTo = nil
+	content.BeeperLinkPreviews = nil
+	extra := map[string]any{}
+	cleanTopLevelExtra := maps.Clone(topLevelExtra)
+	if len(cleanTopLevelExtra) > 0 {
+		if uiMessage, ok := cleanTopLevelExtra[BeeperAIKey]; ok {
+			extra[BeeperAIKey] = uiMessage
+			delete(cleanTopLevelExtra, BeeperAIKey)
+		}
+		if previews, ok := cleanTopLevelExtra["com.beeper.linkpreviews"]; ok {
+			extra["com.beeper.linkpreviews"] = previews
+			delete(cleanTopLevelExtra, "com.beeper.linkpreviews")
+		}
+	}
 	return &sdk.FinalEditPayload{
-		Content: &event.MessageEventContent{
-			MsgType:       content.MsgType,
-			Body:          content.Body,
-			Format:        content.Format,
-			FormattedBody: content.FormattedBody,
-		},
-		TopLevelExtra: topLevelExtra,
-		ReplyTo:       replyTarget.ReplyTo,
-		ThreadRoot:    replyTarget.ThreadRoot,
+		Content:       &content,
+		Extra:         extra,
+		TopLevelExtra: cleanTopLevelExtra,
 	}
 }
 
@@ -536,9 +545,21 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 
 	uiMessage := buildCompactFinalUIMessage(oc.buildStreamUIMessage(state, meta, linkPreviews))
 
-	topLevelExtra := buildFinalEditTopLevelExtra(uiMessage, linkPreviews)
+	topLevelExtra := buildFinalEditTopLevelExtra()
 	if state != nil && state.turn != nil {
-		state.turn.SetFinalEditPayload(buildFinalEditPayload(rendered, topLevelExtra, replyTarget))
+		finalTopLevelExtra := topLevelExtra
+		if len(uiMessage) > 0 || len(linkPreviews) > 0 {
+			finalTopLevelExtra = map[string]any{
+				"com.beeper.dont_render_edited": true,
+			}
+			if len(uiMessage) > 0 {
+				finalTopLevelExtra[BeeperAIKey] = uiMessage
+			}
+			if len(linkPreviews) > 0 {
+				finalTopLevelExtra["com.beeper.linkpreviews"] = PreviewsToMapSlice(linkPreviews)
+			}
+		}
+		state.turn.SetFinalEditPayload(buildFinalEditPayload(rendered, finalTopLevelExtra))
 	}
 	oc.recordAgentActivity(ctx, portal, meta)
 	if state != nil && state.turn != nil {
@@ -558,17 +579,10 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 	}
 }
 
-func buildFinalEditTopLevelExtra(uiMessage map[string]any, linkPreviews []*event.BeeperLinkPreview) map[string]any {
-	topLevelExtra := map[string]any{
+func buildFinalEditTopLevelExtra() map[string]any {
+	return map[string]any{
 		"com.beeper.dont_render_edited": true,
 	}
-	if len(uiMessage) > 0 {
-		topLevelExtra[BeeperAIKey] = uiMessage
-	}
-	if len(linkPreviews) > 0 {
-		topLevelExtra["com.beeper.linkpreviews"] = PreviewsToMapSlice(linkPreviews)
-	}
-	return topLevelExtra
 }
 
 // generateOutboundLinkPreviews extracts URLs from AI response text, generates link previews, and uploads images to Matrix.

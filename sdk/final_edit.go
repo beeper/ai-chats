@@ -44,16 +44,22 @@ func BuildCompactFinalUIMessage(uiMessage map[string]any) map[string]any {
 	return out
 }
 
-// BuildDefaultFinalEditTopLevelExtra builds the SDK's default metadata payload
-// for terminal final edits.
-func BuildDefaultFinalEditTopLevelExtra(uiMessage map[string]any) map[string]any {
-	extra := map[string]any{
-		"com.beeper.dont_render_edited": true,
-	}
+// BuildDefaultFinalEditExtra builds the SDK's default replacement payload
+// that should live inside m.new_content for terminal final edits.
+func BuildDefaultFinalEditExtra(uiMessage map[string]any) map[string]any {
+	extra := map[string]any{}
 	if len(uiMessage) > 0 {
 		extra[matrixevents.BeeperAIKey] = uiMessage
 	}
 	return extra
+}
+
+// BuildDefaultFinalEditTopLevelExtra builds the SDK's edit-event-only metadata
+// payload for terminal final edits.
+func BuildDefaultFinalEditTopLevelExtra() map[string]any {
+	return map[string]any{
+		"com.beeper.dont_render_edited": true,
+	}
 }
 
 func hasMeaningfulFinalUIMessage(uiMessage map[string]any) bool {

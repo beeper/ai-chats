@@ -243,6 +243,55 @@ func TestPreviewsToMapSlice_IncludesImageDimensions(t *testing.T) {
 	}
 }
 
+func TestParseExistingLinkPreviewsPrefersMNewContent(t *testing.T) {
+	rawContent := map[string]any{
+		"com.beeper.linkpreviews": []any{
+			map[string]any{
+				"matched_url": "https://top-level.example",
+				"og:url":      "https://top-level.example",
+				"og:title":    "Top Level",
+			},
+		},
+		"m.new_content": map[string]any{
+			"com.beeper.linkpreviews": []any{
+				map[string]any{
+					"matched_url": "https://new-content.example",
+					"og:url":      "https://new-content.example",
+					"og:title":    "New Content",
+				},
+			},
+		},
+	}
+
+	previews := ParseExistingLinkPreviews(rawContent)
+	if len(previews) != 1 {
+		t.Fatalf("expected one preview, got %#v", previews)
+	}
+	if previews[0].MatchedURL != "https://new-content.example" {
+		t.Fatalf("expected m.new_content preview to win, got %#v", previews[0])
+	}
+}
+
+func TestParseExistingLinkPreviewsFallsBackToTopLevel(t *testing.T) {
+	rawContent := map[string]any{
+		"com.beeper.linkpreviews": []any{
+			map[string]any{
+				"matched_url": "https://top-level.example",
+				"og:url":      "https://top-level.example",
+				"og:title":    "Top Level",
+			},
+		},
+	}
+
+	previews := ParseExistingLinkPreviews(rawContent)
+	if len(previews) != 1 {
+		t.Fatalf("expected one preview, got %#v", previews)
+	}
+	if previews[0].MatchedURL != "https://top-level.example" {
+		t.Fatalf("expected top-level preview, got %#v", previews[0])
+	}
+}
+
 func TestPreviewsToMapSlice_OmitsZeroDimensions(t *testing.T) {
 	previews := []*event.BeeperLinkPreview{
 		{
