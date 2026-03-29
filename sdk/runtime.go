@@ -67,7 +67,9 @@ func (r *staticRuntime[SessionT, ConfigDataT]) turnConfig() *TurnConfig {
 	return r.cfg.TurnManagement
 }
 
-func (r *staticRuntime[SessionT, ConfigDataT]) conversationStore() *conversationStateStore { return r.store }
+func (r *staticRuntime[SessionT, ConfigDataT]) conversationStore() *conversationStateStore {
+	return r.store
+}
 
 func (r *staticRuntime[SessionT, ConfigDataT]) approvalFlowValue() *agentremote.ApprovalFlow[*pendingSDKApprovalData] {
 	return r.approval
