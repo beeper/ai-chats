@@ -336,7 +336,7 @@ func (oc *OpenClawClient) GetChatInfo(ctx context.Context, portal *bridgev2.Port
 	roomType := openClawRoomType(meta)
 	agentID := stringutil.TrimDefault(meta.OpenClawDMTargetAgentID, meta.OpenClawAgentID)
 	if roomType == database.RoomTypeDM && agentID != "" {
-		info := oc.syntheticDMPortalInfo(agentID, title)
+		info := oc.buildOpenClawDMChatInfo(agentID, title, nil)
 		info.Topic = ptr.NonZero(oc.topicForPortal(meta))
 		info.Type = ptr.Ptr(roomType)
 		info.CanBackfill = true
@@ -735,25 +735,15 @@ func (oc *OpenClawClient) senderForAgent(agentID string, fromMe bool) bridgev2.E
 	}
 }
 
-func (oc *OpenClawClient) sendNoticeViaPortal(ctx context.Context, portal *bridgev2.Portal, msg string, sender bridgev2.EventSender) {
-	if portal == nil || strings.TrimSpace(msg) == "" {
+func (oc *OpenClawClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Portal, sender bridgev2.EventSender, msg string) {
+	if oc == nil || portal == nil || strings.TrimSpace(msg) == "" {
 		return
 	}
-	converted := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:      networkid.PartID("0"),
-			Type:    event.EventMessage,
-			Content: &event.MessageEventContent{MsgType: event.MsgNotice, Body: msg, Mentions: &event.Mentions{}},
-		}},
+	if err := agentremote.SendSystemMessage(ctx, oc.UserLogin, portal, sender, msg); err != nil {
+		if oc.UserLogin != nil {
+			oc.UserLogin.Log.Warn().Err(err).Msg("Failed to send system notice")
+		}
 	}
-	oc.UserLogin.QueueRemoteEvent(buildOpenClawRemoteMessage(
-		portal.PortalKey,
-		newOpenClawMessageID(),
-		sender,
-		time.Now(),
-		0,
-		converted,
-	))
 }
 
 func (oc *OpenClawClient) DownloadAndEncodeMedia(ctx context.Context, mediaURL string, file *event.EncryptedFileInfo, maxMB int) (string, string, error) {

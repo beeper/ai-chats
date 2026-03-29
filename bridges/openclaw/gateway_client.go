@@ -29,8 +29,8 @@ import (
 
 const (
 	openClawProtocolVersion      = 3
-	openClawGatewayClientID      = "beeper-bridge"
-	openClawGatewayClientMode    = "ui"
+	openClawGatewayClientID      = "gateway-client"
+	openClawGatewayClientMode    = "backend"
 	openClawGatewayDisplayName   = "Beeper"
 	openClawGatewayWSReadLimit   = 32 * 1024 * 1024
 	openClawGatewayPingInterval  = 30 * time.Second

@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -1539,18 +1538,15 @@ func (cc *CodexClient) composeCodexChatInfo(portal *bridgev2.Portal, title strin
 	if title == "" {
 		title = "Codex"
 	}
-	info := agentremote.BuildLoginDMChatInfo(agentremote.LoginDMChatInfoParams{
+	return agentremote.BuildLoginDMChatInfo(agentremote.LoginDMChatInfoParams{
 		Title:             title,
+		Topic:             cc.codexTopicForPortal(portal, portalMeta(portal)),
 		Login:             cc.UserLogin,
 		HumanUserIDPrefix: cc.HumanUserIDPrefix,
 		BotUserID:         codexGhostID,
 		BotDisplayName:    "Codex",
 		CanBackfill:       canBackfill,
 	})
-	if info != nil {
-		info.Topic = ptr.NonZero(cc.codexTopicForPortal(portal, portalMeta(portal)))
-	}
-	return info
 }
 
 func resolveCodexWorkingDirectory(raw string) (string, error) {
@@ -1768,11 +1764,37 @@ func (cc *CodexClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2
 }
 
 func (cc *CodexClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Portal, message string) {
-	if portal == nil || portal.MXID == "" || cc.UserLogin == nil || cc.UserLogin.Bridge == nil {
+	if cc == nil || portal == nil || strings.TrimSpace(message) == "" {
 		return
 	}
-	timing := agentremote.ResolveEventTiming(time.Now(), 0)
-	cc.sendViaPortal(portal, agentremote.BuildSystemNotice(strings.TrimSpace(message)), "", timing.Timestamp, timing.StreamOrder)
+	send := func(sendCtx context.Context) error {
+		return agentremote.SendSystemMessage(sendCtx, cc.UserLogin, portal, cc.senderForPortal(), message)
+	}
+	if portal.MXID == "" {
+		go func() {
+			retryCtx := cc.backgroundContext(ctx)
+			for attempt := 0; attempt < 3; attempt++ {
+				if portal.MXID != "" {
+					if err := send(retryCtx); err != nil {
+						cc.log.Warn().Err(err).Msg("Failed to send system notice")
+					}
+					return
+				}
+				time.Sleep(250 * time.Millisecond)
+			}
+			if portal.MXID == "" {
+				cc.log.Warn().Msg("Portal MXID never became available, dropping system notice")
+				return
+			}
+			if err := send(retryCtx); err != nil {
+				cc.log.Warn().Err(err).Msg("Failed to send system notice")
+			}
+		}()
+		return
+	}
+	if err := send(ctx); err != nil {
+		cc.log.Warn().Err(err).Msg("Failed to send system notice")
+	}
 }
 
 func (cc *CodexClient) sendPendingStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, message string) {

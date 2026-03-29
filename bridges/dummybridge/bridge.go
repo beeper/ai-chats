@@ -10,7 +10,6 @@ import (
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"github.com/beeper/agentremote"
@@ -229,13 +228,13 @@ func (dc *DummyBridgeConnector) ensureChatForIndexLocked(ctx context.Context, lo
 	meta.Topic = dummyPortalTopic
 	meta.ChatIndex = idx
 
-	portal.RoomType = database.RoomTypeDM
-	portal.OtherUserID = dummyAgentUserID
-	portal.Name = title
-	portal.Topic = dummyPortalTopic
-	portal.NameSet = true
-	portal.TopicSet = true
-	if err := portal.Save(ctx); err != nil {
+	if err := agentremote.ConfigureDMPortal(ctx, agentremote.ConfigureDMPortalParams{
+		Portal:      portal,
+		Title:       title,
+		Topic:       dummyPortalTopic,
+		OtherUserID: dummyAgentUserID,
+		Save:        false,
+	}); err != nil {
 		return nil, fmt.Errorf("save portal: %w", err)
 	}
 
@@ -258,24 +257,16 @@ func (dc *DummyBridgeConnector) ensureChatForIndexLocked(ctx context.Context, lo
 }
 
 func (dc *DummyBridgeConnector) composeChatInfo(login *bridgev2.UserLogin, title string) *bridgev2.ChatInfo {
-	info := agentremote.BuildLoginDMChatInfo(agentremote.LoginDMChatInfoParams{
+	return agentremote.BuildLoginDMChatInfo(agentremote.LoginDMChatInfoParams{
 		Title:             title,
+		Topic:             dummyPortalTopic,
 		Login:             login,
 		HumanUserIDPrefix: "dummybridge-user",
 		BotUserID:         dummyAgentUserID,
 		BotDisplayName:    dummyAgentName,
+		BotUserInfo:       dummySDKAgent().UserInfo(),
 		CanBackfill:       false,
 	})
-	if info == nil {
-		return nil
-	}
-	info.Topic = ptr.Ptr(dummyPortalTopic)
-	if info.Members != nil && info.Members.MemberMap != nil {
-		member := info.Members.MemberMap[dummyAgentUserID]
-		member.UserInfo = dummySDKAgent().UserInfo()
-		info.Members.MemberMap[dummyAgentUserID] = member
-	}
-	return info
 }
 
 func dummyPortalID(idx int) string {

@@ -32,59 +32,66 @@ func BuildMetaTypes(portal, message, userLogin, ghost func() any) database.MetaT
 	}
 }
 
-// BuildSystemNotice creates a ConvertedMessage containing a single MsgNotice part.
-func BuildSystemNotice(body string) *bridgev2.ConvertedMessage {
-	return &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:   networkid.PartID("0"),
-			Type: event.EventMessage,
-			Content: &event.MessageEventContent{
-				MsgType:  event.MsgNotice,
-				Body:     body,
-				Mentions: &event.Mentions{},
-			},
-		}},
-	}
-}
-
 // DMChatInfoParams holds the parameters for BuildDMChatInfo.
 type DMChatInfoParams struct {
-	Title          string
-	HumanUserID    networkid.UserID
-	LoginID        networkid.UserLoginID
-	BotUserID      networkid.UserID
-	BotDisplayName string
-	CanBackfill    bool
+	Title               string
+	Topic               string
+	HumanUserID         networkid.UserID
+	LoginID             networkid.UserLoginID
+	HumanSender         *bridgev2.EventSender
+	BotUserID           networkid.UserID
+	BotDisplayName      string
+	BotSender           *bridgev2.EventSender
+	BotUserInfo         *bridgev2.UserInfo
+	BotMemberEventExtra map[string]any
+	CanBackfill         bool
 }
 
 // BuildDMChatInfo creates a ChatInfo for a DM room between a human user and a bot ghost.
 func BuildDMChatInfo(p DMChatInfoParams) *bridgev2.ChatInfo {
+	humanSender := bridgev2.EventSender{
+		Sender:      p.HumanUserID,
+		IsFromMe:    true,
+		SenderLogin: p.LoginID,
+	}
+	if p.HumanSender != nil {
+		humanSender = *p.HumanSender
+	}
+	botSender := bridgev2.EventSender{
+		Sender:      p.BotUserID,
+		SenderLogin: p.LoginID,
+	}
+	if p.BotSender != nil {
+		botSender = *p.BotSender
+	}
+	botInfo := p.BotUserInfo
+	if botInfo == nil {
+		botInfo = &bridgev2.UserInfo{
+			Name:  ptr.Ptr(p.BotDisplayName),
+			IsBot: ptr.Ptr(true),
+		}
+	}
+	memberEventExtra := p.BotMemberEventExtra
+	if memberEventExtra == nil && p.BotDisplayName != "" {
+		memberEventExtra = map[string]any{
+			"displayname": p.BotDisplayName,
+		}
+	}
 	members := bridgev2.ChatMemberMap{
 		p.HumanUserID: {
-			EventSender: bridgev2.EventSender{
-				Sender:      p.HumanUserID,
-				IsFromMe:    true,
-				SenderLogin: p.LoginID,
-			},
-			Membership: event.MembershipJoin,
+			EventSender: humanSender,
+			Membership:  event.MembershipJoin,
 		},
 		p.BotUserID: {
-			EventSender: bridgev2.EventSender{
-				Sender:      p.BotUserID,
-				SenderLogin: p.LoginID,
-			},
-			Membership: event.MembershipJoin,
-			UserInfo: &bridgev2.UserInfo{
-				Name:  ptr.Ptr(p.BotDisplayName),
-				IsBot: ptr.Ptr(true),
-			},
-			MemberEventExtra: map[string]any{
-				"displayname": p.BotDisplayName,
-			},
+			EventSender:      botSender,
+			Membership:       event.MembershipJoin,
+			UserInfo:         botInfo,
+			MemberEventExtra: memberEventExtra,
 		},
 	}
 	return &bridgev2.ChatInfo{
 		Name:        ptr.Ptr(p.Title),
+		Topic:       ptr.NonZero(p.Topic),
 		Type:        ptr.Ptr(database.RoomTypeDM),
 		CanBackfill: p.CanBackfill,
 		Members: &bridgev2.ChatMemberList{
@@ -96,12 +103,17 @@ func BuildDMChatInfo(p DMChatInfoParams) *bridgev2.ChatInfo {
 }
 
 type LoginDMChatInfoParams struct {
-	Title             string
-	Login             *bridgev2.UserLogin
-	HumanUserIDPrefix string
-	BotUserID         networkid.UserID
-	BotDisplayName    string
-	CanBackfill       bool
+	Title               string
+	Topic               string
+	Login               *bridgev2.UserLogin
+	HumanUserIDPrefix   string
+	HumanSender         *bridgev2.EventSender
+	BotUserID           networkid.UserID
+	BotDisplayName      string
+	BotSender           *bridgev2.EventSender
+	BotUserInfo         *bridgev2.UserInfo
+	BotMemberEventExtra map[string]any
+	CanBackfill         bool
 }
 
 func BuildLoginDMChatInfo(p LoginDMChatInfoParams) *bridgev2.ChatInfo {
@@ -109,13 +121,78 @@ func BuildLoginDMChatInfo(p LoginDMChatInfoParams) *bridgev2.ChatInfo {
 		return nil
 	}
 	return BuildDMChatInfo(DMChatInfoParams{
-		Title:          p.Title,
-		HumanUserID:    HumanUserID(p.HumanUserIDPrefix, p.Login.ID),
-		LoginID:        p.Login.ID,
-		BotUserID:      p.BotUserID,
-		BotDisplayName: p.BotDisplayName,
-		CanBackfill:    p.CanBackfill,
+		Title:               p.Title,
+		Topic:               p.Topic,
+		HumanUserID:         HumanUserID(p.HumanUserIDPrefix, p.Login.ID),
+		LoginID:             p.Login.ID,
+		HumanSender:         p.HumanSender,
+		BotUserID:           p.BotUserID,
+		BotDisplayName:      p.BotDisplayName,
+		BotSender:           p.BotSender,
+		BotUserInfo:         p.BotUserInfo,
+		BotMemberEventExtra: p.BotMemberEventExtra,
+		CanBackfill:         p.CanBackfill,
 	})
+}
+
+type ConfigureDMPortalParams struct {
+	Portal       *bridgev2.Portal
+	Title        string
+	Topic        string
+	OtherUserID  networkid.UserID
+	Save         bool
+	MutatePortal func(*bridgev2.Portal)
+}
+
+func ConfigureDMPortal(ctx context.Context, p ConfigureDMPortalParams) error {
+	if p.Portal == nil {
+		return fmt.Errorf("missing portal")
+	}
+	p.Portal.RoomType = database.RoomTypeDM
+	p.Portal.OtherUserID = p.OtherUserID
+	p.Portal.Name = strings.TrimSpace(p.Title)
+	p.Portal.NameSet = p.Portal.Name != ""
+	p.Portal.Topic = strings.TrimSpace(p.Topic)
+	p.Portal.TopicSet = p.Portal.Topic != ""
+	if p.MutatePortal != nil {
+		p.MutatePortal(p.Portal)
+	}
+	if !p.Save {
+		return nil
+	}
+	return p.Portal.Save(ctx)
+}
+
+type PreConvertedRemoteMessageParams struct {
+	PortalKey   networkid.PortalKey
+	Sender      bridgev2.EventSender
+	MsgID       networkid.MessageID
+	IDPrefix    string
+	LogKey      string
+	Timestamp   time.Time
+	StreamOrder int64
+	Converted   *bridgev2.ConvertedMessage
+}
+
+func BuildPreConvertedRemoteMessage(p PreConvertedRemoteMessageParams) *simplevent.PreConvertedMessage {
+	if p.MsgID == "" {
+		p.MsgID = NewMessageID(p.IDPrefix)
+	}
+	timing := ResolveEventTiming(p.Timestamp, p.StreamOrder)
+	return &simplevent.PreConvertedMessage{
+		EventMeta: simplevent.EventMeta{
+			Type:        bridgev2.RemoteEventMessage,
+			PortalKey:   p.PortalKey,
+			Sender:      p.Sender,
+			Timestamp:   timing.Timestamp,
+			StreamOrder: timing.StreamOrder,
+			LogContext: func(c zerolog.Context) zerolog.Context {
+				return c.Str(p.LogKey, string(p.MsgID))
+			},
+		},
+		ID:   p.MsgID,
+		Data: p.Converted,
+	}
 }
 
 // SendViaPortalParams holds the parameters for SendViaPortal.
@@ -141,32 +218,24 @@ func SendViaPortal(p SendViaPortalParams) (id.EventID, networkid.MessageID, erro
 	if p.Login == nil || p.Login.Bridge == nil {
 		return "", p.MsgID, fmt.Errorf("bridge unavailable")
 	}
-	if p.MsgID == "" {
-		p.MsgID = NewMessageID(p.IDPrefix)
-	}
-	timing := ResolveEventTiming(p.Timestamp, p.StreamOrder)
-	evt := &simplevent.PreConvertedMessage{
-		EventMeta: simplevent.EventMeta{
-			Type:        bridgev2.RemoteEventMessage,
-			PortalKey:   p.Portal.PortalKey,
-			Sender:      p.Sender,
-			Timestamp:   timing.Timestamp,
-			StreamOrder: timing.StreamOrder,
-			LogContext: func(c zerolog.Context) zerolog.Context {
-				return c.Str(p.LogKey, string(p.MsgID))
-			},
-		},
-		ID:   p.MsgID,
-		Data: p.Converted,
-	}
+	evt := BuildPreConvertedRemoteMessage(PreConvertedRemoteMessageParams{
+		PortalKey:   p.Portal.PortalKey,
+		Sender:      p.Sender,
+		MsgID:       p.MsgID,
+		IDPrefix:    p.IDPrefix,
+		LogKey:      p.LogKey,
+		Timestamp:   p.Timestamp,
+		StreamOrder: p.StreamOrder,
+		Converted:   p.Converted,
+	})
 	result := p.Login.QueueRemoteEvent(evt)
 	if !result.Success {
 		if result.Error != nil {
-			return "", p.MsgID, fmt.Errorf("send failed: %w", result.Error)
+			return "", evt.ID, fmt.Errorf("send failed: %w", result.Error)
 		}
-		return "", p.MsgID, fmt.Errorf("send failed")
+		return "", evt.ID, fmt.Errorf("send failed")
 	}
-	return result.EventID, p.MsgID, nil
+	return result.EventID, evt.ID, nil
 }
 
 // SendEditViaPortal queues a pre-built edit through bridgev2's remote event pipeline.
@@ -309,6 +378,42 @@ func NormalizeAbsolutePath(path string) (string, error) {
 		return "", fmt.Errorf("path must be absolute")
 	}
 	return filepath.Clean(expanded), nil
+}
+
+func SendSystemMessage(
+	ctx context.Context,
+	login *bridgev2.UserLogin,
+	portal *bridgev2.Portal,
+	sender bridgev2.EventSender,
+	body string,
+) error {
+	body = strings.TrimSpace(body)
+	if login == nil || login.Bridge == nil {
+		return fmt.Errorf("bridge unavailable")
+	}
+	if portal == nil || portal.MXID == "" {
+		return fmt.Errorf("invalid portal")
+	}
+	if body == "" {
+		return nil
+	}
+	content := &event.Content{
+		Parsed: &event.MessageEventContent{
+			MsgType:  event.MsgNotice,
+			Body:     body,
+			Mentions: &event.Mentions{},
+		},
+	}
+	if login.Bridge.Bot != nil {
+		_, err := login.Bridge.Bot.SendMessage(ctx, portal.MXID, event.EventMessage, content, nil)
+		return err
+	}
+	intent, ok := portal.GetIntentFor(ctx, sender, login, bridgev2.RemoteEventMessage)
+	if !ok || intent == nil {
+		return fmt.Errorf("intent resolution failed")
+	}
+	_, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, content, nil)
+	return err
 }
 
 // BuildBotUserInfo returns a UserInfo for an AI bot ghost with the given name and identifiers.
@@ -475,21 +580,14 @@ func BuildContinuationMessage(
 		FormattedBody: rendered.FormattedBody,
 		Mentions:      &event.Mentions{},
 	}
-	msgID := NewMessageID(idPrefix)
-	timing := ResolveEventTiming(timestamp, streamOrder)
-	return &simplevent.PreConvertedMessage{
-		EventMeta: simplevent.EventMeta{
-			Type:        bridgev2.RemoteEventMessage,
-			PortalKey:   portal,
-			Sender:      sender,
-			Timestamp:   timing.Timestamp,
-			StreamOrder: timing.StreamOrder,
-			LogContext: func(c zerolog.Context) zerolog.Context {
-				return c.Str(logKey, string(msgID))
-			},
-		},
-		ID: msgID,
-		Data: &bridgev2.ConvertedMessage{
+	return BuildPreConvertedRemoteMessage(PreConvertedRemoteMessageParams{
+		PortalKey:   portal,
+		Sender:      sender,
+		IDPrefix:    idPrefix,
+		LogKey:      logKey,
+		Timestamp:   timestamp,
+		StreamOrder: streamOrder,
+		Converted: &bridgev2.ConvertedMessage{
 			Parts: []*bridgev2.ConvertedMessagePart{{
 				ID:      networkid.PartID("0"),
 				Type:    event.EventMessage,
@@ -497,7 +595,7 @@ func BuildContinuationMessage(
 				Extra:   map[string]any{"com.beeper.continuation": true},
 			}},
 		},
-	}
+	})
 }
 
 // coalesceStrings returns the first non-empty string from the arguments.

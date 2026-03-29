@@ -743,16 +743,19 @@ func (oc *AIClient) initPortalForChat(ctx context.Context, opts PortalInitOpts) 
 	}
 	portal.Metadata = pmeta
 
-	portal.RoomType = database.RoomTypeDM
-	portal.OtherUserID = modelUserID(modelID)
-	portal.Name = title
-	portal.NameSet = true
-	defaultAvatar := strings.TrimSpace(agents.DefaultAgentAvatarMXC)
-	if defaultAvatar != "" {
-		portal.AvatarID = networkid.AvatarID(defaultAvatar)
-		portal.AvatarMXC = id.ContentURIString(defaultAvatar)
-	}
-	if err := portal.Save(ctx); err != nil {
+	if err := agentremote.ConfigureDMPortal(ctx, agentremote.ConfigureDMPortalParams{
+		Portal:      portal,
+		Title:       title,
+		OtherUserID: modelUserID(modelID),
+		Save:        true,
+		MutatePortal: func(portal *bridgev2.Portal) {
+			defaultAvatar := strings.TrimSpace(agents.DefaultAgentAvatarMXC)
+			if defaultAvatar != "" {
+				portal.AvatarID = networkid.AvatarID(defaultAvatar)
+				portal.AvatarMXC = id.ContentURIString(defaultAvatar)
+			}
+		},
+	}); err != nil {
 		return nil, nil, fmt.Errorf("failed to save portal: %w", err)
 	}
 	oc.ensureGhostDisplayName(ctx, modelID)
@@ -1054,17 +1057,10 @@ func (oc *AIClient) BroadcastRoomState(ctx context.Context, portal *bridgev2.Por
 
 // sendSystemNotice sends an informational notice to the room via the bridge bot.
 func (oc *AIClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Portal, message string) {
-	if portal == nil || portal.MXID == "" || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.Bot == nil {
+	if oc == nil {
 		return
 	}
-	_, err := oc.UserLogin.Bridge.Bot.SendMessage(ctx, portal.MXID, event.EventMessage, &event.Content{
-		Parsed: &event.MessageEventContent{
-			MsgType:  event.MsgNotice,
-			Body:     message,
-			Mentions: &event.Mentions{},
-		},
-	}, nil)
-	if err != nil {
+	if err := agentremote.SendSystemMessage(ctx, oc.UserLogin, portal, bridgev2.EventSender{}, message); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to send system notice")
 	}
 }

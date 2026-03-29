@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote"
@@ -183,10 +182,14 @@ func (cc *CodexClient) createWelcomeCodexChat(ctx context.Context) (*bridgev2.Po
 	meta.CodexCwd = ""
 	meta.AwaitingCwdSetup = true
 	meta.ManagedImport = false
-	portal.RoomType = database.RoomTypeDM
-	portal.OtherUserID = codexGhostID
-	portal.Name = meta.Title
-	portal.NameSet = true
+	if err := agentremote.ConfigureDMPortal(ctx, agentremote.ConfigureDMPortalParams{
+		Portal:      portal,
+		Title:       meta.Title,
+		OtherUserID: codexGhostID,
+		Save:        false,
+	}); err != nil {
+		return nil, err
+	}
 	info := cc.composeCodexChatInfo(portal, meta.Title, false)
 	created, err := bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
 		Login:             cc.UserLogin,

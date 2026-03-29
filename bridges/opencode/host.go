@@ -27,10 +27,12 @@ func (oc *OpenCodeClient) Log() *zerolog.Logger {
 }
 
 func (oc *OpenCodeClient) SendSystemNotice(ctx context.Context, portal *bridgev2.Portal, msg string) {
-	if portal == nil || portal.MXID == "" {
+	if oc == nil {
 		return
 	}
-	oc.sendSystemNoticeViaPortal(ctx, portal, msg)
+	if err := agentremote.SendSystemMessage(ctx, oc.UserLogin, portal, bridgev2.EventSender{}, msg); err != nil {
+		oc.Log().Warn().Err(err).Msg("Failed to send system notice")
+	}
 }
 
 func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *bridgev2.Portal, turnID, agentID string, part map[string]any) {

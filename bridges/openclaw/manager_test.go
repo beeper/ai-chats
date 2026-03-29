@@ -103,8 +103,22 @@ func TestShouldMirrorLatestUserMessageFromHistory(t *testing.T) {
 
 func TestOpenClawRemoteMessageGetStreamOrderUsesGatewaySeq(t *testing.T) {
 	ts := time.Date(2026, time.March, 12, 12, 0, 0, 0, time.UTC)
-	first := buildOpenClawRemoteMessage(networkid.PortalKey{}, "first", bridgev2.EventSender{}, ts, 10, nil)
-	second := buildOpenClawRemoteMessage(networkid.PortalKey{}, "second", bridgev2.EventSender{}, ts, 11, nil)
+	first := agentremote.BuildPreConvertedRemoteMessage(agentremote.PreConvertedRemoteMessageParams{
+		PortalKey:   networkid.PortalKey{},
+		MsgID:       "first",
+		LogKey:      "openclaw_msg_id",
+		Sender:      bridgev2.EventSender{},
+		Timestamp:   ts,
+		StreamOrder: 10,
+	})
+	second := agentremote.BuildPreConvertedRemoteMessage(agentremote.PreConvertedRemoteMessageParams{
+		PortalKey:   networkid.PortalKey{},
+		MsgID:       "second",
+		LogKey:      "openclaw_msg_id",
+		Sender:      bridgev2.EventSender{},
+		Timestamp:   ts,
+		StreamOrder: 11,
+	})
 	if first.GetStreamOrder() != 10 {
 		t.Fatalf("expected first stream order 10, got %d", first.GetStreamOrder())
 	}

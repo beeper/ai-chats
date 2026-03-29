@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/bridges/opencode/api"
@@ -80,10 +79,14 @@ func (b *Bridge) ensureOpenCodeSessionPortalWithRoom(ctx context.Context, inst *
 	}
 	meta.Title = title
 
-	portal.RoomType = database.RoomTypeDM
-	portal.OtherUserID = OpenCodeUserID(inst.cfg.ID)
-	portal.Name = title
-	portal.NameSet = true
+	if err := agentremote.ConfigureDMPortal(ctx, agentremote.ConfigureDMPortalParams{
+		Portal:      portal,
+		Title:       title,
+		OtherUserID: OpenCodeUserID(inst.cfg.ID),
+		Save:        false,
+	}); err != nil {
+		return err
+	}
 	b.host.SetPortalMeta(portal, meta)
 
 	chatInfo := b.composeOpenCodeChatInfo(title, inst.cfg.ID)
@@ -222,10 +225,14 @@ func (b *Bridge) createManagedLauncherChat(ctx context.Context, login *bridgev2.
 		AgentID:        b.host.DefaultAgentID(),
 	}
 
-	portal.RoomType = database.RoomTypeDM
-	portal.OtherUserID = OpenCodeUserID(instanceID)
-	portal.Name = displayTitle
-	portal.NameSet = true
+	if err := agentremote.ConfigureDMPortal(ctx, agentremote.ConfigureDMPortalParams{
+		Portal:      portal,
+		Title:       displayTitle,
+		OtherUserID: OpenCodeUserID(instanceID),
+		Save:        false,
+	}); err != nil {
+		return nil, err
+	}
 	b.host.SetPortalMeta(portal, meta)
 
 	chatInfo := b.composeOpenCodeChatInfo(displayTitle, instanceID)
