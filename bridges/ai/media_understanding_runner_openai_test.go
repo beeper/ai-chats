@@ -26,8 +26,10 @@ func TestResolveMediaProviderAPIKeyOpenAIMagicProxyUsesLoginToken(t *testing.T) 
 
 	meta := &UserLoginMetadata{
 		Provider: ProviderMagicProxy,
-		APIKey:   "tok",
-		BaseURL:  "https://bai.bt.hn/team/proxy",
+		Credentials: &LoginCredentials{
+			APIKey:  "tok",
+			BaseURL: "https://bai.bt.hn/team/proxy",
+		},
 	}
 	client := newMediaTestClient(meta, &OpenAIConnector{})
 
@@ -39,8 +41,10 @@ func TestResolveMediaProviderAPIKeyOpenAIMagicProxyUsesLoginToken(t *testing.T) 
 func TestResolveOpenAIMediaBaseURLMagicProxyUsesOpenAIServicePath(t *testing.T) {
 	meta := &UserLoginMetadata{
 		Provider: ProviderMagicProxy,
-		APIKey:   "tok",
-		BaseURL:  "https://bai.bt.hn/team/proxy",
+		Credentials: &LoginCredentials{
+			APIKey:  "tok",
+			BaseURL: "https://bai.bt.hn/team/proxy",
+		},
 	}
 	client := newMediaTestClient(meta, &OpenAIConnector{})
 

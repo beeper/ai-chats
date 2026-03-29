@@ -3,7 +3,6 @@ package ai
 import (
 	"context"
 
-	"github.com/openai/openai-go/v3"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
@@ -103,8 +102,7 @@ func (oc *AIClient) prepareStreamingRun(
 	evt *event.Event,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
-	messages []openai.ChatCompletionMessageParamUnion,
-) (prep streamingRunPrep, pruned []openai.ChatCompletionMessageParamUnion, cleanup func()) {
+) (prep streamingRunPrep, cleanup func()) {
 	var sourceEventID id.EventID
 	senderID := ""
 	if evt != nil {
@@ -176,13 +174,11 @@ func (oc *AIClient) prepareStreamingRun(
 		}
 	}
 
-	pruned = messages
-
 	prep = streamingRunPrep{
 		State:         state,
 		TypingSignals: typingSignals,
 		TouchTyping:   touchTyping,
 		IsHeartbeat:   isHeartbeat,
 	}
-	return prep, pruned, cleanup
+	return prep, cleanup
 }

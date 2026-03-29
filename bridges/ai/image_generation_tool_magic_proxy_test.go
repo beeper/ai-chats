@@ -5,8 +5,10 @@ import "testing"
 func TestResolveImageGenProviderMagicProxyPrefersOpenRouterForSimplePrompts(t *testing.T) {
 	meta := &UserLoginMetadata{
 		Provider: ProviderMagicProxy,
-		APIKey:   "tok",
-		BaseURL:  "https://bai.bt.hn/team/proxy",
+		Credentials: &LoginCredentials{
+			APIKey:  "tok",
+			BaseURL: "https://bai.bt.hn/team/proxy",
+		},
 	}
 	btc := newTTSTestBridgeContext(meta, &OpenAIConnector{})
 
@@ -25,8 +27,10 @@ func TestResolveImageGenProviderMagicProxyPrefersOpenRouterForSimplePrompts(t *t
 func TestResolveImageGenProviderMagicProxyStillPrefersOpenRouterWhenCountIsGreaterThanOne(t *testing.T) {
 	meta := &UserLoginMetadata{
 		Provider: ProviderMagicProxy,
-		APIKey:   "tok",
-		BaseURL:  "https://bai.bt.hn/team/proxy",
+		Credentials: &LoginCredentials{
+			APIKey:  "tok",
+			BaseURL: "https://bai.bt.hn/team/proxy",
+		},
 	}
 	btc := newTTSTestBridgeContext(meta, &OpenAIConnector{})
 
@@ -45,8 +49,10 @@ func TestResolveImageGenProviderMagicProxyStillPrefersOpenRouterWhenCountIsGreat
 func TestResolveImageGenProviderMagicProxyProviderOpenAIStillRoutesToOpenRouter(t *testing.T) {
 	meta := &UserLoginMetadata{
 		Provider: ProviderMagicProxy,
-		APIKey:   "tok",
-		BaseURL:  "https://bai.bt.hn/team/proxy",
+		Credentials: &LoginCredentials{
+			APIKey:  "tok",
+			BaseURL: "https://bai.bt.hn/team/proxy",
+		},
 	}
 	btc := newTTSTestBridgeContext(meta, &OpenAIConnector{})
 
@@ -66,8 +72,10 @@ func TestResolveImageGenProviderMagicProxyProviderOpenAIStillRoutesToOpenRouter(
 func TestResolveImageGenProviderMagicProxyProviderGeminiUsesGemini(t *testing.T) {
 	meta := &UserLoginMetadata{
 		Provider: ProviderMagicProxy,
-		APIKey:   "tok",
-		BaseURL:  "https://bai.bt.hn/team/proxy",
+		Credentials: &LoginCredentials{
+			APIKey:  "tok",
+			BaseURL: "https://bai.bt.hn/team/proxy",
+		},
 	}
 	btc := newTTSTestBridgeContext(meta, &OpenAIConnector{})
 
@@ -87,8 +95,10 @@ func TestResolveImageGenProviderMagicProxyProviderGeminiUsesGemini(t *testing.T)
 func TestBuildOpenAIImagesBaseURLMagicProxy(t *testing.T) {
 	meta := &UserLoginMetadata{
 		Provider: ProviderMagicProxy,
-		APIKey:   "tok",
-		BaseURL:  "https://bai.bt.hn/team/proxy",
+		Credentials: &LoginCredentials{
+			APIKey:  "tok",
+			BaseURL: "https://bai.bt.hn/team/proxy",
+		},
 	}
 	btc := newTTSTestBridgeContext(meta, &OpenAIConnector{})
 
@@ -104,8 +114,10 @@ func TestBuildOpenAIImagesBaseURLMagicProxy(t *testing.T) {
 func TestBuildGeminiBaseURLMagicProxy(t *testing.T) {
 	meta := &UserLoginMetadata{
 		Provider: ProviderMagicProxy,
-		APIKey:   "tok",
-		BaseURL:  "https://bai.bt.hn/team/proxy",
+		Credentials: &LoginCredentials{
+			APIKey:  "tok",
+			BaseURL: "https://bai.bt.hn/team/proxy",
+		},
 	}
 	btc := newTTSTestBridgeContext(meta, &OpenAIConnector{})
 

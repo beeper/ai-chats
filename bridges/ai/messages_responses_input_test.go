@@ -7,7 +7,7 @@ import (
 )
 
 func TestPromptContextToResponsesInput_MultimodalUser(t *testing.T) {
-	input := PromptContextToResponsesInput(UserPromptContext(
+	input := promptContextToResponsesInput(UserPromptContext(
 		PromptBlock{Type: PromptBlockText, Text: "hello"},
 		PromptBlock{Type: PromptBlockImage, ImageB64: "aGVsbG8=", MimeType: "image/png"},
 	))

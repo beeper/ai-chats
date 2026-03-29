@@ -1361,7 +1361,7 @@ func resolveOpenAITTSBaseURL(btc *BridgeToolContext, providerBaseURL string) (st
 				}
 			}
 		}
-		if root := normalizeProxyBaseURL(meta.BaseURL); root != "" {
+		if root := normalizeProxyBaseURL(loginCredentialBaseURL(meta)); root != "" {
 			return joinProxyPath(root, "/openai/v1"), true
 		}
 

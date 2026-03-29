@@ -10,7 +10,9 @@ func TestImplicitModelCatalogEntries_MagicProxySeedsCatalog(t *testing.T) {
 	// Magic Proxy logins store the API key on the login metadata.
 	meta := &UserLoginMetadata{
 		Provider: ProviderMagicProxy,
-		APIKey:   "mp-token",
+		Credentials: &LoginCredentials{
+			APIKey: "mp-token",
+		},
 	}
 
 	entries := oc.implicitModelCatalogEntries(meta)

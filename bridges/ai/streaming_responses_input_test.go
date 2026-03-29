@@ -14,7 +14,7 @@ func TestConvertToResponsesInput_RolesAndToolOutput(t *testing.T) {
 		openai.ToolMessage("tool output", "call_123"),
 	}
 
-	input := PromptContextToResponsesInput(ChatMessagesToPromptContext(messages))
+	input := promptContextToResponsesInput(chatMessagesToPromptContext(messages))
 	if len(input) != 2 {
 		t.Fatalf("expected 2 input items, got %d", len(input))
 	}
@@ -53,7 +53,7 @@ func TestConvertToResponsesInput_AssistantToolCalls(t *testing.T) {
 		},
 	}}
 
-	input := PromptContextToResponsesInput(ChatMessagesToPromptContext(messages))
+	input := promptContextToResponsesInput(chatMessagesToPromptContext(messages))
 	if len(input) != 2 {
 		t.Fatalf("expected 2 input items, got %d", len(input))
 	}

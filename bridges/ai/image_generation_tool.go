@@ -232,7 +232,7 @@ func supportsOpenAIImageGen(btc *BridgeToolContext) bool {
 	case ProviderOpenAI, ProviderMagicProxy:
 		if loginMeta.Provider == ProviderMagicProxy {
 			// Magic Proxy uses a per-login token+base URL, not the OpenAI config key.
-			return strings.TrimSpace(loginMeta.APIKey) != "" && strings.TrimSpace(loginMeta.BaseURL) != ""
+			return loginCredentialAPIKey(loginMeta) != "" && loginCredentialBaseURL(loginMeta) != ""
 		}
 		return btc.Client.connector.resolveOpenAIAPIKey(loginMeta) != ""
 	default:
@@ -261,8 +261,8 @@ func supportsGeminiImageGen(btc *BridgeToolContext) bool {
 				return strings.TrimSpace(svc.BaseURL) != "" && strings.TrimSpace(svc.APIKey) != ""
 			}
 		}
-		base := normalizeProxyBaseURL(loginMeta.BaseURL)
-		return base != "" && strings.TrimSpace(loginMeta.APIKey) != ""
+		base := normalizeProxyBaseURL(loginCredentialBaseURL(loginMeta))
+		return base != "" && loginCredentialAPIKey(loginMeta) != ""
 	default:
 		return false
 	}
@@ -456,7 +456,7 @@ func buildOpenAIImagesBaseURL(btc *BridgeToolContext) (string, error) {
 				return strings.TrimSuffix(strings.TrimSpace(svc.BaseURL), "/"), nil
 			}
 		}
-		base := normalizeProxyBaseURL(loginMeta.BaseURL)
+		base := normalizeProxyBaseURL(loginCredentialBaseURL(loginMeta))
 		if base == "" {
 			return "", errors.New("magic proxy base_url is required for image generation")
 		}
@@ -482,7 +482,7 @@ func buildGeminiBaseURL(btc *BridgeToolContext) (string, error) {
 				return strings.TrimSuffix(strings.TrimSpace(svc.BaseURL), "/"), nil
 			}
 		}
-		base := normalizeProxyBaseURL(loginMeta.BaseURL)
+		base := normalizeProxyBaseURL(loginCredentialBaseURL(loginMeta))
 		if base == "" {
 			return "", errors.New("magic proxy base_url is required for image generation")
 		}
@@ -592,8 +592,8 @@ func resolveOpenRouterImageGenEndpoint(btc *BridgeToolContext) (baseURL string, 
 	// Provider-specific per-login endpoints.
 	switch meta.Provider {
 	case ProviderMagicProxy:
-		base := normalizeProxyBaseURL(meta.BaseURL)
-		key := trim(meta.APIKey)
+		base := normalizeProxyBaseURL(loginCredentialBaseURL(meta))
+		key := trim(loginCredentialAPIKey(meta))
 		if base == "" || key == "" {
 			return "", "", false
 		}

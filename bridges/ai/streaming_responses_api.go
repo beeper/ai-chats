@@ -37,7 +37,7 @@ func (a *responsesTurnAdapter) TrackRoomRunStreaming() bool {
 
 func (a *responsesTurnAdapter) startInitialRound(ctx context.Context) (*ssestream.Stream[responses.ResponseStreamEventUnion], error) {
 	if !a.initialized {
-		input := PromptContextToResponsesInput(a.prompt)
+		input := promptContextToResponsesInput(a.prompt)
 		a.params = a.oc.buildResponsesAgentLoopParams(ctx, a.meta, a.prompt.SystemPrompt, input, false)
 		if len(a.params.Tools) > 0 {
 			zerolog.Ctx(ctx).Debug().Int("count", len(a.params.Tools)).Msg("Added streaming turn tools")
@@ -45,15 +45,11 @@ func (a *responsesTurnAdapter) startInitialRound(ctx context.Context) (*ssestrea
 		if a.oc.isOpenRouterProvider() {
 			ctx = WithPDFEngine(ctx, a.oc.effectivePDFEngine(a.meta))
 		}
-		a.state.baseSystemPrompt = a.prompt.SystemPrompt
 		a.initialized = true
 	}
 	stream := a.oc.api.Responses.NewStreaming(ctx, a.params)
 	if stream == nil {
 		return nil, errors.New("responses streaming not available")
-	}
-	if a.params.Input.OfInputItemList != nil {
-		a.state.baseInput = a.params.Input.OfInputItemList
 	}
 	return stream, nil
 }
@@ -89,10 +85,7 @@ func (a *responsesTurnAdapter) startContinuationRound(ctx context.Context) (*sse
 		approvalInputs = append(approvalInputs, item)
 	}
 
-	continuationParams := a.oc.buildContinuationParams(ctx, state, a.meta, pendingOutputs, approvalInputs)
-	if continuationInput := continuationParams.Input.OfInputItemList; continuationInput != nil {
-		state.baseInput = slices.Clone(continuationInput)
-	}
+	continuationParams := a.oc.buildContinuationParams(ctx, &a.prompt, state, a.meta, pendingOutputs, approvalInputs)
 
 	state.needsTextSeparator = true
 	stream := a.oc.api.Responses.NewStreaming(ctx, continuationParams)
@@ -120,7 +113,7 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 		stream, err = a.startInitialRound(ctx)
 		params = a.params
 		if err != nil {
-			logResponsesFailure(a.log, err, params, a.meta, PromptContextToChatCompletionMessages(a.prompt, a.oc.isOpenRouterProvider()), "stream_init")
+			logResponsesFailure(a.log, err, params, a.meta, a.prompt, "stream_init")
 			return false, nil, &PreDeltaError{Err: err}
 		}
 	} else {
@@ -135,14 +128,14 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 		a.log.Debug().
 			Int("pending_outputs", len(state.pendingFunctionOutputs)).
 			Int("pending_approvals", len(state.pendingMcpApprovals)).
-			Int("base_input_items", len(state.baseInput)).
+			Int("prompt_messages", len(a.prompt.Messages)).
 			Msg("Continuing stateless response with pending tool actions")
 		stream, params, err = a.startContinuationRound(ctx)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return false, nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, state, a.meta, "cancelled", err)
 			}
-			logResponsesFailure(a.log, err, params, a.meta, PromptContextToChatCompletionMessages(a.prompt, a.oc.isOpenRouterProvider()), "continuation_init")
+			logResponsesFailure(a.log, err, params, a.meta, a.prompt, "continuation_init")
 			return false, nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, state, a.meta, "error", err)
 		}
 	}
@@ -158,7 +151,7 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 				if round > 0 {
 					stage = "continuation_event_error"
 				}
-				logResponsesFailure(a.log, evtErr, params, a.meta, PromptContextToChatCompletionMessages(a.prompt, a.oc.isOpenRouterProvider()), stage)
+				logResponsesFailure(a.log, evtErr, params, a.meta, a.prompt, stage)
 			}
 			return done, cle, evtErr
 		},
@@ -167,7 +160,7 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 			if round > 0 {
 				stage = "continuation_err"
 			}
-			logResponsesFailure(a.log, stepErr, params, a.meta, PromptContextToChatCompletionMessages(a.prompt, a.oc.isOpenRouterProvider()), stage)
+			logResponsesFailure(a.log, stepErr, params, a.meta, a.prompt, stage)
 			return a.oc.handleResponsesStreamErr(ctx, a.portal, state, a.meta, stepErr, round == 0)
 		},
 	)
@@ -190,7 +183,6 @@ func (a *responsesTurnAdapter) ContinueAgentLoop(messages []PromptMessage) {
 		return
 	}
 	a.prompt.Messages = append(a.prompt.Messages, messages...)
-	a.state.baseInput = append(a.state.baseInput, PromptContextToResponsesInput(PromptContext{Messages: messages})...)
 	a.hasFollowUp = true
 }
 

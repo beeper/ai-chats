@@ -619,8 +619,8 @@ func (oc *AIClient) applyCompactionModelSummaryAndRefresh(
 	decision airuntime.CompactionDecision,
 	contextWindowTokens int,
 ) PromptContext {
-	originalMessages := PromptContextToChatCompletionMessages(originalPrompt, false)
-	compactedMessages := PromptContextToChatCompletionMessages(compactedPrompt, false)
+	originalMessages := promptContextToChatCompletionMessages(originalPrompt, false)
+	compactedMessages := promptContextToChatCompletionMessages(compactedPrompt, false)
 	out := compactedMessages
 	if oc.pruningSummarizationEnabled() {
 		dropped := selectDroppedCompactionMessages(originalMessages, compactedMessages, decision.DroppedCount)
@@ -655,5 +655,5 @@ func (oc *AIClient) applyCompactionModelSummaryAndRefresh(
 	if refresh := strings.TrimSpace(oc.pruningPostCompactionRefreshPrompt()); refresh != "" {
 		out = injectSystemPromptAtFirstNonSystem(out, refresh)
 	}
-	return ChatMessagesToPromptContext(out)
+	return chatMessagesToPromptContext(out)
 }

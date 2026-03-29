@@ -541,11 +541,15 @@ func resolveNamedMCPServer(client *AIClient, name string) (namedMCPServer, error
 }
 
 func ensureLoginMCPServer(meta *UserLoginMetadata) {
-	if meta.ServiceTokens == nil {
-		meta.ServiceTokens = &ServiceTokens{}
+	creds := ensureLoginCredentials(meta)
+	if creds == nil {
+		return
 	}
-	if meta.ServiceTokens.MCPServers == nil {
-		meta.ServiceTokens.MCPServers = map[string]MCPServerConfig{}
+	if creds.ServiceTokens == nil {
+		creds.ServiceTokens = &ServiceTokens{}
+	}
+	if creds.ServiceTokens.MCPServers == nil {
+		creds.ServiceTokens.MCPServers = map[string]MCPServerConfig{}
 	}
 }
 
@@ -584,7 +588,12 @@ func (api *ProvisioningAPI) handleCreateMCPServer(w http.ResponseWriter, r *http
 	}
 	meta := loginMetadata(login)
 	ensureLoginMCPServer(meta)
-	if _, exists := meta.ServiceTokens.MCPServers[name]; exists {
+	tokens := loginCredentialServiceTokens(meta)
+	if tokens == nil {
+		mautrix.MUnknown.WithMessage("Couldn't load MCP servers for this login.").Write(w)
+		return
+	}
+	if _, exists := tokens.MCPServers[name]; exists {
 		mautrix.MInvalidParam.WithMessage("MCP server %s already exists.", name).Write(w)
 		return
 	}

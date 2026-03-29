@@ -22,7 +22,7 @@ func (o *OpenAIProvider) buildResponsesParams(params GenerateParams) responses.R
 	responsesParams := responses.ResponseNewParams{
 		Model: params.Model,
 		Input: responses.ResponseNewParamsInputUnion{
-			OfInputItemList: PromptContextToResponsesInput(params.Context),
+			OfInputItemList: promptContextToResponsesInput(params.Context),
 		},
 	}
 
@@ -58,7 +58,7 @@ func (o *OpenAIProvider) buildResponsesParams(params GenerateParams) responses.R
 
 // GenerateStream generates a streaming response from OpenAI using the Responses API.
 func (o *OpenAIProvider) GenerateStream(ctx context.Context, params GenerateParams) (<-chan StreamEvent, error) {
-	if HasUnsupportedResponsesPromptContext(params.Context) {
+	if hasUnsupportedResponsesPromptContext(params.Context) {
 		return nil, fmt.Errorf("responses API does not support prompt context block types required by this request")
 	}
 
@@ -148,7 +148,7 @@ func (o *OpenAIProvider) GenerateStream(ctx context.Context, params GeneratePara
 
 // Generate performs a non-streaming generation using the Responses API.
 func (o *OpenAIProvider) Generate(ctx context.Context, params GenerateParams) (*GenerateResponse, error) {
-	if HasUnsupportedResponsesPromptContext(params.Context) {
+	if hasUnsupportedResponsesPromptContext(params.Context) {
 		return nil, fmt.Errorf("responses API does not support prompt context block types required by this request")
 	}
 

@@ -34,13 +34,13 @@ func aiClientNeedsRebuild(existing *AIClient, key string, meta *UserLoginMetadat
 	existingBaseURL := ""
 	if existingMeta != nil {
 		existingProvider = strings.TrimSpace(existingMeta.Provider)
-		existingBaseURL = stringutil.NormalizeBaseURL(existingMeta.BaseURL)
+		existingBaseURL = stringutil.NormalizeBaseURL(loginCredentialBaseURL(existingMeta))
 	}
 	targetProvider := ""
 	targetBaseURL := ""
 	if meta != nil {
 		targetProvider = strings.TrimSpace(meta.Provider)
-		targetBaseURL = stringutil.NormalizeBaseURL(meta.BaseURL)
+		targetBaseURL = stringutil.NormalizeBaseURL(loginCredentialBaseURL(meta))
 	}
 	return existing.apiKey != key ||
 		!strings.EqualFold(existingProvider, targetProvider) ||

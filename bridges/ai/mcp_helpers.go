@@ -66,24 +66,32 @@ func (oc *AIClient) verifyMCPServerConnection(ctx context.Context, server namedM
 }
 
 func setLoginMCPServer(meta *UserLoginMetadata, name string, cfg MCPServerConfig) {
-	if meta.ServiceTokens == nil {
-		meta.ServiceTokens = &ServiceTokens{}
+	creds := ensureLoginCredentials(meta)
+	if creds == nil {
+		return
 	}
-	if meta.ServiceTokens.MCPServers == nil {
-		meta.ServiceTokens.MCPServers = map[string]MCPServerConfig{}
+	if creds.ServiceTokens == nil {
+		creds.ServiceTokens = &ServiceTokens{}
 	}
-	meta.ServiceTokens.MCPServers[name] = normalizeMCPServerConfig(cfg)
+	if creds.ServiceTokens.MCPServers == nil {
+		creds.ServiceTokens.MCPServers = map[string]MCPServerConfig{}
+	}
+	creds.ServiceTokens.MCPServers[name] = normalizeMCPServerConfig(cfg)
 }
 
 func clearLoginMCPServer(meta *UserLoginMetadata, name string) {
-	if meta == nil || meta.ServiceTokens == nil || meta.ServiceTokens.MCPServers == nil {
+	creds := loginCredentials(meta)
+	if creds == nil || creds.ServiceTokens == nil || creds.ServiceTokens.MCPServers == nil {
 		return
 	}
-	delete(meta.ServiceTokens.MCPServers, name)
-	if len(meta.ServiceTokens.MCPServers) == 0 {
-		meta.ServiceTokens.MCPServers = nil
+	delete(creds.ServiceTokens.MCPServers, name)
+	if len(creds.ServiceTokens.MCPServers) == 0 {
+		creds.ServiceTokens.MCPServers = nil
 	}
-	if serviceTokensEmpty(meta.ServiceTokens) {
-		meta.ServiceTokens = nil
+	if serviceTokensEmpty(creds.ServiceTokens) {
+		creds.ServiceTokens = nil
+	}
+	if loginCredentialsEmpty(creds) {
+		meta.Credentials = nil
 	}
 }

@@ -25,7 +25,9 @@ func newTTSTestBridgeContext(meta *UserLoginMetadata, oc *OpenAIConnector) *Brid
 func TestResolveOpenAITTSBaseURLMagicProxy(t *testing.T) {
 	meta := &UserLoginMetadata{
 		Provider: ProviderMagicProxy,
-		BaseURL:  "https://bai.bt.hn/team/proxy",
+		Credentials: &LoginCredentials{
+			BaseURL: "https://bai.bt.hn/team/proxy",
+		},
 	}
 	btc := newTTSTestBridgeContext(meta, &OpenAIConnector{})
 
@@ -42,7 +44,9 @@ func TestResolveOpenAITTSBaseURLMagicProxy(t *testing.T) {
 func TestResolveOpenAITTSBaseURLMagicProxyWithoutConnector(t *testing.T) {
 	meta := &UserLoginMetadata{
 		Provider: ProviderMagicProxy,
-		BaseURL:  "https://bai.bt.hn/team/proxy/openrouter/v1",
+		Credentials: &LoginCredentials{
+			BaseURL: "https://bai.bt.hn/team/proxy/openrouter/v1",
+		},
 	}
 	btc := newTTSTestBridgeContext(meta, nil)
 

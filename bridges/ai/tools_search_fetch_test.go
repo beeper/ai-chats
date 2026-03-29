@@ -10,8 +10,10 @@ func TestApplyLoginTokensToSearchConfig_MagicProxyForcesExa(t *testing.T) {
 	oc := &OpenAIConnector{}
 	meta := &UserLoginMetadata{
 		Provider: ProviderMagicProxy,
-		APIKey:   "magic-token",
-		BaseURL:  "https://bai.bt.hn/team/proxy",
+		Credentials: &LoginCredentials{
+			APIKey:  "magic-token",
+			BaseURL: "https://bai.bt.hn/team/proxy",
+		},
 	}
 	cfg := &search.Config{
 		Provider:  search.ProviderExa,
@@ -60,7 +62,9 @@ func TestApplyLoginTokensToSearchConfig_DefaultExaEndpointDoesNotForceExa(t *tes
 	oc := &OpenAIConnector{}
 	meta := &UserLoginMetadata{
 		Provider: ProviderOpenRouter,
-		APIKey:   "openrouter-token",
+		Credentials: &LoginCredentials{
+			APIKey: "openrouter-token",
+		},
 	}
 	cfg := &search.Config{
 		Provider:  search.ProviderExa,

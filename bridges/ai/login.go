@@ -220,11 +220,14 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 		meta = &UserLoginMetadata{}
 	}
 	meta.Provider = provider
-	meta.APIKey = apiKey
-	meta.BaseURL = baseURL
-	if serviceTokens != nil && !serviceTokensEmpty(serviceTokens) {
-		meta.ServiceTokens = mergeServiceTokens(meta.ServiceTokens, serviceTokens)
+	creds := &LoginCredentials{
+		APIKey:  apiKey,
+		BaseURL: baseURL,
 	}
+	if serviceTokens != nil && !serviceTokensEmpty(serviceTokens) {
+		creds.ServiceTokens = serviceTokens
+	}
+	meta.Credentials = mergeLoginCredentials(meta.Credentials, creds)
 	if err := ol.validateLoginMetadata(ctx, loginID, meta); err != nil {
 		return nil, err
 	}
@@ -329,40 +332,6 @@ func (ol *OpenAILogin) validateLoginMetadata(ctx context.Context, loginID networ
 		return errors.New("invalid API key: authentication failed")
 	}
 	return nil
-}
-
-func serviceTokensEmpty(tokens *ServiceTokens) bool {
-	if tokens == nil {
-		return true
-	}
-	if len(tokens.DesktopAPIInstances) > 0 {
-		for _, instance := range tokens.DesktopAPIInstances {
-			if strings.TrimSpace(instance.Token) != "" || strings.TrimSpace(instance.BaseURL) != "" {
-				return false
-			}
-		}
-	}
-	if len(tokens.MCPServers) > 0 {
-		for _, server := range tokens.MCPServers {
-			if strings.TrimSpace(server.Transport) != "" ||
-				strings.TrimSpace(server.Endpoint) != "" ||
-				strings.TrimSpace(server.Command) != "" ||
-				len(server.Args) > 0 ||
-				strings.TrimSpace(server.Token) != "" ||
-				strings.TrimSpace(server.AuthURL) != "" ||
-				strings.TrimSpace(server.AuthType) != "" ||
-				strings.TrimSpace(server.Kind) != "" ||
-				server.Connected {
-				return false
-			}
-		}
-	}
-	return strings.TrimSpace(tokens.OpenAI) == "" &&
-		strings.TrimSpace(tokens.OpenRouter) == "" &&
-		strings.TrimSpace(tokens.Exa) == "" &&
-		strings.TrimSpace(tokens.Brave) == "" &&
-		strings.TrimSpace(tokens.Perplexity) == "" &&
-		strings.TrimSpace(tokens.DesktopAPI) == ""
 }
 
 func (ol *OpenAILogin) resolveCustomLogin(input map[string]string) (string, string, *ServiceTokens, error) {

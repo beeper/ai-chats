@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/openai/openai-go/v3"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -29,13 +28,12 @@ func TestPrepareStreamingRun_ModelRoomKeepsReplyTarget(t *testing.T) {
 		},
 	}
 
-	prep, _, cleanup := oc.prepareStreamingRun(
+	prep, cleanup := oc.prepareStreamingRun(
 		context.Background(),
 		zerolog.Nop(),
 		evt,
 		nil,
 		meta,
-		[]openai.ChatCompletionMessageParamUnion{},
 	)
 	defer cleanup()
 
@@ -64,13 +62,12 @@ func TestPrepareStreamingRun_AgentRoomKeepsReplyTarget(t *testing.T) {
 		},
 	}
 
-	prep, _, cleanup := oc.prepareStreamingRun(
+	prep, cleanup := oc.prepareStreamingRun(
 		context.Background(),
 		zerolog.Nop(),
 		evt,
 		nil,
 		meta,
-		[]openai.ChatCompletionMessageParamUnion{},
 	)
 	defer cleanup()
 
@@ -94,13 +91,12 @@ func TestPrepareStreamingRun_SnapshotsResponderFields(t *testing.T) {
 	}
 	meta := modelModeTestMeta("openai/gpt-5.2")
 
-	prep, _, cleanup := oc.prepareStreamingRun(
+	prep, cleanup := oc.prepareStreamingRun(
 		context.Background(),
 		zerolog.Nop(),
 		nil,
 		nil,
 		meta,
-		[]openai.ChatCompletionMessageParamUnion{},
 	)
 	defer cleanup()
 

@@ -11,17 +11,18 @@ import (
 // and/or after responding to tool approval requests.
 func (oc *AIClient) buildContinuationParams(
 	ctx context.Context,
+	prompt *PromptContext,
 	state *streamingState,
 	meta *PortalMetadata,
 	pendingOutputs []functionCallOutput,
 	approvalInputs []responses.ResponseInputItemUnionParam,
 ) responses.ResponseNewParams {
-	// Build function call outputs as input
-	var input responses.ResponseInputParam
-	if len(state.baseInput) > 0 {
-		// All Responses continuations are stateless: include the accumulated local history.
-		input = append(input, state.baseInput...)
+	currentPrompt := PromptContext{}
+	if prompt != nil {
+		currentPrompt = ClonePromptContext(*prompt)
 	}
+	var input responses.ResponseInputParam
+	input = append(input, promptContextToResponsesInput(currentPrompt)...)
 	input = append(input, approvalInputs...)
 	for _, output := range pendingOutputs {
 		if output.name != "" {
@@ -38,13 +39,20 @@ func (oc *AIClient) buildContinuationParams(
 		steerPrompts = oc.getSteeringMessages(state.roomID)
 	}
 	if len(steerPrompts) > 0 {
+		steeringMessages := buildSteeringPromptMessages(steerPrompts)
+		if prompt != nil && len(steeringMessages) > 0 {
+			prompt.Messages = append(prompt.Messages, steeringMessages...)
+		}
 		steerInput := oc.buildSteeringInputItems(steerPrompts, meta)
 		if len(steerInput) > 0 {
 			input = append(input, steerInput...)
-			state.baseInput = append(state.baseInput, steerInput...)
 		}
 	}
-	return oc.buildResponsesAgentLoopParams(ctx, meta, state.baseSystemPrompt, input, true)
+	systemPrompt := ""
+	if prompt != nil {
+		systemPrompt = prompt.SystemPrompt
+	}
+	return oc.buildResponsesAgentLoopParams(ctx, meta, systemPrompt, input, true)
 }
 
 func (oc *AIClient) buildSteeringInputItems(prompts []string, meta *PortalMetadata) responses.ResponseInputParam {
@@ -57,7 +65,7 @@ func (oc *AIClient) buildSteeringInputItems(prompts []string, meta *PortalMetada
 		if prompt == "" {
 			continue
 		}
-		input = append(input, PromptContextToResponsesInput(UserPromptContext(
+		input = append(input, promptContextToResponsesInput(UserPromptContext(
 			PromptBlock{Type: PromptBlockText, Text: prompt},
 		))...)
 	}

@@ -39,8 +39,10 @@ func TestResolveServiceConfigMagicProxyUsesJoinedPaths(t *testing.T) {
 	oc := &OpenAIConnector{}
 	meta := &UserLoginMetadata{
 		Provider: ProviderMagicProxy,
-		APIKey:   "tok",
-		BaseURL:  "https://bai.bt.hn/team/proxy",
+		Credentials: &LoginCredentials{
+			APIKey:  "tok",
+			BaseURL: "https://bai.bt.hn/team/proxy",
+		},
 	}
 
 	services := oc.resolveServiceConfig(meta)
@@ -63,8 +65,10 @@ func TestResolveServiceConfigMagicProxyNoDuplicateOpenRouterPath(t *testing.T) {
 	oc := &OpenAIConnector{}
 	meta := &UserLoginMetadata{
 		Provider: ProviderMagicProxy,
-		APIKey:   "tok",
-		BaseURL:  "https://bai.bt.hn/team/proxy/openrouter/v1",
+		Credentials: &LoginCredentials{
+			APIKey:  "tok",
+			BaseURL: "https://bai.bt.hn/team/proxy/openrouter/v1",
+		},
 	}
 
 	services := oc.resolveServiceConfig(meta)
@@ -87,7 +91,9 @@ func TestResolveExaProxyBaseURLMagicProxyPrefersLoginBase(t *testing.T) {
 	}
 	meta := &UserLoginMetadata{
 		Provider: ProviderMagicProxy,
-		BaseURL:  "https://ai.bt.hn/",
+		Credentials: &LoginCredentials{
+			BaseURL: "https://ai.bt.hn/",
+		},
 	}
 	if got := oc.resolveExaProxyBaseURL(meta); got != "https://ai.bt.hn/exa" {
 		t.Fatalf("unexpected exa proxy base: %q", got)

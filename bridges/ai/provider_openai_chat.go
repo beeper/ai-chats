@@ -9,7 +9,7 @@ import (
 )
 
 func (o *OpenAIProvider) generateChatCompletions(ctx context.Context, params GenerateParams) (*GenerateResponse, error) {
-	chatMessages := PromptContextToChatCompletionMessages(params.Context, isOpenRouterBaseURL(o.baseURL))
+	chatMessages := promptContextToChatCompletionMessages(params.Context, isOpenRouterBaseURL(o.baseURL))
 	if len(chatMessages) == 0 {
 		return nil, errors.New("no chat messages for completion")
 	}

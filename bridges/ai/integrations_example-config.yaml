@@ -124,28 +124,6 @@ tools:
       models:
         - provider: "openrouter"
           model: "google/gemini-3-flash-preview"
-  chunking:
-    tokens: 400
-    overlap: 80
-  sync:
-    on_session_start: true
-    on_search: true
-    watch: true
-    watch_debounce_ms: 1500
-    interval_minutes: 0
-    sessions:
-      delta_bytes: 100000
-      delta_messages: 50
-  query:
-    max_results: 6
-    min_score: 0.35
-    hybrid:
-      candidate_multiplier: 4
-  cache:
-    enabled: true
-    max_entries: -1
-  experimental:
-    session_memory: false
 
 agents:
   defaults:
@@ -190,4 +168,3 @@ agents:
         soft_threshold_tokens: 4000
         prompt: "Pre-compaction overflow flush. Persist any durable notes now if your tools support it. If nothing to store, reply with NO_REPLY."
         system_prompt: "Pre-compaction overflow flush turn. The session is near auto-compaction; persist durable notes if possible. You may reply, but usually NO_REPLY is correct."
-

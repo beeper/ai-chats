@@ -340,7 +340,7 @@ func (oc *AIClient) runCompactionFlushHook(
 		Client:          oc,
 		Portal:          portal,
 		Meta:            meta,
-		Prompt:          PromptContextToChatCompletionMessages(prompt, false),
+		Prompt:          promptContextToChatCompletionMessages(prompt, false),
 		RequestedTokens: cle.RequestedTokens,
 		ModelMaxTokens:  cle.ModelMaxTokens,
 		Attempt:         attempt,
@@ -366,7 +366,7 @@ func (oc *AIClient) runAgentLoopWithRetry(
 }
 
 func (oc *AIClient) selectAgentLoopRunFunc(meta *PortalMetadata, promptContext PromptContext) (responseFuncCanonical, string) {
-	if HasUnsupportedResponsesPromptContext(promptContext) {
+	if hasUnsupportedResponsesPromptContext(promptContext) {
 		return oc.runChatCompletionsAgentLoopPrompt, "chat_completions"
 	}
 	modelID := ""
@@ -417,7 +417,7 @@ func (oc *AIClient) runtimeCompactOnOverflow(
 	requestedTokens int,
 	currentPromptTokens int,
 ) (PromptContext, airuntime.CompactionDecision, bool) {
-	serialized := PromptContextToChatCompletionMessages(prompt, false)
+	serialized := promptContextToChatCompletionMessages(prompt, false)
 	result := airuntime.CompactPromptOnOverflow(airuntime.OverflowCompactionInput{
 		Prompt:              serialized,
 		ContextWindowTokens: contextWindowTokens,
@@ -432,7 +432,7 @@ func (oc *AIClient) runtimeCompactOnOverflow(
 		MaxHistoryShare:     oc.pruningMaxHistoryShare(),
 		ProtectedTail:       3,
 	})
-	return ChatMessagesToPromptContext(result.Prompt), result.Decision, result.Success
+	return chatMessagesToPromptContext(result.Prompt), result.Decision, result.Success
 }
 
 func (oc *AIClient) truncateOversizedToolResultsForOverflow(

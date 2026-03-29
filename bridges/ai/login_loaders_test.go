@@ -27,19 +27,19 @@ func testUserLoginWithMeta(loginID networkid.UserLoginID, meta *UserLoginMetadat
 func TestAIClientNeedsRebuild(t *testing.T) {
 	existing := &AIClient{
 		apiKey:    "secret",
-		UserLogin: testUserLoginWithMeta("existing", &UserLoginMetadata{Provider: " OpenAI ", BaseURL: "https://api.example.com/v1/"}),
+		UserLogin: testUserLoginWithMeta("existing", &UserLoginMetadata{Provider: " OpenAI ", Credentials: &LoginCredentials{BaseURL: "https://api.example.com/v1/"}}),
 	}
 
-	if aiClientNeedsRebuild(existing, "secret", &UserLoginMetadata{Provider: "openai", BaseURL: "https://api.example.com/v1"}) {
+	if aiClientNeedsRebuild(existing, "secret", &UserLoginMetadata{Provider: "openai", Credentials: &LoginCredentials{BaseURL: "https://api.example.com/v1"}}) {
 		t.Fatal("expected no rebuild when key/provider/base URL are equivalent")
 	}
-	if !aiClientNeedsRebuild(existing, "other-key", &UserLoginMetadata{Provider: "openai", BaseURL: "https://api.example.com/v1"}) {
+	if !aiClientNeedsRebuild(existing, "other-key", &UserLoginMetadata{Provider: "openai", Credentials: &LoginCredentials{BaseURL: "https://api.example.com/v1"}}) {
 		t.Fatal("expected rebuild when API key changes")
 	}
-	if !aiClientNeedsRebuild(existing, "secret", &UserLoginMetadata{Provider: "openrouter", BaseURL: "https://api.example.com/v1"}) {
+	if !aiClientNeedsRebuild(existing, "secret", &UserLoginMetadata{Provider: "openrouter", Credentials: &LoginCredentials{BaseURL: "https://api.example.com/v1"}}) {
 		t.Fatal("expected rebuild when provider changes")
 	}
-	if !aiClientNeedsRebuild(existing, "secret", &UserLoginMetadata{Provider: "openai", BaseURL: "https://api.other.example.com/v1"}) {
+	if !aiClientNeedsRebuild(existing, "secret", &UserLoginMetadata{Provider: "openai", Credentials: &LoginCredentials{BaseURL: "https://api.other.example.com/v1"}}) {
 		t.Fatal("expected rebuild when base URL changes")
 	}
 	if !aiClientNeedsRebuild(nil, "secret", &UserLoginMetadata{Provider: "openai"}) {

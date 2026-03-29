@@ -74,8 +74,7 @@ func (oc *AIClient) runAgentLoop(
 	prompt PromptContext,
 	newProvider func(prep streamingRunPrep, prompt PromptContext) agentLoopProvider,
 ) (bool, *ContextLengthError, error) {
-	messages := PromptContextToChatCompletionMessages(prompt, oc.isOpenRouterProvider())
-	prep, _, typingCleanup := oc.prepareStreamingRun(ctx, log, evt, portal, meta, messages)
+	prep, typingCleanup := oc.prepareStreamingRun(ctx, log, evt, portal, meta)
 	defer typingCleanup()
 
 	state := prep.State

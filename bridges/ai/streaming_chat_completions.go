@@ -31,7 +31,7 @@ func (a *chatCompletionsTurnAdapter) handleStreamStepError(
 	if cle := ParseContextLengthError(stepErr); cle != nil {
 		return cle, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, a.state, a.meta, "context-length", stepErr)
 	}
-	logChatCompletionsFailure(a.log, stepErr, params, a.meta, currentMessages, "stream_err")
+	logChatCompletionsFailure(a.log, stepErr, params, a.meta, a.prompt, "stream_err")
 	return nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, a.state, a.meta, "error", stepErr)
 }
 
@@ -48,14 +48,14 @@ func (a *chatCompletionsTurnAdapter) RunAgentTurn(
 	typingSignals := a.typingSignals
 	touchTyping := a.touchTyping
 	isHeartbeat := a.isHeartbeat
-	currentMessages := PromptContextToChatCompletionMessages(a.prompt, oc.isOpenRouterProvider())
+	currentMessages := promptContextToChatCompletionMessages(a.prompt, oc.isOpenRouterProvider())
 
 	params := oc.buildChatCompletionsAgentLoopParams(ctx, meta, currentMessages)
 
 	stream := oc.api.Chat.Completions.NewStreaming(ctx, params)
 	if stream == nil {
 		initErr := errors.New("chat completions streaming not available")
-		logChatCompletionsFailure(log, initErr, params, meta, currentMessages, "stream_init")
+		logChatCompletionsFailure(log, initErr, params, meta, a.prompt, "stream_init")
 		return false, nil, oc.finishStreamingWithFailure(ctx, log, portal, state, meta, "error", initErr)
 	}
 

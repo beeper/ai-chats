@@ -108,10 +108,8 @@ func (oc *OpenAIConnector) resolveProxyRoot(meta *UserLoginMetadata) string {
 	if oc == nil {
 		return ""
 	}
-	if meta != nil {
-		if raw := strings.TrimSpace(meta.BaseURL); raw != "" {
-			return normalizeProxyBaseURL(raw)
-		}
+	if raw := loginCredentialBaseURL(meta); raw != "" {
+		return normalizeProxyBaseURL(raw)
 	}
 	return ""
 }
@@ -147,9 +145,9 @@ func (oc *OpenAIConnector) resolveServiceConfig(meta *UserLoginMetadata) Service
 	}
 
 	if meta.Provider == ProviderMagicProxy {
-		base := normalizeProxyBaseURL(meta.BaseURL)
+		base := normalizeProxyBaseURL(loginCredentialBaseURL(meta))
 		if base != "" {
-			token := trimToken(meta.APIKey)
+			token := trimToken(loginCredentialAPIKey(meta))
 			services[serviceOpenRouter] = ServiceConfig{
 				BaseURL: joinProxyPath(base, "/openrouter/v1"),
 				APIKey:  token,
@@ -190,34 +188,34 @@ func (oc *OpenAIConnector) resolveProviderAPIKey(meta *UserLoginMetadata) string
 	}
 	switch meta.Provider {
 	case ProviderMagicProxy:
-		if key := trimToken(meta.APIKey); key != "" {
+		if key := trimToken(loginCredentialAPIKey(meta)); key != "" {
 			return key
 		}
-		if meta.ServiceTokens != nil {
-			return trimToken(meta.ServiceTokens.OpenRouter)
+		if tokens := loginCredentialServiceTokens(meta); tokens != nil {
+			return trimToken(tokens.OpenRouter)
 		}
 	case ProviderOpenRouter:
 		if key := trimToken(oc.modelProviderConfig(ProviderOpenRouter).APIKey); key != "" {
 			return key
 		}
-		if key := trimToken(meta.APIKey); key != "" {
+		if key := trimToken(loginCredentialAPIKey(meta)); key != "" {
 			return key
 		}
-		if meta.ServiceTokens != nil {
-			return trimToken(meta.ServiceTokens.OpenRouter)
+		if tokens := loginCredentialServiceTokens(meta); tokens != nil {
+			return trimToken(tokens.OpenRouter)
 		}
 	case ProviderOpenAI:
 		if key := trimToken(oc.modelProviderConfig(ProviderOpenAI).APIKey); key != "" {
 			return key
 		}
-		if key := trimToken(meta.APIKey); key != "" {
+		if key := trimToken(loginCredentialAPIKey(meta)); key != "" {
 			return key
 		}
-		if meta.ServiceTokens != nil {
-			return trimToken(meta.ServiceTokens.OpenAI)
+		if tokens := loginCredentialServiceTokens(meta); tokens != nil {
+			return trimToken(tokens.OpenAI)
 		}
 	default:
-		return trimToken(meta.APIKey)
+		return trimToken(loginCredentialAPIKey(meta))
 	}
 	return ""
 }
@@ -230,12 +228,12 @@ func (oc *OpenAIConnector) resolveOpenAIAPIKey(meta *UserLoginMetadata) string {
 		return ""
 	}
 	if meta.Provider == ProviderOpenAI {
-		if key := trimToken(meta.APIKey); key != "" {
+		if key := trimToken(loginCredentialAPIKey(meta)); key != "" {
 			return key
 		}
 	}
-	if meta.ServiceTokens != nil {
-		return trimToken(meta.ServiceTokens.OpenAI)
+	if tokens := loginCredentialServiceTokens(meta); tokens != nil {
+		return trimToken(tokens.OpenAI)
 	}
 	return ""
 }
@@ -248,15 +246,15 @@ func (oc *OpenAIConnector) resolveOpenRouterAPIKey(meta *UserLoginMetadata) stri
 		return ""
 	}
 	if meta.Provider == ProviderOpenRouter {
-		if key := trimToken(meta.APIKey); key != "" {
+		if key := trimToken(loginCredentialAPIKey(meta)); key != "" {
 			return key
 		}
 	}
 	if meta.Provider == ProviderMagicProxy {
-		return trimToken(meta.APIKey)
+		return trimToken(loginCredentialAPIKey(meta))
 	}
-	if meta.ServiceTokens != nil {
-		return trimToken(meta.ServiceTokens.OpenRouter)
+	if tokens := loginCredentialServiceTokens(meta); tokens != nil {
+		return trimToken(tokens.OpenRouter)
 	}
 	return ""
 }
@@ -268,21 +266,21 @@ func loginTokenForService(meta *UserLoginMetadata, service string) string {
 	switch service {
 	case serviceOpenAI:
 		if meta.Provider == ProviderOpenAI {
-			return trimToken(meta.APIKey)
+			return trimToken(loginCredentialAPIKey(meta))
 		}
-		if meta.ServiceTokens != nil {
-			return trimToken(meta.ServiceTokens.OpenAI)
+		if tokens := loginCredentialServiceTokens(meta); tokens != nil {
+			return trimToken(tokens.OpenAI)
 		}
 	case serviceOpenRouter:
 		if meta.Provider == ProviderOpenRouter || meta.Provider == ProviderMagicProxy {
-			return trimToken(meta.APIKey)
+			return trimToken(loginCredentialAPIKey(meta))
 		}
-		if meta.ServiceTokens != nil {
-			return trimToken(meta.ServiceTokens.OpenRouter)
+		if tokens := loginCredentialServiceTokens(meta); tokens != nil {
+			return trimToken(tokens.OpenRouter)
 		}
 	case serviceExa:
-		if meta.ServiceTokens != nil {
-			return trimToken(meta.ServiceTokens.Exa)
+		if tokens := loginCredentialServiceTokens(meta); tokens != nil {
+			return trimToken(tokens.Exa)
 		}
 	}
 	return ""

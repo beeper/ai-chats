@@ -47,7 +47,7 @@ func resolveBlockImageURL(block PromptBlock) string {
 	return imageURL
 }
 
-func PromptContextToResponsesInput(ctx PromptContext) responses.ResponseInputParam {
+func promptContextToResponsesInput(ctx PromptContext) responses.ResponseInputParam {
 	var result responses.ResponseInputParam
 	for _, msg := range ctx.Messages {
 		result = append(result, promptMessageToResponsesInputs(msg)...)
@@ -123,7 +123,7 @@ func promptMessageToResponsesInputs(msg PromptMessage) responses.ResponseInputPa
 	}
 }
 
-func PromptContextToChatCompletionMessages(ctx PromptContext, supportsVideoURL bool) []openai.ChatCompletionMessageParamUnion {
+func promptContextToChatCompletionMessages(ctx PromptContext, supportsVideoURL bool) []openai.ChatCompletionMessageParamUnion {
 	var messages []openai.ChatCompletionMessageParamUnion
 	if strings.TrimSpace(ctx.SystemPrompt) != "" {
 		messages = append(messages, openai.SystemMessage(strings.TrimSpace(ctx.SystemPrompt)))
@@ -238,7 +238,7 @@ func promptToolToChatMessage(msg PromptMessage) *openai.ChatCompletionToolMessag
 	}
 }
 
-func ChatMessagesToPromptContext(messages []openai.ChatCompletionMessageParamUnion) PromptContext {
+func chatMessagesToPromptContext(messages []openai.ChatCompletionMessageParamUnion) PromptContext {
 	var ctx PromptContext
 	for _, msg := range messages {
 		appendChatMessageToPromptContext(&ctx, msg)
@@ -357,7 +357,7 @@ func inferPromptMimeTypeFromDataURL(value string) string {
 	return rest[:idx]
 }
 
-func HasUnsupportedResponsesPromptContext(ctx PromptContext) bool {
+func hasUnsupportedResponsesPromptContext(ctx PromptContext) bool {
 	for _, msg := range ctx.Messages {
 		for _, block := range msg.Blocks {
 			switch block.Type {
