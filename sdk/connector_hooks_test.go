@@ -57,6 +57,7 @@ func TestNewConnectorBaseUsesHooksAndCustomClients(t *testing.T) {
 	createCalled := 0
 	updateCalled := 0
 	afterLoadCalled := 0
+	wantBridge := &bridgev2.Bridge{}
 
 	cfg := &Config{
 		Name:          "hooked",
@@ -68,12 +69,25 @@ func TestNewConnectorBaseUsesHooksAndCustomClients(t *testing.T) {
 			}
 			return true, ""
 		},
-		InitConnector: func(*bridgev2.Bridge) { initCalled++ },
-		StartConnector: func(context.Context, *bridgev2.Bridge) error {
+		InitConnector: func(got *bridgev2.Bridge) {
+			if got != wantBridge {
+				t.Fatalf("expected init bridge %p, got %p", wantBridge, got)
+			}
+			initCalled++
+		},
+		StartConnector: func(_ context.Context, got *bridgev2.Bridge) error {
+			if got != wantBridge {
+				t.Fatalf("expected start bridge %p, got %p", wantBridge, got)
+			}
 			startCalled++
 			return nil
 		},
-		StopConnector: func(context.Context, *bridgev2.Bridge) { stopCalled++ },
+		StopConnector: func(_ context.Context, got *bridgev2.Bridge) {
+			if got != wantBridge {
+				t.Fatalf("expected stop bridge %p, got %p", wantBridge, got)
+			}
+			stopCalled++
+		},
 		MakeBrokenLogin: func(login *bridgev2.UserLogin, reason string) *agentremote.BrokenLoginClient {
 			return agentremote.NewBrokenLoginClient(login, "custom:"+reason)
 		},
@@ -89,7 +103,7 @@ func TestNewConnectorBaseUsesHooksAndCustomClients(t *testing.T) {
 	}
 
 	conn := NewConnectorBase(cfg)
-	conn.Init(nil)
+	conn.Init(wantBridge)
 	if err := conn.Start(context.Background()); err != nil {
 		t.Fatalf("start returned error: %v", err)
 	}

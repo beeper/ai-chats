@@ -14,8 +14,8 @@ type ConnectorSpec struct {
 	AIRoomKind string
 
 	Init  func(*bridgev2.Bridge)
-	Start func(context.Context) error
-	Stop  func(context.Context)
+	Start func(context.Context, *bridgev2.Bridge) error
+	Stop  func(context.Context, *bridgev2.Bridge)
 
 	Name        func() bridgev2.BridgeName
 	Config      func() (example string, data any, upgrader configupgrade.Upgrader)
@@ -62,14 +62,14 @@ func (c *ConnectorBase) Start(ctx context.Context) error {
 	if c == nil || c.spec.Start == nil {
 		return nil
 	}
-	return c.spec.Start(ctx)
+	return c.spec.Start(ctx, c.br)
 }
 
 func (c *ConnectorBase) Stop(ctx context.Context) {
 	if c == nil || c.spec.Stop == nil {
 		return
 	}
-	c.spec.Stop(ctx)
+	c.spec.Stop(ctx, c.br)
 }
 
 func (c *ConnectorBase) GetName() bridgev2.BridgeName {

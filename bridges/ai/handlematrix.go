@@ -17,7 +17,6 @@ import (
 	"github.com/beeper/agentremote"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
-	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 func messageSendStatusError(err error, message string, reason event.MessageStatusReason) error {
@@ -572,11 +571,12 @@ func (oc *AIClient) handleMediaMessage(
 		eventID = msg.Event.ID
 	}
 
-	// Check capability (PDF has special OpenRouter handling via file-parser plugin)
+	// PDFs are normalized into file-context text before prompt assembly, so they
+	// do not require native provider file support.
 	modelCaps := oc.getModelCapabilitiesForMeta(ctx, meta)
 	supportsMedia := config.capabilityCheck(&modelCaps)
-	if isPDF && !supportsMedia && oc.isOpenRouterProvider() {
-		supportsMedia = true // OpenRouter supports PDF via file-parser plugin
+	if isPDF {
+		supportsMedia = true
 	}
 	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
 
@@ -697,30 +697,6 @@ func (oc *AIClient) handleMediaMessage(
 				"Image understanding failed",
 				"image understanding produced empty result",
 				"Couldn't analyze the image. Try again, or switch to a vision-capable model with !ai model.",
-				dispatchTextOnly,
-			); resp != nil || err != nil {
-				return resp, err
-			}
-		}
-
-		// If model lacks audio but agent supports audio understanding, analyze audio first.
-		if msgType == event.MsgAudio {
-			audioModel, audioFallback := oc.resolveModelForCapability(ctx, meta, func(caps ModelCapabilities) bool { return caps.SupportsAudio }, oc.resolveAudioUnderstandingModel)
-			if resp, err := oc.dispatchMediaUnderstandingFallback(
-				ctx,
-				audioModel,
-				audioFallback,
-				string(mediaURL),
-				mimeType,
-				encryptedFile,
-				caption,
-				hasUserCaption,
-				buildMediaUnderstandingPrompt(MediaCapabilityAudio),
-				oc.analyzeAudioWithModel,
-				buildMediaUnderstandingMessage("Audio", "Transcript"),
-				"Audio understanding failed",
-				"audio understanding produced empty result",
-				"Couldn't analyze the audio. Try again, or switch to an audio-capable model with !ai model.",
 				dispatchTextOnly,
 			); resp != nil || err != nil {
 				return resp, err
@@ -1102,70 +1078,20 @@ func (oc *AIClient) buildContextForRegenerate(
 	latestUserBody string,
 	latestUserID id.EventID,
 ) (PromptContext, error) {
-	var promptContext PromptContext
-	bridgesdk.AppendChatMessagesToPromptContext(&promptContext.PromptContext, oc.buildSystemMessages(ctx, portal, meta))
-
-	historyLimit := oc.historyLimit(ctx, portal, meta)
-	resetAt := int64(0)
-	if meta != nil {
-		resetAt = meta.SessionResetAt
+	base := PromptContext{
+		SystemPrompt: oc.buildConversationSystemPromptText(ctx, portal, meta, false),
 	}
-	if historyLimit > 0 {
-		history, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, historyLimit+2)
-		if err != nil {
-			return PromptContext{}, fmt.Errorf("failed to load prompt history: %w", err)
-		}
-
-		// Determine whether to inject images into history (requires vision-capable model).
-		hasVision := oc.getModelCapabilitiesForMeta(ctx, meta).SupportsVision
-		historyBundles := make([][]PromptMessage, 0, len(history))
-
-		// Skip the most recent messages (last user and assistant) and build from older history
-		skippedUser := false
-		skippedAssistant := false
-		includedCount := 0
-		for _, msg := range history {
-			msgMeta := messageMeta(msg)
-			// Skip commands and non-conversation messages
-			if !shouldIncludeInHistory(msgMeta) {
-				continue
-			}
-			if resetAt > 0 && msg.Timestamp.UnixMilli() < resetAt {
-				continue
-			}
-
-			// Skip the last user message and last assistant message
-			if !skippedUser && msgMeta.Role == "user" {
-				skippedUser = true
-				continue
-			}
-			if !skippedAssistant && msgMeta.Role == "assistant" {
-				skippedAssistant = true
-				continue
-			}
-
-			// Only inject images for recent messages and vision-capable models.
-			// This loop builds newest-to-oldest, so early entries are the most recent.
-			injectImages := hasVision && includedCount < maxHistoryImageMessages
-			includedCount++
-			bundle := oc.historyMessageBundle(ctx, msgMeta, injectImages)
-			if len(bundle) > 0 {
-				historyBundles = append(historyBundles, bundle)
-			}
-		}
-
-		for i := len(historyBundles) - 1; i >= 0; i-- {
-			promptContext.Messages = append(promptContext.Messages, historyBundles[i]...)
-		}
+	historyMessages, err := oc.replayHistoryMessages(ctx, portal, meta, historyReplayOptions{mode: historyReplayRegen})
+	if err != nil {
+		return PromptContext{}, err
 	}
-
-	latest := latestUserBody
-	promptContext.Messages = append(promptContext.Messages, PromptMessage{
+	base.Messages = append(base.Messages, historyMessages...)
+	base.Messages = append(base.Messages, PromptMessage{
 		Role: PromptRoleUser,
 		Blocks: []PromptBlock{{
 			Type: PromptBlockText,
-			Text: latest,
+			Text: latestUserBody,
 		}},
 	})
-	return promptContext, nil
+	return base, nil
 }

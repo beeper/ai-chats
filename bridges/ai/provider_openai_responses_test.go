@@ -1,37 +1,19 @@
 package ai
 
 import (
-	"context"
-	"strings"
 	"testing"
 
 	"go.mau.fi/util/ptr"
-
-	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
-func TestGenerateStreamRejectsUnsupportedResponsesPromptContext(t *testing.T) {
+func TestBuildResponsesParamsAcceptsBridgePromptContext(t *testing.T) {
 	provider := &OpenAIProvider{}
-	params := GenerateParams{
-		Context: PromptContext{
-			PromptContext: bridgesdk.UserPromptContext(bridgesdk.PromptBlock{
-				Type:        bridgesdk.PromptBlockAudio,
-				AudioB64:    "YXVkaW8=",
-				AudioFormat: "mp3",
-				MimeType:    "audio/mpeg",
-			}),
-		},
-	}
-
-	events, err := provider.GenerateStream(context.Background(), params)
-	if err == nil {
-		t.Fatal("expected unsupported prompt context error")
-	}
-	if events != nil {
-		t.Fatal("expected nil event channel on validation failure")
-	}
-	if !strings.Contains(err.Error(), "responses API does not support prompt context block types required by this request") {
-		t.Fatalf("unexpected error: %v", err)
+	params := provider.buildResponsesParams(GenerateParams{
+		Model:   "gpt-5.2",
+		Context: UserPromptContext(PromptBlock{Type: PromptBlockText, Text: "hello"}),
+	})
+	if len(params.Input.OfInputItemList) != 1 {
+		t.Fatalf("expected one input item, got %d", len(params.Input.OfInputItemList))
 	}
 }
 

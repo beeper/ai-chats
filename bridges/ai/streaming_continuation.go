@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 
-	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/responses"
 )
 
@@ -45,7 +44,7 @@ func (oc *AIClient) buildContinuationParams(
 			state.baseInput = append(state.baseInput, steerInput...)
 		}
 	}
-	return oc.buildResponsesAgentLoopParams(ctx, meta, input, true)
+	return oc.buildResponsesAgentLoopParams(ctx, meta, state.baseSystemPrompt, input, true)
 }
 
 func (oc *AIClient) buildSteeringInputItems(prompts []string, meta *PortalMetadata) responses.ResponseInputParam {
@@ -58,8 +57,9 @@ func (oc *AIClient) buildSteeringInputItems(prompts []string, meta *PortalMetada
 		if prompt == "" {
 			continue
 		}
-		messages := []openai.ChatCompletionMessageParamUnion{openai.UserMessage(prompt)}
-		input = append(input, oc.convertToResponsesInput(messages, meta)...)
+		input = append(input, PromptContextToResponsesInput(UserPromptContext(
+			PromptBlock{Type: PromptBlockText, Text: prompt},
+		))...)
 	}
 	return input
 }

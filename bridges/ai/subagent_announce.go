@@ -11,8 +11,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
-
-	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 func formatDurationShort(valueMs int64) string {
@@ -146,7 +144,7 @@ func (oc *AIClient) runSubagentCompletion(
 	meta *PortalMetadata,
 	prompt []openai.ChatCompletionMessageParamUnion,
 ) (bool, error) {
-	responseFn, logLabel := oc.selectAgentLoopRunFunc(meta, PromptContext{PromptContext: bridgesdk.ChatMessagesToPromptContext(prompt)})
+	responseFn, logLabel := oc.selectAgentLoopRunFunc(meta, ChatMessagesToPromptContext(prompt))
 	return oc.responseWithRetry(ctx, nil, portal, meta, prompt, responseFn, logLabel)
 }
 

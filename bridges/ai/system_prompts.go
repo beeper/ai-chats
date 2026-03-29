@@ -63,21 +63,62 @@ func (oc *AIClient) buildAdditionalSystemPrompts(
 	return oc.additionalSystemMessages(ctx, portal, meta)
 }
 
-func (oc *AIClient) buildSystemMessages(
+func systemMessageText(messages []openai.ChatCompletionMessageParamUnion) string {
+	var parts []string
+	for _, msg := range messages {
+		if msg.OfSystem == nil {
+			continue
+		}
+		if text := strings.TrimSpace(msg.OfSystem.Content.OfString.Value); text != "" {
+			parts = append(parts, text)
+			continue
+		}
+		if len(msg.OfSystem.Content.OfArrayOfContentParts) == 0 {
+			continue
+		}
+		var lines []string
+		for _, part := range msg.OfSystem.Content.OfArrayOfContentParts {
+			if text := strings.TrimSpace(part.Text); text != "" {
+				lines = append(lines, text)
+			}
+		}
+		if len(lines) > 0 {
+			parts = append(parts, strings.Join(lines, "\n"))
+		}
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n\n"))
+}
+
+func (oc *AIClient) buildSystemPromptText(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
-) []openai.ChatCompletionMessageParamUnion {
-	var msgs []openai.ChatCompletionMessageParamUnion
-	systemPrompt := oc.effectiveAgentPrompt(ctx, portal, meta)
-	if systemPrompt == "" {
-		systemPrompt = oc.effectivePrompt(meta)
+) string {
+	base := oc.effectiveAgentPrompt(ctx, portal, meta)
+	if base == "" {
+		base = oc.effectivePrompt(meta)
 	}
-	if systemPrompt != "" {
-		msgs = append(msgs, openai.SystemMessage(systemPrompt))
+	fragments := []string{base, systemMessageText(oc.buildAdditionalSystemPrompts(ctx, portal, meta))}
+	var parts []string
+	for _, fragment := range fragments {
+		if text := strings.TrimSpace(fragment); text != "" {
+			parts = append(parts, text)
+		}
 	}
-	msgs = append(msgs, oc.buildAdditionalSystemPrompts(ctx, portal, meta)...)
-	return msgs
+	return strings.TrimSpace(strings.Join(parts, "\n\n"))
+}
+
+func (oc *AIClient) buildConversationSystemPromptText(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+	includeGreeting bool,
+) string {
+	base := oc.buildSystemPromptText(ctx, portal, meta)
+	if !includeGreeting {
+		return base
+	}
+	return joinPromptFragments(sessionGreetingFragment(ctx, portal, meta, oc.log), base)
 }
 
 func (oc *AIClient) buildAdditionalSystemPromptsCore(

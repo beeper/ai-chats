@@ -7,8 +7,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-
-	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 func newAgentLoopRoutingTestClient(models ...ModelInfo) *AIClient {
@@ -45,13 +43,7 @@ func TestSelectAgentLoopRunFunc_UsesChatCompletionsForUnsupportedResponsesPrompt
 		API: string(ModelAPIResponses),
 	})
 
-	promptContext := PromptContext{
-		PromptContext: bridgesdk.UserPromptContext(bridgesdk.PromptBlock{
-			Type:        bridgesdk.PromptBlockAudio,
-			AudioB64:    "YXVkaW8=",
-			AudioFormat: "mp3",
-		}),
-	}
+	promptContext := UserPromptContext(PromptBlock{Type: PromptBlockType("unknown")})
 
 	responseFn, logLabel := oc.selectAgentLoopRunFunc(resolvedModelMeta("openai/gpt-4.1"), promptContext)
 	if responseFn == nil {

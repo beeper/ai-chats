@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"strings"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/packages/param"
@@ -16,7 +17,6 @@ type agentLoopRequestSettings struct {
 	model           string
 	maxTokens       int
 	temperature     *float64
-	systemPrompt    string
 	reasoningEffort string
 }
 
@@ -25,7 +25,6 @@ func (oc *AIClient) buildAgentLoopRequestSettings(meta *PortalMetadata) agentLoo
 		model:           oc.effectiveModelForAPI(meta),
 		maxTokens:       oc.effectiveMaxTokens(meta),
 		temperature:     oc.effectiveTemperature(meta),
-		systemPrompt:    oc.effectivePrompt(meta),
 		reasoningEffort: oc.effectiveReasoningEffort(meta),
 	}
 }
@@ -101,6 +100,7 @@ func (oc *AIClient) buildChatCompletionsAgentLoopParams(
 func (oc *AIClient) buildResponsesAgentLoopParams(
 	ctx context.Context,
 	meta *PortalMetadata,
+	systemPrompt string,
 	input responses.ResponseInputParam,
 	allowResolvedBossAgent bool,
 ) responses.ResponseNewParams {
@@ -119,8 +119,8 @@ func (oc *AIClient) buildResponsesAgentLoopParams(
 	if settings.temperature != nil {
 		params.Temperature = openai.Float(*settings.temperature)
 	}
-	if settings.systemPrompt != "" {
-		params.Instructions = openai.String(settings.systemPrompt)
+	if strings.TrimSpace(systemPrompt) != "" {
+		params.Instructions = openai.String(strings.TrimSpace(systemPrompt))
 	}
 	if effort, ok := reasoningEffortMap[settings.reasoningEffort]; ok {
 		params.Reasoning = shared.ReasoningParam{

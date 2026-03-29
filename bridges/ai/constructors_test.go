@@ -39,6 +39,9 @@ func TestNewAIConnectorUsesSDKConfig(t *testing.T) {
 	if name.DefaultPort != 29345 {
 		t.Fatalf("unexpected default port %d", name.DefaultPort)
 	}
+	if name.DefaultCommandPrefix != "!ai" {
+		t.Fatalf("unexpected default command prefix %q", name.DefaultCommandPrefix)
+	}
 }
 
 func TestNewAIConnectorInitializesClientCacheMap(t *testing.T) {

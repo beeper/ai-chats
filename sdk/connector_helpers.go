@@ -32,6 +32,15 @@ func ApplyDefaultCommandPrefix(prefix *string, value string) {
 	}
 }
 
+// ResolveCommandPrefix returns the configured prefix when present, otherwise the
+// bridge's declared default prefix without mutating configuration state.
+func ResolveCommandPrefix(prefix string, fallback string) string {
+	if strings.TrimSpace(prefix) != "" {
+		return prefix
+	}
+	return fallback
+}
+
 // ApplyBoolDefault initializes a nil bool pointer to the provided value.
 func ApplyBoolDefault(target **bool, value bool) {
 	if target == nil || *target != nil {

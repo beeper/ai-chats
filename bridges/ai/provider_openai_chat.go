@@ -6,12 +6,10 @@ import (
 	"fmt"
 
 	"github.com/openai/openai-go/v3"
-
-	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 func (o *OpenAIProvider) generateChatCompletions(ctx context.Context, params GenerateParams) (*GenerateResponse, error) {
-	chatMessages := bridgesdk.PromptContextToChatCompletionMessages(params.Context.PromptContext, isOpenRouterBaseURL(o.baseURL))
+	chatMessages := PromptContextToChatCompletionMessages(params.Context, isOpenRouterBaseURL(o.baseURL))
 	if len(chatMessages) == 0 {
 		return nil, errors.New("no chat messages for completion")
 	}

@@ -211,7 +211,3 @@ func (oc *AIClient) runChatCompletionsAgentLoop(
 		}
 	})
 }
-
-// convertToResponsesInput converts Chat Completion messages to Responses API input items
-// Supports native multimodal content: images (ResponseInputImageParam), files/PDFs (ResponseInputFileParam)
-// Note: Audio is handled via Chat Completions API fallback (SDK v3.16.0 lacks Responses API audio union support)

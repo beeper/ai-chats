@@ -7,8 +7,6 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/event"
-
-	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 func (oc *AIClient) canUseMediaUnderstanding(meta *PortalMetadata) bool {
@@ -147,17 +145,6 @@ func (oc *AIClient) resolveVisionModelForImage(ctx context.Context, meta *Portal
 	)
 }
 
-// resolveAudioUnderstandingModel returns an audio-capable model from the agent's model chain.
-func (oc *AIClient) resolveAudioUnderstandingModel(ctx context.Context, meta *PortalMetadata) string {
-	return oc.resolveUnderstandingModel(
-		ctx,
-		meta,
-		func(caps ModelCapabilities) bool { return caps.SupportsAudio },
-		func(info ModelInfo) bool { return info.SupportsAudio },
-		"audio",
-	)
-}
-
 func (oc *AIClient) pickModelFromCache(cache *ModelCache, provider string, supports modelInfoFilter) string {
 	if cache == nil || len(cache.Models) == 0 {
 		return ""
@@ -224,9 +211,9 @@ func (oc *AIClient) analyzeImageWithModel(
 		actualMimeType = "image/jpeg"
 	}
 
-	dataURL := bridgesdk.BuildDataURL(actualMimeType, b64Data)
+	dataURL := BuildDataURL(actualMimeType, b64Data)
 
-	ctxPrompt := PromptContext{PromptContext: bridgesdk.UserPromptContext(
+	ctxPrompt := UserPromptContext(
 		PromptBlock{
 			Type:     PromptBlockImage,
 			ImageURL: dataURL,
@@ -236,7 +223,7 @@ func (oc *AIClient) analyzeImageWithModel(
 			Type: PromptBlockText,
 			Text: prompt,
 		},
-	)}
+	)
 
 	resp, err := oc.provider.Generate(ctx, GenerateParams{
 		Model:               modelIDForAPI,
@@ -249,67 +236,6 @@ func (oc *AIClient) analyzeImageWithModel(
 
 	return strings.TrimSpace(resp.Content), nil
 }
-
-func (oc *AIClient) analyzeAudioWithModel(
-	ctx context.Context,
-	modelID string,
-	audioURL string,
-	mimeType string,
-	encryptedFile *event.EncryptedFileInfo,
-	prompt string,
-) (string, error) {
-	if strings.TrimSpace(modelID) == "" {
-		return "", errors.New("missing model for audio analysis")
-	}
-	if strings.TrimSpace(prompt) == "" {
-		prompt = defaultPromptByCapability[MediaCapabilityAudio]
-	}
-
-	modelIDForAPI := oc.modelIDForAPI(modelID)
-	audioRef := mediaSourceLabel(audioURL, encryptedFile)
-	b64Data, actualMimeType, err := oc.downloadMediaBase64(ctx, audioURL, encryptedFile, 25, mimeType)
-	if err != nil {
-		return "", fmt.Errorf("failed to download audio %s for model %s: %w", audioRef, modelIDForAPI, err)
-	}
-	actualMimeType = strings.TrimSpace(actualMimeType)
-	if actualMimeType == "" {
-		actualMimeType = strings.TrimSpace(mimeType)
-	}
-	format := getAudioFormat(actualMimeType)
-	if format == "" {
-		format = "mp3"
-	}
-
-	ctxPrompt := PromptContext{PromptContext: bridgesdk.UserPromptContext(
-		PromptBlock{
-			Type:        PromptBlockAudio,
-			AudioB64:    b64Data,
-			AudioFormat: format,
-		},
-		PromptBlock{
-			Type: PromptBlockText,
-			Text: prompt,
-		},
-	)}
-
-	params := GenerateParams{
-		Model:               modelIDForAPI,
-		Context:             ctxPrompt,
-		MaxCompletionTokens: defaultImageUnderstandingLimit,
-	}
-	var resp *GenerateResponse
-	if provider, ok := oc.provider.(*OpenAIProvider); ok {
-		resp, err = provider.generateChatCompletions(ctx, params)
-	} else {
-		resp, err = oc.provider.Generate(ctx, params)
-	}
-	if err != nil {
-		return "", fmt.Errorf("audio analysis failed for model %s (audio %s): %w", modelIDForAPI, audioRef, err)
-	}
-
-	return strings.TrimSpace(resp.Content), nil
-}
-
 func mediaSourceLabel(mediaURL string, encryptedFile *event.EncryptedFileInfo) string {
 	source := strings.TrimSpace(mediaURL)
 	if encryptedFile != nil && encryptedFile.URL != "" {

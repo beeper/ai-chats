@@ -2,13 +2,11 @@ package ai
 
 import (
 	"strings"
-
-	"github.com/beeper/agentremote/sdk"
 )
 
 func promptMessagesFromMetadata(meta *MessageMetadata) []PromptMessage {
 	if turnData, ok := canonicalTurnData(meta); ok {
-		return sdk.PromptMessagesFromTurnData(turnData)
+		return promptMessagesFromTurnData(turnData)
 	}
 	return nil
 }
@@ -50,20 +48,6 @@ func filterPromptBlocksForHistory(blocks []PromptBlock, injectImages bool) []Pro
 	return filtered
 }
 
-func textPromptMessage(text string) []PromptMessage {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return nil
-	}
-	return []PromptMessage{{
-		Role: PromptRoleUser,
-		Blocks: []PromptBlock{{
-			Type: PromptBlockText,
-			Text: text,
-		}},
-	}}
-}
-
 func promptTail(ctx PromptContext, count int) []PromptMessage {
 	if count <= 0 || len(ctx.Messages) == 0 {
 		return nil
@@ -80,7 +64,7 @@ func setCanonicalTurnDataFromPromptMessages(meta *MessageMetadata, messages []Pr
 	if meta == nil || len(messages) == 0 {
 		return
 	}
-	if turnData, ok := sdk.TurnDataFromUserPromptMessages(messages); ok {
+	if turnData, ok := turnDataFromUserPromptMessages(messages); ok {
 		meta.CanonicalTurnData = turnData.ToMap()
 	} else {
 		meta.CanonicalTurnData = nil

@@ -283,7 +283,7 @@ func systemEventsOwnerKey(oc *AIClient) string {
 }
 
 func (oc *AIClient) buildContextWithHeartbeat(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, prompt string) (PromptContext, error) {
-	base, err := oc.buildBaseContext(ctx, portal, meta)
+	base, text, err := oc.buildCurrentTurnText(ctx, portal, meta, prompt, "", currentTurnTextOptions{})
 	if err != nil {
 		return PromptContext{}, err
 	}
@@ -291,7 +291,7 @@ func (oc *AIClient) buildContextWithHeartbeat(ctx context.Context, portal *bridg
 		Role: PromptRoleUser,
 		Blocks: []PromptBlock{{
 			Type: PromptBlockText,
-			Text: prompt,
+			Text: text,
 		}},
 	})
 	return base, nil

@@ -59,7 +59,7 @@ func NewAIConnector() *OpenAIConnector {
 		BeeperBridgeType: "ai",
 		DefaultPort:      29345,
 		DefaultCommandPrefix: func() string {
-			return oc.Config.Bridge.CommandPrefix
+			return bridgesdk.ResolveCommandPrefix(oc.Config.Bridge.CommandPrefix, "!ai")
 		},
 		ExampleConfig:  exampleNetworkConfig,
 		ConfigData:     &oc.Config,

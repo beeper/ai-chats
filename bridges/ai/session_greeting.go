@@ -20,18 +20,30 @@ func maybePrependSessionGreeting(
 	prompt []openai.ChatCompletionMessageParamUnion,
 	log zerolog.Logger,
 ) []openai.ChatCompletionMessageParamUnion {
+	if greeting := sessionGreetingFragment(ctx, portal, meta, log); greeting != "" {
+		return append([]openai.ChatCompletionMessageParamUnion{openai.SystemMessage(greeting)}, prompt...)
+	}
+	return prompt
+}
+
+func sessionGreetingFragment(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+	log zerolog.Logger,
+) string {
 	if meta == nil {
-		return prompt
+		return ""
 	}
 	agentID := strings.TrimSpace(resolveAgentID(meta))
 	if agentID == "" {
-		return prompt
+		return ""
 	}
 	if meta.SessionBootstrapByAgent == nil {
 		meta.SessionBootstrapByAgent = make(map[string]int64)
 	}
 	if meta.SessionBootstrapByAgent[agentID] != 0 {
-		return prompt
+		return ""
 	}
 	meta.SessionBootstrapByAgent[agentID] = time.Now().UnixMilli()
 	if portal != nil {
@@ -39,6 +51,5 @@ func maybePrependSessionGreeting(
 			log.Warn().Err(err).Msg("Failed to persist session bootstrap state")
 		}
 	}
-	greeting := openai.SystemMessage(sessionGreetingPrompt)
-	return append([]openai.ChatCompletionMessageParamUnion{greeting}, prompt...)
+	return sessionGreetingPrompt
 }

@@ -14,7 +14,6 @@ import (
 
 	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
-	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 const (
@@ -370,7 +369,7 @@ func (oc *AIClient) runAgentLoopWithRetry(
 }
 
 func (oc *AIClient) selectAgentLoopRunFunc(meta *PortalMetadata, promptContext PromptContext) (responseFunc, string) {
-	if bridgesdk.HasUnsupportedResponsesPromptContext(promptContext.PromptContext) {
+	if HasUnsupportedResponsesPromptContext(promptContext) {
 		return oc.runChatCompletionsAgentLoop, "chat_completions"
 	}
 	modelID := ""

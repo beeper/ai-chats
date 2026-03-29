@@ -17,7 +17,6 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
-	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 type mediaUnderstandingResult struct {
@@ -705,9 +704,9 @@ func (oc *AIClient) describeImageWithEntry(
 		actualMime = "image/jpeg"
 	}
 	b64Data := base64.StdEncoding.EncodeToString(rawData)
-	dataURL := bridgesdk.BuildDataURL(actualMime, b64Data)
+	dataURL := BuildDataURL(actualMime, b64Data)
 
-	ctxPrompt := PromptContext{PromptContext: bridgesdk.UserPromptContext(
+	ctxPrompt := UserPromptContext(
 		PromptBlock{
 			Type: PromptBlockText,
 			Text: prompt,
@@ -717,7 +716,7 @@ func (oc *AIClient) describeImageWithEntry(
 			ImageURL: dataURL,
 			MimeType: actualMime,
 		},
-	)}
+	)
 	modelIDForAPI := oc.modelIDForAPI(ResolveAlias(modelID))
 	var resp *GenerateResponse
 	if entryProvider == "openrouter" {
@@ -849,34 +848,6 @@ func (oc *AIClient) describeVideoWithEntry(
 		return nil, errors.New("video payload exceeds base64 limit")
 	}
 
-	if providerID == "openrouter" {
-		modelID := strings.TrimSpace(entry.Model)
-		if modelID == "" {
-			return nil, errors.New("video understanding requires model id")
-		}
-		videoB64 := base64.StdEncoding.EncodeToString(data)
-
-		ctxPrompt := PromptContext{PromptContext: bridgesdk.UserPromptContext(
-			PromptBlock{
-				Type: PromptBlockText,
-				Text: prompt,
-			},
-			PromptBlock{
-				Type:     PromptBlockVideo,
-				VideoB64: videoB64,
-				MimeType: actualMime,
-			},
-		)}
-		modelIDForAPI := oc.modelIDForAPI(ResolveAlias(modelID))
-		var resp *GenerateResponse
-		resp, err = oc.generateWithOpenRouter(ctx, modelIDForAPI, ctxPrompt, capCfg, entry)
-		if err != nil {
-			return nil, err
-		}
-		text := strings.TrimSpace(resp.Content)
-		text = truncateText(text, maxChars)
-		return buildMediaOutput(MediaCapabilityVideo, text, entry.Provider, modelID, attachmentIndex), nil
-	}
 	if providerID != "google" {
 		return nil, fmt.Errorf("unsupported video provider: %s", providerID)
 	}
@@ -925,9 +896,6 @@ func (oc *AIClient) generateWithOpenRouter(
 		Model:               modelID,
 		Context:             promptContext,
 		MaxCompletionTokens: defaultImageUnderstandingLimit,
-	}
-	if bridgesdk.PromptContextHasBlockType(promptContext.PromptContext, PromptBlockAudio, PromptBlockVideo) {
-		return provider.generateChatCompletions(ctx, params)
 	}
 	return provider.Generate(ctx, params)
 }
