@@ -1782,6 +1782,10 @@ func (cc *CodexClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Po
 				}
 				time.Sleep(250 * time.Millisecond)
 			}
+			if portal.MXID == "" {
+				cc.log.Warn().Msg("Portal MXID never became available, dropping system notice")
+				return
+			}
 			if err := send(retryCtx); err != nil {
 				cc.log.Warn().Err(err).Msg("Failed to send system notice")
 			}
