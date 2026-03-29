@@ -11,6 +11,7 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 
+	"github.com/beeper/agentremote/pkg/shared/streamui"
 	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
@@ -73,6 +74,25 @@ func assertTerminalState(t *testing.T, turn *bridgesdk.Turn, expectedType string
 	if terminal["type"] != expectedType {
 		t.Fatalf("expected %s terminal state, got %#v", expectedType, terminal)
 	}
+}
+
+func snapshotParts(turn *bridgesdk.Turn) []map[string]any {
+	ui := streamui.SnapshotUIMessage(turn.UIState())
+	if ui == nil {
+		return nil
+	}
+	rawParts, ok := ui["parts"].([]any)
+	if !ok {
+		return nil
+	}
+	parts := make([]map[string]any, 0, len(rawParts))
+	for _, raw := range rawParts {
+		part, ok := raw.(map[string]any)
+		if ok {
+			parts = append(parts, part)
+		}
+	}
+	return parts
 }
 
 func findPartByType(parts []map[string]any, partType string) map[string]any {

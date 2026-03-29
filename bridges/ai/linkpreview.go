@@ -623,7 +623,7 @@ func FormatPreviewsForContext(previews []*event.BeeperLinkPreview, maxChars int)
 
 // ParseExistingLinkPreviews extracts link previews from a Matrix event's raw content.
 func ParseExistingLinkPreviews(rawContent map[string]any) []*event.BeeperLinkPreview {
-	previewsRaw, ok := rawContent["com.beeper.linkpreviews"]
+	previewsRaw, ok := existingLinkPreviewsRaw(rawContent)
 	if !ok {
 		return nil
 	}
@@ -670,6 +670,19 @@ func ParseExistingLinkPreviews(rawContent map[string]any) []*event.BeeperLinkPre
 	}
 
 	return previews
+}
+
+func existingLinkPreviewsRaw(rawContent map[string]any) (any, bool) {
+	if rawContent == nil {
+		return nil, false
+	}
+	if newContent, ok := rawContent["m.new_content"].(map[string]any); ok && newContent != nil {
+		if previewsRaw, ok := newContent["com.beeper.linkpreviews"]; ok {
+			return previewsRaw, true
+		}
+	}
+	previewsRaw, ok := rawContent["com.beeper.linkpreviews"]
+	return previewsRaw, ok
 }
 
 // PreviewsToMapSlice converts BeeperLinkPreviews to a format suitable for JSON serialization.

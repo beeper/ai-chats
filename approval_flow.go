@@ -12,8 +12,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
-
-	"github.com/beeper/agentremote/turns"
 )
 
 // ApprovalReactionHandler is the interface used by BaseReactionHandler to
@@ -1600,9 +1598,15 @@ func (f *ApprovalFlow[D]) editPromptToResolvedState(
 		Decision:     decision,
 		ExpiresAt:    prompt.ExpiresAt,
 	})
-	edit := turns.BuildConvertedEdit(response.Content, response.TopLevelExtra)
-	if edit == nil {
+	if response.Content == nil {
 		return
+	}
+	edit := &bridgev2.ConvertedEdit{
+		ModifiedParts: []*bridgev2.ConvertedEditPart{{
+			Type:          event.EventMessage,
+			Content:       response.Content,
+			TopLevelExtra: response.TopLevelExtra,
+		}},
 	}
 	ac.login.QueueRemoteEvent(&RemoteEdit{
 		Portal:        ac.portal.PortalKey,

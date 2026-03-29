@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"testing"
+	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -20,13 +21,21 @@ func testToolSelectionClient(supportsToolCalling bool) *AIClient {
 			},
 		},
 		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
-			ModelCache: &ModelCache{Models: []ModelInfo{{ID: "openai/gpt-5.2", SupportsToolCalling: supportsToolCalling}}},
+			ModelCache: &ModelCache{
+				Models: []ModelInfo{{
+					ID:                  "openai/gpt-5.2",
+					SupportsToolCalling: supportsToolCalling,
+				}},
+				LastRefresh:   time.Now().Unix(),
+				CacheDuration: 3600,
+			},
 		}}},
 	}
 }
 
 func TestSelectedStreamingToolDescriptorsSkipsAllToolsWhenModelCannotCallTools(t *testing.T) {
-	meta := simpleModeTestMeta("openai/gpt-5.2")
+	meta := agentModeTestMeta("beeper")
+	meta.RuntimeModelOverride = "openai/gpt-5.2"
 
 	withTools := testToolSelectionClient(true).selectedStreamingToolDescriptors(context.Background(), meta, false)
 	if len(withTools) == 0 {

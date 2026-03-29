@@ -1103,7 +1103,6 @@ func (oc *AIClient) buildContextForRegenerate(
 	latestUserID id.EventID,
 ) (PromptContext, error) {
 	var promptContext PromptContext
-	isSimple := isSimpleMode(meta)
 	bridgesdk.AppendChatMessagesToPromptContext(&promptContext.PromptContext, oc.buildSystemMessages(ctx, portal, meta))
 
 	historyLimit := oc.historyLimit(ctx, portal, meta)
@@ -1160,12 +1159,7 @@ func (oc *AIClient) buildContextForRegenerate(
 		}
 	}
 
-	latest := strings.TrimSpace(latestUserBody)
-	if !isSimple {
-		latest = latestUserBody
-	} else {
-		latest = airuntime.SanitizeChatMessageForDisplay(latest, true)
-	}
+	latest := latestUserBody
 	promptContext.Messages = append(promptContext.Messages, PromptMessage{
 		Role: PromptRoleUser,
 		Blocks: []PromptBlock{{

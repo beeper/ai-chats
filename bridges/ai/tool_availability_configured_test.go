@@ -29,7 +29,7 @@ func TestToolAvailable_WebSearch_RequiresAnyProviderKey(t *testing.T) {
 			ModelCache: &ModelCache{Models: []ModelInfo{{ID: "openai/gpt-5.2", SupportsToolCalling: true}}},
 		}}},
 	}
-	meta := simpleModeTestMeta("openai/gpt-5.2")
+	meta := modelModeTestMeta("openai/gpt-5.2")
 
 	ok, source, reason := oc.isToolAvailable(meta, toolspec.WebSearchName)
 	if ok {
@@ -58,7 +58,7 @@ func TestToolAvailable_WebSearch_WithProviderKey(t *testing.T) {
 			ModelCache: &ModelCache{Models: []ModelInfo{{ID: "openai/gpt-5.2", SupportsToolCalling: true}}},
 		}}},
 	}
-	meta := simpleModeTestMeta("openai/gpt-5.2")
+	meta := modelModeTestMeta("openai/gpt-5.2")
 
 	ok, _, reason := oc.isToolAvailable(meta, toolspec.WebSearchName)
 	if !ok {
@@ -81,7 +81,7 @@ func TestToolAvailable_WebFetch_DirectDisabledAndNoExaKey(t *testing.T) {
 			ModelCache: &ModelCache{Models: []ModelInfo{{ID: "openai/gpt-5.2", SupportsToolCalling: true}}},
 		}}},
 	}
-	meta := simpleModeTestMeta("openai/gpt-5.2")
+	meta := modelModeTestMeta("openai/gpt-5.2")
 
 	ok, source, reason := oc.isToolAvailable(meta, toolspec.WebFetchName)
 	if ok {
@@ -100,7 +100,7 @@ func TestToolAvailable_TTS_PlatformBehavior(t *testing.T) {
 			ModelCache: &ModelCache{Models: []ModelInfo{{ID: "openai/gpt-5.2", SupportsToolCalling: true}}},
 		}}},
 	}
-	meta := simpleModeTestMeta("openai/gpt-5.2")
+	meta := modelModeTestMeta("openai/gpt-5.2")
 
 	ok, _, reason := oc.isToolAvailable(meta, toolspec.TTSName)
 	if runtime.GOOS == "darwin" {

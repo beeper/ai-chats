@@ -113,6 +113,7 @@ type UserLoginMetadata struct {
 	APIKey               string         `json:"api_key,omitempty"`
 	BaseURL              string         `json:"base_url,omitempty"`               // Per-user API endpoint
 	TitleGenerationModel string         `json:"title_generation_model,omitempty"` // Model to use for generating chat titles
+	Agents               *bool          `json:"agents,omitempty"`                 // Nil/true enables agents, false limits login to model rooms
 	NextChatIndex        int            `json:"next_chat_index,omitempty"`
 	DefaultChatPortalID  string         `json:"default_chat_portal_id,omitempty"`
 	ModelCache           *ModelCache    `json:"model_cache,omitempty"`
@@ -279,8 +280,11 @@ func mergeServiceTokens(existing, incoming *ServiceTokens) *ServiceTokens {
 	return &merged
 }
 
-func isSimpleMode(meta *PortalMetadata) bool {
-	return meta != nil && meta.ResolvedTarget != nil && meta.ResolvedTarget.Kind == ResolvedTargetModel
+func agentsEnabled(meta *UserLoginMetadata) bool {
+	if meta == nil || meta.Agents == nil {
+		return false
+	}
+	return *meta.Agents
 }
 
 func clonePortalMetadata(src *PortalMetadata) *PortalMetadata {

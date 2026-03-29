@@ -2,7 +2,7 @@ package ai
 
 import "testing"
 
-func TestCloneForkPortalMetadata_PreservesSimpleMode(t *testing.T) {
+func TestCloneForkPortalMetadata_PreservesResolvedModelTarget(t *testing.T) {
 	src := &PortalMetadata{
 		ResolvedTarget: &ResolvedTarget{
 			Kind:    ResolvedTargetModel,
@@ -21,7 +21,7 @@ func TestCloneForkPortalMetadata_PreservesSimpleMode(t *testing.T) {
 	if got.Title != "Forked Chat" {
 		t.Fatalf("expected title Forked Chat, got %q", got.Title)
 	}
-	if !isSimpleMode(got) {
-		t.Fatalf("expected forked metadata to keep resolved simple-mode target")
+	if got.ResolvedTarget == nil || got.ResolvedTarget.Kind != ResolvedTargetModel || got.ResolvedTarget.ModelID != "openai/gpt-5" {
+		t.Fatalf("expected forked metadata to keep resolved model target, got %#v", got.ResolvedTarget)
 	}
 }

@@ -43,9 +43,8 @@ type PlaceholderMessagePayload struct {
 
 type FinalEditPayload struct {
 	Content       *event.MessageEventContent
+	Extra         map[string]any
 	TopLevelExtra map[string]any
-	ReplyTo       id.EventID
-	ThreadRoot    id.EventID
 }
 
 type sdkApprovalHandle struct {
@@ -286,26 +285,6 @@ func (t *Turn) buildRelatesTo() *event.RelatesTo {
 	}
 	if t.source != nil && t.source.EventID != "" {
 		return &event.RelatesTo{EventID: id.EventID(t.source.EventID)}
-	}
-	return nil
-}
-
-func buildPayloadRelatesTo(replyTo, threadRoot id.EventID) *event.RelatesTo {
-	if threadRoot != "" {
-		rel := &event.RelatesTo{
-			Type:          event.RelThread,
-			EventID:       threadRoot,
-			IsFallingBack: true,
-		}
-		if replyTo != "" {
-			rel.InReplyTo = &event.InReplyTo{EventID: replyTo}
-		}
-		return rel
-	}
-	if replyTo != "" {
-		return &event.RelatesTo{
-			InReplyTo: &event.InReplyTo{EventID: replyTo},
-		}
 	}
 	return nil
 }
@@ -700,17 +679,26 @@ func (t *Turn) buildFinalEdit() (networkid.MessageID, *bridgev2.ConvertedEdit) {
 	if content.Mentions == nil {
 		content.Mentions = &event.Mentions{}
 	}
-	if relatesTo := buildPayloadRelatesTo(payload.ReplyTo, payload.ThreadRoot); relatesTo != nil {
-		content.RelatesTo = relatesTo
-	}
+	content.RelatesTo = nil
+	extra := maps.Clone(payload.Extra)
 	topLevelExtra := maps.Clone(payload.TopLevelExtra)
+	if extra == nil {
+		extra = map[string]any{}
+	}
 	if topLevelExtra == nil {
 		topLevelExtra = map[string]any{}
 	}
 	if t.initialEventID != "" {
 		topLevelExtra["m.relates_to"] = (&event.RelatesTo{}).SetReplace(t.initialEventID)
 	}
-	return target, turns.BuildConvertedEdit(&content, topLevelExtra)
+	return target, &bridgev2.ConvertedEdit{
+		ModifiedParts: []*bridgev2.ConvertedEditPart{{
+			Type:          event.EventMessage,
+			Content:       &content,
+			Extra:         extra,
+			TopLevelExtra: topLevelExtra,
+		}},
+	}
 }
 
 func (t *Turn) sendFinalEdit() {
@@ -918,19 +906,14 @@ func (t *Turn) defaultFinalEditPayload(finishReason, fallbackBody string) *Final
 		}
 	}
 	uiMessage = withFinalEditFinishReason(uiMessage, finishReason)
-	replyTo := t.replyTo
-	if replyTo == "" && t.source != nil && t.source.EventID != "" {
-		replyTo = id.EventID(t.source.EventID)
-	}
 	return &FinalEditPayload{
 		Content: &event.MessageEventContent{
 			MsgType:  event.MsgText,
 			Body:     body,
 			Mentions: &event.Mentions{},
 		},
-		TopLevelExtra: BuildDefaultFinalEditTopLevelExtra(uiMessage),
-		ReplyTo:       replyTo,
-		ThreadRoot:    t.threadRoot,
+		Extra:         BuildDefaultFinalEditExtra(uiMessage),
+		TopLevelExtra: BuildDefaultFinalEditTopLevelExtra(),
 	}
 }
 

@@ -28,7 +28,7 @@ Current shape:
 }
 ```
 
-The final edit keeps `com.beeper.ai` as the canonical payload. Streaming-only UI parts are compacted before final persistence.
+The final edit keeps `com.beeper.ai` as the canonical payload inside `m.new_content`. Streaming-only UI parts are compacted before final persistence.
 
 ### 2. Message-anchored live streaming
 
@@ -67,6 +67,7 @@ Envelope fields:
 ### 3. Finalization
 
 When a turn completes, the placeholder is edited with the final assistant content. The final event is authoritative. The stream descriptor is no longer present after finalization.
+For replacement events, Matrix fallback fields remain at the top level while canonical assistant fields such as `com.beeper.ai` and link previews are carried inside `m.new_content`.
 
 ### 4. Compaction status events
 

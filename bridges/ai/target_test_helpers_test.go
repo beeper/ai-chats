@@ -1,6 +1,6 @@
 package ai
 
-func simpleModeTestMeta(modelID string) *PortalMetadata {
+func modelModeTestMeta(modelID string) *PortalMetadata {
 	return &PortalMetadata{
 		ResolvedTarget: &ResolvedTarget{
 			Kind:    ResolvedTargetModel,

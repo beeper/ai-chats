@@ -425,10 +425,12 @@ func TestTurnBuildFinalEditAddsReplaceRelation(t *testing.T) {
 			MsgType: event.MsgText,
 			Body:    "done",
 		},
-		TopLevelExtra: map[string]any{
+		Extra: map[string]any{
 			"com.beeper.ai": map[string]any{"id": turn.ID()},
 		},
-		ReplyTo: id.EventID("$reply-1"),
+		TopLevelExtra: map[string]any{
+			"com.beeper.dont_render_edited": true,
+		},
 	})
 
 	target, edit := turn.buildFinalEdit()
@@ -457,9 +459,19 @@ func TestTurnBuildFinalEditAddsReplaceRelation(t *testing.T) {
 	if edit.ModifiedParts[0].Content.Mentions == nil {
 		t.Fatalf("expected typed mentions on edited content")
 	}
+	if edit.ModifiedParts[0].Content.RelatesTo != nil {
+		t.Fatalf("expected replacement content to omit reply/thread relation, got %#v", edit.ModifiedParts[0].Content.RelatesTo)
+	}
+	rawAI, ok := edit.ModifiedParts[0].Extra[matrixevents.BeeperAIKey].(map[string]any)
+	if !ok {
+		t.Fatalf("expected %s payload in edit extra, got %#v", matrixevents.BeeperAIKey, edit.ModifiedParts[0].Extra)
+	}
+	if rawAI["id"] != turn.ID() {
+		t.Fatalf("expected ai payload id %q, got %#v", turn.ID(), rawAI["id"])
+	}
 }
 
-func TestTurnBuildFinalEditPreservesThreadReplyInNewContent(t *testing.T) {
+func TestTurnBuildFinalEditStripsRelationFromNewContent(t *testing.T) {
 	turn := newTurn(context.Background(), nil, nil, nil)
 	turn.initialEventID = id.EventID("$event-1")
 	turn.networkMessageID = "msg-1"
@@ -467,30 +479,17 @@ func TestTurnBuildFinalEditPreservesThreadReplyInNewContent(t *testing.T) {
 		Content: &event.MessageEventContent{
 			MsgType: event.MsgText,
 			Body:    "done",
+			RelatesTo: (&event.RelatesTo{}).
+				SetThread(id.EventID("$thread-1"), id.EventID("$reply-1")),
 		},
-		ReplyTo:    id.EventID("$reply-1"),
-		ThreadRoot: id.EventID("$thread-1"),
 	})
 
 	_, edit := turn.buildFinalEdit()
 	if edit == nil || len(edit.ModifiedParts) != 1 {
 		t.Fatalf("expected single modified part, got %#v", edit)
 	}
-	rel := edit.ModifiedParts[0].Content.RelatesTo
-	if rel == nil {
-		t.Fatalf("expected reply relation in edited content")
-	}
-	if rel.Type != event.RelThread {
-		t.Fatalf("expected thread relation, got %#v", rel)
-	}
-	if rel.EventID != id.EventID("$thread-1") {
-		t.Fatalf("expected thread root, got %q", rel.EventID)
-	}
-	if rel.InReplyTo == nil || rel.InReplyTo.EventID != id.EventID("$reply-1") {
-		t.Fatalf("expected reply target in thread relation, got %#v", rel.InReplyTo)
-	}
-	if !rel.IsFallingBack {
-		t.Fatalf("expected thread fallback reply to be preserved")
+	if rel := edit.ModifiedParts[0].Content.RelatesTo; rel != nil {
+		t.Fatalf("expected edited content to strip m.relates_to, got %#v", rel)
 	}
 }
 
@@ -541,9 +540,12 @@ func TestTurnBuildFinalEditDefaultsToVisibleText(t *testing.T) {
 	if extra["com.beeper.dont_render_edited"] != true {
 		t.Fatalf("expected dont_render_edited marker, got %#v", extra)
 	}
-	rawAI, ok := extra[matrixevents.BeeperAIKey].(map[string]any)
+	if _, ok := extra[matrixevents.BeeperAIKey]; ok {
+		t.Fatalf("expected compact %s payload outside top-level extra, got %#v", matrixevents.BeeperAIKey, extra[matrixevents.BeeperAIKey])
+	}
+	rawAI, ok := edit.ModifiedParts[0].Extra[matrixevents.BeeperAIKey].(map[string]any)
 	if !ok {
-		t.Fatalf("expected compact %s payload, got %#v", matrixevents.BeeperAIKey, extra[matrixevents.BeeperAIKey])
+		t.Fatalf("expected compact %s payload, got %#v", matrixevents.BeeperAIKey, edit.ModifiedParts[0].Extra)
 	}
 	if parts, ok := rawAI["parts"].([]any); ok {
 		for _, raw := range parts {
@@ -579,13 +581,40 @@ func TestTurnBuildFinalEditDefaultsToGenericBodyForArtifacts(t *testing.T) {
 	if body := edit.ModifiedParts[0].Content.Body; body != "Completed response" {
 		t.Fatalf("expected generic body for artifact-only turn, got %q", body)
 	}
-	rawAI, ok := edit.ModifiedParts[0].TopLevelExtra[matrixevents.BeeperAIKey].(map[string]any)
+	rawAI, ok := edit.ModifiedParts[0].Extra[matrixevents.BeeperAIKey].(map[string]any)
 	if !ok {
-		t.Fatalf("expected compact ai payload, got %#v", edit.ModifiedParts[0].TopLevelExtra)
+		t.Fatalf("expected compact ai payload, got %#v", edit.ModifiedParts[0].Extra)
 	}
 	parts, _ := rawAI["parts"].([]any)
 	if len(parts) == 0 {
 		t.Fatalf("expected artifact part in compact payload, got %#v", rawAI)
+	}
+}
+
+func TestTurnBuildFinalEditPreservesMentionsInContent(t *testing.T) {
+	turn := newTurn(context.Background(), nil, nil, nil)
+	turn.initialEventID = id.EventID("$event-mentions")
+	turn.networkMessageID = "msg-mentions"
+	turn.SetFinalEditPayload(&FinalEditPayload{
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgText,
+			Body:    "hi",
+			Mentions: &event.Mentions{
+				UserIDs: []id.UserID{"@alice:test"},
+			},
+		},
+		TopLevelExtra: map[string]any{
+			"com.beeper.dont_render_edited": true,
+		},
+	})
+
+	_, edit := turn.buildFinalEdit()
+	if edit == nil || len(edit.ModifiedParts) != 1 {
+		t.Fatalf("expected single modified part, got %#v", edit)
+	}
+	mentions := edit.ModifiedParts[0].Content.Mentions
+	if mentions == nil || len(mentions.UserIDs) != 1 || mentions.UserIDs[0] != id.UserID("@alice:test") {
+		t.Fatalf("expected mentions to be preserved in replacement content, got %#v", mentions)
 	}
 }
 

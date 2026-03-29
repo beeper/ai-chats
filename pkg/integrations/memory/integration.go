@@ -224,13 +224,6 @@ func toInt64(v any) int64 {
 
 func (i *Integration) buildOverflowDeps() OverflowDeps {
 	return OverflowDeps{
-		IsSimpleMode: func(call any) bool {
-			oc, ok := asOverflowCall(call)
-			if !ok {
-				return false
-			}
-			return i.host.IsSimpleMode(oc.Meta)
-		},
 		ResolveSettings: i.resolveOverflowFlushSettings,
 		TrimPrompt: func(prompt []openai.ChatCompletionMessageParamUnion) []openai.ChatCompletionMessageParamUnion {
 			return i.host.SmartTruncatePrompt(prompt, 0.5)
@@ -287,9 +280,6 @@ func (i *Integration) buildOverflowDeps() OverflowDeps {
 }
 
 func (i *Integration) shouldInjectMemoryPromptContext(scope iruntime.PromptScope) bool {
-	if scope.Meta != nil && i.host.IsSimpleMode(scope.Meta) {
-		return false
-	}
 	if cfg := i.host.ModuleConfig(moduleName); cfg != nil {
 		inject, _ := cfg["inject_context"].(bool)
 		return inject

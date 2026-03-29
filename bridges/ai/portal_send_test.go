@@ -17,12 +17,18 @@ import (
 
 type testMatrixAPI struct {
 	joinedRooms []id.RoomID
+	sentRoomID  id.RoomID
+	sentType    event.Type
+	sentContent *event.Content
 }
 
 func (tma *testMatrixAPI) GetMXID() id.UserID   { return "@ghost:test" }
 func (tma *testMatrixAPI) IsDoublePuppet() bool { return false }
-func (tma *testMatrixAPI) SendMessage(context.Context, id.RoomID, event.Type, *event.Content, *bridgev2.MatrixSendExtra) (*mautrix.RespSendEvent, error) {
-	return nil, nil
+func (tma *testMatrixAPI) SendMessage(_ context.Context, roomID id.RoomID, evtType event.Type, content *event.Content, _ *bridgev2.MatrixSendExtra) (*mautrix.RespSendEvent, error) {
+	tma.sentRoomID = roomID
+	tma.sentType = evtType
+	tma.sentContent = content
+	return &mautrix.RespSendEvent{EventID: "$test"}, nil
 }
 func (tma *testMatrixAPI) SendState(context.Context, id.RoomID, event.Type, string, *event.Content, time.Time) (*mautrix.RespSendEvent, error) {
 	return nil, nil
@@ -176,5 +182,37 @@ func TestSenderForPortalUsesModelGhostWithoutAgent(t *testing.T) {
 	}
 	if sender.SenderLogin != login.ID {
 		t.Fatalf("expected sender login %q, got %q", login.ID, sender.SenderLogin)
+	}
+}
+
+func TestSendSystemNoticeUsesBridgeBot(t *testing.T) {
+	bot := &testMatrixAPI{}
+	oc := &AIClient{
+		UserLogin: &bridgev2.UserLogin{
+			Bridge: &bridgev2.Bridge{Bot: bot},
+		},
+	}
+	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: "!room:example.com"}}
+
+	oc.sendSystemNotice(context.Background(), portal, "AI can make mistakes.")
+
+	if bot.sentRoomID != portal.MXID {
+		t.Fatalf("expected room %q, got %q", portal.MXID, bot.sentRoomID)
+	}
+	if bot.sentType != event.EventMessage {
+		t.Fatalf("expected event type %q, got %q", event.EventMessage, bot.sentType)
+	}
+	if bot.sentContent == nil {
+		t.Fatal("expected content to be sent")
+	}
+	content, ok := bot.sentContent.Parsed.(*event.MessageEventContent)
+	if !ok {
+		t.Fatalf("expected message content, got %#v", bot.sentContent.Parsed)
+	}
+	if content.MsgType != event.MsgNotice {
+		t.Fatalf("expected msgtype %q, got %q", event.MsgNotice, content.MsgType)
+	}
+	if content.Body != "AI can make mistakes." {
+		t.Fatalf("expected notice body to be preserved, got %q", content.Body)
 	}
 }

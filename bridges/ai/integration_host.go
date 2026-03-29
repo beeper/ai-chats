@@ -201,11 +201,6 @@ func (h *runtimeIntegrationHost) SetModuleMeta(meta any, key string, value any) 
 	m.SetModuleMeta(key, value)
 }
 
-func (h *runtimeIntegrationHost) IsSimpleMode(meta any) bool {
-	m, _ := meta.(*PortalMetadata)
-	return isSimpleMode(m)
-}
-
 func (h *runtimeIntegrationHost) AgentIDFromMeta(meta any) string {
 	m, _ := meta.(*PortalMetadata)
 	return resolveAgentID(m)

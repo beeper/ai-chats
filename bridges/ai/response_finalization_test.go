@@ -46,7 +46,7 @@ func TestBuildFinalEditUIMessage_IncludesSourceAndFileParts(t *testing.T) {
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-delta", "id": "text-1", "delta": "hello"})
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-end", "id": "text-1"})
 
-	ui := buildCompactFinalUIMessage(oc.buildStreamUIMessage(state, simpleModeTestMeta("openai/gpt-4.1"), nil))
+	ui := buildCompactFinalUIMessage(oc.buildStreamUIMessage(state, modelModeTestMeta("openai/gpt-4.1"), nil))
 	if ui == nil {
 		t.Fatalf("expected final edit UI message")
 	}
@@ -109,7 +109,7 @@ func TestBuildFinalEditUIMessage_OmitsTextAndReasoningParts(t *testing.T) {
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "reasoning-delta", "id": "reasoning-2", "delta": "thinking"})
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "reasoning-end", "id": "reasoning-2"})
 
-	ui := buildCompactFinalUIMessage(oc.buildStreamUIMessage(state, simpleModeTestMeta("openai/gpt-4.1"), nil))
+	ui := buildCompactFinalUIMessage(oc.buildStreamUIMessage(state, modelModeTestMeta("openai/gpt-4.1"), nil))
 	parts, _ := ui["parts"].([]any)
 	for _, rawPart := range parts {
 		part, _ := rawPart.(map[string]any)
@@ -166,13 +166,16 @@ func TestFinalRenderedBodyFallback_UsesVisibleTurnText(t *testing.T) {
 	}
 }
 
-func TestBuildFinalEditTopLevelExtra_KeepsMatrixFallbackFields(t *testing.T) {
+func TestBuildFinalEditTopLevelExtra_KeepsOnlyEditMetadata(t *testing.T) {
 	uiMessage := map[string]any{
 		"id":   "turn-3",
 		"role": "assistant",
 	}
+	previews := []*event.BeeperLinkPreview{{
+		MatchedURL: "https://example.com",
+	}}
 
-	extra := buildFinalEditTopLevelExtra(uiMessage, nil)
+	extra := buildFinalEditTopLevelExtra()
 
 	if _, ok := extra["body"]; ok {
 		t.Fatalf("expected body fallback to come from Matrix edit content, got %#v", extra["body"])
@@ -183,25 +186,25 @@ func TestBuildFinalEditTopLevelExtra_KeepsMatrixFallbackFields(t *testing.T) {
 	if _, ok := extra["formatted_body"]; ok {
 		t.Fatalf("expected formatted_body fallback to come from Matrix edit content, got %#v", extra["formatted_body"])
 	}
-	gotUIMessage, ok := extra[BeeperAIKey].(map[string]any)
-	if !ok {
-		t.Fatalf("expected UIMessage payload map, got %T", extra[BeeperAIKey])
+	if _, ok := extra[BeeperAIKey]; ok {
+		t.Fatalf("expected UIMessage payload to move into m.new_content, got %#v", extra[BeeperAIKey])
 	}
-	if got := gotUIMessage["id"]; got != "turn-3" {
-		t.Fatalf("expected UIMessage id, got %#v", got)
+	if _, ok := extra["com.beeper.linkpreviews"]; ok {
+		t.Fatalf("expected link previews to move into m.new_content, got %#v", extra["com.beeper.linkpreviews"])
 	}
 	if _, ok := extra["m.relates_to"]; ok {
 		t.Fatalf("expected SDK to inject m.relates_to, got %#v", extra["m.relates_to"])
 	}
+	if uiMessage["id"] != "turn-3" || previews[0].MatchedURL != "https://example.com" {
+		t.Fatalf("expected helper inputs to remain untouched")
+	}
 }
 
-func TestBuildFinalEditPayload_PreservesReplyTarget(t *testing.T) {
+func TestBuildFinalEditPayloadMovesCanonicalFieldsIntoNewContent(t *testing.T) {
 	topLevelExtra := map[string]any{
-		"com.beeper.ai": map[string]any{"id": "turn-4"},
-	}
-	replyTarget := ReplyTarget{
-		ReplyTo:    id.EventID("$reply"),
-		ThreadRoot: id.EventID("$thread"),
+		"com.beeper.ai":                 map[string]any{"id": "turn-4"},
+		"com.beeper.linkpreviews":       []map[string]any{{"matched_url": "https://example.com"}},
+		"com.beeper.dont_render_edited": true,
 	}
 
 	payload := buildFinalEditPayload(event.MessageEventContent{
@@ -209,17 +212,33 @@ func TestBuildFinalEditPayload_PreservesReplyTarget(t *testing.T) {
 		Body:          "done",
 		Format:        event.FormatHTML,
 		FormattedBody: "<p>done</p>",
-	}, topLevelExtra, replyTarget)
+		RelatesTo:     (&event.RelatesTo{}).SetReplyTo(id.EventID("$reply")),
+		Mentions: &event.Mentions{
+			UserIDs: []id.UserID{"@alice:example.com"},
+		},
+	}, topLevelExtra)
 	if payload == nil || payload.Content == nil {
 		t.Fatalf("expected final edit payload")
 	}
-	if payload.ReplyTo != id.EventID("$reply") {
-		t.Fatalf("expected reply target to be preserved, got %q", payload.ReplyTo)
-	}
-	if payload.ThreadRoot != id.EventID("$thread") {
-		t.Fatalf("expected thread root to be preserved, got %q", payload.ThreadRoot)
-	}
 	if payload.Content.Body != "done" {
 		t.Fatalf("expected payload body to be preserved, got %q", payload.Content.Body)
+	}
+	if payload.Content.RelatesTo != nil {
+		t.Fatalf("expected relation to be stripped from replacement content, got %#v", payload.Content.RelatesTo)
+	}
+	if payload.Content.Mentions == nil || len(payload.Content.Mentions.UserIDs) != 1 {
+		t.Fatalf("expected mentions to be preserved, got %#v", payload.Content.Mentions)
+	}
+	if payload.Extra[BeeperAIKey] == nil {
+		t.Fatalf("expected UI message payload in m.new_content extra, got %#v", payload.Extra)
+	}
+	if payload.Extra["com.beeper.linkpreviews"] == nil {
+		t.Fatalf("expected link previews in m.new_content extra, got %#v", payload.Extra)
+	}
+	if payload.TopLevelExtra["com.beeper.dont_render_edited"] != true {
+		t.Fatalf("expected dont_render_edited to stay top-level, got %#v", payload.TopLevelExtra)
+	}
+	if _, ok := payload.TopLevelExtra[BeeperAIKey]; ok {
+		t.Fatalf("expected UI message payload to be absent from top-level extra, got %#v", payload.TopLevelExtra[BeeperAIKey])
 	}
 }

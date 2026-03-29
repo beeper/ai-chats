@@ -2,6 +2,8 @@ package ai
 
 import (
 	"context"
+	"errors"
+	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/commands"
@@ -104,4 +106,72 @@ func fnNew(ce *commands.Event) {
 		return
 	}
 	go client.handleNewChat(ce.Ctx, nil, ce.Portal, meta, ce.Args)
+}
+
+var _ = registerAICommand(commandregistry.Definition{
+	Name:          "agents",
+	Description:   "Set whether this login exposes agent chats or model rooms only",
+	Args:          "[on|off|status]",
+	Section:       HelpSectionAI,
+	RequiresLogin: true,
+	Handler:       fnAgents,
+})
+
+func parseAgentsCommandArgs(args []string, currentlyEnabled bool) (enabled bool, changed bool, reply string, err error) {
+	if len(args) == 0 {
+		if currentlyEnabled {
+			return true, false, "Agents are enabled for this login.", nil
+		}
+		return false, false, "Agents are disabled for this login.", nil
+	}
+	if len(args) != 1 {
+		return currentlyEnabled, false, "", errInvalidAgentsCommandUsage
+	}
+
+	switch strings.ToLower(strings.TrimSpace(args[0])) {
+	case "status":
+		if currentlyEnabled {
+			return true, false, "Agents are enabled for this login.", nil
+		}
+		return false, false, "Agents are disabled for this login.", nil
+	case "on", "enable", "enabled", "true":
+		return true, !currentlyEnabled, "Agents enabled for this login.", nil
+	case "off", "disable", "disabled", "false":
+		return false, currentlyEnabled, "Agents disabled for this login. New discovery and chat creation will use model rooms only.", nil
+	default:
+		return currentlyEnabled, false, "", errInvalidAgentsCommandUsage
+	}
+}
+
+var errInvalidAgentsCommandUsage = errors.New("usage: !ai agents [on|off|status]")
+
+func fnAgents(ce *commands.Event) {
+	client := getAIClient(ce)
+	if client == nil || client.UserLogin == nil {
+		markCommandFailure(ce, "That command requires you to be logged in.", event.MessageStatusNoPermission)
+		ce.Reply("That command requires you to be logged in.")
+		return
+	}
+
+	loginMeta := loginMetadata(client.UserLogin)
+	currentlyEnabled := agentsEnabled(loginMeta)
+	enabled, changed, reply, parseErr := parseAgentsCommandArgs(ce.Args, currentlyEnabled)
+	if parseErr != nil {
+		markCommandFailure(ce, "usage: !ai agents [on|off|status]", event.MessageStatusUnsupported)
+		ce.Reply("usage: !ai agents [on|off|status]")
+		return
+	}
+
+	if changed {
+		prev := loginMeta.Agents
+		loginMeta.Agents = &enabled
+		if err := client.UserLogin.Save(ce.Ctx); err != nil {
+			loginMeta.Agents = prev
+			markCommandFailure(ce, "Couldn't save AI settings.", event.MessageStatusGenericError)
+			ce.Reply("Couldn't save AI settings.")
+			return
+		}
+	}
+
+	ce.Reply("%s", formatSystemAck(reply))
 }
