@@ -11,7 +11,8 @@ func TestParseAgentsCommandArgs(t *testing.T) {
 		wantChanged      bool
 		wantErr          bool
 	}{
-		{name: "bare disables", args: nil, currentlyEnabled: true, wantEnabled: false, wantChanged: true},
+		{name: "bare shows status", args: nil, currentlyEnabled: true, wantEnabled: true, wantChanged: false},
+		{name: "bare shows status disabled", args: nil, currentlyEnabled: false, wantEnabled: false, wantChanged: false},
 		{name: "status when enabled", args: []string{"status"}, currentlyEnabled: true, wantEnabled: true, wantChanged: false},
 		{name: "status when disabled", args: []string{"status"}, currentlyEnabled: false, wantEnabled: false, wantChanged: false},
 		{name: "on enables", args: []string{"on"}, currentlyEnabled: false, wantEnabled: true, wantChanged: true},

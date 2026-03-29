@@ -119,7 +119,10 @@ var _ = registerAICommand(commandregistry.Definition{
 
 func parseAgentsCommandArgs(args []string, currentlyEnabled bool) (enabled bool, changed bool, reply string, err error) {
 	if len(args) == 0 {
-		return false, currentlyEnabled, "Agents disabled for this login. New discovery and chat creation will use model rooms only.", nil
+		if currentlyEnabled {
+			return true, false, "Agents are enabled for this login.", nil
+		}
+		return false, false, "Agents are disabled for this login.", nil
 	}
 	if len(args) != 1 {
 		return currentlyEnabled, false, "", errInvalidAgentsCommandUsage

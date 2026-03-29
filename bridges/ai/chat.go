@@ -437,10 +437,7 @@ func (oc *AIClient) CreateChatWithGhost(ctx context.Context, ghost *bridgev2.Gho
 // resolveAgentIdentifier resolves an agent to a ghost and optionally creates a chat.
 func (oc *AIClient) resolveAgentIdentifier(ctx context.Context, agent *agents.AgentDefinition, modelID string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
 	if !oc.agentsEnabledForLogin() {
-		if createChat {
-			return nil, agentChatsDisabledError()
-		}
-		return nil, bridgev2.WrapRespErr(fmt.Errorf("agent '%s' not found", agent.ID), mautrix.MNotFound)
+		return nil, agentChatsDisabledError()
 	}
 	explicitModel := modelID != ""
 	if modelID == "" {
@@ -750,7 +747,7 @@ func (oc *AIClient) resolveNewChatTarget(
 			return nil, "", errors.New(usage)
 		}
 		if !oc.agentsEnabledForLogin() {
-			return nil, "", errors.New("agent chats are disabled for this login")
+			return nil, "", agentChatsDisabledError()
 		}
 		targetID := args[1]
 		if targetID == "" || len(args) > 2 {
@@ -776,7 +773,7 @@ func (oc *AIClient) resolveNewChatTarget(
 	agentID := resolveAgentID(meta)
 	if agentID != "" {
 		if !oc.agentsEnabledForLogin() {
-			return nil, "", errors.New("agent chats are disabled for this login")
+			return nil, "", agentChatsDisabledError()
 		}
 		store := NewAgentStoreAdapter(oc)
 		agent, err := store.GetAgentByID(ctx, agentID)

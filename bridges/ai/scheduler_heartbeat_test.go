@@ -25,31 +25,17 @@ func TestResolveSchedulableHeartbeatAgents(t *testing.T) {
 		{agentID: "beeper"},
 		{agentID: "worker"},
 	}
-	portals := []*bridgev2.Portal{
-		testAgentPortal("visible", "!visible:example.com", "beeper", &PortalMetadata{Title: "Visible"}),
-		testAgentPortal("hidden", "!hidden:example.com", "worker", &PortalMetadata{
-			ModuleMeta: map[string]any{"heartbeat": map[string]any{"is_internal_room": true}},
-		}),
-		testAgentPortal("subagent", "!subagent:example.com", "worker", &PortalMetadata{
-			SubagentParentRoomID: "!parent:example.com",
-		}),
-	}
 
-	got := resolveSchedulableHeartbeatAgents(candidates, true, func(agentID string) bool {
+	got := resolveSchedulableHeartbeatAgents(candidates, func(agentID string) bool {
 		return agentID != "worker"
-	}, portals)
+	})
 	if len(got) != 1 || got[0].agentID != "beeper" {
 		t.Fatalf("expected only beeper to be schedulable, got %#v", got)
 	}
 
-	got = resolveSchedulableHeartbeatAgents(candidates, true, func(string) bool { return true }, portals)
+	got = resolveSchedulableHeartbeatAgents(candidates, func(string) bool { return true })
 	if len(got) != 2 {
 		t.Fatalf("expected both agents to be schedulable when they exist, got %#v", got)
-	}
-
-	got = resolveSchedulableHeartbeatAgents(candidates, false, func(string) bool { return true }, portals)
-	if len(got) != 0 {
-		t.Fatalf("expected no schedulable agents when agents are disabled, got %#v", got)
 	}
 }
 

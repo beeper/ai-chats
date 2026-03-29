@@ -420,26 +420,23 @@ func (s *schedulerRuntime) resolveSchedulableHeartbeatAgents(
 		}
 	}
 	store := NewAgentStoreAdapter(s.client)
+	agentsMap, err := store.LoadAgents(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
 	return resolveSchedulableHeartbeatAgents(
 		candidates,
-		s.client.agentsEnabledForLogin(),
 		func(agentID string) bool {
-			agent, err := store.GetAgentByID(ctx, agentID)
-			return err == nil && agent != nil
+			_, ok := agentsMap[agentID]
+			return ok
 		},
-		portals,
 	), portals, nil
 }
 
 func resolveSchedulableHeartbeatAgents(
 	candidates []heartbeatAgent,
-	agentsEnabled bool,
 	agentExists func(string) bool,
-	portals []*bridgev2.Portal,
 ) []heartbeatAgent {
-	if !agentsEnabled {
-		return nil
-	}
 	out := make([]heartbeatAgent, 0, len(candidates))
 	for _, candidate := range candidates {
 		if agentExists != nil && !agentExists(candidate.agentID) {
