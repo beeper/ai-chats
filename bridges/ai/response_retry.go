@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"slices"
+	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
