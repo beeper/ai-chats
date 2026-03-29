@@ -13,17 +13,10 @@ func TestAgentContactIdentifiers(t *testing.T) {
 	if len(identifiers) == 0 {
 		t.Fatalf("expected non-empty identifiers")
 	}
-	if identifiers[0] != "beeper" {
+	if identifiers[0] != "agent:beeper" {
 		t.Fatalf("expected agent id first, got %q", identifiers[0])
 	}
-	foundModel := false
-	for _, ident := range identifiers {
-		if ident == modelID {
-			foundModel = true
-			break
-		}
-	}
-	if !foundModel {
-		t.Fatalf("expected model id %q to be present in identifiers: %#v", modelID, identifiers)
+	if len(identifiers) != 1 {
+		t.Fatalf("expected only canonical agent identifier, got %#v", identifiers)
 	}
 }

@@ -97,6 +97,9 @@ func normalizedCatalogAgentIdentifier(identifier string) string {
 	if identifier == "" {
 		return ""
 	}
+	if agentID := parseCanonicalAgentIdentifier(identifier); agentID != "" {
+		return agentID
+	}
 	if agentID, ok := parseAgentFromGhostID(identifier); ok {
 		return agentID
 	}

@@ -159,6 +159,19 @@ func modelMatchesQuery(query string, model *ModelInfo) bool {
 		(normalizedQuery != "" && strings.Contains(normalizeModelSearchString(name), normalizedQuery)) {
 		return true
 	}
+	if provider := modelContactProvider(model.ID, model); provider != "" && name != "" {
+		providerAlias := provider + "/" + name
+		if strings.Contains(strings.ToLower(providerAlias), rawQuery) ||
+			(normalizedQuery != "" && strings.Contains(normalizeModelSearchString(providerAlias), normalizedQuery)) {
+			return true
+		}
+	}
+	if openRouterURL := modelContactOpenRouterURL(model.ID, model); openRouterURL != "" {
+		if strings.Contains(strings.ToLower(openRouterURL), rawQuery) ||
+			(normalizedQuery != "" && strings.Contains(normalizeModelSearchString(openRouterURL), normalizedQuery)) {
+			return true
+		}
+	}
 	for _, ident := range modelContactIdentifiers(model.ID, model) {
 		if strings.Contains(strings.ToLower(ident), rawQuery) ||
 			(normalizedQuery != "" && strings.Contains(normalizeModelSearchString(ident), normalizedQuery)) {
@@ -169,11 +182,11 @@ func modelMatchesQuery(query string, model *ModelInfo) bool {
 }
 
 func agentContactIdentifiers(agentID, modelID string, info *ModelInfo) []string {
+	_, _ = modelID, info
 	var identifiers []string
-	if id := strings.TrimSpace(agentID); id != "" {
-		identifiers = append(identifiers, id)
+	if ident := canonicalAgentIdentifier(agentID); ident != "" {
+		identifiers = append(identifiers, ident)
 	}
-	identifiers = append(identifiers, modelContactIdentifiers(modelID, info)...)
 	return stringutil.DedupeStrings(identifiers)
 }
 
@@ -227,7 +240,7 @@ func (oc *AIClient) modelContactResponse(ctx context.Context, model *ModelInfo) 
 }
 
 func (oc *AIClient) agentContactResponse(ctx context.Context, agent *bridgesdk.Agent) *bridgev2.ResolveIdentifierResponse {
-	if agent == nil {
+	if agent == nil || !oc.agentsEnabledForLogin() {
 		return nil
 	}
 	resp := &bridgev2.ResolveIdentifierResponse{
@@ -379,6 +392,12 @@ func (oc *AIClient) ResolveIdentifier(ctx context.Context, identifier string, cr
 		return nil, bridgev2.WrapRespErr(errors.New("identifier is required"), mautrix.MInvalidParam)
 	}
 
+	if canonicalModelID := parseCanonicalModelIdentifier(id); canonicalModelID != "" {
+		id = canonicalModelID
+	} else if canonicalAgentID := parseCanonicalAgentIdentifier(id); canonicalAgentID != "" {
+		id = canonicalAgentID
+	}
+
 	// Check if identifier is a model ghost ID (model-{id}).
 	if modelID := parseModelFromGhostID(id); modelID != "" {
 		resolved, valid, err := oc.resolveModelID(ctx, modelID)
@@ -482,9 +501,13 @@ func (oc *AIClient) resolveAgentIdentifier(ctx context.Context, agent *agents.Ag
 		modelID = oc.agentDefaultModel(agent)
 	}
 	userID := oc.agentUserID(agent.ID)
-	ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get ghost: %w", err)
+	var ghost *bridgev2.Ghost
+	if oc != nil && oc.UserLogin != nil && oc.UserLogin.Bridge != nil {
+		var err error
+		ghost, err = oc.UserLogin.Bridge.GetGhostByID(ctx, userID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get ghost: %w", err)
+		}
 	}
 
 	agentName := oc.resolveAgentDisplayName(ctx, agent)
@@ -517,9 +540,13 @@ func (oc *AIClient) resolveAgentIdentifier(ctx context.Context, agent *agents.Ag
 func (oc *AIClient) resolveModelIdentifier(ctx context.Context, modelID string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
 	// Get or create ghost
 	userID := modelUserID(modelID)
-	ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get ghost: %w", err)
+	var err error
+	var ghost *bridgev2.Ghost
+	if oc != nil && oc.UserLogin != nil && oc.UserLogin.Bridge != nil {
+		ghost, err = oc.UserLogin.Bridge.GetGhostByID(ctx, userID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get ghost: %w", err)
+		}
 	}
 
 	// Ensure ghost display name is set before returning
@@ -947,7 +974,7 @@ func (oc *AIClient) chatInfoFromPortal(ctx context.Context, portal *bridgev2.Por
 	chatInfo := oc.composeChatInfo(ctx, title, modelID)
 
 	agentID := resolveAgentID(meta)
-	if agentID == "" {
+	if agentID == "" || !oc.agentsEnabledForLogin() {
 		return chatInfo
 	}
 
@@ -990,7 +1017,7 @@ func (oc *AIClient) composeChatInfo(ctx context.Context, title, modelID string) 
 }
 
 func (oc *AIClient) applyAgentChatInfo(chatInfo *bridgev2.ChatInfo, agentID, agentName, modelID string) {
-	if chatInfo == nil || agentID == "" {
+	if chatInfo == nil || agentID == "" || !oc.agentsEnabledForLogin() {
 		return
 	}
 	if modelID == "" {

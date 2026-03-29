@@ -7,6 +7,36 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
+func canonicalModelIdentifier(modelID string) string {
+	modelID = strings.TrimSpace(ResolveAlias(modelID))
+	if modelID == "" {
+		return ""
+	}
+	return "model:" + modelID
+}
+
+func parseCanonicalModelIdentifier(identifier string) string {
+	if suffix, ok := strings.CutPrefix(strings.TrimSpace(identifier), "model:"); ok {
+		return strings.TrimSpace(ResolveAlias(suffix))
+	}
+	return ""
+}
+
+func canonicalAgentIdentifier(agentID string) string {
+	agentID = normalizeAgentID(agentID)
+	if agentID == "" {
+		return ""
+	}
+	return "agent:" + agentID
+}
+
+func parseCanonicalAgentIdentifier(identifier string) string {
+	if suffix, ok := strings.CutPrefix(strings.TrimSpace(identifier), "agent:"); ok {
+		return normalizeAgentID(suffix)
+	}
+	return ""
+}
+
 func modelContactName(modelID string, info *ModelInfo) string {
 	if info != nil && info.Name != "" {
 		return info.Name
@@ -25,12 +55,10 @@ func modelContactProvider(modelID string, info *ModelInfo) string {
 }
 
 func modelContactIdentifiers(modelID string, info *ModelInfo) []string {
-	identifiers := []string{modelID}
-	if provider := modelContactProvider(modelID, info); provider != "" {
-		lowerProvider := strings.ToLower(provider) + "/"
-		if !strings.HasPrefix(strings.ToLower(modelID), lowerProvider) {
-			identifiers = append(identifiers, provider+"/"+modelID)
-		}
+	_ = info
+	identifiers := []string{}
+	if ident := canonicalModelIdentifier(modelID); ident != "" {
+		identifiers = append(identifiers, ident)
 	}
 	return stringutil.DedupeStrings(identifiers)
 }

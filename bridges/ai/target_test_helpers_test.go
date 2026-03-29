@@ -19,3 +19,7 @@ func agentModeTestMeta(agentID string) *PortalMetadata {
 		},
 	}
 }
+
+func simpleModeTestMeta(modelID string) *PortalMetadata {
+	return modelModeTestMeta(modelID)
+}

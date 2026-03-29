@@ -974,7 +974,7 @@ func (oc *AIClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*br
 		return &bridgev2.UserInfo{
 			Name:         ptr.Ptr("Unknown Agent"),
 			IsBot:        ptr.Ptr(true),
-			Identifiers:  stringutil.DedupeStrings([]string{agentID}),
+			Identifiers:  stringutil.DedupeStrings([]string{canonicalAgentIdentifier(agentID)}),
 			ExtraUpdates: updateGhostLastSync,
 		}, nil
 	}
@@ -2102,6 +2102,9 @@ func getAudioFormat(mimeType string) string {
 // ensureGhostDisplayName ensures the ghost has its display name set before sending messages.
 // This fixes the issue where ghosts appear with raw user IDs instead of formatted names.
 func (oc *AIClient) ensureGhostDisplayName(ctx context.Context, modelID string) {
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
+		return
+	}
 	ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, modelUserID(modelID))
 	if err != nil || ghost == nil {
 		return
@@ -2126,6 +2129,9 @@ func (oc *AIClient) ensureGhostDisplayNameWithGhost(ctx context.Context, ghost *
 
 // ensureAgentGhostDisplayName ensures the agent ghost has its display name set.
 func (oc *AIClient) ensureAgentGhostDisplayName(ctx context.Context, agentID, modelID, agentName string) {
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
+		return
+	}
 	ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, oc.agentUserID(agentID))
 	if err != nil || ghost == nil {
 		return
