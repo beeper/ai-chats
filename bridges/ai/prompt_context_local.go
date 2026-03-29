@@ -92,7 +92,7 @@ func promptMessageToResponsesInputs(msg PromptMessage) responses.ResponseInputPa
 		}}
 	case PromptRoleAssistant:
 		var result responses.ResponseInputParam
-		text := strings.TrimSpace(msg.Text())
+		text := strings.TrimSpace(msg.VisibleText())
 		if text != "" {
 			result = append(result, responses.ResponseInputItemUnionParam{
 				OfMessage: &responses.EasyInputMessageParam{
@@ -191,7 +191,7 @@ func promptAssistantToChatMessage(msg PromptMessage) *openai.ChatCompletionAssis
 	var toolCalls []openai.ChatCompletionMessageToolCallUnionParam
 	for _, block := range msg.Blocks {
 		switch block.Type {
-		case PromptBlockText, PromptBlockThinking:
+		case PromptBlockText:
 			text := strings.TrimSpace(block.Text)
 			if text == "" {
 				continue

@@ -41,6 +41,8 @@ func filterPromptBlocksForHistory(blocks []PromptBlock, injectImages bool) []Pro
 			if injectImages {
 				filtered = append(filtered, block)
 			}
+		case PromptBlockThinking:
+			continue
 		default:
 			filtered = append(filtered, block)
 		}

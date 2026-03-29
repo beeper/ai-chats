@@ -27,7 +27,6 @@ type responsesTurnAdapter struct {
 	agentLoopProviderBase
 	params      responses.ResponseNewParams
 	initialized bool
-	hasFollowUp bool
 	rsc         *responseStreamContext
 }
 
@@ -92,7 +91,6 @@ func (a *responsesTurnAdapter) startContinuationRound(ctx context.Context) (*sse
 	if stream == nil {
 		return nil, continuationParams, errors.New("continuation streaming not available")
 	}
-	a.hasFollowUp = false
 	state.clearContinuationState()
 	return stream, continuationParams, nil
 }
@@ -117,7 +115,7 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 			return false, nil, &PreDeltaError{Err: err}
 		}
 	} else {
-		if len(state.pendingFunctionOutputs) == 0 && len(state.pendingMcpApprovals) == 0 && !a.hasFollowUp {
+		if len(state.pendingFunctionOutputs) == 0 && len(state.pendingMcpApprovals) == 0 {
 			return false, nil, nil
 		}
 		if round > maxAgentLoopToolTurns {
@@ -176,14 +174,6 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 
 func (a *responsesTurnAdapter) FinalizeAgentLoop(ctx context.Context) {
 	a.oc.finalizeResponsesStream(ctx, a.log, a.portal, a.state, a.meta)
-}
-
-func (a *responsesTurnAdapter) ContinueAgentLoop(messages []PromptMessage) {
-	if len(messages) == 0 {
-		return
-	}
-	a.prompt.Messages = append(a.prompt.Messages, messages...)
-	a.hasFollowUp = true
 }
 
 // processResponseStreamEvent handles a single Responses API stream event.

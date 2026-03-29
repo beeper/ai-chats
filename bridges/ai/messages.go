@@ -41,11 +41,21 @@ type PromptMessage struct {
 	IsError    bool
 }
 
-func (m PromptMessage) Text() string {
+func (m PromptMessage) text(includeThinking bool) string {
 	var sb strings.Builder
 	for _, block := range m.Blocks {
 		switch block.Type {
-		case PromptBlockText, PromptBlockThinking:
+		case PromptBlockText:
+			if block.Text != "" {
+				if sb.Len() > 0 {
+					sb.WriteByte('\n')
+				}
+				sb.WriteString(block.Text)
+			}
+		case PromptBlockThinking:
+			if !includeThinking || block.Text == "" {
+				continue
+			}
 			if block.Text != "" {
 				if sb.Len() > 0 {
 					sb.WriteByte('\n')
@@ -55,6 +65,14 @@ func (m PromptMessage) Text() string {
 		}
 	}
 	return sb.String()
+}
+
+func (m PromptMessage) Text() string {
+	return m.text(true)
+}
+
+func (m PromptMessage) VisibleText() string {
+	return m.text(false)
 }
 
 // PromptContext is the bridge-local prompt envelope used throughout bridges/ai.

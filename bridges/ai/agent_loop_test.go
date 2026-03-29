@@ -11,9 +11,7 @@ import (
 type fakeAgentLoopProvider struct {
 	track          bool
 	results        []fakeAgentLoopResult
-	followUps      map[int][]PromptMessage
 	finalizeCalls  int
-	continueCalls  int
 	roundsObserved []int
 }
 
@@ -38,19 +36,6 @@ func (f *fakeAgentLoopProvider) RunAgentTurn(_ context.Context, _ *event.Event, 
 
 func (f *fakeAgentLoopProvider) FinalizeAgentLoop(context.Context) {
 	f.finalizeCalls++
-}
-
-func (f *fakeAgentLoopProvider) GetFollowUpMessages(_ context.Context) []PromptMessage {
-	if len(f.roundsObserved) == 0 {
-		return nil
-	}
-	return f.followUps[f.roundsObserved[len(f.roundsObserved)-1]]
-}
-
-func (f *fakeAgentLoopProvider) ContinueAgentLoop(messages []PromptMessage) {
-	if len(messages) > 0 {
-		f.continueCalls++
-	}
 }
 
 func TestExecuteAgentLoopRoundsFinalizesOnTerminalTurn(t *testing.T) {
@@ -125,20 +110,10 @@ func TestExecuteAgentLoopRoundsStopsOnContextLengthWithFinalize(t *testing.T) {
 	}
 }
 
-func TestExecuteAgentLoopRoundsContinuesForFollowUpMessages(t *testing.T) {
+func TestExecuteAgentLoopRoundsDoesNotInlineFollowUpMessages(t *testing.T) {
 	provider := &fakeAgentLoopProvider{
 		results: []fakeAgentLoopResult{
 			{continueLoop: false},
-			{continueLoop: false},
-		},
-		followUps: map[int][]PromptMessage{
-			0: {{
-				Role: PromptRoleUser,
-				Blocks: []PromptBlock{{
-					Type: PromptBlockText,
-					Text: "follow up",
-				}},
-			}},
 		},
 	}
 
@@ -152,13 +127,10 @@ func TestExecuteAgentLoopRoundsContinuesForFollowUpMessages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if provider.continueCalls != 1 {
-		t.Fatalf("expected one follow-up continuation, got %d", provider.continueCalls)
-	}
 	if provider.finalizeCalls != 1 {
 		t.Fatalf("expected finalize once, got %d", provider.finalizeCalls)
 	}
-	if len(provider.roundsObserved) != 2 || provider.roundsObserved[0] != 0 || provider.roundsObserved[1] != 1 {
+	if len(provider.roundsObserved) != 1 || provider.roundsObserved[0] != 0 {
 		t.Fatalf("unexpected rounds observed: %#v", provider.roundsObserved)
 	}
 }

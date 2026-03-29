@@ -49,3 +49,25 @@ func TestPromptContextToResponsesInput_MultimodalUser(t *testing.T) {
 		t.Fatalf("expected text and image parts (got text=%v image=%v)", foundText, foundImage)
 	}
 }
+
+func TestPromptContextToResponsesInput_AssistantOmitsThinkingBlocks(t *testing.T) {
+	input := promptContextToResponsesInput(PromptContext{
+		Messages: []PromptMessage{{
+			Role: PromptRoleAssistant,
+			Blocks: []PromptBlock{
+				{Type: PromptBlockThinking, Text: "internal analysis"},
+				{Type: PromptBlockText, Text: "visible reply"},
+			},
+		}},
+	})
+	if len(input) != 1 {
+		t.Fatalf("expected 1 input item, got %d", len(input))
+	}
+	item := input[0].OfMessage
+	if item == nil {
+		t.Fatalf("expected assistant message input")
+	}
+	if got := item.Content.OfString.Value; got != "visible reply" {
+		t.Fatalf("expected only visible reply text, got %q", got)
+	}
+}

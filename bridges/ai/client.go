@@ -1743,10 +1743,17 @@ func (oc *AIClient) prepareInboundPromptContext(
 	userText string,
 	eventID id.EventID,
 ) (inboundPromptResult, error) {
-	promptContext, err := oc.buildBaseContext(ctx, portal, meta)
+	promptContext := PromptContext{
+		SystemPrompt: oc.buildConversationSystemPromptText(ctx, portal, meta, true),
+	}
+	historyMessages, err := oc.replayHistoryMessages(ctx, portal, meta, historyReplayOptions{
+		mode:             historyReplayNormal,
+		excludeMessageID: networkid.MessageID(eventID),
+	})
 	if err != nil {
 		return inboundPromptResult{}, err
 	}
+	promptContext.Messages = append(promptContext.Messages, historyMessages...)
 	inboundCtx := oc.resolvePromptInboundContext(ctx, portal, userText, eventID)
 	AppendPromptText(&promptContext.SystemPrompt, airuntime.BuildInboundMetaSystemPrompt(inboundCtx))
 

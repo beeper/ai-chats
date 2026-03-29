@@ -22,8 +22,9 @@ const (
 )
 
 type historyReplayOptions struct {
-	mode            historyReplayMode
-	targetMessageID networkid.MessageID
+	mode             historyReplayMode
+	targetMessageID  networkid.MessageID
+	excludeMessageID networkid.MessageID
 }
 
 type currentTurnTextOptions struct {
@@ -110,6 +111,9 @@ func (oc *AIClient) replayHistoryMessages(
 
 	candidates := make([]replayCandidate, 0, len(hr.rows))
 	for _, row := range hr.rows {
+		if opts.excludeMessageID != "" && row.ID == opts.excludeMessageID {
+			continue
+		}
 		msgMeta := messageMeta(row)
 		if opts.mode == historyReplayRewrite && row.ID == opts.targetMessageID {
 			candidates = append(candidates, replayCandidate{row: row, meta: msgMeta})

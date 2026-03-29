@@ -13,8 +13,6 @@ import (
 type agentLoopProvider interface {
 	TrackRoomRunStreaming() bool
 	RunAgentTurn(ctx context.Context, evt *event.Event, round int) (continueLoop bool, cle *ContextLengthError, err error)
-	GetFollowUpMessages(ctx context.Context) []PromptMessage
-	ContinueAgentLoop(messages []PromptMessage)
 	FinalizeAgentLoop(ctx context.Context)
 }
 
@@ -49,20 +47,6 @@ func newAgentLoopProviderBase(
 		isHeartbeat:   prep.IsHeartbeat,
 		prompt:        prompt,
 	}
-}
-
-func (a *agentLoopProviderBase) GetFollowUpMessages(context.Context) []PromptMessage {
-	if a == nil || a.oc == nil || a.state == nil {
-		return nil
-	}
-	return a.oc.getFollowUpMessages(a.state.roomID)
-}
-
-func (a *agentLoopProviderBase) ContinueAgentLoop(messages []PromptMessage) {
-	if a == nil || len(messages) == 0 {
-		return
-	}
-	a.prompt.Messages = append(a.prompt.Messages, messages...)
 }
 
 func (oc *AIClient) runAgentLoop(
@@ -105,12 +89,8 @@ func executeAgentLoopRounds(
 			continue
 		}
 
-		followUpMessages := provider.GetFollowUpMessages(ctx)
-		if len(followUpMessages) > 0 {
-			provider.ContinueAgentLoop(followUpMessages)
-			continue
-		}
-
+		// Queued user messages are dispatched after room release via processPendingQueue.
+		// Finalize this turn immediately so later prompts cannot reopen it with more edits.
 		finalizeAgentLoopExit(ctx, provider, false)
 		return true, nil, nil
 	}
