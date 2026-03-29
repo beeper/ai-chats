@@ -119,7 +119,6 @@ func (oc *AIClient) prepareStreamingRun(
 	}
 	state := newStreamingState(ctx, meta, roomID)
 	if responder, err := oc.ResolveResponderForMeta(ctx, meta); err == nil && responder != nil {
-		state.respondingKind = string(responder.Kind)
 		state.respondingGhostID = string(responder.GhostID)
 		state.respondingAgentID = responder.AgentID
 		state.respondingModelID = responder.ModelID

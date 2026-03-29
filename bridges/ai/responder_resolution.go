@@ -56,21 +56,12 @@ func (oc *AIClient) responderForMeta(ctx context.Context, meta *PortalMetadata) 
 		return nil
 	}
 	info := oc.responderModelInfo(modelID)
-	return &ResponderInfo{
-		Kind:                ResponderKindModel,
-		GhostID:             modelUserID(modelID),
-		ModelID:             modelID,
-		DisplayName:         strings.TrimSpace(modelContactName(modelID, info)),
-		ContextLimit:        responderContextLimit(info),
-		MaxOutputTokens:     responderMaxOutputTokens(info),
-		SupportsReasoning:   info != nil && info.SupportsReasoning,
-		SupportsToolCalling: info == nil || info.SupportsToolCalling,
-		SupportsImageGen:    info != nil && info.SupportsImageGen,
-		SupportsVision:      info != nil && info.SupportsVision,
-		SupportsAudio:       info != nil && info.SupportsAudio,
-		SupportsVideo:       info != nil && info.SupportsVideo,
-		SupportsPDF:         info != nil && info.SupportsPDF,
-	}
+	ri := responderFromModelInfo(info)
+	ri.Kind = ResponderKindModel
+	ri.GhostID = modelUserID(modelID)
+	ri.ModelID = modelID
+	ri.DisplayName = strings.TrimSpace(modelContactName(modelID, info))
+	return &ri
 }
 
 func (oc *AIClient) responderProvider(responder *ResponderInfo) string {
@@ -186,22 +177,13 @@ func (oc *AIClient) resolveResponder(ctx context.Context, meta *PortalMetadata, 
 		if displayName == "" {
 			displayName = agentID
 		}
-		return &ResponderInfo{
-			Kind:                ResponderKindAgent,
-			GhostID:             ghostID,
-			AgentID:             agentID,
-			ModelID:             modelID,
-			DisplayName:         strings.TrimSpace(displayName),
-			ContextLimit:        responderContextLimit(info),
-			MaxOutputTokens:     responderMaxOutputTokens(info),
-			SupportsReasoning:   info != nil && info.SupportsReasoning,
-			SupportsToolCalling: info == nil || info.SupportsToolCalling,
-			SupportsImageGen:    info != nil && info.SupportsImageGen,
-			SupportsVision:      info != nil && info.SupportsVision,
-			SupportsAudio:       info != nil && info.SupportsAudio,
-			SupportsVideo:       info != nil && info.SupportsVideo,
-			SupportsPDF:         info != nil && info.SupportsPDF,
-		}, nil
+		ri := responderFromModelInfo(info)
+		ri.Kind = ResponderKindAgent
+		ri.GhostID = ghostID
+		ri.AgentID = agentID
+		ri.ModelID = modelID
+		ri.DisplayName = strings.TrimSpace(displayName)
+		return &ri, nil
 	case ResolvedTargetModel, ResolvedTargetUnknown:
 		modelID := strings.TrimSpace(target.ModelID)
 		if override != "" {
@@ -219,23 +201,28 @@ func (oc *AIClient) resolveResponder(ctx context.Context, meta *PortalMetadata, 
 		if ghostID == "" {
 			ghostID = modelUserID(modelID)
 		}
-		return &ResponderInfo{
-			Kind:                ResponderKindModel,
-			GhostID:             ghostID,
-			ModelID:             modelID,
-			DisplayName:         strings.TrimSpace(modelContactName(modelID, info)),
-			ContextLimit:        responderContextLimit(info),
-			MaxOutputTokens:     responderMaxOutputTokens(info),
-			SupportsReasoning:   info != nil && info.SupportsReasoning,
-			SupportsToolCalling: info == nil || info.SupportsToolCalling,
-			SupportsImageGen:    info != nil && info.SupportsImageGen,
-			SupportsVision:      info != nil && info.SupportsVision,
-			SupportsAudio:       info != nil && info.SupportsAudio,
-			SupportsVideo:       info != nil && info.SupportsVideo,
-			SupportsPDF:         info != nil && info.SupportsPDF,
-		}, nil
+		ri := responderFromModelInfo(info)
+		ri.Kind = ResponderKindModel
+		ri.GhostID = ghostID
+		ri.ModelID = modelID
+		ri.DisplayName = strings.TrimSpace(modelContactName(modelID, info))
+		return &ri, nil
 	default:
 		return nil, fmt.Errorf("unsupported target kind: %s", target.Kind)
+	}
+}
+
+func responderFromModelInfo(info *ModelInfo) ResponderInfo {
+	return ResponderInfo{
+		ContextLimit:        responderContextLimit(info),
+		MaxOutputTokens:     responderMaxOutputTokens(info),
+		SupportsReasoning:   info != nil && info.SupportsReasoning,
+		SupportsToolCalling: info == nil || info.SupportsToolCalling,
+		SupportsImageGen:    info != nil && info.SupportsImageGen,
+		SupportsVision:      info != nil && info.SupportsVision,
+		SupportsAudio:       info != nil && info.SupportsAudio,
+		SupportsVideo:       info != nil && info.SupportsVideo,
+		SupportsPDF:         info != nil && info.SupportsPDF,
 	}
 }
 

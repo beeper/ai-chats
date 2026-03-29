@@ -94,12 +94,8 @@ func (oc *AIClient) applyMediaUnderstandingForAttachments(
 		responder := oc.responderForMeta(ctx, meta)
 		if responder != nil && responder.SupportsVision {
 			attachmentDecisions := make([]MediaUnderstandingAttachmentDecision, 0, len(selected))
-			modelID := ""
-			provider := normalizeMediaProviderID(loginMetadata(oc.UserLogin).Provider)
-			if responder != nil {
-				modelID = responder.ModelID
-				provider = normalizeMediaProviderID(oc.responderProvider(responder))
-			}
+			modelID := responder.ModelID
+			provider := normalizeMediaProviderID(oc.responderProvider(responder))
 			for _, attachment := range selected {
 				attempt := MediaUnderstandingModelDecision{
 					Type:     MediaEntryTypeProvider,

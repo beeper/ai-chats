@@ -3,13 +3,7 @@ package ai
 import "testing"
 
 func TestAgentContactIdentifiers(t *testing.T) {
-	modelID := "openrouter/openai/gpt-4.1"
-	info := &ModelInfo{
-		ID:       modelID,
-		Name:     "GPT-4.1",
-		Provider: "openrouter",
-	}
-	identifiers := agentContactIdentifiers("beeper", modelID, info)
+	identifiers := agentContactIdentifiers("beeper")
 	if len(identifiers) == 0 {
 		t.Fatalf("expected non-empty identifiers")
 	}

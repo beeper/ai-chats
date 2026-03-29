@@ -7,13 +7,8 @@ import (
 
 func TestModelContactIdentifiersUseStableIdentifiersOnly(t *testing.T) {
 	modelID := "anthropic/claude-sonnet-4.6"
-	info := &ModelInfo{
-		ID:       modelID,
-		Name:     "Claude Sonnet 4.6",
-		Provider: "anthropic",
-	}
 
-	identifiers := modelContactIdentifiers(modelID, info)
+	identifiers := modelContactIdentifiers(modelID)
 	if len(identifiers) == 0 {
 		t.Fatal("expected non-empty identifiers")
 	}

@@ -85,7 +85,7 @@ func TestApplyAgentChatInfoIncludesResponderMetadata(t *testing.T) {
 		},
 	}
 
-	oc.applyAgentChatInfo(chatInfo, "custom-agent", "Custom Agent", "openai/gpt-5-mini")
+	oc.applyAgentChatInfo(context.Background(), chatInfo, "custom-agent", "Custom Agent", "openai/gpt-5-mini")
 
 	agentGhostID := networkid.UserID(agentUserIDForLogin(oc.UserLogin.ID, "custom-agent"))
 	member := chatInfo.Members.MemberMap[agentGhostID]

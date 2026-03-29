@@ -89,8 +89,14 @@ func (oc *AIClient) buildStatusText(
 	if responder != nil {
 		caps = responder.ModelCapabilities()
 	}
-	if !caps.SupportsVision || !caps.SupportsAudio || !caps.SupportsVideo {
-		caps = oc.getRoomCapabilities(ctx, meta)
+	if !caps.SupportsVision && oc.canRunMediaUnderstanding(ctx, meta, MediaCapabilityImage) {
+		caps.SupportsVision = true
+	}
+	if !caps.SupportsAudio && oc.canRunMediaUnderstanding(ctx, meta, MediaCapabilityAudio) {
+		caps.SupportsAudio = true
+	}
+	if !caps.SupportsVideo && oc.canRunMediaUnderstanding(ctx, meta, MediaCapabilityVideo) {
+		caps.SupportsVideo = true
 	}
 	sb.WriteString(fmt.Sprintf(
 		"Features: tools=%t vision=%t audio=%t video=%t pdf=%t\n",

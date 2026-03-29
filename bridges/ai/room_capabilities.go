@@ -2,8 +2,8 @@ package ai
 
 import "context"
 
-func (oc *AIClient) getModelCapabilitiesForMeta(meta *PortalMetadata) ModelCapabilities {
-	responder := oc.responderForMeta(context.Background(), meta)
+func (oc *AIClient) getModelCapabilitiesForMeta(ctx context.Context, meta *PortalMetadata) ModelCapabilities {
+	responder := oc.responderForMeta(ctx, meta)
 	if responder == nil {
 		return ModelCapabilities{}
 	}
@@ -35,7 +35,7 @@ func (oc *AIClient) canRunMediaUnderstanding(ctx context.Context, meta *PortalMe
 // getRoomCapabilities returns effective room capabilities, including media-understanding
 // unions (image, audio, video) when an agent is assigned.
 func (oc *AIClient) getRoomCapabilities(ctx context.Context, meta *PortalMetadata) ModelCapabilities {
-	caps := oc.getModelCapabilitiesForMeta(meta)
+	caps := oc.getModelCapabilitiesForMeta(ctx, meta)
 	if !caps.SupportsVision && oc.canRunMediaUnderstanding(ctx, meta, MediaCapabilityImage) {
 		caps.SupportsVision = true
 	}

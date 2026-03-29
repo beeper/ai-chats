@@ -54,8 +54,7 @@ func modelContactProvider(modelID string, info *ModelInfo) string {
 	return ""
 }
 
-func modelContactIdentifiers(modelID string, info *ModelInfo) []string {
-	_ = info
+func modelContactIdentifiers(modelID string) []string {
 	identifiers := []string{}
 	if ident := canonicalModelIdentifier(modelID); ident != "" {
 		identifiers = append(identifiers, ident)

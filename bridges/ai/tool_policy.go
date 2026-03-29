@@ -51,7 +51,7 @@ func (oc *AIClient) isToolAvailable(meta *PortalMetadata, toolName string) (bool
 		return available, source, reason
 	}
 
-	if !oc.getModelCapabilitiesForMeta(meta).SupportsToolCalling {
+	if !oc.getModelCapabilitiesForMeta(context.Background(), meta).SupportsToolCalling {
 		return false, SourceModelLimit, "Model does not support tools"
 	}
 

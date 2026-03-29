@@ -958,7 +958,7 @@ func (oc *AIClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*br
 					return info, nil
 				}
 			}
-			info := responderUserInfo(responder, agentContactIdentifiers(agentID, responder.ModelID, oc.findModelInfo(responder.ModelID)), true)
+			info := responderUserInfo(responder, agentContactIdentifiers(agentID), true)
 			info.ExtraUpdates = updateGhostLastSync
 			return info, nil
 		}
@@ -983,14 +983,14 @@ func (oc *AIClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*br
 	if modelID := parseModelFromGhostID(ghostID); modelID != "" {
 		info := oc.findModelInfo(modelID)
 		if responder, err := oc.ResolveResponderForGhost(ctx, ghost.ID); err == nil && responder != nil {
-			userInfo := responderUserInfo(responder, modelContactIdentifiers(modelID, info), false)
+			userInfo := responderUserInfo(responder, modelContactIdentifiers(modelID), false)
 			userInfo.ExtraUpdates = updateGhostLastSync
 			return userInfo, nil
 		}
 		return &bridgev2.UserInfo{
 			Name:         ptr.Ptr(modelContactName(modelID, info)),
 			IsBot:        ptr.Ptr(false),
-			Identifiers:  modelContactIdentifiers(modelID, info),
+			Identifiers:  modelContactIdentifiers(modelID),
 			ExtraUpdates: updateGhostLastSync,
 		}, nil
 	}
@@ -1322,7 +1322,7 @@ func (oc *AIClient) effectiveAgentPrompt(ctx context.Context, portal *bridgev2.P
 		params.ToolSummaries = toolSummaries
 	}
 
-	modelCaps := oc.getModelCapabilitiesForMeta(meta)
+	modelCaps := oc.getModelCapabilitiesForMeta(ctx, meta)
 
 	// Build capabilities list from model resolution
 	var caps []string
@@ -1396,7 +1396,7 @@ func (oc *AIClient) defaultThinkLevel(meta *PortalMetadata) string {
 	case "low", "medium", "high", "xhigh":
 		return effort
 	}
-	if caps := oc.getModelCapabilitiesForMeta(meta); caps.SupportsReasoning {
+	if caps := oc.getModelCapabilitiesForMeta(context.Background(), meta); caps.SupportsReasoning {
 		return "low"
 	}
 	if modelID := strings.TrimSpace(oc.effectiveModel(meta)); modelID != "" {
@@ -1408,7 +1408,7 @@ func (oc *AIClient) defaultThinkLevel(meta *PortalMetadata) string {
 }
 
 func (oc *AIClient) effectiveReasoningEffort(meta *PortalMetadata) string {
-	if !oc.getModelCapabilitiesForMeta(meta).SupportsReasoning {
+	if !oc.getModelCapabilitiesForMeta(context.Background(), meta).SupportsReasoning {
 		return ""
 	}
 	if meta != nil {
@@ -1711,7 +1711,7 @@ func (oc *AIClient) fetchHistoryRows(
 	}
 	return &historyLoadResult{
 		rows:      history,
-		hasVision: oc.getModelCapabilitiesForMeta(meta).SupportsVision,
+		hasVision: oc.getModelCapabilitiesForMeta(ctx, meta).SupportsVision,
 		resetAt:   resetAt,
 	}, nil
 }
@@ -2121,7 +2121,7 @@ func (oc *AIClient) ensureGhostDisplayNameWithGhost(ctx context.Context, ghost *
 		ghost.UpdateInfo(ctx, &bridgev2.UserInfo{
 			Name:        ptr.Ptr(displayName),
 			IsBot:       ptr.Ptr(false),
-			Identifiers: modelContactIdentifiers(modelID, info),
+			Identifiers: modelContactIdentifiers(modelID),
 		})
 		oc.loggerForContext(ctx).Debug().Str("model", modelID).Str("name", displayName).Msg("Updated ghost display name")
 	}
@@ -2163,7 +2163,7 @@ func (oc *AIClient) ensureAgentGhostDisplayName(ctx context.Context, agentID, mo
 		ghost.UpdateInfo(ctx, &bridgev2.UserInfo{
 			Name:        ptr.Ptr(displayName),
 			IsBot:       ptr.Ptr(true),
-			Identifiers: agentContactIdentifiers(agentID, modelID, oc.findModelInfo(modelID)),
+			Identifiers: agentContactIdentifiers(agentID),
 			Avatar:      avatar,
 		})
 		oc.loggerForContext(ctx).Debug().Str("agent", agentID).Str("model", modelID).Str("name", displayName).Msg("Updated agent ghost display name")
@@ -2201,27 +2201,6 @@ func (oc *AIClient) backgroundContext(ctx context.Context) context.Context {
 	return oc.loggerForContext(ctx).WithContext(base)
 }
 
-// getModelCapabilities computes capabilities for a model.
-// If info is provided, it uses the ModelInfo fields for accurate capability detection.
-// If info is missing, capabilities default to false (except tool calling).
-func getModelCapabilities(modelID string, info *ModelInfo) ModelCapabilities {
-	caps := ModelCapabilities{
-		SupportsToolCalling: true, // Default true, overridden by ModelInfo if available
-	}
-
-	// Use ModelInfo if available (more accurate than heuristics)
-	if info != nil {
-		caps.SupportsVision = info.SupportsVision
-		caps.SupportsPDF = info.SupportsPDF
-		caps.SupportsImageGen = info.SupportsImageGen
-		caps.SupportsToolCalling = info.SupportsToolCalling
-		caps.SupportsAudio = info.SupportsAudio
-		caps.SupportsVideo = info.SupportsVideo
-		caps.SupportsReasoning = info.SupportsReasoning
-	}
-
-	return caps
-}
 
 // buildDedupeKey creates a unique key for inbound message deduplication.
 // Format: matrix|{loginID}|{roomID}|{eventID}

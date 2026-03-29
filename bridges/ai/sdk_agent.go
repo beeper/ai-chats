@@ -38,7 +38,7 @@ func (oc *AIClient) sdkAgentForDefinition(ctx context.Context, agent *agents.Age
 		Name:         displayName,
 		Description:  agent.Description,
 		AvatarURL:    agent.AvatarURL,
-		Identifiers:  stringutil.DedupeStrings(agentContactIdentifiers(agent.ID, modelID, oc.findModelInfo(modelID))),
+		Identifiers:  stringutil.DedupeStrings(agentContactIdentifiers(agent.ID)),
 		ModelKey:     modelID,
 		Capabilities: bridgesdk.MultimodalAgentCapabilities(),
 	}
