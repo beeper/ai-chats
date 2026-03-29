@@ -26,6 +26,7 @@ import (
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/agents"
+	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
@@ -311,7 +312,7 @@ type AIClient struct {
 
 	// Heartbeat + integrations
 	scheduler          *schedulerRuntime
-	integrationModules map[string]any
+	integrationModules map[string]integrationruntime.ModuleHooks
 	integrationOrder   []string
 
 	toolRegistry     *toolIntegrationRegistry

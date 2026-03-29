@@ -50,6 +50,8 @@ type fakeLifecycleIntegration struct {
 	name       string
 }
 
+func (f *fakeLifecycleIntegration) Name() string { return f.name }
+
 func (f *fakeLifecycleIntegration) Start(_ context.Context) error {
 	f.startCount++
 	return nil

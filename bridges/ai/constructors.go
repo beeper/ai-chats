@@ -17,7 +17,7 @@ func NewAIConnector() *OpenAIConnector {
 	oc := &OpenAIConnector{
 		clients: make(map[networkid.UserLoginID]bridgev2.NetworkAPI),
 	}
-	oc.sdkConfig = bridgesdk.NewStandardConnectorConfig(bridgesdk.StandardConnectorConfigParams{
+	oc.sdkConfig = bridgesdk.NewStandardConnectorConfig(bridgesdk.StandardConnectorConfigParams[*AIClient, *Config, *PortalMetadata, *MessageMetadata, *UserLoginMetadata, *GhostMetadata]{
 		Name:          "ai",
 		Description:   "AI Chats for Beeper, built on mautrix-go bridgev2.",
 		ProtocolID:    "ai",
@@ -62,10 +62,10 @@ func NewAIConnector() *OpenAIConnector {
 		},
 		ExampleConfig: exampleNetworkConfig,
 		ConfigData:    &oc.Config,
-		NewPortal:     func() any { return &PortalMetadata{} },
-		NewMessage:    func() any { return &MessageMetadata{} },
-		NewLogin:      func() any { return &UserLoginMetadata{} },
-		NewGhost:      func() any { return &GhostMetadata{} },
+		NewPortal:     func() *PortalMetadata { return &PortalMetadata{} },
+		NewMessage:    func() *MessageMetadata { return &MessageMetadata{} },
+		NewLogin:      func() *UserLoginMetadata { return &UserLoginMetadata{} },
+		NewGhost:      func() *GhostMetadata { return &GhostMetadata{} },
 		FillBridgeInfo: func(portal *bridgev2.Portal, content *event.BridgeEventContent) {
 			applyAgentRemoteBridgeInfo(portal, portalMeta(portal), content)
 		},

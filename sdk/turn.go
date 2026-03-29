@@ -933,10 +933,10 @@ func (t *Turn) ensureDefaultFinalEditPayload(finishReason, fallbackBody string) 
 
 func (t *Turn) resolvedIdleTimeout() time.Duration {
 	const defaultIdleTimeout = time.Minute
-	if t == nil || t.conv == nil || t.conv.runtime == nil || t.conv.runtime.config() == nil || t.conv.runtime.config().TurnManagement == nil {
+	if t == nil || t.conv == nil || t.conv.runtime == nil || t.conv.runtime.turnConfig() == nil {
 		return defaultIdleTimeout
 	}
-	timeoutMs := t.conv.runtime.config().TurnManagement.IdleTimeoutMs
+	timeoutMs := t.conv.runtime.turnConfig().IdleTimeoutMs
 	switch {
 	case timeoutMs < 0:
 		return 0

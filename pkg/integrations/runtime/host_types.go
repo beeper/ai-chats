@@ -1,6 +1,19 @@
 package runtime
 
-import "github.com/openai/openai-go/v3"
+import (
+	"maunium.net/go/mautrix/bridgev2/networkid"
+
+	"github.com/openai/openai-go/v3"
+)
+
+// Meta describes the portal metadata behavior integration modules depend on.
+type Meta interface {
+	ModuleMetaValue(key string) any
+	SetModuleMetaValue(key string, value any)
+	AgentID() string
+	CompactionCounter() int
+	InternalRoom() bool
+}
 
 // MessageSummary is a generic message summary.
 type MessageSummary struct {
@@ -33,5 +46,5 @@ type CompletionResult struct {
 // SessionPortalInfo is a generic portal reference for session listing.
 type SessionPortalInfo struct {
 	Key       string
-	PortalKey any
+	PortalKey networkid.PortalKey
 }

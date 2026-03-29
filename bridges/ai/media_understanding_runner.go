@@ -210,11 +210,9 @@ func (oc *AIClient) applyMediaUnderstandingForAttachments(
 }
 
 func (oc *AIClient) resolveAutoAudioEntry(cfg *MediaUnderstandingConfig) *MediaUnderstandingModelConfig {
-	headers := map[string]string{}
-	if cfg != nil && cfg.Headers != nil {
-		for key, value := range cfg.Headers {
-			headers[key] = value
-		}
+	var headers map[string]string
+	if cfg != nil {
+		headers = cfg.Headers
 	}
 
 	candidates := []struct {
@@ -332,11 +330,9 @@ func (oc *AIClient) resolveKeyMediaEntry(
 }
 
 func (oc *AIClient) hasMediaProviderAuth(providerID string, cfg *MediaUnderstandingConfig) bool {
-	headers := map[string]string{}
-	if cfg != nil && cfg.Headers != nil {
-		for key, value := range cfg.Headers {
-			headers[key] = value
-		}
+	var headers map[string]string
+	if cfg != nil {
+		headers = cfg.Headers
 	}
 	if hasProviderAuthHeader(providerID, headers) {
 		return true

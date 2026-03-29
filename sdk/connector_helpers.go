@@ -16,13 +16,18 @@ import (
 )
 
 // BuildStandardMetaTypes returns the common bridge metadata registrations.
-func BuildStandardMetaTypes(
-	newPortal func() any,
-	newMessage func() any,
-	newLogin func() any,
-	newGhost func() any,
+func BuildStandardMetaTypes[PortalT, MessageT, LoginT, GhostT any](
+	newPortal func() PortalT,
+	newMessage func() MessageT,
+	newLogin func() LoginT,
+	newGhost func() GhostT,
 ) database.MetaTypes {
-	return agentremote.BuildMetaTypes(newPortal, newMessage, newLogin, newGhost)
+	return agentremote.BuildMetaTypes(
+		func() any { return newPortal() },
+		func() any { return newMessage() },
+		func() any { return newLogin() },
+		func() any { return newGhost() },
+	)
 }
 
 // ApplyDefaultCommandPrefix sets the command prefix when it is empty.
@@ -88,7 +93,7 @@ func TypedClientUpdater[T interface {
 	}
 }
 
-type StandardConnectorConfigParams struct {
+type StandardConnectorConfigParams[SessionT SessionValue, ConfigDataT ConfigValue, PortalT, MessageT, LoginT, GhostT any] struct {
 	Name                 string
 	Description          string
 	ProtocolID           string
@@ -96,7 +101,7 @@ type StandardConnectorConfigParams struct {
 	ClientCacheMu        *sync.Mutex
 	ClientCache          *map[networkid.UserLoginID]bridgev2.NetworkAPI
 	AgentCatalog         AgentCatalog
-	GetCapabilities      func(session any, conv *Conversation) *RoomFeatures
+	GetCapabilities      func(session SessionT, conv *Conversation) *RoomFeatures
 	InitConnector        func(br *bridgev2.Bridge)
 	StartConnector       func(ctx context.Context, br *bridgev2.Bridge) error
 	StopConnector        func(ctx context.Context, br *bridgev2.Bridge)
@@ -108,12 +113,12 @@ type StandardConnectorConfigParams struct {
 	DefaultPort          uint16
 	DefaultCommandPrefix func() string
 	ExampleConfig        string
-	ConfigData           any
+	ConfigData           ConfigDataT
 	ConfigUpgrader       configupgrade.Upgrader
-	NewPortal            func() any
-	NewMessage           func() any
-	NewLogin             func() any
-	NewGhost             func() any
+	NewPortal            func() PortalT
+	NewMessage           func() MessageT
+	NewLogin             func() LoginT
+	NewGhost             func() GhostT
 	NetworkCapabilities  func() *bridgev2.NetworkGeneralCapabilities
 	FillBridgeInfo       func(portal *bridgev2.Portal, content *event.BridgeEventContent)
 	AcceptLogin          func(login *bridgev2.UserLogin) (bool, string)
@@ -129,8 +134,8 @@ type StandardConnectorConfigParams struct {
 
 // NewStandardConnectorConfig builds the common bridgesdk.Config skeleton used by
 // the dedicated bridge connectors.
-func NewStandardConnectorConfig(p StandardConnectorConfigParams) *Config {
-	return &Config{
+func NewStandardConnectorConfig[SessionT SessionValue, ConfigDataT ConfigValue, PortalT, MessageT, LoginT, GhostT any](p StandardConnectorConfigParams[SessionT, ConfigDataT, PortalT, MessageT, LoginT, GhostT]) *Config[SessionT, ConfigDataT] {
+	return &Config[SessionT, ConfigDataT]{
 		Name:             p.Name,
 		Description:      p.Description,
 		ProtocolID:       p.ProtocolID,

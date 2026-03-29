@@ -33,7 +33,7 @@ func NewConnector() *CodexConnector {
 			Description: "Provide externally managed ChatGPT id/access tokens.",
 		},
 	}
-	cc.sdkConfig = bridgesdk.NewStandardConnectorConfig(bridgesdk.StandardConnectorConfigParams{
+	cc.sdkConfig = bridgesdk.NewStandardConnectorConfig(bridgesdk.StandardConnectorConfigParams[*CodexClient, *Config, *PortalMetadata, *MessageMetadata, *UserLoginMetadata, *GhostMetadata]{
 		Name:             "codex",
 		Description:      "A Matrix↔Codex bridge built on mautrix-go bridgev2.",
 		ProtocolID:       "ai-codex",
@@ -76,10 +76,10 @@ func NewConnector() *CodexConnector {
 		ExampleConfig:  exampleNetworkConfig,
 		ConfigData:     &cc.Config,
 		ConfigUpgrader: configupgrade.SimpleUpgrader(upgradeConfig),
-		NewPortal:      func() any { return &PortalMetadata{} },
-		NewMessage:     func() any { return &MessageMetadata{} },
-		NewLogin:       func() any { return &UserLoginMetadata{} },
-		NewGhost:       func() any { return &GhostMetadata{} },
+		NewPortal:      func() *PortalMetadata { return &PortalMetadata{} },
+		NewMessage:     func() *MessageMetadata { return &MessageMetadata{} },
+		NewLogin:       func() *UserLoginMetadata { return &UserLoginMetadata{} },
+		NewGhost:       func() *GhostMetadata { return &GhostMetadata{} },
 		AcceptLogin: func(login *bridgev2.UserLogin) (bool, string) {
 			return bridgesdk.AcceptProviderLogin(login, ProviderCodex, "This bridge only supports Codex logins.", cc.codexEnabled, "Codex integration is disabled in the configuration.", func(login *bridgev2.UserLogin) string {
 				return loginMetadata(login).Provider

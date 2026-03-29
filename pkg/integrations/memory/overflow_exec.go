@@ -22,19 +22,19 @@ type FlushSettings struct {
 type OverflowDeps struct {
 	ResolveSettings  func() *FlushSettings
 	TrimPrompt       func(prompt []openai.ChatCompletionMessageParamUnion) []openai.ChatCompletionMessageParamUnion
-	ContextWindow    func(call any) int
+	ContextWindow    func(call iruntime.ContextOverflowCall) int
 	ReserveTokens    func() int
-	EffectiveModel   func(call any) string
+	EffectiveModel   func(call iruntime.ContextOverflowCall) string
 	EstimateTokens   func(prompt []openai.ChatCompletionMessageParamUnion, model string) int
-	AlreadyFlushed   func(call any) bool
-	MarkFlushed      func(ctx context.Context, call any)
-	RunFlushToolLoop func(ctx context.Context, call any, model string, prompt []openai.ChatCompletionMessageParamUnion) (bool, error)
+	AlreadyFlushed   func(call iruntime.ContextOverflowCall) bool
+	MarkFlushed      func(ctx context.Context, call iruntime.ContextOverflowCall)
+	RunFlushToolLoop func(ctx context.Context, call iruntime.ContextOverflowCall, model string, prompt []openai.ChatCompletionMessageParamUnion) (bool, error)
 	OnError          func(ctx context.Context, err error)
 }
 
 func HandleOverflow(
 	ctx context.Context,
-	call any,
+	call iruntime.ContextOverflowCall,
 	prompt []openai.ChatCompletionMessageParamUnion,
 	deps OverflowDeps,
 ) {
@@ -64,8 +64,8 @@ func HandleOverflow(
 		model = deps.EffectiveModel(call)
 	}
 	totalTokens := 0
-	if overflowCall, ok := call.(iruntime.ContextOverflowCall); ok && overflowCall.RequestedTokens > 0 {
-		totalTokens = overflowCall.RequestedTokens
+	if call.RequestedTokens > 0 {
+		totalTokens = call.RequestedTokens
 	}
 	if totalTokens <= 0 && deps.EstimateTokens != nil {
 		totalTokens = deps.EstimateTokens(prompt, model)
@@ -102,8 +102,8 @@ func HandleOverflow(
 func shouldRunFlush(
 	totalTokens, contextWindow, reserveTokens int,
 	settings *FlushSettings,
-	alreadyFlushed func(call any) bool,
-	call any,
+	alreadyFlushed func(call iruntime.ContextOverflowCall) bool,
+	call iruntime.ContextOverflowCall,
 ) bool {
 	if settings == nil {
 		return false

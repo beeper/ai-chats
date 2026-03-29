@@ -35,12 +35,13 @@ func (oc *AIClient) responseWithRetry(
 	currentPrompt := ClonePromptContext(prompt)
 	preflightFlushAttempted := false
 	overflowCompactionAttempts := 0
+	cachedTokenEstimate := -1
 	var lastCLE *ContextLengthError
 
 	for attempt := range maxRetryAttempts {
 		if !preflightFlushAttempted {
 			preflightFlushAttempted = true
-			oc.runCompactionPreflightFlushHook(ctx, portal, meta, currentPrompt, attempt+1)
+			cachedTokenEstimate = oc.runCompactionPreflightFlushHook(ctx, portal, meta, currentPrompt, attempt+1)
 		}
 
 		success, cle, err := responseFn(ctx, evt, portal, meta, currentPrompt)
@@ -69,7 +70,11 @@ func (oc *AIClient) responseWithRetry(
 			if meta != nil {
 				modelID = oc.effectiveModel(meta)
 			}
-			tokensBefore := estimatePromptContextTokensForModel(currentPrompt, modelID)
+			tokensBefore := cachedTokenEstimate
+			if tokensBefore < 0 {
+				tokensBefore = estimatePromptContextTokensForModel(currentPrompt, modelID)
+			}
+			cachedTokenEstimate = -1 // invalidate after use
 
 			if overflowCompactionAttempts < maxRetryAttempts {
 				overflowCompactionAttempts++
@@ -77,7 +82,6 @@ func (oc *AIClient) responseWithRetry(
 
 				// Emit compaction start event.
 				oc.emitCompactionLifecycle(ctx, integrationruntime.CompactionLifecycleEvent{
-					Client:              oc,
 					Portal:              portal,
 					Meta:                meta,
 					Phase:               integrationruntime.CompactionLifecycleStart,
@@ -117,7 +121,6 @@ func (oc *AIClient) responseWithRetry(
 						WillRetry:      true,
 					})
 					oc.emitCompactionLifecyclePhases(ctx, integrationruntime.CompactionLifecycleEvent{
-						Client:              oc,
 						Portal:              portal,
 						Meta:                meta,
 						Attempt:             attempt + 1,
@@ -159,7 +162,6 @@ func (oc *AIClient) responseWithRetry(
 						WillRetry:      true,
 					})
 					oc.emitCompactionLifecycle(ctx, integrationruntime.CompactionLifecycleEvent{
-						Client:              oc,
 						Portal:              portal,
 						Meta:                meta,
 						Phase:               integrationruntime.CompactionLifecycleEnd,
@@ -189,7 +191,6 @@ func (oc *AIClient) responseWithRetry(
 					Error:     "compaction did not reduce context sufficiently",
 				})
 				oc.emitCompactionLifecycle(ctx, integrationruntime.CompactionLifecycleEvent{
-					Client:              oc,
 					Portal:              portal,
 					Meta:                meta,
 					Phase:               integrationruntime.CompactionLifecycleFail,
@@ -235,9 +236,9 @@ func (oc *AIClient) runCompactionPreflightFlushHook(
 	meta *PortalMetadata,
 	prompt PromptContext,
 	attempt int,
-) {
+) int {
 	if oc == nil || meta == nil {
-		return
+		return -1
 	}
 	contextWindow := oc.getModelContextWindow(meta)
 	if contextWindow <= 0 {
@@ -247,7 +248,6 @@ func (oc *AIClient) runCompactionPreflightFlushHook(
 	promptTokens := estimatePromptContextTokensForModel(prompt, modelID)
 	projectedTokens := projectedCompactionFlushTokens(meta, promptTokens)
 	oc.emitCompactionLifecycle(ctx, integrationruntime.CompactionLifecycleEvent{
-		Client:              oc,
 		Portal:              portal,
 		Meta:                meta,
 		Phase:               integrationruntime.CompactionLifecyclePreFlush,
@@ -262,6 +262,7 @@ func (oc *AIClient) runCompactionPreflightFlushHook(
 		RequestedTokens: projectedTokens,
 		ModelMaxTokens:  contextWindow,
 	}, attempt)
+	return promptTokens
 }
 
 func projectedCompactionFlushTokens(meta *PortalMetadata, promptTokens int) int {
@@ -337,7 +338,6 @@ func (oc *AIClient) runCompactionFlushHook(
 		return
 	}
 	hook.OnContextOverflow(ctx, integrationruntime.ContextOverflowCall{
-		Client:          oc,
 		Portal:          portal,
 		Meta:            meta,
 		Prompt:          promptContextToChatCompletionMessages(prompt, false),

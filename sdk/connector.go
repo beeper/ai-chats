@@ -15,7 +15,7 @@ import (
 )
 
 // NewConnectorBase builds an SDK-backed connector base that can be embedded by custom bridges.
-func NewConnectorBase(cfg *Config) *agentremote.ConnectorBase {
+func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Config[SessionT, ConfigDataT]) *agentremote.ConnectorBase {
 	mu, clientsRef := cfg.ClientCacheMu, cfg.ClientCache
 	if mu == nil {
 		mu = &sync.Mutex{}
@@ -44,7 +44,7 @@ func NewConnectorBase(cfg *Config) *agentremote.ConnectorBase {
 						cfg.UpdateClient(client, login)
 						return
 					}
-					if typed, ok := client.(*sdkClient); ok {
+					if typed, ok := client.(*sdkClient[SessionT, ConfigDataT]); ok {
 						typed.SetUserLogin(login)
 					}
 				},

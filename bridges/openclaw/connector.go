@@ -23,7 +23,7 @@ type OpenClawConnector struct {
 	*agentremote.ConnectorBase
 	br        *bridgev2.Bridge
 	Config    Config
-	sdkConfig *bridgesdk.Config
+	sdkConfig *bridgesdk.Config[*OpenClawClient, *Config]
 
 	clientsMu sync.Mutex
 	clients   map[networkid.UserLoginID]bridgev2.NetworkAPI
@@ -41,7 +41,7 @@ type openClawLoginPrefill struct {
 
 func NewConnector() *OpenClawConnector {
 	oc := &OpenClawConnector{}
-	oc.sdkConfig = bridgesdk.NewStandardConnectorConfig(bridgesdk.StandardConnectorConfigParams{
+	oc.sdkConfig = bridgesdk.NewStandardConnectorConfig(bridgesdk.StandardConnectorConfigParams[*OpenClawClient, *Config, *PortalMetadata, *MessageMetadata, *UserLoginMetadata, *GhostMetadata]{
 		Name:             "openclaw",
 		Description:      "A Matrix↔OpenClaw bridge built on mautrix-go bridgev2.",
 		ProtocolID:       "ai-openclaw",
@@ -75,10 +75,10 @@ func NewConnector() *OpenClawConnector {
 		ExampleConfig:  exampleNetworkConfig,
 		ConfigData:     &oc.Config,
 		ConfigUpgrader: configupgrade.SimpleUpgrader(upgradeConfig),
-		NewPortal:      func() any { return &PortalMetadata{} },
-		NewMessage:     func() any { return &MessageMetadata{} },
-		NewLogin:       func() any { return &UserLoginMetadata{} },
-		NewGhost:       func() any { return &GhostMetadata{} },
+		NewPortal:      func() *PortalMetadata { return &PortalMetadata{} },
+		NewMessage:     func() *MessageMetadata { return &MessageMetadata{} },
+		NewLogin:       func() *UserLoginMetadata { return &UserLoginMetadata{} },
+		NewGhost:       func() *GhostMetadata { return &GhostMetadata{} },
 		NetworkCapabilities: func() *bridgev2.NetworkGeneralCapabilities {
 			caps := agentremote.DefaultNetworkCapabilities()
 			caps.DisappearingMessages = false

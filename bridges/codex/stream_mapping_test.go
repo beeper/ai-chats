@@ -23,7 +23,7 @@ func attachTestTurn(state *streamingState, portal *bridgev2.Portal) {
 	if state == nil {
 		return
 	}
-	conv := bridgesdk.NewConversation(context.Background(), nil, portal, bridgev2.EventSender{}, &bridgesdk.Config{}, nil)
+	conv := bridgesdk.NewConversation(context.Background(), nil, portal, bridgev2.EventSender{}, &bridgesdk.Config[*CodexClient, *struct{}]{}, nil)
 	turn := conv.StartTurn(context.Background(), nil, nil)
 	turn.SetID(state.turnID)
 	state.turn = turn

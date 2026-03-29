@@ -215,8 +215,12 @@ type ProviderIdentity struct {
 	StatusNetwork string
 }
 
+type SessionValue interface{}
+
+type ConfigValue interface{}
+
 // Config configures the SDK bridge.
-type Config struct {
+type Config[SessionT SessionValue, ConfigDataT ConfigValue] struct {
 	// Required
 	Name        string
 	Description string
@@ -229,29 +233,29 @@ type Config struct {
 	// Message handling (required)
 	// session is the value returned by OnConnect; conv is the conversation;
 	// msg is the incoming message; turn is the pre-created Turn for streaming responses.
-	OnMessage func(session any, conv *Conversation, msg *Message, turn *Turn) error
+	OnMessage func(session SessionT, conv *Conversation, msg *Message, turn *Turn) error
 
 	// Event hooks (optional)
-	OnConnect    func(ctx context.Context, login *LoginInfo) (any, error) // returns session state
-	OnDisconnect func(session any)
-	OnReaction   func(session any, conv *Conversation, reaction *Reaction) error
-	OnTyping     func(session any, conv *Conversation, typing bool)
-	OnEdit       func(session any, conv *Conversation, edit *MessageEdit) error
-	OnDelete     func(session any, conv *Conversation, msgID string) error
-	OnRoomName   func(session any, conv *Conversation, name string) (bool, error)
-	OnRoomTopic  func(session any, conv *Conversation, topic string) (bool, error)
+	OnConnect    func(ctx context.Context, login *LoginInfo) (SessionT, error) // returns session state
+	OnDisconnect func(session SessionT)
+	OnReaction   func(session SessionT, conv *Conversation, reaction *Reaction) error
+	OnTyping     func(session SessionT, conv *Conversation, typing bool)
+	OnEdit       func(session SessionT, conv *Conversation, edit *MessageEdit) error
+	OnDelete     func(session SessionT, conv *Conversation, msgID string) error
+	OnRoomName   func(session SessionT, conv *Conversation, name string) (bool, error)
+	OnRoomTopic  func(session SessionT, conv *Conversation, topic string) (bool, error)
 
 	// Turn management (optional)
 	TurnManagement *TurnConfig
 
 	// Capabilities (optional, dynamic per-conversation)
-	GetCapabilities func(session any, conv *Conversation) *RoomFeatures
+	GetCapabilities func(session SessionT, conv *Conversation) *RoomFeatures
 
 	// Search & chat ops (optional)
-	SearchUsers       func(ctx context.Context, session any, query string) ([]*bridgev2.ResolveIdentifierResponse, error)
-	GetContactList    func(ctx context.Context, session any) ([]*bridgev2.ResolveIdentifierResponse, error)
-	ResolveIdentifier func(ctx context.Context, session any, id string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error)
-	CreateChat        func(ctx context.Context, session any, params *CreateChatParams) (*bridgev2.CreateChatResponse, error)
+	SearchUsers       func(ctx context.Context, session SessionT, query string) ([]*bridgev2.ResolveIdentifierResponse, error)
+	GetContactList    func(ctx context.Context, session SessionT) ([]*bridgev2.ResolveIdentifierResponse, error)
+	ResolveIdentifier func(ctx context.Context, session SessionT, id string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error)
+	CreateChat        func(ctx context.Context, session SessionT, params *CreateChatParams) (*bridgev2.CreateChatResponse, error)
 	DeleteChat        func(conv *Conversation) error
 	GetChatInfo       func(conv *Conversation) (*bridgev2.ChatInfo, error)
 	GetUserInfo       func(ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error)
@@ -296,6 +300,6 @@ type Config struct {
 	ConfigPath     string                    // default: auto-discover
 	DBMeta         func() database.MetaTypes // nil = default
 	ExampleConfig  string                    // YAML
-	ConfigData     any                       // config struct pointer
+	ConfigData     ConfigDataT               // config struct pointer
 	ConfigUpgrader configupgrade.Upgrader
 }

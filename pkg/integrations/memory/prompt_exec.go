@@ -3,20 +3,24 @@ package memory
 import (
 	"context"
 	"strings"
+
+	"maunium.net/go/mautrix/bridgev2"
+
+	iruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 )
 
 type PromptContextDeps struct {
-	ShouldInjectContext   func(portal any, meta any) bool
-	ShouldBootstrap       func(portal any, meta any) bool
-	ResolveBootstrapPaths func(portal any, meta any) []string
-	MarkBootstrapped      func(ctx context.Context, portal any, meta any)
-	ReadSection           func(ctx context.Context, meta any, path string) string
+	ShouldInjectContext   func(portal *bridgev2.Portal, meta iruntime.Meta) bool
+	ShouldBootstrap       func(portal *bridgev2.Portal, meta iruntime.Meta) bool
+	ResolveBootstrapPaths func(portal *bridgev2.Portal, meta iruntime.Meta) []string
+	MarkBootstrapped      func(ctx context.Context, portal *bridgev2.Portal, meta iruntime.Meta)
+	ReadSection           func(ctx context.Context, meta iruntime.Meta, path string) string
 }
 
 func BuildPromptContextText(
 	ctx context.Context,
-	portal any,
-	meta any,
+	portal *bridgev2.Portal,
+	meta iruntime.Meta,
 	deps PromptContextDeps,
 ) string {
 	if deps.ShouldInjectContext == nil || !deps.ShouldInjectContext(portal, meta) {

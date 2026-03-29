@@ -59,7 +59,7 @@ func TestNewConnectorBaseUsesHooksAndCustomClients(t *testing.T) {
 	afterLoadCalled := 0
 	wantBridge := &bridgev2.Bridge{}
 
-	cfg := &Config{
+	cfg := &Config[*struct{}, *struct{}]{
 		Name:          "hooked",
 		ClientCacheMu: &mu,
 		ClientCache:   &clients,
@@ -145,7 +145,7 @@ func TestNewConnectorBaseUsesHooksAndCustomClients(t *testing.T) {
 
 func TestNewConnectorBaseUsesCustomLoadLoginAndLoginFlows(t *testing.T) {
 	loadCalled := 0
-	cfg := &Config{
+	cfg := &Config[*struct{}, *struct{}]{
 		Name: "custom-load",
 		LoadLogin: func(_ context.Context, login *bridgev2.UserLogin) error {
 			loadCalled++
@@ -188,7 +188,7 @@ func TestNewConnectorBaseUsesCustomLoadLoginAndLoginFlows(t *testing.T) {
 }
 
 func TestApprovalControllerUsesCustomHandler(t *testing.T) {
-	conv := NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &Config{}, nil)
+	conv := NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &Config[*struct{}, *struct{}]{}, nil)
 	turn := conv.StartTurn(context.Background(), &Agent{ID: "agent"}, nil)
 
 	called := false

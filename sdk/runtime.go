@@ -9,36 +9,75 @@ import (
 )
 
 type conversationRuntime interface {
-	config() *Config
-	sessionValue() any
+	agent() *Agent
+	agentCatalog() AgentCatalog
+	roomFeatures(conv *Conversation) *RoomFeatures
+	commands() []Command
+	turnConfig() *TurnConfig
 	conversationStore() *conversationStateStore
 	approvalFlowValue() *agentremote.ApprovalFlow[*pendingSDKApprovalData]
 	providerIdentity() ProviderIdentity
 }
 
-type staticRuntime struct {
-	cfg      *Config
-	session  any
+type staticRuntime[SessionT SessionValue, ConfigDataT ConfigValue] struct {
+	cfg      *Config[SessionT, ConfigDataT]
+	session  SessionT
 	login    *bridgev2.UserLogin
 	store    *conversationStateStore
 	approval *agentremote.ApprovalFlow[*pendingSDKApprovalData]
 }
 
-func (r *staticRuntime) config() *Config { return r.cfg }
+func (r *staticRuntime[SessionT, ConfigDataT]) agent() *Agent {
+	if r == nil || r.cfg == nil {
+		return nil
+	}
+	return r.cfg.Agent
+}
 
-func (r *staticRuntime) sessionValue() any { return r.session }
+func (r *staticRuntime[SessionT, ConfigDataT]) agentCatalog() AgentCatalog {
+	if r == nil || r.cfg == nil {
+		return nil
+	}
+	return r.cfg.AgentCatalog
+}
 
-func (r *staticRuntime) conversationStore() *conversationStateStore { return r.store }
+func (r *staticRuntime[SessionT, ConfigDataT]) roomFeatures(conv *Conversation) *RoomFeatures {
+	if r == nil || r.cfg == nil {
+		return nil
+	}
+	if r.cfg.GetCapabilities != nil {
+		if rf := r.cfg.GetCapabilities(r.session, conv); rf != nil {
+			return rf
+		}
+	}
+	return r.cfg.RoomFeatures
+}
 
-func (r *staticRuntime) approvalFlowValue() *agentremote.ApprovalFlow[*pendingSDKApprovalData] {
+func (r *staticRuntime[SessionT, ConfigDataT]) commands() []Command {
+	if r == nil || r.cfg == nil {
+		return nil
+	}
+	return r.cfg.Commands
+}
+
+func (r *staticRuntime[SessionT, ConfigDataT]) turnConfig() *TurnConfig {
+	if r == nil || r.cfg == nil {
+		return nil
+	}
+	return r.cfg.TurnManagement
+}
+
+func (r *staticRuntime[SessionT, ConfigDataT]) conversationStore() *conversationStateStore { return r.store }
+
+func (r *staticRuntime[SessionT, ConfigDataT]) approvalFlowValue() *agentremote.ApprovalFlow[*pendingSDKApprovalData] {
 	return r.approval
 }
 
-func (r *staticRuntime) providerIdentity() ProviderIdentity {
+func (r *staticRuntime[SessionT, ConfigDataT]) providerIdentity() ProviderIdentity {
 	return resolveProviderIdentity(r.cfg)
 }
 
-func resolveProviderIdentity(cfg *Config) ProviderIdentity {
+func resolveProviderIdentity[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Config[SessionT, ConfigDataT]) ProviderIdentity {
 	if cfg == nil {
 		return normalizedProviderIdentity(ProviderIdentity{})
 	}
@@ -65,8 +104,8 @@ type NewConversationOptions struct {
 
 // NewConversation creates an SDK conversation wrapper for provider bridges that
 // want to drive SDK turns without using the default sdkClient implementation.
-func NewConversation(ctx context.Context, login *bridgev2.UserLogin, portal *bridgev2.Portal, sender bridgev2.EventSender, cfg *Config, session any, opts ...NewConversationOptions) *Conversation {
-	rt := &staticRuntime{
+func NewConversation[SessionT SessionValue, ConfigDataT ConfigValue](ctx context.Context, login *bridgev2.UserLogin, portal *bridgev2.Portal, sender bridgev2.EventSender, cfg *Config[SessionT, ConfigDataT], session SessionT, opts ...NewConversationOptions) *Conversation {
+	rt := &staticRuntime[SessionT, ConfigDataT]{
 		cfg:     cfg,
 		session: session,
 		login:   login,

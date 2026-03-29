@@ -17,18 +17,18 @@ import (
 
 // Compile-time interface checks.
 var (
-	_ bridgev2.NetworkAPI                    = (*sdkClient)(nil)
-	_ bridgev2.EditHandlingNetworkAPI        = (*sdkClient)(nil)
-	_ bridgev2.ReactionHandlingNetworkAPI    = (*sdkClient)(nil)
-	_ bridgev2.RedactionHandlingNetworkAPI   = (*sdkClient)(nil)
-	_ bridgev2.TypingHandlingNetworkAPI      = (*sdkClient)(nil)
-	_ bridgev2.RoomNameHandlingNetworkAPI    = (*sdkClient)(nil)
-	_ bridgev2.RoomTopicHandlingNetworkAPI   = (*sdkClient)(nil)
-	_ bridgev2.BackfillingNetworkAPI         = (*sdkClient)(nil)
-	_ bridgev2.DeleteChatHandlingNetworkAPI  = (*sdkClient)(nil)
-	_ bridgev2.IdentifierResolvingNetworkAPI = (*sdkClient)(nil)
-	_ bridgev2.ContactListingNetworkAPI      = (*sdkClient)(nil)
-	_ bridgev2.UserSearchingNetworkAPI       = (*sdkClient)(nil)
+	_ bridgev2.NetworkAPI                    = (*sdkClient[any, any])(nil)
+	_ bridgev2.EditHandlingNetworkAPI        = (*sdkClient[any, any])(nil)
+	_ bridgev2.ReactionHandlingNetworkAPI    = (*sdkClient[any, any])(nil)
+	_ bridgev2.RedactionHandlingNetworkAPI   = (*sdkClient[any, any])(nil)
+	_ bridgev2.TypingHandlingNetworkAPI      = (*sdkClient[any, any])(nil)
+	_ bridgev2.RoomNameHandlingNetworkAPI    = (*sdkClient[any, any])(nil)
+	_ bridgev2.RoomTopicHandlingNetworkAPI   = (*sdkClient[any, any])(nil)
+	_ bridgev2.BackfillingNetworkAPI         = (*sdkClient[any, any])(nil)
+	_ bridgev2.DeleteChatHandlingNetworkAPI  = (*sdkClient[any, any])(nil)
+	_ bridgev2.IdentifierResolvingNetworkAPI = (*sdkClient[any, any])(nil)
+	_ bridgev2.ContactListingNetworkAPI      = (*sdkClient[any, any])(nil)
+	_ bridgev2.UserSearchingNetworkAPI       = (*sdkClient[any, any])(nil)
 )
 
 // pendingSDKApprovalData holds SDK-specific metadata for a pending tool approval.
@@ -39,19 +39,19 @@ type pendingSDKApprovalData struct {
 	ToolName   string
 }
 
-type sdkClient struct {
+type sdkClient[SessionT SessionValue, ConfigDataT ConfigValue] struct {
 	agentremote.ClientBase
-	cfg               *Config
+	cfg               *Config[SessionT, ConfigDataT]
 	userLogin         *bridgev2.UserLogin
 	approvalFlow      *agentremote.ApprovalFlow[*pendingSDKApprovalData]
 	turnManager       *TurnManager
 	conversationState *conversationStateStore
 
 	sessionMu sync.RWMutex
-	session   any
+	session   SessionT
 }
 
-func newSDKClient(login *bridgev2.UserLogin, cfg *Config) *sdkClient {
+func newSDKClient[SessionT SessionValue, ConfigDataT ConfigValue](login *bridgev2.UserLogin, cfg *Config[SessionT, ConfigDataT]) *sdkClient[SessionT, ConfigDataT] {
 	identity := resolveProviderIdentity(cfg)
 	senderForPortal := func(*bridgev2.Portal) bridgev2.EventSender {
 		if cfg != nil && cfg.Agent != nil {
@@ -59,7 +59,7 @@ func newSDKClient(login *bridgev2.UserLogin, cfg *Config) *sdkClient {
 		}
 		return bridgev2.EventSender{}
 	}
-	c := &sdkClient{
+	c := &sdkClient[SessionT, ConfigDataT]{
 		cfg:               cfg,
 		userLogin:         login,
 		conversationState: newConversationStateStore(),
@@ -86,44 +86,82 @@ func newSDKClient(login *bridgev2.UserLogin, cfg *Config) *sdkClient {
 	return c
 }
 
-func (c *sdkClient) GetApprovalHandler() agentremote.ApprovalReactionHandler {
+func (c *sdkClient[SessionT, ConfigDataT]) GetApprovalHandler() agentremote.ApprovalReactionHandler {
 	return c.approvalFlow
 }
 
-func (c *sdkClient) config() *Config { return c.cfg }
+func (c *sdkClient[SessionT, ConfigDataT]) agent() *Agent {
+	if c == nil || c.cfg == nil {
+		return nil
+	}
+	return c.cfg.Agent
+}
 
-func (c *sdkClient) sessionValue() any { return c.getSession() }
+func (c *sdkClient[SessionT, ConfigDataT]) agentCatalog() AgentCatalog {
+	if c == nil || c.cfg == nil {
+		return nil
+	}
+	return c.cfg.AgentCatalog
+}
 
-func (c *sdkClient) conversationStore() *conversationStateStore { return c.conversationState }
+func (c *sdkClient[SessionT, ConfigDataT]) roomFeatures(conv *Conversation) *RoomFeatures {
+	if c == nil || c.cfg == nil {
+		return nil
+	}
+	if c.cfg.GetCapabilities != nil {
+		if rf := c.cfg.GetCapabilities(c.getSession(), conv); rf != nil {
+			return rf
+		}
+	}
+	return c.cfg.RoomFeatures
+}
 
-func (c *sdkClient) approvalFlowValue() *agentremote.ApprovalFlow[*pendingSDKApprovalData] {
+func (c *sdkClient[SessionT, ConfigDataT]) commands() []Command {
+	if c == nil || c.cfg == nil {
+		return nil
+	}
+	return c.cfg.Commands
+}
+
+func (c *sdkClient[SessionT, ConfigDataT]) turnConfig() *TurnConfig {
+	if c == nil || c.cfg == nil {
+		return nil
+	}
+	return c.cfg.TurnManagement
+}
+
+func (c *sdkClient[SessionT, ConfigDataT]) conversationStore() *conversationStateStore {
+	return c.conversationState
+}
+
+func (c *sdkClient[SessionT, ConfigDataT]) approvalFlowValue() *agentremote.ApprovalFlow[*pendingSDKApprovalData] {
 	return c.approvalFlow
 }
 
-func (c *sdkClient) providerIdentity() ProviderIdentity {
+func (c *sdkClient[SessionT, ConfigDataT]) providerIdentity() ProviderIdentity {
 	return resolveProviderIdentity(c.cfg)
 }
 
-func (c *sdkClient) getSession() any {
+func (c *sdkClient[SessionT, ConfigDataT]) getSession() SessionT {
 	c.sessionMu.RLock()
 	defer c.sessionMu.RUnlock()
 	return c.session
 }
 
-func (c *sdkClient) setSession(s any) {
+func (c *sdkClient[SessionT, ConfigDataT]) setSession(s SessionT) {
 	c.sessionMu.Lock()
 	c.session = s
 	c.sessionMu.Unlock()
 }
 
 // Connect implements bridgev2.NetworkAPI.
-func (c *sdkClient) Connect(ctx context.Context) {
-	if c.config().OnConnect != nil {
+func (c *sdkClient[SessionT, ConfigDataT]) Connect(ctx context.Context) {
+	if c.cfg != nil && c.cfg.OnConnect != nil {
 		info := &LoginInfo{
 			Login:  c.userLogin,
 			UserID: string(c.userLogin.UserMXID),
 		}
-		session, err := c.config().OnConnect(ctx, info)
+		session, err := c.cfg.OnConnect(ctx, info)
 		if err != nil {
 			c.userLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateUnknownError,
@@ -137,55 +175,56 @@ func (c *sdkClient) Connect(ctx context.Context) {
 	c.userLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 }
 
-func (c *sdkClient) Disconnect() {
+func (c *sdkClient[SessionT, ConfigDataT]) Disconnect() {
 	c.SetLoggedIn(false)
 	if c.approvalFlow != nil {
 		c.approvalFlow.Close()
 	}
 	c.CloseAllSessions()
-	if c.config().OnDisconnect != nil {
-		c.config().OnDisconnect(c.getSession())
+	if c.cfg != nil && c.cfg.OnDisconnect != nil {
+		c.cfg.OnDisconnect(c.getSession())
 	}
-	c.setSession(nil)
+	var zero SessionT
+	c.setSession(zero)
 }
 
-func (c *sdkClient) LogoutRemote(ctx context.Context) {
+func (c *sdkClient[SessionT, ConfigDataT]) LogoutRemote(ctx context.Context) {
 	c.Disconnect()
 }
 
-func (c *sdkClient) IsThisUser(_ context.Context, userID networkid.UserID) bool {
-	if c.config().IsThisUser != nil {
-		return c.config().IsThisUser(string(userID))
+func (c *sdkClient[SessionT, ConfigDataT]) IsThisUser(_ context.Context, userID networkid.UserID) bool {
+	if c.cfg != nil && c.cfg.IsThisUser != nil {
+		return c.cfg.IsThisUser(string(userID))
 	}
 	return false
 }
 
-func (c *sdkClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
-	if c.config().GetChatInfo != nil {
-		return c.config().GetChatInfo(c.conv(ctx, portal))
+func (c *sdkClient[SessionT, ConfigDataT]) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
+	if c.cfg != nil && c.cfg.GetChatInfo != nil {
+		return c.cfg.GetChatInfo(c.conv(ctx, portal))
 	}
 	return nil, nil
 }
 
-func (c *sdkClient) GetUserInfo(_ context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
-	if c.config().GetUserInfo != nil {
-		return c.config().GetUserInfo(ghost)
+func (c *sdkClient[SessionT, ConfigDataT]) GetUserInfo(_ context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
+	if c.cfg != nil && c.cfg.GetUserInfo != nil {
+		return c.cfg.GetUserInfo(ghost)
 	}
 	return nil, nil
 }
 
-func (c *sdkClient) GetCapabilities(_ context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
+func (c *sdkClient[SessionT, ConfigDataT]) GetCapabilities(_ context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
 	conv := c.conv(context.Background(), portal)
 	return convertRoomFeatures(conv.currentRoomFeatures(context.Background()))
 }
 
-func (c *sdkClient) conv(ctx context.Context, portal *bridgev2.Portal) *Conversation {
+func (c *sdkClient[SessionT, ConfigDataT]) conv(ctx context.Context, portal *bridgev2.Portal) *Conversation {
 	return newConversation(ctx, portal, c.userLogin, bridgev2.EventSender{}, c)
 }
 
 // HandleMatrixMessage dispatches incoming messages to the OnMessage callback.
-func (c *sdkClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
-	if c.config().OnMessage == nil {
+func (c *sdkClient[SessionT, ConfigDataT]) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
+	if c.cfg == nil || c.cfg.OnMessage == nil {
 		return nil, nil
 	}
 	runCtx := c.BackgroundContext(ctx)
@@ -203,7 +242,7 @@ func (c *sdkClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		roomID = c.turnManager.ResolveKey(roomID)
 	}
 	run := func(turnCtx context.Context) error {
-		return c.config().OnMessage(session, conv, sdkMsg, turn)
+		return c.cfg.OnMessage(session, conv, sdkMsg, turn)
 	}
 	go func() {
 		var err error
@@ -272,8 +311,8 @@ func convertMatrixMessage(msg *bridgev2.MatrixMessage) *Message {
 }
 
 // HandleMatrixEdit implements bridgev2.EditHandlingNetworkAPI.
-func (c *sdkClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixEdit) error {
-	if c.config().OnEdit == nil {
+func (c *sdkClient[SessionT, ConfigDataT]) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixEdit) error {
+	if c.cfg == nil || c.cfg.OnEdit == nil {
 		return nil
 	}
 	me := &MessageEdit{
@@ -284,81 +323,81 @@ func (c *sdkClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 		me.NewText = edit.Content.Body
 		me.NewHTML = edit.Content.FormattedBody
 	}
-	return c.config().OnEdit(c.getSession(), c.conv(ctx, edit.Portal), me)
+	return c.cfg.OnEdit(c.getSession(), c.conv(ctx, edit.Portal), me)
 }
 
 // HandleMatrixMessageRemove implements bridgev2.RedactionHandlingNetworkAPI.
-func (c *sdkClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev2.MatrixMessageRemove) error {
-	if c.config().OnDelete == nil {
+func (c *sdkClient[SessionT, ConfigDataT]) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev2.MatrixMessageRemove) error {
+	if c.cfg == nil || c.cfg.OnDelete == nil {
 		return nil
 	}
 	var msgID string
 	if msg.TargetMessage != nil {
 		msgID = string(msg.TargetMessage.ID)
 	}
-	return c.config().OnDelete(c.getSession(), c.conv(ctx, msg.Portal), msgID)
+	return c.cfg.OnDelete(c.getSession(), c.conv(ctx, msg.Portal), msgID)
 }
 
 // HandleMatrixTyping implements bridgev2.TypingHandlingNetworkAPI.
-func (c *sdkClient) HandleMatrixTyping(ctx context.Context, msg *bridgev2.MatrixTyping) error {
-	if c.config().OnTyping != nil {
-		c.config().OnTyping(c.getSession(), c.conv(ctx, msg.Portal), msg.IsTyping)
+func (c *sdkClient[SessionT, ConfigDataT]) HandleMatrixTyping(ctx context.Context, msg *bridgev2.MatrixTyping) error {
+	if c.cfg != nil && c.cfg.OnTyping != nil {
+		c.cfg.OnTyping(c.getSession(), c.conv(ctx, msg.Portal), msg.IsTyping)
 	}
 	return nil
 }
 
 // HandleMatrixRoomName implements bridgev2.RoomNameHandlingNetworkAPI.
-func (c *sdkClient) HandleMatrixRoomName(ctx context.Context, msg *bridgev2.MatrixRoomName) (bool, error) {
-	if c.config().OnRoomName != nil {
-		return c.config().OnRoomName(c.getSession(), c.conv(ctx, msg.Portal), msg.Content.Name)
+func (c *sdkClient[SessionT, ConfigDataT]) HandleMatrixRoomName(ctx context.Context, msg *bridgev2.MatrixRoomName) (bool, error) {
+	if c.cfg != nil && c.cfg.OnRoomName != nil {
+		return c.cfg.OnRoomName(c.getSession(), c.conv(ctx, msg.Portal), msg.Content.Name)
 	}
 	return false, nil
 }
 
 // HandleMatrixRoomTopic implements bridgev2.RoomTopicHandlingNetworkAPI.
-func (c *sdkClient) HandleMatrixRoomTopic(ctx context.Context, msg *bridgev2.MatrixRoomTopic) (bool, error) {
-	if c.config().OnRoomTopic != nil {
-		return c.config().OnRoomTopic(c.getSession(), c.conv(ctx, msg.Portal), msg.Content.Topic)
+func (c *sdkClient[SessionT, ConfigDataT]) HandleMatrixRoomTopic(ctx context.Context, msg *bridgev2.MatrixRoomTopic) (bool, error) {
+	if c.cfg != nil && c.cfg.OnRoomTopic != nil {
+		return c.cfg.OnRoomTopic(c.getSession(), c.conv(ctx, msg.Portal), msg.Content.Topic)
 	}
 	return false, nil
 }
 
 // FetchMessages implements bridgev2.BackfillingNetworkAPI.
-func (c *sdkClient) FetchMessages(ctx context.Context, params bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {
-	if c.config().FetchMessages == nil {
+func (c *sdkClient[SessionT, ConfigDataT]) FetchMessages(ctx context.Context, params bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {
+	if c.cfg == nil || c.cfg.FetchMessages == nil {
 		return nil, nil
 	}
-	return c.config().FetchMessages(ctx, params)
+	return c.cfg.FetchMessages(ctx, params)
 }
 
 // HandleMatrixDeleteChat implements bridgev2.DeleteChatHandlingNetworkAPI.
-func (c *sdkClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2.MatrixDeleteChat) error {
-	if c.config().DeleteChat == nil {
+func (c *sdkClient[SessionT, ConfigDataT]) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2.MatrixDeleteChat) error {
+	if c.cfg == nil || c.cfg.DeleteChat == nil {
 		return nil
 	}
-	return c.config().DeleteChat(c.conv(ctx, msg.Portal))
+	return c.cfg.DeleteChat(c.conv(ctx, msg.Portal))
 }
 
 // ResolveIdentifier implements bridgev2.IdentifierResolvingNetworkAPI.
-func (c *sdkClient) ResolveIdentifier(ctx context.Context, identifier string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
-	if c.config().ResolveIdentifier == nil {
+func (c *sdkClient[SessionT, ConfigDataT]) ResolveIdentifier(ctx context.Context, identifier string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
+	if c.cfg == nil || c.cfg.ResolveIdentifier == nil {
 		return nil, nil
 	}
-	return c.config().ResolveIdentifier(ctx, c.getSession(), identifier, createChat)
+	return c.cfg.ResolveIdentifier(ctx, c.getSession(), identifier, createChat)
 }
 
 // GetContactList implements bridgev2.ContactListingNetworkAPI.
-func (c *sdkClient) GetContactList(ctx context.Context) ([]*bridgev2.ResolveIdentifierResponse, error) {
-	if c.config().GetContactList == nil {
+func (c *sdkClient[SessionT, ConfigDataT]) GetContactList(ctx context.Context) ([]*bridgev2.ResolveIdentifierResponse, error) {
+	if c.cfg == nil || c.cfg.GetContactList == nil {
 		return nil, nil
 	}
-	return c.config().GetContactList(ctx, c.getSession())
+	return c.cfg.GetContactList(ctx, c.getSession())
 }
 
 // SearchUsers implements bridgev2.UserSearchingNetworkAPI.
-func (c *sdkClient) SearchUsers(ctx context.Context, query string) ([]*bridgev2.ResolveIdentifierResponse, error) {
-	if c.config().SearchUsers == nil {
+func (c *sdkClient[SessionT, ConfigDataT]) SearchUsers(ctx context.Context, query string) ([]*bridgev2.ResolveIdentifierResponse, error) {
+	if c.cfg == nil || c.cfg.SearchUsers == nil {
 		return nil, nil
 	}
-	return c.config().SearchUsers(ctx, c.getSession(), query)
+	return c.cfg.SearchUsers(ctx, c.getSession(), query)
 }

@@ -23,7 +23,7 @@ func (oc *AIClient) createStreamingTurn(
 	sourceEventID id.EventID,
 	senderID string,
 ) *bridgesdk.Turn {
-	var sdkConfig *bridgesdk.Config
+	var sdkConfig *bridgesdk.Config[*AIClient, *Config]
 	if oc.connector != nil {
 		sdkConfig = oc.connector.sdkConfig
 	}

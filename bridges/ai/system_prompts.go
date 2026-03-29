@@ -6,6 +6,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
+	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
 )
 
@@ -32,10 +33,6 @@ func buildGroupIntro(roomName string, activation string) string {
 	return strings.Join(lines, " ") + " Address the specific sender noted in the message context."
 }
 
-func buildVerboseSystemHint(_ *PortalMetadata) string {
-	return ""
-}
-
 func buildSessionIdentityHint(portal *bridgev2.Portal, _ *PortalMetadata) string {
 	if portal == nil {
 		return ""
@@ -52,10 +49,6 @@ func buildSessionIdentityHint(portal *bridgev2.Portal, _ *PortalMetadata) string
 	}
 
 	return "sessionKey: " + session
-}
-
-type memoryPromptAugmentor interface {
-	PromptContextText(ctx context.Context, portal any, meta any) string
 }
 
 func (oc *AIClient) buildAdditionalSystemPromptText(
@@ -109,12 +102,6 @@ func (oc *AIClient) buildAdditionalSystemPromptCoreText(
 		}
 	}
 
-	if meta != nil {
-		if verboseHint := buildVerboseSystemHint(meta); verboseHint != "" {
-			out = append(out, verboseHint)
-		}
-	}
-
 	if accountHint := oc.buildDesktopAccountHintPrompt(ctx); accountHint != "" {
 		out = append(out, accountHint)
 	}
@@ -135,9 +122,12 @@ func (oc *AIClient) buildMemoryPromptContextText(
 		return ""
 	}
 	module := oc.integrationModules["memory"]
-	augmentor, ok := module.(memoryPromptAugmentor)
+	augmentor, ok := module.(integrationruntime.PromptContextIntegration)
 	if !ok || augmentor == nil {
 		return ""
 	}
-	return strings.TrimSpace(augmentor.PromptContextText(ctx, portal, meta))
+	return strings.TrimSpace(augmentor.PromptContextText(ctx, integrationruntime.PromptScope{
+		Portal: portal,
+		Meta:   meta,
+	}))
 }

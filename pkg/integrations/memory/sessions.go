@@ -39,11 +39,7 @@ func (m *MemorySearchManager) activeSessionPortals(ctx context.Context) (map[str
 		if key == "" {
 			continue
 		}
-		portalKey, ok := info.PortalKey.(networkid.PortalKey)
-		if !ok {
-			continue
-		}
-		active[key] = sessionPortal{key: key, portalKey: portalKey}
+		active[key] = sessionPortal{key: key, portalKey: info.PortalKey}
 	}
 	return active, nil
 }

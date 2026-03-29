@@ -192,7 +192,7 @@ func TestTurnRequestApprovalWaitsForResolvedDecision(t *testing.T) {
 			UserMXID: "@owner:test",
 		},
 	}
-	runtime := &staticRuntime{
+	runtime := &staticRuntime[*struct{}, *struct{}]{
 		login: login,
 		approval: agentremote.NewApprovalFlow(agentremote.ApprovalFlowConfig[*pendingSDKApprovalData]{
 			Login: func() *bridgev2.UserLogin { return nil },
@@ -248,7 +248,7 @@ func TestTurnRequestApprovalUsesProvidedApprovalID(t *testing.T) {
 			UserMXID: "@owner:test",
 		},
 	}
-	runtime := &staticRuntime{
+	runtime := &staticRuntime[*struct{}, *struct{}]{
 		login: login,
 		approval: agentremote.NewApprovalFlow(agentremote.ApprovalFlowConfig[*pendingSDKApprovalData]{
 			Login: func() *bridgev2.UserLogin { return nil },
@@ -276,7 +276,7 @@ func TestTurnRequestApprovalUsesProvidedApprovalID(t *testing.T) {
 }
 
 func TestTurnStreamSetTransportReceivesEvents(t *testing.T) {
-	conv := NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &Config{}, nil)
+	conv := NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &Config[*struct{}, *struct{}]{}, nil)
 	turn := conv.StartTurn(context.Background(), &Agent{ID: "agent"}, nil)
 
 	var gotTurnID string
@@ -685,7 +685,7 @@ func TestTurnBuildFinalEditUsesErrorTextFallback(t *testing.T) {
 }
 
 func TestTurnIdleTimeoutAbortsStuckTurn(t *testing.T) {
-	conv := NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &Config{
+	conv := NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &Config[*struct{}, *struct{}]{
 		TurnManagement: &TurnConfig{IdleTimeoutMs: 20},
 	}, nil)
 	turn := conv.StartTurn(context.Background(), nil, nil)
@@ -704,7 +704,7 @@ func TestTurnIdleTimeoutAbortsStuckTurn(t *testing.T) {
 }
 
 func TestTurnIdleTimeoutResetsOnActivity(t *testing.T) {
-	conv := NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &Config{
+	conv := NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &Config[*struct{}, *struct{}]{
 		TurnManagement: &TurnConfig{IdleTimeoutMs: 40},
 	}, nil)
 	turn := conv.StartTurn(context.Background(), nil, nil)

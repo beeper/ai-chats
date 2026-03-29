@@ -14,8 +14,8 @@ func TestSDKClientResolveIdentifierPreservesFullResponse(t *testing.T) {
 	chat := &bridgev2.CreateChatResponse{
 		PortalKey: networkid.PortalKey{ID: "portal-1", Receiver: "login-1"},
 	}
-	cfg := &Config{
-		ResolveIdentifier: func(_ context.Context, _ any, id string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
+	cfg := &Config[*bridgev2.UserLogin, *struct{}]{
+		ResolveIdentifier: func(_ context.Context, _ *bridgev2.UserLogin, id string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
 			if id != "agent:test" {
 				t.Fatalf("unexpected identifier %q", id)
 			}
@@ -50,11 +50,11 @@ func TestSDKClientResolveIdentifierPreservesFullResponse(t *testing.T) {
 
 func TestSDKClientContactListingAndSearch(t *testing.T) {
 	contact := &bridgev2.ResolveIdentifierResponse{UserID: "agent-user"}
-	cfg := &Config{
-		GetContactList: func(_ context.Context, _ any) ([]*bridgev2.ResolveIdentifierResponse, error) {
+	cfg := &Config[*bridgev2.UserLogin, *struct{}]{
+		GetContactList: func(_ context.Context, _ *bridgev2.UserLogin) ([]*bridgev2.ResolveIdentifierResponse, error) {
 			return []*bridgev2.ResolveIdentifierResponse{contact}, nil
 		},
-		SearchUsers: func(_ context.Context, _ any, query string) ([]*bridgev2.ResolveIdentifierResponse, error) {
+		SearchUsers: func(_ context.Context, _ *bridgev2.UserLogin, query string) ([]*bridgev2.ResolveIdentifierResponse, error) {
 			if query != "agent" {
 				t.Fatalf("unexpected query %q", query)
 			}

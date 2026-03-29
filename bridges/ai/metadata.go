@@ -311,6 +311,32 @@ func (m *PortalMetadata) SetModuleMeta(key string, value any) {
 	m.ModuleMeta[key] = value
 }
 
+func (m *PortalMetadata) ModuleMetaValue(key string) any {
+	if m == nil || m.ModuleMeta == nil {
+		return nil
+	}
+	return m.ModuleMeta[key]
+}
+
+func (m *PortalMetadata) SetModuleMetaValue(key string, value any) {
+	m.SetModuleMeta(key, value)
+}
+
+func (m *PortalMetadata) AgentID() string {
+	return resolveAgentID(m)
+}
+
+func (m *PortalMetadata) CompactionCounter() int {
+	if m == nil {
+		return 0
+	}
+	return m.CompactionCount
+}
+
+func (m *PortalMetadata) InternalRoom() bool {
+	return isModuleInternalRoom(m)
+}
+
 func cloneUserLoginMetadata(src *UserLoginMetadata) (*UserLoginMetadata, error) {
 	if src == nil {
 		return &UserLoginMetadata{}, nil

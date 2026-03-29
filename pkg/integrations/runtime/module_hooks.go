@@ -5,6 +5,9 @@ import (
 	"time"
 
 	"github.com/openai/openai-go/v3"
+	"github.com/rs/zerolog"
+	"go.mau.fi/util/dbutil"
+	"maunium.net/go/mautrix/bridgev2"
 )
 
 // ModuleHooks is the base contract every integration module implements.
@@ -28,10 +31,8 @@ type CommandDefinition struct {
 
 // CommandScope carries command execution context without importing connector internals.
 type CommandScope struct {
-	Client any
-	Portal any
-	Meta   any
-	Event  any
+	Portal *bridgev2.Portal
+	Meta   Meta
 }
 
 // CommandCall is a concrete command execution request.
@@ -63,9 +64,8 @@ const (
 
 // SessionMutationEvent is emitted when chat/session data changes.
 type SessionMutationEvent struct {
-	Client     any
-	Portal     any
-	Meta       any
+	Portal     *bridgev2.Portal
+	Meta       Meta
 	SessionKey string
 	Force      bool
 	Kind       SessionMutationKind
@@ -73,9 +73,8 @@ type SessionMutationEvent struct {
 
 // FileChangedEvent is emitted when a file write/edit/apply_patch updates workspace data.
 type FileChangedEvent struct {
-	Client any
-	Portal any
-	Meta   any
+	Portal *bridgev2.Portal
+	Meta   Meta
 	Path   string
 }
 
@@ -99,9 +98,8 @@ const (
 
 // CompactionLifecycleEvent provides compaction lifecycle details to integrations.
 type CompactionLifecycleEvent struct {
-	Client              any
-	Portal              any
-	Meta                any
+	Portal              *bridgev2.Portal
+	Meta                Meta
 	Phase               CompactionLifecyclePhase
 	Attempt             int
 	ContextWindowTokens int
@@ -125,9 +123,8 @@ type CompactionLifecycleIntegration interface {
 
 // ContextOverflowCall contains context-overflow retry state.
 type ContextOverflowCall struct {
-	Client          any
-	Portal          any
-	Meta            any
+	Portal          *bridgev2.Portal
+	Meta            Meta
 	Prompt          []openai.ChatCompletionMessageParamUnion
 	RequestedTokens int
 	ModelMaxTokens  int
@@ -136,8 +133,6 @@ type ContextOverflowCall struct {
 
 // LoginScope carries per-login cleanup scope.
 type LoginScope struct {
-	Client   any
-	Login    any
 	BridgeID string
 	LoginID  string
 }
@@ -153,74 +148,40 @@ type LoginPurgeIntegration interface {
 // nested capability objects or type-asserting optional host adapters.
 type Host interface {
 	Logger() Logger
-	RawLogger() any
+	RawLogger() zerolog.Logger
 	Now() time.Time
-	ResolvePortalByRoomID(ctx context.Context, roomID string) any
-	ResolveDefaultPortal(ctx context.Context) any
-	ResolveLastActivePortal(ctx context.Context, agentID string) any
-	DispatchInternalMessage(ctx context.Context, portal any, meta any, message string, source string) error
-	SendAssistantMessage(ctx context.Context, portal any, body string) error
-	RequestNow(ctx context.Context, reason string)
-	ToolDefinitionByName(name string) (ToolDefinition, bool)
-	ExecuteBuiltinTool(ctx context.Context, scope ToolScope, name string, rawArgsJSON string) (string, error)
 	ResolveWorkspaceDir() string
-	BridgeDB() any
+	BridgeDB() *dbutil.Database
 	BridgeID() string
 	LoginID() string
 	ModuleEnabled(name string) bool
 	ModuleConfig(name string) map[string]any
 	AgentModuleConfig(agentID string, module string) map[string]any
 
-	GetOrCreatePortal(ctx context.Context, portalID string, receiver string, displayName string, setupMeta func(meta any)) (portal any, roomID string, err error)
-	SavePortal(ctx context.Context, portal any, reason string) error
-	PortalRoomID(portal any) string
-	PortalKeyString(portal any) string
+	SavePortal(ctx context.Context, portal *bridgev2.Portal, reason string) error
+	PortalRoomID(portal *bridgev2.Portal) string
+	PortalKeyString(portal *bridgev2.Portal) string
 
-	GetModuleMeta(meta any, key string) any
-	SetModuleMeta(meta any, key string, value any)
-	AgentIDFromMeta(meta any) string
-	CompactionCount(meta any) int
-	IsGroupChat(ctx context.Context, portal any) bool
-	IsInternalRoom(meta any) bool
-	PortalMeta(portal any) any
-	CloneMeta(portal any) any
-	SetMetaField(meta any, key string, value any)
+	IsGroupChat(ctx context.Context, portal *bridgev2.Portal) bool
 
-	RecentMessages(ctx context.Context, portal any, count int) []MessageSummary
-	LastAssistantMessage(ctx context.Context, portal any) (id string, timestamp int64)
-	WaitForAssistantMessage(ctx context.Context, portal any, afterID string, afterTS int64) (*AssistantMessageInfo, bool)
-
-	RunHeartbeatOnce(ctx context.Context, reason string) (status string, reasonMsg string)
-	ResolveHeartbeatSessionPortal(agentID string) (portal any, sessionKey string, err error)
-	ResolveHeartbeatSessionKey(agentID string) string
-	HeartbeatAckMaxChars(agentID string) int
-	EnqueueSystemEvent(sessionKey string, text string, agentID string)
-	PersistSystemEvents()
-	ResolveLastTarget(agentID string) (channel string, target string, ok bool)
+	RecentMessages(ctx context.Context, portal *bridgev2.Portal, count int) []MessageSummary
 
 	ResolveAgentID(raw string, fallbackDefault string) string
-	NormalizeAgentID(raw string) string
-	AgentExists(normalizedID string) bool
 	DefaultAgentID() string
-	AgentTimeoutSeconds() int
 	UserTimezone() (tz string, loc *time.Location)
-	NormalizeThinkingLevel(raw string) (string, bool)
 
-	EffectiveModel(meta any) string
-	ContextWindow(meta any) int
+	EffectiveModel(meta Meta) string
+	ContextWindow(meta Meta) int
 
-	MergeDisconnectContext(ctx context.Context) (context.Context, context.CancelFunc)
-	BackgroundContext(ctx context.Context) context.Context
+	NewCompletion(ctx context.Context, model string, messages []openai.ChatCompletionMessageParamUnion, toolParams []openai.ChatCompletionToolUnionParam) (*CompletionResult, error)
 
-	NewCompletion(ctx context.Context, model string, messages []openai.ChatCompletionMessageParamUnion, toolParams any) (*CompletionResult, error)
-
-	IsToolEnabled(meta any, toolName string) bool
+	IsToolEnabled(meta Meta, toolName string) bool
 	AllToolDefinitions() []ToolDefinition
-	ExecuteToolInContext(ctx context.Context, portal any, meta any, name string, argsJSON string) (string, error)
-	ToolsToOpenAIParams(tools []ToolDefinition) any
+	ExecuteToolInContext(ctx context.Context, portal *bridgev2.Portal, meta Meta, name string, argsJSON string) (string, error)
+	ToolsToOpenAIParams(tools []ToolDefinition) []openai.ChatCompletionToolUnionParam
 
 	ReadTextFile(ctx context.Context, agentID string, path string) (content string, filePath string, found bool, err error)
-	WriteTextFile(ctx context.Context, portal any, meta any, agentID string, mode string, path string, content string, maxBytes int) (finalPath string, err error)
+	WriteTextFile(ctx context.Context, portal *bridgev2.Portal, meta Meta, agentID string, mode string, path string, content string, maxBytes int) (finalPath string, err error)
 
 	SmartTruncatePrompt(prompt []openai.ChatCompletionMessageParamUnion, ratio float64) []openai.ChatCompletionMessageParamUnion
 	EstimateTokens(prompt []openai.ChatCompletionMessageParamUnion, model string) int
@@ -230,7 +191,7 @@ type Host interface {
 
 	IsLoggedIn() bool
 	SessionPortals(ctx context.Context, loginID string, agentID string) ([]SessionPortalInfo, error)
-	LoginDB() any
+	LoginDB() *dbutil.Database
 }
 
 // Logger is a minimal structured logger abstraction.

@@ -219,18 +219,15 @@ func settingSourceFromIntegration(source integrationruntime.SettingSource) Setti
 
 func (oc *AIClient) toolScope(portal *bridgev2.Portal, meta *PortalMetadata) integrationruntime.ToolScope {
 	return integrationruntime.ToolScope{
-		Client: oc,
 		Portal: portal,
 		Meta:   meta,
 	}
 }
 
-func (oc *AIClient) commandScope(portal *bridgev2.Portal, meta *PortalMetadata, evt any) integrationruntime.CommandScope {
+func (oc *AIClient) commandScope(portal *bridgev2.Portal, meta *PortalMetadata) integrationruntime.CommandScope {
 	return integrationruntime.CommandScope{
-		Client: oc,
 		Portal: portal,
 		Meta:   meta,
-		Event:  evt,
 	}
 }
 
@@ -243,7 +240,7 @@ func (oc *AIClient) initIntegrations() {
 	oc.eventRegistry = &eventIntegrationRegistry{}
 	oc.purgeRegistry = &purgeIntegrationRegistry{}
 	oc.approvalRegistry = &toolApprovalIntegrationRegistry{}
-	oc.integrationModules = make(map[string]any)
+	oc.integrationModules = make(map[string]integrationruntime.ModuleHooks)
 	oc.integrationOrder = nil
 
 	host := newRuntimeIntegrationHost(oc)
@@ -258,7 +255,7 @@ func (oc *AIClient) initIntegrations() {
 			oc.toolRegistry.register(toolIntegration)
 		}
 		if commandIntegration, ok := module.(integrationruntime.CommandIntegration); ok {
-			defs := commandIntegration.CommandDefinitions(context.Background(), oc.commandScope(nil, nil, nil))
+			defs := commandIntegration.CommandDefinitions(context.Background(), oc.commandScope(nil, nil))
 			oc.commandRegistry.register(commandIntegration, defs)
 		}
 		if eventIntegration, ok := module.(integrationruntime.EventIntegration); ok {
@@ -286,7 +283,7 @@ func (oc *AIClient) integratedToolApprovalRequirement(toolName string, args map[
 	return oc.approvalRegistry.requirement(toolName, args)
 }
 
-func (oc *AIClient) registerIntegrationModule(name string, module any) {
+func (oc *AIClient) registerIntegrationModule(name string, module integrationruntime.ModuleHooks) {
 	if oc == nil || module == nil {
 		return
 	}
@@ -295,7 +292,7 @@ func (oc *AIClient) registerIntegrationModule(name string, module any) {
 		return
 	}
 	if oc.integrationModules == nil {
-		oc.integrationModules = make(map[string]any)
+		oc.integrationModules = make(map[string]integrationruntime.ModuleHooks)
 	}
 	if _, exists := oc.integrationModules[key]; exists {
 		return
@@ -331,14 +328,14 @@ func (oc *AIClient) emitCompactionLifecycle(
 	}
 }
 
-func (oc *AIClient) integrationModule(name string) any {
+func (oc *AIClient) integrationModule(name string) integrationruntime.ModuleHooks {
 	if oc == nil || oc.integrationModules == nil {
 		return nil
 	}
 	return oc.integrationModules[strings.ToLower(strings.TrimSpace(name))]
 }
 
-func (oc *AIClient) eachIntegrationModule(fn func(name string, module any)) {
+func (oc *AIClient) eachIntegrationModule(fn func(name string, module integrationruntime.ModuleHooks)) {
 	if oc == nil || fn == nil || len(oc.integrationOrder) == 0 {
 		return
 	}
@@ -355,7 +352,7 @@ func (oc *AIClient) startLifecycleIntegrations(ctx context.Context) {
 	if oc == nil {
 		return
 	}
-	oc.eachIntegrationModule(func(name string, module any) {
+	oc.eachIntegrationModule(func(name string, module integrationruntime.ModuleHooks) {
 		lifecycle, ok := module.(integrationruntime.LifecycleIntegration)
 		if !ok {
 			return
@@ -415,7 +412,7 @@ func (oc *AIClient) stopLoginLifecycleIntegrations(bridgeID, loginID string) {
 	if oc == nil || strings.TrimSpace(bridgeID) == "" || strings.TrimSpace(loginID) == "" {
 		return
 	}
-	oc.eachIntegrationModule(func(_ string, module any) {
+	oc.eachIntegrationModule(func(_ string, module integrationruntime.ModuleHooks) {
 		loginLifecycle, ok := module.(integrationruntime.LoginLifecycleIntegration)
 		if !ok {
 			return
@@ -472,7 +469,6 @@ func (oc *AIClient) executeIntegratedCommand(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
-	evt any,
 	name string,
 	args []string,
 	rawArgs string,
@@ -485,7 +481,7 @@ func (oc *AIClient) executeIntegratedCommand(
 		Name:    name,
 		Args:    args,
 		RawArgs: rawArgs,
-		Scope:   oc.commandScope(portal, meta, evt),
+		Scope:   oc.commandScope(portal, meta),
 		Reply:   reply,
 	})
 }
@@ -501,7 +497,6 @@ func (oc *AIClient) emitIntegrationSessionMutation(
 		return
 	}
 	oc.eventRegistry.sessionMutation(ctx, integrationruntime.SessionMutationEvent{
-		Client:     oc,
 		Portal:     portal,
 		Meta:       meta,
 		SessionKey: portal.PortalKey.String(),
@@ -515,7 +510,6 @@ func (oc *AIClient) emitIntegrationFileChanged(ctx context.Context, portal *brid
 		return
 	}
 	oc.eventRegistry.fileChanged(ctx, integrationruntime.FileChangedEvent{
-		Client: oc,
 		Portal: portal,
 		Meta:   meta,
 		Path:   path,
@@ -539,13 +533,11 @@ func notifyIntegrationFileChanged(ctx context.Context, path string) {
 	btc.Client.emitIntegrationFileChanged(ctx, btc.Portal, meta, path)
 }
 
-func (oc *AIClient) purgeLoginIntegrations(ctx context.Context, login any, bridgeID, loginID string) {
+func (oc *AIClient) purgeLoginIntegrations(ctx context.Context, _ *bridgev2.UserLogin, bridgeID, loginID string) {
 	if oc == nil || oc.purgeRegistry == nil {
 		return
 	}
 	if err := oc.purgeRegistry.purge(ctx, integrationruntime.LoginScope{
-		Client:   oc,
-		Login:    login,
 		BridgeID: bridgeID,
 		LoginID:  loginID,
 	}); err != nil {
@@ -612,8 +604,7 @@ func (c *coreToolIntegration) ExecuteTool(ctx context.Context, call integrationr
 		}
 		args = parsedArgs
 	}
-	portal, _ := call.Scope.Portal.(*bridgev2.Portal)
-	result, err := c.client.executeBuiltinToolDirect(ctx, portal, call.Name, args)
+	result, err := c.client.executeBuiltinToolDirect(ctx, call.Scope.Portal, call.Name, args)
 	if err != nil {
 		return true, "", err
 	}

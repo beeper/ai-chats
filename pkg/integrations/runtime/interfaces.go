@@ -2,6 +2,8 @@ package runtime
 
 import (
 	"context"
+
+	"maunium.net/go/mautrix/bridgev2"
 )
 
 // SettingSource indicates where a setting value came from.
@@ -27,9 +29,8 @@ type ToolDefinition struct {
 
 // ToolScope carries integration context without coupling to connector internals.
 type ToolScope struct {
-	Client any
-	Portal any
-	Meta   any
+	Portal *bridgev2.Portal
+	Meta   Meta
 }
 
 // ToolCall is a concrete tool execution request.
@@ -52,6 +53,18 @@ type ToolIntegration interface {
 type ToolApprovalIntegration interface {
 	Name() string
 	ToolApprovalRequirement(toolName string, args map[string]any) (handled bool, required bool, action string)
+}
+
+// PromptScope carries typed prompt-building context.
+type PromptScope struct {
+	Portal *bridgev2.Portal
+	Meta   Meta
+}
+
+// PromptContextIntegration contributes additional prompt context text.
+type PromptContextIntegration interface {
+	Name() string
+	PromptContextText(ctx context.Context, scope PromptScope) string
 }
 
 // LifecycleIntegration is an optional capability for integrations that need runtime start/stop hooks.

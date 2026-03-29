@@ -37,7 +37,7 @@ type OpenAIConnector struct {
 	br        *bridgev2.Bridge
 	Config    Config
 	db        *dbutil.Database
-	sdkConfig *bridgesdk.Config
+	sdkConfig *bridgesdk.Config[*AIClient, *Config]
 
 	clientsMu sync.Mutex
 	clients   map[networkid.UserLoginID]bridgev2.NetworkAPI

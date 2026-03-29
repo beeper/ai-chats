@@ -21,7 +21,7 @@ type DummyBridgeConnector struct {
 	*agentremote.ConnectorBase
 	br        *bridgev2.Bridge
 	Config    Config
-	sdkConfig *bridgesdk.Config
+	sdkConfig *bridgesdk.Config[*dummySession, *Config]
 
 	clientsMu sync.Mutex
 	clients   map[networkid.UserLoginID]bridgev2.NetworkAPI
@@ -31,7 +31,7 @@ type DummyBridgeConnector struct {
 
 func NewConnector() *DummyBridgeConnector {
 	dc := &DummyBridgeConnector{}
-	dc.sdkConfig = bridgesdk.NewStandardConnectorConfig(bridgesdk.StandardConnectorConfigParams{
+	dc.sdkConfig = bridgesdk.NewStandardConnectorConfig(bridgesdk.StandardConnectorConfigParams[*dummySession, *Config, *PortalMetadata, *MessageMetadata, *UserLoginMetadata, *GhostMetadata]{
 		Name:             "dummybridge",
 		Description:      "A synthetic Matrix↔DummyBridge demo bridge built on the AgentRemote SDK.",
 		ProtocolID:       "ai-dummybridge",
@@ -57,10 +57,10 @@ func NewConnector() *DummyBridgeConnector {
 		ExampleConfig:  exampleNetworkConfig,
 		ConfigData:     &dc.Config,
 		ConfigUpgrader: configupgrade.SimpleUpgrader(upgradeConfig),
-		NewPortal:      func() any { return &PortalMetadata{} },
-		NewMessage:     func() any { return &MessageMetadata{} },
-		NewLogin:       func() any { return &UserLoginMetadata{} },
-		NewGhost:       func() any { return &GhostMetadata{} },
+		NewPortal:      func() *PortalMetadata { return &PortalMetadata{} },
+		NewMessage:     func() *MessageMetadata { return &MessageMetadata{} },
+		NewLogin:       func() *UserLoginMetadata { return &UserLoginMetadata{} },
+		NewGhost:       func() *GhostMetadata { return &GhostMetadata{} },
 		AcceptLogin: func(login *bridgev2.UserLogin) (bool, string) {
 			return bridgesdk.AcceptProviderLogin(login, ProviderDummyBridge, "This bridge only supports DummyBridge logins.", dc.enabled, "DummyBridge integration is disabled in the configuration.", func(login *bridgev2.UserLogin) string {
 				return loginMetadata(login).Provider

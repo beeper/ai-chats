@@ -22,7 +22,7 @@ type OpenCodeConnector struct {
 	*agentremote.ConnectorBase
 	br        *bridgev2.Bridge
 	Config    Config
-	sdkConfig *bridgesdk.Config
+	sdkConfig *bridgesdk.Config[*OpenCodeClient, *Config]
 
 	clientsMu sync.Mutex
 	clients   map[networkid.UserLoginID]bridgev2.NetworkAPI
@@ -42,7 +42,7 @@ func NewConnector() *OpenCodeConnector {
 			Description: "Let the bridge spawn and manage OpenCode processes for you.",
 		},
 	}
-	oc.sdkConfig = bridgesdk.NewStandardConnectorConfig(bridgesdk.StandardConnectorConfigParams{
+	oc.sdkConfig = bridgesdk.NewStandardConnectorConfig(bridgesdk.StandardConnectorConfigParams[*OpenCodeClient, *Config, *PortalMetadata, *MessageMetadata, *UserLoginMetadata, *GhostMetadata]{
 		Name:             "opencode",
 		Description:      "A Matrix↔OpenCode bridge built on mautrix-go bridgev2.",
 		ProtocolID:       "ai-opencode",
@@ -50,7 +50,7 @@ func NewConnector() *OpenCodeConnector {
 		ProviderIdentity: bridgesdk.ProviderIdentity{IDPrefix: "opencode", LogKey: "opencode_msg_id", StatusNetwork: "opencode"},
 		ClientCacheMu:    &oc.clientsMu,
 		ClientCache:      &oc.clients,
-		GetCapabilities: func(session any, _ *bridgesdk.Conversation) *bridgesdk.RoomFeatures {
+		GetCapabilities: func(_ *OpenCodeClient, _ *bridgesdk.Conversation) *bridgesdk.RoomFeatures {
 			return &bridgesdk.RoomFeatures{Custom: openCodeMatrixRoomFeatures()}
 		},
 		InitConnector: func(bridge *bridgev2.Bridge) {
@@ -72,10 +72,10 @@ func NewConnector() *OpenCodeConnector {
 		ExampleConfig:  exampleNetworkConfig,
 		ConfigData:     &oc.Config,
 		ConfigUpgrader: configupgrade.SimpleUpgrader(upgradeConfig),
-		NewPortal:      func() any { return &PortalMetadata{} },
-		NewMessage:     func() any { return &MessageMetadata{} },
-		NewLogin:       func() any { return &UserLoginMetadata{} },
-		NewGhost:       func() any { return &GhostMetadata{} },
+		NewPortal:      func() *PortalMetadata { return &PortalMetadata{} },
+		NewMessage:     func() *MessageMetadata { return &MessageMetadata{} },
+		NewLogin:       func() *UserLoginMetadata { return &UserLoginMetadata{} },
+		NewGhost:       func() *GhostMetadata { return &GhostMetadata{} },
 		AcceptLogin: func(login *bridgev2.UserLogin) (bool, string) {
 			return bridgesdk.AcceptProviderLogin(login, ProviderOpenCode, "This bridge only supports OpenCode logins.", oc.openCodeEnabled, "OpenCode integration is disabled in the configuration.", func(login *bridgev2.UserLogin) string {
 				return loginMetadata(login).Provider

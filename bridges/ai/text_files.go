@@ -233,7 +233,7 @@ func (oc *AIClient) downloadPDFFile(ctx context.Context, mediaURL string, encryp
 	return trimmed, truncated, nil
 }
 
-func buildTextFileMessage(caption string, hasUserCaption bool, filename string, mimeType string, content string, _ bool) string {
+func buildTextFileMessage(caption string, hasUserCaption bool, filename string, mimeType string, content string, truncated bool) string {
 	if !hasUserCaption {
 		caption = ""
 	}
@@ -247,10 +247,15 @@ func buildTextFileMessage(caption string, hasUserCaption bool, filename string, 
 		mimeType = "text/plain"
 	}
 
+	truncAttr := ""
+	if truncated {
+		truncAttr = " truncated=\"true\""
+	}
 	block := fmt.Sprintf(
-		"<file name=\"%s\" mime=\"%s\">\n%s\n</file>",
+		"<file name=\"%s\" mime=\"%s\"%s>\n%s\n</file>",
 		xmlEscapeAttr(filename),
 		xmlEscapeAttr(mimeType),
+		truncAttr,
 		escapeFileBlockContent(content),
 	)
 
