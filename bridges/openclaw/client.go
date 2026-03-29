@@ -735,11 +735,11 @@ func (oc *OpenClawClient) senderForAgent(agentID string, fromMe bool) bridgev2.E
 	}
 }
 
-func (oc *OpenClawClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Portal, msg string) {
+func (oc *OpenClawClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Portal, sender bridgev2.EventSender, msg string) {
 	if oc == nil || portal == nil || strings.TrimSpace(msg) == "" {
 		return
 	}
-	if err := agentremote.SendSystemMessage(ctx, oc.UserLogin, portal, bridgev2.EventSender{}, msg); err != nil {
+	if err := agentremote.SendSystemMessage(ctx, oc.UserLogin, portal, sender, msg); err != nil {
 		if oc.UserLogin != nil {
 			oc.UserLogin.Log.Warn().Err(err).Msg("Failed to send system notice")
 		}

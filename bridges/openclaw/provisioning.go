@@ -309,7 +309,7 @@ func (oc *OpenClawClient) createConfiguredAgentDM(ctx context.Context, agent gat
 		OtherUserID: openClawGhostUserID(agentID),
 		Save:        false,
 	}); err != nil {
-		return nil, fmt.Errorf("failed to save openclaw dm portal: %w", err)
+		return nil, fmt.Errorf("failed to configure openclaw dm portal: %w", err)
 	}
 	chatInfo := oc.buildOpenClawDMChatInfo(agentID, meta.OpenClawDMTargetAgentName, info)
 	_, err = bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{

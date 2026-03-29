@@ -111,7 +111,7 @@ func newOpenClawManager(client *OpenClawClient) *openClawManager {
 				agentremote.DecisionToString(decision, "allow-once", "allow-always", "deny"))
 		},
 		SendNotice: func(ctx context.Context, portal *bridgev2.Portal, msg string) {
-			client.sendSystemNotice(ctx, portal, msg)
+			client.sendSystemNotice(ctx, portal, mgr.approvalSenderForPortal(portal), msg)
 		},
 		DBMetadata: func(prompt agentremote.ApprovalPromptMessage) any {
 			return &MessageMetadata{
@@ -375,7 +375,7 @@ func (m *openClawManager) expireLocalApproval(ctx context.Context, approvalID st
 	}
 	if sessionKey != "" {
 		if portal := m.resolvePortal(ctx, sessionKey); portal != nil && portal.MXID != "" {
-			m.client.sendSystemNotice(ctx, portal, "OpenClaw approval expired")
+			m.client.sendSystemNotice(ctx, portal, m.approvalSenderForPortal(portal), "OpenClaw approval expired")
 		}
 	}
 	m.approvalFlow.ResolveExternal(ctx, approvalID, agentremote.ApprovalDecisionPayload{
@@ -1804,7 +1804,7 @@ func (m *openClawManager) handleApprovalResolved(ctx context.Context, payload ga
 			"reason":     reason,
 		})
 	} else {
-		m.client.sendSystemNotice(ctx, portal, openClawApprovalResolvedText(payload.Decision))
+		m.client.sendSystemNotice(ctx, portal, m.approvalSenderForPortal(portal), openClawApprovalResolvedText(payload.Decision))
 	}
 	m.approvalFlow.ResolveExternal(ctx, approvalID, agentremote.ApprovalDecisionPayload{
 		ApprovalID: approvalID,

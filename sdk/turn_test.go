@@ -22,12 +22,24 @@ import (
 )
 
 type sdkTestMatrixAPI struct {
-	joinedRooms []id.RoomID
+	joinedRooms  []id.RoomID
+	sentMessages []sdkTestSentMessage
+}
+
+type sdkTestSentMessage struct {
+	roomID    id.RoomID
+	eventType event.Type
+	content   *event.Content
 }
 
 func (stma *sdkTestMatrixAPI) GetMXID() id.UserID   { return "@ghost:test" }
 func (stma *sdkTestMatrixAPI) IsDoublePuppet() bool { return false }
-func (stma *sdkTestMatrixAPI) SendMessage(context.Context, id.RoomID, event.Type, *event.Content, *bridgev2.MatrixSendExtra) (*mautrix.RespSendEvent, error) {
+func (stma *sdkTestMatrixAPI) SendMessage(_ context.Context, roomID id.RoomID, evtType event.Type, content *event.Content, _ *bridgev2.MatrixSendExtra) (*mautrix.RespSendEvent, error) {
+	stma.sentMessages = append(stma.sentMessages, sdkTestSentMessage{
+		roomID:    roomID,
+		eventType: evtType,
+		content:   content,
+	})
 	return nil, nil
 }
 func (stma *sdkTestMatrixAPI) SendState(context.Context, id.RoomID, event.Type, string, *event.Content, time.Time) (*mautrix.RespSendEvent, error) {
@@ -798,6 +810,38 @@ func TestTurnWriterStartEnsuresSenderJoinedBeforePlaceholderSend(t *testing.T) {
 
 	if sendCalls != 1 {
 		t.Fatalf("expected placeholder send once, got %d", sendCalls)
+	}
+}
+
+func TestConversationSendNoticeUsesConversationIntent(t *testing.T) {
+	login := &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: "login-1"}}
+	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: "!room:test"}}
+	intent := &sdkTestMatrixAPI{}
+	conv := newConversation(context.Background(), portal, login, bridgev2.EventSender{Sender: "agent-test", SenderLogin: login.ID}, nil)
+	conv.intentOverride = func(context.Context) (bridgev2.MatrixAPI, error) { return intent, nil }
+
+	if err := conv.SendNotice(context.Background(), " hello "); err != nil {
+		t.Fatalf("SendNotice returned error: %v", err)
+	}
+	if len(intent.sentMessages) != 1 {
+		t.Fatalf("expected one notice to be sent through the conversation intent, got %d", len(intent.sentMessages))
+	}
+	got := intent.sentMessages[0]
+	if got.roomID != portal.MXID {
+		t.Fatalf("expected notice to target %q, got %q", portal.MXID, got.roomID)
+	}
+	if got.eventType != event.EventMessage {
+		t.Fatalf("expected event type %q, got %q", event.EventMessage, got.eventType)
+	}
+	msg, ok := got.content.Parsed.(*event.MessageEventContent)
+	if !ok {
+		t.Fatalf("expected parsed message content, got %#v", got.content.Parsed)
+	}
+	if msg.MsgType != event.MsgNotice {
+		t.Fatalf("expected notice message, got %q", msg.MsgType)
+	}
+	if msg.Body != "hello" {
+		t.Fatalf("expected trimmed notice body, got %q", msg.Body)
 	}
 }
 

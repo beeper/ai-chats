@@ -53,6 +53,12 @@ type sdkClient struct {
 
 func newSDKClient(login *bridgev2.UserLogin, cfg *Config) *sdkClient {
 	identity := resolveProviderIdentity(cfg)
+	senderForPortal := func(*bridgev2.Portal) bridgev2.EventSender {
+		if cfg != nil && cfg.Agent != nil {
+			return cfg.Agent.EventSender(login.ID)
+		}
+		return bridgev2.EventSender{}
+	}
 	c := &sdkClient{
 		cfg:               cfg,
 		userLogin:         login,
@@ -60,13 +66,8 @@ func newSDKClient(login *bridgev2.UserLogin, cfg *Config) *sdkClient {
 	}
 	c.InitClientBase(login, c)
 	c.approvalFlow = agentremote.NewApprovalFlow(agentremote.ApprovalFlowConfig[*pendingSDKApprovalData]{
-		Login: func() *bridgev2.UserLogin { return c.userLogin },
-		Sender: func(portal *bridgev2.Portal) bridgev2.EventSender {
-			if cfg != nil && cfg.Agent != nil {
-				return cfg.Agent.EventSender(login.ID)
-			}
-			return bridgev2.EventSender{}
-		},
+		Login:    func() *bridgev2.UserLogin { return c.userLogin },
+		Sender:   senderForPortal,
 		IDPrefix: identity.IDPrefix,
 		LogKey:   identity.LogKey,
 		RoomIDFromData: func(data *pendingSDKApprovalData) id.RoomID {
@@ -76,7 +77,7 @@ func newSDKClient(login *bridgev2.UserLogin, cfg *Config) *sdkClient {
 			return data.RoomID
 		},
 		SendNotice: func(ctx context.Context, portal *bridgev2.Portal, msg string) {
-			_ = agentremote.SendSystemMessage(ctx, login, portal, bridgev2.EventSender{}, msg)
+			_ = agentremote.SendSystemMessage(ctx, login, portal, senderForPortal(portal), msg)
 		},
 	})
 	if cfg != nil && cfg.TurnManagement != nil {

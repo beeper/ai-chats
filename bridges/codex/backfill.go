@@ -234,7 +234,6 @@ func (cc *CodexClient) ensureCodexThreadPortal(ctx context.Context, existing *br
 		meta.Slug = codexThreadSlug(threadID)
 	}
 
-	info := cc.composeCodexChatInfo(portal, title, true)
 	if err := agentremote.ConfigureDMPortal(ctx, agentremote.ConfigureDMPortalParams{
 		Portal:      portal,
 		Title:       title,
@@ -243,6 +242,7 @@ func (cc *CodexClient) ensureCodexThreadPortal(ctx context.Context, existing *br
 	}); err != nil {
 		return nil, false, err
 	}
+	info := cc.composeCodexChatInfo(portal, title, true)
 	created, err = bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
 		Login:             cc.UserLogin,
 		Portal:            portal,

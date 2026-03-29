@@ -228,15 +228,14 @@ func SendViaPortal(p SendViaPortalParams) (id.EventID, networkid.MessageID, erro
 		StreamOrder: p.StreamOrder,
 		Converted:   p.Converted,
 	})
-	p.MsgID = evt.ID
 	result := p.Login.QueueRemoteEvent(evt)
 	if !result.Success {
 		if result.Error != nil {
-			return "", p.MsgID, fmt.Errorf("send failed: %w", result.Error)
+			return "", evt.ID, fmt.Errorf("send failed: %w", result.Error)
 		}
-		return "", p.MsgID, fmt.Errorf("send failed")
+		return "", evt.ID, fmt.Errorf("send failed")
 	}
-	return result.EventID, p.MsgID, nil
+	return result.EventID, evt.ID, nil
 }
 
 // SendEditViaPortal queues a pre-built edit through bridgev2's remote event pipeline.

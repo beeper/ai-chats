@@ -1764,10 +1764,31 @@ func (cc *CodexClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2
 }
 
 func (cc *CodexClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Portal, message string) {
-	if cc == nil {
+	if cc == nil || portal == nil || strings.TrimSpace(message) == "" {
 		return
 	}
-	if err := agentremote.SendSystemMessage(ctx, cc.UserLogin, portal, bridgev2.EventSender{}, message); err != nil {
+	send := func(sendCtx context.Context) error {
+		return agentremote.SendSystemMessage(sendCtx, cc.UserLogin, portal, cc.senderForPortal(), message)
+	}
+	if portal.MXID == "" {
+		go func() {
+			retryCtx := cc.backgroundContext(ctx)
+			for attempt := 0; attempt < 3; attempt++ {
+				if portal.MXID != "" {
+					if err := send(retryCtx); err != nil {
+						cc.log.Warn().Err(err).Msg("Failed to send system notice")
+					}
+					return
+				}
+				time.Sleep(250 * time.Millisecond)
+			}
+			if err := send(retryCtx); err != nil {
+				cc.log.Warn().Err(err).Msg("Failed to send system notice")
+			}
+		}()
+		return
+	}
+	if err := send(ctx); err != nil {
 		cc.log.Warn().Err(err).Msg("Failed to send system notice")
 	}
 }

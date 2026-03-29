@@ -223,7 +223,15 @@ func (c *Conversation) SendMedia(ctx context.Context, data []byte, mediaType, fi
 
 // SendNotice sends a notice message.
 func (c *Conversation) SendNotice(ctx context.Context, text string) error {
-	return agentremote.SendSystemMessage(ctx, c.login, c.portal, c.sender, text)
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	return c.sendMessageContent(ctx, &event.MessageEventContent{
+		MsgType:  event.MsgNotice,
+		Body:     text,
+		Mentions: &event.Mentions{},
+	})
 }
 
 func (c *Conversation) sendMessageContent(ctx context.Context, content *event.MessageEventContent) error {
