@@ -125,8 +125,8 @@ func promptMessageToResponsesInputs(msg PromptMessage) responses.ResponseInputPa
 
 func promptContextToChatCompletionMessages(ctx PromptContext, supportsVideoURL bool) []openai.ChatCompletionMessageParamUnion {
 	var messages []openai.ChatCompletionMessageParamUnion
-	if strings.TrimSpace(ctx.SystemPrompt) != "" {
-		messages = append(messages, openai.SystemMessage(strings.TrimSpace(ctx.SystemPrompt)))
+	if system := strings.TrimSpace(ctx.SystemPrompt); system != "" {
+		messages = append(messages, openai.SystemMessage(system))
 	}
 	for _, msg := range ctx.Messages {
 		switch msg.Role {

@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -168,7 +169,7 @@ func (oc *AIClient) buildCurrentTurnText(
 		return PromptContext{}, "", err
 	}
 
-	prepend := append([]string{}, opts.prepend...)
+	prepend := slices.Clone(opts.prepend)
 	if portal != nil && portal.MXID != "" {
 		reactionFeedback := DrainReactionFeedback(portal.MXID)
 		if len(reactionFeedback) > 0 {
@@ -181,7 +182,7 @@ func (oc *AIClient) buildCurrentTurnText(
 		prepend = append(prepend, result.UntrustedPrefix)
 	}
 
-	appendParts := append([]string{}, opts.append...)
+	appendParts := slices.Clone(opts.append)
 	if opts.includeLinkScope {
 		if linkContext := oc.buildLinkContext(ctx, userText, opts.rawEventContent); linkContext != "" {
 			appendParts = append(appendParts, linkContext)
@@ -200,8 +201,8 @@ func (oc *AIClient) buildPromptContextForTurn(
 	eventID id.EventID,
 	opts currentTurnPromptOptions,
 ) (PromptContext, error) {
-	appendFragments := append([]string{}, opts.append...)
-	leadingBlocks := append([]PromptBlock{}, opts.leadingBlocks...)
+	appendFragments := slices.Clone(opts.append)
+	leadingBlocks := slices.Clone(opts.leadingBlocks)
 
 	if opts.attachment != nil {
 		attachmentBlocks, attachmentAppend, err := oc.normalizeTurnAttachment(ctx, *opts.attachment)
