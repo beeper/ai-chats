@@ -46,14 +46,18 @@ func (s *schedulerRuntime) RequestHeartbeatNow(ctx context.Context, reason strin
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	store, err := s.loadHeartbeatStoreLocked(ctx)
-	if err != nil {
-		s.client.log.Warn().Err(err).Msg("Failed to load managed heartbeat store")
-		return
-	}
 	agents, err := s.schedulableHeartbeatAgents(ctx)
 	if err != nil {
 		s.client.log.Warn().Err(err).Msg("Failed to resolve schedulable heartbeat agents for immediate wake")
+		return
+	}
+	agents = s.wakeableHeartbeatAgents(agents)
+	if len(agents) == 0 {
+		return
+	}
+	store, err := s.loadHeartbeatStoreLocked(ctx)
+	if err != nil {
+		s.client.log.Warn().Err(err).Msg("Failed to load managed heartbeat store")
 		return
 	}
 	nowMs := time.Now().UnixMilli()
@@ -108,7 +112,7 @@ func (s *schedulerRuntime) reconcileHeartbeatLocked(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	agents, err := s.schedulableHeartbeatAgents(ctx)
+	agents, err := s.schedulableHeartbeatAgentsWithUserChats(ctx)
 	if err != nil {
 		return err
 	}
@@ -396,8 +400,8 @@ func findManagedHeartbeat(states []managedHeartbeatState, agentID string) int {
 	return -1
 }
 
-// schedulableHeartbeatAgents returns heartbeat agents that are configured,
-// exist in the agent store, and have at least one user-facing chat portal.
+// schedulableHeartbeatAgents returns heartbeat agents that are configured
+// and exist in the agent store.
 func (s *schedulerRuntime) schedulableHeartbeatAgents(ctx context.Context) ([]heartbeatAgent, error) {
 	if s == nil || s.client == nil || s.client.connector == nil {
 		return nil, nil
@@ -410,21 +414,53 @@ func (s *schedulerRuntime) schedulableHeartbeatAgents(ctx context.Context) ([]he
 	if err != nil {
 		return nil, err
 	}
+	out := make([]heartbeatAgent, 0, len(candidates))
+	for _, c := range candidates {
+		if _, ok := agentsMap[c.agentID]; !ok {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out, nil
+}
+
+// schedulableHeartbeatAgentsWithUserChats applies the user-chat portal filter
+// used by reconcile without forcing sweep and wake paths to enumerate portals.
+func (s *schedulerRuntime) schedulableHeartbeatAgentsWithUserChats(ctx context.Context) ([]heartbeatAgent, error) {
+	candidates, err := s.schedulableHeartbeatAgents(ctx)
+	if err != nil || len(candidates) == 0 {
+		return candidates, err
+	}
 	portals, err := s.client.listAllChatPortals(ctx)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]heartbeatAgent, 0, len(candidates))
 	for _, c := range candidates {
-		if _, ok := agentsMap[c.agentID]; !ok {
-			continue
-		}
 		if !agentHasUserChat(portals, c.agentID) {
 			continue
 		}
 		out = append(out, c)
 	}
 	return out, nil
+}
+
+// wakeableHeartbeatAgents keeps only agents that currently resolve to a
+// concrete heartbeat session portal, avoiding managed wake scheduling for
+// agents with no active delivery target.
+func (s *schedulerRuntime) wakeableHeartbeatAgents(candidates []heartbeatAgent) []heartbeatAgent {
+	if s == nil || s.client == nil || len(candidates) == 0 {
+		return nil
+	}
+	out := make([]heartbeatAgent, 0, len(candidates))
+	for _, candidate := range candidates {
+		portal, _, err := s.client.resolveHeartbeatSessionPortal(candidate.agentID, candidate.heartbeat)
+		if err != nil || portal == nil || portal.MXID == "" {
+			continue
+		}
+		out = append(out, candidate)
+	}
+	return out
 }
 
 // agentHasUserChat returns true if the agent has at least one user-facing

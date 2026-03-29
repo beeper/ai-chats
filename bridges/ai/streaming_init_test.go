@@ -47,7 +47,7 @@ func TestPrepareStreamingRun_ModelRoomKeepsReplyTarget(t *testing.T) {
 
 func TestPrepareStreamingRun_AgentRoomKeepsReplyTarget(t *testing.T) {
 	oc := &AIClient{}
-	meta := &PortalMetadata{}
+	meta := agentModeTestMeta("beeper")
 	evt := &event.Event{
 		ID:     id.EventID("$evt"),
 		Sender: id.UserID("@alice:example.com"),
