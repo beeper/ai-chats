@@ -57,9 +57,7 @@ func (dc *DummyBridgeConnector) onConnect(ctx context.Context, info *bridgesdk.L
 	}, nil
 }
 
-func (dc *DummyBridgeConnector) onDisconnect(session *dummySession) {
-	_, _ = requireSession(session)
-}
+func (dc *DummyBridgeConnector) onDisconnect(_ *dummySession) {}
 
 func (dc *DummyBridgeConnector) getContactList(ctx context.Context, session *dummySession) ([]*bridgev2.ResolveIdentifierResponse, error) {
 	dummy, err := requireSession(session)

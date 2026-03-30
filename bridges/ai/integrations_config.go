@@ -448,7 +448,13 @@ func (cfg *ModelsConfig) Provider(name string) ModelProviderConfig {
 	if cfg == nil || len(cfg.Providers) == 0 {
 		return ModelProviderConfig{}
 	}
-	return cfg.Providers[strings.ToLower(strings.TrimSpace(name))]
+	normalized := strings.ToLower(strings.TrimSpace(name))
+	for key, provider := range cfg.Providers {
+		if strings.ToLower(strings.TrimSpace(key)) == normalized {
+			return provider
+		}
+	}
+	return ModelProviderConfig{}
 }
 
 // ModelDefinitionConfig defines a model entry for catalog seeding.

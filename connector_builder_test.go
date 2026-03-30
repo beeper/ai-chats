@@ -16,7 +16,12 @@ func TestConnectorBaseHookOrder(t *testing.T) {
 	var order []string
 	wantBridge := &bridgev2.Bridge{}
 	conn := NewConnector(ConnectorSpec{
-		Init: func(*bridgev2.Bridge) { order = append(order, "init") },
+		Init: func(got *bridgev2.Bridge) {
+			if got != wantBridge {
+				t.Fatalf("expected init hook bridge %p, got %p", wantBridge, got)
+			}
+			order = append(order, "init")
+		},
 		Start: func(_ context.Context, got *bridgev2.Bridge) error {
 			if got != wantBridge {
 				t.Fatalf("expected start hook bridge %p, got %p", wantBridge, got)

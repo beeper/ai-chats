@@ -450,7 +450,7 @@ func ApplyAgentRemoteBridgeInfo(content *event.BridgeEventContent, protocolID st
 }
 
 func SendAIRoomInfo(ctx context.Context, portal *bridgev2.Portal, aiKind string) bool {
-	if portal == nil || portal.MXID == "" {
+	if portal == nil || portal.MXID == "" || portal.Bridge == nil || portal.Bridge.Bot == nil {
 		return false
 	}
 	if aiKind == "" {

@@ -205,12 +205,16 @@ func promptAssistantToChatMessage(msg PromptMessage) *openai.ChatCompletionAssis
 			if strings.TrimSpace(block.ToolCallID) == "" || strings.TrimSpace(block.ToolName) == "" {
 				continue
 			}
+			args := strings.TrimSpace(block.ToolCallArguments)
+			if args == "" {
+				args = "{}"
+			}
 			toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallUnionParam{
 				OfFunction: &openai.ChatCompletionMessageFunctionToolCallParam{
 					ID: block.ToolCallID,
 					Function: openai.ChatCompletionMessageFunctionToolCallFunctionParam{
 						Name:      block.ToolName,
-						Arguments: block.ToolCallArguments,
+						Arguments: args,
 					},
 				},
 			})

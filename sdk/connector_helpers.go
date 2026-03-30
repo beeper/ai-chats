@@ -40,8 +40,9 @@ func ApplyDefaultCommandPrefix(prefix *string, value string) {
 // ResolveCommandPrefix returns the configured prefix when present, otherwise the
 // bridge's declared default prefix without mutating configuration state.
 func ResolveCommandPrefix(prefix string, fallback string) string {
-	if strings.TrimSpace(prefix) != "" {
-		return prefix
+	trimmed := strings.TrimSpace(prefix)
+	if trimmed != "" {
+		return trimmed
 	}
 	return fallback
 }

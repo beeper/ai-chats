@@ -81,7 +81,9 @@ func TestConversationStateRoundTripCarrierMetadata(t *testing.T) {
 	}
 	// saveConversationStateToGenericMetadata intentionally returns false here
 	// because generic metadata doesn't support the carrier path.
-	_ = saveConversationStateToGenericMetadata(&holder, state)
+	if ok := saveConversationStateToGenericMetadata(&holder, state); ok {
+		t.Fatalf("expected generic metadata save to report unsupported carrier path")
+	}
 	carrier.SetSDKPortalMetadata(&SDKPortalMetadata{Conversation: *state})
 	loaded, ok := carrier.GetSDKPortalMetadata(), carrier.GetSDKPortalMetadata() != nil
 	if !ok || loaded == nil {

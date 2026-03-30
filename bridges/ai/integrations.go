@@ -533,6 +533,7 @@ func notifyIntegrationFileChanged(ctx context.Context, path string) {
 	btc.Client.emitIntegrationFileChanged(ctx, btc.Portal, meta, path)
 }
 
+// purgeLoginIntegrations keeps the login argument for parity with the logout cleanup call site.
 func (oc *AIClient) purgeLoginIntegrations(ctx context.Context, _ *bridgev2.UserLogin, bridgeID, loginID string) {
 	if oc == nil || oc.purgeRegistry == nil {
 		return

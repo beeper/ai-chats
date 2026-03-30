@@ -1,6 +1,8 @@
 package ai
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestResolveImageGenProviderMagicProxyPrefersOpenAIForSimplePrompts(t *testing.T) {
 	meta := &UserLoginMetadata{
@@ -168,5 +170,15 @@ func TestBuildGeminiBaseURLMagicProxy(t *testing.T) {
 	}
 	if baseURL != "https://bai.bt.hn/team/proxy/gemini/v1beta" {
 		t.Fatalf("unexpected base url: %q", baseURL)
+	}
+}
+
+func TestResolveImageGenProviderRejectsMissingLoginMetadata(t *testing.T) {
+	btc := &BridgeToolContext{
+		Client: &AIClient{},
+	}
+
+	if _, err := resolveImageGenProvider(imageGenRequest{Prompt: "cat"}, btc); err == nil {
+		t.Fatal("expected missing login metadata to be rejected")
 	}
 }

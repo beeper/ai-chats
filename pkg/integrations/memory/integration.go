@@ -70,7 +70,7 @@ func (i *Integration) ToolAvailability(_ context.Context, scope iruntime.ToolSco
 		return false, false, iruntime.SourceGlobalDefault, ""
 	}
 	if scope.Meta != nil {
-		agentID := scope.Meta.AgentID()
+		agentID := i.agentIDFromEventMeta(scope.Meta)
 		_, errMsg := i.getManager(agentID)
 		if errMsg != "" {
 			return true, false, iruntime.SourceProviderLimit, errMsg
@@ -233,6 +233,9 @@ func (i *Integration) buildOverflowDeps() OverflowDeps {
 			return i.host.EstimateTokens(prompt, model)
 		},
 		AlreadyFlushed: func(call iruntime.ContextOverflowCall) bool {
+			if call.Meta == nil {
+				return false
+			}
 			flushAtMs := toInt64(call.Meta.ModuleMetaValue("overflow_flush_at"))
 			if flushAtMs == 0 {
 				return false
@@ -266,6 +269,9 @@ func (i *Integration) shouldInjectMemoryPromptContext(_ *bridgev2.Portal, _ irun
 }
 
 func (i *Integration) shouldBootstrapMemoryPromptContext(_ *bridgev2.Portal, meta iruntime.Meta) bool {
+	if meta == nil {
+		return false
+	}
 	raw := meta.ModuleMetaValue("memory_bootstrap_at")
 	if raw == nil {
 		return true
@@ -296,10 +302,7 @@ func (i *Integration) markMemoryPromptBootstrapped(ctx context.Context, portal *
 }
 
 func (i *Integration) readMemoryPromptSection(ctx context.Context, meta iruntime.Meta, path string) string {
-	agentID := ""
-	if meta != nil {
-		agentID = meta.AgentID()
-	}
+	agentID := i.agentIDFromEventMeta(meta)
 	content, filePath, found, err := i.host.ReadTextFile(ctx, agentID, path)
 	if err != nil || !found {
 		return ""
@@ -438,10 +441,7 @@ func (i *Integration) writeMemoryCommandFile(
 	content string,
 	maxBytes int,
 ) (string, error) {
-	agentID := ""
-	if scope.Meta != nil {
-		agentID = scope.Meta.AgentID()
-	}
+	agentID := i.agentIDFromEventMeta(scope.Meta)
 	return i.host.WriteTextFile(ctx, scope.Portal, scope.Meta, agentID, mode, path, content, maxBytes)
 }
 

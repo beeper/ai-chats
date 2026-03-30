@@ -472,10 +472,50 @@ func (oc *AIClient) truncateOversizedToolResultsForOverflow(
 		if trimmed == content {
 			continue
 		}
-		out.Messages[i].Blocks = []PromptBlock{{Type: PromptBlockText, Text: trimmed}}
+		out.Messages[i].Blocks = rewriteTrimmedToolResultBlocks(msg.Blocks, trimmed)
 		truncated++
 	}
 	return out, truncated
+}
+
+func rewriteTrimmedToolResultBlocks(blocks []PromptBlock, trimmed string) []PromptBlock {
+	if len(blocks) == 0 {
+		return []PromptBlock{{Type: PromptBlockText, Text: trimmed}}
+	}
+	remaining := trimmed
+	rewritten := make([]PromptBlock, 0, len(blocks))
+	previousTextBlock := false
+	for _, block := range blocks {
+		if remaining == "" {
+			break
+		}
+		switch block.Type {
+		case PromptBlockText, PromptBlockThinking:
+		default:
+			continue
+		}
+		if block.Text == "" {
+			continue
+		}
+		if previousTextBlock && strings.HasPrefix(remaining, "\n") {
+			remaining = remaining[1:]
+			if remaining == "" {
+				break
+			}
+		}
+		take := len(block.Text)
+		if take > len(remaining) {
+			take = len(remaining)
+		}
+		block.Text = remaining[:take]
+		remaining = remaining[take:]
+		rewritten = append(rewritten, block)
+		previousTextBlock = true
+	}
+	if len(rewritten) == 0 {
+		return []PromptBlock{{Type: PromptBlockText, Text: trimmed}}
+	}
+	return rewritten
 }
 
 // emitCompactionStatus sends a compaction status event to the room

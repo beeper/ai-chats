@@ -216,6 +216,9 @@ func (oc *AIClient) downloadPDFFile(ctx context.Context, mediaURL string, encryp
 	cmd := exec.CommandContext(ctx, "pdftotext", "-layout", "-enc", "UTF-8", inputPath, "-")
 	output, err := cmd.Output()
 	if err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			return "", false, fmt.Errorf("pdftotext not found: install poppler-utils (or poppler) and ensure pdftotext is on PATH: %w", err)
+		}
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			msg := strings.TrimSpace(string(exitErr.Stderr))
 			if msg != "" {

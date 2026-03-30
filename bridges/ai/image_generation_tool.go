@@ -153,6 +153,9 @@ func readStringSlice(args map[string]any, key string) []string {
 }
 
 func resolveImageGenProvider(req imageGenRequest, btc *BridgeToolContext) (imageGenProvider, error) {
+	if btc == nil || btc.Client == nil || btc.Client.UserLogin == nil {
+		return "", errors.New("image generation is not available for this login")
+	}
 	provider := strings.ToLower(strings.TrimSpace(req.Provider))
 	if provider != "" {
 		switch provider {
@@ -177,6 +180,9 @@ func resolveImageGenProvider(req imageGenRequest, btc *BridgeToolContext) (image
 	}
 
 	loginMeta := loginMetadata(btc.Client.UserLogin)
+	if loginMeta == nil {
+		return "", errors.New("image generation is not available for this login")
+	}
 	inferredProvider := inferProviderFromModel(req.Model)
 	if inferredProvider != "" {
 		switch inferredProvider {
@@ -251,6 +257,9 @@ func supportsOpenAIImageGen(btc *BridgeToolContext) bool {
 		return false
 	}
 	loginMeta := loginMetadata(btc.Client.UserLogin)
+	if loginMeta == nil {
+		return false
+	}
 	switch loginMeta.Provider {
 	case ProviderOpenAI, ProviderMagicProxy:
 		if loginMeta.Provider == ProviderMagicProxy {
@@ -469,7 +478,13 @@ func isAllowedValue(value string, allowed map[string]bool) bool {
 }
 
 func buildOpenAIImagesBaseURL(btc *BridgeToolContext) (string, error) {
+	if btc == nil || btc.Client == nil || btc.Client.UserLogin == nil || btc.Client.UserLogin.Metadata == nil {
+		return "", errors.New("openai image generation not available for this provider")
+	}
 	loginMeta := loginMetadata(btc.Client.UserLogin)
+	if loginMeta == nil {
+		return "", errors.New("openai image generation not available for this provider")
+	}
 	switch loginMeta.Provider {
 	case ProviderOpenAI:
 		base := btc.Client.connector.resolveOpenAIBaseURL()

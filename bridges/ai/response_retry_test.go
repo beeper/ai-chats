@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -171,5 +172,39 @@ func TestPruningPostCompactionRefreshPrompt_Defaults(t *testing.T) {
 	client := newPruningTestClient(&airuntime.PruningConfig{}, ProviderOpenAI)
 	if got := client.pruningPostCompactionRefreshPrompt(); got == "" {
 		t.Fatal("expected non-empty post-compaction refresh prompt")
+	}
+}
+
+func TestTruncateOversizedToolResultsForOverflowPreservesBlockStructure(t *testing.T) {
+	client := newPruningTestClient(&airuntime.PruningConfig{
+		SoftTrimMaxChars:  20,
+		SoftTrimHeadChars: 8,
+		SoftTrimTailChars: 8,
+	}, ProviderOpenAI)
+
+	prompt := PromptContext{
+		Messages: []PromptMessage{{
+			Role: PromptRoleToolResult,
+			Blocks: []PromptBlock{
+				{Type: PromptBlockText, Text: strings.Repeat("first-block-", 12)},
+				{Type: PromptBlockText, Text: strings.Repeat("second-block-", 12)},
+			},
+		}},
+	}
+
+	got, truncated := client.truncateOversizedToolResultsForOverflow(prompt, 0)
+	if truncated != 1 {
+		t.Fatalf("expected one truncated tool result, got %d", truncated)
+	}
+	if len(got.Messages) != 1 || len(got.Messages[0].Blocks) == 0 {
+		t.Fatalf("expected rewritten blocks, got %#v", got.Messages)
+	}
+	for _, block := range got.Messages[0].Blocks {
+		if block.Type != PromptBlockText {
+			t.Fatalf("expected text blocks to be preserved, got %#v", got.Messages[0].Blocks)
+		}
+	}
+	if got.Messages[0].Text() != airuntime.SoftTrimToolResult(prompt.Messages[0].Text(), client.pruningConfigOrDefault()) {
+		t.Fatalf("expected trimmed text to match soft-trim output, got %q", got.Messages[0].Text())
 	}
 }

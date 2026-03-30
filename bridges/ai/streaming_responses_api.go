@@ -115,7 +115,7 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 			return false, nil, &PreDeltaError{Err: err}
 		}
 	} else {
-		if len(state.pendingFunctionOutputs) == 0 && len(state.pendingMcpApprovals) == 0 {
+		if len(state.pendingFunctionOutputs) == 0 && len(state.pendingMcpApprovals) == 0 && len(state.pendingSteeringPrompts) == 0 {
 			return false, nil, nil
 		}
 		if round > maxAgentLoopToolTurns {
@@ -166,10 +166,10 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 		return false, cle, err
 	}
 	if done {
-		return state != nil && (len(state.pendingFunctionOutputs) > 0 || len(state.pendingMcpApprovals) > 0), nil, nil
+		return state != nil && (len(state.pendingFunctionOutputs) > 0 || len(state.pendingMcpApprovals) > 0 || len(state.pendingSteeringPrompts) > 0), nil, nil
 	}
 
-	return state != nil && (len(state.pendingFunctionOutputs) > 0 || len(state.pendingMcpApprovals) > 0), nil, nil
+	return state != nil && (len(state.pendingFunctionOutputs) > 0 || len(state.pendingMcpApprovals) > 0 || len(state.pendingSteeringPrompts) > 0), nil, nil
 }
 
 func (a *responsesTurnAdapter) FinalizeAgentLoop(ctx context.Context) {

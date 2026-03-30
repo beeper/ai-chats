@@ -47,6 +47,8 @@ func clonePendingRawValue(v any) any {
 		return clonePendingRawMap(typed)
 	case []any:
 		return clonePendingRawSlice(typed)
+	case []byte:
+		return append([]byte(nil), typed...)
 	default:
 		return v
 	}

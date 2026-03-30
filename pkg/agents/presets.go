@@ -7,7 +7,7 @@ const (
 	ModelClaudeSonnet = "anthropic/claude-sonnet-4.6"
 	ModelClaudeOpus   = "anthropic/claude-opus-4.6"
 	ModelOpenAIGPT52  = "openai/gpt-5.2"
-	ModelZAIGLM47     = "z-ai/glm-5-turbo"
+	ModelZAIGLM5Turbo = "z-ai/glm-5-turbo"
 )
 
 // PresetAgents contains the default agent definitions:

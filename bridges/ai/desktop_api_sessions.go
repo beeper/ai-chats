@@ -173,8 +173,10 @@ func (oc *AIClient) desktopAPIInstances() map[string]DesktopAPIInstance {
 		instances[key] = instance
 	}
 	if token := strings.TrimSpace(creds.ServiceTokens.DesktopAPI); token != "" {
-		if _, ok := instances[desktopDefaultInstance]; !ok {
-			instances[desktopDefaultInstance] = DesktopAPIInstance{Token: token}
+		instance := instances[desktopDefaultInstance]
+		if strings.TrimSpace(instance.Token) == "" {
+			instance.Token = token
+			instances[desktopDefaultInstance] = instance
 		}
 	}
 	return instances

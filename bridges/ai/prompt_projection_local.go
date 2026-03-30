@@ -98,6 +98,8 @@ func promptMessagesFromTurnData(td sdk.TurnData) []PromptMessage {
 	}
 }
 
+// turnDataFromUserPromptMessages intentionally projects only the latest user
+// message because callers pass a single-message tail via promptTail(..., 1).
 func turnDataFromUserPromptMessages(messages []PromptMessage) (sdk.TurnData, bool) {
 	if len(messages) == 0 {
 		return sdk.TurnData{}, false

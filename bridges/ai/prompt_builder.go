@@ -225,10 +225,10 @@ func (oc *AIClient) buildPromptContextForTurn(
 	}
 
 	blocks := make([]PromptBlock, 0, len(leadingBlocks)+1)
+	blocks = append(blocks, leadingBlocks...)
 	if strings.TrimSpace(text) != "" {
 		blocks = append(blocks, PromptBlock{Type: PromptBlockText, Text: text})
 	}
-	blocks = append(blocks, leadingBlocks...)
 	base.Messages = append(base.Messages, PromptMessage{
 		Role:   PromptRoleUser,
 		Blocks: blocks,

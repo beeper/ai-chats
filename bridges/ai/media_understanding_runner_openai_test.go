@@ -57,7 +57,9 @@ func TestResolveOpenRouterMediaConfigUsesEntryOverrides(t *testing.T) {
 	t.Setenv("OPENROUTER_API_KEY_SPECIAL_PROFILE", "entry-key")
 
 	client := newMediaTestClient(&UserLoginMetadata{Provider: ProviderOpenAI}, &OpenAIConnector{
-		Config: Config{},
+		Config: Config{
+			Agents: &AgentsConfig{Defaults: &AgentDefaultsConfig{PDFEngine: "mistral-ocr"}},
+		},
 	})
 
 	cfg := &MediaUnderstandingConfig{

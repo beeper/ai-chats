@@ -19,7 +19,7 @@ var BeeperAIAgent = &AgentDefinition{
 		Fallbacks: []string{
 			ModelClaudeSonnet,
 			ModelOpenAIGPT52,
-			ModelZAIGLM47,
+			ModelZAIGLM5Turbo,
 		},
 	},
 	Tools:        &toolpolicy.ToolPolicyConfig{Profile: toolpolicy.ProfileFull},
