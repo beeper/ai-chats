@@ -12,6 +12,7 @@ func TestModelManifestMatchesOpenRouterAllowlist(t *testing.T) {
 		"google/gemini-2.5-flash-lite":  {},
 		"google/gemini-2.5-pro":         {},
 		"google/gemini-3-flash-preview": {},
+		"google/gemma-2-27b-it":         {},
 		"meta-llama/llama-4-maverick":   {},
 		"minimax/minimax-m2.7":          {},
 		"mistralai/devstral-2512":       {},
