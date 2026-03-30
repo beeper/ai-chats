@@ -323,15 +323,17 @@ func (oc *AIClient) HandleMatrixTyping(ctx context.Context, typing *bridgev2.Mat
 
 // HandleMatrixEdit handles edits to previously sent messages
 func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixEdit) error {
-	if edit.Content == nil || edit.EditTarget == nil {
-		return errors.New("invalid edit: missing content or target")
-	}
-
 	portal := edit.Portal
 	if portal == nil {
 		return errors.New("portal is nil")
 	}
 	meta := portalMeta(portal)
+	if meta != nil && meta.ResolvedTarget != nil && meta.ResolvedTarget.Kind == ResolvedTargetModel {
+		return bridgev2.ErrEditsNotSupportedInPortal
+	}
+	if edit.Content == nil || edit.EditTarget == nil {
+		return errors.New("invalid edit: missing content or target")
+	}
 
 	// Get the new message body
 	newBody := strings.TrimSpace(edit.Content.Body)

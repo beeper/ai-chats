@@ -176,12 +176,35 @@ func resolveImageGenProvider(req imageGenRequest, btc *BridgeToolContext) (image
 		}
 	}
 
+	loginMeta := loginMetadata(btc.Client.UserLogin)
+	inferredProvider := inferProviderFromModel(req.Model)
+	if inferredProvider != "" {
+		switch inferredProvider {
+		case imageGenProviderOpenAI:
+			if supportsOpenAIImageGen(btc) {
+				return imageGenProviderOpenAI, nil
+			}
+		case imageGenProviderGemini:
+			if supportsGeminiImageGen(btc) {
+				return imageGenProviderGemini, nil
+			}
+		case imageGenProviderOpenRouter:
+			if supportsOpenRouterImageGen(btc) {
+				return imageGenProviderOpenRouter, nil
+			}
+		}
+		// Magic Proxy only exposes the OpenAI images route in practice, so use
+		// that when a requested image model belongs to an unavailable surface.
+		if loginMeta != nil && loginMeta.Provider == ProviderMagicProxy && supportsOpenAIImageGen(btc) {
+			return imageGenProviderOpenAI, nil
+		}
+	}
+
 	// Prefer OpenRouter image gen whenever it's available (Gemini models support extra controls).
 	if supportsOpenRouterImageGen(btc) {
 		return imageGenProviderOpenRouter, nil
 	}
 
-	loginMeta := loginMetadata(btc.Client.UserLogin)
 	switch loginMeta.Provider {
 	case ProviderOpenAI:
 		if !supportsOpenAIImageGen(btc) {
@@ -267,11 +290,19 @@ func normalizeOpenAIModel(model string) string {
 	if model == "" {
 		return defaultOpenAIImageModel
 	}
+	switch inferProviderFromModel(model) {
+	case imageGenProviderGemini, imageGenProviderOpenRouter:
+		return defaultOpenAIImageModel
+	}
 	_, actual := ParseModelPrefix(model)
 	actual = strings.TrimSpace(actual)
 	actual = strings.TrimPrefix(actual, "openai/")
 	if actual == "" {
 		return model
+	}
+	switch strings.ToLower(actual) {
+	case "gpt-5-image", "gpt-5-image-mini":
+		return defaultOpenAIImageModel
 	}
 	return actual
 }

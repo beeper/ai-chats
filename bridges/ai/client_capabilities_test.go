@@ -29,8 +29,8 @@ func TestGetCapabilities_ModelRoomAllowsReplyEditReaction(t *testing.T) {
 	if caps.Reply != event.CapLevelFullySupported {
 		t.Fatalf("expected reply fully supported in model room, got %v", caps.Reply)
 	}
-	if caps.Edit != event.CapLevelFullySupported {
-		t.Fatalf("expected edit fully supported in model room, got %v", caps.Edit)
+	if caps.Edit != event.CapLevelRejected {
+		t.Fatalf("expected edit rejected in model room, got %v", caps.Edit)
 	}
 	if caps.Reaction != event.CapLevelFullySupported {
 		t.Fatalf("expected reaction fully supported in model room, got %v", caps.Reaction)
@@ -40,8 +40,12 @@ func TestGetCapabilities_ModelRoomAllowsReplyEditReaction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to marshal room features: %v", err)
 	}
-	if !strings.Contains(string(raw), `"reaction":2`) {
-		t.Fatalf("expected serialized room features to contain reaction=2, got: %s", string(raw))
+	rawJSON := string(raw)
+	if !strings.Contains(rawJSON, `"reaction":2`) {
+		t.Fatalf("expected serialized room features to contain reaction=2, got: %s", rawJSON)
+	}
+	if !strings.Contains(rawJSON, `"edit":-2`) {
+		t.Fatalf("expected serialized room features to contain edit=-2, got: %s", rawJSON)
 	}
 }
 

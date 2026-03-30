@@ -26,104 +26,43 @@ var modelConfig = struct {
 	Aliases map[string]string
 }{
 	Models: map[string]string{
-		// Anthropic (Claude) via OpenRouter
-		"anthropic/claude-haiku-4.5":  "Claude Haiku 4.5",
-		"anthropic/claude-opus-4.1":   "Claude 4.1 Opus",
-		"anthropic/claude-opus-4.5":   "Claude Opus 4.5",
-		"anthropic/claude-opus-4.6":   "Claude Opus 4.6",
-		"anthropic/claude-sonnet-4":   "Claude 4 Sonnet",
-		"anthropic/claude-sonnet-4.5": "Claude Sonnet 4.5",
-		"anthropic/claude-sonnet-4.6": "Claude Sonnet 4.6",
-
-		// DeepSeek
-		"deepseek/deepseek-chat-v3-0324":        "DeepSeek v3 (0324)",
-		"deepseek/deepseek-chat-v3.1":           "DeepSeek v3.1",
-		"deepseek/deepseek-v3.1-terminus":       "DeepSeek v3.1 Terminus",
-		"deepseek/deepseek-v3.2":                "DeepSeek v3.2",
-		"deepseek/deepseek-r1":                  "DeepSeek R1 (Original)",
-		"deepseek/deepseek-r1-0528":             "DeepSeek R1 (0528)",
-		"deepseek/deepseek-r1-distill-qwen-32b": "DeepSeek R1 (Qwen Distilled)",
-
-		// Gemini (Google) via OpenRouter
-		"google/gemini-2.0-flash-001":          "Gemini 2.0 Flash",
-		"google/gemini-2.0-flash-lite-001":     "Gemini 2.0 Flash Lite",
-		"google/gemini-2.5-flash":              "Gemini 2.5 Flash",
-		"google/gemini-2.5-flash-image":        "Nano Banana",
-		"google/gemini-2.5-flash-lite":         "Gemini 2.5 Flash Lite",
-		"google/gemini-2.5-pro":                "Gemini 2.5 Pro",
-		"google/gemini-3-flash-preview":        "Gemini 3 Flash",
-		"google/gemini-3-pro-image-preview":    "Nano Banana Pro",
-		"google/gemini-3.1-flash-lite-preview": "Gemini 3.1 Flash Lite",
-		"google/gemini-3.1-pro-preview":        "Gemini 3.1 Pro",
-		// For Gemini image generation, use Nano Banana / Nano Banana Pro.
-
-		// GLM (Z.AI)
-		"z-ai/glm-4.5":     "GLM 4.5",
-		"z-ai/glm-4.5-air": "GLM 4.5 Air",
-		"z-ai/glm-4.5v":    "GLM 4.5V",
-		"z-ai/glm-4.6":     "GLM 4.6",
-		"z-ai/glm-4.6v":    "GLM 4.6V",
-		"z-ai/glm-4.7":     "GLM 4.7",
-		"z-ai/glm-5":       "GLM 5",
-
-		// Kimi (Moonshot)
-		"moonshotai/kimi-k2":      "Kimi K2 (0711)",
-		"moonshotai/kimi-k2-0905": "Kimi K2 (0905)",
-		"moonshotai/kimi-k2.5":    "Kimi K2.5",
-
-		// Llama (Meta)
-		"meta-llama/llama-3.3-70b-instruct": "Llama 3.3 70B",
-		"meta-llama/llama-4-maverick":       "Llama 4 Maverick",
-		"meta-llama/llama-4-scout":          "Llama 4 Scout",
-
-		// MiniMax
-		"minimax/minimax-m2":   "MiniMax M2",
-		"minimax/minimax-m2.1": "MiniMax M2.1",
-		"minimax/minimax-m2.5": "MiniMax M2.5",
-
-		// OpenAI models via OpenRouter
-		"openai/gpt-4.1":          "GPT-4.1",
-		"openai/gpt-4.1-mini":     "GPT-4.1 Mini",
-		"openai/gpt-4.1-nano":     "GPT-4.1 Nano",
-		"openai/gpt-4o-mini":      "GPT-4o-mini",
-		"openai/gpt-5":            "GPT-5",
-		"openai/gpt-5-image":      "GPT ImageGen 1.5",
-		"openai/gpt-5-image-mini": "GPT ImageGen",
-		"openai/gpt-5-mini":       "GPT-5 mini",
-		"openai/gpt-5-nano":       "GPT-5 nano",
-		"openai/gpt-5.1":          "GPT-5.1",
-		"openai/gpt-5.2":          "GPT-5.2",
-		"openai/gpt-5.2-pro":      "GPT-5.2 Pro",
-		"openai/gpt-5.3-chat":     "GPT-5.3 Instant",
-		"openai/gpt-5.4":          "GPT-5.4",
-		"openai/gpt-oss-20b":      "GPT OSS 20B",
-		"openai/gpt-oss-120b":     "GPT OSS 120B",
-		"openai/o3":               "o3",
-		"openai/o3-mini":          "o3-mini",
-		"openai/o3-pro":           "o3 Pro",
-		"openai/o4-mini":          "o4-mini",
-
-		// Qwen (Alibaba)
-		"qwen/qwen2.5-vl-32b-instruct": "Qwen 2.5 32B",
-		"qwen/qwen3-32b":               "Qwen 3 32B",
-		"qwen/qwen3-235b-a22b":         "Qwen 3 235B",
-		"qwen/qwen3-coder":             "Qwen 3 Coder",
-
-		// xAI (Grok)
-		"x-ai/grok-3":        "Grok 3",
-		"x-ai/grok-3-mini":   "Grok 3 Mini",
-		"x-ai/grok-4":        "Grok 4",
-		"x-ai/grok-4-fast":   "Grok 4 Fast",
-		"x-ai/grok-4.1-fast": "Grok 4.1 Fast",
+		"anthropic/claude-haiku-4.5":    "Claude Haiku 4.5",
+		"anthropic/claude-opus-4.6":     "Claude Opus 4.6",
+		"anthropic/claude-sonnet-4.6":   "Claude Sonnet 4.6",
+		"deepseek/deepseek-r1-0528":     "DeepSeek R1 (0528)",
+		"deepseek/deepseek-v3.2":        "DeepSeek v3.2",
+		"google/gemini-2.5-flash-lite":  "Gemini 2.5 Flash Lite",
+		"google/gemini-2.5-pro":         "Gemini 2.5 Pro",
+		"google/gemini-3-flash-preview": "Gemini 3 Flash",
+		"meta-llama/llama-4-maverick":   "Llama 4 Maverick",
+		"minimax/minimax-m2.7":          "MiniMax M2.7",
+		"mistralai/devstral-2512":       "Devstral 2",
+		"mistralai/mistral-small-2603":  "Mistral Small 4",
+		"moonshotai/kimi-k2.5":          "Kimi K2.5",
+		"openai/gpt-5-mini":             "GPT-5 mini",
+		"openai/gpt-5.2":                "GPT-5.2",
+		"openai/gpt-5.3-codex":          "GPT-5.3 Codex",
+		"openai/gpt-5.4":                "GPT-5.4",
+		"openai/gpt-5.4-mini":           "GPT-5.4 Mini",
+		"openai/o3":                     "o3",
+		"openai/o4-mini":                "o4-mini",
+		"qwen/qwen2.5-vl-32b-instruct":  "Qwen 2.5 32B",
+		"qwen/qwen3-coder-next":         "Qwen 3 Coder Next",
+		"qwen/qwen3.5-flash-02-23":      "Qwen 3.5 Flash",
+		"qwen/qwen3.5-plus-02-15":       "Qwen 3.5 Plus",
+		"x-ai/grok-4.1-fast":            "Grok 4.1 Fast",
+		"x-ai/grok-4.20-beta":           "Grok 4.20 Beta",
+		"x-ai/grok-code-fast-1":         "Grok Code Fast 1",
+		"z-ai/glm-5-turbo":              "GLM 5 Turbo",
 	},
 	Aliases: map[string]string{
 		// Default alias
 		"beeper/default": "anthropic/claude-opus-4.6",
 
 		// Stable aliases that can be remapped
-		"beeper/fast":      "openai/gpt-5-mini",
-		"beeper/smart":     "openai/gpt-5.2",
-		"beeper/reasoning": "openai/gpt-5.2", // Uses reasoning effort parameter
+		"beeper/fast":      "openai/gpt-5.4-mini",
+		"beeper/smart":     "openai/gpt-5.4",
+		"beeper/reasoning": "openai/o3",
 	},
 }
 
@@ -188,14 +127,10 @@ func main() {
 }
 
 func run() error {
-	token := flag.String("openrouter-token", "", "OpenRouter API token")
+	token := flag.String("openrouter-token", "", "Optional OpenRouter API token")
 	outputFile := flag.String("output", "bridges/ai/beeper_models_generated.go", "Output Go file")
 	jsonFile := flag.String("json", "pkg/ai/beeper_models.json", "Output JSON file for clients")
 	flag.Parse()
-
-	if *token == "" {
-		return fmt.Errorf("--openrouter-token is required")
-	}
 
 	models, err := fetchOpenRouterModels(*token)
 	if err != nil {
@@ -219,7 +154,9 @@ func fetchOpenRouterModels(token string) (map[string]OpenRouterModel, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	if strings.TrimSpace(token) != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)

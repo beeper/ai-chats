@@ -1017,6 +1017,7 @@ func updateGhostLastSync(_ context.Context, ghost *bridgev2.Ghost) bool {
 
 func (oc *AIClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
 	meta := portalMeta(portal)
+	isModelRoom := meta != nil && meta.ResolvedTarget != nil && meta.ResolvedTarget.Kind == ResolvedTargetModel
 
 	// Always recompute effective room capabilities from the resolved room target.
 	modelCaps := oc.getRoomCapabilities(ctx, meta)
@@ -1036,11 +1037,17 @@ func (oc *AIClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal
 
 	if supportsMsgActions {
 		caps.Reply = event.CapLevelFullySupported
-		caps.Edit = event.CapLevelFullySupported
-		caps.EditMaxCount = 10
-		caps.EditMaxAge = ptr.Ptr(jsontime.S(AIEditMaxAge))
 		caps.Reaction = event.CapLevelFullySupported
 		caps.ReactionCount = 1
+		if isModelRoom {
+			caps.Edit = event.CapLevelRejected
+			caps.EditMaxCount = 0
+			caps.EditMaxAge = nil
+		} else {
+			caps.Edit = event.CapLevelFullySupported
+			caps.EditMaxCount = 10
+			caps.EditMaxAge = ptr.Ptr(jsontime.S(AIEditMaxAge))
+		}
 	} else {
 		// Use explicit rejected levels so features remain visible in
 		// com.beeper.room_features instead of being omitted by omitempty.
@@ -1593,8 +1600,8 @@ func resolveModelIDFromManifest(modelID string) string {
 	return ""
 }
 
-// listAvailableModels fetches models from OpenAI API and caches them
-// Returns ModelInfo list from the provider
+// listAvailableModels loads models from the derived catalog and caches them.
+// The implicit catalog is fed from the OpenRouter-backed manifest.
 func (oc *AIClient) listAvailableModels(ctx context.Context, forceRefresh bool) ([]ModelInfo, error) {
 	meta := loginMetadata(oc.UserLogin)
 

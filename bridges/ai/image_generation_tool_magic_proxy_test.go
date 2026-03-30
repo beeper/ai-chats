@@ -69,6 +69,29 @@ func TestResolveImageGenProviderMagicProxyProviderOpenAIUsesOpenAI(t *testing.T)
 	}
 }
 
+func TestResolveImageGenProviderMagicProxyModelHintFallsBackToOpenAI(t *testing.T) {
+	meta := &UserLoginMetadata{
+		Provider: ProviderMagicProxy,
+		Credentials: &LoginCredentials{
+			APIKey:  "tok",
+			BaseURL: "https://bai.bt.hn/team/proxy",
+		},
+	}
+	btc := newTTSTestBridgeContext(meta, &OpenAIConnector{})
+
+	got, err := resolveImageGenProvider(imageGenRequest{
+		Model:  "google/gemini-3-pro-image-preview",
+		Prompt: "cat",
+		Count:  1,
+	}, btc)
+	if err != nil {
+		t.Fatalf("resolveImageGenProvider returned error: %v", err)
+	}
+	if got != imageGenProviderOpenAI {
+		t.Fatalf("expected provider %q, got %q", imageGenProviderOpenAI, got)
+	}
+}
+
 func TestResolveImageGenProviderMagicProxyProviderGeminiIsUnavailable(t *testing.T) {
 	meta := &UserLoginMetadata{
 		Provider: ProviderMagicProxy,
@@ -86,6 +109,27 @@ func TestResolveImageGenProviderMagicProxyProviderGeminiIsUnavailable(t *testing
 	}, btc)
 	if err == nil {
 		t.Fatal("expected gemini image generation to be unavailable for magic proxy")
+	}
+}
+
+func TestNormalizeOpenAIModelMapsUnavailableAliasesToGPTImage1(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "empty", input: "", want: "gpt-image-1"},
+		{name: "prefixed alias", input: "openai/gpt-5-image", want: "gpt-image-1"},
+		{name: "mini alias", input: "gpt-5-image-mini", want: "gpt-image-1"},
+		{name: "gemini alias", input: "google/gemini-3-pro-image-preview", want: "gpt-image-1"},
+		{name: "native openai", input: "gpt-image-1", want: "gpt-image-1"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := normalizeOpenAIModel(tc.input); got != tc.want {
+				t.Fatalf("normalizeOpenAIModel(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
 	}
 }
 

@@ -140,16 +140,16 @@ func TestModelRedirectTarget(t *testing.T) {
 }
 
 func TestResolveModelIDFromManifestAcceptsRawModelID(t *testing.T) {
-	const modelID = "google/gemini-2.0-flash-lite-001"
+	const modelID = "google/gemini-3-flash-preview"
 	if got := resolveModelIDFromManifest(modelID); got != modelID {
 		t.Fatalf("expected raw model ID %q to resolve, got %q", modelID, got)
 	}
 }
 
 func TestResolveModelIDFromManifestAcceptsEncodedModelIDViaCandidates(t *testing.T) {
-	const encoded = "google%2Fgemini-2.0-flash-lite-001"
+	const encoded = "google%2Fgemini-3-flash-preview"
 	candidates := candidateModelLookupIDs(encoded)
-	const canonical = "google/gemini-2.0-flash-lite-001"
+	const canonical = "google/gemini-3-flash-preview"
 	if !slices.Contains(candidates, canonical) {
 		t.Fatalf("expected decoded model candidate in %#v", candidates)
 	}
@@ -169,8 +169,8 @@ func TestCandidateModelLookupIDsRejectsMalformedEncoding(t *testing.T) {
 }
 
 func TestParseModelFromGhostIDAcceptsEscapedGhostID(t *testing.T) {
-	const ghostID = "model-google%2Fgemini-2.0-flash-lite-001"
-	const want = "google/gemini-2.0-flash-lite-001"
+	const ghostID = "model-google%2Fgemini-3-flash-preview"
+	const want = "google/gemini-3-flash-preview"
 	if got := parseModelFromGhostID(ghostID); got != want {
 		t.Fatalf("expected ghost ID %q to parse to %q, got %q", ghostID, want, got)
 	}
@@ -190,8 +190,8 @@ func TestResolveIdentifierAcceptsCanonicalModelIdentifier(t *testing.T) {
 				Metadata: &UserLoginMetadata{
 					ModelCache: &ModelCache{
 						Models: []ModelInfo{{
-							ID:   "openai/gpt-5",
-							Name: "GPT-5",
+							ID:   "openai/gpt-5.4",
+							Name: "GPT-5.4",
 						}},
 					},
 				},
@@ -200,11 +200,11 @@ func TestResolveIdentifierAcceptsCanonicalModelIdentifier(t *testing.T) {
 		connector: &OpenAIConnector{},
 	}
 
-	resp, err := oc.ResolveIdentifier(context.Background(), "model:openai/gpt-5", false)
+	resp, err := oc.ResolveIdentifier(context.Background(), "model:openai/gpt-5.4", false)
 	if err != nil {
 		t.Fatalf("ResolveIdentifier returned error: %v", err)
 	}
-	if resp == nil || resp.UserID != modelUserID("openai/gpt-5") {
+	if resp == nil || resp.UserID != modelUserID("openai/gpt-5.4") {
 		t.Fatalf("expected canonical model identifier to resolve to model ghost, got %#v", resp)
 	}
 }
