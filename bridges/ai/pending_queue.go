@@ -351,32 +351,6 @@ func buildSteeringPromptMessages(prompts []string) []PromptMessage {
 	return messages
 }
 
-func (oc *AIClient) getFollowUpMessages(roomID id.RoomID) []PromptMessage {
-	if oc == nil || roomID == "" {
-		return nil
-	}
-	snapshot := oc.getQueueSnapshot(roomID)
-	if snapshot == nil {
-		return nil
-	}
-	behavior := airuntime.ResolveQueueBehavior(snapshot.mode)
-	if !behavior.Followup {
-		return nil
-	}
-	candidate, _ := oc.takePendingQueueDispatchCandidate(roomID, true)
-	if candidate == nil || len(candidate.items) == 0 {
-		return nil
-	}
-	for _, item := range candidate.items {
-		oc.registerRoomRunPendingItem(roomID, item)
-	}
-	_, prompt, ok := preparePendingQueueDispatchCandidate(candidate)
-	if !ok {
-		return nil
-	}
-	return buildSteeringPromptMessages([]string{prompt})
-}
-
 func (oc *AIClient) markQueueDraining(roomID id.RoomID) bool {
 	oc.pendingQueuesMu.Lock()
 	defer oc.pendingQueuesMu.Unlock()

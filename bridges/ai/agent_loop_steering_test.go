@@ -9,6 +9,29 @@ import (
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 )
 
+func getFollowUpMessagesForTest(oc *AIClient, roomID id.RoomID) []PromptMessage {
+	if oc == nil || roomID == "" {
+		return nil
+	}
+	snapshot := oc.getQueueSnapshot(roomID)
+	if snapshot == nil {
+		return nil
+	}
+	behavior := airuntime.ResolveQueueBehavior(snapshot.mode)
+	if !behavior.Followup {
+		return nil
+	}
+	candidate, _ := oc.takePendingQueueDispatchCandidate(roomID, true)
+	if candidate == nil || len(candidate.items) == 0 {
+		return nil
+	}
+	_, prompt, ok := preparePendingQueueDispatchCandidate(candidate)
+	if !ok {
+		return nil
+	}
+	return buildSteeringPromptMessages([]string{prompt})
+}
+
 func TestGetSteeringMessages_FiltersAndDrainsQueue(t *testing.T) {
 	roomID := id.RoomID("!room:example.com")
 	oc := &AIClient{
@@ -78,7 +101,7 @@ func TestGetFollowUpMessages_ConsumesSingleQueuedTextMessage(t *testing.T) {
 		},
 	}
 
-	messages := oc.getFollowUpMessages(roomID)
+	messages := getFollowUpMessagesForTest(oc, roomID)
 	if len(messages) != 1 || messages[0].Role != PromptRoleUser || messages[0].Text() != "follow up" {
 		t.Fatalf("unexpected follow-up messages: %#v", messages)
 	}
@@ -101,7 +124,7 @@ func TestGetFollowUpMessages_CollectsQueuedTextMessages(t *testing.T) {
 		},
 	}
 
-	messages := oc.getFollowUpMessages(roomID)
+	messages := getFollowUpMessagesForTest(oc, roomID)
 	if len(messages) != 1 || messages[0].Role != PromptRoleUser {
 		t.Fatalf("expected one combined follow-up message, got %#v", messages)
 	}
@@ -127,7 +150,7 @@ func TestGetFollowUpMessages_CollectSummaryIsConsumed(t *testing.T) {
 		},
 	}
 
-	messages := oc.getFollowUpMessages(roomID)
+	messages := getFollowUpMessagesForTest(oc, roomID)
 	if len(messages) != 1 || messages[0].Role != PromptRoleUser {
 		t.Fatalf("expected one combined follow-up message, got %#v", messages)
 	}
@@ -135,7 +158,7 @@ func TestGetFollowUpMessages_CollectSummaryIsConsumed(t *testing.T) {
 		t.Fatalf("unexpected combined follow-up prompt with summary: %q", messages[0].Text())
 	}
 
-	if again := oc.getFollowUpMessages(roomID); len(again) != 0 {
+	if again := getFollowUpMessagesForTest(oc, roomID); len(again) != 0 {
 		t.Fatalf("expected collect summary to be consumed, got %#v", again)
 	}
 	if snapshot := oc.getQueueSnapshot(roomID); snapshot != nil {
@@ -159,7 +182,7 @@ func TestGetFollowUpMessages_UsesSyntheticSummaryPrompt(t *testing.T) {
 		},
 	}
 
-	messages := oc.getFollowUpMessages(roomID)
+	messages := getFollowUpMessagesForTest(oc, roomID)
 	if len(messages) != 1 || messages[0].Role != PromptRoleUser {
 		t.Fatalf("expected one synthetic follow-up message, got %#v", messages)
 	}
@@ -184,7 +207,7 @@ func TestGetFollowUpMessages_SyntheticSummaryIsConsumedBeforeLatestMessage(t *te
 		},
 	}
 
-	first := oc.getFollowUpMessages(roomID)
+	first := getFollowUpMessagesForTest(oc, roomID)
 	if len(first) != 1 || first[0].Role != PromptRoleUser {
 		t.Fatalf("expected one synthetic follow-up message, got %#v", first)
 	}
@@ -192,7 +215,7 @@ func TestGetFollowUpMessages_SyntheticSummaryIsConsumedBeforeLatestMessage(t *te
 		t.Fatalf("unexpected first synthetic follow-up prompt: %q", first[0].Text())
 	}
 
-	second := oc.getFollowUpMessages(roomID)
+	second := getFollowUpMessagesForTest(oc, roomID)
 	if len(second) != 1 || second[0].Role != PromptRoleUser {
 		t.Fatalf("expected queued latest message after summary, got %#v", second)
 	}
@@ -200,7 +223,7 @@ func TestGetFollowUpMessages_SyntheticSummaryIsConsumedBeforeLatestMessage(t *te
 		t.Fatalf("expected latest queued message after consuming summary, got %q", second[0].Text())
 	}
 
-	if third := oc.getFollowUpMessages(roomID); len(third) != 0 {
+	if third := getFollowUpMessagesForTest(oc, roomID); len(third) != 0 {
 		t.Fatalf("expected queue to be drained after latest message, got %#v", third)
 	}
 }
@@ -218,7 +241,7 @@ func TestGetFollowUpMessages_LeavesNonTextQueueItemsForBacklogProcessing(t *test
 		},
 	}
 
-	messages := oc.getFollowUpMessages(roomID)
+	messages := getFollowUpMessagesForTest(oc, roomID)
 	if len(messages) != 0 {
 		t.Fatalf("expected non-text follow-up to stay queued, got %#v", messages)
 	}
@@ -240,7 +263,7 @@ func TestGetFollowUpMessages_LeavesNonFollowupQueueUntouched(t *testing.T) {
 		},
 	}
 
-	messages := oc.getFollowUpMessages(roomID)
+	messages := getFollowUpMessagesForTest(oc, roomID)
 	if len(messages) != 0 {
 		t.Fatalf("expected no follow-up messages for non-followup mode, got %#v", messages)
 	}
