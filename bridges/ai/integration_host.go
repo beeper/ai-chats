@@ -9,6 +9,7 @@ import (
 
 	"github.com/openai/openai-go/v3"
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -120,7 +121,7 @@ func (h *runtimeIntegrationHost) AgentModuleConfig(agentID string, module string
 
 // ---- Host methods: logger access ----
 
-func (h *runtimeIntegrationHost) RawLogger() any {
+func (h *runtimeIntegrationHost) RawLogger() zerolog.Logger {
 	if h == nil || h.client == nil {
 		return zerolog.Logger{}
 	}
@@ -129,7 +130,7 @@ func (h *runtimeIntegrationHost) RawLogger() any {
 
 // ---- Host methods: portal management ----
 
-func (h *runtimeIntegrationHost) GetOrCreatePortal(ctx context.Context, portalID string, receiver string, displayName string, setupMeta func(meta any)) (portal any, roomID string, err error) {
+func (h *runtimeIntegrationHost) GetOrCreatePortal(ctx context.Context, portalID string, receiver string, displayName string, setupMeta func(meta *PortalMetadata)) (portal *bridgev2.Portal, roomID string, err error) {
 	if h == nil || h.client == nil || h.client.UserLogin == nil {
 		return nil, "", fmt.Errorf("missing login")
 	}
@@ -155,122 +156,55 @@ func (h *runtimeIntegrationHost) GetOrCreatePortal(ctx context.Context, portalID
 	return p, p.MXID.String(), nil
 }
 
-func (h *runtimeIntegrationHost) SavePortal(ctx context.Context, portal any, reason string) error {
+func (h *runtimeIntegrationHost) SavePortal(ctx context.Context, portal *bridgev2.Portal, reason string) error {
 	if h == nil || h.client == nil {
 		return nil
 	}
-	p, _ := portal.(*bridgev2.Portal)
-	if p == nil {
+	if portal == nil {
 		return nil
 	}
-	h.client.savePortalQuiet(ctx, p, reason)
+	h.client.savePortalQuiet(ctx, portal, reason)
 	return nil
 }
 
-func (h *runtimeIntegrationHost) PortalRoomID(portal any) string {
-	p, _ := portal.(*bridgev2.Portal)
-	if p == nil {
+func (h *runtimeIntegrationHost) PortalRoomID(portal *bridgev2.Portal) string {
+	if portal == nil {
 		return ""
 	}
-	return p.MXID.String()
+	return portal.MXID.String()
 }
 
-func (h *runtimeIntegrationHost) PortalKeyString(portal any) string {
-	p, _ := portal.(*bridgev2.Portal)
-	if p == nil {
+func (h *runtimeIntegrationHost) PortalKeyString(portal *bridgev2.Portal) string {
+	if portal == nil {
 		return ""
 	}
-	return p.PortalKey.String()
+	return portal.PortalKey.String()
 }
 
-// ---- Host methods: metadata access ----
-
-func (h *runtimeIntegrationHost) GetModuleMeta(meta any, key string) any {
-	m, _ := meta.(*PortalMetadata)
-	if m == nil || m.ModuleMeta == nil {
-		return nil
-	}
-	return m.ModuleMeta[key]
-}
-
-func (h *runtimeIntegrationHost) SetModuleMeta(meta any, key string, value any) {
-	m, _ := meta.(*PortalMetadata)
-	if m == nil {
-		return
-	}
-	m.SetModuleMeta(key, value)
-}
-
-func (h *runtimeIntegrationHost) AgentIDFromMeta(meta any) string {
-	m, _ := meta.(*PortalMetadata)
-	return resolveAgentID(m)
-}
-
-func (h *runtimeIntegrationHost) CompactionCount(meta any) int {
-	m, _ := meta.(*PortalMetadata)
-	if m == nil {
-		return 0
-	}
-	return m.CompactionCount
-}
-
-func (h *runtimeIntegrationHost) IsGroupChat(ctx context.Context, portal any) bool {
+func (h *runtimeIntegrationHost) IsGroupChat(ctx context.Context, portal *bridgev2.Portal) bool {
 	if h == nil || h.client == nil {
 		return false
 	}
-	p, _ := portal.(*bridgev2.Portal)
-	if p == nil {
+	if portal == nil {
 		return false
 	}
-	return h.client.isGroupChat(ctx, p)
-}
-
-func (h *runtimeIntegrationHost) IsInternalRoom(meta any) bool {
-	m, _ := meta.(*PortalMetadata)
-	if m == nil {
-		return false
-	}
-	return isModuleInternalRoom(m)
-}
-
-func (h *runtimeIntegrationHost) PortalMeta(portal any) any {
-	p, _ := portal.(*bridgev2.Portal)
-	return portalMeta(p)
-}
-
-func (h *runtimeIntegrationHost) CloneMeta(portal any) any {
-	p, _ := portal.(*bridgev2.Portal)
-	return clonePortalMetadata(portalMeta(p))
-}
-
-func (h *runtimeIntegrationHost) SetMetaField(meta any, key string, value any) {
-	m, _ := meta.(*PortalMetadata)
-	if m == nil {
-		return
-	}
-	switch key {
-	case "DisabledTools":
-		if v, ok := value.([]string); ok {
-			m.DisabledTools = v
-		}
-	}
+	return h.client.isGroupChat(ctx, portal)
 }
 
 // ---- Host methods: message helpers ----
 
-func (h *runtimeIntegrationHost) RecentMessages(ctx context.Context, portal any, count int) []integrationruntime.MessageSummary {
+func (h *runtimeIntegrationHost) RecentMessages(ctx context.Context, portal *bridgev2.Portal, count int) []integrationruntime.MessageSummary {
 	if h == nil || h.client == nil {
 		return nil
 	}
-	p, _ := portal.(*bridgev2.Portal)
-	if p == nil || count <= 0 || h.client.UserLogin == nil || h.client.UserLogin.Bridge == nil || h.client.UserLogin.Bridge.DB == nil {
+	if portal == nil || count <= 0 || h.client.UserLogin == nil || h.client.UserLogin.Bridge == nil || h.client.UserLogin.Bridge.DB == nil {
 		return nil
 	}
 	maxMessages := count
 	if maxMessages > 10 {
 		maxMessages = 10
 	}
-	history, err := h.client.UserLogin.Bridge.DB.Message.GetLastNInPortal(h.client.backgroundContext(ctx), p.PortalKey, maxMessages)
+	history, err := h.client.UserLogin.Bridge.DB.Message.GetLastNInPortal(h.client.backgroundContext(ctx), portal.PortalKey, maxMessages)
 	if err != nil || len(history) == 0 {
 		return nil
 	}
@@ -293,20 +227,18 @@ func (h *runtimeIntegrationHost) RecentMessages(ctx context.Context, portal any,
 	return out
 }
 
-func (h *runtimeIntegrationHost) LastAssistantMessage(ctx context.Context, portal any) (id string, timestamp int64) {
+func (h *runtimeIntegrationHost) LastAssistantMessage(ctx context.Context, portal *bridgev2.Portal) (id string, timestamp int64) {
 	if h == nil || h.client == nil {
 		return "", 0
 	}
-	p, _ := portal.(*bridgev2.Portal)
-	return h.client.lastAssistantMessageInfo(ctx, p)
+	return h.client.lastAssistantMessageInfo(ctx, portal)
 }
 
-func (h *runtimeIntegrationHost) WaitForAssistantMessage(ctx context.Context, portal any, afterID string, afterTS int64) (*integrationruntime.AssistantMessageInfo, bool) {
+func (h *runtimeIntegrationHost) WaitForAssistantMessage(ctx context.Context, portal *bridgev2.Portal, afterID string, afterTS int64) (*integrationruntime.AssistantMessageInfo, bool) {
 	if h == nil || h.client == nil {
 		return nil, false
 	}
-	p, _ := portal.(*bridgev2.Portal)
-	msg, found := h.client.waitForNewAssistantMessage(ctx, p, afterID, afterTS)
+	msg, found := h.client.waitForNewAssistantMessage(ctx, portal, afterID, afterTS)
 	if !found || msg == nil {
 		return nil, false
 	}
@@ -331,7 +263,7 @@ func (h *runtimeIntegrationHost) RunHeartbeatOnce(ctx context.Context, reason st
 	return h.client.scheduler.RunHeartbeatSweep(ctx, reason)
 }
 
-func (h *runtimeIntegrationHost) ResolveHeartbeatSessionPortal(agentID string) (portal any, sessionKey string, err error) {
+func (h *runtimeIntegrationHost) ResolveHeartbeatSessionPortal(agentID string) (portal *bridgev2.Portal, sessionKey string, err error) {
 	if h == nil || h.client == nil {
 		return nil, "", fmt.Errorf("missing client")
 	}
@@ -450,7 +382,7 @@ func (h *runtimeIntegrationHost) NormalizeThinkingLevel(raw string) (string, boo
 
 // ---- Host methods: model helpers ----
 
-func (h *runtimeIntegrationHost) EffectiveModel(meta any) string {
+func (h *runtimeIntegrationHost) EffectiveModel(meta integrationruntime.Meta) string {
 	if h == nil || h.client == nil {
 		return ""
 	}
@@ -458,7 +390,7 @@ func (h *runtimeIntegrationHost) EffectiveModel(meta any) string {
 	return h.client.effectiveModel(m)
 }
 
-func (h *runtimeIntegrationHost) ContextWindow(meta any) int {
+func (h *runtimeIntegrationHost) ContextWindow(meta integrationruntime.Meta) int {
 	if h == nil || h.client == nil {
 		return 0
 	}
@@ -509,15 +441,14 @@ func (h *runtimeIntegrationHost) BackgroundContext(ctx context.Context) context.
 
 // ---- Host methods: chat completions ----
 
-func (h *runtimeIntegrationHost) NewCompletion(ctx context.Context, model string, messages []openai.ChatCompletionMessageParamUnion, toolParams any) (*integrationruntime.CompletionResult, error) {
+func (h *runtimeIntegrationHost) NewCompletion(ctx context.Context, model string, messages []openai.ChatCompletionMessageParamUnion, toolParams []openai.ChatCompletionToolUnionParam) (*integrationruntime.CompletionResult, error) {
 	if h == nil || h.client == nil {
 		return nil, fmt.Errorf("missing client")
 	}
-	params, _ := toolParams.([]openai.ChatCompletionToolUnionParam)
 	req := openai.ChatCompletionNewParams{
 		Model:    model,
 		Messages: messages,
-		Tools:    params,
+		Tools:    toolParams,
 	}
 	resp, err := h.client.api.Chat.Completions.New(ctx, req)
 	if err != nil {
@@ -549,7 +480,7 @@ func (h *runtimeIntegrationHost) NewCompletion(ctx context.Context, model string
 
 // ---- Host methods: tool policy ----
 
-func (h *runtimeIntegrationHost) IsToolEnabled(meta any, toolName string) bool {
+func (h *runtimeIntegrationHost) IsToolEnabled(meta integrationruntime.Meta, toolName string) bool {
 	if h == nil || h.client == nil {
 		return true
 	}
@@ -567,24 +498,23 @@ func (h *runtimeIntegrationHost) AllToolDefinitions() []integrationruntime.ToolD
 	return out
 }
 
-func (h *runtimeIntegrationHost) ExecuteToolInContext(ctx context.Context, portal any, meta any, name string, argsJSON string) (string, error) {
+func (h *runtimeIntegrationHost) ExecuteToolInContext(ctx context.Context, portal *bridgev2.Portal, meta integrationruntime.Meta, name string, argsJSON string) (string, error) {
 	if h == nil || h.client == nil {
 		return "", fmt.Errorf("missing client")
 	}
-	p, _ := portal.(*bridgev2.Portal)
 	m, _ := meta.(*PortalMetadata)
 	if m != nil && !h.client.isToolEnabled(m, name) {
 		return "", fmt.Errorf("tool %s is disabled", name)
 	}
 	toolCtx := WithBridgeToolContext(ctx, &BridgeToolContext{
 		Client: h.client,
-		Portal: p,
+		Portal: portal,
 		Meta:   m,
 	})
-	return h.client.executeBuiltinTool(toolCtx, p, name, argsJSON)
+	return h.client.executeBuiltinTool(toolCtx, portal, name, argsJSON)
 }
 
-func (h *runtimeIntegrationHost) ToolsToOpenAIParams(tools []integrationruntime.ToolDefinition) any {
+func (h *runtimeIntegrationHost) ToolsToOpenAIParams(tools []integrationruntime.ToolDefinition) []openai.ChatCompletionToolUnionParam {
 	if h == nil || h.client == nil {
 		return nil
 	}
@@ -614,7 +544,7 @@ func (h *runtimeIntegrationHost) ReadTextFile(ctx context.Context, agentID strin
 	return entry.Content, entry.Path, true, nil
 }
 
-func (h *runtimeIntegrationHost) WriteTextFile(ctx context.Context, portal any, meta any, agentID string, mode string, path string, content string, maxBytes int) (finalPath string, err error) {
+func (h *runtimeIntegrationHost) WriteTextFile(ctx context.Context, portal *bridgev2.Portal, meta integrationruntime.Meta, agentID string, mode string, path string, content string, maxBytes int) (finalPath string, err error) {
 	if h == nil || h.client == nil {
 		return "", fmt.Errorf("storage unavailable")
 	}
@@ -644,11 +574,10 @@ func (h *runtimeIntegrationHost) WriteTextFile(ctx context.Context, portal any, 
 		return "", e
 	}
 	if entry != nil {
-		p, _ := portal.(*bridgev2.Portal)
 		m, _ := meta.(*PortalMetadata)
 		toolCtx := WithBridgeToolContext(ctx, &BridgeToolContext{
 			Client: h.client,
-			Portal: p,
+			Portal: portal,
 			Meta:   m,
 		})
 		notifyIntegrationFileChanged(toolCtx, entry.Path)
@@ -766,7 +695,7 @@ func (h *runtimeIntegrationHost) SessionPortals(ctx context.Context, loginID str
 	return out, nil
 }
 
-func (h *runtimeIntegrationHost) LoginDB() any {
+func (h *runtimeIntegrationHost) LoginDB() *dbutil.Database {
 	if h == nil || h.client == nil {
 		return nil
 	}
@@ -819,52 +748,49 @@ func (h *runtimeIntegrationHost) CronRun(ctx context.Context, jobID string) (boo
 
 // ---- Host methods: dispatch/lookup primitives ----
 
-func (h *runtimeIntegrationHost) ResolvePortalByRoomID(ctx context.Context, roomID string) any {
+func (h *runtimeIntegrationHost) ResolvePortalByRoomID(ctx context.Context, roomID string) *bridgev2.Portal {
 	if h == nil || h.client == nil || strings.TrimSpace(roomID) == "" {
 		return nil
 	}
 	return h.client.portalByRoomID(ctx, portalRoomIDFromString(roomID))
 }
 
-func (h *runtimeIntegrationHost) ResolveDefaultPortal(ctx context.Context) any {
+func (h *runtimeIntegrationHost) ResolveDefaultPortal(ctx context.Context) *bridgev2.Portal {
 	if h == nil || h.client == nil {
 		return nil
 	}
 	return h.client.defaultChatPortal()
 }
 
-func (h *runtimeIntegrationHost) ResolveLastActivePortal(ctx context.Context, agentID string) any {
+func (h *runtimeIntegrationHost) ResolveLastActivePortal(ctx context.Context, agentID string) *bridgev2.Portal {
 	if h == nil || h.client == nil {
 		return nil
 	}
 	return h.client.lastActivePortal(agentID)
 }
 
-func (h *runtimeIntegrationHost) DispatchInternalMessage(ctx context.Context, portal any, meta any, message string, source string) error {
+func (h *runtimeIntegrationHost) DispatchInternalMessage(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, message string, source string) error {
 	if h == nil || h.client == nil {
 		return fmt.Errorf("missing client")
 	}
-	p, _ := portal.(*bridgev2.Portal)
-	if p == nil {
+	if portal == nil {
 		return fmt.Errorf("missing portal")
 	}
-	m, _ := meta.(*PortalMetadata)
-	if m == nil {
-		m = &PortalMetadata{}
+	if meta == nil {
+		meta = &PortalMetadata{}
 	}
-	_, _, err := h.client.dispatchInternalMessage(ctx, p, m, message, source, false)
+	_, _, err := h.client.dispatchInternalMessage(ctx, portal, meta, message, source, false)
 	return err
 }
 
-func (h *runtimeIntegrationHost) SendAssistantMessage(ctx context.Context, portal any, body string) error {
+func (h *runtimeIntegrationHost) SendAssistantMessage(ctx context.Context, portal *bridgev2.Portal, body string) error {
 	if h == nil || h.client == nil {
 		return fmt.Errorf("missing client")
 	}
-	p, _ := portal.(*bridgev2.Portal)
-	if p == nil {
+	if portal == nil {
 		return fmt.Errorf("missing portal")
 	}
-	return h.client.sendPlainAssistantMessage(ctx, p, body)
+	return h.client.sendPlainAssistantMessage(ctx, portal, body)
 }
 
 func (h *runtimeIntegrationHost) RequestNow(ctx context.Context, reason string) {
@@ -887,7 +813,7 @@ func (h *runtimeIntegrationHost) ExecuteBuiltinTool(ctx context.Context, scope i
 	if h == nil || h.client == nil {
 		return "", fmt.Errorf("missing client")
 	}
-	portal, _ := scope.Portal.(*bridgev2.Portal)
+	portal := scope.Portal
 	meta, _ := scope.Meta.(*PortalMetadata)
 	if meta != nil && !h.client.isToolEnabled(meta, name) {
 		return "", fmt.Errorf("tool %s is disabled", name)
@@ -904,7 +830,7 @@ func (h *runtimeIntegrationHost) ResolveWorkspaceDir() string {
 	return resolvePromptWorkspaceDir()
 }
 
-func (h *runtimeIntegrationHost) BridgeDB() any {
+func (h *runtimeIntegrationHost) BridgeDB() *dbutil.Database {
 	if h == nil || h.client == nil {
 		return nil
 	}

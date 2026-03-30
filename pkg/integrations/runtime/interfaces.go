@@ -3,7 +3,7 @@ package runtime
 import (
 	"context"
 
-	"github.com/openai/openai-go/v3"
+	"maunium.net/go/mautrix/bridgev2"
 )
 
 // SettingSource indicates where a setting value came from.
@@ -29,9 +29,8 @@ type ToolDefinition struct {
 
 // ToolScope carries integration context without coupling to connector internals.
 type ToolScope struct {
-	Client any
-	Portal any
-	Meta   any
+	Portal *bridgev2.Portal
+	Meta   Meta
 }
 
 // ToolCall is a concrete tool execution request.
@@ -42,13 +41,6 @@ type ToolCall struct {
 	Scope       ToolScope
 }
 
-// PromptScope carries prompt-building context without coupling to connector internals.
-type PromptScope struct {
-	Client any
-	Portal any
-	Meta   any
-}
-
 // ToolIntegration is the pluggable surface for tool definitions/availability/execution.
 type ToolIntegration interface {
 	Name() string
@@ -57,17 +49,22 @@ type ToolIntegration interface {
 	ToolAvailability(ctx context.Context, scope ToolScope, toolName string) (known bool, available bool, source SettingSource, reason string)
 }
 
-// PromptIntegration is the pluggable surface for prompt/system message augmentation.
-type PromptIntegration interface {
-	Name() string
-	AdditionalSystemMessages(ctx context.Context, scope PromptScope) []openai.ChatCompletionMessageParamUnion
-	AugmentPrompt(ctx context.Context, scope PromptScope, prompt []openai.ChatCompletionMessageParamUnion) []openai.ChatCompletionMessageParamUnion
-}
-
 // ToolApprovalIntegration is an optional seam for tool approval policy overrides.
 type ToolApprovalIntegration interface {
 	Name() string
 	ToolApprovalRequirement(toolName string, args map[string]any) (handled bool, required bool, action string)
+}
+
+// PromptScope carries typed prompt-building context.
+type PromptScope struct {
+	Portal *bridgev2.Portal
+	Meta   Meta
+}
+
+// PromptContextIntegration contributes additional prompt context text.
+type PromptContextIntegration interface {
+	Name() string
+	PromptContextText(ctx context.Context, scope PromptScope) string
 }
 
 // LifecycleIntegration is an optional capability for integrations that need runtime start/stop hooks.

@@ -2,10 +2,10 @@ package ai
 
 import (
 	_ "embed"
+	"fmt"
 	"strings"
 	"time"
 
-	"go.mau.fi/util/configupgrade"
 	"go.mau.fi/util/ptr"
 
 	"github.com/beeper/agentremote/pkg/agents"
@@ -22,7 +22,6 @@ var exampleNetworkConfig string
 // the `network:` block in the main bridge config.
 type Config struct {
 	Beeper        BeeperConfig                       `yaml:"beeper"`
-	Providers     ProvidersConfig                    `yaml:"providers"`
 	Models        *ModelsConfig                      `yaml:"models"`
 	Bridge        BridgeConfig                       `yaml:"bridge"`
 	Tools         ToolProvidersConfig                `yaml:"tools"`
@@ -37,12 +36,6 @@ type Config struct {
 	// Global settings
 	DefaultSystemPrompt string        `yaml:"default_system_prompt"`
 	ModelCacheDuration  time.Duration `yaml:"model_cache_duration"`
-
-	// Context pruning configuration
-	Pruning *airuntime.PruningConfig `yaml:"pruning"`
-
-	// Link preview configuration
-	LinkPreviews *LinkPreviewConfig `yaml:"link_previews"`
 
 	// Inbound message processing configuration
 	Inbound *InboundConfig `yaml:"inbound"`
@@ -117,6 +110,12 @@ type AgentDefaultsConfig struct {
 	SkipBootstrap     bool                        `yaml:"skip_bootstrap"`
 	BootstrapMaxChars int                         `yaml:"bootstrap_max_chars"`
 	TimeoutSeconds    int                         `yaml:"timeout_seconds"`
+	Model             *ModelSelectionConfig       `yaml:"model"`
+	ImageModel        *ModelSelectionConfig       `yaml:"image_model"`
+	ImageGeneration   *ModelSelectionConfig       `yaml:"image_generation_model"`
+	PDFModel          *ModelSelectionConfig       `yaml:"pdf_model"`
+	PDFEngine         string                      `yaml:"pdf_engine"`
+	Compaction        *airuntime.PruningConfig    `yaml:"compaction"`
 	SoulEvil          *agents.SoulEvilConfig      `yaml:"soul_evil"`
 	Heartbeat         *HeartbeatConfig            `yaml:"heartbeat"`
 	UserTimezone      string                      `yaml:"user_timezone"`
@@ -228,11 +227,16 @@ type SessionConfig struct {
 
 // ToolProvidersConfig configures external tool providers like search and fetch.
 type ToolProvidersConfig struct {
-	Search *SearchConfig     `yaml:"search"`
-	Fetch  *FetchConfig      `yaml:"fetch"`
-	Media  *MediaToolsConfig `yaml:"media"`
-	MCP    *MCPToolsConfig   `yaml:"mcp"`
-	VFS    *VFSToolsConfig   `yaml:"vfs"`
+	Web   *WebToolsConfig    `yaml:"web"`
+	Links *LinkPreviewConfig `yaml:"links"`
+	Media *MediaToolsConfig  `yaml:"media"`
+	MCP   *MCPToolsConfig    `yaml:"mcp"`
+	VFS   *VFSToolsConfig    `yaml:"vfs"`
+}
+
+type WebToolsConfig struct {
+	Search *SearchConfig `yaml:"search"`
+	Fetch  *FetchConfig  `yaml:"fetch"`
 }
 
 // MCPToolsConfig configures generic MCP behavior.
@@ -422,21 +426,6 @@ type BeeperConfig struct {
 	Token    string `yaml:"token"`     // Beeper Matrix access token
 }
 
-// ProviderConfig holds settings for a specific AI provider.
-type ProviderConfig struct {
-	APIKey           string `yaml:"api_key"`
-	BaseURL          string `yaml:"base_url"`
-	DefaultModel     string `yaml:"default_model"`
-	DefaultPDFEngine string `yaml:"default_pdf_engine"` // pdf-text, mistral-ocr (default), native
-}
-
-// ProvidersConfig contains per-provider configuration.
-type ProvidersConfig struct {
-	Beeper     ProviderConfig `yaml:"beeper"`
-	OpenAI     ProviderConfig `yaml:"openai"`
-	OpenRouter ProviderConfig `yaml:"openrouter"`
-}
-
 // ModelsConfig configures model catalog seeding.
 type ModelsConfig struct {
 	Mode      string                         `yaml:"mode"` // merge | replace
@@ -445,7 +434,46 @@ type ModelsConfig struct {
 
 // ModelProviderConfig describes models for a specific provider.
 type ModelProviderConfig struct {
-	Models []ModelDefinitionConfig `yaml:"models"`
+	BaseURL string                  `yaml:"base_url"`
+	APIKey  string                  `yaml:"api_key"`
+	Headers map[string]string       `yaml:"headers"`
+	Models  []ModelDefinitionConfig `yaml:"models"`
+}
+
+type ModelSelectionConfig struct {
+	Primary   string   `yaml:"primary"`
+	Fallbacks []string `yaml:"fallbacks"`
+}
+
+func (cfg *ModelsConfig) UnmarshalYAML(unmarshal func(any) error) error {
+	type rawModelsConfig ModelsConfig
+	var raw rawModelsConfig
+	if err := unmarshal(&raw); err != nil {
+		return err
+	}
+	if len(raw.Providers) > 0 {
+		normalizedProviders := make(map[string]ModelProviderConfig, len(raw.Providers))
+		for key, provider := range raw.Providers {
+			normalized := strings.ToLower(strings.TrimSpace(key))
+			if normalized == "" {
+				return fmt.Errorf("models.providers contains an empty provider key")
+			}
+			if _, exists := normalizedProviders[normalized]; exists {
+				return fmt.Errorf("models.providers contains duplicate provider key after normalization: %q", key)
+			}
+			normalizedProviders[normalized] = provider
+		}
+		raw.Providers = normalizedProviders
+	}
+	*cfg = ModelsConfig(raw)
+	return nil
+}
+
+func (cfg *ModelsConfig) Provider(name string) ModelProviderConfig {
+	if cfg == nil || len(cfg.Providers) == 0 {
+		return ModelProviderConfig{}
+	}
+	return cfg.Providers[strings.ToLower(strings.TrimSpace(name))]
 }
 
 // ModelDefinitionConfig defines a model entry for catalog seeding.
@@ -460,204 +488,3 @@ type ModelDefinitionConfig struct {
 
 // BridgeConfig is an alias for the shared bridge config.
 type BridgeConfig = bridgeconfig.BridgeConfig
-
-func upgradeConfig(helper configupgrade.Helper) {
-	// Beeper credentials for auto-login
-	helper.Copy(configupgrade.Str, "beeper", "user_mxid")
-	helper.Copy(configupgrade.Str, "beeper", "base_url")
-	helper.Copy(configupgrade.Str, "beeper", "token")
-
-	// Per-provider default models
-	helper.Copy(configupgrade.Str, "providers", "beeper", "default_model")
-	helper.Copy(configupgrade.Str, "providers", "beeper", "default_pdf_engine")
-	helper.Copy(configupgrade.Str, "providers", "openai", "api_key")
-	helper.Copy(configupgrade.Str, "providers", "openai", "base_url")
-	helper.Copy(configupgrade.Str, "providers", "openai", "default_model")
-	helper.Copy(configupgrade.Str, "providers", "openrouter", "api_key")
-	helper.Copy(configupgrade.Str, "providers", "openrouter", "base_url")
-	helper.Copy(configupgrade.Str, "providers", "openrouter", "default_model")
-	helper.Copy(configupgrade.Str, "providers", "openrouter", "default_pdf_engine")
-
-	// Global settings
-	helper.Copy(configupgrade.Str, "default_system_prompt")
-	helper.Copy(configupgrade.Str, "model_cache_duration")
-	helper.Copy(configupgrade.Str, "memory", "citations")
-	helper.Copy(configupgrade.Bool, "memory", "inject_context")
-
-	// Tool approvals
-	helper.Copy(configupgrade.Bool, "tool_approvals", "enabled")
-	helper.Copy(configupgrade.Int, "tool_approvals", "ttl_seconds")
-	helper.Copy(configupgrade.Bool, "tool_approvals", "require_for_mcp")
-	helper.Copy(configupgrade.List, "tool_approvals", "require_for_tools")
-
-	// Bridge-specific configuration
-	helper.Copy(configupgrade.Str, "bridge", "command_prefix")
-
-	// Context pruning configuration
-	helper.Copy(configupgrade.Str, "pruning", "mode")
-	helper.Copy(configupgrade.Str, "pruning", "ttl")
-	helper.Copy(configupgrade.Bool, "pruning", "enabled")
-	helper.Copy(configupgrade.Float, "pruning", "soft_trim_ratio")
-	helper.Copy(configupgrade.Float, "pruning", "hard_clear_ratio")
-	helper.Copy(configupgrade.Int, "pruning", "keep_last_assistants")
-	helper.Copy(configupgrade.Int, "pruning", "min_prunable_chars")
-	helper.Copy(configupgrade.Int, "pruning", "soft_trim_max_chars")
-	helper.Copy(configupgrade.Int, "pruning", "soft_trim_head_chars")
-	helper.Copy(configupgrade.Int, "pruning", "soft_trim_tail_chars")
-	helper.Copy(configupgrade.Bool, "pruning", "hard_clear_enabled")
-	helper.Copy(configupgrade.Str, "pruning", "hard_clear_placeholder")
-
-	// Compaction configuration (LLM summarization)
-	helper.Copy(configupgrade.Bool, "pruning", "summarization_enabled")
-	helper.Copy(configupgrade.Str, "pruning", "summarization_model")
-	helper.Copy(configupgrade.Int, "pruning", "max_summary_tokens")
-	helper.Copy(configupgrade.Str, "pruning", "compaction_mode")
-	helper.Copy(configupgrade.Int, "pruning", "keep_recent_tokens")
-	helper.Copy(configupgrade.Float, "pruning", "max_history_share")
-	helper.Copy(configupgrade.Int, "pruning", "reserve_tokens")
-	helper.Copy(configupgrade.Int, "pruning", "reserve_tokens_floor")
-	helper.Copy(configupgrade.Str, "pruning", "custom_instructions")
-	helper.Copy(configupgrade.Str, "pruning", "identifier_policy")
-	helper.Copy(configupgrade.Str, "pruning", "identifier_instructions")
-	helper.Copy(configupgrade.Str, "pruning", "post_compaction_refresh_prompt")
-	helper.Copy(configupgrade.Bool, "pruning", "overflow_flush", "enabled")
-	helper.Copy(configupgrade.Int, "pruning", "overflow_flush", "soft_threshold_tokens")
-	helper.Copy(configupgrade.Str, "pruning", "overflow_flush", "prompt")
-	helper.Copy(configupgrade.Str, "pruning", "overflow_flush", "system_prompt")
-
-	// Link preview configuration
-	helper.Copy(configupgrade.Bool, "link_previews", "enabled")
-	helper.Copy(configupgrade.Int, "link_previews", "max_urls_inbound")
-	helper.Copy(configupgrade.Int, "link_previews", "max_urls_outbound")
-	helper.Copy(configupgrade.Str, "link_previews", "fetch_timeout")
-	helper.Copy(configupgrade.Int, "link_previews", "max_content_chars")
-	helper.Copy(configupgrade.Int, "link_previews", "max_page_bytes")
-	helper.Copy(configupgrade.Int, "link_previews", "max_image_bytes")
-	helper.Copy(configupgrade.Str, "link_previews", "cache_ttl")
-
-	// Inbound message processing configuration
-	helper.Copy(configupgrade.Str, "inbound", "dedupe_ttl")
-	helper.Copy(configupgrade.Int, "inbound", "dedupe_max_size")
-	helper.Copy(configupgrade.Int, "inbound", "default_debounce_ms")
-
-	// Cron configuration
-	helper.Copy(configupgrade.Bool, "cron", "enabled")
-
-	// Messages configuration
-	helper.Copy(configupgrade.Str, "messages", "ack_reaction")
-	helper.Copy(configupgrade.Str, "messages", "ack_reaction_scope")
-	helper.Copy(configupgrade.Bool, "messages", "remove_ack_after")
-	helper.Copy(configupgrade.Int, "messages", "group_chat", "history_limit")
-	helper.Copy(configupgrade.List, "messages", "group_chat", "mention_patterns")
-	helper.Copy(configupgrade.Str, "messages", "group_chat", "activation")
-	helper.Copy(configupgrade.Int, "messages", "direct_chat", "history_limit")
-	helper.Copy(configupgrade.Int, "messages", "inbound", "debounce_ms")
-	helper.Copy(configupgrade.Map, "messages", "inbound", "by_channel")
-	helper.Copy(configupgrade.List, "commands", "owner_allow_from")
-	helper.Copy(configupgrade.Str, "messages", "queue", "mode")
-	helper.Copy(configupgrade.Map, "messages", "queue", "by_channel")
-	helper.Copy(configupgrade.Int, "messages", "queue", "debounce_ms")
-	helper.Copy(configupgrade.Map, "messages", "queue", "debounce_ms_by_channel")
-	helper.Copy(configupgrade.Int, "messages", "queue", "cap")
-	helper.Copy(configupgrade.Str, "messages", "queue", "drop")
-
-	// Session configuration
-	helper.Copy(configupgrade.Str, "session", "scope")
-	helper.Copy(configupgrade.Str, "session", "main_key")
-
-	// Agents heartbeat configuration
-	helper.Copy(configupgrade.Int, "agents", "defaults", "timeout_seconds")
-	helper.Copy(configupgrade.Str, "agents", "defaults", "user_timezone")
-	helper.Copy(configupgrade.Str, "agents", "defaults", "envelope_timezone")
-	helper.Copy(configupgrade.Str, "agents", "defaults", "envelope_timestamp")
-	helper.Copy(configupgrade.Str, "agents", "defaults", "envelope_elapsed")
-	helper.Copy(configupgrade.Str, "agents", "defaults", "typing_mode")
-	helper.Copy(configupgrade.Int, "agents", "defaults", "typing_interval_seconds")
-	helper.Copy(configupgrade.Map, "agents", "defaults", "subagents")
-	helper.Copy(configupgrade.Str, "agents", "defaults", "heartbeat", "every")
-	helper.Copy(configupgrade.Str, "agents", "defaults", "heartbeat", "prompt")
-	helper.Copy(configupgrade.Str, "agents", "defaults", "heartbeat", "model")
-	helper.Copy(configupgrade.Str, "agents", "defaults", "heartbeat", "session")
-	helper.Copy(configupgrade.Str, "agents", "defaults", "heartbeat", "target")
-	helper.Copy(configupgrade.Str, "agents", "defaults", "heartbeat", "to")
-	helper.Copy(configupgrade.Int, "agents", "defaults", "heartbeat", "ack_max_chars")
-	helper.Copy(configupgrade.Bool, "agents", "defaults", "heartbeat", "include_reasoning")
-	helper.Copy(configupgrade.Str, "agents", "defaults", "heartbeat", "active_hours", "start")
-	helper.Copy(configupgrade.Str, "agents", "defaults", "heartbeat", "active_hours", "end")
-	helper.Copy(configupgrade.Str, "agents", "defaults", "heartbeat", "active_hours", "timezone")
-	helper.Copy(configupgrade.List, "agents", "list")
-
-	// Channels heartbeat visibility
-	helper.Copy(configupgrade.Bool, "channels", "defaults", "heartbeat", "show_ok")
-	helper.Copy(configupgrade.Bool, "channels", "defaults", "heartbeat", "show_alerts")
-	helper.Copy(configupgrade.Bool, "channels", "defaults", "heartbeat", "use_indicator")
-	helper.Copy(configupgrade.Bool, "channels", "matrix", "heartbeat", "show_ok")
-	helper.Copy(configupgrade.Bool, "channels", "matrix", "heartbeat", "show_alerts")
-	helper.Copy(configupgrade.Bool, "channels", "matrix", "heartbeat", "use_indicator")
-	helper.Copy(configupgrade.Str, "channels", "matrix", "reply_to_mode")
-	helper.Copy(configupgrade.Str, "channels", "matrix", "thread_replies")
-
-	// Tools (search + fetch)
-	helper.Copy(configupgrade.Str, "tools", "search", "provider")
-	helper.Copy(configupgrade.List, "tools", "search", "fallbacks")
-	helper.Copy(configupgrade.Bool, "tools", "search", "exa", "enabled")
-	helper.Copy(configupgrade.Str, "tools", "search", "exa", "base_url")
-	helper.Copy(configupgrade.Str, "tools", "search", "exa", "api_key")
-	helper.Copy(configupgrade.Str, "tools", "search", "exa", "type")
-	helper.Copy(configupgrade.Str, "tools", "search", "exa", "category")
-	helper.Copy(configupgrade.Int, "tools", "search", "exa", "num_results")
-	helper.Copy(configupgrade.Bool, "tools", "search", "exa", "include_text")
-	helper.Copy(configupgrade.Int, "tools", "search", "exa", "text_max_chars")
-	helper.Copy(configupgrade.Bool, "tools", "search", "exa", "highlights")
-	helper.Copy(configupgrade.Str, "tools", "fetch", "provider")
-	helper.Copy(configupgrade.List, "tools", "fetch", "fallbacks")
-	helper.Copy(configupgrade.Bool, "tools", "fetch", "exa", "enabled")
-	helper.Copy(configupgrade.Str, "tools", "fetch", "exa", "base_url")
-	helper.Copy(configupgrade.Str, "tools", "fetch", "exa", "api_key")
-	helper.Copy(configupgrade.Bool, "tools", "fetch", "exa", "include_text")
-	helper.Copy(configupgrade.Int, "tools", "fetch", "exa", "text_max_chars")
-	helper.Copy(configupgrade.Bool, "tools", "fetch", "direct", "enabled")
-	helper.Copy(configupgrade.Int, "tools", "fetch", "direct", "timeout_seconds")
-	helper.Copy(configupgrade.Str, "tools", "fetch", "direct", "user_agent")
-	helper.Copy(configupgrade.Bool, "tools", "fetch", "direct", "readability")
-	helper.Copy(configupgrade.Int, "tools", "fetch", "direct", "max_chars")
-	helper.Copy(configupgrade.Int, "tools", "fetch", "direct", "max_redirects")
-	helper.Copy(configupgrade.Int, "tools", "fetch", "direct", "cache_ttl_seconds")
-	helper.Copy(configupgrade.Bool, "tools", "mcp", "enable_stdio")
-	helper.Copy(configupgrade.Int, "tools", "media", "image", "max_bytes")
-	helper.Copy(configupgrade.Int, "tools", "media", "image", "max_chars")
-	helper.Copy(configupgrade.Int, "tools", "media", "image", "timeout_seconds")
-	helper.Copy(configupgrade.Int, "tools", "media", "audio", "max_bytes")
-	helper.Copy(configupgrade.Int, "tools", "media", "audio", "timeout_seconds")
-	helper.Copy(configupgrade.Int, "tools", "media", "video", "max_bytes")
-	helper.Copy(configupgrade.Int, "tools", "media", "video", "timeout_seconds")
-
-	// Memory search configuration
-	helper.Copy(configupgrade.Bool, "memory_search", "enabled")
-	helper.Copy(configupgrade.List, "memory_search", "sources")
-	helper.Copy(configupgrade.List, "memory_search", "extra_paths")
-	helper.Copy(configupgrade.Str, "memory_search", "store", "driver")
-	helper.Copy(configupgrade.Str, "memory_search", "store", "path")
-	helper.Copy(configupgrade.Int, "memory_search", "chunking", "tokens")
-	helper.Copy(configupgrade.Int, "memory_search", "chunking", "overlap")
-	helper.Copy(configupgrade.Bool, "memory_search", "sync", "on_session_start")
-	helper.Copy(configupgrade.Bool, "memory_search", "sync", "on_search")
-	helper.Copy(configupgrade.Bool, "memory_search", "sync", "watch")
-	helper.Copy(configupgrade.Int, "memory_search", "sync", "watch_debounce_ms")
-	helper.Copy(configupgrade.Int, "memory_search", "sync", "interval_minutes")
-	helper.Copy(configupgrade.Int, "memory_search", "sync", "sessions", "delta_bytes")
-	helper.Copy(configupgrade.Int, "memory_search", "sync", "sessions", "delta_messages")
-	helper.Copy(configupgrade.Int, "memory_search", "query", "max_results")
-	helper.Copy(configupgrade.Float, "memory_search", "query", "min_score")
-	helper.Copy(configupgrade.Int, "memory_search", "query", "hybrid", "candidate_multiplier")
-	helper.Copy(configupgrade.Bool, "memory_search", "cache", "enabled")
-	helper.Copy(configupgrade.Int, "memory_search", "cache", "max_entries")
-	helper.Copy(configupgrade.Bool, "memory_search", "experimental", "session_memory")
-
-	// Tool policy
-	helper.Copy(configupgrade.Str, "tool_policy", "profile")
-	helper.Copy(configupgrade.List, "tool_policy", "allow")
-	helper.Copy(configupgrade.List, "tool_policy", "also_allow")
-	helper.Copy(configupgrade.List, "tool_policy", "deny")
-	helper.Copy(configupgrade.Map, "tool_policy", "by_provider")
-}

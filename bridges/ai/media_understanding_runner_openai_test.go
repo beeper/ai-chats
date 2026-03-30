@@ -26,8 +26,10 @@ func TestResolveMediaProviderAPIKeyOpenAIMagicProxyUsesLoginToken(t *testing.T) 
 
 	meta := &UserLoginMetadata{
 		Provider: ProviderMagicProxy,
-		APIKey:   "tok",
-		BaseURL:  "https://bai.bt.hn/team/proxy",
+		Credentials: &LoginCredentials{
+			APIKey:  "tok",
+			BaseURL: "https://bai.bt.hn/team/proxy",
+		},
 	}
 	client := newMediaTestClient(meta, &OpenAIConnector{})
 
@@ -39,8 +41,10 @@ func TestResolveMediaProviderAPIKeyOpenAIMagicProxyUsesLoginToken(t *testing.T) 
 func TestResolveOpenAIMediaBaseURLMagicProxyUsesOpenAIServicePath(t *testing.T) {
 	meta := &UserLoginMetadata{
 		Provider: ProviderMagicProxy,
-		APIKey:   "tok",
-		BaseURL:  "https://bai.bt.hn/team/proxy",
+		Credentials: &LoginCredentials{
+			APIKey:  "tok",
+			BaseURL: "https://bai.bt.hn/team/proxy",
+		},
 	}
 	client := newMediaTestClient(meta, &OpenAIConnector{})
 
@@ -54,11 +58,7 @@ func TestResolveOpenRouterMediaConfigUsesEntryOverrides(t *testing.T) {
 
 	client := newMediaTestClient(&UserLoginMetadata{Provider: ProviderOpenAI}, &OpenAIConnector{
 		Config: Config{
-			Providers: ProvidersConfig{
-				OpenRouter: ProviderConfig{
-					DefaultPDFEngine: "native",
-				},
-			},
+			Agents: &AgentsConfig{Defaults: &AgentDefaultsConfig{PDFEngine: "mistral-ocr"}},
 		},
 	})
 
@@ -99,8 +99,8 @@ func TestResolveOpenRouterMediaConfigUsesEntryOverrides(t *testing.T) {
 	if headers["X-Title"] != openRouterAppTitle {
 		t.Fatalf("expected default OpenRouter title header, got %#v", headers)
 	}
-	if pdfEngine != "native" {
-		t.Fatalf("expected configured PDF engine, got %q", pdfEngine)
+	if pdfEngine != "mistral-ocr" {
+		t.Fatalf("expected default PDF engine, got %q", pdfEngine)
 	}
 }
 

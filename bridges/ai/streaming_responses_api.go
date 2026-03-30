@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/packages/ssestream"
 	"github.com/openai/openai-go/v3/responses"
@@ -28,7 +27,6 @@ type responsesTurnAdapter struct {
 	agentLoopProviderBase
 	params      responses.ResponseNewParams
 	initialized bool
-	hasFollowUp bool
 	rsc         *responseStreamContext
 }
 
@@ -38,8 +36,8 @@ func (a *responsesTurnAdapter) TrackRoomRunStreaming() bool {
 
 func (a *responsesTurnAdapter) startInitialRound(ctx context.Context) (*ssestream.Stream[responses.ResponseStreamEventUnion], error) {
 	if !a.initialized {
-		input := a.oc.convertToResponsesInput(a.messages, a.meta)
-		a.params = a.oc.buildResponsesAgentLoopParams(ctx, a.meta, input, false)
+		input := promptContextToResponsesInput(a.prompt)
+		a.params = a.oc.buildResponsesAgentLoopParams(ctx, a.meta, a.prompt.SystemPrompt, input, false)
 		if len(a.params.Tools) > 0 {
 			zerolog.Ctx(ctx).Debug().Int("count", len(a.params.Tools)).Msg("Added streaming turn tools")
 		}
@@ -51,9 +49,6 @@ func (a *responsesTurnAdapter) startInitialRound(ctx context.Context) (*ssestrea
 	stream := a.oc.api.Responses.NewStreaming(ctx, a.params)
 	if stream == nil {
 		return nil, errors.New("responses streaming not available")
-	}
-	if a.params.Input.OfInputItemList != nil {
-		a.state.baseInput = a.params.Input.OfInputItemList
 	}
 	return stream, nil
 }
@@ -89,17 +84,13 @@ func (a *responsesTurnAdapter) startContinuationRound(ctx context.Context) (*sse
 		approvalInputs = append(approvalInputs, item)
 	}
 
-	continuationParams := a.oc.buildContinuationParams(ctx, state, a.meta, pendingOutputs, approvalInputs)
-	if continuationInput := continuationParams.Input.OfInputItemList; continuationInput != nil {
-		state.baseInput = slices.Clone(continuationInput)
-	}
+	continuationParams := a.oc.buildContinuationParams(ctx, &a.prompt, state, a.meta, pendingOutputs, approvalInputs)
 
 	state.needsTextSeparator = true
 	stream := a.oc.api.Responses.NewStreaming(ctx, continuationParams)
 	if stream == nil {
 		return nil, continuationParams, errors.New("continuation streaming not available")
 	}
-	a.hasFollowUp = false
 	state.clearContinuationState()
 	return stream, continuationParams, nil
 }
@@ -120,11 +111,11 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 		stream, err = a.startInitialRound(ctx)
 		params = a.params
 		if err != nil {
-			logResponsesFailure(a.log, err, params, a.meta, a.messages, "stream_init")
+			logResponsesFailure(a.log, err, params, a.meta, a.prompt, "stream_init")
 			return false, nil, &PreDeltaError{Err: err}
 		}
 	} else {
-		if len(state.pendingFunctionOutputs) == 0 && len(state.pendingMcpApprovals) == 0 && !a.hasFollowUp {
+		if len(state.pendingFunctionOutputs) == 0 && len(state.pendingMcpApprovals) == 0 && len(state.pendingSteeringPrompts) == 0 {
 			return false, nil, nil
 		}
 		if round > maxAgentLoopToolTurns {
@@ -135,14 +126,14 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 		a.log.Debug().
 			Int("pending_outputs", len(state.pendingFunctionOutputs)).
 			Int("pending_approvals", len(state.pendingMcpApprovals)).
-			Int("base_input_items", len(state.baseInput)).
+			Int("prompt_messages", len(a.prompt.Messages)).
 			Msg("Continuing stateless response with pending tool actions")
 		stream, params, err = a.startContinuationRound(ctx)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return false, nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, state, a.meta, "cancelled", err)
 			}
-			logResponsesFailure(a.log, err, params, a.meta, a.messages, "continuation_init")
+			logResponsesFailure(a.log, err, params, a.meta, a.prompt, "continuation_init")
 			return false, nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, state, a.meta, "error", err)
 		}
 	}
@@ -158,7 +149,7 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 				if round > 0 {
 					stage = "continuation_event_error"
 				}
-				logResponsesFailure(a.log, evtErr, params, a.meta, a.messages, stage)
+				logResponsesFailure(a.log, evtErr, params, a.meta, a.prompt, stage)
 			}
 			return done, cle, evtErr
 		},
@@ -167,7 +158,7 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 			if round > 0 {
 				stage = "continuation_err"
 			}
-			logResponsesFailure(a.log, stepErr, params, a.meta, a.messages, stage)
+			logResponsesFailure(a.log, stepErr, params, a.meta, a.prompt, stage)
 			return a.oc.handleResponsesStreamErr(ctx, a.portal, state, a.meta, stepErr, round == 0)
 		},
 	)
@@ -175,23 +166,14 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 		return false, cle, err
 	}
 	if done {
-		return state != nil && (len(state.pendingFunctionOutputs) > 0 || len(state.pendingMcpApprovals) > 0), nil, nil
+		return state != nil && (len(state.pendingFunctionOutputs) > 0 || len(state.pendingMcpApprovals) > 0 || len(state.pendingSteeringPrompts) > 0), nil, nil
 	}
 
-	return state != nil && (len(state.pendingFunctionOutputs) > 0 || len(state.pendingMcpApprovals) > 0), nil, nil
+	return state != nil && (len(state.pendingFunctionOutputs) > 0 || len(state.pendingMcpApprovals) > 0 || len(state.pendingSteeringPrompts) > 0), nil, nil
 }
 
 func (a *responsesTurnAdapter) FinalizeAgentLoop(ctx context.Context) {
 	a.oc.finalizeResponsesStream(ctx, a.log, a.portal, a.state, a.meta)
-}
-
-func (a *responsesTurnAdapter) ContinueAgentLoop(messages []openai.ChatCompletionMessageParamUnion) {
-	if len(messages) == 0 {
-		return
-	}
-	a.messages = append(a.messages, messages...)
-	a.state.baseInput = append(a.state.baseInput, a.oc.convertToResponsesInput(messages, a.meta)...)
-	a.hasFollowUp = true
 }
 
 // processResponseStreamEvent handles a single Responses API stream event.
@@ -464,12 +446,12 @@ func (oc *AIClient) handleProviderToolCompleted(
 }
 
 // runResponsesAgentLoop handles the Responses API provider adapter under the canonical agent loop.
-func (oc *AIClient) runResponsesAgentLoop(
+func (oc *AIClient) runResponsesAgentLoopPrompt(
 	ctx context.Context,
 	evt *event.Event,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
-	messages []openai.ChatCompletionMessageParamUnion,
+	prompt PromptContext,
 ) (bool, *ContextLengthError, error) {
 	portalID := ""
 	if portal != nil {
@@ -478,8 +460,8 @@ func (oc *AIClient) runResponsesAgentLoop(
 	log := zerolog.Ctx(ctx).With().
 		Str("portal_id", portalID).
 		Logger()
-	return oc.runAgentLoop(ctx, log, evt, portal, meta, messages, func(prep streamingRunPrep, pruned []openai.ChatCompletionMessageParamUnion) agentLoopProvider {
-		base := newAgentLoopProviderBase(oc, log, portal, meta, prep, pruned)
+	return oc.runAgentLoop(ctx, log, evt, portal, meta, prompt, func(prep streamingRunPrep, prompt PromptContext) agentLoopProvider {
+		base := newAgentLoopProviderBase(oc, log, portal, meta, prep, prompt)
 		return &responsesTurnAdapter{
 			agentLoopProviderBase: base,
 			rsc: &responseStreamContext{

@@ -17,7 +17,6 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
-	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 type mediaUnderstandingResult struct {
@@ -211,11 +210,9 @@ func (oc *AIClient) applyMediaUnderstandingForAttachments(
 }
 
 func (oc *AIClient) resolveAutoAudioEntry(cfg *MediaUnderstandingConfig) *MediaUnderstandingModelConfig {
-	headers := map[string]string{}
-	if cfg != nil && cfg.Headers != nil {
-		for key, value := range cfg.Headers {
-			headers[key] = value
-		}
+	var headers map[string]string
+	if cfg != nil {
+		headers = cfg.Headers
 	}
 
 	candidates := []struct {
@@ -333,11 +330,9 @@ func (oc *AIClient) resolveKeyMediaEntry(
 }
 
 func (oc *AIClient) hasMediaProviderAuth(providerID string, cfg *MediaUnderstandingConfig) bool {
-	headers := map[string]string{}
-	if cfg != nil && cfg.Headers != nil {
-		for key, value := range cfg.Headers {
-			headers[key] = value
-		}
+	var headers map[string]string
+	if cfg != nil {
+		headers = cfg.Headers
 	}
 	if hasProviderAuthHeader(providerID, headers) {
 		return true
@@ -671,27 +666,8 @@ func (oc *AIClient) describeImageWithEntry(
 		if actualMime == "" {
 			actualMime = mimeType
 		}
-		headers := mergeMediaHeaders(capCfg, entry)
-		apiKey := oc.resolveMediaProviderAPIKey("google", entry.Profile, entry.PreferredProfile)
-		if apiKey == "" && !hasProviderAuthHeader("google", headers) {
-			return nil, errors.New("missing API key for google image understanding")
-		}
-		request := mediaImageRequest{
-			APIKey:   apiKey,
-			BaseURL:  resolveMediaBaseURL(capCfg, entry),
-			Headers:  headers,
-			Model:    strings.TrimSpace(entry.Model),
-			Prompt:   prompt,
-			MimeType: actualMime,
-			Data:     data,
-			Timeout:  resolveMediaTimeoutSeconds(entry.TimeoutSeconds, capCfg, defaultTimeoutSecondsByCapability[MediaCapabilityImage]),
-		}
-		text, err := callGeminiForCapability(ctx, request, MediaCapabilityImage)
-		if err != nil {
-			return nil, err
-		}
-		text = truncateText(text, maxChars)
-		return buildMediaOutput(MediaCapabilityImage, text, "google", entry.Model, attachmentIndex), nil
+		timeout := resolveMediaTimeoutSeconds(entry.TimeoutSeconds, capCfg, defaultTimeoutSecondsByCapability[MediaCapabilityImage])
+		return oc.callGeminiMediaCapability(ctx, MediaCapabilityImage, entry, capCfg, data, actualMime, prompt, timeout, maxChars, attachmentIndex)
 	}
 
 	rawData, actualMime, err := oc.downloadMediaBytes(ctx, mediaURL, encryptedFile, maxBytes, mimeType)
@@ -705,9 +681,9 @@ func (oc *AIClient) describeImageWithEntry(
 		actualMime = "image/jpeg"
 	}
 	b64Data := base64.StdEncoding.EncodeToString(rawData)
-	dataURL := bridgesdk.BuildDataURL(actualMime, b64Data)
+	dataURL := BuildDataURL(actualMime, b64Data)
 
-	ctxPrompt := PromptContext{PromptContext: bridgesdk.UserPromptContext(
+	ctxPrompt := UserPromptContext(
 		PromptBlock{
 			Type: PromptBlockText,
 			Text: prompt,
@@ -717,7 +693,7 @@ func (oc *AIClient) describeImageWithEntry(
 			ImageURL: dataURL,
 			MimeType: actualMime,
 		},
-	)}
+	)
 	modelIDForAPI := oc.modelIDForAPI(ResolveAlias(modelID))
 	var resp *GenerateResponse
 	if entryProvider == "openrouter" {
@@ -849,45 +825,31 @@ func (oc *AIClient) describeVideoWithEntry(
 		return nil, errors.New("video payload exceeds base64 limit")
 	}
 
-	if providerID == "openrouter" {
-		modelID := strings.TrimSpace(entry.Model)
-		if modelID == "" {
-			return nil, errors.New("video understanding requires model id")
-		}
-		videoB64 := base64.StdEncoding.EncodeToString(data)
-
-		ctxPrompt := PromptContext{PromptContext: bridgesdk.UserPromptContext(
-			PromptBlock{
-				Type: PromptBlockText,
-				Text: prompt,
-			},
-			PromptBlock{
-				Type:     PromptBlockVideo,
-				VideoB64: videoB64,
-				MimeType: actualMime,
-			},
-		)}
-		modelIDForAPI := oc.modelIDForAPI(ResolveAlias(modelID))
-		var resp *GenerateResponse
-		resp, err = oc.generateWithOpenRouter(ctx, modelIDForAPI, ctxPrompt, capCfg, entry)
-		if err != nil {
-			return nil, err
-		}
-		text := strings.TrimSpace(resp.Content)
-		text = truncateText(text, maxChars)
-		return buildMediaOutput(MediaCapabilityVideo, text, entry.Provider, modelID, attachmentIndex), nil
-	}
 	if providerID != "google" {
 		return nil, fmt.Errorf("unsupported video provider: %s", providerID)
 	}
 
-	headers := mergeMediaHeaders(capCfg, entry)
-	apiKey := oc.resolveMediaProviderAPIKey(providerID, entry.Profile, entry.PreferredProfile)
-	if apiKey == "" && !hasProviderAuthHeader(providerID, headers) {
-		return nil, fmt.Errorf("missing API key for %s video description", providerID)
-	}
+	return oc.callGeminiMediaCapability(ctx, MediaCapabilityVideo, entry, capCfg, data, actualMime, prompt, timeout, maxChars, attachmentIndex)
+}
 
-	request := mediaVideoRequest{
+func (oc *AIClient) callGeminiMediaCapability(
+	ctx context.Context,
+	capability MediaUnderstandingCapability,
+	entry MediaUnderstandingModelConfig,
+	capCfg *MediaUnderstandingConfig,
+	data []byte,
+	actualMime string,
+	prompt string,
+	timeout time.Duration,
+	maxChars int,
+	attachmentIndex int,
+) (*MediaUnderstandingOutput, error) {
+	headers := mergeMediaHeaders(capCfg, entry)
+	apiKey := oc.resolveMediaProviderAPIKey("google", entry.Profile, entry.PreferredProfile)
+	if apiKey == "" && !hasProviderAuthHeader("google", headers) {
+		return nil, fmt.Errorf("missing API key for google %s", capability)
+	}
+	request := mediaRequestBase{
 		APIKey:   apiKey,
 		BaseURL:  resolveMediaBaseURL(capCfg, entry),
 		Headers:  headers,
@@ -897,13 +859,13 @@ func (oc *AIClient) describeVideoWithEntry(
 		Data:     data,
 		Timeout:  timeout,
 	}
-	text, err := callGeminiForCapability(ctx, request, MediaCapabilityVideo)
+	text, err := callGeminiForCapability(ctx, request, capability)
 	if err != nil {
 		return nil, err
 	}
 	text = strings.TrimSpace(text)
 	text = truncateText(text, maxChars)
-	return buildMediaOutput(MediaCapabilityVideo, text, providerID, entry.Model, attachmentIndex), nil
+	return buildMediaOutput(capability, text, "google", entry.Model, attachmentIndex), nil
 }
 
 func (oc *AIClient) generateWithOpenRouter(
@@ -925,9 +887,6 @@ func (oc *AIClient) generateWithOpenRouter(
 		Model:               modelID,
 		Context:             promptContext,
 		MaxCompletionTokens: defaultImageUnderstandingLimit,
-	}
-	if bridgesdk.PromptContextHasBlockType(promptContext.PromptContext, PromptBlockAudio, PromptBlockVideo) {
-		return provider.generateChatCompletions(ctx, params)
 	}
 	return provider.Generate(ctx, params)
 }
@@ -953,10 +912,7 @@ func (oc *AIClient) resolveOpenRouterMediaConfig(
 	if baseURL == "" {
 		baseURL = resolveOpenRouterMediaBaseURL(oc)
 	}
-	pdfEngine = oc.connector.Config.Providers.OpenRouter.DefaultPDFEngine
-	if pdfEngine == "" {
-		pdfEngine = "mistral-ocr"
-	}
+	pdfEngine = oc.defaultPDFEngine()
 	if oc.UserLogin != nil && oc.UserLogin.User != nil && oc.UserLogin.User.MXID != "" {
 		userID = oc.UserLogin.User.MXID.String()
 	}

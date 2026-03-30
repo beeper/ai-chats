@@ -44,7 +44,7 @@ func (oc *AIClient) dispatchInternalMessage(
 
 	inboundCtx := oc.resolvePromptInboundContext(ctx, portal, trimmed, eventID)
 	promptCtx := withInboundContext(ctx, inboundCtx)
-	promptContext, err := oc.buildContextWithLinkContext(promptCtx, portal, meta, trimmed, nil, eventID)
+	promptContext, err := oc.buildCurrentTurnWithLinks(promptCtx, portal, meta, trimmed, nil, eventID)
 	if err != nil {
 		return eventID, false, err
 	}
@@ -60,7 +60,6 @@ func (oc *AIClient) dispatchInternalMessage(
 		Timestamp: time.Now(),
 	}
 	setCanonicalTurnDataFromPromptMessages(userMessage.Metadata.(*MessageMetadata), promptTail(promptContext, 1))
-	ensureCanonicalUserMessage(userMessage)
 	if _, err := oc.UserLogin.Bridge.GetGhostByID(ctx, userMessage.SenderID); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure user ghost before saving internal message")
 	}

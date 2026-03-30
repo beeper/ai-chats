@@ -115,11 +115,7 @@ func GetMemorySearchManager(host iruntime.Host, agentID string) (*MemorySearchMa
 	if host == nil {
 		return nil, "memory search unavailable"
 	}
-	rawDB := host.BridgeDB()
-	if rawDB == nil {
-		return nil, "memory search unavailable"
-	}
-	db, _ := rawDB.(*dbutil.Database)
+	db := host.BridgeDB()
 	if db == nil {
 		return nil, "memory search unavailable"
 	}

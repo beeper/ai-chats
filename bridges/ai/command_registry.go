@@ -96,7 +96,6 @@ func registerModuleCommands(defs []integrationruntime.CommandDefinition) {
 					ce.Ctx,
 					ce.Portal,
 					meta,
-					ce,
 					commandName,
 					ce.Args,
 					ce.RawArgs,

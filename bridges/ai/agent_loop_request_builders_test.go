@@ -37,7 +37,7 @@ func TestAgentLoopRequestBuildersShareModelAndTokenSettings(t *testing.T) {
 	chatParams := oc.buildChatCompletionsAgentLoopParams(context.Background(), meta, []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("hello"),
 	})
-	responsesParams := oc.buildResponsesAgentLoopParams(context.Background(), meta, nil, false)
+	responsesParams := oc.buildResponsesAgentLoopParams(context.Background(), meta, "system prompt", nil, false)
 
 	if chatParams.Model != "openai/gpt-5.2" {
 		t.Fatalf("expected chat model openai/gpt-5.2, got %q", chatParams.Model)
@@ -96,7 +96,7 @@ func TestAgentLoopRequestBuildersPreserveExplicitZeroTemperature(t *testing.T) {
 	chatParams := oc.buildChatCompletionsAgentLoopParams(context.Background(), meta, []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("hello"),
 	})
-	responsesParams := oc.buildResponsesAgentLoopParams(context.Background(), meta, nil, false)
+	responsesParams := oc.buildResponsesAgentLoopParams(context.Background(), meta, "system prompt", nil, false)
 
 	if !chatParams.Temperature.Valid() || chatParams.Temperature.Value != 0 {
 		t.Fatalf("expected explicit zero chat temperature, got %#v", chatParams.Temperature)

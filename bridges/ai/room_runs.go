@@ -117,16 +117,6 @@ func (oc *AIClient) enqueueSteerQueue(roomID id.RoomID, item pendingQueueItem) b
 	return true
 }
 
-func (oc *AIClient) registerRoomRunPendingItem(roomID id.RoomID, item pendingQueueItem) {
-	run := oc.getRoomRun(roomID)
-	if run == nil {
-		return
-	}
-	run.mu.Lock()
-	defer run.mu.Unlock()
-	oc.registerRoomRunPendingItemLocked(run, item)
-}
-
 func (oc *AIClient) registerRoomRunPendingItemLocked(run *roomRunState, item pendingQueueItem) {
 	if run == nil {
 		return

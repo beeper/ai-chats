@@ -17,7 +17,6 @@ import (
 	"github.com/beeper/agentremote"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
-	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 func messageSendStatusError(err error, message string, reason event.MessageStatusReason) error {
@@ -251,15 +250,16 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	// Get raw event content for link previews
 	var rawEventContent map[string]any
 	if msg.Event != nil && msg.Event.Content.Raw != nil {
-		rawEventContent = msg.Event.Content.Raw
+		rawEventContent = clonePendingRawMap(msg.Event.Content.Raw)
 	}
+	pendingEvent := snapshotPendingEvent(msg.Event)
 
 	eventID := id.EventID("")
 	if msg.Event != nil {
 		eventID = msg.Event.ID
 	}
 
-	promptContext, err := oc.buildContextWithLinkContext(runCtx, portal, runMeta, body, rawEventContent, eventID)
+	promptContext, err := oc.buildCurrentTurnWithLinks(runCtx, portal, runMeta, body, rawEventContent, eventID)
 	if err != nil {
 		return nil, messageSendStatusError(err, "Couldn't prepare the message. Try again.", "")
 	}
@@ -280,7 +280,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	}
 
 	pending := pendingMessage{
-		Event:           msg.Event,
+		Event:           pendingEvent,
 		Portal:          portal,
 		Meta:            runMeta,
 		InboundContext:  &inboundCtx,
@@ -301,7 +301,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		enqueuedAt:      time.Now().UnixMilli(),
 		rawEventContent: rawEventContent,
 	}
-	dbMsg, isPending := oc.dispatchOrQueue(runCtx, msg.Event, portal, runMeta, userMessage, queueItem, queueSettings, promptContext)
+	dbMsg, isPending := oc.dispatchOrQueue(runCtx, pendingEvent, portal, runMeta, userMessage, queueItem, queueSettings, promptContext)
 
 	return &bridgev2.MatrixMessageResponse{
 		DB:      dbMsg,
@@ -323,15 +323,17 @@ func (oc *AIClient) HandleMatrixTyping(ctx context.Context, typing *bridgev2.Mat
 
 // HandleMatrixEdit handles edits to previously sent messages
 func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixEdit) error {
-	if edit.Content == nil || edit.EditTarget == nil {
-		return errors.New("invalid edit: missing content or target")
-	}
-
 	portal := edit.Portal
 	if portal == nil {
 		return errors.New("portal is nil")
 	}
 	meta := portalMeta(portal)
+	if meta != nil && meta.ResolvedTarget != nil && meta.ResolvedTarget.Kind == ResolvedTargetModel {
+		return bridgev2.ErrEditsNotSupportedInPortal
+	}
+	if edit.Content == nil || edit.EditTarget == nil {
+		return errors.New("invalid edit: missing content or target")
+	}
 
 	// Get the new message body
 	newBody := strings.TrimSpace(edit.Content.Body)
@@ -436,8 +438,9 @@ func (oc *AIClient) regenerateFromEdit(
 
 	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
 	isGroup := oc.isGroupChat(ctx, portal)
+	pendingEvent := snapshotPendingEvent(evt)
 	pending := pendingMessage{
-		Event:       evt,
+		Event:       pendingEvent,
 		Portal:      portal,
 		Meta:        meta,
 		Type:        pendingTypeEditRegenerate,
@@ -454,7 +457,7 @@ func (oc *AIClient) regenerateFromEdit(
 		summaryLine: newBody,
 		enqueuedAt:  time.Now().UnixMilli(),
 	}
-	oc.dispatchOrQueueCore(ctx, evt, portal, meta, nil, queueItem, queueSettings, promptContext)
+	oc.dispatchOrQueueCore(ctx, pendingEvent, portal, meta, nil, queueItem, queueSettings, promptContext)
 
 	return nil
 }
@@ -572,11 +575,12 @@ func (oc *AIClient) handleMediaMessage(
 		eventID = msg.Event.ID
 	}
 
-	// Check capability (PDF has special OpenRouter handling via file-parser plugin)
+	// PDFs are normalized into file-context text before prompt assembly, so they
+	// do not require native provider file support.
 	modelCaps := oc.getModelCapabilitiesForMeta(ctx, meta)
 	supportsMedia := config.capabilityCheck(&modelCaps)
-	if isPDF && !supportsMedia && oc.isOpenRouterProvider() {
-		supportsMedia = true // OpenRouter supports PDF via file-parser plugin
+	if isPDF {
+		supportsMedia = true
 	}
 	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
 
@@ -599,12 +603,13 @@ func (oc *AIClient) handleMediaMessage(
 	if msg.Content.File != nil {
 		encryptedFile = msg.Content.File
 	}
+	pendingEvent := snapshotPendingEvent(msg.Event)
 
 	dispatchTextOnly := func(rawBody string) (*bridgev2.MatrixMessageResponse, error) {
 		inboundCtx := oc.buildMatrixInboundContext(portal, msg.Event, rawBody, senderName, roomName, isGroup)
 		promptCtx := withInboundContext(ctx, inboundCtx)
 		body := oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, rawBody, senderName, roomName, isGroup)
-		promptContext, err := oc.buildContextWithLinkContext(promptCtx, portal, meta, body, nil, eventID)
+		promptContext, err := oc.buildCurrentTurnWithLinks(promptCtx, portal, meta, body, nil, eventID)
 		if err != nil {
 			return nil, messageSendStatusError(err, "Couldn't prepare the message. Try again.", "")
 		}
@@ -623,7 +628,7 @@ func (oc *AIClient) handleMediaMessage(
 			userMessage.SendTxnID = networkid.RawTransactionID(msg.InputTransactionID)
 		}
 		pending := pendingMessage{
-			Event:          msg.Event,
+			Event:          pendingEvent,
 			Portal:         portal,
 			Meta:           meta,
 			InboundContext: &inboundCtx,
@@ -638,7 +643,7 @@ func (oc *AIClient) handleMediaMessage(
 			summaryLine: rawBody,
 			enqueuedAt:  time.Now().UnixMilli(),
 		}
-		dbMsg, isPending := oc.dispatchOrQueue(promptCtx, msg.Event, portal, meta, userMessage, queueItem, queueSettings, promptContext)
+		dbMsg, isPending := oc.dispatchOrQueue(promptCtx, pendingEvent, portal, meta, userMessage, queueItem, queueSettings, promptContext)
 		return &bridgev2.MatrixMessageResponse{
 			DB:      dbMsg,
 			Pending: isPending,
@@ -703,30 +708,6 @@ func (oc *AIClient) handleMediaMessage(
 			}
 		}
 
-		// If model lacks audio but agent supports audio understanding, analyze audio first.
-		if msgType == event.MsgAudio {
-			audioModel, audioFallback := oc.resolveModelForCapability(ctx, meta, func(caps ModelCapabilities) bool { return caps.SupportsAudio }, oc.resolveAudioUnderstandingModel)
-			if resp, err := oc.dispatchMediaUnderstandingFallback(
-				ctx,
-				audioModel,
-				audioFallback,
-				string(mediaURL),
-				mimeType,
-				encryptedFile,
-				caption,
-				hasUserCaption,
-				buildMediaUnderstandingPrompt(MediaCapabilityAudio),
-				oc.analyzeAudioWithModel,
-				buildMediaUnderstandingMessage("Audio", "Transcript"),
-				"Audio understanding failed",
-				"audio understanding produced empty result",
-				"Couldn't analyze the audio. Try again, or switch to an audio-capable model with !ai model.",
-				dispatchTextOnly,
-			); resp != nil || err != nil {
-				return resp, err
-			}
-		}
-
 		return nil, agentremote.UnsupportedMessageStatus(fmt.Errorf(
 			"current model (%s) does not support %s; switch to a capable model using !ai model",
 			oc.effectiveModel(meta), config.capabilityName,
@@ -737,7 +718,7 @@ func (oc *AIClient) handleMediaMessage(
 	captionForPrompt := oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, caption, senderName, roomName, isGroup)
 	captionInboundCtx := oc.buildMatrixInboundContext(portal, msg.Event, caption, senderName, roomName, isGroup)
 	promptCtx := withInboundContext(ctx, captionInboundCtx)
-	promptContext, err := oc.buildContextWithMedia(promptCtx, portal, meta, captionForPrompt, string(mediaURL), mimeType, encryptedFile, config.msgType, eventID)
+	promptContext, err := oc.buildMediaTurnContext(promptCtx, portal, meta, captionForPrompt, string(mediaURL), mimeType, encryptedFile, config.msgType, eventID)
 	if err != nil {
 		return nil, messageSendStatusError(err, "Couldn't prepare the media message. Try again.", "")
 	}
@@ -770,7 +751,7 @@ func (oc *AIClient) handleMediaMessage(
 	}
 
 	pending := pendingMessage{
-		Event:          msg.Event,
+		Event:          snapshotPendingEvent(msg.Event),
 		Portal:         portal,
 		Meta:           meta,
 		InboundContext: &captionInboundCtx,
@@ -788,7 +769,7 @@ func (oc *AIClient) handleMediaMessage(
 		summaryLine: rawCaption,
 		enqueuedAt:  time.Now().UnixMilli(),
 	}
-	dbMsg, isPending := oc.dispatchOrQueue(promptCtx, msg.Event, portal, meta, userMessage, queueItem, queueSettings, promptContext)
+	dbMsg, isPending := oc.dispatchOrQueue(promptCtx, pending.Event, portal, meta, userMessage, queueItem, queueSettings, promptContext)
 
 	return &bridgev2.MatrixMessageResponse{
 		DB:      dbMsg,
@@ -894,7 +875,7 @@ func (oc *AIClient) handleTextFileMessage(
 
 	inboundCtx := oc.buildMatrixInboundContext(portal, msg.Event, combined, senderName, roomName, isGroup)
 	promptCtx := withInboundContext(ctx, inboundCtx)
-	promptContext, err := oc.buildContextWithLinkContext(promptCtx, portal, meta, combined, nil, eventID)
+	promptContext, err := oc.buildCurrentTurnWithLinks(promptCtx, portal, meta, combined, nil, eventID)
 	if err != nil {
 		return nil, messageSendStatusError(err, "Couldn't prepare the message. Try again.", "")
 	}
@@ -915,7 +896,7 @@ func (oc *AIClient) handleTextFileMessage(
 	}
 
 	pending := pendingMessage{
-		Event:          msg.Event,
+		Event:          snapshotPendingEvent(msg.Event),
 		Portal:         portal,
 		Meta:           meta,
 		InboundContext: &inboundCtx,
@@ -930,7 +911,7 @@ func (oc *AIClient) handleTextFileMessage(
 		summaryLine: strings.TrimSpace(rawCaption),
 		enqueuedAt:  time.Now().UnixMilli(),
 	}
-	dbMsg, isPending := oc.dispatchOrQueue(promptCtx, msg.Event, portal, meta, userMessage, queueItem, queueSettings, promptContext)
+	dbMsg, isPending := oc.dispatchOrQueue(promptCtx, pending.Event, portal, meta, userMessage, queueItem, queueSettings, promptContext)
 
 	return &bridgev2.MatrixMessageResponse{
 		DB:      dbMsg,
@@ -1102,70 +1083,14 @@ func (oc *AIClient) buildContextForRegenerate(
 	latestUserBody string,
 	latestUserID id.EventID,
 ) (PromptContext, error) {
-	var promptContext PromptContext
-	bridgesdk.AppendChatMessagesToPromptContext(&promptContext.PromptContext, oc.buildSystemMessages(ctx, portal, meta))
-
-	historyLimit := oc.historyLimit(ctx, portal, meta)
-	resetAt := int64(0)
-	if meta != nil {
-		resetAt = meta.SessionResetAt
+	base := PromptContext{
+		SystemPrompt: oc.buildConversationSystemPromptText(ctx, portal, meta, false),
 	}
-	if historyLimit > 0 {
-		history, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, historyLimit+2)
-		if err != nil {
-			return PromptContext{}, fmt.Errorf("failed to load prompt history: %w", err)
-		}
-
-		// Determine whether to inject images into history (requires vision-capable model).
-		hasVision := oc.getModelCapabilitiesForMeta(ctx, meta).SupportsVision
-		historyBundles := make([][]PromptMessage, 0, len(history))
-
-		// Skip the most recent messages (last user and assistant) and build from older history
-		skippedUser := false
-		skippedAssistant := false
-		includedCount := 0
-		for _, msg := range history {
-			msgMeta := messageMeta(msg)
-			// Skip commands and non-conversation messages
-			if !shouldIncludeInHistory(msgMeta) {
-				continue
-			}
-			if resetAt > 0 && msg.Timestamp.UnixMilli() < resetAt {
-				continue
-			}
-
-			// Skip the last user message and last assistant message
-			if !skippedUser && msgMeta.Role == "user" {
-				skippedUser = true
-				continue
-			}
-			if !skippedAssistant && msgMeta.Role == "assistant" {
-				skippedAssistant = true
-				continue
-			}
-
-			// Only inject images for recent messages and vision-capable models.
-			// This loop builds newest-to-oldest, so early entries are the most recent.
-			injectImages := hasVision && includedCount < maxHistoryImageMessages
-			includedCount++
-			bundle := oc.historyMessageBundle(ctx, msgMeta, injectImages)
-			if len(bundle) > 0 {
-				historyBundles = append(historyBundles, bundle)
-			}
-		}
-
-		for i := len(historyBundles) - 1; i >= 0; i-- {
-			promptContext.Messages = append(promptContext.Messages, historyBundles[i]...)
-		}
+	historyMessages, err := oc.replayHistoryMessages(ctx, portal, meta, historyReplayOptions{mode: historyReplayRegen})
+	if err != nil {
+		return PromptContext{}, err
 	}
-
-	latest := latestUserBody
-	promptContext.Messages = append(promptContext.Messages, PromptMessage{
-		Role: PromptRoleUser,
-		Blocks: []PromptBlock{{
-			Type: PromptBlockText,
-			Text: latest,
-		}},
-	})
-	return promptContext, nil
+	base.Messages = append(base.Messages, historyMessages...)
+	base.Messages = append(base.Messages, newUserTextPromptMessage(latestUserBody))
+	return base, nil
 }

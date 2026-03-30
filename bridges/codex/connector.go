@@ -29,7 +29,7 @@ type CodexConnector struct {
 	*agentremote.ConnectorBase
 	br        *bridgev2.Bridge
 	Config    Config
-	sdkConfig *bridgesdk.Config
+	sdkConfig *bridgesdk.Config[*CodexClient, *Config]
 	db        *dbutil.Database
 
 	clientsMu sync.Mutex

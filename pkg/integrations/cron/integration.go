@@ -138,7 +138,7 @@ func (i *Integration) executeCronCommand(ctx context.Context, call iruntime.Comm
 			reply("Cron add failed: %s", err.Error())
 			return nil
 		}
-		deps := i.buildToolExecDeps(ctx, commandScopeToToolScope(call.Scope))
+		deps := i.buildToolExecDeps(ctx, iruntime.ToolScope(call.Scope))
 		injectToolContext(&input, deps.ResolveCreateContext)
 		if input.Delivery != nil && strings.EqualFold(strings.TrimSpace(string(input.Delivery.Mode)), "announce") && deps.ValidateDeliveryTo != nil {
 			if err := deps.ValidateDeliveryTo(input.Delivery.To); err != nil {
@@ -169,7 +169,7 @@ func (i *Integration) executeCronCommand(ctx context.Context, call iruntime.Comm
 			reply("Cron update failed: %s", err.Error())
 			return nil
 		}
-		deps := i.buildToolExecDeps(ctx, commandScopeToToolScope(call.Scope))
+		deps := i.buildToolExecDeps(ctx, iruntime.ToolScope(call.Scope))
 		if patch.Delivery != nil && patch.Delivery.To != nil && deps.ValidateDeliveryTo != nil {
 			if err := deps.ValidateDeliveryTo(*patch.Delivery.To); err != nil {
 				reply("Cron update failed: %s", err.Error())
@@ -228,7 +228,7 @@ func (i *Integration) buildToolExecDeps(ctx context.Context, scope iruntime.Tool
 		ResolveCreateContext: func() ToolCreateContext {
 			agentID := i.host.DefaultAgentID()
 			if scope.Meta != nil {
-				if resolved := strings.TrimSpace(i.host.AgentIDFromMeta(scope.Meta)); resolved != "" {
+				if resolved := strings.TrimSpace(scope.Meta.AgentID()); resolved != "" {
 					agentID = resolved
 				}
 			}
@@ -238,7 +238,7 @@ func (i *Integration) buildToolExecDeps(ctx context.Context, scope iruntime.Tool
 			}
 			sourceInternal := false
 			if scope.Meta != nil {
-				sourceInternal = i.host.IsInternalRoom(scope.Meta)
+				sourceInternal = scope.Meta.InternalRoom()
 			}
 			return ToolCreateContext{AgentID: agentID, SourceInternal: sourceInternal, SourceRoomID: roomID}
 		},
@@ -277,14 +277,6 @@ func (i *Integration) buildToolExecDeps(ctx context.Context, scope iruntime.Tool
 		return scheduler.CronRun(ctx, jobID)
 	}
 	return deps
-}
-
-func commandScopeToToolScope(scope iruntime.CommandScope) iruntime.ToolScope {
-	return iruntime.ToolScope{
-		Client: scope.Client,
-		Portal: scope.Portal,
-		Meta:   scope.Meta,
-	}
 }
 
 var (

@@ -79,7 +79,7 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 	sessionResolution := oc.resolveHeartbeatSession(agentID, heartbeat)
 	storeKey := strings.TrimSpace(sessionResolution.SessionKey)
 
-	sessionPortal, sessionKey, err := oc.resolveHeartbeatSessionPortal(agentID, heartbeat)
+	sessionPortal, sessionKey, err := oc.resolveHeartbeatSessionPortal(agentID, heartbeat, sessionResolution)
 	if err != nil || sessionPortal == nil || sessionPortal.MXID == "" {
 		oc.log.Warn().Str("agent_id", agentID).Err(err).Msg("Heartbeat skipped: no session portal")
 		return heartbeatRunResult{Status: "skipped", Reason: "no-session"}
@@ -179,22 +179,10 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 		}
 	}
 
-	promptContext, err := oc.buildContextWithHeartbeat(context.Background(), sessionPortal, promptMeta, prompt)
+	promptContext, err := oc.buildHeartbeatTurnContext(context.Background(), sessionPortal, promptMeta, prompt)
 	if err != nil {
 		oc.log.Warn().Str("agent_id", agentID).Str("reason", reason).Err(err).Msg("Heartbeat failed to build prompt")
-		indicator := (*HeartbeatIndicatorType)(nil)
-		if hbCfg.UseIndicator {
-			indicator = resolveIndicatorType("failed")
-		}
-		oc.emitHeartbeatEvent(&HeartbeatEventPayload{
-			TS:            time.Now().UnixMilli(),
-			Status:        "failed",
-			Reason:        err.Error(),
-			Channel:       hbCfg.Channel,
-			To:            hbCfg.TargetRoom.String(),
-			DurationMs:    time.Now().UnixMilli() - startedAtMs,
-			IndicatorType: indicator,
-		})
+		oc.emitHeartbeatFailure(hbCfg, startedAtMs, err.Error())
 		return heartbeatRunResult{Status: "failed", Reason: err.Error()}
 	}
 
@@ -228,37 +216,29 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 		return heartbeatRunResult{Status: res.Status, Reason: res.Reason}
 	case <-done:
 		oc.log.Warn().Str("agent_id", agentID).Msg("Heartbeat failed: stream completed without outcome")
-		indicator := (*HeartbeatIndicatorType)(nil)
-		if hbCfg.UseIndicator {
-			indicator = resolveIndicatorType("failed")
-		}
-		oc.emitHeartbeatEvent(&HeartbeatEventPayload{
-			TS:            time.Now().UnixMilli(),
-			Status:        "failed",
-			Reason:        "stream-finished-without-outcome",
-			Channel:       hbCfg.Channel,
-			To:            hbCfg.TargetRoom.String(),
-			DurationMs:    time.Now().UnixMilli() - startedAtMs,
-			IndicatorType: indicator,
-		})
+		oc.emitHeartbeatFailure(hbCfg, startedAtMs, "stream-finished-without-outcome")
 		return heartbeatRunResult{Status: "failed", Reason: "heartbeat failed"}
 	case <-timeoutCtx.Done():
 		oc.log.Warn().Str("agent_id", agentID).Msg("Heartbeat timed out after 2 minutes")
-		indicator := (*HeartbeatIndicatorType)(nil)
-		if hbCfg.UseIndicator {
-			indicator = resolveIndicatorType("failed")
-		}
-		oc.emitHeartbeatEvent(&HeartbeatEventPayload{
-			TS:            time.Now().UnixMilli(),
-			Status:        "failed",
-			Reason:        "timeout",
-			Channel:       hbCfg.Channel,
-			To:            hbCfg.TargetRoom.String(),
-			DurationMs:    time.Now().UnixMilli() - startedAtMs,
-			IndicatorType: indicator,
-		})
+		oc.emitHeartbeatFailure(hbCfg, startedAtMs, "timeout")
 		return heartbeatRunResult{Status: "failed", Reason: "heartbeat timed out"}
 	}
+}
+
+func (oc *AIClient) emitHeartbeatFailure(hbCfg *HeartbeatRunConfig, startedAtMs int64, reason string) {
+	indicator := (*HeartbeatIndicatorType)(nil)
+	if hbCfg.UseIndicator {
+		indicator = resolveIndicatorType("failed")
+	}
+	oc.emitHeartbeatEvent(&HeartbeatEventPayload{
+		TS:            time.Now().UnixMilli(),
+		Status:        "failed",
+		Reason:        reason,
+		Channel:       hbCfg.Channel,
+		To:            hbCfg.TargetRoom.String(),
+		DurationMs:    time.Now().UnixMilli() - startedAtMs,
+		IndicatorType: indicator,
+	})
 }
 
 func drainHeartbeatSystemEvents(ownerKey string, primaryKey string, secondaryKey string) []SystemEvent {
@@ -282,22 +262,13 @@ func systemEventsOwnerKey(oc *AIClient) string {
 	return string(oc.UserLogin.Bridge.DB.BridgeID) + "|" + string(oc.UserLogin.ID)
 }
 
-func (oc *AIClient) buildContextWithHeartbeat(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, prompt string) (PromptContext, error) {
-	base, err := oc.buildBaseContext(ctx, portal, meta)
-	if err != nil {
-		return PromptContext{}, err
+func (oc *AIClient) resolveHeartbeatSessionPortal(agentID string, heartbeat *HeartbeatConfig, preResolved ...heartbeatSessionResolution) (*bridgev2.Portal, string, error) {
+	var hbSession heartbeatSessionResolution
+	if len(preResolved) > 0 && preResolved[0].SessionKey != "" {
+		hbSession = preResolved[0]
+	} else {
+		hbSession = oc.resolveHeartbeatSession(agentID, heartbeat)
 	}
-	base.Messages = append(base.Messages, PromptMessage{
-		Role: PromptRoleUser,
-		Blocks: []PromptBlock{{
-			Type: PromptBlockText,
-			Text: prompt,
-		}},
-	})
-	return base, nil
-}
-
-func (oc *AIClient) resolveHeartbeatSessionPortal(agentID string, heartbeat *HeartbeatConfig) (*bridgev2.Portal, string, error) {
 	session := ""
 	if heartbeat != nil && heartbeat.Session != nil {
 		session = strings.TrimSpace(*heartbeat.Session)
@@ -307,7 +278,6 @@ func (oc *AIClient) resolveHeartbeatSessionPortal(agentID string, heartbeat *Hea
 		mainKey = strings.TrimSpace(oc.connector.Config.Session.MainKey)
 	}
 	if session == "" || strings.EqualFold(session, "main") || strings.EqualFold(session, "global") || (mainKey != "" && strings.EqualFold(session, mainKey)) {
-		hbSession := oc.resolveHeartbeatSession(agentID, heartbeat)
 		if portal := oc.heartbeatSessionPortalCandidate(agentID, hbSession); portal != nil {
 			return portal, portal.MXID.String(), nil
 		}
@@ -326,7 +296,6 @@ func (oc *AIClient) resolveHeartbeatSessionPortal(agentID string, heartbeat *Hea
 			}
 		}
 	}
-	hbSession := oc.resolveHeartbeatSession(agentID, heartbeat)
 	if portal := oc.heartbeatSessionPortalCandidate(agentID, hbSession); portal != nil {
 		return portal, portal.MXID.String(), nil
 	}

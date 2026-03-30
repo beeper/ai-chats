@@ -1,32 +1,83 @@
 package ai
 
-import bridgesdk "github.com/beeper/agentremote/sdk"
+import "strings"
 
-type PromptRole = bridgesdk.PromptRole
-
-const (
-	PromptRoleUser       PromptRole = bridgesdk.PromptRoleUser
-	PromptRoleAssistant  PromptRole = bridgesdk.PromptRoleAssistant
-	PromptRoleToolResult PromptRole = bridgesdk.PromptRoleToolResult
-)
-
-type PromptBlockType = bridgesdk.PromptBlockType
+type PromptRole string
 
 const (
-	PromptBlockText     PromptBlockType = bridgesdk.PromptBlockText
-	PromptBlockImage    PromptBlockType = bridgesdk.PromptBlockImage
-	PromptBlockFile     PromptBlockType = bridgesdk.PromptBlockFile
-	PromptBlockThinking PromptBlockType = bridgesdk.PromptBlockThinking
-	PromptBlockToolCall PromptBlockType = bridgesdk.PromptBlockToolCall
-	PromptBlockAudio    PromptBlockType = bridgesdk.PromptBlockAudio
-	PromptBlockVideo    PromptBlockType = bridgesdk.PromptBlockVideo
+	PromptRoleUser       PromptRole = "user"
+	PromptRoleAssistant  PromptRole = "assistant"
+	PromptRoleToolResult PromptRole = "tool_result"
 )
 
-type PromptBlock = bridgesdk.PromptBlock
-type PromptMessage = bridgesdk.PromptMessage
+type PromptBlockType string
 
-// PromptContext extends the shared provider-facing prompt model with bridge-local tool definitions.
+const (
+	PromptBlockText     PromptBlockType = "text"
+	PromptBlockImage    PromptBlockType = "image"
+	PromptBlockThinking PromptBlockType = "thinking"
+	PromptBlockToolCall PromptBlockType = "tool_call"
+)
+
+type PromptBlock struct {
+	Type PromptBlockType
+
+	Text string
+
+	ImageURL string
+	ImageB64 string
+	MimeType string
+
+	ToolCallID        string
+	ToolName          string
+	ToolCallArguments string
+}
+
+type PromptMessage struct {
+	Role       PromptRole
+	Blocks     []PromptBlock
+	ToolCallID string
+	ToolName   string
+	IsError    bool
+}
+
+func (m PromptMessage) text(includeThinking bool) string {
+	var sb strings.Builder
+	for _, block := range m.Blocks {
+		switch block.Type {
+		case PromptBlockText:
+			if block.Text != "" {
+				if sb.Len() > 0 {
+					sb.WriteByte('\n')
+				}
+				sb.WriteString(block.Text)
+			}
+		case PromptBlockThinking:
+			if !includeThinking || block.Text == "" {
+				continue
+			}
+			if block.Text != "" {
+				if sb.Len() > 0 {
+					sb.WriteByte('\n')
+				}
+				sb.WriteString(block.Text)
+			}
+		}
+	}
+	return sb.String()
+}
+
+func (m PromptMessage) Text() string {
+	return m.text(true)
+}
+
+func (m PromptMessage) VisibleText() string {
+	return m.text(false)
+}
+
+// PromptContext is the bridge-local prompt envelope used throughout bridges/ai.
 type PromptContext struct {
-	bridgesdk.PromptContext
-	Tools []ToolDefinition
+	SystemPrompt string
+	Messages     []PromptMessage
+	Tools        []ToolDefinition
 }

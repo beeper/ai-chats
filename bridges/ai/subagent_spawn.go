@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 
@@ -331,15 +330,13 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 	}
 
 	eventID := agentremote.NewEventID("subagent")
-	promptContext, err := oc.buildContextWithLinkContext(ctx, childPortal, childMeta, task, nil, eventID)
+	promptContext, err := oc.buildCurrentTurnWithLinks(ctx, childPortal, childMeta, task, nil, eventID)
 	if err != nil {
 		return tools.JSONResult(map[string]any{
 			"status": "error",
 			"error":  err.Error(),
 		}), nil
 	}
-	promptMessages := oc.promptContextToDispatchMessages(ctx, childPortal, childMeta, promptContext)
-
 	userMessage := &database.Message{
 		ID:       agentremote.MatrixMessageID(eventID),
 		MXID:     eventID,
@@ -351,7 +348,6 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 		Timestamp: time.Now(),
 	}
 	setCanonicalTurnDataFromPromptMessages(userMessage.Metadata.(*MessageMetadata), promptTail(promptContext, 1))
-	ensureCanonicalUserMessage(userMessage)
 	if _, err := oc.UserLogin.Bridge.GetGhostByID(ctx, userMessage.SenderID); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure user ghost before saving subagent task message")
 	}
@@ -371,7 +367,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 		Timeout:      runTimeout,
 	}
 	oc.registerSubagentRun(run)
-	oc.startSubagentRun(ctx, run, childPortal, childMeta, promptMessages)
+	oc.startSubagentRun(ctx, run, childPortal, childMeta, promptContext)
 
 	payload := map[string]any{
 		"status":          "accepted",
@@ -393,7 +389,7 @@ func (oc *AIClient) startSubagentRun(
 	run *subagentRun,
 	childPortal *bridgev2.Portal,
 	childMeta *PortalMetadata,
-	prompt []openai.ChatCompletionMessageParamUnion,
+	prompt PromptContext,
 ) {
 	if run == nil || childPortal == nil || childMeta == nil {
 		return

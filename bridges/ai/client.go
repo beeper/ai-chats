@@ -26,9 +26,9 @@ import (
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/agents"
+	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
-	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 var (
@@ -312,11 +312,10 @@ type AIClient struct {
 
 	// Heartbeat + integrations
 	scheduler          *schedulerRuntime
-	integrationModules map[string]any
+	integrationModules map[string]integrationruntime.ModuleHooks
 	integrationOrder   []string
 
 	toolRegistry     *toolIntegrationRegistry
-	promptRegistry   *promptIntegrationRegistry
 	commandRegistry  *commandIntegrationRegistry
 	eventRegistry    *eventIntegrationRegistry
 	purgeRegistry    *purgeIntegrationRegistry
@@ -486,16 +485,14 @@ func initProviderForLogin(key string, meta *UserLoginMetadata, connector *OpenAI
 	}
 	switch meta.Provider {
 	case ProviderOpenRouter:
-		pdfEngine := connector.Config.Providers.OpenRouter.DefaultPDFEngine
-		return initOpenRouterProvider(key, connector.resolveOpenRouterBaseURL(), "", pdfEngine, ProviderOpenRouter, log)
+		return initOpenRouterProvider(key, connector.resolveOpenRouterBaseURL(), "", connector.defaultPDFEngineForInit(), ProviderOpenRouter, log)
 
 	case ProviderMagicProxy:
-		baseURL := normalizeProxyBaseURL(meta.BaseURL)
+		baseURL := normalizeProxyBaseURL(loginCredentialBaseURL(meta))
 		if baseURL == "" {
 			return nil, errors.New("magic proxy base_url is required")
 		}
-		pdfEngine := connector.Config.Providers.OpenRouter.DefaultPDFEngine
-		return initOpenRouterProvider(key, joinProxyPath(baseURL, "/openrouter/v1"), "", pdfEngine, ProviderMagicProxy, log)
+		return initOpenRouterProvider(key, joinProxyPath(baseURL, "/openrouter/v1"), "", connector.defaultPDFEngineForInit(), ProviderMagicProxy, log)
 
 	case ProviderOpenAI:
 		openaiURL := connector.resolveOpenAIBaseURL()
@@ -508,6 +505,15 @@ func initProviderForLogin(key string, meta *UserLoginMetadata, connector *OpenAI
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", meta.Provider)
 	}
+}
+
+func (oc *OpenAIConnector) defaultPDFEngineForInit() string {
+	if oc != nil && oc.Config.Agents != nil && oc.Config.Agents.Defaults != nil {
+		if engine := strings.TrimSpace(oc.Config.Agents.Defaults.PDFEngine); engine != "" {
+			return engine
+		}
+	}
+	return "mistral-ocr"
 }
 
 // initOpenRouterProvider creates an OpenRouter-compatible provider with PDF support.
@@ -604,7 +610,6 @@ func (oc *AIClient) saveUserMessage(ctx context.Context, evt *event.Event, msg *
 	if evt != nil {
 		msg.MXID = evt.ID
 	}
-	ensureCanonicalUserMessage(msg)
 	if _, err := oc.UserLogin.Bridge.GetGhostByID(ctx, msg.SenderID); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure user ghost before saving message")
 	}
@@ -632,12 +637,14 @@ func (oc *AIClient) dispatchOrQueueCore(
 	shouldSteer := behavior.Steer
 	shouldFollowup := behavior.Followup
 	hasDBMessage := userMessage != nil
-	queueDecision := airuntime.DecideQueueAction(queueSettings.Mode, oc.roomHasActiveRun(roomID), false)
+	roomBusy := oc.roomHasActiveRun(roomID) || oc.roomHasPendingQueueWork(roomID)
+	queueDecision := airuntime.DecideQueueAction(queueSettings.Mode, roomBusy, false)
 	if queueDecision.Action == airuntime.QueueActionInterruptAndRun {
 		oc.cancelRoomRun(roomID)
 		oc.clearPendingQueue(roomID)
+		roomBusy = false
 	}
-	if oc.acquireRoom(roomID) {
+	if !roomBusy && oc.acquireRoom(roomID) {
 		oc.stopQueueTyping(roomID)
 		if hasDBMessage {
 			oc.saveUserMessage(ctx, evt, userMessage)
@@ -794,9 +801,9 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 		}
 		switch item.pending.Type {
 		case pendingTypeText:
-			promptContext, err = oc.buildContextWithLinkContext(promptCtx, item.pending.Portal, metaSnapshot, prompt, item.rawEventContent, eventID)
+			promptContext, err = oc.buildCurrentTurnWithLinks(promptCtx, item.pending.Portal, metaSnapshot, prompt, item.rawEventContent, eventID)
 		case pendingTypeImage, pendingTypePDF, pendingTypeAudio, pendingTypeVideo:
-			promptContext, err = oc.buildContextWithMedia(promptCtx, item.pending.Portal, metaSnapshot, item.pending.MessageBody, item.pending.MediaURL, item.pending.MimeType, item.pending.EncryptedFile, item.pending.Type, eventID)
+			promptContext, err = oc.buildMediaTurnContext(promptCtx, item.pending.Portal, metaSnapshot, item.pending.MessageBody, item.pending.MediaURL, item.pending.MimeType, item.pending.EncryptedFile, item.pending.Type, eventID)
 		case pendingTypeRegenerate:
 			promptContext, err = oc.buildContextForRegenerate(promptCtx, item.pending.Portal, metaSnapshot, item.pending.MessageBody, item.pending.SourceEventID)
 		case pendingTypeEditRegenerate:
@@ -1010,6 +1017,7 @@ func updateGhostLastSync(_ context.Context, ghost *bridgev2.Ghost) bool {
 
 func (oc *AIClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
 	meta := portalMeta(portal)
+	isModelRoom := meta != nil && meta.ResolvedTarget != nil && meta.ResolvedTarget.Kind == ResolvedTargetModel
 
 	// Always recompute effective room capabilities from the resolved room target.
 	modelCaps := oc.getRoomCapabilities(ctx, meta)
@@ -1029,11 +1037,17 @@ func (oc *AIClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal
 
 	if supportsMsgActions {
 		caps.Reply = event.CapLevelFullySupported
-		caps.Edit = event.CapLevelFullySupported
-		caps.EditMaxCount = 10
-		caps.EditMaxAge = ptr.Ptr(jsontime.S(AIEditMaxAge))
 		caps.Reaction = event.CapLevelFullySupported
 		caps.ReactionCount = 1
+		if isModelRoom {
+			caps.Edit = event.CapLevelRejected
+			caps.EditMaxCount = 0
+			caps.EditMaxAge = nil
+		} else {
+			caps.Edit = event.CapLevelFullySupported
+			caps.EditMaxCount = 10
+			caps.EditMaxAge = ptr.Ptr(jsontime.S(AIEditMaxAge))
+		}
 	} else {
 		// Use explicit rejected levels so features remain visible in
 		// com.beeper.room_features instead of being omitted by omitempty.
@@ -1149,18 +1163,32 @@ func (oc *AIClient) defaultModelForProvider() string {
 	if loginMeta == nil {
 		return DefaultModelOpenRouter
 	}
-	providers := oc.connector.Config.Providers
-
 	switch loginMeta.Provider {
 	case ProviderOpenAI:
-		if providers.OpenAI.DefaultModel != "" {
-			return providers.OpenAI.DefaultModel
-		}
+		return oc.defaultModelSelection(ProviderOpenAI).Primary
+	case ProviderOpenRouter, ProviderMagicProxy:
+		return oc.defaultModelSelection(ProviderOpenRouter).Primary
+	default:
+		return DefaultModelOpenRouter
+	}
+}
+
+func (oc *AIClient) defaultModelSelection(provider string) ModelSelectionConfig {
+	if oc == nil || oc.connector == nil || oc.connector.Config.Agents == nil || oc.connector.Config.Agents.Defaults == nil || oc.connector.Config.Agents.Defaults.Model == nil {
+		return ModelSelectionConfig{Primary: defaultModelForProviderName(provider)}
+	}
+	selection := *oc.connector.Config.Agents.Defaults.Model
+	if strings.TrimSpace(selection.Primary) == "" {
+		selection.Primary = defaultModelForProviderName(provider)
+	}
+	return selection
+}
+
+func defaultModelForProviderName(provider string) string {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case ProviderOpenAI:
 		return DefaultModelOpenAI
 	case ProviderOpenRouter, ProviderMagicProxy:
-		if providers.OpenRouter.DefaultModel != "" {
-			return providers.OpenRouter.DefaultModel
-		}
 		return DefaultModelOpenRouter
 	default:
 		return DefaultModelOpenRouter
@@ -1217,8 +1245,8 @@ func (oc *AIClient) profilePromptSupplement() string {
 func getLinkPreviewConfig(connectorConfig *Config) LinkPreviewConfig {
 	config := DefaultLinkPreviewConfig()
 
-	if connectorConfig.LinkPreviews != nil {
-		cfg := connectorConfig.LinkPreviews
+	if connectorConfig.Tools.Links != nil {
+		cfg := connectorConfig.Tools.Links
 		// Apply explicit settings only if they differ from zero values
 		if !cfg.Enabled {
 			config.Enabled = cfg.Enabled
@@ -1491,24 +1519,21 @@ func (oc *AIClient) isGroupChat(ctx context.Context, portal *bridgev2.Portal) bo
 	return len(members) > 2
 }
 
+func (oc *AIClient) defaultPDFEngine() string {
+	if oc != nil && oc.connector != nil {
+		return oc.connector.defaultPDFEngineForInit()
+	}
+	return "mistral-ocr"
+}
+
 // effectivePDFEngine returns the PDF engine to use for the given portal.
-// Priority: room-level PDFConfig > provider-level config > default "mistral-ocr"
+// Priority: room-level PDFConfig > agent defaults > default "mistral-ocr"
 func (oc *AIClient) effectivePDFEngine(meta *PortalMetadata) string {
 	// Room-level override
 	if meta != nil && meta.PDFConfig != nil && meta.PDFConfig.Engine != "" {
 		return meta.PDFConfig.Engine
 	}
-
-	// Provider-level config
-	loginMeta := loginMetadata(oc.UserLogin)
-	switch loginMeta.Provider {
-	case ProviderOpenRouter, ProviderMagicProxy:
-		if engine := oc.connector.Config.Providers.OpenRouter.DefaultPDFEngine; engine != "" {
-			return engine
-		}
-	}
-
-	return "mistral-ocr" // Default
+	return oc.defaultPDFEngine()
 }
 
 // validateModel checks if a model is available for this user
@@ -1575,8 +1600,8 @@ func resolveModelIDFromManifest(modelID string) string {
 	return ""
 }
 
-// listAvailableModels fetches models from OpenAI API and caches them
-// Returns ModelInfo list from the provider
+// listAvailableModels loads models from the derived catalog and caches them.
+// The implicit catalog is fed from the OpenRouter-backed manifest.
 func (oc *AIClient) listAvailableModels(ctx context.Context, forceRefresh bool) ([]ModelInfo, error) {
 	meta := loginMetadata(oc.UserLogin)
 
@@ -1663,50 +1688,10 @@ func (oc *AIClient) updateAssistantGeneratedFiles(ctx context.Context, portal *b
 	oc.Log().Warn().Msg("No assistant message found to update with async GeneratedFiles")
 }
 
-func (oc *AIClient) promptContextToDispatchMessages(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	promptContext PromptContext,
-) []openai.ChatCompletionMessageParamUnion {
-	promptMessages := bridgesdk.PromptContextToChatCompletionMessages(promptContext.PromptContext, oc.isOpenRouterProvider())
-	promptMessages = oc.augmentPromptWithIntegrations(ctx, portal, meta, promptMessages)
-	if meta != nil && IsGoogleModel(oc.effectiveModel(meta)) {
-		promptMessages = SanitizeGoogleTurnOrdering(promptMessages)
-	}
-	return promptMessages
-}
-
 type historyLoadResult struct {
 	rows      []*database.Message
 	hasVision bool
 	resetAt   int64
-}
-
-// fetchHistoryRows resolves the history limit, extracts the resetAt cutoff,
-// and fetches the last N messages. Returns nil when the history limit is zero.
-func (oc *AIClient) fetchHistoryRows(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-) (*historyLoadResult, error) {
-	historyLimit := oc.historyLimit(ctx, portal, meta)
-	if historyLimit <= 0 {
-		return nil, nil
-	}
-	resetAt := int64(0)
-	if meta != nil {
-		resetAt = meta.SessionResetAt
-	}
-	history, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, historyLimit)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load prompt history: %w", err)
-	}
-	return &historyLoadResult{
-		rows:      history,
-		hasVision: oc.getModelCapabilitiesForMeta(ctx, meta).SupportsVision,
-		resetAt:   resetAt,
-	}, nil
 }
 
 func (oc *AIClient) loadHistoryMessages(
@@ -1714,26 +1699,7 @@ func (oc *AIClient) loadHistoryMessages(
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
 ) ([]PromptMessage, error) {
-	hr, err := oc.fetchHistoryRows(ctx, portal, meta)
-	if err != nil {
-		return nil, err
-	}
-	if hr == nil {
-		return nil, nil
-	}
-	var messages []PromptMessage
-	for i := len(hr.rows) - 1; i >= 0; i-- {
-		msgMeta := messageMeta(hr.rows[i])
-		if !shouldIncludeInHistory(msgMeta) {
-			continue
-		}
-		if hr.resetAt > 0 && hr.rows[i].Timestamp.UnixMilli() < hr.resetAt {
-			continue
-		}
-		injectImages := hr.hasVision && i < maxHistoryImageMessages
-		messages = append(messages, oc.historyMessageBundle(ctx, msgMeta, injectImages)...)
-	}
-	return messages, nil
+	return oc.replayHistoryMessages(ctx, portal, meta, historyReplayOptions{mode: historyReplayNormal})
 }
 
 func (oc *AIClient) buildBaseContext(
@@ -1741,9 +1707,9 @@ func (oc *AIClient) buildBaseContext(
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
 ) (PromptContext, error) {
-	var promptContext PromptContext
-	bridgesdk.AppendChatMessagesToPromptContext(&promptContext.PromptContext, maybePrependSessionGreeting(ctx, portal, meta, nil, oc.log))
-	bridgesdk.AppendChatMessagesToPromptContext(&promptContext.PromptContext, oc.buildSystemMessages(ctx, portal, meta))
+	promptContext := PromptContext{
+		SystemPrompt: oc.buildConversationSystemPromptText(ctx, portal, meta, true),
+	}
 
 	historyMessages, err := oc.loadHistoryMessages(ctx, portal, meta)
 	if err != nil {
@@ -1752,18 +1718,6 @@ func (oc *AIClient) buildBaseContext(
 	promptContext.Messages = append(promptContext.Messages, historyMessages...)
 
 	return promptContext, nil
-}
-
-func (oc *AIClient) buildBasePrompt(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-) ([]openai.ChatCompletionMessageParamUnion, error) {
-	promptContext, err := oc.buildBaseContext(ctx, portal, meta)
-	if err != nil {
-		return nil, err
-	}
-	return oc.promptContextToDispatchMessages(ctx, portal, meta, promptContext), nil
 }
 
 func (oc *AIClient) applyAbortHint(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, body string) string {
@@ -1788,8 +1742,9 @@ type inboundPromptResult struct {
 }
 
 // prepareInboundPromptContext builds the base context, resolves inbound context,
-// appends the meta system prompt, resolves body overrides, and applies the abort hint.
-// Callers must call applyUntrustedPrefix at the appropriate point in message assembly.
+// appends trusted inbound metadata to the system prompt, resolves body overrides,
+// and applies the abort hint. Untrusted inbound prefixes are returned separately
+// so callers can place them deterministically in the user prompt body.
 func (oc *AIClient) prepareInboundPromptContext(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -1797,12 +1752,19 @@ func (oc *AIClient) prepareInboundPromptContext(
 	userText string,
 	eventID id.EventID,
 ) (inboundPromptResult, error) {
-	promptContext, err := oc.buildBaseContext(ctx, portal, meta)
+	promptContext := PromptContext{
+		SystemPrompt: oc.buildConversationSystemPromptText(ctx, portal, meta, true),
+	}
+	historyMessages, err := oc.replayHistoryMessages(ctx, portal, meta, historyReplayOptions{
+		mode:             historyReplayNormal,
+		excludeMessageID: networkid.MessageID(eventID),
+	})
 	if err != nil {
 		return inboundPromptResult{}, err
 	}
+	promptContext.Messages = append(promptContext.Messages, historyMessages...)
 	inboundCtx := oc.resolvePromptInboundContext(ctx, portal, userText, eventID)
-	bridgesdk.AppendPromptText(&promptContext.SystemPrompt, airuntime.BuildInboundMetaSystemPrompt(inboundCtx))
+	AppendPromptText(&promptContext.SystemPrompt, airuntime.BuildInboundMetaSystemPrompt(inboundCtx))
 
 	resolved := strings.TrimSpace(userText)
 	if body := strings.TrimSpace(inboundCtx.BodyForAgent); body != "" {
@@ -1817,50 +1779,6 @@ func (oc *AIClient) prepareInboundPromptContext(
 		ResolvedBody:    resolved,
 		UntrustedPrefix: untrustedPrefix,
 	}, nil
-}
-
-func (r *inboundPromptResult) applyUntrustedPrefix() {
-	if r.UntrustedPrefix != "" {
-		r.ResolvedBody = r.UntrustedPrefix + "\n\n" + r.ResolvedBody
-	}
-}
-
-func (oc *AIClient) buildContextWithLinkContext(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	latest string,
-	rawEventContent map[string]any,
-	eventID id.EventID,
-) (PromptContext, error) {
-	result, err := oc.prepareInboundPromptContext(ctx, portal, meta, latest, eventID)
-	if err != nil {
-		return PromptContext{}, err
-	}
-
-	if linkContext := oc.buildLinkContext(ctx, latest, rawEventContent); linkContext != "" {
-		result.ResolvedBody += linkContext
-	}
-
-	if portal != nil && portal.MXID != "" {
-		reactionFeedback := DrainReactionFeedback(portal.MXID)
-		if len(reactionFeedback) > 0 {
-			if feedbackText := FormatReactionFeedback(reactionFeedback); feedbackText != "" {
-				result.ResolvedBody = feedbackText + "\n" + result.ResolvedBody
-			}
-		}
-	}
-
-	result.applyUntrustedPrefix()
-
-	result.PromptContext.Messages = append(result.PromptContext.Messages, PromptMessage{
-		Role: PromptRoleUser,
-		Blocks: []PromptBlock{{
-			Type: PromptBlockText,
-			Text: result.ResolvedBody,
-		}},
-	})
-	return result.PromptContext, nil
 }
 
 // buildLinkContext extracts URLs from the message, fetches previews, and returns formatted context.
@@ -1923,8 +1841,8 @@ func (oc *AIClient) buildLinkContext(ctx context.Context, message string, rawEve
 	return FormatPreviewsForContext(allPreviews, config.MaxContentChars)
 }
 
-// buildPromptWithMedia builds a prompt with media content.
-func (oc *AIClient) buildContextWithMedia(
+// buildMediaTurnContext builds a prompt turn with media content.
+func (oc *AIClient) buildMediaTurnContext(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
@@ -1935,67 +1853,15 @@ func (oc *AIClient) buildContextWithMedia(
 	mediaType pendingMessageType,
 	eventID id.EventID,
 ) (PromptContext, error) {
-	result, err := oc.prepareInboundPromptContext(ctx, portal, meta, caption, eventID)
-	if err != nil {
-		return PromptContext{}, err
-	}
-	result.applyUntrustedPrefix()
-	blocks := make([]PromptBlock, 0, 2)
-	if strings.TrimSpace(result.ResolvedBody) != "" {
-		blocks = append(blocks, PromptBlock{Type: PromptBlockText, Text: result.ResolvedBody})
-	}
-
-	switch mediaType {
-	case pendingTypeImage:
-		b64Data, actualMimeType, err := oc.downloadMediaBase64(ctx, mediaURL, encryptedFile, 20, mimeType) // 20MB limit for images
-		if err != nil {
-			return PromptContext{}, fmt.Errorf("failed to download image: %w", err)
-		}
-		blocks = append(blocks, PromptBlock{
-			Type:     PromptBlockImage,
-			ImageB64: b64Data,
-			MimeType: actualMimeType,
-		})
-
-	case pendingTypePDF:
-		b64Data, actualMimeType, err := oc.downloadMediaBase64(ctx, mediaURL, encryptedFile, 50, mimeType) // 50MB limit
-		if err != nil {
-			return PromptContext{}, fmt.Errorf("failed to download PDF: %w", err)
-		}
-		if actualMimeType == "" {
-			actualMimeType = "application/pdf"
-		}
-		blocks = append(blocks, PromptBlock{
-			Type:     PromptBlockFile,
-			FileB64:  bridgesdk.BuildDataURL(actualMimeType, b64Data),
-			Filename: "document.pdf",
-			MimeType: actualMimeType,
-		})
-
-	case pendingTypeAudio:
-		if strings.TrimSpace(result.ResolvedBody) == "" {
-			blocks = append(blocks, PromptBlock{
-				Type: PromptBlockText,
-				Text: fmt.Sprintf("Audio attachment: %s", mediaURL),
-			})
-		}
-
-	case pendingTypeVideo:
-		if strings.TrimSpace(result.ResolvedBody) == "" {
-			blocks = append(blocks, PromptBlock{
-				Type: PromptBlockText,
-				Text: fmt.Sprintf("Video attachment: %s", mediaURL),
-			})
-		}
-
-	default:
-		return PromptContext{}, fmt.Errorf("unsupported media type: %s", mediaType)
-	}
-	result.PromptContext.Messages = append(result.PromptContext.Messages, PromptMessage{
-		Role:   PromptRoleUser,
-		Blocks: blocks,
+	return oc.buildPromptContextForTurn(ctx, portal, meta, caption, eventID, currentTurnPromptOptions{
+		currentTurnTextOptions: currentTurnTextOptions{includeLinkScope: true},
+		attachment: &turnAttachmentOptions{
+			mediaURL:      mediaURL,
+			mimeType:      mimeType,
+			encryptedFile: encryptedFile,
+			mediaType:     mediaType,
+		},
 	})
-	return result.PromptContext, nil
 }
 
 // buildPromptUpToMessage builds a prompt including messages up to and including the specified message
@@ -2006,55 +1872,21 @@ func (oc *AIClient) buildContextUpToMessage(
 	targetMessageID networkid.MessageID,
 	newBody string,
 ) (PromptContext, error) {
-	var promptContext PromptContext
-	bridgesdk.AppendChatMessagesToPromptContext(&promptContext.PromptContext, oc.buildSystemMessages(ctx, portal, meta))
-
-	hr, err := oc.fetchHistoryRows(ctx, portal, meta)
+	base := PromptContext{
+		SystemPrompt: oc.buildConversationSystemPromptText(ctx, portal, meta, false),
+	}
+	historyMessages, err := oc.replayHistoryMessages(ctx, portal, meta, historyReplayOptions{
+		mode:            historyReplayRewrite,
+		targetMessageID: targetMessageID,
+	})
 	if err != nil {
 		return PromptContext{}, err
 	}
-	if hr != nil {
-		// Add messages up to the target message, replacing the target with newBody
-		for i := len(hr.rows) - 1; i >= 0; i-- {
-			msg := hr.rows[i]
-			msgMeta := messageMeta(msg)
-
-			// Stop after adding the target message
-			if msg.ID == targetMessageID {
-				body := newBody
-				promptContext.Messages = append(promptContext.Messages, PromptMessage{
-					Role: PromptRoleUser,
-					Blocks: []PromptBlock{{
-						Type: PromptBlockText,
-						Text: body,
-					}},
-				})
-				break
-			}
-
-			if !shouldIncludeInHistory(msgMeta) {
-				continue
-			}
-			if hr.resetAt > 0 && msg.Timestamp.UnixMilli() < hr.resetAt {
-				continue
-			}
-
-			injectImages := hr.hasVision && i < maxHistoryImageMessages
-			promptContext.Messages = append(promptContext.Messages, oc.historyMessageBundle(ctx, msgMeta, injectImages)...)
-		}
-	} else {
-		body := strings.TrimSpace(newBody)
-		body = airuntime.SanitizeChatMessageForDisplay(body, true)
-		promptContext.Messages = append(promptContext.Messages, PromptMessage{
-			Role: PromptRoleUser,
-			Blocks: []PromptBlock{{
-				Type: PromptBlockText,
-				Text: body,
-			}},
-		})
-	}
-
-	return promptContext, nil
+	base.Messages = append(base.Messages, historyMessages...)
+	body := strings.TrimSpace(newBody)
+	body = airuntime.SanitizeChatMessageForDisplay(body, true)
+	base.Messages = append(base.Messages, newUserTextPromptMessage(body))
+	return base, nil
 }
 
 // downloadAndEncodeMedia downloads media and returns base64-encoded data.
@@ -2069,27 +1901,6 @@ func (oc *AIClient) downloadAndEncodeMedia(ctx context.Context, mxcURL string, e
 		return "", "", err
 	}
 	return base64.StdEncoding.EncodeToString(data), mimeType, nil
-}
-
-// getAudioFormat extracts the audio format from a MIME type for OpenRouter API
-func getAudioFormat(mimeType string) string {
-	switch mimeType {
-	case "audio/wav", "audio/x-wav":
-		return "wav"
-	case "audio/mpeg", "audio/mp3":
-		return "mp3"
-	case "audio/webm":
-		return "webm"
-	case "audio/ogg":
-		return "ogg"
-	case "audio/flac":
-		return "flac"
-	case "audio/mp4", "audio/x-m4a":
-		return "mp4"
-	default:
-		// Default to mp3 for unknown formats
-		return "mp3"
-	}
 }
 
 // ensureGhostDisplayName ensures the ghost has its display name set before sending messages.
@@ -2223,8 +2034,9 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 	ctx = withInboundContext(ctx, inboundCtx)
 	rawEventContent := map[string]any(nil)
 	if last.Event != nil && last.Event.Content.Raw != nil {
-		rawEventContent = last.Event.Content.Raw
+		rawEventContent = clonePendingRawMap(last.Event.Content.Raw)
 	}
+	pendingEvent := snapshotPendingEvent(last.Event)
 
 	extraStatusEvents := make([]*event.Event, 0, len(entries)-1)
 	if len(entries) > 1 {
@@ -2240,7 +2052,7 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 	}
 
 	// Build prompt with combined body
-	promptContext, err := oc.buildContextWithLinkContext(statusCtx, last.Portal, last.Meta, combinedBody, rawEventContent, last.Event.ID)
+	promptContext, err := oc.buildCurrentTurnWithLinks(statusCtx, last.Portal, last.Meta, combinedBody, rawEventContent, last.Event.ID)
 	if err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg("Failed to build prompt for debounced messages")
 		oc.notifyMatrixSendFailure(statusCtx, last.Portal, last.Event, err)
@@ -2261,7 +2073,6 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 		Timestamp: agentremote.MatrixEventTimestamp(last.Event),
 	}
 	setCanonicalTurnDataFromPromptMessages(userMessage.Metadata.(*MessageMetadata), promptTail(promptContext, 1))
-	ensureCanonicalUserMessage(userMessage)
 
 	// Save user message to database - we must do this ourselves since we already
 	// returned Pending: true to the bridge framework when debouncing started
@@ -2283,7 +2094,7 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 	}
 
 	pending := pendingMessage{
-		Event:           last.Event,
+		Event:           pendingEvent,
 		Portal:          last.Portal,
 		Meta:            last.Meta,
 		InboundContext:  &inboundCtx,
@@ -2300,14 +2111,14 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 	}
 	queueItem := pendingQueueItem{
 		pending:         pending,
-		messageID:       string(last.Event.ID),
+		messageID:       string(pendingEvent.ID),
 		summaryLine:     combinedRaw,
 		enqueuedAt:      time.Now().UnixMilli(),
 		rawEventContent: rawEventContent,
 	}
 	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(statusCtx, last.Portal, last.Meta, "", airuntime.QueueInlineOptions{})
 
-	_, _ = oc.dispatchOrQueue(statusCtx, last.Event, last.Portal, last.Meta, nil, queueItem, queueSettings, promptContext)
+	_, _ = oc.dispatchOrQueue(statusCtx, pendingEvent, last.Portal, last.Meta, nil, queueItem, queueSettings, promptContext)
 
 }
 

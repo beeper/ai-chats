@@ -196,7 +196,6 @@ func ExecuteCommand(ctx context.Context, call iruntime.CommandCall, deps Command
 	}
 	action := strings.ToLower(strings.TrimSpace(call.Args[0]))
 	scope := iruntime.ToolScope{
-		Client: call.Scope.Client,
 		Portal: call.Scope.Portal,
 		Meta:   call.Scope.Meta,
 	}

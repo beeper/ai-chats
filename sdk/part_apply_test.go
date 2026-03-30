@@ -8,7 +8,7 @@ import (
 )
 
 func newPartApplyTestTurn() *Turn {
-	conv := NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &Config{}, nil)
+	conv := NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &Config[*struct{}, *struct{}]{}, nil)
 	return conv.StartTurn(context.Background(), &Agent{ID: "agent"}, nil)
 }
 

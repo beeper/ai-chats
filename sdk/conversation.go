@@ -60,13 +60,6 @@ func (c *Conversation) getIntent(ctx context.Context) (bridgev2.MatrixAPI, error
 	return intent, nil
 }
 
-func (c *Conversation) configOrNil() *Config {
-	if c.runtime == nil {
-		return nil
-	}
-	return c.runtime.config()
-}
-
 func (c *Conversation) stateStore() *conversationStateStore {
 	if c == nil || c.runtime == nil {
 		return nil
@@ -97,15 +90,14 @@ func (c *Conversation) resolveDefaultAgent(ctx context.Context) (*Agent, error) 
 			return agent, nil
 		}
 	}
-	cfg := c.configOrNil()
-	if cfg == nil {
+	if c.runtime == nil {
 		return nil, nil
 	}
-	if cfg.Agent != nil {
-		return cfg.Agent, nil
+	if agent := c.runtime.agent(); agent != nil {
+		return agent, nil
 	}
-	if cfg.AgentCatalog != nil {
-		return cfg.AgentCatalog.DefaultAgent(ctx, c.login)
+	if catalog := c.runtime.agentCatalog(); catalog != nil {
+		return catalog.DefaultAgent(ctx, c.login)
 	}
 	return nil, nil
 }
@@ -114,15 +106,14 @@ func (c *Conversation) resolveAgentByIdentifier(ctx context.Context, identifier 
 	if c == nil || strings.TrimSpace(identifier) == "" {
 		return nil, nil
 	}
-	cfg := c.configOrNil()
-	if cfg == nil {
+	if c.runtime == nil {
 		return nil, nil
 	}
-	if cfg.Agent != nil && cfg.Agent.ID == identifier {
-		return cfg.Agent, nil
+	if agent := c.runtime.agent(); agent != nil && agent.ID == identifier {
+		return agent, nil
 	}
-	if cfg.AgentCatalog != nil {
-		return cfg.AgentCatalog.ResolveAgent(ctx, c.login, identifier)
+	if catalog := c.runtime.agentCatalog(); catalog != nil {
+		return catalog.ResolveAgent(ctx, c.login, identifier)
 	}
 	return nil, nil
 }
@@ -131,9 +122,8 @@ func (c *Conversation) currentRoomFeatures(ctx context.Context) *RoomFeatures {
 	if c == nil {
 		return nil
 	}
-	cfg := c.configOrNil()
-	if cfg != nil && cfg.GetCapabilities != nil {
-		if rf := cfg.GetCapabilities(c.runtime.sessionValue(), c); rf != nil {
+	if c.runtime != nil {
+		if rf := c.runtime.roomFeatures(c); rf != nil {
 			return rf
 		}
 	}
@@ -152,9 +142,6 @@ func (c *Conversation) currentRoomFeatures(ctx context.Context) *RoomFeatures {
 		}
 	}
 	if len(agents) == 0 {
-		if cfg != nil && cfg.RoomFeatures != nil {
-			return cfg.RoomFeatures
-		}
 		return defaultSDKFeatureConfig()
 	}
 	return computeRoomFeaturesForAgents(agents)
@@ -251,14 +238,6 @@ func (c *Conversation) Stream(ctx context.Context) *Turn {
 // StartTurn creates a new Turn for this conversation.
 func (c *Conversation) StartTurn(ctx context.Context, agent *Agent, source *SourceRef) *Turn {
 	return newTurn(ctx, c, agent, source)
-}
-
-// Session returns the session state from the client, if available.
-func (c *Conversation) Session() any {
-	if c.runtime == nil {
-		return nil
-	}
-	return c.runtime.sessionValue()
 }
 
 // Context returns the conversation's context.

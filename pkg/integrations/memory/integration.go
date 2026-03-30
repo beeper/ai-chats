@@ -9,6 +9,7 @@ import (
 
 	"github.com/openai/openai-go/v3"
 	"go.mau.fi/util/dbutil"
+	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/beeper/agentremote/pkg/agents"
 	iruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
@@ -26,8 +27,8 @@ type ProviderStatus = memorycore.ProviderStatus
 type ResolvedConfig = memorycore.ResolvedConfig
 
 // Integration is the self-owned memory integration module.
-// It implements ToolIntegration, PromptIntegration, CommandIntegration,
-// EventIntegration, LoginPurgeIntegration, and LoginLifecycleIntegration
+// It implements ToolIntegration, CommandIntegration, EventIntegration,
+// LoginPurgeIntegration, and LoginLifecycleIntegration
 // directly, wiring all deps from Host
 // capability interfaces.
 type Integration struct {
@@ -69,7 +70,7 @@ func (i *Integration) ToolAvailability(_ context.Context, scope iruntime.ToolSco
 		return false, false, iruntime.SourceGlobalDefault, ""
 	}
 	if scope.Meta != nil {
-		agentID := i.host.AgentIDFromMeta(scope.Meta)
+		agentID := i.agentIDFromEventMeta(scope.Meta)
 		_, errMsg := i.getManager(agentID)
 		if errMsg != "" {
 			return true, false, iruntime.SourceProviderLimit, errMsg
@@ -78,12 +79,8 @@ func (i *Integration) ToolAvailability(_ context.Context, scope iruntime.ToolSco
 	return true, true, iruntime.SourceGlobalDefault, ""
 }
 
-func (i *Integration) AdditionalSystemMessages(_ context.Context, _ iruntime.PromptScope) []openai.ChatCompletionMessageParamUnion {
-	return nil
-}
-
-func (i *Integration) AugmentPrompt(ctx context.Context, scope iruntime.PromptScope, prompt []openai.ChatCompletionMessageParamUnion) []openai.ChatCompletionMessageParamUnion {
-	return AugmentPrompt(ctx, scope, prompt, PromptAugmentDeps{
+func (i *Integration) PromptContextText(ctx context.Context, scope iruntime.PromptScope) string {
+	return BuildPromptContextText(ctx, scope.Portal, scope.Meta, PromptContextDeps{
 		ShouldInjectContext:   i.shouldInjectMemoryPromptContext,
 		ShouldBootstrap:       i.shouldBootstrapMemoryPromptContext,
 		ResolveBootstrapPaths: i.resolveMemoryBootstrapPaths,
@@ -138,16 +135,16 @@ func (i *Integration) OnCompactionLifecycle(ctx context.Context, evt iruntime.Co
 	}
 	switch evt.Phase {
 	case iruntime.CompactionLifecycleStart:
-		i.host.SetModuleMeta(evt.Meta, "compaction_in_flight", true)
+		evt.Meta.SetModuleMetaValue("compaction_in_flight", true)
 	case iruntime.CompactionLifecycleEnd:
-		i.host.SetModuleMeta(evt.Meta, "compaction_in_flight", false)
-		i.host.SetModuleMeta(evt.Meta, "last_compaction_at", time.Now().UnixMilli())
-		i.host.SetModuleMeta(evt.Meta, "last_compaction_dropped_count", evt.DroppedCount)
+		evt.Meta.SetModuleMetaValue("compaction_in_flight", false)
+		evt.Meta.SetModuleMetaValue("last_compaction_at", time.Now().UnixMilli())
+		evt.Meta.SetModuleMetaValue("last_compaction_dropped_count", evt.DroppedCount)
 	case iruntime.CompactionLifecycleFail:
-		i.host.SetModuleMeta(evt.Meta, "compaction_in_flight", false)
-		i.host.SetModuleMeta(evt.Meta, "last_compaction_error", strings.TrimSpace(evt.Error))
+		evt.Meta.SetModuleMetaValue("compaction_in_flight", false)
+		evt.Meta.SetModuleMetaValue("last_compaction_error", strings.TrimSpace(evt.Error))
 	case iruntime.CompactionLifecycleRefresh:
-		i.host.SetModuleMeta(evt.Meta, "last_compaction_refresh_at", time.Now().UnixMilli())
+		evt.Meta.SetModuleMetaValue("last_compaction_refresh_at", time.Now().UnixMilli())
 	}
 	if evt.Portal == nil {
 		return
@@ -204,11 +201,6 @@ func (i *Integration) buildCommandExecDeps() CommandExecDeps {
 	}
 }
 
-func asOverflowCall(call any) (iruntime.ContextOverflowCall, bool) {
-	oc, ok := call.(iruntime.ContextOverflowCall)
-	return oc, ok
-}
-
 func toInt64(v any) int64 {
 	switch n := v.(type) {
 	case int64:
@@ -228,50 +220,39 @@ func (i *Integration) buildOverflowDeps() OverflowDeps {
 		TrimPrompt: func(prompt []openai.ChatCompletionMessageParamUnion) []openai.ChatCompletionMessageParamUnion {
 			return i.host.SmartTruncatePrompt(prompt, 0.5)
 		},
-		ContextWindow: func(call any) int {
-			oc, ok := asOverflowCall(call)
-			if !ok {
-				return 128000
-			}
-			return i.host.ContextWindow(oc.Meta)
+		ContextWindow: func(call iruntime.ContextOverflowCall) int {
+			return i.host.ContextWindow(call.Meta)
 		},
 		ReserveTokens: func() int {
 			return i.host.CompactorReserveTokens()
 		},
-		EffectiveModel: func(call any) string {
-			oc, ok := asOverflowCall(call)
-			if !ok {
-				return ""
-			}
-			return i.host.EffectiveModel(oc.Meta)
+		EffectiveModel: func(call iruntime.ContextOverflowCall) string {
+			return i.host.EffectiveModel(call.Meta)
 		},
 		EstimateTokens: func(prompt []openai.ChatCompletionMessageParamUnion, model string) int {
 			return i.host.EstimateTokens(prompt, model)
 		},
-		AlreadyFlushed: func(call any) bool {
-			oc, ok := asOverflowCall(call)
-			if !ok {
+		AlreadyFlushed: func(call iruntime.ContextOverflowCall) bool {
+			if call.Meta == nil {
 				return false
 			}
-			flushAtMs := toInt64(i.host.GetModuleMeta(oc.Meta, "overflow_flush_at"))
+			flushAtMs := toInt64(call.Meta.ModuleMetaValue("overflow_flush_at"))
 			if flushAtMs == 0 {
 				return false
 			}
-			flushCC := toInt64(i.host.GetModuleMeta(oc.Meta, "overflow_flush_compaction_count"))
-			return int(flushCC) == i.host.CompactionCount(oc.Meta)
+			flushCC := toInt64(call.Meta.ModuleMetaValue("overflow_flush_compaction_count"))
+			return int(flushCC) == call.Meta.CompactionCounter()
 		},
-		MarkFlushed: func(ctx context.Context, call any) {
-			oc, _ := asOverflowCall(call)
-			if oc.Portal == nil || oc.Meta == nil {
+		MarkFlushed: func(ctx context.Context, call iruntime.ContextOverflowCall) {
+			if call.Portal == nil || call.Meta == nil {
 				return
 			}
-			i.host.SetModuleMeta(oc.Meta, "overflow_flush_at", time.Now().UnixMilli())
-			i.host.SetModuleMeta(oc.Meta, "overflow_flush_compaction_count", i.host.CompactionCount(oc.Meta))
-			_ = i.host.SavePortal(ctx, oc.Portal, "overflow flush")
+			call.Meta.SetModuleMetaValue("overflow_flush_at", time.Now().UnixMilli())
+			call.Meta.SetModuleMetaValue("overflow_flush_compaction_count", call.Meta.CompactionCounter())
+			_ = i.host.SavePortal(ctx, call.Portal, "overflow flush")
 		},
-		RunFlushToolLoop: func(ctx context.Context, call any, model string, prompt []openai.ChatCompletionMessageParamUnion) (bool, error) {
-			oc, _ := asOverflowCall(call)
-			return i.runFlushToolLoop(ctx, oc.Portal, oc.Meta, model, prompt)
+		RunFlushToolLoop: func(ctx context.Context, call iruntime.ContextOverflowCall, model string, prompt []openai.ChatCompletionMessageParamUnion) (bool, error) {
+			return i.runFlushToolLoop(ctx, call.Portal, call.Meta, model, prompt)
 		},
 		OnError: func(_ context.Context, err error) {
 			i.host.Logger().Warn("overflow flush failed", map[string]any{"error": err.Error()})
@@ -279,7 +260,7 @@ func (i *Integration) buildOverflowDeps() OverflowDeps {
 	}
 }
 
-func (i *Integration) shouldInjectMemoryPromptContext(scope iruntime.PromptScope) bool {
+func (i *Integration) shouldInjectMemoryPromptContext(_ *bridgev2.Portal, _ iruntime.Meta) bool {
 	if cfg := i.host.ModuleConfig(moduleName); cfg != nil {
 		inject, _ := cfg["inject_context"].(bool)
 		return inject
@@ -287,15 +268,18 @@ func (i *Integration) shouldInjectMemoryPromptContext(scope iruntime.PromptScope
 	return false
 }
 
-func (i *Integration) shouldBootstrapMemoryPromptContext(scope iruntime.PromptScope) bool {
-	raw := i.host.GetModuleMeta(scope.Meta, "memory_bootstrap_at")
+func (i *Integration) shouldBootstrapMemoryPromptContext(_ *bridgev2.Portal, meta iruntime.Meta) bool {
+	if meta == nil {
+		return false
+	}
+	raw := meta.ModuleMetaValue("memory_bootstrap_at")
 	if raw == nil {
 		return true
 	}
 	return toInt64(raw) == 0
 }
 
-func (i *Integration) resolveMemoryBootstrapPaths(_ iruntime.PromptScope) []string {
+func (i *Integration) resolveMemoryBootstrapPaths(_ *bridgev2.Portal, _ iruntime.Meta) []string {
 	_, loc := i.host.UserTimezone()
 	if loc == nil {
 		loc = time.UTC
@@ -309,19 +293,16 @@ func (i *Integration) resolveMemoryBootstrapPaths(_ iruntime.PromptScope) []stri
 	}
 }
 
-func (i *Integration) markMemoryPromptBootstrapped(ctx context.Context, scope iruntime.PromptScope) {
-	if scope.Portal == nil || scope.Meta == nil {
+func (i *Integration) markMemoryPromptBootstrapped(ctx context.Context, portal *bridgev2.Portal, meta iruntime.Meta) {
+	if portal == nil || meta == nil {
 		return
 	}
-	i.host.SetModuleMeta(scope.Meta, "memory_bootstrap_at", time.Now().UnixMilli())
-	_ = i.host.SavePortal(ctx, scope.Portal, "memory bootstrap")
+	meta.SetModuleMetaValue("memory_bootstrap_at", time.Now().UnixMilli())
+	_ = i.host.SavePortal(ctx, portal, "memory bootstrap")
 }
 
-func (i *Integration) readMemoryPromptSection(ctx context.Context, scope iruntime.PromptScope, path string) string {
-	agentID := ""
-	if scope.Meta != nil {
-		agentID = i.host.AgentIDFromMeta(scope.Meta)
-	}
+func (i *Integration) readMemoryPromptSection(ctx context.Context, meta iruntime.Meta, path string) string {
+	agentID := i.agentIDFromEventMeta(meta)
 	content, filePath, found, err := i.host.ReadTextFile(ctx, agentID, path)
 	if err != nil || !found {
 		return ""
@@ -358,8 +339,8 @@ func (i *Integration) getManager(agentID string) (*MemorySearchManager, string) 
 
 func (i *Integration) runFlushToolLoop(
 	ctx context.Context,
-	portal any,
-	meta any,
+	portal *bridgev2.Portal,
+	meta iruntime.Meta,
 	model string,
 	messages []openai.ChatCompletionMessageParamUnion,
 ) (bool, error) {
@@ -460,28 +441,20 @@ func (i *Integration) writeMemoryCommandFile(
 	content string,
 	maxBytes int,
 ) (string, error) {
-	agentID := ""
-	if scope.Meta != nil {
-		agentID = i.host.AgentIDFromMeta(scope.Meta)
-	}
+	agentID := i.agentIDFromEventMeta(scope.Meta)
 	return i.host.WriteTextFile(ctx, scope.Portal, scope.Meta, agentID, mode, path, content, maxBytes)
 }
 
-func (i *Integration) agentIDFromEventMeta(meta any) string {
+func (i *Integration) agentIDFromEventMeta(meta iruntime.Meta) string {
 	var rawAgentID string
 	if meta != nil {
-		rawAgentID = i.host.AgentIDFromMeta(meta)
+		rawAgentID = meta.AgentID()
 	}
 	return i.host.ResolveAgentID(rawAgentID, i.host.DefaultAgentID())
 }
 
 func (i *Integration) resolveBridgeDB() *dbutil.Database {
-	raw := i.host.BridgeDB()
-	if raw == nil {
-		return nil
-	}
-	db, _ := raw.(*dbutil.Database)
-	return db
+	return i.host.BridgeDB()
 }
 
 // splitQuotedArgs parses a raw argument string into tokens, respecting quoted segments.

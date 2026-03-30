@@ -9,14 +9,14 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func logResponsesFailure(log zerolog.Logger, err error, params responses.ResponseNewParams, meta *PortalMetadata, messages []openai.ChatCompletionMessageParamUnion, stage string) {
-	logProviderFailure(log, err, meta, messages, stage, "Responses API failure", func(event *zerolog.Event) {
+func logResponsesFailure(log zerolog.Logger, err error, params responses.ResponseNewParams, meta *PortalMetadata, prompt PromptContext, stage string) {
+	logProviderFailure(log, err, meta, prompt, stage, "Responses API failure", func(event *zerolog.Event) {
 		addResponsesParamsSummary(event, params)
 	})
 }
 
-func logChatCompletionsFailure(log zerolog.Logger, err error, params openai.ChatCompletionNewParams, meta *PortalMetadata, messages []openai.ChatCompletionMessageParamUnion, stage string) {
-	logProviderFailure(log, err, meta, messages, stage, "Chat Completions failure", func(event *zerolog.Event) {
+func logChatCompletionsFailure(log zerolog.Logger, err error, params openai.ChatCompletionNewParams, meta *PortalMetadata, prompt PromptContext, stage string) {
+	logProviderFailure(log, err, meta, prompt, stage, "Chat Completions failure", func(event *zerolog.Event) {
 		addChatParamsSummary(event, params)
 	})
 }
@@ -25,13 +25,13 @@ func logProviderFailure(
 	log zerolog.Logger,
 	err error,
 	meta *PortalMetadata,
-	messages []openai.ChatCompletionMessageParamUnion,
+	prompt PromptContext,
 	stage string,
 	msg string,
 	addSummary func(*zerolog.Event),
 ) {
 	event := log.Error().Err(err).Str("stage", stage)
-	addRequestSummary(event, meta, messages)
+	addRequestSummary(event, meta, prompt)
 	if addSummary != nil {
 		addSummary(event)
 	}
@@ -39,7 +39,7 @@ func logProviderFailure(
 	event.Msg(msg)
 }
 
-func addRequestSummary(event *zerolog.Event, metadata *PortalMetadata, messages []openai.ChatCompletionMessageParamUnion) {
+func addRequestSummary(event *zerolog.Event, metadata *PortalMetadata, prompt PromptContext) {
 	if event == nil {
 		return
 	}
@@ -54,9 +54,8 @@ func addRequestSummary(event *zerolog.Event, metadata *PortalMetadata, messages 
 			event.Str("runtime_model_override", metadata.RuntimeModelOverride)
 		}
 	}
-	event.Int("message_count", len(messages))
-	event.Bool("has_audio", hasAudioContent(messages))
-	event.Bool("has_multimodal", hasMultimodalContent(messages))
+	event.Int("message_count", len(prompt.Messages))
+	event.Bool("has_multimodal", promptHasMultimodalContent(prompt))
 }
 
 func addResponsesParamsSummary(event *zerolog.Event, params responses.ResponseNewParams) {

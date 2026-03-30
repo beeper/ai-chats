@@ -37,7 +37,7 @@ type OpenAIConnector struct {
 	br        *bridgev2.Bridge
 	Config    Config
 	db        *dbutil.Database
-	sdkConfig *bridgesdk.Config
+	sdkConfig *bridgesdk.Config[*AIClient, *Config]
 
 	clientsMu sync.Mutex
 	clients   map[networkid.UserLoginID]bridgev2.NetworkAPI
@@ -55,10 +55,16 @@ func (oc *OpenAIConnector) applyRuntimeDefaults() {
 		oc.Config.ModelCacheDuration = 6 * time.Hour
 	}
 	bridgesdk.ApplyDefaultCommandPrefix(&oc.Config.Bridge.CommandPrefix, "!ai")
-	if oc.Config.Pruning == nil {
-		oc.Config.Pruning = airuntime.DefaultPruningConfig()
+	if oc.Config.Agents == nil {
+		oc.Config.Agents = &AgentsConfig{}
+	}
+	if oc.Config.Agents.Defaults == nil {
+		oc.Config.Agents.Defaults = &AgentDefaultsConfig{}
+	}
+	if oc.Config.Agents.Defaults.Compaction == nil {
+		oc.Config.Agents.Defaults.Compaction = airuntime.DefaultPruningConfig()
 	} else {
-		oc.Config.Pruning = airuntime.ApplyPruningDefaults(oc.Config.Pruning)
+		oc.Config.Agents.Defaults.Compaction = airuntime.ApplyPruningDefaults(oc.Config.Agents.Defaults.Compaction)
 	}
 }
 

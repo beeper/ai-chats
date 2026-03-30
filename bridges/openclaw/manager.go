@@ -593,7 +593,11 @@ func (m *openClawManager) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 		return nil, err
 	}
 	if meta.OpenClawDMCreatedFromContact && meta.OpenClawSessionID == "" && isOpenClawSyntheticDMSessionKey(meta.OpenClawSessionKey) {
-		go m.syncSessions(m.client.BackgroundContext(ctx))
+		go func() {
+			if err := m.syncSessions(m.client.BackgroundContext(ctx)); err != nil {
+				m.client.Log().Debug().Err(err).Str("session_key", meta.OpenClawSessionKey).Msg("Failed to refresh OpenClaw sessions after synthetic DM message")
+			}
+		}()
 	}
 	return &bridgev2.MatrixMessageResponse{Pending: true}, nil
 }

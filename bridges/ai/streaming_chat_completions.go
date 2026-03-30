@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/openai/openai-go/v3"
-	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
@@ -32,7 +31,7 @@ func (a *chatCompletionsTurnAdapter) handleStreamStepError(
 	if cle := ParseContextLengthError(stepErr); cle != nil {
 		return cle, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, a.state, a.meta, "context-length", stepErr)
 	}
-	logChatCompletionsFailure(a.log, stepErr, params, a.meta, currentMessages, "stream_err")
+	logChatCompletionsFailure(a.log, stepErr, params, a.meta, a.prompt, "stream_err")
 	return nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, a.state, a.meta, "error", stepErr)
 }
 
@@ -49,14 +48,14 @@ func (a *chatCompletionsTurnAdapter) RunAgentTurn(
 	typingSignals := a.typingSignals
 	touchTyping := a.touchTyping
 	isHeartbeat := a.isHeartbeat
-	currentMessages := a.messages
+	currentMessages := promptContextToChatCompletionMessages(a.prompt, oc.isOpenRouterProvider())
 
 	params := oc.buildChatCompletionsAgentLoopParams(ctx, meta, currentMessages)
 
 	stream := oc.api.Chat.Completions.NewStreaming(ctx, params)
 	if stream == nil {
 		initErr := errors.New("chat completions streaming not available")
-		logChatCompletionsFailure(log, initErr, params, meta, currentMessages, "stream_init")
+		logChatCompletionsFailure(log, initErr, params, meta, a.prompt, "stream_init")
 		return false, nil, oc.finishStreamingWithFailure(ctx, log, portal, state, meta, "error", initErr)
 	}
 
@@ -139,33 +138,60 @@ func (a *chatCompletionsTurnAdapter) RunAgentTurn(
 
 	if shouldContinueChatToolLoop(state.finishReason, len(toolCallParams)) {
 		state.needsTextSeparator = true
-		assistantMsg := openai.ChatCompletionAssistantMessageParam{
-			ToolCalls: toolCallParams,
+		assistantMsg := PromptMessage{
+			Role: PromptRoleAssistant,
 		}
 		if content := strings.TrimSpace(roundContent.String()); content != "" {
-			assistantMsg.Content.OfString = param.NewOpt(content)
+			assistantMsg.Blocks = append(assistantMsg.Blocks, PromptBlock{
+				Type: PromptBlockText,
+				Text: content,
+			})
 		}
-		currentMessages = append(currentMessages, openai.ChatCompletionMessageParamUnion{OfAssistant: &assistantMsg})
+		for _, toolCall := range toolCallParams {
+			if toolCall.OfFunction == nil {
+				continue
+			}
+			assistantMsg.Blocks = append(assistantMsg.Blocks, PromptBlock{
+				Type:              PromptBlockToolCall,
+				ToolCallID:        toolCall.OfFunction.ID,
+				ToolName:          toolCall.OfFunction.Function.Name,
+				ToolCallArguments: toolCall.OfFunction.Function.Arguments,
+			})
+		}
+		if len(assistantMsg.Blocks) > 0 {
+			a.prompt.Messages = append(a.prompt.Messages, assistantMsg)
+		}
 		for _, output := range state.pendingFunctionOutputs {
-			currentMessages = append(currentMessages, openai.ToolMessage(output.output, output.callID))
+			a.prompt.Messages = append(a.prompt.Messages, PromptMessage{
+				Role:       PromptRoleToolResult,
+				ToolCallID: output.callID,
+				ToolName:   output.name,
+				Blocks: []PromptBlock{{
+					Type: PromptBlockText,
+					Text: output.output,
+				}},
+			})
 		}
-		currentMessages = append(currentMessages, buildSteeringUserMessages(steeringPrompts)...)
+		a.prompt.Messages = append(a.prompt.Messages, buildSteeringPromptMessages(steeringPrompts)...)
 		if round >= maxAgentLoopToolTurns {
 			log.Warn().Int("rounds", round+1).Msg("Max tool call rounds reached; stopping chat completions continuation")
-			currentMessages = append(currentMessages, openai.AssistantMessage("Continuation stopped after reaching the maximum number of streaming tool rounds."))
+			a.prompt.Messages = append(a.prompt.Messages, PromptMessage{
+				Role: PromptRoleAssistant,
+				Blocks: []PromptBlock{{
+					Type: PromptBlockText,
+					Text: "Continuation stopped after reaching the maximum number of streaming tool rounds.",
+				}},
+			})
 			state.clearContinuationState()
-			a.messages = currentMessages
 			return false, nil, nil
 		}
 		// Chat Completions does not support MCP approvals; clearContinuationState
 		// is safe here — it resets pendingFunctionOutputs (consumed above) and
 		// pendingMcpApprovals (always empty for Chat).
 		state.clearContinuationState()
-		a.messages = currentMessages
 		return true, nil, nil
 	}
 
-	a.messages = currentMessages
 	return false, nil, nil
 }
 
@@ -189,12 +215,12 @@ func (a *chatCompletionsTurnAdapter) FinalizeAgentLoop(ctx context.Context) {
 
 }
 
-func (oc *AIClient) runChatCompletionsAgentLoop(
+func (oc *AIClient) runChatCompletionsAgentLoopPrompt(
 	ctx context.Context,
 	evt *event.Event,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
-	messages []openai.ChatCompletionMessageParamUnion,
+	prompt PromptContext,
 ) (bool, *ContextLengthError, error) {
 	portalID := ""
 	if portal != nil {
@@ -205,13 +231,9 @@ func (oc *AIClient) runChatCompletionsAgentLoop(
 		Str("portal", portalID).
 		Logger()
 
-	return oc.runAgentLoop(ctx, log, evt, portal, meta, messages, func(prep streamingRunPrep, pruned []openai.ChatCompletionMessageParamUnion) agentLoopProvider {
+	return oc.runAgentLoop(ctx, log, evt, portal, meta, prompt, func(prep streamingRunPrep, prompt PromptContext) agentLoopProvider {
 		return &chatCompletionsTurnAdapter{
-			agentLoopProviderBase: newAgentLoopProviderBase(oc, log, portal, meta, prep, pruned),
+			agentLoopProviderBase: newAgentLoopProviderBase(oc, log, portal, meta, prep, prompt),
 		}
 	})
 }
-
-// convertToResponsesInput converts Chat Completion messages to Responses API input items
-// Supports native multimodal content: images (ResponseInputImageParam), files/PDFs (ResponseInputFileParam)
-// Note: Audio is handled via Chat Completions API fallback (SDK v3.16.0 lacks Responses API audio union support)

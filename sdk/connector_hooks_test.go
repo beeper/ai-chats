@@ -57,8 +57,9 @@ func TestNewConnectorBaseUsesHooksAndCustomClients(t *testing.T) {
 	createCalled := 0
 	updateCalled := 0
 	afterLoadCalled := 0
+	wantBridge := &bridgev2.Bridge{}
 
-	cfg := &Config{
+	cfg := &Config[*struct{}, *struct{}]{
 		Name:          "hooked",
 		ClientCacheMu: &mu,
 		ClientCache:   &clients,
@@ -68,12 +69,25 @@ func TestNewConnectorBaseUsesHooksAndCustomClients(t *testing.T) {
 			}
 			return true, ""
 		},
-		InitConnector: func(*bridgev2.Bridge) { initCalled++ },
-		StartConnector: func(context.Context, *bridgev2.Bridge) error {
+		InitConnector: func(got *bridgev2.Bridge) {
+			if got != wantBridge {
+				t.Fatalf("expected init bridge %p, got %p", wantBridge, got)
+			}
+			initCalled++
+		},
+		StartConnector: func(_ context.Context, got *bridgev2.Bridge) error {
+			if got != wantBridge {
+				t.Fatalf("expected start bridge %p, got %p", wantBridge, got)
+			}
 			startCalled++
 			return nil
 		},
-		StopConnector: func(context.Context, *bridgev2.Bridge) { stopCalled++ },
+		StopConnector: func(_ context.Context, got *bridgev2.Bridge) {
+			if got != wantBridge {
+				t.Fatalf("expected stop bridge %p, got %p", wantBridge, got)
+			}
+			stopCalled++
+		},
 		MakeBrokenLogin: func(login *bridgev2.UserLogin, reason string) *agentremote.BrokenLoginClient {
 			return agentremote.NewBrokenLoginClient(login, "custom:"+reason)
 		},
@@ -89,7 +103,7 @@ func TestNewConnectorBaseUsesHooksAndCustomClients(t *testing.T) {
 	}
 
 	conn := NewConnectorBase(cfg)
-	conn.Init(nil)
+	conn.Init(wantBridge)
 	if err := conn.Start(context.Background()); err != nil {
 		t.Fatalf("start returned error: %v", err)
 	}
@@ -131,7 +145,7 @@ func TestNewConnectorBaseUsesHooksAndCustomClients(t *testing.T) {
 
 func TestNewConnectorBaseUsesCustomLoadLoginAndLoginFlows(t *testing.T) {
 	loadCalled := 0
-	cfg := &Config{
+	cfg := &Config[*struct{}, *struct{}]{
 		Name: "custom-load",
 		LoadLogin: func(_ context.Context, login *bridgev2.UserLogin) error {
 			loadCalled++
@@ -174,7 +188,7 @@ func TestNewConnectorBaseUsesCustomLoadLoginAndLoginFlows(t *testing.T) {
 }
 
 func TestApprovalControllerUsesCustomHandler(t *testing.T) {
-	conv := NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &Config{}, nil)
+	conv := NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &Config[*struct{}, *struct{}]{}, nil)
 	turn := conv.StartTurn(context.Background(), &Agent{ID: "agent"}, nil)
 
 	called := false
@@ -199,6 +213,15 @@ func TestApprovalControllerUsesCustomHandler(t *testing.T) {
 	}
 	if handle.ID() != "approval-2" || handle.ToolCallID() != "tool-2" {
 		t.Fatalf("unexpected handle: id=%q tool=%q", handle.ID(), handle.ToolCallID())
+	}
+}
+
+func TestResolveCommandPrefixTrimsConfiguredValue(t *testing.T) {
+	if got := ResolveCommandPrefix(" /ai ", "!fallback"); got != "/ai" {
+		t.Fatalf("expected trimmed configured prefix, got %q", got)
+	}
+	if got := ResolveCommandPrefix("   ", "!fallback"); got != "!fallback" {
+		t.Fatalf("expected fallback prefix, got %q", got)
 	}
 }
 

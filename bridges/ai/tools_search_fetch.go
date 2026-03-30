@@ -213,7 +213,7 @@ func applyExaProxyDefaultsTo(baseURL *string, apiKey *string, meta *UserLoginMet
 	}
 	if *apiKey == "" {
 		if meta != nil && meta.Provider == ProviderMagicProxy {
-			if token := strings.TrimSpace(meta.APIKey); token != "" {
+			if token := loginCredentialAPIKey(meta); token != "" {
 				*apiKey = token
 			}
 		}

@@ -4,15 +4,12 @@ import (
 	"testing"
 
 	"github.com/openai/openai-go/v3/responses"
-
-	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 func TestPromptContextToResponsesInput_MultimodalUser(t *testing.T) {
-	input := bridgesdk.PromptContextToResponsesInput(bridgesdk.UserPromptContext(
+	input := promptContextToResponsesInput(UserPromptContext(
 		PromptBlock{Type: PromptBlockText, Text: "hello"},
 		PromptBlock{Type: PromptBlockImage, ImageB64: "aGVsbG8=", MimeType: "image/png"},
-		PromptBlock{Type: PromptBlockFile, FileB64: "cGRm", Filename: "document.pdf"},
 	))
 	if len(input) != 1 {
 		t.Fatalf("expected 1 input item, got %d", len(input))
@@ -33,7 +30,6 @@ func TestPromptContextToResponsesInput_MultimodalUser(t *testing.T) {
 
 	foundText := false
 	foundImage := false
-	foundFile := false
 	for _, part := range parts {
 		if part.OfInputText != nil {
 			foundText = true
@@ -47,18 +43,31 @@ func TestPromptContextToResponsesInput_MultimodalUser(t *testing.T) {
 				t.Fatalf("expected image part data URL to preserve content, got %#v", part.OfInputImage.ImageURL.Value)
 			}
 		}
-		if part.OfInputFile != nil {
-			foundFile = true
-			if part.OfInputFile.Filename.Value != "document.pdf" {
-				t.Fatalf("expected file part filename document.pdf, got %#v", part.OfInputFile.Filename.Value)
-			}
-			if part.OfInputFile.FileData.Value != "cGRm" {
-				t.Fatalf("expected file part data to preserve content, got %#v", part.OfInputFile.FileData.Value)
-			}
-		}
 	}
 
-	if !foundText || !foundImage || !foundFile {
-		t.Fatalf("expected text, image, and file parts (got text=%v image=%v file=%v)", foundText, foundImage, foundFile)
+	if !foundText || !foundImage {
+		t.Fatalf("expected text and image parts (got text=%v image=%v)", foundText, foundImage)
+	}
+}
+
+func TestPromptContextToResponsesInput_AssistantOmitsThinkingBlocks(t *testing.T) {
+	input := promptContextToResponsesInput(PromptContext{
+		Messages: []PromptMessage{{
+			Role: PromptRoleAssistant,
+			Blocks: []PromptBlock{
+				{Type: PromptBlockThinking, Text: "internal analysis"},
+				{Type: PromptBlockText, Text: "visible reply"},
+			},
+		}},
+	})
+	if len(input) != 1 {
+		t.Fatalf("expected 1 input item, got %d", len(input))
+	}
+	item := input[0].OfMessage
+	if item == nil {
+		t.Fatalf("expected assistant message input")
+	}
+	if got := item.Content.OfString.Value; got != "visible reply" {
+		t.Fatalf("expected only visible reply text, got %q", got)
 	}
 }

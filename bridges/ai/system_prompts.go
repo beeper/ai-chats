@@ -4,9 +4,9 @@ import (
 	"context"
 	"strings"
 
-	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 
+	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
 )
 
@@ -33,10 +33,6 @@ func buildGroupIntro(roomName string, activation string) string {
 	return strings.Join(lines, " ") + " Address the specific sender noted in the message context."
 }
 
-func buildVerboseSystemHint(_ *PortalMetadata) string {
-	return ""
-}
-
 func buildSessionIdentityHint(portal *bridgev2.Portal, _ *PortalMetadata) string {
 	if portal == nil {
 		return ""
@@ -55,59 +51,83 @@ func buildSessionIdentityHint(portal *bridgev2.Portal, _ *PortalMetadata) string
 	return "sessionKey: " + session
 }
 
-func (oc *AIClient) buildAdditionalSystemPrompts(
+func (oc *AIClient) buildAdditionalSystemPromptText(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
-) []openai.ChatCompletionMessageParamUnion {
-	return oc.additionalSystemMessages(ctx, portal, meta)
+) string {
+	return joinPromptFragments(
+		oc.buildAdditionalSystemPromptCoreText(ctx, portal, meta),
+		oc.buildMemoryPromptContextText(ctx, portal, meta),
+	)
 }
 
-func (oc *AIClient) buildSystemMessages(
+func (oc *AIClient) buildSystemPromptText(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
-) []openai.ChatCompletionMessageParamUnion {
-	var msgs []openai.ChatCompletionMessageParamUnion
-	systemPrompt := oc.effectiveAgentPrompt(ctx, portal, meta)
-	if systemPrompt == "" {
-		systemPrompt = oc.effectivePrompt(meta)
+) string {
+	base := oc.effectiveAgentPrompt(ctx, portal, meta)
+	if base == "" {
+		base = oc.effectivePrompt(meta)
 	}
-	if systemPrompt != "" {
-		msgs = append(msgs, openai.SystemMessage(systemPrompt))
-	}
-	msgs = append(msgs, oc.buildAdditionalSystemPrompts(ctx, portal, meta)...)
-	return msgs
+	return joinPromptFragments(base, oc.buildAdditionalSystemPromptText(ctx, portal, meta))
 }
 
-func (oc *AIClient) buildAdditionalSystemPromptsCore(
+func (oc *AIClient) buildConversationSystemPromptText(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
-) []openai.ChatCompletionMessageParamUnion {
-	var out []openai.ChatCompletionMessageParamUnion
+	includeGreeting bool,
+) string {
+	base := oc.buildSystemPromptText(ctx, portal, meta)
+	if !includeGreeting {
+		return base
+	}
+	return joinPromptFragments(sessionGreetingFragment(ctx, portal, meta, oc.log), base)
+}
+
+func (oc *AIClient) buildAdditionalSystemPromptCoreText(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+) string {
+	var out []string
 
 	if meta != nil && portal != nil && oc.isGroupChat(ctx, portal) {
 		activation := oc.resolveGroupActivation(meta)
 		intro := buildGroupIntro(oc.matrixRoomDisplayName(ctx, portal), activation)
 		if strings.TrimSpace(intro) != "" {
-			out = append(out, openai.SystemMessage(intro))
-		}
-	}
-
-	if meta != nil {
-		if verboseHint := buildVerboseSystemHint(meta); verboseHint != "" {
-			out = append(out, openai.SystemMessage(verboseHint))
+			out = append(out, intro)
 		}
 	}
 
 	if accountHint := oc.buildDesktopAccountHintPrompt(ctx); accountHint != "" {
-		out = append(out, openai.SystemMessage(accountHint))
+		out = append(out, accountHint)
 	}
 
 	if ident := buildSessionIdentityHint(portal, meta); ident != "" {
-		out = append(out, openai.SystemMessage(ident))
+		out = append(out, ident)
 	}
 
-	return out
+	return joinPromptFragments(out...)
+}
+
+func (oc *AIClient) buildMemoryPromptContextText(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+) string {
+	if oc == nil || len(oc.integrationModules) == 0 {
+		return ""
+	}
+	module := oc.integrationModules["memory"]
+	augmentor, ok := module.(integrationruntime.PromptContextIntegration)
+	if !ok || augmentor == nil {
+		return ""
+	}
+	return strings.TrimSpace(augmentor.PromptContextText(ctx, integrationruntime.PromptScope{
+		Portal: portal,
+		Meta:   meta,
+	}))
 }

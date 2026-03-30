@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/beeper/agentremote/pkg/shared/media"
-	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 // executeAnalyzeImage analyzes an image with a custom prompt using vision capabilities.
@@ -80,7 +79,7 @@ func executeAnalyzeImage(ctx context.Context, args map[string]any) (string, erro
 		return "", errors.New("unsupported URL scheme, must be http://, https://, mxc://, or data URL")
 	}
 
-	ctxPrompt := PromptContext{PromptContext: bridgesdk.UserPromptContext(
+	ctxPrompt := UserPromptContext(
 		PromptBlock{
 			Type:     PromptBlockImage,
 			ImageB64: imageB64,
@@ -90,7 +89,7 @@ func executeAnalyzeImage(ctx context.Context, args map[string]any) (string, erro
 			Type: PromptBlockText,
 			Text: prompt,
 		},
-	)}
+	)
 
 	// Call the AI provider for vision analysis
 	resp, err := btc.Client.provider.Generate(ctx, GenerateParams{

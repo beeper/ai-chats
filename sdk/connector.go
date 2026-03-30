@@ -15,8 +15,7 @@ import (
 )
 
 // NewConnectorBase builds an SDK-backed connector base that can be embedded by custom bridges.
-func NewConnectorBase(cfg *Config) *agentremote.ConnectorBase {
-	var br *bridgev2.Bridge
+func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Config[SessionT, ConfigDataT]) *agentremote.ConnectorBase {
 	mu, clientsRef := cfg.ClientCacheMu, cfg.ClientCache
 	if mu == nil {
 		mu = &sync.Mutex{}
@@ -45,7 +44,7 @@ func NewConnectorBase(cfg *Config) *agentremote.ConnectorBase {
 						cfg.UpdateClient(client, login)
 						return
 					}
-					if typed, ok := client.(*sdkClient); ok {
+					if typed, ok := client.(*sdkClient[SessionT, ConfigDataT]); ok {
 						typed.SetUserLogin(login)
 					}
 				},
@@ -66,23 +65,22 @@ func NewConnectorBase(cfg *Config) *agentremote.ConnectorBase {
 	return agentremote.NewConnector(agentremote.ConnectorSpec{
 		ProtocolID: protocolID,
 		Init: func(bridge *bridgev2.Bridge) {
-			br = bridge
 			agentremote.EnsureClientMap(mu, clientsRef)
 			if cfg.InitConnector != nil {
 				cfg.InitConnector(bridge)
 			}
 		},
-		Start: func(ctx context.Context) error {
-			registerCommands(br, cfg)
+		Start: func(ctx context.Context, bridge *bridgev2.Bridge) error {
+			registerCommands(bridge, cfg)
 			if cfg.StartConnector != nil {
-				return cfg.StartConnector(ctx, br)
+				return cfg.StartConnector(ctx, bridge)
 			}
 			return nil
 		},
-		Stop: func(ctx context.Context) {
+		Stop: func(ctx context.Context, bridge *bridgev2.Bridge) {
 			agentremote.StopClients(mu, clientsRef)
 			if cfg.StopConnector != nil {
-				cfg.StopConnector(ctx, br)
+				cfg.StopConnector(ctx, bridge)
 			}
 		},
 		Name: func() bridgev2.BridgeName {

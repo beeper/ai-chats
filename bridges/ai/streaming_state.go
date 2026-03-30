@@ -38,7 +38,6 @@ type streamingState struct {
 	reasoningTokens  int64
 	totalTokens      int64
 
-	baseInput              responses.ResponseInputParam
 	accumulated            strings.Builder
 	reasoning              strings.Builder
 	toolCalls              []ToolCallMetadata

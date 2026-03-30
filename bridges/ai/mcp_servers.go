@@ -144,12 +144,12 @@ func (oc *AIClient) loginMCPServers() map[string]MCPServerConfig {
 	if oc == nil || oc.UserLogin == nil {
 		return nil
 	}
-	meta := loginMetadata(oc.UserLogin)
-	if meta == nil || meta.ServiceTokens == nil || len(meta.ServiceTokens.MCPServers) == 0 {
+	tokens := loginCredentialServiceTokens(loginMetadata(oc.UserLogin))
+	if tokens == nil || len(tokens.MCPServers) == 0 {
 		return nil
 	}
-	out := make(map[string]MCPServerConfig, len(meta.ServiceTokens.MCPServers))
-	for rawName, rawCfg := range meta.ServiceTokens.MCPServers {
+	out := make(map[string]MCPServerConfig, len(tokens.MCPServers))
+	for rawName, rawCfg := range tokens.MCPServers {
 		name := normalizeMCPServerName(rawName)
 		cfg := normalizeMCPServerConfig(rawCfg)
 		if name == "" {

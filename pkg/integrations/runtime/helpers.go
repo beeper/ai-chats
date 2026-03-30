@@ -7,15 +7,12 @@ import (
 )
 
 // ZerologFromHost extracts a zerolog.Logger from a Host.
-// Returns zerolog.Nop() if the underlying logger is not a zerolog.Logger.
+// Returns zerolog.Nop() if the host is nil.
 func ZerologFromHost(host Host) zerolog.Logger {
 	if host == nil {
 		return zerolog.Nop()
 	}
-	if zl, ok := host.RawLogger().(zerolog.Logger); ok {
-		return zl
-	}
-	return zerolog.Nop()
+	return host.RawLogger()
 }
 
 // ModuleOrNil returns nil when the host is absent, otherwise it constructs the module.

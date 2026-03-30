@@ -17,10 +17,10 @@ func (oc *AIClient) effectiveSearchConfig(_ context.Context) *search.Config {
 	return effectiveToolConfig(
 		oc,
 		func(connector *OpenAIConnector) *search.Config {
-			if connector == nil {
+			if connector == nil || connector.Config.Tools.Web == nil {
 				return nil
 			}
-			return mapSearchConfig(connector.Config.Tools.Search)
+			return mapSearchConfig(connector.Config.Tools.Web.Search)
 		},
 		applyLoginTokensToSearchConfig,
 		func(cfg *search.Config) *search.Config { return search.ApplyEnvDefaults(cfg).WithDefaults() },
@@ -31,10 +31,10 @@ func (oc *AIClient) effectiveFetchConfig(_ context.Context) *fetch.Config {
 	return effectiveToolConfig(
 		oc,
 		func(connector *OpenAIConnector) *fetch.Config {
-			if connector == nil {
+			if connector == nil || connector.Config.Tools.Web == nil {
 				return nil
 			}
-			return mapFetchConfig(connector.Config.Tools.Fetch)
+			return mapFetchConfig(connector.Config.Tools.Web.Fetch)
 		},
 		applyLoginTokensToFetchConfig,
 		func(cfg *fetch.Config) *fetch.Config { return fetch.ApplyEnvDefaults(cfg).WithDefaults() },

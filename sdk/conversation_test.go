@@ -25,7 +25,7 @@ func (c testAgentCatalog) ResolveAgent(_ context.Context, _ *bridgev2.UserLogin,
 	return c.byIdentifier[identifier], nil
 }
 
-func newTestConversation(cfg *Config, state sdkConversationState) *Conversation {
+func newTestConversation(cfg *Config[struct{}, *struct{}], state sdkConversationState) *Conversation {
 	return newConversation(
 		context.Background(),
 		&bridgev2.Portal{
@@ -36,12 +36,12 @@ func newTestConversation(cfg *Config, state sdkConversationState) *Conversation 
 		},
 		nil,
 		bridgev2.EventSender{},
-		&staticRuntime{cfg: cfg},
+		&staticRuntime[struct{}, *struct{}]{cfg: cfg},
 	)
 }
 
 func TestConversationCurrentRoomFeaturesUsesConfiguredDefaultAgent(t *testing.T) {
-	conv := newTestConversation(&Config{
+	conv := newTestConversation(&Config[struct{}, *struct{}]{
 		Agent: &Agent{
 			ID: "default",
 			Capabilities: AgentCapabilities{
@@ -61,7 +61,7 @@ func TestConversationCurrentRoomFeaturesUsesConfiguredDefaultAgent(t *testing.T)
 }
 
 func TestConversationCurrentRoomFeaturesFallsBackAfterUnresolvedAgents(t *testing.T) {
-	conv := newTestConversation(&Config{
+	conv := newTestConversation(&Config[struct{}, *struct{}]{
 		Agent: &Agent{
 			ID: "default",
 			Capabilities: AgentCapabilities{
@@ -83,7 +83,7 @@ func TestConversationCurrentRoomFeaturesFallsBackAfterUnresolvedAgents(t *testin
 }
 
 func TestConversationCurrentRoomFeaturesIgnoresUnresolvedAgentsWhenOneResolves(t *testing.T) {
-	conv := newTestConversation(&Config{
+	conv := newTestConversation(&Config[struct{}, *struct{}]{
 		AgentCatalog: testAgentCatalog{
 			byIdentifier: map[string]*Agent{
 				"found": {

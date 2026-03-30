@@ -3,7 +3,6 @@ package ai
 import (
 	"context"
 
-	"github.com/openai/openai-go/v3"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
@@ -14,8 +13,6 @@ import (
 type agentLoopProvider interface {
 	TrackRoomRunStreaming() bool
 	RunAgentTurn(ctx context.Context, evt *event.Event, round int) (continueLoop bool, cle *ContextLengthError, err error)
-	GetFollowUpMessages(ctx context.Context) []openai.ChatCompletionMessageParamUnion
-	ContinueAgentLoop(messages []openai.ChatCompletionMessageParamUnion)
 	FinalizeAgentLoop(ctx context.Context)
 }
 
@@ -28,7 +25,7 @@ type agentLoopProviderBase struct {
 	typingSignals *TypingSignaler
 	touchTyping   func()
 	isHeartbeat   bool
-	messages      []openai.ChatCompletionMessageParamUnion
+	prompt        PromptContext
 }
 
 func newAgentLoopProviderBase(
@@ -37,7 +34,7 @@ func newAgentLoopProviderBase(
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
 	prep streamingRunPrep,
-	messages []openai.ChatCompletionMessageParamUnion,
+	prompt PromptContext,
 ) agentLoopProviderBase {
 	return agentLoopProviderBase{
 		oc:            oc,
@@ -48,22 +45,8 @@ func newAgentLoopProviderBase(
 		typingSignals: prep.TypingSignals,
 		touchTyping:   prep.TouchTyping,
 		isHeartbeat:   prep.IsHeartbeat,
-		messages:      messages,
+		prompt:        prompt,
 	}
-}
-
-func (a *agentLoopProviderBase) GetFollowUpMessages(context.Context) []openai.ChatCompletionMessageParamUnion {
-	if a == nil || a.oc == nil || a.state == nil {
-		return nil
-	}
-	return a.oc.getFollowUpMessages(a.state.roomID)
-}
-
-func (a *agentLoopProviderBase) ContinueAgentLoop(messages []openai.ChatCompletionMessageParamUnion) {
-	if a == nil || len(messages) == 0 {
-		return
-	}
-	a.messages = append(a.messages, messages...)
 }
 
 func (oc *AIClient) runAgentLoop(
@@ -72,14 +55,14 @@ func (oc *AIClient) runAgentLoop(
 	evt *event.Event,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
-	messages []openai.ChatCompletionMessageParamUnion,
-	newProvider func(prep streamingRunPrep, pruned []openai.ChatCompletionMessageParamUnion) agentLoopProvider,
+	prompt PromptContext,
+	newProvider func(prep streamingRunPrep, prompt PromptContext) agentLoopProvider,
 ) (bool, *ContextLengthError, error) {
-	prep, pruned, typingCleanup := oc.prepareStreamingRun(ctx, log, evt, portal, meta, messages)
+	prep, typingCleanup := oc.prepareStreamingRun(ctx, log, evt, portal, meta)
 	defer typingCleanup()
 
 	state := prep.State
-	provider := newProvider(prep, pruned)
+	provider := newProvider(prep, prompt)
 	if state.roomID != "" {
 		if provider.TrackRoomRunStreaming() {
 			oc.markRoomRunStreaming(state.roomID, true)
@@ -106,12 +89,8 @@ func executeAgentLoopRounds(
 			continue
 		}
 
-		followUpMessages := provider.GetFollowUpMessages(ctx)
-		if len(followUpMessages) > 0 {
-			provider.ContinueAgentLoop(followUpMessages)
-			continue
-		}
-
+		// Queued user messages are dispatched after room release via processPendingQueue.
+		// Finalize this turn immediately so later prompts cannot reopen it with more edits.
 		finalizeAgentLoopExit(ctx, provider, false)
 		return true, nil, nil
 	}

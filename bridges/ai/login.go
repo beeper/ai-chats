@@ -220,10 +220,17 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 		meta = &UserLoginMetadata{}
 	}
 	meta.Provider = provider
-	meta.APIKey = apiKey
-	meta.BaseURL = baseURL
+	creds := &LoginCredentials{
+		APIKey:  apiKey,
+		BaseURL: baseURL,
+	}
 	if serviceTokens != nil && !serviceTokensEmpty(serviceTokens) {
-		meta.ServiceTokens = mergeServiceTokens(meta.ServiceTokens, serviceTokens)
+		creds.ServiceTokens = cloneServiceTokens(serviceTokens)
+	}
+	if loginCredentialsEmpty(creds) {
+		meta.Credentials = nil
+	} else {
+		meta.Credentials = creds
 	}
 	if err := ol.validateLoginMetadata(ctx, loginID, meta); err != nil {
 		return nil, err
@@ -331,46 +338,12 @@ func (ol *OpenAILogin) validateLoginMetadata(ctx context.Context, loginID networ
 	return nil
 }
 
-func serviceTokensEmpty(tokens *ServiceTokens) bool {
-	if tokens == nil {
-		return true
-	}
-	if len(tokens.DesktopAPIInstances) > 0 {
-		for _, instance := range tokens.DesktopAPIInstances {
-			if strings.TrimSpace(instance.Token) != "" || strings.TrimSpace(instance.BaseURL) != "" {
-				return false
-			}
-		}
-	}
-	if len(tokens.MCPServers) > 0 {
-		for _, server := range tokens.MCPServers {
-			if strings.TrimSpace(server.Transport) != "" ||
-				strings.TrimSpace(server.Endpoint) != "" ||
-				strings.TrimSpace(server.Command) != "" ||
-				len(server.Args) > 0 ||
-				strings.TrimSpace(server.Token) != "" ||
-				strings.TrimSpace(server.AuthURL) != "" ||
-				strings.TrimSpace(server.AuthType) != "" ||
-				strings.TrimSpace(server.Kind) != "" ||
-				server.Connected {
-				return false
-			}
-		}
-	}
-	return strings.TrimSpace(tokens.OpenAI) == "" &&
-		strings.TrimSpace(tokens.OpenRouter) == "" &&
-		strings.TrimSpace(tokens.Exa) == "" &&
-		strings.TrimSpace(tokens.Brave) == "" &&
-		strings.TrimSpace(tokens.Perplexity) == "" &&
-		strings.TrimSpace(tokens.DesktopAPI) == ""
-}
-
 func (ol *OpenAILogin) resolveCustomLogin(input map[string]string) (string, string, *ServiceTokens, error) {
 	if input == nil {
 		input = map[string]string{}
 	}
-	openrouterCfg := strings.TrimSpace(ol.Connector.Config.Providers.OpenRouter.APIKey)
-	openaiCfg := strings.TrimSpace(ol.Connector.Config.Providers.OpenAI.APIKey)
+	openrouterCfg := strings.TrimSpace(ol.Connector.modelProviderConfig(ProviderOpenRouter).APIKey)
+	openaiCfg := strings.TrimSpace(ol.Connector.modelProviderConfig(ProviderOpenAI).APIKey)
 
 	openrouterInput := ""
 	openaiInput := ""
@@ -478,18 +451,22 @@ func parseMagicProxyLink(raw string) (string, string, error) {
 }
 
 func (ol *OpenAILogin) configHasOpenRouterKey() bool {
-	return strings.TrimSpace(ol.Connector.Config.Providers.OpenRouter.APIKey) != ""
+	return strings.TrimSpace(ol.Connector.modelProviderConfig(ProviderOpenRouter).APIKey) != ""
 }
 
 func (ol *OpenAILogin) configHasOpenAIKey() bool {
-	return strings.TrimSpace(ol.Connector.Config.Providers.OpenAI.APIKey) != ""
+	return strings.TrimSpace(ol.Connector.modelProviderConfig(ProviderOpenAI).APIKey) != ""
 }
 
 func (ol *OpenAILogin) configHasExaKey() bool {
-	if ol.Connector.Config.Tools.Search != nil && strings.TrimSpace(ol.Connector.Config.Tools.Search.Exa.APIKey) != "" {
+	if ol.Connector.Config.Tools.Web != nil &&
+		ol.Connector.Config.Tools.Web.Search != nil &&
+		strings.TrimSpace(ol.Connector.Config.Tools.Web.Search.Exa.APIKey) != "" {
 		return true
 	}
-	if ol.Connector.Config.Tools.Fetch != nil && strings.TrimSpace(ol.Connector.Config.Tools.Fetch.Exa.APIKey) != "" {
+	if ol.Connector.Config.Tools.Web != nil &&
+		ol.Connector.Config.Tools.Web.Fetch != nil &&
+		strings.TrimSpace(ol.Connector.Config.Tools.Web.Fetch.Exa.APIKey) != "" {
 		return true
 	}
 	return false

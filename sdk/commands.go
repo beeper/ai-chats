@@ -15,7 +15,7 @@ import (
 var sdkHelpSection = commands.HelpSection{Name: "SDK", Order: 50}
 
 // registerCommands registers Config.Commands with the bridgev2 command processor.
-func registerCommands(br *bridgev2.Bridge, cfg *Config) {
+func registerCommands[SessionT SessionValue, ConfigDataT ConfigValue](br *bridgev2.Bridge, cfg *Config[SessionT, ConfigDataT]) {
 	if len(cfg.Commands) == 0 || br == nil {
 		return
 	}

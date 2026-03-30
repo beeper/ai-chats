@@ -10,7 +10,6 @@ import (
 type TurnSnapshot struct {
 	TurnData        TurnData
 	UIMessage       map[string]any
-	PromptMessages  []PromptMessage
 	Body            string
 	ThinkingContent string
 	ToolCalls       []agentremote.ToolCallMetadata
@@ -25,7 +24,6 @@ func SnapshotFromTurnData(td TurnData, toolType string) TurnSnapshot {
 	return TurnSnapshot{
 		TurnData:        td.Clone(),
 		UIMessage:       UIMessageFromTurnData(td),
-		PromptMessages:  PromptMessagesFromTurnData(td),
 		Body:            TurnText(td),
 		ThinkingContent: TurnReasoningText(td),
 		ToolCalls:       TurnToolCalls(td, toolType),

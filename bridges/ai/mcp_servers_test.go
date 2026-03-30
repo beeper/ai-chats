@@ -10,7 +10,7 @@ import (
 )
 
 func testAIClientWithMCPServers(servers map[string]MCPServerConfig) *AIClient {
-	meta := &UserLoginMetadata{ServiceTokens: &ServiceTokens{MCPServers: servers}}
+	meta := &UserLoginMetadata{Credentials: &LoginCredentials{ServiceTokens: &ServiceTokens{MCPServers: servers}}}
 	login := &database.UserLogin{ID: networkid.UserLoginID("login"), Metadata: meta}
 	userLogin := &bridgev2.UserLogin{UserLogin: login, Log: zerolog.Nop()}
 	return &AIClient{UserLogin: userLogin}

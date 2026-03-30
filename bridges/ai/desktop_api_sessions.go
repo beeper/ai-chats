@@ -158,11 +158,11 @@ func (oc *AIClient) desktopAPIInstances() map[string]DesktopAPIInstance {
 	if oc == nil || oc.UserLogin == nil {
 		return instances
 	}
-	meta := loginMetadata(oc.UserLogin)
-	if meta == nil || meta.ServiceTokens == nil {
+	creds := loginCredentials(loginMetadata(oc.UserLogin))
+	if creds == nil || creds.ServiceTokens == nil {
 		return instances
 	}
-	for name, instance := range meta.ServiceTokens.DesktopAPIInstances {
+	for name, instance := range creds.ServiceTokens.DesktopAPIInstances {
 		key := normalizeDesktopInstanceName(name)
 		if key == "" {
 			continue
@@ -172,9 +172,11 @@ func (oc *AIClient) desktopAPIInstances() map[string]DesktopAPIInstance {
 		}
 		instances[key] = instance
 	}
-	if token := strings.TrimSpace(meta.ServiceTokens.DesktopAPI); token != "" {
-		if _, ok := instances[desktopDefaultInstance]; !ok {
-			instances[desktopDefaultInstance] = DesktopAPIInstance{Token: token}
+	if token := strings.TrimSpace(creds.ServiceTokens.DesktopAPI); token != "" {
+		instance := instances[desktopDefaultInstance]
+		if strings.TrimSpace(instance.Token) == "" {
+			instance.Token = token
+			instances[desktopDefaultInstance] = instance
 		}
 	}
 	return instances

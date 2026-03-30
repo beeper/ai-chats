@@ -224,17 +224,12 @@ func (oc *AIClient) estimatePromptTokens(ctx context.Context, portal *bridgev2.P
 	if oc == nil || portal == nil {
 		return 0
 	}
-	prompt, err := oc.buildBasePrompt(ctx, portal, meta)
+	promptContext, err := oc.buildBaseContext(ctx, portal, meta)
 	if err != nil {
 		return 0
 	}
-	prompt = oc.augmentPromptWithIntegrations(ctx, portal, meta, prompt)
 	modelID := oc.effectiveModel(meta)
-	count, err := EstimateTokens(prompt, modelID)
-	if err != nil {
-		return 0
-	}
-	return count
+	return estimatePromptContextTokensForModel(promptContext, modelID)
 }
 
 func (oc *AIClient) getSessionEntryMaybe(ctx context.Context, agentID, sessionKey string) *sessionEntry {

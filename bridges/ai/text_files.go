@@ -5,6 +5,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"unicode"
@@ -22,6 +25,7 @@ var (
 )
 
 const maxTextFileBytes = 5 * 1024 * 1024
+const maxPDFFileBytes = 50 * 1024 * 1024
 
 var textFileMimeTypesMap = map[string]event.CapabilitySupportLevel{
 	"text/plain":                event.CapLevelFullySupported,
@@ -192,7 +196,47 @@ func (oc *AIClient) downloadTextFile(ctx context.Context, mediaURL string, encry
 	return trimmed, truncated, nil
 }
 
-func buildTextFileMessage(caption string, hasUserCaption bool, filename string, mimeType string, content string, _ bool) string {
+func (oc *AIClient) downloadPDFFile(ctx context.Context, mediaURL string, encryptedFile *event.EncryptedFileInfo, mimeType string) (string, bool, error) {
+	data, _, err := oc.downloadMediaBytes(ctx, mediaURL, encryptedFile, maxPDFFileBytes, mimeType)
+	if err != nil {
+		return "", false, err
+	}
+
+	tempDir, err := os.MkdirTemp("", "ai-bridge-pdf-*")
+	if err != nil {
+		return "", false, fmt.Errorf("create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	inputPath := filepath.Join(tempDir, "input.pdf")
+	if err := os.WriteFile(inputPath, data, 0o600); err != nil {
+		return "", false, fmt.Errorf("write temp pdf: %w", err)
+	}
+
+	cmd := exec.CommandContext(ctx, "pdftotext", "-layout", "-enc", "UTF-8", inputPath, "-")
+	output, err := cmd.Output()
+	if err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			return "", false, fmt.Errorf("pdftotext not found: install poppler-utils (or poppler) and ensure pdftotext is on PATH: %w", err)
+		}
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			msg := strings.TrimSpace(string(exitErr.Stderr))
+			if msg != "" {
+				return "", false, fmt.Errorf("pdftotext failed: %s", msg)
+			}
+		}
+		return "", false, fmt.Errorf("pdftotext failed: %w", err)
+	}
+
+	text := strings.TrimSpace(string(output))
+	if text == "" {
+		return "[No extractable text]", false, nil
+	}
+	trimmed, truncated := trimTextForModel(text)
+	return trimmed, truncated, nil
+}
+
+func buildTextFileMessage(caption string, hasUserCaption bool, filename string, mimeType string, content string, truncated bool) string {
 	if !hasUserCaption {
 		caption = ""
 	}
@@ -206,10 +250,15 @@ func buildTextFileMessage(caption string, hasUserCaption bool, filename string, 
 		mimeType = "text/plain"
 	}
 
+	truncAttr := ""
+	if truncated {
+		truncAttr = " truncated=\"true\""
+	}
 	block := fmt.Sprintf(
-		"<file name=\"%s\" mime=\"%s\">\n%s\n</file>",
+		"<file name=\"%s\" mime=\"%s\"%s>\n%s\n</file>",
 		xmlEscapeAttr(filename),
 		xmlEscapeAttr(mimeType),
+		truncAttr,
 		escapeFileBlockContent(content),
 	)
 

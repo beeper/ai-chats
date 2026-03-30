@@ -64,7 +64,7 @@ func (testMatrixAPI) GetEvent(context.Context, id.RoomID, id.EventID) (*event.Ev
 }
 
 func newOpenClawTestTurn(turnID string) *bridgesdk.Turn {
-	conv := bridgesdk.NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &bridgesdk.Config{}, nil)
+	conv := bridgesdk.NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &bridgesdk.Config[*OpenClawClient, *struct{}]{}, nil)
 	turn := conv.StartTurn(context.Background(), nil, nil)
 	turn.SetID(turnID)
 	return turn
@@ -301,7 +301,7 @@ func TestEmitStreamPartSerializesTurnCreation(t *testing.T) {
 	oc := newOpenClawTestClient(map[string]*openClawStreamState{})
 	oc.UserLogin = &bridgev2.UserLogin{Bridge: &bridgev2.Bridge{Bot: testMatrixAPI{}}}
 	oc.connector = &OpenClawConnector{}
-	oc.connector.sdkConfig = &bridgesdk.Config{}
+	oc.connector.sdkConfig = &bridgesdk.Config[*OpenClawClient, *Config]{}
 
 	original := openClawNewSDKStreamTurn
 	defer func() { openClawNewSDKStreamTurn = original }()

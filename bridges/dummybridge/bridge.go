@@ -31,15 +31,14 @@ func (dc *DummyBridgeConnector) loggerForLogin(login *bridgev2.UserLogin) zerolo
 	return login.Log.With().Str("component", "dummybridge").Logger()
 }
 
-func sessionFromAny(session any) (*dummySession, error) {
-	dummy, ok := session.(*dummySession)
-	if !ok || dummy == nil || dummy.login == nil {
+func requireSession(session *dummySession) (*dummySession, error) {
+	if session == nil || session.login == nil {
 		return nil, errors.New("dummybridge session is unavailable")
 	}
-	return dummy, nil
+	return session, nil
 }
 
-func (dc *DummyBridgeConnector) onConnect(ctx context.Context, info *bridgesdk.LoginInfo) (any, error) {
+func (dc *DummyBridgeConnector) onConnect(ctx context.Context, info *bridgesdk.LoginInfo) (*dummySession, error) {
 	if info == nil || info.Login == nil {
 		return nil, errors.New("missing login info")
 	}
@@ -58,12 +57,10 @@ func (dc *DummyBridgeConnector) onConnect(ctx context.Context, info *bridgesdk.L
 	}, nil
 }
 
-func (dc *DummyBridgeConnector) onDisconnect(session any) {
-	_, _ = sessionFromAny(session)
-}
+func (dc *DummyBridgeConnector) onDisconnect(_ *dummySession) {}
 
-func (dc *DummyBridgeConnector) getContactList(ctx context.Context, session any) ([]*bridgev2.ResolveIdentifierResponse, error) {
-	dummy, err := sessionFromAny(session)
+func (dc *DummyBridgeConnector) getContactList(ctx context.Context, session *dummySession) ([]*bridgev2.ResolveIdentifierResponse, error) {
+	dummy, err := requireSession(session)
 	if err != nil {
 		return nil, err
 	}
@@ -74,8 +71,8 @@ func (dc *DummyBridgeConnector) getContactList(ctx context.Context, session any)
 	return []*bridgev2.ResolveIdentifierResponse{resp}, nil
 }
 
-func (dc *DummyBridgeConnector) searchUsers(ctx context.Context, session any, query string) ([]*bridgev2.ResolveIdentifierResponse, error) {
-	dummy, err := sessionFromAny(session)
+func (dc *DummyBridgeConnector) searchUsers(ctx context.Context, session *dummySession, query string) ([]*bridgev2.ResolveIdentifierResponse, error) {
+	dummy, err := requireSession(session)
 	if err != nil {
 		return nil, err
 	}
@@ -99,8 +96,8 @@ func (dc *DummyBridgeConnector) searchUsers(ctx context.Context, session any, qu
 	return nil, nil
 }
 
-func (dc *DummyBridgeConnector) resolveIdentifier(ctx context.Context, session any, identifier string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
-	dummy, err := sessionFromAny(session)
+func (dc *DummyBridgeConnector) resolveIdentifier(ctx context.Context, session *dummySession, identifier string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
+	dummy, err := requireSession(session)
 	if err != nil {
 		return nil, err
 	}

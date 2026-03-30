@@ -14,15 +14,29 @@ import (
 
 func TestConnectorBaseHookOrder(t *testing.T) {
 	var order []string
+	wantBridge := &bridgev2.Bridge{}
 	conn := NewConnector(ConnectorSpec{
-		Init: func(*bridgev2.Bridge) { order = append(order, "init") },
-		Start: func(context.Context) error {
+		Init: func(got *bridgev2.Bridge) {
+			if got != wantBridge {
+				t.Fatalf("expected init hook bridge %p, got %p", wantBridge, got)
+			}
+			order = append(order, "init")
+		},
+		Start: func(_ context.Context, got *bridgev2.Bridge) error {
+			if got != wantBridge {
+				t.Fatalf("expected start hook bridge %p, got %p", wantBridge, got)
+			}
 			order = append(order, "start")
 			return nil
 		},
-		Stop: func(context.Context) { order = append(order, "stop") },
+		Stop: func(_ context.Context, got *bridgev2.Bridge) {
+			if got != wantBridge {
+				t.Fatalf("expected stop hook bridge %p, got %p", wantBridge, got)
+			}
+			order = append(order, "stop")
+		},
 	})
-	conn.Init(nil)
+	conn.Init(wantBridge)
 	if err := conn.Start(context.Background()); err != nil {
 		t.Fatalf("start returned error: %v", err)
 	}
@@ -149,7 +163,7 @@ func TestConnectorStopCanDisconnectCachedClients(t *testing.T) {
 		"b": &fakeClient{},
 	}
 	conn := NewConnector(ConnectorSpec{
-		Stop: func(context.Context) {
+		Stop: func(context.Context, *bridgev2.Bridge) {
 			StopClients(&mu, &clients)
 		},
 	})

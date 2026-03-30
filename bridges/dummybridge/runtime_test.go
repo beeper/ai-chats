@@ -56,7 +56,7 @@ func (r *advancingRuntime) sleepFn(_ context.Context, delay time.Duration) error
 }
 
 func newTestTurn() *bridgesdk.Turn {
-	cfg := &bridgesdk.Config{
+	cfg := &bridgesdk.Config[*dummySession, *struct{}]{
 		ProviderIdentity: bridgesdk.ProviderIdentity{IDPrefix: "dummybridge", StatusNetwork: "dummybridge"},
 	}
 	// These tests only exercise turn-local streaming behavior. Login/portal are

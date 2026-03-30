@@ -122,7 +122,7 @@ func (oc *AIClient) canUseImageGeneration() bool {
 		return false
 	}
 	loginMeta := loginMetadata(oc.UserLogin)
-	if loginMeta == nil || loginMeta.APIKey == "" {
+	if loginMeta == nil || strings.TrimSpace(oc.connector.resolveProviderAPIKey(loginMeta)) == "" {
 		return false
 	}
 	switch loginMeta.Provider {

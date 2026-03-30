@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"maps"
 	"slices"
+	"strings"
 
 	"go.mau.fi/util/jsontime"
 	"go.mau.fi/util/random"
@@ -51,6 +52,13 @@ type UserProfile struct {
 	Occupation         string `json:"occupation,omitempty"`
 	AboutUser          string `json:"about_user,omitempty"`
 	CustomInstructions string `json:"custom_instructions,omitempty"`
+}
+
+// LoginCredentials stores the per-login credentials and service-specific tokens.
+type LoginCredentials struct {
+	APIKey        string         `json:"api_key,omitempty"`
+	BaseURL       string         `json:"base_url,omitempty"`
+	ServiceTokens *ServiceTokens `json:"service_tokens,omitempty"`
 }
 
 // ServiceTokens stores optional per-login credentials for external services.
@@ -109,25 +117,21 @@ type BuiltinAlwaysAllowRule struct {
 
 // UserLoginMetadata is stored on each login row to keep per-user settings.
 type UserLoginMetadata struct {
-	Provider             string         `json:"provider,omitempty"` // Selected provider (beeper, openai, openrouter)
-	APIKey               string         `json:"api_key,omitempty"`
-	BaseURL              string         `json:"base_url,omitempty"`               // Per-user API endpoint
-	TitleGenerationModel string         `json:"title_generation_model,omitempty"` // Model to use for generating chat titles
-	Agents               *bool          `json:"agents,omitempty"`                 // Nil/true enables agents, false limits login to model rooms
-	NextChatIndex        int            `json:"next_chat_index,omitempty"`
-	DefaultChatPortalID  string         `json:"default_chat_portal_id,omitempty"`
-	ModelCache           *ModelCache    `json:"model_cache,omitempty"`
-	ChatsSynced          bool           `json:"chats_synced,omitempty"` // True after initial bootstrap completed successfully
-	Gravatar             *GravatarState `json:"gravatar,omitempty"`
-	Timezone             string         `json:"timezone,omitempty"`
-	Profile              *UserProfile   `json:"profile,omitempty"`
+	Provider             string            `json:"provider,omitempty"` // Selected provider (beeper, openai, openrouter)
+	Credentials          *LoginCredentials `json:"credentials,omitempty"`
+	TitleGenerationModel string            `json:"title_generation_model,omitempty"` // Model to use for generating chat titles
+	Agents               *bool             `json:"agents,omitempty"`                 // Nil/true enables agents, false limits login to model rooms
+	NextChatIndex        int               `json:"next_chat_index,omitempty"`
+	DefaultChatPortalID  string            `json:"default_chat_portal_id,omitempty"`
+	ModelCache           *ModelCache       `json:"model_cache,omitempty"`
+	ChatsSynced          bool              `json:"chats_synced,omitempty"` // True after initial bootstrap completed successfully
+	Gravatar             *GravatarState    `json:"gravatar,omitempty"`
+	Timezone             string            `json:"timezone,omitempty"`
+	Profile              *UserProfile      `json:"profile,omitempty"`
 
 	// FileAnnotationCache stores parsed PDF content from OpenRouter's file-parser plugin
 	// Key is the file hash (SHA256), pruned after 7 days
 	FileAnnotationCache map[string]FileAnnotation `json:"file_annotation_cache,omitempty"`
-
-	// Optional per-login tokens for external services
-	ServiceTokens *ServiceTokens `json:"service_tokens,omitempty"`
 
 	// Tool approval rules (e.g. "always allow" decisions for MCP approvals or dangerous builtin tools).
 	ToolApprovals *ToolApprovalsConfig `json:"tool_approvals,omitempty"`
@@ -144,6 +148,101 @@ type UserLoginMetadata struct {
 	// Provider health tracking
 	ConsecutiveErrors int   `json:"consecutive_errors,omitempty"`
 	LastErrorAt       int64 `json:"last_error_at,omitempty"` // Unix timestamp
+}
+
+func loginCredentials(meta *UserLoginMetadata) *LoginCredentials {
+	if meta == nil {
+		return nil
+	}
+	return meta.Credentials
+}
+
+func ensureLoginCredentials(meta *UserLoginMetadata) *LoginCredentials {
+	if meta == nil {
+		return nil
+	}
+	if meta.Credentials == nil {
+		meta.Credentials = &LoginCredentials{}
+	}
+	return meta.Credentials
+}
+
+func loginCredentialAPIKey(meta *UserLoginMetadata) string {
+	if creds := loginCredentials(meta); creds != nil {
+		return strings.TrimSpace(creds.APIKey)
+	}
+	return ""
+}
+
+func loginCredentialBaseURL(meta *UserLoginMetadata) string {
+	if creds := loginCredentials(meta); creds != nil {
+		return strings.TrimSpace(creds.BaseURL)
+	}
+	return ""
+}
+
+func loginCredentialServiceTokens(meta *UserLoginMetadata) *ServiceTokens {
+	if creds := loginCredentials(meta); creds != nil {
+		return creds.ServiceTokens
+	}
+	return nil
+}
+
+func loginCredentialsEmpty(creds *LoginCredentials) bool {
+	if creds == nil {
+		return true
+	}
+	return strings.TrimSpace(creds.APIKey) == "" &&
+		strings.TrimSpace(creds.BaseURL) == "" &&
+		serviceTokensEmpty(creds.ServiceTokens)
+}
+
+func cloneServiceTokens(src *ServiceTokens) *ServiceTokens {
+	if src == nil {
+		return nil
+	}
+	clone := *src
+	if src.DesktopAPIInstances != nil {
+		clone.DesktopAPIInstances = maps.Clone(src.DesktopAPIInstances)
+	}
+	if src.MCPServers != nil {
+		clone.MCPServers = maps.Clone(src.MCPServers)
+	}
+	return &clone
+}
+
+func serviceTokensEmpty(tokens *ServiceTokens) bool {
+	if tokens == nil {
+		return true
+	}
+	if len(tokens.DesktopAPIInstances) > 0 {
+		for _, instance := range tokens.DesktopAPIInstances {
+			if strings.TrimSpace(instance.Token) != "" || strings.TrimSpace(instance.BaseURL) != "" {
+				return false
+			}
+		}
+	}
+	if len(tokens.MCPServers) > 0 {
+		for _, server := range tokens.MCPServers {
+			if strings.TrimSpace(server.Transport) != "" ||
+				strings.TrimSpace(server.Endpoint) != "" ||
+				strings.TrimSpace(server.Command) != "" ||
+				len(server.Args) > 0 ||
+				strings.TrimSpace(server.Token) != "" ||
+				strings.TrimSpace(server.AuthURL) != "" ||
+				strings.TrimSpace(server.AuthType) != "" ||
+				strings.TrimSpace(server.Kind) != "" ||
+				server.Connected {
+				return false
+			}
+		}
+	}
+	return strings.TrimSpace(tokens.OpenAI) == "" &&
+		strings.TrimSpace(tokens.OpenRouter) == "" &&
+		strings.TrimSpace(tokens.Exa) == "" &&
+		strings.TrimSpace(tokens.Brave) == "" &&
+		strings.TrimSpace(tokens.Perplexity) == "" &&
+		strings.TrimSpace(tokens.DesktopAPI) == ""
 }
 
 // HeartbeatState tracks last heartbeat delivery for dedupe.
@@ -212,6 +311,32 @@ func (m *PortalMetadata) SetModuleMeta(key string, value any) {
 	m.ModuleMeta[key] = value
 }
 
+func (m *PortalMetadata) ModuleMetaValue(key string) any {
+	if m == nil || m.ModuleMeta == nil {
+		return nil
+	}
+	return m.ModuleMeta[key]
+}
+
+func (m *PortalMetadata) SetModuleMetaValue(key string, value any) {
+	m.SetModuleMeta(key, value)
+}
+
+func (m *PortalMetadata) AgentID() string {
+	return resolveAgentID(m)
+}
+
+func (m *PortalMetadata) CompactionCounter() int {
+	if m == nil {
+		return 0
+	}
+	return m.CompactionCount
+}
+
+func (m *PortalMetadata) InternalRoom() bool {
+	return isModuleInternalRoom(m)
+}
+
 func cloneUserLoginMetadata(src *UserLoginMetadata) (*UserLoginMetadata, error) {
 	if src == nil {
 		return &UserLoginMetadata{}, nil
@@ -225,59 +350,6 @@ func cloneUserLoginMetadata(src *UserLoginMetadata) (*UserLoginMetadata, error) 
 		return nil, err
 	}
 	return &clone, nil
-}
-
-func mergeServiceTokens(existing, incoming *ServiceTokens) *ServiceTokens {
-	if incoming == nil {
-		return existing
-	}
-	if existing == nil {
-		clone := *incoming
-		if incoming.DesktopAPIInstances != nil {
-			clone.DesktopAPIInstances = maps.Clone(incoming.DesktopAPIInstances)
-		}
-		if incoming.MCPServers != nil {
-			clone.MCPServers = maps.Clone(incoming.MCPServers)
-		}
-		return &clone
-	}
-
-	merged := *existing
-	if incoming.OpenAI != "" {
-		merged.OpenAI = incoming.OpenAI
-	}
-	if incoming.OpenRouter != "" {
-		merged.OpenRouter = incoming.OpenRouter
-	}
-	if incoming.Exa != "" {
-		merged.Exa = incoming.Exa
-	}
-	if incoming.Brave != "" {
-		merged.Brave = incoming.Brave
-	}
-	if incoming.Perplexity != "" {
-		merged.Perplexity = incoming.Perplexity
-	}
-	if incoming.DesktopAPI != "" {
-		merged.DesktopAPI = incoming.DesktopAPI
-	}
-	if len(incoming.DesktopAPIInstances) > 0 {
-		if merged.DesktopAPIInstances == nil {
-			merged.DesktopAPIInstances = make(map[string]DesktopAPIInstance, len(incoming.DesktopAPIInstances))
-		}
-		for key, value := range incoming.DesktopAPIInstances {
-			merged.DesktopAPIInstances[key] = value
-		}
-	}
-	if len(incoming.MCPServers) > 0 {
-		if merged.MCPServers == nil {
-			merged.MCPServers = make(map[string]MCPServerConfig, len(incoming.MCPServers))
-		}
-		for key, value := range incoming.MCPServers {
-			merged.MCPServers[key] = value
-		}
-	}
-	return &merged
 }
 
 func agentsEnabled(meta *UserLoginMetadata) bool {

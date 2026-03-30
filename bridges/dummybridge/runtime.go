@@ -247,7 +247,7 @@ const (
 	randomActionTransient   randomActionKind = "data_transient"
 )
 
-func (dc *DummyBridgeConnector) onMessage(session any, conv *bridgesdk.Conversation, msg *bridgesdk.Message, turn *bridgesdk.Turn) error {
+func (dc *DummyBridgeConnector) onMessage(session *dummySession, conv *bridgesdk.Conversation, msg *bridgesdk.Message, turn *bridgesdk.Turn) error {
 	if conv == nil || turn == nil || msg == nil {
 		return nil
 	}
@@ -265,7 +265,7 @@ func (dc *DummyBridgeConnector) onMessage(session any, conv *bridgesdk.Conversat
 	if cmd.Name == "help" {
 		return conv.SendNotice(turn.Context(), helpText())
 	}
-	dummy, err := sessionFromAny(session)
+	dummy, err := requireSession(session)
 	if err != nil {
 		return err
 	}

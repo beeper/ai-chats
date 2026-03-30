@@ -140,3 +140,53 @@ func TestDispatchOrQueueQueueAcceptReturnsPending(t *testing.T) {
 		t.Fatalf("expected queue length 1 after accept, got %d", got)
 	}
 }
+
+func TestDispatchOrQueueQueuesBehindExistingPendingWork(t *testing.T) {
+	roomID := id.RoomID("!room:example.com")
+	oc := &AIClient{
+		activeRooms:   map[id.RoomID]bool{},
+		pendingQueues: map[id.RoomID]*pendingQueue{},
+	}
+	oc.pendingQueues[roomID] = &pendingQueue{
+		items: []pendingQueueItem{
+			{
+				pending: pendingMessage{Type: pendingTypeText, MessageBody: "older"},
+			},
+		},
+		cap:        10,
+		dropPolicy: airuntime.QueueDropOld,
+	}
+
+	evt := &event.Event{ID: id.EventID("$new")}
+	portal := &bridgev2.Portal{Portal: &database.Portal{}}
+	portal.MXID = roomID
+	queueItem := pendingQueueItem{
+		pending:   pendingMessage{Type: pendingTypeText, MessageBody: "new"},
+		messageID: string(evt.ID),
+	}
+
+	_, isPending := oc.dispatchOrQueue(
+		context.Background(),
+		evt,
+		portal,
+		nil,
+		nil,
+		queueItem,
+		airuntime.QueueSettings{Mode: airuntime.QueueModeCollect, Cap: 10, DropPolicy: airuntime.QueueDropOld},
+		PromptContext{},
+	)
+
+	if !isPending {
+		t.Fatalf("expected pending=true when older queued work exists")
+	}
+	queue := oc.pendingQueues[roomID]
+	if queue == nil {
+		t.Fatalf("expected pending queue to exist")
+	}
+	if got := len(queue.items); got != 2 {
+		t.Fatalf("expected queue length 2 after enqueue behind backlog, got %d", got)
+	}
+	if oc.activeRooms[roomID] {
+		t.Fatalf("expected room to remain unacquired while backlog exists")
+	}
+}

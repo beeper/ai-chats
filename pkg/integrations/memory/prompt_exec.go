@@ -2,60 +2,56 @@ package memory
 
 import (
 	"context"
-	"slices"
 	"strings"
 
-	"github.com/openai/openai-go/v3"
+	"maunium.net/go/mautrix/bridgev2"
 
 	iruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 )
 
-type PromptAugmentDeps struct {
-	ShouldInjectContext   func(scope iruntime.PromptScope) bool
-	ShouldBootstrap       func(scope iruntime.PromptScope) bool
-	ResolveBootstrapPaths func(scope iruntime.PromptScope) []string
-	MarkBootstrapped      func(ctx context.Context, scope iruntime.PromptScope)
-	ReadSection           func(ctx context.Context, scope iruntime.PromptScope, path string) string
+type PromptContextDeps struct {
+	ShouldInjectContext   func(portal *bridgev2.Portal, meta iruntime.Meta) bool
+	ShouldBootstrap       func(portal *bridgev2.Portal, meta iruntime.Meta) bool
+	ResolveBootstrapPaths func(portal *bridgev2.Portal, meta iruntime.Meta) []string
+	MarkBootstrapped      func(ctx context.Context, portal *bridgev2.Portal, meta iruntime.Meta)
+	ReadSection           func(ctx context.Context, meta iruntime.Meta, path string) string
 }
 
-func AugmentPrompt(
+func BuildPromptContextText(
 	ctx context.Context,
-	scope iruntime.PromptScope,
-	prompt []openai.ChatCompletionMessageParamUnion,
-	deps PromptAugmentDeps,
-) []openai.ChatCompletionMessageParamUnion {
-	if deps.ShouldInjectContext == nil || !deps.ShouldInjectContext(scope) {
-		return prompt
+	portal *bridgev2.Portal,
+	meta iruntime.Meta,
+	deps PromptContextDeps,
+) string {
+	if deps.ShouldInjectContext == nil || !deps.ShouldInjectContext(portal, meta) {
+		return ""
 	}
 	if deps.ReadSection == nil {
-		return prompt
+		return ""
 	}
 
 	sections := make([]string, 0, 3)
-	if section := deps.ReadSection(ctx, scope, "MEMORY.md"); section != "" {
+	if section := deps.ReadSection(ctx, meta, "MEMORY.md"); section != "" {
 		sections = append(sections, section)
-	} else if section := deps.ReadSection(ctx, scope, "memory.md"); section != "" {
+	} else if section := deps.ReadSection(ctx, meta, "memory.md"); section != "" {
 		sections = append(sections, section)
 	}
 
-	if deps.ShouldBootstrap != nil && deps.ShouldBootstrap(scope) {
+	if deps.ShouldBootstrap != nil && deps.ShouldBootstrap(portal, meta) {
 		if deps.ResolveBootstrapPaths != nil {
-			for _, path := range deps.ResolveBootstrapPaths(scope) {
-				if section := deps.ReadSection(ctx, scope, path); section != "" {
+			for _, path := range deps.ResolveBootstrapPaths(portal, meta) {
+				if section := deps.ReadSection(ctx, meta, path); section != "" {
 					sections = append(sections, section)
 				}
 			}
 		}
 		if deps.MarkBootstrapped != nil {
-			deps.MarkBootstrapped(ctx, scope)
+			deps.MarkBootstrapped(ctx, portal, meta)
 		}
 	}
 
 	if len(sections) == 0 {
-		return prompt
+		return ""
 	}
-	contextText := strings.Join(sections, "\n\n")
-	out := slices.Clone(prompt)
-	out = append(out, openai.SystemMessage(contextText))
-	return out
+	return strings.Join(sections, "\n\n")
 }
