@@ -637,12 +637,14 @@ func (oc *AIClient) dispatchOrQueueCore(
 	shouldSteer := behavior.Steer
 	shouldFollowup := behavior.Followup
 	hasDBMessage := userMessage != nil
-	queueDecision := airuntime.DecideQueueAction(queueSettings.Mode, oc.roomHasActiveRun(roomID), false)
+	roomBusy := oc.roomHasActiveRun(roomID) || oc.roomHasPendingQueueWork(roomID)
+	queueDecision := airuntime.DecideQueueAction(queueSettings.Mode, roomBusy, false)
 	if queueDecision.Action == airuntime.QueueActionInterruptAndRun {
 		oc.cancelRoomRun(roomID)
 		oc.clearPendingQueue(roomID)
+		roomBusy = false
 	}
-	if oc.acquireRoom(roomID) {
+	if !roomBusy && oc.acquireRoom(roomID) {
 		oc.stopQueueTyping(roomID)
 		if hasDBMessage {
 			oc.saveUserMessage(ctx, evt, userMessage)

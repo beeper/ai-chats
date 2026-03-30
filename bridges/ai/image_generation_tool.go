@@ -255,14 +255,8 @@ func supportsGeminiImageGen(btc *BridgeToolContext) bool {
 	}
 	switch loginMeta.Provider {
 	case ProviderMagicProxy:
-		if btc.Client.connector != nil {
-			services := btc.Client.connector.resolveServiceConfig(loginMeta)
-			if svc, ok := services[serviceGemini]; ok {
-				return strings.TrimSpace(svc.BaseURL) != "" && strings.TrimSpace(svc.APIKey) != ""
-			}
-		}
-		base := normalizeProxyBaseURL(loginCredentialBaseURL(loginMeta))
-		return base != "" && loginCredentialAPIKey(loginMeta) != ""
+		// Magic Proxy does not expose the Gemini image generation endpoint.
+		return false
 	default:
 		return false
 	}
@@ -592,12 +586,9 @@ func resolveOpenRouterImageGenEndpoint(btc *BridgeToolContext) (baseURL string, 
 	// Provider-specific per-login endpoints.
 	switch meta.Provider {
 	case ProviderMagicProxy:
-		base := normalizeProxyBaseURL(loginCredentialBaseURL(meta))
-		key := trim(loginCredentialAPIKey(meta))
-		if base == "" || key == "" {
-			return "", "", false
-		}
-		return joinProxyPath(base, "/openrouter/v1"), key, true
+		// Magic Proxy does not expose the OpenRouter images endpoint; use the
+		// verified OpenAI images route instead.
+		return "", "", false
 	case ProviderOpenRouter:
 		if conn == nil {
 			return "", "", false

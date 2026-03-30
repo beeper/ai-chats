@@ -2,7 +2,7 @@ package ai
 
 import "testing"
 
-func TestResolveImageGenProviderMagicProxyPrefersOpenRouterForSimplePrompts(t *testing.T) {
+func TestResolveImageGenProviderMagicProxyPrefersOpenAIForSimplePrompts(t *testing.T) {
 	meta := &UserLoginMetadata{
 		Provider: ProviderMagicProxy,
 		Credentials: &LoginCredentials{
@@ -19,12 +19,12 @@ func TestResolveImageGenProviderMagicProxyPrefersOpenRouterForSimplePrompts(t *t
 	if err != nil {
 		t.Fatalf("resolveImageGenProvider returned error: %v", err)
 	}
-	if got != imageGenProviderOpenRouter {
-		t.Fatalf("expected provider %q, got %q", imageGenProviderOpenRouter, got)
+	if got != imageGenProviderOpenAI {
+		t.Fatalf("expected provider %q, got %q", imageGenProviderOpenAI, got)
 	}
 }
 
-func TestResolveImageGenProviderMagicProxyStillPrefersOpenRouterWhenCountIsGreaterThanOne(t *testing.T) {
+func TestResolveImageGenProviderMagicProxyStillPrefersOpenAIWhenCountIsGreaterThanOne(t *testing.T) {
 	meta := &UserLoginMetadata{
 		Provider: ProviderMagicProxy,
 		Credentials: &LoginCredentials{
@@ -41,12 +41,12 @@ func TestResolveImageGenProviderMagicProxyStillPrefersOpenRouterWhenCountIsGreat
 	if err != nil {
 		t.Fatalf("resolveImageGenProvider returned error: %v", err)
 	}
-	if got != imageGenProviderOpenRouter {
-		t.Fatalf("expected provider %q, got %q", imageGenProviderOpenRouter, got)
+	if got != imageGenProviderOpenAI {
+		t.Fatalf("expected provider %q, got %q", imageGenProviderOpenAI, got)
 	}
 }
 
-func TestResolveImageGenProviderMagicProxyProviderOpenAIStillRoutesToOpenRouter(t *testing.T) {
+func TestResolveImageGenProviderMagicProxyProviderOpenAIUsesOpenAI(t *testing.T) {
 	meta := &UserLoginMetadata{
 		Provider: ProviderMagicProxy,
 		Credentials: &LoginCredentials{
@@ -69,7 +69,7 @@ func TestResolveImageGenProviderMagicProxyProviderOpenAIStillRoutesToOpenRouter(
 	}
 }
 
-func TestResolveImageGenProviderMagicProxyProviderGeminiUsesGemini(t *testing.T) {
+func TestResolveImageGenProviderMagicProxyProviderGeminiIsUnavailable(t *testing.T) {
 	meta := &UserLoginMetadata{
 		Provider: ProviderMagicProxy,
 		Credentials: &LoginCredentials{
@@ -79,16 +79,13 @@ func TestResolveImageGenProviderMagicProxyProviderGeminiUsesGemini(t *testing.T)
 	}
 	btc := newTTSTestBridgeContext(meta, &OpenAIConnector{})
 
-	got, err := resolveImageGenProvider(imageGenRequest{
+	_, err := resolveImageGenProvider(imageGenRequest{
 		Provider: "gemini",
 		Prompt:   "cat",
 		Count:    1,
 	}, btc)
-	if err != nil {
-		t.Fatalf("resolveImageGenProvider returned error: %v", err)
-	}
-	if got != imageGenProviderGemini {
-		t.Fatalf("expected provider %q, got %q", imageGenProviderGemini, got)
+	if err == nil {
+		t.Fatal("expected gemini image generation to be unavailable for magic proxy")
 	}
 }
 

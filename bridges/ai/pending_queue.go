@@ -176,6 +176,19 @@ func (oc *AIClient) getQueueSnapshot(roomID id.RoomID) *pendingQueue {
 	return &clone
 }
 
+func (oc *AIClient) roomHasPendingQueueWork(roomID id.RoomID) bool {
+	if oc == nil || roomID == "" {
+		return false
+	}
+	oc.pendingQueuesMu.Lock()
+	defer oc.pendingQueuesMu.Unlock()
+	queue := oc.pendingQueues[roomID]
+	if queue == nil {
+		return false
+	}
+	return queue.draining || len(queue.items) > 0 || queue.droppedCount > 0
+}
+
 func (oc *AIClient) consumeQueueSummary(roomID id.RoomID, noun string) string {
 	oc.pendingQueuesMu.Lock()
 	defer oc.pendingQueuesMu.Unlock()
