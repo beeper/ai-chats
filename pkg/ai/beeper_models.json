@@ -135,6 +135,18 @@
       ]
     },
     {
+      "id": "google/gemma-2-27b-it",
+      "name": "Gemma 2 27B",
+      "provider": "openrouter",
+      "api": "openai-completions",
+      "supports_vision": false,
+      "supports_tool_calling": false,
+      "supports_reasoning": false,
+      "supports_web_search": false,
+      "context_window": 8192,
+      "max_output_tokens": 2048
+    },
+    {
       "id": "meta-llama/llama-4-maverick",
       "name": "Llama 4 Maverick",
       "provider": "openrouter",

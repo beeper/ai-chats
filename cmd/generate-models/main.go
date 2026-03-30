@@ -34,6 +34,7 @@ var modelConfig = struct {
 		"google/gemini-2.5-flash-lite":  "Gemini 2.5 Flash Lite",
 		"google/gemini-2.5-pro":         "Gemini 2.5 Pro",
 		"google/gemini-3-flash-preview": "Gemini 3 Flash",
+		"google/gemma-2-27b-it":         "Gemma 2 27B",
 		"meta-llama/llama-4-maverick":   "Llama 4 Maverick",
 		"minimax/minimax-m2.7":          "MiniMax M2.7",
 		"mistralai/devstral-2512":       "Devstral 2",
