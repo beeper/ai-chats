@@ -274,31 +274,54 @@ func TestGetFollowUpMessages_LeavesNonFollowupQueueUntouched(t *testing.T) {
 
 func TestBuildContinuationParams_UsesPendingSteeringPromptsBeforeDrainingQueue(t *testing.T) {
 	roomID := id.RoomID("!room:example.com")
-	oc := &AIClient{
-		connector: &OpenAIConnector{},
-		activeRoomRuns: map[id.RoomID]*roomRunState{
-			roomID: {
-				steerQueue: []pendingQueueItem{
-					{pending: pendingMessage{Type: pendingTypeText, MessageBody: "queue steer"}},
+	newClient := func() *AIClient {
+		return &AIClient{
+			connector: &OpenAIConnector{},
+			activeRoomRuns: map[id.RoomID]*roomRunState{
+				roomID: {
+					steerQueue: []pendingQueueItem{
+						{pending: pendingMessage{Type: pendingTypeText, MessageBody: "queue steer"}},
+					},
 				},
 			},
-		},
+		}
 	}
-	state := &streamingState{roomID: roomID}
-	state.addPendingSteeringPrompts([]string{"pending steer"})
-	prompt := PromptContext{}
 
-	params := oc.buildContinuationParams(context.Background(), &prompt, state, nil, nil, nil)
-	if len(params.Input.OfInputItemList) == 0 {
-		t.Fatal("expected continuation input to include stored steering prompt")
-	}
-	if pending := state.consumePendingSteeringPrompts(); len(pending) != 0 {
-		t.Fatalf("expected pending steering prompts to be consumed, got %#v", pending)
-	}
-	if len(prompt.Messages) == 0 {
-		t.Fatal("expected steering input to persist in canonical prompt even when history starts empty")
-	}
-	if snapshot := oc.getRoomRun(roomID); snapshot == nil || len(snapshot.steerQueue) != 1 {
-		t.Fatalf("expected queued steering item to remain available, got %#v", snapshot)
-	}
+	t.Run("non-nil prompt", func(t *testing.T) {
+		oc := newClient()
+		state := &streamingState{roomID: roomID}
+		state.addPendingSteeringPrompts([]string{"pending steer"})
+		prompt := PromptContext{}
+
+		params := oc.buildContinuationParams(context.Background(), &prompt, state, nil, nil, nil)
+		if len(params.Input.OfInputItemList) == 0 {
+			t.Fatal("expected continuation input to include stored steering prompt")
+		}
+		if pending := state.consumePendingSteeringPrompts(); len(pending) != 0 {
+			t.Fatalf("expected pending steering prompts to be consumed, got %#v", pending)
+		}
+		if len(prompt.Messages) == 0 {
+			t.Fatal("expected steering input to persist in canonical prompt even when history starts empty")
+		}
+		if snapshot := oc.getRoomRun(roomID); snapshot == nil || len(snapshot.steerQueue) != 1 {
+			t.Fatalf("expected queued steering item to remain available, got %#v", snapshot)
+		}
+	})
+
+	t.Run("nil prompt", func(t *testing.T) {
+		oc := newClient()
+		state := &streamingState{roomID: roomID}
+		state.addPendingSteeringPrompts([]string{"pending steer"})
+
+		params := oc.buildContinuationParams(context.Background(), nil, state, nil, nil, nil)
+		if len(params.Input.OfInputItemList) == 0 {
+			t.Fatal("expected continuation input to include stored steering prompt")
+		}
+		if pending := state.consumePendingSteeringPrompts(); len(pending) != 0 {
+			t.Fatalf("expected pending steering prompts to be consumed, got %#v", pending)
+		}
+		if snapshot := oc.getRoomRun(roomID); snapshot == nil || len(snapshot.steerQueue) != 1 {
+			t.Fatalf("expected queued steering item to remain available, got %#v", snapshot)
+		}
+	})
 }

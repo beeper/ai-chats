@@ -2,6 +2,7 @@ package ai
 
 import (
 	_ "embed"
+	"fmt"
 	"strings"
 	"time"
 
@@ -444,17 +445,35 @@ type ModelSelectionConfig struct {
 	Fallbacks []string `yaml:"fallbacks"`
 }
 
+func (cfg *ModelsConfig) UnmarshalYAML(unmarshal func(any) error) error {
+	type rawModelsConfig ModelsConfig
+	var raw rawModelsConfig
+	if err := unmarshal(&raw); err != nil {
+		return err
+	}
+	if len(raw.Providers) > 0 {
+		normalizedProviders := make(map[string]ModelProviderConfig, len(raw.Providers))
+		for key, provider := range raw.Providers {
+			normalized := strings.ToLower(strings.TrimSpace(key))
+			if normalized == "" {
+				return fmt.Errorf("models.providers contains an empty provider key")
+			}
+			if _, exists := normalizedProviders[normalized]; exists {
+				return fmt.Errorf("models.providers contains duplicate provider key after normalization: %q", key)
+			}
+			normalizedProviders[normalized] = provider
+		}
+		raw.Providers = normalizedProviders
+	}
+	*cfg = ModelsConfig(raw)
+	return nil
+}
+
 func (cfg *ModelsConfig) Provider(name string) ModelProviderConfig {
 	if cfg == nil || len(cfg.Providers) == 0 {
 		return ModelProviderConfig{}
 	}
-	normalized := strings.ToLower(strings.TrimSpace(name))
-	for key, provider := range cfg.Providers {
-		if strings.ToLower(strings.TrimSpace(key)) == normalized {
-			return provider
-		}
-	}
-	return ModelProviderConfig{}
+	return cfg.Providers[strings.ToLower(strings.TrimSpace(name))]
 }
 
 // ModelDefinitionConfig defines a model entry for catalog seeding.

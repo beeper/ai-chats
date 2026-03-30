@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -24,6 +25,7 @@ type pendingQueueItem struct {
 }
 
 type pendingQueue struct {
+	mu             sync.Mutex
 	items          []pendingQueueItem
 	draining       bool
 	lastEnqueuedAt int64
@@ -57,6 +59,7 @@ func (oc *AIClient) getPendingQueue(roomID id.RoomID, settings airuntime.QueueSe
 		}
 		oc.pendingQueues[roomID] = queue
 	} else {
+		queue.mu.Lock()
 		queue.mode = settings.Mode
 		if settings.DebounceMs >= 0 {
 			queue.debounceMs = settings.DebounceMs
@@ -67,6 +70,7 @@ func (oc *AIClient) getPendingQueue(roomID id.RoomID, settings airuntime.QueueSe
 		if settings.DropPolicy != "" {
 			queue.dropPolicy = settings.DropPolicy
 		}
+		queue.mu.Unlock()
 	}
 	return queue
 }
@@ -86,6 +90,8 @@ func (oc *AIClient) enqueuePendingItem(roomID id.RoomID, item pendingQueueItem, 
 	if queue == nil {
 		return false
 	}
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
 
 	for _, existing := range queue.items {
 		if pendingQueueItemsConflict(item, existing) {
@@ -151,6 +157,8 @@ func (oc *AIClient) popQueueItems(roomID id.RoomID, count int) []pendingQueueIte
 	if queue == nil || len(queue.items) == 0 || count <= 0 {
 		return nil
 	}
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
 	if count > len(queue.items) {
 		count = len(queue.items)
 	}
@@ -170,9 +178,15 @@ func (oc *AIClient) getQueueSnapshot(roomID id.RoomID) *pendingQueue {
 	if queue == nil {
 		return nil
 	}
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
 	clone := *queue
 	clone.items = slices.Clone(queue.items)
 	clone.summaryLines = slices.Clone(queue.summaryLines)
+	if queue.lastItem != nil {
+		lastItem := *queue.lastItem
+		clone.lastItem = &lastItem
+	}
 	return &clone
 }
 
@@ -186,6 +200,8 @@ func (oc *AIClient) roomHasPendingQueueWork(roomID id.RoomID) bool {
 	if queue == nil {
 		return false
 	}
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
 	return queue.draining || len(queue.items) > 0 || queue.droppedCount > 0
 }
 
@@ -196,6 +212,8 @@ func (oc *AIClient) consumeQueueSummary(roomID id.RoomID, noun string) string {
 	if queue == nil || queue.droppedCount == 0 {
 		return ""
 	}
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
 	summary := buildQueueSummaryPrompt(queue, noun)
 	queue.droppedCount = 0
 	queue.summaryLines = nil
@@ -358,6 +376,11 @@ func (oc *AIClient) markQueueDraining(roomID id.RoomID) bool {
 	if queue == nil || queue.draining {
 		return false
 	}
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
+	if queue.draining {
+		return false
+	}
 	queue.draining = true
 	return true
 }
@@ -369,6 +392,8 @@ func (oc *AIClient) clearQueueDraining(roomID id.RoomID) {
 	if queue == nil {
 		return
 	}
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
 	queue.draining = false
 	if len(queue.items) == 0 && queue.droppedCount == 0 {
 		delete(oc.pendingQueues, roomID)

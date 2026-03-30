@@ -146,7 +146,35 @@ func normalizePromptTurnPartType(partType string) string {
 }
 
 func canonicalPromptToolArguments(raw any) string {
+	switch typed := raw.(type) {
+	case nil:
+		return "{}"
+	case string:
+		trimmed := strings.TrimSpace(typed)
+		if trimmed == "" {
+			return "{}"
+		}
+		var decoded any
+		if err := json.Unmarshal([]byte(trimmed), &decoded); err == nil {
+			data, marshalErr := json.Marshal(decoded)
+			if marshalErr == nil && string(data) != "null" {
+				return string(data)
+			}
+		}
+		data, err := json.Marshal(typed)
+		if err == nil && string(data) != "null" {
+			return string(data)
+		}
+	default:
+		if data, err := json.Marshal(typed); err == nil && string(data) != "null" {
+			return string(data)
+		}
+	}
 	if value := strings.TrimSpace(formatPromptCanonicalValue(raw)); value != "" {
+		data, err := json.Marshal(value)
+		if err == nil && string(data) != "null" {
+			return string(data)
+		}
 		return value
 	}
 	return "{}"
