@@ -11,7 +11,7 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
-func TestGetCapabilities_ModelRoomAllowsReplyEditReaction(t *testing.T) {
+func TestGetCapabilities_ModelRoomRejectsReplyThreadAndEdit(t *testing.T) {
 	oc := &AIClient{
 		connector: &OpenAIConnector{},
 		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
@@ -26,8 +26,11 @@ func TestGetCapabilities_ModelRoomAllowsReplyEditReaction(t *testing.T) {
 	}
 
 	caps := oc.GetCapabilities(context.Background(), portal)
-	if caps.Reply != event.CapLevelFullySupported {
-		t.Fatalf("expected reply fully supported in model room, got %v", caps.Reply)
+	if caps.Reply != event.CapLevelRejected {
+		t.Fatalf("expected reply rejected in model room, got %v", caps.Reply)
+	}
+	if caps.Thread != event.CapLevelRejected {
+		t.Fatalf("expected thread rejected in model room, got %v", caps.Thread)
 	}
 	if caps.Edit != event.CapLevelRejected {
 		t.Fatalf("expected edit rejected in model room, got %v", caps.Edit)
@@ -43,6 +46,12 @@ func TestGetCapabilities_ModelRoomAllowsReplyEditReaction(t *testing.T) {
 	rawJSON := string(raw)
 	if !strings.Contains(rawJSON, `"reaction":2`) {
 		t.Fatalf("expected serialized room features to contain reaction=2, got: %s", rawJSON)
+	}
+	if !strings.Contains(rawJSON, `"reply":-2`) {
+		t.Fatalf("expected serialized room features to contain reply=-2, got: %s", rawJSON)
+	}
+	if !strings.Contains(rawJSON, `"thread":-2`) {
+		t.Fatalf("expected serialized room features to contain thread=-2, got: %s", rawJSON)
 	}
 	if !strings.Contains(rawJSON, `"edit":-2`) {
 		t.Fatalf("expected serialized room features to contain edit=-2, got: %s", rawJSON)

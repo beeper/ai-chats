@@ -1040,6 +1040,8 @@ func (oc *AIClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal
 		caps.Reaction = event.CapLevelFullySupported
 		caps.ReactionCount = 1
 		if isModelRoom {
+			caps.Reply = event.CapLevelRejected
+			caps.Thread = event.CapLevelRejected
 			caps.Edit = event.CapLevelRejected
 			caps.EditMaxCount = 0
 			caps.EditMaxAge = nil
@@ -1057,6 +1059,11 @@ func (oc *AIClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal
 		caps.EditMaxAge = nil
 		caps.Reaction = event.CapLevelRejected
 		caps.ReactionCount = 0
+	}
+
+	if isModelRoom {
+		caps.Reply = event.CapLevelRejected
+		caps.Thread = event.CapLevelRejected
 	}
 
 	// Apply file capabilities based on modalities
