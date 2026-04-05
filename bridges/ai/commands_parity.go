@@ -45,7 +45,7 @@ func fnReset(ce *commands.Event) {
 
 	meta.SessionResetAt = time.Now().UnixMilli()
 	client.savePortalQuiet(ce.Ctx, ce.Portal, "session reset")
-	client.clearPendingQueue(ce.Portal.MXID)
+	client.clearPendingQueue(ce.Ctx, ce.Portal.MXID)
 	client.cancelRoomRun(ce.Portal.MXID)
 
 	ce.Reply("%s", formatSystemAck("Session reset."))

@@ -641,7 +641,7 @@ func (oc *AIClient) dispatchOrQueueCore(
 	queueDecision := airuntime.DecideQueueAction(queueSettings.Mode, roomBusy, false)
 	if queueDecision.Action == airuntime.QueueActionInterruptAndRun {
 		oc.cancelRoomRun(roomID)
-		oc.clearPendingQueue(roomID)
+		oc.clearPendingQueue(ctx, roomID)
 		roomBusy = false
 	}
 	if !roomBusy && oc.acquireRoom(roomID) {
@@ -667,9 +667,7 @@ func (oc *AIClient) dispatchOrQueueCore(
 		metaSnapshot := clonePortalMetadata(meta)
 		go func(metaSnapshot *PortalMetadata) {
 			defer func() {
-				if hasDBMessage {
-					oc.removePendingAckReactions(oc.backgroundContext(ctx), portal, queueItem.pending)
-				}
+				oc.removePendingAckReactions(oc.backgroundContext(ctx), portal, queueItem.pending)
 				oc.releaseRoom(roomID)
 				oc.processPendingQueue(oc.backgroundContext(ctx), roomID)
 			}()

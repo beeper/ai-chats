@@ -85,8 +85,8 @@ func (oc *AIClient) getPendingQueue(roomID id.RoomID, settings airuntime.QueueSe
 	return queue
 }
 
-func (oc *AIClient) clearPendingQueue(roomID id.RoomID) {
-	oc.drainPendingQueue(roomID)
+func (oc *AIClient) clearPendingQueue(ctx context.Context, roomID id.RoomID) {
+	oc.finalizeStoppedQueueItems(ctx, oc.drainPendingQueue(roomID))
 }
 
 func (oc *AIClient) drainPendingQueue(roomID id.RoomID) []pendingQueueItem {

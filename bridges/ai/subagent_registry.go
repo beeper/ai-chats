@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"context"
 	"time"
 
 	"maunium.net/go/mautrix/id"
@@ -32,7 +33,7 @@ func (oc *AIClient) listSubagentRunsForParent(parent id.RoomID) []*subagentRun {
 	return runs
 }
 
-func (oc *AIClient) stopSubagentRuns(parent id.RoomID) int {
+func (oc *AIClient) stopSubagentRuns(ctx context.Context, parent id.RoomID) int {
 	if oc == nil || parent == "" {
 		return 0
 	}
@@ -44,7 +45,8 @@ func (oc *AIClient) stopSubagentRuns(parent id.RoomID) int {
 		}
 		canceled := oc.cancelRoomRun(run.ChildRoomID)
 		drained := oc.drainPendingQueue(run.ChildRoomID)
-		if canceled || len(drained) > 0 {
+		finalized := oc.finalizeStoppedQueueItems(ctx, drained)
+		if canceled || finalized > 0 {
 			stopped++
 		}
 	}

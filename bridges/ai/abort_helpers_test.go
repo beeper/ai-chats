@@ -121,6 +121,34 @@ func TestExecuteUserStopPlanRemovesOnlyTargetedQueuedTurn(t *testing.T) {
 	}
 }
 
+func TestExecuteUserStopPlanActiveNoOpFallsBackToNoMatch(t *testing.T) {
+	roomID := id.RoomID("!room:test")
+	oc := &AIClient{
+		activeRoomRuns: map[id.RoomID]*roomRunState{
+			roomID: {
+				sourceEvent: id.EventID("$user"),
+			},
+		},
+	}
+	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
+
+	result := oc.executeUserStopPlan(context.Background(), userStopRequest{
+		Portal:  portal,
+		ReplyTo: id.EventID("$user"),
+	}, userStopPlan{
+		Kind:          stopPlanKindActive,
+		Scope:         "turn",
+		TargetKind:    "source_event",
+		TargetEventID: id.EventID("$user"),
+	})
+	if result.Plan.Kind != stopPlanKindNoMatch {
+		t.Fatalf("expected no-match fallback for no-op active stop, got %#v", result.Plan)
+	}
+	if result.ActiveStopped {
+		t.Fatalf("expected active stop to report false, got %#v", result)
+	}
+}
+
 func TestBuildStreamUIMessageIncludesStopMetadata(t *testing.T) {
 	oc := &AIClient{}
 	conv := bridgesdk.NewConversation[*AIClient, *Config](context.Background(), nil, nil, bridgev2.EventSender{}, nil, nil)

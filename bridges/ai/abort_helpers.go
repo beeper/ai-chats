@@ -155,13 +155,16 @@ func (oc *AIClient) executeUserStopPlan(ctx context.Context, req userStopRequest
 			result.ActiveStopped = oc.cancelRoomRun(roomID)
 		}
 		result.QueuedStopped = oc.finalizeStoppedQueueItems(ctx, oc.drainPendingQueue(roomID))
-		result.SubagentsStopped = oc.stopSubagentRuns(roomID)
+		result.SubagentsStopped = oc.stopSubagentRuns(ctx, roomID)
 	case stopPlanKindActive:
-		if oc.markRoomRunStopped(roomID, buildStopMetadata(plan, req)) {
+		markedStopped := oc.markRoomRunStopped(roomID, buildStopMetadata(plan, req))
+		if markedStopped {
 			result.ActiveStopped = oc.cancelRoomRun(roomID)
-			if result.ActiveStopped {
-				result.SubagentsStopped = oc.stopSubagentRuns(roomID)
-			}
+		}
+		if result.ActiveStopped {
+			result.SubagentsStopped = oc.stopSubagentRuns(ctx, roomID)
+		} else {
+			result.Plan.Kind = stopPlanKindNoMatch
 		}
 	case stopPlanKindQueued:
 		result.QueuedStopped = oc.finalizeStoppedQueueItems(ctx, oc.removePendingQueueBySourceEvent(roomID, plan.TargetEventID))
