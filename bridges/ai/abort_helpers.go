@@ -127,26 +127,17 @@ func (oc *AIClient) resolveUserStopPlan(req userStopRequest) userStopPlan {
 			TargetEventID: req.ReplyTo,
 		}
 	}
-	if oc.pendingQueueHasSourceEvent(req.Portal.MXID, req.ReplyTo) {
-		return userStopPlan{
-			Kind:          stopPlanKindQueued,
-			Scope:         "turn",
-			TargetKind:    "source_event",
-			TargetEventID: req.ReplyTo,
-		}
-	}
 	return userStopPlan{
-		Kind:          stopPlanKindNoMatch,
+		Kind:          stopPlanKindQueued,
 		Scope:         "turn",
+		TargetKind:    "source_event",
 		TargetEventID: req.ReplyTo,
 	}
 }
 
 func (oc *AIClient) finalizeStoppedQueueItems(ctx context.Context, items []pendingQueueItem) int {
 	for _, item := range items {
-		if item.pending.Meta != nil && item.pending.Meta.AckReactionRemoveAfter {
-			oc.removePendingAckReactions(oc.backgroundContext(ctx), item.pending.Portal, item.pending)
-		}
+		oc.removePendingAckReactions(oc.backgroundContext(ctx), item.pending.Portal, item.pending)
 		oc.sendQueueRejectedStatus(ctx, item.pending.Portal, item.pending.Event, item.pending.StatusEvents, "Stopped.")
 	}
 	return len(items)
@@ -174,6 +165,9 @@ func (oc *AIClient) executeUserStopPlan(ctx context.Context, req userStopRequest
 		}
 	case stopPlanKindQueued:
 		result.QueuedStopped = oc.finalizeStoppedQueueItems(ctx, oc.removePendingQueueBySourceEvent(roomID, plan.TargetEventID))
+		if result.QueuedStopped == 0 {
+			result.Plan.Kind = stopPlanKindNoMatch
+		}
 	}
 
 	if req.Meta != nil && (result.ActiveStopped || result.QueuedStopped > 0 || result.SubagentsStopped > 0) {

@@ -667,7 +667,7 @@ func (oc *AIClient) dispatchOrQueueCore(
 		metaSnapshot := clonePortalMetadata(meta)
 		go func(metaSnapshot *PortalMetadata) {
 			defer func() {
-				if hasDBMessage && metaSnapshot != nil && metaSnapshot.AckReactionRemoveAfter {
+				if hasDBMessage {
 					oc.removePendingAckReactions(oc.backgroundContext(ctx), portal, queueItem.pending)
 				}
 				oc.releaseRoom(roomID)
@@ -815,9 +815,7 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 		if err != nil {
 			oc.loggerForContext(ctx).Err(err).Msg("Failed to build prompt for pending queue item")
 			oc.notifyMatrixSendFailure(ctx, item.pending.Portal, item.pending.Event, err)
-			if item.pending.Meta != nil && item.pending.Meta.AckReactionRemoveAfter {
-				oc.removePendingAckReactions(oc.backgroundContext(ctx), item.pending.Portal, item.pending)
-			}
+			oc.removePendingAckReactions(oc.backgroundContext(ctx), item.pending.Portal, item.pending)
 			oc.releaseRoom(roomID)
 			oc.processPendingQueue(oc.backgroundContext(ctx), roomID)
 			return

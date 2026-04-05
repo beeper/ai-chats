@@ -43,10 +43,8 @@ func (oc *AIClient) stopSubagentRuns(parent id.RoomID) int {
 			continue
 		}
 		canceled := oc.cancelRoomRun(run.ChildRoomID)
-		queueSnapshot := oc.getQueueSnapshot(run.ChildRoomID)
-		hasQueued := queueSnapshot != nil && (len(queueSnapshot.items) > 0 || queueSnapshot.droppedCount > 0)
-		oc.clearPendingQueue(run.ChildRoomID)
-		if canceled || hasQueued {
+		drained := oc.drainPendingQueue(run.ChildRoomID)
+		if canceled || len(drained) > 0 {
 			stopped++
 		}
 	}

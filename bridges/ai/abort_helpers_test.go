@@ -54,25 +54,36 @@ func TestResolveUserStopPlanMatchesActiveReplyTargets(t *testing.T) {
 	}
 }
 
-func TestResolveUserStopPlanMatchesQueuedReplyTarget(t *testing.T) {
-	roomID := id.RoomID("!room:test")
-	oc := &AIClient{
-		pendingQueues: map[id.RoomID]*pendingQueue{
-			roomID: {
-				items: []pendingQueueItem{{
-					pending: pendingMessage{SourceEventID: id.EventID("$queued")},
-				}},
-			},
-		},
-	}
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
+func TestResolveUserStopPlanSpeculativelyReturnsQueued(t *testing.T) {
+	oc := &AIClient{}
+	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: "!room:test"}}
 
 	plan := oc.resolveUserStopPlan(userStopRequest{
 		Portal:  portal,
-		ReplyTo: id.EventID("$queued"),
+		ReplyTo: id.EventID("$unknown"),
 	})
 	if plan.Kind != stopPlanKindQueued || plan.TargetKind != "source_event" {
-		t.Fatalf("expected queued stop plan, got %#v", plan)
+		t.Fatalf("expected speculative queued stop plan, got %#v", plan)
+	}
+}
+
+func TestExecuteUserStopPlanFallsBackToNoMatch(t *testing.T) {
+	oc := &AIClient{}
+	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: "!room:test"}}
+
+	result := oc.executeUserStopPlan(context.Background(), userStopRequest{
+		Portal: portal,
+	}, userStopPlan{
+		Kind:          stopPlanKindQueued,
+		Scope:         "turn",
+		TargetKind:    "source_event",
+		TargetEventID: id.EventID("$nonexistent"),
+	})
+	if result.Plan.Kind != stopPlanKindNoMatch {
+		t.Fatalf("expected no-match fallback, got %#v", result.Plan)
+	}
+	if result.QueuedStopped != 0 {
+		t.Fatalf("expected zero queued stopped, got %d", result.QueuedStopped)
 	}
 }
 

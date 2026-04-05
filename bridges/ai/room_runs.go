@@ -76,9 +76,7 @@ func (oc *AIClient) clearRoomRun(roomID id.RoomID) {
 	}
 	ctx := oc.backgroundContext(context.Background())
 	for _, pending := range ackPending {
-		if pending.Meta != nil && pending.Meta.AckReactionRemoveAfter {
-			oc.removePendingAckReactions(ctx, pending.Portal, pending)
-		}
+		oc.removePendingAckReactions(ctx, pending.Portal, pending)
 	}
 }
 

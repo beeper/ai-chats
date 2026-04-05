@@ -86,13 +86,7 @@ func (oc *AIClient) getPendingQueue(roomID id.RoomID, settings airuntime.QueueSe
 }
 
 func (oc *AIClient) clearPendingQueue(roomID id.RoomID) {
-	oc.pendingQueuesMu.Lock()
-	_, existed := oc.pendingQueues[roomID]
-	delete(oc.pendingQueues, roomID)
-	oc.pendingQueuesMu.Unlock()
-	if existed {
-		oc.stopQueueTyping(roomID)
-	}
+	oc.drainPendingQueue(roomID)
 }
 
 func (oc *AIClient) drainPendingQueue(roomID id.RoomID) []pendingQueueItem {
@@ -113,29 +107,6 @@ func (oc *AIClient) drainPendingQueue(roomID id.RoomID) []pendingQueueItem {
 
 	oc.stopQueueTyping(roomID)
 	return items
-}
-
-func (oc *AIClient) pendingQueueHasSourceEvent(roomID id.RoomID, sourceEventID id.EventID) bool {
-	if oc == nil || roomID == "" || sourceEventID == "" {
-		return false
-	}
-	oc.pendingQueuesMu.Lock()
-	queue := oc.pendingQueues[roomID]
-	if queue == nil {
-		oc.pendingQueuesMu.Unlock()
-		return false
-	}
-	queue.mu.Lock()
-	found := false
-	for _, item := range queue.items {
-		if item.pending.sourceEventID() == sourceEventID {
-			found = true
-			break
-		}
-	}
-	queue.mu.Unlock()
-	oc.pendingQueuesMu.Unlock()
-	return found
 }
 
 func (oc *AIClient) removePendingQueueBySourceEvent(roomID id.RoomID, sourceEventID id.EventID) []pendingQueueItem {
@@ -509,9 +480,7 @@ func (oc *AIClient) dispatchQueuedPrompt(
 	metaSnapshot := clonePortalMetadata(item.pending.Meta)
 	go func() {
 		defer func() {
-			if metaSnapshot != nil && metaSnapshot.AckReactionRemoveAfter {
-				oc.removePendingAckReactions(oc.backgroundContext(ctx), item.pending.Portal, item.pending)
-			}
+			oc.removePendingAckReactions(oc.backgroundContext(ctx), item.pending.Portal, item.pending)
 			if item.backlogAfter {
 				followup := item
 				followup.backlogAfter = false
@@ -527,7 +496,7 @@ func (oc *AIClient) dispatchQueuedPrompt(
 }
 
 func (oc *AIClient) removePendingAckReactions(ctx context.Context, portal *bridgev2.Portal, pending pendingMessage) {
-	if portal == nil {
+	if portal == nil || pending.Meta == nil || !pending.Meta.AckReactionRemoveAfter {
 		return
 	}
 	ids := pending.AckEventIDs
