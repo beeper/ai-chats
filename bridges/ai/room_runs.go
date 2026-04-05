@@ -110,7 +110,7 @@ func (oc *AIClient) bindRoomRunState(roomID id.RoomID, state *streamingState) {
 	run.mu.Lock()
 	run.state = state
 	if run.stop != nil && state != nil {
-		state.stop = run.stop
+		state.stop.Store(run.stop)
 	}
 	if state != nil && state.turn != nil {
 		run.turnID = state.turn.ID()
@@ -128,16 +128,10 @@ func (oc *AIClient) roomRunTarget(roomID id.RoomID) (turnID string, sourceEventI
 	run.mu.Lock()
 	defer run.mu.Unlock()
 	state = run.state
-	turnID = run.turnID
-	sourceEventID = run.sourceEvent
-	initialEventID = run.initialEvent
-	if state == nil || state.turn == nil {
-		return turnID, sourceEventID, initialEventID, state
+	if state != nil && state.turn != nil {
+		return state.turn.ID(), state.sourceEventID(), state.turn.InitialEventID(), state
 	}
-	turnID = state.turn.ID()
-	sourceEventID = state.sourceEventID()
-	initialEventID = state.turn.InitialEventID()
-	return turnID, sourceEventID, initialEventID, state
+	return run.turnID, run.sourceEvent, run.initialEvent, state
 }
 
 func (oc *AIClient) markRoomRunStopped(roomID id.RoomID, stop *assistantStopMetadata) bool {
@@ -148,7 +142,7 @@ func (oc *AIClient) markRoomRunStopped(roomID id.RoomID, stop *assistantStopMeta
 	run.mu.Lock()
 	run.stop = stop
 	if run.state != nil {
-		run.state.stop = stop
+		run.state.stop.Store(stop)
 	}
 	run.mu.Unlock()
 	return true

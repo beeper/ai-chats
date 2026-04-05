@@ -106,7 +106,9 @@ func (oc *AIClient) drainPendingQueue(roomID id.RoomID) []pendingQueueItem {
 		return nil
 	}
 	delete(oc.pendingQueues, roomID)
+	queue.mu.Lock()
 	items := queue.items
+	queue.mu.Unlock()
 	oc.pendingQueuesMu.Unlock()
 
 	oc.stopQueueTyping(roomID)

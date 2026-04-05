@@ -116,19 +116,19 @@ func TestBuildStreamUIMessageIncludesStopMetadata(t *testing.T) {
 	turn := conv.StartTurn(context.Background(), nil, &bridgesdk.SourceRef{EventID: "$user", SenderID: "@user:test"})
 	turn.SetID("turn-stop")
 	state := &streamingState{
-		turn:         turn,
-		finishReason: "stop",
-		stop: &assistantStopMetadata{
-			Reason:             "user_stop",
-			Scope:              "turn",
-			TargetKind:         "source_event",
-			TargetEventID:      "$user",
-			RequestedByEventID: "$stop",
-			RequestedVia:       "command",
-		},
+		turn:          turn,
+		finishReason:  "stop",
 		responseID:    "resp_123",
 		completedAtMs: 1,
 	}
+	state.stop.Store(&assistantStopMetadata{
+		Reason:             "user_stop",
+		Scope:              "turn",
+		TargetKind:         "source_event",
+		TargetEventID:      "$user",
+		RequestedByEventID: "$stop",
+		RequestedVia:       "command",
+	})
 
 	ui := oc.buildStreamUIMessage(state, nil, nil)
 	metadata, ok := ui["metadata"].(map[string]any)

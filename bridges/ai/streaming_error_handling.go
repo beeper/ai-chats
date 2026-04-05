@@ -40,7 +40,7 @@ func (oc *AIClient) finishStreamingWithFailure(
 	reason string,
 	err error,
 ) error {
-	if state != nil && state.stop != nil && reason == "cancelled" {
+	if state != nil && state.stop.Load() != nil && reason == "cancelled" {
 		reason = "stop"
 	}
 	state.finishReason = reason

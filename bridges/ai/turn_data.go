@@ -72,7 +72,7 @@ func canonicalResponseStatus(state *streamingState) string {
 	if strings.TrimSpace(state.responseID) == "" {
 		return status
 	}
-	if state.stop != nil {
+	if state.stop.Load() != nil {
 		return "cancelled"
 	}
 

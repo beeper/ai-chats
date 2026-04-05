@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
@@ -76,14 +78,14 @@ func formatAbortNotice(result userStopResult) string {
 			return "No active or queued turns to stop."
 		}
 		for i := range parts {
-			parts[i] = strings.ToUpper(parts[i][:1]) + parts[i][1:]
+			r, size := utf8.DecodeRuneInString(parts[i])
+			parts[i] = string(unicode.ToUpper(r)) + parts[i][size:]
 		}
 		return strings.Join(parts, ". ") + "."
 	default:
 		return "No active or queued turns to stop."
 	}
 }
-
 
 func buildStopMetadata(plan userStopPlan, req userStopRequest) *assistantStopMetadata {
 	return &assistantStopMetadata{

@@ -80,6 +80,6 @@ func buildAssistantTurnMetadata(state *streamingState, turnID, networkMessageID,
 		SourceEventID:     state.sourceEventID().String(),
 		GeneratedFileRefs: agentremote.GeneratedFileRefsFromParts(state.generatedFiles),
 		Usage:             buildAssistantUsageMetadata(state),
-		Stop:              state.stop,
+		Stop:              state.stop.Load(),
 	})
 }

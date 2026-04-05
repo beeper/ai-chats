@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/openai/openai-go/v3/packages/param"
@@ -70,7 +71,7 @@ type streamingState struct {
 	pendingMcpApprovals     []mcpApprovalRequest
 	pendingMcpApprovalsSeen map[string]bool
 
-	stop *assistantStopMetadata
+	stop atomic.Pointer[assistantStopMetadata]
 }
 
 // sourceEventID returns the triggering user message event ID from the turn's source ref.
