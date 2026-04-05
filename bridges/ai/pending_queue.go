@@ -239,14 +239,22 @@ func (oc *AIClient) getQueueSnapshot(roomID id.RoomID) *pendingQueue {
 	}
 	queue.mu.Lock()
 	defer queue.mu.Unlock()
-	clone := *queue
-	clone.items = slices.Clone(queue.items)
-	clone.summaryLines = slices.Clone(queue.summaryLines)
+	clone := &pendingQueue{
+		items:          slices.Clone(queue.items),
+		draining:       queue.draining,
+		lastEnqueuedAt: queue.lastEnqueuedAt,
+		mode:           queue.mode,
+		debounceMs:     queue.debounceMs,
+		cap:            queue.cap,
+		dropPolicy:     queue.dropPolicy,
+		droppedCount:   queue.droppedCount,
+		summaryLines:   slices.Clone(queue.summaryLines),
+	}
 	if queue.lastItem != nil {
 		lastItem := *queue.lastItem
 		clone.lastItem = &lastItem
 	}
-	return &clone
+	return clone
 }
 
 func (oc *AIClient) roomHasPendingQueueWork(roomID id.RoomID) bool {
