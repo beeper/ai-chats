@@ -106,18 +106,34 @@ func (oc *AIClient) drainPendingQueue(roomID id.RoomID) []pendingQueueItem {
 		return nil
 	}
 	delete(oc.pendingQueues, roomID)
+	items := queue.items
 	oc.pendingQueuesMu.Unlock()
-
-	queue.mu.Lock()
-	items := slices.Clone(queue.items)
-	queue.items = nil
-	queue.summaryLines = nil
-	queue.droppedCount = 0
-	queue.lastItem = nil
-	queue.mu.Unlock()
 
 	oc.stopQueueTyping(roomID)
 	return items
+}
+
+func (oc *AIClient) pendingQueueHasSourceEvent(roomID id.RoomID, sourceEventID id.EventID) bool {
+	if oc == nil || roomID == "" || sourceEventID == "" {
+		return false
+	}
+	oc.pendingQueuesMu.Lock()
+	queue := oc.pendingQueues[roomID]
+	if queue == nil {
+		oc.pendingQueuesMu.Unlock()
+		return false
+	}
+	queue.mu.Lock()
+	found := false
+	for _, item := range queue.items {
+		if item.pending.sourceEventID() == sourceEventID {
+			found = true
+			break
+		}
+	}
+	queue.mu.Unlock()
+	oc.pendingQueuesMu.Unlock()
+	return found
 }
 
 func (oc *AIClient) removePendingQueueBySourceEvent(roomID id.RoomID, sourceEventID id.EventID) []pendingQueueItem {

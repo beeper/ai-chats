@@ -137,9 +137,6 @@ func (oc *AIClient) roomRunTarget(roomID id.RoomID) (turnID string, sourceEventI
 	turnID = state.turn.ID()
 	sourceEventID = state.sourceEventID()
 	initialEventID = state.turn.InitialEventID()
-	run.turnID = turnID
-	run.sourceEvent = sourceEventID
-	run.initialEvent = initialEventID
 	return turnID, sourceEventID, initialEventID, state
 }
 

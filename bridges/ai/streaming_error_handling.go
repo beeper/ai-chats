@@ -53,15 +53,13 @@ func (oc *AIClient) finishStreamingWithFailure(
 	switch reason {
 	case "cancelled":
 		state.writer().Abort(ctx, "cancelled")
-		if state != nil && state.turn != nil {
-			state.turn.End(msgconv.MapFinishReason(reason))
-		}
+		fallthrough
 	case "stop":
-		if state != nil && state.turn != nil {
+		if state.turn != nil {
 			state.turn.End(msgconv.MapFinishReason(reason))
 		}
 	default:
-		if state != nil && state.turn != nil {
+		if state.turn != nil {
 			state.turn.EndWithError(err.Error())
 		}
 	}

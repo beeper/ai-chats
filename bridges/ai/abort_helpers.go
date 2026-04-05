@@ -75,31 +75,15 @@ func formatAbortNotice(result userStopResult) string {
 		if len(parts) == 0 {
 			return "No active or queued turns to stop."
 		}
-		suffix := ""
-		if len(parts) > 1 {
-			suffix = " " + strings.Join(parts[1:], ". ") + "."
+		for i := range parts {
+			parts[i] = strings.ToUpper(parts[i][:1]) + parts[i][1:]
 		}
-		return strings.ToUpper(parts[0][:1]) + parts[0][1:] + "." + suffix
+		return strings.Join(parts, ". ") + "."
 	default:
 		return "No active or queued turns to stop."
 	}
 }
 
-func (oc *AIClient) pendingQueueHasSourceEvent(roomID id.RoomID, sourceEventID id.EventID) bool {
-	if oc == nil || roomID == "" || sourceEventID == "" {
-		return false
-	}
-	queue := oc.getQueueSnapshot(roomID)
-	if queue == nil {
-		return false
-	}
-	for _, item := range queue.items {
-		if item.pending.sourceEventID() == sourceEventID {
-			return true
-		}
-	}
-	return false
-}
 
 func buildStopMetadata(plan userStopPlan, req userStopRequest) *assistantStopMetadata {
 	return &assistantStopMetadata{
