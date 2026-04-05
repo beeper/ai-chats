@@ -101,8 +101,8 @@ func TestFinishStreamingWithFailureCancelledEndsTurnAsCancelled(t *testing.T) {
 		"cancelled",
 		context.Canceled,
 	)
-	if err == nil {
-		t.Fatal("expected wrapped cancellation error")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected wrapped cancellation error, got %#v", err)
 	}
 
 	message := streamui.SnapshotUIMessage(state.turn.UIState())

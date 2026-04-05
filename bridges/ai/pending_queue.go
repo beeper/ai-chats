@@ -57,7 +57,6 @@ type pendingQueueDispatchCandidate struct {
 
 func (oc *AIClient) getPendingQueue(roomID id.RoomID, settings airuntime.QueueSettings) *pendingQueue {
 	oc.pendingQueuesMu.Lock()
-	defer oc.pendingQueuesMu.Unlock()
 	queue := oc.pendingQueues[roomID]
 	if queue == nil {
 		queue = &pendingQueue{
@@ -68,20 +67,19 @@ func (oc *AIClient) getPendingQueue(roomID id.RoomID, settings airuntime.QueueSe
 			dropPolicy: settings.DropPolicy,
 		}
 		oc.pendingQueues[roomID] = queue
-	} else {
-		queue.mu.Lock()
-		queue.mode = settings.Mode
-		if settings.DebounceMs >= 0 {
-			queue.debounceMs = settings.DebounceMs
-		}
-		if settings.Cap > 0 {
-			queue.cap = settings.Cap
-		}
-		if settings.DropPolicy != "" {
-			queue.dropPolicy = settings.DropPolicy
-		}
-		queue.mu.Unlock()
 	}
+	queue.mu.Lock()
+	queue.mode = settings.Mode
+	if settings.DebounceMs >= 0 {
+		queue.debounceMs = settings.DebounceMs
+	}
+	if settings.Cap > 0 {
+		queue.cap = settings.Cap
+	}
+	if settings.DropPolicy != "" {
+		queue.dropPolicy = settings.DropPolicy
+	}
+	oc.pendingQueuesMu.Unlock()
 	return queue
 }
 
@@ -99,9 +97,11 @@ func (oc *AIClient) drainPendingQueue(roomID id.RoomID) []pendingQueueItem {
 		oc.pendingQueuesMu.Unlock()
 		return nil
 	}
-	delete(oc.pendingQueues, roomID)
 	queue.mu.Lock()
+	delete(oc.pendingQueues, roomID)
 	items := queue.items
+	queue.items = nil
+	queue.lastItem = nil
 	queue.mu.Unlock()
 	oc.pendingQueuesMu.Unlock()
 
@@ -131,6 +131,13 @@ func (oc *AIClient) removePendingQueueBySourceEvent(roomID id.RoomID, sourceEven
 	}
 	clear(queue.items[len(kept):])
 	queue.items = kept
+	if queue.lastItem != nil && queue.lastItem.pending.sourceEventID() == sourceEventID {
+		queue.lastItem = nil
+		if len(kept) > 0 {
+			lastItem := kept[len(kept)-1]
+			queue.lastItem = &lastItem
+		}
+	}
 	empty := len(queue.items) == 0 && queue.droppedCount == 0
 	if empty {
 		delete(oc.pendingQueues, roomID)
@@ -149,7 +156,6 @@ func (oc *AIClient) enqueuePendingItem(roomID id.RoomID, item pendingQueueItem, 
 	if queue == nil {
 		return false
 	}
-	queue.mu.Lock()
 	defer queue.mu.Unlock()
 
 	for _, existing := range queue.items {
