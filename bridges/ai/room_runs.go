@@ -13,6 +13,11 @@ type roomRunState struct {
 	cancel context.CancelFunc
 
 	mu           sync.Mutex
+	state        *streamingState
+	stop         *assistantStopMetadata
+	turnID       string
+	sourceEvent  id.EventID
+	initialEvent id.EventID
 	streaming    bool
 	steerQueue   []pendingQueueItem
 	statusEvents []*event.Event
@@ -95,6 +100,61 @@ func (oc *AIClient) markRoomRunStreaming(roomID id.RoomID, streaming bool) {
 	run.mu.Lock()
 	run.streaming = streaming
 	run.mu.Unlock()
+}
+
+func (oc *AIClient) bindRoomRunState(roomID id.RoomID, state *streamingState) {
+	run := oc.getRoomRun(roomID)
+	if run == nil {
+		return
+	}
+	run.mu.Lock()
+	run.state = state
+	if run.stop != nil && state != nil {
+		state.stop = run.stop
+	}
+	if state != nil && state.turn != nil {
+		run.turnID = state.turn.ID()
+		run.sourceEvent = state.sourceEventID()
+		run.initialEvent = state.turn.InitialEventID()
+	}
+	run.mu.Unlock()
+}
+
+func (oc *AIClient) roomRunTarget(roomID id.RoomID) (turnID string, sourceEventID, initialEventID id.EventID, state *streamingState) {
+	run := oc.getRoomRun(roomID)
+	if run == nil {
+		return "", "", "", nil
+	}
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	state = run.state
+	turnID = run.turnID
+	sourceEventID = run.sourceEvent
+	initialEventID = run.initialEvent
+	if state == nil || state.turn == nil {
+		return turnID, sourceEventID, initialEventID, state
+	}
+	turnID = state.turn.ID()
+	sourceEventID = state.sourceEventID()
+	initialEventID = state.turn.InitialEventID()
+	run.turnID = turnID
+	run.sourceEvent = sourceEventID
+	run.initialEvent = initialEventID
+	return turnID, sourceEventID, initialEventID, state
+}
+
+func (oc *AIClient) markRoomRunStopped(roomID id.RoomID, stop *assistantStopMetadata) bool {
+	run := oc.getRoomRun(roomID)
+	if run == nil || stop == nil {
+		return false
+	}
+	run.mu.Lock()
+	run.stop = stop
+	if run.state != nil {
+		run.state.stop = stop
+	}
+	run.mu.Unlock()
+	return true
 }
 
 func (oc *AIClient) enqueueSteerQueue(roomID id.RoomID, item pendingQueueItem) bool {

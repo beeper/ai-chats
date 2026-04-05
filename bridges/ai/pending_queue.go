@@ -38,6 +38,16 @@ type pendingQueue struct {
 	lastItem       *pendingQueueItem
 }
 
+func (pm pendingMessage) sourceEventID() id.EventID {
+	if pm.SourceEventID != "" {
+		return pm.SourceEventID
+	}
+	if pm.Event != nil {
+		return pm.Event.ID
+	}
+	return ""
+}
+
 type pendingQueueDispatchCandidate struct {
 	items         []pendingQueueItem
 	summaryPrompt string
@@ -83,6 +93,66 @@ func (oc *AIClient) clearPendingQueue(roomID id.RoomID) {
 	if existed {
 		oc.stopQueueTyping(roomID)
 	}
+}
+
+func (oc *AIClient) drainPendingQueue(roomID id.RoomID) []pendingQueueItem {
+	if oc == nil || roomID == "" {
+		return nil
+	}
+	oc.pendingQueuesMu.Lock()
+	queue := oc.pendingQueues[roomID]
+	if queue == nil {
+		oc.pendingQueuesMu.Unlock()
+		return nil
+	}
+	delete(oc.pendingQueues, roomID)
+	oc.pendingQueuesMu.Unlock()
+
+	queue.mu.Lock()
+	items := slices.Clone(queue.items)
+	queue.items = nil
+	queue.summaryLines = nil
+	queue.droppedCount = 0
+	queue.lastItem = nil
+	queue.mu.Unlock()
+
+	oc.stopQueueTyping(roomID)
+	return items
+}
+
+func (oc *AIClient) removePendingQueueBySourceEvent(roomID id.RoomID, sourceEventID id.EventID) []pendingQueueItem {
+	if oc == nil || roomID == "" || sourceEventID == "" {
+		return nil
+	}
+	oc.pendingQueuesMu.Lock()
+	queue := oc.pendingQueues[roomID]
+	if queue == nil {
+		oc.pendingQueuesMu.Unlock()
+		return nil
+	}
+	queue.mu.Lock()
+	removed := make([]pendingQueueItem, 0, 1)
+	kept := queue.items[:0]
+	for _, item := range queue.items {
+		if item.pending.sourceEventID() == sourceEventID {
+			removed = append(removed, item)
+			continue
+		}
+		kept = append(kept, item)
+	}
+	clear(queue.items[len(kept):])
+	queue.items = kept
+	empty := len(queue.items) == 0 && queue.droppedCount == 0
+	if empty {
+		delete(oc.pendingQueues, roomID)
+	}
+	queue.mu.Unlock()
+	oc.pendingQueuesMu.Unlock()
+
+	if empty {
+		oc.stopQueueTyping(roomID)
+	}
+	return removed
 }
 
 func (oc *AIClient) enqueuePendingItem(roomID id.RoomID, item pendingQueueItem, settings airuntime.QueueSettings) bool {

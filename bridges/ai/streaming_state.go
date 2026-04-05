@@ -69,6 +69,8 @@ type streamingState struct {
 	// Pending MCP approvals to resolve before the turn can continue.
 	pendingMcpApprovals     []mcpApprovalRequest
 	pendingMcpApprovalsSeen map[string]bool
+
+	stop *assistantStopMetadata
 }
 
 // sourceEventID returns the triggering user message event ID from the turn's source ref.
