@@ -565,8 +565,8 @@ func TestTurnBuildFinalEditDefaultsToVisibleText(t *testing.T) {
 			if !ok {
 				continue
 			}
-			if partType := strings.TrimSpace(stringValue(part["type"])); partType == "text" || partType == "reasoning" {
-				t.Fatalf("expected compact final payload without textual parts, got %#v", part)
+			if partType := strings.TrimSpace(stringValue(part["type"])); partType == "text" {
+				t.Fatalf("expected compact final payload without duplicate text parts, got %#v", part)
 			}
 		}
 	}

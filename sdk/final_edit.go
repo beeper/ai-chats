@@ -15,8 +15,10 @@ import (
 
 const MaxMatrixEventContentBytes = 60000
 
-// BuildCompactFinalUIMessage removes streaming-only parts from a UI message so
-// the payload is suitable for attachment to the final Matrix edit.
+// BuildCompactFinalUIMessage removes duplicate streaming-only parts from a UI
+// message so the payload is suitable for attachment to the final Matrix edit.
+// Visible assistant text already lives in the Matrix message body, but
+// reasoning/tool/artifact parts are preserved when the size budget allows.
 func BuildCompactFinalUIMessage(uiMessage map[string]any) map[string]any {
 	if len(uiMessage) == 0 {
 		return nil
@@ -40,7 +42,7 @@ func BuildCompactFinalUIMessage(uiMessage map[string]any) map[string]any {
 			continue
 		}
 		switch strings.TrimSpace(stringValue(part["type"])) {
-		case "text", "reasoning", "step-start":
+		case "text", "step-start":
 			continue
 		default:
 			parts = append(parts, part)

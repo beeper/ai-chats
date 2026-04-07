@@ -96,11 +96,20 @@ func TestBuildFinalEditUIMessage_IncludesSourceAndFileParts(t *testing.T) {
 	}
 }
 
-func TestBuildFinalEditUIMessage_OmitsTextAndReasoningParts(t *testing.T) {
+func TestBuildFinalEditUIMessage_OmitsTextButKeepsReasoningAndToolPartsWhenTheyFit(t *testing.T) {
 	oc := &AIClient{}
 	state := testStreamingState("turn-2")
 	state.accumulated.WriteString("hello")
 	state.reasoning.WriteString("thinking")
+	state.toolCalls = []ToolCallMetadata{{
+		CallID:       "tool-call-2",
+		ToolName:     "web.search",
+		ToolType:     "function",
+		Status:       "output-available",
+		ResultStatus: "completed",
+		Input:        map[string]any{"query": "creatine"},
+		Output:       map[string]any{"ok": true},
+	}}
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "start", "messageId": "turn-2"})
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-start", "id": "text-2"})
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-delta", "id": "text-2", "delta": "hello"})
@@ -111,12 +120,26 @@ func TestBuildFinalEditUIMessage_OmitsTextAndReasoningParts(t *testing.T) {
 
 	ui := buildCompactFinalUIMessage(oc.buildStreamUIMessage(state, modelModeTestMeta("openai/gpt-4.1"), nil))
 	parts, _ := ui["parts"].([]any)
+	foundReasoning := false
+	foundTool := false
 	for _, rawPart := range parts {
 		part, _ := rawPart.(map[string]any)
 		switch part["type"] {
-		case "text", "reasoning":
-			t.Fatalf("expected final UIMessage to omit textual parts, got %#v", part)
+		case "text":
+			t.Fatalf("expected final UIMessage to omit duplicate text parts, got %#v", part)
+		case "reasoning":
+			foundReasoning = true
+		case "tool":
+			if part["toolCallId"] == "tool-call-2" {
+				foundTool = true
+			}
 		}
+	}
+	if !foundReasoning {
+		t.Fatal("expected reasoning part in compact final UI message")
+	}
+	if !foundTool {
+		t.Fatal("expected tool part in compact final UI message")
 	}
 }
 
