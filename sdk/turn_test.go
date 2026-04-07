@@ -576,6 +576,34 @@ func TestTurnBuildFinalEditDefaultsToVisibleText(t *testing.T) {
 	}
 }
 
+func TestTurnFinalizeTurnEndsStreamBeforeDispatchingFinalEdit(t *testing.T) {
+	turn := newTurn(context.Background(), nil, nil, nil)
+	turn.session = turns.NewStreamSession(turns.StreamSessionParams{
+		TurnID: "turn-finalize-order",
+	})
+
+	if turn.session.IsClosed() {
+		t.Fatal("expected stream session to start open")
+	}
+
+	finalEditDispatched := false
+	turn.sendFinalEditFunc = func(context.Context) {
+		finalEditDispatched = true
+		if !turn.session.IsClosed() {
+			t.Fatal("expected stream session to be closed before dispatching final edit")
+		}
+	}
+
+	turn.finalizeTurn(turns.EndReasonFinish, "stop", "")
+
+	if !finalEditDispatched {
+		t.Fatal("expected final edit dispatch hook to run")
+	}
+	if !turn.session.IsClosed() {
+		t.Fatal("expected stream session to remain closed after finalization")
+	}
+}
+
 func TestTurnBuildFinalEditDefaultsToGenericBodyForArtifacts(t *testing.T) {
 	turn := newTurn(context.Background(), nil, nil, nil)
 	turn.initialEventID = id.EventID("$event-artifact")
@@ -600,6 +628,39 @@ func TestTurnBuildFinalEditDefaultsToGenericBodyForArtifacts(t *testing.T) {
 	parts, _ := rawAI["parts"].([]any)
 	if len(parts) == 0 {
 		t.Fatalf("expected artifact part in compact payload, got %#v", rawAI)
+	}
+}
+
+func TestTurnBuildFinalEditClearsStreamDescriptorWhenSessionExists(t *testing.T) {
+	turn := newTurn(context.Background(), nil, nil, nil)
+	turn.initialEventID = id.EventID("$event-stream")
+	turn.networkMessageID = "msg-stream"
+	turn.session = turns.NewStreamSession(turns.StreamSessionParams{
+		TurnID: "turn-stream-clear",
+	})
+	turn.SetFinalEditPayload(&FinalEditPayload{
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgText,
+			Body:    "done",
+		},
+	})
+
+	_, edit := turn.buildFinalEdit()
+	if edit == nil || len(edit.ModifiedParts) != 1 {
+		t.Fatalf("expected single modified part, got %#v", edit)
+	}
+	part := edit.ModifiedParts[0]
+	if _, ok := part.Extra["com.beeper.stream"]; !ok {
+		t.Fatalf("expected m.new_content to explicitly clear com.beeper.stream, got %#v", part.Extra)
+	}
+	if part.Extra["com.beeper.stream"] != nil {
+		t.Fatalf("expected com.beeper.stream to be cleared with nil, got %#v", part.Extra["com.beeper.stream"])
+	}
+	if _, ok := part.TopLevelExtra["com.beeper.stream"]; !ok {
+		t.Fatalf("expected top-level edit content to explicitly clear com.beeper.stream, got %#v", part.TopLevelExtra)
+	}
+	if part.TopLevelExtra["com.beeper.stream"] != nil {
+		t.Fatalf("expected top-level com.beeper.stream to be cleared with nil, got %#v", part.TopLevelExtra["com.beeper.stream"])
 	}
 }
 

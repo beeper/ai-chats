@@ -714,6 +714,13 @@ func (t *Turn) buildFinalEdit() (networkid.MessageID, *bridgev2.ConvertedEdit) {
 	if topLevelExtra == nil {
 		topLevelExtra = map[string]any{}
 	}
+	if t.session != nil {
+		// Explicitly clear the live-stream descriptor on terminal edits so the
+		// edited event no longer looks like an active placeholder.
+		content.BeeperStream = nil
+		extra["com.beeper.stream"] = nil
+		topLevelExtra["com.beeper.stream"] = nil
+	}
 	if t.initialEventID != "" {
 		topLevelExtra["m.relates_to"] = (&event.RelatesTo{}).SetReplace(t.initialEventID)
 	}
