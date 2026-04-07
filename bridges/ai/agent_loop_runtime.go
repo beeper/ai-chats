@@ -82,7 +82,7 @@ func agentLoopInactivityCause(ctx context.Context) error {
 }
 
 func (oc *AIClient) withAgentLoopInactivityTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
-	runCtx, touch, cancel := withActivityTimeout(oc.backgroundContext(ctx), agentLoopInactivityTimeout, errAgentLoopInactivityTimeout)
+	runCtx, touch, cancel := withActivityTimeout(ctx, agentLoopInactivityTimeout, errAgentLoopInactivityTimeout)
 	return withAgentLoopActivity(runCtx, touch), cancel
 }
 

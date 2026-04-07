@@ -157,3 +157,23 @@ func TestWithActivityTimeoutResetsOnTouchAndCancelsOnIdle(t *testing.T) {
 		t.Fatalf("expected inactivity timeout cause, got %v", context.Cause(ctx))
 	}
 }
+
+func TestWithAgentLoopInactivityTimeoutPreservesParentCancellation(t *testing.T) {
+	parent, parentCancel := context.WithCancel(context.Background())
+	client := &AIClient{}
+
+	ctx, cancel := client.withAgentLoopInactivityTimeout(parent)
+	defer cancel()
+
+	parentCancel()
+
+	select {
+	case <-ctx.Done():
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("expected derived context to cancel when parent is cancelled")
+	}
+
+	if !errors.Is(context.Cause(ctx), context.Canceled) {
+		t.Fatalf("expected cancelled cause from parent, got %v", context.Cause(ctx))
+	}
+}
