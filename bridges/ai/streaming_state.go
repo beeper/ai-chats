@@ -71,7 +71,8 @@ type streamingState struct {
 	pendingMcpApprovals     []mcpApprovalRequest
 	pendingMcpApprovalsSeen map[string]bool
 
-	stop atomic.Pointer[assistantStopMetadata]
+	finalized atomic.Bool
+	stop      atomic.Pointer[assistantStopMetadata]
 }
 
 // sourceEventID returns the triggering user message event ID from the turn's source ref.
@@ -107,6 +108,20 @@ func (s *streamingState) writer() *sdk.Writer {
 		return nil
 	}
 	return s.turn.Writer()
+}
+
+func (s *streamingState) markFinalized() bool {
+	if s == nil {
+		return false
+	}
+	return s.finalized.CompareAndSwap(false, true)
+}
+
+func (s *streamingState) isFinalized() bool {
+	if s == nil {
+		return false
+	}
+	return s.finalized.Load()
 }
 
 func (s *streamingState) nextMessageTiming() agentremote.EventTiming {
