@@ -50,8 +50,29 @@ func SendMatrixMessageStatus(
 	evt *event.Event,
 	status bridgev2.MessageStatus,
 ) {
-	if portal == nil || portal.Bridge == nil || evt == nil {
+	if portal == nil || portal.Bridge == nil {
 		return
 	}
-	portal.Bridge.Matrix.SendMessageStatus(ctx, &status, bridgev2.StatusEventInfoFromEvent(evt))
+	info := MatrixMessageStatusEventInfo(portal, evt)
+	if info == nil {
+		return
+	}
+	portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
+}
+
+func MatrixMessageStatusEventInfo(
+	portal *bridgev2.Portal,
+	evt *event.Event,
+) *bridgev2.MessageStatusEventInfo {
+	if portal == nil || evt == nil {
+		return nil
+	}
+	info := bridgev2.StatusEventInfoFromEvent(evt)
+	if info == nil {
+		return nil
+	}
+	if info.RoomID == "" && portal.MXID != "" {
+		info.RoomID = portal.MXID
+	}
+	return info
 }

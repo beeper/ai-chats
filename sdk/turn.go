@@ -675,13 +675,25 @@ func (t *Turn) buildFinalEdit() (networkid.MessageID, *bridgev2.ConvertedEdit) {
 	if target == "" {
 		return "", nil
 	}
-	content := *payload.Content
+	fittedPayload, fitDetails := FitFinalEditPayload(payload, t.initialEventID)
+	if fittedPayload == nil || fittedPayload.Content == nil {
+		return "", nil
+	}
+	if fitDetails.Changed() && t.conv != nil && t.conv.login != nil {
+		t.conv.login.Log.Warn().
+			Str("component", "sdk_turn").
+			Int("original_bytes", fitDetails.OriginalSize).
+			Int("final_bytes", fitDetails.FinalSize).
+			Str("reductions", fitDetails.Summary()).
+			Msg("Reduced final edit payload to fit Matrix content limits")
+	}
+	content := *fittedPayload.Content
 	if content.Mentions == nil {
 		content.Mentions = &event.Mentions{}
 	}
 	content.RelatesTo = nil
-	extra := maps.Clone(payload.Extra)
-	topLevelExtra := maps.Clone(payload.TopLevelExtra)
+	extra := maps.Clone(fittedPayload.Extra)
+	topLevelExtra := maps.Clone(fittedPayload.TopLevelExtra)
 	if extra == nil {
 		extra = map[string]any{}
 	}

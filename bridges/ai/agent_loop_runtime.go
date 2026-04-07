@@ -8,7 +8,7 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
-const maxAgentLoopToolTurns = 10
+const maxAgentLoopToolTurns = 50
 
 func runAgentLoopStreamStep[T any](
 	ctx context.Context,

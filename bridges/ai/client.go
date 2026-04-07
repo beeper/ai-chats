@@ -601,7 +601,9 @@ func (oc *AIClient) sendQueueRejectedStatus(ctx context.Context, portal *bridgev
 		WithIsCertain(true).
 		WithSendNotice(false)
 	for _, statusEvt := range queueStatusEvents(evt, extras) {
-		portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, bridgev2.StatusEventInfoFromEvent(statusEvt))
+		if info := agentremote.MatrixMessageStatusEventInfo(portal, statusEvt); info != nil {
+			portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, info)
+		}
 	}
 }
 
