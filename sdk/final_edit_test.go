@@ -88,20 +88,14 @@ func TestFitFinalEditPayloadDeepClonesNestedMaps(t *testing.T) {
 		},
 	}
 
-	fitted, details, err := FitFinalEditPayload(payload, id.EventID("$event-clone"))
+	fitted, _, err := FitFinalEditPayload(payload, id.EventID("$event-clone"))
 	if err != nil {
-		t.Fatalf("expected fit to succeed, got %v; details: %+v", err, details)
+		t.Fatalf("expected fit to succeed, got %v", err)
 	}
 	if fitted == nil || fitted.Content == nil {
 		t.Fatal("expected fitted payload")
 	}
-	t.Logf("details: %+v", details)
-	t.Logf("fitted.Extra: %v", fitted.Extra)
-	t.Logf("fitted.TopLevelExtra: %v", fitted.TopLevelExtra)
 
-	if fitted.Extra == nil {
-		t.Fatal("expected Extra to survive fitting")
-	}
 	fitted.Extra["nested"].(map[string]any)["value"] = "changed"
 	fitted.TopLevelExtra["outer"].(map[string]any)["flag"] = false
 

@@ -138,6 +138,7 @@ type Turn struct {
 	placeholderPayload    *PlaceholderMessagePayload
 	finalEditPayload      *FinalEditPayload
 	sendFunc              func(ctx context.Context) (id.EventID, networkid.MessageID, error)
+	sendFinalEditFunc     func(ctx context.Context)
 	suppressSend          bool
 	suppressFinalEdit     bool
 	idleTimer             *time.Timer
@@ -752,6 +753,17 @@ func (t *Turn) sendFinalEdit(ctx context.Context) {
 	}
 }
 
+func (t *Turn) dispatchFinalEdit(ctx context.Context) {
+	if t == nil {
+		return
+	}
+	if t.sendFinalEditFunc != nil {
+		t.sendFinalEditFunc(ctx)
+		return
+	}
+	t.sendFinalEdit(ctx)
+}
+
 func supportedBaseMetadataFromMap(metadata map[string]any) agentremote.BaseMessageMetadata {
 	if len(metadata) == 0 {
 		return agentremote.BaseMessageMetadata{}
@@ -837,10 +849,10 @@ func (t *Turn) finalizeTurn(endReason turns.EndReason, finishReason, fallbackBod
 	finalCtx := t.finalizationContext()
 	t.flushPendingStream(finalCtx)
 	t.ensureDefaultFinalEditPayload(finishReason, fallbackBody)
-	t.sendFinalEdit(finalCtx)
 	if t.session != nil {
 		t.session.End(finalCtx, endReason)
 	}
+	t.dispatchFinalEdit(finalCtx)
 	t.persistFinalMessage(finishReason)
 }
 

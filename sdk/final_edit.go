@@ -215,7 +215,9 @@ func estimateFinalEditContentSize(payload *FinalEditPayload, target id.EventID) 
 		raw = map[string]any{}
 	}
 	if payload.Extra != nil {
-		raw["m.new_content"] = payload.Extra
+		// Shallow-clone Extra to avoid mutation by mautrix's Content.MarshalJSON
+		// which deep-merges Parsed into Raw in-place via mergeMaps.
+		raw["m.new_content"] = maps.Clone(payload.Extra)
 	}
 	data, err := json.Marshal(&event.Content{
 		Parsed: &content,
