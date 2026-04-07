@@ -40,6 +40,9 @@ func (oc *AIClient) finishStreamingWithFailure(
 	reason string,
 	err error,
 ) error {
+	if state != nil && state.stop.Load() != nil && reason == "cancelled" {
+		reason = "stop"
+	}
 	state.finishReason = reason
 	state.completedAtMs = time.Now().UnixMilli()
 	_ = log
@@ -47,13 +50,18 @@ func (oc *AIClient) finishStreamingWithFailure(
 	if writer := state.writer(); writer != nil {
 		writer.MessageMetadata(ctx, oc.buildUIMessageMetadata(state, meta, true))
 	}
-	if reason == "cancelled" {
+	switch reason {
+	case "cancelled":
 		state.writer().Abort(ctx, "cancelled")
-		if state != nil && state.turn != nil {
+		if state.turn != nil {
+			state.turn.End("cancelled")
+		}
+	case "stop":
+		if state.turn != nil {
 			state.turn.End(msgconv.MapFinishReason(reason))
 		}
-	} else {
-		if state != nil && state.turn != nil {
+	default:
+		if state.turn != nil {
 			state.turn.EndWithError(err.Error())
 		}
 	}

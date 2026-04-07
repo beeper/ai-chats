@@ -100,3 +100,12 @@ func TestBuildTurnDataMetadataUsesResponderSnapshot(t *testing.T) {
 		t.Fatalf("did not expect flat prompt_tokens field, got %#v", meta["prompt_tokens"])
 	}
 }
+
+func TestCanonicalResponseStatusPrefersExplicitStopWithoutResponseID(t *testing.T) {
+	state := testStreamingState("turn-cancelled")
+	state.stop.Store(&assistantStopMetadata{Reason: "user_stop"})
+
+	if got := canonicalResponseStatus(state); got != "cancelled" {
+		t.Fatalf("expected cancelled status from explicit stop, got %q", got)
+	}
+}

@@ -38,6 +38,16 @@ type pendingQueue struct {
 	lastItem       *pendingQueueItem
 }
 
+func (pm pendingMessage) sourceEventID() id.EventID {
+	if pm.SourceEventID != "" {
+		return pm.SourceEventID
+	}
+	if pm.Event != nil {
+		return pm.Event.ID
+	}
+	return ""
+}
+
 type pendingQueueDispatchCandidate struct {
 	items         []pendingQueueItem
 	summaryPrompt string
@@ -47,7 +57,6 @@ type pendingQueueDispatchCandidate struct {
 
 func (oc *AIClient) getPendingQueue(roomID id.RoomID, settings airuntime.QueueSettings) *pendingQueue {
 	oc.pendingQueuesMu.Lock()
-	defer oc.pendingQueuesMu.Unlock()
 	queue := oc.pendingQueues[roomID]
 	if queue == nil {
 		queue = &pendingQueue{
@@ -58,31 +67,88 @@ func (oc *AIClient) getPendingQueue(roomID id.RoomID, settings airuntime.QueueSe
 			dropPolicy: settings.DropPolicy,
 		}
 		oc.pendingQueues[roomID] = queue
-	} else {
-		queue.mu.Lock()
-		queue.mode = settings.Mode
-		if settings.DebounceMs >= 0 {
-			queue.debounceMs = settings.DebounceMs
-		}
-		if settings.Cap > 0 {
-			queue.cap = settings.Cap
-		}
-		if settings.DropPolicy != "" {
-			queue.dropPolicy = settings.DropPolicy
-		}
-		queue.mu.Unlock()
 	}
+	queue.mu.Lock()
+	queue.mode = settings.Mode
+	if settings.DebounceMs >= 0 {
+		queue.debounceMs = settings.DebounceMs
+	}
+	if settings.Cap > 0 {
+		queue.cap = settings.Cap
+	}
+	if settings.DropPolicy != "" {
+		queue.dropPolicy = settings.DropPolicy
+	}
+	oc.pendingQueuesMu.Unlock()
 	return queue
 }
 
-func (oc *AIClient) clearPendingQueue(roomID id.RoomID) {
+func (oc *AIClient) clearPendingQueue(ctx context.Context, roomID id.RoomID) {
+	oc.finalizeStoppedQueueItems(ctx, oc.drainPendingQueue(roomID))
+}
+
+func (oc *AIClient) drainPendingQueue(roomID id.RoomID) []pendingQueueItem {
+	if oc == nil || roomID == "" {
+		return nil
+	}
 	oc.pendingQueuesMu.Lock()
-	_, existed := oc.pendingQueues[roomID]
+	queue := oc.pendingQueues[roomID]
+	if queue == nil {
+		oc.pendingQueuesMu.Unlock()
+		return nil
+	}
+	queue.mu.Lock()
 	delete(oc.pendingQueues, roomID)
+	items := queue.items
+	queue.items = nil
+	queue.lastItem = nil
+	queue.mu.Unlock()
 	oc.pendingQueuesMu.Unlock()
-	if existed {
+
+	oc.stopQueueTyping(roomID)
+	return items
+}
+
+func (oc *AIClient) removePendingQueueBySourceEvent(roomID id.RoomID, sourceEventID id.EventID) []pendingQueueItem {
+	if oc == nil || roomID == "" || sourceEventID == "" {
+		return nil
+	}
+	oc.pendingQueuesMu.Lock()
+	queue := oc.pendingQueues[roomID]
+	if queue == nil {
+		oc.pendingQueuesMu.Unlock()
+		return nil
+	}
+	queue.mu.Lock()
+	removed := make([]pendingQueueItem, 0, 1)
+	kept := queue.items[:0]
+	for _, item := range queue.items {
+		if item.pending.sourceEventID() == sourceEventID {
+			removed = append(removed, item)
+			continue
+		}
+		kept = append(kept, item)
+	}
+	clear(queue.items[len(kept):])
+	queue.items = kept
+	if queue.lastItem != nil && queue.lastItem.pending.sourceEventID() == sourceEventID {
+		queue.lastItem = nil
+		if len(kept) > 0 {
+			lastItem := kept[len(kept)-1]
+			queue.lastItem = &lastItem
+		}
+	}
+	empty := len(queue.items) == 0 && queue.droppedCount == 0
+	if empty {
+		delete(oc.pendingQueues, roomID)
+	}
+	queue.mu.Unlock()
+	oc.pendingQueuesMu.Unlock()
+
+	if empty {
 		oc.stopQueueTyping(roomID)
 	}
+	return removed
 }
 
 func (oc *AIClient) enqueuePendingItem(roomID id.RoomID, item pendingQueueItem, settings airuntime.QueueSettings) bool {
@@ -90,7 +156,6 @@ func (oc *AIClient) enqueuePendingItem(roomID id.RoomID, item pendingQueueItem, 
 	if queue == nil {
 		return false
 	}
-	queue.mu.Lock()
 	defer queue.mu.Unlock()
 
 	for _, existing := range queue.items {
@@ -180,14 +245,22 @@ func (oc *AIClient) getQueueSnapshot(roomID id.RoomID) *pendingQueue {
 	}
 	queue.mu.Lock()
 	defer queue.mu.Unlock()
-	clone := *queue
-	clone.items = slices.Clone(queue.items)
-	clone.summaryLines = slices.Clone(queue.summaryLines)
+	clone := &pendingQueue{
+		items:          slices.Clone(queue.items),
+		draining:       queue.draining,
+		lastEnqueuedAt: queue.lastEnqueuedAt,
+		mode:           queue.mode,
+		debounceMs:     queue.debounceMs,
+		cap:            queue.cap,
+		dropPolicy:     queue.dropPolicy,
+		droppedCount:   queue.droppedCount,
+		summaryLines:   slices.Clone(queue.summaryLines),
+	}
 	if queue.lastItem != nil {
 		lastItem := *queue.lastItem
 		clone.lastItem = &lastItem
 	}
-	return &clone
+	return clone
 }
 
 func (oc *AIClient) roomHasPendingQueueWork(roomID id.RoomID) bool {
@@ -421,9 +494,7 @@ func (oc *AIClient) dispatchQueuedPrompt(
 	metaSnapshot := clonePortalMetadata(item.pending.Meta)
 	go func() {
 		defer func() {
-			if metaSnapshot != nil && metaSnapshot.AckReactionRemoveAfter {
-				oc.removePendingAckReactions(oc.backgroundContext(ctx), item.pending.Portal, item.pending)
-			}
+			oc.removePendingAckReactions(oc.backgroundContext(ctx), item.pending.Portal, item.pending)
 			if item.backlogAfter {
 				followup := item
 				followup.backlogAfter = false
@@ -439,7 +510,7 @@ func (oc *AIClient) dispatchQueuedPrompt(
 }
 
 func (oc *AIClient) removePendingAckReactions(ctx context.Context, portal *bridgev2.Portal, pending pendingMessage) {
-	if portal == nil {
+	if portal == nil || pending.Meta == nil || !pending.Meta.AckReactionRemoveAfter {
 		return
 	}
 	ids := pending.AckEventIDs

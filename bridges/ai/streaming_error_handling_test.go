@@ -5,10 +5,12 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
+	"github.com/beeper/agentremote/pkg/shared/streamui"
 	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
@@ -83,4 +85,29 @@ func TestStreamFailureErrorUsesAnyMessageTarget(t *testing.T) {
 			t.Fatalf("expected PreDeltaError, got %T", err)
 		}
 	})
+}
+
+func TestFinishStreamingWithFailureCancelledEndsTurnAsCancelled(t *testing.T) {
+	state := newTestStreamingStateWithTurn()
+	state.turn.SetSuppressSend(true)
+	state.writer().TextDelta(context.Background(), "hello")
+
+	err := (&AIClient{}).finishStreamingWithFailure(
+		context.Background(),
+		zerolog.Nop(),
+		nil,
+		state,
+		nil,
+		"cancelled",
+		context.Canceled,
+	)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected wrapped cancellation error, got %#v", err)
+	}
+
+	message := streamui.SnapshotUIMessage(state.turn.UIState())
+	metadata, _ := message["metadata"].(map[string]any)
+	if metadata["finish_reason"] != "cancelled" {
+		t.Fatalf("expected cancelled finish_reason, got %#v", metadata["finish_reason"])
+	}
 }

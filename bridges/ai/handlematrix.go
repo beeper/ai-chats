@@ -135,8 +135,15 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 	if commandAuthorized && airuntime.IsAbortTriggerText(commandBody) {
-		stopped := oc.abortRoom(ctx, portal, meta)
-		oc.sendSystemNotice(ctx, portal, formatAbortNotice(stopped))
+		replyCtx := extractInboundReplyContext(msg.Event)
+		result := oc.handleUserStop(ctx, userStopRequest{
+			Portal:             portal,
+			Meta:               meta,
+			ReplyTo:            replyCtx.ReplyTo,
+			RequestedByEventID: msg.Event.ID,
+			RequestedVia:       "text-trigger",
+		})
+		oc.sendSystemNotice(ctx, portal, formatAbortNotice(result))
 		logCtx.Debug().Msg("Abort trigger handled")
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}

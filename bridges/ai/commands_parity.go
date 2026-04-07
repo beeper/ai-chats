@@ -45,7 +45,7 @@ func fnReset(ce *commands.Event) {
 
 	meta.SessionResetAt = time.Now().UnixMilli()
 	client.savePortalQuiet(ce.Ctx, ce.Portal, "session reset")
-	client.clearPendingQueue(ce.Portal.MXID)
+	client.clearPendingQueue(ce.Ctx, ce.Portal.MXID)
 	client.cancelRoomRun(ce.Portal.MXID)
 
 	ce.Reply("%s", formatSystemAck("Session reset."))
@@ -65,6 +65,12 @@ func fnStop(ce *commands.Event) {
 	if !ok {
 		return
 	}
-	stopped := client.abortRoom(ce.Ctx, ce.Portal, meta)
-	ce.Reply("%s", formatAbortNotice(stopped))
+	result := client.handleUserStop(ce.Ctx, userStopRequest{
+		Portal:             ce.Portal,
+		Meta:               meta,
+		ReplyTo:            ce.ReplyTo,
+		RequestedByEventID: ce.EventID,
+		RequestedVia:       "command",
+	})
+	ce.Reply("%s", formatAbortNotice(result))
 }

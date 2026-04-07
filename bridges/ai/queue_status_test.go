@@ -190,3 +190,33 @@ func TestDispatchOrQueueQueuesBehindExistingPendingWork(t *testing.T) {
 		t.Fatalf("expected room to remain unacquired while backlog exists")
 	}
 }
+
+func TestRemovePendingQueueBySourceEventClearsRemovedLastItem(t *testing.T) {
+	roomID := id.RoomID("!room:example.com")
+	first := pendingQueueItem{pending: pendingMessage{SourceEventID: id.EventID("$one")}}
+	last := pendingQueueItem{pending: pendingMessage{SourceEventID: id.EventID("$two")}}
+	oc := &AIClient{
+		pendingQueues: map[id.RoomID]*pendingQueue{
+			roomID: {
+				items:    []pendingQueueItem{first, last},
+				lastItem: &last,
+			},
+		},
+	}
+
+	removed := oc.removePendingQueueBySourceEvent(roomID, id.EventID("$two"))
+	if len(removed) != 1 {
+		t.Fatalf("expected one removed item, got %d", len(removed))
+	}
+
+	snapshot := oc.getQueueSnapshot(roomID)
+	if snapshot == nil {
+		t.Fatal("expected queue snapshot to remain")
+	}
+	if snapshot.lastItem == nil {
+		t.Fatal("expected lastItem to be reassigned to the new tail")
+	}
+	if got := snapshot.lastItem.pending.sourceEventID(); got != id.EventID("$one") {
+		t.Fatalf("expected lastItem to point at remaining item, got %q", got)
+	}
+}

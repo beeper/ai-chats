@@ -13,6 +13,15 @@ type assistantUsageMetadata struct {
 	TotalTokens      int64 `json:"total_tokens,omitempty"`
 }
 
+type assistantStopMetadata struct {
+	Reason             string `json:"reason,omitempty"`
+	Scope              string `json:"scope,omitempty"`
+	TargetKind         string `json:"target_kind,omitempty"`
+	TargetEventID      string `json:"target_event_id,omitempty"`
+	RequestedByEventID string `json:"requested_by_event_id,omitempty"`
+	RequestedVia       string `json:"requested_via,omitempty"`
+}
+
 type assistantTurnMetadata struct {
 	TurnID            string                  `json:"turn_id,omitempty"`
 	AgentID           string                  `json:"agent_id,omitempty"`
@@ -28,6 +37,7 @@ type assistantTurnMetadata struct {
 	SourceEventID     string                  `json:"source_event_id,omitempty"`
 	GeneratedFileRefs []GeneratedFileRef      `json:"generated_file_refs,omitempty"`
 	Usage             *assistantUsageMetadata `json:"usage,omitempty"`
+	Stop              *assistantStopMetadata  `json:"stop,omitempty"`
 }
 
 func buildAssistantUsageMetadata(state *streamingState) *assistantUsageMetadata {
@@ -70,5 +80,6 @@ func buildAssistantTurnMetadata(state *streamingState, turnID, networkMessageID,
 		SourceEventID:     state.sourceEventID().String(),
 		GeneratedFileRefs: agentremote.GeneratedFileRefsFromParts(state.generatedFiles),
 		Usage:             buildAssistantUsageMetadata(state),
+		Stop:              state.stop.Load(),
 	})
 }

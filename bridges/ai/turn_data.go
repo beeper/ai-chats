@@ -59,6 +59,9 @@ func canonicalResponseStatus(state *streamingState) string {
 	if state == nil {
 		return ""
 	}
+	if state.stop.Load() != nil {
+		return "cancelled"
+	}
 	status := strings.TrimSpace(state.responseStatus)
 	if state.completedAtMs == 0 {
 		return status

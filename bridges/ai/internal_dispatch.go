@@ -107,7 +107,7 @@ func (oc *AIClient) dispatchInternalMessage(
 	queueDecision := airuntime.DecideQueueAction(queueSettings.Mode, oc.roomHasActiveRun(portal.MXID), false)
 	if queueDecision.Action == airuntime.QueueActionInterruptAndRun {
 		oc.cancelRoomRun(portal.MXID)
-		oc.clearPendingQueue(portal.MXID)
+		oc.clearPendingQueue(ctx, portal.MXID)
 	}
 	if shouldSteer && pending.Type == pendingTypeText {
 		queueItem.prompt = pending.MessageBody

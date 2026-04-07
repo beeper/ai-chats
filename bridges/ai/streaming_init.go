@@ -128,6 +128,7 @@ func (oc *AIClient) prepareStreamingRun(
 	// Create SDK Turn for writer/emitter/session management.
 	turn := oc.createStreamingTurn(ctx, portal, meta, state, sourceEventID, senderID)
 	state.turn = turn
+	oc.bindRoomRunState(roomID, state)
 
 	state.replyTarget = oc.resolveInitialReplyTarget(evt)
 	if state.replyTarget.ThreadRoot != "" {
