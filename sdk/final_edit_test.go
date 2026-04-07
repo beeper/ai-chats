@@ -38,7 +38,10 @@ func TestFitFinalEditPayloadCompactsOptionalMetadataFirst(t *testing.T) {
 		},
 	}
 
-	fitted, details := FitFinalEditPayload(payload, id.EventID("$event-1"))
+	fitted, details, err := FitFinalEditPayload(payload, id.EventID("$event-1"))
+	if err != nil {
+		t.Fatalf("expected fit to succeed, got %v", err)
+	}
 	if fitted == nil || fitted.Content == nil {
 		t.Fatal("expected fitted payload")
 	}
@@ -64,6 +67,67 @@ func TestFitFinalEditPayloadCompactsOptionalMetadataFirst(t *testing.T) {
 	}
 }
 
+func TestFitFinalEditPayloadDeepClonesNestedMaps(t *testing.T) {
+	payload := &FinalEditPayload{
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgText,
+			Body:    "done",
+		},
+		Extra: map[string]any{
+			"nested": map[string]any{
+				"value": "original",
+			},
+		},
+		TopLevelExtra: map[string]any{
+			"outer": map[string]any{
+				"flag": true,
+			},
+		},
+	}
+
+	fitted, _, err := FitFinalEditPayload(payload, id.EventID("$event-clone"))
+	if err != nil {
+		t.Fatalf("expected fit to succeed, got %v", err)
+	}
+	if fitted == nil || fitted.Content == nil {
+		t.Fatal("expected fitted payload")
+	}
+
+	fitted.Extra["nested"].(map[string]any)["value"] = "changed"
+	fitted.TopLevelExtra["outer"].(map[string]any)["flag"] = false
+
+	if got := payload.Extra["nested"].(map[string]any)["value"]; got != "original" {
+		t.Fatalf("expected original nested extra to stay unchanged, got %#v", got)
+	}
+	if got := payload.TopLevelExtra["outer"].(map[string]any)["flag"]; got != true {
+		t.Fatalf("expected original nested top-level extra to stay unchanged, got %#v", got)
+	}
+}
+
+func TestFitFinalEditPayloadReturnsErrorWhenPayloadCannotFit(t *testing.T) {
+	payload := &FinalEditPayload{
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgText,
+			Body:    "done",
+		},
+		TopLevelExtra: map[string]any{
+			"com.beeper.dont_render_edited": true,
+			"huge":                          strings.Repeat("x", MaxMatrixEventContentBytes),
+		},
+	}
+
+	fitted, details, err := FitFinalEditPayload(payload, id.EventID("$event-too-large"))
+	if err == nil {
+		t.Fatal("expected fit to fail for unshrinkable payload")
+	}
+	if fitted != nil {
+		t.Fatalf("expected no fitted payload on failure, got %#v", fitted)
+	}
+	if details.FinalSize <= MaxMatrixEventContentBytes {
+		t.Fatalf("expected final size to remain oversized, got %d", details.FinalSize)
+	}
+}
+
 func TestFitFinalEditPayloadTrimsBodyAsLastResort(t *testing.T) {
 	body := strings.Repeat("abc\n", MaxMatrixEventContentBytes)
 	payload := &FinalEditPayload{
@@ -76,7 +140,10 @@ func TestFitFinalEditPayloadTrimsBodyAsLastResort(t *testing.T) {
 		},
 	}
 
-	fitted, details := FitFinalEditPayload(payload, id.EventID("$event-2"))
+	fitted, details, err := FitFinalEditPayload(payload, id.EventID("$event-2"))
+	if err != nil {
+		t.Fatalf("expected fit to succeed, got %v", err)
+	}
 	if fitted == nil || fitted.Content == nil {
 		t.Fatal("expected fitted payload")
 	}

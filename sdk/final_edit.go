@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 	"github.com/beeper/agentremote/turns"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -182,8 +183,8 @@ func cloneFinalEditPayload(payload *FinalEditPayload) *FinalEditPayload {
 		return nil
 	}
 	cloned := &FinalEditPayload{
-		Extra:         maps.Clone(payload.Extra),
-		TopLevelExtra: maps.Clone(payload.TopLevelExtra),
+		Extra:         jsonutil.DeepCloneMap(payload.Extra),
+		TopLevelExtra: jsonutil.DeepCloneMap(payload.TopLevelExtra),
 	}
 	if payload.Content != nil {
 		content := *payload.Content
@@ -225,10 +226,10 @@ func estimateFinalEditContentSize(payload *FinalEditPayload, target id.EventID) 
 	return len(data)
 }
 
-func FitFinalEditPayload(payload *FinalEditPayload, target id.EventID) (*FinalEditPayload, FinalEditFitDetails) {
+func FitFinalEditPayload(payload *FinalEditPayload, target id.EventID) (*FinalEditPayload, FinalEditFitDetails, error) {
 	fitted := cloneFinalEditPayload(payload)
 	if fitted == nil || fitted.Content == nil {
-		return fitted, FinalEditFitDetails{}
+		return fitted, FinalEditFitDetails{}, nil
 	}
 	details := FinalEditFitDetails{
 		OriginalSize: estimateFinalEditContentSize(fitted, target),
@@ -236,7 +237,7 @@ func FitFinalEditPayload(payload *FinalEditPayload, target id.EventID) (*FinalEd
 	size := details.OriginalSize
 	if size <= MaxMatrixEventContentBytes {
 		details.FinalSize = size
-		return fitted, details
+		return fitted, details, nil
 	}
 
 	if fitted.Content.Format != "" || fitted.Content.FormattedBody != "" {
@@ -303,12 +304,8 @@ func FitFinalEditPayload(payload *FinalEditPayload, target id.EventID) (*FinalEd
 		size = estimateFinalEditContentSize(fitted, target)
 	}
 	details.FinalSize = size
-	return fitted, details
-}
-
-func FormatFinalEditFitLog(details FinalEditFitDetails) string {
-	if !details.Changed() {
-		return ""
+	if size > MaxMatrixEventContentBytes {
+		return nil, details, fmt.Errorf("final edit payload exceeds Matrix content limit after fitting: %d > %d", size, MaxMatrixEventContentBytes)
 	}
-	return fmt.Sprintf("%d->%d bytes (%s)", details.OriginalSize, details.FinalSize, details.Summary())
+	return fitted, details, nil
 }

@@ -675,7 +675,18 @@ func (t *Turn) buildFinalEdit() (networkid.MessageID, *bridgev2.ConvertedEdit) {
 	if target == "" {
 		return "", nil
 	}
-	fittedPayload, fitDetails := FitFinalEditPayload(payload, t.initialEventID)
+	fittedPayload, fitDetails, err := FitFinalEditPayload(payload, t.initialEventID)
+	if err != nil {
+		if t.conv != nil && t.conv.login != nil {
+			t.conv.login.Log.Warn().
+				Err(err).
+				Str("component", "sdk_turn").
+				Int("original_bytes", fitDetails.OriginalSize).
+				Int("final_bytes", fitDetails.FinalSize).
+				Msg("Skipped final edit because payload could not fit Matrix content limits")
+		}
+		return "", nil
+	}
 	if fittedPayload == nil || fittedPayload.Content == nil {
 		return "", nil
 	}

@@ -27,7 +27,8 @@ func (oc *AIClient) dispatchCompletionInternal(
 	meta *PortalMetadata,
 	promptContext PromptContext,
 ) {
-	runCtx := oc.backgroundContext(ctx)
+	runCtx, cancel := oc.withAgentLoopInactivityTimeout(ctx)
+	defer cancel()
 
 	// Always use streaming responses
 	oc.runAgentLoopWithRetry(runCtx, sourceEvent, portal, meta, promptContext)

@@ -80,7 +80,9 @@ func executeAgentLoopRounds(
 	evt *event.Event,
 ) (bool, *ContextLengthError, error) {
 	for round := 0; ; round++ {
+		touchAgentLoopActivity(ctx)
 		continueLoop, cle, err := provider.RunAgentTurn(ctx, evt, round)
+		touchAgentLoopActivity(ctx)
 		if cle != nil || err != nil {
 			finalizeAgentLoopExit(ctx, provider, true)
 			return false, cle, err

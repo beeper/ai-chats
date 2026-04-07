@@ -50,6 +50,10 @@ func (oc *AIClient) responseWithRetry(
 		}
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
+				if timeoutErr := agentLoopInactivityCause(ctx); timeoutErr != nil {
+					oc.loggerForContext(ctx).Warn().Err(timeoutErr).Int("attempt", attempt+1).Str("log_label", logLabel).Msg("Agent loop timed out due to inactivity")
+					return false, timeoutErr
+				}
 				return true, nil
 			}
 			oc.loggerForContext(ctx).Warn().Err(err).Int("attempt", attempt+1).Str("log_label", logLabel).Msg("Response attempt failed with error")
@@ -360,6 +364,9 @@ func (oc *AIClient) runAgentLoopWithRetry(
 		return
 	}
 	if errors.Is(err, context.Canceled) {
+		if timeoutErr := agentLoopInactivityCause(ctx); timeoutErr != nil {
+			oc.notifyMatrixSendFailure(ctx, portal, evt, timeoutErr)
+		}
 		return
 	}
 	oc.notifyMatrixSendFailure(ctx, portal, evt, err)

@@ -630,6 +630,27 @@ func TestTurnBuildFinalEditPreservesMentionsInContent(t *testing.T) {
 	}
 }
 
+func TestTurnBuildFinalEditSkipsUnshrinkablePayload(t *testing.T) {
+	turn := newTurn(context.Background(), nil, nil, nil)
+	turn.initialEventID = id.EventID("$event-too-large")
+	turn.networkMessageID = "msg-too-large"
+	turn.SetFinalEditPayload(&FinalEditPayload{
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgText,
+			Body:    "done",
+		},
+		TopLevelExtra: map[string]any{
+			"com.beeper.dont_render_edited": true,
+			"huge":                          strings.Repeat("x", MaxMatrixEventContentBytes),
+		},
+	})
+
+	target, edit := turn.buildFinalEdit()
+	if target != "" || edit != nil {
+		t.Fatalf("expected oversized final edit to be skipped, got target=%q edit=%#v", target, edit)
+	}
+}
+
 func TestApplyStreamPartPreservesWhitespaceTextDelta(t *testing.T) {
 	turn := newTurn(context.Background(), nil, nil, nil)
 

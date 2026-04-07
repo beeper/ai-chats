@@ -70,6 +70,9 @@ func (oc *AIClient) handleResponsesStreamErr(
 	includeContextLength bool,
 ) (*ContextLengthError, error) {
 	if errors.Is(err, context.Canceled) {
+		if timeoutErr := agentLoopInactivityCause(ctx); timeoutErr != nil {
+			return nil, oc.finishStreamingWithFailure(context.Background(), *oc.loggerForContext(ctx), portal, state, meta, "timeout", timeoutErr)
+		}
 		return nil, oc.finishStreamingWithFailure(context.Background(), *oc.loggerForContext(ctx), portal, state, meta, "cancelled", err)
 	}
 

@@ -131,6 +131,9 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 		stream, params, err = a.startContinuationRound(ctx)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
+				if timeoutErr := agentLoopInactivityCause(ctx); timeoutErr != nil {
+					return false, nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, state, a.meta, "timeout", timeoutErr)
+				}
 				return false, nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, state, a.meta, "cancelled", err)
 			}
 			logResponsesFailure(a.log, err, params, a.meta, a.prompt, "continuation_init")
