@@ -84,7 +84,7 @@ func executeAgentLoopRounds(
 		continueLoop, cle, err := provider.RunAgentTurn(ctx, evt, round)
 		touchAgentLoopActivity(ctx)
 		if cle != nil || err != nil {
-			finalizeAgentLoopExit(ctx, provider, true)
+			finalizeAgentLoopExit(ctx, provider)
 			return false, cle, err
 		}
 		if continueLoop {
@@ -93,26 +93,14 @@ func executeAgentLoopRounds(
 
 		// Queued user messages are dispatched after room release via processPendingQueue.
 		// Finalize this turn immediately so later prompts cannot reopen it with more edits.
-		finalizeAgentLoopExit(ctx, provider, false)
+		finalizeAgentLoopExit(ctx, provider)
 		return true, nil, nil
 	}
 }
 
-func finalizeAgentLoopExit(ctx context.Context, provider agentLoopProvider, errorExit bool) {
+func finalizeAgentLoopExit(ctx context.Context, provider agentLoopProvider) {
 	if provider == nil {
 		return
-	}
-	if errorExit {
-		switch p := provider.(type) {
-		case *chatCompletionsTurnAdapter:
-			if p != nil && p.state != nil && p.state.completedAtMs != 0 {
-				return
-			}
-		case *responsesTurnAdapter:
-			if p != nil && p.state != nil && p.state.completedAtMs != 0 {
-				return
-			}
-		}
 	}
 	provider.FinalizeAgentLoop(ctx)
 }

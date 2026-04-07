@@ -150,7 +150,7 @@ type FinalEditFitDetails struct {
 }
 
 func (d FinalEditFitDetails) Changed() bool {
-	return d.ClearedFormattedBody || d.DroppedLinkPreviews || d.CompactedUIMessage || d.DroppedUIMessage || d.DroppedExtra || d.TrimmedBody
+	return d.Summary() != ""
 }
 
 func (d FinalEditFitDetails) Summary() string {
@@ -228,18 +228,16 @@ func estimateFinalEditContentSize(payload *FinalEditPayload, target id.EventID) 
 }
 
 func FitFinalEditPayload(payload *FinalEditPayload, target id.EventID) (*FinalEditPayload, FinalEditFitDetails, error) {
+	if payload == nil || payload.Content == nil {
+		return payload, FinalEditFitDetails{}, nil
+	}
+	initialSize := estimateFinalEditContentSize(payload, target)
+	if initialSize <= MaxMatrixEventContentBytes {
+		return payload, FinalEditFitDetails{OriginalSize: initialSize, FinalSize: initialSize}, nil
+	}
 	fitted := cloneFinalEditPayload(payload)
-	if fitted == nil || fitted.Content == nil {
-		return fitted, FinalEditFitDetails{}, nil
-	}
-	details := FinalEditFitDetails{
-		OriginalSize: estimateFinalEditContentSize(fitted, target),
-	}
-	size := details.OriginalSize
-	if size <= MaxMatrixEventContentBytes {
-		details.FinalSize = size
-		return fitted, details, nil
-	}
+	details := FinalEditFitDetails{OriginalSize: initialSize}
+	size := initialSize
 
 	if fitted.Content.Format != "" || fitted.Content.FormattedBody != "" {
 		fitted.Content.Format = ""
@@ -283,6 +281,7 @@ func FitFinalEditPayload(payload *FinalEditPayload, target id.EventID) (*FinalEd
 	if size > MaxMatrixEventContentBytes && fitted.Content != nil && fitted.Content.Body != "" {
 		originalBody := fitted.Content.Body
 		best := strings.TrimSpace(originalBody)
+		bestSize := size
 		low, high := 1, len(originalBody)
 		for low <= high {
 			mid := (low + high) / 2
@@ -296,6 +295,7 @@ func FitFinalEditPayload(payload *FinalEditPayload, target id.EventID) (*FinalEd
 			candidateSize := estimateFinalEditContentSize(fitted, target)
 			if candidateSize <= MaxMatrixEventContentBytes {
 				best = candidate
+				bestSize = candidateSize
 				low = mid + 1
 			} else {
 				high = mid - 1
@@ -303,7 +303,7 @@ func FitFinalEditPayload(payload *FinalEditPayload, target id.EventID) (*FinalEd
 		}
 		fitted.Content.Body = best
 		details.TrimmedBody = best != strings.TrimSpace(originalBody)
-		size = estimateFinalEditContentSize(fitted, target)
+		size = bestSize
 	}
 	details.FinalSize = size
 	if size > MaxMatrixEventContentBytes {

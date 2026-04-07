@@ -363,12 +363,6 @@ func (oc *AIClient) runAgentLoopWithRetry(
 	if success || err == nil {
 		return
 	}
-	if errors.Is(err, context.Canceled) {
-		if timeoutErr := agentLoopInactivityCause(ctx); timeoutErr != nil {
-			oc.notifyMatrixSendFailure(ctx, portal, evt, timeoutErr)
-		}
-		return
-	}
 	oc.notifyMatrixSendFailure(ctx, portal, evt, err)
 }
 

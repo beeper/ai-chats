@@ -177,6 +177,9 @@ func (oc *AIClient) setModelTyping(ctx context.Context, portal *bridgev2.Portal,
 		timeout = 0 // Zero timeout stops typing
 	}
 	if err := intent.MarkTyping(ctx, portal.MXID, bridgev2.TypingTypeText, timeout); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return
+		}
 		oc.loggerForContext(ctx).Warn().Err(err).Bool("typing", typing).Msg("Failed to set typing indicator")
 	}
 }

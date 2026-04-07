@@ -67,10 +67,6 @@ func (oc *AIClient) buildStreamUIMessage(state *streamingState, meta *PortalMeta
 	return sdk.UIMessageFromTurnData(turnData)
 }
 
-func buildCompactFinalUIMessage(uiMessage map[string]any) map[string]any {
-	return sdk.BuildCompactFinalUIMessage(uiMessage)
-}
-
 func shouldContinueChatToolLoop(finishReason string, toolCallCount int) bool {
 	if toolCallCount <= 0 {
 		return false

@@ -71,8 +71,10 @@ func TestFitFinalEditPayloadCompactsOptionalMetadataFirst(t *testing.T) {
 func TestFitFinalEditPayloadDeepClonesNestedMaps(t *testing.T) {
 	payload := &FinalEditPayload{
 		Content: &event.MessageEventContent{
-			MsgType: event.MsgText,
-			Body:    "done",
+			MsgType:       event.MsgText,
+			Body:          "done",
+			Format:        event.FormatHTML,
+			FormattedBody: strings.Repeat("<p>x</p>", MaxMatrixEventContentBytes/4),
 		},
 		Extra: map[string]any{
 			"nested": map[string]any{

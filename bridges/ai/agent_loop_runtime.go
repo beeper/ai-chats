@@ -57,13 +57,6 @@ func withActivityTimeout(parent context.Context, timeout time.Duration, timeoutE
 	return ctx, touch, func() { cancel(context.Canceled) }
 }
 
-func withAgentLoopActivity(ctx context.Context, touch func()) context.Context {
-	if touch == nil {
-		return ctx
-	}
-	return context.WithValue(ctx, agentLoopActivityKey{}, touch)
-}
-
 func touchAgentLoopActivity(ctx context.Context) {
 	if touch, ok := ctx.Value(agentLoopActivityKey{}).(func()); ok && touch != nil {
 		touch()
@@ -83,7 +76,7 @@ func agentLoopInactivityCause(ctx context.Context) error {
 
 func (oc *AIClient) withAgentLoopInactivityTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
 	runCtx, touch, cancel := withActivityTimeout(ctx, agentLoopInactivityTimeout, errAgentLoopInactivityTimeout)
-	return withAgentLoopActivity(runCtx, touch), cancel
+	return context.WithValue(runCtx, agentLoopActivityKey{}, touch), cancel
 }
 
 func runAgentLoopStreamStep[T any](

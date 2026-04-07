@@ -176,6 +176,9 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 }
 
 func (a *responsesTurnAdapter) FinalizeAgentLoop(ctx context.Context) {
+	if a.state == nil || a.state.completedAtMs != 0 {
+		return
+	}
 	a.oc.finalizeResponsesStream(ctx, a.log, a.portal, a.state, a.meta)
 }
 

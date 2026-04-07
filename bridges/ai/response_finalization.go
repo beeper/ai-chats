@@ -543,9 +543,9 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 	}
 	linkPreviews := generateOutboundLinkPreviews(ctx, rendered.Body, intent, portal, sourceCitations, getLinkPreviewConfig(&oc.connector.Config))
 
-	uiMessage := buildCompactFinalUIMessage(oc.buildStreamUIMessage(state, meta, linkPreviews))
+	uiMessage := sdk.BuildCompactFinalUIMessage(oc.buildStreamUIMessage(state, meta, linkPreviews))
 
-	topLevelExtra := buildFinalEditTopLevelExtra()
+	topLevelExtra := sdk.BuildDefaultFinalEditTopLevelExtra()
 	if state != nil && state.turn != nil {
 		finalTopLevelExtra := topLevelExtra
 		if len(uiMessage) > 0 || len(linkPreviews) > 0 {
@@ -576,12 +576,6 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 		var chunk string
 		chunk, continuationBody = turns.SplitAtMarkdownBoundary(continuationBody, turns.MaxMatrixEventBodyBytes)
 		oc.sendContinuationMessage(ctx, portal, chunk, state.replyTarget, state.nextMessageTiming())
-	}
-}
-
-func buildFinalEditTopLevelExtra() map[string]any {
-	return map[string]any{
-		"com.beeper.dont_render_edited": true,
 	}
 }
 
