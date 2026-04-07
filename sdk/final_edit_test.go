@@ -4,9 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/beeper/agentremote/pkg/matrixevents"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/agentremote/pkg/matrixevents"
 )
 
 func TestFitFinalEditPayloadCompactsOptionalMetadataFirst(t *testing.T) {

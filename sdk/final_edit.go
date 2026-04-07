@@ -7,11 +7,12 @@ import (
 	"reflect"
 	"strings"
 
+	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
+
 	"github.com/beeper/agentremote/pkg/matrixevents"
 	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 	"github.com/beeper/agentremote/turns"
-	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/id"
 )
 
 const MaxMatrixEventContentBytes = 60000
