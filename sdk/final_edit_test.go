@@ -158,3 +158,34 @@ func TestFitFinalEditPayloadTrimsBodyAsLastResort(t *testing.T) {
 		t.Fatalf("expected trimmed body to be shorter than original")
 	}
 }
+
+func TestFitFinalEditPayloadBinarySearchUsesOriginalBody(t *testing.T) {
+	paragraphOne := strings.Repeat("a", 25000)
+	paragraphTwo := strings.Repeat("b", 25000)
+	paragraphThree := strings.Repeat("c", 25000)
+	body := paragraphOne + "\n\n" + paragraphTwo + "\n\n" + paragraphThree
+	payload := &FinalEditPayload{
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgText,
+			Body:    body,
+		},
+		TopLevelExtra: map[string]any{
+			"com.beeper.dont_render_edited": true,
+		},
+	}
+
+	fitted, details, err := FitFinalEditPayload(payload, id.EventID("$event-boundary"))
+	if err != nil {
+		t.Fatalf("expected fit to succeed, got %v", err)
+	}
+	if fitted == nil || fitted.Content == nil {
+		t.Fatal("expected fitted payload")
+	}
+	want := paragraphOne + "\n\n" + paragraphTwo
+	if fitted.Content.Body != want {
+		t.Fatalf("expected trimmed body to retain the largest markdown-safe prefix, got len=%d want len=%d", len(fitted.Content.Body), len(want))
+	}
+	if !details.TrimmedBody {
+		t.Fatal("expected body trimming details to be reported")
+	}
+}

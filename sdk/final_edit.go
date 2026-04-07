@@ -281,11 +281,12 @@ func FitFinalEditPayload(payload *FinalEditPayload, target id.EventID) (*FinalEd
 		size = estimateFinalEditContentSize(fitted, target)
 	}
 	if size > MaxMatrixEventContentBytes && fitted.Content != nil && fitted.Content.Body != "" {
-		best := strings.TrimSpace(fitted.Content.Body)
-		low, high := 1, len(fitted.Content.Body)
+		originalBody := fitted.Content.Body
+		best := strings.TrimSpace(originalBody)
+		low, high := 1, len(originalBody)
 		for low <= high {
 			mid := (low + high) / 2
-			candidate, _ := turns.SplitAtMarkdownBoundary(fitted.Content.Body, mid)
+			candidate, _ := turns.SplitAtMarkdownBoundary(originalBody, mid)
 			candidate = strings.TrimSpace(candidate)
 			if candidate == "" {
 				high = mid - 1
@@ -301,7 +302,7 @@ func FitFinalEditPayload(payload *FinalEditPayload, target id.EventID) (*FinalEd
 			}
 		}
 		fitted.Content.Body = best
-		details.TrimmedBody = best != strings.TrimSpace(payload.Content.Body)
+		details.TrimmedBody = best != strings.TrimSpace(originalBody)
 		size = estimateFinalEditContentSize(fitted, target)
 	}
 	details.FinalSize = size
@@ -309,4 +310,14 @@ func FitFinalEditPayload(payload *FinalEditPayload, target id.EventID) (*FinalEd
 		return nil, details, fmt.Errorf("final edit payload exceeds Matrix content limit after fitting: %d > %d", size, MaxMatrixEventContentBytes)
 	}
 	return fitted, details, nil
+}
+
+func BuildTextOnlyFinalEditPayload(payload *FinalEditPayload) *FinalEditPayload {
+	minimal := cloneFinalEditPayload(payload)
+	if minimal == nil {
+		return nil
+	}
+	minimal.Extra = nil
+	minimal.TopLevelExtra = nil
+	return minimal
 }

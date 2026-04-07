@@ -638,6 +638,33 @@ func TestTurnBuildFinalEditSkipsUnshrinkablePayload(t *testing.T) {
 		Content: &event.MessageEventContent{
 			MsgType: event.MsgText,
 			Body:    "done",
+			Mentions: &event.Mentions{
+				UserIDs: []id.UserID{
+					id.UserID("@" + strings.Repeat("x", MaxMatrixEventContentBytes) + ":test"),
+				},
+			},
+		},
+	})
+
+	target, edit := turn.buildFinalEdit()
+	if target != "" || edit != nil {
+		t.Fatalf("expected oversized final edit to be skipped, got target=%q edit=%#v", target, edit)
+	}
+}
+
+func TestTurnBuildFinalEditFallsBackToTextOnlyPayload(t *testing.T) {
+	turn := newTurn(context.Background(), nil, nil, nil)
+	turn.initialEventID = id.EventID("$event-fallback")
+	turn.networkMessageID = "msg-fallback"
+	turn.SetFinalEditPayload(&FinalEditPayload{
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgText,
+			Body:    "done",
+		},
+		Extra: map[string]any{
+			matrixevents.BeeperAIKey: map[string]any{
+				"id": "turn-1",
+			},
 		},
 		TopLevelExtra: map[string]any{
 			"com.beeper.dont_render_edited": true,
@@ -646,8 +673,79 @@ func TestTurnBuildFinalEditSkipsUnshrinkablePayload(t *testing.T) {
 	})
 
 	target, edit := turn.buildFinalEdit()
-	if target != "" || edit != nil {
-		t.Fatalf("expected oversized final edit to be skipped, got target=%q edit=%#v", target, edit)
+	if target != "msg-fallback" {
+		t.Fatalf("expected fallback edit target msg-fallback, got %q", target)
+	}
+	if edit == nil || len(edit.ModifiedParts) != 1 {
+		t.Fatalf("expected single modified part, got %#v", edit)
+	}
+	if got := edit.ModifiedParts[0].Content.Body; got != "done" {
+		t.Fatalf("expected fallback to preserve visible body, got %q", got)
+	}
+	if _, ok := edit.ModifiedParts[0].Extra[matrixevents.BeeperAIKey]; ok {
+		t.Fatalf("expected text-only fallback to strip extra metadata, got %#v", edit.ModifiedParts[0].Extra)
+	}
+	if _, ok := edit.ModifiedParts[0].TopLevelExtra["com.beeper.dont_render_edited"]; ok {
+		t.Fatalf("expected text-only fallback to drop optional top-level metadata, got %#v", edit.ModifiedParts[0].TopLevelExtra)
+	}
+	gotRelatesTo, ok := edit.ModifiedParts[0].TopLevelExtra["m.relates_to"].(*event.RelatesTo)
+	if !ok {
+		t.Fatalf("expected fallback edit to restore replace relation, got %#v", edit.ModifiedParts[0].TopLevelExtra)
+	}
+	if gotRelatesTo.EventID != id.EventID("$event-fallback") || gotRelatesTo.Type != event.RelReplace {
+		t.Fatalf("expected replace relation for original event, got %#v", gotRelatesTo)
+	}
+}
+
+func TestTurnFinalizationContextPrefersActiveTurnContext(t *testing.T) {
+	type ctxKey string
+	const key ctxKey = "source"
+
+	parent := context.WithValue(context.Background(), key, "turn")
+	turn := newTurn(parent, nil, nil, nil)
+
+	got := turn.finalizationContext()
+	if got == nil {
+		t.Fatal("expected finalization context")
+	}
+	if got != turn.Context() {
+		t.Fatal("expected active turn context to be reused for finalization")
+	}
+	if got.Value(key) != "turn" {
+		t.Fatalf("expected turn context value, got %#v", got.Value(key))
+	}
+}
+
+func TestTurnFinalizationContextFallsBackToBridgeBackground(t *testing.T) {
+	type ctxKey string
+	const key ctxKey = "source"
+
+	bridgeCtx := context.WithValue(context.Background(), key, "bridge")
+	parent, cancel := context.WithCancel(context.WithValue(context.Background(), key, "parent"))
+	login := &bridgev2.UserLogin{
+		UserLogin: &database.UserLogin{ID: "login-1"},
+		Bridge:    &bridgev2.Bridge{BackgroundCtx: bridgeCtx},
+	}
+	conv := newConversation(parent, &bridgev2.Portal{Portal: &database.Portal{}}, login, bridgev2.EventSender{}, nil)
+	turn := newTurn(parent, conv, nil, nil)
+
+	cancel()
+	if turn.Context().Err() == nil {
+		t.Fatal("expected turn context to be cancelled")
+	}
+
+	got := turn.finalizationContext()
+	if got == nil {
+		t.Fatal("expected fallback finalization context")
+	}
+	if got.Err() != nil {
+		t.Fatalf("expected active fallback context, got err=%v", got.Err())
+	}
+	if got == turn.Context() {
+		t.Fatal("expected fallback context instead of cancelled turn context")
+	}
+	if got.Value(key) != "bridge" {
+		t.Fatalf("expected bridge background context, got %#v", got.Value(key))
 	}
 }
 

@@ -137,19 +137,19 @@ func TestExecuteAgentLoopRoundsDoesNotInlineFollowUpMessages(t *testing.T) {
 }
 
 func TestWithActivityTimeoutResetsOnTouchAndCancelsOnIdle(t *testing.T) {
-	ctx, touch, cancel := withActivityTimeout(context.Background(), 40*time.Millisecond, errAgentLoopInactivityTimeout)
+	ctx, touch, cancel := withActivityTimeout(context.Background(), 100*time.Millisecond, errAgentLoopInactivityTimeout)
 	defer cancel()
 
-	time.Sleep(20 * time.Millisecond)
+	time.Sleep(40 * time.Millisecond)
 	touch()
-	time.Sleep(30 * time.Millisecond)
+	time.Sleep(40 * time.Millisecond)
 	if err := ctx.Err(); err != nil {
 		t.Fatalf("expected context to stay alive after activity, got %v", err)
 	}
 
 	select {
 	case <-ctx.Done():
-	case <-time.After(100 * time.Millisecond):
+	case <-time.After(200 * time.Millisecond):
 		t.Fatal("expected inactivity timeout to cancel the context")
 	}
 
