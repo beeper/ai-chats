@@ -74,7 +74,7 @@ func TestFitFinalEditPayloadDeepClonesNestedMaps(t *testing.T) {
 			MsgType:       event.MsgText,
 			Body:          "done",
 			Format:        event.FormatHTML,
-			FormattedBody: strings.Repeat("<p>x</p>", MaxMatrixEventContentBytes/4),
+			FormattedBody: strings.Repeat("x", MaxMatrixEventContentBytes*2),
 		},
 		Extra: map[string]any{
 			"nested": map[string]any{
@@ -88,14 +88,20 @@ func TestFitFinalEditPayloadDeepClonesNestedMaps(t *testing.T) {
 		},
 	}
 
-	fitted, _, err := FitFinalEditPayload(payload, id.EventID("$event-clone"))
+	fitted, details, err := FitFinalEditPayload(payload, id.EventID("$event-clone"))
 	if err != nil {
-		t.Fatalf("expected fit to succeed, got %v", err)
+		t.Fatalf("expected fit to succeed, got %v; details: %+v", err, details)
 	}
 	if fitted == nil || fitted.Content == nil {
 		t.Fatal("expected fitted payload")
 	}
+	t.Logf("details: %+v", details)
+	t.Logf("fitted.Extra: %v", fitted.Extra)
+	t.Logf("fitted.TopLevelExtra: %v", fitted.TopLevelExtra)
 
+	if fitted.Extra == nil {
+		t.Fatal("expected Extra to survive fitting")
+	}
 	fitted.Extra["nested"].(map[string]any)["value"] = "changed"
 	fitted.TopLevelExtra["outer"].(map[string]any)["flag"] = false
 
