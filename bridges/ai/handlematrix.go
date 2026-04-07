@@ -929,6 +929,9 @@ func (oc *AIClient) handleTextFileMessage(
 // savePortalQuiet saves portal and logs errors without failing
 func (oc *AIClient) savePortalQuiet(ctx context.Context, portal *bridgev2.Portal, action string) {
 	if err := portal.Save(ctx); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return
+		}
 		oc.loggerForContext(ctx).Warn().Err(err).Str("action", action).Msg("Failed to save portal")
 	}
 }

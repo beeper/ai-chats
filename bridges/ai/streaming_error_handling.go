@@ -40,6 +40,12 @@ func (oc *AIClient) finishStreamingWithFailure(
 	reason string,
 	err error,
 ) error {
+	if state == nil {
+		return err
+	}
+	if !state.markFinalized() {
+		return streamFailureError(state, err)
+	}
 	if state != nil && state.stop.Load() != nil && reason == "cancelled" {
 		reason = "stop"
 	}
@@ -78,6 +84,9 @@ func (oc *AIClient) handleResponsesStreamErr(
 	includeContextLength bool,
 ) (*ContextLengthError, error) {
 	if errors.Is(err, context.Canceled) {
+		if timeoutErr := agentLoopInactivityCause(ctx); timeoutErr != nil {
+			return nil, oc.finishStreamingWithFailure(context.Background(), *oc.loggerForContext(ctx), portal, state, meta, "timeout", timeoutErr)
+		}
 		return nil, oc.finishStreamingWithFailure(context.Background(), *oc.loggerForContext(ctx), portal, state, meta, "cancelled", err)
 	}
 

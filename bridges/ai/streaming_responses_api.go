@@ -131,6 +131,9 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 		stream, params, err = a.startContinuationRound(ctx)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
+				if timeoutErr := agentLoopInactivityCause(ctx); timeoutErr != nil {
+					return false, nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, state, a.meta, "timeout", timeoutErr)
+				}
 				return false, nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, state, a.meta, "cancelled", err)
 			}
 			logResponsesFailure(a.log, err, params, a.meta, a.prompt, "continuation_init")
@@ -173,6 +176,9 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 }
 
 func (a *responsesTurnAdapter) FinalizeAgentLoop(ctx context.Context) {
+	if a.state == nil || a.state.isFinalized() {
+		return
+	}
 	a.oc.finalizeResponsesStream(ctx, a.log, a.portal, a.state, a.meta)
 }
 
@@ -211,8 +217,28 @@ func (oc *AIClient) processResponseStreamEvent(
 	)
 
 	switch streamEvent.Type {
-	case "response.created", "response.queued", "response.in_progress", "response.failed", "response.incomplete":
+	case "response.created", "response.queued", "response.in_progress":
 		oc.handleResponseLifecycleEvent(ctx, portal, state, meta, streamEvent.Type, streamEvent.Response)
+
+	case "response.failed":
+		oc.handleResponseLifecycleEvent(ctx, portal, state, meta, streamEvent.Type, streamEvent.Response)
+		state.completedAtMs = time.Now().UnixMilli()
+		errText := strings.TrimSpace(streamEvent.Response.Error.Message)
+		if errText == "" {
+			errText = "response failed"
+		}
+		return true, nil, oc.finishStreamingWithFailure(ctx, log, portal, state, meta, "error", errors.New(errText))
+
+	case "response.incomplete":
+		oc.handleResponseLifecycleEvent(ctx, portal, state, meta, streamEvent.Type, streamEvent.Response)
+		state.completedAtMs = time.Now().UnixMilli()
+		actions.finalizeMetadata()
+		log.Debug().
+			Str("reason", state.finishReason).
+			Str("response_id", state.responseID).
+			Str("response_status", state.responseStatus).
+			Msg("Response stream ended incomplete" + contSuffix)
+		return true, nil, nil
 
 	case "response.output_item.added":
 		actions.outputItemAdded(streamEvent.Item)
@@ -371,6 +397,7 @@ func (oc *AIClient) processResponseStreamEvent(
 		}
 		log.Debug().Str("reason", state.finishReason).Str("response_id", state.responseID).Int("images", len(state.pendingImages)).
 			Msg("Response stream completed" + contSuffix)
+		return true, nil, nil
 
 	case "error":
 		apiErr := fmt.Errorf("API error: %s", streamEvent.Message)

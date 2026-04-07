@@ -119,6 +119,16 @@ func hasSystemEvents(ownerKey string, sessionKey string) bool {
 	return has
 }
 
+func clearSystemEventsForSession(ownerKey string, sessionKey string) {
+	key, err := buildSystemEventsMapKey(ownerKey, sessionKey)
+	if err != nil {
+		return
+	}
+	systemEventsMu.Lock()
+	delete(systemEvents, key)
+	systemEventsMu.Unlock()
+}
+
 func buildSystemEventsMapKey(ownerKey string, sessionKey string) (string, error) {
 	owner := strings.TrimSpace(ownerKey)
 	key, err := requireSessionKey(sessionKey)

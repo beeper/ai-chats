@@ -378,10 +378,12 @@ func (oc *AIClient) waitForToolApprovalDecision(
 	state *streamingState,
 	handle bridgesdk.ApprovalHandle,
 ) airuntime.ToolApprovalDecision {
+	touchAgentLoopActivity(ctx)
 	if handle == nil {
 		return airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalTimedOut, Reason: approvalWaitReason(ctx)}
 	}
 	resp, err := handle.Wait(ctx)
+	touchAgentLoopActivity(ctx)
 	if err != nil {
 		return airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalDenied, Reason: err.Error()}
 	}

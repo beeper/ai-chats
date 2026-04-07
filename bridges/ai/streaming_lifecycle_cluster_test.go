@@ -162,3 +162,104 @@ func TestProcessResponseStreamEventUpdatesCompletedResponseStatus(t *testing.T) 
 		t.Fatalf("expected writer metadata to be completed, got %#v", metadata["response_status"])
 	}
 }
+
+func TestProcessResponseStreamEventCompletedSignalsLoopStop(t *testing.T) {
+	state := newTestStreamingStateWithTurn()
+	oc := &AIClient{}
+
+	rsc := &responseStreamContext{
+		base: &agentLoopProviderBase{
+			oc:    oc,
+			log:   zerolog.Nop(),
+			state: state,
+		},
+	}
+
+	done, cle, err := oc.processResponseStreamEvent(context.Background(), rsc, responses.ResponseStreamEventUnion{
+		Type: "response.completed",
+		Response: responses.Response{
+			ID:     "resp_done",
+			Status: "completed",
+		},
+	}, false)
+	if !done {
+		t.Fatal("expected completed response event to stop the stream loop")
+	}
+	if cle != nil {
+		t.Fatalf("did not expect context-length error, got %#v", cle)
+	}
+	if err != nil {
+		t.Fatalf("did not expect error, got %v", err)
+	}
+}
+
+func TestResponsesTurnAdapterFinalizeAgentLoopDoesNotSkipTerminalLifecycle(t *testing.T) {
+	state := newTestStreamingStateWithTurn()
+	state.turn.SetSuppressSend(true)
+	state.writer().TextDelta(context.Background(), "done")
+	state.completedAtMs = 123
+	state.finishReason = "stop"
+
+	adapter := &responsesTurnAdapter{
+		agentLoopProviderBase: agentLoopProviderBase{
+			oc:    &AIClient{},
+			log:   zerolog.Nop(),
+			state: state,
+		},
+	}
+
+	adapter.FinalizeAgentLoop(context.Background())
+
+	if !state.isFinalized() {
+		t.Fatal("expected finalize agent loop to finalize terminal response state")
+	}
+
+	message := streamui.SnapshotUIMessage(state.turn.UIState())
+	metadata, _ := message["metadata"].(map[string]any)
+	if metadata["finish_reason"] != "stop" {
+		t.Fatalf("expected finalized UI message finish_reason stop, got %#v", metadata["finish_reason"])
+	}
+}
+
+func TestProcessResponseStreamEventFailedFinalizesAsError(t *testing.T) {
+	state := newTestStreamingStateWithTurn()
+	state.turn.SetSuppressSend(true)
+	state.writer().TextDelta(context.Background(), "hello")
+	oc := &AIClient{}
+
+	rsc := &responseStreamContext{
+		base: &agentLoopProviderBase{
+			oc:    oc,
+			log:   zerolog.Nop(),
+			state: state,
+		},
+	}
+
+	done, cle, err := oc.processResponseStreamEvent(context.Background(), rsc, responses.ResponseStreamEventUnion{
+		Type: "response.failed",
+		Response: responses.Response{
+			ID:     "resp_failed",
+			Status: "failed",
+			Error: responses.ResponseError{
+				Message: "boom",
+			},
+		},
+	}, false)
+	if !done {
+		t.Fatal("expected failed response event to stop the stream loop")
+	}
+	if cle != nil {
+		t.Fatalf("did not expect context-length error, got %#v", cle)
+	}
+	if err == nil {
+		t.Fatal("expected failed response event to return an error")
+	}
+	if !state.isFinalized() {
+		t.Fatal("expected failed response event to finalize the turn")
+	}
+	message := streamui.SnapshotUIMessage(state.turn.UIState())
+	metadata, _ := message["metadata"].(map[string]any)
+	if metadata["finish_reason"] != "error" {
+		t.Fatalf("expected error finish_reason, got %#v", metadata["finish_reason"])
+	}
+}

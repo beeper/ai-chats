@@ -419,6 +419,9 @@ func (s *StreamSession) logWarn(reason string, err error, kv ...any) {
 	if s == nil || s.params.Logger == nil {
 		return
 	}
+	if errors.Is(err, context.Canceled) {
+		return
+	}
 	logEvt := s.params.Logger.Warn().Str("reason", reason)
 	if err != nil {
 		logEvt = logEvt.Err(err)

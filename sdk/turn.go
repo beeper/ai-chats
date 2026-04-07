@@ -138,6 +138,7 @@ type Turn struct {
 	placeholderPayload    *PlaceholderMessagePayload
 	finalEditPayload      *FinalEditPayload
 	sendFunc              func(ctx context.Context) (id.EventID, networkid.MessageID, error)
+	sendFinalEditFunc     func(ctx context.Context)
 	suppressSend          bool
 	suppressFinalEdit     bool
 	idleTimer             *time.Timer
@@ -357,17 +358,7 @@ func (t *Turn) defaultStreamPublisher(callCtx context.Context) (bridgev2.BeeperS
 }
 
 func (t *Turn) ensureSenderJoined() error {
-	if t == nil || t.conv == nil || t.conv.portal == nil || t.conv.portal.MXID == "" {
-		return nil
-	}
-	if t.conv.intentOverride == nil && (t.conv.login == nil || t.conv.login.Bridge == nil || t.conv.portal.Bridge == nil) {
-		return nil
-	}
-	intent, err := t.conv.getIntent(t.turnCtx)
-	if err != nil {
-		return err
-	}
-	return intent.EnsureJoined(t.turnCtx, t.conv.portal.MXID)
+	return t.ensureSenderJoinedWithContext(t.turnCtx)
 }
 
 func (t *Turn) ensureStarted() {
@@ -639,17 +630,18 @@ func (t *Turn) finalMetadata(finishReason string) agentremote.BaseMessageMetadat
 }
 
 func (t *Turn) persistFinalMessage(finishReason string) {
+	finalCtx := t.finalizationContext()
 	if t.conv == nil || t.conv.login == nil || t.conv.portal == nil {
 		return
 	}
-	sender := t.resolveSender(t.turnCtx)
+	sender := t.resolveSender(finalCtx)
 	metadata := any(t.finalMetadata(finishReason))
 	if t.finalMetadataProvider != nil {
 		if custom := t.finalMetadataProvider.FinalMetadata(t, finishReason); custom != nil {
 			metadata = custom
 		}
 	}
-	agentremote.UpsertAssistantMessage(t.turnCtx, agentremote.UpsertAssistantMessageParams{
+	agentremote.UpsertAssistantMessage(finalCtx, agentremote.UpsertAssistantMessageParams{
 		Login:            t.conv.login,
 		Portal:           t.conv.portal,
 		SenderID:         sender.Sender,
@@ -675,18 +667,59 @@ func (t *Turn) buildFinalEdit() (networkid.MessageID, *bridgev2.ConvertedEdit) {
 	if target == "" {
 		return "", nil
 	}
-	content := *payload.Content
+	fittedPayload, fitDetails, err := FitFinalEditPayload(payload, t.initialEventID)
+	if err != nil {
+		fallbackPayload := BuildTextOnlyFinalEditPayload(payload)
+		fallbackFittedPayload, fallbackFitDetails, fallbackErr := FitFinalEditPayload(fallbackPayload, t.initialEventID)
+		if fallbackErr == nil {
+			fittedPayload = fallbackFittedPayload
+			fitDetails = fallbackFitDetails
+			err = nil
+		} else if t.conv != nil && t.conv.login != nil {
+			t.conv.login.Log.Warn().
+				Str("component", "sdk_turn").
+				Int("original_bytes", fitDetails.OriginalSize).
+				Int("original_final_bytes", fitDetails.FinalSize).
+				Err(err).
+				Int("fallback_bytes", fallbackFitDetails.OriginalSize).
+				Int("fallback_final_bytes", fallbackFitDetails.FinalSize).
+				Str("fallback_error", fallbackErr.Error()).
+				Msg("Skipped final edit because payload could not fit Matrix content limits")
+			return "", nil
+		} else {
+			return "", nil
+		}
+	}
+	if fittedPayload == nil || fittedPayload.Content == nil {
+		return "", nil
+	}
+	if fitDetails.Changed() && t.conv != nil && t.conv.login != nil {
+		t.conv.login.Log.Warn().
+			Str("component", "sdk_turn").
+			Int("original_bytes", fitDetails.OriginalSize).
+			Int("final_bytes", fitDetails.FinalSize).
+			Str("reductions", fitDetails.Summary()).
+			Msg("Reduced final edit payload to fit Matrix content limits")
+	}
+	content := *fittedPayload.Content
 	if content.Mentions == nil {
 		content.Mentions = &event.Mentions{}
 	}
 	content.RelatesTo = nil
-	extra := maps.Clone(payload.Extra)
-	topLevelExtra := maps.Clone(payload.TopLevelExtra)
+	extra := maps.Clone(fittedPayload.Extra)
+	topLevelExtra := maps.Clone(fittedPayload.TopLevelExtra)
 	if extra == nil {
 		extra = map[string]any{}
 	}
 	if topLevelExtra == nil {
 		topLevelExtra = map[string]any{}
+	}
+	if t.session != nil {
+		// Explicitly clear the live-stream descriptor on terminal edits so the
+		// edited event no longer looks like an active placeholder.
+		content.BeeperStream = nil
+		extra["com.beeper.stream"] = nil
+		topLevelExtra["com.beeper.stream"] = nil
 	}
 	if t.initialEventID != "" {
 		topLevelExtra["m.relates_to"] = (&event.RelatesTo{}).SetReplace(t.initialEventID)
@@ -701,7 +734,7 @@ func (t *Turn) buildFinalEdit() (networkid.MessageID, *bridgev2.ConvertedEdit) {
 	}
 }
 
-func (t *Turn) sendFinalEdit() {
+func (t *Turn) sendFinalEdit(ctx context.Context) {
 	if t == nil || t.conv == nil || t.conv.login == nil || t.conv.portal == nil {
 		return
 	}
@@ -709,10 +742,10 @@ func (t *Turn) sendFinalEdit() {
 	if target == "" || edit == nil {
 		return
 	}
-	if err := t.ensureSenderJoined(); err != nil && t.conv.login != nil {
+	if err := t.ensureSenderJoinedWithContext(ctx); err != nil && t.conv.login != nil {
 		t.conv.login.Log.Warn().Err(err).Str("component", "sdk_turn").Msg("Failed to ensure sender joined before final turn edit")
 	}
-	sender := t.resolveSender(t.turnCtx)
+	sender := t.resolveSender(ctx)
 	if err := agentremote.SendEditViaPortal(
 		t.conv.login,
 		t.conv.portal,
@@ -725,6 +758,17 @@ func (t *Turn) sendFinalEdit() {
 	); err != nil && t.conv.login != nil {
 		t.conv.login.Log.Warn().Err(err).Str("component", "sdk_turn").Msg("Failed to send final turn edit")
 	}
+}
+
+func (t *Turn) dispatchFinalEdit(ctx context.Context) {
+	if t == nil {
+		return
+	}
+	if t.sendFinalEditFunc != nil {
+		t.sendFinalEditFunc(ctx)
+		return
+	}
+	t.sendFinalEdit(ctx)
 }
 
 func supportedBaseMetadataFromMap(metadata map[string]any) agentremote.BaseMessageMetadata {
@@ -809,12 +853,13 @@ func (t *Turn) Abort(reason string) {
 }
 
 func (t *Turn) finalizeTurn(endReason turns.EndReason, finishReason, fallbackBody string) {
-	t.flushPendingStream()
+	finalCtx := t.finalizationContext()
+	t.flushPendingStream(finalCtx)
 	t.ensureDefaultFinalEditPayload(finishReason, fallbackBody)
-	t.sendFinalEdit()
 	if t.session != nil {
-		t.session.End(t.turnCtx, endReason)
+		t.session.End(finalCtx, endReason)
 	}
+	t.dispatchFinalEdit(finalCtx)
 	t.persistFinalMessage(finishReason)
 }
 
@@ -1023,11 +1068,44 @@ func (t *Turn) awaitStreamStart() {
 	}
 }
 
-func (t *Turn) flushPendingStream() {
+func (t *Turn) flushPendingStream(ctx context.Context) {
 	if t == nil || t.session == nil {
 		return
 	}
-	if err := t.session.FlushPending(t.turnCtx); err != nil && t.startErr == nil {
+	if err := t.session.FlushPending(ctx); err != nil && t.startErr == nil {
 		t.startErr = err
 	}
+}
+
+func (t *Turn) finalizationContext() context.Context {
+	if t == nil {
+		return context.Background()
+	}
+	if t.turnCtx != nil && t.turnCtx.Err() == nil {
+		return t.turnCtx
+	}
+	if t.conv != nil && t.conv.ctx != nil && t.conv.ctx.Err() == nil {
+		return t.conv.ctx
+	}
+	if t.ctx != nil && t.ctx.Err() == nil {
+		return t.ctx
+	}
+	if t.conv != nil && t.conv.login != nil && t.conv.login.Bridge != nil && t.conv.login.Bridge.BackgroundCtx != nil {
+		return t.conv.login.Bridge.BackgroundCtx
+	}
+	return context.Background()
+}
+
+func (t *Turn) ensureSenderJoinedWithContext(ctx context.Context) error {
+	if t == nil || t.conv == nil || t.conv.portal == nil || t.conv.portal.MXID == "" {
+		return nil
+	}
+	if t.conv.intentOverride == nil && (t.conv.login == nil || t.conv.login.Bridge == nil || t.conv.portal.Bridge == nil) {
+		return nil
+	}
+	intent, err := t.conv.getIntent(ctx)
+	if err != nil {
+		return err
+	}
+	return intent.EnsureJoined(ctx, t.conv.portal.MXID)
 }

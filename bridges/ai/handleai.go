@@ -27,7 +27,8 @@ func (oc *AIClient) dispatchCompletionInternal(
 	meta *PortalMetadata,
 	promptContext PromptContext,
 ) {
-	runCtx := oc.backgroundContext(ctx)
+	runCtx, cancel := oc.withAgentLoopInactivityTimeout(ctx)
+	defer cancel()
 
 	// Always use streaming responses
 	oc.runAgentLoopWithRetry(runCtx, sourceEvent, portal, meta, promptContext)
@@ -59,10 +60,14 @@ func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev
 			WithMessage(errorMessage).
 			WithIsCertain(true).
 			WithSendNotice(true)
-		portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, bridgev2.StatusEventInfoFromEvent(evt))
+		if info := agentremote.MatrixMessageStatusEventInfo(portal, evt); info != nil {
+			portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, info)
+		}
 		for _, extra := range statusEventsFromContext(ctx) {
 			if extra != nil {
-				portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, bridgev2.StatusEventInfoFromEvent(extra))
+				if info := agentremote.MatrixMessageStatusEventInfo(portal, extra); info != nil {
+					portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, info)
+				}
 			}
 		}
 	}
@@ -172,6 +177,9 @@ func (oc *AIClient) setModelTyping(ctx context.Context, portal *bridgev2.Portal,
 		timeout = 0 // Zero timeout stops typing
 	}
 	if err := intent.MarkTyping(ctx, portal.MXID, bridgev2.TypingTypeText, timeout); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return
+		}
 		oc.loggerForContext(ctx).Warn().Err(err).Bool("typing", typing).Msg("Failed to set typing indicator")
 	}
 }

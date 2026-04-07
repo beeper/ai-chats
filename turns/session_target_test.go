@@ -1,9 +1,11 @@
 package turns
 
 import (
+	"bytes"
 	"context"
 	"testing"
 
+	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -414,5 +416,20 @@ func TestStreamSessionCurrentTargetFallsBackToStartedTarget(t *testing.T) {
 	}
 	if pendingPartCount(session) != 0 {
 		t.Fatalf("expected no buffered parts after fallback publish, got %d", pendingPartCount(session))
+	}
+}
+
+func TestStreamSessionLogWarnSuppressesContextCanceled(t *testing.T) {
+	var buf bytes.Buffer
+	logger := zerolog.New(&buf)
+	session := NewStreamSession(StreamSessionParams{
+		TurnID: "turn-cancelled",
+		Logger: &logger,
+	})
+
+	session.logWarn("stream_publish_failed", context.Canceled, "seq", 1)
+
+	if buf.Len() != 0 {
+		t.Fatalf("expected no log output for context cancellation, got %q", buf.String())
 	}
 }

@@ -197,7 +197,7 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 		Msg("Heartbeat executing")
 
 	resultCh := make(chan HeartbeatRunOutcome, 1)
-	timeoutCtx, cancel := context.WithTimeout(oc.backgroundContext(context.Background()), 2*time.Minute)
+	timeoutCtx, cancel := context.WithTimeout(oc.backgroundContext(context.Background()), heartbeatRunTimeout)
 	defer cancel()
 	runCtx := withHeartbeatRun(timeoutCtx, hbCfg, resultCh)
 	done := make(chan struct{})
@@ -219,7 +219,7 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 		oc.emitHeartbeatFailure(hbCfg, startedAtMs, "stream-finished-without-outcome")
 		return heartbeatRunResult{Status: "failed", Reason: "heartbeat failed"}
 	case <-timeoutCtx.Done():
-		oc.log.Warn().Str("agent_id", agentID).Msg("Heartbeat timed out after 2 minutes")
+		oc.log.Warn().Str("agent_id", agentID).Dur("timeout", heartbeatRunTimeout).Msg("Heartbeat timed out")
 		oc.emitHeartbeatFailure(hbCfg, startedAtMs, "timeout")
 		return heartbeatRunResult{Status: "failed", Reason: "heartbeat timed out"}
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"maunium.net/go/mautrix/event"
 )
@@ -132,5 +133,47 @@ func TestExecuteAgentLoopRoundsDoesNotInlineFollowUpMessages(t *testing.T) {
 	}
 	if len(provider.roundsObserved) != 1 || provider.roundsObserved[0] != 0 {
 		t.Fatalf("unexpected rounds observed: %#v", provider.roundsObserved)
+	}
+}
+
+func TestWithActivityTimeoutResetsOnTouchAndCancelsOnIdle(t *testing.T) {
+	ctx, touch, cancel := withActivityTimeout(context.Background(), 100*time.Millisecond, errAgentLoopInactivityTimeout)
+	defer cancel()
+
+	time.Sleep(40 * time.Millisecond)
+	touch()
+	time.Sleep(40 * time.Millisecond)
+	if err := ctx.Err(); err != nil {
+		t.Fatalf("expected context to stay alive after activity, got %v", err)
+	}
+
+	select {
+	case <-ctx.Done():
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected inactivity timeout to cancel the context")
+	}
+
+	if !errors.Is(context.Cause(ctx), errAgentLoopInactivityTimeout) {
+		t.Fatalf("expected inactivity timeout cause, got %v", context.Cause(ctx))
+	}
+}
+
+func TestWithAgentLoopInactivityTimeoutPreservesParentCancellation(t *testing.T) {
+	parent, parentCancel := context.WithCancel(context.Background())
+	client := &AIClient{}
+
+	ctx, cancel := client.withAgentLoopInactivityTimeout(parent)
+	defer cancel()
+
+	parentCancel()
+
+	select {
+	case <-ctx.Done():
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("expected derived context to cancel when parent is cancelled")
+	}
+
+	if !errors.Is(context.Cause(ctx), context.Canceled) {
+		t.Fatalf("expected cancelled cause from parent, got %v", context.Cause(ctx))
 	}
 }

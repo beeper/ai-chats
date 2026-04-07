@@ -46,7 +46,7 @@ func TestBuildFinalEditUIMessage_IncludesSourceAndFileParts(t *testing.T) {
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-delta", "id": "text-1", "delta": "hello"})
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-end", "id": "text-1"})
 
-	ui := buildCompactFinalUIMessage(oc.buildStreamUIMessage(state, modelModeTestMeta("openai/gpt-4.1"), nil))
+	ui := bridgesdk.BuildCompactFinalUIMessage(oc.buildStreamUIMessage(state, modelModeTestMeta("openai/gpt-4.1"), nil))
 	if ui == nil {
 		t.Fatalf("expected final edit UI message")
 	}
@@ -96,11 +96,20 @@ func TestBuildFinalEditUIMessage_IncludesSourceAndFileParts(t *testing.T) {
 	}
 }
 
-func TestBuildFinalEditUIMessage_OmitsTextAndReasoningParts(t *testing.T) {
+func TestBuildFinalEditUIMessage_OmitsTextButKeepsReasoningAndToolPartsWhenTheyFit(t *testing.T) {
 	oc := &AIClient{}
 	state := testStreamingState("turn-2")
 	state.accumulated.WriteString("hello")
 	state.reasoning.WriteString("thinking")
+	state.toolCalls = []ToolCallMetadata{{
+		CallID:       "tool-call-2",
+		ToolName:     "web.search",
+		ToolType:     "function",
+		Status:       "output-available",
+		ResultStatus: "completed",
+		Input:        map[string]any{"query": "creatine"},
+		Output:       map[string]any{"ok": true},
+	}}
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "start", "messageId": "turn-2"})
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-start", "id": "text-2"})
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-delta", "id": "text-2", "delta": "hello"})
@@ -109,14 +118,28 @@ func TestBuildFinalEditUIMessage_OmitsTextAndReasoningParts(t *testing.T) {
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "reasoning-delta", "id": "reasoning-2", "delta": "thinking"})
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "reasoning-end", "id": "reasoning-2"})
 
-	ui := buildCompactFinalUIMessage(oc.buildStreamUIMessage(state, modelModeTestMeta("openai/gpt-4.1"), nil))
+	ui := bridgesdk.BuildCompactFinalUIMessage(oc.buildStreamUIMessage(state, modelModeTestMeta("openai/gpt-4.1"), nil))
 	parts, _ := ui["parts"].([]any)
+	foundReasoning := false
+	foundTool := false
 	for _, rawPart := range parts {
 		part, _ := rawPart.(map[string]any)
 		switch part["type"] {
-		case "text", "reasoning":
-			t.Fatalf("expected final UIMessage to omit textual parts, got %#v", part)
+		case "text":
+			t.Fatalf("expected final UIMessage to omit duplicate text parts, got %#v", part)
+		case "reasoning":
+			foundReasoning = true
+		case "tool":
+			if part["toolCallId"] == "tool-call-2" {
+				foundTool = true
+			}
 		}
+	}
+	if !foundReasoning {
+		t.Fatal("expected reasoning part in compact final UI message")
+	}
+	if !foundTool {
+		t.Fatal("expected tool part in compact final UI message")
 	}
 }
 
@@ -133,7 +156,7 @@ func TestBuildFinalEditUIMessage_UsesNestedUsageContextLimitFromSnapshot(t *test
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-delta", "id": "text-usage", "delta": "hello"})
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-end", "id": "text-usage"})
 
-	ui := buildCompactFinalUIMessage(oc.buildStreamUIMessage(state, modelModeTestMeta("openai/gpt-4.1"), nil))
+	ui := bridgesdk.BuildCompactFinalUIMessage(oc.buildStreamUIMessage(state, modelModeTestMeta("openai/gpt-4.1"), nil))
 	metadata, ok := ui["metadata"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected metadata map, got %T", ui["metadata"])
@@ -175,7 +198,7 @@ func TestBuildFinalEditTopLevelExtra_KeepsOnlyEditMetadata(t *testing.T) {
 		MatchedURL: "https://example.com",
 	}}
 
-	extra := buildFinalEditTopLevelExtra()
+	extra := bridgesdk.BuildDefaultFinalEditTopLevelExtra()
 
 	if _, ok := extra["body"]; ok {
 		t.Fatalf("expected body fallback to come from Matrix edit content, got %#v", extra["body"])

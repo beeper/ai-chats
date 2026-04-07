@@ -26,6 +26,9 @@ func (a *chatCompletionsTurnAdapter) handleStreamStepError(
 	stepErr error,
 ) (*ContextLengthError, error) {
 	if errors.Is(stepErr, context.Canceled) {
+		if timeoutErr := agentLoopInactivityCause(ctx); timeoutErr != nil {
+			return nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, a.state, a.meta, "timeout", timeoutErr)
+		}
 		return nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, a.state, a.meta, "cancelled", stepErr)
 	}
 	if cle := ParseContextLengthError(stepErr); cle != nil {
@@ -200,7 +203,7 @@ func (a *chatCompletionsTurnAdapter) FinalizeAgentLoop(ctx context.Context) {
 	state := a.state
 	portal := a.portal
 	meta := a.meta
-	if state == nil || state.completedAtMs != 0 {
+	if state == nil || state.isFinalized() {
 		return
 	}
 

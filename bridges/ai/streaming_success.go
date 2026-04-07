@@ -17,6 +17,9 @@ func (oc *AIClient) completeStreamingSuccess(
 	state *streamingState,
 	meta *PortalMetadata,
 ) {
+	if state == nil || !state.markFinalized() {
+		return
+	}
 	state.completedAtMs = time.Now().UnixMilli()
 	if state.finishReason == "" {
 		state.finishReason = "stop"

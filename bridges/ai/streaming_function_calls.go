@@ -251,6 +251,7 @@ func (oc *AIClient) executeStreamingBuiltinTool(
 			result = "Denied by user"
 		}
 		if resultStatus != ResultStatusDenied {
+			touchAgentLoopActivity(ctx)
 			toolCtx := WithBridgeToolContext(ctx, &BridgeToolContext{
 				Client:        oc,
 				Portal:        portal,
@@ -265,6 +266,7 @@ func (oc *AIClient) executeStreamingBuiltinTool(
 				result = fmt.Sprintf("Error: %s", err)
 				resultStatus = ResultStatusError
 			}
+			touchAgentLoopActivity(ctx)
 		}
 	}
 
