@@ -10,7 +10,6 @@ type conversationRuntime interface {
 	agent() *Agent
 	agentCatalog() AgentCatalog
 	roomFeatures(conv *Conversation) *RoomFeatures
-	commands() []Command
 	turnConfig() *TurnConfig
 	conversationStore() *conversationStateStore
 	approvalFlowValue() *ApprovalFlow[*pendingSDKApprovalData]
@@ -49,13 +48,6 @@ func (r *staticRuntime[SessionT, ConfigDataT]) roomFeatures(conv *Conversation) 
 		}
 	}
 	return r.cfg.RoomFeatures
-}
-
-func (r *staticRuntime[SessionT, ConfigDataT]) commands() []Command {
-	if r == nil || r.cfg == nil {
-		return nil
-	}
-	return r.cfg.Commands
 }
 
 func (r *staticRuntime[SessionT, ConfigDataT]) turnConfig() *TurnConfig {

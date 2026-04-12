@@ -75,32 +75,6 @@ func ReadInt(params map[string]any, key string, required bool) (int, error) {
 	return int(n), nil
 }
 
-// ReadIntDefault reads an integer parameter with a default value.
-func ReadIntDefault(params map[string]any, key string, defaultVal int) int {
-	return maputil.IntArgDefault(params, key, defaultVal)
-}
-
-// ReadBool reads a boolean parameter from input.
-func ReadBool(params map[string]any, key string, defaultVal bool) bool {
-	return maputil.BoolArg(params, key, defaultVal)
-}
-
-// ReadStringSlice reads a string array parameter from input.
-func ReadStringSlice(params map[string]any, key string, required bool) ([]string, error) {
-	v, ok := params[key]
-	arr := maputil.StringSliceArg(params, key)
-	if arr != nil {
-		return arr, nil
-	}
-	if ok && v != nil {
-		return nil, fmt.Errorf("parameter %q must be an array of strings", key)
-	}
-	if required {
-		return nil, fmt.Errorf("parameter %q is required", key)
-	}
-	return nil, nil
-}
-
 // ReadStringArray reads a string array parameter, returning nil if not present.
 func ReadStringArray(params map[string]any, key string) []string {
 	return maputil.StringSliceArg(params, key)

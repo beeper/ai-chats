@@ -216,7 +216,6 @@ func MessageSchema() map[string]any {
 			"if": map[string]any{
 				"properties": map[string]any{
 					"action": map[string]any{"const": "react"},
-					"remove": map[string]any{"const": true},
 				},
 			},
 			"then": map[string]any{

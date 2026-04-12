@@ -351,22 +351,17 @@ func (cc *CodexClient) handleWelcomeCodexMessage(ctx context.Context, portal *br
 		return nil, messageSendStatusError(err, "Failed to save Codex directory.", "")
 	}
 
-	state.CodexCwd = path
-	state.CodexThreadID = ""
-	state.AwaitingCwdSetup = false
-	state.ManagedImport = false
-	state.Title = codexTitleForPath(path)
-	state.Slug = strings.ToLower(strings.ReplaceAll(state.Title, " ", "-"))
-	if err := saveCodexPortalState(ctx, portal, state); err != nil {
-		return nil, messageSendStatusError(err, "Failed to save Codex room.", "")
-	}
-	if err := cc.ensureRPC(cc.backgroundContext(ctx)); err != nil {
-		return nil, messageSendStatusError(err, "Codex isn't available. Sign in again.", "")
-	}
-	if err := cc.ensureCodexThread(ctx, portal, state); err != nil {
+	nextState := *state
+	nextState.CodexCwd = path
+	nextState.CodexThreadID = ""
+	nextState.AwaitingCwdSetup = false
+	nextState.ManagedImport = false
+	nextState.Title = codexTitleForPath(path)
+	nextState.Slug = strings.ToLower(strings.ReplaceAll(nextState.Title, " ", "-"))
+	if err := cc.ensureCodexThread(ctx, portal, &nextState); err != nil {
 		return nil, messageSendStatusError(err, "Failed to start Codex thread.", "")
 	}
-	cc.syncCodexRoomTopic(ctx, portal, state)
+	*state = nextState
 	cc.sendSystemNotice(ctx, portal, fmt.Sprintf("Started a new Codex session in %s", path))
 	go func() {
 		if _, err := cc.createWelcomeCodexChat(cc.backgroundContext(ctx)); err != nil {

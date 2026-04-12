@@ -101,6 +101,14 @@ type openClawPersistedLoginState struct {
 	LastSyncAt      int64
 }
 
+type openClawLegacyLoginState struct {
+	GatewayToken    string `json:"gateway_token,omitempty"`
+	GatewayPassword string `json:"gateway_password,omitempty"`
+	DeviceToken     string `json:"device_token,omitempty"`
+	SessionsSynced  bool   `json:"sessions_synced,omitempty"`
+	LastSyncAt      int64  `json:"last_sync_at_ms,omitempty"`
+}
+
 var openClawPortalStateBlob = aidb.JSONBlobTable{
 	TableName: "openclaw_portal_state",
 	KeyColumn: "portal_key",
@@ -316,6 +324,12 @@ func loadOpenClawLoginState(ctx context.Context, login *bridgev2.UserLogin) (*op
 		&state.LastSyncAt,
 	)
 	if err == sql.ErrNoRows {
+		if legacy := openClawLoginStateFromMetadata(login); legacy != nil {
+			if saveErr := saveOpenClawLoginState(ctx, login, legacy); saveErr != nil {
+				return nil, saveErr
+			}
+			return legacy, nil
+		}
 		return state, nil
 	}
 	if err != nil {
@@ -346,14 +360,38 @@ func saveOpenClawLoginState(ctx context.Context, login *bridgev2.UserLogin, stat
 	`,
 		scope.bridgeID,
 		scope.loginID,
-		strings.TrimSpace(state.GatewayToken),
-		strings.TrimSpace(state.GatewayPassword),
-		strings.TrimSpace(state.DeviceToken),
+		state.GatewayToken,
+		state.GatewayPassword,
+		state.DeviceToken,
 		state.SessionsSynced,
 		state.LastSyncAt,
 		time.Now().UnixMilli(),
 	)
 	return err
+}
+
+func openClawLoginStateFromMetadata(login *bridgev2.UserLogin) *openClawPersistedLoginState {
+	if login == nil || login.Metadata == nil {
+		return nil
+	}
+	var legacy openClawLegacyLoginState
+	data, err := json.Marshal(login.Metadata)
+	if err != nil {
+		return nil
+	}
+	if err = json.Unmarshal(data, &legacy); err != nil {
+		return nil
+	}
+	if legacy.GatewayToken == "" && legacy.GatewayPassword == "" && legacy.DeviceToken == "" && !legacy.SessionsSynced && legacy.LastSyncAt == 0 {
+		return nil
+	}
+	return &openClawPersistedLoginState{
+		GatewayToken:    legacy.GatewayToken,
+		GatewayPassword: legacy.GatewayPassword,
+		DeviceToken:     legacy.DeviceToken,
+		SessionsSynced:  legacy.SessionsSynced,
+		LastSyncAt:      legacy.LastSyncAt,
+	}
 }
 
 func portalMeta(portal *bridgev2.Portal) *PortalMetadata {

@@ -100,13 +100,6 @@ func (c *sdkClient[SessionT, ConfigDataT]) roomFeatures(conv *Conversation) *Roo
 	return c.cfg.RoomFeatures
 }
 
-func (c *sdkClient[SessionT, ConfigDataT]) commands() []Command {
-	if c == nil || c.cfg == nil {
-		return nil
-	}
-	return c.cfg.Commands
-}
-
 func (c *sdkClient[SessionT, ConfigDataT]) turnConfig() *TurnConfig {
 	if c == nil || c.cfg == nil {
 		return nil

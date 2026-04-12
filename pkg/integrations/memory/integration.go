@@ -166,11 +166,11 @@ func (i *Integration) StopForLogin(bridgeID, loginID string) {
 }
 
 func (i *Integration) PurgeForLogin(ctx context.Context, scope iruntime.LoginScope) error {
+	StopManagersForLogin(scope.BridgeID, scope.LoginID)
 	db := i.resolveStateDB()
 	if db == nil {
 		return nil
 	}
-	StopManagersForLogin(scope.BridgeID, scope.LoginID)
 	return PurgeTables(ctx, db, scope.BridgeID, scope.LoginID)
 }
 

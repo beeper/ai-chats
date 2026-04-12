@@ -86,24 +86,3 @@ func CreateAndCompleteLogin(
 	}
 	return login, step, nil
 }
-
-// UpdateAndCompleteLogin saves an existing login and returns the standard completion step.
-func UpdateAndCompleteLogin(
-	persistCtx context.Context,
-	connectCtx context.Context,
-	login *bridgev2.UserLogin,
-	remoteName string,
-	metadata any,
-	stepID string,
-	load func(context.Context, *bridgev2.UserLogin) error,
-) (*bridgev2.LoginStep, error) {
-	if login == nil {
-		return nil, nil
-	}
-	login.RemoteName = remoteName
-	login.Metadata = metadata
-	if err := login.Save(persistCtx); err != nil {
-		return nil, err
-	}
-	return LoadConnectAndCompleteLogin(persistCtx, connectCtx, login, stepID, load)
-}

@@ -80,7 +80,7 @@ func persistAITranscriptMessage(ctx context.Context, client *AIClient, portal *b
 		return err
 	}
 	createdAt := msg.Timestamp.UnixMilli()
-	if createdAt == 0 {
+	if msg.Timestamp.IsZero() {
 		createdAt = time.Now().UnixMilli()
 	}
 	_, err = scope.db.Exec(ctx, `
@@ -202,11 +202,4 @@ func (oc *AIClient) getAIHistoryMessages(ctx context.Context, portal *bridgev2.P
 		}
 	}
 	return messages, nil
-}
-
-func (oc *AIClient) getAllAIHistoryMessages(ctx context.Context, portal *bridgev2.Portal) ([]*database.Message, error) {
-	if oc == nil || portal == nil || portal.MXID == "" {
-		return nil, nil
-	}
-	return oc.getAIHistoryMessages(ctx, portal, 0)
 }
