@@ -53,6 +53,23 @@ type ApprovalPromptPresentation struct {
 	AllowAlways bool             `json:"allowAlways,omitempty"`
 }
 
+// BuildApprovalPresentation constructs an ApprovalPromptPresentation with a
+// standard title format of "prefix: subject" (or just "prefix" when subject is
+// empty). This centralizes the repeated title-construction pattern used across
+// bridge-specific approval builders.
+func BuildApprovalPresentation(prefix, subject string, details []ApprovalDetail, allowAlways bool) ApprovalPromptPresentation {
+	subject = strings.TrimSpace(subject)
+	title := prefix
+	if subject != "" {
+		title = prefix + ": " + subject
+	}
+	return ApprovalPromptPresentation{
+		Title:       title,
+		Details:     details,
+		AllowAlways: allowAlways,
+	}
+}
+
 // AppendDetailsFromMap appends approval details from a string-keyed map, sorted by key,
 // with a truncation notice if the map exceeds max entries.
 func AppendDetailsFromMap(details []ApprovalDetail, labelPrefix string, values map[string]any, max int) []ApprovalDetail {

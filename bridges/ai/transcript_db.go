@@ -67,8 +67,8 @@ func cloneMessageForAIHistory(msg *database.Message) *database.Message {
 }
 
 func persistAITranscriptMessage(ctx context.Context, client *AIClient, portal *bridgev2.Portal, msg *database.Message) error {
-	scope := loginScopeForClient(client)
-	if scope == nil || portal == nil || portal.MXID == "" || msg == nil || strings.TrimSpace(string(msg.ID)) == "" {
+	scope := portalScopeForPortal(portal)
+	if scope == nil || client == nil || msg == nil || strings.TrimSpace(string(msg.ID)) == "" {
 		return nil
 	}
 	meta, ok := msg.Metadata.(*MessageMetadata)
@@ -85,9 +85,9 @@ func persistAITranscriptMessage(ctx context.Context, client *AIClient, portal *b
 	}
 	_, err = scope.db.Exec(ctx, `
 		INSERT INTO `+aiTranscriptTable+` (
-			bridge_id, login_id, room_id, message_id, event_id, sender_id, metadata_json, created_at_ms, updated_at_ms
+			bridge_id, login_id, portal_id, message_id, event_id, sender_id, metadata_json, created_at_ms, updated_at_ms
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		ON CONFLICT (bridge_id, login_id, room_id, message_id) DO UPDATE SET
+		ON CONFLICT (bridge_id, login_id, portal_id, message_id) DO UPDATE SET
 			event_id=excluded.event_id,
 			sender_id=excluded.sender_id,
 			metadata_json=excluded.metadata_json,
@@ -96,7 +96,7 @@ func persistAITranscriptMessage(ctx context.Context, client *AIClient, portal *b
 	`,
 		scope.bridgeID,
 		scope.loginID,
-		portal.MXID.String(),
+		scope.portalID,
 		string(msg.ID),
 		msg.MXID.String(),
 		string(msg.SenderID),
@@ -107,44 +107,43 @@ func persistAITranscriptMessage(ctx context.Context, client *AIClient, portal *b
 	return err
 }
 
-func loadAITranscriptMessage(ctx context.Context, client *AIClient, roomID id.RoomID, messageID networkid.MessageID) (*database.Message, error) {
-	messages, err := loadAITranscriptMessages(ctx, client, roomID, []networkid.MessageID{messageID}, 1)
+func loadAITranscriptMessage(ctx context.Context, portal *bridgev2.Portal, messageID networkid.MessageID) (*database.Message, error) {
+	messages, err := loadAITranscriptMessages(ctx, portal, []networkid.MessageID{messageID}, 1)
 	if err != nil || len(messages) == 0 {
 		return nil, err
 	}
 	return messages[0], nil
 }
 
-func countAITranscriptMessages(ctx context.Context, client *AIClient, roomID id.RoomID) (int, error) {
-	scope := loginScopeForClient(client)
-	if scope == nil || roomID == "" {
+func countAITranscriptMessages(ctx context.Context, portal *bridgev2.Portal) (int, error) {
+	scope := portalScopeForPortal(portal)
+	if scope == nil {
 		return 0, nil
 	}
 	var count int
 	err := scope.db.QueryRow(ctx, `
 		SELECT COUNT(*)
 		FROM `+aiTranscriptTable+`
-		WHERE bridge_id=$1 AND login_id=$2 AND room_id=$3
-	`, scope.bridgeID, scope.loginID, roomID.String()).Scan(&count)
+		WHERE bridge_id=$1 AND login_id=$2 AND portal_id=$3
+	`, scope.bridgeID, scope.loginID, scope.portalID).Scan(&count)
 	return count, err
 }
 
 func loadAITranscriptMessages(
 	ctx context.Context,
-	client *AIClient,
-	roomID id.RoomID,
+	portal *bridgev2.Portal,
 	messageIDs []networkid.MessageID,
 	limit int,
 ) ([]*database.Message, error) {
-	scope := loginScopeForClient(client)
-	if scope == nil || roomID == "" {
+	scope := portalScopeForPortal(portal)
+	if scope == nil {
 		return nil, nil
 	}
-	args := []any{scope.bridgeID, scope.loginID, roomID.String()}
+	args := []any{scope.bridgeID, scope.loginID, scope.portalID}
 	query := `
 		SELECT message_id, event_id, sender_id, metadata_json, created_at_ms
 		FROM ` + aiTranscriptTable + `
-		WHERE bridge_id=$1 AND login_id=$2 AND room_id=$3
+		WHERE bridge_id=$1 AND login_id=$2 AND portal_id=$3
 	`
 	if len(messageIDs) > 0 {
 		placeholders := make([]string, 0, len(messageIDs))
@@ -204,14 +203,14 @@ func loadAITranscriptMessages(
 	return out, nil
 }
 
-func deleteAITranscriptForRoom(ctx context.Context, client *AIClient, roomID id.RoomID) {
-	scope := loginScopeForClient(client)
-	if scope == nil || roomID == "" {
+func deleteAITranscriptForPortal(ctx context.Context, portal *bridgev2.Portal) {
+	scope := portalScopeForPortal(portal)
+	if scope == nil {
 		return
 	}
-	execDelete(ctx, scope.db, client.Log(),
-		`DELETE FROM `+aiTranscriptTable+` WHERE bridge_id=$1 AND login_id=$2 AND room_id=$3`,
-		scope.bridgeID, scope.loginID, roomID.String(),
+	execDelete(ctx, scope.db, portal.Bridge.Log,
+		`DELETE FROM `+aiTranscriptTable+` WHERE bridge_id=$1 AND login_id=$2 AND portal_id=$3`,
+		scope.bridgeID, scope.loginID, scope.portalID,
 	)
 }
 
@@ -219,7 +218,7 @@ func (oc *AIClient) getAIHistoryMessages(ctx context.Context, portal *bridgev2.P
 	if oc == nil || portal == nil || portal.MXID == "" {
 		return nil, nil
 	}
-	messages, err := loadAITranscriptMessages(ctx, oc, portal.MXID, nil, limit)
+	messages, err := loadAITranscriptMessages(ctx, portal, nil, limit)
 	if err != nil {
 		return nil, err
 	}
