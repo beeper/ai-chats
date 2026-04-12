@@ -35,32 +35,23 @@ func TestGetContactListRequiresLogin(t *testing.T) {
 
 func TestSearchUsersAndContactsHideAgentsWhenDisabled(t *testing.T) {
 	enabled := false
-	oc := &AIClient{
-		UserLogin: &bridgev2.UserLogin{
-			UserLogin: &database.UserLogin{
-				ID: "login-1",
-				Metadata: &UserLoginMetadata{
-					Agents: &enabled,
-					ModelCache: &ModelCache{
-						Models: []ModelInfo{{
-							ID:   "openai/gpt-5",
-							Name: "GPT-5",
-						}},
-						LastRefresh:   time.Now().Unix(),
-						CacheDuration: 3600,
-					},
-					CustomAgents: map[string]*AgentDefinitionContent{
-						"custom-agent": {
-							ID:    "custom-agent",
-							Name:  "Custom Agent",
-							Model: "openai/gpt-5",
-						},
-					},
-				},
-			},
+	oc := newDBBackedTestAIClient(t, "")
+	setTestLoginConfig(oc, &aiLoginConfig{Agents: &enabled})
+	setTestLoginState(oc, &loginRuntimeState{
+		ModelCache: &ModelCache{
+			Models: []ModelInfo{{
+				ID:   "openai/gpt-5",
+				Name: "GPT-5",
+			}},
+			LastRefresh:   time.Now().Unix(),
+			CacheDuration: 3600,
 		},
-		connector: &OpenAIConnector{},
-	}
+	})
+	seedTestCustomAgent(t, oc, &AgentDefinitionContent{
+		ID:    "custom-agent",
+		Name:  "Custom Agent",
+		Model: "openai/gpt-5",
+	})
 	oc.SetLoggedIn(true)
 
 	searchResults, err := oc.SearchUsers(context.Background(), "custom")
@@ -90,16 +81,8 @@ func TestSearchUsersAndContactsHideAgentsWhenDisabled(t *testing.T) {
 
 func TestCreateChatWithGhostRejectsAgentWhenDisabled(t *testing.T) {
 	enabled := false
-	oc := &AIClient{
-		UserLogin: &bridgev2.UserLogin{
-			UserLogin: &database.UserLogin{
-				ID: "login-1",
-				Metadata: &UserLoginMetadata{
-					Agents: &enabled,
-				},
-			},
-		},
-	}
+	oc := newTestAIClientWithProvider("")
+	setTestLoginConfig(oc, &aiLoginConfig{Agents: &enabled})
 
 	_, err := oc.CreateChatWithGhost(context.Background(), &bridgev2.Ghost{
 		Ghost: &database.Ghost{
@@ -183,22 +166,15 @@ func TestParseModelFromGhostIDRejectsMalformedEscaping(t *testing.T) {
 }
 
 func TestResolveIdentifierAcceptsCanonicalModelIdentifier(t *testing.T) {
-	oc := &AIClient{
-		UserLogin: &bridgev2.UserLogin{
-			UserLogin: &database.UserLogin{
-				ID: "login-1",
-				Metadata: &UserLoginMetadata{
-					ModelCache: &ModelCache{
-						Models: []ModelInfo{{
-							ID:   "openai/gpt-5.4",
-							Name: "GPT-5.4",
-						}},
-					},
-				},
-			},
+	oc := newTestAIClientWithProvider("")
+	setTestLoginState(oc, &loginRuntimeState{
+		ModelCache: &ModelCache{
+			Models: []ModelInfo{{
+				ID:   "openai/gpt-5.4",
+				Name: "GPT-5.4",
+			}},
 		},
-		connector: &OpenAIConnector{},
-	}
+	})
 
 	resp, err := oc.ResolveIdentifier(context.Background(), "model:openai/gpt-5.4", false)
 	if err != nil {

@@ -489,7 +489,7 @@ func initProviderForLogin(key string, meta *UserLoginMetadata, connector *OpenAI
 	if meta == nil {
 		return nil, errors.New("login metadata is required")
 	}
-	return initProviderForLoginConfig(key, meta.Provider, aiLoginConfigFromMetadata(meta), connector, login, log)
+	return initProviderForLoginConfig(key, meta.Provider, &aiLoginConfig{}, connector, login, log)
 }
 
 func initProviderForLoginConfig(key string, providerID string, cfg *aiLoginConfig, connector *OpenAIConnector, login *bridgev2.UserLogin, log zerolog.Logger) (*OpenAIProvider, error) {
@@ -1189,11 +1189,7 @@ func (oc *AIClient) defaultModelForProvider() string {
 	if oc == nil || oc.connector == nil || oc.UserLogin == nil {
 		return DefaultModelOpenRouter
 	}
-	loginMeta := oc.effectiveLoginMetadata(context.Background())
-	if loginMeta == nil {
-		return DefaultModelOpenRouter
-	}
-	switch loginMeta.Provider {
+	switch loginMetadata(oc.UserLogin).Provider {
 	case ProviderOpenAI:
 		return oc.defaultModelSelection(ProviderOpenAI).Primary
 	case ProviderOpenRouter, ProviderMagicProxy:
@@ -1509,8 +1505,8 @@ func (oc *AIClient) effectiveMaxTokens(meta *PortalMetadata) int {
 
 // isOpenRouterProvider checks if the current provider uses the OpenRouter-compatible API surface.
 func (oc *AIClient) isOpenRouterProvider() bool {
-	loginMeta := oc.effectiveLoginMetadata(context.Background())
-	return loginMeta.Provider == ProviderOpenRouter || loginMeta.Provider == ProviderMagicProxy
+	provider := loginMetadata(oc.UserLogin).Provider
+	return provider == ProviderOpenRouter || provider == ProviderMagicProxy
 }
 
 // isGroupChat determines if the portal is a group chat.

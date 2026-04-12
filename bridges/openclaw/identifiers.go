@@ -1,8 +1,6 @@
 package openclaw
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"net/url"
 	"strings"
@@ -10,12 +8,12 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"github.com/beeper/agentremote/pkg/shared/openclawconv"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 func openClawGatewayID(gatewayURL, label string) string {
 	key := strings.ToLower(strings.TrimSpace(gatewayURL)) + "|" + strings.ToLower(strings.TrimSpace(label))
-	sum := sha256.Sum256([]byte(key))
-	return hex.EncodeToString(sum[:8])
+	return stringutil.ShortHash(key, 8)
 }
 
 func openClawPortalKey(loginID networkid.UserLoginID, gatewayID, sessionKey string) networkid.PortalKey {

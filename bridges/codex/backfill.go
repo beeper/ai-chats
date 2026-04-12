@@ -3,8 +3,6 @@ package codex
 import (
 	"bufio"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +18,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote/pkg/shared/backfillutil"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	"github.com/beeper/agentremote/sdk"
 )
 
@@ -288,8 +287,7 @@ func codexThreadTitle(thread codexThread) string {
 }
 
 func codexThreadSlug(threadID string) string {
-	sum := sha256.Sum256([]byte(strings.TrimSpace(threadID)))
-	return "thread-" + hex.EncodeToString(sum[:6])
+	return "thread-" + stringutil.ShortHash(strings.TrimSpace(threadID), 6)
 }
 
 func (cc *CodexClient) listCodexThreads(ctx context.Context, cwd string) ([]codexThread, error) {
@@ -744,8 +742,7 @@ func normalizeCodexThreadItemType(itemType string) string {
 
 func codexBackfillMessageID(threadID, turnID, role string) networkid.MessageID {
 	hashInput := strings.TrimSpace(threadID) + "\n" + strings.TrimSpace(turnID) + "\n" + strings.TrimSpace(role)
-	sum := sha256.Sum256([]byte(hashInput))
-	return networkid.MessageID("codex:history:" + hex.EncodeToString(sum[:12]))
+	return networkid.MessageID("codex:history:" + stringutil.ShortHash(hashInput, 12))
 }
 
 func codexPaginateBackfill(entries []codexBackfillEntry, params bridgev2.FetchMessagesParams) ([]codexBackfillEntry, networkid.PaginationCursor, bool) {

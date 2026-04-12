@@ -105,7 +105,7 @@ func (oc *AIClient) persistAlwaysAllow(ctx context.Context, pending *pendingTool
 }
 
 func (oc *AIClient) hasToolApprovalRule(ctx context.Context, toolKind ToolApprovalKind, serverLabel, toolName, action string) bool {
-	scope := loginStateScopeForClient(oc)
+	scope := loginScopeForClient(oc)
 	if scope == nil {
 		return false
 	}
@@ -127,7 +127,7 @@ func (oc *AIClient) hasToolApprovalRule(ctx context.Context, toolKind ToolApprov
 }
 
 func (oc *AIClient) hasBuiltinToolApprovalRule(ctx context.Context, toolName, action string) bool {
-	scope := loginStateScopeForClient(oc)
+	scope := loginScopeForClient(oc)
 	if scope == nil {
 		return false
 	}
@@ -149,7 +149,7 @@ func (oc *AIClient) hasBuiltinToolApprovalRule(ctx context.Context, toolName, ac
 }
 
 func (oc *AIClient) insertToolApprovalRule(ctx context.Context, toolKind ToolApprovalKind, serverLabel, toolName, action string) error {
-	scope := loginStateScopeForClient(oc)
+	scope := loginScopeForClient(oc)
 	if scope == nil {
 		return nil
 	}

@@ -97,28 +97,12 @@ type MCPServerConfig struct {
 // lives in AI-owned sidecar tables.
 type UserLoginMetadata struct {
 	Provider string `json:"provider,omitempty"` // Selected provider (openai, openrouter, magic_proxy)
-
-	// Transient bootstrap/test fields. These are intentionally not serialized
-	// through bridgev2 metadata and are converted into AI-owned sidecar state.
-	Credentials          *LoginCredentials                  `json:"-"`
-	TitleGenerationModel string                             `json:"-"`
-	Agents               *bool                              `json:"-"`
-	ModelCache           *ModelCache                        `json:"-"`
-	Gravatar             *GravatarState                     `json:"-"`
-	Timezone             string                             `json:"-"`
-	Profile              *UserProfile                       `json:"-"`
-	FileAnnotationCache  map[string]FileAnnotation          `json:"-"`
-	CustomAgents         map[string]*AgentDefinitionContent `json:"-"`
-	ConsecutiveErrors    int                                `json:"-"`
-	LastErrorAt          int64                              `json:"-"`
 }
 
 func loginCredentials(owner any) *LoginCredentials {
 	switch v := owner.(type) {
 	case nil:
 		return nil
-	case *UserLoginMetadata:
-		return v.Credentials
 	case *aiLoginConfig:
 		return v.Credentials
 	default:
@@ -130,11 +114,6 @@ func ensureLoginCredentials(owner any) *LoginCredentials {
 	switch v := owner.(type) {
 	case nil:
 		return nil
-	case *UserLoginMetadata:
-		if v.Credentials == nil {
-			v.Credentials = &LoginCredentials{}
-		}
-		return v.Credentials
 	case *aiLoginConfig:
 		if v.Credentials == nil {
 			v.Credentials = &LoginCredentials{}

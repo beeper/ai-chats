@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
 )
 
@@ -40,33 +39,10 @@ func cloneAgentDefinitionContentMap(src map[string]*AgentDefinitionContent) map[
 	return out
 }
 
-type customAgentScope struct {
-	db       *dbutil.Database
-	bridgeID string
-	loginID  string
-}
-
-func customAgentScopeForLogin(login *bridgev2.UserLogin) *customAgentScope {
-	db := bridgeDBFromLogin(login)
-	if login == nil || db == nil || login.Bridge == nil || login.Bridge.DB == nil {
-		return nil
-	}
-	bridgeID := strings.TrimSpace(string(login.Bridge.DB.BridgeID))
-	loginID := strings.TrimSpace(string(login.ID))
-	if bridgeID == "" || loginID == "" {
-		return nil
-	}
-	return &customAgentScope{db: db, bridgeID: bridgeID, loginID: loginID}
-}
-
 func listCustomAgentsForLogin(ctx context.Context, login *bridgev2.UserLogin) (map[string]*AgentDefinitionContent, error) {
-	scope := customAgentScopeForLogin(login)
+	scope := loginScopeForLogin(login)
 	if scope == nil {
-		meta := loginMetadata(login)
-		if meta == nil || len(meta.CustomAgents) == 0 {
-			return nil, nil
-		}
-		return cloneAgentDefinitionContentMap(meta.CustomAgents), nil
+		return nil, nil
 	}
 	rows, err := scope.db.Query(ctx, `
 		SELECT agent_id, content_json
@@ -105,19 +81,11 @@ func listCustomAgentsForLogin(ctx context.Context, login *bridgev2.UserLogin) (m
 }
 
 func saveCustomAgentForLogin(ctx context.Context, login *bridgev2.UserLogin, agent *AgentDefinitionContent) error {
-	scope := customAgentScopeForLogin(login)
+	scope := loginScopeForLogin(login)
 	if agent == nil {
 		return nil
 	}
 	if scope == nil {
-		meta := loginMetadata(login)
-		if meta.CustomAgents == nil {
-			meta.CustomAgents = map[string]*AgentDefinitionContent{}
-		}
-		clone := cloneAgentDefinitionContentMap(map[string]*AgentDefinitionContent{
-			strings.TrimSpace(agent.ID): agent,
-		})
-		meta.CustomAgents[strings.TrimSpace(agent.ID)] = clone[strings.TrimSpace(agent.ID)]
 		return nil
 	}
 	payload, err := json.Marshal(agent)
@@ -136,13 +104,11 @@ func saveCustomAgentForLogin(ctx context.Context, login *bridgev2.UserLogin, age
 }
 
 func deleteCustomAgentForLogin(ctx context.Context, login *bridgev2.UserLogin, agentID string) error {
-	scope := customAgentScopeForLogin(login)
+	scope := loginScopeForLogin(login)
 	if strings.TrimSpace(agentID) == "" {
 		return nil
 	}
 	if scope == nil {
-		meta := loginMetadata(login)
-		delete(meta.CustomAgents, strings.TrimSpace(agentID))
 		return nil
 	}
 	_, err := scope.db.Exec(ctx, `
@@ -153,18 +119,12 @@ func deleteCustomAgentForLogin(ctx context.Context, login *bridgev2.UserLogin, a
 }
 
 func loadCustomAgentForLogin(ctx context.Context, login *bridgev2.UserLogin, agentID string) (*AgentDefinitionContent, error) {
-	scope := customAgentScopeForLogin(login)
+	scope := loginScopeForLogin(login)
 	if strings.TrimSpace(agentID) == "" {
 		return nil, nil
 	}
 	if scope == nil {
-		meta := loginMetadata(login)
-		if meta == nil || meta.CustomAgents == nil {
-			return nil, nil
-		}
-		return cloneAgentDefinitionContentMap(map[string]*AgentDefinitionContent{
-			strings.TrimSpace(agentID): meta.CustomAgents[strings.TrimSpace(agentID)],
-		})[strings.TrimSpace(agentID)], nil
+		return nil, nil
 	}
 	var raw string
 	err := scope.db.QueryRow(ctx, `

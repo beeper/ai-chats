@@ -3,8 +3,6 @@ package openclaw
 import (
 	"cmp"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1317,8 +1315,7 @@ func historyFingerprintMessageID(sessionKey, role string, ts time.Time, text str
 		"messageRunId": openClawMessageStringField(raw, "runId", "run_id"),
 	}
 	data, _ := json.Marshal(hashSource)
-	sum := sha256.Sum256(data)
-	return networkid.MessageID("openclaw:" + hex.EncodeToString(sum[:12]))
+	return networkid.MessageID("openclaw:" + stringutil.ShortHash(string(data), 12))
 }
 
 func openClawStreamMessageMetadata(state *openClawPortalState, payload gatewayChatEvent, agentID, turnID string) map[string]any {

@@ -1,6 +1,9 @@
 package sdk
 
-import "github.com/beeper/agentremote/pkg/shared/citations"
+import (
+	"github.com/beeper/agentremote/pkg/shared/citations"
+	"github.com/beeper/agentremote/pkg/shared/jsonutil"
+)
 
 // BaseMessageMetadata contains fields common to all bridge MessageMetadata structs.
 // Embed this in each bridge's MessageMetadata to share CopyFrom logic.
@@ -88,7 +91,7 @@ func (b *BaseMessageMetadata) CopyFromBase(src *BaseMessageMetadata) {
 		b.AgentID = src.AgentID
 	}
 	if len(src.CanonicalTurnData) > 0 {
-		b.CanonicalTurnData = cloneJSONMap(src.CanonicalTurnData)
+		b.CanonicalTurnData = jsonutil.DeepCloneMap(src.CanonicalTurnData)
 	}
 	if src.StartedAtMs != 0 {
 		b.StartedAtMs = src.StartedAtMs
@@ -106,8 +109,8 @@ func (b *BaseMessageMetadata) CopyFromBase(src *BaseMessageMetadata) {
 				CallID:        call.CallID,
 				ToolName:      call.ToolName,
 				ToolType:      call.ToolType,
-				Input:         cloneJSONMap(call.Input),
-				Output:        cloneJSONMap(call.Output),
+				Input:         jsonutil.DeepCloneMap(call.Input),
+				Output:        jsonutil.DeepCloneMap(call.Output),
 				Status:        call.Status,
 				ResultStatus:  call.ResultStatus,
 				ErrorMessage:  call.ErrorMessage,
@@ -124,39 +127,6 @@ func (b *BaseMessageMetadata) CopyFromBase(src *BaseMessageMetadata) {
 	}
 	if src.ExcludeFromHistory {
 		b.ExcludeFromHistory = true
-	}
-}
-
-func cloneJSONMap(src map[string]any) map[string]any {
-	if len(src) == 0 {
-		return nil
-	}
-	cloned := make(map[string]any, len(src))
-	for k, v := range src {
-		cloned[k] = cloneJSONValue(v)
-	}
-	return cloned
-}
-
-func cloneJSONSlice(src []any) []any {
-	if len(src) == 0 {
-		return nil
-	}
-	cloned := make([]any, len(src))
-	for i, v := range src {
-		cloned[i] = cloneJSONValue(v)
-	}
-	return cloned
-}
-
-func cloneJSONValue(v any) any {
-	switch typed := v.(type) {
-	case map[string]any:
-		return cloneJSONMap(typed)
-	case []any:
-		return cloneJSONSlice(typed)
-	default:
-		return v
 	}
 }
 

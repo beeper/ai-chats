@@ -3,24 +3,20 @@ package ai
 import (
 	"context"
 	"testing"
-
-	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 )
 
 func TestResolveResponderForModelUsesModelCatalog(t *testing.T) {
-	client := &AIClient{
-		connector: &OpenAIConnector{},
-		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
-			ModelCache: &ModelCache{Models: []ModelInfo{{
-				ID:              "openai/gpt-5.2",
-				Name:            "GPT-5.2",
-				ContextWindow:   400000,
-				MaxOutputTokens: 16000,
-				SupportsVision:  true,
-			}}},
+	client := newTestAIClientWithProvider("")
+	client.connector = &OpenAIConnector{}
+	setTestLoginState(client, &loginRuntimeState{
+		ModelCache: &ModelCache{Models: []ModelInfo{{
+			ID:              "openai/gpt-5.2",
+			Name:            "GPT-5.2",
+			ContextWindow:   400000,
+			MaxOutputTokens: 16000,
+			SupportsVision:  true,
 		}}},
-	}
+	})
 
 	responder, err := client.ResolveResponderForModel(context.Background(), "openai/gpt-5.2")
 	if err != nil {
@@ -44,22 +40,19 @@ func TestResolveResponderForModelUsesModelCatalog(t *testing.T) {
 }
 
 func TestResolveResponderForAgentUsesAgentModelAndOverride(t *testing.T) {
-	client := &AIClient{
-		connector: &OpenAIConnector{},
-		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
-			ModelCache: &ModelCache{Models: []ModelInfo{
-				{ID: "openai/gpt-5.2", ContextWindow: 400000},
-				{ID: "openai/gpt-4.1", ContextWindow: 128000},
-			}},
-			CustomAgents: map[string]*AgentDefinitionContent{
-				"agent-1": {
-					ID:    "agent-1",
-					Name:  "Agent One",
-					Model: "openai/gpt-5.2",
-				},
-			},
-		}}},
-	}
+	client := newDBBackedTestAIClient(t, "")
+	client.connector = &OpenAIConnector{}
+	setTestLoginState(client, &loginRuntimeState{
+		ModelCache: &ModelCache{Models: []ModelInfo{
+			{ID: "openai/gpt-5.2", ContextWindow: 400000},
+			{ID: "openai/gpt-4.1", ContextWindow: 128000},
+		}},
+	})
+	seedTestCustomAgent(t, client, &AgentDefinitionContent{
+		ID:    "agent-1",
+		Name:  "Agent One",
+		Model: "openai/gpt-5.2",
+	})
 
 	responder, err := client.ResolveResponderForAgent(context.Background(), "agent-1", ResponderResolveOptions{})
 	if err != nil {
@@ -99,15 +92,14 @@ func TestResolveResponderForAgentUsesAgentModelAndOverride(t *testing.T) {
 }
 
 func TestResolveResponderForModelOverrideRecomputesGhostID(t *testing.T) {
-	client := &AIClient{
-		connector: &OpenAIConnector{},
-		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
-			ModelCache: &ModelCache{Models: []ModelInfo{
-				{ID: "openai/gpt-5.2", ContextWindow: 400000},
-				{ID: "openai/gpt-4.1", ContextWindow: 128000},
-			}},
-		}}},
-	}
+	client := newTestAIClientWithProvider("")
+	client.connector = &OpenAIConnector{}
+	setTestLoginState(client, &loginRuntimeState{
+		ModelCache: &ModelCache{Models: []ModelInfo{
+			{ID: "openai/gpt-5.2", ContextWindow: 400000},
+			{ID: "openai/gpt-4.1", ContextWindow: 128000},
+		}},
+	})
 
 	responder, err := client.resolveResponder(context.Background(), &PortalMetadata{
 		ResolvedTarget: &ResolvedTarget{

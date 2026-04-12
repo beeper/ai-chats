@@ -8,8 +8,7 @@ import (
 
 func TestApplyLoginTokensToSearchConfig_MagicProxyForcesExa(t *testing.T) {
 	oc := &OpenAIConnector{}
-	meta := &UserLoginMetadata{
-		Provider: ProviderMagicProxy,
+	cfgLogin := &aiLoginConfig{
 		Credentials: &LoginCredentials{
 			APIKey:  "magic-token",
 			BaseURL: "https://bai.bt.hn/team/proxy",
@@ -20,7 +19,7 @@ func TestApplyLoginTokensToSearchConfig_MagicProxyForcesExa(t *testing.T) {
 		Fallbacks: []string{search.ProviderExa},
 	}
 
-	got := applyLoginTokensToSearchConfig(cfg, meta, oc)
+	got := applyLoginTokensToSearchConfig(cfg, ProviderMagicProxy, cfgLogin, oc)
 
 	if got.Provider != search.ProviderExa {
 		t.Fatalf("expected provider %q, got %q", search.ProviderExa, got.Provider)
@@ -38,7 +37,6 @@ func TestApplyLoginTokensToSearchConfig_MagicProxyForcesExa(t *testing.T) {
 
 func TestApplyLoginTokensToSearchConfig_CustomExaEndpointForcesExa(t *testing.T) {
 	oc := &OpenAIConnector{}
-	meta := &UserLoginMetadata{Provider: ProviderOpenAI}
 	cfg := &search.Config{
 		Provider:  search.ProviderExa,
 		Fallbacks: []string{search.ProviderExa},
@@ -48,7 +46,7 @@ func TestApplyLoginTokensToSearchConfig_CustomExaEndpointForcesExa(t *testing.T)
 		},
 	}
 
-	got := applyLoginTokensToSearchConfig(cfg, meta, oc)
+	got := applyLoginTokensToSearchConfig(cfg, ProviderOpenAI, nil, oc)
 
 	if got.Provider != search.ProviderExa {
 		t.Fatalf("expected provider %q, got %q", search.ProviderExa, got.Provider)
@@ -60,8 +58,7 @@ func TestApplyLoginTokensToSearchConfig_CustomExaEndpointForcesExa(t *testing.T)
 
 func TestApplyLoginTokensToSearchConfig_DefaultExaEndpointDoesNotForceExa(t *testing.T) {
 	oc := &OpenAIConnector{}
-	meta := &UserLoginMetadata{
-		Provider: ProviderOpenRouter,
+	loginCfg := &aiLoginConfig{
 		Credentials: &LoginCredentials{
 			APIKey: "openrouter-token",
 		},
@@ -74,7 +71,7 @@ func TestApplyLoginTokensToSearchConfig_DefaultExaEndpointDoesNotForceExa(t *tes
 		},
 	}
 
-	got := applyLoginTokensToSearchConfig(cfg, meta, oc)
+	got := applyLoginTokensToSearchConfig(cfg, ProviderOpenRouter, loginCfg, oc)
 
 	if got.Provider != search.ProviderExa {
 		t.Fatalf("unexpected provider override: %q", got.Provider)

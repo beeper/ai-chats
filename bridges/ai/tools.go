@@ -751,9 +751,8 @@ func executeImageGeneration(ctx context.Context, args map[string]any) (string, e
 	asyncValue, asyncExplicit := parseBoolArg(args, "async")
 
 	// Default to async for Magic Proxy since image generation can take long and blocks the stream loop.
-	loginMeta := btc.Client.effectiveLoginMetadata(ctx)
 	async := asyncValue
-	if !asyncExplicit && loginMeta.Provider == ProviderMagicProxy {
+	if !asyncExplicit && loginMetadata(btc.Client.UserLogin).Provider == ProviderMagicProxy {
 		async = true
 	}
 
@@ -1109,8 +1108,7 @@ func executeTTS(ctx context.Context, args map[string]any) (string, error) {
 	// Default to async for Magic Proxy to avoid blocking the stream loop.
 	async := asyncValue
 	if btc != nil && !asyncExplicit {
-		loginMeta := btc.Client.effectiveLoginMetadata(ctx)
-		if loginMeta.Provider == ProviderMagicProxy {
+		if loginMetadata(btc.Client.UserLogin).Provider == ProviderMagicProxy {
 			async = true
 		}
 	}
@@ -1246,13 +1244,10 @@ func resolveOpenAITTSBaseURL(btc *BridgeToolContext, providerBaseURL string) (st
 	if client.UserLogin == nil || client.UserLogin.Metadata == nil {
 		return baseURL, isOpenAIProvider
 	}
+	provider := loginMetadata(client.UserLogin).Provider
+	loginCfg := client.loginConfigSnapshot(context.Background())
 
-	meta := client.effectiveLoginMetadata(context.Background())
-	if meta == nil {
-		return baseURL, isOpenAIProvider
-	}
-
-	switch meta.Provider {
+	switch provider {
 	case ProviderOpenAI:
 		if client.connector != nil {
 			resolved := stringutil.NormalizeBaseURL(client.connector.resolveOpenAIBaseURL())
@@ -1263,7 +1258,7 @@ func resolveOpenAITTSBaseURL(btc *BridgeToolContext, providerBaseURL string) (st
 		return baseURL, true
 	case ProviderMagicProxy:
 		if client.connector != nil {
-			services := client.connector.resolveServiceConfig(meta)
+			services := client.connector.resolveServiceConfig(provider, loginCfg)
 			if svc, ok := services[serviceOpenAI]; ok {
 				resolved := stringutil.NormalizeBaseURL(svc.BaseURL)
 				if resolved != "" {
@@ -1271,7 +1266,7 @@ func resolveOpenAITTSBaseURL(btc *BridgeToolContext, providerBaseURL string) (st
 				}
 			}
 		}
-		if root := normalizeProxyBaseURL(loginCredentialBaseURL(meta)); root != "" {
+		if root := normalizeProxyBaseURL(loginCredentialBaseURL(loginCfg)); root != "" {
 			return joinProxyPath(root, "/openai/v1"), true
 		}
 

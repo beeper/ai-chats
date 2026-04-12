@@ -10,29 +10,29 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 )
 
-func newResponderMetadataTestClient() *AIClient {
-	client := newCatalogTestClient()
-	loginMeta := loginMetadata(client.UserLogin)
-	loginMeta.ModelCache = &ModelCache{
-		Models: []ModelInfo{
-			{
-				ID:                  "openai/gpt-5",
-				Name:                "GPT-5",
-				ContextWindow:       400000,
-				SupportsVision:      true,
-				SupportsReasoning:   true,
-				SupportsPDF:         true,
-				SupportsToolCalling: true,
+func newResponderMetadataTestClient(t *testing.T) *AIClient {
+	client := newCatalogTestClient(t)
+	setTestLoginState(client, &loginRuntimeState{
+		ModelCache: &ModelCache{
+			Models: []ModelInfo{
+				{
+					ID:                  "openai/gpt-5",
+					Name:                "GPT-5",
+					ContextWindow:       400000,
+					SupportsVision:      true,
+					SupportsReasoning:   true,
+					SupportsPDF:         true,
+					SupportsToolCalling: true,
+				},
+				{
+					ID:                  "openai/gpt-5-mini",
+					Name:                "GPT-5 Mini",
+					ContextWindow:       128000,
+					SupportsVision:      true,
+					SupportsToolCalling: true,
+				},
 			},
-			{
-				ID:                  "openai/gpt-5-mini",
-				Name:                "GPT-5 Mini",
-				ContextWindow:       128000,
-				SupportsVision:      true,
-				SupportsToolCalling: true,
-			},
-		},
-	}
+		}})
 	return client
 }
 
@@ -50,7 +50,7 @@ func decodeExtraProfileValue[T any](t *testing.T, extra database.ExtraProfile, k
 }
 
 func TestModelContactResponseIncludesResponderMetadata(t *testing.T) {
-	oc := newResponderMetadataTestClient()
+	oc := newResponderMetadataTestClient(t)
 	resp := oc.modelContactResponse(context.Background(), &ModelInfo{
 		ID:                  "openai/gpt-5",
 		Name:                "GPT-5",
@@ -76,7 +76,7 @@ func TestModelContactResponseIncludesResponderMetadata(t *testing.T) {
 }
 
 func TestApplyAgentChatInfoIncludesResponderMetadata(t *testing.T) {
-	oc := newResponderMetadataTestClient()
+	oc := newResponderMetadataTestClient(t)
 	chatInfo := &bridgev2.ChatInfo{
 		Members: &bridgev2.ChatMemberList{
 			MemberMap: bridgev2.ChatMemberMap{

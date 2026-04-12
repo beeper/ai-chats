@@ -4,8 +4,6 @@ import (
 	"testing"
 
 	"go.mau.fi/util/ptr"
-	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 )
 
 func TestEffectiveTemperatureDefaultUnset(t *testing.T) {
@@ -16,19 +14,13 @@ func TestEffectiveTemperatureDefaultUnset(t *testing.T) {
 }
 
 func TestEffectiveTemperatureUsesExplicitAgentZero(t *testing.T) {
-	client := &AIClient{
-		connector: &OpenAIConnector{},
-		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
-			CustomAgents: map[string]*AgentDefinitionContent{
-				"agent-1": {
-					ID:          "agent-1",
-					Name:        "Agent One",
-					Model:       "openai/gpt-5.2",
-					Temperature: ptr.Ptr(0.0),
-				},
-			},
-		}}},
-	}
+	client := newDBBackedTestAIClient(t, "")
+	seedTestCustomAgent(t, client, &AgentDefinitionContent{
+		ID:          "agent-1",
+		Name:        "Agent One",
+		Model:       "openai/gpt-5.2",
+		Temperature: ptr.Ptr(0.0),
+	})
 	meta := &PortalMetadata{
 		ResolvedTarget: &ResolvedTarget{
 			Kind:    ResolvedTargetAgent,
@@ -43,19 +35,13 @@ func TestEffectiveTemperatureUsesExplicitAgentZero(t *testing.T) {
 }
 
 func TestEffectiveTemperatureUsesExplicitNonZero(t *testing.T) {
-	client := &AIClient{
-		connector: &OpenAIConnector{},
-		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
-			CustomAgents: map[string]*AgentDefinitionContent{
-				"agent-1": {
-					ID:          "agent-1",
-					Name:        "Agent One",
-					Model:       "openai/gpt-5.2",
-					Temperature: ptr.Ptr(0.7),
-				},
-			},
-		}}},
-	}
+	client := newDBBackedTestAIClient(t, "")
+	seedTestCustomAgent(t, client, &AgentDefinitionContent{
+		ID:          "agent-1",
+		Name:        "Agent One",
+		Model:       "openai/gpt-5.2",
+		Temperature: ptr.Ptr(0.7),
+	})
 	meta := &PortalMetadata{
 		ResolvedTarget: &ResolvedTarget{
 			Kind:    ResolvedTargetAgent,
@@ -70,16 +56,13 @@ func TestEffectiveTemperatureUsesExplicitNonZero(t *testing.T) {
 }
 
 func TestDefaultThinkLevelModelAware(t *testing.T) {
-	client := &AIClient{
-		connector: &OpenAIConnector{},
-		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
-			Provider: ProviderOpenRouter,
-			ModelCache: &ModelCache{Models: []ModelInfo{
-				{ID: "openai/o4-mini", SupportsReasoning: true},
-				{ID: "openai/gpt-4o-mini", SupportsReasoning: false},
-			}},
-		}}},
-	}
+	client := newTestAIClientWithProvider(ProviderOpenRouter)
+	setTestLoginState(client, &loginRuntimeState{
+		ModelCache: &ModelCache{Models: []ModelInfo{
+			{ID: "openai/o4-mini", SupportsReasoning: true},
+			{ID: "openai/gpt-4o-mini", SupportsReasoning: false},
+		}},
+	})
 
 	reasoningMeta := &PortalMetadata{
 		ResolvedTarget: &ResolvedTarget{

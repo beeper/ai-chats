@@ -4,8 +4,6 @@ import (
 	"context"
 	"slices"
 	"strings"
-
-	"go.mau.fi/util/dbutil"
 )
 
 type persistedSystemEventQueue struct {
@@ -16,35 +14,24 @@ type persistedSystemEventQueue struct {
 }
 
 type systemEventsDBScope struct {
-	db       *dbutil.Database
-	bridgeID string
-	loginID  string
-	agentID  string
+	*loginScope
+	agentID string
 }
 
 func systemEventsScope(client *AIClient, agentID string) *systemEventsDBScope {
-	db, bridgeID, loginID := loginDBContext(client)
-	if db == nil {
+	base := loginScopeForClient(client)
+	if base == nil {
 		return nil
 	}
-	return &systemEventsDBScope{
-		db:       db,
-		bridgeID: bridgeID,
-		loginID:  loginID,
-		agentID:  normalizeAgentID(agentID),
-	}
+	return &systemEventsDBScope{loginScope: base, agentID: normalizeAgentID(agentID)}
 }
 
 func systemEventsLoginScope(client *AIClient) *systemEventsDBScope {
-	db, bridgeID, loginID := loginDBContext(client)
-	if db == nil {
+	base := loginScopeForClient(client)
+	if base == nil {
 		return nil
 	}
-	return &systemEventsDBScope{
-		db:       db,
-		bridgeID: bridgeID,
-		loginID:  loginID,
-	}
+	return &systemEventsDBScope{loginScope: base}
 }
 
 func (scope *systemEventsDBScope) ownerKey() string {

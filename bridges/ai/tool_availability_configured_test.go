@@ -6,9 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
-
 	"github.com/beeper/agentremote/pkg/shared/toolspec"
 )
 
@@ -17,18 +14,17 @@ func boolPtr(v bool) *bool {
 }
 
 func TestToolAvailable_WebSearch_RequiresAnyProviderKey(t *testing.T) {
-	oc := &AIClient{
-		connector: &OpenAIConnector{
-			Config: Config{
-				Tools: ToolProvidersConfig{
-					Web: &WebToolsConfig{Search: &SearchConfig{}},
-				},
+	oc := newTestAIClientWithProvider("")
+	oc.connector = &OpenAIConnector{
+		Config: Config{
+			Tools: ToolProvidersConfig{
+				Web: &WebToolsConfig{Search: &SearchConfig{}},
 			},
 		},
-		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
-			ModelCache: &ModelCache{Models: []ModelInfo{{ID: "openai/gpt-5.2", SupportsToolCalling: true}}},
-		}}},
 	}
+	setTestLoginState(oc, &loginRuntimeState{
+		ModelCache: &ModelCache{Models: []ModelInfo{{ID: "openai/gpt-5.2", SupportsToolCalling: true}}},
+	})
 	meta := modelModeTestMeta("openai/gpt-5.2")
 
 	ok, source, reason := oc.isToolAvailable(meta, toolspec.WebSearchName)
@@ -44,20 +40,19 @@ func TestToolAvailable_WebSearch_RequiresAnyProviderKey(t *testing.T) {
 }
 
 func TestToolAvailable_WebSearch_WithProviderKey(t *testing.T) {
-	oc := &AIClient{
-		connector: &OpenAIConnector{
-			Config: Config{
-				Tools: ToolProvidersConfig{
-					Web: &WebToolsConfig{Search: &SearchConfig{
-						Exa: ProviderExaConfig{APIKey: "test"},
-					}},
-				},
+	oc := newTestAIClientWithProvider("")
+	oc.connector = &OpenAIConnector{
+		Config: Config{
+			Tools: ToolProvidersConfig{
+				Web: &WebToolsConfig{Search: &SearchConfig{
+					Exa: ProviderExaConfig{APIKey: "test"},
+				}},
 			},
 		},
-		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
-			ModelCache: &ModelCache{Models: []ModelInfo{{ID: "openai/gpt-5.2", SupportsToolCalling: true}}},
-		}}},
 	}
+	setTestLoginState(oc, &loginRuntimeState{
+		ModelCache: &ModelCache{Models: []ModelInfo{{ID: "openai/gpt-5.2", SupportsToolCalling: true}}},
+	})
 	meta := modelModeTestMeta("openai/gpt-5.2")
 
 	ok, _, reason := oc.isToolAvailable(meta, toolspec.WebSearchName)
@@ -67,20 +62,19 @@ func TestToolAvailable_WebSearch_WithProviderKey(t *testing.T) {
 }
 
 func TestToolAvailable_WebFetch_DirectDisabledAndNoExaKey(t *testing.T) {
-	oc := &AIClient{
-		connector: &OpenAIConnector{
-			Config: Config{
-				Tools: ToolProvidersConfig{
-					Web: &WebToolsConfig{Fetch: &FetchConfig{
-						Direct: ProviderDirectConfig{Enabled: boolPtr(false)},
-					}},
-				},
+	oc := newTestAIClientWithProvider("")
+	oc.connector = &OpenAIConnector{
+		Config: Config{
+			Tools: ToolProvidersConfig{
+				Web: &WebToolsConfig{Fetch: &FetchConfig{
+					Direct: ProviderDirectConfig{Enabled: boolPtr(false)},
+				}},
 			},
 		},
-		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
-			ModelCache: &ModelCache{Models: []ModelInfo{{ID: "openai/gpt-5.2", SupportsToolCalling: true}}},
-		}}},
 	}
+	setTestLoginState(oc, &loginRuntimeState{
+		ModelCache: &ModelCache{Models: []ModelInfo{{ID: "openai/gpt-5.2", SupportsToolCalling: true}}},
+	})
 	meta := modelModeTestMeta("openai/gpt-5.2")
 
 	ok, source, reason := oc.isToolAvailable(meta, toolspec.WebFetchName)
@@ -93,13 +87,11 @@ func TestToolAvailable_WebFetch_DirectDisabledAndNoExaKey(t *testing.T) {
 }
 
 func TestToolAvailable_TTS_PlatformBehavior(t *testing.T) {
-	oc := &AIClient{
-		connector: &OpenAIConnector{Config: Config{}},
-		// provider/apiKey intentionally empty
-		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
-			ModelCache: &ModelCache{Models: []ModelInfo{{ID: "openai/gpt-5.2", SupportsToolCalling: true}}},
-		}}},
-	}
+	oc := newTestAIClientWithProvider("")
+	oc.connector = &OpenAIConnector{Config: Config{}}
+	setTestLoginState(oc, &loginRuntimeState{
+		ModelCache: &ModelCache{Models: []ModelInfo{{ID: "openai/gpt-5.2", SupportsToolCalling: true}}},
+	})
 	meta := modelModeTestMeta("openai/gpt-5.2")
 
 	ok, _, reason := oc.isToolAvailable(meta, toolspec.TTSName)

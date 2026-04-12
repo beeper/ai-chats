@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
-
-	"go.mau.fi/util/dbutil"
 )
 
 type loginRuntimeState struct {
@@ -18,24 +16,6 @@ type loginRuntimeState struct {
 	FileAnnotationCache map[string]FileAnnotation
 	ConsecutiveErrors   int
 	LastErrorAt         int64
-}
-
-type loginStateScope struct {
-	db       *dbutil.Database
-	bridgeID string
-	loginID  string
-}
-
-func loginStateScopeForClient(client *AIClient) *loginStateScope {
-	db, bridgeID, loginID := loginDBContext(client)
-	if db == nil || strings.TrimSpace(bridgeID) == "" || strings.TrimSpace(loginID) == "" {
-		return nil
-	}
-	return &loginStateScope{
-		db:       db,
-		bridgeID: bridgeID,
-		loginID:  loginID,
-	}
 }
 
 func cloneHeartbeatEvent(in *HeartbeatEventPayload) *HeartbeatEventPayload {
@@ -58,19 +38,6 @@ func cloneLoginRuntimeState(in *loginRuntimeState) *loginRuntimeState {
 		FileAnnotationCache: cloneFileAnnotationCache(in.FileAnnotationCache),
 		ConsecutiveErrors:   in.ConsecutiveErrors,
 		LastErrorAt:         in.LastErrorAt,
-	}
-}
-
-func loginRuntimeStateFromMetadata(meta *UserLoginMetadata) *loginRuntimeState {
-	if meta == nil {
-		return &loginRuntimeState{}
-	}
-	return &loginRuntimeState{
-		ModelCache:          cloneModelCache(meta.ModelCache),
-		Gravatar:            cloneGravatarState(meta.Gravatar),
-		FileAnnotationCache: cloneFileAnnotationCache(meta.FileAnnotationCache),
-		ConsecutiveErrors:   meta.ConsecutiveErrors,
-		LastErrorAt:         meta.LastErrorAt,
 	}
 }
 
@@ -101,11 +68,8 @@ func marshalJSONOrEmpty(v any) (string, error) {
 }
 
 func loadLoginRuntimeState(ctx context.Context, client *AIClient) (*loginRuntimeState, error) {
-	scope := loginStateScopeForClient(client)
+	scope := loginScopeForClient(client)
 	if scope == nil {
-		if client != nil {
-			return loginRuntimeStateFromMetadata(loginMetadata(client.UserLogin)), nil
-		}
 		return &loginRuntimeState{}, nil
 	}
 	state := &loginRuntimeState{}
@@ -136,7 +100,7 @@ func loadLoginRuntimeState(ctx context.Context, client *AIClient) (*loginRuntime
 		&state.LastErrorAt,
 	)
 	if err == sql.ErrNoRows {
-		return loginRuntimeStateFromMetadata(loginMetadata(client.UserLogin)), nil
+		return &loginRuntimeState{}, nil
 	}
 	if err != nil {
 		return nil, err
@@ -170,7 +134,7 @@ func loadLoginRuntimeState(ctx context.Context, client *AIClient) (*loginRuntime
 }
 
 func saveLoginRuntimeState(ctx context.Context, client *AIClient, state *loginRuntimeState) error {
-	scope := loginStateScopeForClient(client)
+	scope := loginScopeForClient(client)
 	if scope == nil || state == nil {
 		return nil
 	}
@@ -266,7 +230,7 @@ func (oc *AIClient) updateLoginState(ctx context.Context, fn func(*loginRuntimeS
 }
 
 func (oc *AIClient) clearLoginState(ctx context.Context) {
-	scope := loginStateScopeForClient(oc)
+	scope := loginScopeForClient(oc)
 	if scope != nil {
 		execDelete(ctx, scope.db, oc.Log(),
 			`DELETE FROM `+aiLoginStateTable+` WHERE bridge_id=$1 AND login_id=$2`,

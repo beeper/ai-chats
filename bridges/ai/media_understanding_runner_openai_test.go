@@ -1,37 +1,23 @@
 package ai
 
-import (
-	"testing"
+import "testing"
 
-	"github.com/rs/zerolog"
-	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/bridgev2/networkid"
-)
-
-func newMediaTestClient(meta *UserLoginMetadata, oc *OpenAIConnector) *AIClient {
-	login := &database.UserLogin{
-		ID:       networkid.UserLoginID("login"),
-		Metadata: meta,
-	}
-	userLogin := &bridgev2.UserLogin{UserLogin: login, Log: zerolog.Nop()}
-	return &AIClient{
-		UserLogin: userLogin,
-		connector: oc,
-	}
+func newMediaTestClient(provider string, cfg *aiLoginConfig, oc *OpenAIConnector) *AIClient {
+	client := newTestAIClientWithProvider(provider)
+	client.connector = oc
+	setTestLoginConfig(client, cfg)
+	return client
 }
 
 func TestResolveMediaProviderAPIKeyOpenAIMagicProxyUsesLoginToken(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "")
 
-	meta := &UserLoginMetadata{
-		Provider: ProviderMagicProxy,
+	client := newMediaTestClient(ProviderMagicProxy, &aiLoginConfig{
 		Credentials: &LoginCredentials{
 			APIKey:  "tok",
 			BaseURL: "https://bai.bt.hn/team/proxy",
 		},
-	}
-	client := newMediaTestClient(meta, &OpenAIConnector{})
+	}, &OpenAIConnector{})
 
 	if got := client.resolveMediaProviderAPIKey("openai", "", ""); got != "tok" {
 		t.Fatalf("unexpected key: %q", got)
@@ -39,14 +25,12 @@ func TestResolveMediaProviderAPIKeyOpenAIMagicProxyUsesLoginToken(t *testing.T) 
 }
 
 func TestResolveOpenAIMediaBaseURLMagicProxyUsesOpenAIServicePath(t *testing.T) {
-	meta := &UserLoginMetadata{
-		Provider: ProviderMagicProxy,
+	client := newMediaTestClient(ProviderMagicProxy, &aiLoginConfig{
 		Credentials: &LoginCredentials{
 			APIKey:  "tok",
 			BaseURL: "https://bai.bt.hn/team/proxy",
 		},
-	}
-	client := newMediaTestClient(meta, &OpenAIConnector{})
+	}, &OpenAIConnector{})
 
 	if got := resolveOpenAIMediaBaseURL(client); got != "https://bai.bt.hn/team/proxy/openai/v1" {
 		t.Fatalf("unexpected base url: %q", got)
@@ -56,7 +40,7 @@ func TestResolveOpenAIMediaBaseURLMagicProxyUsesOpenAIServicePath(t *testing.T) 
 func TestResolveOpenRouterMediaConfigUsesEntryOverrides(t *testing.T) {
 	t.Setenv("OPENROUTER_API_KEY_SPECIAL_PROFILE", "entry-key")
 
-	client := newMediaTestClient(&UserLoginMetadata{Provider: ProviderOpenAI}, &OpenAIConnector{
+	client := newMediaTestClient(ProviderOpenAI, nil, &OpenAIConnector{
 		Config: Config{
 			Agents: &AgentsConfig{Defaults: &AgentDefaultsConfig{PDFEngine: "mistral-ocr"}},
 		},
@@ -105,7 +89,7 @@ func TestResolveOpenRouterMediaConfigUsesEntryOverrides(t *testing.T) {
 }
 
 func TestResolveOpenRouterMediaConfigAllowsAuthHeaderWithoutAPIKey(t *testing.T) {
-	client := newMediaTestClient(&UserLoginMetadata{Provider: ProviderOpenAI}, &OpenAIConnector{})
+	client := newMediaTestClient(ProviderOpenAI, nil, &OpenAIConnector{})
 
 	_, _, headers, _, _, err := client.resolveOpenRouterMediaConfig(nil, MediaUnderstandingModelConfig{
 		Headers: map[string]string{

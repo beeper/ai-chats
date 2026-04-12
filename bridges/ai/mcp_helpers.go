@@ -92,10 +92,7 @@ func clearLoginMCPServer(owner any, name string) {
 		creds.ServiceTokens = nil
 	}
 	if loginCredentialsEmpty(creds) {
-		switch v := owner.(type) {
-		case *UserLoginMetadata:
-			v.Credentials = nil
-		case *aiLoginConfig:
+		if v, ok := owner.(*aiLoginConfig); ok {
 			v.Credentials = nil
 		}
 	}

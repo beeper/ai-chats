@@ -52,16 +52,8 @@ func (oc *AIClient) agentsEnabledForLogin() bool {
 }
 
 func shouldEnsureDefaultChat(owner any) bool {
-	var cfg *aiLoginConfig
-	switch v := owner.(type) {
-	case *aiLoginConfig:
-		cfg = v
-	case *UserLoginMetadata:
-		if v == nil {
-			return false
-		}
-		cfg = aiLoginConfigFromMetadata(v)
-	default:
+	cfg, ok := owner.(*aiLoginConfig)
+	if !ok {
 		return false
 	}
 	if cfg == nil {
@@ -132,11 +124,12 @@ func (oc *AIClient) canUseImageGeneration() bool {
 	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Metadata == nil {
 		return false
 	}
-	loginMeta := oc.effectiveLoginMetadata(context.Background())
-	if loginMeta == nil || strings.TrimSpace(oc.connector.resolveProviderAPIKey(loginMeta)) == "" {
+	provider := loginMetadata(oc.UserLogin).Provider
+	loginCfg := oc.loginConfigSnapshot(context.Background())
+	if strings.TrimSpace(oc.connector.resolveProviderAPIKeyForConfig(provider, loginCfg)) == "" {
 		return false
 	}
-	switch loginMeta.Provider {
+	switch provider {
 	case ProviderOpenAI, ProviderOpenRouter, ProviderMagicProxy:
 		return true
 	default:

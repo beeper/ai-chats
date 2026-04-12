@@ -8,34 +8,34 @@ func TestShouldEnsureDefaultChat(t *testing.T) {
 
 	tests := []struct {
 		name string
-		meta *UserLoginMetadata
+		cfg  *aiLoginConfig
 		want bool
 	}{
 		{
 			name: "nil metadata",
-			meta: nil,
+			cfg:  nil,
 			want: false,
 		},
 		{
 			name: "new login with nil agents",
-			meta: &UserLoginMetadata{},
+			cfg:  &aiLoginConfig{},
 			want: true,
 		},
 		{
 			name: "agents enabled",
-			meta: &UserLoginMetadata{Agents: &enabled},
+			cfg:  &aiLoginConfig{Agents: &enabled},
 			want: true,
 		},
 		{
 			name: "agents disabled",
-			meta: &UserLoginMetadata{Agents: &disabled},
+			cfg:  &aiLoginConfig{Agents: &disabled},
 			want: false,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := shouldEnsureDefaultChat(tc.meta); got != tc.want {
+			if got := shouldEnsureDefaultChat(tc.cfg); got != tc.want {
 				t.Fatalf("shouldEnsureDefaultChat() = %v, want %v", got, tc.want)
 			}
 		})

@@ -2,8 +2,6 @@ package ai
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -13,13 +11,13 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	"github.com/beeper/agentremote/sdk"
 )
 
 func stableMCPApprovalID(toolCallID string, desc responseToolDescriptor) string {
 	input := stringifyJSONValue(desc.input)
-	sum := sha256.Sum256([]byte(strings.TrimSpace(toolCallID) + "\n" + desc.toolName + "\n" + input))
-	return "mcp_approval_" + hex.EncodeToString(sum[:8])
+	return "mcp_approval_" + stringutil.ShortHash(strings.TrimSpace(toolCallID)+"\n"+desc.toolName+"\n"+input, 8)
 }
 
 func (oc *AIClient) startStreamingMCPApproval(

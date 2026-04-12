@@ -1,33 +1,19 @@
 package ai
 
-import (
-	"testing"
-
-	"github.com/rs/zerolog"
-	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/bridgev2/networkid"
-)
+import "testing"
 
 func TestDesktopAPIInstancesMergesFallbackTokenIntoDefaultInstance(t *testing.T) {
-	client := &AIClient{
-		UserLogin: &bridgev2.UserLogin{
-			UserLogin: &database.UserLogin{
-				ID: networkid.UserLoginID("login"),
-				Metadata: &UserLoginMetadata{
-					Credentials: &LoginCredentials{
-						ServiceTokens: &ServiceTokens{
-							DesktopAPI: "fallback-token",
-							DesktopAPIInstances: map[string]DesktopAPIInstance{
-								"default": {BaseURL: "https://desktop.example"},
-							},
-						},
-					},
+	client := newTestAIClientWithProvider("")
+	setTestLoginConfig(client, &aiLoginConfig{
+		Credentials: &LoginCredentials{
+			ServiceTokens: &ServiceTokens{
+				DesktopAPI: "fallback-token",
+				DesktopAPIInstances: map[string]DesktopAPIInstance{
+					"default": {BaseURL: "https://desktop.example"},
 				},
 			},
-			Log: zerolog.Nop(),
 		},
-	}
+	})
 
 	instances := client.desktopAPIInstances()
 	got, ok := instances[desktopDefaultInstance]

@@ -7,26 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 )
-
-type transcriptScope struct {
-	db       *dbutil.Database
-	bridgeID string
-	loginID  string
-}
-
-func transcriptScopeForClient(client *AIClient) *transcriptScope {
-	db, bridgeID, loginID := loginDBContext(client)
-	if db == nil || strings.TrimSpace(bridgeID) == "" || strings.TrimSpace(loginID) == "" {
-		return nil
-	}
-	return &transcriptScope{db: db, bridgeID: bridgeID, loginID: loginID}
-}
 
 func cloneCanonicalTurnData(src map[string]any) map[string]any {
 	if len(src) == 0 {
@@ -82,7 +67,7 @@ func cloneMessageForAIHistory(msg *database.Message) *database.Message {
 }
 
 func persistAITranscriptMessage(ctx context.Context, client *AIClient, portal *bridgev2.Portal, msg *database.Message) error {
-	scope := transcriptScopeForClient(client)
+	scope := loginScopeForClient(client)
 	if scope == nil || portal == nil || portal.MXID == "" || msg == nil || strings.TrimSpace(string(msg.ID)) == "" {
 		return nil
 	}
@@ -131,7 +116,7 @@ func loadAITranscriptMessage(ctx context.Context, client *AIClient, roomID id.Ro
 }
 
 func countAITranscriptMessages(ctx context.Context, client *AIClient, roomID id.RoomID) (int, error) {
-	scope := transcriptScopeForClient(client)
+	scope := loginScopeForClient(client)
 	if scope == nil || roomID == "" {
 		return 0, nil
 	}
@@ -151,7 +136,7 @@ func loadAITranscriptMessages(
 	messageIDs []networkid.MessageID,
 	limit int,
 ) ([]*database.Message, error) {
-	scope := transcriptScopeForClient(client)
+	scope := loginScopeForClient(client)
 	if scope == nil || roomID == "" {
 		return nil, nil
 	}
@@ -220,7 +205,7 @@ func loadAITranscriptMessages(
 }
 
 func deleteAITranscriptForRoom(ctx context.Context, client *AIClient, roomID id.RoomID) {
-	scope := transcriptScopeForClient(client)
+	scope := loginScopeForClient(client)
 	if scope == nil || roomID == "" {
 		return
 	}

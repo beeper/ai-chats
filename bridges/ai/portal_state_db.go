@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/beeper/agentremote/pkg/shared/jsonutil"
@@ -33,32 +32,6 @@ type aiPersistedPortalState struct {
 	DebounceMs              int              `json:"debounce_ms,omitempty"`
 	TypingMode              string           `json:"typing_mode,omitempty"`
 	TypingIntervalSeconds   *int             `json:"typing_interval_seconds,omitempty"`
-}
-
-type portalStateScope struct {
-	db       *dbutil.Database
-	bridgeID string
-	loginID  string
-	portalID string
-}
-
-func portalStateScopeForPortal(portal *bridgev2.Portal) *portalStateScope {
-	db := bridgeDBFromPortal(portal)
-	if db == nil || portal == nil || portal.Bridge == nil || portal.Bridge.DB == nil {
-		return nil
-	}
-	bridgeID := string(portal.Bridge.DB.BridgeID)
-	loginID := strings.TrimSpace(string(portal.Receiver))
-	portalID := strings.TrimSpace(string(portal.PortalKey.ID))
-	if bridgeID == "" || loginID == "" || portalID == "" {
-		return nil
-	}
-	return &portalStateScope{
-		db:       db,
-		bridgeID: bridgeID,
-		loginID:  loginID,
-		portalID: portalID,
-	}
 }
 
 func clonePortalStateMap(src map[string]any) map[string]any {
@@ -127,34 +100,13 @@ func applyPersistedPortalState(meta *PortalMetadata, state *aiPersistedPortalSta
 	}
 }
 
-func ensurePortalStateTable(ctx context.Context, portal *bridgev2.Portal) error {
-	scope := portalStateScopeForPortal(portal)
-	if scope == nil {
-		return nil
-	}
-	_, err := scope.db.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS `+aiPortalStateTable+` (
-			bridge_id TEXT NOT NULL,
-			login_id TEXT NOT NULL,
-			portal_id TEXT NOT NULL,
-			state_json TEXT NOT NULL DEFAULT '',
-			updated_at_ms INTEGER NOT NULL DEFAULT 0,
-			PRIMARY KEY (bridge_id, login_id, portal_id)
-		)
-	`)
-	return err
-}
-
 func loadAIPortalState(ctx context.Context, portal *bridgev2.Portal) (*aiPersistedPortalState, error) {
-	scope := portalStateScopeForPortal(portal)
+	scope := portalScopeForPortal(portal)
 	if scope == nil {
 		return nil, nil
 	}
 	if ctx == nil {
 		ctx = context.Background()
-	}
-	if err := ensurePortalStateTable(ctx, portal); err != nil {
-		return nil, err
 	}
 	var raw string
 	err := scope.db.QueryRow(ctx, `
@@ -176,15 +128,12 @@ func loadAIPortalState(ctx context.Context, portal *bridgev2.Portal) (*aiPersist
 }
 
 func saveAIPortalState(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) error {
-	scope := portalStateScopeForPortal(portal)
+	scope := portalScopeForPortal(portal)
 	if scope == nil {
 		return nil
 	}
 	if ctx == nil {
 		ctx = context.Background()
-	}
-	if err := ensurePortalStateTable(ctx, portal); err != nil {
-		return err
 	}
 	payload, err := json.Marshal(persistedPortalStateFromMeta(meta))
 	if err != nil {

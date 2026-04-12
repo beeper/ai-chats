@@ -7,26 +7,22 @@ import (
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/shared"
 	"go.mau.fi/util/ptr"
-	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 )
 
 func TestAgentLoopRequestBuildersShareModelAndTokenSettings(t *testing.T) {
-	oc := &AIClient{
-		connector: &OpenAIConnector{
-			Config: Config{
-				DefaultSystemPrompt: "system prompt",
-			},
+	oc := newTestAIClientWithProvider(ProviderOpenRouter)
+	oc.connector = &OpenAIConnector{
+		Config: Config{
+			DefaultSystemPrompt: "system prompt",
 		},
-		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
-			Provider: ProviderOpenRouter,
-			ModelCache: &ModelCache{Models: []ModelInfo{{
-				ID:                "openai/gpt-5.2",
-				MaxOutputTokens:   777,
-				SupportsReasoning: true,
-			}}},
-		}}},
 	}
+	setTestLoginState(oc, &loginRuntimeState{
+		ModelCache: &ModelCache{Models: []ModelInfo{{
+			ID:                "openai/gpt-5.2",
+			MaxOutputTokens:   777,
+			SupportsReasoning: true,
+		}}},
+	})
 	meta := &PortalMetadata{
 		ResolvedTarget: &ResolvedTarget{
 			Kind:    ResolvedTargetModel,
@@ -63,29 +59,25 @@ func TestAgentLoopRequestBuildersShareModelAndTokenSettings(t *testing.T) {
 }
 
 func TestAgentLoopRequestBuildersPreserveExplicitZeroTemperature(t *testing.T) {
-	oc := &AIClient{
-		connector: &OpenAIConnector{
-			Config: Config{
-				DefaultSystemPrompt: "system prompt",
-			},
+	oc := newDBBackedTestAIClient(t, ProviderOpenRouter)
+	oc.connector = &OpenAIConnector{
+		Config: Config{
+			DefaultSystemPrompt: "system prompt",
 		},
-		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
-			Provider: ProviderOpenRouter,
-			CustomAgents: map[string]*AgentDefinitionContent{
-				"agent-1": {
-					ID:          "agent-1",
-					Name:        "Agent One",
-					Model:       "openai/gpt-5.2",
-					Temperature: ptr.Ptr(0.0),
-				},
-			},
-			ModelCache: &ModelCache{Models: []ModelInfo{{
-				ID:                "openai/gpt-5.2",
-				MaxOutputTokens:   777,
-				SupportsReasoning: true,
-			}}},
-		}}},
 	}
+	setTestLoginState(oc, &loginRuntimeState{
+		ModelCache: &ModelCache{Models: []ModelInfo{{
+			ID:                "openai/gpt-5.2",
+			MaxOutputTokens:   777,
+			SupportsReasoning: true,
+		}}},
+	})
+	seedTestCustomAgent(t, oc, &AgentDefinitionContent{
+		ID:          "agent-1",
+		Name:        "Agent One",
+		Model:       "openai/gpt-5.2",
+		Temperature: ptr.Ptr(0.0),
+	})
 	meta := &PortalMetadata{
 		ResolvedTarget: &ResolvedTarget{
 			Kind:    ResolvedTargetAgent,

@@ -5,14 +5,12 @@ import (
 )
 
 func TestResolveImageGenProviderMagicProxyPrefersOpenAIForSimplePrompts(t *testing.T) {
-	meta := &UserLoginMetadata{
-		Provider: ProviderMagicProxy,
+	btc := newTTSTestBridgeContext(ProviderMagicProxy, &aiLoginConfig{
 		Credentials: &LoginCredentials{
 			APIKey:  "tok",
 			BaseURL: "https://bai.bt.hn/team/proxy",
 		},
-	}
-	btc := newTTSTestBridgeContext(meta, &OpenAIConnector{})
+	}, &OpenAIConnector{})
 
 	got, err := resolveImageGenProvider(imageGenRequest{
 		Prompt: "cat",
@@ -27,14 +25,12 @@ func TestResolveImageGenProviderMagicProxyPrefersOpenAIForSimplePrompts(t *testi
 }
 
 func TestResolveImageGenProviderMagicProxyStillPrefersOpenAIWhenCountIsGreaterThanOne(t *testing.T) {
-	meta := &UserLoginMetadata{
-		Provider: ProviderMagicProxy,
+	btc := newTTSTestBridgeContext(ProviderMagicProxy, &aiLoginConfig{
 		Credentials: &LoginCredentials{
 			APIKey:  "tok",
 			BaseURL: "https://bai.bt.hn/team/proxy",
 		},
-	}
-	btc := newTTSTestBridgeContext(meta, &OpenAIConnector{})
+	}, &OpenAIConnector{})
 
 	got, err := resolveImageGenProvider(imageGenRequest{
 		Prompt: "cat",
@@ -49,14 +45,12 @@ func TestResolveImageGenProviderMagicProxyStillPrefersOpenAIWhenCountIsGreaterTh
 }
 
 func TestResolveImageGenProviderMagicProxyProviderOpenAIUsesOpenAI(t *testing.T) {
-	meta := &UserLoginMetadata{
-		Provider: ProviderMagicProxy,
+	btc := newTTSTestBridgeContext(ProviderMagicProxy, &aiLoginConfig{
 		Credentials: &LoginCredentials{
 			APIKey:  "tok",
 			BaseURL: "https://bai.bt.hn/team/proxy",
 		},
-	}
-	btc := newTTSTestBridgeContext(meta, &OpenAIConnector{})
+	}, &OpenAIConnector{})
 
 	got, err := resolveImageGenProvider(imageGenRequest{
 		Provider: "openai",
@@ -72,14 +66,12 @@ func TestResolveImageGenProviderMagicProxyProviderOpenAIUsesOpenAI(t *testing.T)
 }
 
 func TestResolveImageGenProviderMagicProxyModelHintFallsBackToOpenAI(t *testing.T) {
-	meta := &UserLoginMetadata{
-		Provider: ProviderMagicProxy,
+	btc := newTTSTestBridgeContext(ProviderMagicProxy, &aiLoginConfig{
 		Credentials: &LoginCredentials{
 			APIKey:  "tok",
 			BaseURL: "https://bai.bt.hn/team/proxy",
 		},
-	}
-	btc := newTTSTestBridgeContext(meta, &OpenAIConnector{})
+	}, &OpenAIConnector{})
 
 	got, err := resolveImageGenProvider(imageGenRequest{
 		Model:  "google/gemini-3-pro-image-preview",
@@ -95,14 +87,12 @@ func TestResolveImageGenProviderMagicProxyModelHintFallsBackToOpenAI(t *testing.
 }
 
 func TestResolveImageGenProviderMagicProxyProviderGeminiIsUnavailable(t *testing.T) {
-	meta := &UserLoginMetadata{
-		Provider: ProviderMagicProxy,
+	btc := newTTSTestBridgeContext(ProviderMagicProxy, &aiLoginConfig{
 		Credentials: &LoginCredentials{
 			APIKey:  "tok",
 			BaseURL: "https://bai.bt.hn/team/proxy",
 		},
-	}
-	btc := newTTSTestBridgeContext(meta, &OpenAIConnector{})
+	}, &OpenAIConnector{})
 
 	_, err := resolveImageGenProvider(imageGenRequest{
 		Provider: "gemini",
@@ -136,14 +126,12 @@ func TestNormalizeOpenAIModelMapsUnavailableAliasesToGPTImage1(t *testing.T) {
 }
 
 func TestBuildOpenAIImagesBaseURLMagicProxy(t *testing.T) {
-	meta := &UserLoginMetadata{
-		Provider: ProviderMagicProxy,
+	btc := newTTSTestBridgeContext(ProviderMagicProxy, &aiLoginConfig{
 		Credentials: &LoginCredentials{
 			APIKey:  "tok",
 			BaseURL: "https://bai.bt.hn/team/proxy",
 		},
-	}
-	btc := newTTSTestBridgeContext(meta, &OpenAIConnector{})
+	}, &OpenAIConnector{})
 
 	baseURL, err := buildOpenAIImagesBaseURL(btc)
 	if err != nil {
@@ -155,14 +143,12 @@ func TestBuildOpenAIImagesBaseURLMagicProxy(t *testing.T) {
 }
 
 func TestBuildGeminiBaseURLMagicProxy(t *testing.T) {
-	meta := &UserLoginMetadata{
-		Provider: ProviderMagicProxy,
+	btc := newTTSTestBridgeContext(ProviderMagicProxy, &aiLoginConfig{
 		Credentials: &LoginCredentials{
 			APIKey:  "tok",
 			BaseURL: "https://bai.bt.hn/team/proxy",
 		},
-	}
-	btc := newTTSTestBridgeContext(meta, &OpenAIConnector{})
+	}, &OpenAIConnector{})
 
 	baseURL, err := buildGeminiBaseURL(btc)
 	if err != nil {

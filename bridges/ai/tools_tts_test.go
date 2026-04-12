@@ -1,35 +1,18 @@
 package ai
 
-import (
-	"testing"
+import "testing"
 
-	"github.com/rs/zerolog"
-	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/bridgev2/networkid"
-)
-
-func newTTSTestBridgeContext(meta *UserLoginMetadata, oc *OpenAIConnector) *BridgeToolContext {
-	login := &database.UserLogin{
-		ID:       networkid.UserLoginID("login"),
-		Metadata: meta,
-	}
-	userLogin := &bridgev2.UserLogin{UserLogin: login, Log: zerolog.Nop()}
-	client := &AIClient{
-		UserLogin: userLogin,
-		connector: oc,
-	}
+func newTTSTestBridgeContext(provider string, cfg *aiLoginConfig, oc *OpenAIConnector) *BridgeToolContext {
+	client := newTestAIClientWithProvider(provider)
+	client.connector = oc
+	setTestLoginConfig(client, cfg)
 	return &BridgeToolContext{Client: client}
 }
 
 func TestResolveOpenAITTSBaseURLMagicProxy(t *testing.T) {
-	meta := &UserLoginMetadata{
-		Provider: ProviderMagicProxy,
-		Credentials: &LoginCredentials{
-			BaseURL: "https://bai.bt.hn/team/proxy",
-		},
-	}
-	btc := newTTSTestBridgeContext(meta, &OpenAIConnector{})
+	btc := newTTSTestBridgeContext(ProviderMagicProxy, &aiLoginConfig{
+		Credentials: &LoginCredentials{BaseURL: "https://bai.bt.hn/team/proxy"},
+	}, &OpenAIConnector{})
 
 	gotBaseURL, ok := resolveOpenAITTSBaseURL(btc, "https://bai.bt.hn/team/proxy/openrouter/v1")
 	if !ok {
@@ -42,13 +25,9 @@ func TestResolveOpenAITTSBaseURLMagicProxy(t *testing.T) {
 }
 
 func TestResolveOpenAITTSBaseURLMagicProxyWithoutConnector(t *testing.T) {
-	meta := &UserLoginMetadata{
-		Provider: ProviderMagicProxy,
-		Credentials: &LoginCredentials{
-			BaseURL: "https://bai.bt.hn/team/proxy/openrouter/v1",
-		},
-	}
-	btc := newTTSTestBridgeContext(meta, nil)
+	btc := newTTSTestBridgeContext(ProviderMagicProxy, &aiLoginConfig{
+		Credentials: &LoginCredentials{BaseURL: "https://bai.bt.hn/team/proxy/openrouter/v1"},
+	}, nil)
 
 	gotBaseURL, ok := resolveOpenAITTSBaseURL(btc, "https://bai.bt.hn/team/proxy/openrouter/v1")
 	if !ok {
@@ -61,7 +40,6 @@ func TestResolveOpenAITTSBaseURLMagicProxyWithoutConnector(t *testing.T) {
 }
 
 func TestResolveOpenAITTSBaseURLOpenAIProviderUsesConfiguredBase(t *testing.T) {
-	meta := &UserLoginMetadata{Provider: ProviderOpenAI}
 	oc := &OpenAIConnector{
 		Config: Config{
 			Models: &ModelsConfig{Providers: map[string]ModelProviderConfig{
@@ -69,7 +47,7 @@ func TestResolveOpenAITTSBaseURLOpenAIProviderUsesConfiguredBase(t *testing.T) {
 			}},
 		},
 	}
-	btc := newTTSTestBridgeContext(meta, oc)
+	btc := newTTSTestBridgeContext(ProviderOpenAI, nil, oc)
 
 	gotBaseURL, ok := resolveOpenAITTSBaseURL(btc, "")
 	if !ok {
@@ -81,8 +59,7 @@ func TestResolveOpenAITTSBaseURLOpenAIProviderUsesConfiguredBase(t *testing.T) {
 }
 
 func TestResolveOpenAITTSBaseURLOpenRouterNotSupported(t *testing.T) {
-	meta := &UserLoginMetadata{Provider: ProviderOpenRouter}
-	btc := newTTSTestBridgeContext(meta, &OpenAIConnector{})
+	btc := newTTSTestBridgeContext(ProviderOpenRouter, nil, &OpenAIConnector{})
 
 	gotBaseURL, ok := resolveOpenAITTSBaseURL(btc, "https://openrouter.ai/api/v1")
 	if ok {

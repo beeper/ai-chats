@@ -103,49 +103,49 @@ func executeWebFetchWithProviders(ctx context.Context, args map[string]any) (str
 	return string(raw), nil
 }
 
-func applyLoginTokensToSearchConfig(cfg *search.Config, meta *UserLoginMetadata, connector *OpenAIConnector) *search.Config {
+func applyLoginTokensToSearchConfig(cfg *search.Config, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) *search.Config {
 	if cfg == nil {
 		cfg = &search.Config{}
 	}
-	if meta == nil || connector == nil {
+	if connector == nil {
 		return cfg
 	}
 
-	applyResolvedExaConfig(&cfg.Exa.BaseURL, &cfg.Exa.APIKey, meta, connector)
-	if shouldApplyExaProxyDefaults(meta) {
-		applyExaProxyDefaults(cfg, meta, connector)
+	applyResolvedExaConfig(&cfg.Exa.BaseURL, &cfg.Exa.APIKey, provider, loginCfg, connector)
+	if shouldApplyExaProxyDefaults(provider) {
+		applyExaProxyDefaults(cfg, provider, loginCfg, connector)
 	}
-	if shouldForceExaProvider(cfg.Exa.APIKey, cfg.Exa.BaseURL, meta) {
+	if shouldForceExaProvider(cfg.Exa.APIKey, cfg.Exa.BaseURL, provider) {
 		applyProviderOverride(&cfg.Provider, &cfg.Fallbacks, search.ProviderExa)
 	}
 
 	return cfg
 }
 
-func applyLoginTokensToFetchConfig(cfg *fetch.Config, meta *UserLoginMetadata, connector *OpenAIConnector) *fetch.Config {
+func applyLoginTokensToFetchConfig(cfg *fetch.Config, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) *fetch.Config {
 	if cfg == nil {
 		cfg = &fetch.Config{}
 	}
-	if meta == nil || connector == nil {
+	if connector == nil {
 		return cfg
 	}
 
-	applyResolvedExaConfig(&cfg.Exa.BaseURL, &cfg.Exa.APIKey, meta, connector)
-	if shouldApplyExaProxyDefaults(meta) {
-		applyFetchExaProxyDefaults(cfg, meta, connector)
+	applyResolvedExaConfig(&cfg.Exa.BaseURL, &cfg.Exa.APIKey, provider, loginCfg, connector)
+	if shouldApplyExaProxyDefaults(provider) {
+		applyFetchExaProxyDefaults(cfg, provider, loginCfg, connector)
 	}
-	if shouldForceExaProvider(cfg.Exa.APIKey, cfg.Exa.BaseURL, meta) {
+	if shouldForceExaProvider(cfg.Exa.APIKey, cfg.Exa.BaseURL, provider) {
 		applyProviderOverride(&cfg.Provider, &cfg.Fallbacks, fetch.ProviderExa)
 	}
 
 	return cfg
 }
 
-func applyResolvedExaConfig(baseURL *string, apiKey *string, meta *UserLoginMetadata, connector *OpenAIConnector) {
-	if meta == nil || connector == nil {
+func applyResolvedExaConfig(baseURL *string, apiKey *string, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) {
+	if connector == nil {
 		return
 	}
-	services := connector.resolveServiceConfig(meta)
+	services := connector.resolveServiceConfig(provider, loginCfg)
 	if apiKey != nil && *apiKey == "" {
 		*apiKey = services[serviceExa].APIKey
 	}
@@ -154,22 +154,19 @@ func applyResolvedExaConfig(baseURL *string, apiKey *string, meta *UserLoginMeta
 	}
 }
 
-func shouldApplyExaProxyDefaults(meta *UserLoginMetadata) bool {
-	if meta == nil {
-		return false
-	}
-	return meta.Provider == ProviderMagicProxy
+func shouldApplyExaProxyDefaults(provider string) bool {
+	return provider == ProviderMagicProxy
 }
 
-func shouldForceExaProvider(apiKey, baseURL string, meta *UserLoginMetadata) bool {
-	if isMagicProxyLogin(meta) {
+func shouldForceExaProvider(apiKey, baseURL string, provider string) bool {
+	if isMagicProxyLogin(provider) {
 		return true
 	}
 	return hasExaTokenAndCustomEndpoint(apiKey, baseURL)
 }
 
-func isMagicProxyLogin(meta *UserLoginMetadata) bool {
-	return meta != nil && meta.Provider == ProviderMagicProxy
+func isMagicProxyLogin(provider string) bool {
+	return provider == ProviderMagicProxy
 }
 
 func hasExaTokenAndCustomEndpoint(apiKey, baseURL string) bool {
@@ -196,42 +193,42 @@ func applyProviderOverride(provider *string, fallbacks *[]string, providerName s
 	}
 }
 
-func applyExaProxyDefaultsTo(baseURL *string, apiKey *string, meta *UserLoginMetadata, connector *OpenAIConnector) {
+func applyExaProxyDefaultsTo(baseURL *string, apiKey *string, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) {
 	if connector == nil {
 		return
 	}
-	proxyRoot := connector.resolveProxyRoot(meta)
+	proxyRoot := connector.resolveProxyRoot(loginCfg)
 	if proxyRoot == "" {
 		return
 	}
 	if isRelativePath(*baseURL) {
 		*baseURL = joinProxyPath(proxyRoot, *baseURL)
 	} else if shouldUseExaProxyBase(*baseURL) {
-		if proxyBase := connector.resolveExaProxyBaseURL(meta); proxyBase != "" {
+		if proxyBase := connector.resolveExaProxyBaseURL(loginCfg); proxyBase != "" {
 			*baseURL = proxyBase
 		}
 	}
 	if *apiKey == "" {
-		if meta != nil && meta.Provider == ProviderMagicProxy {
-			if token := loginCredentialAPIKey(meta); token != "" {
+		if provider == ProviderMagicProxy {
+			if token := loginCredentialAPIKey(loginCfg); token != "" {
 				*apiKey = token
 			}
 		}
 	}
 }
 
-func applyExaProxyDefaults(cfg *search.Config, meta *UserLoginMetadata, connector *OpenAIConnector) {
+func applyExaProxyDefaults(cfg *search.Config, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) {
 	if cfg == nil {
 		return
 	}
-	applyExaProxyDefaultsTo(&cfg.Exa.BaseURL, &cfg.Exa.APIKey, meta, connector)
+	applyExaProxyDefaultsTo(&cfg.Exa.BaseURL, &cfg.Exa.APIKey, provider, loginCfg, connector)
 }
 
-func applyFetchExaProxyDefaults(cfg *fetch.Config, meta *UserLoginMetadata, connector *OpenAIConnector) {
+func applyFetchExaProxyDefaults(cfg *fetch.Config, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) {
 	if cfg == nil {
 		return
 	}
-	applyExaProxyDefaultsTo(&cfg.Exa.BaseURL, &cfg.Exa.APIKey, meta, connector)
+	applyExaProxyDefaultsTo(&cfg.Exa.BaseURL, &cfg.Exa.APIKey, provider, loginCfg, connector)
 }
 
 func shouldUseExaProxyBase(baseURL string) bool {

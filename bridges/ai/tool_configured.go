@@ -44,20 +44,22 @@ func (oc *AIClient) effectiveFetchConfig(_ context.Context) *fetch.Config {
 func effectiveToolConfig[T any](
 	oc *AIClient,
 	load func(*OpenAIConnector) *T,
-	applyTokens func(*T, *UserLoginMetadata, *OpenAIConnector) *T,
+	applyTokens func(*T, string, *aiLoginConfig, *OpenAIConnector) *T,
 	withDefaults func(*T) *T,
 ) *T {
 	var cfg *T
-	var meta *UserLoginMetadata
+	var provider string
+	var loginCfg *aiLoginConfig
 	var connector *OpenAIConnector
 	if oc != nil {
 		connector = oc.connector
 		cfg = load(connector)
 		if oc.UserLogin != nil {
-			meta = oc.effectiveLoginMetadata(context.Background())
+			provider = loginMetadata(oc.UserLogin).Provider
+			loginCfg = oc.loginConfigSnapshot(context.Background())
 		}
 	}
-	cfg = applyTokens(cfg, meta, connector)
+	cfg = applyTokens(cfg, provider, loginCfg, connector)
 	return withDefaults(cfg)
 }
 

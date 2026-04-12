@@ -1,18 +1,17 @@
 package opencode
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"net/url"
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2/networkid"
+
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 func OpenCodeInstanceID(baseURL, username string) string {
 	key := strings.ToLower(strings.TrimSpace(baseURL)) + "|" + strings.ToLower(strings.TrimSpace(username))
-	hash := sha256.Sum256([]byte(key))
-	return hex.EncodeToString(hash[:8])
+	return stringutil.ShortHash(key, 8)
 }
 
 func OpenCodeManagedLauncherID(parts ...string) string {
@@ -20,13 +19,11 @@ func OpenCodeManagedLauncherID(parts ...string) string {
 	for _, part := range parts {
 		key += "|" + strings.TrimSpace(part)
 	}
-	hash := sha256.Sum256([]byte(key))
-	return hex.EncodeToString(hash[:8])
+	return stringutil.ShortHash(key, 8)
 }
 
 func OpenCodeManagedInstanceID(loginID, directory string) string {
-	hash := sha256.Sum256([]byte("managed|" + strings.TrimSpace(loginID) + "|" + strings.TrimSpace(directory)))
-	return hex.EncodeToString(hash[:8])
+	return stringutil.ShortHash("managed|"+strings.TrimSpace(loginID)+"|"+strings.TrimSpace(directory), 8)
 }
 
 func OpenCodeUserID(instanceID string) networkid.UserID {

@@ -21,19 +21,6 @@ type aiLoginConfig struct {
 	Profile              *UserProfile      `json:"profile,omitempty"`
 }
 
-func aiLoginConfigFromMetadata(meta *UserLoginMetadata) *aiLoginConfig {
-	if meta == nil {
-		return &aiLoginConfig{}
-	}
-	return &aiLoginConfig{
-		Credentials:          cloneLoginCredentials(meta.Credentials),
-		TitleGenerationModel: meta.TitleGenerationModel,
-		Agents:               cloneBoolPtr(meta.Agents),
-		Timezone:             meta.Timezone,
-		Profile:              cloneUserProfile(meta.Profile),
-	}
-}
-
 func cloneBoolPtr(src *bool) *bool {
 	if src == nil {
 		return nil
@@ -103,23 +90,10 @@ func cloneAILoginConfig(src *aiLoginConfig) *aiLoginConfig {
 	}
 }
 
-func loginMetadataView(provider string, cfg *aiLoginConfig) *UserLoginMetadata {
-	meta := &UserLoginMetadata{Provider: provider}
-	if cfg == nil {
-		return meta
-	}
-	meta.Credentials = cloneLoginCredentials(cfg.Credentials)
-	meta.TitleGenerationModel = cfg.TitleGenerationModel
-	meta.Agents = cloneBoolPtr(cfg.Agents)
-	meta.Timezone = cfg.Timezone
-	meta.Profile = cloneUserProfile(cfg.Profile)
-	return meta
-}
-
 func loadAILoginConfig(ctx context.Context, login *bridgev2.UserLogin) (*aiLoginConfig, error) {
 	db := bridgeDBFromLogin(login)
 	if db == nil || login == nil || login.Bridge == nil || login.Bridge.DB == nil {
-		return aiLoginConfigFromMetadata(loginMetadata(login)), nil
+		return &aiLoginConfig{}, nil
 	}
 	var raw string
 	err := db.QueryRow(ctx, `
@@ -217,11 +191,4 @@ func (oc *AIClient) replaceLoginConfig(ctx context.Context, cfg *aiLoginConfig) 
 	oc.loginConfig = cloneAILoginConfig(cfg)
 	oc.loginConfigMu.Unlock()
 	return saveAILoginConfig(ctx, oc.UserLogin, cfg)
-}
-
-func (oc *AIClient) effectiveLoginMetadata(ctx context.Context) *UserLoginMetadata {
-	if oc == nil || oc.UserLogin == nil {
-		return &UserLoginMetadata{}
-	}
-	return loginMetadataView(loginMetadata(oc.UserLogin).Provider, oc.loginConfigSnapshot(ctx))
 }

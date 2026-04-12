@@ -5,8 +5,6 @@ import (
 	"testing"
 
 	"github.com/rs/zerolog"
-	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -80,15 +78,14 @@ func TestPrepareStreamingRun_AgentRoomKeepsReplyTarget(t *testing.T) {
 }
 
 func TestPrepareStreamingRun_SnapshotsResponderFields(t *testing.T) {
-	oc := &AIClient{
-		connector: &OpenAIConnector{},
-		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
-			ModelCache: &ModelCache{Models: []ModelInfo{{
-				ID:            "openai/gpt-5.2",
-				ContextWindow: 400000,
-			}}},
+	oc := newTestAIClientWithProvider("")
+	oc.connector = &OpenAIConnector{}
+	setTestLoginState(oc, &loginRuntimeState{
+		ModelCache: &ModelCache{Models: []ModelInfo{{
+			ID:            "openai/gpt-5.2",
+			ContextWindow: 400000,
 		}}},
-	}
+	})
 	meta := modelModeTestMeta("openai/gpt-5.2")
 
 	prep, cleanup := oc.prepareStreamingRun(

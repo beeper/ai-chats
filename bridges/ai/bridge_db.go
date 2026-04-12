@@ -1,6 +1,8 @@
 package ai
 
 import (
+	"strings"
+
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
@@ -22,7 +24,6 @@ const (
 	aiManagedHeartbeatsTable     = "aichats_managed_heartbeats"
 	aiCronJobRunKeysTable        = "aichats_cron_job_run_keys"
 	aiHeartbeatRunKeysTable      = "aichats_managed_heartbeat_run_keys"
-	aiMessageStateTable          = "aichats_message_state"
 )
 
 func newBridgeChildDB(parent *dbutil.Database, log zerolog.Logger) *dbutil.Database {
@@ -95,4 +96,63 @@ func loginDBContext(client *AIClient) (*dbutil.Database, string, string) {
 		return nil, "", ""
 	}
 	return db, string(client.UserLogin.Bridge.DB.BridgeID), string(client.UserLogin.ID)
+}
+
+// loginScope is the shared base for all login-scoped DB access in the AI bridge.
+// It contains the database handle plus the bridgeID/loginID pair needed by every
+// _db.go file's queries. Embed or use directly instead of defining per-file structs.
+type loginScope struct {
+	db       *dbutil.Database
+	bridgeID string
+	loginID  string
+}
+
+// loginScopeForClient builds a loginScope from an AIClient, returning nil if the
+// client is not fully initialised.
+func loginScopeForClient(client *AIClient) *loginScope {
+	db, bridgeID, loginID := loginDBContext(client)
+	if db == nil || bridgeID == "" || loginID == "" {
+		return nil
+	}
+	return &loginScope{db: db, bridgeID: bridgeID, loginID: loginID}
+}
+
+// loginScopeForLogin builds a loginScope from a UserLogin, returning nil if the
+// login or its database is not available.
+func loginScopeForLogin(login *bridgev2.UserLogin) *loginScope {
+	db := bridgeDBFromLogin(login)
+	if db == nil || login.Bridge == nil || login.Bridge.DB == nil {
+		return nil
+	}
+	bridgeID := strings.TrimSpace(string(login.Bridge.DB.BridgeID))
+	loginID := strings.TrimSpace(string(login.ID))
+	if bridgeID == "" || loginID == "" {
+		return nil
+	}
+	return &loginScope{db: db, bridgeID: bridgeID, loginID: loginID}
+}
+
+// portalScope extends loginScope with a portal identifier for portal-scoped DB tables.
+type portalScope struct {
+	*loginScope
+	portalID string
+}
+
+// portalScopeForPortal builds a portalScope from a Portal, returning nil if
+// the portal or its database is not available.
+func portalScopeForPortal(portal *bridgev2.Portal) *portalScope {
+	db := bridgeDBFromPortal(portal)
+	if db == nil || portal.Bridge == nil || portal.Bridge.DB == nil {
+		return nil
+	}
+	bridgeID := strings.TrimSpace(string(portal.Bridge.DB.BridgeID))
+	loginID := strings.TrimSpace(string(portal.Receiver))
+	portalID := strings.TrimSpace(string(portal.PortalKey.ID))
+	if bridgeID == "" || loginID == "" || portalID == "" {
+		return nil
+	}
+	return &portalScope{
+		loginScope: &loginScope{db: db, bridgeID: bridgeID, loginID: loginID},
+		portalID:   portalID,
+	}
 }

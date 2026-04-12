@@ -2,8 +2,6 @@ package opencode
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +14,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/bridges/opencode/api"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	"github.com/beeper/agentremote/sdk"
 )
 
@@ -1258,8 +1257,7 @@ func opencodeMessageIDForEvent(eventID id.EventID) string {
 	if trimmed == "" {
 		return ""
 	}
-	hash := sha256.Sum256([]byte(trimmed))
-	return "msg_mx_" + hex.EncodeToString(hash[:8])
+	return "msg_mx_" + stringutil.ShortHash(trimmed, 8)
 }
 
 func findOpenCodePart(parts []api.Part, partID string) (api.Part, bool) {

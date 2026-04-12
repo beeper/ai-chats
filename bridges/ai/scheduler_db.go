@@ -6,30 +6,14 @@ import (
 	"fmt"
 	"strings"
 
-	"go.mau.fi/util/dbutil"
-
 	integrationcron "github.com/beeper/agentremote/pkg/integrations/cron"
 )
 
-type schedulerDBScope struct {
-	db       *dbutil.Database
-	bridgeID string
-	loginID  string
-}
-
-func (s *schedulerRuntime) schedulerDBScope() *schedulerDBScope {
-	if s == nil || s.client == nil || s.client.UserLogin == nil || s.client.UserLogin.Bridge == nil || s.client.UserLogin.Bridge.DB == nil {
+func (s *schedulerRuntime) schedulerDBScope() *loginScope {
+	if s == nil || s.client == nil {
 		return nil
 	}
-	db := s.client.bridgeDB()
-	if db == nil {
-		return nil
-	}
-	return &schedulerDBScope{
-		db:       db,
-		bridgeID: string(s.client.UserLogin.Bridge.DB.BridgeID),
-		loginID:  string(s.client.UserLogin.ID),
-	}
+	return loginScopeForClient(s.client)
 }
 
 func (s *schedulerRuntime) loadCronStoreLocked(ctx context.Context) (scheduledCronStore, error) {
@@ -374,19 +358,19 @@ func flattenHeartbeatActiveHours(cfg *HeartbeatActiveHoursConfig) (string, strin
 	return cfg.Start, cfg.End, cfg.Timezone
 }
 
-func loadCronRunKeys(ctx context.Context, scope *schedulerDBScope, jobID string) ([]string, error) {
+func loadCronRunKeys(ctx context.Context, scope *loginScope, jobID string) ([]string, error) {
 	return loadIndexedRunKeys(ctx, scope, aiCronJobRunKeysTable, "job_id", jobID)
 }
 
-func replaceCronRunKeys(ctx context.Context, scope *schedulerDBScope, jobID string, keys []string) error {
+func replaceCronRunKeys(ctx context.Context, scope *loginScope, jobID string, keys []string) error {
 	return replaceIndexedRunKeys(ctx, scope, aiCronJobRunKeysTable, "job_id", jobID, keys)
 }
 
-func loadHeartbeatRunKeys(ctx context.Context, scope *schedulerDBScope, agentID string) ([]string, error) {
+func loadHeartbeatRunKeys(ctx context.Context, scope *loginScope, agentID string) ([]string, error) {
 	return loadIndexedRunKeys(ctx, scope, aiHeartbeatRunKeysTable, "agent_id", agentID)
 }
 
-func replaceHeartbeatRunKeys(ctx context.Context, scope *schedulerDBScope, agentID string, keys []string) error {
+func replaceHeartbeatRunKeys(ctx context.Context, scope *loginScope, agentID string, keys []string) error {
 	return replaceIndexedRunKeys(ctx, scope, aiHeartbeatRunKeysTable, "agent_id", agentID, keys)
 }
 
@@ -442,15 +426,15 @@ func nullableBoolValue(value *bool) any {
 	return *value
 }
 
-func deleteMissingCronRows(ctx context.Context, scope *schedulerDBScope, keep map[string]struct{}) error {
+func deleteMissingCronRows(ctx context.Context, scope *loginScope, keep map[string]struct{}) error {
 	return deleteMissingScopedRows(ctx, scope, keep, aiCronJobsTable, "job_id", aiCronJobRunKeysTable)
 }
 
-func deleteMissingHeartbeatRows(ctx context.Context, scope *schedulerDBScope, keep map[string]struct{}) error {
+func deleteMissingHeartbeatRows(ctx context.Context, scope *loginScope, keep map[string]struct{}) error {
 	return deleteMissingScopedRows(ctx, scope, keep, aiManagedHeartbeatsTable, "agent_id", aiHeartbeatRunKeysTable)
 }
 
-func loadIndexedRunKeys(ctx context.Context, scope *schedulerDBScope, table, idColumn, idValue string) ([]string, error) {
+func loadIndexedRunKeys(ctx context.Context, scope *loginScope, table, idColumn, idValue string) ([]string, error) {
 	rows, err := scope.db.Query(ctx, fmt.Sprintf(`
 		SELECT run_key
 		FROM %s
@@ -473,7 +457,7 @@ func loadIndexedRunKeys(ctx context.Context, scope *schedulerDBScope, table, idC
 	return keys, rows.Err()
 }
 
-func replaceIndexedRunKeys(ctx context.Context, scope *schedulerDBScope, table, idColumn, idValue string, keys []string) error {
+func replaceIndexedRunKeys(ctx context.Context, scope *loginScope, table, idColumn, idValue string, keys []string) error {
 	if _, err := scope.db.Exec(ctx, fmt.Sprintf(`
 		DELETE FROM %s
 		WHERE bridge_id=$1 AND login_id=$2 AND %s=$3
@@ -496,7 +480,7 @@ func replaceIndexedRunKeys(ctx context.Context, scope *schedulerDBScope, table, 
 	return nil
 }
 
-func deleteMissingScopedRows(ctx context.Context, scope *schedulerDBScope, keep map[string]struct{}, entityTable, idColumn, runKeyTable string) error {
+func deleteMissingScopedRows(ctx context.Context, scope *loginScope, keep map[string]struct{}, entityTable, idColumn, runKeyTable string) error {
 	rows, err := scope.db.Query(ctx, fmt.Sprintf(
 		`SELECT %s FROM %s WHERE bridge_id=$1 AND login_id=$2`,
 		idColumn, entityTable,

@@ -1,31 +1,13 @@
 package ai
 
-import (
-	"testing"
-
-	"github.com/rs/zerolog"
-	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/bridgev2/networkid"
-)
+import "testing"
 
 func newAgentLoopRoutingTestClient(models ...ModelInfo) *AIClient {
-	login := &database.UserLogin{
-		ID: networkid.UserLoginID("login"),
-		Metadata: &UserLoginMetadata{
-			Provider: ProviderOpenAI,
-			ModelCache: &ModelCache{
-				Models: models,
-			},
-		},
-	}
-	return &AIClient{
-		UserLogin: &bridgev2.UserLogin{
-			UserLogin: login,
-			Log:       zerolog.Nop(),
-		},
-		log: zerolog.Nop(),
-	}
+	client := newTestAIClientWithProvider(ProviderOpenAI)
+	setTestLoginState(client, &loginRuntimeState{
+		ModelCache: &ModelCache{Models: models},
+	})
+	return client
 }
 
 func resolvedModelMeta(modelID string) *PortalMetadata {

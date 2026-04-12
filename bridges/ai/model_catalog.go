@@ -50,18 +50,14 @@ func modelCatalogKey(provider string, id string) string {
 	return p + "::" + m
 }
 
-func (oc *AIClient) implicitModelCatalogEntries(meta *UserLoginMetadata) []ModelCatalogEntry {
-	if meta == nil {
-		return nil
-	}
-
+func (oc *AIClient) implicitModelCatalogEntries(provider string, loginCfg *aiLoginConfig) []ModelCatalogEntry {
 	// Resolve the relevant API key for the provider.
 	var apiKey string
-	switch meta.Provider {
+	switch provider {
 	case ProviderMagicProxy, ProviderOpenRouter:
-		apiKey = oc.connector.resolveOpenRouterAPIKey(meta)
+		apiKey = oc.connector.resolveOpenRouterAPIKey(provider, loginCfg)
 	case ProviderOpenAI:
-		apiKey = oc.connector.resolveOpenAIAPIKey(meta)
+		apiKey = oc.connector.resolveOpenAIAPIKey(provider, loginCfg)
 	default:
 		return nil
 	}
@@ -70,7 +66,7 @@ func (oc *AIClient) implicitModelCatalogEntries(meta *UserLoginMetadata) []Model
 	}
 
 	// OpenAI-only logins see a filtered manifest; multi-provider logins see all models.
-	if meta.Provider == ProviderOpenAI {
+	if provider == ProviderOpenAI {
 		return modelCatalogEntriesFromManifest(func(provider string) bool {
 			return provider == ProviderOpenAI
 		})
@@ -217,12 +213,9 @@ func (oc *AIClient) derivedModelCatalogEntries() []ModelCatalogEntry {
 	if oc == nil || oc.UserLogin == nil || oc.connector == nil {
 		return nil
 	}
-	loginMeta := oc.effectiveLoginMetadata(context.Background())
-	if loginMeta == nil {
-		return nil
-	}
-
-	implicit := oc.implicitModelCatalogEntries(loginMeta)
+	provider := loginMetadata(oc.UserLogin).Provider
+	loginCfg := oc.loginConfigSnapshot(context.Background())
+	implicit := oc.implicitModelCatalogEntries(provider, loginCfg)
 	explicit := explicitModelCatalogEntries(oc.connector.Config.Models)
 	mode := defaultModelCatalogMode
 	if oc.connector != nil && oc.connector.Config.Models != nil {

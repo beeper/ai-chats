@@ -144,21 +144,12 @@ func applyProfilePayload(owner any, payload profilePayload) error {
 		profilePtr  **UserProfile
 		timezonePtr *string
 	)
-	switch v := owner.(type) {
-	case *aiLoginConfig:
-		cfg = v
-		profilePtr = &cfg.Profile
-		timezonePtr = &cfg.Timezone
-	case *UserLoginMetadata:
-		cfg = aiLoginConfigFromMetadata(v)
-		profilePtr = &v.Profile
-		timezonePtr = &v.Timezone
-	default:
-		return errors.New("missing login config")
-	}
+	cfg, _ = owner.(*aiLoginConfig)
 	if cfg == nil {
 		return errors.New("missing login config")
 	}
+	profilePtr = &cfg.Profile
+	timezonePtr = &cfg.Timezone
 	if payload.Name != nil || payload.Occupation != nil || payload.AboutUser != nil || payload.CustomInstructions != nil {
 		if *profilePtr == nil {
 			*profilePtr = &UserProfile{}

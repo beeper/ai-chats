@@ -334,7 +334,7 @@ func (ol *OpenAILogin) validateLoginMetadata(ctx context.Context, loginID networ
 		User:      ol.User,
 		Log:       ol.User.Log.With().Str("login_id", string(loginID)).Str("component", "ai-login-validation").Logger(),
 	}
-	tempClient, err := newAIClient(tempLogin, ol.Connector, ol.Connector.resolveProviderAPIKey(loginMetadataView(provider, cfg)), cfg)
+	tempClient, err := newAIClient(tempLogin, ol.Connector, ol.Connector.resolveProviderAPIKeyForConfig(provider, cfg), cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize login client: %w", err)
 	}

@@ -5,9 +5,6 @@ import (
 	"slices"
 	"testing"
 	"time"
-
-	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 )
 
 func testBuiltinToolClient(supportsToolCalling, searchConfigured, fetchConfigured bool) *AIClient {
@@ -26,7 +23,7 @@ func testBuiltinToolClient(supportsToolCalling, searchConfigured, fetchConfigure
 		Direct: ProviderDirectConfig{Enabled: boolPtr(fetchConfigured)},
 	}
 
-	return &AIClient{
+	client := &AIClient{
 		connector: &OpenAIConnector{
 			Config: Config{
 				Tools: ToolProvidersConfig{
@@ -37,17 +34,18 @@ func testBuiltinToolClient(supportsToolCalling, searchConfigured, fetchConfigure
 				},
 			},
 		},
-		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
-			ModelCache: &ModelCache{
-				Models: []ModelInfo{{
-					ID:                  "openai/gpt-5.2",
-					SupportsToolCalling: supportsToolCalling,
-				}},
-				LastRefresh:   time.Now().Unix(),
-				CacheDuration: 3600,
-			},
-		}}},
 	}
+	setTestLoginState(client, &loginRuntimeState{
+		ModelCache: &ModelCache{
+			Models: []ModelInfo{{
+				ID:                  "openai/gpt-5.2",
+				SupportsToolCalling: supportsToolCalling,
+			}},
+			LastRefresh:   time.Now().Unix(),
+			CacheDuration: 3600,
+		},
+	})
+	return client
 }
 
 func toolDefinitionNames(tools []ToolDefinition) []string {

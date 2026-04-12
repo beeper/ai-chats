@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"go.mau.fi/util/dbutil"
 )
 
 type sessionEntry struct {
@@ -30,12 +29,6 @@ type sessionStoreRef struct {
 	BridgeID string
 	LoginID  string
 	AgentID  string
-}
-
-type sessionDBScope struct {
-	db       *dbutil.Database
-	bridgeID string
-	loginID  string
 }
 
 var sessionStoreLocks sync.Map
@@ -61,16 +54,8 @@ func sessionStoreLock(ref sessionStoreRef, sessionKey string) *sync.Mutex {
 	return actual.(*sync.Mutex)
 }
 
-func (oc *AIClient) sessionDBScope() *sessionDBScope {
-	db, bridgeID, loginID := loginDBContext(oc)
-	if db == nil {
-		return nil
-	}
-	return &sessionDBScope{
-		db:       db,
-		bridgeID: bridgeID,
-		loginID:  loginID,
-	}
+func (oc *AIClient) sessionDBScope() *loginScope {
+	return loginScopeForClient(oc)
 }
 
 func sessionNullInt(value *int) any {

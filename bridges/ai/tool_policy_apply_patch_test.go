@@ -1,24 +1,16 @@
 package ai
 
-import (
-	"testing"
-
-	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
-)
+import "testing"
 
 func newTestAIClientWithConfig(cfg Config) *AIClient {
-	login := &database.UserLogin{Metadata: &UserLoginMetadata{
-		Provider: ProviderOpenAI,
+	client := newTestAIClientWithProvider(ProviderOpenAI)
+	client.connector = &OpenAIConnector{Config: cfg}
+	setTestLoginState(client, &loginRuntimeState{
 		ModelCache: &ModelCache{Models: []ModelInfo{
 			{ID: "openai/gpt-5.2", SupportsToolCalling: true},
 		}},
-	}}
-	userLogin := &bridgev2.UserLogin{UserLogin: login}
-	return &AIClient{
-		UserLogin: userLogin,
-		connector: &OpenAIConnector{Config: cfg},
-	}
+	})
+	return client
 }
 
 func TestApplyPatchAvailability_DisabledByDefault(t *testing.T) {

@@ -7,15 +7,9 @@ func TestImplicitModelCatalogEntries_MagicProxySeedsCatalog(t *testing.T) {
 		connector: &OpenAIConnector{},
 	}
 
-	// Magic Proxy logins store the API key on the login metadata.
-	meta := &UserLoginMetadata{
-		Provider: ProviderMagicProxy,
-		Credentials: &LoginCredentials{
-			APIKey: "mp-token",
-		},
-	}
-
-	entries := oc.implicitModelCatalogEntries(meta)
+	entries := oc.implicitModelCatalogEntries(ProviderMagicProxy, &aiLoginConfig{
+		Credentials: &LoginCredentials{APIKey: "mp-token"},
+	})
 	if len(entries) == 0 {
 		t.Fatalf("expected non-empty model catalog entries for magic_proxy, got 0")
 	}
@@ -25,14 +19,9 @@ func TestImplicitModelCatalogEntries_OpenAILoginUsesManifestMetadata(t *testing.
 	oc := &AIClient{
 		connector: &OpenAIConnector{},
 	}
-	meta := &UserLoginMetadata{
-		Provider: ProviderOpenAI,
-		Credentials: &LoginCredentials{
-			APIKey: "openai-token",
-		},
-	}
-
-	entries := oc.implicitModelCatalogEntries(meta)
+	entries := oc.implicitModelCatalogEntries(ProviderOpenAI, &aiLoginConfig{
+		Credentials: &LoginCredentials{APIKey: "openai-token"},
+	})
 	if len(entries) == 0 {
 		t.Fatalf("expected non-empty model catalog entries for openai, got 0")
 	}

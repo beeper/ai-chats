@@ -5,53 +5,43 @@ import (
 	"slices"
 	"testing"
 
-	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
-
 	"github.com/beeper/agentremote/pkg/agents"
 	"github.com/beeper/agentremote/sdk"
 )
 
-func newCatalogTestClient() *AIClient {
+func newCatalogTestClient(t *testing.T) *AIClient {
 	enabled := true
-	return &AIClient{
-		UserLogin: &bridgev2.UserLogin{
-			UserLogin: &database.UserLogin{
-				ID: "login-1",
-				Metadata: &UserLoginMetadata{
-					Agents: &enabled,
-					ModelCache: &ModelCache{
-						Models: []ModelInfo{{
-							ID:                  "openai/gpt-5",
-							Name:                "GPT-5",
-							SupportsToolCalling: true,
-						}},
-					},
-					CustomAgents: map[string]*AgentDefinitionContent{
-						"custom-agent": {
-							ID:          "custom-agent",
-							Name:        "Custom Agent",
-							Description: "Handles custom workflows",
-							AvatarURL:   "mxc://example.com/custom",
-							Model:       "openai/gpt-5",
-						},
-					},
-				},
-			},
+	client := newDBBackedTestAIClient(t, "")
+	client.connector = &OpenAIConnector{}
+	setTestLoginConfig(client, &aiLoginConfig{Agents: &enabled})
+	setTestLoginState(client, &loginRuntimeState{
+		ModelCache: &ModelCache{
+			Models: []ModelInfo{{
+				ID:                  "openai/gpt-5",
+				Name:                "GPT-5",
+				SupportsToolCalling: true,
+			}},
 		},
-		connector: &OpenAIConnector{},
-	}
+	})
+	seedTestCustomAgent(t, client, &AgentDefinitionContent{
+		ID:          "custom-agent",
+		Name:        "Custom Agent",
+		Description: "Handles custom workflows",
+		AvatarURL:   "mxc://example.com/custom",
+		Model:       "openai/gpt-5",
+	})
+	return client
 }
 
-func newCatalogTestClientAgentsDisabled() *AIClient {
-	client := newCatalogTestClient()
+func newCatalogTestClientAgentsDisabled(t *testing.T) *AIClient {
+	client := newCatalogTestClient(t)
 	enabled := false
-	loginMetadata(client.UserLogin).Agents = &enabled
+	setTestLoginConfig(client, &aiLoginConfig{Agents: &enabled})
 	return client
 }
 
 func TestAIAgentCatalogDefaultAgent(t *testing.T) {
-	client := newCatalogTestClient()
+	client := newCatalogTestClient(t)
 
 	agent, err := client.sdkAgentCatalog().DefaultAgent(context.Background(), client.UserLogin)
 	if err != nil {
@@ -67,7 +57,7 @@ func TestAIAgentCatalogDefaultAgent(t *testing.T) {
 }
 
 func TestAIAgentCatalogListsAndResolvesCustomAgents(t *testing.T) {
-	client := newCatalogTestClient()
+	client := newCatalogTestClient(t)
 	catalog := client.sdkAgentCatalog()
 
 	agentsList, err := catalog.ListAgents(context.Background(), client.UserLogin)
@@ -120,7 +110,7 @@ func TestAIAgentCatalogListsAndResolvesCustomAgents(t *testing.T) {
 }
 
 func TestAIAgentCatalogHidesAgentsWhenDisabled(t *testing.T) {
-	client := newCatalogTestClientAgentsDisabled()
+	client := newCatalogTestClientAgentsDisabled(t)
 	catalog := client.sdkAgentCatalog()
 
 	agent, err := catalog.DefaultAgent(context.Background(), client.UserLogin)

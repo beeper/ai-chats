@@ -11,8 +11,8 @@ func strPtr(v string) *string {
 }
 
 func TestApplyProfilePayloadSetsAndClearsFields(t *testing.T) {
-	meta := &UserLoginMetadata{}
-	err := applyProfilePayload(meta, profilePayload{
+	cfg := &aiLoginConfig{}
+	err := applyProfilePayload(cfg, profilePayload{
 		Name:               strPtr(" Batuhan "),
 		Occupation:         strPtr(" Product engineer "),
 		AboutUser:          strPtr(" Works on AI tooling "),
@@ -22,17 +22,17 @@ func TestApplyProfilePayloadSetsAndClearsFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("applyProfilePayload returned error: %v", err)
 	}
-	if meta.Profile == nil {
+	if cfg.Profile == nil {
 		t.Fatalf("expected profile to be initialized")
 	}
-	if meta.Profile.Name != "Batuhan" || meta.Profile.Occupation != "Product engineer" || meta.Profile.AboutUser != "Works on AI tooling" || meta.Profile.CustomInstructions != "Be direct" {
-		t.Fatalf("unexpected profile contents: %+v", meta.Profile)
+	if cfg.Profile.Name != "Batuhan" || cfg.Profile.Occupation != "Product engineer" || cfg.Profile.AboutUser != "Works on AI tooling" || cfg.Profile.CustomInstructions != "Be direct" {
+		t.Fatalf("unexpected profile contents: %+v", cfg.Profile)
 	}
-	if meta.Timezone != "Europe/Amsterdam" {
-		t.Fatalf("expected timezone to be stored, got %q", meta.Timezone)
+	if cfg.Timezone != "Europe/Amsterdam" {
+		t.Fatalf("expected timezone to be stored, got %q", cfg.Timezone)
 	}
 
-	err = applyProfilePayload(meta, profilePayload{
+	err = applyProfilePayload(cfg, profilePayload{
 		Name:               strPtr(""),
 		Occupation:         strPtr(""),
 		AboutUser:          strPtr(""),
@@ -42,17 +42,17 @@ func TestApplyProfilePayloadSetsAndClearsFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("applyProfilePayload clear returned error: %v", err)
 	}
-	if meta.Profile != nil {
-		t.Fatalf("expected empty profile to be cleared, got %+v", meta.Profile)
+	if cfg.Profile != nil {
+		t.Fatalf("expected empty profile to be cleared, got %+v", cfg.Profile)
 	}
-	if meta.Timezone != "" {
-		t.Fatalf("expected timezone to be cleared, got %q", meta.Timezone)
+	if cfg.Timezone != "" {
+		t.Fatalf("expected timezone to be cleared, got %q", cfg.Timezone)
 	}
 }
 
 func TestApplyProfilePayloadRejectsInvalidTimezone(t *testing.T) {
-	meta := &UserLoginMetadata{}
-	err := applyProfilePayload(meta, profilePayload{Timezone: strPtr("Mars/Olympus")})
+	cfg := &aiLoginConfig{}
+	err := applyProfilePayload(cfg, profilePayload{Timezone: strPtr("Mars/Olympus")})
 	if err == nil {
 		t.Fatal("expected invalid timezone error")
 	}

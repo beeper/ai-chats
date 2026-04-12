@@ -158,7 +158,7 @@ func (oc *AIClient) desktopAPIInstances() map[string]DesktopAPIInstance {
 	if oc == nil || oc.UserLogin == nil {
 		return instances
 	}
-	creds := loginCredentials(oc.effectiveLoginMetadata(context.Background()))
+	creds := loginCredentials(oc.loginConfigSnapshot(context.Background()))
 	if creds == nil || creds.ServiceTokens == nil {
 		return instances
 	}

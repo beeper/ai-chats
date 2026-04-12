@@ -30,7 +30,7 @@ func aiClientNeedsRebuild(existing *AIClient, key string, meta *UserLoginMetadat
 	if meta == nil {
 		meta = &UserLoginMetadata{}
 	}
-	return aiClientNeedsRebuildConfig(existing, key, meta.Provider, aiLoginConfigFromMetadata(meta))
+	return aiClientNeedsRebuildConfig(existing, key, meta.Provider, &aiLoginConfig{})
 }
 
 func aiClientNeedsRebuildConfig(existing *AIClient, key string, provider string, cfg *aiLoginConfig) bool {
@@ -104,7 +104,7 @@ func (oc *OpenAIConnector) loadAIUserLogin(ctx context.Context, login *bridgev2.
 	if err != nil {
 		return err
 	}
-	key := strings.TrimSpace(oc.resolveProviderAPIKey(loginMetadataView(meta.Provider, cfg)))
+	key := strings.TrimSpace(oc.resolveProviderAPIKeyForConfig(meta.Provider, cfg))
 	cachedAPI, existing := oc.lookupCachedAIClient(login.ID)
 	if key == "" {
 		oc.evictCachedClient(login.ID, nil)

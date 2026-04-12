@@ -55,16 +55,11 @@ func TestAgentHasUserChat(t *testing.T) {
 func TestSchedulableHeartbeatAgents_DoesNotRequirePortalListing(t *testing.T) {
 	enabled := true
 	runtime := &schedulerRuntime{
-		client: &AIClient{
-			UserLogin: &bridgev2.UserLogin{
-				UserLogin: &database.UserLogin{
-					Metadata: &UserLoginMetadata{Agents: &enabled},
-				},
-			},
-			connector: &OpenAIConnector{Config: Config{}},
-			log:       zerolog.Nop(),
-		},
+		client: newTestAIClientWithProvider(""),
 	}
+	runtime.client.connector = &OpenAIConnector{Config: Config{}}
+	runtime.client.log = zerolog.Nop()
+	setTestLoginConfig(runtime.client, &aiLoginConfig{Agents: &enabled})
 
 	agents, err := runtime.schedulableHeartbeatAgents(context.Background())
 	if err != nil {
@@ -86,7 +81,7 @@ func TestRequestHeartbeatNow_SkipsAgentsWithoutDeliveryTarget(t *testing.T) {
 	var count int
 	err := childDB.QueryRow(context.Background(), `
 		SELECT COUNT(*)
-		FROM aichats_managed_heartbeats
+		FROM `+aiManagedHeartbeatsTable+`
 		WHERE bridge_id=$1 AND login_id=$2
 	`, "bridge", "login").Scan(&count)
 	if err != nil {
@@ -127,7 +122,7 @@ func newHeartbeatSchedulerTestRuntime(t *testing.T, cfg Config) (*schedulerRunti
 	enabled := true
 	login := &database.UserLogin{
 		ID:       networkid.UserLoginID("login"),
-		Metadata: &UserLoginMetadata{Agents: &enabled},
+		Metadata: &UserLoginMetadata{},
 	}
 	userLogin := &bridgev2.UserLogin{
 		UserLogin: login,
@@ -139,6 +134,7 @@ func newHeartbeatSchedulerTestRuntime(t *testing.T, cfg Config) (*schedulerRunti
 		connector: &OpenAIConnector{Config: cfg},
 		log:       zerolog.Nop(),
 	}
+	setTestLoginConfig(client, &aiLoginConfig{Agents: &enabled})
 
 	return &schedulerRuntime{client: client}, childDB
 }

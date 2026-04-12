@@ -9,7 +9,7 @@ import (
 )
 
 func TestResolveAgentIdentifierContinuesWhenResponderResolutionFails(t *testing.T) {
-	oc := newCatalogTestClient()
+	oc := newCatalogTestClient(t)
 	agent := &agents.AgentDefinition{
 		ID:   "missing-agent",
 		Name: "Missing Agent",

@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
@@ -14,29 +13,11 @@ import (
 	"github.com/beeper/agentremote/sdk"
 )
 
-type internalPromptDBScope struct {
-	db       *dbutil.Database
-	bridgeID string
-	loginID  string
-}
-
 type internalPromptHistoryRecord struct {
 	MessageID networkid.MessageID
 	Role      string
 	Messages  []PromptMessage
 	CreatedAt int64
-}
-
-func internalPromptScope(client *AIClient) *internalPromptDBScope {
-	db, bridgeID, loginID := loginDBContext(client)
-	if db == nil || strings.TrimSpace(bridgeID) == "" || strings.TrimSpace(loginID) == "" {
-		return nil
-	}
-	return &internalPromptDBScope{
-		db:       db,
-		bridgeID: bridgeID,
-		loginID:  loginID,
-	}
 }
 
 func persistInternalPrompt(
@@ -49,7 +30,7 @@ func persistInternalPrompt(
 	source string,
 	timestamp time.Time,
 ) error {
-	scope := internalPromptScope(client)
+	scope := loginScopeForClient(client)
 	if scope == nil || portal == nil || portal.MXID == "" || eventID == "" {
 		return nil
 	}
@@ -95,7 +76,7 @@ func loadInternalPromptHistory(
 	opts historyReplayOptions,
 	resetAt int64,
 ) ([]internalPromptHistoryRecord, error) {
-	scope := internalPromptScope(client)
+	scope := loginScopeForClient(client)
 	if scope == nil || portal == nil || portal.MXID == "" || limit <= 0 {
 		return nil, nil
 	}
@@ -158,7 +139,7 @@ func loadInternalPromptHistory(
 }
 
 func hasInternalPromptHistory(ctx context.Context, client *AIClient, roomID id.RoomID) bool {
-	scope := internalPromptScope(client)
+	scope := loginScopeForClient(client)
 	if scope == nil || roomID == "" {
 		return false
 	}
@@ -172,7 +153,7 @@ func hasInternalPromptHistory(ctx context.Context, client *AIClient, roomID id.R
 }
 
 func deleteInternalPromptsForRoom(ctx context.Context, client *AIClient, roomID id.RoomID) {
-	scope := internalPromptScope(client)
+	scope := loginScopeForClient(client)
 	if scope == nil || roomID == "" {
 		return
 	}

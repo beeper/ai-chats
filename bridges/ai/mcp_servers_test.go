@@ -1,19 +1,13 @@
 package ai
 
-import (
-	"testing"
-
-	"github.com/rs/zerolog"
-	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/bridgev2/networkid"
-)
+import "testing"
 
 func testAIClientWithMCPServers(servers map[string]MCPServerConfig) *AIClient {
-	meta := &UserLoginMetadata{Credentials: &LoginCredentials{ServiceTokens: &ServiceTokens{MCPServers: servers}}}
-	login := &database.UserLogin{ID: networkid.UserLoginID("login"), Metadata: meta}
-	userLogin := &bridgev2.UserLogin{UserLogin: login, Log: zerolog.Nop()}
-	return &AIClient{UserLogin: userLogin}
+	client := newTestAIClientWithProvider("")
+	setTestLoginConfig(client, &aiLoginConfig{
+		Credentials: &LoginCredentials{ServiceTokens: &ServiceTokens{MCPServers: servers}},
+	})
+	return client
 }
 
 func TestNormalizeMCPServerKind(t *testing.T) {
