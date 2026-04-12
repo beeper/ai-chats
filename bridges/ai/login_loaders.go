@@ -26,13 +26,6 @@ func reuseAIClient(login *bridgev2.UserLogin, client *AIClient, bootstrap bool) 
 	}
 }
 
-func aiClientNeedsRebuild(existing *AIClient, key string, meta *UserLoginMetadata) bool {
-	if meta == nil {
-		meta = &UserLoginMetadata{}
-	}
-	return aiClientNeedsRebuildConfig(existing, key, meta.Provider, &aiLoginConfig{})
-}
-
 func aiClientNeedsRebuildConfig(existing *AIClient, key string, provider string, cfg *aiLoginConfig) bool {
 	if existing == nil {
 		return true

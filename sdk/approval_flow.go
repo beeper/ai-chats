@@ -1196,10 +1196,6 @@ func resolvePromptTargetMessage(
 	if primaryID != "" {
 		return primaryID
 	}
-	receiver := portal.Receiver
-	if receiver == "" {
-		receiver = login.ID
-	}
 	target := resolveApprovalPromptMessage(ctx, login, portal, prompt)
 	if target == nil {
 		return ""

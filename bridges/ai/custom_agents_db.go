@@ -10,35 +10,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 )
 
-func cloneAgentDefinitionContentMap(src map[string]*AgentDefinitionContent) map[string]*AgentDefinitionContent {
-	if len(src) == 0 {
-		return nil
-	}
-	out := make(map[string]*AgentDefinitionContent, len(src))
-	for id, agent := range src {
-		if agent == nil {
-			continue
-		}
-		data, err := json.Marshal(agent)
-		if err != nil {
-			clone := *agent
-			out[id] = &clone
-			continue
-		}
-		var clone AgentDefinitionContent
-		if err = json.Unmarshal(data, &clone); err != nil {
-			fallback := *agent
-			out[id] = &fallback
-			continue
-		}
-		out[id] = &clone
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
-}
-
 func listCustomAgentsForLogin(ctx context.Context, login *bridgev2.UserLogin) (map[string]*AgentDefinitionContent, error) {
 	scope := loginScopeForLogin(login)
 	if scope == nil {

@@ -115,20 +115,6 @@ func loadAITranscriptMessage(ctx context.Context, portal *bridgev2.Portal, messa
 	return messages[0], nil
 }
 
-func countAITranscriptMessages(ctx context.Context, portal *bridgev2.Portal) (int, error) {
-	scope := portalScopeForPortal(portal)
-	if scope == nil {
-		return 0, nil
-	}
-	var count int
-	err := scope.db.QueryRow(ctx, `
-		SELECT COUNT(*)
-		FROM `+aiTranscriptTable+`
-		WHERE bridge_id=$1 AND login_id=$2 AND portal_id=$3
-	`, scope.bridgeID, scope.loginID, scope.portalID).Scan(&count)
-	return count, err
-}
-
 func loadAITranscriptMessages(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -201,17 +187,6 @@ func loadAITranscriptMessages(
 		return nil, err
 	}
 	return out, nil
-}
-
-func deleteAITranscriptForPortal(ctx context.Context, portal *bridgev2.Portal) {
-	scope := portalScopeForPortal(portal)
-	if scope == nil {
-		return
-	}
-	execDelete(ctx, scope.db, &portal.Bridge.Log,
-		`DELETE FROM `+aiTranscriptTable+` WHERE bridge_id=$1 AND login_id=$2 AND portal_id=$3`,
-		scope.bridgeID, scope.loginID, scope.portalID,
-	)
 }
 
 func (oc *AIClient) getAIHistoryMessages(ctx context.Context, portal *bridgev2.Portal, limit int) ([]*database.Message, error) {

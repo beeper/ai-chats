@@ -71,6 +71,14 @@ func TestPreHandleApprovalReaction_LeavesSenderUnassigned(t *testing.T) {
 func TestResolveApprovalReactionTargetMessageID_UsesReplyTargetEvent(t *testing.T) {
 	login := setupApprovalReactionTestLogin(t)
 	ctx := context.Background()
+	portal := &bridgev2.Portal{
+		Portal: &database.Portal{
+			PortalKey: networkid.PortalKey{
+				ID:       networkid.PortalID("portal"),
+				Receiver: login.ID,
+			},
+		},
+	}
 
 	err := login.Bridge.DB.Message.Insert(ctx, &database.Message{
 		ID:         networkid.MessageID("assistant-msg"),
@@ -85,7 +93,7 @@ func TestResolveApprovalReactionTargetMessageID_UsesReplyTargetEvent(t *testing.
 		t.Fatalf("insert message: %v", err)
 	}
 
-	got := resolveApprovalReactionTargetMessageID(ctx, login, id.EventID("$assistant"))
+	got := resolveApprovalReactionTargetMessageID(ctx, login, portal, id.EventID("$assistant"))
 	if got != networkid.MessageID("assistant-msg") {
 		t.Fatalf("expected assistant target message id, got %q", got)
 	}
