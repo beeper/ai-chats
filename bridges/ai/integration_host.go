@@ -211,6 +211,25 @@ func (h *runtimeIntegrationHost) RecentMessages(ctx context.Context, portal *bri
 	if err != nil || len(history) == 0 {
 		return nil
 	}
+	return summarizeMessages(history)
+}
+
+func (h *runtimeIntegrationHost) SessionTranscript(ctx context.Context, portalKey networkid.PortalKey) ([]integrationruntime.MessageSummary, error) {
+	if h == nil || h.client == nil || h.client.UserLogin == nil || h.client.UserLogin.Bridge == nil || h.client.UserLogin.Bridge.DB == nil {
+		return nil, nil
+	}
+	portal, err := h.client.UserLogin.Bridge.GetPortalByKey(h.client.backgroundContext(ctx), portalKey)
+	if err != nil || portal == nil {
+		return nil, err
+	}
+	history, err := h.client.getAllAIHistoryMessages(h.client.backgroundContext(ctx), portal)
+	if err != nil || len(history) == 0 {
+		return nil, err
+	}
+	return summarizeMessages(history), nil
+}
+
+func summarizeMessages(history []*database.Message) []integrationruntime.MessageSummary {
 	out := make([]integrationruntime.MessageSummary, 0, len(history))
 	for i := len(history) - 1; i >= 0; i-- {
 		meta := messageMeta(history[i])
@@ -233,46 +252,6 @@ func (h *runtimeIntegrationHost) RecentMessages(ctx context.Context, portal *bri
 		})
 	}
 	return out
-}
-
-func (h *runtimeIntegrationHost) SessionTranscript(ctx context.Context, portalKey networkid.PortalKey) ([]integrationruntime.MessageSummary, error) {
-	if h == nil || h.client == nil || h.client.UserLogin == nil || h.client.UserLogin.Bridge == nil || h.client.UserLogin.Bridge.DB == nil {
-		return nil, nil
-	}
-	count, err := h.client.UserLogin.Bridge.DB.Message.CountMessagesInPortal(ctx, portalKey)
-	if err != nil || count <= 0 {
-		return nil, err
-	}
-	portal, err := h.client.UserLogin.Bridge.GetPortalByKey(h.client.backgroundContext(ctx), portalKey)
-	if err != nil || portal == nil {
-		return nil, err
-	}
-	history, err := h.client.getAIHistoryMessages(h.client.backgroundContext(ctx), portal, count)
-	if err != nil || len(history) == 0 {
-		return nil, err
-	}
-	out := make([]integrationruntime.MessageSummary, 0, len(history))
-	for i := len(history) - 1; i >= 0; i-- {
-		meta := messageMeta(history[i])
-		if meta == nil {
-			continue
-		}
-		role := strings.ToLower(strings.TrimSpace(meta.Role))
-		if role != "user" && role != "assistant" {
-			continue
-		}
-		text := strings.TrimSpace(meta.Body)
-		if text == "" {
-			continue
-		}
-		out = append(out, integrationruntime.MessageSummary{
-			Role:               role,
-			Body:               text,
-			AgentID:            strings.TrimSpace(meta.AgentID),
-			ExcludeFromHistory: meta.ExcludeFromHistory,
-		})
-	}
-	return out, nil
 }
 
 func (h *runtimeIntegrationHost) LastAssistantMessage(ctx context.Context, portal *bridgev2.Portal) (id string, timestamp int64) {

@@ -176,7 +176,7 @@ func deleteInternalPromptsForRoom(ctx context.Context, client *AIClient, roomID 
 	if scope == nil || roomID == "" {
 		return
 	}
-	bestEffortExec(ctx, scope.db, client.Log(),
+	execDelete(ctx, scope.db, client.Log(),
 		`DELETE FROM `+aiInternalMessagesTable+` WHERE bridge_id=$1 AND login_id=$2 AND room_id=$3`,
 		scope.bridgeID, scope.loginID, roomID.String(),
 	)

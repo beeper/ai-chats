@@ -61,7 +61,7 @@ func TestEnsureSchemaFresh(t *testing.T) {
 		"aichats_portal_state",
 		"aichats_sessions",
 		"aichats_tool_approval_rules",
-		"aichats_message_state",
+		"aichats_transcript_messages",
 	} {
 		exists, err := bridgeDB.TableExists(ctx, table)
 		if err != nil {

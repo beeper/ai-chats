@@ -70,20 +70,20 @@ func (oc *AIClient) deletePersistedSessionArtifacts(ctx context.Context, portal 
 
 	db, bridgeID, loginID := loginDBContext(oc)
 	if db != nil && bridgeID != "" && loginID != "" {
-		bestEffortExec(ctx, db, oc.Log(),
+		execDelete(ctx, db, oc.Log(),
 			`DELETE FROM `+aiSessionsTable+` WHERE bridge_id=$1 AND login_id=$2 AND session_key=$3`,
 			bridgeID, loginID, sessionKey,
 		)
-		bestEffortExec(ctx, db, oc.Log(),
-			`DELETE FROM aichats_system_events WHERE bridge_id=$1 AND login_id=$2 AND session_key=$3`,
+		execDelete(ctx, db, oc.Log(),
+			`DELETE FROM `+aiSystemEventsTable+` WHERE bridge_id=$1 AND login_id=$2 AND session_key=$3`,
 			bridgeID, loginID, sessionKey,
 		)
-		bestEffortExec(ctx, db, oc.Log(),
+		execDelete(ctx, db, oc.Log(),
 			`DELETE FROM `+aiPortalStateTable+` WHERE bridge_id=$1 AND login_id=$2 AND portal_id=$3`,
 			bridgeID, loginID, strings.TrimSpace(string(portal.PortalKey.ID)),
 		)
-		bestEffortExec(ctx, db, oc.Log(),
-			`DELETE FROM aichats_message_state WHERE bridge_id=$1 AND login_id=$2 AND room_id=$3`,
+		execDelete(ctx, db, oc.Log(),
+			`DELETE FROM `+aiTranscriptTable+` WHERE bridge_id=$1 AND login_id=$2 AND room_id=$3`,
 			bridgeID, loginID, sessionKey,
 		)
 	}

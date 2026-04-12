@@ -354,23 +354,28 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 		msgMeta = &MessageMetadata{}
 		edit.EditTarget.Metadata = msgMeta
 	}
-	state, err := loadAIMessageState(ctx, oc, portal.MXID, edit.EditTarget.ID)
+	transcriptMsg, err := loadAITranscriptMessage(ctx, oc, portal.MXID, edit.EditTarget.ID)
 	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to load edited message state")
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to load edited transcript message")
 	}
-	nextState := cloneAIMessageState(state)
-	nextState.Body = newBody
-	if msgMeta.Role == "user" {
-		shadowMeta := cloneMessageMetadata(msgMeta)
-		if shadowMeta == nil {
-			shadowMeta = &MessageMetadata{}
+	if transcriptMsg == nil {
+		transcriptMsg = cloneMessageForAIHistory(edit.EditTarget)
+	}
+	transcriptMeta, ok := transcriptMsg.Metadata.(*MessageMetadata)
+	if !ok || transcriptMeta == nil {
+		transcriptMeta = cloneMessageMetadata(msgMeta)
+		if transcriptMeta == nil {
+			transcriptMeta = &MessageMetadata{}
 		}
-		shadowMeta.Body = newBody
-		setCanonicalTurnDataFromPromptMessages(shadowMeta, []PromptMessage{newUserTextPromptMessage(newBody)})
-		nextState.CanonicalTurnData = cloneCanonicalTurnData(shadowMeta.CanonicalTurnData)
+		transcriptMsg.Metadata = transcriptMeta
 	}
-	if err := saveAIMessageState(ctx, oc, portal.MXID, edit.EditTarget.ID, nextState); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist edited message state")
+	transcriptMeta.Body = newBody
+	if msgMeta.Role == "user" {
+		setCanonicalTurnDataFromPromptMessages(transcriptMeta, []PromptMessage{newUserTextPromptMessage(newBody)})
+		transcriptMeta.CanonicalTurnData = cloneCanonicalTurnData(transcriptMeta.CanonicalTurnData)
+	}
+	if err := persistAITranscriptMessage(ctx, oc, portal, transcriptMsg); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist edited transcript message")
 	}
 	oc.notifySessionMutation(ctx, portal, meta, true)
 

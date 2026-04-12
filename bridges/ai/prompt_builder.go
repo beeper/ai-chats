@@ -1,10 +1,10 @@
 package ai
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -161,11 +161,11 @@ func (oc *AIClient) replayHistoryMessages(
 			messages: row.Messages,
 		})
 	}
-	sort.SliceStable(candidates, func(i, j int) bool {
-		if candidates[i].ts == candidates[j].ts {
-			return string(candidates[i].id) > string(candidates[j].id)
+	slices.SortStableFunc(candidates, func(a, b replayCandidate) int {
+		if a.ts != b.ts {
+			return cmp.Compare(b.ts, a.ts)
 		}
-		return candidates[i].ts > candidates[j].ts
+		return cmp.Compare(string(b.id), string(a.id))
 	})
 	if hr.limit > 0 && len(candidates) > hr.limit {
 		candidates = candidates[:hr.limit]

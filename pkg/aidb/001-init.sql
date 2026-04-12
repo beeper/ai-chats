@@ -275,15 +275,18 @@ CREATE INDEX IF NOT EXISTS idx_aichats_sessions_lookup
 CREATE INDEX IF NOT EXISTS idx_aichats_sessions_updated
   ON aichats_sessions(bridge_id, login_id, store_agent_id, updated_at_ms);
 
-CREATE TABLE IF NOT EXISTS aichats_message_state (
+CREATE TABLE IF NOT EXISTS aichats_transcript_messages (
   bridge_id TEXT NOT NULL,
   login_id TEXT NOT NULL,
   room_id TEXT NOT NULL,
   message_id TEXT NOT NULL,
-  state_json TEXT NOT NULL DEFAULT '',
+  event_id TEXT NOT NULL DEFAULT '',
+  sender_id TEXT NOT NULL DEFAULT '',
+  metadata_json TEXT NOT NULL DEFAULT '',
+  created_at_ms INTEGER NOT NULL DEFAULT 0,
   updated_at_ms INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (bridge_id, login_id, room_id, message_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_aichats_message_state_room
-  ON aichats_message_state(bridge_id, login_id, room_id, updated_at_ms);
+CREATE INDEX IF NOT EXISTS idx_aichats_transcript_room
+  ON aichats_transcript_messages(bridge_id, login_id, room_id, created_at_ms);

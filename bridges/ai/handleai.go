@@ -126,11 +126,11 @@ func bridgeStateForError(err error) (status.BridgeState, bool, bool) {
 // recordProviderError increments the consecutive error counter and escalates to a
 // bridge state warning after repeated failures.
 func (oc *AIClient) recordProviderError(ctx context.Context) {
-	state := oc.loginStateSnapshot(ctx)
-	nextErrors := state.ConsecutiveErrors + 1
+	var nextErrors int
 	_ = oc.updateLoginState(ctx, func(state *loginRuntimeState) bool {
 		state.ConsecutiveErrors++
 		state.LastErrorAt = time.Now().Unix()
+		nextErrors = state.ConsecutiveErrors
 		return true
 	})
 	const healthWarningThreshold = 5
@@ -144,18 +144,16 @@ func (oc *AIClient) recordProviderError(ctx context.Context) {
 }
 
 func (oc *AIClient) recordProviderSuccess(ctx context.Context) {
-	state := oc.loginStateSnapshot(ctx)
-	if state.ConsecutiveErrors == 0 {
-		return
-	}
-	wasUnhealthy := state.ConsecutiveErrors >= 5
+	var wasUnhealthy bool
 	_ = oc.updateLoginState(ctx, func(state *loginRuntimeState) bool {
+		if state.ConsecutiveErrors == 0 {
+			return false
+		}
+		wasUnhealthy = state.ConsecutiveErrors >= 5
 		state.ConsecutiveErrors = 0
 		state.LastErrorAt = 0
 		return true
 	})
-
-	// Restore connected state if we were in a degraded state
 	if wasUnhealthy && oc.IsLoggedIn() {
 		oc.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateConnected,

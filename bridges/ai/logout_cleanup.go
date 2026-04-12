@@ -44,19 +44,19 @@ func purgeLoginData(ctx context.Context, login *bridgev2.UserLogin) {
 		bridgeID, loginID,
 	)
 	execDelete(ctx, db, logger,
-		`DELETE FROM aichats_cron_jobs WHERE bridge_id=$1 AND login_id=$2`,
+		`DELETE FROM `+aiCronJobsTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
 	execDelete(ctx, db, logger,
-		`DELETE FROM aichats_managed_heartbeats WHERE bridge_id=$1 AND login_id=$2`,
+		`DELETE FROM `+aiManagedHeartbeatsTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
 	execDelete(ctx, db, logger,
-		`DELETE FROM aichats_system_events WHERE bridge_id=$1 AND login_id=$2`,
+		`DELETE FROM `+aiSystemEventsTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
 	execDelete(ctx, db, logger,
-		`DELETE FROM aichats_internal_messages WHERE bridge_id=$1 AND login_id=$2`,
+		`DELETE FROM `+aiInternalMessagesTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
 	execDelete(ctx, db, logger,
@@ -64,11 +64,11 @@ func purgeLoginData(ctx context.Context, login *bridgev2.UserLogin) {
 		bridgeID, loginID,
 	)
 	execDelete(ctx, db, logger,
-		`DELETE FROM aichats_tool_approval_rules WHERE bridge_id=$1 AND login_id=$2`,
+		`DELETE FROM `+aiToolApprovalRulesTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
 	execDelete(ctx, db, logger,
-		`DELETE FROM aichats_login_state WHERE bridge_id=$1 AND login_id=$2`,
+		`DELETE FROM `+aiLoginStateTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
 	execDelete(ctx, db, logger,
@@ -80,7 +80,7 @@ func purgeLoginData(ctx context.Context, login *bridgev2.UserLogin) {
 		bridgeID, loginID,
 	)
 	execDelete(ctx, db, logger,
-		`DELETE FROM aichats_message_state WHERE bridge_id=$1 AND login_id=$2`,
+		`DELETE FROM `+aiTranscriptTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
 	if client, ok := login.Client.(*AIClient); ok && client != nil {
@@ -102,8 +102,4 @@ func execDelete(ctx context.Context, db *dbutil.Database, logger *zerolog.Logger
 	if err != nil && logger != nil {
 		logger.Warn().Err(err).Msg("failed to delete login-owned AI state")
 	}
-}
-
-func bestEffortExec(ctx context.Context, db *dbutil.Database, logger *zerolog.Logger, query string, args ...any) {
-	execDelete(ctx, db, logger, query, args...)
 }

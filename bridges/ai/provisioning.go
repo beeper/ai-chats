@@ -702,34 +702,34 @@ func connectMCPServer(ctx context.Context, client *AIClient, name string, tokenO
 	if !mcpServerHasTarget(cfg) {
 		return namedMCPServer{}, 0, errors.New("mcp server target is required")
 	}
-	if mcpServerNeedsToken(cfg) && cfg.Token == "" {
-		cfg.Connected = false
-		loginCfg := client.loginConfigSnapshot(ctx)
+	loginCfg := client.loginConfigSnapshot(ctx)
+	saveCfg := func() error {
 		setLoginMCPServer(loginCfg, target.Name, cfg)
 		if err = client.replaceLoginConfig(ctx, loginCfg); err != nil {
-			return namedMCPServer{}, 0, err
+			return err
 		}
 		client.invalidateMCPToolCache()
+		return nil
+	}
+	if mcpServerNeedsToken(cfg) && cfg.Token == "" {
+		cfg.Connected = false
+		if err = saveCfg(); err != nil {
+			return namedMCPServer{}, 0, err
+		}
 		return namedMCPServer{Name: target.Name, Config: cfg, Source: "login"}, 0, errors.New("mcp server token is required")
 	}
 	cfg.Connected = true
 	count, connectErr := client.verifyMCPServerConnection(ctx, namedMCPServer{Name: target.Name, Config: cfg, Source: "login"})
 	if connectErr != nil {
 		cfg.Connected = false
-		loginCfg := client.loginConfigSnapshot(ctx)
-		setLoginMCPServer(loginCfg, target.Name, cfg)
-		if err = client.replaceLoginConfig(ctx, loginCfg); err != nil {
+		if err = saveCfg(); err != nil {
 			return namedMCPServer{}, 0, err
 		}
-		client.invalidateMCPToolCache()
 		return namedMCPServer{Name: target.Name, Config: cfg, Source: "login"}, 0, connectErr
 	}
-	loginCfg := client.loginConfigSnapshot(ctx)
-	setLoginMCPServer(loginCfg, target.Name, cfg)
-	if err = client.replaceLoginConfig(ctx, loginCfg); err != nil {
+	if err = saveCfg(); err != nil {
 		return namedMCPServer{}, 0, err
 	}
-	client.invalidateMCPToolCache()
 	return namedMCPServer{Name: target.Name, Config: cfg, Source: "login"}, count, nil
 }
 

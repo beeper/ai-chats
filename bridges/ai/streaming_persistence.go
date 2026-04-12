@@ -7,6 +7,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
@@ -130,6 +131,31 @@ func (oc *AIClient) saveAssistantMessage(
 		Metadata:         fullMeta,
 		Logger:           log,
 	})
+	messageID := networkMessageID
+	if messageID == "" && initialEventID != "" {
+		messageID = sdk.MatrixMessageID(initialEventID)
+	}
+	if messageID != "" && portal != nil {
+		transcriptMsg := &database.Message{
+			ID:   messageID,
+			MXID: initialEventID,
+			Room: portal.PortalKey,
+			SenderID: func() networkid.UserID {
+				if state.respondingGhostID != "" {
+					return networkid.UserID(state.respondingGhostID)
+				}
+				return modelUserID(oc.effectiveModel(meta))
+			}(),
+			Metadata:  cloneMessageMetadata(fullMeta),
+			Timestamp: time.UnixMilli(state.completedAtMs),
+		}
+		if transcriptMsg.Timestamp.IsZero() {
+			transcriptMsg.Timestamp = time.Now()
+		}
+		if err := persistAITranscriptMessage(ctx, oc, portal, transcriptMsg); err != nil {
+			log.Warn().Err(err).Str("msg_id", string(messageID)).Msg("Failed to persist assistant transcript message")
+		}
+	}
 	oc.noteStreamingPersistenceSideEffects(ctx, portal, state, meta)
 }
 
