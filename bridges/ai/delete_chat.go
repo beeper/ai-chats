@@ -27,7 +27,6 @@ func (oc *AIClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2.Ma
 	if sessionKey != "" {
 		oc.deletePersistedSessionArtifacts(ctx, sessionKey)
 	}
-	oc.forgetDeletedPortalReferences(ctx, portal)
 
 	if meta != nil {
 		oc.notifySessionMutation(ctx, portal, meta, false)
@@ -83,28 +82,4 @@ func (oc *AIClient) deletePersistedSessionArtifacts(ctx context.Context, session
 	deleteInternalPromptsForRoom(ctx, oc, id.RoomID(sessionKey))
 
 	clearSystemEventsForSession(systemEventsOwnerKey(oc), sessionKey)
-}
-
-func (oc *AIClient) forgetDeletedPortalReferences(ctx context.Context, portal *bridgev2.Portal) {
-	if oc == nil || oc.UserLogin == nil || portal == nil {
-		return
-	}
-	roomID := strings.TrimSpace(portal.MXID.String())
-	portalID := strings.TrimSpace(string(portal.PortalKey.ID))
-	_ = oc.updateLoginState(ctx, func(state *loginRuntimeState) bool {
-		changed := false
-		if portalID != "" && state.DefaultChatPortalID == portalID {
-			state.DefaultChatPortalID = ""
-			changed = true
-		}
-		if roomID != "" && len(state.LastActiveRoomByAgent) > 0 {
-			for agentID, activeRoomID := range state.LastActiveRoomByAgent {
-				if activeRoomID == roomID {
-					delete(state.LastActiveRoomByAgent, agentID)
-					changed = true
-				}
-			}
-		}
-		return changed
-	})
 }

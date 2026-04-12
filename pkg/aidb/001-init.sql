@@ -201,14 +201,24 @@ CREATE TABLE IF NOT EXISTS aichats_login_state (
   bridge_id TEXT NOT NULL,
   login_id TEXT NOT NULL,
   next_chat_index INTEGER NOT NULL DEFAULT 0,
-  default_chat_portal_id TEXT NOT NULL DEFAULT '',
-  chats_synced INTEGER NOT NULL DEFAULT 0,
-  tool_approvals_json TEXT NOT NULL DEFAULT '',
-  last_active_room_by_agent_json TEXT NOT NULL DEFAULT '',
   last_heartbeat_event_json TEXT NOT NULL DEFAULT '',
   updated_at_ms INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (bridge_id, login_id)
 );
+
+CREATE TABLE IF NOT EXISTS aichats_tool_approval_rules (
+  bridge_id TEXT NOT NULL,
+  login_id TEXT NOT NULL,
+  tool_kind TEXT NOT NULL,
+  server_label TEXT NOT NULL DEFAULT '',
+  tool_name TEXT NOT NULL,
+  action TEXT NOT NULL DEFAULT '',
+  created_at_ms INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (bridge_id, login_id, tool_kind, server_label, tool_name, action)
+);
+
+CREATE INDEX IF NOT EXISTS idx_aichats_tool_approval_rules_lookup
+  ON aichats_tool_approval_rules(bridge_id, login_id, tool_kind, tool_name);
 
 CREATE TABLE IF NOT EXISTS agentremote_sessions (
   bridge_id TEXT NOT NULL,

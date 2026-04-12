@@ -62,6 +62,10 @@ func purgeLoginDataBestEffort(ctx context.Context, login *bridgev2.UserLogin) {
 		bridgeID, loginID,
 	)
 	bestEffortExec(ctx, db, logger,
+		`DELETE FROM aichats_tool_approval_rules WHERE bridge_id=$1 AND login_id=$2`,
+		bridgeID, loginID,
+	)
+	bestEffortExec(ctx, db, logger,
 		`DELETE FROM aichats_login_state WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)

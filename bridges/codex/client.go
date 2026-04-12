@@ -1803,7 +1803,7 @@ func (cc *CodexClient) sendPendingStatus(ctx context.Context, portal *bridgev2.P
 		Message:   message,
 		IsCertain: true,
 	}
-	bridgesdk.SendEventMessageStatus(ctx, portal, evt, st)
+	agentremote.SendMatrixMessageStatus(ctx, portal, evt, st)
 }
 
 func (cc *CodexClient) markMessageSendSuccess(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, state *streamingState) {
@@ -1811,7 +1811,7 @@ func (cc *CodexClient) markMessageSendSuccess(ctx context.Context, portal *bridg
 		return
 	}
 	st := bridgev2.MessageStatus{Status: event.MessageStatusSuccess, IsCertain: true}
-	bridgesdk.SendEventMessageStatus(ctx, portal, evt, st)
+	agentremote.SendMatrixMessageStatus(ctx, portal, evt, st)
 }
 
 func (cc *CodexClient) acquireRoomIfQueueEmpty(roomID id.RoomID) bool {

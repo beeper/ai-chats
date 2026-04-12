@@ -92,29 +92,6 @@ type MCPServerConfig struct {
 	Kind      string   `json:"kind,omitempty"` // generic
 }
 
-// ToolApprovalsConfig stores per-login persisted tool approval rules.
-// This is used by the tool approval system to support "always allow" decisions.
-type ToolApprovalsConfig struct {
-	// MCPAlwaysAllow contains exact-match allow rules for MCP approvals.
-	// Matching is done on normalized (trim + lowercase) server label + tool name.
-	MCPAlwaysAllow []MCPAlwaysAllowRule `json:"mcp_always_allow,omitempty"`
-
-	// BuiltinAlwaysAllow contains exact-match allow rules for builtin tool approvals.
-	// Matching is done on normalized (trim + lowercase) tool name + action.
-	// Action "" means "any action".
-	BuiltinAlwaysAllow []BuiltinAlwaysAllowRule `json:"builtin_always_allow,omitempty"`
-}
-
-type MCPAlwaysAllowRule struct {
-	ServerLabel string `json:"server_label,omitempty"`
-	ToolName    string `json:"tool_name,omitempty"`
-}
-
-type BuiltinAlwaysAllowRule struct {
-	ToolName string `json:"tool_name,omitempty"`
-	Action   string `json:"action,omitempty"`
-}
-
 // UserLoginMetadata is stored on each login row to keep per-user settings.
 type UserLoginMetadata struct {
 	Provider             string            `json:"provider,omitempty"` // Selected provider (beeper, openai, openrouter)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/beeper/agentremote"
 	"maunium.net/go/mautrix/bridgev2"
 )
 
@@ -61,7 +62,7 @@ func RefreshPortalLifecycle(ctx context.Context, opts PortalLifecycleOptions) {
 		opts.Portal.UpdateCapabilities(ctx, opts.Login, true)
 	}
 	if opts.AIRoomKind != "" {
-		SendAIRoomInfo(ctx, opts.Portal, opts.AIRoomKind)
+		agentremote.SendAIRoomInfo(ctx, opts.Portal, opts.AIRoomKind)
 	}
 	if opts.RefreshExtra != nil {
 		opts.RefreshExtra(ctx, opts.Portal)

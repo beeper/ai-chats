@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"strings"
 	"time"
@@ -10,11 +11,8 @@ import (
 )
 
 type loginRuntimeState struct {
-	NextChatIndex         int
-	DefaultChatPortalID   string
-	ToolApprovals         *ToolApprovalsConfig
-	LastActiveRoomByAgent map[string]string
-	LastHeartbeatEvent    *HeartbeatEventPayload
+	NextChatIndex      int
+	LastHeartbeatEvent *HeartbeatEventPayload
 }
 
 type loginStateScope struct {
@@ -48,33 +46,9 @@ func cloneLoginRuntimeState(in *loginRuntimeState) *loginRuntimeState {
 		return &loginRuntimeState{}
 	}
 	return &loginRuntimeState{
-		NextChatIndex:         in.NextChatIndex,
-		DefaultChatPortalID:   in.DefaultChatPortalID,
-		ToolApprovals:         cloneToolApprovalsConfig(in.ToolApprovals),
-		LastActiveRoomByAgent: cloneStringMap(in.LastActiveRoomByAgent),
-		LastHeartbeatEvent:    cloneHeartbeatEvent(in.LastHeartbeatEvent),
+		NextChatIndex:      in.NextChatIndex,
+		LastHeartbeatEvent: cloneHeartbeatEvent(in.LastHeartbeatEvent),
 	}
-}
-
-func cloneStringMap(in map[string]string) map[string]string {
-	if len(in) == 0 {
-		return nil
-	}
-	out := make(map[string]string, len(in))
-	for key, value := range in {
-		out[key] = value
-	}
-	return out
-}
-
-func cloneToolApprovalsConfig(in *ToolApprovalsConfig) *ToolApprovalsConfig {
-	if in == nil {
-		return nil
-	}
-	copy := *in
-	copy.MCPAlwaysAllow = append([]MCPAlwaysAllowRule(nil), in.MCPAlwaysAllow...)
-	copy.BuiltinAlwaysAllow = append([]BuiltinAlwaysAllowRule(nil), in.BuiltinAlwaysAllow...)
-	return &copy
 }
 
 func parseHeartbeatEvent(raw string) (*HeartbeatEventPayload, error) {
@@ -87,30 +61,6 @@ func parseHeartbeatEvent(raw string) (*HeartbeatEventPayload, error) {
 		return nil, err
 	}
 	return &evt, nil
-}
-
-func parseToolApprovals(raw string) (*ToolApprovalsConfig, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return nil, nil
-	}
-	var cfg ToolApprovalsConfig
-	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
-		return nil, err
-	}
-	return &cfg, nil
-}
-
-func parseStringMap(raw string) (map[string]string, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return nil, nil
-	}
-	var out map[string]string
-	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func marshalJSONOrEmpty(v any) (string, error) {
@@ -133,37 +83,24 @@ func loadLoginRuntimeState(ctx context.Context, client *AIClient) (*loginRuntime
 		return &loginRuntimeState{}, nil
 	}
 	state := &loginRuntimeState{}
-	var defaultChatPortalID, toolApprovalsJSON, lastActiveRoomByAgentJSON, lastHeartbeatEventJSON string
+	var lastHeartbeatEventJSON string
 	err := scope.db.QueryRow(ctx, `
-		SELECT next_chat_index, default_chat_portal_id, tool_approvals_json, last_active_room_by_agent_json, last_heartbeat_event_json
+		SELECT next_chat_index, last_heartbeat_event_json
 		FROM aichats_login_state
 		WHERE bridge_id=$1 AND login_id=$2
 	`, scope.bridgeID, scope.loginID).Scan(
 		&state.NextChatIndex,
-		&defaultChatPortalID,
-		&toolApprovalsJSON,
-		&lastActiveRoomByAgentJSON,
 		&lastHeartbeatEventJSON,
 	)
+	if err == sql.ErrNoRows {
+		return state, nil
+	}
 	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "no rows") {
-			return state, nil
-		}
 		return nil, err
 	}
-	var parseErr error
-	state.DefaultChatPortalID = strings.TrimSpace(defaultChatPortalID)
-	state.ToolApprovals, parseErr = parseToolApprovals(toolApprovalsJSON)
-	if parseErr != nil {
-		return nil, parseErr
-	}
-	state.LastActiveRoomByAgent, parseErr = parseStringMap(lastActiveRoomByAgentJSON)
-	if parseErr != nil {
-		return nil, parseErr
-	}
-	state.LastHeartbeatEvent, parseErr = parseHeartbeatEvent(lastHeartbeatEventJSON)
-	if parseErr != nil {
-		return nil, parseErr
+	state.LastHeartbeatEvent, err = parseHeartbeatEvent(lastHeartbeatEventJSON)
+	if err != nil {
+		return nil, err
 	}
 	return state, nil
 }
@@ -173,33 +110,20 @@ func saveLoginRuntimeState(ctx context.Context, client *AIClient, state *loginRu
 	if scope == nil || state == nil {
 		return nil
 	}
-	toolApprovalsJSON, err := marshalJSONOrEmpty(state.ToolApprovals)
-	if err != nil {
-		return err
-	}
-	lastActiveRoomByAgentJSON, err := marshalJSONOrEmpty(state.LastActiveRoomByAgent)
-	if err != nil {
-		return err
-	}
 	lastHeartbeatEventJSON, err := marshalJSONOrEmpty(state.LastHeartbeatEvent)
 	if err != nil {
 		return err
 	}
 	_, err = scope.db.Exec(ctx, `
 		INSERT INTO aichats_login_state (
-			bridge_id, login_id, next_chat_index, default_chat_portal_id, tool_approvals_json,
-			last_active_room_by_agent_json, last_heartbeat_event_json, updated_at_ms
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			bridge_id, login_id, next_chat_index, last_heartbeat_event_json, updated_at_ms
+		) VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (bridge_id, login_id) DO UPDATE SET
 			next_chat_index=excluded.next_chat_index,
-			default_chat_portal_id=excluded.default_chat_portal_id,
-			tool_approvals_json=excluded.tool_approvals_json,
-			last_active_room_by_agent_json=excluded.last_active_room_by_agent_json,
 			last_heartbeat_event_json=excluded.last_heartbeat_event_json,
 			updated_at_ms=excluded.updated_at_ms
 	`,
-		scope.bridgeID, scope.loginID, state.NextChatIndex, strings.TrimSpace(state.DefaultChatPortalID), toolApprovalsJSON,
-		lastActiveRoomByAgentJSON, lastHeartbeatEventJSON, time.Now().UnixMilli(),
+		scope.bridgeID, scope.loginID, state.NextChatIndex, lastHeartbeatEventJSON, time.Now().UnixMilli(),
 	)
 	return err
 }
