@@ -18,7 +18,6 @@ type aiPersistedPortalState struct {
 	AckReactionRemoveAfter  bool             `json:"ack_reaction_remove_after,omitempty"`
 	PDFConfig               *PDFConfig       `json:"pdf_config,omitempty"`
 	Slug                    string           `json:"slug,omitempty"`
-	Title                   string           `json:"title,omitempty"`
 	TitleGenerated          bool             `json:"title_generated,omitempty"`
 	WelcomeSent             bool             `json:"welcome_sent,omitempty"`
 	AutoGreetingSent        bool             `json:"auto_greeting_sent,omitempty"`
@@ -59,7 +58,6 @@ func persistedPortalStateFromMeta(meta *PortalMetadata) *aiPersistedPortalState 
 		AckReactionRemoveAfter:  meta.AckReactionRemoveAfter,
 		PDFConfig:               pdfConfig,
 		Slug:                    meta.Slug,
-		Title:                   meta.Title,
 		TitleGenerated:          meta.TitleGenerated,
 		WelcomeSent:             meta.WelcomeSent,
 		AutoGreetingSent:        meta.AutoGreetingSent,
@@ -89,7 +87,6 @@ func applyPersistedPortalState(meta *PortalMetadata, state *aiPersistedPortalSta
 		meta.PDFConfig = nil
 	}
 	meta.Slug = state.Slug
-	meta.Title = state.Title
 	meta.TitleGenerated = state.TitleGenerated
 	meta.WelcomeSent = state.WelcomeSent
 	meta.AutoGreetingSent = state.AutoGreetingSent

@@ -18,8 +18,6 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
-
-	"github.com/beeper/agentremote/pkg/matrixevents"
 )
 
 const AIRoomKindAgent = "agent"
@@ -451,21 +449,10 @@ func ApplyAgentRemoteBridgeInfo(content *event.BridgeEventContent, protocolID st
 }
 
 func SendAIRoomInfo(ctx context.Context, portal *bridgev2.Portal, aiKind string) bool {
-	if portal == nil || portal.MXID == "" || portal.Bridge == nil || portal.Bridge.Bot == nil {
-		return false
-	}
-	if aiKind == "" {
-		aiKind = AIRoomKindAgent
-	}
-	_, err := portal.Bridge.Bot.SendState(ctx, portal.MXID, matrixevents.AIRoomInfoEventType, "", &event.Content{
-		Parsed: map[string]any{"type": aiKind},
-		Raw:    map[string]any{"com.beeper.exclude_from_timeline": true},
-	}, time.Now())
-	if err != nil {
-		zerolog.Ctx(ctx).Err(err).Msg("Failed to send AI room info state event")
-		return false
-	}
-	return true
+	_ = ctx
+	_ = portal
+	_ = aiKind
+	return false
 }
 
 // findExistingMessage performs a two-phase message lookup: first by network

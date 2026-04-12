@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/commands"
@@ -77,24 +76,14 @@ func registerCommands[SessionT SessionValue, ConfigDataT ConfigValue](br *bridge
 	proc.AddHandlers(handlers...)
 }
 
-// BroadcastCommandDescriptions sends MSC4391 command-description state events
-// for all SDK commands into the given room.
+// BroadcastCommandDescriptions intentionally does nothing. AI bridge commands
+// remain discoverable through the bridge command processor without publishing
+// extra room state events.
 func BroadcastCommandDescriptions(ctx context.Context, portal *bridgev2.Portal, bot bridgev2.MatrixAPI, cmds []Command) {
-	if portal == nil || portal.MXID == "" || bot == nil || len(cmds) == 0 {
-		return
-	}
-	for _, cmd := range cmds {
-		content := &cmdschema.EventContent{
-			Command:     cmd.Name,
-			Description: event.MakeExtensibleText(cmd.Description),
-		}
-		if cmd.Args != "" {
-			content.Parameters, content.TailParam = buildSDKCommandParameters(cmd.Args)
-		}
-		_, _ = bot.SendState(ctx, portal.MXID, event.StateMSC4391BotCommand, cmd.Name, &event.Content{
-			Parsed: content,
-		}, time.Time{})
-	}
+	_ = ctx
+	_ = portal
+	_ = bot
+	_ = cmds
 }
 
 func buildSDKCommandParameters(argsStr string) ([]*cmdschema.Parameter, string) {

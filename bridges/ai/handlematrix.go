@@ -384,10 +384,12 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist edited transcript message")
 	}
 	if edit.EditTarget != nil {
+		// Keep the bridgev2 row transport-only. Edited transcript content stays in
+		// the AI transcript table.
 		edit.EditTarget.Metadata = &MessageMetadata{}
 		if oc.UserLogin != nil && oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.DB != nil && oc.UserLogin.Bridge.DB.Message != nil {
 			if err := oc.UserLogin.Bridge.DB.Message.Update(ctx, edit.EditTarget); err != nil {
-				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to mirror edited transcript metadata into bridge message")
+				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to clear bridge message metadata after edit")
 			}
 		}
 	}

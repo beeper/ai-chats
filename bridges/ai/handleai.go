@@ -453,7 +453,6 @@ func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Por
 
 		meta := portalMeta(portal)
 		if meta != nil {
-			meta.Title = title
 			meta.TitleGenerated = true
 		}
 		oc.applyPortalRoomName(bgCtx, portal, title)

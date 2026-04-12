@@ -39,9 +39,6 @@ func (oc *AIClient) materializePortalRoom(
 		},
 		AIRoomKind:        integrationPortalAIKind(portalMeta(portal)),
 		ForceCapabilities: true,
-		RefreshExtra: func(ctx context.Context, portal *bridgev2.Portal) {
-			oc.BroadcastCommandDescriptions(ctx, portal)
-		},
 	})
 	if err != nil {
 		return err

@@ -1406,7 +1406,7 @@ func executeSessionStatus(ctx context.Context, args map[string]any) (string, err
 
 	// Build session info
 	sessionID := string(btc.Portal.PortalKey.ID)
-	title := meta.Title
+	title := strings.TrimSpace(btc.Portal.Name)
 	if title == "" {
 		title = meta.Slug
 	}

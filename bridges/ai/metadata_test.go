@@ -109,8 +109,8 @@ func TestPersistedPortalStateRoundTrip(t *testing.T) {
 	if clone.AckReactionEmoji != orig.AckReactionEmoji || !clone.AckReactionRemoveAfter || clone.PDFConfig == nil {
 		t.Fatalf("unexpected restored state: %#v", clone)
 	}
-	if clone.Slug != orig.Slug || clone.Title != orig.Title || !clone.TitleGenerated {
-		t.Fatalf("expected title fields to round-trip: %#v", clone)
+	if clone.Slug != orig.Slug || clone.Title != "" || !clone.TitleGenerated {
+		t.Fatalf("expected only AI-owned portal state to round-trip: %#v", clone)
 	}
 	if clone.SessionBootstrapByAgent["beeper"] != 789 {
 		t.Fatalf("expected bootstrap map to round-trip, got %#v", clone.SessionBootstrapByAgent)

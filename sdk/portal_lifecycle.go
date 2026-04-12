@@ -60,9 +60,6 @@ func RefreshPortalLifecycle(ctx context.Context, opts PortalLifecycleOptions) {
 	if opts.ForceCapabilities && opts.Login != nil {
 		opts.Portal.UpdateCapabilities(ctx, opts.Login, true)
 	}
-	if opts.AIRoomKind != "" {
-		SendAIRoomInfo(ctx, opts.Portal, opts.AIRoomKind)
-	}
 	if opts.RefreshExtra != nil {
 		opts.RefreshExtra(ctx, opts.Portal)
 	}

@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"cmp"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -620,7 +621,8 @@ func (oc *AIClient) sendQueueRejectedStatus(ctx context.Context, portal *bridgev
 	}
 }
 
-// saveUserMessage persists a user message to the database.
+// saveUserMessage persists a user message to the bridge mapping tables and
+// stores the full AI payload in the AI-owned transcript table.
 func (oc *AIClient) saveUserMessage(ctx context.Context, evt *event.Event, msg *database.Message) {
 	if evt != nil {
 		msg.MXID = evt.ID
@@ -643,31 +645,6 @@ func (oc *AIClient) saveUserMessage(ctx context.Context, evt *event.Event, msg *
 	if err := persistAITranscriptMessage(ctx, oc, portal, msg); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist AI transcript message")
 	}
-}
-
-func (oc *AIClient) updateBridgeMessageMetadata(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	messageID networkid.MessageID,
-	eventID id.EventID,
-	meta *MessageMetadata,
-) error {
-	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil || oc.UserLogin.Bridge.DB.Message == nil || meta == nil {
-		return nil
-	}
-	var existing *database.Message
-	var err error
-	if portal != nil && messageID != "" {
-		existing, err = oc.loadPortalMessagePartByID(ctx, portal, messageID, networkid.PartID("0"))
-	}
-	if existing == nil && eventID != "" {
-		existing, err = oc.loadPortalMessagePartByMXID(ctx, portal, eventID)
-	}
-	if err != nil || existing == nil {
-		return err
-	}
-	existing.Metadata = &MessageMetadata{}
-	return oc.UserLogin.Bridge.DB.Message.Update(ctx, existing)
 }
 
 // dispatchOrQueueCore contains shared dispatch/steer/queue logic.
@@ -996,7 +973,7 @@ func (oc *AIClient) agentUserID(agentID string) networkid.UserID {
 
 func (oc *AIClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	meta := portalMeta(portal)
-	return sdk.BuildChatInfoWithFallback(meta.Title, portal.Name, "AI Chat", portal.Topic), nil
+	return sdk.BuildChatInfoWithFallback("", portal.Name, cmp.Or(strings.TrimSpace(meta.Slug), "AI Chat"), portal.Topic), nil
 }
 
 func (oc *AIClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
@@ -1744,9 +1721,6 @@ func (oc *AIClient) updateAssistantGeneratedFiles(ctx context.Context, portal *b
 		if err := persistAITranscriptMessage(ctx, oc, portal, transcriptMsg); err != nil {
 			oc.Log().Warn().Err(err).Str("msg_id", string(msg.ID)).Msg("Failed to persist assistant transcript GeneratedFiles")
 		} else {
-			if err := oc.updateBridgeMessageMetadata(ctx, portal, msg.ID, msg.MXID, transcriptMeta); err != nil {
-				oc.Log().Warn().Err(err).Str("msg_id", string(msg.ID)).Msg("Failed to mirror assistant GeneratedFiles into bridge message metadata")
-			}
 			oc.Log().Debug().Str("msg_id", string(msg.ID)).Int("files", len(refs)).Msg("Updated assistant transcript GeneratedFiles")
 		}
 		return

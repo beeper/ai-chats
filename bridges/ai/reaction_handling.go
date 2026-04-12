@@ -3,6 +3,7 @@ package ai
 import (
 	"cmp"
 	"context"
+	"strings"
 	"time"
 
 	"go.mau.fi/util/variationselector"
@@ -107,9 +108,12 @@ func portalRoomName(portal *bridgev2.Portal) string {
 	if portal == nil {
 		return ""
 	}
+	if name := strings.TrimSpace(portal.Name); name != "" {
+		return name
+	}
 	meta := portalMeta(portal)
 	if meta == nil {
 		return ""
 	}
-	return cmp.Or(meta.Title, meta.Slug)
+	return strings.TrimSpace(cmp.Or(meta.Slug, meta.Title))
 }

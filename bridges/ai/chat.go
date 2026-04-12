@@ -695,8 +695,7 @@ func cloneForkPortalMetadata(src *PortalMetadata, slug, title string) *PortalMet
 		return nil
 	}
 	clone := &PortalMetadata{
-		Slug:  slug,
-		Title: title,
+		Slug: slug,
 	}
 	if src.ResolvedTarget != nil {
 		target := *src.ResolvedTarget
@@ -740,8 +739,7 @@ func (oc *AIClient) initPortalForChat(ctx context.Context, opts PortalInitOpts) 
 		pmeta = cloneForkPortalMetadata(opts.CopyFrom, slug, title)
 	} else {
 		pmeta = &PortalMetadata{
-			Slug:  slug,
-			Title: title,
+			Slug: slug,
 		}
 	}
 	portal.Metadata = pmeta
@@ -948,10 +946,10 @@ func (oc *AIClient) createAndOpenModelChat(ctx context.Context, portal *bridgev2
 func (oc *AIClient) chatInfoFromPortal(ctx context.Context, portal *bridgev2.Portal) *bridgev2.ChatInfo {
 	meta := portalMeta(portal)
 	modelID := oc.effectiveModel(meta)
-	title := meta.Title
+	title := strings.TrimSpace(portal.Name)
 	if title == "" {
-		if portal.Name != "" {
-			title = portal.Name
+		if slug := strings.TrimSpace(meta.Slug); slug != "" {
+			title = slug
 		} else {
 			title = modelContactName(modelID, oc.findModelInfo(modelID))
 		}
@@ -1057,7 +1055,6 @@ func (oc *AIClient) applyAgentChatInfo(ctx context.Context, chatInfo *bridgev2.C
 // BroadcastRoomState refreshes standard Matrix room capabilities and command descriptions.
 func (oc *AIClient) BroadcastRoomState(ctx context.Context, portal *bridgev2.Portal) error {
 	portal.UpdateCapabilities(ctx, oc.UserLogin, true)
-	oc.BroadcastCommandDescriptions(ctx, portal)
 	return nil
 }
 

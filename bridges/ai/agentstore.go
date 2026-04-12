@@ -526,10 +526,7 @@ func (b *BossStoreAdapter) CreateRoom(ctx context.Context, room tools.RoomData) 
 	}
 
 	// Apply custom room name if provided.
-	pm := portalMeta(portal)
-
 	if room.Name != "" {
-		pm.Title = room.Name
 		b.client.applyPortalRoomName(ctx, portal, room.Name)
 		if resp.PortalInfo != nil {
 			resp.PortalInfo.Name = &room.Name
@@ -559,7 +556,6 @@ func (b *BossStoreAdapter) ModifyRoom(ctx context.Context, roomID string, update
 
 	// Apply updates
 	if updates.Name != "" {
-		pm.Title = updates.Name
 		b.client.applyPortalRoomName(ctx, portal, updates.Name)
 	}
 	if updates.AgentID != "" {
@@ -591,7 +587,7 @@ func (b *BossStoreAdapter) ListRooms(ctx context.Context) ([]tools.RoomData, err
 		pm := portalMeta(portal)
 		name := portal.Name
 		if name == "" {
-			name = pm.Title
+			name = pm.Slug
 		}
 		roomID := string(portal.PortalKey.ID)
 		if portal.MXID != "" {

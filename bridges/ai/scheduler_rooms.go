@@ -108,9 +108,6 @@ func (s *schedulerRuntime) getOrCreateScheduledPortal(ctx context.Context, porta
 		SaveBeforeCreate:  true,
 		AIRoomKind:        integrationPortalAIKind(meta),
 		ForceCapabilities: true,
-		RefreshExtra: func(ctx context.Context, portal *bridgev2.Portal) {
-			s.client.BroadcastCommandDescriptions(ctx, portal)
-		},
 	})
 	if err != nil {
 		return nil, err

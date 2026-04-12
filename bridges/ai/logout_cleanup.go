@@ -48,7 +48,15 @@ func purgeLoginData(ctx context.Context, login *bridgev2.UserLogin) {
 		bridgeID, loginID,
 	)
 	execDelete(ctx, db, logger,
+		`DELETE FROM `+aiCronJobRunKeysTable+` WHERE bridge_id=$1 AND login_id=$2`,
+		bridgeID, loginID,
+	)
+	execDelete(ctx, db, logger,
 		`DELETE FROM `+aiManagedHeartbeatsTable+` WHERE bridge_id=$1 AND login_id=$2`,
+		bridgeID, loginID,
+	)
+	execDelete(ctx, db, logger,
+		`DELETE FROM `+aiHeartbeatRunKeysTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
 	execDelete(ctx, db, logger,

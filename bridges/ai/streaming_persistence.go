@@ -117,6 +117,8 @@ func (oc *AIClient) saveAssistantMessage(
 		initialEventID = turn.InitialEventID()
 	}
 
+	// Keep the bridgev2 message row as a mapping row only. Full assistant state
+	// belongs in AI-owned transcript tables.
 	sdk.UpsertAssistantMessage(ctx, sdk.UpsertAssistantMessageParams{
 		Login:  oc.UserLogin,
 		Portal: portal,
@@ -128,7 +130,7 @@ func (oc *AIClient) saveAssistantMessage(
 		}(),
 		NetworkMessageID: networkMessageID,
 		InitialEventID:   initialEventID,
-		Metadata:         fullMeta,
+		Metadata:         &MessageMetadata{},
 		Logger:           log,
 	})
 	messageID := networkMessageID
@@ -158,9 +160,6 @@ func (oc *AIClient) saveAssistantMessage(
 		}
 		if err := persistAITranscriptMessage(ctx, oc, portal, transcriptMsg); err != nil {
 			log.Warn().Err(err).Str("msg_id", string(messageID)).Msg("Failed to persist assistant transcript message")
-		}
-		if err := oc.updateBridgeMessageMetadata(ctx, portal, messageID, initialEventID, fullMeta); err != nil {
-			log.Warn().Err(err).Str("msg_id", string(messageID)).Msg("Failed to trim bridge assistant message metadata")
 		}
 	}
 	oc.noteStreamingPersistenceSideEffects(ctx, portal, state, meta)

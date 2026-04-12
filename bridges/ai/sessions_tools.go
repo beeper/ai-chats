@@ -467,13 +467,13 @@ func isForbiddenSessionSendError(errText string) bool {
 }
 
 func resolveSessionLabel(portal *bridgev2.Portal, meta *PortalMetadata) string {
-	if meta != nil {
-		if strings.TrimSpace(meta.Title) != "" {
-			return strings.TrimSpace(meta.Title)
-		}
-	}
 	if portal != nil && strings.TrimSpace(portal.Name) != "" {
 		return strings.TrimSpace(portal.Name)
+	}
+	if meta != nil {
+		if strings.TrimSpace(meta.Slug) != "" {
+			return strings.TrimSpace(meta.Slug)
+		}
 	}
 	return ""
 }
@@ -483,7 +483,7 @@ func resolveSessionDisplayName(portal *bridgev2.Portal, meta *PortalMetadata) st
 		return strings.TrimSpace(portal.Name)
 	}
 	if meta != nil {
-		return strings.TrimSpace(meta.Title)
+		return strings.TrimSpace(meta.Slug)
 	}
 	return ""
 }
