@@ -35,11 +35,11 @@ func gravatarHash(email string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-func ensureGravatarState(meta *UserLoginMetadata) *GravatarState {
-	if meta.Gravatar == nil {
-		meta.Gravatar = &GravatarState{}
+func ensureGravatarState(cfg *aiLoginConfig) *GravatarState {
+	if cfg.Gravatar == nil {
+		cfg.Gravatar = &GravatarState{}
 	}
-	return meta.Gravatar
+	return cfg.Gravatar
 }
 
 func fetchGravatarProfile(ctx context.Context, email string) (*GravatarProfile, error) {
@@ -182,9 +182,9 @@ func formatGravatarScalar(value any) string {
 }
 
 func (oc *AIClient) gravatarContext() string {
-	loginMeta := loginMetadata(oc.UserLogin)
-	if loginMeta == nil || loginMeta.Gravatar == nil || loginMeta.Gravatar.Primary == nil {
+	loginCfg := oc.loginConfigSnapshot(context.Background())
+	if loginCfg == nil || loginCfg.Gravatar == nil || loginCfg.Gravatar.Primary == nil {
 		return ""
 	}
-	return formatGravatarMarkdown(loginMeta.Gravatar.Primary, "primary")
+	return formatGravatarMarkdown(loginCfg.Gravatar.Primary, "primary")
 }

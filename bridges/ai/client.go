@@ -278,6 +278,8 @@ type AIClient struct {
 	bootstrapOnce sync.Once // Ensures bootstrap only runs once per client instance
 	loginStateMu  sync.Mutex
 	loginState    *loginRuntimeState
+	loginConfigMu sync.Mutex
+	loginConfig   *aiLoginConfig
 
 	// Turn-based message queuing: only one response per room at a time
 	activeRooms   map[id.RoomID]bool
@@ -379,13 +381,12 @@ type pendingMessage struct {
 	Typing          *TypingContext
 }
 
-func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey string) (*AIClient, error) {
+func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey string, cfg *aiLoginConfig) (*AIClient, error) {
 	key := strings.TrimSpace(apiKey)
 	if key == "" {
 		return nil, errors.New("missing API key")
 	}
 
-	// Get per-user credentials from login metadata
 	meta := login.Metadata.(*UserLoginMetadata)
 	log := login.Log.With().Str("component", "ai-network").Str("provider", meta.Provider).Logger()
 	log.Info().Msg("Initializing AI client")
@@ -403,6 +404,7 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 		groupHistoryBuffers: make(map[id.RoomID]*groupHistoryBuffer),
 		userTypingState:     make(map[id.RoomID]userTypingState),
 		queueTyping:         make(map[id.RoomID]*TypingController),
+		loginConfig:         cloneAILoginConfig(cfg),
 	}
 	oc.InitClientBase(login, oc)
 	oc.HumanUserIDPrefix = "openai-user"
@@ -442,7 +444,7 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 
 	// Initialize provider based on login metadata.
 	// All providers use the OpenAI SDK with different base URLs.
-	provider, err := initProviderForLogin(key, meta, connector, login, log)
+	provider, err := initProviderForLoginConfig(key, meta.Provider, cfg, connector, login, log)
 	if err != nil {
 		return nil, err
 	}
@@ -487,12 +489,19 @@ func initProviderForLogin(key string, meta *UserLoginMetadata, connector *OpenAI
 	if meta == nil {
 		return nil, errors.New("login metadata is required")
 	}
-	switch meta.Provider {
+	return initProviderForLoginConfig(key, meta.Provider, aiLoginConfigFromMetadata(meta), connector, login, log)
+}
+
+func initProviderForLoginConfig(key string, providerID string, cfg *aiLoginConfig, connector *OpenAIConnector, login *bridgev2.UserLogin, log zerolog.Logger) (*OpenAIProvider, error) {
+	if strings.TrimSpace(providerID) == "" {
+		return nil, errors.New("login provider is required")
+	}
+	switch providerID {
 	case ProviderOpenRouter:
 		return initOpenRouterProvider(key, connector.resolveOpenRouterBaseURL(), "", connector.defaultPDFEngineForInit(), ProviderOpenRouter, log)
 
 	case ProviderMagicProxy:
-		baseURL := normalizeProxyBaseURL(loginCredentialBaseURL(meta))
+		baseURL := normalizeProxyBaseURL(loginCredentialBaseURL(cfg))
 		if baseURL == "" {
 			return nil, errors.New("magic proxy base_url is required")
 		}
@@ -501,13 +510,13 @@ func initProviderForLogin(key string, meta *UserLoginMetadata, connector *OpenAI
 	case ProviderOpenAI:
 		openaiURL := connector.resolveOpenAIBaseURL()
 		log.Info().
-			Str("provider", meta.Provider).
+			Str("provider", providerID).
 			Str("openai_url", openaiURL).
 			Msg("Initializing AI provider endpoint")
 		return NewOpenAIProviderWithBaseURL(key, openaiURL, log)
 
 	default:
-		return nil, fmt.Errorf("unsupported provider: %s", meta.Provider)
+		return nil, fmt.Errorf("unsupported provider: %s", providerID)
 	}
 }
 
@@ -923,9 +932,8 @@ func (oc *AIClient) Disconnect() {
 }
 
 func (oc *AIClient) LogoutRemote(ctx context.Context) {
-	// Best-effort: remove per-login data not covered by bridgev2's user_login/portal/message cleanup.
 	if oc != nil && oc.UserLogin != nil {
-		purgeLoginDataBestEffort(ctx, oc.UserLogin)
+		purgeLoginData(ctx, oc.UserLogin)
 	}
 
 	oc.Disconnect()
@@ -1224,13 +1232,10 @@ func (oc *AIClient) profilePromptSupplement() string {
 	if oc == nil || oc.UserLogin == nil {
 		return strings.TrimSpace(oc.gravatarContext())
 	}
-	loginMeta := loginMetadata(oc.UserLogin)
-	if loginMeta == nil {
-		return strings.TrimSpace(oc.gravatarContext())
-	}
+	loginCfg := oc.loginConfigSnapshot(context.Background())
 
 	var lines []string
-	if profile := loginMeta.Profile; profile != nil {
+	if profile := loginCfg.Profile; profile != nil {
 		if v := strings.TrimSpace(profile.Name); v != "" {
 			lines = append(lines, "Name: "+v)
 		}
@@ -1615,13 +1620,13 @@ func resolveModelIDFromManifest(modelID string) string {
 // listAvailableModels loads models from the derived catalog and caches them.
 // The implicit catalog is fed from the OpenRouter-backed manifest.
 func (oc *AIClient) listAvailableModels(ctx context.Context, forceRefresh bool) ([]ModelInfo, error) {
-	meta := loginMetadata(oc.UserLogin)
+	cfg := oc.loginConfigSnapshot(ctx)
 
 	// Check cache (refresh every 6 hours unless forced)
-	if !forceRefresh && meta.ModelCache != nil {
-		age := time.Now().Unix() - meta.ModelCache.LastRefresh
-		if age < meta.ModelCache.CacheDuration {
-			return meta.ModelCache.Models, nil
+	if !forceRefresh && cfg.ModelCache != nil {
+		age := time.Now().Unix() - cfg.ModelCache.LastRefresh
+		if age < cfg.ModelCache.CacheDuration {
+			return cfg.ModelCache.Models, nil
 		}
 	}
 
@@ -1629,17 +1634,17 @@ func (oc *AIClient) listAvailableModels(ctx context.Context, forceRefresh bool) 
 	allModels := oc.loadModelCatalogModels(ctx)
 
 	// Update cache
-	if meta.ModelCache == nil {
-		meta.ModelCache = &ModelCache{
+	if cfg.ModelCache == nil {
+		cfg.ModelCache = &ModelCache{
 			CacheDuration: int64(oc.connector.Config.ModelCacheDuration.Seconds()),
 		}
 	}
-	meta.ModelCache.Models = allModels
-	meta.ModelCache.LastRefresh = time.Now().Unix()
+	cfg.ModelCache.Models = allModels
+	cfg.ModelCache.LastRefresh = time.Now().Unix()
 
 	// Save metadata when the login is backed by a persisted row.
 	if oc.UserLogin != nil && oc.UserLogin.UserLogin != nil && oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.DB != nil {
-		if err := saveAIUserLogin(ctx, oc.UserLogin); err != nil {
+		if err := oc.replaceLoginConfig(ctx, cfg); err != nil {
 			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to save model cache")
 		}
 	}
@@ -1650,11 +1655,11 @@ func (oc *AIClient) listAvailableModels(ctx context.Context, forceRefresh bool) 
 
 // findModelInfo looks up ModelInfo from the user's model cache by ID
 func (oc *AIClient) findModelInfo(modelID string) *ModelInfo {
-	meta := loginMetadata(oc.UserLogin)
-	if meta != nil && meta.ModelCache != nil {
-		for i := range meta.ModelCache.Models {
-			if meta.ModelCache.Models[i].ID == modelID {
-				return &meta.ModelCache.Models[i]
+	cfg := oc.loginConfigSnapshot(context.Background())
+	if cfg != nil && cfg.ModelCache != nil {
+		for i := range cfg.ModelCache.Models {
+			if cfg.ModelCache.Models[i].ID == modelID {
+				return &cfg.ModelCache.Models[i]
 			}
 		}
 	}

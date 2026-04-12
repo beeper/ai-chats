@@ -1,4 +1,4 @@
-# AgentRemote CLI
+# AgentRemote Manager
 
 `./tools/bridges` is the local entrypoint for `agentremote`.
 

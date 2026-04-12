@@ -10,6 +10,6 @@ import (
 // best-effort login data purge on logout.
 func newBrokenLoginClient(login *bridgev2.UserLogin, reason string) *sdk.BrokenLoginClient {
 	c := sdk.NewBrokenLoginClient(login, reason)
-	c.OnLogout = purgeLoginDataBestEffort
+	c.OnLogout = purgeLoginData
 	return c
 }

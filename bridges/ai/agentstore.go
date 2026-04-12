@@ -21,10 +21,10 @@ import (
 	"github.com/beeper/agentremote/sdk"
 )
 
-// AgentStoreAdapter implements agents.AgentStore with UserLogin metadata as source of truth.
+// AgentStoreAdapter implements agents.AgentStore with AI-owned login-scoped tables.
 type AgentStoreAdapter struct {
 	client *AIClient
-	mu     sync.RWMutex // protects custom agent metadata reads and writes
+	mu     sync.RWMutex
 }
 
 func NewAgentStoreAdapter(client *AIClient) *AgentStoreAdapter {
@@ -32,14 +32,16 @@ func NewAgentStoreAdapter(client *AIClient) *AgentStoreAdapter {
 }
 
 // LoadAgents implements agents.AgentStore.
-// It loads agents from presets and metadata-backed custom agents.
-func (s *AgentStoreAdapter) LoadAgents(_ context.Context) (map[string]*agents.AgentDefinition, error) {
+// It loads agents from presets and login-owned custom agent tables.
+func (s *AgentStoreAdapter) LoadAgents(ctx context.Context) (map[string]*agents.AgentDefinition, error) {
 	// Start with preset agents
 	result := make(map[string]*agents.AgentDefinition)
 
-	// Resolve login metadata for provider gating
-	loginMeta := loginMetadata(s.client.UserLogin)
-	isMagicProxyProvider := loginMeta != nil && loginMeta.Provider == ProviderMagicProxy
+	provider := ""
+	if s != nil && s.client != nil && s.client.UserLogin != nil {
+		provider = loginMetadata(s.client.UserLogin).Provider
+	}
+	isMagicProxyProvider := provider == ProviderMagicProxy
 
 	// Add all presets
 	for _, preset := range agents.PresetAgents {
@@ -52,70 +54,48 @@ func (s *AgentStoreAdapter) LoadAgents(_ context.Context) (map[string]*agents.Ag
 	// Add boss agent
 	result[agents.BossAgent.ID] = agents.BossAgent.Clone()
 
-	for id, content := range s.loadCustomAgentsFromMetadata() {
+	customAgents, err := s.loadCustomAgents(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for id, content := range customAgents {
 		result[id] = FromAgentDefinitionContent(content)
 	}
 
 	return result, nil
 }
 
-func (s *AgentStoreAdapter) loadCustomAgentsFromMetadata() map[string]*AgentDefinitionContent {
+func (s *AgentStoreAdapter) loadCustomAgents(ctx context.Context) (map[string]*AgentDefinitionContent, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	meta := loginMetadata(s.client.UserLogin)
-	if meta == nil || len(meta.CustomAgents) == 0 {
-		return nil
+	if s == nil || s.client == nil || s.client.UserLogin == nil {
+		return nil, nil
 	}
-	result := make(map[string]*AgentDefinitionContent, len(meta.CustomAgents))
-	for id, agent := range meta.CustomAgents {
-		if agent == nil {
-			continue
-		}
-		result[id] = agent
-	}
-	return result
+	return listCustomAgentsForLogin(ctx, s.client.UserLogin)
 }
 
-func (s *AgentStoreAdapter) loadCustomAgentFromMetadata(agentID string) *AgentDefinitionContent {
+func (s *AgentStoreAdapter) loadCustomAgent(ctx context.Context, agentID string) (*AgentDefinitionContent, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	meta := loginMetadata(s.client.UserLogin)
-	if meta == nil || meta.CustomAgents == nil {
-		return nil
+	if s == nil || s.client == nil || s.client.UserLogin == nil {
+		return nil, nil
 	}
-	return meta.CustomAgents[agentID]
+	return loadCustomAgentForLogin(ctx, s.client.UserLogin, agentID)
 }
 
-func (s *AgentStoreAdapter) saveAgentToMetadata(ctx context.Context, agent *AgentDefinitionContent) error {
+func (s *AgentStoreAdapter) saveAgent(ctx context.Context, agent *AgentDefinitionContent) error {
 	if agent == nil {
 		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	meta := loginMetadata(s.client.UserLogin)
-	if meta.CustomAgents == nil {
-		meta.CustomAgents = map[string]*AgentDefinitionContent{}
-	}
-	meta.CustomAgents[agent.ID] = agent
-	return saveAIUserLogin(ctx, s.client.UserLogin)
+	return saveCustomAgentForLogin(ctx, s.client.UserLogin, agent)
 }
 
-func (s *AgentStoreAdapter) deleteAgentFromMetadata(ctx context.Context, agentID string) error {
+func (s *AgentStoreAdapter) deleteAgent(ctx context.Context, agentID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	meta := loginMetadata(s.client.UserLogin)
-	if meta.CustomAgents == nil {
-		return nil
-	}
-	if _, ok := meta.CustomAgents[agentID]; !ok {
-		return nil
-	}
-	delete(meta.CustomAgents, agentID)
-	return saveAIUserLogin(ctx, s.client.UserLogin)
+	return deleteCustomAgentForLogin(ctx, s.client.UserLogin, agentID)
 }
 
 // SaveAgent implements agents.AgentStore.
@@ -130,11 +110,11 @@ func (s *AgentStoreAdapter) SaveAgent(ctx context.Context, agent *agents.AgentDe
 
 	content := ToAgentDefinitionContent(agent)
 
-	if err := s.saveAgentToMetadata(ctx, content); err != nil {
-		return fmt.Errorf("failed to save custom agent to metadata store: %w", err)
+	if err := s.saveAgent(ctx, content); err != nil {
+		return fmt.Errorf("failed to save custom agent to login state: %w", err)
 	}
 
-	s.client.log.Info().Str("agent_id", agent.ID).Str("name", agent.Name).Msg("Saved custom agent to metadata store")
+	s.client.log.Info().Str("agent_id", agent.ID).Str("name", agent.Name).Msg("Saved custom agent")
 	return nil
 }
 
@@ -145,15 +125,19 @@ func (s *AgentStoreAdapter) DeleteAgent(ctx context.Context, agentID string) err
 		return agents.ErrAgentIsPreset
 	}
 
-	if s.loadCustomAgentFromMetadata(agentID) == nil {
+	existing, err := s.loadCustomAgent(ctx, agentID)
+	if err != nil {
+		return fmt.Errorf("failed to load custom agent: %w", err)
+	}
+	if existing == nil {
 		return agents.ErrAgentNotFound
 	}
 
-	if err := s.deleteAgentFromMetadata(ctx, agentID); err != nil {
-		return fmt.Errorf("failed to delete custom agent from metadata store: %w", err)
+	if err := s.deleteAgent(ctx, agentID); err != nil {
+		return fmt.Errorf("failed to delete custom agent from login state: %w", err)
 	}
 
-	s.client.log.Info().Str("agent_id", agentID).Msg("Deleted custom agent from metadata store")
+	s.client.log.Info().Str("agent_id", agentID).Msg("Deleted custom agent")
 	return nil
 }
 

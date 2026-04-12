@@ -126,30 +126,34 @@ func bridgeStateForError(err error) (status.BridgeState, bool, bool) {
 // recordProviderError increments the consecutive error counter and escalates to a
 // bridge state warning after repeated failures.
 func (oc *AIClient) recordProviderError(ctx context.Context) {
-	meta := loginMetadata(oc.UserLogin)
-	meta.ConsecutiveErrors++
-	meta.LastErrorAt = time.Now().Unix()
-	_ = saveAIUserLogin(ctx, oc.UserLogin)
-
+	cfg := oc.loginConfigSnapshot(ctx)
+	nextErrors := cfg.ConsecutiveErrors + 1
+	_ = oc.updateLoginConfig(ctx, func(state *aiLoginConfig) bool {
+		state.ConsecutiveErrors++
+		state.LastErrorAt = time.Now().Unix()
+		return true
+	})
 	const healthWarningThreshold = 5
-	if meta.ConsecutiveErrors >= healthWarningThreshold {
+	if nextErrors >= healthWarningThreshold {
 		oc.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateTransientDisconnect,
 			Error:      AIProviderError,
-			Message:    fmt.Sprintf("The AI provider failed %d requests in a row", meta.ConsecutiveErrors),
+			Message:    fmt.Sprintf("The AI provider failed %d requests in a row", nextErrors),
 		})
 	}
 }
 
 func (oc *AIClient) recordProviderSuccess(ctx context.Context) {
-	meta := loginMetadata(oc.UserLogin)
-	if meta.ConsecutiveErrors == 0 {
+	cfg := oc.loginConfigSnapshot(ctx)
+	if cfg.ConsecutiveErrors == 0 {
 		return
 	}
-	wasUnhealthy := meta.ConsecutiveErrors >= 5
-	meta.ConsecutiveErrors = 0
-	meta.LastErrorAt = 0
-	_ = saveAIUserLogin(ctx, oc.UserLogin)
+	wasUnhealthy := cfg.ConsecutiveErrors >= 5
+	_ = oc.updateLoginConfig(ctx, func(state *aiLoginConfig) bool {
+		state.ConsecutiveErrors = 0
+		state.LastErrorAt = 0
+		return true
+	})
 
 	// Restore connected state if we were in a degraded state
 	if wasUnhealthy && oc.IsLoggedIn() {

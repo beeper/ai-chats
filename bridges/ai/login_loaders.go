@@ -27,22 +27,24 @@ func reuseAIClient(login *bridgev2.UserLogin, client *AIClient, bootstrap bool) 
 }
 
 func aiClientNeedsRebuild(existing *AIClient, key string, meta *UserLoginMetadata) bool {
+	if meta == nil {
+		meta = &UserLoginMetadata{}
+	}
+	return aiClientNeedsRebuildConfig(existing, key, meta.Provider, aiLoginConfigFromMetadata(meta))
+}
+
+func aiClientNeedsRebuildConfig(existing *AIClient, key string, provider string, cfg *aiLoginConfig) bool {
 	if existing == nil {
 		return true
 	}
-	existingMeta := loginMetadata(existing.UserLogin)
 	existingProvider := ""
 	existingBaseURL := ""
-	if existingMeta != nil {
-		existingProvider = strings.TrimSpace(existingMeta.Provider)
-		existingBaseURL = stringutil.NormalizeBaseURL(loginCredentialBaseURL(existingMeta))
+	if existing.UserLogin != nil {
+		existingProvider = strings.TrimSpace(loginMetadata(existing.UserLogin).Provider)
 	}
-	targetProvider := ""
-	targetBaseURL := ""
-	if meta != nil {
-		targetProvider = strings.TrimSpace(meta.Provider)
-		targetBaseURL = stringutil.NormalizeBaseURL(loginCredentialBaseURL(meta))
-	}
+	existingBaseURL = stringutil.NormalizeBaseURL(loginCredentialBaseURL(existing.loginConfigSnapshot(context.Background())))
+	targetProvider := strings.TrimSpace(provider)
+	targetBaseURL := stringutil.NormalizeBaseURL(loginCredentialBaseURL(cfg))
 	return existing.apiKey != key ||
 		!strings.EqualFold(existingProvider, targetProvider) ||
 		existingBaseURL != targetBaseURL
@@ -98,10 +100,11 @@ func (oc *OpenAIConnector) loadAIUserLogin(ctx context.Context, login *bridgev2.
 	if login == nil {
 		return nil
 	}
-	if err := loadAIUserLoginConfig(ctx, login, meta); err != nil {
+	cfg, err := loadAILoginConfig(ctx, login)
+	if err != nil {
 		return err
 	}
-	key := strings.TrimSpace(oc.resolveProviderAPIKey(meta))
+	key := strings.TrimSpace(oc.resolveProviderAPIKey(loginMetadataView(meta.Provider, cfg)))
 	cachedAPI, existing := oc.lookupCachedAIClient(login.ID)
 	if key == "" {
 		oc.evictCachedClient(login.ID, nil)
@@ -109,7 +112,7 @@ func (oc *OpenAIConnector) loadAIUserLogin(ctx context.Context, login *bridgev2.
 		return nil
 	}
 
-	if existing != nil && !aiClientNeedsRebuild(existing, key, meta) {
+	if existing != nil && !aiClientNeedsRebuildConfig(existing, key, meta.Provider, cfg) {
 		reuseAIClient(login, existing, true)
 		return nil
 	}
@@ -118,7 +121,7 @@ func (oc *OpenAIConnector) loadAIUserLogin(ctx context.Context, login *bridgev2.
 		oc.evictCachedClient(login.ID, cachedAPI)
 	}
 
-	client, err := newAIClient(login, oc, key)
+	client, err := newAIClient(login, oc, key, cfg)
 	if err != nil {
 		// Keep the existing client if rebuilding failed.
 		if existing != nil {

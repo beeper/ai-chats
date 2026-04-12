@@ -1663,9 +1663,9 @@ func executeGravatarFetch(ctx context.Context, args map[string]any) (string, err
 		email = strings.TrimSpace(raw)
 	}
 	if email == "" {
-		loginMeta := loginMetadata(btc.Client.UserLogin)
-		if loginMeta != nil && loginMeta.Gravatar != nil && loginMeta.Gravatar.Primary != nil {
-			email = loginMeta.Gravatar.Primary.Email
+		loginCfg := btc.Client.loginConfigSnapshot(ctx)
+		if loginCfg != nil && loginCfg.Gravatar != nil && loginCfg.Gravatar.Primary != nil {
+			email = loginCfg.Gravatar.Primary.Email
 		}
 	}
 	if email == "" {
@@ -1695,10 +1695,10 @@ func executeGravatarSet(ctx context.Context, args map[string]any) (string, error
 		return "", err
 	}
 
-	loginMeta := loginMetadata(btc.Client.UserLogin)
-	state := ensureGravatarState(loginMeta)
+	loginCfg := btc.Client.loginConfigSnapshot(ctx)
+	state := ensureGravatarState(loginCfg)
 	state.Primary = profile
-	if err := saveAIUserLogin(ctx, btc.Client.UserLogin); err != nil {
+	if err := btc.Client.replaceLoginConfig(ctx, loginCfg); err != nil {
 		return "", fmt.Errorf("couldn't save the Gravatar profile: %w", err)
 	}
 

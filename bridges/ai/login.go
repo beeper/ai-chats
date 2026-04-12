@@ -210,14 +210,22 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 	}
 
 	meta := &UserLoginMetadata{}
+	cfg := &aiLoginConfig{}
 	if override != nil {
 		meta, err = cloneUserLoginMetadata(loginMetadata(override))
 		if err != nil {
 			return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to clone relogin metadata: %w", err), http.StatusInternalServerError, "AI", "CLONE_RELOGIN_METADATA_FAILED")
 		}
+		cfg, err = loadAILoginConfig(ctx, override)
+		if err != nil {
+			return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to load relogin config: %w", err), http.StatusInternalServerError, "AI", "LOAD_RELOGIN_CONFIG_FAILED")
+		}
 	}
 	if meta == nil {
 		meta = &UserLoginMetadata{}
+	}
+	if cfg == nil {
+		cfg = &aiLoginConfig{}
 	}
 	meta.Provider = provider
 	creds := &LoginCredentials{
@@ -228,11 +236,11 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 		creds.ServiceTokens = cloneServiceTokens(serviceTokens)
 	}
 	if loginCredentialsEmpty(creds) {
-		meta.Credentials = nil
+		cfg.Credentials = nil
 	} else {
-		meta.Credentials = creds
+		cfg.Credentials = creds
 	}
-	if err := ol.validateLoginMetadata(ctx, loginID, meta); err != nil {
+	if err := ol.validateLoginMetadata(ctx, loginID, meta.Provider, cfg); err != nil {
 		return nil, err
 	}
 
@@ -244,7 +252,7 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 	if err != nil {
 		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to create login: %w", err), http.StatusInternalServerError, "AI", "CREATE_LOGIN_FAILED")
 	}
-	if err = saveAIUserLogin(ctx, login); err != nil {
+	if err = saveAILoginConfig(ctx, login, cfg); err != nil {
 		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to persist login config: %w", err), http.StatusInternalServerError, "AI", "SAVE_LOGIN_FAILED")
 	}
 
@@ -311,14 +319,14 @@ func (ol *OpenAILogin) resolveLoginTarget(ctx context.Context, provider string) 
 	return loginID, ordinal, nil
 }
 
-func (ol *OpenAILogin) validateLoginMetadata(ctx context.Context, loginID networkid.UserLoginID, meta *UserLoginMetadata) error {
-	if ol == nil || ol.User == nil || ol.Connector == nil || meta == nil {
+func (ol *OpenAILogin) validateLoginMetadata(ctx context.Context, loginID networkid.UserLoginID, provider string, cfg *aiLoginConfig) error {
+	if ol == nil || ol.User == nil || ol.Connector == nil {
 		return nil
 	}
 	tempDBLogin := &database.UserLogin{
 		ID:       loginID,
 		UserMXID: ol.User.MXID,
-		Metadata: meta,
+		Metadata: &UserLoginMetadata{Provider: provider},
 	}
 	tempLogin := &bridgev2.UserLogin{
 		UserLogin: tempDBLogin,
@@ -326,7 +334,7 @@ func (ol *OpenAILogin) validateLoginMetadata(ctx context.Context, loginID networ
 		User:      ol.User,
 		Log:       ol.User.Log.With().Str("login_id", string(loginID)).Str("component", "ai-login-validation").Logger(),
 	}
-	tempClient, err := newAIClient(tempLogin, ol.Connector, ol.Connector.resolveProviderAPIKey(meta))
+	tempClient, err := newAIClient(tempLogin, ol.Connector, ol.Connector.resolveProviderAPIKey(loginMetadataView(provider, cfg)), cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize login client: %w", err)
 	}

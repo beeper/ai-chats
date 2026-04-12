@@ -92,62 +92,75 @@ type MCPServerConfig struct {
 	Kind      string   `json:"kind,omitempty"` // generic
 }
 
-// UserLoginMetadata is stored on each login row to keep per-user settings.
+// UserLoginMetadata is the bridgev2-owned login metadata surface.
+// Only provider identity belongs here. All login-scoped product/runtime state
+// lives in AI-owned sidecar tables.
 type UserLoginMetadata struct {
-	Provider             string            `json:"provider,omitempty"` // Selected provider (beeper, openai, openrouter)
-	Credentials          *LoginCredentials `json:"credentials,omitempty"`
-	TitleGenerationModel string            `json:"title_generation_model,omitempty"` // Model to use for generating chat titles
-	Agents               *bool             `json:"agents,omitempty"`                 // Nil/true enables agents, false limits login to model rooms
-	ModelCache           *ModelCache       `json:"model_cache,omitempty"`
-	Gravatar             *GravatarState    `json:"gravatar,omitempty"`
-	Timezone             string            `json:"timezone,omitempty"`
-	Profile              *UserProfile      `json:"profile,omitempty"`
+	Provider string `json:"provider,omitempty"` // Selected provider (openai, openrouter, magic_proxy)
 
-	// FileAnnotationCache stores parsed PDF content from OpenRouter's file-parser plugin
-	// Key is the file hash (SHA256), pruned after 7 days
-	FileAnnotationCache map[string]FileAnnotation `json:"file_annotation_cache,omitempty"`
-
-	// Custom agents store (source of truth for user-created agents).
-	CustomAgents map[string]*AgentDefinitionContent `json:"custom_agents,omitempty"`
-
-	// Provider health tracking
-	ConsecutiveErrors int   `json:"consecutive_errors,omitempty"`
-	LastErrorAt       int64 `json:"last_error_at,omitempty"` // Unix timestamp
+	// Transient bootstrap/test fields. These are intentionally not serialized
+	// through bridgev2 metadata and are converted into AI-owned sidecar state.
+	Credentials          *LoginCredentials         `json:"-"`
+	TitleGenerationModel string                    `json:"-"`
+	Agents               *bool                     `json:"-"`
+	ModelCache           *ModelCache               `json:"-"`
+	Gravatar             *GravatarState            `json:"-"`
+	Timezone             string                    `json:"-"`
+	Profile              *UserProfile              `json:"-"`
+	FileAnnotationCache  map[string]FileAnnotation `json:"-"`
+	CustomAgents         map[string]*AgentDefinitionContent `json:"-"`
+	ConsecutiveErrors    int                       `json:"-"`
+	LastErrorAt          int64                     `json:"-"`
 }
 
-func loginCredentials(meta *UserLoginMetadata) *LoginCredentials {
-	if meta == nil {
+func loginCredentials(owner any) *LoginCredentials {
+	switch v := owner.(type) {
+	case nil:
+		return nil
+	case *UserLoginMetadata:
+		return v.Credentials
+	case *aiLoginConfig:
+		return v.Credentials
+	default:
 		return nil
 	}
-	return meta.Credentials
 }
 
-func ensureLoginCredentials(meta *UserLoginMetadata) *LoginCredentials {
-	if meta == nil {
+func ensureLoginCredentials(owner any) *LoginCredentials {
+	switch v := owner.(type) {
+	case nil:
+		return nil
+	case *UserLoginMetadata:
+		if v.Credentials == nil {
+			v.Credentials = &LoginCredentials{}
+		}
+		return v.Credentials
+	case *aiLoginConfig:
+		if v.Credentials == nil {
+			v.Credentials = &LoginCredentials{}
+		}
+		return v.Credentials
+	default:
 		return nil
 	}
-	if meta.Credentials == nil {
-		meta.Credentials = &LoginCredentials{}
-	}
-	return meta.Credentials
 }
 
-func loginCredentialAPIKey(meta *UserLoginMetadata) string {
-	if creds := loginCredentials(meta); creds != nil {
+func loginCredentialAPIKey(owner any) string {
+	if creds := loginCredentials(owner); creds != nil {
 		return strings.TrimSpace(creds.APIKey)
 	}
 	return ""
 }
 
-func loginCredentialBaseURL(meta *UserLoginMetadata) string {
-	if creds := loginCredentials(meta); creds != nil {
+func loginCredentialBaseURL(owner any) string {
+	if creds := loginCredentials(owner); creds != nil {
 		return strings.TrimSpace(creds.BaseURL)
 	}
 	return ""
 }
 
-func loginCredentialServiceTokens(meta *UserLoginMetadata) *ServiceTokens {
-	if creds := loginCredentials(meta); creds != nil {
+func loginCredentialServiceTokens(owner any) *ServiceTokens {
+	if creds := loginCredentials(owner); creds != nil {
 		return creds.ServiceTokens
 	}
 	return nil
@@ -309,6 +322,17 @@ func cloneUserLoginMetadata(src *UserLoginMetadata) (*UserLoginMetadata, error) 
 	if err = json.Unmarshal(data, &clone); err != nil {
 		return nil, err
 	}
+	clone.Credentials = cloneLoginCredentials(src.Credentials)
+	clone.Agents = cloneBoolPtr(src.Agents)
+	clone.ModelCache = cloneModelCache(src.ModelCache)
+	clone.Gravatar = cloneGravatarState(src.Gravatar)
+	clone.Profile = cloneUserProfile(src.Profile)
+	clone.FileAnnotationCache = cloneFileAnnotationCache(src.FileAnnotationCache)
+	clone.CustomAgents = cloneAgentDefinitionContentMap(src.CustomAgents)
+	clone.TitleGenerationModel = src.TitleGenerationModel
+	clone.Timezone = src.Timezone
+	clone.ConsecutiveErrors = src.ConsecutiveErrors
+	clone.LastErrorAt = src.LastErrorAt
 	return &clone, nil
 }
 

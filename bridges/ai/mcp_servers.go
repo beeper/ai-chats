@@ -2,6 +2,7 @@ package ai
 
 import (
 	"cmp"
+	"context"
 	"slices"
 	"strings"
 	"time"
@@ -144,7 +145,7 @@ func (oc *AIClient) loginMCPServers() map[string]MCPServerConfig {
 	if oc == nil || oc.UserLogin == nil {
 		return nil
 	}
-	tokens := loginCredentialServiceTokens(loginMetadata(oc.UserLogin))
+	tokens := loginCredentialServiceTokens(oc.loginConfigSnapshot(context.Background()))
 	if tokens == nil || len(tokens.MCPServers) == 0 {
 		return nil
 	}

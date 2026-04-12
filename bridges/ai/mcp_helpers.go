@@ -65,8 +65,8 @@ func (oc *AIClient) verifyMCPServerConnection(ctx context.Context, server namedM
 	return len(defs), nil
 }
 
-func setLoginMCPServer(meta *UserLoginMetadata, name string, cfg MCPServerConfig) {
-	creds := ensureLoginCredentials(meta)
+func setLoginMCPServer(owner any, name string, cfg MCPServerConfig) {
+	creds := ensureLoginCredentials(owner)
 	if creds == nil {
 		return
 	}
@@ -79,8 +79,8 @@ func setLoginMCPServer(meta *UserLoginMetadata, name string, cfg MCPServerConfig
 	creds.ServiceTokens.MCPServers[name] = normalizeMCPServerConfig(cfg)
 }
 
-func clearLoginMCPServer(meta *UserLoginMetadata, name string) {
-	creds := loginCredentials(meta)
+func clearLoginMCPServer(owner any, name string) {
+	creds := loginCredentials(owner)
 	if creds == nil || creds.ServiceTokens == nil || creds.ServiceTokens.MCPServers == nil {
 		return
 	}
@@ -92,6 +92,11 @@ func clearLoginMCPServer(meta *UserLoginMetadata, name string) {
 		creds.ServiceTokens = nil
 	}
 	if loginCredentialsEmpty(creds) {
-		meta.Credentials = nil
+		switch v := owner.(type) {
+		case *UserLoginMetadata:
+			v.Credentials = nil
+		case *aiLoginConfig:
+			v.Credentials = nil
+		}
 	}
 }

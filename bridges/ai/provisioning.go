@@ -123,43 +123,62 @@ type profileResponse struct {
 	Timezone           string `json:"timezone,omitempty"`
 }
 
-func profileResponseFromMeta(meta *UserLoginMetadata) profileResponse {
+func profileResponseFromConfig(cfg *aiLoginConfig) profileResponse {
 	var resp profileResponse
-	if meta == nil {
+	if cfg == nil {
 		return resp
 	}
-	if meta.Profile != nil {
-		resp.Name = meta.Profile.Name
-		resp.Occupation = meta.Profile.Occupation
-		resp.AboutUser = meta.Profile.AboutUser
-		resp.CustomInstructions = meta.Profile.CustomInstructions
+	if cfg.Profile != nil {
+		resp.Name = cfg.Profile.Name
+		resp.Occupation = cfg.Profile.Occupation
+		resp.AboutUser = cfg.Profile.AboutUser
+		resp.CustomInstructions = cfg.Profile.CustomInstructions
 	}
-	resp.Timezone = meta.Timezone
+	resp.Timezone = cfg.Timezone
 	return resp
 }
 
-func applyProfilePayload(meta *UserLoginMetadata, payload profilePayload) error {
-	if meta == nil {
-		return errors.New("missing metadata")
+func applyProfilePayload(owner any, payload profilePayload) error {
+	var (
+		cfg          *aiLoginConfig
+		profilePtr   **UserProfile
+		timezonePtr  *string
+	)
+	switch v := owner.(type) {
+	case *aiLoginConfig:
+		cfg = v
+		profilePtr = &cfg.Profile
+		timezonePtr = &cfg.Timezone
+	case *UserLoginMetadata:
+		cfg = aiLoginConfigFromMetadata(v)
+		profilePtr = &v.Profile
+		timezonePtr = &v.Timezone
+	default:
+		return errors.New("missing login config")
+	}
+	if cfg == nil {
+		return errors.New("missing login config")
 	}
 	if payload.Name != nil || payload.Occupation != nil || payload.AboutUser != nil || payload.CustomInstructions != nil {
-		if meta.Profile == nil {
-			meta.Profile = &UserProfile{}
+		if *profilePtr == nil {
+			*profilePtr = &UserProfile{}
 		}
+		cfg.Profile = *profilePtr
 		if payload.Name != nil {
-			meta.Profile.Name = strings.TrimSpace(*payload.Name)
+			cfg.Profile.Name = strings.TrimSpace(*payload.Name)
 		}
 		if payload.Occupation != nil {
-			meta.Profile.Occupation = strings.TrimSpace(*payload.Occupation)
+			cfg.Profile.Occupation = strings.TrimSpace(*payload.Occupation)
 		}
 		if payload.AboutUser != nil {
-			meta.Profile.AboutUser = strings.TrimSpace(*payload.AboutUser)
+			cfg.Profile.AboutUser = strings.TrimSpace(*payload.AboutUser)
 		}
 		if payload.CustomInstructions != nil {
-			meta.Profile.CustomInstructions = strings.TrimSpace(*payload.CustomInstructions)
+			cfg.Profile.CustomInstructions = strings.TrimSpace(*payload.CustomInstructions)
 		}
-		if meta.Profile.Name == "" && meta.Profile.Occupation == "" && meta.Profile.AboutUser == "" && meta.Profile.CustomInstructions == "" {
-			meta.Profile = nil
+		if cfg.Profile.Name == "" && cfg.Profile.Occupation == "" && cfg.Profile.AboutUser == "" && cfg.Profile.CustomInstructions == "" {
+			cfg.Profile = nil
+			*profilePtr = nil
 		}
 	}
 	if payload.Timezone != nil {
@@ -169,24 +188,25 @@ func applyProfilePayload(meta *UserLoginMetadata, payload profilePayload) error 
 				return fmt.Errorf("invalid timezone: %w", err)
 			}
 		}
-		meta.Timezone = tz
+		cfg.Timezone = tz
+		*timezonePtr = tz
 	}
 	return nil
 }
 
 // handleGetProfile handles GET /v1/profile.
 func (api *ProvisioningAPI) handleGetProfile(w http.ResponseWriter, r *http.Request) {
-	login := api.getLogin(w, r)
-	if login == nil {
+	_, client := api.getClient(w, r)
+	if client == nil {
 		return
 	}
-	exhttp.WriteJSONResponse(w, http.StatusOK, profileResponseFromMeta(loginMetadata(login)))
+	exhttp.WriteJSONResponse(w, http.StatusOK, profileResponseFromConfig(client.loginConfigSnapshot(r.Context())))
 }
 
 // handlePutProfile handles PUT /v1/profile.
 func (api *ProvisioningAPI) handlePutProfile(w http.ResponseWriter, r *http.Request) {
-	login := api.getLogin(w, r)
-	if login == nil {
+	_, client := api.getClient(w, r)
+	if client == nil {
 		return
 	}
 	var req profilePayload
@@ -194,16 +214,16 @@ func (api *ProvisioningAPI) handlePutProfile(w http.ResponseWriter, r *http.Requ
 		mautrix.MBadJSON.WithMessage("Invalid JSON: %v.", err).Write(w)
 		return
 	}
-	meta := loginMetadata(login)
-	if err := applyProfilePayload(meta, req); err != nil {
+	cfg := client.loginConfigSnapshot(r.Context())
+	if err := applyProfilePayload(cfg, req); err != nil {
 		mautrix.MInvalidParam.WithMessage("%v.", err).Write(w)
 		return
 	}
-	if err := saveAIUserLogin(r.Context(), login); err != nil {
+	if err := client.replaceLoginConfig(r.Context(), cfg); err != nil {
 		mautrix.MUnknown.WithMessage("Couldn't save changes: %v.", err).Write(w)
 		return
 	}
-	exhttp.WriteJSONResponse(w, http.StatusOK, profileResponseFromMeta(meta))
+	exhttp.WriteJSONResponse(w, http.StatusOK, profileResponseFromConfig(cfg))
 }
 
 type agentUpsertRequest struct {
@@ -540,8 +560,8 @@ func resolveNamedMCPServer(client *AIClient, name string) (namedMCPServer, error
 	return target, err
 }
 
-func ensureLoginMCPServer(meta *UserLoginMetadata) {
-	creds := ensureLoginCredentials(meta)
+func ensureLoginMCPServer(owner any) {
+	creds := ensureLoginCredentials(owner)
 	if creds == nil {
 		return
 	}
@@ -568,7 +588,7 @@ func (api *ProvisioningAPI) handleListMCPServers(w http.ResponseWriter, r *http.
 }
 
 func (api *ProvisioningAPI) handleCreateMCPServer(w http.ResponseWriter, r *http.Request) {
-	login, client := api.getClient(w, r)
+	_, client := api.getClient(w, r)
 	if client == nil {
 		return
 	}
@@ -577,18 +597,18 @@ func (api *ProvisioningAPI) handleCreateMCPServer(w http.ResponseWriter, r *http
 		mautrix.MBadJSON.WithMessage("Invalid JSON: %v.", err).Write(w)
 		return
 	}
-	name, cfg, err := normalizeMCPRequest(req, "")
+	name, serverCfg, err := normalizeMCPRequest(req, "")
 	if err != nil {
 		mautrix.MInvalidParam.WithMessage("%v.", err).Write(w)
 		return
 	}
-	if err = validateMCPConfig(client, cfg); err != nil {
+	if err = validateMCPConfig(client, serverCfg); err != nil {
 		mautrix.MInvalidParam.WithMessage("%v.", err).Write(w)
 		return
 	}
-	meta := loginMetadata(login)
-	ensureLoginMCPServer(meta)
-	tokens := loginCredentialServiceTokens(meta)
+	loginCfg := client.loginConfigSnapshot(r.Context())
+	ensureLoginMCPServer(loginCfg)
+	tokens := loginCredentialServiceTokens(loginCfg)
 	if tokens == nil {
 		mautrix.MUnknown.WithMessage("Couldn't load MCP servers for this login.").Write(w)
 		return
@@ -597,17 +617,17 @@ func (api *ProvisioningAPI) handleCreateMCPServer(w http.ResponseWriter, r *http
 		mautrix.MInvalidParam.WithMessage("MCP server %s already exists.", name).Write(w)
 		return
 	}
-	setLoginMCPServer(meta, name, cfg)
-	if err = saveAIUserLogin(r.Context(), login); err != nil {
+	setLoginMCPServer(loginCfg, name, serverCfg)
+	if err = client.replaceLoginConfig(r.Context(), loginCfg); err != nil {
 		mautrix.MUnknown.WithMessage("Couldn't save MCP server: %v.", err).Write(w)
 		return
 	}
 	client.invalidateMCPToolCache()
-	exhttp.WriteJSONResponse(w, http.StatusCreated, mcpServerResponseFromNamed(namedMCPServer{Name: name, Config: cfg, Source: "login"}))
+	exhttp.WriteJSONResponse(w, http.StatusCreated, mcpServerResponseFromNamed(namedMCPServer{Name: name, Config: serverCfg, Source: "login"}))
 }
 
 func (api *ProvisioningAPI) handleUpdateMCPServer(w http.ResponseWriter, r *http.Request) {
-	login, client := api.getClient(w, r)
+	_, client := api.getClient(w, r)
 	if client == nil {
 		return
 	}
@@ -631,9 +651,9 @@ func (api *ProvisioningAPI) handleUpdateMCPServer(w http.ResponseWriter, r *http
 		mautrix.MInvalidParam.WithMessage("%v.", err).Write(w)
 		return
 	}
-	meta := loginMetadata(login)
-	setLoginMCPServer(meta, resolvedName, cfg)
-	if err = saveAIUserLogin(r.Context(), login); err != nil {
+	loginCfg := client.loginConfigSnapshot(r.Context())
+	setLoginMCPServer(loginCfg, resolvedName, cfg)
+	if err = client.replaceLoginConfig(r.Context(), loginCfg); err != nil {
 		mautrix.MUnknown.WithMessage("Couldn't save MCP server: %v.", err).Write(w)
 		return
 	}
@@ -642,7 +662,7 @@ func (api *ProvisioningAPI) handleUpdateMCPServer(w http.ResponseWriter, r *http
 }
 
 func (api *ProvisioningAPI) handleDeleteMCPServer(w http.ResponseWriter, r *http.Request) {
-	login, client := api.getClient(w, r)
+	_, client := api.getClient(w, r)
 	if client == nil {
 		return
 	}
@@ -657,9 +677,9 @@ func (api *ProvisioningAPI) handleDeleteMCPServer(w http.ResponseWriter, r *http
 		mautrix.MForbidden.WithMessage("Config-managed MCP servers can't be deleted here.").Write(w)
 		return
 	}
-	meta := loginMetadata(login)
-	clearLoginMCPServer(meta, target.Name)
-	if err = saveAIUserLogin(r.Context(), login); err != nil {
+	cfg := client.loginConfigSnapshot(r.Context())
+	clearLoginMCPServer(cfg, target.Name)
+	if err = client.replaceLoginConfig(r.Context(), cfg); err != nil {
 		mautrix.MUnknown.WithMessage("Couldn't remove MCP server: %v.", err).Write(w)
 		return
 	}
@@ -667,7 +687,7 @@ func (api *ProvisioningAPI) handleDeleteMCPServer(w http.ResponseWriter, r *http
 	exhttp.WriteJSONResponse(w, http.StatusOK, map[string]any{"deleted": true})
 }
 
-func connectMCPServer(ctx context.Context, client *AIClient, login *bridgev2.UserLogin, name string, tokenOverride string) (namedMCPServer, int, error) {
+func connectMCPServer(ctx context.Context, client *AIClient, name string, tokenOverride string) (namedMCPServer, int, error) {
 	target, err := resolveNamedMCPServer(client, name)
 	if err != nil {
 		return namedMCPServer{}, 0, err
@@ -684,8 +704,9 @@ func connectMCPServer(ctx context.Context, client *AIClient, login *bridgev2.Use
 	}
 	if mcpServerNeedsToken(cfg) && cfg.Token == "" {
 		cfg.Connected = false
-		setLoginMCPServer(loginMetadata(login), target.Name, cfg)
-		if err = saveAIUserLogin(ctx, login); err != nil {
+		loginCfg := client.loginConfigSnapshot(ctx)
+		setLoginMCPServer(loginCfg, target.Name, cfg)
+		if err = client.replaceLoginConfig(ctx, loginCfg); err != nil {
 			return namedMCPServer{}, 0, err
 		}
 		client.invalidateMCPToolCache()
@@ -695,15 +716,17 @@ func connectMCPServer(ctx context.Context, client *AIClient, login *bridgev2.Use
 	count, connectErr := client.verifyMCPServerConnection(ctx, namedMCPServer{Name: target.Name, Config: cfg, Source: "login"})
 	if connectErr != nil {
 		cfg.Connected = false
-		setLoginMCPServer(loginMetadata(login), target.Name, cfg)
-		if err = saveAIUserLogin(ctx, login); err != nil {
+		loginCfg := client.loginConfigSnapshot(ctx)
+		setLoginMCPServer(loginCfg, target.Name, cfg)
+		if err = client.replaceLoginConfig(ctx, loginCfg); err != nil {
 			return namedMCPServer{}, 0, err
 		}
 		client.invalidateMCPToolCache()
 		return namedMCPServer{Name: target.Name, Config: cfg, Source: "login"}, 0, connectErr
 	}
-	setLoginMCPServer(loginMetadata(login), target.Name, cfg)
-	if err = saveAIUserLogin(ctx, login); err != nil {
+	loginCfg := client.loginConfigSnapshot(ctx)
+	setLoginMCPServer(loginCfg, target.Name, cfg)
+	if err = client.replaceLoginConfig(ctx, loginCfg); err != nil {
 		return namedMCPServer{}, 0, err
 	}
 	client.invalidateMCPToolCache()
@@ -711,7 +734,7 @@ func connectMCPServer(ctx context.Context, client *AIClient, login *bridgev2.Use
 }
 
 func (api *ProvisioningAPI) handleConnectMCPServer(w http.ResponseWriter, r *http.Request) {
-	login, client := api.getClient(w, r)
+	_, client := api.getClient(w, r)
 	if client == nil {
 		return
 	}
@@ -722,7 +745,7 @@ func (api *ProvisioningAPI) handleConnectMCPServer(w http.ResponseWriter, r *htt
 			return
 		}
 	}
-	server, count, err := connectMCPServer(r.Context(), client, login, strings.TrimSpace(r.PathValue("name")), strings.TrimSpace(req.Token))
+	server, count, err := connectMCPServer(r.Context(), client, strings.TrimSpace(r.PathValue("name")), strings.TrimSpace(req.Token))
 	if err != nil {
 		code := http.StatusBadRequest
 		if mcpCallLikelyAuthError(err) {
@@ -743,7 +766,7 @@ func (api *ProvisioningAPI) handleConnectMCPServer(w http.ResponseWriter, r *htt
 }
 
 func (api *ProvisioningAPI) handleDisconnectMCPServer(w http.ResponseWriter, r *http.Request) {
-	login, client := api.getClient(w, r)
+	_, client := api.getClient(w, r)
 	if client == nil {
 		return
 	}
@@ -754,8 +777,9 @@ func (api *ProvisioningAPI) handleDisconnectMCPServer(w http.ResponseWriter, r *
 	}
 	cfg := normalizeMCPServerConfig(target.Config)
 	cfg.Connected = false
-	setLoginMCPServer(loginMetadata(login), target.Name, cfg)
-	if err = saveAIUserLogin(r.Context(), login); err != nil {
+	loginCfg := client.loginConfigSnapshot(r.Context())
+	setLoginMCPServer(loginCfg, target.Name, cfg)
+	if err = client.replaceLoginConfig(r.Context(), loginCfg); err != nil {
 		mautrix.MUnknown.WithMessage("Couldn't disconnect MCP server: %v.", err).Write(w)
 		return
 	}

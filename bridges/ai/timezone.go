@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -40,9 +41,9 @@ func (oc *AIClient) resolveUserTimezone() (string, *time.Location) {
 			}
 		}
 	}
-	loginMeta := loginMetadata(oc.UserLogin)
-	if loginMeta != nil && strings.TrimSpace(loginMeta.Timezone) != "" {
-		if tz, loc, err := normalizeTimezone(loginMeta.Timezone); err == nil {
+	loginCfg := oc.loginConfigSnapshot(context.Background())
+	if loginCfg != nil && strings.TrimSpace(loginCfg.Timezone) != "" {
+		if tz, loc, err := normalizeTimezone(loginCfg.Timezone); err == nil {
 			return tz, loc
 		}
 	}

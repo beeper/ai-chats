@@ -9,7 +9,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 )
 
-// purgeLoginDataBestEffort removes per-login data that lives outside bridgev2's core tables.
+// purgeLoginData removes per-login data that lives outside bridgev2's core tables.
 //
 // bridgev2 will delete the user_login row (including login metadata like API keys) and, depending on
 // cleanup_on_logout config, will also delete/unbridge portal rows and message history.
@@ -17,8 +17,7 @@ import (
 // However, this bridge stores extra per-login integration state that is not
 // foreign-keyed to user_login and therefore will not be automatically removed.
 //
-// This function is intentionally best-effort: it must not block logout if cleanup fails.
-func purgeLoginDataBestEffort(ctx context.Context, login *bridgev2.UserLogin) {
+func purgeLoginData(ctx context.Context, login *bridgev2.UserLogin) {
 	if login == nil || login.Bridge == nil || login.Bridge.DB == nil {
 		return
 	}
@@ -41,40 +40,51 @@ func purgeLoginDataBestEffort(ctx context.Context, login *bridgev2.UserLogin) {
 		logger = zerolog.Ctx(ctx)
 	}
 
-	bestEffortExec(ctx, db, logger,
+	execDelete(ctx, db, logger,
 		`DELETE FROM `+aiSessionsTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
-	bestEffortExec(ctx, db, logger,
+	execDelete(ctx, db, logger,
 		`DELETE FROM aichats_cron_jobs WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
-	bestEffortExec(ctx, db, logger,
+	execDelete(ctx, db, logger,
 		`DELETE FROM aichats_managed_heartbeats WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
-	bestEffortExec(ctx, db, logger,
+	execDelete(ctx, db, logger,
 		`DELETE FROM aichats_system_events WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
-	bestEffortExec(ctx, db, logger,
+	execDelete(ctx, db, logger,
 		`DELETE FROM aichats_internal_messages WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
-	bestEffortExec(ctx, db, logger,
+	execDelete(ctx, db, logger,
 		`DELETE FROM aichats_tool_approval_rules WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
-	bestEffortExec(ctx, db, logger,
+	execDelete(ctx, db, logger,
 		`DELETE FROM aichats_login_state WHERE bridge_id=$1 AND login_id=$2`,
+		bridgeID, loginID,
+	)
+	execDelete(ctx, db, logger,
+		`DELETE FROM `+aiLoginConfigTable+` WHERE bridge_id=$1 AND login_id=$2`,
+		bridgeID, loginID,
+	)
+	execDelete(ctx, db, logger,
+		`DELETE FROM `+aiCustomAgentsTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
 	if client, ok := login.Client.(*AIClient); ok && client != nil {
 		client.clearLoginState(ctx)
+		client.loginConfigMu.Lock()
+		client.loginConfig = &aiLoginConfig{}
+		client.loginConfigMu.Unlock()
 	}
 }
 
-func bestEffortExec(ctx context.Context, db *dbutil.Database, logger *zerolog.Logger, query string, args ...any) {
+func execDelete(ctx context.Context, db *dbutil.Database, logger *zerolog.Logger, query string, args ...any) {
 	if db == nil {
 		return
 	}
@@ -82,20 +92,11 @@ func bestEffortExec(ctx context.Context, db *dbutil.Database, logger *zerolog.Lo
 		ctx = context.Background()
 	}
 	_, err := db.Exec(ctx, query, args...)
-	if err == nil {
-		return
+	if err != nil && logger != nil {
+		logger.Warn().Err(err).Msg("failed to delete login-owned AI state")
 	}
-	// Ignore missing tables and missing virtual table modules. Older DBs or disabled features may not
-	// have these tables, and some SQLite connections may not have vec0 loaded.
-	// We intentionally avoid driver-specific error types here to keep postgres/sqlite builds simple.
-	msg := strings.ToLower(err.Error())
-	if strings.Contains(msg, "no such table") ||
-		strings.Contains(msg, "does not exist") ||
-		strings.Contains(msg, "undefined table") ||
-		strings.Contains(msg, "no such module") {
-		return
-	}
-	if logger != nil {
-		logger.Debug().Err(err).Msg("bestEffortExec unexpected error")
-	}
+}
+
+func bestEffortExec(ctx context.Context, db *dbutil.Database, logger *zerolog.Logger, query string, args ...any) {
+	execDelete(ctx, db, logger, query, args...)
 }

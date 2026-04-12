@@ -1,4 +1,4 @@
-name: Publish AgentRemote CLI Docker
+name: Publish AgentRemote Manager Docker
 
 on:
   push:
@@ -54,7 +54,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build AgentRemote CLI image
+      - name: Build AgentRemote Manager image
         uses: docker/build-push-action@v6
         with:
           context: .

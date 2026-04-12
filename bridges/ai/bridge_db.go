@@ -14,6 +14,7 @@ const (
 	aiInternalMessagesTable  = "aichats_internal_messages"
 	aiLoginStateTable        = "aichats_login_state"
 	aiLoginConfigTable       = "aichats_login_config"
+	aiCustomAgentsTable      = "aichats_custom_agents"
 	aiPortalStateTable       = "aichats_portal_state"
 	aiToolApprovalRulesTable = "aichats_tool_approval_rules"
 )

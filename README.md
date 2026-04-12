@@ -20,7 +20,7 @@ Other supported install paths:
 - Download a release archive from [GitHub Releases](https://github.com/beeper/agentremote/releases)
 - Install via Homebrew: `brew install --cask beeper/tap/agentremote`
 
-The AgentRemote CLI stores profile state under `~/.config/agentremote/`.
+The AgentRemote Manager stores profile state under `~/.config/agentremote/`.
 
 ## Included bridges
 
@@ -50,7 +50,7 @@ Instance state lives under `~/.config/agentremote/profiles/<profile>/instances/`
 
 ## Docker
 
-The AgentRemote CLI is also published as a multi-arch Linux container image:
+The AgentRemote Manager is also published as a multi-arch Linux container image:
 
 ```bash
 docker run --rm -it \
@@ -72,7 +72,7 @@ See [`bridges/dummybridge`](./bridges/dummybridge) for a minimal bridge example.
 
 ## Docs
 
-- AgentRemote CLI reference: [`docs/bridge-orchestrator.md`](./docs/bridge-orchestrator.md)
+- AgentRemote Manager reference: [`docs/bridge-orchestrator.md`](./docs/bridge-orchestrator.md)
 - Matrix transport surface: [`docs/matrix-ai-matrix-spec-v1.md`](./docs/matrix-ai-matrix-spec-v1.md)
 - Streaming note: [`docs/msc/com.beeper.mscXXXX-streaming.md`](./docs/msc/com.beeper.mscXXXX-streaming.md)
 - Command profile: [`docs/msc/com.beeper.mscXXXX-commands.md`](./docs/msc/com.beeper.mscXXXX-commands.md)

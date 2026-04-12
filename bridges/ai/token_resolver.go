@@ -186,36 +186,40 @@ func (oc *OpenAIConnector) resolveProviderAPIKey(meta *UserLoginMetadata) string
 	if meta == nil {
 		return ""
 	}
-	switch meta.Provider {
+	return oc.resolveProviderAPIKeyForConfig(meta.Provider, aiLoginConfigFromMetadata(meta))
+}
+
+func (oc *OpenAIConnector) resolveProviderAPIKeyForConfig(provider string, cfg *aiLoginConfig) string {
+	switch provider {
 	case ProviderMagicProxy:
-		if key := trimToken(loginCredentialAPIKey(meta)); key != "" {
+		if key := trimToken(loginCredentialAPIKey(cfg)); key != "" {
 			return key
 		}
-		if tokens := loginCredentialServiceTokens(meta); tokens != nil {
+		if tokens := loginCredentialServiceTokens(cfg); tokens != nil {
 			return trimToken(tokens.OpenRouter)
 		}
 	case ProviderOpenRouter:
 		if key := trimToken(oc.modelProviderConfig(ProviderOpenRouter).APIKey); key != "" {
 			return key
 		}
-		if key := trimToken(loginCredentialAPIKey(meta)); key != "" {
+		if key := trimToken(loginCredentialAPIKey(cfg)); key != "" {
 			return key
 		}
-		if tokens := loginCredentialServiceTokens(meta); tokens != nil {
+		if tokens := loginCredentialServiceTokens(cfg); tokens != nil {
 			return trimToken(tokens.OpenRouter)
 		}
 	case ProviderOpenAI:
 		if key := trimToken(oc.modelProviderConfig(ProviderOpenAI).APIKey); key != "" {
 			return key
 		}
-		if key := trimToken(loginCredentialAPIKey(meta)); key != "" {
+		if key := trimToken(loginCredentialAPIKey(cfg)); key != "" {
 			return key
 		}
-		if tokens := loginCredentialServiceTokens(meta); tokens != nil {
+		if tokens := loginCredentialServiceTokens(cfg); tokens != nil {
 			return trimToken(tokens.OpenAI)
 		}
 	default:
-		return trimToken(loginCredentialAPIKey(meta))
+		return trimToken(loginCredentialAPIKey(cfg))
 	}
 	return ""
 }

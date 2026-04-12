@@ -155,7 +155,7 @@ jobs:
           token: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
           path: homebrew-tap
 
-      - name: Update AgentRemote CLI cask
+      - name: Update AgentRemote Manager cask
         if: ${{ steps.tap-token.outputs.present == 'true' }}
         env:
           VERSION: ${{ github.ref_name }}

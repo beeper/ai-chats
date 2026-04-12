@@ -153,8 +153,8 @@ func fnAgents(ce *commands.Event) {
 		return
 	}
 
-	loginMeta := loginMetadata(client.UserLogin)
-	currentlyEnabled := agentsEnabled(loginMeta)
+	loginCfg := client.loginConfigSnapshot(ce.Ctx)
+	currentlyEnabled := loginCfg.Agents != nil && *loginCfg.Agents
 	enabled, changed, reply, parseErr := parseAgentsCommandArgs(ce.Args, currentlyEnabled)
 	if parseErr != nil {
 		markCommandFailure(ce, "usage: !ai agents [on|off|status]", event.MessageStatusUnsupported)
@@ -163,10 +163,14 @@ func fnAgents(ce *commands.Event) {
 	}
 
 	if changed {
-		prev := loginMeta.Agents
-		loginMeta.Agents = &enabled
-		if err := saveAIUserLogin(ce.Ctx, client.UserLogin); err != nil {
-			loginMeta.Agents = prev
+		if err := client.updateLoginConfig(ce.Ctx, func(cfg *aiLoginConfig) bool {
+			current := cfg.Agents != nil && *cfg.Agents
+			if current == enabled && cfg.Agents != nil {
+				return false
+			}
+			cfg.Agents = &enabled
+			return true
+		}); err != nil {
 			markCommandFailure(ce, "Couldn't save AI settings.", event.MessageStatusGenericError)
 			ce.Reply("Couldn't save AI settings.")
 			return
