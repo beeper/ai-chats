@@ -1558,15 +1558,7 @@ func openClawApprovalPresentation(request map[string]any, command string) sdk.Ap
 	if agent := sdk.ValueSummary(request["agentId"]); agent != "" {
 		details = append(details, sdk.ApprovalDetail{Label: "Agent", Value: agent})
 	}
-	title := "OpenClaw execution request"
-	if command != "" {
-		title = "OpenClaw execution request: " + command
-	}
-	return sdk.ApprovalPromptPresentation{
-		Title:       title,
-		Details:     details,
-		AllowAlways: true,
-	}
+	return sdk.BuildApprovalPresentation("OpenClaw execution request", command, details, true)
 }
 
 func openClawApprovalResolvedText(decision string) string {

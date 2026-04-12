@@ -39,10 +39,6 @@ type permissionApprovalRef struct {
 
 func buildOpenCodeApprovalPresentation(req api.PermissionRequest) sdk.ApprovalPromptPresentation {
 	permission := strings.TrimSpace(req.Permission)
-	title := "OpenCode permission request"
-	if permission != "" {
-		title = "OpenCode permission request: " + permission
-	}
 	details := make([]sdk.ApprovalDetail, 0, 8)
 	if permission != "" {
 		details = append(details, sdk.ApprovalDetail{Label: "Permission", Value: permission})
@@ -53,11 +49,7 @@ func buildOpenCodeApprovalPresentation(req api.PermissionRequest) sdk.ApprovalPr
 	if len(req.Metadata) > 0 {
 		details = sdk.AppendDetailsFromMap(details, "Metadata", req.Metadata, 4)
 	}
-	return sdk.ApprovalPromptPresentation{
-		Title:       title,
-		Details:     details,
-		AllowAlways: len(req.Always) > 0,
-	}
+	return sdk.BuildApprovalPresentation("OpenCode permission request", permission, details, len(req.Always) > 0)
 }
 
 func NewOpenCodeManager(bridge *Bridge) *OpenCodeManager {

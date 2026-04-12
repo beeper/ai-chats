@@ -208,7 +208,7 @@ func deleteAITranscriptForPortal(ctx context.Context, portal *bridgev2.Portal) {
 	if scope == nil {
 		return
 	}
-	execDelete(ctx, scope.db, portal.Bridge.Log,
+	execDelete(ctx, scope.db, &portal.Bridge.Log,
 		`DELETE FROM `+aiTranscriptTable+` WHERE bridge_id=$1 AND login_id=$2 AND portal_id=$3`,
 		scope.bridgeID, scope.loginID, scope.portalID,
 	)

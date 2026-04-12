@@ -242,7 +242,7 @@ func (oc *AIClient) hasPortalMessages(ctx context.Context, portal *bridgev2.Port
 		}
 		return true
 	}
-	return hasInternalPromptHistory(ctx, oc, portal.MXID)
+	return hasInternalPromptHistory(ctx, portal)
 }
 
 func isInternalControlRoom(meta *PortalMetadata) bool {

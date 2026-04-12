@@ -149,7 +149,7 @@ func (oc *AIClient) replayHistoryMessages(
 			meta: msgMeta,
 		})
 	}
-	internalRows, err := loadInternalPromptHistory(ctx, oc, portal, hr.limit, opts, hr.resetAt)
+	internalRows, err := loadInternalPromptHistory(ctx, portal, hr.limit, opts, hr.resetAt)
 	if err != nil {
 		return nil, err
 	}

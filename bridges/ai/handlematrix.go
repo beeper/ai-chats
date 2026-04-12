@@ -354,7 +354,7 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 		msgMeta = &MessageMetadata{}
 		edit.EditTarget.Metadata = msgMeta
 	}
-	transcriptMsg, err := loadAITranscriptMessage(ctx, oc, portal.MXID, edit.EditTarget.ID)
+	transcriptMsg, err := loadAITranscriptMessage(ctx, portal, edit.EditTarget.ID)
 	if err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to load edited transcript message")
 	}
@@ -376,6 +376,14 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 	}
 	if err := persistAITranscriptMessage(ctx, oc, portal, transcriptMsg); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist edited transcript message")
+	}
+	if edit.EditTarget != nil {
+		edit.EditTarget.Metadata = cloneMessageMetadata(transcriptMeta)
+		if oc.UserLogin != nil && oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.DB != nil && oc.UserLogin.Bridge.DB.Message != nil {
+			if err := oc.UserLogin.Bridge.DB.Message.Update(ctx, edit.EditTarget); err != nil {
+				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to mirror edited transcript metadata into bridge message")
+			}
+		}
 	}
 	oc.notifySessionMutation(ctx, portal, meta, true)
 

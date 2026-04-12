@@ -22,7 +22,6 @@ type internalPromptHistoryRecord struct {
 
 func persistInternalPrompt(
 	ctx context.Context,
-	client *AIClient,
 	portal *bridgev2.Portal,
 	eventID id.EventID,
 	promptContext PromptContext,
@@ -30,8 +29,8 @@ func persistInternalPrompt(
 	source string,
 	timestamp time.Time,
 ) error {
-	scope := loginScopeForClient(client)
-	if scope == nil || portal == nil || portal.MXID == "" || eventID == "" {
+	scope := portalScopeForPortal(portal)
+	if scope == nil || eventID == "" {
 		return nil
 	}
 	meta := &MessageMetadata{}
@@ -48,9 +47,9 @@ func persistInternalPrompt(
 	}
 	_, err = scope.db.Exec(ctx, `
 		INSERT INTO `+aiInternalMessagesTable+` (
-			bridge_id, login_id, room_id, event_id, source, canonical_turn_data, exclude_from_history, created_at_ms
+			bridge_id, login_id, portal_id, event_id, source, canonical_turn_data, exclude_from_history, created_at_ms
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		ON CONFLICT (bridge_id, login_id, room_id, event_id) DO UPDATE SET
+		ON CONFLICT (bridge_id, login_id, portal_id, event_id) DO UPDATE SET
 			source=excluded.source,
 			canonical_turn_data=excluded.canonical_turn_data,
 			exclude_from_history=excluded.exclude_from_history,
@@ -58,7 +57,7 @@ func persistInternalPrompt(
 	`,
 		scope.bridgeID,
 		scope.loginID,
-		portal.MXID.String(),
+		scope.portalID,
 		eventID.String(),
 		strings.TrimSpace(source),
 		string(rawTurnData),
@@ -70,23 +69,22 @@ func persistInternalPrompt(
 
 func loadInternalPromptHistory(
 	ctx context.Context,
-	client *AIClient,
 	portal *bridgev2.Portal,
 	limit int,
 	opts historyReplayOptions,
 	resetAt int64,
 ) ([]internalPromptHistoryRecord, error) {
-	scope := loginScopeForClient(client)
-	if scope == nil || portal == nil || portal.MXID == "" || limit <= 0 {
+	scope := portalScopeForPortal(portal)
+	if scope == nil || limit <= 0 {
 		return nil, nil
 	}
 	rows, err := scope.db.Query(ctx, `
 		SELECT event_id, canonical_turn_data, exclude_from_history, created_at_ms
 		FROM `+aiInternalMessagesTable+`
-		WHERE bridge_id=$1 AND login_id=$2 AND room_id=$3
+		WHERE bridge_id=$1 AND login_id=$2 AND portal_id=$3
 		ORDER BY created_at_ms DESC, event_id DESC
 		LIMIT $4
-	`, scope.bridgeID, scope.loginID, portal.MXID.String(), limit)
+	`, scope.bridgeID, scope.loginID, scope.portalID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -138,27 +136,28 @@ func loadInternalPromptHistory(
 	return out, nil
 }
 
-func hasInternalPromptHistory(ctx context.Context, client *AIClient, roomID id.RoomID) bool {
-	scope := loginScopeForClient(client)
-	if scope == nil || roomID == "" {
+func hasInternalPromptHistory(ctx context.Context, portal *bridgev2.Portal) bool {
+	scope := portalScopeForPortal(portal)
+	if scope == nil {
 		return false
 	}
 	var count int
 	err := scope.db.QueryRow(ctx, `
 		SELECT COUNT(*)
 		FROM `+aiInternalMessagesTable+`
-		WHERE bridge_id=$1 AND login_id=$2 AND room_id=$3 AND exclude_from_history=0
-	`, scope.bridgeID, scope.loginID, roomID.String()).Scan(&count)
+		WHERE bridge_id=$1 AND login_id=$2 AND portal_id=$3 AND exclude_from_history=0
+	`, scope.bridgeID, scope.loginID, scope.portalID).Scan(&count)
 	return err == nil && count > 0
 }
 
-func deleteInternalPromptsForRoom(ctx context.Context, client *AIClient, roomID id.RoomID) {
-	scope := loginScopeForClient(client)
-	if scope == nil || roomID == "" {
+func deleteInternalPromptsForPortal(ctx context.Context, portal *bridgev2.Portal) {
+	scope := portalScopeForPortal(portal)
+	if scope == nil {
 		return
 	}
-	execDelete(ctx, scope.db, client.Log(),
-		`DELETE FROM `+aiInternalMessagesTable+` WHERE bridge_id=$1 AND login_id=$2 AND room_id=$3`,
-		scope.bridgeID, scope.loginID, roomID.String(),
+	log := portal.Bridge.Log
+	execDelete(ctx, scope.db, &log,
+		`DELETE FROM `+aiInternalMessagesTable+` WHERE bridge_id=$1 AND login_id=$2 AND portal_id=$3`,
+		scope.bridgeID, scope.loginID, scope.portalID,
 	)
 }

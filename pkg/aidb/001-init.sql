@@ -183,17 +183,17 @@ CREATE TABLE IF NOT EXISTS aichats_system_events (
 CREATE TABLE IF NOT EXISTS aichats_internal_messages (
   bridge_id TEXT NOT NULL,
   login_id TEXT NOT NULL,
-  room_id TEXT NOT NULL,
+  portal_id TEXT NOT NULL,
   event_id TEXT NOT NULL,
   source TEXT NOT NULL DEFAULT '',
   canonical_turn_data TEXT NOT NULL DEFAULT '',
   exclude_from_history INTEGER NOT NULL DEFAULT 0,
   created_at_ms INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (bridge_id, login_id, room_id, event_id)
+  PRIMARY KEY (bridge_id, login_id, portal_id, event_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_aichats_internal_messages_history
-  ON aichats_internal_messages(bridge_id, login_id, room_id, created_at_ms);
+  ON aichats_internal_messages(bridge_id, login_id, portal_id, created_at_ms);
 
 CREATE TABLE IF NOT EXISTS aichats_login_state (
   bridge_id TEXT NOT NULL,
@@ -278,15 +278,15 @@ CREATE INDEX IF NOT EXISTS idx_aichats_sessions_updated
 CREATE TABLE IF NOT EXISTS aichats_transcript_messages (
   bridge_id TEXT NOT NULL,
   login_id TEXT NOT NULL,
-  room_id TEXT NOT NULL,
+  portal_id TEXT NOT NULL,
   message_id TEXT NOT NULL,
   event_id TEXT NOT NULL DEFAULT '',
   sender_id TEXT NOT NULL DEFAULT '',
   metadata_json TEXT NOT NULL DEFAULT '',
   created_at_ms INTEGER NOT NULL DEFAULT 0,
   updated_at_ms INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (bridge_id, login_id, room_id, message_id)
+  PRIMARY KEY (bridge_id, login_id, portal_id, message_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_aichats_transcript_room
-  ON aichats_transcript_messages(bridge_id, login_id, room_id, created_at_ms);
+CREATE INDEX IF NOT EXISTS idx_aichats_transcript_portal
+  ON aichats_transcript_messages(bridge_id, login_id, portal_id, created_at_ms);
