@@ -71,5 +71,3 @@ const (
 	// ResultError indicates the tool failed with an error.
 	ResultError ResultStatus = "error"
 )
-
-

@@ -11,8 +11,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
-
-	"github.com/beeper/agentremote/sdk"
 )
 
 func cloneCanonicalTurnData(src map[string]any) map[string]any {
@@ -55,10 +53,6 @@ func cloneMessageMetadata(src *MessageMetadata) *MessageMetadata {
 		return fallback
 	}
 	return &clone
-}
-
-func transportMessageMetadata(src *MessageMetadata) *MessageMetadata {
-	return &MessageMetadata{}
 }
 
 func cloneMessageForAIHistory(msg *database.Message) *database.Message {

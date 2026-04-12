@@ -629,7 +629,7 @@ func (oc *AIClient) saveUserMessage(ctx context.Context, evt *event.Event, msg *
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure user ghost before saving message")
 	}
 	transportMsg := *msg
-	transportMsg.Metadata = transportMessageMetadata(messageMeta(msg))
+	transportMsg.Metadata = &MessageMetadata{}
 	if err := oc.UserLogin.Bridge.DB.Message.Insert(ctx, &transportMsg); err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg("Failed to save message to database")
 	}
@@ -666,7 +666,7 @@ func (oc *AIClient) updateBridgeMessageMetadata(
 	if err != nil || existing == nil {
 		return err
 	}
-	existing.Metadata = transportMessageMetadata(meta)
+	existing.Metadata = &MessageMetadata{}
 	return oc.UserLogin.Bridge.DB.Message.Update(ctx, existing)
 }
 
