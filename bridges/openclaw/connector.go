@@ -42,7 +42,7 @@ func NewConnector() *OpenClawConnector {
 	oc := &OpenClawConnector{}
 	oc.sdkConfig = sdk.NewStandardConnectorConfig(sdk.StandardConnectorConfigParams[*OpenClawClient, *Config, *PortalMetadata, *MessageMetadata, *UserLoginMetadata, *GhostMetadata]{
 		Name:             "openclaw",
-		Description:      "A Matrix↔OpenClaw bridge built on mautrix-go bridgev2.",
+		Description:      "OpenClaw Gateway bridge built with the AgentRemote SDK.",
 		ProtocolID:       "ai-openclaw",
 		ProviderIdentity: sdk.ProviderIdentity{IDPrefix: "openclaw", LogKey: "openclaw_msg_id", StatusNetwork: "openclaw"},
 		ClientCacheMu:    &oc.clientsMu,
@@ -63,7 +63,7 @@ func NewConnector() *OpenClawConnector {
 			oc.initProvisioning()
 			return nil
 		},
-		DisplayName:      "OpenClaw Bridge",
+		DisplayName:      "OpenClaw Gateway",
 		NetworkURL:       "https://github.com/openclaw/openclaw",
 		NetworkID:        "openclaw",
 		BeeperBridgeType: "openclaw",

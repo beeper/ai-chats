@@ -43,7 +43,7 @@ func NewConnector() *OpenCodeConnector {
 	}
 	oc.sdkConfig = sdk.NewStandardConnectorConfig(sdk.StandardConnectorConfigParams[*OpenCodeClient, *Config, *PortalMetadata, *MessageMetadata, *UserLoginMetadata, *GhostMetadata]{
 		Name:             "opencode",
-		Description:      "A Matrix↔OpenCode bridge built on mautrix-go bridgev2.",
+		Description:      "OpenCode bridge built with the AgentRemote SDK.",
 		ProtocolID:       "ai-opencode",
 		AgentCatalog:     openCodeAgentCatalog{},
 		ProviderIdentity: sdk.ProviderIdentity{IDPrefix: "opencode", LogKey: "opencode_msg_id", StatusNetwork: "opencode"},
@@ -60,7 +60,7 @@ func NewConnector() *OpenCodeConnector {
 			sdk.ApplyBoolDefault(&oc.Config.OpenCode.Enabled, true)
 			return nil
 		},
-		DisplayName:      "OpenCode Bridge",
+		DisplayName:      "OpenCode",
 		NetworkURL:       "https://api.ai",
 		NetworkID:        "opencode",
 		BeeperBridgeType: "opencode",

@@ -32,7 +32,7 @@ func NewConnector() *DummyBridgeConnector {
 	dc := &DummyBridgeConnector{}
 	dc.sdkConfig = sdk.NewStandardConnectorConfig(sdk.StandardConnectorConfigParams[*dummySession, *Config, *PortalMetadata, *MessageMetadata, *UserLoginMetadata, *GhostMetadata]{
 		Name:             "dummybridge",
-		Description:      "A synthetic Matrix↔DummyBridge demo bridge built on the AgentRemote SDK.",
+		Description:      "DummyBridge demo bridge built with the AgentRemote SDK.",
 		ProtocolID:       "ai-dummybridge",
 		ProviderIdentity: sdk.ProviderIdentity{IDPrefix: "dummybridge", LogKey: "dummybridge_msg_id", StatusNetwork: "dummybridge"},
 		ClientCacheMu:    &dc.clientsMu,

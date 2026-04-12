@@ -20,31 +20,31 @@ type Definition struct {
 var (
 	AI = Definition{
 		Name:        "ai",
-		Description: "SDK bridge entry for Beeper built on mautrix-go bridgev2.",
+		Description: "AI bridge built with the AgentRemote SDK.",
 		Port:        29345,
 		DBName:      "ai.db",
 	}
 	Codex = Definition{
 		Name:        "codex",
-		Description: "A Matrix↔Codex bridge built on mautrix-go bridgev2.",
+		Description: "Codex bridge built with the AgentRemote SDK.",
 		Port:        29346,
 		DBName:      "codex.db",
 	}
 	OpenCode = Definition{
 		Name:        "opencode",
-		Description: "A Matrix↔OpenCode bridge built on mautrix-go bridgev2.",
+		Description: "OpenCode bridge built with the AgentRemote SDK.",
 		Port:        29347,
 		DBName:      "opencode.db",
 	}
 	OpenClaw = Definition{
 		Name:        "openclaw",
-		Description: "A Matrix↔OpenClaw bridge built on mautrix-go bridgev2.",
+		Description: "OpenClaw Gateway bridge built with the AgentRemote SDK.",
 		Port:        29348,
 		DBName:      "openclaw.db",
 	}
 	DummyBridge = Definition{
 		Name:        "dummybridge",
-		Description: "A Matrix↔DummyBridge demo bridge built on the SDK.",
+		Description: "DummyBridge demo bridge built with the AgentRemote SDK.",
 		Port:        29349,
 		DBName:      "dummybridge.db",
 	}

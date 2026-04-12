@@ -34,7 +34,7 @@ func NewConnector() *CodexConnector {
 	}
 	cc.sdkConfig = sdk.NewStandardConnectorConfig(sdk.StandardConnectorConfigParams[*CodexClient, *Config, *PortalMetadata, *MessageMetadata, *UserLoginMetadata, *GhostMetadata]{
 		Name:             "codex",
-		Description:      "A Matrix↔Codex bridge built on mautrix-go bridgev2.",
+		Description:      "Codex bridge built with the AgentRemote SDK.",
 		ProtocolID:       "ai-codex",
 		ProviderIdentity: sdk.ProviderIdentity{IDPrefix: "codex", LogKey: "codex_msg_id", StatusNetwork: "codex"},
 		ClientCacheMu:    &cc.clientsMu,
@@ -58,7 +58,7 @@ func NewConnector() *CodexConnector {
 			cc.reconcileHostAuthLogins(ctx)
 			return nil
 		},
-		DisplayName:      "Codex Bridge",
+		DisplayName:      "Codex",
 		NetworkURL:       "https://github.com/openai/codex",
 		NetworkID:        "codex",
 		BeeperBridgeType: "codex",

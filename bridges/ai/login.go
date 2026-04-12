@@ -169,7 +169,7 @@ func (ol *OpenAILogin) credentialsStep() *bridgev2.LoginStep {
 
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeUserInput,
-		StepID:       "com.beeper.agentremote.openai.enter_credentials",
+		StepID:       "com.beeper.agentremote.ai.enter_credentials",
 		Instructions: "Enter your API credentials",
 		UserInputParams: &bridgev2.LoginUserInputParams{
 			Fields: fields,
@@ -251,7 +251,7 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 
 	return &bridgev2.LoginStep{
 		Type:   bridgev2.LoginStepTypeComplete,
-		StepID: "com.beeper.agentremote.openai.complete",
+		StepID: "com.beeper.agentremote.ai.complete",
 		CompleteParams: &bridgev2.LoginCompleteParams{
 			UserLoginID: login.ID,
 			UserLogin:   login,
