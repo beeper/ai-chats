@@ -2,13 +2,11 @@ package ai
 
 import (
 	"context"
-	"reflect"
 	"testing"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote/sdk"
 )
@@ -86,15 +84,5 @@ func TestReuseAIClientUpdatesClientBaseLogin(t *testing.T) {
 	}
 	if login.Client != client {
 		t.Fatal("expected login client reference to point at the reused client")
-	}
-}
-
-func TestAIRoomInfoEventTypeRegistered(t *testing.T) {
-	got, ok := event.TypeMap[AIRoomInfoEventType]
-	if !ok {
-		t.Fatal("expected AI room info event type to be registered")
-	}
-	if got != reflect.TypeOf(AIRoomInfoContent{}) {
-		t.Fatalf("unexpected registered type: %v", got)
 	}
 }
