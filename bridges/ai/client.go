@@ -472,7 +472,7 @@ func (oc *AIClient) GetApprovalHandler() sdk.ApprovalReactionHandler {
 
 const (
 	openRouterAppReferer = "https://developers.beeper.com/agentremote"
-	openRouterAppTitle   = "AI Chats for Beeper"
+	openRouterAppTitle   = "Beeper"
 )
 
 func openRouterHeaders() map[string]string {
