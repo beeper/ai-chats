@@ -9,7 +9,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/event"
 )
 
 // MessageType identifies the kind of message.
@@ -36,9 +35,6 @@ type Message struct {
 	Timestamp time.Time
 	Metadata  map[string]any
 
-	// Escape hatches for power users.
-	RawEvent *event.Event
-	RawMsg   *bridgev2.MatrixMessage
 }
 
 // MessageEdit represents an edit to a previously sent message.
@@ -46,7 +42,6 @@ type MessageEdit struct {
 	OriginalID string
 	NewText    string
 	NewHTML    string
-	RawEdit    *bridgev2.MatrixEdit
 }
 
 // Reaction represents a user reaction on a message.
@@ -54,7 +49,6 @@ type Reaction struct {
 	MessageID string
 	Emoji     string
 	Sender    string
-	RawMsg    *bridgev2.MatrixReaction
 }
 
 // LoginInfo contains information about a bridge login.

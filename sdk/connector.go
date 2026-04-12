@@ -41,7 +41,7 @@ func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Confi
 						cfg.UpdateClient(client, login)
 						return
 					}
-					if typed, ok := client.(*sdkClient[SessionT, ConfigDataT]); ok {
+					if typed, ok := client.(loginAwareClient); ok {
 						typed.SetUserLogin(login)
 					}
 				},

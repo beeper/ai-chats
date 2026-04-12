@@ -13,21 +13,7 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-// Compile-time interface checks.
-var (
-	_ bridgev2.NetworkAPI                    = (*sdkClient[any, any])(nil)
-	_ bridgev2.EditHandlingNetworkAPI        = (*sdkClient[any, any])(nil)
-	_ bridgev2.ReactionHandlingNetworkAPI    = (*sdkClient[any, any])(nil)
-	_ bridgev2.RedactionHandlingNetworkAPI   = (*sdkClient[any, any])(nil)
-	_ bridgev2.TypingHandlingNetworkAPI      = (*sdkClient[any, any])(nil)
-	_ bridgev2.RoomNameHandlingNetworkAPI    = (*sdkClient[any, any])(nil)
-	_ bridgev2.RoomTopicHandlingNetworkAPI   = (*sdkClient[any, any])(nil)
-	_ bridgev2.BackfillingNetworkAPI         = (*sdkClient[any, any])(nil)
-	_ bridgev2.DeleteChatHandlingNetworkAPI  = (*sdkClient[any, any])(nil)
-	_ bridgev2.IdentifierResolvingNetworkAPI = (*sdkClient[any, any])(nil)
-	_ bridgev2.ContactListingNetworkAPI      = (*sdkClient[any, any])(nil)
-	_ bridgev2.UserSearchingNetworkAPI       = (*sdkClient[any, any])(nil)
-)
+var _ bridgev2.NetworkAPI = (*sdkClient[any, any])(nil)
 
 // pendingSDKApprovalData holds SDK-specific metadata for a pending tool approval.
 type pendingSDKApprovalData struct {
@@ -268,8 +254,6 @@ func convertMatrixMessage(msg *bridgev2.MatrixMessage) *Message {
 		return &Message{
 			ID:        msg.Event.ID.String(),
 			Timestamp: time.UnixMilli(msg.Event.Timestamp),
-			RawEvent:  msg.Event,
-			RawMsg:    msg,
 		}
 	}
 
@@ -278,8 +262,6 @@ func convertMatrixMessage(msg *bridgev2.MatrixMessage) *Message {
 		Text:      content.Body,
 		HTML:      content.FormattedBody,
 		Timestamp: time.UnixMilli(msg.Event.Timestamp),
-		RawEvent:  msg.Event,
-		RawMsg:    msg,
 	}
 
 	switch content.MsgType {
@@ -306,96 +288,4 @@ func convertMatrixMessage(msg *bridgev2.MatrixMessage) *Message {
 	}
 
 	return m
-}
-
-// HandleMatrixEdit implements bridgev2.EditHandlingNetworkAPI.
-func (c *sdkClient[SessionT, ConfigDataT]) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixEdit) error {
-	if c.cfg == nil || c.cfg.OnEdit == nil {
-		return nil
-	}
-	me := &MessageEdit{
-		OriginalID: string(edit.EditTarget.ID),
-		RawEdit:    edit,
-	}
-	if edit.Content != nil {
-		me.NewText = edit.Content.Body
-		me.NewHTML = edit.Content.FormattedBody
-	}
-	return c.cfg.OnEdit(c.getSession(), c.conv(ctx, edit.Portal), me)
-}
-
-// HandleMatrixMessageRemove implements bridgev2.RedactionHandlingNetworkAPI.
-func (c *sdkClient[SessionT, ConfigDataT]) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev2.MatrixMessageRemove) error {
-	if c.cfg == nil || c.cfg.OnDelete == nil {
-		return nil
-	}
-	var msgID string
-	if msg.TargetMessage != nil {
-		msgID = string(msg.TargetMessage.ID)
-	}
-	return c.cfg.OnDelete(c.getSession(), c.conv(ctx, msg.Portal), msgID)
-}
-
-// HandleMatrixTyping implements bridgev2.TypingHandlingNetworkAPI.
-func (c *sdkClient[SessionT, ConfigDataT]) HandleMatrixTyping(ctx context.Context, msg *bridgev2.MatrixTyping) error {
-	if c.cfg != nil && c.cfg.OnTyping != nil {
-		c.cfg.OnTyping(c.getSession(), c.conv(ctx, msg.Portal), msg.IsTyping)
-	}
-	return nil
-}
-
-// HandleMatrixRoomName implements bridgev2.RoomNameHandlingNetworkAPI.
-func (c *sdkClient[SessionT, ConfigDataT]) HandleMatrixRoomName(ctx context.Context, msg *bridgev2.MatrixRoomName) (bool, error) {
-	if c.cfg != nil && c.cfg.OnRoomName != nil {
-		return c.cfg.OnRoomName(c.getSession(), c.conv(ctx, msg.Portal), msg.Content.Name)
-	}
-	return false, nil
-}
-
-// HandleMatrixRoomTopic implements bridgev2.RoomTopicHandlingNetworkAPI.
-func (c *sdkClient[SessionT, ConfigDataT]) HandleMatrixRoomTopic(ctx context.Context, msg *bridgev2.MatrixRoomTopic) (bool, error) {
-	if c.cfg != nil && c.cfg.OnRoomTopic != nil {
-		return c.cfg.OnRoomTopic(c.getSession(), c.conv(ctx, msg.Portal), msg.Content.Topic)
-	}
-	return false, nil
-}
-
-// FetchMessages implements bridgev2.BackfillingNetworkAPI.
-func (c *sdkClient[SessionT, ConfigDataT]) FetchMessages(ctx context.Context, params bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {
-	if c.cfg == nil || c.cfg.FetchMessages == nil {
-		return nil, nil
-	}
-	return c.cfg.FetchMessages(ctx, params)
-}
-
-// HandleMatrixDeleteChat implements bridgev2.DeleteChatHandlingNetworkAPI.
-func (c *sdkClient[SessionT, ConfigDataT]) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2.MatrixDeleteChat) error {
-	if c.cfg == nil || c.cfg.DeleteChat == nil {
-		return nil
-	}
-	return c.cfg.DeleteChat(c.conv(ctx, msg.Portal))
-}
-
-// ResolveIdentifier implements bridgev2.IdentifierResolvingNetworkAPI.
-func (c *sdkClient[SessionT, ConfigDataT]) ResolveIdentifier(ctx context.Context, identifier string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
-	if c.cfg == nil || c.cfg.ResolveIdentifier == nil {
-		return nil, nil
-	}
-	return c.cfg.ResolveIdentifier(ctx, c.getSession(), identifier, createChat)
-}
-
-// GetContactList implements bridgev2.ContactListingNetworkAPI.
-func (c *sdkClient[SessionT, ConfigDataT]) GetContactList(ctx context.Context) ([]*bridgev2.ResolveIdentifierResponse, error) {
-	if c.cfg == nil || c.cfg.GetContactList == nil {
-		return nil, nil
-	}
-	return c.cfg.GetContactList(ctx, c.getSession())
-}
-
-// SearchUsers implements bridgev2.UserSearchingNetworkAPI.
-func (c *sdkClient[SessionT, ConfigDataT]) SearchUsers(ctx context.Context, query string) ([]*bridgev2.ResolveIdentifierResponse, error) {
-	if c.cfg == nil || c.cfg.SearchUsers == nil {
-		return nil, nil
-	}
-	return c.cfg.SearchUsers(ctx, c.getSession(), query)
 }
