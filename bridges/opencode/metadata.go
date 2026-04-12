@@ -13,17 +13,16 @@ type UserLoginMetadata struct {
 }
 
 type PortalMetadata struct {
-	Title                string                `json:"title,omitempty"`
-	TitleGenerated       bool                  `json:"title_generated,omitempty"`
-	IsOpenCodeRoom       bool                  `json:"is_opencode_room,omitempty"`
-	OpenCodeInstanceID   string                `json:"opencode_instance_id,omitempty"`
-	OpenCodeSessionID    string                `json:"opencode_session_id,omitempty"`
-	OpenCodeReadOnly     bool                  `json:"opencode_read_only,omitempty"`
-	OpenCodeTitlePending bool                  `json:"opencode_title_pending,omitempty"`
-	OpenCodeAwaitingPath bool                  `json:"opencode_awaiting_path,omitempty"`
-	AgentID              string                `json:"agent_id,omitempty"`
-	VerboseLevel         string                `json:"verbose_level,omitempty"`
-	SDK                  sdk.SDKPortalMetadata `json:"sdk,omitempty"`
+	Title                string `json:"title,omitempty"`
+	TitleGenerated       bool   `json:"title_generated,omitempty"`
+	IsOpenCodeRoom       bool   `json:"is_opencode_room,omitempty"`
+	OpenCodeInstanceID   string `json:"opencode_instance_id,omitempty"`
+	OpenCodeSessionID    string `json:"opencode_session_id,omitempty"`
+	OpenCodeReadOnly     bool   `json:"opencode_read_only,omitempty"`
+	OpenCodeTitlePending bool   `json:"opencode_title_pending,omitempty"`
+	OpenCodeAwaitingPath bool   `json:"opencode_awaiting_path,omitempty"`
+	AgentID              string `json:"agent_id,omitempty"`
+	VerboseLevel         string `json:"verbose_level,omitempty"`
 }
 
 type GhostMetadata struct{}
@@ -34,20 +33,6 @@ func loginMetadata(login *bridgev2.UserLogin) *UserLoginMetadata {
 
 func portalMeta(portal *bridgev2.Portal) *PortalMetadata {
 	return sdk.EnsurePortalMetadata[PortalMetadata](portal)
-}
-
-func (pm *PortalMetadata) GetSDKPortalMetadata() *sdk.SDKPortalMetadata {
-	if pm == nil {
-		return nil
-	}
-	return &pm.SDK
-}
-
-func (pm *PortalMetadata) SetSDKPortalMetadata(meta *sdk.SDKPortalMetadata) {
-	if pm == nil || meta == nil {
-		return
-	}
-	pm.SDK = *meta
 }
 
 func humanUserID(loginID networkid.UserLoginID) networkid.UserID {

@@ -6,6 +6,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 )
 
 type testAgentCatalog struct {
@@ -26,18 +27,27 @@ func (c testAgentCatalog) ResolveAgent(_ context.Context, _ *bridgev2.UserLogin,
 }
 
 func newTestConversation(cfg *Config[struct{}, *struct{}], state sdkConversationState) *Conversation {
-	return newConversation(
-		context.Background(),
-		&bridgev2.Portal{
-			Portal: &database.Portal{
-				MXID:     "!room:test",
-				Metadata: &SDKPortalMetadata{Conversation: state},
+	store := newConversationStateStore()
+	portal := &bridgev2.Portal{
+		Portal: &database.Portal{
+			MXID: "!room:test",
+			PortalKey: networkid.PortalKey{
+				ID:       "room",
+				Receiver: "login",
 			},
 		},
+	}
+	conv := newConversation(
+		context.Background(),
+		portal,
 		nil,
 		bridgev2.EventSender{},
-		&staticRuntime[struct{}, *struct{}]{cfg: cfg},
+		&staticRuntime[struct{}, *struct{}]{cfg: cfg, store: store},
 	)
+	if err := conv.saveState(context.Background(), &state); err != nil {
+		panic(err)
+	}
+	return conv
 }
 
 func TestConversationCurrentRoomFeaturesUsesConfiguredDefaultAgent(t *testing.T) {

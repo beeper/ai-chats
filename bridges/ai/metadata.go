@@ -225,24 +225,24 @@ type GravatarState struct {
 
 // PortalMetadata stores non-derivable per-room runtime state.
 type PortalMetadata struct {
-	AckReactionEmoji       string     `json:"ack_reaction_emoji,omitempty"`
-	AckReactionRemoveAfter bool       `json:"ack_reaction_remove_after,omitempty"`
-	PDFConfig              *PDFConfig `json:"pdf_config,omitempty"`
+	AckReactionEmoji       string     `json:"-"`
+	AckReactionRemoveAfter bool       `json:"-"`
+	PDFConfig              *PDFConfig `json:"-"`
 
-	Slug             string `json:"slug,omitempty"`
-	Title            string `json:"title,omitempty"`
-	TitleGenerated   bool   `json:"title_generated,omitempty"` // True if title was auto-generated
-	WelcomeSent      bool   `json:"welcome_sent,omitempty"`
-	AutoGreetingSent bool   `json:"auto_greeting_sent,omitempty"`
+	Slug           string `json:"-"`
+	Title          string `json:"-"`
+	TitleGenerated bool   `json:"-"`
+	WelcomeSent    bool   `json:"-"`
+	AutoGreetingSent bool `json:"-"`
 
-	SessionResetAt          int64            `json:"session_reset_at,omitempty"`
-	AbortedLastRun          bool             `json:"aborted_last_run,omitempty"`
-	CompactionCount         int              `json:"compaction_count,omitempty"`
-	SessionBootstrappedAt   int64            `json:"session_bootstrapped_at,omitempty"`
-	SessionBootstrapByAgent map[string]int64 `json:"session_bootstrap_by_agent,omitempty"`
+	SessionResetAt          int64            `json:"-"`
+	AbortedLastRun          bool             `json:"-"`
+	CompactionCount         int              `json:"-"`
+	SessionBootstrappedAt   int64            `json:"-"`
+	SessionBootstrapByAgent map[string]int64 `json:"-"`
 
-	ModuleMeta           map[string]any `json:"module_meta,omitempty"`             // Generic per-module metadata (e.g., cron room markers, memory flush state)
-	SubagentParentRoomID string         `json:"subagent_parent_room_id,omitempty"` // Parent room ID for subagent sessions
+	ModuleMeta           map[string]any `json:"-"` // Generic per-module metadata (e.g., cron room markers, memory flush state)
+	SubagentParentRoomID string         `json:"-"` // Parent room ID for subagent sessions
 
 	// Runtime-only overrides (not persisted)
 	DisabledTools        []string        `json:"-"`
@@ -251,12 +251,12 @@ type PortalMetadata struct {
 	RuntimeReasoning     string          `json:"-"`
 
 	// Debounce configuration (0 = use default, -1 = disabled)
-	DebounceMs int `json:"debounce_ms,omitempty"`
+	DebounceMs int `json:"-"`
 
 	// Per-session typing overrides (OpenClaw-style).
-	TypingMode            string `json:"typing_mode,omitempty"`             // never|instant|thinking|message
-	TypingIntervalSeconds *int   `json:"typing_interval_seconds,omitempty"` // Optional per-session override
-
+	TypingMode            string `json:"-"` // never|instant|thinking|message
+	TypingIntervalSeconds *int   `json:"-"`
+	portalStateLoaded     bool   `json:"-"`
 }
 
 // SetModuleMeta sets a key in the ModuleMeta map, initializing the map if necessary.
@@ -328,6 +328,10 @@ func clonePortalMetadata(src *PortalMetadata) *PortalMetadata {
 	if src.PDFConfig != nil {
 		pdf := *src.PDFConfig
 		clone.PDFConfig = &pdf
+	}
+	if src.TypingIntervalSeconds != nil {
+		interval := *src.TypingIntervalSeconds
+		clone.TypingIntervalSeconds = &interval
 	}
 
 	if src.SessionBootstrapByAgent != nil {

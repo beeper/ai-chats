@@ -87,25 +87,25 @@ func (oc *OpenClawClient) agentDefaultID() string {
 	return strings.TrimSpace(entry.DefaultID)
 }
 
-func (oc *OpenClawClient) enrichPortalMetadata(ctx context.Context, meta *PortalMetadata) {
-	if oc == nil || meta == nil {
+func (oc *OpenClawClient) enrichPortalState(ctx context.Context, state *openClawPortalState) {
+	if oc == nil || state == nil {
 		return
 	}
 	defaultAgentID := oc.agentDefaultID()
-	if defaultAgentID != "" && meta.OpenClawDefaultAgentID == "" {
-		meta.OpenClawDefaultAgentID = defaultAgentID
+	if defaultAgentID != "" && state.OpenClawDefaultAgentID == "" {
+		state.OpenClawDefaultAgentID = defaultAgentID
 	}
 	if models, err := oc.loadModelCatalog(ctx, false); err == nil && len(models) > 0 {
-		meta.OpenClawKnownModelCount = len(models)
+		state.OpenClawKnownModelCount = len(models)
 	}
-	agentID := stringutil.TrimDefault(meta.OpenClawAgentID, meta.OpenClawDMTargetAgentID)
+	agentID := stringutil.TrimDefault(state.OpenClawAgentID, state.OpenClawDMTargetAgentID)
 	if catalog, err := oc.loadToolsCatalog(ctx, agentID, false); err == nil && catalog != nil {
-		meta.OpenClawToolCount, meta.OpenClawToolProfile = summarizeToolsCatalog(*catalog)
+		state.OpenClawToolCount, state.OpenClawToolProfile = summarizeToolsCatalog(*catalog)
 	}
-	if preview := strings.TrimSpace(meta.OpenClawLastMessagePreview); meta.OpenClawPreviewSnippet == "" && preview != "" {
-		meta.OpenClawPreviewSnippet = preview
-		if meta.OpenClawLastPreviewAt == 0 {
-			meta.OpenClawLastPreviewAt = time.Now().UnixMilli()
+	if preview := strings.TrimSpace(state.OpenClawLastMessagePreview); state.OpenClawPreviewSnippet == "" && preview != "" {
+		state.OpenClawPreviewSnippet = preview
+		if state.OpenClawLastPreviewAt == 0 {
+			state.OpenClawLastPreviewAt = time.Now().UnixMilli()
 		}
 	}
 }
@@ -190,11 +190,11 @@ func cloneGatewayModelChoices(models []gatewayModelChoice) []gatewayModelChoice 
 	return cloned
 }
 
-func (oc *OpenClawClient) effectiveModelChoice(ctx context.Context, meta *PortalMetadata) *gatewayModelChoice {
-	if oc == nil || meta == nil {
+func (oc *OpenClawClient) effectiveModelChoice(ctx context.Context, state *openClawPortalState) *gatewayModelChoice {
+	if oc == nil || state == nil {
 		return nil
 	}
-	modelID := strings.TrimSpace(meta.Model)
+	modelID := strings.TrimSpace(state.Model)
 	if modelID == "" {
 		return nil
 	}
@@ -202,7 +202,7 @@ func (oc *OpenClawClient) effectiveModelChoice(ctx context.Context, meta *Portal
 	if err != nil || len(models) == 0 {
 		return nil
 	}
-	provider := strings.TrimSpace(meta.ModelProvider)
+	provider := strings.TrimSpace(state.ModelProvider)
 	var fallback *gatewayModelChoice
 	for i := range models {
 		if !gatewayModelMatches(models[i], modelID) {

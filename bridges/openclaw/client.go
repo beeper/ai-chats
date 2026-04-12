@@ -264,7 +264,11 @@ func (oc *OpenClawClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridg
 	if !meta.IsOpenClawRoom {
 		return nil
 	}
-	sessionKey := strings.TrimSpace(meta.OpenClawSessionKey)
+	state, err := loadOpenClawPortalState(ctx, msg.Portal, oc.UserLogin)
+	if err != nil {
+		return err
+	}
+	sessionKey := strings.TrimSpace(state.OpenClawSessionKey)
 	if sessionKey == "" {
 		return nil
 	}
@@ -278,18 +282,31 @@ func (oc *OpenClawClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridg
 		return nil
 	}
 	oc.manager.forgetSession(sessionKey)
-	meta.OpenClawSessionID = ""
-	meta.OpenClawSessionKey = ""
-	meta.OpenClawSessionLabel = ""
-	meta.OpenClawLastMessagePreview = ""
-	meta.OpenClawPreviewSnippet = ""
-	_ = msg.Portal.Save(ctx)
+	state.OpenClawSessionID = ""
+	state.OpenClawSessionKey = ""
+	state.OpenClawSessionLabel = ""
+	state.OpenClawLastMessagePreview = ""
+	state.OpenClawPreviewSnippet = ""
+	state.OpenClawLastPreviewAt = 0
+	state.BackgroundBackfillStatus = ""
+	state.BackgroundBackfillError = ""
+	state.BackgroundBackfillCursor = ""
+	state.BackgroundBackfillStartedAt = 0
+	state.BackgroundBackfillCompletedAt = 0
+	if err := saveOpenClawPortalState(ctx, msg.Portal, oc.UserLogin, state); err != nil {
+		return err
+	}
 	return nil
 }
 
 func (oc *OpenClawClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
 	caps := openClawBaseCaps.Clone()
-	profile := oc.openClawCapabilityProfile(ctx, portalMeta(portal))
+	state, err := loadOpenClawPortalState(ctx, portal, oc.UserLogin)
+	if err != nil {
+		return caps
+	}
+	oc.enrichPortalState(ctx, state)
+	profile := oc.openClawCapabilityProfile(ctx, state)
 	caps.ID = openClawCapabilityID(profile)
 	if !profile.MediaKnown {
 		for _, msgType := range sdk.MediaMessageTypes {
@@ -313,37 +330,39 @@ func (oc *OpenClawClient) GetCapabilities(ctx context.Context, portal *bridgev2.
 	return caps
 }
 
-func (oc *OpenClawClient) capabilityIDForPortalMeta(ctx context.Context, meta *PortalMetadata) string {
-	return openClawCapabilityID(oc.openClawCapabilityProfile(ctx, meta))
+func (oc *OpenClawClient) capabilityIDForPortalState(ctx context.Context, state *openClawPortalState) string {
+	return openClawCapabilityID(oc.openClawCapabilityProfile(ctx, state))
 }
 
-func (oc *OpenClawClient) maybeRefreshPortalCapabilities(ctx context.Context, portal *bridgev2.Portal, previous *PortalMetadata) {
-	if oc == nil || oc.UserLogin == nil || portal == nil || portal.MXID == "" {
+func (oc *OpenClawClient) maybeRefreshPortalCapabilities(ctx context.Context, portal *bridgev2.Portal, previous, current *openClawPortalState) {
+	if oc == nil || oc.UserLogin == nil || portal == nil || portal.MXID == "" || previous == nil || current == nil {
 		return
 	}
-	current := portalMeta(portal)
-	if oc.capabilityIDForPortalMeta(ctx, previous) == oc.capabilityIDForPortalMeta(ctx, current) {
+	if oc.capabilityIDForPortalState(ctx, previous) == oc.capabilityIDForPortalState(ctx, current) {
 		return
 	}
 	portal.UpdateCapabilities(ctx, oc.UserLogin, true)
 }
 
 func (oc *OpenClawClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
-	meta := portalMeta(portal)
-	oc.enrichPortalMetadata(ctx, meta)
-	title := oc.displayNameForPortal(meta)
-	roomType := openClawRoomType(meta)
-	agentID := stringutil.TrimDefault(meta.OpenClawDMTargetAgentID, meta.OpenClawAgentID)
+	state, err := loadOpenClawPortalState(ctx, portal, oc.UserLogin)
+	if err != nil {
+		return nil, err
+	}
+	oc.enrichPortalState(ctx, state)
+	title := oc.displayNameForPortal(state)
+	roomType := openClawRoomType(state)
+	agentID := stringutil.TrimDefault(state.OpenClawDMTargetAgentID, state.OpenClawAgentID)
 	if roomType == database.RoomTypeDM && agentID != "" {
 		info := oc.buildOpenClawDMChatInfo(agentID, title, nil)
-		info.Topic = ptr.NonZero(oc.topicForPortal(meta))
+		info.Topic = ptr.NonZero(oc.topicForPortal(state))
 		info.Type = ptr.Ptr(roomType)
 		info.CanBackfill = true
 		return info, nil
 	}
 	return &bridgev2.ChatInfo{
 		Name:        ptr.Ptr(title),
-		Topic:       ptr.NonZero(oc.topicForPortal(meta)),
+		Topic:       ptr.NonZero(oc.topicForPortal(state)),
 		Type:        ptr.Ptr(roomType),
 		CanBackfill: true,
 	}, nil
@@ -358,8 +377,8 @@ func openClawRejectedFileFeatures() *event.FileFeatures {
 	}
 }
 
-func (oc *OpenClawClient) openClawCapabilityProfile(ctx context.Context, meta *PortalMetadata) openClawCapabilityProfile {
-	model := oc.effectiveModelChoice(ctx, meta)
+func (oc *OpenClawClient) openClawCapabilityProfile(ctx context.Context, state *openClawPortalState) openClawCapabilityProfile {
+	model := oc.effectiveModelChoice(ctx, state)
 	if model == nil {
 		return openClawCapabilityProfile{}
 	}
@@ -458,23 +477,23 @@ func (oc *OpenClawClient) displayNameForSession(session gatewaySessionRow) strin
 	return "OpenClaw"
 }
 
-func (oc *OpenClawClient) displayNameForPortal(meta *PortalMetadata) string {
-	if meta == nil {
+func (oc *OpenClawClient) displayNameForPortal(state *openClawPortalState) string {
+	if state == nil {
 		return "OpenClaw"
 	}
-	if trimmed := strings.TrimSpace(meta.OpenClawDMTargetAgentName); trimmed != "" {
+	if trimmed := strings.TrimSpace(state.OpenClawDMTargetAgentName); trimmed != "" {
 		return trimmed
 	}
-	sourceLabel := openClawSourceLabel(meta.OpenClawSpace, meta.OpenClawGroupChannel, meta.OpenClawSubject)
+	sourceLabel := openClawSourceLabel(state.OpenClawSpace, state.OpenClawGroupChannel, state.OpenClawSubject)
 	candidates := []string{
-		meta.OpenClawDerivedTitle,
-		meta.OpenClawDisplayName,
-		meta.OpenClawSessionLabel,
+		state.OpenClawDerivedTitle,
+		state.OpenClawDisplayName,
+		state.OpenClawSessionLabel,
 		sourceLabel,
-		meta.OpenClawSubject,
-		meta.LastTo,
-		meta.OpenClawChannel,
-		meta.OpenClawSessionKey,
+		state.OpenClawSubject,
+		state.LastTo,
+		state.OpenClawChannel,
+		state.OpenClawSessionKey,
 	}
 	for _, value := range candidates {
 		if trimmed := strings.TrimSpace(value); trimmed != "" {
@@ -497,35 +516,35 @@ func appendDedupedPart(parts []string, value string) []string {
 	return append(parts, value)
 }
 
-func (oc *OpenClawClient) topicForPortal(meta *PortalMetadata) string {
-	if meta == nil {
+func (oc *OpenClawClient) topicForPortal(state *openClawPortalState) string {
+	if state == nil {
 		return ""
 	}
-	if strings.TrimSpace(meta.OpenClawDMTargetAgentID) != "" || isOpenClawSyntheticDMSessionKey(meta.OpenClawSessionKey) {
+	if strings.TrimSpace(state.OpenClawDMTargetAgentID) != "" || isOpenClawSyntheticDMSessionKey(state.OpenClawSessionKey) {
 		return "OpenClaw agent DM"
 	}
 	parts := make([]string, 0, 8)
-	parts = appendDedupedPart(parts, normalizeOpenClawChatType(meta.OpenClawChatType))
-	parts = appendDedupedPart(parts, meta.OpenClawChannel)
-	parts = appendDedupedPart(parts, openClawSourceLabel(meta.OpenClawSpace, meta.OpenClawGroupChannel, meta.OpenClawSubject))
-	parts = appendDedupedPart(parts, summarizeOpenClawOrigin(meta.OpenClawOrigin, meta.OpenClawChannel))
-	parts = appendDedupedPart(parts, meta.ModelProvider)
-	parts = appendDedupedPart(parts, meta.Model)
-	if preview := stringutil.TrimDefault(meta.OpenClawPreviewSnippet, meta.OpenClawLastMessagePreview); preview != "" {
+	parts = appendDedupedPart(parts, normalizeOpenClawChatType(state.OpenClawChatType))
+	parts = appendDedupedPart(parts, state.OpenClawChannel)
+	parts = appendDedupedPart(parts, openClawSourceLabel(state.OpenClawSpace, state.OpenClawGroupChannel, state.OpenClawSubject))
+	parts = appendDedupedPart(parts, summarizeOpenClawOrigin(state.OpenClawOrigin, state.OpenClawChannel))
+	parts = appendDedupedPart(parts, state.ModelProvider)
+	parts = appendDedupedPart(parts, state.Model)
+	if preview := stringutil.TrimDefault(state.OpenClawPreviewSnippet, state.OpenClawLastMessagePreview); preview != "" {
 		parts = appendDedupedPart(parts, "Recent: "+preview)
 	}
-	if meta.HistoryMode != "" {
-		parts = appendDedupedPart(parts, "History: "+meta.HistoryMode)
+	if state.HistoryMode != "" {
+		parts = appendDedupedPart(parts, "History: "+state.HistoryMode)
 	}
-	if meta.OpenClawToolCount > 0 {
-		toolSummary := fmt.Sprintf("Tools: %d", meta.OpenClawToolCount)
-		if profile := strings.TrimSpace(meta.OpenClawToolProfile); profile != "" {
+	if state.OpenClawToolCount > 0 {
+		toolSummary := fmt.Sprintf("Tools: %d", state.OpenClawToolCount)
+		if profile := strings.TrimSpace(state.OpenClawToolProfile); profile != "" {
 			toolSummary += " (" + profile + ")"
 		}
 		parts = appendDedupedPart(parts, toolSummary)
 	}
-	if meta.OpenClawKnownModelCount > 0 {
-		parts = appendDedupedPart(parts, fmt.Sprintf("Models: %d", meta.OpenClawKnownModelCount))
+	if state.OpenClawKnownModelCount > 0 {
+		parts = appendDedupedPart(parts, fmt.Sprintf("Models: %d", state.OpenClawKnownModelCount))
 	}
 	return strings.Join(parts, " | ")
 }
@@ -543,15 +562,15 @@ func normalizeOpenClawChatType(raw string) string {
 	}
 }
 
-func openClawRoomType(meta *PortalMetadata) database.RoomType {
-	if meta == nil {
+func openClawRoomType(state *openClawPortalState) database.RoomType {
+	if state == nil {
 		return database.RoomTypeDM
 	}
-	switch normalizeOpenClawChatType(meta.OpenClawChatType) {
+	switch normalizeOpenClawChatType(state.OpenClawChatType) {
 	case "group", "channel":
 		return database.RoomTypeDefault
 	}
-	if strings.TrimSpace(meta.OpenClawSpace) != "" || strings.TrimSpace(meta.OpenClawGroupChannel) != "" {
+	if strings.TrimSpace(state.OpenClawSpace) != "" || strings.TrimSpace(state.OpenClawGroupChannel) != "" {
 		return database.RoomTypeDefault
 	}
 	return database.RoomTypeDM

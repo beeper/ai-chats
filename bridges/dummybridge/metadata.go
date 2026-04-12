@@ -12,11 +12,10 @@ type UserLoginMetadata struct {
 }
 
 type PortalMetadata struct {
-	Title             string                `json:"title,omitempty"`
-	Topic             string                `json:"topic,omitempty"`
-	ChatIndex         int                   `json:"chat_index,omitempty"`
-	IsDummyBridgeRoom bool                  `json:"is_dummybridge_room,omitempty"`
-	SDK               sdk.SDKPortalMetadata `json:"sdk,omitempty"`
+	Title             string `json:"title,omitempty"`
+	Topic             string `json:"topic,omitempty"`
+	ChatIndex         int    `json:"chat_index,omitempty"`
+	IsDummyBridgeRoom bool   `json:"is_dummybridge_room,omitempty"`
 }
 
 type GhostMetadata struct{}
@@ -33,18 +32,4 @@ func loginMetadata(login *bridgev2.UserLogin) *UserLoginMetadata {
 
 func portalMeta(portal *bridgev2.Portal) *PortalMetadata {
 	return sdk.EnsurePortalMetadata[PortalMetadata](portal)
-}
-
-func (pm *PortalMetadata) GetSDKPortalMetadata() *sdk.SDKPortalMetadata {
-	if pm == nil {
-		return nil
-	}
-	return &pm.SDK
-}
-
-func (pm *PortalMetadata) SetSDKPortalMetadata(meta *sdk.SDKPortalMetadata) {
-	if pm == nil || meta == nil {
-		return
-	}
-	pm.SDK = *meta
 }

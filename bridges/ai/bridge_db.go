@@ -14,6 +14,7 @@ const (
 	aiInternalMessagesTable  = "aichats_internal_messages"
 	aiLoginStateTable        = "aichats_login_state"
 	aiLoginConfigTable       = "aichats_login_config"
+	aiPortalStateTable       = "aichats_portal_state"
 	aiToolApprovalRulesTable = "aichats_tool_approval_rules"
 )
 
@@ -69,6 +70,13 @@ func bridgeDBFromLogin(login *bridgev2.UserLogin) *dbutil.Database {
 		return newBridgeChildDB(login.Bridge.DB.Database, login.Log)
 	}
 	return nil
+}
+
+func bridgeDBFromPortal(portal *bridgev2.Portal) *dbutil.Database {
+	if portal == nil || portal.Bridge == nil || portal.Bridge.DB == nil {
+		return nil
+	}
+	return newBridgeChildDB(portal.Bridge.DB.Database, portal.Bridge.Log)
 }
 
 func loginDBContext(client *AIClient) (*dbutil.Database, string, string) {

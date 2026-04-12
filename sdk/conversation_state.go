@@ -73,7 +73,7 @@ func newConversationStateStore() *conversationStateStore {
 }
 
 func conversationStateKey(portal *bridgev2.Portal) string {
-	if portal == nil {
+	if portal == nil || portal.Portal == nil {
 		return ""
 	}
 	if portal.MXID != "" {
@@ -107,7 +107,7 @@ func (s *conversationStateStore) set(portal *bridgev2.Portal, state *sdkConversa
 }
 
 func conversationStateDB(portal *bridgev2.Portal) (*dbutil.Database, string, string, string) {
-	if portal == nil || portal.Bridge == nil || portal.Bridge.DB == nil || portal.Bridge.DB.Database == nil {
+	if portal == nil || portal.Portal == nil || portal.Bridge == nil || portal.Bridge.DB == nil || portal.Bridge.DB.Database == nil {
 		return nil, "", "", ""
 	}
 	return portal.Bridge.DB.Database, string(portal.Bridge.DB.BridgeID), string(portal.PortalKey.Receiver), string(portal.PortalKey.ID)

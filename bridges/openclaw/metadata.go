@@ -22,7 +22,10 @@ type UserLoginMetadata struct {
 }
 
 type PortalMetadata struct {
-	IsOpenClawRoom                bool           `json:"is_openclaw_room,omitempty"`
+	IsOpenClawRoom bool `json:"is_openclaw_room,omitempty"`
+}
+
+type openClawPortalState struct {
 	OpenClawGatewayID             string         `json:"openclaw_gateway_id,omitempty"`
 	OpenClawSessionID             string         `json:"openclaw_session_id,omitempty"`
 	OpenClawSessionKey            string         `json:"openclaw_session_key,omitempty"`
@@ -94,6 +97,115 @@ type openClawPersistedLoginState struct {
 	DeviceToken     string
 	SessionsSynced  bool
 	LastSyncAt      int64
+}
+
+type openClawPortalDBScope struct {
+	db       *dbutil.Database
+	bridgeID string
+	loginID  string
+	portalKey string
+}
+
+func openClawPortalDBScopeFor(portal *bridgev2.Portal, login *bridgev2.UserLogin) *openClawPortalDBScope {
+	if portal == nil || login == nil || login.Bridge == nil || login.Bridge.DB == nil || login.Bridge.DB.Database == nil {
+		return nil
+	}
+	bridgeID := strings.TrimSpace(string(login.Bridge.DB.BridgeID))
+	loginID := strings.TrimSpace(string(login.ID))
+	portalKey := strings.TrimSpace(string(portal.PortalKey))
+	if bridgeID == "" || loginID == "" || portalKey == "" {
+		return nil
+	}
+	return &openClawPortalDBScope{
+		db:        login.Bridge.DB.Database,
+		bridgeID:  bridgeID,
+		loginID:   loginID,
+		portalKey: portalKey,
+	}
+}
+
+func ensureOpenClawPortalStateTable(ctx context.Context, portal *bridgev2.Portal, login *bridgev2.UserLogin) error {
+	scope := openClawPortalDBScopeFor(portal, login)
+	if scope == nil {
+		return nil
+	}
+	_, err := scope.db.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS openclaw_portal_state (
+			bridge_id TEXT NOT NULL,
+			login_id TEXT NOT NULL,
+			portal_key TEXT NOT NULL,
+			state_json TEXT NOT NULL DEFAULT '{}',
+			updated_at_ms INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (bridge_id, login_id, portal_key)
+		)
+	`)
+	return err
+}
+
+func loadOpenClawPortalState(ctx context.Context, portal *bridgev2.Portal, login *bridgev2.UserLogin) (*openClawPortalState, error) {
+	scope := openClawPortalDBScopeFor(portal, login)
+	if scope == nil {
+		return &openClawPortalState{}, nil
+	}
+	if err := ensureOpenClawPortalStateTable(ctx, portal, login); err != nil {
+		return nil, err
+	}
+	var stateJSON string
+	err := scope.db.QueryRow(ctx, `
+		SELECT state_json
+		FROM openclaw_portal_state
+		WHERE bridge_id=$1 AND login_id=$2 AND portal_key=$3
+	`, scope.bridgeID, scope.loginID, scope.portalKey).Scan(&stateJSON)
+	if err == sql.ErrNoRows {
+		return &openClawPortalState{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	state := &openClawPortalState{}
+	if strings.TrimSpace(stateJSON) != "" {
+		if err := json.Unmarshal([]byte(stateJSON), state); err != nil {
+			return nil, err
+		}
+	}
+	return state, nil
+}
+
+func saveOpenClawPortalState(ctx context.Context, portal *bridgev2.Portal, login *bridgev2.UserLogin, state *openClawPortalState) error {
+	scope := openClawPortalDBScopeFor(portal, login)
+	if scope == nil || state == nil {
+		return nil
+	}
+	if err := ensureOpenClawPortalStateTable(ctx, portal, login); err != nil {
+		return err
+	}
+	stateJSON, err := json.Marshal(state)
+	if err != nil {
+		return err
+	}
+	_, err = scope.db.Exec(ctx, `
+		INSERT INTO openclaw_portal_state (bridge_id, login_id, portal_key, state_json, updated_at_ms)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (bridge_id, login_id, portal_key) DO UPDATE SET
+			state_json=excluded.state_json,
+			updated_at_ms=excluded.updated_at_ms
+	`, scope.bridgeID, scope.loginID, scope.portalKey, string(stateJSON), time.Now().UnixMilli())
+	return err
+}
+
+func clearOpenClawPortalState(ctx context.Context, portal *bridgev2.Portal, login *bridgev2.UserLogin) error {
+	scope := openClawPortalDBScopeFor(portal, login)
+	if scope == nil {
+		return nil
+	}
+	if err := ensureOpenClawPortalStateTable(ctx, portal, login); err != nil {
+		return err
+	}
+	_, err := scope.db.Exec(ctx, `
+		DELETE FROM openclaw_portal_state
+		WHERE bridge_id=$1 AND login_id=$2 AND portal_key=$3
+	`, scope.bridgeID, scope.loginID, scope.portalKey)
+	return err
 }
 
 type GhostMetadata struct {

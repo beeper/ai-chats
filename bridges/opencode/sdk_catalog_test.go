@@ -51,16 +51,3 @@ func TestOpenCodeAgentCatalogResolvesIdentifiers(t *testing.T) {
 		t.Fatalf("unexpected agent: %#v", agent)
 	}
 }
-
-func TestPortalMetadataCarriesSDKMetadata(t *testing.T) {
-	meta := &PortalMetadata{}
-	sdkMeta := meta.GetSDKPortalMetadata()
-	if sdkMeta == nil {
-		t.Fatal("expected SDK metadata carrier")
-	}
-	sdkMeta.Conversation.ArchiveOnCompletion = true
-	meta.SetSDKPortalMetadata(sdkMeta)
-	if !meta.SDK.Conversation.ArchiveOnCompletion {
-		t.Fatal("expected SDK metadata to persist on portal metadata")
-	}
-}
