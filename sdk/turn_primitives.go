@@ -89,7 +89,7 @@ func turnPortal(t *Turn) *bridgev2.Portal {
 	return t.conv.portal
 }
 
-// Emitter returns the underlying stream emitter as an escape hatch.
+// Emitter returns the underlying stream emitter for advanced stream control.
 func (s *TurnStream) Emitter() *streamui.Emitter {
 	if !s.valid() {
 		return nil

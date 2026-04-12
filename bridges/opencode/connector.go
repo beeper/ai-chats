@@ -49,9 +49,6 @@ func NewConnector() *OpenCodeConnector {
 		ProviderIdentity: sdk.ProviderIdentity{IDPrefix: "opencode", LogKey: "opencode_msg_id", StatusNetwork: "opencode"},
 		ClientCacheMu:    &oc.clientsMu,
 		ClientCache:      &oc.clients,
-		GetCapabilities: func(_ *OpenCodeClient, _ *sdk.Conversation) *sdk.RoomFeatures {
-			return &sdk.RoomFeatures{Custom: openCodeMatrixRoomFeatures()}
-		},
 		InitConnector: func(bridge *bridgev2.Bridge) {
 			oc.br = bridge
 		},

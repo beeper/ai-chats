@@ -41,8 +41,8 @@ func resolveMakeBroken(makeBroken func(*bridgev2.UserLogin, string) *BrokenLogin
 }
 
 // LoadUserLogin loads or creates a typed client using LoadOrCreateTypedClient.
-// On failure it assigns a BrokenLoginClient and returns nil error, matching the
-// convention used by all bridge connectors.
+// On failure it installs a BrokenLoginClient and returns nil so the bridge can
+// keep the login visible while marking it unusable.
 func LoadUserLogin[C bridgev2.NetworkAPI](login *bridgev2.UserLogin, cfg LoadUserLoginConfig[C]) error {
 	makeBroken := resolveMakeBroken(cfg.MakeBroken)
 	clients := cfg.Clients

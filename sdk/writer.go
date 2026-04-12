@@ -29,7 +29,7 @@ type ToolOutputOptions struct {
 //
 // This is the canonical write surface for both SDK-managed turns and bridge-
 // managed streaming state. Direct emitter access should be reserved for rare
-// raw-part escape hatches only.
+// low-level integrations only.
 type Writer struct {
 	State   *streamui.UIState
 	Emitter *streamui.Emitter
@@ -197,7 +197,7 @@ func (w *Writer) Data(ctx context.Context, name string, payload any, transient b
 	w.Emitter.Emit(emitCtx(ctx), w.Portal, part)
 }
 
-// RawPart emits an arbitrary stream part. This is the lowest-level escape hatch.
+// RawPart emits an arbitrary stream part for low-level integrations.
 func (w *Writer) RawPart(ctx context.Context, part map[string]any) {
 	if !w.ready() || len(part) == 0 {
 		return

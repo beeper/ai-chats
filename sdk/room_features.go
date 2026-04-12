@@ -62,9 +62,6 @@ func convertRoomFeatures(f *RoomFeatures) *event.RoomFeatures {
 	if f == nil {
 		f = defaultSDKFeatureConfig()
 	}
-	if f.Custom != nil {
-		return f.Custom
-	}
 	maxText := f.MaxTextLength
 	if maxText == 0 {
 		maxText = DefaultAgentMaxTextLength

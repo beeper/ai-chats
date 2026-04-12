@@ -197,9 +197,9 @@ func (c *sdkClient[SessionT, ConfigDataT]) GetUserInfo(_ context.Context, ghost 
 	return nil, nil
 }
 
-func (c *sdkClient[SessionT, ConfigDataT]) GetCapabilities(_ context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
-	conv := c.conv(context.Background(), portal)
-	return convertRoomFeatures(conv.currentRoomFeatures(context.Background()))
+func (c *sdkClient[SessionT, ConfigDataT]) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
+	conv := c.conv(ctx, portal)
+	return convertRoomFeatures(conv.currentRoomFeatures(ctx))
 }
 
 func (c *sdkClient[SessionT, ConfigDataT]) conv(ctx context.Context, portal *bridgev2.Portal) *Conversation {

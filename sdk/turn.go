@@ -883,7 +883,7 @@ func (t *Turn) Agent() *Agent { return t.agent }
 // turn produces visible output.
 func (t *Turn) SetSender(sender bridgev2.EventSender) { t.sender = sender }
 
-// Emitter returns the underlying streamui.Emitter for escape hatch access.
+// Emitter returns the underlying streamui.Emitter for advanced stream control.
 func (t *Turn) Emitter() *streamui.Emitter { return t.emitter }
 
 // UIState returns the underlying streamui.UIState.

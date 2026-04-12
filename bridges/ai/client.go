@@ -859,8 +859,29 @@ func (oc *AIClient) Connect(ctx context.Context) {
 	}
 	oc.disconnectCtx, oc.disconnectCancel = context.WithCancel(base)
 
-	// Trust the token - auth errors will be caught during actual API usage
-	// OpenRouter and Beeper provider don't support the GET /v1/models/{model} endpoint
+	oc.SetLoggedIn(false)
+	oc.UserLogin.BridgeState.Send(status.BridgeState{
+		StateEvent: status.StateConnecting,
+		Message:    "Connecting",
+	})
+
+	if oc.provider != nil {
+		valCtx, cancel := context.WithTimeout(oc.backgroundContext(ctx), modelValidationTimeout)
+		_, err := oc.provider.ListModels(valCtx)
+		cancel()
+		if err != nil {
+			if IsAuthError(err) {
+				oc.UserLogin.BridgeState.Send(status.BridgeState{
+					StateEvent: status.StateBadCredentials,
+					Error:      AIAuthFailed,
+					Message:    "AI login is no longer authenticated.",
+				})
+				return
+			}
+			oc.loggerForContext(ctx).Warn().Err(err).Msg("AI connect validation failed; continuing with deferred provider checks")
+		}
+	}
+
 	oc.SetLoggedIn(true)
 	oc.UserLogin.BridgeState.Send(status.BridgeState{
 		StateEvent: status.StateConnected,

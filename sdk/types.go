@@ -55,7 +55,7 @@ type Reaction struct {
 type LoginInfo struct {
 	UserID   string
 	Domain   string
-	Login    *bridgev2.UserLogin // escape hatch
+	Login    *bridgev2.UserLogin
 	Metadata map[string]any
 }
 
@@ -128,8 +128,7 @@ type RoomFeatures struct {
 	SupportsTyping       bool
 	SupportsReadReceipts bool
 	SupportsDeleteChat   bool
-	CustomCapabilityID   string              // for dynamic capability IDs
-	Custom               *event.RoomFeatures // escape hatch: override everything
+	CustomCapabilityID   string // for dynamic capability IDs
 }
 
 // RoomAgentSet tracks the agents available in a conversation.

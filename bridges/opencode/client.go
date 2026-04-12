@@ -87,15 +87,33 @@ func (oc *OpenCodeClient) SetUserLogin(login *bridgev2.UserLogin) {
 
 func (oc *OpenCodeClient) Connect(ctx context.Context) {
 	oc.ResetStreamShutdown()
-	oc.SetLoggedIn(true)
-	oc.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected, Message: "Connected"})
+	oc.SetLoggedIn(false)
+	oc.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnecting, Message: "Connecting"})
 	if oc.bridge != nil {
 		go func() {
 			if err := oc.bridge.RestoreConnections(oc.BackgroundContext(ctx)); err != nil {
 				oc.UserLogin.Log.Warn().Err(err).Msg("Failed to restore OpenCode connections")
+				oc.UserLogin.BridgeState.Send(status.BridgeState{
+					StateEvent: status.StateTransientDisconnect,
+					Message:    "Failed to restore OpenCode connections",
+				})
+				return
 			}
+			connected := oc.hasReachableOpenCodeInstance()
+			if !connected {
+				oc.UserLogin.BridgeState.Send(status.BridgeState{
+					StateEvent: status.StateTransientDisconnect,
+					Message:    "No OpenCode instances are currently reachable",
+				})
+				return
+			}
+			oc.SetLoggedIn(true)
+			oc.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected, Message: "Connected"})
 		}()
+		return
 	}
+	oc.SetLoggedIn(true)
+	oc.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected, Message: "Connected"})
 }
 
 func (oc *OpenCodeClient) Disconnect() {
@@ -115,6 +133,22 @@ func (oc *OpenCodeClient) Disconnect() {
 }
 
 func (oc *OpenCodeClient) GetUserLogin() *bridgev2.UserLogin { return oc.UserLogin }
+
+func (oc *OpenCodeClient) hasReachableOpenCodeInstance() bool {
+	instances := oc.OpenCodeInstances()
+	if len(instances) == 0 {
+		return true
+	}
+	if oc.bridge == nil || oc.bridge.manager == nil {
+		return false
+	}
+	for instanceID := range instances {
+		if oc.bridge.manager.IsConnected(instanceID) {
+			return true
+		}
+	}
+	return false
+}
 
 func (oc *OpenCodeClient) GetApprovalHandler() sdk.ApprovalReactionHandler {
 	if oc.bridge == nil {

@@ -15,17 +15,20 @@ func TestHandleMatrixRoomName_PersistsViaBridgev2Portal(t *testing.T) {
 	ctx := context.Background()
 	client, portal := newBridgev2RoomMetaTestPortal(t)
 
-	portal.Name = "Bridge Owned Name"
-	portal.NameSet = true
-
 	changed, err := client.HandleMatrixRoomName(ctx, &bridgev2.MatrixRoomName{
-		MatrixEventBase: bridgev2.MatrixEventBase[*event.RoomNameEventContent]{Portal: portal},
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.RoomNameEventContent]{
+			Portal:  portal,
+			Content: &event.RoomNameEventContent{Name: "Bridge Owned Name"},
+		},
 	})
 	if err != nil {
 		t.Fatalf("handle room name: %v", err)
 	}
 	if !changed {
 		t.Fatal("expected room name handler to accept bridgev2-owned name changes")
+	}
+	if portal.Name != "Bridge Owned Name" || !portal.NameSet {
+		t.Fatalf("expected handler to update portal name in memory, got %#v", portal.Portal)
 	}
 	if err = portal.Save(ctx); err != nil {
 		t.Fatalf("save portal: %v", err)
@@ -47,17 +50,20 @@ func TestHandleMatrixRoomTopic_PersistsViaBridgev2Portal(t *testing.T) {
 	ctx := context.Background()
 	client, portal := newBridgev2RoomMetaTestPortal(t)
 
-	portal.Topic = "Bridge Owned Topic"
-	portal.TopicSet = true
-
 	changed, err := client.HandleMatrixRoomTopic(ctx, &bridgev2.MatrixRoomTopic{
-		MatrixEventBase: bridgev2.MatrixEventBase[*event.TopicEventContent]{Portal: portal},
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.TopicEventContent]{
+			Portal:  portal,
+			Content: &event.TopicEventContent{Topic: "Bridge Owned Topic"},
+		},
 	})
 	if err != nil {
 		t.Fatalf("handle room topic: %v", err)
 	}
 	if !changed {
 		t.Fatal("expected room topic handler to accept bridgev2-owned topic changes")
+	}
+	if portal.Topic != "Bridge Owned Topic" || !portal.TopicSet {
+		t.Fatalf("expected handler to update portal topic in memory, got %#v", portal.Portal)
 	}
 	if err = portal.Save(ctx); err != nil {
 		t.Fatalf("save portal: %v", err)
@@ -79,17 +85,20 @@ func TestHandleMatrixRoomAvatar_PersistsViaBridgev2Portal(t *testing.T) {
 	ctx := context.Background()
 	client, portal := newBridgev2RoomMetaTestPortal(t)
 
-	portal.AvatarMXC = id.ContentURIString("mxc://example.com/avatar")
-	portal.AvatarSet = true
-
 	changed, err := client.HandleMatrixRoomAvatar(ctx, &bridgev2.MatrixRoomAvatar{
-		MatrixEventBase: bridgev2.MatrixEventBase[*event.RoomAvatarEventContent]{Portal: portal},
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.RoomAvatarEventContent]{
+			Portal:  portal,
+			Content: &event.RoomAvatarEventContent{URL: id.ContentURIString("mxc://example.com/avatar")},
+		},
 	})
 	if err != nil {
 		t.Fatalf("handle room avatar: %v", err)
 	}
 	if !changed {
 		t.Fatal("expected room avatar handler to accept bridgev2-owned avatar changes")
+	}
+	if portal.AvatarMXC != "mxc://example.com/avatar" || !portal.AvatarSet {
+		t.Fatalf("expected handler to update portal avatar in memory, got %#v", portal.Portal)
 	}
 	if err = portal.Save(ctx); err != nil {
 		t.Fatalf("save portal: %v", err)
