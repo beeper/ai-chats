@@ -10,14 +10,14 @@ import (
 	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
 
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 type openCodeAgentCatalog struct {
 	client *OpenCodeClient
 }
 
-func (c openCodeAgentCatalog) DefaultAgent(ctx context.Context, login *bridgev2.UserLogin) (*bridgesdk.Agent, error) {
+func (c openCodeAgentCatalog) DefaultAgent(ctx context.Context, login *bridgev2.UserLogin) (*sdk.Agent, error) {
 	agents, err := c.ListAgents(ctx, login)
 	if err != nil || len(agents) == 0 {
 		return nil, err
@@ -25,13 +25,13 @@ func (c openCodeAgentCatalog) DefaultAgent(ctx context.Context, login *bridgev2.
 	return agents[0], nil
 }
 
-func (c openCodeAgentCatalog) ListAgents(_ context.Context, login *bridgev2.UserLogin) ([]*bridgesdk.Agent, error) {
+func (c openCodeAgentCatalog) ListAgents(_ context.Context, login *bridgev2.UserLogin) ([]*sdk.Agent, error) {
 	meta := loginMetadata(login)
 	if meta == nil || len(meta.OpenCodeInstances) == 0 {
 		return nil, nil
 	}
 	instanceIDs := sortedOpenCodeInstanceIDs(meta.OpenCodeInstances)
-	out := make([]*bridgesdk.Agent, 0, len(instanceIDs))
+	out := make([]*sdk.Agent, 0, len(instanceIDs))
 	for _, instanceID := range instanceIDs {
 		displayName := c.client.instanceDisplayName(instanceID)
 		out = append(out, openCodeSDKAgent(instanceID, displayName))
@@ -39,7 +39,7 @@ func (c openCodeAgentCatalog) ListAgents(_ context.Context, login *bridgev2.User
 	return out, nil
 }
 
-func (c openCodeAgentCatalog) ResolveAgent(ctx context.Context, login *bridgev2.UserLogin, identifier string) (*bridgesdk.Agent, error) {
+func (c openCodeAgentCatalog) ResolveAgent(ctx context.Context, login *bridgev2.UserLogin, identifier string) (*sdk.Agent, error) {
 	instanceID, ok := ParseOpenCodeIdentifier(identifier)
 	if !ok {
 		instanceID = strings.TrimSpace(identifier)
@@ -57,7 +57,7 @@ func (c openCodeAgentCatalog) ResolveAgent(ctx context.Context, login *bridgev2.
 	return openCodeSDKAgent(instanceID, c.client.instanceDisplayName(instanceID)), nil
 }
 
-func (oc *OpenCodeClient) sdkAgentCatalog() bridgesdk.AgentCatalog {
+func (oc *OpenCodeClient) sdkAgentCatalog() sdk.AgentCatalog {
 	return openCodeAgentCatalog{client: oc}
 }
 

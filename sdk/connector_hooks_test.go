@@ -9,8 +9,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
-
-	"github.com/beeper/agentremote"
 )
 
 type testSDKClient struct {
@@ -88,8 +86,8 @@ func TestNewConnectorBaseUsesHooksAndCustomClients(t *testing.T) {
 			}
 			stopCalled++
 		},
-		MakeBrokenLogin: func(login *bridgev2.UserLogin, reason string) *agentremote.BrokenLoginClient {
-			return agentremote.NewBrokenLoginClient(login, "custom:"+reason)
+		MakeBrokenLogin: func(login *bridgev2.UserLogin, reason string) *BrokenLoginClient {
+			return NewBrokenLoginClient(login, "custom:"+reason)
 		},
 		CreateClient: func(*bridgev2.UserLogin) (bridgev2.NetworkAPI, error) {
 			createCalled++
@@ -134,7 +132,7 @@ func TestNewConnectorBaseUsesHooksAndCustomClients(t *testing.T) {
 	if err := conn.LoadUserLogin(context.Background(), blocked); err != nil {
 		t.Fatalf("blocked login returned error: %v", err)
 	}
-	broken, ok := blocked.Client.(*agentremote.BrokenLoginClient)
+	broken, ok := blocked.Client.(*BrokenLoginClient)
 	if !ok {
 		t.Fatalf("expected broken login client, got %T", blocked.Client)
 	}

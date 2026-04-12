@@ -12,16 +12,16 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote"
 	openCodeAPI "github.com/beeper/agentremote/bridges/opencode/api"
+	"github.com/beeper/agentremote/sdk"
 )
 
 var (
 	_ bridgev2.LoginProcess          = (*OpenCodeLogin)(nil)
 	_ bridgev2.LoginProcessUserInput = (*OpenCodeLogin)(nil)
 
-	errOpenCodeDefaultPathRequired = agentremote.NewLoginRespError(http.StatusBadRequest, "Enter a default path.", "OPENCODE", "DEFAULT_PATH_REQUIRED")
-	errOpenCodeDefaultPathNotDir   = agentremote.NewLoginRespError(http.StatusBadRequest, "Default path must be a directory.", "OPENCODE", "DEFAULT_PATH_NOT_DIRECTORY")
+	errOpenCodeDefaultPathRequired = sdk.NewLoginRespError(http.StatusBadRequest, "Enter a default path.", "OPENCODE", "DEFAULT_PATH_REQUIRED")
+	errOpenCodeDefaultPathNotDir   = sdk.NewLoginRespError(http.StatusBadRequest, "Default path must be a directory.", "OPENCODE", "DEFAULT_PATH_NOT_DIRECTORY")
 )
 
 const (
@@ -37,7 +37,7 @@ const (
 var defaultManagedOpenCodeDirectoryFn = defaultManagedOpenCodeDirectory
 
 type OpenCodeLogin struct {
-	agentremote.BaseLoginProcess
+	sdk.BaseLoginProcess
 	User      *bridgev2.User
 	Connector *OpenCodeConnector
 	FlowID    string
@@ -48,7 +48,7 @@ func (ol *OpenCodeLogin) validate() error {
 	if ol.Connector != nil {
 		br = ol.Connector.br
 	}
-	return agentremote.ValidateLoginState(ol.User, br)
+	return sdk.ValidateLoginState(ol.User, br)
 }
 
 func (ol *OpenCodeLogin) Start(_ context.Context) (*bridgev2.LoginStep, error) {
@@ -151,7 +151,7 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 		}
 		existingMeta.Provider = ProviderOpenCode
 		existingMeta.OpenCodeInstances = instances
-		step, err := agentremote.UpdateAndCompleteLogin(
+		step, err := sdk.UpdateAndCompleteLogin(
 			ctx,
 			ol.BackgroundProcessContext(),
 			existing,
@@ -161,12 +161,12 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 			ol.Connector.LoadUserLogin,
 		)
 		if err != nil {
-			return nil, agentremote.WrapLoginRespError(fmt.Errorf("failed to update existing login: %w", err), http.StatusInternalServerError, "OPENCODE", "UPDATE_LOGIN_FAILED")
+			return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to update existing login: %w", err), http.StatusInternalServerError, "OPENCODE", "UPDATE_LOGIN_FAILED")
 		}
 		return step, nil
 	}
 
-	_, step, err := agentremote.CreateAndCompleteLogin(
+	_, step, err := sdk.CreateAndCompleteLogin(
 		ctx,
 		ol.BackgroundProcessContext(),
 		ol.User,
@@ -180,7 +180,7 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 		ol.Connector.LoadUserLogin,
 	)
 	if err != nil {
-		return nil, agentremote.WrapLoginRespError(fmt.Errorf("failed to create login: %w", err), http.StatusInternalServerError, "OPENCODE", "CREATE_LOGIN_FAILED")
+		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to create login: %w", err), http.StatusInternalServerError, "OPENCODE", "CREATE_LOGIN_FAILED")
 	}
 	return step, nil
 }
@@ -188,7 +188,7 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 func (ol *OpenCodeLogin) buildRemoteInstances(input map[string]string) (map[string]*OpenCodeInstance, string, string, error) {
 	normalizedURL, err := openCodeAPI.NormalizeBaseURL(input["url"])
 	if err != nil {
-		return nil, "", "", agentremote.WrapLoginRespError(fmt.Errorf("invalid url: %w", err), http.StatusBadRequest, "OPENCODE", "INVALID_URL")
+		return nil, "", "", sdk.WrapLoginRespError(fmt.Errorf("invalid url: %w", err), http.StatusBadRequest, "OPENCODE", "INVALID_URL")
 	}
 	username := strings.TrimSpace(input["username"])
 	if username == "" {
@@ -261,7 +261,7 @@ func resolveManagedOpenCodeBinary(input string) (string, error) {
 	}
 	resolved, err := exec.LookPath(value)
 	if err != nil {
-		return "", agentremote.WrapLoginRespError(fmt.Errorf("invalid opencode binary path: %w", err), http.StatusBadRequest, "OPENCODE", "INVALID_BINARY_PATH")
+		return "", sdk.WrapLoginRespError(fmt.Errorf("invalid opencode binary path: %w", err), http.StatusBadRequest, "OPENCODE", "INVALID_BINARY_PATH")
 	}
 	return resolved, nil
 }
@@ -281,17 +281,17 @@ func resolveManagedOpenCodeDirectory(input string) (string, error) {
 	if value == "" {
 		return "", errOpenCodeDefaultPathRequired
 	}
-	value, err := agentremote.ExpandUserHome(value)
+	value, err := sdk.ExpandUserHome(value)
 	if err != nil {
-		return "", agentremote.WrapLoginRespError(fmt.Errorf("invalid default path: %w", err), http.StatusBadRequest, "OPENCODE", "INVALID_DEFAULT_PATH")
+		return "", sdk.WrapLoginRespError(fmt.Errorf("invalid default path: %w", err), http.StatusBadRequest, "OPENCODE", "INVALID_DEFAULT_PATH")
 	}
 	abs, err := filepath.Abs(value)
 	if err != nil {
-		return "", agentremote.WrapLoginRespError(fmt.Errorf("invalid default path: %w", err), http.StatusBadRequest, "OPENCODE", "INVALID_DEFAULT_PATH")
+		return "", sdk.WrapLoginRespError(fmt.Errorf("invalid default path: %w", err), http.StatusBadRequest, "OPENCODE", "INVALID_DEFAULT_PATH")
 	}
 	info, err := os.Stat(abs)
 	if err != nil {
-		return "", agentremote.WrapLoginRespError(fmt.Errorf("default path is not accessible: %w", err), http.StatusBadRequest, "OPENCODE", "DEFAULT_PATH_NOT_ACCESSIBLE")
+		return "", sdk.WrapLoginRespError(fmt.Errorf("default path is not accessible: %w", err), http.StatusBadRequest, "OPENCODE", "DEFAULT_PATH_NOT_ACCESSIBLE")
 	}
 	if !info.IsDir() {
 		return "", errOpenCodeDefaultPathNotDir

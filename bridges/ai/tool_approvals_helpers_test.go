@@ -9,15 +9,14 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func TestApprovalParamsFromRequestHandlesNilStateTurn(t *testing.T) {
 	oc := &AIClient{}
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
 
-	params := oc.approvalParamsFromRequest(portal, &streamingState{}, nil, bridgesdk.ApprovalRequest{
+	params := oc.approvalParamsFromRequest(portal, &streamingState{}, nil, sdk.ApprovalRequest{
 		ToolCallID: " call-1 ",
 		ToolName:   " message ",
 		Metadata: map[string]any{
@@ -54,12 +53,12 @@ func TestApprovalParamsFromRequestHandlesNilStateTurn(t *testing.T) {
 }
 
 func TestApprovalWaitReason(t *testing.T) {
-	if got := approvalWaitReason(context.Background()); got != agentremote.ApprovalReasonTimeout {
+	if got := approvalWaitReason(context.Background()); got != sdk.ApprovalReasonTimeout {
 		t.Fatalf("expected timeout reason, got %q", got)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if got := approvalWaitReason(ctx); got != agentremote.ApprovalReasonCancelled {
+	if got := approvalWaitReason(ctx); got != sdk.ApprovalReasonCancelled {
 		t.Fatalf("expected cancelled reason, got %q", got)
 	}
 }

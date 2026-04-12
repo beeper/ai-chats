@@ -9,7 +9,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func (oc *AIClient) sendReaction(ctx context.Context, portal *bridgev2.Portal, targetEventID id.EventID, emoji string) {
@@ -47,7 +47,7 @@ func (oc *AIClient) sendReaction(ctx context.Context, portal *bridgev2.Portal, t
 	}
 
 	normalizedEmoji := variationselector.Remove(emoji)
-	oc.UserLogin.QueueRemoteEvent(agentremote.BuildReactionEvent(
+	oc.UserLogin.QueueRemoteEvent(sdk.BuildReactionEvent(
 		portal.PortalKey,
 		bridgev2.EventSender{Sender: senderID, SenderLogin: oc.UserLogin.ID},
 		targetPart.ID,

@@ -11,7 +11,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
-	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func TestShouldMirrorLatestUserMessageFromHistory(t *testing.T) {
@@ -103,7 +103,7 @@ func TestShouldMirrorLatestUserMessageFromHistory(t *testing.T) {
 
 func TestOpenClawRemoteMessageGetStreamOrderUsesGatewaySeq(t *testing.T) {
 	ts := time.Date(2026, time.March, 12, 12, 0, 0, 0, time.UTC)
-	first := agentremote.BuildPreConvertedRemoteMessage(agentremote.PreConvertedRemoteMessageParams{
+	first := sdk.BuildPreConvertedRemoteMessage(sdk.PreConvertedRemoteMessageParams{
 		PortalKey:   networkid.PortalKey{},
 		MsgID:       "first",
 		LogKey:      "openclaw_msg_id",
@@ -111,7 +111,7 @@ func TestOpenClawRemoteMessageGetStreamOrderUsesGatewaySeq(t *testing.T) {
 		Timestamp:   ts,
 		StreamOrder: 10,
 	})
-	second := agentremote.BuildPreConvertedRemoteMessage(agentremote.PreConvertedRemoteMessageParams{
+	second := sdk.BuildPreConvertedRemoteMessage(sdk.PreConvertedRemoteMessageParams{
 		PortalKey:   networkid.PortalKey{},
 		MsgID:       "second",
 		LogKey:      "openclaw_msg_id",
@@ -222,7 +222,7 @@ func TestAttachApprovalContextKeepsHintsAndPendingData(t *testing.T) {
 		t.Fatalf("unexpected pending approval data: %#v", pending.Data)
 	}
 
-	_ = agentremote.ErrApprovalUnknown
+	_ = sdk.ErrApprovalUnknown
 }
 
 func TestOpenClawRequiredGatewayMethodsCoverCoreChatSessionFlow(t *testing.T) {

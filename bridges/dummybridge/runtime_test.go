@@ -12,7 +12,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/beeper/agentremote/pkg/shared/streamui"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 type testApprovalHandle struct {
@@ -24,8 +24,8 @@ type testApprovalHandle struct {
 
 func (h *testApprovalHandle) ID() string         { return h.id }
 func (h *testApprovalHandle) ToolCallID() string { return h.toolCallID }
-func (h *testApprovalHandle) Wait(context.Context) (bridgesdk.ToolApprovalResponse, error) {
-	return bridgesdk.ToolApprovalResponse{
+func (h *testApprovalHandle) Wait(context.Context) (sdk.ToolApprovalResponse, error) {
+	return sdk.ToolApprovalResponse{
 		Approved: h.approved,
 		Reason:   h.reason,
 	}, nil
@@ -55,18 +55,18 @@ func (r *advancingRuntime) sleepFn(_ context.Context, delay time.Duration) error
 	return nil
 }
 
-func newTestTurn() *bridgesdk.Turn {
-	cfg := &bridgesdk.Config[*dummySession, *struct{}]{
-		ProviderIdentity: bridgesdk.ProviderIdentity{IDPrefix: "dummybridge", StatusNetwork: "dummybridge"},
+func newTestTurn() *sdk.Turn {
+	cfg := &sdk.Config[*dummySession, *struct{}]{
+		ProviderIdentity: sdk.ProviderIdentity{IDPrefix: "dummybridge", StatusNetwork: "dummybridge"},
 	}
 	// These tests only exercise turn-local streaming behavior. Login/portal are
 	// intentionally nil and EventSender is empty because conv.StartTurn and the
 	// dummy SDK agent paths under test never dereference transport state.
-	conv := bridgesdk.NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, cfg, nil)
+	conv := sdk.NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, cfg, nil)
 	return conv.StartTurn(context.Background(), dummySDKAgent(), nil)
 }
 
-func assertTerminalState(t *testing.T, turn *bridgesdk.Turn, expectedType string) {
+func assertTerminalState(t *testing.T, turn *sdk.Turn, expectedType string) {
 	t.Helper()
 	ui := turn.UIState().UIMessage
 	metadata, _ := ui["metadata"].(map[string]any)
@@ -76,7 +76,7 @@ func assertTerminalState(t *testing.T, turn *bridgesdk.Turn, expectedType string
 	}
 }
 
-func snapshotParts(turn *bridgesdk.Turn) []map[string]any {
+func snapshotParts(turn *sdk.Turn) []map[string]any {
 	ui := streamui.SnapshotUIMessage(turn.UIState())
 	if ui == nil {
 		return nil
@@ -249,7 +249,7 @@ func TestRunLoremEmitsArtifactsAndPersistentData(t *testing.T) {
 
 func TestRunToolsApprovalDeniedProducesDeniedToolState(t *testing.T) {
 	turn := newTestTurn()
-	turn.Approvals().SetHandler(func(_ context.Context, _ *bridgesdk.Turn, req bridgesdk.ApprovalRequest) bridgesdk.ApprovalHandle {
+	turn.Approvals().SetHandler(func(_ context.Context, _ *sdk.Turn, req sdk.ApprovalRequest) sdk.ApprovalHandle {
 		return &testApprovalHandle{
 			id:         "approval-1",
 			toolCallID: req.ToolCallID,

@@ -10,7 +10,7 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/citations"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 type canonicalBackfillSnapshot struct {
@@ -25,7 +25,7 @@ func buildCanonicalAssistantBackfill(msg api.MessageWithParts, agentID string) c
 		turnID = "opencode-msg-" + strings.TrimSpace(msg.Info.ID)
 	}
 	state := streamui.UIState{TurnID: turnID}
-	replayer := bridgesdk.NewUIStateReplayer(&state)
+	replayer := sdk.NewUIStateReplayer(&state)
 	startMeta := buildTurnStartMetadata(&msg, agentID)
 	state.InitMaps()
 	replayer.Start(startMeta)
@@ -78,7 +78,7 @@ func buildCanonicalAssistantBackfill(msg api.MessageWithParts, agentID string) c
 	}
 }
 
-func appendCanonicalAssistantPart(state *streamui.UIState, replayer bridgesdk.UIStateReplayer, visible *strings.Builder, part api.Part) {
+func appendCanonicalAssistantPart(state *streamui.UIState, replayer sdk.UIStateReplayer, visible *strings.Builder, part api.Part) {
 	switch part.Type {
 	case "text":
 		if part.ID == "" || part.Text == "" {
@@ -116,7 +116,7 @@ func appendCanonicalAssistantPart(state *streamui.UIState, replayer bridgesdk.UI
 	}
 }
 
-func appendCanonicalToolPart(replayer bridgesdk.UIStateReplayer, part api.Part) {
+func appendCanonicalToolPart(replayer sdk.UIStateReplayer, part api.Part) {
 	toolCallID := opencodeToolCallID(part)
 	if toolCallID == "" {
 		return
@@ -141,7 +141,7 @@ func appendCanonicalToolPart(replayer bridgesdk.UIStateReplayer, part api.Part) 
 	}
 }
 
-func appendCanonicalArtifactParts(replayer bridgesdk.UIStateReplayer, part api.Part) {
+func appendCanonicalArtifactParts(replayer sdk.UIStateReplayer, part api.Part) {
 	sourceURL, title, mediaType := resolveArtifactFields(part)
 	replayer.Artifact(
 		"opencode-source-"+part.ID,

@@ -5,7 +5,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func (m *OpenCodeManager) ensureTurnStarted(ctx context.Context, inst *openCodeInstance, portal *bridgev2.Portal, sessionID, messageID string, metadata map[string]any) {
@@ -108,7 +108,7 @@ func (m *OpenCodeManager) applyTurnMetadata(ctx context.Context, portal *bridgev
 	writer.MessageMetadata(ctx, metadata)
 }
 
-func (m *OpenCodeManager) mustStreamWriter(ctx context.Context, portal *bridgev2.Portal, sessionID, messageID string) (*openCodeStreamState, *bridgesdk.Writer) {
+func (m *OpenCodeManager) mustStreamWriter(ctx context.Context, portal *bridgev2.Portal, sessionID, messageID string) (*openCodeStreamState, *sdk.Writer) {
 	turnID := opencodeMessageStreamTurnID(sessionID, messageID)
 	state, writer := m.bridge.host.ensureStreamWriter(ctx, portal, turnID, m.bridge.portalAgentID(portal))
 	return state, writer

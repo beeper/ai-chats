@@ -8,12 +8,11 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/bridges/ai/msgconv"
 	"github.com/beeper/agentremote/pkg/shared/maputil"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 var openClawNewSDKStreamTurn = (*OpenClawClient).newSDKStreamTurn
@@ -79,13 +78,13 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 	if turn == nil {
 		return
 	}
-	bridgesdk.ApplyStreamPart(turn, part, bridgesdk.PartApplyOptions{
+	sdk.ApplyStreamPart(turn, part, sdk.PartApplyOptions{
 		HandleTerminalEvents: true,
 		DefaultFinishReason:  "stop",
 	})
 }
 
-func (oc *OpenClawClient) ensureSDKStreamTurn(ctx context.Context, portal *bridgev2.Portal, state *openClawStreamState) *bridgesdk.Turn {
+func (oc *OpenClawClient) ensureSDKStreamTurn(ctx context.Context, portal *bridgev2.Portal, state *openClawStreamState) *sdk.Turn {
 	if oc == nil || state == nil {
 		return nil
 	}
@@ -120,7 +119,7 @@ func (oc *OpenClawClient) ensureSDKStreamTurn(ctx context.Context, portal *bridg
 	return turn
 }
 
-func (oc *OpenClawClient) newSDKStreamTurn(ctx context.Context, portal *bridgev2.Portal, state *openClawStreamState) *bridgesdk.Turn {
+func (oc *OpenClawClient) newSDKStreamTurn(ctx context.Context, portal *bridgev2.Portal, state *openClawStreamState) *sdk.Turn {
 	if oc == nil || portal == nil || state == nil || oc.connector == nil || oc.connector.sdkConfig == nil {
 		return nil
 	}
@@ -129,12 +128,12 @@ func (oc *OpenClawClient) newSDKStreamTurn(ctx context.Context, portal *bridgev2
 	state.agentID = stringutil.TrimDefault(state.agentID, "gateway")
 	agent := oc.sdkAgentForProfile(profile)
 	sender := oc.senderForAgent(state.agentID, false)
-	conv := bridgesdk.NewConversation(ctx, oc.UserLogin, portal, sender, oc.connector.sdkConfig, oc)
+	conv := sdk.NewConversation(ctx, oc.UserLogin, portal, sender, oc.connector.sdkConfig, oc)
 	_ = conv.EnsureRoomAgent(ctx, agent)
 	turn := conv.StartTurn(ctx, agent, nil)
 	turn.SetID(state.turnID)
 	turn.SetSender(sender)
-	turn.SetFinalMetadataProvider(bridgesdk.FinalMetadataProviderFunc(func(_ *bridgesdk.Turn, finishReason string) any {
+	turn.SetFinalMetadataProvider(sdk.FinalMetadataProviderFunc(func(_ *sdk.Turn, finishReason string) any {
 		if strings.TrimSpace(finishReason) != "" {
 			state.stream.SetFinishReason(strings.TrimSpace(finishReason))
 		}
@@ -324,7 +323,7 @@ func (oc *OpenClawClient) buildStreamDBMetadata(state *openClawStreamState) *Mes
 		body = strings.TrimSpace(state.stream.AccumulatedText())
 	}
 	uiMessage := oc.currentUIMessage(state)
-	snapshot := bridgesdk.BuildTurnSnapshot(uiMessage, bridgesdk.TurnDataBuildOptions{
+	snapshot := sdk.BuildTurnSnapshot(uiMessage, sdk.TurnDataBuildOptions{
 		ID:   state.turnID,
 		Role: stringutil.TrimDefault(state.role, "assistant"),
 		Text: body,
@@ -340,7 +339,7 @@ func (oc *OpenClawClient) buildStreamDBMetadata(state *openClawStreamState) *Mes
 		},
 	}, "openclaw")
 	return &MessageMetadata{
-		BaseMessageMetadata: agentremote.BaseMessageMetadata{
+		BaseMessageMetadata: sdk.BaseMessageMetadata{
 			Role:              stringutil.TrimDefault(state.role, "assistant"),
 			Body:              snapshot.Body,
 			TurnID:            state.turnID,

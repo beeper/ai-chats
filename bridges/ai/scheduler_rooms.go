@@ -8,7 +8,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func (s *schedulerRuntime) ensureScheduledRoomLocked(ctx context.Context, portalID, displayName, agentID string, moduleMeta map[string]any) (string, error) {
@@ -100,7 +100,7 @@ func (s *schedulerRuntime) getOrCreateScheduledPortal(ctx context.Context, porta
 	portal.Name = displayName
 	portal.NameSet = true
 	chatInfo := &bridgev2.ChatInfo{Name: &portal.Name}
-	_, err = bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
+	_, err = sdk.EnsurePortalLifecycle(ctx, sdk.PortalLifecycleOptions{
 		Login:             s.client.UserLogin,
 		Portal:            portal,
 		ChatInfo:          chatInfo,

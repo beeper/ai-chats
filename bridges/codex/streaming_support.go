@@ -6,9 +6,8 @@ import (
 
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/citations"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 type streamingState struct {
@@ -31,7 +30,7 @@ type streamingState struct {
 	initialEventID   id.EventID
 	firstToken       bool
 
-	turn *bridgesdk.Turn
+	turn *sdk.Turn
 
 	codexToolOutputBuffers    map[string]*strings.Builder
 	codexLatestDiff           string
@@ -70,7 +69,7 @@ func (s *streamingState) currentReplyTargetEventID() id.EventID {
 }
 
 func newStreamingState(sourceEventID id.EventID) *streamingState {
-	turnID := agentremote.NewTurnID()
+	turnID := sdk.NewTurnID()
 	return &streamingState{
 		turnID:                 turnID,
 		startedAtMs:            time.Now().UnixMilli(),

@@ -9,7 +9,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 
 	"github.com/beeper/agentremote/pkg/agents"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func newCatalogTestClient() *AIClient {
@@ -74,7 +74,7 @@ func TestAIAgentCatalogListsAndResolvesCustomAgents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListAgents returned error: %v", err)
 	}
-	var customAgent *bridgesdk.Agent
+	var customAgent *sdk.Agent
 	for _, agent := range agentsList {
 		if agent != nil && agent.Name == "Custom Agent" {
 			customAgent = agent

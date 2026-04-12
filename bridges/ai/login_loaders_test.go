@@ -9,7 +9,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func testUserLoginWithMeta(loginID networkid.UserLoginID, meta *UserLoginMetadata) *bridgev2.UserLogin {
@@ -65,7 +65,7 @@ func TestLoadAIUserLoginMissingAPIKeyEvictsCacheAndSetsBrokenClient(t *testing.T
 	if login.Client == nil {
 		t.Fatal("expected broken login client")
 	}
-	if _, ok := login.Client.(*agentremote.BrokenLoginClient); !ok {
+	if _, ok := login.Client.(*sdk.BrokenLoginClient); !ok {
 		t.Fatalf("expected broken login client type, got %T", login.Client)
 	}
 }

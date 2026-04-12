@@ -22,7 +22,6 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/bridges/ai/msgconv"
 	"github.com/beeper/agentremote/pkg/matrixevents"
 	"github.com/beeper/agentremote/pkg/shared/backfillutil"
@@ -30,7 +29,7 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/openclawconv"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 type openClawManager struct {
@@ -40,7 +39,7 @@ type openClawManager struct {
 	gateway            *gatewayWSClient
 	compat             *openClawGatewayCompatibilityReport
 	sessions           map[string]gatewaySessionRow
-	approvalFlow       *agentremote.ApprovalFlow[*openClawPendingApprovalData]
+	approvalFlow       *sdk.ApprovalFlow[*openClawPendingApprovalData]
 	waiting            map[string]struct{}
 	started            map[string]struct{}
 	resyncing          map[string]time.Time
@@ -70,7 +69,7 @@ type openClawPendingApprovalData struct {
 	ToolCallID   string
 	ToolName     string
 	Command      string
-	Presentation agentremote.ApprovalPromptPresentation
+	Presentation sdk.ApprovalPromptPresentation
 	Recovered    bool
 	CreatedAtMs  int64
 	ExpiresAtMs  int64
@@ -87,7 +86,7 @@ func newOpenClawManager(client *OpenClawClient) *openClawManager {
 		approvalHints:      make(map[string]openClawPendingApprovalData),
 		historyCache:       make(map[openClawHistoryCacheKey]openClawHistoryCacheEntry),
 	}
-	mgr.approvalFlow = agentremote.NewApprovalFlow(agentremote.ApprovalFlowConfig[*openClawPendingApprovalData]{
+	mgr.approvalFlow = sdk.NewApprovalFlow(sdk.ApprovalFlowConfig[*openClawPendingApprovalData]{
 		Login:    func() *bridgev2.UserLogin { return client.UserLogin },
 		Sender:   func(portal *bridgev2.Portal) bridgev2.EventSender { return mgr.approvalSenderForPortal(portal) },
 		IDPrefix: "openclaw",
@@ -96,7 +95,7 @@ func newOpenClawManager(client *OpenClawClient) *openClawManager {
 			// OpenClaw validates by session key, not room ID directly.
 			return ""
 		},
-		DeliverDecision: func(ctx context.Context, portal *bridgev2.Portal, pending *agentremote.Pending[*openClawPendingApprovalData], decision agentremote.ApprovalDecisionPayload) error {
+		DeliverDecision: func(ctx context.Context, portal *bridgev2.Portal, pending *sdk.Pending[*openClawPendingApprovalData], decision sdk.ApprovalDecisionPayload) error {
 			gateway, err := mgr.requireGateway()
 			if err != nil {
 				return err
@@ -104,18 +103,18 @@ func newOpenClawManager(client *OpenClawClient) *openClawManager {
 			data := pending.Data
 			if data != nil {
 				if strings.TrimSpace(data.SessionKey) != strings.TrimSpace(portalMeta(portal).OpenClawSessionKey) {
-					return agentremote.ErrApprovalWrongRoom
+					return sdk.ErrApprovalWrongRoom
 				}
 			}
 			return gateway.ResolveApproval(ctx, decision.ApprovalID,
-				agentremote.DecisionToString(decision, "allow-once", "allow-always", "deny"))
+				sdk.DecisionToString(decision, "allow-once", "allow-always", "deny"))
 		},
 		SendNotice: func(ctx context.Context, portal *bridgev2.Portal, msg string) {
 			client.sendSystemNotice(ctx, portal, mgr.approvalSenderForPortal(portal), msg)
 		},
-		DBMetadata: func(prompt agentremote.ApprovalPromptMessage) any {
+		DBMetadata: func(prompt sdk.ApprovalPromptMessage) any {
 			return &MessageMetadata{
-				BaseMessageMetadata: agentremote.BaseMessageMetadata{
+				BaseMessageMetadata: sdk.BaseMessageMetadata{
 					Role:               "assistant",
 					ExcludeFromHistory: true,
 				},
@@ -378,11 +377,11 @@ func (m *openClawManager) expireLocalApproval(ctx context.Context, approvalID st
 			m.client.sendSystemNotice(ctx, portal, m.approvalSenderForPortal(portal), "OpenClaw approval expired")
 		}
 	}
-	m.approvalFlow.ResolveExternal(ctx, approvalID, agentremote.ApprovalDecisionPayload{
+	m.approvalFlow.ResolveExternal(ctx, approvalID, sdk.ApprovalDecisionPayload{
 		ApprovalID: approvalID,
 		Approved:   false,
 		Reason:     "expired",
-		ResolvedBy: agentremote.ApprovalResolutionOriginAgent,
+		ResolvedBy: sdk.ApprovalResolutionOriginAgent,
 	})
 	m.clearApprovalHint(approvalID)
 }
@@ -1247,14 +1246,14 @@ func (m *openClawManager) convertHistoryMessage(ctx context.Context, portal *bri
 }
 
 func buildOpenClawHistoryMessageMetadata(message map[string]any, meta *PortalMetadata, role, agentID, text string, attachmentBlocks []map[string]any, uiMetadata, uiMessage map[string]any) *MessageMetadata {
-	snapshot := bridgesdk.BuildTurnSnapshot(uiMessage, bridgesdk.TurnDataBuildOptions{
+	snapshot := sdk.BuildTurnSnapshot(uiMessage, sdk.TurnDataBuildOptions{
 		ID:       strings.TrimSpace(stringValue(uiMetadata["turn_id"])),
 		Role:     strings.TrimSpace(role),
 		Text:     strings.TrimSpace(text),
 		Metadata: jsonutil.DeepCloneMap(uiMetadata),
 	}, "openclaw")
 	metadata := &MessageMetadata{
-		BaseMessageMetadata: agentremote.BaseMessageMetadata{
+		BaseMessageMetadata: sdk.BaseMessageMetadata{
 			Role:              role,
 			Body:              snapshot.Body,
 			AgentID:           agentID,
@@ -1521,29 +1520,29 @@ func openClawApprovalDecisionStatus(decision string) (bool, string) {
 	}
 }
 
-func openClawApprovalPresentation(request map[string]any, command string) agentremote.ApprovalPromptPresentation {
+func openClawApprovalPresentation(request map[string]any, command string) sdk.ApprovalPromptPresentation {
 	command = strings.TrimSpace(command)
-	details := make([]agentremote.ApprovalDetail, 0, 5)
+	details := make([]sdk.ApprovalDetail, 0, 5)
 	if command != "" {
-		details = append(details, agentremote.ApprovalDetail{Label: "Command", Value: command})
+		details = append(details, sdk.ApprovalDetail{Label: "Command", Value: command})
 	}
-	if cwd := agentremote.ValueSummary(request["cwd"]); cwd != "" {
-		details = append(details, agentremote.ApprovalDetail{Label: "Working directory", Value: cwd})
+	if cwd := sdk.ValueSummary(request["cwd"]); cwd != "" {
+		details = append(details, sdk.ApprovalDetail{Label: "Working directory", Value: cwd})
 	}
-	if reason := agentremote.ValueSummary(request["reason"]); reason != "" {
-		details = append(details, agentremote.ApprovalDetail{Label: "Reason", Value: reason})
+	if reason := sdk.ValueSummary(request["reason"]); reason != "" {
+		details = append(details, sdk.ApprovalDetail{Label: "Reason", Value: reason})
 	}
-	if sessionKey := agentremote.ValueSummary(request["sessionKey"]); sessionKey != "" {
-		details = append(details, agentremote.ApprovalDetail{Label: "Session", Value: sessionKey})
+	if sessionKey := sdk.ValueSummary(request["sessionKey"]); sessionKey != "" {
+		details = append(details, sdk.ApprovalDetail{Label: "Session", Value: sessionKey})
 	}
-	if agent := agentremote.ValueSummary(request["agentId"]); agent != "" {
-		details = append(details, agentremote.ApprovalDetail{Label: "Agent", Value: agent})
+	if agent := sdk.ValueSummary(request["agentId"]); agent != "" {
+		details = append(details, sdk.ApprovalDetail{Label: "Agent", Value: agent})
 	}
 	title := "OpenClaw execution request"
 	if command != "" {
 		title = "OpenClaw execution request: " + command
 	}
-	return agentremote.ApprovalPromptPresentation{
+	return sdk.ApprovalPromptPresentation{
 		Title:       title,
 		Details:     details,
 		AllowAlways: true,
@@ -1648,8 +1647,8 @@ func (m *openClawManager) sendApprovalPrompt(ctx context.Context, portal *bridge
 			_ = portal.Save(ctx)
 		}
 	}
-	m.approvalFlow.SendPrompt(ctx, portal, agentremote.SendPromptParams{
-		ApprovalPromptMessageParams: agentremote.ApprovalPromptMessageParams{
+	m.approvalFlow.SendPrompt(ctx, portal, sdk.SendPromptParams{
+		ApprovalPromptMessageParams: sdk.ApprovalPromptMessageParams{
 			ApprovalID:   approvalID,
 			ToolCallID:   toolCallID,
 			ToolName:     toolName,
@@ -1795,9 +1794,9 @@ func (m *openClawManager) handleApprovalResolved(ctx context.Context, payload ga
 		return
 	}
 	approved, reason := openClawApprovalDecisionStatus(payload.Decision)
-	resolvedBy := agentremote.ApprovalResolutionOriginFromString(payload.ResolvedBy)
+	resolvedBy := sdk.ApprovalResolutionOriginFromString(payload.ResolvedBy)
 	if resolvedBy == "" {
-		resolvedBy = agentremote.ApprovalResolutionOriginAgent
+		resolvedBy = sdk.ApprovalResolutionOriginAgent
 	}
 	if data != nil && strings.TrimSpace(data.TurnID) != "" && strings.TrimSpace(data.ToolCallID) != "" {
 		m.client.EmitStreamPart(ctx, portal, data.TurnID, resolveOpenClawAgentID(portalMeta(portal), sessionKey, payload.Request), sessionKey, map[string]any{
@@ -1810,7 +1809,7 @@ func (m *openClawManager) handleApprovalResolved(ctx context.Context, payload ga
 	} else {
 		m.client.sendSystemNotice(ctx, portal, m.approvalSenderForPortal(portal), openClawApprovalResolvedText(payload.Decision))
 	}
-	m.approvalFlow.ResolveExternal(ctx, approvalID, agentremote.ApprovalDecisionPayload{
+	m.approvalFlow.ResolveExternal(ctx, approvalID, sdk.ApprovalDecisionPayload{
 		ApprovalID: approvalID,
 		Approved:   approved,
 		Always:     strings.EqualFold(strings.TrimSpace(payload.Decision), "allow-always"),
@@ -1919,7 +1918,7 @@ func (m *openClawManager) handleDirectChatEvent(ctx context.Context, portal *bri
 		return
 	}
 	m.invalidateHistoryCache(payload.SessionKey)
-	m.client.UserLogin.QueueRemoteEvent(agentremote.BuildPreConvertedRemoteMessage(agentremote.PreConvertedRemoteMessageParams{
+	m.client.UserLogin.QueueRemoteEvent(sdk.BuildPreConvertedRemoteMessage(sdk.PreConvertedRemoteMessageParams{
 		PortalKey:   portal.PortalKey,
 		Sender:      sender,
 		MsgID:       messageID,
@@ -1959,7 +1958,7 @@ func (m *openClawManager) emitLatestUserMessageFromHistory(ctx context.Context, 
 		m.lastEmittedUserMsg[payload.SessionKey] = messageID
 		m.mu.Unlock()
 		eventTS := extractOpenClawEventTimestamp(payload.TS, message)
-		m.client.UserLogin.QueueRemoteEvent(agentremote.BuildPreConvertedRemoteMessage(agentremote.PreConvertedRemoteMessageParams{
+		m.client.UserLogin.QueueRemoteEvent(sdk.BuildPreConvertedRemoteMessage(sdk.PreConvertedRemoteMessageParams{
 			PortalKey:   portal.PortalKey,
 			Sender:      sender,
 			MsgID:       messageID,
@@ -2678,7 +2677,7 @@ func openClawHistoryUIParts(message map[string]any, role string) []map[string]an
 	}
 	openClawApplyHistoryChunks(state, message, role)
 	snapshot := streamui.SnapshotUIMessage(state)
-	return agentremote.NormalizeUIParts(snapshot["parts"])
+	return sdk.NormalizeUIParts(snapshot["parts"])
 }
 
 func openClawApplyHistoryChunks(state *streamui.UIState, message map[string]any, role string) {
@@ -2686,7 +2685,7 @@ func openClawApplyHistoryChunks(state *streamui.UIState, message map[string]any,
 		return
 	}
 	state.InitMaps()
-	replayer := bridgesdk.NewUIStateReplayer(state)
+	replayer := sdk.NewUIStateReplayer(state)
 	role = strings.ToLower(strings.TrimSpace(role))
 	if role == "toolresult" {
 		openClawApplyHistoryToolResult(replayer, message)
@@ -2733,7 +2732,7 @@ func openClawApplyHistoryChunks(state *streamui.UIState, message map[string]any,
 	}
 }
 
-func openClawApplyHistoryToolResult(replayer bridgesdk.UIStateReplayer, message map[string]any) {
+func openClawApplyHistoryToolResult(replayer sdk.UIStateReplayer, message map[string]any) {
 	toolCallID := strings.TrimSpace(stringutil.TrimDefault(stringValue(message["toolCallId"]), stringValue(message["toolUseId"])))
 	if toolCallID == "" {
 		toolCallID = "tool-result"

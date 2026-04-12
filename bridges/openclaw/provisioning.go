@@ -12,9 +12,8 @@ import (
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 const openClawAgentCatalogTTL = 30 * time.Second
@@ -302,7 +301,7 @@ func (oc *OpenClawClient) createConfiguredAgentDM(ctx context.Context, agent gat
 	meta.OpenClawDMCreatedFromContact = true
 	meta.HistoryMode = "paginated"
 	meta.RecentHistoryLimit = 0
-	if err := agentremote.ConfigureDMPortal(ctx, agentremote.ConfigureDMPortalParams{
+	if err := sdk.ConfigureDMPortal(ctx, sdk.ConfigureDMPortalParams{
 		Portal:      portal,
 		Title:       meta.OpenClawDMTargetAgentName,
 		Topic:       "OpenClaw agent DM",
@@ -312,12 +311,12 @@ func (oc *OpenClawClient) createConfiguredAgentDM(ctx context.Context, agent gat
 		return nil, fmt.Errorf("failed to configure openclaw dm portal: %w", err)
 	}
 	chatInfo := oc.buildOpenClawDMChatInfo(agentID, meta.OpenClawDMTargetAgentName, info)
-	_, err = bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
+	_, err = sdk.EnsurePortalLifecycle(ctx, sdk.PortalLifecycleOptions{
 		Login:             oc.UserLogin,
 		Portal:            portal,
 		ChatInfo:          chatInfo,
 		SaveBeforeCreate:  true,
-		AIRoomKind:        agentremote.AIRoomKindAgent,
+		AIRoomKind:        sdk.AIRoomKindAgent,
 		ForceCapabilities: true,
 	})
 	if err != nil {
@@ -337,7 +336,7 @@ func (oc *OpenClawClient) buildOpenClawDMChatInfo(agentID, displayName string, u
 	if userInfo == nil {
 		userInfo = oc.sdkAgentForProfile(openClawAgentProfile{AgentID: agentID, Name: displayName}).UserInfo()
 	}
-	return agentremote.BuildLoginDMChatInfo(agentremote.LoginDMChatInfoParams{
+	return sdk.BuildLoginDMChatInfo(sdk.LoginDMChatInfoParams{
 		Title:             displayName,
 		Topic:             "OpenClaw agent DM",
 		Login:             oc.UserLogin,

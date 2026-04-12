@@ -13,8 +13,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/agents"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func baseLoginID(providerSlug string, mxid id.UserID) networkid.UserLoginID {
@@ -127,7 +127,7 @@ func parseAgentFromGhostID(ghostID string) (agentID string, ok bool) {
 }
 
 func humanUserID(loginID networkid.UserLoginID) networkid.UserID {
-	return agentremote.HumanUserID("openai-user", loginID)
+	return sdk.HumanUserID("openai-user", loginID)
 }
 
 const (
@@ -165,7 +165,7 @@ func resolveTargetFromGhostID(ghostID networkid.UserID) *ResolvedTarget {
 }
 
 func portalMeta(portal *bridgev2.Portal) *PortalMetadata {
-	meta := agentremote.EnsurePortalMetadata[PortalMetadata](portal)
+	meta := sdk.EnsurePortalMetadata[PortalMetadata](portal)
 	if meta != nil && portal != nil {
 		meta.ResolvedTarget = resolveTargetFromGhostID(portal.OtherUserID)
 	}
@@ -204,7 +204,7 @@ func shouldIncludeInHistory(meta *MessageMetadata) bool {
 }
 
 func loginMetadata(login *bridgev2.UserLogin) *UserLoginMetadata {
-	return agentremote.EnsureLoginMetadata[UserLoginMetadata](login)
+	return sdk.EnsureLoginMetadata[UserLoginMetadata](login)
 }
 
 func formatChatSlug(index int) string {

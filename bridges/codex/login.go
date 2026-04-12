@@ -16,8 +16,8 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/bridges/codex/codexrpc"
+	"github.com/beeper/agentremote/sdk"
 )
 
 var (
@@ -25,13 +25,13 @@ var (
 	_ bridgev2.LoginProcessUserInput      = (*CodexLogin)(nil)
 	_ bridgev2.LoginProcessDisplayAndWait = (*CodexLogin)(nil)
 
-	errCodexAPIKeyRequired = agentremote.NewLoginRespError(http.StatusBadRequest, "Enter your OpenAI API key.", "CODEX", "API_KEY_REQUIRED")
-	errCodexExternalTokens = agentremote.NewLoginRespError(http.StatusBadRequest, "Enter both access_token and chatgpt_account_id.", "CODEX", "CHATGPT_TOKENS_REQUIRED")
-	errCodexNotStarted     = agentremote.NewLoginRespError(http.StatusBadRequest, "Codex login has not started yet.", "CODEX", "NOT_STARTED")
-	errCodexWaitMissing    = agentremote.NewLoginRespError(http.StatusBadRequest, "Codex login wait state is unavailable.", "CODEX", "WAIT_UNAVAILABLE")
-	errCodexTimedOut       = agentremote.NewLoginRespError(http.StatusBadRequest, "Timed out waiting for Codex login to complete.", "CODEX", "LOGIN_TIMEOUT")
-	errCodexStopped        = agentremote.NewLoginRespError(http.StatusBadRequest, "Codex login process stopped before login completed.", "CODEX", "PROCESS_STOPPED")
-	errCodexMissingUser    = agentremote.NewLoginRespError(http.StatusInternalServerError, "Missing user context for Codex login.", "CODEX", "MISSING_USER_CONTEXT")
+	errCodexAPIKeyRequired = sdk.NewLoginRespError(http.StatusBadRequest, "Enter your OpenAI API key.", "CODEX", "API_KEY_REQUIRED")
+	errCodexExternalTokens = sdk.NewLoginRespError(http.StatusBadRequest, "Enter both access_token and chatgpt_account_id.", "CODEX", "CHATGPT_TOKENS_REQUIRED")
+	errCodexNotStarted     = sdk.NewLoginRespError(http.StatusBadRequest, "Codex login has not started yet.", "CODEX", "NOT_STARTED")
+	errCodexWaitMissing    = sdk.NewLoginRespError(http.StatusBadRequest, "Codex login wait state is unavailable.", "CODEX", "WAIT_UNAVAILABLE")
+	errCodexTimedOut       = sdk.NewLoginRespError(http.StatusBadRequest, "Timed out waiting for Codex login to complete.", "CODEX", "LOGIN_TIMEOUT")
+	errCodexStopped        = sdk.NewLoginRespError(http.StatusBadRequest, "Codex login process stopped before login completed.", "CODEX", "PROCESS_STOPPED")
+	errCodexMissingUser    = sdk.NewLoginRespError(http.StatusInternalServerError, "Missing user context for Codex login.", "CODEX", "MISSING_USER_CONTEXT")
 )
 
 // CodexLogin provisions a provider=codex user login backed by a local `codex app-server` process.
@@ -77,7 +77,7 @@ func (cl *CodexLogin) logger(ctx context.Context) *zerolog.Logger {
 	} else {
 		l = zerolog.Nop()
 	}
-	return agentremote.LoggerFromContext(ctx, &l)
+	return sdk.LoggerFromContext(ctx, &l)
 }
 
 func (cl *CodexLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
@@ -214,7 +214,7 @@ func (cl *CodexLogin) signalStart(err error) {
 func (cl *CodexLogin) SubmitUserInput(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
 	cmd := cl.resolveCodexCommand()
 	if _, err := exec.LookPath(cmd); err != nil {
-		return nil, agentremote.WrapLoginRespError(fmt.Errorf("codex CLI not found (%q): %w", cmd, err), http.StatusInternalServerError, "CODEX", "CLI_NOT_FOUND")
+		return nil, sdk.WrapLoginRespError(fmt.Errorf("codex CLI not found (%q): %w", cmd, err), http.StatusInternalServerError, "CODEX", "CLI_NOT_FOUND")
 	}
 	log := cl.logger(ctx)
 	switch cl.FlowID {
@@ -316,7 +316,7 @@ func (cl *CodexLogin) spawnAndStartLogin(ctx context.Context, log *zerolog.Logge
 	instanceID := generateShortID()
 	codexHome := filepath.Join(homeBase, instanceID)
 	if err := os.MkdirAll(codexHome, 0o700); err != nil {
-		return nil, agentremote.WrapLoginRespError(fmt.Errorf("failed to create CODEX_HOME: %w", err), http.StatusInternalServerError, "CODEX", "CREATE_HOME_FAILED")
+		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to create CODEX_HOME: %w", err), http.StatusInternalServerError, "CODEX", "CREATE_HOME_FAILED")
 	}
 
 	cmd := cl.resolveCodexCommand()
@@ -535,7 +535,7 @@ func (cl *CodexLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 				}
 				log.Warn().Str("login_id", loginID).Str("error", done.errText).Msg("Codex login failed")
 				cl.cancelLoginAttempt(true)
-				return nil, agentremote.NewLoginRespError(http.StatusBadRequest, done.errText, "CODEX", "LOGIN_FAILED")
+				return nil, sdk.NewLoginRespError(http.StatusBadRequest, done.errText, "CODEX", "LOGIN_FAILED")
 			}
 			log.Info().Str("login_id", loginID).Msg("Codex login completed (notification)")
 			return cl.finishLogin(cl.backgroundProcessContext())
@@ -620,7 +620,7 @@ func (cl *CodexLogin) finishLogin(ctx context.Context) (*bridgev2.LoginStep, err
 	log := cl.logger(ctx)
 
 	bgCtx := cl.backgroundProcessContext()
-	loginID := agentremote.NextUserLoginID(cl.User, "codex")
+	loginID := sdk.NextUserLoginID(cl.User, "codex")
 	remoteName := "Codex"
 	dupCount := 0
 	for _, existing := range cl.User.GetUserLogins() {
@@ -665,7 +665,7 @@ func (cl *CodexLogin) finishLogin(ctx context.Context) (*bridgev2.LoginStep, err
 		ChatGPTPlanType:   strings.TrimSpace(cl.chatgptPlanType),
 	}
 
-	login, step, err := agentremote.CreateAndCompleteLogin(
+	login, step, err := sdk.CreateAndCompleteLogin(
 		bgCtx,
 		bgCtx,
 		cl.User,
@@ -677,7 +677,7 @@ func (cl *CodexLogin) finishLogin(ctx context.Context) (*bridgev2.LoginStep, err
 	)
 	if err != nil {
 		cl.cancelLoginAttempt(true)
-		return nil, agentremote.WrapLoginRespError(fmt.Errorf("failed to create login: %w", err), http.StatusInternalServerError, "CODEX", "CREATE_LOGIN_FAILED")
+		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to create login: %w", err), http.StatusInternalServerError, "CODEX", "CREATE_LOGIN_FAILED")
 	}
 	log.Info().Str("user_login_id", string(login.ID)).Msg("Created new Codex login")
 	cl.cancelLoginAttempt(false)
@@ -705,7 +705,7 @@ func (cl *CodexLogin) resolveCodexHomeBaseDir() string {
 			base = filepath.Join(os.TempDir(), "agentremote-codex")
 		}
 	}
-	if expanded, err := agentremote.ExpandUserHome(base); err == nil && expanded != "" {
+	if expanded, err := sdk.ExpandUserHome(base); err == nil && expanded != "" {
 		base = expanded
 	}
 	if abs, err := filepath.Abs(base); err == nil {

@@ -12,8 +12,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
-	"github.com/beeper/agentremote"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 const dummyPortalTopic = "DummyBridge demo room for turns, streaming, tools, approvals, and artifacts."
@@ -38,7 +37,7 @@ func requireSession(session *dummySession) (*dummySession, error) {
 	return session, nil
 }
 
-func (dc *DummyBridgeConnector) onConnect(ctx context.Context, info *bridgesdk.LoginInfo) (*dummySession, error) {
+func (dc *DummyBridgeConnector) onConnect(ctx context.Context, info *sdk.LoginInfo) (*dummySession, error) {
 	if info == nil || info.Login == nil {
 		return nil, errors.New("missing login info")
 	}
@@ -107,9 +106,9 @@ func (dc *DummyBridgeConnector) resolveIdentifier(ctx context.Context, session *
 	return dc.contactResponse(ctx, dummy.login, createChat)
 }
 
-func (dc *DummyBridgeConnector) getChatInfo(conv *bridgesdk.Conversation) (*bridgev2.ChatInfo, error) {
+func (dc *DummyBridgeConnector) getChatInfo(conv *sdk.Conversation) (*bridgev2.ChatInfo, error) {
 	if conv == nil || conv.Portal() == nil {
-		return agentremote.BuildChatInfoWithFallback("", "", dummyAgentName, dummyPortalTopic), nil
+		return sdk.BuildChatInfoWithFallback("", "", dummyAgentName, dummyPortalTopic), nil
 	}
 	portal := conv.Portal()
 	meta := portalMeta(portal)
@@ -120,7 +119,7 @@ func (dc *DummyBridgeConnector) getChatInfo(conv *bridgesdk.Conversation) (*brid
 	if title == "" {
 		title = dummyAgentName
 	}
-	info := agentremote.BuildChatInfoWithFallback(title, portal.Name, dummyAgentName, portal.Topic)
+	info := sdk.BuildChatInfoWithFallback(title, portal.Name, dummyAgentName, portal.Topic)
 	if strings.TrimSpace(meta.Topic) != "" {
 		info.Topic = ptr.Ptr(meta.Topic)
 	}
@@ -225,7 +224,7 @@ func (dc *DummyBridgeConnector) ensureChatForIndexLocked(ctx context.Context, lo
 	meta.Topic = dummyPortalTopic
 	meta.ChatIndex = idx
 
-	if err := agentremote.ConfigureDMPortal(ctx, agentremote.ConfigureDMPortalParams{
+	if err := sdk.ConfigureDMPortal(ctx, sdk.ConfigureDMPortalParams{
 		Portal:      portal,
 		Title:       title,
 		Topic:       dummyPortalTopic,
@@ -236,12 +235,12 @@ func (dc *DummyBridgeConnector) ensureChatForIndexLocked(ctx context.Context, lo
 	}
 
 	chatInfo := dc.composeChatInfo(login, title)
-	if _, err := bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
+	if _, err := sdk.EnsurePortalLifecycle(ctx, sdk.PortalLifecycleOptions{
 		Login:             login,
 		Portal:            portal,
 		ChatInfo:          chatInfo,
 		SaveBeforeCreate:  true,
-		AIRoomKind:        agentremote.AIRoomKindAgent,
+		AIRoomKind:        sdk.AIRoomKindAgent,
 		ForceCapabilities: true,
 	}); err != nil {
 		return nil, fmt.Errorf("ensure portal lifecycle: %w", err)
@@ -254,7 +253,7 @@ func (dc *DummyBridgeConnector) ensureChatForIndexLocked(ctx context.Context, lo
 }
 
 func (dc *DummyBridgeConnector) composeChatInfo(login *bridgev2.UserLogin, title string) *bridgev2.ChatInfo {
-	return agentremote.BuildLoginDMChatInfo(agentremote.LoginDMChatInfoParams{
+	return sdk.BuildLoginDMChatInfo(sdk.LoginDMChatInfoParams{
 		Title:             title,
 		Topic:             dummyPortalTopic,
 		Login:             login,

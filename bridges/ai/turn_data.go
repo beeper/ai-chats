@@ -3,7 +3,6 @@ package ai
 import (
 	"strings"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 	"github.com/beeper/agentremote/sdk"
 )
@@ -50,7 +49,7 @@ func buildCanonicalTurnData(
 		ID:             td.ID,
 		Role:           td.Role,
 		Metadata:       buildTurnDataMetadata(state, meta),
-		GeneratedFiles: agentremote.GeneratedFileRefsFromParts(state.generatedFiles),
+		GeneratedFiles: sdk.GeneratedFileRefsFromParts(state.generatedFiles),
 		ArtifactParts:  artifactParts,
 	})
 }

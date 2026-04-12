@@ -6,7 +6,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 type portalRoomMaterializeOptions struct {
@@ -27,7 +27,7 @@ func (oc *AIClient) materializePortalRoom(
 	if oc == nil || oc.UserLogin == nil {
 		return fmt.Errorf("AIClient not initialized: missing UserLogin")
 	}
-	created, err := bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
+	created, err := sdk.EnsurePortalLifecycle(ctx, sdk.PortalLifecycleOptions{
 		Login:            oc.UserLogin,
 		Portal:           portal,
 		ChatInfo:         chatInfo,

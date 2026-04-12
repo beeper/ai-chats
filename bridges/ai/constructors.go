@@ -10,14 +10,14 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote/pkg/aidb"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func NewAIConnector() *OpenAIConnector {
 	oc := &OpenAIConnector{
 		clients: make(map[networkid.UserLoginID]bridgev2.NetworkAPI),
 	}
-	oc.sdkConfig = bridgesdk.NewStandardConnectorConfig(bridgesdk.StandardConnectorConfigParams[*AIClient, *Config, *PortalMetadata, *MessageMetadata, *UserLoginMetadata, *GhostMetadata]{
+	oc.sdkConfig = sdk.NewStandardConnectorConfig(sdk.StandardConnectorConfigParams[*AIClient, *Config, *PortalMetadata, *MessageMetadata, *UserLoginMetadata, *GhostMetadata]{
 		Name:          "ai",
 		Description:   "AI Chats for Beeper, built on mautrix-go bridgev2.",
 		ProtocolID:    "ai",
@@ -57,7 +57,7 @@ func NewAIConnector() *OpenAIConnector {
 		BeeperBridgeType: "ai",
 		DefaultPort:      29345,
 		DefaultCommandPrefix: func() string {
-			return bridgesdk.ResolveCommandPrefix(oc.Config.Bridge.CommandPrefix, "!ai")
+			return sdk.ResolveCommandPrefix(oc.Config.Bridge.CommandPrefix, "!ai")
 		},
 		ExampleConfig: exampleNetworkConfig,
 		ConfigData:    &oc.Config,
@@ -76,6 +76,6 @@ func NewAIConnector() *OpenAIConnector {
 			return oc.createLogin(ctx, user, flowID)
 		},
 	})
-	oc.ConnectorBase = bridgesdk.NewConnectorBase(oc.sdkConfig)
+	oc.ConnectorBase = sdk.NewConnectorBase(oc.sdkConfig)
 	return oc
 }

@@ -8,7 +8,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/sdk"
 )
 
 type UserLoginMetadata struct {
@@ -99,7 +99,7 @@ type GhostMetadata struct {
 }
 
 type MessageMetadata struct {
-	agentremote.BaseMessageMetadata
+	sdk.BaseMessageMetadata
 	SessionID      string           `json:"session_id,omitempty"`
 	SessionKey     string           `json:"session_key,omitempty"`
 	RunID          string           `json:"run_id,omitempty"`
@@ -139,11 +139,11 @@ func (mm *MessageMetadata) CopyFrom(other any) {
 }
 
 func loginMetadata(login *bridgev2.UserLogin) *UserLoginMetadata {
-	return agentremote.EnsureLoginMetadata[UserLoginMetadata](login)
+	return sdk.EnsureLoginMetadata[UserLoginMetadata](login)
 }
 
 func portalMeta(portal *bridgev2.Portal) *PortalMetadata {
-	return agentremote.EnsurePortalMetadata[PortalMetadata](portal)
+	return sdk.EnsurePortalMetadata[PortalMetadata](portal)
 }
 
 func ghostMeta(ghost *bridgev2.Ghost) *GhostMetadata {
@@ -170,7 +170,7 @@ func ghostMeta(ghost *bridgev2.Ghost) *GhostMetadata {
 }
 
 func humanUserID(loginID networkid.UserLoginID) networkid.UserID {
-	return agentremote.HumanUserID("openclaw-user", loginID)
+	return sdk.HumanUserID("openclaw-user", loginID)
 }
 
 // applyGhostMetadataUpdates applies non-empty fields from desired onto current,

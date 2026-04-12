@@ -24,11 +24,11 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/agents"
 	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/sdk"
 )
 
 var (
@@ -264,7 +264,7 @@ func videoFileFeatures() *event.FileFeatures {
 
 // AIClient handles communication with AI providers
 type AIClient struct {
-	agentremote.ClientBase
+	sdk.ClientBase
 	UserLogin *bridgev2.UserLogin
 	connector *OpenAIConnector
 	api       openai.Client
@@ -337,7 +337,7 @@ type AIClient struct {
 	mcpToolsFetchedAt time.Time
 
 	// Tool approvals (e.g. OpenAI MCP approval requests)
-	approvalFlow *agentremote.ApprovalFlow[*pendingToolApprovalData]
+	approvalFlow *sdk.ApprovalFlow[*pendingToolApprovalData]
 
 	// Per-login cancellation: cancelled when this login disconnects.
 	// All goroutines using backgroundContext() will be cancelled on disconnect.
@@ -408,7 +408,7 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 	oc.HumanUserIDPrefix = "openai-user"
 	oc.MessageIDPrefix = "ai"
 	oc.MessageLogKey = "ai_msg_id"
-	oc.approvalFlow = agentremote.NewApprovalFlow(agentremote.ApprovalFlowConfig[*pendingToolApprovalData]{
+	oc.approvalFlow = sdk.NewApprovalFlow(sdk.ApprovalFlowConfig[*pendingToolApprovalData]{
 		Login: func() *bridgev2.UserLogin { return oc.UserLogin },
 		Sender: func(portal *bridgev2.Portal) bridgev2.EventSender {
 			return oc.senderForPortal(context.Background(), portal)
@@ -466,7 +466,7 @@ func (oc *AIClient) SetUserLogin(login *bridgev2.UserLogin) {
 	oc.ClientBase.SetUserLogin(login)
 }
 
-func (oc *AIClient) GetApprovalHandler() agentremote.ApprovalReactionHandler {
+func (oc *AIClient) GetApprovalHandler() sdk.ApprovalReactionHandler {
 	return oc.approvalFlow
 }
 
@@ -605,7 +605,7 @@ func (oc *AIClient) sendQueueRejectedStatus(ctx context.Context, portal *bridgev
 		WithIsCertain(true).
 		WithSendNotice(false)
 	for _, statusEvt := range queueStatusEvents(evt, extras) {
-		if info := agentremote.MatrixMessageStatusEventInfo(portal, statusEvt); info != nil {
+		if info := sdk.MatrixMessageStatusEventInfo(portal, statusEvt); info != nil {
 			portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, info)
 		}
 	}
@@ -951,7 +951,7 @@ func (oc *AIClient) agentUserID(agentID string) networkid.UserID {
 
 func (oc *AIClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	meta := portalMeta(portal)
-	return agentremote.BuildChatInfoWithFallback(meta.Title, portal.Name, "AI Chat", portal.Topic), nil
+	return sdk.BuildChatInfoWithFallback(meta.Title, portal.Name, "AI Chat", portal.Topic), nil
 }
 
 func (oc *AIClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
@@ -1998,7 +1998,7 @@ func (oc *AIClient) ensureModelInRoom(ctx context.Context, portal *bridgev2.Port
 }
 
 func (oc *AIClient) loggerForContext(ctx context.Context) *zerolog.Logger {
-	return agentremote.LoggerFromContext(ctx, &oc.log)
+	return sdk.LoggerFromContext(ctx, &oc.log)
 }
 
 func (oc *AIClient) backgroundContext(ctx context.Context) context.Context {
@@ -2076,14 +2076,14 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 	}
 	// Create user message for database
 	userMessage := &database.Message{
-		ID:       agentremote.MatrixMessageID(last.Event.ID),
+		ID:       sdk.MatrixMessageID(last.Event.ID),
 		MXID:     last.Event.ID,
 		Room:     last.Portal.PortalKey,
 		SenderID: humanUserID(oc.UserLogin.ID),
 		Metadata: &MessageMetadata{
-			BaseMessageMetadata: agentremote.BaseMessageMetadata{Role: "user", Body: combinedBody},
+			BaseMessageMetadata: sdk.BaseMessageMetadata{Role: "user", Body: combinedBody},
 		},
-		Timestamp: agentremote.MatrixEventTimestamp(last.Event),
+		Timestamp: sdk.MatrixEventTimestamp(last.Event),
 	}
 	setCanonicalTurnDataFromPromptMessages(userMessage.Metadata.(*MessageMetadata), promptTail(promptContext, 1))
 

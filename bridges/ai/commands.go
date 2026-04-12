@@ -10,7 +10,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote/bridges/ai/commandregistry"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 // HelpSectionAI is the help section for AI-related commands.
@@ -32,7 +32,7 @@ func resolveLoginForCommand(
 		User:   user,
 		Bridge: br,
 	}
-	login, err := bridgesdk.ResolveCommandLogin(ctx, ce, defaultLogin)
+	login, err := sdk.ResolveCommandLogin(ctx, ce, defaultLogin)
 	if err != nil {
 		return nil
 	}

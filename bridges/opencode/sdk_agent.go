@@ -3,7 +3,7 @@ package opencode
 import (
 	"strings"
 
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 // instanceDisplayName returns the display name for an OpenCode instance,
@@ -17,16 +17,16 @@ func (oc *OpenCodeClient) instanceDisplayName(instanceID string) string {
 	return "OpenCode"
 }
 
-func openCodeSDKAgent(instanceID, displayName string) *bridgesdk.Agent {
+func openCodeSDKAgent(instanceID, displayName string) *sdk.Agent {
 	if displayName == "" {
 		displayName = "OpenCode"
 	}
-	return &bridgesdk.Agent{
+	return &sdk.Agent{
 		ID:           string(OpenCodeUserID(instanceID)),
 		Name:         displayName,
 		Description:  "OpenCode instance",
 		Identifiers:  []string{"opencode:" + instanceID},
 		ModelKey:     "opencode:" + instanceID,
-		Capabilities: bridgesdk.MultimodalAgentCapabilities(),
+		Capabilities: sdk.MultimodalAgentCapabilities(),
 	}
 }

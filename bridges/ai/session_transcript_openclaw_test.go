@@ -8,7 +8,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/sdk"
 )
 
@@ -104,7 +103,7 @@ func TestBuildOpenClawSessionMessagesFromCanonical(t *testing.T) {
 		MXID:      id.EventID("$assistant1"),
 		Timestamp: time.UnixMilli(1730000000000),
 		Metadata: &MessageMetadata{
-			BaseMessageMetadata: agentremote.BaseMessageMetadata{
+			BaseMessageMetadata: sdk.BaseMessageMetadata{
 				Role: "assistant",
 				CanonicalTurnData: sdk.TurnData{
 					Role: "assistant",

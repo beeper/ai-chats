@@ -9,17 +9,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/agentremote/pkg/shared/streamui"
+	"github.com/beeper/agentremote/turns"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
-
-	"github.com/beeper/agentremote"
-	"github.com/beeper/agentremote/pkg/matrixevents"
-	"github.com/beeper/agentremote/pkg/shared/streamui"
-	"github.com/beeper/agentremote/turns"
 )
 
 type FinalMetadataProvider interface {
@@ -78,12 +76,12 @@ func (h *sdkApprovalHandle) Wait(ctx context.Context) (ToolApprovalResponse, err
 	approvalFlow := runtime.approvalFlowValue()
 	decision, ok := approvalFlow.Wait(ctx, h.approvalID)
 	if !ok {
-		reason := agentremote.ApprovalReasonTimeout
+		reason := ApprovalReasonTimeout
 		if ctx != nil && ctx.Err() != nil {
-			reason = agentremote.ApprovalReasonCancelled
+			reason = ApprovalReasonCancelled
 		}
 		h.turn.Writer().Approvals().Respond(h.turn.turnCtx, h.approvalID, h.toolCallID, false, reason)
-		approvalFlow.FinishResolved(h.approvalID, agentremote.ApprovalDecisionPayload{
+		approvalFlow.FinishResolved(h.approvalID, ApprovalDecisionPayload{
 			ApprovalID: h.approvalID,
 			Reason:     reason,
 		})
@@ -394,8 +392,8 @@ func (t *Turn) ensureStarted() {
 			}
 		} else if t.conv != nil && t.conv.portal != nil && t.conv.login != nil {
 			identity := t.providerIdentity()
-			timing := agentremote.ResolveEventTiming(time.UnixMilli(t.startedAtMs), 0)
-			evtID, msgID, err := agentremote.SendViaPortal(agentremote.SendViaPortalParams{
+			timing := ResolveEventTiming(time.UnixMilli(t.startedAtMs), 0)
+			evtID, msgID, err := SendViaPortal(SendViaPortalParams{
 				Login:       t.conv.login,
 				Portal:      t.conv.portal,
 				Sender:      t.resolveSender(t.turnCtx),
@@ -453,7 +451,7 @@ func (t *Turn) requestApproval(req ApprovalRequest) ApprovalHandle {
 	}
 	ttl := req.TTL
 	if ttl <= 0 {
-		ttl = agentremote.DefaultApprovalExpiry
+		ttl = DefaultApprovalExpiry
 	}
 	_, _ = approvalFlow.Register(approvalID, ttl, &pendingSDKApprovalData{
 		RoomID:     t.conv.portal.MXID,
@@ -462,15 +460,15 @@ func (t *Turn) requestApproval(req ApprovalRequest) ApprovalHandle {
 		ToolName:   req.ToolName,
 	})
 	t.Approvals().EmitRequest(t.turnCtx, approvalID, req.ToolCallID)
-	presentation := agentremote.ApprovalPromptPresentation{
+	presentation := ApprovalPromptPresentation{
 		Title:       req.ToolName,
 		AllowAlways: true,
 	}
 	if req.Presentation != nil {
 		presentation = *req.Presentation
 	}
-	approvalFlow.SendPrompt(t.turnCtx, t.conv.portal, agentremote.SendPromptParams{
-		ApprovalPromptMessageParams: agentremote.ApprovalPromptMessageParams{
+	approvalFlow.SendPrompt(t.turnCtx, t.conv.portal, SendPromptParams{
+		ApprovalPromptMessageParams: ApprovalPromptMessageParams{
 			ApprovalID:        approvalID,
 			ToolCallID:        req.ToolCallID,
 			ToolName:          req.ToolName,
@@ -593,7 +591,7 @@ func (t *Turn) SendStatus(status event.MessageStatus, message string) {
 	SendMessageStatus(t.turnCtx, t.conv.portal, t.conv.portal.MXID, id.EventID(t.source.EventID), status, message)
 }
 
-func (t *Turn) finalMetadata(finishReason string) agentremote.BaseMessageMetadata {
+func (t *Turn) finalMetadata(finishReason string) BaseMessageMetadata {
 	uiMessage := streamui.SnapshotUIMessage(t.state)
 	snapshot := BuildTurnSnapshot(uiMessage, TurnDataBuildOptions{
 		ID:   t.turnID,
@@ -604,7 +602,7 @@ func (t *Turn) finalMetadata(finishReason string) agentremote.BaseMessageMetadat
 	if t.agent != nil {
 		agentID = t.agent.ID
 	}
-	runtimeMeta := agentremote.BuildAssistantBaseMetadata(agentremote.AssistantMetadataParams{
+	runtimeMeta := BuildAssistantBaseMetadata(AssistantMetadataParams{
 		Body:              snapshot.Body,
 		FinishReason:      finishReason,
 		TurnID:            t.turnID,
@@ -633,7 +631,7 @@ func (t *Turn) persistFinalMessage(finishReason string) {
 			metadata = custom
 		}
 	}
-	agentremote.UpsertAssistantMessage(finalCtx, agentremote.UpsertAssistantMessageParams{
+	UpsertAssistantMessage(finalCtx, UpsertAssistantMessageParams{
 		Login:            t.conv.login,
 		Portal:           t.conv.portal,
 		SenderID:         sender.Sender,
@@ -654,7 +652,7 @@ func (t *Turn) buildFinalEdit() (networkid.MessageID, *bridgev2.ConvertedEdit) {
 	}
 	target := t.networkMessageID
 	if target == "" {
-		target = agentremote.MatrixMessageID(t.initialEventID)
+		target = MatrixMessageID(t.initialEventID)
 	}
 	if target == "" {
 		return "", nil
@@ -738,7 +736,7 @@ func (t *Turn) sendFinalEdit(ctx context.Context) {
 		t.conv.login.Log.Warn().Err(err).Str("component", "sdk_turn").Msg("Failed to ensure sender joined before final turn edit")
 	}
 	sender := t.resolveSender(ctx)
-	if err := agentremote.SendEditViaPortal(
+	if err := SendEditViaPortal(
 		t.conv.login,
 		t.conv.portal,
 		sender,
@@ -763,17 +761,17 @@ func (t *Turn) dispatchFinalEdit(ctx context.Context) {
 	t.sendFinalEdit(ctx)
 }
 
-func supportedBaseMetadataFromMap(metadata map[string]any) agentremote.BaseMessageMetadata {
+func supportedBaseMetadataFromMap(metadata map[string]any) BaseMessageMetadata {
 	if len(metadata) == 0 {
-		return agentremote.BaseMessageMetadata{}
+		return BaseMessageMetadata{}
 	}
 	data, err := json.Marshal(metadata)
 	if err != nil {
-		return agentremote.BaseMessageMetadata{}
+		return BaseMessageMetadata{}
 	}
-	var decoded agentremote.BaseMessageMetadata
+	var decoded BaseMessageMetadata
 	if err = json.Unmarshal(data, &decoded); err != nil {
-		return agentremote.BaseMessageMetadata{}
+		return BaseMessageMetadata{}
 	}
 	return decoded
 }

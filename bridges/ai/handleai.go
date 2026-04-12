@@ -12,8 +12,7 @@ import (
 	"github.com/openai/openai-go/v3/shared"
 	"github.com/rs/zerolog"
 
-	"github.com/beeper/agentremote"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -61,12 +60,12 @@ func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev
 			WithMessage(errorMessage).
 			WithIsCertain(true).
 			WithSendNotice(true)
-		if info := agentremote.MatrixMessageStatusEventInfo(portal, evt); info != nil {
-			agentremote.SendMatrixMessageStatus(ctx, portal, evt, msgStatus)
+		if info := sdk.MatrixMessageStatusEventInfo(portal, evt); info != nil {
+			sdk.SendMatrixMessageStatus(ctx, portal, evt, msgStatus)
 		}
 		for _, extra := range statusEventsFromContext(ctx) {
 			if extra != nil {
-				agentremote.SendMatrixMessageStatus(ctx, portal, extra, msgStatus)
+				sdk.SendMatrixMessageStatus(ctx, portal, extra, msgStatus)
 			}
 		}
 	}
@@ -189,7 +188,7 @@ func (oc *AIClient) sendPendingStatus(ctx context.Context, portal *bridgev2.Port
 		Message:   message,
 		IsCertain: true,
 	}
-	agentremote.SendMatrixMessageStatus(ctx, portal, evt, status)
+	sdk.SendMatrixMessageStatus(ctx, portal, evt, status)
 }
 
 func (oc *AIClient) sendSuccessStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event) {
@@ -197,7 +196,7 @@ func (oc *AIClient) sendSuccessStatus(ctx context.Context, portal *bridgev2.Port
 		Status:    event.MessageStatusSuccess,
 		IsCertain: true,
 	}
-	agentremote.SendMatrixMessageStatus(ctx, portal, evt, status)
+	sdk.SendMatrixMessageStatus(ctx, portal, evt, status)
 }
 
 const autoGreetingDelay = 5 * time.Second
@@ -583,7 +582,7 @@ func (oc *AIClient) setRoomName(ctx context.Context, portal *bridgev2.Portal, na
 		return errors.New("portal has no Matrix room ID")
 	}
 
-	if err := bridgesdk.SetRoomName(ctx, oc.UserLogin, portal, bridgev2.EventSender{}, name); err != nil {
+	if err := sdk.SetRoomName(ctx, oc.UserLogin, portal, bridgev2.EventSender{}, name); err != nil {
 		return fmt.Errorf("failed to set room name: %w", err)
 	}
 
@@ -606,7 +605,7 @@ func (oc *AIClient) setRoomTopic(ctx context.Context, portal *bridgev2.Portal, t
 		return errors.New("portal has no Matrix room ID")
 	}
 
-	if err := bridgesdk.SetRoomTopic(ctx, oc.UserLogin, portal, bridgev2.EventSender{}, topic); err != nil {
+	if err := sdk.SetRoomTopic(ctx, oc.UserLogin, portal, bridgev2.EventSender{}, topic); err != nil {
 		return fmt.Errorf("failed to set room topic: %w", err)
 	}
 

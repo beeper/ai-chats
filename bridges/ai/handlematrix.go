@@ -14,13 +14,13 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func messageSendStatusError(err error, message string, reason event.MessageStatusReason) error {
-	return agentremote.MessageSendStatusError(err, message, reason, messageStatusForError, messageStatusReasonForError)
+	return sdk.MessageSendStatusError(err, message, reason, messageStatusForError, messageStatusReasonForError)
 }
 
 // HandleMatrixMessage processes incoming Matrix messages and dispatches them to the AI
@@ -58,7 +58,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		}
 	}
 
-	if agentremote.IsMatrixBotUser(ctx, oc.UserLogin.Bridge, msg.Event.Sender) {
+	if sdk.IsMatrixBotUser(ctx, oc.UserLogin.Bridge, msg.Event.Sender) {
 		logCtx.Debug().Msg("Ignoring bot message")
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
@@ -93,7 +93,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		// Continue to text handling below
 	default:
 		logCtx.Debug().Str("msg_type", string(msgType)).Msg("Unsupported message type")
-		return nil, agentremote.UnsupportedMessageStatus(fmt.Errorf("%s messages are not supported", msgType))
+		return nil, sdk.UnsupportedMessageStatus(fmt.Errorf("%s messages are not supported", msgType))
 	}
 	if msg.Content.RelatesTo != nil && msg.Content.RelatesTo.GetReplaceID() != "" {
 		logCtx.Debug().Msg("Ignoring edit event in HandleMatrixMessage")
@@ -152,7 +152,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	runCtx := ctx
 
 	if rawBody == "" {
-		return nil, agentremote.UnsupportedMessageStatus(errors.New("empty messages are not supported"))
+		return nil, sdk.UnsupportedMessageStatus(errors.New("empty messages are not supported"))
 	}
 
 	wasMentioned := mc.WasMentioned
@@ -272,14 +272,14 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	}
 	logCtx.Debug().Int("prompt_messages", len(promptContext.Messages)).Msg("Built prompt for inbound message")
 	userMessage := &database.Message{
-		ID:       agentremote.MatrixMessageID(eventID),
+		ID:       sdk.MatrixMessageID(eventID),
 		MXID:     eventID,
 		Room:     portal.PortalKey,
 		SenderID: humanUserID(oc.UserLogin.ID),
 		Metadata: &MessageMetadata{
-			BaseMessageMetadata: agentremote.BaseMessageMetadata{Role: "user", Body: body},
+			BaseMessageMetadata: sdk.BaseMessageMetadata{Role: "user", Body: body},
 		},
-		Timestamp: agentremote.MatrixEventTimestamp(msg.Event),
+		Timestamp: sdk.MatrixEventTimestamp(msg.Event),
 	}
 	setCanonicalTurnDataFromPromptMessages(userMessage.Metadata.(*MessageMetadata), promptTail(promptContext, 1))
 	if msg.InputTransactionID != "" {
@@ -540,7 +540,7 @@ func (oc *AIClient) handleMediaMessage(
 		mediaURL = msg.Content.File.URL
 	}
 	if mediaURL == "" {
-		return nil, agentremote.UnsupportedMessageStatus(fmt.Errorf("%s message has no URL", msgType))
+		return nil, sdk.UnsupportedMessageStatus(fmt.Errorf("%s message has no URL", msgType))
 	}
 
 	// Get MIME type
@@ -558,19 +558,19 @@ func (oc *AIClient) handleMediaMessage(
 			ok = true
 		case isTextFileMime(mimeType):
 			if !oc.canUseMediaUnderstanding(meta) {
-				return nil, agentremote.UnsupportedMessageStatus(errors.New("text file understanding is only available when an agent is assigned"))
+				return nil, sdk.UnsupportedMessageStatus(errors.New("text file understanding is only available when an agent is assigned"))
 			}
 			return oc.handleTextFileMessage(ctx, msg, portal, meta, string(mediaURL), mimeType, pendingSent)
 		case mimeType == "" || mimeType == "application/octet-stream":
 			if !oc.canUseMediaUnderstanding(meta) {
-				return nil, agentremote.UnsupportedMessageStatus(errors.New("text file understanding is only available when an agent is assigned"))
+				return nil, sdk.UnsupportedMessageStatus(errors.New("text file understanding is only available when an agent is assigned"))
 			}
 			return oc.handleTextFileMessage(ctx, msg, portal, meta, string(mediaURL), mimeType, pendingSent)
 		}
 	}
 
 	if !ok {
-		return nil, agentremote.UnsupportedMessageStatus(fmt.Errorf("unsupported media type: %s", msgType))
+		return nil, sdk.UnsupportedMessageStatus(fmt.Errorf("unsupported media type: %s", msgType))
 	}
 
 	if mimeType == "" {
@@ -621,14 +621,14 @@ func (oc *AIClient) handleMediaMessage(
 			return nil, messageSendStatusError(err, "Couldn't prepare the message. Try again.", "")
 		}
 		userMessage := &database.Message{
-			ID:       agentremote.MatrixMessageID(eventID),
+			ID:       sdk.MatrixMessageID(eventID),
 			MXID:     eventID,
 			Room:     portal.PortalKey,
 			SenderID: humanUserID(oc.UserLogin.ID),
 			Metadata: &MessageMetadata{
-				BaseMessageMetadata: agentremote.BaseMessageMetadata{Role: "user", Body: body},
+				BaseMessageMetadata: sdk.BaseMessageMetadata{Role: "user", Body: body},
 			},
-			Timestamp: agentremote.MatrixEventTimestamp(msg.Event),
+			Timestamp: sdk.MatrixEventTimestamp(msg.Event),
 		}
 		setCanonicalTurnDataFromPromptMessages(userMessage.Metadata.(*MessageMetadata), promptTail(promptContext, 1))
 		if msg.InputTransactionID != "" {
@@ -680,7 +680,7 @@ func (oc *AIClient) handleMediaMessage(
 		if understanding != nil && strings.TrimSpace(understanding.Body) != "" {
 			return dispatchTextOnly(understanding.Body)
 		}
-		return nil, agentremote.UnsupportedMessageStatus(fmt.Errorf(
+		return nil, sdk.UnsupportedMessageStatus(fmt.Errorf(
 			"%s messages must be preprocessed into text before generation; configure media understanding or upload a transcript",
 			msgType,
 		))
@@ -715,7 +715,7 @@ func (oc *AIClient) handleMediaMessage(
 			}
 		}
 
-		return nil, agentremote.UnsupportedMessageStatus(fmt.Errorf(
+		return nil, sdk.UnsupportedMessageStatus(fmt.Errorf(
 			"current model (%s) does not support %s; switch to a capable model using !ai model",
 			oc.effectiveModel(meta), config.capabilityName,
 		))
@@ -731,7 +731,7 @@ func (oc *AIClient) handleMediaMessage(
 	}
 
 	userMeta := &MessageMetadata{
-		BaseMessageMetadata: agentremote.BaseMessageMetadata{
+		BaseMessageMetadata: sdk.BaseMessageMetadata{
 			Role: "user",
 			Body: oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, buildMediaMetadataBody(caption, config.bodySuffix, understanding), senderName, roomName, isGroup),
 		},
@@ -746,12 +746,12 @@ func (oc *AIClient) handleMediaMessage(
 	setCanonicalTurnDataFromPromptMessages(userMeta, promptTail(promptContext, 1))
 
 	userMessage := &database.Message{
-		ID:        agentremote.MatrixMessageID(eventID),
+		ID:        sdk.MatrixMessageID(eventID),
 		MXID:      eventID,
 		Room:      portal.PortalKey,
 		SenderID:  humanUserID(oc.UserLogin.ID),
 		Metadata:  userMeta,
-		Timestamp: agentremote.MatrixEventTimestamp(msg.Event),
+		Timestamp: sdk.MatrixEventTimestamp(msg.Event),
 	}
 	if msg.InputTransactionID != "" {
 		userMessage.SendTxnID = networkid.RawTransactionID(msg.InputTransactionID)
@@ -888,14 +888,14 @@ func (oc *AIClient) handleTextFileMessage(
 	}
 
 	userMessage := &database.Message{
-		ID:       agentremote.MatrixMessageID(eventID),
+		ID:       sdk.MatrixMessageID(eventID),
 		MXID:     eventID,
 		Room:     portal.PortalKey,
 		SenderID: humanUserID(oc.UserLogin.ID),
 		Metadata: &MessageMetadata{
-			BaseMessageMetadata: agentremote.BaseMessageMetadata{Role: "user", Body: combined},
+			BaseMessageMetadata: sdk.BaseMessageMetadata{Role: "user", Body: combined},
 		},
-		Timestamp: agentremote.MatrixEventTimestamp(msg.Event),
+		Timestamp: sdk.MatrixEventTimestamp(msg.Event),
 	}
 	setCanonicalTurnDataFromPromptMessages(userMessage.Metadata.(*MessageMetadata), promptTail(promptContext, 1))
 	if msg.InputTransactionID != "" {
@@ -1000,7 +1000,7 @@ func (oc *AIClient) sendAckReaction(ctx context.Context, portal *bridgev2.Portal
 
 	sender := oc.senderForPortal(ctx, portal)
 	emojiID := networkid.EmojiID(emoji)
-	result := oc.UserLogin.QueueRemoteEvent(agentremote.BuildReactionEvent(
+	result := oc.UserLogin.QueueRemoteEvent(sdk.BuildReactionEvent(
 		portal.PortalKey,
 		sender,
 		targetPart.ID,
@@ -1069,7 +1069,7 @@ func (oc *AIClient) removeAckReaction(ctx context.Context, portal *bridgev2.Port
 	}
 
 	sender := oc.senderForPortal(ctx, portal)
-	oc.UserLogin.QueueRemoteEvent(agentremote.BuildReactionRemoveEvent(
+	oc.UserLogin.QueueRemoteEvent(sdk.BuildReactionRemoveEvent(
 		portal.PortalKey,
 		sender,
 		entry.targetNetworkID,

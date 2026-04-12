@@ -9,9 +9,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/aidb"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func NewConnector() *CodexConnector {
@@ -33,11 +32,11 @@ func NewConnector() *CodexConnector {
 			Description: "Provide externally managed ChatGPT id/access tokens.",
 		},
 	}
-	cc.sdkConfig = bridgesdk.NewStandardConnectorConfig(bridgesdk.StandardConnectorConfigParams[*CodexClient, *Config, *PortalMetadata, *MessageMetadata, *UserLoginMetadata, *GhostMetadata]{
+	cc.sdkConfig = sdk.NewStandardConnectorConfig(sdk.StandardConnectorConfigParams[*CodexClient, *Config, *PortalMetadata, *MessageMetadata, *UserLoginMetadata, *GhostMetadata]{
 		Name:             "codex",
 		Description:      "A Matrix↔Codex bridge built on mautrix-go bridgev2.",
 		ProtocolID:       "ai-codex",
-		ProviderIdentity: bridgesdk.ProviderIdentity{IDPrefix: "codex", LogKey: "codex_msg_id", StatusNetwork: "codex"},
+		ProviderIdentity: sdk.ProviderIdentity{IDPrefix: "codex", LogKey: "codex_msg_id", StatusNetwork: "codex"},
 		ClientCacheMu:    &cc.clientsMu,
 		ClientCache:      &cc.clients,
 		InitConnector: func(bridge *bridgev2.Bridge) {
@@ -55,7 +54,7 @@ func NewConnector() *CodexConnector {
 				return err
 			}
 			cc.applyRuntimeDefaults()
-			agentremote.PrimeUserLoginCache(ctx, cc.br)
+			sdk.PrimeUserLoginCache(ctx, cc.br)
 			cc.reconcileHostAuthLogins(ctx)
 			return nil
 		},
@@ -65,13 +64,13 @@ func NewConnector() *CodexConnector {
 		BeeperBridgeType: "codex",
 		DefaultPort:      29346,
 		DefaultCommandPrefix: func() string {
-			return bridgesdk.ResolveCommandPrefix(cc.Config.Bridge.CommandPrefix, "!ai")
+			return sdk.ResolveCommandPrefix(cc.Config.Bridge.CommandPrefix, "!ai")
 		},
 		FillBridgeInfo: func(portal *bridgev2.Portal, content *event.BridgeEventContent) {
 			if portal == nil {
 				return
 			}
-			agentremote.ApplyAgentRemoteBridgeInfo(content, "ai-codex", portal.RoomType, agentremote.AIRoomKindAgent)
+			sdk.ApplyAgentRemoteBridgeInfo(content, "ai-codex", portal.RoomType, sdk.AIRoomKindAgent)
 		},
 		ExampleConfig:  exampleNetworkConfig,
 		ConfigData:     &cc.Config,
@@ -81,15 +80,15 @@ func NewConnector() *CodexConnector {
 		NewLogin:       func() *UserLoginMetadata { return &UserLoginMetadata{} },
 		NewGhost:       func() *GhostMetadata { return &GhostMetadata{} },
 		AcceptLogin: func(login *bridgev2.UserLogin) (bool, string) {
-			return bridgesdk.AcceptProviderLogin(login, ProviderCodex, "This bridge only supports Codex logins.", cc.codexEnabled, "Codex integration is disabled in the configuration.", func(login *bridgev2.UserLogin) string {
+			return sdk.AcceptProviderLogin(login, ProviderCodex, "This bridge only supports Codex logins.", cc.codexEnabled, "Codex integration is disabled in the configuration.", func(login *bridgev2.UserLogin) string {
 				return loginMetadata(login).Provider
 			})
 		},
-		MakeBrokenLogin: func(l *bridgev2.UserLogin, reason string) *agentremote.BrokenLoginClient {
+		MakeBrokenLogin: func(l *bridgev2.UserLogin, reason string) *sdk.BrokenLoginClient {
 			return newBrokenLoginClient(l, cc, reason)
 		},
-		CreateClient: bridgesdk.TypedClientCreator(func(login *bridgev2.UserLogin) (*CodexClient, error) { return newCodexClient(login, cc) }),
-		UpdateClient: bridgesdk.TypedClientUpdater[*CodexClient](),
+		CreateClient: sdk.TypedClientCreator(func(login *bridgev2.UserLogin) (*CodexClient, error) { return newCodexClient(login, cc) }),
+		UpdateClient: sdk.TypedClientUpdater[*CodexClient](),
 		AfterLoadClient: func(client bridgev2.NetworkAPI) {
 			if c, ok := client.(*CodexClient); ok {
 				c.scheduleBootstrapOnce()
@@ -98,7 +97,7 @@ func NewConnector() *CodexConnector {
 		LoginFlows: loginFlows,
 		CreateLogin: func(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
 			if !cc.codexEnabled() {
-				return nil, agentremote.NewLoginRespError(403, "Codex login is disabled in the configuration.", "CODEX", "LOGIN_DISABLED")
+				return nil, sdk.NewLoginRespError(403, "Codex login is disabled in the configuration.", "CODEX", "LOGIN_DISABLED")
 			}
 			if !slices.ContainsFunc(loginFlows, func(f bridgev2.LoginFlow) bool { return f.ID == flowID }) {
 				return nil, bridgev2.ErrInvalidLoginFlowID
@@ -110,6 +109,6 @@ func NewConnector() *CodexConnector {
 		},
 	})
 	cc.sdkConfig.Agent = codexSDKAgent()
-	cc.ConnectorBase = bridgesdk.NewConnectorBase(cc.sdkConfig)
+	cc.ConnectorBase = sdk.NewConnectorBase(cc.sdkConfig)
 	return cc
 }

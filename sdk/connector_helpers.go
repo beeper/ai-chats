@@ -11,8 +11,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
-
-	"github.com/beeper/agentremote"
 )
 
 // BuildStandardMetaTypes returns the common bridge metadata registrations.
@@ -22,7 +20,7 @@ func BuildStandardMetaTypes[PortalT, MessageT, LoginT, GhostT any](
 	newLogin func() LoginT,
 	newGhost func() GhostT,
 ) database.MetaTypes {
-	return agentremote.BuildMetaTypes(
+	return BuildMetaTypes(
 		func() any { return newPortal() },
 		func() any { return newMessage() },
 		func() any { return newLogin() },
@@ -123,7 +121,7 @@ type StandardConnectorConfigParams[SessionT SessionValue, ConfigDataT ConfigValu
 	NetworkCapabilities  func() *bridgev2.NetworkGeneralCapabilities
 	FillBridgeInfo       func(portal *bridgev2.Portal, content *event.BridgeEventContent)
 	AcceptLogin          func(login *bridgev2.UserLogin) (bool, string)
-	MakeBrokenLogin      func(login *bridgev2.UserLogin, reason string) *agentremote.BrokenLoginClient
+	MakeBrokenLogin      func(login *bridgev2.UserLogin, reason string) *BrokenLoginClient
 	LoadLogin            func(ctx context.Context, login *bridgev2.UserLogin) error
 	CreateClient         func(login *bridgev2.UserLogin) (bridgev2.NetworkAPI, error)
 	UpdateClient         func(client bridgev2.NetworkAPI, login *bridgev2.UserLogin)

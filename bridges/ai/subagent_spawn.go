@@ -11,10 +11,10 @@ import (
 	"github.com/google/uuid"
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/agents"
 	"github.com/beeper/agentremote/pkg/agents/agentconfig"
 	"github.com/beeper/agentremote/pkg/agents/tools"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func normalizeAgentID(value string) string {
@@ -328,7 +328,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 		}
 	}
 
-	eventID := agentremote.NewEventID("subagent")
+	eventID := sdk.NewEventID("subagent")
 	promptContext, err := oc.buildCurrentTurnWithLinks(ctx, childPortal, childMeta, task, nil, eventID)
 	if err != nil {
 		return tools.JSONResult(map[string]any{

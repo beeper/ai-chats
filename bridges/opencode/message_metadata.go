@@ -3,12 +3,11 @@ package opencode
 import (
 	"maunium.net/go/mautrix/bridgev2/database"
 
-	"github.com/beeper/agentremote"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 type MessageMetadata struct {
-	agentremote.BaseMessageMetadata
+	sdk.BaseMessageMetadata
 	SessionID       string  `json:"session_id,omitempty"`
 	MessageID       string  `json:"message_id,omitempty"`
 	ParentMessageID string  `json:"parent_message_id,omitempty"`
@@ -49,7 +48,7 @@ type MessageMetadataParams struct {
 }
 
 func buildMessageMetadataFromParams(p MessageMetadataParams) *MessageMetadata {
-	snapshot := bridgesdk.BuildTurnSnapshot(p.UIMessage, bridgesdk.TurnDataBuildOptions{
+	snapshot := sdk.BuildTurnSnapshot(p.UIMessage, sdk.TurnDataBuildOptions{
 		ID:   p.TurnID,
 		Role: p.Role,
 		Text: p.Body,
@@ -65,7 +64,7 @@ func buildMessageMetadataFromParams(p MessageMetadataParams) *MessageMetadata {
 		},
 	}, "opencode")
 	return &MessageMetadata{
-		BaseMessageMetadata: agentremote.BaseMessageMetadata{
+		BaseMessageMetadata: sdk.BaseMessageMetadata{
 			Role:              p.Role,
 			Body:              snapshot.Body,
 			FinishReason:      p.FinishReason,

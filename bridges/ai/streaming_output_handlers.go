@@ -12,9 +12,8 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func stableMCPApprovalID(toolCallID string, desc responseToolDescriptor) string {
@@ -29,7 +28,7 @@ func (oc *AIClient) startStreamingMCPApproval(
 	state *streamingState,
 	params ToolApprovalParams,
 	needsPrompt bool,
-) (bridgesdk.ApprovalHandle, error) {
+) (sdk.ApprovalHandle, error) {
 	handle, created := oc.startTurnApproval(ctx, portal, state, state.turn, params, needsPrompt)
 	if !created {
 		return nil, fmt.Errorf("failed to register MCP approval request")
@@ -37,7 +36,7 @@ func (oc *AIClient) startStreamingMCPApproval(
 	if needsPrompt {
 		return handle, nil
 	}
-	if err := oc.resolveToolApproval(params.ApprovalID, true, agentremote.ApprovalReasonAutoApproved); err != nil {
+	if err := oc.resolveToolApproval(params.ApprovalID, true, sdk.ApprovalReasonAutoApproved); err != nil {
 		return nil, fmt.Errorf("failed to auto-approve MCP tool call: %w", err)
 	}
 	return handle, nil

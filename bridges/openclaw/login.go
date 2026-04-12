@@ -11,7 +11,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/sdk"
 )
 
 var (
@@ -42,12 +42,12 @@ const (
 )
 
 var (
-	errOpenClawInvalidState = agentremote.NewLoginRespError(http.StatusBadRequest, "Login process is in an invalid state.", "OPENCLAW", "INVALID_STATE")
-	errOpenClawNotWaiting   = agentremote.NewLoginRespError(http.StatusBadRequest, "Login is not waiting for OpenClaw pairing.", "OPENCLAW", "NOT_WAITING")
-	errOpenClawTimedOut     = agentremote.NewLoginRespError(http.StatusBadRequest, "Timed out waiting for OpenClaw pairing approval.", "OPENCLAW", "PAIRING_TIMEOUT")
-	errOpenClawMissingLogin = agentremote.NewLoginRespError(http.StatusInternalServerError, "Missing pending OpenClaw login details.", "OPENCLAW", "MISSING_PENDING_LOGIN")
-	errOpenClawMixedAuth    = agentremote.NewLoginRespError(http.StatusBadRequest, "Provide either a gateway token or a gateway password, not both.", "OPENCLAW", "MIXED_AUTH")
-	errOpenClawMissingHost  = agentremote.NewLoginRespError(http.StatusBadRequest, "Gateway URL host is required.", "OPENCLAW", "MISSING_HOST")
+	errOpenClawInvalidState = sdk.NewLoginRespError(http.StatusBadRequest, "Login process is in an invalid state.", "OPENCLAW", "INVALID_STATE")
+	errOpenClawNotWaiting   = sdk.NewLoginRespError(http.StatusBadRequest, "Login is not waiting for OpenClaw pairing.", "OPENCLAW", "NOT_WAITING")
+	errOpenClawTimedOut     = sdk.NewLoginRespError(http.StatusBadRequest, "Timed out waiting for OpenClaw pairing approval.", "OPENCLAW", "PAIRING_TIMEOUT")
+	errOpenClawMissingLogin = sdk.NewLoginRespError(http.StatusInternalServerError, "Missing pending OpenClaw login details.", "OPENCLAW", "MISSING_PENDING_LOGIN")
+	errOpenClawMixedAuth    = sdk.NewLoginRespError(http.StatusBadRequest, "Provide either a gateway token or a gateway password, not both.", "OPENCLAW", "MIXED_AUTH")
+	errOpenClawMissingHost  = sdk.NewLoginRespError(http.StatusBadRequest, "Gateway URL host is required.", "OPENCLAW", "MISSING_HOST")
 )
 
 type openClawPendingLogin struct {
@@ -59,7 +59,7 @@ type openClawPendingLogin struct {
 }
 
 type OpenClawLogin struct {
-	agentremote.BaseLoginProcess
+	sdk.BaseLoginProcess
 	User      *bridgev2.User
 	Connector *OpenClawConnector
 
@@ -79,7 +79,7 @@ func (ol *OpenClawLogin) validate() error {
 	if ol.Connector != nil {
 		br = ol.Connector.br
 	}
-	return agentremote.ValidateLoginState(ol.User, br)
+	return sdk.ValidateLoginState(ol.User, br)
 }
 
 func (ol *OpenClawLogin) Start(_ context.Context) (*bridgev2.LoginStep, error) {
@@ -238,9 +238,9 @@ func (ol *OpenClawLogin) completeLogin(pending *openClawPendingLogin, deviceToke
 	persistCtx := ol.BackgroundProcessContext()
 	log := ol.User.Log.With().Str("component", "openclaw_login").Str("gateway_url", pending.gatewayURL).Logger()
 	remoteName := openClawRemoteName(pending.gatewayURL, pending.label)
-	loginID := agentremote.NextUserLoginID(ol.User, "openclaw")
+	loginID := sdk.NextUserLoginID(ol.User, "openclaw")
 	log.Debug().Str("login_id", string(loginID)).Str("remote_name", remoteName).Msg("Creating OpenClaw user login")
-	login, step, err := agentremote.CreateAndCompleteLogin(
+	login, step, err := sdk.CreateAndCompleteLogin(
 		persistCtx,
 		ol.BackgroundProcessContext(),
 		ol.User,
@@ -259,7 +259,7 @@ func (ol *OpenClawLogin) completeLogin(pending *openClawPendingLogin, deviceToke
 	)
 	if err != nil {
 		log.Debug().Err(err).Str("login_id", string(loginID)).Msg("OpenClaw user login creation failed")
-		return nil, agentremote.WrapLoginRespError(fmt.Errorf("failed to create login: %w", err), http.StatusInternalServerError, "OPENCLAW", "CREATE_LOGIN_FAILED")
+		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to create login: %w", err), http.StatusInternalServerError, "OPENCLAW", "CREATE_LOGIN_FAILED")
 	}
 	log.Debug().Str("login_id", string(login.ID)).Msg("Created OpenClaw user login")
 	ol.pending = nil
@@ -378,18 +378,18 @@ func mapOpenClawLoginError(err error) error {
 			msg += " Approve the pending device with `openclaw devices list` and `openclaw devices approve <request-id>`"
 		}
 		msg += ", then try logging in again."
-		return agentremote.NewLoginRespError(http.StatusForbidden, msg, "OPENCLAW", "PAIRING_REQUIRED")
+		return sdk.NewLoginRespError(http.StatusForbidden, msg, "OPENCLAW", "PAIRING_REQUIRED")
 	case strings.HasPrefix(strings.ToUpper(strings.TrimSpace(rpcErr.DetailCode)), "AUTH_"):
-		return agentremote.NewLoginRespError(http.StatusForbidden, rpcErr.Error(), "OPENCLAW", "AUTH_FAILED")
+		return sdk.NewLoginRespError(http.StatusForbidden, rpcErr.Error(), "OPENCLAW", "AUTH_FAILED")
 	default:
-		return agentremote.WrapLoginRespError(rpcErr, http.StatusInternalServerError, "OPENCLAW", "GATEWAY_REQUEST_FAILED")
+		return sdk.WrapLoginRespError(rpcErr, http.StatusInternalServerError, "OPENCLAW", "GATEWAY_REQUEST_FAILED")
 	}
 }
 
 func normalizeOpenClawLoginURL(raw string) (string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
-		return "", agentremote.WrapLoginRespError(fmt.Errorf("invalid url: %w", err), http.StatusBadRequest, "OPENCLAW", "INVALID_URL")
+		return "", sdk.WrapLoginRespError(fmt.Errorf("invalid url: %w", err), http.StatusBadRequest, "OPENCLAW", "INVALID_URL")
 	}
 	if parsed.Scheme == "" {
 		parsed.Scheme = "ws"

@@ -11,12 +11,12 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/pkg/shared/streamui"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func newTestStreamingStateWithTurn() *streamingState {
 	state := newStreamingState(context.Background(), nil, "")
-	conv := bridgesdk.NewConversation[*AIClient, *Config](context.Background(), nil, nil, bridgev2.EventSender{}, nil, nil)
+	conv := sdk.NewConversation[*AIClient, *Config](context.Background(), nil, nil, bridgev2.EventSender{}, nil, nil)
 	state.turn = conv.StartTurn(context.Background(), nil, nil)
 	return state
 }

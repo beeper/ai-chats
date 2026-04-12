@@ -7,12 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/agents"
 	"github.com/beeper/agentremote/pkg/agents/tools"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	"github.com/beeper/agentremote/pkg/shared/toolspec"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
@@ -187,7 +186,7 @@ func agentContactIdentifiers(agentID string) []string {
 	return stringutil.DedupeStrings(identifiers)
 }
 
-func agentMatchesQuery(query string, agent *bridgesdk.Agent) bool {
+func agentMatchesQuery(query string, agent *sdk.Agent) bool {
 	if query == "" || agent == nil {
 		return false
 	}
@@ -225,7 +224,7 @@ func (oc *AIClient) modelContactResponse(ctx context.Context, model *ModelInfo) 
 	return resp
 }
 
-func (oc *AIClient) agentContactResponse(ctx context.Context, agent *bridgesdk.Agent) *bridgev2.ResolveIdentifierResponse {
+func (oc *AIClient) agentContactResponse(ctx context.Context, agent *sdk.Agent) *bridgev2.ResolveIdentifierResponse {
 	if agent == nil || !oc.agentsEnabledForLogin() {
 		return nil
 	}
@@ -257,7 +256,7 @@ func (oc *AIClient) agentContactResponse(ctx context.Context, agent *bridgesdk.A
 	return resp
 }
 
-func catalogAgentID(agent *bridgesdk.Agent) string {
+func catalogAgentID(agent *sdk.Agent) string {
 	if agent == nil {
 		return ""
 	}
@@ -744,7 +743,7 @@ func (oc *AIClient) initPortalForChat(ctx context.Context, opts PortalInitOpts) 
 	}
 	portal.Metadata = pmeta
 
-	if err := agentremote.ConfigureDMPortal(ctx, agentremote.ConfigureDMPortalParams{
+	if err := sdk.ConfigureDMPortal(ctx, sdk.ConfigureDMPortalParams{
 		Portal:      portal,
 		Title:       title,
 		OtherUserID: modelUserID(modelID),
@@ -984,7 +983,7 @@ func (oc *AIClient) composeChatInfo(ctx context.Context, title, modelID string) 
 	if title == "" {
 		title = modelName
 	}
-	chatInfo := agentremote.BuildLoginDMChatInfo(agentremote.LoginDMChatInfoParams{
+	chatInfo := sdk.BuildLoginDMChatInfo(sdk.LoginDMChatInfoParams{
 		Title:             title,
 		Login:             oc.UserLogin,
 		HumanUserIDPrefix: oc.HumanUserIDPrefix,
@@ -1061,7 +1060,7 @@ func (oc *AIClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Porta
 	if oc == nil {
 		return
 	}
-	if err := agentremote.SendSystemMessage(ctx, oc.UserLogin, portal, bridgev2.EventSender{}, message); err != nil {
+	if err := sdk.SendSystemMessage(ctx, oc.UserLogin, portal, bridgev2.EventSender{}, message); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to send system notice")
 	}
 }

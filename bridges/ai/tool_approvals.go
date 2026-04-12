@@ -9,9 +9,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 type ToolApprovalKind string
@@ -40,7 +39,7 @@ type pendingToolApprovalData struct {
 	RuleToolName string // normalized for matching/persistence (e.g. "message" or raw MCP tool name without "mcp.")
 	ServerLabel  string // MCP only
 	Action       string // builtin only (optional)
-	Presentation agentremote.ApprovalPromptPresentation
+	Presentation sdk.ApprovalPromptPresentation
 
 	RequestedAt time.Time
 }
@@ -58,7 +57,7 @@ type ToolApprovalParams struct {
 	RuleToolName string
 	ServerLabel  string
 	Action       string
-	Presentation agentremote.ApprovalPromptPresentation
+	Presentation sdk.ApprovalPromptPresentation
 
 	TTL time.Duration
 }
@@ -83,20 +82,20 @@ func (oc *AIClient) resolveApprovalTTL(ttl time.Duration) time.Duration {
 		return ttl
 	}
 	if oc == nil {
-		return agentremote.DefaultApprovalExpiry
+		return sdk.DefaultApprovalExpiry
 	}
 	ttl = time.Duration(oc.toolApprovalsTTLSeconds()) * time.Second
 	if ttl > 0 {
 		return ttl
 	}
-	return agentremote.DefaultApprovalExpiry
+	return sdk.DefaultApprovalExpiry
 }
 
-func resolveApprovalPresentation(toolName string, presentation *agentremote.ApprovalPromptPresentation) agentremote.ApprovalPromptPresentation {
+func resolveApprovalPresentation(toolName string, presentation *sdk.ApprovalPromptPresentation) sdk.ApprovalPromptPresentation {
 	if presentation != nil {
 		return *presentation
 	}
-	return agentremote.ApprovalPromptPresentation{
+	return sdk.ApprovalPromptPresentation{
 		Title:       strings.TrimSpace(toolName),
 		AllowAlways: true,
 	}
@@ -122,12 +121,12 @@ func applyApprovalRequestMetadata(params *ToolApprovalParams, metadata map[strin
 
 func approvalWaitReason(ctx context.Context) string {
 	if ctx != nil && ctx.Err() != nil {
-		return agentremote.ApprovalReasonCancelled
+		return sdk.ApprovalReasonCancelled
 	}
-	return agentremote.ApprovalReasonTimeout
+	return sdk.ApprovalReasonTimeout
 }
 
-func resolveApprovalPromptContext(state *streamingState, turn *bridgesdk.Turn, fallbackTurnID string) (string, id.EventID, id.EventID) {
+func resolveApprovalPromptContext(state *streamingState, turn *sdk.Turn, fallbackTurnID string) (string, id.EventID, id.EventID) {
 	turnID := strings.TrimSpace(fallbackTurnID)
 	replyTo := id.EventID("")
 	threadRoot := id.EventID("")
@@ -145,7 +144,7 @@ func resolveApprovalPromptContext(state *streamingState, turn *bridgesdk.Turn, f
 
 type aiTurnApprovalHandle struct {
 	client     *AIClient
-	turn       *bridgesdk.Turn
+	turn       *sdk.Turn
 	approvalID string
 	toolCallID string
 }
@@ -164,9 +163,9 @@ func (h *aiTurnApprovalHandle) ToolCallID() string {
 	return h.toolCallID
 }
 
-func (h *aiTurnApprovalHandle) Wait(ctx context.Context) (bridgesdk.ToolApprovalResponse, error) {
+func (h *aiTurnApprovalHandle) Wait(ctx context.Context) (sdk.ToolApprovalResponse, error) {
 	if h == nil || h.client == nil {
-		return bridgesdk.ToolApprovalResponse{}, nil
+		return sdk.ToolApprovalResponse{}, nil
 	}
 	resolution, _, ok := h.client.waitToolApproval(ctx, h.approvalID)
 	decision := resolution.Decision
@@ -180,14 +179,14 @@ func (h *aiTurnApprovalHandle) Wait(ctx context.Context) (bridgesdk.ToolApproval
 			h.turn.Writer().Tools().Denied(h.turn.Context(), h.toolCallID)
 		}
 	}
-	return bridgesdk.ToolApprovalResponse{
+	return sdk.ToolApprovalResponse{
 		Approved: approved,
 		Always:   resolution.Always,
 		Reason:   decision.Reason,
 	}, nil
 }
 
-func newAITurnApprovalHandle(client *AIClient, turn *bridgesdk.Turn, approvalID, toolCallID string) *aiTurnApprovalHandle {
+func newAITurnApprovalHandle(client *AIClient, turn *sdk.Turn, approvalID, toolCallID string) *aiTurnApprovalHandle {
 	return &aiTurnApprovalHandle{
 		client:     client,
 		turn:       turn,
@@ -196,7 +195,7 @@ func newAITurnApprovalHandle(client *AIClient, turn *bridgesdk.Turn, approvalID,
 	}
 }
 
-func (oc *AIClient) approvalParamsFromRequest(portal *bridgev2.Portal, state *streamingState, turn *bridgesdk.Turn, req bridgesdk.ApprovalRequest) ToolApprovalParams {
+func (oc *AIClient) approvalParamsFromRequest(portal *bridgev2.Portal, state *streamingState, turn *sdk.Turn, req sdk.ApprovalRequest) ToolApprovalParams {
 	params := ToolApprovalParams{
 		ApprovalID:   resolveApprovalID(req.ApprovalID),
 		ToolCallID:   strings.TrimSpace(req.ToolCallID),
@@ -221,10 +220,10 @@ func (oc *AIClient) startTurnApproval(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	state *streamingState,
-	turn *bridgesdk.Turn,
+	turn *sdk.Turn,
 	params ToolApprovalParams,
 	sendPrompt bool,
-) (bridgesdk.ApprovalHandle, bool) {
+) (sdk.ApprovalHandle, bool) {
 	handle := newAITurnApprovalHandle(oc, turn, params.ApprovalID, params.ToolCallID)
 	if oc == nil {
 		return handle, false
@@ -239,12 +238,12 @@ func (oc *AIClient) startTurnApproval(
 		return handle, true
 	}
 	if portal == nil || portal.MXID == "" || oc.UserLogin == nil || oc.UserLogin.UserMXID == "" || oc.approvalFlow == nil {
-		_ = oc.resolveToolApproval(params.ApprovalID, false, agentremote.ApprovalReasonDeliveryError)
+		_ = oc.resolveToolApproval(params.ApprovalID, false, sdk.ApprovalReasonDeliveryError)
 		return handle, true
 	}
 	turnID, replyTo, threadRoot := resolveApprovalPromptContext(state, turn, params.TurnID)
-	oc.approvalFlow.SendPrompt(ctx, portal, agentremote.SendPromptParams{
-		ApprovalPromptMessageParams: agentremote.ApprovalPromptMessageParams{
+	oc.approvalFlow.SendPrompt(ctx, portal, sdk.SendPromptParams{
+		ApprovalPromptMessageParams: sdk.ApprovalPromptMessageParams{
 			ApprovalID:        params.ApprovalID,
 			ToolCallID:        params.ToolCallID,
 			ToolName:          params.ToolName,
@@ -264,9 +263,9 @@ func (oc *AIClient) requestTurnApproval(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	state *streamingState,
-	turn *bridgesdk.Turn,
-	req bridgesdk.ApprovalRequest,
-) bridgesdk.ApprovalHandle {
+	turn *sdk.Turn,
+	req sdk.ApprovalRequest,
+) sdk.ApprovalHandle {
 	if oc == nil {
 		return newAITurnApprovalHandle(nil, nil, req.ApprovalID, req.ToolCallID)
 	}
@@ -275,7 +274,7 @@ func (oc *AIClient) requestTurnApproval(
 	return handle
 }
 
-func (oc *AIClient) registerToolApproval(params ToolApprovalParams) (*agentremote.Pending[*pendingToolApprovalData], bool) {
+func (oc *AIClient) registerToolApproval(params ToolApprovalParams) (*sdk.Pending[*pendingToolApprovalData], bool) {
 	if oc == nil || oc.approvalFlow == nil {
 		return nil, false
 	}
@@ -307,7 +306,7 @@ func (oc *AIClient) resolveToolApproval(approvalID string, approved bool, reason
 	if approvalID == "" {
 		return fmt.Errorf("approval ID is required")
 	}
-	return oc.approvalFlow.Resolve(approvalID, agentremote.ApprovalDecisionPayload{
+	return oc.approvalFlow.Resolve(approvalID, sdk.ApprovalDecisionPayload{
 		ApprovalID: approvalID,
 		Approved:   approved,
 		Reason:     strings.TrimSpace(reason),
@@ -335,8 +334,8 @@ func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (to
 	if !ok {
 		reason := approvalWaitReason(ctx)
 		state := airuntime.ToolApprovalDenied
-		if reason == agentremote.ApprovalReasonTimeout {
-			oc.approvalFlow.FinishResolved(approvalID, agentremote.ApprovalDecisionPayload{
+		if reason == sdk.ApprovalReasonTimeout {
+			oc.approvalFlow.FinishResolved(approvalID, sdk.ApprovalDecisionPayload{
 				ApprovalID: approvalID,
 				Reason:     reason,
 			})
@@ -376,7 +375,7 @@ func approvalAllowed(decision airuntime.ToolApprovalDecision) bool {
 func (oc *AIClient) waitForToolApprovalDecision(
 	ctx context.Context,
 	state *streamingState,
-	handle bridgesdk.ApprovalHandle,
+	handle sdk.ApprovalHandle,
 ) airuntime.ToolApprovalDecision {
 	touchAgentLoopActivity(ctx)
 	if handle == nil {
@@ -393,7 +392,7 @@ func (oc *AIClient) waitForToolApprovalDecision(
 	}
 	if !resp.Approved && decision.Reason == "" {
 		decision.State = airuntime.ToolApprovalTimedOut
-		decision.Reason = agentremote.ApprovalReasonTimeout
+		decision.Reason = sdk.ApprovalReasonTimeout
 	}
 	return decision
 }
@@ -435,7 +434,7 @@ func (oc *AIClient) isBuiltinToolDenied(
 	approvalID := NewCallID()
 	ttl := time.Duration(oc.toolApprovalsTTLSeconds()) * time.Second
 	presentation := buildBuiltinApprovalPresentation(toolName, action, argsObj)
-	handle := state.turn.Approvals().Request(bridgesdk.ApprovalRequest{
+	handle := state.turn.Approvals().Request(sdk.ApprovalRequest{
 		ApprovalID:   approvalID,
 		ToolCallID:   tool.callID,
 		ToolName:     toolName,

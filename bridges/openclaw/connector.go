@@ -10,8 +10,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 var (
@@ -20,10 +19,10 @@ var (
 )
 
 type OpenClawConnector struct {
-	*agentremote.ConnectorBase
+	*sdk.ConnectorBase
 	br        *bridgev2.Bridge
 	Config    Config
-	sdkConfig *bridgesdk.Config[*OpenClawClient, *Config]
+	sdkConfig *sdk.Config[*OpenClawClient, *Config]
 
 	clientsMu sync.Mutex
 	clients   map[networkid.UserLoginID]bridgev2.NetworkAPI
@@ -41,20 +40,20 @@ type openClawLoginPrefill struct {
 
 func NewConnector() *OpenClawConnector {
 	oc := &OpenClawConnector{}
-	oc.sdkConfig = bridgesdk.NewStandardConnectorConfig(bridgesdk.StandardConnectorConfigParams[*OpenClawClient, *Config, *PortalMetadata, *MessageMetadata, *UserLoginMetadata, *GhostMetadata]{
+	oc.sdkConfig = sdk.NewStandardConnectorConfig(sdk.StandardConnectorConfigParams[*OpenClawClient, *Config, *PortalMetadata, *MessageMetadata, *UserLoginMetadata, *GhostMetadata]{
 		Name:             "openclaw",
 		Description:      "A Matrix↔OpenClaw bridge built on mautrix-go bridgev2.",
 		ProtocolID:       "ai-openclaw",
-		ProviderIdentity: bridgesdk.ProviderIdentity{IDPrefix: "openclaw", LogKey: "openclaw_msg_id", StatusNetwork: "openclaw"},
+		ProviderIdentity: sdk.ProviderIdentity{IDPrefix: "openclaw", LogKey: "openclaw_msg_id", StatusNetwork: "openclaw"},
 		ClientCacheMu:    &oc.clientsMu,
 		ClientCache:      &oc.clients,
 		InitConnector: func(bridge *bridgev2.Bridge) {
 			oc.br = bridge
 		},
 		StartConnector: func(_ context.Context, _ *bridgev2.Bridge) error {
-			bridgesdk.ApplyDefaultCommandPrefix(&oc.Config.Bridge.CommandPrefix, "!openclaw")
-			bridgesdk.ApplyBoolDefault(&oc.Config.OpenClaw.Enabled, true)
-			bridgesdk.ApplyBoolDefault(&oc.Config.OpenClaw.Discovery.Enabled, true)
+			sdk.ApplyDefaultCommandPrefix(&oc.Config.Bridge.CommandPrefix, "!openclaw")
+			sdk.ApplyBoolDefault(&oc.Config.OpenClaw.Enabled, true)
+			sdk.ApplyBoolDefault(&oc.Config.OpenClaw.Discovery.Enabled, true)
 			if oc.Config.OpenClaw.Discovery.TimeoutMS <= 0 {
 				oc.Config.OpenClaw.Discovery.TimeoutMS = 2000
 			}
@@ -80,20 +79,20 @@ func NewConnector() *OpenClawConnector {
 		NewLogin:       func() *UserLoginMetadata { return &UserLoginMetadata{} },
 		NewGhost:       func() *GhostMetadata { return &GhostMetadata{} },
 		NetworkCapabilities: func() *bridgev2.NetworkGeneralCapabilities {
-			caps := agentremote.DefaultNetworkCapabilities()
+			caps := sdk.DefaultNetworkCapabilities()
 			caps.DisappearingMessages = false
 			return caps
 		},
 		AcceptLogin: func(login *bridgev2.UserLogin) (bool, string) {
-			return bridgesdk.AcceptProviderLogin(login, ProviderOpenClaw, "This bridge only supports OpenClaw logins.", oc.openClawEnabled, "OpenClaw integration is disabled in the configuration.", func(login *bridgev2.UserLogin) string {
+			return sdk.AcceptProviderLogin(login, ProviderOpenClaw, "This bridge only supports OpenClaw logins.", oc.openClawEnabled, "OpenClaw integration is disabled in the configuration.", func(login *bridgev2.UserLogin) string {
 				return loginMetadata(login).Provider
 			})
 		},
-		CreateClient: bridgesdk.TypedClientCreator(func(login *bridgev2.UserLogin) (*OpenClawClient, error) {
+		CreateClient: sdk.TypedClientCreator(func(login *bridgev2.UserLogin) (*OpenClawClient, error) {
 			return newOpenClawClient(login, oc)
 		}),
-		UpdateClient: bridgesdk.TypedClientUpdater[*OpenClawClient](),
-		LoginFlows: agentremote.SingleLoginFlow(oc.openClawEnabled(), bridgev2.LoginFlow{
+		UpdateClient: sdk.TypedClientUpdater[*OpenClawClient](),
+		LoginFlows: sdk.SingleLoginFlow(oc.openClawEnabled(), bridgev2.LoginFlow{
 			ID:          ProviderOpenClaw,
 			Name:        "OpenClaw",
 			Description: "Create a login for an OpenClaw gateway.",
@@ -117,7 +116,7 @@ func NewConnector() *OpenClawConnector {
 			}, nil
 		},
 	})
-	oc.ConnectorBase = bridgesdk.NewConnectorBase(oc.sdkConfig)
+	oc.ConnectorBase = sdk.NewConnectorBase(oc.sdkConfig)
 	return oc
 }
 

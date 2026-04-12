@@ -11,8 +11,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
-
-	"github.com/beeper/agentremote"
 )
 
 // Compile-time interface checks.
@@ -40,10 +38,10 @@ type pendingSDKApprovalData struct {
 }
 
 type sdkClient[SessionT SessionValue, ConfigDataT ConfigValue] struct {
-	agentremote.ClientBase
+	ClientBase
 	cfg               *Config[SessionT, ConfigDataT]
 	userLogin         *bridgev2.UserLogin
-	approvalFlow      *agentremote.ApprovalFlow[*pendingSDKApprovalData]
+	approvalFlow      *ApprovalFlow[*pendingSDKApprovalData]
 	turnManager       *TurnManager
 	conversationState *conversationStateStore
 
@@ -65,7 +63,7 @@ func newSDKClient[SessionT SessionValue, ConfigDataT ConfigValue](login *bridgev
 		conversationState: newConversationStateStore(),
 	}
 	c.InitClientBase(login, c)
-	c.approvalFlow = agentremote.NewApprovalFlow(agentremote.ApprovalFlowConfig[*pendingSDKApprovalData]{
+	c.approvalFlow = NewApprovalFlow(ApprovalFlowConfig[*pendingSDKApprovalData]{
 		Login:    func() *bridgev2.UserLogin { return c.userLogin },
 		Sender:   senderForPortal,
 		IDPrefix: identity.IDPrefix,
@@ -77,7 +75,7 @@ func newSDKClient[SessionT SessionValue, ConfigDataT ConfigValue](login *bridgev
 			return data.RoomID
 		},
 		SendNotice: func(ctx context.Context, portal *bridgev2.Portal, msg string) {
-			_ = agentremote.SendSystemMessage(ctx, login, portal, senderForPortal(portal), msg)
+			_ = SendSystemMessage(ctx, login, portal, senderForPortal(portal), msg)
 		},
 	})
 	if cfg != nil && cfg.TurnManagement != nil {
@@ -86,7 +84,7 @@ func newSDKClient[SessionT SessionValue, ConfigDataT ConfigValue](login *bridgev
 	return c
 }
 
-func (c *sdkClient[SessionT, ConfigDataT]) GetApprovalHandler() agentremote.ApprovalReactionHandler {
+func (c *sdkClient[SessionT, ConfigDataT]) GetApprovalHandler() ApprovalReactionHandler {
 	return c.approvalFlow
 }
 
@@ -134,7 +132,7 @@ func (c *sdkClient[SessionT, ConfigDataT]) conversationStore() *conversationStat
 	return c.conversationState
 }
 
-func (c *sdkClient[SessionT, ConfigDataT]) approvalFlowValue() *agentremote.ApprovalFlow[*pendingSDKApprovalData] {
+func (c *sdkClient[SessionT, ConfigDataT]) approvalFlowValue() *ApprovalFlow[*pendingSDKApprovalData] {
 	return c.approvalFlow
 }
 

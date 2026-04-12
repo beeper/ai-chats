@@ -11,7 +11,6 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/agents"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/pkg/shared/citations"
@@ -30,7 +29,7 @@ func buildReplyRelatesTo(replyTarget ReplyTarget) *event.RelatesTo {
 }
 
 // sendContinuationMessage sends overflow text as a new (non-edit) message from the bot.
-func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev2.Portal, body string, replyTarget ReplyTarget, timing agentremote.EventTiming) {
+func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev2.Portal, body string, replyTarget ReplyTarget, timing sdk.EventTiming) {
 	if portal == nil || portal.MXID == "" {
 		return
 	}
@@ -39,7 +38,7 @@ func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev
 		oc.loggerForContext(ctx).Warn().Err(err).Int("body_len", len(body)).Msg("Failed to prepare continuation sender")
 		return
 	}
-	msg := agentremote.BuildContinuationMessage(portal.PortalKey, body, sender, "ai", "ai_msg_id", timing.Timestamp, timing.StreamOrder)
+	msg := sdk.BuildContinuationMessage(portal.PortalKey, body, sender, "ai", "ai_msg_id", timing.Timestamp, timing.StreamOrder)
 	if relatesTo := buildReplyRelatesTo(replyTarget); relatesTo != nil && msg != nil && msg.Data != nil && len(msg.Data.Parts) > 0 {
 		msg.Data.Parts[0].Content.RelatesTo = relatesTo
 	}

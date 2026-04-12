@@ -9,8 +9,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func newTestAIClient(owner id.UserID) *AIClient {
@@ -22,7 +22,7 @@ func newTestAIClient(owner id.UserID) *AIClient {
 	oc := &AIClient{
 		UserLogin: ul,
 	}
-	oc.approvalFlow = agentremote.NewApprovalFlow(agentremote.ApprovalFlowConfig[*pendingToolApprovalData]{
+	oc.approvalFlow = sdk.NewApprovalFlow(sdk.ApprovalFlowConfig[*pendingToolApprovalData]{
 		Login: func() *bridgev2.UserLogin { return oc.UserLogin },
 		RoomIDFromData: func(data *pendingToolApprovalData) id.RoomID {
 			if data == nil {
@@ -53,7 +53,7 @@ func TestToolApprovals_Resolve(t *testing.T) {
 		TTL:          2 * time.Second,
 	})
 
-	if err := oc.approvalFlow.Resolve(approvalID, agentremote.ApprovalDecisionPayload{
+	if err := oc.approvalFlow.Resolve(approvalID, sdk.ApprovalDecisionPayload{
 		ApprovalID: approvalID,
 		Approved:   true,
 	}); err != nil {
@@ -165,7 +165,7 @@ func TestToolApprovals_WaitResolvedWithoutUserLogin(t *testing.T) {
 		t.Fatalf("expected approval to be registered")
 	}
 	oc.UserLogin = nil
-	if err := oc.approvalFlow.Resolve(approvalID, agentremote.ApprovalDecisionPayload{
+	if err := oc.approvalFlow.Resolve(approvalID, sdk.ApprovalDecisionPayload{
 		ApprovalID: approvalID,
 		Approved:   true,
 	}); err != nil {
@@ -200,7 +200,7 @@ func TestToolApprovals_CancelDoesNotFinishResolved(t *testing.T) {
 	if ok {
 		t.Fatalf("expected cancelled wait to return ok=false")
 	}
-	if resolution.Decision.Reason != agentremote.ApprovalReasonCancelled {
+	if resolution.Decision.Reason != sdk.ApprovalReasonCancelled {
 		t.Fatalf("expected cancelled reason, got %#v", resolution.Decision)
 	}
 	if resolution.Decision.State != airuntime.ToolApprovalDenied {

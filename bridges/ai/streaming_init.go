@@ -8,9 +8,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
-
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 // createStreamingTurn builds an sdk.Turn configured with bridges/ai-specific
@@ -22,8 +20,8 @@ func (oc *AIClient) createStreamingTurn(
 	state *streamingState,
 	sourceEventID id.EventID,
 	senderID string,
-) *bridgesdk.Turn {
-	var sdkConfig *bridgesdk.Config[*AIClient, *Config]
+) *sdk.Turn {
+	var sdkConfig *sdk.Config[*AIClient, *Config]
 	if oc.connector != nil {
 		sdkConfig = oc.connector.sdkConfig
 	}
@@ -31,13 +29,13 @@ func (oc *AIClient) createStreamingTurn(
 	if oc.UserLogin != nil {
 		sender = oc.senderForPortal(ctx, portal)
 	}
-	conv := bridgesdk.NewConversation(ctx, oc.UserLogin, portal, sender, sdkConfig, oc)
-	turn := conv.StartTurn(ctx, nil, &bridgesdk.SourceRef{EventID: string(sourceEventID), SenderID: senderID})
+	conv := sdk.NewConversation(ctx, oc.UserLogin, portal, sender, sdkConfig, oc)
+	turn := conv.StartTurn(ctx, nil, &sdk.SourceRef{EventID: string(sourceEventID), SenderID: senderID})
 	turn.SetSender(sender)
-	turn.SetFinalMetadataProvider(bridgesdk.FinalMetadataProviderFunc(func(_ *bridgesdk.Turn, _ string) any {
+	turn.SetFinalMetadataProvider(sdk.FinalMetadataProviderFunc(func(_ *sdk.Turn, _ string) any {
 		return oc.buildStreamingMessageMetadata(state, meta, nil)
 	}))
-	turn.Approvals().SetHandler(func(callCtx context.Context, sdkTurn *bridgesdk.Turn, req bridgesdk.ApprovalRequest) bridgesdk.ApprovalHandle {
+	turn.Approvals().SetHandler(func(callCtx context.Context, sdkTurn *sdk.Turn, req sdk.ApprovalRequest) sdk.ApprovalHandle {
 		return oc.requestTurnApproval(callCtx, portal, state, sdkTurn, req)
 	})
 	placeholderExtra := map[string]any{
@@ -50,14 +48,14 @@ func (oc *AIClient) createStreamingTurn(
 			"parts": []any{},
 		},
 	}
-	turn.SetPlaceholderMessagePayload(&bridgesdk.PlaceholderMessagePayload{
+	turn.SetPlaceholderMessagePayload(&sdk.PlaceholderMessagePayload{
 		Content: &event.MessageEventContent{
 			MsgType:  event.MsgText,
 			Body:     "...",
 			Mentions: &event.Mentions{},
 		},
 		Extra: placeholderExtra,
-		DBMetadata: &MessageMetadata{BaseMessageMetadata: agentremote.BaseMessageMetadata{
+		DBMetadata: &MessageMetadata{BaseMessageMetadata: sdk.BaseMessageMetadata{
 			Role:   "assistant",
 			TurnID: turn.ID(),
 		}},

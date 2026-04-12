@@ -12,9 +12,9 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/openclawconv"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func openClawSessionLogContext(session gatewaySessionRow) func(zerolog.Context) zerolog.Context {
@@ -143,7 +143,7 @@ func getOpenClawSessionChatInfo(ctx context.Context, portal *bridgev2.Portal, cl
 	roomType := openClawRoomType(meta)
 	client.maybeRefreshPortalCapabilities(ctx, portal, &previous)
 	if roomType == database.RoomTypeDM {
-		return agentremote.BuildLoginDMChatInfo(agentremote.LoginDMChatInfoParams{
+		return sdk.BuildLoginDMChatInfo(sdk.LoginDMChatInfoParams{
 			Title:             title,
 			Topic:             client.topicForPortal(meta),
 			Login:             client.UserLogin,

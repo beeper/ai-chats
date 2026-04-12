@@ -8,7 +8,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/beeper/agentremote/pkg/agents"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 type aiAgentCatalog struct {
@@ -16,7 +16,7 @@ type aiAgentCatalog struct {
 	connector *OpenAIConnector
 }
 
-func (c aiAgentCatalog) DefaultAgent(ctx context.Context, login *bridgev2.UserLogin) (*bridgesdk.Agent, error) {
+func (c aiAgentCatalog) DefaultAgent(ctx context.Context, login *bridgev2.UserLogin) (*sdk.Agent, error) {
 	client := c.clientForLogin(login)
 	if client == nil {
 		return nil, nil
@@ -31,7 +31,7 @@ func (c aiAgentCatalog) DefaultAgent(ctx context.Context, login *bridgev2.UserLo
 	return client.sdkAgentForDefinition(ctx, agent), nil
 }
 
-func (c aiAgentCatalog) ListAgents(ctx context.Context, login *bridgev2.UserLogin) ([]*bridgesdk.Agent, error) {
+func (c aiAgentCatalog) ListAgents(ctx context.Context, login *bridgev2.UserLogin) ([]*sdk.Agent, error) {
 	client := c.clientForLogin(login)
 	if client == nil {
 		return nil, nil
@@ -51,7 +51,7 @@ func (c aiAgentCatalog) ListAgents(ctx context.Context, login *bridgev2.UserLogi
 	}
 	slices.Sort(agentIDs)
 
-	out := make([]*bridgesdk.Agent, 0, len(agentIDs))
+	out := make([]*sdk.Agent, 0, len(agentIDs))
 	for _, agentID := range agentIDs {
 		if sdkAgent := client.sdkAgentForDefinition(ctx, agentsMap[agentID]); sdkAgent != nil {
 			out = append(out, sdkAgent)
@@ -60,7 +60,7 @@ func (c aiAgentCatalog) ListAgents(ctx context.Context, login *bridgev2.UserLogi
 	return out, nil
 }
 
-func (c aiAgentCatalog) ResolveAgent(ctx context.Context, login *bridgev2.UserLogin, identifier string) (*bridgesdk.Agent, error) {
+func (c aiAgentCatalog) ResolveAgent(ctx context.Context, login *bridgev2.UserLogin, identifier string) (*sdk.Agent, error) {
 	client := c.clientForLogin(login)
 	if client == nil {
 		return nil, nil

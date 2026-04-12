@@ -15,10 +15,10 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/agents"
 	"github.com/beeper/agentremote/pkg/agents/agentconfig"
 	"github.com/beeper/agentremote/pkg/agents/tools"
+	"github.com/beeper/agentremote/sdk"
 )
 
 // AgentStoreAdapter implements agents.AgentStore with UserLogin metadata as source of truth.
@@ -401,7 +401,7 @@ func (b *BossStoreAdapter) RunInternalCommand(ctx context.Context, roomID string
 	runCtx := b.client.backgroundContext(ctx)
 	logCopy := b.client.log.With().Str("mx_command", cmdName).Logger()
 	captureBot := newCaptureMatrixAPI(b.client.UserLogin.Bridge.Bot)
-	eventID := agentremote.NewEventID("internal")
+	eventID := sdk.NewEventID("internal")
 	ce := &commands.Event{
 		Bot:        captureBot,
 		Bridge:     b.client.UserLogin.Bridge,

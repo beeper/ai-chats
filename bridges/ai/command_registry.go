@@ -14,7 +14,7 @@ import (
 
 	"github.com/beeper/agentremote/bridges/ai/commandregistry"
 	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 var aiCommandRegistry = commandregistry.NewRegistry()
@@ -173,7 +173,7 @@ func (oc *AIClient) BroadcastCommandDescriptions(ctx context.Context, portal *br
 		return
 	}
 
-	cmds := make([]bridgesdk.Command, 0, len(handlers))
+	cmds := make([]sdk.Command, 0, len(handlers))
 	for _, handler := range handlers {
 		if handler == nil || handler.Name == "" {
 			continue
@@ -181,7 +181,7 @@ func (oc *AIClient) BroadcastCommandDescriptions(ctx context.Context, portal *br
 		if !isUserFacingCommand(handler.Name) {
 			continue
 		}
-		cmds = append(cmds, bridgesdk.Command{
+		cmds = append(cmds, sdk.Command{
 			Name:        handler.Name,
 			Description: strings.TrimSpace(handler.Help.Description),
 			Args:        strings.TrimSpace(handler.Help.Args),
@@ -190,7 +190,7 @@ func (oc *AIClient) BroadcastCommandDescriptions(ctx context.Context, portal *br
 	if len(cmds) == 0 {
 		return
 	}
-	bridgesdk.BroadcastCommandDescriptions(ctx, portal, bot, cmds)
+	sdk.BroadcastCommandDescriptions(ctx, portal, bot, cmds)
 	log.Debug().Int("count", len(handlers)).Stringer("room", portal.MXID).Msg("command_description: broadcast command descriptions")
 }
 

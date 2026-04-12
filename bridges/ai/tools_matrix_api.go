@@ -12,7 +12,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func getMatrixConnector(btc *BridgeToolContext) bridgev2.MatrixConnector {
@@ -148,7 +148,7 @@ func removeMatrixReactions(ctx context.Context, btc *BridgeToolContext, eventID 
 		if emojiID == "" {
 			emojiID = networkid.EmojiID(reaction.Emoji)
 		}
-		btc.Client.UserLogin.QueueRemoteEvent(agentremote.BuildReactionRemoveEvent(
+		btc.Client.UserLogin.QueueRemoteEvent(sdk.BuildReactionRemoveEvent(
 			btc.Portal.PortalKey,
 			sender,
 			targetPart.ID,

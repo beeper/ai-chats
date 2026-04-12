@@ -7,19 +7,18 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func TestRequestTurnApprovalWithoutApprovalFlowReturnsHandle(t *testing.T) {
 	oc := &AIClient{}
 
-	handle := oc.requestTurnApproval(context.Background(), nil, nil, nil, bridgesdk.ApprovalRequest{
+	handle := oc.requestTurnApproval(context.Background(), nil, nil, nil, sdk.ApprovalRequest{
 		ApprovalID:   "approval-1",
 		ToolCallID:   "tool-call-1",
 		ToolName:     "tool",
 		TTL:          60,
-		Presentation: &agentremote.ApprovalPromptPresentation{Title: "Prompt"},
+		Presentation: &sdk.ApprovalPromptPresentation{Title: "Prompt"},
 	})
 	if handle == nil {
 		t.Fatal("expected approval handle")
@@ -38,7 +37,7 @@ func TestRequestTurnApprovalWithoutApprovalFlowReturnsHandle(t *testing.T) {
 	if resp.Approved {
 		t.Fatal("expected approval to be denied without an approval flow")
 	}
-	if resp.Reason != agentremote.ApprovalReasonTimeout {
+	if resp.Reason != sdk.ApprovalReasonTimeout {
 		t.Fatalf("expected timeout reason without approval flow, got %q", resp.Reason)
 	}
 }
@@ -46,7 +45,7 @@ func TestRequestTurnApprovalWithoutApprovalFlowReturnsHandle(t *testing.T) {
 func TestStartStreamingMCPApprovalAutoApprovedEmitsApprovalRequest(t *testing.T) {
 	oc := newTestAIClient("@owner:example.com")
 	state := newStreamingState(context.Background(), nil, "")
-	conv := bridgesdk.NewConversation[*AIClient, *Config](context.Background(), nil, nil, bridgev2.EventSender{}, nil, nil)
+	conv := sdk.NewConversation[*AIClient, *Config](context.Background(), nil, nil, bridgev2.EventSender{}, nil, nil)
 	state.turn = conv.StartTurn(context.Background(), nil, nil)
 
 	handle, err := oc.startStreamingMCPApproval(context.Background(), nil, state, ToolApprovalParams{
@@ -56,7 +55,7 @@ func TestStartStreamingMCPApprovalAutoApprovedEmitsApprovalRequest(t *testing.T)
 		ToolKind:     ToolApprovalKindMCP,
 		RuleToolName: "read_file",
 		ServerLabel:  "filesystem",
-		Presentation: agentremote.ApprovalPromptPresentation{Title: "Read file"},
+		Presentation: sdk.ApprovalPromptPresentation{Title: "Read file"},
 		TTL:          time.Minute,
 	}, false)
 	if err != nil {
@@ -81,7 +80,7 @@ func TestStartStreamingMCPApprovalAutoApprovedEmitsApprovalRequest(t *testing.T)
 	if !resp.Approved {
 		t.Fatal("expected auto-approved MCP request to resolve as approved")
 	}
-	if resp.Reason != agentremote.ApprovalReasonAutoApproved {
+	if resp.Reason != sdk.ApprovalReasonAutoApproved {
 		t.Fatalf("expected auto-approved reason, got %q", resp.Reason)
 	}
 }
@@ -90,7 +89,7 @@ func TestBuildStreamUIMessageIncludesPendingApprovalState(t *testing.T) {
 	oc := newTestAIClient("@owner:example.com")
 	state := newTestStreamingStateWithTurn()
 	state.turn.SetSuppressSend(true)
-	state.writer().Tools().EnsureInputStart(context.Background(), "tool-call-1", nil, bridgesdk.ToolInputOptions{
+	state.writer().Tools().EnsureInputStart(context.Background(), "tool-call-1", nil, sdk.ToolInputOptions{
 		ToolName:         "mcp.read_file",
 		ProviderExecuted: true,
 		DisplayTitle:     "Read file",
@@ -103,7 +102,7 @@ func TestBuildStreamUIMessageIncludesPendingApprovalState(t *testing.T) {
 		ToolKind:     ToolApprovalKindMCP,
 		RuleToolName: "read_file",
 		ServerLabel:  "filesystem",
-		Presentation: agentremote.ApprovalPromptPresentation{Title: "Read file"},
+		Presentation: sdk.ApprovalPromptPresentation{Title: "Read file"},
 		TTL:          time.Minute,
 	}, true)
 	if err != nil {

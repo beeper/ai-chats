@@ -344,6 +344,19 @@ func initCommands() {
 			Run:         cmdHelp,
 		},
 	}
+	normalizeCommandSpecs()
+}
+
+func normalizeCommandSpecs() {
+	for i := range commands {
+		commands[i].Description = strings.ReplaceAll(commands[i].Description, "AgentRemote", "SDK")
+		commands[i].Description = strings.ReplaceAll(commands[i].Description, "agentremote", binaryName)
+		commands[i].Usage = strings.ReplaceAll(commands[i].Usage, "agentremote", binaryName)
+		commands[i].LongHelp = strings.ReplaceAll(commands[i].LongHelp, "agentremote", binaryName)
+		for j := range commands[i].Examples {
+			commands[i].Examples[j] = strings.ReplaceAll(commands[i].Examples[j], "agentremote", binaryName)
+		}
+	}
 }
 
 func envNames() []string {
@@ -461,8 +474,8 @@ func generateCommandHelp(c *cmdDef) string {
 
 func generateUsage() string {
 	var b strings.Builder
-	b.WriteString("agentremote - unified AgentRemote manager for Beeper\n")
-	b.WriteString("\nUsage: agentremote <command> [flags] [args]\n")
+	b.WriteString(binaryName + " - unified SDK manager for Beeper\n")
+	b.WriteString("\nUsage: " + binaryName + " <command> [flags] [args]\n")
 
 	groups := []string{"Auth", "Bridges", "Other"}
 	for _, group := range groups {
@@ -488,14 +501,14 @@ func generateBashCompletion() string {
 	names := commandNames()
 	bridges := bridgeNames()
 
-	b.WriteString("_agentremote() {\n")
+	b.WriteString("_" + binaryName + "() {\n")
 	b.WriteString("    local cur prev commands\n")
 	b.WriteString("    COMPREPLY=()\n")
 	b.WriteString("    cur=\"${COMP_WORDS[COMP_CWORD]}\"\n")
 	b.WriteString("    prev=\"${COMP_WORDS[COMP_CWORD-1]}\"\n")
 	fmt.Fprintf(&b, "    commands=%q\n", strings.Join(names, " "))
 	b.WriteString("\n    case \"${prev}\" in\n")
-	b.WriteString("        agentremote)\n")
+	fmt.Fprintf(&b, "        %s)\n", binaryName)
 	b.WriteString("            COMPREPLY=($(compgen -W \"${commands}\" -- \"${cur}\"))\n")
 	b.WriteString("            return 0\n")
 	b.WriteString("            ;;\n")
@@ -561,7 +574,7 @@ func generateBashCompletion() string {
 	b.WriteString("        return 0\n")
 	b.WriteString("    fi\n")
 	b.WriteString("}\n")
-	b.WriteString("complete -F _agentremote agentremote\n")
+	fmt.Fprintf(&b, "complete -F _%s %s\n", binaryName, binaryName)
 
 	return b.String()
 }
@@ -570,8 +583,8 @@ func generateZshCompletion() string {
 	var b strings.Builder
 	bridges := bridgeNames()
 
-	b.WriteString("#compdef agentremote\n\n")
-	b.WriteString("_agentremote() {\n")
+	fmt.Fprintf(&b, "#compdef %s\n\n", binaryName)
+	b.WriteString("_" + binaryName + "() {\n")
 	b.WriteString("    local -a commands bridges shells envs outputs\n")
 
 	// Commands list
@@ -584,7 +597,7 @@ func generateZshCompletion() string {
 	b.WriteString("    shells=(bash zsh fish)\n")
 
 	b.WriteString("\n    if (( CURRENT == 2 )); then\n")
-	b.WriteString("        _describe -t commands 'agentremote command' commands\n")
+	fmt.Fprintf(&b, "        _describe -t commands '%s command' commands\n", binaryName)
 	b.WriteString("        return\n")
 	b.WriteString("    fi\n")
 
@@ -619,7 +632,7 @@ func generateZshCompletion() string {
 
 	b.WriteString("    esac\n")
 	b.WriteString("}\n\n")
-	b.WriteString("_agentremote \"$@\"\n")
+	fmt.Fprintf(&b, "_%s \"$@\"\n", binaryName)
 
 	return b.String()
 }
@@ -661,16 +674,16 @@ func generateFishCompletion() string {
 	names := commandNames()
 	bridges := bridgeNames()
 
-	b.WriteString("# Fish completions for agentremote\n\n")
+	fmt.Fprintf(&b, "# Fish completions for %s\n\n", binaryName)
 	fmt.Fprintf(&b, "set -l commands %s\n", strings.Join(names, " "))
 	fmt.Fprintf(&b, "set -l bridges %s\n", strings.Join(bridges, " "))
 	b.WriteString("\n# Disable file completions by default\n")
-	b.WriteString("complete -c agentremote -f\n")
+	fmt.Fprintf(&b, "complete -c %s -f\n", binaryName)
 
 	// Top-level commands
 	b.WriteString("\n# Top-level commands\n")
 	for _, c := range visibleCommands() {
-		fmt.Fprintf(&b, "complete -c agentremote -n \"not __fish_seen_subcommand_from $commands\" -a %q -d %q\n", c.Name, c.Description)
+		fmt.Fprintf(&b, "complete -c %s -n \"not __fish_seen_subcommand_from $commands\" -a %q -d %q\n", binaryName, c.Name, c.Description)
 	}
 
 	// Positional arg completions
@@ -680,13 +693,13 @@ func generateFishCompletion() string {
 	shellCmds := posGroups["shell"]
 	commandCmds := posGroups["command"]
 	if len(bridgeCmds) > 0 {
-		fmt.Fprintf(&b, "complete -c agentremote -n \"__fish_seen_subcommand_from %s\" -a \"$bridges\"\n", strings.Join(bridgeCmds, " "))
+		fmt.Fprintf(&b, "complete -c %s -n \"__fish_seen_subcommand_from %s\" -a \"$bridges\"\n", binaryName, strings.Join(bridgeCmds, " "))
 	}
 	if len(shellCmds) > 0 {
-		fmt.Fprintf(&b, "complete -c agentremote -n \"__fish_seen_subcommand_from %s\" -a \"bash zsh fish\"\n", strings.Join(shellCmds, " "))
+		fmt.Fprintf(&b, "complete -c %s -n \"__fish_seen_subcommand_from %s\" -a \"bash zsh fish\"\n", binaryName, strings.Join(shellCmds, " "))
 	}
 	if len(commandCmds) > 0 {
-		fmt.Fprintf(&b, "complete -c agentremote -n \"__fish_seen_subcommand_from %s\" -a \"$commands\"\n", strings.Join(commandCmds, " "))
+		fmt.Fprintf(&b, "complete -c %s -n \"__fish_seen_subcommand_from %s\" -a \"$commands\"\n", binaryName, strings.Join(commandCmds, " "))
 	}
 
 	// Flag completions
@@ -718,9 +731,9 @@ func generateFishCompletion() string {
 		if len(f.Values) > 0 {
 			args = fmt.Sprintf(" -a %q", strings.Join(f.Values, " "))
 		}
-		fmt.Fprintf(&b, "complete -c agentremote -n %q -l %s -d %q%s\n", condition, f.Name, f.Help, args)
+		fmt.Fprintf(&b, "complete -c %s -n %q -l %s -d %q%s\n", binaryName, condition, f.Name, f.Help, args)
 		if f.Short != "" {
-			fmt.Fprintf(&b, "complete -c agentremote -n %q -s %s -d %q\n", condition, f.Short, f.Help)
+			fmt.Fprintf(&b, "complete -c %s -n %q -s %s -d %q\n", binaryName, condition, f.Short, f.Help)
 		}
 	}
 

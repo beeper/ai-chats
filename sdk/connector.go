@@ -10,12 +10,10 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
-
-	"github.com/beeper/agentremote"
 )
 
 // NewConnectorBase builds an SDK-backed connector base that can be embedded by custom bridges.
-func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Config[SessionT, ConfigDataT]) *agentremote.ConnectorBase {
+func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Config[SessionT, ConfigDataT]) *ConnectorBase {
 	mu, clientsRef := cfg.ClientCacheMu, cfg.ClientCache
 	if mu == nil {
 		mu = &sync.Mutex{}
@@ -31,9 +29,9 @@ func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Confi
 	}
 	loadLogin := cfg.LoadLogin
 	if loadLogin == nil {
-		loadLogin = agentremote.TypedClientLoader(agentremote.TypedClientLoaderSpec[bridgev2.NetworkAPI]{
+		loadLogin = TypedClientLoader(TypedClientLoaderSpec[bridgev2.NetworkAPI]{
 			Accept: cfg.AcceptLogin,
-			LoadUserLoginConfig: agentremote.LoadUserLoginConfig[bridgev2.NetworkAPI]{
+			LoadUserLoginConfig: LoadUserLoginConfig[bridgev2.NetworkAPI]{
 				Mu:         mu,
 				Clients:    *clientsRef,
 				ClientsRef: clientsRef,
@@ -62,10 +60,10 @@ func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Confi
 			},
 		})
 	}
-	return agentremote.NewConnector(agentremote.ConnectorSpec{
+	return NewConnector(ConnectorSpec{
 		ProtocolID: protocolID,
 		Init: func(bridge *bridgev2.Bridge) {
-			agentremote.EnsureClientMap(mu, clientsRef)
+			EnsureClientMap(mu, clientsRef)
 			if cfg.InitConnector != nil {
 				cfg.InitConnector(bridge)
 			}
@@ -78,7 +76,7 @@ func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Confi
 			return nil
 		},
 		Stop: func(ctx context.Context, bridge *bridgev2.Bridge) {
-			agentremote.StopClients(mu, clientsRef)
+			StopClients(mu, clientsRef)
 			if cfg.StopConnector != nil {
 				cfg.StopConnector(ctx, bridge)
 			}
@@ -120,13 +118,13 @@ func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Confi
 			if cfg.NetworkCapabilities != nil {
 				return cfg.NetworkCapabilities()
 			}
-			return agentremote.DefaultNetworkCapabilities()
+			return DefaultNetworkCapabilities()
 		},
 		BridgeInfoVersion: func() (info, capabilities int) {
 			if cfg.BridgeInfoVersion != nil {
 				return cfg.BridgeInfoVersion()
 			}
-			return agentremote.DefaultBridgeInfoVersion()
+			return DefaultBridgeInfoVersion()
 		},
 		FillBridgeInfo: func(portal *bridgev2.Portal, content *event.BridgeEventContent) {
 			if cfg.FillBridgeInfo != nil {
@@ -136,7 +134,7 @@ func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Confi
 			if portal == nil || content == nil || protocolID == "" {
 				return
 			}
-			agentremote.ApplyAgentRemoteBridgeInfo(content, protocolID, portal.RoomType, agentremote.AIRoomKindAgent)
+			ApplyAgentRemoteBridgeInfo(content, protocolID, portal.RoomType, AIRoomKindAgent)
 		},
 		LoadLogin: loadLogin,
 		LoginFlows: func() []bridgev2.LoginFlow {

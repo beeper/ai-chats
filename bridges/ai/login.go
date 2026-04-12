@@ -13,8 +13,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/sdk"
 )
 
 // Provider constants - all use OpenAI SDK with different base URLs
@@ -30,9 +30,9 @@ var (
 	_ bridgev2.LoginProcessWithOverride = (*OpenAILogin)(nil)
 	_ bridgev2.LoginProcessUserInput    = (*OpenAILogin)(nil)
 
-	errAIReloginTargetInvalid = agentremote.NewLoginRespError(http.StatusBadRequest, "Invalid relogin target.", "AI", "INVALID_RELOGIN_TARGET")
-	errAIMissingUserContext   = agentremote.NewLoginRespError(http.StatusInternalServerError, "Missing user context for login.", "AI", "MISSING_USER_CONTEXT")
-	errAIMissingReloginMeta   = agentremote.NewLoginRespError(http.StatusInternalServerError, "Missing relogin metadata.", "AI", "MISSING_RELOGIN_METADATA")
+	errAIReloginTargetInvalid = sdk.NewLoginRespError(http.StatusBadRequest, "Invalid relogin target.", "AI", "INVALID_RELOGIN_TARGET")
+	errAIMissingUserContext   = sdk.NewLoginRespError(http.StatusInternalServerError, "Missing user context for login.", "AI", "MISSING_USER_CONTEXT")
+	errAIMissingReloginMeta   = sdk.NewLoginRespError(http.StatusInternalServerError, "Missing relogin metadata.", "AI", "MISSING_RELOGIN_METADATA")
 )
 
 // OpenAILogin maps a Matrix user to a synthetic OpenAI "login".
@@ -192,7 +192,7 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 			return nil, errAIMissingReloginMeta
 		}
 		if !strings.EqualFold(normalizeProvider(overrideMeta.Provider), provider) {
-			return nil, agentremote.NewLoginRespError(http.StatusBadRequest, fmt.Sprintf("Can't relogin %s account with %s credentials.", overrideMeta.Provider, provider), "AI", "PROVIDER_MISMATCH")
+			return nil, sdk.NewLoginRespError(http.StatusBadRequest, fmt.Sprintf("Can't relogin %s account with %s credentials.", overrideMeta.Provider, provider), "AI", "PROVIDER_MISMATCH")
 		}
 	}
 
@@ -213,7 +213,7 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 	if override != nil {
 		meta, err = cloneUserLoginMetadata(loginMetadata(override))
 		if err != nil {
-			return nil, agentremote.WrapLoginRespError(fmt.Errorf("failed to clone relogin metadata: %w", err), http.StatusInternalServerError, "AI", "CLONE_RELOGIN_METADATA_FAILED")
+			return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to clone relogin metadata: %w", err), http.StatusInternalServerError, "AI", "CLONE_RELOGIN_METADATA_FAILED")
 		}
 	}
 	if meta == nil {
@@ -242,7 +242,7 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 		Metadata:   meta,
 	}, nil)
 	if err != nil {
-		return nil, agentremote.WrapLoginRespError(fmt.Errorf("failed to create login: %w", err), http.StatusInternalServerError, "AI", "CREATE_LOGIN_FAILED")
+		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to create login: %w", err), http.StatusInternalServerError, "AI", "CREATE_LOGIN_FAILED")
 	}
 
 	// Trigger connection in background with a long-lived context

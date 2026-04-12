@@ -8,7 +8,7 @@ import (
 
 	"github.com/beeper/agentremote/bridges/opencode/api"
 	"github.com/beeper/agentremote/pkg/shared/citations"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func opencodeToolCallID(part api.Part) string {
@@ -44,7 +44,7 @@ func (m *OpenCodeManager) emitToolStreamDelta(ctx context.Context, inst *openCod
 	_, writer := m.mustStreamWriter(ctx, portal, part.SessionID, part.MessageID)
 	tools := writer.Tools()
 	if !sf.inputStarted {
-		tools.EnsureInputStart(ctx, toolCallID, nil, bridgesdk.ToolInputOptions{
+		tools.EnsureInputStart(ctx, toolCallID, nil, sdk.ToolInputOptions{
 			ToolName:         toolName,
 			ProviderExecuted: false,
 		})
@@ -69,7 +69,7 @@ func (m *OpenCodeManager) emitToolStreamState(ctx context.Context, inst *openCod
 
 	if len(part.State.Input) > 0 && !sf.inputAvailable {
 		if !sf.inputStarted {
-			tools.EnsureInputStart(ctx, toolCallID, nil, bridgesdk.ToolInputOptions{
+			tools.EnsureInputStart(ctx, toolCallID, nil, sdk.ToolInputOptions{
 				ToolName:         toolName,
 				ProviderExecuted: false,
 			})
@@ -80,7 +80,7 @@ func (m *OpenCodeManager) emitToolStreamState(ctx context.Context, inst *openCod
 	}
 
 	if part.State.Output != "" && !sf.outputAvailable {
-		tools.Output(ctx, toolCallID, part.State.Output, bridgesdk.ToolOutputOptions{ProviderExecuted: false})
+		tools.Output(ctx, toolCallID, part.State.Output, sdk.ToolOutputOptions{ProviderExecuted: false})
 		inst.withPartState(part.SessionID, part.ID, func(ps *openCodePartState) { ps.streamOutputAvailable = true })
 	}
 

@@ -20,7 +20,7 @@ type Definition struct {
 var (
 	AI = Definition{
 		Name:        "ai",
-		Description: "AgentRemote bridge entry for Beeper built on mautrix-go bridgev2.",
+		Description: "SDK bridge entry for Beeper built on mautrix-go bridgev2.",
 		Port:        29345,
 		DBName:      "ai.db",
 	}
@@ -44,7 +44,7 @@ var (
 	}
 	DummyBridge = Definition{
 		Name:        "dummybridge",
-		Description: "A Matrix↔DummyBridge demo bridge built on the AgentRemote SDK.",
+		Description: "A Matrix↔DummyBridge demo bridge built on the SDK.",
 		Port:        29349,
 		DBName:      "dummybridge.db",
 	}

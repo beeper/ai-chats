@@ -10,8 +10,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/bridges/codex/codexrpc"
+	"github.com/beeper/agentremote/sdk"
 )
 
 type approvalTestFixture struct {
@@ -53,7 +53,7 @@ func newTestCodexClient(owner id.UserID) *CodexClient {
 		UserLogin:   ul,
 		activeRooms: make(map[id.RoomID]bool),
 	}
-	cc.approvalFlow = agentremote.NewApprovalFlow(agentremote.ApprovalFlowConfig[*pendingToolApprovalDataCodex]{
+	cc.approvalFlow = sdk.NewApprovalFlow(sdk.ApprovalFlowConfig[*pendingToolApprovalDataCodex]{
 		Login: func() *bridgev2.UserLogin { return cc.UserLogin },
 		RoomIDFromData: func(data *pendingToolApprovalDataCodex) id.RoomID {
 			if data == nil {
@@ -65,7 +65,7 @@ func newTestCodexClient(owner id.UserID) *CodexClient {
 	return cc
 }
 
-func waitForPendingApproval(t *testing.T, ctx context.Context, cc *CodexClient, approvalID string) *agentremote.Pending[*pendingToolApprovalDataCodex] {
+func waitForPendingApproval(t *testing.T, ctx context.Context, cc *CodexClient, approvalID string) *sdk.Pending[*pendingToolApprovalDataCodex] {
 	t.Helper()
 	for {
 		pending := cc.approvalFlow.Get(approvalID)
@@ -111,7 +111,7 @@ func TestCodex_CommandApproval_RequestBlocksUntilApproved(t *testing.T) {
 		t.Fatalf("expected structured presentation title")
 	}
 
-	if err := cc.approvalFlow.Resolve("123", agentremote.ApprovalDecisionPayload{
+	if err := cc.approvalFlow.Resolve("123", sdk.ApprovalDecisionPayload{
 		ApprovalID: "123",
 		Approved:   true,
 		Reason:     "allow_once",
@@ -160,7 +160,7 @@ func TestCodex_CommandApproval_DenyEmitsResponseThenOutputDenied(t *testing.T) {
 	}()
 
 	waitForPendingApproval(t, ctx, cc, "456")
-	if err := cc.approvalFlow.Resolve("456", agentremote.ApprovalDecisionPayload{
+	if err := cc.approvalFlow.Resolve("456", sdk.ApprovalDecisionPayload{
 		ApprovalID: "456",
 		Approved:   false,
 		Reason:     "deny",
@@ -209,11 +209,11 @@ func TestCodex_CommandApproval_AllowAlwaysMapsToSessionAcceptance(t *testing.T) 
 	}()
 
 	waitForPendingApproval(t, ctx, cc, "654")
-	if err := cc.approvalFlow.Resolve("654", agentremote.ApprovalDecisionPayload{
+	if err := cc.approvalFlow.Resolve("654", sdk.ApprovalDecisionPayload{
 		ApprovalID: "654",
 		Approved:   true,
 		Always:     true,
-		Reason:     agentremote.ApprovalReasonAllowAlways,
+		Reason:     sdk.ApprovalReasonAllowAlways,
 	}); err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -247,11 +247,11 @@ func TestCodex_CommandApproval_AllowAlwaysMapsToSessionDecision(t *testing.T) {
 	}()
 
 	waitForPendingApproval(t, ctx, cc, "789")
-	if err := cc.approvalFlow.Resolve("789", agentremote.ApprovalDecisionPayload{
+	if err := cc.approvalFlow.Resolve("789", sdk.ApprovalDecisionPayload{
 		ApprovalID: "789",
 		Approved:   true,
 		Always:     true,
-		Reason:     agentremote.ApprovalReasonAllowAlways,
+		Reason:     sdk.ApprovalReasonAllowAlways,
 	}); err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -292,10 +292,10 @@ func TestCodex_CommandApproval_UsesExplicitApprovalID(t *testing.T) {
 	if cc.approvalFlow.Get("123") != nil {
 		t.Fatal("expected JSON-RPC request id not to be used when approvalId is present")
 	}
-	_ = cc.approvalFlow.Resolve("approval-callback", agentremote.ApprovalDecisionPayload{
+	_ = cc.approvalFlow.Resolve("approval-callback", sdk.ApprovalDecisionPayload{
 		ApprovalID: "approval-callback",
 		Approved:   false,
-		Reason:     agentremote.ApprovalReasonDeny,
+		Reason:     sdk.ApprovalReasonDeny,
 	})
 	<-done
 }
@@ -365,11 +365,11 @@ func TestCodex_PermissionsApproval_AllowAlwaysMapsToSessionScope(t *testing.T) {
 	}()
 
 	waitForPendingApproval(t, ctx, cc, "777")
-	if err := cc.approvalFlow.Resolve("777", agentremote.ApprovalDecisionPayload{
+	if err := cc.approvalFlow.Resolve("777", sdk.ApprovalDecisionPayload{
 		ApprovalID: "777",
 		Approved:   true,
 		Always:     true,
-		Reason:     agentremote.ApprovalReasonAllowAlways,
+		Reason:     sdk.ApprovalReasonAllowAlways,
 	}); err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -407,11 +407,11 @@ func TestCodex_FileChangeApproval_AllowAlwaysMapsToSessionDecision(t *testing.T)
 	}()
 
 	waitForPendingApproval(t, ctx, cc, "654")
-	if err := cc.approvalFlow.Resolve("654", agentremote.ApprovalDecisionPayload{
+	if err := cc.approvalFlow.Resolve("654", sdk.ApprovalDecisionPayload{
 		ApprovalID: "654",
 		Approved:   true,
 		Always:     true,
-		Reason:     agentremote.ApprovalReasonAllowAlways,
+		Reason:     sdk.ApprovalReasonAllowAlways,
 	}); err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -451,11 +451,11 @@ func TestCodex_PermissionsApproval_ApproveSessionReturnsRequestedPermissions(t *
 	}()
 
 	waitForPendingApproval(t, ctx, cc, "987")
-	if err := cc.approvalFlow.Resolve("987", agentremote.ApprovalDecisionPayload{
+	if err := cc.approvalFlow.Resolve("987", sdk.ApprovalDecisionPayload{
 		ApprovalID: "987",
 		Approved:   true,
 		Always:     true,
-		Reason:     agentremote.ApprovalReasonAllowAlways,
+		Reason:     sdk.ApprovalReasonAllowAlways,
 	}); err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -497,10 +497,10 @@ func TestCodex_PermissionsApproval_DenyReturnsEmptyTurnScope(t *testing.T) {
 	}()
 
 	waitForPendingApproval(t, ctx, cc, "778")
-	if err := cc.approvalFlow.Resolve("778", agentremote.ApprovalDecisionPayload{
+	if err := cc.approvalFlow.Resolve("778", sdk.ApprovalDecisionPayload{
 		ApprovalID: "778",
 		Approved:   false,
-		Reason:     agentremote.ApprovalReasonDeny,
+		Reason:     sdk.ApprovalReasonDeny,
 	}); err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -525,7 +525,7 @@ func TestCodex_CommandApproval_RejectCrossRoom(t *testing.T) {
 	otherRoom := id.RoomID("!room2:example.com")
 
 	cc := newTestCodexClient(owner)
-	cc.registerToolApproval(roomID, "approval-1", "item-1", "commandExecution", agentremote.ApprovalPromptPresentation{
+	cc.registerToolApproval(roomID, "approval-1", "item-1", "commandExecution", sdk.ApprovalPromptPresentation{
 		Title:       "Codex command execution",
 		AllowAlways: false,
 	}, 2*time.Second)

@@ -14,9 +14,8 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 type testMatrixAPI struct{}
@@ -63,8 +62,8 @@ func (testMatrixAPI) GetEvent(context.Context, id.RoomID, id.EventID) (*event.Ev
 	return nil, nil
 }
 
-func newOpenClawTestTurn(turnID string) *bridgesdk.Turn {
-	conv := bridgesdk.NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &bridgesdk.Config[*OpenClawClient, *struct{}]{}, nil)
+func newOpenClawTestTurn(turnID string) *sdk.Turn {
+	conv := sdk.NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &sdk.Config[*OpenClawClient, *struct{}]{}, nil)
 	turn := conv.StartTurn(context.Background(), nil, nil)
 	turn.SetID(turnID)
 	return turn
@@ -72,8 +71,8 @@ func newOpenClawTestTurn(turnID string) *bridgesdk.Turn {
 
 func newOpenClawTestClient(states map[string]*openClawStreamState) *OpenClawClient {
 	oc := &OpenClawClient{}
-	oc.streamHost = agentremote.NewStreamTurnHost(agentremote.StreamTurnHostCallbacks[openClawStreamState]{
-		GetAborter: func(s *openClawStreamState) agentremote.Aborter {
+	oc.streamHost = sdk.NewStreamTurnHost(sdk.StreamTurnHostCallbacks[openClawStreamState]{
+		GetAborter: func(s *openClawStreamState) sdk.Aborter {
 			if s.turn == nil {
 				return nil
 			}
@@ -241,7 +240,7 @@ func TestBuildStreamDBMetadataFinalizesPreliminaryToolOutput(t *testing.T) {
 		},
 	}
 	for _, part := range parts {
-		bridgesdk.ApplyStreamPart(turn, part, bridgesdk.PartApplyOptions{})
+		sdk.ApplyStreamPart(turn, part, sdk.PartApplyOptions{})
 	}
 
 	oc := &OpenClawClient{}
@@ -286,7 +285,7 @@ func TestDrainAndAbortResetsMap(t *testing.T) {
 }
 
 func TestDrainAndAbortHandlesNilCallbacks(t *testing.T) {
-	host := agentremote.NewStreamTurnHost(agentremote.StreamTurnHostCallbacks[openClawStreamState]{})
+	host := sdk.NewStreamTurnHost(sdk.StreamTurnHostCallbacks[openClawStreamState]{})
 	host.Lock()
 	host.SetLocked("turn-a", &openClawStreamState{turnID: "turn-a"})
 	host.Unlock()
@@ -301,7 +300,7 @@ func TestEmitStreamPartSerializesTurnCreation(t *testing.T) {
 	oc := newOpenClawTestClient(map[string]*openClawStreamState{})
 	oc.UserLogin = &bridgev2.UserLogin{Bridge: &bridgev2.Bridge{Bot: testMatrixAPI{}}}
 	oc.connector = &OpenClawConnector{}
-	oc.connector.sdkConfig = &bridgesdk.Config[*OpenClawClient, *Config]{}
+	oc.connector.sdkConfig = &sdk.Config[*OpenClawClient, *Config]{}
 
 	original := openClawNewSDKStreamTurn
 	defer func() { openClawNewSDKStreamTurn = original }()
@@ -309,7 +308,7 @@ func TestEmitStreamPartSerializesTurnCreation(t *testing.T) {
 	var calls int32
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	openClawNewSDKStreamTurn = func(_ *OpenClawClient, _ context.Context, _ *bridgev2.Portal, state *openClawStreamState) *bridgesdk.Turn {
+	openClawNewSDKStreamTurn = func(_ *OpenClawClient, _ context.Context, _ *bridgev2.Portal, state *openClawStreamState) *sdk.Turn {
 		if atomic.AddInt32(&calls, 1) == 1 {
 			close(entered)
 			<-release

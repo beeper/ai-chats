@@ -8,7 +8,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
-	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func TestNewAIConnectorUsesSDKConfig(t *testing.T) {
@@ -75,7 +75,7 @@ func TestNewAIConnectorLoadLoginUsesCustomLoader(t *testing.T) {
 	if err := conn.LoadUserLogin(context.Background(), login); err != nil {
 		t.Fatalf("load login returned error: %v", err)
 	}
-	if _, ok := login.Client.(*agentremote.BrokenLoginClient); !ok {
+	if _, ok := login.Client.(*sdk.BrokenLoginClient); !ok {
 		t.Fatalf("expected broken login client for missing API key, got %T", login.Client)
 	}
 }

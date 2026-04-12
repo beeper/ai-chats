@@ -11,9 +11,8 @@ import (
 
 	"github.com/rs/zerolog"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/citations"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 const (
@@ -247,7 +246,7 @@ const (
 	randomActionTransient   randomActionKind = "data_transient"
 )
 
-func (dc *DummyBridgeConnector) onMessage(session *dummySession, conv *bridgesdk.Conversation, msg *bridgesdk.Message, turn *bridgesdk.Turn) error {
+func (dc *DummyBridgeConnector) onMessage(session *dummySession, conv *sdk.Conversation, msg *sdk.Message, turn *sdk.Turn) error {
 	if conv == nil || turn == nil || msg == nil {
 		return nil
 	}
@@ -886,7 +885,7 @@ func parseIntRange(raw string, label string) (int, int, error) {
 	return minValue, maxValue, nil
 }
 
-func (r demoRunner) runLorem(ctx context.Context, turn *bridgesdk.Turn, cmd loremCommand, _ zerolog.Logger) error {
+func (r demoRunner) runLorem(ctx context.Context, turn *sdk.Turn, cmd loremCommand, _ zerolog.Logger) error {
 	started := r.runtime.now()
 	opts := cmd.Options
 	rng := rngForOptions(opts.SeedSet, opts.Seed, started.UnixNano())
@@ -920,7 +919,7 @@ func (r demoRunner) runLorem(ctx context.Context, turn *bridgesdk.Turn, cmd lore
 	return nil
 }
 
-func (r demoRunner) runTools(ctx context.Context, turn *bridgesdk.Turn, cmd toolsCommand, _ zerolog.Logger) error {
+func (r demoRunner) runTools(ctx context.Context, turn *sdk.Turn, cmd toolsCommand, _ zerolog.Logger) error {
 	started := r.runtime.now()
 	opts := cmd.Options
 	rng := rngForOptions(opts.SeedSet, opts.Seed, started.UnixNano())
@@ -950,7 +949,7 @@ func (r demoRunner) runTools(ctx context.Context, turn *bridgesdk.Turn, cmd tool
 	return nil
 }
 
-func (r demoRunner) runRandom(ctx context.Context, turn *bridgesdk.Turn, cmd randomCommand, log zerolog.Logger) error {
+func (r demoRunner) runRandom(ctx context.Context, turn *sdk.Turn, cmd randomCommand, log zerolog.Logger) error {
 	started := r.runtime.now()
 	seed := cmd.Seed
 	if !cmd.SeedSet {
@@ -1054,7 +1053,7 @@ func (r demoRunner) runRandom(ctx context.Context, turn *bridgesdk.Turn, cmd ran
 	return nil
 }
 
-func (r demoRunner) runChaos(ctx context.Context, conv *bridgesdk.Conversation, turn *bridgesdk.Turn, cmd chaosCommand, log zerolog.Logger) error {
+func (r demoRunner) runChaos(ctx context.Context, conv *sdk.Conversation, turn *sdk.Turn, cmd chaosCommand, log zerolog.Logger) error {
 	started := r.runtime.now()
 	baseSeed := cmd.Seed
 	if !cmd.SeedSet {
@@ -1070,7 +1069,7 @@ func (r demoRunner) runChaos(ctx context.Context, conv *bridgesdk.Conversation, 
 			childTurn = conv.StartTurn(ctx, dummySDKAgent(), nil)
 		}
 		childSeed := baseSeed + int64(childIndex+1)*97
-		go func(t *bridgesdk.Turn) {
+		go func(t *sdk.Turn) {
 			defer wg.Done()
 			childLog := log.With().Int("child_index", childIndex+1).Str("child_turn_id", t.ID()).Logger()
 			staggerRNG := rand.New(rand.NewSource(childSeed + 17))
@@ -1112,7 +1111,7 @@ func (r demoRunner) runChaos(ctx context.Context, conv *bridgesdk.Conversation, 
 	return nil
 }
 
-func (r demoRunner) runToolSpec(ctx context.Context, turn *bridgesdk.Turn, spec toolSpec, rng *rand.Rand, opts commonCommandOptions, _ zerolog.Logger) error {
+func (r demoRunner) runToolSpec(ctx context.Context, turn *sdk.Turn, spec toolSpec, rng *rand.Rand, opts commonCommandOptions, _ zerolog.Logger) error {
 	toolCallID := fmt.Sprintf("dummy-tool-%d-%s", spec.SequenceIndex, sanitizeToolName(spec.Name))
 	input := map[string]any{
 		"tool":     spec.Name,
@@ -1122,7 +1121,7 @@ func (r demoRunner) runToolSpec(ctx context.Context, turn *bridgesdk.Turn, spec 
 	if spec.InputError {
 		turn.Writer().Tools().InputError(ctx, toolCallID, spec.Name, fmt.Sprintf("%v", input), "DummyBridge synthetic input error", spec.Provider)
 	} else if spec.Delta {
-		turn.Writer().Tools().EnsureInputStart(ctx, toolCallID, nil, bridgesdk.ToolInputOptions{
+		turn.Writer().Tools().EnsureInputStart(ctx, toolCallID, nil, sdk.ToolInputOptions{
 			ToolName:         spec.Name,
 			ProviderExecuted: spec.Provider,
 			DisplayTitle:     spec.DisplayTitle,
@@ -1131,7 +1130,7 @@ func (r demoRunner) runToolSpec(ctx context.Context, turn *bridgesdk.Turn, spec 
 			return err
 		}
 	} else {
-		turn.Writer().Tools().EnsureInputStart(ctx, toolCallID, input, bridgesdk.ToolInputOptions{
+		turn.Writer().Tools().EnsureInputStart(ctx, toolCallID, input, sdk.ToolInputOptions{
 			ToolName:         spec.Name,
 			ProviderExecuted: spec.Provider,
 			DisplayTitle:     spec.DisplayTitle,
@@ -1141,16 +1140,16 @@ func (r demoRunner) runToolSpec(ctx context.Context, turn *bridgesdk.Turn, spec 
 		turn.Writer().Tools().Output(ctx, toolCallID, map[string]any{
 			"status": "streaming",
 			"tool":   spec.Name,
-		}, bridgesdk.ToolOutputOptions{ProviderExecuted: spec.Provider, Streaming: true})
+		}, sdk.ToolOutputOptions{ProviderExecuted: spec.Provider, Streaming: true})
 	}
 	if spec.Approval {
-		handle := turn.Approvals().Request(bridgesdk.ApprovalRequest{
+		handle := turn.Approvals().Request(sdk.ApprovalRequest{
 			ToolCallID: toolCallID,
 			ToolName:   spec.Name,
 			TTL:        10 * time.Minute,
-			Presentation: &agentremote.ApprovalPromptPresentation{
+			Presentation: &sdk.ApprovalPromptPresentation{
 				Title: spec.Name,
-				Details: []agentremote.ApprovalDetail{{
+				Details: []sdk.ApprovalDetail{{
 					Label: "Mode",
 					Value: "DummyBridge demo approval",
 				}},
@@ -1178,11 +1177,11 @@ func (r demoRunner) runToolSpec(ctx context.Context, turn *bridgesdk.Turn, spec 
 		"status":   "ok",
 		"tool":     spec.Name,
 		"sequence": spec.SequenceIndex,
-	}, bridgesdk.ToolOutputOptions{ProviderExecuted: spec.Provider})
+	}, sdk.ToolOutputOptions{ProviderExecuted: spec.Provider})
 	return nil
 }
 
-func (r demoRunner) streamToolInput(ctx context.Context, turn *bridgesdk.Turn, toolCallID, toolName string, input map[string]any, providerExecuted bool, rng *rand.Rand, opts commonCommandOptions) error {
+func (r demoRunner) streamToolInput(ctx context.Context, turn *sdk.Turn, toolCallID, toolName string, input map[string]any, providerExecuted bool, rng *rand.Rand, opts commonCommandOptions) error {
 	text := fmt.Sprintf("{\"tool\":%q,\"sequence\":%d}", toolName, input["sequence"])
 	for _, chunk := range chunkText(text, rng, opts.ChunkMin, opts.ChunkMax) {
 		turn.Writer().Tools().InputDelta(ctx, toolCallID, toolName, chunk, providerExecuted)
@@ -1193,7 +1192,7 @@ func (r demoRunner) streamToolInput(ctx context.Context, turn *bridgesdk.Turn, t
 	return nil
 }
 
-func (r demoRunner) streamVisibleText(ctx context.Context, turn *bridgesdk.Turn, text string, rng *rand.Rand, opts commonCommandOptions) error {
+func (r demoRunner) streamVisibleText(ctx context.Context, turn *sdk.Turn, text string, rng *rand.Rand, opts commonCommandOptions) error {
 	for _, chunk := range chunkText(text, rng, opts.ChunkMin, opts.ChunkMax) {
 		turn.Writer().TextDelta(ctx, chunk)
 		if err := r.runtime.sleep(ctx, r.sampleDelay(rng, opts.DelayMin, opts.DelayMax)); err != nil {
@@ -1203,7 +1202,7 @@ func (r demoRunner) streamVisibleText(ctx context.Context, turn *bridgesdk.Turn,
 	return nil
 }
 
-func (r demoRunner) streamReasoning(ctx context.Context, turn *bridgesdk.Turn, text string, rng *rand.Rand, opts commonCommandOptions) error {
+func (r demoRunner) streamReasoning(ctx context.Context, turn *sdk.Turn, text string, rng *rand.Rand, opts commonCommandOptions) error {
 	for _, chunk := range chunkText(text, rng, opts.ChunkMin, opts.ChunkMax) {
 		turn.Writer().ReasoningDelta(ctx, chunk)
 		if err := r.runtime.sleep(ctx, r.sampleDelay(rng, opts.DelayMin, opts.DelayMax)); err != nil {
@@ -1213,7 +1212,7 @@ func (r demoRunner) streamReasoning(ctx context.Context, turn *bridgesdk.Turn, t
 	return nil
 }
 
-func (r demoRunner) emitCommonDecorations(ctx context.Context, turn *bridgesdk.Turn, opts commonCommandOptions, chars, step, steps int) {
+func (r demoRunner) emitCommonDecorations(ctx context.Context, turn *sdk.Turn, opts commonCommandOptions, chars, step, steps int) {
 	if opts.Meta {
 		seed := opts.Seed
 		if !opts.SeedSet {
@@ -1252,7 +1251,7 @@ func (r demoRunner) emitCommonDecorations(ctx context.Context, turn *bridgesdk.T
 	}
 }
 
-func (r demoRunner) finishTurn(turn *bridgesdk.Turn, opts commonCommandOptions) {
+func (r demoRunner) finishTurn(turn *sdk.Turn, opts commonCommandOptions) {
 	switch {
 	case opts.Abort:
 		turn.Abort("DummyBridge synthetic abort")

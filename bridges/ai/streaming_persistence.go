@@ -10,7 +10,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/sdk"
 )
 
@@ -36,7 +35,7 @@ func (oc *AIClient) buildStreamingMessageMetadata(state *streamingState, meta *P
 			Text:           displayStreamingText(state),
 			Reasoning:      state.reasoning.String(),
 			ToolCalls:      state.toolCalls,
-			GeneratedFiles: agentremote.GeneratedFileRefsFromParts(state.generatedFiles),
+			GeneratedFiles: sdk.GeneratedFileRefsFromParts(state.generatedFiles),
 		}, "ai")
 		if len(uiMessage) == 0 {
 			snapshot.UIMessage = nil
@@ -52,7 +51,7 @@ func (oc *AIClient) buildStreamingMessageMetadata(state *streamingState, meta *P
 		canonicalTurnData = snapshot.TurnData.ToMap()
 	}
 	return &MessageMetadata{
-		BaseMessageMetadata: agentremote.BuildAssistantBaseMetadata(agentremote.AssistantMetadataParams{
+		BaseMessageMetadata: sdk.BuildAssistantBaseMetadata(sdk.AssistantMetadataParams{
 			Body:              snapshot.Body,
 			FinishReason:      state.finishReason,
 			TurnID:            turnID,
@@ -67,7 +66,7 @@ func (oc *AIClient) buildStreamingMessageMetadata(state *streamingState, meta *P
 			ReasoningTokens:   state.reasoningTokens,
 			CanonicalTurnData: canonicalTurnData,
 		}),
-		AssistantMessageMetadata: agentremote.AssistantMessageMetadata{
+		AssistantMessageMetadata: sdk.AssistantMessageMetadata{
 			CompletionID:       state.responseID,
 			Model:              modelID,
 			FirstTokenAtMs:     state.firstTokenAtMs,
@@ -117,7 +116,7 @@ func (oc *AIClient) saveAssistantMessage(
 		initialEventID = turn.InitialEventID()
 	}
 
-	agentremote.UpsertAssistantMessage(ctx, agentremote.UpsertAssistantMessageParams{
+	sdk.UpsertAssistantMessage(ctx, sdk.UpsertAssistantMessageParams{
 		Login:  oc.UserLogin,
 		Portal: portal,
 		SenderID: func() networkid.UserID {

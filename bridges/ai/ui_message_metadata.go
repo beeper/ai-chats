@@ -1,8 +1,8 @@
 package ai
 
 import (
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/jsonutil"
+	"github.com/beeper/agentremote/sdk"
 )
 
 type assistantUsageMetadata struct {
@@ -78,7 +78,7 @@ func buildAssistantTurnMetadata(state *streamingState, turnID, networkMessageID,
 		NetworkMessageID:  networkMessageID,
 		InitialEventID:    initialEventID,
 		SourceEventID:     state.sourceEventID().String(),
-		GeneratedFileRefs: agentremote.GeneratedFileRefsFromParts(state.generatedFiles),
+		GeneratedFileRefs: sdk.GeneratedFileRefsFromParts(state.generatedFiles),
 		Usage:             buildAssistantUsageMetadata(state),
 		Stop:              state.stop.Load(),
 	})

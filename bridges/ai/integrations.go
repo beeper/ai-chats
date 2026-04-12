@@ -11,9 +11,9 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote"
 	integrationmodules "github.com/beeper/agentremote/pkg/integrations/modules"
 	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
+	"github.com/beeper/agentremote/sdk"
 )
 
 type toolIntegrationRegistry struct {
@@ -553,7 +553,7 @@ func integrationPortalAIKind(meta *PortalMetadata) string {
 	if kind := moduleRoomKind(meta); kind != "" {
 		return kind
 	}
-	return agentremote.AIRoomKindAgent
+	return sdk.AIRoomKindAgent
 }
 
 func isIntegrationSessionKindAllowed(kind string) bool {

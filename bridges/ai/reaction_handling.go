@@ -10,25 +10,25 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func (oc *AIClient) PreHandleMatrixReaction(_ context.Context, msg *bridgev2.MatrixReaction) (bridgev2.MatrixReactionPreResponse, error) {
-	return agentremote.PreHandleApprovalReaction(msg)
+	return sdk.PreHandleApprovalReaction(msg)
 }
 
 func (oc *AIClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (*database.Reaction, error) {
 	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || msg == nil || msg.Event == nil || msg.Portal == nil {
 		return &database.Reaction{}, nil
 	}
-	if agentremote.IsMatrixBotUser(ctx, oc.UserLogin.Bridge, msg.Event.Sender) {
+	if sdk.IsMatrixBotUser(ctx, oc.UserLogin.Bridge, msg.Event.Sender) {
 		return &database.Reaction{}, nil
 	}
-	if err := agentremote.EnsureSyntheticReactionSenderGhost(ctx, oc.UserLogin, msg.Event.Sender); err != nil {
+	if err := sdk.EnsureSyntheticReactionSenderGhost(ctx, oc.UserLogin, msg.Event.Sender); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure synthetic Matrix reaction sender ghost")
 	}
 
-	rc := agentremote.ExtractReactionContext(msg)
+	rc := sdk.ExtractReactionContext(msg)
 	if oc.approvalFlow.HandleReaction(ctx, msg) {
 		return &database.Reaction{}, nil
 	}
@@ -57,7 +57,7 @@ func (oc *AIClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev
 	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil || msg == nil || msg.Event == nil || msg.Portal == nil || msg.TargetReaction == nil {
 		return nil
 	}
-	if agentremote.IsMatrixBotUser(ctx, oc.UserLogin.Bridge, msg.Event.Sender) {
+	if sdk.IsMatrixBotUser(ctx, oc.UserLogin.Bridge, msg.Event.Sender) {
 		return nil
 	}
 	if oc.approvalFlow.HandleReactionRemove(ctx, msg) {

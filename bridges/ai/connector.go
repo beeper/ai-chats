@@ -13,9 +13,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
-	"github.com/beeper/agentremote"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 const (
@@ -33,11 +32,11 @@ var (
 
 // OpenAIConnector wires mautrix bridgev2 to the OpenAI chat APIs.
 type OpenAIConnector struct {
-	*agentremote.ConnectorBase
+	*sdk.ConnectorBase
 	br        *bridgev2.Bridge
 	Config    Config
 	db        *dbutil.Database
-	sdkConfig *bridgesdk.Config[*AIClient, *Config]
+	sdkConfig *sdk.Config[*AIClient, *Config]
 
 	clientsMu sync.Mutex
 	clients   map[networkid.UserLoginID]bridgev2.NetworkAPI
@@ -47,14 +46,14 @@ func (oc *OpenAIConnector) primeUserLoginCache(ctx context.Context) {
 	if oc == nil {
 		return
 	}
-	agentremote.PrimeUserLoginCache(ctx, oc.br)
+	sdk.PrimeUserLoginCache(ctx, oc.br)
 }
 
 func (oc *OpenAIConnector) applyRuntimeDefaults() {
 	if oc.Config.ModelCacheDuration == 0 {
 		oc.Config.ModelCacheDuration = 6 * time.Hour
 	}
-	bridgesdk.ApplyDefaultCommandPrefix(&oc.Config.Bridge.CommandPrefix, "!ai")
+	sdk.ApplyDefaultCommandPrefix(&oc.Config.Bridge.CommandPrefix, "!ai")
 	if oc.Config.Agents == nil {
 		oc.Config.Agents = &AgentsConfig{}
 	}

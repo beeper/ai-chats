@@ -14,9 +14,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/bridges/codex/codexrpc"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 var (
@@ -26,10 +25,10 @@ var (
 
 // CodexConnector runs the dedicated Codex bridge surface.
 type CodexConnector struct {
-	*agentremote.ConnectorBase
+	*sdk.ConnectorBase
 	br        *bridgev2.Bridge
 	Config    Config
-	sdkConfig *bridgesdk.Config[*CodexClient, *Config]
+	sdkConfig *sdk.Config[*CodexClient, *Config]
 	db        *dbutil.Database
 
 	clientsMu sync.Mutex
@@ -208,7 +207,7 @@ func (cc *CodexConnector) ensureHostAuthLoginForUserWithProbe(ctx context.Contex
 }
 
 func (cc *CodexConnector) hostAuthLoginID(mxid id.UserID) networkid.UserLoginID {
-	return agentremote.MakeUserLoginID(hostAuthLoginPrefix, mxid, 1)
+	return sdk.MakeUserLoginID(hostAuthLoginPrefix, mxid, 1)
 }
 
 func hasManagedCodexLogin(logins []*bridgev2.UserLogin, exceptID networkid.UserLoginID) bool {
@@ -248,18 +247,18 @@ func (cc *CodexConnector) applyRuntimeDefaults() {
 	if cc.Config.ModelCacheDuration == 0 {
 		cc.Config.ModelCacheDuration = 6 * time.Hour
 	}
-	bridgesdk.ApplyDefaultCommandPrefix(&cc.Config.Bridge.CommandPrefix, "!ai")
+	sdk.ApplyDefaultCommandPrefix(&cc.Config.Bridge.CommandPrefix, "!ai")
 	if cc.Config.Codex == nil {
 		cc.Config.Codex = &CodexConfig{}
 	}
-	bridgesdk.ApplyBoolDefault(&cc.Config.Codex.Enabled, true)
+	sdk.ApplyBoolDefault(&cc.Config.Codex.Enabled, true)
 	if strings.TrimSpace(cc.Config.Codex.Command) == "" {
 		cc.Config.Codex.Command = "codex"
 	}
 	if strings.TrimSpace(cc.Config.Codex.DefaultModel) == "" {
 		cc.Config.Codex.DefaultModel = "gpt-5.1-codex"
 	}
-	bridgesdk.ApplyBoolDefault(&cc.Config.Codex.NetworkAccess, true)
+	sdk.ApplyBoolDefault(&cc.Config.Codex.NetworkAccess, true)
 	if cc.Config.Codex.ClientInfo == nil {
 		cc.Config.Codex.ClientInfo = &CodexClientInfo{}
 	}

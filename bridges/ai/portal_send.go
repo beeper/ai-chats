@@ -12,7 +12,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/sdk"
 )
 
 type portalIntentGetter func(context.Context, *bridgev2.Portal, bridgev2.EventSender, bridgev2.RemoteEventType) (bridgev2.MatrixAPI, error)
@@ -136,7 +136,7 @@ func (oc *AIClient) sendEditViaPortalWithTiming(
 	if err != nil {
 		return err
 	}
-	return agentremote.SendEditViaPortal(oc.UserLogin, portal, sender, targetMsgID, timestamp, streamOrder, "ai_edit_target", converted)
+	return sdk.SendEditViaPortal(oc.UserLogin, portal, sender, targetMsgID, timestamp, streamOrder, "ai_edit_target", converted)
 }
 
 func (oc *AIClient) redactViaPortal(

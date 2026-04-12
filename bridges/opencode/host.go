@@ -11,8 +11,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 var _ Host = (*OpenCodeClient)(nil)
@@ -30,7 +29,7 @@ func (oc *OpenCodeClient) SendSystemNotice(ctx context.Context, portal *bridgev2
 	if oc == nil {
 		return
 	}
-	if err := agentremote.SendSystemMessage(ctx, oc.UserLogin, portal, bridgev2.EventSender{}, msg); err != nil {
+	if err := sdk.SendSystemMessage(ctx, oc.UserLogin, portal, bridgev2.EventSender{}, msg); err != nil {
 		oc.Log().Warn().Err(err).Msg("Failed to send system notice")
 	}
 }
@@ -67,7 +66,7 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 	if oc.IsStreamShuttingDown() || turn == nil {
 		return
 	}
-	bridgesdk.ApplyStreamPart(turn, part, bridgesdk.PartApplyOptions{
+	sdk.ApplyStreamPart(turn, part, sdk.PartApplyOptions{
 		ResetMetadataOnStartMarkers:     true,
 		ResetMetadataOnEmptyMessageMeta: true,
 		ResetMetadataOnEmptyTextDelta:   true,
@@ -78,7 +77,7 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 	})
 }
 
-func (oc *OpenCodeClient) ensureStreamTurn(ctx context.Context, portal *bridgev2.Portal, turnID, agentID string) (*openCodeStreamState, *bridgesdk.Turn) {
+func (oc *OpenCodeClient) ensureStreamTurn(ctx context.Context, portal *bridgev2.Portal, turnID, agentID string) (*openCodeStreamState, *sdk.Turn) {
 	if oc == nil || portal == nil || portal.MXID == "" {
 		return nil, nil
 	}
@@ -114,7 +113,7 @@ func (oc *OpenCodeClient) ensureStreamTurn(ctx context.Context, portal *bridgev2
 	return state, state.turn
 }
 
-func (oc *OpenCodeClient) ensureStreamWriter(ctx context.Context, portal *bridgev2.Portal, turnID, agentID string) (*openCodeStreamState, *bridgesdk.Writer) {
+func (oc *OpenCodeClient) ensureStreamWriter(ctx context.Context, portal *bridgev2.Portal, turnID, agentID string) (*openCodeStreamState, *sdk.Writer) {
 	state, turn := oc.ensureStreamTurn(ctx, portal, turnID, agentID)
 	if state == nil || turn == nil {
 		return state, nil
@@ -132,7 +131,7 @@ func (oc *OpenCodeClient) FinishOpenCodeStream(turnID string) {
 	oc.streamHost.Unlock()
 }
 
-func (oc *OpenCodeClient) newSDKStreamTurn(ctx context.Context, portal *bridgev2.Portal, state *openCodeStreamState) *bridgesdk.Turn {
+func (oc *OpenCodeClient) newSDKStreamTurn(ctx context.Context, portal *bridgev2.Portal, state *openCodeStreamState) *sdk.Turn {
 	if oc == nil || portal == nil || state == nil || oc.connector == nil || oc.connector.sdkConfig == nil {
 		return nil
 	}
@@ -146,19 +145,19 @@ func (oc *OpenCodeClient) newSDKStreamTurn(ctx context.Context, portal *bridgev2
 		agent.ID = state.agentID
 	}
 	sender := oc.SenderForOpenCode(instanceID, false)
-	conv := bridgesdk.NewConversation(ctx, oc.UserLogin, portal, sender, oc.connector.sdkConfig, oc)
+	conv := sdk.NewConversation(ctx, oc.UserLogin, portal, sender, oc.connector.sdkConfig, oc)
 	_ = conv.EnsureRoomAgent(ctx, agent)
 	turn := conv.StartTurn(ctx, agent, nil)
 	turn.SetID(state.turnID)
 	turn.SetSender(sender)
-	turn.SetFinalMetadataProvider(bridgesdk.FinalMetadataProviderFunc(func(_ *bridgesdk.Turn, finishReason string) any {
+	turn.SetFinalMetadataProvider(sdk.FinalMetadataProviderFunc(func(_ *sdk.Turn, finishReason string) any {
 		return oc.buildSDKFinalMetadata(state, finishReason)
 	}))
 	return turn
 }
 
 func (oc *OpenCodeClient) DownloadAndEncodeMedia(ctx context.Context, mediaURL string, file *event.EncryptedFileInfo, maxMB int) (string, string, error) {
-	return agentremote.DownloadAndEncodeMedia(ctx, oc.UserLogin, mediaURL, file, maxMB)
+	return sdk.DownloadAndEncodeMedia(ctx, oc.UserLogin, mediaURL, file, maxMB)
 }
 
 func (oc *OpenCodeClient) SetRoomName(_ context.Context, _ *bridgev2.Portal, _ string) error {

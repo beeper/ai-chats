@@ -8,17 +8,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/agentremote/pkg/shared/citations"
+	"github.com/beeper/agentremote/turns"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
-
-	"github.com/beeper/agentremote"
-	"github.com/beeper/agentremote/pkg/matrixevents"
-	"github.com/beeper/agentremote/pkg/shared/citations"
-	"github.com/beeper/agentremote/turns"
 )
 
 type sdkTestMatrixAPI struct {
@@ -194,7 +192,7 @@ func TestTurnRequestApprovalWaitsForResolvedDecision(t *testing.T) {
 	}
 	runtime := &staticRuntime[*struct{}, *struct{}]{
 		login: login,
-		approval: agentremote.NewApprovalFlow(agentremote.ApprovalFlowConfig[*pendingSDKApprovalData]{
+		approval: NewApprovalFlow(ApprovalFlowConfig[*pendingSDKApprovalData]{
 			Login: func() *bridgev2.UserLogin { return nil },
 		}),
 	}
@@ -223,10 +221,10 @@ func TestTurnRequestApprovalWaitsForResolvedDecision(t *testing.T) {
 
 	go func() {
 		time.Sleep(10 * time.Millisecond)
-		_ = runtime.approval.Resolve(handle.ID(), agentremote.ApprovalDecisionPayload{
+		_ = runtime.approval.Resolve(handle.ID(), ApprovalDecisionPayload{
 			ApprovalID: handle.ID(),
 			Approved:   true,
-			Reason:     agentremote.ApprovalReasonAllowOnce,
+			Reason:     ApprovalReasonAllowOnce,
 		})
 	}()
 
@@ -237,7 +235,7 @@ func TestTurnRequestApprovalWaitsForResolvedDecision(t *testing.T) {
 	if !resp.Approved {
 		t.Fatalf("expected approval to resolve as approved")
 	}
-	if resp.Reason != agentremote.ApprovalReasonAllowOnce {
+	if resp.Reason != ApprovalReasonAllowOnce {
 		t.Fatalf("unexpected approval reason %q", resp.Reason)
 	}
 }
@@ -250,7 +248,7 @@ func TestTurnRequestApprovalUsesProvidedApprovalID(t *testing.T) {
 	}
 	runtime := &staticRuntime[*struct{}, *struct{}]{
 		login: login,
-		approval: agentremote.NewApprovalFlow(agentremote.ApprovalFlowConfig[*pendingSDKApprovalData]{
+		approval: NewApprovalFlow(ApprovalFlowConfig[*pendingSDKApprovalData]{
 			Login: func() *bridgev2.UserLogin { return nil },
 		}),
 	}

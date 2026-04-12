@@ -9,8 +9,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func isWelcomeCodexPortal(meta *PortalMetadata) bool {
@@ -46,7 +45,7 @@ func (cc *CodexClient) codexTopicForPortal(_ *bridgev2.Portal, meta *PortalMetad
 	return codexTopicForPath(meta.CodexCwd)
 }
 
-func (cc *CodexClient) portalConversation(ctx context.Context, portal *bridgev2.Portal) (*bridgesdk.Conversation, error) {
+func (cc *CodexClient) portalConversation(ctx context.Context, portal *bridgev2.Portal) (*sdk.Conversation, error) {
 	if cc == nil || cc.UserLogin == nil || cc.UserLogin.Bridge == nil || portal == nil {
 		return nil, fmt.Errorf("portal unavailable")
 	}
@@ -56,7 +55,7 @@ func (cc *CodexClient) portalConversation(ctx context.Context, portal *bridgev2.
 	if cc.connector == nil || cc.connector.sdkConfig == nil {
 		return nil, fmt.Errorf("sdk configuration unavailable")
 	}
-	return bridgesdk.NewConversation(ctx, cc.UserLogin, portal, bridgev2.EventSender{}, cc.connector.sdkConfig, cc), nil
+	return sdk.NewConversation(ctx, cc.UserLogin, portal, bridgev2.EventSender{}, cc.connector.sdkConfig, cc), nil
 }
 
 func (cc *CodexClient) setRoomName(ctx context.Context, portal *bridgev2.Portal, name string) error {
@@ -184,7 +183,7 @@ func (cc *CodexClient) createWelcomeCodexChat(ctx context.Context) (*bridgev2.Po
 	meta.CodexCwd = ""
 	meta.AwaitingCwdSetup = true
 	meta.ManagedImport = false
-	if err := agentremote.ConfigureDMPortal(ctx, agentremote.ConfigureDMPortalParams{
+	if err := sdk.ConfigureDMPortal(ctx, sdk.ConfigureDMPortalParams{
 		Portal:      portal,
 		Title:       meta.Title,
 		OtherUserID: codexGhostID,
@@ -193,12 +192,12 @@ func (cc *CodexClient) createWelcomeCodexChat(ctx context.Context) (*bridgev2.Po
 		return nil, err
 	}
 	info := cc.composeCodexChatInfo(portal, meta.Title, false)
-	created, err := bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
+	created, err := sdk.EnsurePortalLifecycle(ctx, sdk.PortalLifecycleOptions{
 		Login:             cc.UserLogin,
 		Portal:            portal,
 		ChatInfo:          info,
 		SaveBeforeCreate:  true,
-		AIRoomKind:        agentremote.AIRoomKindAgent,
+		AIRoomKind:        sdk.AIRoomKindAgent,
 		ForceCapabilities: true,
 	})
 	if err != nil {

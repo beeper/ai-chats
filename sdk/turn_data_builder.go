@@ -1,10 +1,8 @@
 package sdk
 
 import (
-	"strings"
-
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/jsonutil"
+	"strings"
 )
 
 // TurnDataBuildOptions describes provider/runtime-specific data that should be
@@ -15,8 +13,8 @@ type TurnDataBuildOptions struct {
 	Metadata       map[string]any
 	Text           string
 	Reasoning      string
-	ToolCalls      []agentremote.ToolCallMetadata
-	GeneratedFiles []agentremote.GeneratedFileRef
+	ToolCalls      []ToolCallMetadata
+	GeneratedFiles []GeneratedFileRef
 	ArtifactParts  []map[string]any
 }
 

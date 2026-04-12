@@ -8,8 +8,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
-	"github.com/beeper/agentremote"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 var (
@@ -18,10 +17,10 @@ var (
 )
 
 type DummyBridgeConnector struct {
-	*agentremote.ConnectorBase
+	*sdk.ConnectorBase
 	br        *bridgev2.Bridge
 	Config    Config
-	sdkConfig *bridgesdk.Config[*dummySession, *Config]
+	sdkConfig *sdk.Config[*dummySession, *Config]
 
 	clientsMu sync.Mutex
 	clients   map[networkid.UserLoginID]bridgev2.NetworkAPI
@@ -31,19 +30,19 @@ type DummyBridgeConnector struct {
 
 func NewConnector() *DummyBridgeConnector {
 	dc := &DummyBridgeConnector{}
-	dc.sdkConfig = bridgesdk.NewStandardConnectorConfig(bridgesdk.StandardConnectorConfigParams[*dummySession, *Config, *PortalMetadata, *MessageMetadata, *UserLoginMetadata, *GhostMetadata]{
+	dc.sdkConfig = sdk.NewStandardConnectorConfig(sdk.StandardConnectorConfigParams[*dummySession, *Config, *PortalMetadata, *MessageMetadata, *UserLoginMetadata, *GhostMetadata]{
 		Name:             "dummybridge",
 		Description:      "A synthetic Matrix↔DummyBridge demo bridge built on the AgentRemote SDK.",
 		ProtocolID:       "ai-dummybridge",
-		ProviderIdentity: bridgesdk.ProviderIdentity{IDPrefix: "dummybridge", LogKey: "dummybridge_msg_id", StatusNetwork: "dummybridge"},
+		ProviderIdentity: sdk.ProviderIdentity{IDPrefix: "dummybridge", LogKey: "dummybridge_msg_id", StatusNetwork: "dummybridge"},
 		ClientCacheMu:    &dc.clientsMu,
 		ClientCache:      &dc.clients,
 		InitConnector: func(bridge *bridgev2.Bridge) {
 			dc.br = bridge
 		},
 		StartConnector: func(_ context.Context, _ *bridgev2.Bridge) error {
-			bridgesdk.ApplyDefaultCommandPrefix(&dc.Config.Bridge.CommandPrefix, "!dummybridge")
-			bridgesdk.ApplyBoolDefault(&dc.Config.DummyBridge.Enabled, true)
+			sdk.ApplyDefaultCommandPrefix(&dc.Config.Bridge.CommandPrefix, "!dummybridge")
+			sdk.ApplyBoolDefault(&dc.Config.DummyBridge.Enabled, true)
 			return nil
 		},
 		DisplayName:      "DummyBridge",
@@ -52,7 +51,7 @@ func NewConnector() *DummyBridgeConnector {
 		BeeperBridgeType: "dummybridge",
 		DefaultPort:      29349,
 		DefaultCommandPrefix: func() string {
-			return bridgesdk.ResolveCommandPrefix(dc.Config.Bridge.CommandPrefix, "!dummybridge")
+			return sdk.ResolveCommandPrefix(dc.Config.Bridge.CommandPrefix, "!dummybridge")
 		},
 		ExampleConfig:  exampleNetworkConfig,
 		ConfigData:     &dc.Config,
@@ -62,17 +61,17 @@ func NewConnector() *DummyBridgeConnector {
 		NewLogin:       func() *UserLoginMetadata { return &UserLoginMetadata{} },
 		NewGhost:       func() *GhostMetadata { return &GhostMetadata{} },
 		AcceptLogin: func(login *bridgev2.UserLogin) (bool, string) {
-			return bridgesdk.AcceptProviderLogin(login, ProviderDummyBridge, "This bridge only supports DummyBridge logins.", dc.enabled, "DummyBridge integration is disabled in the configuration.", func(login *bridgev2.UserLogin) string {
+			return sdk.AcceptProviderLogin(login, ProviderDummyBridge, "This bridge only supports DummyBridge logins.", dc.enabled, "DummyBridge integration is disabled in the configuration.", func(login *bridgev2.UserLogin) string {
 				return loginMetadata(login).Provider
 			})
 		},
-		LoginFlows: agentremote.SingleLoginFlow(dc.enabled(), bridgev2.LoginFlow{
+		LoginFlows: sdk.SingleLoginFlow(dc.enabled(), bridgev2.LoginFlow{
 			ID:          ProviderDummyBridge,
 			Name:        "DummyBridge",
 			Description: "Create a synthetic demo login for turn and streaming tests.",
 		}),
 		CreateLogin: func(_ context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
-			if err := agentremote.ValidateSingleLoginFlow(flowID, ProviderDummyBridge, dc.enabled()); err != nil {
+			if err := sdk.ValidateSingleLoginFlow(flowID, ProviderDummyBridge, dc.enabled()); err != nil {
 				return nil, err
 			}
 			return &DummyBridgeLogin{User: user, Connector: dc}, nil
@@ -87,7 +86,7 @@ func NewConnector() *DummyBridgeConnector {
 	dc.sdkConfig.ResolveIdentifier = dc.resolveIdentifier
 	dc.sdkConfig.GetChatInfo = dc.getChatInfo
 	dc.sdkConfig.GetUserInfo = dc.getUserInfo
-	dc.ConnectorBase = bridgesdk.NewConnectorBase(dc.sdkConfig)
+	dc.ConnectorBase = sdk.NewConnectorBase(dc.sdkConfig)
 	return dc
 }
 

@@ -6,7 +6,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/sdk"
 )
 
 const aiBridgeProtocolID = "ai"
@@ -31,5 +31,5 @@ func applyAgentRemoteBridgeInfo(portal *bridgev2.Portal, meta *PortalMetadata, c
 	if portal == nil {
 		return
 	}
-	agentremote.ApplyAgentRemoteBridgeInfo(content, aiBridgeProtocolIDForPortal(portal), portal.RoomType, integrationPortalAIKind(meta))
+	sdk.ApplyAgentRemoteBridgeInfo(content, aiBridgeProtocolIDForPortal(portal), portal.RoomType, integrationPortalAIKind(meta))
 }

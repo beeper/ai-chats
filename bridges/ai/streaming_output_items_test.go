@@ -7,7 +7,7 @@ import (
 	"github.com/openai/openai-go/v3/responses"
 	"maunium.net/go/mautrix/bridgev2"
 
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func TestParseJSONOrRaw_EmptyStringReturnsNil(t *testing.T) {
@@ -60,7 +60,7 @@ func TestDeriveToolDescriptorForOutputItem_FunctionCallParsesArgumentsJSON(t *te
 func TestUpsertActiveToolFromDescriptor_RecreatesNilMapEntry(t *testing.T) {
 	oc := &AIClient{}
 	state := newStreamingState(context.Background(), nil, "")
-	conv := bridgesdk.NewConversation[*AIClient, *Config](context.Background(), nil, nil, bridgev2.EventSender{}, nil, nil)
+	conv := sdk.NewConversation[*AIClient, *Config](context.Background(), nil, nil, bridgev2.EventSender{}, nil, nil)
 	state.turn = conv.StartTurn(context.Background(), nil, nil)
 	activeTools := newStreamToolRegistry()
 	activeTools.byKey[streamToolItemKey("item_123")] = nil

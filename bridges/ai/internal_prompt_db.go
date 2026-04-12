@@ -11,8 +11,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 type internalPromptDBScope struct {
@@ -126,7 +125,7 @@ func loadInternalPromptHistory(
 		if excludeFromHistory {
 			continue
 		}
-		messageID := agentremote.MatrixMessageID(id.EventID(eventID))
+		messageID := sdk.MatrixMessageID(id.EventID(eventID))
 		if opts.excludeMessageID != "" && messageID == opts.excludeMessageID {
 			continue
 		}
@@ -137,7 +136,7 @@ func loadInternalPromptHistory(
 		if err = json.Unmarshal([]byte(rawTurnData), &raw); err != nil {
 			return nil, err
 		}
-		turnData, ok := bridgesdk.DecodeTurnData(raw)
+		turnData, ok := sdk.DecodeTurnData(raw)
 		if !ok {
 			continue
 		}

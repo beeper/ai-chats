@@ -8,9 +8,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 var (
@@ -24,20 +23,20 @@ var (
 )
 
 type OpenCodeClient struct {
-	agentremote.ClientBase
+	sdk.ClientBase
 	UserLogin *bridgev2.UserLogin
 	connector *OpenCodeConnector
 	bridge    *Bridge
 
-	streamHost *agentremote.StreamTurnHost[openCodeStreamState]
+	streamHost *sdk.StreamTurnHost[openCodeStreamState]
 }
 
 type openCodeStreamState struct {
 	portal           *bridgev2.Portal
 	turnID           string
 	agentID          string
-	turn             *bridgesdk.Turn
-	stream           bridgesdk.StreamPartState
+	turn             *sdk.Turn
+	stream           sdk.StreamPartState
 	ui               streamui.UIState
 	role             string
 	sessionID        string
@@ -65,8 +64,8 @@ func newOpenCodeClient(login *bridgev2.UserLogin, connector *OpenCodeConnector) 
 		UserLogin: login,
 		connector: connector,
 	}
-	client.streamHost = agentremote.NewStreamTurnHost(agentremote.StreamTurnHostCallbacks[openCodeStreamState]{
-		GetAborter: func(s *openCodeStreamState) agentremote.Aborter {
+	client.streamHost = sdk.NewStreamTurnHost(sdk.StreamTurnHostCallbacks[openCodeStreamState]{
+		GetAborter: func(s *openCodeStreamState) sdk.Aborter {
 			if s.turn == nil {
 				return nil
 			}
@@ -117,7 +116,7 @@ func (oc *OpenCodeClient) Disconnect() {
 
 func (oc *OpenCodeClient) GetUserLogin() *bridgev2.UserLogin { return oc.UserLogin }
 
-func (oc *OpenCodeClient) GetApprovalHandler() agentremote.ApprovalReactionHandler {
+func (oc *OpenCodeClient) GetApprovalHandler() sdk.ApprovalReactionHandler {
 	if oc.bridge == nil {
 		return nil
 	}
@@ -165,9 +164,9 @@ var openCodeFileFeatures = &event.FileFeatures{
 }
 
 func openCodeMatrixRoomFeatures() *event.RoomFeatures {
-	return agentremote.BuildRoomFeatures(agentremote.RoomFeaturesParams{
+	return sdk.BuildRoomFeatures(sdk.RoomFeaturesParams{
 		ID:                  "com.beeper.ai.capabilities.2026_02_17+opencode",
-		File:                agentremote.BuildMediaFileFeatureMap(func() *event.FileFeatures { return openCodeFileFeatures }),
+		File:                sdk.BuildMediaFileFeatureMap(func() *event.FileFeatures { return openCodeFileFeatures }),
 		MaxTextLength:       100000,
 		Reply:               event.CapLevelFullySupported,
 		Thread:              event.CapLevelFullySupported,
@@ -198,7 +197,7 @@ func (oc *OpenCodeClient) GetUserInfo(_ context.Context, ghost *bridgev2.Ghost) 
 func (oc *OpenCodeClient) LogoutRemote(_ context.Context) {
 	oc.Disconnect()
 	if oc.connector != nil && oc.UserLogin != nil {
-		agentremote.RemoveClientFromCache(&oc.connector.clientsMu, oc.connector.clients, oc.UserLogin.ID)
+		sdk.RemoveClientFromCache(&oc.connector.clientsMu, oc.connector.clients, oc.UserLogin.ID)
 	}
 }
 
@@ -210,5 +209,5 @@ func (oc *OpenCodeClient) GetChatInfo(_ context.Context, portal *bridgev2.Portal
 	if !pmeta.IsOpenCodeRoom {
 		return nil, nil
 	}
-	return agentremote.BuildChatInfoWithFallback(pmeta.Title, portal.Name, "OpenCode", portal.Topic), nil
+	return sdk.BuildChatInfoWithFallback(pmeta.Title, portal.Name, "OpenCode", portal.Topic), nil
 }

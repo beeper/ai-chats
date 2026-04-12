@@ -5,10 +5,10 @@ import (
 
 	"github.com/beeper/agentremote/pkg/agents"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
-func (oc *AIClient) sdkAgentCatalog() bridgesdk.AgentCatalog {
+func (oc *AIClient) sdkAgentCatalog() sdk.AgentCatalog {
 	if oc == nil {
 		return aiAgentCatalog{}
 	}
@@ -18,7 +18,7 @@ func (oc *AIClient) sdkAgentCatalog() bridgesdk.AgentCatalog {
 	}
 }
 
-func (oc *AIClient) sdkAgentForDefinition(ctx context.Context, agent *agents.AgentDefinition) *bridgesdk.Agent {
+func (oc *AIClient) sdkAgentForDefinition(ctx context.Context, agent *agents.AgentDefinition) *sdk.Agent {
 	if agent == nil {
 		return nil
 	}
@@ -33,13 +33,13 @@ func (oc *AIClient) sdkAgentForDefinition(ctx context.Context, agent *agents.Age
 	if responder, err := oc.ResolveResponderForAgent(ctx, agent.ID, ResponderResolveOptions{}); err == nil && responder != nil && responder.ModelID != "" {
 		modelID = responder.ModelID
 	}
-	return &bridgesdk.Agent{
+	return &sdk.Agent{
 		ID:           string(oc.agentUserID(agent.ID)),
 		Name:         displayName,
 		Description:  agent.Description,
 		AvatarURL:    agent.AvatarURL,
 		Identifiers:  stringutil.DedupeStrings(agentContactIdentifiers(agent.ID)),
 		ModelKey:     modelID,
-		Capabilities: bridgesdk.MultimodalAgentCapabilities(),
+		Capabilities: sdk.MultimodalAgentCapabilities(),
 	}
 }

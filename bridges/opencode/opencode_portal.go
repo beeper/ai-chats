@@ -9,9 +9,8 @@ import (
 	"github.com/google/uuid"
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/bridges/opencode/api"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func (b *Bridge) ensureOpenCodeSessionPortal(ctx context.Context, inst *openCodeInstance, session api.Session) error {
@@ -20,8 +19,8 @@ func (b *Bridge) ensureOpenCodeSessionPortal(ctx context.Context, inst *openCode
 
 // defaultPortalLifecycleOptions returns the standard PortalLifecycleOptions
 // shared by all OpenCode room creation paths.
-func (b *Bridge) defaultPortalLifecycleOptions(login *bridgev2.UserLogin, portal *bridgev2.Portal, chatInfo *bridgev2.ChatInfo) bridgesdk.PortalLifecycleOptions {
-	return bridgesdk.PortalLifecycleOptions{
+func (b *Bridge) defaultPortalLifecycleOptions(login *bridgev2.UserLogin, portal *bridgev2.Portal, chatInfo *bridgev2.ChatInfo) sdk.PortalLifecycleOptions {
+	return sdk.PortalLifecycleOptions{
 		Login:            login,
 		Portal:           portal,
 		ChatInfo:         chatInfo,
@@ -29,7 +28,7 @@ func (b *Bridge) defaultPortalLifecycleOptions(login *bridgev2.UserLogin, portal
 		CleanupOnCreateError: func(ctx context.Context, portal *bridgev2.Portal) {
 			b.host.CleanupPortal(ctx, portal, "failed to create OpenCode room")
 		},
-		AIRoomKind:        agentremote.AIRoomKindAgent,
+		AIRoomKind:        sdk.AIRoomKindAgent,
 		ForceCapabilities: true,
 	}
 }
@@ -79,7 +78,7 @@ func (b *Bridge) ensureOpenCodeSessionPortalWithRoom(ctx context.Context, inst *
 	}
 	meta.Title = title
 
-	if err := agentremote.ConfigureDMPortal(ctx, agentremote.ConfigureDMPortalParams{
+	if err := sdk.ConfigureDMPortal(ctx, sdk.ConfigureDMPortalParams{
 		Portal:      portal,
 		Title:       title,
 		OtherUserID: OpenCodeUserID(inst.cfg.ID),
@@ -93,7 +92,7 @@ func (b *Bridge) ensureOpenCodeSessionPortalWithRoom(ctx context.Context, inst *
 	if !createRoom && portal.MXID == "" {
 		return nil
 	}
-	_, err = bridgesdk.EnsurePortalLifecycle(ctx, b.defaultPortalLifecycleOptions(login, portal, chatInfo))
+	_, err = sdk.EnsurePortalLifecycle(ctx, b.defaultPortalLifecycleOptions(login, portal, chatInfo))
 	if err != nil {
 		return err
 	}
@@ -141,7 +140,7 @@ func (b *Bridge) composeOpenCodeChatInfo(title, instanceID string) *bridgev2.Cha
 	if login == nil {
 		return nil
 	}
-	return agentremote.BuildLoginDMChatInfo(agentremote.LoginDMChatInfoParams{
+	return sdk.BuildLoginDMChatInfo(sdk.LoginDMChatInfoParams{
 		Title:             title,
 		Login:             login,
 		HumanUserIDPrefix: "opencode-user",
@@ -225,7 +224,7 @@ func (b *Bridge) createManagedLauncherChat(ctx context.Context, login *bridgev2.
 		AgentID:        b.host.DefaultAgentID(),
 	}
 
-	if err := agentremote.ConfigureDMPortal(ctx, agentremote.ConfigureDMPortalParams{
+	if err := sdk.ConfigureDMPortal(ctx, sdk.ConfigureDMPortalParams{
 		Portal:      portal,
 		Title:       displayTitle,
 		OtherUserID: OpenCodeUserID(instanceID),
@@ -236,7 +235,7 @@ func (b *Bridge) createManagedLauncherChat(ctx context.Context, login *bridgev2.
 	b.host.SetPortalMeta(portal, meta)
 
 	chatInfo := b.composeOpenCodeChatInfo(displayTitle, instanceID)
-	_, err = bridgesdk.EnsurePortalLifecycle(ctx, b.defaultPortalLifecycleOptions(login, portal, chatInfo))
+	_, err = sdk.EnsurePortalLifecycle(ctx, b.defaultPortalLifecycleOptions(login, portal, chatInfo))
 	if err != nil {
 		return nil, err
 	}
@@ -276,10 +275,10 @@ func (b *Bridge) ReIDPortalToSession(ctx context.Context, portal *bridgev2.Porta
 			refreshed = b.findOpenCodePortal(ctx, instanceID, sessionID)
 		}
 		if refreshed != nil {
-			bridgesdk.RefreshPortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
+			sdk.RefreshPortalLifecycle(ctx, sdk.PortalLifecycleOptions{
 				Login:             login,
 				Portal:            refreshed,
-				AIRoomKind:        agentremote.AIRoomKindAgent,
+				AIRoomKind:        sdk.AIRoomKindAgent,
 				ForceCapabilities: true,
 			})
 		}

@@ -12,10 +12,9 @@ import (
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/bridges/opencode/api"
 	"github.com/beeper/agentremote/pkg/shared/backfillutil"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 // Host provides the minimal surface area the OpenCode bridge needs
@@ -38,7 +37,7 @@ type Host interface {
 	OpenCodeInstances() map[string]*OpenCodeInstance
 	SaveOpenCodeInstances(ctx context.Context, instances map[string]*OpenCodeInstance) error
 	HumanUserID(loginID networkid.UserLoginID) networkid.UserID
-	ensureStreamWriter(ctx context.Context, portal *bridgev2.Portal, turnID, agentID string) (*openCodeStreamState, *bridgesdk.Writer)
+	ensureStreamWriter(ctx context.Context, portal *bridgev2.Portal, turnID, agentID string) (*openCodeStreamState, *sdk.Writer)
 	applyStreamMessageMetadata(state *openCodeStreamState, metadata map[string]any)
 }
 
@@ -98,7 +97,7 @@ func (b *Bridge) AbortSession(ctx context.Context, instanceID, sessionID string)
 }
 
 // ApprovalHandler returns the manager's ApprovalFlow as an ApprovalReactionHandler, or nil if unavailable.
-func (b *Bridge) ApprovalHandler() agentremote.ApprovalReactionHandler {
+func (b *Bridge) ApprovalHandler() sdk.ApprovalReactionHandler {
 	if b == nil || b.manager == nil {
 		return nil
 	}

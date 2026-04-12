@@ -19,9 +19,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/backfillutil"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 const codexThreadListPageSize = 100
@@ -234,7 +233,7 @@ func (cc *CodexClient) ensureCodexThreadPortal(ctx context.Context, existing *br
 		meta.Slug = codexThreadSlug(threadID)
 	}
 
-	if err := agentremote.ConfigureDMPortal(ctx, agentremote.ConfigureDMPortalParams{
+	if err := sdk.ConfigureDMPortal(ctx, sdk.ConfigureDMPortalParams{
 		Portal:      portal,
 		Title:       title,
 		OtherUserID: codexGhostID,
@@ -243,12 +242,12 @@ func (cc *CodexClient) ensureCodexThreadPortal(ctx context.Context, existing *br
 		return nil, false, err
 	}
 	info := cc.composeCodexChatInfo(portal, title, true)
-	created, err = bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
+	created, err = sdk.EnsurePortalLifecycle(ctx, sdk.PortalLifecycleOptions{
 		Login:             cc.UserLogin,
 		Portal:            portal,
 		ChatInfo:          info,
 		SaveBeforeCreate:  true,
-		AIRoomKind:        agentremote.AIRoomKindAgent,
+		AIRoomKind:        sdk.AIRoomKindAgent,
 		ForceCapabilities: true,
 	})
 	if err != nil {
@@ -430,7 +429,7 @@ func codexBackfillConvertedMessage(role, text, turnID string) *bridgev2.Converte
 				Mentions: &event.Mentions{},
 			},
 			DBMetadata: &MessageMetadata{
-				BaseMessageMetadata: agentremote.BaseMessageMetadata{
+				BaseMessageMetadata: sdk.BaseMessageMetadata{
 					Role:   role,
 					Body:   text,
 					TurnID: turnID,

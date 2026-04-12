@@ -12,7 +12,6 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
 	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/pkg/shared/citations"
 	"github.com/beeper/agentremote/sdk"
@@ -124,15 +123,15 @@ func (s *streamingState) isFinalized() bool {
 	return s.finalized.Load()
 }
 
-func (s *streamingState) nextMessageTiming() agentremote.EventTiming {
+func (s *streamingState) nextMessageTiming() sdk.EventTiming {
 	if s == nil {
-		return agentremote.ResolveEventTiming(time.Time{}, 0)
+		return sdk.ResolveEventTiming(time.Time{}, 0)
 	}
 	ts := time.UnixMilli(s.startedAtMs)
 	if s.startedAtMs <= 0 {
 		ts = time.Now()
 	}
-	timing := agentremote.NextEventTiming(s.lastStreamOrder, ts)
+	timing := sdk.NextEventTiming(s.lastStreamOrder, ts)
 	s.lastStreamOrder = timing.StreamOrder
 	return timing
 }

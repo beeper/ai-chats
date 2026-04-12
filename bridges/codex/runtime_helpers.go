@@ -7,7 +7,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/sdk"
 )
 
 const AIAuthFailed status.BridgeStateErrorCode = "ai-auth-failed"
@@ -21,17 +21,17 @@ func messageStatusReasonForError(_ error) event.MessageStatusReason {
 }
 
 func messageSendStatusError(err error, message string, reason event.MessageStatusReason) error {
-	return agentremote.MessageSendStatusError(err, message, reason, messageStatusForError, messageStatusReasonForError)
+	return sdk.MessageSendStatusError(err, message, reason, messageStatusForError, messageStatusReasonForError)
 }
 
-func newBrokenLoginClient(login *bridgev2.UserLogin, connector *CodexConnector, reason string) *agentremote.BrokenLoginClient {
-	c := agentremote.NewBrokenLoginClient(login, reason)
+func newBrokenLoginClient(login *bridgev2.UserLogin, connector *CodexConnector, reason string) *sdk.BrokenLoginClient {
+	c := sdk.NewBrokenLoginClient(login, reason)
 	c.OnLogout = func(ctx context.Context, login *bridgev2.UserLogin) {
 		tmp := &CodexClient{UserLogin: login, connector: connector}
 		tmp.purgeCodexHomeBestEffort(ctx)
 		tmp.purgeCodexCwdsBestEffort(ctx)
 		if connector != nil && login != nil {
-			agentremote.RemoveClientFromCache(&connector.clientsMu, connector.clients, login.ID)
+			sdk.RemoveClientFromCache(&connector.clientsMu, connector.clients, login.ID)
 		}
 	}
 	return c

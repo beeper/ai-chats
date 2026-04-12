@@ -13,8 +13,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
-
-	"github.com/beeper/agentremote"
 )
 
 // Conversation represents a chat room the agent is participating in.
@@ -142,13 +140,13 @@ func (c *Conversation) currentRoomFeatures(ctx context.Context) *RoomFeatures {
 
 func (c *Conversation) aiRoomKind() string {
 	if c == nil {
-		return agentremote.AIRoomKindAgent
+		return AIRoomKindAgent
 	}
 	state := c.state()
 	if state.Kind == ConversationKindDelegated || strings.TrimSpace(state.ParentConversationID) != "" {
 		return "subagent"
 	}
-	return agentremote.AIRoomKindAgent
+	return AIRoomKindAgent
 }
 
 // SendHTML sends a message with both plaintext and HTML body.

@@ -20,10 +20,9 @@ import (
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/cachedvalue"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 var (
@@ -36,9 +35,9 @@ var (
 
 const openClawCapabilityBaseID = "com.beeper.ai.capabilities.2026_03_09+openclaw"
 
-var openClawBaseCaps = agentremote.BuildRoomFeatures(agentremote.RoomFeaturesParams{
+var openClawBaseCaps = sdk.BuildRoomFeatures(sdk.RoomFeaturesParams{
 	ID:                  openClawCapabilityBaseID,
-	File:                agentremote.BuildMediaFileFeatureMap(openClawRejectedFileFeatures),
+	File:                sdk.BuildMediaFileFeatureMap(openClawRejectedFileFeatures),
 	MaxTextLength:       100000,
 	Reply:               event.CapLevelFullySupported,
 	Thread:              event.CapLevelRejected,
@@ -59,7 +58,7 @@ type openClawCapabilityProfile struct {
 }
 
 type OpenClawClient struct {
-	agentremote.ClientBase
+	sdk.ClientBase
 	UserLogin *bridgev2.UserLogin
 	connector *OpenClawConnector
 
@@ -75,17 +74,17 @@ type OpenClawClient struct {
 	toolCacheMu sync.Mutex
 	toolCaches  map[string]*cachedvalue.CachedValue[gatewayToolsCatalogResponse]
 
-	streamHost *agentremote.StreamTurnHost[openClawStreamState]
+	streamHost *sdk.StreamTurnHost[openClawStreamState]
 }
 
 type openClawStreamState struct {
 	portal           *bridgev2.Portal
 	turnID           string
 	agentID          string
-	turn             *bridgesdk.Turn
+	turn             *sdk.Turn
 	sessionKey       string
 	messageTS        time.Time
-	stream           bridgesdk.StreamPartState
+	stream           sdk.StreamPartState
 	role             string
 	runID            string
 	sessionID        string
@@ -106,8 +105,8 @@ func newOpenClawClient(login *bridgev2.UserLogin, connector *OpenClawConnector) 
 		modelCache: cachedvalue.New[[]gatewayModelChoice](openClawMetadataCatalogTTL),
 		toolCaches: make(map[string]*cachedvalue.CachedValue[gatewayToolsCatalogResponse]),
 	}
-	client.streamHost = agentremote.NewStreamTurnHost(agentremote.StreamTurnHostCallbacks[openClawStreamState]{
-		GetAborter: func(s *openClawStreamState) agentremote.Aborter {
+	client.streamHost = sdk.NewStreamTurnHost(sdk.StreamTurnHostCallbacks[openClawStreamState]{
+		GetAborter: func(s *openClawStreamState) sdk.Aborter {
 			if s.turn == nil {
 				return nil
 			}
@@ -223,7 +222,7 @@ func (oc *OpenClawClient) connectLoop(ctx context.Context) {
 
 func (oc *OpenClawClient) GetUserLogin() *bridgev2.UserLogin { return oc.UserLogin }
 
-func (oc *OpenClawClient) GetApprovalHandler() agentremote.ApprovalReactionHandler {
+func (oc *OpenClawClient) GetApprovalHandler() sdk.ApprovalReactionHandler {
 	if oc.manager == nil {
 		return nil
 	}
@@ -293,7 +292,7 @@ func (oc *OpenClawClient) GetCapabilities(ctx context.Context, portal *bridgev2.
 	profile := oc.openClawCapabilityProfile(ctx, portalMeta(portal))
 	caps.ID = openClawCapabilityID(profile)
 	if !profile.MediaKnown {
-		for _, msgType := range agentremote.MediaMessageTypes {
+		for _, msgType := range sdk.MediaMessageTypes {
 			caps.File[msgType] = openClawFileFeatures.Clone()
 		}
 		return caps
@@ -407,11 +406,11 @@ func openClawCapabilityID(profile openClawCapabilityProfile) string {
 
 func (oc *OpenClawClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
 	if ghost == nil {
-		return agentremote.BuildBotUserInfo("OpenClaw"), nil
+		return sdk.BuildBotUserInfo("OpenClaw"), nil
 	}
 	agentID, ok := parseOpenClawGhostID(string(ghost.ID))
 	if !ok {
-		return agentremote.BuildBotUserInfo("OpenClaw"), nil
+		return sdk.BuildBotUserInfo("OpenClaw"), nil
 	}
 	current := ghostMeta(ghost)
 	configured, err := oc.agentCatalogEntryByID(ctx, agentID)
@@ -739,7 +738,7 @@ func (oc *OpenClawClient) sendSystemNotice(ctx context.Context, portal *bridgev2
 	if oc == nil || portal == nil || strings.TrimSpace(msg) == "" {
 		return
 	}
-	if err := agentremote.SendSystemMessage(ctx, oc.UserLogin, portal, sender, msg); err != nil {
+	if err := sdk.SendSystemMessage(ctx, oc.UserLogin, portal, sender, msg); err != nil {
 		if oc.UserLogin != nil {
 			oc.UserLogin.Log.Warn().Err(err).Msg("Failed to send system notice")
 		}
@@ -747,5 +746,5 @@ func (oc *OpenClawClient) sendSystemNotice(ctx context.Context, portal *bridgev2
 }
 
 func (oc *OpenClawClient) DownloadAndEncodeMedia(ctx context.Context, mediaURL string, file *event.EncryptedFileInfo, maxMB int) (string, string, error) {
-	return agentremote.DownloadAndEncodeMedia(ctx, oc.UserLogin, mediaURL, file, maxMB)
+	return sdk.DownloadAndEncodeMedia(ctx, oc.UserLogin, mediaURL, file, maxMB)
 }

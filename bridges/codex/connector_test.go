@@ -10,7 +10,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func TestFillPortalBridgeInfoSetsAIRoomType(t *testing.T) {
@@ -50,7 +50,7 @@ func TestHostAuthLoginIDUsesDedicatedPrefix(t *testing.T) {
 	mxid := id.UserID("@alice:example.com")
 
 	got := conn.hostAuthLoginID(mxid)
-	manual := agentremote.MakeUserLoginID("codex", mxid, 1)
+	manual := sdk.MakeUserLoginID("codex", mxid, 1)
 
 	if got == manual {
 		t.Fatalf("expected host-auth login id to differ from manual login id, got %q", got)

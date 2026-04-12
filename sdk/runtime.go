@@ -4,8 +4,6 @@ import (
 	"context"
 
 	"maunium.net/go/mautrix/bridgev2"
-
-	"github.com/beeper/agentremote"
 )
 
 type conversationRuntime interface {
@@ -15,7 +13,7 @@ type conversationRuntime interface {
 	commands() []Command
 	turnConfig() *TurnConfig
 	conversationStore() *conversationStateStore
-	approvalFlowValue() *agentremote.ApprovalFlow[*pendingSDKApprovalData]
+	approvalFlowValue() *ApprovalFlow[*pendingSDKApprovalData]
 	providerIdentity() ProviderIdentity
 }
 
@@ -24,7 +22,7 @@ type staticRuntime[SessionT SessionValue, ConfigDataT ConfigValue] struct {
 	session  SessionT
 	login    *bridgev2.UserLogin
 	store    *conversationStateStore
-	approval *agentremote.ApprovalFlow[*pendingSDKApprovalData]
+	approval *ApprovalFlow[*pendingSDKApprovalData]
 }
 
 func (r *staticRuntime[SessionT, ConfigDataT]) agent() *Agent {
@@ -71,7 +69,7 @@ func (r *staticRuntime[SessionT, ConfigDataT]) conversationStore() *conversation
 	return r.store
 }
 
-func (r *staticRuntime[SessionT, ConfigDataT]) approvalFlowValue() *agentremote.ApprovalFlow[*pendingSDKApprovalData] {
+func (r *staticRuntime[SessionT, ConfigDataT]) approvalFlowValue() *ApprovalFlow[*pendingSDKApprovalData] {
 	return r.approval
 }
 
@@ -101,7 +99,7 @@ func normalizedProviderIdentity(identity ProviderIdentity) ProviderIdentity {
 
 // NewConversationOptions configures optional parameters for NewConversation.
 type NewConversationOptions struct {
-	ApprovalFlow *agentremote.ApprovalFlow[*pendingSDKApprovalData]
+	ApprovalFlow *ApprovalFlow[*pendingSDKApprovalData]
 }
 
 // NewConversation creates an SDK conversation wrapper for provider bridges that

@@ -1,10 +1,8 @@
 package sdk
 
 import (
-	"strings"
-
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/jsonutil"
+	"strings"
 )
 
 type TurnSnapshot struct {
@@ -12,8 +10,8 @@ type TurnSnapshot struct {
 	UIMessage       map[string]any
 	Body            string
 	ThinkingContent string
-	ToolCalls       []agentremote.ToolCallMetadata
-	GeneratedFiles  []agentremote.GeneratedFileRef
+	ToolCalls       []ToolCallMetadata
+	GeneratedFiles  []GeneratedFileRef
 }
 
 func BuildTurnSnapshot(uiMessage map[string]any, opts TurnDataBuildOptions, toolType string) TurnSnapshot {
@@ -59,13 +57,13 @@ func TurnReasoningText(td TurnData) string {
 	return strings.Join(texts, "\n")
 }
 
-func TurnGeneratedFiles(td TurnData) []agentremote.GeneratedFileRef {
-	var refs []agentremote.GeneratedFileRef
+func TurnGeneratedFiles(td TurnData) []GeneratedFileRef {
+	var refs []GeneratedFileRef
 	for _, part := range td.Parts {
 		if normalizeTurnPartType(part.Type) != "file" || strings.TrimSpace(part.URL) == "" {
 			continue
 		}
-		refs = append(refs, agentremote.GeneratedFileRef{
+		refs = append(refs, GeneratedFileRef{
 			URL:      strings.TrimSpace(part.URL),
 			MimeType: strings.TrimSpace(part.MediaType),
 		})
@@ -73,8 +71,8 @@ func TurnGeneratedFiles(td TurnData) []agentremote.GeneratedFileRef {
 	return refs
 }
 
-func TurnToolCalls(td TurnData, toolType string) []agentremote.ToolCallMetadata {
-	var calls []agentremote.ToolCallMetadata
+func TurnToolCalls(td TurnData, toolType string) []ToolCallMetadata {
+	var calls []ToolCallMetadata
 	for _, part := range td.Parts {
 		if normalizeTurnPartType(part.Type) != "tool" {
 			continue
@@ -83,7 +81,7 @@ func TurnToolCalls(td TurnData, toolType string) []agentremote.ToolCallMetadata 
 		if callID == "" {
 			continue
 		}
-		call := agentremote.ToolCallMetadata{
+		call := ToolCallMetadata{
 			CallID:       callID,
 			ToolName:     strings.TrimSpace(part.ToolName),
 			ToolType:     strings.TrimSpace(toolType),

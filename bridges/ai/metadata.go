@@ -10,8 +10,8 @@ import (
 	"go.mau.fi/util/random"
 	"maunium.net/go/mautrix/bridgev2/database"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/jsonutil"
+	"github.com/beeper/agentremote/sdk"
 )
 
 // ModelCache stores available models (cached in UserLoginMetadata)
@@ -355,8 +355,8 @@ func clonePortalMetadata(src *PortalMetadata) *PortalMetadata {
 // MessageMetadata keeps a tiny summary of each exchange so we can rebuild
 // prompts using database history.
 type MessageMetadata struct {
-	agentremote.BaseMessageMetadata
-	agentremote.AssistantMessageMetadata
+	sdk.BaseMessageMetadata
+	sdk.AssistantMessageMetadata
 
 	// Media understanding (OpenClaw-style)
 	MediaUnderstanding          []MediaUnderstandingOutput   `json:"media_understanding,omitempty"`
@@ -367,9 +367,9 @@ type MessageMetadata struct {
 	MimeType string `json:"mime_type,omitempty"` // MIME type of user-sent media
 }
 
-type GeneratedFileRef = agentremote.GeneratedFileRef
+type GeneratedFileRef = sdk.GeneratedFileRef
 
-type ToolCallMetadata = agentremote.ToolCallMetadata
+type ToolCallMetadata = sdk.ToolCallMetadata
 
 // GhostMetadata stores metadata for AI model ghosts
 type GhostMetadata struct {

@@ -29,6 +29,8 @@ var (
 	BuildTime = "unknown"
 )
 
+const binaryName = "sdk"
+
 type metadata = cliutil.Metadata
 
 func main() {
@@ -143,7 +145,7 @@ func didYouMean(input string) error {
 	if best != "" {
 		return fmt.Errorf("unknown command %q. Did you mean %q?", input, best)
 	}
-	return fmt.Errorf("unknown command %q, run 'agentremote help' for usage", input)
+	return fmt.Errorf("unknown command %q, run '%s help' for usage", input, binaryName)
 }
 
 func levenshtein(a, b string) int {
@@ -193,7 +195,7 @@ func cmdLogin(args []string) error {
 		Env:               *env,
 		Email:             *email,
 		Code:              *code,
-		DeviceDisplayName: "agentremote",
+		DeviceDisplayName: binaryName,
 		Prompt:            bridgeutil.PromptLine,
 	})
 	if err != nil {
@@ -939,7 +941,7 @@ func cmdDelete(args []string) error {
 }
 
 func cmdVersion() error {
-	fmt.Printf("agentremote %s\n", Tag)
+	fmt.Printf("%s %s\n", binaryName, Tag)
 	fmt.Printf("commit: %s\n", Commit)
 	fmt.Printf("built: %s\n", BuildTime)
 	return nil
@@ -1087,7 +1089,7 @@ func cmdAuth(args []string) error {
 
 func cmdCompletion(args []string) error {
 	if len(args) != 1 {
-		return fmt.Errorf("usage: agentremote completion <bash|zsh|fish>")
+		return fmt.Errorf("usage: %s completion <bash|zsh|fish>", binaryName)
 	}
 	switch args[0] {
 	case "bash":

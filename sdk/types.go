@@ -10,8 +10,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
-
-	"github.com/beeper/agentremote"
 )
 
 // MessageType identifies the kind of message.
@@ -103,7 +101,7 @@ type ApprovalRequest struct {
 	ToolCallID   string
 	ToolName     string
 	TTL          time.Duration
-	Presentation *agentremote.ApprovalPromptPresentation
+	Presentation *ApprovalPromptPresentation
 	Metadata     map[string]any
 }
 
@@ -281,7 +279,7 @@ type Config[SessionT SessionValue, ConfigDataT ConfigValue] struct {
 	NetworkCapabilities func() *bridgev2.NetworkGeneralCapabilities
 	BridgeInfoVersion   func() (info, capabilities int)
 	FillBridgeInfo      func(portal *bridgev2.Portal, content *event.BridgeEventContent)
-	MakeBrokenLogin     func(login *bridgev2.UserLogin, reason string) *agentremote.BrokenLoginClient
+	MakeBrokenLogin     func(login *bridgev2.UserLogin, reason string) *BrokenLoginClient
 	LoadLogin           func(ctx context.Context, login *bridgev2.UserLogin) error
 	CreateClient        func(login *bridgev2.UserLogin) (bridgev2.NetworkAPI, error)
 	UpdateClient        func(client bridgev2.NetworkAPI, login *bridgev2.UserLogin)

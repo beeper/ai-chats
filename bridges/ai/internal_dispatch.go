@@ -9,8 +9,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func (oc *AIClient) dispatchInternalMessage(
@@ -39,7 +39,7 @@ func (oc *AIClient) dispatchInternalMessage(
 	if src := strings.TrimSpace(source); src != "" {
 		prefix = src
 	}
-	eventID := agentremote.NewEventID(prefix)
+	eventID := sdk.NewEventID(prefix)
 
 	inboundCtx := oc.resolvePromptInboundContext(ctx, portal, trimmed, eventID)
 	promptCtx := withInboundContext(ctx, inboundCtx)
