@@ -12,6 +12,12 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
+// desktopAccountNetwork returns the network identifier for a desktop API account.
+// TODO: add Network field to desktop-api-go Account and remove this stub.
+func desktopAccountNetwork(_ beeperdesktopapi.Account) string {
+	return "unknown"
+}
+
 type desktopAccountHint struct {
 	AccountID    string
 	Display      string
@@ -73,7 +79,7 @@ func (oc *AIClient) collectDesktopAccountHints(ctx context.Context) desktopAccou
 			if rawAccountID == "" {
 				continue
 			}
-			bridgeType := normalizeDesktopBridgeType(account.Network)
+			bridgeType := normalizeDesktopBridgeType(desktopAccountNetwork(account))
 			inst.accounts[rawAccountID] = desktopAccountHint{
 				Display:      buildDesktopAccountDisplay(account),
 				InstanceKey:  safeInstanceKey,
@@ -151,7 +157,7 @@ func renderDesktopAccountHintPrompt(snapshot desktopAccountHintsSnapshot) string
 func buildDesktopAccountDisplay(account beeperdesktopapi.Account) string {
 	return buildDesktopAccountDisplayFromView(desktopAccountView{
 		accountID:   account.AccountID,
-		network:     account.Network,
+		network:     desktopAccountNetwork(account),
 		userID:      account.User.ID,
 		fullName:    account.User.FullName,
 		username:    account.User.Username,

@@ -14,8 +14,8 @@ func TestMatchDesktopChatsByLabelAliases(t *testing.T) {
 		{ID: "c2", Title: "Family", AccountID: "acc-ig"},
 	}
 	accounts := map[string]beeperdesktopapi.Account{
-		"acc-wa": {AccountID: "acc-wa", Network: "whatsapp"},
-		"acc-ig": {AccountID: "acc-ig", Network: "instagram"},
+		"acc-wa": {AccountID: "acc-wa"},
+		"acc-ig": {AccountID: "acc-ig"},
 	}
 
 	exact, _ := matchDesktopChatsByLabel(chats, "family", accounts)
@@ -40,8 +40,8 @@ func TestFilterDesktopChatsByResolveOptions(t *testing.T) {
 		{ID: "c2", Title: "Family", AccountID: "acc-ig"},
 	}
 	accounts := map[string]beeperdesktopapi.Account{
-		"acc-wa": {AccountID: "acc-wa", Network: "whatsapp"},
-		"acc-ig": {AccountID: "acc-ig", Network: "instagram"},
+		"acc-wa": {AccountID: "acc-wa"},
+		"acc-ig": {AccountID: "acc-ig"},
 	}
 
 	filtered := filterDesktopChatsByResolveOptions(chats, accounts, "main_desktop", desktopLabelResolveOptions{AccountID: "acc-wa"})
@@ -60,7 +60,7 @@ func TestFilterDesktopChatsByResolveOptionsCanonicalAccountID(t *testing.T) {
 		{ID: "c1", Title: "Family", AccountID: "acc-wa"},
 	}
 	accounts := map[string]beeperdesktopapi.Account{
-		"acc-wa": {AccountID: "acc-wa", Network: "whatsapp"},
+		"acc-wa": {AccountID: "acc-wa"},
 	}
 
 	filtered := filterDesktopChatsByResolveOptions(chats, accounts, "Main Desktop", desktopLabelResolveOptions{

@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog"
-	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
@@ -35,14 +34,7 @@ type codexPortalStateRecord struct {
 	State     *codexPortalState
 }
 
-type codexDBScope struct {
-	db        *dbutil.Database
-	bridgeID  string
-	loginID   string
-	portalKey string
-}
-
-func codexDBScopeForPortal(portal *bridgev2.Portal) *codexDBScope {
+func codexPortalBlobScope(portal *bridgev2.Portal) *aidb.BlobScope {
 	if portal == nil || portal.Bridge == nil || portal.Bridge.DB == nil || portal.Bridge.DB.Database == nil {
 		return nil
 	}
@@ -52,15 +44,16 @@ func codexDBScopeForPortal(portal *bridgev2.Portal) *codexDBScope {
 	if bridgeID == "" || loginID == "" || portalKey == "" {
 		return nil
 	}
-	return &codexDBScope{
-		db:        portal.Bridge.DB.Database,
-		bridgeID:  bridgeID,
-		loginID:   loginID,
-		portalKey: portalKey,
+	return &aidb.BlobScope{
+		Table:    &codexPortalStateBlob,
+		DB:       portal.Bridge.DB.Database,
+		BridgeID: bridgeID,
+		LoginID:  loginID,
+		Key:      portalKey,
 	}
 }
 
-func codexDBScopeForLogin(login *bridgev2.UserLogin) *codexDBScope {
+func codexLoginBlobScope(login *bridgev2.UserLogin) *aidb.BlobScope {
 	if login == nil || login.Bridge == nil || login.Bridge.DB == nil || login.Bridge.DB.Database == nil {
 		return nil
 	}
@@ -69,66 +62,39 @@ func codexDBScopeForLogin(login *bridgev2.UserLogin) *codexDBScope {
 	if bridgeID == "" || loginID == "" {
 		return nil
 	}
-	return &codexDBScope{
-		db:       login.Bridge.DB.Database,
-		bridgeID: bridgeID,
-		loginID:  loginID,
+	return &aidb.BlobScope{
+		Table:    &codexPortalStateBlob,
+		DB:       login.Bridge.DB.Database,
+		BridgeID: bridgeID,
+		LoginID:  loginID,
 	}
 }
 
 func loadCodexPortalState(ctx context.Context, portal *bridgev2.Portal) (*codexPortalState, error) {
-	scope := codexDBScopeForPortal(portal)
-	if scope == nil {
-		return &codexPortalState{}, nil
-	}
-	if err := codexPortalStateBlob.Ensure(ctx, scope.db); err != nil {
-		return nil, err
-	}
-	state, err := aidb.Load[codexPortalState](&codexPortalStateBlob, ctx, scope.db, scope.bridgeID, scope.loginID, scope.portalKey)
-	if err != nil {
-		return nil, err
-	}
-	if state == nil {
-		return &codexPortalState{}, nil
-	}
-	return state, nil
+	return aidb.LoadScopedOrNew[codexPortalState](ctx, codexPortalBlobScope(portal))
 }
 
 func saveCodexPortalState(ctx context.Context, portal *bridgev2.Portal, state *codexPortalState) error {
-	scope := codexDBScopeForPortal(portal)
-	if scope == nil || state == nil {
-		return nil
-	}
-	if err := codexPortalStateBlob.Ensure(ctx, scope.db); err != nil {
-		return err
-	}
-	return aidb.Save(&codexPortalStateBlob, ctx, scope.db, scope.bridgeID, scope.loginID, scope.portalKey, state)
+	return aidb.SaveScoped(ctx, codexPortalBlobScope(portal), state)
 }
 
 func clearCodexPortalState(ctx context.Context, portal *bridgev2.Portal) error {
-	scope := codexDBScopeForPortal(portal)
-	if scope == nil {
-		return nil
-	}
-	if err := codexPortalStateBlob.Ensure(ctx, scope.db); err != nil {
-		return err
-	}
-	return codexPortalStateBlob.Delete(ctx, scope.db, scope.bridgeID, scope.loginID, scope.portalKey)
+	return aidb.DeleteScoped(ctx, codexPortalBlobScope(portal))
 }
 
 func listCodexPortalStateRecords(ctx context.Context, login *bridgev2.UserLogin) ([]codexPortalStateRecord, error) {
-	scope := codexDBScopeForLogin(login)
+	scope := codexLoginBlobScope(login)
 	if scope == nil {
 		return nil, nil
 	}
-	if err := codexPortalStateBlob.Ensure(ctx, scope.db); err != nil {
+	if err := codexPortalStateBlob.Ensure(ctx, scope.DB); err != nil {
 		return nil, err
 	}
-	rows, err := scope.db.Query(ctx, `
+	rows, err := scope.DB.Query(ctx, `
 		SELECT portal_key, state_json
 		FROM `+codexPortalStateTable+`
 		WHERE bridge_id=$1 AND login_id=$2
-	`, scope.bridgeID, scope.loginID)
+	`, scope.BridgeID, scope.LoginID)
 	if err != nil {
 		return nil, err
 	}

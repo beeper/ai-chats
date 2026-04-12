@@ -132,3 +132,61 @@ func (t *JSONBlobTable) Delete(ctx context.Context, db *dbutil.Database, bridgeI
 	`, bridgeID, loginID, key)
 	return err
 }
+
+// BlobScope bundles a JSONBlobTable reference with the three-key coordinates
+// needed for every CRUD call. Bridge packages build a BlobScope from their
+// own portal/login objects and then use the scoped helpers below.
+type BlobScope struct {
+	Table    *JSONBlobTable
+	DB       *dbutil.Database
+	BridgeID string
+	LoginID  string
+	Key      string
+}
+
+// LoadScoped ensures the table exists and loads the JSON blob for the scope's key triple.
+// Returns (nil, nil) when no row exists, matching Load semantics.
+func LoadScoped[T any](ctx context.Context, scope *BlobScope) (*T, error) {
+	if scope == nil {
+		return nil, nil
+	}
+	if err := scope.Table.Ensure(ctx, scope.DB); err != nil {
+		return nil, err
+	}
+	return Load[T](scope.Table, ctx, scope.DB, scope.BridgeID, scope.LoginID, scope.Key)
+}
+
+// LoadScopedOrNew ensures the table exists and loads the JSON blob, returning
+// a zero-value T when no row exists. This is the common "load or default" pattern.
+func LoadScopedOrNew[T any](ctx context.Context, scope *BlobScope) (*T, error) {
+	result, err := LoadScoped[T](ctx, scope)
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return new(T), nil
+	}
+	return result, nil
+}
+
+// SaveScoped ensures the table exists and upserts the value at the scope's key triple.
+func SaveScoped[T any](ctx context.Context, scope *BlobScope, value *T) error {
+	if scope == nil || value == nil {
+		return nil
+	}
+	if err := scope.Table.Ensure(ctx, scope.DB); err != nil {
+		return err
+	}
+	return Save(scope.Table, ctx, scope.DB, scope.BridgeID, scope.LoginID, scope.Key, value)
+}
+
+// DeleteScoped ensures the table exists and removes the row at the scope's key triple.
+func DeleteScoped(ctx context.Context, scope *BlobScope) error {
+	if scope == nil {
+		return nil
+	}
+	if err := scope.Table.Ensure(ctx, scope.DB); err != nil {
+		return err
+	}
+	return scope.Table.Delete(ctx, scope.DB, scope.BridgeID, scope.LoginID, scope.Key)
+}

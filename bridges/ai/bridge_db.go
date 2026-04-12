@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"encoding/json"
 	"strings"
 
 	"github.com/rs/zerolog"
@@ -132,6 +133,31 @@ func loginScopeForLogin(login *bridgev2.UserLogin) *loginScope {
 		return nil
 	}
 	return &loginScope{db: db, bridgeID: bridgeID, loginID: loginID}
+}
+
+// unmarshalJSONField unmarshals a JSON string into *T, returning nil when the
+// input is empty. This replaces the repeated "if TrimSpace != "" { Unmarshal }" blocks.
+func unmarshalJSONField[T any](raw string) (*T, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	var out T
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// unmarshalMapJSONField unmarshals a JSON string into map[K]V, returning nil when empty.
+func unmarshalMapJSONField[K comparable, V any](raw string) (map[K]V, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	var out map[K]V
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // portalScope extends loginScope with a portal identifier for portal-scoped DB tables.

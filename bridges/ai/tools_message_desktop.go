@@ -184,15 +184,23 @@ func maybeExecuteMessageSendDesktop(ctx context.Context, args map[string]any, bt
 	return true, output, err
 }
 
-func maybeExecuteMessageEditDesktop(ctx context.Context, args map[string]any, btc *BridgeToolContext) (bool, string, error) {
-	if btc == nil || btc.Client == nil {
-		return false, "", nil
+// tryResolveDesktopTarget combines the nil-check, hint-check, and target resolution
+// that every maybeExecute*Desktop function repeats. Returns handled=false when the
+// args don't target a desktop-api chat, handled=true (with possible err) otherwise.
+func tryResolveDesktopTarget(ctx context.Context, btc *BridgeToolContext, args map[string]any, requireChat bool) (instance, chatID, key string, handled bool, err error) {
+	if btc == nil || btc.Client == nil || !hasDesktopMessageTargetHints(args) {
+		return "", "", "", false, nil
 	}
-	if !hasDesktopMessageTargetHints(args) {
-		return false, "", nil
-	}
-	instance, chatID, key, resolved, err := resolveDesktopMessageTarget(ctx, btc.Client, args, true)
+	instance, chatID, key, resolved, err := resolveDesktopMessageTarget(ctx, btc.Client, args, requireChat)
 	if !resolved {
+		return "", "", "", false, nil
+	}
+	return instance, chatID, key, true, err
+}
+
+func maybeExecuteMessageEditDesktop(ctx context.Context, args map[string]any, btc *BridgeToolContext) (bool, string, error) {
+	instance, chatID, key, handled, err := tryResolveDesktopTarget(ctx, btc, args, true)
+	if !handled {
 		return false, "", nil
 	}
 	if err != nil {
@@ -221,14 +229,8 @@ func maybeExecuteMessageEditDesktop(ctx context.Context, args map[string]any, bt
 }
 
 func maybeExecuteMessageReplyDesktop(ctx context.Context, args map[string]any, btc *BridgeToolContext) (bool, string, error) {
-	if btc == nil || btc.Client == nil {
-		return false, "", nil
-	}
-	if !hasDesktopMessageTargetHints(args) {
-		return false, "", nil
-	}
-	instance, chatID, key, resolved, err := resolveDesktopMessageTarget(ctx, btc.Client, args, true)
-	if !resolved {
+	instance, chatID, key, handled, err := tryResolveDesktopTarget(ctx, btc, args, true)
+	if !handled {
 		return false, "", nil
 	}
 	if err != nil {
@@ -262,18 +264,15 @@ func maybeExecuteMessageReplyDesktop(ctx context.Context, args map[string]any, b
 }
 
 func maybeExecuteMessageSearchDesktop(ctx context.Context, args map[string]any, btc *BridgeToolContext) (bool, string, error) {
-	if btc == nil || btc.Client == nil {
-		return false, "", nil
-	}
-	if !hasDesktopMessageTargetHints(args) {
+	if btc == nil || btc.Client == nil || !hasDesktopMessageTargetHints(args) {
 		return false, "", nil
 	}
 	query := strings.TrimSpace(firstNonEmptyString(args["query"]))
 	if query == "" {
 		return true, "", errors.New("action=search requires 'query'")
 	}
-	instance, chatID, _, resolved, err := resolveDesktopMessageTarget(ctx, btc.Client, args, false)
-	if !resolved {
+	instance, chatID, _, handled, err := tryResolveDesktopTarget(ctx, btc, args, false)
+	if !handled {
 		return false, "", nil
 	}
 	if err != nil {

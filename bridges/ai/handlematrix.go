@@ -957,13 +957,13 @@ func (oc *AIClient) savePortal(ctx context.Context, portal *bridgev2.Portal, act
 	if oc == nil || portal == nil {
 		return nil
 	}
+	if err := portal.Save(ctx); err != nil {
+		return fmt.Errorf("save portal for %s: %w", action, err)
+	}
 	if meta, ok := portal.Metadata.(*PortalMetadata); ok && meta != nil {
 		if err := saveAIPortalState(ctx, portal, meta); err != nil {
 			return fmt.Errorf("save AI portal state for %s: %w", action, err)
 		}
-	}
-	if err := portal.Save(ctx); err != nil {
-		return fmt.Errorf("save portal for %s: %w", action, err)
 	}
 	return nil
 }

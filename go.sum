@@ -8,8 +8,8 @@ github.com/andybalholm/cascadia v1.3.3 h1:AG2YHrzJIm4BZ19iwJ/DAua6Btl3IwJX+VI4kk
 github.com/andybalholm/cascadia v1.3.3/go.mod h1:xNd9bqTn98Ln4DwST8/nG+H0yuB8Hmgu1YHNnWw0GeA=
 github.com/beeper/bridge-manager v0.14.0 h1:7XeZfHeDiOuwLUe6UiX/HCywthw1s0Q7xhrmDzzW9FA=
 github.com/beeper/bridge-manager v0.14.0/go.mod h1:pherlTADz3wkojdc2AvAsR3mS1yG5jF9/OaxkHqPy4Y=
-github.com/beeper/desktop-api-go v0.2.0 h1:VrwB1FCEiuPycGo6TsYSVVSKQIWFg22xmlRWVJ88E0A=
-github.com/beeper/desktop-api-go v0.2.0/go.mod h1:y9Mk83OdQWo6ldLTcPyaUPrwjkmvy/3QkhHqZLhU/mA=
+github.com/beeper/desktop-api-go v0.5.0 h1:0Myrz8eop5dC3/QseUrbYVIyWkHPGLyU47/lffw/kT4=
+github.com/beeper/desktop-api-go v0.5.0/go.mod h1:y9Mk83OdQWo6ldLTcPyaUPrwjkmvy/3QkhHqZLhU/mA=
 github.com/coder/websocket v1.8.14 h1:9L0p0iKiNOibykf283eHkKUHHrpG7f65OE3BhhO7v9g=
 github.com/coder/websocket v1.8.14/go.mod h1:NX3SzP+inril6yawo5CQXx8+fk145lPDC6pumgx0mVg=
 github.com/coreos/go-systemd/v22 v22.5.0/go.mod h1:Y58oyj3AT4RCenI/lSvhwexgC+NSVTIJ3seZv2GcEnc=

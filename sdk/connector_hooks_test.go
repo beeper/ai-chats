@@ -8,29 +8,11 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/event"
 )
 
 type testSDKClient struct {
+	baseTestClient
 	updated int
-}
-
-func (c *testSDKClient) Connect(context.Context)                           {}
-func (c *testSDKClient) Disconnect()                                       {}
-func (c *testSDKClient) IsLoggedIn() bool                                  { return true }
-func (c *testSDKClient) LogoutRemote(context.Context)                      {}
-func (c *testSDKClient) IsThisUser(context.Context, networkid.UserID) bool { return false }
-func (c *testSDKClient) GetChatInfo(context.Context, *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
-	return nil, nil
-}
-func (c *testSDKClient) GetUserInfo(context.Context, *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
-	return nil, nil
-}
-func (c *testSDKClient) GetCapabilities(context.Context, *bridgev2.Portal) *event.RoomFeatures {
-	return &event.RoomFeatures{}
-}
-func (c *testSDKClient) HandleMatrixMessage(context.Context, *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
-	return nil, nil
 }
 
 type testApprovalHandle struct {

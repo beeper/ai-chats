@@ -66,17 +66,33 @@ func testMatrixReaction(
 	}
 }
 
-func TestApprovalFlow_FinishResolvedQueuesEditAndPlaceholderCleanup(t *testing.T) {
+type testApprovalActors struct {
+	owner  id.UserID
+	roomID id.RoomID
+	portal *bridgev2.Portal
+	login  *bridgev2.UserLogin
+}
+
+func newTestApprovalActors() testApprovalActors {
 	owner := id.UserID("@owner:example.com")
 	roomID := id.RoomID("!room:example.com")
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
-	login := &bridgev2.UserLogin{
-		UserLogin: &database.UserLogin{
-			ID:       networkid.UserLoginID("login"),
-			UserMXID: owner,
+	return testApprovalActors{
+		owner:  owner,
+		roomID: roomID,
+		portal: &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}},
+		login: &bridgev2.UserLogin{
+			UserLogin: &database.UserLogin{
+				ID:       networkid.UserLoginID("login"),
+				UserMXID: owner,
+			},
+			Bridge: &bridgev2.Bridge{},
 		},
-		Bridge: &bridgev2.Bridge{},
 	}
+}
+
+func TestApprovalFlow_FinishResolvedQueuesEditAndPlaceholderCleanup(t *testing.T) {
+	a := newTestApprovalActors()
+	owner, roomID, portal, login := a.owner, a.roomID, a.portal, a.login
 
 	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
 		Login: func() *bridgev2.UserLogin { return login },
@@ -188,16 +204,8 @@ func TestApprovalFlow_ReactionRedactionSenderUsesEmptySenderWithoutPortal(t *tes
 }
 
 func TestApprovalFlow_HandleReaction_DeliveryErrorKeepsPending(t *testing.T) {
-	owner := id.UserID("@owner:example.com")
-	roomID := id.RoomID("!room:example.com")
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
-	login := &bridgev2.UserLogin{
-		UserLogin: &database.UserLogin{
-			ID:       networkid.UserLoginID("login"),
-			UserMXID: owner,
-		},
-		Bridge: &bridgev2.Bridge{},
-	}
+	a := newTestApprovalActors()
+	owner, roomID, portal, login := a.owner, a.roomID, a.portal, a.login
 
 	var redacted bool
 	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
@@ -236,16 +244,8 @@ func TestApprovalFlow_HandleReaction_DeliveryErrorKeepsPending(t *testing.T) {
 }
 
 func TestApprovalFlow_HandleReaction_UnknownPendingShowsUnknown(t *testing.T) {
-	owner := id.UserID("@owner:example.com")
-	roomID := id.RoomID("!room:example.com")
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
-	login := &bridgev2.UserLogin{
-		UserLogin: &database.UserLogin{
-			ID:       networkid.UserLoginID("login"),
-			UserMXID: owner,
-		},
-		Bridge: &bridgev2.Bridge{},
-	}
+	a := newTestApprovalActors()
+	owner, roomID, portal, login := a.owner, a.roomID, a.portal, a.login
 
 	var redacted bool
 	var notice string
@@ -286,16 +286,8 @@ func TestApprovalFlow_HandleReaction_UnknownPendingShowsUnknown(t *testing.T) {
 }
 
 func TestApprovalFlow_HandleReaction_ResolvedPromptUsesMessageStatus(t *testing.T) {
-	owner := id.UserID("@owner:example.com")
-	roomID := id.RoomID("!room:example.com")
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
-	login := &bridgev2.UserLogin{
-		UserLogin: &database.UserLogin{
-			ID:       networkid.UserLoginID("login"),
-			UserMXID: owner,
-		},
-		Bridge: &bridgev2.Bridge{},
-	}
+	a := newTestApprovalActors()
+	owner, roomID, portal, login := a.owner, a.roomID, a.portal, a.login
 
 	var redacted bool
 	var status bridgev2.MessageStatus
@@ -347,9 +339,8 @@ func TestApprovalFlow_HandleReaction_ResolvedPromptUsesMessageStatus(t *testing.
 }
 
 func TestApprovalFlow_HandleReaction_MatchesPromptByMessageID(t *testing.T) {
-	owner := id.UserID("@owner:example.com")
-	roomID := id.RoomID("!room:example.com")
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
+	a := newTestApprovalActors()
+	owner, roomID, portal := a.owner, a.roomID, a.portal
 
 	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{})
 	if _, created := flow.Register("approval-1", time.Minute, &testApprovalFlowData{}); !created {
@@ -376,9 +367,8 @@ func TestApprovalFlow_HandleReaction_MatchesPromptByMessageID(t *testing.T) {
 }
 
 func TestApprovalFlow_HandleReaction_MatchesPromptByEventIDWhenMessageIDMissing(t *testing.T) {
-	owner := id.UserID("@owner:example.com")
-	roomID := id.RoomID("!room:example.com")
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
+	a := newTestApprovalActors()
+	owner, roomID, portal := a.owner, a.roomID, a.portal
 
 	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{})
 	for _, approvalID := range []string{"approval-1", "approval-2"} {
@@ -418,16 +408,8 @@ func TestApprovalFlow_HandleReaction_MatchesPromptByEventIDWhenMessageIDMissing(
 }
 
 func TestApprovalFlow_HandleReactionRemove_ResolvedPromptUsesMessageStatus(t *testing.T) {
-	owner := id.UserID("@owner:example.com")
-	roomID := id.RoomID("!room:example.com")
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
-	login := &bridgev2.UserLogin{
-		UserLogin: &database.UserLogin{
-			ID:       networkid.UserLoginID("login"),
-			UserMXID: owner,
-		},
-		Bridge: &bridgev2.Bridge{},
-	}
+	a := newTestApprovalActors()
+	owner, roomID, portal, login := a.owner, a.roomID, a.portal, a.login
 
 	var status bridgev2.MessageStatus
 	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
@@ -481,16 +463,8 @@ func TestApprovalFlow_HandleReactionRemove_ResolvedPromptUsesMessageStatus(t *te
 }
 
 func TestApprovalFlow_HandleReaction_ResolvedPromptUsesEventIDWhenMessageIDMissing(t *testing.T) {
-	owner := id.UserID("@owner:example.com")
-	roomID := id.RoomID("!room:example.com")
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
-	login := &bridgev2.UserLogin{
-		UserLogin: &database.UserLogin{
-			ID:       networkid.UserLoginID("login"),
-			UserMXID: owner,
-		},
-		Bridge: &bridgev2.Bridge{},
-	}
+	a := newTestApprovalActors()
+	owner, roomID, portal, login := a.owner, a.roomID, a.portal, a.login
 
 	var redacted bool
 	var status bridgev2.MessageStatus
@@ -542,16 +516,8 @@ func TestApprovalFlow_HandleReaction_ResolvedPromptUsesEventIDWhenMessageIDMissi
 }
 
 func TestApprovalFlow_HandleReactionRemove_ResolvedPromptUsesMessageStatusForAlias(t *testing.T) {
-	owner := id.UserID("@owner:example.com")
-	roomID := id.RoomID("!room:example.com")
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
-	login := &bridgev2.UserLogin{
-		UserLogin: &database.UserLogin{
-			ID:       networkid.UserLoginID("login"),
-			UserMXID: owner,
-		},
-		Bridge: &bridgev2.Bridge{},
-	}
+	a := newTestApprovalActors()
+	owner, roomID, portal, login := a.owner, a.roomID, a.portal, a.login
 
 	var status bridgev2.MessageStatus
 	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
@@ -732,16 +698,8 @@ func TestApprovalFlow_ResolvedPromptLookupPrunesExpiredEntries(t *testing.T) {
 }
 
 func TestApprovalFlow_HandleReaction_WrongTargetUniqueApprovalMirrorsDecision(t *testing.T) {
-	owner := id.UserID("@owner:example.com")
-	roomID := id.RoomID("!room:example.com")
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
-	login := &bridgev2.UserLogin{
-		UserLogin: &database.UserLogin{
-			ID:       networkid.UserLoginID("login"),
-			UserMXID: owner,
-		},
-		Bridge: &bridgev2.Bridge{},
-	}
+	a := newTestApprovalActors()
+	owner, roomID, portal, login := a.owner, a.roomID, a.portal, a.login
 
 	var redacted bool
 	mirrorCh := make(chan string, 1)
@@ -805,16 +763,8 @@ func TestApprovalFlow_HandleReaction_WrongTargetUniqueApprovalMirrorsDecision(t 
 }
 
 func TestApprovalFlow_HandleReaction_WrongTargetUniqueApprovalPreservesAliasReaction(t *testing.T) {
-	owner := id.UserID("@owner:example.com")
-	roomID := id.RoomID("!room:example.com")
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
-	login := &bridgev2.UserLogin{
-		UserLogin: &database.UserLogin{
-			ID:       networkid.UserLoginID("login"),
-			UserMXID: owner,
-		},
-		Bridge: &bridgev2.Bridge{},
-	}
+	a := newTestApprovalActors()
+	owner, roomID, portal, login := a.owner, a.roomID, a.portal, a.login
 
 	var redacted bool
 	mirrorCh := make(chan string, 1)
@@ -869,16 +819,8 @@ func TestApprovalFlow_HandleReaction_WrongTargetUniqueApprovalPreservesAliasReac
 }
 
 func TestApprovalFlow_HandleReaction_WrongTargetAmbiguousApprovalUsesMessageStatus(t *testing.T) {
-	owner := id.UserID("@owner:example.com")
-	roomID := id.RoomID("!room:example.com")
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
-	login := &bridgev2.UserLogin{
-		UserLogin: &database.UserLogin{
-			ID:       networkid.UserLoginID("login"),
-			UserMXID: owner,
-		},
-		Bridge: &bridgev2.Bridge{},
-	}
+	a := newTestApprovalActors()
+	owner, roomID, portal, login := a.owner, a.roomID, a.portal, a.login
 
 	var redacted bool
 	var (
@@ -957,16 +899,8 @@ func TestApprovalFlow_HandleReaction_WrongTargetAmbiguousApprovalUsesMessageStat
 }
 
 func TestApprovalFlow_ResolveExternalMirrorsRemoteDecision(t *testing.T) {
-	owner := id.UserID("@owner:example.com")
-	roomID := id.RoomID("!room:example.com")
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
-	login := &bridgev2.UserLogin{
-		UserLogin: &database.UserLogin{
-			ID:       networkid.UserLoginID("login"),
-			UserMXID: owner,
-		},
-		Bridge: &bridgev2.Bridge{},
-	}
+	a := newTestApprovalActors()
+	owner, roomID, portal, login := a.owner, a.roomID, a.portal, a.login
 
 	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
 		Login: func() *bridgev2.UserLogin { return login },
@@ -1024,16 +958,8 @@ func TestApprovalFlow_ResolveExternalMirrorsRemoteDecision(t *testing.T) {
 }
 
 func TestApprovalFlow_ResolveExternalAgentKeepsSelectedPlaceholderReaction(t *testing.T) {
-	owner := id.UserID("@owner:example.com")
-	roomID := id.RoomID("!room:example.com")
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
-	login := &bridgev2.UserLogin{
-		UserLogin: &database.UserLogin{
-			ID:       networkid.UserLoginID("login"),
-			UserMXID: owner,
-		},
-		Bridge: &bridgev2.Bridge{},
-	}
+	a := newTestApprovalActors()
+	owner, roomID, portal, login := a.owner, a.roomID, a.portal, a.login
 
 	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
 		Login: func() *bridgev2.UserLogin { return login },
@@ -1323,9 +1249,8 @@ func TestApprovalFlow_SchedulePromptTimeoutIgnoresReplacedPrompt(t *testing.T) {
 }
 
 func TestApprovalFlow_SendPromptSendFailureCleansUpRegistration(t *testing.T) {
-	owner := id.UserID("@owner:example.com")
-	roomID := id.RoomID("!room:example.com")
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
+	a := newTestApprovalActors()
+	owner, roomID, portal := a.owner, a.roomID, a.portal
 	login := &bridgev2.UserLogin{
 		UserLogin: &database.UserLogin{
 			UserMXID: owner,

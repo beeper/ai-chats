@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"github.com/rs/zerolog"
@@ -34,63 +35,69 @@ func purgeLoginData(ctx context.Context, login *bridgev2.UserLogin) {
 	if client, ok := login.Client.(*AIClient); ok && client != nil {
 		client.purgeLoginIntegrations(ctx, login, bridgeID, loginID)
 	}
-	var logger *zerolog.Logger
-	if ctx != nil {
-		logger = zerolog.Ctx(ctx)
+	logger := &login.Bridge.Log
+	var deleteErrs []error
+	recordDelete := func(query string, args ...any) {
+		if err := execDelete(ctx, db, logger, query, args...); err != nil {
+			deleteErrs = append(deleteErrs, err)
+		}
 	}
 
-	execDelete(ctx, db, logger,
+	recordDelete(
 		`DELETE FROM `+aiSessionsTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
-	execDelete(ctx, db, logger,
+	recordDelete(
 		`DELETE FROM `+aiCronJobsTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
-	execDelete(ctx, db, logger,
+	recordDelete(
 		`DELETE FROM `+aiCronJobRunKeysTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
-	execDelete(ctx, db, logger,
+	recordDelete(
 		`DELETE FROM `+aiManagedHeartbeatsTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
-	execDelete(ctx, db, logger,
+	recordDelete(
 		`DELETE FROM `+aiHeartbeatRunKeysTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
-	execDelete(ctx, db, logger,
+	recordDelete(
 		`DELETE FROM `+aiSystemEventsTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
-	execDelete(ctx, db, logger,
+	recordDelete(
 		`DELETE FROM `+aiInternalMessagesTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
-	execDelete(ctx, db, logger,
+	recordDelete(
 		`DELETE FROM `+aiPortalStateTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
-	execDelete(ctx, db, logger,
+	recordDelete(
 		`DELETE FROM `+aiToolApprovalRulesTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
-	execDelete(ctx, db, logger,
+	recordDelete(
 		`DELETE FROM `+aiLoginStateTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
-	execDelete(ctx, db, logger,
+	recordDelete(
 		`DELETE FROM `+aiLoginConfigTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
-	execDelete(ctx, db, logger,
+	recordDelete(
 		`DELETE FROM `+aiCustomAgentsTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
-	execDelete(ctx, db, logger,
+	recordDelete(
 		`DELETE FROM `+aiTranscriptTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
+	if err := errors.Join(deleteErrs...); err != nil {
+		logger.Warn().Err(err).Str("login_id", loginID).Msg("failed to purge some login-owned AI state")
+	}
 	if client, ok := login.Client.(*AIClient); ok && client != nil {
 		client.clearLoginState(ctx)
 		client.loginConfigMu.Lock()
@@ -99,9 +106,9 @@ func purgeLoginData(ctx context.Context, login *bridgev2.UserLogin) {
 	}
 }
 
-func execDelete(ctx context.Context, db *dbutil.Database, logger *zerolog.Logger, query string, args ...any) {
+func execDelete(ctx context.Context, db *dbutil.Database, logger *zerolog.Logger, query string, args ...any) error {
 	if db == nil {
-		return
+		return nil
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -110,4 +117,5 @@ func execDelete(ctx context.Context, db *dbutil.Database, logger *zerolog.Logger
 	if err != nil && logger != nil {
 		logger.Warn().Err(err).Msg("failed to delete login-owned AI state")
 	}
+	return err
 }

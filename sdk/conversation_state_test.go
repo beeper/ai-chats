@@ -2,11 +2,8 @@ package sdk
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3"
-	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -15,23 +12,6 @@ import (
 
 func setupConversationStateTestPortal(t *testing.T, receiver networkid.UserLoginID, portalID networkid.PortalID) *bridgev2.Portal {
 	t.Helper()
-
-	raw, err := sql.Open("sqlite3", ":memory:")
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
-	raw.SetMaxOpenConns(1)
-	t.Cleanup(func() { _ = raw.Close() })
-
-	db, err := dbutil.NewWithDB(raw, "sqlite3")
-	if err != nil {
-		t.Fatalf("wrap db: %v", err)
-	}
-	bridgeDB := database.New(networkid.BridgeID("bridge"), database.MetaTypes{}, db)
-	if err = bridgeDB.Upgrade(context.Background()); err != nil {
-		t.Fatalf("upgrade bridge db: %v", err)
-	}
-
 	return &bridgev2.Portal{
 		Portal: &database.Portal{
 			PortalKey: networkid.PortalKey{
@@ -40,7 +20,7 @@ func setupConversationStateTestPortal(t *testing.T, receiver networkid.UserLogin
 			},
 			MXID: id.RoomID("!room:test"),
 		},
-		Bridge: &bridgev2.Bridge{DB: bridgeDB},
+		Bridge: &bridgev2.Bridge{DB: newTestBridgeDB(t)},
 	}
 }
 

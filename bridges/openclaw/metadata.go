@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
@@ -101,27 +100,12 @@ type openClawPersistedLoginState struct {
 	LastSyncAt      int64
 }
 
-type openClawLegacyLoginState struct {
-	GatewayToken    string `json:"gateway_token,omitempty"`
-	GatewayPassword string `json:"gateway_password,omitempty"`
-	DeviceToken     string `json:"device_token,omitempty"`
-	SessionsSynced  bool   `json:"sessions_synced,omitempty"`
-	LastSyncAt      int64  `json:"last_sync_at_ms,omitempty"`
-}
-
 var openClawPortalStateBlob = aidb.JSONBlobTable{
 	TableName: "openclaw_portal_state",
 	KeyColumn: "portal_key",
 }
 
-type openClawPortalDBScope struct {
-	db        *dbutil.Database
-	bridgeID  string
-	loginID   string
-	portalKey string
-}
-
-func openClawPortalDBScopeFor(portal *bridgev2.Portal, login *bridgev2.UserLogin) *openClawPortalDBScope {
+func openClawPortalBlobScope(portal *bridgev2.Portal, login *bridgev2.UserLogin) *aidb.BlobScope {
 	if portal == nil || login == nil || login.Bridge == nil || login.Bridge.DB == nil || login.Bridge.DB.Database == nil {
 		return nil
 	}
@@ -131,80 +115,21 @@ func openClawPortalDBScopeFor(portal *bridgev2.Portal, login *bridgev2.UserLogin
 	if bridgeID == "" || loginID == "" || portalKey == "" {
 		return nil
 	}
-	return &openClawPortalDBScope{
-		db:        login.Bridge.DB.Database,
-		bridgeID:  bridgeID,
-		loginID:   loginID,
-		portalKey: portalKey,
+	return &aidb.BlobScope{
+		Table:    &openClawPortalStateBlob,
+		DB:       login.Bridge.DB.Database,
+		BridgeID: bridgeID,
+		LoginID:  loginID,
+		Key:      portalKey,
 	}
 }
 
 func loadOpenClawPortalState(ctx context.Context, portal *bridgev2.Portal, login *bridgev2.UserLogin) (*openClawPortalState, error) {
-	scope := openClawPortalDBScopeFor(portal, login)
-	if scope == nil {
-		return &openClawPortalState{}, nil
-	}
-	if err := openClawPortalStateBlob.Ensure(ctx, scope.db); err != nil {
-		return nil, err
-	}
-	state, err := aidb.Load[openClawPortalState](&openClawPortalStateBlob, ctx, scope.db, scope.bridgeID, scope.loginID, scope.portalKey)
-	if err != nil {
-		return nil, err
-	}
-	if state == nil {
-		if legacy := openClawPortalStateFromMetadata(portal.Metadata); legacy != nil {
-			if err := saveOpenClawPortalState(ctx, portal, login, legacy); err != nil {
-				return nil, err
-			}
-			return legacy, nil
-		}
-		return &openClawPortalState{}, nil
-	}
-	return state, nil
+	return aidb.LoadScopedOrNew[openClawPortalState](ctx, openClawPortalBlobScope(portal, login))
 }
 
 func saveOpenClawPortalState(ctx context.Context, portal *bridgev2.Portal, login *bridgev2.UserLogin, state *openClawPortalState) error {
-	scope := openClawPortalDBScopeFor(portal, login)
-	if scope == nil || state == nil {
-		return nil
-	}
-	if err := openClawPortalStateBlob.Ensure(ctx, scope.db); err != nil {
-		return err
-	}
-	return aidb.Save(&openClawPortalStateBlob, ctx, scope.db, scope.bridgeID, scope.loginID, scope.portalKey, state)
-}
-
-func openClawPortalStateFromMetadata(metadata any) *openClawPortalState {
-	if metadata == nil {
-		return nil
-	}
-	if typed, ok := metadata.(*openClawPortalState); ok && typed != nil {
-		clone := *typed
-		return &clone
-	}
-	data, err := json.Marshal(metadata)
-	if err != nil {
-		return nil
-	}
-	var state openClawPortalState
-	if err = json.Unmarshal(data, &state); err != nil {
-		return nil
-	}
-	if openClawPortalStateIsEmpty(&state) {
-		return nil
-	}
-	return &state
-}
-
-func openClawPortalStateIsEmpty(state *openClawPortalState) bool {
-	if state == nil {
-		return true
-	}
-	data, err := json.Marshal(state)
-	if err != nil {
-		return true
-	}
-	return string(data) == "{}"
+	return aidb.SaveScoped(ctx, openClawPortalBlobScope(portal, login), state)
 }
 
 type GhostMetadata struct {
@@ -260,13 +185,7 @@ func loginMetadata(login *bridgev2.UserLogin) *UserLoginMetadata {
 	return sdk.EnsureLoginMetadata[UserLoginMetadata](login)
 }
 
-type openClawLoginDBScope struct {
-	db       *dbutil.Database
-	bridgeID string
-	loginID  string
-}
-
-func openClawLoginDBScopeFor(login *bridgev2.UserLogin) *openClawLoginDBScope {
+func openClawLoginBlobScope(login *bridgev2.UserLogin) *aidb.BlobScope {
 	if login == nil || login.Bridge == nil || login.Bridge.DB == nil || login.Bridge.DB.Database == nil {
 		return nil
 	}
@@ -275,19 +194,19 @@ func openClawLoginDBScopeFor(login *bridgev2.UserLogin) *openClawLoginDBScope {
 	if bridgeID == "" || loginID == "" {
 		return nil
 	}
-	return &openClawLoginDBScope{
-		db:       login.Bridge.DB.Database,
-		bridgeID: bridgeID,
-		loginID:  loginID,
+	return &aidb.BlobScope{
+		DB:       login.Bridge.DB.Database,
+		BridgeID: bridgeID,
+		LoginID:  loginID,
 	}
 }
 
 func ensureOpenClawLoginStateTable(ctx context.Context, login *bridgev2.UserLogin) error {
-	scope := openClawLoginDBScopeFor(login)
+	scope := openClawLoginBlobScope(login)
 	if scope == nil {
 		return nil
 	}
-	_, err := scope.db.Exec(ctx, `
+	_, err := scope.DB.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS openclaw_login_state (
 			bridge_id TEXT NOT NULL,
 			login_id TEXT NOT NULL,
@@ -304,7 +223,7 @@ func ensureOpenClawLoginStateTable(ctx context.Context, login *bridgev2.UserLogi
 }
 
 func loadOpenClawLoginState(ctx context.Context, login *bridgev2.UserLogin) (*openClawPersistedLoginState, error) {
-	scope := openClawLoginDBScopeFor(login)
+	scope := openClawLoginBlobScope(login)
 	if scope == nil {
 		return &openClawPersistedLoginState{}, nil
 	}
@@ -312,11 +231,11 @@ func loadOpenClawLoginState(ctx context.Context, login *bridgev2.UserLogin) (*op
 		return nil, err
 	}
 	state := &openClawPersistedLoginState{}
-	err := scope.db.QueryRow(ctx, `
+	err := scope.DB.QueryRow(ctx, `
 		SELECT gateway_token, gateway_password, device_token, sessions_synced, last_sync_at_ms
 		FROM openclaw_login_state
 		WHERE bridge_id=$1 AND login_id=$2
-	`, scope.bridgeID, scope.loginID).Scan(
+	`, scope.BridgeID, scope.LoginID).Scan(
 		&state.GatewayToken,
 		&state.GatewayPassword,
 		&state.DeviceToken,
@@ -324,12 +243,6 @@ func loadOpenClawLoginState(ctx context.Context, login *bridgev2.UserLogin) (*op
 		&state.LastSyncAt,
 	)
 	if err == sql.ErrNoRows {
-		if legacy := openClawLoginStateFromMetadata(login); legacy != nil {
-			if saveErr := saveOpenClawLoginState(ctx, login, legacy); saveErr != nil {
-				return nil, saveErr
-			}
-			return legacy, nil
-		}
 		return state, nil
 	}
 	if err != nil {
@@ -339,14 +252,14 @@ func loadOpenClawLoginState(ctx context.Context, login *bridgev2.UserLogin) (*op
 }
 
 func saveOpenClawLoginState(ctx context.Context, login *bridgev2.UserLogin, state *openClawPersistedLoginState) error {
-	scope := openClawLoginDBScopeFor(login)
+	scope := openClawLoginBlobScope(login)
 	if scope == nil || state == nil {
 		return nil
 	}
 	if err := ensureOpenClawLoginStateTable(ctx, login); err != nil {
 		return err
 	}
-	_, err := scope.db.Exec(ctx, `
+	_, err := scope.DB.Exec(ctx, `
 		INSERT INTO openclaw_login_state (
 			bridge_id, login_id, gateway_token, gateway_password, device_token, sessions_synced, last_sync_at_ms, updated_at_ms
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -358,8 +271,8 @@ func saveOpenClawLoginState(ctx context.Context, login *bridgev2.UserLogin, stat
 			last_sync_at_ms=excluded.last_sync_at_ms,
 			updated_at_ms=excluded.updated_at_ms
 	`,
-		scope.bridgeID,
-		scope.loginID,
+		scope.BridgeID,
+		scope.LoginID,
 		state.GatewayToken,
 		state.GatewayPassword,
 		state.DeviceToken,
@@ -368,30 +281,6 @@ func saveOpenClawLoginState(ctx context.Context, login *bridgev2.UserLogin, stat
 		time.Now().UnixMilli(),
 	)
 	return err
-}
-
-func openClawLoginStateFromMetadata(login *bridgev2.UserLogin) *openClawPersistedLoginState {
-	if login == nil || login.Metadata == nil {
-		return nil
-	}
-	var legacy openClawLegacyLoginState
-	data, err := json.Marshal(login.Metadata)
-	if err != nil {
-		return nil
-	}
-	if err = json.Unmarshal(data, &legacy); err != nil {
-		return nil
-	}
-	if legacy.GatewayToken == "" && legacy.GatewayPassword == "" && legacy.DeviceToken == "" && !legacy.SessionsSynced && legacy.LastSyncAt == 0 {
-		return nil
-	}
-	return &openClawPersistedLoginState{
-		GatewayToken:    legacy.GatewayToken,
-		GatewayPassword: legacy.GatewayPassword,
-		DeviceToken:     legacy.DeviceToken,
-		SessionsSynced:  legacy.SessionsSynced,
-		LastSyncAt:      legacy.LastSyncAt,
-	}
 }
 
 func portalMeta(portal *bridgev2.Portal) *PortalMetadata {

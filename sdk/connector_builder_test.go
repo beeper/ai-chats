@@ -202,26 +202,11 @@ func TestConnectorBaseDefaultsBridgeInfoAndCapabilities(t *testing.T) {
 }
 
 type fakeClient struct {
+	baseTestClient
 	disconnected bool
 }
 
-func (c *fakeClient) Connect(context.Context)                           {}
-func (c *fakeClient) Disconnect()                                       { c.disconnected = true }
-func (c *fakeClient) IsLoggedIn() bool                                  { return true }
-func (c *fakeClient) LogoutRemote(context.Context)                      {}
-func (c *fakeClient) IsThisUser(context.Context, networkid.UserID) bool { return false }
-func (c *fakeClient) GetChatInfo(context.Context, *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
-	return nil, nil
-}
-func (c *fakeClient) GetUserInfo(context.Context, *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
-	return nil, nil
-}
-func (c *fakeClient) GetCapabilities(context.Context, *bridgev2.Portal) *event.RoomFeatures {
-	return &event.RoomFeatures{}
-}
-func (c *fakeClient) HandleMatrixMessage(context.Context, *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
-	return nil, nil
-}
+func (c *fakeClient) Disconnect() { c.disconnected = true }
 
 type fakeOtherClient struct{ fakeClient }
 

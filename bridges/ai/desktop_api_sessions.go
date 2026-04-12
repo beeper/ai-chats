@@ -280,7 +280,7 @@ func (oc *AIClient) listDesktopSessions(ctx context.Context, instance string, op
 			account.AccountID = accountID
 		}
 		if len(opts.Networks) > 0 {
-			if !desktopNetworkFilterMatches(opts.Networks, account.Network) {
+			if !desktopNetworkFilterMatches(opts.Networks, desktopAccountNetwork(account)) {
 				continue
 			}
 		}
@@ -300,7 +300,7 @@ func (oc *AIClient) listDesktopSessions(ctx context.Context, instance string, op
 		}
 
 		sessionKey := normalizeDesktopSessionKeyWithInstance(instance, chat.ID)
-		networkName := desktopSessionChannelForNetwork(account.Network)
+		networkName := desktopSessionChannelForNetwork(desktopAccountNetwork(account))
 		entry := map[string]any{
 			"sessionKey": sessionKey,
 			"kind":       kind,
@@ -484,7 +484,7 @@ func buildDesktopSessionMessages(messages []shared.Message, opts desktopMessageB
 		if msg.AccountID != "" && len(opts.Accounts) > 0 {
 			if account, ok := opts.Accounts[msg.AccountID]; ok {
 				entry["account"] = account
-				if network := strings.TrimSpace(account.Network); network != "" {
+				if network := strings.TrimSpace(desktopAccountNetwork(account)); network != "" {
 					entry["network"] = network
 				}
 				entry["accountUser"] = account.User
@@ -849,7 +849,7 @@ func (oc *AIClient) archiveDesktopChat(ctx context.Context, instance, chatID str
 	if err != nil {
 		return err
 	}
-	_, err = client.Chats.Archive(ctx, strings.TrimSpace(chatID), beeperdesktopapi.ChatArchiveParams{
+	err = client.Chats.Archive(ctx, strings.TrimSpace(chatID), beeperdesktopapi.ChatArchiveParams{
 		Archived: beeperdesktopapi.Bool(archived),
 	})
 	return err
@@ -860,7 +860,7 @@ func (oc *AIClient) setDesktopChatReminder(ctx context.Context, instance, chatID
 	if err != nil {
 		return err
 	}
-	_, err = client.Chats.Reminders.New(ctx, strings.TrimSpace(chatID), beeperdesktopapi.ChatReminderNewParams{
+	err = client.Chats.Reminders.New(ctx, strings.TrimSpace(chatID), beeperdesktopapi.ChatReminderNewParams{
 		Reminder: beeperdesktopapi.ChatReminderNewParamsReminder{
 			RemindAtMs:               float64(remindAtMs),
 			DismissOnIncomingMessage: beeperdesktopapi.Bool(dismissOnIncoming),
@@ -874,7 +874,7 @@ func (oc *AIClient) clearDesktopChatReminder(ctx context.Context, instance, chat
 	if err != nil {
 		return err
 	}
-	_, err = client.Chats.Reminders.Delete(ctx, strings.TrimSpace(chatID))
+	err = client.Chats.Reminders.Delete(ctx, strings.TrimSpace(chatID))
 	return err
 }
 
@@ -959,15 +959,15 @@ func filterDesktopChatsByResolveOptions(chats []beeperdesktopapi.Chat, accounts 
 		if accountID != "" {
 			// Accept raw account IDs and canonical account IDs from sessions_list/account hints.
 			if chatAccountID != accountID {
-				single := formatDesktopAccountID(false, instance, account.Network, chatAccountID)
-				multi := formatDesktopAccountID(true, instance, account.Network, chatAccountID)
+				single := formatDesktopAccountID(false, instance, desktopAccountNetwork(account), chatAccountID)
+				multi := formatDesktopAccountID(true, instance, desktopAccountNetwork(account), chatAccountID)
 				if accountID != single && accountID != multi {
 					continue
 				}
 			}
 		}
 		if network != "" {
-			if !desktopNetworkFilterMatches(networkFilter, account.Network) {
+			if !desktopNetworkFilterMatches(networkFilter, desktopAccountNetwork(account)) {
 				continue
 			}
 		}
@@ -982,8 +982,8 @@ func desktopChatLabelCandidates(chat beeperdesktopapi.Chat, account beeperdeskto
 		return nil
 	}
 	accountID := strings.TrimSpace(chat.AccountID)
-	network := canonicalDesktopNetwork(account.Network)
-	rawNetwork := normalizeDesktopNetworkToken(account.Network)
+	network := canonicalDesktopNetwork(desktopAccountNetwork(account))
+	rawNetwork := normalizeDesktopNetworkToken(desktopAccountNetwork(account))
 	candidates := []string{title}
 	if accountID != "" {
 		candidates = append(candidates, accountID+":"+title, accountID+"/"+title)
@@ -1009,7 +1009,7 @@ func describeDesktopChatForLabel(chat beeperdesktopapi.Chat, account beeperdeskt
 		title = strings.TrimSpace(chat.ID)
 	}
 	accountID := strings.TrimSpace(chat.AccountID)
-	network := strings.TrimSpace(account.Network)
+	network := strings.TrimSpace(desktopAccountNetwork(account))
 	if accountID == "" && network == "" {
 		return title
 	}
@@ -1046,7 +1046,7 @@ func desktopSessionAccountID(areThereMultipleDesktopInstances bool, instance str
 	if rawAccountID == "" {
 		return ""
 	}
-	return formatDesktopAccountID(areThereMultipleDesktopInstances, instance, account.Network, rawAccountID)
+	return formatDesktopAccountID(areThereMultipleDesktopInstances, instance, desktopAccountNetwork(account), rawAccountID)
 }
 
 func (oc *AIClient) focusDesktop(ctx context.Context, instance string, params desktopFocusParams) (*beeperdesktopapi.FocusResponse, error) {

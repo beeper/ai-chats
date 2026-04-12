@@ -109,26 +109,14 @@ func loadLoginRuntimeState(ctx context.Context, client *AIClient) (*loginRuntime
 	if err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(modelCacheJSON) != "" {
-		var modelCache ModelCache
-		if err = json.Unmarshal([]byte(modelCacheJSON), &modelCache); err != nil {
-			return nil, err
-		}
-		state.ModelCache = &modelCache
+	if state.ModelCache, err = unmarshalJSONField[ModelCache](modelCacheJSON); err != nil {
+		return nil, err
 	}
-	if strings.TrimSpace(gravatarJSON) != "" {
-		var gravatar GravatarState
-		if err = json.Unmarshal([]byte(gravatarJSON), &gravatar); err != nil {
-			return nil, err
-		}
-		state.Gravatar = &gravatar
+	if state.Gravatar, err = unmarshalJSONField[GravatarState](gravatarJSON); err != nil {
+		return nil, err
 	}
-	if strings.TrimSpace(fileAnnotationJSON) != "" {
-		var cache map[string]FileAnnotation
-		if err = json.Unmarshal([]byte(fileAnnotationJSON), &cache); err != nil {
-			return nil, err
-		}
-		state.FileAnnotationCache = cache
+	if state.FileAnnotationCache, err = unmarshalMapJSONField[string, FileAnnotation](fileAnnotationJSON); err != nil {
+		return nil, err
 	}
 	return state, nil
 }
@@ -200,7 +188,7 @@ func (oc *AIClient) ensureLoginStateLoaded(ctx context.Context) *loginRuntimeSta
 	state, err := loadLoginRuntimeState(ctx, oc)
 	if err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to load AI login runtime state")
-		state = &loginRuntimeState{}
+		return &loginRuntimeState{}
 	}
 	oc.loginState = state
 	return oc.loginState

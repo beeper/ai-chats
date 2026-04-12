@@ -32,6 +32,9 @@ func openClawPortalKey(loginID networkid.UserLoginID, gatewayID, sessionKey stri
 }
 
 func openClawScopedGhostUserID(loginID networkid.UserLoginID, agentID string) networkid.UserID {
+	if strings.TrimSpace(string(loginID)) == "" {
+		return openClawGhostUserID(agentID)
+	}
 	trimmed := openclawconv.CanonicalAgentID(agentID)
 	if trimmed == "" {
 		trimmed = "gateway"
