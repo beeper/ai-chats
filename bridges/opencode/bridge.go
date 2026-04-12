@@ -27,7 +27,6 @@ type Host interface {
 	EmitOpenCodeStreamEvent(ctx context.Context, portal *bridgev2.Portal, turnID, agentID string, part map[string]any)
 	FinishOpenCodeStream(turnID string)
 	DownloadAndEncodeMedia(ctx context.Context, mediaURL string, file *event.EncryptedFileInfo, maxMB int) (string, string, error)
-	SetRoomName(ctx context.Context, portal *bridgev2.Portal, name string) error
 	SenderForOpenCode(instanceID string, fromMe bool) bridgev2.EventSender
 	CleanupPortal(ctx context.Context, portal *bridgev2.Portal, reason string)
 	PortalMeta(portal *bridgev2.Portal) *PortalMeta
@@ -218,24 +217,20 @@ func (b *Bridge) queueOpenCodeSessionResync(instanceID string, session api.Sessi
 	b.queueRemoteEvent(buildOpenCodeSessionResync(login.ID, instanceID, session))
 }
 
-func (b *Bridge) listAllChatPortals(ctx context.Context) ([]*bridgev2.Portal, error) {
-	if b == nil || b.host == nil {
+func (b *Bridge) listInstanceChatPortals(ctx context.Context, inst *openCodeInstance) ([]*bridgev2.Portal, error) {
+	if b == nil || b.host == nil || inst == nil {
 		return nil, nil
 	}
 	login := b.host.GetUserLogin()
-	if login == nil || login.Bridge == nil || login.Bridge.DB == nil {
+	if login == nil || login.Bridge == nil {
 		return nil, nil
 	}
-	allDBPortals, err := login.Bridge.DB.Portal.GetAll(ctx)
-	if err != nil {
-		return nil, err
-	}
 	var portals []*bridgev2.Portal
-	for _, dbPortal := range allDBPortals {
-		if dbPortal.Receiver != login.ID {
+	for _, sessionID := range inst.sessionIDs() {
+		if strings.TrimSpace(sessionID) == "" {
 			continue
 		}
-		portal, err := login.Bridge.GetPortalByKey(ctx, dbPortal.PortalKey)
+		portal, err := login.Bridge.GetPortalByKey(ctx, OpenCodePortalKey(login.ID, inst.cfg.ID, sessionID))
 		if err != nil {
 			return nil, err
 		}

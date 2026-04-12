@@ -719,7 +719,7 @@ func (h *runtimeIntegrationHost) SessionPortals(ctx context.Context, loginID str
 	return out, nil
 }
 
-func (h *runtimeIntegrationHost) StateDB() *dbutil.Database {
+func (h *runtimeIntegrationHost) MemoryStateDB() *dbutil.Database {
 	if h == nil || h.client == nil {
 		return nil
 	}

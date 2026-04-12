@@ -269,6 +269,7 @@ func (m *OpenCodeManager) connectInstanceClient(ctx context.Context, cfg *OpenCo
 		client:         client,
 		process:        proc,
 		connected:      true,
+		knownSessions:  make(map[string]struct{}),
 		seenMsg:        make(map[string]map[string]string),
 		seenPart:       make(map[string]map[string]*openCodePartState),
 		partsByMessage: make(map[string]map[string]map[string]struct{}),
@@ -501,6 +502,7 @@ func (m *OpenCodeManager) syncSessions(ctx context.Context, inst *openCodeInstan
 // syncSingleSession ensures the portal exists for a single session and queues
 // a resync if the room already existed before the call.
 func (m *OpenCodeManager) syncSingleSession(ctx context.Context, inst *openCodeInstance, session api.Session) error {
+	inst.rememberSession(strings.TrimSpace(session.ID))
 	hadRoom := false
 	if portal := m.bridge.findOpenCodePortal(ctx, inst.cfg.ID, session.ID); portal != nil && portal.MXID != "" {
 		hadRoom = true
@@ -646,6 +648,7 @@ func (m *OpenCodeManager) handleSessionDeleted(ctx context.Context, inst *openCo
 		m.log().Warn().Err(err).Msg("Failed to decode session delete event")
 		return
 	}
+	inst.forgetSession(strings.TrimSpace(session.ID))
 	m.bridge.removeOpenCodeSessionPortal(ctx, inst.cfg.ID, session.ID, "opencode session deleted")
 }
 
@@ -1222,7 +1225,7 @@ func (m *OpenCodeManager) applyConnectedState(inst *openCodeInstance, connected 
 		return
 	}
 	ctx := login.Bridge.BackgroundCtx
-	portals, err := m.bridge.listAllChatPortals(ctx)
+	portals, err := m.bridge.listInstanceChatPortals(ctx, inst)
 	if err != nil {
 		return
 	}

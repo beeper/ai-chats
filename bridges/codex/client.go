@@ -50,12 +50,12 @@ func codexTurnKey(threadID, turnID string) string {
 }
 
 type codexActiveTurn struct {
-	portal   *bridgev2.Portal
+	portal      *bridgev2.Portal
 	portalState *codexPortalState
 	streamState *streamingState
-	threadID string
-	turnID   string
-	model    string
+	threadID    string
+	turnID      string
+	model       string
 }
 
 type codexPendingMessage struct {
@@ -371,7 +371,7 @@ func isManagedCodexTempDirPath(path string) bool {
 	return false
 }
 
-func (cc *CodexClient) GetChatInfo(_ context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
+func (cc *CodexClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	meta := portalMeta(portal)
 	if meta == nil || !meta.IsCodexRoom {
 		return sdk.BuildChatInfoWithFallback("", portal.Name, "Codex", portal.Topic), nil
@@ -1412,9 +1412,9 @@ func (cc *CodexClient) dispatchNotifications() {
 		key := codexTurnKey(threadID, turnID)
 		if evt.Method == "turn/completed" {
 			cc.activeMu.Lock()
-		if active := cc.activeTurns[key]; active != nil && (active.streamState == nil || active.streamState.turn == nil) {
-			delete(cc.activeTurns, key)
-		}
+			if active := cc.activeTurns[key]; active != nil && (active.streamState == nil || active.streamState.turn == nil) {
+				delete(cc.activeTurns, key)
+			}
 			cc.activeMu.Unlock()
 		}
 
@@ -1482,7 +1482,6 @@ func (cc *CodexClient) backgroundContext(ctx context.Context) context.Context {
 }
 
 func (cc *CodexClient) bootstrap(ctx context.Context) {
-	cc.waitForLoginPersisted(ctx)
 	syncSucceeded := true
 	if err := cc.ensureWelcomeCodexChat(cc.backgroundContext(ctx)); err != nil {
 		cc.log.Warn().Err(err).Msg("Failed to ensure default Codex chat during bootstrap")
@@ -1495,26 +1494,6 @@ func (cc *CodexClient) bootstrap(ctx context.Context) {
 	meta := loginMetadata(cc.UserLogin)
 	meta.ChatsSynced = syncSucceeded
 	_ = cc.UserLogin.Save(ctx)
-}
-
-func (cc *CodexClient) waitForLoginPersisted(ctx context.Context) {
-	ticker := time.NewTicker(200 * time.Millisecond)
-	defer ticker.Stop()
-	timeout := time.After(60 * time.Second)
-	for {
-		_, err := cc.UserLogin.Bridge.DB.UserLogin.GetByID(ctx, cc.UserLogin.ID)
-		if err == nil {
-			return
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-timeout:
-			cc.log.Warn().Msg("Timed out waiting for login to persist, continuing anyway")
-			return
-		case <-ticker.C:
-		}
-	}
 }
 
 func (cc *CodexClient) composeCodexChatInfo(portal *bridgev2.Portal, portalState *codexPortalState, canBackfill bool) *bridgev2.ChatInfo {
@@ -2220,8 +2199,8 @@ func (cc *CodexClient) resolveApprovalForActiveTurn(
 	approvalID := codexApprovalID(req, params.ApprovalID)
 
 	turn := (*sdk.Turn)(nil)
-	if active.state != nil {
-		turn = active.state.turn
+	if active.streamState != nil {
+		turn = active.streamState.turn
 	}
 	if turn != nil {
 		turn.Writer().Tools().EnsureInputStart(ctx, toolCallID, inputMap, sdk.ToolInputOptions{
@@ -2229,7 +2208,7 @@ func (cc *CodexClient) resolveApprovalForActiveTurn(
 			ProviderExecuted: true,
 		})
 	}
-	handle := cc.requestSDKApproval(ctx, active.portal, active.state, turn, sdk.ApprovalRequest{
+	handle := cc.requestSDKApproval(ctx, active.portal, active.streamState, turn, sdk.ApprovalRequest{
 		ApprovalID:   approvalID,
 		ToolCallID:   toolCallID,
 		ToolName:     toolName,

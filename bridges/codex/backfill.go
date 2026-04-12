@@ -161,25 +161,24 @@ func (cc *CodexClient) existingCodexPortalsByThreadID(ctx context.Context) (map[
 	if cc == nil || cc.UserLogin == nil || cc.UserLogin.Bridge == nil || cc.UserLogin.Bridge.DB == nil {
 		return map[string]*bridgev2.Portal{}, nil
 	}
-	userPortals, err := cc.UserLogin.Bridge.DB.UserPortal.GetAllForLogin(ctx, cc.UserLogin.UserLogin)
+	records, err := listCodexPortalStateRecords(ctx, cc.UserLogin)
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string]*bridgev2.Portal, len(userPortals))
-	for _, userPortal := range userPortals {
-		if userPortal == nil {
+	out := make(map[string]*bridgev2.Portal, len(records))
+	for _, record := range records {
+		if record.State == nil {
 			continue
 		}
-		portal, err := cc.UserLogin.Bridge.GetExistingPortalByKey(ctx, userPortal.Portal)
+		threadID := strings.TrimSpace(record.State.CodexThreadID)
+		if threadID == "" {
+			continue
+		}
+		portal, err := cc.UserLogin.Bridge.GetExistingPortalByKey(ctx, record.PortalKey)
 		if err != nil || portal == nil {
 			continue
 		}
-		meta := portalMeta(portal)
-		if meta == nil || !meta.IsCodexRoom {
-			continue
-		}
-		threadID := strings.TrimSpace(meta.CodexThreadID)
-		if threadID == "" {
+		if meta := portalMeta(portal); meta == nil || !meta.IsCodexRoom {
 			continue
 		}
 		if _, exists := out[threadID]; exists {
@@ -215,22 +214,25 @@ func (cc *CodexClient) ensureCodexThreadPortal(ctx context.Context, existing *br
 	if portal.Metadata == nil {
 		portal.Metadata = &PortalMetadata{}
 	}
-	meta := portalMeta(portal)
-	meta.IsCodexRoom = true
-	meta.CodexThreadID = threadID
-	meta.ManagedImport = true
-	if cwd := strings.TrimSpace(thread.Cwd); cwd != "" {
-		meta.CodexCwd = cwd
+	portalMeta(portal).IsCodexRoom = true
+	state, err := loadCodexPortalState(ctx, portal)
+	if err != nil {
+		return nil, false, err
 	}
-	meta.AwaitingCwdSetup = strings.TrimSpace(meta.CodexCwd) == ""
+	state.CodexThreadID = threadID
+	state.ManagedImport = true
+	if cwd := strings.TrimSpace(thread.Cwd); cwd != "" {
+		state.CodexCwd = cwd
+	}
+	state.AwaitingCwdSetup = strings.TrimSpace(state.CodexCwd) == ""
 
 	title := codexThreadTitle(thread)
 	if title == "" {
 		title = "Codex"
 	}
-	meta.Title = title
-	if meta.Slug == "" {
-		meta.Slug = codexThreadSlug(threadID)
+	state.Title = title
+	if state.Slug == "" {
+		state.Slug = codexThreadSlug(threadID)
 	}
 
 	if err := sdk.ConfigureDMPortal(ctx, sdk.ConfigureDMPortalParams{
@@ -241,7 +243,7 @@ func (cc *CodexClient) ensureCodexThreadPortal(ctx context.Context, existing *br
 	}); err != nil {
 		return nil, false, err
 	}
-	info := cc.composeCodexChatInfo(portal, title, true)
+	info := cc.composeCodexChatInfo(portal, state, true)
 	created, err = sdk.EnsurePortalLifecycle(ctx, sdk.PortalLifecycleOptions{
 		Login:             cc.UserLogin,
 		Portal:            portal,
@@ -254,16 +256,16 @@ func (cc *CodexClient) ensureCodexThreadPortal(ctx context.Context, existing *br
 		return nil, false, err
 	}
 	if created {
-		if meta.AwaitingCwdSetup {
+		if state.AwaitingCwdSetup {
 			cc.sendSystemNotice(ctx, portal, "This imported conversation needs a working directory. Send an absolute path or `~/...`.")
 		}
 	} else {
 		cc.UserLogin.Bridge.WakeupBackfillQueue()
 	}
-	if err := portal.Save(ctx); err != nil {
+	if err := saveCodexPortalState(ctx, portal, state); err != nil {
 		return nil, false, err
 	}
-	cc.syncCodexRoomTopic(ctx, portal, meta)
+	cc.syncCodexRoomTopic(ctx, portal, state)
 
 	return portal, created, nil
 }
@@ -364,11 +366,14 @@ func (cc *CodexClient) FetchMessages(ctx context.Context, params bridgev2.FetchM
 	if params.Portal == nil || params.ThreadRoot != "" {
 		return nil, nil
 	}
-	meta := portalMeta(params.Portal)
-	if meta == nil || !meta.IsCodexRoom {
+	if meta := portalMeta(params.Portal); meta == nil || !meta.IsCodexRoom {
 		return nil, nil
 	}
-	threadID := strings.TrimSpace(meta.CodexThreadID)
+	state, err := loadCodexPortalState(ctx, params.Portal)
+	if err != nil {
+		return nil, err
+	}
+	threadID := strings.TrimSpace(state.CodexThreadID)
 	if threadID == "" {
 		return nil, nil
 	}

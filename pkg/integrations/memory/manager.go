@@ -111,11 +111,22 @@ var memoryManagerCache = struct {
 	managers: make(map[string]*MemorySearchManager),
 }
 
+func resolveStateDB(host iruntime.Host) *dbutil.Database {
+	if host == nil {
+		return nil
+	}
+	provider, ok := host.(stateDBProvider)
+	if !ok {
+		return nil
+	}
+	return provider.MemoryStateDB()
+}
+
 func GetMemorySearchManager(host iruntime.Host, agentID string) (*MemorySearchManager, string) {
 	if host == nil {
 		return nil, "memory search unavailable"
 	}
-	db := host.StateDB()
+	db := resolveStateDB(host)
 	if db == nil {
 		return nil, "memory search unavailable"
 	}

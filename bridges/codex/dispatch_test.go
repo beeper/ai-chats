@@ -131,12 +131,12 @@ func TestCodex_Dispatch_RoutesTurnCompletedByNestedTurnID(t *testing.T) {
 func TestCodexRestoreRecoveredActiveTurns_RegistersInProgressTurns(t *testing.T) {
 	roomID := id.RoomID("!room:example.com")
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
-	meta := &PortalMetadata{CodexThreadID: "thr1"}
+	state := &codexPortalState{CodexThreadID: "thr1"}
 	cc := &CodexClient{
 		activeTurns: make(map[string]*codexActiveTurn),
 	}
 
-	cc.restoreRecoveredActiveTurns(portal, meta, codexThread{
+	cc.restoreRecoveredActiveTurns(portal, state, codexThread{
 		ID: "thr1",
 		Turns: []codexTurn{
 			{ID: "turn-active", Status: "inProgress"},
@@ -148,8 +148,8 @@ func TestCodexRestoreRecoveredActiveTurns_RegistersInProgressTurns(t *testing.T)
 	if active == nil {
 		t.Fatal("expected in-progress turn to be restored")
 	}
-	if active.state == nil || active.state.turnID != "turn-active" {
-		t.Fatalf("expected recovered streaming state for active turn, got %#v", active.state)
+	if active.streamState == nil || active.streamState.turnID != "turn-active" {
+		t.Fatalf("expected recovered streaming state for active turn, got %#v", active.streamState)
 	}
 	if _, ok := cc.activeTurns[codexTurnKey("thr1", "turn-done")]; ok {
 		t.Fatal("did not expect completed turn to be restored")

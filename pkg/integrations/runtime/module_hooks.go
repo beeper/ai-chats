@@ -6,7 +6,6 @@ import (
 
 	"github.com/openai/openai-go/v3"
 	"github.com/rs/zerolog"
-	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 )
@@ -152,7 +151,6 @@ type Host interface {
 	RawLogger() zerolog.Logger
 	Now() time.Time
 	ResolveWorkspaceDir() string
-	StateDB() *dbutil.Database
 	BridgeID() string
 	LoginID() string
 	ModuleEnabled(name string) bool

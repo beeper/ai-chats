@@ -87,4 +87,3 @@ func isOpenClawSyntheticDMSessionKey(sessionKey string) bool {
 	}
 	return openclawconv.AgentIDFromSessionKey(sessionKey) != ""
 }
-

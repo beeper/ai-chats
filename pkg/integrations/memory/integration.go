@@ -35,6 +35,10 @@ type Integration struct {
 	host iruntime.Host
 }
 
+type stateDBProvider interface {
+	MemoryStateDB() *dbutil.Database
+}
+
 func New(host iruntime.Host) iruntime.ModuleHooks {
 	return iruntime.ModuleOrNil(host, func(host iruntime.Host) *Integration {
 		return &Integration{host: host}
@@ -453,7 +457,14 @@ func (i *Integration) agentIDFromEventMeta(meta iruntime.Meta) string {
 }
 
 func (i *Integration) resolveStateDB() *dbutil.Database {
-	return i.host.StateDB()
+	if i == nil || i.host == nil {
+		return nil
+	}
+	provider, ok := i.host.(stateDBProvider)
+	if !ok {
+		return nil
+	}
+	return provider.MemoryStateDB()
 }
 
 // splitQuotedArgs parses a raw argument string into tokens, respecting quoted segments.

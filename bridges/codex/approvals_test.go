@@ -15,11 +15,11 @@ import (
 )
 
 type approvalTestFixture struct {
-	ctx    context.Context
-	cc     *CodexClient
-	portal *bridgev2.Portal
-	meta   *PortalMetadata
-	state  *streamingState
+	ctx         context.Context
+	cc          *CodexClient
+	portal      *bridgev2.Portal
+	portalState *codexPortalState
+	streamState *streamingState
 }
 
 func newApprovalTestFixture(t *testing.T) approvalTestFixture {
@@ -28,20 +28,20 @@ func newApprovalTestFixture(t *testing.T) approvalTestFixture {
 	t.Cleanup(cancel)
 	cc := newTestCodexClient(id.UserID("@owner:example.com"))
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	meta := &PortalMetadata{}
-	state := &streamingState{turnID: "turn_local", initialEventID: id.EventID("$event")}
-	attachTestTurn(state, portal)
+	portalState := &codexPortalState{}
+	streamState := &streamingState{turnID: "turn_local", initialEventID: id.EventID("$event")}
+	attachTestTurn(streamState, portal)
 	cc.activeTurns = map[string]*codexActiveTurn{
 		codexTurnKey("thr_1", "turn_1"): {
-			portal:   portal,
-			meta:     meta,
-			state:    state,
-			threadID: "thr_1",
-			turnID:   "turn_1",
-			model:    "gpt-5.1-codex",
+			portal:      portal,
+			portalState: portalState,
+			streamState: streamState,
+			threadID:    "thr_1",
+			turnID:      "turn_1",
+			model:       "gpt-5.1-codex",
 		},
 	}
-	return approvalTestFixture{ctx: ctx, cc: cc, portal: portal, meta: meta, state: state}
+	return approvalTestFixture{ctx: ctx, cc: cc, portal: portal, portalState: portalState, streamState: streamState}
 }
 
 func newTestCodexClient(owner id.UserID) *CodexClient {
@@ -81,7 +81,7 @@ func waitForPendingApproval(t *testing.T, ctx context.Context, cc *CodexClient, 
 
 func TestCodex_CommandApproval_RequestBlocksUntilApproved(t *testing.T) {
 	f := newApprovalTestFixture(t)
-	ctx, cc, state := f.ctx, f.cc, f.state
+	ctx, cc, state := f.ctx, f.cc, f.streamState
 
 	params := map[string]any{
 		"threadId": "thr_1",
@@ -139,7 +139,7 @@ func TestCodex_CommandApproval_RequestBlocksUntilApproved(t *testing.T) {
 
 func TestCodex_CommandApproval_DenyEmitsResponseThenOutputDenied(t *testing.T) {
 	f := newApprovalTestFixture(t)
-	ctx, cc, state := f.ctx, f.cc, f.state
+	ctx, cc, state := f.ctx, f.cc, f.streamState
 
 	paramsRaw, _ := json.Marshal(map[string]any{
 		"threadId": "thr_1",
@@ -308,15 +308,15 @@ func TestCodex_CommandApproval_AutoApproveInFullElevated(t *testing.T) {
 	cc.streamEventHook = func(turnID string, seq int, content map[string]any, txnID string) {}
 
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	meta := &PortalMetadata{ElevatedLevel: "full"}
+	portalState := &codexPortalState{ElevatedLevel: "full"}
 	state := &streamingState{turnID: "turn_local", initialEventID: id.EventID("$event")}
 	cc.activeTurns = map[string]*codexActiveTurn{
 		codexTurnKey("thr_1", "turn_1"): {
-			portal:   portal,
-			meta:     meta,
-			state:    state,
-			threadID: "thr_1",
-			turnID:   "turn_1",
+			portal:      portal,
+			portalState: portalState,
+			streamState: state,
+			threadID:    "thr_1",
+			turnID:      "turn_1",
 		},
 	}
 

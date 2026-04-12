@@ -65,6 +65,7 @@ type openCodeInstance struct {
 	queueMu         sync.Mutex
 
 	seenMu         sync.Mutex
+	knownSessions  map[string]struct{}
 	seenMsg        map[string]map[string]string              // session -> message -> role
 	seenPart       map[string]map[string]*openCodePartState  // session -> part -> state
 	partsByMessage map[string]map[string]map[string]struct{} // session -> message -> {part IDs}
@@ -73,6 +74,40 @@ type openCodeInstance struct {
 	cacheMu      sync.Mutex
 	messageCache map[string]*openCodeMessageCache
 	sendQueue    map[string]*openCodeSessionQueue
+}
+
+func (inst *openCodeInstance) rememberSession(sessionID string) {
+	if inst == nil || sessionID == "" {
+		return
+	}
+	inst.seenMu.Lock()
+	defer inst.seenMu.Unlock()
+	if inst.knownSessions == nil {
+		inst.knownSessions = make(map[string]struct{})
+	}
+	inst.knownSessions[sessionID] = struct{}{}
+}
+
+func (inst *openCodeInstance) forgetSession(sessionID string) {
+	if inst == nil || sessionID == "" {
+		return
+	}
+	inst.seenMu.Lock()
+	defer inst.seenMu.Unlock()
+	delete(inst.knownSessions, sessionID)
+}
+
+func (inst *openCodeInstance) sessionIDs() []string {
+	if inst == nil {
+		return nil
+	}
+	inst.seenMu.Lock()
+	defer inst.seenMu.Unlock()
+	out := make([]string, 0, len(inst.knownSessions))
+	for sessionID := range inst.knownSessions {
+		out = append(out, sessionID)
+	}
+	return out
 }
 
 // cancelAndStopTimer cancels the instance's event loop and stops its disconnect timer.

@@ -184,11 +184,11 @@ func TestCodex_Mapping_ModelRerouted_UpdatesCurrentModel(t *testing.T) {
 	threadID := "thr_1"
 	turnID := "turn_1_server"
 	cc.activeTurns[codexTurnKey(threadID, turnID)] = &codexActiveTurn{
-		portal:   portal,
-		state:    state,
-		threadID: threadID,
-		turnID:   turnID,
-		model:    state.currentModel,
+		portal:      portal,
+		streamState: state,
+		threadID:    threadID,
+		turnID:      turnID,
+		model:       state.currentModel,
 	}
 
 	raw, _ := json.Marshal(map[string]any{

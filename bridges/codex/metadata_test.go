@@ -77,10 +77,10 @@ func TestCodexTopicHelpers(t *testing.T) {
 	if got := codexTopicForPath("/tmp/repo"); got != "Working directory: /tmp/repo" {
 		t.Fatalf("unexpected topic string: %q", got)
 	}
-	if got := cc.codexTopicForPortal(welcomePortal, &PortalMetadata{IsCodexRoom: true, CodexCwd: "/tmp/repo", AwaitingCwdSetup: true}); got != "" {
+	if got := cc.codexTopicForPortal(welcomePortal, &codexPortalState{CodexCwd: "/tmp/repo", AwaitingCwdSetup: true}); got != "" {
 		t.Fatalf("expected welcome room topic to be empty, got %q", got)
 	}
-	if got := cc.codexTopicForPortal(importedPortal, &PortalMetadata{IsCodexRoom: true, CodexCwd: "/tmp/repo"}); got != "Working directory: /tmp/repo" {
+	if got := cc.codexTopicForPortal(importedPortal, &codexPortalState{CodexCwd: "/tmp/repo"}); got != "Working directory: /tmp/repo" {
 		t.Fatalf("expected imported room topic, got %q", got)
 	}
 }
