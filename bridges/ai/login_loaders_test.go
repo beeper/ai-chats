@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
@@ -56,7 +57,7 @@ func TestLoadAIUserLoginMissingAPIKeyEvictsCacheAndSetsBrokenClient(t *testing.T
 	oc.clients[loginID] = newBrokenLoginClient(cachedLogin, "cached")
 
 	login := testUserLoginWithMeta(loginID, nil)
-	if err := oc.loadAIUserLogin(login, &UserLoginMetadata{Provider: ProviderOpenAI}); err != nil {
+	if err := oc.loadAIUserLogin(context.Background(), login, &UserLoginMetadata{Provider: ProviderOpenAI}); err != nil {
 		t.Fatalf("loadAIUserLogin returned error: %v", err)
 	}
 	if _, ok := oc.clients[loginID]; ok {

@@ -38,12 +38,9 @@ type sessionDBScope struct {
 
 var sessionStoreLocks sync.Map
 
-func normalizeSessionStoreAgentID(agentID string) string {
-	return normalizeAgentID(agentID)
-}
 
 func sessionStoreLockKey(ref sessionStoreRef, sessionKey string) string {
-	agent := normalizeSessionStoreAgentID(ref.AgentID)
+	agent := normalizeAgentID(ref.AgentID)
 	key := strings.TrimSpace(sessionKey)
 	if key == "" {
 		key = "main"
@@ -121,7 +118,7 @@ func (oc *AIClient) getSessionEntry(ctx context.Context, ref sessionStoreRef, se
 		FROM `+aiSessionsTable+`
 		WHERE bridge_id=$1 AND login_id=$2 AND store_agent_id=$3 AND session_key=$4
 	`,
-		scope.bridgeID, scope.loginID, normalizeSessionStoreAgentID(ref.AgentID), strings.TrimSpace(sessionKey),
+		scope.bridgeID, scope.loginID, normalizeAgentID(ref.AgentID), strings.TrimSpace(sessionKey),
 	).Scan(
 		&entry.SessionID,
 		&entry.UpdatedAt,
@@ -191,7 +188,7 @@ func (oc *AIClient) upsertSessionEntry(ctx context.Context, ref sessionStoreRef,
 	`,
 		scope.bridgeID,
 		scope.loginID,
-		normalizeSessionStoreAgentID(ref.AgentID),
+		normalizeAgentID(ref.AgentID),
 		strings.TrimSpace(sessionKey),
 		entry.SessionID,
 		entry.UpdatedAt,
@@ -280,7 +277,7 @@ func (oc *AIClient) resolveSessionStoreRef(agentID string) sessionStoreRef {
 	if oc != nil && oc.connector != nil {
 		cfg = &oc.connector.Config
 	}
-	storeAgentID := normalizeSessionStoreAgentID(agentID)
+	storeAgentID := normalizeAgentID(agentID)
 	if cfg != nil && cfg.Session != nil && normalizeSessionScope(cfg.Session.Scope) == sessionScopeGlobal {
 		storeAgentID = sessionScopeGlobal
 	}

@@ -54,9 +54,6 @@ func (l *LoginHandle) EnsureConversation(ctx context.Context, spec ConversationS
 	}
 
 	state := conversationStateFromSpec(spec)
-	if portal.Metadata == nil {
-		portal.Metadata = &SDKPortalMetadata{}
-	}
 	conv := newConversation(ctx, portal, l.login, bridgev2.EventSender{}, l.runtime)
 	if err := conv.saveState(ctx, state); err != nil {
 		return nil, err

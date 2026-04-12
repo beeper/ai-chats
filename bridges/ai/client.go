@@ -1639,7 +1639,7 @@ func (oc *AIClient) listAvailableModels(ctx context.Context, forceRefresh bool) 
 
 	// Save metadata when the login is backed by a persisted row.
 	if oc.UserLogin != nil && oc.UserLogin.UserLogin != nil && oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.DB != nil {
-		if err := oc.UserLogin.Save(ctx); err != nil {
+		if err := saveAIUserLogin(ctx, oc.UserLogin); err != nil {
 			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to save model cache")
 		}
 	}

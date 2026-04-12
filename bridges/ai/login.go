@@ -244,6 +244,9 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 	if err != nil {
 		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to create login: %w", err), http.StatusInternalServerError, "AI", "CREATE_LOGIN_FAILED")
 	}
+	if err = saveAIUserLogin(ctx, login); err != nil {
+		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to persist login config: %w", err), http.StatusInternalServerError, "AI", "SAVE_LOGIN_FAILED")
+	}
 
 	// Trigger connection in background with a long-lived context
 	// (the request context gets cancelled after login returns)

@@ -1548,13 +1548,9 @@ func buildSignedGatewayDevice(identity *gatewayDeviceIdentity, clientIdentity ga
 	signature := ed25519.Sign(ed25519.PrivateKey(priv), []byte(payload))
 	return map[string]any{
 		"id":        identity.DeviceID,
-		"publicKey": base64URLEncode(pub),
-		"signature": base64URLEncode(signature),
+		"publicKey": base64.RawURLEncoding.EncodeToString(pub),
+		"signature": base64.RawURLEncoding.EncodeToString(signature),
 		"signedAt":  signedAtMs,
 		"nonce":     nonce,
 	}, nil
-}
-
-func base64URLEncode(data []byte) string {
-	return base64.RawURLEncoding.EncodeToString(data)
 }

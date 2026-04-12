@@ -1788,7 +1788,7 @@ func executeGravatarSet(ctx context.Context, args map[string]any) (string, error
 	loginMeta := loginMetadata(btc.Client.UserLogin)
 	state := ensureGravatarState(loginMeta)
 	state.Primary = profile
-	if err := btc.Client.UserLogin.Save(ctx); err != nil {
+	if err := saveAIUserLogin(ctx, btc.Client.UserLogin); err != nil {
 		return "", fmt.Errorf("couldn't save the Gravatar profile: %w", err)
 	}
 

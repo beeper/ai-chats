@@ -129,9 +129,9 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 	)
 	switch ol.FlowID {
 	case FlowOpenCodeRemote:
-		instances, remoteName, _, err = ol.buildRemoteInstances(input)
+		instances, remoteName, err = ol.buildRemoteInstances(input)
 	case FlowOpenCodeManaged:
-		instances, remoteName, _, err = ol.buildManagedInstances(input)
+		instances, remoteName, err = ol.buildManagedInstances(input)
 	default:
 		err = bridgev2.ErrInvalidLoginFlowID
 	}
@@ -166,10 +166,10 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 	return step, nil
 }
 
-func (ol *OpenCodeLogin) buildRemoteInstances(input map[string]string) (map[string]*OpenCodeInstance, string, string, error) {
+func (ol *OpenCodeLogin) buildRemoteInstances(input map[string]string) (map[string]*OpenCodeInstance, string, error) {
 	normalizedURL, err := openCodeAPI.NormalizeBaseURL(input["url"])
 	if err != nil {
-		return nil, "", "", sdk.WrapLoginRespError(fmt.Errorf("invalid url: %w", err), http.StatusBadRequest, "OPENCODE", "INVALID_URL")
+		return nil, "", sdk.WrapLoginRespError(fmt.Errorf("invalid url: %w", err), http.StatusBadRequest, "OPENCODE", "INVALID_URL")
 	}
 	username := strings.TrimSpace(input["username"])
 	if username == "" {
@@ -186,17 +186,17 @@ func (ol *OpenCodeLogin) buildRemoteInstances(input map[string]string) (map[stri
 			Password:    password,
 			HasPassword: password != "",
 		},
-	}, openCodeRemoteName(normalizedURL, username), instanceID, nil
+	}, openCodeRemoteName(normalizedURL, username), nil
 }
 
-func (ol *OpenCodeLogin) buildManagedInstances(input map[string]string) (map[string]*OpenCodeInstance, string, string, error) {
+func (ol *OpenCodeLogin) buildManagedInstances(input map[string]string) (map[string]*OpenCodeInstance, string, error) {
 	binaryPath, err := resolveManagedOpenCodeBinary(input["binary_path"])
 	if err != nil {
-		return nil, "", "", err
+		return nil, "", err
 	}
 	defaultPath, err := resolveManagedOpenCodeDirectory(input["default_path"])
 	if err != nil {
-		return nil, "", "", err
+		return nil, "", err
 	}
 	instanceID := OpenCodeManagedLauncherID(binaryPath, defaultPath)
 	return map[string]*OpenCodeInstance{
@@ -206,7 +206,7 @@ func (ol *OpenCodeLogin) buildManagedInstances(input map[string]string) (map[str
 			BinaryPath:       binaryPath,
 			DefaultDirectory: defaultPath,
 		},
-	}, openCodeManagedRemoteName(defaultPath), instanceID, nil
+	}, openCodeManagedRemoteName(defaultPath), nil
 }
 
 func (ol *OpenCodeLogin) scopeInstancesToLogin(loginID networkid.UserLoginID, instances map[string]*OpenCodeInstance) map[string]*OpenCodeInstance {

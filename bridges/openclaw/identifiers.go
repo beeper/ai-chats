@@ -31,7 +31,7 @@ func openClawPortalKey(loginID networkid.UserLoginID, gatewayID, sessionKey stri
 }
 
 func openClawScopedGhostUserID(loginID networkid.UserLoginID, agentID string) networkid.UserID {
-	trimmed := canonicalOpenClawAgentID(agentID)
+	trimmed := openclawconv.CanonicalAgentID(agentID)
 	if trimmed == "" {
 		trimmed = "gateway"
 	}
@@ -39,7 +39,7 @@ func openClawScopedGhostUserID(loginID networkid.UserLoginID, agentID string) ne
 }
 
 func openClawGhostUserID(agentID string) networkid.UserID {
-	trimmed := canonicalOpenClawAgentID(agentID)
+	trimmed := openclawconv.CanonicalAgentID(agentID)
 	if trimmed == "" {
 		trimmed = "gateway"
 	}
@@ -65,7 +65,7 @@ func parseOpenClawGhostID(ghostID string) (loginID networkid.UserLoginID, agentI
 	if err != nil {
 		return "", "", false
 	}
-	value = canonicalOpenClawAgentID(value)
+	value = openclawconv.CanonicalAgentID(value)
 	if value == "" {
 		return "", "", false
 	}
@@ -73,7 +73,7 @@ func parseOpenClawGhostID(ghostID string) (loginID networkid.UserLoginID, agentI
 }
 
 func openClawDMAgentSessionKey(agentID string) string {
-	agentID = canonicalOpenClawAgentID(agentID)
+	agentID = openclawconv.CanonicalAgentID(agentID)
 	if agentID == "" {
 		agentID = "gateway"
 	}
@@ -88,6 +88,3 @@ func isOpenClawSyntheticDMSessionKey(sessionKey string) bool {
 	return openclawconv.AgentIDFromSessionKey(sessionKey) != ""
 }
 
-func canonicalOpenClawAgentID(agentID string) string {
-	return openclawconv.CanonicalAgentID(agentID)
-}

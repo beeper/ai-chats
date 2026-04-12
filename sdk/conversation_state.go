@@ -2,12 +2,15 @@ package sdk
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"maps"
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
+	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
 )
 
@@ -58,19 +61,7 @@ func (s *sdkConversationState) ensureDefaults() {
 	s.RoomAgents.AgentIDs = normalizeAgentIDs(s.RoomAgents.AgentIDs)
 }
 
-// SDKPortalMetadata can be used as a connector portal metadata type when the SDK owns the portal metadata schema.
-type SDKPortalMetadata struct {
-	Conversation sdkConversationState `json:"conversation,omitempty"`
-}
-
-// ConversationStateCarrier allows bridge-specific portal metadata types to
-// preserve SDK conversation state alongside their own fields.
-type ConversationStateCarrier interface {
-	GetSDKPortalMetadata() *SDKPortalMetadata
-	SetSDKPortalMetadata(*SDKPortalMetadata)
-}
-
-const sdkConversationMetadataKey = "sdk_conversation"
+const sdkConversationStateTable = "sdk_conversation_state"
 
 type conversationStateStore struct {
 	mu    sync.RWMutex
@@ -115,16 +106,41 @@ func (s *conversationStateStore) set(portal *bridgev2.Portal, state *sdkConversa
 	s.mu.Unlock()
 }
 
+func conversationStateDB(portal *bridgev2.Portal) (*dbutil.Database, string, string, string) {
+	if portal == nil || portal.Bridge == nil || portal.Bridge.DB == nil || portal.Bridge.DB.Database == nil {
+		return nil, "", "", ""
+	}
+	return portal.Bridge.DB.Database, string(portal.Bridge.DB.BridgeID), string(portal.PortalKey.Receiver), string(portal.PortalKey.ID)
+}
+
+func ensureConversationStateTable(ctx context.Context, portal *bridgev2.Portal) error {
+	db, _, _, _ := conversationStateDB(portal)
+	if db == nil {
+		return nil
+	}
+	_, err := db.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS `+sdkConversationStateTable+` (
+			bridge_id TEXT NOT NULL,
+			login_id TEXT NOT NULL,
+			portal_id TEXT NOT NULL,
+			state_json TEXT NOT NULL DEFAULT '',
+			updated_at_ms INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (bridge_id, login_id, portal_id)
+		)
+	`)
+	return err
+}
+
 func loadConversationState(portal *bridgev2.Portal, store *conversationStateStore) *sdkConversationState {
 	if portal == nil {
 		return &sdkConversationState{}
 	}
-	if portal.Metadata == nil {
-		portal.Metadata = &SDKPortalMetadata{}
-	}
-	state := loadConversationStateFromMetadata(portal.Metadata)
-	if state == nil {
-		state = store.get(portal)
+	state := store.get(portal)
+	if state == nil || (state.Kind == "" && state.Visibility == "" && len(state.RoomAgents.AgentIDs) == 0 && len(state.Metadata) == 0 && state.ParentConversationID == "" && state.ParentEventID == "" && !state.ArchiveOnCompletion) {
+		loaded, err := loadConversationStateFromDB(context.Background(), portal)
+		if err == nil && loaded != nil {
+			state = loaded
+		}
 	}
 	state.ensureDefaults()
 	if store != nil {
@@ -133,19 +149,31 @@ func loadConversationState(portal *bridgev2.Portal, store *conversationStateStor
 	return state
 }
 
-func loadConversationStateFromMetadata(metadata any) *sdkConversationState {
-	if meta, ok := metadata.(*SDKPortalMetadata); ok && meta != nil {
-		return meta.Conversation.clone()
+func loadConversationStateFromDB(ctx context.Context, portal *bridgev2.Portal) (*sdkConversationState, error) {
+	db, bridgeID, loginID, portalID := conversationStateDB(portal)
+	if db == nil {
+		return nil, nil
 	}
-	if carrier, ok := metadata.(ConversationStateCarrier); ok && carrier != nil {
-		if meta := carrier.GetSDKPortalMetadata(); meta != nil {
-			return meta.Conversation.clone()
-		}
+	if err := ensureConversationStateTable(ctx, portal); err != nil {
+		return nil, err
 	}
-	if state, ok := loadConversationStateFromGenericMetadata(metadata); ok {
-		return state
+	var raw string
+	err := db.QueryRow(ctx, `
+		SELECT state_json
+		FROM `+sdkConversationStateTable+`
+		WHERE bridge_id=$1 AND login_id=$2 AND portal_id=$3
+	`, bridgeID, loginID, portalID).Scan(&raw)
+	if err == sql.ErrNoRows || raw == "" {
+		return nil, nil
 	}
-	return nil
+	if err != nil {
+		return nil, err
+	}
+	var state sdkConversationState
+	if err = json.Unmarshal([]byte(raw), &state); err != nil {
+		return nil, err
+	}
+	return &state, nil
 }
 
 func saveConversationState(ctx context.Context, portal *bridgev2.Portal, store *conversationStateStore, state *sdkConversationState) error {
@@ -159,82 +187,23 @@ func saveConversationState(ctx context.Context, portal *bridgev2.Portal, store *
 			store.set(portal, state)
 		}
 	}()
-	if portal.Metadata == nil {
-		portal.Metadata = &SDKPortalMetadata{}
+	db, bridgeID, loginID, portalID := conversationStateDB(portal)
+	if db == nil {
+		return nil
 	}
-	needsSave := false
-	switch meta := portal.Metadata.(type) {
-	case *SDKPortalMetadata:
-		if meta != nil {
-			meta.Conversation = *state.clone()
-			needsSave = true
-		}
-	case ConversationStateCarrier:
-		if meta != nil {
-			sdkMeta := meta.GetSDKPortalMetadata()
-			if sdkMeta == nil {
-				sdkMeta = &SDKPortalMetadata{}
-			}
-			sdkMeta.Conversation = *state.clone()
-			meta.SetSDKPortalMetadata(sdkMeta)
-			needsSave = true
-		}
-	default:
-		needsSave = saveConversationStateToGenericMetadata(&portal.Metadata, state)
+	if err := ensureConversationStateTable(ctx, portal); err != nil {
+		return err
 	}
-	if needsSave {
-		return portal.Save(ctx)
-	}
-	return nil
-}
-
-func loadConversationStateFromGenericMetadata(meta any) (*sdkConversationState, bool) {
-	var raw any
-	switch typed := meta.(type) {
-	case map[string]any:
-		raw = typed[sdkConversationMetadataKey]
-	case *map[string]any:
-		if typed != nil {
-			raw = (*typed)[sdkConversationMetadataKey]
-		}
-	default:
-		return nil, false
-	}
-	if raw == nil {
-		return nil, false
-	}
-	data, err := json.Marshal(raw)
+	payload, err := json.Marshal(state.clone())
 	if err != nil {
-		return nil, false
+		return err
 	}
-	var state sdkConversationState
-	if err = json.Unmarshal(data, &state); err != nil {
-		return nil, false
-	}
-	return &state, true
-}
-
-func saveConversationStateToGenericMetadata(holder *any, state *sdkConversationState) bool {
-	if holder == nil || state == nil {
-		return false
-	}
-	switch typed := (*holder).(type) {
-	case map[string]any:
-		typed[sdkConversationMetadataKey] = state.clone()
-		*holder = typed
-		return true
-	case *map[string]any:
-		if typed == nil {
-			newMap := map[string]any{sdkConversationMetadataKey: state.clone()}
-			*holder = &newMap
-			return true
-		}
-		if *typed == nil {
-			*typed = make(map[string]any)
-		}
-		(*typed)[sdkConversationMetadataKey] = state.clone()
-		return true
-	default:
-		return false
-	}
+	_, err = db.Exec(ctx, `
+		INSERT INTO `+sdkConversationStateTable+` (bridge_id, login_id, portal_id, state_json, updated_at_ms)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (bridge_id, login_id, portal_id) DO UPDATE SET
+			state_json=excluded.state_json,
+			updated_at_ms=excluded.updated_at_ms
+	`, bridgeID, loginID, portalID, string(payload), time.Now().UnixMilli())
+	return err
 }

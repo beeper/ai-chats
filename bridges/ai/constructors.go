@@ -80,8 +80,8 @@ func NewAIConnector() *OpenAIConnector {
 		FillBridgeInfo: func(portal *bridgev2.Portal, content *event.BridgeEventContent) {
 			applyAgentRemoteBridgeInfo(portal, portalMeta(portal), content)
 		},
-		LoadLogin: func(_ context.Context, login *bridgev2.UserLogin) error {
-			return oc.loadAIUserLogin(login, loginMetadata(login))
+		LoadLogin: func(ctx context.Context, login *bridgev2.UserLogin) error {
+			return oc.loadAIUserLogin(ctx, login, loginMetadata(login))
 		},
 		GetLoginFlows: oc.getLoginFlows,
 		CreateLogin: func(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {

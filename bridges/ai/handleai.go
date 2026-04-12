@@ -129,7 +129,7 @@ func (oc *AIClient) recordProviderError(ctx context.Context) {
 	meta := loginMetadata(oc.UserLogin)
 	meta.ConsecutiveErrors++
 	meta.LastErrorAt = time.Now().Unix()
-	_ = oc.UserLogin.Save(ctx)
+	_ = saveAIUserLogin(ctx, oc.UserLogin)
 
 	const healthWarningThreshold = 5
 	if meta.ConsecutiveErrors >= healthWarningThreshold {
@@ -149,7 +149,7 @@ func (oc *AIClient) recordProviderSuccess(ctx context.Context) {
 	wasUnhealthy := meta.ConsecutiveErrors >= 5
 	meta.ConsecutiveErrors = 0
 	meta.LastErrorAt = 0
-	_ = oc.UserLogin.Save(ctx)
+	_ = saveAIUserLogin(ctx, oc.UserLogin)
 
 	// Restore connected state if we were in a degraded state
 	if wasUnhealthy && oc.IsLoggedIn() {

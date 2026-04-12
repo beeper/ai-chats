@@ -96,7 +96,7 @@ func TestOpenCodeLoginValidationErrorMappings(t *testing.T) {
 			name: "invalid URL",
 			run: func(t *testing.T) error {
 				t.Helper()
-				_, _, _, err := login.buildRemoteInstances(map[string]string{"url": "://bad-url"})
+				_, _, err := login.buildRemoteInstances(map[string]string{"url": "://bad-url"})
 				return err
 			},
 			wantStatus: http.StatusBadRequest,

@@ -100,7 +100,7 @@ func (s *AgentStoreAdapter) saveAgentToMetadata(ctx context.Context, agent *Agen
 		meta.CustomAgents = map[string]*AgentDefinitionContent{}
 	}
 	meta.CustomAgents[agent.ID] = agent
-	return s.client.UserLogin.Save(ctx)
+	return saveAIUserLogin(ctx, s.client.UserLogin)
 }
 
 func (s *AgentStoreAdapter) deleteAgentFromMetadata(ctx context.Context, agentID string) error {
@@ -115,7 +115,7 @@ func (s *AgentStoreAdapter) deleteAgentFromMetadata(ctx context.Context, agentID
 		return nil
 	}
 	delete(meta.CustomAgents, agentID)
-	return s.client.UserLogin.Save(ctx)
+	return saveAIUserLogin(ctx, s.client.UserLogin)
 }
 
 // SaveAgent implements agents.AgentStore.

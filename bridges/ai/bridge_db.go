@@ -13,6 +13,7 @@ const (
 	aiSystemEventsTable      = "aichats_system_events"
 	aiInternalMessagesTable  = "aichats_internal_messages"
 	aiLoginStateTable        = "aichats_login_state"
+	aiLoginConfigTable       = "aichats_login_config"
 	aiToolApprovalRulesTable = "aichats_tool_approval_rules"
 )
 

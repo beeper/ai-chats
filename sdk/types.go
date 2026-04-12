@@ -9,6 +9,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/event"
 )
 
 // MessageType identifies the kind of message.
@@ -34,7 +35,6 @@ type Message struct {
 	ReplyTo   string // event ID being replied to
 	Timestamp time.Time
 	Metadata  map[string]any
-
 }
 
 // MessageEdit represents an edit to a previously sent message.
@@ -286,12 +286,12 @@ type Config[SessionT SessionValue, ConfigDataT ConfigValue] struct {
 	FetchMessages func(ctx context.Context, params bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) // nil = no backfill
 
 	// Advanced
-	ProtocolID     string                    // default: "sdk-<Name>"
-	Port           int                       // default: 29400
-	DBName         string                    // default: "<Name>.db"
-	ConfigPath     string                    // default: auto-discover
+	ProtocolID     string // default: "sdk-<Name>"
+	Port           int    // default: 29400
+	DBName         string // default: "<Name>.db"
+	ConfigPath     string // default: auto-discover
 	DBMeta         func() database.MetaTypes
-	ExampleConfig  string                    // YAML
-	ConfigData     ConfigDataT               // config struct pointer
+	ExampleConfig  string      // YAML
+	ConfigData     ConfigDataT // config struct pointer
 	ConfigUpgrader configupgrade.Upgrader
 }

@@ -12,6 +12,7 @@ import (
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 
+	"github.com/beeper/agentremote/pkg/shared/openclawconv"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	"github.com/beeper/agentremote/sdk"
 )
@@ -111,7 +112,7 @@ func (oc *OpenClawClient) agentCatalogEntryByID(ctx context.Context, agentID str
 }
 
 func openClawVirtualAgentSummary(agentID string) *gatewayAgentSummary {
-	agentID = canonicalOpenClawAgentID(agentID)
+	agentID = openclawconv.CanonicalAgentID(agentID)
 	if agentID == "" || strings.EqualFold(agentID, "gateway") {
 		return nil
 	}
@@ -188,7 +189,7 @@ func (oc *OpenClawClient) SearchUsers(ctx context.Context, query string) ([]*bri
 		return nil, err
 	}
 	if exactID, ok := parseOpenClawResolvableIdentifier(query); ok {
-		exactID = canonicalOpenClawAgentID(exactID)
+		exactID = openclawconv.CanonicalAgentID(exactID)
 		alreadyIncluded := false
 		for _, match := range matches {
 			if strings.EqualFold(strings.TrimSpace(match.ID), exactID) {
@@ -415,7 +416,7 @@ func openClawAgentProfileFromSummary(agent *gatewayAgentSummary) openClawAgentPr
 }
 
 func (oc *OpenClawClient) agentSummaryByID(ctx context.Context, agentID string) (*gatewayAgentSummary, error) {
-	agentID = canonicalOpenClawAgentID(agentID)
+	agentID = openclawconv.CanonicalAgentID(agentID)
 	if agentID == "" {
 		return nil, nil
 	}

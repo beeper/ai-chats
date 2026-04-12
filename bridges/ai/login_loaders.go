@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"context"
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -93,9 +94,12 @@ func (oc *OpenAIConnector) publishOrReuseClient(login *bridgev2.UserLogin, creat
 	return created
 }
 
-func (oc *OpenAIConnector) loadAIUserLogin(login *bridgev2.UserLogin, meta *UserLoginMetadata) error {
+func (oc *OpenAIConnector) loadAIUserLogin(ctx context.Context, login *bridgev2.UserLogin, meta *UserLoginMetadata) error {
 	if login == nil {
 		return nil
+	}
+	if err := loadAIUserLoginConfig(ctx, login, meta); err != nil {
+		return err
 	}
 	key := strings.TrimSpace(oc.resolveProviderAPIKey(meta))
 	cachedAPI, existing := oc.lookupCachedAIClient(login.ID)

@@ -199,7 +199,7 @@ func (api *ProvisioningAPI) handlePutProfile(w http.ResponseWriter, r *http.Requ
 		mautrix.MInvalidParam.WithMessage("%v.", err).Write(w)
 		return
 	}
-	if err := login.Save(r.Context()); err != nil {
+	if err := saveAIUserLogin(r.Context(), login); err != nil {
 		mautrix.MUnknown.WithMessage("Couldn't save changes: %v.", err).Write(w)
 		return
 	}
@@ -598,7 +598,7 @@ func (api *ProvisioningAPI) handleCreateMCPServer(w http.ResponseWriter, r *http
 		return
 	}
 	setLoginMCPServer(meta, name, cfg)
-	if err = login.Save(r.Context()); err != nil {
+	if err = saveAIUserLogin(r.Context(), login); err != nil {
 		mautrix.MUnknown.WithMessage("Couldn't save MCP server: %v.", err).Write(w)
 		return
 	}
@@ -633,7 +633,7 @@ func (api *ProvisioningAPI) handleUpdateMCPServer(w http.ResponseWriter, r *http
 	}
 	meta := loginMetadata(login)
 	setLoginMCPServer(meta, resolvedName, cfg)
-	if err = login.Save(r.Context()); err != nil {
+	if err = saveAIUserLogin(r.Context(), login); err != nil {
 		mautrix.MUnknown.WithMessage("Couldn't save MCP server: %v.", err).Write(w)
 		return
 	}
@@ -659,7 +659,7 @@ func (api *ProvisioningAPI) handleDeleteMCPServer(w http.ResponseWriter, r *http
 	}
 	meta := loginMetadata(login)
 	clearLoginMCPServer(meta, target.Name)
-	if err = login.Save(r.Context()); err != nil {
+	if err = saveAIUserLogin(r.Context(), login); err != nil {
 		mautrix.MUnknown.WithMessage("Couldn't remove MCP server: %v.", err).Write(w)
 		return
 	}
@@ -685,7 +685,7 @@ func connectMCPServer(ctx context.Context, client *AIClient, login *bridgev2.Use
 	if mcpServerNeedsToken(cfg) && cfg.Token == "" {
 		cfg.Connected = false
 		setLoginMCPServer(loginMetadata(login), target.Name, cfg)
-		if err = login.Save(ctx); err != nil {
+		if err = saveAIUserLogin(ctx, login); err != nil {
 			return namedMCPServer{}, 0, err
 		}
 		client.invalidateMCPToolCache()
@@ -696,14 +696,14 @@ func connectMCPServer(ctx context.Context, client *AIClient, login *bridgev2.Use
 	if connectErr != nil {
 		cfg.Connected = false
 		setLoginMCPServer(loginMetadata(login), target.Name, cfg)
-		if err = login.Save(ctx); err != nil {
+		if err = saveAIUserLogin(ctx, login); err != nil {
 			return namedMCPServer{}, 0, err
 		}
 		client.invalidateMCPToolCache()
 		return namedMCPServer{Name: target.Name, Config: cfg, Source: "login"}, 0, connectErr
 	}
 	setLoginMCPServer(loginMetadata(login), target.Name, cfg)
-	if err = login.Save(ctx); err != nil {
+	if err = saveAIUserLogin(ctx, login); err != nil {
 		return namedMCPServer{}, 0, err
 	}
 	client.invalidateMCPToolCache()
@@ -755,7 +755,7 @@ func (api *ProvisioningAPI) handleDisconnectMCPServer(w http.ResponseWriter, r *
 	cfg := normalizeMCPServerConfig(target.Config)
 	cfg.Connected = false
 	setLoginMCPServer(loginMetadata(login), target.Name, cfg)
-	if err = login.Save(r.Context()); err != nil {
+	if err = saveAIUserLogin(r.Context(), login); err != nil {
 		mautrix.MUnknown.WithMessage("Couldn't disconnect MCP server: %v.", err).Write(w)
 		return
 	}

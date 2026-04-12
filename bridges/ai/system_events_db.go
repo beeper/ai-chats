@@ -22,9 +22,6 @@ type systemEventsDBScope struct {
 	agentID  string
 }
 
-func normalizeSystemEventsAgentID(agentID string) string {
-	return normalizeAgentID(agentID)
-}
 
 func systemEventsScope(client *AIClient, agentID string) *systemEventsDBScope {
 	db, bridgeID, loginID := loginDBContext(client)
@@ -35,7 +32,7 @@ func systemEventsScope(client *AIClient, agentID string) *systemEventsDBScope {
 		db:       db,
 		bridgeID: bridgeID,
 		loginID:  loginID,
-		agentID:  normalizeSystemEventsAgentID(agentID),
+		agentID:  normalizeAgentID(agentID),
 	}
 }
 
@@ -72,7 +69,7 @@ func snapshotSystemEvents(ownerKey string) []persistedSystemEventQueue {
 			continue
 		}
 		snap = append(snap, persistedSystemEventQueue{
-			AgentID:    normalizeSystemEventsAgentID(entry.lastContextKey),
+			AgentID:    normalizeAgentID(entry.lastContextKey),
 			SessionKey: sessionKey,
 			Events:     slices.Clone(entry.queue),
 			LastText:   entry.lastText,
@@ -88,7 +85,7 @@ func persistSystemEventsSnapshot(client *AIClient) {
 	}
 	grouped := make(map[string][]persistedSystemEventQueue)
 	for _, queue := range snapshotSystemEvents(baseScope.ownerKey()) {
-		agentID := normalizeSystemEventsAgentID(queue.AgentID)
+		agentID := normalizeAgentID(queue.AgentID)
 		if agentID == "" {
 			continue
 		}
@@ -183,7 +180,7 @@ func listPersistedSystemEventAgentIDs(ctx context.Context, scope *systemEventsDB
 		if err := rows.Scan(&agentID); err != nil {
 			return nil, err
 		}
-		if normalized := normalizeSystemEventsAgentID(agentID); normalized != "" {
+		if normalized := normalizeAgentID(agentID); normalized != "" {
 			agentIDs = append(agentIDs, normalized)
 		}
 	}
