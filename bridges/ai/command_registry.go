@@ -1,10 +1,8 @@
 package ai
 
 import (
-	"context"
 	"strings"
 	"sync"
-	"unicode"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2/commands"

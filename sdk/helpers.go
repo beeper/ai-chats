@@ -2,7 +2,6 @@ package sdk
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -451,60 +450,45 @@ func ApplyAgentRemoteBridgeInfo(content *event.BridgeEventContent, protocolID st
 // findExistingMessage performs a two-phase message lookup: first by network
 // message ID (with receiver resolution), then by Matrix event ID as fallback.
 // Returns the message (if found) and separate errors from each lookup phase.
-func findPortalMessageRowIDByID(
+func findPortalMessageByID(
 	ctx context.Context,
 	login *bridgev2.UserLogin,
 	portal *bridgev2.Portal,
 	networkMessageID networkid.MessageID,
 	partID networkid.PartID,
-) (int64, error) {
+) (*database.Message, error) {
 	if login == nil || login.Bridge == nil || login.Bridge.DB == nil || login.Bridge.DB.Message == nil || portal == nil || networkMessageID == "" || partID == "" {
-		return 0, nil
+		return nil, nil
 	}
-	var rowID int64
-	err := login.Bridge.DB.Message.GetDB().QueryRow(ctx, `
-		SELECT rowid
-		FROM message
-		WHERE bridge_id=$1 AND room_id=$2 AND room_receiver=$3 AND id=$4 AND part_id=$5
-		LIMIT 1
-	`,
-		string(login.Bridge.DB.BridgeID),
-		string(portal.PortalKey.ID),
-		string(portal.PortalKey.Receiver),
-		string(networkMessageID),
-		string(partID),
-	).Scan(&rowID)
-	if err == sql.ErrNoRows {
-		return 0, nil
+	parts, err := login.Bridge.DB.Message.GetAllPartsByID(ctx, portal.PortalKey.Receiver, networkMessageID)
+	if err != nil {
+		return nil, err
 	}
-	return rowID, err
+	for _, part := range parts {
+		if part != nil && part.Room == portal.PortalKey && part.PartID == partID {
+			return part, nil
+		}
+	}
+	return nil, nil
 }
 
-func findPortalMessageRowIDByMXID(
+func findPortalMessageByMXID(
 	ctx context.Context,
 	login *bridgev2.UserLogin,
 	portal *bridgev2.Portal,
 	initialEventID id.EventID,
-) (int64, error) {
+) (*database.Message, error) {
 	if login == nil || login.Bridge == nil || login.Bridge.DB == nil || login.Bridge.DB.Message == nil || portal == nil || initialEventID == "" {
-		return 0, nil
+		return nil, nil
 	}
-	var rowID int64
-	err := login.Bridge.DB.Message.GetDB().QueryRow(ctx, `
-		SELECT rowid
-		FROM message
-		WHERE bridge_id=$1 AND room_id=$2 AND room_receiver=$3 AND mxid=$4
-		LIMIT 1
-	`,
-		string(login.Bridge.DB.BridgeID),
-		string(portal.PortalKey.ID),
-		string(portal.PortalKey.Receiver),
-		initialEventID.String(),
-	).Scan(&rowID)
-	if err == sql.ErrNoRows {
-		return 0, nil
+	msg, err := login.Bridge.DB.Message.GetPartByMXID(ctx, initialEventID)
+	if err != nil {
+		return nil, err
 	}
-	return rowID, err
+	if msg == nil || msg.Room != portal.PortalKey {
+		return nil, nil
+	}
+	return msg, nil
 }
 
 func findExistingMessage(
@@ -515,18 +499,10 @@ func findExistingMessage(
 	initialEventID id.EventID,
 ) (msg *database.Message, errByID error, errByMXID error) {
 	if networkMessageID != "" {
-		var rowID int64
-		rowID, errByID = findPortalMessageRowIDByID(ctx, login, portal, networkMessageID, networkid.PartID("0"))
-		if errByID == nil && rowID != 0 {
-			msg, errByID = login.Bridge.DB.Message.GetByRowID(ctx, rowID)
-		}
+		msg, errByID = findPortalMessageByID(ctx, login, portal, networkMessageID, networkid.PartID("0"))
 	}
 	if msg == nil && initialEventID != "" {
-		var rowID int64
-		rowID, errByMXID = findPortalMessageRowIDByMXID(ctx, login, portal, initialEventID)
-		if errByMXID == nil && rowID != 0 {
-			msg, errByMXID = login.Bridge.DB.Message.GetByRowID(ctx, rowID)
-		}
+		msg, errByMXID = findPortalMessageByMXID(ctx, login, portal, initialEventID)
 	}
 	return msg, errByID, errByMXID
 }

@@ -137,15 +137,11 @@ func resolveApprovalPromptMessage(
 	if login == nil || login.Bridge == nil || prompt.PromptMessageID == "" {
 		return nil
 	}
-	rowID, err := findPortalMessageRowIDByID(ctx, login, portal, prompt.PromptMessageID, networkid.PartID("0"))
-	if err != nil || rowID == 0 {
+	msg, err := findPortalMessageByID(ctx, login, portal, prompt.PromptMessageID, networkid.PartID("0"))
+	if err != nil {
 		return nil
 	}
-	msgDB := login.Bridge.DB.Message
-	if msg, err := msgDB.GetByRowID(ctx, rowID); err == nil && msg != nil {
-		return msg
-	}
-	return nil
+	return msg
 }
 
 // RedactApprovalPromptPlaceholderReactions redacts only bridge-authored placeholder

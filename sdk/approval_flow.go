@@ -1172,11 +1172,7 @@ func resolveApprovalReactionTargetMessageID(
 	if login == nil || login.Bridge == nil || replyToEventID == "" {
 		return ""
 	}
-	rowID, err := findPortalMessageRowIDByMXID(ctx, login, portal, replyToEventID)
-	if err != nil || rowID == 0 {
-		return ""
-	}
-	msg, err := login.Bridge.DB.Message.GetByRowID(ctx, rowID)
+	msg, err := findPortalMessageByMXID(ctx, login, portal, replyToEventID)
 	if err != nil || msg == nil {
 		return ""
 	}

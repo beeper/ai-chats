@@ -99,7 +99,7 @@ func (s *AgentStoreAdapter) deleteAgent(ctx context.Context, agentID string) err
 }
 
 // SaveAgent implements agents.AgentStore.
-// It saves custom agents to UserLogin metadata.
+// It saves custom agents to the AI-owned login-scoped custom agents table.
 func (s *AgentStoreAdapter) SaveAgent(ctx context.Context, agent *agents.AgentDefinition) error {
 	if err := agent.Validate(); err != nil {
 		return err

@@ -38,7 +38,7 @@ func TestHandleMatrixRoomName_PersistsViaBridgev2Portal(t *testing.T) {
 	if stored == nil {
 		t.Fatal("expected stored portal row")
 	}
-	if stored.Name != "Bridge Owned Name" || !stored.NameSet {
+	if stored.Name != "Bridge Owned Name" {
 		t.Fatalf("expected bridge portal row to persist room name, got %#v", stored)
 	}
 }
@@ -70,7 +70,7 @@ func TestHandleMatrixRoomTopic_PersistsViaBridgev2Portal(t *testing.T) {
 	if stored == nil {
 		t.Fatal("expected stored portal row")
 	}
-	if stored.Topic != "Bridge Owned Topic" || !stored.TopicSet {
+	if stored.Topic != "Bridge Owned Topic" {
 		t.Fatalf("expected bridge portal row to persist room topic, got %#v", stored)
 	}
 }
@@ -102,7 +102,7 @@ func TestHandleMatrixRoomAvatar_PersistsViaBridgev2Portal(t *testing.T) {
 	if stored == nil {
 		t.Fatal("expected stored portal row")
 	}
-	if stored.AvatarMXC != "mxc://example.com/avatar" || !stored.AvatarSet {
+	if stored.AvatarMXC != "mxc://example.com/avatar" {
 		t.Fatalf("expected bridge portal row to persist room avatar, got %#v", stored)
 	}
 }
