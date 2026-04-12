@@ -179,7 +179,7 @@ func resolveImageGenProvider(req imageGenRequest, btc *BridgeToolContext) (image
 		}
 	}
 
-	loginMeta := btc.Client.effectiveLoginMetadata(ctx)
+	loginMeta := btc.Client.effectiveLoginMetadata(context.Background())
 	if loginMeta == nil {
 		return "", errors.New("image generation is not available for this login")
 	}
@@ -624,7 +624,7 @@ func resolveOpenRouterImageGenEndpoint(btc *BridgeToolContext) (baseURL string, 
 	if btc == nil || btc.Client == nil || btc.Client.UserLogin == nil || btc.Client.UserLogin.Metadata == nil {
 		return "", "", false
 	}
-	meta := btc.Client.effectiveLoginMetadata(ctx)
+	meta := btc.Client.effectiveLoginMetadata(context.Background())
 	conn := btc.Client.connector
 
 	trim := func(s string) string { return strings.TrimSpace(s) }

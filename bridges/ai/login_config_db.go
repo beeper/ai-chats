@@ -223,16 +223,5 @@ func (oc *AIClient) effectiveLoginMetadata(ctx context.Context) *UserLoginMetada
 	if oc == nil || oc.UserLogin == nil {
 		return &UserLoginMetadata{}
 	}
-	meta := loginMetadataView(loginMetadata(oc.UserLogin).Provider, oc.loginConfigSnapshot(ctx))
-	if state := oc.loginStateSnapshot(ctx); state != nil {
-		meta.ModelCache = cloneModelCache(state.ModelCache)
-		meta.Gravatar = cloneGravatarState(state.Gravatar)
-		meta.FileAnnotationCache = cloneFileAnnotationCache(state.FileAnnotationCache)
-		meta.ConsecutiveErrors = state.ConsecutiveErrors
-		meta.LastErrorAt = state.LastErrorAt
-	}
-	if customAgents, err := listCustomAgentsForLogin(ctx, oc.UserLogin); err == nil {
-		meta.CustomAgents = cloneAgentDefinitionContentMap(customAgents)
-	}
-	return meta
+	return loginMetadataView(loginMetadata(oc.UserLogin).Provider, oc.loginConfigSnapshot(ctx))
 }
