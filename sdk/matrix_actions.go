@@ -34,14 +34,15 @@ func SetRoomName(
 	sender bridgev2.EventSender,
 	name string,
 ) error {
-	intent, err := resolveMatrixIntent(ctx, login, portal, sender, bridgev2.RemoteEventChatResync)
-	if err != nil {
-		return err
+	if portal == nil || login == nil {
+		return fmt.Errorf("no portal or login")
 	}
-	_, err = intent.SendState(ctx, portal.MXID, event.StateRoomName, "", &event.Content{
-		Parsed: &event.RoomNameEventContent{Name: name},
-	}, time.UnixMilli(0))
-	return err
+	_ = sender
+	portal.UpdateInfo(ctx, &bridgev2.ChatInfo{
+		Name:                       &name,
+		ExcludeChangesFromTimeline: true,
+	}, login, nil, time.Time{})
+	return nil
 }
 
 func SetRoomTopic(
@@ -51,14 +52,15 @@ func SetRoomTopic(
 	sender bridgev2.EventSender,
 	topic string,
 ) error {
-	intent, err := resolveMatrixIntent(ctx, login, portal, sender, bridgev2.RemoteEventChatResync)
-	if err != nil {
-		return err
+	if portal == nil || login == nil {
+		return fmt.Errorf("no portal or login")
 	}
-	_, err = intent.SendState(ctx, portal.MXID, event.StateTopic, "", &event.Content{
-		Parsed: &event.TopicEventContent{Topic: topic},
-	}, time.UnixMilli(0))
-	return err
+	_ = sender
+	portal.UpdateInfo(ctx, &bridgev2.ChatInfo{
+		Topic:                      &topic,
+		ExcludeChangesFromTimeline: true,
+	}, login, nil, time.Time{})
+	return nil
 }
 
 func BroadcastCapabilities(
@@ -68,17 +70,16 @@ func BroadcastCapabilities(
 	sender bridgev2.EventSender,
 	features *RoomFeatures,
 ) error {
-	if features == nil {
+	_ = sender
+	_ = features
+	if portal == nil || login == nil {
+		return fmt.Errorf("no portal or login")
+	}
+	if portal.MXID == "" {
 		return nil
 	}
-	intent, err := resolveMatrixIntent(ctx, login, portal, sender, bridgev2.RemoteEventChatResync)
-	if err != nil {
-		return err
-	}
-	_, err = intent.SendState(ctx, portal.MXID, event.StateBeeperRoomFeatures, "", &event.Content{
-		Parsed: convertRoomFeatures(features),
-	}, time.UnixMilli(0))
-	return err
+	portal.UpdateCapabilities(ctx, login, true)
+	return nil
 }
 
 func SendMessageStatus(

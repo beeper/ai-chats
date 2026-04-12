@@ -87,6 +87,7 @@ func (s *schedulerRuntime) getOrCreateScheduledPortal(ctx context.Context, porta
 		if setup != nil {
 			setup(meta)
 		}
+		s.client.applyPortalRoomName(ctx, portal, displayName)
 		s.client.savePortalQuiet(ctx, portal, "scheduler metadata update")
 		return portal, nil
 	}
@@ -98,8 +99,7 @@ func (s *schedulerRuntime) getOrCreateScheduledPortal(ctx context.Context, porta
 	if err := saveAIPortalState(ctx, portal, meta); err != nil {
 		return nil, err
 	}
-	portal.Name = displayName
-	portal.NameSet = true
+	s.client.applyPortalRoomName(ctx, portal, displayName)
 	chatInfo := &bridgev2.ChatInfo{Name: &portal.Name}
 	_, err = sdk.EnsurePortalLifecycle(ctx, sdk.PortalLifecycleOptions{
 		Login:             s.client.UserLogin,

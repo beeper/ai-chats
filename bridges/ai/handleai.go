@@ -456,8 +456,7 @@ func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Por
 			meta.Title = title
 			meta.TitleGenerated = true
 		}
-		portal.Name = title
-		portal.NameSet = true
+		oc.applyPortalRoomName(bgCtx, portal, title)
 		oc.savePortalQuiet(bgCtx, portal, "room title")
 	}()
 }

@@ -530,8 +530,7 @@ func (b *BossStoreAdapter) CreateRoom(ctx context.Context, room tools.RoomData) 
 
 	if room.Name != "" {
 		pm.Title = room.Name
-		portal.Name = room.Name
-		portal.NameSet = true
+		b.client.applyPortalRoomName(ctx, portal, room.Name)
 		if resp.PortalInfo != nil {
 			resp.PortalInfo.Name = &room.Name
 		}
@@ -560,9 +559,8 @@ func (b *BossStoreAdapter) ModifyRoom(ctx context.Context, roomID string, update
 
 	// Apply updates
 	if updates.Name != "" {
-		portal.Name = updates.Name
 		pm.Title = updates.Name
-		portal.NameSet = true
+		b.client.applyPortalRoomName(ctx, portal, updates.Name)
 	}
 	if updates.AgentID != "" {
 		// Verify agent exists
