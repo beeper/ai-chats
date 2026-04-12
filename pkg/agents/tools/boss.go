@@ -80,7 +80,10 @@ type BossToolExecutor struct {
 }
 
 // AgentStoreInterface is the interface that the boss tools need.
-// This matches the AgentStore interface in the agents package but avoids import cycle.
+// It extends agents.AgentStore with room management and command execution.
+// The import cycle that originally motivated these mirror types is now resolved
+// (ToolInfo moved to toolspec), but the flattened AgentData/ModelData types and
+// extra methods remain as the boss-tool API surface.
 type AgentStoreInterface interface {
 	LoadAgents(ctx context.Context) (map[string]AgentData, error)
 	SaveAgent(ctx context.Context, agent AgentData) error
