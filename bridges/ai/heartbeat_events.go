@@ -197,13 +197,13 @@ func getLastHeartbeatEventForLogin(login *bridgev2.UserLogin) *HeartbeatEventPay
 	heartbeatEvents.mu.Unlock()
 
 	if last == nil {
-			if client, ok := login.Client.(*AIClient); ok && client != nil {
-				state := client.loginStateSnapshot(context.Background())
-				if state.LastHeartbeatEvent != nil {
-					seedLastHeartbeatEvent(login, state.LastHeartbeatEvent)
-					return cloneHeartbeatEvent(state.LastHeartbeatEvent)
-				}
+		if client, ok := login.Client.(*AIClient); ok && client != nil {
+			state := client.loginStateSnapshot(context.Background())
+			if state.LastHeartbeatEvent != nil {
+				seedLastHeartbeatEvent(login, state.LastHeartbeatEvent)
+				return cloneHeartbeatEvent(state.LastHeartbeatEvent)
 			}
+		}
 		return nil
 	}
 	eventsCopy := *last

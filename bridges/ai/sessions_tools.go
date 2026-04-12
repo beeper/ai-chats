@@ -116,7 +116,7 @@ func (oc *AIClient) executeSessionsList(ctx context.Context, portal *bridgev2.Po
 			}
 		}
 		if messageLimit > 0 {
-			messages, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, candidate.PortalKey, messageLimit)
+			messages, err := oc.getAIHistoryMessages(ctx, candidate, messageLimit)
 			if err == nil && len(messages) > 0 {
 				openClawMessages := buildOpenClawSessionMessages(messages, false)
 				if len(openClawMessages) > messageLimit {
@@ -267,7 +267,7 @@ func (oc *AIClient) executeSessionsHistory(ctx context.Context, portal *bridgev2
 		return tools.JSONErrorResult(resolveErr.Error()), nil
 	}
 
-	messages, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, resolvedPortal.PortalKey, limit)
+	messages, err := oc.getAIHistoryMessages(ctx, resolvedPortal, limit)
 	if err != nil {
 		return tools.JSONErrorResult(err.Error()), nil
 	}
@@ -573,7 +573,7 @@ func (oc *AIClient) lastMessageTimestamp(ctx context.Context, portal *bridgev2.P
 	if portal == nil {
 		return 0
 	}
-	messages, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, 1)
+	messages, err := oc.getAIHistoryMessages(ctx, portal, 1)
 	if err != nil || len(messages) == 0 {
 		return 0
 	}

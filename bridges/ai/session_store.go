@@ -29,7 +29,7 @@ type sessionEntry struct {
 type sessionStoreRef struct {
 	BridgeID string
 	LoginID  string
-	AgentID string
+	AgentID  string
 }
 
 type sessionDBScope struct {

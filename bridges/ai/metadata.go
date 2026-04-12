@@ -14,7 +14,7 @@ import (
 	"github.com/beeper/agentremote/sdk"
 )
 
-// ModelCache stores available models (cached in UserLoginMetadata)
+// ModelCache stores available models cached in AI-owned login runtime state.
 // Uses provider-agnostic ModelInfo instead of openai.Model
 type ModelCache struct {
 	Models        []ModelInfo `json:"models,omitempty"`
@@ -322,17 +322,6 @@ func cloneUserLoginMetadata(src *UserLoginMetadata) (*UserLoginMetadata, error) 
 	if err = json.Unmarshal(data, &clone); err != nil {
 		return nil, err
 	}
-	clone.Credentials = cloneLoginCredentials(src.Credentials)
-	clone.Agents = cloneBoolPtr(src.Agents)
-	clone.ModelCache = cloneModelCache(src.ModelCache)
-	clone.Gravatar = cloneGravatarState(src.Gravatar)
-	clone.Profile = cloneUserProfile(src.Profile)
-	clone.FileAnnotationCache = cloneFileAnnotationCache(src.FileAnnotationCache)
-	clone.CustomAgents = cloneAgentDefinitionContentMap(src.CustomAgents)
-	clone.TitleGenerationModel = src.TitleGenerationModel
-	clone.Timezone = src.Timezone
-	clone.ConsecutiveErrors = src.ConsecutiveErrors
-	clone.LastErrorAt = src.LastErrorAt
 	return &clone, nil
 }
 

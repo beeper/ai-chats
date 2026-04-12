@@ -14,16 +14,11 @@ import (
 )
 
 type aiLoginConfig struct {
-	Credentials          *LoginCredentials         `json:"credentials,omitempty"`
-	TitleGenerationModel string                    `json:"title_generation_model,omitempty"`
-	Agents               *bool                     `json:"agents,omitempty"`
-	ModelCache           *ModelCache               `json:"model_cache,omitempty"`
-	Gravatar             *GravatarState            `json:"gravatar,omitempty"`
-	Timezone             string                    `json:"timezone,omitempty"`
-	Profile              *UserProfile              `json:"profile,omitempty"`
-	FileAnnotationCache  map[string]FileAnnotation `json:"file_annotation_cache,omitempty"`
-	ConsecutiveErrors    int                       `json:"consecutive_errors,omitempty"`
-	LastErrorAt          int64                     `json:"last_error_at,omitempty"`
+	Credentials          *LoginCredentials `json:"credentials,omitempty"`
+	TitleGenerationModel string            `json:"title_generation_model,omitempty"`
+	Agents               *bool             `json:"agents,omitempty"`
+	Timezone             string            `json:"timezone,omitempty"`
+	Profile              *UserProfile      `json:"profile,omitempty"`
 }
 
 func aiLoginConfigFromMetadata(meta *UserLoginMetadata) *aiLoginConfig {
@@ -34,13 +29,8 @@ func aiLoginConfigFromMetadata(meta *UserLoginMetadata) *aiLoginConfig {
 		Credentials:          cloneLoginCredentials(meta.Credentials),
 		TitleGenerationModel: meta.TitleGenerationModel,
 		Agents:               cloneBoolPtr(meta.Agents),
-		ModelCache:           cloneModelCache(meta.ModelCache),
-		Gravatar:             cloneGravatarState(meta.Gravatar),
 		Timezone:             meta.Timezone,
 		Profile:              cloneUserProfile(meta.Profile),
-		FileAnnotationCache:  cloneFileAnnotationCache(meta.FileAnnotationCache),
-		ConsecutiveErrors:    meta.ConsecutiveErrors,
-		LastErrorAt:          meta.LastErrorAt,
 	}
 }
 
@@ -108,13 +98,8 @@ func cloneAILoginConfig(src *aiLoginConfig) *aiLoginConfig {
 		Credentials:          cloneLoginCredentials(src.Credentials),
 		TitleGenerationModel: src.TitleGenerationModel,
 		Agents:               cloneBoolPtr(src.Agents),
-		ModelCache:           cloneModelCache(src.ModelCache),
-		Gravatar:             cloneGravatarState(src.Gravatar),
 		Timezone:             src.Timezone,
 		Profile:              cloneUserProfile(src.Profile),
-		FileAnnotationCache:  cloneFileAnnotationCache(src.FileAnnotationCache),
-		ConsecutiveErrors:    src.ConsecutiveErrors,
-		LastErrorAt:          src.LastErrorAt,
 	}
 }
 
@@ -126,20 +111,15 @@ func loginMetadataView(provider string, cfg *aiLoginConfig) *UserLoginMetadata {
 	meta.Credentials = cloneLoginCredentials(cfg.Credentials)
 	meta.TitleGenerationModel = cfg.TitleGenerationModel
 	meta.Agents = cloneBoolPtr(cfg.Agents)
-	meta.ModelCache = cloneModelCache(cfg.ModelCache)
-	meta.Gravatar = cloneGravatarState(cfg.Gravatar)
 	meta.Timezone = cfg.Timezone
 	meta.Profile = cloneUserProfile(cfg.Profile)
-	meta.FileAnnotationCache = cloneFileAnnotationCache(cfg.FileAnnotationCache)
-	meta.ConsecutiveErrors = cfg.ConsecutiveErrors
-	meta.LastErrorAt = cfg.LastErrorAt
 	return meta
 }
 
 func loadAILoginConfig(ctx context.Context, login *bridgev2.UserLogin) (*aiLoginConfig, error) {
 	db := bridgeDBFromLogin(login)
 	if db == nil || login == nil || login.Bridge == nil || login.Bridge.DB == nil {
-		return &aiLoginConfig{}, nil
+		return aiLoginConfigFromMetadata(loginMetadata(login)), nil
 	}
 	var raw string
 	err := db.QueryRow(ctx, `
@@ -243,5 +223,16 @@ func (oc *AIClient) effectiveLoginMetadata(ctx context.Context) *UserLoginMetada
 	if oc == nil || oc.UserLogin == nil {
 		return &UserLoginMetadata{}
 	}
-	return loginMetadataView(loginMetadata(oc.UserLogin).Provider, oc.loginConfigSnapshot(ctx))
+	meta := loginMetadataView(loginMetadata(oc.UserLogin).Provider, oc.loginConfigSnapshot(ctx))
+	if state := oc.loginStateSnapshot(ctx); state != nil {
+		meta.ModelCache = cloneModelCache(state.ModelCache)
+		meta.Gravatar = cloneGravatarState(state.Gravatar)
+		meta.FileAnnotationCache = cloneFileAnnotationCache(state.FileAnnotationCache)
+		meta.ConsecutiveErrors = state.ConsecutiveErrors
+		meta.LastErrorAt = state.LastErrorAt
+	}
+	if customAgents, err := listCustomAgentsForLogin(ctx, oc.UserLogin); err == nil {
+		meta.CustomAgents = cloneAgentDefinitionContentMap(customAgents)
+	}
+	return meta
 }

@@ -11,13 +11,13 @@ import (
 )
 
 type loginRuntimeState struct {
-	NextChatIndex      int
-	LastHeartbeatEvent *HeartbeatEventPayload
-	ModelCache         *ModelCache
-	Gravatar           *GravatarState
+	NextChatIndex       int
+	LastHeartbeatEvent  *HeartbeatEventPayload
+	ModelCache          *ModelCache
+	Gravatar            *GravatarState
 	FileAnnotationCache map[string]FileAnnotation
-	ConsecutiveErrors  int
-	LastErrorAt        int64
+	ConsecutiveErrors   int
+	LastErrorAt         int64
 }
 
 type loginStateScope struct {
@@ -51,13 +51,26 @@ func cloneLoginRuntimeState(in *loginRuntimeState) *loginRuntimeState {
 		return &loginRuntimeState{}
 	}
 	return &loginRuntimeState{
-		NextChatIndex:      in.NextChatIndex,
-		LastHeartbeatEvent: cloneHeartbeatEvent(in.LastHeartbeatEvent),
-		ModelCache:         cloneModelCache(in.ModelCache),
-		Gravatar:           cloneGravatarState(in.Gravatar),
+		NextChatIndex:       in.NextChatIndex,
+		LastHeartbeatEvent:  cloneHeartbeatEvent(in.LastHeartbeatEvent),
+		ModelCache:          cloneModelCache(in.ModelCache),
+		Gravatar:            cloneGravatarState(in.Gravatar),
 		FileAnnotationCache: cloneFileAnnotationCache(in.FileAnnotationCache),
-		ConsecutiveErrors:  in.ConsecutiveErrors,
-		LastErrorAt:        in.LastErrorAt,
+		ConsecutiveErrors:   in.ConsecutiveErrors,
+		LastErrorAt:         in.LastErrorAt,
+	}
+}
+
+func loginRuntimeStateFromMetadata(meta *UserLoginMetadata) *loginRuntimeState {
+	if meta == nil {
+		return &loginRuntimeState{}
+	}
+	return &loginRuntimeState{
+		ModelCache:          cloneModelCache(meta.ModelCache),
+		Gravatar:            cloneGravatarState(meta.Gravatar),
+		FileAnnotationCache: cloneFileAnnotationCache(meta.FileAnnotationCache),
+		ConsecutiveErrors:   meta.ConsecutiveErrors,
+		LastErrorAt:         meta.LastErrorAt,
 	}
 }
 
@@ -90,6 +103,9 @@ func marshalJSONOrEmpty(v any) (string, error) {
 func loadLoginRuntimeState(ctx context.Context, client *AIClient) (*loginRuntimeState, error) {
 	scope := loginStateScopeForClient(client)
 	if scope == nil {
+		if client != nil {
+			return loginRuntimeStateFromMetadata(loginMetadata(client.UserLogin)), nil
+		}
 		return &loginRuntimeState{}, nil
 	}
 	state := &loginRuntimeState{}
@@ -120,7 +136,7 @@ func loadLoginRuntimeState(ctx context.Context, client *AIClient) (*loginRuntime
 		&state.LastErrorAt,
 	)
 	if err == sql.ErrNoRows {
-		return state, nil
+		return loginRuntimeStateFromMetadata(loginMetadata(client.UserLogin)), nil
 	}
 	if err != nil {
 		return nil, err

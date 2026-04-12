@@ -703,7 +703,7 @@ func executeMessageSearch(ctx context.Context, args map[string]any, btc *BridgeT
 
 	// Get messages from database
 	// Fetch more than needed since we'll filter
-	messages, err := btc.Client.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, btc.Portal.PortalKey, 1000)
+	messages, err := btc.Client.getAIHistoryMessages(ctx, btc.Portal, 1000)
 	if err != nil {
 		return "", fmt.Errorf("couldn't load messages: %w", err)
 	}

@@ -200,7 +200,7 @@ func (oc *AIClient) lastAssistantUsage(ctx context.Context, portal *bridgev2.Por
 	if oc == nil || portal == nil {
 		return nil
 	}
-	history, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, 50)
+	history, err := oc.getAIHistoryMessages(ctx, portal, 50)
 	if err != nil {
 		return nil
 	}

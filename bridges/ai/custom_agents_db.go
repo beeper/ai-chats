@@ -66,13 +66,7 @@ func listCustomAgentsForLogin(ctx context.Context, login *bridgev2.UserLogin) (m
 		if meta == nil || len(meta.CustomAgents) == 0 {
 			return nil, nil
 		}
-		out := make(map[string]*AgentDefinitionContent, len(meta.CustomAgents))
-		for id, agent := range meta.CustomAgents {
-			if agent != nil {
-				out[id] = agent
-			}
-		}
-		return out, nil
+		return cloneAgentDefinitionContentMap(meta.CustomAgents), nil
 	}
 	rows, err := scope.db.Query(ctx, `
 		SELECT agent_id, content_json
@@ -120,7 +114,10 @@ func saveCustomAgentForLogin(ctx context.Context, login *bridgev2.UserLogin, age
 		if meta.CustomAgents == nil {
 			meta.CustomAgents = map[string]*AgentDefinitionContent{}
 		}
-		meta.CustomAgents[strings.TrimSpace(agent.ID)] = agent
+		clone := cloneAgentDefinitionContentMap(map[string]*AgentDefinitionContent{
+			strings.TrimSpace(agent.ID): agent,
+		})
+		meta.CustomAgents[strings.TrimSpace(agent.ID)] = clone[strings.TrimSpace(agent.ID)]
 		return nil
 	}
 	payload, err := json.Marshal(agent)
@@ -165,7 +162,9 @@ func loadCustomAgentForLogin(ctx context.Context, login *bridgev2.UserLogin, age
 		if meta == nil || meta.CustomAgents == nil {
 			return nil, nil
 		}
-		return meta.CustomAgents[strings.TrimSpace(agentID)], nil
+		return cloneAgentDefinitionContentMap(map[string]*AgentDefinitionContent{
+			strings.TrimSpace(agentID): meta.CustomAgents[strings.TrimSpace(agentID)],
+		})[strings.TrimSpace(agentID)], nil
 	}
 	var raw string
 	err := scope.db.QueryRow(ctx, `

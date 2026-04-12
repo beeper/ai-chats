@@ -38,8 +38,8 @@ func (oc *AIClient) heartbeatSessionPreamble(agentID string) (cfg *Config, resol
 			storeAgentID = resolvedAgent
 		}
 	}
-		_, bridgeID, loginID := loginDBContext(oc)
-		storeRef = sessionStoreRef{BridgeID: bridgeID, LoginID: loginID, AgentID: storeAgentID}
+	_, bridgeID, loginID := loginDBContext(oc)
+	storeRef = sessionStoreRef{BridgeID: bridgeID, LoginID: loginID, AgentID: storeAgentID}
 	return cfg, resolvedAgent, storeRef, mainSessionKey, scope
 }
 

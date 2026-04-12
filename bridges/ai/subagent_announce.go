@@ -46,7 +46,7 @@ func (oc *AIClient) readLatestAssistantReply(ctx context.Context, portal *bridge
 	if oc == nil || portal == nil {
 		return ""
 	}
-	messages, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, 50)
+	messages, err := oc.getAIHistoryMessages(ctx, portal, 50)
 	if err != nil || len(messages) == 0 {
 		return ""
 	}
@@ -110,7 +110,7 @@ func (oc *AIClient) buildSubagentStatsLine(ctx context.Context, portal *bridgev2
 	if !run.StartedAt.IsZero() && !endedAt.IsZero() {
 		runtimeMs = endedAt.Sub(run.StartedAt).Milliseconds()
 	}
-	messages, _ := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, 200)
+	messages, _ := oc.getAIHistoryMessages(ctx, portal, 200)
 	inputTokens, outputTokens, totalTokens := oc.resolveUsageFromMessages(messages)
 
 	var parts []string

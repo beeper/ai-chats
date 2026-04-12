@@ -207,7 +207,7 @@ func (h *runtimeIntegrationHost) RecentMessages(ctx context.Context, portal *bri
 	if maxMessages > 10 {
 		maxMessages = 10
 	}
-	history, err := h.client.UserLogin.Bridge.DB.Message.GetLastNInPortal(h.client.backgroundContext(ctx), portal.PortalKey, maxMessages)
+	history, err := h.client.getAIHistoryMessages(h.client.backgroundContext(ctx), portal, maxMessages)
 	if err != nil || len(history) == 0 {
 		return nil
 	}
@@ -243,7 +243,11 @@ func (h *runtimeIntegrationHost) SessionTranscript(ctx context.Context, portalKe
 	if err != nil || count <= 0 {
 		return nil, err
 	}
-	history, err := h.client.UserLogin.Bridge.DB.Message.GetLastNInPortal(h.client.backgroundContext(ctx), portalKey, count)
+	portal, err := h.client.UserLogin.Bridge.GetPortalByKey(h.client.backgroundContext(ctx), portalKey)
+	if err != nil || portal == nil {
+		return nil, err
+	}
+	history, err := h.client.getAIHistoryMessages(h.client.backgroundContext(ctx), portal, count)
 	if err != nil || len(history) == 0 {
 		return nil, err
 	}
@@ -902,7 +906,7 @@ func (oc *AIClient) lastAssistantMessageInfo(ctx context.Context, portal *bridge
 	if portal == nil || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil || oc.UserLogin.Bridge.DB.Message == nil {
 		return "", 0
 	}
-	messages, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, 20)
+	messages, err := oc.getAIHistoryMessages(ctx, portal, 20)
 	if err != nil {
 		return "", 0
 	}
@@ -929,7 +933,7 @@ func (oc *AIClient) waitForNewAssistantMessage(ctx context.Context, portal *brid
 	if portal == nil || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil || oc.UserLogin.Bridge.DB.Message == nil {
 		return nil, false
 	}
-	messages, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, 20)
+	messages, err := oc.getAIHistoryMessages(ctx, portal, 20)
 	if err != nil {
 		return nil, false
 	}

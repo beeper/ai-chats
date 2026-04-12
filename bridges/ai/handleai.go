@@ -212,7 +212,7 @@ func (oc *AIClient) hasPortalMessages(ctx context.Context, portal *bridgev2.Port
 
 	// Use a small lookback window so we can ignore "non-user" internal messages (e.g. welcome notices,
 	// subagent triggers) when deciding whether the chat is "empty enough" to auto-greet.
-	history, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, 10)
+	history, err := oc.getAIHistoryMessages(ctx, portal, 10)
 	if err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to check portal message history")
 		// Best-effort: if the DB is temporarily unavailable, prefer still scheduling the greeting.
@@ -423,7 +423,7 @@ func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Por
 		defer cancel()
 
 		// Fetch the last user message from database
-		messages, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(bgCtx, portal.PortalKey, 10)
+		messages, err := oc.getAIHistoryMessages(bgCtx, portal, 10)
 		if err != nil {
 			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to get messages for title generation")
 			return

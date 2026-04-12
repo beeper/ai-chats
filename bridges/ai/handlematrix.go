@@ -354,11 +354,23 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 		msgMeta = &MessageMetadata{}
 		edit.EditTarget.Metadata = msgMeta
 	}
-	msgMeta.Body = newBody
-
-	// Persist the updated metadata
-	if err := oc.UserLogin.Bridge.DB.Message.Update(ctx, edit.EditTarget); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist edited message metadata")
+	state, err := loadAIMessageState(ctx, oc, portal.MXID, edit.EditTarget.ID)
+	if err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to load edited message state")
+	}
+	nextState := cloneAIMessageState(state)
+	nextState.Body = newBody
+	if msgMeta.Role == "user" {
+		shadowMeta := cloneMessageMetadata(msgMeta)
+		if shadowMeta == nil {
+			shadowMeta = &MessageMetadata{}
+		}
+		shadowMeta.Body = newBody
+		setCanonicalTurnDataFromPromptMessages(shadowMeta, []PromptMessage{newUserTextPromptMessage(newBody)})
+		nextState.CanonicalTurnData = cloneCanonicalTurnData(shadowMeta.CanonicalTurnData)
+	}
+	if err := saveAIMessageState(ctx, oc, portal.MXID, edit.EditTarget.ID, nextState); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist edited message state")
 	}
 	oc.notifySessionMutation(ctx, portal, meta, true)
 
@@ -375,7 +387,7 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 
 	// Find the assistant response that came after this message
 	// We'll delete it and regenerate
-	err := oc.regenerateFromEdit(ctx, edit.Event, portal, meta, edit.EditTarget, newBody)
+	err = oc.regenerateFromEdit(ctx, edit.Event, portal, meta, edit.EditTarget, newBody)
 	if err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg("Failed to regenerate response after edit")
 		oc.sendSystemNotice(ctx, portal, fmt.Sprintf("Couldn't regenerate the response: %v", err))
@@ -394,7 +406,7 @@ func (oc *AIClient) regenerateFromEdit(
 	newBody string,
 ) error {
 	// Get messages in the portal to find the assistant response after the edited message
-	messages, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, 50)
+	messages, err := oc.getAIHistoryMessages(ctx, portal, 50)
 	if err != nil {
 		return fmt.Errorf("failed to get messages: %w", err)
 	}

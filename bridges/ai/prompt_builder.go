@@ -76,7 +76,7 @@ func (oc *AIClient) fetchHistoryRowsWithExtra(
 	if meta != nil {
 		resetAt = meta.SessionResetAt
 	}
-	history, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, historyLimit)
+	history, err := oc.getAIHistoryMessages(ctx, portal, historyLimit)
 	if err != nil {
 		return nil, err
 	}

@@ -1683,7 +1683,7 @@ func (oc *AIClient) updateAssistantGeneratedFiles(ctx context.Context, portal *b
 	if len(refs) == 0 {
 		return
 	}
-	messages, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, 10)
+	messages, err := oc.getAIHistoryMessages(ctx, portal, 10)
 	if err != nil {
 		oc.Log().Warn().Err(err).Msg("Failed to load messages for async GeneratedFiles update")
 		return
@@ -1693,12 +1693,18 @@ func (oc *AIClient) updateAssistantGeneratedFiles(ctx context.Context, portal *b
 		if !ok || meta.Role != "assistant" || !meta.HasToolCalls {
 			continue
 		}
-		// Found the most recent assistant message with tool calls — update its GeneratedFiles.
-		meta.GeneratedFiles = append(meta.GeneratedFiles, refs...)
-		if err := oc.UserLogin.Bridge.DB.Message.Update(ctx, msg); err != nil {
-			oc.Log().Warn().Err(err).Str("msg_id", string(msg.ID)).Msg("Failed to update assistant message with async GeneratedFiles")
+		// Found the most recent assistant message with tool calls — persist AI-owned GeneratedFiles overlay.
+		state, stateErr := loadAIMessageState(ctx, oc, portal.MXID, msg.ID)
+		if stateErr != nil {
+			oc.Log().Warn().Err(stateErr).Str("msg_id", string(msg.ID)).Msg("Failed to load assistant message state")
+			return
+		}
+		nextState := cloneAIMessageState(state)
+		nextState.GeneratedFiles = append(append([]GeneratedFileRef(nil), meta.GeneratedFiles...), refs...)
+		if err := saveAIMessageState(ctx, oc, portal.MXID, msg.ID, nextState); err != nil {
+			oc.Log().Warn().Err(err).Str("msg_id", string(msg.ID)).Msg("Failed to persist assistant GeneratedFiles overlay")
 		} else {
-			oc.Log().Debug().Str("msg_id", string(msg.ID)).Int("files", len(refs)).Msg("Updated assistant message with async GeneratedFiles")
+			oc.Log().Debug().Str("msg_id", string(msg.ID)).Int("files", len(refs)).Msg("Updated assistant message GeneratedFiles overlay")
 		}
 		return
 	}
