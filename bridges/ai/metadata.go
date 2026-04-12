@@ -223,17 +223,18 @@ type GravatarState struct {
 	Primary *GravatarProfile `json:"primary,omitempty"`
 }
 
-// PortalMetadata stores non-derivable per-room runtime state.
+// PortalMetadata stores runtime-only per-room state. Persistent room state is mirrored
+// into AI-owned database tables and is not serialized through bridgev2 metadata.
 type PortalMetadata struct {
 	AckReactionEmoji       string     `json:"-"`
 	AckReactionRemoveAfter bool       `json:"-"`
 	PDFConfig              *PDFConfig `json:"-"`
 
-	Slug           string `json:"-"`
-	Title          string `json:"-"`
-	TitleGenerated bool   `json:"-"`
-	WelcomeSent    bool   `json:"-"`
-	AutoGreetingSent bool `json:"-"`
+	Slug             string `json:"-"`
+	Title            string `json:"-"`
+	TitleGenerated   bool   `json:"-"`
+	WelcomeSent      bool   `json:"-"`
+	AutoGreetingSent bool   `json:"-"`
 
 	SessionResetAt          int64            `json:"-"`
 	AbortedLastRun          bool             `json:"-"`

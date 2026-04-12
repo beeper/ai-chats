@@ -131,7 +131,7 @@ func TestOpenClawHistoryUIPartsReasoningAndApproval(t *testing.T) {
 }
 
 func TestConvertHistoryToCanonicalUIMetadata(t *testing.T) {
-	meta := &PortalMetadata{
+	state := &openClawPortalState{
 		OpenClawSessionID:  "sess-1",
 		OpenClawSessionKey: "agent:main:matrix-dm",
 		Model:              "gpt-5",
@@ -147,7 +147,7 @@ func TestConvertHistoryToCanonicalUIMetadata(t *testing.T) {
 			"totalTokens":     int64(12),
 		},
 		"content": []any{map[string]any{"type": "text", "text": "hello"}},
-	}, "assistant", meta)
+	}, "assistant", state)
 	if len(parts) != 1 || parts[0]["type"] != "text" {
 		t.Fatalf("unexpected parts: %#v", parts)
 	}
@@ -164,7 +164,7 @@ func TestConvertHistoryToCanonicalUIMetadata(t *testing.T) {
 }
 
 func TestBuildOpenClawHistoryMessageMetadataIncludesToolCalls(t *testing.T) {
-	meta := &PortalMetadata{
+	state := &openClawPortalState{
 		OpenClawSessionID:  "sess-1",
 		OpenClawSessionKey: "agent:main:matrix-dm",
 	}
@@ -188,7 +188,7 @@ func TestBuildOpenClawHistoryMessageMetadataIncludesToolCalls(t *testing.T) {
 				"details":    map[string]any{"status": 200},
 			},
 		},
-	}, "assistant", meta)
+	}, "assistant", state)
 	uiMessage := msgconv.BuildUIMessage(msgconv.UIMessageParams{
 		TurnID:   "turn-2",
 		Role:     "assistant",
@@ -196,7 +196,7 @@ func TestBuildOpenClawHistoryMessageMetadataIncludesToolCalls(t *testing.T) {
 		Parts:    uiParts,
 	})
 
-	metadata := buildOpenClawHistoryMessageMetadata(map[string]any{}, meta, "assistant", "main", "", nil, uiMetadata, uiMessage)
+	metadata := buildOpenClawHistoryMessageMetadata(map[string]any{}, state, "assistant", "main", "", nil, uiMetadata, uiMessage)
 	if metadata == nil {
 		t.Fatal("expected metadata")
 	}
@@ -222,7 +222,7 @@ func TestBuildOpenClawHistoryMessageMetadataIncludesToolCalls(t *testing.T) {
 }
 
 func TestBuildOpenClawHistoryMessageMetadataIncludesGeneratedFiles(t *testing.T) {
-	meta := &PortalMetadata{
+	state := &openClawPortalState{
 		OpenClawSessionID:  "sess-1",
 		OpenClawSessionKey: "agent:main:matrix-dm",
 	}
@@ -234,7 +234,7 @@ func TestBuildOpenClawHistoryMessageMetadataIncludesGeneratedFiles(t *testing.T)
 				"text": "done",
 			},
 		},
-	}, "assistant", meta)
+	}, "assistant", state)
 	uiParts = append(uiParts, map[string]any{
 		"type":      "file",
 		"url":       "mxc://example.org/history-file",
@@ -247,7 +247,7 @@ func TestBuildOpenClawHistoryMessageMetadataIncludesGeneratedFiles(t *testing.T)
 		Parts:    uiParts,
 	})
 
-	metadata := buildOpenClawHistoryMessageMetadata(map[string]any{}, meta, "assistant", "main", "done", nil, uiMetadata, uiMessage)
+	metadata := buildOpenClawHistoryMessageMetadata(map[string]any{}, state, "assistant", "main", "done", nil, uiMetadata, uiMessage)
 	if metadata == nil {
 		t.Fatal("expected metadata")
 	}
@@ -260,13 +260,13 @@ func TestBuildOpenClawHistoryMessageMetadataIncludesGeneratedFiles(t *testing.T)
 }
 
 func TestPrepareOpenClawBackfillEntriesStableStreamOrder(t *testing.T) {
-	meta := &PortalMetadata{OpenClawSessionKey: "agent:main:test"}
+	state := &openClawPortalState{OpenClawSessionKey: "agent:main:test"}
 	history := []map[string]any{
 		{"role": "assistant", "timestamp": int64(1_700_000_001_000), "content": []any{map[string]any{"type": "output_text", "text": "a"}}},
 		{"role": "assistant", "timestamp": int64(1_700_000_001_000), "content": []any{map[string]any{"type": "output_text", "text": "b"}}},
 	}
 
-	entries := prepareOpenClawBackfillEntries(meta, history)
+	entries := prepareOpenClawBackfillEntries(state, history)
 	if len(entries) != 2 {
 		t.Fatalf("expected 2 entries, got %d", len(entries))
 	}
@@ -354,7 +354,7 @@ func TestDownloadOpenClawAttachmentURLRejectsLocalFiles(t *testing.T) {
 
 func TestTopicForPortal(t *testing.T) {
 	oc := &OpenClawClient{}
-	topic := oc.topicForPortal(&PortalMetadata{
+	topic := oc.topicForPortal(&openClawPortalState{
 		OpenClawChatType:           "channel",
 		OpenClawChannel:            "discord",
 		OpenClawSubject:            "Support",
@@ -373,7 +373,7 @@ func TestTopicForPortal(t *testing.T) {
 
 func TestTopicForPortalWithPreviewAndCatalogCounts(t *testing.T) {
 	oc := &OpenClawClient{}
-	topic := oc.topicForPortal(&PortalMetadata{
+	topic := oc.topicForPortal(&openClawPortalState{
 		OpenClawChatType:        "group",
 		OpenClawChannel:         "discord",
 		OpenClawOrigin:          "{\"provider\":\"discord\",\"channel\":\"123\"}",
@@ -392,32 +392,32 @@ func TestTopicForPortalWithPreviewAndCatalogCounts(t *testing.T) {
 func TestOpenClawRoomType(t *testing.T) {
 	tests := []struct {
 		name string
-		meta PortalMetadata
+		meta openClawPortalState
 		want database.RoomType
 	}{
 		{
 			name: "direct chat type stays dm",
-			meta: PortalMetadata{OpenClawChatType: "direct"},
+			meta: openClawPortalState{OpenClawChatType: "direct"},
 			want: database.RoomTypeDM,
 		},
 		{
 			name: "group chat type becomes default room",
-			meta: PortalMetadata{OpenClawChatType: "group"},
+			meta: openClawPortalState{OpenClawChatType: "group"},
 			want: database.RoomTypeDefault,
 		},
 		{
 			name: "channel chat type becomes default room",
-			meta: PortalMetadata{OpenClawChatType: "channel"},
+			meta: openClawPortalState{OpenClawChatType: "channel"},
 			want: database.RoomTypeDefault,
 		},
 		{
 			name: "group channel metadata becomes default room",
-			meta: PortalMetadata{OpenClawGroupChannel: "alerts"},
+			meta: openClawPortalState{OpenClawGroupChannel: "alerts"},
 			want: database.RoomTypeDefault,
 		},
 		{
 			name: "synthetic dm stays dm",
-			meta: PortalMetadata{OpenClawSessionKey: openClawDMAgentSessionKey("main")},
+			meta: openClawPortalState{OpenClawSessionKey: openClawDMAgentSessionKey("main")},
 			want: database.RoomTypeDM,
 		},
 	}
@@ -463,17 +463,11 @@ func TestOpenClawGetCapabilitiesUsesSelectedModelModalities(t *testing.T) {
 			Input:     []string{"text", "image"},
 		},
 	})
-	portal := &bridgev2.Portal{
-		Portal: &database.Portal{
-			Metadata: &PortalMetadata{
-				IsOpenClawRoom: true,
-				ModelProvider:  "openai",
-				Model:          "gpt-5",
-			},
-		},
+	state := &openClawPortalState{
+		ModelProvider: "openai",
+		Model:         "gpt-5",
 	}
-
-	caps := oc.GetCapabilities(context.Background(), portal)
+	caps := openClawCapabilitiesFromProfile(oc.openClawCapabilityProfile(context.Background(), state))
 	if caps.ID != openClawCapabilityBaseID+"+reasoning+vision" {
 		t.Fatalf("unexpected capability id: %q", caps.ID)
 	}
@@ -505,17 +499,11 @@ func TestOpenClawGetCapabilitiesRejectsUnsupportedMediaWhenKnown(t *testing.T) {
 			Input:    []string{"text"},
 		},
 	})
-	portal := &bridgev2.Portal{
-		Portal: &database.Portal{
-			Metadata: &PortalMetadata{
-				IsOpenClawRoom: true,
-				ModelProvider:  "openai",
-				Model:          "gpt-5-mini",
-			},
-		},
+	state := &openClawPortalState{
+		ModelProvider: "openai",
+		Model:         "gpt-5-mini",
 	}
-
-	caps := oc.GetCapabilities(context.Background(), portal)
+	caps := openClawCapabilitiesFromProfile(oc.openClawCapabilityProfile(context.Background(), state))
 	if caps.ID != openClawCapabilityBaseID {
 		t.Fatalf("unexpected capability id: %q", caps.ID)
 	}
@@ -532,17 +520,11 @@ func TestOpenClawGetCapabilitiesRejectsUnsupportedMediaWhenKnown(t *testing.T) {
 
 func TestOpenClawGetCapabilitiesFallsBackWhenModelSupportUnknown(t *testing.T) {
 	oc := &OpenClawClient{}
-	portal := &bridgev2.Portal{
-		Portal: &database.Portal{
-			Metadata: &PortalMetadata{
-				IsOpenClawRoom: true,
-				ModelProvider:  "openai",
-				Model:          "unknown-model",
-			},
-		},
+	state := &openClawPortalState{
+		ModelProvider: "openai",
+		Model:         "unknown-model",
 	}
-
-	caps := oc.GetCapabilities(context.Background(), portal)
+	caps := openClawCapabilitiesFromProfile(oc.openClawCapabilityProfile(context.Background(), state))
 	if caps.ID != openClawCapabilityBaseID+"+fallbackmedia" {
 		t.Fatalf("unexpected capability id: %q", caps.ID)
 	}
@@ -592,9 +574,7 @@ func TestOpenClawSessionResyncProjectsTypeTopicAndCapabilities(t *testing.T) {
 		Model:              "gpt-5",
 	})
 	portal := &bridgev2.Portal{
-		Portal: &database.Portal{
-			Metadata: &PortalMetadata{},
-		},
+		Portal: &database.Portal{},
 	}
 
 	info, err := evt.GetChatInfo(context.Background(), portal)
@@ -615,7 +595,11 @@ func TestOpenClawSessionResyncProjectsTypeTopicAndCapabilities(t *testing.T) {
 		t.Fatalf("unexpected topic: %q", *info.Topic)
 	}
 
-	caps := oc.GetCapabilities(context.Background(), portal)
+	state := &openClawPortalState{
+		ModelProvider: "openai",
+		Model:         "gpt-5",
+	}
+	caps := openClawCapabilitiesFromProfile(oc.openClawCapabilityProfile(context.Background(), state))
 	if caps.ID != openClawCapabilityBaseID+"+reasoning+vision" {
 		t.Fatalf("unexpected capability id: %q", caps.ID)
 	}

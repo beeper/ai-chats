@@ -26,6 +26,7 @@ type PortalMetadata struct {
 }
 
 type openClawPortalState struct {
+	IsOpenClawRoom                bool           `json:"is_openclaw_room,omitempty"`
 	OpenClawGatewayID             string         `json:"openclaw_gateway_id,omitempty"`
 	OpenClawSessionID             string         `json:"openclaw_session_id,omitempty"`
 	OpenClawSessionKey            string         `json:"openclaw_session_key,omitempty"`
@@ -100,9 +101,9 @@ type openClawPersistedLoginState struct {
 }
 
 type openClawPortalDBScope struct {
-	db       *dbutil.Database
-	bridgeID string
-	loginID  string
+	db        *dbutil.Database
+	bridgeID  string
+	loginID   string
 	portalKey string
 }
 

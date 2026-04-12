@@ -48,16 +48,16 @@ func TestClonePortalMetadataDeepCopiesConfig(t *testing.T) {
 
 func TestPortalMetadataDoesNotMarshalPersistentState(t *testing.T) {
 	meta := &PortalMetadata{
-		AckReactionEmoji:       "👍",
-		Slug:                   "chat-1",
-		Title:                  "Chat",
-		WelcomeSent:            true,
-		AutoGreetingSent:       true,
-		SessionResetAt:         123,
-		ModuleMeta:             map[string]any{"cron": map[string]any{"is_internal_room": true}},
-		SubagentParentRoomID:   "!parent:example.com",
-		TypingMode:             "thinking",
-		TypingIntervalSeconds:   ptrInt(12),
+		AckReactionEmoji:      "👍",
+		Slug:                  "chat-1",
+		Title:                 "Chat",
+		WelcomeSent:           true,
+		AutoGreetingSent:      true,
+		SessionResetAt:        123,
+		ModuleMeta:            map[string]any{"cron": map[string]any{"is_internal_room": true}},
+		SubagentParentRoomID:  "!parent:example.com",
+		TypingMode:            "thinking",
+		TypingIntervalSeconds: ptrInt(12),
 	}
 	data, err := json.Marshal(meta)
 	if err != nil {
@@ -70,27 +70,27 @@ func TestPortalMetadataDoesNotMarshalPersistentState(t *testing.T) {
 
 func TestPersistedPortalStateRoundTrip(t *testing.T) {
 	orig := &PortalMetadata{
-		AckReactionEmoji:     "👍",
+		AckReactionEmoji:       "👍",
 		AckReactionRemoveAfter: true,
-		PDFConfig:            &PDFConfig{Engine: "mistral"},
-		Slug:                 "chat-7",
-		Title:                "Example",
-		TitleGenerated:       true,
-		WelcomeSent:          true,
-		AutoGreetingSent:     true,
-		SessionResetAt:       123,
-		AbortedLastRun:       true,
-		CompactionCount:      9,
-		SessionBootstrappedAt: 456,
+		PDFConfig:              &PDFConfig{Engine: "mistral"},
+		Slug:                   "chat-7",
+		Title:                  "Example",
+		TitleGenerated:         true,
+		WelcomeSent:            true,
+		AutoGreetingSent:       true,
+		SessionResetAt:         123,
+		AbortedLastRun:         true,
+		CompactionCount:        9,
+		SessionBootstrappedAt:  456,
 		SessionBootstrapByAgent: map[string]int64{
 			"beeper": 789,
 		},
 		ModuleMeta: map[string]any{
 			"cron": map[string]any{"is_internal_room": true},
 		},
-		SubagentParentRoomID: "!parent:example.com",
-		DebounceMs:           250,
-		TypingMode:           "thinking",
+		SubagentParentRoomID:  "!parent:example.com",
+		DebounceMs:            250,
+		TypingMode:            "thinking",
 		TypingIntervalSeconds: ptrInt(15),
 	}
 

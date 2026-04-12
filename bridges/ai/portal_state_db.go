@@ -15,24 +15,24 @@ import (
 )
 
 type aiPersistedPortalState struct {
-	AckReactionEmoji       string            `json:"ack_reaction_emoji,omitempty"`
-	AckReactionRemoveAfter bool              `json:"ack_reaction_remove_after,omitempty"`
-	PDFConfig              *PDFConfig        `json:"pdf_config,omitempty"`
-	Slug                   string            `json:"slug,omitempty"`
-	Title                  string            `json:"title,omitempty"`
-	TitleGenerated         bool              `json:"title_generated,omitempty"`
-	WelcomeSent            bool              `json:"welcome_sent,omitempty"`
-	AutoGreetingSent       bool              `json:"auto_greeting_sent,omitempty"`
-	SessionResetAt         int64             `json:"session_reset_at,omitempty"`
-	AbortedLastRun         bool              `json:"aborted_last_run,omitempty"`
-	CompactionCount        int               `json:"compaction_count,omitempty"`
-	SessionBootstrappedAt  int64             `json:"session_bootstrapped_at,omitempty"`
-	SessionBootstrapByAgent map[string]int64  `json:"session_bootstrap_by_agent,omitempty"`
-	ModuleMeta             map[string]any    `json:"module_meta,omitempty"`
-	SubagentParentRoomID   string            `json:"subagent_parent_room_id,omitempty"`
-	DebounceMs             int               `json:"debounce_ms,omitempty"`
-	TypingMode             string            `json:"typing_mode,omitempty"`
-	TypingIntervalSeconds   *int              `json:"typing_interval_seconds,omitempty"`
+	AckReactionEmoji        string           `json:"ack_reaction_emoji,omitempty"`
+	AckReactionRemoveAfter  bool             `json:"ack_reaction_remove_after,omitempty"`
+	PDFConfig               *PDFConfig       `json:"pdf_config,omitempty"`
+	Slug                    string           `json:"slug,omitempty"`
+	Title                   string           `json:"title,omitempty"`
+	TitleGenerated          bool             `json:"title_generated,omitempty"`
+	WelcomeSent             bool             `json:"welcome_sent,omitempty"`
+	AutoGreetingSent        bool             `json:"auto_greeting_sent,omitempty"`
+	SessionResetAt          int64            `json:"session_reset_at,omitempty"`
+	AbortedLastRun          bool             `json:"aborted_last_run,omitempty"`
+	CompactionCount         int              `json:"compaction_count,omitempty"`
+	SessionBootstrappedAt   int64            `json:"session_bootstrapped_at,omitempty"`
+	SessionBootstrapByAgent map[string]int64 `json:"session_bootstrap_by_agent,omitempty"`
+	ModuleMeta              map[string]any   `json:"module_meta,omitempty"`
+	SubagentParentRoomID    string           `json:"subagent_parent_room_id,omitempty"`
+	DebounceMs              int              `json:"debounce_ms,omitempty"`
+	TypingMode              string           `json:"typing_mode,omitempty"`
+	TypingIntervalSeconds   *int             `json:"typing_interval_seconds,omitempty"`
 }
 
 type portalStateScope struct {
@@ -99,23 +99,23 @@ func persistedPortalStateFromMeta(meta *PortalMetadata) *aiPersistedPortalState 
 		return &aiPersistedPortalState{}
 	}
 	return &aiPersistedPortalState{
-		AckReactionEmoji:       meta.AckReactionEmoji,
-		AckReactionRemoveAfter: meta.AckReactionRemoveAfter,
-		PDFConfig:              meta.PDFConfig,
-		Slug:                   meta.Slug,
-		Title:                  meta.Title,
-		TitleGenerated:         meta.TitleGenerated,
-		WelcomeSent:            meta.WelcomeSent,
-		AutoGreetingSent:       meta.AutoGreetingSent,
-		SessionResetAt:         meta.SessionResetAt,
-		AbortedLastRun:         meta.AbortedLastRun,
-		CompactionCount:        meta.CompactionCount,
-		SessionBootstrappedAt:  meta.SessionBootstrappedAt,
+		AckReactionEmoji:        meta.AckReactionEmoji,
+		AckReactionRemoveAfter:  meta.AckReactionRemoveAfter,
+		PDFConfig:               meta.PDFConfig,
+		Slug:                    meta.Slug,
+		Title:                   meta.Title,
+		TitleGenerated:          meta.TitleGenerated,
+		WelcomeSent:             meta.WelcomeSent,
+		AutoGreetingSent:        meta.AutoGreetingSent,
+		SessionResetAt:          meta.SessionResetAt,
+		AbortedLastRun:          meta.AbortedLastRun,
+		CompactionCount:         meta.CompactionCount,
+		SessionBootstrappedAt:   meta.SessionBootstrappedAt,
 		SessionBootstrapByAgent: meta.SessionBootstrapByAgent,
-		ModuleMeta:             meta.ModuleMeta,
-		SubagentParentRoomID:   meta.SubagentParentRoomID,
-		DebounceMs:             meta.DebounceMs,
-		TypingMode:             meta.TypingMode,
+		ModuleMeta:              meta.ModuleMeta,
+		SubagentParentRoomID:    meta.SubagentParentRoomID,
+		DebounceMs:              meta.DebounceMs,
+		TypingMode:              meta.TypingMode,
 		TypingIntervalSeconds:   meta.TypingIntervalSeconds,
 	}
 }

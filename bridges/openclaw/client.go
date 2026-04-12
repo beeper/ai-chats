@@ -300,13 +300,35 @@ func (oc *OpenClawClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridg
 }
 
 func (oc *OpenClawClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
-	caps := openClawBaseCaps.Clone()
 	state, err := loadOpenClawPortalState(ctx, portal, oc.UserLogin)
 	if err != nil {
-		return caps
+		return openClawCapabilitiesFromProfile(openClawCapabilityProfile{})
 	}
 	oc.enrichPortalState(ctx, state)
 	profile := oc.openClawCapabilityProfile(ctx, state)
+	caps := openClawCapabilitiesFromProfile(profile)
+	if !profile.MediaKnown {
+		return caps
+	}
+	return caps
+}
+
+func (oc *OpenClawClient) capabilityIDForPortalState(ctx context.Context, state *openClawPortalState) string {
+	return openClawCapabilityID(oc.openClawCapabilityProfile(ctx, state))
+}
+
+func (oc *OpenClawClient) maybeRefreshPortalCapabilities(ctx context.Context, portal *bridgev2.Portal, previous, current *openClawPortalState) {
+	if oc == nil || oc.UserLogin == nil || portal == nil || portal.MXID == "" || previous == nil || current == nil {
+		return
+	}
+	if oc.capabilityIDForPortalState(ctx, previous) == oc.capabilityIDForPortalState(ctx, current) {
+		return
+	}
+	portal.UpdateCapabilities(ctx, oc.UserLogin, true)
+}
+
+func openClawCapabilitiesFromProfile(profile openClawCapabilityProfile) *event.RoomFeatures {
+	caps := openClawBaseCaps.Clone()
 	caps.ID = openClawCapabilityID(profile)
 	if !profile.MediaKnown {
 		for _, msgType := range sdk.MediaMessageTypes {
@@ -328,20 +350,6 @@ func (oc *OpenClawClient) GetCapabilities(ctx context.Context, portal *bridgev2.
 		caps.File[event.MsgVideo] = openClawFileFeatures.Clone()
 	}
 	return caps
-}
-
-func (oc *OpenClawClient) capabilityIDForPortalState(ctx context.Context, state *openClawPortalState) string {
-	return openClawCapabilityID(oc.openClawCapabilityProfile(ctx, state))
-}
-
-func (oc *OpenClawClient) maybeRefreshPortalCapabilities(ctx context.Context, portal *bridgev2.Portal, previous, current *openClawPortalState) {
-	if oc == nil || oc.UserLogin == nil || portal == nil || portal.MXID == "" || previous == nil || current == nil {
-		return
-	}
-	if oc.capabilityIDForPortalState(ctx, previous) == oc.capabilityIDForPortalState(ctx, current) {
-		return
-	}
-	portal.UpdateCapabilities(ctx, oc.UserLogin, true)
 }
 
 func (oc *OpenClawClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {

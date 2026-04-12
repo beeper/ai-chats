@@ -131,8 +131,8 @@ func TestOpenClawRemoteMessageGetStreamOrderUsesGatewaySeq(t *testing.T) {
 }
 
 func TestPrepareOpenClawBackfillEntriesUsesTranscriptSequence(t *testing.T) {
-	meta := &PortalMetadata{OpenClawSessionKey: "agent:main:test"}
-	entries := prepareOpenClawBackfillEntries(meta, []map[string]any{
+	state := &openClawPortalState{OpenClawSessionKey: "agent:main:test"}
+	entries := prepareOpenClawBackfillEntries(state, []map[string]any{
 		{
 			"role":      "assistant",
 			"text":      "second",
