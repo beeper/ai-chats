@@ -47,14 +47,27 @@ func (oc *AIClient) agentsEnabledForLogin() bool {
 	if oc == nil || oc.UserLogin == nil {
 		return false
 	}
-	return agentsEnabled(loginMetadata(oc.UserLogin))
+	cfg := oc.loginConfigSnapshot(context.Background())
+	return cfg.Agents != nil && *cfg.Agents
 }
 
-func shouldEnsureDefaultChat(meta *UserLoginMetadata) bool {
-	if meta == nil {
+func shouldEnsureDefaultChat(owner any) bool {
+	var cfg *aiLoginConfig
+	switch v := owner.(type) {
+	case *aiLoginConfig:
+		cfg = v
+	case *UserLoginMetadata:
+		if v == nil {
+			return false
+		}
+		cfg = aiLoginConfigFromMetadata(v)
+	default:
 		return false
 	}
-	return meta.Agents == nil || *meta.Agents
+	if cfg == nil {
+		return false
+	}
+	return cfg.Agents == nil || *cfg.Agents
 }
 
 func agentChatsDisabledError() error {
@@ -119,7 +132,7 @@ func (oc *AIClient) canUseImageGeneration() bool {
 	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Metadata == nil {
 		return false
 	}
-	loginMeta := loginMetadata(oc.UserLogin)
+	loginMeta := oc.effectiveLoginMetadata(context.Background())
 	if loginMeta == nil || strings.TrimSpace(oc.connector.resolveProviderAPIKey(loginMeta)) == "" {
 		return false
 	}
@@ -1078,7 +1091,7 @@ func (oc *AIClient) bootstrap(ctx context.Context) {
 	logCtx := oc.loggerForContext(ctx).With().Str("component", "openai-chat-bootstrap").Logger().WithContext(ctx)
 	oc.loggerForContext(ctx).Info().Msg("Starting bootstrap for new login")
 
-	if shouldEnsureDefaultChat(loginMetadata(oc.UserLogin)) {
+	if shouldEnsureDefaultChat(oc.loginConfigSnapshot(context.Background())) {
 		// Create default chat room with Beep agent
 		if err := oc.ensureDefaultChat(logCtx); err != nil {
 			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure default chat")
@@ -1115,7 +1128,7 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 	// Create default chat with Beep agent
 	beeperAgent := agents.GetBeeperAI()
 	if beeperAgent == nil {
-		return errors.New("Beep agent not found")
+		return errors.New("beep agent not found")
 	}
 
 	// Determine model from agent config or use default

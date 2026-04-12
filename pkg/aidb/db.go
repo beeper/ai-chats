@@ -6,21 +6,14 @@ import (
 	"errors"
 
 	"go.mau.fi/util/dbutil"
-	"maunium.net/go/mautrix/bridgev2"
 )
 
-const VersionTable = "aichats_version"
-
-var Upgrades dbutil.UpgradeTable
+const initSchemaFile = "001-init.sql"
 
 //go:embed *.sql
 var rawUpgrades embed.FS
 
-func init() {
-	Upgrades.RegisterFS(rawUpgrades)
-}
-
-// NewChild creates a child DB using the shared AI Chats child schema.
+// NewChild creates a child DB wrapper for the shared AI Chats tables.
 func NewChild(base *dbutil.Database, log dbutil.DatabaseLogger) *dbutil.Database {
 	if base == nil {
 		return nil
@@ -28,25 +21,19 @@ func NewChild(base *dbutil.Database, log dbutil.DatabaseLogger) *dbutil.Database
 	if log == nil {
 		log = dbutil.NoopLogger
 	}
-	return base.Child(VersionTable, Upgrades, log)
+	return base.Child("", dbutil.UpgradeTable{}, log)
 }
 
-// Upgrade validates and upgrades a child DB, wrapping errors as DBUpgradeError.
-func Upgrade(ctx context.Context, db *dbutil.Database, section, nilMessage string) error {
+// EnsureSchema applies the canonical AI Chats schema. This bridge has never been
+// released, so there is no migration or legacy compatibility path.
+func EnsureSchema(ctx context.Context, db *dbutil.Database) error {
 	if db == nil {
-		if nilMessage == "" {
-			nilMessage = "AI Chats database not initialized"
-		}
-		return bridgev2.DBUpgradeError{
-			Err:     errors.New(nilMessage),
-			Section: section,
-		}
+		return errors.New("AI Chats database not initialized")
 	}
-	if err := db.Upgrade(ctx); err != nil {
-		return bridgev2.DBUpgradeError{
-			Err:     err,
-			Section: section,
-		}
+	schema, err := rawUpgrades.ReadFile(initSchemaFile)
+	if err != nil {
+		return err
 	}
-	return nil
+	_, err = db.Exec(ctx, string(schema))
+	return err
 }

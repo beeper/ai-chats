@@ -59,17 +59,20 @@ func customAgentScopeForLogin(login *bridgev2.UserLogin) *customAgentScope {
 	return &customAgentScope{db: db, bridgeID: bridgeID, loginID: loginID}
 }
 
-func customAgentScopeForClient(client *AIClient) *customAgentScope {
-	if client == nil {
-		return nil
-	}
-	return customAgentScopeForLogin(client.UserLogin)
-}
-
 func listCustomAgentsForLogin(ctx context.Context, login *bridgev2.UserLogin) (map[string]*AgentDefinitionContent, error) {
 	scope := customAgentScopeForLogin(login)
 	if scope == nil {
-		return nil, nil
+		meta := loginMetadata(login)
+		if meta == nil || len(meta.CustomAgents) == 0 {
+			return nil, nil
+		}
+		out := make(map[string]*AgentDefinitionContent, len(meta.CustomAgents))
+		for id, agent := range meta.CustomAgents {
+			if agent != nil {
+				out[id] = agent
+			}
+		}
+		return out, nil
 	}
 	rows, err := scope.db.Query(ctx, `
 		SELECT agent_id, content_json
@@ -109,7 +112,15 @@ func listCustomAgentsForLogin(ctx context.Context, login *bridgev2.UserLogin) (m
 
 func saveCustomAgentForLogin(ctx context.Context, login *bridgev2.UserLogin, agent *AgentDefinitionContent) error {
 	scope := customAgentScopeForLogin(login)
-	if scope == nil || agent == nil {
+	if agent == nil {
+		return nil
+	}
+	if scope == nil {
+		meta := loginMetadata(login)
+		if meta.CustomAgents == nil {
+			meta.CustomAgents = map[string]*AgentDefinitionContent{}
+		}
+		meta.CustomAgents[strings.TrimSpace(agent.ID)] = agent
 		return nil
 	}
 	payload, err := json.Marshal(agent)
@@ -129,7 +140,12 @@ func saveCustomAgentForLogin(ctx context.Context, login *bridgev2.UserLogin, age
 
 func deleteCustomAgentForLogin(ctx context.Context, login *bridgev2.UserLogin, agentID string) error {
 	scope := customAgentScopeForLogin(login)
-	if scope == nil || strings.TrimSpace(agentID) == "" {
+	if strings.TrimSpace(agentID) == "" {
+		return nil
+	}
+	if scope == nil {
+		meta := loginMetadata(login)
+		delete(meta.CustomAgents, strings.TrimSpace(agentID))
 		return nil
 	}
 	_, err := scope.db.Exec(ctx, `
@@ -141,8 +157,15 @@ func deleteCustomAgentForLogin(ctx context.Context, login *bridgev2.UserLogin, a
 
 func loadCustomAgentForLogin(ctx context.Context, login *bridgev2.UserLogin, agentID string) (*AgentDefinitionContent, error) {
 	scope := customAgentScopeForLogin(login)
-	if scope == nil || strings.TrimSpace(agentID) == "" {
+	if strings.TrimSpace(agentID) == "" {
 		return nil, nil
+	}
+	if scope == nil {
+		meta := loginMetadata(login)
+		if meta == nil || meta.CustomAgents == nil {
+			return nil, nil
+		}
+		return meta.CustomAgents[strings.TrimSpace(agentID)], nil
 	}
 	var raw string
 	err := scope.db.QueryRow(ctx, `

@@ -54,7 +54,7 @@ func effectiveToolConfig[T any](
 		connector = oc.connector
 		cfg = load(connector)
 		if oc.UserLogin != nil {
-			meta = loginMetadata(oc.UserLogin)
+			meta = oc.effectiveLoginMetadata(context.Background())
 		}
 	}
 	cfg = applyTokens(cfg, meta, connector)

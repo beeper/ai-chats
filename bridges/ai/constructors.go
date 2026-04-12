@@ -36,7 +36,7 @@ func NewAIConnector() *OpenAIConnector {
 		},
 		StartConnector: func(ctx context.Context, _ *bridgev2.Bridge) error {
 			db := oc.bridgeDB()
-			if err := aidb.Upgrade(ctx, db, "ai", "AI Chats database not initialized"); err != nil {
+			if err := aidb.EnsureSchema(ctx, db); err != nil {
 				return err
 			}
 			oc.applyRuntimeDefaults()

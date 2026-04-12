@@ -50,7 +50,7 @@ func NewConnector() *CodexConnector {
 		},
 		StartConnector: func(ctx context.Context, _ *bridgev2.Bridge) error {
 			db := cc.bridgeDB()
-			if err := aidb.Upgrade(ctx, db, "codex_bridge", "codex bridge database not initialized"); err != nil {
+			if err := aidb.EnsureSchema(ctx, db); err != nil {
 				return err
 			}
 			cc.applyRuntimeDefaults()

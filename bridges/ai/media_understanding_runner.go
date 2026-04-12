@@ -923,7 +923,7 @@ func resolveOpenRouterMediaBaseURL(oc *AIClient) string {
 	if oc == nil || oc.connector == nil {
 		return defaultOpenRouterBaseURL
 	}
-	services := oc.connector.resolveServiceConfig(loginMetadata(oc.UserLogin))
+	services := oc.connector.resolveServiceConfig(oc.effectiveLoginMetadata(context.Background()))
 	if svc, ok := services[serviceOpenRouter]; ok && strings.TrimSpace(svc.BaseURL) != "" {
 		return strings.TrimRight(svc.BaseURL, "/")
 	}
@@ -939,7 +939,7 @@ func resolveOpenAIMediaBaseURL(oc *AIClient) string {
 		return defaultOpenAITranscriptionBaseURL
 	}
 	if oc.UserLogin != nil && oc.UserLogin.Metadata != nil {
-		services := oc.connector.resolveServiceConfig(loginMetadata(oc.UserLogin))
+		services := oc.connector.resolveServiceConfig(oc.effectiveLoginMetadata(context.Background()))
 		if svc, ok := services[serviceOpenAI]; ok && strings.TrimSpace(svc.BaseURL) != "" {
 			return stringutil.NormalizeBaseURL(svc.BaseURL)
 		}
@@ -1029,13 +1029,13 @@ func (oc *AIClient) resolveMediaProviderAPIKey(providerID string, profile string
 			return key
 		}
 		if oc.connector != nil && oc.UserLogin != nil && oc.UserLogin.Metadata != nil {
-			services := oc.connector.resolveServiceConfig(loginMetadata(oc.UserLogin))
+			services := oc.connector.resolveServiceConfig(oc.effectiveLoginMetadata(context.Background()))
 			if svc, ok := services[serviceOpenAI]; ok {
 				if key := strings.TrimSpace(svc.APIKey); key != "" {
 					return key
 				}
 			}
-			if key := strings.TrimSpace(oc.connector.resolveOpenAIAPIKey(loginMetadata(oc.UserLogin))); key != "" {
+			if key := strings.TrimSpace(oc.connector.resolveOpenAIAPIKey(oc.effectiveLoginMetadata(context.Background()))); key != "" {
 				return key
 			}
 		}
@@ -1051,7 +1051,7 @@ func (oc *AIClient) resolveMediaProviderAPIKey(providerID string, profile string
 			return key
 		}
 		if oc.connector != nil {
-			if key := strings.TrimSpace(oc.connector.resolveOpenRouterAPIKey(loginMetadata(oc.UserLogin))); key != "" {
+			if key := strings.TrimSpace(oc.connector.resolveOpenRouterAPIKey(oc.effectiveLoginMetadata(context.Background()))); key != "" {
 				return key
 			}
 		}

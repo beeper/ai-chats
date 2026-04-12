@@ -16,7 +16,6 @@ import (
 //
 // However, this bridge stores extra per-login integration state that is not
 // foreign-keyed to user_login and therefore will not be automatically removed.
-//
 func purgeLoginData(ctx context.Context, login *bridgev2.UserLogin) {
 	if login == nil || login.Bridge == nil || login.Bridge.DB == nil {
 		return
@@ -61,6 +60,10 @@ func purgeLoginData(ctx context.Context, login *bridgev2.UserLogin) {
 		bridgeID, loginID,
 	)
 	execDelete(ctx, db, logger,
+		`DELETE FROM `+aiPortalStateTable+` WHERE bridge_id=$1 AND login_id=$2`,
+		bridgeID, loginID,
+	)
+	execDelete(ctx, db, logger,
 		`DELETE FROM aichats_tool_approval_rules WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
@@ -74,6 +77,10 @@ func purgeLoginData(ctx context.Context, login *bridgev2.UserLogin) {
 	)
 	execDelete(ctx, db, logger,
 		`DELETE FROM `+aiCustomAgentsTable+` WHERE bridge_id=$1 AND login_id=$2`,
+		bridgeID, loginID,
+	)
+	execDelete(ctx, db, logger,
+		`DELETE FROM aichats_message_state WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
 	if client, ok := login.Client.(*AIClient); ok && client != nil {

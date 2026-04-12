@@ -126,9 +126,9 @@ func bridgeStateForError(err error) (status.BridgeState, bool, bool) {
 // recordProviderError increments the consecutive error counter and escalates to a
 // bridge state warning after repeated failures.
 func (oc *AIClient) recordProviderError(ctx context.Context) {
-	cfg := oc.loginConfigSnapshot(ctx)
-	nextErrors := cfg.ConsecutiveErrors + 1
-	_ = oc.updateLoginConfig(ctx, func(state *aiLoginConfig) bool {
+	state := oc.loginStateSnapshot(ctx)
+	nextErrors := state.ConsecutiveErrors + 1
+	_ = oc.updateLoginState(ctx, func(state *loginRuntimeState) bool {
 		state.ConsecutiveErrors++
 		state.LastErrorAt = time.Now().Unix()
 		return true
@@ -144,12 +144,12 @@ func (oc *AIClient) recordProviderError(ctx context.Context) {
 }
 
 func (oc *AIClient) recordProviderSuccess(ctx context.Context) {
-	cfg := oc.loginConfigSnapshot(ctx)
-	if cfg.ConsecutiveErrors == 0 {
+	state := oc.loginStateSnapshot(ctx)
+	if state.ConsecutiveErrors == 0 {
 		return
 	}
-	wasUnhealthy := cfg.ConsecutiveErrors >= 5
-	_ = oc.updateLoginConfig(ctx, func(state *aiLoginConfig) bool {
+	wasUnhealthy := state.ConsecutiveErrors >= 5
+	_ = oc.updateLoginState(ctx, func(state *loginRuntimeState) bool {
 		state.ConsecutiveErrors = 0
 		state.LastErrorAt = 0
 		return true
@@ -466,15 +466,16 @@ func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Por
 
 // Priority: UserLoginMetadata.TitleGenerationModel > provider-specific default > current model
 func (oc *AIClient) getTitleGenerationModel() string {
-	meta := loginMetadata(oc.UserLogin)
+	provider := loginMetadata(oc.UserLogin).Provider
+	cfg := oc.loginConfigSnapshot(context.Background())
 
-	if meta.Provider != ProviderOpenRouter && meta.Provider != ProviderMagicProxy {
+	if provider != ProviderOpenRouter && provider != ProviderMagicProxy {
 		return ""
 	}
 
 	// Use configured title generation model if set
-	if meta.TitleGenerationModel != "" {
-		return meta.TitleGenerationModel
+	if cfg.TitleGenerationModel != "" {
+		return cfg.TitleGenerationModel
 	}
 
 	// Provider-specific default for title generation (only reached for OpenRouter-compatible providers)

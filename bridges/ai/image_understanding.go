@@ -78,11 +78,11 @@ func (oc *AIClient) resolveUnderstandingModel(
 		}
 	}
 
-	loginCfg := oc.loginConfigSnapshot(ctx)
+	loginState := oc.loginStateSnapshot(ctx)
 	provider := loginMetadata(oc.UserLogin).Provider
 
 	// Prefer cached/provider-listed models first.
-	if modelID := oc.pickModelFromCache(loginCfg.ModelCache, provider, supportsInfo); modelID != "" {
+	if modelID := oc.pickModelFromCache(loginState.ModelCache, provider, supportsInfo); modelID != "" {
 		return modelID
 	}
 	models, err := oc.listAvailableModels(ctx, false)

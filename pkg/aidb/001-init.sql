@@ -200,6 +200,11 @@ CREATE TABLE IF NOT EXISTS aichats_login_state (
   login_id TEXT NOT NULL,
   next_chat_index INTEGER NOT NULL DEFAULT 0,
   last_heartbeat_event_json TEXT NOT NULL DEFAULT '',
+  model_cache_json TEXT NOT NULL DEFAULT '',
+  gravatar_json TEXT NOT NULL DEFAULT '',
+  file_annotation_cache_json TEXT NOT NULL DEFAULT '',
+  consecutive_errors INTEGER NOT NULL DEFAULT 0,
+  last_error_at INTEGER NOT NULL DEFAULT 0,
   updated_at_ms INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (bridge_id, login_id)
 );
@@ -269,3 +274,16 @@ CREATE INDEX IF NOT EXISTS idx_aichats_sessions_lookup
 
 CREATE INDEX IF NOT EXISTS idx_aichats_sessions_updated
   ON aichats_sessions(bridge_id, login_id, store_agent_id, updated_at_ms);
+
+CREATE TABLE IF NOT EXISTS aichats_message_state (
+  bridge_id TEXT NOT NULL,
+  login_id TEXT NOT NULL,
+  room_id TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  state_json TEXT NOT NULL DEFAULT '',
+  updated_at_ms INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (bridge_id, login_id, room_id, message_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_aichats_message_state_room
+  ON aichats_message_state(bridge_id, login_id, room_id, updated_at_ms);

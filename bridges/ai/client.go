@@ -457,7 +457,7 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 	// Load AI-local runtime state from aidb instead of bridge login metadata.
 	loginState := oc.ensureLoginStateLoaded(context.Background())
 	if loginState.LastHeartbeatEvent != nil {
-		seedLastHeartbeatEvent(login.ID, loginState.LastHeartbeatEvent)
+		seedLastHeartbeatEvent(login, loginState.LastHeartbeatEvent)
 	}
 
 	return oc, nil
@@ -1179,7 +1179,7 @@ func (oc *AIClient) defaultModelForProvider() string {
 	if oc == nil || oc.connector == nil || oc.UserLogin == nil {
 		return DefaultModelOpenRouter
 	}
-	loginMeta := loginMetadata(oc.UserLogin)
+	loginMeta := oc.effectiveLoginMetadata(context.Background())
 	if loginMeta == nil {
 		return DefaultModelOpenRouter
 	}
@@ -1499,7 +1499,7 @@ func (oc *AIClient) effectiveMaxTokens(meta *PortalMetadata) int {
 
 // isOpenRouterProvider checks if the current provider uses the OpenRouter-compatible API surface.
 func (oc *AIClient) isOpenRouterProvider() bool {
-	loginMeta := loginMetadata(oc.UserLogin)
+	loginMeta := oc.effectiveLoginMetadata(context.Background())
 	return loginMeta.Provider == ProviderOpenRouter || loginMeta.Provider == ProviderMagicProxy
 }
 
@@ -1620,33 +1620,33 @@ func resolveModelIDFromManifest(modelID string) string {
 // listAvailableModels loads models from the derived catalog and caches them.
 // The implicit catalog is fed from the OpenRouter-backed manifest.
 func (oc *AIClient) listAvailableModels(ctx context.Context, forceRefresh bool) ([]ModelInfo, error) {
-	cfg := oc.loginConfigSnapshot(ctx)
+	state := oc.loginStateSnapshot(ctx)
 
 	// Check cache (refresh every 6 hours unless forced)
-	if !forceRefresh && cfg.ModelCache != nil {
-		age := time.Now().Unix() - cfg.ModelCache.LastRefresh
-		if age < cfg.ModelCache.CacheDuration {
-			return cfg.ModelCache.Models, nil
+	if !forceRefresh && state.ModelCache != nil {
+		age := time.Now().Unix() - state.ModelCache.LastRefresh
+		if age < state.ModelCache.CacheDuration {
+			return state.ModelCache.Models, nil
 		}
 	}
 
 	oc.loggerForContext(ctx).Debug().Msg("Loading derived model catalog")
 	allModels := oc.loadModelCatalogModels(ctx)
 
-	// Update cache
-	if cfg.ModelCache == nil {
-		cfg.ModelCache = &ModelCache{
-			CacheDuration: int64(oc.connector.Config.ModelCacheDuration.Seconds()),
+	if err := oc.updateLoginState(ctx, func(state *loginRuntimeState) bool {
+		if state.ModelCache == nil {
+			state.ModelCache = &ModelCache{
+				CacheDuration: int64(oc.connector.Config.ModelCacheDuration.Seconds()),
+			}
 		}
-	}
-	cfg.ModelCache.Models = allModels
-	cfg.ModelCache.LastRefresh = time.Now().Unix()
-
-	// Save metadata when the login is backed by a persisted row.
-	if oc.UserLogin != nil && oc.UserLogin.UserLogin != nil && oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.DB != nil {
-		if err := oc.replaceLoginConfig(ctx, cfg); err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to save model cache")
+		state.ModelCache.Models = allModels
+		state.ModelCache.LastRefresh = time.Now().Unix()
+		if state.ModelCache.CacheDuration == 0 {
+			state.ModelCache.CacheDuration = int64(oc.connector.Config.ModelCacheDuration.Seconds())
 		}
+		return true
+	}); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to save model cache")
 	}
 
 	oc.loggerForContext(ctx).Info().Int("count", len(allModels)).Msg("Cached available models")
@@ -1655,11 +1655,11 @@ func (oc *AIClient) listAvailableModels(ctx context.Context, forceRefresh bool) 
 
 // findModelInfo looks up ModelInfo from the user's model cache by ID
 func (oc *AIClient) findModelInfo(modelID string) *ModelInfo {
-	cfg := oc.loginConfigSnapshot(context.Background())
-	if cfg != nil && cfg.ModelCache != nil {
-		for i := range cfg.ModelCache.Models {
-			if cfg.ModelCache.Models[i].ID == modelID {
-				return &cfg.ModelCache.Models[i]
+	state := oc.loginStateSnapshot(context.Background())
+	if state != nil && state.ModelCache != nil {
+		for i := range state.ModelCache.Models {
+			if state.ModelCache.Models[i].ID == modelID {
+				return &state.ModelCache.Models[i]
 			}
 		}
 	}

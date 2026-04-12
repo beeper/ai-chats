@@ -25,7 +25,7 @@ func (oc *AIClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2.Ma
 		oc.cleanupDeletedRoomRuntime(ctx, roomID)
 	}
 	if sessionKey != "" {
-		oc.deletePersistedSessionArtifacts(ctx, sessionKey)
+		oc.deletePersistedSessionArtifacts(ctx, portal, sessionKey)
 	}
 
 	if meta != nil {
@@ -59,7 +59,7 @@ func (oc *AIClient) cleanupDeletedRoomRuntime(ctx context.Context, roomID id.Roo
 	ackReactionStoreMu.Unlock()
 }
 
-func (oc *AIClient) deletePersistedSessionArtifacts(ctx context.Context, sessionKey string) {
+func (oc *AIClient) deletePersistedSessionArtifacts(ctx context.Context, portal *bridgev2.Portal, sessionKey string) {
 	if oc == nil {
 		return
 	}
@@ -76,6 +76,14 @@ func (oc *AIClient) deletePersistedSessionArtifacts(ctx context.Context, session
 		)
 		bestEffortExec(ctx, db, oc.Log(),
 			`DELETE FROM aichats_system_events WHERE bridge_id=$1 AND login_id=$2 AND session_key=$3`,
+			bridgeID, loginID, sessionKey,
+		)
+		bestEffortExec(ctx, db, oc.Log(),
+			`DELETE FROM `+aiPortalStateTable+` WHERE bridge_id=$1 AND login_id=$2 AND portal_id=$3`,
+			bridgeID, loginID, strings.TrimSpace(string(portal.PortalKey.ID)),
+		)
+		bestEffortExec(ctx, db, oc.Log(),
+			`DELETE FROM aichats_message_state WHERE bridge_id=$1 AND login_id=$2 AND room_id=$3`,
 			bridgeID, loginID, sessionKey,
 		)
 	}

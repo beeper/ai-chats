@@ -8,7 +8,6 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/networkid"
 )
 
 type HeartbeatIndicatorType string
@@ -50,13 +49,20 @@ func resolveIndicatorType(status string) *HeartbeatIndicatorType {
 
 var heartbeatEvents struct {
 	mu          sync.Mutex
-	lastByLogin map[networkid.UserLoginID]*HeartbeatEventPayload
-	persist     map[networkid.UserLoginID]*heartbeatEventPersister
+	lastByLogin map[string]*HeartbeatEventPayload
+	persist     map[string]*heartbeatEventPersister
 }
 
 type heartbeatEventPersister struct {
 	login *bridgev2.UserLogin
 	ch    chan *HeartbeatEventPayload // size=1, latest-wins
+}
+
+func heartbeatLoginKey(login *bridgev2.UserLogin) string {
+	if login == nil || login.Bridge == nil || login.Bridge.DB == nil {
+		return ""
+	}
+	return string(login.Bridge.DB.BridgeID) + "|" + string(login.ID)
 }
 
 func (p *heartbeatEventPersister) offer(evt *HeartbeatEventPayload) {
@@ -133,22 +139,27 @@ func (oc *AIClient) emitHeartbeatEvent(evt *HeartbeatEventPayload) {
 
 	evtCopy := *evt
 
+	loginKey := heartbeatLoginKey(oc.UserLogin)
+	if loginKey == "" {
+		return
+	}
+
 	heartbeatEvents.mu.Lock()
 	if heartbeatEvents.lastByLogin == nil {
-		heartbeatEvents.lastByLogin = make(map[networkid.UserLoginID]*HeartbeatEventPayload)
+		heartbeatEvents.lastByLogin = make(map[string]*HeartbeatEventPayload)
 	}
-	heartbeatEvents.lastByLogin[oc.UserLogin.ID] = &evtCopy
+	heartbeatEvents.lastByLogin[loginKey] = &evtCopy
 
 	if heartbeatEvents.persist == nil {
-		heartbeatEvents.persist = make(map[networkid.UserLoginID]*heartbeatEventPersister)
+		heartbeatEvents.persist = make(map[string]*heartbeatEventPersister)
 	}
-	p := heartbeatEvents.persist[oc.UserLogin.ID]
+	p := heartbeatEvents.persist[loginKey]
 	if p == nil {
 		p = &heartbeatEventPersister{
 			login: oc.UserLogin,
 			ch:    make(chan *HeartbeatEventPayload, 1),
 		}
-		heartbeatEvents.persist[oc.UserLogin.ID] = p
+		heartbeatEvents.persist[loginKey] = p
 		go p.run()
 	} else if p.login == nil {
 		// Shouldn't happen, but don't crash if it does.
@@ -160,16 +171,17 @@ func (oc *AIClient) emitHeartbeatEvent(evt *HeartbeatEventPayload) {
 	p.offer(&evtCopy)
 }
 
-func seedLastHeartbeatEvent(loginID networkid.UserLoginID, evt *HeartbeatEventPayload) {
-	if loginID == "" || evt == nil {
+func seedLastHeartbeatEvent(login *bridgev2.UserLogin, evt *HeartbeatEventPayload) {
+	loginKey := heartbeatLoginKey(login)
+	if loginKey == "" || evt == nil {
 		return
 	}
 	evtCopy := *evt
 	heartbeatEvents.mu.Lock()
 	if heartbeatEvents.lastByLogin == nil {
-		heartbeatEvents.lastByLogin = make(map[networkid.UserLoginID]*HeartbeatEventPayload)
+		heartbeatEvents.lastByLogin = make(map[string]*HeartbeatEventPayload)
 	}
-	heartbeatEvents.lastByLogin[loginID] = &evtCopy
+	heartbeatEvents.lastByLogin[loginKey] = &evtCopy
 	heartbeatEvents.mu.Unlock()
 }
 
@@ -180,18 +192,18 @@ func getLastHeartbeatEventForLogin(login *bridgev2.UserLogin) *HeartbeatEventPay
 	heartbeatEvents.mu.Lock()
 	last := (*HeartbeatEventPayload)(nil)
 	if heartbeatEvents.lastByLogin != nil {
-		last = heartbeatEvents.lastByLogin[login.ID]
+		last = heartbeatEvents.lastByLogin[heartbeatLoginKey(login)]
 	}
 	heartbeatEvents.mu.Unlock()
 
 	if last == nil {
-		if client, ok := login.Client.(*AIClient); ok && client != nil {
-			state := client.loginStateSnapshot(context.Background())
-			if state.LastHeartbeatEvent != nil {
-				seedLastHeartbeatEvent(login.ID, state.LastHeartbeatEvent)
-				return cloneHeartbeatEvent(state.LastHeartbeatEvent)
+			if client, ok := login.Client.(*AIClient); ok && client != nil {
+				state := client.loginStateSnapshot(context.Background())
+				if state.LastHeartbeatEvent != nil {
+					seedLastHeartbeatEvent(login, state.LastHeartbeatEvent)
+					return cloneHeartbeatEvent(state.LastHeartbeatEvent)
+				}
 			}
-		}
 		return nil
 	}
 	eventsCopy := *last

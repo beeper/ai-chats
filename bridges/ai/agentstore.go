@@ -66,20 +66,20 @@ func (s *AgentStoreAdapter) LoadAgents(ctx context.Context) (map[string]*agents.
 }
 
 func (s *AgentStoreAdapter) loadCustomAgents(ctx context.Context) (map[string]*AgentDefinitionContent, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	if s == nil || s.client == nil || s.client.UserLogin == nil {
 		return nil, nil
 	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return listCustomAgentsForLogin(ctx, s.client.UserLogin)
 }
 
 func (s *AgentStoreAdapter) loadCustomAgent(ctx context.Context, agentID string) (*AgentDefinitionContent, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	if s == nil || s.client == nil || s.client.UserLogin == nil {
 		return nil, nil
 	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return loadCustomAgentForLogin(ctx, s.client.UserLogin, agentID)
 }
 

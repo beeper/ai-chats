@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
+
+	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 )
 
 type aiLoginConfig struct {
@@ -76,7 +78,7 @@ func cloneGravatarState(src *GravatarState) *GravatarState {
 	if src.Primary != nil {
 		primary := *src.Primary
 		if src.Primary.Profile != nil {
-			primary.Profile = maps.Clone(src.Primary.Profile)
+			primary.Profile = jsonutil.DeepCloneMap(src.Primary.Profile)
 		}
 		clone.Primary = &primary
 	}
@@ -134,36 +136,16 @@ func loginMetadataView(provider string, cfg *aiLoginConfig) *UserLoginMetadata {
 	return meta
 }
 
-func ensureAILoginConfigTable(ctx context.Context, login *bridgev2.UserLogin) error {
-	db := bridgeDBFromLogin(login)
-	if db == nil || login == nil || login.Bridge == nil || login.Bridge.DB == nil {
-		return nil
-	}
-	_, err := db.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS `+aiLoginConfigTable+` (
-			bridge_id TEXT NOT NULL,
-			login_id TEXT NOT NULL,
-			config_json TEXT NOT NULL DEFAULT '',
-			updated_at_ms INTEGER NOT NULL DEFAULT 0,
-			PRIMARY KEY (bridge_id, login_id)
-		)
-	`)
-	return err
-}
-
 func loadAILoginConfig(ctx context.Context, login *bridgev2.UserLogin) (*aiLoginConfig, error) {
 	db := bridgeDBFromLogin(login)
 	if db == nil || login == nil || login.Bridge == nil || login.Bridge.DB == nil {
 		return &aiLoginConfig{}, nil
 	}
-	if err := ensureAILoginConfigTable(ctx, login); err != nil {
-		return nil, err
-	}
 	var raw string
 	err := db.QueryRow(ctx, `
 		SELECT config_json
 		FROM `+aiLoginConfigTable+`
-		WHERE bridge_id=$1 AND login_id=$2
+	WHERE bridge_id=$1 AND login_id=$2
 	`, string(login.Bridge.DB.BridgeID), string(login.ID)).Scan(&raw)
 	if err == sql.ErrNoRows || raw == "" {
 		return &aiLoginConfig{}, nil
@@ -184,9 +166,6 @@ func saveAILoginConfig(ctx context.Context, login *bridgev2.UserLogin, cfg *aiLo
 	}
 	db := bridgeDBFromLogin(login)
 	if db != nil && login.Bridge != nil && login.Bridge.DB != nil {
-		if err := ensureAILoginConfigTable(ctx, login); err != nil {
-			return err
-		}
 		payload, err := json.Marshal(cfg)
 		if err != nil {
 			return err
@@ -205,36 +184,6 @@ func saveAILoginConfig(ctx context.Context, login *bridgev2.UserLogin, cfg *aiLo
 		client.loginConfigMu.Lock()
 		client.loginConfig = cloneAILoginConfig(cfg)
 		client.loginConfigMu.Unlock()
-	}
-	return nil
-}
-
-func saveAIUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
-	if login == nil {
-		return nil
-	}
-	meta := loginMetadata(login)
-	if err := saveAILoginConfig(ctx, login, aiLoginConfigFromMetadata(meta)); err != nil {
-		return err
-	}
-	if meta == nil || meta.CustomAgents == nil {
-		return nil
-	}
-	current, err := listCustomAgentsForLogin(ctx, login)
-	if err != nil {
-		return err
-	}
-	for agentID := range current {
-		if _, ok := meta.CustomAgents[agentID]; !ok {
-			if err = deleteCustomAgentForLogin(ctx, login, agentID); err != nil {
-				return err
-			}
-		}
-	}
-	for _, agent := range meta.CustomAgents {
-		if err = saveCustomAgentForLogin(ctx, login, agent); err != nil {
-			return err
-		}
 	}
 	return nil
 }
@@ -288,4 +237,11 @@ func (oc *AIClient) replaceLoginConfig(ctx context.Context, cfg *aiLoginConfig) 
 	oc.loginConfig = cloneAILoginConfig(cfg)
 	oc.loginConfigMu.Unlock()
 	return saveAILoginConfig(ctx, oc.UserLogin, cfg)
+}
+
+func (oc *AIClient) effectiveLoginMetadata(ctx context.Context) *UserLoginMetadata {
+	if oc == nil || oc.UserLogin == nil {
+		return &UserLoginMetadata{}
+	}
+	return loginMetadataView(loginMetadata(oc.UserLogin).Provider, oc.loginConfigSnapshot(ctx))
 }

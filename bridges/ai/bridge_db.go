@@ -17,6 +17,7 @@ const (
 	aiCustomAgentsTable      = "aichats_custom_agents"
 	aiPortalStateTable       = "aichats_portal_state"
 	aiToolApprovalRulesTable = "aichats_tool_approval_rules"
+	aiMessageStateTable      = "aichats_message_state"
 )
 
 func newBridgeChildDB(parent *dbutil.Database, log zerolog.Logger) *dbutil.Database {

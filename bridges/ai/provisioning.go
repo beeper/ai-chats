@@ -140,9 +140,9 @@ func profileResponseFromConfig(cfg *aiLoginConfig) profileResponse {
 
 func applyProfilePayload(owner any, payload profilePayload) error {
 	var (
-		cfg          *aiLoginConfig
-		profilePtr   **UserProfile
-		timezonePtr  *string
+		cfg         *aiLoginConfig
+		profilePtr  **UserProfile
+		timezonePtr *string
 	)
 	switch v := owner.(type) {
 	case *aiLoginConfig:

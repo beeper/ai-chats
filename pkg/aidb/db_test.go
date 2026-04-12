@@ -30,7 +30,7 @@ func TestNewChildNilBase(t *testing.T) {
 	}
 }
 
-func TestUpgradeV1Fresh(t *testing.T) {
+func TestEnsureSchemaFresh(t *testing.T) {
 	ctx := context.Background()
 	parentDB := setupTestDB(t)
 	bridgeDB := NewChild(parentDB, dbutil.NoopLogger)
@@ -38,16 +38,8 @@ func TestUpgradeV1Fresh(t *testing.T) {
 		t.Fatalf("expected child DB")
 	}
 
-	if err := Upgrade(ctx, bridgeDB, "ai", "AI Chats database not initialized"); err != nil {
-		t.Fatalf("upgrade failed: %v", err)
-	}
-
-	var version int
-	if err := bridgeDB.QueryRow(ctx, "SELECT version FROM "+VersionTable).Scan(&version); err != nil {
-		t.Fatalf("read %s failed: %v", VersionTable, err)
-	}
-	if version != 1 {
-		t.Fatalf("expected %s=1, got %d", VersionTable, version)
+	if err := EnsureSchema(ctx, bridgeDB); err != nil {
+		t.Fatalf("ensure schema failed: %v", err)
 	}
 
 	for _, table := range []string{
@@ -62,10 +54,14 @@ func TestUpgradeV1Fresh(t *testing.T) {
 		"aichats_managed_heartbeats",
 		"aichats_managed_heartbeat_run_keys",
 		"aichats_system_events",
+		"aichats_internal_messages",
+		"aichats_login_state",
 		"aichats_login_config",
+		"aichats_custom_agents",
 		"aichats_portal_state",
 		"aichats_sessions",
 		"aichats_tool_approval_rules",
+		"aichats_message_state",
 	} {
 		exists, err := bridgeDB.TableExists(ctx, table)
 		if err != nil {
@@ -77,25 +73,17 @@ func TestUpgradeV1Fresh(t *testing.T) {
 	}
 }
 
-func TestNewChildUpgrade(t *testing.T) {
+func TestEnsureSchemaIdempotent(t *testing.T) {
 	ctx := context.Background()
 	parentDB := setupTestDB(t)
 	bridgeDB := NewChild(parentDB, dbutil.NoopLogger)
 	if bridgeDB == nil {
 		t.Fatalf("expected child DB")
 	}
-	if err := Upgrade(ctx, bridgeDB, "ai", "AI Chats database not initialized"); err != nil {
-		t.Fatalf("upgrade failed: %v", err)
+	if err := EnsureSchema(ctx, bridgeDB); err != nil {
+		t.Fatalf("ensure schema failed: %v", err)
 	}
-	if err := Upgrade(ctx, bridgeDB, "ai", "AI Chats database not initialized"); err != nil {
-		t.Fatalf("second upgrade failed: %v", err)
-	}
-
-	var version int
-	if err := bridgeDB.QueryRow(ctx, "SELECT version FROM "+VersionTable).Scan(&version); err != nil {
-		t.Fatalf("read %s failed: %v", VersionTable, err)
-	}
-	if version != 1 {
-		t.Fatalf("expected %s=1, got %d", VersionTable, version)
+	if err := EnsureSchema(ctx, bridgeDB); err != nil {
+		t.Fatalf("second ensure schema failed: %v", err)
 	}
 }

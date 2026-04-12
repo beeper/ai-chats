@@ -100,17 +100,17 @@ type UserLoginMetadata struct {
 
 	// Transient bootstrap/test fields. These are intentionally not serialized
 	// through bridgev2 metadata and are converted into AI-owned sidecar state.
-	Credentials          *LoginCredentials         `json:"-"`
-	TitleGenerationModel string                    `json:"-"`
-	Agents               *bool                     `json:"-"`
-	ModelCache           *ModelCache               `json:"-"`
-	Gravatar             *GravatarState            `json:"-"`
-	Timezone             string                    `json:"-"`
-	Profile              *UserProfile              `json:"-"`
-	FileAnnotationCache  map[string]FileAnnotation `json:"-"`
+	Credentials          *LoginCredentials                  `json:"-"`
+	TitleGenerationModel string                             `json:"-"`
+	Agents               *bool                              `json:"-"`
+	ModelCache           *ModelCache                        `json:"-"`
+	Gravatar             *GravatarState                     `json:"-"`
+	Timezone             string                             `json:"-"`
+	Profile              *UserProfile                       `json:"-"`
+	FileAnnotationCache  map[string]FileAnnotation          `json:"-"`
 	CustomAgents         map[string]*AgentDefinitionContent `json:"-"`
-	ConsecutiveErrors    int                       `json:"-"`
-	LastErrorAt          int64                     `json:"-"`
+	ConsecutiveErrors    int                                `json:"-"`
+	LastErrorAt          int64                              `json:"-"`
 }
 
 func loginCredentials(owner any) *LoginCredentials {
@@ -334,13 +334,6 @@ func cloneUserLoginMetadata(src *UserLoginMetadata) (*UserLoginMetadata, error) 
 	clone.ConsecutiveErrors = src.ConsecutiveErrors
 	clone.LastErrorAt = src.LastErrorAt
 	return &clone, nil
-}
-
-func agentsEnabled(meta *UserLoginMetadata) bool {
-	if meta == nil || meta.Agents == nil {
-		return false
-	}
-	return *meta.Agents
 }
 
 func clonePortalMetadata(src *PortalMetadata) *PortalMetadata {

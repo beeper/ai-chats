@@ -217,7 +217,7 @@ func (oc *AIClient) derivedModelCatalogEntries() []ModelCatalogEntry {
 	if oc == nil || oc.UserLogin == nil || oc.connector == nil {
 		return nil
 	}
-	loginMeta := loginMetadata(oc.UserLogin)
+	loginMeta := oc.effectiveLoginMetadata(context.Background())
 	if loginMeta == nil {
 		return nil
 	}

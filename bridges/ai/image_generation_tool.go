@@ -179,7 +179,7 @@ func resolveImageGenProvider(req imageGenRequest, btc *BridgeToolContext) (image
 		}
 	}
 
-	loginMeta := loginMetadata(btc.Client.UserLogin)
+	loginMeta := btc.Client.effectiveLoginMetadata(ctx)
 	if loginMeta == nil {
 		return "", errors.New("image generation is not available for this login")
 	}
@@ -256,7 +256,7 @@ func supportsOpenAIImageGen(btc *BridgeToolContext) bool {
 	if btc == nil || btc.Client == nil || btc.Client.UserLogin == nil || btc.Client.UserLogin.Metadata == nil {
 		return false
 	}
-	loginMeta := loginMetadata(btc.Client.UserLogin)
+	loginMeta := btc.Client.effectiveLoginMetadata(context.Background())
 	if loginMeta == nil {
 		return false
 	}
@@ -281,7 +281,7 @@ func supportsGeminiImageGen(btc *BridgeToolContext) bool {
 	if btc == nil || btc.Client == nil || btc.Client.UserLogin == nil || btc.Client.UserLogin.Metadata == nil {
 		return false
 	}
-	loginMeta := loginMetadata(btc.Client.UserLogin)
+	loginMeta := btc.Client.effectiveLoginMetadata(context.Background())
 	if loginMeta == nil {
 		return false
 	}
@@ -481,7 +481,7 @@ func buildOpenAIImagesBaseURL(btc *BridgeToolContext) (string, error) {
 	if btc == nil || btc.Client == nil || btc.Client.UserLogin == nil || btc.Client.UserLogin.Metadata == nil {
 		return "", errors.New("openai image generation not available for this provider")
 	}
-	loginMeta := loginMetadata(btc.Client.UserLogin)
+	loginMeta := btc.Client.effectiveLoginMetadata(context.Background())
 	if loginMeta == nil {
 		return "", errors.New("openai image generation not available for this provider")
 	}
@@ -510,7 +510,7 @@ func buildGeminiBaseURL(btc *BridgeToolContext) (string, error) {
 	if btc == nil || btc.Client == nil || btc.Client.UserLogin == nil || btc.Client.UserLogin.Metadata == nil {
 		return "", errors.New("gemini image generation not available for this provider")
 	}
-	loginMeta := loginMetadata(btc.Client.UserLogin)
+	loginMeta := btc.Client.effectiveLoginMetadata(context.Background())
 	if loginMeta == nil {
 		return "", errors.New("gemini image generation not available for this provider")
 	}
@@ -624,7 +624,7 @@ func resolveOpenRouterImageGenEndpoint(btc *BridgeToolContext) (baseURL string, 
 	if btc == nil || btc.Client == nil || btc.Client.UserLogin == nil || btc.Client.UserLogin.Metadata == nil {
 		return "", "", false
 	}
-	meta := loginMetadata(btc.Client.UserLogin)
+	meta := btc.Client.effectiveLoginMetadata(ctx)
 	conn := btc.Client.connector
 
 	trim := func(s string) string { return strings.TrimSpace(s) }

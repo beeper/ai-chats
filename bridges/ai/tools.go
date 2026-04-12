@@ -751,7 +751,7 @@ func executeImageGeneration(ctx context.Context, args map[string]any) (string, e
 	asyncValue, asyncExplicit := parseBoolArg(args, "async")
 
 	// Default to async for Magic Proxy since image generation can take long and blocks the stream loop.
-	loginMeta := loginMetadata(btc.Client.UserLogin)
+	loginMeta := btc.Client.effectiveLoginMetadata(ctx)
 	async := asyncValue
 	if !asyncExplicit && loginMeta.Provider == ProviderMagicProxy {
 		async = true
@@ -1109,7 +1109,7 @@ func executeTTS(ctx context.Context, args map[string]any) (string, error) {
 	// Default to async for Magic Proxy to avoid blocking the stream loop.
 	async := asyncValue
 	if btc != nil && !asyncExplicit {
-		loginMeta := loginMetadata(btc.Client.UserLogin)
+		loginMeta := btc.Client.effectiveLoginMetadata(ctx)
 		if loginMeta.Provider == ProviderMagicProxy {
 			async = true
 		}
@@ -1247,8 +1247,8 @@ func resolveOpenAITTSBaseURL(btc *BridgeToolContext, providerBaseURL string) (st
 		return baseURL, isOpenAIProvider
 	}
 
-	meta, ok := client.UserLogin.Metadata.(*UserLoginMetadata)
-	if !ok || meta == nil {
+	meta := client.effectiveLoginMetadata(context.Background())
+	if meta == nil {
 		return baseURL, isOpenAIProvider
 	}
 
@@ -1663,9 +1663,9 @@ func executeGravatarFetch(ctx context.Context, args map[string]any) (string, err
 		email = strings.TrimSpace(raw)
 	}
 	if email == "" {
-		loginCfg := btc.Client.loginConfigSnapshot(ctx)
-		if loginCfg != nil && loginCfg.Gravatar != nil && loginCfg.Gravatar.Primary != nil {
-			email = loginCfg.Gravatar.Primary.Email
+		loginState := btc.Client.loginStateSnapshot(ctx)
+		if loginState != nil && loginState.Gravatar != nil && loginState.Gravatar.Primary != nil {
+			email = loginState.Gravatar.Primary.Email
 		}
 	}
 	if email == "" {
@@ -1695,10 +1695,12 @@ func executeGravatarSet(ctx context.Context, args map[string]any) (string, error
 		return "", err
 	}
 
-	loginCfg := btc.Client.loginConfigSnapshot(ctx)
-	state := ensureGravatarState(loginCfg)
-	state.Primary = profile
-	if err := btc.Client.replaceLoginConfig(ctx, loginCfg); err != nil {
+	err = btc.Client.updateLoginState(ctx, func(state *loginRuntimeState) bool {
+		gravatar := ensureGravatarState(state)
+		gravatar.Primary = profile
+		return true
+	})
+	if err != nil {
 		return "", fmt.Errorf("couldn't save the Gravatar profile: %w", err)
 	}
 

@@ -27,6 +27,8 @@ type sessionEntry struct {
 }
 
 type sessionStoreRef struct {
+	BridgeID string
+	LoginID  string
 	AgentID string
 }
 
@@ -39,12 +41,14 @@ type sessionDBScope struct {
 var sessionStoreLocks sync.Map
 
 func sessionStoreLockKey(ref sessionStoreRef, sessionKey string) string {
+	bridgeID := strings.TrimSpace(ref.BridgeID)
+	loginID := strings.TrimSpace(ref.LoginID)
 	agent := normalizeAgentID(ref.AgentID)
 	key := strings.TrimSpace(sessionKey)
 	if key == "" {
 		key = "main"
 	}
-	return agent + "|" + key
+	return bridgeID + "|" + loginID + "|" + agent + "|" + key
 }
 
 func sessionStoreLock(ref sessionStoreRef, sessionKey string) *sync.Mutex {
@@ -280,5 +284,10 @@ func (oc *AIClient) resolveSessionStoreRef(agentID string) sessionStoreRef {
 	if cfg != nil && cfg.Session != nil && normalizeSessionScope(cfg.Session.Scope) == sessionScopeGlobal {
 		storeAgentID = sessionScopeGlobal
 	}
-	return sessionStoreRef{AgentID: storeAgentID}
+	_, bridgeID, loginID := loginDBContext(oc)
+	return sessionStoreRef{
+		BridgeID: bridgeID,
+		LoginID:  loginID,
+		AgentID:  storeAgentID,
+	}
 }

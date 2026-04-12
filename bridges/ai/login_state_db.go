@@ -13,6 +13,11 @@ import (
 type loginRuntimeState struct {
 	NextChatIndex      int
 	LastHeartbeatEvent *HeartbeatEventPayload
+	ModelCache         *ModelCache
+	Gravatar           *GravatarState
+	FileAnnotationCache map[string]FileAnnotation
+	ConsecutiveErrors  int
+	LastErrorAt        int64
 }
 
 type loginStateScope struct {
@@ -48,6 +53,11 @@ func cloneLoginRuntimeState(in *loginRuntimeState) *loginRuntimeState {
 	return &loginRuntimeState{
 		NextChatIndex:      in.NextChatIndex,
 		LastHeartbeatEvent: cloneHeartbeatEvent(in.LastHeartbeatEvent),
+		ModelCache:         cloneModelCache(in.ModelCache),
+		Gravatar:           cloneGravatarState(in.Gravatar),
+		FileAnnotationCache: cloneFileAnnotationCache(in.FileAnnotationCache),
+		ConsecutiveErrors:  in.ConsecutiveErrors,
+		LastErrorAt:        in.LastErrorAt,
 	}
 }
 
@@ -83,14 +93,31 @@ func loadLoginRuntimeState(ctx context.Context, client *AIClient) (*loginRuntime
 		return &loginRuntimeState{}, nil
 	}
 	state := &loginRuntimeState{}
-	var lastHeartbeatEventJSON string
+	var (
+		lastHeartbeatEventJSON string
+		modelCacheJSON         string
+		gravatarJSON           string
+		fileAnnotationJSON     string
+	)
 	err := scope.db.QueryRow(ctx, `
-		SELECT next_chat_index, last_heartbeat_event_json
+		SELECT
+			next_chat_index,
+			last_heartbeat_event_json,
+			model_cache_json,
+			gravatar_json,
+			file_annotation_cache_json,
+			consecutive_errors,
+			last_error_at
 		FROM `+aiLoginStateTable+`
 		WHERE bridge_id=$1 AND login_id=$2
 	`, scope.bridgeID, scope.loginID).Scan(
 		&state.NextChatIndex,
 		&lastHeartbeatEventJSON,
+		&modelCacheJSON,
+		&gravatarJSON,
+		&fileAnnotationJSON,
+		&state.ConsecutiveErrors,
+		&state.LastErrorAt,
 	)
 	if err == sql.ErrNoRows {
 		return state, nil
@@ -101,6 +128,27 @@ func loadLoginRuntimeState(ctx context.Context, client *AIClient) (*loginRuntime
 	state.LastHeartbeatEvent, err = parseHeartbeatEvent(lastHeartbeatEventJSON)
 	if err != nil {
 		return nil, err
+	}
+	if strings.TrimSpace(modelCacheJSON) != "" {
+		var modelCache ModelCache
+		if err = json.Unmarshal([]byte(modelCacheJSON), &modelCache); err != nil {
+			return nil, err
+		}
+		state.ModelCache = &modelCache
+	}
+	if strings.TrimSpace(gravatarJSON) != "" {
+		var gravatar GravatarState
+		if err = json.Unmarshal([]byte(gravatarJSON), &gravatar); err != nil {
+			return nil, err
+		}
+		state.Gravatar = &gravatar
+	}
+	if strings.TrimSpace(fileAnnotationJSON) != "" {
+		var cache map[string]FileAnnotation
+		if err = json.Unmarshal([]byte(fileAnnotationJSON), &cache); err != nil {
+			return nil, err
+		}
+		state.FileAnnotationCache = cache
 	}
 	return state, nil
 }
@@ -114,16 +162,51 @@ func saveLoginRuntimeState(ctx context.Context, client *AIClient, state *loginRu
 	if err != nil {
 		return err
 	}
+	modelCacheJSON, err := marshalJSONOrEmpty(state.ModelCache)
+	if err != nil {
+		return err
+	}
+	gravatarJSON, err := marshalJSONOrEmpty(state.Gravatar)
+	if err != nil {
+		return err
+	}
+	fileAnnotationJSON, err := marshalJSONOrEmpty(state.FileAnnotationCache)
+	if err != nil {
+		return err
+	}
 	_, err = scope.db.Exec(ctx, `
 		INSERT INTO `+aiLoginStateTable+` (
-			bridge_id, login_id, next_chat_index, last_heartbeat_event_json, updated_at_ms
-		) VALUES ($1, $2, $3, $4, $5)
+			bridge_id,
+			login_id,
+			next_chat_index,
+			last_heartbeat_event_json,
+			model_cache_json,
+			gravatar_json,
+			file_annotation_cache_json,
+			consecutive_errors,
+			last_error_at,
+			updated_at_ms
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT (bridge_id, login_id) DO UPDATE SET
 			next_chat_index=excluded.next_chat_index,
 			last_heartbeat_event_json=excluded.last_heartbeat_event_json,
+			model_cache_json=excluded.model_cache_json,
+			gravatar_json=excluded.gravatar_json,
+			file_annotation_cache_json=excluded.file_annotation_cache_json,
+			consecutive_errors=excluded.consecutive_errors,
+			last_error_at=excluded.last_error_at,
 			updated_at_ms=excluded.updated_at_ms
 	`,
-		scope.bridgeID, scope.loginID, state.NextChatIndex, lastHeartbeatEventJSON, time.Now().UnixMilli(),
+		scope.bridgeID,
+		scope.loginID,
+		state.NextChatIndex,
+		lastHeartbeatEventJSON,
+		modelCacheJSON,
+		gravatarJSON,
+		fileAnnotationJSON,
+		state.ConsecutiveErrors,
+		state.LastErrorAt,
+		time.Now().UnixMilli(),
 	)
 	return err
 }
