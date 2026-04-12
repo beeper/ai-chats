@@ -2,13 +2,9 @@ package ai
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"sync"
 	"time"
-
-	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/event"
 )
 
 const (
@@ -26,6 +22,9 @@ const (
 type schedulerRuntime struct {
 	client *AIClient
 	mu     sync.Mutex
+	runCtx context.Context
+	cancel context.CancelFunc
+	timers map[string]*time.Timer
 }
 
 type scheduledCronStore struct {
@@ -36,8 +35,6 @@ type scheduledCronJob struct {
 	Job               cronJob  `json:"job"`
 	RoomID            string   `json:"roomId,omitempty"`
 	Revision          int      `json:"revision,omitempty"`
-	PendingDelayID    string   `json:"pendingDelayId,omitempty"`
-	PendingDelayKind  string   `json:"pendingDelayKind,omitempty"`
 	PendingRunKey     string   `json:"pendingRunKey,omitempty"`
 	LastOutputPreview string   `json:"lastOutputPreview,omitempty"`
 	ProcessedRunKeys  []string `json:"processedRunKeys,omitempty"`
@@ -55,8 +52,6 @@ type managedHeartbeatState struct {
 	RoomID           string                      `json:"roomId,omitempty"`
 	Revision         int                         `json:"revision,omitempty"`
 	NextRunAtMs      int64                       `json:"nextRunAtMs,omitempty"`
-	PendingDelayID   string                      `json:"pendingDelayId,omitempty"`
-	PendingDelayKind string                      `json:"pendingDelayKind,omitempty"`
 	PendingRunKey    string                      `json:"pendingRunKey,omitempty"`
 	LastRunAtMs      int64                       `json:"lastRunAtMs,omitempty"`
 	LastResult       string                      `json:"lastResult,omitempty"`
@@ -65,38 +60,49 @@ type managedHeartbeatState struct {
 }
 
 func newSchedulerRuntime(client *AIClient) *schedulerRuntime {
-	return &schedulerRuntime{client: client}
+	return &schedulerRuntime{
+		client: client,
+		timers: make(map[string]*time.Timer),
+	}
 }
 
 func (s *schedulerRuntime) Start(ctx context.Context) {
 	if s == nil || s.client == nil {
 		return
 	}
+	s.mu.Lock()
+	s.ensureRuntimeContextLocked(s.client.backgroundContext(ctx))
+	s.mu.Unlock()
 	if err := s.reconcile(ctx); err != nil {
 		s.client.log.Warn().Err(err).Msg("Failed to reconcile scheduler state")
 	}
 }
 
-func (s *schedulerRuntime) HandleScheduleTick(ctx context.Context, evt *event.Event, portal *bridgev2.Portal) {
-	if s == nil || s.client == nil || evt == nil {
+func (s *schedulerRuntime) Stop() {
+	if s == nil {
 		return
 	}
-	var tick ScheduleTickContent
-	if err := json.Unmarshal(evt.Content.VeryRaw, &tick); err != nil {
-		s.client.log.Warn().Err(err).Stringer("event_id", evt.ID).Msg("Failed to decode schedule tick")
-		return
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cancel != nil {
+		s.cancel()
+		s.cancel = nil
 	}
-	s.handleScheduleTickContent(ctx, tick, evt, portal)
+	for key, timer := range s.timers {
+		timer.Stop()
+		delete(s.timers, key)
+	}
+	s.runCtx = nil
 }
 
-func (s *schedulerRuntime) HandleScheduleTickContent(ctx context.Context, tick ScheduleTickContent, evt *event.Event, portal *bridgev2.Portal) {
-	if s == nil || s.client == nil || evt == nil {
+func (s *schedulerRuntime) HandleScheduleTickContent(ctx context.Context, tick ScheduleTickContent) {
+	if s == nil || s.client == nil {
 		return
 	}
-	s.handleScheduleTickContent(ctx, tick, evt, portal)
+	s.handleScheduleTickContent(ctx, tick)
 }
 
-func (s *schedulerRuntime) handleScheduleTickContent(ctx context.Context, tick ScheduleTickContent, evt *event.Event, portal *bridgev2.Portal) {
+func (s *schedulerRuntime) handleScheduleTickContent(ctx context.Context, tick ScheduleTickContent) {
 	switch tick.Kind {
 	case scheduleTickKindCronPlan:
 		if err := s.handleCronPlan(ctx, tick); err != nil {
@@ -117,6 +123,16 @@ func (s *schedulerRuntime) handleScheduleTickContent(ctx context.Context, tick S
 	default:
 		s.client.log.Debug().Str("kind", tick.Kind).Msg("Ignoring unknown schedule tick kind")
 	}
+}
+
+func (s *schedulerRuntime) ensureRuntimeContextLocked(base context.Context) {
+	if s.runCtx != nil && s.runCtx.Err() == nil {
+		return
+	}
+	if base == nil {
+		base = context.Background()
+	}
+	s.runCtx, s.cancel = context.WithCancel(base)
 }
 
 func (s *schedulerRuntime) reconcile(ctx context.Context) error {

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/id"
 )
 
 func (s *schedulerRuntime) RunHeartbeatSweep(ctx context.Context, reason string) (string, string) {
@@ -74,15 +73,10 @@ func (s *schedulerRuntime) RequestHeartbeatNow(ctx context.Context, reason strin
 			s.client.log.Warn().Err(err).Str("agent_id", agent.agentID).Msg("Failed to ensure heartbeat room for immediate wake")
 			continue
 		}
-		if state.PendingDelayID != "" {
-			if err := s.cancelPendingDelayLocked(ctx, state.PendingDelayID); err != nil {
-				s.client.log.Warn().Err(err).Str("agent_id", agent.agentID).Msg("Failed to cancel pending heartbeat delay before wake")
-				continue
-			}
-		}
+		s.cancelScheduledTickLocked(heartbeatTimerKey(state.AgentID))
 		runAtMs := nowMs + int64(scheduleImmediateDelay/time.Millisecond)
 		runKey := buildTickRunKey(state.Revision, "wake", runAtMs)
-		resp, err := s.scheduleTickLocked(ctx, id.RoomID(state.RoomID), ScheduleTickContent{
+		err := s.scheduleTickLocked(ctx, heartbeatTimerKey(state.AgentID), ScheduleTickContent{
 			Kind:           scheduleTickKindHeartbeatRun,
 			EntityID:       state.AgentID,
 			Revision:       state.Revision,
@@ -95,8 +89,6 @@ func (s *schedulerRuntime) RequestHeartbeatNow(ctx context.Context, reason strin
 			continue
 		}
 		state.NextRunAtMs = runAtMs
-		state.PendingDelayID = string(resp.UnstableDelayID)
-		state.PendingDelayKind = "wake"
 		state.PendingRunKey = runKey
 		changed = true
 	}
@@ -136,9 +128,7 @@ func (s *schedulerRuntime) reconcileHeartbeatLocked(ctx context.Context) error {
 			retained = append(retained, *state)
 			continue
 		}
-		if err := s.cancelPendingDelayLocked(ctx, state.PendingDelayID); err != nil {
-			s.client.log.Warn().Err(err).Str("agent_id", state.AgentID).Msg("Failed to cancel disabled heartbeat delay")
-		}
+		s.cancelScheduledTickLocked(heartbeatTimerKey(state.AgentID))
 	}
 	store.Agents = retained
 	return s.saveHeartbeatStoreLocked(ctx, store)
@@ -160,8 +150,6 @@ func (s *schedulerRuntime) handleHeartbeatPlan(ctx context.Context, tick Schedul
 	if !state.Enabled || state.Revision != tick.Revision || containsRunKey(state.ProcessedRunKeys, tick.RunKey) {
 		return nil
 	}
-	state.PendingDelayID = ""
-	state.PendingDelayKind = ""
 	state.PendingRunKey = ""
 	state.ProcessedRunKeys = appendRunKey(state.ProcessedRunKeys, tick.RunKey)
 	s.scheduleHeartbeatStateLocked(ctx, state, time.Now().UnixMilli(), false)
@@ -185,8 +173,6 @@ func (s *schedulerRuntime) handleHeartbeatRun(ctx context.Context, tick Schedule
 		s.mu.Unlock()
 		return nil
 	}
-	state.PendingDelayID = ""
-	state.PendingDelayKind = ""
 	state.PendingRunKey = ""
 	store.Agents[idx] = state
 	if err := s.saveHeartbeatStoreLocked(ctx, store); err != nil {
@@ -234,8 +220,6 @@ func (s *schedulerRuntime) scheduleHeartbeatStateLocked(ctx context.Context, sta
 	if state == nil || !state.Enabled || state.IntervalMs <= 0 {
 		if state != nil {
 			state.NextRunAtMs = 0
-			state.PendingDelayID = ""
-			state.PendingDelayKind = ""
 			state.PendingRunKey = ""
 		}
 		return
@@ -244,34 +228,24 @@ func (s *schedulerRuntime) scheduleHeartbeatStateLocked(ctx context.Context, sta
 	if nextRun <= 0 {
 		return
 	}
-	if validateExisting && state.PendingDelayID != "" {
-		exists, err := s.delayedEventExistsLocked(ctx, state.PendingDelayID)
-		if err != nil {
-			s.client.log.Warn().Err(err).Str("agent_id", state.AgentID).Msg("Failed to validate existing heartbeat delay")
-			state.LastResult = "error"
-			state.LastError = err.Error()
-			return
-		}
-		if exists {
-			state.NextRunAtMs = nextRun
-			return
-		}
+	if validateExisting && state.PendingRunKey != "" && s.hasScheduledTickLocked(heartbeatTimerKey(state.AgentID)) {
+		state.NextRunAtMs = nextRun
+		return
 	}
-	if state.PendingDelayID != "" {
-		_ = s.cancelPendingDelayLocked(ctx, state.PendingDelayID)
-	}
+	s.cancelScheduledTickLocked(heartbeatTimerKey(state.AgentID))
 	kind := scheduleTickKindHeartbeatRun
 	runAtMs := nextRun
 	if nextRun-nowMs > int64(schedulePlannerHorizon/time.Millisecond) {
 		kind = scheduleTickKindHeartbeatPlan
 		runAtMs = nowMs + int64(schedulePlannerHorizon/time.Millisecond)
 	}
-	resp, err := s.scheduleTickLocked(ctx, id.RoomID(state.RoomID), ScheduleTickContent{
+	runKey := buildTickRunKey(state.Revision, shortTickKind(kind), runAtMs)
+	err := s.scheduleTickLocked(ctx, heartbeatTimerKey(state.AgentID), ScheduleTickContent{
 		Kind:           kind,
 		EntityID:       state.AgentID,
 		Revision:       state.Revision,
 		ScheduledForMs: runAtMs,
-		RunKey:         buildTickRunKey(state.Revision, shortTickKind(kind), runAtMs),
+		RunKey:         runKey,
 		Reason:         "interval",
 	}, time.Duration(max64(runAtMs-nowMs, scheduleImmediateDelay.Milliseconds()))*time.Millisecond)
 	if err != nil {
@@ -281,9 +255,7 @@ func (s *schedulerRuntime) scheduleHeartbeatStateLocked(ctx context.Context, sta
 		return
 	}
 	state.NextRunAtMs = nextRun
-	state.PendingDelayID = string(resp.UnstableDelayID)
-	state.PendingDelayKind = shortTickKind(kind)
-	state.PendingRunKey = buildTickRunKey(state.Revision, shortTickKind(kind), runAtMs)
+	state.PendingRunKey = runKey
 }
 
 func (s *schedulerRuntime) scheduleNextHeartbeatAfterRunLocked(ctx context.Context, state *managedHeartbeatState, nowMs int64) {
@@ -298,16 +270,15 @@ func (s *schedulerRuntime) scheduleHeartbeatRetryLocked(ctx context.Context, sta
 	if state == nil || !state.Enabled {
 		return
 	}
-	if state.PendingDelayID != "" {
-		_ = s.cancelPendingDelayLocked(ctx, state.PendingDelayID)
-	}
+	s.cancelScheduledTickLocked(heartbeatTimerKey(state.AgentID))
 	retryAtMs := nowMs + int64(scheduleHeartbeatCoalesce/time.Millisecond)
-	resp, err := s.scheduleTickLocked(ctx, id.RoomID(state.RoomID), ScheduleTickContent{
+	runKey := buildTickRunKey(state.Revision, "retry", retryAtMs)
+	err := s.scheduleTickLocked(ctx, heartbeatTimerKey(state.AgentID), ScheduleTickContent{
 		Kind:           scheduleTickKindHeartbeatRun,
 		EntityID:       state.AgentID,
 		Revision:       state.Revision,
 		ScheduledForMs: retryAtMs,
-		RunKey:         buildTickRunKey(state.Revision, "retry", retryAtMs),
+		RunKey:         runKey,
 		Reason:         "retry",
 	}, scheduleHeartbeatCoalesce)
 	if err != nil {
@@ -317,9 +288,7 @@ func (s *schedulerRuntime) scheduleHeartbeatRetryLocked(ctx context.Context, sta
 		return
 	}
 	state.NextRunAtMs = retryAtMs
-	state.PendingDelayID = string(resp.UnstableDelayID)
-	state.PendingDelayKind = "retry"
-	state.PendingRunKey = buildTickRunKey(state.Revision, "retry", retryAtMs)
+	state.PendingRunKey = runKey
 }
 
 func computeManagedHeartbeatDue(client *AIClient, state managedHeartbeatState, nowMs int64) int64 {
@@ -367,8 +336,6 @@ func upsertManagedHeartbeat(store *managedHeartbeatStore, agentID string, hb *He
 		state.IntervalMs = interval
 		state.ActiveHours = cloneHeartbeatActiveHours(hb)
 		state.Revision++
-		state.PendingDelayID = ""
-		state.PendingDelayKind = ""
 		state.PendingRunKey = ""
 	}
 	state.Enabled = interval > 0

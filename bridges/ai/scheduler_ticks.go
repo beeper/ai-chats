@@ -6,56 +6,69 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"maunium.net/go/mautrix"
-	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/id"
 )
 
-func (s *schedulerRuntime) scheduleTickLocked(ctx context.Context, roomID id.RoomID, content ScheduleTickContent, delay time.Duration) (*mautrix.RespSendEvent, error) {
-	intent := s.intentClient()
-	if intent == nil {
-		return nil, errors.New("matrix intent not available")
+func (s *schedulerRuntime) scheduleTickLocked(ctx context.Context, timerKey string, content ScheduleTickContent, delay time.Duration) error {
+	if s == nil || s.client == nil {
+		return errors.New("scheduler not available")
+	}
+	if strings.TrimSpace(timerKey) == "" {
+		return errors.New("timer key is required")
 	}
 	if delay < scheduleImmediateDelay {
 		delay = scheduleImmediateDelay
 	}
-	resp, err := intent.SendMessageEvent(ctx, roomID, ScheduleTickEventType, content, mautrix.ReqSendEvent{UnstableDelay: delay})
-	if err != nil {
-		return nil, err
+	s.ensureRuntimeContextLocked(s.client.backgroundContext(ctx))
+	if s.runCtx == nil || s.runCtx.Err() != nil {
+		return errors.New("scheduler runtime is not running")
 	}
-	return resp, nil
-}
-
-func (s *schedulerRuntime) delayedEventExistsLocked(ctx context.Context, delayID string) (bool, error) {
-	intent := s.intentClient()
-	if intent == nil || strings.TrimSpace(delayID) == "" {
-		return false, nil
-	}
-	resp, err := intent.DelayedEvents(ctx, &mautrix.ReqDelayedEvents{DelayID: id.DelayID(delayID)})
-	if err != nil {
-		return false, err
-	}
-	return resp != nil, nil
-}
-
-func (s *schedulerRuntime) cancelPendingDelayLocked(ctx context.Context, delayID string) error {
-	intent := s.intentClient()
-	if intent == nil || strings.TrimSpace(delayID) == "" {
-		return nil
-	}
-	_, err := intent.UpdateDelayedEvent(ctx, &mautrix.ReqUpdateDelayedEvent{
-		DelayID: id.DelayID(delayID),
-		Action:  event.DelayActionCancel,
+	s.cancelScheduledTickLocked(timerKey)
+	tick := content
+	s.timers[timerKey] = time.AfterFunc(delay, func() {
+		s.fireScheduledTick(timerKey, tick)
 	})
-	return err
+	return nil
 }
 
-func (s *schedulerRuntime) intentClient() schedulerDelayedEventIntent {
-	if s == nil || s.client == nil || s.client.UserLogin == nil || s.client.UserLogin.Bridge == nil {
-		return nil
+func (s *schedulerRuntime) fireScheduledTick(timerKey string, tick ScheduleTickContent) {
+	s.mu.Lock()
+	if s.timers != nil {
+		delete(s.timers, timerKey)
 	}
-	return resolveSchedulerDelayedEventIntent(s.client.UserLogin)
+	runCtx := s.runCtx
+	s.mu.Unlock()
+	if runCtx == nil || runCtx.Err() != nil {
+		return
+	}
+	s.handleScheduleTickContent(runCtx, tick)
+}
+
+func (s *schedulerRuntime) hasScheduledTickLocked(timerKey string) bool {
+	if strings.TrimSpace(timerKey) == "" || s.timers == nil {
+		return false
+	}
+	_, ok := s.timers[timerKey]
+	return ok
+}
+
+func (s *schedulerRuntime) cancelScheduledTickLocked(timerKey string) {
+	if strings.TrimSpace(timerKey) == "" || s.timers == nil {
+		return
+	}
+	timer, ok := s.timers[timerKey]
+	if !ok {
+		return
+	}
+	timer.Stop()
+	delete(s.timers, timerKey)
+}
+
+func cronTimerKey(jobID string) string {
+	return "cron:" + strings.TrimSpace(jobID)
+}
+
+func heartbeatTimerKey(agentID string) string {
+	return "heartbeat:" + strings.TrimSpace(agentID)
 }
 
 func appendRunKey(existing []string, runKey string) []string {

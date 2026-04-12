@@ -47,7 +47,6 @@ func NewAIConnector() *OpenAIConnector {
 			} else {
 				oc.br.Log.Warn().Type("commands_type", oc.br.Commands).Msg("Failed to register AI commands: command processor type assertion failed")
 			}
-			oc.registerCustomEventHandlers()
 			oc.initProvisioning()
 			return nil
 		},

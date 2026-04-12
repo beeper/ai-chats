@@ -666,17 +666,18 @@ func (oc *AIClient) createNewChat(ctx context.Context, modelID string) (*bridgev
 
 // allocateNextChatIndex increments and returns the next chat index for this login
 func (oc *AIClient) allocateNextChatIndex(ctx context.Context) (int, error) {
-	meta := loginMetadata(oc.UserLogin)
 	oc.chatLock.Lock()
 	defer oc.chatLock.Unlock()
 
-	meta.NextChatIndex++
-	if err := oc.UserLogin.Save(ctx); err != nil {
-		meta.NextChatIndex-- // Rollback on error
-		return 0, fmt.Errorf("failed to save login: %w", err)
+	var next int
+	if err := oc.updateLoginState(ctx, func(state *loginRuntimeState) bool {
+		state.NextChatIndex++
+		next = state.NextChatIndex
+		return true
+	}); err != nil {
+		return 0, fmt.Errorf("failed to save login state: %w", err)
 	}
-
-	return meta.NextChatIndex, nil
+	return next, nil
 }
 
 // PortalInitOpts contains options for initializing a chat portal
@@ -1078,18 +1079,6 @@ func (oc *AIClient) bootstrap(ctx context.Context) {
 	logCtx := oc.loggerForContext(ctx).With().Str("component", "openai-chat-bootstrap").Logger().WithContext(ctx)
 	oc.waitForLoginPersisted(logCtx)
 
-	meta := loginMetadata(oc.UserLogin)
-
-	// Check if bootstrap already completed successfully
-	if meta.ChatsSynced {
-		oc.loggerForContext(ctx).Debug().Msg("Chats already synced, skipping bootstrap")
-		// Still sync counter in case portals were created externally
-		if err := oc.syncChatCounter(logCtx); err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to sync chat counter")
-		}
-		return
-	}
-
 	oc.loggerForContext(ctx).Info().Msg("Starting bootstrap for new login")
 
 	if err := oc.syncChatCounter(logCtx); err != nil {
@@ -1097,21 +1086,14 @@ func (oc *AIClient) bootstrap(ctx context.Context) {
 		// Don't return - still create the default chat (matches other bridge patterns)
 	}
 
-	if shouldEnsureDefaultChat(meta) {
+	if shouldEnsureDefaultChat(loginMetadata(oc.UserLogin)) {
 		// Create default chat room with Beep agent
 		if err := oc.ensureDefaultChat(logCtx); err != nil {
 			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure default chat")
 			return
 		}
 	}
-
-	// Mark bootstrap as complete only after successful completion
-	meta.ChatsSynced = true
-	if err := oc.UserLogin.Save(logCtx); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to save ChatsSynced flag")
-	} else {
-		oc.loggerForContext(ctx).Info().Msg("Bootstrap completed successfully, ChatsSynced flag set")
-	}
+	oc.loggerForContext(ctx).Info().Msg("Bootstrap completed successfully")
 }
 
 func (oc *AIClient) waitForLoginPersisted(ctx context.Context) {
@@ -1135,74 +1117,43 @@ func (oc *AIClient) waitForLoginPersisted(ctx context.Context) {
 }
 
 func (oc *AIClient) syncChatCounter(ctx context.Context) error {
-	meta := loginMetadata(oc.UserLogin)
 	portals, err := oc.listAllChatPortals(ctx)
 	if err != nil {
 		return err
 	}
-	maxIdx := meta.NextChatIndex
+	state := oc.loginStateSnapshot(ctx)
+	maxIdx := state.NextChatIndex
 	for _, portal := range portals {
 		pm := portalMeta(portal)
 		if idx, ok := parseChatSlug(pm.Slug); ok && idx > maxIdx {
 			maxIdx = idx
 		}
 	}
-	if maxIdx > meta.NextChatIndex {
-		meta.NextChatIndex = maxIdx
-		return oc.UserLogin.Save(ctx)
+	if maxIdx > state.NextChatIndex {
+		return oc.updateLoginState(ctx, func(state *loginRuntimeState) bool {
+			if maxIdx <= state.NextChatIndex {
+				return false
+			}
+			state.NextChatIndex = maxIdx
+			return true
+		})
 	}
 	return nil
 }
 
 func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 	oc.loggerForContext(ctx).Debug().Msg("Ensuring default AI chat room exists")
-	loginMeta := loginMetadata(oc.UserLogin)
 	defaultPortalKey := defaultChatPortalKey(oc.UserLogin.ID)
 	deterministicPortalBlocked := false
 
-	if loginMeta.DefaultChatPortalID != "" {
-		portalKey := networkid.PortalKey{
-			ID:       networkid.PortalID(loginMeta.DefaultChatPortalID),
-			Receiver: oc.UserLogin.ID,
-		}
-		portal, err := oc.UserLogin.Bridge.GetPortalByKey(ctx, portalKey)
-		if err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to load default chat portal by ID")
-		} else if portal != nil {
-			if !isDefaultChatCandidate(portal) {
-				deterministicPortalBlocked = portal.PortalKey == defaultPortalKey
-				oc.loggerForContext(ctx).Warn().Stringer("portal", portal.PortalKey).Msg("Ignoring hidden portal stored as default chat")
-				loginMeta.DefaultChatPortalID = ""
-				if err := oc.UserLogin.Save(ctx); err != nil {
-					oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to clear hidden default chat portal ID")
-				}
-			} else {
-				if portal.MXID != "" {
-					oc.loggerForContext(ctx).Debug().Stringer("portal", portal.PortalKey).Msg("Existing default chat already has MXID")
-					return nil
-				}
-				info := oc.chatInfoFromPortal(ctx, portal)
-				oc.loggerForContext(ctx).Info().Stringer("portal", portal.PortalKey).Msg("Default chat missing MXID; creating Matrix room")
-				err := oc.materializePortalRoom(ctx, portal, info, portalRoomMaterializeOptions{SendWelcome: true})
-				if err != nil {
-					oc.loggerForContext(ctx).Err(err).Msg("Failed to create Matrix room for default chat")
-					return err
-				}
-				return nil
-			}
-		}
-	}
-
-	if loginMeta.DefaultChatPortalID == "" {
-		portal, err := oc.UserLogin.Bridge.GetExistingPortalByKey(ctx, defaultPortalKey)
-		if err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to load default chat portal by deterministic key")
-		} else if portal != nil && isDefaultChatCandidate(portal) {
-			return oc.ensureExistingChatPortalReady(ctx, loginMeta, portal, "Existing default chat already has MXID", "Default chat missing MXID; creating Matrix room", "Failed to create Matrix room for default chat")
-		} else if portal != nil {
-			deterministicPortalBlocked = true
-			oc.loggerForContext(ctx).Warn().Stringer("portal", portal.PortalKey).Msg("Ignoring hidden deterministic default chat portal")
-		}
+	portal, err := oc.UserLogin.Bridge.GetExistingPortalByKey(ctx, defaultPortalKey)
+	if err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to load default chat portal by deterministic key")
+	} else if portal != nil && isDefaultChatCandidate(portal) {
+		return oc.ensureExistingChatPortalReady(ctx, portal, "Existing default chat already has MXID", "Default chat missing MXID; creating Matrix room", "Failed to create Matrix room for default chat")
+	} else if portal != nil {
+		deterministicPortalBlocked = true
+		oc.loggerForContext(ctx).Warn().Stringer("portal", portal.PortalKey).Msg("Ignoring hidden deterministic default chat portal")
 	}
 
 	portals, err := oc.listAllChatPortals(ctx)
@@ -1214,7 +1165,7 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 	defaultPortal := chooseDefaultChatPortal(portals)
 
 	if defaultPortal != nil {
-		return oc.ensureExistingChatPortalReady(ctx, loginMeta, defaultPortal, "Existing chat already has MXID", "Existing portal missing MXID; creating Matrix room", "Failed to create Matrix room for existing portal")
+		return oc.ensureExistingChatPortalReady(ctx, defaultPortal, "Existing chat already has MXID", "Existing portal missing MXID; creating Matrix room", "Failed to create Matrix room for existing portal")
 	}
 
 	// Create default chat with Beep agent
@@ -1240,10 +1191,6 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 	if err != nil {
 		existingPortal, existingErr := oc.UserLogin.Bridge.GetExistingPortalByKey(ctx, defaultPortalKey)
 		if !deterministicPortalBlocked && existingErr == nil && existingPortal != nil {
-			loginMeta.DefaultChatPortalID = string(existingPortal.PortalKey.ID)
-			if err := oc.UserLogin.Save(ctx); err != nil {
-				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist default chat portal ID")
-			}
 			if existingPortal.MXID != "" {
 				oc.loggerForContext(ctx).Debug().Stringer("portal", existingPortal.PortalKey).Msg("Existing default chat already has MXID")
 				return nil
@@ -1280,10 +1227,6 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 	oc.applyAgentChatInfo(ctx, chatInfo, beeperAgent.ID, agentName, modelID)
 	oc.ensureAgentGhostDisplayName(ctx, beeperAgent.ID, modelID, agentName)
 
-	loginMeta.DefaultChatPortalID = string(portal.PortalKey.ID)
-	if err := oc.UserLogin.Save(ctx); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist default chat portal ID")
-	}
 	err = oc.materializePortalRoom(ctx, portal, chatInfo, portalRoomMaterializeOptions{SendWelcome: true})
 	if err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg("Failed to create Matrix room for default chat")
@@ -1293,15 +1236,9 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 	return nil
 }
 
-func (oc *AIClient) ensureExistingChatPortalReady(ctx context.Context, loginMeta *UserLoginMetadata, portal *bridgev2.Portal, readyMsg string, createMsg string, errMsg string) error {
+func (oc *AIClient) ensureExistingChatPortalReady(ctx context.Context, portal *bridgev2.Portal, readyMsg string, createMsg string, errMsg string) error {
 	if !isDefaultChatCandidate(portal) {
 		return fmt.Errorf("portal %s is hidden and can't be selected as default chat", portal.PortalKey)
-	}
-	if loginMeta != nil {
-		loginMeta.DefaultChatPortalID = string(portal.PortalKey.ID)
-		if err := oc.UserLogin.Save(ctx); err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist default chat portal ID")
-		}
 	}
 	if portal.MXID != "" {
 		oc.loggerForContext(ctx).Debug().Stringer("portal", portal.PortalKey).Msg(readyMsg)

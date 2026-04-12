@@ -58,8 +58,8 @@ func (oc *AIClient) isMcpAlwaysAllowed(serverLabel, toolName string) bool {
 	if oc == nil || oc.UserLogin == nil {
 		return false
 	}
-	meta := loginMetadata(oc.UserLogin)
-	cfg := meta.ToolApprovals
+	state := oc.loginStateSnapshot(context.Background())
+	cfg := state.ToolApprovals
 	if cfg == nil || len(cfg.MCPAlwaysAllow) == 0 {
 		return false
 	}
@@ -80,8 +80,8 @@ func (oc *AIClient) isBuiltinAlwaysAllowed(toolName, action string) bool {
 	if oc == nil || oc.UserLogin == nil {
 		return false
 	}
-	meta := loginMetadata(oc.UserLogin)
-	cfg := meta.ToolApprovals
+	state := oc.loginStateSnapshot(context.Background())
+	cfg := state.ToolApprovals
 	if cfg == nil || len(cfg.BuiltinAlwaysAllow) == 0 {
 		return false
 	}
@@ -106,45 +106,45 @@ func (oc *AIClient) persistAlwaysAllow(ctx context.Context, pending *pendingTool
 	if oc == nil || oc.UserLogin == nil || pending == nil {
 		return nil
 	}
-	meta := loginMetadata(oc.UserLogin)
-	if meta.ToolApprovals == nil {
-		meta.ToolApprovals = &ToolApprovalsConfig{}
-	}
-
-	switch pending.ToolKind {
-	case ToolApprovalKindMCP:
-		sl := normalizeApprovalToken(pending.ServerLabel)
-		tn := normalizeMcpRuleToolName(pending.RuleToolName)
-		if sl == "" || tn == "" {
-			return nil
+	return oc.updateLoginState(ctx, func(state *loginRuntimeState) bool {
+		if state.ToolApprovals == nil {
+			state.ToolApprovals = &ToolApprovalsConfig{}
 		}
-		for _, rule := range meta.ToolApprovals.MCPAlwaysAllow {
-			if normalizeApprovalToken(rule.ServerLabel) == sl && normalizeMcpRuleToolName(rule.ToolName) == tn {
-				return nil
+		switch pending.ToolKind {
+		case ToolApprovalKindMCP:
+			sl := normalizeApprovalToken(pending.ServerLabel)
+			tn := normalizeMcpRuleToolName(pending.RuleToolName)
+			if sl == "" || tn == "" {
+				return false
 			}
-		}
-		meta.ToolApprovals.MCPAlwaysAllow = append(meta.ToolApprovals.MCPAlwaysAllow, MCPAlwaysAllowRule{
-			ServerLabel: sl,
-			ToolName:    tn,
-		})
-	case ToolApprovalKindBuiltin:
-		tn := normalizeApprovalToken(pending.RuleToolName)
-		act := normalizeApprovalToken(pending.Action)
-		if tn == "" {
-			return nil
-		}
-		for _, rule := range meta.ToolApprovals.BuiltinAlwaysAllow {
-			if normalizeApprovalToken(rule.ToolName) == tn && normalizeApprovalToken(rule.Action) == act {
-				return nil
+			for _, rule := range state.ToolApprovals.MCPAlwaysAllow {
+				if normalizeApprovalToken(rule.ServerLabel) == sl && normalizeMcpRuleToolName(rule.ToolName) == tn {
+					return false
+				}
 			}
+			state.ToolApprovals.MCPAlwaysAllow = append(state.ToolApprovals.MCPAlwaysAllow, MCPAlwaysAllowRule{
+				ServerLabel: sl,
+				ToolName:    tn,
+			})
+			return true
+		case ToolApprovalKindBuiltin:
+			tn := normalizeApprovalToken(pending.RuleToolName)
+			act := normalizeApprovalToken(pending.Action)
+			if tn == "" {
+				return false
+			}
+			for _, rule := range state.ToolApprovals.BuiltinAlwaysAllow {
+				if normalizeApprovalToken(rule.ToolName) == tn && normalizeApprovalToken(rule.Action) == act {
+					return false
+				}
+			}
+			state.ToolApprovals.BuiltinAlwaysAllow = append(state.ToolApprovals.BuiltinAlwaysAllow, BuiltinAlwaysAllowRule{
+				ToolName: tn,
+				Action:   act,
+			})
+			return true
+		default:
+			return false
 		}
-		meta.ToolApprovals.BuiltinAlwaysAllow = append(meta.ToolApprovals.BuiltinAlwaysAllow, BuiltinAlwaysAllowRule{
-			ToolName: tn,
-			Action:   act,
-		})
-	default:
-		return nil
-	}
-
-	return oc.UserLogin.Save(ctx)
+	})
 }

@@ -77,7 +77,7 @@ func newSDKClient[SessionT SessionValue, ConfigDataT ConfigValue](login *bridgev
 			return data.RoomID
 		},
 		SendNotice: func(ctx context.Context, portal *bridgev2.Portal, msg string) {
-			_ = SendSystemNotice(ctx, login, portal, senderForPortal(portal), msg)
+			_ = agentremote.SendSystemMessage(ctx, login, portal, senderForPortal(portal), msg)
 		},
 	})
 	if cfg != nil && cfg.TurnManagement != nil {

@@ -121,10 +121,7 @@ type UserLoginMetadata struct {
 	Credentials          *LoginCredentials `json:"credentials,omitempty"`
 	TitleGenerationModel string            `json:"title_generation_model,omitempty"` // Model to use for generating chat titles
 	Agents               *bool             `json:"agents,omitempty"`                 // Nil/true enables agents, false limits login to model rooms
-	NextChatIndex        int               `json:"next_chat_index,omitempty"`
-	DefaultChatPortalID  string            `json:"default_chat_portal_id,omitempty"`
 	ModelCache           *ModelCache       `json:"model_cache,omitempty"`
-	ChatsSynced          bool              `json:"chats_synced,omitempty"` // True after initial bootstrap completed successfully
 	Gravatar             *GravatarState    `json:"gravatar,omitempty"`
 	Timezone             string            `json:"timezone,omitempty"`
 	Profile              *UserProfile      `json:"profile,omitempty"`
@@ -133,17 +130,8 @@ type UserLoginMetadata struct {
 	// Key is the file hash (SHA256), pruned after 7 days
 	FileAnnotationCache map[string]FileAnnotation `json:"file_annotation_cache,omitempty"`
 
-	// Tool approval rules (e.g. "always allow" decisions for MCP approvals or dangerous builtin tools).
-	ToolApprovals *ToolApprovalsConfig `json:"tool_approvals,omitempty"`
-
 	// Custom agents store (source of truth for user-created agents).
 	CustomAgents map[string]*AgentDefinitionContent `json:"custom_agents,omitempty"`
-	// Last active room per agent (used for heartbeat delivery).
-	LastActiveRoomByAgent map[string]string `json:"last_active_room_by_agent,omitempty"`
-	// Heartbeat dedupe state per agent.
-	HeartbeatState map[string]HeartbeatState `json:"heartbeat_state,omitempty"`
-	// LastHeartbeatEvent is the last emitted heartbeat event for this login (command-only debug surface).
-	LastHeartbeatEvent *HeartbeatEventPayload `json:"last_heartbeat_event,omitempty"`
 
 	// Provider health tracking
 	ConsecutiveErrors int   `json:"consecutive_errors,omitempty"`
@@ -243,12 +231,6 @@ func serviceTokensEmpty(tokens *ServiceTokens) bool {
 		strings.TrimSpace(tokens.Brave) == "" &&
 		strings.TrimSpace(tokens.Perplexity) == "" &&
 		strings.TrimSpace(tokens.DesktopAPI) == ""
-}
-
-// HeartbeatState tracks last heartbeat delivery for dedupe.
-type HeartbeatState struct {
-	LastHeartbeatText   string `json:"last_heartbeat_text,omitempty"`
-	LastHeartbeatSentAt int64  `json:"last_heartbeat_sent_at,omitempty"`
 }
 
 // GravatarProfile stores the selected Gravatar profile for a login.

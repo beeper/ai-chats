@@ -124,8 +124,6 @@ CREATE TABLE IF NOT EXISTS aichats_cron_jobs (
   state_last_duration_ms INTEGER,
   room_id TEXT NOT NULL DEFAULT '',
   revision INTEGER NOT NULL DEFAULT 1,
-  pending_delay_id TEXT NOT NULL DEFAULT '',
-  pending_delay_kind TEXT NOT NULL DEFAULT '',
   pending_run_key TEXT NOT NULL DEFAULT '',
   last_output_preview TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (bridge_id, login_id, job_id)
@@ -155,8 +153,6 @@ CREATE TABLE IF NOT EXISTS aichats_managed_heartbeats (
   room_id TEXT NOT NULL DEFAULT '',
   revision INTEGER NOT NULL DEFAULT 1,
   next_run_at_ms INTEGER,
-  pending_delay_id TEXT NOT NULL DEFAULT '',
-  pending_delay_kind TEXT NOT NULL DEFAULT '',
   pending_run_key TEXT NOT NULL DEFAULT '',
   last_run_at_ms INTEGER,
   last_result TEXT NOT NULL DEFAULT '',
@@ -200,6 +196,19 @@ CREATE TABLE IF NOT EXISTS aichats_internal_messages (
 
 CREATE INDEX IF NOT EXISTS idx_aichats_internal_messages_history
   ON aichats_internal_messages(bridge_id, login_id, room_id, created_at_ms);
+
+CREATE TABLE IF NOT EXISTS aichats_login_state (
+  bridge_id TEXT NOT NULL,
+  login_id TEXT NOT NULL,
+  next_chat_index INTEGER NOT NULL DEFAULT 0,
+  default_chat_portal_id TEXT NOT NULL DEFAULT '',
+  chats_synced INTEGER NOT NULL DEFAULT 0,
+  tool_approvals_json TEXT NOT NULL DEFAULT '',
+  last_active_room_by_agent_json TEXT NOT NULL DEFAULT '',
+  last_heartbeat_event_json TEXT NOT NULL DEFAULT '',
+  updated_at_ms INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (bridge_id, login_id)
+);
 
 CREATE TABLE IF NOT EXISTS agentremote_sessions (
   bridge_id TEXT NOT NULL,

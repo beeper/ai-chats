@@ -89,30 +89,22 @@ func (oc *AIClient) forgetDeletedPortalReferences(ctx context.Context, portal *b
 	if oc == nil || oc.UserLogin == nil || portal == nil {
 		return
 	}
-
-	loginMeta := loginMetadata(oc.UserLogin)
-	if loginMeta == nil {
-		return
-	}
-
-	changed := false
 	roomID := strings.TrimSpace(portal.MXID.String())
 	portalID := strings.TrimSpace(string(portal.PortalKey.ID))
-
-	if portalID != "" && loginMeta.DefaultChatPortalID == portalID {
-		loginMeta.DefaultChatPortalID = ""
-		changed = true
-	}
-	if roomID != "" && len(loginMeta.LastActiveRoomByAgent) > 0 {
-		for agentID, activeRoomID := range loginMeta.LastActiveRoomByAgent {
-			if activeRoomID == roomID {
-				delete(loginMeta.LastActiveRoomByAgent, agentID)
-				changed = true
+	_ = oc.updateLoginState(ctx, func(state *loginRuntimeState) bool {
+		changed := false
+		if portalID != "" && state.DefaultChatPortalID == portalID {
+			state.DefaultChatPortalID = ""
+			changed = true
+		}
+		if roomID != "" && len(state.LastActiveRoomByAgent) > 0 {
+			for agentID, activeRoomID := range state.LastActiveRoomByAgent {
+				if activeRoomID == roomID {
+					delete(state.LastActiveRoomByAgent, agentID)
+					changed = true
+				}
 			}
 		}
-	}
-
-	if changed {
-		_ = oc.UserLogin.Save(ctx)
-	}
+		return changed
+	})
 }

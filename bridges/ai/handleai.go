@@ -62,13 +62,11 @@ func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev
 			WithIsCertain(true).
 			WithSendNotice(true)
 		if info := agentremote.MatrixMessageStatusEventInfo(portal, evt); info != nil {
-			portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, info)
+			agentremote.SendMatrixMessageStatus(ctx, portal, evt, msgStatus)
 		}
 		for _, extra := range statusEventsFromContext(ctx) {
 			if extra != nil {
-				if info := agentremote.MatrixMessageStatusEventInfo(portal, extra); info != nil {
-					portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, info)
-				}
+				agentremote.SendMatrixMessageStatus(ctx, portal, extra, msgStatus)
 			}
 		}
 	}
@@ -191,7 +189,7 @@ func (oc *AIClient) sendPendingStatus(ctx context.Context, portal *bridgev2.Port
 		Message:   message,
 		IsCertain: true,
 	}
-	bridgesdk.SendEventMessageStatus(ctx, portal, evt, status)
+	agentremote.SendMatrixMessageStatus(ctx, portal, evt, status)
 }
 
 func (oc *AIClient) sendSuccessStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event) {
@@ -199,7 +197,7 @@ func (oc *AIClient) sendSuccessStatus(ctx context.Context, portal *bridgev2.Port
 		Status:    event.MessageStatusSuccess,
 		IsCertain: true,
 	}
-	bridgesdk.SendEventMessageStatus(ctx, portal, evt, status)
+	agentremote.SendMatrixMessageStatus(ctx, portal, evt, status)
 }
 
 const autoGreetingDelay = 5 * time.Second

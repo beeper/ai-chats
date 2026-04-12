@@ -276,6 +276,8 @@ type AIClient struct {
 
 	chatLock      sync.Mutex
 	bootstrapOnce sync.Once // Ensures bootstrap only runs once per client instance
+	loginStateMu  sync.Mutex
+	loginState    *loginRuntimeState
 
 	// Turn-based message queuing: only one response per room at a time
 	activeRooms   map[id.RoomID]bool
@@ -450,9 +452,10 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 	oc.scheduler = newSchedulerRuntime(oc)
 	oc.initIntegrations()
 
-	// Seed last-heartbeat snapshot from persisted login metadata (command-only surface).
-	if meta != nil && meta.LastHeartbeatEvent != nil {
-		seedLastHeartbeatEvent(login.ID, meta.LastHeartbeatEvent)
+	// Load AI-local runtime state from aidb instead of bridge login metadata.
+	loginState := oc.ensureLoginStateLoaded(context.Background())
+	if loginState.LastHeartbeatEvent != nil {
+		seedLastHeartbeatEvent(login.ID, loginState.LastHeartbeatEvent)
 	}
 
 	return oc, nil
@@ -862,6 +865,9 @@ func (oc *AIClient) Disconnect() {
 	if oc.inboundDebouncer != nil {
 		oc.loggerForContext(context.Background()).Info().Msg("Flushing pending debounced messages on disconnect")
 		oc.inboundDebouncer.FlushAll()
+	}
+	if oc.scheduler != nil {
+		oc.scheduler.Stop()
 	}
 	oc.SetLoggedIn(false)
 

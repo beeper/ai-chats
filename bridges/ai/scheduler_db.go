@@ -45,7 +45,7 @@ func (s *schedulerRuntime) loadCronStoreLocked(ctx context.Context) (scheduledCr
 			payload_kind, payload_message, payload_model, payload_thinking, payload_timeout_seconds, payload_allow_unsafe_external,
 			delivery_mode, delivery_channel, delivery_to, delivery_best_effort,
 			state_next_run_at_ms, state_running_at_ms, state_last_run_at_ms, state_last_status, state_last_error, state_last_duration_ms,
-			room_id, revision, pending_delay_id, pending_delay_kind, pending_run_key, last_output_preview
+			room_id, revision, pending_run_key, last_output_preview
 		FROM aichats_cron_jobs
 		WHERE bridge_id=$1 AND login_id=$2
 		ORDER BY job_id
@@ -107,8 +107,6 @@ func (s *schedulerRuntime) loadCronStoreLocked(ctx context.Context) (scheduledCr
 			&stateLastDurationMs,
 			&record.RoomID,
 			&record.Revision,
-			&record.PendingDelayID,
-			&record.PendingDelayKind,
 			&record.PendingRunKey,
 			&record.LastOutputPreview,
 		); err != nil {
@@ -160,7 +158,7 @@ func (s *schedulerRuntime) saveCronStoreLocked(ctx context.Context, store schedu
 					payload_kind, payload_message, payload_model, payload_thinking, payload_timeout_seconds, payload_allow_unsafe_external,
 					delivery_mode, delivery_channel, delivery_to, delivery_best_effort,
 					state_next_run_at_ms, state_running_at_ms, state_last_run_at_ms, state_last_status, state_last_error, state_last_duration_ms,
-					room_id, revision, pending_delay_id, pending_delay_kind, pending_run_key, last_output_preview
+					room_id, revision, pending_run_key, last_output_preview
 				) VALUES (
 					$1, $2, $3, $4, $5, $6,
 					$7, $8, $9, $10,
@@ -168,7 +166,7 @@ func (s *schedulerRuntime) saveCronStoreLocked(ctx context.Context, store schedu
 					$17, $18, $19, $20, $21, $22,
 					$23, $24, $25, $26,
 					$27, $28, $29, $30, $31, $32,
-					$33, $34, $35, $36, $37, $38
+					$33, $34, $35, $36
 				)
 				ON CONFLICT (bridge_id, login_id, job_id) DO UPDATE SET
 					agent_id=excluded.agent_id,
@@ -202,8 +200,6 @@ func (s *schedulerRuntime) saveCronStoreLocked(ctx context.Context, store schedu
 					state_last_duration_ms=excluded.state_last_duration_ms,
 					room_id=excluded.room_id,
 					revision=excluded.revision,
-					pending_delay_id=excluded.pending_delay_id,
-					pending_delay_kind=excluded.pending_delay_kind,
 					pending_run_key=excluded.pending_run_key,
 					last_output_preview=excluded.last_output_preview
 			`,
@@ -213,7 +209,7 @@ func (s *schedulerRuntime) saveCronStoreLocked(ctx context.Context, store schedu
 				record.Job.Payload.Kind, record.Job.Payload.Message, record.Job.Payload.Model, record.Job.Payload.Thinking, nullableIntValue(record.Job.Payload.TimeoutSeconds), nullableBoolValue(record.Job.Payload.AllowUnsafeExternal),
 				deliveryMode, deliveryChannel, deliveryTo, deliveryBestEffort,
 				nullableInt64Value(record.Job.State.NextRunAtMs), nullableInt64Value(record.Job.State.RunningAtMs), nullableInt64Value(record.Job.State.LastRunAtMs), record.Job.State.LastStatus, record.Job.State.LastError, nullableInt64Value(record.Job.State.LastDurationMs),
-				record.RoomID, record.Revision, record.PendingDelayID, record.PendingDelayKind, record.PendingRunKey, record.LastOutputPreview,
+				record.RoomID, record.Revision, record.PendingRunKey, record.LastOutputPreview,
 			); err != nil {
 				return err
 			}
@@ -234,7 +230,7 @@ func (s *schedulerRuntime) loadHeartbeatStoreLocked(ctx context.Context) (manage
 		SELECT
 			agent_id, enabled, interval_ms,
 			active_hours_start, active_hours_end, active_hours_timezone,
-			room_id, revision, next_run_at_ms, pending_delay_id, pending_delay_kind, pending_run_key,
+			room_id, revision, next_run_at_ms, pending_run_key,
 			last_run_at_ms, last_result, last_error
 		FROM aichats_managed_heartbeats
 		WHERE bridge_id=$1 AND login_id=$2
@@ -266,8 +262,6 @@ func (s *schedulerRuntime) loadHeartbeatStoreLocked(ctx context.Context) (manage
 			&state.RoomID,
 			&state.Revision,
 			&nextRunAtMs,
-			&state.PendingDelayID,
-			&state.PendingDelayKind,
 			&state.PendingRunKey,
 			&lastRunAtMs,
 			&state.LastResult,
@@ -316,9 +310,8 @@ func (s *schedulerRuntime) saveHeartbeatStoreLocked(ctx context.Context, store m
 				INSERT INTO aichats_managed_heartbeats (
 					bridge_id, login_id, agent_id, enabled, interval_ms,
 					active_hours_start, active_hours_end, active_hours_timezone,
-					room_id, revision, next_run_at_ms, pending_delay_id, pending_delay_kind,
-					pending_run_key, last_run_at_ms, last_result, last_error
-				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+					room_id, revision, next_run_at_ms, pending_run_key, last_run_at_ms, last_result, last_error
+				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 				ON CONFLICT (bridge_id, login_id, agent_id) DO UPDATE SET
 					enabled=excluded.enabled,
 					interval_ms=excluded.interval_ms,
@@ -328,8 +321,6 @@ func (s *schedulerRuntime) saveHeartbeatStoreLocked(ctx context.Context, store m
 					room_id=excluded.room_id,
 					revision=excluded.revision,
 					next_run_at_ms=excluded.next_run_at_ms,
-					pending_delay_id=excluded.pending_delay_id,
-					pending_delay_kind=excluded.pending_delay_kind,
 					pending_run_key=excluded.pending_run_key,
 					last_run_at_ms=excluded.last_run_at_ms,
 					last_result=excluded.last_result,
@@ -337,7 +328,7 @@ func (s *schedulerRuntime) saveHeartbeatStoreLocked(ctx context.Context, store m
 			`,
 				scope.bridgeID, scope.loginID, state.AgentID, state.Enabled, state.IntervalMs,
 				activeStart, activeEnd, activeTimezone,
-				state.RoomID, state.Revision, nullableInt64ValueForZero(state.NextRunAtMs), state.PendingDelayID, state.PendingDelayKind,
+				state.RoomID, state.Revision, nullableInt64ValueForZero(state.NextRunAtMs),
 				state.PendingRunKey, nullableInt64ValueForZero(state.LastRunAtMs), state.LastResult, state.LastError,
 			); err != nil {
 				return err

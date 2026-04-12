@@ -68,16 +68,6 @@ func (oc *OpenAIConnector) applyRuntimeDefaults() {
 	}
 }
 
-// registerCustomEventHandlers registers connector-owned event handlers.
-func (oc *OpenAIConnector) registerCustomEventHandlers() {
-	if !registerScheduleTickEventHandler(oc.br, oc.handleScheduleTickEvent) {
-		oc.br.Log.Warn().Msg("Cannot register custom event handlers: Matrix connector type assertion failed")
-		return
-	}
-
-	oc.br.Log.Info().Msg("Registered connector event handlers")
-}
-
 func (oc *OpenAIConnector) ValidateUserID(id networkid.UserID) bool {
 	if modelID := parseModelFromGhostID(string(id)); strings.TrimSpace(modelID) != "" {
 		return resolveModelIDFromManifest(modelID) != ""

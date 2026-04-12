@@ -127,9 +127,7 @@ func (s *schedulerRuntime) CronUpdate(ctx context.Context, jobID string, patch i
 	if err != nil {
 		return integrationcron.Job{}, err
 	}
-	if err := s.cancelPendingDelayLocked(ctx, record.PendingDelayID); err != nil {
-		s.client.log.Warn().Err(err).Str("job_id", record.Job.ID).Msg("Failed to cancel pending cron delay during update")
-	}
+	s.cancelScheduledTickLocked(cronTimerKey(record.Job.ID))
 	record = updated
 	if err := s.ensureCronRoomLocked(ctx, &record); err != nil {
 		return integrationcron.Job{}, err
@@ -155,9 +153,7 @@ func (s *schedulerRuntime) CronRemove(ctx context.Context, jobID string) (bool, 
 		return false, nil
 	}
 	record := store.Jobs[idx]
-	if err := s.cancelPendingDelayLocked(ctx, record.PendingDelayID); err != nil {
-		s.client.log.Warn().Err(err).Str("job_id", record.Job.ID).Msg("Failed to cancel pending cron delay during remove")
-	}
+	s.cancelScheduledTickLocked(cronTimerKey(record.Job.ID))
 	store.Jobs = append(store.Jobs[:idx], store.Jobs[idx+1:]...)
 	if err := s.saveCronStoreLocked(ctx, store); err != nil {
 		return false, err
@@ -233,8 +229,6 @@ func (s *schedulerRuntime) handleCronPlan(ctx context.Context, tick ScheduleTick
 	if !record.Job.Enabled || tick.Revision != record.Revision || containsRunKey(record.ProcessedRunKeys, tick.RunKey) {
 		return nil
 	}
-	record.PendingDelayID = ""
-	record.PendingDelayKind = ""
 	record.PendingRunKey = ""
 	record.ProcessedRunKeys = appendRunKey(record.ProcessedRunKeys, tick.RunKey)
 	s.scheduleCronRecordLocked(ctx, record, time.Now().UnixMilli(), false)
@@ -261,8 +255,6 @@ func (s *schedulerRuntime) handleCronRun(ctx context.Context, tick ScheduleTickC
 	nowMs := time.Now().UnixMilli()
 	record.Job.State.RunningAtMs = &nowMs
 	if !manual {
-		record.PendingDelayID = ""
-		record.PendingDelayKind = ""
 		record.PendingRunKey = ""
 		s.scheduleNextCronAfterRunLocked(ctx, &record, tick.ScheduledForMs, nowMs)
 	}
@@ -299,15 +291,9 @@ func (s *schedulerRuntime) handleCronRun(ctx context.Context, tick ScheduleTickC
 	record.ProcessedRunKeys = appendRunKey(record.ProcessedRunKeys, tick.RunKey)
 	record.Job.UpdatedAtMs = finishedAt
 	if record.Job.DeleteAfterRun {
-		if record.PendingDelayID != "" {
-			if err := s.cancelPendingDelayLocked(ctx, record.PendingDelayID); err != nil {
-				s.client.log.Warn().Err(err).Str("job_id", record.Job.ID).Msg("Failed to cancel pending cron delay during delete-after-run cleanup")
-			}
-		}
+		s.cancelScheduledTickLocked(cronTimerKey(record.Job.ID))
 		record.Job.Enabled = false
 		record.Job.State.NextRunAtMs = nil
-		record.PendingDelayID = ""
-		record.PendingDelayKind = ""
 		record.PendingRunKey = ""
 	}
 	store.Jobs[idx] = record
@@ -420,27 +406,14 @@ func (s *schedulerRuntime) scheduleCronRecordLocked(ctx context.Context, record 
 	due := computeInitialCronDue(record.Job, nowMs)
 	if due == nil || !record.Job.Enabled {
 		record.Job.State.NextRunAtMs = nil
-		record.PendingDelayID = ""
-		record.PendingDelayKind = ""
 		record.PendingRunKey = ""
 		return
 	}
-	if validateExisting && record.PendingDelayID != "" {
-		exists, err := s.delayedEventExistsLocked(ctx, record.PendingDelayID)
-		if err != nil {
-			s.client.log.Warn().Err(err).Str("job_id", record.Job.ID).Msg("Failed to validate existing cron delay")
-			record.Job.State.LastStatus = "error"
-			record.Job.State.LastError = err.Error()
-			return
-		}
-		if exists {
-			record.Job.State.NextRunAtMs = due
-			return
-		}
+	if validateExisting && record.PendingRunKey != "" && s.hasScheduledTickLocked(cronTimerKey(record.Job.ID)) {
+		record.Job.State.NextRunAtMs = due
+		return
 	}
-	if record.PendingDelayID != "" {
-		_ = s.cancelPendingDelayLocked(ctx, record.PendingDelayID)
-	}
+	s.cancelScheduledTickLocked(cronTimerKey(record.Job.ID))
 	s.scheduleCronDueLocked(ctx, record, *due)
 }
 
@@ -455,12 +428,13 @@ func (s *schedulerRuntime) scheduleCronDueLocked(ctx context.Context, record *sc
 		runAtMs = nowMs + int64(schedulePlannerHorizon/time.Millisecond)
 		kind = scheduleTickKindCronPlan
 	}
-	resp, err := s.scheduleTickLocked(ctx, id.RoomID(record.RoomID), ScheduleTickContent{
+	runKey := buildTickRunKey(record.Revision, shortTickKind(kind), runAtMs)
+	err := s.scheduleTickLocked(ctx, cronTimerKey(record.Job.ID), ScheduleTickContent{
 		Kind:           kind,
 		EntityID:       record.Job.ID,
 		Revision:       record.Revision,
 		ScheduledForMs: runAtMs,
-		RunKey:         buildTickRunKey(record.Revision, shortTickKind(kind), runAtMs),
+		RunKey:         runKey,
 		Reason:         "interval",
 	}, time.Duration(max64(runAtMs-nowMs, scheduleImmediateDelay.Milliseconds()))*time.Millisecond)
 	if err != nil {
@@ -470,9 +444,7 @@ func (s *schedulerRuntime) scheduleCronDueLocked(ctx context.Context, record *sc
 		return
 	}
 	record.Job.State.NextRunAtMs = &dueAtMs
-	record.PendingDelayID = string(resp.UnstableDelayID)
-	record.PendingDelayKind = shortTickKind(kind)
-	record.PendingRunKey = buildTickRunKey(record.Revision, shortTickKind(kind), runAtMs)
+	record.PendingRunKey = runKey
 }
 
 func (s *schedulerRuntime) scheduleNextCronAfterRunLocked(ctx context.Context, record *scheduledCronJob, scheduledForMs, nowMs int64) {

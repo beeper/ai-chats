@@ -2,9 +2,9 @@ package ai
 
 import (
 	"context"
+	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 )
 
@@ -25,15 +25,6 @@ func (oc *AIClient) recordAgentActivity(ctx context.Context, portal *bridgev2.Po
 	if agentID == "" {
 		return
 	}
-	loginMeta := loginMetadata(oc.UserLogin)
-	if loginMeta == nil {
-		return
-	}
-	if loginMeta.LastActiveRoomByAgent == nil {
-		loginMeta.LastActiveRoomByAgent = make(map[string]string)
-	}
-	loginMeta.LastActiveRoomByAgent[agentID] = portal.MXID.String()
-	_ = oc.UserLogin.Save(ctx)
 
 	storeRef, mainKey := oc.resolveHeartbeatMainSessionRef(agentID)
 	accountID := string(oc.UserLogin.ID)
@@ -63,11 +54,18 @@ func (oc *AIClient) lastActivePortal(agentID string) *bridgev2.Portal {
 	if oc == nil || oc.UserLogin == nil {
 		return nil
 	}
-	loginMeta := loginMetadata(oc.UserLogin)
-	if loginMeta == nil || loginMeta.LastActiveRoomByAgent == nil {
+	storeRef, mainKey := oc.resolveHeartbeatMainSessionRef(agentID)
+	if mainKey == "" {
 		return nil
 	}
-	room := loginMeta.LastActiveRoomByAgent[normalizeAgentID(agentID)]
+	entry, ok := oc.getSessionEntry(context.Background(), storeRef, mainKey)
+	if !ok {
+		return nil
+	}
+	if !strings.EqualFold(strings.TrimSpace(entry.LastChannel), "matrix") && strings.TrimSpace(entry.LastChannel) != "" {
+		return nil
+	}
+	room := strings.TrimSpace(entry.LastTo)
 	if room == "" {
 		return nil
 	}
@@ -86,20 +84,11 @@ func (oc *AIClient) defaultChatPortal() *bridgev2.Portal {
 		return nil
 	}
 	ctx := oc.backgroundContext(context.Background())
-	loginMeta := loginMetadata(oc.UserLogin)
-	if loginMeta != nil && loginMeta.DefaultChatPortalID != "" {
-		portalKey := networkid.PortalKey{
-			ID:       networkid.PortalID(loginMeta.DefaultChatPortalID),
-			Receiver: oc.UserLogin.ID,
-		}
-		if portal, err := oc.UserLogin.Bridge.GetPortalByKey(ctx, portalKey); err == nil && portal != nil {
-			if isDefaultChatCandidate(portal) {
-				return portal
-			}
-		}
-	}
 	if portal, err := oc.UserLogin.Bridge.GetExistingPortalByKey(ctx, defaultChatPortalKey(oc.UserLogin.ID)); err == nil && portal != nil && isDefaultChatCandidate(portal) {
 		return portal
+	}
+	if portals, err := oc.listAllChatPortals(ctx); err == nil {
+		return chooseDefaultChatPortal(portals)
 	}
 	return nil
 }

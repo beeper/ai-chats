@@ -108,17 +108,16 @@ func (p *heartbeatEventPersister) run() {
 
 	write:
 		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
-		meta := loginMetadata(p.login)
-		if meta != nil {
-			// Avoid redundant writes when events are identical.
-			if prev := meta.LastHeartbeatEvent; prev != nil {
-				if prev.TS == evt.TS && prev.Status == evt.Status && prev.Reason == evt.Reason && prev.To == evt.To && prev.Channel == evt.Channel && prev.Preview == evt.Preview {
-					cancel()
-					continue
+		if client, ok := p.login.Client.(*AIClient); ok && client != nil {
+			_ = client.updateLoginState(ctx, func(state *loginRuntimeState) bool {
+				if prev := state.LastHeartbeatEvent; prev != nil {
+					if prev.TS == evt.TS && prev.Status == evt.Status && prev.Reason == evt.Reason && prev.To == evt.To && prev.Channel == evt.Channel && prev.Preview == evt.Preview {
+						return false
+					}
 				}
-			}
-			meta.LastHeartbeatEvent = evt
-			_ = p.login.Save(ctx)
+				state.LastHeartbeatEvent = cloneHeartbeatEvent(evt)
+				return true
+			})
 		}
 		cancel()
 	}
@@ -186,11 +185,12 @@ func getLastHeartbeatEventForLogin(login *bridgev2.UserLogin) *HeartbeatEventPay
 	heartbeatEvents.mu.Unlock()
 
 	if last == nil {
-		meta := loginMetadata(login)
-		if meta != nil && meta.LastHeartbeatEvent != nil {
-			seedLastHeartbeatEvent(login.ID, meta.LastHeartbeatEvent)
-			c := *meta.LastHeartbeatEvent
-			return &c
+		if client, ok := login.Client.(*AIClient); ok && client != nil {
+			state := client.loginStateSnapshot(context.Background())
+			if state.LastHeartbeatEvent != nil {
+				seedLastHeartbeatEvent(login.ID, state.LastHeartbeatEvent)
+				return cloneHeartbeatEvent(state.LastHeartbeatEvent)
+			}
 		}
 		return nil
 	}

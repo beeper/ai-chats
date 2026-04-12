@@ -8,8 +8,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
-
-	"github.com/beeper/agentremote"
 )
 
 func resolveMatrixIntent(
@@ -27,16 +25,6 @@ func resolveMatrixIntent(
 		return nil, fmt.Errorf("failed to get intent")
 	}
 	return intent, nil
-}
-
-func SendSystemNotice(
-	ctx context.Context,
-	login *bridgev2.UserLogin,
-	portal *bridgev2.Portal,
-	sender bridgev2.EventSender,
-	body string,
-) error {
-	return agentremote.SendSystemMessage(ctx, login, portal, sender, body)
 }
 
 func SetRoomName(
@@ -113,17 +101,4 @@ func SendMessageStatus(
 		RoomID:        roomID,
 		SourceEventID: sourceEventID,
 	})
-}
-
-func SendEventMessageStatus(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	evt *event.Event,
-	status bridgev2.MessageStatus,
-) {
-	agentremote.SendMatrixMessageStatus(ctx, portal, evt, status)
-}
-
-func SendAIRoomInfo(ctx context.Context, portal *bridgev2.Portal, aiKind string) bool {
-	return agentremote.SendAIRoomInfo(ctx, portal, aiKind)
 }
