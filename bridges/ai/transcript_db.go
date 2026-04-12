@@ -58,18 +58,7 @@ func cloneMessageMetadata(src *MessageMetadata) *MessageMetadata {
 }
 
 func transportMessageMetadata(src *MessageMetadata) *MessageMetadata {
-	if src == nil {
-		return nil
-	}
-	return &MessageMetadata{
-		BaseMessageMetadata: sdk.BaseMessageMetadata{
-			Role:               src.Role,
-			Body:               src.Body,
-			ExcludeFromHistory: src.ExcludeFromHistory,
-		},
-		MediaURL: src.MediaURL,
-		MimeType: src.MimeType,
-	}
+	return &MessageMetadata{}
 }
 
 func cloneMessageForAIHistory(msg *database.Message) *database.Message {

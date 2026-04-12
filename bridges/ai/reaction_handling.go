@@ -72,14 +72,8 @@ func (oc *AIClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev
 	emoji = variationselector.Remove(emoji)
 
 	messageID := ""
-	receiver := msg.Portal.Receiver
-	if receiver == "" && oc.UserLogin != nil {
-		receiver = oc.UserLogin.ID
-	}
-	if receiver != "" {
-		if targetPart, err := oc.UserLogin.Bridge.DB.Message.GetPartByID(ctx, receiver, msg.TargetReaction.MessageID, msg.TargetReaction.MessagePartID); err == nil && targetPart != nil {
-			messageID = targetPart.MXID.String()
-		}
+	if targetPart, err := oc.loadPortalMessagePartByID(ctx, msg.Portal, msg.TargetReaction.MessageID, msg.TargetReaction.MessagePartID); err == nil && targetPart != nil {
+		messageID = targetPart.MXID.String()
 	}
 	if messageID == "" {
 		messageID = string(msg.TargetReaction.MessageID)

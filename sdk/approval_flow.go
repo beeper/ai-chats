@@ -915,7 +915,7 @@ func (f *ApprovalFlow[D]) SendPrompt(ctx context.Context, portal *bridgev2.Porta
 
 	prompt := BuildApprovalPromptMessage(params.ApprovalPromptMessageParams)
 	sender := f.senderOrEmpty(portal)
-	reactionTargetMessageID := resolveApprovalReactionTargetMessageID(ctx, login, params.ReplyToEventID)
+	reactionTargetMessageID := resolveApprovalReactionTargetMessageID(ctx, login, portal, params.ReplyToEventID)
 
 	f.mu.Lock()
 	var prevPromptCopy ApprovalPromptRegistration
@@ -1165,13 +1165,18 @@ func (f *ApprovalFlow[D]) handleResolvedApprovalReactionChange(
 func resolveApprovalReactionTargetMessageID(
 	ctx context.Context,
 	login *bridgev2.UserLogin,
+	portal *bridgev2.Portal,
 	replyToEventID id.EventID,
 ) networkid.MessageID {
 	replyToEventID = id.EventID(strings.TrimSpace(replyToEventID.String()))
 	if login == nil || login.Bridge == nil || replyToEventID == "" {
 		return ""
 	}
-	msg, err := login.Bridge.DB.Message.GetPartByMXID(ctx, replyToEventID)
+	rowID, err := findPortalMessageRowIDByMXID(ctx, login, portal, replyToEventID)
+	if err != nil || rowID == 0 {
+		return ""
+	}
+	msg, err := login.Bridge.DB.Message.GetByRowID(ctx, rowID)
 	if err != nil || msg == nil {
 		return ""
 	}
@@ -1195,7 +1200,7 @@ func resolvePromptTargetMessage(
 	if receiver == "" {
 		receiver = login.ID
 	}
-	target := resolveApprovalPromptMessage(ctx, login, receiver, prompt)
+	target := resolveApprovalPromptMessage(ctx, login, portal, prompt)
 	if target == nil {
 		return ""
 	}

@@ -657,12 +657,8 @@ func (oc *AIClient) updateBridgeMessageMetadata(
 	}
 	var existing *database.Message
 	var err error
-	receiver := portal.Receiver
-	if receiver == "" {
-		receiver = oc.UserLogin.ID
-	}
-	if receiver != "" && messageID != "" {
-		existing, err = oc.UserLogin.Bridge.DB.Message.GetPartByID(ctx, receiver, messageID, networkid.PartID("0"))
+	if portal != nil && messageID != "" {
+		existing, err = oc.loadPortalMessagePartByID(ctx, portal, messageID, networkid.PartID("0"))
 	}
 	if existing == nil && eventID != "" {
 		existing, err = oc.loadPortalMessagePartByMXID(ctx, portal, eventID)

@@ -131,14 +131,18 @@ func shouldPreserveApprovalReaction(
 func resolveApprovalPromptMessage(
 	ctx context.Context,
 	login *bridgev2.UserLogin,
-	receiver networkid.UserLoginID,
+	portal *bridgev2.Portal,
 	prompt ApprovalPromptRegistration,
 ) *database.Message {
 	if login == nil || login.Bridge == nil || prompt.PromptMessageID == "" {
 		return nil
 	}
+	rowID, err := findPortalMessageRowIDByID(ctx, login, portal, prompt.PromptMessageID, networkid.PartID("0"))
+	if err != nil || rowID == 0 {
+		return nil
+	}
 	msgDB := login.Bridge.DB.Message
-	if msg, err := msgDB.GetFirstPartByID(ctx, receiver, prompt.PromptMessageID); err == nil && msg != nil {
+	if msg, err := msgDB.GetByRowID(ctx, rowID); err == nil && msg != nil {
 		return msg
 	}
 	return nil
@@ -157,15 +161,15 @@ func RedactApprovalPromptPlaceholderReactions(
 	if login == nil || portal == nil || portal.MXID == "" {
 		return nil
 	}
+	targetMessage := resolveApprovalPromptMessage(ctx, login, portal, prompt)
+	if targetMessage == nil {
+		return nil
+	}
 	receiver := portal.Receiver
 	if receiver == "" {
 		receiver = login.ID
 	}
 	if receiver == "" {
-		return nil
-	}
-	targetMessage := resolveApprovalPromptMessage(ctx, login, receiver, prompt)
-	if targetMessage == nil {
 		return nil
 	}
 	reactions, err := login.Bridge.DB.Reaction.GetAllToMessagePart(ctx, receiver, targetMessage.ID, targetMessage.PartID)
