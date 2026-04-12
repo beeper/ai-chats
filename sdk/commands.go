@@ -1,14 +1,11 @@
 package sdk
 
 import (
-	"context"
 	"errors"
-	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/commands"
 	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/event/cmdschema"
 )
 
 var sdkHelpSection = commands.HelpSection{Name: "SDK", Order: 50}
@@ -74,84 +71,4 @@ func registerCommands[SessionT SessionValue, ConfigDataT ConfigValue](br *bridge
 		handlers = append(handlers, handler)
 	}
 	proc.AddHandlers(handlers...)
-}
-
-// BroadcastCommandDescriptions intentionally does nothing. AI bridge commands
-// remain discoverable through the bridge command processor without publishing
-// extra room state events.
-func BroadcastCommandDescriptions(ctx context.Context, portal *bridgev2.Portal, bot bridgev2.MatrixAPI, cmds []Command) {
-	_ = ctx
-	_ = portal
-	_ = bot
-	_ = cmds
-}
-
-func buildSDKCommandParameters(argsStr string) ([]*cmdschema.Parameter, string) {
-	var params []*cmdschema.Parameter
-	var tailParam string
-	for _, token := range tokenizeSDKArgs(argsStr) {
-		required, name := parseSDKArg(token)
-		if name == "" {
-			continue
-		}
-		isTail := strings.Contains(name, "...")
-		key := strings.TrimSpace(strings.Trim(strings.ReplaceAll(name, "...", ""), "_"))
-		if key == "" {
-			key = "args"
-		}
-		params = append(params, &cmdschema.Parameter{
-			Key:         key,
-			Schema:      cmdschema.PrimitiveTypeString.Schema(),
-			Optional:    !required,
-			Description: event.MakeExtensibleText(token),
-		})
-		if isTail && tailParam == "" {
-			tailParam = key
-		}
-	}
-	return params, tailParam
-}
-
-func parseSDKArg(token string) (required bool, name string) {
-	name = strings.TrimSpace(token)
-	if strings.HasPrefix(name, "<") && strings.HasSuffix(name, ">") {
-		name = name[1 : len(name)-1]
-		required = true
-	} else if strings.HasPrefix(name, "[") && strings.HasSuffix(name, "]") {
-		name = name[1 : len(name)-1]
-	}
-	return required, strings.TrimSpace(name)
-}
-
-func tokenizeSDKArgs(s string) []string {
-	var tokens []string
-	i := 0
-	for i < len(s) {
-		if s[i] == ' ' || s[i] == '\t' {
-			i++
-			continue
-		}
-		var close byte
-		switch s[i] {
-		case '<':
-			close = '>'
-		case '[':
-			close = ']'
-		}
-		if close != 0 {
-			end := strings.IndexByte(s[i+1:], close)
-			if end >= 0 {
-				tokens = append(tokens, s[i:i+1+end+1])
-				i += 1 + end + 1
-				continue
-			}
-		}
-		j := i + 1
-		for j < len(s) && s[j] != ' ' && s[j] != '\t' {
-			j++
-		}
-		tokens = append(tokens, s[i:j])
-		i = j
-	}
-	return tokens
 }

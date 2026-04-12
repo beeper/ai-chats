@@ -44,12 +44,9 @@ var (
 	_ bridgev2.DeleteChatHandlingNetworkAPI     = (*AIClient)(nil)
 	_ bridgev2.DisappearTimerChangingNetworkAPI = (*AIClient)(nil)
 	_ bridgev2.TypingHandlingNetworkAPI         = (*AIClient)(nil)
-	_ bridgev2.ReadReceiptHandlingNetworkAPI    = (*AIClient)(nil)
 	_ bridgev2.RoomNameHandlingNetworkAPI       = (*AIClient)(nil)
 	_ bridgev2.RoomTopicHandlingNetworkAPI      = (*AIClient)(nil)
 	_ bridgev2.RoomAvatarHandlingNetworkAPI     = (*AIClient)(nil)
-	_ bridgev2.MuteHandlingNetworkAPI           = (*AIClient)(nil)
-	_ bridgev2.MarkedUnreadHandlingNetworkAPI   = (*AIClient)(nil)
 )
 
 var rejectAllMediaFileFeatures = &event.FileFeatures{

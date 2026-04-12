@@ -30,7 +30,7 @@ func testAgentPortal(portalID, roomID, agentID string, meta *PortalMetadata) *br
 
 func TestAgentHasUserChat(t *testing.T) {
 	portals := []*bridgev2.Portal{
-		testAgentPortal("chat-1", "!chat1:example.com", "beeper", &PortalMetadata{Title: "Chat"}),
+		testAgentPortal("chat-1", "!chat1:example.com", "beeper", &PortalMetadata{Slug: "chat"}),
 		testAgentPortal("heartbeat", "!hb:example.com", "beeper", &PortalMetadata{
 			ModuleMeta: map[string]any{"heartbeat": map[string]any{"is_internal_room": true}},
 		}),

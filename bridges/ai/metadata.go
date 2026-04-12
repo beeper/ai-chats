@@ -215,7 +215,6 @@ type PortalMetadata struct {
 	PDFConfig              *PDFConfig `json:"-"`
 
 	Slug             string `json:"-"`
-	Title            string `json:"-"`
 	TitleGenerated   bool   `json:"-"`
 	WelcomeSent      bool   `json:"-"`
 	AutoGreetingSent bool   `json:"-"`

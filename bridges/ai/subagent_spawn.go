@@ -304,7 +304,6 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 
 	roomName := resolveSubagentRoomName(label, task)
 	if roomName != "" {
-		childMeta.Title = roomName
 		childPortal.Name = roomName
 		childPortal.NameSet = true
 		if chatResp.PortalInfo != nil {

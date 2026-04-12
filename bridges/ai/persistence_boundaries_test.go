@@ -98,7 +98,6 @@ func TestSaveAIPortalState_DoesNotPersistBridgeRoomName(t *testing.T) {
 
 	meta := &PortalMetadata{
 		Slug:           "chat-1",
-		Title:          "legacy-sidecar-title",
 		TitleGenerated: true,
 		WelcomeSent:    true,
 	}
@@ -110,10 +109,10 @@ func TestSaveAIPortalState_DoesNotPersistBridgeRoomName(t *testing.T) {
 	loaded := &PortalMetadata{}
 	loadPortalStateIntoMetadata(ctx, portal, loaded)
 
-	if loaded.Title != "" {
-		t.Fatalf("expected room title to stay out of AI sidecar state, got %q", loaded.Title)
-	}
 	if loaded.Slug != "chat-1" || !loaded.TitleGenerated || !loaded.WelcomeSent {
 		t.Fatalf("expected AI-owned portal state to load, got %#v", loaded)
+	}
+	if portal.Name != "Bridge Owned Name" {
+		t.Fatalf("expected bridge-owned room name to remain on the portal, got %q", portal.Name)
 	}
 }

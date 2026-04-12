@@ -15,8 +15,6 @@ var (
 	StreamEventMessageType = event.Type{Type: "com.beeper.llm", Class: event.EphemeralEventType}
 
 	CompactionStatusEventType = event.Type{Type: "com.beeper.ai.compaction_status", Class: event.MessageEventType}
-
-	AIRoomInfoEventType = event.Type{Type: "com.beeper.ai.info", Class: event.StateEventType}
 )
 
 // Relation types.
@@ -28,10 +26,6 @@ const (
 
 // Content field keys.
 const BeeperAIKey = "com.beeper.ai"
-
-// CommandDescriptionEventType is the state event type for MSC4391 command descriptions.
-// Already accepted in gomuks/mautrix-go ecosystem.
-var CommandDescriptionEventType = event.StateMSC4391BotCommand
 
 // ToolStatus represents the state of a tool call.
 type ToolStatus string

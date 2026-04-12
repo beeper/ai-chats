@@ -448,13 +448,6 @@ func ApplyAgentRemoteBridgeInfo(content *event.BridgeEventContent, protocolID st
 	content.BeeperRoomTypeV2 = NormalizeAIRoomTypeV2(roomType, aiKind)
 }
 
-func SendAIRoomInfo(ctx context.Context, portal *bridgev2.Portal, aiKind string) bool {
-	_ = ctx
-	_ = portal
-	_ = aiKind
-	return false
-}
-
 // findExistingMessage performs a two-phase message lookup: first by network
 // message ID (with receiver resolution), then by Matrix event ID as fallback.
 // Returns the message (if found) and separate errors from each lookup phase.

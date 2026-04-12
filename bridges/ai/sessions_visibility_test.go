@@ -23,7 +23,7 @@ func TestShouldExcludeModelVisiblePortal(t *testing.T) {
 	}
 
 	visible := &PortalMetadata{
-		Title: "Visible room",
+		Slug: "Visible room",
 	}
 	if shouldExcludeModelVisiblePortal(visible) {
 		t.Fatalf("expected visible room metadata to be included")

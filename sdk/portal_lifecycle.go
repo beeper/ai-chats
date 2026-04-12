@@ -16,7 +16,6 @@ type PortalLifecycleOptions struct {
 	CleanupOnCreateError func(context.Context, *bridgev2.Portal)
 	AIRoomKind           string
 	ForceCapabilities    bool
-	RefreshExtra         func(context.Context, *bridgev2.Portal)
 }
 
 // EnsurePortalLifecycle creates or refreshes a portal room and then applies
@@ -59,8 +58,5 @@ func RefreshPortalLifecycle(ctx context.Context, opts PortalLifecycleOptions) {
 	opts.Portal.UpdateBridgeInfo(ctx)
 	if opts.ForceCapabilities && opts.Login != nil {
 		opts.Portal.UpdateCapabilities(ctx, opts.Login, true)
-	}
-	if opts.RefreshExtra != nil {
-		opts.RefreshExtra(ctx, opts.Portal)
 	}
 }

@@ -66,12 +66,6 @@ func (l *LoginHandle) EnsureConversation(ctx context.Context, spec ConversationS
 		SaveBeforeCreate:  true,
 		AIRoomKind:        conv.aiRoomKind(),
 		ForceCapabilities: true,
-		RefreshExtra: func(ctx context.Context, portal *bridgev2.Portal) {
-			if l.runtime == nil || len(l.runtime.commands()) == 0 {
-				return
-			}
-			BroadcastCommandDescriptions(ctx, portal, l.login.Bridge.Bot, l.runtime.commands())
-		},
 	})
 	if err != nil {
 		return nil, err

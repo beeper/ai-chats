@@ -1,7 +1,6 @@
 package ai
 
 import (
-	"cmp"
 	"context"
 	"strings"
 	"time"
@@ -115,5 +114,5 @@ func portalRoomName(portal *bridgev2.Portal) string {
 	if meta == nil {
 		return ""
 	}
-	return strings.TrimSpace(cmp.Or(meta.Slug, meta.Title))
+	return strings.TrimSpace(meta.Slug)
 }

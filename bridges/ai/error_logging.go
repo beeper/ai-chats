@@ -47,9 +47,6 @@ func addRequestSummary(event *zerolog.Event, metadata *PortalMetadata, prompt Pr
 		if metadata.Slug != "" {
 			event.Str("slug", metadata.Slug)
 		}
-		if metadata.Title != "" {
-			event.Str("title", metadata.Title)
-		}
 		if metadata.RuntimeModelOverride != "" {
 			event.Str("runtime_model_override", metadata.RuntimeModelOverride)
 		}

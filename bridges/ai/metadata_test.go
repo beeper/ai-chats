@@ -50,7 +50,6 @@ func TestPortalMetadataDoesNotMarshalPersistentState(t *testing.T) {
 	meta := &PortalMetadata{
 		AckReactionEmoji:      "👍",
 		Slug:                  "chat-1",
-		Title:                 "Chat",
 		WelcomeSent:           true,
 		AutoGreetingSent:      true,
 		SessionResetAt:        123,
@@ -74,7 +73,6 @@ func TestPersistedPortalStateRoundTrip(t *testing.T) {
 		AckReactionRemoveAfter: true,
 		PDFConfig:              &PDFConfig{Engine: "mistral"},
 		Slug:                   "chat-7",
-		Title:                  "Example",
 		TitleGenerated:         true,
 		WelcomeSent:            true,
 		AutoGreetingSent:       true,
@@ -109,7 +107,7 @@ func TestPersistedPortalStateRoundTrip(t *testing.T) {
 	if clone.AckReactionEmoji != orig.AckReactionEmoji || !clone.AckReactionRemoveAfter || clone.PDFConfig == nil {
 		t.Fatalf("unexpected restored state: %#v", clone)
 	}
-	if clone.Slug != orig.Slug || clone.Title != "" || !clone.TitleGenerated {
+	if clone.Slug != orig.Slug || !clone.TitleGenerated {
 		t.Fatalf("expected only AI-owned portal state to round-trip: %#v", clone)
 	}
 	if clone.SessionBootstrapByAgent["beeper"] != 789 {
