@@ -8,6 +8,7 @@ import (
 	"time"
 
 	agenttools "github.com/beeper/agentremote/pkg/agents/tools"
+	"github.com/beeper/agentremote/pkg/shared/maputil"
 )
 
 type ToolCreateContext struct {
@@ -43,7 +44,7 @@ const (
 )
 
 func ExecuteTool(ctx context.Context, args map[string]any, deps ToolExecDeps) (string, error) {
-	action := strings.ToLower(strings.TrimSpace(agenttools.ReadStringDefault(args, "action", "")))
+	action := strings.ToLower(maputil.StringArgDefault(args, "action", ""))
 	if action == "" {
 		return agenttools.JSONResult(map[string]any{
 			"status": "error",

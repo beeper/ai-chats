@@ -155,6 +155,9 @@ func (oc *AIClient) saveAssistantMessage(
 		if err := persistAITranscriptMessage(ctx, oc, portal, transcriptMsg); err != nil {
 			log.Warn().Err(err).Str("msg_id", string(messageID)).Msg("Failed to persist assistant transcript message")
 		}
+		if err := oc.updateBridgeMessageMetadata(ctx, portal, messageID, initialEventID, fullMeta); err != nil {
+			log.Warn().Err(err).Str("msg_id", string(messageID)).Msg("Failed to trim bridge assistant message metadata")
+		}
 	}
 	oc.noteStreamingPersistenceSideEffects(ctx, portal, state, meta)
 }

@@ -56,3 +56,13 @@ func IntArg(args map[string]any, key string) (int, bool) {
 	}
 	return int(v), true
 }
+
+// IntArgDefault extracts an integer value, returning defaultVal if the key is
+// missing or not a number.
+func IntArgDefault(args map[string]any, key string, defaultVal int) int {
+	v, ok := IntArg(args, key)
+	if !ok {
+		return defaultVal
+	}
+	return v
+}
