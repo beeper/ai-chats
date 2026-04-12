@@ -1,11 +1,11 @@
-# OpenClaw Bridge
+# OpenClaw Gateway Bridge
 
-The OpenClaw bridge connects Beeper to a self-hosted OpenClaw gateway.
+The OpenClaw Gateway Bridge connects Beeper to a self-hosted OpenClaw Gateway.
 
 ## What it does
 
 - connects to a gateway over `ws`, `wss`, `http`, or `https`
-- syncs OpenClaw sessions into Beeper rooms
+- syncs OpenClaw Gateway sessions into Beeper rooms
 - streams replies, approvals, and session updates into chat
 
 ## Login flow

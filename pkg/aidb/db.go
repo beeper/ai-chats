@@ -9,7 +9,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 )
 
-const VersionTable = "agentremote_version"
+const VersionTable = "aichats_version"
 
 var Upgrades dbutil.UpgradeTable
 
@@ -20,7 +20,7 @@ func init() {
 	Upgrades.RegisterFS(rawUpgrades)
 }
 
-// NewChild creates a child DB using the shared AgentRemote child schema.
+// NewChild creates a child DB using the shared AI Chats child schema.
 func NewChild(base *dbutil.Database, log dbutil.DatabaseLogger) *dbutil.Database {
 	if base == nil {
 		return nil
@@ -35,7 +35,7 @@ func NewChild(base *dbutil.Database, log dbutil.DatabaseLogger) *dbutil.Database
 func Upgrade(ctx context.Context, db *dbutil.Database, section, nilMessage string) error {
 	if db == nil {
 		if nilMessage == "" {
-			nilMessage = "database not initialized"
+			nilMessage = "AI Chats database not initialized"
 		}
 		return bridgev2.DBUpgradeError{
 			Err:     errors.New(nilMessage),

@@ -35,7 +35,7 @@ func TestIntegrationPortalAIKind(t *testing.T) {
 	})
 }
 
-func TestApplyAgentRemoteBridgeInfo(t *testing.T) {
+func TestApplyAIChatsBridgeInfo(t *testing.T) {
 	t.Run("visible dm rooms stay dm", func(t *testing.T) {
 		portal := &bridgev2.Portal{Portal: &database.Portal{
 			RoomType: database.RoomTypeDM,
@@ -45,7 +45,7 @@ func TestApplyAgentRemoteBridgeInfo(t *testing.T) {
 		}}
 		content := &event.BridgeEventContent{}
 
-		applyAgentRemoteBridgeInfo(portal, nil, content)
+		applyAIChatsBridgeInfo(portal, nil, content)
 
 		if content.Protocol.ID != aiBridgeProtocolID {
 			t.Fatalf("expected protocol id %q, got %q", aiBridgeProtocolID, content.Protocol.ID)
@@ -64,7 +64,7 @@ func TestApplyAgentRemoteBridgeInfo(t *testing.T) {
 		}}
 		content := &event.BridgeEventContent{}
 
-		applyAgentRemoteBridgeInfo(portal, nil, content)
+		applyAIChatsBridgeInfo(portal, nil, content)
 
 		if content.Protocol.ID != "beeper" {
 			t.Fatalf("expected protocol id %q, got %q", "beeper", content.Protocol.ID)
@@ -85,7 +85,7 @@ func TestApplyAgentRemoteBridgeInfo(t *testing.T) {
 		}
 		content := &event.BridgeEventContent{}
 
-		applyAgentRemoteBridgeInfo(portal, meta, content)
+		applyAIChatsBridgeInfo(portal, meta, content)
 
 		if content.BeeperRoomTypeV2 != "group" {
 			t.Fatalf("expected group room type, got %q", content.BeeperRoomTypeV2)

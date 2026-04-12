@@ -30,13 +30,13 @@ func NewAIConnector() *OpenAIConnector {
 			if bridge != nil && bridge.DB != nil && bridge.DB.Database != nil {
 				oc.db = aidb.NewChild(
 					bridge.DB.Database,
-					dbutil.ZeroLogger(bridge.Log.With().Str("db_section", "agentremote").Logger()),
+					dbutil.ZeroLogger(bridge.Log.With().Str("db_section", "ai").Logger()),
 				)
 			}
 		},
 		StartConnector: func(ctx context.Context, _ *bridgev2.Bridge) error {
 			db := oc.bridgeDB()
-			if err := aidb.Upgrade(ctx, db, "agentremote", "AgentRemote database not initialized"); err != nil {
+			if err := aidb.Upgrade(ctx, db, "ai", "AI Chats database not initialized"); err != nil {
 				return err
 			}
 			oc.applyRuntimeDefaults()
@@ -78,7 +78,7 @@ func NewAIConnector() *OpenAIConnector {
 			}
 		},
 		FillBridgeInfo: func(portal *bridgev2.Portal, content *event.BridgeEventContent) {
-			applyAgentRemoteBridgeInfo(portal, portalMeta(portal), content)
+			applyAIChatsBridgeInfo(portal, portalMeta(portal), content)
 		},
 		LoadLogin: func(ctx context.Context, login *bridgev2.UserLogin) error {
 			return oc.loadAIUserLogin(ctx, login, loginMetadata(login))

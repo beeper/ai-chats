@@ -1,4 +1,4 @@
-name: Publish AgentRemote Docker
+name: Publish AgentRemote CLI Docker
 
 on:
   push:
@@ -25,7 +25,7 @@ jobs:
             target: amd64
           - runs_on: ubuntu-24.04-arm
             target: arm64
-    name: build-agentremote-docker (${{ matrix.target }})
+    name: build-agentremote-cli-docker (${{ matrix.target }})
 
     steps:
       - name: Checkout
@@ -54,7 +54,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build agentremote image
+      - name: Build AgentRemote CLI image
         uses: docker/build-push-action@v6
         with:
           context: .

@@ -471,7 +471,7 @@ func (oc *AIClient) GetApprovalHandler() sdk.ApprovalReactionHandler {
 }
 
 const (
-	openRouterAppReferer = "https://developers.beeper.com/agentremote"
+	openRouterAppReferer = "https://www.beeper.com/ai"
 	openRouterAppTitle   = "Beeper"
 )
 

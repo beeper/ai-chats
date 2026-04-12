@@ -10,6 +10,11 @@ import (
 
 const ProviderCodex = "codex"
 
+const (
+	defaultCodexClientInfoName  = "codex_bridge_matrix"
+	defaultCodexClientInfoTitle = "Codex Bridge (Matrix)"
+)
+
 type Config struct {
 	Bridge             bridgeconfig.BridgeConfig `yaml:"bridge"`
 	Codex              *CodexConfig              `yaml:"codex"`
@@ -43,8 +48,8 @@ codex:
   default_model: "gpt-5.1-codex"
   network_access: true
   client_info:
-    name: "ai_bridge_matrix"
-    title: "AI Bridge (Matrix)"
+    name: "codex_bridge_matrix"
+    title: "Codex Bridge (Matrix)"
     version: "0.1.0"
 `
 

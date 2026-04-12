@@ -485,7 +485,7 @@ func formatRemoteName(provider, apiKey string) string {
 	case ProviderMagicProxy:
 		return fmt.Sprintf("Magic Proxy (%s)", maskAPIKey(apiKey))
 	default:
-		return "AI Bridge"
+		return "AI Chats"
 	}
 }
 

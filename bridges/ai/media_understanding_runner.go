@@ -598,7 +598,7 @@ func (oc *AIClient) runMediaUnderstandingEntry(
 			return nil, err
 		}
 		fileName := resolveMediaFileName(attachment.FileName, string(capability), attachment.URL)
-		tempDir, err := os.MkdirTemp("", "agentremote-media-*")
+		tempDir, err := os.MkdirTemp("", "aichats-media-*")
 		if err != nil {
 			return nil, err
 		}

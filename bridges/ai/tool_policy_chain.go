@@ -100,7 +100,7 @@ func (oc *AIClient) buildToolPolicyContext(meta *PortalMetadata) toolPolicyConte
 	}
 
 	// Treat OpenClaw-reserved tool names as "core" for allowlist validation even if
-	// agentremote doesn't expose them in this runtime. This avoids unsafe behavior where
+	// the AI Chats bridge doesn't expose them in this runtime. This avoids unsafe behavior where
 	// an allowlist like ["exec"] or ["group:runtime"] is treated as "unknown" and gets
 	// stripped (widening access).
 	for _, name := range []string{"exec", "process", "browser", "canvas", "nodes", "gateway"} {

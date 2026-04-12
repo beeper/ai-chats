@@ -418,11 +418,11 @@ func (c *InboundConfig) WithDefaults() *InboundConfig {
 	return c
 }
 
-// BeeperConfig contains Beeper Cloud proxy credentials for automatic login.
+// BeeperConfig contains Beeper AI proxy credentials for automatic login.
 // If UserMXID, BaseURL, and Token are set, users don't need to manually log in.
 type BeeperConfig struct {
-	UserMXID string `yaml:"user_mxid"` // Owning Matrix user for the built-in managed Beeper Cloud login
-	BaseURL  string `yaml:"base_url"`  // Beeper Cloud proxy endpoint
+	UserMXID string `yaml:"user_mxid"` // Owning Matrix user for the built-in managed Beeper AI login
+	BaseURL  string `yaml:"base_url"`  // Beeper AI proxy endpoint
 	Token    string `yaml:"token"`     // Beeper Matrix access token
 }
 

@@ -20,7 +20,7 @@ func (oc *AIClient) builtinToolApprovalRequirement(toolName string, args map[str
 		switch action {
 		// Read-only / non-destructive actions (do not require approval).
 		case "search",
-			// Desktop API read-only surface (agentremote message tool actions).
+			// Desktop API read-only surface (AI Chats message tool actions).
 			"desktop-list-chats", "desktop-search-chats", "desktop-search-messages", "desktop-download-asset":
 			return false, action
 		default:

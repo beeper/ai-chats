@@ -39,3 +39,21 @@ func TestGetNameUsesDefaultCommandPrefixBeforeStartup(t *testing.T) {
 		t.Fatalf("expected default command prefix !ai, got %q", got)
 	}
 }
+
+func TestApplyRuntimeDefaultsSetsCodexClientInfo(t *testing.T) {
+	conn := NewConnector()
+	conn.applyRuntimeDefaults()
+
+	if conn.Config.Codex == nil || conn.Config.Codex.ClientInfo == nil {
+		t.Fatal("expected codex client info defaults to be initialized")
+	}
+	if got := conn.Config.Codex.ClientInfo.Name; got != defaultCodexClientInfoName {
+		t.Fatalf("expected codex client info name %q, got %q", defaultCodexClientInfoName, got)
+	}
+	if got := conn.Config.Codex.ClientInfo.Title; got != defaultCodexClientInfoTitle {
+		t.Fatalf("expected codex client info title %q, got %q", defaultCodexClientInfoTitle, got)
+	}
+	if got := conn.Config.Codex.ClientInfo.Version; got != "0.1.0" {
+		t.Fatalf("expected codex client info version 0.1.0, got %q", got)
+	}
+}

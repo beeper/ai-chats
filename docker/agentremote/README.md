@@ -1,6 +1,6 @@
-# AgentRemote Docker Image
+# AgentRemote CLI Docker Image
 
-The AgentRemote container packages the `agentremote` CLI for Linux `amd64` and `arm64`.
+The AgentRemote CLI container packages the `agentremote` CLI for Linux `amd64` and `arm64`.
 
 The image stores CLI state under `/data` by setting `HOME=/data`, so mounting a host directory preserves profiles, auth, and bridge instance state.
 

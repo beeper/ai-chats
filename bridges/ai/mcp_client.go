@@ -116,7 +116,7 @@ func (oc *AIClient) newMCPSession(ctx context.Context, server namedMCPServer) (*
 	}
 
 	client := mcp.NewClient(&mcp.Implementation{
-		Name:    "agentremote",
+		Name:    "AI Chats",
 		Version: "1.0.0",
 	}, nil)
 

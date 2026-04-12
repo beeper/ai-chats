@@ -299,7 +299,7 @@ func initCommands() {
 		},
 		{
 			Name: "doctor", Group: "Other",
-			Description: "Check agentremote auth and local instance state",
+			Description: "Check AgentRemote CLI auth and local instance state",
 			Usage:       "agentremote doctor [flags]",
 			Flags: []flagDef{
 				{Name: "profile", Help: "Profile name", Default: "default"},
@@ -349,7 +349,6 @@ func initCommands() {
 
 func normalizeCommandSpecs() {
 	for i := range commands {
-		commands[i].Description = strings.ReplaceAll(commands[i].Description, "AgentRemote", "SDK")
 		commands[i].Description = strings.ReplaceAll(commands[i].Description, "agentremote", binaryName)
 		commands[i].Usage = strings.ReplaceAll(commands[i].Usage, "agentremote", binaryName)
 		commands[i].LongHelp = strings.ReplaceAll(commands[i].LongHelp, "agentremote", binaryName)
@@ -474,7 +473,7 @@ func generateCommandHelp(c *cmdDef) string {
 
 func generateUsage() string {
 	var b strings.Builder
-	b.WriteString(binaryName + " - unified SDK manager for Beeper\n")
+	b.WriteString("AgentRemote CLI - unified bridge manager for Beeper\n")
 	b.WriteString("\nUsage: " + binaryName + " <command> [flags] [args]\n")
 
 	groups := []string{"Auth", "Bridges", "Other"}

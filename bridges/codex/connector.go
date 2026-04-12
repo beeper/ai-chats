@@ -70,10 +70,10 @@ func (cc *CodexConnector) applyRuntimeDefaults() {
 		cc.Config.Codex.ClientInfo = &CodexClientInfo{}
 	}
 	if strings.TrimSpace(cc.Config.Codex.ClientInfo.Name) == "" {
-		cc.Config.Codex.ClientInfo.Name = "ai_bridge_matrix"
+		cc.Config.Codex.ClientInfo.Name = defaultCodexClientInfoName
 	}
 	if strings.TrimSpace(cc.Config.Codex.ClientInfo.Title) == "" {
-		cc.Config.Codex.ClientInfo.Title = "AI Bridge (Matrix)"
+		cc.Config.Codex.ClientInfo.Title = defaultCodexClientInfoTitle
 	}
 	if strings.TrimSpace(cc.Config.Codex.ClientInfo.Version) == "" {
 		cc.Config.Codex.ClientInfo.Version = "0.1.0"

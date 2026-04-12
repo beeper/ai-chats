@@ -71,7 +71,7 @@ func convertRoomFeatures(f *RoomFeatures) *event.RoomFeatures {
 	}
 	capID := f.CustomCapabilityID
 	if capID == "" {
-		capID = "com.beeper.ai.sdk"
+		capID = "com.beeper.agentremote.sdk"
 	}
 	rf := &event.RoomFeatures{
 		ID:                  capID,

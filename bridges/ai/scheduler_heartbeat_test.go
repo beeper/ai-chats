@@ -120,8 +120,8 @@ func newHeartbeatSchedulerTestRuntime(t *testing.T, cfg Config) (*schedulerRunti
 	}
 
 	childDB := aidb.NewChild(bridgeDB.Database, dbutil.NoopLogger)
-	if err := aidb.Upgrade(context.Background(), childDB, "agentremote", "database not initialized"); err != nil {
-		t.Fatalf("upgrade agentremote db: %v", err)
+	if err := aidb.Upgrade(context.Background(), childDB, "ai", "AI Chats database not initialized"); err != nil {
+		t.Fatalf("upgrade AI Chats db: %v", err)
 	}
 
 	enabled := true

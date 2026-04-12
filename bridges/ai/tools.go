@@ -859,7 +859,7 @@ func callOpenRouterImageGen(ctx context.Context, apiKey, baseURL string, reqBody
 	body, statusCode, err := doJSONPost(ctx, openRouterImageHTTPClient, baseURL+"/chat/completions", map[string]string{
 		"Authorization": "Bearer " + apiKey,
 		"HTTP-Referer":  "https://beeper.com",
-		"X-Title":       "Beeper Cloud",
+		"X-Title":       "Beeper",
 	}, jsonBody)
 	if err != nil {
 		return nil, err

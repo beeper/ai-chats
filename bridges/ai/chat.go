@@ -1115,7 +1115,7 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 	// Create default chat with Beep agent
 	beeperAgent := agents.GetBeeperAI()
 	if beeperAgent == nil {
-		return errors.New("beeper AI agent not found")
+		return errors.New("Beep agent not found")
 	}
 
 	// Determine model from agent config or use default

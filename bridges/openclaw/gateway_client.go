@@ -32,6 +32,7 @@ const (
 	openClawGatewayClientID      = "gateway-client"
 	openClawGatewayClientMode    = "backend"
 	openClawGatewayDisplayName   = "Beeper"
+	openClawGatewayUserAgentBase = "AgentRemote OpenClaw Gateway Bridge/"
 	openClawGatewayWSReadLimit   = 32 * 1024 * 1024
 	openClawGatewayPingInterval  = 30 * time.Second
 	openClawGatewayPingTimeout   = 10 * time.Second
@@ -60,7 +61,7 @@ func resolveGatewayClientIdentity() gatewayClientIdentity {
 		Mode:         openClawGatewayClientMode,
 		DeviceFamily: resolveGatewayClientDeviceFamily(),
 		InstanceID:   uuid.NewString(),
-		UserAgent:    "Beeper bridge/" + version,
+		UserAgent:    openClawGatewayUserAgentBase + version,
 	}
 }
 

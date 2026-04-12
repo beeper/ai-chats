@@ -24,7 +24,7 @@ func newBridgeChildDB(parent *dbutil.Database, log zerolog.Logger) *dbutil.Datab
 	}
 	return aidb.NewChild(
 		parent,
-		dbutil.ZeroLogger(log.With().Str("db_section", "agentremote").Logger()),
+		dbutil.ZeroLogger(log.With().Str("db_section", "ai").Logger()),
 	)
 }
 

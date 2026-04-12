@@ -19,7 +19,7 @@ func aiBridgeProtocolIDForPortal(portal *bridgev2.Portal) string {
 	provider, _, _ := strings.Cut(loginID, ":")
 	switch provider {
 	case "beeper":
-		// Beeper clients know the Beeper Cloud bridge; the generic "ai" protocol
+		// Beeper clients know the Beeper AI bridge; the generic "ai" protocol
 		// shows up as an unknown bridge in local Beeper-backed rooms.
 		return "beeper"
 	default:
@@ -27,7 +27,7 @@ func aiBridgeProtocolIDForPortal(portal *bridgev2.Portal) string {
 	}
 }
 
-func applyAgentRemoteBridgeInfo(portal *bridgev2.Portal, meta *PortalMetadata, content *event.BridgeEventContent) {
+func applyAIChatsBridgeInfo(portal *bridgev2.Portal, meta *PortalMetadata, content *event.BridgeEventContent) {
 	if portal == nil {
 		return
 	}

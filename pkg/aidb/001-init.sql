@@ -1,5 +1,5 @@
--- v0 -> v1: create canonical AgentRemote schema
--- Canonical initial schema for fresh databases.
+-- v0 -> v1: create canonical AI Chats schema
+-- Canonical initial schema for fresh AI Chats databases.
 CREATE TABLE IF NOT EXISTS aichats_memory_files (
   bridge_id TEXT NOT NULL,
   login_id TEXT NOT NULL,

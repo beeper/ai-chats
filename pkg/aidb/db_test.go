@@ -38,7 +38,7 @@ func TestUpgradeV1Fresh(t *testing.T) {
 		t.Fatalf("expected child DB")
 	}
 
-	if err := Upgrade(ctx, bridgeDB, "agentremote", "database not initialized"); err != nil {
+	if err := Upgrade(ctx, bridgeDB, "ai", "AI Chats database not initialized"); err != nil {
 		t.Fatalf("upgrade failed: %v", err)
 	}
 
@@ -65,6 +65,7 @@ func TestUpgradeV1Fresh(t *testing.T) {
 		"aichats_login_config",
 		"aichats_portal_state",
 		"aichats_sessions",
+		"aichats_tool_approval_rules",
 	} {
 		exists, err := bridgeDB.TableExists(ctx, table)
 		if err != nil {
@@ -72,16 +73,6 @@ func TestUpgradeV1Fresh(t *testing.T) {
 		}
 		if !exists {
 			t.Fatalf("expected %s to exist", table)
-		}
-	}
-
-	for _, table := range []string{"agentremote_sessions", "agentremote_approvals"} {
-		exists, err := bridgeDB.TableExists(ctx, table)
-		if err != nil {
-			t.Fatalf("check %s absence failed: %v", table, err)
-		}
-		if exists {
-			t.Fatalf("expected %s to be absent", table)
 		}
 	}
 }
@@ -93,10 +84,10 @@ func TestNewChildUpgrade(t *testing.T) {
 	if bridgeDB == nil {
 		t.Fatalf("expected child DB")
 	}
-	if err := Upgrade(ctx, bridgeDB, "agentremote", "database not initialized"); err != nil {
+	if err := Upgrade(ctx, bridgeDB, "ai", "AI Chats database not initialized"); err != nil {
 		t.Fatalf("upgrade failed: %v", err)
 	}
-	if err := Upgrade(ctx, bridgeDB, "agentremote", "database not initialized"); err != nil {
+	if err := Upgrade(ctx, bridgeDB, "ai", "AI Chats database not initialized"); err != nil {
 		t.Fatalf("second upgrade failed: %v", err)
 	}
 

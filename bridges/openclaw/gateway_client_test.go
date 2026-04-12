@@ -80,7 +80,7 @@ func TestBuildConnectParamsUsesOperatorClientShape(t *testing.T) {
 	if got, ok := params["scopes"].([]string); !ok || len(got) != 3 {
 		t.Fatalf("expected least-privilege scopes, got %#v", params["scopes"])
 	}
-	if got := params["userAgent"]; got != "Beeper bridge/"+resolveGatewayClientVersion() {
+	if got := params["userAgent"]; got != openClawGatewayUserAgentBase+resolveGatewayClientVersion() {
 		t.Fatalf("unexpected user agent: %#v", got)
 	}
 }
