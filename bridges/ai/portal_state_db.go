@@ -72,28 +72,6 @@ func clonePortalStateMap(src map[string]any) map[string]any {
 	return out
 }
 
-func clonePortalState(src *aiPersistedPortalState) *aiPersistedPortalState {
-	if src == nil {
-		return &aiPersistedPortalState{}
-	}
-	clone := *src
-	if src.PDFConfig != nil {
-		pdf := *src.PDFConfig
-		clone.PDFConfig = &pdf
-	}
-	if src.TypingIntervalSeconds != nil {
-		interval := *src.TypingIntervalSeconds
-		clone.TypingIntervalSeconds = &interval
-	}
-	if src.SessionBootstrapByAgent != nil {
-		clone.SessionBootstrapByAgent = maps.Clone(src.SessionBootstrapByAgent)
-	}
-	if src.ModuleMeta != nil {
-		clone.ModuleMeta = clonePortalStateMap(src.ModuleMeta)
-	}
-	return &clone
-}
-
 func persistedPortalStateFromMeta(meta *PortalMetadata) *aiPersistedPortalState {
 	if meta == nil {
 		return &aiPersistedPortalState{}
@@ -232,7 +210,7 @@ func loadPortalStateIntoMetadata(ctx context.Context, portal *bridgev2.Portal, m
 	if err != nil {
 		meta.portalStateLoaded = false
 		if portal != nil && portal.Bridge != nil {
-			portal.Bridge.Log.Warn().Err(err).Str("portal", portal.PortalKey.String()).Msg("Failed to load AI portal state")
+			portal.Bridge.Log.Warn().Err(err).Stringer("portal", portal.PortalKey).Msg("Failed to load AI portal state")
 		}
 		return
 	}

@@ -38,7 +38,6 @@ type sessionDBScope struct {
 
 var sessionStoreLocks sync.Map
 
-
 func sessionStoreLockKey(ref sessionStoreRef, sessionKey string) string {
 	agent := normalizeAgentID(ref.AgentID)
 	key := strings.TrimSpace(sessionKey)

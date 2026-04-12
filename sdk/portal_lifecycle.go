@@ -3,8 +3,9 @@ package sdk
 import (
 	"context"
 	"fmt"
-	"maunium.net/go/mautrix/bridgev2"
 	"time"
+
+	"maunium.net/go/mautrix/bridgev2"
 )
 
 type PortalLifecycleOptions struct {

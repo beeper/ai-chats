@@ -22,7 +22,6 @@ type systemEventsDBScope struct {
 	agentID  string
 }
 
-
 func systemEventsScope(client *AIClient, agentID string) *systemEventsDBScope {
 	db, bridgeID, loginID := loginDBContext(client)
 	if db == nil {

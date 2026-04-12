@@ -1,8 +1,9 @@
 package sdk
 
 import (
-	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 	"strings"
+
+	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 )
 
 type TurnSnapshot struct {

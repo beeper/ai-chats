@@ -193,21 +193,6 @@ func saveOpenClawPortalState(ctx context.Context, portal *bridgev2.Portal, login
 	return err
 }
 
-func clearOpenClawPortalState(ctx context.Context, portal *bridgev2.Portal, login *bridgev2.UserLogin) error {
-	scope := openClawPortalDBScopeFor(portal, login)
-	if scope == nil {
-		return nil
-	}
-	if err := ensureOpenClawPortalStateTable(ctx, portal, login); err != nil {
-		return err
-	}
-	_, err := scope.db.Exec(ctx, `
-		DELETE FROM openclaw_portal_state
-		WHERE bridge_id=$1 AND login_id=$2 AND portal_key=$3
-	`, scope.bridgeID, scope.loginID, scope.portalKey)
-	return err
-}
-
 type GhostMetadata struct {
 	OpenClawAgentID        string `json:"openclaw_agent_id,omitempty"`
 	OpenClawAgentName      string `json:"openclaw_agent_name,omitempty"`

@@ -9,7 +9,6 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/sdk"
 )
@@ -35,31 +34,10 @@ const (
 	FlowCodexAPIKey                = "codex_api_key"
 	FlowCodexChatGPT               = "codex_chatgpt"
 	FlowCodexChatGPTExternalTokens = "codex_chatgpt_external_tokens"
-	hostAuthLoginPrefix            = "codex_host"
 )
 
 func (cc *CodexConnector) bridgeDB() *dbutil.Database {
 	return cc.db
-}
-
-func (cc *CodexConnector) hostAuthLoginID(mxid id.UserID) networkid.UserLoginID {
-	return sdk.MakeUserLoginID(hostAuthLoginPrefix, mxid, 1)
-}
-
-func hasManagedCodexLogin(logins []*bridgev2.UserLogin, exceptID networkid.UserLoginID) bool {
-	for _, existing := range logins {
-		if existing == nil || existing.ID == exceptID || existing.Metadata == nil {
-			continue
-		}
-		meta, ok := existing.Metadata.(*UserLoginMetadata)
-		if !ok || meta == nil {
-			continue
-		}
-		if strings.EqualFold(strings.TrimSpace(meta.Provider), ProviderCodex) && isManagedAuthLogin(meta) {
-			return true
-		}
-	}
-	return false
 }
 
 func resolveCodexCommandFromConfig(cfg *CodexConfig) string {
@@ -70,13 +48,6 @@ func resolveCodexCommandFromConfig(cfg *CodexConfig) string {
 		return cmd
 	}
 	return "codex"
-}
-
-func (cc *CodexConnector) resolveCodexCommand() string {
-	if cc == nil {
-		return "codex"
-	}
-	return resolveCodexCommandFromConfig(cc.Config.Codex)
 }
 
 func (cc *CodexConnector) applyRuntimeDefaults() {

@@ -1,8 +1,9 @@
 package sdk
 
 import (
-	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 	"strings"
+
+	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 )
 
 // TurnDataBuildOptions describes provider/runtime-specific data that should be

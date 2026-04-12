@@ -8,15 +8,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beeper/agentremote/pkg/matrixevents"
-	"github.com/beeper/agentremote/pkg/shared/citations"
-	"github.com/beeper/agentremote/turns"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/agentremote/pkg/shared/citations"
+	"github.com/beeper/agentremote/turns"
 )
 
 type sdkTestMatrixAPI struct {

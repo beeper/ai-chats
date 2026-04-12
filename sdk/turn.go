@@ -9,15 +9,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/beeper/agentremote/pkg/matrixevents"
-	"github.com/beeper/agentremote/pkg/shared/streamui"
-	"github.com/beeper/agentremote/turns"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/agentremote/pkg/shared/streamui"
+	"github.com/beeper/agentremote/turns"
 )
 
 type FinalMetadataProvider interface {
