@@ -81,7 +81,7 @@ func ExecuteTool(ctx context.Context, args map[string]any, deps ToolExecDeps) (s
 		if deps.List == nil {
 			return errorJSON("cron list unavailable"), nil
 		}
-		includeDisabled := agenttools.ReadBool(args, "includeDisabled", false)
+		includeDisabled := maputil.BoolArg(args, "includeDisabled", false)
 		jobs, err := deps.List(includeDisabled)
 		if err != nil {
 			return errorJSON(err.Error()), nil
@@ -116,7 +116,7 @@ func ExecuteTool(ctx context.Context, args map[string]any, deps ToolExecDeps) (s
 		if result := ValidateScheduleTimestamp(jobInput.Schedule, nowMs); !result.Ok {
 			return errorJSON(result.Message), nil
 		}
-		contextMessages := agenttools.ReadIntDefault(args, "contextMessages", 0)
+		contextMessages := maputil.IntArgDefault(args, "contextMessages", 0)
 		if contextMessages > 0 {
 			var lines []ReminderContextLine
 			if deps.ResolveReminderLines != nil {
@@ -208,7 +208,7 @@ func readJobID(args map[string]any) string {
 	if args == nil {
 		return ""
 	}
-	return strings.TrimSpace(agenttools.ReadStringDefault(args, "jobId", ""))
+	return maputil.StringArgDefault(args, "jobId", "")
 }
 
 func selectPatch(args map[string]any) map[string]any {

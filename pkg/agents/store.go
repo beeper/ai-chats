@@ -3,7 +3,7 @@ package agents
 import (
 	"context"
 
-	"github.com/beeper/agentremote/pkg/agents/tools"
+	"github.com/beeper/agentremote/pkg/shared/toolspec"
 )
 
 // AgentStore interface for loading and saving agents.
@@ -22,5 +22,5 @@ type AgentStore interface {
 	ListModels(ctx context.Context) ([]ModelInfo, error)
 
 	// ListAvailableTools returns available tools.
-	ListAvailableTools(ctx context.Context) ([]tools.ToolInfo, error)
+	ListAvailableTools(ctx context.Context) ([]toolspec.ToolInfo, error)
 }

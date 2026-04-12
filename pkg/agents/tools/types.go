@@ -6,6 +6,21 @@ import (
 	"context"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/beeper/agentremote/pkg/shared/toolspec"
+)
+
+// ToolType is an alias for toolspec.ToolType for backwards compatibility.
+type ToolType = toolspec.ToolType
+
+// ToolInfo is an alias for toolspec.ToolInfo for backwards compatibility.
+type ToolInfo = toolspec.ToolInfo
+
+const (
+	ToolTypeBuiltin  = toolspec.ToolTypeBuiltin
+	ToolTypeProvider = toolspec.ToolTypeProvider
+	ToolTypePlugin   = toolspec.ToolTypePlugin
+	ToolTypeMCP      = toolspec.ToolTypeMCP
 )
 
 // Tool wraps an MCP tool with execution logic and metadata.
@@ -16,20 +31,6 @@ type Tool struct {
 	PluginID string                                                           // Optional plugin id for grouping
 	Execute  func(ctx context.Context, input map[string]any) (*Result, error) // nil for provider tools
 }
-
-// ToolType categorizes tools by their execution model.
-type ToolType string
-
-const (
-	// ToolTypeBuiltin are tools implemented locally.
-	ToolTypeBuiltin ToolType = "builtin"
-	// ToolTypeProvider are tools handled by the AI provider's API.
-	ToolTypeProvider ToolType = "provider"
-	// ToolTypePlugin are external plugins (like OpenRouter's :online).
-	ToolTypePlugin ToolType = "plugin"
-	// ToolTypeMCP are tools from MCP servers.
-	ToolTypeMCP ToolType = "mcp"
-)
 
 // Result standardizes tool output with structured content blocks and metadata.
 type Result struct {
@@ -71,11 +72,4 @@ const (
 	ResultError ResultStatus = "error"
 )
 
-// ToolInfo provides metadata about a tool for listing.
-type ToolInfo struct {
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Type        ToolType `json:"type"`
-	Group       string   `json:"group,omitempty"`
-	Enabled     bool     `json:"enabled"`
-}
+

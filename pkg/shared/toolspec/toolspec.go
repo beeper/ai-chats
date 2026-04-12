@@ -2,6 +2,25 @@ package toolspec
 
 // Shared tool schema definitions used by both connector and agents.
 
+// ToolType categorizes tools by their execution model.
+type ToolType string
+
+const (
+	ToolTypeBuiltin  ToolType = "builtin"
+	ToolTypeProvider ToolType = "provider"
+	ToolTypePlugin   ToolType = "plugin"
+	ToolTypeMCP      ToolType = "mcp"
+)
+
+// ToolInfo provides metadata about a tool for listing.
+type ToolInfo struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Type        ToolType `json:"type"`
+	Group       string   `json:"group,omitempty"`
+	Enabled     bool     `json:"enabled"`
+}
+
 const (
 	CalculatorName        = "calculator"
 	CalculatorDescription = "Perform basic arithmetic calculations. Supports addition, subtraction, multiplication, division, and modulo operations."
