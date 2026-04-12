@@ -1698,6 +1698,7 @@ type historyLoadResult struct {
 	rows      []*database.Message
 	hasVision bool
 	resetAt   int64
+	limit     int
 }
 
 func (oc *AIClient) loadHistoryMessages(

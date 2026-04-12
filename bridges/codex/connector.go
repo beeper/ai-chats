@@ -92,8 +92,7 @@ func (cc *CodexConnector) getKnownUserIDs(ctx context.Context) ([]id.UserID, err
 	if cc == nil || cc.br == nil || cc.br.DB == nil {
 		return nil, nil
 	}
-	rows, err := cc.br.DB.Query(ctx, `SELECT mxid FROM "user" WHERE bridge_id=$1`, cc.br.ID)
-	return dbutil.NewRowIterWithError(rows, dbutil.ScanSingleColumn[id.UserID], err).AsList()
+	return cc.br.DB.UserLogin.GetAllUserIDsWithLogins(ctx)
 }
 
 func (cc *CodexConnector) probeHostAuth(ctx context.Context) (*hostAuthProbe, error) {

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote"
@@ -49,22 +48,8 @@ func (oc *AIClient) dispatchInternalMessage(
 		return eventID, false, err
 	}
 
-	userMessage := &database.Message{
-		ID:       agentremote.MatrixMessageID(eventID),
-		MXID:     eventID,
-		Room:     portal.PortalKey,
-		SenderID: humanUserID(oc.UserLogin.ID),
-		Metadata: &MessageMetadata{
-			BaseMessageMetadata: agentremote.BaseMessageMetadata{Role: "user", Body: trimmed, ExcludeFromHistory: excludeFromHistory},
-		},
-		Timestamp: time.Now(),
-	}
-	setCanonicalTurnDataFromPromptMessages(userMessage.Metadata.(*MessageMetadata), promptTail(promptContext, 1))
-	if _, err := oc.UserLogin.Bridge.GetGhostByID(ctx, userMessage.SenderID); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure user ghost before saving internal message")
-	}
-	if err := oc.UserLogin.Bridge.DB.Message.Insert(ctx, userMessage); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to save internal message to database")
+	if err := persistInternalPrompt(ctx, oc, portal, eventID, promptContext, excludeFromHistory, prefix, time.Now()); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist internal prompt message")
 	}
 
 	isGroup := oc.isGroupChat(ctx, portal)

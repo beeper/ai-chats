@@ -6,10 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote"
 	bridgesdk "github.com/beeper/agentremote/sdk"
@@ -48,17 +46,25 @@ func (cc *CodexClient) codexTopicForPortal(_ *bridgev2.Portal, meta *PortalMetad
 	return codexTopicForPath(meta.CodexCwd)
 }
 
-func (cc *CodexClient) setRoomName(ctx context.Context, portal *bridgev2.Portal, name string) error {
+func (cc *CodexClient) portalConversation(ctx context.Context, portal *bridgev2.Portal) (*bridgesdk.Conversation, error) {
 	if cc == nil || cc.UserLogin == nil || cc.UserLogin.Bridge == nil || portal == nil {
-		return fmt.Errorf("portal unavailable")
+		return nil, fmt.Errorf("portal unavailable")
 	}
 	if portal.MXID == "" {
-		return fmt.Errorf("portal has no Matrix room ID")
+		return nil, fmt.Errorf("portal has no Matrix room ID")
 	}
-	_, err := cc.UserLogin.Bridge.Bot.SendState(ctx, portal.MXID, event.StateRoomName, "", &event.Content{
-		Parsed: &event.RoomNameEventContent{Name: name},
-	}, time.Time{})
+	if cc.connector == nil || cc.connector.sdkConfig == nil {
+		return nil, fmt.Errorf("sdk configuration unavailable")
+	}
+	return bridgesdk.NewConversation(ctx, cc.UserLogin, portal, bridgev2.EventSender{}, cc.connector.sdkConfig, cc), nil
+}
+
+func (cc *CodexClient) setRoomName(ctx context.Context, portal *bridgev2.Portal, name string) error {
+	conv, err := cc.portalConversation(ctx, portal)
 	if err != nil {
+		return err
+	}
+	if err := conv.SetRoomName(ctx, name); err != nil {
 		return fmt.Errorf("failed to set room name: %w", err)
 	}
 	portal.Name = name
@@ -67,19 +73,15 @@ func (cc *CodexClient) setRoomName(ctx context.Context, portal *bridgev2.Portal,
 }
 
 func (cc *CodexClient) setRoomTopic(ctx context.Context, portal *bridgev2.Portal, topic string) error {
-	if cc == nil || cc.UserLogin == nil || cc.UserLogin.Bridge == nil || portal == nil {
-		return fmt.Errorf("portal unavailable")
-	}
-	if portal.MXID == "" {
-		return fmt.Errorf("portal has no Matrix room ID")
-	}
-	_, err := cc.UserLogin.Bridge.Bot.SendState(ctx, portal.MXID, event.StateTopic, "", &event.Content{
-		Parsed: &event.TopicEventContent{Topic: topic},
-	}, time.Time{})
+	conv, err := cc.portalConversation(ctx, portal)
 	if err != nil {
+		return err
+	}
+	if err := conv.SetRoomTopic(ctx, topic); err != nil {
 		return fmt.Errorf("failed to set room topic: %w", err)
 	}
 	portal.Topic = topic
+	portal.TopicSet = true
 	return portal.Save(ctx)
 }
 
@@ -259,12 +261,6 @@ func (cc *CodexClient) deletePortalOnly(ctx context.Context, portal *bridgev2.Po
 				Msg("Failed to delete Matrix room during Codex cleanup")
 		}
 	}
-	if err := cc.UserLogin.Bridge.DB.Portal.Delete(ctx, portal.PortalKey); err != nil {
-		cc.log.Warn().Err(err).
-			Str("portal_id", string(portal.PortalKey.ID)).
-			Str("reason", reason).
-			Msg("Failed to delete Codex portal record")
-	}
 }
 
 func (cc *CodexClient) managedImportedPortalsForPath(ctx context.Context, path string) ([]*bridgev2.Portal, error) {
@@ -411,8 +407,6 @@ func (cc *CodexClient) handleWelcomeCodexMessage(ctx context.Context, portal *br
 	meta.ManagedImport = false
 	meta.Title = codexTitleForPath(path)
 	meta.Slug = strings.ToLower(strings.ReplaceAll(meta.Title, " ", "-"))
-	portal.Name = meta.Title
-	portal.NameSet = true
 	if err := portal.Save(ctx); err != nil {
 		return nil, messageSendStatusError(err, "Failed to save Codex room.", "")
 	}

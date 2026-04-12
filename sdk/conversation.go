@@ -50,14 +50,7 @@ func (c *Conversation) getIntent(ctx context.Context) (bridgev2.MatrixAPI, error
 	if c != nil && c.intentOverride != nil {
 		return c.intentOverride(ctx)
 	}
-	if c.portal == nil || c.login == nil {
-		return nil, fmt.Errorf("no portal or login")
-	}
-	intent, ok := c.portal.GetIntentFor(ctx, c.sender, c.login, bridgev2.RemoteEventMessage)
-	if !ok || intent == nil {
-		return nil, fmt.Errorf("failed to get intent")
-	}
-	return intent, nil
+	return resolveMatrixIntent(ctx, c.login, c.portal, c.sender, bridgev2.RemoteEventMessage)
 }
 
 func (c *Conversation) stateStore() *conversationStateStore {
@@ -321,39 +314,18 @@ func (c *Conversation) SetTyping(ctx context.Context, typing bool) error {
 
 // SetRoomName sets the room name.
 func (c *Conversation) SetRoomName(ctx context.Context, name string) error {
-	intent, err := c.getIntent(ctx)
-	if err != nil {
-		return err
-	}
-	content := &event.Content{Parsed: &event.RoomNameEventContent{Name: name}}
-	_, err = intent.SendState(ctx, c.portal.MXID, event.StateRoomName, "", content, time.Time{})
-	return err
+	return SetRoomName(ctx, c.login, c.portal, c.sender, name)
 }
 
 // SetRoomTopic sets the room topic.
 func (c *Conversation) SetRoomTopic(ctx context.Context, topic string) error {
-	intent, err := c.getIntent(ctx)
-	if err != nil {
-		return err
-	}
-	content := &event.Content{Parsed: &event.TopicEventContent{Topic: topic}}
-	_, err = intent.SendState(ctx, c.portal.MXID, event.StateTopic, "", content, time.Time{})
-	return err
+	return SetRoomTopic(ctx, c.login, c.portal, c.sender, topic)
 }
 
 // BroadcastCapabilities computes and sends room capability state events.
 func (c *Conversation) BroadcastCapabilities(ctx context.Context) error {
 	features := c.currentRoomFeatures(ctx)
-	if features == nil {
-		return nil
-	}
-	intent, err := c.getIntent(ctx)
-	if err != nil {
-		return err
-	}
-	rf := convertRoomFeatures(features)
-	_, err = intent.SendState(ctx, c.portal.MXID, event.StateBeeperRoomFeatures, "", &event.Content{Parsed: rf}, time.Time{})
-	return err
+	return BroadcastCapabilities(ctx, c.login, c.portal, c.sender, features)
 }
 
 // Portal returns the underlying bridgev2.Portal.

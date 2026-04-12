@@ -30,12 +30,6 @@ func cleanupPortal(ctx context.Context, client *AIClient, portal *bridgev2.Porta
 				Str("reason", reason).
 				Msg("Failed to delete Matrix room during cleanup")
 		}
-	}
-
-	if err := client.UserLogin.Bridge.DB.Portal.Delete(ctx, portal.PortalKey); err != nil {
-		client.log.Warn().Err(err).
-			Str("portal_id", string(portal.PortalKey.ID)).
-			Str("reason", reason).
-			Msg("Failed to delete portal during cleanup")
+		deleteInternalPromptsForRoom(ctx, client, portal.MXID)
 	}
 }

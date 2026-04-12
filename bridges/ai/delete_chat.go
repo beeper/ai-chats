@@ -80,6 +80,7 @@ func (oc *AIClient) deletePersistedSessionArtifacts(ctx context.Context, session
 			bridgeID, loginID, sessionKey,
 		)
 	}
+	deleteInternalPromptsForRoom(ctx, oc, id.RoomID(sessionKey))
 
 	clearSystemEventsForSession(systemEventsOwnerKey(oc), sessionKey)
 }

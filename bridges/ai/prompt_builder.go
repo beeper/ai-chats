@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"sort"
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -83,6 +84,7 @@ func (oc *AIClient) fetchHistoryRowsWithExtra(
 		rows:      history,
 		hasVision: oc.getModelCapabilitiesForMeta(ctx, meta).SupportsVision,
 		resetAt:   resetAt,
+		limit:     historyLimit,
 	}, nil
 }
 
@@ -105,8 +107,12 @@ func (oc *AIClient) replayHistoryMessages(
 	}
 
 	type replayCandidate struct {
-		row  *database.Message
-		meta *MessageMetadata
+		id       networkid.MessageID
+		role     string
+		ts       int64
+		row      *database.Message
+		meta     *MessageMetadata
+		messages []PromptMessage
 	}
 
 	candidates := make([]replayCandidate, 0, len(hr.rows))
@@ -115,8 +121,18 @@ func (oc *AIClient) replayHistoryMessages(
 			continue
 		}
 		msgMeta := messageMeta(row)
+		role := ""
+		if msgMeta != nil {
+			role = strings.TrimSpace(msgMeta.Role)
+		}
 		if opts.mode == historyReplayRewrite && row.ID == opts.targetMessageID {
-			candidates = append(candidates, replayCandidate{row: row, meta: msgMeta})
+			candidates = append(candidates, replayCandidate{
+				id:   row.ID,
+				role: role,
+				ts:   row.Timestamp.UnixMilli(),
+				row:  row,
+				meta: msgMeta,
+			})
 			continue
 		}
 		if !shouldIncludeInHistory(msgMeta) {
@@ -125,19 +141,46 @@ func (oc *AIClient) replayHistoryMessages(
 		if hr.resetAt > 0 && row.Timestamp.UnixMilli() < hr.resetAt {
 			continue
 		}
-		candidates = append(candidates, replayCandidate{row: row, meta: msgMeta})
+		candidates = append(candidates, replayCandidate{
+			id:   row.ID,
+			role: role,
+			ts:   row.Timestamp.UnixMilli(),
+			row:  row,
+			meta: msgMeta,
+		})
+	}
+	internalRows, err := loadInternalPromptHistory(ctx, oc, portal, hr.limit, opts, hr.resetAt)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range internalRows {
+		candidates = append(candidates, replayCandidate{
+			id:       row.MessageID,
+			role:     strings.TrimSpace(row.Role),
+			ts:       row.CreatedAt,
+			messages: row.Messages,
+		})
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].ts == candidates[j].ts {
+			return string(candidates[i].id) > string(candidates[j].id)
+		}
+		return candidates[i].ts > candidates[j].ts
+	})
+	if hr.limit > 0 && len(candidates) > hr.limit {
+		candidates = candidates[:hr.limit]
 	}
 
 	skipUserID := networkid.MessageID("")
 	skipAssistantID := networkid.MessageID("")
 	if opts.mode == historyReplayRegen {
 		for _, candidate := range candidates {
-			if skipUserID == "" && candidate.meta != nil && candidate.meta.Role == string(PromptRoleUser) {
-				skipUserID = candidate.row.ID
+			if skipUserID == "" && candidate.role == string(PromptRoleUser) {
+				skipUserID = candidate.id
 				continue
 			}
-			if skipAssistantID == "" && candidate.meta != nil && candidate.meta.Role == string(PromptRoleAssistant) {
-				skipAssistantID = candidate.row.ID
+			if skipAssistantID == "" && candidate.role == string(PromptRoleAssistant) {
+				skipAssistantID = candidate.id
 			}
 			if skipUserID != "" && skipAssistantID != "" {
 				break
@@ -148,14 +191,18 @@ func (oc *AIClient) replayHistoryMessages(
 	var messages []PromptMessage
 	for i := len(candidates) - 1; i >= 0; i-- {
 		candidate := candidates[i]
-		if opts.mode == historyReplayRewrite && candidate.row.ID == opts.targetMessageID {
+		if opts.mode == historyReplayRewrite && candidate.id == opts.targetMessageID {
 			break
 		}
-		if candidate.row.ID == skipUserID || candidate.row.ID == skipAssistantID {
+		if candidate.id == skipUserID || candidate.id == skipAssistantID {
 			continue
 		}
-		injectImages := hr.hasVision && i < maxHistoryImageMessages
-		messages = append(messages, oc.historyMessageBundle(ctx, candidate.meta, injectImages)...)
+		if candidate.row != nil {
+			injectImages := hr.hasVision && i < maxHistoryImageMessages
+			messages = append(messages, oc.historyMessageBundle(ctx, candidate.meta, injectImages)...)
+			continue
+		}
+		messages = append(messages, candidate.messages...)
 	}
 	return messages, nil
 }

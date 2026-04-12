@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/beeper/agentremote"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -190,7 +191,7 @@ func (oc *AIClient) sendPendingStatus(ctx context.Context, portal *bridgev2.Port
 		Message:   message,
 		IsCertain: true,
 	}
-	agentremote.SendMatrixMessageStatus(ctx, portal, evt, status)
+	bridgesdk.SendEventMessageStatus(ctx, portal, evt, status)
 }
 
 func (oc *AIClient) sendSuccessStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event) {
@@ -198,7 +199,7 @@ func (oc *AIClient) sendSuccessStatus(ctx context.Context, portal *bridgev2.Port
 		Status:    event.MessageStatusSuccess,
 		IsCertain: true,
 	}
-	agentremote.SendMatrixMessageStatus(ctx, portal, evt, status)
+	bridgesdk.SendEventMessageStatus(ctx, portal, evt, status)
 }
 
 const autoGreetingDelay = 5 * time.Second
@@ -242,7 +243,7 @@ func (oc *AIClient) hasPortalMessages(ctx context.Context, portal *bridgev2.Port
 		}
 		return true
 	}
-	return false
+	return hasInternalPromptHistory(ctx, oc, portal.MXID)
 }
 
 func isInternalControlRoom(meta *PortalMetadata) bool {
@@ -584,12 +585,7 @@ func (oc *AIClient) setRoomName(ctx context.Context, portal *bridgev2.Portal, na
 		return errors.New("portal has no Matrix room ID")
 	}
 
-	bot := oc.UserLogin.Bridge.Bot
-	_, err := bot.SendState(ctx, portal.MXID, event.StateRoomName, "", &event.Content{
-		Parsed: &event.RoomNameEventContent{Name: name},
-	}, time.Time{})
-
-	if err != nil {
+	if err := bridgesdk.SetRoomName(ctx, oc.UserLogin, portal, bridgev2.EventSender{}, name); err != nil {
 		return fmt.Errorf("failed to set room name: %w", err)
 	}
 
@@ -612,12 +608,7 @@ func (oc *AIClient) setRoomTopic(ctx context.Context, portal *bridgev2.Portal, t
 		return errors.New("portal has no Matrix room ID")
 	}
 
-	bot := oc.UserLogin.Bridge.Bot
-	_, err := bot.SendState(ctx, portal.MXID, event.StateTopic, "", &event.Content{
-		Parsed: &event.TopicEventContent{Topic: topic},
-	}, time.Time{})
-
-	if err != nil {
+	if err := bridgesdk.SetRoomTopic(ctx, oc.UserLogin, portal, bridgev2.EventSender{}, topic); err != nil {
 		return fmt.Errorf("failed to set room topic: %w", err)
 	}
 

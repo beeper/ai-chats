@@ -186,6 +186,21 @@ CREATE TABLE IF NOT EXISTS aichats_system_events (
   PRIMARY KEY (bridge_id, login_id, agent_id, session_key, event_index)
 );
 
+CREATE TABLE IF NOT EXISTS aichats_internal_messages (
+  bridge_id TEXT NOT NULL,
+  login_id TEXT NOT NULL,
+  room_id TEXT NOT NULL,
+  event_id TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT '',
+  canonical_turn_data TEXT NOT NULL DEFAULT '',
+  exclude_from_history INTEGER NOT NULL DEFAULT 0,
+  created_at_ms INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (bridge_id, login_id, room_id, event_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_aichats_internal_messages_history
+  ON aichats_internal_messages(bridge_id, login_id, room_id, created_at_ms);
+
 CREATE TABLE IF NOT EXISTS agentremote_sessions (
   bridge_id TEXT NOT NULL,
   login_id TEXT NOT NULL,

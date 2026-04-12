@@ -186,9 +186,6 @@ func (oc *OpenCodeClient) CleanupPortal(ctx context.Context, portal *bridgev2.Po
 			oc.UserLogin.Log.Warn().Err(err).Str("portal_id", string(portal.PortalKey.ID)).Str("reason", reason).Msg("Failed to delete portal room")
 		}
 	}
-	if err := oc.UserLogin.Bridge.DB.Portal.Delete(ctx, portal.PortalKey); err != nil {
-		oc.UserLogin.Log.Warn().Err(err).Str("portal_id", string(portal.PortalKey.ID)).Str("reason", reason).Msg("Failed to delete portal record")
-	}
 }
 
 func (oc *OpenCodeClient) PortalMeta(portal *bridgev2.Portal) *PortalMeta {

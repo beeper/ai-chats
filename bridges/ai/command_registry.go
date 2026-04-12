@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 	"sync"
-	"time"
 	"unicode"
 
 	"github.com/rs/zerolog"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/beeper/agentremote/bridges/ai/commandregistry"
 	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 var aiCommandRegistry = commandregistry.NewRegistry()
@@ -173,6 +173,7 @@ func (oc *AIClient) BroadcastCommandDescriptions(ctx context.Context, portal *br
 		return
 	}
 
+	cmds := make([]bridgesdk.Command, 0, len(handlers))
 	for _, handler := range handlers {
 		if handler == nil || handler.Name == "" {
 			continue
@@ -180,15 +181,16 @@ func (oc *AIClient) BroadcastCommandDescriptions(ctx context.Context, portal *br
 		if !isUserFacingCommand(handler.Name) {
 			continue
 		}
-		stateKey := handler.Name
-		content := buildCommandDescriptionContent(handler)
-		_, err := bot.SendState(ctx, portal.MXID, event.StateMSC4391BotCommand, stateKey, &event.Content{
-			Parsed: content,
-		}, time.Time{})
-		if err != nil {
-			log.Warn().Err(err).Str("command", handler.Name).Msg("command_description: failed to send state event")
-		}
+		cmds = append(cmds, bridgesdk.Command{
+			Name:        handler.Name,
+			Description: strings.TrimSpace(handler.Help.Description),
+			Args:        strings.TrimSpace(handler.Help.Args),
+		})
 	}
+	if len(cmds) == 0 {
+		return
+	}
+	bridgesdk.BroadcastCommandDescriptions(ctx, portal, bot, cmds)
 	log.Debug().Int("count", len(handlers)).Stringer("room", portal.MXID).Msg("command_description: broadcast command descriptions")
 }
 

@@ -10,7 +10,6 @@ import (
 
 	"github.com/google/uuid"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/agents"
@@ -337,22 +336,8 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 			"error":  err.Error(),
 		}), nil
 	}
-	userMessage := &database.Message{
-		ID:       agentremote.MatrixMessageID(eventID),
-		MXID:     eventID,
-		Room:     childPortal.PortalKey,
-		SenderID: humanUserID(oc.UserLogin.ID),
-		Metadata: &MessageMetadata{
-			BaseMessageMetadata: agentremote.BaseMessageMetadata{Role: "user", Body: task},
-		},
-		Timestamp: time.Now(),
-	}
-	setCanonicalTurnDataFromPromptMessages(userMessage.Metadata.(*MessageMetadata), promptTail(promptContext, 1))
-	if _, err := oc.UserLogin.Bridge.GetGhostByID(ctx, userMessage.SenderID); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure user ghost before saving subagent task message")
-	}
-	if err := oc.UserLogin.Bridge.DB.Message.Insert(ctx, userMessage); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to store subagent task message")
+	if err := persistInternalPrompt(ctx, oc, childPortal, eventID, promptContext, false, "subagent", time.Now()); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist subagent task prompt")
 	}
 
 	runID := uuid.NewString()

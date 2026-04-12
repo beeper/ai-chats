@@ -590,15 +590,7 @@ func (t *Turn) SendStatus(status event.MessageStatus, message string) {
 	if t.conv == nil || t.conv.portal == nil || t.conv.login == nil || t.source == nil || t.source.EventID == "" {
 		return
 	}
-	identity := t.providerIdentity()
-	_, _ = t.conv.login.Bridge.Bot.SendMessage(t.turnCtx, t.conv.portal.MXID, event.BeeperMessageStatus, &event.Content{
-		Parsed: &event.BeeperMessageStatusEventContent{
-			Network:   identity.StatusNetwork,
-			RelatesTo: event.RelatesTo{EventID: id.EventID(t.source.EventID)},
-			Status:    status,
-			Message:   message,
-		},
-	}, nil)
+	SendMessageStatus(t.turnCtx, t.conv.portal, t.conv.portal.MXID, id.EventID(t.source.EventID), status, message)
 }
 
 func (t *Turn) finalMetadata(finishReason string) agentremote.BaseMessageMetadata {
