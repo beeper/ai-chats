@@ -9,8 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"go.mau.fi/util/dbutil"
-
-	"github.com/beeper/agentremote/pkg/agents"
 )
 
 type sessionEntry struct {
@@ -41,11 +39,7 @@ type sessionDBScope struct {
 var sessionStoreLocks sync.Map
 
 func normalizeSessionStoreAgentID(agentID string) string {
-	normalized := normalizeAgentID(agentID)
-	if normalized == "" {
-		normalized = normalizeAgentID(agents.DefaultAgentID)
-	}
-	return normalized
+	return normalizeAgentID(agentID)
 }
 
 func sessionStoreLockKey(ref sessionStoreRef, sessionKey string) string {
@@ -124,7 +118,7 @@ func (oc *AIClient) getSessionEntry(ctx context.Context, ref sessionStoreRef, se
 			queue_debounce_ms,
 			queue_cap,
 			queue_drop
-		FROM agentremote_sessions
+		FROM `+aiSessionsTable+`
 		WHERE bridge_id=$1 AND login_id=$2 AND store_agent_id=$3 AND session_key=$4
 	`,
 		scope.bridgeID, scope.loginID, normalizeSessionStoreAgentID(ref.AgentID), strings.TrimSpace(sessionKey),
@@ -163,7 +157,7 @@ func (oc *AIClient) upsertSessionEntry(ctx context.Context, ref sessionStoreRef,
 		ctx = context.Background()
 	}
 	_, err := scope.db.Exec(ctx, `
-		INSERT INTO agentremote_sessions (
+		INSERT INTO `+aiSessionsTable+` (
 			bridge_id,
 			login_id,
 			store_agent_id,
@@ -288,7 +282,7 @@ func (oc *AIClient) resolveSessionStoreRef(agentID string) sessionStoreRef {
 	}
 	storeAgentID := normalizeSessionStoreAgentID(agentID)
 	if cfg != nil && cfg.Session != nil && normalizeSessionScope(cfg.Session.Scope) == sessionScopeGlobal {
-		storeAgentID = normalizeSessionStoreAgentID(agents.DefaultAgentID)
+		storeAgentID = sessionScopeGlobal
 	}
 	return sessionStoreRef{AgentID: storeAgentID}
 }

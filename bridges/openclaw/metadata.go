@@ -1,9 +1,13 @@
 package openclaw
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"strings"
+	"time"
 
+	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
@@ -12,14 +16,9 @@ import (
 )
 
 type UserLoginMetadata struct {
-	Provider        string `json:"provider,omitempty"`
-	GatewayURL      string `json:"gateway_url,omitempty"`
-	GatewayToken    string `json:"gateway_token,omitempty"`
-	GatewayPassword string `json:"gateway_password,omitempty"`
-	GatewayLabel    string `json:"gateway_label,omitempty"`
-	DeviceToken     string `json:"device_token,omitempty"`
-	SessionsSynced  bool   `json:"sessions_synced,omitempty"`
-	LastSyncAt      int64  `json:"last_sync_at,omitempty"`
+	Provider     string `json:"provider,omitempty"`
+	GatewayURL   string `json:"gateway_url,omitempty"`
+	GatewayLabel string `json:"gateway_label,omitempty"`
 }
 
 type PortalMetadata struct {
@@ -89,6 +88,14 @@ type PortalMetadata struct {
 	BackgroundBackfillError       string         `json:"background_backfill_error,omitempty"`
 }
 
+type openClawPersistedLoginState struct {
+	GatewayToken    string
+	GatewayPassword string
+	DeviceToken     string
+	SessionsSynced  bool
+	LastSyncAt      int64
+}
+
 type GhostMetadata struct {
 	OpenClawAgentID        string `json:"openclaw_agent_id,omitempty"`
 	OpenClawAgentName      string `json:"openclaw_agent_name,omitempty"`
@@ -140,6 +147,110 @@ func (mm *MessageMetadata) CopyFrom(other any) {
 
 func loginMetadata(login *bridgev2.UserLogin) *UserLoginMetadata {
 	return sdk.EnsureLoginMetadata[UserLoginMetadata](login)
+}
+
+type openClawLoginDBScope struct {
+	db       *dbutil.Database
+	bridgeID string
+	loginID  string
+}
+
+func openClawLoginDBScopeFor(login *bridgev2.UserLogin) *openClawLoginDBScope {
+	if login == nil || login.Bridge == nil || login.Bridge.DB == nil || login.Bridge.DB.Database == nil {
+		return nil
+	}
+	bridgeID := strings.TrimSpace(string(login.Bridge.DB.BridgeID))
+	loginID := strings.TrimSpace(string(login.ID))
+	if bridgeID == "" || loginID == "" {
+		return nil
+	}
+	return &openClawLoginDBScope{
+		db:       login.Bridge.DB.Database,
+		bridgeID: bridgeID,
+		loginID:  loginID,
+	}
+}
+
+func ensureOpenClawLoginStateTable(ctx context.Context, login *bridgev2.UserLogin) error {
+	scope := openClawLoginDBScopeFor(login)
+	if scope == nil {
+		return nil
+	}
+	_, err := scope.db.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS openclaw_login_state (
+			bridge_id TEXT NOT NULL,
+			login_id TEXT NOT NULL,
+			gateway_token TEXT NOT NULL DEFAULT '',
+			gateway_password TEXT NOT NULL DEFAULT '',
+			device_token TEXT NOT NULL DEFAULT '',
+			sessions_synced INTEGER NOT NULL DEFAULT 0,
+			last_sync_at_ms INTEGER NOT NULL DEFAULT 0,
+			updated_at_ms INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (bridge_id, login_id)
+		)
+	`)
+	return err
+}
+
+func loadOpenClawLoginState(ctx context.Context, login *bridgev2.UserLogin) (*openClawPersistedLoginState, error) {
+	scope := openClawLoginDBScopeFor(login)
+	if scope == nil {
+		return &openClawPersistedLoginState{}, nil
+	}
+	if err := ensureOpenClawLoginStateTable(ctx, login); err != nil {
+		return nil, err
+	}
+	state := &openClawPersistedLoginState{}
+	err := scope.db.QueryRow(ctx, `
+		SELECT gateway_token, gateway_password, device_token, sessions_synced, last_sync_at_ms
+		FROM openclaw_login_state
+		WHERE bridge_id=$1 AND login_id=$2
+	`, scope.bridgeID, scope.loginID).Scan(
+		&state.GatewayToken,
+		&state.GatewayPassword,
+		&state.DeviceToken,
+		&state.SessionsSynced,
+		&state.LastSyncAt,
+	)
+	if err == sql.ErrNoRows {
+		return state, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return state, nil
+}
+
+func saveOpenClawLoginState(ctx context.Context, login *bridgev2.UserLogin, state *openClawPersistedLoginState) error {
+	scope := openClawLoginDBScopeFor(login)
+	if scope == nil || state == nil {
+		return nil
+	}
+	if err := ensureOpenClawLoginStateTable(ctx, login); err != nil {
+		return err
+	}
+	_, err := scope.db.Exec(ctx, `
+		INSERT INTO openclaw_login_state (
+			bridge_id, login_id, gateway_token, gateway_password, device_token, sessions_synced, last_sync_at_ms, updated_at_ms
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT (bridge_id, login_id) DO UPDATE SET
+			gateway_token=excluded.gateway_token,
+			gateway_password=excluded.gateway_password,
+			device_token=excluded.device_token,
+			sessions_synced=excluded.sessions_synced,
+			last_sync_at_ms=excluded.last_sync_at_ms,
+			updated_at_ms=excluded.updated_at_ms
+	`,
+		scope.bridgeID,
+		scope.loginID,
+		strings.TrimSpace(state.GatewayToken),
+		strings.TrimSpace(state.GatewayPassword),
+		strings.TrimSpace(state.DeviceToken),
+		state.SessionsSynced,
+		state.LastSyncAt,
+		time.Now().UnixMilli(),
+	)
+	return err
 }
 
 func portalMeta(portal *bridgev2.Portal) *PortalMetadata {

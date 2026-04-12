@@ -118,21 +118,6 @@ func openClawVirtualAgentSummary(agentID string) *gatewayAgentSummary {
 	return &gatewayAgentSummary{ID: agentID}
 }
 
-func (oc *OpenClawClient) agentSummaryOrVirtual(ctx context.Context, agentID string) (*gatewayAgentSummary, error) {
-	agentID = canonicalOpenClawAgentID(agentID)
-	if agentID == "" {
-		return nil, nil
-	}
-	agent, err := oc.agentCatalogEntryByID(ctx, agentID)
-	if err != nil {
-		return nil, err
-	}
-	if agent != nil {
-		return agent, nil
-	}
-	return openClawVirtualAgentSummary(agentID), nil
-}
-
 func (oc *OpenClawClient) configuredAgentDisplayName(agent gatewayAgentSummary) string {
 	profile := openClawAgentProfileFromSummary(&agent)
 	return oc.displayNameFromAgentProfile(profile)
@@ -157,12 +142,12 @@ func (oc *OpenClawClient) configuredAgentUserInfo(ctx context.Context, agent gat
 
 func (oc *OpenClawClient) agentToResolveResponse(ctx context.Context, agent gatewayAgentSummary) (*bridgev2.ResolveIdentifierResponse, error) {
 	agentID := strings.TrimSpace(agent.ID)
-	ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, openClawGhostUserID(agentID))
+	ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, openClawScopedGhostUserID(oc.UserLogin.ID, agentID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ghost for agent %s: %w", agentID, err)
 	}
 	return &bridgev2.ResolveIdentifierResponse{
-		UserID:   openClawGhostUserID(agentID),
+		UserID:   openClawScopedGhostUserID(oc.UserLogin.ID, agentID),
 		UserInfo: oc.configuredAgentUserInfo(ctx, agent, ghost),
 		Ghost:    ghost,
 	}, nil
@@ -212,7 +197,7 @@ func (oc *OpenClawClient) SearchUsers(ctx context.Context, query string) ([]*bri
 			}
 		}
 		if !alreadyIncluded {
-			agent, err := oc.agentSummaryOrVirtual(ctx, exactID)
+			agent, err := oc.agentSummaryByID(ctx, exactID)
 			if err != nil {
 				return nil, err
 			}
@@ -233,7 +218,7 @@ func (oc *OpenClawClient) ResolveIdentifier(ctx context.Context, identifier stri
 	if !ok {
 		return nil, bridgev2.WrapRespErr(fmt.Errorf("identifier %q not found", identifier), mautrix.MNotFound)
 	}
-	agent, err := oc.agentSummaryOrVirtual(ctx, agentID)
+	agent, err := oc.agentSummaryByID(ctx, agentID)
 	if err != nil {
 		return nil, err
 	}
@@ -258,11 +243,14 @@ func (oc *OpenClawClient) CreateChatWithGhost(ctx context.Context, ghost *bridge
 	if ghost == nil {
 		return nil, bridgev2.WrapRespErr(errors.New("ghost is required"), mautrix.MInvalidParam)
 	}
-	agentID, ok := parseOpenClawGhostID(string(ghost.ID))
+	loginID, agentID, ok := parseOpenClawGhostID(string(ghost.ID))
 	if !ok {
 		return nil, bridgev2.WrapRespErr(fmt.Errorf("unsupported ghost id %q", ghost.ID), mautrix.MInvalidParam)
 	}
-	agent, err := oc.agentSummaryOrVirtual(ctx, agentID)
+	if loginID != "" && loginID != oc.UserLogin.ID {
+		return nil, bridgev2.WrapRespErr(fmt.Errorf("ghost id %q does not belong to the current login", ghost.ID), mautrix.MInvalidParam)
+	}
+	agent, err := oc.agentSummaryByID(ctx, agentID)
 	if err != nil {
 		return nil, err
 	}
@@ -279,7 +267,7 @@ func (oc *OpenClawClient) createConfiguredAgentDM(ctx context.Context, agent gat
 	}
 	if ghost == nil {
 		var err error
-		ghost, err = oc.UserLogin.Bridge.GetGhostByID(ctx, openClawGhostUserID(agentID))
+		ghost, err = oc.UserLogin.Bridge.GetGhostByID(ctx, openClawScopedGhostUserID(oc.UserLogin.ID, agentID))
 		if err != nil {
 			return nil, fmt.Errorf("failed to get ghost for agent %s: %w", agentID, err)
 		}
@@ -305,7 +293,7 @@ func (oc *OpenClawClient) createConfiguredAgentDM(ctx context.Context, agent gat
 		Portal:      portal,
 		Title:       meta.OpenClawDMTargetAgentName,
 		Topic:       "OpenClaw agent DM",
-		OtherUserID: openClawGhostUserID(agentID),
+		OtherUserID: openClawScopedGhostUserID(oc.UserLogin.ID, agentID),
 		Save:        false,
 	}); err != nil {
 		return nil, fmt.Errorf("failed to configure openclaw dm portal: %w", err)
@@ -342,7 +330,7 @@ func (oc *OpenClawClient) buildOpenClawDMChatInfo(agentID, displayName string, u
 		Login:             oc.UserLogin,
 		HumanUserIDPrefix: "openclaw-user",
 		HumanSender:       ptr.Ptr(oc.senderForAgent(agentID, true)),
-		BotUserID:         openClawGhostUserID(agentID),
+		BotUserID:         openClawScopedGhostUserID(oc.UserLogin.ID, agentID),
 		BotDisplayName:    displayName,
 		BotSender:         ptr.Ptr(oc.senderForAgent(agentID, false)),
 		BotUserInfo:       userInfo,
@@ -426,6 +414,21 @@ func openClawAgentProfileFromSummary(agent *gatewayAgentSummary) openClawAgentPr
 	return profile
 }
 
+func (oc *OpenClawClient) agentSummaryByID(ctx context.Context, agentID string) (*gatewayAgentSummary, error) {
+	agentID = canonicalOpenClawAgentID(agentID)
+	if agentID == "" {
+		return nil, nil
+	}
+	agent, err := oc.agentCatalogEntryByID(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	if agent == nil {
+		return nil, nil
+	}
+	return agent, nil
+}
+
 func normalizeGatewayAgentSummaries(agents []gatewayAgentSummary) []gatewayAgentSummary {
 	normalized := make([]gatewayAgentSummary, 0, len(agents))
 	seen := make(map[string]struct{}, len(agents))
@@ -463,7 +466,7 @@ func parseOpenClawResolvableIdentifier(identifier string) (string, bool) {
 	if identifier == "" {
 		return "", false
 	}
-	if agentID, ok := parseOpenClawGhostID(identifier); ok {
+	if _, agentID, ok := parseOpenClawGhostID(identifier); ok {
 		return agentID, true
 	}
 	if value, ok := strings.CutPrefix(identifier, "openclaw:"); ok {

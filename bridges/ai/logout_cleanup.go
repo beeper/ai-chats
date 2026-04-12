@@ -42,7 +42,7 @@ func purgeLoginDataBestEffort(ctx context.Context, login *bridgev2.UserLogin) {
 	}
 
 	bestEffortExec(ctx, db, logger,
-		`DELETE FROM agentremote_sessions WHERE bridge_id=$1 AND login_id=$2`,
+		`DELETE FROM `+aiSessionsTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
 	bestEffortExec(ctx, db, logger,

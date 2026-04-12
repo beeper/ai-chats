@@ -81,9 +81,6 @@ func NewConnector() *DummyBridgeConnector {
 	dc.sdkConfig.OnConnect = dc.onConnect
 	dc.sdkConfig.OnDisconnect = dc.onDisconnect
 	dc.sdkConfig.OnMessage = dc.onMessage
-	dc.sdkConfig.GetContactList = dc.getContactList
-	dc.sdkConfig.SearchUsers = dc.searchUsers
-	dc.sdkConfig.ResolveIdentifier = dc.resolveIdentifier
 	dc.sdkConfig.GetChatInfo = dc.getChatInfo
 	dc.sdkConfig.GetUserInfo = dc.getUserInfo
 	dc.ConnectorBase = sdk.NewConnectorBase(dc.sdkConfig)

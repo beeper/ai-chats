@@ -86,7 +86,7 @@ func loadLoginRuntimeState(ctx context.Context, client *AIClient) (*loginRuntime
 	var lastHeartbeatEventJSON string
 	err := scope.db.QueryRow(ctx, `
 		SELECT next_chat_index, last_heartbeat_event_json
-		FROM aichats_login_state
+		FROM `+aiLoginStateTable+`
 		WHERE bridge_id=$1 AND login_id=$2
 	`, scope.bridgeID, scope.loginID).Scan(
 		&state.NextChatIndex,
@@ -115,7 +115,7 @@ func saveLoginRuntimeState(ctx context.Context, client *AIClient, state *loginRu
 		return err
 	}
 	_, err = scope.db.Exec(ctx, `
-		INSERT INTO aichats_login_state (
+		INSERT INTO `+aiLoginStateTable+` (
 			bridge_id, login_id, next_chat_index, last_heartbeat_event_json, updated_at_ms
 		) VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (bridge_id, login_id) DO UPDATE SET
@@ -170,7 +170,7 @@ func (oc *AIClient) clearLoginState(ctx context.Context) {
 	scope := loginStateScopeForClient(oc)
 	if scope != nil {
 		bestEffortExec(ctx, scope.db, oc.Log(),
-			`DELETE FROM aichats_login_state WHERE bridge_id=$1 AND login_id=$2`,
+			`DELETE FROM `+aiLoginStateTable+` WHERE bridge_id=$1 AND login_id=$2`,
 			scope.bridgeID, scope.loginID,
 		)
 	}

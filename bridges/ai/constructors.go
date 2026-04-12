@@ -65,6 +65,18 @@ func NewAIConnector() *OpenAIConnector {
 		NewMessage:    func() *MessageMetadata { return &MessageMetadata{} },
 		NewLogin:      func() *UserLoginMetadata { return &UserLoginMetadata{} },
 		NewGhost:      func() *GhostMetadata { return &GhostMetadata{} },
+		NetworkCapabilities: func() *bridgev2.NetworkGeneralCapabilities {
+			return &bridgev2.NetworkGeneralCapabilities{
+				Provisioning: bridgev2.ProvisioningCapabilities{
+					ResolveIdentifier: bridgev2.ResolveIdentifierCapabilities{
+						CreateDM:       true,
+						LookupUsername: true,
+						ContactList:    true,
+						Search:         true,
+					},
+				},
+			}
+		},
 		FillBridgeInfo: func(portal *bridgev2.Portal, content *event.BridgeEventContent) {
 			applyAgentRemoteBridgeInfo(portal, portalMeta(portal), content)
 		},

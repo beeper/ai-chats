@@ -2,7 +2,6 @@ package sdk
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"go.mau.fi/util/configupgrade"
@@ -107,18 +106,13 @@ func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Confi
 			if cfg.DBMeta != nil {
 				return cfg.DBMeta()
 			}
-			return database.MetaTypes{
-				Portal:    func() any { return &map[string]any{} },
-				Message:   func() any { return &map[string]any{} },
-				UserLogin: func() any { return &map[string]any{} },
-				Ghost:     func() any { return &map[string]any{} },
-			}
+			return database.MetaTypes{}
 		},
 		Capabilities: func() *bridgev2.NetworkGeneralCapabilities {
 			if cfg.NetworkCapabilities != nil {
 				return cfg.NetworkCapabilities()
 			}
-			return DefaultNetworkCapabilities()
+			return &bridgev2.NetworkGeneralCapabilities{}
 		},
 		BridgeInfoVersion: func() (info, capabilities int) {
 			if cfg.BridgeInfoVersion != nil {
@@ -141,21 +135,11 @@ func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Confi
 			if cfg.GetLoginFlows != nil {
 				return cfg.GetLoginFlows()
 			}
-			if len(cfg.LoginFlows) > 0 {
-				return cfg.LoginFlows
-			}
-			return []bridgev2.LoginFlow{{
-				ID:          "sdk-default",
-				Name:        cfg.Name,
-				Description: fmt.Sprintf("Login to %s", cfg.Name),
-			}}
+			return cfg.LoginFlows
 		},
 		CreateLogin: func(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
 			if cfg.CreateLogin != nil {
 				return cfg.CreateLogin(ctx, user, flowID)
-			}
-			if flowID == "sdk-default" {
-				return &sdkAutoLogin{user: user}, nil
 			}
 			return nil, bridgev2.ErrInvalidLoginFlowID
 		},

@@ -62,8 +62,7 @@ func TestUpgradeV1Fresh(t *testing.T) {
 		"aichats_managed_heartbeats",
 		"aichats_managed_heartbeat_run_keys",
 		"aichats_system_events",
-		"agentremote_sessions",
-		"agentremote_approvals",
+		"aichats_sessions",
 	} {
 		exists, err := bridgeDB.TableExists(ctx, table)
 		if err != nil {
@@ -71,6 +70,16 @@ func TestUpgradeV1Fresh(t *testing.T) {
 		}
 		if !exists {
 			t.Fatalf("expected %s to exist", table)
+		}
+	}
+
+	for _, table := range []string{"agentremote_sessions", "agentremote_approvals"} {
+		exists, err := bridgeDB.TableExists(ctx, table)
+		if err != nil {
+			t.Fatalf("check %s absence failed: %v", table, err)
+		}
+		if exists {
+			t.Fatalf("expected %s to be absent", table)
 		}
 	}
 }

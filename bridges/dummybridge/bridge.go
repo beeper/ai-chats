@@ -18,9 +18,8 @@ import (
 const dummyPortalTopic = "DummyBridge demo room for turns, streaming, tools, approvals, and artifacts."
 
 type dummySession struct {
-	login         *bridgev2.UserLogin
-	acceptedValue string
-	log           zerolog.Logger
+	login *bridgev2.UserLogin
+	log   zerolog.Logger
 }
 
 func (dc *DummyBridgeConnector) loggerForLogin(login *bridgev2.UserLogin) zerolog.Logger {
@@ -28,13 +27,6 @@ func (dc *DummyBridgeConnector) loggerForLogin(login *bridgev2.UserLogin) zerolo
 		return zerolog.Nop()
 	}
 	return login.Log.With().Str("component", "dummybridge").Logger()
-}
-
-func requireSession(session *dummySession) (*dummySession, error) {
-	if session == nil || session.login == nil {
-		return nil, errors.New("dummybridge session is unavailable")
-	}
-	return session, nil
 }
 
 func (dc *DummyBridgeConnector) onConnect(ctx context.Context, info *sdk.LoginInfo) (*dummySession, error) {
@@ -50,61 +42,12 @@ func (dc *DummyBridgeConnector) onConnect(ctx context.Context, info *sdk.LoginIn
 		return nil, err
 	}
 	return &dummySession{
-		login:         login,
-		acceptedValue: loginMetadata(login).AcceptedString,
-		log:           log,
+		login: login,
+		log:   log,
 	}, nil
 }
 
 func (dc *DummyBridgeConnector) onDisconnect(_ *dummySession) {}
-
-func (dc *DummyBridgeConnector) getContactList(ctx context.Context, session *dummySession) ([]*bridgev2.ResolveIdentifierResponse, error) {
-	dummy, err := requireSession(session)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := dc.contactResponse(ctx, dummy.login, false)
-	if err != nil {
-		return nil, err
-	}
-	return []*bridgev2.ResolveIdentifierResponse{resp}, nil
-}
-
-func (dc *DummyBridgeConnector) searchUsers(ctx context.Context, session *dummySession, query string) ([]*bridgev2.ResolveIdentifierResponse, error) {
-	dummy, err := requireSession(session)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := dc.contactResponse(ctx, dummy.login, false)
-	if err != nil {
-		return nil, err
-	}
-	query = strings.TrimSpace(strings.ToLower(query))
-	if query == "" {
-		return []*bridgev2.ResolveIdentifierResponse{resp}, nil
-	}
-	text := strings.Join([]string{
-		strings.ToLower(dummyAgentName),
-		strings.ToLower(string(dummyAgentUserID)),
-		dummyAgentIdentifierPrimary,
-		dummyAgentIdentifierShort,
-	}, " ")
-	if strings.Contains(text, query) {
-		return []*bridgev2.ResolveIdentifierResponse{resp}, nil
-	}
-	return nil, nil
-}
-
-func (dc *DummyBridgeConnector) resolveIdentifier(ctx context.Context, session *dummySession, identifier string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
-	dummy, err := requireSession(session)
-	if err != nil {
-		return nil, err
-	}
-	if !matchesDummyIdentifier(identifier) {
-		return nil, fmt.Errorf("unknown identifier: %s", identifier)
-	}
-	return dc.contactResponse(ctx, dummy.login, createChat)
-}
 
 func (dc *DummyBridgeConnector) getChatInfo(conv *sdk.Conversation) (*bridgev2.ChatInfo, error) {
 	if conv == nil || conv.Portal() == nil {
@@ -130,57 +73,13 @@ func (dc *DummyBridgeConnector) getUserInfo(_ *bridgev2.Ghost) (*bridgev2.UserIn
 	return dummySDKAgent().UserInfo(), nil
 }
 
-func matchesDummyIdentifier(identifier string) bool {
-	id := strings.TrimSpace(strings.ToLower(identifier))
-	switch id {
-	case "", dummyAgentIdentifierPrimary, dummyAgentIdentifierShort, strings.ToLower(string(dummyAgentUserID)), strings.ToLower(dummyAgentName):
-		return id != ""
-	default:
-		return strings.Contains(id, dummyAgentIdentifierPrimary) || strings.Contains(id, dummyAgentIdentifierShort)
-	}
-}
-
-func (dc *DummyBridgeConnector) contactResponse(ctx context.Context, login *bridgev2.UserLogin, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
-	if login == nil || login.Bridge == nil {
-		return nil, errors.New("login unavailable")
-	}
-	if err := dummySDKAgent().EnsureGhost(ctx, login); err != nil {
-		return nil, fmt.Errorf("ensure ghost: %w", err)
-	}
-	ghost, err := login.Bridge.GetGhostByID(ctx, dummyAgentUserID)
-	if err != nil {
-		return nil, fmt.Errorf("get ghost: %w", err)
-	}
-	var chat *bridgev2.CreateChatResponse
-	if createChat {
-		chat, err = dc.createChat(ctx, login)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return &bridgev2.ResolveIdentifierResponse{
-		UserID:   dummyAgentUserID,
-		UserInfo: dummySDKAgent().UserInfo(),
-		Ghost:    ghost,
-		Chat:     chat,
-	}, nil
-}
-
 func (dc *DummyBridgeConnector) ensureInitialRoom(ctx context.Context, login *bridgev2.UserLogin) error {
 	dc.chatMu.Lock()
 	defer dc.chatMu.Unlock()
 
 	meta := loginMetadata(login)
-	updated := false
 	if strings.TrimSpace(meta.Provider) == "" {
 		meta.Provider = ProviderDummyBridge
-		updated = true
-	}
-	if meta.NextChatIndex < 1 {
-		meta.NextChatIndex = 1
-		updated = true
-	}
-	if updated {
 		if err := login.Save(ctx); err != nil {
 			return fmt.Errorf("save login metadata: %w", err)
 		}
@@ -189,21 +88,6 @@ func (dc *DummyBridgeConnector) ensureInitialRoom(ctx context.Context, login *br
 		return err
 	}
 	return nil
-}
-
-func (dc *DummyBridgeConnector) createChat(ctx context.Context, login *bridgev2.UserLogin) (*bridgev2.CreateChatResponse, error) {
-	dc.chatMu.Lock()
-	defer dc.chatMu.Unlock()
-
-	meta := loginMetadata(login)
-	if meta.NextChatIndex < 1 {
-		meta.NextChatIndex = 1
-	}
-	meta.NextChatIndex++
-	if err := login.Save(ctx); err != nil {
-		return nil, fmt.Errorf("save login chat index: %w", err)
-	}
-	return dc.ensureChatForIndexLocked(ctx, login, meta.NextChatIndex)
 }
 
 func (dc *DummyBridgeConnector) ensureChatForIndexLocked(ctx context.Context, login *bridgev2.UserLogin, idx int) (*bridgev2.CreateChatResponse, error) {

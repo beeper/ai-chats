@@ -247,12 +247,9 @@ func (ol *OpenClawLogin) completeLogin(pending *openClawPendingLogin, deviceToke
 		"openclaw",
 		remoteName,
 		&UserLoginMetadata{
-			Provider:        ProviderOpenClaw,
-			GatewayURL:      pending.gatewayURL,
-			GatewayToken:    pending.token,
-			GatewayPassword: pending.password,
-			GatewayLabel:    pending.label,
-			DeviceToken:     deviceToken,
+			Provider:     ProviderOpenClaw,
+			GatewayURL:   pending.gatewayURL,
+			GatewayLabel: pending.label,
 		},
 		"com.beeper.agentremote.openclaw.complete",
 		nil,
@@ -262,6 +259,14 @@ func (ol *OpenClawLogin) completeLogin(pending *openClawPendingLogin, deviceToke
 		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to create login: %w", err), http.StatusInternalServerError, "OPENCLAW", "CREATE_LOGIN_FAILED")
 	}
 	log.Debug().Str("login_id", string(login.ID)).Msg("Created OpenClaw user login")
+	if err := saveOpenClawLoginState(persistCtx, login, &openClawPersistedLoginState{
+		GatewayToken:    pending.token,
+		GatewayPassword: pending.password,
+		DeviceToken:     deviceToken,
+	}); err != nil {
+		log.Warn().Err(err).Str("login_id", string(login.ID)).Msg("Failed to persist OpenClaw login state")
+		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to persist login state: %w", err), http.StatusInternalServerError, "OPENCLAW", "SAVE_LOGIN_STATE_FAILED")
+	}
 	ol.pending = nil
 	ol.step = ""
 	ol.waitUntil = time.Time{}

@@ -79,9 +79,16 @@ func NewConnector() *OpenClawConnector {
 		NewLogin:       func() *UserLoginMetadata { return &UserLoginMetadata{} },
 		NewGhost:       func() *GhostMetadata { return &GhostMetadata{} },
 		NetworkCapabilities: func() *bridgev2.NetworkGeneralCapabilities {
-			caps := sdk.DefaultNetworkCapabilities()
-			caps.DisappearingMessages = false
-			return caps
+			return &bridgev2.NetworkGeneralCapabilities{
+				Provisioning: bridgev2.ProvisioningCapabilities{
+					ResolveIdentifier: bridgev2.ResolveIdentifierCapabilities{
+						CreateDM:       true,
+						LookupUsername: true,
+						ContactList:    true,
+						Search:         true,
+					},
+				},
+			}
 		},
 		AcceptLogin: func(login *bridgev2.UserLogin) (bool, string) {
 			return sdk.AcceptProviderLogin(login, ProviderOpenClaw, "This bridge only supports OpenClaw logins.", oc.openClawEnabled, "OpenClaw integration is disabled in the configuration.", func(login *bridgev2.UserLogin) string {

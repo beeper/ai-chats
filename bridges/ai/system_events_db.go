@@ -6,8 +6,6 @@ import (
 	"strings"
 
 	"go.mau.fi/util/dbutil"
-
-	"github.com/beeper/agentremote/pkg/agents"
 )
 
 type persistedSystemEventQueue struct {
@@ -25,11 +23,7 @@ type systemEventsDBScope struct {
 }
 
 func normalizeSystemEventsAgentID(agentID string) string {
-	normalized := normalizeAgentID(agentID)
-	if normalized == "" {
-		return "beeper"
-	}
-	return normalized
+	return normalizeAgentID(agentID)
 }
 
 func systemEventsScope(client *AIClient, agentID string) *systemEventsDBScope {
@@ -42,6 +36,18 @@ func systemEventsScope(client *AIClient, agentID string) *systemEventsDBScope {
 		bridgeID: bridgeID,
 		loginID:  loginID,
 		agentID:  normalizeSystemEventsAgentID(agentID),
+	}
+}
+
+func systemEventsLoginScope(client *AIClient) *systemEventsDBScope {
+	db, bridgeID, loginID := loginDBContext(client)
+	if db == nil {
+		return nil
+	}
+	return &systemEventsDBScope{
+		db:       db,
+		bridgeID: bridgeID,
+		loginID:  loginID,
 	}
 }
 
@@ -76,13 +82,16 @@ func snapshotSystemEvents(ownerKey string) []persistedSystemEventQueue {
 }
 
 func persistSystemEventsSnapshot(client *AIClient) {
-	baseScope := systemEventsScope(client, agents.DefaultAgentID)
+	baseScope := systemEventsLoginScope(client)
 	if baseScope == nil {
 		return
 	}
 	grouped := make(map[string][]persistedSystemEventQueue)
 	for _, queue := range snapshotSystemEvents(baseScope.ownerKey()) {
 		agentID := normalizeSystemEventsAgentID(queue.AgentID)
+		if agentID == "" {
+			continue
+		}
 		queue.AgentID = agentID
 		grouped[agentID] = append(grouped[agentID], queue)
 	}
@@ -110,7 +119,7 @@ func persistSystemEventsSnapshot(client *AIClient) {
 }
 
 func restoreSystemEventsFromDB(client *AIClient) {
-	baseScope := systemEventsScope(client, agents.DefaultAgentID)
+	baseScope := systemEventsLoginScope(client)
 	if baseScope == nil {
 		return
 	}
@@ -159,7 +168,7 @@ func listPersistedSystemEventAgentIDs(ctx context.Context, scope *systemEventsDB
 	}
 	rows, err := scope.db.Query(ctx, `
 		SELECT DISTINCT agent_id
-		FROM aichats_system_events
+		FROM `+aiSystemEventsTable+`
 		WHERE bridge_id=$1 AND login_id=$2
 		ORDER BY agent_id
 	`, scope.bridgeID, scope.loginID)
@@ -174,7 +183,9 @@ func listPersistedSystemEventAgentIDs(ctx context.Context, scope *systemEventsDB
 		if err := rows.Scan(&agentID); err != nil {
 			return nil, err
 		}
-		agentIDs = append(agentIDs, normalizeSystemEventsAgentID(agentID))
+		if normalized := normalizeSystemEventsAgentID(agentID); normalized != "" {
+			agentIDs = append(agentIDs, normalized)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -187,7 +198,7 @@ func saveSystemEventsSnapshot(ctx context.Context, scope *systemEventsDBScope, q
 		return nil
 	}
 	return scope.db.DoTxn(ctx, nil, func(ctx context.Context) error {
-		if _, err := scope.db.Exec(ctx, `DELETE FROM aichats_system_events WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`, scope.bridgeID, scope.loginID, scope.agentID); err != nil {
+		if _, err := scope.db.Exec(ctx, `DELETE FROM `+aiSystemEventsTable+` WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`, scope.bridgeID, scope.loginID, scope.agentID); err != nil {
 			return err
 		}
 		for _, queue := range queues {
@@ -200,7 +211,7 @@ func saveSystemEventsSnapshot(ctx context.Context, scope *systemEventsDBScope, q
 					lastText = queue.LastText
 				}
 				if _, err := scope.db.Exec(ctx, `
-					INSERT INTO aichats_system_events (
+					INSERT INTO `+aiSystemEventsTable+` (
 						bridge_id, login_id, agent_id, session_key, event_index, text, ts, last_text
 					) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 				`, scope.bridgeID, scope.loginID, scope.agentID, queue.SessionKey, idx, evt.Text, evt.TS, lastText); err != nil {
@@ -218,7 +229,7 @@ func loadSystemEventsSnapshot(ctx context.Context, scope *systemEventsDBScope) (
 	}
 	rows, err := scope.db.Query(ctx, `
 		SELECT session_key, text, ts, last_text
-		FROM aichats_system_events
+		FROM `+aiSystemEventsTable+`
 		WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3
 		ORDER BY session_key, event_index
 	`, scope.bridgeID, scope.loginID, scope.agentID)

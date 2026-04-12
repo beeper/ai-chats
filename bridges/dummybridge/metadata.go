@@ -9,7 +9,6 @@ import (
 type UserLoginMetadata struct {
 	Provider       string `json:"provider,omitempty"`
 	AcceptedString string `json:"accepted_string,omitempty"`
-	NextChatIndex  int    `json:"next_chat_index,omitempty"`
 }
 
 type PortalMetadata struct {

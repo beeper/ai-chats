@@ -408,8 +408,8 @@ func (oc *OpenClawClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost
 	if ghost == nil {
 		return sdk.BuildBotUserInfo("OpenClaw"), nil
 	}
-	agentID, ok := parseOpenClawGhostID(string(ghost.ID))
-	if !ok {
+	loginID, agentID, ok := parseOpenClawGhostID(string(ghost.ID))
+	if !ok || (loginID != "" && loginID != oc.UserLogin.ID) {
 		return sdk.BuildBotUserInfo("OpenClaw"), nil
 	}
 	current := ghostMeta(ghost)
@@ -661,7 +661,7 @@ func (oc *OpenClawClient) agentAvatar(meta *GhostMetadata, agentID string) *brid
 		return nil
 	}
 	return &bridgev2.Avatar{
-		ID: networkid.AvatarID("openclaw:" + stringutil.TrimDefault(meta.OpenClawAgentID, agentID) + ":" + avatarURL),
+		ID: networkid.AvatarID("openclaw:" + string(oc.UserLogin.ID) + ":" + stringutil.TrimDefault(meta.OpenClawAgentID, agentID) + ":" + avatarURL),
 		Get: func(ctx context.Context) ([]byte, error) {
 			req, err := http.NewRequestWithContext(ctx, http.MethodGet, avatarURL, nil)
 			if err != nil {
@@ -728,7 +728,7 @@ func (oc *OpenClawClient) senderForAgent(agentID string, fromMe bool) bridgev2.E
 		}
 	}
 	return bridgev2.EventSender{
-		Sender:      openClawGhostUserID(agentID),
+		Sender:      openClawScopedGhostUserID(oc.UserLogin.ID, agentID),
 		SenderLogin: oc.UserLogin.ID,
 		ForceDMUser: true,
 	}

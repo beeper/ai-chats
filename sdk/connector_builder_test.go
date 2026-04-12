@@ -179,8 +179,11 @@ func TestConnectorStopCanDisconnectCachedClients(t *testing.T) {
 func TestConnectorBaseDefaultsBridgeInfoAndCapabilities(t *testing.T) {
 	conn := NewConnector(ConnectorSpec{ProtocolID: "ai-test"})
 	caps := conn.GetCapabilities()
-	if caps == nil || !caps.DisappearingMessages {
-		t.Fatalf("expected default capabilities, got %#v", caps)
+	if caps == nil {
+		t.Fatalf("expected capabilities, got %#v", caps)
+	}
+	if caps.DisappearingMessages || caps.Provisioning.ResolveIdentifier.ContactList {
+		t.Fatalf("expected empty default capabilities, got %#v", caps)
 	}
 	infoVer, capVer := conn.GetBridgeInfoVersion()
 	wantInfo, wantCap := DefaultBridgeInfoVersion()

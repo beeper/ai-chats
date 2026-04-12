@@ -237,9 +237,6 @@ func (b *Bridge) maybeFinalizeOpenCodeTitle(ctx context.Context, portal *bridgev
 	if err := b.host.SavePortal(ctx, portal); err != nil {
 		b.host.Log().Warn().Err(err).Msg("Failed to save OpenCode portal title")
 	}
-	if portal.MXID != "" {
-		_ = b.host.SetRoomName(ctx, portal, normalized)
-	}
 }
 
 func sanitizeOpenCodeTitle(title string) string {

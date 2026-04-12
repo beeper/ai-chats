@@ -30,6 +30,14 @@ func openClawPortalKey(loginID networkid.UserLoginID, gatewayID, sessionKey stri
 	}
 }
 
+func openClawScopedGhostUserID(loginID networkid.UserLoginID, agentID string) networkid.UserID {
+	trimmed := canonicalOpenClawAgentID(agentID)
+	if trimmed == "" {
+		trimmed = "gateway"
+	}
+	return networkid.UserID("openclaw-agent:" + url.PathEscape(string(loginID)) + ":" + url.PathEscape(trimmed))
+}
+
 func openClawGhostUserID(agentID string) networkid.UserID {
 	trimmed := canonicalOpenClawAgentID(agentID)
 	if trimmed == "" {
@@ -38,20 +46,30 @@ func openClawGhostUserID(agentID string) networkid.UserID {
 	return networkid.UserID("openclaw-agent:" + url.PathEscape(trimmed))
 }
 
-func parseOpenClawGhostID(ghostID string) (string, bool) {
+func parseOpenClawGhostID(ghostID string) (loginID networkid.UserLoginID, agentID string, ok bool) {
 	suffix, ok := strings.CutPrefix(strings.TrimSpace(ghostID), "openclaw-agent:")
 	if !ok {
-		return "", false
+		return "", "", false
 	}
-	value, err := url.PathUnescape(suffix)
+	parts := strings.SplitN(suffix, ":", 2)
+	value := suffix
+	if len(parts) == 2 {
+		login, err := url.PathUnescape(parts[0])
+		if err != nil {
+			return "", "", false
+		}
+		loginID = networkid.UserLoginID(strings.TrimSpace(login))
+		value = parts[1]
+	}
+	value, err := url.PathUnescape(value)
 	if err != nil {
-		return "", false
+		return "", "", false
 	}
 	value = canonicalOpenClawAgentID(value)
 	if value == "" {
-		return "", false
+		return "", "", false
 	}
-	return value, true
+	return loginID, value, true
 }
 
 func openClawDMAgentSessionKey(agentID string) string {

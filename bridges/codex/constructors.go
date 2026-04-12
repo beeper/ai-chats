@@ -55,7 +55,6 @@ func NewConnector() *CodexConnector {
 			}
 			cc.applyRuntimeDefaults()
 			sdk.PrimeUserLoginCache(ctx, cc.br)
-			cc.reconcileHostAuthLogins(ctx)
 			return nil
 		},
 		DisplayName:      "Codex",
@@ -79,6 +78,17 @@ func NewConnector() *CodexConnector {
 		NewMessage:     func() *MessageMetadata { return &MessageMetadata{} },
 		NewLogin:       func() *UserLoginMetadata { return &UserLoginMetadata{} },
 		NewGhost:       func() *GhostMetadata { return &GhostMetadata{} },
+		NetworkCapabilities: func() *bridgev2.NetworkGeneralCapabilities {
+			return &bridgev2.NetworkGeneralCapabilities{
+				Provisioning: bridgev2.ProvisioningCapabilities{
+					ResolveIdentifier: bridgev2.ResolveIdentifierCapabilities{
+						CreateDM:       true,
+						LookupUsername: true,
+						ContactList:    true,
+					},
+				},
+			}
+		},
 		AcceptLogin: func(login *bridgev2.UserLogin) (bool, string) {
 			return sdk.AcceptProviderLogin(login, ProviderCodex, "This bridge only supports Codex logins.", cc.codexEnabled, "Codex integration is disabled in the configuration.", func(login *bridgev2.UserLogin) string {
 				return loginMetadata(login).Provider
@@ -101,9 +111,6 @@ func NewConnector() *CodexConnector {
 			}
 			if !slices.ContainsFunc(loginFlows, func(f bridgev2.LoginFlow) bool { return f.ID == flowID }) {
 				return nil, bridgev2.ErrInvalidLoginFlowID
-			}
-			if err := cc.ensureHostAuthLoginForUser(ctx, user); err != nil && cc.br != nil {
-				cc.br.Log.Debug().Err(err).Stringer("mxid", user.MXID).Msg("Host-auth reconcile: create-login reconcile failed")
 			}
 			return &CodexLogin{User: user, Connector: cc, FlowID: flowID}, nil
 		},

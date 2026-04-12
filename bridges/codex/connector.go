@@ -1,8 +1,6 @@
 package codex
 
 import (
-	"context"
-	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -10,11 +8,9 @@ import (
 	"go.mau.fi/util/dbutil"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/bridges/codex/codexrpc"
 	"github.com/beeper/agentremote/sdk"
 )
 
@@ -40,170 +36,10 @@ const (
 	FlowCodexChatGPT               = "codex_chatgpt"
 	FlowCodexChatGPTExternalTokens = "codex_chatgpt_external_tokens"
 	hostAuthLoginPrefix            = "codex_host"
-	hostAuthRemoteName             = "Codex (host auth)"
 )
-
-type hostAuthProbe struct {
-	AuthMode     string
-	AccountEmail string
-}
 
 func (cc *CodexConnector) bridgeDB() *dbutil.Database {
 	return cc.db
-}
-
-// reconcileHostAuthLogins ensures a deterministic host-auth Codex login exists
-// for all known Matrix users when the local/default Codex auth is already valid.
-func (cc *CodexConnector) reconcileHostAuthLogins(ctx context.Context) {
-	if !cc.codexEnabled() || cc.br == nil || cc.br.DB == nil {
-		return
-	}
-
-	probe, err := cc.probeHostAuth(ctx)
-	if err != nil {
-		cc.br.Log.Debug().Err(err).Msg("Host-auth reconcile: failed to probe Codex auth")
-		return
-	}
-	if probe == nil {
-		return
-	}
-
-	userIDs, err := cc.getKnownUserIDs(ctx)
-	if err != nil {
-		cc.br.Log.Warn().Err(err).Msg("Host-auth reconcile: failed to list known users")
-		return
-	}
-	for _, mxid := range userIDs {
-		user, err := cc.br.GetUserByMXID(ctx, mxid)
-		if err != nil || user == nil {
-			continue
-		}
-		if err := cc.ensureHostAuthLoginForUserWithProbe(ctx, user, probe); err != nil {
-			cc.br.Log.Warn().
-				Err(err).
-				Stringer("mxid", mxid).
-				Msg("Host-auth reconcile: failed to ensure host-auth login")
-		}
-	}
-}
-
-func (cc *CodexConnector) getKnownUserIDs(ctx context.Context) ([]id.UserID, error) {
-	if cc == nil || cc.br == nil || cc.br.DB == nil {
-		return nil, nil
-	}
-	return cc.br.DB.UserLogin.GetAllUserIDsWithLogins(ctx)
-}
-
-func (cc *CodexConnector) probeHostAuth(ctx context.Context) (*hostAuthProbe, error) {
-	if cc == nil || !cc.codexEnabled() {
-		return nil, nil
-	}
-	cmd := cc.resolveCodexCommand()
-	if _, err := exec.LookPath(cmd); err != nil {
-		return nil, nil
-	}
-
-	launch, err := cc.resolveAppServerLaunch()
-	if err != nil {
-		return nil, err
-	}
-
-	probeCtx, probeCancel := context.WithTimeout(ctx, 30*time.Second)
-	defer probeCancel()
-	rpc, err := codexrpc.StartProcess(probeCtx, codexrpc.ProcessConfig{
-		Command:      cmd,
-		Args:         launch.Args,
-		Env:          nil, // inherit system env and use host/default Codex auth state
-		WebSocketURL: launch.WebSocketURL,
-	})
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rpc.Close() }()
-
-	ci := cc.Config.Codex.ClientInfo
-	initCtx, initCancel := context.WithTimeout(probeCtx, 20*time.Second)
-	_, err = rpc.Initialize(initCtx, codexrpc.ClientInfo{Name: ci.Name, Title: ci.Title, Version: ci.Version}, false)
-	initCancel()
-	if err != nil {
-		return nil, err
-	}
-
-	var resp struct {
-		Account            *codexAccountInfo `json:"account"`
-		RequiresOpenaiAuth bool              `json:"requiresOpenaiAuth"`
-	}
-	readCtx, readCancel := context.WithTimeout(probeCtx, 10*time.Second)
-	err = rpc.Call(readCtx, "account/read", map[string]any{"refreshToken": false}, &resp)
-	readCancel()
-	if err != nil {
-		return nil, err
-	}
-	if resp.Account == nil {
-		return nil, nil
-	}
-
-	probe := &hostAuthProbe{
-		AuthMode:     strings.TrimSpace(resp.Account.Type),
-		AccountEmail: strings.TrimSpace(resp.Account.Email),
-	}
-	return probe, nil
-}
-
-func (cc *CodexConnector) ensureHostAuthLoginForUser(ctx context.Context, user *bridgev2.User) error {
-	probe, err := cc.probeHostAuth(ctx)
-	if err != nil || probe == nil {
-		return err
-	}
-	return cc.ensureHostAuthLoginForUserWithProbe(ctx, user, probe)
-}
-
-func (cc *CodexConnector) ensureHostAuthLoginForUserWithProbe(ctx context.Context, user *bridgev2.User, probe *hostAuthProbe) error {
-	if cc == nil || cc.br == nil || user == nil || probe == nil {
-		return nil
-	}
-	loginID := cc.hostAuthLoginID(user.MXID)
-	if hasManagedCodexLogin(user.GetUserLogins(), loginID) {
-		cc.br.Log.Debug().
-			Stringer("mxid", user.MXID).
-			Msg("Host-auth reconcile: skipping host-auth login because a managed Codex login exists")
-		return nil
-	}
-	existing, err := cc.br.GetExistingUserLoginByID(ctx, loginID)
-	if err != nil {
-		return err
-	}
-	meta := &UserLoginMetadata{
-		Provider:          ProviderCodex,
-		CodexAuthSource:   CodexAuthSourceHost,
-		CodexAuthMode:     strings.TrimSpace(probe.AuthMode),
-		CodexAccountEmail: strings.TrimSpace(probe.AccountEmail),
-	}
-	login, err := user.NewLogin(ctx, &database.UserLogin{
-		ID:         loginID,
-		RemoteName: hostAuthRemoteName,
-		Metadata:   meta,
-	}, nil)
-	if err != nil {
-		return err
-	}
-	if client, ok := login.Client.(*CodexClient); ok && client != nil && !client.IsLoggedIn() {
-		bg := context.Background()
-		if cc.br.BackgroundCtx != nil {
-			bg = cc.br.BackgroundCtx
-		}
-		go login.Client.Connect(login.Log.WithContext(bg))
-	}
-	logger := cc.br.Log.With().
-		Stringer("mxid", user.MXID).
-		Str("login_id", string(login.ID)).
-		Logger()
-	if existing == nil {
-		logger.Info().Msg("Host-auth reconcile: created host-auth Codex login")
-	} else {
-		logger.Debug().Msg("Host-auth reconcile: updated host-auth Codex login metadata")
-	}
-	return nil
 }
 
 func (cc *CodexConnector) hostAuthLoginID(mxid id.UserID) networkid.UserLoginID {

@@ -75,6 +75,18 @@ func NewConnector() *OpenCodeConnector {
 		NewMessage:     func() *MessageMetadata { return &MessageMetadata{} },
 		NewLogin:       func() *UserLoginMetadata { return &UserLoginMetadata{} },
 		NewGhost:       func() *GhostMetadata { return &GhostMetadata{} },
+		NetworkCapabilities: func() *bridgev2.NetworkGeneralCapabilities {
+			return &bridgev2.NetworkGeneralCapabilities{
+				Provisioning: bridgev2.ProvisioningCapabilities{
+					ResolveIdentifier: bridgev2.ResolveIdentifierCapabilities{
+						CreateDM:       true,
+						LookupUsername: true,
+						ContactList:    true,
+						Search:         true,
+					},
+				},
+			}
+		},
 		AcceptLogin: func(login *bridgev2.UserLogin) (bool, string) {
 			return sdk.AcceptProviderLogin(login, ProviderOpenCode, "This bridge only supports OpenCode logins.", oc.openCodeEnabled, "OpenCode integration is disabled in the configuration.", func(login *bridgev2.UserLogin) string {
 				return loginMetadata(login).Provider

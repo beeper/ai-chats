@@ -22,20 +22,14 @@ func TestFillPortalBridgeInfoSetsAIRoomType(t *testing.T) {
 	}
 }
 
-func TestGetCapabilitiesExposeProvisioningSearchAndContacts(t *testing.T) {
+func TestGetCapabilitiesDoNotExposeSyntheticProvisioning(t *testing.T) {
 	conn := NewConnector()
 	caps := conn.GetCapabilities()
 	if caps == nil {
 		t.Fatal("expected capabilities")
 	}
-	if !caps.Provisioning.ResolveIdentifier.CreateDM {
-		t.Fatal("expected create DM provisioning to be enabled")
-	}
-	if !caps.Provisioning.ResolveIdentifier.ContactList {
-		t.Fatal("expected contact list provisioning to be enabled")
-	}
-	if !caps.Provisioning.ResolveIdentifier.Search {
-		t.Fatal("expected search provisioning to be enabled")
+	if caps.Provisioning.ResolveIdentifier.CreateDM || caps.Provisioning.ResolveIdentifier.ContactList || caps.Provisioning.ResolveIdentifier.Search {
+		t.Fatal("expected synthetic provisioning to be disabled")
 	}
 }
 

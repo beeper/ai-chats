@@ -95,7 +95,7 @@ func (c *ConnectorBase) GetDBMetaTypes() database.MetaTypes {
 
 func (c *ConnectorBase) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 	if c == nil || c.spec.Capabilities == nil {
-		return DefaultNetworkCapabilities()
+		return &bridgev2.NetworkGeneralCapabilities{}
 	}
 	return c.spec.Capabilities()
 }

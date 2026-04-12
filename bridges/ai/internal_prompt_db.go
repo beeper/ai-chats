@@ -66,7 +66,7 @@ func persistInternalPrompt(
 		timestamp = time.Now()
 	}
 	_, err = scope.db.Exec(ctx, `
-		INSERT INTO aichats_internal_messages (
+		INSERT INTO `+aiInternalMessagesTable+` (
 			bridge_id, login_id, room_id, event_id, source, canonical_turn_data, exclude_from_history, created_at_ms
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (bridge_id, login_id, room_id, event_id) DO UPDATE SET
@@ -101,7 +101,7 @@ func loadInternalPromptHistory(
 	}
 	rows, err := scope.db.Query(ctx, `
 		SELECT event_id, canonical_turn_data, exclude_from_history, created_at_ms
-		FROM aichats_internal_messages
+		FROM `+aiInternalMessagesTable+`
 		WHERE bridge_id=$1 AND login_id=$2 AND room_id=$3
 		ORDER BY created_at_ms DESC, event_id DESC
 		LIMIT $4
@@ -165,7 +165,7 @@ func hasInternalPromptHistory(ctx context.Context, client *AIClient, roomID id.R
 	var count int
 	err := scope.db.QueryRow(ctx, `
 		SELECT COUNT(*)
-		FROM aichats_internal_messages
+		FROM `+aiInternalMessagesTable+`
 		WHERE bridge_id=$1 AND login_id=$2 AND room_id=$3 AND exclude_from_history=0
 	`, scope.bridgeID, scope.loginID, roomID.String()).Scan(&count)
 	return err == nil && count > 0
@@ -177,7 +177,7 @@ func deleteInternalPromptsForRoom(ctx context.Context, client *AIClient, roomID 
 		return
 	}
 	bestEffortExec(ctx, scope.db, client.Log(),
-		`DELETE FROM aichats_internal_messages WHERE bridge_id=$1 AND login_id=$2 AND room_id=$3`,
+		`DELETE FROM `+aiInternalMessagesTable+` WHERE bridge_id=$1 AND login_id=$2 AND room_id=$3`,
 		scope.bridgeID, scope.loginID, roomID.String(),
 	)
 }

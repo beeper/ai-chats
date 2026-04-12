@@ -2,19 +2,9 @@ package sdk
 
 import "maunium.net/go/mautrix/bridgev2"
 
-// DefaultNetworkCapabilities returns the common baseline capabilities for bridge connectors.
+// DefaultNetworkCapabilities returns an empty capability set.
 func DefaultNetworkCapabilities() *bridgev2.NetworkGeneralCapabilities {
-	return &bridgev2.NetworkGeneralCapabilities{
-		DisappearingMessages: true,
-		Provisioning: bridgev2.ProvisioningCapabilities{
-			ResolveIdentifier: bridgev2.ResolveIdentifierCapabilities{
-				CreateDM:       true,
-				LookupUsername: true,
-				ContactList:    true,
-				Search:         true,
-			},
-		},
-	}
+	return &bridgev2.NetworkGeneralCapabilities{}
 }
 
 // DefaultBridgeInfoVersion returns the shared bridge info/capability schema version pair.

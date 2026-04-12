@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	openCodeAPI "github.com/beeper/agentremote/bridges/opencode/api"
 	"github.com/beeper/agentremote/sdk"
@@ -123,14 +125,13 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 	var (
 		instances  map[string]*OpenCodeInstance
 		remoteName string
-		instanceID string
 		err        error
 	)
 	switch ol.FlowID {
 	case FlowOpenCodeRemote:
-		instances, remoteName, instanceID, err = ol.buildRemoteInstances(input)
+		instances, remoteName, _, err = ol.buildRemoteInstances(input)
 	case FlowOpenCodeManaged:
-		instances, remoteName, instanceID, err = ol.buildManagedInstances(input)
+		instances, remoteName, _, err = ol.buildManagedInstances(input)
 	default:
 		err = bridgev2.ErrInvalidLoginFlowID
 	}
@@ -138,49 +139,29 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 		return nil, err
 	}
 
-	for _, existing := range ol.User.GetUserLogins() {
-		if existing == nil {
-			continue
-		}
-		existingMeta := loginMetadata(existing)
-		if existingMeta.Provider != ProviderOpenCode {
-			continue
-		}
-		if _, ok := existingMeta.OpenCodeInstances[instanceID]; !ok {
-			continue
-		}
-		existingMeta.Provider = ProviderOpenCode
-		existingMeta.OpenCodeInstances = instances
-		step, err := sdk.UpdateAndCompleteLogin(
-			ctx,
-			ol.BackgroundProcessContext(),
-			existing,
-			remoteName,
-			existingMeta,
-			openCodeLoginStepComplete,
-			ol.Connector.LoadUserLogin,
-		)
-		if err != nil {
-			return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to update existing login: %w", err), http.StatusInternalServerError, "OPENCODE", "UPDATE_LOGIN_FAILED")
-		}
-		return step, nil
-	}
+	loginID := sdk.NextUserLoginID(ol.User, "opencode")
+	instances = ol.scopeInstancesToLogin(loginID, instances)
 
-	_, step, err := sdk.CreateAndCompleteLogin(
-		ctx,
-		ol.BackgroundProcessContext(),
-		ol.User,
-		"opencode",
-		remoteName,
-		&UserLoginMetadata{
+	login, createErr := ol.User.NewLogin(ctx, &database.UserLogin{
+		ID:         loginID,
+		RemoteName: remoteName,
+		Metadata: &UserLoginMetadata{
 			Provider:          ProviderOpenCode,
 			OpenCodeInstances: instances,
 		},
+	}, nil)
+	if createErr != nil {
+		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to create login: %w", createErr), http.StatusInternalServerError, "OPENCODE", "CREATE_LOGIN_FAILED")
+	}
+	step, err := sdk.LoadConnectAndCompleteLogin(
+		ctx,
+		ol.BackgroundProcessContext(),
+		login,
 		openCodeLoginStepComplete,
 		ol.Connector.LoadUserLogin,
 	)
 	if err != nil {
-		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to create login: %w", err), http.StatusInternalServerError, "OPENCODE", "CREATE_LOGIN_FAILED")
+		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to complete login: %w", err), http.StatusInternalServerError, "OPENCODE", "CREATE_LOGIN_FAILED")
 	}
 	return step, nil
 }
@@ -217,7 +198,7 @@ func (ol *OpenCodeLogin) buildManagedInstances(input map[string]string) (map[str
 	if err != nil {
 		return nil, "", "", err
 	}
-	instanceID := OpenCodeManagedLauncherID(string(ol.User.MXID))
+	instanceID := OpenCodeManagedLauncherID(binaryPath, defaultPath)
 	return map[string]*OpenCodeInstance{
 		instanceID: {
 			ID:               instanceID,
@@ -226,6 +207,26 @@ func (ol *OpenCodeLogin) buildManagedInstances(input map[string]string) (map[str
 			DefaultDirectory: defaultPath,
 		},
 	}, openCodeManagedRemoteName(defaultPath), instanceID, nil
+}
+
+func (ol *OpenCodeLogin) scopeInstancesToLogin(loginID networkid.UserLoginID, instances map[string]*OpenCodeInstance) map[string]*OpenCodeInstance {
+	if len(instances) == 0 {
+		return nil
+	}
+	scoped := make(map[string]*OpenCodeInstance, len(instances))
+	for originalID, inst := range instances {
+		if inst == nil {
+			continue
+		}
+		copyInst := *inst
+		newID := originalID
+		if copyInst.Mode == OpenCodeModeManagedLauncher {
+			newID = OpenCodeManagedLauncherID(string(loginID), copyInst.BinaryPath, copyInst.DefaultDirectory)
+		}
+		copyInst.ID = newID
+		scoped[newID] = &copyInst
+	}
+	return scoped
 }
 
 func openCodeRemoteName(baseURL, username string) string {

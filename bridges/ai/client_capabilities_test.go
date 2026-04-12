@@ -111,7 +111,7 @@ func TestGetCapabilities_MessageToolDisabledDisablesReplyEditReaction(t *testing
 }
 
 func TestConnectorCapabilitiesEnableContactListProvisioning(t *testing.T) {
-	conn := &OpenAIConnector{}
+	conn := NewAIConnector()
 	caps := conn.GetCapabilities()
 	if caps == nil {
 		t.Fatal("expected capabilities")

@@ -2,6 +2,7 @@ package opencode
 
 import (
 	"context"
+	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
 )
@@ -16,8 +17,12 @@ func (b *Bridge) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2.Matri
 		// Allow deletion for non-OpenCode rooms without remote cleanup.
 		return nil
 	}
+	sessionID := strings.TrimSpace(meta.SessionID)
+	if meta.AwaitingPath || sessionID == "" || strings.HasPrefix(sessionID, "setup-") {
+		return nil
+	}
 	if b.manager == nil {
 		return nil
 	}
-	return b.manager.DeleteSession(ctx, meta.InstanceID, meta.SessionID)
+	return b.manager.DeleteSession(ctx, meta.InstanceID, sessionID)
 }

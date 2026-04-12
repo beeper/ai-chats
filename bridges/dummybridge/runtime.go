@@ -2,6 +2,7 @@ package dummybridge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"strconv"
@@ -264,11 +265,10 @@ func (dc *DummyBridgeConnector) onMessage(session *dummySession, conv *sdk.Conve
 	if cmd.Name == "help" {
 		return conv.SendNotice(turn.Context(), helpText())
 	}
-	dummy, err := requireSession(session)
-	if err != nil {
-		return err
+	if session == nil {
+		return errors.New("dummybridge session is unavailable")
 	}
-	log := dummy.log.With().Str("command", cmd.Name).Str("turn_id", turn.ID()).Logger()
+	log := session.log.With().Str("command", cmd.Name).Str("turn_id", turn.ID()).Logger()
 	runner := demoRunner{runtime: defaultDemoRuntime()}
 	started := runner.runtime.now()
 	var runErr error

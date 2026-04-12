@@ -3,6 +3,7 @@ package opencode
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -161,7 +162,7 @@ func (oc *OpenCodeClient) DownloadAndEncodeMedia(ctx context.Context, mediaURL s
 }
 
 func (oc *OpenCodeClient) SetRoomName(_ context.Context, _ *bridgev2.Portal, _ string) error {
-	return nil
+	return fmt.Errorf("OpenCode does not support remote room renames")
 }
 
 func (oc *OpenCodeClient) SenderForOpenCode(instanceID string, fromMe bool) bridgev2.EventSender {

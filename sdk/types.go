@@ -266,9 +266,9 @@ type Config[SessionT SessionValue, ConfigDataT ConfigValue] struct {
 	RoomFeatures *RoomFeatures // nil = AI agent defaults
 
 	// Login — use bridgev2 types directly.
-	LoginFlows    []bridgev2.LoginFlow // nil = single auto-login
+	LoginFlows    []bridgev2.LoginFlow
 	GetLoginFlows func() []bridgev2.LoginFlow
-	CreateLogin   func(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) // nil = auto-login
+	CreateLogin   func(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error)
 	AcceptLogin   func(login *bridgev2.UserLogin) (bool, string)
 
 	// Connector lifecycle and overrides.
@@ -296,7 +296,7 @@ type Config[SessionT SessionValue, ConfigDataT ConfigValue] struct {
 	Port           int                       // default: 29400
 	DBName         string                    // default: "<Name>.db"
 	ConfigPath     string                    // default: auto-discover
-	DBMeta         func() database.MetaTypes // nil = default
+	DBMeta         func() database.MetaTypes
 	ExampleConfig  string                    // YAML
 	ConfigData     ConfigDataT               // config struct pointer
 	ConfigUpgrader configupgrade.Upgrader

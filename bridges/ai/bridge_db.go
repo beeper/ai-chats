@@ -8,6 +8,14 @@ import (
 	"github.com/beeper/agentremote/pkg/aidb"
 )
 
+const (
+	aiSessionsTable          = "aichats_sessions"
+	aiSystemEventsTable      = "aichats_system_events"
+	aiInternalMessagesTable  = "aichats_internal_messages"
+	aiLoginStateTable        = "aichats_login_state"
+	aiToolApprovalRulesTable = "aichats_tool_approval_rules"
+)
+
 func newBridgeChildDB(parent *dbutil.Database, log zerolog.Logger) *dbutil.Database {
 	if parent == nil {
 		return nil

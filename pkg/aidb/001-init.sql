@@ -220,7 +220,7 @@ CREATE TABLE IF NOT EXISTS aichats_tool_approval_rules (
 CREATE INDEX IF NOT EXISTS idx_aichats_tool_approval_rules_lookup
   ON aichats_tool_approval_rules(bridge_id, login_id, tool_kind, tool_name);
 
-CREATE TABLE IF NOT EXISTS agentremote_sessions (
+CREATE TABLE IF NOT EXISTS aichats_sessions (
   bridge_id TEXT NOT NULL,
   login_id TEXT NOT NULL,
   store_agent_id TEXT NOT NULL,
@@ -240,30 +240,8 @@ CREATE TABLE IF NOT EXISTS agentremote_sessions (
   PRIMARY KEY (bridge_id, login_id, store_agent_id, session_key)
 );
 
-CREATE INDEX IF NOT EXISTS idx_agentremote_sessions_lookup
-  ON agentremote_sessions(bridge_id, login_id, store_agent_id);
+CREATE INDEX IF NOT EXISTS idx_aichats_sessions_lookup
+  ON aichats_sessions(bridge_id, login_id, store_agent_id);
 
-CREATE INDEX IF NOT EXISTS idx_agentremote_sessions_updated
-  ON agentremote_sessions(bridge_id, login_id, store_agent_id, updated_at_ms);
-
-CREATE TABLE IF NOT EXISTS agentremote_approvals (
-  bridge_id TEXT NOT NULL,
-  login_id TEXT NOT NULL,
-  agent_id TEXT NOT NULL,
-  approval_id TEXT NOT NULL,
-  kind TEXT NOT NULL DEFAULT '',
-  room_id TEXT NOT NULL DEFAULT '',
-  turn_id TEXT NOT NULL DEFAULT '',
-  tool_call_id TEXT NOT NULL DEFAULT '',
-  tool_name TEXT NOT NULL DEFAULT '',
-  request_json TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL DEFAULT '',
-  reason TEXT NOT NULL DEFAULT '',
-  expires_at_ms INTEGER NOT NULL DEFAULT 0,
-  created_at_ms INTEGER NOT NULL DEFAULT 0,
-  updated_at_ms INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (bridge_id, login_id, agent_id, approval_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_agentremote_approvals_lookup
-  ON agentremote_approvals(bridge_id, login_id, agent_id, status, expires_at_ms);
+CREATE INDEX IF NOT EXISTS idx_aichats_sessions_updated
+  ON aichats_sessions(bridge_id, login_id, store_agent_id, updated_at_ms);
