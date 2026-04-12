@@ -189,26 +189,14 @@ func openClawPortalStateFromMetadata(metadata any) *openClawPortalState {
 }
 
 func openClawPortalStateIsEmpty(state *openClawPortalState) bool {
-	return state == nil ||
-		(state.OpenClawGatewayID == "" &&
-			state.OpenClawSessionID == "" &&
-			state.OpenClawSessionKey == "" &&
-			state.OpenClawSpawnedBy == "" &&
-			state.OpenClawDMTargetAgentID == "" &&
-			state.OpenClawDMTargetAgentName == "" &&
-			!state.OpenClawDMCreatedFromContact &&
-			state.OpenClawSessionKind == "" &&
-			state.OpenClawSessionLabel == "" &&
-			state.OpenClawDisplayName == "" &&
-			state.OpenClawDerivedTitle == "" &&
-			state.OpenClawLastMessagePreview == "" &&
-			state.OpenClawChannel == "" &&
-			state.OpenClawSubject == "" &&
-			state.OpenClawGroupChannel == "" &&
-			state.OpenClawSpace == "" &&
-			state.OpenClawChatType == "" &&
-			state.OpenClawOrigin == "" &&
-			state.OpenClawAgentID == "")
+	if state == nil {
+		return true
+	}
+	data, err := json.Marshal(state)
+	if err != nil {
+		return true
+	}
+	return string(data) == "{}"
 }
 
 type GhostMetadata struct {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/rs/zerolog"
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -145,6 +146,7 @@ func listCodexPortalStateRecords(ctx context.Context, login *bridgev2.UserLogin)
 		state := &codexPortalState{}
 		if strings.TrimSpace(stateRaw) != "" {
 			if err := json.Unmarshal([]byte(stateRaw), state); err != nil {
+				zerolog.Ctx(ctx).Warn().Err(err).Str("portal_key", portalKeyRaw).Msg("skipping malformed codex portal state")
 				continue
 			}
 		}

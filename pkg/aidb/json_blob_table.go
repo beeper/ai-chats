@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"go.mau.fi/util/dbutil"
@@ -19,6 +20,9 @@ import (
 type JSONBlobTable struct {
 	TableName string // e.g. "aichats_portal_state"
 	KeyColumn string // third key column, e.g. "portal_id" or "portal_key"
+
+	validateOnce sync.Once
+	validateErr  error
 }
 
 var jsonBlobTableIdent = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -27,13 +31,16 @@ func (t *JSONBlobTable) validateIdentifiers() error {
 	if t == nil {
 		return fmt.Errorf("json blob table is nil")
 	}
-	if !jsonBlobTableIdent.MatchString(t.TableName) {
-		return fmt.Errorf("invalid table name %q", t.TableName)
-	}
-	if !jsonBlobTableIdent.MatchString(t.KeyColumn) {
-		return fmt.Errorf("invalid key column %q", t.KeyColumn)
-	}
-	return nil
+	t.validateOnce.Do(func() {
+		if !jsonBlobTableIdent.MatchString(t.TableName) {
+			t.validateErr = fmt.Errorf("invalid table name %q", t.TableName)
+			return
+		}
+		if !jsonBlobTableIdent.MatchString(t.KeyColumn) {
+			t.validateErr = fmt.Errorf("invalid key column %q", t.KeyColumn)
+		}
+	})
+	return t.validateErr
 }
 
 // Ensure creates the table if it does not already exist.

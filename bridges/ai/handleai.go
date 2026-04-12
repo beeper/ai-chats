@@ -123,10 +123,11 @@ func bridgeStateForError(err error) (status.BridgeState, bool, bool) {
 	return status.BridgeState{}, false, false
 }
 
+const healthWarningThreshold = 5
+
 // recordProviderError increments the consecutive error counter and escalates to a
 // bridge state warning after repeated failures.
 func (oc *AIClient) recordProviderError(ctx context.Context) {
-	const healthWarningThreshold = 5
 	var nextErrors int
 	var crossedThreshold bool
 	_ = oc.updateLoginState(ctx, func(state *loginRuntimeState) bool {
@@ -147,7 +148,6 @@ func (oc *AIClient) recordProviderError(ctx context.Context) {
 }
 
 func (oc *AIClient) recordProviderSuccess(ctx context.Context) {
-	const healthWarningThreshold = 5
 	var recovered bool
 	_ = oc.updateLoginState(ctx, func(state *loginRuntimeState) bool {
 		if state.ConsecutiveErrors == 0 {

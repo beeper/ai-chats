@@ -2413,7 +2413,7 @@ func (m *openClawManager) waitForRunCompletion(ctx context.Context, portal *brid
 	}
 	recoveredText := m.recoverRunText(ctx, state.OpenClawSessionKey, turnID)
 	if recoveredText == "" {
-		recoveredText = m.recoverRunPreview(ctx, portal)
+		recoveredText = m.recoverRunPreview(ctx, portal, state)
 	}
 	if recoveredText != "" {
 		if delta := m.client.computeVisibleDelta(turnID, recoveredText); delta != "" {
@@ -2485,12 +2485,8 @@ func (m *openClawManager) recoverRunText(ctx context.Context, sessionKey, turnID
 	return ""
 }
 
-func (m *openClawManager) recoverRunPreview(ctx context.Context, portal *bridgev2.Portal) string {
-	if m == nil || m.client == nil || portal == nil {
-		return ""
-	}
-	state, err := loadOpenClawPortalState(ctx, portal, m.client.UserLogin)
-	if err != nil || state == nil {
+func (m *openClawManager) recoverRunPreview(ctx context.Context, portal *bridgev2.Portal, state *openClawPortalState) string {
+	if m == nil || m.client == nil || portal == nil || state == nil {
 		return ""
 	}
 	snippet := strings.TrimSpace(m.client.previewSessionSnippet(ctx, state.OpenClawSessionKey))
@@ -2499,9 +2495,7 @@ func (m *openClawManager) recoverRunPreview(ctx context.Context, portal *bridgev
 	}
 	state.OpenClawPreviewSnippet = snippet
 	state.OpenClawLastPreviewAt = time.Now().UnixMilli()
-	if portal != nil {
-		_ = saveOpenClawPortalState(ctx, portal, m.client.UserLogin, state)
-	}
+	_ = saveOpenClawPortalState(ctx, portal, m.client.UserLogin, state)
 	return snippet
 }
 
