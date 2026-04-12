@@ -543,10 +543,6 @@ func (b *BossStoreAdapter) CreateRoom(ctx context.Context, room tools.RoomData) 
 
 	// Apply custom room name if provided.
 	pm := portalMeta(portal)
-	originalName := portal.Name
-	originalNameSet := portal.NameSet
-	originalTitle := pm.Title
-	originalTitleGenerated := pm.TitleGenerated
 
 	if room.Name != "" {
 		pm.Title = room.Name
@@ -564,15 +560,6 @@ func (b *BossStoreAdapter) CreateRoom(ctx context.Context, room tools.RoomData) 
 		return "", fmt.Errorf("failed to create Matrix room: %w", err)
 	}
 
-	if room.Name != "" {
-		if err := b.client.setRoomName(ctx, portal, room.Name, false); err != nil {
-			b.client.log.Warn().Err(err).Msg("Failed to set Matrix room name")
-			portal.Name = originalName
-			portal.NameSet = originalNameSet
-			pm.Title = originalTitle
-			pm.TitleGenerated = originalTitleGenerated
-		}
-	}
 	b.client.savePortalQuiet(ctx, portal, "room overrides")
 
 	return string(portal.PortalKey.ID), nil
@@ -604,12 +591,6 @@ func (b *BossStoreAdapter) ModifyRoom(ctx context.Context, roomID string, update
 		modelID := b.client.effectiveModel(pm)
 		agentName := b.client.resolveAgentDisplayName(ctx, agent)
 		b.client.ensureAgentGhostDisplayName(ctx, agent.ID, modelID, agentName)
-	}
-
-	if updates.Name != "" && portal.MXID != "" {
-		if err := b.client.setRoomName(ctx, portal, updates.Name, true); err != nil {
-			b.client.log.Warn().Err(err).Msg("Failed to set Matrix room name")
-		}
 	}
 
 	b.client.savePortalQuiet(ctx, portal, "room update")

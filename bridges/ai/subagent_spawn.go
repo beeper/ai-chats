@@ -322,11 +322,6 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 			"error":  err.Error(),
 		}), nil
 	}
-	if roomName != "" {
-		if err := oc.setRoomName(ctx, childPortal, roomName, false); err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to set subagent room name")
-		}
-	}
 
 	eventID := sdk.NewEventID("subagent")
 	promptContext, err := oc.buildCurrentTurnWithLinks(ctx, childPortal, childMeta, task, nil, eventID)

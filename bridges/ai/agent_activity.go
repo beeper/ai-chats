@@ -84,11 +84,19 @@ func (oc *AIClient) defaultChatPortal() *bridgev2.Portal {
 		return nil
 	}
 	ctx := oc.backgroundContext(context.Background())
-	if portal, err := oc.UserLogin.Bridge.GetExistingPortalByKey(ctx, defaultChatPortalKey(oc.UserLogin.ID)); err == nil && portal != nil && isDefaultChatCandidate(portal) {
+	if portal, err := oc.UserLogin.Bridge.GetExistingPortalByKey(ctx, defaultChatPortalKey(oc.UserLogin.ID)); err == nil && portal != nil {
 		return portal
 	}
 	if portals, err := oc.listAllChatPortals(ctx); err == nil {
-		return chooseDefaultChatPortal(portals)
+		for _, portal := range portals {
+			if portal == nil {
+				continue
+			}
+			if shouldExcludeModelVisiblePortal(portalMeta(portal)) {
+				continue
+			}
+			return portal
+		}
 	}
 	return nil
 }

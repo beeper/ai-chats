@@ -34,15 +34,6 @@ func (h BaseReactionHandler) HandleMatrixReaction(ctx context.Context, msg *brid
 	if login != nil && IsMatrixBotUser(ctx, login.Bridge, msg.Event.Sender) {
 		return &database.Reaction{}, nil
 	}
-	// Best-effort persistence guard for reaction.sender_id -> ghost.id FK.
-	if err := EnsureSyntheticReactionSenderGhost(ctx, login, msg.Event.Sender); err != nil {
-		logger := loggerForLogin(ctx, login)
-		logEvt := logger.Warn().Err(err).Stringer("sender_mxid", msg.Event.Sender)
-		if login != nil {
-			logEvt = logEvt.Str("user_login_id", string(login.ID))
-		}
-		logEvt.Msg("Failed to ensure synthetic Matrix reaction sender ghost")
-	}
 	if handler := h.Target.GetApprovalHandler(); handler != nil {
 		handler.HandleReaction(ctx, msg)
 	}

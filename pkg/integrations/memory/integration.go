@@ -162,13 +162,12 @@ func (i *Integration) StopForLogin(bridgeID, loginID string) {
 }
 
 func (i *Integration) PurgeForLogin(ctx context.Context, scope iruntime.LoginScope) error {
-	db := i.resolveBridgeDB()
+	db := i.resolveStateDB()
 	if db == nil {
 		return nil
 	}
 	StopManagersForLogin(scope.BridgeID, scope.LoginID)
-	PurgeTablesBestEffort(ctx, db, scope.BridgeID, scope.LoginID)
-	return nil
+	return PurgeTables(ctx, db, scope.BridgeID, scope.LoginID)
 }
 
 func (i *Integration) managerForScope(scope iruntime.ToolScope) (execManager, string) {
@@ -453,8 +452,8 @@ func (i *Integration) agentIDFromEventMeta(meta iruntime.Meta) string {
 	return i.host.ResolveAgentID(rawAgentID, i.host.DefaultAgentID())
 }
 
-func (i *Integration) resolveBridgeDB() *dbutil.Database {
-	return i.host.BridgeDB()
+func (i *Integration) resolveStateDB() *dbutil.Database {
+	return i.host.StateDB()
 }
 
 // splitQuotedArgs parses a raw argument string into tokens, respecting quoted segments.

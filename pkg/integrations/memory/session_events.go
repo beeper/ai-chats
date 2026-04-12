@@ -57,12 +57,11 @@ func (m *MemorySearchManager) resetSessionState(ctx context.Context, sessionKey 
 	}
 	_, err := m.db.Exec(ctx,
 		`INSERT INTO aichats_memory_session_state
-           (bridge_id, login_id, agent_id, session_key, last_rowid, pending_bytes, pending_messages, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           (bridge_id, login_id, agent_id, session_key, content_hash, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (bridge_id, login_id, agent_id, session_key)
-         DO UPDATE SET last_rowid=excluded.last_rowid, pending_bytes=excluded.pending_bytes,
-           pending_messages=excluded.pending_messages, updated_at=excluded.updated_at`,
-		m.baseArgs(sessionKey, 0, 0, 0, time.Now().UnixMilli())...,
+         DO UPDATE SET content_hash=excluded.content_hash, updated_at=excluded.updated_at`,
+		m.baseArgs(sessionKey, "", time.Now().UnixMilli())...,
 	)
 	return err
 }

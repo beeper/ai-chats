@@ -449,9 +449,14 @@ func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Por
 			return
 		}
 
-		if err := oc.setRoomName(bgCtx, portal, title, true); err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to set room name")
+		meta := portalMeta(portal)
+		if meta != nil {
+			meta.Title = title
+			meta.TitleGenerated = true
 		}
+		portal.Name = title
+		portal.NameSet = true
+		oc.savePortalQuiet(bgCtx, portal, "room title")
 	}()
 }
 
@@ -569,43 +574,6 @@ func extractTitleFromResponse(resp *responses.Response) string {
 		return reasoning.String()
 	}
 	return ""
-}
-
-func (oc *AIClient) setRoomName(ctx context.Context, portal *bridgev2.Portal, name string, save bool) error {
-	if portal.MXID == "" {
-		return errors.New("portal has no Matrix room ID")
-	}
-
-	if err := sdk.SetRoomName(ctx, oc.UserLogin, portal, bridgev2.EventSender{}, name); err != nil {
-		return fmt.Errorf("failed to set room name: %w", err)
-	}
-
-	// Update portal metadata
-	meta := portalMeta(portal)
-	meta.Title = name
-	meta.TitleGenerated = true
-	if save {
-		oc.savePortalQuiet(ctx, portal, "room name")
-	}
-
-	oc.loggerForContext(ctx).Debug().Str("name", name).Msg("Set Matrix room name")
-	return nil
-}
-
-func (oc *AIClient) setRoomTopic(ctx context.Context, portal *bridgev2.Portal, topic string) error {
-	if portal.MXID == "" {
-		return errors.New("portal has no Matrix room ID")
-	}
-
-	if err := sdk.SetRoomTopic(ctx, oc.UserLogin, portal, bridgev2.EventSender{}, topic); err != nil {
-		return fmt.Errorf("failed to set room topic: %w", err)
-	}
-
-	portal.Topic = topic
-	oc.savePortalQuiet(ctx, portal, "room topic")
-
-	oc.loggerForContext(ctx).Debug().Str("topic", topic).Msg("Set Matrix room topic")
-	return nil
 }
 
 func (oc *AIClient) getModelContextWindow(meta *PortalMetadata) int {

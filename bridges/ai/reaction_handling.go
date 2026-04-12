@@ -24,9 +24,6 @@ func (oc *AIClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Matr
 	if sdk.IsMatrixBotUser(ctx, oc.UserLogin.Bridge, msg.Event.Sender) {
 		return &database.Reaction{}, nil
 	}
-	if err := sdk.EnsureSyntheticReactionSenderGhost(ctx, oc.UserLogin, msg.Event.Sender); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure synthetic Matrix reaction sender ghost")
-	}
 
 	rc := sdk.ExtractReactionContext(msg)
 	if oc.approvalFlow.HandleReaction(ctx, msg) {

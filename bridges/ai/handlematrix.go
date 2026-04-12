@@ -436,10 +436,6 @@ func (oc *AIClient) regenerateFromEdit(
 		if assistantResponse.MXID != "" {
 			_ = oc.redactEventViaPortal(ctx, portal, assistantResponse.MXID)
 		}
-		// Clean up database record to prevent orphaned messages
-		if err := oc.UserLogin.Bridge.DB.Message.Delete(ctx, assistantResponse.RowID); err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).Str("msg_id", string(assistantResponse.ID)).Msg("Failed to delete redacted message from database")
-		}
 		oc.notifySessionMutation(ctx, portal, meta, true)
 	}
 

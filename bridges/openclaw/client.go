@@ -306,11 +306,7 @@ func (oc *OpenClawClient) GetCapabilities(ctx context.Context, portal *bridgev2.
 	}
 	oc.enrichPortalState(ctx, state)
 	profile := oc.openClawCapabilityProfile(ctx, state)
-	caps := openClawCapabilitiesFromProfile(profile)
-	if !profile.MediaKnown {
-		return caps
-	}
-	return caps
+	return openClawCapabilitiesFromProfile(profile)
 }
 
 func (oc *OpenClawClient) capabilityIDForPortalState(ctx context.Context, state *openClawPortalState) string {
@@ -405,10 +401,6 @@ func (oc *OpenClawClient) openClawCapabilityProfile(ctx context.Context, state *
 		}
 	}
 	return profile
-}
-
-func (oc *OpenClawClient) enrichPortalMetadata(ctx context.Context, state *openClawPortalState) {
-	oc.enrichPortalState(ctx, state)
 }
 
 func openClawCapabilityID(profile openClawCapabilityProfile) string {

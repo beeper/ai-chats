@@ -17,8 +17,10 @@ type Meta interface {
 
 // MessageSummary is a generic message summary.
 type MessageSummary struct {
-	Role string
-	Body string
+	Role               string
+	Body               string
+	AgentID            string
+	ExcludeFromHistory bool
 }
 
 // AssistantMessageInfo is a generic assistant response.

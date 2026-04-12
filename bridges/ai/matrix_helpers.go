@@ -12,18 +12,17 @@ import (
 )
 
 func (oc *AIClient) matrixRoomDisplayName(ctx context.Context, portal *bridgev2.Portal) string {
-	if portal == nil || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.Matrix == nil {
+	_ = ctx
+	if portal == nil || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
 		if portal != nil {
 			return portal.MXID.String()
 		}
 		return ""
 	}
-	if info, err := getMatrixRoomInfo(ctx, &BridgeToolContext{Client: oc, Portal: portal}); err == nil && info != nil {
-		if info.Name != "" {
-			return info.Name
-		}
+	if name := portalRoomName(portal); name != "" {
+		return name
 	}
-	name := portalRoomName(portal)
+	name := strings.TrimSpace(portal.Name)
 	if name != "" {
 		return name
 	}

@@ -11,6 +11,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
 
@@ -38,28 +39,32 @@ func setupApprovalReactionTestLogin(t *testing.T) *bridgev2.UserLogin {
 	}
 }
 
-func TestEnsureSyntheticReactionSenderGhost_CreatesGhostRow(t *testing.T) {
-	login := setupApprovalReactionTestLogin(t)
-	ctx := context.Background()
-	userMXID := id.UserID("@owner:example.com")
-	senderID := MatrixSenderID(userMXID)
-
-	if err := EnsureSyntheticReactionSenderGhost(ctx, login, userMXID); err != nil {
-		t.Fatalf("EnsureSyntheticReactionSenderGhost failed: %v", err)
+func TestPreHandleApprovalReaction_LeavesSenderUnassigned(t *testing.T) {
+	msg := &bridgev2.MatrixReaction{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.ReactionEventContent]{
+			Event: &event.Event{
+				ID:     id.EventID("$reaction"),
+				Sender: id.UserID("@owner:example.com"),
+			},
+			Content: &event.ReactionEventContent{
+				RelatesTo: event.RelatesTo{
+					Type:    event.RelAnnotation,
+					EventID: id.EventID("$target"),
+					Key:     ApprovalReactionKeyAllowOnce,
+				},
+			},
+		},
 	}
-	if err := EnsureSyntheticReactionSenderGhost(ctx, login, userMXID); err != nil {
-		t.Fatalf("EnsureSyntheticReactionSenderGhost should be idempotent: %v", err)
-	}
 
-	ghost, err := login.Bridge.DB.Ghost.GetByID(ctx, senderID)
+	preResp, err := PreHandleApprovalReaction(msg)
 	if err != nil {
-		t.Fatalf("query ghost: %v", err)
+		t.Fatalf("PreHandleApprovalReaction failed: %v", err)
 	}
-	if ghost == nil {
-		t.Fatalf("expected synthetic ghost row for %q", senderID)
+	if preResp.SenderID != "" {
+		t.Fatalf("expected empty sender id, got %q", preResp.SenderID)
 	}
-	if ghost.ID != senderID {
-		t.Fatalf("expected ghost id %q, got %q", senderID, ghost.ID)
+	if preResp.Emoji != ApprovalReactionKeyAllowOnce {
+		t.Fatalf("expected normalized emoji %q, got %q", ApprovalReactionKeyAllowOnce, preResp.Emoji)
 	}
 }
 

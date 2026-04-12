@@ -19,7 +19,7 @@ func (oc *AIClient) builtinToolApprovalRequirement(toolName string, args map[str
 		action = normalizeMessageAction(maputil.StringArg(args, "action"))
 		switch action {
 		// Read-only / non-destructive actions (do not require approval).
-		case "reactions", "search", "read", "member-info", "channel-info", "list-pins",
+		case "search",
 			// Desktop API read-only surface (agentremote message tool actions).
 			"desktop-list-chats", "desktop-search-chats", "desktop-search-messages", "desktop-download-asset":
 			return false, action

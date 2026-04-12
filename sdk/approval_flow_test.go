@@ -162,7 +162,7 @@ func TestIsApprovalPlaceholderReaction_ExcludesUserReaction(t *testing.T) {
 	}
 }
 
-func TestApprovalFlow_ReactionRedactionSenderUsesMatrixUser(t *testing.T) {
+func TestApprovalFlow_ReactionRedactionSenderUsesEmptySenderWithoutPortal(t *testing.T) {
 	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
 		Login: func() *bridgev2.UserLogin {
 			return &bridgev2.UserLogin{
@@ -179,11 +179,11 @@ func TestApprovalFlow_ReactionRedactionSenderUsesMatrixUser(t *testing.T) {
 			Event: &event.Event{Sender: id.UserID("@owner:example.com")},
 		},
 	})
-	if sender.Sender != MatrixSenderID(id.UserID("@owner:example.com")) {
-		t.Fatalf("expected matrix sender, got %q", sender.Sender)
+	if sender.Sender != "" {
+		t.Fatalf("expected empty sender, got %q", sender.Sender)
 	}
-	if sender.SenderLogin != networkid.UserLoginID("login") {
-		t.Fatalf("expected sender login to be preserved, got %q", sender.SenderLogin)
+	if sender.SenderLogin != "" {
+		t.Fatalf("expected sender login to be empty, got %q", sender.SenderLogin)
 	}
 }
 
@@ -755,8 +755,8 @@ func TestApprovalFlow_HandleReaction_WrongTargetUniqueApprovalMirrorsDecision(t 
 		redacted = true
 	}
 	flow.testMirrorRemoteDecisionReaction = func(_ context.Context, _ *bridgev2.UserLogin, _ *bridgev2.Portal, sender bridgev2.EventSender, prompt ApprovalPromptRegistration, reactionKey string) {
-		if sender.Sender != MatrixSenderID(owner) {
-			t.Errorf("expected mirrored sender to be owner, got %q", sender.Sender)
+		if sender.Sender != "" {
+			t.Errorf("expected mirrored sender to be empty, got %q", sender.Sender)
 		}
 		if prompt.PromptMessageID != networkid.MessageID("msg-1") {
 			t.Errorf("expected prompt message id msg-1, got %q", prompt.PromptMessageID)
@@ -977,8 +977,8 @@ func TestApprovalFlow_ResolveExternalMirrorsRemoteDecision(t *testing.T) {
 
 	mirrorCh := make(chan string, 1)
 	flow.testMirrorRemoteDecisionReaction = func(_ context.Context, _ *bridgev2.UserLogin, _ *bridgev2.Portal, sender bridgev2.EventSender, prompt ApprovalPromptRegistration, reactionKey string) {
-		if sender.Sender != MatrixSenderID(owner) {
-			t.Errorf("expected mirrored reaction sender to be owner, got %q", sender.Sender)
+		if sender.Sender != "" {
+			t.Errorf("expected mirrored reaction sender to be empty, got %q", sender.Sender)
 		}
 		if prompt.PromptMessageID == "" {
 			t.Errorf("expected prompt message id to be set")

@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"go.mau.fi/util/variationselector"
@@ -59,6 +60,43 @@ func (oc *AIClient) sendReaction(ctx context.Context, portal *bridgev2.Portal, t
 		nil,
 		nil,
 	))
+}
+
+func (oc *AIClient) removeReaction(ctx context.Context, portal *bridgev2.Portal, targetEventID id.EventID, emoji string) error {
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.ID == "" || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil || portal == nil || portal.MXID == "" || targetEventID == "" {
+		return nil
+	}
+	emoji = variationselector.Remove(emoji)
+	if emoji == "" {
+		return errors.New("action=react with remove requires an explicit emoji")
+	}
+
+	targetPart, err := oc.UserLogin.Bridge.DB.Message.GetPartByMXID(ctx, targetEventID)
+	if err != nil {
+		return err
+	}
+	if targetPart == nil {
+		return errors.New("target message not found")
+	}
+	if targetPart.Room != portal.PortalKey {
+		return errors.New("reaction target message is not in the current portal")
+	}
+
+	senderID := oc.reactionSenderID(ctx, portal)
+	if senderID == "" {
+		return errors.New("failed to resolve reaction sender ID")
+	}
+
+	oc.UserLogin.QueueRemoteEvent(sdk.BuildReactionRemoveEvent(
+		portal.PortalKey,
+		bridgev2.EventSender{Sender: senderID, SenderLogin: oc.UserLogin.ID},
+		targetPart.ID,
+		networkid.EmojiID(emoji),
+		time.Now(),
+		0,
+		"ai_reaction_remove_target",
+	))
+	return nil
 }
 
 func (oc *AIClient) reactionSenderID(ctx context.Context, portal *bridgev2.Portal) networkid.UserID {

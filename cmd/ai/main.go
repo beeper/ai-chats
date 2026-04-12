@@ -1,8 +1,6 @@
 package main
 
 import (
-	"maunium.net/go/mautrix/bridgev2"
-
 	aibridge "github.com/beeper/agentremote/bridges/ai"
 	"github.com/beeper/agentremote/cmd/internal/bridgeentry"
 )
@@ -16,6 +14,5 @@ var (
 )
 
 func main() {
-	bridgev2.PortalEventBuffer = 0
 	bridgeentry.Run(bridgeentry.AI, aibridge.NewAIConnector(), Tag, Commit, BuildTime)
 }

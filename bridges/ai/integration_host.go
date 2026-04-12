@@ -225,9 +225,50 @@ func (h *runtimeIntegrationHost) RecentMessages(ctx context.Context, portal *bri
 		if text == "" {
 			continue
 		}
-		out = append(out, integrationruntime.MessageSummary{Role: role, Body: text})
+		out = append(out, integrationruntime.MessageSummary{
+			Role:               role,
+			Body:               text,
+			AgentID:            strings.TrimSpace(meta.AgentID),
+			ExcludeFromHistory: meta.ExcludeFromHistory,
+		})
 	}
 	return out
+}
+
+func (h *runtimeIntegrationHost) SessionTranscript(ctx context.Context, portalKey networkid.PortalKey) ([]integrationruntime.MessageSummary, error) {
+	if h == nil || h.client == nil || h.client.UserLogin == nil || h.client.UserLogin.Bridge == nil || h.client.UserLogin.Bridge.DB == nil {
+		return nil, nil
+	}
+	count, err := h.client.UserLogin.Bridge.DB.Message.CountMessagesInPortal(ctx, portalKey)
+	if err != nil || count <= 0 {
+		return nil, err
+	}
+	history, err := h.client.UserLogin.Bridge.DB.Message.GetLastNInPortal(h.client.backgroundContext(ctx), portalKey, count)
+	if err != nil || len(history) == 0 {
+		return nil, err
+	}
+	out := make([]integrationruntime.MessageSummary, 0, len(history))
+	for i := len(history) - 1; i >= 0; i-- {
+		meta := messageMeta(history[i])
+		if meta == nil {
+			continue
+		}
+		role := strings.ToLower(strings.TrimSpace(meta.Role))
+		if role != "user" && role != "assistant" {
+			continue
+		}
+		text := strings.TrimSpace(meta.Body)
+		if text == "" {
+			continue
+		}
+		out = append(out, integrationruntime.MessageSummary{
+			Role:               role,
+			Body:               text,
+			AgentID:            strings.TrimSpace(meta.AgentID),
+			ExcludeFromHistory: meta.ExcludeFromHistory,
+		})
+	}
+	return out, nil
 }
 
 func (h *runtimeIntegrationHost) LastAssistantMessage(ctx context.Context, portal *bridgev2.Portal) (id string, timestamp int64) {
@@ -647,19 +688,7 @@ func (h *runtimeIntegrationHost) SessionPortals(ctx context.Context, loginID str
 	targetAgentID := h.ResolveAgentID(agentID, h.DefaultAgentID())
 	targetAgentID = h.NormalizeAgentID(targetAgentID)
 
-	allowedShared := map[string]struct{}{}
-	ups, err := h.client.UserLogin.Bridge.DB.UserPortal.GetAllForLogin(ctx, h.client.UserLogin.UserLogin)
-	if err != nil {
-		return nil, err
-	}
-	for _, up := range ups {
-		if up == nil || up.Portal.Receiver != "" {
-			continue
-		}
-		allowedShared[up.Portal.String()] = struct{}{}
-	}
-
-	portals, err := h.client.UserLogin.Bridge.DB.Portal.GetAll(ctx)
+	portals, err := h.client.listAllChatPortals(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -669,16 +698,8 @@ func (h *runtimeIntegrationHost) SessionPortals(ctx context.Context, loginID str
 		if portal == nil || portal.MXID == "" {
 			continue
 		}
-		if portal.Receiver != "" && string(portal.Receiver) != loginID {
+		if string(portal.Receiver) != loginID {
 			continue
-		}
-		if portal.Receiver == "" {
-			if len(allowedShared) == 0 {
-				continue
-			}
-			if _, ok := allowedShared[portal.PortalKey.String()]; !ok {
-				continue
-			}
 		}
 		meta, ok := portal.Metadata.(*PortalMetadata)
 		if !ok || meta == nil || isModuleInternalRoom(meta) {
@@ -698,7 +719,7 @@ func (h *runtimeIntegrationHost) SessionPortals(ctx context.Context, loginID str
 	return out, nil
 }
 
-func (h *runtimeIntegrationHost) LoginDB() *dbutil.Database {
+func (h *runtimeIntegrationHost) StateDB() *dbutil.Database {
 	if h == nil || h.client == nil {
 		return nil
 	}
@@ -831,13 +852,6 @@ func (h *runtimeIntegrationHost) ExecuteBuiltinTool(ctx context.Context, scope i
 
 func (h *runtimeIntegrationHost) ResolveWorkspaceDir() string {
 	return resolvePromptWorkspaceDir()
-}
-
-func (h *runtimeIntegrationHost) BridgeDB() *dbutil.Database {
-	if h == nil || h.client == nil {
-		return nil
-	}
-	return h.client.bridgeDB()
 }
 
 func (h *runtimeIntegrationHost) BridgeID() string {

@@ -16,7 +16,6 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -353,32 +352,16 @@ func executeMessage(ctx context.Context, args map[string]any) (string, error) {
 		return executeMessageSend(ctx, args, btc)
 	case "react":
 		return executeMessageReact(ctx, args, btc)
-	case "reactions":
-		return executeMessageReactions(ctx, args, btc)
 	case "edit":
 		return executeMessageEdit(ctx, args, btc)
 	case "delete":
 		return executeMessageDelete(ctx, args, btc)
 	case "reply":
 		return executeMessageReply(ctx, args, btc)
-	case "pin":
-		return executeMessagePin(ctx, args, btc, true)
-	case "unpin":
-		return executeMessagePin(ctx, args, btc, false)
-	case "list-pins":
-		return executeMessageListPins(ctx, btc)
 	case "thread-reply":
 		return executeMessageThreadReply(ctx, args, btc)
 	case "search":
 		return executeMessageSearch(ctx, args, btc)
-	case "read":
-		return executeMessageRead(ctx, args, btc)
-	case "member-info":
-		return executeMessageMemberInfo(ctx, args, btc)
-	case "channel-info":
-		return executeMessageChannelInfo(ctx, args, btc)
-	case "channel-edit":
-		return executeMessageChannelEdit(ctx, args, btc)
 	case "focus":
 		return executeMessageFocus(ctx, args, btc)
 	case "desktop-list-chats":
@@ -404,12 +387,12 @@ func executeMessage(ctx context.Context, args map[string]any) (string, error) {
 	}
 }
 
-// Supports adding reactions (with emoji) and removing reactions (with remove:true or empty emoji).
+// Supports adding reactions (with emoji) and removing reactions (with remove:true or explicit emoji).
 func executeMessageReact(ctx context.Context, args map[string]any, btc *BridgeToolContext) (string, error) {
 	emoji, _ := args["emoji"].(string)
 	remove, _ := args["remove"].(bool)
 
-	// Check if this is a removal request (remove:true or empty emoji)
+	// Check if this is a removal request.
 	if remove || emoji == "" {
 		return executeMessageReactRemove(ctx, args, btc)
 	}
@@ -672,79 +655,6 @@ func executeMessageReply(ctx context.Context, args map[string]any, btc *BridgeTo
 		"event_id": respID,
 		"reply_to": targetEventID,
 		"status":   "sent",
-	})
-}
-
-func executeMessagePin(ctx context.Context, args map[string]any, btc *BridgeToolContext, pin bool) (string, error) {
-	messageID, ok := args["message_id"].(string)
-	if !ok || messageID == "" {
-		action := "pin"
-		if !pin {
-			action = "unpin"
-		}
-		return "", fmt.Errorf("action=%s requires 'message_id' parameter", action)
-	}
-
-	targetEventID := id.EventID(messageID)
-	bot := btc.Client.UserLogin.Bridge.Bot
-
-	pinnedEvents := getPinnedEventIDs(ctx, btc)
-
-	// Modify pinned events
-	if pin {
-		// Add to pinned if not already there
-		if !slices.Contains(pinnedEvents, targetEventID.String()) {
-			pinnedEvents = append(pinnedEvents, targetEventID.String())
-		}
-	} else {
-		// Remove from pinned
-		var newPinned []string
-		for _, evtID := range pinnedEvents {
-			if evtID != targetEventID.String() {
-				newPinned = append(newPinned, evtID)
-			}
-		}
-		pinnedEvents = newPinned
-	}
-
-	// Convert to id.EventID slice
-	pinnedIDs := make([]id.EventID, len(pinnedEvents))
-	for i, evtID := range pinnedEvents {
-		pinnedIDs[i] = id.EventID(evtID)
-	}
-
-	// Update pinned events state
-	_, err := bot.SendState(ctx, btc.Portal.MXID, event.StatePinnedEvents, "", &event.Content{
-		Parsed: &event.PinnedEventsEventContent{
-			Pinned: pinnedIDs,
-		},
-	}, time.Time{})
-	if err != nil {
-		action := "pin"
-		if !pin {
-			action = "unpin"
-		}
-		return "", fmt.Errorf("couldn't %s the message: %w", action, err)
-	}
-
-	action := "pin"
-	if !pin {
-		action = "unpin"
-	}
-	return jsonActionResult(action, map[string]any{
-		"message_id":   targetEventID,
-		"status":       "ok",
-		"pinned_count": len(pinnedEvents),
-	})
-}
-
-func executeMessageListPins(ctx context.Context, btc *BridgeToolContext) (string, error) {
-	pinnedEvents := getPinnedEventIDs(ctx, btc)
-
-	// Build JSON response
-	return jsonActionResult("list-pins", map[string]any{
-		"pinned": pinnedEvents,
-		"count":  len(pinnedEvents),
 	})
 }
 

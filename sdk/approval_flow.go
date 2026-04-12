@@ -1223,26 +1223,12 @@ func (f *ApprovalFlow[D]) redactSingleReaction(msg *bridgev2.MatrixReaction) {
 		if f.backgroundCtx != nil {
 			ctx = f.backgroundCtx(ctx)
 		}
-		if msg != nil && msg.Event != nil && msg.Event.Sender != "" {
-			_ = EnsureSyntheticReactionSenderGhost(ctx, login, msg.Event.Sender)
-		}
 		_ = RedactEventAsSender(ctx, login, portal, sender, triggerID)
 	}()
 }
 
 func (f *ApprovalFlow[D]) reactionRedactionSender(msg *bridgev2.MatrixReaction) bridgev2.EventSender {
-	if msg != nil && msg.Event != nil && msg.Event.Sender != "" {
-		return bridgev2.EventSender{
-			Sender: MatrixSenderID(msg.Event.Sender),
-			SenderLogin: func() networkid.UserLoginID {
-				if login := f.loginOrNil(); login != nil {
-					return login.ID
-				}
-				return ""
-			}(),
-		}
-	}
-	if msg != nil {
+	if msg != nil && msg.Portal != nil {
 		return f.senderOrEmpty(msg.Portal)
 	}
 	return bridgev2.EventSender{}
@@ -1469,13 +1455,10 @@ func (f *ApprovalFlow[D]) mirrorRemoteDecisionReaction(ctx context.Context, prom
 	if err != nil || portal == nil || portal.MXID == "" {
 		return
 	}
-	sender := bridgev2.EventSender{Sender: MatrixSenderID(prompt.OwnerMXID), SenderLogin: login.ID}
+	sender := f.senderOrEmpty(portal)
 	if f.testMirrorRemoteDecisionReaction != nil {
 		f.testMirrorRemoteDecisionReaction(ctx, login, portal, sender, prompt, reactionKey)
 		return
-	}
-	if prompt.OwnerMXID != "" {
-		_ = EnsureSyntheticReactionSenderGhost(ctx, login, prompt.OwnerMXID)
 	}
 	targetMessage := resolvePromptTargetMessage(ctx, login, portal, prompt, approvalReactionTargetMessageID(prompt))
 	if targetMessage == "" {

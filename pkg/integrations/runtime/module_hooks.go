@@ -8,6 +8,7 @@ import (
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 )
 
 // ModuleHooks is the base contract every integration module implements.
@@ -151,7 +152,7 @@ type Host interface {
 	RawLogger() zerolog.Logger
 	Now() time.Time
 	ResolveWorkspaceDir() string
-	BridgeDB() *dbutil.Database
+	StateDB() *dbutil.Database
 	BridgeID() string
 	LoginID() string
 	ModuleEnabled(name string) bool
@@ -191,7 +192,7 @@ type Host interface {
 
 	IsLoggedIn() bool
 	SessionPortals(ctx context.Context, loginID string, agentID string) ([]SessionPortalInfo, error)
-	LoginDB() *dbutil.Database
+	SessionTranscript(ctx context.Context, portalKey networkid.PortalKey) ([]MessageSummary, error)
 }
 
 // Logger is a minimal structured logger abstraction.

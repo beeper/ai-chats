@@ -51,8 +51,8 @@ func codexTurnKey(threadID, turnID string) string {
 
 type codexActiveTurn struct {
 	portal   *bridgev2.Portal
-	meta     *PortalMetadata
-	state    *streamingState
+	portalState *codexPortalState
+	streamState *streamingState
 	threadID string
 	turnID   string
 	model    string
@@ -61,7 +61,7 @@ type codexActiveTurn struct {
 type codexPendingMessage struct {
 	event  *event.Event
 	portal *bridgev2.Portal
-	meta   *PortalMetadata
+	state  *codexPortalState
 	body   string
 }
 
@@ -323,9 +323,8 @@ func (cc *CodexClient) purgeCodexCwdsBestEffort(ctx context.Context) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	// Enumerate portal metadata before bridgev2 deletes the portal rows.
-	ups, err := cc.UserLogin.Bridge.DB.UserPortal.GetAllForLogin(ctx, cc.UserLogin.UserLogin)
-	if err != nil || len(ups) == 0 {
+	records, err := listCodexPortalStateRecords(ctx, cc.UserLogin)
+	if err != nil || len(records) == 0 {
 		return
 	}
 
@@ -336,19 +335,11 @@ func (cc *CodexClient) purgeCodexCwdsBestEffort(ctx context.Context) {
 	}
 
 	seen := make(map[string]struct{})
-	for _, up := range ups {
-		if up == nil {
+	for _, record := range records {
+		if record.State == nil {
 			continue
 		}
-		portal, err := cc.UserLogin.Bridge.GetExistingPortalByKey(ctx, up.Portal)
-		if err != nil || portal == nil || portal.Metadata == nil {
-			continue
-		}
-		meta, ok := portal.Metadata.(*PortalMetadata)
-		if !ok || meta == nil {
-			continue
-		}
-		cwd := strings.TrimSpace(meta.CodexCwd)
+		cwd := strings.TrimSpace(record.State.CodexCwd)
 		if cwd == "" {
 			continue
 		}
@@ -383,13 +374,13 @@ func isManagedCodexTempDirPath(path string) bool {
 func (cc *CodexClient) GetChatInfo(_ context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	meta := portalMeta(portal)
 	if meta == nil || !meta.IsCodexRoom {
-		var metaTitle string
-		if meta != nil {
-			metaTitle = meta.Title
-		}
-		return sdk.BuildChatInfoWithFallback(metaTitle, portal.Name, "Codex", portal.Topic), nil
+		return sdk.BuildChatInfoWithFallback("", portal.Name, "Codex", portal.Topic), nil
 	}
-	return cc.composeCodexChatInfo(portal, codexPortalTitle(portal), strings.TrimSpace(meta.CodexThreadID) != ""), nil
+	state, err := loadCodexPortalState(ctx, portal)
+	if err != nil {
+		return nil, err
+	}
+	return cc.composeCodexChatInfo(portal, state, strings.TrimSpace(state.CodexThreadID) != ""), nil
 }
 
 func (cc *CodexClient) GetUserInfo(_ context.Context, _ *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
@@ -418,8 +409,11 @@ func (cc *CodexClient) ResolveIdentifier(ctx context.Context, identifier string,
 		if portal == nil {
 			return nil, errors.New("codex chat unavailable")
 		}
-		meta := portalMeta(portal)
-		chatInfo := cc.composeCodexChatInfo(portal, codexPortalTitle(portal), strings.TrimSpace(meta.CodexThreadID) != "")
+		state, err := loadCodexPortalState(ctx, portal)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load Codex room state: %w", err)
+		}
+		chatInfo := cc.composeCodexChatInfo(portal, state, strings.TrimSpace(state.CodexThreadID) != "")
 		chat = &bridgev2.CreateChatResponse{
 			PortalKey:  portal.PortalKey,
 			PortalInfo: chatInfo,
@@ -443,20 +437,6 @@ func (cc *CodexClient) GetContactList(ctx context.Context) ([]*bridgev2.ResolveI
 	return []*bridgev2.ResolveIdentifierResponse{resp}, nil
 }
 
-func codexPortalTitle(portal *bridgev2.Portal) string {
-	if portal != nil {
-		if meta := portalMeta(portal); meta != nil {
-			if title := strings.TrimSpace(meta.Title); title != "" {
-				return title
-			}
-		}
-		if name := strings.TrimSpace(portal.Name); name != "" {
-			return name
-		}
-	}
-	return "Codex"
-}
-
 func (cc *CodexClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
 	return aiBaseCaps
 }
@@ -469,6 +449,10 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 	meta := portalMeta(portal)
 	if meta == nil || !meta.IsCodexRoom {
 		return nil, sdk.UnsupportedMessageStatus(errors.New("not a Codex room"))
+	}
+	state, err := loadCodexPortalState(ctx, portal)
+	if err != nil {
+		return nil, err
 	}
 	if sdk.IsMatrixBotUser(ctx, cc.UserLogin.Bridge, msg.Event.Sender) {
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
@@ -488,23 +472,23 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 
-	if res, handled, err := cc.handleCodexCommand(ctx, portal, meta, body); handled {
+	if res, handled, err := cc.handleCodexCommand(ctx, portal, state, body); handled {
 		return res, err
 	}
 
-	if meta.AwaitingCwdSetup {
-		return cc.handleWelcomeCodexMessage(ctx, portal, meta, body)
+	if state.AwaitingCwdSetup {
+		return cc.handleWelcomeCodexMessage(ctx, portal, state, body)
 	}
 
 	if err := cc.ensureRPC(cc.backgroundContext(ctx)); err != nil {
 		return nil, messageSendStatusError(err, "Codex isn't available. Sign in again.", "")
 	}
-	if strings.TrimSpace(meta.CodexThreadID) == "" || strings.TrimSpace(meta.CodexCwd) == "" {
-		if err := cc.ensureCodexThread(ctx, portal, meta); err != nil {
+	if strings.TrimSpace(state.CodexThreadID) == "" || strings.TrimSpace(state.CodexCwd) == "" {
+		if err := cc.ensureCodexThread(ctx, portal, state); err != nil {
 			return nil, messageSendStatusError(err, "Codex thread unavailable. Try !ai reset.", "")
 		}
 	}
-	if err := cc.ensureCodexThreadLoaded(ctx, portal, meta); err != nil {
+	if err := cc.ensureCodexThreadLoaded(ctx, portal, state); err != nil {
 		return nil, messageSendStatusError(err, "Codex thread unavailable. Try !ai reset.", "")
 	}
 
@@ -539,7 +523,7 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 		cc.queuePendingCodex(roomID, &codexPendingMessage{
 			event:  msg.Event,
 			portal: portal,
-			meta:   meta,
+			state:  state,
 			body:   body,
 		})
 		return &bridgev2.MatrixMessageResponse{
@@ -553,7 +537,7 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 	go func() {
 		func() {
 			defer cc.releaseRoom(roomID)
-			cc.runTurn(cc.backgroundContext(ctx), portal, meta, msg.Event, body)
+			cc.runTurn(cc.backgroundContext(ctx), portal, state, msg.Event, body)
 		}()
 		cc.processPendingCodex(roomID)
 	}()
@@ -564,14 +548,14 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 	}, nil
 }
 
-func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, sourceEvent *event.Event, body string) {
+func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, portalState *codexPortalState, sourceEvent *event.Event, body string) {
 	log := cc.loggerForContext(ctx)
-	state := newStreamingState(sourceEvent.ID)
+	streamState := newStreamingState(sourceEvent.ID)
 
 	model := cc.connector.Config.Codex.DefaultModel
-	state.currentModel = model
-	threadID := strings.TrimSpace(meta.CodexThreadID)
-	cwd := strings.TrimSpace(meta.CodexCwd)
+	streamState.currentModel = model
+	threadID := strings.TrimSpace(portalState.CodexThreadID)
+	cwd := strings.TrimSpace(portalState.CodexCwd)
 	conv := sdk.NewConversation(ctx, cc.UserLogin, portal, cc.senderForPortal(), cc.connector.sdkConfig, cc)
 	source := sdk.UserMessageSource(sourceEvent.ID.String())
 	turn := conv.StartTurn(ctx, codexSDKAgent(), source)
@@ -583,18 +567,18 @@ func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, met
 		})
 	}
 	approvals.SetHandler(func(callCtx context.Context, sdkTurn *sdk.Turn, req sdk.ApprovalRequest) sdk.ApprovalHandle {
-		return cc.requestSDKApproval(callCtx, portal, state, sdkTurn, req)
+		return cc.requestSDKApproval(callCtx, portal, streamState, sdkTurn, req)
 	})
 	turn.SetFinalMetadataProvider(sdk.FinalMetadataProviderFunc(func(sdkTurn *sdk.Turn, finishReason string) any {
-		return cc.buildSDKFinalMetadata(sdkTurn, state, codexStateModel(state, model), finishReason)
+		return cc.buildSDKFinalMetadata(sdkTurn, streamState, codexStateModel(streamState, model), finishReason)
 	}))
-	state.turn = turn
-	state.agentID = string(codexGhostID)
-	turn.Writer().MessageMetadata(ctx, cc.buildUIMessageMetadata(state, codexStateModel(state, model), false, ""))
+	streamState.turn = turn
+	streamState.agentID = string(codexGhostID)
+	turn.Writer().MessageMetadata(ctx, cc.buildUIMessageMetadata(streamState, codexStateModel(streamState, model), false, ""))
 	turn.Writer().StepStart(ctx)
 
 	approvalPolicy := "untrusted"
-	if lvl, _ := stringutil.NormalizeElevatedLevel(meta.ElevatedLevel); lvl == "full" {
+	if lvl, _ := stringutil.NormalizeElevatedLevel(portalState.ElevatedLevel); lvl == "full" {
 		approvalPolicy = "never"
 	}
 
@@ -624,19 +608,19 @@ func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, met
 	if turnID == "" {
 		turnID = "turn_unknown"
 	}
-	cc.markMessageSendSuccess(ctx, portal, sourceEvent, state)
+	cc.markMessageSendSuccess(ctx, portal, sourceEvent, streamState)
 
 	turnCh := cc.subscribeTurn(threadID, turnID)
 	defer cc.unsubscribeTurn(threadID, turnID)
 
 	cc.activeMu.Lock()
 	cc.activeTurns[codexTurnKey(threadID, turnID)] = &codexActiveTurn{
-		portal:   portal,
-		meta:     meta,
-		state:    state,
-		threadID: threadID,
-		turnID:   turnID,
-		model:    model,
+		portal:      portal,
+		portalState: portalState,
+		streamState: streamState,
+		threadID:    threadID,
+		turnID:      turnID,
+		model:       model,
 	}
 	cc.activeMu.Unlock()
 	defer func() {
@@ -652,7 +636,7 @@ func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, met
 	for {
 		select {
 		case evt := <-turnCh:
-			cc.handleNotif(ctx, portal, meta, state, model, threadID, turnID, evt)
+			cc.handleNotif(ctx, portal, portalState, streamState, model, threadID, turnID, evt)
 			if st, errText, ok := codexTurnCompletedStatus(evt, threadID, turnID); ok {
 				finishStatus = st
 				completedErr = errText
@@ -670,12 +654,12 @@ func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, met
 
 done:
 	log.Debug().Str("status", finishStatus).Str("thread", threadID).Str("turn", turnID).Msg("Codex turn finished")
-	state.completedAtMs = time.Now().UnixMilli()
+	streamState.completedAtMs = time.Now().UnixMilli()
 	// If we observed turn-level diff updates, finalize them as a dedicated tool output.
-	if diff := strings.TrimSpace(state.codexLatestDiff); diff != "" {
+	if diff := strings.TrimSpace(streamState.codexLatestDiff); diff != "" {
 		diffToolID := fmt.Sprintf("diff-%s", turnID)
-		emitDiffToolOutput(ctx, state, diffToolID, turnID, diff, false)
-		state.toolCalls = append(state.toolCalls, ToolCallMetadata{
+		emitDiffToolOutput(ctx, streamState, diffToolID, turnID, diff, false)
+		streamState.toolCalls = append(streamState.toolCalls, ToolCallMetadata{
 			CallID:        diffToolID,
 			ToolName:      "diff",
 			ToolType:      string(matrixevents.ToolTypeProvider),
@@ -683,17 +667,17 @@ done:
 			Output:        map[string]any{"diff": diff},
 			Status:        string(matrixevents.ToolStatusCompleted),
 			ResultStatus:  string(matrixevents.ResultStatusSuccess),
-			StartedAtMs:   state.startedAtMs,
-			CompletedAtMs: state.completedAtMs,
+			StartedAtMs:   streamState.startedAtMs,
+			CompletedAtMs: streamState.completedAtMs,
 		})
 	}
 	if completedErr != "" {
-		state.turn.Writer().MessageMetadata(ctx, cc.buildUIMessageMetadata(state, codexStateModel(state, model), true, finishStatus))
-		state.turn.EndWithError(completedErr)
+		streamState.turn.Writer().MessageMetadata(ctx, cc.buildUIMessageMetadata(streamState, codexStateModel(streamState, model), true, finishStatus))
+		streamState.turn.EndWithError(completedErr)
 		return
 	}
-	state.turn.Writer().MessageMetadata(ctx, cc.buildUIMessageMetadata(state, codexStateModel(state, model), true, finishStatus))
-	state.turn.End(finishStatus)
+	streamState.turn.Writer().MessageMetadata(ctx, cc.buildUIMessageMetadata(streamState, codexStateModel(streamState, model), true, finishStatus))
+	streamState.turn.End(finishStatus)
 }
 
 func (cc *CodexClient) appendCodexToolOutput(state *streamingState, toolCallID, delta string) string {
@@ -797,7 +781,7 @@ func (cc *CodexClient) handleSimpleOutputDelta(
 	}
 }
 
-func (cc *CodexClient) handleNotif(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, state *streamingState, model, threadID, turnID string, evt codexNotif) {
+func (cc *CodexClient) handleNotif(ctx context.Context, portal *bridgev2.Portal, portalState *codexPortalState, state *streamingState, model, threadID, turnID string, evt codexNotif) {
 	if defaultToolName, ok := codexSimpleOutputDeltaMethods[evt.Method]; ok {
 		cc.handleSimpleOutputDelta(ctx, state, evt.Params, threadID, turnID, defaultToolName, nil)
 		return
@@ -1428,9 +1412,9 @@ func (cc *CodexClient) dispatchNotifications() {
 		key := codexTurnKey(threadID, turnID)
 		if evt.Method == "turn/completed" {
 			cc.activeMu.Lock()
-			if active := cc.activeTurns[key]; active != nil && (active.state == nil || active.state.turn == nil) {
-				delete(cc.activeTurns, key)
-			}
+		if active := cc.activeTurns[key]; active != nil && (active.streamState == nil || active.streamState.turn == nil) {
+			delete(cc.activeTurns, key)
+		}
 			cc.activeMu.Unlock()
 		}
 
@@ -1533,13 +1517,18 @@ func (cc *CodexClient) waitForLoginPersisted(ctx context.Context) {
 	}
 }
 
-func (cc *CodexClient) composeCodexChatInfo(portal *bridgev2.Portal, title string, canBackfill bool) *bridgev2.ChatInfo {
-	if title == "" {
-		title = "Codex"
+func (cc *CodexClient) composeCodexChatInfo(portal *bridgev2.Portal, portalState *codexPortalState, canBackfill bool) *bridgev2.ChatInfo {
+	title := "Codex"
+	topic := ""
+	if portalState != nil {
+		if v := strings.TrimSpace(portalState.Title); v != "" {
+			title = v
+		}
+		topic = cc.codexTopicForPortal(portal, portalState)
 	}
 	return sdk.BuildLoginDMChatInfo(sdk.LoginDMChatInfoParams{
 		Title:             title,
-		Topic:             cc.codexTopicForPortal(portal, portalMeta(portal)),
+		Topic:             topic,
 		Login:             cc.UserLogin,
 		HumanUserIDPrefix: cc.HumanUserIDPrefix,
 		BotUserID:         codexGhostID,
@@ -1577,8 +1566,8 @@ func newRecoveredStreamingState(turnID, model string) *streamingState {
 	}
 }
 
-func (cc *CodexClient) restoreRecoveredActiveTurns(portal *bridgev2.Portal, meta *PortalMetadata, thread codexThread, model string) {
-	if cc == nil || portal == nil || meta == nil {
+func (cc *CodexClient) restoreRecoveredActiveTurns(portal *bridgev2.Portal, portalState *codexPortalState, thread codexThread, model string) {
+	if cc == nil || portal == nil || portalState == nil {
 		return
 	}
 	threadID := strings.TrimSpace(thread.ID)
@@ -1600,31 +1589,28 @@ func (cc *CodexClient) restoreRecoveredActiveTurns(portal *bridgev2.Portal, meta
 			continue
 		}
 		cc.activeTurns[key] = &codexActiveTurn{
-			portal:   portal,
-			meta:     meta,
-			state:    newRecoveredStreamingState(turnID, model),
-			threadID: threadID,
-			turnID:   turnID,
-			model:    strings.TrimSpace(model),
+			portal:      portal,
+			portalState: portalState,
+			streamState: newRecoveredStreamingState(turnID, model),
+			threadID:    threadID,
+			turnID:      turnID,
+			model:       strings.TrimSpace(model),
 		}
 	}
 }
 
-func (cc *CodexClient) ensureCodexThread(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) error {
-	if meta == nil || portal == nil {
+func (cc *CodexClient) ensureCodexThread(ctx context.Context, portal *bridgev2.Portal, portalState *codexPortalState) error {
+	if portalState == nil || portal == nil {
 		return errors.New("missing portal/meta")
 	}
-	if strings.TrimSpace(meta.CodexCwd) == "" {
+	if strings.TrimSpace(portalState.CodexCwd) == "" {
 		return errors.New("codex working directory not set")
 	}
-	if _, err := os.Stat(meta.CodexCwd); err != nil {
-		return fmt.Errorf("working directory %s no longer exists", meta.CodexCwd)
+	if _, err := os.Stat(portalState.CodexCwd); err != nil {
+		return fmt.Errorf("working directory %s no longer exists", portalState.CodexCwd)
 	}
-	if err := portal.Save(ctx); err != nil {
-		return err
-	}
-	if strings.TrimSpace(meta.CodexThreadID) != "" {
-		return cc.ensureCodexThreadLoaded(ctx, portal, meta)
+	if strings.TrimSpace(portalState.CodexThreadID) != "" {
+		return cc.ensureCodexThreadLoaded(ctx, portal, portalState)
 	}
 	if err := cc.ensureRPC(ctx); err != nil {
 		return err
@@ -1638,7 +1624,7 @@ func (cc *CodexClient) ensureCodexThread(ctx context.Context, portal *bridgev2.P
 	defer cancelCall()
 	err := cc.rpc.Call(callCtx, "thread/start", map[string]any{
 		"model":                  model,
-		"cwd":                    meta.CodexCwd,
+		"cwd":                    portalState.CodexCwd,
 		"approvalPolicy":         "untrusted",
 		"sandbox":                cc.buildSandboxMode(),
 		"experimentalRawEvents":  false,
@@ -1647,26 +1633,26 @@ func (cc *CodexClient) ensureCodexThread(ctx context.Context, portal *bridgev2.P
 	if err != nil {
 		return err
 	}
-	meta.CodexThreadID = strings.TrimSpace(resp.Thread.ID)
-	if meta.CodexThreadID == "" {
+	portalState.CodexThreadID = strings.TrimSpace(resp.Thread.ID)
+	if portalState.CodexThreadID == "" {
 		return errors.New("codex returned empty thread id")
 	}
-	if err := portal.Save(ctx); err != nil {
+	if err := saveCodexPortalState(ctx, portal, portalState); err != nil {
 		return err
 	}
 	cc.loadedMu.Lock()
-	cc.loadedThreads[meta.CodexThreadID] = true
+	cc.loadedThreads[portalState.CodexThreadID] = true
 	cc.loadedMu.Unlock()
-	cc.restoreRecoveredActiveTurns(portal, meta, resp.Thread, resp.Model)
-	cc.syncCodexRoomTopic(ctx, portal, meta)
+	cc.restoreRecoveredActiveTurns(portal, portalState, resp.Thread, resp.Model)
+	cc.syncCodexRoomTopic(ctx, portal, portalState)
 	return nil
 }
 
-func (cc *CodexClient) ensureCodexThreadLoaded(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) error {
-	if meta == nil {
+func (cc *CodexClient) ensureCodexThreadLoaded(ctx context.Context, portal *bridgev2.Portal, portalState *codexPortalState) error {
+	if portalState == nil {
 		return errors.New("missing metadata")
 	}
-	threadID := strings.TrimSpace(meta.CodexThreadID)
+	threadID := strings.TrimSpace(portalState.CodexThreadID)
 	if threadID == "" {
 		return errors.New("missing thread id")
 	}
@@ -1688,7 +1674,7 @@ func (cc *CodexClient) ensureCodexThreadLoaded(ctx context.Context, portal *brid
 	err := cc.rpc.Call(callCtx, "thread/resume", map[string]any{
 		"threadId":               threadID,
 		"model":                  cc.connector.Config.Codex.DefaultModel,
-		"cwd":                    meta.CodexCwd,
+		"cwd":                    portalState.CodexCwd,
 		"approvalPolicy":         "untrusted",
 		"sandbox":                cc.buildSandboxMode(),
 		"persistExtendedHistory": true,
@@ -1699,8 +1685,8 @@ func (cc *CodexClient) ensureCodexThreadLoaded(ctx context.Context, portal *brid
 	cc.loadedMu.Lock()
 	cc.loadedThreads[threadID] = true
 	cc.loadedMu.Unlock()
-	cc.restoreRecoveredActiveTurns(portal, meta, resp.Thread, resp.Model)
-	cc.syncCodexRoomTopic(ctx, portal, meta)
+	cc.restoreRecoveredActiveTurns(portal, portalState, resp.Thread, resp.Model)
+	cc.syncCodexRoomTopic(ctx, portal, portalState)
 	return nil
 }
 
@@ -1714,7 +1700,11 @@ func (cc *CodexClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2
 	if meta == nil || !meta.IsCodexRoom {
 		return nil
 	}
-	if meta.AwaitingCwdSetup {
+	state, err := loadCodexPortalState(ctx, msg.Portal)
+	if err != nil {
+		return err
+	}
+	if state.AwaitingCwdSetup {
 		go func() {
 			time.Sleep(1 * time.Second)
 			_ = cc.ensureWelcomeCodexChat(cc.backgroundContext(ctx))
@@ -1726,7 +1716,7 @@ func (cc *CodexClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2
 	}
 
 	// If a turn is in-flight for this thread, try to interrupt it.
-	tid := strings.TrimSpace(meta.CodexThreadID)
+	tid := strings.TrimSpace(state.CodexThreadID)
 	cc.activeMu.Lock()
 	var active *codexActiveTurn
 	for _, at := range cc.activeTurns {
@@ -1753,12 +1743,12 @@ func (cc *CodexClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2
 		delete(cc.loadedThreads, tid)
 		cc.loadedMu.Unlock()
 	}
-	if cwd := strings.TrimSpace(meta.CodexCwd); cwd != "" {
+	if cwd := strings.TrimSpace(state.CodexCwd); cwd != "" {
 		_ = os.RemoveAll(cwd)
 	}
-	meta.CodexThreadID = ""
-	meta.CodexCwd = ""
-	_ = msg.Portal.Save(ctx)
+	state.CodexThreadID = ""
+	state.CodexCwd = ""
+	_ = saveCodexPortalState(ctx, msg.Portal, state)
 	return nil
 }
 
@@ -1877,15 +1867,15 @@ func (cc *CodexClient) processPendingCodex(roomID id.RoomID) {
 		cc.releaseRoom(roomID)
 		return
 	}
-	meta := portalMeta(pm.portal)
-	if meta == nil {
+	state, err := loadCodexPortalState(ctx, pm.portal)
+	if err != nil || state == nil {
 		// Bad portal — discard.
 		cc.popPendingCodex(roomID)
 		cc.releaseRoom(roomID)
 		cc.processPendingCodex(roomID)
 		return
 	}
-	if err := cc.ensureCodexThreadLoaded(ctx, pm.portal, meta); err != nil {
+	if err := cc.ensureCodexThreadLoaded(ctx, pm.portal, state); err != nil {
 		cc.log.Warn().Err(err).Stringer("room", roomID).Msg("Pending codex message: thread load failed")
 		cc.releaseRoom(roomID)
 		return
@@ -1895,7 +1885,7 @@ func (cc *CodexClient) processPendingCodex(roomID id.RoomID) {
 	go func() {
 		func() {
 			defer cc.releaseRoom(roomID)
-			cc.runTurn(ctx, pm.portal, meta, pm.event, pm.body)
+			cc.runTurn(ctx, pm.portal, state, pm.event, pm.body)
 		}()
 		cc.processPendingCodex(roomID)
 	}()
@@ -2247,8 +2237,8 @@ func (cc *CodexClient) resolveApprovalForActiveTurn(
 		Presentation: &presentation,
 	})
 
-	if active.meta != nil {
-		if lvl, _ := stringutil.NormalizeElevatedLevel(active.meta.ElevatedLevel); lvl == "full" {
+	if active.portalState != nil {
+		if lvl, _ := stringutil.NormalizeElevatedLevel(active.portalState.ElevatedLevel); lvl == "full" {
 			_ = cc.approvalFlow.Resolve(handle.ID(), sdk.ApprovalDecisionPayload{
 				ApprovalID: handle.ID(),
 				Approved:   true,

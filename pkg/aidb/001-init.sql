@@ -67,9 +67,7 @@ CREATE TABLE IF NOT EXISTS aichats_memory_session_state (
   login_id TEXT NOT NULL,
   agent_id TEXT NOT NULL,
   session_key TEXT NOT NULL,
-  last_rowid INTEGER NOT NULL DEFAULT 0,
-  pending_bytes INTEGER NOT NULL DEFAULT 0,
-  pending_messages INTEGER NOT NULL DEFAULT 0,
+  content_hash TEXT NOT NULL DEFAULT '',
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (bridge_id, login_id, agent_id, session_key)
 );
