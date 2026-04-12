@@ -223,10 +223,15 @@ func (oc *AIClient) updateLoginState(ctx context.Context, fn func(*loginRuntimeS
 		}
 		oc.loginState = state
 	}
-	if !fn(oc.loginState) {
+	nextState := cloneLoginRuntimeState(oc.loginState)
+	if !fn(nextState) {
 		return nil
 	}
-	return saveLoginRuntimeState(ctx, oc, oc.loginState)
+	if err := saveLoginRuntimeState(ctx, oc, nextState); err != nil {
+		return err
+	}
+	oc.loginState = nextState
+	return nil
 }
 
 func (oc *AIClient) clearLoginState(ctx context.Context) {

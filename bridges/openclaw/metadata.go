@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"net/url"
 	"strings"
 	"time"
 
@@ -118,7 +119,7 @@ func openClawPortalDBScopeFor(portal *bridgev2.Portal, login *bridgev2.UserLogin
 	}
 	bridgeID := strings.TrimSpace(string(login.Bridge.DB.BridgeID))
 	loginID := strings.TrimSpace(string(login.ID))
-	portalKey := strings.TrimSpace(string(portal.PortalKey.ID) + "\x00" + string(portal.PortalKey.Receiver))
+	portalKey := strings.TrimSpace(url.PathEscape(string(portal.PortalKey.ID)) + "|" + url.PathEscape(string(portal.PortalKey.Receiver)))
 	if bridgeID == "" || loginID == "" || portalKey == "" {
 		return nil
 	}
@@ -143,6 +144,12 @@ func loadOpenClawPortalState(ctx context.Context, portal *bridgev2.Portal, login
 		return nil, err
 	}
 	if state == nil {
+		if legacy := openClawPortalStateFromMetadata(portal.Metadata); legacy != nil {
+			if err := saveOpenClawPortalState(ctx, portal, login, legacy); err != nil {
+				return nil, err
+			}
+			return legacy, nil
+		}
 		return &openClawPortalState{}, nil
 	}
 	return state, nil
@@ -157,6 +164,51 @@ func saveOpenClawPortalState(ctx context.Context, portal *bridgev2.Portal, login
 		return err
 	}
 	return aidb.Save(&openClawPortalStateBlob, ctx, scope.db, scope.bridgeID, scope.loginID, scope.portalKey, state)
+}
+
+func openClawPortalStateFromMetadata(metadata any) *openClawPortalState {
+	if metadata == nil {
+		return nil
+	}
+	if typed, ok := metadata.(*openClawPortalState); ok && typed != nil {
+		clone := *typed
+		return &clone
+	}
+	data, err := json.Marshal(metadata)
+	if err != nil {
+		return nil
+	}
+	var state openClawPortalState
+	if err = json.Unmarshal(data, &state); err != nil {
+		return nil
+	}
+	if openClawPortalStateIsEmpty(&state) {
+		return nil
+	}
+	return &state
+}
+
+func openClawPortalStateIsEmpty(state *openClawPortalState) bool {
+	return state == nil ||
+		(state.OpenClawGatewayID == "" &&
+			state.OpenClawSessionID == "" &&
+			state.OpenClawSessionKey == "" &&
+			state.OpenClawSpawnedBy == "" &&
+			state.OpenClawDMTargetAgentID == "" &&
+			state.OpenClawDMTargetAgentName == "" &&
+			!state.OpenClawDMCreatedFromContact &&
+			state.OpenClawSessionKind == "" &&
+			state.OpenClawSessionLabel == "" &&
+			state.OpenClawDisplayName == "" &&
+			state.OpenClawDerivedTitle == "" &&
+			state.OpenClawLastMessagePreview == "" &&
+			state.OpenClawChannel == "" &&
+			state.OpenClawSubject == "" &&
+			state.OpenClawGroupChannel == "" &&
+			state.OpenClawSpace == "" &&
+			state.OpenClawChatType == "" &&
+			state.OpenClawOrigin == "" &&
+			state.OpenClawAgentID == "")
 }
 
 type GhostMetadata struct {

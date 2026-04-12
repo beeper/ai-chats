@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -59,6 +60,10 @@ func saveCustomAgentForLogin(ctx context.Context, login *bridgev2.UserLogin, age
 	if scope == nil {
 		return nil
 	}
+	agentID := strings.TrimSpace(agent.ID)
+	if agentID == "" {
+		return fmt.Errorf("custom agent id is required")
+	}
 	payload, err := json.Marshal(agent)
 	if err != nil {
 		return err
@@ -70,7 +75,7 @@ func saveCustomAgentForLogin(ctx context.Context, login *bridgev2.UserLogin, age
 		ON CONFLICT (bridge_id, login_id, agent_id) DO UPDATE SET
 			content_json=excluded.content_json,
 			updated_at_ms=excluded.updated_at_ms
-	`, scope.bridgeID, scope.loginID, strings.TrimSpace(agent.ID), string(payload), time.Now().UnixMilli())
+	`, scope.bridgeID, scope.loginID, agentID, string(payload), time.Now().UnixMilli())
 	return err
 }
 

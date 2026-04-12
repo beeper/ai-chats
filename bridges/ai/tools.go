@@ -387,14 +387,18 @@ func executeMessage(ctx context.Context, args map[string]any) (string, error) {
 	}
 }
 
-// Supports adding reactions (with emoji) and removing reactions (with remove:true or explicit emoji).
+// Supports adding reactions with an emoji and removing reactions via executeMessageReactRemove when remove=true.
 func executeMessageReact(ctx context.Context, args map[string]any, btc *BridgeToolContext) (string, error) {
 	emoji, _ := args["emoji"].(string)
 	remove, _ := args["remove"].(bool)
 
 	// Check if this is a removal request.
-	if remove || emoji == "" {
+	if remove {
 		return executeMessageReactRemove(ctx, args, btc)
+	}
+	emoji = strings.TrimSpace(emoji)
+	if emoji == "" {
+		return "", errors.New("action=react requires 'emoji' when remove is false")
 	}
 
 	// Get target message ID (optional - defaults to triggering message)

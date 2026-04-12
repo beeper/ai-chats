@@ -1,6 +1,7 @@
 package opencode
 
 import (
+	"sort"
 	"sync"
 	"time"
 
@@ -107,6 +108,7 @@ func (inst *openCodeInstance) sessionIDs() []string {
 	for sessionID := range inst.knownSessions {
 		out = append(out, sessionID)
 	}
+	sort.Strings(out)
 	return out
 }
 

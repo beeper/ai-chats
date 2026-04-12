@@ -12,9 +12,9 @@ import (
 )
 
 // resolveDesktopInstance resolves the "instance" arg and returns the canonical instance name.
-func resolveDesktopInstance(args map[string]any, client *AIClient) (string, error) {
+func resolveDesktopInstance(ctx context.Context, args map[string]any, client *AIClient) (string, error) {
 	instance := firstNonEmptyString(args["instance"])
-	return resolveDesktopInstanceName(client.desktopAPIInstances(), instance)
+	return resolveDesktopInstanceName(client.desktopAPIInstances(ctx), instance)
 }
 
 // argsLimit extracts an integer limit from args, clamped to a default.
@@ -70,7 +70,7 @@ func resolveDesktopMessageTarget(ctx context.Context, client *AIClient, args map
 		if !ok {
 			return "", "", "", true, errors.New("sessionKey must be a desktop-api session")
 		}
-		resolvedInstance, resolveErr := resolveDesktopInstanceName(client.desktopAPIInstances(), parsedInstance)
+		resolvedInstance, resolveErr := resolveDesktopInstanceName(client.desktopAPIInstances(ctx), parsedInstance)
 		if resolveErr != nil {
 			return "", "", "", true, resolveErr
 		}
@@ -79,7 +79,7 @@ func resolveDesktopMessageTarget(ctx context.Context, client *AIClient, args map
 
 	if label != "" {
 		if instance != "" {
-			resolvedInstance, resolveErr := resolveDesktopInstanceName(client.desktopAPIInstances(), instance)
+			resolvedInstance, resolveErr := resolveDesktopInstanceName(client.desktopAPIInstances(ctx), instance)
 			if resolveErr != nil {
 				return "", "", "", true, resolveErr
 			}
@@ -97,7 +97,7 @@ func resolveDesktopMessageTarget(ctx context.Context, client *AIClient, args map
 	}
 
 	if chatID != "" {
-		resolvedInstance, resolveErr := resolveDesktopInstanceName(client.desktopAPIInstances(), instance)
+		resolvedInstance, resolveErr := resolveDesktopInstanceName(client.desktopAPIInstances(ctx), instance)
 		if resolveErr != nil {
 			return "", "", "", true, resolveErr
 		}
@@ -105,7 +105,7 @@ func resolveDesktopMessageTarget(ctx context.Context, client *AIClient, args map
 	}
 
 	if !requireChat {
-		resolvedInstance, resolveErr := resolveDesktopInstanceName(client.desktopAPIInstances(), instance)
+		resolvedInstance, resolveErr := resolveDesktopInstanceName(client.desktopAPIInstances(ctx), instance)
 		if resolveErr != nil {
 			return "", "", "", true, resolveErr
 		}
@@ -309,7 +309,7 @@ func maybeExecuteMessageSearchDesktop(ctx context.Context, args map[string]any, 
 }
 
 func executeMessageDesktopListChats(ctx context.Context, args map[string]any, btc *BridgeToolContext) (string, error) {
-	instance, err := resolveDesktopInstance(args, btc.Client)
+	instance, err := resolveDesktopInstance(ctx, args, btc.Client)
 	if err != nil {
 		return "", err
 	}
@@ -332,7 +332,7 @@ func executeMessageDesktopSearchChats(ctx context.Context, args map[string]any, 
 	if query == "" {
 		return "", errors.New("action=desktop-search-chats requires 'query'")
 	}
-	instance, err := resolveDesktopInstance(args, btc.Client)
+	instance, err := resolveDesktopInstance(ctx, args, btc.Client)
 	if err != nil {
 		return "", err
 	}
@@ -361,7 +361,7 @@ func executeMessageDesktopSearchMessages(ctx context.Context, args map[string]an
 		return "", err
 	}
 	if !resolved {
-		resolvedInstance, err := resolveDesktopInstance(args, btc.Client)
+		resolvedInstance, err := resolveDesktopInstance(ctx, args, btc.Client)
 		if err != nil {
 			return "", err
 		}
@@ -396,7 +396,7 @@ func executeMessageDesktopSearchMessages(ctx context.Context, args map[string]an
 }
 
 func executeMessageDesktopCreateChat(ctx context.Context, args map[string]any, btc *BridgeToolContext) (string, error) {
-	instance, err := resolveDesktopInstance(args, btc.Client)
+	instance, err := resolveDesktopInstance(ctx, args, btc.Client)
 	if err != nil {
 		return "", err
 	}
@@ -513,7 +513,7 @@ func executeMessageDesktopClearReminder(ctx context.Context, args map[string]any
 }
 
 func executeMessageDesktopUploadAsset(ctx context.Context, args map[string]any, btc *BridgeToolContext) (string, error) {
-	instance, err := resolveDesktopInstance(args, btc.Client)
+	instance, err := resolveDesktopInstance(ctx, args, btc.Client)
 	if err != nil {
 		return "", err
 	}
@@ -541,7 +541,7 @@ func executeMessageDesktopUploadAsset(ctx context.Context, args map[string]any, 
 }
 
 func executeMessageDesktopDownloadAsset(ctx context.Context, args map[string]any, btc *BridgeToolContext) (string, error) {
-	instance, err := resolveDesktopInstance(args, btc.Client)
+	instance, err := resolveDesktopInstance(ctx, args, btc.Client)
 	if err != nil {
 		return "", err
 	}

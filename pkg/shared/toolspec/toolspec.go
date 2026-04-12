@@ -150,7 +150,7 @@ func GravatarSetSchema() map[string]any {
 
 // MessageSchema returns the JSON schema for the message tool.
 func MessageSchema() map[string]any {
-	return ObjectSchema(map[string]any{
+	schema := ObjectSchema(map[string]any{
 		"action":      StringEnumProperty("The action to perform", []string{"send", "react", "edit", "delete", "reply", "thread-reply", "search", "focus", "desktop-list-chats", "desktop-search-chats", "desktop-search-messages", "desktop-create-chat", "desktop-archive-chat", "desktop-set-reminder", "desktop-clear-reminder", "desktop-upload-asset", "desktop-download-asset"}),
 		"message":     StringProperty("For send/edit/reply/thread-reply: the message text"),
 		"media":       StringProperty("Optional: media URL/path/data URL to send (image/audio/video/file)."),
@@ -211,6 +211,20 @@ func MessageSchema() map[string]any {
 		"targets":                  StringArrayProperty("Optional: multi-target override (ignored by bridge; current room only)."),
 		"dryRun":                   BooleanProperty("Optional: dry run (ignored by bridge)."),
 	}, "action")
+	schema["allOf"] = []any{
+		map[string]any{
+			"if": map[string]any{
+				"properties": map[string]any{
+					"action": map[string]any{"const": "react"},
+					"remove": map[string]any{"const": true},
+				},
+			},
+			"then": map[string]any{
+				"required": []string{"emoji"},
+			},
+		},
+	}
+	return schema
 }
 
 // CronSchema returns the JSON schema for the cron tool.

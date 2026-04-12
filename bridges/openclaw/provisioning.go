@@ -304,6 +304,10 @@ func (oc *OpenClawClient) createConfiguredAgentDM(ctx context.Context, agent gat
 		return nil, fmt.Errorf("failed to configure openclaw dm portal: %w", err)
 	}
 	chatInfo := oc.buildOpenClawDMChatInfo(agentID, state.OpenClawDMTargetAgentName, info)
+	if err := saveOpenClawPortalState(ctx, portal, oc.UserLogin, state); err != nil {
+		return nil, err
+	}
+	portalMeta(portal).IsOpenClawRoom = true
 	_, err = sdk.EnsurePortalLifecycle(ctx, sdk.PortalLifecycleOptions{
 		Login:             oc.UserLogin,
 		Portal:            portal,
@@ -314,10 +318,6 @@ func (oc *OpenClawClient) createConfiguredAgentDM(ctx context.Context, agent gat
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to ensure openclaw dm portal room: %w", err)
-	}
-	portalMeta(portal).IsOpenClawRoom = true
-	if err := saveOpenClawPortalState(ctx, portal, oc.UserLogin, state); err != nil {
-		return nil, err
 	}
 	oc.maybeRefreshPortalCapabilities(ctx, portal, &previous, state)
 	return &bridgev2.CreateChatResponse{

@@ -12,6 +12,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/bridgev2/status"
 
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	"github.com/beeper/agentremote/sdk"
@@ -253,6 +254,10 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to create login: %w", err), http.StatusInternalServerError, "AI", "CREATE_LOGIN_FAILED")
 	}
 	if err = saveAILoginConfig(ctx, login, cfg); err != nil {
+		login.Delete(ctx, status.BridgeState{}, bridgev2.DeleteOpts{
+			DontCleanupRooms: true,
+			BlockingCleanup:  true,
+		})
 		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to persist login config: %w", err), http.StatusInternalServerError, "AI", "SAVE_LOGIN_FAILED")
 	}
 

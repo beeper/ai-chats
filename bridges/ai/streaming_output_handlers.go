@@ -237,7 +237,7 @@ func (oc *AIClient) gateMcpToolApproval(
 		CallID:        tool.callID,
 		RequireForMCP: oc.toolApprovalsRequireForMCP(),
 	})
-	needsApproval := oc.toolApprovalsRuntimeEnabled() && runtimeDecision.State == airuntime.ToolApprovalRequired && !oc.isMcpAlwaysAllowed(serverLabel, mcpToolName)
+	needsApproval := oc.toolApprovalsRuntimeEnabled() && runtimeDecision.State == airuntime.ToolApprovalRequired && !oc.isMcpAlwaysAllowed(ctx, serverLabel, mcpToolName)
 	if needsApproval && state.heartbeat != nil {
 		needsApproval = false
 	}

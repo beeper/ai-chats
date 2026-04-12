@@ -56,7 +56,7 @@ func (oc *AIClient) toolApprovalsRequireForTool(toolName string) bool {
 	return false
 }
 
-func (oc *AIClient) isMcpAlwaysAllowed(serverLabel, toolName string) bool {
+func (oc *AIClient) isMcpAlwaysAllowed(ctx context.Context, serverLabel, toolName string) bool {
 	if oc == nil || oc.UserLogin == nil {
 		return false
 	}
@@ -65,10 +65,10 @@ func (oc *AIClient) isMcpAlwaysAllowed(serverLabel, toolName string) bool {
 	if sl == "" || tn == "" {
 		return false
 	}
-	return oc.hasToolApprovalRule(context.Background(), ToolApprovalKindMCP, sl, tn, "")
+	return oc.hasToolApprovalRule(ctx, ToolApprovalKindMCP, sl, tn, "")
 }
 
-func (oc *AIClient) isBuiltinAlwaysAllowed(toolName, action string) bool {
+func (oc *AIClient) isBuiltinAlwaysAllowed(ctx context.Context, toolName, action string) bool {
 	if oc == nil || oc.UserLogin == nil {
 		return false
 	}
@@ -77,7 +77,7 @@ func (oc *AIClient) isBuiltinAlwaysAllowed(toolName, action string) bool {
 	if tn == "" {
 		return false
 	}
-	return oc.hasBuiltinToolApprovalRule(context.Background(), tn, act)
+	return oc.hasBuiltinToolApprovalRule(ctx, tn, act)
 }
 
 func (oc *AIClient) persistAlwaysAllow(ctx context.Context, pending *pendingToolApprovalData) error {

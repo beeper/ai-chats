@@ -34,7 +34,7 @@ func (oc *AIClient) collectDesktopAccountHints(ctx context.Context) desktopAccou
 	if oc == nil {
 		return desktopAccountHintsSnapshot{}
 	}
-	instanceNames := oc.desktopAPIInstanceNames()
+	instanceNames := oc.desktopAPIInstanceNames(ctx)
 	if len(instanceNames) == 0 {
 		return desktopAccountHintsSnapshot{}
 	}
@@ -62,7 +62,7 @@ func (oc *AIClient) collectDesktopAccountHints(ctx context.Context) desktopAccou
 			instanceKey: safeInstanceKey,
 			accounts:    make(map[string]desktopAccountHint, len(accountMap)),
 		}
-		if cfg, ok := oc.desktopAPIInstanceConfig(instance); ok {
+		if cfg, ok := oc.desktopAPIInstanceConfig(ctx, instance); ok {
 			inst.baseURL = strings.TrimSpace(cfg.BaseURL)
 			if inst.baseURL != "" {
 				baseURLs = append(baseURLs, inst.baseURL)

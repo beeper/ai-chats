@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
@@ -121,6 +122,10 @@ func loadInternalPromptHistory(
 		}
 		turnData, ok := sdk.DecodeTurnData(raw)
 		if !ok {
+			zerolog.Ctx(ctx).Warn().
+				Str("event_id", eventID).
+				Str("portal_id", scope.portalID).
+				Msg("skipping malformed canonical_turn_data")
 			continue
 		}
 		messages := filterPromptMessagesForHistory(promptMessagesFromTurnData(turnData), false)

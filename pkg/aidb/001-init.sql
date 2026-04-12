@@ -199,10 +199,10 @@ CREATE TABLE IF NOT EXISTS aichats_login_state (
   bridge_id TEXT NOT NULL,
   login_id TEXT NOT NULL,
   next_chat_index INTEGER NOT NULL DEFAULT 0,
-  last_heartbeat_event_json TEXT NOT NULL DEFAULT '',
-  model_cache_json TEXT NOT NULL DEFAULT '',
-  gravatar_json TEXT NOT NULL DEFAULT '',
-  file_annotation_cache_json TEXT NOT NULL DEFAULT '',
+  last_heartbeat_event_json TEXT NOT NULL DEFAULT '{}',
+  model_cache_json TEXT NOT NULL DEFAULT '{}',
+  gravatar_json TEXT NOT NULL DEFAULT '{}',
+  file_annotation_cache_json TEXT NOT NULL DEFAULT '{}',
   consecutive_errors INTEGER NOT NULL DEFAULT 0,
   last_error_at INTEGER NOT NULL DEFAULT 0,
   updated_at_ms INTEGER NOT NULL DEFAULT 0,
@@ -212,7 +212,7 @@ CREATE TABLE IF NOT EXISTS aichats_login_state (
 CREATE TABLE IF NOT EXISTS aichats_login_config (
   bridge_id TEXT NOT NULL,
   login_id TEXT NOT NULL,
-  config_json TEXT NOT NULL DEFAULT '',
+  config_json TEXT NOT NULL DEFAULT '{}',
   updated_at_ms INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (bridge_id, login_id)
 );
@@ -221,7 +221,7 @@ CREATE TABLE IF NOT EXISTS aichats_custom_agents (
   bridge_id TEXT NOT NULL,
   login_id TEXT NOT NULL,
   agent_id TEXT NOT NULL,
-  content_json TEXT NOT NULL DEFAULT '',
+  content_json TEXT NOT NULL DEFAULT '{}',
   updated_at_ms INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (bridge_id, login_id, agent_id)
 );
@@ -230,7 +230,7 @@ CREATE TABLE IF NOT EXISTS aichats_portal_state (
   bridge_id TEXT NOT NULL,
   login_id TEXT NOT NULL,
   portal_id TEXT NOT NULL,
-  state_json TEXT NOT NULL DEFAULT '',
+  state_json TEXT NOT NULL DEFAULT '{}',
   updated_at_ms INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (bridge_id, login_id, portal_id)
 );
@@ -282,7 +282,7 @@ CREATE TABLE IF NOT EXISTS aichats_transcript_messages (
   message_id TEXT NOT NULL,
   event_id TEXT NOT NULL DEFAULT '',
   sender_id TEXT NOT NULL DEFAULT '',
-  metadata_json TEXT NOT NULL DEFAULT '',
+  metadata_json TEXT NOT NULL DEFAULT '{}',
   created_at_ms INTEGER NOT NULL DEFAULT 0,
   updated_at_ms INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (bridge_id, login_id, portal_id, message_id)

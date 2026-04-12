@@ -50,6 +50,9 @@ func NewConnector() *CodexConnector {
 		},
 		StartConnector: func(ctx context.Context, _ *bridgev2.Bridge) error {
 			db := cc.bridgeDB()
+			if db == nil {
+				return nil
+			}
 			if err := aidb.EnsureSchema(ctx, db); err != nil {
 				return err
 			}

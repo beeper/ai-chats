@@ -540,7 +540,9 @@ func (b *BossStoreAdapter) CreateRoom(ctx context.Context, room tools.RoomData) 
 		return "", fmt.Errorf("failed to create Matrix room: %w", err)
 	}
 
-	b.client.savePortalQuiet(ctx, portal, "room overrides")
+	if err := b.client.savePortal(ctx, portal, "room overrides"); err != nil {
+		return "", fmt.Errorf("failed to persist room overrides: %w", err)
+	}
 
 	return string(portal.PortalKey.ID), nil
 }
@@ -571,7 +573,9 @@ func (b *BossStoreAdapter) ModifyRoom(ctx context.Context, roomID string, update
 		b.client.ensureAgentGhostDisplayName(ctx, agent.ID, modelID, agentName)
 	}
 
-	b.client.savePortalQuiet(ctx, portal, "room update")
+	if err := b.client.savePortal(ctx, portal, "room update"); err != nil {
+		return fmt.Errorf("failed to persist room update: %w", err)
+	}
 	return nil
 }
 

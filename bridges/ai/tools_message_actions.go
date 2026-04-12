@@ -85,7 +85,7 @@ func executeMessageFocus(ctx context.Context, args map[string]any, btc *BridgeTo
 	}
 	if instance != "" {
 		result["instance"] = instance
-		if config, ok := btc.Client.desktopAPIInstanceConfig(instance); ok {
+		if config, ok := btc.Client.desktopAPIInstanceConfig(ctx, instance); ok {
 			if baseURL := strings.TrimSpace(config.BaseURL); baseURL != "" {
 				result["baseUrl"] = baseURL
 			}

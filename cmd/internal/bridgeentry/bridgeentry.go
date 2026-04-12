@@ -20,7 +20,7 @@ type Definition struct {
 var (
 	AI = Definition{
 		Name:        "ai",
-		Description: "AI Chats bridge for Beeper",
+		Description: "AI bridge built with the AgentRemote SDK.",
 		Port:        29345,
 		DBName:      "ai.db",
 	}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -19,10 +21,28 @@ type JSONBlobTable struct {
 	KeyColumn string // third key column, e.g. "portal_id" or "portal_key"
 }
 
+var jsonBlobTableIdent = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+func (t *JSONBlobTable) validateIdentifiers() error {
+	if t == nil {
+		return fmt.Errorf("json blob table is nil")
+	}
+	if !jsonBlobTableIdent.MatchString(t.TableName) {
+		return fmt.Errorf("invalid table name %q", t.TableName)
+	}
+	if !jsonBlobTableIdent.MatchString(t.KeyColumn) {
+		return fmt.Errorf("invalid key column %q", t.KeyColumn)
+	}
+	return nil
+}
+
 // Ensure creates the table if it does not already exist.
 func (t *JSONBlobTable) Ensure(ctx context.Context, db *dbutil.Database) error {
 	if db == nil {
 		return nil
+	}
+	if err := t.validateIdentifiers(); err != nil {
+		return err
 	}
 	_, err := db.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS `+t.TableName+` (
@@ -43,17 +63,23 @@ func Load[T any](t *JSONBlobTable, ctx context.Context, db *dbutil.Database, bri
 	if db == nil {
 		return nil, nil
 	}
+	if err := t.validateIdentifiers(); err != nil {
+		return nil, err
+	}
 	var raw string
 	err := db.QueryRow(ctx, `
 		SELECT state_json
 		FROM `+t.TableName+`
 		WHERE bridge_id=$1 AND login_id=$2 AND `+t.KeyColumn+`=$3
 	`, bridgeID, loginID, key).Scan(&raw)
-	if err == sql.ErrNoRows || strings.TrimSpace(raw) == "" {
-		return nil, nil
-	}
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
 		return nil, err
+	}
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
 	}
 	var out T
 	if err = json.Unmarshal([]byte(raw), &out); err != nil {
@@ -66,6 +92,9 @@ func Load[T any](t *JSONBlobTable, ctx context.Context, db *dbutil.Database, bri
 func Save[T any](t *JSONBlobTable, ctx context.Context, db *dbutil.Database, bridgeID, loginID, key string, value *T) error {
 	if db == nil || value == nil {
 		return nil
+	}
+	if err := t.validateIdentifiers(); err != nil {
+		return err
 	}
 	payload, err := json.Marshal(value)
 	if err != nil {
@@ -86,6 +115,9 @@ func Save[T any](t *JSONBlobTable, ctx context.Context, db *dbutil.Database, bri
 func (t *JSONBlobTable) Delete(ctx context.Context, db *dbutil.Database, bridgeID, loginID, key string) error {
 	if db == nil {
 		return nil
+	}
+	if err := t.validateIdentifiers(); err != nil {
+		return err
 	}
 	_, err := db.Exec(ctx, `
 		DELETE FROM `+t.TableName+`

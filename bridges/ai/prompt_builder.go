@@ -153,8 +153,9 @@ func (oc *AIClient) replayHistoryMessages(
 	if err != nil {
 		return nil, err
 	}
+	internalCandidates := make([]replayCandidate, 0, len(internalRows))
 	for _, row := range internalRows {
-		candidates = append(candidates, replayCandidate{
+		internalCandidates = append(internalCandidates, replayCandidate{
 			id:       row.MessageID,
 			role:     strings.TrimSpace(row.Role),
 			ts:       row.CreatedAt,
@@ -170,11 +171,18 @@ func (oc *AIClient) replayHistoryMessages(
 	if hr.limit > 0 && len(candidates) > hr.limit {
 		candidates = candidates[:hr.limit]
 	}
+	finalCandidates := append(candidates, internalCandidates...)
+	slices.SortStableFunc(finalCandidates, func(a, b replayCandidate) int {
+		if a.ts != b.ts {
+			return cmp.Compare(b.ts, a.ts)
+		}
+		return cmp.Compare(string(b.id), string(a.id))
+	})
 
 	skipUserID := networkid.MessageID("")
 	skipAssistantID := networkid.MessageID("")
 	if opts.mode == historyReplayRegen {
-		for _, candidate := range candidates {
+		for _, candidate := range finalCandidates {
 			if skipUserID == "" && candidate.role == string(PromptRoleUser) {
 				skipUserID = candidate.id
 				continue
@@ -189,8 +197,9 @@ func (oc *AIClient) replayHistoryMessages(
 	}
 
 	var messages []PromptMessage
-	for i := len(candidates) - 1; i >= 0; i-- {
-		candidate := candidates[i]
+	chatIndex := 0
+	for i := len(finalCandidates) - 1; i >= 0; i-- {
+		candidate := finalCandidates[i]
 		if opts.mode == historyReplayRewrite && candidate.id == opts.targetMessageID {
 			break
 		}
@@ -198,8 +207,9 @@ func (oc *AIClient) replayHistoryMessages(
 			continue
 		}
 		if candidate.row != nil {
-			injectImages := hr.hasVision && i < maxHistoryImageMessages
+			injectImages := hr.hasVision && chatIndex < maxHistoryImageMessages
 			messages = append(messages, oc.historyMessageBundle(ctx, candidate.meta, injectImages)...)
+			chatIndex++
 			continue
 		}
 		messages = append(messages, candidate.messages...)

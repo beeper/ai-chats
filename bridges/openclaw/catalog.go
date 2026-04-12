@@ -91,8 +91,12 @@ func (oc *OpenClawClient) enrichPortalState(ctx context.Context, state *openClaw
 	if oc == nil || state == nil {
 		return
 	}
+	state.OpenClawDefaultAgentID = ""
+	state.OpenClawKnownModelCount = 0
+	state.OpenClawToolCount = 0
+	state.OpenClawToolProfile = ""
 	defaultAgentID := oc.agentDefaultID()
-	if defaultAgentID != "" && state.OpenClawDefaultAgentID == "" {
+	if defaultAgentID != "" {
 		state.OpenClawDefaultAgentID = defaultAgentID
 	}
 	if models, err := oc.loadModelCatalog(ctx, false); err == nil && len(models) > 0 {

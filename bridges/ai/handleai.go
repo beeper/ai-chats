@@ -126,15 +126,18 @@ func bridgeStateForError(err error) (status.BridgeState, bool, bool) {
 // recordProviderError increments the consecutive error counter and escalates to a
 // bridge state warning after repeated failures.
 func (oc *AIClient) recordProviderError(ctx context.Context) {
+	const healthWarningThreshold = 5
 	var nextErrors int
+	var crossedThreshold bool
 	_ = oc.updateLoginState(ctx, func(state *loginRuntimeState) bool {
+		prevErrors := state.ConsecutiveErrors
 		state.ConsecutiveErrors++
 		state.LastErrorAt = time.Now().Unix()
 		nextErrors = state.ConsecutiveErrors
+		crossedThreshold = prevErrors < healthWarningThreshold && nextErrors >= healthWarningThreshold
 		return true
 	})
-	const healthWarningThreshold = 5
-	if nextErrors >= healthWarningThreshold {
+	if crossedThreshold {
 		oc.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateTransientDisconnect,
 			Error:      AIProviderError,
@@ -144,17 +147,18 @@ func (oc *AIClient) recordProviderError(ctx context.Context) {
 }
 
 func (oc *AIClient) recordProviderSuccess(ctx context.Context) {
-	var wasUnhealthy bool
+	const healthWarningThreshold = 5
+	var recovered bool
 	_ = oc.updateLoginState(ctx, func(state *loginRuntimeState) bool {
 		if state.ConsecutiveErrors == 0 {
 			return false
 		}
-		wasUnhealthy = state.ConsecutiveErrors >= 5
+		recovered = state.ConsecutiveErrors >= healthWarningThreshold
 		state.ConsecutiveErrors = 0
 		state.LastErrorAt = 0
 		return true
 	})
-	if wasUnhealthy && oc.IsLoggedIn() {
+	if recovered && oc.IsLoggedIn() {
 		oc.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateConnected,
 			Message:    "Connected",
@@ -315,7 +319,10 @@ func (oc *AIClient) scheduleAutoGreeting(ctx context.Context, portal *bridgev2.P
 			}
 
 			currentMeta.AutoGreetingSent = true
-			oc.savePortalQuiet(bgCtx, current, "auto greeting state")
+			if err := oc.savePortal(bgCtx, current, "auto greeting state"); err != nil {
+				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist auto greeting state")
+				return
+			}
 			if _, _, err := oc.dispatchInternalMessage(bgCtx, current, currentMeta, autoGreetingPrompt, "auto-greeting", true); err != nil {
 				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to dispatch auto greeting")
 			}
@@ -385,7 +392,10 @@ func (oc *AIClient) sendWelcomeMessage(ctx context.Context, portal *bridgev2.Por
 	meta.WelcomeSent = true
 	bgCtx, cancel := context.WithTimeout(oc.backgroundContext(ctx), 10*time.Second)
 	defer cancel()
-	oc.savePortalQuiet(bgCtx, portal, "welcome message state")
+	if err := oc.savePortal(bgCtx, portal, "welcome message state"); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist welcome message state")
+		return
+	}
 
 	if resolveAgentID(meta) == "" {
 		modelID := oc.effectiveModel(meta)
@@ -456,7 +466,19 @@ func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Por
 			meta.TitleGenerated = true
 		}
 		oc.applyPortalRoomName(bgCtx, portal, title)
-		oc.savePortalQuiet(bgCtx, portal, "room title")
+		if err := oc.savePortal(bgCtx, portal, "room title"); err != nil {
+			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist generated room title")
+			return
+		}
+		if _, err := sdk.EnsurePortalLifecycle(bgCtx, sdk.PortalLifecycleOptions{
+			Login:             oc.UserLogin,
+			Portal:            portal,
+			SaveBeforeCreate:  false,
+			AIRoomKind:        integrationPortalAIKind(portalMeta(portal)),
+			ForceCapabilities: true,
+		}); err != nil {
+			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to sync generated room title to Matrix")
+		}
 	}()
 }
 

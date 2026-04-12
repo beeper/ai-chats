@@ -36,6 +36,9 @@ func gravatarHash(email string) string {
 }
 
 func ensureGravatarState(state *loginRuntimeState) *GravatarState {
+	if state == nil {
+		return &GravatarState{}
+	}
 	if state.Gravatar == nil {
 		state.Gravatar = &GravatarState{}
 	}

@@ -45,7 +45,10 @@ func newConversation(ctx context.Context, portal *bridgev2.Portal, login *bridge
 }
 
 func (c *Conversation) getIntent(ctx context.Context) (bridgev2.MatrixAPI, error) {
-	if c != nil && c.intentOverride != nil {
+	if c == nil {
+		return nil, fmt.Errorf("conversation is nil")
+	}
+	if c.intentOverride != nil {
 		return c.intentOverride(ctx)
 	}
 	return resolveMatrixIntent(ctx, c.login, c.portal, c.sender, bridgev2.RemoteEventMessage)

@@ -87,6 +87,9 @@ func (s *conversationStateStore) get(portal *bridgev2.Portal) *sdkConversationSt
 		return &sdkConversationState{}
 	}
 	key := conversationStateKey(portal)
+	if key == "" {
+		return &sdkConversationState{}
+	}
 	s.mu.RLock()
 	state := s.rooms[key]
 	s.mu.RUnlock()
@@ -97,10 +100,13 @@ func (s *conversationStateStore) get(portal *bridgev2.Portal) *sdkConversationSt
 }
 
 func (s *conversationStateStore) set(portal *bridgev2.Portal, state *sdkConversationState) {
-	if s == nil || portal == nil {
+	if s == nil || portal == nil || state == nil {
 		return
 	}
 	key := conversationStateKey(portal)
+	if key == "" {
+		return
+	}
 	s.mu.Lock()
 	s.rooms[key] = state.clone()
 	s.mu.Unlock()
@@ -136,10 +142,15 @@ func loadConversationState(portal *bridgev2.Portal, store *conversationStateStor
 		return &sdkConversationState{}
 	}
 	state := store.get(portal)
-	if state == nil || (state.Kind == "" && state.Visibility == "" && len(state.RoomAgents.AgentIDs) == 0 && len(state.Metadata) == 0 && state.ParentConversationID == "" && state.ParentEventID == "" && !state.ArchiveOnCompletion) {
+	if conversationStateIsEmpty(state) {
 		loaded, err := loadConversationStateFromDB(context.Background(), portal)
 		if err == nil && loaded != nil {
 			state = loaded
+		}
+	}
+	if conversationStateIsEmpty(state) {
+		if legacy := loadConversationStateFromMetadata(portal); legacy != nil {
+			state = legacy
 		}
 	}
 	state.ensureDefaults()
@@ -147,6 +158,41 @@ func loadConversationState(portal *bridgev2.Portal, store *conversationStateStor
 		store.set(portal, state)
 	}
 	return state
+}
+
+func conversationStateIsEmpty(state *sdkConversationState) bool {
+	return state == nil ||
+		(state.Kind == "" &&
+			state.Visibility == "" &&
+			len(state.RoomAgents.AgentIDs) == 0 &&
+			len(state.Metadata) == 0 &&
+			state.ParentConversationID == "" &&
+			state.ParentEventID == "" &&
+			!state.ArchiveOnCompletion)
+}
+
+func loadConversationStateFromMetadata(portal *bridgev2.Portal) *sdkConversationState {
+	if portal == nil || portal.Metadata == nil {
+		return nil
+	}
+	if typed, ok := portal.Metadata.(*sdkConversationState); ok && typed != nil {
+		clone := typed.clone()
+		if !conversationStateIsEmpty(clone) {
+			return clone
+		}
+	}
+	data, err := json.Marshal(portal.Metadata)
+	if err != nil {
+		return nil
+	}
+	var state sdkConversationState
+	if err = json.Unmarshal(data, &state); err != nil {
+		return nil
+	}
+	if conversationStateIsEmpty(&state) {
+		return nil
+	}
+	return &state
 }
 
 func loadConversationStateFromDB(ctx context.Context, portal *bridgev2.Portal) (*sdkConversationState, error) {

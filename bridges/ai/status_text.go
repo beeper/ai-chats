@@ -204,7 +204,7 @@ func (oc *AIClient) lastAssistantUsage(ctx context.Context, portal *bridgev2.Por
 	if err != nil {
 		return nil
 	}
-	for i := len(history) - 1; i >= 0; i-- {
+	for i := 0; i < len(history); i++ {
 		meta := messageMeta(history[i])
 		if meta == nil || meta.Role != "assistant" {
 			continue

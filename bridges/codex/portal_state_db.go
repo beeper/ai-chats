@@ -145,7 +145,7 @@ func listCodexPortalStateRecords(ctx context.Context, login *bridgev2.UserLogin)
 		state := &codexPortalState{}
 		if strings.TrimSpace(stateRaw) != "" {
 			if err := json.Unmarshal([]byte(stateRaw), state); err != nil {
-				return nil, err
+				continue
 			}
 		}
 		out = append(out, codexPortalStateRecord{

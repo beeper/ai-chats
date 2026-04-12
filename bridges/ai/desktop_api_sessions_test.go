@@ -1,6 +1,9 @@
 package ai
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestDesktopAPIInstancesMergesFallbackTokenIntoDefaultInstance(t *testing.T) {
 	client := newTestAIClientWithProvider("")
@@ -15,7 +18,7 @@ func TestDesktopAPIInstancesMergesFallbackTokenIntoDefaultInstance(t *testing.T)
 		},
 	})
 
-	instances := client.desktopAPIInstances()
+	instances := client.desktopAPIInstances(context.Background())
 	got, ok := instances[desktopDefaultInstance]
 	if !ok {
 		t.Fatal("expected default desktop API instance")

@@ -384,12 +384,10 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist edited transcript message")
 	}
 	if edit.EditTarget != nil {
-		// Keep the bridgev2 row transport-only. Edited transcript content stays in
-		// the AI transcript table.
-		edit.EditTarget.Metadata = &MessageMetadata{}
+		edit.EditTarget.Metadata = cloneMessageMetadata(transcriptMeta)
 		if oc.UserLogin != nil && oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.DB != nil && oc.UserLogin.Bridge.DB.Message != nil {
 			if err := oc.UserLogin.Bridge.DB.Message.Update(ctx, edit.EditTarget); err != nil {
-				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to clear bridge message metadata after edit")
+				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to update bridge message metadata after edit")
 			}
 		}
 	}
@@ -955,22 +953,24 @@ func (oc *AIClient) handleTextFileMessage(
 	}, nil
 }
 
-// savePortalQuiet saves portal and logs errors without failing
-func (oc *AIClient) savePortalQuiet(ctx context.Context, portal *bridgev2.Portal, action string) {
+func (oc *AIClient) savePortal(ctx context.Context, portal *bridgev2.Portal, action string) error {
 	if oc == nil || portal == nil {
-		return
+		return nil
 	}
 	if meta, ok := portal.Metadata.(*PortalMetadata); ok && meta != nil {
 		if err := saveAIPortalState(ctx, portal, meta); err != nil {
-			if !errors.Is(err, context.Canceled) {
-				oc.loggerForContext(ctx).Warn().Err(err).Str("action", action).Msg("Failed to save AI portal state")
-			}
+			return fmt.Errorf("save AI portal state for %s: %w", action, err)
 		}
 	}
 	if err := portal.Save(ctx); err != nil {
-		if errors.Is(err, context.Canceled) {
-			return
-		}
+		return fmt.Errorf("save portal for %s: %w", action, err)
+	}
+	return nil
+}
+
+// savePortalQuiet saves portal and logs errors without failing
+func (oc *AIClient) savePortalQuiet(ctx context.Context, portal *bridgev2.Portal, action string) {
+	if err := oc.savePortal(ctx, portal, action); err != nil && !errors.Is(err, context.Canceled) {
 		oc.loggerForContext(ctx).Warn().Err(err).Str("action", action).Msg("Failed to save portal")
 	}
 }

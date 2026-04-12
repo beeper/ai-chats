@@ -121,11 +121,14 @@ func loadAIPortalState(ctx context.Context, portal *bridgev2.Portal) (*aiPersist
 		FROM `+aiPortalStateTable+`
 		WHERE bridge_id=$1 AND login_id=$2 AND portal_id=$3
 	`, scope.bridgeID, scope.loginID, scope.portalID).Scan(&raw)
-	if err == sql.ErrNoRows || strings.TrimSpace(raw) == "" {
-		return nil, nil
-	}
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
 		return nil, err
+	}
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
 	}
 	var state aiPersistedPortalState
 	if err = json.Unmarshal([]byte(raw), &state); err != nil {

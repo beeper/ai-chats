@@ -111,6 +111,8 @@ type loginScope struct {
 // client is not fully initialised.
 func loginScopeForClient(client *AIClient) *loginScope {
 	db, bridgeID, loginID := loginDBContext(client)
+	bridgeID = strings.TrimSpace(bridgeID)
+	loginID = strings.TrimSpace(loginID)
 	if db == nil || bridgeID == "" || loginID == "" {
 		return nil
 	}

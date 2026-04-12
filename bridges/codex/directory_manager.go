@@ -145,6 +145,9 @@ func (cc *CodexClient) createWelcomeCodexChat(ctx context.Context) (*bridgev2.Po
 		return nil, err
 	}
 	info := cc.composeCodexChatInfo(portal, state, false)
+	if err := saveCodexPortalState(ctx, portal, state); err != nil {
+		return nil, err
+	}
 	created, err := sdk.EnsurePortalLifecycle(ctx, sdk.PortalLifecycleOptions{
 		Login:             cc.UserLogin,
 		Portal:            portal,
@@ -159,9 +162,6 @@ func (cc *CodexClient) createWelcomeCodexChat(ctx context.Context) (*bridgev2.Po
 	if created {
 		cc.sendSystemNotice(ctx, portal, "AI Chats can make mistakes.")
 		cc.sendSystemNotice(ctx, portal, "Send an absolute path or `~/...` to start a Codex session.")
-	}
-	if err := saveCodexPortalState(ctx, portal, state); err != nil {
-		return nil, err
 	}
 	return portal, nil
 }

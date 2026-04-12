@@ -48,7 +48,7 @@ func (oc *AIClient) agentsEnabledForLogin() bool {
 		return false
 	}
 	cfg := oc.loginConfigSnapshot(context.Background())
-	return cfg.Agents != nil && *cfg.Agents
+	return cfg.Agents == nil || *cfg.Agents
 }
 
 func shouldEnsureDefaultChat(owner any) bool {

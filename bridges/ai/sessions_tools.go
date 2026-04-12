@@ -135,7 +135,7 @@ func (oc *AIClient) executeSessionsList(ctx context.Context, portal *bridgev2.Po
 	}
 
 	if oc != nil {
-		instances := oc.desktopAPIInstanceNames()
+		instances := oc.desktopAPIInstanceNames(ctx)
 		hasMultipleDesktopInstances := len(instances) > 1
 		desktopErrors := make([]map[string]any, 0, 2)
 		for _, instance := range instances {
@@ -214,12 +214,12 @@ func (oc *AIClient) executeSessionsHistory(ctx context.Context, portal *bridgev2
 		}
 	}
 	if instance, chatID, ok := parseDesktopSessionKey(sessionKey); ok {
-		resolvedInstance, resolveErr := resolveDesktopInstanceName(oc.desktopAPIInstances(), instance)
+		resolvedInstance, resolveErr := resolveDesktopInstanceName(oc.desktopAPIInstances(ctx), instance)
 		if resolveErr != nil {
 			return tools.JSONErrorResult(resolveErr.Error()), nil
 		}
 		instance = resolvedInstance
-		client, clientErr := oc.desktopAPIClient(instance)
+		client, clientErr := oc.desktopAPIClient(ctx, instance)
 		if clientErr != nil || client == nil {
 			if clientErr == nil {
 				clientErr = errors.New("desktop API token is not set")
@@ -309,7 +309,7 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 	}
 
 	if instance, chatID, ok := parseDesktopSessionKey(sessionKey); ok {
-		resolvedInstance, resolveErr := resolveDesktopInstanceName(oc.desktopAPIInstances(), instance)
+		resolvedInstance, resolveErr := resolveDesktopInstanceName(oc.desktopAPIInstances(ctx), instance)
 		if resolveErr != nil {
 			return tools.JSONErrorResult(resolveErr.Error()), nil
 		}
@@ -352,7 +352,7 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 			var desktopKey string
 			var desktopErr error
 			if strings.TrimSpace(instance) != "" {
-				resolvedInstance, resolveErr := resolveDesktopInstanceName(oc.desktopAPIInstances(), instance)
+				resolvedInstance, resolveErr := resolveDesktopInstanceName(oc.desktopAPIInstances(ctx), instance)
 				if resolveErr != nil {
 					return tools.JSONErrorResult(resolveErr.Error()), nil
 				}

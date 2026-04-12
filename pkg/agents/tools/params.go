@@ -2,6 +2,7 @@ package tools
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/beeper/agentremote/pkg/shared/maputil"
@@ -65,7 +66,13 @@ func ReadNumber(params map[string]any, key string, required bool) (float64, erro
 // ReadInt reads an integer parameter from input.
 func ReadInt(params map[string]any, key string, required bool) (int, error) {
 	n, err := ReadNumber(params, key, required)
-	return int(n), err
+	if err != nil {
+		return 0, err
+	}
+	if n != math.Trunc(n) {
+		return 0, fmt.Errorf("parameter %q must be an integer", key)
+	}
+	return int(n), nil
 }
 
 // ReadIntDefault reads an integer parameter with a default value.
@@ -80,9 +87,13 @@ func ReadBool(params map[string]any, key string, defaultVal bool) bool {
 
 // ReadStringSlice reads a string array parameter from input.
 func ReadStringSlice(params map[string]any, key string, required bool) ([]string, error) {
+	v, ok := params[key]
 	arr := maputil.StringSliceArg(params, key)
 	if arr != nil {
 		return arr, nil
+	}
+	if ok && v != nil {
+		return nil, fmt.Errorf("parameter %q must be an array of strings", key)
 	}
 	if required {
 		return nil, fmt.Errorf("parameter %q is required", key)

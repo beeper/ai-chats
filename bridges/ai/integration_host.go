@@ -218,11 +218,12 @@ func (h *runtimeIntegrationHost) SessionTranscript(ctx context.Context, portalKe
 	if h == nil || h.client == nil || h.client.UserLogin == nil || h.client.UserLogin.Bridge == nil || h.client.UserLogin.Bridge.DB == nil {
 		return nil, nil
 	}
+	const maxSessionTranscriptMessages = 500
 	portal, err := h.client.UserLogin.Bridge.GetPortalByKey(h.client.backgroundContext(ctx), portalKey)
 	if err != nil || portal == nil {
 		return nil, err
 	}
-	history, err := h.client.getAllAIHistoryMessages(h.client.backgroundContext(ctx), portal)
+	history, err := h.client.getAIHistoryMessages(h.client.backgroundContext(ctx), portal, maxSessionTranscriptMessages)
 	if err != nil || len(history) == 0 {
 		return nil, err
 	}

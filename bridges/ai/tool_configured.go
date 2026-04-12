@@ -13,8 +13,9 @@ import (
 // Tool policy ("allow/deny") is handled elsewhere; these checks are about runtime
 // prerequisites like API keys and service initialization.
 
-func (oc *AIClient) effectiveSearchConfig(_ context.Context) *search.Config {
+func (oc *AIClient) effectiveSearchConfig(ctx context.Context) *search.Config {
 	return effectiveToolConfig(
+		ctx,
 		oc,
 		func(connector *OpenAIConnector) *search.Config {
 			if connector == nil || connector.Config.Tools.Web == nil {
@@ -27,8 +28,9 @@ func (oc *AIClient) effectiveSearchConfig(_ context.Context) *search.Config {
 	)
 }
 
-func (oc *AIClient) effectiveFetchConfig(_ context.Context) *fetch.Config {
+func (oc *AIClient) effectiveFetchConfig(ctx context.Context) *fetch.Config {
 	return effectiveToolConfig(
+		ctx,
 		oc,
 		func(connector *OpenAIConnector) *fetch.Config {
 			if connector == nil || connector.Config.Tools.Web == nil {
@@ -42,6 +44,7 @@ func (oc *AIClient) effectiveFetchConfig(_ context.Context) *fetch.Config {
 }
 
 func effectiveToolConfig[T any](
+	ctx context.Context,
 	oc *AIClient,
 	load func(*OpenAIConnector) *T,
 	applyTokens func(*T, string, *aiLoginConfig, *OpenAIConnector) *T,
@@ -56,7 +59,7 @@ func effectiveToolConfig[T any](
 		cfg = load(connector)
 		if oc.UserLogin != nil {
 			provider = loginMetadata(oc.UserLogin).Provider
-			loginCfg = oc.loginConfigSnapshot(context.Background())
+			loginCfg = oc.loginConfigSnapshot(ctx)
 		}
 	}
 	cfg = applyTokens(cfg, provider, loginCfg, connector)

@@ -1,10 +1,26 @@
 package ai
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/rs/zerolog"
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
+)
 
 func newMediaTestClient(provider string, cfg *aiLoginConfig, oc *OpenAIConnector) *AIClient {
-	client := newTestAIClientWithProvider(provider)
-	client.connector = oc
+	client := &AIClient{
+		UserLogin: &bridgev2.UserLogin{
+			UserLogin: &database.UserLogin{
+				ID:       networkid.UserLoginID("login"),
+				Metadata: &UserLoginMetadata{Provider: provider},
+			},
+			Log: zerolog.Nop(),
+		},
+		connector: oc,
+		log:       zerolog.Nop(),
+	}
 	setTestLoginConfig(client, cfg)
 	return client
 }

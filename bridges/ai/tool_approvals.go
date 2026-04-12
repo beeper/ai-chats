@@ -412,7 +412,7 @@ func (oc *AIClient) isBuiltinToolDenied(
 		return true
 	}
 	required, action := oc.builtinToolApprovalRequirement(toolName, argsObj)
-	if required && oc.isBuiltinAlwaysAllowed(toolName, action) {
+	if required && oc.isBuiltinAlwaysAllowed(ctx, toolName, action) {
 		required = false
 	}
 	if required && state.heartbeat != nil {

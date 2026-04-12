@@ -153,12 +153,12 @@ func parseDesktopSessionKey(sessionKey string) (string, string, bool) {
 	return instance, chatID, true
 }
 
-func (oc *AIClient) desktopAPIInstances() map[string]DesktopAPIInstance {
+func (oc *AIClient) desktopAPIInstances(ctx context.Context) map[string]DesktopAPIInstance {
 	instances := map[string]DesktopAPIInstance{}
 	if oc == nil || oc.UserLogin == nil {
 		return instances
 	}
-	creds := loginCredentials(oc.loginConfigSnapshot(context.Background()))
+	creds := loginCredentials(oc.loginConfigSnapshot(ctx))
 	if creds == nil || creds.ServiceTokens == nil {
 		return instances
 	}
@@ -182,15 +182,15 @@ func (oc *AIClient) desktopAPIInstances() map[string]DesktopAPIInstance {
 	return instances
 }
 
-func (oc *AIClient) desktopAPIInstanceConfig(instance string) (DesktopAPIInstance, bool) {
-	instances := oc.desktopAPIInstances()
+func (oc *AIClient) desktopAPIInstanceConfig(ctx context.Context, instance string) (DesktopAPIInstance, bool) {
+	instances := oc.desktopAPIInstances(ctx)
 	key := normalizeDesktopInstanceName(instance)
 	config, ok := instances[key]
 	return config, ok
 }
 
-func (oc *AIClient) desktopAPIClient(instance string) (*beeperdesktopapi.Client, error) {
-	config, ok := oc.desktopAPIInstanceConfig(instance)
+func (oc *AIClient) desktopAPIClient(ctx context.Context, instance string) (*beeperdesktopapi.Client, error) {
+	config, ok := oc.desktopAPIInstanceConfig(ctx, instance)
 	if !ok || strings.TrimSpace(config.Token) == "" {
 		return nil, errors.New("desktop API token is not set")
 	}
@@ -202,8 +202,8 @@ func (oc *AIClient) desktopAPIClient(instance string) (*beeperdesktopapi.Client,
 	return &client, nil
 }
 
-func (oc *AIClient) desktopAPIInstanceNames() []string {
-	instances := oc.desktopAPIInstances()
+func (oc *AIClient) desktopAPIInstanceNames(ctx context.Context) []string {
+	instances := oc.desktopAPIInstances(ctx)
 	if len(instances) == 0 {
 		return nil
 	}
@@ -220,7 +220,7 @@ func (oc *AIClient) desktopAPIInstanceNames() []string {
 }
 
 func (oc *AIClient) listDesktopSessions(ctx context.Context, instance string, opts desktopSessionListOptions, accounts map[string]beeperdesktopapi.Account) ([]sessionListEntry, error) {
-	client, err := oc.desktopAPIClient(instance)
+	client, err := oc.desktopAPIClient(ctx, instance)
 	if err != nil {
 		return nil, err
 	}
@@ -496,7 +496,7 @@ func buildDesktopSessionMessages(messages []shared.Message, opts desktopMessageB
 }
 
 func (oc *AIClient) listDesktopAccounts(ctx context.Context, instance string) (map[string]beeperdesktopapi.Account, error) {
-	client, err := oc.desktopAPIClient(instance)
+	client, err := oc.desktopAPIClient(ctx, instance)
 	if err != nil {
 		return nil, err
 	}
@@ -515,7 +515,7 @@ func (oc *AIClient) listDesktopAccounts(ctx context.Context, instance string) (m
 }
 
 func (oc *AIClient) resolveDesktopSessionByLabelWithOptions(ctx context.Context, instance, label string, opts desktopLabelResolveOptions) (string, string, error) {
-	client, err := oc.desktopAPIClient(instance)
+	client, err := oc.desktopAPIClient(ctx, instance)
 	if err != nil {
 		return "", "", err
 	}
@@ -593,7 +593,7 @@ func topDesktopChatLabels(chats []beeperdesktopapi.Chat, accounts map[string]bee
 }
 
 func (oc *AIClient) resolveDesktopSessionByLabelAnyInstanceWithOptions(ctx context.Context, label string, opts desktopLabelResolveOptions) (string, string, string, error) {
-	instances := oc.desktopAPIInstanceNames()
+	instances := oc.desktopAPIInstanceNames(ctx)
 	if len(instances) == 0 {
 		return "", "", "", errors.New("desktop API token is not set")
 	}
@@ -635,7 +635,7 @@ func (oc *AIClient) resolveDesktopSessionByLabelAnyInstanceWithOptions(ctx conte
 }
 
 func (oc *AIClient) sendDesktopMessage(ctx context.Context, instance, chatID string, req desktopSendMessageRequest) (string, error) {
-	client, err := oc.desktopAPIClient(instance)
+	client, err := oc.desktopAPIClient(ctx, instance)
 	if err != nil {
 		return "", err
 	}
@@ -679,7 +679,7 @@ func (oc *AIClient) sendDesktopMessage(ctx context.Context, instance, chatID str
 }
 
 func (oc *AIClient) listDesktopChats(ctx context.Context, instance string, limit int) ([]beeperdesktopapi.ChatListResponse, error) {
-	client, err := oc.desktopAPIClient(instance)
+	client, err := oc.desktopAPIClient(ctx, instance)
 	if err != nil {
 		return nil, err
 	}
@@ -708,7 +708,7 @@ func (oc *AIClient) listDesktopChats(ctx context.Context, instance string, limit
 }
 
 func (oc *AIClient) searchDesktopChats(ctx context.Context, instance, query string, limit int) ([]beeperdesktopapi.Chat, error) {
-	client, err := oc.desktopAPIClient(instance)
+	client, err := oc.desktopAPIClient(ctx, instance)
 	if err != nil {
 		return nil, err
 	}
@@ -743,7 +743,7 @@ func (oc *AIClient) searchDesktopChats(ctx context.Context, instance, query stri
 }
 
 func (oc *AIClient) searchDesktopMessages(ctx context.Context, instance, query string, limit int, chatID string) ([]shared.Message, error) {
-	client, err := oc.desktopAPIClient(instance)
+	client, err := oc.desktopAPIClient(ctx, instance)
 	if err != nil {
 		return nil, err
 	}
@@ -783,7 +783,7 @@ func (oc *AIClient) searchDesktopMessages(ctx context.Context, instance, query s
 }
 
 func (oc *AIClient) editDesktopMessage(ctx context.Context, instance, chatID, messageID, text string) error {
-	client, err := oc.desktopAPIClient(instance)
+	client, err := oc.desktopAPIClient(ctx, instance)
 	if err != nil {
 		return err
 	}
@@ -798,7 +798,7 @@ func (oc *AIClient) editDesktopMessage(ctx context.Context, instance, chatID, me
 }
 
 func (oc *AIClient) createDesktopChat(ctx context.Context, instance, accountID string, participantIDs []string, chatType, title, firstMessage string) (string, error) {
-	client, err := oc.desktopAPIClient(instance)
+	client, err := oc.desktopAPIClient(ctx, instance)
 	if err != nil {
 		return "", err
 	}
@@ -845,7 +845,7 @@ func (oc *AIClient) createDesktopChat(ctx context.Context, instance, accountID s
 }
 
 func (oc *AIClient) archiveDesktopChat(ctx context.Context, instance, chatID string, archived bool) error {
-	client, err := oc.desktopAPIClient(instance)
+	client, err := oc.desktopAPIClient(ctx, instance)
 	if err != nil {
 		return err
 	}
@@ -856,7 +856,7 @@ func (oc *AIClient) archiveDesktopChat(ctx context.Context, instance, chatID str
 }
 
 func (oc *AIClient) setDesktopChatReminder(ctx context.Context, instance, chatID string, remindAtMs int64, dismissOnIncoming bool) error {
-	client, err := oc.desktopAPIClient(instance)
+	client, err := oc.desktopAPIClient(ctx, instance)
 	if err != nil {
 		return err
 	}
@@ -870,7 +870,7 @@ func (oc *AIClient) setDesktopChatReminder(ctx context.Context, instance, chatID
 }
 
 func (oc *AIClient) clearDesktopChatReminder(ctx context.Context, instance, chatID string) error {
-	client, err := oc.desktopAPIClient(instance)
+	client, err := oc.desktopAPIClient(ctx, instance)
 	if err != nil {
 		return err
 	}
@@ -879,7 +879,7 @@ func (oc *AIClient) clearDesktopChatReminder(ctx context.Context, instance, chat
 }
 
 func (oc *AIClient) uploadDesktopAssetBase64(ctx context.Context, instance string, data []byte, fileName, mimeType string) (*beeperdesktopapi.AssetUploadBase64Response, error) {
-	client, err := oc.desktopAPIClient(instance)
+	client, err := oc.desktopAPIClient(ctx, instance)
 	if err != nil {
 		return nil, err
 	}
@@ -896,7 +896,7 @@ func (oc *AIClient) uploadDesktopAssetBase64(ctx context.Context, instance strin
 }
 
 func (oc *AIClient) downloadDesktopAsset(ctx context.Context, instance, url string) (*beeperdesktopapi.AssetDownloadResponse, error) {
-	client, err := oc.desktopAPIClient(instance)
+	client, err := oc.desktopAPIClient(ctx, instance)
 	if err != nil {
 		return nil, err
 	}
@@ -1050,7 +1050,7 @@ func desktopSessionAccountID(areThereMultipleDesktopInstances bool, instance str
 }
 
 func (oc *AIClient) focusDesktop(ctx context.Context, instance string, params desktopFocusParams) (*beeperdesktopapi.FocusResponse, error) {
-	client, err := oc.desktopAPIClient(instance)
+	client, err := oc.desktopAPIClient(ctx, instance)
 	if err != nil {
 		return nil, err
 	}
