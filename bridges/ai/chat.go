@@ -622,9 +622,7 @@ func (oc *AIClient) createAgentChatWithModel(ctx context.Context, agent *agents.
 		portal.AvatarMXC = id.ContentURIString(agentAvatar)
 	}
 
-	if err := portal.Save(ctx); err != nil {
-		return nil, fmt.Errorf("failed to save portal with agent config: %w", err)
-	}
+	oc.savePortalQuiet(ctx, portal, "agent config")
 	oc.ensureAgentGhostDisplayName(ctx, agent.ID, modelID, agentName)
 
 	// Update chat info members to use agent ghost only
@@ -742,6 +740,9 @@ func (oc *AIClient) initPortalForChat(ctx context.Context, opts PortalInitOpts) 
 		}
 	}
 	portal.Metadata = pmeta
+	if err := saveAIPortalState(ctx, portal, pmeta); err != nil {
+		return nil, nil, fmt.Errorf("failed to save portal state: %w", err)
+	}
 
 	if err := sdk.ConfigureDMPortal(ctx, sdk.ConfigureDMPortalParams{
 		Portal:      portal,
@@ -1216,10 +1217,7 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 	portal.OtherUserID = agentGhostID
 	pm.ResolvedTarget = resolveTargetFromGhostID(agentGhostID)
 
-	if err := portal.Save(ctx); err != nil {
-		oc.loggerForContext(ctx).Err(err).Msg("Failed to save portal with agent config")
-		return err
-	}
+	oc.savePortalQuiet(ctx, portal, "default chat agent config")
 
 	// Update chat info members to use agent ghost only
 	agentName := oc.resolveAgentDisplayName(ctx, beeperAgent)

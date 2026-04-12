@@ -112,7 +112,7 @@ func openClawPortalDBScopeFor(portal *bridgev2.Portal, login *bridgev2.UserLogin
 	}
 	bridgeID := strings.TrimSpace(string(login.Bridge.DB.BridgeID))
 	loginID := strings.TrimSpace(string(login.ID))
-	portalKey := strings.TrimSpace(string(portal.PortalKey))
+	portalKey := strings.TrimSpace(string(portal.PortalKey.ID) + "\x00" + string(portal.PortalKey.Receiver))
 	if bridgeID == "" || loginID == "" || portalKey == "" {
 		return nil
 	}

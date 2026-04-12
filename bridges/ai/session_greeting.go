@@ -33,7 +33,7 @@ func sessionGreetingFragment(
 	}
 	meta.SessionBootstrapByAgent[agentID] = time.Now().UnixMilli()
 	if portal != nil {
-		if err := portal.Save(ctx); err != nil {
+		if err := saveAIPortalState(ctx, portal, meta); err != nil {
 			log.Warn().Err(err).Msg("Failed to persist session bootstrap state")
 		}
 	}

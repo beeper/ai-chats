@@ -313,10 +313,7 @@ func (oc *AIClient) scheduleAutoGreeting(ctx context.Context, portal *bridgev2.P
 			}
 
 			currentMeta.AutoGreetingSent = true
-			if err := current.Save(bgCtx); err != nil {
-				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist auto greeting state")
-				return
-			}
+			oc.savePortalQuiet(bgCtx, current, "auto greeting state")
 			if _, _, err := oc.dispatchInternalMessage(bgCtx, current, currentMeta, autoGreetingPrompt, "auto-greeting", true); err != nil {
 				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to dispatch auto greeting")
 			}
@@ -386,10 +383,7 @@ func (oc *AIClient) sendWelcomeMessage(ctx context.Context, portal *bridgev2.Por
 	meta.WelcomeSent = true
 	bgCtx, cancel := context.WithTimeout(oc.backgroundContext(ctx), 10*time.Second)
 	defer cancel()
-	if err := portal.Save(bgCtx); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist welcome message state")
-		// Still send the welcome notice and schedule greeting; duplicates are preferable to missing UX.
-	}
+	oc.savePortalQuiet(bgCtx, portal, "welcome message state")
 
 	if resolveAgentID(meta) == "" {
 		modelID := oc.effectiveModel(meta)
@@ -591,9 +585,7 @@ func (oc *AIClient) setRoomName(ctx context.Context, portal *bridgev2.Portal, na
 	meta.Title = name
 	meta.TitleGenerated = true
 	if save {
-		if err := portal.Save(ctx); err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to save portal after setting room name")
-		}
+		oc.savePortalQuiet(ctx, portal, "room name")
 	}
 
 	oc.loggerForContext(ctx).Debug().Str("name", name).Msg("Set Matrix room name")
@@ -610,9 +602,7 @@ func (oc *AIClient) setRoomTopic(ctx context.Context, portal *bridgev2.Portal, t
 	}
 
 	portal.Topic = topic
-	if err := portal.Save(ctx); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to save portal after setting room topic")
-	}
+	oc.savePortalQuiet(ctx, portal, "room topic")
 
 	oc.loggerForContext(ctx).Debug().Str("topic", topic).Msg("Set Matrix room topic")
 	return nil

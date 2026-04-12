@@ -55,78 +55,83 @@ func getOpenClawSessionChatInfo(ctx context.Context, portal *bridgev2.Portal, cl
 	if portal == nil {
 		return nil, fmt.Errorf("missing portal")
 	}
-	meta := portalMeta(portal)
-	previous := *meta
-	meta.IsOpenClawRoom = true
-	meta.OpenClawGatewayID = client.gatewayID()
-	meta.OpenClawSessionID = session.SessionID
-	meta.OpenClawSessionKey = session.Key
-	meta.OpenClawSpawnedBy = session.SpawnedBy
-	meta.OpenClawSessionKind = session.Kind
-	meta.OpenClawSessionLabel = session.Label
-	meta.OpenClawDisplayName = session.DisplayName
-	meta.OpenClawDerivedTitle = session.DerivedTitle
-	meta.OpenClawLastMessagePreview = session.LastMessagePreview
-	meta.OpenClawChannel = session.Channel
-	meta.OpenClawSubject = session.Subject
-	meta.OpenClawGroupChannel = session.GroupChannel
-	meta.OpenClawSpace = session.Space
-	meta.OpenClawChatType = session.ChatType
-	meta.OpenClawOrigin = session.OriginString()
-	meta.OpenClawAgentID = stringutil.TrimDefault(meta.OpenClawAgentID, openclawconv.AgentIDFromSessionKey(session.Key))
+	state, err := loadOpenClawPortalState(ctx, portal, client.UserLogin)
+	if err != nil {
+		return nil, err
+	}
+	previous := *state
+	state.OpenClawGatewayID = client.gatewayID()
+	state.OpenClawSessionID = session.SessionID
+	state.OpenClawSessionKey = session.Key
+	state.OpenClawSpawnedBy = session.SpawnedBy
+	state.OpenClawSessionKind = session.Kind
+	state.OpenClawSessionLabel = session.Label
+	state.OpenClawDisplayName = session.DisplayName
+	state.OpenClawDerivedTitle = session.DerivedTitle
+	state.OpenClawLastMessagePreview = session.LastMessagePreview
+	state.OpenClawChannel = session.Channel
+	state.OpenClawSubject = session.Subject
+	state.OpenClawGroupChannel = session.GroupChannel
+	state.OpenClawSpace = session.Space
+	state.OpenClawChatType = session.ChatType
+	state.OpenClawOrigin = session.OriginString()
+	state.OpenClawAgentID = stringutil.TrimDefault(state.OpenClawAgentID, openclawconv.AgentIDFromSessionKey(session.Key))
 	if isOpenClawSyntheticDMSessionKey(session.Key) {
-		meta.OpenClawDMTargetAgentID = stringutil.TrimDefault(meta.OpenClawDMTargetAgentID, openclawconv.AgentIDFromSessionKey(session.Key))
+		state.OpenClawDMTargetAgentID = stringutil.TrimDefault(state.OpenClawDMTargetAgentID, openclawconv.AgentIDFromSessionKey(session.Key))
 	}
-	meta.OpenClawSystemSent = session.SystemSent
-	meta.OpenClawAbortedLastRun = session.AbortedLastRun
-	meta.ThinkingLevel = session.ThinkingLevel
-	meta.FastMode = session.FastMode
-	meta.VerboseLevel = session.VerboseLevel
-	meta.ReasoningLevel = session.ReasoningLevel
-	meta.ElevatedLevel = session.ElevatedLevel
-	meta.SendPolicy = session.SendPolicy
-	meta.InputTokens = session.InputTokens
-	meta.OutputTokens = session.OutputTokens
-	meta.TotalTokens = session.TotalTokens
-	meta.TotalTokensFresh = session.TotalTokensFresh
-	meta.EstimatedCostUSD = session.EstimatedCostUSD
-	meta.Status = session.Status
-	meta.StartedAt = session.StartedAt
-	meta.EndedAt = session.EndedAt
-	meta.RuntimeMs = session.RuntimeMs
-	meta.ParentSessionKey = session.ParentSessionKey
-	meta.ChildSessions = append(meta.ChildSessions[:0], session.ChildSessions...)
-	meta.ResponseUsage = session.ResponseUsage
-	meta.ModelProvider = session.ModelProvider
-	meta.Model = session.Model
-	meta.ContextTokens = session.ContextTokens
-	meta.DeliveryContext = session.DeliveryContext
-	meta.LastChannel = session.LastChannel
-	meta.LastTo = session.LastTo
-	meta.LastAccountID = session.LastAccountID
-	meta.SessionUpdatedAt = session.UpdatedAt
-	meta.OpenClawPreviewSnippet = stringutil.TrimDefault(meta.OpenClawPreviewSnippet, session.LastMessagePreview)
-	if meta.OpenClawPreviewSnippet != "" && meta.OpenClawLastPreviewAt == 0 {
-		meta.OpenClawLastPreviewAt = time.Now().UnixMilli()
+	state.OpenClawSystemSent = session.SystemSent
+	state.OpenClawAbortedLastRun = session.AbortedLastRun
+	state.ThinkingLevel = session.ThinkingLevel
+	state.FastMode = session.FastMode
+	state.VerboseLevel = session.VerboseLevel
+	state.ReasoningLevel = session.ReasoningLevel
+	state.ElevatedLevel = session.ElevatedLevel
+	state.SendPolicy = session.SendPolicy
+	state.InputTokens = session.InputTokens
+	state.OutputTokens = session.OutputTokens
+	state.TotalTokens = session.TotalTokens
+	state.TotalTokensFresh = session.TotalTokensFresh
+	state.EstimatedCostUSD = session.EstimatedCostUSD
+	state.Status = session.Status
+	state.StartedAt = session.StartedAt
+	state.EndedAt = session.EndedAt
+	state.RuntimeMs = session.RuntimeMs
+	state.ParentSessionKey = session.ParentSessionKey
+	state.ChildSessions = append(state.ChildSessions[:0], session.ChildSessions...)
+	state.ResponseUsage = session.ResponseUsage
+	state.ModelProvider = session.ModelProvider
+	state.Model = session.Model
+	state.ContextTokens = session.ContextTokens
+	state.DeliveryContext = session.DeliveryContext
+	state.LastChannel = session.LastChannel
+	state.LastTo = session.LastTo
+	state.LastAccountID = session.LastAccountID
+	state.SessionUpdatedAt = session.UpdatedAt
+	state.OpenClawPreviewSnippet = stringutil.TrimDefault(state.OpenClawPreviewSnippet, session.LastMessagePreview)
+	if state.OpenClawPreviewSnippet != "" && state.OpenClawLastPreviewAt == 0 {
+		state.OpenClawLastPreviewAt = time.Now().UnixMilli()
 	}
-	meta.HistoryMode = "paginated"
-	meta.RecentHistoryLimit = 0
-	if strings.TrimSpace(meta.BackgroundBackfillStatus) == "" {
-		meta.BackgroundBackfillStatus = "pending"
+	state.HistoryMode = "paginated"
+	state.RecentHistoryLimit = 0
+	if strings.TrimSpace(state.BackgroundBackfillStatus) == "" {
+		state.BackgroundBackfillStatus = "pending"
 	}
-	client.enrichPortalMetadata(ctx, meta)
-	portal.Metadata = meta
+	client.enrichPortalState(ctx, state)
+	if err := saveOpenClawPortalState(ctx, portal, client.UserLogin, state); err != nil {
+		return nil, err
+	}
+	portalMeta(portal).IsOpenClawRoom = true
 
 	title := client.displayNameForSession(session)
-	agentID := stringutil.TrimDefault(meta.OpenClawAgentID, "gateway")
-	if strings.TrimSpace(meta.OpenClawDMTargetAgentID) != "" {
-		agentID = strings.TrimSpace(meta.OpenClawDMTargetAgentID)
-		meta.OpenClawAgentID = agentID
+	agentID := stringutil.TrimDefault(state.OpenClawAgentID, "gateway")
+	if strings.TrimSpace(state.OpenClawDMTargetAgentID) != "" {
+		agentID = strings.TrimSpace(state.OpenClawDMTargetAgentID)
+		state.OpenClawAgentID = agentID
 	}
 	identity := client.lookupAgentIdentity(ctx, agentID, session.Key)
 	if identity != nil && strings.TrimSpace(identity.AgentID) != "" {
 		agentID = strings.TrimSpace(identity.AgentID)
-		meta.OpenClawAgentID = agentID
+		state.OpenClawAgentID = agentID
 	}
 	configured, err := client.agentCatalogEntryByID(ctx, agentID)
 	if err != nil {
@@ -134,18 +139,18 @@ func getOpenClawSessionChatInfo(ctx context.Context, portal *bridgev2.Portal, cl
 	}
 	profile := client.resolveAgentProfile(ctx, agentID, session.Key, nil, configured)
 	agentName := client.displayNameFromAgentProfile(profile)
-	if strings.TrimSpace(meta.OpenClawDMTargetAgentName) == "" && strings.TrimSpace(meta.OpenClawDMTargetAgentID) == agentID {
-		meta.OpenClawDMTargetAgentName = agentName
+	if strings.TrimSpace(state.OpenClawDMTargetAgentName) == "" && strings.TrimSpace(state.OpenClawDMTargetAgentID) == agentID {
+		state.OpenClawDMTargetAgentName = agentName
 	}
-	if isOpenClawSyntheticDMSessionKey(session.Key) && strings.TrimSpace(meta.OpenClawDMTargetAgentName) != "" {
-		title = strings.TrimSpace(meta.OpenClawDMTargetAgentName)
+	if isOpenClawSyntheticDMSessionKey(session.Key) && strings.TrimSpace(state.OpenClawDMTargetAgentName) != "" {
+		title = strings.TrimSpace(state.OpenClawDMTargetAgentName)
 	}
-	roomType := openClawRoomType(meta)
-	client.maybeRefreshPortalCapabilities(ctx, portal, &previous)
+	roomType := openClawRoomType(state)
+	client.maybeRefreshPortalCapabilities(ctx, portal, &previous, state)
 	if roomType == database.RoomTypeDM {
 		return sdk.BuildLoginDMChatInfo(sdk.LoginDMChatInfoParams{
 			Title:             title,
-			Topic:             client.topicForPortal(meta),
+			Topic:             client.topicForPortal(state),
 			Login:             client.UserLogin,
 			HumanUserIDPrefix: "openclaw-user",
 			HumanSender:       ptr.Ptr(client.senderForAgent(agentID, true)),
@@ -168,7 +173,7 @@ func getOpenClawSessionChatInfo(ctx context.Context, portal *bridgev2.Portal, cl
 	return &bridgev2.ChatInfo{
 		Type:        ptr.Ptr(roomType),
 		Name:        ptr.Ptr(title),
-		Topic:       ptr.NonZero(client.topicForPortal(meta)),
+		Topic:       ptr.NonZero(client.topicForPortal(state)),
 		CanBackfill: true,
 		Members: &bridgev2.ChatMemberList{
 			IsFull:    true,

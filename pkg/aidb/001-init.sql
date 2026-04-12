@@ -214,6 +214,15 @@ CREATE TABLE IF NOT EXISTS aichats_login_config (
   PRIMARY KEY (bridge_id, login_id)
 );
 
+CREATE TABLE IF NOT EXISTS aichats_portal_state (
+  bridge_id TEXT NOT NULL,
+  login_id TEXT NOT NULL,
+  portal_id TEXT NOT NULL,
+  state_json TEXT NOT NULL DEFAULT '',
+  updated_at_ms INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (bridge_id, login_id, portal_id)
+);
+
 CREATE TABLE IF NOT EXISTS aichats_tool_approval_rules (
   bridge_id TEXT NOT NULL,
   login_id TEXT NOT NULL,

@@ -573,9 +573,7 @@ func (b *BossStoreAdapter) CreateRoom(ctx context.Context, room tools.RoomData) 
 			pm.TitleGenerated = originalTitleGenerated
 		}
 	}
-	if err := portal.Save(ctx); err != nil {
-		return "", fmt.Errorf("failed to save room overrides: %w", err)
-	}
+	b.client.savePortalQuiet(ctx, portal, "room overrides")
 
 	return string(portal.PortalKey.ID), nil
 }
@@ -614,7 +612,8 @@ func (b *BossStoreAdapter) ModifyRoom(ctx context.Context, roomID string, update
 		}
 	}
 
-	return portal.Save(ctx)
+	b.client.savePortalQuiet(ctx, portal, "room update")
+	return nil
 }
 
 // ListRooms implements tools.AgentStoreInterface.

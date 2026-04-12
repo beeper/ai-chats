@@ -147,6 +147,9 @@ func (h *runtimeIntegrationHost) GetOrCreatePortal(ctx context.Context, portalID
 		setupMeta(meta)
 	}
 	p.Metadata = meta
+	if err := saveAIPortalState(ctx, p, meta); err != nil {
+		return nil, "", fmt.Errorf("failed to save portal state: %w", err)
+	}
 	p.Name = displayName
 	p.NameSet = true
 	chatInfo := &bridgev2.ChatInfo{Name: &p.Name}

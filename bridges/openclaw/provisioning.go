@@ -279,27 +279,31 @@ func (oc *OpenClawClient) createConfiguredAgentDM(ctx context.Context, agent gat
 	if err != nil {
 		return nil, fmt.Errorf("failed to get portal for agent %s: %w", agentID, err)
 	}
-	meta := portalMeta(portal)
-	meta.IsOpenClawRoom = true
-	meta.OpenClawGatewayID = oc.gatewayID()
-	meta.OpenClawSessionID = ""
-	meta.OpenClawSessionKey = sessionKey
-	meta.OpenClawAgentID = agentID
-	meta.OpenClawDMTargetAgentID = agentID
-	meta.OpenClawDMTargetAgentName = stringutil.TrimDefault(oc.configuredAgentDisplayName(agent), meta.OpenClawDMTargetAgentName)
-	meta.OpenClawDMCreatedFromContact = true
-	meta.HistoryMode = "paginated"
-	meta.RecentHistoryLimit = 0
+	state, err := loadOpenClawPortalState(ctx, portal, oc.UserLogin)
+	if err != nil {
+		return nil, err
+	}
+	previous := *state
+	state.OpenClawGatewayID = oc.gatewayID()
+	state.OpenClawSessionID = ""
+	state.OpenClawSessionKey = sessionKey
+	state.OpenClawAgentID = agentID
+	state.OpenClawDMTargetAgentID = agentID
+	state.OpenClawDMTargetAgentName = stringutil.TrimDefault(oc.configuredAgentDisplayName(agent), state.OpenClawDMTargetAgentName)
+	state.OpenClawDMCreatedFromContact = true
+	state.HistoryMode = "paginated"
+	state.RecentHistoryLimit = 0
+	oc.enrichPortalState(ctx, state)
 	if err := sdk.ConfigureDMPortal(ctx, sdk.ConfigureDMPortalParams{
 		Portal:      portal,
-		Title:       meta.OpenClawDMTargetAgentName,
+		Title:       state.OpenClawDMTargetAgentName,
 		Topic:       "OpenClaw agent DM",
 		OtherUserID: openClawScopedGhostUserID(oc.UserLogin.ID, agentID),
 		Save:        false,
 	}); err != nil {
 		return nil, fmt.Errorf("failed to configure openclaw dm portal: %w", err)
 	}
-	chatInfo := oc.buildOpenClawDMChatInfo(agentID, meta.OpenClawDMTargetAgentName, info)
+	chatInfo := oc.buildOpenClawDMChatInfo(agentID, state.OpenClawDMTargetAgentName, info)
 	_, err = sdk.EnsurePortalLifecycle(ctx, sdk.PortalLifecycleOptions{
 		Login:             oc.UserLogin,
 		Portal:            portal,
@@ -311,6 +315,11 @@ func (oc *OpenClawClient) createConfiguredAgentDM(ctx context.Context, agent gat
 	if err != nil {
 		return nil, fmt.Errorf("failed to ensure openclaw dm portal room: %w", err)
 	}
+	portalMeta(portal).IsOpenClawRoom = true
+	if err := saveOpenClawPortalState(ctx, portal, oc.UserLogin, state); err != nil {
+		return nil, err
+	}
+	oc.maybeRefreshPortalCapabilities(ctx, portal, &previous, state)
 	return &bridgev2.CreateChatResponse{
 		PortalKey:  portal.PortalKey,
 		Portal:     portal,

@@ -21,9 +21,7 @@ func (s *schedulerRuntime) ensureScheduledRoomLocked(ctx context.Context, portal
 		return "", err
 	}
 	portal.OtherUserID = s.client.agentUserID(normalizeAgentID(agentID))
-	if err := portal.Save(ctx); err != nil {
-		return "", err
-	}
+	s.client.savePortalQuiet(ctx, portal, "scheduler room")
 	return portal.MXID.String(), nil
 }
 
@@ -97,6 +95,9 @@ func (s *schedulerRuntime) getOrCreateScheduledPortal(ctx context.Context, porta
 		setup(meta)
 	}
 	portal.Metadata = meta
+	if err := saveAIPortalState(ctx, portal, meta); err != nil {
+		return nil, err
+	}
 	portal.Name = displayName
 	portal.NameSet = true
 	chatInfo := &bridgev2.ChatInfo{Name: &portal.Name}

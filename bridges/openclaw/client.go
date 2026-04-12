@@ -399,6 +399,10 @@ func (oc *OpenClawClient) openClawCapabilityProfile(ctx context.Context, state *
 	return profile
 }
 
+func (oc *OpenClawClient) enrichPortalMetadata(ctx context.Context, state *openClawPortalState) {
+	oc.enrichPortalState(ctx, state)
+}
+
 func openClawCapabilityID(profile openClawCapabilityProfile) string {
 	// Suffixes are appended in alphabetical order so no sorting is needed.
 	var suffixes []string

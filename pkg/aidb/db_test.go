@@ -63,6 +63,7 @@ func TestUpgradeV1Fresh(t *testing.T) {
 		"aichats_managed_heartbeat_run_keys",
 		"aichats_system_events",
 		"aichats_login_config",
+		"aichats_portal_state",
 		"aichats_sessions",
 	} {
 		exists, err := bridgeDB.TableExists(ctx, table)
