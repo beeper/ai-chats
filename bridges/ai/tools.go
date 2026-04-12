@@ -584,7 +584,7 @@ func executeMessageEdit(ctx context.Context, args map[string]any, btc *BridgeToo
 	rendered := format.RenderMarkdown(message, true, true)
 
 	// Look up the target message in DB to get its network message ID
-	targetPart, err := btc.Client.UserLogin.Bridge.DB.Message.GetPartByMXID(ctx, targetEventID)
+	targetPart, err := btc.Client.loadPortalMessagePartByMXID(ctx, btc.Portal, targetEventID)
 	if err != nil || targetPart == nil {
 		return "", fmt.Errorf("target message not found for edit: %s", messageID)
 	}

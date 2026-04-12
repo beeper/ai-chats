@@ -3,11 +3,8 @@ package ai
 import (
 	"context"
 	"database/sql"
-	"net/http"
-	"os"
 	"reflect"
 	"testing"
-	"time"
 	"unsafe"
 
 	_ "github.com/mattn/go-sqlite3"

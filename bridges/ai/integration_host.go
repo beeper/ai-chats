@@ -882,7 +882,7 @@ func (h *runtimeIntegrationHost) Error(msg string, fields map[string]any) {
 // ---- AIClient message helpers (called from sessions_tools.go) ----
 
 func (oc *AIClient) lastAssistantMessageInfo(ctx context.Context, portal *bridgev2.Portal) (string, int64) {
-	if portal == nil || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil || oc.UserLogin.Bridge.DB.Message == nil {
+	if portal == nil || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil {
 		return "", 0
 	}
 	messages, err := oc.getAIHistoryMessages(ctx, portal, 20)
@@ -909,7 +909,7 @@ func (oc *AIClient) lastAssistantMessageInfo(ctx context.Context, portal *bridge
 }
 
 func (oc *AIClient) waitForNewAssistantMessage(ctx context.Context, portal *bridgev2.Portal, lastID string, lastTimestamp int64) (*database.Message, bool) {
-	if portal == nil || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil || oc.UserLogin.Bridge.DB.Message == nil {
+	if portal == nil || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil {
 		return nil, false
 	}
 	messages, err := oc.getAIHistoryMessages(ctx, portal, 20)

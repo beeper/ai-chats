@@ -72,7 +72,7 @@ func (oc *AIClient) isReplyToBot(ctx context.Context, portal *bridgev2.Portal, r
 	if oc == nil || portal == nil || replyTo == "" || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
 		return false
 	}
-	msg, err := oc.UserLogin.Bridge.DB.Message.GetPartByMXID(ctx, replyTo)
+	msg, err := oc.loadPortalMessagePartByMXID(ctx, portal, replyTo)
 	if err != nil || msg == nil {
 		return false
 	}

@@ -2,17 +2,22 @@ package codex
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"strings"
-	"time"
 
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+
+	"github.com/beeper/agentremote/pkg/aidb"
 )
 
 const codexPortalStateTable = "codex_portal_state"
+
+var codexPortalStateBlob = aidb.JSONBlobTable{
+	TableName: codexPortalStateTable,
+	KeyColumn: "portal_key",
+}
 
 type codexPortalState struct {
 	Title            string `json:"title,omitempty"`
@@ -24,19 +29,19 @@ type codexPortalState struct {
 	ManagedImport    bool   `json:"managed_import,omitempty"`
 }
 
-type codexPortalStateScope struct {
+type codexPortalStateRecord struct {
+	PortalKey networkid.PortalKey
+	State     *codexPortalState
+}
+
+type codexDBScope struct {
 	db        *dbutil.Database
 	bridgeID  string
 	loginID   string
 	portalKey string
 }
 
-type codexPortalStateRecord struct {
-	PortalKey networkid.PortalKey
-	State     *codexPortalState
-}
-
-func codexPortalStateScopeForPortal(portal *bridgev2.Portal) *codexPortalStateScope {
+func codexDBScopeForPortal(portal *bridgev2.Portal) *codexDBScope {
 	if portal == nil || portal.Bridge == nil || portal.Bridge.DB == nil || portal.Bridge.DB.Database == nil {
 		return nil
 	}
@@ -46,7 +51,7 @@ func codexPortalStateScopeForPortal(portal *bridgev2.Portal) *codexPortalStateSc
 	if bridgeID == "" || loginID == "" || portalKey == "" {
 		return nil
 	}
-	return &codexPortalStateScope{
+	return &codexDBScope{
 		db:        portal.Bridge.DB.Database,
 		bridgeID:  bridgeID,
 		loginID:   loginID,
@@ -54,7 +59,7 @@ func codexPortalStateScopeForPortal(portal *bridgev2.Portal) *codexPortalStateSc
 	}
 }
 
-func codexPortalStateScopeForLogin(login *bridgev2.UserLogin) *codexPortalStateScope {
+func codexDBScopeForLogin(login *bridgev2.UserLogin) *codexDBScope {
 	if login == nil || login.Bridge == nil || login.Bridge.DB == nil || login.Bridge.DB.Database == nil {
 		return nil
 	}
@@ -63,127 +68,59 @@ func codexPortalStateScopeForLogin(login *bridgev2.UserLogin) *codexPortalStateS
 	if bridgeID == "" || loginID == "" {
 		return nil
 	}
-	return &codexPortalStateScope{
+	return &codexDBScope{
 		db:       login.Bridge.DB.Database,
 		bridgeID: bridgeID,
 		loginID:  loginID,
 	}
 }
 
-func ensureCodexPortalStateTable(ctx context.Context, portal *bridgev2.Portal) error {
-	scope := codexPortalStateScopeForPortal(portal)
-	if scope == nil {
-		return nil
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	_, err := scope.db.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS `+codexPortalStateTable+` (
-			bridge_id TEXT NOT NULL,
-			login_id TEXT NOT NULL,
-			portal_key TEXT NOT NULL,
-			state_json TEXT NOT NULL DEFAULT '{}',
-			updated_at_ms INTEGER NOT NULL DEFAULT 0,
-			PRIMARY KEY (bridge_id, login_id, portal_key)
-		)
-	`)
-	return err
-}
-
 func loadCodexPortalState(ctx context.Context, portal *bridgev2.Portal) (*codexPortalState, error) {
-	scope := codexPortalStateScopeForPortal(portal)
+	scope := codexDBScopeForPortal(portal)
 	if scope == nil {
 		return &codexPortalState{}, nil
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if err := ensureCodexPortalStateTable(ctx, portal); err != nil {
+	if err := codexPortalStateBlob.Ensure(ctx, scope.db); err != nil {
 		return nil, err
 	}
-	var raw string
-	err := scope.db.QueryRow(ctx, `
-		SELECT state_json
-		FROM `+codexPortalStateTable+`
-		WHERE bridge_id=$1 AND login_id=$2 AND portal_key=$3
-	`, scope.bridgeID, scope.loginID, scope.portalKey).Scan(&raw)
-	if err == sql.ErrNoRows || strings.TrimSpace(raw) == "" {
-		return &codexPortalState{}, nil
-	}
+	state, err := aidb.Load[codexPortalState](&codexPortalStateBlob, ctx, scope.db, scope.bridgeID, scope.loginID, scope.portalKey)
 	if err != nil {
 		return nil, err
 	}
-	state := &codexPortalState{}
-	if err := json.Unmarshal([]byte(raw), state); err != nil {
-		return nil, err
+	if state == nil {
+		return &codexPortalState{}, nil
 	}
 	return state, nil
 }
 
 func saveCodexPortalState(ctx context.Context, portal *bridgev2.Portal, state *codexPortalState) error {
-	scope := codexPortalStateScopeForPortal(portal)
+	scope := codexDBScopeForPortal(portal)
 	if scope == nil || state == nil {
 		return nil
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if err := ensureCodexPortalStateTable(ctx, portal); err != nil {
+	if err := codexPortalStateBlob.Ensure(ctx, scope.db); err != nil {
 		return err
 	}
-	payload, err := json.Marshal(state)
-	if err != nil {
-		return err
-	}
-	_, err = scope.db.Exec(ctx, `
-		INSERT INTO `+codexPortalStateTable+` (
-			bridge_id, login_id, portal_key, state_json, updated_at_ms
-		) VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (bridge_id, login_id, portal_key) DO UPDATE SET
-			state_json=excluded.state_json,
-			updated_at_ms=excluded.updated_at_ms
-	`, scope.bridgeID, scope.loginID, scope.portalKey, string(payload), time.Now().UnixMilli())
-	return err
+	return aidb.Save(&codexPortalStateBlob, ctx, scope.db, scope.bridgeID, scope.loginID, scope.portalKey, state)
 }
 
 func clearCodexPortalState(ctx context.Context, portal *bridgev2.Portal) error {
-	scope := codexPortalStateScopeForPortal(portal)
+	scope := codexDBScopeForPortal(portal)
 	if scope == nil {
 		return nil
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if err := ensureCodexPortalStateTable(ctx, portal); err != nil {
+	if err := codexPortalStateBlob.Ensure(ctx, scope.db); err != nil {
 		return err
 	}
-	_, err := scope.db.Exec(ctx, `
-		DELETE FROM `+codexPortalStateTable+`
-		WHERE bridge_id=$1 AND login_id=$2 AND portal_key=$3
-	`, scope.bridgeID, scope.loginID, scope.portalKey)
-	return err
+	return codexPortalStateBlob.Delete(ctx, scope.db, scope.bridgeID, scope.loginID, scope.portalKey)
 }
 
 func listCodexPortalStateRecords(ctx context.Context, login *bridgev2.UserLogin) ([]codexPortalStateRecord, error) {
-	scope := codexPortalStateScopeForLogin(login)
+	scope := codexDBScopeForLogin(login)
 	if scope == nil {
 		return nil, nil
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	_, err := scope.db.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS `+codexPortalStateTable+` (
-			bridge_id TEXT NOT NULL,
-			login_id TEXT NOT NULL,
-			portal_key TEXT NOT NULL,
-			state_json TEXT NOT NULL DEFAULT '{}',
-			updated_at_ms INTEGER NOT NULL DEFAULT 0,
-			PRIMARY KEY (bridge_id, login_id, portal_key)
-		)
-	`)
-	if err != nil {
+	if err := codexPortalStateBlob.Ensure(ctx, scope.db); err != nil {
 		return nil, err
 	}
 	rows, err := scope.db.Query(ctx, `

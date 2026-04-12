@@ -205,7 +205,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		ackReactionEventID = oc.sendAckReaction(ctx, portal, msg.Event.ID, ackReaction)
 	}
 	if ackReactionEventID != "" && removeAckAfter {
-		oc.storeAckReaction(ctx, portal.MXID, msg.Event.ID, ackReaction)
+		oc.storeAckReaction(ctx, portal, msg.Event.ID, ackReaction)
 	}
 	body := oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, rawBody, senderName, roomName, isGroup)
 	inboundCtx := oc.buildMatrixInboundContext(portal, msg.Event, rawBody, senderName, roomName, isGroup)
@@ -1015,7 +1015,7 @@ func (oc *AIClient) sendAckReaction(ctx context.Context, portal *bridgev2.Portal
 		return ""
 	}
 
-	targetPart, err := oc.UserLogin.Bridge.DB.Message.GetPartByMXID(ctx, targetEventID)
+	targetPart, err := oc.loadPortalMessagePartByMXID(ctx, portal, targetEventID)
 	if err != nil || targetPart == nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Stringer("target_event", targetEventID).Msg("Target message not found for ack reaction")
 		return ""
@@ -1051,20 +1051,23 @@ func (oc *AIClient) sendAckReaction(ctx context.Context, portal *bridgev2.Portal
 }
 
 // storeAckReaction stores an ack reaction for later removal.
-func (oc *AIClient) storeAckReaction(ctx context.Context, roomID id.RoomID, sourceEventID id.EventID, emoji string) {
+func (oc *AIClient) storeAckReaction(ctx context.Context, portal *bridgev2.Portal, sourceEventID id.EventID, emoji string) {
+	if portal == nil || portal.MXID == "" {
+		return
+	}
 	// Look up the network message ID for the source event
 	var targetNetworkID networkid.MessageID
-	if part, err := oc.UserLogin.Bridge.DB.Message.GetPartByMXID(ctx, sourceEventID); err == nil && part != nil {
+	if part, err := oc.loadPortalMessagePartByMXID(ctx, portal, sourceEventID); err == nil && part != nil {
 		targetNetworkID = part.ID
 	}
 
 	ackReactionStoreMu.Lock()
 	defer ackReactionStoreMu.Unlock()
 
-	if ackReactionStore[roomID] == nil {
-		ackReactionStore[roomID] = make(map[id.EventID]ackReactionEntry)
+	if ackReactionStore[portal.MXID] == nil {
+		ackReactionStore[portal.MXID] = make(map[id.EventID]ackReactionEntry)
 	}
-	ackReactionStore[roomID][sourceEventID] = ackReactionEntry{
+	ackReactionStore[portal.MXID][sourceEventID] = ackReactionEntry{
 		targetNetworkID: targetNetworkID,
 		emoji:           emoji,
 		storedAt:        time.Now(),

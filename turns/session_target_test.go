@@ -51,6 +51,24 @@ func (tst *testStreamPublisher) Unregister(_ id.RoomID, eventID id.EventID) {
 	tst.finishedEvent = eventID
 }
 
+func newTestPublisher() *testStreamPublisher {
+	return &testStreamPublisher{
+		descriptor: &event.BeeperStreamInfo{Type: "com.beeper.llm"},
+	}
+}
+
+func testPublisherFunc(p *testStreamPublisher) func(context.Context) (bridgev2.BeeperStreamPublisher, bool) {
+	return func(context.Context) (bridgev2.BeeperStreamPublisher, bool) { return p, true }
+}
+
+func constRoomID() func() id.RoomID {
+	return func() id.RoomID { return id.RoomID("!room:example.com") }
+}
+
+func constSeq(n int) func() int {
+	return func() int { return n }
+}
+
 func pendingPartCount(session *StreamSession) int {
 	if session == nil {
 		return 0
@@ -69,17 +87,11 @@ func TestStreamSessionDescriptorStartPublishFinish(t *testing.T) {
 	}
 
 	session := NewStreamSession(StreamSessionParams{
-		TurnID: "turn-1",
-		GetRoomID: func() id.RoomID {
-			return id.RoomID("!room:example.com")
-		},
-		GetTargetEventID: func() id.EventID {
-			return id.EventID("$event-1")
-		},
-		GetStreamPublisher: func(context.Context) (bridgev2.BeeperStreamPublisher, bool) {
-			return publisher, true
-		},
-		NextSeq: func() int { return 1 },
+		TurnID:             "turn-1",
+		GetRoomID:          constRoomID(),
+		GetTargetEventID:   func() id.EventID { return id.EventID("$event-1") },
+		GetStreamPublisher: testPublisherFunc(publisher),
+		NextSeq:            constSeq(1),
 	})
 
 	descriptor, err := session.Descriptor(context.Background())
@@ -113,9 +125,7 @@ func TestStreamSessionDescriptorStartPublishFinish(t *testing.T) {
 }
 
 func TestStreamSessionEmitPartUsesResolvedRelationTarget(t *testing.T) {
-	publisher := &testStreamPublisher{
-		descriptor: &event.BeeperStreamInfo{Type: "com.beeper.llm"},
-	}
+	publisher := newTestPublisher()
 	var gotContent map[string]any
 	session := NewStreamSession(StreamSessionParams{
 		TurnID:  "turn-2",
@@ -126,16 +136,10 @@ func TestStreamSessionEmitPartUsesResolvedRelationTarget(t *testing.T) {
 		ResolveTargetEventID: func(context.Context, StreamTarget) (id.EventID, error) {
 			return id.EventID("$event-2"), nil
 		},
-		GetRoomID: func() id.RoomID {
-			return id.RoomID("!room:example.com")
-		},
-		GetStreamType: func() string {
-			return "com.beeper.llm"
-		},
-		GetStreamPublisher: func(context.Context) (bridgev2.BeeperStreamPublisher, bool) {
-			return publisher, true
-		},
-		NextSeq: func() int { return 1 },
+		GetRoomID:          constRoomID(),
+		GetStreamType:      func() string { return "com.beeper.llm" },
+		GetStreamPublisher: testPublisherFunc(publisher),
+		NextSeq:            constSeq(1),
 		SendHook: func(_ string, _ int, content map[string]any, _ string) bool {
 			gotContent = content
 			return true
@@ -169,20 +173,12 @@ func TestStreamSessionUsesConfiguredStreamTypeDeltaKey(t *testing.T) {
 	}
 	var gotContent map[string]any
 	session := NewStreamSession(StreamSessionParams{
-		TurnID: "turn-custom",
-		GetRoomID: func() id.RoomID {
-			return id.RoomID("!room:example.com")
-		},
-		GetTargetEventID: func() id.EventID {
-			return id.EventID("$event-custom")
-		},
-		GetStreamType: func() string {
-			return "com.beeper.live_location"
-		},
-		GetStreamPublisher: func(context.Context) (bridgev2.BeeperStreamPublisher, bool) {
-			return publisher, true
-		},
-		NextSeq: func() int { return 1 },
+		TurnID:             "turn-custom",
+		GetRoomID:          constRoomID(),
+		GetTargetEventID:   func() id.EventID { return id.EventID("$event-custom") },
+		GetStreamType:      func() string { return "com.beeper.live_location" },
+		GetStreamPublisher: testPublisherFunc(publisher),
+		NextSeq:            constSeq(1),
 		SendHook: func(_ string, _ int, content map[string]any, _ string) bool {
 			gotContent = content
 			return true
@@ -199,19 +195,13 @@ func TestStreamSessionUsesConfiguredStreamTypeDeltaKey(t *testing.T) {
 }
 
 func TestStreamSessionDoesNothingWithoutEditTarget(t *testing.T) {
-	publisher := &testStreamPublisher{
-		descriptor: &event.BeeperStreamInfo{Type: "com.beeper.llm"},
-	}
+	publisher := newTestPublisher()
 	called := false
 	session := NewStreamSession(StreamSessionParams{
-		TurnID: "turn-3",
-		GetStreamTarget: func() StreamTarget {
-			return StreamTarget{}
-		},
-		GetStreamPublisher: func(context.Context) (bridgev2.BeeperStreamPublisher, bool) {
-			return publisher, true
-		},
-		NextSeq: func() int { return 1 },
+		TurnID:             "turn-3",
+		GetStreamTarget:    func() StreamTarget { return StreamTarget{} },
+		GetStreamPublisher: testPublisherFunc(publisher),
+		NextSeq:            constSeq(1),
 		SendHook: func(_ string, _ int, _ map[string]any, _ string) bool {
 			called = true
 			return true
@@ -225,24 +215,16 @@ func TestStreamSessionDoesNothingWithoutEditTarget(t *testing.T) {
 }
 
 func TestStreamSessionBuffersUntilTargetEventIDExists(t *testing.T) {
-	publisher := &testStreamPublisher{
-		descriptor: &event.BeeperStreamInfo{Type: "com.beeper.llm"},
-	}
+	publisher := newTestPublisher()
 	var targetEventID id.EventID
 	var seq int
 	sendCount := 0
 
 	session := NewStreamSession(StreamSessionParams{
-		TurnID: "turn-buffered",
-		GetRoomID: func() id.RoomID {
-			return id.RoomID("!room:example.com")
-		},
-		GetTargetEventID: func() id.EventID {
-			return targetEventID
-		},
-		GetStreamPublisher: func(context.Context) (bridgev2.BeeperStreamPublisher, bool) {
-			return publisher, true
-		},
+		TurnID:             "turn-buffered",
+		GetRoomID:          constRoomID(),
+		GetTargetEventID:   func() id.EventID { return targetEventID },
+		GetStreamPublisher: testPublisherFunc(publisher),
 		NextSeq: func() int {
 			seq++
 			return seq
@@ -277,16 +259,12 @@ func TestStreamSessionBuffersUntilTargetEventIDExists(t *testing.T) {
 }
 
 func TestStreamSessionDescriptorRetriesAfterPublisherBecomesAvailable(t *testing.T) {
-	publisher := &testStreamPublisher{
-		descriptor: &event.BeeperStreamInfo{Type: "com.beeper.llm"},
-	}
+	publisher := newTestPublisher()
 	var current bridgev2.BeeperStreamPublisher
 
 	session := NewStreamSession(StreamSessionParams{
-		TurnID: "turn-retry",
-		GetRoomID: func() id.RoomID {
-			return id.RoomID("!room:example.com")
-		},
+		TurnID:    "turn-retry",
+		GetRoomID: constRoomID(),
 		GetStreamPublisher: func(context.Context) (bridgev2.BeeperStreamPublisher, bool) {
 			if current == nil {
 				return nil, false
@@ -313,11 +291,9 @@ func TestStreamSessionDescriptorRetriesAfterPublisherBecomesAvailable(t *testing
 func TestStreamSessionHookOnlyFlushesWithoutPublisher(t *testing.T) {
 	var sent map[string]any
 	session := NewStreamSession(StreamSessionParams{
-		TurnID: "turn-hook-only",
-		GetTargetEventID: func() id.EventID {
-			return id.EventID("$event-hook-only")
-		},
-		NextSeq: func() int { return 1 },
+		TurnID:           "turn-hook-only",
+		GetTargetEventID: func() id.EventID { return id.EventID("$event-hook-only") },
+		NextSeq:          constSeq(1),
 		SendHook: func(_ string, _ int, content map[string]any, _ string) bool {
 			sent = content
 			return true
@@ -338,23 +314,15 @@ func TestStreamSessionHookOnlyFlushesWithoutPublisher(t *testing.T) {
 }
 
 func TestStreamSessionRetriesRegisterWhenRoomBecomesAvailable(t *testing.T) {
-	publisher := &testStreamPublisher{
-		descriptor: &event.BeeperStreamInfo{Type: "com.beeper.llm"},
-	}
+	publisher := newTestPublisher()
 	roomID := id.RoomID("")
 	sendCount := 0
 	session := NewStreamSession(StreamSessionParams{
-		TurnID: "turn-register-retry",
-		GetRoomID: func() id.RoomID {
-			return roomID
-		},
-		GetTargetEventID: func() id.EventID {
-			return id.EventID("$event-register-retry")
-		},
-		GetStreamPublisher: func(context.Context) (bridgev2.BeeperStreamPublisher, bool) {
-			return publisher, true
-		},
-		NextSeq: func() int { return 1 },
+		TurnID:             "turn-register-retry",
+		GetRoomID:          func() id.RoomID { return roomID },
+		GetTargetEventID:   func() id.EventID { return id.EventID("$event-register-retry") },
+		GetStreamPublisher: testPublisherFunc(publisher),
+		NextSeq:            constSeq(1),
 		SendHook: func(_ string, _ int, _ map[string]any, _ string) bool {
 			sendCount++
 			return true
@@ -385,22 +353,14 @@ func TestStreamSessionRetriesRegisterWhenRoomBecomesAvailable(t *testing.T) {
 }
 
 func TestStreamSessionCurrentTargetFallsBackToStartedTarget(t *testing.T) {
-	publisher := &testStreamPublisher{
-		descriptor: &event.BeeperStreamInfo{Type: "com.beeper.llm"},
-	}
+	publisher := newTestPublisher()
 	sendCount := 0
 	session := NewStreamSession(StreamSessionParams{
-		TurnID: "turn-target-fallback",
-		GetRoomID: func() id.RoomID {
-			return id.RoomID("!room:example.com")
-		},
-		GetTargetEventID: func() id.EventID {
-			return ""
-		},
-		GetStreamPublisher: func(context.Context) (bridgev2.BeeperStreamPublisher, bool) {
-			return publisher, true
-		},
-		NextSeq: func() int { return 1 },
+		TurnID:             "turn-target-fallback",
+		GetRoomID:          constRoomID(),
+		GetTargetEventID:   func() id.EventID { return "" },
+		GetStreamPublisher: testPublisherFunc(publisher),
+		NextSeq:            constSeq(1),
 		SendHook: func(_ string, _ int, _ map[string]any, _ string) bool {
 			sendCount++
 			return true

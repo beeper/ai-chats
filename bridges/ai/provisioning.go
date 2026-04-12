@@ -138,13 +138,11 @@ func profileResponseFromConfig(cfg *aiLoginConfig) profileResponse {
 	return resp
 }
 
-func applyProfilePayload(owner any, payload profilePayload) error {
+func applyProfilePayload(cfg *aiLoginConfig, payload profilePayload) error {
 	var (
-		cfg         *aiLoginConfig
 		profilePtr  **UserProfile
 		timezonePtr *string
 	)
-	cfg, _ = owner.(*aiLoginConfig)
 	if cfg == nil {
 		return errors.New("missing login config")
 	}
@@ -551,8 +549,8 @@ func resolveNamedMCPServer(client *AIClient, name string) (namedMCPServer, error
 	return target, err
 }
 
-func ensureLoginMCPServer(owner any) {
-	creds := ensureLoginCredentials(owner)
+func ensureLoginMCPServer(loginCfg *aiLoginConfig) {
+	creds := ensureLoginCredentials(loginCfg)
 	if creds == nil {
 		return
 	}

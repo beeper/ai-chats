@@ -99,47 +99,39 @@ type UserLoginMetadata struct {
 	Provider string `json:"provider,omitempty"` // Selected provider (openai, openrouter, magic_proxy)
 }
 
-func loginCredentials(owner any) *LoginCredentials {
-	switch v := owner.(type) {
-	case nil:
-		return nil
-	case *aiLoginConfig:
-		return v.Credentials
-	default:
+func loginCredentials(cfg *aiLoginConfig) *LoginCredentials {
+	if cfg == nil {
 		return nil
 	}
+	return cfg.Credentials
 }
 
-func ensureLoginCredentials(owner any) *LoginCredentials {
-	switch v := owner.(type) {
-	case nil:
-		return nil
-	case *aiLoginConfig:
-		if v.Credentials == nil {
-			v.Credentials = &LoginCredentials{}
-		}
-		return v.Credentials
-	default:
+func ensureLoginCredentials(cfg *aiLoginConfig) *LoginCredentials {
+	if cfg == nil {
 		return nil
 	}
+	if cfg.Credentials == nil {
+		cfg.Credentials = &LoginCredentials{}
+	}
+	return cfg.Credentials
 }
 
-func loginCredentialAPIKey(owner any) string {
-	if creds := loginCredentials(owner); creds != nil {
+func loginCredentialAPIKey(cfg *aiLoginConfig) string {
+	if creds := loginCredentials(cfg); creds != nil {
 		return strings.TrimSpace(creds.APIKey)
 	}
 	return ""
 }
 
-func loginCredentialBaseURL(owner any) string {
-	if creds := loginCredentials(owner); creds != nil {
+func loginCredentialBaseURL(cfg *aiLoginConfig) string {
+	if creds := loginCredentials(cfg); creds != nil {
 		return strings.TrimSpace(creds.BaseURL)
 	}
 	return ""
 }
 
-func loginCredentialServiceTokens(owner any) *ServiceTokens {
-	if creds := loginCredentials(owner); creds != nil {
+func loginCredentialServiceTokens(cfg *aiLoginConfig) *ServiceTokens {
+	if creds := loginCredentials(cfg); creds != nil {
 		return creds.ServiceTokens
 	}
 	return nil

@@ -179,13 +179,6 @@ func (oc *OpenAIConnector) resolveServiceConfig(provider string, cfg *aiLoginCon
 	return services
 }
 
-func (oc *OpenAIConnector) resolveProviderAPIKey(meta *UserLoginMetadata) string {
-	if meta == nil {
-		return ""
-	}
-	return oc.resolveProviderAPIKeyForConfig(meta.Provider, &aiLoginConfig{})
-}
-
 func (oc *OpenAIConnector) resolveProviderAPIKeyForConfig(provider string, cfg *aiLoginConfig) string {
 	switch provider {
 	case ProviderMagicProxy:

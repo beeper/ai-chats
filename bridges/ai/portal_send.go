@@ -185,7 +185,7 @@ func (oc *AIClient) redactEventViaPortal(
 	if portal == nil || portal.MXID == "" || eventID == "" {
 		return fmt.Errorf("invalid portal or event ID")
 	}
-	part, err := oc.UserLogin.Bridge.DB.Message.GetPartByMXID(ctx, eventID)
+	part, err := oc.loadPortalMessagePartByMXID(ctx, portal, eventID)
 	if err != nil {
 		return fmt.Errorf("message lookup failed: %w", err)
 	}
