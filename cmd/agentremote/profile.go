@@ -23,7 +23,7 @@ type profileState struct {
 	DeviceID string      `json:"device_id,omitempty"`
 }
 
-// configRoot returns ~/.config/sdk
+// configRoot returns ~/.config/agentremote
 func configRoot() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -32,7 +32,7 @@ func configRoot() (string, error) {
 	return filepath.Join(home, ".config", binaryName), nil
 }
 
-// profileRoot returns ~/.config/sdk/profiles/<profile>
+// profileRoot returns ~/.config/agentremote/profiles/<profile>
 func profileRoot(profile string) (string, error) {
 	root, err := configRoot()
 	if err != nil {

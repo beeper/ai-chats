@@ -91,7 +91,6 @@ func persistAITranscriptMessage(ctx context.Context, client *AIClient, portal *b
 			event_id=excluded.event_id,
 			sender_id=excluded.sender_id,
 			metadata_json=excluded.metadata_json,
-			created_at_ms=excluded.created_at_ms,
 			updated_at_ms=excluded.updated_at_ms
 	`,
 		scope.bridgeID,

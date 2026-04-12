@@ -377,6 +377,8 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 	if role == "user" {
 		setCanonicalTurnDataFromPromptMessages(transcriptMeta, []PromptMessage{newUserTextPromptMessage(newBody)})
 		transcriptMeta.CanonicalTurnData = cloneCanonicalTurnData(transcriptMeta.CanonicalTurnData)
+	} else {
+		transcriptMeta.CanonicalTurnData = nil
 	}
 	if err := persistAITranscriptMessage(ctx, oc, portal, transcriptMsg); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist edited transcript message")

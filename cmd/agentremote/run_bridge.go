@@ -6,7 +6,7 @@ import (
 )
 
 // cmdInternalBridge handles the hidden "__bridge" subcommand.
-// Usage: sdk __bridge <bridge-type> [bridge-flags...]
+// Usage: agentremote __bridge <bridge-type> [bridge-flags...]
 // This is invoked by the start/run commands via self-exec.
 func cmdInternalBridge(args []string) error {
 	if len(args) < 1 {
@@ -19,7 +19,7 @@ func cmdInternalBridge(args []string) error {
 	}
 
 	// Replace os.Args so mxmain sees: <binary> [bridge-flags...]
-	// e.g. sdk __bridge ai -c config.yaml → ai -c config.yaml
+	// e.g. agentremote __bridge ai -c config.yaml -> ai -c config.yaml
 	os.Args = append([]string{def.Name}, args[1:]...)
 
 	m := def.Definition.NewMain(def.NewFunc())

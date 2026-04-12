@@ -29,7 +29,7 @@ var (
 	BuildTime = "unknown"
 )
 
-const binaryName = "sdk"
+const binaryName = "agentremote"
 
 type metadata = cliutil.Metadata
 

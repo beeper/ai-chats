@@ -1056,7 +1056,7 @@ func (oc *AIClient) resolveMediaProviderAPIKey(providerID string, profile string
 		if key := resolveProfiledKeys([]string{"OPENROUTER_API_KEY"}, profile, preferredProfile); key != "" {
 			return key
 		}
-		if oc.connector != nil {
+		if oc.connector != nil && oc.UserLogin != nil && oc.UserLogin.Metadata != nil {
 			provider := loginMetadata(oc.UserLogin).Provider
 			loginCfg := oc.loginConfigSnapshot(context.Background())
 			if key := strings.TrimSpace(oc.connector.resolveOpenRouterAPIKey(provider, loginCfg)); key != "" {

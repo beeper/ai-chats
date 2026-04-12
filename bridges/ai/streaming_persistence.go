@@ -146,11 +146,15 @@ func (oc *AIClient) saveAssistantMessage(
 				}
 				return modelUserID(oc.effectiveModel(meta))
 			}(),
-			Metadata:  cloneMessageMetadata(fullMeta),
-			Timestamp: time.UnixMilli(state.completedAtMs),
+			Metadata: cloneMessageMetadata(fullMeta),
 		}
-		if transcriptMsg.Timestamp.IsZero() {
+		if state.completedAtMs == 0 {
 			transcriptMsg.Timestamp = time.Now()
+		} else {
+			transcriptMsg.Timestamp = time.UnixMilli(state.completedAtMs)
+			if transcriptMsg.Timestamp.IsZero() {
+				transcriptMsg.Timestamp = time.Now()
+			}
 		}
 		if err := persistAITranscriptMessage(ctx, oc, portal, transcriptMsg); err != nil {
 			log.Warn().Err(err).Str("msg_id", string(messageID)).Msg("Failed to persist assistant transcript message")

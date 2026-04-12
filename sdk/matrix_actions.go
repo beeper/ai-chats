@@ -40,7 +40,7 @@ func SetRoomName(
 	}
 	_, err = intent.SendState(ctx, portal.MXID, event.StateRoomName, "", &event.Content{
 		Parsed: &event.RoomNameEventContent{Name: name},
-	}, time.Time{})
+	}, time.UnixMilli(0))
 	return err
 }
 
@@ -57,7 +57,7 @@ func SetRoomTopic(
 	}
 	_, err = intent.SendState(ctx, portal.MXID, event.StateTopic, "", &event.Content{
 		Parsed: &event.TopicEventContent{Topic: topic},
-	}, time.Time{})
+	}, time.UnixMilli(0))
 	return err
 }
 
@@ -77,7 +77,7 @@ func BroadcastCapabilities(
 	}
 	_, err = intent.SendState(ctx, portal.MXID, event.StateBeeperRoomFeatures, "", &event.Content{
 		Parsed: convertRoomFeatures(features),
-	}, time.Time{})
+	}, time.UnixMilli(0))
 	return err
 }
 

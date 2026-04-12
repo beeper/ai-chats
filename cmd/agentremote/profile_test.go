@@ -1,9 +1,25 @@
 package main
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestConfigRootUsesAgentRemoteDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	root, err := configRoot()
+	if err != nil {
+		t.Fatalf("configRoot returned error: %v", err)
+	}
+
+	want := filepath.Join(home, ".config", "agentremote")
+	if root != want {
+		t.Fatalf("expected config root %q, got %q", want, root)
+	}
+}
 
 func TestEnsureProfileDeviceIDPersists(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
@@ -81,5 +97,17 @@ func TestSaveAuthConfigPreservesDeviceID(t *testing.T) {
 	}
 	if state.Auth.Username != "alice" {
 		t.Fatalf("expected username alice, got %q", state.Auth.Username)
+	}
+}
+
+func TestGenerateUsageMentionsAgentRemote(t *testing.T) {
+	initCommands()
+
+	usage := generateUsage()
+	if !strings.Contains(usage, "Usage: agentremote <command> [flags] [args]") {
+		t.Fatalf("expected usage to mention agentremote, got %q", usage)
+	}
+	if strings.Contains(usage, "sdk <command>") {
+		t.Fatalf("did not expect stale sdk usage in %q", usage)
 	}
 }

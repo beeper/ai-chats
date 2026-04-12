@@ -61,9 +61,6 @@ func (m *MemorySearchManager) syncSessions(ctx context.Context, force bool, sess
 		}
 		hash := memorycore.HashText(content)
 		if !force && hash == state.contentHash {
-			if err := m.saveSessionState(ctx, key, state); err != nil {
-				m.log.Warn().Err(err).Str("session", key).Msg("memory session state save failed")
-			}
 			continue
 		}
 		changedFiles++

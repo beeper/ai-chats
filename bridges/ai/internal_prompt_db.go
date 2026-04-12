@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"time"
 
@@ -78,13 +79,25 @@ func loadInternalPromptHistory(
 	if scope == nil || limit <= 0 {
 		return nil, nil
 	}
-	rows, err := scope.db.Query(ctx, `
+	args := []any{scope.bridgeID, scope.loginID, scope.portalID}
+	query := `
 		SELECT event_id, canonical_turn_data, exclude_from_history, created_at_ms
-		FROM `+aiInternalMessagesTable+`
-		WHERE bridge_id=$1 AND login_id=$2 AND portal_id=$3
+		FROM ` + aiInternalMessagesTable + `
+		WHERE bridge_id=$1 AND login_id=$2 AND portal_id=$3 AND exclude_from_history=0
+	`
+	if resetAt > 0 {
+		args = append(args, resetAt)
+		query += ` AND created_at_ms >= $` + strconv.Itoa(len(args))
+	}
+	if excludedEventID, ok := strings.CutPrefix(string(opts.excludeMessageID), "mx:"); ok && strings.TrimSpace(excludedEventID) != "" {
+		args = append(args, excludedEventID)
+		query += ` AND event_id <> $` + strconv.Itoa(len(args))
+	}
+	args = append(args, limit)
+	query += `
 		ORDER BY created_at_ms DESC, event_id DESC
-		LIMIT $4
-	`, scope.bridgeID, scope.loginID, scope.portalID, limit)
+		LIMIT $` + strconv.Itoa(len(args))
+	rows, err := scope.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -101,16 +114,7 @@ func loadInternalPromptHistory(
 		if err = rows.Scan(&eventID, &rawTurnData, &excludeFromHistory, &createdAtMs); err != nil {
 			return nil, err
 		}
-		if excludeFromHistory {
-			continue
-		}
 		messageID := sdk.MatrixMessageID(id.EventID(eventID))
-		if opts.excludeMessageID != "" && messageID == opts.excludeMessageID {
-			continue
-		}
-		if resetAt > 0 && createdAtMs < resetAt {
-			continue
-		}
 		var raw map[string]any
 		if err = json.Unmarshal([]byte(rawTurnData), &raw); err != nil {
 			return nil, err

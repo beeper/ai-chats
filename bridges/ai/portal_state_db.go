@@ -49,10 +49,15 @@ func persistedPortalStateFromMeta(meta *PortalMetadata) *aiPersistedPortalState 
 	if meta == nil {
 		return &aiPersistedPortalState{}
 	}
+	var pdfConfig *PDFConfig
+	if meta.PDFConfig != nil {
+		pdf := *meta.PDFConfig
+		pdfConfig = &pdf
+	}
 	return &aiPersistedPortalState{
 		AckReactionEmoji:        meta.AckReactionEmoji,
 		AckReactionRemoveAfter:  meta.AckReactionRemoveAfter,
-		PDFConfig:               meta.PDFConfig,
+		PDFConfig:               pdfConfig,
 		Slug:                    meta.Slug,
 		Title:                   meta.Title,
 		TitleGenerated:          meta.TitleGenerated,
@@ -77,7 +82,12 @@ func applyPersistedPortalState(meta *PortalMetadata, state *aiPersistedPortalSta
 	}
 	meta.AckReactionEmoji = state.AckReactionEmoji
 	meta.AckReactionRemoveAfter = state.AckReactionRemoveAfter
-	meta.PDFConfig = state.PDFConfig
+	if state.PDFConfig != nil {
+		pdf := *state.PDFConfig
+		meta.PDFConfig = &pdf
+	} else {
+		meta.PDFConfig = nil
+	}
 	meta.Slug = state.Slug
 	meta.Title = state.Title
 	meta.TitleGenerated = state.TitleGenerated

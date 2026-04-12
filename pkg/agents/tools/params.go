@@ -2,6 +2,7 @@ package tools
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/beeper/agentremote/pkg/shared/maputil"
 )
@@ -9,15 +10,35 @@ import (
 // ReadString reads a string parameter from input.
 // When required is true and the key is missing or not a string, returns an error.
 func ReadString(params map[string]any, key string, required bool) (string, error) {
-	s := maputil.StringArg(params, key)
+	raw, ok := params[key]
+	if !ok || raw == nil {
+		if !required {
+			return "", nil
+		}
+		return "", fmt.Errorf("parameter %q is required", key)
+	}
+	s := strings.TrimSpace(maputil.StringArg(params, key))
 	if s != "" {
 		return s, nil
 	}
+	switch v := raw.(type) {
+	case string:
+		if !required {
+			return "", nil
+		}
+		if strings.TrimSpace(v) == "" {
+			return "", fmt.Errorf("parameter %q must not be empty", key)
+		}
+	case fmt.Stringer:
+		if !required {
+			return "", nil
+		}
+		if strings.TrimSpace(v.String()) == "" {
+			return "", fmt.Errorf("parameter %q must not be empty", key)
+		}
+	}
 	if !required {
 		return "", nil
-	}
-	if _, ok := params[key]; !ok || params[key] == nil {
-		return "", fmt.Errorf("parameter %q is required", key)
 	}
 	return "", fmt.Errorf("parameter %q must be a string", key)
 }

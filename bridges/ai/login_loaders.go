@@ -93,6 +93,9 @@ func (oc *OpenAIConnector) loadAIUserLogin(ctx context.Context, login *bridgev2.
 	if login == nil {
 		return nil
 	}
+	if meta == nil {
+		meta = loginMetadata(login)
+	}
 	cfg, err := loadAILoginConfig(ctx, login)
 	if err != nil {
 		return err
