@@ -19,7 +19,7 @@ func NewAIConnector() *OpenAIConnector {
 	}
 	oc.sdkConfig = sdk.NewStandardConnectorConfig(sdk.StandardConnectorConfigParams[*AIClient, *Config, *PortalMetadata, *MessageMetadata, *UserLoginMetadata, *GhostMetadata]{
 		Name:          "ai",
-		Description:   "AI bridge built with the AgentRemote SDK.",
+		Description:   "AI Chats bridge for Beeper",
 		ProtocolID:    "ai",
 		AgentCatalog:  aiAgentCatalog{connector: oc},
 		ClientCacheMu: &oc.clientsMu,
@@ -50,7 +50,7 @@ func NewAIConnector() *OpenAIConnector {
 			oc.initProvisioning()
 			return nil
 		},
-		DisplayName:      "AI",
+		DisplayName:      "Beeper AI",
 		NetworkURL:       "https://www.beeper.com/ai",
 		NetworkIcon:      "mxc://beeper.com/51a668657dd9e0132cc823ad9402c6c2d0fc3321",
 		NetworkID:        "ai",

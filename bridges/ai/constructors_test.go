@@ -24,7 +24,7 @@ func TestNewAIConnectorUsesSDKConfig(t *testing.T) {
 	}
 
 	name := conn.GetName()
-	if name.DisplayName != "AI" {
+	if name.DisplayName != "Beeper AI" {
 		t.Fatalf("unexpected display name %q", name.DisplayName)
 	}
 	if name.NetworkURL != "https://www.beeper.com/ai" {
