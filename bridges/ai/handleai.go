@@ -375,8 +375,7 @@ func (oc *AIClient) sendWelcomeMessage(ctx context.Context, portal *bridgev2.Por
 	if oc == nil || portal == nil {
 		return nil
 	}
-	var err error
-	portal, err = oc.canonicalPortalForClientAIDB(ctx, portal)
+	portal, _, err := oc.resolvePortalScope(ctx, portal)
 	if err != nil {
 		return err
 	}
@@ -412,7 +411,7 @@ func (oc *AIClient) sendWelcomeMessage(ctx context.Context, portal *bridgev2.Por
 	} else {
 		welcomeMessage = "AI can make mistakes."
 	}
-	if err := sdk.SendSystemMessage(bgCtx, oc.UserLogin, portal, oc.senderForPortal(bgCtx, portal), welcomeMessage); err != nil {
+	if err := oc.sendSystemNoticeMessage(bgCtx, portal, welcomeMessage); err != nil {
 		meta.WelcomeSent = false
 		if saveErr := oc.savePortal(bgCtx, portal, "welcome message rollback"); saveErr != nil {
 			oc.loggerForContext(ctx).Warn().Err(saveErr).Msg("Failed to roll back welcome message state")
@@ -432,8 +431,7 @@ func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Por
 	if oc == nil || portal == nil {
 		return
 	}
-	var err error
-	portal, err = oc.canonicalPortalForClientAIDB(ctx, portal)
+	portal, _, err := oc.resolvePortalScope(ctx, portal)
 	if err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to canonicalize portal for title generation")
 		return
@@ -463,7 +461,8 @@ func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Por
 		}
 
 		var userMessage string
-		for _, msg := range messages {
+		for i := len(messages) - 1; i >= 0; i-- {
+			msg := messages[i]
 			msgMeta, ok := msg.Metadata.(*MessageMetadata)
 			if ok && msgMeta != nil && msgMeta.Role == "user" && msgMeta.Body != "" {
 				userMessage = msgMeta.Body

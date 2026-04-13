@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"github.com/beeper/agentremote/cmd/internal/bridgeentry"
 )
 
 // cmdInternalBridge handles the hidden "__bridge" subcommand.
@@ -23,7 +25,6 @@ func cmdInternalBridge(args []string) error {
 	os.Args = append([]string{def.Name}, args[1:]...)
 
 	m := def.Definition.NewMain(def.NewFunc())
-	m.InitVersion(Tag, Commit, BuildTime)
-	m.Run()
+	bridgeentry.RunMain(def.Definition, m, Tag, Commit, BuildTime)
 	return nil
 }

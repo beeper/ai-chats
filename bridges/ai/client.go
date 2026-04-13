@@ -628,11 +628,6 @@ func (oc *AIClient) saveUserMessage(ctx context.Context, evt *event.Event, msg *
 	if _, err := oc.UserLogin.Bridge.GetGhostByID(ctx, msg.SenderID); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure user ghost before saving message")
 	}
-	transportMsg := *msg
-	transportMsg.Metadata = &MessageMetadata{}
-	if err := oc.UserLogin.Bridge.DB.Message.Insert(ctx, &transportMsg); err != nil {
-		oc.loggerForContext(ctx).Err(err).Msg("Failed to save message to database")
-	}
 	portal, err := oc.UserLogin.Bridge.GetPortalByKey(ctx, msg.Room)
 	if err != nil || portal == nil {
 		if err != nil {
@@ -655,6 +650,9 @@ func (oc *AIClient) saveUserMessage(ctx context.Context, evt *event.Event, msg *
 		Str("resolved_portal_receiver", string(portal.PortalKey.Receiver)).
 		Str("resolved_portal_mxid", portal.MXID.String()).
 		Msg("Resolved portal for AI turn persistence")
+	if err := oc.upsertTransportPortalMessage(ctx, portal, msg); err != nil {
+		oc.loggerForContext(ctx).Err(err).Msg("Failed to save transport user message to database")
+	}
 	if err := oc.persistAIConversationMessage(ctx, portal, msg); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist AI conversation turn")
 	}
@@ -1758,7 +1756,9 @@ func (oc *AIClient) updateAssistantGeneratedFiles(ctx context.Context, portal *b
 }
 
 type historyLoadResult struct {
+	rows      []*database.Message
 	hasVision bool
+	resetAt   int64
 	limit     int
 }
 

@@ -116,22 +116,6 @@ func (oc *AIClient) saveAssistantMessage(
 		initialEventID = turn.InitialEventID()
 	}
 
-	// Keep the bridgev2 message row as a mapping row only. Full assistant state
-	// belongs in the AI-owned turn store.
-	sdk.UpsertAssistantMessage(ctx, sdk.UpsertAssistantMessageParams{
-		Login:  oc.UserLogin,
-		Portal: portal,
-		SenderID: func() networkid.UserID {
-			if state.respondingGhostID != "" {
-				return networkid.UserID(state.respondingGhostID)
-			}
-			return modelUserID(oc.effectiveModel(meta))
-		}(),
-		NetworkMessageID: networkMessageID,
-		InitialEventID:   initialEventID,
-		Metadata:         &MessageMetadata{},
-		Logger:           log,
-	})
 	messageID := networkMessageID
 	if messageID == "" && initialEventID != "" {
 		messageID = sdk.MatrixMessageID(initialEventID)

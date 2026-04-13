@@ -184,26 +184,3 @@ func TestSenderForPortalUsesModelGhostWithoutAgent(t *testing.T) {
 		t.Fatalf("expected sender login %q, got %q", login.ID, sender.SenderLogin)
 	}
 }
-
-func TestBuildConvertedPortalTextMessage(t *testing.T) {
-	converted := buildConvertedPortalTextMessage(event.MsgNotice, "AI can make mistakes.")
-	if converted == nil || len(converted.Parts) != 1 {
-		t.Fatalf("expected one converted part, got %#v", converted)
-	}
-	part := converted.Parts[0]
-	if part == nil {
-		t.Fatal("expected non-nil converted part")
-	}
-	if part.Type != event.EventMessage {
-		t.Fatalf("expected event type %q, got %q", event.EventMessage, part.Type)
-	}
-	if part.Content == nil {
-		t.Fatal("expected message content")
-	}
-	if part.Content.MsgType != event.MsgNotice {
-		t.Fatalf("expected msgtype %q, got %q", event.MsgNotice, part.Content.MsgType)
-	}
-	if part.Content.Body != "AI can make mistakes." {
-		t.Fatalf("expected notice body to be preserved, got %q", part.Content.Body)
-	}
-}

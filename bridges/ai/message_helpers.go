@@ -1,10 +1,12 @@
 package ai
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 
+	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 )
 
@@ -103,4 +105,59 @@ func cloneMessageForAIHistory(msg *database.Message) *database.Message {
 		clone.Metadata = cloneMessageMetadata(meta)
 	}
 	return &clone
+}
+
+func (oc *AIClient) upsertTransportPortalMessage(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	msg *database.Message,
+) error {
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil || oc.UserLogin.Bridge.DB.Message == nil {
+		return fmt.Errorf("bridge message database unavailable")
+	}
+	if portal == nil || msg == nil {
+		return fmt.Errorf("portal or message is nil")
+	}
+
+	portal, err := oc.canonicalPortalForClientAIDB(ctx, portal)
+	if err != nil {
+		return err
+	}
+	if portal == nil {
+		return fmt.Errorf("canonical portal unavailable")
+	}
+
+	db := oc.UserLogin.Bridge.DB.Message
+	transport := *msg
+	transport.Room = portal.PortalKey
+	transport.Metadata = &MessageMetadata{}
+
+	if transport.MXID != "" {
+		existing, err := db.GetPartByMXID(ctx, transport.MXID)
+		if err != nil {
+			return err
+		}
+		if existing != nil && existing.Room == portal.PortalKey {
+			existing.Room = transport.Room
+			if transport.ID != "" {
+				existing.ID = transport.ID
+			}
+			if transport.PartID != "" {
+				existing.PartID = transport.PartID
+			}
+			if transport.SenderID != "" {
+				existing.SenderID = transport.SenderID
+			}
+			if !transport.Timestamp.IsZero() {
+				existing.Timestamp = transport.Timestamp
+			}
+			if transport.SendTxnID != "" {
+				existing.SendTxnID = transport.SendTxnID
+			}
+			existing.Metadata = &MessageMetadata{}
+			return db.Update(ctx, existing)
+		}
+	}
+
+	return db.Insert(ctx, &transport)
 }

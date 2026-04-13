@@ -1058,48 +1058,28 @@ func (oc *AIClient) BroadcastRoomState(ctx context.Context, portal *bridgev2.Por
 	return nil
 }
 
-func buildConvertedPortalTextMessage(msgType event.MessageType, message string) *bridgev2.ConvertedMessage {
-	return &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:   networkid.PartID("0"),
-			Type: event.EventMessage,
-			Content: &event.MessageEventContent{
-				MsgType:  msgType,
-				Body:     message,
-				Mentions: &event.Mentions{},
-			},
-		}},
-	}
-}
-
-func (oc *AIClient) sendPortalMessage(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	msgType event.MessageType,
-	message string,
-) error {
-	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
-		return fmt.Errorf("bridge unavailable")
-	}
-	if portal == nil || portal.MXID == "" {
-		return fmt.Errorf("invalid portal")
+func (oc *AIClient) sendSystemNoticeMessage(ctx context.Context, portal *bridgev2.Portal, message string) error {
+	if oc == nil || oc.UserLogin == nil || portal == nil {
+		return nil
 	}
 	message = strings.TrimSpace(message)
 	if message == "" {
 		return nil
 	}
-	converted := buildConvertedPortalTextMessage(msgType, message)
-	_, _, err := oc.sendViaPortal(ctx, portal, converted, "")
-	return err
+	portal, _, err := oc.resolvePortalScope(ctx, portal)
+	if err != nil {
+		return err
+	}
+	if portal == nil || portal.MXID == "" {
+		return fmt.Errorf("invalid portal")
+	}
+	return sdk.SendSystemMessage(ctx, oc.UserLogin, portal, oc.senderForPortal(ctx, portal), message)
 }
 
-// sendSystemNotice sends an informational notice to the room through the same portal pipeline
-// as normal AI-authored room messages.
+// sendSystemNotice sends an informational notice through the canonical bridgev2
+// portal sender path so it behaves like other bridges and like normal AI output.
 func (oc *AIClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Portal, message string) {
-	if oc == nil || oc.UserLogin == nil || portal == nil {
-		return
-	}
-	if err := sdk.SendSystemMessage(ctx, oc.UserLogin, portal, oc.senderForPortal(ctx, portal), message); err != nil {
+	if err := oc.sendSystemNoticeMessage(ctx, portal, message); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to send system notice")
 	}
 }

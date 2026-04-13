@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -70,8 +71,18 @@ func (oc *AIClient) fetchHistoryRowsWithExtra(
 	if extra > 0 {
 		historyLimit += extra
 	}
+	resetAt := int64(0)
+	if meta != nil {
+		resetAt = meta.SessionResetAt
+	}
+	history, err := oc.loadAIHistoryMessagesFromTurns(ctx, portal, historyLimit)
+	if err != nil {
+		return nil, err
+	}
 	return &historyLoadResult{
+		rows:      history,
 		hasVision: oc.getModelCapabilitiesForMeta(ctx, meta).SupportsVision,
+		resetAt:   resetAt,
 		limit:     historyLimit,
 	}, nil
 }
@@ -98,21 +109,40 @@ func (oc *AIClient) replayHistoryMessages(
 	if hr == nil {
 		return nil, nil
 	}
-
-	turns, err := oc.loadAIPromptHistoryTurns(ctx, portal, hr.limit, opts)
-	if err != nil {
-		return nil, err
+	type replayCandidate struct {
+		row  *database.Message
+		meta *MessageMetadata
 	}
-	skipUserID := ""
-	skipAssistantID := ""
+
+	candidates := make([]replayCandidate, 0, len(hr.rows))
+	for _, row := range hr.rows {
+		if opts.excludeMessageID != "" && row.ID == opts.excludeMessageID {
+			continue
+		}
+		msgMeta := messageMeta(row)
+		if opts.mode == historyReplayRewrite && row.ID == opts.targetMessageID {
+			candidates = append(candidates, replayCandidate{row: row, meta: msgMeta})
+			continue
+		}
+		if !shouldIncludeInHistory(msgMeta) {
+			continue
+		}
+		if hr.resetAt > 0 && row.Timestamp.UnixMilli() < hr.resetAt {
+			continue
+		}
+		candidates = append(candidates, replayCandidate{row: row, meta: msgMeta})
+	}
+
+	skipUserID := networkid.MessageID("")
+	skipAssistantID := networkid.MessageID("")
 	if opts.mode == historyReplayRegen {
-		for _, turn := range turns {
-			if skipUserID == "" && strings.TrimSpace(turn.Role) == string(PromptRoleUser) {
-				skipUserID = turn.TurnID
+		for _, candidate := range candidates {
+			if skipUserID == "" && candidate.meta != nil && candidate.meta.Role == string(PromptRoleUser) {
+				skipUserID = candidate.row.ID
 				continue
 			}
-			if skipAssistantID == "" && strings.TrimSpace(turn.Role) == string(PromptRoleAssistant) {
-				skipAssistantID = turn.TurnID
+			if skipAssistantID == "" && candidate.meta != nil && candidate.meta.Role == string(PromptRoleAssistant) {
+				skipAssistantID = candidate.row.ID
 			}
 			if skipUserID != "" && skipAssistantID != "" {
 				break
@@ -122,20 +152,21 @@ func (oc *AIClient) replayHistoryMessages(
 
 	var messages []PromptMessage
 	chatIndex := 0
-	for i := len(turns) - 1; i >= 0; i-- {
-		turn := turns[i]
-		if turn.TurnID == skipUserID || turn.TurnID == skipAssistantID {
+	for i := len(candidates) - 1; i >= 0; i-- {
+		candidate := candidates[i]
+		if opts.mode == historyReplayRewrite && candidate.row.ID == opts.targetMessageID {
+			break
+		}
+		if candidate.row.ID == skipUserID || candidate.row.ID == skipAssistantID {
 			continue
 		}
-		injectImages := hr.hasVision && turn.Kind == aiTurnKindConversation && chatIndex < maxHistoryImageMessages
-		bundle := filterPromptMessagesForHistory(promptMessagesFromTurnData(turn.TurnData), injectImages)
+		injectImages := hr.hasVision && chatIndex < maxHistoryImageMessages
+		bundle := oc.historyMessageBundle(ctx, candidate.meta, injectImages)
 		if len(bundle) == 0 {
 			continue
 		}
 		messages = append(messages, bundle...)
-		if turn.Kind == aiTurnKindConversation {
-			chatIndex++
-		}
+		chatIndex++
 	}
 	return messages, nil
 }
