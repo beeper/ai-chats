@@ -261,8 +261,6 @@ func (m *OpenCodeManager) connectInstanceClient(ctx context.Context, cfg *OpenCo
 		process:        proc,
 		connected:      true,
 		knownSessions:  make(map[string]struct{}),
-		seenPart:       make(map[string]map[string]*openCodePartState),
-		messageState:   make(map[string]map[string]*openCodeMessageState),
 		sessionRuntime: make(map[string]*openCodeSessionRuntime),
 	}
 
@@ -1229,7 +1227,11 @@ func (m *OpenCodeManager) applyConnectedState(inst *openCodeInstance, connected 
 		if meta.ReadOnly == !connected {
 			continue
 		}
-		meta.ReadOnly = !connected
+		meta = m.bridge.applyOpenCodePortalMeta(meta, openCodePortalMetaUpdate{
+			setReadOnly: true,
+			readOnly:    !connected,
+			ensureAgent: true,
+		})
 		m.bridge.host.SetPortalMeta(portal, meta)
 		_ = m.bridge.host.SavePortal(ctx, portal)
 		if connected {

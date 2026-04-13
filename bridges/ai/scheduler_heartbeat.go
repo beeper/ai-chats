@@ -147,11 +147,10 @@ func (s *schedulerRuntime) handleHeartbeatPlan(ctx context.Context, tick Schedul
 		return nil
 	}
 	state := &store.Agents[idx]
-	if !state.Enabled || state.Revision != tick.Revision || containsRunKey(state.ProcessedRunKeys, tick.RunKey) {
+	if !state.acceptsTick(tick) {
 		return nil
 	}
-	state.PendingRunKey = ""
-	state.ProcessedRunKeys = appendRunKey(state.ProcessedRunKeys, tick.RunKey)
+	state.markRunProcessed(tick.RunKey)
 	s.scheduleHeartbeatStateLocked(ctx, state, time.Now().UnixMilli(), false)
 	return s.saveHeartbeatStoreLocked(ctx, store)
 }
@@ -169,7 +168,7 @@ func (s *schedulerRuntime) handleHeartbeatRun(ctx context.Context, tick Schedule
 		return nil
 	}
 	state := store.Agents[idx]
-	if !state.Enabled || state.Revision != tick.Revision || containsRunKey(state.ProcessedRunKeys, tick.RunKey) {
+	if !state.acceptsTick(tick) {
 		s.mu.Unlock()
 		return nil
 	}
@@ -199,19 +198,16 @@ func (s *schedulerRuntime) handleHeartbeatRun(ctx context.Context, tick Schedule
 		return nil
 	}
 	state = store.Agents[idx]
-	if !state.Enabled || state.Revision != tick.Revision || containsRunKey(state.ProcessedRunKeys, tick.RunKey) {
+	if !state.acceptsTick(tick) {
 		return nil
 	}
-	state.LastResult = res.Status
-	state.LastError = res.Reason
 	finishedAtMs := time.Now().UnixMilli()
-	if res.Status == "ran" || res.Status == "sent" {
-		state.LastRunAtMs = finishedAtMs
+	if state.recordRunResult(res, finishedAtMs) {
 		s.scheduleNextHeartbeatAfterRunLocked(ctx, &state, finishedAtMs)
 	} else {
 		s.scheduleHeartbeatRetryLocked(ctx, &state, finishedAtMs)
 	}
-	state.ProcessedRunKeys = appendRunKey(state.ProcessedRunKeys, tick.RunKey)
+	state.markRunProcessed(tick.RunKey)
 	store.Agents[idx] = state
 	return s.saveHeartbeatStoreLocked(ctx, store)
 }
@@ -224,7 +220,7 @@ func (s *schedulerRuntime) scheduleHeartbeatStateLocked(ctx context.Context, sta
 		}
 		return
 	}
-	nextRun := computeManagedHeartbeatDue(s.client, *state, nowMs)
+	nextRun := state.dueAt(s.client, nowMs)
 	if nextRun <= 0 {
 		return
 	}
@@ -250,12 +246,10 @@ func (s *schedulerRuntime) scheduleHeartbeatStateLocked(ctx context.Context, sta
 	}, time.Duration(max64(runAtMs-nowMs, scheduleImmediateDelay.Milliseconds()))*time.Millisecond)
 	if err != nil {
 		s.client.log.Warn().Err(err).Str("agent_id", state.AgentID).Msg("Failed to schedule managed heartbeat tick")
-		state.LastResult = "error"
-		state.LastError = err.Error()
+		state.recordScheduleError(err)
 		return
 	}
-	state.NextRunAtMs = nextRun
-	state.PendingRunKey = runKey
+	state.markRunScheduled(nextRun, runKey)
 }
 
 func (s *schedulerRuntime) scheduleNextHeartbeatAfterRunLocked(ctx context.Context, state *managedHeartbeatState, nowMs int64) {
@@ -283,32 +277,10 @@ func (s *schedulerRuntime) scheduleHeartbeatRetryLocked(ctx context.Context, sta
 	}, scheduleHeartbeatCoalesce)
 	if err != nil {
 		s.client.log.Warn().Err(err).Str("agent_id", state.AgentID).Msg("Failed to schedule heartbeat retry tick")
-		state.LastResult = "error"
-		state.LastError = err.Error()
+		state.recordScheduleError(err)
 		return
 	}
-	state.NextRunAtMs = retryAtMs
-	state.PendingRunKey = runKey
-}
-
-func computeManagedHeartbeatDue(client *AIClient, state managedHeartbeatState, nowMs int64) int64 {
-	if state.IntervalMs <= 0 {
-		return 0
-	}
-	var dueAtMs int64
-	if state.LastRunAtMs > 0 {
-		dueAtMs = state.LastRunAtMs + state.IntervalMs
-		return clampHeartbeatDueToActiveHours(client, state.ActiveHours, dueAtMs)
-	}
-	if client != nil {
-		ref, sessionKey := client.resolveHeartbeatMainSessionRef(state.AgentID)
-		if entry, ok := client.getSessionEntry(context.Background(), ref, sessionKey); ok && entry.LastHeartbeatSentAt > 0 {
-			dueAtMs = entry.LastHeartbeatSentAt + state.IntervalMs
-			return clampHeartbeatDueToActiveHours(client, state.ActiveHours, dueAtMs)
-		}
-	}
-	dueAtMs = nowMs + state.IntervalMs
-	return clampHeartbeatDueToActiveHours(client, state.ActiveHours, dueAtMs)
+	state.markRunScheduled(retryAtMs, runKey)
 }
 
 func upsertManagedHeartbeat(store *managedHeartbeatStore, agentID string, hb *HeartbeatConfig) *managedHeartbeatState {
@@ -316,29 +288,17 @@ func upsertManagedHeartbeat(store *managedHeartbeatStore, agentID string, hb *He
 		return nil
 	}
 	idx := findManagedHeartbeat(store.Agents, agentID)
-	interval := resolveHeartbeatIntervalMs(nil, "", hb)
 	if idx < 0 {
 		state := managedHeartbeatState{
-			AgentID:     normalizeAgentID(agentID),
-			Enabled:     interval > 0,
-			IntervalMs:  interval,
-			ActiveHours: cloneHeartbeatActiveHours(hb),
-			Revision:    1,
+			AgentID:  normalizeAgentID(agentID),
+			Revision: 1,
 		}
+		state.applyConfig(agentID, hb)
 		store.Agents = append(store.Agents, state)
 		return &store.Agents[len(store.Agents)-1]
 	}
 	state := &store.Agents[idx]
-	if state.Revision <= 0 {
-		state.Revision = 1
-	}
-	if state.IntervalMs != interval || !equalHeartbeatActiveHours(state.ActiveHours, cloneHeartbeatActiveHours(hb)) {
-		state.IntervalMs = interval
-		state.ActiveHours = cloneHeartbeatActiveHours(hb)
-		state.Revision++
-		state.PendingRunKey = ""
-	}
-	state.Enabled = interval > 0
+	state.applyConfig(agentID, hb)
 	return state
 }
 

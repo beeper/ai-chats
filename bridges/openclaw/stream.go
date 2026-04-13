@@ -284,7 +284,7 @@ func (oc *OpenClawClient) currentUIMessage(state *openClawStreamState) map[strin
 		uiState = state.turn.UIState()
 	}
 	uiMessage := streamui.SnapshotUIMessage(uiState)
-	update := buildOpenClawUIMessageMetadata(sdk.UIMessageMetadataParams{
+	update := sdk.BuildUIMessageMetadata(sdk.UIMessageMetadataParams{
 		TurnID:           state.turnID,
 		AgentID:          state.agentID,
 		FinishReason:     state.stream.FinishReason(),
@@ -297,7 +297,8 @@ func (oc *OpenClawClient) currentUIMessage(state *openClawStreamState) map[strin
 		FirstTokenAtMs:   state.stream.FirstTokenAtMs(),
 		CompletedAtMs:    state.stream.CompletedAtMs(),
 		IncludeUsage:     true,
-	}, state.sessionID, state.sessionKey, state.stream.ErrorText())
+		Extras:           openClawMetadataExtras(state.sessionID, state.sessionKey, state.stream.ErrorText()),
+	})
 	if len(uiMessage) == 0 {
 		return sdk.BuildUIMessage(sdk.UIMessageParams{
 			TurnID:   state.turnID,

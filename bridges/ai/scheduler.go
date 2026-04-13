@@ -59,6 +59,91 @@ type managedHeartbeatState struct {
 	ProcessedRunKeys []string                    `json:"processedRunKeys,omitempty"`
 }
 
+func (state *managedHeartbeatState) applyConfig(agentID string, hb *HeartbeatConfig) {
+	if state == nil {
+		return
+	}
+	interval := resolveHeartbeatIntervalMs(nil, "", hb)
+	if state.AgentID == "" {
+		state.AgentID = normalizeAgentID(agentID)
+	}
+	if state.Revision <= 0 {
+		state.Revision = 1
+	}
+	activeHours := cloneHeartbeatActiveHours(hb)
+	hadConfig := state.IntervalMs > 0 || state.ActiveHours != nil || state.Enabled
+	if state.IntervalMs != interval || !equalHeartbeatActiveHours(state.ActiveHours, activeHours) {
+		state.IntervalMs = interval
+		state.ActiveHours = activeHours
+		if hadConfig {
+			state.Revision++
+		}
+		state.PendingRunKey = ""
+	}
+	state.Enabled = interval > 0
+}
+
+func (state managedHeartbeatState) dueAt(client *AIClient, nowMs int64) int64 {
+	if state.IntervalMs <= 0 {
+		return 0
+	}
+	var dueAtMs int64
+	if state.LastRunAtMs > 0 {
+		dueAtMs = state.LastRunAtMs + state.IntervalMs
+		return clampHeartbeatDueToActiveHours(client, state.ActiveHours, dueAtMs)
+	}
+	if client != nil {
+		ref, sessionKey := client.resolveHeartbeatMainSessionRef(state.AgentID)
+		if entry, ok := client.getSessionEntry(context.Background(), ref, sessionKey); ok && entry.LastHeartbeatSentAt > 0 {
+			dueAtMs = entry.LastHeartbeatSentAt + state.IntervalMs
+			return clampHeartbeatDueToActiveHours(client, state.ActiveHours, dueAtMs)
+		}
+	}
+	dueAtMs = nowMs + state.IntervalMs
+	return clampHeartbeatDueToActiveHours(client, state.ActiveHours, dueAtMs)
+}
+
+func (state managedHeartbeatState) acceptsTick(tick ScheduleTickContent) bool {
+	return state.Enabled && state.Revision == tick.Revision && !containsRunKey(state.ProcessedRunKeys, tick.RunKey)
+}
+
+func (state *managedHeartbeatState) markRunProcessed(runKey string) {
+	if state == nil {
+		return
+	}
+	state.PendingRunKey = ""
+	state.ProcessedRunKeys = appendRunKey(state.ProcessedRunKeys, runKey)
+}
+
+func (state *managedHeartbeatState) markRunScheduled(nextRunAtMs int64, runKey string) {
+	if state == nil {
+		return
+	}
+	state.NextRunAtMs = nextRunAtMs
+	state.PendingRunKey = runKey
+}
+
+func (state *managedHeartbeatState) recordScheduleError(err error) {
+	if state == nil || err == nil {
+		return
+	}
+	state.LastResult = "error"
+	state.LastError = err.Error()
+}
+
+func (state *managedHeartbeatState) recordRunResult(res heartbeatRunResult, finishedAtMs int64) bool {
+	if state == nil {
+		return false
+	}
+	state.LastResult = res.Status
+	state.LastError = res.Reason
+	if res.Status == "ran" || res.Status == "sent" {
+		state.LastRunAtMs = finishedAtMs
+		return true
+	}
+	return false
+}
+
 func newSchedulerRuntime(client *AIClient) *schedulerRuntime {
 	return &schedulerRuntime{
 		client: client,

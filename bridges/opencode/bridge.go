@@ -61,33 +61,105 @@ const (
 	openCodeRoomStateTitlePending          openCodeRoomState = "title_pending"
 )
 
-func openCodeSetupRoomState(pendingTitle bool) openCodeRoomState {
-	if pendingTitle {
+type openCodePortalPhase string
+
+const (
+	openCodePortalPhaseReady              openCodePortalPhase = "ready"
+	openCodePortalPhaseSetup              openCodePortalPhase = "setup"
+	openCodePortalPhaseSetupTitlePending  openCodePortalPhase = "setup_title_pending"
+	openCodePortalPhaseActiveTitlePending openCodePortalPhase = "active_title_pending"
+)
+
+func openCodePortalPhaseForRoomState(state openCodeRoomState) openCodePortalPhase {
+	switch state {
+	case openCodeRoomStateAwaitingPath:
+		return openCodePortalPhaseSetup
+	case openCodeRoomStateAwaitingPathWithTitle:
+		return openCodePortalPhaseSetupTitlePending
+	case openCodeRoomStateTitlePending:
+		return openCodePortalPhaseActiveTitlePending
+	default:
+		return openCodePortalPhaseReady
+	}
+}
+
+func (p openCodePortalPhase) roomState() openCodeRoomState {
+	switch p {
+	case openCodePortalPhaseSetup:
+		return openCodeRoomStateAwaitingPath
+	case openCodePortalPhaseSetupTitlePending:
 		return openCodeRoomStateAwaitingPathWithTitle
-	}
-	return openCodeRoomStateAwaitingPath
-}
-
-func openCodeActiveRoomState(pendingTitle bool) openCodeRoomState {
-	if pendingTitle {
+	case openCodePortalPhaseActiveTitlePending:
 		return openCodeRoomStateTitlePending
+	default:
+		return openCodeRoomStateReady
 	}
-	return openCodeRoomStateReady
 }
 
-func (s openCodeRoomState) AwaitingPath() bool {
-	return s == openCodeRoomStateAwaitingPath || s == openCodeRoomStateAwaitingPathWithTitle
+func (p openCodePortalPhase) AwaitingPath() bool {
+	return p == openCodePortalPhaseSetup || p == openCodePortalPhaseSetupTitlePending
 }
 
-func (s openCodeRoomState) TitlePending() bool {
-	return s == openCodeRoomStateTitlePending || s == openCodeRoomStateAwaitingPathWithTitle
+func (p openCodePortalPhase) TitlePending() bool {
+	return p == openCodePortalPhaseSetupTitlePending || p == openCodePortalPhaseActiveTitlePending
 }
 
-func (s openCodeRoomState) ActivateSession() openCodeRoomState {
-	if s.TitlePending() {
-		return openCodeRoomStateTitlePending
+func (p openCodePortalPhase) AfterSessionAttach() openCodePortalPhase {
+	if p.TitlePending() {
+		return openCodePortalPhaseActiveTitlePending
 	}
-	return openCodeRoomStateReady
+	return openCodePortalPhaseReady
+}
+
+func (p openCodePortalPhase) CanDeleteRemoteSession(sessionID string) bool {
+	return !p.AwaitingPath() && sessionID != "" && !strings.HasPrefix(sessionID, "setup-")
+}
+
+func (meta *PortalMeta) roomPhase() openCodePortalPhase {
+	if meta == nil {
+		return openCodePortalPhaseReady
+	}
+	return openCodePortalPhaseForRoomState(meta.RoomState)
+}
+
+type openCodePortalMetaUpdate struct {
+	setInstanceID bool
+	instanceID    string
+	setSessionID  bool
+	sessionID     string
+	setReadOnly   bool
+	readOnly      bool
+	setPhase      bool
+	phase         openCodePortalPhase
+	setTitle      bool
+	title         string
+	ensureAgent   bool
+}
+
+func (b *Bridge) applyOpenCodePortalMeta(meta *PortalMeta, update openCodePortalMetaUpdate) *PortalMeta {
+	if meta == nil {
+		meta = &PortalMeta{}
+	}
+	meta.IsOpenCodeRoom = true
+	if update.setInstanceID {
+		meta.InstanceID = update.instanceID
+	}
+	if update.setSessionID {
+		meta.SessionID = update.sessionID
+	}
+	if update.setReadOnly {
+		meta.ReadOnly = update.readOnly
+	}
+	if update.setPhase {
+		meta.RoomState = update.phase.roomState()
+	}
+	if update.setTitle {
+		meta.Title = update.title
+	}
+	if update.ensureAgent && meta.AgentID == "" && b != nil && b.host != nil {
+		meta.AgentID = b.host.DefaultAgentID()
+	}
+	return meta
 }
 
 // OpenCodeInstance stores connection details for an OpenCode server.

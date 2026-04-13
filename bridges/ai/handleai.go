@@ -129,11 +129,7 @@ func (oc *AIClient) recordProviderError(ctx context.Context) {
 	var nextErrors int
 	var crossedThreshold bool
 	_ = oc.updateLoginState(ctx, func(state *loginRuntimeState) bool {
-		prevErrors := state.ConsecutiveErrors
-		state.ConsecutiveErrors++
-		state.LastErrorAt = time.Now().Unix()
-		nextErrors = state.ConsecutiveErrors
-		crossedThreshold = prevErrors < healthWarningThreshold && nextErrors >= healthWarningThreshold
+		nextErrors, crossedThreshold = state.RecordProviderError(time.Now(), healthWarningThreshold)
 		return true
 	})
 	if crossedThreshold {
@@ -148,13 +144,8 @@ func (oc *AIClient) recordProviderError(ctx context.Context) {
 func (oc *AIClient) recordProviderSuccess(ctx context.Context) {
 	var recovered bool
 	_ = oc.updateLoginState(ctx, func(state *loginRuntimeState) bool {
-		if state.ConsecutiveErrors == 0 {
-			return false
-		}
-		recovered = state.ConsecutiveErrors >= healthWarningThreshold
-		state.ConsecutiveErrors = 0
-		state.LastErrorAt = 0
-		return true
+		recovered = state.RecordProviderSuccess(healthWarningThreshold)
+		return recovered
 	})
 	if recovered && oc.IsLoggedIn() {
 		oc.UserLogin.BridgeState.Send(status.BridgeState{

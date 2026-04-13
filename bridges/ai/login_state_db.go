@@ -17,6 +17,39 @@ type loginRuntimeState struct {
 	LastErrorAt         int64
 }
 
+func (state *loginRuntimeState) UpdateHeartbeat(evt *HeartbeatEventPayload) bool {
+	if state == nil || evt == nil {
+		return false
+	}
+	if prev := state.LastHeartbeatEvent; prev != nil {
+		if prev.TS == evt.TS && prev.Status == evt.Status && prev.Reason == evt.Reason && prev.To == evt.To && prev.Channel == evt.Channel && prev.Preview == evt.Preview {
+			return false
+		}
+	}
+	state.LastHeartbeatEvent = cloneHeartbeatEvent(evt)
+	return true
+}
+
+func (state *loginRuntimeState) RecordProviderError(now time.Time, warningThreshold int) (int, bool) {
+	if state == nil {
+		return 0, false
+	}
+	prevErrors := state.ConsecutiveErrors
+	state.ConsecutiveErrors++
+	state.LastErrorAt = now.Unix()
+	return state.ConsecutiveErrors, prevErrors < warningThreshold && state.ConsecutiveErrors >= warningThreshold
+}
+
+func (state *loginRuntimeState) RecordProviderSuccess(warningThreshold int) bool {
+	if state == nil || state.ConsecutiveErrors == 0 {
+		return false
+	}
+	recovered := state.ConsecutiveErrors >= warningThreshold
+	state.ConsecutiveErrors = 0
+	state.LastErrorAt = 0
+	return recovered
+}
+
 func cloneHeartbeatEvent(in *HeartbeatEventPayload) *HeartbeatEventPayload {
 	if in == nil {
 		return nil

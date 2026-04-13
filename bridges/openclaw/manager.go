@@ -742,7 +742,7 @@ func (m *openClawManager) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
 	sessionKey := strings.TrimSpace(state.OpenClawSessionKey)
-	if state.OpenClawDMCreatedFromContact && state.OpenClawSessionID == "" && isOpenClawSyntheticDMSessionKey(state.OpenClawSessionKey) {
+	if state.OpenClawSessionID == "" && isOpenClawSyntheticDMSessionKey(state.OpenClawSessionKey) {
 		if resolvedKey, err := gateway.ResolveSessionKey(ctx, state.OpenClawSessionKey); err == nil {
 			resolvedKey = strings.TrimSpace(resolvedKey)
 			if resolvedKey != "" {
@@ -768,7 +768,7 @@ func (m *openClawManager) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 	if err != nil {
 		return nil, err
 	}
-	if state.OpenClawDMCreatedFromContact && state.OpenClawSessionID == "" && isOpenClawSyntheticDMSessionKey(state.OpenClawSessionKey) {
+	if state.OpenClawSessionID == "" && isOpenClawSyntheticDMSessionKey(state.OpenClawSessionKey) {
 		go func() {
 			if err := m.syncSessions(m.client.BackgroundContext(ctx)); err != nil {
 				m.client.Log().Debug().Err(err).Str("session_key", sessionKey).Msg("Failed to refresh OpenClaw sessions after synthetic DM message")
@@ -1478,13 +1478,14 @@ func openClawStreamMessageMetadata(state *openClawPortalState, payload gatewayCh
 		CompletionID: payload.RunID,
 		FinishReason: stringutil.TrimDefault(strings.TrimSpace(payload.StopReason), strings.TrimSpace(payload.State)),
 		IncludeUsage: true,
+		Extras: openClawMetadataExtras(
+			stringutil.TrimDefault(stringValue(payload.Message["sessionId"]), state.OpenClawSessionID),
+			stringutil.TrimDefault(payload.SessionKey, state.OpenClawSessionKey),
+			openClawErrorText(payload),
+		),
 	}
 	applyNormalizedUsageToParams(normalizeOpenClawUsage(payload.Usage), &params)
-	return buildOpenClawUIMessageMetadata(params,
-		stringutil.TrimDefault(stringValue(payload.Message["sessionId"]), state.OpenClawSessionID),
-		stringutil.TrimDefault(payload.SessionKey, state.OpenClawSessionKey),
-		openClawErrorText(payload),
-	)
+	return sdk.BuildUIMessageMetadata(params)
 }
 
 func normalizeOpenClawUsage(raw map[string]any) map[string]any {
@@ -1912,11 +1913,12 @@ func (m *openClawManager) ensureStreamStart(ctx context.Context, portal *bridgev
 		agentID = resolveOpenClawAgentID(state, state.OpenClawSessionKey, nil)
 	}
 	if len(messageMetadata) == 0 {
-		messageMetadata = buildOpenClawUIMessageMetadata(sdk.UIMessageMetadataParams{
+		messageMetadata = sdk.BuildUIMessageMetadata(sdk.UIMessageMetadataParams{
 			TurnID:       turnID,
 			AgentID:      agentID,
 			CompletionID: runID,
-		}, state.OpenClawSessionID, state.OpenClawSessionKey, "")
+			Extras:       openClawMetadataExtras(state.OpenClawSessionID, state.OpenClawSessionKey, ""),
+		})
 	}
 	m.client.EmitStreamPart(ctx, portal, turnID, agentID, state.OpenClawSessionKey, map[string]any{
 		"timestamp":       eventTS.UnixMilli(),
@@ -1946,11 +1948,12 @@ func (m *openClawManager) handleAgentEvent(ctx context.Context, payload gatewayA
 	if turnID == "" {
 		return
 	}
-	agentMetadata := buildOpenClawUIMessageMetadata(sdk.UIMessageMetadataParams{
+	agentMetadata := sdk.BuildUIMessageMetadata(sdk.UIMessageMetadataParams{
 		TurnID:       turnID,
 		AgentID:      agentID,
 		CompletionID: payload.RunID,
-	}, state.OpenClawSessionID, payload.SessionKey, "")
+		Extras:       openClawMetadataExtras(state.OpenClawSessionID, payload.SessionKey, ""),
+	})
 	eventTS := extractOpenClawEventTimestamp(payload.TS, nil)
 	m.ensureStreamStart(ctx, portal, state, turnID, payload.RunID, agentID, eventTS, agentMetadata, nil)
 	m.startRunRecovery(ctx, portal, turnID, payload.RunID, agentID)
@@ -2260,7 +2263,7 @@ func (m *openClawManager) waitForRunCompletion(ctx context.Context, portal *brid
 		}
 	}
 
-	metadata := buildOpenClawUIMessageMetadata(sdk.UIMessageMetadataParams{
+	metadata := sdk.BuildUIMessageMetadata(sdk.UIMessageMetadataParams{
 		TurnID:        turnID,
 		AgentID:       agentID,
 		CompletionID:  runID,
@@ -2268,7 +2271,8 @@ func (m *openClawManager) waitForRunCompletion(ctx context.Context, portal *brid
 		StartedAtMs:   waitResp.StartedAt,
 		CompletedAtMs: waitResp.EndedAt,
 		IncludeUsage:  true,
-	}, state.OpenClawSessionID, state.OpenClawSessionKey, strings.TrimSpace(waitResp.Error))
+		Extras:        openClawMetadataExtras(state.OpenClawSessionID, state.OpenClawSessionKey, strings.TrimSpace(waitResp.Error)),
+	})
 	if status == "error" {
 		m.client.EmitStreamPart(ctx, portal, turnID, agentID, state.OpenClawSessionKey, map[string]any{
 			"type":      "error",
@@ -2513,13 +2517,14 @@ func convertHistoryToCanonicalUI(message map[string]any, role string, state *ope
 		FinishReason: stringutil.TrimDefault(stringValue(message["finishReason"]), stringValue(message["stopReason"])),
 		CompletionID: stringValue(message["runId"]),
 		IncludeUsage: true,
+		Extras: openClawMetadataExtras(
+			stringutil.TrimDefault(stringValue(message["sessionId"]), state.OpenClawSessionID),
+			stringutil.TrimDefault(stringValue(message["sessionKey"]), state.OpenClawSessionKey),
+			stringutil.TrimDefault(stringValue(message["errorMessage"]), stringValue(message["error"])),
+		),
 	}
 	applyNormalizedUsageToParams(normalizeOpenClawUsage(jsonutil.ToMap(message["usage"])), &params)
-	metadata := buildOpenClawUIMessageMetadata(params,
-		stringutil.TrimDefault(stringValue(message["sessionId"]), state.OpenClawSessionID),
-		stringutil.TrimDefault(stringValue(message["sessionKey"]), state.OpenClawSessionKey),
-		stringutil.TrimDefault(stringValue(message["errorMessage"]), stringValue(message["error"])),
-	)
+	metadata := sdk.BuildUIMessageMetadata(params)
 	return openClawHistoryUIParts(message, role), metadata
 }
 

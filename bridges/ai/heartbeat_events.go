@@ -120,13 +120,7 @@ func (p *heartbeatEventPersister) run() {
 		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
 		if client, ok := p.login.Client.(*AIClient); ok && client != nil {
 			_ = client.updateLoginState(ctx, func(state *loginRuntimeState) bool {
-				if prev := state.LastHeartbeatEvent; prev != nil {
-					if prev.TS == evt.TS && prev.Status == evt.Status && prev.Reason == evt.Reason && prev.To == evt.To && prev.Channel == evt.Channel && prev.Preview == evt.Preview {
-						return false
-					}
-				}
-				state.LastHeartbeatEvent = cloneHeartbeatEvent(evt)
-				return true
+				return state.UpdateHeartbeat(evt)
 			})
 		}
 		cancel()

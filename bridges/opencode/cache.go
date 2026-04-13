@@ -29,8 +29,10 @@ type openCodeMessageCache struct {
 }
 
 type openCodeSessionRuntime struct {
-	cache *openCodeMessageCache
-	queue *openCodeSessionQueue
+	cache    *openCodeMessageCache
+	queue    *openCodeSessionQueue
+	messages map[string]*openCodeMessageState
+	parts    map[string]*openCodePartState
 }
 
 func (inst *openCodeInstance) ensureSessionRuntime(sessionID string) *openCodeSessionRuntime {

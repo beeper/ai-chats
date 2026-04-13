@@ -1,6 +1,9 @@
 package runtime
 
 import (
+	"strings"
+	"time"
+
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"github.com/openai/openai-go/v3"
@@ -16,6 +19,51 @@ type MemoryState struct {
 	OverflowFlushAt              int64  `json:"overflow_flush_at,omitempty"`
 	OverflowFlushCompactionCount int    `json:"overflow_flush_compaction_count,omitempty"`
 	MemoryBootstrapAt            int64  `json:"memory_bootstrap_at,omitempty"`
+}
+
+func (s *MemoryState) ApplyCompactionLifecycle(phase CompactionLifecyclePhase, droppedCount int, errText string, now time.Time) {
+	if s == nil {
+		return
+	}
+	switch phase {
+	case CompactionLifecycleStart:
+		s.CompactionInFlight = true
+	case CompactionLifecycleEnd:
+		s.CompactionInFlight = false
+		s.LastCompactionAt = now.UnixMilli()
+		s.LastCompactionDroppedCount = droppedCount
+	case CompactionLifecycleFail:
+		s.CompactionInFlight = false
+		s.LastCompactionError = strings.TrimSpace(errText)
+	case CompactionLifecycleRefresh:
+		s.LastCompactionRefreshAt = now.UnixMilli()
+	}
+}
+
+func (s *MemoryState) AlreadyFlushed(compactionCounter int) bool {
+	if s == nil || s.OverflowFlushAt == 0 {
+		return false
+	}
+	return s.OverflowFlushCompactionCount == compactionCounter
+}
+
+func (s *MemoryState) MarkOverflowFlushed(compactionCounter int, now time.Time) {
+	if s == nil {
+		return
+	}
+	s.OverflowFlushAt = now.UnixMilli()
+	s.OverflowFlushCompactionCount = compactionCounter
+}
+
+func (s *MemoryState) NeedsBootstrap() bool {
+	return s == nil || s.MemoryBootstrapAt == 0
+}
+
+func (s *MemoryState) MarkBootstrapped(now time.Time) {
+	if s == nil {
+		return
+	}
+	s.MemoryBootstrapAt = now.UnixMilli()
 }
 
 // Meta describes the portal metadata behavior integration modules depend on.

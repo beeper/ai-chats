@@ -40,7 +40,6 @@ type openClawPortalState struct {
 	OpenClawSpawnedBy             string         `json:"openclaw_spawned_by,omitempty"`
 	OpenClawDMTargetAgentID       string         `json:"openclaw_dm_target_agent_id,omitempty"`
 	OpenClawDMTargetAgentName     string         `json:"openclaw_dm_target_agent_name,omitempty"`
-	OpenClawDMCreatedFromContact  bool           `json:"openclaw_dm_created_from_contact,omitempty"`
 	OpenClawSessionKind           string         `json:"openclaw_session_kind,omitempty"`
 	OpenClawSessionLabel          string         `json:"openclaw_session_label,omitempty"`
 	OpenClawDisplayName           string         `json:"openclaw_display_name,omitempty"`
@@ -194,11 +193,6 @@ func openClawMetadataExtras(sessionID, sessionKey, errorText string) map[string]
 		return nil
 	}
 	return extras
-}
-
-func buildOpenClawUIMessageMetadata(params sdk.UIMessageMetadataParams, sessionID, sessionKey, errorText string) map[string]any {
-	params.Extras = openClawMetadataExtras(sessionID, sessionKey, errorText)
-	return sdk.BuildUIMessageMetadata(params)
 }
 
 func buildOpenClawMessageMetadata(params openClawMessageMetadataParams) *MessageMetadata {

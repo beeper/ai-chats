@@ -42,9 +42,8 @@ type openCodeTurnState struct {
 }
 
 type openCodeMessageState struct {
-	role  string
-	parts map[string]struct{}
-	turn  *openCodeTurnState
+	role string
+	turn *openCodeTurnState
 }
 
 type queuedUserMessage struct {
@@ -72,8 +71,6 @@ type openCodeInstance struct {
 
 	seenMu        sync.Mutex
 	knownSessions map[string]struct{}
-	seenPart      map[string]map[string]*openCodePartState    // session -> part -> state
-	messageState  map[string]map[string]*openCodeMessageState // session -> message -> runtime state
 
 	cacheMu        sync.Mutex
 	sessionRuntime map[string]*openCodeSessionRuntime
@@ -162,10 +159,12 @@ func (inst *openCodeInstance) seenRole(sessionID, messageID string) string {
 func (inst *openCodeInstance) withPartState(sessionID, partID string, fn func(ps *openCodePartState)) {
 	inst.seenMu.Lock()
 	defer inst.seenMu.Unlock()
-	if parts, ok := inst.seenPart[sessionID]; ok {
-		if state, ok := parts[partID]; ok && state != nil {
-			fn(state)
-		}
+	runtime := inst.sessionRuntimeForSeen(sessionID)
+	if runtime == nil || runtime.parts == nil {
+		return
+	}
+	if state := runtime.parts[partID]; state != nil {
+		fn(state)
 	}
 }
 
@@ -174,11 +173,11 @@ func readPartState[T any](inst *openCodeInstance, sessionID, partID string, fn f
 	var zero T
 	inst.seenMu.Lock()
 	defer inst.seenMu.Unlock()
-	parts, ok := inst.seenPart[sessionID]
-	if !ok {
+	runtime := inst.sessionRuntimeForSeen(sessionID)
+	if runtime == nil || runtime.parts == nil {
 		return zero
 	}
-	state := parts[partID]
+	state := runtime.parts[partID]
 	if state == nil {
 		return zero
 	}
@@ -294,18 +293,14 @@ func (inst *openCodeInstance) ensurePartState(sessionID, messageID, partID, role
 	}
 	inst.seenMu.Lock()
 	defer inst.seenMu.Unlock()
-	if inst.seenPart == nil {
-		inst.seenPart = make(map[string]map[string]*openCodePartState)
+	runtime := inst.ensureSessionRuntime(sessionID)
+	if runtime.parts == nil {
+		runtime.parts = make(map[string]*openCodePartState)
 	}
-	parts := inst.seenPart[sessionID]
-	if parts == nil {
-		parts = make(map[string]*openCodePartState)
-		inst.seenPart[sessionID] = parts
-	}
-	state := parts[partID]
+	state := runtime.parts[partID]
 	if state == nil {
 		state = &openCodePartState{role: role, messageID: messageID, partType: partType}
-		parts[partID] = state
+		runtime.parts[partID] = state
 	} else {
 		if role != "" {
 			state.role = role
@@ -322,10 +317,6 @@ func (inst *openCodeInstance) ensurePartState(sessionID, messageID, partID, role
 		if role != "" {
 			msgState.role = role
 		}
-		if msgState.parts == nil {
-			msgState.parts = make(map[string]struct{})
-		}
-		msgState.parts[partID] = struct{}{}
 	}
 	return state
 }
@@ -335,14 +326,16 @@ func (inst *openCodeInstance) messageParts(sessionID, messageID string) map[stri
 	defer inst.seenMu.Unlock()
 	result := make(map[string]*openCodePartState)
 	msgState := inst.messageStateForLocked(sessionID, messageID)
-	if msgState == nil || len(msgState.parts) == 0 || inst.seenPart == nil {
+	runtime := inst.sessionRuntimeForSeen(sessionID)
+	if msgState == nil || runtime == nil || runtime.parts == nil {
 		return result
 	}
-	for partID := range msgState.parts {
-		if state, ok := inst.seenPart[sessionID][partID]; ok {
+	for partID, state := range runtime.parts {
+		if state == nil {
+			continue
+		}
+		if state.messageID == messageID {
 			result[partID] = state
-		} else {
-			result[partID] = &openCodePartState{}
 		}
 	}
 	return result
@@ -351,11 +344,8 @@ func (inst *openCodeInstance) messageParts(sessionID, messageID string) map[stri
 func (inst *openCodeInstance) removePart(sessionID, messageID, partID string) {
 	inst.seenMu.Lock()
 	defer inst.seenMu.Unlock()
-	if parts, ok := inst.seenPart[sessionID]; ok {
-		delete(parts, partID)
-	}
-	if msgState := inst.messageStateForLocked(sessionID, messageID); msgState != nil && msgState.parts != nil {
-		delete(msgState.parts, partID)
+	if runtime := inst.sessionRuntimeForSeen(sessionID); runtime != nil && runtime.parts != nil {
+		delete(runtime.parts, partID)
 	}
 	inst.pruneMessageStateLocked(sessionID, messageID)
 }
@@ -402,46 +392,60 @@ func (inst *openCodeInstance) ensureMessageStateLocked(sessionID, messageID stri
 	if sessionID == "" || messageID == "" {
 		return nil
 	}
-	if inst.messageState == nil {
-		inst.messageState = make(map[string]map[string]*openCodeMessageState)
+	runtime := inst.ensureSessionRuntime(sessionID)
+	if runtime.messages == nil {
+		runtime.messages = make(map[string]*openCodeMessageState)
 	}
-	sessionState := inst.messageState[sessionID]
-	if sessionState == nil {
-		sessionState = make(map[string]*openCodeMessageState)
-		inst.messageState[sessionID] = sessionState
-	}
-	msgState := sessionState[messageID]
+	msgState := runtime.messages[messageID]
 	if msgState == nil {
 		msgState = &openCodeMessageState{}
-		sessionState[messageID] = msgState
+		runtime.messages[messageID] = msgState
 	}
 	return msgState
 }
 
 func (inst *openCodeInstance) messageStateForLocked(sessionID, messageID string) *openCodeMessageState {
-	if inst.messageState == nil {
+	runtime := inst.sessionRuntimeForSeen(sessionID)
+	if runtime == nil || runtime.messages == nil {
 		return nil
 	}
-	return inst.messageState[sessionID][messageID]
+	return runtime.messages[messageID]
 }
 
 func (inst *openCodeInstance) pruneMessageStateLocked(sessionID, messageID string) {
-	if inst.messageState == nil {
+	runtime := inst.sessionRuntimeForSeen(sessionID)
+	if runtime == nil || runtime.messages == nil {
 		return
 	}
-	sessionState := inst.messageState[sessionID]
-	if sessionState == nil {
-		return
-	}
-	msgState := sessionState[messageID]
+	msgState := runtime.messages[messageID]
 	if msgState == nil {
 		return
 	}
-	if msgState.turn != nil || len(msgState.parts) > 0 || msgState.role != "" {
+	if msgState.turn != nil || inst.messageHasPartsLocked(sessionID, messageID) || msgState.role != "" {
 		return
 	}
-	delete(sessionState, messageID)
-	if len(sessionState) == 0 {
-		delete(inst.messageState, sessionID)
+	delete(runtime.messages, messageID)
+}
+
+func (inst *openCodeInstance) messageHasPartsLocked(sessionID, messageID string) bool {
+	runtime := inst.sessionRuntimeForSeen(sessionID)
+	if runtime == nil || runtime.parts == nil {
+		return false
 	}
+	for _, state := range runtime.parts {
+		if state != nil && state.messageID == messageID {
+			return true
+		}
+	}
+	return false
+}
+
+func (inst *openCodeInstance) sessionRuntimeForSeen(sessionID string) *openCodeSessionRuntime {
+	if sessionID == "" {
+		return nil
+	}
+	inst.cacheMu.Lock()
+	runtime := inst.sessionRuntime[sessionID]
+	inst.cacheMu.Unlock()
+	return runtime
 }

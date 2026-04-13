@@ -33,7 +33,7 @@ func (b *Bridge) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 		b.host.SendSystemNotice(ctx, portal, "OpenCode integration is not available.")
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
-	if meta != nil && meta.RoomState.AwaitingPath() {
+	if meta != nil && meta.roomPhase().AwaitingPath() {
 		return b.handleAwaitingPath(ctx, msg, portal, meta)
 	}
 	if meta == nil || meta.InstanceID == "" || meta.SessionID == "" {
@@ -110,10 +110,17 @@ func (b *Bridge) handleAwaitingPath(ctx context.Context, msg *bridgev2.MatrixMes
 		b.host.SendSystemNotice(ctx, portal, "Failed to attach the room to the managed OpenCode session: "+err.Error())
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
-	meta.SessionID = session.ID
-	meta.InstanceID = inst.cfg.ID
-	meta.RoomState = meta.RoomState.ActivateSession()
-	meta.ReadOnly = false
+	meta = b.applyOpenCodePortalMeta(meta, openCodePortalMetaUpdate{
+		setSessionID:  true,
+		sessionID:     session.ID,
+		setInstanceID: true,
+		instanceID:    inst.cfg.ID,
+		setPhase:      true,
+		phase:         meta.roomPhase().AfterSessionAttach(),
+		setReadOnly:   true,
+		readOnly:      false,
+		ensureAgent:   true,
+	})
 	portal, _, _, err = b.bootstrapOpenCodePortal(ctx, nil, portal, strings.TrimSpace(meta.Title), meta, false)
 	if err != nil {
 		b.host.SendSystemNotice(ctx, portal, "Failed to save the managed OpenCode session room: "+err.Error())
@@ -219,7 +226,7 @@ func (b *Bridge) maybeFinalizeOpenCodeTitle(ctx context.Context, portal *bridgev
 	if b == nil || portal == nil || meta == nil {
 		return
 	}
-	if !meta.RoomState.TitlePending() || meta.InstanceID == "" || meta.SessionID == "" {
+	if !meta.roomPhase().TitlePending() || meta.InstanceID == "" || meta.SessionID == "" {
 		return
 	}
 	normalized := sanitizeOpenCodeTitle(title)
@@ -230,8 +237,12 @@ func (b *Bridge) maybeFinalizeOpenCodeTitle(ctx context.Context, portal *bridgev
 		b.host.Log().Warn().Err(err).Msg("Failed to update OpenCode session title")
 		return
 	}
-	meta.Title = normalized
-	meta.RoomState = openCodeRoomStateReady
+	meta = b.applyOpenCodePortalMeta(meta, openCodePortalMetaUpdate{
+		setTitle: true,
+		title:    normalized,
+		setPhase: true,
+		phase:    openCodePortalPhaseReady,
+	})
 	portal.Name = normalized
 	portal.NameSet = true
 	b.host.SetPortalMeta(portal, meta)
@@ -307,7 +318,7 @@ func (b *Bridge) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2.Matri
 		return nil
 	}
 	sessionID := strings.TrimSpace(meta.SessionID)
-	if meta.RoomState.AwaitingPath() || sessionID == "" || strings.HasPrefix(sessionID, "setup-") {
+	if !meta.roomPhase().CanDeleteRemoteSession(sessionID) {
 		return nil
 	}
 	if b.manager == nil {

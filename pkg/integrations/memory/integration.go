@@ -141,19 +141,7 @@ func (i *Integration) OnCompactionLifecycle(ctx context.Context, evt iruntime.Co
 	if state == nil {
 		return
 	}
-	switch evt.Phase {
-	case iruntime.CompactionLifecycleStart:
-		state.CompactionInFlight = true
-	case iruntime.CompactionLifecycleEnd:
-		state.CompactionInFlight = false
-		state.LastCompactionAt = time.Now().UnixMilli()
-		state.LastCompactionDroppedCount = evt.DroppedCount
-	case iruntime.CompactionLifecycleFail:
-		state.CompactionInFlight = false
-		state.LastCompactionError = strings.TrimSpace(evt.Error)
-	case iruntime.CompactionLifecycleRefresh:
-		state.LastCompactionRefreshAt = time.Now().UnixMilli()
-	}
+	state.ApplyCompactionLifecycle(evt.Phase, evt.DroppedCount, evt.Error, time.Now())
 	if evt.Portal == nil {
 		return
 	}
@@ -230,11 +218,7 @@ func (i *Integration) buildOverflowDeps() OverflowDeps {
 			if call.Meta == nil {
 				return false
 			}
-			state := call.Meta.MemoryState()
-			if state == nil || state.OverflowFlushAt == 0 {
-				return false
-			}
-			return state.OverflowFlushCompactionCount == call.Meta.CompactionCounter()
+			return call.Meta.MemoryState().AlreadyFlushed(call.Meta.CompactionCounter())
 		},
 		MarkFlushed: func(ctx context.Context, call iruntime.ContextOverflowCall) {
 			if call.Portal == nil || call.Meta == nil {
@@ -244,8 +228,7 @@ func (i *Integration) buildOverflowDeps() OverflowDeps {
 			if state == nil {
 				return
 			}
-			state.OverflowFlushAt = time.Now().UnixMilli()
-			state.OverflowFlushCompactionCount = call.Meta.CompactionCounter()
+			state.MarkOverflowFlushed(call.Meta.CompactionCounter(), time.Now())
 			_ = i.host.SavePortal(ctx, call.Portal, "overflow flush")
 		},
 		RunFlushToolLoop: func(ctx context.Context, call iruntime.ContextOverflowCall, model string, prompt []openai.ChatCompletionMessageParamUnion) (bool, error) {
@@ -269,11 +252,7 @@ func (i *Integration) shouldBootstrapMemoryPromptContext(_ *bridgev2.Portal, met
 	if meta == nil {
 		return false
 	}
-	state := meta.MemoryState()
-	if state == nil {
-		return true
-	}
-	return state.MemoryBootstrapAt == 0
+	return meta.MemoryState().NeedsBootstrap()
 }
 
 func (i *Integration) resolveMemoryBootstrapPaths(_ *bridgev2.Portal, _ iruntime.Meta) []string {
@@ -298,7 +277,7 @@ func (i *Integration) markMemoryPromptBootstrapped(ctx context.Context, portal *
 	if state == nil {
 		return
 	}
-	state.MemoryBootstrapAt = time.Now().UnixMilli()
+	state.MarkBootstrapped(time.Now())
 	_ = i.host.SavePortal(ctx, portal, "memory bootstrap")
 }
 

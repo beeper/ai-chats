@@ -143,11 +143,20 @@ Current status:
 - complete: OpenClaw room title/topic/type derivation now routes through one shared presentation path used by live room info, DM bootstrap, and session resync
 - complete: OpenClaw no longer persists preview/catalog presentation caches in portal state; room topics now derive preview/tool/model summaries on demand from live session and catalog state
 - complete: OpenClaw no longer persists history presentation/config fields in portal state or metadata; the one remaining visible history label is now a single presentation constant
+- complete: OpenClaw no longer wraps `sdk.BuildUIMessageMetadata` behind a bridge-local helper just to inject session extras; callers now pass `Extras` directly to the shared SDK helper
+- complete: OpenClaw no longer persists `OpenClawDMCreatedFromContact`; the synthetic-DM bootstrap path now derives that condition from `session_key` plus missing `session_id`
 - complete: OpenCode portal setup/title branching no longer uses `AwaitingPath` plus `TitlePending` booleans; one `RoomState` now owns placeholder-vs-active-vs-title-pending behavior
+- complete: OpenCode portal creation, managed setup handoff, title finalization, and reconnect toggles no longer mutate portal metadata through separate code paths; one portal-meta helper now owns `InstanceID` / `SessionID` / `ReadOnly` / `RoomState` / `Title` transitions
+- complete: OpenCode callers no longer re-derive setup vs active vs title-pending behavior from raw `RoomState`; one explicit portal-phase layer now owns those read-side decisions
 - complete: OpenCode per-message runtime ownership no longer splits across `seenMsg`, `partsByMessage`, and `turnState`; one `messageState` map now owns role, part membership, and turn lifecycle
 - complete: OpenCode per-session cache and send-queue ownership no longer live in parallel top-level maps; one `sessionRuntime` owner now contains both cache and queue state
+- complete: OpenCode no longer keeps separate top-level part-delivery maps beside the session runtime; remaining part/message runtime now hangs off the same session-scoped owner
+- complete: OpenCode no longer mirrors message-to-part membership in both message and part runtime state; part ownership is now derived from the session-scoped part map
 - complete: AI no longer persists the dead `CompactionLastUsageAt` timestamp, and internal-room integration classification no longer routes through an extra helper layer
 - complete: AI no longer uses the fake-generic `integration_meta` bag; the memory integration now persists typed `memory_state` fields through the runtime boundary
+- complete: AI memory lifecycle, overflow flush, and bootstrap checks no longer open-code repeated field mutations; typed `MemoryState` methods now own those transitions
+- complete: AI login runtime state no longer open-codes heartbeat dedupe and provider health transitions in separate closure bodies; typed `loginRuntimeState` methods now own those mutations
+- complete: AI managed heartbeat scheduling no longer open-codes config/due/run-result transitions across runtime helpers; `managedHeartbeatState` now owns those transition rules directly
 - pending: split AI storage into three real owners only: `LoginStorage`, `PortalRepository`, and `PortalTurnStore`
 - pending: collapse `aichats_portal_state` so it owns only sequencing/reset infrastructure and no longer hydrates metadata-shaped state
 - in progress: move durable portal/login state out of JSON sidecar tables and into bridge metadata wherever the data is connector metadata rather than runtime-only state
