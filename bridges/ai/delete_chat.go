@@ -69,16 +69,16 @@ func (oc *AIClient) deletePersistedSessionArtifacts(ctx context.Context, portal 
 		return
 	}
 
-	db, bridgeID, loginID := loginDBContext(oc)
-	if db != nil && loginID != "" {
-		execDelete(ctx, db, oc.Log(),
+	scope := loginScopeForClient(oc)
+	if scope != nil && scope.loginID != "" {
+		execDelete(ctx, scope.db, oc.Log(),
 			`DELETE FROM `+aiSessionsTable+` WHERE bridge_id=$1 AND login_id=$2 AND session_key=$3`,
-			bridgeID, loginID, sessionKey,
+			scope.bridgeID, scope.loginID, sessionKey,
 		)
 		if ctx == nil {
 			ctx = context.Background()
 		}
-		if _, err := db.Exec(ctx, `
+		if _, err := scope.db.Exec(ctx, `
 			UPDATE `+aiSessionsTable+`
 			SET
 				last_channel='',
@@ -87,18 +87,18 @@ func (oc *AIClient) deletePersistedSessionArtifacts(ctx context.Context, portal 
 				last_thread_id='',
 				updated_at_ms=$4
 			WHERE bridge_id=$1 AND login_id=$2 AND last_to=$3
-		`, bridgeID, loginID, sessionKey, time.Now().UnixMilli()); err != nil {
+		`, scope.bridgeID, scope.loginID, sessionKey, time.Now().UnixMilli()); err != nil {
 			if logger := oc.Log(); logger != nil {
 				logger.Warn().Err(err).Str("room_id", sessionKey).Msg("failed to clear stale AI session routing for deleted room")
 			}
 		}
-		execDelete(ctx, db, oc.Log(),
+		execDelete(ctx, scope.db, oc.Log(),
 			`DELETE FROM `+aiSystemEventsTable+` WHERE bridge_id=$1 AND login_id=$2 AND session_key=$3`,
-			bridgeID, loginID, sessionKey,
+			scope.bridgeID, scope.loginID, sessionKey,
 		)
-		execDelete(ctx, db, oc.Log(),
+		execDelete(ctx, scope.db, oc.Log(),
 			`DELETE FROM `+aiPortalStateTable+` WHERE bridge_id=$1 AND portal_id=$2 AND portal_receiver=$3`,
-			bridgeID, strings.TrimSpace(string(portal.PortalKey.ID)), strings.TrimSpace(string(portal.PortalKey.Receiver)),
+			scope.bridgeID, strings.TrimSpace(string(portal.PortalKey.ID)), strings.TrimSpace(string(portal.PortalKey.Receiver)),
 		)
 	}
 	deleteAITurnsForPortal(ctx, portal)

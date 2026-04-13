@@ -281,19 +281,6 @@ func (oc *AIClient) portalScopeForClientAIDB(ctx context.Context, portal *bridge
 	return portalScopeForPortal(canonicalPortal), nil
 }
 
-func loginDBContext(client *AIClient) (*dbutil.Database, string, string) {
-	if client == nil || client.UserLogin == nil || client.UserLogin.Bridge == nil {
-		return nil, "", ""
-	}
-	db := client.bridgeDB()
-	bridgeID := canonicalLoginBridgeID(client.UserLogin)
-	loginID := canonicalLoginID(client.UserLogin)
-	if db == nil || bridgeID == "" || loginID == "" {
-		return nil, "", ""
-	}
-	return db, bridgeID, loginID
-}
-
 // loginScope is the shared base for all login-scoped DB access in the AI bridge.
 // It contains the database handle plus the bridgeID/loginID pair needed by every
 // _db.go file's queries. Embed or use directly instead of defining per-file structs.
@@ -303,12 +290,33 @@ type loginScope struct {
 	loginID  string
 }
 
+func (scope *loginScope) ownerKey() string {
+	if scope == nil {
+		return ""
+	}
+	return scope.bridgeID + "|" + scope.loginID
+}
+
+func (scope *loginScope) sessionStoreRef(agentID string) sessionStoreRef {
+	if scope == nil {
+		return sessionStoreRef{AgentID: agentID}
+	}
+	return sessionStoreRef{
+		BridgeID: scope.bridgeID,
+		LoginID:  scope.loginID,
+		AgentID:  agentID,
+	}
+}
+
 // loginScopeForClient builds a loginScope from an AIClient, returning nil if the
 // client is not fully initialised.
 func loginScopeForClient(client *AIClient) *loginScope {
-	db, bridgeID, loginID := loginDBContext(client)
-	bridgeID = strings.TrimSpace(bridgeID)
-	loginID = strings.TrimSpace(loginID)
+	if client == nil || client.UserLogin == nil || client.UserLogin.Bridge == nil {
+		return nil
+	}
+	db := client.bridgeDB()
+	bridgeID := strings.TrimSpace(canonicalLoginBridgeID(client.UserLogin))
+	loginID := strings.TrimSpace(canonicalLoginID(client.UserLogin))
 	if db == nil || bridgeID == "" || loginID == "" {
 		return nil
 	}
@@ -339,6 +347,69 @@ func (oc *AIClient) resolvePortalScope(ctx context.Context, portal *bridgev2.Por
 		return nil, nil, err
 	}
 	return canonicalPortal, portalScopeForPortal(canonicalPortal), nil
+}
+
+type portalScopeValueFunc[T any] func(context.Context, *bridgev2.Portal, *portalScope) (T, error)
+
+func withPortalScopeValue[T any](
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	fn portalScopeValueFunc[T],
+) (T, error) {
+	var zero T
+	if fn == nil {
+		return zero, nil
+	}
+	scope, err := portalScopeForAIDB(ctx, portal)
+	if err != nil {
+		return zero, err
+	}
+	return fn(ctx, portal, scope)
+}
+
+func withPortalScope(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	fn func(context.Context, *bridgev2.Portal, *portalScope) error,
+) error {
+	_, err := withPortalScopeValue(ctx, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) (struct{}, error) {
+		return struct{}{}, fn(ctx, portal, scope)
+	})
+	return err
+}
+
+func withClientPortalScopeValue[T any](
+	ctx context.Context,
+	oc *AIClient,
+	portal *bridgev2.Portal,
+	fn portalScopeValueFunc[T],
+) (T, error) {
+	if oc == nil {
+		return withPortalScopeValue(ctx, portal, fn)
+	}
+	var zero T
+	if fn == nil {
+		return zero, nil
+	}
+	resolvedPortal, scope, err := oc.resolvePortalScope(ctx, portal)
+	if err != nil {
+		return zero, err
+	}
+	return fn(ctx, resolvedPortal, scope)
+}
+
+func withClientPortalScope(
+	ctx context.Context,
+	oc *AIClient,
+	portal *bridgev2.Portal,
+	fn func(context.Context, *bridgev2.Portal, *portalScope) error,
+) error {
+	_, err := withClientPortalScopeValue(ctx, oc, portal,
+		func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) (struct{}, error) {
+			return struct{}{}, fn(ctx, portal, scope)
+		},
+	)
+	return err
 }
 
 // unmarshalJSONField unmarshals a JSON string into *T, returning nil when the

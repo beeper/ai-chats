@@ -14,10 +14,6 @@ import (
 )
 
 type aiPersistedPortalState struct {
-	AckReactionEmoji        string           `json:"ack_reaction_emoji,omitempty"`
-	AckReactionRemoveAfter  bool             `json:"ack_reaction_remove_after,omitempty"`
-	PDFConfig               *PDFConfig       `json:"pdf_config,omitempty"`
-	Slug                    string           `json:"slug,omitempty"`
 	TitleGenerated          bool             `json:"title_generated,omitempty"`
 	WelcomeSent             bool             `json:"welcome_sent,omitempty"`
 	AutoGreetingSent        bool             `json:"auto_greeting_sent,omitempty"`
@@ -27,10 +23,6 @@ type aiPersistedPortalState struct {
 	SessionBootstrappedAt   int64            `json:"session_bootstrapped_at,omitempty"`
 	SessionBootstrapByAgent map[string]int64 `json:"session_bootstrap_by_agent,omitempty"`
 	ModuleMeta              map[string]any   `json:"module_meta,omitempty"`
-	SubagentParentRoomID    string           `json:"subagent_parent_room_id,omitempty"`
-	DebounceMs              int              `json:"debounce_ms,omitempty"`
-	TypingMode              string           `json:"typing_mode,omitempty"`
-	TypingIntervalSeconds   *int             `json:"typing_interval_seconds,omitempty"`
 }
 
 type aiPersistedPortalRecord struct {
@@ -39,98 +31,19 @@ type aiPersistedPortalRecord struct {
 	NextTurnSequence int64
 }
 
-func clonePortalStateMap(src map[string]any) map[string]any {
-	if src == nil {
+type aiPortalStateStore struct {
+	scope *portalScope
+}
+
+func newAIPortalStateStore(scope *portalScope) *aiPortalStateStore {
+	if scope == nil {
 		return nil
 	}
-	out := make(map[string]any, len(src))
-	for k, v := range src {
-		out[k] = jsonutil.DeepCloneAny(v)
-	}
-	return out
+	return &aiPortalStateStore{scope: scope}
 }
 
-func persistedPortalStateFromMeta(meta *PortalMetadata) *aiPersistedPortalState {
-	if meta == nil {
-		return &aiPersistedPortalState{}
-	}
-	var pdfConfig *PDFConfig
-	if meta.PDFConfig != nil {
-		pdf := *meta.PDFConfig
-		pdfConfig = &pdf
-	}
-	return &aiPersistedPortalState{
-		AckReactionEmoji:        meta.AckReactionEmoji,
-		AckReactionRemoveAfter:  meta.AckReactionRemoveAfter,
-		PDFConfig:               pdfConfig,
-		Slug:                    meta.Slug,
-		TitleGenerated:          meta.TitleGenerated,
-		WelcomeSent:             meta.WelcomeSent,
-		AutoGreetingSent:        meta.AutoGreetingSent,
-		SessionResetAt:          meta.SessionResetAt,
-		AbortedLastRun:          meta.AbortedLastRun,
-		CompactionCount:         meta.CompactionCount,
-		SessionBootstrappedAt:   meta.SessionBootstrappedAt,
-		SessionBootstrapByAgent: meta.SessionBootstrapByAgent,
-		ModuleMeta:              meta.ModuleMeta,
-		SubagentParentRoomID:    meta.SubagentParentRoomID,
-		DebounceMs:              meta.DebounceMs,
-		TypingMode:              meta.TypingMode,
-		TypingIntervalSeconds:   meta.TypingIntervalSeconds,
-	}
-}
-
-func applyPersistedPortalState(meta *PortalMetadata, state *aiPersistedPortalState) {
-	if meta == nil || state == nil {
-		return
-	}
-	meta.AckReactionEmoji = state.AckReactionEmoji
-	meta.AckReactionRemoveAfter = state.AckReactionRemoveAfter
-	if state.PDFConfig != nil {
-		pdf := *state.PDFConfig
-		meta.PDFConfig = &pdf
-	} else {
-		meta.PDFConfig = nil
-	}
-	meta.Slug = state.Slug
-	meta.TitleGenerated = state.TitleGenerated
-	meta.WelcomeSent = state.WelcomeSent
-	meta.AutoGreetingSent = state.AutoGreetingSent
-	meta.SessionResetAt = state.SessionResetAt
-	meta.AbortedLastRun = state.AbortedLastRun
-	meta.CompactionCount = state.CompactionCount
-	meta.SessionBootstrappedAt = state.SessionBootstrappedAt
-	meta.SessionBootstrapByAgent = maps.Clone(state.SessionBootstrapByAgent)
-	meta.ModuleMeta = clonePortalStateMap(state.ModuleMeta)
-	meta.SubagentParentRoomID = state.SubagentParentRoomID
-	meta.DebounceMs = state.DebounceMs
-	meta.TypingMode = state.TypingMode
-	if state.TypingIntervalSeconds != nil {
-		interval := *state.TypingIntervalSeconds
-		meta.TypingIntervalSeconds = &interval
-	} else {
-		meta.TypingIntervalSeconds = nil
-	}
-}
-
-func loadAIPortalState(ctx context.Context, portal *bridgev2.Portal) (*aiPersistedPortalState, error) {
-	record, err := loadAIPortalRecord(ctx, portal)
-	if err != nil || record == nil {
-		return nil, err
-	}
-	return record.State, nil
-}
-
-func loadAIPortalRecord(ctx context.Context, portal *bridgev2.Portal) (*aiPersistedPortalRecord, error) {
-	scope, err := portalScopeForAIDB(ctx, portal)
-	if err != nil {
-		return nil, err
-	}
-	return loadAIPortalRecordByScope(ctx, scope)
-}
-
-func loadAIPortalRecordByScope(ctx context.Context, scope *portalScope) (*aiPersistedPortalRecord, error) {
-	if scope == nil {
+func (store *aiPortalStateStore) Load(ctx context.Context) (*aiPersistedPortalRecord, error) {
+	if store == nil || store.scope == nil {
 		return nil, nil
 	}
 	if ctx == nil {
@@ -139,11 +52,11 @@ func loadAIPortalRecordByScope(ctx context.Context, scope *portalScope) (*aiPers
 	var raw string
 	var contextEpoch int64
 	var nextTurnSequence int64
-	err := scope.db.QueryRow(ctx, `
+	err := store.scope.db.QueryRow(ctx, `
 		SELECT state_json, context_epoch, next_turn_sequence
 		FROM `+aiPortalStateTable+`
 		WHERE bridge_id=$1 AND portal_id=$2 AND portal_receiver=$3
-	`, scope.bridgeID, scope.portalID, scope.portalReceiver).Scan(&raw, &contextEpoch, &nextTurnSequence)
+	`, store.scope.bridgeID, store.scope.portalID, store.scope.portalReceiver).Scan(&raw, &contextEpoch, &nextTurnSequence)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -167,19 +80,49 @@ func loadAIPortalRecordByScope(ctx context.Context, scope *portalScope) (*aiPers
 	}, nil
 }
 
-func advanceAIPortalContextEpoch(ctx context.Context, portal *bridgev2.Portal) error {
-	scope, err := portalScopeForAIDB(ctx, portal)
-	if err != nil {
-		return err
+func (store *aiPortalStateStore) Ensure(ctx context.Context) (*aiPersistedPortalRecord, error) {
+	if store == nil || store.scope == nil {
+		return nil, nil
 	}
-	if scope == nil {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	nowMs := time.Now().UnixMilli()
+	if _, err := store.scope.db.Exec(ctx, `
+		INSERT INTO `+aiPortalStateTable+` (
+			bridge_id, portal_id, portal_receiver, state_json, context_epoch, next_turn_sequence, updated_at_ms
+		) VALUES ($1, $2, $3, '{}', 0, 0, $4)
+		ON CONFLICT (bridge_id, portal_id, portal_receiver) DO NOTHING
+	`, store.scope.bridgeID, store.scope.portalID, store.scope.portalReceiver, nowMs); err != nil {
+		return nil, err
+	}
+	return store.Load(ctx)
+}
+
+func (store *aiPortalStateStore) AllocateTurnSequence(ctx context.Context) (contextEpoch, sequence int64, err error) {
+	record, err := store.Ensure(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	contextEpoch = record.ContextEpoch
+	sequence = record.NextTurnSequence + 1
+	_, err = store.scope.db.Exec(ctx, `
+		UPDATE `+aiPortalStateTable+`
+		SET next_turn_sequence=$4, updated_at_ms=$5
+		WHERE bridge_id=$1 AND portal_id=$2 AND portal_receiver=$3
+	`, store.scope.bridgeID, store.scope.portalID, store.scope.portalReceiver, sequence, time.Now().UnixMilli())
+	return contextEpoch, sequence, err
+}
+
+func (store *aiPortalStateStore) AdvanceContextEpoch(ctx context.Context) error {
+	if store == nil || store.scope == nil {
 		return nil
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	nowMs := time.Now().UnixMilli()
-	_, err = scope.db.Exec(ctx, `
+	_, err := store.scope.db.Exec(ctx, `
 		INSERT INTO `+aiPortalStateTable+` (
 			bridge_id, portal_id, portal_receiver, state_json, context_epoch, next_turn_sequence, updated_at_ms
 		) VALUES ($1, $2, $3, '{}', 1, 0, $4)
@@ -187,16 +130,12 @@ func advanceAIPortalContextEpoch(ctx context.Context, portal *bridgev2.Portal) e
 			context_epoch=`+aiPortalStateTable+`.context_epoch + 1,
 			next_turn_sequence=0,
 			updated_at_ms=excluded.updated_at_ms
-	`, scope.bridgeID, scope.portalID, scope.portalReceiver, nowMs)
+	`, store.scope.bridgeID, store.scope.portalID, store.scope.portalReceiver, nowMs)
 	return err
 }
 
-func saveAIPortalState(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) error {
-	scope, err := portalScopeForAIDB(ctx, portal)
-	if err != nil {
-		return err
-	}
-	if scope == nil {
+func (store *aiPortalStateStore) SaveMetadata(ctx context.Context, meta *PortalMetadata) error {
+	if store == nil || store.scope == nil {
 		return nil
 	}
 	if ctx == nil {
@@ -206,15 +145,93 @@ func saveAIPortalState(ctx context.Context, portal *bridgev2.Portal, meta *Porta
 	if err != nil {
 		return err
 	}
-	_, err = scope.db.Exec(ctx, `
+	_, err = store.scope.db.Exec(ctx, `
 		INSERT INTO `+aiPortalStateTable+` (
 			bridge_id, portal_id, portal_receiver, state_json, context_epoch, next_turn_sequence, updated_at_ms
 		) VALUES ($1, $2, $3, $4, 0, 0, $5)
 		ON CONFLICT (bridge_id, portal_id, portal_receiver) DO UPDATE SET
 			state_json=excluded.state_json,
 			updated_at_ms=excluded.updated_at_ms
-	`, scope.bridgeID, scope.portalID, scope.portalReceiver, string(payload), time.Now().UnixMilli())
+	`, store.scope.bridgeID, store.scope.portalID, store.scope.portalReceiver, string(payload), time.Now().UnixMilli())
 	return err
+}
+
+func clonePortalStateMap(src map[string]any) map[string]any {
+	if src == nil {
+		return nil
+	}
+	out := make(map[string]any, len(src))
+	for k, v := range src {
+		out[k] = jsonutil.DeepCloneAny(v)
+	}
+	return out
+}
+
+func persistedPortalStateFromMeta(meta *PortalMetadata) *aiPersistedPortalState {
+	if meta == nil {
+		return &aiPersistedPortalState{}
+	}
+	return &aiPersistedPortalState{
+		TitleGenerated:          meta.TitleGenerated,
+		WelcomeSent:             meta.WelcomeSent,
+		AutoGreetingSent:        meta.AutoGreetingSent,
+		SessionResetAt:          meta.SessionResetAt,
+		AbortedLastRun:          meta.AbortedLastRun,
+		CompactionCount:         meta.CompactionCount,
+		SessionBootstrappedAt:   meta.SessionBootstrappedAt,
+		SessionBootstrapByAgent: meta.SessionBootstrapByAgent,
+		ModuleMeta:              meta.ModuleMeta,
+	}
+}
+
+func applyPersistedPortalState(meta *PortalMetadata, state *aiPersistedPortalState) {
+	if meta == nil || state == nil {
+		return
+	}
+	meta.TitleGenerated = state.TitleGenerated
+	meta.WelcomeSent = state.WelcomeSent
+	meta.AutoGreetingSent = state.AutoGreetingSent
+	meta.SessionResetAt = state.SessionResetAt
+	meta.AbortedLastRun = state.AbortedLastRun
+	meta.CompactionCount = state.CompactionCount
+	meta.SessionBootstrappedAt = state.SessionBootstrappedAt
+	meta.SessionBootstrapByAgent = maps.Clone(state.SessionBootstrapByAgent)
+	meta.ModuleMeta = clonePortalStateMap(state.ModuleMeta)
+}
+
+func loadAIPortalState(ctx context.Context, portal *bridgev2.Portal) (*aiPersistedPortalState, error) {
+	record, err := loadAIPortalRecord(ctx, portal)
+	if err != nil || record == nil {
+		return nil, err
+	}
+	return record.State, nil
+}
+
+func loadAIPortalRecord(ctx context.Context, portal *bridgev2.Portal) (*aiPersistedPortalRecord, error) {
+	return withPortalScopeValue(ctx, portal, func(ctx context.Context, _ *bridgev2.Portal, scope *portalScope) (*aiPersistedPortalRecord, error) {
+		return loadAIPortalRecordByScope(ctx, scope)
+	})
+}
+
+func loadAIPortalRecordByScope(ctx context.Context, scope *portalScope) (*aiPersistedPortalRecord, error) {
+	return newAIPortalStateStore(scope).Load(ctx)
+}
+
+func advanceAIPortalContextEpoch(ctx context.Context, portal *bridgev2.Portal) error {
+	return withPortalScope(ctx, portal, func(ctx context.Context, _ *bridgev2.Portal, scope *portalScope) error {
+		return newAIPortalStateStore(scope).AdvanceContextEpoch(ctx)
+	})
+}
+
+func saveAIPortalState(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) error {
+	return withPortalScope(ctx, portal, func(ctx context.Context, _ *bridgev2.Portal, scope *portalScope) error {
+		if portal != nil {
+			if err := portal.Save(ctx); err != nil {
+				return err
+			}
+		}
+		return newAIPortalStateStore(scope).SaveMetadata(ctx, meta)
+	})
 }
 
 func loadPortalStateIntoMetadata(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) {

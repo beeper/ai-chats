@@ -119,9 +119,21 @@ Current status:
 - complete: AI, Codex, and OpenClaw approval normalization now converge on shared SDK helpers
 - complete: DM portal bootstrap now has a single SDK entrypoint
 - complete: login lifecycle runtime now has a shared SDK display/wait loop
+- in progress: Codex and OpenCode room/session bootstrap now converge on one bridge-local helper per bridge above the SDK bootstrap path
 - in progress: canonical turn/message metadata assembly is moving into SDK, with OpenClaw live/history metadata now converging on shared SDK and bridge-local adapter helpers
 - in progress: message metadata merge semantics now converge on shared SDK helpers instead of per-bridge merge ladders
-- pending: AI runtime state machine simplification
+- in progress: AI room materialization and terminal streaming finalization are being collapsed onto single local lifecycle/finalization entrypoints
+- in progress: low-level blob-scope construction has moved into `pkg/aidb`, with Codex and OpenClaw storage helpers converging on shared scope plumbing
+- in progress: AI chat creation/open flows and login-scoped identity plumbing now converge on shared local helpers instead of tuple-based DB identity wiring
+- in progress: AI writer/lifecycle metadata now uses shared SDK UI metadata assembly with AI-specific extras layered on top
+- complete: the standalone SDK portal lifecycle wrappers are gone; room create/update flows now call raw `bridgev2` portal operations directly
+- complete: `sdk.BootstrapDMPortal` is gone; AI, Codex, OpenClaw, and OpenCode now own their bootstrap flow locally while still sharing low-level portal configuration helpers
+- in progress: AI portal-state and turn-store entrypoints now route through one scope-resolution path instead of split detached-vs-client persistence wrappers
+- pending: split AI storage into three real owners only: `LoginStorage`, `PortalRepository`, and `PortalTurnStore`
+- pending: collapse `aichats_portal_state` so one owner controls metadata, reset boundaries, and turn sequence allocation
+- pending: move durable portal/login state out of JSON sidecar tables and into bridge metadata wherever the data is connector metadata rather than runtime-only state
+- pending: replace callback-driven portal mutation (`MutatePortal`, `BeforeSave`, `OnCreated`) with `ChatInfo.ExtraUpdates` / `UserInfo.ExtraUpdates` where the mutation is durable bridge state
+- pending: replace AI poll-based welcome/autogreeting flow with one event-driven bootstrap turn flow
 
 ### Phase 2: Vertical slice
 
@@ -164,11 +176,9 @@ Exit condition:
 
 ## Immediate Order Of Attack
 
-1. finish canonical turn/message assembly collapse in `sdk`
-2. build the shared login lifecycle runtime in `sdk`
-3. migrate `bridges/codex` login to that lifecycle first
-4. migrate `bridges/openclaw` login
-5. migrate `bridges/opencode` login
-6. migrate `bridges/ai` login
-7. collapse `bridges/ai` runtime orchestration into one state machine
-8. delete dead per-bridge helper stacks and compaction leftovers
+1. redesign AI storage around `LoginStorage`, `PortalRepository`, and `PortalTurnStore`
+2. move AI durable portal/login metadata out of sidecar tables wherever it fits bridge metadata
+3. collapse reset/history ownership so one turn-store boundary controls reset semantics
+4. replace callback-driven portal mutation with `ExtraUpdates`
+5. replace AI welcome/autogreeting polling with event-driven bootstrap turns
+6. delete dead per-bridge helper stacks and sidecar tables

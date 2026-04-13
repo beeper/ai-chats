@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"maunium.net/go/mautrix/bridgev2"
@@ -49,27 +50,35 @@ func (b *Bridge) bootstrapOpenCodePortal(
 		meta.AgentID = b.host.DefaultAgentID()
 	}
 	chatInfo := b.composeOpenCodeChatInfo(title, meta.InstanceID)
-	result, err := sdk.BootstrapDMPortal(ctx, sdk.DMPortalBootstrapSpec{
-		Login:       login,
+	if err := sdk.ConfigureDMPortal(ctx, sdk.ConfigureDMPortalParams{
 		Portal:      portal,
 		Title:       title,
 		OtherUserID: OpenCodeUserID(meta.InstanceID),
-		PortalMutate: func(portal *bridgev2.Portal) {
+		Save:        false,
+		MutatePortal: func(portal *bridgev2.Portal) {
 			b.host.SetPortalMeta(portal, meta)
 		},
-		ChatInfo:            chatInfo,
-		CreateRoomIfMissing: createRoom,
-		SaveBeforeCreate:    true,
-		CleanupOnCreateError: func(ctx context.Context, portal *bridgev2.Portal) {
-			b.host.CleanupPortal(ctx, portal, "failed to create OpenCode room")
-		},
-		AIRoomKind:        sdk.AIRoomKindAgent,
-		ForceCapabilities: true,
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, nil, false, err
 	}
-	return result.Portal, chatInfo, result.Created, nil
+	if err := portal.Save(ctx); err != nil {
+		return nil, nil, false, fmt.Errorf("failed to save portal: %w", err)
+	}
+	if !createRoom {
+		return portal, chatInfo, false, nil
+	}
+	created := portal.MXID == ""
+	if created {
+		if err := portal.CreateMatrixRoom(ctx, login, chatInfo); err != nil {
+			b.host.CleanupPortal(ctx, portal, "failed to create OpenCode room")
+			return nil, nil, false, err
+		}
+	} else {
+		portal.UpdateInfo(ctx, chatInfo, login, nil, time.Time{})
+	}
+	portal.UpdateBridgeInfo(ctx)
+	portal.UpdateCapabilities(ctx, login, true)
+	return portal, chatInfo, created, nil
 }
 
 func (b *Bridge) ensureOpenCodeSessionPortalWithRoom(ctx context.Context, inst *openCodeInstance, session api.Session, createRoom bool) error {
@@ -289,12 +298,8 @@ func (b *Bridge) ReIDPortalToSession(ctx context.Context, portal *bridgev2.Porta
 			refreshed = b.findOpenCodePortal(ctx, instanceID, sessionID)
 		}
 		if refreshed != nil {
-			sdk.RefreshPortalLifecycle(ctx, sdk.PortalLifecycleOptions{
-				Login:             login,
-				Portal:            refreshed,
-				AIRoomKind:        sdk.AIRoomKindAgent,
-				ForceCapabilities: true,
-			})
+			refreshed.UpdateBridgeInfo(ctx)
+			refreshed.UpdateCapabilities(ctx, login, true)
 		}
 		return refreshed, nil
 	default:

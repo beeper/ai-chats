@@ -3,10 +3,9 @@ package ai
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
-
-	"github.com/beeper/agentremote/sdk"
 )
 
 type portalRoomMaterializeOptions struct {
@@ -39,22 +38,24 @@ func (oc *AIClient) materializePortalRoom(
 			return err
 		}
 	}
-	created, err := sdk.EnsurePortalLifecycle(ctx, sdk.PortalLifecycleOptions{
-		Login:            oc.UserLogin,
-		Portal:           portal,
-		ChatInfo:         chatInfo,
-		SaveBeforeCreate: opts.SaveBefore,
-		CleanupOnCreateError: func(ctx context.Context, portal *bridgev2.Portal) {
+	if opts.SaveBefore {
+		if err := portal.Save(ctx); err != nil {
+			return fmt.Errorf("failed to save portal: %w", err)
+		}
+	}
+	created := portal.MXID == ""
+	if created {
+		if err := portal.CreateMatrixRoom(ctx, oc.UserLogin, chatInfo); err != nil {
 			if opts.CleanupOnCreateError != "" {
 				cleanupPortal(ctx, oc, portal, opts.CleanupOnCreateError)
 			}
-		},
-		AIRoomKind:        integrationPortalAIKind(portalMeta(portal)),
-		ForceCapabilities: true,
-	})
-	if err != nil {
-		return err
+			return err
+		}
+	} else if chatInfo != nil {
+		portal.UpdateInfo(ctx, chatInfo, oc.UserLogin, nil, time.Time{})
 	}
+	portal.UpdateBridgeInfo(ctx)
+	portal.UpdateCapabilities(ctx, oc.UserLogin, true)
 	if created {
 		if opts.SendWelcome {
 			if err := oc.sendWelcomeMessage(ctx, portal); err != nil {

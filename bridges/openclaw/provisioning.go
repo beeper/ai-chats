@@ -287,28 +287,33 @@ func (oc *OpenClawClient) createConfiguredAgentDM(ctx context.Context, agent gat
 	state.RecentHistoryLimit = 0
 	oc.enrichPortalState(ctx, state)
 	chatInfo := oc.buildOpenClawDMChatInfo(agentID, state.OpenClawDMTargetAgentName, info)
-	result, err := sdk.BootstrapDMPortal(ctx, sdk.DMPortalBootstrapSpec{
-		Login:       oc.UserLogin,
+	if err := sdk.ConfigureDMPortal(ctx, sdk.ConfigureDMPortalParams{
 		Portal:      portal,
 		Title:       state.OpenClawDMTargetAgentName,
 		Topic:       "OpenClaw agent DM",
 		OtherUserID: openClawScopedGhostUserID(oc.UserLogin.ID, agentID),
-		PortalMutate: func(portal *bridgev2.Portal) {
+		Save:        false,
+		MutatePortal: func(portal *bridgev2.Portal) {
 			portalMeta(portal).IsOpenClawRoom = true
 		},
-		BeforeSave: func(ctx context.Context, portal *bridgev2.Portal) error {
-			return saveOpenClawPortalState(ctx, portal, oc.UserLogin, state)
-		},
-		ChatInfo:            chatInfo,
-		CreateRoomIfMissing: true,
-		SaveBeforeCreate:    true,
-		AIRoomKind:          sdk.AIRoomKindAgent,
-		ForceCapabilities:   true,
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, fmt.Errorf("failed to ensure openclaw dm portal room: %w", err)
 	}
-	portal = result.Portal
+	if err := saveOpenClawPortalState(ctx, portal, oc.UserLogin, state); err != nil {
+		return nil, fmt.Errorf("failed to ensure openclaw dm portal room: %w", err)
+	}
+	if err := portal.Save(ctx); err != nil {
+		return nil, fmt.Errorf("failed to save openclaw dm portal: %w", err)
+	}
+	if portal.MXID == "" {
+		if err := portal.CreateMatrixRoom(ctx, oc.UserLogin, chatInfo); err != nil {
+			return nil, fmt.Errorf("failed to ensure openclaw dm portal room: %w", err)
+		}
+	} else {
+		portal.UpdateInfo(ctx, chatInfo, oc.UserLogin, nil, time.Time{})
+	}
+	portal.UpdateBridgeInfo(ctx)
+	portal.UpdateCapabilities(ctx, oc.UserLogin, true)
 	oc.maybeRefreshPortalCapabilities(ctx, portal, &previous, state)
 	return &bridgev2.CreateChatResponse{
 		PortalKey:  portal.PortalKey,

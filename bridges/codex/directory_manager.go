@@ -135,28 +135,47 @@ func (cc *CodexClient) bootstrapCodexPortal(
 	if state == nil {
 		return nil, false, fmt.Errorf("missing codex portal state")
 	}
-	result, err := sdk.BootstrapDMPortal(ctx, sdk.DMPortalBootstrapSpec{
-		Login:       cc.UserLogin,
+	var err error
+	if portal == nil {
+		portal, err = cc.UserLogin.Bridge.GetPortalByKey(ctx, portalKey)
+		if err != nil {
+			return nil, false, err
+		}
+	}
+	if portal == nil {
+		return nil, false, fmt.Errorf("missing portal")
+	}
+	if err := sdk.ConfigureDMPortal(ctx, sdk.ConfigureDMPortalParams{
 		Portal:      portal,
-		PortalKey:   portalKey,
 		Title:       title,
 		OtherUserID: codexGhostID,
-		PortalMutate: func(portal *bridgev2.Portal) {
+		Save:        false,
+		MutatePortal: func(portal *bridgev2.Portal) {
 			portalMeta(portal).IsCodexRoom = true
 		},
-		BeforeSave: func(ctx context.Context, portal *bridgev2.Portal) error {
-			return saveCodexPortalState(ctx, portal, state)
-		},
-		ChatInfo:            chatInfo,
-		CreateRoomIfMissing: createRoom,
-		SaveBeforeCreate:    true,
-		AIRoomKind:          sdk.AIRoomKindAgent,
-		ForceCapabilities:   true,
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, false, err
 	}
-	return result.Portal, result.Created, nil
+	if err := saveCodexPortalState(ctx, portal, state); err != nil {
+		return nil, false, err
+	}
+	if err := portal.Save(ctx); err != nil {
+		return nil, false, fmt.Errorf("failed to save portal: %w", err)
+	}
+	if !createRoom {
+		return portal, false, nil
+	}
+	created := portal.MXID == ""
+	if created {
+		if err := portal.CreateMatrixRoom(ctx, cc.UserLogin, chatInfo); err != nil {
+			return nil, false, err
+		}
+	} else if chatInfo != nil {
+		portal.UpdateInfo(ctx, chatInfo, cc.UserLogin, nil, time.Time{})
+	}
+	portal.UpdateBridgeInfo(ctx)
+	portal.UpdateCapabilities(ctx, cc.UserLogin, true)
+	return portal, created, nil
 }
 
 func (cc *CodexClient) createWelcomeCodexChat(ctx context.Context) (*bridgev2.Portal, error) {

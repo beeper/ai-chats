@@ -38,7 +38,7 @@ func (scope *systemEventsDBScope) ownerKey() string {
 	if scope == nil {
 		return ""
 	}
-	return scope.bridgeID + "|" + scope.loginID
+	return scope.loginScope.ownerKey()
 }
 
 func snapshotSystemEvents(ownerKey string) []persistedSystemEventQueue {

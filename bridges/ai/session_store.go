@@ -269,10 +269,5 @@ func (oc *AIClient) resolveSessionStoreRef(agentID string) sessionStoreRef {
 	if cfg != nil && cfg.Session != nil && normalizeSessionScope(cfg.Session.Scope) == sessionScopeGlobal {
 		storeAgentID = sessionScopeGlobal
 	}
-	_, bridgeID, loginID := loginDBContext(oc)
-	return sessionStoreRef{
-		BridgeID: bridgeID,
-		LoginID:  loginID,
-		AgentID:  storeAgentID,
-	}
+	return loginScopeForClient(oc).sessionStoreRef(storeAgentID)
 }

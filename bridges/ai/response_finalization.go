@@ -132,8 +132,7 @@ func (oc *AIClient) skipHeartbeatRun(
 	p heartbeatSkipParams,
 ) {
 	if p.restore {
-		_, bridgeID, loginID := loginDBContext(oc)
-		storeRef := sessionStoreRef{BridgeID: bridgeID, LoginID: loginID, AgentID: hb.StoreAgentID}
+		storeRef := loginScopeForClient(oc).sessionStoreRef(hb.StoreAgentID)
 		oc.restoreHeartbeatUpdatedAt(storeRef, hb.SessionKey, hb.PrevUpdatedAt)
 	}
 	oc.redactInitialStreamingMessage(ctx, portal, state)
@@ -262,8 +261,7 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 
 	// Deduplicate identical heartbeat content within 24h
 	if hasContent && !shouldSkipMain && !hasMedia {
-		_, bridgeID, loginID := loginDBContext(oc)
-		storeRef := sessionStoreRef{BridgeID: bridgeID, LoginID: loginID, AgentID: hb.StoreAgentID}
+		storeRef := loginScopeForClient(oc).sessionStoreRef(hb.StoreAgentID)
 		if oc.isDuplicateHeartbeat(storeRef, hb.SessionKey, cleaned, state.startedAtMs) {
 			var indicator *HeartbeatIndicatorType
 			if hb.UseIndicator {
@@ -326,8 +324,7 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 
 	// Record heartbeat for dedupe
 	if hb.SessionKey != "" && cleaned != "" && !shouldSkipMain {
-		_, bridgeID, loginID := loginDBContext(oc)
-		oc.recordHeartbeatText(sessionStoreRef{BridgeID: bridgeID, LoginID: loginID, AgentID: hb.StoreAgentID}, hb.SessionKey, cleaned, state.startedAtMs)
+		oc.recordHeartbeatText(loginScopeForClient(oc).sessionStoreRef(hb.StoreAgentID), hb.SessionKey, cleaned, state.startedAtMs)
 	}
 
 	indicator := (*HeartbeatIndicatorType)(nil)

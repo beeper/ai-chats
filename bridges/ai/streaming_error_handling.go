@@ -3,12 +3,9 @@ package ai
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
-
-	"github.com/beeper/agentremote/sdk"
 )
 
 // NonFallbackError marks an error as ineligible for fallback retries once output has been sent.
@@ -40,39 +37,11 @@ func (oc *AIClient) finishStreamingWithFailure(
 	reason string,
 	err error,
 ) error {
-	if state == nil {
-		return err
-	}
-	if !state.markFinalized() {
-		return streamFailureError(state, err)
-	}
-	if state != nil && state.stop.Load() != nil && reason == "cancelled" {
-		reason = "stop"
-	}
-	state.finishReason = reason
-	state.completedAtMs = time.Now().UnixMilli()
 	_ = log
-	oc.persistTerminalAssistantTurn(ctx, portal, state, meta)
-	if writer := state.writer(); writer != nil {
-		writer.MessageMetadata(ctx, oc.buildUIMessageMetadata(state, meta, true))
-	}
-	switch reason {
-	case "cancelled":
-		state.writer().Abort(ctx, "cancelled")
-		if state.turn != nil {
-			state.turn.End("cancelled")
-		}
-	case "stop":
-		if state.turn != nil {
-			state.turn.End(sdk.MapFinishReason(reason))
-		}
-	default:
-		if state.turn != nil {
-			state.turn.EndWithError(err.Error())
-		}
-	}
-	oc.noteStreamingPersistenceSideEffects(ctx, portal, state, meta)
-	return streamFailureError(state, err)
+	return oc.finalizeStreamingTurn(ctx, portal, state, meta, streamingFinalizeParams{
+		reason: reason,
+		err:    err,
+	})
 }
 
 func (oc *AIClient) handleResponsesStreamErr(

@@ -3,6 +3,7 @@ package sdk
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
@@ -59,17 +60,20 @@ func (l *LoginHandle) EnsureConversation(ctx context.Context, spec ConversationS
 		return nil, err
 	}
 	info := &bridgev2.ChatInfo{Name: ptr.NonZero(portal.Name)}
-	_, err = EnsurePortalLifecycle(ctx, PortalLifecycleOptions{
-		Login:             l.login,
-		Portal:            portal,
-		ChatInfo:          info,
-		SaveBeforeCreate:  true,
-		AIRoomKind:        conv.aiRoomKind(),
-		ForceCapabilities: true,
-	})
+	if err := portal.Save(ctx); err != nil {
+		return nil, fmt.Errorf("failed to save portal: %w", err)
+	}
+	if portal.MXID == "" {
+		err = portal.CreateMatrixRoom(ctx, l.login, info)
+	} else {
+		portal.UpdateInfo(ctx, info, l.login, nil, time.Time{})
+		err = nil
+	}
 	if err != nil {
 		return nil, err
 	}
+	portal.UpdateBridgeInfo(ctx)
+	portal.UpdateCapabilities(ctx, l.login, true)
 	return conv, nil
 }
 

@@ -210,11 +210,11 @@ type GravatarState struct {
 // PortalMetadata stores runtime-only per-room state. Persistent room state is mirrored
 // into AI-owned database tables and is not serialized through bridgev2 metadata.
 type PortalMetadata struct {
-	AckReactionEmoji       string     `json:"-"`
-	AckReactionRemoveAfter bool       `json:"-"`
-	PDFConfig              *PDFConfig `json:"-"`
+	AckReactionEmoji       string     `json:"ack_reaction_emoji,omitempty"`
+	AckReactionRemoveAfter bool       `json:"ack_reaction_remove_after,omitempty"`
+	PDFConfig              *PDFConfig `json:"pdf_config,omitempty"`
 
-	Slug             string `json:"-"`
+	Slug             string `json:"slug,omitempty"`
 	TitleGenerated   bool   `json:"-"`
 	WelcomeSent      bool   `json:"-"`
 	AutoGreetingSent bool   `json:"-"`
@@ -225,8 +225,8 @@ type PortalMetadata struct {
 	SessionBootstrappedAt   int64            `json:"-"`
 	SessionBootstrapByAgent map[string]int64 `json:"-"`
 
-	ModuleMeta           map[string]any `json:"-"` // Generic per-module metadata (e.g., cron room markers, memory flush state)
-	SubagentParentRoomID string         `json:"-"` // Parent room ID for subagent sessions
+	ModuleMeta           map[string]any `json:"-"`                                // Generic per-module metadata (e.g., cron room markers, memory flush state)
+	SubagentParentRoomID string         `json:"subagent_parent_room_id,omitempty"` // Parent room ID for subagent sessions
 
 	// Runtime-only overrides (not persisted)
 	DisabledTools        []string        `json:"-"`
@@ -235,11 +235,11 @@ type PortalMetadata struct {
 	RuntimeReasoning     string          `json:"-"`
 
 	// Debounce configuration (0 = use default, -1 = disabled)
-	DebounceMs int `json:"-"`
+	DebounceMs int `json:"debounce_ms,omitempty"`
 
 	// Per-session typing overrides (OpenClaw-style).
-	TypingMode            string `json:"-"` // never|instant|thinking|message
-	TypingIntervalSeconds *int   `json:"-"`
+	TypingMode            string `json:"typing_mode,omitempty"` // never|instant|thinking|message
+	TypingIntervalSeconds *int   `json:"typing_interval_seconds,omitempty"`
 	portalStateLoaded     bool   `json:"-"`
 }
 

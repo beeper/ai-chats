@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/beeper/agentremote/pkg/agents"
 	"github.com/beeper/agentremote/pkg/agents/tools"
@@ -737,12 +738,16 @@ func (oc *AIClient) initPortalForChat(ctx context.Context, opts PortalInitOpts) 
 		}
 	}
 	chatInfo := oc.composeChatInfo(ctx, title, modelID)
-	result, err := sdk.BootstrapDMPortal(ctx, sdk.DMPortalBootstrapSpec{
-		Login:       oc.UserLogin,
-		PortalKey:   portalKey,
+	portal, err := oc.UserLogin.Bridge.GetPortalByKey(ctx, portalKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to bootstrap portal: %w", err)
+	}
+	if err := sdk.ConfigureDMPortal(ctx, sdk.ConfigureDMPortalParams{
+		Portal:      portal,
 		Title:       title,
 		OtherUserID: modelUserID(modelID),
-		PortalMutate: func(portal *bridgev2.Portal) {
+		Save:        false,
+		MutatePortal: func(portal *bridgev2.Portal) {
 			portal.Metadata = pmeta
 			defaultAvatar := strings.TrimSpace(agents.DefaultAgentAvatarMXC)
 			if defaultAvatar != "" {
@@ -750,17 +755,22 @@ func (oc *AIClient) initPortalForChat(ctx context.Context, opts PortalInitOpts) 
 				portal.AvatarMXC = id.ContentURIString(defaultAvatar)
 			}
 		},
-		BeforeSave: func(ctx context.Context, portal *bridgev2.Portal) error {
-			return saveAIPortalState(ctx, portal, pmeta)
-		},
-		ChatInfo:            chatInfo,
-		CreateRoomIfMissing: false,
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, nil, fmt.Errorf("failed to bootstrap portal: %w", err)
 	}
+	if err := saveAIPortalState(ctx, portal, pmeta); err != nil {
+		return nil, nil, fmt.Errorf("failed to bootstrap portal: %w", err)
+	}
+	if err := portal.Save(ctx); err != nil {
+		return nil, nil, fmt.Errorf("failed to bootstrap portal: %w", err)
+	}
+	if portal.MXID != "" {
+		portal.UpdateInfo(ctx, chatInfo, oc.UserLogin, nil, time.Time{})
+		portal.UpdateBridgeInfo(ctx)
+		portal.UpdateCapabilities(ctx, oc.UserLogin, true)
+	}
 	oc.ensureGhostDisplayName(ctx, modelID)
-	return result.Portal, result.ChatInfo, nil
+	return portal, chatInfo, nil
 }
 
 // handleNewChat creates a new chat using the current room's agent/model,
@@ -887,53 +897,50 @@ func (oc *AIClient) resolveAgentModelForNewChat(ctx context.Context, agent *agen
 
 func (oc *AIClient) createAndOpenAgentChat(ctx context.Context, portal *bridgev2.Portal, agent *agents.AgentDefinition, modelID string, modelOverride bool) {
 	agentName := oc.resolveAgentDisplayName(ctx, agent)
-	chatResp, err := oc.createAgentChatWithModel(ctx, agent, modelID, modelOverride)
-	if err != nil {
-		oc.sendSystemNotice(ctx, portal, "Couldn't create the chat: "+err.Error())
-		return
-	}
-
-	newPortal, err := oc.UserLogin.Bridge.GetPortalByKey(ctx, chatResp.PortalKey)
-	if err != nil || newPortal == nil {
-		msg := "Couldn't open the new chat."
-		if err != nil {
-			msg = "Couldn't open the new chat: " + err.Error()
-		}
-		oc.sendSystemNotice(ctx, portal, msg)
-		return
-	}
-
-	chatInfo := chatResp.PortalInfo
-	if err := oc.materializePortalRoom(ctx, newPortal, chatInfo, portalRoomMaterializeOptions{SendWelcome: true}); err != nil {
-		oc.sendSystemNotice(ctx, portal, "Couldn't create the room: "+err.Error())
-		return
-	}
-
-	roomLink := fmt.Sprintf("https://matrix.to/#/%s", newPortal.MXID)
-	oc.sendSystemNotice(ctx, portal, fmt.Sprintf(
-		"New %s chat created.\nOpen: %s",
-		agentName, roomLink,
-	))
+	oc.createAndOpenChat(ctx, portal, agentName, func(ctx context.Context) (*bridgev2.CreateChatResponse, error) {
+		return oc.createAgentChatWithModel(ctx, agent, modelID, modelOverride)
+	})
 }
 
 func (oc *AIClient) createAndOpenModelChat(ctx context.Context, portal *bridgev2.Portal, modelID string) {
-	chatResp, err := oc.createNewChat(ctx, modelID)
+	oc.createAndOpenChat(ctx, portal, modelContactName(modelID, oc.findModelInfo(modelID)), func(ctx context.Context) (*bridgev2.CreateChatResponse, error) {
+		return oc.createNewChat(ctx, modelID)
+	})
+}
+
+func (oc *AIClient) createAndOpenChat(
+	ctx context.Context,
+	sourcePortal *bridgev2.Portal,
+	label string,
+	create func(context.Context) (*bridgev2.CreateChatResponse, error),
+) {
+	chatResp, err := create(ctx)
 	if err != nil {
-		oc.sendSystemNotice(ctx, portal, "Couldn't create the chat: "+err.Error())
+		oc.sendSystemNotice(ctx, sourcePortal, "Couldn't create the chat: "+err.Error())
 		return
 	}
 
 	newPortal := chatResp.Portal
-	chatInfo := chatResp.PortalInfo
-	if err := oc.materializePortalRoom(ctx, newPortal, chatInfo, portalRoomMaterializeOptions{SendWelcome: true}); err != nil {
-		oc.sendSystemNotice(ctx, portal, "Couldn't create the room: "+err.Error())
+	if newPortal == nil {
+		newPortal, err = oc.UserLogin.Bridge.GetPortalByKey(ctx, chatResp.PortalKey)
+		if err != nil || newPortal == nil {
+			msg := "Couldn't open the new chat."
+			if err != nil {
+				msg = "Couldn't open the new chat: " + err.Error()
+			}
+			oc.sendSystemNotice(ctx, sourcePortal, msg)
+			return
+		}
+	}
+	if err := oc.materializePortalRoom(ctx, newPortal, chatResp.PortalInfo, portalRoomMaterializeOptions{SendWelcome: true}); err != nil {
+		oc.sendSystemNotice(ctx, sourcePortal, "Couldn't create the room: "+err.Error())
 		return
 	}
 
 	roomLink := fmt.Sprintf("https://matrix.to/#/%s", newPortal.MXID)
-	oc.sendSystemNotice(ctx, portal, fmt.Sprintf(
+	oc.sendSystemNotice(ctx, sourcePortal, fmt.Sprintf(
 		"New %s chat created.\nOpen: %s",
-		modelContactName(modelID, oc.findModelInfo(modelID)), roomLink,
+		label, roomLink,
 	))
 }
 

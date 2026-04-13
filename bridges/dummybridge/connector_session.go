@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/ptr"
@@ -118,16 +119,18 @@ func (dc *DummyBridgeConnector) ensureChatForIndexLocked(ctx context.Context, lo
 	}
 
 	chatInfo := dc.composeChatInfo(login, title)
-	if _, err := sdk.EnsurePortalLifecycle(ctx, sdk.PortalLifecycleOptions{
-		Login:             login,
-		Portal:            portal,
-		ChatInfo:          chatInfo,
-		SaveBeforeCreate:  true,
-		AIRoomKind:        sdk.AIRoomKindAgent,
-		ForceCapabilities: true,
-	}); err != nil {
-		return nil, fmt.Errorf("ensure portal lifecycle: %w", err)
+	if err := portal.Save(ctx); err != nil {
+		return nil, fmt.Errorf("save portal: %w", err)
 	}
+	if portal.MXID == "" {
+		if err := portal.CreateMatrixRoom(ctx, login, chatInfo); err != nil {
+			return nil, fmt.Errorf("create Matrix room: %w", err)
+		}
+	} else {
+		portal.UpdateInfo(ctx, chatInfo, login, nil, time.Time{})
+	}
+	portal.UpdateBridgeInfo(ctx)
+	portal.UpdateCapabilities(ctx, login, true)
 	return &bridgev2.CreateChatResponse{
 		PortalKey:  portal.PortalKey,
 		Portal:     portal,

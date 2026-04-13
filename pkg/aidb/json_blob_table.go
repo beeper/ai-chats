@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"go.mau.fi/util/dbutil"
+	"maunium.net/go/mautrix/bridgev2"
 )
 
 // JSONBlobTable provides ensureTable / load / save / delete CRUD for a simple
@@ -142,6 +143,44 @@ type BlobScope struct {
 	BridgeID string
 	LoginID  string
 	Key      string
+}
+
+func PortalBlobScope(portal *bridgev2.Portal, table *JSONBlobTable, key string) *BlobScope {
+	if table == nil || portal == nil || portal.Bridge == nil || portal.Bridge.DB == nil || portal.Bridge.DB.Database == nil {
+		return nil
+	}
+	bridgeID := strings.TrimSpace(string(portal.Bridge.DB.BridgeID))
+	loginID := strings.TrimSpace(string(portal.Receiver))
+	key = strings.TrimSpace(key)
+	if bridgeID == "" || loginID == "" || key == "" {
+		return nil
+	}
+	return &BlobScope{
+		Table:    table,
+		DB:       portal.Bridge.DB.Database,
+		BridgeID: bridgeID,
+		LoginID:  loginID,
+		Key:      key,
+	}
+}
+
+func LoginBlobScope(login *bridgev2.UserLogin, table *JSONBlobTable, key string) *BlobScope {
+	if table == nil || login == nil || login.Bridge == nil || login.Bridge.DB == nil || login.Bridge.DB.Database == nil {
+		return nil
+	}
+	bridgeID := strings.TrimSpace(string(login.Bridge.DB.BridgeID))
+	loginID := strings.TrimSpace(string(login.ID))
+	key = strings.TrimSpace(key)
+	if bridgeID == "" || loginID == "" {
+		return nil
+	}
+	return &BlobScope{
+		Table:    table,
+		DB:       login.Bridge.DB.Database,
+		BridgeID: bridgeID,
+		LoginID:  loginID,
+		Key:      key,
+	}
 }
 
 // LoadScoped ensures the table exists and loads the JSON blob for the scope's key triple.

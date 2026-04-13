@@ -110,22 +110,15 @@ var openClawPortalStateBlob = aidb.JSONBlobTable{
 }
 
 func openClawPortalBlobScope(portal *bridgev2.Portal, login *bridgev2.UserLogin) *aidb.BlobScope {
-	if portal == nil || login == nil || login.Bridge == nil || login.Bridge.DB == nil || login.Bridge.DB.Database == nil {
+	if portal == nil {
 		return nil
 	}
-	bridgeID := strings.TrimSpace(string(login.Bridge.DB.BridgeID))
-	loginID := strings.TrimSpace(string(login.ID))
-	portalKey := strings.TrimSpace(url.PathEscape(string(portal.PortalKey.ID)) + "|" + url.PathEscape(string(portal.PortalKey.Receiver)))
-	if bridgeID == "" || loginID == "" || portalKey == "" {
+	portalKey := url.PathEscape(string(portal.PortalKey.ID)) + "|" + url.PathEscape(string(portal.PortalKey.Receiver))
+	scope := aidb.LoginBlobScope(login, &openClawPortalStateBlob, portalKey)
+	if scope == nil {
 		return nil
 	}
-	return &aidb.BlobScope{
-		Table:    &openClawPortalStateBlob,
-		DB:       login.Bridge.DB.Database,
-		BridgeID: bridgeID,
-		LoginID:  loginID,
-		Key:      portalKey,
-	}
+	return scope
 }
 
 func loadOpenClawPortalState(ctx context.Context, portal *bridgev2.Portal, login *bridgev2.UserLogin) (*openClawPortalState, error) {
