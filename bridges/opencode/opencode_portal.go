@@ -17,6 +17,61 @@ func (b *Bridge) ensureOpenCodeSessionPortal(ctx context.Context, inst *openCode
 	return b.ensureOpenCodeSessionPortalWithRoom(ctx, inst, session, true)
 }
 
+func openCodeSessionTitle(session api.Session) string {
+	title := strings.TrimSpace(session.Title)
+	if title != "" {
+		return title
+	}
+	if strings.TrimSpace(session.Slug) != "" {
+		return "OpenCode " + session.Slug
+	}
+	return "OpenCode Session " + session.ID
+}
+
+func (b *Bridge) bootstrapOpenCodePortal(
+	ctx context.Context,
+	login *bridgev2.UserLogin,
+	portal *bridgev2.Portal,
+	title string,
+	meta *PortalMeta,
+	createRoom bool,
+) (*bridgev2.Portal, *bridgev2.ChatInfo, bool, error) {
+	if b == nil || b.host == nil {
+		return nil, nil, false, nil
+	}
+	if login == nil {
+		login = b.host.GetUserLogin()
+	}
+	if login == nil || login.Bridge == nil || portal == nil || meta == nil {
+		return nil, nil, false, errors.New("login unavailable")
+	}
+	if meta.AgentID == "" {
+		meta.AgentID = b.host.DefaultAgentID()
+	}
+	chatInfo := b.composeOpenCodeChatInfo(title, meta.InstanceID)
+	result, err := sdk.BootstrapDMPortal(ctx, sdk.DMPortalBootstrapSpec{
+		Login:       login,
+		Portal:      portal,
+		Title:       title,
+		OtherUserID: OpenCodeUserID(meta.InstanceID),
+		PortalMutate: func(portal *bridgev2.Portal) {
+			b.host.SetPortalMeta(portal, meta)
+		},
+		ChatInfo:            chatInfo,
+		CreateRoomIfMissing: createRoom,
+		SaveBeforeCreate:    true,
+		CleanupOnCreateError: func(ctx context.Context, portal *bridgev2.Portal) {
+			b.host.CleanupPortal(ctx, portal, "failed to create OpenCode room")
+		},
+		AIRoomKind:        sdk.AIRoomKindAgent,
+		ForceCapabilities: true,
+	})
+	if err != nil {
+		return nil, nil, false, err
+	}
+	return result.Portal, chatInfo, result.Created, nil
+}
+
 func (b *Bridge) ensureOpenCodeSessionPortalWithRoom(ctx context.Context, inst *openCodeInstance, session api.Session, createRoom bool) error {
 	if b == nil || b.host == nil || inst == nil {
 		return nil
@@ -43,14 +98,7 @@ func (b *Bridge) ensureOpenCodeSessionPortalWithRoom(ctx context.Context, inst *
 		meta = &PortalMeta{}
 	}
 
-	title := strings.TrimSpace(session.Title)
-	if title == "" {
-		if strings.TrimSpace(session.Slug) != "" {
-			title = "OpenCode " + session.Slug
-		} else {
-			title = "OpenCode Session " + session.ID
-		}
-	}
+	title := openCodeSessionTitle(session)
 
 	meta.IsOpenCodeRoom = true
 	meta.InstanceID = inst.cfg.ID
@@ -62,28 +110,10 @@ func (b *Bridge) ensureOpenCodeSessionPortalWithRoom(ctx context.Context, inst *
 	}
 	meta.Title = title
 
-	chatInfo := b.composeOpenCodeChatInfo(title, inst.cfg.ID)
-	result, err := sdk.BootstrapDMPortal(ctx, sdk.DMPortalBootstrapSpec{
-		Login:       login,
-		Portal:      portal,
-		Title:       title,
-		OtherUserID: OpenCodeUserID(inst.cfg.ID),
-		PortalMutate: func(portal *bridgev2.Portal) {
-			b.host.SetPortalMeta(portal, meta)
-		},
-		ChatInfo:            chatInfo,
-		CreateRoomIfMissing: createRoom,
-		SaveBeforeCreate:    true,
-		CleanupOnCreateError: func(ctx context.Context, portal *bridgev2.Portal) {
-			b.host.CleanupPortal(ctx, portal, "failed to create OpenCode room")
-		},
-		AIRoomKind:        sdk.AIRoomKindAgent,
-		ForceCapabilities: true,
-	})
+	_, _, _, err = b.bootstrapOpenCodePortal(ctx, login, portal, title, meta, createRoom)
 	if err != nil {
 		return err
 	}
-	portal = result.Portal
 
 	return nil
 }
@@ -164,23 +194,30 @@ func (b *Bridge) CreateSessionChat(ctx context.Context, instanceID, title string
 	if err != nil {
 		return nil, err
 	}
-	if err = b.ensureOpenCodeSessionPortalWithRoom(ctx, inst, *session, true); err != nil {
+	portalKey := OpenCodePortalKey(login.ID, inst.cfg.ID, session.ID)
+	portal, err := login.Bridge.GetPortalByKey(ctx, portalKey)
+	if err != nil {
 		return nil, err
 	}
-	portal := b.findOpenCodePortal(ctx, instanceID, session.ID)
 	if portal == nil {
 		return nil, errors.New("failed to create OpenCode portal")
 	}
-	meta := b.portalMeta(portal)
-	meta.TitlePending = pendingTitle
+	displayTitle := openCodeSessionTitle(*session)
 	if title != "" {
-		meta.Title = title
+		displayTitle = title
 	}
-	b.host.SetPortalMeta(portal, meta)
-	if err = b.host.SavePortal(ctx, portal); err != nil {
+	meta := b.portalMeta(portal)
+	meta.IsOpenCodeRoom = true
+	meta.InstanceID = inst.cfg.ID
+	meta.SessionID = session.ID
+	meta.ReadOnly = !inst.connected
+	meta.AwaitingPath = false
+	meta.TitlePending = pendingTitle
+	meta.Title = displayTitle
+	portal, chatInfo, _, err := b.bootstrapOpenCodePortal(ctx, login, portal, displayTitle, meta, true)
+	if err != nil {
 		return nil, err
 	}
-	chatInfo := b.composeOpenCodeChatInfo(portal.Name, instanceID)
 	b.host.SendSystemNotice(ctx, portal, "AI Chats can make mistakes.")
 	return &bridgev2.CreateChatResponse{
 		PortalKey:  portal.PortalKey,
@@ -212,28 +249,10 @@ func (b *Bridge) createManagedLauncherChat(ctx context.Context, login *bridgev2.
 		AgentID:        b.host.DefaultAgentID(),
 	}
 
-	chatInfo := b.composeOpenCodeChatInfo(displayTitle, instanceID)
-	result, err := sdk.BootstrapDMPortal(ctx, sdk.DMPortalBootstrapSpec{
-		Login:       login,
-		Portal:      portal,
-		Title:       displayTitle,
-		OtherUserID: OpenCodeUserID(instanceID),
-		PortalMutate: func(portal *bridgev2.Portal) {
-			b.host.SetPortalMeta(portal, meta)
-		},
-		ChatInfo:            chatInfo,
-		CreateRoomIfMissing: true,
-		SaveBeforeCreate:    true,
-		CleanupOnCreateError: func(ctx context.Context, portal *bridgev2.Portal) {
-			b.host.CleanupPortal(ctx, portal, "failed to create OpenCode room")
-		},
-		AIRoomKind:        sdk.AIRoomKindAgent,
-		ForceCapabilities: true,
-	})
+	portal, chatInfo, _, err := b.bootstrapOpenCodePortal(ctx, login, portal, displayTitle, meta, true)
 	if err != nil {
 		return nil, err
 	}
-	portal = result.Portal
 
 	b.host.SendSystemNotice(ctx, portal, "AI Chats can make mistakes.")
 	b.host.SendSystemNotice(ctx, portal, "What directory should OpenCode work in? Send an absolute path or `~/...`, or send an empty message to use the managed default path.")

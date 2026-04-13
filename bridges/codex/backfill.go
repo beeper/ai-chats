@@ -236,37 +236,16 @@ func (cc *CodexClient) ensureCodexThreadPortal(ctx context.Context, existing *br
 	}
 
 	info := cc.composeCodexChatInfo(portal, state, true)
-	result, err := sdk.BootstrapDMPortal(ctx, sdk.DMPortalBootstrapSpec{
-		Login:       cc.UserLogin,
-		Portal:      portal,
-		Title:       title,
-		OtherUserID: codexGhostID,
-		PortalMutate: func(portal *bridgev2.Portal) {
-			portalMeta(portal).IsCodexRoom = true
-		},
-		BeforeSave: func(ctx context.Context, portal *bridgev2.Portal) error {
-			return saveCodexPortalState(ctx, portal, state)
-		},
-		ChatInfo:            info,
-		CreateRoomIfMissing: true,
-		SaveBeforeCreate:    true,
-		AIRoomKind:          sdk.AIRoomKindAgent,
-		ForceCapabilities:   true,
-	})
+	portal, created, err = cc.bootstrapCodexPortal(ctx, portal, networkid.PortalKey{}, title, state, info, true)
 	if err != nil {
 		return nil, false, err
 	}
-	portal = result.Portal
-	created = result.Created
 	if created {
 		if state.AwaitingCwdSetup {
 			cc.sendSystemNotice(ctx, portal, "This imported conversation needs a working directory. Send an absolute path or `~/...`.")
 		}
 	} else {
 		cc.UserLogin.Bridge.WakeupBackfillQueue()
-	}
-	if err := saveCodexPortalState(ctx, portal, state); err != nil {
-		return nil, false, err
 	}
 	cc.syncCodexRoomTopic(ctx, portal, state)
 

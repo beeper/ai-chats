@@ -120,6 +120,45 @@ func (cc *CodexClient) welcomeCodexPortals(ctx context.Context) ([]*bridgev2.Por
 	return out, nil
 }
 
+func (cc *CodexClient) bootstrapCodexPortal(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	portalKey networkid.PortalKey,
+	title string,
+	state *codexPortalState,
+	chatInfo *bridgev2.ChatInfo,
+	createRoom bool,
+) (*bridgev2.Portal, bool, error) {
+	if cc == nil || cc.UserLogin == nil || cc.UserLogin.Bridge == nil {
+		return nil, false, fmt.Errorf("login unavailable")
+	}
+	if state == nil {
+		return nil, false, fmt.Errorf("missing codex portal state")
+	}
+	result, err := sdk.BootstrapDMPortal(ctx, sdk.DMPortalBootstrapSpec{
+		Login:       cc.UserLogin,
+		Portal:      portal,
+		PortalKey:   portalKey,
+		Title:       title,
+		OtherUserID: codexGhostID,
+		PortalMutate: func(portal *bridgev2.Portal) {
+			portalMeta(portal).IsCodexRoom = true
+		},
+		BeforeSave: func(ctx context.Context, portal *bridgev2.Portal) error {
+			return saveCodexPortalState(ctx, portal, state)
+		},
+		ChatInfo:            chatInfo,
+		CreateRoomIfMissing: createRoom,
+		SaveBeforeCreate:    true,
+		AIRoomKind:          sdk.AIRoomKindAgent,
+		ForceCapabilities:   true,
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	return result.Portal, result.Created, nil
+}
+
 func (cc *CodexClient) createWelcomeCodexChat(ctx context.Context) (*bridgev2.Portal, error) {
 	if cc == nil || cc.UserLogin == nil || cc.UserLogin.Bridge == nil {
 		return nil, fmt.Errorf("login unavailable")
@@ -134,28 +173,11 @@ func (cc *CodexClient) createWelcomeCodexChat(ctx context.Context) (*bridgev2.Po
 		AwaitingCwdSetup: true,
 	}
 	info := cc.composeCodexChatInfo(nil, state, false)
-	result, err := sdk.BootstrapDMPortal(ctx, sdk.DMPortalBootstrapSpec{
-		Login:       cc.UserLogin,
-		PortalKey:   portalKey,
-		Title:       state.Title,
-		OtherUserID: codexGhostID,
-		PortalMutate: func(portal *bridgev2.Portal) {
-			portalMeta(portal).IsCodexRoom = true
-		},
-		BeforeSave: func(ctx context.Context, portal *bridgev2.Portal) error {
-			return saveCodexPortalState(ctx, portal, state)
-		},
-		ChatInfo:            info,
-		CreateRoomIfMissing: true,
-		SaveBeforeCreate:    true,
-		AIRoomKind:          sdk.AIRoomKindAgent,
-		ForceCapabilities:   true,
-	})
+	portal, created, err := cc.bootstrapCodexPortal(ctx, nil, portalKey, state.Title, state, info, true)
 	if err != nil {
 		return nil, err
 	}
-	portal := result.Portal
-	if result.Created {
+	if created {
 		cc.sendSystemNotice(ctx, portal, "AI Chats can make mistakes.")
 		cc.sendSystemNotice(ctx, portal, "Send an absolute path or `~/...` to start a Codex session.")
 	}

@@ -148,18 +148,25 @@ func (h *runtimeIntegrationHost) GetOrCreatePortal(ctx context.Context, portalID
 	if p.MXID != "" {
 		return p, p.MXID.String(), nil
 	}
-	meta := &PortalMetadata{}
-	if setupMeta != nil {
-		setupMeta(meta)
-	}
-	p.Metadata = meta
-	if err := saveAIPortalState(ctx, p, meta); err != nil {
-		return nil, "", fmt.Errorf("failed to save portal state: %w", err)
-	}
-	p.Name = displayName
-	p.NameSet = true
 	chatInfo := &bridgev2.ChatInfo{Name: &p.Name}
-	if err := h.client.materializePortalRoom(ctx, p, chatInfo, portalRoomMaterializeOptions{SaveBefore: true}); err != nil {
+	if err := h.client.materializePortalRoom(ctx, p, chatInfo, portalRoomMaterializeOptions{
+		SaveBefore: true,
+		MutatePortal: func(portal *bridgev2.Portal) {
+			meta := &PortalMetadata{}
+			if setupMeta != nil {
+				setupMeta(meta)
+			}
+			portal.Metadata = meta
+			portal.Name = displayName
+			portal.NameSet = true
+		},
+		BeforeSave: func(ctx context.Context, portal *bridgev2.Portal) error {
+			if err := saveAIPortalState(ctx, p, portalMeta(portal)); err != nil {
+				return fmt.Errorf("failed to save portal state: %w", err)
+			}
+			return nil
+		},
+	}); err != nil {
 		return nil, "", fmt.Errorf("failed to create Matrix room: %w", err)
 	}
 	return p, p.MXID.String(), nil

@@ -7,8 +7,6 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
-
-	"github.com/beeper/agentremote/sdk"
 )
 
 func (s *schedulerRuntime) ensureScheduledRoomLocked(ctx context.Context, portalID, displayName, agentID string, moduleMeta map[string]any) (string, error) {
@@ -78,38 +76,28 @@ func (s *schedulerRuntime) getOrCreateScheduledPortal(ctx context.Context, porta
 	if err != nil {
 		return nil, err
 	}
-	if portal.MXID != "" {
-		meta := portalMeta(portal)
-		if meta == nil {
-			meta = &PortalMetadata{}
-			portal.Metadata = meta
-		}
-		if setup != nil {
-			setup(meta)
-		}
-		s.client.applyPortalRoomName(ctx, portal, displayName)
-		s.client.savePortalQuiet(ctx, portal, "scheduler metadata update")
-		return portal, nil
-	}
-	meta := &PortalMetadata{}
-	if setup != nil {
-		setup(meta)
-	}
-	portal.Metadata = meta
-	if err := saveAIPortalState(ctx, portal, meta); err != nil {
-		return nil, err
-	}
-	s.client.applyPortalRoomName(ctx, portal, displayName)
 	chatInfo := &bridgev2.ChatInfo{Name: &portal.Name}
-	_, err = sdk.EnsurePortalLifecycle(ctx, sdk.PortalLifecycleOptions{
-		Login:             s.client.UserLogin,
-		Portal:            portal,
-		ChatInfo:          chatInfo,
-		SaveBeforeCreate:  true,
-		AIRoomKind:        integrationPortalAIKind(meta),
-		ForceCapabilities: true,
-	})
-	if err != nil {
+	if err := s.client.materializePortalRoom(ctx, portal, chatInfo, portalRoomMaterializeOptions{
+		SaveBefore: true,
+		MutatePortal: func(portal *bridgev2.Portal) {
+			meta := portalMeta(portal)
+			if meta == nil {
+				meta = &PortalMetadata{}
+				portal.Metadata = meta
+			}
+			if setup != nil {
+				setup(meta)
+			}
+			s.client.applyPortalRoomName(ctx, portal, displayName)
+		},
+		BeforeSave: func(ctx context.Context, portal *bridgev2.Portal) error {
+			return saveAIPortalState(ctx, portal, portalMeta(portal))
+		},
+		OnExisting: func(ctx context.Context, portal *bridgev2.Portal) error {
+			s.client.savePortalQuiet(ctx, portal, "scheduler metadata update")
+			return nil
+		},
+	}); err != nil {
 		return nil, err
 	}
 	return portal, nil

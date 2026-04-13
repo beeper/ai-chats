@@ -110,13 +110,15 @@ func (b *Bridge) handleAwaitingPath(ctx context.Context, msg *bridgev2.MatrixMes
 		b.host.SendSystemNotice(ctx, portal, "Failed to attach the room to the managed OpenCode session: "+err.Error())
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
-	portal.OtherUserID = OpenCodeUserID(inst.cfg.ID)
 	meta.SessionID = session.ID
 	meta.InstanceID = inst.cfg.ID
 	meta.AwaitingPath = false
 	meta.ReadOnly = false
-	b.host.SetPortalMeta(portal, meta)
-	_ = b.host.SavePortal(ctx, portal)
+	portal, _, _, err = b.bootstrapOpenCodePortal(ctx, nil, portal, strings.TrimSpace(meta.Title), meta, false)
+	if err != nil {
+		b.host.SendSystemNotice(ctx, portal, "Failed to save the managed OpenCode session room: "+err.Error())
+		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
+	}
 	b.host.SendSystemNotice(ctx, portal, fmt.Sprintf("Managed OpenCode started in %s", session.Directory))
 	return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 }

@@ -489,17 +489,17 @@ func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Por
 		if meta != nil {
 			meta.TitleGenerated = true
 		}
-		oc.applyPortalRoomName(bgCtx, portal, title)
-		if err := oc.savePortal(bgCtx, portal, "room title"); err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist generated room title")
-			return
-		}
-		if _, err := sdk.EnsurePortalLifecycle(bgCtx, sdk.PortalLifecycleOptions{
-			Login:             oc.UserLogin,
-			Portal:            portal,
-			SaveBeforeCreate:  false,
-			AIRoomKind:        integrationPortalAIKind(portalMeta(portal)),
-			ForceCapabilities: true,
+		if err := oc.materializePortalRoom(bgCtx, portal, &bridgev2.ChatInfo{Name: &title}, portalRoomMaterializeOptions{
+			MutatePortal: func(portal *bridgev2.Portal) {
+				oc.applyPortalRoomName(bgCtx, portal, title)
+			},
+			BeforeSave: func(ctx context.Context, portal *bridgev2.Portal) error {
+				if err := oc.savePortal(ctx, portal, "room title"); err != nil {
+					oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist generated room title")
+					return err
+				}
+				return nil
+			},
 		}); err != nil {
 			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to sync generated room title to Matrix")
 		}
