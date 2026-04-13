@@ -173,7 +173,7 @@ func TestIsApprovalPlaceholderReaction_ExcludesUserReaction(t *testing.T) {
 	if !isApprovalPlaceholderReaction(&database.Reaction{SenderID: networkid.UserID("ghost:approval")}, prompt, sender) {
 		t.Fatalf("expected bridge-authored reaction to be placeholder")
 	}
-	if isApprovalPlaceholderReaction(&database.Reaction{SenderID: MatrixSenderID(id.UserID("@owner:example.com"))}, prompt, sender) {
+	if isApprovalPlaceholderReaction(&database.Reaction{SenderID: networkid.UserID("mxid:@owner:example.com")}, prompt, sender) {
 		t.Fatalf("did not expect user reaction to be placeholder")
 	}
 }

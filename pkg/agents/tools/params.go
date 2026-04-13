@@ -58,38 +58,6 @@ func ReadInt(params map[string]any, key string, required bool) (int, error) {
 	return int(n), nil
 }
 
-// ReadIntDefault reads an integer parameter with a default value.
-func ReadIntDefault(params map[string]any, key string, defaultVal int) int {
-	if _, ok := params[key]; !ok {
-		return defaultVal
-	}
-	n, err := ReadInt(params, key, false)
-	if err != nil {
-		return defaultVal
-	}
-	return n
-}
-
-// ReadBool reads a boolean parameter from input.
-func ReadBool(params map[string]any, key string, defaultVal bool) bool {
-	v, ok := params[key]
-	if !ok {
-		return defaultVal
-	}
-	switch b := v.(type) {
-	case bool:
-		return b
-	case string:
-		lower := strings.ToLower(strings.TrimSpace(b))
-		return lower == "true" || lower == "1" || lower == "yes"
-	case float64:
-		return b != 0
-	case int:
-		return b != 0
-	}
-	return defaultVal
-}
-
 // ReadStringSlice reads a string array parameter from input.
 func ReadStringSlice(params map[string]any, key string, required bool) ([]string, error) {
 	v, ok := params[key]

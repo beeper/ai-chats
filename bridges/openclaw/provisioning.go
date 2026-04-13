@@ -111,14 +111,6 @@ func (oc *OpenClawClient) agentCatalogEntryByID(ctx context.Context, agentID str
 	return nil, nil
 }
 
-func openClawVirtualAgentSummary(agentID string) *gatewayAgentSummary {
-	agentID = openclawconv.CanonicalAgentID(agentID)
-	if agentID == "" || strings.EqualFold(agentID, "gateway") {
-		return nil
-	}
-	return &gatewayAgentSummary{ID: agentID}
-}
-
 func (oc *OpenClawClient) configuredAgentDisplayName(agent gatewayAgentSummary) string {
 	profile := openClawAgentProfileFromSummary(&agent)
 	return oc.displayNameFromAgentProfile(profile)

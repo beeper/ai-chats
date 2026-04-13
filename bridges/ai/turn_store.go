@@ -153,21 +153,6 @@ func loadAITurnByRefValue(ctx context.Context, scope *portalScope, refKind, refV
 	return rows[0], nil
 }
 
-func loadAITurnByID(ctx context.Context, portal *bridgev2.Portal, turnID string) (*aiTurnRecord, error) {
-	scope := portalScopeForPortal(portal)
-	if scope == nil || strings.TrimSpace(turnID) == "" {
-		return nil, nil
-	}
-	rows, err := queryAITurnRows(ctx, scope, aiTurnQuery{
-		turnID: turnID,
-		limit:  1,
-	})
-	if err != nil || len(rows) == 0 {
-		return nil, err
-	}
-	return rows[0], nil
-}
-
 func upsertAITurn(ctx context.Context, portal *bridgev2.Portal, entry aiTurnUpsert) error {
 	scope := portalScopeForPortal(portal)
 	if scope == nil {
@@ -185,17 +170,13 @@ func upsertAITurn(ctx context.Context, portal *bridgev2.Portal, entry aiTurnUpse
 		entry.TurnData.ID = strings.TrimSpace(entry.TurnID)
 	}
 	return scope.db.DoTxn(ctx, nil, func(ctx context.Context) error {
-		record, err := ensurePortalTurnStateByScope(ctx, scope)
-		if err != nil {
-			return err
-		}
 		existing, err := resolveExistingAITurnForUpdate(ctx, scope, entry)
 		if err != nil {
 			return err
 		}
 
 		turnID := strings.TrimSpace(entry.TurnData.ID)
-		contextEpoch := record.ContextEpoch
+		contextEpoch := int64(0)
 		sequence := int64(0)
 		createdAtMs := entry.Timestamp.UnixMilli()
 		if entry.Timestamp.IsZero() {

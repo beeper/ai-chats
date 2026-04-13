@@ -12,14 +12,6 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-// MatrixSenderID returns the standard networkid.UserID for a Matrix user.
-func MatrixSenderID(userID id.UserID) networkid.UserID {
-	if userID == "" {
-		return ""
-	}
-	return networkid.UserID("mxid:" + userID.String())
-}
-
 // EnsureReactionContent lazily parses the reaction content from a MatrixReaction.
 func EnsureReactionContent(msg *bridgev2.MatrixReaction) *event.ReactionEventContent {
 	if msg == nil {

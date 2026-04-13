@@ -482,14 +482,6 @@ func openRouterHeaders() map[string]string {
 	}
 }
 
-// initProviderForLogin creates the appropriate provider based on login metadata.
-func initProviderForLogin(key string, meta *UserLoginMetadata, connector *OpenAIConnector, login *bridgev2.UserLogin, log zerolog.Logger) (*OpenAIProvider, error) {
-	if meta == nil {
-		return nil, errors.New("login metadata is required")
-	}
-	return initProviderForLoginConfig(key, meta.Provider, &aiLoginConfig{}, connector, login, log)
-}
-
 func initProviderForLoginConfig(key string, providerID string, cfg *aiLoginConfig, connector *OpenAIConnector, login *bridgev2.UserLogin, log zerolog.Logger) (*OpenAIProvider, error) {
 	if strings.TrimSpace(providerID) == "" {
 		return nil, errors.New("login provider is required")
@@ -1721,11 +1713,6 @@ func (oc *AIClient) findModelInfo(modelID string) *ModelInfo {
 // maxHistoryImageMessages limits how many recent history messages can have images injected,
 // to keep token usage under control.
 const maxHistoryImageMessages = 10
-
-// isImageMimeType returns true if the MIME type is an image format suitable for vision models.
-func isImageMimeType(mimeType string) bool {
-	return strings.HasPrefix(mimeType, "image/")
-}
 
 // updateAssistantGeneratedFiles finds the most recent assistant message with tool calls
 // in the portal and appends the given GeneratedFileRef entries to its metadata.

@@ -79,19 +79,6 @@ func TestNormalizeGatewayAgentIdentityPrefersAvatarURL(t *testing.T) {
 	}
 }
 
-func TestOpenClawVirtualAgentSummary(t *testing.T) {
-	agent := openClawVirtualAgentSummary("Codex")
-	if agent == nil {
-		t.Fatal("expected virtual agent")
-	}
-	if agent.ID != "codex" {
-		t.Fatalf("unexpected virtual agent id: %q", agent.ID)
-	}
-	if openClawVirtualAgentSummary("gateway") != nil {
-		t.Fatal("expected gateway to be excluded from virtual agent summaries")
-	}
-}
-
 func TestMergeDiscoveredSessionAgents(t *testing.T) {
 	oc := &OpenClawClient{
 		manager: &openClawManager{
