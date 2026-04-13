@@ -30,6 +30,6 @@ func cleanupPortal(ctx context.Context, client *AIClient, portal *bridgev2.Porta
 				Str("reason", reason).
 				Msg("Failed to delete Matrix room during cleanup")
 		}
-		deleteInternalPromptsForPortal(ctx, portal)
+		deleteAITurnsForPortal(ctx, portal)
 	}
 }

@@ -74,7 +74,7 @@ func TestCodexExtractThreadTurn_TopLevelTurnIDRequired(t *testing.T) {
 	}
 }
 
-func TestCodexExtractThreadTurn_FallsBackToNestedTurnID(t *testing.T) {
+func TestCodexExtractThreadTurn_RejectsMissingTopLevelTurnID(t *testing.T) {
 	params, _ := json.Marshal(map[string]any{
 		"threadId": "thr1",
 		"turn": map[string]any{
@@ -83,18 +83,12 @@ func TestCodexExtractThreadTurn_FallsBackToNestedTurnID(t *testing.T) {
 		},
 	})
 	threadID, turnID, ok := codexExtractThreadTurn(params)
-	if !ok {
-		t.Fatal("expected ok=true")
-	}
-	if threadID != "thr1" {
-		t.Fatalf("expected threadId thr1, got %s", threadID)
-	}
-	if turnID != "nestedTurn" {
-		t.Fatalf("expected nested turn id, got %s", turnID)
+	if ok {
+		t.Fatalf("expected strict extraction to fail, got thread=%q turn=%q", threadID, turnID)
 	}
 }
 
-func TestCodex_Dispatch_RoutesTurnCompletedByNestedTurnID(t *testing.T) {
+func TestCodex_Dispatch_DropsTurnCompletedWithoutTopLevelTurnID(t *testing.T) {
 	cc := &CodexClient{
 		notifCh:       make(chan codexNotif, 16),
 		notifDone:     make(chan struct{}),
@@ -120,11 +114,8 @@ func TestCodex_Dispatch_RoutesTurnCompletedByNestedTurnID(t *testing.T) {
 
 	select {
 	case evt := <-ch:
-		if evt.Method != "turn/completed" {
-			t.Fatalf("unexpected evt on channel: %+v", evt)
-		}
-	case <-time.After(1 * time.Second):
-		t.Fatal("timeout waiting for turn/completed")
+		t.Fatalf("expected no routed event, got %+v", evt)
+	case <-time.After(100 * time.Millisecond):
 	}
 }
 

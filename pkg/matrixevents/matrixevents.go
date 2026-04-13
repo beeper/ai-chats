@@ -102,7 +102,7 @@ func BuildStreamEventEnvelope(turnID string, seq int, part map[string]any, opts 
 func BuildStreamEventTxnID(turnID string, seq int) string {
 	turnID = strings.TrimSpace(turnID)
 	if turnID == "" {
-		return fmt.Sprintf("ai_stream_%d", seq)
+		return ""
 	}
 	return fmt.Sprintf("ai_stream_%s_%d", turnID, seq)
 }

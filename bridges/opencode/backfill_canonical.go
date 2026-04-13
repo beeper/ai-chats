@@ -21,9 +21,6 @@ type canonicalBackfillSnapshot struct {
 
 func buildCanonicalAssistantBackfill(msg api.MessageWithParts, agentID string) canonicalBackfillSnapshot {
 	turnID := opencodeMessageStreamTurnID(msg.Info.SessionID, msg.Info.ID)
-	if turnID == "" {
-		turnID = "opencode-msg-" + strings.TrimSpace(msg.Info.ID)
-	}
 	state := streamui.UIState{TurnID: turnID}
 	replayer := sdk.NewUIStateReplayer(&state)
 	startMeta := buildTurnStartMetadata(&msg, agentID)

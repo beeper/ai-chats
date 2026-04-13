@@ -1,14 +1,12 @@
 package ai
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"slices"
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -72,18 +70,8 @@ func (oc *AIClient) fetchHistoryRowsWithExtra(
 	if extra > 0 {
 		historyLimit += extra
 	}
-	resetAt := int64(0)
-	if meta != nil {
-		resetAt = meta.SessionResetAt
-	}
-	history, err := oc.getAIHistoryMessages(ctx, portal, historyLimit)
-	if err != nil {
-		return nil, err
-	}
 	return &historyLoadResult{
-		rows:      history,
 		hasVision: oc.getModelCapabilitiesForMeta(ctx, meta).SupportsVision,
-		resetAt:   resetAt,
 		limit:     historyLimit,
 	}, nil
 }
@@ -106,89 +94,20 @@ func (oc *AIClient) replayHistoryMessages(
 		return nil, nil
 	}
 
-	type replayCandidate struct {
-		id       networkid.MessageID
-		role     string
-		ts       int64
-		row      *database.Message
-		meta     *MessageMetadata
-		messages []PromptMessage
-	}
-
-	candidates := make([]replayCandidate, 0, len(hr.rows))
-	for _, row := range hr.rows {
-		if opts.excludeMessageID != "" && row.ID == opts.excludeMessageID {
-			continue
-		}
-		msgMeta := messageMeta(row)
-		role := ""
-		if msgMeta != nil {
-			role = strings.TrimSpace(msgMeta.Role)
-		}
-		if opts.mode == historyReplayRewrite && row.ID == opts.targetMessageID {
-			candidates = append(candidates, replayCandidate{
-				id:   row.ID,
-				role: role,
-				ts:   row.Timestamp.UnixMilli(),
-				row:  row,
-				meta: msgMeta,
-			})
-			continue
-		}
-		if !shouldIncludeInHistory(msgMeta) {
-			continue
-		}
-		if hr.resetAt > 0 && row.Timestamp.UnixMilli() < hr.resetAt {
-			continue
-		}
-		candidates = append(candidates, replayCandidate{
-			id:   row.ID,
-			role: role,
-			ts:   row.Timestamp.UnixMilli(),
-			row:  row,
-			meta: msgMeta,
-		})
-	}
-	internalRows, err := loadInternalPromptHistory(ctx, portal, hr.limit, opts, hr.resetAt)
+	turns, err := loadAIPromptHistoryTurns(ctx, portal, hr.limit, opts)
 	if err != nil {
 		return nil, err
 	}
-	internalCandidates := make([]replayCandidate, 0, len(internalRows))
-	for _, row := range internalRows {
-		internalCandidates = append(internalCandidates, replayCandidate{
-			id:       row.MessageID,
-			role:     strings.TrimSpace(row.Role),
-			ts:       row.CreatedAt,
-			messages: row.Messages,
-		})
-	}
-	slices.SortStableFunc(candidates, func(a, b replayCandidate) int {
-		if a.ts != b.ts {
-			return cmp.Compare(b.ts, a.ts)
-		}
-		return cmp.Compare(string(b.id), string(a.id))
-	})
-	if hr.limit > 0 && len(candidates) > hr.limit {
-		candidates = candidates[:hr.limit]
-	}
-	finalCandidates := append(candidates, internalCandidates...)
-	slices.SortStableFunc(finalCandidates, func(a, b replayCandidate) int {
-		if a.ts != b.ts {
-			return cmp.Compare(b.ts, a.ts)
-		}
-		return cmp.Compare(string(b.id), string(a.id))
-	})
-
-	skipUserID := networkid.MessageID("")
-	skipAssistantID := networkid.MessageID("")
+	skipUserID := ""
+	skipAssistantID := ""
 	if opts.mode == historyReplayRegen {
-		for _, candidate := range finalCandidates {
-			if skipUserID == "" && candidate.role == string(PromptRoleUser) {
-				skipUserID = candidate.id
+		for _, turn := range turns {
+			if skipUserID == "" && strings.TrimSpace(turn.Role) == string(PromptRoleUser) {
+				skipUserID = turn.TurnID
 				continue
 			}
-			if skipAssistantID == "" && candidate.role == string(PromptRoleAssistant) {
-				skipAssistantID = candidate.id
+			if skipAssistantID == "" && strings.TrimSpace(turn.Role) == string(PromptRoleAssistant) {
+				skipAssistantID = turn.TurnID
 			}
 			if skipUserID != "" && skipAssistantID != "" {
 				break
@@ -198,21 +117,20 @@ func (oc *AIClient) replayHistoryMessages(
 
 	var messages []PromptMessage
 	chatIndex := 0
-	for i := len(finalCandidates) - 1; i >= 0; i-- {
-		candidate := finalCandidates[i]
-		if opts.mode == historyReplayRewrite && candidate.id == opts.targetMessageID {
-			break
-		}
-		if candidate.id == skipUserID || candidate.id == skipAssistantID {
+	for i := len(turns) - 1; i >= 0; i-- {
+		turn := turns[i]
+		if turn.TurnID == skipUserID || turn.TurnID == skipAssistantID {
 			continue
 		}
-		if candidate.row != nil {
-			injectImages := hr.hasVision && chatIndex < maxHistoryImageMessages
-			messages = append(messages, oc.historyMessageBundle(ctx, candidate.meta, injectImages)...)
+		injectImages := hr.hasVision && turn.Kind == aiTurnKindConversation && chatIndex < maxHistoryImageMessages
+		bundle := filterPromptMessagesForHistory(promptMessagesFromTurnData(turn.TurnData), injectImages)
+		if len(bundle) == 0 {
+			continue
+		}
+		messages = append(messages, bundle...)
+		if turn.Kind == aiTurnKindConversation {
 			chatIndex++
-			continue
 		}
-		messages = append(messages, candidate.messages...)
 	}
 	return messages, nil
 }

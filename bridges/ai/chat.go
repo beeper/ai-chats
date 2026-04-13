@@ -1183,7 +1183,7 @@ func (oc *AIClient) listAllChatPortals(ctx context.Context) ([]*bridgev2.Portal,
 	rows, err := db.Query(ctx, `
 		SELECT portal_id
 		FROM `+aiPortalStateTable+`
-		WHERE bridge_id=$1 AND login_id=$2
+		WHERE bridge_id=$1 AND portal_receiver=$2
 	`, string(oc.UserLogin.Bridge.DB.BridgeID), string(oc.UserLogin.ID))
 	if err != nil {
 		return nil, err
@@ -1245,7 +1245,7 @@ func chooseDefaultChatPortal(portals []*bridgev2.Portal) *bridgev2.Portal {
 	return defaultPortal
 }
 
-// HandleMatrixMessageRemove keeps bridgev2 and AI-owned transcript state in sync.
+// HandleMatrixMessageRemove keeps bridgev2 and the AI turn store in sync.
 func (oc *AIClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev2.MatrixMessageRemove) error {
 	if oc == nil || msg == nil || msg.Portal == nil || msg.TargetMessage == nil {
 		return nil
@@ -1261,7 +1261,7 @@ func (oc *AIClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev2
 			errs = append(errs, err)
 		}
 	}
-	if err := deleteAITranscriptMessage(ctx, msg.Portal, msg.TargetMessage.ID, msg.TargetMessage.MXID); err != nil {
+	if err := deleteAITurnByExternalRef(ctx, msg.Portal, msg.TargetMessage.ID, msg.TargetMessage.MXID); err != nil {
 		errs = append(errs, err)
 	}
 	if meta := portalMeta(msg.Portal); meta != nil {

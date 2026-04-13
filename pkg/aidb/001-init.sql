@@ -180,21 +180,6 @@ CREATE TABLE IF NOT EXISTS aichats_system_events (
   PRIMARY KEY (bridge_id, login_id, agent_id, session_key, event_index)
 );
 
-CREATE TABLE IF NOT EXISTS aichats_internal_messages (
-  bridge_id TEXT NOT NULL,
-  login_id TEXT NOT NULL,
-  portal_id TEXT NOT NULL,
-  event_id TEXT NOT NULL,
-  source TEXT NOT NULL DEFAULT '',
-  canonical_turn_data TEXT NOT NULL DEFAULT '',
-  exclude_from_history INTEGER NOT NULL DEFAULT 0,
-  created_at_ms INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (bridge_id, login_id, portal_id, event_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_aichats_internal_messages_history
-  ON aichats_internal_messages(bridge_id, login_id, portal_id, created_at_ms);
-
 CREATE TABLE IF NOT EXISTS aichats_login_state (
   bridge_id TEXT NOT NULL,
   login_id TEXT NOT NULL,
@@ -228,11 +213,13 @@ CREATE TABLE IF NOT EXISTS aichats_custom_agents (
 
 CREATE TABLE IF NOT EXISTS aichats_portal_state (
   bridge_id TEXT NOT NULL,
-  login_id TEXT NOT NULL,
   portal_id TEXT NOT NULL,
+  portal_receiver TEXT NOT NULL,
   state_json TEXT NOT NULL DEFAULT '{}',
+  context_epoch INTEGER NOT NULL DEFAULT 0,
+  next_turn_sequence INTEGER NOT NULL DEFAULT 0,
   updated_at_ms INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (bridge_id, login_id, portal_id)
+  PRIMARY KEY (bridge_id, portal_id, portal_receiver)
 );
 
 CREATE TABLE IF NOT EXISTS aichats_tool_approval_rules (
@@ -275,18 +262,41 @@ CREATE INDEX IF NOT EXISTS idx_aichats_sessions_lookup
 CREATE INDEX IF NOT EXISTS idx_aichats_sessions_updated
   ON aichats_sessions(bridge_id, login_id, store_agent_id, updated_at_ms);
 
-CREATE TABLE IF NOT EXISTS aichats_transcript_messages (
+CREATE TABLE IF NOT EXISTS aichats_turns (
   bridge_id TEXT NOT NULL,
-  login_id TEXT NOT NULL,
   portal_id TEXT NOT NULL,
-  message_id TEXT NOT NULL,
-  event_id TEXT NOT NULL DEFAULT '',
+  portal_receiver TEXT NOT NULL,
+  turn_id TEXT NOT NULL,
+  context_epoch INTEGER NOT NULL DEFAULT 0,
+  sequence INTEGER NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'conversation',
+  source TEXT NOT NULL DEFAULT '',
+  role TEXT NOT NULL DEFAULT '',
   sender_id TEXT NOT NULL DEFAULT '',
-  metadata_json TEXT NOT NULL DEFAULT '{}',
+  include_in_history INTEGER NOT NULL DEFAULT 1,
+  turn_data_json TEXT NOT NULL DEFAULT '{}',
+  meta_json TEXT NOT NULL DEFAULT '{}',
   created_at_ms INTEGER NOT NULL DEFAULT 0,
   updated_at_ms INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (bridge_id, login_id, portal_id, message_id)
+  PRIMARY KEY (bridge_id, portal_id, portal_receiver, turn_id),
+  UNIQUE (bridge_id, portal_id, portal_receiver, context_epoch, sequence)
 );
 
-CREATE INDEX IF NOT EXISTS idx_aichats_transcript_portal
-  ON aichats_transcript_messages(bridge_id, login_id, portal_id, created_at_ms);
+CREATE INDEX IF NOT EXISTS idx_aichats_turns_history
+  ON aichats_turns(bridge_id, portal_id, portal_receiver, context_epoch, sequence DESC);
+
+CREATE INDEX IF NOT EXISTS idx_aichats_turns_role
+  ON aichats_turns(bridge_id, portal_id, portal_receiver, role, include_in_history, sequence DESC);
+
+CREATE TABLE IF NOT EXISTS aichats_turn_refs (
+  bridge_id TEXT NOT NULL,
+  portal_id TEXT NOT NULL,
+  portal_receiver TEXT NOT NULL,
+  ref_kind TEXT NOT NULL,
+  ref_value TEXT NOT NULL,
+  turn_id TEXT NOT NULL,
+  PRIMARY KEY (bridge_id, portal_id, portal_receiver, ref_kind, ref_value)
+);
+
+CREATE INDEX IF NOT EXISTS idx_aichats_turn_refs_turn
+  ON aichats_turn_refs(bridge_id, portal_id, portal_receiver, turn_id);

@@ -619,7 +619,7 @@ func (oc *AIClient) sendQueueRejectedStatus(ctx context.Context, portal *bridgev
 }
 
 // saveUserMessage persists a user message to the bridge mapping tables and
-// stores the full AI payload in the AI-owned transcript table.
+// mirrors the canonical turn into the AI-owned turn store.
 func (oc *AIClient) saveUserMessage(ctx context.Context, evt *event.Event, msg *database.Message) {
 	if evt != nil {
 		msg.MXID = evt.ID
@@ -632,7 +632,7 @@ func (oc *AIClient) saveUserMessage(ctx context.Context, evt *event.Event, msg *
 		Str("room_receiver", string(msg.Room.Receiver)).
 		Str("sender_id", string(msg.SenderID)).
 		Str("meta", transcriptMetaSummary(meta)).
-		Msg("Saving user message before transcript persistence")
+		Msg("Saving user message before turn persistence")
 	if _, err := oc.UserLogin.Bridge.GetGhostByID(ctx, msg.SenderID); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure user ghost before saving message")
 	}
@@ -644,7 +644,7 @@ func (oc *AIClient) saveUserMessage(ctx context.Context, evt *event.Event, msg *
 	portal, err := oc.UserLogin.Bridge.GetPortalByKey(ctx, msg.Room)
 	if err != nil || portal == nil {
 		if err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to resolve portal for AI transcript persistence")
+			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to resolve portal for AI turn persistence")
 		}
 		if err == nil {
 			oc.loggerForContext(ctx).Debug().
@@ -652,7 +652,7 @@ func (oc *AIClient) saveUserMessage(ctx context.Context, evt *event.Event, msg *
 				Str("event_id", msg.MXID.String()).
 				Str("room_id", string(msg.Room.ID)).
 				Str("room_receiver", string(msg.Room.Receiver)).
-				Msg("Failed to resolve portal for AI transcript persistence because portal lookup returned nil")
+				Msg("Failed to resolve portal for AI turn persistence because portal lookup returned nil")
 		}
 		return
 	}
@@ -662,9 +662,9 @@ func (oc *AIClient) saveUserMessage(ctx context.Context, evt *event.Event, msg *
 		Str("resolved_portal_id", string(portal.PortalKey.ID)).
 		Str("resolved_portal_receiver", string(portal.PortalKey.Receiver)).
 		Str("resolved_portal_mxid", portal.MXID.String()).
-		Msg("Resolved portal for AI transcript persistence")
-	if err := persistAITranscriptMessage(ctx, oc, portal, msg); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist AI transcript message")
+		Msg("Resolved portal for AI turn persistence")
+	if err := persistAIConversationMessage(ctx, portal, msg); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist AI conversation turn")
 	}
 }
 
@@ -1745,10 +1745,10 @@ func (oc *AIClient) updateAssistantGeneratedFiles(ctx context.Context, portal *b
 		if !ok || meta.Role != "assistant" || !meta.HasToolCalls {
 			continue
 		}
-		// Found the most recent assistant message with tool calls — persist AI-owned GeneratedFiles overlay.
-		transcriptMsg, stateErr := loadAITranscriptMessage(ctx, portal, msg.ID)
+		// Found the most recent assistant message with tool calls; update the canonical conversation turn.
+		transcriptMsg, stateErr := loadAIConversationMessage(ctx, portal, msg.ID, msg.MXID)
 		if stateErr != nil {
-			oc.Log().Warn().Err(stateErr).Str("msg_id", string(msg.ID)).Msg("Failed to load assistant transcript message")
+			oc.Log().Warn().Err(stateErr).Str("msg_id", string(msg.ID)).Msg("Failed to load assistant conversation turn")
 			return
 		}
 		if transcriptMsg == nil {
@@ -1760,10 +1760,10 @@ func (oc *AIClient) updateAssistantGeneratedFiles(ctx context.Context, portal *b
 			transcriptMsg.Metadata = transcriptMeta
 		}
 		transcriptMeta.GeneratedFiles = append(append([]GeneratedFileRef(nil), transcriptMeta.GeneratedFiles...), refs...)
-		if err := persistAITranscriptMessage(ctx, oc, portal, transcriptMsg); err != nil {
-			oc.Log().Warn().Err(err).Str("msg_id", string(msg.ID)).Msg("Failed to persist assistant transcript GeneratedFiles")
+		if err := persistAIConversationMessage(ctx, portal, transcriptMsg); err != nil {
+			oc.Log().Warn().Err(err).Str("msg_id", string(msg.ID)).Msg("Failed to persist assistant conversation GeneratedFiles")
 		} else {
-			oc.Log().Debug().Str("msg_id", string(msg.ID)).Int("files", len(refs)).Msg("Updated assistant transcript GeneratedFiles")
+			oc.Log().Debug().Str("msg_id", string(msg.ID)).Int("files", len(refs)).Msg("Updated assistant conversation GeneratedFiles")
 		}
 		return
 	}
@@ -1771,9 +1771,7 @@ func (oc *AIClient) updateAssistantGeneratedFiles(ctx context.Context, portal *b
 }
 
 type historyLoadResult struct {
-	rows      []*database.Message
 	hasVision bool
-	resetAt   int64
 	limit     int
 }
 

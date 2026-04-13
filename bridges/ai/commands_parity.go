@@ -44,6 +44,11 @@ func fnReset(ce *commands.Event) {
 	}
 
 	meta.SessionResetAt = time.Now().UnixMilli()
+	if err := advanceAIPortalContextEpoch(ce.Ctx, ce.Portal); err != nil {
+		client.log.Warn().Err(err).Stringer("portal", ce.Portal.PortalKey).Msg("Failed to advance AI context epoch during reset")
+		ce.Reply("%s", formatSystemAck("Failed to reset session."))
+		return
+	}
 	client.savePortalQuiet(ce.Ctx, ce.Portal, "session reset")
 	client.clearPendingQueue(ce.Ctx, ce.Portal.MXID)
 	client.cancelRoomRun(ce.Portal.MXID)

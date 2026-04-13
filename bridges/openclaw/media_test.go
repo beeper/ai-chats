@@ -163,6 +163,22 @@ func TestConvertHistoryToCanonicalUIMetadata(t *testing.T) {
 	}
 }
 
+func TestConvertHistoryToCanonicalUIDoesNotInventTurnID(t *testing.T) {
+	state := &openClawPortalState{
+		OpenClawSessionID:  "sess-1",
+		OpenClawSessionKey: "agent:main:matrix-dm",
+		Model:              "gpt-5",
+	}
+	_, metadata := convertHistoryToCanonicalUI(map[string]any{
+		"role":    "assistant",
+		"id":      "message-1",
+		"content": []any{map[string]any{"type": "text", "text": "hello"}},
+	}, "assistant", state)
+	if value, ok := metadata["turn_id"]; ok && strings.TrimSpace(stringValue(value)) != "" {
+		t.Fatalf("expected empty turn_id, got %#v", value)
+	}
+}
+
 func TestBuildOpenClawHistoryMessageMetadataIncludesToolCalls(t *testing.T) {
 	state := &openClawPortalState{
 		OpenClawSessionID:  "sess-1",

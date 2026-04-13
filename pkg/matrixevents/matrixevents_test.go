@@ -61,7 +61,7 @@ func TestBuildStreamEventTxnID(t *testing.T) {
 	if got := BuildStreamEventTxnID("turn1", 5); got != "ai_stream_turn1_5" {
 		t.Fatalf("unexpected txn id: %q", got)
 	}
-	if got := BuildStreamEventTxnID("", 5); got != "ai_stream_5" {
+	if got := BuildStreamEventTxnID("", 5); got != "" {
 		t.Fatalf("unexpected txn id: %q", got)
 	}
 }

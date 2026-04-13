@@ -91,9 +91,8 @@ func (oc *AIClient) noteStreamingPersistenceSideEffects(ctx context.Context, por
 }
 
 // saveAssistantMessage saves the completed assistant message to the database.
-// When sendViaPortal was used (state.turn.NetworkMessageID() is set), the DB row already exists
-// from SendConvertedMessage — this function updates the metadata with full streaming results.
-// Otherwise, it falls back to inserting a new row.
+// The bridge message row remains transport-only; the canonical assistant turn
+// is mirrored into the AI-owned turn store.
 func (oc *AIClient) saveAssistantMessage(
 	ctx context.Context,
 	log zerolog.Logger,
@@ -118,7 +117,7 @@ func (oc *AIClient) saveAssistantMessage(
 	}
 
 	// Keep the bridgev2 message row as a mapping row only. Full assistant state
-	// belongs in AI-owned transcript tables.
+	// belongs in the AI-owned turn store.
 	sdk.UpsertAssistantMessage(ctx, sdk.UpsertAssistantMessageParams{
 		Login:  oc.UserLogin,
 		Portal: portal,
@@ -138,7 +137,7 @@ func (oc *AIClient) saveAssistantMessage(
 		messageID = sdk.MatrixMessageID(initialEventID)
 	}
 	if messageID != "" && portal != nil {
-		transcriptMsg := &database.Message{
+		turnMsg := &database.Message{
 			ID:   messageID,
 			MXID: initialEventID,
 			Room: portal.PortalKey,
@@ -151,15 +150,15 @@ func (oc *AIClient) saveAssistantMessage(
 			Metadata: cloneMessageMetadata(fullMeta),
 		}
 		if state.completedAtMs == 0 {
-			transcriptMsg.Timestamp = time.Now()
+			turnMsg.Timestamp = time.Now()
 		} else {
-			transcriptMsg.Timestamp = time.UnixMilli(state.completedAtMs)
-			if transcriptMsg.Timestamp.IsZero() {
-				transcriptMsg.Timestamp = time.Now()
+			turnMsg.Timestamp = time.UnixMilli(state.completedAtMs)
+			if turnMsg.Timestamp.IsZero() {
+				turnMsg.Timestamp = time.Now()
 			}
 		}
-		if err := persistAITranscriptMessage(ctx, oc, portal, transcriptMsg); err != nil {
-			log.Warn().Err(err).Str("msg_id", string(messageID)).Msg("Failed to persist assistant transcript message")
+		if err := persistAIConversationMessage(ctx, portal, turnMsg); err != nil {
+			log.Warn().Err(err).Str("msg_id", string(messageID)).Msg("Failed to persist assistant turn")
 		}
 	}
 	oc.noteStreamingPersistenceSideEffects(ctx, portal, state, meta)

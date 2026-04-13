@@ -606,7 +606,8 @@ func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, por
 	}
 	turnID := strings.TrimSpace(turnStart.Turn.ID)
 	if turnID == "" {
-		turnID = "turn_unknown"
+		turn.EndWithError("Codex turn/start response missing turn id")
+		return
 	}
 	cc.markMessageSendSuccess(ctx, portal, sourceEvent, streamState)
 
@@ -975,7 +976,6 @@ func codexTurnCompletedStatus(evt codexNotif, threadID, turnID string) (status s
 	for _, pair := range [][2]string{
 		{strings.TrimSpace(p.ThreadID), threadID},
 		{strings.TrimSpace(p.TurnID), turnID},
-		{strings.TrimSpace(p.Turn.ID), turnID},
 	} {
 		if pair[0] != "" && pair[0] != pair[1] {
 			return "", "", false
@@ -1373,9 +1373,6 @@ func codexExtractThreadTurn(params json.RawMessage) (threadID, turnID string, ok
 	}
 	threadID = strings.TrimSpace(p.ThreadID)
 	turnID = strings.TrimSpace(p.TurnID)
-	if turnID == "" && p.Turn != nil {
-		turnID = strings.TrimSpace(p.Turn.ID)
-	}
 	return threadID, turnID, threadID != "" && turnID != ""
 }
 

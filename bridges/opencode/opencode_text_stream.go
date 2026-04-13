@@ -15,9 +15,6 @@ func opencodeMessageStreamTurnID(sessionID, messageID string) string {
 	if sessionID != "" && messageID != "" {
 		return "opencode-msg-" + sessionID + "-" + messageID
 	}
-	if messageID != "" {
-		return "opencode-msg-" + messageID
-	}
 	return ""
 }
 
@@ -31,13 +28,9 @@ func opencodePartStreamID(part api.Part, kind string) string {
 	return "text-" + part.ID
 }
 
-// partTurnID returns the stream turn ID for a part, falling back to the part ID.
+// partTurnID returns the stream turn ID for a part.
 func partTurnID(part api.Part) string {
-	turnID := opencodeMessageStreamTurnID(part.SessionID, part.MessageID)
-	if turnID == "" {
-		return "opencode-part-" + part.ID
-	}
-	return turnID
+	return opencodeMessageStreamTurnID(part.SessionID, part.MessageID)
 }
 
 func (m *OpenCodeManager) emitTextStreamDeltaForKind(ctx context.Context, inst *openCodeInstance, portal *bridgev2.Portal, part api.Part, delta, kind string) {

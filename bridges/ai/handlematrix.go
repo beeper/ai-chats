@@ -354,9 +354,9 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 		msgMeta = &MessageMetadata{}
 		edit.EditTarget.Metadata = msgMeta
 	}
-	transcriptMsg, err := loadAITranscriptMessage(ctx, portal, edit.EditTarget.ID)
+	transcriptMsg, err := loadAIConversationMessage(ctx, portal, edit.EditTarget.ID, edit.EditTarget.MXID)
 	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to load edited transcript message")
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to load edited conversation turn")
 	}
 	if transcriptMsg == nil {
 		transcriptMsg = cloneMessageForAIHistory(edit.EditTarget)
@@ -380,8 +380,8 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 	} else {
 		transcriptMeta.CanonicalTurnData = nil
 	}
-	if err := persistAITranscriptMessage(ctx, oc, portal, transcriptMsg); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist edited transcript message")
+	if err := persistAIConversationMessage(ctx, portal, transcriptMsg); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist edited conversation turn")
 	}
 	if edit.EditTarget != nil {
 		edit.EditTarget.Metadata = cloneMessageMetadata(transcriptMeta)

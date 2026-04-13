@@ -54,14 +54,14 @@ func TestEnsureSchemaFresh(t *testing.T) {
 		"aichats_managed_heartbeats",
 		"aichats_managed_heartbeat_run_keys",
 		"aichats_system_events",
-		"aichats_internal_messages",
 		"aichats_login_state",
 		"aichats_login_config",
 		"aichats_custom_agents",
 		"aichats_portal_state",
 		"aichats_sessions",
 		"aichats_tool_approval_rules",
-		"aichats_transcript_messages",
+		"aichats_turns",
+		"aichats_turn_refs",
 	} {
 		exists, err := bridgeDB.TableExists(ctx, table)
 		if err != nil {

@@ -447,9 +447,8 @@ func ApplyAgentRemoteBridgeInfo(content *event.BridgeEventContent, protocolID st
 	content.BeeperRoomTypeV2 = NormalizeAIRoomTypeV2(roomType, aiKind)
 }
 
-// findExistingMessage performs a two-phase message lookup: first by network
-// message ID (with receiver resolution), then by Matrix event ID as fallback.
-// Returns the message (if found) and separate errors from each lookup phase.
+// findPortalMessageByID performs a strict lookup by network message ID and
+// part ID within the current portal.
 func findPortalMessageByID(
 	ctx context.Context,
 	login *bridgev2.UserLogin,
@@ -491,22 +490,6 @@ func findPortalMessageByMXID(
 	return msg, nil
 }
 
-func findExistingMessage(
-	ctx context.Context,
-	login *bridgev2.UserLogin,
-	portal *bridgev2.Portal,
-	networkMessageID networkid.MessageID,
-	initialEventID id.EventID,
-) (msg *database.Message, errByID error, errByMXID error) {
-	if networkMessageID != "" {
-		msg, errByID = findPortalMessageByID(ctx, login, portal, networkMessageID, networkid.PartID("0"))
-	}
-	if msg == nil && initialEventID != "" {
-		msg, errByMXID = findPortalMessageByMXID(ctx, login, portal, initialEventID)
-	}
-	return msg, errByID, errByMXID
-}
-
 // UpsertAssistantMessageParams holds parameters for UpsertAssistantMessage.
 type UpsertAssistantMessageParams struct {
 	Login            *bridgev2.UserLogin
@@ -519,38 +502,31 @@ type UpsertAssistantMessageParams struct {
 }
 
 // UpsertAssistantMessage updates an existing message's metadata or inserts a new one.
-// If NetworkMessageID is set, tries to find and update the existing row first.
-// Falls back to inserting a new row keyed by InitialEventID.
+// The canonical row is keyed by NetworkMessageID; InitialEventID is only stored as MXID.
 func UpsertAssistantMessage(ctx context.Context, p UpsertAssistantMessageParams) {
-	if p.Login == nil || p.Portal == nil {
+	if p.Login == nil || p.Portal == nil || p.NetworkMessageID == "" || p.InitialEventID == "" {
 		return
 	}
 	db := p.Login.Bridge.DB.Message
 
-	if p.NetworkMessageID != "" {
-		existing, errByID, errByMXID := findExistingMessage(ctx, p.Login, p.Portal, p.NetworkMessageID, p.InitialEventID)
-		if existing != nil {
-			existing.Metadata = p.Metadata
-			if err := db.Update(ctx, existing); err != nil {
-				p.Logger.Warn().Err(err).Str("msg_id", string(existing.ID)).Msg("Failed to update assistant message metadata")
-			} else {
-				p.Logger.Debug().Str("msg_id", string(existing.ID)).Msg("Updated assistant message metadata")
-			}
-			return
-		}
-		p.Logger.Warn().
-			AnErr("err_by_id", errByID).
-			AnErr("err_by_mxid", errByMXID).
-			Stringer("mxid", p.InitialEventID).
-			Str("msg_id", string(p.NetworkMessageID)).
-			Msg("Could not find existing DB row for update, falling back to insert")
-	}
-
-	if p.InitialEventID == "" {
+	existing, err := findPortalMessageByID(ctx, p.Login, p.Portal, p.NetworkMessageID, networkid.PartID("0"))
+	if err != nil {
+		p.Logger.Warn().Err(err).Str("msg_id", string(p.NetworkMessageID)).Msg("Failed to look up assistant message metadata")
 		return
 	}
+	if existing != nil {
+		existing.Metadata = p.Metadata
+		if err := db.Update(ctx, existing); err != nil {
+			p.Logger.Warn().Err(err).Str("msg_id", string(existing.ID)).Msg("Failed to update assistant message metadata")
+		} else {
+			p.Logger.Debug().Str("msg_id", string(existing.ID)).Msg("Updated assistant message metadata")
+		}
+		return
+	}
+
 	assistantMsg := &database.Message{
-		ID:        MatrixMessageID(p.InitialEventID),
+		ID:        p.NetworkMessageID,
+		PartID:    networkid.PartID("0"),
 		Room:      p.Portal.PortalKey,
 		SenderID:  p.SenderID,
 		MXID:      p.InitialEventID,

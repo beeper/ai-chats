@@ -149,7 +149,7 @@ func newTurn(ctx context.Context, conv *Conversation, agent *Agent, source *Sour
 		ctx = context.Background()
 	}
 	turnCtx, cancel := context.WithCancel(ctx)
-	turnID := uuid.NewString()
+	turnID := NewTurnID()
 	state := &streamui.UIState{TurnID: turnID}
 	state.InitMaps()
 

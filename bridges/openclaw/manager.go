@@ -1209,9 +1209,6 @@ func (m *openClawManager) convertHistoryMessage(ctx context.Context, portal *bri
 	if len(uiParts) == 0 && strings.TrimSpace(text) == "" && len(attachmentBlocks) == 0 {
 		return nil, bridgev2.EventSender{}, ""
 	}
-	if turnID := strings.TrimSpace(stringValue(uiMetadata["turn_id"])); turnID == "" {
-		uiMetadata["turn_id"] = string(messageID)
-	}
 	parts := make([]*bridgev2.ConvertedMessagePart, 0, 1+len(attachmentBlocks))
 	if strings.TrimSpace(text) != "" {
 		parts = append(parts, &bridgev2.ConvertedMessagePart{
@@ -1264,8 +1261,9 @@ func (m *openClawManager) convertHistoryMessage(ctx context.Context, portal *bri
 	if role == "user" {
 		uiRole = "user"
 	}
+	uiTurnID := strings.TrimSpace(stringValue(uiMetadata["turn_id"]))
 	uiMessage := msgconv.BuildUIMessage(msgconv.UIMessageParams{
-		TurnID:   string(messageID),
+		TurnID:   uiTurnID,
 		Role:     uiRole,
 		Metadata: uiMetadata,
 		Parts:    uiParts,
@@ -1862,7 +1860,10 @@ func (m *openClawManager) handleChatEvent(ctx context.Context, payload gatewayCh
 	}
 	isTerminal := openClawIsTerminalChatState(payload.State)
 	agentID := resolveOpenClawAgentID(state, payload.SessionKey, payload.Message)
-	turnID := stringutil.TrimDefault(payload.RunID, "openclaw:"+payload.SessionKey)
+	turnID := strings.TrimSpace(payload.RunID)
+	if turnID == "" {
+		return
+	}
 	messageMetadata := openClawStreamMessageMetadata(state, payload, agentID, turnID)
 	if payload.State == "delta" {
 		m.ensureStreamStart(ctx, portal, state, turnID, payload.RunID, agentID, eventTS, messageMetadata, &payload)
@@ -2080,7 +2081,13 @@ func (m *openClawManager) handleAgentEvent(ctx context.Context, payload gatewayA
 		return
 	}
 	agentID := resolveOpenClawAgentID(state, payload.SessionKey, payload.Data)
-	turnID := stringutil.TrimDefault(payload.RunID, stringutil.TrimDefault(payload.SourceRunID, "openclaw:"+payload.SessionKey))
+	turnID := strings.TrimSpace(payload.RunID)
+	if turnID == "" {
+		turnID = strings.TrimSpace(payload.SourceRunID)
+	}
+	if turnID == "" {
+		return
+	}
 	agentMetadata := msgconv.BuildUIMessageMetadata(msgconv.UIMessageMetadataParams{
 		TurnID:       turnID,
 		AgentID:      agentID,
@@ -2371,7 +2378,7 @@ func (m *openClawManager) attachApprovalContext(approvalID, sessionKey, agentID,
 
 func (m *openClawManager) startRunRecovery(ctx context.Context, portal *bridgev2.Portal, turnID, runID, agentID string) {
 	runID = strings.TrimSpace(runID)
-	if runID == "" || portal == nil || portal.MXID == "" {
+	if runID == "" || strings.TrimSpace(turnID) == "" || portal == nil || portal.MXID == "" {
 		return
 	}
 	if !m.trackWaitingRun(runID) {
@@ -2468,7 +2475,7 @@ func (m *openClawManager) recoverRunText(ctx context.Context, sessionKey, turnID
 			}
 		}
 		if len(filtered) == 0 {
-			filtered = history.Messages
+			return ""
 		}
 	}
 	for i := len(filtered) - 1; i >= 0; i-- {
@@ -2613,10 +2620,7 @@ func openClawIsTerminalChatState(state string) bool {
 func historyMessageTurnID(message map[string]any) string {
 	return strings.TrimSpace(stringutil.TrimDefault(
 		openClawMessageStringField(message, "turnId", "turn_id"),
-		stringutil.TrimDefault(
-			openClawMessageStringField(message, "runId", "run_id"),
-			openClawMessageStringField(message, "id"),
-		),
+		openClawMessageStringField(message, "runId", "run_id"),
 	))
 }
 
@@ -2674,7 +2678,7 @@ func convertHistoryToCanonicalUI(message map[string]any, role string, state *ope
 	agentID := resolveOpenClawAgentID(state, stringutil.TrimDefault(state.OpenClawSessionKey, stringValue(message["sessionKey"])), message)
 	turnID := strings.TrimSpace(stringutil.TrimDefault(
 		stringValue(message["turnId"]),
-		stringutil.TrimDefault(stringValue(message["runId"]), stringValue(message["id"])),
+		stringValue(message["runId"]),
 	))
 	params := msgconv.UIMessageMetadataParams{
 		TurnID:       turnID,
@@ -2698,7 +2702,7 @@ func openClawHistoryUIParts(message map[string]any, role string) []map[string]an
 	state := &streamui.UIState{
 		TurnID: stringutil.TrimDefault(
 			stringValue(message["turnId"]),
-			stringutil.TrimDefault(stringValue(message["runId"]), "history"),
+			stringValue(message["runId"]),
 		),
 	}
 	openClawApplyHistoryChunks(state, message, role)

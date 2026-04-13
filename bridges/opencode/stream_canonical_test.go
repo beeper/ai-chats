@@ -1,6 +1,10 @@
 package opencode
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/beeper/agentremote/bridges/opencode/api"
+)
 
 func TestCurrentUIMessageFallbackIncludesModelAndUsage(t *testing.T) {
 	oc := &OpenCodeClient{}
@@ -31,5 +35,27 @@ func TestCurrentUIMessageFallbackIncludesModelAndUsage(t *testing.T) {
 	}
 	if usage["total_tokens"] != int64(21) {
 		t.Fatalf("expected total_tokens 21, got %#v", usage["total_tokens"])
+	}
+}
+
+func TestOpenCodeMessageStreamTurnIDRequiresSessionAndMessage(t *testing.T) {
+	if got := opencodeMessageStreamTurnID("session-1", "message-1"); got != "opencode-msg-session-1-message-1" {
+		t.Fatalf("unexpected turn id: %q", got)
+	}
+	if got := opencodeMessageStreamTurnID("", "message-1"); got != "" {
+		t.Fatalf("expected empty turn id when session is missing, got %q", got)
+	}
+	if got := opencodeMessageStreamTurnID("session-1", ""); got != "" {
+		t.Fatalf("expected empty turn id when message is missing, got %q", got)
+	}
+}
+
+func TestPartTurnIDRequiresSessionAndMessage(t *testing.T) {
+	part := api.Part{SessionID: "session-1", MessageID: "message-1"}
+	if got := partTurnID(part); got != "opencode-msg-session-1-message-1" {
+		t.Fatalf("unexpected part turn id: %q", got)
+	}
+	if got := partTurnID(api.Part{MessageID: "message-1"}); got != "" {
+		t.Fatalf("expected empty part turn id when session is missing, got %q", got)
 	}
 }

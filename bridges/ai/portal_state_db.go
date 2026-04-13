@@ -33,6 +33,12 @@ type aiPersistedPortalState struct {
 	TypingIntervalSeconds   *int             `json:"typing_interval_seconds,omitempty"`
 }
 
+type aiPersistedPortalRecord struct {
+	State            *aiPersistedPortalState
+	ContextEpoch     int64
+	NextTurnSequence int64
+}
+
 func clonePortalStateMap(src map[string]any) map[string]any {
 	if src == nil {
 		return nil
@@ -108,7 +114,18 @@ func applyPersistedPortalState(meta *PortalMetadata, state *aiPersistedPortalSta
 }
 
 func loadAIPortalState(ctx context.Context, portal *bridgev2.Portal) (*aiPersistedPortalState, error) {
-	scope := portalScopeForPortal(portal)
+	record, err := loadAIPortalRecord(ctx, portal)
+	if err != nil || record == nil {
+		return nil, err
+	}
+	return record.State, nil
+}
+
+func loadAIPortalRecord(ctx context.Context, portal *bridgev2.Portal) (*aiPersistedPortalRecord, error) {
+	return loadAIPortalRecordByScope(ctx, portalScopeForPortal(portal))
+}
+
+func loadAIPortalRecordByScope(ctx context.Context, scope *portalScope) (*aiPersistedPortalRecord, error) {
 	if scope == nil {
 		return nil, nil
 	}
@@ -116,11 +133,13 @@ func loadAIPortalState(ctx context.Context, portal *bridgev2.Portal) (*aiPersist
 		ctx = context.Background()
 	}
 	var raw string
+	var contextEpoch int64
+	var nextTurnSequence int64
 	err := scope.db.QueryRow(ctx, `
-		SELECT state_json
+		SELECT state_json, context_epoch, next_turn_sequence
 		FROM `+aiPortalStateTable+`
-		WHERE bridge_id=$1 AND login_id=$2 AND portal_id=$3
-	`, scope.bridgeID, scope.loginID, scope.portalID).Scan(&raw)
+		WHERE bridge_id=$1 AND portal_id=$2 AND portal_receiver=$3
+	`, scope.bridgeID, scope.portalID, scope.portalReceiver).Scan(&raw, &contextEpoch, &nextTurnSequence)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -128,13 +147,41 @@ func loadAIPortalState(ctx context.Context, portal *bridgev2.Portal) (*aiPersist
 		return nil, err
 	}
 	if strings.TrimSpace(raw) == "" {
-		return nil, nil
+		return &aiPersistedPortalRecord{
+			ContextEpoch:     contextEpoch,
+			NextTurnSequence: nextTurnSequence,
+		}, nil
 	}
 	var state aiPersistedPortalState
 	if err = json.Unmarshal([]byte(raw), &state); err != nil {
 		return nil, err
 	}
-	return &state, nil
+	return &aiPersistedPortalRecord{
+		State:            &state,
+		ContextEpoch:     contextEpoch,
+		NextTurnSequence: nextTurnSequence,
+	}, nil
+}
+
+func advanceAIPortalContextEpoch(ctx context.Context, portal *bridgev2.Portal) error {
+	scope := portalScopeForPortal(portal)
+	if scope == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	nowMs := time.Now().UnixMilli()
+	_, err := scope.db.Exec(ctx, `
+		INSERT INTO `+aiPortalStateTable+` (
+			bridge_id, portal_id, portal_receiver, state_json, context_epoch, next_turn_sequence, updated_at_ms
+		) VALUES ($1, $2, $3, '{}', 1, 0, $4)
+		ON CONFLICT (bridge_id, portal_id, portal_receiver) DO UPDATE SET
+			context_epoch=`+aiPortalStateTable+`.context_epoch + 1,
+			next_turn_sequence=0,
+			updated_at_ms=excluded.updated_at_ms
+	`, scope.bridgeID, scope.portalID, scope.portalReceiver, nowMs)
+	return err
 }
 
 func saveAIPortalState(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) error {
@@ -151,12 +198,12 @@ func saveAIPortalState(ctx context.Context, portal *bridgev2.Portal, meta *Porta
 	}
 	_, err = scope.db.Exec(ctx, `
 		INSERT INTO `+aiPortalStateTable+` (
-			bridge_id, login_id, portal_id, state_json, updated_at_ms
-		) VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (bridge_id, login_id, portal_id) DO UPDATE SET
+			bridge_id, portal_id, portal_receiver, state_json, context_epoch, next_turn_sequence, updated_at_ms
+		) VALUES ($1, $2, $3, $4, 0, 0, $5)
+		ON CONFLICT (bridge_id, portal_id, portal_receiver) DO UPDATE SET
 			state_json=excluded.state_json,
 			updated_at_ms=excluded.updated_at_ms
-	`, scope.bridgeID, scope.loginID, scope.portalID, string(payload), time.Now().UnixMilli())
+	`, scope.bridgeID, scope.portalID, scope.portalReceiver, string(payload), time.Now().UnixMilli())
 	return err
 }
 

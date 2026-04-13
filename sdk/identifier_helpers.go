@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"maunium.net/go/mautrix/bridgev2"
@@ -56,9 +54,9 @@ func NextUserLoginID(user *bridgev2.User, prefix string) networkid.UserLoginID {
 	return MakeUserLoginID(prefix, user.MXID, len(used)+1)
 }
 
-// NewTurnID generates a new unique, sortable turn ID using a timestamp-based format.
+// NewTurnID generates a new opaque canonical turn ID.
 func NewTurnID() string {
-	return "turn_" + strings.ReplaceAll(time.Now().UTC().Format("20060102T150405.000000000"), ".", "")
+	return uuid.NewString()
 }
 
 func SingleLoginFlow(enabled bool, flow bridgev2.LoginFlow) []bridgev2.LoginFlow {

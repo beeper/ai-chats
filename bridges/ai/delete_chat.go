@@ -97,15 +97,11 @@ func (oc *AIClient) deletePersistedSessionArtifacts(ctx context.Context, portal 
 			bridgeID, loginID, sessionKey,
 		)
 		execDelete(ctx, db, oc.Log(),
-			`DELETE FROM `+aiPortalStateTable+` WHERE bridge_id=$1 AND login_id=$2 AND portal_id=$3`,
-			bridgeID, loginID, strings.TrimSpace(string(portal.PortalKey.ID)),
-		)
-		execDelete(ctx, db, oc.Log(),
-			`DELETE FROM `+aiTranscriptTable+` WHERE bridge_id=$1 AND login_id=$2 AND portal_id=$3`,
-			bridgeID, loginID, strings.TrimSpace(string(portal.PortalKey.ID)),
+			`DELETE FROM `+aiPortalStateTable+` WHERE bridge_id=$1 AND portal_id=$2 AND portal_receiver=$3`,
+			bridgeID, strings.TrimSpace(string(portal.PortalKey.ID)), strings.TrimSpace(string(portal.PortalKey.Receiver)),
 		)
 	}
-	deleteInternalPromptsForPortal(ctx, portal)
+	deleteAITurnsForPortal(ctx, portal)
 
 	clearSystemEventsForSession(systemEventsOwnerKey(oc), sessionKey)
 }

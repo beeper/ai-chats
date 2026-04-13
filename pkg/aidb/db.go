@@ -24,8 +24,7 @@ func NewChild(base *dbutil.Database, log dbutil.DatabaseLogger) *dbutil.Database
 	return base.Child("", dbutil.UpgradeTable{}, log)
 }
 
-// EnsureSchema applies the canonical AI Chats schema. This bridge has never been
-// released, so there is no migration or legacy compatibility path.
+// EnsureSchema applies the canonical AI Chats schema.
 func EnsureSchema(ctx context.Context, db *dbutil.Database) error {
 	if db == nil {
 		return errors.New("AI Chats database not initialized")

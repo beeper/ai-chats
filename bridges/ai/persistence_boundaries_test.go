@@ -43,7 +43,7 @@ func newTranscriptTestPortal(t *testing.T, client *AIClient, portalID string) *b
 	return portal
 }
 
-func TestSaveUserMessage_PersistsTranscriptOutsideBridgeMetadata(t *testing.T) {
+func TestSaveUserMessage_PersistsConversationTurnOutsideBridgeMetadata(t *testing.T) {
 	ctx := context.Background()
 	client := newDBBackedTestAIClient(t, ProviderOpenAI)
 	client.UserLogin.Client = client
@@ -61,18 +61,25 @@ func TestSaveUserMessage_PersistsTranscriptOutsideBridgeMetadata(t *testing.T) {
 		portalKey: portal,
 	})
 
+	userMeta := &MessageMetadata{
+		BaseMessageMetadata: sdk.BaseMessageMetadata{
+			Role: "user",
+			Body: "hello world",
+		},
+	}
+	setCanonicalTurnDataFromPromptMessages(userMeta, []PromptMessage{{
+		Role: PromptRoleUser,
+		Blocks: []PromptBlock{{
+			Type: PromptBlockText,
+			Text: "hello world",
+		}},
+	}})
 	msg := &database.Message{
 		ID:        "msg-1",
 		Room:      portalKey,
 		SenderID:  humanUserID(client.UserLogin.ID),
 		Timestamp: time.UnixMilli(12345),
-		Metadata: &MessageMetadata{
-			BaseMessageMetadata: sdk.BaseMessageMetadata{
-				Role:              "user",
-				Body:              "hello world",
-				CanonicalTurnData: map[string]any{"body": "hello world"},
-			},
-		},
+		Metadata:  userMeta,
 	}
 	evt := &event.Event{ID: "$event-1"}
 
@@ -93,22 +100,26 @@ func TestSaveUserMessage_PersistsTranscriptOutsideBridgeMetadata(t *testing.T) {
 		t.Fatalf("expected bridge message metadata to stay transport-only, got %#v", bridgeMeta)
 	}
 
-	transcriptMsg, err := loadAITranscriptMessage(ctx, portal, msg.ID)
+	transcriptMsg, err := loadAIConversationMessage(ctx, portal, msg.ID, evt.ID)
 	if err != nil {
-		t.Fatalf("load transcript message: %v", err)
+		t.Fatalf("load persisted conversation message: %v", err)
 	}
 	if transcriptMsg == nil {
-		t.Fatalf("expected transcript message")
+		t.Fatalf("expected persisted conversation message")
 	}
 	transcriptMeta, ok := transcriptMsg.Metadata.(*MessageMetadata)
 	if !ok || transcriptMeta == nil {
 		t.Fatalf("expected transcript metadata, got %#v", transcriptMsg.Metadata)
 	}
 	if transcriptMeta.Role != "user" || transcriptMeta.Body != "hello world" {
-		t.Fatalf("expected transcript metadata to keep user payload, got %#v", transcriptMeta)
+		t.Fatalf("expected conversation metadata to keep user payload, got %#v", transcriptMeta)
 	}
-	if got := transcriptMeta.CanonicalTurnData["body"]; got != "hello world" {
-		t.Fatalf("expected canonical turn data to persist, got %#v", transcriptMeta.CanonicalTurnData)
+	td, ok := canonicalTurnData(transcriptMeta)
+	if !ok {
+		t.Fatalf("expected canonical turn data to decode, got %#v", transcriptMeta.CanonicalTurnData)
+	}
+	if td.Role != "user" || sdk.TurnText(td) != "hello world" {
+		t.Fatalf("expected canonical turn data to preserve visible user text, got %#v", td)
 	}
 }
 
@@ -160,8 +171,8 @@ func TestBuildBaseContext_ReplaysTranscriptHistoryFromFreshPortalLoad(t *testing
 		},
 		Timestamp: time.UnixMilli(2000),
 	}
-	if err := persistAITranscriptMessage(ctx, client, portal, assistantMsg); err != nil {
-		t.Fatalf("persist assistant transcript: %v", err)
+	if err := persistAIConversationMessage(ctx, portal, assistantMsg); err != nil {
+		t.Fatalf("persist assistant turn: %v", err)
 	}
 
 	setUnexportedField(client.UserLogin.Bridge, "portalsByKey", map[networkid.PortalKey]*bridgev2.Portal{})
@@ -191,45 +202,19 @@ func TestBuildBaseContext_ReplaysTranscriptHistoryFromFreshPortalLoad(t *testing
 	}
 }
 
-func TestPortalScopeForPortal_UsesPersistedBridgeIDFallback(t *testing.T) {
+func TestPortalScopeForPortal_StrictlyRequiresCanonicalBridgeID(t *testing.T) {
 	ctx := context.Background()
 	client := newDBBackedTestAIClient(t, ProviderOpenAI)
 	client.UserLogin.Client = client
 
-	portal := newTranscriptTestPortal(t, client, "portal-scope-fallback")
+	portal := newTranscriptTestPortal(t, client, "portal-scope-strict")
 	portal.Bridge.DB.BridgeID = ""
 
-	msg := &database.Message{
-		ID:       networkid.MessageID("assistant-fallback"),
-		MXID:     id.EventID("$assistant-fallback"),
-		Room:     portal.PortalKey,
-		SenderID: modelUserID("openai/gpt-4.1"),
-		Metadata: &MessageMetadata{
-			BaseMessageMetadata: sdk.BaseMessageMetadata{
-				Role: "assistant",
-				Body: "fallback works",
-				CanonicalTurnData: sdk.TurnData{
-					ID:   "turn-fallback",
-					Role: "assistant",
-					Parts: []sdk.TurnPart{{
-						Type: "text",
-						Text: "fallback works",
-					}},
-				}.ToMap(),
-			},
-		},
-		Timestamp: time.UnixMilli(3000),
+	if scope := portalScopeForPortal(portal); scope != nil {
+		t.Fatalf("expected nil portal scope when canonical bridge id is missing, got %#v", scope)
 	}
-	if err := persistAITranscriptMessage(ctx, client, portal, msg); err != nil {
-		t.Fatalf("persist transcript with fallback bridge id: %v", err)
-	}
-
-	transcriptMsg, err := loadAITranscriptMessage(ctx, portal, msg.ID)
-	if err != nil {
-		t.Fatalf("load transcript with fallback bridge id: %v", err)
-	}
-	if transcriptMsg == nil {
-		t.Fatalf("expected transcript message with fallback bridge id")
+	if err := saveAIPortalState(ctx, portal, portalMeta(portal)); err != nil {
+		t.Fatalf("strict portal state save should no-op without error, got %v", err)
 	}
 }
 
@@ -272,12 +257,12 @@ func TestHandleMatrixMessageRemove_DeletesTranscriptState(t *testing.T) {
 		t.Fatalf("HandleMatrixMessageRemove returned error: %v", err)
 	}
 
-	transcriptMsg, err := loadAITranscriptMessage(ctx, portal, msg.ID)
+	transcriptMsg, err := loadAIConversationMessage(ctx, portal, msg.ID, evt.ID)
 	if err != nil {
-		t.Fatalf("load transcript after delete: %v", err)
+		t.Fatalf("load turn after delete: %v", err)
 	}
 	if transcriptMsg != nil {
-		t.Fatalf("expected transcript message to be deleted, got %#v", transcriptMsg)
+		t.Fatalf("expected turn to be deleted, got %#v", transcriptMsg)
 	}
 
 	history, err := client.getAIHistoryMessages(ctx, portal, 10)
@@ -321,5 +306,77 @@ func TestSaveAIPortalState_DoesNotPersistBridgeRoomName(t *testing.T) {
 	}
 	if portal.Name != "Bridge Owned Name" {
 		t.Fatalf("expected bridge-owned room name to remain on the portal, got %q", portal.Name)
+	}
+}
+
+func TestAdvanceAIPortalContextEpoch_HidesPreviousHistory(t *testing.T) {
+	ctx := context.Background()
+	client := newDBBackedTestAIClient(t, ProviderOpenAI)
+	client.UserLogin.Client = client
+
+	portal := newTranscriptTestPortal(t, client, "epoch-reset")
+	meta := portalMeta(portal)
+	if meta == nil {
+		t.Fatal("expected portal metadata")
+	}
+
+	userMeta := &MessageMetadata{
+		BaseMessageMetadata: sdk.BaseMessageMetadata{Role: "user", Body: "before reset"},
+	}
+	setCanonicalTurnDataFromPromptMessages(userMeta, []PromptMessage{{
+		Role: PromptRoleUser,
+		Blocks: []PromptBlock{{
+			Type: PromptBlockText,
+			Text: "before reset",
+		}},
+	}})
+	userMsg := &database.Message{
+		ID:        sdk.MatrixMessageID(id.EventID("$before-reset")),
+		MXID:      id.EventID("$before-reset"),
+		Room:      portal.PortalKey,
+		SenderID:  humanUserID(client.UserLogin.ID),
+		Metadata:  userMeta,
+		Timestamp: time.UnixMilli(1000),
+	}
+	client.saveUserMessage(ctx, &event.Event{ID: userMsg.MXID}, userMsg)
+
+	record, err := loadAIPortalRecord(ctx, portal)
+	if err != nil {
+		t.Fatalf("load portal record before reset: %v", err)
+	}
+	if record == nil || record.ContextEpoch != 0 {
+		t.Fatalf("expected initial context epoch 0, got %#v", record)
+	}
+
+	meta.SessionResetAt = time.Now().UnixMilli()
+	if err := advanceAIPortalContextEpoch(ctx, portal); err != nil {
+		t.Fatalf("advance context epoch: %v", err)
+	}
+	if err := saveAIPortalState(ctx, portal, meta); err != nil {
+		t.Fatalf("save portal state after reset: %v", err)
+	}
+
+	record, err = loadAIPortalRecord(ctx, portal)
+	if err != nil {
+		t.Fatalf("load portal record after reset: %v", err)
+	}
+	if record == nil || record.ContextEpoch != 1 || record.NextTurnSequence != 0 {
+		t.Fatalf("expected reset portal record, got %#v", record)
+	}
+
+	history, err := client.getAIHistoryMessages(ctx, portal, 10)
+	if err != nil {
+		t.Fatalf("load history after reset: %v", err)
+	}
+	if len(history) != 0 {
+		t.Fatalf("expected no visible history in new epoch, got %d entries", len(history))
+	}
+
+	turns, err := loadAIPromptHistoryTurns(ctx, portal, 10, historyReplayOptions{})
+	if err != nil {
+		t.Fatalf("load prompt turns after reset: %v", err)
+	}
+	if len(turns) != 0 {
+		t.Fatalf("expected no replayable turns in new epoch, got %d", len(turns))
 	}
 }

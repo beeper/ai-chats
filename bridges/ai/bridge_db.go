@@ -14,13 +14,13 @@ import (
 const (
 	aiSessionsTable          = "aichats_sessions"
 	aiSystemEventsTable      = "aichats_system_events"
-	aiInternalMessagesTable  = "aichats_internal_messages"
 	aiLoginStateTable        = "aichats_login_state"
 	aiLoginConfigTable       = "aichats_login_config"
 	aiCustomAgentsTable      = "aichats_custom_agents"
 	aiPortalStateTable       = "aichats_portal_state"
 	aiToolApprovalRulesTable = "aichats_tool_approval_rules"
-	aiTranscriptTable        = "aichats_transcript_messages"
+	aiTurnsTable             = "aichats_turns"
+	aiTurnRefsTable          = "aichats_turn_refs"
 	aiCronJobsTable          = "aichats_cron_jobs"
 	aiManagedHeartbeatsTable = "aichats_managed_heartbeats"
 	aiCronJobRunKeysTable    = "aichats_cron_job_run_keys"
@@ -160,37 +160,28 @@ func unmarshalMapJSONField[K comparable, V any](raw string) (map[K]V, error) {
 	return out, nil
 }
 
-// portalScope extends loginScope with a portal identifier for portal-scoped DB tables.
 type portalScope struct {
-	*loginScope
-	portalID string
+	db             *dbutil.Database
+	bridgeID       string
+	portalID       string
+	portalReceiver string
 }
 
-// portalScopeForPortal builds a portalScope from a Portal, returning nil if
-// the portal or its database is not available.
 func portalScopeForPortal(portal *bridgev2.Portal) *portalScope {
 	db := bridgeDBFromPortal(portal)
 	if db == nil || portal.Bridge == nil || portal.Bridge.DB == nil {
 		return nil
 	}
-	bridgeID := firstNonEmptyTrimmed(
-		string(portal.BridgeID),
-		string(portal.Bridge.DB.BridgeID),
-		string(portal.Bridge.ID),
-	)
-	loginID := firstNonEmptyTrimmed(
-		string(portal.PortalKey.Receiver),
-		string(portal.Receiver),
-	)
-	portalID := firstNonEmptyTrimmed(
-		string(portal.PortalKey.ID),
-		string(portal.ID),
-	)
-	if bridgeID == "" || loginID == "" || portalID == "" {
+	bridgeID := strings.TrimSpace(string(portal.Bridge.DB.BridgeID))
+	portalID := strings.TrimSpace(string(portal.PortalKey.ID))
+	portalReceiver := strings.TrimSpace(string(portal.PortalKey.Receiver))
+	if bridgeID == "" || portalID == "" || portalReceiver == "" {
 		return nil
 	}
 	return &portalScope{
-		loginScope: &loginScope{db: db, bridgeID: bridgeID, loginID: loginID},
-		portalID:   portalID,
+		db:             db,
+		bridgeID:       bridgeID,
+		portalID:       portalID,
+		portalReceiver: portalReceiver,
 	}
 }

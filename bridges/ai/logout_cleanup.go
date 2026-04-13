@@ -68,11 +68,7 @@ func purgeLoginData(ctx context.Context, login *bridgev2.UserLogin) {
 		bridgeID, loginID,
 	)
 	recordDelete(
-		`DELETE FROM `+aiInternalMessagesTable+` WHERE bridge_id=$1 AND login_id=$2`,
-		bridgeID, loginID,
-	)
-	recordDelete(
-		`DELETE FROM `+aiPortalStateTable+` WHERE bridge_id=$1 AND login_id=$2`,
+		`DELETE FROM `+aiPortalStateTable+` WHERE bridge_id=$1 AND portal_receiver=$2`,
 		bridgeID, loginID,
 	)
 	recordDelete(
@@ -92,7 +88,11 @@ func purgeLoginData(ctx context.Context, login *bridgev2.UserLogin) {
 		bridgeID, loginID,
 	)
 	recordDelete(
-		`DELETE FROM `+aiTranscriptTable+` WHERE bridge_id=$1 AND login_id=$2`,
+		`DELETE FROM `+aiTurnRefsTable+` WHERE bridge_id=$1 AND portal_receiver=$2`,
+		bridgeID, loginID,
+	)
+	recordDelete(
+		`DELETE FROM `+aiTurnsTable+` WHERE bridge_id=$1 AND portal_receiver=$2`,
 		bridgeID, loginID,
 	)
 	if err := errors.Join(deleteErrs...); err != nil {
