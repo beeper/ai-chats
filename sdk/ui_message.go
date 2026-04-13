@@ -1,4 +1,4 @@
-package msgconv
+package sdk
 
 import (
 	"strings"
@@ -6,7 +6,6 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 )
 
-// UIMessageMetadataParams contains parameters for building UI message metadata.
 type UIMessageMetadataParams struct {
 	TurnID           string
 	AgentID          string
@@ -23,7 +22,6 @@ type UIMessageMetadataParams struct {
 	IncludeUsage     bool
 }
 
-// BuildUIMessageMetadata builds the metadata map for a com.beeper.ai UIMessage.
 func BuildUIMessageMetadata(p UIMessageMetadataParams) map[string]any {
 	metadata := map[string]any{}
 	if p.TurnID != "" {
@@ -70,23 +68,19 @@ func BuildUIMessageMetadata(p UIMessageMetadataParams) map[string]any {
 	return metadata
 }
 
-// MergeUIMessageMetadata deep-merges UI message metadata maps so callers can
-// safely layer incremental usage/timing updates onto existing state.
 func MergeUIMessageMetadata(base, update map[string]any) map[string]any {
 	return jsonutil.MergeRecursive(base, update)
 }
 
-// UIMessageParams contains parameters for building a full com.beeper.ai UIMessage.
 type UIMessageParams struct {
 	TurnID     string
-	Role       string // "assistant", "user"
+	Role       string
 	Metadata   map[string]any
 	Parts      []map[string]any
-	SourceURLs []map[string]any // Optional source-url and source-document parts
-	FileParts  []map[string]any // Optional generated file parts
+	SourceURLs []map[string]any
+	FileParts  []map[string]any
 }
 
-// BuildUIMessage builds the complete com.beeper.ai UIMessage payload.
 func BuildUIMessage(p UIMessageParams) map[string]any {
 	role := p.Role
 	if role == "" {
@@ -110,7 +104,6 @@ func BuildUIMessage(p UIMessageParams) map[string]any {
 	return msg
 }
 
-// MapFinishReason normalizes provider-specific finish reasons to standard values.
 func MapFinishReason(reason string) string {
 	switch strings.TrimSpace(reason) {
 	case "stop", "end_turn", "end-turn":

@@ -61,6 +61,54 @@ func (a *AssistantMessageMetadata) CopyFromAssistant(src *AssistantMessageMetada
 	}
 }
 
+type AssistantMetadataBundleParams struct {
+	Snapshot           TurnSnapshot
+	FinishReason       string
+	TurnID             string
+	AgentID            string
+	StartedAtMs        int64
+	CompletedAtMs      int64
+	PromptTokens       int64
+	CompletionTokens   int64
+	ReasoningTokens    int64
+	Model              string
+	CompletionID       string
+	FirstTokenAtMs     int64
+	ThinkingTokenCount int
+}
+
+type AssistantMetadataBundle struct {
+	Base      BaseMessageMetadata
+	Assistant AssistantMessageMetadata
+}
+
+func BuildAssistantMetadataBundle(p AssistantMetadataBundleParams) AssistantMetadataBundle {
+	return AssistantMetadataBundle{
+		Base: BuildAssistantBaseMetadata(AssistantMetadataParams{
+			Body:              p.Snapshot.Body,
+			FinishReason:      p.FinishReason,
+			TurnID:            p.TurnID,
+			AgentID:           p.AgentID,
+			StartedAtMs:       p.StartedAtMs,
+			CompletedAtMs:     p.CompletedAtMs,
+			ThinkingContent:   p.Snapshot.ThinkingContent,
+			PromptTokens:      p.PromptTokens,
+			CompletionTokens:  p.CompletionTokens,
+			ReasoningTokens:   p.ReasoningTokens,
+			ToolCalls:         p.Snapshot.ToolCalls,
+			GeneratedFiles:    p.Snapshot.GeneratedFiles,
+			CanonicalTurnData: p.Snapshot.TurnData.ToMap(),
+		}),
+		Assistant: AssistantMessageMetadata{
+			CompletionID:       p.CompletionID,
+			Model:              p.Model,
+			HasToolCalls:       len(p.Snapshot.ToolCalls) > 0,
+			FirstTokenAtMs:     p.FirstTokenAtMs,
+			ThinkingTokenCount: p.ThinkingTokenCount,
+		},
+	}
+}
+
 // CopyFromBase copies non-zero common fields from src into the receiver.
 func (b *BaseMessageMetadata) CopyFromBase(src *BaseMessageMetadata) {
 	if src == nil {

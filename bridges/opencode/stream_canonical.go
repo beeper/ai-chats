@@ -4,10 +4,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beeper/agentremote/bridges/ai/msgconv"
 	"github.com/beeper/agentremote/pkg/shared/maputil"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func (oc *OpenCodeClient) applyStreamMessageMetadata(state *openCodeStreamState, metadata map[string]any) {
@@ -78,19 +78,19 @@ func (oc *OpenCodeClient) currentUIMessage(state *openCodeStreamState) map[strin
 	uiMessage := streamui.SnapshotUIMessage(uiState)
 	metadata := opencodeUIMessageMetadata(state)
 	if len(uiMessage) == 0 {
-		return msgconv.BuildUIMessage(msgconv.UIMessageParams{
+		return sdk.BuildUIMessage(sdk.UIMessageParams{
 			TurnID:   state.turnID,
 			Role:     "assistant",
 			Metadata: metadata,
 		})
 	}
 	existingMetadata, _ := uiMessage["metadata"].(map[string]any)
-	uiMessage["metadata"] = msgconv.MergeUIMessageMetadata(existingMetadata, metadata)
+	uiMessage["metadata"] = sdk.MergeUIMessageMetadata(existingMetadata, metadata)
 	return uiMessage
 }
 
 func opencodeUIMessageMetadata(state *openCodeStreamState) map[string]any {
-	return msgconv.BuildUIMessageMetadata(msgconv.UIMessageMetadataParams{
+	return sdk.BuildUIMessageMetadata(sdk.UIMessageMetadataParams{
 		TurnID:           state.turnID,
 		AgentID:          state.agentID,
 		Model:            state.modelID,

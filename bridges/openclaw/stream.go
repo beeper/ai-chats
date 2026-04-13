@@ -8,7 +8,6 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote/bridges/ai/msgconv"
 	"github.com/beeper/agentremote/pkg/shared/maputil"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
@@ -285,7 +284,7 @@ func (oc *OpenClawClient) currentUIMessage(state *openClawStreamState) map[strin
 		uiState = state.turn.UIState()
 	}
 	uiMessage := streamui.SnapshotUIMessage(uiState)
-	update := msgconv.BuildUIMessageMetadata(msgconv.UIMessageMetadataParams{
+	update := sdk.BuildUIMessageMetadata(sdk.UIMessageMetadataParams{
 		TurnID:           state.turnID,
 		AgentID:          state.agentID,
 		FinishReason:     state.stream.FinishReason(),
@@ -300,14 +299,14 @@ func (oc *OpenClawClient) currentUIMessage(state *openClawStreamState) map[strin
 		IncludeUsage:     true,
 	})
 	if len(uiMessage) == 0 {
-		return msgconv.BuildUIMessage(msgconv.UIMessageParams{
+		return sdk.BuildUIMessage(sdk.UIMessageParams{
 			TurnID:   state.turnID,
 			Role:     stringutil.TrimDefault(state.role, "assistant"),
 			Metadata: update,
 		})
 	}
 	metadata, _ := uiMessage["metadata"].(map[string]any)
-	uiMessage["metadata"] = msgconv.MergeUIMessageMetadata(metadata, update)
+	uiMessage["metadata"] = sdk.MergeUIMessageMetadata(metadata, update)
 	return uiMessage
 }
 

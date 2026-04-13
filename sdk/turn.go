@@ -588,18 +588,14 @@ func (t *Turn) finalMetadata(finishReason string) BaseMessageMetadata {
 	if t.agent != nil {
 		agentID = t.agent.ID
 	}
-	runtimeMeta := BuildAssistantBaseMetadata(AssistantMetadataParams{
-		Body:              snapshot.Body,
-		FinishReason:      finishReason,
-		TurnID:            t.turnID,
-		AgentID:           agentID,
-		StartedAtMs:       t.startedAtMs,
-		CompletedAtMs:     time.Now().UnixMilli(),
-		CanonicalTurnData: snapshot.TurnData.ToMap(),
-		ThinkingContent:   snapshot.ThinkingContent,
-		ToolCalls:         snapshot.ToolCalls,
-		GeneratedFiles:    snapshot.GeneratedFiles,
-	})
+	runtimeMeta := BuildAssistantMetadataBundle(AssistantMetadataBundleParams{
+		Snapshot:      snapshot,
+		FinishReason:  finishReason,
+		TurnID:        t.turnID,
+		AgentID:       agentID,
+		StartedAtMs:   t.startedAtMs,
+		CompletedAtMs: time.Now().UnixMilli(),
+	}).Base
 	merged := supportedBaseMetadataFromMap(t.metadata)
 	merged.CopyFromBase(&runtimeMeta)
 	return merged

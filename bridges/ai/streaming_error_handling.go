@@ -8,7 +8,7 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote/bridges/ai/msgconv"
+	"github.com/beeper/agentremote/sdk"
 )
 
 // NonFallbackError marks an error as ineligible for fallback retries once output has been sent.
@@ -64,7 +64,7 @@ func (oc *AIClient) finishStreamingWithFailure(
 		}
 	case "stop":
 		if state.turn != nil {
-			state.turn.End(msgconv.MapFinishReason(reason))
+			state.turn.End(sdk.MapFinishReason(reason))
 		}
 	default:
 		if state.turn != nil {

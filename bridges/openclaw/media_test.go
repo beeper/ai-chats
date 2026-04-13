@@ -11,9 +11,9 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote/bridges/ai/msgconv"
 	"github.com/beeper/agentremote/pkg/shared/cachedvalue"
 	"github.com/beeper/agentremote/pkg/shared/openclawconv"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func TestOpenClawAgentIDFromSessionKey(t *testing.T) {
@@ -205,7 +205,7 @@ func TestBuildOpenClawHistoryMessageMetadataIncludesToolCalls(t *testing.T) {
 			},
 		},
 	}, "assistant", state)
-	uiMessage := msgconv.BuildUIMessage(msgconv.UIMessageParams{
+	uiMessage := sdk.BuildUIMessage(sdk.UIMessageParams{
 		TurnID:   "turn-2",
 		Role:     "assistant",
 		Metadata: uiMetadata,
@@ -256,7 +256,7 @@ func TestBuildOpenClawHistoryMessageMetadataIncludesGeneratedFiles(t *testing.T)
 		"url":       "mxc://example.org/history-file",
 		"mediaType": "image/png",
 	})
-	uiMessage := msgconv.BuildUIMessage(msgconv.UIMessageParams{
+	uiMessage := sdk.BuildUIMessage(sdk.UIMessageParams{
 		TurnID:   "turn-3",
 		Role:     "assistant",
 		Metadata: uiMetadata,

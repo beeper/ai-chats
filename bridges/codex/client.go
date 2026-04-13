@@ -20,7 +20,6 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/bridges/ai/msgconv"
 	"github.com/beeper/agentremote/bridges/codex/codexrpc"
 	"github.com/beeper/agentremote/pkg/matrixevents"
 	"github.com/beeper/agentremote/pkg/shared/citations"
@@ -1927,7 +1926,7 @@ func (cc *CodexClient) buildUIMessageMetadata(state *streamingState, model strin
 	if state != nil && strings.TrimSpace(state.currentModel) != "" {
 		model = state.currentModel
 	}
-	return msgconv.BuildUIMessageMetadata(msgconv.UIMessageMetadataParams{
+	return sdk.BuildUIMessageMetadata(sdk.UIMessageMetadataParams{
 		TurnID:           state.currentTurnID(),
 		AgentID:          state.agentID,
 		Model:            strings.TrimSpace(model),
@@ -1955,28 +1954,23 @@ func buildMessageMetadata(state *streamingState, turnID string, model string, fi
 		ToolCalls:      state.toolCalls,
 		GeneratedFiles: sdk.GeneratedFileRefsFromParts(state.generatedFiles),
 	}, "codex")
+	bundle := sdk.BuildAssistantMetadataBundle(sdk.AssistantMetadataBundleParams{
+		Snapshot:           snapshot,
+		FinishReason:       finishReason,
+		TurnID:             turnID,
+		AgentID:            state.agentID,
+		StartedAtMs:        state.startedAtMs,
+		CompletedAtMs:      state.completedAtMs,
+		PromptTokens:       state.promptTokens,
+		CompletionTokens:   state.completionTokens,
+		ReasoningTokens:    state.reasoningTokens,
+		Model:              model,
+		FirstTokenAtMs:     state.firstTokenAtMs,
+		ThinkingTokenCount: len(strings.Fields(state.reasoning.String())),
+	})
 	return &MessageMetadata{
-		BaseMessageMetadata: sdk.BuildAssistantBaseMetadata(sdk.AssistantMetadataParams{
-			Body:              snapshot.Body,
-			FinishReason:      finishReason,
-			TurnID:            turnID,
-			AgentID:           state.agentID,
-			ToolCalls:         snapshot.ToolCalls,
-			StartedAtMs:       state.startedAtMs,
-			CompletedAtMs:     state.completedAtMs,
-			CanonicalTurnData: snapshot.TurnData.ToMap(),
-			GeneratedFiles:    snapshot.GeneratedFiles,
-			ThinkingContent:   snapshot.ThinkingContent,
-			PromptTokens:      state.promptTokens,
-			CompletionTokens:  state.completionTokens,
-			ReasoningTokens:   state.reasoningTokens,
-		}),
-		AssistantMessageMetadata: sdk.AssistantMessageMetadata{
-			Model:              model,
-			FirstTokenAtMs:     state.firstTokenAtMs,
-			HasToolCalls:       len(state.toolCalls) > 0,
-			ThinkingTokenCount: len(strings.Fields(state.reasoning.String())),
-		},
+		BaseMessageMetadata:      bundle.Base,
+		AssistantMessageMetadata: bundle.Assistant,
 	}
 }
 

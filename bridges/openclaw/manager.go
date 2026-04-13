@@ -23,7 +23,6 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/bridges/ai/msgconv"
 	"github.com/beeper/agentremote/pkg/matrixevents"
 	"github.com/beeper/agentremote/pkg/shared/backfillutil"
 	"github.com/beeper/agentremote/pkg/shared/jsonutil"
@@ -1430,7 +1429,7 @@ func (m *openClawManager) convertHistoryMessage(ctx context.Context, portal *bri
 		uiRole = "user"
 	}
 	uiTurnID := strings.TrimSpace(stringValue(uiMetadata["turn_id"]))
-	uiMessage := msgconv.BuildUIMessage(msgconv.UIMessageParams{
+	uiMessage := sdk.BuildUIMessage(sdk.UIMessageParams{
 		TurnID:   uiTurnID,
 		Role:     uiRole,
 		Metadata: uiMetadata,
@@ -1494,7 +1493,7 @@ func historyFingerprintMessageID(sessionKey, role string, ts time.Time, text str
 }
 
 func openClawStreamMessageMetadata(state *openClawPortalState, payload gatewayChatEvent, agentID, turnID string) map[string]any {
-	params := msgconv.UIMessageMetadataParams{
+	params := sdk.UIMessageMetadataParams{
 		TurnID:       turnID,
 		AgentID:      agentID,
 		CompletionID: payload.RunID,
@@ -1502,7 +1501,7 @@ func openClawStreamMessageMetadata(state *openClawPortalState, payload gatewayCh
 		IncludeUsage: true,
 	}
 	applyNormalizedUsageToParams(normalizeOpenClawUsage(payload.Usage), &params)
-	metadata := msgconv.BuildUIMessageMetadata(params)
+	metadata := sdk.BuildUIMessageMetadata(params)
 	applyOpenClawSessionMetadata(metadata,
 		stringutil.TrimDefault(stringValue(payload.Message["sessionId"]), state.OpenClawSessionID),
 		stringutil.TrimDefault(payload.SessionKey, state.OpenClawSessionKey),
@@ -1623,7 +1622,7 @@ func maybeUpdatePreviewSnippet(state *openClawPortalState, text string, eventTS 
 	return true
 }
 
-func applyNormalizedUsageToParams(usage map[string]any, params *msgconv.UIMessageMetadataParams) {
+func applyNormalizedUsageToParams(usage map[string]any, params *sdk.UIMessageMetadataParams) {
 	if len(usage) == 0 {
 		return
 	}
@@ -1955,7 +1954,7 @@ func (m *openClawManager) ensureStreamStart(ctx context.Context, portal *bridgev
 		agentID = resolveOpenClawAgentID(state, state.OpenClawSessionKey, nil)
 	}
 	if len(messageMetadata) == 0 {
-		messageMetadata = msgconv.BuildUIMessageMetadata(msgconv.UIMessageMetadataParams{
+		messageMetadata = sdk.BuildUIMessageMetadata(sdk.UIMessageMetadataParams{
 			TurnID:       turnID,
 			AgentID:      agentID,
 			CompletionID: runID,
@@ -1990,7 +1989,7 @@ func (m *openClawManager) handleAgentEvent(ctx context.Context, payload gatewayA
 	if turnID == "" {
 		return
 	}
-	agentMetadata := msgconv.BuildUIMessageMetadata(msgconv.UIMessageMetadataParams{
+	agentMetadata := sdk.BuildUIMessageMetadata(sdk.UIMessageMetadataParams{
 		TurnID:       turnID,
 		AgentID:      agentID,
 		CompletionID: payload.RunID,
@@ -2305,7 +2304,7 @@ func (m *openClawManager) waitForRunCompletion(ctx context.Context, portal *brid
 		}
 	}
 
-	metadata := msgconv.BuildUIMessageMetadata(msgconv.UIMessageMetadataParams{
+	metadata := sdk.BuildUIMessageMetadata(sdk.UIMessageMetadataParams{
 		TurnID:        turnID,
 		AgentID:       agentID,
 		CompletionID:  runID,
@@ -2553,7 +2552,7 @@ func convertHistoryToCanonicalUI(message map[string]any, role string, state *ope
 		stringValue(message["turnId"]),
 		stringValue(message["runId"]),
 	))
-	params := msgconv.UIMessageMetadataParams{
+	params := sdk.UIMessageMetadataParams{
 		TurnID:       turnID,
 		AgentID:      agentID,
 		Model:        stringutil.TrimDefault(stringValue(message["model"]), state.Model),
@@ -2562,7 +2561,7 @@ func convertHistoryToCanonicalUI(message map[string]any, role string, state *ope
 		IncludeUsage: true,
 	}
 	applyNormalizedUsageToParams(normalizeOpenClawUsage(jsonutil.ToMap(message["usage"])), &params)
-	metadata := msgconv.BuildUIMessageMetadata(params)
+	metadata := sdk.BuildUIMessageMetadata(params)
 	applyOpenClawSessionMetadata(metadata,
 		stringutil.TrimDefault(stringValue(message["sessionId"]), state.OpenClawSessionID),
 		stringutil.TrimDefault(stringValue(message["sessionKey"]), state.OpenClawSessionKey),

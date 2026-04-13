@@ -7,7 +7,7 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote/bridges/ai/msgconv"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func (oc *AIClient) completeStreamingSuccess(
@@ -34,7 +34,7 @@ func (oc *AIClient) completeStreamingSuccess(
 		writer.MessageMetadata(ctx, oc.buildUIMessageMetadata(state, meta, true))
 	}
 	if state != nil && state.turn != nil {
-		state.turn.End(msgconv.MapFinishReason(state.finishReason))
+		state.turn.End(sdk.MapFinishReason(state.finishReason))
 	}
 	oc.noteStreamingPersistenceSideEffects(ctx, portal, state, meta)
 	oc.maybeGenerateTitle(ctx, portal, finalRenderedBodyFallback(state))
