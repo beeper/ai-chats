@@ -9,45 +9,49 @@ import (
 func TestResolveCodexWorkingDirectoryExpandsTilde(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	cc := &CodexClient{}
 
-	got, err := resolveCodexWorkingDirectory("~/workspace/project")
+	got, err := cc.resolveManagedPathArgument("~/workspace/project", nil)
 	if err != nil {
-		t.Fatalf("resolveCodexWorkingDirectory returned error: %v", err)
+		t.Fatalf("resolveManagedPathArgument returned error: %v", err)
 	}
 
 	want := filepath.Join(home, "workspace", "project")
 	if got != want {
-		t.Fatalf("resolveCodexWorkingDirectory returned %q, want %q", got, want)
+		t.Fatalf("resolveManagedPathArgument returned %q, want %q", got, want)
 	}
 }
 
 func TestResolveCodexWorkingDirectoryExpandsBareTilde(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	cc := &CodexClient{}
 
-	got, err := resolveCodexWorkingDirectory("~")
+	got, err := cc.resolveManagedPathArgument("~", nil)
 	if err != nil {
-		t.Fatalf("resolveCodexWorkingDirectory returned error: %v", err)
+		t.Fatalf("resolveManagedPathArgument returned error: %v", err)
 	}
 	if got != home {
-		t.Fatalf("resolveCodexWorkingDirectory returned %q, want %q", got, home)
+		t.Fatalf("resolveManagedPathArgument returned %q, want %q", got, home)
 	}
 }
 
 func TestResolveCodexWorkingDirectoryAcceptsAbsolutePath(t *testing.T) {
 	want := filepath.Join(string(filepath.Separator), "tmp", "workspace")
+	cc := &CodexClient{}
 
-	got, err := resolveCodexWorkingDirectory(want)
+	got, err := cc.resolveManagedPathArgument(want, nil)
 	if err != nil {
-		t.Fatalf("resolveCodexWorkingDirectory returned error: %v", err)
+		t.Fatalf("resolveManagedPathArgument returned error: %v", err)
 	}
 	if got != want {
-		t.Fatalf("resolveCodexWorkingDirectory returned %q, want %q", got, want)
+		t.Fatalf("resolveManagedPathArgument returned %q, want %q", got, want)
 	}
 }
 
 func TestResolveCodexWorkingDirectoryRejectsRelativePath(t *testing.T) {
-	if _, err := resolveCodexWorkingDirectory("projects/labs"); err == nil {
+	cc := &CodexClient{}
+	if _, err := cc.resolveManagedPathArgument("projects/labs", nil); err == nil {
 		t.Fatal("expected relative path to be rejected")
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func isWelcomeCodexPortal(state *codexPortalState) bool {
@@ -90,7 +91,7 @@ func codexCommandHelpText() string {
 func (cc *CodexClient) resolveManagedPathArgument(args string, state *codexPortalState) (string, error) {
 	args = strings.TrimSpace(args)
 	if args != "" {
-		return resolveCodexWorkingDirectory(args)
+		return sdk.NormalizeAbsolutePath(args)
 	}
 	if state != nil && strings.TrimSpace(state.CodexCwd) != "" {
 		return strings.TrimSpace(state.CodexCwd), nil
@@ -377,7 +378,7 @@ func (cc *CodexClient) handleWelcomeCodexMessage(ctx context.Context, portal *br
 	if cc == nil || cc.UserLogin == nil || portal == nil || state == nil {
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
-	path, err := resolveCodexWorkingDirectory(body)
+	path, err := sdk.NormalizeAbsolutePath(body)
 	if err != nil {
 		cc.sendSystemNotice(ctx, portal, "That path must be absolute. `~/...` is also accepted.")
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil

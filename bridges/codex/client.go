@@ -573,7 +573,11 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 	}
 
 	if !cc.acquireRoomIfQueueEmpty(roomID) {
-		cc.sendPendingStatus(ctx, portal, msg.Event, "Queued — waiting for current turn to finish...")
+		bridgeutil.SendMessageStatus(ctx, portal, msg.Event, bridgev2.MessageStatus{
+			Status:    event.MessageStatusPending,
+			Message:   "Queued — waiting for current turn to finish...",
+			IsCertain: true,
+		})
 		cc.queuePendingCodex(roomID, &codexPendingMessage{
 			event:  msg.Event,
 			portal: portal,
@@ -586,7 +590,11 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 		}, nil
 	}
 
-	cc.sendPendingStatus(ctx, portal, msg.Event, "Processing...")
+	bridgeutil.SendMessageStatus(ctx, portal, msg.Event, bridgev2.MessageStatus{
+		Status:    event.MessageStatusPending,
+		Message:   "Processing...",
+		IsCertain: true,
+	})
 
 	go func() {
 		func() {
@@ -663,7 +671,10 @@ func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, por
 		turn.EndWithError("Codex turn/start response missing turn id")
 		return
 	}
-	cc.markMessageSendSuccess(ctx, portal, sourceEvent, streamState)
+	bridgeutil.SendMessageStatus(ctx, portal, sourceEvent, bridgev2.MessageStatus{
+		Status:    event.MessageStatusSuccess,
+		IsCertain: true,
+	})
 
 	turnCh := cc.subscribeTurn(threadID, turnID)
 	defer cc.unsubscribeTurn(threadID, turnID)
@@ -1567,14 +1578,6 @@ func (cc *CodexClient) composeCodexChatInfo(portal *bridgev2.Portal, portalState
 	})
 }
 
-func resolveCodexWorkingDirectory(raw string) (string, error) {
-	return sdk.NormalizeAbsolutePath(raw)
-}
-
-func (cc *CodexClient) buildSandboxMode() string {
-	return "workspace-write"
-}
-
 func (cc *CodexClient) buildSandboxPolicy(cwd string) map[string]any {
 	return map[string]any{
 		"type":                "workspaceWrite",
@@ -1656,7 +1659,7 @@ func (cc *CodexClient) ensureCodexThread(ctx context.Context, portal *bridgev2.P
 		"model":                  model,
 		"cwd":                    portalState.CodexCwd,
 		"approvalPolicy":         "untrusted",
-		"sandbox":                cc.buildSandboxMode(),
+		"sandbox":                "workspace-write",
 		"experimentalRawEvents":  false,
 		"persistExtendedHistory": true,
 	}, &resp)
@@ -1706,7 +1709,7 @@ func (cc *CodexClient) ensureCodexThreadLoaded(ctx context.Context, portal *brid
 		"model":                  cc.connector.Config.Codex.DefaultModel,
 		"cwd":                    portalState.CodexCwd,
 		"approvalPolicy":         "untrusted",
-		"sandbox":                cc.buildSandboxMode(),
+		"sandbox":                "workspace-write",
 		"persistExtendedHistory": true,
 	}, &resp)
 	if err != nil {
@@ -1814,23 +1817,6 @@ func (cc *CodexClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Po
 	if err := send(ctx); err != nil {
 		cc.log.Warn().Err(err).Msg("Failed to send system notice")
 	}
-}
-
-func (cc *CodexClient) sendPendingStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, message string) {
-	st := bridgev2.MessageStatus{
-		Status:    event.MessageStatusPending,
-		Message:   message,
-		IsCertain: true,
-	}
-	bridgeutil.SendMessageStatus(ctx, portal, evt, st)
-}
-
-func (cc *CodexClient) markMessageSendSuccess(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, state *streamingState) {
-	if state == nil {
-		return
-	}
-	st := bridgev2.MessageStatus{Status: event.MessageStatusSuccess, IsCertain: true}
-	bridgeutil.SendMessageStatus(ctx, portal, evt, st)
 }
 
 func (cc *CodexClient) acquireRoomIfQueueEmpty(roomID id.RoomID) bool {

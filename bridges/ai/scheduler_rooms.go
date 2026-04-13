@@ -13,14 +13,10 @@ func (s *schedulerRuntime) ensureScheduledRoomLocked(
 	ctx context.Context,
 	portalID, displayName, agentID, internalRoomKind string,
 ) (string, error) {
-	portal, err := s.getOrCreateScheduledPortal(ctx, portalID, displayName, func(meta *PortalMetadata) {
-		meta.InternalRoomKind = internalRoomKind
-	})
+	portal, err := s.getOrCreateScheduledPortal(ctx, portalID, displayName, agentID, internalRoomKind)
 	if err != nil {
 		return "", err
 	}
-	portal.OtherUserID = s.client.agentUserID(normalizeAgentID(agentID))
-	s.client.savePortalQuiet(ctx, portal, "scheduler room")
 	return portal.MXID.String(), nil
 }
 
@@ -52,7 +48,7 @@ func (s *schedulerRuntime) ensureHeartbeatRoomLocked(ctx context.Context, state 
 	return nil
 }
 
-func (s *schedulerRuntime) getOrCreateScheduledPortal(ctx context.Context, portalID, displayName string, setup func(meta *PortalMetadata)) (*bridgev2.Portal, error) {
+func (s *schedulerRuntime) getOrCreateScheduledPortal(ctx context.Context, portalID, displayName, agentID, internalRoomKind string) (*bridgev2.Portal, error) {
 	if s == nil || s.client == nil || s.client.UserLogin == nil || s.client.UserLogin.Bridge == nil {
 		return nil, errors.New("scheduler client is not available")
 	}
@@ -61,7 +57,8 @@ func (s *schedulerRuntime) getOrCreateScheduledPortal(ctx context.Context, porta
 	if err != nil {
 		return nil, err
 	}
-	chatInfo := &bridgev2.ChatInfo{Name: &portal.Name}
+	chatName := displayName
+	chatInfo := &bridgev2.ChatInfo{Name: &chatName}
 	if err := s.client.materializePortalRoom(ctx, portal, chatInfo, portalRoomMaterializeOptions{
 		SaveBefore: true,
 		MutatePortal: func(portal *bridgev2.Portal) {
@@ -70,17 +67,9 @@ func (s *schedulerRuntime) getOrCreateScheduledPortal(ctx context.Context, porta
 				meta = &PortalMetadata{}
 				portal.Metadata = meta
 			}
-			if setup != nil {
-				setup(meta)
-			}
+			meta.InternalRoomKind = internalRoomKind
+			portal.OtherUserID = s.client.agentUserID(normalizeAgentID(agentID))
 			s.client.applyPortalRoomName(ctx, portal, displayName)
-		},
-		BeforeSave: func(ctx context.Context, portal *bridgev2.Portal) error {
-			return portal.Save(ctx)
-		},
-		OnExisting: func(ctx context.Context, portal *bridgev2.Portal) error {
-			s.client.savePortalQuiet(ctx, portal, "scheduler metadata update")
-			return nil
 		},
 	}); err != nil {
 		return nil, err

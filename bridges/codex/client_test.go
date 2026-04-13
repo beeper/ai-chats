@@ -2,13 +2,6 @@ package codex
 
 import "testing"
 
-func TestBuildSandboxMode(t *testing.T) {
-	cc := &CodexClient{}
-	if got := cc.buildSandboxMode(); got != "workspace-write" {
-		t.Fatalf("buildSandboxMode() = %q, want %q", got, "workspace-write")
-	}
-}
-
 func TestBuildSandboxPolicy(t *testing.T) {
 	cc := &CodexClient{}
 	cwd := "/tmp/workspace"
