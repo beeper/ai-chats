@@ -224,7 +224,7 @@ func advanceAIPortalContextEpoch(ctx context.Context, portal *bridgev2.Portal) e
 }
 
 func saveAIPortalState(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) error {
-	return withPortalScope(ctx, portal, func(ctx context.Context, _ *bridgev2.Portal, scope *portalScope) error {
+	return withPortalScope(ctx, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) error {
 		if portal != nil {
 			if err := portal.Save(ctx); err != nil {
 				return err

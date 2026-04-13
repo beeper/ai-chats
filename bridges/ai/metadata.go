@@ -92,11 +92,14 @@ type MCPServerConfig struct {
 	Kind      string   `json:"kind,omitempty"` // generic
 }
 
-// UserLoginMetadata is the bridgev2-owned login metadata surface.
-// Only provider identity belongs here. All login-scoped product/runtime state
-// lives in AI-owned sidecar tables.
+// UserLoginMetadata is the durable bridgev2-owned login metadata surface.
 type UserLoginMetadata struct {
-	Provider string `json:"provider,omitempty"` // Selected provider (openai, openrouter, magic_proxy)
+	Provider             string            `json:"provider,omitempty"` // Selected provider (openai, openrouter, magic_proxy)
+	Credentials          *LoginCredentials `json:"credentials,omitempty"`
+	TitleGenerationModel string            `json:"title_generation_model,omitempty"`
+	Agents               *bool             `json:"agents,omitempty"`
+	Timezone             string            `json:"timezone,omitempty"`
+	Profile              *UserProfile      `json:"profile,omitempty"`
 }
 
 func loginCredentials(cfg *aiLoginConfig) *LoginCredentials {
@@ -225,7 +228,7 @@ type PortalMetadata struct {
 	SessionBootstrappedAt   int64            `json:"-"`
 	SessionBootstrapByAgent map[string]int64 `json:"-"`
 
-	ModuleMeta           map[string]any `json:"-"`                                // Generic per-module metadata (e.g., cron room markers, memory flush state)
+	ModuleMeta           map[string]any `json:"-"`                                 // Generic per-module metadata (e.g., cron room markers, memory flush state)
 	SubagentParentRoomID string         `json:"subagent_parent_room_id,omitempty"` // Parent room ID for subagent sessions
 
 	// Runtime-only overrides (not persisted)

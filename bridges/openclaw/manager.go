@@ -331,24 +331,20 @@ const (
 
 func (m *openClawManager) Start(ctx context.Context) (bool, error) {
 	meta := loginMetadata(m.client.UserLogin)
-	state, err := loadOpenClawLoginState(ctx, m.client.UserLogin)
-	if err != nil {
-		return false, err
-	}
 	cfg := gatewayConnectConfig{
 		URL:         meta.GatewayURL,
-		Token:       state.GatewayToken,
-		Password:    state.GatewayPassword,
-		DeviceToken: state.DeviceToken,
+		Token:       meta.GatewayToken,
+		Password:    meta.GatewayPassword,
+		DeviceToken: meta.DeviceToken,
 	}
 	gw := newGatewayWSClient(cfg)
 	deviceToken, err := gw.Connect(ctx)
 	if err != nil {
 		return false, err
 	}
-	if deviceToken != "" && deviceToken != state.DeviceToken {
-		state.DeviceToken = deviceToken
-		if err := saveOpenClawLoginState(ctx, m.client.UserLogin, state); err != nil {
+	if deviceToken != "" && deviceToken != meta.DeviceToken {
+		meta.DeviceToken = deviceToken
+		if err := m.client.UserLogin.Save(ctx); err != nil {
 			return false, err
 		}
 	}
@@ -458,13 +454,10 @@ func (m *openClawManager) syncSessions(ctx context.Context) error {
 	for _, session := range sessions {
 		m.client.UserLogin.QueueRemoteEvent(buildOpenClawSessionResyncEvent(m.client, session))
 	}
-	state, err := loadOpenClawLoginState(ctx, m.client.UserLogin)
-	if err != nil {
-		return err
-	}
-	state.SessionsSynced = true
-	state.LastSyncAt = time.Now().UnixMilli()
-	return saveOpenClawLoginState(ctx, m.client.UserLogin, state)
+	meta := loginMetadata(m.client.UserLogin)
+	meta.SessionsSynced = true
+	meta.LastSyncAt = time.Now().UnixMilli()
+	return m.client.UserLogin.Save(ctx)
 }
 
 func (m *openClawManager) validateGatewayCompatibility(ctx context.Context, gateway *gatewayWSClient) (*openClawGatewayCompatibilityReport, error) {

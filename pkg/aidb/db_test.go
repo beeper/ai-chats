@@ -55,7 +55,6 @@ func TestEnsureSchemaFresh(t *testing.T) {
 		"aichats_managed_heartbeat_run_keys",
 		"aichats_system_events",
 		"aichats_login_state",
-		"aichats_login_config",
 		"aichats_custom_agents",
 		"aichats_portal_state",
 		"aichats_sessions",

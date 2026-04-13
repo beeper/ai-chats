@@ -242,9 +242,12 @@ func (ol *OpenClawLogin) completeLogin(pending *openClawPendingLogin, deviceToke
 		ID:         loginID,
 		RemoteName: remoteName,
 		Metadata: &UserLoginMetadata{
-			Provider:     ProviderOpenClaw,
-			GatewayURL:   pending.gatewayURL,
-			GatewayLabel: pending.label,
+			Provider:        ProviderOpenClaw,
+			GatewayURL:      pending.gatewayURL,
+			GatewayLabel:    pending.label,
+			GatewayToken:    pending.token,
+			GatewayPassword: pending.password,
+			DeviceToken:     deviceToken,
 		},
 	}, nil)
 	if err != nil {
@@ -252,20 +255,6 @@ func (ol *OpenClawLogin) completeLogin(pending *openClawPendingLogin, deviceToke
 		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to create login: %w", err), http.StatusInternalServerError, "OPENCLAW", "CREATE_LOGIN_FAILED")
 	}
 	log.Debug().Str("login_id", string(login.ID)).Msg("Created OpenClaw user login")
-	if err := saveOpenClawLoginState(persistCtx, login, &openClawPersistedLoginState{
-		GatewayToken:    pending.token,
-		GatewayPassword: pending.password,
-		DeviceToken:     deviceToken,
-	}); err != nil {
-		log.Warn().Err(err).Str("login_id", string(login.ID)).Msg("Failed to persist OpenClaw login state")
-		log.Warn().Str("login_id", string(login.ID)).Msg("Rolling back OpenClaw login after persistence failure")
-		login.Delete(persistCtx, status.BridgeState{}, bridgev2.DeleteOpts{
-			DontCleanupRooms: true,
-			BlockingCleanup:  true,
-		})
-		log.Info().Str("login_id", string(login.ID)).Msg("Finished OpenClaw login rollback")
-		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to persist login state: %w", err), http.StatusInternalServerError, "OPENCLAW", "SAVE_LOGIN_STATE_FAILED")
-	}
 	step, err := sdk.LoadConnectAndCompleteLogin(
 		persistCtx,
 		ol.BackgroundProcessContext(),

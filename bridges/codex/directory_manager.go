@@ -111,11 +111,10 @@ func (cc *CodexClient) welcomeCodexPortals(ctx context.Context) ([]*bridgev2.Por
 		if record.State == nil || !isWelcomeCodexPortal(record.State) {
 			continue
 		}
-		portal, err := cc.UserLogin.Bridge.GetExistingPortalByKey(ctx, record.PortalKey)
-		if err != nil || portal == nil {
+		if record.Portal == nil {
 			continue
 		}
-		out = append(out, portal)
+		out = append(out, record.Portal)
 	}
 	return out, nil
 }
@@ -279,14 +278,10 @@ func (cc *CodexClient) managedImportedPortalsForPath(ctx context.Context, path s
 		if record.State == nil || !record.State.ManagedImport || strings.TrimSpace(record.State.CodexCwd) != path {
 			continue
 		}
-		portal, err := cc.UserLogin.Bridge.GetExistingPortalByKey(ctx, record.PortalKey)
-		if err != nil || portal == nil {
+		if record.Portal == nil {
 			continue
 		}
-		if meta := portalMeta(portal); meta == nil || !meta.IsCodexRoom {
-			continue
-		}
-		out = append(out, portal)
+		out = append(out, record.Portal)
 	}
 	return out, nil
 }
@@ -300,7 +295,6 @@ func (cc *CodexClient) forgetManagedDirectory(ctx context.Context, path string) 
 		if state, err := loadCodexPortalState(ctx, portal); err == nil && state != nil {
 			cc.cleanupImportedPortalState(state.CodexThreadID)
 		}
-		_ = clearCodexPortalState(ctx, portal)
 		cc.deletePortalOnly(ctx, portal, "codex directory forgotten")
 	}
 	return len(portals), nil

@@ -167,24 +167,17 @@ func (cc *CodexClient) existingCodexPortalsByThreadID(ctx context.Context) (map[
 	}
 	out := make(map[string]*bridgev2.Portal, len(records))
 	for _, record := range records {
-		if record.State == nil {
+		if record.State == nil || record.Portal == nil {
 			continue
 		}
 		threadID := strings.TrimSpace(record.State.CodexThreadID)
 		if threadID == "" {
 			continue
 		}
-		portal, err := cc.UserLogin.Bridge.GetExistingPortalByKey(ctx, record.PortalKey)
-		if err != nil || portal == nil {
-			continue
-		}
-		if meta := portalMeta(portal); meta == nil || !meta.IsCodexRoom {
-			continue
-		}
 		if _, exists := out[threadID]; exists {
 			continue
 		}
-		out[threadID] = portal
+		out[threadID] = record.Portal
 	}
 	return out, nil
 }

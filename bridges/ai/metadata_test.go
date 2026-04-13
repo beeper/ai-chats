@@ -46,24 +46,50 @@ func TestClonePortalMetadataDeepCopiesConfig(t *testing.T) {
 	}
 }
 
-func TestPortalMetadataDoesNotMarshalPersistentState(t *testing.T) {
+func TestPortalMetadataMarshalsRoomConfigOnly(t *testing.T) {
 	meta := &PortalMetadata{
-		AckReactionEmoji:      "👍",
-		Slug:                  "chat-1",
-		WelcomeSent:           true,
-		AutoGreetingSent:      true,
-		SessionResetAt:        123,
-		ModuleMeta:            map[string]any{"cron": map[string]any{"is_internal_room": true}},
-		SubagentParentRoomID:  "!parent:example.com",
-		TypingMode:            "thinking",
-		TypingIntervalSeconds: ptrInt(12),
+		AckReactionEmoji:       "👍",
+		AckReactionRemoveAfter: true,
+		PDFConfig:              &PDFConfig{Engine: "mistral"},
+		Slug:                   "chat-1",
+		WelcomeSent:            true,
+		AutoGreetingSent:       true,
+		SessionResetAt:         123,
+		ModuleMeta:             map[string]any{"cron": map[string]any{"is_internal_room": true}},
+		SubagentParentRoomID:   "!parent:example.com",
+		TypingMode:             "thinking",
+		TypingIntervalSeconds:  ptrInt(12),
 	}
 	data, err := json.Marshal(meta)
 	if err != nil {
 		t.Fatalf("marshal failed: %v", err)
 	}
-	if string(data) != "{}" {
-		t.Fatalf("expected persistent portal state to be omitted from JSON, got %s", string(data))
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	for _, key := range []string{
+		"ack_reaction_emoji",
+		"ack_reaction_remove_after",
+		"pdf_config",
+		"slug",
+		"subagent_parent_room_id",
+		"typing_mode",
+		"typing_interval_seconds",
+	} {
+		if _, ok := raw[key]; !ok {
+			t.Fatalf("expected %q to be persisted in portal metadata, got %s", key, string(data))
+		}
+	}
+	for _, key := range []string{
+		"welcome_sent",
+		"auto_greeting_sent",
+		"session_reset_at",
+		"module_meta",
+	} {
+		if _, ok := raw[key]; ok {
+			t.Fatalf("expected %q to remain out of portal metadata JSON, got %s", key, string(data))
+		}
 	}
 }
 
@@ -104,11 +130,11 @@ func TestPersistedPortalStateRoundTrip(t *testing.T) {
 	clone := &PortalMetadata{}
 	applyPersistedPortalState(clone, &restored)
 
-	if clone.AckReactionEmoji != orig.AckReactionEmoji || !clone.AckReactionRemoveAfter || clone.PDFConfig == nil {
-		t.Fatalf("unexpected restored state: %#v", clone)
-	}
-	if clone.Slug != orig.Slug || !clone.TitleGenerated {
+	if clone.AckReactionEmoji != "" || clone.AckReactionRemoveAfter || clone.PDFConfig != nil {
 		t.Fatalf("expected only AI-owned portal state to round-trip: %#v", clone)
+	}
+	if clone.Slug != "" || !clone.TitleGenerated {
+		t.Fatalf("expected only sidecar-owned portal state to round-trip: %#v", clone)
 	}
 	if clone.SessionBootstrapByAgent["beeper"] != 789 {
 		t.Fatalf("expected bootstrap map to round-trip, got %#v", clone.SessionBootstrapByAgent)
@@ -116,8 +142,8 @@ func TestPersistedPortalStateRoundTrip(t *testing.T) {
 	if clone.ModuleMeta == nil || clone.ModuleMeta["cron"] == nil {
 		t.Fatalf("expected module meta to round-trip, got %#v", clone.ModuleMeta)
 	}
-	if clone.TypingIntervalSeconds == nil || *clone.TypingIntervalSeconds != 15 {
-		t.Fatalf("expected typing interval to round-trip, got %#v", clone.TypingIntervalSeconds)
+	if clone.TypingIntervalSeconds != nil || clone.TypingMode != "" || clone.DebounceMs != 0 {
+		t.Fatalf("expected room config to stay out of sidecar round-trip, got %#v", clone)
 	}
 }
 

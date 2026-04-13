@@ -2,11 +2,8 @@ package ai
 
 import (
 	"context"
-	"database/sql"
-	"encoding/json"
 	"maps"
 	"slices"
-	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 
@@ -91,45 +88,35 @@ func cloneAILoginConfig(src *aiLoginConfig) *aiLoginConfig {
 }
 
 func loadAILoginConfig(ctx context.Context, login *bridgev2.UserLogin) (*aiLoginConfig, error) {
-	scope := loginScopeForLogin(login)
-	if scope == nil {
+	_ = ctx
+	if login == nil {
 		return &aiLoginConfig{}, nil
 	}
-	var raw string
-	err := scope.db.QueryRow(ctx, `
-		SELECT config_json
-		FROM `+aiLoginConfigTable+`
-	WHERE bridge_id=$1 AND login_id=$2
-	`, scope.bridgeID, scope.loginID).Scan(&raw)
-	if err == sql.ErrNoRows || raw == "" {
+	meta := loginMetadata(login)
+	if meta == nil {
 		return &aiLoginConfig{}, nil
 	}
-	if err != nil {
-		return nil, err
-	}
-	var persisted aiLoginConfig
-	if err = json.Unmarshal([]byte(raw), &persisted); err != nil {
-		return nil, err
-	}
-	return &persisted, nil
+	return &aiLoginConfig{
+		Credentials:          cloneLoginCredentials(meta.Credentials),
+		TitleGenerationModel: meta.TitleGenerationModel,
+		Agents:               cloneBoolPtr(meta.Agents),
+		Timezone:             meta.Timezone,
+		Profile:              cloneUserProfile(meta.Profile),
+	}, nil
 }
 
 func saveAILoginConfig(ctx context.Context, login *bridgev2.UserLogin, cfg *aiLoginConfig) error {
 	if login == nil || cfg == nil {
 		return nil
 	}
-	if scope := loginScopeForLogin(login); scope != nil {
-		payload, err := json.Marshal(cfg)
-		if err != nil {
-			return err
-		}
-		if _, err = scope.db.Exec(ctx, `
-			INSERT INTO `+aiLoginConfigTable+` (bridge_id, login_id, config_json, updated_at_ms)
-			VALUES ($1, $2, $3, $4)
-			ON CONFLICT (bridge_id, login_id) DO UPDATE SET
-				config_json=excluded.config_json,
-				updated_at_ms=excluded.updated_at_ms
-		`, scope.bridgeID, scope.loginID, string(payload), time.Now().UnixMilli()); err != nil {
+	meta := loginMetadata(login)
+	if meta != nil {
+		meta.Credentials = cloneLoginCredentials(cfg.Credentials)
+		meta.TitleGenerationModel = cfg.TitleGenerationModel
+		meta.Agents = cloneBoolPtr(cfg.Agents)
+		meta.Timezone = cfg.Timezone
+		meta.Profile = cloneUserProfile(cfg.Profile)
+		if err := login.Save(ctx); err != nil {
 			return err
 		}
 	}

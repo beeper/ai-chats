@@ -30,11 +30,14 @@ const (
 )
 
 type PortalMetadata struct {
-	IsCodexRoom       bool   `json:"is_codex_room,omitempty"`
-	Title             string `json:"title,omitempty"`
-	Slug              string `json:"slug,omitempty"`
-	AwaitingCwdSetup  bool   `json:"awaiting_cwd_setup,omitempty"`
-	ManagedImport     bool   `json:"managed_import,omitempty"`
+	IsCodexRoom      bool   `json:"is_codex_room,omitempty"`
+	Title            string `json:"title,omitempty"`
+	Slug             string `json:"slug,omitempty"`
+	CodexThreadID    string `json:"codex_thread_id,omitempty"`
+	CodexCwd         string `json:"codex_cwd,omitempty"`
+	ElevatedLevel    string `json:"elevated_level,omitempty"`
+	AwaitingCwdSetup bool   `json:"awaiting_cwd_setup,omitempty"`
+	ManagedImport    bool   `json:"managed_import,omitempty"`
 }
 
 type MessageMetadata struct {

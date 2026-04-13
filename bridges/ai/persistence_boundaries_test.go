@@ -999,7 +999,10 @@ func TestSaveAIPortalState_DoesNotPersistBridgeRoomName(t *testing.T) {
 	loaded := &PortalMetadata{}
 	loadPortalStateIntoMetadata(ctx, portal, loaded)
 
-	if loaded.Slug != "chat-1" || !loaded.TitleGenerated || !loaded.WelcomeSent {
+	if portalMeta(portal).Slug != "chat-1" {
+		t.Fatalf("expected slug to persist through portal metadata, got %#v", portalMeta(portal))
+	}
+	if loaded.Slug != "" || !loaded.TitleGenerated || !loaded.WelcomeSent {
 		t.Fatalf("expected AI-owned portal state to load, got %#v", loaded)
 	}
 	if portal.Name != "Bridge Owned Name" {

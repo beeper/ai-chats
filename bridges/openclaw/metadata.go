@@ -2,13 +2,11 @@ package openclaw
 
 import (
 	"context"
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
-	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -21,13 +19,36 @@ import (
 )
 
 type UserLoginMetadata struct {
-	Provider     string `json:"provider,omitempty"`
-	GatewayURL   string `json:"gateway_url,omitempty"`
-	GatewayLabel string `json:"gateway_label,omitempty"`
+	Provider        string `json:"provider,omitempty"`
+	GatewayURL      string `json:"gateway_url,omitempty"`
+	GatewayLabel    string `json:"gateway_label,omitempty"`
+	GatewayToken    string `json:"gateway_token,omitempty"`
+	GatewayPassword string `json:"gateway_password,omitempty"`
+	DeviceToken     string `json:"device_token,omitempty"`
+	SessionsSynced  bool   `json:"sessions_synced,omitempty"`
+	LastSyncAt      int64  `json:"last_sync_at,omitempty"`
 }
 
 type PortalMetadata struct {
-	IsOpenClawRoom bool `json:"is_openclaw_room,omitempty"`
+	IsOpenClawRoom               bool   `json:"is_openclaw_room,omitempty"`
+	OpenClawSessionID            string `json:"openclaw_session_id,omitempty"`
+	OpenClawSessionKey           string `json:"openclaw_session_key,omitempty"`
+	OpenClawDMTargetAgentID      string `json:"openclaw_dm_target_agent_id,omitempty"`
+	OpenClawDMTargetAgentName    string `json:"openclaw_dm_target_agent_name,omitempty"`
+	OpenClawDMCreatedFromContact bool   `json:"openclaw_dm_created_from_contact,omitempty"`
+	OpenClawSessionKind          string `json:"openclaw_session_kind,omitempty"`
+	OpenClawSessionLabel         string `json:"openclaw_session_label,omitempty"`
+	OpenClawDisplayName          string `json:"openclaw_display_name,omitempty"`
+	OpenClawDerivedTitle         string `json:"openclaw_derived_title,omitempty"`
+	OpenClawChannel              string `json:"openclaw_channel,omitempty"`
+	OpenClawSubject              string `json:"openclaw_subject,omitempty"`
+	OpenClawGroupChannel         string `json:"openclaw_group_channel,omitempty"`
+	OpenClawSpace                string `json:"openclaw_space,omitempty"`
+	OpenClawChatType             string `json:"openclaw_chat_type,omitempty"`
+	OpenClawOrigin               string `json:"openclaw_origin,omitempty"`
+	OpenClawAgentID              string `json:"openclaw_agent_id,omitempty"`
+	HistoryMode                  string `json:"history_mode,omitempty"`
+	RecentHistoryLimit           int    `json:"recent_history_limit,omitempty"`
 }
 
 type openClawPortalState struct {
@@ -96,14 +117,6 @@ type openClawPortalState struct {
 	BackgroundBackfillError       string         `json:"background_backfill_error,omitempty"`
 }
 
-type openClawPersistedLoginState struct {
-	GatewayToken    string
-	GatewayPassword string
-	DeviceToken     string
-	SessionsSynced  bool
-	LastSyncAt      int64
-}
-
 var openClawPortalStateBlob = aidb.JSONBlobTable{
 	TableName: "openclaw_portal_state",
 	KeyColumn: "portal_key",
@@ -122,11 +135,31 @@ func openClawPortalBlobScope(portal *bridgev2.Portal, login *bridgev2.UserLogin)
 }
 
 func loadOpenClawPortalState(ctx context.Context, portal *bridgev2.Portal, login *bridgev2.UserLogin) (*openClawPortalState, error) {
-	return aidb.LoadScopedOrNew[openClawPortalState](ctx, openClawPortalBlobScope(portal, login))
+	state, err := aidb.LoadScopedOrNew[openClawPortalState](ctx, openClawPortalBlobScope(portal, login))
+	if err != nil {
+		return nil, err
+	}
+	if state == nil {
+		state = &openClawPortalState{}
+	}
+	if portal != nil {
+		applyOpenClawPortalMetadata(state, portalMeta(portal))
+	}
+	return state, nil
 }
 
 func saveOpenClawPortalState(ctx context.Context, portal *bridgev2.Portal, login *bridgev2.UserLogin, state *openClawPortalState) error {
-	return aidb.SaveScoped(ctx, openClawPortalBlobScope(portal, login), state)
+	if portal != nil && state != nil {
+		meta := portalMeta(portal)
+		copyOpenClawPortalMetadata(meta, state)
+		if portal.Bridge != nil && portal.Bridge.DB != nil && portal.Portal != nil {
+			if err := portal.Save(ctx); err != nil {
+				return err
+			}
+		}
+	}
+	persisted := persistedOpenClawPortalState(state)
+	return aidb.SaveScoped(ctx, openClawPortalBlobScope(portal, login), persisted)
 }
 
 type GhostMetadata struct {
@@ -215,106 +248,83 @@ func loginMetadata(login *bridgev2.UserLogin) *UserLoginMetadata {
 	return sdk.EnsureLoginMetadata[UserLoginMetadata](login)
 }
 
-func openClawLoginBlobScope(login *bridgev2.UserLogin) *aidb.BlobScope {
-	if login == nil || login.Bridge == nil || login.Bridge.DB == nil || login.Bridge.DB.Database == nil {
-		return nil
-	}
-	bridgeID := strings.TrimSpace(string(login.Bridge.DB.BridgeID))
-	loginID := strings.TrimSpace(string(login.ID))
-	if bridgeID == "" || loginID == "" {
-		return nil
-	}
-	return &aidb.BlobScope{
-		DB:       login.Bridge.DB.Database,
-		BridgeID: bridgeID,
-		LoginID:  loginID,
-	}
-}
-
-func ensureOpenClawLoginStateTable(ctx context.Context, login *bridgev2.UserLogin) error {
-	scope := openClawLoginBlobScope(login)
-	if scope == nil {
-		return nil
-	}
-	_, err := scope.DB.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS openclaw_login_state (
-			bridge_id TEXT NOT NULL,
-			login_id TEXT NOT NULL,
-			gateway_token TEXT NOT NULL DEFAULT '',
-			gateway_password TEXT NOT NULL DEFAULT '',
-			device_token TEXT NOT NULL DEFAULT '',
-			sessions_synced INTEGER NOT NULL DEFAULT 0,
-			last_sync_at_ms INTEGER NOT NULL DEFAULT 0,
-			updated_at_ms INTEGER NOT NULL DEFAULT 0,
-			PRIMARY KEY (bridge_id, login_id)
-		)
-	`)
-	return err
-}
-
-func loadOpenClawLoginState(ctx context.Context, login *bridgev2.UserLogin) (*openClawPersistedLoginState, error) {
-	scope := openClawLoginBlobScope(login)
-	if scope == nil {
-		return &openClawPersistedLoginState{}, nil
-	}
-	if err := ensureOpenClawLoginStateTable(ctx, login); err != nil {
-		return nil, err
-	}
-	state := &openClawPersistedLoginState{}
-	err := scope.DB.QueryRow(ctx, `
-		SELECT gateway_token, gateway_password, device_token, sessions_synced, last_sync_at_ms
-		FROM openclaw_login_state
-		WHERE bridge_id=$1 AND login_id=$2
-	`, scope.BridgeID, scope.LoginID).Scan(
-		&state.GatewayToken,
-		&state.GatewayPassword,
-		&state.DeviceToken,
-		&state.SessionsSynced,
-		&state.LastSyncAt,
-	)
-	if err == sql.ErrNoRows {
-		return state, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return state, nil
-}
-
-func saveOpenClawLoginState(ctx context.Context, login *bridgev2.UserLogin, state *openClawPersistedLoginState) error {
-	scope := openClawLoginBlobScope(login)
-	if scope == nil || state == nil {
-		return nil
-	}
-	if err := ensureOpenClawLoginStateTable(ctx, login); err != nil {
-		return err
-	}
-	_, err := scope.DB.Exec(ctx, `
-		INSERT INTO openclaw_login_state (
-			bridge_id, login_id, gateway_token, gateway_password, device_token, sessions_synced, last_sync_at_ms, updated_at_ms
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		ON CONFLICT (bridge_id, login_id) DO UPDATE SET
-			gateway_token=excluded.gateway_token,
-			gateway_password=excluded.gateway_password,
-			device_token=excluded.device_token,
-			sessions_synced=excluded.sessions_synced,
-			last_sync_at_ms=excluded.last_sync_at_ms,
-			updated_at_ms=excluded.updated_at_ms
-	`,
-		scope.BridgeID,
-		scope.LoginID,
-		state.GatewayToken,
-		state.GatewayPassword,
-		state.DeviceToken,
-		state.SessionsSynced,
-		state.LastSyncAt,
-		time.Now().UnixMilli(),
-	)
-	return err
-}
-
 func portalMeta(portal *bridgev2.Portal) *PortalMetadata {
 	return sdk.EnsurePortalMetadata[PortalMetadata](portal)
+}
+
+func applyOpenClawPortalMetadata(state *openClawPortalState, meta *PortalMetadata) {
+	if state == nil || meta == nil {
+		return
+	}
+	state.OpenClawSessionID = strings.TrimSpace(meta.OpenClawSessionID)
+	state.OpenClawSessionKey = strings.TrimSpace(meta.OpenClawSessionKey)
+	state.OpenClawDMTargetAgentID = strings.TrimSpace(meta.OpenClawDMTargetAgentID)
+	state.OpenClawDMTargetAgentName = strings.TrimSpace(meta.OpenClawDMTargetAgentName)
+	state.OpenClawDMCreatedFromContact = meta.OpenClawDMCreatedFromContact
+	state.OpenClawSessionKind = strings.TrimSpace(meta.OpenClawSessionKind)
+	state.OpenClawSessionLabel = strings.TrimSpace(meta.OpenClawSessionLabel)
+	state.OpenClawDisplayName = strings.TrimSpace(meta.OpenClawDisplayName)
+	state.OpenClawDerivedTitle = strings.TrimSpace(meta.OpenClawDerivedTitle)
+	state.OpenClawChannel = strings.TrimSpace(meta.OpenClawChannel)
+	state.OpenClawSubject = strings.TrimSpace(meta.OpenClawSubject)
+	state.OpenClawGroupChannel = strings.TrimSpace(meta.OpenClawGroupChannel)
+	state.OpenClawSpace = strings.TrimSpace(meta.OpenClawSpace)
+	state.OpenClawChatType = strings.TrimSpace(meta.OpenClawChatType)
+	state.OpenClawOrigin = strings.TrimSpace(meta.OpenClawOrigin)
+	state.OpenClawAgentID = strings.TrimSpace(meta.OpenClawAgentID)
+	state.HistoryMode = strings.TrimSpace(meta.HistoryMode)
+	state.RecentHistoryLimit = meta.RecentHistoryLimit
+}
+
+func copyOpenClawPortalMetadata(meta *PortalMetadata, state *openClawPortalState) {
+	if meta == nil || state == nil {
+		return
+	}
+	meta.IsOpenClawRoom = true
+	meta.OpenClawSessionID = strings.TrimSpace(state.OpenClawSessionID)
+	meta.OpenClawSessionKey = strings.TrimSpace(state.OpenClawSessionKey)
+	meta.OpenClawDMTargetAgentID = strings.TrimSpace(state.OpenClawDMTargetAgentID)
+	meta.OpenClawDMTargetAgentName = strings.TrimSpace(state.OpenClawDMTargetAgentName)
+	meta.OpenClawDMCreatedFromContact = state.OpenClawDMCreatedFromContact
+	meta.OpenClawSessionKind = strings.TrimSpace(state.OpenClawSessionKind)
+	meta.OpenClawSessionLabel = strings.TrimSpace(state.OpenClawSessionLabel)
+	meta.OpenClawDisplayName = strings.TrimSpace(state.OpenClawDisplayName)
+	meta.OpenClawDerivedTitle = strings.TrimSpace(state.OpenClawDerivedTitle)
+	meta.OpenClawChannel = strings.TrimSpace(state.OpenClawChannel)
+	meta.OpenClawSubject = strings.TrimSpace(state.OpenClawSubject)
+	meta.OpenClawGroupChannel = strings.TrimSpace(state.OpenClawGroupChannel)
+	meta.OpenClawSpace = strings.TrimSpace(state.OpenClawSpace)
+	meta.OpenClawChatType = strings.TrimSpace(state.OpenClawChatType)
+	meta.OpenClawOrigin = strings.TrimSpace(state.OpenClawOrigin)
+	meta.OpenClawAgentID = strings.TrimSpace(state.OpenClawAgentID)
+	meta.HistoryMode = strings.TrimSpace(state.HistoryMode)
+	meta.RecentHistoryLimit = state.RecentHistoryLimit
+}
+
+func persistedOpenClawPortalState(state *openClawPortalState) *openClawPortalState {
+	if state == nil {
+		return nil
+	}
+	persisted := *state
+	persisted.OpenClawSessionID = ""
+	persisted.OpenClawSessionKey = ""
+	persisted.OpenClawDMTargetAgentID = ""
+	persisted.OpenClawDMTargetAgentName = ""
+	persisted.OpenClawDMCreatedFromContact = false
+	persisted.OpenClawSessionKind = ""
+	persisted.OpenClawSessionLabel = ""
+	persisted.OpenClawDisplayName = ""
+	persisted.OpenClawDerivedTitle = ""
+	persisted.OpenClawChannel = ""
+	persisted.OpenClawSubject = ""
+	persisted.OpenClawGroupChannel = ""
+	persisted.OpenClawSpace = ""
+	persisted.OpenClawChatType = ""
+	persisted.OpenClawOrigin = ""
+	persisted.OpenClawAgentID = ""
+	persisted.HistoryMode = ""
+	persisted.RecentHistoryLimit = 0
+	return &persisted
 }
 
 func ghostMeta(ghost *bridgev2.Ghost) *GhostMetadata {

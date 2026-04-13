@@ -79,10 +79,6 @@ func purgeLoginData(ctx context.Context, login *bridgev2.UserLogin) {
 		bridgeID, loginID,
 	)
 	recordDelete(
-		`DELETE FROM `+aiLoginConfigTable+` WHERE bridge_id=$1 AND login_id=$2`,
-		bridgeID, loginID,
-	)
-	recordDelete(
 		`DELETE FROM `+aiCustomAgentsTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
