@@ -83,3 +83,32 @@ func TestApplyLoginTokensToSearchConfig_DefaultExaEndpointDoesNotForceExa(t *tes
 		t.Fatalf("openrouter token must not be copied into exa api key")
 	}
 }
+
+func TestApplyLoginTokensToFetchConfig_MagicProxyForcesExa(t *testing.T) {
+	oc := &OpenAIConnector{}
+	cfgLogin := &aiLoginConfig{
+		Credentials: &LoginCredentials{
+			APIKey:  "magic-token",
+			BaseURL: "https://bai.bt.hn/team/proxy",
+		},
+	}
+	cfg := &retrieval.FetchConfig{
+		Provider:  retrieval.ProviderExa,
+		Fallbacks: []string{retrieval.ProviderExa},
+	}
+
+	got := applyLoginTokensToFetchConfig(cfg, ProviderMagicProxy, cfgLogin, oc)
+
+	if got.Provider != retrieval.ProviderExa {
+		t.Fatalf("expected provider %q, got %q", retrieval.ProviderExa, got.Provider)
+	}
+	if len(got.Fallbacks) != 1 || got.Fallbacks[0] != retrieval.ProviderExa {
+		t.Fatalf("expected exa-only fallbacks, got %#v", got.Fallbacks)
+	}
+	if got.Exa.BaseURL != "https://bai.bt.hn/team/proxy/exa" {
+		t.Fatalf("unexpected exa base URL: %q", got.Exa.BaseURL)
+	}
+	if got.Exa.APIKey != "magic-token" {
+		t.Fatalf("unexpected exa API key: %q", got.Exa.APIKey)
+	}
+}

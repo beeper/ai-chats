@@ -106,18 +106,7 @@ func applyLoginTokensToSearchConfig(cfg *retrieval.SearchConfig, provider string
 	if cfg == nil {
 		cfg = &retrieval.SearchConfig{}
 	}
-	if connector == nil {
-		return cfg
-	}
-
-	applyResolvedExaConfig(&cfg.Exa.BaseURL, &cfg.Exa.APIKey, provider, loginCfg, connector)
-	if shouldApplyExaProxyDefaults(provider) {
-		applyExaProxyDefaults(cfg, provider, loginCfg, connector)
-	}
-	if shouldForceExaProvider(cfg.Exa.APIKey, cfg.Exa.BaseURL, provider) {
-		applyProviderOverride(&cfg.Provider, &cfg.Fallbacks, retrieval.ProviderExa)
-	}
-
+	applyLoginTokensToRetrievalConfig(&cfg.Provider, &cfg.Fallbacks, &cfg.Exa.BaseURL, &cfg.Exa.APIKey, provider, loginCfg, connector)
 	return cfg
 }
 
@@ -125,19 +114,21 @@ func applyLoginTokensToFetchConfig(cfg *retrieval.FetchConfig, provider string, 
 	if cfg == nil {
 		cfg = &retrieval.FetchConfig{}
 	}
-	if connector == nil {
-		return cfg
-	}
-
-	applyResolvedExaConfig(&cfg.Exa.BaseURL, &cfg.Exa.APIKey, provider, loginCfg, connector)
-	if shouldApplyExaProxyDefaults(provider) {
-		applyFetchExaProxyDefaults(cfg, provider, loginCfg, connector)
-	}
-	if shouldForceExaProvider(cfg.Exa.APIKey, cfg.Exa.BaseURL, provider) {
-		applyProviderOverride(&cfg.Provider, &cfg.Fallbacks, retrieval.ProviderExa)
-	}
-
+	applyLoginTokensToRetrievalConfig(&cfg.Provider, &cfg.Fallbacks, &cfg.Exa.BaseURL, &cfg.Exa.APIKey, provider, loginCfg, connector)
 	return cfg
+}
+
+func applyLoginTokensToRetrievalConfig(providerField *string, fallbacks *[]string, exaBaseURL *string, exaAPIKey *string, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) {
+	if connector == nil {
+		return
+	}
+	applyResolvedExaConfig(exaBaseURL, exaAPIKey, provider, loginCfg, connector)
+	if shouldApplyExaProxyDefaults(provider) {
+		applyExaProxyDefaultsTo(exaBaseURL, exaAPIKey, provider, loginCfg, connector)
+	}
+	if shouldForceExaProvider(*exaAPIKey, *exaBaseURL, provider) {
+		applyProviderOverride(providerField, fallbacks, retrieval.ProviderExa)
+	}
 }
 
 func applyResolvedExaConfig(baseURL *string, apiKey *string, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) {
@@ -214,20 +205,6 @@ func applyExaProxyDefaultsTo(baseURL *string, apiKey *string, provider string, l
 			}
 		}
 	}
-}
-
-func applyExaProxyDefaults(cfg *retrieval.SearchConfig, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) {
-	if cfg == nil {
-		return
-	}
-	applyExaProxyDefaultsTo(&cfg.Exa.BaseURL, &cfg.Exa.APIKey, provider, loginCfg, connector)
-}
-
-func applyFetchExaProxyDefaults(cfg *retrieval.FetchConfig, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) {
-	if cfg == nil {
-		return
-	}
-	applyExaProxyDefaultsTo(&cfg.Exa.BaseURL, &cfg.Exa.APIKey, provider, loginCfg, connector)
 }
 
 func shouldUseExaProxyBase(baseURL string) bool {

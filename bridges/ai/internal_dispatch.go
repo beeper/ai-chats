@@ -71,41 +71,7 @@ func (oc *AIClient) dispatchInternalMessage(
 		enqueuedAt:  time.Now().UnixMilli(),
 	}
 	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
-
-	if oc.acquireRoom(portal.MXID) {
-		metaSnapshot := clonePortalMetadata(meta)
-		runCtx := oc.attachRoomRun(withInboundContext(oc.backgroundContext(ctx), inboundCtx), portal.MXID)
-		runCtx = WithTypingContext(runCtx, pending.Typing)
-		go func(metaSnapshot *PortalMetadata) {
-			defer func() {
-				oc.releaseRoom(portal.MXID)
-				oc.processPendingQueue(oc.backgroundContext(ctx), portal.MXID)
-			}()
-			oc.dispatchCompletionInternal(runCtx, nil, portal, metaSnapshot, promptContext)
-		}(metaSnapshot)
-		oc.notifySessionMutation(ctx, portal, meta, false)
-		return eventID, false, nil
-	}
-
-	behavior := airuntime.ResolveQueueBehavior(queueSettings.Mode)
-	shouldSteer := behavior.Steer
-	queueDecision := airuntime.DecideQueueAction(queueSettings.Mode, oc.roomHasActiveRun(portal.MXID), false)
-	if queueDecision.Action == airuntime.QueueActionInterruptAndRun {
-		oc.cancelRoomRun(portal.MXID)
-		oc.clearPendingQueue(ctx, portal.MXID)
-	}
-	if shouldSteer && pending.Type == pendingTypeText {
-		queueItem.prompt = pending.MessageBody
-		if oc.enqueueSteerQueue(portal.MXID, queueItem) {
-			if !behavior.BacklogAfter {
-				return eventID, true, nil
-			}
-		}
-	}
-	if behavior.BacklogAfter {
-		queueItem.backlogAfter = true
-	}
-	oc.queuePendingMessage(portal.MXID, queueItem, queueSettings)
+	_, isPending := oc.dispatchOrQueue(promptCtx, nil, portal, meta, nil, queueItem, queueSettings, promptContext)
 	oc.notifySessionMutation(ctx, portal, meta, false)
-	return eventID, true, nil
+	return eventID, isPending, nil
 }
