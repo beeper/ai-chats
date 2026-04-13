@@ -202,6 +202,101 @@ func TestBuildBaseContext_ReplaysTranscriptHistoryFromFreshPortalLoad(t *testing
 	}
 }
 
+func TestBuildBaseContext_ReplaysHistoryFromTransientPortalByCanonicalizingPortalLookup(t *testing.T) {
+	ctx := context.Background()
+	client := newDBBackedTestAIClient(t, ProviderOpenAI)
+	client.UserLogin.Client = client
+
+	portal := newTranscriptTestPortal(t, client, "transient-history")
+
+	userMeta := &MessageMetadata{
+		BaseMessageMetadata: sdk.BaseMessageMetadata{Role: "user", Body: "hello world"},
+	}
+	setCanonicalTurnDataFromPromptMessages(userMeta, []PromptMessage{{
+		Role: PromptRoleUser,
+		Blocks: []PromptBlock{{
+			Type: PromptBlockText,
+			Text: "hello world",
+		}},
+	}})
+	userMsg := &database.Message{
+		ID:        sdk.MatrixMessageID(id.EventID("$transient-user-1")),
+		MXID:      id.EventID("$transient-user-1"),
+		Room:      portal.PortalKey,
+		SenderID:  humanUserID(client.UserLogin.ID),
+		Metadata:  userMeta,
+		Timestamp: time.UnixMilli(1000),
+	}
+	client.saveUserMessage(ctx, &event.Event{ID: userMsg.MXID}, userMsg)
+
+	assistantMsg := &database.Message{
+		ID:       networkid.MessageID("transient-assistant-1"),
+		MXID:     id.EventID("$transient-assistant-1"),
+		Room:     portal.PortalKey,
+		SenderID: modelUserID("openai/gpt-4.1"),
+		Metadata: &MessageMetadata{
+			BaseMessageMetadata: sdk.BaseMessageMetadata{
+				Role: "assistant",
+				Body: "Hi there",
+				CanonicalTurnData: sdk.TurnData{
+					ID:   "transient-turn-1",
+					Role: "assistant",
+					Parts: []sdk.TurnPart{{
+						Type: "text",
+						Text: "Hi there",
+					}},
+				}.ToMap(),
+			},
+		},
+		Timestamp: time.UnixMilli(2000),
+	}
+	if err := persistAIConversationMessage(ctx, portal, assistantMsg); err != nil {
+		t.Fatalf("persist assistant turn: %v", err)
+	}
+
+	transientBridgeDB := *client.UserLogin.Bridge.DB
+	transientBridgeDB.BridgeID = ""
+	transientBridge := &bridgev2.Bridge{
+		DB:     &transientBridgeDB,
+		Config: client.UserLogin.Bridge.Config,
+		Log:    client.UserLogin.Bridge.Log,
+		Matrix: client.UserLogin.Bridge.Matrix,
+	}
+	setUnexportedField(transientBridge, "portalsByKey", map[networkid.PortalKey]*bridgev2.Portal{
+		portal.PortalKey: portal,
+	})
+	setUnexportedField(transientBridge, "portalsByMXID", map[id.RoomID]*bridgev2.Portal{
+		portal.MXID: portal,
+	})
+
+	transientPortal := &bridgev2.Portal{
+		Portal: &database.Portal{
+			PortalKey: portal.PortalKey,
+			MXID:      portal.MXID,
+			Metadata:  portal.Metadata,
+		},
+		Bridge: transientBridge,
+	}
+
+	if scope := portalScopeForPortal(transientPortal); scope != nil {
+		t.Fatalf("expected raw transient portal scope lookup to fail, got %#v", scope)
+	}
+
+	promptContext, err := client.buildBaseContext(ctx, transientPortal, portalMeta(transientPortal))
+	if err != nil {
+		t.Fatalf("buildBaseContext with transient portal: %v", err)
+	}
+	if len(promptContext.Messages) != 2 {
+		t.Fatalf("expected 2 replayed messages, got %d", len(promptContext.Messages))
+	}
+	if promptContext.Messages[0].Role != PromptRoleUser || promptContext.Messages[0].Text() != "hello world" {
+		t.Fatalf("unexpected first replayed message: %#v", promptContext.Messages[0])
+	}
+	if promptContext.Messages[1].Role != PromptRoleAssistant || promptContext.Messages[1].Text() != "Hi there" {
+		t.Fatalf("unexpected second replayed message: %#v", promptContext.Messages[1])
+	}
+}
+
 func TestPortalScopeForPortal_StrictlyRequiresCanonicalBridgeID(t *testing.T) {
 	ctx := context.Background()
 	client := newDBBackedTestAIClient(t, ProviderOpenAI)

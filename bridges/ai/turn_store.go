@@ -128,7 +128,10 @@ func ensurePortalTurnStateByScope(ctx context.Context, scope *portalScope) (*aiP
 }
 
 func loadAITurnByRef(ctx context.Context, portal *bridgev2.Portal, messageID networkid.MessageID, eventID id.EventID) (*aiTurnRecord, error) {
-	scope := portalScopeForPortal(portal)
+	scope, err := portalScopeForAIDB(ctx, portal)
+	if err != nil {
+		return nil, err
+	}
 	if scope == nil {
 		return nil, nil
 	}
@@ -154,7 +157,10 @@ func loadAITurnByRefValue(ctx context.Context, scope *portalScope, refKind, refV
 }
 
 func upsertAITurn(ctx context.Context, portal *bridgev2.Portal, entry aiTurnUpsert) error {
-	scope := portalScopeForPortal(portal)
+	scope, err := portalScopeForAIDB(ctx, portal)
+	if err != nil {
+		return err
+	}
 	if scope == nil {
 		return nil
 	}
@@ -289,7 +295,10 @@ func replaceAITurnRef(ctx context.Context, scope *portalScope, turnID, refKind, 
 }
 
 func deleteAITurnByExternalRef(ctx context.Context, portal *bridgev2.Portal, messageID networkid.MessageID, eventID id.EventID) error {
-	scope := portalScopeForPortal(portal)
+	scope, err := portalScopeForAIDB(ctx, portal)
+	if err != nil {
+		return err
+	}
 	if scope == nil {
 		return nil
 	}
@@ -313,8 +322,8 @@ func deleteAITurnByExternalRef(ctx context.Context, portal *bridgev2.Portal, mes
 }
 
 func deleteAITurnsForPortal(ctx context.Context, portal *bridgev2.Portal) {
-	scope := portalScopeForPortal(portal)
-	if scope == nil {
+	scope, err := portalScopeForAIDB(ctx, portal)
+	if err != nil || scope == nil {
 		return
 	}
 	log := portal.Bridge.Log
@@ -422,7 +431,10 @@ func loadAIPromptHistoryTurns(
 	limit int,
 	opts historyReplayOptions,
 ) ([]*aiTurnRecord, error) {
-	scope := portalScopeForPortal(portal)
+	scope, err := portalScopeForAIDB(ctx, portal)
+	if err != nil {
+		return nil, err
+	}
 	if scope == nil || limit <= 0 {
 		return nil, nil
 	}
@@ -451,7 +463,10 @@ func loadAIPromptHistoryTurns(
 }
 
 func hasInternalPromptHistory(ctx context.Context, portal *bridgev2.Portal) bool {
-	scope := portalScopeForPortal(portal)
+	scope, err := portalScopeForAIDB(ctx, portal)
+	if err != nil {
+		return false
+	}
 	if scope == nil {
 		return false
 	}
@@ -475,13 +490,17 @@ func (oc *AIClient) getAIHistoryMessages(ctx context.Context, portal *bridgev2.P
 	if oc == nil || portal == nil || portal.MXID == "" || limit <= 0 {
 		return nil, nil
 	}
-	scope := portalScopeForPortal(portal)
 	log := oc.loggerForContext(ctx).With().
 		Str("portal_key_id", string(portal.PortalKey.ID)).
 		Str("portal_key_receiver", string(portal.PortalKey.Receiver)).
 		Str("portal_mxid", portal.MXID.String()).
 		Int("history_limit", limit).
 		Logger()
+	scope, err := portalScopeForAIDB(ctx, portal)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to resolve canonical portal for AI history load")
+		return nil, err
+	}
 	if scope == nil {
 		log.Debug().Msg("Skipping AI history load because portal scope is nil")
 		return nil, nil

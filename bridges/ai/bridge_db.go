@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 
@@ -86,6 +87,34 @@ func bridgeDBFromPortal(portal *bridgev2.Portal) *dbutil.Database {
 		return nil
 	}
 	return newBridgeChildDB(portal.Bridge.DB.Database, portal.Bridge.Log)
+}
+
+func canonicalPortalForAIDB(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.Portal, error) {
+	if portal == nil {
+		return nil, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if scope := portalScopeForPortal(portal); scope != nil {
+		return portal, nil
+	}
+	if portal.Bridge == nil {
+		return portal, nil
+	}
+	resolved, err := portal.Bridge.GetPortalByKey(ctx, portal.PortalKey)
+	if err != nil || resolved == nil {
+		return nil, err
+	}
+	return resolved, nil
+}
+
+func portalScopeForAIDB(ctx context.Context, portal *bridgev2.Portal) (*portalScope, error) {
+	canonicalPortal, err := canonicalPortalForAIDB(ctx, portal)
+	if err != nil || canonicalPortal == nil {
+		return nil, err
+	}
+	return portalScopeForPortal(canonicalPortal), nil
 }
 
 func loginDBContext(client *AIClient) (*dbutil.Database, string, string) {

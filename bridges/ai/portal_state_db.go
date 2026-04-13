@@ -122,7 +122,11 @@ func loadAIPortalState(ctx context.Context, portal *bridgev2.Portal) (*aiPersist
 }
 
 func loadAIPortalRecord(ctx context.Context, portal *bridgev2.Portal) (*aiPersistedPortalRecord, error) {
-	return loadAIPortalRecordByScope(ctx, portalScopeForPortal(portal))
+	scope, err := portalScopeForAIDB(ctx, portal)
+	if err != nil {
+		return nil, err
+	}
+	return loadAIPortalRecordByScope(ctx, scope)
 }
 
 func loadAIPortalRecordByScope(ctx context.Context, scope *portalScope) (*aiPersistedPortalRecord, error) {
@@ -164,7 +168,10 @@ func loadAIPortalRecordByScope(ctx context.Context, scope *portalScope) (*aiPers
 }
 
 func advanceAIPortalContextEpoch(ctx context.Context, portal *bridgev2.Portal) error {
-	scope := portalScopeForPortal(portal)
+	scope, err := portalScopeForAIDB(ctx, portal)
+	if err != nil {
+		return err
+	}
 	if scope == nil {
 		return nil
 	}
@@ -172,7 +179,7 @@ func advanceAIPortalContextEpoch(ctx context.Context, portal *bridgev2.Portal) e
 		ctx = context.Background()
 	}
 	nowMs := time.Now().UnixMilli()
-	_, err := scope.db.Exec(ctx, `
+	_, err = scope.db.Exec(ctx, `
 		INSERT INTO `+aiPortalStateTable+` (
 			bridge_id, portal_id, portal_receiver, state_json, context_epoch, next_turn_sequence, updated_at_ms
 		) VALUES ($1, $2, $3, '{}', 1, 0, $4)
@@ -185,7 +192,10 @@ func advanceAIPortalContextEpoch(ctx context.Context, portal *bridgev2.Portal) e
 }
 
 func saveAIPortalState(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) error {
-	scope := portalScopeForPortal(portal)
+	scope, err := portalScopeForAIDB(ctx, portal)
+	if err != nil {
+		return err
+	}
 	if scope == nil {
 		return nil
 	}
