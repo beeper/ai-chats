@@ -128,40 +128,34 @@ func (cc *CodexClient) createWelcomeCodexChat(ctx context.Context) (*bridgev2.Po
 	if err != nil {
 		return nil, err
 	}
-	portal, err := cc.UserLogin.Bridge.GetPortalByKey(ctx, portalKey)
-	if err != nil {
-		return nil, err
-	}
 	state := &codexPortalState{
 		Title:            "New Codex Chat",
 		Slug:             "codex-welcome",
 		AwaitingCwdSetup: true,
 	}
-	portalMeta(portal).IsCodexRoom = true
-	if err := sdk.ConfigureDMPortal(ctx, sdk.ConfigureDMPortalParams{
-		Portal:      portal,
+	info := cc.composeCodexChatInfo(nil, state, false)
+	result, err := sdk.BootstrapDMPortal(ctx, sdk.DMPortalBootstrapSpec{
+		Login:       cc.UserLogin,
+		PortalKey:   portalKey,
 		Title:       state.Title,
 		OtherUserID: codexGhostID,
-		Save:        false,
-	}); err != nil {
-		return nil, err
-	}
-	info := cc.composeCodexChatInfo(portal, state, false)
-	if err := saveCodexPortalState(ctx, portal, state); err != nil {
-		return nil, err
-	}
-	created, err := sdk.EnsurePortalLifecycle(ctx, sdk.PortalLifecycleOptions{
-		Login:             cc.UserLogin,
-		Portal:            portal,
-		ChatInfo:          info,
-		SaveBeforeCreate:  true,
-		AIRoomKind:        sdk.AIRoomKindAgent,
-		ForceCapabilities: true,
+		PortalMutate: func(portal *bridgev2.Portal) {
+			portalMeta(portal).IsCodexRoom = true
+		},
+		BeforeSave: func(ctx context.Context, portal *bridgev2.Portal) error {
+			return saveCodexPortalState(ctx, portal, state)
+		},
+		ChatInfo:            info,
+		CreateRoomIfMissing: true,
+		SaveBeforeCreate:    true,
+		AIRoomKind:          sdk.AIRoomKindAgent,
+		ForceCapabilities:   true,
 	})
 	if err != nil {
 		return nil, err
 	}
-	if created {
+	portal := result.Portal
+	if result.Created {
 		cc.sendSystemNotice(ctx, portal, "AI Chats can make mistakes.")
 		cc.sendSystemNotice(ctx, portal, "Send an absolute path or `~/...` to start a Codex session.")
 	}

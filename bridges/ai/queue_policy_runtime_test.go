@@ -10,8 +10,8 @@ import (
 
 func TestDecideQueuePolicy_InterruptWithActiveRun(t *testing.T) {
 	client := &AIClient{
-		activeRooms: map[id.RoomID]bool{
-			"!room:test": true,
+		activeRoomRuns: map[id.RoomID]*roomRunState{
+			"!room:test": {},
 		},
 	}
 	decision := airuntime.DecideQueueAction(airuntime.QueueModeInterrupt, client.roomHasActiveRun("!room:test"), false)
@@ -21,7 +21,7 @@ func TestDecideQueuePolicy_InterruptWithActiveRun(t *testing.T) {
 }
 
 func TestDecideQueuePolicy_BacklogWithoutActiveRun(t *testing.T) {
-	client := &AIClient{activeRooms: map[id.RoomID]bool{}}
+	client := &AIClient{activeRoomRuns: map[id.RoomID]*roomRunState{}}
 	decision := airuntime.DecideQueueAction(airuntime.QueueModeCollect, client.roomHasActiveRun("!room:test"), false)
 	if decision.Action != airuntime.QueueActionRunNow {
 		t.Fatalf("expected run-now without active run, got %#v", decision)

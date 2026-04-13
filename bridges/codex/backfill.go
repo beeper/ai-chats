@@ -235,26 +235,29 @@ func (cc *CodexClient) ensureCodexThreadPortal(ctx context.Context, existing *br
 		state.Slug = codexThreadSlug(threadID)
 	}
 
-	if err := sdk.ConfigureDMPortal(ctx, sdk.ConfigureDMPortalParams{
+	info := cc.composeCodexChatInfo(portal, state, true)
+	result, err := sdk.BootstrapDMPortal(ctx, sdk.DMPortalBootstrapSpec{
+		Login:       cc.UserLogin,
 		Portal:      portal,
 		Title:       title,
 		OtherUserID: codexGhostID,
-		Save:        false,
-	}); err != nil {
-		return nil, false, err
-	}
-	info := cc.composeCodexChatInfo(portal, state, true)
-	created, err = sdk.EnsurePortalLifecycle(ctx, sdk.PortalLifecycleOptions{
-		Login:             cc.UserLogin,
-		Portal:            portal,
-		ChatInfo:          info,
-		SaveBeforeCreate:  true,
-		AIRoomKind:        sdk.AIRoomKindAgent,
-		ForceCapabilities: true,
+		PortalMutate: func(portal *bridgev2.Portal) {
+			portalMeta(portal).IsCodexRoom = true
+		},
+		BeforeSave: func(ctx context.Context, portal *bridgev2.Portal) error {
+			return saveCodexPortalState(ctx, portal, state)
+		},
+		ChatInfo:            info,
+		CreateRoomIfMissing: true,
+		SaveBeforeCreate:    true,
+		AIRoomKind:          sdk.AIRoomKindAgent,
+		ForceCapabilities:   true,
 	})
 	if err != nil {
 		return nil, false, err
 	}
+	portal = result.Portal
+	created = result.Created
 	if created {
 		if state.AwaitingCwdSetup {
 			cc.sendSystemNotice(ctx, portal, "This imported conversation needs a working directory. Send an absolute path or `~/...`.")

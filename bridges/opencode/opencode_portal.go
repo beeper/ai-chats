@@ -17,22 +17,6 @@ func (b *Bridge) ensureOpenCodeSessionPortal(ctx context.Context, inst *openCode
 	return b.ensureOpenCodeSessionPortalWithRoom(ctx, inst, session, true)
 }
 
-// defaultPortalLifecycleOptions returns the standard PortalLifecycleOptions
-// shared by all OpenCode room creation paths.
-func (b *Bridge) defaultPortalLifecycleOptions(login *bridgev2.UserLogin, portal *bridgev2.Portal, chatInfo *bridgev2.ChatInfo) sdk.PortalLifecycleOptions {
-	return sdk.PortalLifecycleOptions{
-		Login:            login,
-		Portal:           portal,
-		ChatInfo:         chatInfo,
-		SaveBeforeCreate: true,
-		CleanupOnCreateError: func(ctx context.Context, portal *bridgev2.Portal) {
-			b.host.CleanupPortal(ctx, portal, "failed to create OpenCode room")
-		},
-		AIRoomKind:        sdk.AIRoomKindAgent,
-		ForceCapabilities: true,
-	}
-}
-
 func (b *Bridge) ensureOpenCodeSessionPortalWithRoom(ctx context.Context, inst *openCodeInstance, session api.Session, createRoom bool) error {
 	if b == nil || b.host == nil || inst == nil {
 		return nil
@@ -78,24 +62,28 @@ func (b *Bridge) ensureOpenCodeSessionPortalWithRoom(ctx context.Context, inst *
 	}
 	meta.Title = title
 
-	if err := sdk.ConfigureDMPortal(ctx, sdk.ConfigureDMPortalParams{
+	chatInfo := b.composeOpenCodeChatInfo(title, inst.cfg.ID)
+	result, err := sdk.BootstrapDMPortal(ctx, sdk.DMPortalBootstrapSpec{
+		Login:       login,
 		Portal:      portal,
 		Title:       title,
 		OtherUserID: OpenCodeUserID(inst.cfg.ID),
-		Save:        false,
-	}); err != nil {
-		return err
-	}
-	b.host.SetPortalMeta(portal, meta)
-
-	chatInfo := b.composeOpenCodeChatInfo(title, inst.cfg.ID)
-	if !createRoom && portal.MXID == "" {
-		return nil
-	}
-	_, err = sdk.EnsurePortalLifecycle(ctx, b.defaultPortalLifecycleOptions(login, portal, chatInfo))
+		PortalMutate: func(portal *bridgev2.Portal) {
+			b.host.SetPortalMeta(portal, meta)
+		},
+		ChatInfo:            chatInfo,
+		CreateRoomIfMissing: createRoom,
+		SaveBeforeCreate:    true,
+		CleanupOnCreateError: func(ctx context.Context, portal *bridgev2.Portal) {
+			b.host.CleanupPortal(ctx, portal, "failed to create OpenCode room")
+		},
+		AIRoomKind:        sdk.AIRoomKindAgent,
+		ForceCapabilities: true,
+	})
 	if err != nil {
 		return err
 	}
+	portal = result.Portal
 
 	return nil
 }
@@ -224,21 +212,28 @@ func (b *Bridge) createManagedLauncherChat(ctx context.Context, login *bridgev2.
 		AgentID:        b.host.DefaultAgentID(),
 	}
 
-	if err := sdk.ConfigureDMPortal(ctx, sdk.ConfigureDMPortalParams{
+	chatInfo := b.composeOpenCodeChatInfo(displayTitle, instanceID)
+	result, err := sdk.BootstrapDMPortal(ctx, sdk.DMPortalBootstrapSpec{
+		Login:       login,
 		Portal:      portal,
 		Title:       displayTitle,
 		OtherUserID: OpenCodeUserID(instanceID),
-		Save:        false,
-	}); err != nil {
-		return nil, err
-	}
-	b.host.SetPortalMeta(portal, meta)
-
-	chatInfo := b.composeOpenCodeChatInfo(displayTitle, instanceID)
-	_, err = sdk.EnsurePortalLifecycle(ctx, b.defaultPortalLifecycleOptions(login, portal, chatInfo))
+		PortalMutate: func(portal *bridgev2.Portal) {
+			b.host.SetPortalMeta(portal, meta)
+		},
+		ChatInfo:            chatInfo,
+		CreateRoomIfMissing: true,
+		SaveBeforeCreate:    true,
+		CleanupOnCreateError: func(ctx context.Context, portal *bridgev2.Portal) {
+			b.host.CleanupPortal(ctx, portal, "failed to create OpenCode room")
+		},
+		AIRoomKind:        sdk.AIRoomKindAgent,
+		ForceCapabilities: true,
+	})
 	if err != nil {
 		return nil, err
 	}
+	portal = result.Portal
 
 	b.host.SendSystemNotice(ctx, portal, "AI Chats can make mistakes.")
 	b.host.SendSystemNotice(ctx, portal, "What directory should OpenCode work in? Send an absolute path or `~/...`, or send an empty message to use the managed default path.")

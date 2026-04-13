@@ -63,8 +63,9 @@ func TestMarkMessageSendSuccessSkippedWhenQueueAccepted(t *testing.T) {
 func TestDispatchOrQueueQueueRejectReturnsNotPending(t *testing.T) {
 	roomID := id.RoomID("!room:example.com")
 	oc := &AIClient{
-		activeRooms:   map[id.RoomID]bool{roomID: true},
-		pendingQueues: map[id.RoomID]*pendingQueue{},
+		roomLocks:      map[id.RoomID]bool{},
+		activeRoomRuns: map[id.RoomID]*roomRunState{roomID: {}},
+		pendingQueues:  map[id.RoomID]*pendingQueue{},
 	}
 	oc.pendingQueues[roomID] = &pendingQueue{
 		items: []pendingQueueItem{
@@ -106,8 +107,9 @@ func TestDispatchOrQueueQueueRejectReturnsNotPending(t *testing.T) {
 func TestDispatchOrQueueQueueAcceptReturnsPending(t *testing.T) {
 	roomID := id.RoomID("!room:example.com")
 	oc := &AIClient{
-		activeRooms:   map[id.RoomID]bool{roomID: true},
-		pendingQueues: map[id.RoomID]*pendingQueue{},
+		roomLocks:      map[id.RoomID]bool{},
+		activeRoomRuns: map[id.RoomID]*roomRunState{roomID: {}},
+		pendingQueues:  map[id.RoomID]*pendingQueue{},
 	}
 
 	evt := &event.Event{ID: id.EventID("$new")}
@@ -144,8 +146,9 @@ func TestDispatchOrQueueQueueAcceptReturnsPending(t *testing.T) {
 func TestDispatchOrQueueQueuesBehindExistingPendingWork(t *testing.T) {
 	roomID := id.RoomID("!room:example.com")
 	oc := &AIClient{
-		activeRooms:   map[id.RoomID]bool{},
-		pendingQueues: map[id.RoomID]*pendingQueue{},
+		roomLocks:      map[id.RoomID]bool{},
+		activeRoomRuns: map[id.RoomID]*roomRunState{},
+		pendingQueues:  map[id.RoomID]*pendingQueue{},
 	}
 	oc.pendingQueues[roomID] = &pendingQueue{
 		items: []pendingQueueItem{
@@ -186,8 +189,8 @@ func TestDispatchOrQueueQueuesBehindExistingPendingWork(t *testing.T) {
 	if got := len(queue.items); got != 2 {
 		t.Fatalf("expected queue length 2 after enqueue behind backlog, got %d", got)
 	}
-	if oc.activeRooms[roomID] {
-		t.Fatalf("expected room to remain unacquired while backlog exists")
+	if oc.roomLocks[roomID] {
+		t.Fatalf("expected room lock to remain clear while backlog exists")
 	}
 }
 

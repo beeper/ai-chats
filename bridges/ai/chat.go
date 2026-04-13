@@ -728,12 +728,6 @@ func (oc *AIClient) initPortalForChat(ctx context.Context, opts PortalInitOpts) 
 	if opts.PortalKey != nil {
 		portalKey = *opts.PortalKey
 	}
-	portal, err := oc.UserLogin.Bridge.GetPortalByKey(ctx, portalKey)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get portal: %w", err)
-	}
-
-	// Initialize or copy metadata
 	var pmeta *PortalMetadata
 	if opts.CopyFrom != nil {
 		pmeta = cloneForkPortalMetadata(opts.CopyFrom, slug, title)
@@ -742,30 +736,31 @@ func (oc *AIClient) initPortalForChat(ctx context.Context, opts PortalInitOpts) 
 			Slug: slug,
 		}
 	}
-	portal.Metadata = pmeta
-	if err := saveAIPortalState(ctx, portal, pmeta); err != nil {
-		return nil, nil, fmt.Errorf("failed to save portal state: %w", err)
-	}
-
-	if err := sdk.ConfigureDMPortal(ctx, sdk.ConfigureDMPortalParams{
-		Portal:      portal,
+	chatInfo := oc.composeChatInfo(ctx, title, modelID)
+	result, err := sdk.BootstrapDMPortal(ctx, sdk.DMPortalBootstrapSpec{
+		Login:       oc.UserLogin,
+		PortalKey:   portalKey,
 		Title:       title,
 		OtherUserID: modelUserID(modelID),
-		Save:        true,
-		MutatePortal: func(portal *bridgev2.Portal) {
+		PortalMutate: func(portal *bridgev2.Portal) {
+			portal.Metadata = pmeta
 			defaultAvatar := strings.TrimSpace(agents.DefaultAgentAvatarMXC)
 			if defaultAvatar != "" {
 				portal.AvatarID = networkid.AvatarID(defaultAvatar)
 				portal.AvatarMXC = id.ContentURIString(defaultAvatar)
 			}
 		},
-	}); err != nil {
-		return nil, nil, fmt.Errorf("failed to save portal: %w", err)
+		BeforeSave: func(ctx context.Context, portal *bridgev2.Portal) error {
+			return saveAIPortalState(ctx, portal, pmeta)
+		},
+		ChatInfo:            chatInfo,
+		CreateRoomIfMissing: false,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to bootstrap portal: %w", err)
 	}
 	oc.ensureGhostDisplayName(ctx, modelID)
-
-	chatInfo := oc.composeChatInfo(ctx, title, modelID)
-	return portal, chatInfo, nil
+	return result.Portal, result.ChatInfo, nil
 }
 
 // handleNewChat creates a new chat using the current room's agent/model,

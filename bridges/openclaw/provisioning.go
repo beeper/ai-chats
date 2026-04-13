@@ -286,31 +286,29 @@ func (oc *OpenClawClient) createConfiguredAgentDM(ctx context.Context, agent gat
 	state.HistoryMode = "paginated"
 	state.RecentHistoryLimit = 0
 	oc.enrichPortalState(ctx, state)
-	if err := sdk.ConfigureDMPortal(ctx, sdk.ConfigureDMPortalParams{
+	chatInfo := oc.buildOpenClawDMChatInfo(agentID, state.OpenClawDMTargetAgentName, info)
+	result, err := sdk.BootstrapDMPortal(ctx, sdk.DMPortalBootstrapSpec{
+		Login:       oc.UserLogin,
 		Portal:      portal,
 		Title:       state.OpenClawDMTargetAgentName,
 		Topic:       "OpenClaw agent DM",
 		OtherUserID: openClawScopedGhostUserID(oc.UserLogin.ID, agentID),
-		Save:        false,
-	}); err != nil {
-		return nil, fmt.Errorf("failed to configure openclaw dm portal: %w", err)
-	}
-	chatInfo := oc.buildOpenClawDMChatInfo(agentID, state.OpenClawDMTargetAgentName, info)
-	if err := saveOpenClawPortalState(ctx, portal, oc.UserLogin, state); err != nil {
-		return nil, err
-	}
-	portalMeta(portal).IsOpenClawRoom = true
-	_, err = sdk.EnsurePortalLifecycle(ctx, sdk.PortalLifecycleOptions{
-		Login:             oc.UserLogin,
-		Portal:            portal,
-		ChatInfo:          chatInfo,
-		SaveBeforeCreate:  true,
-		AIRoomKind:        sdk.AIRoomKindAgent,
-		ForceCapabilities: true,
+		PortalMutate: func(portal *bridgev2.Portal) {
+			portalMeta(portal).IsOpenClawRoom = true
+		},
+		BeforeSave: func(ctx context.Context, portal *bridgev2.Portal) error {
+			return saveOpenClawPortalState(ctx, portal, oc.UserLogin, state)
+		},
+		ChatInfo:            chatInfo,
+		CreateRoomIfMissing: true,
+		SaveBeforeCreate:    true,
+		AIRoomKind:          sdk.AIRoomKindAgent,
+		ForceCapabilities:   true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to ensure openclaw dm portal room: %w", err)
 	}
+	portal = result.Portal
 	oc.maybeRefreshPortalCapabilities(ctx, portal, &previous, state)
 	return &bridgev2.CreateChatResponse{
 		PortalKey:  portal.PortalKey,

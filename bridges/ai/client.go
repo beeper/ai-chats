@@ -279,9 +279,9 @@ type AIClient struct {
 	loginConfigMu sync.Mutex
 	loginConfig   *aiLoginConfig
 
-	// Turn-based message queuing: only one response per room at a time
-	activeRooms   map[id.RoomID]bool
-	activeRoomsMu sync.Mutex
+	// roomLocks is the low-level occupancy guard used to serialize work per room.
+	roomLocks   map[id.RoomID]bool
+	roomLocksMu sync.Mutex
 
 	// Pending message queue per room (for turn-based behavior)
 	pendingQueues   map[id.RoomID]*pendingQueue
@@ -395,7 +395,7 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 		connector:           connector,
 		apiKey:              key,
 		log:                 log,
-		activeRooms:         make(map[id.RoomID]bool),
+		roomLocks:           make(map[id.RoomID]bool),
 		pendingQueues:       make(map[id.RoomID]*pendingQueue),
 		activeRoomRuns:      make(map[id.RoomID]*roomRunState),
 		subagentRuns:        make(map[string]*subagentRun),
@@ -535,81 +535,6 @@ func initOpenRouterProvider(key, url, userID, pdfEngine, providerName string, lo
 	return provider, nil
 }
 
-func (oc *AIClient) acquireRoom(roomID id.RoomID) bool {
-	oc.activeRoomsMu.Lock()
-	defer oc.activeRoomsMu.Unlock()
-	if oc.activeRooms[roomID] {
-		return false // already processing
-	}
-	oc.activeRooms[roomID] = true
-	return true
-}
-
-// releaseRoom releases a room after processing is complete.
-func (oc *AIClient) releaseRoom(roomID id.RoomID) {
-	oc.activeRoomsMu.Lock()
-	defer oc.activeRoomsMu.Unlock()
-	delete(oc.activeRooms, roomID)
-	oc.clearRoomRun(roomID)
-}
-
-// queuePendingMessage adds a message to the pending queue for later processing.
-func (oc *AIClient) queuePendingMessage(roomID id.RoomID, item pendingQueueItem, settings airuntime.QueueSettings) bool {
-	enqueued := oc.enqueuePendingItem(roomID, item, settings)
-	if enqueued {
-		oc.startQueueTyping(oc.backgroundContext(context.Background()), item.pending.Portal, item.pending.Meta, item.pending.Typing)
-	}
-	return enqueued
-}
-
-func queueStatusEvents(primary *event.Event, extras []*event.Event) []*event.Event {
-	events := make([]*event.Event, 0, 1+len(extras))
-	seen := make(map[id.EventID]struct{}, 1+len(extras))
-	appendEvent := func(evt *event.Event) {
-		if evt == nil || evt.ID == "" {
-			return
-		}
-		if _, exists := seen[evt.ID]; exists {
-			return
-		}
-		seen[evt.ID] = struct{}{}
-		events = append(events, evt)
-	}
-	appendEvent(primary)
-	for _, evt := range extras {
-		appendEvent(evt)
-	}
-	return events
-}
-
-func (oc *AIClient) sendQueueAcceptedSuccess(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, extras []*event.Event) {
-	for _, statusEvt := range queueStatusEvents(evt, extras) {
-		oc.sendSuccessStatus(ctx, portal, statusEvt)
-	}
-}
-
-func (oc *AIClient) sendQueueRejectedStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, extras []*event.Event, reason string) {
-	if portal == nil || portal.Bridge == nil {
-		return
-	}
-	message := strings.TrimSpace(reason)
-	if message == "" {
-		message = "Couldn't queue the message. Try again."
-	}
-	err := fmt.Errorf("%s", message)
-	msgStatus := bridgev2.WrapErrorInStatus(err).
-		WithStatus(event.MessageStatusRetriable).
-		WithErrorReason(event.MessageStatusGenericError).
-		WithMessage(message).
-		WithIsCertain(true).
-		WithSendNotice(false)
-	for _, statusEvt := range queueStatusEvents(evt, extras) {
-		if info := sdk.MatrixMessageStatusEventInfo(portal, statusEvt); info != nil {
-			portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, info)
-		}
-	}
-}
-
 // saveUserMessage persists a user message to the bridge mapping tables and
 // mirrors the canonical turn into the AI-owned turn store.
 func (oc *AIClient) saveUserMessage(ctx context.Context, evt *event.Event, msg *database.Message) {
@@ -656,211 +581,6 @@ func (oc *AIClient) saveUserMessage(ctx context.Context, evt *event.Event, msg *
 	if err := oc.persistAIConversationMessage(ctx, portal, msg); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist AI conversation turn")
 	}
-}
-
-// dispatchOrQueueCore contains shared dispatch/steer/queue logic.
-// When userMessage is non-nil, it saves the message to the DB, handles ack
-// reactions, sends pending status on acquire, and notifies session mutations.
-// Returns true if the message was accepted (dispatched or queued).
-func (oc *AIClient) dispatchOrQueueCore(
-	ctx context.Context,
-	evt *event.Event,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	userMessage *database.Message,
-	queueItem pendingQueueItem,
-	queueSettings airuntime.QueueSettings,
-	promptContext PromptContext,
-) bool {
-	roomID := portal.MXID
-	behavior := airuntime.ResolveQueueBehavior(queueSettings.Mode)
-	shouldSteer := behavior.Steer
-	shouldFollowup := behavior.Followup
-	hasDBMessage := userMessage != nil
-	roomBusy := oc.roomHasActiveRun(roomID) || oc.roomHasPendingQueueWork(roomID)
-	queueDecision := airuntime.DecideQueueAction(queueSettings.Mode, roomBusy, false)
-	if queueDecision.Action == airuntime.QueueActionInterruptAndRun {
-		oc.cancelRoomRun(roomID)
-		oc.clearPendingQueue(ctx, roomID)
-		roomBusy = false
-	}
-	if !roomBusy && oc.acquireRoom(roomID) {
-		oc.stopQueueTyping(roomID)
-		if hasDBMessage {
-			oc.saveUserMessage(ctx, evt, userMessage)
-		}
-		if evt != nil && !queueItem.pending.PendingSent {
-			oc.sendPendingStatus(ctx, portal, evt, "Processing...")
-			queueItem.pending.PendingSent = true
-		}
-		runCtx := oc.backgroundContext(ctx)
-		if len(queueItem.pending.StatusEvents) > 0 {
-			runCtx = context.WithValue(runCtx, statusEventsKey{}, queueItem.pending.StatusEvents)
-		}
-		if queueItem.pending.InboundContext != nil {
-			runCtx = withInboundContext(runCtx, *queueItem.pending.InboundContext)
-		}
-		if queueItem.pending.Typing != nil {
-			runCtx = WithTypingContext(runCtx, queueItem.pending.Typing)
-		}
-		runCtx = oc.attachRoomRun(runCtx, roomID)
-		metaSnapshot := clonePortalMetadata(meta)
-		go func(metaSnapshot *PortalMetadata) {
-			defer func() {
-				oc.removePendingAckReactions(oc.backgroundContext(ctx), portal, queueItem.pending)
-				oc.releaseRoom(roomID)
-				oc.processPendingQueue(oc.backgroundContext(ctx), roomID)
-			}()
-			oc.dispatchCompletionInternal(runCtx, evt, portal, metaSnapshot, promptContext)
-		}(metaSnapshot)
-		if hasDBMessage {
-			oc.notifySessionMutation(ctx, portal, meta, false)
-		}
-		return true
-	}
-
-	messageSaved := false
-	if shouldSteer && queueItem.pending.Type == pendingTypeText {
-		queueItem.prompt = queueItem.pending.MessageBody
-		steered := oc.enqueueSteerQueue(roomID, queueItem)
-		if steered {
-			if hasDBMessage {
-				oc.saveUserMessage(ctx, evt, userMessage)
-				messageSaved = true
-			}
-			if !shouldFollowup {
-				if evt != nil && !queueItem.pending.PendingSent {
-					oc.sendPendingStatus(ctx, portal, evt, "Processing...")
-					queueItem.pending.PendingSent = true
-				}
-				if hasDBMessage {
-					oc.notifySessionMutation(ctx, portal, meta, false)
-				}
-				return true
-			}
-		}
-	}
-
-	// Room busy - queue for later
-	if behavior.BacklogAfter {
-		queueItem.backlogAfter = true
-	}
-	enqueued := oc.queuePendingMessage(roomID, queueItem, queueSettings)
-	if !enqueued {
-		oc.sendQueueRejectedStatus(ctx, portal, evt, queueItem.pending.StatusEvents, "Couldn't queue the message. Try again.")
-		return false
-	}
-	oc.sendQueueAcceptedSuccess(ctx, portal, evt, queueItem.pending.StatusEvents)
-	if hasDBMessage && !messageSaved {
-		oc.saveUserMessage(ctx, evt, userMessage)
-	}
-	if hasDBMessage {
-		oc.notifySessionMutation(ctx, portal, meta, false)
-	}
-	return true
-}
-
-func (oc *AIClient) dispatchOrQueue(
-	ctx context.Context,
-	evt *event.Event,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	userMessage *database.Message,
-	queueItem pendingQueueItem,
-	queueSettings airuntime.QueueSettings,
-	promptContext PromptContext,
-) (dbMessage *database.Message, isPending bool) {
-	isPending = oc.dispatchOrQueueCore(ctx, evt, portal, meta, userMessage, queueItem, queueSettings, promptContext)
-	return userMessage, isPending
-}
-
-// processPendingQueue processes queued messages for a room.
-func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
-	if oc == nil || roomID == "" {
-		return
-	}
-	if !oc.markQueueDraining(roomID) {
-		return
-	}
-
-	go func() {
-		defer oc.clearQueueDraining(roomID)
-		snapshot := oc.getQueueSnapshot(roomID)
-		if snapshot == nil || (len(snapshot.items) == 0 && snapshot.droppedCount == 0) {
-			return
-		}
-		// Wait for debounce window to pass since last enqueue.
-		if snapshot.debounceMs > 0 {
-			for {
-				current := oc.getQueueSnapshot(roomID)
-				if current == nil {
-					return
-				}
-				since := time.Now().UnixMilli() - current.lastEnqueuedAt
-				if since >= int64(current.debounceMs) {
-					break
-				}
-				wait := current.debounceMs - int(since)
-				if wait < 0 {
-					wait = 0
-				}
-				time.Sleep(time.Duration(wait) * time.Millisecond)
-			}
-		}
-
-		if !oc.acquireRoom(roomID) {
-			return
-		}
-		oc.stopQueueTyping(roomID)
-
-		candidate, actionSnapshot := oc.takePendingQueueDispatchCandidate(roomID, false)
-		if actionSnapshot == nil || candidate == nil || len(candidate.items) == 0 {
-			oc.releaseRoom(roomID)
-			return
-		}
-
-		item, prompt, ok := preparePendingQueueDispatchCandidate(candidate)
-		if !ok {
-			oc.releaseRoom(roomID)
-			return
-		}
-
-		var promptContext PromptContext
-		var err error
-
-		metaSnapshot := clonePortalMetadata(item.pending.Meta)
-		var eventID id.EventID
-		if item.pending.Event != nil {
-			eventID = item.pending.Event.ID
-		}
-		promptCtx := ctx
-		if item.pending.InboundContext != nil {
-			promptCtx = withInboundContext(promptCtx, *item.pending.InboundContext)
-		}
-		switch item.pending.Type {
-		case pendingTypeText:
-			promptContext, err = oc.buildCurrentTurnWithLinks(promptCtx, item.pending.Portal, metaSnapshot, prompt, item.rawEventContent, eventID)
-		case pendingTypeImage, pendingTypePDF, pendingTypeAudio, pendingTypeVideo:
-			promptContext, err = oc.buildMediaTurnContext(promptCtx, item.pending.Portal, metaSnapshot, item.pending.MessageBody, item.pending.MediaURL, item.pending.MimeType, item.pending.EncryptedFile, item.pending.Type, eventID)
-		case pendingTypeRegenerate:
-			promptContext, err = oc.buildContextForRegenerate(promptCtx, item.pending.Portal, metaSnapshot, item.pending.MessageBody, item.pending.SourceEventID)
-		case pendingTypeEditRegenerate:
-			promptContext, err = oc.buildContextUpToMessage(promptCtx, item.pending.Portal, metaSnapshot, item.pending.TargetMsgID, item.pending.MessageBody)
-		default:
-			err = fmt.Errorf("unknown pending message type: %s", item.pending.Type)
-		}
-
-		if err != nil {
-			oc.loggerForContext(ctx).Err(err).Msg("Failed to build prompt for pending queue item")
-			oc.notifyMatrixSendFailure(ctx, item.pending.Portal, item.pending.Event, err)
-			oc.removePendingAckReactions(oc.backgroundContext(ctx), item.pending.Portal, item.pending)
-			oc.releaseRoom(roomID)
-			oc.processPendingQueue(oc.backgroundContext(ctx), roomID)
-			return
-		}
-
-		oc.dispatchQueuedPrompt(ctx, item, promptContext)
-	}()
 }
 
 func (oc *AIClient) Connect(ctx context.Context) {
@@ -935,9 +655,9 @@ func (oc *AIClient) Disconnect() {
 	}
 
 	// Clean up per-room maps to prevent unbounded growth
-	oc.activeRoomsMu.Lock()
-	clear(oc.activeRooms)
-	oc.activeRoomsMu.Unlock()
+	oc.roomLocksMu.Lock()
+	clear(oc.roomLocks)
+	oc.roomLocksMu.Unlock()
 
 	oc.pendingQueuesMu.Lock()
 	clear(oc.pendingQueues)
