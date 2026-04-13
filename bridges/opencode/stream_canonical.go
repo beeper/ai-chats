@@ -109,30 +109,33 @@ func (oc *OpenCodeClient) buildStreamDBMetadata(state *openCodeStreamState) *Mes
 	if state == nil {
 		return nil
 	}
-	uiMessage := oc.currentUIMessage(state)
-	return buildMessageMetadataFromParams(MessageMetadataParams{
+	assembled := sdk.BuildCanonicalAssistantMetadata(sdk.CanonicalAssistantMetadataParams{
+		UIMessage:        oc.currentUIMessage(state),
+		ToolType:         "opencode",
+		TurnID:           state.turnID,
+		AgentID:          state.agentID,
 		Role:             stringutil.FirstNonEmpty(state.role, "assistant"),
 		Body:             stringutil.FirstNonEmpty(state.stream.VisibleText(), state.stream.AccumulatedText()),
 		FinishReason:     state.stream.FinishReason(),
 		PromptTokens:     state.promptTokens,
 		CompletionTokens: state.completionTokens,
 		ReasoningTokens:  state.reasoningTokens,
-		TurnID:           state.turnID,
-		AgentID:          state.agentID,
-		UIMessage:        uiMessage,
 		StartedAtMs:      state.stream.StartedAtMs(),
 		CompletedAtMs:    state.stream.CompletedAtMs(),
-		SessionID:        state.sessionID,
-		MessageID:        state.messageID,
-		ParentMessageID:  state.parentMessageID,
-		Agent:            state.agent,
-		ModelID:          state.modelID,
-		ProviderID:       state.providerID,
-		Mode:             state.mode,
-		ErrorText:        state.stream.ErrorText(),
-		Cost:             state.cost,
-		TotalTokens:      state.totalTokens,
 	})
+	return &MessageMetadata{
+		BaseMessageMetadata: assembled.Bundle.Base,
+		SessionID:           state.sessionID,
+		MessageID:           state.messageID,
+		ParentMessageID:     state.parentMessageID,
+		Agent:               state.agent,
+		ModelID:             state.modelID,
+		ProviderID:          state.providerID,
+		Mode:                state.mode,
+		ErrorText:           state.stream.ErrorText(),
+		Cost:                state.cost,
+		TotalTokens:         state.totalTokens,
+	}
 }
 
 func (oc *OpenCodeClient) buildSDKFinalMetadata(state *openCodeStreamState, finishReason string) any {

@@ -56,31 +56,35 @@ func buildCanonicalAssistantBackfill(msg api.MessageWithParts, agentID string) c
 		body = "..."
 	}
 	promptTokens, completionTokens, reasoningTokens := backfillTokenCounts(msg)
+	assembled := sdk.BuildCanonicalAssistantMetadata(sdk.CanonicalAssistantMetadataParams{
+		UIMessage:        uiMessage,
+		ToolType:         "opencode",
+		TurnID:           turnID,
+		AgentID:          strings.TrimSpace(agentID),
+		Role:             stringutil.FirstNonEmpty(strings.TrimSpace(msg.Info.Role), "assistant"),
+		Body:             body,
+		FinishReason:     stringutil.FirstNonEmpty(strings.TrimSpace(msg.Info.Finish), finishReason),
+		PromptTokens:     promptTokens,
+		CompletionTokens: completionTokens,
+		ReasoningTokens:  reasoningTokens,
+		StartedAtMs:      int64(msg.Info.Time.Created),
+		CompletedAtMs:    int64(msg.Info.Time.Completed),
+	})
 	return canonicalBackfillSnapshot{
-		body: body,
+		body: assembled.Snapshot.Body,
 		ui:   uiMessage,
-		meta: buildMessageMetadataFromParams(MessageMetadataParams{
-			Role:             stringutil.FirstNonEmpty(strings.TrimSpace(msg.Info.Role), "assistant"),
-			Body:             body,
-			FinishReason:     stringutil.FirstNonEmpty(strings.TrimSpace(msg.Info.Finish), finishReason),
-			PromptTokens:     promptTokens,
-			CompletionTokens: completionTokens,
-			ReasoningTokens:  reasoningTokens,
-			TurnID:           turnID,
-			AgentID:          strings.TrimSpace(agentID),
-			UIMessage:        uiMessage,
-			StartedAtMs:      int64(msg.Info.Time.Created),
-			CompletedAtMs:    int64(msg.Info.Time.Completed),
-			SessionID:        strings.TrimSpace(msg.Info.SessionID),
-			MessageID:        strings.TrimSpace(msg.Info.ID),
-			ParentMessageID:  strings.TrimSpace(msg.Info.ParentID),
-			Agent:            strings.TrimSpace(msg.Info.Agent),
-			ModelID:          strings.TrimSpace(msg.Info.ModelID),
-			ProviderID:       strings.TrimSpace(msg.Info.ProviderID),
-			Mode:             strings.TrimSpace(msg.Info.Mode),
-			Cost:             backfillCost(msg),
-			TotalTokens:      backfillTotalTokens(msg),
-		}),
+		meta: &MessageMetadata{
+			BaseMessageMetadata: assembled.Bundle.Base,
+			SessionID:           strings.TrimSpace(msg.Info.SessionID),
+			MessageID:           strings.TrimSpace(msg.Info.ID),
+			ParentMessageID:     strings.TrimSpace(msg.Info.ParentID),
+			Agent:               strings.TrimSpace(msg.Info.Agent),
+			ModelID:             strings.TrimSpace(msg.Info.ModelID),
+			ProviderID:          strings.TrimSpace(msg.Info.ProviderID),
+			Mode:                strings.TrimSpace(msg.Info.Mode),
+			Cost:                backfillCost(msg),
+			TotalTokens:         backfillTotalTokens(msg),
+		},
 	}
 }
 

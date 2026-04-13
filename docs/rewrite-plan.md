@@ -104,10 +104,23 @@ Exit condition:
 - merge `pkg/search` and `pkg/fetch` into `pkg/retrieval`
 - define the new typed state/storage boundary
 - define the new approval and tool-call protocol boundaries
+- collapse duplicated DM portal bootstrap/materialization into one SDK path
+- collapse shared assistant snapshot/message metadata assembly into SDK
 
 Exit condition:
 
 - the SDK has a clear compile-time surface for agentic behavior
+
+Current status:
+
+- complete: `pkg/retrieval` now owns the old `search` + `fetch` stack
+- complete: large `sdk` helper buckets have been split by behavior
+- complete: SDK approval flow has been split into core, pending store, routing, prompt store, and finalize layers
+- complete: AI, Codex, and OpenClaw approval normalization now converge on shared SDK helpers
+- complete: DM portal bootstrap now has a single SDK entrypoint
+- in progress: canonical turn/message metadata assembly is moving into SDK
+- pending: login lifecycle runtime
+- pending: AI runtime state machine simplification
 
 ### Phase 2: Vertical slice
 
@@ -150,10 +163,11 @@ Exit condition:
 
 ## Immediate Order Of Attack
 
-1. `pkg/retrieval`
-2. `sdk` module map and skeleton
-3. `bridges/dummybridge` vertical slice
-4. `bridges/openclaw` and `bridges/opencode`
-5. `bridges/codex`
-6. `bridges/ai`
-7. dead code deletion and compaction
+1. finish canonical turn/message assembly collapse in `sdk`
+2. build the shared login lifecycle runtime in `sdk`
+3. migrate `bridges/codex` login to that lifecycle first
+4. migrate `bridges/openclaw` login
+5. migrate `bridges/opencode` login
+6. migrate `bridges/ai` login
+7. collapse `bridges/ai` runtime orchestration into one state machine
+8. delete dead per-bridge helper stacks and compaction leftovers

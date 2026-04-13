@@ -1448,15 +1448,11 @@ func buildOpenClawHistoryMessageMetadata(message map[string]any, state *openClaw
 		Metadata: jsonutil.DeepCloneMap(uiMetadata),
 	}, "openclaw")
 	metadata := &MessageMetadata{
-		BaseMessageMetadata: sdk.BaseMessageMetadata{
-			Role:              role,
-			Body:              snapshot.Body,
-			AgentID:           agentID,
-			CanonicalTurnData: snapshot.TurnData.ToMap(),
-			ThinkingContent:   snapshot.ThinkingContent,
-			ToolCalls:         snapshot.ToolCalls,
-			GeneratedFiles:    snapshot.GeneratedFiles,
-		},
+		BaseMessageMetadata: sdk.BuildBaseMetadataFromSnapshot(sdk.BaseSnapshotMetadataParams{
+			Snapshot: snapshot,
+			Role:     role,
+			AgentID:  agentID,
+		}),
 		SessionID:   state.OpenClawSessionID,
 		SessionKey:  state.OpenClawSessionKey,
 		Attachments: attachmentBlocks,

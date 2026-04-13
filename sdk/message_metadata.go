@@ -109,6 +109,53 @@ func BuildAssistantMetadataBundle(p AssistantMetadataBundleParams) AssistantMeta
 	}
 }
 
+type BaseSnapshotMetadataParams struct {
+	Snapshot           TurnSnapshot
+	Role               string
+	Body               string
+	FinishReason       string
+	TurnID             string
+	AgentID            string
+	StartedAtMs        int64
+	CompletedAtMs      int64
+	PromptTokens       int64
+	CompletionTokens   int64
+	ReasoningTokens    int64
+	ExcludeFromHistory bool
+}
+
+func BuildBaseMetadataFromSnapshot(p BaseSnapshotMetadataParams) BaseMessageMetadata {
+	role := p.Role
+	if role == "" {
+		role = p.Snapshot.TurnData.Role
+	}
+	body := p.Body
+	if body == "" {
+		body = p.Snapshot.Body
+	}
+	turnID := p.TurnID
+	if turnID == "" {
+		turnID = p.Snapshot.TurnData.ID
+	}
+	return BaseMessageMetadata{
+		Role:               role,
+		Body:               body,
+		FinishReason:       p.FinishReason,
+		TurnID:             turnID,
+		AgentID:            p.AgentID,
+		CanonicalTurnData:  p.Snapshot.TurnData.ToMap(),
+		StartedAtMs:        p.StartedAtMs,
+		CompletedAtMs:      p.CompletedAtMs,
+		ThinkingContent:    p.Snapshot.ThinkingContent,
+		ToolCalls:          p.Snapshot.ToolCalls,
+		GeneratedFiles:     p.Snapshot.GeneratedFiles,
+		PromptTokens:       p.PromptTokens,
+		CompletionTokens:   p.CompletionTokens,
+		ReasoningTokens:    p.ReasoningTokens,
+		ExcludeFromHistory: p.ExcludeFromHistory,
+	}
+}
+
 // CopyFromBase copies non-zero common fields from src into the receiver.
 func (b *BaseMessageMetadata) CopyFromBase(src *BaseMessageMetadata) {
 	if src == nil {
@@ -245,14 +292,14 @@ func BuildAssistantBaseMetadata(p AssistantMetadataParams) BaseMessageMetadata {
 		FinishReason:      p.FinishReason,
 		TurnID:            p.TurnID,
 		AgentID:           p.AgentID,
-		ToolCalls:         p.ToolCalls,
+		CanonicalTurnData: p.CanonicalTurnData,
 		StartedAtMs:       p.StartedAtMs,
 		CompletedAtMs:     p.CompletedAtMs,
-		GeneratedFiles:    p.GeneratedFiles,
 		ThinkingContent:   p.ThinkingContent,
+		ToolCalls:         p.ToolCalls,
+		GeneratedFiles:    p.GeneratedFiles,
 		PromptTokens:      p.PromptTokens,
 		CompletionTokens:  p.CompletionTokens,
 		ReasoningTokens:   p.ReasoningTokens,
-		CanonicalTurnData: p.CanonicalTurnData,
 	}
 }
