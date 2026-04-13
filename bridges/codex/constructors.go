@@ -123,3 +123,27 @@ func NewConnector() *CodexConnector {
 	cc.ConnectorBase = sdk.NewConnectorBase(cc.sdkConfig)
 	return cc
 }
+
+func codexSDKAgent() *sdk.Agent {
+	return &sdk.Agent{
+		ID:           string(codexGhostID),
+		Name:         "Codex",
+		Description:  "Codex agent",
+		Identifiers:  []string{"codex"},
+		ModelKey:     "codex",
+		Capabilities: sdk.BaseAgentCapabilities(),
+	}
+}
+
+func newBrokenLoginClient(login *bridgev2.UserLogin, connector *CodexConnector, reason string) *sdk.BrokenLoginClient {
+	c := sdk.NewBrokenLoginClient(login, reason)
+	c.OnLogout = func(ctx context.Context, login *bridgev2.UserLogin) {
+		tmp := &CodexClient{UserLogin: login, connector: connector}
+		tmp.purgeCodexHomeBestEffort(ctx)
+		tmp.purgeCodexCwdsBestEffort(ctx)
+		if connector != nil && login != nil {
+			sdk.RemoveClientFromCache(&connector.clientsMu, connector.clients, login.ID)
+		}
+	}
+	return c
+}

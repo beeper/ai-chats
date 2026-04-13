@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -743,6 +744,23 @@ func normalizeCodexThreadItemType(itemType string) string {
 func codexBackfillMessageID(threadID, turnID, role string) networkid.MessageID {
 	hashInput := strings.TrimSpace(threadID) + "\n" + strings.TrimSpace(turnID) + "\n" + strings.TrimSpace(role)
 	return networkid.MessageID("codex:history:" + stringutil.ShortHash(hashInput, 12))
+}
+
+func codexThreadPortalKey(loginID networkid.UserLoginID, threadID string) (networkid.PortalKey, error) {
+	threadID = strings.TrimSpace(threadID)
+	if threadID == "" {
+		return networkid.PortalKey{}, fmt.Errorf("empty threadID")
+	}
+	return networkid.PortalKey{
+		ID: networkid.PortalID(
+			fmt.Sprintf(
+				"codex:%s:thread:%s",
+				loginID,
+				url.PathEscape(threadID),
+			),
+		),
+		Receiver: loginID,
+	}, nil
 }
 
 func codexPaginateBackfill(entries []codexBackfillEntry, params bridgev2.FetchMessagesParams) ([]codexBackfillEntry, networkid.PaginationCursor, bool) {

@@ -13,6 +13,15 @@ import (
 	"github.com/beeper/agentremote/sdk"
 )
 
+func fillPartIDs(part *api.Part, msgID, sessionID string) {
+	if part.MessageID == "" {
+		part.MessageID = msgID
+	}
+	if part.SessionID == "" {
+		part.SessionID = sessionID
+	}
+}
+
 type canonicalBackfillSnapshot struct {
 	body string
 	ui   map[string]any

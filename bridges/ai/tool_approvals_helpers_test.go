@@ -53,12 +53,12 @@ func TestApprovalParamsFromRequestHandlesNilStateTurn(t *testing.T) {
 }
 
 func TestApprovalWaitReason(t *testing.T) {
-	if got := approvalWaitReason(context.Background()); got != sdk.ApprovalReasonTimeout {
+	if got := sdk.ApprovalWaitReason(context.Background()); got != sdk.ApprovalReasonTimeout {
 		t.Fatalf("expected timeout reason, got %q", got)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if got := approvalWaitReason(ctx); got != sdk.ApprovalReasonCancelled {
+	if got := sdk.ApprovalWaitReason(ctx); got != sdk.ApprovalReasonCancelled {
 		t.Fatalf("expected cancelled reason, got %q", got)
 	}
 }

@@ -3,12 +3,14 @@ package codex
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"github.com/beeper/agentremote/sdk"
 )
@@ -164,6 +166,17 @@ func (cc *CodexClient) createWelcomeCodexChat(ctx context.Context) (*bridgev2.Po
 		cc.sendSystemNotice(ctx, portal, "Send an absolute path or `~/...` to start a Codex session.")
 	}
 	return portal, nil
+}
+
+func codexWelcomePortalKey(loginID networkid.UserLoginID, slug string) (networkid.PortalKey, error) {
+	slug = strings.TrimSpace(slug)
+	if slug == "" {
+		return networkid.PortalKey{}, fmt.Errorf("empty welcome slug")
+	}
+	return networkid.PortalKey{
+		ID:       networkid.PortalID(fmt.Sprintf("codex:%s:welcome:%s", loginID, url.PathEscape(slug))),
+		Receiver: loginID,
+	}, nil
 }
 
 func (cc *CodexClient) ensureWelcomeCodexChat(ctx context.Context) error {

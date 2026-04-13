@@ -3,6 +3,7 @@ package opencode
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/status"
@@ -244,4 +245,27 @@ func (oc *OpenCodeClient) GetChatInfo(_ context.Context, portal *bridgev2.Portal
 		return nil, nil
 	}
 	return sdk.BuildChatInfoWithFallback(pmeta.Title, portal.Name, "OpenCode", portal.Topic), nil
+}
+
+func (oc *OpenCodeClient) instanceDisplayName(instanceID string) string {
+	if oc != nil && oc.bridge != nil {
+		if name := strings.TrimSpace(oc.bridge.DisplayName(instanceID)); name != "" {
+			return name
+		}
+	}
+	return "OpenCode"
+}
+
+func openCodeSDKAgent(instanceID, displayName string) *sdk.Agent {
+	if displayName == "" {
+		displayName = "OpenCode"
+	}
+	return &sdk.Agent{
+		ID:           string(OpenCodeUserID(instanceID)),
+		Name:         displayName,
+		Description:  "OpenCode instance",
+		Identifiers:  []string{"opencode:" + instanceID},
+		ModelKey:     "opencode:" + instanceID,
+		Capabilities: sdk.MultimodalAgentCapabilities(),
+	}
 }

@@ -77,10 +77,7 @@ func (h *sdkApprovalHandle) Wait(ctx context.Context) (ToolApprovalResponse, err
 	approvalFlow := runtime.approvalFlowValue()
 	decision, ok := approvalFlow.Wait(ctx, h.approvalID)
 	if !ok {
-		reason := ApprovalReasonTimeout
-		if ctx != nil && ctx.Err() != nil {
-			reason = ApprovalReasonCancelled
-		}
+		reason := ApprovalWaitReason(ctx)
 		h.turn.Writer().Approvals().Respond(h.turn.turnCtx, h.approvalID, h.toolCallID, false, reason)
 		approvalFlow.FinishResolved(h.approvalID, ApprovalDecisionPayload{
 			ApprovalID: h.approvalID,
@@ -446,14 +443,9 @@ func (t *Turn) requestApproval(req ApprovalRequest) ApprovalHandle {
 		return &sdkApprovalHandle{turn: t, toolCallID: req.ToolCallID}
 	}
 	approvalFlow := t.conv.runtime.approvalFlowValue()
-	approvalID := strings.TrimSpace(req.ApprovalID)
-	if approvalID == "" {
-		approvalID = "sdk-" + uuid.NewString()
-	}
-	ttl := req.TTL
-	if ttl <= 0 {
-		ttl = DefaultApprovalExpiry
-	}
+	approvalID, ttl, presentation := ResolveApprovalRequest(req, func() string {
+		return "sdk-" + uuid.NewString()
+	}, DefaultApprovalExpiry, true)
 	_, _ = approvalFlow.Register(approvalID, ttl, &pendingSDKApprovalData{
 		RoomID:     t.conv.portal.MXID,
 		TurnID:     t.turnID,
@@ -461,13 +453,6 @@ func (t *Turn) requestApproval(req ApprovalRequest) ApprovalHandle {
 		ToolName:   req.ToolName,
 	})
 	t.Approvals().EmitRequest(t.turnCtx, approvalID, req.ToolCallID)
-	presentation := ApprovalPromptPresentation{
-		Title:       req.ToolName,
-		AllowAlways: true,
-	}
-	if req.Presentation != nil {
-		presentation = *req.Presentation
-	}
 	approvalFlow.SendPrompt(t.turnCtx, t.conv.portal, SendPromptParams{
 		ApprovalPromptMessageParams: ApprovalPromptMessageParams{
 			ApprovalID:        approvalID,

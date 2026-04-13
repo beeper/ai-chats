@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rs/xid"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 
@@ -712,4 +713,8 @@ func (cl *CodexLogin) resolveCodexHomeBaseDir() string {
 		return abs
 	}
 	return base
+}
+
+func generateShortID() string {
+	return xid.New().String()
 }

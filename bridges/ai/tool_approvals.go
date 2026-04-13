@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
+	"github.com/beeper/agentremote/pkg/shared/maputil"
 	"github.com/beeper/agentremote/sdk"
 )
 
@@ -69,38 +71,6 @@ const (
 	approvalMetadataKeyAction       = "action"
 )
 
-func resolveApprovalID(approvalID string) string {
-	approvalID = strings.TrimSpace(approvalID)
-	if approvalID != "" {
-		return approvalID
-	}
-	return NewCallID()
-}
-
-func (oc *AIClient) resolveApprovalTTL(ttl time.Duration) time.Duration {
-	if ttl > 0 {
-		return ttl
-	}
-	if oc == nil {
-		return sdk.DefaultApprovalExpiry
-	}
-	ttl = time.Duration(oc.toolApprovalsTTLSeconds()) * time.Second
-	if ttl > 0 {
-		return ttl
-	}
-	return sdk.DefaultApprovalExpiry
-}
-
-func resolveApprovalPresentation(toolName string, presentation *sdk.ApprovalPromptPresentation) sdk.ApprovalPromptPresentation {
-	if presentation != nil {
-		return *presentation
-	}
-	return sdk.ApprovalPromptPresentation{
-		Title:       strings.TrimSpace(toolName),
-		AllowAlways: true,
-	}
-}
-
 func applyApprovalRequestMetadata(params *ToolApprovalParams, metadata map[string]any) {
 	if params == nil || len(metadata) == 0 {
 		return
@@ -119,13 +89,6 @@ func applyApprovalRequestMetadata(params *ToolApprovalParams, metadata map[strin
 	}
 }
 
-func approvalWaitReason(ctx context.Context) string {
-	if ctx != nil && ctx.Err() != nil {
-		return sdk.ApprovalReasonCancelled
-	}
-	return sdk.ApprovalReasonTimeout
-}
-
 func resolveApprovalPromptContext(state *streamingState, turn *sdk.Turn, fallbackTurnID string) (string, id.EventID, id.EventID) {
 	turnID := strings.TrimSpace(fallbackTurnID)
 	replyTo := id.EventID("")
@@ -140,6 +103,223 @@ func resolveApprovalPromptContext(state *streamingState, turn *sdk.Turn, fallbac
 		turnID = state.turn.ID()
 	}
 	return turnID, state.turn.InitialEventID(), state.replyTarget.ThreadRoot
+}
+
+func normalizeApprovalToken(s string) string {
+	return strings.ToLower(strings.TrimSpace(s))
+}
+
+func normalizeMcpRuleToolName(name string) string {
+	n := normalizeApprovalToken(name)
+	return strings.TrimPrefix(n, "mcp.")
+}
+
+func (oc *AIClient) toolApprovalsRuntimeEnabled() bool {
+	if oc == nil || oc.connector == nil {
+		return false
+	}
+	cfg := oc.connector.Config.ToolApprovals.WithDefaults()
+	return cfg.Enabled != nil && *cfg.Enabled
+}
+
+func (oc *AIClient) toolApprovalsTTLSeconds() int {
+	if oc == nil || oc.connector == nil {
+		return 600
+	}
+	return oc.connector.Config.ToolApprovals.WithDefaults().TTLSeconds
+}
+
+func (oc *AIClient) toolApprovalsRequireForMCP() bool {
+	if oc == nil || oc.connector == nil {
+		return true
+	}
+	cfg := oc.connector.Config.ToolApprovals.WithDefaults()
+	return cfg.RequireForMCP == nil || *cfg.RequireForMCP
+}
+
+func (oc *AIClient) toolApprovalsRequireForTool(toolName string) bool {
+	if oc == nil || oc.connector == nil {
+		return false
+	}
+	cfg := oc.connector.Config.ToolApprovals.WithDefaults()
+	if cfg.RequireForTools == nil {
+		return false
+	}
+	needle := normalizeApprovalToken(toolName)
+	for _, raw := range cfg.RequireForTools {
+		if normalizeApprovalToken(raw) == needle {
+			return true
+		}
+	}
+	return false
+}
+
+func (oc *AIClient) isMcpAlwaysAllowed(ctx context.Context, serverLabel, toolName string) bool {
+	if oc == nil || oc.UserLogin == nil {
+		return false
+	}
+	sl := normalizeApprovalToken(serverLabel)
+	tn := normalizeMcpRuleToolName(toolName)
+	if sl == "" || tn == "" {
+		return false
+	}
+	return oc.hasToolApprovalRule(ctx, ToolApprovalKindMCP, sl, tn, "")
+}
+
+func (oc *AIClient) isBuiltinAlwaysAllowed(ctx context.Context, toolName, action string) bool {
+	if oc == nil || oc.UserLogin == nil {
+		return false
+	}
+	tn := normalizeApprovalToken(toolName)
+	act := normalizeApprovalToken(action)
+	if tn == "" {
+		return false
+	}
+	return oc.hasBuiltinToolApprovalRule(ctx, tn, act)
+}
+
+func (oc *AIClient) persistAlwaysAllow(ctx context.Context, pending *pendingToolApprovalData) error {
+	if oc == nil || oc.UserLogin == nil || pending == nil {
+		return nil
+	}
+	switch pending.ToolKind {
+	case ToolApprovalKindMCP:
+		sl := normalizeApprovalToken(pending.ServerLabel)
+		tn := normalizeMcpRuleToolName(pending.RuleToolName)
+		if sl == "" || tn == "" {
+			return nil
+		}
+		return oc.insertToolApprovalRule(ctx, ToolApprovalKindMCP, sl, tn, "")
+	case ToolApprovalKindBuiltin:
+		tn := normalizeApprovalToken(pending.RuleToolName)
+		act := normalizeApprovalToken(pending.Action)
+		if tn == "" {
+			return nil
+		}
+		return oc.insertToolApprovalRule(ctx, ToolApprovalKindBuiltin, "", tn, act)
+	default:
+		return nil
+	}
+}
+
+func (oc *AIClient) hasToolApprovalRule(ctx context.Context, toolKind ToolApprovalKind, serverLabel, toolName, action string) bool {
+	scope := loginScopeForClient(oc)
+	if scope == nil {
+		return false
+	}
+	var matched int
+	err := scope.db.QueryRow(ctx, `
+		SELECT 1
+		FROM aichats_tool_approval_rules
+		WHERE bridge_id=$1 AND login_id=$2 AND tool_kind=$3 AND server_label=$4 AND tool_name=$5 AND action=$6
+		LIMIT 1
+	`, scope.bridgeID, scope.loginID, string(toolKind), serverLabel, toolName, action).Scan(&matched)
+	if err == sql.ErrNoRows {
+		return false
+	}
+	if err != nil {
+		oc.Log().Warn().Err(err).Str("tool_kind", string(toolKind)).Str("tool_name", toolName).Msg("tool approvals: lookup failed")
+		return false
+	}
+	return matched == 1
+}
+
+func (oc *AIClient) hasBuiltinToolApprovalRule(ctx context.Context, toolName, action string) bool {
+	scope := loginScopeForClient(oc)
+	if scope == nil {
+		return false
+	}
+	var matched int
+	err := scope.db.QueryRow(ctx, `
+		SELECT 1
+		FROM aichats_tool_approval_rules
+		WHERE bridge_id=$1 AND login_id=$2 AND tool_kind=$3 AND server_label='' AND tool_name=$4 AND (action='' OR action=$5)
+		LIMIT 1
+	`, scope.bridgeID, scope.loginID, string(ToolApprovalKindBuiltin), toolName, action).Scan(&matched)
+	if err == sql.ErrNoRows {
+		return false
+	}
+	if err != nil {
+		oc.Log().Warn().Err(err).Str("tool_name", toolName).Str("action", action).Msg("tool approvals: builtin lookup failed")
+		return false
+	}
+	return matched == 1
+}
+
+func (oc *AIClient) insertToolApprovalRule(ctx context.Context, toolKind ToolApprovalKind, serverLabel, toolName, action string) error {
+	scope := loginScopeForClient(oc)
+	if scope == nil {
+		return nil
+	}
+	_, err := scope.db.Exec(ctx, `
+		INSERT INTO aichats_tool_approval_rules (
+			bridge_id, login_id, tool_kind, server_label, tool_name, action, created_at_ms
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (bridge_id, login_id, tool_kind, server_label, tool_name, action) DO NOTHING
+	`, scope.bridgeID, scope.loginID, string(toolKind), serverLabel, toolName, action, time.Now().UnixMilli())
+	return err
+}
+
+func buildBuiltinApprovalPresentation(toolName, action string, args map[string]any) sdk.ApprovalPromptPresentation {
+	toolName = strings.TrimSpace(toolName)
+	details := make([]sdk.ApprovalDetail, 0, 10)
+	if toolName != "" {
+		details = append(details, sdk.ApprovalDetail{Label: "Tool", Value: toolName})
+	}
+	if action = strings.TrimSpace(action); action != "" {
+		details = append(details, sdk.ApprovalDetail{Label: "Action", Value: action})
+	}
+	details = sdk.AppendDetailsFromMap(details, "Arg", args, 8)
+	return sdk.BuildApprovalPresentation("Builtin tool request", toolName, details, true)
+}
+
+func buildMCPApprovalPresentation(serverLabel, toolName string, input any) sdk.ApprovalPromptPresentation {
+	toolName = strings.TrimSpace(toolName)
+	details := make([]sdk.ApprovalDetail, 0, 10)
+	if serverLabel = strings.TrimSpace(serverLabel); serverLabel != "" {
+		details = append(details, sdk.ApprovalDetail{Label: "Server", Value: serverLabel})
+	}
+	if toolName != "" {
+		details = append(details, sdk.ApprovalDetail{Label: "Tool", Value: toolName})
+	}
+	if inputMap, ok := input.(map[string]any); ok && len(inputMap) > 0 {
+		details = sdk.AppendDetailsFromMap(details, "Input", inputMap, 8)
+	} else if summary := sdk.ValueSummary(input); summary != "" {
+		details = append(details, sdk.ApprovalDetail{Label: "Input", Value: summary})
+	}
+	return sdk.BuildApprovalPresentation("MCP tool request", toolName, details, true)
+}
+
+func (oc *AIClient) builtinToolApprovalRequirement(toolName string, args map[string]any) (required bool, action string) {
+	if oc == nil || !oc.toolApprovalsRuntimeEnabled() {
+		return false, ""
+	}
+	toolName = strings.TrimSpace(toolName)
+	if toolName == "" || !oc.toolApprovalsRequireForTool(toolName) {
+		return false, ""
+	}
+	switch toolName {
+	case ToolNameMessage:
+		action = normalizeMessageAction(maputil.StringArg(args, "action"))
+		switch action {
+		// Read-only / non-destructive actions (do not require approval).
+		case "search",
+			// Desktop API read-only surface (AI Chats message tool actions).
+			"desktop-list-chats", "desktop-search-chats", "desktop-search-messages", "desktop-download-asset":
+			return false, action
+		default:
+			return true, action
+		}
+	default:
+		if handled, required, action := oc.integratedToolApprovalRequirement(toolName, args); handled {
+			return required, action
+		}
+		switch toolName {
+		case ToolNameWrite, ToolNameEdit, ToolNameApplyPatch:
+			return true, "workspace"
+		}
+		return true, ""
+	}
 }
 
 type aiTurnApprovalHandle struct {
@@ -170,7 +350,7 @@ func (h *aiTurnApprovalHandle) Wait(ctx context.Context) (sdk.ToolApprovalRespon
 	resolution, _, ok := h.client.waitToolApproval(ctx, h.approvalID)
 	decision := resolution.Decision
 	if !ok && decision.Reason == "" {
-		decision = airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalTimedOut, Reason: approvalWaitReason(ctx)}
+		decision = airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalTimedOut, Reason: sdk.ApprovalWaitReason(ctx)}
 	}
 	approved := approvalAllowed(decision)
 	if h.turn != nil {
@@ -196,12 +376,19 @@ func newAITurnApprovalHandle(client *AIClient, turn *sdk.Turn, approvalID, toolC
 }
 
 func (oc *AIClient) approvalParamsFromRequest(portal *bridgev2.Portal, state *streamingState, turn *sdk.Turn, req sdk.ApprovalRequest) ToolApprovalParams {
+	defaultTTL := sdk.DefaultApprovalExpiry
+	if oc != nil {
+		if ttl := time.Duration(oc.toolApprovalsTTLSeconds()) * time.Second; ttl > 0 {
+			defaultTTL = ttl
+		}
+	}
+	approvalID, ttl, presentation := sdk.ResolveApprovalRequest(req, NewCallID, defaultTTL, true)
 	params := ToolApprovalParams{
-		ApprovalID:   resolveApprovalID(req.ApprovalID),
+		ApprovalID:   approvalID,
 		ToolCallID:   strings.TrimSpace(req.ToolCallID),
 		ToolName:     strings.TrimSpace(req.ToolName),
-		Presentation: resolveApprovalPresentation(req.ToolName, req.Presentation),
-		TTL:          oc.resolveApprovalTTL(req.TTL),
+		Presentation: presentation,
+		TTL:          ttl,
 	}
 	if portal != nil {
 		params.RoomID = portal.MXID
@@ -332,7 +519,7 @@ func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (to
 
 	decision, ok := oc.approvalFlow.Wait(ctx, approvalID)
 	if !ok {
-		reason := approvalWaitReason(ctx)
+		reason := sdk.ApprovalWaitReason(ctx)
 		state := airuntime.ToolApprovalDenied
 		if reason == sdk.ApprovalReasonTimeout {
 			oc.approvalFlow.FinishResolved(approvalID, sdk.ApprovalDecisionPayload{
@@ -379,7 +566,7 @@ func (oc *AIClient) waitForToolApprovalDecision(
 ) airuntime.ToolApprovalDecision {
 	touchAgentLoopActivity(ctx)
 	if handle == nil {
-		return airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalTimedOut, Reason: approvalWaitReason(ctx)}
+		return airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalTimedOut, Reason: sdk.ApprovalWaitReason(ctx)}
 	}
 	resp, err := handle.Wait(ctx)
 	touchAgentLoopActivity(ctx)
