@@ -969,6 +969,11 @@ func (oc *AIClient) savePortal(ctx context.Context, portal *bridgev2.Portal, act
 	if oc == nil || portal == nil {
 		return nil
 	}
+	var err error
+	portal, err = oc.canonicalPortalForClientAIDB(ctx, portal)
+	if err != nil {
+		return fmt.Errorf("resolve portal for %s: %w", action, err)
+	}
 	if err := portal.Save(ctx); err != nil {
 		return fmt.Errorf("save portal for %s: %w", action, err)
 	}

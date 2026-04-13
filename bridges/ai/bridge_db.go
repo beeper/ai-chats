@@ -8,6 +8,7 @@ import (
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
+	bridgev2database "maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"github.com/beeper/agentremote/pkg/aidb"
@@ -133,6 +134,58 @@ func canonicalPortalBridgeID(portal *bridgev2.Portal) string {
 	return canonicalBridgeDBID(portal.Bridge)
 }
 
+func normalizePortalDBIdentity(portal *bridgev2.Portal) {
+	if portal == nil || portal.Portal == nil {
+		return
+	}
+	if portal.Portal.BridgeID == "" {
+		portal.Portal.BridgeID = networkid.BridgeID(canonicalPortalBridgeID(portal))
+	}
+	if portal.Portal.PortalKey.IsEmpty() && !portal.PortalKey.IsEmpty() {
+		portal.Portal.PortalKey = portal.PortalKey
+	}
+}
+
+func hydratePortalRuntime(target *bridgev2.Portal, hydrated *bridgev2.Portal) *bridgev2.Portal {
+	switch {
+	case target == nil:
+		if hydrated != nil {
+			normalizePortalDBIdentity(hydrated)
+		}
+		return hydrated
+	case hydrated == nil || target == hydrated:
+		normalizePortalDBIdentity(target)
+		return target
+	}
+
+	if target.Bridge == nil {
+		target.Bridge = hydrated.Bridge
+	}
+	if hydrated.Bridge == nil {
+		hydrated.Bridge = target.Bridge
+	}
+	if hydrated.Portal != nil {
+		target.Portal = hydrated.Portal
+	}
+	if target.Portal == nil && hydrated.Portal == nil && target.PortalKey != (networkid.PortalKey{}) {
+		target.Portal = &bridgev2database.Portal{
+			BridgeID:  networkid.BridgeID(canonicalBridgeDBID(target.Bridge)),
+			PortalKey: target.PortalKey,
+		}
+	}
+	if hydrated.Parent != nil {
+		target.Parent = hydrated.Parent
+	}
+	if hydrated.Relay != nil {
+		target.Relay = hydrated.Relay
+	}
+	if hydrated.Log.GetLevel() != zerolog.Disabled {
+		target.Log = hydrated.Log
+	}
+	normalizePortalDBIdentity(target)
+	return target
+}
+
 func canonicalPortalForAIDB(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.Portal, error) {
 	if portal == nil {
 		return nil, nil
@@ -140,6 +193,7 @@ func canonicalPortalForAIDB(ctx context.Context, portal *bridgev2.Portal) (*brid
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	normalizePortalDBIdentity(portal)
 	if scope := portalScopeForPortal(portal); scope != nil {
 		return portal, nil
 	}
@@ -152,16 +206,18 @@ func canonicalPortalForAIDB(ctx context.Context, portal *bridgev2.Portal) (*brid
 			return nil, err
 		}
 		if dbPortal != nil {
-			portal.Portal = dbPortal
-			return portal, nil
+			return hydratePortalRuntime(portal, &bridgev2.Portal{
+				Portal: dbPortal,
+				Bridge: portal.Bridge,
+			}), nil
 		}
 	}
 	resolved, err := portal.Bridge.GetPortalByKey(ctx, portal.PortalKey)
 	if err != nil {
 		return nil, err
 	}
-	if resolved != nil && portalScopeForPortal(resolved) == nil && portal.Bridge != nil {
-		resolved.Bridge = portal.Bridge
+	if resolved != nil {
+		resolved = hydratePortalRuntime(portal, resolved)
 		if scope := portalScopeForPortal(resolved); scope != nil {
 			return resolved, nil
 		}
@@ -169,7 +225,7 @@ func canonicalPortalForAIDB(ctx context.Context, portal *bridgev2.Portal) (*brid
 	if scope := portalScopeForPortal(portal); scope != nil {
 		return portal, nil
 	}
-	return resolved, nil
+	return hydratePortalRuntime(portal, resolved), nil
 }
 
 func portalScopeForAIDB(ctx context.Context, portal *bridgev2.Portal) (*portalScope, error) {
@@ -193,13 +249,8 @@ func (oc *AIClient) canonicalPortalForClientAIDB(ctx context.Context, portal *br
 
 	bridge := oc.UserLogin.Bridge
 	portal.Bridge = bridge
+	normalizePortalDBIdentity(portal)
 	if portal.Portal != nil {
-		if portal.Portal.BridgeID == "" {
-			portal.Portal.BridgeID = networkid.BridgeID(canonicalBridgeDBID(bridge))
-		}
-		if portal.Portal.PortalKey.IsEmpty() && !portal.PortalKey.IsEmpty() {
-			portal.Portal.PortalKey = portal.PortalKey
-		}
 		if scope := portalScopeForPortal(portal); scope != nil {
 			return portal, nil
 		}
@@ -214,10 +265,7 @@ func (oc *AIClient) canonicalPortalForClientAIDB(ctx context.Context, portal *br
 	}
 	if resolved != nil {
 		resolved.Bridge = bridge
-		if resolved.Portal != nil && resolved.Portal.BridgeID == "" {
-			resolved.Portal.BridgeID = networkid.BridgeID(canonicalBridgeDBID(bridge))
-		}
-		return resolved, nil
+		return hydratePortalRuntime(portal, resolved), nil
 	}
 	return portal, nil
 }
