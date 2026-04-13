@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/beeper/agentremote/pkg/search"
+	"github.com/beeper/agentremote/pkg/retrieval"
 	"github.com/beeper/agentremote/pkg/shared/toolspec"
 	"github.com/beeper/agentremote/pkg/shared/websearch"
 )
@@ -26,8 +26,9 @@ func executeWebSearch(ctx context.Context, args map[string]any) (*Result, error)
 		return ErrorResult("web_search", err.Error()), nil
 	}
 
-	cfg := search.ApplyEnvDefaults(nil)
-	resp, err := search.Search(ctx, req, cfg)
+	cfg := retrieval.SearchApplyEnvDefaults(nil)
+	searchReq := retrieval.SearchRequest(req)
+	resp, err := retrieval.Search(ctx, searchReq, cfg)
 	if err != nil {
 		return ErrorResult("web_search", fmt.Sprintf("search failed: %v", err)), nil
 	}

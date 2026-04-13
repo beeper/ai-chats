@@ -1,4 +1,4 @@
-package fetch
+package retrieval
 
 import (
 	"context"
@@ -15,25 +15,25 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
-type directProvider struct {
+type directFetchProvider struct {
 	cfg DirectConfig
 }
 
-func newDirectProvider(cfg *Config) Provider {
+func newDirectFetchProvider(cfg *FetchConfig) FetchProvider {
 	if cfg == nil {
 		return nil
 	}
 	if !stringutil.BoolPtrOr(cfg.Direct.Enabled, true) {
 		return nil
 	}
-	return &directProvider{cfg: cfg.Direct}
+	return &directFetchProvider{cfg: cfg.Direct}
 }
 
-func (p *directProvider) Name() string {
+func (p *directFetchProvider) Name() string {
 	return ProviderDirect
 }
 
-func (p *directProvider) Fetch(ctx context.Context, req Request) (*Response, error) {
+func (p *directFetchProvider) Fetch(ctx context.Context, req FetchRequest) (*FetchResponse, error) {
 	if !isAllowedURL(req.URL) {
 		return nil, errors.New("url not allowed")
 	}
@@ -98,7 +98,7 @@ func (p *directProvider) Fetch(ctx context.Context, req Request) (*Response, err
 		finalURL = resp.Request.URL.String()
 	}
 
-	return &Response{
+	return &FetchResponse{
 		URL:           req.URL,
 		FinalURL:      finalURL,
 		Status:        resp.StatusCode,

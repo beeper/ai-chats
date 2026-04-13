@@ -1,4 +1,4 @@
-package fetch
+package retrieval
 
 import (
 	"context"
@@ -10,24 +10,24 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/exa"
 )
 
-type exaProvider struct {
+type exaFetchProvider struct {
 	cfg ExaConfig
 }
 
-func newExaProvider(cfg *Config) Provider {
+func newExaFetchProvider(cfg *FetchConfig) FetchProvider {
 	if cfg == nil {
 		return nil
 	}
-	return exa.NewProvider(cfg.Exa.Enabled, cfg.Exa.APIKey, func() Provider {
-		return &exaProvider{cfg: cfg.Exa}
+	return exa.NewProvider(cfg.Exa.Enabled, cfg.Exa.APIKey, func() FetchProvider {
+		return &exaFetchProvider{cfg: cfg.Exa}
 	})
 }
 
-func (p *exaProvider) Name() string {
+func (p *exaFetchProvider) Name() string {
 	return ProviderExa
 }
 
-func (p *exaProvider) Fetch(ctx context.Context, req Request) (*Response, error) {
+func (p *exaFetchProvider) Fetch(ctx context.Context, req FetchRequest) (*FetchResponse, error) {
 	maxChars := req.MaxChars
 	if maxChars <= 0 {
 		maxChars = p.cfg.TextMaxCharacters
@@ -84,7 +84,7 @@ func (p *exaProvider) Fetch(ctx context.Context, req Request) (*Response, error)
 	if strings.TrimSpace(entry.URL) != "" {
 		finalURL = entry.URL
 	}
-	return &Response{
+	return &FetchResponse{
 		URL:           req.URL,
 		FinalURL:      finalURL,
 		Status:        200,

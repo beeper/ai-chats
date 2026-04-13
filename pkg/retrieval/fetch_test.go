@@ -1,4 +1,4 @@
-package fetch
+package retrieval
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestExaProviderFetchUsesConfigMaxCharsByDefault(t *testing.T) {
+func TestExaFetchProviderUsesConfigMaxCharsByDefault(t *testing.T) {
 	var gotBody map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("x-api-key") != "test-key" {
@@ -26,14 +26,14 @@ func TestExaProviderFetchUsesConfigMaxCharsByDefault(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := &exaProvider{cfg: ExaConfig{
+	provider := &exaFetchProvider{cfg: ExaConfig{
 		BaseURL:           server.URL,
 		APIKey:            "test-key",
 		IncludeText:       true,
 		TextMaxCharacters: 1234,
 	}}
 
-	resp, err := provider.Fetch(context.Background(), Request{URL: "https://example.com", ExtractMode: "markdown"})
+	resp, err := provider.Fetch(context.Background(), FetchRequest{URL: "https://example.com", ExtractMode: "markdown"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestExaProviderFetchUsesConfigMaxCharsByDefault(t *testing.T) {
 	}
 }
 
-func TestExaProviderFetchUsesRequestMaxCharsOverride(t *testing.T) {
+func TestExaFetchProviderUsesRequestMaxCharsOverride(t *testing.T) {
 	var gotBody map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
@@ -65,14 +65,14 @@ func TestExaProviderFetchUsesRequestMaxCharsOverride(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := &exaProvider{cfg: ExaConfig{
+	provider := &exaFetchProvider{cfg: ExaConfig{
 		BaseURL:           server.URL,
 		APIKey:            "test-key",
 		IncludeText:       true,
 		TextMaxCharacters: 999,
 	}}
 
-	_, err := provider.Fetch(context.Background(), Request{URL: "https://example.com", MaxChars: 321})
+	_, err := provider.Fetch(context.Background(), FetchRequest{URL: "https://example.com", MaxChars: 321})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestExaProviderFetchUsesRequestMaxCharsOverride(t *testing.T) {
 	}
 }
 
-func TestExaProviderFetchRespectsIncludeTextFalse(t *testing.T) {
+func TestExaFetchProviderRespectsIncludeTextFalse(t *testing.T) {
 	var gotBody map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
@@ -97,14 +97,14 @@ func TestExaProviderFetchRespectsIncludeTextFalse(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := &exaProvider{cfg: ExaConfig{
+	provider := &exaFetchProvider{cfg: ExaConfig{
 		BaseURL:           server.URL,
 		APIKey:            "test-key",
 		IncludeText:       false,
 		TextMaxCharacters: 999,
 	}}
 
-	resp, err := provider.Fetch(context.Background(), Request{URL: "https://example.com"})
+	resp, err := provider.Fetch(context.Background(), FetchRequest{URL: "https://example.com"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -120,26 +120,33 @@ func TestExaProviderFetchRespectsIncludeTextFalse(t *testing.T) {
 	}
 }
 
-func TestExaProviderFetchReturnsStatusErrors(t *testing.T) {
+func TestExaFetchProviderReturnsStatusErrors(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"results":[],"statuses":[{"id":"https://example.com","status":"error","error":{"tag":"CRAWL_TIMEOUT","httpStatusCode":408}}]}`))
 	}))
 	defer server.Close()
 
-	provider := &exaProvider{cfg: ExaConfig{
+	provider := &exaFetchProvider{cfg: ExaConfig{
 		BaseURL:           server.URL,
 		APIKey:            "test-key",
 		IncludeText:       true,
 		TextMaxCharacters: 100,
 	}}
 
-	_, err := provider.Fetch(context.Background(), Request{URL: "https://example.com"})
+	_, err := provider.Fetch(context.Background(), FetchRequest{URL: "https://example.com"})
 	if err == nil {
 		t.Fatalf("expected error")
 	}
 	msg := err.Error()
 	if !strings.Contains(msg, "CRAWL_TIMEOUT") || !strings.Contains(msg, "408") {
 		t.Fatalf("expected status details in error, got: %s", msg)
+	}
+}
+
+func TestNormalizeFetchRequestLeavesMaxCharsUnsetByDefault(t *testing.T) {
+	got := normalizeFetchRequest(FetchRequest{URL: "https://example.com", ExtractMode: "markdown"})
+	if got.MaxChars != 0 {
+		t.Fatalf("expected maxChars to remain unset (0), got %d", got.MaxChars)
 	}
 }

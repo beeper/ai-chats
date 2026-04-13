@@ -3,7 +3,7 @@ package websearch
 import (
 	"testing"
 
-	"github.com/beeper/agentremote/pkg/search"
+	"github.com/beeper/agentremote/pkg/retrieval"
 )
 
 func TestRequestFromArgs(t *testing.T) {
@@ -24,11 +24,11 @@ func TestRequestFromArgs(t *testing.T) {
 }
 
 func TestPayloadRoundTripResults(t *testing.T) {
-	payload := PayloadFromResponse(&search.Response{
+	payload := PayloadFromResponse(&retrieval.SearchResponse{
 		Query:    "query",
 		Provider: "exa",
 		Count:    1,
-		Results: []search.Result{
+		Results: []retrieval.SearchResult{
 			{
 				ID:          "id-1",
 				Title:       "Title",

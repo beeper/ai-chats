@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/ptr"
@@ -158,11 +157,4 @@ func dummyChatTitle(idx int) string {
 		return dummyAgentName
 	}
 	return fmt.Sprintf("%s %d", dummyAgentName, idx)
-}
-
-func futureDuration(seconds int) time.Duration {
-	if seconds <= 0 {
-		return 0
-	}
-	return time.Duration(seconds) * time.Second
 }

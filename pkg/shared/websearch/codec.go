@@ -5,19 +5,19 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/beeper/agentremote/pkg/search"
+	"github.com/beeper/agentremote/pkg/retrieval"
 	"github.com/beeper/agentremote/pkg/shared/maputil"
 )
 
 // RequestFromArgs converts tool arguments into a normalized search request.
-func RequestFromArgs(args map[string]any) (search.Request, error) {
+func RequestFromArgs(args map[string]any) (retrieval.SearchRequest, error) {
 	query := maputil.StringArg(args, "query")
 	if query == "" {
-		return search.Request{}, errors.New("missing or invalid 'query' argument")
+		return retrieval.SearchRequest{}, errors.New("missing or invalid 'query' argument")
 	}
 	count, _ := ParseCountAndIgnoredOptions(args)
 
-	return search.Request{
+	return retrieval.SearchRequest{
 		Query:      query,
 		Count:      count,
 		Country:    maputil.StringArg(args, "country"),
@@ -29,7 +29,7 @@ func RequestFromArgs(args map[string]any) (search.Request, error) {
 
 // PayloadFromResponse converts a normalized search response into the common JSON payload shape.
 // Only non-zero fields are included to keep the payload compact.
-func PayloadFromResponse(resp *search.Response) map[string]any {
+func PayloadFromResponse(resp *retrieval.SearchResponse) map[string]any {
 	payload := map[string]any{
 		"query":    resp.Query,
 		"provider": resp.Provider,
@@ -91,7 +91,7 @@ func PayloadFromResponse(resp *search.Response) map[string]any {
 }
 
 // ResultsFromPayload extracts search results from the common payload map.
-func ResultsFromPayload(payload map[string]any) []search.Result {
+func ResultsFromPayload(payload map[string]any) []retrieval.SearchResult {
 	raw, ok := payload["results"]
 	if !ok {
 		return nil
@@ -112,7 +112,7 @@ func ResultsFromPayload(payload map[string]any) []search.Result {
 	if len(entries) == 0 {
 		return nil
 	}
-	results := make([]search.Result, 0, len(entries))
+	results := make([]retrieval.SearchResult, 0, len(entries))
 	for _, entry := range entries {
 		results = append(results, resultFromMap(entry))
 	}
@@ -120,7 +120,7 @@ func ResultsFromPayload(payload map[string]any) []search.Result {
 }
 
 // ResultsFromJSON extracts search results from a JSON-encoded payload.
-func ResultsFromJSON(output string) []search.Result {
+func ResultsFromJSON(output string) []retrieval.SearchResult {
 	output = strings.TrimSpace(output)
 	if output == "" || !strings.HasPrefix(output, "{") {
 		return nil
@@ -132,8 +132,8 @@ func ResultsFromJSON(output string) []search.Result {
 	return ResultsFromPayload(payload)
 }
 
-func resultFromMap(entry map[string]any) search.Result {
-	return search.Result{
+func resultFromMap(entry map[string]any) retrieval.SearchResult {
+	return retrieval.SearchResult{
 		ID:          maputil.StringArg(entry, "id"),
 		Title:       maputil.StringArg(entry, "title"),
 		URL:         maputil.StringArg(entry, "url"),

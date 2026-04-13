@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/beeper/agentremote/pkg/search"
+	"github.com/beeper/agentremote/pkg/retrieval"
 	"github.com/beeper/agentremote/pkg/shared/exa"
 )
 
@@ -24,7 +24,7 @@ func executeBeeperDocs(ctx context.Context, args map[string]any) (string, error)
 	}
 
 	btc := GetBridgeToolContext(ctx)
-	var cfg *search.Config
+	var cfg *retrieval.SearchConfig
 	if btc != nil && btc.Client != nil {
 		cfg = btc.Client.effectiveSearchConfig(ctx)
 	}

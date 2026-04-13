@@ -1,4 +1,4 @@
-package search
+package retrieval
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestExaProviderSearchUsesHighlightMaxCharacters(t *testing.T) {
+func TestExaSearchProviderUsesHighlightMaxCharacters(t *testing.T) {
 	var gotBody map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("x-api-key") != "test-key" {
@@ -25,7 +25,7 @@ func TestExaProviderSearchUsesHighlightMaxCharacters(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := &exaProvider{cfg: ExaConfig{
+	provider := &exaSearchProvider{cfg: ExaConfig{
 		BaseURL:           server.URL,
 		APIKey:            "test-key",
 		Type:              "auto",
@@ -34,7 +34,7 @@ func TestExaProviderSearchUsesHighlightMaxCharacters(t *testing.T) {
 		TextMaxCharacters: 777,
 	}}
 
-	_, err := provider.Search(context.Background(), Request{Query: "test"})
+	_, err := provider.Search(context.Background(), SearchRequest{Query: "test"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

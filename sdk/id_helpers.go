@@ -2,7 +2,6 @@ package sdk
 
 import (
 	"fmt"
-	"net/http"
 	"net/url"
 
 	"github.com/google/uuid"
@@ -57,21 +56,4 @@ func NextUserLoginID(user *bridgev2.User, prefix string) networkid.UserLoginID {
 // NewTurnID generates a new opaque canonical turn ID.
 func NewTurnID() string {
 	return uuid.NewString()
-}
-
-func SingleLoginFlow(enabled bool, flow bridgev2.LoginFlow) []bridgev2.LoginFlow {
-	if !enabled {
-		return nil
-	}
-	return []bridgev2.LoginFlow{flow}
-}
-
-func ValidateSingleLoginFlow(flowID, expectedFlowID string, enabled bool) error {
-	if flowID != expectedFlowID {
-		return bridgev2.ErrInvalidLoginFlowID
-	}
-	if !enabled {
-		return NewLoginRespError(http.StatusForbidden, "This login flow is disabled.", "LOGIN", "DISABLED")
-	}
-	return nil
 }

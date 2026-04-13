@@ -4,8 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/beeper/agentremote/pkg/fetch"
-	"github.com/beeper/agentremote/pkg/search"
+	"github.com/beeper/agentremote/pkg/retrieval"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
@@ -13,33 +12,37 @@ import (
 // Tool policy ("allow/deny") is handled elsewhere; these checks are about runtime
 // prerequisites like API keys and service initialization.
 
-func (oc *AIClient) effectiveSearchConfig(ctx context.Context) *search.Config {
+func (oc *AIClient) effectiveSearchConfig(ctx context.Context) *retrieval.SearchConfig {
 	return effectiveToolConfig(
 		ctx,
 		oc,
-		func(connector *OpenAIConnector) *search.Config {
+		func(connector *OpenAIConnector) *retrieval.SearchConfig {
 			if connector == nil || connector.Config.Tools.Web == nil {
 				return nil
 			}
 			return mapSearchConfig(connector.Config.Tools.Web.Search)
 		},
 		applyLoginTokensToSearchConfig,
-		func(cfg *search.Config) *search.Config { return search.ApplyEnvDefaults(cfg).WithDefaults() },
+		func(cfg *retrieval.SearchConfig) *retrieval.SearchConfig {
+			return retrieval.SearchApplyEnvDefaults(cfg).WithDefaults()
+		},
 	)
 }
 
-func (oc *AIClient) effectiveFetchConfig(ctx context.Context) *fetch.Config {
+func (oc *AIClient) effectiveFetchConfig(ctx context.Context) *retrieval.FetchConfig {
 	return effectiveToolConfig(
 		ctx,
 		oc,
-		func(connector *OpenAIConnector) *fetch.Config {
+		func(connector *OpenAIConnector) *retrieval.FetchConfig {
 			if connector == nil || connector.Config.Tools.Web == nil {
 				return nil
 			}
 			return mapFetchConfig(connector.Config.Tools.Web.Fetch)
 		},
 		applyLoginTokensToFetchConfig,
-		func(cfg *fetch.Config) *fetch.Config { return fetch.ApplyEnvDefaults(cfg).WithDefaults() },
+		func(cfg *retrieval.FetchConfig) *retrieval.FetchConfig {
+			return retrieval.FetchApplyEnvDefaults(cfg).WithDefaults()
+		},
 	)
 }
 
@@ -68,7 +71,7 @@ func effectiveToolConfig[T any](
 
 func (oc *AIClient) isWebSearchConfigured(ctx context.Context) (bool, string) {
 	cfg := oc.effectiveSearchConfig(ctx)
-	// Mirrors pkg/search/router.go provider registration requirements.
+	// Mirrors pkg/retrieval/search.go provider registration requirements.
 	if strings.TrimSpace(cfg.Exa.APIKey) != "" {
 		if stringutil.BoolPtrOr(cfg.Exa.Enabled, true) {
 			return true, ""

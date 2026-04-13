@@ -1,4 +1,4 @@
-package search
+package retrieval
 
 import (
 	"context"
@@ -9,20 +9,24 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/exa"
 )
 
-type exaProvider struct {
+type exaSearchProvider struct {
 	cfg ExaConfig
 }
 
-func newExaProvider(cfg *Config) *exaProvider {
+func newExaSearchProvider(cfg *SearchConfig) SearchProvider {
 	if cfg == nil {
 		return nil
 	}
-	return exa.NewProvider(cfg.Exa.Enabled, cfg.Exa.APIKey, func() *exaProvider {
-		return &exaProvider{cfg: cfg.Exa}
+	return exa.NewProvider(cfg.Exa.Enabled, cfg.Exa.APIKey, func() SearchProvider {
+		return &exaSearchProvider{cfg: cfg.Exa}
 	})
 }
 
-func (p *exaProvider) Search(ctx context.Context, req Request) (*Response, error) {
+func (p *exaSearchProvider) Name() string {
+	return ProviderExa
+}
+
+func (p *exaSearchProvider) Search(ctx context.Context, req SearchRequest) (*SearchResponse, error) {
 	numResults := p.cfg.NumResults
 	if req.Count > 0 {
 		numResults = req.Count
@@ -76,10 +80,10 @@ func (p *exaProvider) Search(ctx context.Context, req Request) (*Response, error
 		return nil, err
 	}
 
-	results := make([]Result, 0, len(resp.Results))
+	results := make([]SearchResult, 0, len(resp.Results))
 	for _, entry := range resp.Results {
 		desc := descriptionFromEntry(entry.Highlights, entry.Text)
-		results = append(results, Result{
+		results = append(results, SearchResult{
 			ID:          strings.TrimSpace(entry.ID),
 			Title:       strings.TrimSpace(entry.Title),
 			URL:         entry.URL,
@@ -92,7 +96,7 @@ func (p *exaProvider) Search(ctx context.Context, req Request) (*Response, error
 		})
 	}
 
-	return &Response{
+	return &SearchResponse{
 		Query:    req.Query,
 		Provider: ProviderExa,
 		Count:    len(results),

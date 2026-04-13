@@ -7,8 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/beeper/agentremote/pkg/fetch"
-	"github.com/beeper/agentremote/pkg/search"
+	"github.com/beeper/agentremote/pkg/retrieval"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	"github.com/beeper/agentremote/pkg/shared/websearch"
 )
@@ -20,11 +19,11 @@ func executeWebSearchWithProviders(ctx context.Context, args map[string]any) (st
 	}
 
 	btc := GetBridgeToolContext(ctx)
-	var cfg *search.Config
+	var cfg *retrieval.SearchConfig
 	if btc != nil && btc.Client != nil {
 		cfg = btc.Client.effectiveSearchConfig(ctx)
 	}
-	resp, err := search.Search(ctx, req, cfg)
+	resp, err := retrieval.Search(ctx, req, cfg)
 	if err != nil {
 		return "", err
 	}
@@ -57,18 +56,18 @@ func executeWebFetchWithProviders(ctx context.Context, args map[string]any) (str
 		maxChars = int(mc)
 	}
 
-	req := fetch.Request{
+	req := retrieval.FetchRequest{
 		URL:         urlStr,
 		ExtractMode: extractMode,
 		MaxChars:    maxChars,
 	}
 
 	btc := GetBridgeToolContext(ctx)
-	var cfg *fetch.Config
+	var cfg *retrieval.FetchConfig
 	if btc != nil && btc.Client != nil {
 		cfg = btc.Client.effectiveFetchConfig(ctx)
 	}
-	resp, err := fetch.Fetch(ctx, req, cfg)
+	resp, err := retrieval.Fetch(ctx, req, cfg)
 	if err != nil {
 		return "", err
 	}
@@ -103,9 +102,9 @@ func executeWebFetchWithProviders(ctx context.Context, args map[string]any) (str
 	return string(raw), nil
 }
 
-func applyLoginTokensToSearchConfig(cfg *search.Config, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) *search.Config {
+func applyLoginTokensToSearchConfig(cfg *retrieval.SearchConfig, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) *retrieval.SearchConfig {
 	if cfg == nil {
-		cfg = &search.Config{}
+		cfg = &retrieval.SearchConfig{}
 	}
 	if connector == nil {
 		return cfg
@@ -116,15 +115,15 @@ func applyLoginTokensToSearchConfig(cfg *search.Config, provider string, loginCf
 		applyExaProxyDefaults(cfg, provider, loginCfg, connector)
 	}
 	if shouldForceExaProvider(cfg.Exa.APIKey, cfg.Exa.BaseURL, provider) {
-		applyProviderOverride(&cfg.Provider, &cfg.Fallbacks, search.ProviderExa)
+		applyProviderOverride(&cfg.Provider, &cfg.Fallbacks, retrieval.ProviderExa)
 	}
 
 	return cfg
 }
 
-func applyLoginTokensToFetchConfig(cfg *fetch.Config, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) *fetch.Config {
+func applyLoginTokensToFetchConfig(cfg *retrieval.FetchConfig, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) *retrieval.FetchConfig {
 	if cfg == nil {
-		cfg = &fetch.Config{}
+		cfg = &retrieval.FetchConfig{}
 	}
 	if connector == nil {
 		return cfg
@@ -135,7 +134,7 @@ func applyLoginTokensToFetchConfig(cfg *fetch.Config, provider string, loginCfg 
 		applyFetchExaProxyDefaults(cfg, provider, loginCfg, connector)
 	}
 	if shouldForceExaProvider(cfg.Exa.APIKey, cfg.Exa.BaseURL, provider) {
-		applyProviderOverride(&cfg.Provider, &cfg.Fallbacks, fetch.ProviderExa)
+		applyProviderOverride(&cfg.Provider, &cfg.Fallbacks, retrieval.ProviderExa)
 	}
 
 	return cfg
@@ -217,14 +216,14 @@ func applyExaProxyDefaultsTo(baseURL *string, apiKey *string, provider string, l
 	}
 }
 
-func applyExaProxyDefaults(cfg *search.Config, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) {
+func applyExaProxyDefaults(cfg *retrieval.SearchConfig, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) {
 	if cfg == nil {
 		return
 	}
 	applyExaProxyDefaultsTo(&cfg.Exa.BaseURL, &cfg.Exa.APIKey, provider, loginCfg, connector)
 }
 
-func applyFetchExaProxyDefaults(cfg *fetch.Config, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) {
+func applyFetchExaProxyDefaults(cfg *retrieval.FetchConfig, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) {
 	if cfg == nil {
 		return
 	}
@@ -244,14 +243,14 @@ func isRelativePath(value string) bool {
 	return strings.HasPrefix(trimmed, "/")
 }
 
-func mapSearchConfig(src *SearchConfig) *search.Config {
+func mapSearchConfig(src *SearchConfig) *retrieval.SearchConfig {
 	if src == nil {
 		return nil
 	}
-	return &search.Config{
+	return &retrieval.SearchConfig{
 		Provider:  src.Provider,
 		Fallbacks: src.Fallbacks,
-		Exa: search.ExaConfig{
+		Exa: retrieval.ExaConfig{
 			Enabled:           src.Exa.Enabled,
 			BaseURL:           src.Exa.BaseURL,
 			APIKey:            src.Exa.APIKey,
@@ -265,21 +264,21 @@ func mapSearchConfig(src *SearchConfig) *search.Config {
 	}
 }
 
-func mapFetchConfig(src *FetchConfig) *fetch.Config {
+func mapFetchConfig(src *FetchConfig) *retrieval.FetchConfig {
 	if src == nil {
 		return nil
 	}
-	return &fetch.Config{
+	return &retrieval.FetchConfig{
 		Provider:  src.Provider,
 		Fallbacks: src.Fallbacks,
-		Exa: fetch.ExaConfig{
+		Exa: retrieval.ExaConfig{
 			Enabled:           src.Exa.Enabled,
 			BaseURL:           src.Exa.BaseURL,
 			APIKey:            src.Exa.APIKey,
 			IncludeText:       src.Exa.IncludeText,
 			TextMaxCharacters: src.Exa.TextMaxCharacters,
 		},
-		Direct: fetch.DirectConfig{
+		Direct: retrieval.DirectConfig{
 			Enabled:      src.Direct.Enabled,
 			TimeoutSecs:  src.Direct.TimeoutSecs,
 			UserAgent:    src.Direct.UserAgent,

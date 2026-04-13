@@ -1,4 +1,4 @@
-package fetch
+package retrieval
 
 import (
 	"context"
@@ -10,24 +10,24 @@ import (
 )
 
 // Fetch executes a fetch using the configured provider chain.
-func Fetch(ctx context.Context, req Request, cfg *Config) (*Response, error) {
+func Fetch(ctx context.Context, req FetchRequest, cfg *FetchConfig) (*FetchResponse, error) {
 	if strings.TrimSpace(req.URL) == "" {
 		return nil, errors.New("missing url")
 	}
 	cfg = cfg.WithDefaults()
-	req = normalizeRequest(req)
+	req = normalizeFetchRequest(req)
 
 	return providerresource.Run(
 		cfg.Provider,
 		cfg.Fallbacks,
-		DefaultFallbackOrder,
-		func(reg *registry.Registry[Provider]) {
-			registerProviders(reg, cfg)
+		DefaultFetchFallbackOrder,
+		func(reg *registry.Registry[FetchProvider]) {
+			registerFetchProviders(reg, cfg)
 		},
-		func(provider Provider) (*Response, error) {
+		func(provider FetchProvider) (*FetchResponse, error) {
 			return provider.Fetch(ctx, req)
 		},
-		func(name string, resp *Response) {
+		func(name string, resp *FetchResponse) {
 			if resp.Provider == "" {
 				resp.Provider = name
 			}
@@ -36,7 +36,7 @@ func Fetch(ctx context.Context, req Request, cfg *Config) (*Response, error) {
 	)
 }
 
-func normalizeRequest(req Request) Request {
+func normalizeFetchRequest(req FetchRequest) FetchRequest {
 	if req.ExtractMode == "" {
 		req.ExtractMode = "markdown"
 	}
@@ -46,11 +46,11 @@ func normalizeRequest(req Request) Request {
 	return req
 }
 
-func registerProviders(reg *registry.Registry[Provider], cfg *Config) {
-	if p := newExaProvider(cfg); p != nil {
+func registerFetchProviders(reg *registry.Registry[FetchProvider], cfg *FetchConfig) {
+	if p := newExaFetchProvider(cfg); p != nil {
 		reg.Register(p)
 	}
-	if p := newDirectProvider(cfg); p != nil {
+	if p := newDirectFetchProvider(cfg); p != nil {
 		reg.Register(p)
 	}
 }
