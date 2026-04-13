@@ -173,9 +173,19 @@ func portalScopeForPortal(portal *bridgev2.Portal) *portalScope {
 	if db == nil || portal.Bridge == nil || portal.Bridge.DB == nil {
 		return nil
 	}
-	bridgeID := strings.TrimSpace(string(portal.Bridge.DB.BridgeID))
-	loginID := strings.TrimSpace(string(portal.Receiver))
-	portalID := strings.TrimSpace(string(portal.PortalKey.ID))
+	bridgeID := firstNonEmptyTrimmed(
+		string(portal.BridgeID),
+		string(portal.Bridge.DB.BridgeID),
+		string(portal.Bridge.ID),
+	)
+	loginID := firstNonEmptyTrimmed(
+		string(portal.PortalKey.Receiver),
+		string(portal.Receiver),
+	)
+	portalID := firstNonEmptyTrimmed(
+		string(portal.PortalKey.ID),
+		string(portal.ID),
+	)
 	if bridgeID == "" || loginID == "" || portalID == "" {
 		return nil
 	}

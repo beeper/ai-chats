@@ -145,6 +145,49 @@ func parseAgentsCommandArgs(args []string, currentlyEnabled bool) (enabled bool,
 
 var errInvalidAgentsCommandUsage = errors.New("usage: !ai agents [on|off|status]")
 
+func applyAgentsEnabledChange(ctx context.Context, client *AIClient, enabled bool) (bool, error) {
+	if client == nil {
+		return false, nil
+	}
+	currentlyEnabled := agentsEnabledForLoginConfig(client.loginConfigSnapshot(ctx))
+	if err := client.updateLoginConfig(ctx, func(cfg *aiLoginConfig) bool {
+		current := agentsEnabledForLoginConfig(cfg)
+		if current == enabled && cfg.Agents != nil {
+			return false
+		}
+		cfg.Agents = &enabled
+		return true
+	}); err != nil {
+		return false, err
+	}
+	return enabled && !currentlyEnabled, nil
+}
+
+func applyAgentsCommandChange(
+	ctx context.Context,
+	client *AIClient,
+	enabled bool,
+	ensureDefaultChat func(context.Context) error,
+) error {
+	if client == nil {
+		return nil
+	}
+	prevCfg := client.loginConfigSnapshot(ctx)
+	shouldCreateDefaultChat, err := applyAgentsEnabledChange(ctx, client, enabled)
+	if err != nil {
+		return err
+	}
+	if shouldCreateDefaultChat && ensureDefaultChat != nil {
+		if err = ensureDefaultChat(ctx); err != nil {
+			if rollbackErr := client.replaceLoginConfig(ctx, prevCfg); rollbackErr != nil {
+				return errors.Join(err, rollbackErr)
+			}
+			return err
+		}
+	}
+	return nil
+}
+
 func fnAgents(ce *commands.Event) {
 	client := getAIClient(ce)
 	if client == nil || client.UserLogin == nil {
@@ -154,7 +197,7 @@ func fnAgents(ce *commands.Event) {
 	}
 
 	loginCfg := client.loginConfigSnapshot(ce.Ctx)
-	currentlyEnabled := loginCfg.Agents != nil && *loginCfg.Agents
+	currentlyEnabled := agentsEnabledForLoginConfig(loginCfg)
 	enabled, changed, reply, parseErr := parseAgentsCommandArgs(ce.Args, currentlyEnabled)
 	if parseErr != nil {
 		markCommandFailure(ce, "usage: !ai agents [on|off|status]", event.MessageStatusUnsupported)
@@ -163,16 +206,14 @@ func fnAgents(ce *commands.Event) {
 	}
 
 	if changed {
-		if err := client.updateLoginConfig(ce.Ctx, func(cfg *aiLoginConfig) bool {
-			current := cfg.Agents != nil && *cfg.Agents
-			if current == enabled && cfg.Agents != nil {
-				return false
-			}
-			cfg.Agents = &enabled
-			return true
-		}); err != nil {
+		err := applyAgentsCommandChange(ce.Ctx, client, enabled, client.ensureDefaultChat)
+		if err != nil {
 			markCommandFailure(ce, "Couldn't save AI settings.", event.MessageStatusGenericError)
-			ce.Reply("Couldn't save AI settings.")
+			if enabled {
+				ce.Reply("Couldn't enable agents because the welcome chat couldn't be created. Agents remain off; try again.")
+			} else {
+				ce.Reply("Couldn't save AI settings.")
+			}
 			return
 		}
 	}

@@ -624,6 +624,15 @@ func (oc *AIClient) saveUserMessage(ctx context.Context, evt *event.Event, msg *
 	if evt != nil {
 		msg.MXID = evt.ID
 	}
+	meta, _ := msg.Metadata.(*MessageMetadata)
+	oc.loggerForContext(ctx).Debug().
+		Str("message_id", string(msg.ID)).
+		Str("event_id", msg.MXID.String()).
+		Str("room_id", string(msg.Room.ID)).
+		Str("room_receiver", string(msg.Room.Receiver)).
+		Str("sender_id", string(msg.SenderID)).
+		Str("meta", transcriptMetaSummary(meta)).
+		Msg("Saving user message before transcript persistence")
 	if _, err := oc.UserLogin.Bridge.GetGhostByID(ctx, msg.SenderID); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure user ghost before saving message")
 	}
@@ -637,8 +646,23 @@ func (oc *AIClient) saveUserMessage(ctx context.Context, evt *event.Event, msg *
 		if err != nil {
 			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to resolve portal for AI transcript persistence")
 		}
+		if err == nil {
+			oc.loggerForContext(ctx).Debug().
+				Str("message_id", string(msg.ID)).
+				Str("event_id", msg.MXID.String()).
+				Str("room_id", string(msg.Room.ID)).
+				Str("room_receiver", string(msg.Room.Receiver)).
+				Msg("Failed to resolve portal for AI transcript persistence because portal lookup returned nil")
+		}
 		return
 	}
+	oc.loggerForContext(ctx).Debug().
+		Str("message_id", string(msg.ID)).
+		Str("event_id", msg.MXID.String()).
+		Str("resolved_portal_id", string(portal.PortalKey.ID)).
+		Str("resolved_portal_receiver", string(portal.PortalKey.Receiver)).
+		Str("resolved_portal_mxid", portal.MXID.String()).
+		Msg("Resolved portal for AI transcript persistence")
 	if err := persistAITranscriptMessage(ctx, oc, portal, msg); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist AI transcript message")
 	}
@@ -1816,7 +1840,7 @@ func (oc *AIClient) prepareInboundPromptContext(
 	}
 	historyMessages, err := oc.replayHistoryMessages(ctx, portal, meta, historyReplayOptions{
 		mode:             historyReplayNormal,
-		excludeMessageID: networkid.MessageID(eventID),
+		excludeMessageID: sdk.MatrixMessageID(eventID),
 	})
 	if err != nil {
 		return inboundPromptResult{}, err

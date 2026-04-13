@@ -70,6 +70,49 @@ func TestLoadAIUserLoginMissingAPIKeyEvictsCacheAndSetsBrokenClient(t *testing.T
 	}
 }
 
+func TestLoadAIUserLoginMagicProxyBuildsClientFromPersistedConfig(t *testing.T) {
+	client := newDBBackedTestAIClient(t, ProviderMagicProxy)
+	login := client.UserLogin
+	loginID := login.ID
+	if login.Bridge != nil {
+		login.Bridge.BackgroundCtx = context.Background()
+	}
+	agentsDisabled := false
+
+	if err := saveAILoginConfig(context.Background(), login, &aiLoginConfig{
+		Agents: &agentsDisabled,
+		Credentials: &LoginCredentials{
+			APIKey:  "proxy-token",
+			BaseURL: "https://temporary-ai-proxy.beeper-tools.com",
+		},
+	}); err != nil {
+		t.Fatalf("saveAILoginConfig returned error: %v", err)
+	}
+
+	login.Client = newBrokenLoginClient(login, "broken")
+	oc := &OpenAIConnector{
+		clients: map[networkid.UserLoginID]bridgev2.NetworkAPI{},
+	}
+
+	if err := oc.loadAIUserLogin(context.Background(), login, &UserLoginMetadata{Provider: ProviderMagicProxy}); err != nil {
+		t.Fatalf("loadAIUserLogin returned error: %v", err)
+	}
+
+	typed, ok := login.Client.(*AIClient)
+	if !ok {
+		t.Fatalf("expected AIClient after loading persisted magic proxy config, got %T", login.Client)
+	}
+	if typed.apiKey != "proxy-token" {
+		t.Fatalf("unexpected api key on loaded client: %q", typed.apiKey)
+	}
+	if typed.provider == nil {
+		t.Fatal("expected initialized provider for magic proxy login")
+	}
+	if _, ok := oc.clients[loginID].(*AIClient); !ok {
+		t.Fatalf("expected cached AI client for %q", loginID)
+	}
+}
+
 func TestReuseAIClientUpdatesClientBaseLogin(t *testing.T) {
 	login := testUserLoginWithMeta("login-2", &UserLoginMetadata{Provider: ProviderOpenAI})
 	client := &AIClient{}

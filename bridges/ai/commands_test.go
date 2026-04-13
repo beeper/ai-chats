@@ -1,6 +1,9 @@
 package ai
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestParseAgentsCommandArgs(t *testing.T) {
 	tests := []struct {
@@ -40,5 +43,55 @@ func TestParseAgentsCommandArgs(t *testing.T) {
 				t.Fatalf("changed=%v, want %v", gotChanged, tc.wantChanged)
 			}
 		})
+	}
+}
+
+func TestApplyAgentsEnabledChangeOnlyRequestsChatOnExplicitEnable(t *testing.T) {
+	client := newDBBackedTestAIClient(t, ProviderMagicProxy)
+	ctx := context.Background()
+
+	shouldCreateDefaultChat, err := applyAgentsEnabledChange(ctx, client, false)
+	if err != nil {
+		t.Fatalf("applyAgentsEnabledChange(false) returned error: %v", err)
+	}
+	if shouldCreateDefaultChat {
+		t.Fatalf("expected no default chat request while disabling agents")
+	}
+	if client.agentsEnabledForLogin() {
+		t.Fatalf("expected agents to remain disabled")
+	}
+
+	shouldCreateDefaultChat, err = applyAgentsEnabledChange(ctx, client, true)
+	if err != nil {
+		t.Fatalf("applyAgentsEnabledChange(true) returned error: %v", err)
+	}
+	if !shouldCreateDefaultChat {
+		t.Fatalf("expected default chat creation request when enabling agents")
+	}
+	if !client.agentsEnabledForLogin() {
+		t.Fatalf("expected agents to be enabled")
+	}
+
+	shouldCreateDefaultChat, err = applyAgentsEnabledChange(ctx, client, true)
+	if err != nil {
+		t.Fatalf("second applyAgentsEnabledChange(true) returned error: %v", err)
+	}
+	if shouldCreateDefaultChat {
+		t.Fatalf("expected no second default chat request when already enabled")
+	}
+}
+
+func TestApplyAgentsCommandChangeRollsBackWhenWelcomeChatFails(t *testing.T) {
+	client := newDBBackedTestAIClient(t, ProviderMagicProxy)
+	ctx := context.Background()
+
+	err := applyAgentsCommandChange(ctx, client, true, func(context.Context) error {
+		return context.DeadlineExceeded
+	})
+	if err == nil {
+		t.Fatalf("expected welcome chat failure to be returned")
+	}
+	if client.agentsEnabledForLogin() {
+		t.Fatalf("expected agents enablement to roll back on welcome chat failure")
 	}
 }

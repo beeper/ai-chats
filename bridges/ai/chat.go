@@ -48,18 +48,18 @@ func (oc *AIClient) agentsEnabledForLogin() bool {
 		return false
 	}
 	cfg := oc.loginConfigSnapshot(context.Background())
-	return cfg.Agents == nil || *cfg.Agents
+	return agentsEnabledForLoginConfig(cfg)
 }
 
-func shouldEnsureDefaultChat(owner any) bool {
-	cfg, ok := owner.(*aiLoginConfig)
-	if !ok {
-		return false
-	}
+func agentsEnabledForLoginConfig(cfg *aiLoginConfig) bool {
+	return cfg != nil && cfg.Agents != nil && *cfg.Agents
+}
+
+func shouldEnsureDefaultChat(cfg *aiLoginConfig) bool {
 	if cfg == nil {
 		return false
 	}
-	return cfg.Agents == nil || *cfg.Agents
+	return agentsEnabledForLoginConfig(cfg)
 }
 
 func agentChatsDisabledError() error {
@@ -1101,18 +1101,14 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 		return err
 	}
 	if portal != nil {
-		if portal.MXID != "" {
-			oc.loggerForContext(ctx).Debug().Stringer("portal", portal.PortalKey).Msg("Existing default chat already has MXID")
-			return nil
-		}
-		info := oc.chatInfoFromPortal(ctx, portal)
-		oc.loggerForContext(ctx).Info().Stringer("portal", portal.PortalKey).Msg("Default chat missing MXID; creating Matrix room")
-		if err := oc.materializePortalRoom(ctx, portal, info, portalRoomMaterializeOptions{SendWelcome: true}); err != nil {
-			oc.loggerForContext(ctx).Err(err).Msg("Failed to create Matrix room for default chat")
-			return err
-		}
-		oc.loggerForContext(ctx).Info().Stringer("portal", portal.PortalKey).Msg("New AI Chat room created")
-		return nil
+		return oc.ensureChatPortalReady(ctx, portal, "Existing default chat already has MXID", "Default chat missing MXID; creating Matrix room", "Failed to create Matrix room for default chat")
+	}
+
+	portals, err := oc.listAllChatPortals(ctx)
+	if err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to list AI chat portals while ensuring default chat")
+	} else if existing := chooseDefaultChatPortal(portals); existing != nil {
+		return oc.ensureChatPortalReady(ctx, existing, "Existing AI chat already has MXID", "Existing AI chat missing MXID; creating Matrix room", "Failed to create Matrix room for existing AI chat")
 	}
 
 	// Create default chat with Beep agent
@@ -1159,6 +1155,23 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 		return err
 	}
 	oc.loggerForContext(ctx).Info().Stringer("portal", portal.PortalKey).Msg("New AI Chat room created")
+	return nil
+}
+
+func (oc *AIClient) ensureChatPortalReady(ctx context.Context, portal *bridgev2.Portal, readyMsg, createMsg, errMsg string) error {
+	if portal == nil {
+		return nil
+	}
+	if portal.MXID != "" {
+		oc.loggerForContext(ctx).Debug().Stringer("portal", portal.PortalKey).Msg(readyMsg)
+		return nil
+	}
+	info := oc.chatInfoFromPortal(ctx, portal)
+	oc.loggerForContext(ctx).Info().Stringer("portal", portal.PortalKey).Msg(createMsg)
+	if err := oc.materializePortalRoom(ctx, portal, info, portalRoomMaterializeOptions{SendWelcome: true}); err != nil {
+		oc.loggerForContext(ctx).Err(err).Msg(errMsg)
+		return err
+	}
 	return nil
 }
 
@@ -1232,15 +1245,29 @@ func chooseDefaultChatPortal(portals []*bridgev2.Portal) *bridgev2.Portal {
 	return defaultPortal
 }
 
-// HandleMatrixMessageRemove ignores Matrix-side deletions.
-// bridgev2 owns message cleanup for this bridge; AI keeps no extra delete path here.
+// HandleMatrixMessageRemove keeps bridgev2 and AI-owned transcript state in sync.
 func (oc *AIClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev2.MatrixMessageRemove) error {
+	if oc == nil || msg == nil || msg.Portal == nil || msg.TargetMessage == nil {
+		return nil
+	}
 	oc.loggerForContext(ctx).Debug().
 		Stringer("event_id", msg.TargetMessage.MXID).
 		Stringer("portal", msg.Portal.PortalKey).
 		Msg("Handling message deletion")
 
-	return nil
+	var errs []error
+	if oc.UserLogin != nil && oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.DB != nil && oc.UserLogin.Bridge.DB.Message != nil && msg.TargetMessage.RowID != 0 {
+		if err := oc.UserLogin.Bridge.DB.Message.Delete(ctx, msg.TargetMessage.RowID); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if err := deleteAITranscriptMessage(ctx, msg.Portal, msg.TargetMessage.ID, msg.TargetMessage.MXID); err != nil {
+		errs = append(errs, err)
+	}
+	if meta := portalMeta(msg.Portal); meta != nil {
+		oc.notifySessionMutation(ctx, msg.Portal, meta, true)
+	}
+	return errors.Join(errs...)
 }
 
 // HandleMatrixDisappearingTimer handles disappearing message timer changes from Matrix

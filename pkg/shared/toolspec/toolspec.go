@@ -32,7 +32,7 @@ const (
 	WebFetchDescription = "Fetch and extract readable content from a URL (HTML \u2192 markdown/text). Use for lightweight page access without browser automation."
 
 	MessageName        = "message"
-	MessageDescription = "Send messages and supported chat actions. Supports actions like send, delete, react, reply, search, threads, focus, and desktop chat control."
+	MessageDescription = "Send messages and channel actions. Supports actions: send, delete, react, poll, pin, threads, focus, and more."
 
 	CronName        = "cron"
 	CronDescription = "Manage scheduler-backed jobs that run in hidden background rooms.\n\nACTIONS:\n- status: Check scheduler status\n- list: List jobs (use includeDisabled:true to include disabled)\n- add: Create job (requires job object, see schema below)\n- update: Modify job (requires jobId + patch object)\n- remove: Delete job (requires jobId)\n- run: Trigger job immediately (requires jobId)\n\nJOB SCHEMA (for add action):\n{\n  \"name\": \"string (optional)\",\n  \"schedule\": { ... },\n  \"payload\": { ... },\n  \"delivery\": { ... },\n  \"enabled\": true | false\n}\n\nSCHEDULE TYPES (schedule.kind):\n- \"at\": One-shot at absolute time\n  { \"kind\": \"at\", \"at\": \"<ISO-8601 timestamp>\" }\n- \"every\": Recurring interval\n  { \"kind\": \"every\", \"everyMs\": <interval-ms>, \"anchorMs\": <optional-start-ms> }\n- \"cron\": Cron expression\n  { \"kind\": \"cron\", \"expr\": \"<cron-expression>\", \"tz\": \"<optional-timezone>\" }\n\nPAYLOAD:\n- \"agentTurn\": Run the agent inside a hidden background room\n  { \"kind\": \"agentTurn\", \"message\": \"<prompt>\", \"model\": \"<optional>\", \"thinking\": \"<optional>\", \"timeoutSeconds\": <optional> }\n\nDELIVERY:\n  { \"mode\": \"none|announce\", \"to\": \"<!room-id:server>\", \"bestEffort\": <optional-bool> }\n  - delivery.to: Matrix room ID (e.g. !abcdef:server.com). Omit to use the last active room or default chat.\n\nUse contextMessages (0-10) to add recent chat context to the scheduled payload."
@@ -150,8 +150,8 @@ func GravatarSetSchema() map[string]any {
 
 // MessageSchema returns the JSON schema for the message tool.
 func MessageSchema() map[string]any {
-	schema := ObjectSchema(map[string]any{
-		"action":      StringEnumProperty("The action to perform", []string{"send", "react", "edit", "delete", "reply", "thread-reply", "search", "focus", "desktop-list-chats", "desktop-search-chats", "desktop-search-messages", "desktop-create-chat", "desktop-archive-chat", "desktop-set-reminder", "desktop-clear-reminder", "desktop-upload-asset", "desktop-download-asset"}),
+	return ObjectSchema(map[string]any{
+		"action":      StringEnumProperty("The action to perform", []string{"send", "react", "reactions", "edit", "delete", "reply", "pin", "unpin", "list-pins", "thread-reply", "search", "read", "member-info", "channel-info", "channel-edit", "focus", "desktop-list-chats", "desktop-search-chats", "desktop-search-messages", "desktop-create-chat", "desktop-archive-chat", "desktop-set-reminder", "desktop-clear-reminder", "desktop-upload-asset", "desktop-download-asset"}),
 		"message":     StringProperty("For send/edit/reply/thread-reply: the message text"),
 		"media":       StringProperty("Optional: media URL/path/data URL to send (image/audio/video/file)."),
 		"filename":    StringProperty("Optional: filename for media uploads."),
@@ -159,9 +159,10 @@ func MessageSchema() map[string]any {
 		"mimeType":    StringProperty("Optional: content type override for attachments."),
 		"caption":     StringProperty("Optional: caption for media uploads."),
 		"path":        StringProperty("Optional: file path to upload (alias for media)."),
-		"message_id":  StringProperty("Target message ID for react/edit/delete/reply/thread-reply/focus"),
-		"emoji":       StringProperty("For action=react: the emoji to react with. Required for remove:true as well."),
+		"message_id":  StringProperty("Target message ID for react/reactions/edit/delete/reply/pin/unpin/thread-reply/read"),
+		"emoji":       StringProperty("For action=react: the emoji to react with (empty to remove all reactions)"),
 		"remove":      BooleanProperty("For action=react: set true to remove the reaction instead of adding"),
+		"user_id":     StringProperty("For action=member-info: the Matrix user ID to look up (e.g., @user:server.com)"),
 		"thread_id":   StringProperty("For action=thread-reply: the thread root message ID"),
 		"asVoice":     BooleanProperty("Optional: send audio as a voice message (when media is audio)."),
 		"silent":      BooleanProperty("Optional: send silently (ignored by bridge)."),
@@ -205,25 +206,13 @@ func MessageSchema() map[string]any {
 		"url":                      StringProperty("For desktop-download-asset: mxc:// or localmxc:// URL"),
 		"draftText":                StringProperty("For action=focus: draft text to prefill"),
 		"draftAttachmentPath":      StringProperty("For action=focus: attachment file path to prefill"),
-		"name":                     StringProperty("For action=desktop-create-chat: optional chat title"),
+		"name":                     StringProperty("For action=channel-edit: new channel/room name; for action=desktop-create-chat: optional chat title"),
+		"topic":                    StringProperty("For action=channel-edit: new channel/room topic"),
 		"channel":                  StringProperty("Optional: channel override (ignored by bridge; current room only)."),
 		"target":                   StringProperty("Optional: target override (ignored by bridge; current room only)."),
 		"targets":                  StringArrayProperty("Optional: multi-target override (ignored by bridge; current room only)."),
 		"dryRun":                   BooleanProperty("Optional: dry run (ignored by bridge)."),
 	}, "action")
-	schema["allOf"] = []any{
-		map[string]any{
-			"if": map[string]any{
-				"properties": map[string]any{
-					"action": map[string]any{"const": "react"},
-				},
-			},
-			"then": map[string]any{
-				"required": []string{"emoji"},
-			},
-		},
-	}
-	return schema
 }
 
 // CronSchema returns the JSON schema for the cron tool.

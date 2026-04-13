@@ -1,6 +1,10 @@
 package ai
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/beeper/agentremote/pkg/shared/toolspec"
+)
 
 func TestSanitizeToolSchema_StripsUnsupportedKeywords(t *testing.T) {
 	schema := map[string]any{
@@ -112,5 +116,18 @@ func TestIsStrictSchemaCompatible(t *testing.T) {
 	}
 	if isStrictSchemaCompatible(badSchema) {
 		t.Fatalf("expected schema with unsupported keyword to be incompatible")
+	}
+}
+
+func TestSanitizeToolSchema_MessageSchemaHasNoTopLevelComposition(t *testing.T) {
+	cleaned, _ := sanitizeToolSchemaWithReport(toolspec.MessageSchema())
+	if _, ok := cleaned["allOf"]; ok {
+		t.Fatalf("expected allOf to be absent")
+	}
+	if _, ok := cleaned["anyOf"]; ok {
+		t.Fatalf("expected anyOf to be absent")
+	}
+	if _, ok := cleaned["oneOf"]; ok {
+		t.Fatalf("expected oneOf to be absent")
 	}
 }

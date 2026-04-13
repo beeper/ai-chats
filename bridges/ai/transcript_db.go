@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -12,6 +13,50 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 )
+
+func transcriptMetaSummary(meta *MessageMetadata) string {
+	if meta == nil {
+		return "meta=nil"
+	}
+	bodyLen := len(strings.TrimSpace(meta.Body))
+	return fmt.Sprintf(
+		"role=%q body_len=%d canonical_keys=%d exclude=%t media_url=%t mime=%q",
+		meta.Role,
+		bodyLen,
+		len(meta.CanonicalTurnData),
+		meta.ExcludeFromHistory,
+		strings.TrimSpace(meta.MediaURL) != "",
+		strings.TrimSpace(meta.MimeType),
+	)
+}
+
+func transcriptHistorySummary(messages []*database.Message, maxItems int) string {
+	if len(messages) == 0 {
+		return "empty"
+	}
+	if maxItems <= 0 {
+		maxItems = 1
+	}
+	if maxItems > len(messages) {
+		maxItems = len(messages)
+	}
+	parts := make([]string, 0, maxItems)
+	for i := 0; i < maxItems; i++ {
+		msg := messages[i]
+		if msg == nil {
+			parts = append(parts, "<nil>")
+			continue
+		}
+		meta, _ := msg.Metadata.(*MessageMetadata)
+		parts = append(parts, fmt.Sprintf(
+			"id=%q event=%q %s",
+			msg.ID,
+			msg.MXID,
+			transcriptMetaSummary(meta),
+		))
+	}
+	return strings.Join(parts, " | ")
+}
 
 func cloneCanonicalTurnData(src map[string]any) map[string]any {
 	if len(src) == 0 {
@@ -68,13 +113,59 @@ func cloneMessageForAIHistory(msg *database.Message) *database.Message {
 
 func persistAITranscriptMessage(ctx context.Context, client *AIClient, portal *bridgev2.Portal, msg *database.Message) error {
 	scope := portalScopeForPortal(portal)
-	if scope == nil || client == nil || msg == nil || strings.TrimSpace(string(msg.ID)) == "" {
+	if client == nil || msg == nil {
+		return nil
+	}
+	log := client.loggerForContext(ctx)
+	if scope == nil {
+		portalKeyID := ""
+		portalKeyReceiver := ""
+		portalMXID := ""
+		if portal != nil {
+			portalKeyID = string(portal.PortalKey.ID)
+			portalKeyReceiver = string(portal.PortalKey.Receiver)
+			portalMXID = portal.MXID.String()
+		}
+		log.Debug().
+			Str("message_id", strings.TrimSpace(string(msg.ID))).
+			Str("event_id", msg.MXID.String()).
+			Str("room_id", string(msg.Room.ID)).
+			Str("room_receiver", string(msg.Room.Receiver)).
+			Str("portal_key_id", portalKeyID).
+			Str("portal_key_receiver", portalKeyReceiver).
+			Str("portal_mxid", portalMXID).
+			Msg("Skipping AI transcript persistence because portal scope is nil")
+		return nil
+	}
+	if strings.TrimSpace(string(msg.ID)) == "" {
+		log.Debug().
+			Str("event_id", msg.MXID.String()).
+			Str("bridge_id", scope.bridgeID).
+			Str("login_id", scope.loginID).
+			Str("portal_id", scope.portalID).
+			Msg("Skipping AI transcript persistence because message ID is empty")
 		return nil
 	}
 	meta, ok := msg.Metadata.(*MessageMetadata)
 	if !ok || meta == nil {
+		log.Debug().
+			Str("message_id", string(msg.ID)).
+			Str("event_id", msg.MXID.String()).
+			Str("bridge_id", scope.bridgeID).
+			Str("login_id", scope.loginID).
+			Str("portal_id", scope.portalID).
+			Msg("Skipping AI transcript persistence because message metadata is missing or unexpected")
 		return nil
 	}
+	log.Debug().
+		Str("message_id", string(msg.ID)).
+		Str("event_id", msg.MXID.String()).
+		Str("sender_id", string(msg.SenderID)).
+		Str("bridge_id", scope.bridgeID).
+		Str("login_id", scope.loginID).
+		Str("portal_id", scope.portalID).
+		Str("meta", transcriptMetaSummary(meta)).
+		Msg("Persisting AI transcript message")
 	payload, err := json.Marshal(meta)
 	if err != nil {
 		return err
@@ -103,6 +194,15 @@ func persistAITranscriptMessage(ctx context.Context, client *AIClient, portal *b
 		createdAt,
 		time.Now().UnixMilli(),
 	)
+	if err == nil {
+		log.Debug().
+			Str("message_id", string(msg.ID)).
+			Str("event_id", msg.MXID.String()).
+			Str("bridge_id", scope.bridgeID).
+			Str("login_id", scope.loginID).
+			Str("portal_id", scope.portalID).
+			Msg("Persisted AI transcript message")
+	}
 	return err
 }
 
@@ -112,6 +212,36 @@ func loadAITranscriptMessage(ctx context.Context, portal *bridgev2.Portal, messa
 		return nil, err
 	}
 	return messages[0], nil
+}
+
+func deleteAITranscriptMessage(ctx context.Context, portal *bridgev2.Portal, messageID networkid.MessageID, eventID id.EventID) error {
+	scope := portalScopeForPortal(portal)
+	if scope == nil {
+		return nil
+	}
+	messageIDStr := strings.TrimSpace(string(messageID))
+	eventIDStr := strings.TrimSpace(eventID.String())
+	if messageIDStr == "" && eventIDStr == "" {
+		return nil
+	}
+	query := `
+		DELETE FROM ` + aiTranscriptTable + `
+		WHERE bridge_id=$1 AND login_id=$2 AND portal_id=$3
+	`
+	args := []any{scope.bridgeID, scope.loginID, scope.portalID}
+	switch {
+	case messageIDStr != "" && eventIDStr != "":
+		args = append(args, messageIDStr, eventIDStr)
+		query += ` AND (message_id=$4 OR event_id=$5)`
+	case messageIDStr != "":
+		args = append(args, messageIDStr)
+		query += ` AND message_id=$4`
+	default:
+		args = append(args, eventIDStr)
+		query += ` AND event_id=$4`
+	}
+	_, err := scope.db.Exec(ctx, query, args...)
+	return err
 }
 
 func loadAITranscriptMessages(
@@ -192,8 +322,25 @@ func (oc *AIClient) getAIHistoryMessages(ctx context.Context, portal *bridgev2.P
 	if oc == nil || portal == nil || portal.MXID == "" {
 		return nil, nil
 	}
+	scope := portalScopeForPortal(portal)
+	log := oc.loggerForContext(ctx).With().
+		Str("portal_key_id", string(portal.PortalKey.ID)).
+		Str("portal_key_receiver", string(portal.PortalKey.Receiver)).
+		Str("portal_mxid", portal.MXID.String()).
+		Int("history_limit", limit).
+		Logger()
+	if scope == nil {
+		log.Debug().Msg("Skipping AI history load because portal scope is nil")
+		return nil, nil
+	}
 	messages, err := loadAITranscriptMessages(ctx, portal, nil, limit)
 	if err != nil {
+		log.Warn().
+			Err(err).
+			Str("bridge_id", scope.bridgeID).
+			Str("login_id", scope.loginID).
+			Str("portal_id", scope.portalID).
+			Msg("Failed to load AI transcript history")
 		return nil, err
 	}
 	for _, msg := range messages {
@@ -201,5 +348,12 @@ func (oc *AIClient) getAIHistoryMessages(ctx context.Context, portal *bridgev2.P
 			msg.Room = portal.PortalKey
 		}
 	}
+	log.Debug().
+		Str("bridge_id", scope.bridgeID).
+		Str("login_id", scope.loginID).
+		Str("portal_id", scope.portalID).
+		Int("history_count", len(messages)).
+		Str("history_sample", transcriptHistorySummary(messages, 3)).
+		Msg("Loaded AI transcript history")
 	return messages, nil
 }

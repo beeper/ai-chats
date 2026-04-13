@@ -9,9 +9,39 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/sdk"
 )
+
+func newTranscriptTestPortal(t *testing.T, client *AIClient, portalID string) *bridgev2.Portal {
+	t.Helper()
+
+	ctx := context.Background()
+	portalKey := networkid.PortalKey{
+		ID:       networkid.PortalID(portalID),
+		Receiver: client.UserLogin.ID,
+	}
+	portal := &bridgev2.Portal{
+		Portal: &database.Portal{
+			BridgeID:  client.UserLogin.Bridge.ID,
+			PortalKey: portalKey,
+			MXID:      id.RoomID("!" + portalID + ":example.com"),
+			Metadata:  &PortalMetadata{Slug: "chat-1"},
+		},
+		Bridge: client.UserLogin.Bridge,
+	}
+	if err := client.UserLogin.Bridge.DB.Portal.Insert(ctx, portal.Portal); err != nil {
+		t.Fatalf("insert portal: %v", err)
+	}
+	setUnexportedField(client.UserLogin.Bridge, "portalsByKey", map[networkid.PortalKey]*bridgev2.Portal{
+		portalKey: portal,
+	})
+	setUnexportedField(client.UserLogin.Bridge, "portalsByMXID", map[id.RoomID]*bridgev2.Portal{
+		portal.MXID: portal,
+	})
+	return portal
+}
 
 func TestSaveUserMessage_PersistsTranscriptOutsideBridgeMetadata(t *testing.T) {
 	ctx := context.Background()
@@ -79,6 +109,183 @@ func TestSaveUserMessage_PersistsTranscriptOutsideBridgeMetadata(t *testing.T) {
 	}
 	if got := transcriptMeta.CanonicalTurnData["body"]; got != "hello world" {
 		t.Fatalf("expected canonical turn data to persist, got %#v", transcriptMeta.CanonicalTurnData)
+	}
+}
+
+func TestBuildBaseContext_ReplaysTranscriptHistoryFromFreshPortalLoad(t *testing.T) {
+	ctx := context.Background()
+	client := newDBBackedTestAIClient(t, ProviderOpenAI)
+	client.UserLogin.Client = client
+
+	portal := newTranscriptTestPortal(t, client, "transcript-history")
+
+	userMeta := &MessageMetadata{
+		BaseMessageMetadata: sdk.BaseMessageMetadata{Role: "user", Body: "hello world"},
+	}
+	setCanonicalTurnDataFromPromptMessages(userMeta, []PromptMessage{{
+		Role: PromptRoleUser,
+		Blocks: []PromptBlock{{
+			Type: PromptBlockText,
+			Text: "hello world",
+		}},
+	}})
+	userMsg := &database.Message{
+		ID:        sdk.MatrixMessageID(id.EventID("$user-1")),
+		MXID:      id.EventID("$user-1"),
+		Room:      portal.PortalKey,
+		SenderID:  humanUserID(client.UserLogin.ID),
+		Metadata:  userMeta,
+		Timestamp: time.UnixMilli(1000),
+	}
+	client.saveUserMessage(ctx, &event.Event{ID: id.EventID("$user-1")}, userMsg)
+
+	assistantMsg := &database.Message{
+		ID:       networkid.MessageID("assistant-1"),
+		MXID:     id.EventID("$assistant-1"),
+		Room:     portal.PortalKey,
+		SenderID: modelUserID("openai/gpt-4.1"),
+		Metadata: &MessageMetadata{
+			BaseMessageMetadata: sdk.BaseMessageMetadata{
+				Role: "assistant",
+				Body: "Hi there",
+				CanonicalTurnData: sdk.TurnData{
+					ID:   "turn-1",
+					Role: "assistant",
+					Parts: []sdk.TurnPart{{
+						Type: "text",
+						Text: "Hi there",
+					}},
+				}.ToMap(),
+			},
+		},
+		Timestamp: time.UnixMilli(2000),
+	}
+	if err := persistAITranscriptMessage(ctx, client, portal, assistantMsg); err != nil {
+		t.Fatalf("persist assistant transcript: %v", err)
+	}
+
+	setUnexportedField(client.UserLogin.Bridge, "portalsByKey", map[networkid.PortalKey]*bridgev2.Portal{})
+	setUnexportedField(client.UserLogin.Bridge, "portalsByMXID", map[id.RoomID]*bridgev2.Portal{})
+
+	storedPortal, err := client.UserLogin.Bridge.DB.Portal.GetByKey(ctx, portal.PortalKey)
+	if err != nil {
+		t.Fatalf("reload portal: %v", err)
+	}
+	if storedPortal == nil {
+		t.Fatalf("expected reloaded portal")
+	}
+	freshPortal := &bridgev2.Portal{Portal: storedPortal, Bridge: client.UserLogin.Bridge}
+
+	promptContext, err := client.buildBaseContext(ctx, freshPortal, portalMeta(freshPortal))
+	if err != nil {
+		t.Fatalf("buildBaseContext: %v", err)
+	}
+	if len(promptContext.Messages) != 2 {
+		t.Fatalf("expected 2 replayed messages, got %d", len(promptContext.Messages))
+	}
+	if promptContext.Messages[0].Role != PromptRoleUser || promptContext.Messages[0].Text() != "hello world" {
+		t.Fatalf("unexpected first replayed message: %#v", promptContext.Messages[0])
+	}
+	if promptContext.Messages[1].Role != PromptRoleAssistant || promptContext.Messages[1].Text() != "Hi there" {
+		t.Fatalf("unexpected second replayed message: %#v", promptContext.Messages[1])
+	}
+}
+
+func TestPortalScopeForPortal_UsesPersistedBridgeIDFallback(t *testing.T) {
+	ctx := context.Background()
+	client := newDBBackedTestAIClient(t, ProviderOpenAI)
+	client.UserLogin.Client = client
+
+	portal := newTranscriptTestPortal(t, client, "portal-scope-fallback")
+	portal.Bridge.DB.BridgeID = ""
+
+	msg := &database.Message{
+		ID:       networkid.MessageID("assistant-fallback"),
+		MXID:     id.EventID("$assistant-fallback"),
+		Room:     portal.PortalKey,
+		SenderID: modelUserID("openai/gpt-4.1"),
+		Metadata: &MessageMetadata{
+			BaseMessageMetadata: sdk.BaseMessageMetadata{
+				Role: "assistant",
+				Body: "fallback works",
+				CanonicalTurnData: sdk.TurnData{
+					ID:   "turn-fallback",
+					Role: "assistant",
+					Parts: []sdk.TurnPart{{
+						Type: "text",
+						Text: "fallback works",
+					}},
+				}.ToMap(),
+			},
+		},
+		Timestamp: time.UnixMilli(3000),
+	}
+	if err := persistAITranscriptMessage(ctx, client, portal, msg); err != nil {
+		t.Fatalf("persist transcript with fallback bridge id: %v", err)
+	}
+
+	transcriptMsg, err := loadAITranscriptMessage(ctx, portal, msg.ID)
+	if err != nil {
+		t.Fatalf("load transcript with fallback bridge id: %v", err)
+	}
+	if transcriptMsg == nil {
+		t.Fatalf("expected transcript message with fallback bridge id")
+	}
+}
+
+func TestHandleMatrixMessageRemove_DeletesTranscriptState(t *testing.T) {
+	ctx := context.Background()
+	client := newDBBackedTestAIClient(t, ProviderOpenAI)
+	client.UserLogin.Client = client
+
+	portal := newTranscriptTestPortal(t, client, "transcript-delete")
+	msg := &database.Message{
+		ID:        sdk.MatrixMessageID(id.EventID("$event-delete")),
+		Room:      portal.PortalKey,
+		SenderID:  humanUserID(client.UserLogin.ID),
+		Timestamp: time.UnixMilli(12345),
+		Metadata: &MessageMetadata{
+			BaseMessageMetadata: sdk.BaseMessageMetadata{
+				Role:              "user",
+				Body:              "delete me",
+				CanonicalTurnData: map[string]any{"body": "delete me"},
+			},
+		},
+	}
+	evt := &event.Event{ID: id.EventID("$event-delete")}
+	client.saveUserMessage(ctx, evt, msg)
+
+	bridgeMsg, err := client.loadPortalMessagePartByMXID(ctx, portal, evt.ID)
+	if err != nil {
+		t.Fatalf("load bridge message row: %v", err)
+	}
+	if bridgeMsg == nil {
+		t.Fatalf("expected bridge message row")
+	}
+
+	if err := client.HandleMatrixMessageRemove(ctx, &bridgev2.MatrixMessageRemove{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.RedactionEventContent]{
+			Portal: portal,
+		},
+		TargetMessage: bridgeMsg,
+	}); err != nil {
+		t.Fatalf("HandleMatrixMessageRemove returned error: %v", err)
+	}
+
+	transcriptMsg, err := loadAITranscriptMessage(ctx, portal, msg.ID)
+	if err != nil {
+		t.Fatalf("load transcript after delete: %v", err)
+	}
+	if transcriptMsg != nil {
+		t.Fatalf("expected transcript message to be deleted, got %#v", transcriptMsg)
+	}
+
+	history, err := client.getAIHistoryMessages(ctx, portal, 10)
+	if err != nil {
+		t.Fatalf("load history after delete: %v", err)
+	}
+	if len(history) != 0 {
+		t.Fatalf("expected no history after delete, got %d entries", len(history))
 	}
 }
 
