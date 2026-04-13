@@ -28,6 +28,7 @@ import (
 	"github.com/beeper/agentremote/pkg/agents"
 	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
+	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	"github.com/beeper/agentremote/sdk"
 )
@@ -453,10 +454,7 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 	oc.initIntegrations()
 
 	// Load AI-local runtime state from aidb instead of bridge login metadata.
-	loginState := oc.ensureLoginStateLoaded(context.Background())
-	if loginState.LastHeartbeatEvent != nil {
-		seedLastHeartbeatEvent(login, loginState.LastHeartbeatEvent)
-	}
+	oc.ensureLoginStateLoaded(context.Background())
 
 	return oc, nil
 }
@@ -725,7 +723,7 @@ func (oc *AIClient) agentUserID(agentID string) networkid.UserID {
 
 func (oc *AIClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	meta := portalMeta(portal)
-	return sdk.BuildChatInfoWithFallback("", portal.Name, cmp.Or(strings.TrimSpace(meta.Slug), "AI Chat"), portal.Topic), nil
+	return bridgeutil.BuildPortalFallbackChatInfo(portal, cmp.Or(strings.TrimSpace(meta.Slug), "AI Chat")), nil
 }
 
 func (oc *AIClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {

@@ -12,7 +12,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
-	"github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 )
 
 func isWelcomeCodexPortal(state *codexPortalState) bool {
@@ -144,7 +144,7 @@ func (cc *CodexClient) bootstrapCodexPortal(
 	if portal == nil {
 		return nil, false, fmt.Errorf("missing portal")
 	}
-	if err := sdk.ConfigureDMPortal(ctx, sdk.ConfigureDMPortalParams{
+	if err := bridgeutil.ConfigureDMPortal(ctx, bridgeutil.ConfigureDMPortalParams{
 		Portal:      portal,
 		Title:       title,
 		OtherUserID: codexGhostID,

@@ -25,6 +25,7 @@ import (
 
 	"github.com/beeper/agentremote/pkg/matrixevents"
 	"github.com/beeper/agentremote/pkg/shared/backfillutil"
+	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 	"github.com/beeper/agentremote/pkg/shared/openclawconv"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
@@ -233,7 +234,6 @@ func getOpenClawSessionChatInfo(ctx context.Context, portal *bridgev2.Portal, cl
 	}
 	portalMeta(portal).IsOpenClawRoom = true
 
-	title := client.displayNameForSession(session)
 	agentID := stringutil.TrimDefault(state.OpenClawAgentID, "gateway")
 	if strings.TrimSpace(state.OpenClawDMTargetAgentID) != "" {
 		agentID = strings.TrimSpace(state.OpenClawDMTargetAgentID)
@@ -253,23 +253,20 @@ func getOpenClawSessionChatInfo(ctx context.Context, portal *bridgev2.Portal, cl
 	if strings.TrimSpace(state.OpenClawDMTargetAgentName) == "" && strings.TrimSpace(state.OpenClawDMTargetAgentID) == agentID {
 		state.OpenClawDMTargetAgentName = agentName
 	}
-	if isOpenClawSyntheticDMSessionKey(session.Key) && strings.TrimSpace(state.OpenClawDMTargetAgentName) != "" {
-		title = strings.TrimSpace(state.OpenClawDMTargetAgentName)
-	}
-	roomType := openClawRoomType(state)
+	presentation := client.deriveRoomPresentation(state, client.displayNameForSession(session))
 	client.maybeRefreshPortalCapabilities(ctx, portal, &previous, state)
-	if roomType == database.RoomTypeDM {
-		return sdk.BuildLoginDMChatInfo(sdk.LoginDMChatInfoParams{
-			Title:             title,
-			Topic:             client.topicForPortal(state),
-			Login:             client.UserLogin,
-			HumanUserIDPrefix: "openclaw-user",
-			HumanSender:       ptr.Ptr(client.senderForAgent(agentID, true)),
-			BotUserID:         openClawGhostUserID(agentID),
-			BotDisplayName:    agentName,
-			BotSender:         ptr.Ptr(client.senderForAgent(agentID, false)),
-			BotUserInfo:       client.userInfoForAgentProfile(profile),
-			CanBackfill:       true,
+	if presentation.RoomType == database.RoomTypeDM {
+		return bridgeutil.BuildLoginDMChatInfo(bridgeutil.LoginDMChatInfoParams{
+			Title:          presentation.Title,
+			Topic:          presentation.Topic,
+			Login:          client.UserLogin,
+			HumanUserID:    humanUserID(client.UserLogin.ID),
+			HumanSender:    ptr.Ptr(client.senderForAgent(agentID, true)),
+			BotUserID:      openClawGhostUserID(agentID),
+			BotDisplayName: agentName,
+			BotSender:      ptr.Ptr(client.senderForAgent(agentID, false)),
+			BotUserInfo:    client.userInfoForAgentProfile(profile),
+			CanBackfill:    true,
 		}), nil
 	}
 	memberMap := bridgev2.ChatMemberMap{
@@ -282,9 +279,9 @@ func getOpenClawSessionChatInfo(ctx context.Context, portal *bridgev2.Portal, cl
 		},
 	}
 	return &bridgev2.ChatInfo{
-		Type:        ptr.Ptr(roomType),
-		Name:        ptr.Ptr(title),
-		Topic:       ptr.NonZero(client.topicForPortal(state)),
+		Type:        ptr.Ptr(presentation.RoomType),
+		Name:        ptr.Ptr(presentation.Title),
+		Topic:       ptr.NonZero(presentation.Topic),
 		CanBackfill: true,
 		Members: &bridgev2.ChatMemberList{
 			IsFull:    true,

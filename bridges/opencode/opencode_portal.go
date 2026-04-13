@@ -11,6 +11,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/beeper/agentremote/bridges/opencode/api"
+	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 	"github.com/beeper/agentremote/sdk"
 )
 
@@ -50,7 +51,7 @@ func (b *Bridge) bootstrapOpenCodePortal(
 		meta.AgentID = b.host.DefaultAgentID()
 	}
 	chatInfo := b.composeOpenCodeChatInfo(title, meta.InstanceID)
-	if err := sdk.ConfigureDMPortal(ctx, sdk.ConfigureDMPortalParams{
+	if err := bridgeutil.ConfigureDMPortal(ctx, bridgeutil.ConfigureDMPortalParams{
 		Portal:      portal,
 		Title:       title,
 		OtherUserID: OpenCodeUserID(meta.InstanceID),
@@ -167,13 +168,13 @@ func (b *Bridge) composeOpenCodeChatInfo(title, instanceID string) *bridgev2.Cha
 	if login == nil {
 		return nil
 	}
-	return sdk.BuildLoginDMChatInfo(sdk.LoginDMChatInfoParams{
-		Title:             title,
-		Login:             login,
-		HumanUserIDPrefix: "opencode-user",
-		BotUserID:         OpenCodeUserID(instanceID),
-		BotDisplayName:    b.DisplayName(instanceID),
-		CanBackfill:       true,
+	return bridgeutil.BuildLoginDMChatInfo(bridgeutil.LoginDMChatInfoParams{
+		Title:          title,
+		Login:          login,
+		HumanUserID:    sdk.HumanUserID("opencode-user", login.ID),
+		BotUserID:      OpenCodeUserID(instanceID),
+		BotDisplayName: b.DisplayName(instanceID),
+		CanBackfill:    true,
 	})
 }
 

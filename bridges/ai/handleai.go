@@ -12,12 +12,12 @@ import (
 	"github.com/openai/openai-go/v3/shared"
 	"github.com/rs/zerolog"
 
-	"github.com/beeper/agentremote/sdk"
-
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
+
+	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 )
 
 func (oc *AIClient) dispatchCompletionInternal(
@@ -60,12 +60,10 @@ func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev
 			WithMessage(errorMessage).
 			WithIsCertain(true).
 			WithSendNotice(true)
-		if info := sdk.MatrixMessageStatusEventInfo(portal, evt); info != nil {
-			sdk.SendMatrixMessageStatus(ctx, portal, evt, msgStatus)
-		}
+		bridgeutil.SendMessageStatus(ctx, portal, evt, msgStatus)
 		for _, extra := range statusEventsFromContext(ctx) {
 			if extra != nil {
-				sdk.SendMatrixMessageStatus(ctx, portal, extra, msgStatus)
+				bridgeutil.SendMessageStatus(ctx, portal, extra, msgStatus)
 			}
 		}
 	}
@@ -194,7 +192,7 @@ func (oc *AIClient) sendPendingStatus(ctx context.Context, portal *bridgev2.Port
 		Message:   message,
 		IsCertain: true,
 	}
-	sdk.SendMatrixMessageStatus(ctx, portal, evt, status)
+	bridgeutil.SendMessageStatus(ctx, portal, evt, status)
 }
 
 func (oc *AIClient) sendSuccessStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event) {
@@ -202,7 +200,7 @@ func (oc *AIClient) sendSuccessStatus(ctx context.Context, portal *bridgev2.Port
 		Status:    event.MessageStatusSuccess,
 		IsCertain: true,
 	}
-	sdk.SendMatrixMessageStatus(ctx, portal, evt, status)
+	bridgeutil.SendMessageStatus(ctx, portal, evt, status)
 }
 
 const autoGreetingDelay = 5 * time.Second
@@ -253,7 +251,7 @@ func isInternalControlRoom(meta *PortalMetadata) bool {
 	if meta == nil {
 		return false
 	}
-	return isModuleInternalRoom(meta)
+	return meta.InternalRoom()
 }
 
 func autoGreetingBlockReason(meta *PortalMetadata) string {

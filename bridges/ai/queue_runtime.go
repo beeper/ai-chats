@@ -12,7 +12,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
-	"github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 )
 
 func (oc *AIClient) roomHasActiveRun(roomID id.RoomID) bool {
@@ -116,9 +116,7 @@ func (oc *AIClient) sendQueueRejectedStatus(ctx context.Context, portal *bridgev
 		WithIsCertain(true).
 		WithSendNotice(false)
 	for _, statusEvt := range queueStatusEvents(evt, extras) {
-		if info := sdk.MatrixMessageStatusEventInfo(portal, statusEvt); info != nil {
-			portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, info)
-		}
+		bridgeutil.SendMessageStatus(ctx, portal, statusEvt, msgStatus)
 	}
 }
 

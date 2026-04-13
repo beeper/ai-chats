@@ -977,14 +977,11 @@ func TestSaveAIPortalState_DoesNotPersistBridgeRoomName(t *testing.T) {
 	client := newDBBackedTestAIClient(t, ProviderOpenAI)
 	client.UserLogin.Client = client
 
-	portal := &bridgev2.Portal{
-		Portal: &database.Portal{
-			BridgeID:  client.UserLogin.Bridge.ID,
-			PortalKey: defaultChatPortalKey(client.UserLogin.ID),
-			Name:      "Bridge Owned Name",
-		},
-		Bridge: client.UserLogin.Bridge,
+	portal, err := client.UserLogin.Bridge.GetPortalByKey(ctx, defaultChatPortalKey(client.UserLogin.ID))
+	if err != nil {
+		t.Fatalf("create portal: %v", err)
 	}
+	portal.Name = "Bridge Owned Name"
 
 	meta := &PortalMetadata{
 		Slug:           "chat-1",
@@ -992,18 +989,21 @@ func TestSaveAIPortalState_DoesNotPersistBridgeRoomName(t *testing.T) {
 		WelcomeSent:    true,
 	}
 	portal.Metadata = meta
-	if err := saveAIPortalState(ctx, portal, meta); err != nil {
+	if err := portal.Save(ctx); err != nil {
 		t.Fatalf("save portal state: %v", err)
 	}
 
-	loaded := &PortalMetadata{}
-	loadPortalStateIntoMetadata(ctx, portal, loaded)
+	reloaded, err := client.UserLogin.Bridge.DB.Portal.GetByKey(ctx, portal.PortalKey)
+	if err != nil {
+		t.Fatalf("reload portal: %v", err)
+	}
+	loaded, _ := reloaded.Metadata.(*PortalMetadata)
 
 	if portalMeta(portal).Slug != "chat-1" {
 		t.Fatalf("expected slug to persist through portal metadata, got %#v", portalMeta(portal))
 	}
-	if loaded.Slug != "" || !loaded.TitleGenerated || !loaded.WelcomeSent {
-		t.Fatalf("expected AI-owned portal state to load, got %#v", loaded)
+	if loaded == nil || loaded.Slug != "chat-1" || !loaded.TitleGenerated || !loaded.WelcomeSent {
+		t.Fatalf("expected AI portal metadata to reload from portal metadata, got %#v", loaded)
 	}
 	if portal.Name != "Bridge Owned Name" {
 		t.Fatalf("expected bridge-owned room name to remain on the portal, got %q", portal.Name)
@@ -1053,7 +1053,7 @@ func TestAdvanceAIPortalContextEpoch_HidesPreviousHistory(t *testing.T) {
 	if err := advanceAIPortalContextEpoch(ctx, portal); err != nil {
 		t.Fatalf("advance context epoch: %v", err)
 	}
-	if err := saveAIPortalState(ctx, portal, meta); err != nil {
+	if err := portal.Save(ctx); err != nil {
 		t.Fatalf("save portal state after reset: %v", err)
 	}
 

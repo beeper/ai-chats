@@ -370,7 +370,7 @@ func TestDownloadOpenClawAttachmentURLRejectsLocalFiles(t *testing.T) {
 
 func TestTopicForPortal(t *testing.T) {
 	oc := &OpenClawClient{}
-	topic := oc.topicForPortal(&openClawPortalState{
+	topic := oc.deriveRoomPresentation(&openClawPortalState{
 		OpenClawChatType:           "channel",
 		OpenClawChannel:            "discord",
 		OpenClawSubject:            "Support",
@@ -380,7 +380,7 @@ func TestTopicForPortal(t *testing.T) {
 		Model:                      "gpt-5",
 		OpenClawLastMessagePreview: "hello there",
 		HistoryMode:                "paginated",
-	})
+	}, "").Topic
 	want := "channel | discord | Acme#support | openai | gpt-5 | Recent: hello there | History: paginated"
 	if topic != want {
 		t.Fatalf("unexpected topic: %q", topic)
@@ -389,7 +389,7 @@ func TestTopicForPortal(t *testing.T) {
 
 func TestTopicForPortalWithPreviewAndCatalogCounts(t *testing.T) {
 	oc := &OpenClawClient{}
-	topic := oc.topicForPortal(&openClawPortalState{
+	topic := oc.deriveRoomPresentation(&openClawPortalState{
 		OpenClawChatType:        "group",
 		OpenClawChannel:         "discord",
 		OpenClawOrigin:          "{\"provider\":\"discord\",\"channel\":\"123\"}",
@@ -398,7 +398,7 @@ func TestTopicForPortalWithPreviewAndCatalogCounts(t *testing.T) {
 		OpenClawToolProfile:     "default",
 		OpenClawToolCount:       3,
 		OpenClawKnownModelCount: 7,
-	})
+	}, "").Topic
 	want := "group | discord | Origin: Channel 123 | Recent: preview text | History: paginated | Tools: 3 (default) | Models: 7"
 	if topic != want {
 		t.Fatalf("unexpected topic: %q", topic)

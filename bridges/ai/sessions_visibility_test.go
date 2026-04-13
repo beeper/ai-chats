@@ -11,7 +11,7 @@ func TestShouldExcludeModelVisiblePortal(t *testing.T) {
 		name string
 		meta PortalMetadata
 	}{
-		{name: "cron", meta: PortalMetadata{ModuleMeta: map[string]any{"cron": map[string]any{"is_internal_room": true}}}},
+		{name: "cron", meta: PortalMetadata{InternalRoomKind: "cron"}},
 		{name: "subagent", meta: PortalMetadata{SubagentParentRoomID: "!parent:example.com"}},
 	}
 	for _, tc := range cases {

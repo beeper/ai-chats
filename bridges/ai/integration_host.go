@@ -161,7 +161,7 @@ func (h *runtimeIntegrationHost) GetOrCreatePortal(ctx context.Context, portalID
 			portal.NameSet = true
 		},
 		BeforeSave: func(ctx context.Context, portal *bridgev2.Portal) error {
-			if err := saveAIPortalState(ctx, p, portalMeta(portal)); err != nil {
+			if err := p.Save(ctx); err != nil {
 				return fmt.Errorf("failed to save portal state: %w", err)
 			}
 			return nil
@@ -699,7 +699,7 @@ func (h *runtimeIntegrationHost) SessionPortals(ctx context.Context, loginID str
 			continue
 		}
 		meta, ok := portal.Metadata.(*PortalMetadata)
-		if !ok || meta == nil || isModuleInternalRoom(meta) {
+		if !ok || meta == nil || meta.InternalRoom() {
 			continue
 		}
 		portalAgentID := h.ResolveAgentID(resolveAgentID(meta), h.DefaultAgentID())

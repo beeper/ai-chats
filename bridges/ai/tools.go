@@ -1665,9 +1665,9 @@ func executeGravatarFetch(ctx context.Context, args map[string]any) (string, err
 		email = strings.TrimSpace(raw)
 	}
 	if email == "" {
-		loginState := btc.Client.loginStateSnapshot(ctx)
-		if loginState != nil && loginState.Gravatar != nil && loginState.Gravatar.Primary != nil {
-			email = loginState.Gravatar.Primary.Email
+		loginConfig := btc.Client.loginConfigSnapshot(ctx)
+		if loginConfig != nil && loginConfig.Gravatar != nil && loginConfig.Gravatar.Primary != nil {
+			email = loginConfig.Gravatar.Primary.Email
 		}
 	}
 	if email == "" {
@@ -1697,8 +1697,8 @@ func executeGravatarSet(ctx context.Context, args map[string]any) (string, error
 		return "", err
 	}
 
-	err = btc.Client.updateLoginState(ctx, func(state *loginRuntimeState) bool {
-		gravatar := ensureGravatarState(state)
+	err = btc.Client.updateLoginConfig(ctx, func(cfg *aiLoginConfig) bool {
+		gravatar := ensureConfiguredGravatarState(cfg)
 		gravatar.Primary = profile
 		return true
 	})

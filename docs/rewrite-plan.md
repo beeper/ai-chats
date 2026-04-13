@@ -128,10 +128,22 @@ Current status:
 - in progress: AI writer/lifecycle metadata now uses shared SDK UI metadata assembly with AI-specific extras layered on top
 - complete: the standalone SDK portal lifecycle wrappers are gone; room create/update flows now call raw `bridgev2` portal operations directly
 - complete: `sdk.BootstrapDMPortal` is gone; AI, Codex, OpenClaw, and OpenCode now own their bootstrap flow locally while still sharing low-level portal configuration helpers
+- complete: thin SDK portal/status transport helpers are gone; bridges now share one low-level `pkg/shared/bridgeutil` path for DM room setup and Matrix status delivery
 - in progress: AI portal-state and turn-store entrypoints now route through one scope-resolution path instead of split detached-vs-client persistence wrappers
+- complete: Codex portal state no longer uses `codex_portal_state`; durable room state now lives in `PortalMetadata`, and room discovery now enumerates real `bridgev2` portals instead of a sidecar catalog
+- complete: OpenClaw login credentials/session-sync markers no longer use `openclaw_login_state`; durable login state now lives in `UserLoginMetadata`
+- in progress: OpenClaw portal identity/history configuration is being moved out of the portal-state blob and into `PortalMetadata`, leaving the blob for operational preview/backfill/runtime state only
+- complete: AI login config no longer uses `aichats_login_config`; durable login config now lives in `UserLoginMetadata`
+- complete: AI Gravatar/profile supplement no longer uses `gravatar_json` in `aichats_login_state`; it now lives with the rest of durable login config in `UserLoginMetadata`
+- complete: AI portal persistence no longer goes through a redundant `saveAIPortalState` wrapper; portal metadata writes now use the single `portal.Save(ctx)` path
+- complete: `aichats_portal_state` no longer carries a dead `state_json` payload in fresh schema or writes; it is now only the epoch/turn-sequence ledger
+- complete: unused AI portal metadata field `SessionBootstrappedAt` has been removed; `SessionBootstrapByAgent` is the only live bootstrap latch
+- complete: AI internal-room classification and compaction snapshot ownership no longer route through the generic `ModuleMeta` bag; they now use typed `PortalMetadata` fields, while module-owned bookkeeping lives in a dedicated `integration_meta` bag
+- complete: AI heartbeat status no longer mirrors the last event in two in-memory stores; login runtime state is now the single persisted heartbeat source
+- in progress: OpenClaw room title/topic/type derivation is being collapsed into one shared presentation path used by live room info, DM bootstrap, and session resync
 - pending: split AI storage into three real owners only: `LoginStorage`, `PortalRepository`, and `PortalTurnStore`
-- pending: collapse `aichats_portal_state` so one owner controls metadata, reset boundaries, and turn sequence allocation
-- pending: move durable portal/login state out of JSON sidecar tables and into bridge metadata wherever the data is connector metadata rather than runtime-only state
+- pending: collapse `aichats_portal_state` so it owns only sequencing/reset infrastructure and no longer hydrates metadata-shaped state
+- in progress: move durable portal/login state out of JSON sidecar tables and into bridge metadata wherever the data is connector metadata rather than runtime-only state
 - pending: replace callback-driven portal mutation (`MutatePortal`, `BeforeSave`, `OnCreated`) with `ChatInfo.ExtraUpdates` / `UserInfo.ExtraUpdates` where the mutation is durable bridge state
 - pending: replace AI poll-based welcome/autogreeting flow with one event-driven bootstrap turn flow
 
@@ -177,8 +189,13 @@ Exit condition:
 ## Immediate Order Of Attack
 
 1. redesign AI storage around `LoginStorage`, `PortalRepository`, and `PortalTurnStore`
-2. move AI durable portal/login metadata out of sidecar tables wherever it fits bridge metadata
-3. collapse reset/history ownership so one turn-store boundary controls reset semantics
-4. replace callback-driven portal mutation with `ExtraUpdates`
-5. replace AI welcome/autogreeting polling with event-driven bootstrap turns
-6. delete dead per-bridge helper stacks and sidecar tables
+2. finish deleting metadata-shaped state from `aichats_portal_state`, leaving only turn sequencing/reset mechanics
+3. trim `aichats_login_state` down to true runtime/cache fields, with heartbeat-status persistence as the next likely extraction
+4. continue moving OpenClaw portal identity/config out of the portal blob and into `PortalMetadata`
+5. collapse reset/history ownership so one turn-store boundary controls reset semantics
+6. replace callback-driven portal mutation with `ExtraUpdates`
+7. replace AI welcome/autogreeting polling with event-driven bootstrap turns
+8. trim AI `integration_meta` usage down to true module-owned state only and keep bridge room classification/config out of that bag
+9. collapse OpenClaw room title/topic/type derivation into one canonical path and trim portal blob fields to runtime-only state
+10. collapse OpenCode phase flags and overlapping per-session caches into one runtime owner
+11. delete any remaining dead per-bridge helper stacks and sidecar tables

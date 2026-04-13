@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
@@ -322,7 +323,7 @@ func (f *ApprovalFlow[D]) sendMessageStatus(ctx context.Context, portal *bridgev
 		f.testSendMessageStatus(ctx, portal, evt, status)
 		return
 	}
-	SendMatrixMessageStatus(ctx, portal, evt, status)
+	bridgeutil.SendMessageStatus(ctx, portal, evt, status)
 }
 
 func (f *ApprovalFlow[D]) senderOrEmpty(portal *bridgev2.Portal) bridgev2.EventSender {

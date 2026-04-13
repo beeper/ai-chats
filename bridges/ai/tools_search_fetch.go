@@ -45,6 +45,9 @@ func executeWebFetchWithProviders(ctx context.Context, args map[string]any) (str
 	if urlStr == "" {
 		return "", errors.New("missing or invalid 'url' argument")
 	}
+	if gravatarURL, ok := gravatarProfileURLFromInput(urlStr); ok {
+		urlStr = gravatarURL
+	}
 
 	extractMode := "markdown"
 	if mode, ok := args["extractMode"].(string); ok && strings.EqualFold(strings.TrimSpace(mode), "text") {
@@ -100,6 +103,18 @@ func executeWebFetchWithProviders(ctx context.Context, args map[string]any) (str
 		return "", fmt.Errorf("failed to encode web_fetch response: %w", err)
 	}
 	return string(raw), nil
+}
+
+func gravatarProfileURLFromInput(input string) (string, bool) {
+	input = strings.TrimSpace(input)
+	if input == "" || strings.Contains(input, "://") || !strings.Contains(input, "@") {
+		return "", false
+	}
+	email, err := normalizeGravatarEmail(input)
+	if err != nil {
+		return "", false
+	}
+	return fmt.Sprintf("%s/profiles/%s", gravatarAPIBaseURL, gravatarHash(email)), true
 }
 
 func applyLoginTokensToSearchConfig(cfg *retrieval.SearchConfig, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) *retrieval.SearchConfig {

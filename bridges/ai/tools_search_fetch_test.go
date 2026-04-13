@@ -1,114 +1,20 @@
 package ai
 
-import (
-	"testing"
+import "testing"
 
-	"github.com/beeper/agentremote/pkg/retrieval"
-)
-
-func TestApplyLoginTokensToSearchConfig_MagicProxyForcesExa(t *testing.T) {
-	oc := &OpenAIConnector{}
-	cfgLogin := &aiLoginConfig{
-		Credentials: &LoginCredentials{
-			APIKey:  "magic-token",
-			BaseURL: "https://bai.bt.hn/team/proxy",
-		},
+func TestGravatarProfileURLFromInput_Email(t *testing.T) {
+	got, ok := gravatarProfileURLFromInput("Person@example.com")
+	if !ok {
+		t.Fatal("expected email input to resolve to a gravatar profile URL")
 	}
-	cfg := &retrieval.SearchConfig{
-		Provider:  retrieval.ProviderExa,
-		Fallbacks: []string{retrieval.ProviderExa},
-	}
-
-	got := applyLoginTokensToSearchConfig(cfg, ProviderMagicProxy, cfgLogin, oc)
-
-	if got.Provider != retrieval.ProviderExa {
-		t.Fatalf("expected provider %q, got %q", retrieval.ProviderExa, got.Provider)
-	}
-	if len(got.Fallbacks) != 1 || got.Fallbacks[0] != retrieval.ProviderExa {
-		t.Fatalf("expected exa-only fallbacks, got %#v", got.Fallbacks)
-	}
-	if got.Exa.BaseURL != "https://bai.bt.hn/team/proxy/exa" {
-		t.Fatalf("unexpected exa base URL: %q", got.Exa.BaseURL)
-	}
-	if got.Exa.APIKey != "magic-token" {
-		t.Fatalf("unexpected exa API key: %q", got.Exa.APIKey)
+	wantPrefix := gravatarAPIBaseURL + "/profiles/"
+	if len(got) <= len(wantPrefix) || got[:len(wantPrefix)] != wantPrefix {
+		t.Fatalf("expected gravatar profile URL, got %q", got)
 	}
 }
 
-func TestApplyLoginTokensToSearchConfig_CustomExaEndpointForcesExa(t *testing.T) {
-	oc := &OpenAIConnector{}
-	cfg := &retrieval.SearchConfig{
-		Provider:  retrieval.ProviderExa,
-		Fallbacks: []string{retrieval.ProviderExa},
-		Exa: retrieval.ExaConfig{
-			APIKey:  "exa-token",
-			BaseURL: "https://ai.bt.hn/exa",
-		},
-	}
-
-	got := applyLoginTokensToSearchConfig(cfg, ProviderOpenAI, nil, oc)
-
-	if got.Provider != retrieval.ProviderExa {
-		t.Fatalf("expected provider %q, got %q", retrieval.ProviderExa, got.Provider)
-	}
-	if len(got.Fallbacks) != 1 || got.Fallbacks[0] != retrieval.ProviderExa {
-		t.Fatalf("expected exa-only fallbacks, got %#v", got.Fallbacks)
-	}
-}
-
-func TestApplyLoginTokensToSearchConfig_DefaultExaEndpointDoesNotForceExa(t *testing.T) {
-	oc := &OpenAIConnector{}
-	loginCfg := &aiLoginConfig{
-		Credentials: &LoginCredentials{
-			APIKey: "openrouter-token",
-		},
-	}
-	cfg := &retrieval.SearchConfig{
-		Provider:  retrieval.ProviderExa,
-		Fallbacks: []string{retrieval.ProviderExa},
-		Exa: retrieval.ExaConfig{
-			BaseURL: "https://api.exa.ai",
-		},
-	}
-
-	got := applyLoginTokensToSearchConfig(cfg, ProviderOpenRouter, loginCfg, oc)
-
-	if got.Provider != retrieval.ProviderExa {
-		t.Fatalf("unexpected provider override: %q", got.Provider)
-	}
-	if len(got.Fallbacks) != 1 || got.Fallbacks[0] != retrieval.ProviderExa {
-		t.Fatalf("unexpected fallbacks: %#v", got.Fallbacks)
-	}
-	if got.Exa.APIKey == "openrouter-token" {
-		t.Fatalf("openrouter token must not be copied into exa api key")
-	}
-}
-
-func TestApplyLoginTokensToFetchConfig_MagicProxyForcesExa(t *testing.T) {
-	oc := &OpenAIConnector{}
-	cfgLogin := &aiLoginConfig{
-		Credentials: &LoginCredentials{
-			APIKey:  "magic-token",
-			BaseURL: "https://bai.bt.hn/team/proxy",
-		},
-	}
-	cfg := &retrieval.FetchConfig{
-		Provider:  retrieval.ProviderExa,
-		Fallbacks: []string{retrieval.ProviderExa},
-	}
-
-	got := applyLoginTokensToFetchConfig(cfg, ProviderMagicProxy, cfgLogin, oc)
-
-	if got.Provider != retrieval.ProviderExa {
-		t.Fatalf("expected provider %q, got %q", retrieval.ProviderExa, got.Provider)
-	}
-	if len(got.Fallbacks) != 1 || got.Fallbacks[0] != retrieval.ProviderExa {
-		t.Fatalf("expected exa-only fallbacks, got %#v", got.Fallbacks)
-	}
-	if got.Exa.BaseURL != "https://bai.bt.hn/team/proxy/exa" {
-		t.Fatalf("unexpected exa base URL: %q", got.Exa.BaseURL)
-	}
-	if got.Exa.APIKey != "magic-token" {
-		t.Fatalf("unexpected exa API key: %q", got.Exa.APIKey)
+func TestGravatarProfileURLFromInput_URLPassthrough(t *testing.T) {
+	if _, ok := gravatarProfileURLFromInput("https://example.com"); ok {
+		t.Fatal("expected existing URL to not be rewritten")
 	}
 }

@@ -1,7 +1,6 @@
 package sdk
 
 import (
-	"context"
 	"errors"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -25,7 +24,10 @@ func MessageSendStatusError(
 	reasonForError func(error) event.MessageStatusReason,
 ) error {
 	if err == nil {
-		err = errors.New(coalesceStrings(message, "message send failed"))
+		if message == "" {
+			message = "message send failed"
+		}
+		err = errors.New(message)
 	}
 	st := bridgev2.WrapErrorInStatus(err).WithSendNotice(true)
 	if statusForError != nil {
@@ -42,37 +44,4 @@ func MessageSendStatusError(
 		st = st.WithErrorAsMessage()
 	}
 	return st
-}
-
-func SendMatrixMessageStatus(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	evt *event.Event,
-	status bridgev2.MessageStatus,
-) {
-	if portal == nil || portal.Bridge == nil {
-		return
-	}
-	info := MatrixMessageStatusEventInfo(portal, evt)
-	if info == nil {
-		return
-	}
-	portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
-}
-
-func MatrixMessageStatusEventInfo(
-	portal *bridgev2.Portal,
-	evt *event.Event,
-) *bridgev2.MessageStatusEventInfo {
-	if portal == nil || evt == nil {
-		return nil
-	}
-	info := bridgev2.StatusEventInfoFromEvent(evt)
-	if info == nil {
-		return nil
-	}
-	if info.RoomID == "" && portal.MXID != "" {
-		info.RoomID = portal.MXID
-	}
-	return info
 }

@@ -22,6 +22,7 @@ import (
 
 	"github.com/beeper/agentremote/bridges/codex/codexrpc"
 	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 	"github.com/beeper/agentremote/pkg/shared/citations"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
@@ -418,7 +419,7 @@ func isManagedCodexTempDirPath(path string) bool {
 func (cc *CodexClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	meta := portalMeta(portal)
 	if meta == nil || !meta.IsCodexRoom {
-		return sdk.BuildChatInfoWithFallback("", portal.Name, "Codex", portal.Topic), nil
+		return bridgeutil.BuildChatInfoWithFallback("", portal.Name, "Codex", portal.Topic), nil
 	}
 	state, err := loadCodexPortalState(ctx, portal)
 	if err != nil {
@@ -1555,14 +1556,14 @@ func (cc *CodexClient) composeCodexChatInfo(portal *bridgev2.Portal, portalState
 		}
 		topic = cc.codexTopicForPortal(portal, portalState)
 	}
-	return sdk.BuildLoginDMChatInfo(sdk.LoginDMChatInfoParams{
-		Title:             title,
-		Topic:             topic,
-		Login:             cc.UserLogin,
-		HumanUserIDPrefix: cc.HumanUserIDPrefix,
-		BotUserID:         codexGhostID,
-		BotDisplayName:    "Codex",
-		CanBackfill:       canBackfill,
+	return bridgeutil.BuildLoginDMChatInfo(bridgeutil.LoginDMChatInfoParams{
+		Title:          title,
+		Topic:          topic,
+		Login:          cc.UserLogin,
+		HumanUserID:    humanUserID(cc.UserLogin.ID),
+		BotUserID:      codexGhostID,
+		BotDisplayName: "Codex",
+		CanBackfill:    canBackfill,
 	})
 }
 
@@ -1821,7 +1822,7 @@ func (cc *CodexClient) sendPendingStatus(ctx context.Context, portal *bridgev2.P
 		Message:   message,
 		IsCertain: true,
 	}
-	sdk.SendMatrixMessageStatus(ctx, portal, evt, st)
+	bridgeutil.SendMessageStatus(ctx, portal, evt, st)
 }
 
 func (cc *CodexClient) markMessageSendSuccess(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, state *streamingState) {
@@ -1829,7 +1830,7 @@ func (cc *CodexClient) markMessageSendSuccess(ctx context.Context, portal *bridg
 		return
 	}
 	st := bridgev2.MessageStatus{Status: event.MessageStatusSuccess, IsCertain: true}
-	sdk.SendMatrixMessageStatus(ctx, portal, evt, st)
+	bridgeutil.SendMessageStatus(ctx, portal, evt, st)
 }
 
 func (cc *CodexClient) acquireRoomIfQueueEmpty(roomID id.RoomID) bool {

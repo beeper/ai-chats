@@ -12,9 +12,9 @@ import (
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 
+	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 	"github.com/beeper/agentremote/pkg/shared/openclawconv"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
-	"github.com/beeper/agentremote/sdk"
 )
 
 const openClawAgentCatalogTTL = 30 * time.Second
@@ -286,11 +286,12 @@ func (oc *OpenClawClient) createConfiguredAgentDM(ctx context.Context, agent gat
 	state.HistoryMode = "paginated"
 	state.RecentHistoryLimit = 0
 	oc.enrichPortalState(ctx, state)
-	chatInfo := oc.buildOpenClawDMChatInfo(agentID, state.OpenClawDMTargetAgentName, info)
-	if err := sdk.ConfigureDMPortal(ctx, sdk.ConfigureDMPortalParams{
+	presentation := oc.deriveRoomPresentation(state, state.OpenClawDMTargetAgentName)
+	chatInfo := oc.buildOpenClawDMChatInfo(agentID, presentation.Title, info)
+	if err := bridgeutil.ConfigureDMPortal(ctx, bridgeutil.ConfigureDMPortalParams{
 		Portal:      portal,
-		Title:       state.OpenClawDMTargetAgentName,
-		Topic:       "OpenClaw agent DM",
+		Title:       presentation.Title,
+		Topic:       presentation.Topic,
 		OtherUserID: openClawScopedGhostUserID(oc.UserLogin.ID, agentID),
 		Save:        false,
 		MutatePortal: func(portal *bridgev2.Portal) {
@@ -329,16 +330,16 @@ func (oc *OpenClawClient) buildOpenClawDMChatInfo(agentID, displayName string, u
 	if userInfo == nil {
 		userInfo = oc.sdkAgentForProfile(openClawAgentProfile{AgentID: agentID, Name: displayName}).UserInfo()
 	}
-	return sdk.BuildLoginDMChatInfo(sdk.LoginDMChatInfoParams{
-		Title:             displayName,
-		Topic:             "OpenClaw agent DM",
-		Login:             oc.UserLogin,
-		HumanUserIDPrefix: "openclaw-user",
-		HumanSender:       ptr.Ptr(oc.senderForAgent(agentID, true)),
-		BotUserID:         openClawScopedGhostUserID(oc.UserLogin.ID, agentID),
-		BotDisplayName:    displayName,
-		BotSender:         ptr.Ptr(oc.senderForAgent(agentID, false)),
-		BotUserInfo:       userInfo,
+	return bridgeutil.BuildLoginDMChatInfo(bridgeutil.LoginDMChatInfoParams{
+		Title:          displayName,
+		Topic:          "OpenClaw agent DM",
+		Login:          oc.UserLogin,
+		HumanUserID:    humanUserID(oc.UserLogin.ID),
+		HumanSender:    ptr.Ptr(oc.senderForAgent(agentID, true)),
+		BotUserID:      openClawScopedGhostUserID(oc.UserLogin.ID, agentID),
+		BotDisplayName: displayName,
+		BotSender:      ptr.Ptr(oc.senderForAgent(agentID, false)),
+		BotUserInfo:    userInfo,
 		BotMemberEventExtra: map[string]any{
 			"displayname": displayName,
 		},

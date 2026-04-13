@@ -16,6 +16,7 @@ type aiLoginConfig struct {
 	Agents               *bool             `json:"agents,omitempty"`
 	Timezone             string            `json:"timezone,omitempty"`
 	Profile              *UserProfile      `json:"profile,omitempty"`
+	Gravatar             *GravatarState    `json:"gravatar,omitempty"`
 }
 
 func cloneBoolPtr(src *bool) *bool {
@@ -84,6 +85,7 @@ func cloneAILoginConfig(src *aiLoginConfig) *aiLoginConfig {
 		Agents:               cloneBoolPtr(src.Agents),
 		Timezone:             src.Timezone,
 		Profile:              cloneUserProfile(src.Profile),
+		Gravatar:             cloneGravatarState(src.Gravatar),
 	}
 }
 
@@ -102,6 +104,7 @@ func loadAILoginConfig(ctx context.Context, login *bridgev2.UserLogin) (*aiLogin
 		Agents:               cloneBoolPtr(meta.Agents),
 		Timezone:             meta.Timezone,
 		Profile:              cloneUserProfile(meta.Profile),
+		Gravatar:             cloneGravatarState(meta.Gravatar),
 	}, nil
 }
 
@@ -116,6 +119,7 @@ func saveAILoginConfig(ctx context.Context, login *bridgev2.UserLogin, cfg *aiLo
 		meta.Agents = cloneBoolPtr(cfg.Agents)
 		meta.Timezone = cfg.Timezone
 		meta.Profile = cloneUserProfile(cfg.Profile)
+		meta.Gravatar = cloneGravatarState(cfg.Gravatar)
 		if err := login.Save(ctx); err != nil {
 			return err
 		}

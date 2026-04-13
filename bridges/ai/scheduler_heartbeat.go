@@ -439,7 +439,7 @@ func agentHasUserChat(portals []*bridgev2.Portal, agentID string) bool {
 			continue
 		}
 		meta := portalMeta(p)
-		if isModuleInternalRoom(meta) || (meta != nil && meta.SubagentParentRoomID != "") {
+		if (meta != nil && meta.InternalRoom()) || (meta != nil && meta.SubagentParentRoomID != "") {
 			continue
 		}
 		if normalizeAgentID(resolveAgentID(meta)) == target {

@@ -9,11 +9,12 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 )
 
-func (s *schedulerRuntime) ensureScheduledRoomLocked(ctx context.Context, portalID, displayName, agentID string, moduleMeta map[string]any) (string, error) {
+func (s *schedulerRuntime) ensureScheduledRoomLocked(
+	ctx context.Context,
+	portalID, displayName, agentID, internalRoomKind string,
+) (string, error) {
 	portal, err := s.getOrCreateScheduledPortal(ctx, portalID, displayName, func(meta *PortalMetadata) {
-		for k, v := range moduleMeta {
-			meta.SetModuleMeta(k, v)
-		}
+		meta.InternalRoomKind = internalRoomKind
 	})
 	if err != nil {
 		return "", err
@@ -29,15 +30,7 @@ func (s *schedulerRuntime) ensureCronRoomLocked(ctx context.Context, record *sch
 	}
 	portalID := fmt.Sprintf("cron:%s:%s", normalizeAgentID(record.Job.AgentID), strings.TrimSpace(record.Job.ID))
 	displayName := fmt.Sprintf("Cron: %s", strings.TrimSpace(record.Job.Name))
-	roomID, err := s.ensureScheduledRoomLocked(ctx, portalID, displayName, record.Job.AgentID, map[string]any{
-		"cron": map[string]any{
-			"is_internal_room": true,
-			"backend":          "hungry",
-			"job_id":           record.Job.ID,
-			"revision":         record.Revision,
-			"managed":          true,
-		},
-	})
+	roomID, err := s.ensureScheduledRoomLocked(ctx, portalID, displayName, record.Job.AgentID, "cron")
 	if err != nil {
 		return err
 	}
@@ -51,15 +44,7 @@ func (s *schedulerRuntime) ensureHeartbeatRoomLocked(ctx context.Context, state 
 	}
 	portalID := fmt.Sprintf("heartbeat:%s", normalizeAgentID(state.AgentID))
 	displayName := fmt.Sprintf("Heartbeat: %s", state.AgentID)
-	roomID, err := s.ensureScheduledRoomLocked(ctx, portalID, displayName, state.AgentID, map[string]any{
-		"heartbeat": map[string]any{
-			"is_internal_room": true,
-			"backend":          "hungry",
-			"agent_id":         state.AgentID,
-			"revision":         state.Revision,
-			"managed":          true,
-		},
-	})
+	roomID, err := s.ensureScheduledRoomLocked(ctx, portalID, displayName, state.AgentID, "heartbeat")
 	if err != nil {
 		return err
 	}
@@ -91,7 +76,7 @@ func (s *schedulerRuntime) getOrCreateScheduledPortal(ctx context.Context, porta
 			s.client.applyPortalRoomName(ctx, portal, displayName)
 		},
 		BeforeSave: func(ctx context.Context, portal *bridgev2.Portal) error {
-			return saveAIPortalState(ctx, portal, portalMeta(portal))
+			return portal.Save(ctx)
 		},
 		OnExisting: func(ctx context.Context, portal *bridgev2.Portal) error {
 			s.client.savePortalQuiet(ctx, portal, "scheduler metadata update")

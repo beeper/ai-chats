@@ -112,39 +112,42 @@ func newDBBackedTestAIClient(t *testing.T, provider string) *AIClient {
 	if err != nil {
 		t.Fatalf("wrap sqlite db: %v", err)
 	}
-	bridgeDB := database.New(networkid.BridgeID("bridge"), database.MetaTypes{
-		Portal:    func() any { return &PortalMetadata{} },
-		UserLogin: func() any { return &UserLoginMetadata{} },
-		Ghost:     func() any { return &GhostMetadata{} },
-		Message:   func() any { return &MessageMetadata{} },
-	}, baseDB)
-	if err = bridgeDB.Upgrade(context.Background()); err != nil {
+	connector := NewAIConnector()
+	bridge := bridgev2.NewBridge(
+		networkid.BridgeID("bridge"),
+		baseDB,
+		zerolog.Nop(),
+		&bridgeconfig.BridgeConfig{},
+		&testMatrixConnector{},
+		connector,
+		func(*bridgev2.Bridge) bridgev2.CommandProcessor { return nil },
+	)
+	bridge.BackgroundCtx = context.Background()
+	if err = bridge.DB.Upgrade(context.Background()); err != nil {
 		t.Fatalf("upgrade bridge db: %v", err)
 	}
 
-	childDB := aidb.NewChild(bridgeDB.Database, dbutil.NoopLogger)
+	childDB := aidb.NewChild(bridge.DB.Database, dbutil.NoopLogger)
 	if err = aidb.EnsureSchema(context.Background(), childDB); err != nil {
 		t.Fatalf("ensure ai schema: %v", err)
 	}
 
-	login := &database.UserLogin{
-		BridgeID: bridgeDB.BridgeID,
-		ID:       networkid.UserLoginID("login"),
-		Metadata: &UserLoginMetadata{Provider: provider},
+	user, err := bridge.GetUserByMXID(context.Background(), id.UserID("@alice:example.com"))
+	if err != nil {
+		t.Fatalf("get user by mxid: %v", err)
 	}
-	userLogin := &bridgev2.UserLogin{
-		UserLogin: login,
-		Bridge:    &bridgev2.Bridge{ID: bridgeDB.BridgeID, DB: bridgeDB, Config: &bridgeconfig.BridgeConfig{}, Log: zerolog.Nop(), Matrix: &testMatrixConnector{}},
-		Log:       zerolog.Nop(),
+	userLogin, err := user.NewLogin(context.Background(), &database.UserLogin{
+		ID:         networkid.UserLoginID("login"),
+		RemoteName: "AI",
+		Metadata:   &UserLoginMetadata{Provider: provider},
+	}, nil)
+	if err != nil {
+		t.Fatalf("new login: %v", err)
 	}
-	setUnexportedField(userLogin.Bridge, "ghostsByID", map[networkid.UserID]*bridgev2.Ghost{})
-	setUnexportedField(userLogin.Bridge, "usersByMXID", map[id.UserID]*bridgev2.User{})
-	setUnexportedField(userLogin.Bridge, "userLoginsByID", map[networkid.UserLoginID]*bridgev2.UserLogin{})
-	setUnexportedField(userLogin.Bridge, "portalsByKey", map[networkid.PortalKey]*bridgev2.Portal{})
-	setUnexportedField(userLogin.Bridge, "portalsByMXID", map[id.RoomID]*bridgev2.Portal{})
+
 	return &AIClient{
 		UserLogin: userLogin,
-		connector: &OpenAIConnector{},
+		connector: connector,
 		log:       zerolog.Nop(),
 	}
 }

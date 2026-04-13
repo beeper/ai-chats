@@ -12,7 +12,6 @@ type loginRuntimeState struct {
 	NextChatIndex       int
 	LastHeartbeatEvent  *HeartbeatEventPayload
 	ModelCache          *ModelCache
-	Gravatar            *GravatarState
 	FileAnnotationCache map[string]FileAnnotation
 	ConsecutiveErrors   int
 	LastErrorAt         int64
@@ -34,7 +33,6 @@ func cloneLoginRuntimeState(in *loginRuntimeState) *loginRuntimeState {
 		NextChatIndex:       in.NextChatIndex,
 		LastHeartbeatEvent:  cloneHeartbeatEvent(in.LastHeartbeatEvent),
 		ModelCache:          cloneModelCache(in.ModelCache),
-		Gravatar:            cloneGravatarState(in.Gravatar),
 		FileAnnotationCache: cloneFileAnnotationCache(in.FileAnnotationCache),
 		ConsecutiveErrors:   in.ConsecutiveErrors,
 		LastErrorAt:         in.LastErrorAt,
@@ -76,7 +74,6 @@ func loadLoginRuntimeState(ctx context.Context, client *AIClient) (*loginRuntime
 	var (
 		lastHeartbeatEventJSON string
 		modelCacheJSON         string
-		gravatarJSON           string
 		fileAnnotationJSON     string
 	)
 	err := scope.db.QueryRow(ctx, `
@@ -84,7 +81,6 @@ func loadLoginRuntimeState(ctx context.Context, client *AIClient) (*loginRuntime
 			next_chat_index,
 			last_heartbeat_event_json,
 			model_cache_json,
-			gravatar_json,
 			file_annotation_cache_json,
 			consecutive_errors,
 			last_error_at
@@ -94,7 +90,6 @@ func loadLoginRuntimeState(ctx context.Context, client *AIClient) (*loginRuntime
 		&state.NextChatIndex,
 		&lastHeartbeatEventJSON,
 		&modelCacheJSON,
-		&gravatarJSON,
 		&fileAnnotationJSON,
 		&state.ConsecutiveErrors,
 		&state.LastErrorAt,
@@ -110,9 +105,6 @@ func loadLoginRuntimeState(ctx context.Context, client *AIClient) (*loginRuntime
 		return nil, err
 	}
 	if state.ModelCache, err = unmarshalJSONField[ModelCache](modelCacheJSON); err != nil {
-		return nil, err
-	}
-	if state.Gravatar, err = unmarshalJSONField[GravatarState](gravatarJSON); err != nil {
 		return nil, err
 	}
 	if state.FileAnnotationCache, err = unmarshalMapJSONField[string, FileAnnotation](fileAnnotationJSON); err != nil {
@@ -134,10 +126,6 @@ func saveLoginRuntimeState(ctx context.Context, client *AIClient, state *loginRu
 	if err != nil {
 		return err
 	}
-	gravatarJSON, err := marshalJSONOrEmpty(state.Gravatar)
-	if err != nil {
-		return err
-	}
 	fileAnnotationJSON, err := marshalJSONOrEmpty(state.FileAnnotationCache)
 	if err != nil {
 		return err
@@ -149,17 +137,15 @@ func saveLoginRuntimeState(ctx context.Context, client *AIClient, state *loginRu
 			next_chat_index,
 			last_heartbeat_event_json,
 			model_cache_json,
-			gravatar_json,
 			file_annotation_cache_json,
 			consecutive_errors,
 			last_error_at,
 			updated_at_ms
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (bridge_id, login_id) DO UPDATE SET
 			next_chat_index=excluded.next_chat_index,
 			last_heartbeat_event_json=excluded.last_heartbeat_event_json,
 			model_cache_json=excluded.model_cache_json,
-			gravatar_json=excluded.gravatar_json,
 			file_annotation_cache_json=excluded.file_annotation_cache_json,
 			consecutive_errors=excluded.consecutive_errors,
 			last_error_at=excluded.last_error_at,
@@ -170,7 +156,6 @@ func saveLoginRuntimeState(ctx context.Context, client *AIClient, state *loginRu
 		state.NextChatIndex,
 		lastHeartbeatEventJSON,
 		modelCacheJSON,
-		gravatarJSON,
 		fileAnnotationJSON,
 		state.ConsecutiveErrors,
 		state.LastErrorAt,

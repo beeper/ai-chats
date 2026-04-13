@@ -25,9 +25,7 @@ func TestIntegrationPortalAIKind(t *testing.T) {
 
 	t.Run("internal module rooms use module name", func(t *testing.T) {
 		meta := &PortalMetadata{
-			ModuleMeta: map[string]any{
-				"cron": map[string]any{"is_internal_room": true},
-			},
+			InternalRoomKind: "cron",
 		}
 		if got := integrationPortalAIKind(meta); got != "cron" {
 			t.Fatalf("expected cron room kind, got %q", got)
@@ -79,9 +77,7 @@ func TestApplyAIChatsBridgeInfo(t *testing.T) {
 			},
 		}}
 		meta := &PortalMetadata{
-			ModuleMeta: map[string]any{
-				"heartbeat": map[string]any{"is_internal_room": true},
-			},
+			InternalRoomKind: "heartbeat",
 		}
 		content := &event.BridgeEventContent{}
 

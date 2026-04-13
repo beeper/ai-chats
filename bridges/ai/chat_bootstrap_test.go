@@ -4,8 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 )
@@ -78,20 +76,14 @@ func TestEnsureDefaultChatReusesExistingVisibleChat(t *testing.T) {
 		ID:       networkid.PortalID("existing-chat"),
 		Receiver: client.UserLogin.ID,
 	}
-	existingPortal := &bridgev2.Portal{
-		Portal: &database.Portal{
-			BridgeID:  client.UserLogin.Bridge.ID,
-			PortalKey: existingKey,
-			MXID:      id.RoomID("!existing:example.com"),
-			Metadata:  &PortalMetadata{Slug: "chat-2"},
-		},
-		Bridge: client.UserLogin.Bridge,
+	existingPortal, err := client.UserLogin.Bridge.GetPortalByKey(ctx, existingKey)
+	if err != nil {
+		t.Fatalf("GetPortalByKey returned error: %v", err)
 	}
-	setUnexportedField(client.UserLogin.Bridge, "portalsByKey", map[networkid.PortalKey]*bridgev2.Portal{
-		existingKey: existingPortal,
-	})
-	if err := saveAIPortalState(ctx, existingPortal, portalMeta(existingPortal)); err != nil {
-		t.Fatalf("saveAIPortalState returned error: %v", err)
+	existingPortal.MXID = id.RoomID("!existing:example.com")
+	existingPortal.Metadata = &PortalMetadata{Slug: "chat-2"}
+	if err := existingPortal.Save(ctx); err != nil {
+		t.Fatalf("Portal.Save returned error: %v", err)
 	}
 
 	if err := client.ensureDefaultChat(ctx); err != nil {

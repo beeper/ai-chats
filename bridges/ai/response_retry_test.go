@@ -155,10 +155,8 @@ func TestPruningIdentifierAndCustomInstructions(t *testing.T) {
 
 func TestProjectedCompactionFlushTokens(t *testing.T) {
 	meta := &PortalMetadata{
-		ModuleMeta: map[string]any{
-			"compaction_last_prompt_tokens":     int64(5000),
-			"compaction_last_completion_tokens": int64(1200),
-		},
+		CompactionLastPromptTokens:     5000,
+		CompactionLastCompletionTokens: 1200,
 	}
 	if got := projectedCompactionFlushTokens(meta, 600); got != 6800 {
 		t.Fatalf("expected projected flush tokens 6800, got %d", got)

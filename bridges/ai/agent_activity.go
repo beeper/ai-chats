@@ -12,7 +12,7 @@ func (oc *AIClient) recordAgentActivity(ctx context.Context, portal *bridgev2.Po
 	if oc == nil || portal == nil || portal.MXID == "" || meta == nil {
 		return
 	}
-	if isModuleInternalRoom(meta) {
+	if meta.InternalRoom() {
 		return
 	}
 	// Don't update last-route from heartbeat responses — heartbeat delivery

@@ -36,16 +36,6 @@ type PortalMetadata struct {
 	OpenClawDMTargetAgentID      string `json:"openclaw_dm_target_agent_id,omitempty"`
 	OpenClawDMTargetAgentName    string `json:"openclaw_dm_target_agent_name,omitempty"`
 	OpenClawDMCreatedFromContact bool   `json:"openclaw_dm_created_from_contact,omitempty"`
-	OpenClawSessionKind          string `json:"openclaw_session_kind,omitempty"`
-	OpenClawSessionLabel         string `json:"openclaw_session_label,omitempty"`
-	OpenClawDisplayName          string `json:"openclaw_display_name,omitempty"`
-	OpenClawDerivedTitle         string `json:"openclaw_derived_title,omitempty"`
-	OpenClawChannel              string `json:"openclaw_channel,omitempty"`
-	OpenClawSubject              string `json:"openclaw_subject,omitempty"`
-	OpenClawGroupChannel         string `json:"openclaw_group_channel,omitempty"`
-	OpenClawSpace                string `json:"openclaw_space,omitempty"`
-	OpenClawChatType             string `json:"openclaw_chat_type,omitempty"`
-	OpenClawOrigin               string `json:"openclaw_origin,omitempty"`
 	OpenClawAgentID              string `json:"openclaw_agent_id,omitempty"`
 	HistoryMode                  string `json:"history_mode,omitempty"`
 	RecentHistoryLimit           int    `json:"recent_history_limit,omitempty"`
@@ -261,16 +251,6 @@ func applyOpenClawPortalMetadata(state *openClawPortalState, meta *PortalMetadat
 	state.OpenClawDMTargetAgentID = strings.TrimSpace(meta.OpenClawDMTargetAgentID)
 	state.OpenClawDMTargetAgentName = strings.TrimSpace(meta.OpenClawDMTargetAgentName)
 	state.OpenClawDMCreatedFromContact = meta.OpenClawDMCreatedFromContact
-	state.OpenClawSessionKind = strings.TrimSpace(meta.OpenClawSessionKind)
-	state.OpenClawSessionLabel = strings.TrimSpace(meta.OpenClawSessionLabel)
-	state.OpenClawDisplayName = strings.TrimSpace(meta.OpenClawDisplayName)
-	state.OpenClawDerivedTitle = strings.TrimSpace(meta.OpenClawDerivedTitle)
-	state.OpenClawChannel = strings.TrimSpace(meta.OpenClawChannel)
-	state.OpenClawSubject = strings.TrimSpace(meta.OpenClawSubject)
-	state.OpenClawGroupChannel = strings.TrimSpace(meta.OpenClawGroupChannel)
-	state.OpenClawSpace = strings.TrimSpace(meta.OpenClawSpace)
-	state.OpenClawChatType = strings.TrimSpace(meta.OpenClawChatType)
-	state.OpenClawOrigin = strings.TrimSpace(meta.OpenClawOrigin)
 	state.OpenClawAgentID = strings.TrimSpace(meta.OpenClawAgentID)
 	state.HistoryMode = strings.TrimSpace(meta.HistoryMode)
 	state.RecentHistoryLimit = meta.RecentHistoryLimit
@@ -286,16 +266,6 @@ func copyOpenClawPortalMetadata(meta *PortalMetadata, state *openClawPortalState
 	meta.OpenClawDMTargetAgentID = strings.TrimSpace(state.OpenClawDMTargetAgentID)
 	meta.OpenClawDMTargetAgentName = strings.TrimSpace(state.OpenClawDMTargetAgentName)
 	meta.OpenClawDMCreatedFromContact = state.OpenClawDMCreatedFromContact
-	meta.OpenClawSessionKind = strings.TrimSpace(state.OpenClawSessionKind)
-	meta.OpenClawSessionLabel = strings.TrimSpace(state.OpenClawSessionLabel)
-	meta.OpenClawDisplayName = strings.TrimSpace(state.OpenClawDisplayName)
-	meta.OpenClawDerivedTitle = strings.TrimSpace(state.OpenClawDerivedTitle)
-	meta.OpenClawChannel = strings.TrimSpace(state.OpenClawChannel)
-	meta.OpenClawSubject = strings.TrimSpace(state.OpenClawSubject)
-	meta.OpenClawGroupChannel = strings.TrimSpace(state.OpenClawGroupChannel)
-	meta.OpenClawSpace = strings.TrimSpace(state.OpenClawSpace)
-	meta.OpenClawChatType = strings.TrimSpace(state.OpenClawChatType)
-	meta.OpenClawOrigin = strings.TrimSpace(state.OpenClawOrigin)
 	meta.OpenClawAgentID = strings.TrimSpace(state.OpenClawAgentID)
 	meta.HistoryMode = strings.TrimSpace(state.HistoryMode)
 	meta.RecentHistoryLimit = state.RecentHistoryLimit
@@ -311,16 +281,6 @@ func persistedOpenClawPortalState(state *openClawPortalState) *openClawPortalSta
 	persisted.OpenClawDMTargetAgentID = ""
 	persisted.OpenClawDMTargetAgentName = ""
 	persisted.OpenClawDMCreatedFromContact = false
-	persisted.OpenClawSessionKind = ""
-	persisted.OpenClawSessionLabel = ""
-	persisted.OpenClawDisplayName = ""
-	persisted.OpenClawDerivedTitle = ""
-	persisted.OpenClawChannel = ""
-	persisted.OpenClawSubject = ""
-	persisted.OpenClawGroupChannel = ""
-	persisted.OpenClawSpace = ""
-	persisted.OpenClawChatType = ""
-	persisted.OpenClawOrigin = ""
 	persisted.OpenClawAgentID = ""
 	persisted.HistoryMode = ""
 	persisted.RecentHistoryLimit = 0

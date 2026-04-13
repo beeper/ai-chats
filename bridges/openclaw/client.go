@@ -355,20 +355,18 @@ func (oc *OpenClawClient) GetChatInfo(ctx context.Context, portal *bridgev2.Port
 		return nil, err
 	}
 	oc.enrichPortalState(ctx, state)
-	title := oc.displayNameForPortal(state)
-	roomType := openClawRoomType(state)
-	agentID := stringutil.TrimDefault(state.OpenClawDMTargetAgentID, state.OpenClawAgentID)
-	if roomType == database.RoomTypeDM && agentID != "" {
-		info := oc.buildOpenClawDMChatInfo(agentID, title, nil)
-		info.Topic = ptr.NonZero(oc.topicForPortal(state))
-		info.Type = ptr.Ptr(roomType)
+	presentation := oc.deriveRoomPresentation(state, "")
+	if presentation.RoomType == database.RoomTypeDM && presentation.AgentID != "" {
+		info := oc.buildOpenClawDMChatInfo(presentation.AgentID, presentation.Title, nil)
+		info.Topic = ptr.NonZero(presentation.Topic)
+		info.Type = ptr.Ptr(presentation.RoomType)
 		info.CanBackfill = true
 		return info, nil
 	}
 	return &bridgev2.ChatInfo{
-		Name:        ptr.Ptr(title),
-		Topic:       ptr.NonZero(oc.topicForPortal(state)),
-		Type:        ptr.Ptr(roomType),
+		Name:        ptr.Ptr(presentation.Title),
+		Topic:       ptr.NonZero(presentation.Topic),
+		Type:        ptr.Ptr(presentation.RoomType),
 		CanBackfill: true,
 	}, nil
 }
@@ -482,15 +480,29 @@ func (oc *OpenClawClient) displayNameForSession(session gatewaySessionRow) strin
 	return "OpenClaw"
 }
 
-func (oc *OpenClawClient) displayNameForPortal(state *openClawPortalState) string {
+type openClawRoomPresentation struct {
+	Title    string
+	Topic    string
+	RoomType database.RoomType
+	AgentID  string
+}
+
+func (oc *OpenClawClient) deriveRoomPresentation(state *openClawPortalState, preferredTitle string) openClawRoomPresentation {
+	p := openClawRoomPresentation{
+		Title:    "OpenClaw",
+		RoomType: database.RoomTypeDM,
+	}
 	if state == nil {
-		return "OpenClaw"
+		return p
 	}
-	if trimmed := strings.TrimSpace(state.OpenClawDMTargetAgentName); trimmed != "" {
-		return trimmed
-	}
+
+	p.RoomType = openClawRoomType(state)
+	p.AgentID = stringutil.TrimDefault(state.OpenClawDMTargetAgentID, state.OpenClawAgentID)
+
 	sourceLabel := openClawSourceLabel(state.OpenClawSpace, state.OpenClawGroupChannel, state.OpenClawSubject)
-	candidates := []string{
+	for _, value := range []string{
+		state.OpenClawDMTargetAgentName,
+		preferredTitle,
 		state.OpenClawDerivedTitle,
 		state.OpenClawDisplayName,
 		state.OpenClawSessionLabel,
@@ -499,39 +511,22 @@ func (oc *OpenClawClient) displayNameForPortal(state *openClawPortalState) strin
 		state.LastTo,
 		state.OpenClawChannel,
 		state.OpenClawSessionKey,
-	}
-	for _, value := range candidates {
+	} {
 		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
+			p.Title = trimmed
+			break
 		}
 	}
-	return "OpenClaw"
-}
 
-func appendDedupedPart(parts []string, value string) []string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return parts
-	}
-	for _, existing := range parts {
-		if strings.EqualFold(existing, value) {
-			return parts
-		}
-	}
-	return append(parts, value)
-}
-
-func (oc *OpenClawClient) topicForPortal(state *openClawPortalState) string {
-	if state == nil {
-		return ""
-	}
 	if strings.TrimSpace(state.OpenClawDMTargetAgentID) != "" || isOpenClawSyntheticDMSessionKey(state.OpenClawSessionKey) {
-		return "OpenClaw agent DM"
+		p.Topic = "OpenClaw agent DM"
+		return p
 	}
+
 	parts := make([]string, 0, 8)
 	parts = appendDedupedPart(parts, normalizeOpenClawChatType(state.OpenClawChatType))
 	parts = appendDedupedPart(parts, state.OpenClawChannel)
-	parts = appendDedupedPart(parts, openClawSourceLabel(state.OpenClawSpace, state.OpenClawGroupChannel, state.OpenClawSubject))
+	parts = appendDedupedPart(parts, sourceLabel)
 	parts = appendDedupedPart(parts, summarizeOpenClawOrigin(state.OpenClawOrigin, state.OpenClawChannel))
 	parts = appendDedupedPart(parts, state.ModelProvider)
 	parts = appendDedupedPart(parts, state.Model)
@@ -551,7 +546,21 @@ func (oc *OpenClawClient) topicForPortal(state *openClawPortalState) string {
 	if state.OpenClawKnownModelCount > 0 {
 		parts = appendDedupedPart(parts, fmt.Sprintf("Models: %d", state.OpenClawKnownModelCount))
 	}
-	return strings.Join(parts, " | ")
+	p.Topic = strings.Join(parts, " | ")
+	return p
+}
+
+func appendDedupedPart(parts []string, value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return parts
+	}
+	for _, existing := range parts {
+		if strings.EqualFold(existing, value) {
+			return parts
+		}
+	}
+	return append(parts, value)
 }
 
 func normalizeOpenClawChatType(raw string) string {

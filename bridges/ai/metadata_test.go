@@ -46,7 +46,7 @@ func TestClonePortalMetadataDeepCopiesConfig(t *testing.T) {
 	}
 }
 
-func TestPortalMetadataMarshalsRoomConfigOnly(t *testing.T) {
+func TestPortalMetadataMarshalsPersistentPortalState(t *testing.T) {
 	meta := &PortalMetadata{
 		AckReactionEmoji:       "👍",
 		AckReactionRemoveAfter: true,
@@ -55,7 +55,7 @@ func TestPortalMetadataMarshalsRoomConfigOnly(t *testing.T) {
 		WelcomeSent:            true,
 		AutoGreetingSent:       true,
 		SessionResetAt:         123,
-		ModuleMeta:             map[string]any{"cron": map[string]any{"is_internal_room": true}},
+		InternalRoomKind:       "cron",
 		SubagentParentRoomID:   "!parent:example.com",
 		TypingMode:             "thinking",
 		TypingIntervalSeconds:  ptrInt(12),
@@ -76,24 +76,18 @@ func TestPortalMetadataMarshalsRoomConfigOnly(t *testing.T) {
 		"subagent_parent_room_id",
 		"typing_mode",
 		"typing_interval_seconds",
+		"welcome_sent",
+		"auto_greeting_sent",
+		"session_reset_at",
+		"internal_room_kind",
 	} {
 		if _, ok := raw[key]; !ok {
 			t.Fatalf("expected %q to be persisted in portal metadata, got %s", key, string(data))
 		}
 	}
-	for _, key := range []string{
-		"welcome_sent",
-		"auto_greeting_sent",
-		"session_reset_at",
-		"module_meta",
-	} {
-		if _, ok := raw[key]; ok {
-			t.Fatalf("expected %q to remain out of portal metadata JSON, got %s", key, string(data))
-		}
-	}
 }
 
-func TestPersistedPortalStateRoundTrip(t *testing.T) {
+func TestPortalMetadataJSONRoundTrip(t *testing.T) {
 	orig := &PortalMetadata{
 		AckReactionEmoji:       "👍",
 		AckReactionRemoveAfter: true,
@@ -105,45 +99,41 @@ func TestPersistedPortalStateRoundTrip(t *testing.T) {
 		SessionResetAt:         123,
 		AbortedLastRun:         true,
 		CompactionCount:        9,
-		SessionBootstrappedAt:  456,
 		SessionBootstrapByAgent: map[string]int64{
 			"beeper": 789,
 		},
-		ModuleMeta: map[string]any{
-			"cron": map[string]any{"is_internal_room": true},
-		},
-		SubagentParentRoomID:  "!parent:example.com",
-		DebounceMs:            250,
-		TypingMode:            "thinking",
-		TypingIntervalSeconds: ptrInt(15),
+		InternalRoomKind:               "cron",
+		CompactionLastPromptTokens:     5000,
+		CompactionLastCompletionTokens: 1200,
+		CompactionLastUsageAt:          456,
+		SubagentParentRoomID:           "!parent:example.com",
+		DebounceMs:                     250,
+		TypingMode:                     "thinking",
+		TypingIntervalSeconds:          ptrInt(15),
 	}
 
-	state := persistedPortalStateFromMeta(orig)
-	data, err := json.Marshal(state)
+	data, err := json.Marshal(orig)
 	if err != nil {
 		t.Fatalf("marshal failed: %v", err)
 	}
-	var restored aiPersistedPortalState
+	var restored PortalMetadata
 	if err := json.Unmarshal(data, &restored); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
-	clone := &PortalMetadata{}
-	applyPersistedPortalState(clone, &restored)
-
-	if clone.AckReactionEmoji != "" || clone.AckReactionRemoveAfter || clone.PDFConfig != nil {
-		t.Fatalf("expected only AI-owned portal state to round-trip: %#v", clone)
+	if restored.Slug != "chat-7" || !restored.TitleGenerated || !restored.WelcomeSent {
+		t.Fatalf("expected portal metadata to round-trip, got %#v", restored)
 	}
-	if clone.Slug != "" || !clone.TitleGenerated {
-		t.Fatalf("expected only sidecar-owned portal state to round-trip: %#v", clone)
+	if restored.SessionBootstrapByAgent["beeper"] != 789 {
+		t.Fatalf("expected bootstrap map to round-trip, got %#v", restored.SessionBootstrapByAgent)
 	}
-	if clone.SessionBootstrapByAgent["beeper"] != 789 {
-		t.Fatalf("expected bootstrap map to round-trip, got %#v", clone.SessionBootstrapByAgent)
+	if restored.InternalRoomKind != "cron" {
+		t.Fatalf("expected internal room kind to round-trip, got %#v", restored)
 	}
-	if clone.ModuleMeta == nil || clone.ModuleMeta["cron"] == nil {
-		t.Fatalf("expected module meta to round-trip, got %#v", clone.ModuleMeta)
+	if restored.CompactionLastPromptTokens != 5000 || restored.CompactionLastCompletionTokens != 1200 || restored.CompactionLastUsageAt != 456 {
+		t.Fatalf("expected compaction usage to round-trip, got %#v", restored)
 	}
-	if clone.TypingIntervalSeconds != nil || clone.TypingMode != "" || clone.DebounceMs != 0 {
-		t.Fatalf("expected room config to stay out of sidecar round-trip, got %#v", clone)
+	if restored.TypingIntervalSeconds == nil || *restored.TypingIntervalSeconds != 15 || restored.TypingMode != "thinking" || restored.DebounceMs != 250 {
+		t.Fatalf("expected room config to round-trip, got %#v", restored)
 	}
 }
 

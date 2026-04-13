@@ -73,9 +73,9 @@ func (oc *AIClient) noteStreamingPersistenceSideEffects(ctx context.Context, por
 		return
 	}
 	if meta != nil && portal != nil && (state.promptTokens > 0 || state.completionTokens > 0) {
-		meta.SetModuleMeta("compaction_last_prompt_tokens", state.promptTokens)
-		meta.SetModuleMeta("compaction_last_completion_tokens", state.completionTokens)
-		meta.SetModuleMeta("compaction_last_usage_at", time.Now().UnixMilli())
+		meta.CompactionLastPromptTokens = state.promptTokens
+		meta.CompactionLastCompletionTokens = state.completionTokens
+		meta.CompactionLastUsageAt = time.Now().UnixMilli()
 		oc.savePortalQuiet(ctx, portal, "compaction usage snapshot")
 	}
 	oc.notifySessionMutation(ctx, portal, meta, false)

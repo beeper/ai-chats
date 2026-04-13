@@ -48,9 +48,8 @@ func resolveIndicatorType(status string) *HeartbeatIndicatorType {
 }
 
 var heartbeatEvents struct {
-	mu          sync.Mutex
-	lastByLogin map[string]*HeartbeatEventPayload
-	persist     map[string]*heartbeatEventPersister
+	mu      sync.Mutex
+	persist map[string]*heartbeatEventPersister
 }
 
 type heartbeatEventPersister struct {
@@ -150,11 +149,6 @@ func (oc *AIClient) emitHeartbeatEvent(evt *HeartbeatEventPayload) {
 	}
 
 	heartbeatEvents.mu.Lock()
-	if heartbeatEvents.lastByLogin == nil {
-		heartbeatEvents.lastByLogin = make(map[string]*HeartbeatEventPayload)
-	}
-	heartbeatEvents.lastByLogin[loginKey] = &evtCopy
-
 	if heartbeatEvents.persist == nil {
 		heartbeatEvents.persist = make(map[string]*heartbeatEventPersister)
 	}
@@ -176,41 +170,13 @@ func (oc *AIClient) emitHeartbeatEvent(evt *HeartbeatEventPayload) {
 	p.offer(&evtCopy)
 }
 
-func seedLastHeartbeatEvent(login *bridgev2.UserLogin, evt *HeartbeatEventPayload) {
-	loginKey := heartbeatLoginKey(login)
-	if loginKey == "" || evt == nil {
-		return
-	}
-	evtCopy := *evt
-	heartbeatEvents.mu.Lock()
-	if heartbeatEvents.lastByLogin == nil {
-		heartbeatEvents.lastByLogin = make(map[string]*HeartbeatEventPayload)
-	}
-	heartbeatEvents.lastByLogin[loginKey] = &evtCopy
-	heartbeatEvents.mu.Unlock()
-}
-
 func getLastHeartbeatEventForLogin(login *bridgev2.UserLogin) *HeartbeatEventPayload {
 	if login == nil {
 		return nil
 	}
-	heartbeatEvents.mu.Lock()
-	last := (*HeartbeatEventPayload)(nil)
-	if heartbeatEvents.lastByLogin != nil {
-		last = heartbeatEvents.lastByLogin[heartbeatLoginKey(login)]
+	if client, ok := login.Client.(*AIClient); ok && client != nil {
+		state := client.loginStateSnapshot(context.Background())
+		return cloneHeartbeatEvent(state.LastHeartbeatEvent)
 	}
-	heartbeatEvents.mu.Unlock()
-
-	if last == nil {
-		if client, ok := login.Client.(*AIClient); ok && client != nil {
-			state := client.loginStateSnapshot(context.Background())
-			if state.LastHeartbeatEvent != nil {
-				seedLastHeartbeatEvent(login, state.LastHeartbeatEvent)
-				return cloneHeartbeatEvent(state.LastHeartbeatEvent)
-			}
-		}
-		return nil
-	}
-	eventsCopy := *last
-	return &eventsCopy
+	return nil
 }

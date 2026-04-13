@@ -100,6 +100,7 @@ type UserLoginMetadata struct {
 	Agents               *bool             `json:"agents,omitempty"`
 	Timezone             string            `json:"timezone,omitempty"`
 	Profile              *UserProfile      `json:"profile,omitempty"`
+	Gravatar             *GravatarState    `json:"gravatar,omitempty"`
 }
 
 func loginCredentials(cfg *aiLoginConfig) *LoginCredentials {
@@ -210,26 +211,28 @@ type GravatarState struct {
 	Primary *GravatarProfile `json:"primary,omitempty"`
 }
 
-// PortalMetadata stores runtime-only per-room state. Persistent room state is mirrored
-// into AI-owned database tables and is not serialized through bridgev2 metadata.
+// PortalMetadata stores durable room configuration/state plus transient runtime overrides.
 type PortalMetadata struct {
 	AckReactionEmoji       string     `json:"ack_reaction_emoji,omitempty"`
 	AckReactionRemoveAfter bool       `json:"ack_reaction_remove_after,omitempty"`
 	PDFConfig              *PDFConfig `json:"pdf_config,omitempty"`
 
 	Slug             string `json:"slug,omitempty"`
-	TitleGenerated   bool   `json:"-"`
-	WelcomeSent      bool   `json:"-"`
-	AutoGreetingSent bool   `json:"-"`
+	TitleGenerated   bool   `json:"title_generated,omitempty"`
+	WelcomeSent      bool   `json:"welcome_sent,omitempty"`
+	AutoGreetingSent bool   `json:"auto_greeting_sent,omitempty"`
 
-	SessionResetAt          int64            `json:"-"`
-	AbortedLastRun          bool             `json:"-"`
-	CompactionCount         int              `json:"-"`
-	SessionBootstrappedAt   int64            `json:"-"`
-	SessionBootstrapByAgent map[string]int64 `json:"-"`
+	SessionResetAt                 int64            `json:"session_reset_at,omitempty"`
+	AbortedLastRun                 bool             `json:"aborted_last_run,omitempty"`
+	CompactionCount                int              `json:"compaction_count,omitempty"`
+	SessionBootstrapByAgent        map[string]int64 `json:"session_bootstrap_by_agent,omitempty"`
+	InternalRoomKind               string           `json:"internal_room_kind,omitempty"` // e.g. cron, heartbeat
+	CompactionLastPromptTokens     int64            `json:"compaction_last_prompt_tokens,omitempty"`
+	CompactionLastCompletionTokens int64            `json:"compaction_last_completion_tokens,omitempty"`
+	CompactionLastUsageAt          int64            `json:"compaction_last_usage_at,omitempty"`
+	IntegrationMeta                map[string]any   `json:"integration_meta,omitempty"` // Arbitrary module-owned state that is not bridge room classification.
 
-	ModuleMeta           map[string]any `json:"-"`                                 // Generic per-module metadata (e.g., cron room markers, memory flush state)
-	SubagentParentRoomID string         `json:"subagent_parent_room_id,omitempty"` // Parent room ID for subagent sessions
+	SubagentParentRoomID string `json:"subagent_parent_room_id,omitempty"` // Parent room ID for subagent sessions
 
 	// Runtime-only overrides (not persisted)
 	DisabledTools        []string        `json:"-"`
@@ -243,29 +246,6 @@ type PortalMetadata struct {
 	// Per-session typing overrides (OpenClaw-style).
 	TypingMode            string `json:"typing_mode,omitempty"` // never|instant|thinking|message
 	TypingIntervalSeconds *int   `json:"typing_interval_seconds,omitempty"`
-	portalStateLoaded     bool   `json:"-"`
-}
-
-// SetModuleMeta sets a key in the ModuleMeta map, initializing the map if necessary.
-func (m *PortalMetadata) SetModuleMeta(key string, value any) {
-	if m == nil {
-		return
-	}
-	if m.ModuleMeta == nil {
-		m.ModuleMeta = make(map[string]any)
-	}
-	m.ModuleMeta[key] = value
-}
-
-func (m *PortalMetadata) ModuleMetaValue(key string) any {
-	if m == nil || m.ModuleMeta == nil {
-		return nil
-	}
-	return m.ModuleMeta[key]
-}
-
-func (m *PortalMetadata) SetModuleMetaValue(key string, value any) {
-	m.SetModuleMeta(key, value)
 }
 
 func (m *PortalMetadata) AgentID() string {
@@ -280,7 +260,24 @@ func (m *PortalMetadata) CompactionCounter() int {
 }
 
 func (m *PortalMetadata) InternalRoom() bool {
-	return isModuleInternalRoom(m)
+	return m != nil && strings.TrimSpace(m.InternalRoomKind) != ""
+}
+
+func (m *PortalMetadata) ModuleMetaValue(key string) any {
+	if m == nil || m.IntegrationMeta == nil {
+		return nil
+	}
+	return m.IntegrationMeta[key]
+}
+
+func (m *PortalMetadata) SetModuleMetaValue(key string, value any) {
+	if m == nil {
+		return
+	}
+	if m.IntegrationMeta == nil {
+		m.IntegrationMeta = make(map[string]any)
+	}
+	m.IntegrationMeta[key] = value
 }
 
 func cloneUserLoginMetadata(src *UserLoginMetadata) (*UserLoginMetadata, error) {
@@ -321,13 +318,13 @@ func clonePortalMetadata(src *PortalMetadata) *PortalMetadata {
 	if len(src.DisabledTools) > 0 {
 		clone.DisabledTools = slices.Clone(src.DisabledTools)
 	}
-
-	if src.ModuleMeta != nil {
-		clone.ModuleMeta = make(map[string]any, len(src.ModuleMeta))
-		for k, v := range src.ModuleMeta {
-			clone.ModuleMeta[k] = jsonutil.DeepCloneAny(v)
+	if src.IntegrationMeta != nil {
+		clone.IntegrationMeta = make(map[string]any, len(src.IntegrationMeta))
+		for k, v := range src.IntegrationMeta {
+			clone.IntegrationMeta[k] = jsonutil.DeepCloneAny(v)
 		}
 	}
+
 	if src.ResolvedTarget != nil {
 		target := *src.ResolvedTarget
 		clone.ResolvedTarget = &target
@@ -376,20 +373,9 @@ func NewCallID() string {
 	return "call_" + random.String(12)
 }
 
-func isModuleInternalRoom(meta *PortalMetadata) bool {
-	return moduleRoomKind(meta) != ""
-}
-
-func moduleRoomKind(meta *PortalMetadata) string {
-	if meta == nil || meta.ModuleMeta == nil {
+func internalRoomKind(meta *PortalMetadata) string {
+	if meta == nil {
 		return ""
 	}
-	for name, v := range meta.ModuleMeta {
-		if m, ok := v.(map[string]any); ok {
-			if internal, _ := m["is_internal_room"].(bool); internal {
-				return name
-			}
-		}
-	}
-	return ""
+	return strings.TrimSpace(meta.InternalRoomKind)
 }

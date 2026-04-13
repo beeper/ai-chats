@@ -1,4 +1,4 @@
-package sdk
+package bridgeutil
 
 import (
 	"context"
@@ -12,9 +12,6 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
-const AIRoomKindAgent = "agent"
-
-// DMChatInfoParams holds the parameters for BuildDMChatInfo.
 type DMChatInfoParams struct {
 	Title               string
 	Topic               string
@@ -29,7 +26,6 @@ type DMChatInfoParams struct {
 	CanBackfill         bool
 }
 
-// BuildDMChatInfo creates a ChatInfo for a DM room between a human user and a bot ghost.
 func BuildDMChatInfo(p DMChatInfoParams) *bridgev2.ChatInfo {
 	humanSender := bridgev2.EventSender{
 		Sender:      p.HumanUserID,
@@ -59,18 +55,6 @@ func BuildDMChatInfo(p DMChatInfoParams) *bridgev2.ChatInfo {
 			"displayname": p.BotDisplayName,
 		}
 	}
-	members := bridgev2.ChatMemberMap{
-		p.HumanUserID: {
-			EventSender: humanSender,
-			Membership:  event.MembershipJoin,
-		},
-		p.BotUserID: {
-			EventSender:      botSender,
-			Membership:       event.MembershipJoin,
-			UserInfo:         botInfo,
-			MemberEventExtra: memberEventExtra,
-		},
-	}
 	return &bridgev2.ChatInfo{
 		Name:        ptr.Ptr(p.Title),
 		Topic:       ptr.NonZero(p.Topic),
@@ -79,7 +63,18 @@ func BuildDMChatInfo(p DMChatInfoParams) *bridgev2.ChatInfo {
 		Members: &bridgev2.ChatMemberList{
 			IsFull:      true,
 			OtherUserID: p.BotUserID,
-			MemberMap:   members,
+			MemberMap: bridgev2.ChatMemberMap{
+				p.HumanUserID: {
+					EventSender: humanSender,
+					Membership:  event.MembershipJoin,
+				},
+				p.BotUserID: {
+					EventSender:      botSender,
+					Membership:       event.MembershipJoin,
+					UserInfo:         botInfo,
+					MemberEventExtra: memberEventExtra,
+				},
+			},
 		},
 	}
 }
@@ -88,7 +83,7 @@ type LoginDMChatInfoParams struct {
 	Title               string
 	Topic               string
 	Login               *bridgev2.UserLogin
-	HumanUserIDPrefix   string
+	HumanUserID         networkid.UserID
 	HumanSender         *bridgev2.EventSender
 	BotUserID           networkid.UserID
 	BotDisplayName      string
@@ -105,7 +100,7 @@ func BuildLoginDMChatInfo(p LoginDMChatInfoParams) *bridgev2.ChatInfo {
 	return BuildDMChatInfo(DMChatInfoParams{
 		Title:               p.Title,
 		Topic:               p.Topic,
-		HumanUserID:         HumanUserID(p.HumanUserIDPrefix, p.Login.ID),
+		HumanUserID:         p.HumanUserID,
 		LoginID:             p.Login.ID,
 		HumanSender:         p.HumanSender,
 		BotUserID:           p.BotUserID,
@@ -146,51 +141,48 @@ func ConfigureDMPortal(ctx context.Context, p ConfigureDMPortalParams) error {
 }
 
 func BuildChatInfoWithFallback(metaTitle, portalName, fallbackTitle, portalTopic string) *bridgev2.ChatInfo {
-	title := coalesceStrings(metaTitle, portalName, fallbackTitle)
 	return &bridgev2.ChatInfo{
-		Name:  ptr.Ptr(title),
-		Topic: ptr.NonZero(portalTopic),
+		Name:  ptr.Ptr(firstNonEmpty(metaTitle, portalName, fallbackTitle)),
+		Topic: ptr.NonZero(strings.TrimSpace(portalTopic)),
 	}
 }
 
-// BuildBotUserInfo returns a UserInfo for an AI bot ghost with the given name and identifiers.
-func BuildBotUserInfo(name string, identifiers ...string) *bridgev2.UserInfo {
-	return &bridgev2.UserInfo{
-		Name:        ptr.Ptr(name),
-		IsBot:       ptr.Ptr(true),
-		Identifiers: identifiers,
+func BuildPortalFallbackChatInfo(portal *bridgev2.Portal, fallbackTitle string) *bridgev2.ChatInfo {
+	if portal == nil {
+		return nil
 	}
+	return BuildChatInfoWithFallback("", portal.Name, fallbackTitle, portal.Topic)
 }
 
-func NormalizeAIRoomTypeV2(roomType database.RoomType, aiKind string) string {
-	if aiKind != "" && aiKind != AIRoomKindAgent {
-		return "group"
+func MessageStatusEventInfo(portal *bridgev2.Portal, evt *event.Event) *bridgev2.MessageStatusEventInfo {
+	if portal == nil || evt == nil {
+		return nil
 	}
-	switch roomType {
-	case database.RoomTypeDM:
-		return "dm"
-	case database.RoomTypeSpace:
-		return "space"
-	default:
-		return "group"
+	info := bridgev2.StatusEventInfoFromEvent(evt)
+	if info == nil {
+		return nil
 	}
+	if info.RoomID == "" && portal.MXID != "" {
+		info.RoomID = portal.MXID
+	}
+	return info
 }
 
-func ApplyAgentRemoteBridgeInfo(content *event.BridgeEventContent, protocolID string, roomType database.RoomType, aiKind string) {
-	if content == nil {
+func SendMessageStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, status bridgev2.MessageStatus) {
+	if portal == nil || portal.Bridge == nil {
 		return
 	}
-	if protocolID != "" {
-		content.Protocol.ID = protocolID
+	info := MessageStatusEventInfo(portal, evt)
+	if info == nil {
+		return
 	}
-	content.BeeperRoomTypeV2 = NormalizeAIRoomTypeV2(roomType, aiKind)
+	portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
 }
 
-// coalesceStrings returns the first non-empty string from the arguments.
-func coalesceStrings(values ...string) string {
+func firstNonEmpty(values ...string) string {
 	for _, v := range values {
-		if v != "" {
-			return v
+		if strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
 		}
 	}
 	return ""

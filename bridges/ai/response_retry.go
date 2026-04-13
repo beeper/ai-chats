@@ -276,8 +276,8 @@ func projectedCompactionFlushTokens(meta *PortalMetadata, promptTokens int) int 
 	if meta == nil {
 		return promptTokens
 	}
-	lastPrompt := int(moduleMetaNumber(meta, "compaction_last_prompt_tokens"))
-	lastOutput := int(moduleMetaNumber(meta, "compaction_last_completion_tokens"))
+	lastPrompt := int(meta.CompactionLastPromptTokens)
+	lastOutput := int(meta.CompactionLastCompletionTokens)
 	if lastPrompt <= 0 {
 		return promptTokens
 	}
@@ -286,26 +286,6 @@ func projectedCompactionFlushTokens(meta *PortalMetadata, promptTokens int) int 
 		return promptTokens
 	}
 	return projected
-}
-
-func moduleMetaNumber(meta *PortalMetadata, key string) int64 {
-	if meta == nil || meta.ModuleMeta == nil || key == "" {
-		return 0
-	}
-	raw, ok := meta.ModuleMeta[key]
-	if !ok || raw == nil {
-		return 0
-	}
-	switch v := raw.(type) {
-	case int:
-		return int64(v)
-	case int64:
-		return v
-	case float64:
-		return int64(v)
-	default:
-		return 0
-	}
 }
 
 type overflowFlushHook interface {

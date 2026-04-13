@@ -9,6 +9,7 @@ import (
 
 	"github.com/beeper/agentremote/pkg/agents"
 	"github.com/beeper/agentremote/pkg/agents/tools"
+	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	"github.com/beeper/agentremote/pkg/shared/toolspec"
 	"github.com/beeper/agentremote/sdk"
@@ -742,24 +743,17 @@ func (oc *AIClient) initPortalForChat(ctx context.Context, opts PortalInitOpts) 
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to bootstrap portal: %w", err)
 	}
-	if err := sdk.ConfigureDMPortal(ctx, sdk.ConfigureDMPortalParams{
-		Portal:      portal,
-		Title:       title,
-		OtherUserID: modelUserID(modelID),
-		Save:        false,
-		MutatePortal: func(portal *bridgev2.Portal) {
-			portal.Metadata = pmeta
-			defaultAvatar := strings.TrimSpace(agents.DefaultAgentAvatarMXC)
-			if defaultAvatar != "" {
-				portal.AvatarID = networkid.AvatarID(defaultAvatar)
-				portal.AvatarMXC = id.ContentURIString(defaultAvatar)
-			}
-		},
-	}); err != nil {
-		return nil, nil, fmt.Errorf("failed to bootstrap portal: %w", err)
-	}
-	if err := saveAIPortalState(ctx, portal, pmeta); err != nil {
-		return nil, nil, fmt.Errorf("failed to bootstrap portal: %w", err)
+	portal.RoomType = database.RoomTypeDM
+	portal.OtherUserID = modelUserID(modelID)
+	portal.Name = strings.TrimSpace(title)
+	portal.NameSet = portal.Name != ""
+	portal.Topic = ""
+	portal.TopicSet = false
+	portal.Metadata = pmeta
+	defaultAvatar := strings.TrimSpace(agents.DefaultAgentAvatarMXC)
+	if defaultAvatar != "" {
+		portal.AvatarID = networkid.AvatarID(defaultAvatar)
+		portal.AvatarMXC = id.ContentURIString(defaultAvatar)
 	}
 	if err := portal.Save(ctx); err != nil {
 		return nil, nil, fmt.Errorf("failed to bootstrap portal: %w", err)
@@ -989,12 +983,14 @@ func (oc *AIClient) composeChatInfo(ctx context.Context, title, modelID string) 
 	if title == "" {
 		title = modelName
 	}
-	chatInfo := sdk.BuildLoginDMChatInfo(sdk.LoginDMChatInfoParams{
-		Title:             title,
-		Login:             oc.UserLogin,
-		HumanUserIDPrefix: oc.HumanUserIDPrefix,
-		BotUserID:         modelUserID(modelID),
-		BotDisplayName:    modelName,
+	chatInfo := bridgeutil.BuildLoginDMChatInfo(bridgeutil.LoginDMChatInfoParams{
+		Title:          title,
+		Topic:          "",
+		Login:          oc.UserLogin,
+		HumanUserID:    humanUserID(oc.UserLogin.ID),
+		BotUserID:      modelUserID(modelID),
+		BotDisplayName: modelName,
+		CanBackfill:    true,
 	})
 	// Override bot member with model-specific UserInfo and extra fields.
 	chatInfo.Members.MemberMap[modelUserID(modelID)] = oc.modelJoinMember(ctx, oc.UserLogin.ID, modelID, modelName, modelInfo)
@@ -1194,45 +1190,23 @@ func (oc *AIClient) ensureChatPortalReady(ctx context.Context, portal *bridgev2.
 }
 
 func (oc *AIClient) listAllChatPortals(ctx context.Context) ([]*bridgev2.Portal, error) {
-	db := bridgeDBFromLogin(oc.UserLogin)
-	if db == nil {
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
 		return nil, nil
 	}
-	rows, err := db.Query(ctx, `
-		SELECT portal_id
-		FROM `+aiPortalStateTable+`
-		WHERE bridge_id=$1 AND portal_receiver=$2
-	`, canonicalLoginBridgeID(oc.UserLogin), canonicalLoginID(oc.UserLogin))
+	portals, err := oc.UserLogin.Bridge.GetAllPortals(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	portals := make([]*bridgev2.Portal, 0)
-	for rows.Next() {
-		var portalID string
-		if err := rows.Scan(&portalID); err != nil {
-			return nil, err
-		}
-		portalID = strings.TrimSpace(portalID)
-		if portalID == "" {
+	out := make([]*bridgev2.Portal, 0, len(portals))
+	for _, portal := range portals {
+		if portal == nil || portal.Receiver != oc.UserLogin.ID {
 			continue
 		}
-		portal, err := oc.UserLogin.Bridge.GetPortalByKey(ctx, networkid.PortalKey{
-			ID:       networkid.PortalID(portalID),
-			Receiver: oc.UserLogin.ID,
-		})
-		if err != nil {
-			return nil, err
-		}
-		if portal != nil {
-			portals = append(portals, portal)
+		if meta := portalMeta(portal); meta != nil {
+			out = append(out, portal)
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return portals, nil
+	return out, nil
 }
 
 func isDefaultChatCandidate(portal *bridgev2.Portal) bool {

@@ -12,6 +12,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
+	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 	"github.com/beeper/agentremote/sdk"
 )
 
@@ -51,7 +52,7 @@ func (dc *DummyBridgeConnector) onDisconnect(_ *dummySession) {}
 
 func (dc *DummyBridgeConnector) getChatInfo(conv *sdk.Conversation) (*bridgev2.ChatInfo, error) {
 	if conv == nil || conv.Portal() == nil {
-		return sdk.BuildChatInfoWithFallback("", "", dummyAgentName, dummyPortalTopic), nil
+		return bridgeutil.BuildChatInfoWithFallback("", "", dummyAgentName, dummyPortalTopic), nil
 	}
 	portal := conv.Portal()
 	meta := portalMeta(portal)
@@ -62,7 +63,7 @@ func (dc *DummyBridgeConnector) getChatInfo(conv *sdk.Conversation) (*bridgev2.C
 	if title == "" {
 		title = dummyAgentName
 	}
-	info := sdk.BuildChatInfoWithFallback(title, portal.Name, dummyAgentName, portal.Topic)
+	info := bridgeutil.BuildChatInfoWithFallback(title, portal.Name, dummyAgentName, portal.Topic)
 	if strings.TrimSpace(meta.Topic) != "" {
 		info.Topic = ptr.Ptr(meta.Topic)
 	}
@@ -108,7 +109,7 @@ func (dc *DummyBridgeConnector) ensureChatForIndexLocked(ctx context.Context, lo
 	meta.Topic = dummyPortalTopic
 	meta.ChatIndex = idx
 
-	if err := sdk.ConfigureDMPortal(ctx, sdk.ConfigureDMPortalParams{
+	if err := bridgeutil.ConfigureDMPortal(ctx, bridgeutil.ConfigureDMPortalParams{
 		Portal:      portal,
 		Title:       title,
 		Topic:       dummyPortalTopic,
@@ -139,15 +140,15 @@ func (dc *DummyBridgeConnector) ensureChatForIndexLocked(ctx context.Context, lo
 }
 
 func (dc *DummyBridgeConnector) composeChatInfo(login *bridgev2.UserLogin, title string) *bridgev2.ChatInfo {
-	return sdk.BuildLoginDMChatInfo(sdk.LoginDMChatInfoParams{
-		Title:             title,
-		Topic:             dummyPortalTopic,
-		Login:             login,
-		HumanUserIDPrefix: "dummybridge-user",
-		BotUserID:         dummyAgentUserID,
-		BotDisplayName:    dummyAgentName,
-		BotUserInfo:       dummySDKAgent().UserInfo(),
-		CanBackfill:       false,
+	return bridgeutil.BuildLoginDMChatInfo(bridgeutil.LoginDMChatInfoParams{
+		Title:          title,
+		Topic:          dummyPortalTopic,
+		Login:          login,
+		HumanUserID:    sdk.HumanUserID("dummybridge-user", login.ID),
+		BotUserID:      dummyAgentUserID,
+		BotDisplayName: dummyAgentName,
+		BotUserInfo:    dummySDKAgent().UserInfo(),
+		CanBackfill:    false,
 	})
 }
 

@@ -13,8 +13,8 @@ func TestChooseDefaultChatPortalSkipsHiddenRooms(t *testing.T) {
 		Portal: &database.Portal{
 			PortalKey: networkid.PortalKey{ID: "openai:hidden"},
 			Metadata: &PortalMetadata{
-				Slug:       "chat-1",
-				ModuleMeta: map[string]any{"cron": map[string]any{"is_internal_room": true}},
+				Slug:             "chat-1",
+				InternalRoomKind: "cron",
 			},
 		},
 	}

@@ -1,4 +1,4 @@
-package sdk
+package bridgeutil
 
 import (
 	"testing"
@@ -10,7 +10,7 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-func TestMatrixMessageStatusEventInfoFallsBackToPortalRoom(t *testing.T) {
+func TestMessageStatusEventInfoFallsBackToPortalRoom(t *testing.T) {
 	portal := &bridgev2.Portal{
 		Portal: &database.Portal{
 			MXID: id.RoomID("!portal:test"),
@@ -28,7 +28,7 @@ func TestMatrixMessageStatusEventInfoFallsBackToPortalRoom(t *testing.T) {
 		},
 	}
 
-	info := MatrixMessageStatusEventInfo(portal, evt)
+	info := MessageStatusEventInfo(portal, evt)
 	if info == nil {
 		t.Fatal("expected status event info")
 	}
