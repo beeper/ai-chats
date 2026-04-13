@@ -41,6 +41,12 @@ type openCodeTurnState struct {
 	finished bool
 }
 
+type openCodeMessageState struct {
+	role  string
+	parts map[string]struct{}
+	turn  *openCodeTurnState
+}
+
 type queuedUserMessage struct {
 	sessionID string
 	eventID   id.EventID
@@ -63,18 +69,14 @@ type openCodeInstance struct {
 
 	disconnectMu    sync.Mutex
 	disconnectTimer *time.Timer
-	queueMu         sync.Mutex
 
-	seenMu         sync.Mutex
-	knownSessions  map[string]struct{}
-	seenMsg        map[string]map[string]string              // session -> message -> role
-	seenPart       map[string]map[string]*openCodePartState  // session -> part -> state
-	partsByMessage map[string]map[string]map[string]struct{} // session -> message -> {part IDs}
-	turnState      map[string]map[string]*openCodeTurnState  // session -> message -> turn state
+	seenMu        sync.Mutex
+	knownSessions map[string]struct{}
+	seenPart      map[string]map[string]*openCodePartState    // session -> part -> state
+	messageState  map[string]map[string]*openCodeMessageState // session -> message -> runtime state
 
-	cacheMu      sync.Mutex
-	messageCache map[string]*openCodeMessageCache
-	sendQueue    map[string]*openCodeSessionQueue
+	cacheMu        sync.Mutex
+	sessionRuntime map[string]*openCodeSessionRuntime
 }
 
 func (inst *openCodeInstance) rememberSession(sessionID string) {
@@ -132,11 +134,7 @@ func (inst *openCodeInstance) cancelAndStopTimer() {
 func (inst *openCodeInstance) isSeen(sessionID, messageID string) bool {
 	inst.seenMu.Lock()
 	defer inst.seenMu.Unlock()
-	if inst.seenMsg == nil {
-		return false
-	}
-	_, exists := inst.seenMsg[sessionID][messageID]
-	return exists
+	return inst.messageStateForLocked(sessionID, messageID) != nil
 }
 
 func (inst *openCodeInstance) markSeen(sessionID, messageID, role string) {
@@ -145,22 +143,17 @@ func (inst *openCodeInstance) markSeen(sessionID, messageID, role string) {
 	}
 	inst.seenMu.Lock()
 	defer inst.seenMu.Unlock()
-	if inst.seenMsg == nil {
-		inst.seenMsg = make(map[string]map[string]string)
-	}
-	if inst.seenMsg[sessionID] == nil {
-		inst.seenMsg[sessionID] = make(map[string]string)
-	}
-	inst.seenMsg[sessionID][messageID] = role
+	inst.ensureMessageStateLocked(sessionID, messageID).role = role
 }
 
 func (inst *openCodeInstance) seenRole(sessionID, messageID string) string {
 	inst.seenMu.Lock()
 	defer inst.seenMu.Unlock()
-	if inst.seenMsg == nil {
+	state := inst.messageStateForLocked(sessionID, messageID)
+	if state == nil {
 		return ""
 	}
-	return inst.seenMsg[sessionID][messageID]
+	return state.role
 }
 
 // ---------- part-state helpers ----------
@@ -325,16 +318,14 @@ func (inst *openCodeInstance) ensurePartState(sessionID, messageID, partID, role
 		}
 	}
 	if messageID != "" {
-		if inst.partsByMessage == nil {
-			inst.partsByMessage = make(map[string]map[string]map[string]struct{})
+		msgState := inst.ensureMessageStateLocked(sessionID, messageID)
+		if role != "" {
+			msgState.role = role
 		}
-		if inst.partsByMessage[sessionID] == nil {
-			inst.partsByMessage[sessionID] = make(map[string]map[string]struct{})
+		if msgState.parts == nil {
+			msgState.parts = make(map[string]struct{})
 		}
-		if inst.partsByMessage[sessionID][messageID] == nil {
-			inst.partsByMessage[sessionID][messageID] = make(map[string]struct{})
-		}
-		inst.partsByMessage[sessionID][messageID][partID] = struct{}{}
+		msgState.parts[partID] = struct{}{}
 	}
 	return state
 }
@@ -343,11 +334,11 @@ func (inst *openCodeInstance) messageParts(sessionID, messageID string) map[stri
 	inst.seenMu.Lock()
 	defer inst.seenMu.Unlock()
 	result := make(map[string]*openCodePartState)
-	if inst.partsByMessage == nil || inst.seenPart == nil {
+	msgState := inst.messageStateForLocked(sessionID, messageID)
+	if msgState == nil || len(msgState.parts) == 0 || inst.seenPart == nil {
 		return result
 	}
-	partSet := inst.partsByMessage[sessionID][messageID]
-	for partID := range partSet {
+	for partID := range msgState.parts {
 		if state, ok := inst.seenPart[sessionID][partID]; ok {
 			result[partID] = state
 		} else {
@@ -363,17 +354,10 @@ func (inst *openCodeInstance) removePart(sessionID, messageID, partID string) {
 	if parts, ok := inst.seenPart[sessionID]; ok {
 		delete(parts, partID)
 	}
-	if msgMap, ok := inst.partsByMessage[sessionID]; ok {
-		if partSet, ok := msgMap[messageID]; ok {
-			delete(partSet, partID)
-			if len(partSet) == 0 {
-				delete(msgMap, messageID)
-			}
-		}
-		if len(msgMap) == 0 {
-			delete(inst.partsByMessage, sessionID)
-		}
+	if msgState := inst.messageStateForLocked(sessionID, messageID); msgState != nil && msgState.parts != nil {
+		delete(msgState.parts, partID)
 	}
+	inst.pruneMessageStateLocked(sessionID, messageID)
 }
 
 // ---------- turn-state helpers ----------
@@ -384,18 +368,11 @@ func (inst *openCodeInstance) ensureTurnState(sessionID, messageID string) *open
 	}
 	inst.seenMu.Lock()
 	defer inst.seenMu.Unlock()
-	if inst.turnState == nil {
-		inst.turnState = make(map[string]map[string]*openCodeTurnState)
-	}
-	sess := inst.turnState[sessionID]
-	if sess == nil {
-		sess = make(map[string]*openCodeTurnState)
-		inst.turnState[sessionID] = sess
-	}
-	state := sess[messageID]
+	msgState := inst.ensureMessageStateLocked(sessionID, messageID)
+	state := msgState.turn
 	if state == nil {
 		state = &openCodeTurnState{}
-		sess[messageID] = state
+		msgState.turn = state
 	}
 	return state
 }
@@ -403,24 +380,68 @@ func (inst *openCodeInstance) ensureTurnState(sessionID, messageID string) *open
 func (inst *openCodeInstance) turnStateFor(sessionID, messageID string) *openCodeTurnState {
 	inst.seenMu.Lock()
 	defer inst.seenMu.Unlock()
-	if inst.turnState == nil {
+	msgState := inst.messageStateForLocked(sessionID, messageID)
+	if msgState == nil {
 		return nil
 	}
-	return inst.turnState[sessionID][messageID]
+	return msgState.turn
 }
 
 func (inst *openCodeInstance) removeTurnState(sessionID, messageID string) {
 	inst.seenMu.Lock()
 	defer inst.seenMu.Unlock()
-	if inst.turnState == nil {
+	msgState := inst.messageStateForLocked(sessionID, messageID)
+	if msgState == nil {
 		return
 	}
-	sess := inst.turnState[sessionID]
-	if sess == nil {
+	msgState.turn = nil
+	inst.pruneMessageStateLocked(sessionID, messageID)
+}
+
+func (inst *openCodeInstance) ensureMessageStateLocked(sessionID, messageID string) *openCodeMessageState {
+	if sessionID == "" || messageID == "" {
+		return nil
+	}
+	if inst.messageState == nil {
+		inst.messageState = make(map[string]map[string]*openCodeMessageState)
+	}
+	sessionState := inst.messageState[sessionID]
+	if sessionState == nil {
+		sessionState = make(map[string]*openCodeMessageState)
+		inst.messageState[sessionID] = sessionState
+	}
+	msgState := sessionState[messageID]
+	if msgState == nil {
+		msgState = &openCodeMessageState{}
+		sessionState[messageID] = msgState
+	}
+	return msgState
+}
+
+func (inst *openCodeInstance) messageStateForLocked(sessionID, messageID string) *openCodeMessageState {
+	if inst.messageState == nil {
+		return nil
+	}
+	return inst.messageState[sessionID][messageID]
+}
+
+func (inst *openCodeInstance) pruneMessageStateLocked(sessionID, messageID string) {
+	if inst.messageState == nil {
 		return
 	}
-	delete(sess, messageID)
-	if len(sess) == 0 {
-		delete(inst.turnState, sessionID)
+	sessionState := inst.messageState[sessionID]
+	if sessionState == nil {
+		return
+	}
+	msgState := sessionState[messageID]
+	if msgState == nil {
+		return
+	}
+	if msgState.turn != nil || len(msgState.parts) > 0 || msgState.role != "" {
+		return
+	}
+	delete(sessionState, messageID)
+	if len(sessionState) == 0 {
+		delete(inst.messageState, sessionID)
 	}
 }

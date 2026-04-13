@@ -28,16 +28,31 @@ type openCodeMessageCache struct {
 	lastRefresh time.Time
 }
 
-func (inst *openCodeInstance) ensureMessageCache(sessionID string) *openCodeMessageCache {
+type openCodeSessionRuntime struct {
+	cache *openCodeMessageCache
+	queue *openCodeSessionQueue
+}
+
+func (inst *openCodeInstance) ensureSessionRuntime(sessionID string) *openCodeSessionRuntime {
 	inst.cacheMu.Lock()
 	defer inst.cacheMu.Unlock()
-	if inst.messageCache == nil {
-		inst.messageCache = make(map[string]*openCodeMessageCache)
+	if inst.sessionRuntime == nil {
+		inst.sessionRuntime = make(map[string]*openCodeSessionRuntime)
 	}
-	cache := inst.messageCache[sessionID]
+	runtime := inst.sessionRuntime[sessionID]
+	if runtime == nil {
+		runtime = &openCodeSessionRuntime{}
+		inst.sessionRuntime[sessionID] = runtime
+	}
+	return runtime
+}
+
+func (inst *openCodeInstance) ensureMessageCache(sessionID string) *openCodeMessageCache {
+	runtime := inst.ensureSessionRuntime(sessionID)
+	cache := runtime.cache
 	if cache == nil {
 		cache = &openCodeMessageCache{messages: make(map[string]messageCacheEntry), dirty: true}
-		inst.messageCache[sessionID] = cache
+		runtime.cache = cache
 	}
 	return cache
 }
@@ -197,15 +212,20 @@ func (inst *openCodeInstance) enqueueMessage(sessionID string, item *queuedUserM
 	if inst == nil || sessionID == "" || item == nil {
 		return nil
 	}
-	inst.queueMu.Lock()
-	defer inst.queueMu.Unlock()
-	if inst.sendQueue == nil {
-		inst.sendQueue = make(map[string]*openCodeSessionQueue)
+	inst.cacheMu.Lock()
+	defer inst.cacheMu.Unlock()
+	if inst.sessionRuntime == nil {
+		inst.sessionRuntime = make(map[string]*openCodeSessionRuntime)
 	}
-	queue := inst.sendQueue[sessionID]
+	runtime := inst.sessionRuntime[sessionID]
+	if runtime == nil {
+		runtime = &openCodeSessionRuntime{}
+		inst.sessionRuntime[sessionID] = runtime
+	}
+	queue := runtime.queue
 	if queue == nil {
 		queue = &openCodeSessionQueue{}
-		inst.sendQueue[sessionID] = queue
+		runtime.queue = queue
 	}
 	queue.items = append(queue.items, item)
 	if queue.active {
@@ -221,15 +241,20 @@ func (inst *openCodeInstance) requeueMessageFront(sessionID string, item *queued
 	if inst == nil || sessionID == "" || item == nil {
 		return
 	}
-	inst.queueMu.Lock()
-	defer inst.queueMu.Unlock()
-	if inst.sendQueue == nil {
-		inst.sendQueue = make(map[string]*openCodeSessionQueue)
+	inst.cacheMu.Lock()
+	defer inst.cacheMu.Unlock()
+	if inst.sessionRuntime == nil {
+		inst.sessionRuntime = make(map[string]*openCodeSessionRuntime)
 	}
-	queue := inst.sendQueue[sessionID]
+	runtime := inst.sessionRuntime[sessionID]
+	if runtime == nil {
+		runtime = &openCodeSessionRuntime{}
+		inst.sessionRuntime[sessionID] = runtime
+	}
+	queue := runtime.queue
 	if queue == nil {
 		queue = &openCodeSessionQueue{}
-		inst.sendQueue[sessionID] = queue
+		runtime.queue = queue
 	}
 	queue.items = append([]*queuedUserMessage{item}, queue.items...)
 }
@@ -238,15 +263,22 @@ func (inst *openCodeInstance) markSessionIdle(sessionID string) *queuedUserMessa
 	if inst == nil || sessionID == "" {
 		return nil
 	}
-	inst.queueMu.Lock()
-	defer inst.queueMu.Unlock()
-	queue := inst.sendQueue[sessionID]
+	inst.cacheMu.Lock()
+	defer inst.cacheMu.Unlock()
+	runtime := inst.sessionRuntime[sessionID]
+	if runtime == nil {
+		return nil
+	}
+	queue := runtime.queue
 	if queue == nil {
 		return nil
 	}
 	if len(queue.items) == 0 {
 		queue.active = false
-		delete(inst.sendQueue, sessionID)
+		runtime.queue = nil
+		if runtime.cache == nil {
+			delete(inst.sessionRuntime, sessionID)
+		}
 		return nil
 	}
 	next := queue.items[0]
@@ -259,14 +291,21 @@ func (inst *openCodeInstance) releaseActiveSession(sessionID string) {
 	if inst == nil || sessionID == "" {
 		return
 	}
-	inst.queueMu.Lock()
-	defer inst.queueMu.Unlock()
-	queue := inst.sendQueue[sessionID]
+	inst.cacheMu.Lock()
+	defer inst.cacheMu.Unlock()
+	runtime := inst.sessionRuntime[sessionID]
+	if runtime == nil {
+		return
+	}
+	queue := runtime.queue
 	if queue == nil {
 		return
 	}
 	queue.active = false
 	if len(queue.items) == 0 {
-		delete(inst.sendQueue, sessionID)
+		runtime.queue = nil
+		if runtime.cache == nil {
+			delete(inst.sessionRuntime, sessionID)
+		}
 	}
 }

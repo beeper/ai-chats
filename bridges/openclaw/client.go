@@ -287,8 +287,6 @@ func (oc *OpenClawClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridg
 	state.OpenClawSessionKey = ""
 	state.OpenClawSessionLabel = ""
 	state.OpenClawLastMessagePreview = ""
-	state.OpenClawPreviewSnippet = ""
-	state.OpenClawLastPreviewAt = 0
 	state.BackgroundBackfillStatus = ""
 	state.BackgroundBackfillError = ""
 	state.BackgroundBackfillCursor = ""
@@ -305,7 +303,6 @@ func (oc *OpenClawClient) GetCapabilities(ctx context.Context, portal *bridgev2.
 	if err != nil {
 		return openClawCapabilitiesFromProfile(openClawCapabilityProfile{})
 	}
-	oc.enrichPortalState(ctx, state)
 	profile := oc.openClawCapabilityProfile(ctx, state)
 	return openClawCapabilitiesFromProfile(profile)
 }
@@ -354,8 +351,7 @@ func (oc *OpenClawClient) GetChatInfo(ctx context.Context, portal *bridgev2.Port
 	if err != nil {
 		return nil, err
 	}
-	oc.enrichPortalState(ctx, state)
-	presentation := oc.deriveRoomPresentation(state, "")
+	presentation := oc.deriveRoomPresentation(state, "", oc.roomPresentationSummary(ctx, state))
 	if presentation.RoomType == database.RoomTypeDM && presentation.AgentID != "" {
 		info := oc.buildOpenClawDMChatInfo(presentation.AgentID, presentation.Title, nil)
 		info.Topic = ptr.NonZero(presentation.Topic)
@@ -487,7 +483,9 @@ type openClawRoomPresentation struct {
 	AgentID  string
 }
 
-func (oc *OpenClawClient) deriveRoomPresentation(state *openClawPortalState, preferredTitle string) openClawRoomPresentation {
+const openClawPresentedHistoryMode = "paginated"
+
+func (oc *OpenClawClient) deriveRoomPresentation(state *openClawPortalState, preferredTitle string, summary openClawRoomSummary) openClawRoomPresentation {
 	p := openClawRoomPresentation{
 		Title:    "OpenClaw",
 		RoomType: database.RoomTypeDM,
@@ -530,21 +528,19 @@ func (oc *OpenClawClient) deriveRoomPresentation(state *openClawPortalState, pre
 	parts = appendDedupedPart(parts, summarizeOpenClawOrigin(state.OpenClawOrigin, state.OpenClawChannel))
 	parts = appendDedupedPart(parts, state.ModelProvider)
 	parts = appendDedupedPart(parts, state.Model)
-	if preview := stringutil.TrimDefault(state.OpenClawPreviewSnippet, state.OpenClawLastMessagePreview); preview != "" {
+	if preview := strings.TrimSpace(state.OpenClawLastMessagePreview); preview != "" {
 		parts = appendDedupedPart(parts, "Recent: "+preview)
 	}
-	if state.HistoryMode != "" {
-		parts = appendDedupedPart(parts, "History: "+state.HistoryMode)
-	}
-	if state.OpenClawToolCount > 0 {
-		toolSummary := fmt.Sprintf("Tools: %d", state.OpenClawToolCount)
-		if profile := strings.TrimSpace(state.OpenClawToolProfile); profile != "" {
+	parts = appendDedupedPart(parts, "History: "+openClawPresentedHistoryMode)
+	if summary.ToolCount > 0 {
+		toolSummary := fmt.Sprintf("Tools: %d", summary.ToolCount)
+		if profile := strings.TrimSpace(summary.ToolProfile); profile != "" {
 			toolSummary += " (" + profile + ")"
 		}
 		parts = appendDedupedPart(parts, toolSummary)
 	}
-	if state.OpenClawKnownModelCount > 0 {
-		parts = appendDedupedPart(parts, fmt.Sprintf("Models: %d", state.OpenClawKnownModelCount))
+	if summary.KnownModelCount > 0 {
+		parts = appendDedupedPart(parts, fmt.Sprintf("Models: %d", summary.KnownModelCount))
 	}
 	p.Topic = strings.Join(parts, " | ")
 	return p

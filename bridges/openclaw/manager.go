@@ -219,16 +219,9 @@ func getOpenClawSessionChatInfo(ctx context.Context, portal *bridgev2.Portal, cl
 	state.LastTo = session.LastTo
 	state.LastAccountID = session.LastAccountID
 	state.SessionUpdatedAt = session.UpdatedAt
-	state.OpenClawPreviewSnippet = stringutil.TrimDefault(state.OpenClawPreviewSnippet, session.LastMessagePreview)
-	if state.OpenClawPreviewSnippet != "" && state.OpenClawLastPreviewAt == 0 {
-		state.OpenClawLastPreviewAt = time.Now().UnixMilli()
-	}
-	state.HistoryMode = "paginated"
-	state.RecentHistoryLimit = 0
 	if strings.TrimSpace(state.BackgroundBackfillStatus) == "" {
 		state.BackgroundBackfillStatus = "pending"
 	}
-	client.enrichPortalState(ctx, state)
 	if err := saveOpenClawPortalState(ctx, portal, client.UserLogin, state); err != nil {
 		return nil, err
 	}
@@ -253,7 +246,7 @@ func getOpenClawSessionChatInfo(ctx context.Context, portal *bridgev2.Portal, cl
 	if strings.TrimSpace(state.OpenClawDMTargetAgentName) == "" && strings.TrimSpace(state.OpenClawDMTargetAgentID) == agentID {
 		state.OpenClawDMTargetAgentName = agentName
 	}
-	presentation := client.deriveRoomPresentation(state, client.displayNameForSession(session))
+	presentation := client.deriveRoomPresentation(state, client.displayNameForSession(session), client.roomPresentationSummary(ctx, state))
 	client.maybeRefreshPortalCapabilities(ctx, portal, &previous, state)
 	if presentation.RoomType == database.RoomTypeDM {
 		return bridgeutil.BuildLoginDMChatInfo(bridgeutil.LoginDMChatInfoParams{
@@ -1583,12 +1576,7 @@ func maybeUpdatePreviewSnippet(state *openClawPortalState, text string, eventTS 
 	if trimmed == "" {
 		return false
 	}
-	state.OpenClawPreviewSnippet = trimmed
-	if !eventTS.IsZero() {
-		state.OpenClawLastPreviewAt = eventTS.UnixMilli()
-	} else {
-		state.OpenClawLastPreviewAt = time.Now().UnixMilli()
-	}
+	state.OpenClawLastMessagePreview = trimmed
 	return true
 }
 
@@ -2339,8 +2327,7 @@ func (m *openClawManager) recoverRunPreview(ctx context.Context, portal *bridgev
 	if snippet == "" {
 		return ""
 	}
-	state.OpenClawPreviewSnippet = snippet
-	state.OpenClawLastPreviewAt = time.Now().UnixMilli()
+	state.OpenClawLastMessagePreview = snippet
 	_ = saveOpenClawPortalState(ctx, portal, m.client.UserLogin, state)
 	return snippet
 }

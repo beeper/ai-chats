@@ -3,6 +3,8 @@ package ai
 import (
 	"encoding/json"
 	"testing"
+
+	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 )
 
 func TestClonePortalMetadataDeepCopiesConfig(t *testing.T) {
@@ -105,11 +107,20 @@ func TestPortalMetadataJSONRoundTrip(t *testing.T) {
 		InternalRoomKind:               "cron",
 		CompactionLastPromptTokens:     5000,
 		CompactionLastCompletionTokens: 1200,
-		CompactionLastUsageAt:          456,
-		SubagentParentRoomID:           "!parent:example.com",
-		DebounceMs:                     250,
-		TypingMode:                     "thinking",
-		TypingIntervalSeconds:          ptrInt(15),
+		MemoryModuleState: &integrationruntime.MemoryState{
+			CompactionInFlight:           true,
+			LastCompactionAt:             111,
+			LastCompactionDroppedCount:   4,
+			LastCompactionError:          "boom",
+			LastCompactionRefreshAt:      222,
+			OverflowFlushAt:              333,
+			OverflowFlushCompactionCount: 9,
+			MemoryBootstrapAt:            444,
+		},
+		SubagentParentRoomID:  "!parent:example.com",
+		DebounceMs:            250,
+		TypingMode:            "thinking",
+		TypingIntervalSeconds: ptrInt(15),
 	}
 
 	data, err := json.Marshal(orig)
@@ -129,8 +140,11 @@ func TestPortalMetadataJSONRoundTrip(t *testing.T) {
 	if restored.InternalRoomKind != "cron" {
 		t.Fatalf("expected internal room kind to round-trip, got %#v", restored)
 	}
-	if restored.CompactionLastPromptTokens != 5000 || restored.CompactionLastCompletionTokens != 1200 || restored.CompactionLastUsageAt != 456 {
+	if restored.CompactionLastPromptTokens != 5000 || restored.CompactionLastCompletionTokens != 1200 {
 		t.Fatalf("expected compaction usage to round-trip, got %#v", restored)
+	}
+	if restored.MemoryModuleState == nil || !restored.MemoryModuleState.CompactionInFlight || restored.MemoryModuleState.MemoryBootstrapAt != 444 || restored.MemoryModuleState.OverflowFlushCompactionCount != 9 {
+		t.Fatalf("expected memory state to round-trip, got %#v", restored.MemoryModuleState)
 	}
 	if restored.TypingIntervalSeconds == nil || *restored.TypingIntervalSeconds != 15 || restored.TypingMode != "thinking" || restored.DebounceMs != 250 {
 		t.Fatalf("expected room config to round-trip, got %#v", restored)

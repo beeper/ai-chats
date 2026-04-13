@@ -193,12 +193,10 @@ func (oc *OpenCodeClient) PortalMeta(portal *bridgev2.Portal) *PortalMeta {
 		InstanceID:     meta.OpenCodeInstanceID,
 		SessionID:      meta.OpenCodeSessionID,
 		ReadOnly:       meta.OpenCodeReadOnly,
-		TitlePending:   meta.OpenCodeTitlePending,
+		RoomState:      meta.OpenCodeRoomState,
 		Title:          meta.Title,
-		TitleGenerated: meta.TitleGenerated,
 		AgentID:        meta.AgentID,
 		VerboseLevel:   meta.VerboseLevel,
-		AwaitingPath:   meta.OpenCodeAwaitingPath,
 	}
 }
 
@@ -211,12 +209,10 @@ func (oc *OpenCodeClient) SetPortalMeta(portal *bridgev2.Portal, meta *PortalMet
 	existing.OpenCodeInstanceID = meta.InstanceID
 	existing.OpenCodeSessionID = meta.SessionID
 	existing.OpenCodeReadOnly = meta.ReadOnly
-	existing.OpenCodeTitlePending = meta.TitlePending
+	existing.OpenCodeRoomState = meta.RoomState
 	existing.Title = meta.Title
-	existing.TitleGenerated = meta.TitleGenerated
 	existing.AgentID = meta.AgentID
 	existing.VerboseLevel = meta.VerboseLevel
-	existing.OpenCodeAwaitingPath = meta.AwaitingPath
 	portal.Metadata = existing
 }
 

@@ -114,7 +114,7 @@ func (b *Bridge) ensureOpenCodeSessionPortalWithRoom(ctx context.Context, inst *
 	meta.InstanceID = inst.cfg.ID
 	meta.SessionID = session.ID
 	meta.ReadOnly = !inst.connected
-	meta.TitlePending = false
+	meta.RoomState = openCodeRoomStateReady
 	if meta.AgentID == "" {
 		meta.AgentID = b.host.DefaultAgentID()
 	}
@@ -221,8 +221,7 @@ func (b *Bridge) CreateSessionChat(ctx context.Context, instanceID, title string
 	meta.InstanceID = inst.cfg.ID
 	meta.SessionID = session.ID
 	meta.ReadOnly = !inst.connected
-	meta.AwaitingPath = false
-	meta.TitlePending = pendingTitle
+	meta.RoomState = openCodeActiveRoomState(pendingTitle)
 	meta.Title = displayTitle
 	portal, chatInfo, _, err := b.bootstrapOpenCodePortal(ctx, login, portal, displayTitle, meta, true)
 	if err != nil {
@@ -253,8 +252,7 @@ func (b *Bridge) createManagedLauncherChat(ctx context.Context, login *bridgev2.
 	meta := &PortalMeta{
 		IsOpenCodeRoom: true,
 		InstanceID:     instanceID,
-		AwaitingPath:   true,
-		TitlePending:   pendingTitle,
+		RoomState:      openCodeSetupRoomState(pendingTitle),
 		Title:          displayTitle,
 		AgentID:        b.host.DefaultAgentID(),
 	}

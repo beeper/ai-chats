@@ -87,31 +87,25 @@ func (oc *OpenClawClient) agentDefaultID() string {
 	return strings.TrimSpace(entry.DefaultID)
 }
 
-func (oc *OpenClawClient) enrichPortalState(ctx context.Context, state *openClawPortalState) {
+type openClawRoomSummary struct {
+	ToolProfile     string
+	ToolCount       int
+	KnownModelCount int
+}
+
+func (oc *OpenClawClient) roomPresentationSummary(ctx context.Context, state *openClawPortalState) openClawRoomSummary {
 	if oc == nil || state == nil {
-		return
+		return openClawRoomSummary{}
 	}
-	state.OpenClawDefaultAgentID = ""
-	state.OpenClawKnownModelCount = 0
-	state.OpenClawToolCount = 0
-	state.OpenClawToolProfile = ""
-	defaultAgentID := oc.agentDefaultID()
-	if defaultAgentID != "" {
-		state.OpenClawDefaultAgentID = defaultAgentID
-	}
+	summary := openClawRoomSummary{}
 	if models, err := oc.loadModelCatalog(ctx, false); err == nil && len(models) > 0 {
-		state.OpenClawKnownModelCount = len(models)
+		summary.KnownModelCount = len(models)
 	}
 	agentID := stringutil.TrimDefault(state.OpenClawAgentID, state.OpenClawDMTargetAgentID)
 	if catalog, err := oc.loadToolsCatalog(ctx, agentID, false); err == nil && catalog != nil {
-		state.OpenClawToolCount, state.OpenClawToolProfile = summarizeToolsCatalog(*catalog)
+		summary.ToolCount, summary.ToolProfile = summarizeToolsCatalog(*catalog)
 	}
-	if preview := strings.TrimSpace(state.OpenClawLastMessagePreview); state.OpenClawPreviewSnippet == "" && preview != "" {
-		state.OpenClawPreviewSnippet = preview
-		if state.OpenClawLastPreviewAt == 0 {
-			state.OpenClawLastPreviewAt = time.Now().UnixMilli()
-		}
-	}
+	return summary
 }
 
 func (oc *OpenClawClient) previewSessionSnippet(ctx context.Context, sessionKey string) string {

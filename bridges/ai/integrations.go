@@ -550,8 +550,10 @@ func integrationPortalAIKind(meta *PortalMetadata) string {
 	if meta != nil && strings.TrimSpace(meta.SubagentParentRoomID) != "" {
 		return "subagent"
 	}
-	if kind := internalRoomKind(meta); kind != "" {
-		return kind
+	if meta != nil {
+		if kind := strings.TrimSpace(meta.InternalRoomKind); kind != "" {
+			return kind
+		}
 	}
 	return sdk.AIRoomKindAgent
 }
@@ -571,7 +573,7 @@ func integrationSessionKind(currentRoomID string, portalRoomID string, meta *Por
 		return "main"
 	}
 	if meta != nil {
-		if kind := internalRoomKind(meta); kind != "" {
+		if kind := strings.TrimSpace(meta.InternalRoomKind); kind != "" {
 			return kind
 		}
 		if strings.TrimSpace(meta.SubagentParentRoomID) != "" {

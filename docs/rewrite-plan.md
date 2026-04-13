@@ -132,15 +132,22 @@ Current status:
 - in progress: AI portal-state and turn-store entrypoints now route through one scope-resolution path instead of split detached-vs-client persistence wrappers
 - complete: Codex portal state no longer uses `codex_portal_state`; durable room state now lives in `PortalMetadata`, and room discovery now enumerates real `bridgev2` portals instead of a sidecar catalog
 - complete: OpenClaw login credentials/session-sync markers no longer use `openclaw_login_state`; durable login state now lives in `UserLoginMetadata`
-- in progress: OpenClaw portal identity/history configuration is being moved out of the portal-state blob and into `PortalMetadata`, leaving the blob for operational preview/backfill/runtime state only
+- complete: OpenClaw `PortalMetadata` is back to a minimal room marker; session identity, preview, history, and runtime state now live in the portal-state blob as the single durable owner
 - complete: AI login config no longer uses `aichats_login_config`; durable login config now lives in `UserLoginMetadata`
 - complete: AI Gravatar/profile supplement no longer uses `gravatar_json` in `aichats_login_state`; it now lives with the rest of durable login config in `UserLoginMetadata`
 - complete: AI portal persistence no longer goes through a redundant `saveAIPortalState` wrapper; portal metadata writes now use the single `portal.Save(ctx)` path
 - complete: `aichats_portal_state` no longer carries a dead `state_json` payload in fresh schema or writes; it is now only the epoch/turn-sequence ledger
 - complete: unused AI portal metadata field `SessionBootstrappedAt` has been removed; `SessionBootstrapByAgent` is the only live bootstrap latch
-- complete: AI internal-room classification and compaction snapshot ownership no longer route through the generic `ModuleMeta` bag; they now use typed `PortalMetadata` fields, while module-owned bookkeeping lives in a dedicated `integration_meta` bag
+- complete: AI internal-room classification and compaction snapshot ownership no longer route through the generic `ModuleMeta` bag; they now use typed `PortalMetadata` fields
 - complete: AI heartbeat status no longer mirrors the last event in two in-memory stores; login runtime state is now the single persisted heartbeat source
-- in progress: OpenClaw room title/topic/type derivation is being collapsed into one shared presentation path used by live room info, DM bootstrap, and session resync
+- complete: OpenClaw room title/topic/type derivation now routes through one shared presentation path used by live room info, DM bootstrap, and session resync
+- complete: OpenClaw no longer persists preview/catalog presentation caches in portal state; room topics now derive preview/tool/model summaries on demand from live session and catalog state
+- complete: OpenClaw no longer persists history presentation/config fields in portal state or metadata; the one remaining visible history label is now a single presentation constant
+- complete: OpenCode portal setup/title branching no longer uses `AwaitingPath` plus `TitlePending` booleans; one `RoomState` now owns placeholder-vs-active-vs-title-pending behavior
+- complete: OpenCode per-message runtime ownership no longer splits across `seenMsg`, `partsByMessage`, and `turnState`; one `messageState` map now owns role, part membership, and turn lifecycle
+- complete: OpenCode per-session cache and send-queue ownership no longer live in parallel top-level maps; one `sessionRuntime` owner now contains both cache and queue state
+- complete: AI no longer persists the dead `CompactionLastUsageAt` timestamp, and internal-room integration classification no longer routes through an extra helper layer
+- complete: AI no longer uses the fake-generic `integration_meta` bag; the memory integration now persists typed `memory_state` fields through the runtime boundary
 - pending: split AI storage into three real owners only: `LoginStorage`, `PortalRepository`, and `PortalTurnStore`
 - pending: collapse `aichats_portal_state` so it owns only sequencing/reset infrastructure and no longer hydrates metadata-shaped state
 - in progress: move durable portal/login state out of JSON sidecar tables and into bridge metadata wherever the data is connector metadata rather than runtime-only state
@@ -195,7 +202,7 @@ Exit condition:
 5. collapse reset/history ownership so one turn-store boundary controls reset semantics
 6. replace callback-driven portal mutation with `ExtraUpdates`
 7. replace AI welcome/autogreeting polling with event-driven bootstrap turns
-8. trim AI `integration_meta` usage down to true module-owned state only and keep bridge room classification/config out of that bag
-9. collapse OpenClaw room title/topic/type derivation into one canonical path and trim portal blob fields to runtime-only state
-10. collapse OpenCode phase flags and overlapping per-session caches into one runtime owner
+8. keep AI integration-owned state typed and minimal; do not reintroduce generic per-portal metadata bags
+9. keep trimming OpenClaw portal blob fields down to true runtime/session ownership and avoid reintroducing mirrored metadata copies
+10. collapse any remaining OpenCode runtime duplication around part/message caches after the `messageState` and `sessionRuntime` cuts
 11. delete any remaining dead per-bridge helper stacks and sidecar tables

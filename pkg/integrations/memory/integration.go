@@ -137,18 +137,22 @@ func (i *Integration) OnCompactionLifecycle(ctx context.Context, evt iruntime.Co
 	if evt.Meta == nil {
 		return
 	}
+	state := evt.Meta.EnsureMemoryState()
+	if state == nil {
+		return
+	}
 	switch evt.Phase {
 	case iruntime.CompactionLifecycleStart:
-		evt.Meta.SetModuleMetaValue("compaction_in_flight", true)
+		state.CompactionInFlight = true
 	case iruntime.CompactionLifecycleEnd:
-		evt.Meta.SetModuleMetaValue("compaction_in_flight", false)
-		evt.Meta.SetModuleMetaValue("last_compaction_at", time.Now().UnixMilli())
-		evt.Meta.SetModuleMetaValue("last_compaction_dropped_count", evt.DroppedCount)
+		state.CompactionInFlight = false
+		state.LastCompactionAt = time.Now().UnixMilli()
+		state.LastCompactionDroppedCount = evt.DroppedCount
 	case iruntime.CompactionLifecycleFail:
-		evt.Meta.SetModuleMetaValue("compaction_in_flight", false)
-		evt.Meta.SetModuleMetaValue("last_compaction_error", strings.TrimSpace(evt.Error))
+		state.CompactionInFlight = false
+		state.LastCompactionError = strings.TrimSpace(evt.Error)
 	case iruntime.CompactionLifecycleRefresh:
-		evt.Meta.SetModuleMetaValue("last_compaction_refresh_at", time.Now().UnixMilli())
+		state.LastCompactionRefreshAt = time.Now().UnixMilli()
 	}
 	if evt.Portal == nil {
 		return
@@ -204,19 +208,6 @@ func (i *Integration) buildCommandExecDeps() CommandExecDeps {
 	}
 }
 
-func toInt64(v any) int64 {
-	switch n := v.(type) {
-	case int64:
-		return n
-	case float64:
-		return int64(n)
-	case int:
-		return int64(n)
-	default:
-		return 0
-	}
-}
-
 func (i *Integration) buildOverflowDeps() OverflowDeps {
 	return OverflowDeps{
 		ResolveSettings: i.resolveOverflowFlushSettings,
@@ -239,19 +230,22 @@ func (i *Integration) buildOverflowDeps() OverflowDeps {
 			if call.Meta == nil {
 				return false
 			}
-			flushAtMs := toInt64(call.Meta.ModuleMetaValue("overflow_flush_at"))
-			if flushAtMs == 0 {
+			state := call.Meta.MemoryState()
+			if state == nil || state.OverflowFlushAt == 0 {
 				return false
 			}
-			flushCC := toInt64(call.Meta.ModuleMetaValue("overflow_flush_compaction_count"))
-			return int(flushCC) == call.Meta.CompactionCounter()
+			return state.OverflowFlushCompactionCount == call.Meta.CompactionCounter()
 		},
 		MarkFlushed: func(ctx context.Context, call iruntime.ContextOverflowCall) {
 			if call.Portal == nil || call.Meta == nil {
 				return
 			}
-			call.Meta.SetModuleMetaValue("overflow_flush_at", time.Now().UnixMilli())
-			call.Meta.SetModuleMetaValue("overflow_flush_compaction_count", call.Meta.CompactionCounter())
+			state := call.Meta.EnsureMemoryState()
+			if state == nil {
+				return
+			}
+			state.OverflowFlushAt = time.Now().UnixMilli()
+			state.OverflowFlushCompactionCount = call.Meta.CompactionCounter()
 			_ = i.host.SavePortal(ctx, call.Portal, "overflow flush")
 		},
 		RunFlushToolLoop: func(ctx context.Context, call iruntime.ContextOverflowCall, model string, prompt []openai.ChatCompletionMessageParamUnion) (bool, error) {
@@ -275,11 +269,11 @@ func (i *Integration) shouldBootstrapMemoryPromptContext(_ *bridgev2.Portal, met
 	if meta == nil {
 		return false
 	}
-	raw := meta.ModuleMetaValue("memory_bootstrap_at")
-	if raw == nil {
+	state := meta.MemoryState()
+	if state == nil {
 		return true
 	}
-	return toInt64(raw) == 0
+	return state.MemoryBootstrapAt == 0
 }
 
 func (i *Integration) resolveMemoryBootstrapPaths(_ *bridgev2.Portal, _ iruntime.Meta) []string {
@@ -300,7 +294,11 @@ func (i *Integration) markMemoryPromptBootstrapped(ctx context.Context, portal *
 	if portal == nil || meta == nil {
 		return
 	}
-	meta.SetModuleMetaValue("memory_bootstrap_at", time.Now().UnixMilli())
+	state := meta.EnsureMemoryState()
+	if state == nil {
+		return
+	}
+	state.MemoryBootstrapAt = time.Now().UnixMilli()
 	_ = i.host.SavePortal(ctx, portal, "memory bootstrap")
 }
 

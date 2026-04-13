@@ -10,7 +10,7 @@ import (
 	"go.mau.fi/util/random"
 	"maunium.net/go/mautrix/bridgev2/database"
 
-	"github.com/beeper/agentremote/pkg/shared/jsonutil"
+	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 	"github.com/beeper/agentremote/sdk"
 )
 
@@ -222,15 +222,14 @@ type PortalMetadata struct {
 	WelcomeSent      bool   `json:"welcome_sent,omitempty"`
 	AutoGreetingSent bool   `json:"auto_greeting_sent,omitempty"`
 
-	SessionResetAt                 int64            `json:"session_reset_at,omitempty"`
-	AbortedLastRun                 bool             `json:"aborted_last_run,omitempty"`
-	CompactionCount                int              `json:"compaction_count,omitempty"`
-	SessionBootstrapByAgent        map[string]int64 `json:"session_bootstrap_by_agent,omitempty"`
-	InternalRoomKind               string           `json:"internal_room_kind,omitempty"` // e.g. cron, heartbeat
-	CompactionLastPromptTokens     int64            `json:"compaction_last_prompt_tokens,omitempty"`
-	CompactionLastCompletionTokens int64            `json:"compaction_last_completion_tokens,omitempty"`
-	CompactionLastUsageAt          int64            `json:"compaction_last_usage_at,omitempty"`
-	IntegrationMeta                map[string]any   `json:"integration_meta,omitempty"` // Arbitrary module-owned state that is not bridge room classification.
+	SessionResetAt                 int64                           `json:"session_reset_at,omitempty"`
+	AbortedLastRun                 bool                            `json:"aborted_last_run,omitempty"`
+	CompactionCount                int                             `json:"compaction_count,omitempty"`
+	SessionBootstrapByAgent        map[string]int64                `json:"session_bootstrap_by_agent,omitempty"`
+	InternalRoomKind               string                          `json:"internal_room_kind,omitempty"` // e.g. cron, heartbeat
+	CompactionLastPromptTokens     int64                           `json:"compaction_last_prompt_tokens,omitempty"`
+	CompactionLastCompletionTokens int64                           `json:"compaction_last_completion_tokens,omitempty"`
+	MemoryModuleState              *integrationruntime.MemoryState `json:"memory_state,omitempty"`
 
 	SubagentParentRoomID string `json:"subagent_parent_room_id,omitempty"` // Parent room ID for subagent sessions
 
@@ -263,21 +262,21 @@ func (m *PortalMetadata) InternalRoom() bool {
 	return m != nil && strings.TrimSpace(m.InternalRoomKind) != ""
 }
 
-func (m *PortalMetadata) ModuleMetaValue(key string) any {
-	if m == nil || m.IntegrationMeta == nil {
+func (m *PortalMetadata) MemoryState() *integrationruntime.MemoryState {
+	if m == nil {
 		return nil
 	}
-	return m.IntegrationMeta[key]
+	return m.MemoryModuleState
 }
 
-func (m *PortalMetadata) SetModuleMetaValue(key string, value any) {
+func (m *PortalMetadata) EnsureMemoryState() *integrationruntime.MemoryState {
 	if m == nil {
-		return
+		return nil
 	}
-	if m.IntegrationMeta == nil {
-		m.IntegrationMeta = make(map[string]any)
+	if m.MemoryModuleState == nil {
+		m.MemoryModuleState = &integrationruntime.MemoryState{}
 	}
-	m.IntegrationMeta[key] = value
+	return m.MemoryModuleState
 }
 
 func cloneUserLoginMetadata(src *UserLoginMetadata) (*UserLoginMetadata, error) {
@@ -318,11 +317,9 @@ func clonePortalMetadata(src *PortalMetadata) *PortalMetadata {
 	if len(src.DisabledTools) > 0 {
 		clone.DisabledTools = slices.Clone(src.DisabledTools)
 	}
-	if src.IntegrationMeta != nil {
-		clone.IntegrationMeta = make(map[string]any, len(src.IntegrationMeta))
-		for k, v := range src.IntegrationMeta {
-			clone.IntegrationMeta[k] = jsonutil.DeepCloneAny(v)
-		}
+	if src.MemoryModuleState != nil {
+		memoryState := *src.MemoryModuleState
+		clone.MemoryModuleState = &memoryState
 	}
 
 	if src.ResolvedTarget != nil {
@@ -371,11 +368,4 @@ var _ database.MetaMerger = (*MessageMetadata)(nil)
 // NewCallID generates a new unique call ID for tool calls
 func NewCallID() string {
 	return "call_" + random.String(12)
-}
-
-func internalRoomKind(meta *PortalMetadata) string {
-	if meta == nil {
-		return ""
-	}
-	return strings.TrimSpace(meta.InternalRoomKind)
 }

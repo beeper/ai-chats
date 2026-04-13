@@ -46,12 +46,48 @@ type PortalMeta struct {
 	InstanceID     string
 	SessionID      string
 	ReadOnly       bool
-	TitlePending   bool
+	RoomState      openCodeRoomState
 	Title          string
-	TitleGenerated bool
 	AgentID        string
 	VerboseLevel   string
-	AwaitingPath   bool
+}
+
+type openCodeRoomState string
+
+const (
+	openCodeRoomStateReady                 openCodeRoomState = ""
+	openCodeRoomStateAwaitingPath          openCodeRoomState = "awaiting_path"
+	openCodeRoomStateAwaitingPathWithTitle openCodeRoomState = "awaiting_path_title_pending"
+	openCodeRoomStateTitlePending          openCodeRoomState = "title_pending"
+)
+
+func openCodeSetupRoomState(pendingTitle bool) openCodeRoomState {
+	if pendingTitle {
+		return openCodeRoomStateAwaitingPathWithTitle
+	}
+	return openCodeRoomStateAwaitingPath
+}
+
+func openCodeActiveRoomState(pendingTitle bool) openCodeRoomState {
+	if pendingTitle {
+		return openCodeRoomStateTitlePending
+	}
+	return openCodeRoomStateReady
+}
+
+func (s openCodeRoomState) AwaitingPath() bool {
+	return s == openCodeRoomStateAwaitingPath || s == openCodeRoomStateAwaitingPathWithTitle
+}
+
+func (s openCodeRoomState) TitlePending() bool {
+	return s == openCodeRoomStateTitlePending || s == openCodeRoomStateAwaitingPathWithTitle
+}
+
+func (s openCodeRoomState) ActivateSession() openCodeRoomState {
+	if s.TitlePending() {
+		return openCodeRoomStateTitlePending
+	}
+	return openCodeRoomStateReady
 }
 
 // OpenCodeInstance stores connection details for an OpenCode server.

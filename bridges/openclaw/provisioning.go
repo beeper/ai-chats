@@ -283,10 +283,7 @@ func (oc *OpenClawClient) createConfiguredAgentDM(ctx context.Context, agent gat
 	state.OpenClawDMTargetAgentID = agentID
 	state.OpenClawDMTargetAgentName = stringutil.TrimDefault(oc.configuredAgentDisplayName(agent), state.OpenClawDMTargetAgentName)
 	state.OpenClawDMCreatedFromContact = true
-	state.HistoryMode = "paginated"
-	state.RecentHistoryLimit = 0
-	oc.enrichPortalState(ctx, state)
-	presentation := oc.deriveRoomPresentation(state, state.OpenClawDMTargetAgentName)
+	presentation := oc.deriveRoomPresentation(state, state.OpenClawDMTargetAgentName, oc.roomPresentationSummary(ctx, state))
 	chatInfo := oc.buildOpenClawDMChatInfo(agentID, presentation.Title, info)
 	if err := bridgeutil.ConfigureDMPortal(ctx, bridgeutil.ConfigureDMPortalParams{
 		Portal:      portal,

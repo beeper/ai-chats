@@ -261,11 +261,9 @@ func (m *OpenCodeManager) connectInstanceClient(ctx context.Context, cfg *OpenCo
 		process:        proc,
 		connected:      true,
 		knownSessions:  make(map[string]struct{}),
-		seenMsg:        make(map[string]map[string]string),
 		seenPart:       make(map[string]map[string]*openCodePartState),
-		partsByMessage: make(map[string]map[string]map[string]struct{}),
-		turnState:      make(map[string]map[string]*openCodeTurnState),
-		sendQueue:      make(map[string]*openCodeSessionQueue),
+		messageState:   make(map[string]map[string]*openCodeMessageState),
+		sessionRuntime: make(map[string]*openCodeSessionRuntime),
 	}
 
 	m.mu.Lock()

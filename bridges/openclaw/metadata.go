@@ -30,15 +30,7 @@ type UserLoginMetadata struct {
 }
 
 type PortalMetadata struct {
-	IsOpenClawRoom               bool   `json:"is_openclaw_room,omitempty"`
-	OpenClawSessionID            string `json:"openclaw_session_id,omitempty"`
-	OpenClawSessionKey           string `json:"openclaw_session_key,omitempty"`
-	OpenClawDMTargetAgentID      string `json:"openclaw_dm_target_agent_id,omitempty"`
-	OpenClawDMTargetAgentName    string `json:"openclaw_dm_target_agent_name,omitempty"`
-	OpenClawDMCreatedFromContact bool   `json:"openclaw_dm_created_from_contact,omitempty"`
-	OpenClawAgentID              string `json:"openclaw_agent_id,omitempty"`
-	HistoryMode                  string `json:"history_mode,omitempty"`
-	RecentHistoryLimit           int    `json:"recent_history_limit,omitempty"`
+	IsOpenClawRoom bool `json:"is_openclaw_room,omitempty"`
 }
 
 type openClawPortalState struct {
@@ -89,14 +81,6 @@ type openClawPortalState struct {
 	LastTo                        string         `json:"last_to,omitempty"`
 	LastAccountID                 string         `json:"last_account_id,omitempty"`
 	SessionUpdatedAt              int64          `json:"session_updated_at,omitempty"`
-	OpenClawPreviewSnippet        string         `json:"openclaw_preview_snippet,omitempty"`
-	OpenClawDefaultAgentID        string         `json:"openclaw_default_agent_id,omitempty"`
-	OpenClawToolProfile           string         `json:"openclaw_tool_profile,omitempty"`
-	OpenClawToolCount             int            `json:"openclaw_tool_count,omitempty"`
-	OpenClawKnownModelCount       int            `json:"openclaw_known_model_count,omitempty"`
-	OpenClawLastPreviewAt         int64          `json:"openclaw_last_preview_at,omitempty"`
-	HistoryMode                   string         `json:"history_mode,omitempty"`
-	RecentHistoryLimit            int            `json:"recent_history_limit,omitempty"`
 	LastHistorySyncAt             int64          `json:"last_history_sync_at,omitempty"`
 	LastTranscriptFingerprint     string         `json:"last_transcript_fingerprint,omitempty"`
 	LastLiveSeq                   int64          `json:"last_live_seq,omitempty"`
@@ -132,16 +116,13 @@ func loadOpenClawPortalState(ctx context.Context, portal *bridgev2.Portal, login
 	if state == nil {
 		state = &openClawPortalState{}
 	}
-	if portal != nil {
-		applyOpenClawPortalMetadata(state, portalMeta(portal))
-	}
 	return state, nil
 }
 
 func saveOpenClawPortalState(ctx context.Context, portal *bridgev2.Portal, login *bridgev2.UserLogin, state *openClawPortalState) error {
 	if portal != nil && state != nil {
 		meta := portalMeta(portal)
-		copyOpenClawPortalMetadata(meta, state)
+		meta.IsOpenClawRoom = true
 		if portal.Bridge != nil && portal.Bridge.DB != nil && portal.Portal != nil {
 			if err := portal.Save(ctx); err != nil {
 				return err
@@ -242,48 +223,11 @@ func portalMeta(portal *bridgev2.Portal) *PortalMetadata {
 	return sdk.EnsurePortalMetadata[PortalMetadata](portal)
 }
 
-func applyOpenClawPortalMetadata(state *openClawPortalState, meta *PortalMetadata) {
-	if state == nil || meta == nil {
-		return
-	}
-	state.OpenClawSessionID = strings.TrimSpace(meta.OpenClawSessionID)
-	state.OpenClawSessionKey = strings.TrimSpace(meta.OpenClawSessionKey)
-	state.OpenClawDMTargetAgentID = strings.TrimSpace(meta.OpenClawDMTargetAgentID)
-	state.OpenClawDMTargetAgentName = strings.TrimSpace(meta.OpenClawDMTargetAgentName)
-	state.OpenClawDMCreatedFromContact = meta.OpenClawDMCreatedFromContact
-	state.OpenClawAgentID = strings.TrimSpace(meta.OpenClawAgentID)
-	state.HistoryMode = strings.TrimSpace(meta.HistoryMode)
-	state.RecentHistoryLimit = meta.RecentHistoryLimit
-}
-
-func copyOpenClawPortalMetadata(meta *PortalMetadata, state *openClawPortalState) {
-	if meta == nil || state == nil {
-		return
-	}
-	meta.IsOpenClawRoom = true
-	meta.OpenClawSessionID = strings.TrimSpace(state.OpenClawSessionID)
-	meta.OpenClawSessionKey = strings.TrimSpace(state.OpenClawSessionKey)
-	meta.OpenClawDMTargetAgentID = strings.TrimSpace(state.OpenClawDMTargetAgentID)
-	meta.OpenClawDMTargetAgentName = strings.TrimSpace(state.OpenClawDMTargetAgentName)
-	meta.OpenClawDMCreatedFromContact = state.OpenClawDMCreatedFromContact
-	meta.OpenClawAgentID = strings.TrimSpace(state.OpenClawAgentID)
-	meta.HistoryMode = strings.TrimSpace(state.HistoryMode)
-	meta.RecentHistoryLimit = state.RecentHistoryLimit
-}
-
 func persistedOpenClawPortalState(state *openClawPortalState) *openClawPortalState {
 	if state == nil {
 		return nil
 	}
 	persisted := *state
-	persisted.OpenClawSessionID = ""
-	persisted.OpenClawSessionKey = ""
-	persisted.OpenClawDMTargetAgentID = ""
-	persisted.OpenClawDMTargetAgentName = ""
-	persisted.OpenClawDMCreatedFromContact = false
-	persisted.OpenClawAgentID = ""
-	persisted.HistoryMode = ""
-	persisted.RecentHistoryLimit = 0
 	return &persisted
 }
 

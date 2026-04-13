@@ -33,7 +33,7 @@ func (b *Bridge) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 		b.host.SendSystemNotice(ctx, portal, "OpenCode integration is not available.")
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
-	if meta != nil && meta.AwaitingPath {
+	if meta != nil && meta.RoomState.AwaitingPath() {
 		return b.handleAwaitingPath(ctx, msg, portal, meta)
 	}
 	if meta == nil || meta.InstanceID == "" || meta.SessionID == "" {
@@ -112,7 +112,7 @@ func (b *Bridge) handleAwaitingPath(ctx context.Context, msg *bridgev2.MatrixMes
 	}
 	meta.SessionID = session.ID
 	meta.InstanceID = inst.cfg.ID
-	meta.AwaitingPath = false
+	meta.RoomState = meta.RoomState.ActivateSession()
 	meta.ReadOnly = false
 	portal, _, _, err = b.bootstrapOpenCodePortal(ctx, nil, portal, strings.TrimSpace(meta.Title), meta, false)
 	if err != nil {
@@ -219,7 +219,7 @@ func (b *Bridge) maybeFinalizeOpenCodeTitle(ctx context.Context, portal *bridgev
 	if b == nil || portal == nil || meta == nil {
 		return
 	}
-	if !meta.TitlePending || meta.InstanceID == "" || meta.SessionID == "" {
+	if !meta.RoomState.TitlePending() || meta.InstanceID == "" || meta.SessionID == "" {
 		return
 	}
 	normalized := sanitizeOpenCodeTitle(title)
@@ -231,8 +231,7 @@ func (b *Bridge) maybeFinalizeOpenCodeTitle(ctx context.Context, portal *bridgev
 		return
 	}
 	meta.Title = normalized
-	meta.TitleGenerated = false
-	meta.TitlePending = false
+	meta.RoomState = openCodeRoomStateReady
 	portal.Name = normalized
 	portal.NameSet = true
 	b.host.SetPortalMeta(portal, meta)
@@ -308,7 +307,7 @@ func (b *Bridge) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2.Matri
 		return nil
 	}
 	sessionID := strings.TrimSpace(meta.SessionID)
-	if meta.AwaitingPath || sessionID == "" || strings.HasPrefix(sessionID, "setup-") {
+	if meta.RoomState.AwaitingPath() || sessionID == "" || strings.HasPrefix(sessionID, "setup-") {
 		return nil
 	}
 	if b.manager == nil {
