@@ -185,34 +185,25 @@ func TestSenderForPortalUsesModelGhostWithoutAgent(t *testing.T) {
 	}
 }
 
-func TestSendSystemNoticeUsesBridgeBot(t *testing.T) {
-	bot := &testMatrixAPI{}
-	oc := &AIClient{
-		UserLogin: &bridgev2.UserLogin{
-			Bridge: &bridgev2.Bridge{Bot: bot},
-		},
+func TestBuildConvertedPortalTextMessage(t *testing.T) {
+	converted := buildConvertedPortalTextMessage(event.MsgNotice, "AI can make mistakes.")
+	if converted == nil || len(converted.Parts) != 1 {
+		t.Fatalf("expected one converted part, got %#v", converted)
 	}
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: "!room:example.com"}}
-
-	oc.sendSystemNotice(context.Background(), portal, "AI can make mistakes.")
-
-	if bot.sentRoomID != portal.MXID {
-		t.Fatalf("expected room %q, got %q", portal.MXID, bot.sentRoomID)
+	part := converted.Parts[0]
+	if part == nil {
+		t.Fatal("expected non-nil converted part")
 	}
-	if bot.sentType != event.EventMessage {
-		t.Fatalf("expected event type %q, got %q", event.EventMessage, bot.sentType)
+	if part.Type != event.EventMessage {
+		t.Fatalf("expected event type %q, got %q", event.EventMessage, part.Type)
 	}
-	if bot.sentContent == nil {
-		t.Fatal("expected content to be sent")
+	if part.Content == nil {
+		t.Fatal("expected message content")
 	}
-	content, ok := bot.sentContent.Parsed.(*event.MessageEventContent)
-	if !ok {
-		t.Fatalf("expected message content, got %#v", bot.sentContent.Parsed)
+	if part.Content.MsgType != event.MsgNotice {
+		t.Fatalf("expected msgtype %q, got %q", event.MsgNotice, part.Content.MsgType)
 	}
-	if content.MsgType != event.MsgNotice {
-		t.Fatalf("expected msgtype %q, got %q", event.MsgNotice, content.MsgType)
-	}
-	if content.Body != "AI can make mistakes." {
-		t.Fatalf("expected notice body to be preserved, got %q", content.Body)
+	if part.Content.Body != "AI can make mistakes." {
+		t.Fatalf("expected notice body to be preserved, got %q", part.Content.Body)
 	}
 }

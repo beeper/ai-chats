@@ -170,6 +170,15 @@ func upsertAITurn(ctx context.Context, portal *bridgev2.Portal, entry aiTurnUpse
 	if err != nil {
 		return err
 	}
+	return upsertAITurnByScope(ctx, scope, portal, entry)
+}
+
+func upsertAITurnByScope(
+	ctx context.Context,
+	scope *portalScope,
+	portal *bridgev2.Portal,
+	entry aiTurnUpsert,
+) error {
 	if scope == nil {
 		return fmt.Errorf("ai turn scope unavailable for portal %s", portal.PortalKey)
 	}
@@ -308,10 +317,19 @@ func deleteAITurnByExternalRef(ctx context.Context, portal *bridgev2.Portal, mes
 	if err != nil {
 		return err
 	}
+	return deleteAITurnByExternalRefByScope(ctx, scope, messageID, eventID)
+}
+
+func deleteAITurnByExternalRefByScope(
+	ctx context.Context,
+	scope *portalScope,
+	messageID networkid.MessageID,
+	eventID id.EventID,
+) error {
 	if scope == nil {
 		return nil
 	}
-	record, err := loadAITurnByRef(ctx, portal, messageID, eventID)
+	record, err := loadAITurnByRefByScope(ctx, scope, messageID, eventID)
 	if err != nil || record == nil {
 		return err
 	}
@@ -328,6 +346,26 @@ func deleteAITurnByExternalRef(ctx context.Context, portal *bridgev2.Portal, mes
 		`, scope.bridgeID, scope.portalID, scope.portalReceiver, record.TurnID)
 		return err
 	})
+}
+
+func (oc *AIClient) deleteAITurnByExternalRef(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	messageID networkid.MessageID,
+	eventID id.EventID,
+) error {
+	if oc == nil {
+		return deleteAITurnByExternalRef(ctx, portal, messageID, eventID)
+	}
+	portal, err := oc.canonicalPortalForClientAIDB(ctx, portal)
+	if err != nil {
+		return err
+	}
+	scope, err := oc.portalScopeForClientAIDB(ctx, portal)
+	if err != nil {
+		return err
+	}
+	return deleteAITurnByExternalRefByScope(ctx, scope, messageID, eventID)
 }
 
 func deleteAITurnsForPortal(ctx context.Context, portal *bridgev2.Portal) {
@@ -375,12 +413,33 @@ func (oc *AIClient) persistAIConversationMessage(ctx context.Context, portal *br
 	if oc == nil {
 		return persistAIConversationMessage(ctx, portal, msg)
 	}
-	var err error
-	portal, err = oc.canonicalPortalForClientAIDB(ctx, portal)
+	portal, err := oc.canonicalPortalForClientAIDB(ctx, portal)
 	if err != nil {
 		return err
 	}
-	return persistAIConversationMessage(ctx, portal, msg)
+	scope, err := oc.portalScopeForClientAIDB(ctx, portal)
+	if err != nil {
+		return err
+	}
+	meta, ok := msg.Metadata.(*MessageMetadata)
+	if !ok || meta == nil {
+		return nil
+	}
+	turnData, ok := canonicalTurnData(meta)
+	if !ok {
+		return nil
+	}
+	return upsertAITurnByScope(ctx, scope, portal, aiTurnUpsert{
+		TurnID:           strings.TrimSpace(turnData.ID),
+		Kind:             aiTurnKindConversation,
+		MessageID:        msg.ID,
+		EventID:          msg.MXID,
+		SenderID:         msg.SenderID,
+		IncludeInHistory: !meta.ExcludeFromHistory,
+		Timestamp:        msg.Timestamp,
+		TurnData:         turnData,
+		Metadata:         meta,
+	})
 }
 
 func persistAIInternalPromptTurn(
@@ -427,16 +486,50 @@ func (oc *AIClient) persistAIInternalPromptTurn(
 	if oc == nil {
 		return persistAIInternalPromptTurn(ctx, portal, eventID, promptContext, excludeFromHistory, source, timestamp)
 	}
-	var err error
-	portal, err = oc.canonicalPortalForClientAIDB(ctx, portal)
+	portal, err := oc.canonicalPortalForClientAIDB(ctx, portal)
 	if err != nil {
 		return err
 	}
-	return persistAIInternalPromptTurn(ctx, portal, eventID, promptContext, excludeFromHistory, source, timestamp)
+	scope, err := oc.portalScopeForClientAIDB(ctx, portal)
+	if err != nil {
+		return err
+	}
+	meta := &MessageMetadata{}
+	setCanonicalTurnDataFromPromptMessages(meta, promptTail(promptContext, 1))
+	turnData, ok := canonicalTurnData(meta)
+	if !ok {
+		return nil
+	}
+	return upsertAITurnByScope(ctx, scope, portal, aiTurnUpsert{
+		TurnID:           strings.TrimSpace(turnData.ID),
+		Kind:             aiTurnKindInternal,
+		Source:           source,
+		MessageID:        sdk.MatrixMessageID(eventID),
+		EventID:          eventID,
+		SenderID:         humanUserID(networkid.UserLoginID(portal.PortalKey.Receiver)),
+		IncludeInHistory: !excludeFromHistory,
+		Timestamp:        timestamp,
+		TurnData:         turnData,
+		Metadata:         meta,
+	})
 }
 
 func loadAIConversationMessage(ctx context.Context, portal *bridgev2.Portal, messageID networkid.MessageID, eventID id.EventID) (*database.Message, error) {
-	record, err := loadAITurnByRef(ctx, portal, messageID, eventID)
+	scope, err := portalScopeForAIDB(ctx, portal)
+	if err != nil {
+		return nil, err
+	}
+	return loadAIConversationMessageByScope(ctx, scope, portal, messageID, eventID)
+}
+
+func loadAIConversationMessageByScope(
+	ctx context.Context,
+	scope *portalScope,
+	portal *bridgev2.Portal,
+	messageID networkid.MessageID,
+	eventID id.EventID,
+) (*database.Message, error) {
+	record, err := loadAITurnByRefByScope(ctx, scope, messageID, eventID)
 	if err != nil || record == nil {
 		return nil, err
 	}
@@ -455,12 +548,15 @@ func (oc *AIClient) loadAIConversationMessage(
 	if oc == nil {
 		return loadAIConversationMessage(ctx, portal, messageID, eventID)
 	}
-	var err error
-	portal, err = oc.canonicalPortalForClientAIDB(ctx, portal)
+	portal, err := oc.canonicalPortalForClientAIDB(ctx, portal)
 	if err != nil {
 		return nil, err
 	}
-	return loadAIConversationMessage(ctx, portal, messageID, eventID)
+	scope, err := oc.portalScopeForClientAIDB(ctx, portal)
+	if err != nil {
+		return nil, err
+	}
+	return loadAIConversationMessageByScope(ctx, scope, portal, messageID, eventID)
 }
 
 func databaseMessageFromAITurn(portal *bridgev2.Portal, record *aiTurnRecord) *database.Message {
@@ -505,12 +601,11 @@ func (oc *AIClient) loadAIPromptHistoryTurns(
 	if oc == nil {
 		return loadAIPromptHistoryTurns(ctx, portal, limit, opts)
 	}
-	var err error
-	portal, err = oc.canonicalPortalForClientAIDB(ctx, portal)
+	portal, err := oc.canonicalPortalForClientAIDB(ctx, portal)
 	if err != nil {
 		return nil, err
 	}
-	scope, err := portalScopeForAIDB(ctx, portal)
+	scope, err := oc.portalScopeForClientAIDB(ctx, portal)
 	if err != nil {
 		return nil, err
 	}
@@ -559,6 +654,10 @@ func hasInternalPromptHistory(ctx context.Context, portal *bridgev2.Portal) bool
 	if err != nil {
 		return false
 	}
+	return hasInternalPromptHistoryByScope(ctx, scope)
+}
+
+func hasInternalPromptHistoryByScope(ctx context.Context, scope *portalScope) bool {
 	if scope == nil {
 		return false
 	}
@@ -578,12 +677,26 @@ func hasInternalPromptHistory(ctx context.Context, portal *bridgev2.Portal) bool
 	return err == nil && count > 0
 }
 
+func (oc *AIClient) hasInternalPromptHistory(ctx context.Context, portal *bridgev2.Portal) bool {
+	if oc == nil {
+		return hasInternalPromptHistory(ctx, portal)
+	}
+	portal, err := oc.canonicalPortalForClientAIDB(ctx, portal)
+	if err != nil {
+		return false
+	}
+	scope, err := oc.portalScopeForClientAIDB(ctx, portal)
+	if err != nil {
+		return false
+	}
+	return hasInternalPromptHistoryByScope(ctx, scope)
+}
+
 func (oc *AIClient) getAIHistoryMessages(ctx context.Context, portal *bridgev2.Portal, limit int) ([]*database.Message, error) {
 	if oc == nil || portal == nil || portal.MXID == "" || limit <= 0 {
 		return nil, nil
 	}
-	var err error
-	portal, err = oc.canonicalPortalForClientAIDB(ctx, portal)
+	portal, err := oc.canonicalPortalForClientAIDB(ctx, portal)
 	if err != nil {
 		return nil, err
 	}
@@ -593,7 +706,7 @@ func (oc *AIClient) getAIHistoryMessages(ctx context.Context, portal *bridgev2.P
 		Str("portal_mxid", portal.MXID.String()).
 		Int("history_limit", limit).
 		Logger()
-	scope, err := portalScopeForAIDB(ctx, portal)
+	scope, err := oc.portalScopeForClientAIDB(ctx, portal)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to resolve canonical portal for AI history load")
 		return nil, err

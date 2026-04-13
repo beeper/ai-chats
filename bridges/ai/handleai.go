@@ -246,7 +246,7 @@ func (oc *AIClient) hasPortalMessages(ctx context.Context, portal *bridgev2.Port
 		}
 		return true
 	}
-	return hasInternalPromptHistory(ctx, portal)
+	return oc.hasInternalPromptHistory(ctx, portal)
 }
 
 func isInternalControlRoom(meta *PortalMetadata) bool {
@@ -360,7 +360,10 @@ func (oc *AIClient) scheduleWelcomeMessage(ctx context.Context, portalKey networ
 				time.Sleep(150 * time.Millisecond)
 				continue
 			}
-			oc.sendWelcomeMessage(bgCtx, current)
+			if err := oc.sendWelcomeMessage(bgCtx, current); err != nil {
+				oc.loggerForContext(bgCtx).Warn().Err(err).Str("portal_id", string(portalKey.ID)).Msg("Failed to send welcome message")
+				return
+			}
 			oc.Log().Debug().Str("portal_id", string(portalKey.ID)).Msg("welcome message sent")
 			return
 		}
@@ -368,29 +371,28 @@ func (oc *AIClient) scheduleWelcomeMessage(ctx context.Context, portalKey networ
 	}()
 }
 
-func (oc *AIClient) sendWelcomeMessage(ctx context.Context, portal *bridgev2.Portal) {
+func (oc *AIClient) sendWelcomeMessage(ctx context.Context, portal *bridgev2.Portal) error {
 	if oc == nil || portal == nil {
-		return
+		return nil
 	}
 	var err error
 	portal, err = oc.canonicalPortalForClientAIDB(ctx, portal)
 	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to canonicalize portal for welcome message")
-		return
+		return err
 	}
 	// We can't send a room notice (or schedule greeting timers) until the Matrix room exists.
 	if portal.MXID == "" {
-		return
+		return nil
 	}
-	if oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.Bot == nil {
-		return
+	if oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
+		return nil
 	}
 	meta := portalMeta(portal)
 	if meta == nil {
-		return
+		return nil
 	}
 	if meta.WelcomeSent {
-		return
+		return nil
 	}
 
 	// Mark as sent BEFORE queuing to prevent duplicate welcome messages on race.
@@ -399,16 +401,23 @@ func (oc *AIClient) sendWelcomeMessage(ctx context.Context, portal *bridgev2.Por
 	bgCtx, cancel := context.WithTimeout(oc.backgroundContext(ctx), 10*time.Second)
 	defer cancel()
 	if err := oc.savePortal(bgCtx, portal, "welcome message state"); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist welcome message state")
-		return
+		return fmt.Errorf("persist welcome message state: %w", err)
 	}
 
+	var welcomeMessage string
 	if resolveAgentID(meta) == "" {
 		modelID := oc.effectiveModel(meta)
 		displayName := modelContactName(modelID, oc.findModelInfo(modelID))
-		oc.sendSystemNotice(bgCtx, portal, fmt.Sprintf("You are chatting with %s. AI can make mistakes.", displayName))
+		welcomeMessage = fmt.Sprintf("You are chatting with %s. AI can make mistakes.", displayName)
 	} else {
-		oc.sendSystemNotice(bgCtx, portal, "AI can make mistakes.")
+		welcomeMessage = "AI can make mistakes."
+	}
+	if err := sdk.SendSystemMessage(bgCtx, oc.UserLogin, portal, oc.senderForPortal(bgCtx, portal), welcomeMessage); err != nil {
+		meta.WelcomeSent = false
+		if saveErr := oc.savePortal(bgCtx, portal, "welcome message rollback"); saveErr != nil {
+			oc.loggerForContext(ctx).Warn().Err(saveErr).Msg("Failed to roll back welcome message state")
+		}
+		return fmt.Errorf("send welcome message: %w", err)
 	}
 
 	if err := oc.BroadcastRoomState(bgCtx, portal); err != nil {
@@ -416,6 +425,7 @@ func (oc *AIClient) sendWelcomeMessage(ctx context.Context, portal *bridgev2.Por
 	}
 
 	oc.scheduleAutoGreeting(bgCtx, portal)
+	return nil
 }
 
 func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Portal, assistantResponse string) {

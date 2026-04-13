@@ -924,7 +924,7 @@ func (oc *AIClient) latestAssistantTurnRecord(ctx context.Context, portal *bridg
 	if err != nil {
 		return nil, err
 	}
-	scope, err := portalScopeForAIDB(ctx, portal)
+	scope, err := oc.portalScopeForClientAIDB(ctx, portal)
 	if err != nil || scope == nil {
 		return nil, err
 	}

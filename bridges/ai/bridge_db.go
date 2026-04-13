@@ -232,27 +232,26 @@ func (oc *AIClient) canonicalPortalForClientAIDB(ctx context.Context, portal *br
 
 func (oc *AIClient) portalScopeForClientAIDB(ctx context.Context, portal *bridgev2.Portal) (*portalScope, error) {
 	if oc == nil {
-		return portalScopeForAIDB(ctx, portal)
+		return nil, nil
 	}
-	if ctx == nil {
-		ctx = context.Background()
+	scope := loginScopeForClient(oc)
+	if scope == nil {
+		return nil, nil
 	}
-	portal, err := oc.canonicalPortalForClientAIDB(ctx, portal)
-	if err != nil || portal == nil {
-		return nil, err
+	if portal == nil {
+		return nil, nil
 	}
-	db, bridgeID, loginID := loginDBContext(oc)
 	portalID := strings.TrimSpace(string(portal.PortalKey.ID))
 	portalReceiver := strings.TrimSpace(string(portal.PortalKey.Receiver))
-	if portalReceiver == "" {
-		portalReceiver = loginID
+	if portalID == "" {
+		return nil, nil
 	}
-	if db == nil || bridgeID == "" || portalID == "" || portalReceiver == "" {
-		return portalScopeForAIDB(ctx, portal)
+	if portalReceiver == "" {
+		portalReceiver = scope.loginID
 	}
 	return &portalScope{
-		db:             db,
-		bridgeID:       bridgeID,
+		db:             scope.db,
+		bridgeID:       scope.bridgeID,
 		portalID:       portalID,
 		portalReceiver: portalReceiver,
 	}, nil

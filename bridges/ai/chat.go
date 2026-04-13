@@ -1058,31 +1058,48 @@ func (oc *AIClient) BroadcastRoomState(ctx context.Context, portal *bridgev2.Por
 	return nil
 }
 
-// sendSystemNotice sends an informational notice to the room via the bridge bot.
-func (oc *AIClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Portal, message string) {
-	if oc == nil {
-		return
+func buildConvertedPortalTextMessage(msgType event.MessageType, message string) *bridgev2.ConvertedMessage {
+	return &bridgev2.ConvertedMessage{
+		Parts: []*bridgev2.ConvertedMessagePart{{
+			ID:   networkid.PartID("0"),
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType:  msgType,
+				Body:     message,
+				Mentions: &event.Mentions{},
+			},
+		}},
+	}
+}
+
+func (oc *AIClient) sendPortalMessage(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	msgType event.MessageType,
+	message string,
+) error {
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
+		return fmt.Errorf("bridge unavailable")
+	}
+	if portal == nil || portal.MXID == "" {
+		return fmt.Errorf("invalid portal")
 	}
 	message = strings.TrimSpace(message)
-	if portal != nil && portal.MXID != "" && oc.UserLogin != nil && oc.UserLogin.UserLogin != nil {
-		sender := oc.senderForPortal(ctx, portal)
-		if sender.Sender != "" {
-			content := &event.Content{
-				Parsed: &event.MessageEventContent{
-					MsgType:  event.MsgNotice,
-					Body:     message,
-					Mentions: &event.Mentions{},
-				},
-			}
-			intent, ok := portal.GetIntentFor(ctx, sender, oc.UserLogin, bridgev2.RemoteEventMessage)
-			if ok && intent != nil {
-				if _, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, content, nil); err == nil {
-					return
-				}
-			}
-		}
+	if message == "" {
+		return nil
 	}
-	if err := sdk.SendSystemMessage(ctx, oc.UserLogin, portal, bridgev2.EventSender{}, message); err != nil {
+	converted := buildConvertedPortalTextMessage(msgType, message)
+	_, _, err := oc.sendViaPortal(ctx, portal, converted, "")
+	return err
+}
+
+// sendSystemNotice sends an informational notice to the room through the same portal pipeline
+// as normal AI-authored room messages.
+func (oc *AIClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Portal, message string) {
+	if oc == nil || oc.UserLogin == nil || portal == nil {
+		return
+	}
+	if err := sdk.SendSystemMessage(ctx, oc.UserLogin, portal, oc.senderForPortal(ctx, portal), message); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to send system notice")
 	}
 }
@@ -1280,7 +1297,7 @@ func (oc *AIClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev2
 			errs = append(errs, err)
 		}
 	}
-	if err := deleteAITurnByExternalRef(ctx, msg.Portal, msg.TargetMessage.ID, msg.TargetMessage.MXID); err != nil {
+	if err := oc.deleteAITurnByExternalRef(ctx, msg.Portal, msg.TargetMessage.ID, msg.TargetMessage.MXID); err != nil {
 		errs = append(errs, err)
 	}
 	if meta := portalMeta(msg.Portal); meta != nil {

@@ -44,7 +44,9 @@ func (oc *AIClient) materializePortalRoom(
 		return err
 	}
 	if created && opts.SendWelcome {
-		oc.sendWelcomeMessage(ctx, portal)
+		if err := oc.sendWelcomeMessage(ctx, portal); err != nil {
+			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to send welcome message")
+		}
 	}
 	return nil
 }

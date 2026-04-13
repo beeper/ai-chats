@@ -799,6 +799,103 @@ func TestGetAIHistoryMessages_UsesCanonicalPortalScopeForTransientPortal(t *test
 	}
 }
 
+func TestClientScopedTurnPersistence_WorksWithoutPortalBridge(t *testing.T) {
+	ctx := context.Background()
+	client := newDBBackedTestAIClient(t, ProviderOpenAI)
+	client.UserLogin.Client = client
+
+	portal := newTranscriptTestPortal(t, client, "client-scope-detached-portal")
+
+	userMeta := &MessageMetadata{
+		BaseMessageMetadata: sdk.BaseMessageMetadata{Role: "user", Body: "one"},
+	}
+	setCanonicalTurnDataFromPromptMessages(userMeta, []PromptMessage{{
+		Role: PromptRoleUser,
+		Blocks: []PromptBlock{{
+			Type: PromptBlockText,
+			Text: "one",
+		}},
+	}})
+	userMsg := &database.Message{
+		ID:        sdk.MatrixMessageID(id.EventID("$detached-user-1")),
+		MXID:      id.EventID("$detached-user-1"),
+		Room:      portal.PortalKey,
+		SenderID:  humanUserID(client.UserLogin.ID),
+		Metadata:  userMeta,
+		Timestamp: time.UnixMilli(1000),
+	}
+
+	detachedPortal := &bridgev2.Portal{
+		Portal: &database.Portal{
+			PortalKey: portal.PortalKey,
+			MXID:      portal.MXID,
+			Metadata:  portal.Metadata,
+		},
+	}
+	if scope := portalScopeForPortal(detachedPortal); scope != nil {
+		t.Fatalf("expected detached portal scope lookup to fail, got %#v", scope)
+	}
+
+	if err := client.persistAIConversationMessage(ctx, detachedPortal, userMsg); err != nil {
+		t.Fatalf("persist detached user turn via client wrapper: %v", err)
+	}
+
+	history, err := client.getAIHistoryMessages(ctx, detachedPortal, 10)
+	if err != nil {
+		t.Fatalf("history load through detached portal: %v", err)
+	}
+	if len(history) != 1 {
+		t.Fatalf("expected 1 replayed message, got %d", len(history))
+	}
+	if meta := messageMeta(history[0]); meta == nil || meta.Role != "user" || meta.Body != "one" {
+		t.Fatalf("unexpected history message: %#v", history[0])
+	}
+}
+
+func TestLoadAIConversationMessage_UsesCanonicalPortalScopeForTransientPortal(t *testing.T) {
+	ctx := context.Background()
+	client := newDBBackedTestAIClient(t, ProviderOpenAI)
+	client.UserLogin.Client = client
+
+	portal := newTranscriptTestPortal(t, client, "client-load-transient")
+
+	userMeta := &MessageMetadata{
+		BaseMessageMetadata: sdk.BaseMessageMetadata{Role: "user", Body: "hello world"},
+	}
+	setCanonicalTurnDataFromPromptMessages(userMeta, []PromptMessage{{
+		Role: PromptRoleUser,
+		Blocks: []PromptBlock{{
+			Type: PromptBlockText,
+			Text: "hello world",
+		}},
+	}})
+	userMsg := &database.Message{
+		ID:        sdk.MatrixMessageID(id.EventID("$client-load-user-1")),
+		MXID:      id.EventID("$client-load-user-1"),
+		Room:      portal.PortalKey,
+		SenderID:  humanUserID(client.UserLogin.ID),
+		Metadata:  userMeta,
+		Timestamp: time.UnixMilli(1000),
+	}
+	client.saveUserMessage(ctx, &event.Event{ID: userMsg.MXID}, userMsg)
+
+	transientPortal := newTransientPortalWrapper(t, client, portal)
+	if scope := portalScopeForPortal(transientPortal); scope != nil {
+		t.Fatalf("expected transient portal scope lookup to fail, got %#v", scope)
+	}
+
+	transcriptMsg, err := client.loadAIConversationMessage(ctx, transientPortal, userMsg.ID, userMsg.MXID)
+	if err != nil {
+		t.Fatalf("canonical portal-scoped conversation load failed: %v", err)
+	}
+	if transcriptMsg == nil {
+		t.Fatal("expected transcript message")
+	}
+	if meta := messageMeta(transcriptMsg); meta == nil || meta.Role != "user" || meta.Body != "hello world" {
+		t.Fatalf("unexpected transcript message: %#v", transcriptMsg)
+	}
+}
+
 func TestLoadAIPromptHistoryTurnsByScope_MissingScopeReturnsNoHistory(t *testing.T) {
 	ctx := context.Background()
 	portal := &bridgev2.Portal{
