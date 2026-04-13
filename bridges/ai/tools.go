@@ -1476,8 +1476,11 @@ func textFSStore(ctx context.Context) (*textfs.Store, error) {
 	if db == nil {
 		return nil, errors.New("file tool database unavailable")
 	}
-	bridgeID := string(btc.Client.UserLogin.Bridge.DB.BridgeID)
-	loginID := string(btc.Client.UserLogin.ID)
+	bridgeID := canonicalLoginBridgeID(btc.Client.UserLogin)
+	loginID := canonicalLoginID(btc.Client.UserLogin)
+	if bridgeID == "" || loginID == "" {
+		return nil, errors.New("file tool login identity unavailable")
+	}
 	return textfs.NewStore(db, bridgeID, loginID, agentID), nil
 }
 

@@ -297,19 +297,101 @@ func TestBuildBaseContext_ReplaysHistoryFromTransientPortalByCanonicalizingPorta
 	}
 }
 
-func TestPortalScopeForPortal_StrictlyRequiresCanonicalBridgeID(t *testing.T) {
+func TestBuildBaseContext_ReplaysHistoryFromCachedPortalWithoutEmbeddedBridgeID(t *testing.T) {
 	ctx := context.Background()
+	client := newDBBackedTestAIClient(t, ProviderOpenAI)
+	client.UserLogin.Client = client
+
+	portal := newTranscriptTestPortal(t, client, "cached-missing-bridge-id")
+
+	userMeta := &MessageMetadata{
+		BaseMessageMetadata: sdk.BaseMessageMetadata{Role: "user", Body: "hello world"},
+	}
+	setCanonicalTurnDataFromPromptMessages(userMeta, []PromptMessage{{
+		Role: PromptRoleUser,
+		Blocks: []PromptBlock{{
+			Type: PromptBlockText,
+			Text: "hello world",
+		}},
+	}})
+	userMsg := &database.Message{
+		ID:        sdk.MatrixMessageID(id.EventID("$cached-user-1")),
+		MXID:      id.EventID("$cached-user-1"),
+		Room:      portal.PortalKey,
+		SenderID:  humanUserID(client.UserLogin.ID),
+		Metadata:  userMeta,
+		Timestamp: time.UnixMilli(1000),
+	}
+	client.saveUserMessage(ctx, &event.Event{ID: userMsg.MXID}, userMsg)
+
+	assistantMsg := &database.Message{
+		ID:       networkid.MessageID("cached-assistant-1"),
+		MXID:     id.EventID("$cached-assistant-1"),
+		Room:     portal.PortalKey,
+		SenderID: modelUserID("openai/gpt-4.1"),
+		Metadata: &MessageMetadata{
+			BaseMessageMetadata: sdk.BaseMessageMetadata{
+				Role: "assistant",
+				Body: "Hi there",
+				CanonicalTurnData: sdk.TurnData{
+					ID:   "cached-turn-1",
+					Role: "assistant",
+					Parts: []sdk.TurnPart{{
+						Type: "text",
+						Text: "Hi there",
+					}},
+				}.ToMap(),
+			},
+		},
+		Timestamp: time.UnixMilli(2000),
+	}
+	if err := persistAIConversationMessage(ctx, portal, assistantMsg); err != nil {
+		t.Fatalf("persist assistant turn: %v", err)
+	}
+
+	cachedPortal := &bridgev2.Portal{
+		Portal: &database.Portal{
+			PortalKey: portal.PortalKey,
+			MXID:      portal.MXID,
+			Metadata:  portal.Metadata,
+		},
+		Bridge: client.UserLogin.Bridge,
+	}
+	setUnexportedField(client.UserLogin.Bridge, "portalsByKey", map[networkid.PortalKey]*bridgev2.Portal{
+		portal.PortalKey: cachedPortal,
+	})
+	setUnexportedField(client.UserLogin.Bridge, "portalsByMXID", map[id.RoomID]*bridgev2.Portal{
+		portal.MXID: cachedPortal,
+	})
+
+	promptContext, err := client.buildBaseContext(ctx, cachedPortal, portalMeta(cachedPortal))
+	if err != nil {
+		t.Fatalf("buildBaseContext with cached portal missing bridge id: %v", err)
+	}
+	if len(promptContext.Messages) != 2 {
+		t.Fatalf("expected 2 replayed messages, got %d", len(promptContext.Messages))
+	}
+	if promptContext.Messages[0].Role != PromptRoleUser || promptContext.Messages[0].Text() != "hello world" {
+		t.Fatalf("unexpected first replayed message: %#v", promptContext.Messages[0])
+	}
+	if promptContext.Messages[1].Role != PromptRoleAssistant || promptContext.Messages[1].Text() != "Hi there" {
+		t.Fatalf("unexpected second replayed message: %#v", promptContext.Messages[1])
+	}
+}
+
+func TestPortalScopeForPortal_UsesPersistedPortalBridgeID(t *testing.T) {
 	client := newDBBackedTestAIClient(t, ProviderOpenAI)
 	client.UserLogin.Client = client
 
 	portal := newTranscriptTestPortal(t, client, "portal-scope-strict")
 	portal.Bridge.DB.BridgeID = ""
 
-	if scope := portalScopeForPortal(portal); scope != nil {
-		t.Fatalf("expected nil portal scope when canonical bridge id is missing, got %#v", scope)
+	scope := portalScopeForPortal(portal)
+	if scope == nil {
+		t.Fatal("expected portal scope from persisted portal bridge id")
 	}
-	if err := saveAIPortalState(ctx, portal, portalMeta(portal)); err != nil {
-		t.Fatalf("strict portal state save should no-op without error, got %v", err)
+	if scope.bridgeID != string(portal.BridgeID) {
+		t.Fatalf("expected persisted portal bridge id %q, got %q", portal.BridgeID, scope.bridgeID)
 	}
 }
 
@@ -473,5 +555,155 @@ func TestAdvanceAIPortalContextEpoch_HidesPreviousHistory(t *testing.T) {
 	}
 	if len(turns) != 0 {
 		t.Fatalf("expected no replayable turns in new epoch, got %d", len(turns))
+	}
+}
+
+func TestWaitForAssistantTurnAfter_UsesCanonicalSequenceInsteadOfTimestamp(t *testing.T) {
+	ctx := context.Background()
+	client := newDBBackedTestAIClient(t, ProviderOpenAI)
+	client.UserLogin.Client = client
+
+	portal := newTranscriptTestPortal(t, client, "assistant-sequence-order")
+
+	first := &database.Message{
+		ID:       networkid.MessageID("assistant-seq-1"),
+		MXID:     id.EventID("$assistant-seq-1"),
+		Room:     portal.PortalKey,
+		SenderID: modelUserID("openai/gpt-4.1"),
+		Metadata: &MessageMetadata{
+			BaseMessageMetadata: sdk.BaseMessageMetadata{
+				Role: "assistant",
+				Body: "first",
+				CanonicalTurnData: sdk.TurnData{
+					ID:   "assistant-turn-1",
+					Role: "assistant",
+					Parts: []sdk.TurnPart{{
+						Type: "text",
+						Text: "first",
+					}},
+				}.ToMap(),
+			},
+		},
+		Timestamp: time.UnixMilli(2_000),
+	}
+	if err := persistAIConversationMessage(ctx, portal, first); err != nil {
+		t.Fatalf("persist first assistant turn: %v", err)
+	}
+
+	checkpoint := client.lastAssistantTurnCheckpoint(ctx, portal)
+	if checkpoint.TurnID != "assistant-turn-1" || checkpoint.Sequence == 0 {
+		t.Fatalf("unexpected checkpoint after first turn: %#v", checkpoint)
+	}
+
+	second := &database.Message{
+		ID:       networkid.MessageID("assistant-seq-2"),
+		MXID:     id.EventID("$assistant-seq-2"),
+		Room:     portal.PortalKey,
+		SenderID: modelUserID("openai/gpt-4.1"),
+		Metadata: &MessageMetadata{
+			BaseMessageMetadata: sdk.BaseMessageMetadata{
+				Role: "assistant",
+				Body: "second",
+				CanonicalTurnData: sdk.TurnData{
+					ID:   "assistant-turn-2",
+					Role: "assistant",
+					Parts: []sdk.TurnPart{{
+						Type: "text",
+						Text: "second",
+					}},
+				}.ToMap(),
+			},
+		},
+		// Intentionally earlier than the first turn. Canonical ordering must still
+		// follow turn sequence, not raw timestamps.
+		Timestamp: time.UnixMilli(1_000),
+	}
+	if err := persistAIConversationMessage(ctx, portal, second); err != nil {
+		t.Fatalf("persist second assistant turn: %v", err)
+	}
+
+	msg, found := client.waitForAssistantTurnAfter(ctx, portal, checkpoint)
+	if !found || msg == nil {
+		t.Fatal("expected to find assistant turn after checkpoint")
+	}
+	meta := messageMeta(msg)
+	if meta == nil || meta.Body != "second" {
+		t.Fatalf("expected second assistant turn, got %#v", meta)
+	}
+}
+
+func TestWaitForAssistantTurnAfter_AcceptsNewEpochWithResetSequence(t *testing.T) {
+	ctx := context.Background()
+	client := newDBBackedTestAIClient(t, ProviderOpenAI)
+	client.UserLogin.Client = client
+
+	portal := newTranscriptTestPortal(t, client, "assistant-epoch-order")
+
+	beforeReset := &database.Message{
+		ID:       networkid.MessageID("assistant-epoch-1"),
+		MXID:     id.EventID("$assistant-epoch-1"),
+		Room:     portal.PortalKey,
+		SenderID: modelUserID("openai/gpt-4.1"),
+		Metadata: &MessageMetadata{
+			BaseMessageMetadata: sdk.BaseMessageMetadata{
+				Role: "assistant",
+				Body: "before reset",
+				CanonicalTurnData: sdk.TurnData{
+					ID:   "assistant-epoch-turn-1",
+					Role: "assistant",
+					Parts: []sdk.TurnPart{{
+						Type: "text",
+						Text: "before reset",
+					}},
+				}.ToMap(),
+			},
+		},
+		Timestamp: time.UnixMilli(5_000),
+	}
+	if err := persistAIConversationMessage(ctx, portal, beforeReset); err != nil {
+		t.Fatalf("persist assistant turn before reset: %v", err)
+	}
+
+	checkpoint := client.lastAssistantTurnCheckpoint(ctx, portal)
+	if checkpoint.ContextEpoch != 0 || checkpoint.Sequence == 0 {
+		t.Fatalf("unexpected checkpoint before reset: %#v", checkpoint)
+	}
+
+	if err := advanceAIPortalContextEpoch(ctx, portal); err != nil {
+		t.Fatalf("advance context epoch: %v", err)
+	}
+
+	afterReset := &database.Message{
+		ID:       networkid.MessageID("assistant-epoch-2"),
+		MXID:     id.EventID("$assistant-epoch-2"),
+		Room:     portal.PortalKey,
+		SenderID: modelUserID("openai/gpt-4.1"),
+		Metadata: &MessageMetadata{
+			BaseMessageMetadata: sdk.BaseMessageMetadata{
+				Role: "assistant",
+				Body: "after reset",
+				CanonicalTurnData: sdk.TurnData{
+					ID:   "assistant-epoch-turn-2",
+					Role: "assistant",
+					Parts: []sdk.TurnPart{{
+						Type: "text",
+						Text: "after reset",
+					}},
+				}.ToMap(),
+			},
+		},
+		Timestamp: time.UnixMilli(1_000),
+	}
+	if err := persistAIConversationMessage(ctx, portal, afterReset); err != nil {
+		t.Fatalf("persist assistant turn after reset: %v", err)
+	}
+
+	msg, found := client.waitForAssistantTurnAfter(ctx, portal, checkpoint)
+	if !found || msg == nil {
+		t.Fatal("expected to find assistant turn in newer context epoch")
+	}
+	meta := messageMeta(msg)
+	if meta == nil || meta.Body != "after reset" {
+		t.Fatalf("expected post-reset assistant turn, got %#v", meta)
 	}
 }

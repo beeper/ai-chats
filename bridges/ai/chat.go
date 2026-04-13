@@ -1184,7 +1184,7 @@ func (oc *AIClient) listAllChatPortals(ctx context.Context) ([]*bridgev2.Portal,
 		SELECT portal_id
 		FROM `+aiPortalStateTable+`
 		WHERE bridge_id=$1 AND portal_receiver=$2
-	`, string(oc.UserLogin.Bridge.DB.BridgeID), string(oc.UserLogin.ID))
+	`, canonicalLoginBridgeID(oc.UserLogin), canonicalLoginID(oc.UserLogin))
 	if err != nil {
 		return nil, err
 	}

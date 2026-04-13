@@ -23,8 +23,8 @@ func (oc *AIClient) buildBootstrapContextFiles(ctx context.Context, agentID stri
 	}
 	store := textfs.NewStore(
 		db,
-		string(oc.UserLogin.Bridge.DB.BridgeID),
-		string(oc.UserLogin.ID),
+		canonicalLoginBridgeID(oc.UserLogin),
+		canonicalLoginID(oc.UserLogin),
 		agentID,
 	)
 

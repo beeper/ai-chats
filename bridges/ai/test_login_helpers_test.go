@@ -84,6 +84,7 @@ func setUnexportedField(target any, field string, value any) {
 
 func newTestAIClientWithProvider(provider string) *AIClient {
 	login := &database.UserLogin{
+		BridgeID: networkid.BridgeID("bridge"),
 		ID:       networkid.UserLoginID("login"),
 		Metadata: &UserLoginMetadata{Provider: provider},
 	}
@@ -127,12 +128,13 @@ func newDBBackedTestAIClient(t *testing.T, provider string) *AIClient {
 	}
 
 	login := &database.UserLogin{
+		BridgeID: bridgeDB.BridgeID,
 		ID:       networkid.UserLoginID("login"),
 		Metadata: &UserLoginMetadata{Provider: provider},
 	}
 	userLogin := &bridgev2.UserLogin{
 		UserLogin: login,
-		Bridge:    &bridgev2.Bridge{DB: bridgeDB, Config: &bridgeconfig.BridgeConfig{}, Log: zerolog.Nop(), Matrix: &testMatrixConnector{}},
+		Bridge:    &bridgev2.Bridge{ID: bridgeDB.BridgeID, DB: bridgeDB, Config: &bridgeconfig.BridgeConfig{}, Log: zerolog.Nop(), Matrix: &testMatrixConnector{}},
 		Log:       zerolog.Nop(),
 	}
 	setUnexportedField(userLogin.Bridge, "ghostsByID", map[networkid.UserID]*bridgev2.Ghost{})
@@ -145,6 +147,47 @@ func newDBBackedTestAIClient(t *testing.T, provider string) *AIClient {
 		connector: &OpenAIConnector{},
 		log:       zerolog.Nop(),
 	}
+}
+
+func newDBBackedLoginHarness(t *testing.T) (*OpenAIConnector, *bridgev2.Bridge, *bridgev2.User) {
+	t.Helper()
+
+	raw, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	raw.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = raw.Close() })
+
+	baseDB, err := dbutil.NewWithDB(raw, "sqlite3")
+	if err != nil {
+		t.Fatalf("wrap sqlite db: %v", err)
+	}
+
+	connector := NewAIConnector()
+	bridge := bridgev2.NewBridge(
+		networkid.BridgeID("bridge"),
+		baseDB,
+		zerolog.Nop(),
+		&bridgeconfig.BridgeConfig{},
+		&testMatrixConnector{},
+		connector,
+		func(*bridgev2.Bridge) bridgev2.CommandProcessor { return nil },
+	)
+	bridge.BackgroundCtx = context.Background()
+
+	if err = bridge.DB.Upgrade(context.Background()); err != nil {
+		t.Fatalf("upgrade bridge db: %v", err)
+	}
+	if err = aidb.EnsureSchema(context.Background(), aidb.NewChild(bridge.DB.Database, dbutil.NoopLogger)); err != nil {
+		t.Fatalf("ensure ai schema: %v", err)
+	}
+
+	user, err := bridge.GetUserByMXID(context.Background(), id.UserID("@alice:example.com"))
+	if err != nil {
+		t.Fatalf("get user by mxid: %v", err)
+	}
+	return connector, bridge, user
 }
 
 func setTestLoginConfig(client *AIClient, cfg *aiLoginConfig) {

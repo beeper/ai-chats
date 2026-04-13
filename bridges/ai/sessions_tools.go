@@ -393,7 +393,7 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 		}), nil
 	}
 
-	lastAssistantID, lastAssistantTimestamp := oc.lastAssistantMessageInfo(ctx, targetPortal)
+	lastAssistantCheckpoint := oc.lastAssistantTurnCheckpoint(ctx, targetPortal)
 	if dispatchEventID, _, dispatchErr := oc.dispatchInternalMessage(ctx, targetPortal, portalMeta(targetPortal), message, "sessions-send", false); dispatchErr != nil {
 		status := "error"
 		if isForbiddenSessionSendError(dispatchErr.Error()) {
@@ -427,7 +427,7 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 	timeout := time.Duration(timeoutSeconds) * time.Second
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		assistantMsg, found := oc.waitForNewAssistantMessage(ctx, targetPortal, lastAssistantID, lastAssistantTimestamp)
+		assistantMsg, found := oc.waitForAssistantTurnAfter(ctx, targetPortal, lastAssistantCheckpoint)
 		if found {
 			reply := ""
 			if assistantMsg != nil {

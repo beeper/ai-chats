@@ -59,10 +59,15 @@ type heartbeatEventPersister struct {
 }
 
 func heartbeatLoginKey(login *bridgev2.UserLogin) string {
-	if login == nil || login.Bridge == nil || login.Bridge.DB == nil {
+	if login == nil {
 		return ""
 	}
-	return string(login.Bridge.DB.BridgeID) + "|" + string(login.ID)
+	bridgeID := canonicalLoginBridgeID(login)
+	loginID := canonicalLoginID(login)
+	if bridgeID == "" || loginID == "" {
+		return ""
+	}
+	return bridgeID + "|" + loginID
 }
 
 func (p *heartbeatEventPersister) offer(evt *HeartbeatEventPayload) {

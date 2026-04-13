@@ -332,12 +332,12 @@ func (s *schedulerRuntime) executeCronJob(ctx context.Context, record *scheduled
 	if record.Job.Payload.AllowUnsafeExternal == nil || !*record.Job.Payload.AllowUnsafeExternal {
 		message = integrationcron.WrapSafeExternalPrompt(message)
 	}
-	lastID, lastTS := s.client.lastAssistantMessageInfo(runCtx, portal)
+	lastCheckpoint := s.client.lastAssistantTurnCheckpoint(runCtx, portal)
 	if _, _, err := s.client.dispatchInternalMessage(runCtx, portal, meta, message, defaultScheduleEventSource, false); err != nil {
 		return "error", err.Error(), ""
 	}
 
-	msg, found := s.client.waitForNewAssistantMessage(runCtx, portal, lastID, lastTS)
+	msg, found := s.client.waitForAssistantTurnAfter(runCtx, portal, lastCheckpoint)
 	if !found || msg == nil {
 		return "error", "timed out waiting for cron response", ""
 	}

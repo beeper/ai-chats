@@ -256,10 +256,15 @@ func drainHeartbeatSystemEvents(ownerKey string, primaryKey string, secondaryKey
 }
 
 func systemEventsOwnerKey(oc *AIClient) string {
-	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil {
+	if oc == nil {
 		return ""
 	}
-	return string(oc.UserLogin.Bridge.DB.BridgeID) + "|" + string(oc.UserLogin.ID)
+	bridgeID := canonicalLoginBridgeID(oc.UserLogin)
+	loginID := canonicalLoginID(oc.UserLogin)
+	if bridgeID == "" || loginID == "" {
+		return ""
+	}
+	return bridgeID + "|" + loginID
 }
 
 func (oc *AIClient) resolveHeartbeatSessionPortal(agentID string, heartbeat *HeartbeatConfig, preResolved ...heartbeatSessionResolution) (*bridgev2.Portal, string, error) {
@@ -332,7 +337,12 @@ func (oc *AIClient) shouldRunHeartbeatForFile(agentID string, reason string) boo
 	if db == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil {
 		return true
 	}
-	store := textfs.NewStore(db, string(oc.UserLogin.Bridge.DB.BridgeID), string(oc.UserLogin.ID), normalizeAgentID(agentID))
+	bridgeID := canonicalLoginBridgeID(oc.UserLogin)
+	loginID := canonicalLoginID(oc.UserLogin)
+	if bridgeID == "" || loginID == "" {
+		return true
+	}
+	store := textfs.NewStore(db, bridgeID, loginID, normalizeAgentID(agentID))
 	entry, found, err := store.Read(context.Background(), agents.DefaultHeartbeatFilename)
 	if err != nil || !found {
 		return true

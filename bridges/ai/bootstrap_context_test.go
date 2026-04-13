@@ -50,8 +50,8 @@ func setupBootstrapDB(t *testing.T) *database.Database {
 func TestBuildBootstrapContextFiles(t *testing.T) {
 	ctx := context.Background()
 	db := setupBootstrapDB(t)
-	bridge := &bridgev2.Bridge{DB: db}
-	login := &database.UserLogin{ID: networkid.UserLoginID("login")}
+	bridge := &bridgev2.Bridge{ID: db.BridgeID, DB: db}
+	login := &database.UserLogin{BridgeID: db.BridgeID, ID: networkid.UserLoginID("login")}
 	userLogin := &bridgev2.UserLogin{UserLogin: login, Bridge: bridge, Log: zerolog.Nop()}
 	oc := &AIClient{
 		UserLogin: userLogin,
@@ -93,8 +93,8 @@ func TestBootstrapFileIsOptionalAndAutoDeleted(t *testing.T) {
 	agentID := "beeper"
 	store := textfs.NewStore(
 		oc.UserLogin.Bridge.DB.Database,
-		string(oc.UserLogin.Bridge.DB.BridgeID),
-		string(oc.UserLogin.ID),
+		canonicalLoginBridgeID(oc.UserLogin),
+		canonicalLoginID(oc.UserLogin),
 		agentID,
 	)
 

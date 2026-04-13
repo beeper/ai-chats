@@ -26,6 +26,12 @@ type runtimeIntegrationHost struct {
 	client *AIClient
 }
 
+type assistantTurnCheckpoint struct {
+	TurnID       string
+	ContextEpoch int64
+	Sequence     int64
+}
+
 func newRuntimeIntegrationHost(client *AIClient) *runtimeIntegrationHost {
 	return &runtimeIntegrationHost{client: client}
 }
@@ -255,18 +261,18 @@ func summarizeMessages(history []*database.Message) []integrationruntime.Message
 	return out
 }
 
-func (h *runtimeIntegrationHost) LastAssistantMessage(ctx context.Context, portal *bridgev2.Portal) (id string, timestamp int64) {
+func (h *runtimeIntegrationHost) LastAssistantTurnCheckpoint(ctx context.Context, portal *bridgev2.Portal) assistantTurnCheckpoint {
 	if h == nil || h.client == nil {
-		return "", 0
+		return assistantTurnCheckpoint{}
 	}
-	return h.client.lastAssistantMessageInfo(ctx, portal)
+	return h.client.lastAssistantTurnCheckpoint(ctx, portal)
 }
 
-func (h *runtimeIntegrationHost) WaitForAssistantMessage(ctx context.Context, portal *bridgev2.Portal, afterID string, afterTS int64) (*integrationruntime.AssistantMessageInfo, bool) {
+func (h *runtimeIntegrationHost) WaitForAssistantTurnAfter(ctx context.Context, portal *bridgev2.Portal, after assistantTurnCheckpoint) (*integrationruntime.AssistantMessageInfo, bool) {
 	if h == nil || h.client == nil {
 		return nil, false
 	}
-	msg, found := h.client.waitForNewAssistantMessage(ctx, portal, afterID, afterTS)
+	msg, found := h.client.waitForAssistantTurnAfter(ctx, portal, after)
 	if !found || msg == nil {
 		return nil, false
 	}
@@ -839,10 +845,10 @@ func (h *runtimeIntegrationHost) ResolveWorkspaceDir() string {
 }
 
 func (h *runtimeIntegrationHost) BridgeID() string {
-	if h == nil || h.client == nil || h.client.UserLogin == nil || h.client.UserLogin.Bridge == nil || h.client.UserLogin.Bridge.DB == nil {
+	if h == nil || h.client == nil {
 		return ""
 	}
-	return string(h.client.UserLogin.Bridge.DB.BridgeID)
+	return canonicalLoginBridgeID(h.client.UserLogin)
 }
 
 func (h *runtimeIntegrationHost) LoginID() string {
@@ -882,68 +888,78 @@ func (h *runtimeIntegrationHost) Error(msg string, fields map[string]any) {
 
 // ---- AIClient message helpers (called from sessions_tools.go) ----
 
-func (oc *AIClient) lastAssistantMessageInfo(ctx context.Context, portal *bridgev2.Portal) (string, int64) {
-	if portal == nil || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil {
-		return "", 0
+func assistantCheckpointFromTurn(row *aiTurnRecord) assistantTurnCheckpoint {
+	if row == nil {
+		return assistantTurnCheckpoint{}
 	}
-	messages, err := oc.getAIHistoryMessages(ctx, portal, 20)
-	if err != nil {
-		return "", 0
+	return assistantTurnCheckpoint{
+		TurnID:       row.TurnID,
+		ContextEpoch: row.ContextEpoch,
+		Sequence:     row.Sequence,
 	}
-	bestID := ""
-	bestTS := int64(0)
-	for _, msg := range messages {
-		if msg == nil {
-			continue
-		}
-		meta := messageMeta(msg)
-		if meta == nil || meta.Role != "assistant" {
-			continue
-		}
-		ts := msg.Timestamp.UnixMilli()
-		if bestID == "" || ts > bestTS {
-			bestID = msg.MXID.String()
-			bestTS = ts
-		}
-	}
-	return bestID, bestTS
 }
 
-func (oc *AIClient) waitForNewAssistantMessage(ctx context.Context, portal *bridgev2.Portal, lastID string, lastTimestamp int64) (*database.Message, bool) {
+func assistantTurnIsAfter(row *aiTurnRecord, after assistantTurnCheckpoint) bool {
+	if row == nil {
+		return false
+	}
+	if after.TurnID == "" && after.ContextEpoch == 0 && after.Sequence == 0 {
+		return true
+	}
+	if row.ContextEpoch != after.ContextEpoch {
+		return row.ContextEpoch > after.ContextEpoch
+	}
+	if row.Sequence != after.Sequence {
+		return row.Sequence > after.Sequence
+	}
+	return row.TurnID != after.TurnID
+}
+
+func (oc *AIClient) latestAssistantTurnRecord(ctx context.Context, portal *bridgev2.Portal) (*aiTurnRecord, error) {
+	if portal == nil || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil {
+		return nil, nil
+	}
+	scope, err := portalScopeForAIDB(ctx, portal)
+	if err != nil || scope == nil {
+		return nil, err
+	}
+	record, err := ensurePortalTurnStateByScope(ctx, scope)
+	if err != nil || record == nil {
+		return nil, err
+	}
+	rows, err := queryAITurnRows(ctx, scope, aiTurnQuery{
+		contextEpoch:    record.ContextEpoch,
+		hasContextEpoch: true,
+		kind:            aiTurnKindConversation,
+		roles:           []string{"assistant"},
+		limit:           1,
+	})
+	if err != nil || len(rows) == 0 {
+		return nil, err
+	}
+	return rows[0], nil
+}
+
+func (oc *AIClient) lastAssistantTurnCheckpoint(ctx context.Context, portal *bridgev2.Portal) assistantTurnCheckpoint {
+	row, err := oc.latestAssistantTurnRecord(ctx, portal)
+	if err != nil {
+		return assistantTurnCheckpoint{}
+	}
+	return assistantCheckpointFromTurn(row)
+}
+
+func (oc *AIClient) waitForAssistantTurnAfter(ctx context.Context, portal *bridgev2.Portal, after assistantTurnCheckpoint) (*database.Message, bool) {
 	if portal == nil || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil {
 		return nil, false
 	}
-	messages, err := oc.getAIHistoryMessages(ctx, portal, 20)
+	row, err := oc.latestAssistantTurnRecord(ctx, portal)
 	if err != nil {
 		return nil, false
 	}
-	var candidate *database.Message
-	candidateTS := lastTimestamp
-	for _, msg := range messages {
-		if msg == nil {
-			continue
-		}
-		meta := messageMeta(msg)
-		if meta == nil || meta.Role != "assistant" {
-			continue
-		}
-		idStr := msg.MXID.String()
-		ts := msg.Timestamp.UnixMilli()
-		if ts < lastTimestamp {
-			continue
-		}
-		if ts == lastTimestamp && idStr == lastID {
-			continue
-		}
-		if candidate == nil || ts > candidateTS {
-			candidate = msg
-			candidateTS = ts
-		}
-	}
-	if candidate == nil {
+	if !assistantTurnIsAfter(row, after) {
 		return nil, false
 	}
-	return candidate, true
+	return databaseMessageFromAITurn(portal, row), true
 }
 
 // ---- Helpers ----
@@ -958,8 +974,8 @@ func textStoreForAgent(client *AIClient, agentID string) *textfs.Store {
 	}
 	return textfs.NewStore(
 		db,
-		string(client.UserLogin.Bridge.DB.BridgeID),
-		string(client.UserLogin.ID),
+		canonicalLoginBridgeID(client.UserLogin),
+		canonicalLoginID(client.UserLogin),
 		agentID,
 	)
 }

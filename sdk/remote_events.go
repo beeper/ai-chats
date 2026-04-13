@@ -66,7 +66,7 @@ func (e *RemoteEdit) GetStreamOrder() int64 {
 	if e.StreamOrder != 0 {
 		return e.StreamOrder
 	}
-	return e.GetTimestamp().UnixMilli()
+	return ResolveEventTiming(e.GetTimestamp(), 0).StreamOrder
 }
 
 func (e *RemoteEdit) ConvertEdit(_ context.Context, _ *bridgev2.Portal, _ bridgev2.MatrixAPI, existing []*database.Message) (*bridgev2.ConvertedEdit, error) {

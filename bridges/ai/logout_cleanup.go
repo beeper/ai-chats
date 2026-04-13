@@ -3,7 +3,6 @@ package ai
 import (
 	"context"
 	"errors"
-	"strings"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/dbutil"
@@ -21,9 +20,9 @@ func purgeLoginData(ctx context.Context, login *bridgev2.UserLogin) {
 	if login == nil || login.Bridge == nil || login.Bridge.DB == nil {
 		return
 	}
-	bridgeID := string(login.Bridge.DB.BridgeID)
-	loginID := string(login.ID)
-	if strings.TrimSpace(bridgeID) == "" || strings.TrimSpace(loginID) == "" {
+	bridgeID := canonicalLoginBridgeID(login)
+	loginID := canonicalLoginID(login)
+	if bridgeID == "" || loginID == "" {
 		return
 	}
 

@@ -249,7 +249,14 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 		ID:         loginID,
 		RemoteName: remoteName,
 		Metadata:   meta,
-	}, nil)
+	}, &bridgev2.NewLoginParams{
+		LoadUserLogin: func(loadCtx context.Context, login *bridgev2.UserLogin) error {
+			if ol.Connector == nil {
+				return nil
+			}
+			return ol.Connector.loadAIUserLoginWithConfig(loadCtx, login, meta, cfg)
+		},
+	})
 	if err != nil {
 		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to create login: %w", err), http.StatusInternalServerError, "AI", "CREATE_LOGIN_FAILED")
 	}
@@ -259,15 +266,6 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 			BlockingCleanup:  true,
 		})
 		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to persist login config: %w", err), http.StatusInternalServerError, "AI", "SAVE_LOGIN_FAILED")
-	}
-	if ol.Connector != nil {
-		if err = ol.Connector.loadAIUserLogin(ctx, login, meta); err != nil {
-			login.Delete(ctx, status.BridgeState{}, bridgev2.DeleteOpts{
-				DontCleanupRooms: true,
-				BlockingCleanup:  true,
-			})
-			return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to initialize login after save: %w", err), http.StatusInternalServerError, "AI", "LOAD_SAVED_LOGIN_FAILED")
-		}
 	}
 
 	// Trigger connection in background with a long-lived context

@@ -100,6 +100,19 @@ func (oc *OpenAIConnector) loadAIUserLogin(ctx context.Context, login *bridgev2.
 	if err != nil {
 		return err
 	}
+	return oc.loadAIUserLoginWithConfig(ctx, login, meta, cfg)
+}
+
+func (oc *OpenAIConnector) loadAIUserLoginWithConfig(ctx context.Context, login *bridgev2.UserLogin, meta *UserLoginMetadata, cfg *aiLoginConfig) error {
+	if login == nil {
+		return nil
+	}
+	if meta == nil {
+		meta = loginMetadata(login)
+	}
+	if cfg == nil {
+		cfg = &aiLoginConfig{}
+	}
 	key := strings.TrimSpace(oc.resolveProviderAPIKeyForConfig(meta.Provider, cfg))
 	cachedAPI, existing := oc.lookupCachedAIClient(login.ID)
 	if key == "" {

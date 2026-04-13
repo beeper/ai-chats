@@ -162,7 +162,7 @@ func upsertAITurn(ctx context.Context, portal *bridgev2.Portal, entry aiTurnUpse
 		return err
 	}
 	if scope == nil {
-		return nil
+		return fmt.Errorf("ai turn scope unavailable for portal %s", portal.PortalKey)
 	}
 	role := strings.TrimSpace(entry.TurnData.Role)
 	if role == "" && entry.Metadata != nil {
@@ -435,8 +435,11 @@ func loadAIPromptHistoryTurns(
 	if err != nil {
 		return nil, err
 	}
-	if scope == nil || limit <= 0 {
+	if limit <= 0 {
 		return nil, nil
+	}
+	if scope == nil {
+		return nil, fmt.Errorf("ai history scope unavailable for portal %s", portal.PortalKey)
 	}
 	record, err := ensurePortalTurnStateByScope(ctx, scope)
 	if err != nil || record == nil {
@@ -502,8 +505,12 @@ func (oc *AIClient) getAIHistoryMessages(ctx context.Context, portal *bridgev2.P
 		return nil, err
 	}
 	if scope == nil {
-		log.Debug().Msg("Skipping AI history load because portal scope is nil")
-		return nil, nil
+		err = fmt.Errorf("ai history scope unavailable for portal %s", portal.PortalKey)
+		log.Warn().
+			Err(err).
+			Str("portal_bridge_id", string(portal.BridgeID)).
+			Msg("Canonical AI history scope is unavailable")
+		return nil, err
 	}
 	record, err := ensurePortalTurnStateByScope(ctx, scope)
 	if err != nil || record == nil {

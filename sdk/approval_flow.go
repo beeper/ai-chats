@@ -1588,11 +1588,13 @@ func (f *ApprovalFlow[D]) editPromptToResolvedState(
 			TopLevelExtra: response.TopLevelExtra,
 		}},
 	}
+	timing := ResolveEventTiming(time.Now(), 0)
 	ac.login.QueueRemoteEvent(&RemoteEdit{
 		Portal:        ac.portal.PortalKey,
 		Sender:        ac.sender,
 		TargetMessage: targetMessage,
-		Timestamp:     time.Now(),
+		Timestamp:     timing.Timestamp,
+		StreamOrder:   timing.StreamOrder,
 		PreBuilt:      edit,
 		LogKey:        f.logKey,
 	})

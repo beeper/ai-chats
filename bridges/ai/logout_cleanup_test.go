@@ -14,8 +14,8 @@ func TestPurgeLoginData_RemovesRunKeyTables(t *testing.T) {
 	if db == nil {
 		t.Fatalf("expected bridge db")
 	}
-	bridgeID := string(client.UserLogin.Bridge.DB.BridgeID)
-	loginID := string(client.UserLogin.ID)
+	bridgeID := canonicalLoginBridgeID(client.UserLogin)
+	loginID := canonicalLoginID(client.UserLogin)
 
 	if _, err := db.Exec(ctx, `INSERT INTO `+aiCronJobRunKeysTable+` (bridge_id, login_id, job_id, run_index, run_key) VALUES ($1, $2, $3, $4, $5)`,
 		bridgeID, loginID, "job-1", 1, "run-1",

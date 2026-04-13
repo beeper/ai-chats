@@ -931,9 +931,9 @@ func (oc *AIClient) Disconnect() {
 	oc.stopLifecycleIntegrations()
 	// Stop all login-scoped integration workers for this login.
 	if oc.UserLogin != nil && oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.DB != nil {
-		bridgeID := string(oc.UserLogin.Bridge.DB.BridgeID)
-		loginID := string(oc.UserLogin.ID)
-		oc.stopLoginLifecycleIntegrations(bridgeID, loginID)
+		if bridgeID, loginID := canonicalLoginBridgeID(oc.UserLogin), canonicalLoginID(oc.UserLogin); bridgeID != "" && loginID != "" {
+			oc.stopLoginLifecycleIntegrations(bridgeID, loginID)
+		}
 	}
 
 	// Clean up per-room maps to prevent unbounded growth

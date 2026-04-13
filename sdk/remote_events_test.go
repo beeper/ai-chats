@@ -35,3 +35,12 @@ func TestRemoteEditGetStreamOrderUsesExplicitValue(t *testing.T) {
 		t.Fatalf("expected explicit stream order 84, got %d", got)
 	}
 }
+
+func TestRemoteEditGetStreamOrderUsesCanonicalFallback(t *testing.T) {
+	edit := &RemoteEdit{
+		Timestamp: time.UnixMilli(1_000),
+	}
+	if got := edit.GetStreamOrder(); got != 1_000_000 {
+		t.Fatalf("expected canonical fallback stream order 1000000, got %d", got)
+	}
+}

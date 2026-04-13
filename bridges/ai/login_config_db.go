@@ -92,7 +92,9 @@ func cloneAILoginConfig(src *aiLoginConfig) *aiLoginConfig {
 
 func loadAILoginConfig(ctx context.Context, login *bridgev2.UserLogin) (*aiLoginConfig, error) {
 	db := bridgeDBFromLogin(login)
-	if db == nil || login == nil || login.Bridge == nil || login.Bridge.DB == nil {
+	bridgeID := canonicalLoginBridgeID(login)
+	loginID := canonicalLoginID(login)
+	if db == nil || bridgeID == "" || loginID == "" {
 		return &aiLoginConfig{}, nil
 	}
 	var raw string
@@ -100,7 +102,7 @@ func loadAILoginConfig(ctx context.Context, login *bridgev2.UserLogin) (*aiLogin
 		SELECT config_json
 		FROM `+aiLoginConfigTable+`
 	WHERE bridge_id=$1 AND login_id=$2
-	`, string(login.Bridge.DB.BridgeID), string(login.ID)).Scan(&raw)
+	`, bridgeID, loginID).Scan(&raw)
 	if err == sql.ErrNoRows || raw == "" {
 		return &aiLoginConfig{}, nil
 	}
@@ -119,7 +121,9 @@ func saveAILoginConfig(ctx context.Context, login *bridgev2.UserLogin, cfg *aiLo
 		return nil
 	}
 	db := bridgeDBFromLogin(login)
-	if db != nil && login.Bridge != nil && login.Bridge.DB != nil {
+	bridgeID := canonicalLoginBridgeID(login)
+	loginID := canonicalLoginID(login)
+	if db != nil && bridgeID != "" && loginID != "" {
 		payload, err := json.Marshal(cfg)
 		if err != nil {
 			return err
@@ -130,7 +134,7 @@ func saveAILoginConfig(ctx context.Context, login *bridgev2.UserLogin, cfg *aiLo
 			ON CONFLICT (bridge_id, login_id) DO UPDATE SET
 				config_json=excluded.config_json,
 				updated_at_ms=excluded.updated_at_ms
-		`, string(login.Bridge.DB.BridgeID), string(login.ID), string(payload), time.Now().UnixMilli()); err != nil {
+		`, bridgeID, loginID, string(payload), time.Now().UnixMilli()); err != nil {
 			return err
 		}
 	}
