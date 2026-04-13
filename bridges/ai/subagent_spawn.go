@@ -330,7 +330,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 			"error":  err.Error(),
 		}), nil
 	}
-	if err := persistAIInternalPromptTurn(ctx, childPortal, eventID, promptContext, false, "subagent", time.Now()); err != nil {
+	if err := oc.persistAIInternalPromptTurn(ctx, childPortal, eventID, promptContext, false, "subagent", time.Now()); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist subagent task prompt")
 	}
 

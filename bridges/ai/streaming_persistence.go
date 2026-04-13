@@ -157,7 +157,7 @@ func (oc *AIClient) saveAssistantMessage(
 				turnMsg.Timestamp = time.Now()
 			}
 		}
-		if err := persistAIConversationMessage(ctx, portal, turnMsg); err != nil {
+		if err := oc.persistAIConversationMessage(ctx, portal, turnMsg); err != nil {
 			log.Warn().Err(err).Str("msg_id", string(messageID)).Msg("Failed to persist assistant turn")
 		}
 	}

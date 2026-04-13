@@ -655,7 +655,7 @@ func (oc *AIClient) saveUserMessage(ctx context.Context, evt *event.Event, msg *
 		Str("resolved_portal_receiver", string(portal.PortalKey.Receiver)).
 		Str("resolved_portal_mxid", portal.MXID.String()).
 		Msg("Resolved portal for AI turn persistence")
-	if err := persistAIConversationMessage(ctx, portal, msg); err != nil {
+	if err := oc.persistAIConversationMessage(ctx, portal, msg); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist AI conversation turn")
 	}
 }
@@ -931,7 +931,7 @@ func (oc *AIClient) Disconnect() {
 	oc.stopLifecycleIntegrations()
 	// Stop all login-scoped integration workers for this login.
 	if oc.UserLogin != nil && oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.DB != nil {
-		if bridgeID, loginID := canonicalLoginBridgeID(oc.UserLogin), canonicalLoginID(oc.UserLogin); bridgeID != "" && loginID != "" {
+		if bridgeID, loginID := canonicalLoginBridgeID(oc.UserLogin), canonicalLoginID(oc.UserLogin); loginID != "" {
 			oc.stopLoginLifecycleIntegrations(bridgeID, loginID)
 		}
 	}
@@ -1733,7 +1733,7 @@ func (oc *AIClient) updateAssistantGeneratedFiles(ctx context.Context, portal *b
 			continue
 		}
 		// Found the most recent assistant message with tool calls; update the canonical conversation turn.
-		transcriptMsg, stateErr := loadAIConversationMessage(ctx, portal, msg.ID, msg.MXID)
+		transcriptMsg, stateErr := oc.loadAIConversationMessage(ctx, portal, msg.ID, msg.MXID)
 		if stateErr != nil {
 			oc.Log().Warn().Err(stateErr).Str("msg_id", string(msg.ID)).Msg("Failed to load assistant conversation turn")
 			return
@@ -1747,7 +1747,7 @@ func (oc *AIClient) updateAssistantGeneratedFiles(ctx context.Context, portal *b
 			transcriptMsg.Metadata = transcriptMeta
 		}
 		transcriptMeta.GeneratedFiles = append(append([]GeneratedFileRef(nil), transcriptMeta.GeneratedFiles...), refs...)
-		if err := persistAIConversationMessage(ctx, portal, transcriptMsg); err != nil {
+		if err := oc.persistAIConversationMessage(ctx, portal, transcriptMsg); err != nil {
 			oc.Log().Warn().Err(err).Str("msg_id", string(msg.ID)).Msg("Failed to persist assistant conversation GeneratedFiles")
 		} else {
 			oc.Log().Debug().Str("msg_id", string(msg.ID)).Int("files", len(refs)).Msg("Updated assistant conversation GeneratedFiles")

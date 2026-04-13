@@ -89,11 +89,29 @@ func bridgeDBFromPortal(portal *bridgev2.Portal) *dbutil.Database {
 	return newBridgeChildDB(portal.Bridge.DB.Database, portal.Bridge.Log)
 }
 
-func canonicalLoginBridgeID(login *bridgev2.UserLogin) string {
-	if login == nil || login.UserLogin == nil {
+func canonicalBridgeDBID(bridge *bridgev2.Bridge) string {
+	if bridge == nil || bridge.DB == nil {
 		return ""
 	}
-	return strings.TrimSpace(string(login.UserLogin.BridgeID))
+	return strings.TrimSpace(string(bridge.DB.BridgeID))
+}
+
+func canonicalLoginBridgeID(login *bridgev2.UserLogin) string {
+	if login == nil {
+		return ""
+	}
+	if login.UserLogin != nil {
+		if bridgeID := strings.TrimSpace(string(login.UserLogin.BridgeID)); bridgeID != "" {
+			return bridgeID
+		}
+	}
+	if bridgeID := canonicalBridgeDBID(login.Bridge); bridgeID != "" {
+		return bridgeID
+	}
+	if login.Bridge != nil {
+		return strings.TrimSpace(string(login.Bridge.ID))
+	}
+	return ""
 }
 
 func canonicalLoginID(login *bridgev2.UserLogin) string {
@@ -106,6 +124,9 @@ func canonicalLoginID(login *bridgev2.UserLogin) string {
 func canonicalPortalBridgeID(portal *bridgev2.Portal) string {
 	if portal == nil {
 		return ""
+	}
+	if bridgeID := canonicalBridgeDBID(portal.Bridge); bridgeID != "" {
+		return bridgeID
 	}
 	if portal.Portal != nil {
 		if bridgeID := strings.TrimSpace(string(portal.Portal.BridgeID)); bridgeID != "" {
@@ -145,6 +166,15 @@ func canonicalPortalForAIDB(ctx context.Context, portal *bridgev2.Portal) (*brid
 	if err != nil {
 		return nil, err
 	}
+	if resolved != nil && portalScopeForPortal(resolved) == nil && portal.Bridge != nil {
+		resolved.Bridge = portal.Bridge
+		if scope := portalScopeForPortal(resolved); scope != nil {
+			return resolved, nil
+		}
+	}
+	if scope := portalScopeForPortal(portal); scope != nil {
+		return portal, nil
+	}
 	return resolved, nil
 }
 
@@ -156,14 +186,86 @@ func portalScopeForAIDB(ctx context.Context, portal *bridgev2.Portal) (*portalSc
 	return portalScopeForPortal(canonicalPortal), nil
 }
 
+func (oc *AIClient) canonicalPortalForClientAIDB(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.Portal, error) {
+	if portal == nil {
+		return nil, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
+		return canonicalPortalForAIDB(ctx, portal)
+	}
+
+	bridge := oc.UserLogin.Bridge
+	if scope := portalScopeForPortal(portal); scope != nil {
+		return portal, nil
+	}
+	if bridge.DB != nil {
+		dbPortal, err := bridge.DB.Portal.GetByKey(ctx, portal.PortalKey)
+		if err != nil {
+			return nil, err
+		}
+		if dbPortal != nil {
+			return &bridgev2.Portal{
+				Bridge: bridge,
+				Portal: dbPortal,
+			}, nil
+		}
+	}
+	resolved, err := bridge.GetPortalByKey(ctx, portal.PortalKey)
+	if err != nil {
+		return nil, err
+	}
+	if scope := portalScopeForPortal(resolved); scope != nil {
+		return resolved, nil
+	}
+	if resolved != nil {
+		resolved.Bridge = bridge
+		if scope := portalScopeForPortal(resolved); scope != nil {
+			return resolved, nil
+		}
+	}
+	portal.Bridge = bridge
+	return canonicalPortalForAIDB(ctx, portal)
+}
+
+func (oc *AIClient) portalScopeForClientAIDB(ctx context.Context, portal *bridgev2.Portal) (*portalScope, error) {
+	if oc == nil {
+		return portalScopeForAIDB(ctx, portal)
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	portal, err := oc.canonicalPortalForClientAIDB(ctx, portal)
+	if err != nil || portal == nil {
+		return nil, err
+	}
+	db, bridgeID, loginID := loginDBContext(oc)
+	portalID := strings.TrimSpace(string(portal.PortalKey.ID))
+	portalReceiver := strings.TrimSpace(string(portal.PortalKey.Receiver))
+	if portalReceiver == "" {
+		portalReceiver = loginID
+	}
+	if db == nil || bridgeID == "" || portalID == "" || portalReceiver == "" {
+		return portalScopeForAIDB(ctx, portal)
+	}
+	return &portalScope{
+		db:             db,
+		bridgeID:       bridgeID,
+		portalID:       portalID,
+		portalReceiver: portalReceiver,
+	}, nil
+}
+
 func loginDBContext(client *AIClient) (*dbutil.Database, string, string) {
 	if client == nil || client.UserLogin == nil || client.UserLogin.Bridge == nil {
 		return nil, "", ""
 	}
 	db := client.bridgeDB()
 	bridgeID := canonicalLoginBridgeID(client.UserLogin)
-	loginID := strings.TrimSpace(string(client.UserLogin.ID))
-	if db == nil || bridgeID == "" || loginID == "" {
+	loginID := canonicalLoginID(client.UserLogin)
+	if db == nil || loginID == "" {
 		return nil, "", ""
 	}
 	return db, bridgeID, loginID
@@ -184,7 +286,7 @@ func loginScopeForClient(client *AIClient) *loginScope {
 	db, bridgeID, loginID := loginDBContext(client)
 	bridgeID = strings.TrimSpace(bridgeID)
 	loginID = strings.TrimSpace(loginID)
-	if db == nil || bridgeID == "" || loginID == "" {
+	if db == nil || loginID == "" {
 		return nil
 	}
 	return &loginScope{db: db, bridgeID: bridgeID, loginID: loginID}
@@ -198,8 +300,8 @@ func loginScopeForLogin(login *bridgev2.UserLogin) *loginScope {
 		return nil
 	}
 	bridgeID := canonicalLoginBridgeID(login)
-	loginID := strings.TrimSpace(string(login.ID))
-	if bridgeID == "" || loginID == "" {
+	loginID := canonicalLoginID(login)
+	if loginID == "" {
 		return nil
 	}
 	return &loginScope{db: db, bridgeID: bridgeID, loginID: loginID}

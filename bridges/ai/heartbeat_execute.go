@@ -261,7 +261,7 @@ func systemEventsOwnerKey(oc *AIClient) string {
 	}
 	bridgeID := canonicalLoginBridgeID(oc.UserLogin)
 	loginID := canonicalLoginID(oc.UserLogin)
-	if bridgeID == "" || loginID == "" {
+	if loginID == "" {
 		return ""
 	}
 	return bridgeID + "|" + loginID
@@ -339,7 +339,7 @@ func (oc *AIClient) shouldRunHeartbeatForFile(agentID string, reason string) boo
 	}
 	bridgeID := canonicalLoginBridgeID(oc.UserLogin)
 	loginID := canonicalLoginID(oc.UserLogin)
-	if bridgeID == "" || loginID == "" {
+	if loginID == "" {
 		return true
 	}
 	store := textfs.NewStore(db, bridgeID, loginID, normalizeAgentID(agentID))

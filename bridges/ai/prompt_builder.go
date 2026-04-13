@@ -82,6 +82,11 @@ func (oc *AIClient) replayHistoryMessages(
 	meta *PortalMetadata,
 	opts historyReplayOptions,
 ) ([]PromptMessage, error) {
+	var err error
+	portal, err = oc.canonicalPortalForClientAIDB(ctx, portal)
+	if err != nil {
+		return nil, err
+	}
 	extra := 0
 	if opts.mode == historyReplayRegen {
 		extra = 2
@@ -94,7 +99,7 @@ func (oc *AIClient) replayHistoryMessages(
 		return nil, nil
 	}
 
-	turns, err := loadAIPromptHistoryTurns(ctx, portal, hr.limit, opts)
+	turns, err := oc.loadAIPromptHistoryTurns(ctx, portal, hr.limit, opts)
 	if err != nil {
 		return nil, err
 	}

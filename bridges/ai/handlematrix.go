@@ -33,6 +33,12 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	if portal == nil {
 		return nil, errors.New("portal is nil")
 	}
+	var err error
+	portal, err = oc.canonicalPortalForClientAIDB(ctx, portal)
+	if err != nil {
+		return nil, fmt.Errorf("failed to canonicalize portal for inbound message: %w", err)
+	}
+	msg.Portal = portal
 	meta := portalMeta(portal)
 	if msg.Event == nil {
 		return nil, errors.New("missing message event")
@@ -334,6 +340,12 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 	if portal == nil {
 		return errors.New("portal is nil")
 	}
+	var err error
+	portal, err = oc.canonicalPortalForClientAIDB(ctx, portal)
+	if err != nil {
+		return fmt.Errorf("failed to canonicalize portal for edit: %w", err)
+	}
+	edit.Portal = portal
 	meta := portalMeta(portal)
 	if meta != nil && meta.ResolvedTarget != nil && meta.ResolvedTarget.Kind == ResolvedTargetModel {
 		return bridgev2.ErrEditsNotSupportedInPortal
@@ -354,7 +366,7 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 		msgMeta = &MessageMetadata{}
 		edit.EditTarget.Metadata = msgMeta
 	}
-	transcriptMsg, err := loadAIConversationMessage(ctx, portal, edit.EditTarget.ID, edit.EditTarget.MXID)
+	transcriptMsg, err := oc.loadAIConversationMessage(ctx, portal, edit.EditTarget.ID, edit.EditTarget.MXID)
 	if err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to load edited conversation turn")
 	}
@@ -380,7 +392,7 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 	} else {
 		transcriptMeta.CanonicalTurnData = nil
 	}
-	if err := persistAIConversationMessage(ctx, portal, transcriptMsg); err != nil {
+	if err := oc.persistAIConversationMessage(ctx, portal, transcriptMsg); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist edited conversation turn")
 	}
 	if edit.EditTarget != nil {

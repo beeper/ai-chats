@@ -70,7 +70,7 @@ func (oc *AIClient) deletePersistedSessionArtifacts(ctx context.Context, portal 
 	}
 
 	db, bridgeID, loginID := loginDBContext(oc)
-	if db != nil && bridgeID != "" && loginID != "" {
+	if db != nil && loginID != "" {
 		execDelete(ctx, db, oc.Log(),
 			`DELETE FROM `+aiSessionsTable+` WHERE bridge_id=$1 AND login_id=$2 AND session_key=$3`,
 			bridgeID, loginID, sessionKey,

@@ -113,6 +113,53 @@ func TestLoadAIUserLoginMagicProxyBuildsClientFromPersistedConfig(t *testing.T) 
 	}
 }
 
+func TestSaveAndLoadAILoginConfig_WithEmptyPersistedBridgeID(t *testing.T) {
+	client := newDBBackedTestAIClient(t, ProviderMagicProxy)
+	login := client.UserLogin
+	login.UserLogin.BridgeID = ""
+	if login.Bridge != nil && login.Bridge.DB != nil {
+		login.Bridge.DB.BridgeID = "runtime-bridge-id"
+	}
+
+	cfg := &aiLoginConfig{
+		Credentials: &LoginCredentials{
+			APIKey:  "proxy-token",
+			BaseURL: "https://temporary-ai-proxy.beeper-tools.com",
+		},
+	}
+	if err := saveAILoginConfig(context.Background(), login, cfg); err != nil {
+		t.Fatalf("saveAILoginConfig returned error: %v", err)
+	}
+
+	loaded, err := loadAILoginConfig(context.Background(), login)
+	if err != nil {
+		t.Fatalf("loadAILoginConfig returned error: %v", err)
+	}
+	if loaded.Credentials == nil {
+		t.Fatal("expected credentials after reload")
+	}
+	if loaded.Credentials.APIKey != "proxy-token" {
+		t.Fatalf("unexpected API key after reload: %q", loaded.Credentials.APIKey)
+	}
+	if loaded.Credentials.BaseURL != "https://temporary-ai-proxy.beeper-tools.com" {
+		t.Fatalf("unexpected base URL after reload: %q", loaded.Credentials.BaseURL)
+	}
+}
+
+func TestCanonicalLoginBridgeID_FallsBackToRuntimeBridgeDBID(t *testing.T) {
+	client := newDBBackedTestAIClient(t, ProviderMagicProxy)
+	login := client.UserLogin
+	login.UserLogin.BridgeID = ""
+	if login.Bridge == nil || login.Bridge.DB == nil {
+		t.Fatal("expected runtime bridge database")
+	}
+	login.Bridge.DB.BridgeID = "runtime-bridge-id"
+
+	if got := canonicalLoginBridgeID(login); got != "runtime-bridge-id" {
+		t.Fatalf("expected runtime bridge id fallback, got %q", got)
+	}
+}
+
 func TestReuseAIClientUpdatesClientBaseLogin(t *testing.T) {
 	login := testUserLoginWithMeta("login-2", &UserLoginMetadata{Provider: ProviderOpenAI})
 	client := &AIClient{}

@@ -91,18 +91,16 @@ func cloneAILoginConfig(src *aiLoginConfig) *aiLoginConfig {
 }
 
 func loadAILoginConfig(ctx context.Context, login *bridgev2.UserLogin) (*aiLoginConfig, error) {
-	db := bridgeDBFromLogin(login)
-	bridgeID := canonicalLoginBridgeID(login)
-	loginID := canonicalLoginID(login)
-	if db == nil || bridgeID == "" || loginID == "" {
+	scope := loginScopeForLogin(login)
+	if scope == nil {
 		return &aiLoginConfig{}, nil
 	}
 	var raw string
-	err := db.QueryRow(ctx, `
+	err := scope.db.QueryRow(ctx, `
 		SELECT config_json
 		FROM `+aiLoginConfigTable+`
 	WHERE bridge_id=$1 AND login_id=$2
-	`, bridgeID, loginID).Scan(&raw)
+	`, scope.bridgeID, scope.loginID).Scan(&raw)
 	if err == sql.ErrNoRows || raw == "" {
 		return &aiLoginConfig{}, nil
 	}
@@ -120,21 +118,18 @@ func saveAILoginConfig(ctx context.Context, login *bridgev2.UserLogin, cfg *aiLo
 	if login == nil || cfg == nil {
 		return nil
 	}
-	db := bridgeDBFromLogin(login)
-	bridgeID := canonicalLoginBridgeID(login)
-	loginID := canonicalLoginID(login)
-	if db != nil && bridgeID != "" && loginID != "" {
+	if scope := loginScopeForLogin(login); scope != nil {
 		payload, err := json.Marshal(cfg)
 		if err != nil {
 			return err
 		}
-		if _, err = db.Exec(ctx, `
+		if _, err = scope.db.Exec(ctx, `
 			INSERT INTO `+aiLoginConfigTable+` (bridge_id, login_id, config_json, updated_at_ms)
 			VALUES ($1, $2, $3, $4)
 			ON CONFLICT (bridge_id, login_id) DO UPDATE SET
 				config_json=excluded.config_json,
 				updated_at_ms=excluded.updated_at_ms
-		`, bridgeID, loginID, string(payload), time.Now().UnixMilli()); err != nil {
+		`, scope.bridgeID, scope.loginID, string(payload), time.Now().UnixMilli()); err != nil {
 			return err
 		}
 	}

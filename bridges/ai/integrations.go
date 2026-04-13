@@ -409,7 +409,7 @@ func (oc *AIClient) stopLifecycleIntegrations() {
 }
 
 func (oc *AIClient) stopLoginLifecycleIntegrations(bridgeID, loginID string) {
-	if oc == nil || strings.TrimSpace(bridgeID) == "" || strings.TrimSpace(loginID) == "" {
+	if oc == nil || strings.TrimSpace(loginID) == "" {
 		return
 	}
 	oc.eachIntegrationModule(func(_ string, module integrationruntime.ModuleHooks) {

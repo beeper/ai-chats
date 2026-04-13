@@ -1063,6 +1063,25 @@ func (oc *AIClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Porta
 	if oc == nil {
 		return
 	}
+	message = strings.TrimSpace(message)
+	if portal != nil && portal.MXID != "" && oc.UserLogin != nil && oc.UserLogin.UserLogin != nil {
+		sender := oc.senderForPortal(ctx, portal)
+		if sender.Sender != "" {
+			content := &event.Content{
+				Parsed: &event.MessageEventContent{
+					MsgType:  event.MsgNotice,
+					Body:     message,
+					Mentions: &event.Mentions{},
+				},
+			}
+			intent, ok := portal.GetIntentFor(ctx, sender, oc.UserLogin, bridgev2.RemoteEventMessage)
+			if ok && intent != nil {
+				if _, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, content, nil); err == nil {
+					return
+				}
+			}
+		}
+	}
 	if err := sdk.SendSystemMessage(ctx, oc.UserLogin, portal, bridgev2.EventSender{}, message); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to send system notice")
 	}

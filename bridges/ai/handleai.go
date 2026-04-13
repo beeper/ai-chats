@@ -372,6 +372,12 @@ func (oc *AIClient) sendWelcomeMessage(ctx context.Context, portal *bridgev2.Por
 	if oc == nil || portal == nil {
 		return
 	}
+	var err error
+	portal, err = oc.canonicalPortalForClientAIDB(ctx, portal)
+	if err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to canonicalize portal for welcome message")
+		return
+	}
 	// We can't send a room notice (or schedule greeting timers) until the Matrix room exists.
 	if portal.MXID == "" {
 		return
@@ -413,6 +419,15 @@ func (oc *AIClient) sendWelcomeMessage(ctx context.Context, portal *bridgev2.Por
 }
 
 func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Portal, assistantResponse string) {
+	if oc == nil || portal == nil {
+		return
+	}
+	var err error
+	portal, err = oc.canonicalPortalForClientAIDB(ctx, portal)
+	if err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to canonicalize portal for title generation")
+		return
+	}
 	meta := portalMeta(portal)
 
 	if !oc.isOpenRouterProvider() {

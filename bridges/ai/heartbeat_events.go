@@ -64,7 +64,7 @@ func heartbeatLoginKey(login *bridgev2.UserLogin) string {
 	}
 	bridgeID := canonicalLoginBridgeID(login)
 	loginID := canonicalLoginID(login)
-	if bridgeID == "" || loginID == "" {
+	if loginID == "" {
 		return ""
 	}
 	return bridgeID + "|" + loginID

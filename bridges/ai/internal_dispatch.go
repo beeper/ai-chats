@@ -48,7 +48,7 @@ func (oc *AIClient) dispatchInternalMessage(
 		return eventID, false, err
 	}
 
-	if err := persistAIInternalPromptTurn(ctx, portal, eventID, promptContext, excludeFromHistory, prefix, time.Now()); err != nil {
+	if err := oc.persistAIInternalPromptTurn(ctx, portal, eventID, promptContext, excludeFromHistory, prefix, time.Now()); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist internal prompt message")
 	}
 

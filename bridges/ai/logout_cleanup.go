@@ -22,7 +22,7 @@ func purgeLoginData(ctx context.Context, login *bridgev2.UserLogin) {
 	}
 	bridgeID := canonicalLoginBridgeID(login)
 	loginID := canonicalLoginID(login)
-	if bridgeID == "" || loginID == "" {
+	if loginID == "" {
 		return
 	}
 
