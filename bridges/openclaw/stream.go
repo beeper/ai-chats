@@ -284,7 +284,7 @@ func (oc *OpenClawClient) currentUIMessage(state *openClawStreamState) map[strin
 		uiState = state.turn.UIState()
 	}
 	uiMessage := streamui.SnapshotUIMessage(uiState)
-	update := sdk.BuildUIMessageMetadata(sdk.UIMessageMetadataParams{
+	update := buildOpenClawUIMessageMetadata(sdk.UIMessageMetadataParams{
 		TurnID:           state.turnID,
 		AgentID:          state.agentID,
 		FinishReason:     state.stream.FinishReason(),
@@ -297,7 +297,7 @@ func (oc *OpenClawClient) currentUIMessage(state *openClawStreamState) map[strin
 		FirstTokenAtMs:   state.stream.FirstTokenAtMs(),
 		CompletedAtMs:    state.stream.CompletedAtMs(),
 		IncludeUsage:     true,
-	})
+	}, state.sessionID, state.sessionKey, state.stream.ErrorText())
 	if len(uiMessage) == 0 {
 		return sdk.BuildUIMessage(sdk.UIMessageParams{
 			TurnID:   state.turnID,
@@ -322,41 +322,29 @@ func (oc *OpenClawClient) buildStreamDBMetadata(state *openClawStreamState) *Mes
 		body = strings.TrimSpace(state.stream.AccumulatedText())
 	}
 	uiMessage := oc.currentUIMessage(state)
-	snapshot := sdk.BuildTurnSnapshot(uiMessage, sdk.TurnDataBuildOptions{
-		ID:   state.turnID,
-		Role: stringutil.TrimDefault(state.role, "assistant"),
-		Text: body,
-		Metadata: map[string]any{
-			"turn_id":           state.turnID,
-			"agent_id":          state.agentID,
-			"finish_reason":     state.stream.FinishReason(),
-			"prompt_tokens":     state.promptTokens,
-			"completion_tokens": state.completionTokens,
-			"reasoning_tokens":  state.reasoningTokens,
-			"started_at_ms":     state.stream.StartedAtMs(),
-			"completed_at_ms":   state.stream.CompletedAtMs(),
-		},
-	}, "openclaw")
-	bundle := sdk.BuildAssistantMetadataBundle(sdk.AssistantMetadataBundleParams{
-		Snapshot:         snapshot,
+	canonical := sdk.BuildCanonicalAssistantMetadata(sdk.CanonicalAssistantMetadataParams{
+		UIMessage:        uiMessage,
+		ToolType:         "openclaw",
 		FinishReason:     state.stream.FinishReason(),
 		TurnID:           state.turnID,
 		AgentID:          state.agentID,
+		Role:             stringutil.TrimDefault(state.role, "assistant"),
+		Body:             body,
 		StartedAtMs:      state.stream.StartedAtMs(),
 		CompletedAtMs:    state.stream.CompletedAtMs(),
 		PromptTokens:     state.promptTokens,
 		CompletionTokens: state.completionTokens,
 		ReasoningTokens:  state.reasoningTokens,
-		CompletionID:     state.runID,
 		FirstTokenAtMs:   state.stream.FirstTokenAtMs(),
+		CompletionID:     state.runID,
 	})
-	return &MessageMetadata{
-		BaseMessageMetadata: bundle.Base,
-		SessionID:           state.sessionID,
-		SessionKey:          state.sessionKey,
-		RunID:               bundle.Assistant.CompletionID,
-		ErrorText:           state.stream.ErrorText(),
-		TotalTokens:         state.totalTokens,
-		FirstTokenAtMs:      bundle.Assistant.FirstTokenAtMs,
-	}
+	return buildOpenClawMessageMetadata(openClawMessageMetadataParams{
+		Base:           canonical.Bundle.Base,
+		SessionID:      state.sessionID,
+		SessionKey:     state.sessionKey,
+		RunID:          canonical.Bundle.Assistant.CompletionID,
+		ErrorText:      state.stream.ErrorText(),
+		TotalTokens:    state.totalTokens,
+		FirstTokenAtMs: canonical.Bundle.Assistant.FirstTokenAtMs,
+	})
 }

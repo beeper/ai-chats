@@ -500,35 +500,19 @@ func (cl *CodexLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 	if cl.waitUntil.IsZero() {
 		cl.waitUntil = time.Now().Add(10 * time.Minute)
 	}
-
-	overallTimeout := time.Until(cl.waitUntil)
-	if overallTimeout <= 0 {
-		cl.cancelLoginAttempt(true)
-		return nil, errCodexTimedOut
-	}
-	deadline := time.NewTimer(overallTimeout)
-	defer deadline.Stop()
-
-	// Poll account/read as a fallback in case the notification is dropped.
-	tick := time.NewTicker(2 * time.Second)
-	defer tick.Stop()
-
-	// Avoid holding a single Wait() request open indefinitely; returning periodically
-	// allows polling callers and prevents head-of-line blocking in single-threaded callers.
-	returnAfter := time.NewTimer(20 * time.Second)
-	defer returnAfter.Stop()
-
-	startCh := cl.startCh
-	for {
-		select {
-		case err := <-startCh:
-			// Surface initialize/login-start failures early.
+	return sdk.RunDisplayAndWaitLoop[error, codexLoginDone](ctx, sdk.DisplayAndWaitLoopConfig[error, codexLoginDone]{
+		Deadline:         cl.waitUntil,
+		PollInterval:     2 * time.Second,
+		ReturnAfter:      20 * time.Second,
+		StartSignal:      cl.startCh,
+		CompletionSignal: cl.loginDoneCh,
+		OnStartSignal: func(_ context.Context, err error) (*sdk.DisplayAndWaitLoopResult, error) {
 			if err != nil {
 				return nil, err
 			}
-			// Ignore further start signals after the first one.
-			startCh = nil
-		case done := <-cl.loginDoneCh:
+			return sdk.ContinueDisplayAndWaitLoop(), nil
+		},
+		OnCompletionSignal: func(_ context.Context, done codexLoginDone) (*sdk.DisplayAndWaitLoopResult, error) {
 			loginID := cl.getLoginID()
 			if !done.success {
 				if done.errText == "" {
@@ -539,8 +523,13 @@ func (cl *CodexLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 				return nil, sdk.NewLoginRespError(http.StatusBadRequest, done.errText, "CODEX", "LOGIN_FAILED")
 			}
 			log.Info().Str("login_id", loginID).Msg("Codex login completed (notification)")
-			return cl.finishLogin(cl.backgroundProcessContext())
-		case <-tick.C:
+			step, err := cl.finishLogin(cl.backgroundProcessContext())
+			if err != nil {
+				return nil, err
+			}
+			return &sdk.DisplayAndWaitLoopResult{Step: step}, nil
+		},
+		OnPoll: func(context.Context) (*sdk.DisplayAndWaitLoopResult, error) {
 			rpc = cl.getRPC()
 			if rpc == nil {
 				return nil, errCodexStopped
@@ -554,12 +543,15 @@ func (cl *CodexLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 			cancel()
 			if err == nil && (resp.Account != nil || !resp.RequiresOpenaiAuth) {
 				log.Info().Str("login_id", cl.getLoginID()).Msg("Codex login completed (account/read)")
-				return cl.finishLogin(cl.backgroundProcessContext())
+				step, err := cl.finishLogin(cl.backgroundProcessContext())
+				if err != nil {
+					return nil, err
+				}
+				return &sdk.DisplayAndWaitLoopResult{Step: step}, nil
 			}
-			// Expose the browser auth URL as soon as it becomes available.
 			authURL := strings.TrimSpace(cl.getAuthURL())
 			if cl.getAuthMode() == "chatgpt" && authURL != "" {
-				return &bridgev2.LoginStep{
+				return &sdk.DisplayAndWaitLoopResult{Step: &bridgev2.LoginStep{
 					Type:         bridgev2.LoginStepTypeDisplayAndWait,
 					StepID:       "com.beeper.agentremote.codex.chatgpt",
 					Instructions: "Open this URL in a browser and complete login, then wait here.",
@@ -567,22 +559,24 @@ func (cl *CodexLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 						Type: bridgev2.LoginDisplayTypeCode,
 						Data: authURL,
 					},
-				}, nil
+				}}, nil
 			}
-		case <-returnAfter.C:
+			return sdk.ContinueDisplayAndWaitLoop(), nil
+		},
+		ReturnStep: func() *bridgev2.LoginStep {
 			log.Debug().Str("login_id", cl.getLoginID()).Msg("Codex login still waiting")
-			return cl.buildStillWaitingStep("Keep this screen open."), nil
-		case <-deadline.C:
+			return cl.buildStillWaitingStep("Keep this screen open.")
+		},
+		ContextDoneStep: func() *bridgev2.LoginStep {
+			log.Debug().Str("login_id", cl.getLoginID()).Msg("Codex login wait context ended; returning still-waiting step")
+			return cl.buildStillWaitingStep("Keep this screen open after completing the browser login.")
+		},
+		OnTimeout: func() error {
 			log.Warn().Str("login_id", cl.getLoginID()).Msg("Codex login timed out")
 			cl.cancelLoginAttempt(true)
-			return nil, errCodexTimedOut
-		case <-ctx.Done():
-			// Most callers will have their own HTTP/gRPC deadlines. Returning the same waiting
-			// step allows the client to poll again without the login process being marked as failed.
-			log.Debug().Str("login_id", cl.getLoginID()).Msg("Codex login wait context ended; returning still-waiting step")
-			return cl.buildStillWaitingStep("Keep this screen open after completing the browser login."), nil
-		}
-	}
+			return errCodexTimedOut
+		},
+	})
 }
 
 func (cl *CodexLogin) buildStillWaitingStep(suffix string) *bridgev2.LoginStep {

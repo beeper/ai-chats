@@ -156,33 +156,66 @@ type MessageMetadata struct {
 	FirstTokenAtMs int64            `json:"first_token_at_ms,omitempty"`
 }
 
+type openClawMessageMetadataParams struct {
+	Base           sdk.BaseMessageMetadata
+	SessionID      string
+	SessionKey     string
+	RunID          string
+	ErrorText      string
+	TotalTokens    int64
+	Attachments    []map[string]any
+	FirstTokenAtMs int64
+}
+
 func (mm *MessageMetadata) CopyFrom(other any) {
 	src, ok := other.(*MessageMetadata)
 	if !ok || src == nil {
 		return
 	}
 	mm.BaseMessageMetadata.CopyFromBase(&src.BaseMessageMetadata)
-	if src.SessionID != "" {
-		mm.SessionID = src.SessionID
+	sdk.CopyNonZero(&mm.SessionID, src.SessionID)
+	sdk.CopyNonZero(&mm.SessionKey, src.SessionKey)
+	sdk.CopyNonZero(&mm.RunID, src.RunID)
+	sdk.CopyNonZero(&mm.ErrorText, src.ErrorText)
+	sdk.CopyNonZero(&mm.TotalTokens, src.TotalTokens)
+	sdk.CopyMapSlice(&mm.Attachments, src.Attachments)
+	sdk.CopyNonZero(&mm.FirstTokenAtMs, src.FirstTokenAtMs)
+}
+
+func openClawMetadataExtras(sessionID, sessionKey, errorText string) map[string]any {
+	extras := map[string]any{}
+	if sessionID = strings.TrimSpace(sessionID); sessionID != "" {
+		extras["session_id"] = sessionID
 	}
-	if src.SessionKey != "" {
-		mm.SessionKey = src.SessionKey
+	if sessionKey = strings.TrimSpace(sessionKey); sessionKey != "" {
+		extras["session_key"] = sessionKey
 	}
-	if src.RunID != "" {
-		mm.RunID = src.RunID
+	if errorText = strings.TrimSpace(errorText); errorText != "" {
+		extras["error_text"] = errorText
 	}
-	if src.ErrorText != "" {
-		mm.ErrorText = src.ErrorText
+	if len(extras) == 0 {
+		return nil
 	}
-	if src.TotalTokens != 0 {
-		mm.TotalTokens = src.TotalTokens
+	return extras
+}
+
+func buildOpenClawUIMessageMetadata(params sdk.UIMessageMetadataParams, sessionID, sessionKey, errorText string) map[string]any {
+	params.Extras = openClawMetadataExtras(sessionID, sessionKey, errorText)
+	return sdk.BuildUIMessageMetadata(params)
+}
+
+func buildOpenClawMessageMetadata(params openClawMessageMetadataParams) *MessageMetadata {
+	metadata := &MessageMetadata{
+		BaseMessageMetadata: params.Base,
+		SessionID:           strings.TrimSpace(params.SessionID),
+		SessionKey:          strings.TrimSpace(params.SessionKey),
+		RunID:               strings.TrimSpace(params.RunID),
+		ErrorText:           strings.TrimSpace(params.ErrorText),
+		TotalTokens:         params.TotalTokens,
+		Attachments:         params.Attachments,
+		FirstTokenAtMs:      params.FirstTokenAtMs,
 	}
-	if len(src.Attachments) > 0 {
-		mm.Attachments = src.Attachments
-	}
-	if src.FirstTokenAtMs != 0 {
-		mm.FirstTokenAtMs = src.FirstTokenAtMs
-	}
+	return metadata
 }
 
 func loginMetadata(login *bridgev2.UserLogin) *UserLoginMetadata {

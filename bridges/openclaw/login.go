@@ -144,44 +144,40 @@ func (ol *OpenClawLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) 
 	if ol.waitUntil.IsZero() {
 		ol.waitUntil = time.Now().Add(ol.waitDuration())
 	}
-	remaining := time.Until(ol.waitUntil)
-	if remaining <= 0 {
-		ol.Cancel()
-		return nil, errOpenClawTimedOut
-	}
-
-	deadline := time.NewTimer(remaining)
-	defer deadline.Stop()
-	tick := time.NewTicker(ol.pollInterval())
-	defer tick.Stop()
-	returnAfter := time.NewTimer(ol.waitReturnAfter())
-	defer returnAfter.Stop()
-
-	for {
-		select {
-		case <-tick.C:
+	return sdk.RunDisplayAndWaitLoop[struct{}, struct{}](ctx, sdk.DisplayAndWaitLoopConfig[struct{}, struct{}]{
+		Deadline:     ol.waitUntil,
+		PollInterval: ol.pollInterval(),
+		ReturnAfter:  ol.waitReturnAfter(),
+		OnPoll: func(context.Context) (*sdk.DisplayAndWaitLoopResult, error) {
 			deviceToken, err := ol.preflightGatewayLogin(ol.BackgroundProcessContext(), ol.pending.gatewayURL, ol.pending.token, ol.pending.password)
 			if err == nil {
-				return ol.completeLogin(ol.pending, deviceToken)
+				step, err := ol.completeLogin(ol.pending, deviceToken)
+				if err != nil {
+					return nil, err
+				}
+				return &sdk.DisplayAndWaitLoopResult{Step: step}, nil
 			}
 			var rpcErr *gatewayRPCError
 			if errors.As(err, &rpcErr) && rpcErr.IsPairingRequired() {
 				if requestID := strings.TrimSpace(rpcErr.RequestID); requestID != "" {
 					ol.pending.requestID = requestID
 				}
-				continue
+				return sdk.ContinueDisplayAndWaitLoop(), nil
 			}
 			ol.Cancel()
 			return nil, mapOpenClawLoginError(err)
-		case <-returnAfter.C:
-			return openClawPairingWaitStep(ol.pending.requestID, true), nil
-		case <-deadline.C:
+		},
+		ReturnStep: func() *bridgev2.LoginStep {
+			return openClawPairingWaitStep(ol.pending.requestID, true)
+		},
+		ContextDoneStep: func() *bridgev2.LoginStep {
+			return openClawPairingWaitStep(ol.pending.requestID, true)
+		},
+		OnTimeout: func() error {
 			ol.Cancel()
-			return nil, errOpenClawTimedOut
-		case <-ctx.Done():
-			return openClawPairingWaitStep(ol.pending.requestID, true), nil
-		}
-	}
+			return errOpenClawTimedOut
+		},
+	})
 }
 
 func (ol *OpenClawLogin) Cancel() {

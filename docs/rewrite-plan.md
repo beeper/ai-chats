@@ -118,8 +118,9 @@ Current status:
 - complete: SDK approval flow has been split into core, pending store, routing, prompt store, and finalize layers
 - complete: AI, Codex, and OpenClaw approval normalization now converge on shared SDK helpers
 - complete: DM portal bootstrap now has a single SDK entrypoint
-- in progress: canonical turn/message metadata assembly is moving into SDK
-- pending: login lifecycle runtime
+- complete: login lifecycle runtime now has a shared SDK display/wait loop
+- in progress: canonical turn/message metadata assembly is moving into SDK, with OpenClaw live/history metadata now converging on shared SDK and bridge-local adapter helpers
+- in progress: message metadata merge semantics now converge on shared SDK helpers instead of per-bridge merge ladders
 - pending: AI runtime state machine simplification
 
 ### Phase 2: Vertical slice

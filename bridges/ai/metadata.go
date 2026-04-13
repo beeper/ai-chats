@@ -363,8 +363,7 @@ func (mm *MessageMetadata) CopyFrom(other any) {
 	if !ok || src == nil {
 		return
 	}
-	mm.CopyFromBase(&src.BaseMessageMetadata)
-	mm.CopyFromAssistant(&src.AssistantMessageMetadata)
+	sdk.CopyFromBaseAndAssistant(&mm.BaseMessageMetadata, &src.BaseMessageMetadata, &mm.AssistantMessageMetadata, &src.AssistantMessageMetadata)
 }
 
 var _ database.MetaMerger = (*MessageMetadata)(nil)

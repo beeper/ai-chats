@@ -20,6 +20,7 @@ type UIMessageMetadataParams struct {
 	FirstTokenAtMs   int64
 	CompletedAtMs    int64
 	IncludeUsage     bool
+	Extras           map[string]any
 }
 
 func BuildUIMessageMetadata(p UIMessageMetadataParams) map[string]any {
@@ -64,6 +65,9 @@ func BuildUIMessageMetadata(p UIMessageMetadataParams) map[string]any {
 		if len(timing) > 0 {
 			metadata["timing"] = timing
 		}
+	}
+	if len(p.Extras) > 0 {
+		metadata = jsonutil.MergeRecursive(metadata, jsonutil.DeepCloneMap(p.Extras))
 	}
 	return metadata
 }

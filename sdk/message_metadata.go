@@ -61,6 +61,17 @@ func (a *AssistantMessageMetadata) CopyFromAssistant(src *AssistantMessageMetada
 	}
 }
 
+// CopyFromBaseAndAssistant applies the shared base and assistant metadata merge
+// semantics used by bridge MessageMetadata implementations that embed both.
+func CopyFromBaseAndAssistant(base *BaseMessageMetadata, srcBase *BaseMessageMetadata, assistant *AssistantMessageMetadata, srcAssistant *AssistantMessageMetadata) {
+	if base != nil {
+		base.CopyFromBase(srcBase)
+	}
+	if assistant != nil {
+		assistant.CopyFromAssistant(srcAssistant)
+	}
+}
+
 type AssistantMetadataBundleParams struct {
 	Snapshot           TurnSnapshot
 	FinishReason       string
@@ -223,6 +234,36 @@ func (b *BaseMessageMetadata) CopyFromBase(src *BaseMessageMetadata) {
 	if src.ExcludeFromHistory {
 		b.ExcludeFromHistory = true
 	}
+}
+
+// CopyNonZero copies src into dst when src is not the zero value for its type.
+func CopyNonZero[T comparable](dst *T, src T) {
+	var zero T
+	if dst != nil && src != zero {
+		*dst = src
+	}
+}
+
+// CopySlice copies src into dst when src is non-empty.
+func CopySlice[T any](dst *[]T, src []T) {
+	if dst == nil || len(src) == 0 {
+		return
+	}
+	cloned := make([]T, len(src))
+	copy(cloned, src)
+	*dst = cloned
+}
+
+// CopyMapSlice copies src into dst when src is non-empty, deep-cloning each map.
+func CopyMapSlice(dst *[]map[string]any, src []map[string]any) {
+	if dst == nil || len(src) == 0 {
+		return
+	}
+	cloned := make([]map[string]any, len(src))
+	for i, item := range src {
+		cloned[i] = jsonutil.DeepCloneMap(item)
+	}
+	*dst = cloned
 }
 
 // ToolCallMetadata tracks a tool call within a message.

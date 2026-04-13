@@ -28,34 +28,14 @@ func (mm *MessageMetadata) CopyFrom(other any) {
 		return
 	}
 	mm.CopyFromBase(&src.BaseMessageMetadata)
-	if src.SessionID != "" {
-		mm.SessionID = src.SessionID
-	}
-	if src.MessageID != "" {
-		mm.MessageID = src.MessageID
-	}
-	if src.ParentMessageID != "" {
-		mm.ParentMessageID = src.ParentMessageID
-	}
-	if src.Agent != "" {
-		mm.Agent = src.Agent
-	}
-	if src.ModelID != "" {
-		mm.ModelID = src.ModelID
-	}
-	if src.ProviderID != "" {
-		mm.ProviderID = src.ProviderID
-	}
-	if src.Mode != "" {
-		mm.Mode = src.Mode
-	}
-	if src.ErrorText != "" {
-		mm.ErrorText = src.ErrorText
-	}
-	if src.Cost != 0 {
-		mm.Cost = src.Cost
-	}
-	if src.TotalTokens != 0 {
-		mm.TotalTokens = src.TotalTokens
-	}
+	sdk.CopyNonZero(&mm.SessionID, src.SessionID)
+	sdk.CopyNonZero(&mm.MessageID, src.MessageID)
+	sdk.CopyNonZero(&mm.ParentMessageID, src.ParentMessageID)
+	sdk.CopyNonZero(&mm.Agent, src.Agent)
+	sdk.CopyNonZero(&mm.ModelID, src.ModelID)
+	sdk.CopyNonZero(&mm.ProviderID, src.ProviderID)
+	sdk.CopyNonZero(&mm.Mode, src.Mode)
+	sdk.CopyNonZero(&mm.ErrorText, src.ErrorText)
+	sdk.CopyNonZero(&mm.Cost, src.Cost)
+	sdk.CopyNonZero(&mm.TotalTokens, src.TotalTokens)
 }
