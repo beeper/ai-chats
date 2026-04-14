@@ -5,11 +5,11 @@ import "testing"
 func TestBridgeNameRoundTrip(t *testing.T) {
 	const deviceID = "abc123def0"
 
-	remote, ok := remoteBridgeNameForLocalInstance(deviceID, "opencode-test-run")
+	remote, ok := remoteBridgeNameForLocalInstance(deviceID, "codex-test-run")
 	if !ok {
 		t.Fatal("expected local instance to resolve to a remote bridge name")
 	}
-	if remote != "sh-abc123def0-opencode-test-run" {
+	if remote != "sh-abc123def0-codex-test-run" {
 		t.Fatalf("unexpected remote name: %q", remote)
 	}
 
@@ -17,7 +17,7 @@ func TestBridgeNameRoundTrip(t *testing.T) {
 	if !ok {
 		t.Fatal("expected remote bridge name to resolve to a local instance")
 	}
-	if local != "opencode-test-run" {
+	if local != "codex-test-run" {
 		t.Fatalf("unexpected local instance name: %q", local)
 	}
 }

@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
 usage() {
-  echo "Usage: ./run.sh ai|codex|opencode|openclaw"
+  echo "Usage: ./run.sh ai|codex"
 }
 
 if [[ $# -ne 1 ]]; then
@@ -15,7 +15,7 @@ fi
 
 bridge="$1"
 case "$bridge" in
-  ai|codex|opencode|openclaw) ;;
+  ai|codex) ;;
   *)
     usage
     exit 1

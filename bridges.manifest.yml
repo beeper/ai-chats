@@ -33,40 +33,6 @@ instances:
         "*": relay
         beeper.com: admin
 
-  opencode:
-    bridge_type: opencode
-    mode: local-repo
-    repo_path: .
-    build_cmd: BINARY_NAME=opencode ./tools/maubuild
-    binary_path: ./opencode
-    beeper_bridge_name: sh-opencode
-    config_overrides:
-      appservice.address: websocket
-      appservice.hostname: 127.0.0.1
-      appservice.port: 29347
-      database.type: sqlite3-fk-wal
-      database.uri: file:opencode.db?_txlock=immediate
-      bridge.permissions:
-        "*": relay
-        beeper.com: admin
-
-  openclaw:
-    bridge_type: openclaw
-    mode: local-repo
-    repo_path: .
-    build_cmd: BINARY_NAME=openclaw ./tools/maubuild
-    binary_path: ./openclaw
-    beeper_bridge_name: sh-openclaw
-    config_overrides:
-      appservice.address: websocket
-      appservice.hostname: 127.0.0.1
-      appservice.port: 29348
-      database.type: sqlite3-fk-wal
-      database.uri: file:openclaw.db?_txlock=immediate
-      bridge.permissions:
-        "*": relay
-        beeper.com: admin
-
   dummybridge:
     bridge_type: dummybridge
     mode: local-repo

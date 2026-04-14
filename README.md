@@ -1,6 +1,6 @@
 # AgentRemote
 
-AgentRemote securely brings agents to Beeper. You can connect bridges like AI Chats, OpenClaw Gateway, OpenCode, Codex, and more to Beeper with streaming, native interfaces for tool calls and approvals. You can run coding agents on your laptop and use your iPhone to manage them.
+AgentRemote securely brings agents to Beeper. You can connect bridges like AI Chats and Codex to Beeper with streaming, native interfaces for tool calls and approvals. You can run coding agents on your laptop and use your iPhone to manage them.
 
 AgentRemote can run on the same device as your agent and can work behind a firewall. It connects to Beeper directly and creates an E2EE tunnel. 
 
@@ -28,8 +28,6 @@ The AgentRemote Manager stores profile state under `~/.config/agentremote/`.
 | --- | --- |
 | [`AI Chats`](./bridges/ai/README.md) | Talk to any model on Beeper AI |
 | [`Codex`](./bridges/codex/README.md) | A local `codex app-server` runtime, requires Codex to be installed |
-| [`OpenCode`](./bridges/opencode/README.md) | A remote OpenCode server or a bridge-managed local OpenCode process |
-| [`OpenClaw Gateway`](./bridges/openclaw/README.md) | Connect directly to OpenClaw Gateway and bring all your sessions to one app |
 
 ## Quick start
 

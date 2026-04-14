@@ -47,18 +47,6 @@ var (
 		Port:        29346,
 		DBName:      "codex.db",
 	}
-	OpenCode = Definition{
-		Name:        "opencode",
-		Description: "OpenCode bridge built with the AgentRemote SDK.",
-		Port:        29347,
-		DBName:      "opencode.db",
-	}
-	OpenClaw = Definition{
-		Name:        "openclaw",
-		Description: "OpenClaw Gateway bridge built with the AgentRemote SDK.",
-		Port:        29348,
-		DBName:      "openclaw.db",
-	}
 	DummyBridge = Definition{
 		Name:        "dummybridge",
 		Description: "DummyBridge demo bridge built with the AgentRemote SDK.",

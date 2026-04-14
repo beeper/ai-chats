@@ -102,7 +102,7 @@ func initCommands() {
 			Examples: []string{
 				"agentremote start ai",
 				"agentremote start codex --name test",
-				"agentremote start opencode --profile work",
+				"agentremote start codex --profile work",
 				"agentremote start ai --wait",
 				"agentremote start ai --wait --wait-timeout 120s",
 			},
@@ -154,7 +154,7 @@ func initCommands() {
 			},
 			Examples: []string{
 				"agentremote init ai",
-				"agentremote init openclaw --name dev",
+				"agentremote init codex --name dev",
 			},
 			Run: cmdInit,
 		},

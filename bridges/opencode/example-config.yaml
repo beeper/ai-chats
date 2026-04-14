@@ -1,4 +1,0 @@
-bridge:
-  command_prefix: "!opencode"
-opencode:
-  enabled: true
