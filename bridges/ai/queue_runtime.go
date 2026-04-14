@@ -114,6 +114,48 @@ func (oc *AIClient) sendQueueRejectedStatus(ctx context.Context, portal *bridgev
 	}
 }
 
+func (oc *AIClient) dispatchPromptRun(
+	ctx context.Context,
+	roomID id.RoomID,
+	item pendingQueueItem,
+	promptContext PromptContext,
+	queueAccepted bool,
+) {
+	runCtx := oc.attachRoomRun(oc.backgroundContext(ctx), roomID)
+	if queueAccepted {
+		runCtx = context.WithValue(runCtx, queueAcceptedStatusKey{}, true)
+	}
+	if len(item.pending.StatusEvents) > 0 {
+		runCtx = context.WithValue(runCtx, statusEventsKey{}, item.pending.StatusEvents)
+	}
+	if item.pending.InboundContext != nil {
+		runCtx = withInboundContext(runCtx, *item.pending.InboundContext)
+	}
+	if item.pending.Typing != nil {
+		runCtx = WithTypingContext(runCtx, item.pending.Typing)
+	}
+	metaSnapshot := clonePortalMetadata(item.pending.Meta)
+	go func(metaSnapshot *PortalMetadata) {
+		defer func() {
+			oc.removePendingAckReactions(oc.backgroundContext(ctx), item.pending.Portal, item.pending)
+			if item.backlogAfter {
+				followup := item
+				followup.backlogAfter = false
+				followup.allowDuplicate = true
+				var cfg *Config
+				if oc != nil && oc.connector != nil {
+					cfg = &oc.connector.Config
+				}
+				queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, channel: "matrix", inlineOpts: airuntime.QueueInlineOptions{}})
+				oc.queuePendingMessage(roomID, followup, queueSettings)
+			}
+			oc.releaseRoom(roomID)
+			oc.processPendingQueue(oc.backgroundContext(ctx), roomID)
+		}()
+		oc.dispatchCompletionInternal(runCtx, item.pending.Event, item.pending.Portal, metaSnapshot, promptContext)
+	}(metaSnapshot)
+}
+
 // dispatchOrQueueCore contains shared dispatch/steer/queue logic.
 // When userMessage is non-nil, it saves the message to the DB, handles ack
 // reactions, sends pending status on acquire, and notifies session mutations.
@@ -153,26 +195,11 @@ func (oc *AIClient) dispatchOrQueueCore(
 			})
 			queueItem.pending.PendingSent = true
 		}
-		runCtx := oc.backgroundContext(ctx)
-		if len(queueItem.pending.StatusEvents) > 0 {
-			runCtx = context.WithValue(runCtx, statusEventsKey{}, queueItem.pending.StatusEvents)
-		}
-		if queueItem.pending.InboundContext != nil {
-			runCtx = withInboundContext(runCtx, *queueItem.pending.InboundContext)
-		}
-		if queueItem.pending.Typing != nil {
-			runCtx = WithTypingContext(runCtx, queueItem.pending.Typing)
-		}
-		runCtx = oc.attachRoomRun(runCtx, roomID)
-		metaSnapshot := clonePortalMetadata(meta)
-		go func(metaSnapshot *PortalMetadata) {
-			defer func() {
-				oc.removePendingAckReactions(oc.backgroundContext(ctx), portal, queueItem.pending)
-				oc.releaseRoom(roomID)
-				oc.processPendingQueue(oc.backgroundContext(ctx), roomID)
-			}()
-			oc.dispatchCompletionInternal(runCtx, evt, portal, metaSnapshot, promptContext)
-		}(metaSnapshot)
+		queuedItem := queueItem
+		queuedItem.pending.Portal = portal
+		queuedItem.pending.Meta = meta
+		queuedItem.pending.Event = evt
+		oc.dispatchPromptRun(ctx, roomID, queuedItem, promptContext, false)
 		if hasDBMessage {
 			oc.notifySessionMutation(ctx, portal, meta, false)
 		}
@@ -317,6 +344,6 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 			return
 		}
 
-		oc.dispatchQueuedPrompt(ctx, item, promptContext)
+		oc.dispatchPromptRun(ctx, roomID, item, promptContext, true)
 	}()
 }

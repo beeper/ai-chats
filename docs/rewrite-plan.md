@@ -369,6 +369,7 @@ Deliverable:
 - one queue/execution boundary
 - one heartbeat/runtime boundary
 - heartbeat reduced to one caller of the same runtime pipeline
+- no separate queued-only prompt dispatch launcher
 
 ### Phase 6: SDK Thinning
 

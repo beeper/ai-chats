@@ -527,46 +527,6 @@ func (oc *AIClient) clearQueueDraining(roomID id.RoomID) {
 	}
 }
 
-func (oc *AIClient) dispatchQueuedPrompt(
-	ctx context.Context,
-	item pendingQueueItem,
-	promptContext PromptContext,
-) {
-	var roomID id.RoomID
-	if item.pending.Portal != nil {
-		roomID = item.pending.Portal.MXID
-	}
-	oc.log.Debug().Stringer("room_id", roomID).Str("message_id", item.messageID).Int("prompt_len", len(promptContext.Messages)).Msg("Dispatching queued prompt")
-	runCtx := oc.attachRoomRun(ctx, roomID)
-	runCtx = context.WithValue(runCtx, queueAcceptedStatusKey{}, true)
-	if item.pending.InboundContext != nil {
-		runCtx = withInboundContext(runCtx, *item.pending.InboundContext)
-	}
-	if item.pending.Typing != nil {
-		runCtx = WithTypingContext(runCtx, item.pending.Typing)
-	}
-	metaSnapshot := clonePortalMetadata(item.pending.Meta)
-	go func() {
-		defer func() {
-			oc.removePendingAckReactions(oc.backgroundContext(ctx), item.pending.Portal, item.pending)
-			if item.backlogAfter {
-				followup := item
-				followup.backlogAfter = false
-				followup.allowDuplicate = true
-				var cfg *Config
-				if oc != nil && oc.connector != nil {
-					cfg = &oc.connector.Config
-				}
-				queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, channel: "matrix", inlineOpts: airuntime.QueueInlineOptions{}})
-				oc.queuePendingMessage(roomID, followup, queueSettings)
-			}
-			oc.releaseRoom(roomID)
-			oc.processPendingQueue(oc.backgroundContext(ctx), roomID)
-		}()
-		oc.dispatchCompletionInternal(runCtx, item.pending.Event, item.pending.Portal, metaSnapshot, promptContext)
-	}()
-}
-
 func (oc *AIClient) removePendingAckReactions(ctx context.Context, portal *bridgev2.Portal, pending pendingMessage) {
 	if portal == nil || pending.Meta == nil || !pending.Meta.AckReactionRemoveAfter {
 		return

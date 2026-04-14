@@ -259,6 +259,9 @@ Files:
 
 Why this still violates the goal:
 
+- immediate and queued prompts now share one dispatch launcher; the remaining
+  duplication is above and below that boundary, not a second queued-only run
+  starter
 - queueing, execution, streaming, heartbeat delivery, and terminal state still
   form multiple partial runtimes instead of one run pipeline
 
