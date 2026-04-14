@@ -18,9 +18,9 @@ func TestResolveAgentIdentifierContinuesWhenResponderResolutionFails(t *testing.
 		},
 	}
 
-	resp, err := oc.resolveAgentIdentifier(context.Background(), agent, "", false)
+	resp, err := oc.resolveChatTargetResponse(context.Background(), &chatResolveTarget{agent: agent}, false)
 	if err != nil {
-		t.Fatalf("resolveAgentIdentifier returned error: %v", err)
+		t.Fatalf("resolveChatTargetResponse returned error: %v", err)
 	}
 	if resp == nil {
 		t.Fatal("expected response")

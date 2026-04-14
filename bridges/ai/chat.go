@@ -219,16 +219,7 @@ func (oc *AIClient) modelContactResponse(ctx context.Context, model *ModelInfo) 
 		UserID:   modelUserID(model.ID),
 		UserInfo: responderUserInfoOrDefault(responder, modelContactName(model.ID, model), modelContactIdentifiers(model.ID), false),
 	}
-	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
-		return resp
-	}
-	ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, resp.UserID)
-	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Str("model", model.ID).Msg("Failed to hydrate ghost for model contact")
-		return resp
-	}
-	resp.Ghost = ghost
-	return resp
+	return oc.hydrateContactResponseGhost(ctx, resp, "model", model.ID)
 }
 
 func (oc *AIClient) agentContactResponse(ctx context.Context, agent *sdk.Agent) *bridgev2.ResolveIdentifierResponse {
@@ -251,12 +242,19 @@ func (oc *AIClient) agentContactResponse(ctx context.Context, agent *sdk.Agent) 
 			resp.UserInfo.ExtraProfile = responderExtraProfile(responder)
 		}
 	}
-	if resp.UserInfo == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || resp.UserID == "" {
+	if resp.UserInfo == nil {
 		return resp
 	}
-	ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, resp.UserID)
+	return oc.hydrateContactResponseGhost(ctx, resp, "agent", string(resp.UserID))
+}
+
+func (oc *AIClient) hydrateContactResponseGhost(ctx context.Context, resp *bridgev2.ResolveIdentifierResponse, field, value string) *bridgev2.ResolveIdentifierResponse {
+	if resp == nil || resp.UserID == "" || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
+		return resp
+	}
+	ghost, err := oc.resolveChatGhost(ctx, resp.UserID)
 	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Str("agent", string(resp.UserID)).Msg("Failed to hydrate ghost for agent contact")
+		oc.loggerForContext(ctx).Warn().Err(err).Str(field, value).Msg("Failed to hydrate ghost for contact")
 		return resp
 	}
 	resp.Ghost = ghost
@@ -292,46 +290,9 @@ func (oc *AIClient) SearchUsers(ctx context.Context, query string) ([]*bridgev2.
 	if query == "" {
 		return nil, nil
 	}
-
-	agentsList, err := oc.sdkAgentCatalog().ListAgents(ctx, oc.UserLogin)
+	results, err := oc.collectContactResponses(ctx, query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load agents: %w", err)
-	}
-
-	var results []*bridgev2.ResolveIdentifierResponse
-	seen := make(map[networkid.UserID]struct{})
-	for _, agent := range agentsList {
-		if !agentMatchesQuery(query, agent) {
-			continue
-		}
-		resp := oc.agentContactResponse(ctx, agent)
-		if resp == nil {
-			continue
-		}
-		results = append(results, resp)
-		seen[resp.UserID] = struct{}{}
-	}
-
-	// Filter models by query (match ID, display name, aliases, provider URIs)
-	models, err := oc.listAvailableModels(ctx, false)
-	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to load models for search")
-	} else {
-		for i := range models {
-			model := &models[i]
-			if model.ID == "" || !modelMatchesQuery(query, model) {
-				continue
-			}
-			resp := oc.modelContactResponse(ctx, model)
-			if resp == nil {
-				continue
-			}
-			if _, ok := seen[resp.UserID]; ok {
-				continue
-			}
-			results = append(results, resp)
-			seen[resp.UserID] = struct{}{}
-		}
+		return nil, err
 	}
 
 	oc.loggerForContext(ctx).Info().Str("query", query).Int("results", len(results)).Msg("Model/agent search completed")
@@ -344,35 +305,60 @@ func (oc *AIClient) GetContactList(ctx context.Context) ([]*bridgev2.ResolveIden
 	if !oc.IsLoggedIn() {
 		return nil, mautrix.MForbidden.WithMessage("You must be logged in to list contacts")
 	}
-
-	agentsList, err := oc.sdkAgentCatalog().ListAgents(ctx, oc.UserLogin)
+	contacts, err := oc.collectContactResponses(ctx, "")
 	if err != nil {
-		oc.loggerForContext(ctx).Error().Err(err).Msg("Failed to load agents")
-		return nil, fmt.Errorf("failed to load agents: %w", err)
-	}
-
-	contacts := make([]*bridgev2.ResolveIdentifierResponse, 0, len(agentsList))
-	for _, agent := range agentsList {
-		if resp := oc.agentContactResponse(ctx, agent); resp != nil {
-			contacts = append(contacts, resp)
-		}
-	}
-
-	// Add contacts for available models
-	models, err := oc.listAvailableModels(ctx, false)
-	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to load model contact list")
-	} else {
-		for i := range models {
-			model := &models[i]
-			if resp := oc.modelContactResponse(ctx, model); resp != nil {
-				contacts = append(contacts, resp)
-			}
-		}
+		oc.loggerForContext(ctx).Error().Err(err).Msg("Failed to load contacts")
+		return nil, err
 	}
 
 	oc.loggerForContext(ctx).Info().Int("count", len(contacts)).Msg("Returning contact list")
 	return contacts, nil
+}
+
+func (oc *AIClient) collectContactResponses(ctx context.Context, query string) ([]*bridgev2.ResolveIdentifierResponse, error) {
+	query = strings.ToLower(strings.TrimSpace(query))
+
+	agentsList, err := oc.sdkAgentCatalog().ListAgents(ctx, oc.UserLogin)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load agents: %w", err)
+	}
+
+	results := make([]*bridgev2.ResolveIdentifierResponse, 0, len(agentsList))
+	seen := make(map[networkid.UserID]struct{})
+	appendResponse := func(resp *bridgev2.ResolveIdentifierResponse) {
+		if resp == nil {
+			return
+		}
+		if _, ok := seen[resp.UserID]; ok {
+			return
+		}
+		results = append(results, resp)
+		seen[resp.UserID] = struct{}{}
+	}
+
+	for _, agent := range agentsList {
+		if query != "" && !agentMatchesQuery(query, agent) {
+			continue
+		}
+		appendResponse(oc.agentContactResponse(ctx, agent))
+	}
+
+	models, err := oc.listAvailableModels(ctx, false)
+	if err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to load model contacts")
+		return results, nil
+	}
+	for i := range models {
+		model := &models[i]
+		if model.ID == "" {
+			continue
+		}
+		if query != "" && !modelMatchesQuery(query, model) {
+			continue
+		}
+		appendResponse(oc.modelContactResponse(ctx, model))
+	}
+	return results, nil
 }
 
 type chatResolveTarget struct {
@@ -495,25 +481,88 @@ func (oc *AIClient) resolveChatTargetResponse(ctx context.Context, target *chatR
 	if target.response != nil {
 		return target.response, nil
 	}
-	var (
-		resp *bridgev2.ResolveIdentifierResponse
-		err  error
-	)
 	switch {
 	case target.agent != nil:
-		resp, err = oc.resolveAgentIdentifier(ctx, target.agent, "", createChat)
+		if !oc.agentsEnabledForLogin() {
+			return nil, agentChatsDisabledError()
+		}
+		agent := target.agent
+		modelID := oc.agentDefaultModel(agent)
+		userID := oc.agentUserID(agent.ID)
+		ghost, err := oc.resolveChatGhost(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+
+		agentName := oc.resolveAgentDisplayName(ctx, agent)
+		if agentName == "" {
+			agentName = strings.TrimSpace(agent.EffectiveName())
+		}
+		if agentName == "" {
+			agentName = agent.ID
+		}
+		oc.ensureAgentGhostDisplayName(ctx, agent.ID, modelID, agentName)
+		responder, err := oc.ResolveResponderForAgent(ctx, agent.ID, ResponderResolveOptions{
+			RuntimeModelOverride: modelID,
+		})
+		if err != nil {
+			oc.loggerForContext(ctx).Warn().Err(err).Str("agent", agent.ID).Msg("Failed to resolve responder for agent identifier")
+			responder = nil
+		}
+
+		var chatResp *bridgev2.CreateChatResponse
+		if createChat {
+			oc.loggerForContext(ctx).Info().Str("agent", agent.ID).Msg("Creating new chat")
+			chatResp, err = oc.createChat(ctx, chatCreateParams{
+				ModelID: modelID,
+				Agent:   agent,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to create chat: %w", err)
+			}
+		}
+		return &bridgev2.ResolveIdentifierResponse{
+			UserID:   userID,
+			UserInfo: responderUserInfoOrDefault(responder, agentName, agentContactIdentifiers(agent.ID), true),
+			Ghost:    ghost,
+			Chat:     chatResp,
+		}, nil
 	case target.modelID != "":
-		resp, err = oc.resolveModelIdentifier(ctx, target.modelID, createChat)
+		modelID := target.modelID
+		userID := modelUserID(modelID)
+		ghost, err := oc.resolveChatGhost(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+
+		oc.ensureGhostDisplayName(ctx, modelID)
+
+		var chatResp *bridgev2.CreateChatResponse
+		if createChat {
+			oc.loggerForContext(ctx).Info().Str("model", modelID).Msg("Creating new chat")
+			chatResp, err = oc.createChat(ctx, chatCreateParams{ModelID: modelID})
+			if err != nil {
+				return nil, fmt.Errorf("failed to create chat: %w", err)
+			}
+		}
+
+		responder, err := oc.ResolveResponderForModel(ctx, modelID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve model responder: %w", err)
+		}
+		resp := &bridgev2.ResolveIdentifierResponse{
+			UserID:   userID,
+			UserInfo: responderUserInfo(responder, modelContactIdentifiers(modelID), false),
+			Ghost:    ghost,
+			Chat:     chatResp,
+		}
+		if createChat && resp.Chat != nil && target.modelRedirect != "" {
+			resp.Chat.DMRedirectedTo = target.modelRedirect
+		}
+		return resp, nil
 	default:
 		return nil, bridgev2.WrapRespErr(errors.New("identifier target is required"), mautrix.MInvalidParam)
 	}
-	if err != nil {
-		return nil, err
-	}
-	if createChat && resp != nil && resp.Chat != nil && target.modelRedirect != "" {
-		resp.Chat.DMRedirectedTo = target.modelRedirect
-	}
-	return resp, nil
 }
 
 func (oc *AIClient) resolveChatGhost(ctx context.Context, userID networkid.UserID) (*bridgev2.Ghost, error) {
@@ -547,91 +596,6 @@ func (oc *AIClient) CreateChatWithGhost(ctx context.Context, ghost *bridgev2.Gho
 		return nil, err
 	}
 	return resp.Chat, nil
-}
-
-// resolveAgentIdentifier resolves an agent to a ghost and optionally creates a chat.
-func (oc *AIClient) resolveAgentIdentifier(ctx context.Context, agent *agents.AgentDefinition, modelID string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
-	if !oc.agentsEnabledForLogin() {
-		return nil, agentChatsDisabledError()
-	}
-	explicitModel := modelID != ""
-	if modelID == "" {
-		modelID = oc.agentDefaultModel(agent)
-	}
-	userID := oc.agentUserID(agent.ID)
-	ghost, err := oc.resolveChatGhost(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	agentName := oc.resolveAgentDisplayName(ctx, agent)
-	if agentName == "" {
-		agentName = strings.TrimSpace(agent.EffectiveName())
-	}
-	if agentName == "" {
-		agentName = agent.ID
-	}
-	oc.ensureAgentGhostDisplayName(ctx, agent.ID, modelID, agentName)
-	responder, err := oc.ResolveResponderForAgent(ctx, agent.ID, ResponderResolveOptions{
-		RuntimeModelOverride: modelID,
-	})
-	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Str("agent", agent.ID).Msg("Failed to resolve responder for agent identifier")
-		responder = nil
-	}
-
-	var chatResp *bridgev2.CreateChatResponse
-	if createChat {
-		oc.loggerForContext(ctx).Info().Str("agent", agent.ID).Msg("Creating new chat")
-		chatResp, err = oc.createChat(ctx, chatCreateParams{
-			ModelID:            modelID,
-			Agent:              agent,
-			ApplyModelOverride: explicitModel,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create chat: %w", err)
-		}
-	}
-
-	return &bridgev2.ResolveIdentifierResponse{
-		UserID:   userID,
-		UserInfo: responderUserInfoOrDefault(responder, agentName, agentContactIdentifiers(agent.ID), true),
-		Ghost:    ghost,
-		Chat:     chatResp,
-	}, nil
-}
-
-// resolveModelIdentifier resolves an explicit model alias/ID to a ghost.
-func (oc *AIClient) resolveModelIdentifier(ctx context.Context, modelID string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
-	// Get or create ghost
-	userID := modelUserID(modelID)
-	ghost, err := oc.resolveChatGhost(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Ensure ghost display name is set before returning
-	oc.ensureGhostDisplayName(ctx, modelID)
-
-	var chatResp *bridgev2.CreateChatResponse
-	if createChat {
-		oc.loggerForContext(ctx).Info().Str("model", modelID).Msg("Creating new chat")
-		chatResp, err = oc.createChat(ctx, chatCreateParams{ModelID: modelID})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create chat: %w", err)
-		}
-	}
-
-	responder, err := oc.ResolveResponderForModel(ctx, modelID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve model responder: %w", err)
-	}
-	return &bridgev2.ResolveIdentifierResponse{
-		UserID:   userID,
-		UserInfo: responderUserInfo(responder, modelContactIdentifiers(modelID), false),
-		Ghost:    ghost,
-		Chat:     chatResp,
-	}, nil
 }
 
 func (oc *AIClient) modelJoinMember(ctx context.Context, loginID networkid.UserLoginID, modelID, modelName string, info *ModelInfo) bridgev2.ChatMember {

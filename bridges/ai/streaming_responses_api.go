@@ -68,12 +68,7 @@ func (a *responsesTurnAdapter) startContinuationRound(ctx context.Context) (*sse
 	for _, approval := range pendingApprovals {
 		handle := approval.handle
 		if handle == nil {
-			handle = &aiTurnApprovalHandle{
-				client:     a.oc,
-				turn:       state.turn,
-				approvalID: approval.approvalID,
-				toolCallID: approval.toolCallID,
-			}
+			return nil, responses.ResponseNewParams{}, fmt.Errorf("missing MCP approval handle for %s", approval.approvalID)
 		}
 		decision := a.oc.waitForToolApprovalDecision(ctx, state, handle)
 		approved := approvalAllowed(decision)

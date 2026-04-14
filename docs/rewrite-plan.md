@@ -71,9 +71,12 @@ The repo has already shed a large amount of duplicate ownership. The important c
 - AI portal-state SQL access now lives directly in the turn-store boundary instead of an extra DB wrapper layer.
 - AI created-chat materialization now has one helper across normal chat creation, boss-store rooms, and subagent spawn.
 - AI chat creation now has one constructor path for model and agent chats, and one prepare/save/materialize path for newly created portals.
+- AI identifier resolution now has one response-building path for model and agent targets.
+- AI contact listing and contact search now share one contact-collection path.
 - AI internal room bootstrap now has one create-or-materialize path for scheduler and integration host flows.
 - AI agent/default-chat portal configuration now has one owner.
 - AI welcome/bootstrap no longer splits between direct post-create sends and provisioning polling; one portal-based room-created bootstrap path now owns welcome delivery and auto-greeting kickoff.
+- Responses API continuation no longer carries a synthetic fallback approval handle branch; pending approvals now require the real registered handle.
 - `aichats_portal_state` now stores turn/reset ownership only; the leftover reset timestamp sidecar field is gone.
 - AI internal-room setup no longer hides durable portal writes behind `MutatePortal` / `SaveBefore`; scheduler and integration host now mutate and save portals explicitly before materialization.
 - Shared DM portal bootstrap/materialization moved down to `pkg/shared/bridgeutil` where it was truly generic.
