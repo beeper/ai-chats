@@ -144,13 +144,6 @@ func (s *streamingState) resetFinishReason() {
 	s.finishReason = ""
 }
 
-func (s *streamingState) markCompletedNow() {
-	if s == nil {
-		return
-	}
-	s.completedAtMs = time.Now().UnixMilli()
-}
-
 func (s *streamingState) setTerminalFailure(reason string) {
 	if s == nil {
 		return
@@ -160,14 +153,14 @@ func (s *streamingState) setTerminalFailure(reason string) {
 		reason = "error"
 	}
 	s.finishReason = reason
-	s.markCompletedNow()
+	s.completedAtMs = time.Now().UnixMilli()
 }
 
 func (s *streamingState) finalizeTerminalSuccess() string {
 	if s == nil {
 		return ""
 	}
-	s.markCompletedNow()
+	s.completedAtMs = time.Now().UnixMilli()
 	if s.finishReason == "" {
 		s.finishReason = "stop"
 	}

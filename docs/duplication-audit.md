@@ -111,6 +111,9 @@ Why this still violates the goal:
 - The Responses event parser no longer stamps `completedAtMs` directly, but
   terminal ownership is still split between lifecycle parsing, error
   normalization, response-final shaping, and the final success/error handlers.
+- Terminal timestamps are now written directly at the real success/failure/flush
+  sites; the remaining duplication is higher-level terminal shaping, not a
+  separate timestamp helper.
 - There is no single terminal state machine.
 
 Desired owner:

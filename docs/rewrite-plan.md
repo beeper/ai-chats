@@ -210,6 +210,7 @@ Deliverable:
 - one place where final Matrix edits/messages are emitted
 - the Responses stream parser only records lifecycle deltas; it does not own
   terminal timestamps
+- terminal timestamps are written only at the real success/failure/flush sites
 
 Why first:
 
