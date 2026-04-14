@@ -28,12 +28,46 @@ const (
 	defaultGoogleVideoModel           = "gemini-3-flash-preview"
 )
 
-var mediaProviderCapabilities = map[string][]MediaUnderstandingCapability{
-	"openai":     {MediaCapabilityImage, MediaCapabilityAudio},
-	"groq":       {MediaCapabilityAudio},
-	"deepgram":   {MediaCapabilityAudio},
-	"google":     {MediaCapabilityImage, MediaCapabilityAudio, MediaCapabilityVideo},
-	"openrouter": {MediaCapabilityImage, MediaCapabilityVideo},
+type mediaProviderSpec struct {
+	capabilities []MediaUnderstandingCapability
+	authHeader   string
+	envKeys      []string
+	service      string
+}
+
+var mediaProviderSpecs = map[string]mediaProviderSpec{
+	"openai": {
+		capabilities: []MediaUnderstandingCapability{MediaCapabilityImage, MediaCapabilityAudio},
+		authHeader:   "authorization",
+		envKeys:      []string{"OPENAI_API_KEY"},
+		service:      serviceOpenAI,
+	},
+	"groq": {
+		capabilities: []MediaUnderstandingCapability{MediaCapabilityAudio},
+		authHeader:   "authorization",
+		envKeys:      []string{"GROQ_API_KEY"},
+	},
+	"deepgram": {
+		capabilities: []MediaUnderstandingCapability{MediaCapabilityAudio},
+		authHeader:   "authorization",
+		envKeys:      []string{"DEEPGRAM_API_KEY"},
+	},
+	"google": {
+		capabilities: []MediaUnderstandingCapability{MediaCapabilityImage, MediaCapabilityAudio, MediaCapabilityVideo},
+		authHeader:   "x-goog-api-key",
+		envKeys:      []string{"GEMINI_API_KEY", "GOOGLE_API_KEY"},
+	},
+	"openrouter": {
+		capabilities: []MediaUnderstandingCapability{MediaCapabilityImage, MediaCapabilityVideo},
+		authHeader:   "authorization",
+		envKeys:      []string{"OPENROUTER_API_KEY"},
+		service:      serviceOpenRouter,
+	},
+}
+
+func mediaProviderSpecFor(providerID string) (mediaProviderSpec, bool) {
+	spec, ok := mediaProviderSpecs[normalizeMediaProviderID(providerID)]
+	return spec, ok
 }
 
 func normalizeMediaProviderID(id string) string {

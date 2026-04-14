@@ -295,6 +295,8 @@ Deliverable:
 - image-generation endpoint resolution uses the shared service-config path
 - media OpenAI/OpenRouter endpoint+auth resolution uses that same service-config
   path
+- media provider capability/auth/env/service metadata uses one canonical spec
+  table
 
 Why fourth:
 

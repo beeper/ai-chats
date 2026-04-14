@@ -342,11 +342,11 @@ func (oc *AIClient) hasMediaProviderAuth(providerID string, cfg *MediaUnderstand
 }
 
 func providerSupportsCapability(providerID string, capability MediaUnderstandingCapability) bool {
-	caps, ok := mediaProviderCapabilities[providerID]
+	spec, ok := mediaProviderSpecFor(providerID)
 	if !ok {
 		return false
 	}
-	return slices.Contains(caps, capability)
+	return slices.Contains(spec.capabilities, capability)
 }
 
 var hasBinaryCache sync.Map
@@ -979,16 +979,13 @@ func mergeMediaHeaders(cfg *MediaUnderstandingConfig, entry MediaUnderstandingMo
 }
 
 func hasProviderAuthHeader(providerID string, headers map[string]string) bool {
+	spec, ok := mediaProviderSpecFor(providerID)
+	if !ok || spec.authHeader == "" {
+		return false
+	}
 	for key := range headers {
-		switch strings.ToLower(key) {
-		case "authorization":
-			if providerID == "openai" || providerID == "groq" || providerID == "deepgram" || providerID == "openrouter" {
-				return true
-			}
-		case "x-goog-api-key":
-			if providerID == "google" {
-				return true
-			}
+		if strings.EqualFold(key, spec.authHeader) {
+			return true
 		}
 	}
 	return false
@@ -1028,32 +1025,17 @@ func resolveProfiledKeys(envBases []string, profile, preferredProfile string) st
 }
 
 func (oc *AIClient) resolveMediaProviderAPIKey(providerID string, profile string, preferredProfile string) string {
-	switch providerID {
-	case "openai":
-		if key := resolveProfiledKeys([]string{"OPENAI_API_KEY"}, profile, preferredProfile); key != "" {
-			return key
-		}
-		if key := strings.TrimSpace(resolveMediaServiceConfig(oc, serviceOpenAI).APIKey); key != "" {
-			return key
-		}
-		return strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
-	case "groq":
-		return resolveProfiledKeys([]string{"GROQ_API_KEY"}, profile, preferredProfile)
-	case "deepgram":
-		return resolveProfiledKeys([]string{"DEEPGRAM_API_KEY"}, profile, preferredProfile)
-	case "google":
-		return resolveProfiledKeys([]string{"GEMINI_API_KEY", "GOOGLE_API_KEY"}, profile, preferredProfile)
-	case "openrouter":
-		if key := resolveProfiledKeys([]string{"OPENROUTER_API_KEY"}, profile, preferredProfile); key != "" {
-			return key
-		}
-		if key := strings.TrimSpace(resolveMediaServiceConfig(oc, serviceOpenRouter).APIKey); key != "" {
-			return key
-		}
-		return strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))
-	default:
+	spec, ok := mediaProviderSpecFor(providerID)
+	if !ok {
 		return ""
 	}
+	if key := resolveProfiledKeys(spec.envKeys, profile, preferredProfile); key != "" {
+		return key
+	}
+	if spec.service != "" {
+		return strings.TrimSpace(resolveMediaServiceConfig(oc, spec.service).APIKey)
+	}
+	return ""
 }
 
 func buildMediaOutput(capability MediaUnderstandingCapability, text string, provider string, model string, attachmentIndex int) *MediaUnderstandingOutput {

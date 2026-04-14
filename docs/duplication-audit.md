@@ -187,6 +187,9 @@ Why this still violates the goal:
   policy branching, not these endpoint-specific rebuilds
 - media understanding now also reads OpenAI/OpenRouter endpoint+auth config from
   the shared service-config path instead of re-deriving those service values
+- media provider capability, auth-header shape, env-key lookup, and optional
+  service binding now come from one provider-spec table instead of separate
+  maps/switches
 - token lookup, base URL routing, capability flags, media/image support, and
   provider-specific behavior are still derived in multiple subsystems
 - the current `AIProvider` abstraction does not buy enough to justify the extra
