@@ -205,6 +205,9 @@ Why this still violates the goal:
 - retrieval Exa proxy defaults no longer bounce through a second helper layer:
   `applyLoginTokensToRetrievalConfig(...)` now owns proxy-base/API-key mutation
   directly instead of routing through `applyExaProxyDefaultsTo(...)`
+- media auto-selection no longer climbs a helper ladder for active-model,
+  key-based fallback, and audio-provider fallback selection:
+  `resolveAutoMediaEntries(...)` now owns that decision directly
 - provider initialization, media understanding, and retrieval config no longer
   route through provider-specific OpenAI / OpenRouter base-URL shims
 - media provider capability, auth-header shape, env-key lookup, and optional

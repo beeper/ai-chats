@@ -209,39 +209,36 @@ func (oc *AIClient) applyMediaUnderstandingForAttachments(
 	return result, nil
 }
 
-func (oc *AIClient) resolveAutoAudioEntry(cfg *MediaUnderstandingConfig) *MediaUnderstandingModelConfig {
-	var headers map[string]string
-	if cfg != nil {
-		headers = cfg.Headers
-	}
-
-	candidates := []struct {
-		provider string
-		model    string
-	}{
-		{"openai", defaultAudioModelsByProvider["openai"]},
-		{"groq", defaultAudioModelsByProvider["groq"]},
-		{"deepgram", defaultAudioModelsByProvider["deepgram"]},
-		{"google", defaultGoogleAudioModel},
-	}
-	for _, c := range candidates {
-		if oc.resolveMediaProviderAPIKey(c.provider, "", "") != "" || hasProviderAuthHeader(c.provider, headers) {
-			return &MediaUnderstandingModelConfig{
-				Provider: c.provider,
-				Model:    c.model,
-			}
-		}
-	}
-	return nil
-}
-
 func (oc *AIClient) resolveAutoMediaEntries(
 	capability MediaUnderstandingCapability,
 	cfg *MediaUnderstandingConfig,
 	meta *PortalMetadata,
 ) []MediaUnderstandingModelConfig {
-	if active := oc.resolveActiveMediaEntry(capability, cfg, meta); active != nil {
-		return []MediaUnderstandingModelConfig{*active}
+	var headers map[string]string
+	if cfg != nil {
+		headers = cfg.Headers
+	}
+	hasProviderAuth := func(providerID string) bool {
+		if hasProviderAuthHeader(providerID, headers) {
+			return true
+		}
+		return strings.TrimSpace(oc.resolveMediaProviderAPIKey(providerID, "", "")) != ""
+	}
+
+	if oc != nil && meta != nil {
+		responder := oc.responderForMeta(context.Background(), meta)
+		if responder != nil && strings.TrimSpace(responder.ModelID) != "" {
+			providerID, model := splitModelProvider(responder.ModelID)
+			if providerID == "" {
+				providerID = normalizeMediaProviderID(oc.responderProvider(responder))
+			}
+			if providerID != "" && providerSupportsCapability(providerID, capability) && hasProviderAuth(providerID) {
+				return []MediaUnderstandingModelConfig{{
+					Provider: providerID,
+					Model:    model,
+				}}
+			}
+		}
 	}
 
 	if capability == MediaCapabilityAudio {
@@ -254,91 +251,54 @@ func (oc *AIClient) resolveAutoMediaEntries(
 		return []MediaUnderstandingModelConfig{*gemini}
 	}
 
-	if keyEntry := oc.resolveKeyMediaEntry(capability, cfg); keyEntry != nil {
-		return []MediaUnderstandingModelConfig{*keyEntry}
-	}
-
-	return nil
-}
-
-func (oc *AIClient) resolveActiveMediaEntry(
-	capability MediaUnderstandingCapability,
-	cfg *MediaUnderstandingConfig,
-	meta *PortalMetadata,
-) *MediaUnderstandingModelConfig {
-	if oc == nil || meta == nil {
-		return nil
-	}
-	responder := oc.responderForMeta(context.Background(), meta)
-	if responder == nil || strings.TrimSpace(responder.ModelID) == "" {
-		return nil
-	}
-	providerID, model := splitModelProvider(responder.ModelID)
-	if providerID == "" {
-		providerID = normalizeMediaProviderID(oc.responderProvider(responder))
-	}
-	if providerID == "" {
-		return nil
-	}
-	if !providerSupportsCapability(providerID, capability) {
-		return nil
-	}
-	if !oc.hasMediaProviderAuth(providerID, cfg) {
-		return nil
-	}
-	return &MediaUnderstandingModelConfig{
-		Provider: providerID,
-		Model:    model,
-	}
-}
-
-func (oc *AIClient) resolveKeyMediaEntry(
-	capability MediaUnderstandingCapability,
-	cfg *MediaUnderstandingConfig,
-) *MediaUnderstandingModelConfig {
 	switch capability {
 	case MediaCapabilityImage:
-		if oc.hasMediaProviderAuth("openrouter", cfg) {
-			return &MediaUnderstandingModelConfig{
+		if hasProviderAuth("openrouter") {
+			return []MediaUnderstandingModelConfig{{
 				Provider: "openrouter",
 				Model:    defaultOpenRouterGoogleModel,
-			}
+			}}
 		}
-		if oc.hasMediaProviderAuth("openai", cfg) {
-			return &MediaUnderstandingModelConfig{
+		if hasProviderAuth("openai") {
+			return []MediaUnderstandingModelConfig{{
 				Provider: "openai",
 				Model:    defaultImageModelsByProvider["openai"],
-			}
+			}}
 		}
 	case MediaCapabilityVideo:
-		if oc.hasMediaProviderAuth("openrouter", cfg) {
-			return &MediaUnderstandingModelConfig{
+		if hasProviderAuth("openrouter") {
+			return []MediaUnderstandingModelConfig{{
 				Provider: "openrouter",
 				Model:    defaultOpenRouterGoogleModel,
-			}
+			}}
 		}
-		if oc.hasMediaProviderAuth("google", cfg) {
-			return &MediaUnderstandingModelConfig{
+		if hasProviderAuth("google") {
+			return []MediaUnderstandingModelConfig{{
 				Provider: "google",
 				Model:    defaultGoogleVideoModel,
-			}
+			}}
 		}
 	case MediaCapabilityAudio:
-		return oc.resolveAutoAudioEntry(cfg)
+		candidates := []struct {
+			provider string
+			model    string
+		}{
+			{"openai", defaultAudioModelsByProvider["openai"]},
+			{"groq", defaultAudioModelsByProvider["groq"]},
+			{"deepgram", defaultAudioModelsByProvider["deepgram"]},
+			{"google", defaultGoogleAudioModel},
+		}
+		for _, candidate := range candidates {
+			if hasProviderAuth(candidate.provider) {
+				return []MediaUnderstandingModelConfig{{
+					Provider: candidate.provider,
+					Model:    candidate.model,
+				}}
+			}
+		}
 	}
-	return nil
-}
 
-func (oc *AIClient) hasMediaProviderAuth(providerID string, cfg *MediaUnderstandingConfig) bool {
-	var headers map[string]string
-	if cfg != nil {
-		headers = cfg.Headers
-	}
-	if hasProviderAuthHeader(providerID, headers) {
-		return true
-	}
-	key := oc.resolveMediaProviderAPIKey(providerID, "", "")
-	return strings.TrimSpace(key) != ""
+	return nil
 }
 
 func providerSupportsCapability(providerID string, capability MediaUnderstandingCapability) bool {

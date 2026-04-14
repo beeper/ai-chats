@@ -242,6 +242,12 @@ Recent progress also flattened retrieval provider mutation further:
 `applyLoginTokensToRetrievalConfig(...)` now owns Exa proxy-base/API-key
 mutation directly instead of delegating to `applyExaProxyDefaultsTo(...)`.
 
+Recent progress also flattened media auto-selection: active-model selection,
+CLI fallback, and provider-key fallback now live directly in
+`resolveAutoMediaEntries(...)` instead of bouncing through separate
+`resolveActiveMediaEntry(...)`, `resolveKeyMediaEntry(...)`,
+`resolveAutoAudioEntry(...)`, and `hasMediaProviderAuth(...)` helpers.
+
 Recent progress also pulled natural final-send shaping directly into
 `finalizeStreamingTurn(...)`: the extra `sendFinalAssistantTurn(...)` wrapper
 is gone, and heartbeat skip/early-return branches now terminate directly
