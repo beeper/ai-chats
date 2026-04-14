@@ -17,10 +17,6 @@ type conversationRuntimeState struct {
 	providerIdentity     ProviderIdentity
 }
 
-type conversationRuntimeProvider interface {
-	conversationRuntimeState() *conversationRuntimeState
-}
-
 func newConversationRuntimeState[SessionT SessionValue, ConfigDataT ConfigValue](
 	cfg *Config[SessionT, ConfigDataT],
 	session SessionT,
@@ -45,14 +41,6 @@ func newConversationRuntimeState[SessionT SessionValue, ConfigDataT ConfigValue]
 		}
 	}
 	return state
-}
-
-func runtimeStateFromClient(client bridgev2.NetworkAPI) *conversationRuntimeState {
-	provider, ok := client.(conversationRuntimeProvider)
-	if !ok {
-		return nil
-	}
-	return provider.conversationRuntimeState()
 }
 
 func resolveProviderIdentity[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Config[SessionT, ConfigDataT]) ProviderIdentity {

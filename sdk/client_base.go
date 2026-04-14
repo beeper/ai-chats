@@ -4,14 +4,15 @@ import (
 	"context"
 	"sync"
 	"sync/atomic"
+	"time"
 
+	"github.com/beeper/agentremote/turns"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 )
 
 type ClientBase struct {
 	BaseReactionHandler
-	BaseStreamState
 
 	loginMu sync.RWMutex
 	login   *bridgev2.UserLogin
@@ -20,6 +21,11 @@ type ClientBase struct {
 	HumanUserIDPrefix string
 	MessageIDPrefix   string
 	MessageLogKey     string
+
+	StreamMu                  sync.Mutex
+	StreamSessions            map[string]*turns.StreamSession
+	StreamFallbackToDebounced atomic.Bool
+	streamClosing             atomic.Bool
 }
 
 func (c *ClientBase) InitClientBase(login *bridgev2.UserLogin, target ReactionTarget) {
@@ -68,4 +74,39 @@ func (c *ClientBase) HumanUserID() networkid.UserID {
 		return ""
 	}
 	return HumanUserID(c.HumanUserIDPrefix, login.ID)
+}
+
+func (c *ClientBase) InitStreamState() {
+	c.StreamSessions = make(map[string]*turns.StreamSession)
+	c.streamClosing.Store(false)
+}
+
+func (c *ClientBase) BeginStreamShutdown() {
+	c.streamClosing.Store(true)
+}
+
+func (c *ClientBase) ResetStreamShutdown() {
+	c.streamClosing.Store(false)
+}
+
+func (c *ClientBase) IsStreamShuttingDown() bool {
+	return c.streamClosing.Load()
+}
+
+func (c *ClientBase) CloseAllSessions() {
+	c.BeginStreamShutdown()
+	c.StreamMu.Lock()
+	sessions := make([]*turns.StreamSession, 0, len(c.StreamSessions))
+	for _, sess := range c.StreamSessions {
+		if sess != nil {
+			sessions = append(sessions, sess)
+		}
+	}
+	c.StreamSessions = make(map[string]*turns.StreamSession)
+	c.StreamMu.Unlock()
+	for _, sess := range sessions {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		sess.End(ctx, turns.EndReasonDisconnect)
+		cancel()
+	}
 }
