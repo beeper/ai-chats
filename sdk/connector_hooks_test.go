@@ -69,7 +69,7 @@ func TestNewConnectorBaseUsesHooksAndCustomClients(t *testing.T) {
 			stopCalled++
 		},
 		MakeBrokenLogin: func(login *bridgev2.UserLogin, reason string) *BrokenLoginClient {
-			return NewBrokenLoginClient(login, "custom:"+reason)
+			return &BrokenLoginClient{UserLogin: login, Reason: "custom:" + reason}
 		},
 		CreateClient: func(*bridgev2.UserLogin) (bridgev2.NetworkAPI, error) {
 			createCalled++

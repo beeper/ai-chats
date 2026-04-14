@@ -14,38 +14,6 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-type PreConvertedRemoteMessageParams struct {
-	PortalKey   networkid.PortalKey
-	Sender      bridgev2.EventSender
-	MsgID       networkid.MessageID
-	IDPrefix    string
-	LogKey      string
-	Timestamp   time.Time
-	StreamOrder int64
-	Converted   *bridgev2.ConvertedMessage
-}
-
-func BuildPreConvertedRemoteMessage(p PreConvertedRemoteMessageParams) *simplevent.PreConvertedMessage {
-	if p.MsgID == "" {
-		p.MsgID = NewMessageID(p.IDPrefix)
-	}
-	timing := ResolveEventTiming(p.Timestamp, p.StreamOrder)
-	return &simplevent.PreConvertedMessage{
-		EventMeta: simplevent.EventMeta{
-			Type:        bridgev2.RemoteEventMessage,
-			PortalKey:   p.PortalKey,
-			Sender:      p.Sender,
-			Timestamp:   timing.Timestamp,
-			StreamOrder: timing.StreamOrder,
-			LogContext: func(c zerolog.Context) zerolog.Context {
-				return c.Str(p.LogKey, string(p.MsgID))
-			},
-		},
-		ID:   p.MsgID,
-		Data: p.Converted,
-	}
-}
-
 // SendViaPortalParams holds the parameters for SendViaPortal.
 type SendViaPortalParams struct {
 	Login       *bridgev2.UserLogin
@@ -68,16 +36,24 @@ func SendViaPortal(p SendViaPortalParams) (id.EventID, networkid.MessageID, erro
 	if p.Login == nil || p.Login.Bridge == nil {
 		return "", p.MsgID, fmt.Errorf("bridge unavailable")
 	}
-	evt := BuildPreConvertedRemoteMessage(PreConvertedRemoteMessageParams{
-		PortalKey:   p.Portal.PortalKey,
-		Sender:      p.Sender,
-		MsgID:       p.MsgID,
-		IDPrefix:    p.IDPrefix,
-		LogKey:      p.LogKey,
-		Timestamp:   p.Timestamp,
-		StreamOrder: p.StreamOrder,
-		Converted:   p.Converted,
-	})
+	if p.MsgID == "" {
+		p.MsgID = NewMessageID(p.IDPrefix)
+	}
+	timing := ResolveEventTiming(p.Timestamp, p.StreamOrder)
+	evt := &simplevent.PreConvertedMessage{
+		EventMeta: simplevent.EventMeta{
+			Type:        bridgev2.RemoteEventMessage,
+			PortalKey:   p.Portal.PortalKey,
+			Sender:      p.Sender,
+			Timestamp:   timing.Timestamp,
+			StreamOrder: timing.StreamOrder,
+			LogContext: func(c zerolog.Context) zerolog.Context {
+				return c.Str(p.LogKey, string(p.MsgID))
+			},
+		},
+		ID:   p.MsgID,
+		Data: p.Converted,
+	}
 	result := p.Login.QueueRemoteEvent(evt)
 	if !result.Success {
 		if result.Error != nil {

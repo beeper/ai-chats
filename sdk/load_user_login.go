@@ -38,7 +38,7 @@ func LoadUserLogin[C bridgev2.NetworkAPI](login *bridgev2.UserLogin, cfg LoadUse
 	makeBroken := cfg.MakeBroken
 	if makeBroken == nil {
 		makeBroken = func(l *bridgev2.UserLogin, reason string) *BrokenLoginClient {
-			return NewBrokenLoginClient(l, reason)
+			return &BrokenLoginClient{UserLogin: l, Reason: reason}
 		}
 	}
 	if cfg.Accept != nil {

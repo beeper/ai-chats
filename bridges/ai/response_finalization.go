@@ -6,8 +6,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/bridgev2/simplevent"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 
@@ -29,14 +31,20 @@ func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev
 		return
 	}
 	rendered := format.RenderMarkdown(body, true, true)
-	msg := sdk.BuildPreConvertedRemoteMessage(sdk.PreConvertedRemoteMessageParams{
-		PortalKey:   portal.PortalKey,
-		Sender:      sender,
-		IDPrefix:    "ai",
-		LogKey:      "ai_msg_id",
-		Timestamp:   timing.Timestamp,
-		StreamOrder: timing.StreamOrder,
-		Converted: &bridgev2.ConvertedMessage{
+	msgID := sdk.NewMessageID("ai")
+	msg := &simplevent.PreConvertedMessage{
+		EventMeta: simplevent.EventMeta{
+			Type:        bridgev2.RemoteEventMessage,
+			PortalKey:   portal.PortalKey,
+			Sender:      sender,
+			Timestamp:   timing.Timestamp,
+			StreamOrder: timing.StreamOrder,
+			LogContext: func(c zerolog.Context) zerolog.Context {
+				return c.Str("ai_msg_id", string(msgID))
+			},
+		},
+		ID: msgID,
+		Data: &bridgev2.ConvertedMessage{
 			Parts: []*bridgev2.ConvertedMessagePart{{
 				ID:   networkid.PartID("0"),
 				Type: event.EventMessage,
@@ -50,7 +58,7 @@ func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev
 				Extra: map[string]any{"com.beeper.continuation": true},
 			}},
 		},
-	})
+	}
 	var relatesTo *event.RelatesTo
 	if replyTarget.ThreadRoot != "" {
 		relatesTo = (&event.RelatesTo{}).SetThread(replyTarget.ThreadRoot, replyTarget.EffectiveReplyTo())

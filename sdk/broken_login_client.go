@@ -16,12 +16,6 @@ type BrokenLoginClient struct {
 	OnLogout  func(context.Context, *bridgev2.UserLogin)
 }
 
-// NewBrokenLoginClient creates a BrokenLoginClient for a login that cannot be fully
-// initialized (e.g. missing credentials or invalid config).
-func NewBrokenLoginClient(login *bridgev2.UserLogin, reason string) *BrokenLoginClient {
-	return &BrokenLoginClient{UserLogin: login, Reason: reason}
-}
-
 var _ bridgev2.NetworkAPI = (*BrokenLoginClient)(nil)
 
 func (c *BrokenLoginClient) Connect(_ context.Context) {

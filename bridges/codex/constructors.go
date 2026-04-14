@@ -161,7 +161,7 @@ func codexSDKAgent() *sdk.Agent {
 }
 
 func newBrokenLoginClient(login *bridgev2.UserLogin, connector *CodexConnector, reason string) *sdk.BrokenLoginClient {
-	c := sdk.NewBrokenLoginClient(login, reason)
+	c := &sdk.BrokenLoginClient{UserLogin: login, Reason: reason}
 	c.OnLogout = func(ctx context.Context, login *bridgev2.UserLogin) {
 		tmp := &CodexClient{UserLogin: login, connector: connector}
 		tmp.purgeCodexHomeBestEffort(ctx)
