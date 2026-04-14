@@ -2,6 +2,7 @@ package sdk
 
 import (
 	"context"
+	"maps"
 	"sync"
 
 	"go.mau.fi/util/configupgrade"
@@ -66,7 +67,11 @@ func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Confi
 	return NewConnector(ConnectorSpec{
 		ProtocolID: protocolID,
 		Init: func(bridge *bridgev2.Bridge) {
-			EnsureClientMap(mu, clientsRef)
+			mu.Lock()
+			if *clientsRef == nil {
+				*clientsRef = make(map[networkid.UserLoginID]bridgev2.NetworkAPI)
+			}
+			mu.Unlock()
 			if cfg.InitConnector != nil {
 				cfg.InitConnector(bridge)
 			}
@@ -79,7 +84,12 @@ func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Confi
 			return nil
 		},
 		Stop: func(ctx context.Context, bridge *bridgev2.Bridge) {
-			StopClients(mu, clientsRef)
+			mu.Lock()
+			cloned := maps.Clone(*clientsRef)
+			mu.Unlock()
+			for _, client := range cloned {
+				client.Disconnect()
+			}
 			if cfg.StopConnector != nil {
 				cfg.StopConnector(ctx, bridge)
 			}

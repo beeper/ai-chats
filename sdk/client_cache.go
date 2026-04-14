@@ -2,24 +2,11 @@ package sdk
 
 import (
 	"context"
-	"maps"
 	"sync"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 )
-
-// EnsureClientMap initializes the connector client cache map when needed.
-func EnsureClientMap(mu *sync.Mutex, clients *map[networkid.UserLoginID]bridgev2.NetworkAPI) {
-	if mu == nil || clients == nil {
-		return
-	}
-	mu.Lock()
-	if *clients == nil {
-		*clients = make(map[networkid.UserLoginID]bridgev2.NetworkAPI)
-	}
-	mu.Unlock()
-}
 
 // RemoveClientFromCache removes a client from the cache by login ID.
 func RemoveClientFromCache(
@@ -33,20 +20,6 @@ func RemoveClientFromCache(
 	mu.Lock()
 	delete(clients, loginID)
 	mu.Unlock()
-}
-
-// StopClients disconnects all cached clients that expose Disconnect().
-func StopClients(mu *sync.Mutex, clients *map[networkid.UserLoginID]bridgev2.NetworkAPI) {
-	if mu == nil || clients == nil {
-		return
-	}
-	mu.Lock()
-	cloned := maps.Clone(*clients)
-	mu.Unlock()
-
-	for _, client := range cloned {
-		client.Disconnect()
-	}
 }
 
 // PrimeUserLoginCache preloads all logins into bridgev2's in-memory user/login caches.

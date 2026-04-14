@@ -3,6 +3,7 @@ package sdk
 import (
 	"context"
 	"errors"
+	"maps"
 	"sync"
 	"testing"
 
@@ -135,7 +136,11 @@ func TestTypedClientLoaderAssignsBrokenLoginOnRejectedLogin(t *testing.T) {
 func TestTypedClientLoaderUsesClientMapReferenceWhenInitialCacheIsNil(t *testing.T) {
 	var mu sync.Mutex
 	var clients map[networkid.UserLoginID]bridgev2.NetworkAPI
-	EnsureClientMap(&mu, &clients)
+	mu.Lock()
+	if clients == nil {
+		clients = make(map[networkid.UserLoginID]bridgev2.NetworkAPI)
+	}
+	mu.Unlock()
 
 	loader := func(_ context.Context, login *bridgev2.UserLogin) error {
 		return LoadUserLogin(login, LoadUserLoginConfig[*fakeClient]{
@@ -165,7 +170,12 @@ func TestConnectorStopCanDisconnectCachedClients(t *testing.T) {
 	}
 	conn := NewConnector(ConnectorSpec{
 		Stop: func(context.Context, *bridgev2.Bridge) {
-			StopClients(&mu, &clients)
+			mu.Lock()
+			cloned := maps.Clone(clients)
+			mu.Unlock()
+			for _, client := range cloned {
+				client.Disconnect()
+			}
 		},
 	})
 	conn.Stop(context.Background())
