@@ -5,7 +5,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"time"
 )
 
 type SystemEvent struct {
@@ -33,42 +32,6 @@ func requireSessionKey(key string) (string, error) {
 		return "", errors.New("system events require a session key")
 	}
 	return trimmed, nil
-}
-
-func normalizeContextKey(key string) string {
-	trimmed := strings.TrimSpace(key)
-	if trimmed == "" {
-		return ""
-	}
-	return strings.ToLower(trimmed)
-}
-
-func enqueueSystemEvent(ownerKey string, sessionKey string, text string, contextKey string) {
-	key, err := buildSystemEventsMapKey(ownerKey, sessionKey)
-	if err != nil {
-		return
-	}
-	cleaned := strings.TrimSpace(text)
-	if cleaned == "" {
-		return
-	}
-	systemEventsMu.Lock()
-	entry := systemEvents[key]
-	if entry == nil {
-		entry = &systemEventQueue{}
-		systemEvents[key] = entry
-	}
-	entry.lastContextKey = normalizeContextKey(contextKey)
-	if entry.lastText == cleaned {
-		systemEventsMu.Unlock()
-		return
-	}
-	entry.lastText = cleaned
-	entry.queue = append(entry.queue, SystemEvent{Text: cleaned, TS: time.Now().UnixMilli()})
-	if len(entry.queue) > maxSystemEvents {
-		entry.queue = entry.queue[len(entry.queue)-maxSystemEvents:]
-	}
-	systemEventsMu.Unlock()
 }
 
 func drainSystemEventEntries(ownerKey string, sessionKey string) []SystemEvent {

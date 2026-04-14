@@ -13,7 +13,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/pkg/agents"
 	integrationcron "github.com/beeper/agentremote/pkg/integrations/cron"
@@ -747,8 +746,4 @@ func portalKeyFromParts(client *AIClient, portalID string, receiver string) netw
 		key.Receiver = client.UserLogin.ID
 	}
 	return key
-}
-
-func portalRoomIDFromString(roomID string) id.RoomID {
-	return id.RoomID(roomID)
 }
