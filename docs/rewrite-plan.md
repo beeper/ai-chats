@@ -254,6 +254,10 @@ service-config branching directly instead of routing through
 `buildOpenAIImagesBaseURL(...)`, `buildGeminiBaseURL(...)`, and
 `resolveOpenRouterImageGenEndpoint(...)`.
 
+Recent progress also removed the generic `effectiveToolConfig[T]` wrapper:
+`effectiveSearchConfig(...)` and `effectiveFetchConfig(...)` now read their
+tool config, login-derived overrides, and env/default merge directly.
+
 Recent progress also pulled natural final-send shaping directly into
 `finalizeStreamingTurn(...)`: the extra `sendFinalAssistantTurn(...)` wrapper
 is gone, and heartbeat skip/early-return branches now terminate directly

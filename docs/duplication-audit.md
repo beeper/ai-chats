@@ -211,6 +211,10 @@ Why this still violates the goal:
 - image generation no longer routes provider/service endpoint selection through
   separate OpenAI/Gemini/OpenRouter wrapper helpers: `generateImagesForRequest`
   now owns that provider-config branching directly
+- search/fetch config loading no longer routes through the generic
+  `effectiveToolConfig[T]` helper; `effectiveSearchConfig(...)` and
+  `effectiveFetchConfig(...)` now own their direct load/login/default merge
+  flow
 - provider initialization, media understanding, and retrieval config no longer
   route through provider-specific OpenAI / OpenRouter base-URL shims
 - media provider capability, auth-header shape, env-key lookup, and optional

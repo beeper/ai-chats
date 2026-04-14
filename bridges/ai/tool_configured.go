@@ -15,126 +15,99 @@ import (
 // prerequisites like API keys and service initialization.
 
 func (oc *AIClient) effectiveSearchConfig(ctx context.Context) *retrieval.SearchConfig {
-	return effectiveToolConfig(
-		ctx,
-		oc,
-		func(connector *OpenAIConnector) *retrieval.SearchConfig {
-			if connector == nil || connector.Config.Tools.Web == nil {
-				return nil
-			}
-			return mapSearchConfig(connector.Config.Tools.Web.Search)
-		},
-		func(cfg *retrieval.SearchConfig, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) *retrieval.SearchConfig {
-			if cfg == nil {
-				cfg = &retrieval.SearchConfig{}
-			}
-			applyLoginTokensToRetrievalConfig(&cfg.Provider, &cfg.Fallbacks, &cfg.Exa.BaseURL, &cfg.Exa.APIKey, provider, loginCfg, connector)
-			return cfg
-		},
-		func(cfg *retrieval.SearchConfig) *retrieval.SearchConfig {
-			envCfg := &retrieval.SearchConfig{}
-			envCfg.Provider = stringutil.EnvOr(envCfg.Provider, os.Getenv("SEARCH_PROVIDER"))
-			if len(envCfg.Fallbacks) == 0 {
-				if raw := strings.TrimSpace(os.Getenv("SEARCH_FALLBACKS")); raw != "" {
-					envCfg.Fallbacks = stringutil.SplitCSV(raw)
-				}
-			}
-			exa.ApplyEnv(&envCfg.Exa.APIKey, &envCfg.Exa.BaseURL)
-			envCfg = envCfg.WithDefaults()
-			if cfg == nil {
-				return envCfg
-			}
-			hasProvider := cfg.Provider != ""
-			hasFallbacks := len(cfg.Fallbacks) > 0
-			current := cfg.WithDefaults()
-			if !hasProvider {
-				current.Provider = envCfg.Provider
-			}
-			if !hasFallbacks {
-				current.Fallbacks = envCfg.Fallbacks
-			}
-			if current.Exa.APIKey == "" {
-				current.Exa.APIKey = envCfg.Exa.APIKey
-			}
-			if current.Exa.BaseURL == "" {
-				current.Exa.BaseURL = envCfg.Exa.BaseURL
-			}
-			return current
-		},
-	)
-}
-
-func (oc *AIClient) effectiveFetchConfig(ctx context.Context) *retrieval.FetchConfig {
-	return effectiveToolConfig(
-		ctx,
-		oc,
-		func(connector *OpenAIConnector) *retrieval.FetchConfig {
-			if connector == nil || connector.Config.Tools.Web == nil {
-				return nil
-			}
-			return mapFetchConfig(connector.Config.Tools.Web.Fetch)
-		},
-		func(cfg *retrieval.FetchConfig, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) *retrieval.FetchConfig {
-			if cfg == nil {
-				cfg = &retrieval.FetchConfig{}
-			}
-			applyLoginTokensToRetrievalConfig(&cfg.Provider, &cfg.Fallbacks, &cfg.Exa.BaseURL, &cfg.Exa.APIKey, provider, loginCfg, connector)
-			return cfg
-		},
-		func(cfg *retrieval.FetchConfig) *retrieval.FetchConfig {
-			envCfg := &retrieval.FetchConfig{}
-			envCfg.Provider = stringutil.EnvOr(envCfg.Provider, os.Getenv("FETCH_PROVIDER"))
-			if len(envCfg.Fallbacks) == 0 {
-				if raw := strings.TrimSpace(os.Getenv("FETCH_FALLBACKS")); raw != "" {
-					envCfg.Fallbacks = stringutil.SplitCSV(raw)
-				}
-			}
-			exa.ApplyEnv(&envCfg.Exa.APIKey, &envCfg.Exa.BaseURL)
-			envCfg = envCfg.WithDefaults()
-			if cfg == nil {
-				return envCfg
-			}
-			hasProvider := cfg.Provider != ""
-			hasFallbacks := len(cfg.Fallbacks) > 0
-			current := cfg.WithDefaults()
-			if !hasProvider {
-				current.Provider = envCfg.Provider
-			}
-			if !hasFallbacks {
-				current.Fallbacks = envCfg.Fallbacks
-			}
-			if current.Exa.APIKey == "" {
-				current.Exa.APIKey = envCfg.Exa.APIKey
-			}
-			if current.Exa.BaseURL == "" {
-				current.Exa.BaseURL = envCfg.Exa.BaseURL
-			}
-			return current
-		},
-	)
-}
-
-func effectiveToolConfig[T any](
-	ctx context.Context,
-	oc *AIClient,
-	load func(*OpenAIConnector) *T,
-	applyTokens func(*T, string, *aiLoginConfig, *OpenAIConnector) *T,
-	withDefaults func(*T) *T,
-) *T {
-	var cfg *T
+	var cfg *retrieval.SearchConfig
 	var provider string
 	var loginCfg *aiLoginConfig
 	var connector *OpenAIConnector
 	if oc != nil {
 		connector = oc.connector
-		cfg = load(connector)
+		if connector != nil && connector.Config.Tools.Web != nil {
+			cfg = mapSearchConfig(connector.Config.Tools.Web.Search)
+		}
 		if oc.UserLogin != nil {
 			provider = loginMetadata(oc.UserLogin).Provider
 			loginCfg = oc.loginConfigSnapshot(ctx)
 		}
 	}
-	cfg = applyTokens(cfg, provider, loginCfg, connector)
-	return withDefaults(cfg)
+	if cfg == nil {
+		cfg = &retrieval.SearchConfig{}
+	}
+	applyLoginTokensToRetrievalConfig(&cfg.Provider, &cfg.Fallbacks, &cfg.Exa.BaseURL, &cfg.Exa.APIKey, provider, loginCfg, connector)
+
+	envCfg := &retrieval.SearchConfig{}
+	envCfg.Provider = stringutil.EnvOr(envCfg.Provider, os.Getenv("SEARCH_PROVIDER"))
+	if len(envCfg.Fallbacks) == 0 {
+		if raw := strings.TrimSpace(os.Getenv("SEARCH_FALLBACKS")); raw != "" {
+			envCfg.Fallbacks = stringutil.SplitCSV(raw)
+		}
+	}
+	exa.ApplyEnv(&envCfg.Exa.APIKey, &envCfg.Exa.BaseURL)
+	envCfg = envCfg.WithDefaults()
+
+	hasProvider := cfg.Provider != ""
+	hasFallbacks := len(cfg.Fallbacks) > 0
+	current := cfg.WithDefaults()
+	if !hasProvider {
+		current.Provider = envCfg.Provider
+	}
+	if !hasFallbacks {
+		current.Fallbacks = envCfg.Fallbacks
+	}
+	if current.Exa.APIKey == "" {
+		current.Exa.APIKey = envCfg.Exa.APIKey
+	}
+	if current.Exa.BaseURL == "" {
+		current.Exa.BaseURL = envCfg.Exa.BaseURL
+	}
+	return current
+}
+
+func (oc *AIClient) effectiveFetchConfig(ctx context.Context) *retrieval.FetchConfig {
+	var cfg *retrieval.FetchConfig
+	var provider string
+	var loginCfg *aiLoginConfig
+	var connector *OpenAIConnector
+	if oc != nil {
+		connector = oc.connector
+		if connector != nil && connector.Config.Tools.Web != nil {
+			cfg = mapFetchConfig(connector.Config.Tools.Web.Fetch)
+		}
+		if oc.UserLogin != nil {
+			provider = loginMetadata(oc.UserLogin).Provider
+			loginCfg = oc.loginConfigSnapshot(ctx)
+		}
+	}
+	if cfg == nil {
+		cfg = &retrieval.FetchConfig{}
+	}
+	applyLoginTokensToRetrievalConfig(&cfg.Provider, &cfg.Fallbacks, &cfg.Exa.BaseURL, &cfg.Exa.APIKey, provider, loginCfg, connector)
+
+	envCfg := &retrieval.FetchConfig{}
+	envCfg.Provider = stringutil.EnvOr(envCfg.Provider, os.Getenv("FETCH_PROVIDER"))
+	if len(envCfg.Fallbacks) == 0 {
+		if raw := strings.TrimSpace(os.Getenv("FETCH_FALLBACKS")); raw != "" {
+			envCfg.Fallbacks = stringutil.SplitCSV(raw)
+		}
+	}
+	exa.ApplyEnv(&envCfg.Exa.APIKey, &envCfg.Exa.BaseURL)
+	envCfg = envCfg.WithDefaults()
+
+	hasProvider := cfg.Provider != ""
+	hasFallbacks := len(cfg.Fallbacks) > 0
+	current := cfg.WithDefaults()
+	if !hasProvider {
+		current.Provider = envCfg.Provider
+	}
+	if !hasFallbacks {
+		current.Fallbacks = envCfg.Fallbacks
+	}
+	if current.Exa.APIKey == "" {
+		current.Exa.APIKey = envCfg.Exa.APIKey
+	}
+	if current.Exa.BaseURL == "" {
+		current.Exa.BaseURL = envCfg.Exa.BaseURL
+	}
+	return current
 }
 
 func (oc *AIClient) isWebSearchConfigured(ctx context.Context) (bool, string) {
