@@ -44,18 +44,3 @@ func (oc *AIClient) buildStreamUIMessage(state *streamingState, meta *PortalMeta
 	turnData := buildCanonicalTurnData(state, meta, linkPreviewParts)
 	return sdk.UIMessageFromTurnData(turnData)
 }
-
-func shouldContinueChatToolLoop(finishReason string, toolCallCount int) bool {
-	if toolCallCount <= 0 {
-		return false
-	}
-	// Some providers/adapters report inconsistent finish reasons (e.g. "stop") even when
-	// tool calls are present in the stream. The presence of tool calls is the reliable
-	// signal that we must continue after sending tool results.
-	switch strings.ToLower(strings.TrimSpace(finishReason)) {
-	case "error", "cancelled":
-		return false
-	default:
-		return true
-	}
-}

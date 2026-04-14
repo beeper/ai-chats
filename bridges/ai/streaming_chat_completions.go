@@ -149,60 +149,64 @@ func (a *chatCompletionsTurnAdapter) RunAgentTurn(
 		},
 	)
 
-	if shouldContinueChatToolLoop(state.finishReason, len(toolCallParams)) {
-		state.needsTextSeparator = true
-		assistantMsg := PromptMessage{
-			Role: PromptRoleAssistant,
-		}
-		if content := strings.TrimSpace(roundContent.String()); content != "" {
-			assistantMsg.Blocks = append(assistantMsg.Blocks, PromptBlock{
-				Type: PromptBlockText,
-				Text: content,
-			})
-		}
-		for _, toolCall := range toolCallParams {
-			if toolCall.OfFunction == nil {
-				continue
-			}
-			assistantMsg.Blocks = append(assistantMsg.Blocks, PromptBlock{
-				Type:              PromptBlockToolCall,
-				ToolCallID:        toolCall.OfFunction.ID,
-				ToolName:          toolCall.OfFunction.Function.Name,
-				ToolCallArguments: toolCall.OfFunction.Function.Arguments,
-			})
-		}
-		if len(assistantMsg.Blocks) > 0 {
-			a.prompt.Messages = append(a.prompt.Messages, assistantMsg)
-		}
-		for _, output := range state.pendingFunctionOutputs {
-			a.prompt.Messages = append(a.prompt.Messages, PromptMessage{
-				Role:       PromptRoleToolResult,
-				ToolCallID: output.callID,
-				ToolName:   output.name,
-				Blocks: []PromptBlock{{
-					Type: PromptBlockText,
-					Text: output.output,
-				}},
-			})
-		}
-		a.prompt.Messages = append(a.prompt.Messages, buildSteeringPromptMessages(steeringPrompts)...)
-		if round >= maxAgentLoopToolTurns {
-			log.Warn().Int("rounds", round+1).Msg("Max tool call rounds reached; stopping chat completions continuation")
-			a.prompt.Messages = append(a.prompt.Messages, PromptMessage{
+	if len(toolCallParams) > 0 {
+		switch strings.ToLower(strings.TrimSpace(state.finishReason)) {
+		case "error", "cancelled":
+		default:
+			state.needsTextSeparator = true
+			assistantMsg := PromptMessage{
 				Role: PromptRoleAssistant,
-				Blocks: []PromptBlock{{
+			}
+			if content := strings.TrimSpace(roundContent.String()); content != "" {
+				assistantMsg.Blocks = append(assistantMsg.Blocks, PromptBlock{
 					Type: PromptBlockText,
-					Text: "Continuation stopped after reaching the maximum number of streaming tool rounds.",
-				}},
-			})
+					Text: content,
+				})
+			}
+			for _, toolCall := range toolCallParams {
+				if toolCall.OfFunction == nil {
+					continue
+				}
+				assistantMsg.Blocks = append(assistantMsg.Blocks, PromptBlock{
+					Type:              PromptBlockToolCall,
+					ToolCallID:        toolCall.OfFunction.ID,
+					ToolName:          toolCall.OfFunction.Function.Name,
+					ToolCallArguments: toolCall.OfFunction.Function.Arguments,
+				})
+			}
+			if len(assistantMsg.Blocks) > 0 {
+				a.prompt.Messages = append(a.prompt.Messages, assistantMsg)
+			}
+			for _, output := range state.pendingFunctionOutputs {
+				a.prompt.Messages = append(a.prompt.Messages, PromptMessage{
+					Role:       PromptRoleToolResult,
+					ToolCallID: output.callID,
+					ToolName:   output.name,
+					Blocks: []PromptBlock{{
+						Type: PromptBlockText,
+						Text: output.output,
+					}},
+				})
+			}
+			a.prompt.Messages = append(a.prompt.Messages, buildSteeringPromptMessages(steeringPrompts)...)
+			if round >= maxAgentLoopToolTurns {
+				log.Warn().Int("rounds", round+1).Msg("Max tool call rounds reached; stopping chat completions continuation")
+				a.prompt.Messages = append(a.prompt.Messages, PromptMessage{
+					Role: PromptRoleAssistant,
+					Blocks: []PromptBlock{{
+						Type: PromptBlockText,
+						Text: "Continuation stopped after reaching the maximum number of streaming tool rounds.",
+					}},
+				})
+				state.clearContinuationState()
+				return false, nil, nil
+			}
+			// Chat Completions does not support MCP approvals; clearContinuationState
+			// is safe here — it resets pendingFunctionOutputs (consumed above) and
+			// pendingMcpApprovals (always empty for Chat).
 			state.clearContinuationState()
-			return false, nil, nil
+			return true, nil, nil
 		}
-		// Chat Completions does not support MCP approvals; clearContinuationState
-		// is safe here — it resets pendingFunctionOutputs (consumed above) and
-		// pendingMcpApprovals (always empty for Chat).
-		state.clearContinuationState()
-		return true, nil, nil
 	}
 
 	return false, nil, nil
