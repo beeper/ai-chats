@@ -31,23 +31,6 @@ type heartbeatSessionResolution struct {
 	UpdatedAt    int64
 }
 
-func sessionUsesMainKey(routing sessionRouting, raw string) bool {
-	candidate := strings.TrimSpace(raw)
-	if candidate == "" {
-		return false
-	}
-	normalizedMain := strings.ToLower(strings.TrimSpace(routing.MainKey))
-	if normalizedMain == "" {
-		normalizedMain = defaultSessionMainKey
-	}
-	agentMainAlias := "agent:" + routing.AgentID + ":" + defaultSessionMainKey
-	return strings.EqualFold(candidate, defaultSessionMainKey) ||
-		strings.EqualFold(candidate, sessionScopeGlobal) ||
-		strings.EqualFold(candidate, normalizedMain) ||
-		strings.EqualFold(candidate, routing.MainKey) ||
-		strings.EqualFold(candidate, agentMainAlias)
-}
-
 func sessionStoreLockKey(ownerKey string, storeAgentID string, sessionKey string) string {
 	agent := normalizeAgentID(storeAgentID)
 	key := strings.TrimSpace(sessionKey)

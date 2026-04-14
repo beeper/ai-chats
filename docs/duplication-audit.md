@@ -236,6 +236,11 @@ Why this still violates the goal:
 - status/session readers and heartbeat routing now enter through one route
   selection path; the remaining fragmentation is in write-side ownership and
   how different features touch session state
+- heartbeat route selection now keeps main-key alias checks, agent-room lookup,
+  fallback-room lookup, and delivery-target shaping inside
+  `resolveHeartbeatRoute(...)`; the extra `sessionUsesMainKey(...)`,
+  `resolveAgentPortal(...)`, `resolveFallbackPortal(...)`, and
+  `deliveryTargetForPortal(...)` wrappers are gone
 - canonical stored-session read/write operations now live in
   `session_store.go`, while `resolveHeartbeatRoute(...)` owns route selection
   end-to-end; the remaining debt is mostly which callers still speak in

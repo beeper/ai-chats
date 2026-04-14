@@ -244,6 +244,12 @@ is gone, and heartbeat skip/early-return branches now terminate directly
 inside `sendFinalHeartbeatTurn(...)` instead of bouncing through
 `heartbeatSkipParams` / `skipHeartbeatRun(...)`.
 
+Recent progress also flattened heartbeat route selection further:
+`resolveHeartbeatRoute(...)` now keeps main-key alias checks, agent-room
+lookup, fallback-room lookup, and delivery-target shaping inline instead of
+routing through `sessionUsesMainKey(...)`, `resolveAgentPortal(...)`,
+`resolveFallbackPortal(...)`, and `deliveryTargetForPortal(...)`.
+
 Recent progress also removed the single-callsite internal prompt turn upsert
 wrapper and the local prompt projection helpers around block filtering, image
 payload lookup, and tool-argument normalization: canonical prompt projection
