@@ -35,18 +35,6 @@ func BuildDataURL(mimeType, b64Data string) string {
 	return fmt.Sprintf("data:%s;base64,%s", mimeType, b64Data)
 }
 
-func resolveBlockImageURL(block PromptBlock) string {
-	imageURL := strings.TrimSpace(block.ImageURL)
-	if imageURL == "" && block.ImageB64 != "" {
-		mimeType := strings.TrimSpace(block.MimeType)
-		if mimeType == "" {
-			mimeType = "image/jpeg"
-		}
-		imageURL = BuildDataURL(mimeType, block.ImageB64)
-	}
-	return imageURL
-}
-
 func promptContextToResponsesInput(ctx PromptContext) responses.ResponseInputParam {
 	var result responses.ResponseInputParam
 	for _, msg := range ctx.Messages {
@@ -70,7 +58,14 @@ func promptMessageToResponsesInputs(msg PromptMessage) responses.ResponseInputPa
 					OfInputText: &responses.ResponseInputTextParam{Text: text},
 				})
 			case PromptBlockImage:
-				imageURL := resolveBlockImageURL(block)
+				imageURL := strings.TrimSpace(block.ImageURL)
+				if imageURL == "" && block.ImageB64 != "" {
+					mimeType := strings.TrimSpace(block.MimeType)
+					if mimeType == "" {
+						mimeType = "image/jpeg"
+					}
+					imageURL = BuildDataURL(mimeType, block.ImageB64)
+				}
 				if imageURL == "" {
 					continue
 				}
@@ -165,7 +160,14 @@ func promptUserToChatMessage(msg PromptMessage) *openai.ChatCompletionUserMessag
 				},
 			})
 		case PromptBlockImage:
-			imageURL := resolveBlockImageURL(block)
+			imageURL := strings.TrimSpace(block.ImageURL)
+			if imageURL == "" && block.ImageB64 != "" {
+				mimeType := strings.TrimSpace(block.MimeType)
+				if mimeType == "" {
+					mimeType = "image/jpeg"
+				}
+				imageURL = BuildDataURL(mimeType, block.ImageB64)
+			}
 			if imageURL == "" {
 				continue
 			}
@@ -247,7 +249,17 @@ func chatMessagesToPromptContext(messages []openai.ChatCompletionMessageParamUni
 	for _, msg := range messages {
 		switch {
 		case msg.OfSystem != nil:
-			AppendPromptText(&ctx.SystemPrompt, extractChatSystemText(msg.OfSystem.Content))
+			if msg.OfSystem.Content.OfString.Value != "" {
+				AppendPromptText(&ctx.SystemPrompt, msg.OfSystem.Content.OfString.Value)
+				continue
+			}
+			var values []string
+			for _, part := range msg.OfSystem.Content.OfArrayOfContentParts {
+				if text := strings.TrimSpace(part.Text); text != "" {
+					values = append(values, text)
+				}
+			}
+			AppendPromptText(&ctx.SystemPrompt, strings.Join(values, "\n"))
 		case msg.OfUser != nil:
 			ctx.Messages = append(ctx.Messages, promptMessageFromChatUser(msg.OfUser))
 		case msg.OfAssistant != nil:
@@ -257,19 +269,6 @@ func chatMessagesToPromptContext(messages []openai.ChatCompletionMessageParamUni
 		}
 	}
 	return ctx
-}
-
-func extractChatSystemText(content openai.ChatCompletionSystemMessageParamContentUnion) string {
-	if content.OfString.Value != "" {
-		return content.OfString.Value
-	}
-	var values []string
-	for _, part := range content.OfArrayOfContentParts {
-		if text := strings.TrimSpace(part.Text); text != "" {
-			values = append(values, text)
-		}
-	}
-	return strings.Join(values, "\n")
 }
 
 func promptMessageFromChatUser(msg *openai.ChatCompletionUserMessageParam) PromptMessage {
