@@ -61,8 +61,19 @@ func (oc *AIClient) resolveSessionRouting(agentID string) sessionRouting {
 	}
 }
 
-func (routing sessionRouting) resolveRequestedSession(session string) string {
-	trimmed := strings.TrimSpace(session)
+func (oc *AIClient) resolveHeartbeatSession(agentID string, heartbeat *HeartbeatConfig) heartbeatSessionResolution {
+	routing := oc.resolveSessionRouting(agentID)
+	lookup := func(key string) (int64, bool) {
+		return oc.loadSessionUpdatedAt(context.Background(), routing.StoreAgentID, key)
+	}
+	if routing.Scope == sessionScopeGlobal {
+		return heartbeatSessionResolution{StoreAgentID: routing.StoreAgentID, SessionKey: routing.MainKey}
+	}
+
+	trimmed := ""
+	if heartbeat != nil && heartbeat.Session != nil {
+		trimmed = strings.TrimSpace(*heartbeat.Session)
+	}
 	isMainAlias := func(raw string) bool {
 		candidate := strings.TrimSpace(raw)
 		if candidate == "" {
@@ -79,38 +90,22 @@ func (routing sessionRouting) resolveRequestedSession(session string) string {
 			strings.EqualFold(candidate, routing.MainKey) ||
 			strings.EqualFold(candidate, agentMainAlias)
 	}
-	if routing.Scope == sessionScopeGlobal || isMainAlias(trimmed) {
-		return routing.MainKey
+	sessionKey := routing.MainKey
+	if routing.Scope != sessionScopeGlobal && !isMainAlias(trimmed) {
+		if strings.HasPrefix(trimmed, "!") {
+			sessionKey = trimmed
+		} else {
+			candidate := strings.ToLower(trimmed)
+			if candidate == "" || strings.EqualFold(candidate, defaultSessionMainKey) {
+				candidate = routing.MainKey
+			} else if !strings.HasPrefix(candidate, "agent:") {
+				candidate = "agent:" + routing.AgentID + ":" + candidate
+			}
+			if strings.HasPrefix(candidate, "agent:"+routing.AgentID+":") && !isMainAlias(candidate) {
+				sessionKey = candidate
+			}
+		}
 	}
-	if strings.HasPrefix(trimmed, "!") {
-		return trimmed
-	}
-	candidate := strings.ToLower(trimmed)
-	if candidate == "" || strings.EqualFold(candidate, defaultSessionMainKey) {
-		candidate = routing.MainKey
-	} else if !strings.HasPrefix(candidate, "agent:") {
-		candidate = "agent:" + routing.AgentID + ":" + candidate
-	}
-	if !strings.HasPrefix(candidate, "agent:"+routing.AgentID+":") || isMainAlias(candidate) {
-		return routing.MainKey
-	}
-	return candidate
-}
-
-func (oc *AIClient) resolveHeartbeatSession(agentID string, heartbeat *HeartbeatConfig) heartbeatSessionResolution {
-	routing := oc.resolveSessionRouting(agentID)
-	lookup := func(key string) (int64, bool) {
-		return oc.loadSessionUpdatedAt(context.Background(), routing.StoreAgentID, key)
-	}
-	if routing.Scope == sessionScopeGlobal {
-		return heartbeatSessionResolution{StoreAgentID: routing.StoreAgentID, SessionKey: routing.MainKey}
-	}
-
-	trimmed := ""
-	if heartbeat != nil && heartbeat.Session != nil {
-		trimmed = strings.TrimSpace(*heartbeat.Session)
-	}
-	sessionKey := routing.resolveRequestedSession(trimmed)
 	if sessionKey == routing.MainKey {
 		return heartbeatSessionResolution{StoreAgentID: routing.StoreAgentID, SessionKey: sessionKey}
 	}
