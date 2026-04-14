@@ -576,7 +576,7 @@ func (h *runtimeIntegrationHost) ExecuteBuiltinTool(ctx context.Context, scope i
 }
 
 func (h *runtimeIntegrationHost) ResolveWorkspaceDir() string {
-	return resolvePromptWorkspaceDir()
+	return "/"
 }
 
 func (h *runtimeIntegrationHost) BridgeID() string {

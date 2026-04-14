@@ -234,7 +234,7 @@ func resolveSandboxedMediaPath(raw string) (string, error) {
 		pathValue = parsed
 	}
 
-	workspaceRoot := resolvePromptWorkspaceDir()
+	workspaceRoot := "/"
 	if strings.TrimSpace(workspaceRoot) == "" {
 		return "", errors.New("workspace root is not configured for local media access")
 	}

@@ -73,7 +73,7 @@ func (r *toolIntegrationRegistry) availability(
 	for _, integration := range r.items {
 		known, available, source, reason := integration.ToolAvailability(ctx, scope, toolName)
 		if known {
-			return true, available, settingSourceFromIntegration(source), reason
+			return true, available, SettingSource(source), reason
 		}
 	}
 	return false, false, SourceGlobalDefault, ""
@@ -211,10 +211,6 @@ func (r *toolApprovalIntegrationRegistry) requirement(toolName string, args map[
 		}
 	}
 	return false, false, ""
-}
-
-func settingSourceFromIntegration(source integrationruntime.SettingSource) SettingSource {
-	return SettingSource(source)
 }
 
 func (oc *AIClient) toolScope(portal *bridgev2.Portal, meta *PortalMetadata) integrationruntime.ToolScope {

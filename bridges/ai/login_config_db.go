@@ -2,8 +2,6 @@ package ai
 
 import (
 	"context"
-	"maps"
-	"slices"
 
 	"maunium.net/go/mautrix/bridgev2"
 
@@ -36,15 +34,6 @@ func cloneLoginCredentials(src *LoginCredentials) *LoginCredentials {
 	return &clone
 }
 
-func cloneModelCache(src *ModelCache) *ModelCache {
-	if src == nil {
-		return nil
-	}
-	clone := *src
-	clone.Models = slices.Clone(src.Models)
-	return &clone
-}
-
 func cloneGravatarState(src *GravatarState) *GravatarState {
 	if src == nil {
 		return nil
@@ -66,13 +55,6 @@ func cloneUserProfile(src *UserProfile) *UserProfile {
 	}
 	clone := *src
 	return &clone
-}
-
-func cloneFileAnnotationCache(src map[string]FileAnnotation) map[string]FileAnnotation {
-	if len(src) == 0 {
-		return nil
-	}
-	return maps.Clone(src)
 }
 
 func cloneAILoginConfig(src *aiLoginConfig) *aiLoginConfig {

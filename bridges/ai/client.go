@@ -1068,7 +1068,6 @@ func (oc *AIClient) effectiveAgentPrompt(ctx context.Context, portal *bridgev2.P
 
 	timezone, _ := oc.resolveUserTimezone()
 
-	workspaceDir := resolvePromptWorkspaceDir()
 	var extraParts []string
 	if strings.TrimSpace(agent.SystemPrompt) != "" {
 		extraParts = append(extraParts, strings.TrimSpace(agent.SystemPrompt))
@@ -1077,7 +1076,7 @@ func (oc *AIClient) effectiveAgentPrompt(ctx context.Context, portal *bridgev2.P
 
 	// Build params for prompt generation (OpenClaw template)
 	params := agents.SystemPromptParams{
-		WorkspaceDir:      workspaceDir,
+		WorkspaceDir:      "/",
 		ExtraSystemPrompt: extraSystemPrompt,
 		UserTimezone:      timezone,
 		PromptMode:        agent.PromptMode,
@@ -1157,7 +1156,7 @@ func (oc *AIClient) effectiveAgentPrompt(ctx context.Context, portal *bridgev2.P
 
 	// Reasoning hints and level
 	params.ReasoningTagHint = false
-	params.ReasoningLevel = resolvePromptReasoningLevel(meta)
+	params.ReasoningLevel = ""
 
 	// Default thinking level (OpenClaw-style): low for reasoning-capable models, otherwise off.
 	params.DefaultThinkLevel = oc.defaultThinkLevel(meta)

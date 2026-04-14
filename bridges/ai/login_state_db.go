@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 )
@@ -56,6 +58,22 @@ func cloneHeartbeatEvent(in *HeartbeatEventPayload) *HeartbeatEventPayload {
 	}
 	copy := *in
 	return &copy
+}
+
+func cloneModelCache(src *ModelCache) *ModelCache {
+	if src == nil {
+		return nil
+	}
+	clone := *src
+	clone.Models = slices.Clone(src.Models)
+	return &clone
+}
+
+func cloneFileAnnotationCache(src map[string]FileAnnotation) map[string]FileAnnotation {
+	if len(src) == 0 {
+		return nil
+	}
+	return maps.Clone(src)
 }
 
 func cloneLoginRuntimeState(in *loginRuntimeState) *loginRuntimeState {
