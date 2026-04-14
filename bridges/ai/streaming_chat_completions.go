@@ -22,7 +22,6 @@ func (a *chatCompletionsTurnAdapter) TrackRoomRunStreaming() bool {
 func (a *chatCompletionsTurnAdapter) handleStreamStepError(
 	ctx context.Context,
 	params openai.ChatCompletionNewParams,
-	currentMessages []openai.ChatCompletionMessageParamUnion,
 	stepErr error,
 ) (*ContextLengthError, error) {
 	finalizeCtx, reason, cle, finalErr := resolveStreamingTerminalError(ctx, true, ctx, stepErr)
@@ -132,7 +131,7 @@ func (a *chatCompletionsTurnAdapter) RunAgentTurn(
 			}
 			return false, nil, nil
 		}, func(stepErr error) (*ContextLengthError, error) {
-			return a.handleStreamStepError(ctx, params, currentMessages, stepErr)
+			return a.handleStreamStepError(ctx, params, stepErr)
 		})
 	if cle != nil || err != nil {
 		return false, cle, err

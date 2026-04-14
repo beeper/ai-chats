@@ -25,7 +25,7 @@ func TestChatCompletionsHandleStreamStepErrorFinalizesContextLength(t *testing.T
 	}
 	stepErr := errors.New("This model's maximum context length is 100 tokens. However, your messages resulted in 120 tokens.")
 
-	cle, err := adapter.handleStreamStepError(context.Background(), openai.ChatCompletionNewParams{}, nil, stepErr)
+	cle, err := adapter.handleStreamStepError(context.Background(), openai.ChatCompletionNewParams{}, stepErr)
 	if cle == nil {
 		t.Fatal("expected context-length error")
 	}
