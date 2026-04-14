@@ -220,6 +220,8 @@ Deliverable:
   terminal timestamps
 - terminal timestamps are written only at the real success/failure/flush sites
 - adapter step errors share one terminal-error finalization path
+- heartbeat skip/early-return decisions live in `sendFinalHeartbeatTurn`, not a
+  second selector helper
 
 Why first:
 

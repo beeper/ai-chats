@@ -219,72 +219,6 @@ func (state heartbeatDeliveryState) previewText() string {
 	return ""
 }
 
-func (oc *AIClient) resolveHeartbeatSkipParams(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	hb *HeartbeatRunConfig,
-	delivery heartbeatDeliveryState,
-) *heartbeatSkipParams {
-	if hb == nil {
-		return nil
-	}
-	if delivery.shouldSkipMain && !delivery.hasContent && !delivery.hasReasoning {
-		silent := true
-		if hb.ShowOk && delivery.deliverable {
-			_ = oc.sendPlainAssistantMessage(ctx, portal, agents.HeartbeatToken)
-			silent = false
-		}
-		status := "ok-token"
-		if strings.TrimSpace(delivery.rawContent) == "" {
-			status = "ok-empty"
-		}
-		return &heartbeatSkipParams{
-			status:    status,
-			reason:    hb.Reason,
-			restore:   true,
-			indicator: heartbeatIndicator(hb, status),
-			to:        hb.TargetRoom.String(),
-			silent:    silent,
-			sent:      !silent,
-		}
-	}
-	if delivery.hasContent && !delivery.shouldSkipMain && !delivery.hasMedia &&
-		oc.isDuplicateHeartbeat(hb.AgentID, hb.SessionKey, delivery.cleaned, state.startedAtMs) {
-		return &heartbeatSkipParams{
-			status:    "skipped",
-			reason:    "duplicate",
-			restore:   true,
-			indicator: heartbeatIndicator(hb, "skipped"),
-			preview:   delivery.cleaned,
-			to:        "",
-			silent:    true,
-		}
-	}
-	if !delivery.deliverable {
-		return &heartbeatSkipParams{
-			status:  "skipped",
-			reason:  delivery.targetReason,
-			restore: false,
-			preview: delivery.previewText(),
-			to:      hb.TargetRoom.String(),
-			silent:  true,
-		}
-	}
-	if !hb.ShowAlerts {
-		return &heartbeatSkipParams{
-			status:    "skipped",
-			reason:    "alerts-disabled",
-			restore:   true,
-			indicator: heartbeatIndicator(hb, "sent"),
-			preview:   delivery.previewText(),
-			to:        hb.TargetRoom.String(),
-			silent:    true,
-		}
-	}
-	return nil
-}
-
 // sendFinalHeartbeatTurn handles heartbeat-specific response delivery.
 func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata) {
 	if portal == nil || portal.MXID == "" || state == nil || state.heartbeat == nil {
@@ -356,8 +290,62 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 		deliverable:    deliverable,
 		targetReason:   targetReason,
 	}
-	if skipParams := oc.resolveHeartbeatSkipParams(ctx, portal, state, hb, delivery); skipParams != nil {
-		skip(*skipParams)
+	if delivery.shouldSkipMain && !delivery.hasContent && !delivery.hasReasoning {
+		silent := true
+		if hb.ShowOk && delivery.deliverable {
+			_ = oc.sendPlainAssistantMessage(ctx, portal, agents.HeartbeatToken)
+			silent = false
+		}
+		status := "ok-token"
+		if strings.TrimSpace(delivery.rawContent) == "" {
+			status = "ok-empty"
+		}
+		skip(heartbeatSkipParams{
+			status:    status,
+			reason:    hb.Reason,
+			restore:   true,
+			indicator: heartbeatIndicator(hb, status),
+			to:        hb.TargetRoom.String(),
+			silent:    silent,
+			sent:      !silent,
+		})
+		return
+	}
+	if delivery.hasContent && !delivery.shouldSkipMain && !delivery.hasMedia &&
+		oc.isDuplicateHeartbeat(hb.AgentID, hb.SessionKey, delivery.cleaned, state.startedAtMs) {
+		skip(heartbeatSkipParams{
+			status:    "skipped",
+			reason:    "duplicate",
+			restore:   true,
+			indicator: heartbeatIndicator(hb, "skipped"),
+			preview:   delivery.cleaned,
+			to:        "",
+			silent:    true,
+		})
+		return
+	}
+	skipPreview := delivery.previewText()
+	if !delivery.deliverable {
+		skip(heartbeatSkipParams{
+			status:  "skipped",
+			reason:  delivery.targetReason,
+			restore: false,
+			preview: skipPreview,
+			to:      hb.TargetRoom.String(),
+			silent:  true,
+		})
+		return
+	}
+	if !hb.ShowAlerts {
+		skip(heartbeatSkipParams{
+			status:    "skipped",
+			reason:    "alerts-disabled",
+			restore:   true,
+			indicator: heartbeatIndicator(hb, "sent"),
+			preview:   skipPreview,
+			to:        hb.TargetRoom.String(),
+			silent:    true,
+		})
 		return
 	}
 
