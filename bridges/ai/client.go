@@ -1646,7 +1646,13 @@ func (oc *AIClient) buildContextUpToMessage(
 	base.Messages = append(base.Messages, historyMessages...)
 	body := strings.TrimSpace(newBody)
 	body = airuntime.SanitizeChatMessageForDisplay(body, true)
-	base.Messages = append(base.Messages, newUserTextPromptMessage(body))
+	base.Messages = append(base.Messages, PromptMessage{
+		Role: PromptRoleUser,
+		Blocks: []PromptBlock{{
+			Type: PromptBlockText,
+			Text: body,
+		}},
+	})
 	return base, nil
 }
 

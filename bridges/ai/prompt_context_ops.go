@@ -33,13 +33,3 @@ func PromptContextMessageCount(ctx PromptContext) int {
 	}
 	return count
 }
-
-func newUserTextPromptMessage(text string) PromptMessage {
-	return PromptMessage{
-		Role: PromptRoleUser,
-		Blocks: []PromptBlock{{
-			Type: PromptBlockText,
-			Text: text,
-		}},
-	}
-}
