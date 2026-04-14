@@ -1463,20 +1463,6 @@ func (oc *AIClient) updateAssistantGeneratedFiles(ctx context.Context, portal *b
 	oc.log.Warn().Msg("No assistant message found to update with async GeneratedFiles")
 }
 
-type historyLoadResult struct {
-	rows      []*database.Message
-	hasVision bool
-	limit     int
-}
-
-func (oc *AIClient) loadHistoryMessages(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-) ([]PromptMessage, error) {
-	return oc.replayHistoryMessages(ctx, portal, meta, historyReplayOptions{mode: historyReplayNormal})
-}
-
 func (oc *AIClient) buildBaseContext(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -1486,7 +1472,7 @@ func (oc *AIClient) buildBaseContext(
 		SystemPrompt: oc.buildConversationSystemPromptText(ctx, portal, meta, true),
 	}
 
-	historyMessages, err := oc.loadHistoryMessages(ctx, portal, meta)
+	historyMessages, err := oc.replayHistoryMessages(ctx, portal, meta, historyReplayOptions{mode: historyReplayNormal})
 	if err != nil {
 		return PromptContext{}, err
 	}

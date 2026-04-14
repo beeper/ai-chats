@@ -143,6 +143,9 @@ Why this still violates the goal:
   persistence adapter.
 - Steering-prompt continuation input is now serialized directly for the
   Responses loop instead of round-tripping through another prompt helper.
+- Base-context history loading now enters `replayHistoryMessages` directly; the
+  remaining prompt duplication is no longer about separate history-loader
+  scaffolding.
 - prompt assembly, provider serialization, replay projection, and turn-data
   projection still overlap
 - new prompt block behavior still requires changes in multiple places

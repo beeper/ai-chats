@@ -235,6 +235,7 @@ Deliverable:
   builder
 - no production helper layer around canonical turn-data persistence
 - no continuation-only steering serialization helper
+- base context history replay calls the canonical history replayer directly
 - one-way projection from persisted/runtime state
 - no separate local-context/projection/continuation helper stacks
 

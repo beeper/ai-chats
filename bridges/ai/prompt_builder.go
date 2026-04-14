@@ -79,18 +79,14 @@ func (oc *AIClient) replayHistoryMessages(
 	if err != nil {
 		return nil, err
 	}
-	hr := historyLoadResult{
-		rows:      history,
-		hasVision: oc.getModelCapabilitiesForMeta(ctx, meta).SupportsVision,
-		limit:     historyLimit,
-	}
+	hasVision := oc.getModelCapabilitiesForMeta(ctx, meta).SupportsVision
 	type replayCandidate struct {
 		row  *database.Message
 		meta *MessageMetadata
 	}
 
-	candidates := make([]replayCandidate, 0, len(hr.rows))
-	for _, row := range hr.rows {
+	candidates := make([]replayCandidate, 0, len(history))
+	for _, row := range history {
 		if opts.excludeMessageID != "" && row.ID == opts.excludeMessageID {
 			continue
 		}
@@ -132,7 +128,7 @@ func (oc *AIClient) replayHistoryMessages(
 		if candidate.row.ID == skipUserID || candidate.row.ID == skipAssistantID {
 			continue
 		}
-		injectImages := hr.hasVision && chatIndex < maxHistoryImageMessages
+		injectImages := hasVision && chatIndex < maxHistoryImageMessages
 		bundle := oc.historyMessageBundle(ctx, candidate.meta, injectImages)
 		if len(bundle) == 0 {
 			continue
