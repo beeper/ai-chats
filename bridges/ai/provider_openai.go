@@ -42,10 +42,6 @@ func WithPDFEngine(ctx context.Context, engine string) context.Context {
 
 // NewOpenAIProviderWithBaseURL creates an OpenAI provider with custom base URL
 // Used for OpenRouter, Beeper proxy, or custom endpoints
-func NewOpenAIProviderWithBaseURL(apiKey, baseURL string, log zerolog.Logger) (*OpenAIProvider, error) {
-	return NewOpenAIProviderWithUserID(apiKey, baseURL, "", log)
-}
-
 // NewOpenAIProviderWithUserID creates an OpenAI provider that passes user_id with each request.
 // Used for Beeper proxy to ensure correct rate limiting and feature flags per user.
 func NewOpenAIProviderWithUserID(apiKey, baseURL, userID string, log zerolog.Logger) (*OpenAIProvider, error) {

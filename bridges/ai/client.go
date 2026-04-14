@@ -491,7 +491,7 @@ func initProviderForLoginConfig(key string, providerID string, cfg *aiLoginConfi
 			Str("provider", providerID).
 			Str("openai_url", openaiURL).
 			Msg("Initializing AI provider endpoint")
-		return NewOpenAIProviderWithBaseURL(key, openaiURL, log)
+		return NewOpenAIProviderWithUserID(key, openaiURL, "", log)
 
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", providerID)

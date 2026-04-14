@@ -172,6 +172,9 @@ Files:
 
 Why this still violates the goal:
 
+- simple constructor shells continue to disappear; remaining provider
+  duplication is in capability/auth/media behavior, not the old base-URL
+  convenience path
 - token lookup, base URL routing, capability flags, media/image support, and
   provider-specific behavior are still derived in multiple subsystems
 - the current `AIProvider` abstraction does not buy enough to justify the extra

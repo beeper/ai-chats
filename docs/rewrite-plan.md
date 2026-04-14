@@ -284,6 +284,7 @@ Target files:
 Deliverable:
 
 - one provider capability/config table
+- no trivial constructor shells between caller intent and provider creation
 - one provider runtime construction path
 - one auth/base URL resolution path
 - media/image/tool policy reads from the same provider table
