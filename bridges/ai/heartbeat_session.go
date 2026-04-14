@@ -26,60 +26,6 @@ type heartbeatSessionResolution struct {
 	UpdatedAt    int64
 }
 
-func normalizeSessionScope(raw string) string {
-	trimmed := strings.ToLower(strings.TrimSpace(raw))
-	if trimmed == sessionScopeGlobal {
-		return sessionScopeGlobal
-	}
-	return sessionScopePerSender
-}
-
-func normalizeMainKey(raw string) string {
-	trimmed := strings.ToLower(strings.TrimSpace(raw))
-	if trimmed == "" {
-		return defaultSessionMainKey
-	}
-	return trimmed
-}
-
-func buildAgentMainSessionKey(agentID string, mainKey string) string {
-	normalized := normalizeAgentID(agentID)
-	if normalized == "" {
-		normalized = normalizeAgentID(agents.DefaultAgentID)
-	}
-	return "agent:" + normalized + ":" + normalizeMainKey(mainKey)
-}
-
-func isMainSessionAlias(agentID string, mainKey string, raw string) bool {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return false
-	}
-	normalizedMain := normalizeMainKey(mainKey)
-	agentMainKey := buildAgentMainSessionKey(agentID, normalizedMain)
-	agentMainAlias := buildAgentMainSessionKey(agentID, defaultSessionMainKey)
-	return strings.EqualFold(trimmed, defaultSessionMainKey) ||
-		strings.EqualFold(trimmed, sessionScopeGlobal) ||
-		strings.EqualFold(trimmed, normalizedMain) ||
-		strings.EqualFold(trimmed, agentMainKey) ||
-		strings.EqualFold(trimmed, agentMainAlias)
-}
-
-func toAgentStoreSessionKey(agentID string, requestKey string) string {
-	raw := strings.TrimSpace(requestKey)
-	if raw == "" || strings.EqualFold(raw, defaultSessionMainKey) {
-		return buildAgentMainSessionKey(agentID, "")
-	}
-	if strings.HasPrefix(raw, "!") {
-		return raw
-	}
-	lowered := strings.ToLower(raw)
-	if strings.HasPrefix(lowered, "agent:") {
-		return lowered
-	}
-	return "agent:" + normalizeAgentID(agentID) + ":" + lowered
-}
-
 func (oc *AIClient) resolveSessionRouting(agentID string) sessionRouting {
 	cfg := (*Config)(nil)
 	if oc != nil && oc.connector != nil {
@@ -91,12 +37,17 @@ func (oc *AIClient) resolveSessionRouting(agentID string) sessionRouting {
 	}
 	scope := sessionScopePerSender
 	if cfg != nil && cfg.Session != nil {
-		scope = normalizeSessionScope(cfg.Session.Scope)
+		if trimmed := strings.ToLower(strings.TrimSpace(cfg.Session.Scope)); trimmed == sessionScopeGlobal {
+			scope = sessionScopeGlobal
+		}
 	}
-	mainSessionKey := buildAgentMainSessionKey(resolvedAgent, "")
+	normalizedMainKey := defaultSessionMainKey
 	if cfg != nil && cfg.Session != nil {
-		mainSessionKey = buildAgentMainSessionKey(resolvedAgent, cfg.Session.MainKey)
+		if trimmed := strings.ToLower(strings.TrimSpace(cfg.Session.MainKey)); trimmed != "" {
+			normalizedMainKey = trimmed
+		}
 	}
+	mainSessionKey := "agent:" + resolvedAgent + ":" + normalizedMainKey
 	storeAgentID := resolvedAgent
 	if scope == sessionScopeGlobal {
 		mainSessionKey = sessionScopeGlobal
@@ -112,14 +63,35 @@ func (oc *AIClient) resolveSessionRouting(agentID string) sessionRouting {
 
 func (routing sessionRouting) resolveRequestedSession(session string) string {
 	trimmed := strings.TrimSpace(session)
-	if routing.Scope == sessionScopeGlobal || isMainSessionAlias(routing.AgentID, routing.MainKey, trimmed) {
+	isMainAlias := func(raw string) bool {
+		candidate := strings.TrimSpace(raw)
+		if candidate == "" {
+			return false
+		}
+		normalizedMain := strings.ToLower(strings.TrimSpace(routing.MainKey))
+		if normalizedMain == "" {
+			normalizedMain = defaultSessionMainKey
+		}
+		agentMainAlias := "agent:" + routing.AgentID + ":" + defaultSessionMainKey
+		return strings.EqualFold(candidate, defaultSessionMainKey) ||
+			strings.EqualFold(candidate, sessionScopeGlobal) ||
+			strings.EqualFold(candidate, normalizedMain) ||
+			strings.EqualFold(candidate, routing.MainKey) ||
+			strings.EqualFold(candidate, agentMainAlias)
+	}
+	if routing.Scope == sessionScopeGlobal || isMainAlias(trimmed) {
 		return routing.MainKey
 	}
 	if strings.HasPrefix(trimmed, "!") {
 		return trimmed
 	}
-	candidate := toAgentStoreSessionKey(routing.AgentID, trimmed)
-	if !strings.HasPrefix(candidate, "agent:"+routing.AgentID+":") || isMainSessionAlias(routing.AgentID, routing.MainKey, candidate) {
+	candidate := strings.ToLower(trimmed)
+	if candidate == "" || strings.EqualFold(candidate, defaultSessionMainKey) {
+		candidate = routing.MainKey
+	} else if !strings.HasPrefix(candidate, "agent:") {
+		candidate = "agent:" + routing.AgentID + ":" + candidate
+	}
+	if !strings.HasPrefix(candidate, "agent:"+routing.AgentID+":") || isMainAlias(candidate) {
 		return routing.MainKey
 	}
 	return candidate
