@@ -288,7 +288,6 @@ func (oc *AIClient) processResponseStreamEvent(
 
 	case "response.failed":
 		applyResponseLifecycle(streamEvent.Type, streamEvent.Response)
-		state.markCompletedNow()
 		errText := strings.TrimSpace(streamEvent.Response.Error.Message)
 		if errText == "" {
 			errText = "response failed"
@@ -300,7 +299,6 @@ func (oc *AIClient) processResponseStreamEvent(
 
 	case "response.incomplete":
 		applyResponseLifecycle(streamEvent.Type, streamEvent.Response)
-		state.markCompletedNow()
 		actions.finalizeMetadata()
 		log.Debug().
 			Str("reason", state.finishReason).
@@ -425,7 +423,6 @@ func (oc *AIClient) processResponseStreamEvent(
 
 	case "response.completed":
 		applyResponseLifecycle(streamEvent.Type, streamEvent.Response)
-		state.markCompletedNow()
 		if streamEvent.Response.Usage.TotalTokens > 0 || streamEvent.Response.Usage.InputTokens > 0 || streamEvent.Response.Usage.OutputTokens > 0 {
 			actions.updateUsage(
 				streamEvent.Response.Usage.InputTokens,

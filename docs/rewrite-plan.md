@@ -208,6 +208,8 @@ Deliverable:
 - one path for `turn.End(...)`
 - one place where provider finish/status becomes persisted/runtime state
 - one place where final Matrix edits/messages are emitted
+- the Responses stream parser only records lifecycle deltas; it does not own
+  terminal timestamps
 
 Why first:
 

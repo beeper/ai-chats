@@ -108,6 +108,9 @@ Why this still violates the goal:
 - `finishReason`, `responseStatus`, `responseID`, `completedAtMs`,
   persistence, final Matrix edit shaping, and `turn.End(...)` are still spread
   across several files.
+- The Responses event parser no longer stamps `completedAtMs` directly, but
+  terminal ownership is still split between lifecycle parsing, error
+  normalization, response-final shaping, and the final success/error handlers.
 - There is no single terminal state machine.
 
 Desired owner:
