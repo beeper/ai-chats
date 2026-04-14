@@ -113,6 +113,9 @@ Why this still violates the goal:
 - `finishReason`, `responseStatus`, `responseID`, `completedAtMs`,
   persistence, final Matrix edit shaping, and `turn.End(...)` are still spread
   across several files.
+- Natural final Matrix delivery now happens directly inside
+  `finalizeStreamingTurn(...)`; the extra `sendFinalAssistantTurn(...)` wrapper
+  is gone.
 - The Responses event parser no longer stamps `completedAtMs` directly, but
   terminal ownership is still split between lifecycle parsing, error
   normalization, response-final shaping, and the final success/error handlers.
@@ -121,6 +124,9 @@ Why this still violates the goal:
   separate timestamp helper.
 - Responses and chat-completions step errors now enter the same terminal-error
   finalization helper; remaining streaming duplication is above that boundary.
+- Heartbeat early-return handling no longer bounces through
+  `heartbeatSkipParams`/`skipHeartbeatRun(...)`; those branches now terminate
+  directly inside `sendFinalHeartbeatTurn(...)`.
 - There is no single terminal state machine.
 
 Desired owner:

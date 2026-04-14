@@ -238,6 +238,12 @@ base-URL helpers: provider initialization, media understanding, and retrieval
 config now read base URLs straight from provider config or the shared
 service-config map instead of routing through convenience shims.
 
+Recent progress also pulled natural final-send shaping directly into
+`finalizeStreamingTurn(...)`: the extra `sendFinalAssistantTurn(...)` wrapper
+is gone, and heartbeat skip/early-return branches now terminate directly
+inside `sendFinalHeartbeatTurn(...)` instead of bouncing through
+`heartbeatSkipParams` / `skipHeartbeatRun(...)`.
+
 Recent progress also removed the single-callsite internal prompt turn upsert
 wrapper and the local prompt projection helpers around block filtering, image
 payload lookup, and tool-argument normalization: canonical prompt projection

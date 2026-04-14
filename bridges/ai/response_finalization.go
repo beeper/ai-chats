@@ -14,7 +14,6 @@ import (
 	"maunium.net/go/mautrix/format"
 
 	"github.com/beeper/agentremote/pkg/agents"
-	airuntime "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/pkg/shared/citations"
 	"github.com/beeper/agentremote/sdk"
 	"github.com/beeper/agentremote/turns"
@@ -89,107 +88,6 @@ func (oc *AIClient) flushPartialStreamingMessage(ctx context.Context, portal *br
 	}
 }
 
-// sendFinalAssistantTurn sends an edit event with the complete assistant turn data.
-// It processes response directives (reply tags, silent replies) before sending when in natural mode.
-// Matches OpenClaw's directive processing behavior.
-func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata) {
-	if portal == nil || portal.MXID == "" {
-		return
-	}
-	if state != nil && state.heartbeat != nil {
-		oc.sendFinalHeartbeatTurn(ctx, portal, state, meta)
-		return
-	}
-	if state != nil && state.suppressSend {
-		return
-	}
-
-	rawContent := state.accumulated.String()
-
-	// Natural mode: process directives (OpenClaw-style)
-	directives := airuntime.ParseReplyDirectives(rawContent, state.sourceEventID().String())
-
-	// Handle silent replies - redact the streaming message
-	if directives.IsSilent {
-		oc.loggerForContext(ctx).Debug().
-			Str("turn_id", state.turn.ID()).
-			Str("initial_event_id", state.turn.InitialEventID().String()).
-			Msg("Silent reply detected, redacting streaming message")
-		oc.redactInitialStreamingMessage(ctx, portal, state)
-		return
-	}
-
-	// Use cleaned content (directives stripped)
-	cleanedContent := airuntime.SanitizeChatMessageForDisplay(directives.Text, false)
-	if strings.TrimSpace(cleanedContent) == "" {
-		cleanedContent = finalRenderedBodyFallback(state)
-	}
-
-	finalReplyTarget := oc.resolveFinalReplyTarget(meta, state, &directives)
-	rendered := format.RenderMarkdown(cleanedContent, true, true)
-	oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, cleanedContent, rendered, finalReplyTarget, "natural")
-}
-
-// heartbeatSkipParams captures the per-branch differences for the common
-// heartbeat-skip path (redact, emit event, send outcome, return).
-type heartbeatSkipParams struct {
-	status    string // event payload status ("ok-token", "ok-empty", "skipped")
-	reason    string // outcome & event reason
-	restore   bool   // whether to restore heartbeat updatedAt
-	indicator *HeartbeatIndicatorType
-	preview   string // truncated to 200 chars
-	to        string // target room string for the event
-	silent    bool   // for the event payload & outcome
-	sent      bool   // whether this branch emitted a visible message
-}
-
-// skipHeartbeatRun executes the common heartbeat-skip path shared by all early-
-// return branches: optionally restore the heartbeat timestamp, redact the
-// streaming message, clear pending images, emit the heartbeat event, send the
-// outcome, and return.
-func (oc *AIClient) skipHeartbeatRun(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	hb *HeartbeatRunConfig,
-	durationMs int64,
-	hasMedia bool,
-	sendOutcome func(HeartbeatRunOutcome),
-	p heartbeatSkipParams,
-) {
-	if p.restore {
-		oc.restoreHeartbeatUpdatedAt(hb.StoreAgentID, hb.SessionKey, hb.PrevUpdatedAt)
-	}
-	oc.redactInitialStreamingMessage(ctx, portal, state)
-	state.pendingImages = nil
-
-	preview := p.preview
-	if len(preview) > 200 {
-		preview = preview[:200]
-	}
-
-	oc.emitHeartbeatEvent(&HeartbeatEventPayload{
-		TS:            time.Now().UnixMilli(),
-		Status:        p.status,
-		To:            p.to,
-		Reason:        p.reason,
-		Preview:       preview,
-		Channel:       hb.Channel,
-		Silent:        p.silent,
-		HasMedia:      hasMedia,
-		DurationMs:    durationMs,
-		IndicatorType: p.indicator,
-	})
-	sendOutcome(HeartbeatRunOutcome{
-		Status:  "ran",
-		Reason:  p.reason,
-		Preview: preview,
-		Sent:    p.sent,
-		Silent:  p.silent,
-		Skipped: true,
-	})
-}
-
 // sendFinalHeartbeatTurn handles heartbeat-specific response delivery.
 func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata) {
 	if portal == nil || portal.MXID == "" || state == nil || state.heartbeat == nil {
@@ -238,87 +136,93 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 		targetReason = "no-target"
 	}
 
-	sendOutcome := func(out HeartbeatRunOutcome) {
-		if state.heartbeatResultCh != nil {
-			select {
-			case state.heartbeatResultCh <- out:
-			default:
-			}
+	emitOutcome := func(out HeartbeatRunOutcome) {
+		if state.heartbeatResultCh == nil {
+			return
+		}
+		select {
+		case state.heartbeatResultCh <- out:
+		default:
 		}
 	}
-	skip := func(p heartbeatSkipParams) {
-		oc.skipHeartbeatRun(ctx, portal, state, hb, durationMs, hasMedia, sendOutcome, p)
-	}
-	if shouldSkipMain && !hasContent && !hasReasoning {
-		silent := true
-		if hb.ShowOk && deliverable {
-			_ = oc.sendPlainAssistantMessage(ctx, portal, agents.HeartbeatToken)
-			silent = false
-		}
-		status := "ok-token"
-		if strings.TrimSpace(rawContent) == "" {
-			status = "ok-empty"
-		}
-		indicator := (*HeartbeatIndicatorType)(nil)
-		if hb.UseIndicator {
-			indicator = resolveIndicatorType(status)
-		}
-		skip(heartbeatSkipParams{
-			status:    status,
-			reason:    hb.Reason,
-			restore:   true,
-			indicator: indicator,
-			to:        hb.TargetRoom.String(),
-			silent:    silent,
-			sent:      !silent,
-		})
-		return
-	}
-	if hasContent && !shouldSkipMain && !hasMedia &&
-		oc.isDuplicateHeartbeat(hb.AgentID, hb.SessionKey, cleaned, state.startedAtMs) {
-		indicator := (*HeartbeatIndicatorType)(nil)
-		if hb.UseIndicator {
-			indicator = resolveIndicatorType("skipped")
-		}
-		skip(heartbeatSkipParams{
-			status:    "skipped",
-			reason:    "duplicate",
-			restore:   true,
-			indicator: indicator,
-			preview:   cleaned,
-			to:        "",
-			silent:    true,
-		})
-		return
-	}
+	skipStatus := ""
+	skipReason := ""
 	skipPreview := cleaned
 	if skipPreview == "" && hasReasoning {
 		skipPreview = reasoningText
 	}
-	if !deliverable {
-		skip(heartbeatSkipParams{
-			status:  "skipped",
-			reason:  targetReason,
-			restore: false,
-			preview: skipPreview,
-			to:      hb.TargetRoom.String(),
-			silent:  true,
-		})
-		return
-	}
-	if !hb.ShowAlerts {
-		indicator := (*HeartbeatIndicatorType)(nil)
-		if hb.UseIndicator {
-			indicator = resolveIndicatorType("sent")
+	skipRestore := false
+	skipSilent := true
+	skipSent := false
+	skipTo := hb.TargetRoom.String()
+	skipIndicatorStatus := ""
+	skipRun := false
+	if shouldSkipMain && !hasContent && !hasReasoning {
+		if hb.ShowOk && deliverable {
+			_ = oc.sendPlainAssistantMessage(ctx, portal, agents.HeartbeatToken)
+			skipSilent = false
+			skipSent = true
 		}
-		skip(heartbeatSkipParams{
-			status:    "skipped",
-			reason:    "alerts-disabled",
-			restore:   true,
-			indicator: indicator,
-			preview:   skipPreview,
-			to:        hb.TargetRoom.String(),
-			silent:    true,
+		skipStatus = "ok-token"
+		if strings.TrimSpace(rawContent) == "" {
+			skipStatus = "ok-empty"
+		}
+		skipReason = hb.Reason
+		skipRestore = true
+		skipIndicatorStatus = skipStatus
+		skipRun = true
+	} else if hasContent && !shouldSkipMain && !hasMedia &&
+		oc.isDuplicateHeartbeat(hb.AgentID, hb.SessionKey, cleaned, state.startedAtMs) {
+		skipStatus = "skipped"
+		skipReason = "duplicate"
+		skipPreview = cleaned
+		skipRestore = true
+		skipIndicatorStatus = "skipped"
+		skipTo = ""
+		skipRun = true
+	} else if !deliverable {
+		skipStatus = "skipped"
+		skipReason = targetReason
+		skipRun = true
+	} else if !hb.ShowAlerts {
+		skipStatus = "skipped"
+		skipReason = "alerts-disabled"
+		skipRestore = true
+		skipIndicatorStatus = "sent"
+		skipRun = true
+	}
+	if skipRun {
+		if skipRestore {
+			oc.restoreHeartbeatUpdatedAt(hb.StoreAgentID, hb.SessionKey, hb.PrevUpdatedAt)
+		}
+		oc.redactInitialStreamingMessage(ctx, portal, state)
+		state.pendingImages = nil
+		if len(skipPreview) > 200 {
+			skipPreview = skipPreview[:200]
+		}
+		indicator := (*HeartbeatIndicatorType)(nil)
+		if hb.UseIndicator && skipIndicatorStatus != "" {
+			indicator = resolveIndicatorType(skipIndicatorStatus)
+		}
+		oc.emitHeartbeatEvent(&HeartbeatEventPayload{
+			TS:            time.Now().UnixMilli(),
+			Status:        skipStatus,
+			To:            skipTo,
+			Reason:        skipReason,
+			Preview:       skipPreview,
+			Channel:       hb.Channel,
+			Silent:        skipSilent,
+			HasMedia:      hasMedia,
+			DurationMs:    durationMs,
+			IndicatorType: indicator,
+		})
+		emitOutcome(HeartbeatRunOutcome{
+			Status:  "ran",
+			Reason:  skipReason,
+			Preview: skipPreview,
+			Sent:    skipSent,
+			Silent:  skipSilent,
+			Skipped: true,
 		})
 		return
 	}
@@ -360,7 +264,7 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 		DurationMs:    durationMs,
 		IndicatorType: indicator,
 	})
-	sendOutcome(HeartbeatRunOutcome{Status: "ran", Text: cleaned, Sent: true})
+	emitOutcome(HeartbeatRunOutcome{Status: "ran", Text: cleaned, Sent: true})
 }
 
 func (oc *AIClient) redactInitialStreamingMessage(ctx context.Context, portal *bridgev2.Portal, state *streamingState) {

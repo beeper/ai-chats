@@ -2,9 +2,12 @@ package ai
 
 import (
 	"context"
+	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/format"
 
+	airuntime "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/sdk"
 )
 
@@ -50,8 +53,26 @@ func (oc *AIClient) finalizeStreamingTurn(
 		reason = state.finishReason
 	}
 
-	if state.hasInitialMessageTarget() || state.heartbeat != nil {
-		oc.sendFinalAssistantTurn(ctx, portal, state, meta)
+	if state.heartbeat != nil {
+		oc.sendFinalHeartbeatTurn(ctx, portal, state, meta)
+	} else if state.hasInitialMessageTarget() && !state.suppressSend {
+		rawContent := state.accumulated.String()
+		directives := airuntime.ParseReplyDirectives(rawContent, state.sourceEventID().String())
+		if directives.IsSilent {
+			oc.loggerForContext(ctx).Debug().
+				Str("turn_id", state.turn.ID()).
+				Str("initial_event_id", state.turn.InitialEventID().String()).
+				Msg("Silent reply detected, redacting streaming message")
+			oc.redactInitialStreamingMessage(ctx, portal, state)
+		} else {
+			cleanedContent := airuntime.SanitizeChatMessageForDisplay(directives.Text, false)
+			if strings.TrimSpace(cleanedContent) == "" {
+				cleanedContent = finalRenderedBodyFallback(state)
+			}
+			finalReplyTarget := oc.resolveFinalReplyTarget(meta, state, &directives)
+			rendered := format.RenderMarkdown(cleanedContent, true, true)
+			oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, cleanedContent, rendered, finalReplyTarget, "natural")
+		}
 	}
 	if writer := state.writer(); writer != nil {
 		writer.MessageMetadata(ctx, oc.buildUIMessageMetadata(state, meta, true))
