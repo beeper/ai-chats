@@ -119,6 +119,8 @@ Why this still violates the goal:
 - Terminal timestamps are now written directly at the real success/failure/flush
   sites; the remaining duplication is higher-level terminal shaping, not a
   separate timestamp helper.
+- Responses and chat-completions step errors now enter the same terminal-error
+  finalization helper; remaining streaming duplication is above that boundary.
 - There is no single terminal state machine.
 
 Desired owner:

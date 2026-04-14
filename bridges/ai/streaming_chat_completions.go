@@ -19,31 +19,6 @@ func (a *chatCompletionsTurnAdapter) TrackRoomRunStreaming() bool {
 	return false
 }
 
-func (a *chatCompletionsTurnAdapter) handleStreamStepError(
-	ctx context.Context,
-	params openai.ChatCompletionNewParams,
-	stepErr error,
-) (*ContextLengthError, error) {
-	finalizeCtx, reason, cle, finalErr := resolveStreamingTerminalError(ctx, true, ctx, stepErr)
-	if reason != "" && cle != nil {
-		return cle, a.oc.finalizeStreamingTurn(finalizeCtx, a.portal, a.state, a.meta, streamingFinalizeParams{
-			reason: reason,
-			err:    finalErr,
-		})
-	}
-	if reason != "" {
-		return nil, a.oc.finalizeStreamingTurn(finalizeCtx, a.portal, a.state, a.meta, streamingFinalizeParams{
-			reason: reason,
-			err:    finalErr,
-		})
-	}
-	logChatCompletionsFailure(a.log, stepErr, params, a.meta, a.prompt, "stream_err")
-	return nil, a.oc.finalizeStreamingTurn(ctx, a.portal, a.state, a.meta, streamingFinalizeParams{
-		reason: "error",
-		err:    stepErr,
-	})
-}
-
 func (a *chatCompletionsTurnAdapter) RunAgentTurn(
 	ctx context.Context,
 	evt *event.Event,
@@ -131,7 +106,9 @@ func (a *chatCompletionsTurnAdapter) RunAgentTurn(
 			}
 			return false, nil, nil
 		}, func(stepErr error) (*ContextLengthError, error) {
-			return a.handleStreamStepError(ctx, params, stepErr)
+			return a.oc.finalizeStreamingStepError(ctx, a.portal, a.state, a.meta, true, ctx, stepErr, func(err error) {
+				logChatCompletionsFailure(a.log, err, params, a.meta, a.prompt, "stream_err")
+			})
 		})
 	if cle != nil || err != nil {
 		return false, cle, err

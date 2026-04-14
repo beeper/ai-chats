@@ -214,6 +214,7 @@ Deliverable:
 - the Responses stream parser only records lifecycle deltas; it does not own
   terminal timestamps
 - terminal timestamps are written only at the real success/failure/flush sites
+- adapter step errors share one terminal-error finalization path
 
 Why first:
 

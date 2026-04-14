@@ -166,20 +166,8 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 			if round > 0 {
 				stage = "continuation_err"
 			}
-			logResponsesFailure(a.log, stepErr, params, a.meta, a.prompt, stage)
-			finalizeCtx, reason, cle, finalErr := resolveStreamingTerminalError(ctx, round == 0, context.Background(), stepErr)
-			if reason != "" {
-				return nil, a.oc.finalizeStreamingTurn(finalizeCtx, a.portal, state, a.meta, streamingFinalizeParams{
-					reason: reason,
-					err:    finalErr,
-				})
-			}
-			if cle != nil {
-				return cle, nil
-			}
-			return nil, a.oc.finalizeStreamingTurn(ctx, a.portal, state, a.meta, streamingFinalizeParams{
-				reason: "error",
-				err:    stepErr,
+			return a.oc.finalizeStreamingStepError(ctx, a.portal, state, a.meta, round == 0, context.Background(), stepErr, func(err error) {
+				logResponsesFailure(a.log, err, params, a.meta, a.prompt, stage)
 			})
 		},
 	)

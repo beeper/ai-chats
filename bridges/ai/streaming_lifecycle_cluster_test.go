@@ -5,27 +5,20 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/rs/zerolog"
 
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 )
 
-func TestChatCompletionsHandleStreamStepErrorFinalizesContextLength(t *testing.T) {
+func TestFinalizeStreamingStepErrorFinalizesContextLength(t *testing.T) {
 	state := newTestStreamingStateWithTurn()
 	state.turn.SetSuppressSend(true)
 
-	adapter := &chatCompletionsTurnAdapter{
-		agentLoopProviderBase: agentLoopProviderBase{
-			oc:    &AIClient{},
-			log:   zerolog.Nop(),
-			state: state,
-		},
-	}
+	client := &AIClient{}
 	stepErr := errors.New("This model's maximum context length is 100 tokens. However, your messages resulted in 120 tokens.")
 
-	cle, err := adapter.handleStreamStepError(context.Background(), openai.ChatCompletionNewParams{}, stepErr)
+	cle, err := client.finalizeStreamingStepError(context.Background(), nil, state, nil, true, context.Background(), stepErr, func(error) {})
 	if cle == nil {
 		t.Fatal("expected context-length error")
 	}

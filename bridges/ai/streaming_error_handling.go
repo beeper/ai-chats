@@ -3,6 +3,8 @@ package ai
 import (
 	"context"
 	"errors"
+
+	"maunium.net/go/mautrix/bridgev2"
 )
 
 // NonFallbackError marks an error as ineligible for fallback retries once output has been sent.
@@ -43,4 +45,34 @@ func resolveStreamingTerminalError(
 		}
 	}
 	return nil, "", nil, nil
+}
+
+func (oc *AIClient) finalizeStreamingStepError(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	meta *PortalMetadata,
+	includeContextLength bool,
+	cancelFinalizeCtx context.Context,
+	stepErr error,
+	logUnhandled func(error),
+) (*ContextLengthError, error) {
+	finalizeCtx, reason, cle, finalErr := resolveStreamingTerminalError(ctx, includeContextLength, cancelFinalizeCtx, stepErr)
+	if reason != "" {
+		err := oc.finalizeStreamingTurn(finalizeCtx, portal, state, meta, streamingFinalizeParams{
+			reason: reason,
+			err:    finalErr,
+		})
+		if cle != nil {
+			return cle, err
+		}
+		return nil, err
+	}
+	if logUnhandled != nil {
+		logUnhandled(stepErr)
+	}
+	return nil, oc.finalizeStreamingTurn(ctx, portal, state, meta, streamingFinalizeParams{
+		reason: "error",
+		err:    stepErr,
+	})
 }
