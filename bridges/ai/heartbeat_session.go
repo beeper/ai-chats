@@ -7,79 +7,83 @@ import (
 	"github.com/beeper/agentremote/pkg/agents"
 )
 
+type sessionRouting struct {
+	AgentID  string
+	StoreRef sessionStoreRef
+	MainKey  string
+	Scope    string
+}
+
 type heartbeatSessionResolution struct {
 	StoreRef   sessionStoreRef
 	SessionKey string
 	UpdatedAt  int64
 }
 
-// heartbeatSessionPreamble computes the store ref, main session key, resolved agent,
-// and scope that are shared by both resolveHeartbeatSession and resolveHeartbeatMainSessionRef.
-func (oc *AIClient) heartbeatSessionPreamble(agentID string) (cfg *Config, resolvedAgent string, storeRef sessionStoreRef, mainSessionKey string, scope string) {
+func (oc *AIClient) resolveSessionRouting(agentID string) sessionRouting {
+	cfg := (*Config)(nil)
 	if oc != nil && oc.connector != nil {
 		cfg = &oc.connector.Config
 	}
-	resolvedAgent = normalizeAgentID(agentID)
+	resolvedAgent := normalizeAgentID(agentID)
 	if resolvedAgent == "" {
 		resolvedAgent = normalizeAgentID(agents.DefaultAgentID)
 	}
-	scope = sessionScopePerSender
+	scope := sessionScopePerSender
 	if cfg != nil && cfg.Session != nil {
 		scope = normalizeSessionScope(cfg.Session.Scope)
 	}
-	mainSessionKey = resolveAgentMainSessionKey(cfg, resolvedAgent)
-	if scope == sessionScopeGlobal {
-		mainSessionKey = sessionScopeGlobal
+	mainSessionKey := buildAgentMainSessionKey(resolvedAgent, "")
+	if cfg != nil && cfg.Session != nil {
+		mainSessionKey = buildAgentMainSessionKey(resolvedAgent, cfg.Session.MainKey)
 	}
 	storeAgentID := resolvedAgent
 	if scope == sessionScopeGlobal {
-		storeAgentID = normalizeAgentID(agents.DefaultAgentID)
-		if storeAgentID == "" {
-			storeAgentID = resolvedAgent
-		}
+		mainSessionKey = sessionScopeGlobal
+		storeAgentID = sessionScopeGlobal
 	}
-	storeRef = loginScopeForClient(oc).sessionStoreRef(storeAgentID)
-	return cfg, resolvedAgent, storeRef, mainSessionKey, scope
+	return sessionRouting{
+		AgentID:  resolvedAgent,
+		StoreRef: loginScopeForClient(oc).sessionStoreRef(storeAgentID),
+		MainKey:  mainSessionKey,
+		Scope:    scope,
+	}
+}
+
+func (routing sessionRouting) resolveRequestedSession(session string) string {
+	trimmed := strings.TrimSpace(session)
+	if routing.Scope == sessionScopeGlobal || isMainSessionAlias(routing.AgentID, routing.MainKey, trimmed) {
+		return routing.MainKey
+	}
+	if strings.HasPrefix(trimmed, "!") {
+		return trimmed
+	}
+	candidate := toAgentStoreSessionKey(routing.AgentID, trimmed)
+	if !strings.HasPrefix(candidate, "agent:"+routing.AgentID+":") || isMainSessionAlias(routing.AgentID, routing.MainKey, candidate) {
+		return routing.MainKey
+	}
+	return candidate
 }
 
 func (oc *AIClient) resolveHeartbeatSession(agentID string, heartbeat *HeartbeatConfig) heartbeatSessionResolution {
-	cfg, resolvedAgent, storeRef, mainSessionKey, scope := oc.heartbeatSessionPreamble(agentID)
+	routing := oc.resolveSessionRouting(agentID)
 	lookup := func(key string) (sessionEntry, bool) {
-		return oc.getSessionEntry(context.Background(), storeRef, key)
+		return oc.getSessionEntry(context.Background(), routing.StoreRef, key)
 	}
-	if scope == sessionScopeGlobal {
-		return heartbeatSessionResolution{StoreRef: storeRef, SessionKey: mainSessionKey}
+	if routing.Scope == sessionScopeGlobal {
+		return heartbeatSessionResolution{StoreRef: routing.StoreRef, SessionKey: routing.MainKey}
 	}
 
 	trimmed := ""
 	if heartbeat != nil && heartbeat.Session != nil {
 		trimmed = strings.TrimSpace(*heartbeat.Session)
 	}
-	if trimmed == "" || strings.EqualFold(trimmed, "main") || strings.EqualFold(trimmed, "global") {
-		return heartbeatSessionResolution{StoreRef: storeRef, SessionKey: mainSessionKey}
+	sessionKey := routing.resolveRequestedSession(trimmed)
+	if sessionKey == routing.MainKey {
+		return heartbeatSessionResolution{StoreRef: routing.StoreRef, SessionKey: sessionKey}
 	}
-
-	if strings.HasPrefix(trimmed, "!") {
-		if entry, ok := lookup(trimmed); ok {
-			return heartbeatSessionResolution{StoreRef: storeRef, SessionKey: trimmed, UpdatedAt: entry.UpdatedAt}
-		}
-		return heartbeatSessionResolution{StoreRef: storeRef, SessionKey: trimmed}
+	if entry, ok := lookup(sessionKey); ok {
+		return heartbeatSessionResolution{StoreRef: routing.StoreRef, SessionKey: sessionKey, UpdatedAt: entry.UpdatedAt}
 	}
-
-	candidate := toAgentStoreSessionKey(resolvedAgent, trimmed, "")
-	if cfg != nil && cfg.Session != nil {
-		candidate = toAgentStoreSessionKey(resolvedAgent, trimmed, cfg.Session.MainKey)
-	}
-	canonical := canonicalizeMainSessionAlias(cfg, resolvedAgent, candidate)
-	if canonical != sessionScopeGlobal {
-		sessionAgent := resolveAgentIdFromSessionKey(canonical)
-		if sessionAgent == resolvedAgent {
-			if entry, ok := lookup(canonical); ok {
-				return heartbeatSessionResolution{StoreRef: storeRef, SessionKey: canonical, UpdatedAt: entry.UpdatedAt}
-			}
-			return heartbeatSessionResolution{StoreRef: storeRef, SessionKey: canonical}
-		}
-	}
-
-	return heartbeatSessionResolution{StoreRef: storeRef, SessionKey: mainSessionKey}
+	return heartbeatSessionResolution{StoreRef: routing.StoreRef, SessionKey: sessionKey}
 }

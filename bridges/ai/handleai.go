@@ -364,7 +364,7 @@ func (oc *AIClient) sendWelcomeMessage(ctx context.Context, portal *bridgev2.Por
 	if oc == nil || portal == nil {
 		return nil
 	}
-	portal, _, err := oc.resolvePortalScope(ctx, portal)
+	portal, _, err := resolveAIDBPortalScope(ctx, oc, portal)
 	if err != nil {
 		return err
 	}
@@ -420,7 +420,7 @@ func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Por
 	if oc == nil || portal == nil {
 		return
 	}
-	portal, _, err := oc.resolvePortalScope(ctx, portal)
+	portal, _, err := resolveAIDBPortalScope(ctx, oc, portal)
 	if err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to canonicalize portal for title generation")
 		return

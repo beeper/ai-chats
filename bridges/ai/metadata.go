@@ -222,7 +222,6 @@ type PortalMetadata struct {
 	WelcomeSent      bool   `json:"welcome_sent,omitempty"`
 	AutoGreetingSent bool   `json:"auto_greeting_sent,omitempty"`
 
-	SessionResetAt                 int64                           `json:"session_reset_at,omitempty"`
 	AbortedLastRun                 bool                            `json:"aborted_last_run,omitempty"`
 	CompactionCount                int                             `json:"compaction_count,omitempty"`
 	SessionBootstrapByAgent        map[string]int64                `json:"session_bootstrap_by_agent,omitempty"`

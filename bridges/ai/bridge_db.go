@@ -185,18 +185,24 @@ func hydratePortalRuntime(target *bridgev2.Portal, hydrated *bridgev2.Portal) *b
 	return target
 }
 
-func canonicalPortalForAIDB(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.Portal, error) {
+func resolvePortalForAIDB(ctx context.Context, client *AIClient, portal *bridgev2.Portal) (*bridgev2.Portal, error) {
 	if portal == nil {
 		return nil, nil
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if client != nil && client.UserLogin != nil && client.UserLogin.Bridge != nil {
+		portal.Bridge = client.UserLogin.Bridge
+	}
 	normalizePortalDBIdentity(portal)
 	if scope := portalScopeForPortal(portal); scope != nil {
 		return portal, nil
 	}
 	if portal.Bridge == nil {
+		return portal, nil
+	}
+	if strings.TrimSpace(string(portal.PortalKey.ID)) == "" {
 		return portal, nil
 	}
 	if portal.Bridge.DB != nil {
@@ -227,57 +233,12 @@ func canonicalPortalForAIDB(ctx context.Context, portal *bridgev2.Portal) (*brid
 	return hydratePortalRuntime(portal, resolved), nil
 }
 
-func portalScopeForAIDB(ctx context.Context, portal *bridgev2.Portal) (*portalScope, error) {
-	canonicalPortal, err := canonicalPortalForAIDB(ctx, portal)
+func resolveAIDBPortalScope(ctx context.Context, client *AIClient, portal *bridgev2.Portal) (*bridgev2.Portal, *portalScope, error) {
+	canonicalPortal, err := resolvePortalForAIDB(ctx, client, portal)
 	if err != nil || canonicalPortal == nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return portalScopeForPortal(canonicalPortal), nil
-}
-
-func (oc *AIClient) canonicalPortalForClientAIDB(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.Portal, error) {
-	if portal == nil {
-		return nil, nil
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
-		return portal, nil
-	}
-
-	bridge := oc.UserLogin.Bridge
-	portal.Bridge = bridge
-	normalizePortalDBIdentity(portal)
-	if portal.Portal != nil {
-		if scope := portalScopeForPortal(portal); scope != nil {
-			return portal, nil
-		}
-	}
-	if strings.TrimSpace(string(portal.PortalKey.ID)) == "" {
-		return portal, nil
-	}
-
-	resolved, err := bridge.GetPortalByKey(ctx, portal.PortalKey)
-	if err != nil {
-		return nil, err
-	}
-	if resolved != nil {
-		resolved.Bridge = bridge
-		return hydratePortalRuntime(portal, resolved), nil
-	}
-	return portal, nil
-}
-
-func (oc *AIClient) portalScopeForClientAIDB(ctx context.Context, portal *bridgev2.Portal) (*portalScope, error) {
-	if oc == nil {
-		return nil, nil
-	}
-	canonicalPortal, err := oc.canonicalPortalForClientAIDB(ctx, portal)
-	if err != nil || canonicalPortal == nil {
-		return nil, err
-	}
-	return portalScopeForPortal(canonicalPortal), nil
+	return canonicalPortal, portalScopeForPortal(canonicalPortal), nil
 }
 
 // loginScope is the shared base for all login-scoped DB access in the AI bridge.
@@ -337,21 +298,11 @@ func loginScopeForLogin(login *bridgev2.UserLogin) *loginScope {
 	return &loginScope{db: db, bridgeID: bridgeID, loginID: loginID}
 }
 
-func (oc *AIClient) resolvePortalScope(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.Portal, *portalScope, error) {
-	if oc == nil || portal == nil {
-		return portal, nil, nil
-	}
-	canonicalPortal, err := oc.canonicalPortalForClientAIDB(ctx, portal)
-	if err != nil || canonicalPortal == nil {
-		return nil, nil, err
-	}
-	return canonicalPortal, portalScopeForPortal(canonicalPortal), nil
-}
-
 type portalScopeValueFunc[T any] func(context.Context, *bridgev2.Portal, *portalScope) (T, error)
 
-func withPortalScopeValue[T any](
+func withResolvedPortalScopeValue[T any](
 	ctx context.Context,
+	client *AIClient,
 	portal *bridgev2.Portal,
 	fn portalScopeValueFunc[T],
 ) (T, error) {
@@ -359,51 +310,20 @@ func withPortalScopeValue[T any](
 	if fn == nil {
 		return zero, nil
 	}
-	scope, err := portalScopeForAIDB(ctx, portal)
-	if err != nil {
-		return zero, err
-	}
-	return fn(ctx, portal, scope)
-}
-
-func withPortalScope(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	fn func(context.Context, *bridgev2.Portal, *portalScope) error,
-) error {
-	_, err := withPortalScopeValue(ctx, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) (struct{}, error) {
-		return struct{}{}, fn(ctx, portal, scope)
-	})
-	return err
-}
-
-func withClientPortalScopeValue[T any](
-	ctx context.Context,
-	oc *AIClient,
-	portal *bridgev2.Portal,
-	fn portalScopeValueFunc[T],
-) (T, error) {
-	if oc == nil {
-		return withPortalScopeValue(ctx, portal, fn)
-	}
-	var zero T
-	if fn == nil {
-		return zero, nil
-	}
-	resolvedPortal, scope, err := oc.resolvePortalScope(ctx, portal)
+	resolvedPortal, scope, err := resolveAIDBPortalScope(ctx, client, portal)
 	if err != nil {
 		return zero, err
 	}
 	return fn(ctx, resolvedPortal, scope)
 }
 
-func withClientPortalScope(
+func withResolvedPortalScope(
 	ctx context.Context,
-	oc *AIClient,
+	client *AIClient,
 	portal *bridgev2.Portal,
 	fn func(context.Context, *bridgev2.Portal, *portalScope) error,
 ) error {
-	_, err := withClientPortalScopeValue(ctx, oc, portal,
+	_, err := withResolvedPortalScopeValue(ctx, client, portal,
 		func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) (struct{}, error) {
 			return struct{}{}, fn(ctx, portal, scope)
 		},

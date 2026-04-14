@@ -56,7 +56,6 @@ func TestPortalMetadataMarshalsPersistentPortalState(t *testing.T) {
 		Slug:                   "chat-1",
 		WelcomeSent:            true,
 		AutoGreetingSent:       true,
-		SessionResetAt:         123,
 		InternalRoomKind:       "cron",
 		SubagentParentRoomID:   "!parent:example.com",
 		TypingMode:             "thinking",
@@ -80,7 +79,6 @@ func TestPortalMetadataMarshalsPersistentPortalState(t *testing.T) {
 		"typing_interval_seconds",
 		"welcome_sent",
 		"auto_greeting_sent",
-		"session_reset_at",
 		"internal_room_kind",
 	} {
 		if _, ok := raw[key]; !ok {
@@ -98,7 +96,6 @@ func TestPortalMetadataJSONRoundTrip(t *testing.T) {
 		TitleGenerated:         true,
 		WelcomeSent:            true,
 		AutoGreetingSent:       true,
-		SessionResetAt:         123,
 		AbortedLastRun:         true,
 		CompactionCount:        9,
 		SessionBootstrapByAgent: map[string]int64{

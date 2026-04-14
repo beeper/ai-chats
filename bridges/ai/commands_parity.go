@@ -1,8 +1,6 @@
 package ai
 
 import (
-	"time"
-
 	"maunium.net/go/mautrix/bridgev2/commands"
 
 	"github.com/beeper/agentremote/bridges/ai/commandregistry"
@@ -38,12 +36,11 @@ var _ = registerAICommand(commandregistry.Definition{
 })
 
 func fnReset(ce *commands.Event) {
-	client, meta, ok := requireClientMeta(ce)
+	client, _, ok := requireClientMeta(ce)
 	if !ok {
 		return
 	}
 
-	meta.SessionResetAt = time.Now().UnixMilli()
 	if err := advanceAIPortalContextEpoch(ce.Ctx, ce.Portal); err != nil {
 		client.log.Warn().Err(err).Stringer("portal", ce.Portal.PortalKey).Msg("Failed to advance AI context epoch during reset")
 		ce.Reply("%s", formatSystemAck("Failed to reset session."))

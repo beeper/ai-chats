@@ -128,13 +128,5 @@ func (oc *AIClient) updateSessionTimestamp(ctx context.Context, ref sessionStore
 }
 
 func (oc *AIClient) resolveSessionStoreRef(agentID string) sessionStoreRef {
-	cfg := (*Config)(nil)
-	if oc != nil && oc.connector != nil {
-		cfg = &oc.connector.Config
-	}
-	storeAgentID := normalizeAgentID(agentID)
-	if cfg != nil && cfg.Session != nil && normalizeSessionScope(cfg.Session.Scope) == sessionScopeGlobal {
-		storeAgentID = sessionScopeGlobal
-	}
-	return loginScopeForClient(oc).sessionStoreRef(storeAgentID)
+	return oc.resolveSessionRouting(agentID).StoreRef
 }

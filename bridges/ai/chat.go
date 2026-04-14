@@ -1064,7 +1064,7 @@ func (oc *AIClient) sendSystemNoticeMessage(ctx context.Context, portal *bridgev
 	if message == "" {
 		return nil
 	}
-	portal, _, err := oc.resolvePortalScope(ctx, portal)
+	portal, _, err := resolveAIDBPortalScope(ctx, oc, portal)
 	if err != nil {
 		return err
 	}

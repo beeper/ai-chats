@@ -128,7 +128,7 @@ func TestSaveUserMessage_PersistsConversationTurnOutsideBridgeMetadata(t *testin
 		t.Fatalf("expected bridge message metadata to stay transport-only, got %#v", bridgeMeta)
 	}
 
-	transcriptMsg, err := loadAIConversationMessage(ctx, portal, msg.ID, evt.ID)
+	transcriptMsg, err := client.loadAIConversationMessage(ctx, portal, msg.ID, evt.ID)
 	if err != nil {
 		t.Fatalf("load persisted conversation message: %v", err)
 	}
@@ -199,7 +199,7 @@ func TestBuildBaseContext_ReplaysTranscriptHistoryFromFreshPortalLoad(t *testing
 		},
 		Timestamp: time.UnixMilli(2000),
 	}
-	if err := persistAIConversationMessage(ctx, portal, assistantMsg); err != nil {
+	if err := client.persistAIConversationMessage(ctx, portal, assistantMsg); err != nil {
 		t.Fatalf("persist assistant turn: %v", err)
 	}
 
@@ -278,7 +278,7 @@ func TestBuildBaseContext_ReplaysHistoryFromTransientPortalByCanonicalizingPorta
 		},
 		Timestamp: time.UnixMilli(2000),
 	}
-	if err := persistAIConversationMessage(ctx, portal, assistantMsg); err != nil {
+	if err := client.persistAIConversationMessage(ctx, portal, assistantMsg); err != nil {
 		t.Fatalf("persist assistant turn: %v", err)
 	}
 
@@ -416,7 +416,7 @@ func TestBuildBaseContext_ReplaysHistoryFromCachedPortalWithoutEmbeddedBridgeID(
 		},
 		Timestamp: time.UnixMilli(2000),
 	}
-	if err := persistAIConversationMessage(ctx, portal, assistantMsg); err != nil {
+	if err := client.persistAIConversationMessage(ctx, portal, assistantMsg); err != nil {
 		t.Fatalf("persist assistant turn: %v", err)
 	}
 
@@ -515,7 +515,7 @@ func TestBuildBaseContext_ReplaysHistoryWhenPortalWrapperBridgeIsMissing(t *test
 		},
 		Timestamp: time.UnixMilli(2000),
 	}
-	if err := persistAIConversationMessage(ctx, portal, assistantMsg); err != nil {
+	if err := client.persistAIConversationMessage(ctx, portal, assistantMsg); err != nil {
 		t.Fatalf("persist assistant turn: %v", err)
 	}
 
@@ -590,7 +590,7 @@ func TestBuildBaseContext_ReplaysHistoryWhenBridgeCacheReturnsTransientPortal(t 
 		},
 		Timestamp: time.UnixMilli(2000),
 	}
-	if err := persistAIConversationMessage(ctx, portal, assistantMsg); err != nil {
+	if err := client.persistAIConversationMessage(ctx, portal, assistantMsg); err != nil {
 		t.Fatalf("persist assistant turn: %v", err)
 	}
 
@@ -671,7 +671,7 @@ func TestLoadAIPromptHistoryTurns_UsesCanonicalPortalScopeForTransientPortal(t *
 		},
 		Timestamp: time.UnixMilli(2000),
 	}
-	if err := persistAIConversationMessage(ctx, portal, assistantMsg); err != nil {
+	if err := client.persistAIConversationMessage(ctx, portal, assistantMsg); err != nil {
 		t.Fatalf("persist assistant turn: %v", err)
 	}
 
@@ -759,7 +759,7 @@ func TestGetAIHistoryMessages_UsesCanonicalPortalScopeForTransientPortal(t *test
 		},
 		Timestamp: time.UnixMilli(2000),
 	}
-	if err := persistAIConversationMessage(ctx, portal, assistantMsg); err != nil {
+	if err := client.persistAIConversationMessage(ctx, portal, assistantMsg); err != nil {
 		t.Fatalf("persist assistant turn: %v", err)
 	}
 
@@ -955,7 +955,7 @@ func TestHandleMatrixMessageRemove_DeletesTranscriptState(t *testing.T) {
 		t.Fatalf("HandleMatrixMessageRemove returned error: %v", err)
 	}
 
-	transcriptMsg, err := loadAIConversationMessage(ctx, portal, msg.ID, evt.ID)
+	transcriptMsg, err := client.loadAIConversationMessage(ctx, portal, msg.ID, evt.ID)
 	if err != nil {
 		t.Fatalf("load turn after delete: %v", err)
 	}
@@ -1049,7 +1049,6 @@ func TestAdvanceAIPortalContextEpoch_HidesPreviousHistory(t *testing.T) {
 		t.Fatalf("expected initial context epoch 0, got %#v", record)
 	}
 
-	meta.SessionResetAt = time.Now().UnixMilli()
 	if err := advanceAIPortalContextEpoch(ctx, portal); err != nil {
 		t.Fatalf("advance context epoch: %v", err)
 	}
@@ -1073,7 +1072,7 @@ func TestAdvanceAIPortalContextEpoch_HidesPreviousHistory(t *testing.T) {
 		t.Fatalf("expected no visible history in new epoch, got %d entries", len(history))
 	}
 
-	turns, err := loadAIPromptHistoryTurns(ctx, portal, 10, historyReplayOptions{})
+	turns, err := client.loadAIPromptHistoryTurns(ctx, portal, 10, historyReplayOptions{})
 	if err != nil {
 		t.Fatalf("load prompt turns after reset: %v", err)
 	}
@@ -1110,7 +1109,7 @@ func TestWaitForAssistantTurnAfter_UsesCanonicalSequenceInsteadOfTimestamp(t *te
 		},
 		Timestamp: time.UnixMilli(2_000),
 	}
-	if err := persistAIConversationMessage(ctx, portal, first); err != nil {
+	if err := client.persistAIConversationMessage(ctx, portal, first); err != nil {
 		t.Fatalf("persist first assistant turn: %v", err)
 	}
 
@@ -1142,7 +1141,7 @@ func TestWaitForAssistantTurnAfter_UsesCanonicalSequenceInsteadOfTimestamp(t *te
 		// follow turn sequence, not raw timestamps.
 		Timestamp: time.UnixMilli(1_000),
 	}
-	if err := persistAIConversationMessage(ctx, portal, second); err != nil {
+	if err := client.persistAIConversationMessage(ctx, portal, second); err != nil {
 		t.Fatalf("persist second assistant turn: %v", err)
 	}
 
@@ -1184,7 +1183,7 @@ func TestWaitForAssistantTurnAfter_AcceptsNewEpochWithResetSequence(t *testing.T
 		},
 		Timestamp: time.UnixMilli(5_000),
 	}
-	if err := persistAIConversationMessage(ctx, portal, beforeReset); err != nil {
+	if err := client.persistAIConversationMessage(ctx, portal, beforeReset); err != nil {
 		t.Fatalf("persist assistant turn before reset: %v", err)
 	}
 
@@ -1218,7 +1217,7 @@ func TestWaitForAssistantTurnAfter_AcceptsNewEpochWithResetSequence(t *testing.T
 		},
 		Timestamp: time.UnixMilli(1_000),
 	}
-	if err := persistAIConversationMessage(ctx, portal, afterReset); err != nil {
+	if err := client.persistAIConversationMessage(ctx, portal, afterReset); err != nil {
 		t.Fatalf("persist assistant turn after reset: %v", err)
 	}
 

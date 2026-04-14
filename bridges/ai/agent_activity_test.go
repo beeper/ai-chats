@@ -15,7 +15,7 @@ func TestRecordAgentActivityOnlyWritesRoomSession(t *testing.T) {
 	client := newDBBackedTestAIClient(t, "")
 	agentID := normalizeAgentID(agents.DefaultAgentID)
 	storeRef := client.resolveSessionStoreRef(agentID)
-	_, _, _, mainKey, _ := client.heartbeatSessionPreamble(agentID)
+	mainKey := client.resolveSessionRouting(agentID).MainKey
 
 	portal := &bridgev2.Portal{
 		Portal: &database.Portal{
@@ -44,7 +44,7 @@ func TestLastRouteIgnoresMainSessionRow(t *testing.T) {
 	client := newDBBackedTestAIClient(t, "")
 	agentID := normalizeAgentID(agents.DefaultAgentID)
 	storeRef := client.resolveSessionStoreRef(agentID)
-	_, _, _, mainKey, _ := client.heartbeatSessionPreamble(agentID)
+	mainKey := client.resolveSessionRouting(agentID).MainKey
 
 	if err := client.upsertSessionEntry(context.Background(), storeRef, mainKey, sessionEntry{
 		UpdatedAt: 3_000,
@@ -70,7 +70,7 @@ func TestResolveHeartbeatSessionDefaultDoesNotLoadMainSessionRoute(t *testing.T)
 	client := newDBBackedTestAIClient(t, "")
 	agentID := normalizeAgentID(agents.DefaultAgentID)
 	storeRef := client.resolveSessionStoreRef(agentID)
-	_, _, _, mainKey, _ := client.heartbeatSessionPreamble(agentID)
+	mainKey := client.resolveSessionRouting(agentID).MainKey
 
 	if err := client.upsertSessionEntry(context.Background(), storeRef, mainKey, sessionEntry{
 		UpdatedAt: 1_000,
@@ -106,5 +106,33 @@ func TestRecordAgentActivitySkipsInternalRooms(t *testing.T) {
 
 	if _, ok := client.getSessionEntry(context.Background(), storeRef, portal.MXID.String()); ok {
 		t.Fatalf("expected internal rooms not to write route state")
+	}
+}
+
+func TestLastRouteUsesGlobalSessionStoreForNonDefaultAgent(t *testing.T) {
+	client := newDBBackedTestAIClient(t, "")
+	client.connector.Config.Session = &SessionConfig{Scope: sessionScopeGlobal}
+	agentID := normalizeAgentID("custom-agent")
+
+	portal := &bridgev2.Portal{
+		Portal: &database.Portal{
+			MXID: id.RoomID("!chat:example.com"),
+		},
+	}
+	meta := &PortalMetadata{
+		ResolvedTarget: &ResolvedTarget{AgentID: agentID},
+	}
+
+	client.recordAgentActivity(context.Background(), portal, meta)
+
+	channel, target, ok := client.lastRoute(agentID)
+	if !ok {
+		t.Fatalf("expected last route to resolve from shared global session store")
+	}
+	if channel != "matrix" || target != "!chat:example.com" {
+		t.Fatalf("expected global last route lookup to return room session, got channel=%q target=%q", channel, target)
+	}
+	if got := client.resolveSessionStoreRef(agentID).AgentID; got != sessionScopeGlobal {
+		t.Fatalf("expected global session store owner %q, got %q", sessionScopeGlobal, got)
 	}
 }

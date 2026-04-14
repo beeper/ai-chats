@@ -167,7 +167,7 @@ func resolveTargetFromGhostID(ghostID networkid.UserID) *ResolvedTarget {
 
 func portalMeta(portal *bridgev2.Portal) *PortalMetadata {
 	if portal != nil {
-		if canonical, err := canonicalPortalForAIDB(context.Background(), portal); err == nil && canonical != nil {
+		if canonical, err := resolvePortalForAIDB(context.Background(), nil, portal); err == nil && canonical != nil {
 			portal = canonical
 		}
 	}

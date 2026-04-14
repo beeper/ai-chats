@@ -916,11 +916,11 @@ func (oc *AIClient) latestAssistantTurnRecord(ctx context.Context, portal *bridg
 		return nil, nil
 	}
 	var err error
-	portal, err = oc.canonicalPortalForClientAIDB(ctx, portal)
+	portal, err = resolvePortalForAIDB(ctx, oc, portal)
 	if err != nil {
 		return nil, err
 	}
-	scope, err := oc.portalScopeForClientAIDB(ctx, portal)
+	_, scope, err := resolveAIDBPortalScope(ctx, oc, portal)
 	if err != nil || scope == nil {
 		return nil, err
 	}

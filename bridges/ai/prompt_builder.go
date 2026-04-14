@@ -71,10 +71,6 @@ func (oc *AIClient) fetchHistoryRowsWithExtra(
 	if extra > 0 {
 		historyLimit += extra
 	}
-	resetAt := int64(0)
-	if meta != nil {
-		resetAt = meta.SessionResetAt
-	}
 	history, err := oc.loadAIHistoryMessagesFromTurns(ctx, portal, historyLimit)
 	if err != nil {
 		return nil, err
@@ -82,7 +78,6 @@ func (oc *AIClient) fetchHistoryRowsWithExtra(
 	return &historyLoadResult{
 		rows:      history,
 		hasVision: oc.getModelCapabilitiesForMeta(ctx, meta).SupportsVision,
-		resetAt:   resetAt,
 		limit:     historyLimit,
 	}, nil
 }
@@ -94,7 +89,7 @@ func (oc *AIClient) replayHistoryMessages(
 	opts historyReplayOptions,
 ) ([]PromptMessage, error) {
 	var err error
-	portal, err = oc.canonicalPortalForClientAIDB(ctx, portal)
+	portal, err = resolvePortalForAIDB(ctx, oc, portal)
 	if err != nil {
 		return nil, err
 	}
@@ -125,9 +120,6 @@ func (oc *AIClient) replayHistoryMessages(
 			continue
 		}
 		if !shouldIncludeInHistory(msgMeta) {
-			continue
-		}
-		if hr.resetAt > 0 && row.Timestamp.UnixMilli() < hr.resetAt {
 			continue
 		}
 		candidates = append(candidates, replayCandidate{row: row, meta: msgMeta})

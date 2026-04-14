@@ -39,7 +39,7 @@ func (oc *AIClient) lastRoute(agentID string) (channel string, target string, ok
 	if scope == nil {
 		return "", "", false
 	}
-	_, _, storeRef, mainKey, _ := oc.heartbeatSessionPreamble(agentID)
+	routing := oc.resolveSessionRouting(agentID)
 	var sessionKey string
 	err := scope.db.QueryRow(context.Background(), `
 		SELECT session_key
@@ -47,7 +47,7 @@ func (oc *AIClient) lastRoute(agentID string) (channel string, target string, ok
 		WHERE bridge_id=$1 AND login_id=$2 AND store_agent_id=$3 AND session_key<>$4 AND session_key LIKE '!%'
 		ORDER BY updated_at_ms DESC
 		LIMIT 1
-	`, scope.bridgeID, scope.loginID, normalizeAgentID(storeRef.AgentID), strings.TrimSpace(mainKey)).Scan(&sessionKey)
+	`, scope.bridgeID, scope.loginID, normalizeAgentID(routing.StoreRef.AgentID), strings.TrimSpace(routing.MainKey)).Scan(&sessionKey)
 	if err == sql.ErrNoRows {
 		return "", "", false
 	}

@@ -119,7 +119,7 @@ func (oc *AIClient) upsertTransportPortalMessage(
 		return fmt.Errorf("portal or message is nil")
 	}
 
-	portal, err := oc.canonicalPortalForClientAIDB(ctx, portal)
+	portal, err := resolvePortalForAIDB(ctx, oc, portal)
 	if err != nil {
 		return err
 	}

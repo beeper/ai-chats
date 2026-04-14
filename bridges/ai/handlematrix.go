@@ -34,7 +34,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		return nil, errors.New("portal is nil")
 	}
 	var err error
-	portal, err = oc.canonicalPortalForClientAIDB(ctx, portal)
+	portal, err = resolvePortalForAIDB(ctx, oc, portal)
 	if err != nil {
 		return nil, fmt.Errorf("failed to canonicalize portal for inbound message: %w", err)
 	}
@@ -341,7 +341,7 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 		return errors.New("portal is nil")
 	}
 	var err error
-	portal, err = oc.canonicalPortalForClientAIDB(ctx, portal)
+	portal, err = resolvePortalForAIDB(ctx, oc, portal)
 	if err != nil {
 		return fmt.Errorf("failed to canonicalize portal for edit: %w", err)
 	}
@@ -970,7 +970,7 @@ func (oc *AIClient) savePortal(ctx context.Context, portal *bridgev2.Portal, act
 		return nil
 	}
 	var err error
-	portal, err = oc.canonicalPortalForClientAIDB(ctx, portal)
+	portal, err = resolvePortalForAIDB(ctx, oc, portal)
 	if err != nil {
 		return fmt.Errorf("resolve portal for %s: %w", action, err)
 	}

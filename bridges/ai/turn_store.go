@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -23,6 +24,12 @@ const (
 	aiTurnRefKindMessageID = "message_id"
 	aiTurnRefKindEventID   = "event_id"
 )
+
+type aiPersistedPortalRecord struct {
+	ContextEpoch     int64
+	NextTurnSequence int64
+	UpdatedAt        int64
+}
 
 type aiTurnRecord struct {
 	TurnID           string
@@ -93,16 +100,104 @@ func decodeAITurnMetadata(raw string, turnData sdk.TurnData) (*MessageMetadata, 
 	return normalizeAITurnMetadata(&meta, turnData), nil
 }
 
+func loadAIPortalRecord(ctx context.Context, portal *bridgev2.Portal) (*aiPersistedPortalRecord, error) {
+	return withResolvedPortalScopeValue(ctx, nil, portal, func(ctx context.Context, _ *bridgev2.Portal, scope *portalScope) (*aiPersistedPortalRecord, error) {
+		return loadAIPortalRecordByScope(ctx, scope)
+	})
+}
+
+func loadAIPortalRecordByScope(ctx context.Context, scope *portalScope) (*aiPersistedPortalRecord, error) {
+	if scope == nil {
+		return nil, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	var record aiPersistedPortalRecord
+	err := scope.db.QueryRow(ctx, `
+		SELECT context_epoch, next_turn_sequence, updated_at_ms
+		FROM `+aiPortalStateTable+`
+		WHERE bridge_id=$1 AND portal_id=$2 AND portal_receiver=$3
+	`, scope.bridgeID, scope.portalID, scope.portalReceiver).Scan(
+		&record.ContextEpoch,
+		&record.NextTurnSequence,
+		&record.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &record, nil
+}
+
+func ensureAIPortalRecordByScope(ctx context.Context, scope *portalScope) (*aiPersistedPortalRecord, error) {
+	if scope == nil {
+		return nil, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	nowMs := time.Now().UnixMilli()
+	if _, err := scope.db.Exec(ctx, `
+		INSERT INTO `+aiPortalStateTable+` (
+			bridge_id, portal_id, portal_receiver, context_epoch, next_turn_sequence, updated_at_ms
+		) VALUES ($1, $2, $3, 0, 0, $4)
+		ON CONFLICT (bridge_id, portal_id, portal_receiver) DO NOTHING
+	`, scope.bridgeID, scope.portalID, scope.portalReceiver, nowMs); err != nil {
+		return nil, err
+	}
+	return loadAIPortalRecordByScope(ctx, scope)
+}
+
 func allocateAITurnSequence(ctx context.Context, scope *portalScope) (contextEpoch, sequence int64, err error) {
-	return newAIPortalStateStore(scope).AllocateTurnSequence(ctx)
+	record, err := ensureAIPortalRecordByScope(ctx, scope)
+	if err != nil || record == nil {
+		return 0, 0, err
+	}
+	contextEpoch = record.ContextEpoch
+	sequence = record.NextTurnSequence + 1
+	_, err = scope.db.Exec(ctx, `
+		UPDATE `+aiPortalStateTable+`
+		SET next_turn_sequence=$4
+		WHERE bridge_id=$1 AND portal_id=$2 AND portal_receiver=$3
+	`, scope.bridgeID, scope.portalID, scope.portalReceiver, sequence)
+	return contextEpoch, sequence, err
 }
 
 func ensurePortalTurnStateByScope(ctx context.Context, scope *portalScope) (*aiPersistedPortalRecord, error) {
-	return newAIPortalStateStore(scope).Ensure(ctx)
+	return ensureAIPortalRecordByScope(ctx, scope)
+}
+
+func advanceAIPortalContextEpoch(ctx context.Context, portal *bridgev2.Portal) error {
+	return withResolvedPortalScope(ctx, nil, portal, func(ctx context.Context, _ *bridgev2.Portal, scope *portalScope) error {
+		return advanceAIPortalContextEpochByScope(ctx, scope)
+	})
+}
+
+func advanceAIPortalContextEpochByScope(ctx context.Context, scope *portalScope) error {
+	if scope == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	nowMs := time.Now().UnixMilli()
+	_, err := scope.db.Exec(ctx, `
+		INSERT INTO `+aiPortalStateTable+` (
+			bridge_id, portal_id, portal_receiver, context_epoch, next_turn_sequence, updated_at_ms
+		) VALUES ($1, $2, $3, 1, 0, $4)
+		ON CONFLICT (bridge_id, portal_id, portal_receiver) DO UPDATE SET
+			context_epoch=`+aiPortalStateTable+`.context_epoch + 1,
+			next_turn_sequence=0,
+			updated_at_ms=excluded.updated_at_ms
+	`, scope.bridgeID, scope.portalID, scope.portalReceiver, nowMs)
+	return err
 }
 
 func loadAITurnByRef(ctx context.Context, portal *bridgev2.Portal, messageID networkid.MessageID, eventID id.EventID) (*aiTurnRecord, error) {
-	scope, err := portalScopeForAIDB(ctx, portal)
+	_, scope, err := resolveAIDBPortalScope(ctx, nil, portal)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +235,7 @@ func loadAITurnByRefValue(ctx context.Context, scope *portalScope, refKind, refV
 }
 
 func upsertAITurn(ctx context.Context, portal *bridgev2.Portal, entry aiTurnUpsert) error {
-	scope, err := portalScopeForAIDB(ctx, portal)
+	portal, scope, err := resolveAIDBPortalScope(ctx, nil, portal)
 	if err != nil {
 		return err
 	}
@@ -286,12 +381,6 @@ func replaceAITurnRef(ctx context.Context, scope *portalScope, turnID, refKind, 
 	return err
 }
 
-func deleteAITurnByExternalRef(ctx context.Context, portal *bridgev2.Portal, messageID networkid.MessageID, eventID id.EventID) error {
-	return withPortalScope(ctx, portal, func(ctx context.Context, _ *bridgev2.Portal, scope *portalScope) error {
-		return deleteAITurnByExternalRefByScope(ctx, scope, messageID, eventID)
-	})
-}
-
 func deleteAITurnByExternalRefByScope(
 	ctx context.Context,
 	scope *portalScope,
@@ -326,13 +415,13 @@ func (oc *AIClient) deleteAITurnByExternalRef(
 	messageID networkid.MessageID,
 	eventID id.EventID,
 ) error {
-	return withClientPortalScope(ctx, oc, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) error {
+	return withResolvedPortalScope(ctx, oc, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) error {
 		return deleteAITurnByExternalRefByScope(ctx, scope, messageID, eventID)
 	})
 }
 
 func deleteAITurnsForPortal(ctx context.Context, portal *bridgev2.Portal) {
-	scope, err := portalScopeForAIDB(ctx, portal)
+	portal, scope, err := resolveAIDBPortalScope(ctx, nil, portal)
 	if err != nil || scope == nil {
 		return
 	}
@@ -347,35 +436,8 @@ func deleteAITurnsForPortal(ctx context.Context, portal *bridgev2.Portal) {
 	)
 }
 
-func persistAIConversationMessage(ctx context.Context, portal *bridgev2.Portal, msg *database.Message) error {
-	if msg == nil {
-		return nil
-	}
-	return withPortalScope(ctx, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) error {
-		meta, ok := msg.Metadata.(*MessageMetadata)
-		if !ok || meta == nil {
-			return nil
-		}
-		turnData, ok := canonicalTurnData(meta)
-		if !ok {
-			return nil
-		}
-		return upsertAITurnByScope(ctx, scope, portal, aiTurnUpsert{
-			TurnID:           strings.TrimSpace(turnData.ID),
-			Kind:             aiTurnKindConversation,
-			MessageID:        msg.ID,
-			EventID:          msg.MXID,
-			SenderID:         msg.SenderID,
-			IncludeInHistory: !meta.ExcludeFromHistory,
-			Timestamp:        msg.Timestamp,
-			TurnData:         turnData,
-			Metadata:         meta,
-		})
-	})
-}
-
 func (oc *AIClient) persistAIConversationMessage(ctx context.Context, portal *bridgev2.Portal, msg *database.Message) error {
-	return withClientPortalScope(ctx, oc, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) error {
+	return withResolvedPortalScope(ctx, oc, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) error {
 		meta, ok := msg.Metadata.(*MessageMetadata)
 		if !ok || meta == nil {
 			return nil
@@ -429,24 +491,6 @@ func internalPromptTurnUpsert(
 	}, true
 }
 
-func persistAIInternalPromptTurn(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	eventID id.EventID,
-	promptContext PromptContext,
-	excludeFromHistory bool,
-	source string,
-	timestamp time.Time,
-) error {
-	return withPortalScope(ctx, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) error {
-		entry, ok := internalPromptTurnUpsert(portal, eventID, promptContext, excludeFromHistory, source, timestamp)
-		if !ok {
-			return nil
-		}
-		return upsertAITurnByScope(ctx, scope, portal, entry)
-	})
-}
-
 func (oc *AIClient) persistAIInternalPromptTurn(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -456,18 +500,12 @@ func (oc *AIClient) persistAIInternalPromptTurn(
 	source string,
 	timestamp time.Time,
 ) error {
-	return withClientPortalScope(ctx, oc, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) error {
+	return withResolvedPortalScope(ctx, oc, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) error {
 		entry, ok := internalPromptTurnUpsert(portal, eventID, promptContext, excludeFromHistory, source, timestamp)
 		if !ok {
 			return nil
 		}
 		return upsertAITurnByScope(ctx, scope, portal, entry)
-	})
-}
-
-func loadAIConversationMessage(ctx context.Context, portal *bridgev2.Portal, messageID networkid.MessageID, eventID id.EventID) (*database.Message, error) {
-	return withPortalScopeValue(ctx, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) (*database.Message, error) {
-		return loadAIConversationMessageByScope(ctx, scope, portal, messageID, eventID)
 	})
 }
 
@@ -494,7 +532,7 @@ func (oc *AIClient) loadAIConversationMessage(
 	messageID networkid.MessageID,
 	eventID id.EventID,
 ) (*database.Message, error) {
-	return withClientPortalScopeValue(ctx, oc, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) (*database.Message, error) {
+	return withResolvedPortalScopeValue(ctx, oc, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) (*database.Message, error) {
 		return loadAIConversationMessageByScope(ctx, scope, portal, messageID, eventID)
 	})
 }
@@ -519,24 +557,13 @@ func databaseMessageFromAITurn(portal *bridgev2.Portal, record *aiTurnRecord) *d
 	return msg
 }
 
-func loadAIPromptHistoryTurns(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	limit int,
-	opts historyReplayOptions,
-) ([]*aiTurnRecord, error) {
-	return withPortalScopeValue(ctx, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) ([]*aiTurnRecord, error) {
-		return loadAIPromptHistoryTurnsByScope(ctx, scope, portal, opts, limit)
-	})
-}
-
 func (oc *AIClient) loadAIPromptHistoryTurns(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	limit int,
 	opts historyReplayOptions,
 ) ([]*aiTurnRecord, error) {
-	return withClientPortalScopeValue(ctx, oc, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) ([]*aiTurnRecord, error) {
+	return withResolvedPortalScopeValue(ctx, oc, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) ([]*aiTurnRecord, error) {
 		return loadAIPromptHistoryTurnsByScope(ctx, scope, portal, opts, limit)
 	})
 }
@@ -578,13 +605,6 @@ func loadAIPromptHistoryTurnsByScope(
 	return queryAITurnRows(ctx, scope, query)
 }
 
-func hasInternalPromptHistory(ctx context.Context, portal *bridgev2.Portal) bool {
-	hasHistory, err := withPortalScopeValue(ctx, portal, func(ctx context.Context, _ *bridgev2.Portal, scope *portalScope) (bool, error) {
-		return hasInternalPromptHistoryByScope(ctx, scope), nil
-	})
-	return err == nil && hasHistory
-}
-
 func hasInternalPromptHistoryByScope(ctx context.Context, scope *portalScope) bool {
 	if scope == nil {
 		return false
@@ -606,7 +626,7 @@ func hasInternalPromptHistoryByScope(ctx context.Context, scope *portalScope) bo
 }
 
 func (oc *AIClient) hasInternalPromptHistory(ctx context.Context, portal *bridgev2.Portal) bool {
-	hasHistory, err := withClientPortalScopeValue(ctx, oc, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) (bool, error) {
+	hasHistory, err := withResolvedPortalScopeValue(ctx, oc, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) (bool, error) {
 		return hasInternalPromptHistoryByScope(ctx, scope), nil
 	})
 	return err == nil && hasHistory
@@ -642,8 +662,14 @@ func (oc *AIClient) loadAIHistoryMessagesFromTurns(ctx context.Context, portal *
 	if oc == nil || portal == nil || portal.MXID == "" || limit <= 0 {
 		return nil, nil
 	}
-	return withClientPortalScopeValue(ctx, oc, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) ([]*database.Message, error) {
+	return withResolvedPortalScopeValue(ctx, oc, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) ([]*database.Message, error) {
+		record, err := ensurePortalTurnStateByScope(ctx, scope)
+		if err != nil || record == nil {
+			return nil, err
+		}
 		rows, err := queryAITurnRows(ctx, scope, aiTurnQuery{
+			contextEpoch:     record.ContextEpoch,
+			hasContextEpoch:  true,
 			includeInHistory: true,
 			roles:            []string{"user", "assistant"},
 			limit:            limit,
@@ -671,7 +697,7 @@ func (oc *AIClient) getAIHistoryMessages(ctx context.Context, portal *bridgev2.P
 	if oc == nil || portal == nil || portal.MXID == "" || limit <= 0 {
 		return nil, nil
 	}
-	portal, err := oc.canonicalPortalForClientAIDB(ctx, portal)
+	portal, err := resolvePortalForAIDB(ctx, oc, portal)
 	if err != nil {
 		return nil, err
 	}
@@ -682,17 +708,10 @@ func (oc *AIClient) getAIHistoryMessages(ctx context.Context, portal *bridgev2.P
 	if err != nil {
 		return nil, err
 	}
-	resetAt := int64(0)
-	if meta := portalMeta(portal); meta != nil {
-		resetAt = meta.SessionResetAt
-	}
 	messages := make([]*database.Message, 0, len(rows))
 	for _, msg := range rows {
 		msgMeta := messageMeta(msg)
 		if !shouldIncludeInHistory(msgMeta) {
-			continue
-		}
-		if resetAt > 0 && msg.Timestamp.UnixMilli() < resetAt {
 			continue
 		}
 		messages = append(messages, cloneMessageForAIHistory(msg))

@@ -36,26 +36,25 @@ func buildAgentMainSessionKey(agentID string, mainKey string) string {
 	return "agent:" + normalized + ":" + normalizeMainKey(mainKey)
 }
 
-func resolveAgentMainSessionKey(cfg *Config, agentID string) string {
-	mainKey := ""
-	if cfg != nil && cfg.Session != nil {
-		mainKey = cfg.Session.MainKey
+func isMainSessionAlias(agentID string, mainKey string, raw string) bool {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return false
 	}
-	return buildAgentMainSessionKey(agentID, mainKey)
+	normalizedMain := normalizeMainKey(mainKey)
+	agentMainKey := buildAgentMainSessionKey(agentID, normalizedMain)
+	agentMainAlias := buildAgentMainSessionKey(agentID, defaultSessionMainKey)
+	return strings.EqualFold(trimmed, defaultSessionMainKey) ||
+		strings.EqualFold(trimmed, sessionScopeGlobal) ||
+		strings.EqualFold(trimmed, normalizedMain) ||
+		strings.EqualFold(trimmed, agentMainKey) ||
+		strings.EqualFold(trimmed, agentMainAlias)
 }
 
-func resolveAgentIdFromSessionKey(sessionKey string) string {
-	parsed := parseAgentSessionKey(sessionKey)
-	if parsed == "" {
-		return normalizeAgentID(agents.DefaultAgentID)
-	}
-	return normalizeAgentID(parsed)
-}
-
-func toAgentStoreSessionKey(agentID string, requestKey string, mainKey string) string {
+func toAgentStoreSessionKey(agentID string, requestKey string) string {
 	raw := strings.TrimSpace(requestKey)
 	if raw == "" || strings.EqualFold(raw, defaultSessionMainKey) {
-		return buildAgentMainSessionKey(agentID, mainKey)
+		return buildAgentMainSessionKey(agentID, "")
 	}
 	if strings.HasPrefix(raw, "!") {
 		return raw
@@ -65,42 +64,4 @@ func toAgentStoreSessionKey(agentID string, requestKey string, mainKey string) s
 		return lowered
 	}
 	return "agent:" + normalizeAgentID(agentID) + ":" + lowered
-}
-
-func canonicalizeMainSessionAlias(cfg *Config, agentID string, sessionKey string) string {
-	raw := strings.TrimSpace(sessionKey)
-	if raw == "" {
-		return raw
-	}
-	mainKey := ""
-	if cfg != nil && cfg.Session != nil {
-		mainKey = cfg.Session.MainKey
-	}
-	normalizedAgent := normalizeAgentID(agentID)
-	if normalizedAgent == "" {
-		normalizedAgent = normalizeAgentID(agents.DefaultAgentID)
-	}
-	normalizedMain := normalizeMainKey(mainKey)
-	agentMainKey := buildAgentMainSessionKey(normalizedAgent, normalizedMain)
-	agentMainAlias := buildAgentMainSessionKey(normalizedAgent, defaultSessionMainKey)
-	isMainAlias := raw == defaultSessionMainKey || raw == normalizedMain || raw == agentMainKey || raw == agentMainAlias
-	if cfg != nil && cfg.Session != nil && normalizeSessionScope(cfg.Session.Scope) == sessionScopeGlobal && isMainAlias {
-		return sessionScopeGlobal
-	}
-	if isMainAlias {
-		return agentMainKey
-	}
-	return raw
-}
-
-func parseAgentSessionKey(raw string) string {
-	trimmed := strings.TrimSpace(raw)
-	if !strings.HasPrefix(trimmed, "agent:") {
-		return ""
-	}
-	parts := strings.Split(trimmed, ":")
-	if len(parts) < 3 {
-		return ""
-	}
-	return parts[1]
 }

@@ -1476,7 +1476,6 @@ func (oc *AIClient) updateAssistantGeneratedFiles(ctx context.Context, portal *b
 type historyLoadResult struct {
 	rows      []*database.Message
 	hasVision bool
-	resetAt   int64
 	limit     int
 }
 
