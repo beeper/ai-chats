@@ -158,6 +158,35 @@ The intended long-term code organization is:
 6. Prefer deletion to abstraction.
 7. If a subsystem cannot be explained in one screen, collapse it.
 
+## Completed Passes
+
+Already finished:
+
+- SDK helper cleanup around runtime getters, cache lifecycle, approval request
+  construction, bridge-info formatting, and approval prompt formatting
+- AI helper cleanup around queue dispatching, continuation/finalization,
+  portal send/edit, heartbeat/session routing, prompt assembly, contact
+  resolution, and retrieval token application
+- Retrieval cleanup around env defaults, provider registration, provider
+  constructors, Exa wrapper surfaces, and direct-fetch defaults
+- Bridge-local wrapper deletion where `bridges/ai` and `bridges/codex` were
+  just forwarding into shared SDK helpers
+
+This means the rewrite should now focus on subsystem collapse, not more tiny
+utility deletion as the primary workstream.
+
+## Updated Priorities
+
+The highest-value remaining work is now:
+
+1. Streaming terminalizer
+2. Prompt canonicalization
+3. Session subsystem
+4. Provider consolidation
+5. Queue/runtime/heartbeat unification
+6. `runtimeIntegrationHost` reduction
+7. SDK runtime/loading collapse
+
 ## Execution Order
 
 ### Phase 1: Streaming Terminalizer
@@ -177,6 +206,8 @@ Deliverable:
 - one terminal state machine
 - one finalization owner
 - one path for `turn.End(...)`
+- one place where provider finish/status becomes persisted/runtime state
+- one place where final Matrix edits/messages are emitted
 
 Why first:
 
@@ -198,6 +229,7 @@ Deliverable:
 - one canonical prompt representation
 - one-way serialization to provider formats
 - one-way projection from persisted/runtime state
+- no separate local-context/projection/continuation helper stacks
 
 Why second:
 
@@ -221,6 +253,7 @@ Deliverable:
 - one provider capability/config table
 - one provider runtime construction path
 - one auth/base URL resolution path
+- media/image/tool policy reads from the same provider table
 
 Why third:
 
@@ -242,6 +275,7 @@ Deliverable:
 - one canonical session subsystem
 - one keying/routing model
 - one persistence surface
+- heartbeat and tool-session lookup reuse that exact surface
 
 Why fourth:
 
@@ -266,6 +300,7 @@ Deliverable:
 - one run pipeline
 - one queue/execution boundary
 - one heartbeat/runtime boundary
+- heartbeat reduced to one caller of the same runtime pipeline
 
 ### Phase 6: SDK Thinning
 

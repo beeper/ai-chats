@@ -73,6 +73,24 @@ The final shape should be:
 
 Everything else should be deleted or collapsed into those owners.
 
+## Completed Simplifications
+
+These wrapper/helper classes are already gone and should not return:
+
+- SDK runtime/getter bag, cache removal shells, message construction wrappers,
+  broken-login constructor shell, bridge-info helper leftovers, and approval
+  prompt formatting wrappers
+- AI queue dispatch shells, continuation/finalization wrappers, portal
+  send/edit wrappers, heartbeat/session routing wrappers, current-turn prompt
+  assembly wrappers, contact-resolution wrappers, and retrieval token helper
+  chains
+- Retrieval env/provider-registration/provider-constructor wrappers, direct
+  fetch default wrappers, and the Exa wrapper layer
+- Bridge-local status wrappers in `bridges/ai` and `bridges/codex`
+
+What remains is now mostly subsystem-shape duplication rather than isolated
+forwarders.
+
 ## Highest-Value Remaining Problems
 
 ### 1. Streaming terminalization still has multiple owners
@@ -98,6 +116,8 @@ Desired owner:
 
 - one `terminalizer` for all terminal transitions
 - event handlers only record deltas and emit terminal signals
+- no split between stream event handling, persistence shaping, and final
+  Matrix output
 
 ### 2. Prompt handling still has too many representations
 
@@ -119,6 +139,8 @@ Desired owner:
 
 - one canonical prompt model
 - provider serialization and replay derived from that model only
+- no distinct local-context/projection/continuation helper stacks with
+  overlapping semantics
 
 ### 3. Provider capability and auth resolution are still split
 
@@ -145,6 +167,8 @@ Desired owner:
 - one provider capability/config table
 - one concrete provider runtime shape
 - data-driven differences instead of scattered branching
+- media/image/tool code should consume the same provider table instead of
+  re-deriving provider behavior
 
 ### 4. Session routing and session persistence are still fragmented
 
@@ -169,6 +193,8 @@ Desired owner:
 - one canonical session key function
 - one persistence surface
 - one selection/routing surface
+- heartbeat, tools, and room lookup should all enter through the same session
+  resolution boundary
 
 ### 5. Queue/runtime/heartbeat state are still not one pipeline
 
@@ -193,6 +219,8 @@ Desired owner:
 - one run state model
 - one queue/execution boundary
 - one terminalization boundary
+- heartbeat should become one caller of the same run pipeline, not an adjacent
+  runtime
 
 ### 6. `runtimeIntegrationHost` is still too large
 
@@ -210,6 +238,8 @@ Desired owner:
 
 - either a much smaller boundary adapter
 - or explicit subsystem services consumed by integrations directly
+- integrations should not discover unrelated runtime/session/provider behavior
+  through one god object
 
 ### 7. SDK runtime/loading still has too many layers
 
@@ -237,6 +267,19 @@ Desired owner:
 - one runtime adapter shape
 - one client-loading path
 - one stream host/state model
+
+## Current Next Cuts
+
+The highest-value remaining architectural cuts are:
+
+1. Streaming terminalizer
+2. Prompt canonicalization
+3. Session subsystem
+4. Provider consolidation
+5. `runtimeIntegrationHost` reduction
+
+Those are the places where duplication still changes how the system thinks,
+not just how it is spelled.
 
 ### 8. SDK turn lifecycle is still distributed
 
