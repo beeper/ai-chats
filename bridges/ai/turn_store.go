@@ -435,41 +435,6 @@ func (oc *AIClient) persistAIConversationMessage(ctx context.Context, portal *br
 	})
 }
 
-func internalPromptTurnUpsert(
-	portal *bridgev2.Portal,
-	eventID id.EventID,
-	promptContext PromptContext,
-	excludeFromHistory bool,
-	source string,
-	timestamp time.Time,
-) (aiTurnUpsert, bool) {
-	if portal == nil || eventID == "" {
-		return aiTurnUpsert{}, false
-	}
-	meta := &MessageMetadata{}
-	if len(promptContext.Messages) > 0 {
-		if turnData, ok := turnDataFromUserPromptMessages(promptContext.Messages[len(promptContext.Messages)-1:]); ok {
-			meta.CanonicalTurnData = turnData.ToMap()
-		}
-	}
-	turnData, ok := canonicalTurnData(meta)
-	if !ok {
-		return aiTurnUpsert{}, false
-	}
-	return aiTurnUpsert{
-		TurnID:           strings.TrimSpace(turnData.ID),
-		Kind:             aiTurnKindInternal,
-		Source:           source,
-		MessageID:        sdk.MatrixMessageID(eventID),
-		EventID:          eventID,
-		SenderID:         humanUserID(networkid.UserLoginID(portal.PortalKey.Receiver)),
-		IncludeInHistory: !excludeFromHistory,
-		Timestamp:        timestamp,
-		TurnData:         turnData,
-		Metadata:         meta,
-	}, true
-}
-
 func (oc *AIClient) persistAIInternalPromptTurn(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -480,9 +445,26 @@ func (oc *AIClient) persistAIInternalPromptTurn(
 	timestamp time.Time,
 ) error {
 	return withResolvedPortalScope(ctx, oc, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) error {
-		entry, ok := internalPromptTurnUpsert(portal, eventID, promptContext, excludeFromHistory, source, timestamp)
+		if portal == nil || eventID == "" || len(promptContext.Messages) == 0 {
+			return nil
+		}
+		turnData, ok := turnDataFromUserPromptMessages(promptContext.Messages[len(promptContext.Messages)-1:])
 		if !ok {
 			return nil
+		}
+		meta := &MessageMetadata{}
+		meta.CanonicalTurnData = turnData.ToMap()
+		entry := aiTurnUpsert{
+			TurnID:           strings.TrimSpace(turnData.ID),
+			Kind:             aiTurnKindInternal,
+			Source:           source,
+			MessageID:        sdk.MatrixMessageID(eventID),
+			EventID:          eventID,
+			SenderID:         humanUserID(networkid.UserLoginID(portal.PortalKey.Receiver)),
+			IncludeInHistory: !excludeFromHistory,
+			Timestamp:        timestamp,
+			TurnData:         turnData,
+			Metadata:         meta,
 		}
 		return upsertAITurnByScope(ctx, scope, portal, entry)
 	})

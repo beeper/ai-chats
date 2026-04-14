@@ -148,11 +148,17 @@ Why this still violates the goal:
 - Canonical turn-data persistence now calls `turnDataFromUserPromptMessages`
   directly; the remaining spread is the number of representations, not another
   persistence adapter.
+- Prompt replay now reconstructs directly from canonical turn data inside
+  `replayHistoryMessages(...)`; the metadata-to-prompt adapter and
+  `canonical_history.go` helper layer are gone.
 - Steering-prompt continuation input is now serialized directly for the
   Responses loop instead of round-tripping through another prompt helper.
 - Base-context history loading now enters `replayHistoryMessages` directly; the
   remaining prompt duplication is no longer about separate history-loader
   scaffolding.
+- Local prompt projection no longer bounces through single-use wrappers for
+  block filtering, image extra lookup, tool-argument normalization, or
+  internal prompt turn upsert packaging.
 - prompt assembly, provider serialization, replay projection, and turn-data
   projection still overlap
 - new prompt block behavior still requires changes in multiple places

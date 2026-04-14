@@ -189,7 +189,11 @@ func projectAssistantOpenClawMessage(meta *MessageMetadata, msg *database.Messag
 }
 
 func parseCanonicalAssistantBlocks(meta *MessageMetadata) ([]map[string]any, []openClawToolCall) {
-	if messages := promptMessagesFromMetadata(meta); len(messages) > 0 {
+	if turnData, ok := canonicalTurnData(meta); ok {
+		messages := promptMessagesFromTurnData(turnData)
+		if len(messages) == 0 {
+			return nil, nil
+		}
 		content := make([]map[string]any, 0, len(messages))
 		calls := make([]openClawToolCall, 0, len(messages))
 		toolCallByID := make(map[string]ToolCallMetadata, len(meta.ToolCalls))

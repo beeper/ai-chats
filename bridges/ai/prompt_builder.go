@@ -129,7 +129,41 @@ func (oc *AIClient) replayHistoryMessages(
 			continue
 		}
 		injectImages := hasVision && chatIndex < maxHistoryImageMessages
-		bundle := oc.historyMessageBundle(ctx, candidate.meta, injectImages)
+		turnData, ok := canonicalTurnData(candidate.meta)
+		if !ok {
+			continue
+		}
+		bundle := filterPromptMessagesForHistory(promptMessagesFromTurnData(turnData), injectImages)
+		if injectImages && len(bundle) > 0 && len(candidate.meta.GeneratedFiles) > 0 {
+			blocks := make([]PromptBlock, 0, 1+len(candidate.meta.GeneratedFiles))
+			var sb strings.Builder
+			sb.WriteString("[Previously generated image(s) for reference]")
+			for _, f := range candidate.meta.GeneratedFiles {
+				if !strings.HasPrefix(strings.TrimSpace(f.MimeType), "image/") || strings.TrimSpace(f.URL) == "" {
+					continue
+				}
+				fmt.Fprintf(&sb, "\n[media_url: %s]", f.URL)
+				b64Data, actualMimeType, err := oc.downloadMediaBase64(ctx, f.URL, nil, 25, f.MimeType)
+				if err != nil {
+					oc.log.Debug().Err(err).Str("url", f.URL).Msg("Failed to download history image, skipping")
+					continue
+				}
+				blocks = append(blocks, PromptBlock{
+					Type:     PromptBlockImage,
+					ImageB64: b64Data,
+					MimeType: actualMimeType,
+				})
+			}
+			if len(blocks) > 0 {
+				bundle = append(bundle, PromptMessage{
+					Role: PromptRoleUser,
+					Blocks: append([]PromptBlock{{
+						Type: PromptBlockText,
+						Text: sb.String(),
+					}}, blocks...),
+				})
+			}
+		}
 		if len(bundle) == 0 {
 			continue
 		}

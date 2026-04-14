@@ -8,13 +8,6 @@ import (
 	"github.com/beeper/agentremote/sdk"
 )
 
-func promptMessagesFromMetadata(meta *MessageMetadata) []PromptMessage {
-	if turnData, ok := canonicalTurnData(meta); ok {
-		return promptMessagesFromTurnData(turnData)
-	}
-	return nil
-}
-
 func filterPromptMessagesForHistory(messages []PromptMessage, injectImages bool) []PromptMessage {
 	if len(messages) == 0 {
 		return nil
@@ -22,7 +15,19 @@ func filterPromptMessagesForHistory(messages []PromptMessage, injectImages bool)
 	filtered := make([]PromptMessage, 0, len(messages))
 	for _, msg := range messages {
 		next := msg
-		next.Blocks = filterPromptBlocksForHistory(msg.Blocks, injectImages)
+		next.Blocks = make([]PromptBlock, 0, len(msg.Blocks))
+		for _, block := range msg.Blocks {
+			switch block.Type {
+			case PromptBlockImage:
+				if injectImages {
+					next.Blocks = append(next.Blocks, block)
+				}
+			case PromptBlockThinking:
+				continue
+			default:
+				next.Blocks = append(next.Blocks, block)
+			}
+		}
 		if len(next.Blocks) == 0 && next.Role != PromptRoleToolResult {
 			continue
 		}
@@ -30,26 +35,6 @@ func filterPromptMessagesForHistory(messages []PromptMessage, injectImages bool)
 			continue
 		}
 		filtered = append(filtered, next)
-	}
-	return filtered
-}
-
-func filterPromptBlocksForHistory(blocks []PromptBlock, injectImages bool) []PromptBlock {
-	if len(blocks) == 0 {
-		return nil
-	}
-	filtered := make([]PromptBlock, 0, len(blocks))
-	for _, block := range blocks {
-		switch block.Type {
-		case PromptBlockImage:
-			if injectImages {
-				filtered = append(filtered, block)
-			}
-		case PromptBlockThinking:
-			continue
-		default:
-			filtered = append(filtered, block)
-		}
 	}
 	return filtered
 }
@@ -68,7 +53,7 @@ func promptMessagesFromTurnData(td sdk.TurnData) []PromptMessage {
 					msg.Blocks = append(msg.Blocks, PromptBlock{Type: PromptBlockText, Text: part.Text})
 				}
 			case "image":
-				imageB64 := promptExtraString(part.Extra, "imageB64")
+				imageB64, _ := part.Extra["imageB64"].(string)
 				if strings.TrimSpace(part.URL) == "" && imageB64 == "" {
 					continue
 				}
@@ -103,11 +88,40 @@ func promptMessagesFromTurnData(td sdk.TurnData) []PromptMessage {
 				}
 			case "tool":
 				if strings.TrimSpace(part.ToolCallID) != "" && strings.TrimSpace(part.ToolName) != "" {
+					toolArguments := "{}"
+					switch typed := part.Input.(type) {
+					case nil:
+					case string:
+						trimmed := strings.TrimSpace(typed)
+						if trimmed != "" {
+							var decoded any
+							if err := json.Unmarshal([]byte(trimmed), &decoded); err == nil {
+								if data, marshalErr := json.Marshal(decoded); marshalErr == nil && string(data) != "null" {
+									toolArguments = string(data)
+								}
+							} else if data, err := json.Marshal(typed); err == nil && string(data) != "null" {
+								toolArguments = string(data)
+							}
+						}
+					default:
+						if data, err := json.Marshal(typed); err == nil && string(data) != "null" {
+							toolArguments = string(data)
+						}
+					}
+					if toolArguments == "{}" {
+						if value := strings.TrimSpace(formatPromptCanonicalValue(part.Input)); value != "" {
+							if data, err := json.Marshal(value); err == nil && string(data) != "null" {
+								toolArguments = string(data)
+							} else {
+								toolArguments = value
+							}
+						}
+					}
 					assistant.Blocks = append(assistant.Blocks, PromptBlock{
 						Type:              PromptBlockToolCall,
 						ToolCallID:        part.ToolCallID,
 						ToolName:          part.ToolName,
-						ToolCallArguments: canonicalPromptToolArguments(part.Input),
+						ToolCallArguments: toolArguments,
 					})
 				}
 				outputText := strings.TrimSpace(formatPromptCanonicalValue(part.Output))
@@ -176,54 +190,11 @@ func turnDataFromUserPromptMessages(messages []PromptMessage) (sdk.TurnData, boo
 	return td, len(td.Parts) > 0
 }
 
-func promptExtraString(extra map[string]any, key string) string {
-	if len(extra) == 0 {
-		return ""
-	}
-	value, _ := extra[key].(string)
-	return value
-}
-
 func normalizePromptTurnPartType(partType string) string {
 	if partType == "dynamic-tool" {
 		return "tool"
 	}
 	return partType
-}
-
-func canonicalPromptToolArguments(raw any) string {
-	switch typed := raw.(type) {
-	case nil:
-		return "{}"
-	case string:
-		trimmed := strings.TrimSpace(typed)
-		if trimmed == "" {
-			return "{}"
-		}
-		var decoded any
-		if err := json.Unmarshal([]byte(trimmed), &decoded); err == nil {
-			data, marshalErr := json.Marshal(decoded)
-			if marshalErr == nil && string(data) != "null" {
-				return string(data)
-			}
-		}
-		data, err := json.Marshal(typed)
-		if err == nil && string(data) != "null" {
-			return string(data)
-		}
-	default:
-		if data, err := json.Marshal(typed); err == nil && string(data) != "null" {
-			return string(data)
-		}
-	}
-	if value := strings.TrimSpace(formatPromptCanonicalValue(raw)); value != "" {
-		data, err := json.Marshal(value)
-		if err == nil && string(data) != "null" {
-			return string(data)
-		}
-		return value
-	}
-	return "{}"
 }
 
 func formatPromptCanonicalValue(raw any) string {

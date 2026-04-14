@@ -7,7 +7,7 @@ import (
 	"github.com/beeper/agentremote/sdk"
 )
 
-func TestPromptMessagesFromMetadataPrefersTurnData(t *testing.T) {
+func TestPromptMessagesFromTurnDataBuildsAssistantAndToolResultMessages(t *testing.T) {
 	meta := &MessageMetadata{}
 	meta.CanonicalTurnData = sdk.TurnData{
 		ID:   "turn-1",
@@ -18,7 +18,11 @@ func TestPromptMessagesFromMetadataPrefersTurnData(t *testing.T) {
 		},
 	}.ToMap()
 
-	messages := promptMessagesFromMetadata(meta)
+	td, ok := canonicalTurnData(meta)
+	if !ok {
+		t.Fatalf("expected canonical turn data")
+	}
+	messages := promptMessagesFromTurnData(td)
 	if len(messages) != 2 {
 		t.Fatalf("expected assistant + tool result, got %d messages", len(messages))
 	}

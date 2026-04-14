@@ -209,6 +209,17 @@ Recent progress also removed the one-message `promptTail(...)` wrapper from
 prompt canonicalization: callers now slice the final prompt message directly at
 the persistence boundary.
 
+Recent progress also removed the metadata-to-prompt adapter and the extra
+history replay helper layer: prompt replay now reconstructs directly from
+canonical turn data inside `replayHistoryMessages(...)`, and
+`bridges/ai/canonical_history.go` is gone.
+
+Recent progress also removed the single-callsite internal prompt turn upsert
+wrapper and the local prompt projection helpers around block filtering, image
+payload lookup, and tool-argument normalization: canonical prompt projection
+now stays inside `promptMessagesFromTurnData(...)` and
+`persistAIInternalPromptTurn(...)`.
+
 Recent progress also removed memory-specific DB/login/workspace identity from
 the shared integration host surface: memory now takes explicit constructor deps
 for that state instead of type-asserting the host.
@@ -264,6 +275,9 @@ Deliverable:
 - no continuation-only steering serialization helper
 - base context history replay calls the canonical history replayer directly
 - no one-message prompt-tail wrapper around latest-user persistence
+- no metadata-to-prompt adapter or extra history replay helper file
+- no local block-filter / image-extra / tool-argument wrappers inside canonical
+  prompt projection
 - one-way projection from persisted/runtime state
 - no separate local-context/projection/continuation helper stacks
 
