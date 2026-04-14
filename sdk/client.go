@@ -77,13 +77,6 @@ func (c *sdkClient[SessionT, ConfigDataT]) GetApprovalHandler() ApprovalReaction
 	return c.approvalFlow
 }
 
-func (c *sdkClient[SessionT, ConfigDataT]) conversationRuntimeState() *conversationRuntimeState {
-	if c == nil {
-		return nil
-	}
-	return newConversationRuntimeState(c.cfg, c.getSession(), c.conversationState, c.approvalFlow)
-}
-
 func (c *sdkClient[SessionT, ConfigDataT]) getSession() SessionT {
 	c.sessionMu.RLock()
 	defer c.sessionMu.RUnlock()
@@ -143,7 +136,7 @@ func (c *sdkClient[SessionT, ConfigDataT]) IsThisUser(_ context.Context, userID 
 
 func (c *sdkClient[SessionT, ConfigDataT]) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	if c.cfg != nil && c.cfg.GetChatInfo != nil {
-		return c.cfg.GetChatInfo(newConversation(ctx, portal, c.userLogin, bridgev2.EventSender{}, c.conversationRuntimeState()))
+		return c.cfg.GetChatInfo(newConversation(ctx, portal, c.userLogin, bridgev2.EventSender{}, newConversationRuntimeState(c.cfg, c.getSession(), c.conversationState, c.approvalFlow)))
 	}
 	return nil, nil
 }
@@ -156,7 +149,7 @@ func (c *sdkClient[SessionT, ConfigDataT]) GetUserInfo(_ context.Context, ghost 
 }
 
 func (c *sdkClient[SessionT, ConfigDataT]) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
-	conv := newConversation(ctx, portal, c.userLogin, bridgev2.EventSender{}, c.conversationRuntimeState())
+	conv := newConversation(ctx, portal, c.userLogin, bridgev2.EventSender{}, newConversationRuntimeState(c.cfg, c.getSession(), c.conversationState, c.approvalFlow))
 	features := conv.currentRoomFeatures(ctx)
 	if features == nil {
 		features = defaultSDKFeatureConfig()
@@ -239,7 +232,7 @@ func (c *sdkClient[SessionT, ConfigDataT]) HandleMatrixMessage(ctx context.Conte
 			sdkMsg.ReplyTo = content.RelatesTo.InReplyTo.EventID.String()
 		}
 	}
-	conv := newConversation(runCtx, msg.Portal, c.userLogin, bridgev2.EventSender{}, c.conversationRuntimeState())
+	conv := newConversation(runCtx, msg.Portal, c.userLogin, bridgev2.EventSender{}, newConversationRuntimeState(c.cfg, c.getSession(), c.conversationState, c.approvalFlow))
 	session := c.getSession()
 	var source *SourceRef
 	if msg.Event != nil {
