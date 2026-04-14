@@ -220,30 +220,20 @@ func (h *runtimeIntegrationHost) ResolveAgentID(raw string) string {
 		return agents.DefaultAgentID
 	}
 	normalized := normalizeAgentID(raw)
-	if normalized == "" || !h.AgentExists(normalized) {
+	if normalized == "" || h.client.connector == nil || h.client.connector.Config.Agents == nil {
+		return normalizeAgentID(agents.DefaultAgentID)
+	}
+	found := false
+	for _, entry := range h.client.connector.Config.Agents.List {
+		if normalizeAgentID(entry.ID) == normalized {
+			found = true
+			break
+		}
+	}
+	if !found {
 		return normalizeAgentID(agents.DefaultAgentID)
 	}
 	return normalized
-}
-
-func (h *runtimeIntegrationHost) AgentExists(normalizedID string) bool {
-	if h == nil || h.client == nil || h.client.connector == nil {
-		return false
-	}
-	cfg := &h.client.connector.Config
-	if cfg.Agents == nil {
-		return false
-	}
-	for _, entry := range cfg.Agents.List {
-		if normalizeAgentID(entry.ID) == strings.TrimSpace(normalizedID) {
-			return true
-		}
-	}
-	return false
-}
-
-func (h *runtimeIntegrationHost) DefaultAgentID() string {
-	return agents.DefaultAgentID
 }
 
 func (h *runtimeIntegrationHost) UserTimezone() (tz string, loc *time.Location) {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/beeper/agentremote/pkg/agents"
 	iruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 	"github.com/beeper/agentremote/pkg/shared/toolspec"
 )
@@ -222,7 +223,7 @@ func (i *Integration) buildToolExecDeps(ctx context.Context, scope iruntime.Tool
 	deps := ToolExecDeps{
 		NowMs: func() int64 { return i.host.Now().UnixMilli() },
 		ResolveCreateContext: func() ToolCreateContext {
-			agentID := i.host.DefaultAgentID()
+			agentID := agents.DefaultAgentID
 			if scope.Meta != nil {
 				if resolved := strings.TrimSpace(scope.Meta.AgentID()); resolved != "" {
 					agentID = resolved
