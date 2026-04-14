@@ -266,7 +266,31 @@ func BuildApprovalPromptBody(presentation ApprovalPromptPresentation, options []
 
 func BuildApprovalResponseBody(presentation ApprovalPromptPresentation, decision ApprovalDecisionPayload) string {
 	lines := buildApprovalBodyHeader(presentation)
-	outcome, reason := approvalDecisionOutcome(decision)
+	outcome := ""
+	reason := ""
+	if decision.Approved {
+		if decision.Always {
+			outcome = "approved (always allow)"
+		} else {
+			outcome = "approved"
+		}
+	} else {
+		reason = strings.TrimSpace(decision.Reason)
+		switch reason {
+		case ApprovalReasonTimeout:
+			outcome, reason = "timed out", ""
+		case ApprovalReasonExpired:
+			outcome, reason = "expired", ""
+		case ApprovalReasonDeliveryError:
+			outcome, reason = "delivery error", ""
+		case ApprovalReasonCancelled:
+			outcome, reason = "cancelled", ""
+		case "":
+			outcome = "denied"
+		default:
+			outcome = "denied"
+		}
+	}
 	line := "Decision: " + outcome
 	if reason != "" {
 		line += " (reason: " + reason + ")"
@@ -327,7 +351,23 @@ func normalizePromptFields(approvalID, toolCallID, toolName, turnID string, pres
 	if toolName == "" {
 		toolName = "tool"
 	}
-	p := normalizeApprovalPromptPresentation(presentation, toolName)
+	p := presentation
+	p.Title = strings.TrimSpace(p.Title)
+	if p.Title == "" {
+		p.Title = toolName
+	}
+	if len(p.Details) > 0 {
+		normalized := make([]ApprovalDetail, 0, len(p.Details))
+		for _, detail := range p.Details {
+			detail.Label = strings.TrimSpace(detail.Label)
+			detail.Value = strings.TrimSpace(detail.Value)
+			if detail.Label == "" || detail.Value == "" {
+				continue
+			}
+			normalized = append(normalized, detail)
+		}
+		p.Details = normalized
+	}
 	return normalizedPromptFields{
 		approvalID:   approvalID,
 		toolCallID:   toolCallID,
@@ -362,7 +402,7 @@ func BuildApprovalPromptMessage(params ApprovalPromptMessageParams) ApprovalProm
 	}
 	return ApprovalPromptMessage{
 		Content:       content,
-		TopLevelExtra: approvalPromptTopLevelExtra(uiMessage),
+		TopLevelExtra: map[string]any{matrixevents.BeeperAIKey: uiMessage},
 		Body:          body,
 		UIMessage:     uiMessage,
 		Presentation:  presentation,
@@ -398,7 +438,7 @@ func BuildApprovalResponsePromptMessage(params ApprovalResponsePromptMessagePara
 			Body:     body,
 			Mentions: &event.Mentions{},
 		},
-		TopLevelExtra: approvalPromptTopLevelExtra(uiMessage),
+		TopLevelExtra: map[string]any{matrixevents.BeeperAIKey: uiMessage},
 		Body:          body,
 		UIMessage:     uiMessage,
 		Presentation:  presentation,
@@ -420,12 +460,6 @@ func buildApprovalUIMessage(f normalizedPromptFields, state string, approvalPayl
 			"state":      state,
 			"approval":   approvalPayload,
 		}},
-	}
-}
-
-func approvalPromptTopLevelExtra(uiMessage map[string]any) map[string]any {
-	return map[string]any{
-		matrixevents.BeeperAIKey: uiMessage,
 	}
 }
 
@@ -462,30 +496,6 @@ func approvalMessageMetadata(
 	}
 	metadata["approval"] = approval
 	return metadata
-}
-
-func approvalDecisionOutcome(decision ApprovalDecisionPayload) (string, string) {
-	if decision.Approved {
-		if decision.Always {
-			return "approved (always allow)", ""
-		}
-		return "approved", ""
-	}
-	reason := strings.TrimSpace(decision.Reason)
-	switch reason {
-	case ApprovalReasonTimeout:
-		return "timed out", ""
-	case ApprovalReasonExpired:
-		return "expired", ""
-	case ApprovalReasonDeliveryError:
-		return "delivery error", ""
-	case ApprovalReasonCancelled:
-		return "cancelled", ""
-	case "":
-		return "denied", ""
-	default:
-		return "denied", reason
-	}
 }
 
 type ApprovalPromptRegistration struct {
@@ -568,38 +578,25 @@ func presentationToRaw(p ApprovalPromptPresentation) map[string]any {
 	return out
 }
 
-func normalizeApprovalPromptPresentation(presentation ApprovalPromptPresentation, fallbackToolName string) ApprovalPromptPresentation {
-	presentation.Title = strings.TrimSpace(presentation.Title)
-	if presentation.Title == "" {
-		fallbackToolName = strings.TrimSpace(fallbackToolName)
-		if fallbackToolName == "" {
-			fallbackToolName = "tool"
-		}
-		presentation.Title = fallbackToolName
-	}
-	if len(presentation.Details) == 0 {
-		return presentation
-	}
-	normalized := make([]ApprovalDetail, 0, len(presentation.Details))
-	for _, detail := range presentation.Details {
-		detail.Label = strings.TrimSpace(detail.Label)
-		detail.Value = strings.TrimSpace(detail.Value)
-		if detail.Label == "" || detail.Value == "" {
-			continue
-		}
-		normalized = append(normalized, detail)
-	}
-	presentation.Details = normalized
-	return presentation
-}
-
 func normalizeApprovalOptions(options []ApprovalOption, fallback []ApprovalOption) []ApprovalOption {
 	allowAlways := true
 	switch {
 	case len(options) > 0:
-		allowAlways = approvalOptionsAllowAlways(options)
+		allowAlways = false
+		for _, option := range options {
+			if strings.TrimSpace(option.ID) == "allow_always" || option.Always {
+				allowAlways = true
+				break
+			}
+		}
 	case len(fallback) > 0:
-		allowAlways = approvalOptionsAllowAlways(fallback)
+		allowAlways = false
+		for _, option := range fallback {
+			if strings.TrimSpace(option.ID) == "allow_always" || option.Always {
+				allowAlways = true
+				break
+			}
+		}
 	}
 	if len(options) == 0 {
 		options = fallback
@@ -629,15 +626,6 @@ func normalizeApprovalOptions(options []ApprovalOption, fallback []ApprovalOptio
 		return ApprovalPromptOptions(allowAlways)
 	}
 	return out
-}
-
-func approvalOptionsAllowAlways(options []ApprovalOption) bool {
-	for _, option := range options {
-		if strings.TrimSpace(option.ID) == "allow_always" || option.Always {
-			return true
-		}
-	}
-	return false
 }
 
 // AddOptionalDetail appends an approval detail from an optional string pointer.
