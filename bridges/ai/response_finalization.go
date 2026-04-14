@@ -78,7 +78,7 @@ func (oc *AIClient) flushPartialStreamingMessage(ctx context.Context, portal *br
 	if state == nil || !state.hasInitialMessageTarget() || state.accumulated.Len() == 0 {
 		return
 	}
-	state.completedAtMs = time.Now().UnixMilli()
+	state.markCompletedNow()
 	if !state.suppressSave {
 		log := *oc.loggerForContext(ctx)
 		log.Info().

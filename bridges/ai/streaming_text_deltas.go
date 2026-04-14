@@ -38,7 +38,7 @@ func (oc *AIClient) emitVisibleTextDelta(
 	state.writer().TextDelta(ctx, delta)
 	if err := state.turn.Err(); err != nil {
 		log.Error().Err(err).Msg(logMessage)
-		state.finishReason = "error"
+		state.setTerminalFailure("error")
 		state.writer().Error(ctx, errText)
 		return err
 	}
@@ -141,7 +141,7 @@ func (oc *AIClient) handleResponseReasoningTextDelta(
 	state.writer().ReasoningDelta(ctx, delta)
 	if err := state.turn.Err(); err != nil {
 		log.Error().Err(err).Msg(logMessage)
-		state.finishReason = "error"
+		state.setTerminalFailure("error")
 		state.writer().Error(ctx, errText)
 		return err
 	}

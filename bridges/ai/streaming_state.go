@@ -137,6 +137,80 @@ func (s *streamingState) nextMessageTiming() sdk.EventTiming {
 	return timing
 }
 
+func (s *streamingState) resetFinishReason() {
+	if s == nil {
+		return
+	}
+	s.finishReason = ""
+}
+
+func (s *streamingState) markCompletedNow() {
+	if s == nil {
+		return
+	}
+	s.completedAtMs = time.Now().UnixMilli()
+}
+
+func (s *streamingState) setTerminalFailure(reason string) {
+	if s == nil {
+		return
+	}
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "error"
+	}
+	s.finishReason = reason
+	s.markCompletedNow()
+}
+
+func (s *streamingState) finalizeTerminalSuccess() string {
+	if s == nil {
+		return ""
+	}
+	s.markCompletedNow()
+	if s.finishReason == "" {
+		s.finishReason = "stop"
+	}
+	if s.responseStatus == "" && s.responseID != "" {
+		s.responseStatus = canonicalResponseStatus(s)
+	}
+	return s.finishReason
+}
+
+func (s *streamingState) applyResponseLifecycleEvent(eventType string, response responses.Response) bool {
+	if s == nil {
+		return false
+	}
+	if responseID := strings.TrimSpace(response.ID); responseID != "" {
+		s.responseID = responseID
+	}
+	if status := strings.TrimSpace(string(response.Status)); status != "" {
+		s.responseStatus = status
+	}
+
+	switch eventType {
+	case "response.completed":
+		if s.responseStatus == "completed" {
+			s.finishReason = "stop"
+		} else {
+			s.finishReason = s.responseStatus
+		}
+	case "response.failed":
+		s.finishReason = "error"
+	case "response.incomplete":
+		s.finishReason = strings.TrimSpace(string(response.IncompleteDetails.Reason))
+		if s.finishReason == "" {
+			s.finishReason = "other"
+		}
+	case "response.created", "response.queued", "response.in_progress":
+		// No terminal state changes needed.
+	default:
+		return false
+	}
+
+	return true
+}
+
 // clearContinuationState resets pending function outputs and MCP approvals
 // after they have been consumed for a continuation round.
 func (s *streamingState) clearContinuationState() {

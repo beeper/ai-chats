@@ -88,7 +88,7 @@ func (a *chatCompletionsTurnAdapter) RunAgentTurn(
 		false,
 	)
 	var roundContent strings.Builder
-	state.finishReason = ""
+	state.resetFinishReason()
 
 	_, cle, err := runAgentLoopStreamStep(ctx, oc, portal, state, evt, stream,
 		func(openai.ChatCompletionChunk) bool { return true },

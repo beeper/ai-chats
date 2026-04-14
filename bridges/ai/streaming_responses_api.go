@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/packages/ssestream"
@@ -185,7 +184,37 @@ func (a *responsesTurnAdapter) FinalizeAgentLoop(ctx context.Context) {
 	if a.state == nil || a.state.isFinalized() {
 		return
 	}
-	a.oc.finalizeResponsesStream(ctx, a.log, a.portal, a.state, a.meta)
+	for _, img := range a.state.pendingImages {
+		imageData, mimeType, err := decodeBase64Image(img.imageB64)
+		if err != nil {
+			a.log.Warn().Err(err).Str("item_id", img.itemID).Msg("Failed to decode generated image")
+			continue
+		}
+		eventID, mediaURL, err := a.oc.sendGeneratedImage(ctx, a.portal, imageData, mimeType, img.turnID, "")
+		if err != nil {
+			a.log.Warn().Err(err).Str("item_id", img.itemID).Msg("Failed to send generated image to Matrix")
+			continue
+		}
+		recordGeneratedFile(a.state, mediaURL, mimeType)
+		a.state.writer().File(ctx, mediaURL, mimeType)
+		a.log.Info().Stringer("event_id", eventID).Str("item_id", img.itemID).Msg("Sent generated image to Matrix")
+	}
+	_ = a.oc.finalizeStreamingTurn(ctx, a.portal, a.state, a.meta, streamingFinalizeParams{
+		success:               true,
+		finalizeAccumulator:   true,
+		recordProviderSuccess: true,
+		generateTitle:         true,
+	})
+
+	a.log.Info().
+		Str("turn_id", a.state.turn.ID()).
+		Str("finish_reason", a.state.finishReason).
+		Int("content_length", a.state.accumulated.Len()).
+		Int("reasoning_length", a.state.reasoning.Len()).
+		Int("tool_calls", len(a.state.toolCalls)).
+		Str("response_id", a.state.responseID).
+		Int("images_sent", len(a.state.pendingImages)).
+		Msg("Responses API streaming finished")
 }
 
 // processResponseStreamEvent handles a single Responses API stream event.
@@ -222,33 +251,7 @@ func (oc *AIClient) processResponseStreamEvent(
 		!isContinuation,
 	)
 	applyResponseLifecycle := func(eventType string, response responses.Response) {
-		if state == nil {
-			return
-		}
-		if strings.TrimSpace(response.ID) != "" {
-			state.responseID = response.ID
-		}
-		if status := strings.TrimSpace(string(response.Status)); status != "" {
-			state.responseStatus = status
-		}
-
-		switch eventType {
-		case "response.completed":
-			if state.responseStatus == "completed" {
-				state.finishReason = "stop"
-			} else {
-				state.finishReason = state.responseStatus
-			}
-		case "response.failed":
-			state.finishReason = "error"
-		case "response.incomplete":
-			state.finishReason = strings.TrimSpace(string(response.IncompleteDetails.Reason))
-			if state.finishReason == "" {
-				state.finishReason = "other"
-			}
-		case "response.created", "response.queued", "response.in_progress":
-			// No terminal state changes needed.
-		default:
+		if !state.applyResponseLifecycleEvent(eventType, response) {
 			return
 		}
 
@@ -272,7 +275,7 @@ func (oc *AIClient) processResponseStreamEvent(
 
 	case "response.failed":
 		applyResponseLifecycle(streamEvent.Type, streamEvent.Response)
-		state.completedAtMs = time.Now().UnixMilli()
+		state.markCompletedNow()
 		errText := strings.TrimSpace(streamEvent.Response.Error.Message)
 		if errText == "" {
 			errText = "response failed"
@@ -284,7 +287,7 @@ func (oc *AIClient) processResponseStreamEvent(
 
 	case "response.incomplete":
 		applyResponseLifecycle(streamEvent.Type, streamEvent.Response)
-		state.completedAtMs = time.Now().UnixMilli()
+		state.markCompletedNow()
 		actions.finalizeMetadata()
 		log.Debug().
 			Str("reason", state.finishReason).
@@ -409,7 +412,7 @@ func (oc *AIClient) processResponseStreamEvent(
 
 	case "response.completed":
 		applyResponseLifecycle(streamEvent.Type, streamEvent.Response)
-		state.completedAtMs = time.Now().UnixMilli()
+		state.markCompletedNow()
 		if streamEvent.Response.Usage.TotalTokens > 0 || streamEvent.Response.Usage.InputTokens > 0 || streamEvent.Response.Usage.OutputTokens > 0 {
 			actions.updateUsage(
 				streamEvent.Response.Usage.InputTokens,

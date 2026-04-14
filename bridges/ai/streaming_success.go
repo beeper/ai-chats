@@ -2,7 +2,6 @@ package ai
 
 import (
 	"context"
-	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 
@@ -39,22 +38,16 @@ func (oc *AIClient) finalizeStreamingTurn(
 	if !params.success && state.stop.Load() != nil && reason == "cancelled" {
 		reason = "stop"
 	}
-	state.completedAtMs = time.Now().UnixMilli()
 	if params.success {
-		if state.finishReason == "" {
-			state.finishReason = "stop"
-		}
-		reason = state.finishReason
-		if state.responseStatus == "" && state.responseID != "" {
-			state.responseStatus = canonicalResponseStatus(state)
-		}
+		reason = state.finalizeTerminalSuccess()
 		if params.finalizeAccumulator && oc != nil && state.replyAccumulator != nil {
 			if parsed := state.replyAccumulator.Consume("", true); parsed != nil {
 				oc.applyStreamingReplyTarget(state, parsed)
 			}
 		}
 	} else {
-		state.finishReason = reason
+		state.setTerminalFailure(reason)
+		reason = state.finishReason
 	}
 
 	if state.hasInitialMessageTarget() || state.heartbeat != nil {
