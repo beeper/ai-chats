@@ -158,6 +158,8 @@ Current status:
 - complete: AI memory lifecycle, overflow flush, and bootstrap checks no longer open-code repeated field mutations; typed `MemoryState` methods now own those transitions
 - complete: AI login runtime state no longer open-codes heartbeat dedupe and provider health transitions in separate closure bodies; typed `loginRuntimeState` methods now own those mutations
 - complete: AI managed heartbeat scheduling no longer open-codes config/due/run-result transitions across runtime helpers; `managedHeartbeatState` now owns those transition rules directly
+- complete: AI heartbeat dedupe/scheduling ownership no longer straddles `aichats_sessions` and `aichats_managed_heartbeats`; managed heartbeat state now persists the last sent session/text/timestamp itself, and session rows are back to route/queue ownership only
+- complete: AI session rows no longer carry dead `last_account_id` / `last_thread_id` baggage; route recovery and queue settings are the only remaining live session-store concerns
 - complete: AI scheduler/internal rooms no longer route durable portal updates through redundant save callbacks and post-save fixups; scheduler room materialization now uses one pre-save mutation path
 - complete: AI room override/title/internal-room materialization paths no longer use `BeforeSave` just to persist portal mutations that `SaveBefore` already handles; the remaining callback cases are narrower and behavior-specific
 - complete: AI subagent spawn and generated-title sync no longer route portal mutation through `MutatePortal`/`BeforeSave`; they now perform explicit metadata/save work before room materialization

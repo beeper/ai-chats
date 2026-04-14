@@ -215,7 +215,8 @@ func (s *schedulerRuntime) loadHeartbeatStoreLocked(ctx context.Context) (manage
 			agent_id, enabled, interval_ms,
 			active_hours_start, active_hours_end, active_hours_timezone,
 			room_id, revision, next_run_at_ms, pending_run_key,
-			last_run_at_ms, last_result, last_error
+			last_run_at_ms, last_heartbeat_session_key, last_heartbeat_text, last_heartbeat_sent_at_ms,
+			last_result, last_error
 		FROM `+aiManagedHeartbeatsTable+`
 		WHERE bridge_id=$1 AND login_id=$2
 		ORDER BY agent_id
@@ -235,6 +236,7 @@ func (s *schedulerRuntime) loadHeartbeatStoreLocked(ctx context.Context) (manage
 			activeTimezone string
 			nextRunAtMs    sql.NullInt64
 			lastRunAtMs    sql.NullInt64
+			lastSentAtMs   sql.NullInt64
 		)
 		if err := rows.Scan(
 			&state.AgentID,
@@ -248,6 +250,9 @@ func (s *schedulerRuntime) loadHeartbeatStoreLocked(ctx context.Context) (manage
 			&nextRunAtMs,
 			&state.PendingRunKey,
 			&lastRunAtMs,
+			&state.LastHeartbeatSessionKey,
+			&state.LastHeartbeatText,
+			&lastSentAtMs,
 			&state.LastResult,
 			&state.LastError,
 		); err != nil {
@@ -256,6 +261,7 @@ func (s *schedulerRuntime) loadHeartbeatStoreLocked(ctx context.Context) (manage
 		state.Enabled = enabled
 		state.NextRunAtMs = nextRunAtMs.Int64
 		state.LastRunAtMs = lastRunAtMs.Int64
+		state.LastHeartbeatSentAtMs = lastSentAtMs.Int64
 		if strings.TrimSpace(activeStart) != "" || strings.TrimSpace(activeEnd) != "" || strings.TrimSpace(activeTimezone) != "" {
 			state.ActiveHours = &HeartbeatActiveHoursConfig{
 				Start:    activeStart,
@@ -294,8 +300,10 @@ func (s *schedulerRuntime) saveHeartbeatStoreLocked(ctx context.Context, store m
 				INSERT INTO `+aiManagedHeartbeatsTable+` (
 					bridge_id, login_id, agent_id, enabled, interval_ms,
 					active_hours_start, active_hours_end, active_hours_timezone,
-					room_id, revision, next_run_at_ms, pending_run_key, last_run_at_ms, last_result, last_error
-				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+					room_id, revision, next_run_at_ms, pending_run_key, last_run_at_ms,
+					last_heartbeat_session_key, last_heartbeat_text, last_heartbeat_sent_at_ms,
+					last_result, last_error
+				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 				ON CONFLICT (bridge_id, login_id, agent_id) DO UPDATE SET
 					enabled=excluded.enabled,
 					interval_ms=excluded.interval_ms,
@@ -307,13 +315,18 @@ func (s *schedulerRuntime) saveHeartbeatStoreLocked(ctx context.Context, store m
 					next_run_at_ms=excluded.next_run_at_ms,
 					pending_run_key=excluded.pending_run_key,
 					last_run_at_ms=excluded.last_run_at_ms,
+					last_heartbeat_session_key=excluded.last_heartbeat_session_key,
+					last_heartbeat_text=excluded.last_heartbeat_text,
+					last_heartbeat_sent_at_ms=excluded.last_heartbeat_sent_at_ms,
 					last_result=excluded.last_result,
 					last_error=excluded.last_error
 			`,
 				scope.bridgeID, scope.loginID, state.AgentID, state.Enabled, state.IntervalMs,
 				activeStart, activeEnd, activeTimezone,
 				state.RoomID, state.Revision, nullableInt64ValueForZero(state.NextRunAtMs),
-				state.PendingRunKey, nullableInt64ValueForZero(state.LastRunAtMs), state.LastResult, state.LastError,
+				state.PendingRunKey, nullableInt64ValueForZero(state.LastRunAtMs),
+				state.LastHeartbeatSessionKey, state.LastHeartbeatText, nullableInt64ValueForZero(state.LastHeartbeatSentAtMs),
+				state.LastResult, state.LastError,
 			); err != nil {
 				return err
 			}

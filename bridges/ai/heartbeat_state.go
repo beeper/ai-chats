@@ -3,60 +3,89 @@ package ai
 import (
 	"context"
 	"strings"
-	"time"
 )
 
 const heartbeatDedupeWindowMs = 24 * 60 * 60 * 1000
 
-func (oc *AIClient) isDuplicateHeartbeat(ref sessionStoreRef, sessionKey string, text string, nowMs int64) bool {
+func (oc *AIClient) managedHeartbeatStateSnapshot(ctx context.Context, agentID string) *managedHeartbeatState {
 	if oc == nil {
-		return false
+		return nil
 	}
-	trimmed := strings.TrimSpace(text)
-	if trimmed == "" {
-		return false
+	scheduler := oc.scheduler
+	if scheduler == nil {
+		return nil
 	}
-	sessionKey = strings.TrimSpace(sessionKey)
-	if sessionKey == "" {
-		return false
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	entry, ok := oc.getSessionEntry(context.Background(), ref, sessionKey)
-	if !ok {
-		return false
+	scheduler.mu.Lock()
+	defer scheduler.mu.Unlock()
+
+	store, err := scheduler.loadHeartbeatStoreLocked(ctx)
+	if err != nil {
+		oc.Log().Warn().Err(err).Str("agent_id", agentID).Msg("managed heartbeat state: load failed")
+		return nil
 	}
-	if strings.TrimSpace(entry.LastHeartbeatText) != trimmed {
-		return false
+	idx := findManagedHeartbeat(store.Agents, agentID)
+	if idx < 0 {
+		return nil
 	}
-	if entry.LastHeartbeatSentAt <= 0 {
-		return false
-	}
-	if nowMs-entry.LastHeartbeatSentAt < heartbeatDedupeWindowMs {
-		return true
-	}
-	return false
+	state := store.Agents[idx]
+	return &state
 }
 
-func (oc *AIClient) recordHeartbeatText(ref sessionStoreRef, sessionKey string, text string, sentAt int64) {
+func (oc *AIClient) updateManagedHeartbeatState(ctx context.Context, agentID string, updater func(*managedHeartbeatState) bool) {
+	if oc == nil || updater == nil {
+		return
+	}
+	scheduler := oc.scheduler
+	if scheduler == nil {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	scheduler.mu.Lock()
+	defer scheduler.mu.Unlock()
+
+	store, err := scheduler.loadHeartbeatStoreLocked(ctx)
+	if err != nil {
+		oc.Log().Warn().Err(err).Str("agent_id", agentID).Msg("managed heartbeat state: load failed")
+		return
+	}
+	idx := findManagedHeartbeat(store.Agents, agentID)
+	if idx < 0 {
+		store.Agents = append(store.Agents, managedHeartbeatState{
+			AgentID:  normalizeAgentID(agentID),
+			Revision: 1,
+		})
+		idx = len(store.Agents) - 1
+	}
+	if !updater(&store.Agents[idx]) {
+		return
+	}
+	if err := scheduler.saveHeartbeatStoreLocked(ctx, store); err != nil {
+		oc.Log().Warn().Err(err).Str("agent_id", agentID).Msg("managed heartbeat state: save failed")
+	}
+}
+
+func (oc *AIClient) isDuplicateHeartbeat(agentID string, sessionKey string, text string, nowMs int64) bool {
+	if oc == nil {
+		return false
+	}
+	state := oc.managedHeartbeatStateSnapshot(context.Background(), agentID)
+	if state == nil {
+		return false
+	}
+	return state.isDuplicateHeartbeat(sessionKey, text, nowMs)
+}
+
+func (oc *AIClient) recordHeartbeatText(agentID string, sessionKey string, text string, sentAt int64) {
 	if oc == nil {
 		return
 	}
-	trimmed := strings.TrimSpace(text)
-	if trimmed == "" {
-		return
-	}
-	sessionKey = strings.TrimSpace(sessionKey)
-	if sessionKey == "" {
-		return
-	}
-	if sentAt <= 0 {
-		sentAt = time.Now().UnixMilli()
-	}
-	oc.updateSessionEntry(context.Background(), ref, sessionKey, func(entry sessionEntry) sessionEntry {
-		patch := sessionEntry{
-			LastHeartbeatText:   trimmed,
-			LastHeartbeatSentAt: sentAt,
-		}
-		return mergeSessionEntry(entry, patch)
+	oc.updateManagedHeartbeatState(context.Background(), agentID, func(state *managedHeartbeatState) bool {
+		return state.recordHeartbeatText(sessionKey, text, sentAt)
 	})
 }
 

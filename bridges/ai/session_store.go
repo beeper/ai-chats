@@ -11,18 +11,14 @@ import (
 )
 
 type sessionEntry struct {
-	SessionID           string
-	UpdatedAt           int64
-	LastHeartbeatText   string
-	LastHeartbeatSentAt int64
-	LastChannel         string
-	LastTo              string
-	LastAccountID       string
-	LastThreadID        string
-	QueueMode           string
-	QueueDebounceMs     *int
-	QueueCap            *int
-	QueueDrop           string
+	SessionID       string
+	UpdatedAt       int64
+	LastChannel     string
+	LastTo          string
+	QueueMode       string
+	QueueDebounceMs *int
+	QueueCap        *int
+	QueueDrop       string
 }
 
 type sessionStoreRef struct {
@@ -93,12 +89,8 @@ func (oc *AIClient) getSessionEntry(ctx context.Context, ref sessionStoreRef, se
 		SELECT
 			session_id,
 			updated_at_ms,
-			last_heartbeat_text,
-			last_heartbeat_sent_at_ms,
 			last_channel,
 			last_to,
-			last_account_id,
-			last_thread_id,
 			queue_mode,
 			queue_debounce_ms,
 			queue_cap,
@@ -110,12 +102,8 @@ func (oc *AIClient) getSessionEntry(ctx context.Context, ref sessionStoreRef, se
 	).Scan(
 		&entry.SessionID,
 		&entry.UpdatedAt,
-		&entry.LastHeartbeatText,
-		&entry.LastHeartbeatSentAt,
 		&entry.LastChannel,
 		&entry.LastTo,
-		&entry.LastAccountID,
-		&entry.LastThreadID,
 		&entry.QueueMode,
 		&queueDebounceMs,
 		&queueCap,
@@ -149,26 +137,18 @@ func (oc *AIClient) upsertSessionEntry(ctx context.Context, ref sessionStoreRef,
 			session_key,
 			session_id,
 			updated_at_ms,
-			last_heartbeat_text,
-			last_heartbeat_sent_at_ms,
 			last_channel,
 			last_to,
-			last_account_id,
-			last_thread_id,
 			queue_mode,
 			queue_debounce_ms,
 			queue_cap,
 			queue_drop
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		ON CONFLICT (bridge_id, login_id, store_agent_id, session_key) DO UPDATE SET
 			session_id=excluded.session_id,
 			updated_at_ms=excluded.updated_at_ms,
-			last_heartbeat_text=excluded.last_heartbeat_text,
-			last_heartbeat_sent_at_ms=excluded.last_heartbeat_sent_at_ms,
 			last_channel=excluded.last_channel,
 			last_to=excluded.last_to,
-			last_account_id=excluded.last_account_id,
-			last_thread_id=excluded.last_thread_id,
 			queue_mode=excluded.queue_mode,
 			queue_debounce_ms=excluded.queue_debounce_ms,
 			queue_cap=excluded.queue_cap,
@@ -180,16 +160,10 @@ func (oc *AIClient) upsertSessionEntry(ctx context.Context, ref sessionStoreRef,
 		strings.TrimSpace(sessionKey),
 		entry.SessionID,
 		entry.UpdatedAt,
-		entry.LastHeartbeatText,
-		entry.LastHeartbeatSentAt,
 		entry.LastChannel,
 		entry.LastTo,
-		entry.LastAccountID,
-		entry.LastThreadID,
 		entry.QueueMode,
-		sessionNullInt(entry.QueueDebounceMs),
-		sessionNullInt(entry.QueueCap),
-		entry.QueueDrop,
+		sessionNullInt(entry.QueueDebounceMs), sessionNullInt(entry.QueueCap), entry.QueueDrop,
 	)
 	return err
 }
@@ -225,23 +199,11 @@ func mergeSessionEntry(existing sessionEntry, patch sessionEntry) sessionEntry {
 		updatedAt = patch.UpdatedAt
 	}
 	next := existing
-	if patch.LastHeartbeatText != "" {
-		next.LastHeartbeatText = patch.LastHeartbeatText
-	}
-	if patch.LastHeartbeatSentAt != 0 {
-		next.LastHeartbeatSentAt = patch.LastHeartbeatSentAt
-	}
 	if patch.LastChannel != "" {
 		next.LastChannel = patch.LastChannel
 	}
 	if patch.LastTo != "" {
 		next.LastTo = patch.LastTo
-	}
-	if patch.LastAccountID != "" {
-		next.LastAccountID = patch.LastAccountID
-	}
-	if patch.LastThreadID != "" {
-		next.LastThreadID = patch.LastThreadID
 	}
 	if patch.QueueMode != "" {
 		next.QueueMode = patch.QueueMode

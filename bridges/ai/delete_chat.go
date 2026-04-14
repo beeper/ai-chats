@@ -83,8 +83,6 @@ func (oc *AIClient) deletePersistedSessionArtifacts(ctx context.Context, portal 
 			SET
 				last_channel='',
 				last_to='',
-				last_account_id='',
-				last_thread_id='',
 				updated_at_ms=$4
 			WHERE bridge_id=$1 AND login_id=$2 AND last_to=$3
 		`, scope.bridgeID, scope.loginID, sessionKey, time.Now().UnixMilli()); err != nil {

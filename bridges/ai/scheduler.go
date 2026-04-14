@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 )
@@ -45,18 +46,21 @@ type managedHeartbeatStore struct {
 }
 
 type managedHeartbeatState struct {
-	AgentID          string                      `json:"agentId"`
-	Enabled          bool                        `json:"enabled"`
-	IntervalMs       int64                       `json:"intervalMs"`
-	ActiveHours      *HeartbeatActiveHoursConfig `json:"activeHours,omitempty"`
-	RoomID           string                      `json:"roomId,omitempty"`
-	Revision         int                         `json:"revision,omitempty"`
-	NextRunAtMs      int64                       `json:"nextRunAtMs,omitempty"`
-	PendingRunKey    string                      `json:"pendingRunKey,omitempty"`
-	LastRunAtMs      int64                       `json:"lastRunAtMs,omitempty"`
-	LastResult       string                      `json:"lastResult,omitempty"`
-	LastError        string                      `json:"lastError,omitempty"`
-	ProcessedRunKeys []string                    `json:"processedRunKeys,omitempty"`
+	AgentID                 string                      `json:"agentId"`
+	Enabled                 bool                        `json:"enabled"`
+	IntervalMs              int64                       `json:"intervalMs"`
+	ActiveHours             *HeartbeatActiveHoursConfig `json:"activeHours,omitempty"`
+	RoomID                  string                      `json:"roomId,omitempty"`
+	Revision                int                         `json:"revision,omitempty"`
+	NextRunAtMs             int64                       `json:"nextRunAtMs,omitempty"`
+	PendingRunKey           string                      `json:"pendingRunKey,omitempty"`
+	LastRunAtMs             int64                       `json:"lastRunAtMs,omitempty"`
+	LastHeartbeatSessionKey string                      `json:"lastHeartbeatSessionKey,omitempty"`
+	LastHeartbeatText       string                      `json:"lastHeartbeatText,omitempty"`
+	LastHeartbeatSentAtMs   int64                       `json:"lastHeartbeatSentAtMs,omitempty"`
+	LastResult              string                      `json:"lastResult,omitempty"`
+	LastError               string                      `json:"lastError,omitempty"`
+	ProcessedRunKeys        []string                    `json:"processedRunKeys,omitempty"`
 }
 
 func (state *managedHeartbeatState) applyConfig(agentID string, hb *HeartbeatConfig) {
@@ -87,20 +91,14 @@ func (state managedHeartbeatState) dueAt(client *AIClient, nowMs int64) int64 {
 	if state.IntervalMs <= 0 {
 		return 0
 	}
-	var dueAtMs int64
-	if state.LastRunAtMs > 0 {
-		dueAtMs = state.LastRunAtMs + state.IntervalMs
-		return clampHeartbeatDueToActiveHours(client, state.ActiveHours, dueAtMs)
+	baseAtMs := state.LastRunAtMs
+	if baseAtMs <= 0 {
+		baseAtMs = state.LastHeartbeatSentAtMs
 	}
-	if client != nil {
-		ref, sessionKey := client.resolveHeartbeatMainSessionRef(state.AgentID)
-		if entry, ok := client.getSessionEntry(context.Background(), ref, sessionKey); ok && entry.LastHeartbeatSentAt > 0 {
-			dueAtMs = entry.LastHeartbeatSentAt + state.IntervalMs
-			return clampHeartbeatDueToActiveHours(client, state.ActiveHours, dueAtMs)
-		}
+	if baseAtMs <= 0 {
+		baseAtMs = nowMs
 	}
-	dueAtMs = nowMs + state.IntervalMs
-	return clampHeartbeatDueToActiveHours(client, state.ActiveHours, dueAtMs)
+	return clampHeartbeatDueToActiveHours(client, state.ActiveHours, baseAtMs+state.IntervalMs)
 }
 
 func (state managedHeartbeatState) acceptsTick(tick ScheduleTickContent) bool {
@@ -142,6 +140,51 @@ func (state *managedHeartbeatState) recordRunResult(res heartbeatRunResult, fini
 		return true
 	}
 	return false
+}
+
+func (state managedHeartbeatState) isDuplicateHeartbeat(sessionKey string, text string, nowMs int64) bool {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return false
+	}
+	sessionKey = strings.TrimSpace(sessionKey)
+	if sessionKey == "" {
+		return false
+	}
+	if strings.TrimSpace(state.LastHeartbeatSessionKey) != sessionKey {
+		return false
+	}
+	if strings.TrimSpace(state.LastHeartbeatText) != trimmed {
+		return false
+	}
+	if state.LastHeartbeatSentAtMs <= 0 {
+		return false
+	}
+	return nowMs-state.LastHeartbeatSentAtMs < heartbeatDedupeWindowMs
+}
+
+func (state *managedHeartbeatState) recordHeartbeatText(sessionKey string, text string, sentAt int64) bool {
+	if state == nil {
+		return false
+	}
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return false
+	}
+	sessionKey = strings.TrimSpace(sessionKey)
+	if sessionKey == "" {
+		return false
+	}
+	if sentAt <= 0 {
+		sentAt = time.Now().UnixMilli()
+	}
+	if state.LastHeartbeatSessionKey == sessionKey && state.LastHeartbeatText == trimmed && state.LastHeartbeatSentAtMs == sentAt {
+		return false
+	}
+	state.LastHeartbeatSessionKey = sessionKey
+	state.LastHeartbeatText = trimmed
+	state.LastHeartbeatSentAtMs = sentAt
+	return true
 }
 
 func newSchedulerRuntime(client *AIClient) *schedulerRuntime {

@@ -261,8 +261,7 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 
 	// Deduplicate identical heartbeat content within 24h
 	if hasContent && !shouldSkipMain && !hasMedia {
-		storeRef := loginScopeForClient(oc).sessionStoreRef(hb.StoreAgentID)
-		if oc.isDuplicateHeartbeat(storeRef, hb.SessionKey, cleaned, state.startedAtMs) {
+		if oc.isDuplicateHeartbeat(hb.AgentID, hb.SessionKey, cleaned, state.startedAtMs) {
 			var indicator *HeartbeatIndicatorType
 			if hb.UseIndicator {
 				indicator = resolveIndicatorType("skipped")
@@ -324,7 +323,7 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 
 	// Record heartbeat for dedupe
 	if hb.SessionKey != "" && cleaned != "" && !shouldSkipMain {
-		oc.recordHeartbeatText(loginScopeForClient(oc).sessionStoreRef(hb.StoreAgentID), hb.SessionKey, cleaned, state.startedAtMs)
+		oc.recordHeartbeatText(hb.AgentID, hb.SessionKey, cleaned, state.startedAtMs)
 	}
 
 	indicator := (*HeartbeatIndicatorType)(nil)
