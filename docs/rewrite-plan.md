@@ -91,6 +91,8 @@ The repo has already shed a large amount of duplicate ownership. The important c
 - AI store adapters no longer hide plain struct construction behind `NewAgentStoreAdapter` / `NewBossStoreAdapter`; call sites now instantiate the concrete adapter directly.
 - AI connector login creation no longer routes through a bridge-local `createLogin` shell; the constructor owns the small flow check and process creation directly.
 - AI login loaders no longer bounce through `reuseAIClient` or a bridge-local `SetUserLogin` shell for plain field wiring; login/client linkage is written directly where cache reuse and activation happen.
+- AI logger access no longer routes through a bridge-local `Log()` accessor; call sites use the concrete client logger directly.
+- AI login activation no longer routes through `activateLoadedAIClient`; the remaining cache-reuse and rebuild branches write login linkage and bootstrap scheduling directly where they happen.
 - SDK default approval-option wrapper is gone; callers use `ApprovalPromptOptions(true)` directly.
 - SDK one-off path-expansion wrapper is gone; absolute-path normalization owns its only `~` expansion behavior directly.
 - SDK `LoginHandle` façade is gone; the unused login-scoped conversation shell was deleted outright.
@@ -98,7 +100,9 @@ The repo has already shed a large amount of duplicate ownership. The important c
 - SDK metadata-builder wrappers are gone; connectors and tests now use `database.MetaTypes` directly instead of `BuildStandardMetaTypes` / `BuildMetaTypes`.
 - SDK login-completion convenience wrappers are gone; bridge login flows now call `PersistAndCompleteLoginWithOptions` directly and build the completion step there.
 - SDK constructor-policy helpers are gone; command-prefix defaults, bool defaults, provider-acceptance checks, and single-use login-flow validation now live in the bridge constructors that actually own those decisions.
+- SDK connector config construction no longer routes through `NewStandardConnectorConfig`; AI, Codex, and DummyBridge now build `sdk.Config` directly and the generic params shell is deleted.
 - SDK conversation room mutations now talk to `bridgev2.Portal` directly; the extra `SetRoomName` / `SetRoomTopic` / `BroadcastCapabilities` function layer and the unused `ClientBase.SendViaPortal` trampoline are gone.
+- SDK client context/send pass-through helpers are gone; the only remaining matrix-send path uses `sdk.SendViaPortal` directly and nil-context fallback is handled at the actual message-dispatch call site.
 - `aichats_portal_state` now stores turn/reset ownership only; the leftover reset timestamp sidecar field is gone.
 - AI internal-room setup no longer hides durable portal writes behind `MutatePortal` / `SaveBefore`; scheduler and integration host now mutate and save portals explicitly before materialization.
 - Shared DM portal bootstrap/materialization moved down to `pkg/shared/bridgeutil` where it was truly generic.

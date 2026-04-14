@@ -88,15 +88,15 @@ func persistSystemEventsSnapshot(client *AIClient) {
 	}
 	for agentID, queues := range grouped {
 		if err := saveSystemEventsSnapshot(context.Background(), systemEventsScope(client, agentID), queues); err != nil {
-			if log := client.Log(); log != nil {
-				log.Warn().Err(err).Str("agent_id", agentID).Msg("system events: write failed during persist")
+			if client != nil {
+				client.log.Warn().Err(err).Str("agent_id", agentID).Msg("system events: write failed during persist")
 			}
 			return
 		}
 	}
 	if err != nil {
-		if log := client.Log(); log != nil {
-			log.Warn().Err(err).Msg("system events: write failed during persist")
+		if client != nil {
+			client.log.Warn().Err(err).Msg("system events: write failed during persist")
 		}
 	}
 }
@@ -108,8 +108,8 @@ func restoreSystemEventsFromDB(client *AIClient) {
 	}
 	agentIDs, err := listPersistedSystemEventAgentIDs(context.Background(), baseScope)
 	if err != nil {
-		if log := client.Log(); log != nil {
-			log.Warn().Err(err).Msg("system events: read failed during restore")
+		if client != nil {
+			client.log.Warn().Err(err).Msg("system events: read failed during restore")
 		}
 		return
 	}
@@ -117,8 +117,8 @@ func restoreSystemEventsFromDB(client *AIClient) {
 		scope := systemEventsScope(client, agentID)
 		queues, loadErr := loadSystemEventsSnapshot(context.Background(), scope)
 		if loadErr != nil {
-			if log := client.Log(); log != nil {
-				log.Warn().Err(loadErr).Str("agent_id", agentID).Msg("system events: read failed during restore")
+			if client != nil {
+				client.log.Warn().Err(loadErr).Str("agent_id", agentID).Msg("system events: read failed during restore")
 			}
 			continue
 		}

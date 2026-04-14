@@ -10,7 +10,9 @@ import (
 	"go.mau.fi/util/configupgrade"
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/pkg/aidb"
 	"github.com/beeper/agentremote/sdk"
@@ -35,7 +37,7 @@ func NewConnector() *CodexConnector {
 			Description: "Provide externally managed ChatGPT id/access tokens.",
 		},
 	}
-	cc.sdkConfig = sdk.NewStandardConnectorConfig(sdk.StandardConnectorConfigParams[*CodexClient, *Config, *PortalMetadata, *MessageMetadata, *UserLoginMetadata, *GhostMetadata]{
+	cc.sdkConfig = &sdk.Config[*CodexClient, *Config]{
 		Name:             "codex",
 		Description:      "Codex bridge built with the AgentRemote SDK.",
 		ProtocolID:       "ai-codex",
@@ -63,16 +65,20 @@ func NewConnector() *CodexConnector {
 			sdk.PrimeUserLoginCache(ctx, cc.br)
 			return nil
 		},
-		DisplayName:      "Codex",
-		NetworkURL:       "https://github.com/openai/codex",
-		NetworkID:        "codex",
-		BeeperBridgeType: "codex",
-		DefaultPort:      29346,
-		DefaultCommandPrefix: func() string {
+		BridgeName: func() bridgev2.BridgeName {
+			defaultCommandPrefix := "!ai"
 			if trimmed := strings.TrimSpace(cc.Config.Bridge.CommandPrefix); trimmed != "" {
-				return trimmed
+				defaultCommandPrefix = trimmed
 			}
-			return "!ai"
+			return bridgev2.BridgeName{
+				DisplayName:          "Codex",
+				NetworkURL:           "https://github.com/openai/codex",
+				NetworkIcon:          id.ContentURIString(""),
+				NetworkID:            "codex",
+				BeeperBridgeType:     "codex",
+				DefaultPort:          29346,
+				DefaultCommandPrefix: defaultCommandPrefix,
+			}
 		},
 		FillBridgeInfo: func(portal *bridgev2.Portal, content *event.BridgeEventContent) {
 			if portal == nil {
@@ -83,10 +89,14 @@ func NewConnector() *CodexConnector {
 		ExampleConfig:  exampleNetworkConfig,
 		ConfigData:     &cc.Config,
 		ConfigUpgrader: configupgrade.SimpleUpgrader(upgradeConfig),
-		NewPortal:      func() *PortalMetadata { return &PortalMetadata{} },
-		NewMessage:     func() *MessageMetadata { return &MessageMetadata{} },
-		NewLogin:       func() *UserLoginMetadata { return &UserLoginMetadata{} },
-		NewGhost:       func() *GhostMetadata { return &GhostMetadata{} },
+		DBMeta: func() database.MetaTypes {
+			return database.MetaTypes{
+				Portal:    func() any { return &PortalMetadata{} },
+				Message:   func() any { return &MessageMetadata{} },
+				UserLogin: func() any { return &UserLoginMetadata{} },
+				Ghost:     func() any { return &GhostMetadata{} },
+			}
+		},
 		NetworkCapabilities: func() *bridgev2.NetworkGeneralCapabilities {
 			return &bridgev2.NetworkGeneralCapabilities{
 				Provisioning: bridgev2.ProvisioningCapabilities{
@@ -133,7 +143,7 @@ func NewConnector() *CodexConnector {
 			}
 			return &CodexLogin{User: user, Connector: cc, FlowID: flowID}, nil
 		},
-	})
+	}
 	cc.sdkConfig.Agent = codexSDKAgent()
 	cc.ConnectorBase = sdk.NewConnectorBase(cc.sdkConfig)
 	return cc

@@ -318,19 +318,9 @@ func (b *BossStoreAdapter) SaveAgent(ctx context.Context, agent tools.AgentData)
 	return b.SaveBossAgent(ctx, agent)
 }
 
-// DeleteAgent implements tools.AgentStoreInterface.
-func (b *BossStoreAdapter) DeleteAgent(ctx context.Context, agentID string) error {
-	return b.AgentStoreAdapter.DeleteAgent(ctx, agentID)
-}
-
 // ListModels implements tools.AgentStoreInterface.
 func (b *BossStoreAdapter) ListModels(ctx context.Context) ([]tools.ModelData, error) {
 	return b.ListBossModels(ctx)
-}
-
-// ListAvailableTools implements tools.AgentStoreInterface.
-func (b *BossStoreAdapter) ListAvailableTools(ctx context.Context) ([]tools.ToolInfo, error) {
-	return b.AgentStoreAdapter.ListAvailableTools(ctx)
 }
 
 // RunInternalCommand implements tools.AgentStoreInterface.

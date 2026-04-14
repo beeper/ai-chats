@@ -53,7 +53,7 @@ func (oc *AIClient) loadSessionUpdatedAt(ctx context.Context, storeAgentID strin
 		return 0, false
 	}
 	if err != nil {
-		oc.Log().Warn().Err(err).Str("session_key", sessionKey).Msg("session store: lookup failed")
+		oc.log.Warn().Err(err).Str("session_key", sessionKey).Msg("session store: lookup failed")
 		return 0, false
 	}
 	return updatedAt, true
@@ -107,7 +107,7 @@ func (oc *AIClient) updateSessionTimestamp(ctx context.Context, storeAgentID str
 		updatedAt = minUpdatedAt
 	}
 	if err := oc.storeSessionUpdatedAt(ctx, storeAgentID, sessionKey, updatedAt); err != nil {
-		oc.Log().Warn().Err(err).Str("session_key", sessionKey).Msg("session store: upsert failed")
+		oc.log.Warn().Err(err).Str("session_key", sessionKey).Msg("session store: upsert failed")
 	}
 }
 

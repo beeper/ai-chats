@@ -237,15 +237,6 @@ func TestTypedClientLoaderPropagatesCreateErrorViaBrokenLogin(t *testing.T) {
 	}
 }
 
-func TestClientBaseBackgroundContextFallsBackToBackground(t *testing.T) {
-	var base ClientBase
-	var nilCtx context.Context
-	got := base.BackgroundContext(nilCtx)
-	if got == nil {
-		t.Fatal("expected non-nil context")
-	}
-}
-
 func TestClientBaseTracksLogin(t *testing.T) {
 	var base ClientBase
 	login := &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: "user"}}

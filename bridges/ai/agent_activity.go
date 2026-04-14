@@ -52,7 +52,7 @@ func (oc *AIClient) lastRoute(agentID string) (channel string, target string, ok
 		return "", "", false
 	}
 	if err != nil {
-		oc.Log().Warn().Err(err).Str("agent_id", agentID).Msg("session store: latest route lookup failed")
+		oc.log.Warn().Err(err).Str("agent_id", agentID).Msg("session store: latest route lookup failed")
 		return "", "", false
 	}
 	return "matrix", sessionKey, true

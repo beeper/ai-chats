@@ -774,13 +774,13 @@ func executeImageGeneration(ctx context.Context, args map[string]any) (string, e
 		baseCtx := client.backgroundContext(ctx)
 
 		go func() {
-			client.Log().Debug().Str("prompt", reqCopy.Prompt).Msg("async image generation started")
+			client.log.Debug().Str("prompt", reqCopy.Prompt).Msg("async image generation started")
 			bgctx, cancel := context.WithTimeout(baseCtx, 10*time.Minute)
 			defer cancel()
 
 			images, err := generateImagesForRequest(bgctx, &btcCopy, reqCopy)
 			if err != nil {
-				client.Log().Warn().Err(err).Msg("async image generation failed")
+				client.log.Warn().Err(err).Msg("async image generation failed")
 				client.sendSystemNotice(bgctx, portal, "Image generation failed: "+err.Error())
 				return
 			}
@@ -790,11 +790,11 @@ func executeImageGeneration(ctx context.Context, args map[string]any) (string, e
 			for idx, imageB64 := range images {
 				imageData, mimeType, err := decodeBase64Image(imageB64)
 				if err != nil {
-					client.Log().Warn().Err(err).Int("idx", idx).Msg("async image generation decode failed")
+					client.log.Warn().Err(err).Int("idx", idx).Msg("async image generation decode failed")
 					continue
 				}
 				if _, mediaURL, err := client.sendGeneratedImage(bgctx, portal, imageData, mimeType, "", reqCopy.Prompt); err != nil {
-					client.Log().Warn().Err(err).Int("idx", idx).Msg("async image generation send failed")
+					client.log.Warn().Err(err).Int("idx", idx).Msg("async image generation send failed")
 					continue
 				} else {
 					genRefs = append(genRefs, GeneratedFileRef{URL: mediaURL, MimeType: mimeType})
@@ -809,7 +809,7 @@ func executeImageGeneration(ctx context.Context, args map[string]any) (string, e
 			if len(genRefs) > 0 {
 				client.updateAssistantGeneratedFiles(bgctx, portal, genRefs)
 			}
-			client.Log().Debug().Int("sent", sent).Int("total", len(images)).Msg("async image generation completed")
+			client.log.Debug().Int("sent", sent).Int("total", len(images)).Msg("async image generation completed")
 		}()
 
 		return "Image generation started (async). I'll send the image(s) here when ready.", nil
@@ -1140,20 +1140,20 @@ func executeTTS(ctx context.Context, args map[string]any) (string, error) {
 		btcCopy := *btc
 
 		go func() {
-			client.Log().Debug().Str("voice", voiceCopy).Str("model", modelCopy).Msg("async TTS generation started")
+			client.log.Debug().Str("voice", voiceCopy).Str("model", modelCopy).Msg("async TTS generation started")
 			bgctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer cancel()
 
 			audioB64, err := generateTTSBase64(bgctx, &btcCopy, textCopy, voiceCopy, modelCopy)
 			if err != nil {
-				client.Log().Warn().Err(err).Msg("async TTS generation failed")
+				client.log.Warn().Err(err).Msg("async TTS generation failed")
 				client.sendSystemNotice(bgctx, portal, "TTS failed: "+err.Error())
 				return
 			}
 
 			audioData, err := base64.StdEncoding.DecodeString(audioB64)
 			if err != nil {
-				client.Log().Warn().Err(err).Msg("async TTS decode failed")
+				client.log.Warn().Err(err).Msg("async TTS decode failed")
 				client.sendSystemNotice(bgctx, portal, "TTS failed: couldn't decode audio data")
 				return
 			}
@@ -1163,7 +1163,7 @@ func executeTTS(ctx context.Context, args map[string]any) (string, error) {
 				client.sendSystemNotice(bgctx, portal, "TTS finished, but sending failed: "+err.Error())
 				return
 			}
-			client.Log().Debug().Msg("async TTS generation completed")
+			client.log.Debug().Msg("async TTS generation completed")
 		}()
 
 		return "TTS started (async). I'll send the audio here when ready.", nil

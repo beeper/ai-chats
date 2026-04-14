@@ -8,7 +8,9 @@ import (
 
 	"go.mau.fi/util/configupgrade"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/sdk"
 )
@@ -32,7 +34,7 @@ type DummyBridgeConnector struct {
 
 func NewConnector() *DummyBridgeConnector {
 	dc := &DummyBridgeConnector{}
-	dc.sdkConfig = sdk.NewStandardConnectorConfig(sdk.StandardConnectorConfigParams[*dummySession, *Config, *PortalMetadata, *MessageMetadata, *UserLoginMetadata, *GhostMetadata]{
+	dc.sdkConfig = &sdk.Config[*dummySession, *Config]{
 		Name:             "dummybridge",
 		Description:      "DummyBridge demo bridge built with the AgentRemote SDK.",
 		ProtocolID:       "ai-dummybridge",
@@ -52,24 +54,32 @@ func NewConnector() *DummyBridgeConnector {
 			}
 			return nil
 		},
-		DisplayName:      "DummyBridge",
-		NetworkURL:       "https://github.com/beeper/agentremote",
-		NetworkID:        "dummybridge",
-		BeeperBridgeType: "dummybridge",
-		DefaultPort:      29349,
-		DefaultCommandPrefix: func() string {
+		BridgeName: func() bridgev2.BridgeName {
+			defaultCommandPrefix := "!dummybridge"
 			if trimmed := strings.TrimSpace(dc.Config.Bridge.CommandPrefix); trimmed != "" {
-				return trimmed
+				defaultCommandPrefix = trimmed
 			}
-			return "!dummybridge"
+			return bridgev2.BridgeName{
+				DisplayName:          "DummyBridge",
+				NetworkURL:           "https://github.com/beeper/agentremote",
+				NetworkIcon:          id.ContentURIString(""),
+				NetworkID:            "dummybridge",
+				BeeperBridgeType:     "dummybridge",
+				DefaultPort:          29349,
+				DefaultCommandPrefix: defaultCommandPrefix,
+			}
 		},
 		ExampleConfig:  exampleNetworkConfig,
 		ConfigData:     &dc.Config,
 		ConfigUpgrader: configupgrade.SimpleUpgrader(upgradeConfig),
-		NewPortal:      func() *PortalMetadata { return &PortalMetadata{} },
-		NewMessage:     func() *MessageMetadata { return &MessageMetadata{} },
-		NewLogin:       func() *UserLoginMetadata { return &UserLoginMetadata{} },
-		NewGhost:       func() *GhostMetadata { return &GhostMetadata{} },
+		DBMeta: func() database.MetaTypes {
+			return database.MetaTypes{
+				Portal:    func() any { return &PortalMetadata{} },
+				Message:   func() any { return &MessageMetadata{} },
+				UserLogin: func() any { return &UserLoginMetadata{} },
+				Ghost:     func() any { return &GhostMetadata{} },
+			}
+		},
 		AcceptLogin: func(login *bridgev2.UserLogin) (bool, string) {
 			if !strings.EqualFold(strings.TrimSpace(loginMetadata(login).Provider), ProviderDummyBridge) {
 				return false, "This bridge only supports DummyBridge logins."
@@ -98,7 +108,7 @@ func NewConnector() *DummyBridgeConnector {
 			}
 			return &DummyBridgeLogin{User: user, Connector: dc}, nil
 		},
-	})
+	}
 	dc.sdkConfig.Agent = dummySDKAgent()
 	dc.sdkConfig.OnConnect = dc.onConnect
 	dc.sdkConfig.OnDisconnect = dc.onDisconnect

@@ -243,7 +243,7 @@ func (oc *AIClient) updateLoginState(ctx context.Context, fn func(*loginRuntimeS
 func (oc *AIClient) clearLoginState(ctx context.Context) {
 	scope := loginScopeForClient(oc)
 	if scope != nil {
-		execDelete(ctx, scope.db, oc.Log(),
+		execDelete(ctx, scope.db, &oc.log,
 			`DELETE FROM `+aiLoginStateTable+` WHERE bridge_id=$1 AND login_id=$2`,
 			scope.bridgeID, scope.loginID,
 		)

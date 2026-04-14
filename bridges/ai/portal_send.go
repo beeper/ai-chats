@@ -102,7 +102,17 @@ func (oc *AIClient) sendViaPortalWithTiming(
 	if err != nil {
 		return "", "", err
 	}
-	return oc.ClientBase.SendViaPortalWithOptions(portal, sender, msgID, timestamp, streamOrder, converted)
+	return sdk.SendViaPortal(sdk.SendViaPortalParams{
+		Login:       oc.UserLogin,
+		Portal:      portal,
+		Sender:      sender,
+		IDPrefix:    oc.ClientBase.MessageIDPrefix,
+		LogKey:      oc.ClientBase.MessageLogKey,
+		MsgID:       msgID,
+		Timestamp:   timestamp,
+		StreamOrder: streamOrder,
+		Converted:   converted,
+	})
 }
 
 // The targetMsgID is the network message ID of the message to edit.

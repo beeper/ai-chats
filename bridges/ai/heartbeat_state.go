@@ -23,7 +23,7 @@ func (oc *AIClient) managedHeartbeatStateSnapshot(ctx context.Context, agentID s
 
 	store, err := scheduler.loadHeartbeatStoreLocked(ctx)
 	if err != nil {
-		oc.Log().Warn().Err(err).Str("agent_id", agentID).Msg("managed heartbeat state: load failed")
+		oc.log.Warn().Err(err).Str("agent_id", agentID).Msg("managed heartbeat state: load failed")
 		return nil
 	}
 	idx := findManagedHeartbeat(store.Agents, agentID)
@@ -50,7 +50,7 @@ func (oc *AIClient) updateManagedHeartbeatState(ctx context.Context, agentID str
 
 	store, err := scheduler.loadHeartbeatStoreLocked(ctx)
 	if err != nil {
-		oc.Log().Warn().Err(err).Str("agent_id", agentID).Msg("managed heartbeat state: load failed")
+		oc.log.Warn().Err(err).Str("agent_id", agentID).Msg("managed heartbeat state: load failed")
 		return
 	}
 	idx := findManagedHeartbeat(store.Agents, agentID)
@@ -65,7 +65,7 @@ func (oc *AIClient) updateManagedHeartbeatState(ctx context.Context, agentID str
 		return
 	}
 	if err := scheduler.saveHeartbeatStoreLocked(ctx, store); err != nil {
-		oc.Log().Warn().Err(err).Str("agent_id", agentID).Msg("managed heartbeat state: save failed")
+		oc.log.Warn().Err(err).Str("agent_id", agentID).Msg("managed heartbeat state: save failed")
 	}
 }
 

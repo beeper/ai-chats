@@ -346,10 +346,6 @@ func (h *runtimeIntegrationHost) ResolveAgentID(raw string, fallbackDefault stri
 	return normalized
 }
 
-func (h *runtimeIntegrationHost) NormalizeAgentID(raw string) string {
-	return normalizeAgentID(raw)
-}
-
 func (h *runtimeIntegrationHost) AgentExists(normalizedID string) bool {
 	if h == nil || h.client == nil || h.client.connector == nil {
 		return false
@@ -390,10 +386,6 @@ func (h *runtimeIntegrationHost) UserTimezone() (tz string, loc *time.Location) 
 		loc = time.UTC
 	}
 	return tz, loc
-}
-
-func (h *runtimeIntegrationHost) NormalizeThinkingLevel(raw string) (string, bool) {
-	return normalizeThinkingLevel(raw)
 }
 
 // ---- Host methods: model helpers ----
@@ -446,13 +438,6 @@ func (h *runtimeIntegrationHost) MergeDisconnectContext(ctx context.Context) (co
 		}
 	}()
 	return h.client.loggerForContext(ctx).WithContext(merged), cancel
-}
-
-func (h *runtimeIntegrationHost) BackgroundContext(ctx context.Context) context.Context {
-	if h == nil || h.client == nil {
-		return ctx
-	}
-	return h.client.backgroundContext(ctx)
 }
 
 // ---- Host methods: chat completions ----
@@ -658,7 +643,7 @@ func (h *runtimeIntegrationHost) SessionPortals(ctx context.Context, loginID str
 		loginID = string(h.client.UserLogin.ID)
 	}
 	targetAgentID := h.ResolveAgentID(agentID, h.DefaultAgentID())
-	targetAgentID = h.NormalizeAgentID(targetAgentID)
+	targetAgentID = normalizeAgentID(targetAgentID)
 
 	portals, err := h.client.listAllChatPortals(ctx)
 	if err != nil {
@@ -678,7 +663,7 @@ func (h *runtimeIntegrationHost) SessionPortals(ctx context.Context, loginID str
 			continue
 		}
 		portalAgentID := h.ResolveAgentID(resolveAgentID(meta), h.DefaultAgentID())
-		portalAgentID = h.NormalizeAgentID(portalAgentID)
+		portalAgentID = normalizeAgentID(portalAgentID)
 		if portalAgentID != targetAgentID {
 			continue
 		}

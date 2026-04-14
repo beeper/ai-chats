@@ -204,7 +204,14 @@ func (c *sdkClient[SessionT, ConfigDataT]) HandleMatrixMessage(ctx context.Conte
 	if c.cfg == nil || c.cfg.OnMessage == nil {
 		return nil, nil
 	}
-	runCtx := c.BackgroundContext(ctx)
+	runCtx := ctx
+	if runCtx == nil {
+		if c.userLogin != nil && c.userLogin.Bridge != nil && c.userLogin.Bridge.BackgroundCtx != nil {
+			runCtx = c.userLogin.Bridge.BackgroundCtx
+		} else {
+			runCtx = context.Background()
+		}
+	}
 	sdkMsg := convertMatrixMessage(msg)
 	conv := c.conv(runCtx, msg.Portal)
 	session := c.getSession()

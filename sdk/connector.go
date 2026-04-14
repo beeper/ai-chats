@@ -11,6 +11,10 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
+type loginAwareClient interface {
+	SetUserLogin(*bridgev2.UserLogin)
+}
+
 // NewConnectorBase builds an SDK-backed connector base that can be embedded by custom bridges.
 func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Config[SessionT, ConfigDataT]) *ConnectorBase {
 	mu, clientsRef := cfg.ClientCacheMu, cfg.ClientCache

@@ -213,7 +213,7 @@ func (oc *AIClient) hasToolApprovalRule(ctx context.Context, toolKind ToolApprov
 		return false
 	}
 	if err != nil {
-		oc.Log().Warn().Err(err).Str("tool_kind", string(toolKind)).Str("tool_name", toolName).Msg("tool approvals: lookup failed")
+		oc.log.Warn().Err(err).Str("tool_kind", string(toolKind)).Str("tool_name", toolName).Msg("tool approvals: lookup failed")
 		return false
 	}
 	return matched == 1
@@ -235,7 +235,7 @@ func (oc *AIClient) hasBuiltinToolApprovalRule(ctx context.Context, toolName, ac
 		return false
 	}
 	if err != nil {
-		oc.Log().Warn().Err(err).Str("tool_name", toolName).Str("action", action).Msg("tool approvals: builtin lookup failed")
+		oc.log.Warn().Err(err).Str("tool_name", toolName).Str("action", action).Msg("tool approvals: builtin lookup failed")
 		return false
 	}
 	return matched == 1
@@ -488,7 +488,7 @@ func (oc *AIClient) registerToolApproval(params ToolApprovalParams) (*sdk.Pendin
 	}
 	p, created := oc.approvalFlow.Register(params.ApprovalID, params.TTL, data)
 	if created {
-		oc.Log().Debug().Str("approval_id", params.ApprovalID).Str("tool", params.ToolName).Dur("ttl", params.TTL).Msg("tool approval registered")
+		oc.log.Debug().Str("approval_id", params.ApprovalID).Str("tool", params.ToolName).Dur("ttl", params.TTL).Msg("tool approval registered")
 	}
 	return p, created
 }
@@ -523,7 +523,7 @@ func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (sd
 	}
 	d := p.Data
 
-	oc.Log().Debug().Str("approval_id", approvalID).Str("tool", d.ToolName).Msg("tool approval wait started")
+	oc.log.Debug().Str("approval_id", approvalID).Str("tool", d.ToolName).Msg("tool approval wait started")
 
 	decision, d, ok := oc.approvalFlow.WaitAndFinalizeApproval(ctx, approvalID, sdk.WaitApprovalParams[*pendingToolApprovalData]{
 		BuildNoDecision: func(reason string, _ *pendingToolApprovalData) *sdk.ApprovalDecisionPayload {
@@ -540,10 +540,10 @@ func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (sd
 			if decision.Approved {
 				state = "approved"
 			}
-			oc.Log().Debug().Str("approval_id", approvalID).Str("tool", pending.ToolName).Str("state", state).Msg("tool approval decision received")
+			oc.log.Debug().Str("approval_id", approvalID).Str("tool", pending.ToolName).Str("state", state).Msg("tool approval decision received")
 			if decision.Approved && decision.Always {
 				if err := oc.persistAlwaysAllow(ctx, pending); err != nil {
-					oc.Log().Warn().Err(err).Str("approval_id", approvalID).Msg("Failed to persist always-allow rule")
+					oc.log.Warn().Err(err).Str("approval_id", approvalID).Msg("Failed to persist always-allow rule")
 				}
 			}
 		},
@@ -553,7 +553,7 @@ func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (sd
 		if decision.Reason != "" {
 			reason = decision.Reason
 		}
-		oc.Log().Debug().Str("approval_id", approvalID).Str("tool", d.ToolName).Str("reason", reason).Msg("tool approval wait ended without decision")
+		oc.log.Debug().Str("approval_id", approvalID).Str("tool", d.ToolName).Str("reason", reason).Msg("tool approval wait ended without decision")
 		return sdk.ToolApprovalResponse{Reason: reason}, d, false
 	}
 

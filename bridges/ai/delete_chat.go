@@ -70,15 +70,15 @@ func (oc *AIClient) deletePersistedSessionArtifacts(ctx context.Context, portal 
 
 	scope := loginScopeForClient(oc)
 	if scope != nil && scope.loginID != "" {
-		execDelete(ctx, scope.db, oc.Log(),
+		execDelete(ctx, scope.db, &oc.log,
 			`DELETE FROM `+aiSessionsTable+` WHERE bridge_id=$1 AND login_id=$2 AND session_key=$3`,
 			scope.bridgeID, scope.loginID, sessionKey,
 		)
-		execDelete(ctx, scope.db, oc.Log(),
+		execDelete(ctx, scope.db, &oc.log,
 			`DELETE FROM `+aiSystemEventsTable+` WHERE bridge_id=$1 AND login_id=$2 AND session_key=$3`,
 			scope.bridgeID, scope.loginID, sessionKey,
 		)
-		execDelete(ctx, scope.db, oc.Log(),
+		execDelete(ctx, scope.db, &oc.log,
 			`DELETE FROM `+aiPortalStateTable+` WHERE bridge_id=$1 AND portal_id=$2 AND portal_receiver=$3`,
 			scope.bridgeID, strings.TrimSpace(string(portal.PortalKey.ID)), strings.TrimSpace(string(portal.PortalKey.Receiver)),
 		)

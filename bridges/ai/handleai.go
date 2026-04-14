@@ -269,7 +269,7 @@ func (oc *AIClient) scheduleAutoGreeting(ctx context.Context, portal *bridgev2.P
 	portalKey := portal.PortalKey
 	roomID := portal.MXID
 	go func() {
-		oc.Log().Debug().Stringer("room_id", roomID).Msg("auto-greeting loop started")
+		oc.log.Debug().Stringer("room_id", roomID).Msg("auto-greeting loop started")
 		bgCtx := oc.backgroundContext(ctx)
 		for {
 			delay := autoGreetingDelay
@@ -286,20 +286,20 @@ func (oc *AIClient) scheduleAutoGreeting(ctx context.Context, portal *bridgev2.P
 
 			current, err := oc.UserLogin.Bridge.GetPortalByKey(bgCtx, portalKey)
 			if err != nil || current == nil {
-				oc.Log().Debug().Stringer("room_id", roomID).Msg("auto-greeting loop exiting: portal not found")
+				oc.log.Debug().Stringer("room_id", roomID).Msg("auto-greeting loop exiting: portal not found")
 				return
 			}
 			currentMeta := portalMeta(current)
 			if currentMeta != nil && currentMeta.AutoGreetingSent {
-				oc.Log().Debug().Stringer("room_id", roomID).Msg("auto-greeting loop exiting: already sent")
+				oc.log.Debug().Stringer("room_id", roomID).Msg("auto-greeting loop exiting: already sent")
 				return
 			}
 			if reason := autoGreetingBlockReason(currentMeta); reason != "" {
-				oc.Log().Debug().Stringer("room_id", roomID).Str("reason", reason).Msg("auto-greeting loop exiting: blocked by portal state")
+				oc.log.Debug().Stringer("room_id", roomID).Str("reason", reason).Msg("auto-greeting loop exiting: blocked by portal state")
 				return
 			}
 			if oc.hasPortalMessages(bgCtx, current) {
-				oc.Log().Debug().Stringer("room_id", roomID).Msg("auto-greeting loop exiting: portal has messages")
+				oc.log.Debug().Stringer("room_id", roomID).Msg("auto-greeting loop exiting: portal has messages")
 				return
 			}
 			if oc.isUserTyping(current.MXID) || !oc.userIdleFor(current.MXID, autoGreetingDelay) {
@@ -342,16 +342,16 @@ func (oc *AIClient) queueWelcomeBootstrap(ctx context.Context, portal *bridgev2.
 	bgCtx := oc.backgroundContext(ctx)
 	go func() {
 		portalID := string(portal.PortalKey.ID)
-		oc.Log().Debug().Str("portal_id", portalID).Msg("welcome bootstrap queued")
+		oc.log.Debug().Str("portal_id", portalID).Msg("welcome bootstrap queued")
 		if err := portal.RoomCreated.WaitTimeoutCtx(bgCtx, 45*time.Second); err != nil {
-			oc.Log().Debug().Err(err).Str("portal_id", portalID).Msg("welcome bootstrap exiting before room creation")
+			oc.log.Debug().Err(err).Str("portal_id", portalID).Msg("welcome bootstrap exiting before room creation")
 			return
 		}
 		if err := oc.sendWelcomeMessage(bgCtx, portal); err != nil {
 			oc.loggerForContext(bgCtx).Warn().Err(err).Str("portal_id", portalID).Msg("Failed to send welcome message")
 			return
 		}
-		oc.Log().Debug().Str("portal_id", portalID).Msg("welcome bootstrap completed")
+		oc.log.Debug().Str("portal_id", portalID).Msg("welcome bootstrap completed")
 	}()
 }
 

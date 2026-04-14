@@ -15,17 +15,6 @@ const (
 	initLoginClientError = "Couldn't initialize this login. Remove and re-add the account."
 )
 
-func activateLoadedAIClient(login *bridgev2.UserLogin, client *AIClient) {
-	if login != nil && client != nil {
-		client.UserLogin = login
-		client.ClientBase.SetUserLogin(login)
-		login.Client = client
-	}
-	if client != nil {
-		client.scheduleBootstrap()
-	}
-}
-
 func aiClientNeedsRebuildConfig(existing *AIClient, key string, provider string, cfg *aiLoginConfig) bool {
 	if existing == nil {
 		return true
@@ -126,7 +115,10 @@ func (oc *OpenAIConnector) loadAIUserLoginWithConfig(ctx context.Context, login 
 	}
 
 	if existing != nil && !aiClientNeedsRebuildConfig(existing, key, meta.Provider, cfg) {
-		activateLoadedAIClient(login, existing)
+		existing.UserLogin = login
+		existing.ClientBase.SetUserLogin(login)
+		login.Client = existing
+		existing.scheduleBootstrap()
 		return nil
 	}
 
@@ -138,7 +130,10 @@ func (oc *OpenAIConnector) loadAIUserLoginWithConfig(ctx context.Context, login 
 	if err != nil {
 		// Keep the existing client if rebuilding failed.
 		if existing != nil {
-			activateLoadedAIClient(login, existing)
+			existing.UserLogin = login
+			existing.ClientBase.SetUserLogin(login)
+			login.Client = existing
+			existing.scheduleBootstrap()
 			return nil
 		}
 		login.Client = newBrokenLoginClient(login, initLoginClientError)
@@ -147,7 +142,10 @@ func (oc *OpenAIConnector) loadAIUserLoginWithConfig(ctx context.Context, login 
 
 	chosen := oc.publishOrReuseClient(login, client, existing)
 	if chosen != nil {
-		activateLoadedAIClient(login, chosen)
+		chosen.UserLogin = login
+		chosen.ClientBase.SetUserLogin(login)
+		login.Client = chosen
+		chosen.scheduleBootstrap()
 	}
 	return nil
 }

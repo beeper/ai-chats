@@ -9,8 +9,10 @@ import (
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/commands"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/pkg/aidb"
 	"github.com/beeper/agentremote/sdk"
@@ -20,7 +22,7 @@ func NewAIConnector() *OpenAIConnector {
 	oc := &OpenAIConnector{
 		clients: make(map[networkid.UserLoginID]bridgev2.NetworkAPI),
 	}
-	oc.sdkConfig = sdk.NewStandardConnectorConfig(sdk.StandardConnectorConfigParams[*AIClient, *Config, *PortalMetadata, *MessageMetadata, *UserLoginMetadata, *GhostMetadata]{
+	oc.sdkConfig = &sdk.Config[*AIClient, *Config]{
 		Name:          "ai",
 		Description:   "AI Chats bridge for Beeper",
 		ProtocolID:    "ai",
@@ -53,24 +55,31 @@ func NewAIConnector() *OpenAIConnector {
 			oc.initProvisioning()
 			return nil
 		},
-		DisplayName:      "Beeper AI",
-		NetworkURL:       "https://www.beeper.com/ai",
-		NetworkIcon:      "mxc://beeper.com/51a668657dd9e0132cc823ad9402c6c2d0fc3321",
-		NetworkID:        "ai",
-		BeeperBridgeType: "ai",
-		DefaultPort:      29345,
-		DefaultCommandPrefix: func() string {
+		BridgeName: func() bridgev2.BridgeName {
+			defaultCommandPrefix := "!ai"
 			if trimmed := strings.TrimSpace(oc.Config.Bridge.CommandPrefix); trimmed != "" {
-				return trimmed
+				defaultCommandPrefix = trimmed
 			}
-			return "!ai"
+			return bridgev2.BridgeName{
+				DisplayName:          "Beeper AI",
+				NetworkURL:           "https://www.beeper.com/ai",
+				NetworkIcon:          id.ContentURIString("mxc://beeper.com/51a668657dd9e0132cc823ad9402c6c2d0fc3321"),
+				NetworkID:            "ai",
+				BeeperBridgeType:     "ai",
+				DefaultPort:          29345,
+				DefaultCommandPrefix: defaultCommandPrefix,
+			}
 		},
 		ExampleConfig: exampleNetworkConfig,
 		ConfigData:    &oc.Config,
-		NewPortal:     func() *PortalMetadata { return &PortalMetadata{} },
-		NewMessage:    func() *MessageMetadata { return &MessageMetadata{} },
-		NewLogin:      func() *UserLoginMetadata { return &UserLoginMetadata{} },
-		NewGhost:      func() *GhostMetadata { return &GhostMetadata{} },
+		DBMeta: func() database.MetaTypes {
+			return database.MetaTypes{
+				Portal:    func() any { return &PortalMetadata{} },
+				Message:   func() any { return &MessageMetadata{} },
+				UserLogin: func() any { return &UserLoginMetadata{} },
+				Ghost:     func() any { return &GhostMetadata{} },
+			}
+		},
 		NetworkCapabilities: func() *bridgev2.NetworkGeneralCapabilities {
 			return &bridgev2.NetworkGeneralCapabilities{
 				Provisioning: bridgev2.ProvisioningCapabilities{
@@ -97,7 +106,7 @@ func NewAIConnector() *OpenAIConnector {
 			}
 			return &OpenAILogin{User: user, Connector: oc, FlowID: flowID}, nil
 		},
-	})
+	}
 	oc.ConnectorBase = sdk.NewConnectorBase(oc.sdkConfig)
 	return oc
 }
