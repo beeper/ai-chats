@@ -1,7 +1,7 @@
 # Duplication Audit
 
 This document is a current-state audit of the remaining duplicated ownership,
-+wrapper layers, and branchy logic in `ai-bridge`.
+wrapper layers, and branchy logic in `ai-bridge`.
 
 It is intentionally scoped to the code that still matters:
 
@@ -78,12 +78,12 @@ Everything else should be deleted or collapsed into those owners.
 These wrapper/helper classes are already gone and should not return:
 
 - SDK runtime/getter bag, cache removal shells, message construction wrappers,
-  broken-login constructor shell, bridge-info helper leftovers, and approval
-  prompt formatting wrappers
+  broken-login constructor shell, bridge-info helper leftovers, approval
+  prompt formatting wrappers, and the embedded stream-state base layer
 - AI queue dispatch shells, continuation/finalization wrappers, portal
   send/edit wrappers, heartbeat/session routing wrappers, current-turn prompt
-  assembly wrappers, contact-resolution wrappers, and retrieval token helper
-  chains
+  assembly wrappers, contact-resolution wrappers, retrieval token helper
+  chains, prompt/state constant shims, and several one-use accessors
 - Retrieval env/provider-registration/provider-constructor wrappers, direct
   fetch default wrappers, and the Exa wrapper layer
 - Bridge-local status wrappers in `bridges/ai` and `bridges/codex`
@@ -98,10 +98,8 @@ forwarders.
 Files:
 
 - `bridges/ai/streaming_responses_api.go`
-- `bridges/ai/streaming_response_lifecycle.go`
 - `bridges/ai/streaming_success.go`
 - `bridges/ai/streaming_error_handling.go`
-- `bridges/ai/streaming_responses_finalize.go`
 - `bridges/ai/response_finalization.go`
 - `bridges/ai/streaming_state.go`
 
@@ -125,9 +123,9 @@ Files:
 
 - `bridges/ai/prompt_builder.go`
 - `bridges/ai/prompt_context_local.go`
-- `bridges/ai/prompt_projection_local.go`
 - `bridges/ai/canonical_prompt_messages.go`
 - `bridges/ai/streaming_continuation.go`
+- `bridges/ai/turn_store.go`
 
 Why this still violates the goal:
 
@@ -174,10 +172,10 @@ Desired owner:
 
 Files:
 
-- `bridges/ai/session_store.go`
-- `bridges/ai/session_keys.go`
-- `bridges/ai/heartbeat_session.go`
 - `bridges/ai/sessions_tools.go`
+- `bridges/ai/session_store.go`
+- `bridges/ai/agent_activity.go`
+- `bridges/ai/heartbeat_state.go`
 - `bridges/ai/login_state_db.go`
 - `bridges/ai/login_config_db.go`
 
@@ -206,7 +204,6 @@ Files:
 - `bridges/ai/queue_resolution.go`
 - `bridges/ai/streaming_state.go`
 - `bridges/ai/heartbeat_execute.go`
-- `bridges/ai/heartbeat_delivery.go`
 - `bridges/ai/heartbeat_state.go`
 
 Why this still violates the goal:
@@ -230,8 +227,8 @@ Files:
 
 Why this still violates the goal:
 
-- it bundles portal access, session routing, cron, workspace resolution,
-  provider/runtime helpers, and integration-facing APIs
+- it bundles portal access, session routing, cron, memory DB access,
+  workspace resolution, provider/runtime helpers, and integration-facing APIs
 - it can become a second hidden framework under `bridges/ai`
 
 Desired owner:
@@ -252,12 +249,10 @@ Files:
 - `sdk/load_user_login.go`
 - `sdk/connector.go`
 - `sdk/connector_builder.go`
-- `sdk/stream_turn_host.go`
-- `sdk/base_stream_state.go`
 
 Why this still violates the goal:
 
-- the runtime surface is still split between `staticRuntime`, `sdkClient`,
+- the runtime surface is still split between `sdkClient`,
   stream host/state helpers, and client-cache/login helpers
 - the SDK still reads like a local bridge framework rather than a thin runtime
   layer

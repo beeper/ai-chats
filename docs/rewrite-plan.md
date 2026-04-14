@@ -163,10 +163,12 @@ The intended long-term code organization is:
 Already finished:
 
 - SDK helper cleanup around runtime getters, cache lifecycle, approval request
-  construction, bridge-info formatting, and approval prompt formatting
+  construction, bridge-info formatting, approval prompt formatting, and the
+  embedded stream-state base layer
 - AI helper cleanup around queue dispatching, continuation/finalization,
   portal send/edit, heartbeat/session routing, prompt assembly, contact
-  resolution, and retrieval token application
+  resolution, retrieval token application, prompt/state constant shims, and
+  one-use accessors
 - Retrieval cleanup around env defaults, provider registration, provider
   constructors, Exa wrapper surfaces, and direct-fetch defaults
 - Bridge-local wrapper deletion where `bridges/ai` and `bridges/codex` were
@@ -194,10 +196,8 @@ The highest-value remaining work is now:
 Target files:
 
 - `bridges/ai/streaming_responses_api.go`
-- `bridges/ai/streaming_response_lifecycle.go`
 - `bridges/ai/streaming_success.go`
 - `bridges/ai/streaming_error_handling.go`
-- `bridges/ai/streaming_responses_finalize.go`
 - `bridges/ai/response_finalization.go`
 - `bridges/ai/streaming_state.go`
 
@@ -220,9 +220,9 @@ Target files:
 
 - `bridges/ai/prompt_builder.go`
 - `bridges/ai/prompt_context_local.go`
-- `bridges/ai/prompt_projection_local.go`
 - `bridges/ai/canonical_prompt_messages.go`
 - `bridges/ai/streaming_continuation.go`
+- `bridges/ai/turn_store.go`
 
 Deliverable:
 
@@ -235,7 +235,29 @@ Why second:
 
 - currently the most duplicated semantic layer after streaming
 
-### Phase 3: Provider Consolidation
+### Phase 3: Session Subsystem
+
+Target files:
+
+- `bridges/ai/session_store.go`
+- `bridges/ai/sessions_tools.go`
+- `bridges/ai/agent_activity.go`
+- `bridges/ai/heartbeat_state.go`
+- `bridges/ai/login_state_db.go`
+- `bridges/ai/login_config_db.go`
+
+Deliverable:
+
+- one session-routing owner
+- one session timestamp owner
+- one session lookup path for heartbeat, status, and tools
+- no re-derived store-agent identity at consumers
+
+Why third:
+
+- this is the closest remaining mismatch with OpenClaw's bounded session shape
+
+### Phase 4: Provider Consolidation
 
 Target files:
 
@@ -255,7 +277,7 @@ Deliverable:
 - one auth/base URL resolution path
 - media/image/tool policy reads from the same provider table
 
-Why third:
+Why fourth:
 
 - provider behavior is still scattered across chat/media/image subsystems
 
