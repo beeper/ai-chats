@@ -197,10 +197,10 @@ Recent progress also collapsed heartbeat session routing into one owner:
 selection, and heartbeat main-key alias handling now uses the same canonical
 session rules as the session store.
 
-Recent progress also moved routed heartbeat session selection and canonical
-session read/write operations into `session_store.go`: heartbeat no longer
-replays key-selection logic inline, and the write-side API is now the shared
-stored-session touch/read surface.
+Recent progress also moved canonical session read/write operations into
+`session_store.go`, while `resolveHeartbeatRoute(...)` now owns heartbeat route
+selection end-to-end: heartbeat no longer bounces through a second single-use
+session selector helper before delivery selection.
 
 Recent progress also collapsed immediate and queued prompt execution onto one
 dispatch launcher: there is no queued-only run starter anymore, and both paths
@@ -232,6 +232,11 @@ Recent progress also removed the media-turn wrapper, the OpenRouter image-ref
 wrapper, the media-service-config adapter, and the provider-specific OpenAI /
 OpenRouter API-key helpers: media/image flows now call the canonical prompt and
 service-config paths directly instead of passing through helper shells.
+
+Recent progress also removed the provider-specific OpenAI / OpenRouter
+base-URL helpers: provider initialization, media understanding, and retrieval
+config now read base URLs straight from provider config or the shared
+service-config map instead of routing through convenience shims.
 
 Recent progress also removed the single-callsite internal prompt turn upsert
 wrapper and the local prompt projection helpers around block filtering, image

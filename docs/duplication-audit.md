@@ -196,6 +196,8 @@ Why this still violates the goal:
 - media prompt building and OpenRouter image-input preparation no longer route
   through single-callsite wrapper helpers; the remaining provider/media debt is
   policy branching, not those local adapter shells
+- provider initialization, media understanding, and retrieval config no longer
+  route through provider-specific OpenAI / OpenRouter base-URL shims
 - media provider capability, auth-header shape, env-key lookup, and optional
   service binding now come from one provider-spec table instead of separate
   maps/switches
@@ -228,10 +230,10 @@ Why this still violates the goal:
 - status/session readers and heartbeat routing now enter through one route
   selection path; the remaining fragmentation is in write-side ownership and
   how different features touch session state
-- routed heartbeat session selection and the canonical stored-session
-  read/write operations now live in `session_store.go`; the remaining debt is
-  mostly which callers still speak in store-agent/session primitives instead of
-  one higher-level session API
+- canonical stored-session read/write operations now live in
+  `session_store.go`, while `resolveHeartbeatRoute(...)` owns route selection
+  end-to-end; the remaining debt is mostly which callers still speak in
+  store-agent/session primitives instead of one higher-level session API
 - last-routed-room lookup now also lives in `session_store.go`; remaining
   fragmentation is not consumer-side DB querying, but how different features
   choose and touch sessions

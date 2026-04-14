@@ -927,9 +927,9 @@ func resolveOpenRouterMediaBaseURL(oc *AIClient) string {
 	if svc := oc.connector.resolveServiceConfig(loginMetadata(oc.UserLogin).Provider, loginCfg)[serviceOpenRouter]; strings.TrimSpace(svc.BaseURL) != "" {
 		return strings.TrimRight(svc.BaseURL, "/")
 	}
-	base := strings.TrimSpace(oc.connector.resolveOpenRouterBaseURL())
+	base := strings.TrimSpace(oc.connector.modelProviderConfig(ProviderOpenRouter).BaseURL)
 	if base != "" {
-		return base
+		return strings.TrimRight(base, "/")
 	}
 	return defaultOpenRouterBaseURL
 }
@@ -942,7 +942,7 @@ func resolveOpenAIMediaBaseURL(oc *AIClient) string {
 	if svc := oc.connector.resolveServiceConfig(loginMetadata(oc.UserLogin).Provider, loginCfg)[serviceOpenAI]; strings.TrimSpace(svc.BaseURL) != "" {
 		return stringutil.NormalizeBaseURL(svc.BaseURL)
 	}
-	if base := stringutil.NormalizeBaseURL(oc.connector.resolveOpenAIBaseURL()); base != "" {
+	if base := stringutil.NormalizeBaseURL(oc.connector.modelProviderConfig(ProviderOpenAI).BaseURL); base != "" {
 		return base
 	}
 	return defaultOpenAITranscriptionBaseURL

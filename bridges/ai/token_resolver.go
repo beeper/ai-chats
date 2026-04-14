@@ -122,22 +122,6 @@ func (oc *OpenAIConnector) resolveExaProxyBaseURL(cfg *aiLoginConfig) string {
 	return joinProxyPath(root, "/exa")
 }
 
-func (oc *OpenAIConnector) resolveOpenAIBaseURL() string {
-	base := strings.TrimSpace(oc.modelProviderConfig(ProviderOpenAI).BaseURL)
-	if base == "" {
-		base = defaultOpenAIBaseURL
-	}
-	return strings.TrimRight(base, "/")
-}
-
-func (oc *OpenAIConnector) resolveOpenRouterBaseURL() string {
-	base := strings.TrimSpace(oc.modelProviderConfig(ProviderOpenRouter).BaseURL)
-	if base == "" {
-		base = defaultOpenRouterBaseURL
-	}
-	return strings.TrimRight(base, "/")
-}
-
 func (oc *OpenAIConnector) resolveServiceConfig(provider string, cfg *aiLoginConfig) ServiceConfigMap {
 	services := ServiceConfigMap{}
 
@@ -166,7 +150,13 @@ func (oc *OpenAIConnector) resolveServiceConfig(provider string, cfg *aiLoginCon
 	}
 
 	services[serviceOpenAI] = ServiceConfig{
-		BaseURL: oc.resolveOpenAIBaseURL(),
+		BaseURL: func() string {
+			base := strings.TrimSpace(oc.modelProviderConfig(ProviderOpenAI).BaseURL)
+			if base == "" {
+				base = defaultOpenAIBaseURL
+			}
+			return strings.TrimRight(base, "/")
+		}(),
 		APIKey: func() string {
 			if key := trimToken(oc.modelProviderConfig(ProviderOpenAI).APIKey); key != "" {
 				return key
@@ -175,7 +165,13 @@ func (oc *OpenAIConnector) resolveServiceConfig(provider string, cfg *aiLoginCon
 		}(),
 	}
 	services[serviceOpenRouter] = ServiceConfig{
-		BaseURL: oc.resolveOpenRouterBaseURL(),
+		BaseURL: func() string {
+			base := strings.TrimSpace(oc.modelProviderConfig(ProviderOpenRouter).BaseURL)
+			if base == "" {
+				base = defaultOpenRouterBaseURL
+			}
+			return strings.TrimRight(base, "/")
+		}(),
 		APIKey: func() string {
 			if key := trimToken(oc.modelProviderConfig(ProviderOpenRouter).APIKey); key != "" {
 				return key

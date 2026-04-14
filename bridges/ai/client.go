@@ -476,7 +476,11 @@ func initProviderForLoginConfig(key string, providerID string, cfg *aiLoginConfi
 	}
 	switch providerID {
 	case ProviderOpenRouter:
-		return initOpenRouterProvider(key, connector.resolveOpenRouterBaseURL(), "", connector.defaultPDFEngineForInit(), ProviderOpenRouter, log)
+		baseURL := strings.TrimSpace(connector.modelProviderConfig(ProviderOpenRouter).BaseURL)
+		if baseURL == "" {
+			baseURL = defaultOpenRouterBaseURL
+		}
+		return initOpenRouterProvider(key, strings.TrimRight(baseURL, "/"), "", connector.defaultPDFEngineForInit(), ProviderOpenRouter, log)
 
 	case ProviderMagicProxy:
 		baseURL := normalizeProxyBaseURL(loginCredentialBaseURL(cfg))
@@ -486,7 +490,11 @@ func initProviderForLoginConfig(key string, providerID string, cfg *aiLoginConfi
 		return initOpenRouterProvider(key, joinProxyPath(baseURL, "/openrouter/v1"), "", connector.defaultPDFEngineForInit(), ProviderMagicProxy, log)
 
 	case ProviderOpenAI:
-		openaiURL := connector.resolveOpenAIBaseURL()
+		openaiURL := strings.TrimSpace(connector.modelProviderConfig(ProviderOpenAI).BaseURL)
+		if openaiURL == "" {
+			openaiURL = defaultOpenAIBaseURL
+		}
+		openaiURL = strings.TrimRight(openaiURL, "/")
 		log.Info().
 			Str("provider", providerID).
 			Str("openai_url", openaiURL).

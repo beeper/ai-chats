@@ -273,7 +273,30 @@ func (oc *AIClient) resolveHeartbeatRoute(agentID string, heartbeat *HeartbeatCo
 	if heartbeat != nil && heartbeat.Session != nil {
 		session = strings.TrimSpace(*heartbeat.Session)
 	}
-	hbSession := oc.resolveHeartbeatSession(agentID, session)
+	hbSession := heartbeatSessionResolution{
+		StoreAgentID: routing.StoreAgentID,
+		SessionKey:   routing.MainKey,
+	}
+	if routing.Scope != sessionScopeGlobal && !sessionUsesMainKey(routing, session) {
+		if strings.HasPrefix(session, "!") {
+			hbSession.SessionKey = session
+		} else {
+			candidate := strings.ToLower(session)
+			if candidate == "" || strings.EqualFold(candidate, defaultSessionMainKey) {
+				candidate = routing.MainKey
+			} else if !strings.HasPrefix(candidate, "agent:") {
+				candidate = "agent:" + routing.AgentID + ":" + candidate
+			}
+			if strings.HasPrefix(candidate, "agent:"+routing.AgentID+":") && !sessionUsesMainKey(routing, candidate) {
+				hbSession.SessionKey = candidate
+			}
+		}
+		if hbSession.SessionKey != routing.MainKey {
+			if updatedAt, ok := oc.storedSessionUpdatedAt(context.Background(), routing.StoreAgentID, hbSession.SessionKey); ok {
+				hbSession.UpdatedAt = updatedAt
+			}
+		}
+	}
 	route.Session = hbSession
 	if oc == nil || oc.UserLogin == nil {
 		return route, errors.New("no session")

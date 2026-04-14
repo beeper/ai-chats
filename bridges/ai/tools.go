@@ -1254,7 +1254,10 @@ func resolveOpenAITTSBaseURL(btc *BridgeToolContext, providerBaseURL string) (st
 	switch provider {
 	case ProviderOpenAI:
 		if client.connector != nil {
-			resolved := stringutil.NormalizeBaseURL(client.connector.resolveOpenAIBaseURL())
+			resolved := stringutil.NormalizeBaseURL(client.connector.modelProviderConfig(ProviderOpenAI).BaseURL)
+			if resolved == "" {
+				resolved = stringutil.NormalizeBaseURL(defaultOpenAIBaseURL)
+			}
 			if resolved != "" {
 				return resolved, true
 			}

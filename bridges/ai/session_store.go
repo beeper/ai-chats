@@ -102,40 +102,6 @@ func (oc *AIClient) resolveSessionRouting(agentID string) sessionRouting {
 	}
 }
 
-func (oc *AIClient) resolveHeartbeatSession(agentID string, requestedSession string) heartbeatSessionResolution {
-	routing := oc.resolveSessionRouting(agentID)
-	session := heartbeatSessionResolution{
-		StoreAgentID: routing.StoreAgentID,
-		SessionKey:   routing.MainKey,
-	}
-	if routing.Scope == sessionScopeGlobal {
-		return session
-	}
-	requestedSession = strings.TrimSpace(requestedSession)
-	if sessionUsesMainKey(routing, requestedSession) {
-		return session
-	}
-	if strings.HasPrefix(requestedSession, "!") {
-		session.SessionKey = requestedSession
-	} else {
-		candidate := strings.ToLower(requestedSession)
-		if candidate == "" || strings.EqualFold(candidate, defaultSessionMainKey) {
-			candidate = routing.MainKey
-		} else if !strings.HasPrefix(candidate, "agent:") {
-			candidate = "agent:" + routing.AgentID + ":" + candidate
-		}
-		if strings.HasPrefix(candidate, "agent:"+routing.AgentID+":") && !sessionUsesMainKey(routing, candidate) {
-			session.SessionKey = candidate
-		}
-	}
-	if session.SessionKey != routing.MainKey {
-		if updatedAt, ok := oc.storedSessionUpdatedAt(context.Background(), routing.StoreAgentID, session.SessionKey); ok {
-			session.UpdatedAt = updatedAt
-		}
-	}
-	return session
-}
-
 func (oc *AIClient) lastRoutedSessionKey(ctx context.Context, agentID string) (string, bool) {
 	if oc == nil {
 		return "", false
