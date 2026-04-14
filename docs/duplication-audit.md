@@ -275,6 +275,9 @@ Files:
 
 Why this still violates the goal:
 
+- heartbeat no longer launches `runAgentLoopWithRetry(...)` from its own direct
+  path; it now enters the same `dispatchCompletionInternal(...)` launch
+  boundary as queued/immediate runs
 - immediate and queued prompts now share one dispatch launcher; the remaining
   duplication is above and below that boundary, not a second queued-only run
   starter

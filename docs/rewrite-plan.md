@@ -250,6 +250,12 @@ lookup, fallback-room lookup, and delivery-target shaping inline instead of
 routing through `sessionUsesMainKey(...)`, `resolveAgentPortal(...)`,
 `resolveFallbackPortal(...)`, and `deliveryTargetForPortal(...)`.
 
+Recent progress also removed one more split execution entrypoint: heartbeat now
+enters `dispatchCompletionInternal(...)` instead of calling
+`runAgentLoopWithRetry(...)` directly, so queued, immediate, and heartbeat runs
+share the same launch boundary even though the surrounding pipeline is still
+not fully unified.
+
 Recent progress also removed the single-callsite internal prompt turn upsert
 wrapper and the local prompt projection helpers around block filtering, image
 payload lookup, and tool-argument normalization: canonical prompt projection

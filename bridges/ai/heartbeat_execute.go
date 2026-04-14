@@ -220,7 +220,7 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 		sendPortal = deliveryPortal
 	}
 	go func() {
-		oc.runAgentLoopWithRetry(runCtx, nil, sendPortal, promptMeta, promptContext)
+		oc.dispatchCompletionInternal(runCtx, nil, sendPortal, promptMeta, promptContext)
 		close(done)
 	}()
 
