@@ -291,6 +291,7 @@ Deliverable:
 - one provider runtime construction path
 - one auth/base URL resolution path
 - media/image/tool policy reads from the same provider table
+- image-generation endpoint resolution uses the shared service-config path
 
 Why fourth:
 

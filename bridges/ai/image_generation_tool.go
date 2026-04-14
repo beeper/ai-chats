@@ -250,18 +250,13 @@ func inferProviderFromModel(model string) imageGenProvider {
 }
 
 func supportsOpenAIImageGen(btc *BridgeToolContext) bool {
-	if btc == nil || btc.Client == nil || btc.Client.UserLogin == nil || btc.Client.UserLogin.Metadata == nil {
+	provider, service, ok := imageGenServiceConfig(btc, serviceOpenAI)
+	if !ok {
 		return false
 	}
-	provider := loginMetadata(btc.Client.UserLogin).Provider
-	loginCfg := btc.Client.loginConfigSnapshot(context.Background())
 	switch provider {
 	case ProviderOpenAI, ProviderMagicProxy:
-		if provider == ProviderMagicProxy {
-			// Magic Proxy uses a per-login token+base URL, not the OpenAI config key.
-			return loginCredentialAPIKey(loginCfg) != "" && loginCredentialBaseURL(loginCfg) != ""
-		}
-		return btc.Client.connector.resolveOpenAIAPIKey(provider, loginCfg) != ""
+		return strings.TrimSpace(service.APIKey) != "" && strings.TrimSpace(service.BaseURL) != ""
 	default:
 		return false
 	}
@@ -468,52 +463,52 @@ func isAllowedValue(value string, allowed map[string]bool) bool {
 	return allowed[strings.ToLower(value)]
 }
 
-func buildOpenAIImagesBaseURL(btc *BridgeToolContext) (string, error) {
-	if btc == nil || btc.Client == nil || btc.Client.UserLogin == nil || btc.Client.UserLogin.Metadata == nil {
-		return "", errors.New("openai image generation not available for this provider")
+func imageGenServiceConfig(btc *BridgeToolContext, service string) (string, ServiceConfig, bool) {
+	if btc == nil || btc.Client == nil || btc.Client.connector == nil || btc.Client.UserLogin == nil || btc.Client.UserLogin.Metadata == nil {
+		return "", ServiceConfig{}, false
 	}
 	provider := loginMetadata(btc.Client.UserLogin).Provider
 	loginCfg := btc.Client.loginConfigSnapshot(context.Background())
+	services := btc.Client.connector.resolveServiceConfig(provider, loginCfg)
+	cfg, ok := services[service]
+	return provider, cfg, ok
+}
+
+func buildOpenAIImagesBaseURL(btc *BridgeToolContext) (string, error) {
+	provider, service, ok := imageGenServiceConfig(btc, serviceOpenAI)
+	if !ok {
+		return "", errors.New("openai image generation not available for this provider")
+	}
 	switch provider {
 	case ProviderOpenAI:
-		base := btc.Client.connector.resolveOpenAIBaseURL()
-		return strings.TrimSuffix(base, "/"), nil
 	case ProviderMagicProxy:
-		if btc.Client.connector != nil {
-			services := btc.Client.connector.resolveServiceConfig(provider, loginCfg)
-			if svc, ok := services[serviceOpenAI]; ok && strings.TrimSpace(svc.BaseURL) != "" {
-				return strings.TrimSuffix(strings.TrimSpace(svc.BaseURL), "/"), nil
-			}
-		}
-		base := normalizeProxyBaseURL(loginCredentialBaseURL(loginCfg))
+		base := strings.TrimSuffix(strings.TrimSpace(service.BaseURL), "/")
 		if base == "" {
-			return "", errors.New("magic proxy base_url is required for image generation")
+			return "", errors.New("openai image generation not available for this provider")
 		}
-		return joinProxyPath(base, "/openai/v1"), nil
+		return base, nil
 	default:
 		return "", errors.New("openai image generation not available for this provider")
 	}
+	base := strings.TrimSuffix(strings.TrimSpace(service.BaseURL), "/")
+	if base == "" {
+		return "", errors.New("openai image generation not available for this provider")
+	}
+	return base, nil
 }
 
 func buildGeminiBaseURL(btc *BridgeToolContext) (string, error) {
-	if btc == nil || btc.Client == nil || btc.Client.UserLogin == nil || btc.Client.UserLogin.Metadata == nil {
+	provider, service, ok := imageGenServiceConfig(btc, serviceGemini)
+	if !ok {
 		return "", errors.New("gemini image generation not available for this provider")
 	}
-	provider := loginMetadata(btc.Client.UserLogin).Provider
-	loginCfg := btc.Client.loginConfigSnapshot(context.Background())
 	switch provider {
 	case ProviderMagicProxy:
-		if btc.Client.connector != nil {
-			services := btc.Client.connector.resolveServiceConfig(provider, loginCfg)
-			if svc, ok := services[serviceGemini]; ok && strings.TrimSpace(svc.BaseURL) != "" {
-				return strings.TrimSuffix(strings.TrimSpace(svc.BaseURL), "/"), nil
-			}
-		}
-		base := normalizeProxyBaseURL(loginCredentialBaseURL(loginCfg))
+		base := strings.TrimSuffix(strings.TrimSpace(service.BaseURL), "/")
 		if base == "" {
-			return "", errors.New("magic proxy base_url is required for image generation")
+			return "", errors.New("gemini image generation not available for this provider")
 		}
-		return joinProxyPath(base, "/gemini/v1beta"), nil
+		return base, nil
 	default:
 		return "", errors.New("gemini image generation not available for this provider")
 	}
@@ -608,43 +603,22 @@ func generateImagesForRequest(ctx context.Context, btc *BridgeToolContext, req i
 // This is used even when the "primary" provider is not OpenRouter (e.g. Magic Proxy, OpenAI) as
 // long as an OpenRouter token+endpoint are configured.
 func resolveOpenRouterImageGenEndpoint(btc *BridgeToolContext) (baseURL string, apiKey string, ok bool) {
-	if btc == nil || btc.Client == nil || btc.Client.UserLogin == nil || btc.Client.UserLogin.Metadata == nil {
+	provider, service, serviceOK := imageGenServiceConfig(btc, serviceOpenRouter)
+	if !serviceOK {
 		return "", "", false
 	}
-	provider := loginMetadata(btc.Client.UserLogin).Provider
-	loginCfg := btc.Client.loginConfigSnapshot(context.Background())
-	conn := btc.Client.connector
-
-	trim := func(s string) string { return strings.TrimSpace(s) }
-
-	// Provider-specific per-login endpoints.
 	switch provider {
 	case ProviderMagicProxy:
 		// Magic Proxy does not expose the OpenRouter images endpoint; use the
 		// verified OpenAI images route instead.
 		return "", "", false
-	case ProviderOpenRouter:
-		if conn == nil {
-			return "", "", false
-		}
-		base := trim(conn.resolveOpenRouterBaseURL())
-		key := trim(conn.resolveOpenRouterAPIKey(provider, loginCfg))
-		if base == "" || key == "" {
-			return "", "", false
-		}
-		return strings.TrimSuffix(base, "/"), key, true
 	}
-
-	// Global OpenRouter config (available regardless of primary provider).
-	if conn == nil {
-		return "", "", false
-	}
-	base := trim(conn.resolveOpenRouterBaseURL())
-	key := trim(conn.resolveOpenRouterAPIKey(provider, loginCfg))
+	base := strings.TrimSuffix(strings.TrimSpace(service.BaseURL), "/")
+	key := strings.TrimSpace(service.APIKey)
 	if base == "" || key == "" {
 		return "", "", false
 	}
-	return strings.TrimSuffix(base, "/"), key, true
+	return base, key, true
 }
 
 func openRouterImageURLForRef(ctx context.Context, btc *BridgeToolContext, ref string) (string, error) {
