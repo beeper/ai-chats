@@ -41,7 +41,10 @@ func buildCanonicalTurnData(
 	if state == nil {
 		return sdk.TurnData{}
 	}
-	uiMessage := streamui.SnapshotUIMessage(currentStreamingUIState(state))
+	uiMessage := map[string]any(nil)
+	if state.turn != nil {
+		uiMessage = streamui.SnapshotUIMessage(state.turn.UIState())
+	}
 	td := turnDataFromStreamingState(state, uiMessage)
 	artifactParts := buildSourceParts(state.sourceCitations, state.sourceDocuments, nil)
 	artifactParts = append(artifactParts, linkPreviews...)

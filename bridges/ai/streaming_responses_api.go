@@ -506,8 +506,10 @@ func (oc *AIClient) handleProviderToolCompleted(
 		return
 	}
 	activeTools.BindAlias(streamToolItemKey(itemID), tool)
-	if uiState := currentStreamingUIState(state); uiState != nil && uiState.UIToolOutputFinalized[tool.callID] {
-		return
+	if state != nil && state.turn != nil {
+		if state.turn.UIState().UIToolOutputFinalized[tool.callID] {
+			return
+		}
 	}
 
 	lifecycle := oc.toolLifecycle(portal, state)

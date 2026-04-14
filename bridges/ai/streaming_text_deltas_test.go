@@ -30,7 +30,7 @@ func TestProcessStreamingTextDeltaEmitsPlainVisibleTextWithoutDirectives(t *test
 	if roundDelta != "hello" {
 		t.Fatalf("expected round delta hello, got %q", roundDelta)
 	}
-	if got := visibleStreamingText(state); got != "hello" {
+	if got := state.turn.VisibleText(); got != "hello" {
 		t.Fatalf("expected visible text hello, got %q", got)
 	}
 }
@@ -55,7 +55,7 @@ func TestDisplayStreamingTextPrefersVisibleTextOverRawAccumulated(t *testing.T) 
 		t.Fatalf("processStreamingTextDelta returned error: %v", err)
 	}
 
-	if got := rawStreamingText(state); got != "[[reply_to_current]] visible" {
+	if got := state.accumulated.String(); got != "[[reply_to_current]] visible" {
 		t.Fatalf("expected raw accumulated text to keep directives, got %q", got)
 	}
 	if got := displayStreamingText(state); got != "visible" {

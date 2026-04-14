@@ -121,8 +121,8 @@ func deriveToolDescriptorForOutputItem(item responses.ResponseOutputItemUnion, s
 			desc.registryKey = streamToolApprovalKey(desc.approvalID)
 		}
 		if approvalID := strings.TrimSpace(item.ApprovalRequestID); approvalID != "" && state != nil {
-			if uiState := currentStreamingUIState(state); uiState != nil {
-				if mapped := strings.TrimSpace(uiState.UIToolCallIDByApproval[approvalID]); mapped != "" {
+			if state != nil && state.turn != nil {
+				if mapped := strings.TrimSpace(state.turn.UIState().UIToolCallIDByApproval[approvalID]); mapped != "" {
 					desc.callID = mapped
 				}
 			}

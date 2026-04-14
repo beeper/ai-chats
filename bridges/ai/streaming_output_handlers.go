@@ -86,7 +86,8 @@ func (oc *AIClient) upsertActiveToolFromDescriptor(
 	if desc.toolType != "" {
 		tool.toolType = desc.toolType
 	}
-	if uiState := currentStreamingUIState(state); uiState != nil {
+	if state != nil && state.turn != nil {
+		uiState := state.turn.UIState()
 		uiState.UIToolNameByToolCallID[tool.callID] = tool.toolName
 		uiState.UIToolTypeByToolCallID[tool.callID] = tool.toolType
 	}
@@ -169,8 +170,10 @@ func (oc *AIClient) handleMCPCallFailedFromOutputItem(
 	if tool == nil {
 		return
 	}
-	if uiState := currentStreamingUIState(state); uiState != nil && uiState.UIToolOutputFinalized[tool.callID] {
-		return
+	if state != nil && state.turn != nil {
+		if state.turn.UIState().UIToolOutputFinalized[tool.callID] {
+			return
+		}
 	}
 	errorText := strings.TrimSpace(item.Error)
 	if errorText == "" {
@@ -208,8 +211,8 @@ func (oc *AIClient) gateMcpToolApproval(
 		tool.input.WriteString(stringifyJSONValue(desc.input))
 	}
 	tool.approvalID = approvalID
-	if uiState := currentStreamingUIState(state); uiState != nil {
-		uiState.UIToolCallIDByApproval[approvalID] = tool.callID
+	if state != nil && state.turn != nil {
+		state.turn.UIState().UIToolCallIDByApproval[approvalID] = tool.callID
 	}
 	oc.toolLifecycle(portal, state).emitInput(ctx, tool, tool.toolName, desc.input, true)
 	state.pendingMcpApprovalsSeen[approvalID] = true
@@ -244,8 +247,8 @@ func (oc *AIClient) gateMcpToolApproval(
 	actions := streamTurnActions{oc: oc, ctx: ctx, portal: portal, state: state}
 	if err := actions.approvalRequested(params, needsApproval); err != nil {
 		delete(state.pendingMcpApprovalsSeen, approvalID)
-		if uiState := currentStreamingUIState(state); uiState != nil {
-			delete(uiState.UIToolApprovalRequested, approvalID)
+		if state != nil && state.turn != nil {
+			delete(state.turn.UIState().UIToolApprovalRequested, approvalID)
 		}
 		oc.toolLifecycle(portal, state).fail(ctx, tool, true, ResultStatusError, err.Error(), nil)
 		return
@@ -271,8 +274,10 @@ func (oc *AIClient) resolveOutputItemTool(
 	if tool == nil {
 		return nil, desc, false, false
 	}
-	if uiState := currentStreamingUIState(state); uiState != nil && uiState.UIToolOutputFinalized[tool.callID] {
-		return nil, desc, false, false
+	if state != nil && state.turn != nil {
+		if state.turn.UIState().UIToolOutputFinalized[tool.callID] {
+			return nil, desc, false, false
+		}
 	}
 	if item.Type == "mcp_approval_request" {
 		oc.gateMcpToolApproval(ctx, portal, state, tool, desc, item)

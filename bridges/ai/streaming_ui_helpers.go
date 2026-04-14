@@ -8,42 +8,22 @@ import (
 
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote/pkg/shared/streamui"
 	"github.com/beeper/agentremote/sdk"
 )
-
-func currentStreamingUIState(state *streamingState) *streamui.UIState {
-	if state == nil || state.turn == nil {
-		return nil
-	}
-	return state.turn.UIState()
-}
-
-func rawStreamingText(state *streamingState) string {
-	if state == nil {
-		return ""
-	}
-	return state.accumulated.String()
-}
-
-func visibleStreamingText(state *streamingState) string {
-	if state == nil {
-		return ""
-	}
-	if state.turn == nil {
-		return ""
-	}
-	return state.turn.VisibleText()
-}
 
 func displayStreamingText(state *streamingState) string {
 	if state == nil {
 		return ""
 	}
-	if text := visibleStreamingText(state); strings.TrimSpace(text) != "" {
+	if state.turn != nil {
+		if text := state.turn.VisibleText(); strings.TrimSpace(text) != "" {
+			return text
+		}
+	}
+	if text := state.accumulated.String(); strings.TrimSpace(text) != "" {
 		return text
 	}
-	return rawStreamingText(state)
+	return ""
 }
 
 func (oc *AIClient) buildUIMessageMetadata(state *streamingState, meta *PortalMetadata, includeUsage bool) map[string]any {
@@ -91,7 +71,10 @@ func maybePrependTextSeparator(state *streamingState, rawDelta string) string {
 		return rawDelta
 	}
 	// If we don't have any visible text yet, don't inject anything.
-	visible := visibleStreamingText(state)
+	visible := ""
+	if state.turn != nil {
+		visible = state.turn.VisibleText()
+	}
 	if visible == "" {
 		state.needsTextSeparator = false
 		return rawDelta
