@@ -6,67 +6,53 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 )
 
-type conversationRuntime interface {
-	agent() *Agent
-	agentCatalog() AgentCatalog
-	roomFeatures(conv *Conversation) *RoomFeatures
-	turnConfig() *TurnConfig
-	conversationStore() *conversationStateStore
-	approvalFlowValue() *ApprovalFlow[*pendingSDKApprovalData]
-	providerIdentity() ProviderIdentity
+type conversationRuntimeState struct {
+	agent                *Agent
+	agentCatalog         AgentCatalog
+	roomFeatures         *RoomFeatures
+	roomFeaturesOverride func(*Conversation) *RoomFeatures
+	turnConfig           *TurnConfig
+	store                *conversationStateStore
+	approvalFlow         *ApprovalFlow[*pendingSDKApprovalData]
+	providerIdentity     ProviderIdentity
 }
 
-type staticRuntime[SessionT SessionValue, ConfigDataT ConfigValue] struct {
-	cfg      *Config[SessionT, ConfigDataT]
-	session  SessionT
-	login    *bridgev2.UserLogin
-	store    *conversationStateStore
-	approval *ApprovalFlow[*pendingSDKApprovalData]
+type conversationRuntimeProvider interface {
+	conversationRuntimeState() *conversationRuntimeState
 }
 
-func (r *staticRuntime[SessionT, ConfigDataT]) agent() *Agent {
-	if r == nil || r.cfg == nil {
-		return nil
+func newConversationRuntimeState[SessionT SessionValue, ConfigDataT ConfigValue](
+	cfg *Config[SessionT, ConfigDataT],
+	session SessionT,
+	store *conversationStateStore,
+	approval *ApprovalFlow[*pendingSDKApprovalData],
+) *conversationRuntimeState {
+	state := &conversationRuntimeState{
+		store:            store,
+		approvalFlow:     approval,
+		providerIdentity: resolveProviderIdentity(cfg),
 	}
-	return r.cfg.Agent
-}
-
-func (r *staticRuntime[SessionT, ConfigDataT]) agentCatalog() AgentCatalog {
-	if r == nil || r.cfg == nil {
-		return nil
+	if cfg == nil {
+		return state
 	}
-	return r.cfg.AgentCatalog
-}
-
-func (r *staticRuntime[SessionT, ConfigDataT]) roomFeatures(conv *Conversation) *RoomFeatures {
-	if r == nil || r.cfg == nil {
-		return nil
-	}
-	if r.cfg.GetCapabilities != nil {
-		if rf := r.cfg.GetCapabilities(r.session, conv); rf != nil {
-			return rf
+	state.agent = cfg.Agent
+	state.agentCatalog = cfg.AgentCatalog
+	state.roomFeatures = cfg.RoomFeatures
+	state.turnConfig = cfg.TurnManagement
+	if cfg.GetCapabilities != nil {
+		state.roomFeaturesOverride = func(conv *Conversation) *RoomFeatures {
+			return cfg.GetCapabilities(session, conv)
 		}
 	}
-	return r.cfg.RoomFeatures
+	return state
 }
 
-func (r *staticRuntime[SessionT, ConfigDataT]) turnConfig() *TurnConfig {
-	if r == nil || r.cfg == nil {
+func runtimeStateFromClient(client bridgev2.NetworkAPI) *conversationRuntimeState {
+	provider, ok := client.(conversationRuntimeProvider)
+	if !ok {
 		return nil
 	}
-	return r.cfg.TurnManagement
-}
-
-func (r *staticRuntime[SessionT, ConfigDataT]) conversationStore() *conversationStateStore {
-	return r.store
-}
-
-func (r *staticRuntime[SessionT, ConfigDataT]) approvalFlowValue() *ApprovalFlow[*pendingSDKApprovalData] {
-	return r.approval
-}
-
-func (r *staticRuntime[SessionT, ConfigDataT]) providerIdentity() ProviderIdentity {
-	return resolveProviderIdentity(r.cfg)
+	return provider.conversationRuntimeState()
 }
 
 func resolveProviderIdentity[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Config[SessionT, ConfigDataT]) ProviderIdentity {
@@ -97,13 +83,9 @@ type NewConversationOptions struct {
 // NewConversation creates an SDK conversation wrapper for provider bridges that
 // want to drive SDK turns without using the default sdkClient implementation.
 func NewConversation[SessionT SessionValue, ConfigDataT ConfigValue](ctx context.Context, login *bridgev2.UserLogin, portal *bridgev2.Portal, sender bridgev2.EventSender, cfg *Config[SessionT, ConfigDataT], session SessionT, opts ...NewConversationOptions) *Conversation {
-	rt := &staticRuntime[SessionT, ConfigDataT]{
-		cfg:     cfg,
-		session: session,
-		login:   login,
-	}
+	var approval *ApprovalFlow[*pendingSDKApprovalData]
 	if len(opts) > 0 && opts[0].ApprovalFlow != nil {
-		rt.approval = opts[0].ApprovalFlow
+		approval = opts[0].ApprovalFlow
 	}
-	return newConversation(ctx, portal, login, sender, rt)
+	return newConversation(ctx, portal, login, sender, newConversationRuntimeState(cfg, session, newConversationStateStore(), approval))
 }

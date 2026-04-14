@@ -24,12 +24,12 @@ type Conversation struct {
 	portal  *bridgev2.Portal
 	login   *bridgev2.UserLogin
 	sender  bridgev2.EventSender
-	runtime conversationRuntime
+	runtime *conversationRuntimeState
 
 	intentOverride func(context.Context) (bridgev2.MatrixAPI, error)
 }
 
-func newConversation(ctx context.Context, portal *bridgev2.Portal, login *bridgev2.UserLogin, sender bridgev2.EventSender, runtime conversationRuntime) *Conversation {
+func newConversation(ctx context.Context, portal *bridgev2.Portal, login *bridgev2.UserLogin, sender bridgev2.EventSender, runtime *conversationRuntimeState) *Conversation {
 	conv := &Conversation{
 		ctx:     ctx,
 		portal:  portal,
@@ -65,7 +65,7 @@ func (c *Conversation) stateStore() *conversationStateStore {
 	if c == nil || c.runtime == nil {
 		return nil
 	}
-	return c.runtime.conversationStore()
+	return c.runtime.store
 }
 
 func (c *Conversation) state() *sdkConversationState {
@@ -94,10 +94,10 @@ func (c *Conversation) resolveDefaultAgent(ctx context.Context) (*Agent, error) 
 	if c.runtime == nil {
 		return nil, nil
 	}
-	if agent := c.runtime.agent(); agent != nil {
+	if agent := c.runtime.agent; agent != nil {
 		return agent, nil
 	}
-	if catalog := c.runtime.agentCatalog(); catalog != nil {
+	if catalog := c.runtime.agentCatalog; catalog != nil {
 		return catalog.DefaultAgent(ctx, c.login)
 	}
 	return nil, nil
@@ -110,10 +110,10 @@ func (c *Conversation) resolveAgentByIdentifier(ctx context.Context, identifier 
 	if c.runtime == nil {
 		return nil, nil
 	}
-	if agent := c.runtime.agent(); agent != nil && agent.ID == identifier {
+	if agent := c.runtime.agent; agent != nil && agent.ID == identifier {
 		return agent, nil
 	}
-	if catalog := c.runtime.agentCatalog(); catalog != nil {
+	if catalog := c.runtime.agentCatalog; catalog != nil {
 		return catalog.ResolveAgent(ctx, c.login, identifier)
 	}
 	return nil, nil
@@ -124,8 +124,13 @@ func (c *Conversation) currentRoomFeatures(ctx context.Context) *RoomFeatures {
 		return nil
 	}
 	if c.runtime != nil {
-		if rf := c.runtime.roomFeatures(c); rf != nil {
-			return rf
+		if c.runtime.roomFeaturesOverride != nil {
+			if rf := c.runtime.roomFeaturesOverride(c); rf != nil {
+				return rf
+			}
+		}
+		if c.runtime.roomFeatures != nil {
+			return c.runtime.roomFeatures
 		}
 	}
 	state := c.state()

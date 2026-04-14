@@ -74,49 +74,11 @@ func (c *sdkClient[SessionT, ConfigDataT]) GetApprovalHandler() ApprovalReaction
 	return c.approvalFlow
 }
 
-func (c *sdkClient[SessionT, ConfigDataT]) agent() *Agent {
-	if c == nil || c.cfg == nil {
+func (c *sdkClient[SessionT, ConfigDataT]) conversationRuntimeState() *conversationRuntimeState {
+	if c == nil {
 		return nil
 	}
-	return c.cfg.Agent
-}
-
-func (c *sdkClient[SessionT, ConfigDataT]) agentCatalog() AgentCatalog {
-	if c == nil || c.cfg == nil {
-		return nil
-	}
-	return c.cfg.AgentCatalog
-}
-
-func (c *sdkClient[SessionT, ConfigDataT]) roomFeatures(conv *Conversation) *RoomFeatures {
-	if c == nil || c.cfg == nil {
-		return nil
-	}
-	if c.cfg.GetCapabilities != nil {
-		if rf := c.cfg.GetCapabilities(c.getSession(), conv); rf != nil {
-			return rf
-		}
-	}
-	return c.cfg.RoomFeatures
-}
-
-func (c *sdkClient[SessionT, ConfigDataT]) turnConfig() *TurnConfig {
-	if c == nil || c.cfg == nil {
-		return nil
-	}
-	return c.cfg.TurnManagement
-}
-
-func (c *sdkClient[SessionT, ConfigDataT]) conversationStore() *conversationStateStore {
-	return c.conversationState
-}
-
-func (c *sdkClient[SessionT, ConfigDataT]) approvalFlowValue() *ApprovalFlow[*pendingSDKApprovalData] {
-	return c.approvalFlow
-}
-
-func (c *sdkClient[SessionT, ConfigDataT]) providerIdentity() ProviderIdentity {
-	return resolveProviderIdentity(c.cfg)
+	return newConversationRuntimeState(c.cfg, c.getSession(), c.conversationState, c.approvalFlow)
 }
 
 func (c *sdkClient[SessionT, ConfigDataT]) getSession() SessionT {
@@ -178,7 +140,7 @@ func (c *sdkClient[SessionT, ConfigDataT]) IsThisUser(_ context.Context, userID 
 
 func (c *sdkClient[SessionT, ConfigDataT]) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	if c.cfg != nil && c.cfg.GetChatInfo != nil {
-		return c.cfg.GetChatInfo(newConversation(ctx, portal, c.userLogin, bridgev2.EventSender{}, c))
+		return c.cfg.GetChatInfo(newConversation(ctx, portal, c.userLogin, bridgev2.EventSender{}, c.conversationRuntimeState()))
 	}
 	return nil, nil
 }
@@ -191,7 +153,7 @@ func (c *sdkClient[SessionT, ConfigDataT]) GetUserInfo(_ context.Context, ghost 
 }
 
 func (c *sdkClient[SessionT, ConfigDataT]) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
-	conv := newConversation(ctx, portal, c.userLogin, bridgev2.EventSender{}, c)
+	conv := newConversation(ctx, portal, c.userLogin, bridgev2.EventSender{}, c.conversationRuntimeState())
 	return convertRoomFeatures(conv.currentRoomFeatures(ctx))
 }
 
@@ -209,7 +171,7 @@ func (c *sdkClient[SessionT, ConfigDataT]) HandleMatrixMessage(ctx context.Conte
 		}
 	}
 	sdkMsg := convertMatrixMessage(msg)
-	conv := newConversation(runCtx, msg.Portal, c.userLogin, bridgev2.EventSender{}, c)
+	conv := newConversation(runCtx, msg.Portal, c.userLogin, bridgev2.EventSender{}, c.conversationRuntimeState())
 	session := c.getSession()
 	var source *SourceRef
 	if msg.Event != nil {

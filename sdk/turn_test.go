@@ -191,13 +191,11 @@ func TestTurnRequestApprovalWaitsForResolvedDecision(t *testing.T) {
 			UserMXID: "@owner:test",
 		},
 	}
-	runtime := &staticRuntime[*struct{}, *struct{}]{
-		login: login,
-		approval: NewApprovalFlow(ApprovalFlowConfig[*pendingSDKApprovalData]{
-			Login: func() *bridgev2.UserLogin { return nil },
-		}),
-	}
-	t.Cleanup(runtime.approval.Close)
+	approval := NewApprovalFlow(ApprovalFlowConfig[*pendingSDKApprovalData]{
+		Login: func() *bridgev2.UserLogin { return nil },
+	})
+	runtime := &conversationRuntimeState{approvalFlow: approval}
+	t.Cleanup(approval.Close)
 	portal := &bridgev2.Portal{
 		Portal: &database.Portal{
 			MXID: "!room:test",
@@ -212,7 +210,7 @@ func TestTurnRequestApprovalWaitsForResolvedDecision(t *testing.T) {
 	if handle.ID() == "" {
 		t.Fatalf("expected approval id to be populated")
 	}
-	pending := runtime.approval.Get(handle.ID())
+	pending := approval.Get(handle.ID())
 	if pending == nil {
 		t.Fatalf("expected approval to be registered")
 	}
@@ -222,7 +220,7 @@ func TestTurnRequestApprovalWaitsForResolvedDecision(t *testing.T) {
 
 	go func() {
 		time.Sleep(10 * time.Millisecond)
-		_ = runtime.approval.Resolve(handle.ID(), ApprovalDecisionPayload{
+		_ = approval.Resolve(handle.ID(), ApprovalDecisionPayload{
 			ApprovalID: handle.ID(),
 			Approved:   true,
 			Reason:     ApprovalReasonAllowOnce,
@@ -247,13 +245,11 @@ func TestTurnRequestApprovalUsesProvidedApprovalID(t *testing.T) {
 			UserMXID: "@owner:test",
 		},
 	}
-	runtime := &staticRuntime[*struct{}, *struct{}]{
-		login: login,
-		approval: NewApprovalFlow(ApprovalFlowConfig[*pendingSDKApprovalData]{
-			Login: func() *bridgev2.UserLogin { return nil },
-		}),
-	}
-	t.Cleanup(runtime.approval.Close)
+	approval := NewApprovalFlow(ApprovalFlowConfig[*pendingSDKApprovalData]{
+		Login: func() *bridgev2.UserLogin { return nil },
+	})
+	runtime := &conversationRuntimeState{approvalFlow: approval}
+	t.Cleanup(approval.Close)
 	portal := &bridgev2.Portal{
 		Portal: &database.Portal{
 			MXID: "!room:test",
@@ -269,7 +265,7 @@ func TestTurnRequestApprovalUsesProvidedApprovalID(t *testing.T) {
 	if handle.ID() != "provider-approval-123" {
 		t.Fatalf("expected provided approval id, got %q", handle.ID())
 	}
-	if runtime.approval.Get("provider-approval-123") == nil {
+	if approval.Get("provider-approval-123") == nil {
 		t.Fatal("expected approval to be registered under the provided id")
 	}
 }

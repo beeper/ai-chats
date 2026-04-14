@@ -49,14 +49,7 @@ func registerCommands[SessionT SessionValue, ConfigDataT ConfigValue](br *bridge
 					ce.Reply("%s", message)
 					return
 				}
-				// Resolve the conversationRuntime from the login's NetworkAPI
-				// so that command handlers get a fully-configured Conversation
-				// with Session(), agent resolution, and Spec() available.
-				var runtime conversationRuntime
-				if client, ok := login.Client.(conversationRuntime); ok {
-					runtime = client
-				}
-				conv := newConversation(ce.Ctx, ce.Portal, login, bridgev2.EventSender{}, runtime)
+				conv := newConversation(ce.Ctx, ce.Portal, login, bridgev2.EventSender{}, runtimeStateFromClient(login.Client))
 				if err := cmd.Handler(conv, ce.RawArgs); err != nil {
 					if ce.MessageStatus != nil {
 						ce.MessageStatus.Status = event.MessageStatusFail
