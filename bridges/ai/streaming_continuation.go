@@ -41,9 +41,21 @@ func (oc *AIClient) buildContinuationParams(
 		if prompt != nil && len(steeringMessages) > 0 {
 			prompt.Messages = append(prompt.Messages, steeringMessages...)
 		}
-		steerInput := oc.buildSteeringInputItems(steerPrompts, meta)
-		if len(steerInput) > 0 {
-			input = append(input, steerInput...)
+		for _, steerPrompt := range steerPrompts {
+			steerPrompt = strings.TrimSpace(steerPrompt)
+			if steerPrompt == "" {
+				continue
+			}
+			input = append(input, responses.ResponseInputItemUnionParam{
+				OfMessage: &responses.EasyInputMessageParam{
+					Role: responses.EasyInputMessageRoleUser,
+					Content: responses.EasyInputMessageContentUnionParam{
+						OfInputItemContentList: []responses.ResponseInputContentUnionParam{{
+							OfInputText: &responses.ResponseInputTextParam{Text: steerPrompt},
+						}},
+					},
+				},
+			})
 		}
 	}
 	systemPrompt := ""
@@ -51,21 +63,4 @@ func (oc *AIClient) buildContinuationParams(
 		systemPrompt = prompt.SystemPrompt
 	}
 	return oc.buildResponsesAgentLoopParams(ctx, meta, systemPrompt, input, true)
-}
-
-func (oc *AIClient) buildSteeringInputItems(prompts []string, meta *PortalMetadata) responses.ResponseInputParam {
-	if oc == nil || len(prompts) == 0 {
-		return nil
-	}
-	var input responses.ResponseInputParam
-	for _, prompt := range prompts {
-		prompt = strings.TrimSpace(prompt)
-		if prompt == "" {
-			continue
-		}
-		input = append(input, promptContextToResponsesInput(UserPromptContext(
-			PromptBlock{Type: PromptBlockText, Text: prompt},
-		))...)
-	}
-	return input
 }

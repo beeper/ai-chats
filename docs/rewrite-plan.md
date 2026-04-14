@@ -234,6 +234,7 @@ Deliverable:
 - no current-turn option shims or single-use history loaders around the prompt
   builder
 - no production helper layer around canonical turn-data persistence
+- no continuation-only steering serialization helper
 - one-way projection from persisted/runtime state
 - no separate local-context/projection/continuation helper stacks
 

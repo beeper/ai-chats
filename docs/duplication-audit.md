@@ -141,6 +141,8 @@ Why this still violates the goal:
 - Canonical turn-data persistence now calls `turnDataFromUserPromptMessages`
   directly; the remaining spread is the number of representations, not another
   persistence adapter.
+- Steering-prompt continuation input is now serialized directly for the
+  Responses loop instead of round-tripping through another prompt helper.
 - prompt assembly, provider serialization, replay projection, and turn-data
   projection still overlap
 - new prompt block behavior still requires changes in multiple places
