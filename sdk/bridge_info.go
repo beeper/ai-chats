@@ -7,20 +7,6 @@ import (
 
 const AIRoomKindAgent = "agent"
 
-func NormalizeAIRoomTypeV2(roomType database.RoomType, aiKind string) string {
-	if aiKind != "" && aiKind != AIRoomKindAgent {
-		return "group"
-	}
-	switch roomType {
-	case database.RoomTypeDM:
-		return "dm"
-	case database.RoomTypeSpace:
-		return "space"
-	default:
-		return "group"
-	}
-}
-
 func ApplyAgentRemoteBridgeInfo(content *event.BridgeEventContent, protocolID string, roomType database.RoomType, aiKind string) {
 	if content == nil {
 		return
@@ -28,5 +14,16 @@ func ApplyAgentRemoteBridgeInfo(content *event.BridgeEventContent, protocolID st
 	if protocolID != "" {
 		content.Protocol.ID = protocolID
 	}
-	content.BeeperRoomTypeV2 = NormalizeAIRoomTypeV2(roomType, aiKind)
+	if aiKind != "" && aiKind != AIRoomKindAgent {
+		content.BeeperRoomTypeV2 = "group"
+		return
+	}
+	switch roomType {
+	case database.RoomTypeDM:
+		content.BeeperRoomTypeV2 = "dm"
+	case database.RoomTypeSpace:
+		content.BeeperRoomTypeV2 = "space"
+	default:
+		content.BeeperRoomTypeV2 = "group"
+	}
 }

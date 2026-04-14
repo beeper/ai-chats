@@ -42,7 +42,7 @@ func newTestBridgeDBWithMessageMeta(t *testing.T) *database.Database {
 	return bridgeDB
 }
 
-func TestNormalizeAIRoomTypeV2(t *testing.T) {
+func TestApplyAgentRemoteBridgeInfoRoomTypes(t *testing.T) {
 	cases := []struct {
 		name     string
 		roomType database.RoomType
@@ -57,8 +57,10 @@ func TestNormalizeAIRoomTypeV2(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := NormalizeAIRoomTypeV2(tc.roomType, tc.aiKind); got != tc.want {
-				t.Fatalf("expected %q, got %q", tc.want, got)
+			content := &event.BridgeEventContent{}
+			ApplyAgentRemoteBridgeInfo(content, "", tc.roomType, tc.aiKind)
+			if content.BeeperRoomTypeV2 != tc.want {
+				t.Fatalf("expected %q, got %q", tc.want, content.BeeperRoomTypeV2)
 			}
 		})
 	}

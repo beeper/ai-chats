@@ -353,8 +353,12 @@ func BuildApprovalPromptMessage(params ApprovalPromptMessageParams) ApprovalProm
 		Body:     body,
 		Mentions: &event.Mentions{},
 	}
-	if relatesTo := buildApprovalPromptRelatesTo(params.ReplyToEventID, params.ThreadRootEventID); relatesTo != nil {
-		content.RelatesTo = relatesTo
+	if params.ThreadRootEventID != "" {
+		rel := &event.RelatesTo{}
+		content.RelatesTo = rel.SetThread(params.ThreadRootEventID, params.ReplyToEventID)
+	} else if params.ReplyToEventID != "" {
+		rel := &event.RelatesTo{}
+		content.RelatesTo = rel.SetReplyTo(params.ReplyToEventID)
 	}
 	return ApprovalPromptMessage{
 		Content:       content,
@@ -364,18 +368,6 @@ func BuildApprovalPromptMessage(params ApprovalPromptMessageParams) ApprovalProm
 		Presentation:  presentation,
 		Options:       options,
 	}
-}
-
-func buildApprovalPromptRelatesTo(replyToEventID, threadRootEventID id.EventID) *event.RelatesTo {
-	if threadRootEventID != "" {
-		rel := &event.RelatesTo{}
-		return rel.SetThread(threadRootEventID, replyToEventID)
-	}
-	if replyToEventID != "" {
-		rel := &event.RelatesTo{}
-		return rel.SetReplyTo(replyToEventID)
-	}
-	return nil
 }
 
 func BuildApprovalResponsePromptMessage(params ApprovalResponsePromptMessageParams) ApprovalPromptMessage {
