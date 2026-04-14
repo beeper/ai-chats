@@ -277,7 +277,7 @@ func (ol *OpenAILogin) completeLogin(ctx context.Context, input loginCompletionI
 					if ol.Connector == nil {
 						return nil
 					}
-					return ol.Connector.loadAIUserLoginWithConfig(loadCtx, login, meta, cfg)
+					return ol.Connector.loadAIUserLogin(loadCtx, login, meta, cfg)
 				},
 			},
 			AfterPersist: func(saveCtx context.Context, login *bridgev2.UserLogin) error {

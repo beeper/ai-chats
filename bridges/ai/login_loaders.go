@@ -82,26 +82,19 @@ func (oc *OpenAIConnector) publishOrReuseClient(login *bridgev2.UserLogin, creat
 	return created
 }
 
-func (oc *OpenAIConnector) loadAIUserLogin(ctx context.Context, login *bridgev2.UserLogin, meta *UserLoginMetadata) error {
+func (oc *OpenAIConnector) loadAIUserLogin(ctx context.Context, login *bridgev2.UserLogin, meta *UserLoginMetadata, cfg *aiLoginConfig) error {
 	if login == nil {
 		return nil
 	}
 	if meta == nil {
 		meta = loginMetadata(login)
 	}
-	cfg, err := loadAILoginConfig(ctx, login)
-	if err != nil {
-		return err
-	}
-	return oc.loadAIUserLoginWithConfig(ctx, login, meta, cfg)
-}
-
-func (oc *OpenAIConnector) loadAIUserLoginWithConfig(ctx context.Context, login *bridgev2.UserLogin, meta *UserLoginMetadata, cfg *aiLoginConfig) error {
-	if login == nil {
-		return nil
-	}
-	if meta == nil {
-		meta = loginMetadata(login)
+	if cfg == nil {
+		var err error
+		cfg, err = loadAILoginConfig(ctx, login)
+		if err != nil {
+			return err
+		}
 	}
 	if cfg == nil {
 		cfg = &aiLoginConfig{}

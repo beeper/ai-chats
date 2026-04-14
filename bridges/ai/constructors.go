@@ -96,7 +96,7 @@ func NewAIConnector() *OpenAIConnector {
 			applyAIChatsBridgeInfo(portal, portalMeta(portal), content)
 		},
 		LoadLogin: func(ctx context.Context, login *bridgev2.UserLogin) error {
-			return oc.loadAIUserLogin(ctx, login, loginMetadata(login))
+			return oc.loadAIUserLogin(ctx, login, loginMetadata(login), nil)
 		},
 		GetLoginFlows: oc.getLoginFlows,
 		CreateLogin: func(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {

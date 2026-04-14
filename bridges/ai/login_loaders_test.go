@@ -56,7 +56,7 @@ func TestLoadAIUserLoginMissingAPIKeyEvictsCacheAndSetsBrokenClient(t *testing.T
 	oc.clients[loginID] = newBrokenLoginClient(cachedLogin, "cached")
 
 	login := testUserLoginWithMeta(loginID, nil)
-	if err := oc.loadAIUserLogin(context.Background(), login, &UserLoginMetadata{Provider: ProviderOpenAI}); err != nil {
+	if err := oc.loadAIUserLogin(context.Background(), login, &UserLoginMetadata{Provider: ProviderOpenAI}, nil); err != nil {
 		t.Fatalf("loadAIUserLogin returned error: %v", err)
 	}
 	if _, ok := oc.clients[loginID]; ok {
@@ -94,7 +94,7 @@ func TestLoadAIUserLoginMagicProxyBuildsClientFromPersistedConfig(t *testing.T) 
 		clients: map[networkid.UserLoginID]bridgev2.NetworkAPI{},
 	}
 
-	if err := oc.loadAIUserLogin(context.Background(), login, &UserLoginMetadata{Provider: ProviderMagicProxy}); err != nil {
+	if err := oc.loadAIUserLogin(context.Background(), login, &UserLoginMetadata{Provider: ProviderMagicProxy}, nil); err != nil {
 		t.Fatalf("loadAIUserLogin returned error: %v", err)
 	}
 
