@@ -623,33 +623,6 @@ func (h *runtimeIntegrationHost) Error(msg string, fields map[string]any) {
 
 // ---- AIClient message helpers (called from sessions_tools.go) ----
 
-func assistantCheckpointFromTurn(row *aiTurnRecord) assistantTurnCheckpoint {
-	if row == nil {
-		return assistantTurnCheckpoint{}
-	}
-	return assistantTurnCheckpoint{
-		TurnID:       row.TurnID,
-		ContextEpoch: row.ContextEpoch,
-		Sequence:     row.Sequence,
-	}
-}
-
-func assistantTurnIsAfter(row *aiTurnRecord, after assistantTurnCheckpoint) bool {
-	if row == nil {
-		return false
-	}
-	if after.TurnID == "" && after.ContextEpoch == 0 && after.Sequence == 0 {
-		return true
-	}
-	if row.ContextEpoch != after.ContextEpoch {
-		return row.ContextEpoch > after.ContextEpoch
-	}
-	if row.Sequence != after.Sequence {
-		return row.Sequence > after.Sequence
-	}
-	return row.TurnID != after.TurnID
-}
-
 func (oc *AIClient) latestAssistantTurnRecord(ctx context.Context, portal *bridgev2.Portal) (*aiTurnRecord, error) {
 	if portal == nil || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil {
 		return nil, nil
@@ -675,10 +648,14 @@ func (oc *AIClient) latestAssistantTurnRecord(ctx context.Context, portal *bridg
 
 func (oc *AIClient) lastAssistantTurnCheckpoint(ctx context.Context, portal *bridgev2.Portal) assistantTurnCheckpoint {
 	row, err := oc.latestAssistantTurnRecord(ctx, portal)
-	if err != nil {
+	if err != nil || row == nil {
 		return assistantTurnCheckpoint{}
 	}
-	return assistantCheckpointFromTurn(row)
+	return assistantTurnCheckpoint{
+		TurnID:       row.TurnID,
+		ContextEpoch: row.ContextEpoch,
+		Sequence:     row.Sequence,
+	}
 }
 
 func (oc *AIClient) waitForAssistantTurnAfter(ctx context.Context, portal *bridgev2.Portal, after assistantTurnCheckpoint) (*database.Message, bool) {
@@ -686,10 +663,23 @@ func (oc *AIClient) waitForAssistantTurnAfter(ctx context.Context, portal *bridg
 		return nil, false
 	}
 	row, err := oc.latestAssistantTurnRecord(ctx, portal)
-	if err != nil {
+	if err != nil || row == nil {
 		return nil, false
 	}
-	if !assistantTurnIsAfter(row, after) {
+	if after.TurnID != "" || after.ContextEpoch != 0 || after.Sequence != 0 {
+		if row.ContextEpoch != after.ContextEpoch {
+			if row.ContextEpoch <= after.ContextEpoch {
+				return nil, false
+			}
+		} else if row.Sequence != after.Sequence {
+			if row.Sequence <= after.Sequence {
+				return nil, false
+			}
+		} else if row.TurnID == after.TurnID {
+			return nil, false
+		}
+	}
+	if row.ContextEpoch == 0 && row.Sequence == 0 && row.TurnID == "" {
 		return nil, false
 	}
 	return databaseMessageFromAITurn(portal, row), true
