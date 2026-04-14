@@ -175,7 +175,7 @@ func (i *Integration) sessionKeyForScope(scope iruntime.ToolScope) string {
 	if scope.Portal == nil {
 		return ""
 	}
-	return i.host.PortalKeyString(scope.Portal)
+	return scope.Portal.PortalKey.String()
 }
 
 func (i *Integration) buildToolExecDeps() ToolExecDeps {

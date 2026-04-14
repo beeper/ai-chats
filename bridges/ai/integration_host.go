@@ -144,20 +144,6 @@ func (h *runtimeIntegrationHost) SavePortal(ctx context.Context, portal *bridgev
 	return nil
 }
 
-func (h *runtimeIntegrationHost) PortalRoomID(portal *bridgev2.Portal) string {
-	if portal == nil {
-		return ""
-	}
-	return portal.MXID.String()
-}
-
-func (h *runtimeIntegrationHost) PortalKeyString(portal *bridgev2.Portal) string {
-	if portal == nil {
-		return ""
-	}
-	return portal.PortalKey.String()
-}
-
 func (h *runtimeIntegrationHost) IsGroupChat(ctx context.Context, portal *bridgev2.Portal) bool {
 	if h == nil || h.client == nil {
 		return false
@@ -478,15 +464,6 @@ func (h *runtimeIntegrationHost) OverflowFlushConfig() (enabled *bool, softThres
 		return nil, 0, "", ""
 	}
 	return cfg.Enabled, cfg.SoftThresholdTokens, cfg.Prompt, cfg.SystemPrompt
-}
-
-// ---- Host methods: login helpers ----
-
-func (h *runtimeIntegrationHost) IsLoggedIn() bool {
-	if h == nil || h.client == nil {
-		return false
-	}
-	return h.client.IsLoggedIn()
 }
 
 func (h *runtimeIntegrationHost) SessionPortals(ctx context.Context, loginID string, agentID string) ([]integrationruntime.SessionPortalInfo, error) {

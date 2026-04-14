@@ -234,7 +234,7 @@ func (i *Integration) buildToolExecDeps(ctx context.Context, scope iruntime.Tool
 			}
 			roomID := ""
 			if scope.Portal != nil {
-				roomID = i.host.PortalRoomID(scope.Portal)
+				roomID = scope.Portal.MXID.String()
 			}
 			sourceInternal := false
 			if scope.Meta != nil {

@@ -158,8 +158,6 @@ type Host interface {
 	AgentModuleConfig(agentID string, module string) map[string]any
 
 	SavePortal(ctx context.Context, portal *bridgev2.Portal, reason string) error
-	PortalRoomID(portal *bridgev2.Portal) string
-	PortalKeyString(portal *bridgev2.Portal) string
 
 	IsGroupChat(ctx context.Context, portal *bridgev2.Portal) bool
 
@@ -188,7 +186,6 @@ type Host interface {
 	SilentReplyToken() string
 	OverflowFlushConfig() (enabled *bool, softThresholdTokens int, prompt string, systemPrompt string)
 
-	IsLoggedIn() bool
 	SessionPortals(ctx context.Context, loginID string, agentID string) ([]SessionPortalInfo, error)
 	SessionTranscript(ctx context.Context, portalKey networkid.PortalKey) ([]MessageSummary, error)
 }
