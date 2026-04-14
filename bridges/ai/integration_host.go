@@ -464,12 +464,9 @@ func (h *runtimeIntegrationHost) OverflowFlushConfig() (enabled *bool, softThres
 	return cfg.Enabled, cfg.SoftThresholdTokens, cfg.Prompt, cfg.SystemPrompt
 }
 
-func (h *runtimeIntegrationHost) SessionPortals(ctx context.Context, loginID string, agentID string) ([]integrationruntime.SessionPortalInfo, error) {
+func (h *runtimeIntegrationHost) SessionPortals(ctx context.Context, agentID string) ([]integrationruntime.SessionPortalInfo, error) {
 	if h == nil || h.client == nil || h.client.UserLogin == nil || h.client.UserLogin.Bridge == nil || h.client.UserLogin.Bridge.DB == nil {
 		return nil, nil
-	}
-	if strings.TrimSpace(loginID) == "" {
-		loginID = string(h.client.UserLogin.ID)
 	}
 	targetAgentID := h.ResolveAgentID(agentID, h.DefaultAgentID())
 	targetAgentID = normalizeAgentID(targetAgentID)
@@ -484,7 +481,7 @@ func (h *runtimeIntegrationHost) SessionPortals(ctx context.Context, loginID str
 		if portal == nil || portal.MXID == "" {
 			continue
 		}
-		if string(portal.Receiver) != loginID {
+		if portal.Receiver != h.client.UserLogin.ID {
 			continue
 		}
 		meta, ok := portal.Metadata.(*PortalMetadata)

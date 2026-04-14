@@ -27,7 +27,7 @@ func (m *MemorySearchManager) activeSessionPortals(ctx context.Context) (map[str
 	if m == nil || m.host == nil {
 		return nil, errors.New("memory search unavailable")
 	}
-	infos, err := m.host.SessionPortals(ctx, m.loginID, m.agentID)
+	infos, err := m.host.SessionPortals(ctx, m.agentID)
 	if err != nil {
 		return nil, err
 	}

@@ -183,7 +183,7 @@ type Host interface {
 	SilentReplyToken() string
 	OverflowFlushConfig() (enabled *bool, softThresholdTokens int, prompt string, systemPrompt string)
 
-	SessionPortals(ctx context.Context, loginID string, agentID string) ([]SessionPortalInfo, error)
+	SessionPortals(ctx context.Context, agentID string) ([]SessionPortalInfo, error)
 	SessionTranscript(ctx context.Context, portalKey networkid.PortalKey) ([]MessageSummary, error)
 }
 
