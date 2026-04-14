@@ -31,7 +31,12 @@ func (oc *AIClient) finalizeResponsesStream(
 		state.writer().File(ctx, mediaURL, mimeType)
 		log.Info().Stringer("event_id", eventID).Str("item_id", img.itemID).Msg("Sent generated image to Matrix")
 	}
-	oc.completeStreamingSuccess(ctx, log, portal, state, meta)
+	_ = oc.finalizeStreamingTurn(ctx, portal, state, meta, streamingFinalizeParams{
+		success:               true,
+		finalizeAccumulator:   true,
+		recordProviderSuccess: true,
+		generateTitle:         true,
+	})
 
 	log.Info().
 		Str("turn_id", state.turn.ID()).

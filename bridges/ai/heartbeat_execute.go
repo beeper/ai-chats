@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/pkg/agents"
 	"github.com/beeper/agentremote/pkg/textfs"
@@ -282,49 +281,24 @@ func (oc *AIClient) resolveHeartbeatSessionPortal(agentID string, heartbeat *Hea
 		mainKey = strings.TrimSpace(oc.connector.Config.Session.MainKey)
 	}
 	if session == "" || strings.EqualFold(session, "main") || strings.EqualFold(session, "global") || (mainKey != "" && strings.EqualFold(session, mainKey)) {
-		if portal := oc.heartbeatSessionPortalCandidate(agentID, hbSession); portal != nil {
+		if portal := oc.heartbeatPortalByRoom(agentID, hbSession.SessionKey); portal != nil {
 			return portal, portal.MXID.String(), nil
 		}
-		if portal := oc.lastActivePortal(agentID); portal != nil {
-			return portal, portal.MXID.String(), nil
-		}
-		if portal := oc.defaultChatPortal(); portal != nil {
+		if portal, _ := oc.resolveHeartbeatFallbackPortal(agentID); portal != nil {
 			return portal, portal.MXID.String(), nil
 		}
 		return nil, "", errors.New("no session")
 	}
-	if strings.HasPrefix(session, "!") {
-		if portal := oc.portalByRoomID(context.Background(), id.RoomID(session)); portal != nil {
-			if meta := portalMeta(portal); meta == nil || normalizeAgentID(resolveAgentID(meta)) == normalizeAgentID(agentID) {
-				return portal, portal.MXID.String(), nil
-			}
-		}
-	}
-	if portal := oc.heartbeatSessionPortalCandidate(agentID, hbSession); portal != nil {
+	if portal := oc.heartbeatPortalByRoom(agentID, session); portal != nil {
 		return portal, portal.MXID.String(), nil
 	}
-	if portal := oc.lastActivePortal(agentID); portal != nil {
+	if portal := oc.heartbeatPortalByRoom(agentID, hbSession.SessionKey); portal != nil {
 		return portal, portal.MXID.String(), nil
 	}
-	if portal := oc.defaultChatPortal(); portal != nil {
+	if portal, _ := oc.resolveHeartbeatFallbackPortal(agentID); portal != nil {
 		return portal, portal.MXID.String(), nil
 	}
 	return nil, "", errors.New("no session")
-}
-
-func (oc *AIClient) heartbeatSessionPortalCandidate(agentID string, session heartbeatSessionResolution) *bridgev2.Portal {
-	lastTo := strings.TrimSpace(session.SessionKey)
-	if lastTo == "" || !strings.HasPrefix(lastTo, "!") {
-		return nil
-	}
-	portal := oc.portalByRoomID(context.Background(), id.RoomID(lastTo))
-	if portal == nil {
-		return nil
-	}
-	if meta := portalMeta(portal); meta != nil && normalizeAgentID(resolveAgentID(meta)) != normalizeAgentID(agentID) {
-		return nil
-	}
-	return portal
 }
 
 func (oc *AIClient) shouldRunHeartbeatForFile(agentID string, reason string) bool {

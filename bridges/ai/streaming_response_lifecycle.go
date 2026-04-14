@@ -16,7 +16,33 @@ func (oc *AIClient) handleResponseLifecycleEvent(
 	eventType string,
 	response responses.Response,
 ) {
-	if !applyResponseLifecycleState(state, eventType, response) {
+	if state == nil {
+		return
+	}
+	if strings.TrimSpace(response.ID) != "" {
+		state.responseID = response.ID
+	}
+	if status := strings.TrimSpace(string(response.Status)); status != "" {
+		state.responseStatus = status
+	}
+
+	switch eventType {
+	case "response.created", "response.queued", "response.in_progress":
+		// No additional terminal state changes needed.
+	case "response.completed":
+		if state.responseStatus == "completed" {
+			state.finishReason = "stop"
+		} else {
+			state.finishReason = state.responseStatus
+		}
+	case "response.failed":
+		state.finishReason = "error"
+	case "response.incomplete":
+		state.finishReason = strings.TrimSpace(string(response.IncompleteDetails.Reason))
+		if state.finishReason == "" {
+			state.finishReason = "other"
+		}
+	default:
 		return
 	}
 
@@ -32,34 +58,4 @@ func (oc *AIClient) handleResponseLifecycleEvent(
 			state.writer().Error(ctx, msg)
 		}
 	}
-}
-
-func applyResponseLifecycleState(
-	state *streamingState,
-	eventType string,
-	response responses.Response,
-) bool {
-	if state == nil {
-		return false
-	}
-	if strings.TrimSpace(response.ID) != "" {
-		state.responseID = response.ID
-	}
-	if status := strings.TrimSpace(string(response.Status)); status != "" {
-		state.responseStatus = status
-	}
-	switch eventType {
-	case "response.created", "response.queued", "response.in_progress", "response.completed":
-		// No additional state changes needed.
-	case "response.failed":
-		state.finishReason = "error"
-	case "response.incomplete":
-		state.finishReason = strings.TrimSpace(string(response.IncompleteDetails.Reason))
-		if state.finishReason == "" {
-			state.finishReason = "other"
-		}
-	default:
-		return false
-	}
-	return true
 }

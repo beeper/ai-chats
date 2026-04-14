@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
 )
 
@@ -23,62 +24,74 @@ func (oc *AIClient) resolveHeartbeatDeliveryTarget(agentID string, heartbeat *He
 	}
 
 	if heartbeat != nil && heartbeat.To != nil && strings.TrimSpace(*heartbeat.To) != "" {
-		return oc.resolveHeartbeatDeliveryRoom(strings.TrimSpace(*heartbeat.To))
+		return oc.heartbeatDeliveryTargetForRoom(agentID, strings.TrimSpace(*heartbeat.To), "")
 	}
 
 	if heartbeat != nil && heartbeat.Target != nil {
 		trimmed := strings.TrimSpace(*heartbeat.Target)
 		if trimmed != "" && !strings.EqualFold(trimmed, "last") {
-			return oc.resolveHeartbeatDeliveryRoom(trimmed)
+			return oc.heartbeatDeliveryTargetForRoom(agentID, trimmed, "")
 		}
 	}
 
-	// Resolve from session entry's last route (channel-match validation: only use
-	// lastTo when lastChannel is empty or "matrix", matching clawdbot's
-	// resolveSessionDeliveryTarget channel===lastChannel guard).
-	if strings.HasPrefix(strings.TrimSpace(sessionKey), "!") {
-		target := oc.resolveHeartbeatDeliveryRoom(strings.TrimSpace(sessionKey))
-		if target.Portal != nil && target.RoomID != "" {
-			if meta := portalMeta(target.Portal); meta != nil && normalizeAgentID(resolveAgentID(meta)) != normalizeAgentID(agentID) {
-				// Fall through to lastActivePortal / defaultChatPortal.
-			} else {
-				return target
-			}
-		}
+	if target := oc.heartbeatDeliveryTargetForRoom(agentID, sessionKey, ""); target.Portal != nil && target.RoomID != "" {
+		return target
 	}
 
-	// Fallback chain matching resolveHeartbeatSessionPortal and resolveCronDeliveryTarget:
-	// lastActivePortal → defaultChatPortal.
-	if portal := oc.lastActivePortal(agentID); portal != nil && portal.MXID != "" {
-		return deliveryTarget{Portal: portal, RoomID: portal.MXID, Channel: "matrix", Reason: "last-active"}
-	}
-	if portal := oc.defaultChatPortal(); portal != nil && portal.MXID != "" {
-		return deliveryTarget{Portal: portal, RoomID: portal.MXID, Channel: "matrix", Reason: "default-chat"}
+	if portal, reason := oc.resolveHeartbeatFallbackPortal(agentID); portal != nil {
+		return oc.heartbeatDeliveryTargetForPortal(portal, reason)
 	}
 
 	return deliveryTarget{Reason: "no-target"}
 }
 
-func (oc *AIClient) resolveHeartbeatDeliveryRoom(raw string) deliveryTarget {
+func (oc *AIClient) heartbeatPortalByRoom(agentID string, raw string) *bridgev2.Portal {
 	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return deliveryTarget{Reason: "no-target"}
-	}
-	if !strings.HasPrefix(trimmed, "!") {
-		return deliveryTarget{Reason: "no-target"}
+	if trimmed == "" || !strings.HasPrefix(trimmed, "!") {
+		return nil
 	}
 	portal := oc.portalByRoomID(context.Background(), id.RoomID(trimmed))
 	if portal == nil || portal.MXID == "" {
+		return nil
+	}
+	if meta := portalMeta(portal); meta != nil && normalizeAgentID(resolveAgentID(meta)) != normalizeAgentID(agentID) {
+		return nil
+	}
+	return portal
+}
+
+func (oc *AIClient) resolveHeartbeatFallbackPortal(agentID string) (*bridgev2.Portal, string) {
+	if portal := oc.lastActivePortal(agentID); portal != nil && portal.MXID != "" {
+		return portal, "last-active"
+	}
+	if portal := oc.defaultChatPortal(); portal != nil && portal.MXID != "" {
+		return portal, "default-chat"
+	}
+	return nil, ""
+}
+
+func (oc *AIClient) heartbeatDeliveryTargetForRoom(agentID, raw, reason string) deliveryTarget {
+	portal := oc.heartbeatPortalByRoom(agentID, raw)
+	if portal == nil {
 		return deliveryTarget{Reason: "no-target"}
 	}
-	// Guard: don't deliver if the bridge isn't connected
-	// (matches resolveCronDeliveryTarget's IsLoggedIn check).
+	return oc.heartbeatDeliveryTargetForPortal(portal, reason)
+}
+
+func (oc *AIClient) heartbeatDeliveryTargetForPortal(portal *bridgev2.Portal, reason string) deliveryTarget {
+	if portal == nil || portal.MXID == "" {
+		return deliveryTarget{Reason: "no-target"}
+	}
 	if !oc.IsLoggedIn() {
 		return deliveryTarget{Channel: "matrix", Reason: "channel-not-ready"}
 	}
-	return deliveryTarget{
+	target := deliveryTarget{
 		Portal:  portal,
 		RoomID:  portal.MXID,
 		Channel: "matrix",
 	}
+	if reason != "" {
+		target.Reason = reason
+	}
+	return target
 }

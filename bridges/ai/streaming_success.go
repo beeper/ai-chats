@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/beeper/agentremote/sdk"
@@ -92,20 +91,4 @@ func (oc *AIClient) finalizeStreamingTurn(
 		return nil
 	}
 	return streamFailureError(state, params.err)
-}
-
-func (oc *AIClient) completeStreamingSuccess(
-	ctx context.Context,
-	log zerolog.Logger,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	meta *PortalMetadata,
-) {
-	_ = log
-	_ = oc.finalizeStreamingTurn(ctx, portal, state, meta, streamingFinalizeParams{
-		success:               true,
-		finalizeAccumulator:   true,
-		recordProviderSuccess: true,
-		generateTitle:         true,
-	})
 }

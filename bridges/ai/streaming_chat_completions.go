@@ -205,7 +205,12 @@ func (a *chatCompletionsTurnAdapter) FinalizeAgentLoop(ctx context.Context) {
 		return
 	}
 
-	oc.completeStreamingSuccess(ctx, a.log, portal, state, meta)
+	_ = oc.finalizeStreamingTurn(ctx, portal, state, meta, streamingFinalizeParams{
+		success:               true,
+		finalizeAccumulator:   true,
+		recordProviderSuccess: true,
+		generateTitle:         true,
+	})
 
 	a.log.Info().
 		Str("turn_id", state.turn.ID()).

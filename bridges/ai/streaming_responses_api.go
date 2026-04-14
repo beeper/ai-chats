@@ -349,7 +349,7 @@ func (oc *AIClient) processResponseStreamEvent(
 		actions.annotationAdded(streamEvent.Annotation, streamEvent.AnnotationIndex)
 
 	case "response.completed":
-		applyResponseLifecycleState(state, streamEvent.Type, streamEvent.Response)
+		oc.handleResponseLifecycleEvent(ctx, portal, state, meta, streamEvent.Type, streamEvent.Response)
 		state.completedAtMs = time.Now().UnixMilli()
 		if streamEvent.Response.Usage.TotalTokens > 0 || streamEvent.Response.Usage.InputTokens > 0 || streamEvent.Response.Usage.OutputTokens > 0 {
 			actions.updateUsage(
@@ -358,14 +358,6 @@ func (oc *AIClient) processResponseStreamEvent(
 				streamEvent.Response.Usage.OutputTokensDetails.ReasoningTokens,
 				streamEvent.Response.Usage.TotalTokens,
 			)
-		}
-		if streamEvent.Response.Status == "completed" {
-			state.finishReason = "stop"
-		} else {
-			state.finishReason = string(streamEvent.Response.Status)
-		}
-		if streamEvent.Response.ID != "" {
-			state.responseID = streamEvent.Response.ID
 		}
 		actions.finalizeMetadata()
 
