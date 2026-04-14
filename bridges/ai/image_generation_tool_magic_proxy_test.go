@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -133,12 +134,15 @@ func TestBuildOpenAIImagesBaseURLMagicProxy(t *testing.T) {
 		},
 	}, &OpenAIConnector{})
 
-	baseURL, err := buildOpenAIImagesBaseURL(btc)
-	if err != nil {
-		t.Fatalf("buildOpenAIImagesBaseURL returned error: %v", err)
+	provider, service, ok := imageGenServiceConfig(btc, serviceOpenAI)
+	if !ok {
+		t.Fatal("expected openai service config")
 	}
-	if baseURL != "https://bai.bt.hn/team/proxy/openai/v1" {
-		t.Fatalf("unexpected base url: %q", baseURL)
+	if provider != ProviderMagicProxy {
+		t.Fatalf("unexpected provider: %q", provider)
+	}
+	if got := strings.TrimSuffix(strings.TrimSpace(service.BaseURL), "/"); got != "https://bai.bt.hn/team/proxy/openai/v1" {
+		t.Fatalf("unexpected base url: %q", got)
 	}
 }
 
@@ -150,12 +154,15 @@ func TestBuildGeminiBaseURLMagicProxy(t *testing.T) {
 		},
 	}, &OpenAIConnector{})
 
-	baseURL, err := buildGeminiBaseURL(btc)
-	if err != nil {
-		t.Fatalf("buildGeminiBaseURL returned error: %v", err)
+	provider, service, ok := imageGenServiceConfig(btc, serviceGemini)
+	if !ok {
+		t.Fatal("expected gemini service config")
 	}
-	if baseURL != "https://bai.bt.hn/team/proxy/gemini/v1beta" {
-		t.Fatalf("unexpected base url: %q", baseURL)
+	if provider != ProviderMagicProxy {
+		t.Fatalf("unexpected provider: %q", provider)
+	}
+	if got := strings.TrimSuffix(strings.TrimSpace(service.BaseURL), "/"); got != "https://bai.bt.hn/team/proxy/gemini/v1beta" {
+		t.Fatalf("unexpected base url: %q", got)
 	}
 }
 

@@ -248,6 +248,12 @@ CLI fallback, and provider-key fallback now live directly in
 `resolveActiveMediaEntry(...)`, `resolveKeyMediaEntry(...)`,
 `resolveAutoAudioEntry(...)`, and `hasMediaProviderAuth(...)` helpers.
 
+Recent progress also flattened image-generation provider selection:
+`generateImagesForRequest(...)` now owns the OpenAI/Gemini/OpenRouter
+service-config branching directly instead of routing through
+`buildOpenAIImagesBaseURL(...)`, `buildGeminiBaseURL(...)`, and
+`resolveOpenRouterImageGenEndpoint(...)`.
+
 Recent progress also pulled natural final-send shaping directly into
 `finalizeStreamingTurn(...)`: the extra `sendFinalAssistantTurn(...)` wrapper
 is gone, and heartbeat skip/early-return branches now terminate directly

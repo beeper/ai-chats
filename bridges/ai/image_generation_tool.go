@@ -263,8 +263,11 @@ func supportsOpenAIImageGen(btc *BridgeToolContext) bool {
 }
 
 func supportsOpenRouterImageGen(btc *BridgeToolContext) bool {
-	_, _, ok := resolveOpenRouterImageGenEndpoint(btc)
-	return ok
+	provider, service, ok := imageGenServiceConfig(btc, serviceOpenRouter)
+	if !ok || provider == ProviderMagicProxy {
+		return false
+	}
+	return strings.TrimSpace(service.APIKey) != "" && strings.TrimSpace(service.BaseURL) != ""
 }
 
 func supportsGeminiImageGen(btc *BridgeToolContext) bool {
@@ -474,46 +477,6 @@ func imageGenServiceConfig(btc *BridgeToolContext, service string) (string, Serv
 	return provider, cfg, ok
 }
 
-func buildOpenAIImagesBaseURL(btc *BridgeToolContext) (string, error) {
-	provider, service, ok := imageGenServiceConfig(btc, serviceOpenAI)
-	if !ok {
-		return "", errors.New("openai image generation not available for this provider")
-	}
-	switch provider {
-	case ProviderOpenAI:
-	case ProviderMagicProxy:
-		base := strings.TrimSuffix(strings.TrimSpace(service.BaseURL), "/")
-		if base == "" {
-			return "", errors.New("openai image generation not available for this provider")
-		}
-		return base, nil
-	default:
-		return "", errors.New("openai image generation not available for this provider")
-	}
-	base := strings.TrimSuffix(strings.TrimSpace(service.BaseURL), "/")
-	if base == "" {
-		return "", errors.New("openai image generation not available for this provider")
-	}
-	return base, nil
-}
-
-func buildGeminiBaseURL(btc *BridgeToolContext) (string, error) {
-	provider, service, ok := imageGenServiceConfig(btc, serviceGemini)
-	if !ok {
-		return "", errors.New("gemini image generation not available for this provider")
-	}
-	switch provider {
-	case ProviderMagicProxy:
-		base := strings.TrimSuffix(strings.TrimSpace(service.BaseURL), "/")
-		if base == "" {
-			return "", errors.New("gemini image generation not available for this provider")
-		}
-		return base, nil
-	default:
-		return "", errors.New("gemini image generation not available for this provider")
-	}
-}
-
 func generateImagesForRequest(ctx context.Context, btc *BridgeToolContext, req imageGenRequest) ([]string, error) {
 	provider, err := resolveImageGenProvider(req, btc)
 	if err != nil {
@@ -526,9 +489,16 @@ func generateImagesForRequest(ctx context.Context, btc *BridgeToolContext, req i
 		if err != nil {
 			return nil, err
 		}
-		baseURL, err := buildOpenAIImagesBaseURL(btc)
-		if err != nil {
-			return nil, err
+		providerID, service, ok := imageGenServiceConfig(btc, serviceOpenAI)
+		if !ok {
+			return nil, errors.New("openai image generation not available for this provider")
+		}
+		if providerID != ProviderOpenAI && providerID != ProviderMagicProxy {
+			return nil, errors.New("openai image generation not available for this provider")
+		}
+		baseURL := strings.TrimSuffix(strings.TrimSpace(service.BaseURL), "/")
+		if baseURL == "" {
+			return nil, errors.New("openai image generation not available for this provider")
 		}
 		return callOpenAIImageGen(ctx, btc.Client.apiKey, baseURL, params)
 	case imageGenProviderGemini:
@@ -536,9 +506,13 @@ func generateImagesForRequest(ctx context.Context, btc *BridgeToolContext, req i
 			return nil, errors.New("gemini image generation currently supports count=1")
 		}
 		model := normalizeGeminiModel(req.Model)
-		baseURL, err := buildGeminiBaseURL(btc)
-		if err != nil {
-			return nil, err
+		providerID, service, ok := imageGenServiceConfig(btc, serviceGemini)
+		if !ok || providerID != ProviderMagicProxy {
+			return nil, errors.New("gemini image generation not available for this provider")
+		}
+		baseURL := strings.TrimSuffix(strings.TrimSpace(service.BaseURL), "/")
+		if baseURL == "" {
+			return nil, errors.New("gemini image generation not available for this provider")
 		}
 		return callGeminiImageGen(ctx, btc, baseURL, model, req)
 	case imageGenProviderOpenRouter:
@@ -555,8 +529,13 @@ func generateImagesForRequest(ctx context.Context, btc *BridgeToolContext, req i
 		if inferProviderFromModel(model) == imageGenProviderOpenAI {
 			model = DefaultImageModel
 		}
-		openRouterBaseURL, openRouterAPIKey, ok := resolveOpenRouterImageGenEndpoint(btc)
-		if !ok {
+		providerID, service, ok := imageGenServiceConfig(btc, serviceOpenRouter)
+		if !ok || providerID == ProviderMagicProxy {
+			return nil, errors.New("openrouter image generation is not available for this login")
+		}
+		openRouterBaseURL := strings.TrimSuffix(strings.TrimSpace(service.BaseURL), "/")
+		openRouterAPIKey := strings.TrimSpace(service.APIKey)
+		if openRouterBaseURL == "" || openRouterAPIKey == "" {
 			return nil, errors.New("openrouter image generation is not available for this login")
 		}
 		count := req.Count
@@ -597,28 +576,6 @@ func generateImagesForRequest(ctx context.Context, btc *BridgeToolContext, req i
 	default:
 		return nil, errors.New("unsupported image generation provider")
 	}
-}
-
-// resolveOpenRouterImageGenEndpoint returns the OpenRouter base URL + API key for image generation.
-// This is used even when the "primary" provider is not OpenRouter (e.g. Magic Proxy, OpenAI) as
-// long as an OpenRouter token+endpoint are configured.
-func resolveOpenRouterImageGenEndpoint(btc *BridgeToolContext) (baseURL string, apiKey string, ok bool) {
-	provider, service, serviceOK := imageGenServiceConfig(btc, serviceOpenRouter)
-	if !serviceOK {
-		return "", "", false
-	}
-	switch provider {
-	case ProviderMagicProxy:
-		// Magic Proxy does not expose the OpenRouter images endpoint; use the
-		// verified OpenAI images route instead.
-		return "", "", false
-	}
-	base := strings.TrimSuffix(strings.TrimSpace(service.BaseURL), "/")
-	key := strings.TrimSpace(service.APIKey)
-	if base == "" || key == "" {
-		return "", "", false
-	}
-	return base, key, true
 }
 
 func callOpenRouterImageGenWithControls(ctx context.Context, btc *BridgeToolContext, apiKey, baseURL string, req imageGenRequest, model string) ([]string, error) {

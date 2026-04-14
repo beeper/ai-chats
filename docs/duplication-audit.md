@@ -208,6 +208,9 @@ Why this still violates the goal:
 - media auto-selection no longer climbs a helper ladder for active-model,
   key-based fallback, and audio-provider fallback selection:
   `resolveAutoMediaEntries(...)` now owns that decision directly
+- image generation no longer routes provider/service endpoint selection through
+  separate OpenAI/Gemini/OpenRouter wrapper helpers: `generateImagesForRequest`
+  now owns that provider-config branching directly
 - provider initialization, media understanding, and retrieval config no longer
   route through provider-specific OpenAI / OpenRouter base-URL shims
 - media provider capability, auth-header shape, env-key lookup, and optional
