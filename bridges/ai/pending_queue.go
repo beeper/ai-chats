@@ -499,7 +499,11 @@ func (oc *AIClient) dispatchQueuedPrompt(
 				followup := item
 				followup.backlogAfter = false
 				followup.allowDuplicate = true
-				queueSettings := oc.resolveQueueSettingsForPortal(oc.backgroundContext(ctx), item.pending.Portal, item.pending.Meta, "", airuntime.QueueInlineOptions{})
+				var cfg *Config
+				if oc != nil && oc.connector != nil {
+					cfg = &oc.connector.Config
+				}
+				queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, channel: "matrix", inlineOpts: airuntime.QueueInlineOptions{}})
 				oc.queuePendingMessage(roomID, followup, queueSettings)
 			}
 			oc.releaseRoom(roomID)

@@ -1890,9 +1890,13 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 		enqueuedAt:      time.Now().UnixMilli(),
 		rawEventContent: rawEventContent,
 	}
-	queueSettings := oc.resolveQueueSettingsForPortal(statusCtx, last.Portal, last.Meta, "", airuntime.QueueInlineOptions{})
+	var cfg *Config
+	if oc != nil && oc.connector != nil {
+		cfg = &oc.connector.Config
+	}
+	queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, channel: "matrix", inlineOpts: airuntime.QueueInlineOptions{}})
 
-	_, _ = oc.dispatchOrQueue(statusCtx, pendingEvent, last.Portal, last.Meta, nil, queueItem, queueSettings, promptContext)
+	_ = oc.dispatchOrQueueCore(statusCtx, pendingEvent, last.Portal, last.Meta, nil, queueItem, queueSettings, promptContext)
 
 }
 

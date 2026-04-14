@@ -22,7 +22,11 @@ func fnStatus(ce *commands.Event) {
 		return
 	}
 	isGroup := client.isGroupChat(ce.Ctx, ce.Portal)
-	queueSettings := client.resolveQueueSettingsForPortal(ce.Ctx, ce.Portal, meta, "", airuntime.QueueInlineOptions{})
+	var cfg *Config
+	if client != nil && client.connector != nil {
+		cfg = &client.connector.Config
+	}
+	queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, channel: "matrix", inlineOpts: airuntime.QueueInlineOptions{}})
 	ce.Reply("%s", client.buildStatusText(ce.Ctx, ce.Portal, meta, isGroup, queueSettings))
 }
 

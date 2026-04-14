@@ -130,7 +130,11 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 
 	mc := oc.resolveMentionContext(ctx, portal, meta, msg.Event, msg.Content.Mentions, rawBody)
 
-	queueSettings := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
+	var cfg *Config
+	if oc != nil && oc.connector != nil {
+		cfg = &oc.connector.Config
+	}
+	queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, channel: "matrix", inlineOpts: airuntime.QueueInlineOptions{}})
 
 	commandBody := rawBody
 	if isGroup {
@@ -314,7 +318,8 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		enqueuedAt:      time.Now().UnixMilli(),
 		rawEventContent: rawEventContent,
 	}
-	dbMsg, isPending := oc.dispatchOrQueue(runCtx, pendingEvent, portal, runMeta, userMessage, queueItem, queueSettings, promptContext)
+	dbMsg := userMessage
+	isPending := oc.dispatchOrQueueCore(runCtx, pendingEvent, portal, runMeta, userMessage, queueItem, queueSettings, promptContext)
 
 	return &bridgev2.MatrixMessageResponse{
 		DB:      dbMsg,
@@ -482,7 +487,11 @@ func (oc *AIClient) regenerateFromEdit(
 		oc.notifySessionMutation(ctx, portal, meta, true)
 	}
 
-	queueSettings := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
+	var cfg *Config
+	if oc != nil && oc.connector != nil {
+		cfg = &oc.connector.Config
+	}
+	queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, channel: "matrix", inlineOpts: airuntime.QueueInlineOptions{}})
 	isGroup := oc.isGroupChat(ctx, portal)
 	pendingEvent := snapshotPendingEvent(evt)
 	pending := pendingMessage{
@@ -628,7 +637,11 @@ func (oc *AIClient) handleMediaMessage(
 	if isPDF {
 		supportsMedia = true
 	}
-	queueSettings := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
+	var cfg *Config
+	if oc != nil && oc.connector != nil {
+		cfg = &oc.connector.Config
+	}
+	queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, channel: "matrix", inlineOpts: airuntime.QueueInlineOptions{}})
 
 	// Get caption (body is usually the filename or caption)
 	rawCaption := strings.TrimSpace(msg.Content.Body)
@@ -689,7 +702,8 @@ func (oc *AIClient) handleMediaMessage(
 			summaryLine: rawBody,
 			enqueuedAt:  time.Now().UnixMilli(),
 		}
-		dbMsg, isPending := oc.dispatchOrQueue(promptCtx, pendingEvent, portal, meta, userMessage, queueItem, queueSettings, promptContext)
+		dbMsg := userMessage
+		isPending := oc.dispatchOrQueueCore(promptCtx, pendingEvent, portal, meta, userMessage, queueItem, queueSettings, promptContext)
 		return &bridgev2.MatrixMessageResponse{
 			DB:      dbMsg,
 			Pending: isPending,
@@ -815,7 +829,8 @@ func (oc *AIClient) handleMediaMessage(
 		summaryLine: rawCaption,
 		enqueuedAt:  time.Now().UnixMilli(),
 	}
-	dbMsg, isPending := oc.dispatchOrQueue(promptCtx, pending.Event, portal, meta, userMessage, queueItem, queueSettings, promptContext)
+	dbMsg := userMessage
+	isPending := oc.dispatchOrQueueCore(promptCtx, pending.Event, portal, meta, userMessage, queueItem, queueSettings, promptContext)
 
 	return &bridgev2.MatrixMessageResponse{
 		DB:      dbMsg,
@@ -872,7 +887,11 @@ func (oc *AIClient) handleTextFileMessage(
 	if msg == nil {
 		return nil, errors.New("missing matrix event for text file message")
 	}
-	queueSettings := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
+	var cfg *Config
+	if oc != nil && oc.connector != nil {
+		cfg = &oc.connector.Config
+	}
+	queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, channel: "matrix", inlineOpts: airuntime.QueueInlineOptions{}})
 
 	rawCaption := strings.TrimSpace(msg.Content.Body)
 	fileName := strings.TrimSpace(msg.Content.FileName)
@@ -957,7 +976,8 @@ func (oc *AIClient) handleTextFileMessage(
 		summaryLine: strings.TrimSpace(rawCaption),
 		enqueuedAt:  time.Now().UnixMilli(),
 	}
-	dbMsg, isPending := oc.dispatchOrQueue(promptCtx, pending.Event, portal, meta, userMessage, queueItem, queueSettings, promptContext)
+	dbMsg := userMessage
+	isPending := oc.dispatchOrQueueCore(promptCtx, pending.Event, portal, meta, userMessage, queueItem, queueSettings, promptContext)
 
 	return &bridgev2.MatrixMessageResponse{
 		DB:      dbMsg,

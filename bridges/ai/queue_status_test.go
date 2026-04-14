@@ -85,7 +85,7 @@ func TestDispatchOrQueueQueueRejectReturnsNotPending(t *testing.T) {
 		messageID: string(evt.ID),
 	}
 
-	_, isPending := oc.dispatchOrQueue(
+	isPending := oc.dispatchOrQueueCore(
 		context.Background(),
 		evt,
 		portal,
@@ -120,7 +120,7 @@ func TestDispatchOrQueueQueueAcceptReturnsPending(t *testing.T) {
 		messageID: string(evt.ID),
 	}
 
-	_, isPending := oc.dispatchOrQueue(
+	isPending := oc.dispatchOrQueueCore(
 		context.Background(),
 		evt,
 		portal,
@@ -168,7 +168,7 @@ func TestDispatchOrQueueQueuesBehindExistingPendingWork(t *testing.T) {
 		messageID: string(evt.ID),
 	}
 
-	_, isPending := oc.dispatchOrQueue(
+	isPending := oc.dispatchOrQueueCore(
 		context.Background(),
 		evt,
 		portal,

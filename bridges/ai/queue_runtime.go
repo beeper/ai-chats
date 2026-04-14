@@ -221,20 +221,6 @@ func (oc *AIClient) dispatchOrQueueCore(
 	return true
 }
 
-func (oc *AIClient) dispatchOrQueue(
-	ctx context.Context,
-	evt *event.Event,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	userMessage *database.Message,
-	queueItem pendingQueueItem,
-	queueSettings airuntime.QueueSettings,
-	promptContext PromptContext,
-) (dbMessage *database.Message, isPending bool) {
-	isPending = oc.dispatchOrQueueCore(ctx, evt, portal, meta, userMessage, queueItem, queueSettings, promptContext)
-	return userMessage, isPending
-}
-
 // processPendingQueue processes queued messages for a room.
 func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 	if oc == nil || roomID == "" {
