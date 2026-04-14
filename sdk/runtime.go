@@ -26,11 +26,12 @@ func newConversationRuntimeState[SessionT SessionValue, ConfigDataT ConfigValue]
 	state := &conversationRuntimeState{
 		store:            store,
 		approvalFlow:     approval,
-		providerIdentity: resolveProviderIdentity(cfg),
+		providerIdentity: normalizedProviderIdentity(ProviderIdentity{}),
 	}
 	if cfg == nil {
 		return state
 	}
+	state.providerIdentity = normalizedProviderIdentity(cfg.ProviderIdentity)
 	state.agent = cfg.Agent
 	state.agentCatalog = cfg.AgentCatalog
 	state.roomFeatures = cfg.RoomFeatures
@@ -41,13 +42,6 @@ func newConversationRuntimeState[SessionT SessionValue, ConfigDataT ConfigValue]
 		}
 	}
 	return state
-}
-
-func resolveProviderIdentity[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Config[SessionT, ConfigDataT]) ProviderIdentity {
-	if cfg == nil {
-		return normalizedProviderIdentity(ProviderIdentity{})
-	}
-	return normalizedProviderIdentity(cfg.ProviderIdentity)
 }
 
 func normalizedProviderIdentity(identity ProviderIdentity) ProviderIdentity {

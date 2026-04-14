@@ -36,7 +36,10 @@ type sdkClient[SessionT SessionValue, ConfigDataT ConfigValue] struct {
 }
 
 func newSDKClient[SessionT SessionValue, ConfigDataT ConfigValue](login *bridgev2.UserLogin, cfg *Config[SessionT, ConfigDataT]) *sdkClient[SessionT, ConfigDataT] {
-	identity := resolveProviderIdentity(cfg)
+	identity := normalizedProviderIdentity(ProviderIdentity{})
+	if cfg != nil {
+		identity = normalizedProviderIdentity(cfg.ProviderIdentity)
+	}
 	senderForPortal := func(*bridgev2.Portal) bridgev2.EventSender {
 		if cfg != nil && cfg.Agent != nil {
 			return cfg.Agent.EventSender(login.ID)

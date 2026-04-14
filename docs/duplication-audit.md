@@ -91,6 +91,11 @@ These wrapper/helper classes are already gone and should not return:
 What remains is now mostly subsystem-shape duplication rather than isolated
 forwarders.
 
+Recent cleanup kept pushing in that direction:
+
+- SDK provider identity normalization now uses the single normalization
+  primitive directly instead of another config wrapper
+
 ## Highest-Value Remaining Problems
 
 ### 1. Streaming terminalization still has multiple owners

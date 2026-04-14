@@ -189,6 +189,9 @@ The highest-value remaining work is now:
 6. `runtimeIntegrationHost` reduction
 7. SDK runtime/loading collapse
 
+Recent progress also removed one more SDK runtime wrapper: provider identity
+normalization now calls the shared primitive directly.
+
 ## Execution Order
 
 ### Phase 1: Streaming Terminalizer
