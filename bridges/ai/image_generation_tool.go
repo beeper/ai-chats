@@ -621,43 +621,6 @@ func resolveOpenRouterImageGenEndpoint(btc *BridgeToolContext) (baseURL string, 
 	return base, key, true
 }
 
-func openRouterImageURLForRef(ctx context.Context, btc *BridgeToolContext, ref string) (string, error) {
-	ref = strings.TrimSpace(ref)
-	if ref == "" {
-		return "", errors.New("empty image reference")
-	}
-
-	if strings.HasPrefix(ref, "data:") {
-		return ref, nil
-	}
-	if strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://") {
-		if err := validateExternalImageURL(ctx, ref); err != nil {
-			return "", err
-		}
-		return ref, nil
-	}
-	if strings.HasPrefix(ref, "mxc://") {
-		b64Data, mimeType, err := btc.Client.downloadAndEncodeMedia(ctx, ref, nil, imageInputMaxSizeMB)
-		if err != nil {
-			return "", err
-		}
-		return "data:" + mimeType + ";base64," + b64Data, nil
-	}
-	if isLocalImageRef(ref) {
-		resolved, err := resolveLocalImagePath(ref)
-		if err != nil {
-			return "", err
-		}
-		b64Data, mimeType, err := btc.Client.downloadAndEncodeMedia(ctx, resolved, nil, imageInputMaxSizeMB)
-		if err != nil {
-			return "", err
-		}
-		return "data:" + mimeType + ";base64," + b64Data, nil
-	}
-
-	return "", fmt.Errorf("unsupported image reference: %s", ref)
-}
-
 func callOpenRouterImageGenWithControls(ctx context.Context, btc *BridgeToolContext, apiKey, baseURL string, req imageGenRequest, model string) ([]string, error) {
 	// OpenRouter image generation uses /chat/completions with modalities=["image","text"].
 	msg := map[string]any{
@@ -667,14 +630,28 @@ func callOpenRouterImageGenWithControls(ctx context.Context, btc *BridgeToolCont
 	if len(req.InputImages) > 0 {
 		parts := make([]map[string]any, 0, len(req.InputImages)+1)
 		for _, ref := range req.InputImages {
-			url, err := openRouterImageURLForRef(ctx, btc, ref)
-			if err != nil {
-				return nil, err
+			ref = strings.TrimSpace(ref)
+			if ref == "" {
+				return nil, errors.New("empty image reference")
+			}
+			imageURL := ref
+			if !strings.HasPrefix(ref, "data:") {
+				if strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://") {
+					if err := validateExternalImageURL(ctx, ref); err != nil {
+						return nil, err
+					}
+				} else {
+					b64Data, mimeType, err := loadInputImageBase64(ctx, btc, ref)
+					if err != nil {
+						return nil, err
+					}
+					imageURL = "data:" + mimeType + ";base64," + b64Data
+				}
 			}
 			parts = append(parts, map[string]any{
 				"type": "image_url",
 				"image_url": map[string]any{
-					"url": url,
+					"url": imageURL,
 				},
 			})
 		}

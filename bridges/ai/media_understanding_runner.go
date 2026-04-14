@@ -923,7 +923,8 @@ func resolveOpenRouterMediaBaseURL(oc *AIClient) string {
 	if oc == nil || oc.connector == nil {
 		return defaultOpenRouterBaseURL
 	}
-	if svc := resolveMediaServiceConfig(oc, serviceOpenRouter); strings.TrimSpace(svc.BaseURL) != "" {
+	loginCfg := oc.loginConfigSnapshot(context.Background())
+	if svc := oc.connector.resolveServiceConfig(loginMetadata(oc.UserLogin).Provider, loginCfg)[serviceOpenRouter]; strings.TrimSpace(svc.BaseURL) != "" {
 		return strings.TrimRight(svc.BaseURL, "/")
 	}
 	base := strings.TrimSpace(oc.connector.resolveOpenRouterBaseURL())
@@ -937,22 +938,14 @@ func resolveOpenAIMediaBaseURL(oc *AIClient) string {
 	if oc == nil || oc.connector == nil {
 		return defaultOpenAITranscriptionBaseURL
 	}
-	if svc := resolveMediaServiceConfig(oc, serviceOpenAI); strings.TrimSpace(svc.BaseURL) != "" {
+	loginCfg := oc.loginConfigSnapshot(context.Background())
+	if svc := oc.connector.resolveServiceConfig(loginMetadata(oc.UserLogin).Provider, loginCfg)[serviceOpenAI]; strings.TrimSpace(svc.BaseURL) != "" {
 		return stringutil.NormalizeBaseURL(svc.BaseURL)
 	}
 	if base := stringutil.NormalizeBaseURL(oc.connector.resolveOpenAIBaseURL()); base != "" {
 		return base
 	}
 	return defaultOpenAITranscriptionBaseURL
-}
-
-func resolveMediaServiceConfig(oc *AIClient, service string) ServiceConfig {
-	if oc == nil || oc.connector == nil || oc.UserLogin == nil || oc.UserLogin.Metadata == nil {
-		return ServiceConfig{}
-	}
-	provider := loginMetadata(oc.UserLogin).Provider
-	loginCfg := oc.loginConfigSnapshot(context.Background())
-	return oc.connector.resolveServiceConfig(provider, loginCfg)[service]
 }
 
 func resolveMediaBaseURL(cfg *MediaUnderstandingConfig, entry MediaUnderstandingModelConfig) string {
@@ -1033,7 +1026,11 @@ func (oc *AIClient) resolveMediaProviderAPIKey(providerID string, profile string
 		return key
 	}
 	if spec.service != "" {
-		return strings.TrimSpace(resolveMediaServiceConfig(oc, spec.service).APIKey)
+		if oc == nil || oc.connector == nil || oc.UserLogin == nil || oc.UserLogin.Metadata == nil {
+			return ""
+		}
+		loginCfg := oc.loginConfigSnapshot(context.Background())
+		return strings.TrimSpace(oc.connector.resolveServiceConfig(loginMetadata(oc.UserLogin).Provider, loginCfg)[spec.service].APIKey)
 	}
 	return ""
 }

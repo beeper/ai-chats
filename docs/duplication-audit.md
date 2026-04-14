@@ -193,6 +193,9 @@ Why this still violates the goal:
   policy branching, not these endpoint-specific rebuilds
 - media understanding now also reads OpenAI/OpenRouter endpoint+auth config from
   the shared service-config path instead of re-deriving those service values
+- media prompt building and OpenRouter image-input preparation no longer route
+  through single-callsite wrapper helpers; the remaining provider/media debt is
+  policy branching, not those local adapter shells
 - media provider capability, auth-header shape, env-key lookup, and optional
   service binding now come from one provider-spec table instead of separate
   maps/switches

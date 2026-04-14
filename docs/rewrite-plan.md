@@ -202,6 +202,10 @@ session read/write operations into `session_store.go`: heartbeat no longer
 replays key-selection logic inline, and the write-side API is now the shared
 stored-session touch/read surface.
 
+Recent progress also collapsed immediate and queued prompt execution onto one
+dispatch launcher: there is no queued-only run starter anymore, and both paths
+now attach room-run/status/inbound/typing context through the same entrypoint.
+
 Recent progress also removed the cron forwarding chain from
 `runtimeIntegrationHost`: cron now wires directly to the scheduler, and the
 old builtin-module registry layer is gone.
@@ -223,6 +227,11 @@ Recent progress also removed the metadata-to-prompt adapter and the extra
 history replay helper layer: prompt replay now reconstructs directly from
 canonical turn data inside `replayHistoryMessages(...)`, and
 `bridges/ai/canonical_history.go` is gone.
+
+Recent progress also removed the media-turn wrapper, the OpenRouter image-ref
+wrapper, the media-service-config adapter, and the provider-specific OpenAI /
+OpenRouter API-key helpers: media/image flows now call the canonical prompt and
+service-config paths directly instead of passing through helper shells.
 
 Recent progress also removed the single-callsite internal prompt turn upsert
 wrapper and the local prompt projection helpers around block filtering, image

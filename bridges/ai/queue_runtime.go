@@ -326,7 +326,15 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 				},
 			})
 		case pendingTypeImage, pendingTypePDF, pendingTypeAudio, pendingTypeVideo:
-			promptContext, err = oc.buildMediaTurnContext(promptCtx, item.pending.Portal, metaSnapshot, item.pending.MessageBody, item.pending.MediaURL, item.pending.MimeType, item.pending.EncryptedFile, item.pending.Type, eventID)
+			promptContext, err = oc.buildPromptContextForTurn(promptCtx, item.pending.Portal, metaSnapshot, item.pending.MessageBody, eventID, currentTurnPromptOptions{
+				currentTurnTextOptions: currentTurnTextOptions{includeLinkScope: true},
+				attachment: &turnAttachmentOptions{
+					mediaURL:      item.pending.MediaURL,
+					mimeType:      item.pending.MimeType,
+					encryptedFile: item.pending.EncryptedFile,
+					mediaType:     item.pending.Type,
+				},
+			})
 		case pendingTypeRegenerate:
 			promptContext, err = oc.buildContextForRegenerate(promptCtx, item.pending.Portal, metaSnapshot, item.pending.MessageBody, item.pending.SourceEventID)
 		case pendingTypeEditRegenerate:

@@ -1602,29 +1602,6 @@ func (oc *AIClient) buildLinkContext(ctx context.Context, message string, rawEve
 	return FormatPreviewsForContext(allPreviews, config.MaxContentChars)
 }
 
-// buildMediaTurnContext builds a prompt turn with media content.
-func (oc *AIClient) buildMediaTurnContext(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	caption string,
-	mediaURL string,
-	mimeType string,
-	encryptedFile *event.EncryptedFileInfo,
-	mediaType pendingMessageType,
-	eventID id.EventID,
-) (PromptContext, error) {
-	return oc.buildPromptContextForTurn(ctx, portal, meta, caption, eventID, currentTurnPromptOptions{
-		currentTurnTextOptions: currentTurnTextOptions{includeLinkScope: true},
-		attachment: &turnAttachmentOptions{
-			mediaURL:      mediaURL,
-			mimeType:      mimeType,
-			encryptedFile: encryptedFile,
-			mediaType:     mediaType,
-		},
-	})
-}
-
 // buildPromptUpToMessage builds a prompt including messages up to and including the specified message
 func (oc *AIClient) buildContextUpToMessage(
 	ctx context.Context,

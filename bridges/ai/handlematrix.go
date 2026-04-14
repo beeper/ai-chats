@@ -808,7 +808,15 @@ func (oc *AIClient) handleMediaMessage(
 	captionForPrompt := oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, caption, senderName, roomName, isGroup)
 	captionInboundCtx := oc.buildMatrixInboundContext(portal, msg.Event, caption, senderName, roomName, isGroup)
 	promptCtx := withInboundContext(ctx, captionInboundCtx)
-	promptContext, err := oc.buildMediaTurnContext(promptCtx, portal, meta, captionForPrompt, string(mediaURL), mimeType, encryptedFile, config.msgType, eventID)
+	promptContext, err := oc.buildPromptContextForTurn(promptCtx, portal, meta, captionForPrompt, eventID, currentTurnPromptOptions{
+		currentTurnTextOptions: currentTurnTextOptions{includeLinkScope: true},
+		attachment: &turnAttachmentOptions{
+			mediaURL:      string(mediaURL),
+			mimeType:      mimeType,
+			encryptedFile: encryptedFile,
+			mediaType:     config.msgType,
+		},
+	})
 	if err != nil {
 		return nil, sdk.MessageSendStatusError(err, "Couldn't prepare the media message. Try again.", "", messageStatusForError, messageStatusReasonForError)
 	}

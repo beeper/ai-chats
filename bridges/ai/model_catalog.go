@@ -52,15 +52,10 @@ func modelCatalogKey(provider string, id string) string {
 
 func (oc *AIClient) implicitModelCatalogEntries(provider string, loginCfg *aiLoginConfig) []ModelCatalogEntry {
 	// Resolve the relevant API key for the provider.
-	var apiKey string
-	switch provider {
-	case ProviderMagicProxy, ProviderOpenRouter:
-		apiKey = oc.connector.resolveOpenRouterAPIKey(provider, loginCfg)
-	case ProviderOpenAI:
-		apiKey = oc.connector.resolveOpenAIAPIKey(provider, loginCfg)
-	default:
+	if provider != ProviderMagicProxy && provider != ProviderOpenRouter && provider != ProviderOpenAI {
 		return nil
 	}
+	apiKey := oc.connector.resolveProviderAPIKeyForConfig(provider, loginCfg)
 	if strings.TrimSpace(apiKey) == "" {
 		return nil
 	}

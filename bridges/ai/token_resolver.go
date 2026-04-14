@@ -167,11 +167,21 @@ func (oc *OpenAIConnector) resolveServiceConfig(provider string, cfg *aiLoginCon
 
 	services[serviceOpenAI] = ServiceConfig{
 		BaseURL: oc.resolveOpenAIBaseURL(),
-		APIKey:  oc.resolveOpenAIAPIKey(provider, cfg),
+		APIKey: func() string {
+			if key := trimToken(oc.modelProviderConfig(ProviderOpenAI).APIKey); key != "" {
+				return key
+			}
+			return loginTokenForService(provider, cfg, serviceOpenAI)
+		}(),
 	}
 	services[serviceOpenRouter] = ServiceConfig{
 		BaseURL: oc.resolveOpenRouterBaseURL(),
-		APIKey:  oc.resolveOpenRouterAPIKey(provider, cfg),
+		APIKey: func() string {
+			if key := trimToken(oc.modelProviderConfig(ProviderOpenRouter).APIKey); key != "" {
+				return key
+			}
+			return loginTokenForService(provider, cfg, serviceOpenRouter)
+		}(),
 	}
 	services[serviceExa] = ServiceConfig{
 		APIKey: loginTokenForService(provider, cfg, serviceExa),
@@ -210,39 +220,6 @@ func (oc *OpenAIConnector) resolveProviderAPIKeyForConfig(provider string, cfg *
 		}
 	default:
 		return trimToken(loginCredentialAPIKey(cfg))
-	}
-	return ""
-}
-
-func (oc *OpenAIConnector) resolveOpenAIAPIKey(provider string, cfg *aiLoginConfig) string {
-	if key := trimToken(oc.modelProviderConfig(ProviderOpenAI).APIKey); key != "" {
-		return key
-	}
-	if provider == ProviderOpenAI {
-		if key := trimToken(loginCredentialAPIKey(cfg)); key != "" {
-			return key
-		}
-	}
-	if tokens := loginCredentialServiceTokens(cfg); tokens != nil {
-		return trimToken(tokens.OpenAI)
-	}
-	return ""
-}
-
-func (oc *OpenAIConnector) resolveOpenRouterAPIKey(provider string, cfg *aiLoginConfig) string {
-	if key := trimToken(oc.modelProviderConfig(ProviderOpenRouter).APIKey); key != "" {
-		return key
-	}
-	if provider == ProviderOpenRouter {
-		if key := trimToken(loginCredentialAPIKey(cfg)); key != "" {
-			return key
-		}
-	}
-	if provider == ProviderMagicProxy {
-		return trimToken(loginCredentialAPIKey(cfg))
-	}
-	if tokens := loginCredentialServiceTokens(cfg); tokens != nil {
-		return trimToken(tokens.OpenRouter)
 	}
 	return ""
 }
