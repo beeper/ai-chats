@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -539,7 +540,7 @@ func (oc *AIClient) emitCompactionStatus(ctx context.Context, portal *bridgev2.P
 			Extra: content,
 		}},
 	}
-	if _, _, err := oc.sendViaPortal(ctx, portal, converted, ""); err != nil {
+	if _, _, err := oc.sendViaPortalWithTiming(ctx, portal, converted, "", time.Now(), 0); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).
 			Str("type", string(evt.Type)).
 			Msg("Failed to emit compaction status event")

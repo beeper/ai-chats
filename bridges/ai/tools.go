@@ -557,7 +557,7 @@ func executeMessageSend(ctx context.Context, args map[string]any, btc *BridgeToo
 			Content: content,
 		}},
 	}
-	eventID, _, sendErr := btc.Client.sendViaPortal(ctx, btc.Portal, converted, "")
+	eventID, _, sendErr := btc.Client.sendViaPortalWithTiming(ctx, btc.Portal, converted, "", time.Now(), 0)
 	if sendErr != nil {
 		return "", fmt.Errorf("couldn't send the media message: %w", sendErr)
 	}

@@ -410,7 +410,7 @@ func (oc *AIClient) sendPlainAssistantMessage(ctx context.Context, portal *bridg
 		}},
 	}
 
-	if _, _, err := oc.sendViaPortal(ctx, portal, converted, ""); err != nil {
+	if _, _, err := oc.sendViaPortalWithTiming(ctx, portal, converted, "", time.Now(), 0); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Stringer("room_id", portal.MXID).Msg("Failed to send plain assistant message")
 		return err
 	}

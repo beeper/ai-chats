@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -85,7 +86,7 @@ func (oc *AIClient) sendGeneratedMedia(
 			}},
 		}
 
-		eventID, _, sendErr := oc.sendViaPortal(ctx, portal, converted, "")
+		eventID, _, sendErr := oc.sendViaPortalWithTiming(ctx, portal, converted, "", time.Now(), 0)
 		if sendErr != nil {
 			return "", "", fmt.Errorf("send failed: %w", sendErr)
 		}
@@ -100,7 +101,7 @@ func (oc *AIClient) sendGeneratedMedia(
 		}},
 	}
 
-	eventID, _, sendErr := oc.sendViaPortal(ctx, portal, converted, "")
+	eventID, _, sendErr := oc.sendViaPortalWithTiming(ctx, portal, converted, "", time.Now(), 0)
 	if sendErr != nil {
 		return "", "", fmt.Errorf("send failed: %w", sendErr)
 	}

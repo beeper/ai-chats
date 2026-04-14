@@ -73,7 +73,7 @@ func (tma *testMatrixAPI) GetEvent(context.Context, id.RoomID, id.EventID) (*eve
 var _ bridgev2.MatrixAPI = (*testMatrixAPI)(nil)
 
 func TestSendViaPortalRejectsMissingBridgeState(t *testing.T) {
-	_, _, err := (&AIClient{}).sendViaPortal(context.Background(), &bridgev2.Portal{}, &bridgev2.ConvertedMessage{}, "")
+	_, _, err := (&AIClient{}).sendViaPortalWithTiming(context.Background(), &bridgev2.Portal{}, &bridgev2.ConvertedMessage{}, "", time.Now(), 0)
 	if err == nil {
 		t.Fatal("expected bridge unavailable error")
 	}
@@ -85,7 +85,7 @@ func TestSendViaPortalRejectsMissingBridgeState(t *testing.T) {
 func TestSendViaPortalRejectsInvalidPortal(t *testing.T) {
 	oc := &AIClient{UserLogin: &bridgev2.UserLogin{Bridge: &bridgev2.Bridge{}}}
 
-	_, _, err := oc.sendViaPortal(context.Background(), nil, &bridgev2.ConvertedMessage{}, "")
+	_, _, err := oc.sendViaPortalWithTiming(context.Background(), nil, &bridgev2.ConvertedMessage{}, "", time.Now(), 0)
 	if err == nil {
 		t.Fatal("expected invalid portal error")
 	}

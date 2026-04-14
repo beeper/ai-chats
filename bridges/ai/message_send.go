@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -44,7 +45,7 @@ func sendFormattedMessage(ctx context.Context, btc *BridgeToolContext, message s
 		}},
 	}
 
-	eventID, _, err := btc.Client.sendViaPortal(ctx, btc.Portal, converted, "")
+	eventID, _, err := btc.Client.sendViaPortalWithTiming(ctx, btc.Portal, converted, "", time.Now(), 0)
 	if err != nil {
 		if errorPrefix == "" {
 			errorPrefix = "failed to send message"

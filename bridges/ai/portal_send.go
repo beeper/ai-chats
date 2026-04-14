@@ -73,16 +73,6 @@ func (oc *AIClient) resolvePortalSenderAndIntent(
 	return resolvePortalSenderAndIntent(ctx, portal, sender, evtType, ensureJoined, oc.getIntentForSender)
 }
 
-// sendViaPortal sends a pre-built message through bridgev2's QueueRemoteEvent pipeline.
-func (oc *AIClient) sendViaPortal(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	converted *bridgev2.ConvertedMessage,
-	msgID networkid.MessageID,
-) (id.EventID, networkid.MessageID, error) {
-	return oc.sendViaPortalWithTiming(ctx, portal, converted, msgID, time.Now(), 0)
-}
-
 func (oc *AIClient) sendViaPortalWithTiming(
 	ctx context.Context,
 	portal *bridgev2.Portal,
