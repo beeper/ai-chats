@@ -2,6 +2,7 @@ package sdk
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -20,6 +21,7 @@ type LoadUserLoginConfig[C bridgev2.NetworkAPI] struct {
 	// MakeBroken returns a BrokenLoginClient for the given reason.
 	// If nil, a default BrokenLoginClient is used.
 	MakeBroken func(login *bridgev2.UserLogin, reason string) *BrokenLoginClient
+	Accept     func(*bridgev2.UserLogin) (ok bool, reason string)
 
 	Update func(existing C, login *bridgev2.UserLogin)
 	Create func(login *bridgev2.UserLogin) (C, error)
@@ -29,22 +31,26 @@ type LoadUserLoginConfig[C bridgev2.NetworkAPI] struct {
 	AfterLoad func(client C)
 }
 
-// resolveMakeBroken returns the provided makeBroken func if non-nil,
-// otherwise returns a default that creates a plain BrokenLoginClient.
-func resolveMakeBroken(makeBroken func(*bridgev2.UserLogin, string) *BrokenLoginClient) func(*bridgev2.UserLogin, string) *BrokenLoginClient {
-	if makeBroken != nil {
-		return makeBroken
-	}
-	return func(l *bridgev2.UserLogin, reason string) *BrokenLoginClient {
-		return NewBrokenLoginClient(l, reason)
-	}
-}
-
 // LoadUserLogin loads or creates a typed client using LoadOrCreateTypedClient.
 // On failure it installs a BrokenLoginClient and returns nil so the bridge can
 // keep the login visible while marking it unusable.
 func LoadUserLogin[C bridgev2.NetworkAPI](login *bridgev2.UserLogin, cfg LoadUserLoginConfig[C]) error {
-	makeBroken := resolveMakeBroken(cfg.MakeBroken)
+	makeBroken := cfg.MakeBroken
+	if makeBroken == nil {
+		makeBroken = func(l *bridgev2.UserLogin, reason string) *BrokenLoginClient {
+			return NewBrokenLoginClient(l, reason)
+		}
+	}
+	if cfg.Accept != nil {
+		ok, reason := cfg.Accept(login)
+		if !ok {
+			if strings.TrimSpace(reason) == "" {
+				reason = "This login is not supported."
+			}
+			login.Client = makeBroken(login, reason)
+			return nil
+		}
+	}
 	clients := cfg.Clients
 	if cfg.ClientsRef != nil {
 		clients = *cfg.ClientsRef

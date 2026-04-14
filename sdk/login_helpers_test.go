@@ -29,24 +29,6 @@ func TestValidateLoginStateReturnsTypedErrors(t *testing.T) {
 	}
 }
 
-func TestValidateSingleLoginFlowReturnsTypedErrors(t *testing.T) {
-	if err := ValidateSingleLoginFlow("wrong", "expected", true); !errors.Is(err, bridgev2.ErrInvalidLoginFlowID) {
-		t.Fatalf("expected invalid login flow error, got %v", err)
-	}
-
-	err := ValidateSingleLoginFlow("expected", "expected", false)
-	var respErr bridgev2.RespError
-	if !errors.As(err, &respErr) {
-		t.Fatalf("expected RespError, got %T", err)
-	}
-	if respErr.StatusCode != 403 {
-		t.Fatalf("unexpected status code: %d", respErr.StatusCode)
-	}
-	if respErr.ErrCode != "COM.BEEPER.AGENTREMOTE.LOGIN.DISABLED" {
-		t.Fatalf("unexpected errcode: %q", respErr.ErrCode)
-	}
-}
-
 func TestValidateLoginFlowReturnsTypedErrors(t *testing.T) {
 	if err := ValidateLoginFlow("wrong", true, "disabled", "LOGIN", "DISABLED", func(flowID string) bool {
 		return flowID == "expected"

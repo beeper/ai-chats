@@ -20,21 +20,6 @@ func ValidateLoginState(user *bridgev2.User, br *bridgev2.Bridge) error {
 	return nil
 }
 
-// CompleteLoginStep builds the standard completion step for a loaded login.
-func CompleteLoginStep(stepID string, login *bridgev2.UserLogin) *bridgev2.LoginStep {
-	if login == nil {
-		return nil
-	}
-	return &bridgev2.LoginStep{
-		Type:   bridgev2.LoginStepTypeComplete,
-		StepID: stepID,
-		CompleteParams: &bridgev2.LoginCompleteParams{
-			UserLoginID: login.ID,
-			UserLogin:   login,
-		},
-	}
-}
-
 type PersistLoginCompletionOptions struct {
 	NewLoginParams *bridgev2.NewLoginParams
 	Load           func(context.Context, *bridgev2.UserLogin) error
@@ -79,33 +64,13 @@ func PersistAndCompleteLoginWithOptions(
 	if login.Client != nil {
 		go login.Client.Connect(login.Log.WithContext(connectCtx))
 	}
-	step := CompleteLoginStep(stepID, login)
+	step := &bridgev2.LoginStep{
+		Type:   bridgev2.LoginStepTypeComplete,
+		StepID: stepID,
+		CompleteParams: &bridgev2.LoginCompleteParams{
+			UserLoginID: login.ID,
+			UserLogin:   login,
+		},
+	}
 	return login, step, nil
-}
-
-// CreateAndCompleteLogin creates a user login and returns the standard completion step.
-func CreateAndCompleteLogin(
-	persistCtx context.Context,
-	connectCtx context.Context,
-	user *bridgev2.User,
-	loginType string,
-	remoteName string,
-	metadata any,
-	stepID string,
-	load func(context.Context, *bridgev2.UserLogin) error,
-) (*bridgev2.UserLogin, *bridgev2.LoginStep, error) {
-	return PersistAndCompleteLoginWithOptions(
-		persistCtx,
-		connectCtx,
-		user,
-		&database.UserLogin{
-			ID:         NextUserLoginID(user, loginType),
-			RemoteName: remoteName,
-			Metadata:   metadata,
-		},
-		stepID,
-		PersistLoginCompletionOptions{
-			Load: load,
-		},
-	)
 }

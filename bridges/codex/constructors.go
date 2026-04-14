@@ -101,8 +101,14 @@ func NewConnector() *CodexConnector {
 		MakeBrokenLogin: func(l *bridgev2.UserLogin, reason string) *sdk.BrokenLoginClient {
 			return newBrokenLoginClient(l, cc, reason)
 		},
-		CreateClient: sdk.TypedClientCreator(func(login *bridgev2.UserLogin) (*CodexClient, error) { return newCodexClient(login, cc) }),
-		UpdateClient: sdk.TypedClientUpdater[*CodexClient](),
+		CreateClient: func(login *bridgev2.UserLogin) (bridgev2.NetworkAPI, error) {
+			return newCodexClient(login, cc)
+		},
+		UpdateClient: func(client bridgev2.NetworkAPI, login *bridgev2.UserLogin) {
+			if typed, ok := client.(*CodexClient); ok {
+				typed.SetUserLogin(login)
+			}
+		},
 		AfterLoadClient: func(client bridgev2.NetworkAPI) {
 			if c, ok := client.(*CodexClient); ok {
 				c.scheduleBootstrapOnce()

@@ -33,12 +33,9 @@ func newTestBridgeDBWithMessageMeta(t *testing.T) *database.Database {
 	if err != nil {
 		t.Fatalf("wrap db: %v", err)
 	}
-	bridgeDB := database.New(networkid.BridgeID("bridge"), BuildMetaTypes(
-		nil,
-		func() any { return &testMessageMetadata{} },
-		nil,
-		nil,
-	), db)
+	bridgeDB := database.New(networkid.BridgeID("bridge"), database.MetaTypes{
+		Message: func() any { return &testMessageMetadata{} },
+	}, db)
 	if err = bridgeDB.Upgrade(context.Background()); err != nil {
 		t.Fatalf("upgrade bridge db: %v", err)
 	}

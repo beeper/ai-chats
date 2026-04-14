@@ -14,6 +14,14 @@ type portalRoomMaterializeOptions struct {
 	CleanupOnCreateError string
 }
 
+type portalRoomBootstrapParams struct {
+	Portal               *bridgev2.Portal
+	ChatInfo             *bridgev2.ChatInfo
+	SaveAction           string
+	Mutate               func(portal *bridgev2.Portal, chatInfo *bridgev2.ChatInfo)
+	CleanupOnCreateError string
+}
+
 func (oc *AIClient) materializePortalRoom(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -39,6 +47,33 @@ func (oc *AIClient) materializePortalRoom(
 	return nil
 }
 
+func (oc *AIClient) bootstrapPortalRoom(
+	ctx context.Context,
+	params portalRoomBootstrapParams,
+) (*bridgev2.Portal, error) {
+	if params.Portal == nil {
+		return nil, fmt.Errorf("missing portal")
+	}
+	if params.Mutate != nil {
+		params.Mutate(params.Portal, params.ChatInfo)
+	}
+	if params.SaveAction != "" {
+		if err := oc.savePortal(ctx, params.Portal, params.SaveAction); err != nil {
+			return nil, err
+		}
+	}
+	chatInfo := params.ChatInfo
+	if chatInfo == nil {
+		chatInfo = oc.portalRoomInfo(ctx, params.Portal)
+	}
+	if err := oc.materializePortalRoom(ctx, params.Portal, chatInfo, portalRoomMaterializeOptions{
+		CleanupOnCreateError: params.CleanupOnCreateError,
+	}); err != nil {
+		return nil, err
+	}
+	return params.Portal, nil
+}
+
 func (oc *AIClient) ensureNamedPortalRoom(
 	ctx context.Context,
 	portalKey networkid.PortalKey,
@@ -53,23 +88,24 @@ func (oc *AIClient) ensureNamedPortalRoom(
 	if err != nil {
 		return nil, err
 	}
-	meta := portalMeta(portal)
-	if meta == nil {
-		meta = &PortalMetadata{}
-		portal.Metadata = meta
-	}
-	if mutate != nil {
-		mutate(portal, meta)
-	}
-	if displayName != "" {
-		oc.applyPortalRoomName(ctx, portal, displayName)
-	}
-	if err := portal.Save(ctx); err != nil {
+	if err := bridgeutil.ConfigureAndPersistDMPortal(ctx, bridgeutil.ConfigureAndPersistDMPortalParams{
+		Portal:      portal,
+		Title:       displayName,
+		OtherUserID: portal.OtherUserID,
+		MutatePortal: func(portal *bridgev2.Portal) {
+			meta := portalMeta(portal)
+			if mutate != nil {
+				mutate(portal, meta)
+			}
+		},
+		Persist: func(ctx context.Context, portal *bridgev2.Portal) error {
+			return oc.savePortal(ctx, portal, "named room setup")
+		},
+	}); err != nil {
 		return nil, err
 	}
-	chatInfo := oc.portalRoomInfo(ctx, portal)
-	if err := oc.materializePortalRoom(ctx, portal, chatInfo, opts); err != nil {
-		return nil, err
-	}
-	return portal, nil
+	return oc.bootstrapPortalRoom(ctx, portalRoomBootstrapParams{
+		Portal:               portal,
+		CleanupOnCreateError: opts.CleanupOnCreateError,
+	})
 }

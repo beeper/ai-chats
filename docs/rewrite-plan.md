@@ -85,10 +85,14 @@ The repo has already shed a large amount of duplicate ownership. The important c
 - AI portal target mutation now has one helper for writing `OtherUserID` and derived target identity across chat creation, room mutation, scheduler rooms, and cron execution.
 - AI new-chat creation no longer routes through `createAndOpenResolvedChat` / `createAndOpenChat`; `handleNewChat` now owns the resolved-target create/materialize/announce flow directly.
 - AI room materialization now uses the shared `bridgeutil.MaterializePortalRoom` owner instead of a bridge-local reimplementation.
+- AI room bootstrap now has one shared owner for created-chat rooms, existing default-chat rooms, named internal rooms, boss-created rooms, and subagent rooms; the `prepareCreatedChatPortal` / `ensureChatPortalReady` split is gone.
+- AI DM portal initialization now uses the shared `bridgeutil.ConfigureAndPersistDMPortal` helper instead of hand-writing the same room-field bootstrap logic in bridge code.
 - SDK default approval-option wrapper is gone; callers use `ApprovalPromptOptions(true)` directly.
 - SDK one-off path-expansion wrapper is gone; absolute-path normalization owns its only `~` expansion behavior directly.
 - SDK `LoginHandle` façade is gone; the unused login-scoped conversation shell was deleted outright.
 - SDK room-features helper wrappers are gone; the only remaining call site now uses `event.RoomFeatures` directly.
+- SDK metadata-builder wrappers are gone; connectors and tests now use `database.MetaTypes` directly instead of `BuildStandardMetaTypes` / `BuildMetaTypes`.
+- SDK login-completion convenience wrappers are gone; bridge login flows now call `PersistAndCompleteLoginWithOptions` directly and build the completion step there.
 - `aichats_portal_state` now stores turn/reset ownership only; the leftover reset timestamp sidecar field is gone.
 - AI internal-room setup no longer hides durable portal writes behind `MutatePortal` / `SaveBefore`; scheduler and integration host now mutate and save portals explicitly before materialization.
 - Shared DM portal bootstrap/materialization moved down to `pkg/shared/bridgeutil` where it was truly generic.

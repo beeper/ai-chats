@@ -293,20 +293,24 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 	}
 
 	roomName := resolveSubagentRoomName(label, task)
-	childPortal, err := oc.prepareCreatedChatPortal(ctx, chatResp, "subagent room setup", func(childPortal *bridgev2.Portal, chatInfo *bridgev2.ChatInfo) {
-		childMeta := portalMeta(childPortal)
-		childMeta.SubagentParentRoomID = portal.MXID.String()
-		if reasoningEffort != "" {
-			childMeta.RuntimeReasoning = reasoningEffort
-		}
-		if roomName != "" {
-			if chatInfo != nil {
-				chatInfo.Name = &roomName
+	childPortal, err := oc.bootstrapPortalRoom(ctx, portalRoomBootstrapParams{
+		Portal:     chatResp.Portal,
+		ChatInfo:   chatResp.PortalInfo,
+		SaveAction: "subagent room setup",
+		Mutate: func(childPortal *bridgev2.Portal, chatInfo *bridgev2.ChatInfo) {
+			childMeta := portalMeta(childPortal)
+			childMeta.SubagentParentRoomID = portal.MXID.String()
+			if reasoningEffort != "" {
+				childMeta.RuntimeReasoning = reasoningEffort
 			}
-			childPortal.Name = roomName
-			childPortal.NameSet = true
-		}
-	}, portalRoomMaterializeOptions{
+			if roomName != "" {
+				if chatInfo != nil {
+					chatInfo.Name = &roomName
+				}
+				childPortal.Name = roomName
+				childPortal.NameSet = true
+			}
+		},
 		CleanupOnCreateError: "failed to create subagent Matrix room",
 	})
 	if err != nil {

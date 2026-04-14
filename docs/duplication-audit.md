@@ -365,7 +365,7 @@ The goal is not to blindly port `ai-bridge` onto `bridgev2`. The goal is to dele
    - `ai-bridge` recreates a lot of the same ceremony in local helper layers.
    Delete or align direction:
    - Standardize on one shared login step protocol, then let each bridge only define its actual steps and validation.
-   - Prefer `sdk.ValidateLoginState`, `sdk.LoadConnectAndCompleteLogin`, and `sdk.CreateAndCompleteLogin` for simple “load client, connect, finish” flows.
+   - Prefer `sdk.ValidateLoginState` and `sdk.PersistAndCompleteLoginWithOptions` for simple “persist login, load client, connect, finish” flows.
 
 4. Login loading and client reconstruction should follow one cached `UserLogin` path.
    External references:

@@ -13,21 +13,6 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-// BuildStandardMetaTypes returns the common bridge metadata registrations.
-func BuildStandardMetaTypes[PortalT, MessageT, LoginT, GhostT any](
-	newPortal func() PortalT,
-	newMessage func() MessageT,
-	newLogin func() LoginT,
-	newGhost func() GhostT,
-) database.MetaTypes {
-	return BuildMetaTypes(
-		func() any { return newPortal() },
-		func() any { return newMessage() },
-		func() any { return newLogin() },
-		func() any { return newGhost() },
-	)
-}
-
 // ApplyDefaultCommandPrefix sets the command prefix when it is empty.
 func ApplyDefaultCommandPrefix(prefix *string, value string) {
 	if prefix != nil && *prefix == "" {
@@ -73,23 +58,6 @@ func AcceptProviderLogin(
 
 type loginAwareClient interface {
 	SetUserLogin(*bridgev2.UserLogin)
-}
-
-func TypedClientCreator[T bridgev2.NetworkAPI](create func(*bridgev2.UserLogin) (T, error)) func(*bridgev2.UserLogin) (bridgev2.NetworkAPI, error) {
-	return func(login *bridgev2.UserLogin) (bridgev2.NetworkAPI, error) {
-		return create(login)
-	}
-}
-
-func TypedClientUpdater[T interface {
-	bridgev2.NetworkAPI
-	loginAwareClient
-}]() func(bridgev2.NetworkAPI, *bridgev2.UserLogin) {
-	return func(client bridgev2.NetworkAPI, login *bridgev2.UserLogin) {
-		if typed, ok := client.(T); ok {
-			typed.SetUserLogin(login)
-		}
-	}
 }
 
 type StandardConnectorConfigParams[SessionT SessionValue, ConfigDataT ConfigValue, PortalT, MessageT, LoginT, GhostT any] struct {
@@ -161,7 +129,12 @@ func NewStandardConnectorConfig[SessionT SessionValue, ConfigDataT ConfigValue, 
 		ConfigData:     p.ConfigData,
 		ConfigUpgrader: p.ConfigUpgrader,
 		DBMeta: func() database.MetaTypes {
-			return BuildStandardMetaTypes(p.NewPortal, p.NewMessage, p.NewLogin, p.NewGhost)
+			return database.MetaTypes{
+				Portal:    func() any { return p.NewPortal() },
+				Message:   func() any { return p.NewMessage() },
+				UserLogin: func() any { return p.NewLogin() },
+				Ghost:     func() any { return p.NewGhost() },
+			}
 		},
 		NetworkCapabilities: p.NetworkCapabilities,
 		FillBridgeInfo:      p.FillBridgeInfo,

@@ -16,6 +16,7 @@ import (
 	"github.com/rs/xid"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 
 	"github.com/beeper/agentremote/bridges/codex/codexrpc"
 	"github.com/beeper/agentremote/sdk"
@@ -682,15 +683,19 @@ func (cl *CodexLogin) finishLogin(ctx context.Context) (*bridgev2.LoginStep, err
 		ChatGPTPlanType:   strings.TrimSpace(cl.chatgptPlanType),
 	}
 
-	login, step, err := sdk.CreateAndCompleteLogin(
+	login, step, err := sdk.PersistAndCompleteLoginWithOptions(
 		bgCtx,
 		bgCtx,
 		cl.User,
-		"codex",
-		remoteName,
-		meta,
+		&database.UserLogin{
+			ID:         loginID,
+			RemoteName: remoteName,
+			Metadata:   meta,
+		},
 		"com.beeper.agentremote.codex.complete",
-		cl.Connector.LoadUserLogin,
+		sdk.PersistLoginCompletionOptions{
+			Load: cl.Connector.LoadUserLogin,
+		},
 	)
 	if err != nil {
 		cl.cancelLoginAttempt(true)

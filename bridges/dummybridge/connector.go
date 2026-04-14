@@ -2,6 +2,7 @@ package dummybridge
 
 import (
 	"context"
+	"net/http"
 	"sync"
 
 	"go.mau.fi/util/configupgrade"
@@ -65,14 +66,22 @@ func NewConnector() *DummyBridgeConnector {
 				return loginMetadata(login).Provider
 			})
 		},
-		LoginFlows: sdk.SingleLoginFlow(dc.enabled(), bridgev2.LoginFlow{
-			ID:          ProviderDummyBridge,
-			Name:        "DummyBridge",
-			Description: "Create a synthetic demo login for turn and streaming tests.",
-		}),
+		LoginFlows: func() []bridgev2.LoginFlow {
+			if !dc.enabled() {
+				return nil
+			}
+			return []bridgev2.LoginFlow{{
+				ID:          ProviderDummyBridge,
+				Name:        "DummyBridge",
+				Description: "Create a synthetic demo login for turn and streaming tests.",
+			}}
+		}(),
 		CreateLogin: func(_ context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
-			if err := sdk.ValidateSingleLoginFlow(flowID, ProviderDummyBridge, dc.enabled()); err != nil {
-				return nil, err
+			if flowID != ProviderDummyBridge {
+				return nil, bridgev2.ErrInvalidLoginFlowID
+			}
+			if !dc.enabled() {
+				return nil, sdk.NewLoginRespError(http.StatusForbidden, "This login flow is disabled.", "LOGIN", "DISABLED")
 			}
 			return &DummyBridgeLogin{User: user, Connector: dc}, nil
 		},

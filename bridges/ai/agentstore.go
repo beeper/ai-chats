@@ -518,15 +518,19 @@ func (b *BossStoreAdapter) CreateRoom(ctx context.Context, room tools.RoomData) 
 		return "", fmt.Errorf("failed to create room: %w", err)
 	}
 
-	portal, err := b.client.prepareCreatedChatPortal(ctx, resp, "room creation", func(portal *bridgev2.Portal, chatInfo *bridgev2.ChatInfo) {
-		if room.Name == "" {
-			return
-		}
-		b.client.applyPortalRoomName(ctx, portal, room.Name)
-		if chatInfo != nil {
-			chatInfo.Name = &room.Name
-		}
-	}, portalRoomMaterializeOptions{
+	portal, err := b.client.bootstrapPortalRoom(ctx, portalRoomBootstrapParams{
+		Portal:     resp.Portal,
+		ChatInfo:   resp.PortalInfo,
+		SaveAction: "room creation",
+		Mutate: func(portal *bridgev2.Portal, chatInfo *bridgev2.ChatInfo) {
+			if room.Name == "" {
+				return
+			}
+			b.client.applyPortalRoomName(ctx, portal, room.Name)
+			if chatInfo != nil {
+				chatInfo.Name = &room.Name
+			}
+		},
 		CleanupOnCreateError: "failed to create Matrix room",
 	})
 	if err != nil {

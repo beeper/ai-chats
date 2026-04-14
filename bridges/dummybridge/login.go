@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 
 	"github.com/beeper/agentremote/sdk"
 )
@@ -63,18 +64,22 @@ func (dl *DummyBridgeLogin) SubmitUserInput(ctx context.Context, input map[strin
 		}
 		remoteName = fmt.Sprintf("%s (%s)", dummyAgentName, trimmed)
 	}
-	_, step, err := sdk.CreateAndCompleteLogin(
+	_, step, err := sdk.PersistAndCompleteLoginWithOptions(
 		ctx,
 		dl.BackgroundProcessContext(),
 		dl.User,
-		ProviderDummyBridge,
-		remoteName,
-		&UserLoginMetadata{
-			Provider:       ProviderDummyBridge,
-			AcceptedString: value,
+		&database.UserLogin{
+			ID:         sdk.NextUserLoginID(dl.User, ProviderDummyBridge),
+			RemoteName: remoteName,
+			Metadata: &UserLoginMetadata{
+				Provider:       ProviderDummyBridge,
+				AcceptedString: value,
+			},
 		},
 		"com.beeper.agentremote.dummybridge.complete",
-		dl.Connector.LoadUserLogin,
+		sdk.PersistLoginCompletionOptions{
+			Load: dl.Connector.LoadUserLogin,
+		},
 	)
 	if err != nil {
 		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to create dummybridge login: %w", err), http.StatusInternalServerError, "DUMMYBRIDGE", "CREATE_LOGIN_FAILED")

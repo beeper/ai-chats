@@ -28,14 +28,14 @@ func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Confi
 	}
 	loadLogin := cfg.LoadLogin
 	if loadLogin == nil {
-		loadLogin = TypedClientLoader(TypedClientLoaderSpec[bridgev2.NetworkAPI]{
-			Accept: cfg.AcceptLogin,
-			LoadUserLoginConfig: LoadUserLoginConfig[bridgev2.NetworkAPI]{
+		loadLogin = func(_ context.Context, login *bridgev2.UserLogin) error {
+			return LoadUserLogin(login, LoadUserLoginConfig[bridgev2.NetworkAPI]{
 				Mu:         mu,
 				Clients:    *clientsRef,
 				ClientsRef: clientsRef,
 				BridgeName: cfg.Name,
 				MakeBroken: cfg.MakeBrokenLogin,
+				Accept:     cfg.AcceptLogin,
 				Update: func(client bridgev2.NetworkAPI, login *bridgev2.UserLogin) {
 					if cfg.UpdateClient != nil {
 						cfg.UpdateClient(client, login)
@@ -56,8 +56,8 @@ func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Confi
 						cfg.AfterLoadClient(client)
 					}
 				},
-			},
-		})
+			})
+		}
 	}
 	return NewConnector(ConnectorSpec{
 		ProtocolID: protocolID,

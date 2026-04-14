@@ -77,9 +77,9 @@ func TestTypedClientLoaderReusesAndRebuilds(t *testing.T) {
 	clients := map[networkid.UserLoginID]bridgev2.NetworkAPI{}
 	created := 0
 	reused := 0
-	loader := TypedClientLoader(TypedClientLoaderSpec[*fakeClient]{
-		Accept: func(*bridgev2.UserLogin) (bool, string) { return true, "" },
-		LoadUserLoginConfig: LoadUserLoginConfig[*fakeClient]{
+	loader := func(_ context.Context, login *bridgev2.UserLogin) error {
+		return LoadUserLogin(login, LoadUserLoginConfig[*fakeClient]{
+			Accept:     func(*bridgev2.UserLogin) (bool, string) { return true, "" },
 			Mu:         &mu,
 			Clients:    clients,
 			BridgeName: "fake",
@@ -90,8 +90,8 @@ func TestTypedClientLoaderReusesAndRebuilds(t *testing.T) {
 				created++
 				return &fakeClient{}, nil
 			},
-		},
-	})
+		})
+	}
 	login := &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: "same"}}
 	if err := loader(context.Background(), login); err != nil {
 		t.Fatalf("first load returned error: %v", err)
@@ -116,12 +116,13 @@ func TestTypedClientLoaderReusesAndRebuilds(t *testing.T) {
 }
 
 func TestTypedClientLoaderAssignsBrokenLoginOnRejectedLogin(t *testing.T) {
-	loader := TypedClientLoader(TypedClientLoaderSpec[*fakeClient]{
-		Accept: func(*bridgev2.UserLogin) (bool, string) {
-			return false, "nope"
-		},
-		LoadUserLoginConfig: LoadUserLoginConfig[*fakeClient]{},
-	})
+	loader := func(_ context.Context, login *bridgev2.UserLogin) error {
+		return LoadUserLogin(login, LoadUserLoginConfig[*fakeClient]{
+			Accept: func(*bridgev2.UserLogin) (bool, string) {
+				return false, "nope"
+			},
+		})
+	}
 	login := &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: "broken"}}
 	if err := loader(context.Background(), login); err != nil {
 		t.Fatalf("loader returned error: %v", err)
@@ -136,17 +137,17 @@ func TestTypedClientLoaderUsesClientMapReferenceWhenInitialCacheIsNil(t *testing
 	var clients map[networkid.UserLoginID]bridgev2.NetworkAPI
 	EnsureClientMap(&mu, &clients)
 
-	loader := TypedClientLoader(TypedClientLoaderSpec[*fakeClient]{
-		Accept: func(*bridgev2.UserLogin) (bool, string) { return true, "" },
-		LoadUserLoginConfig: LoadUserLoginConfig[*fakeClient]{
+	loader := func(_ context.Context, login *bridgev2.UserLogin) error {
+		return LoadUserLogin(login, LoadUserLoginConfig[*fakeClient]{
+			Accept:     func(*bridgev2.UserLogin) (bool, string) { return true, "" },
 			Mu:         &mu,
 			ClientsRef: &clients,
 			BridgeName: "fake",
 			Create: func(*bridgev2.UserLogin) (*fakeClient, error) {
 				return &fakeClient{}, nil
 			},
-		},
-	})
+		})
+	}
 	login := &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: "login-ref"}}
 	if err := loader(context.Background(), login); err != nil {
 		t.Fatalf("loader returned error: %v", err)
@@ -218,15 +219,15 @@ func (*fakeLoginProcess) Cancel()                                            {}
 var _ bridgev2.NetworkAPI = (*fakeClient)(nil)
 
 func TestTypedClientLoaderPropagatesCreateErrorViaBrokenLogin(t *testing.T) {
-	loader := TypedClientLoader(TypedClientLoaderSpec[*fakeClient]{
-		Accept: func(*bridgev2.UserLogin) (bool, string) { return true, "" },
-		LoadUserLoginConfig: LoadUserLoginConfig[*fakeClient]{
+	loader := func(_ context.Context, login *bridgev2.UserLogin) error {
+		return LoadUserLogin(login, LoadUserLoginConfig[*fakeClient]{
+			Accept:     func(*bridgev2.UserLogin) (bool, string) { return true, "" },
 			BridgeName: "fake",
 			Create: func(*bridgev2.UserLogin) (*fakeClient, error) {
 				return nil, errors.New("boom")
 			},
-		},
-	})
+		})
+	}
 	login := &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: "broken-create"}}
 	if err := loader(context.Background(), login); err != nil {
 		t.Fatalf("loader returned error: %v", err)

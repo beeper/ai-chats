@@ -737,19 +737,23 @@ func (oc *AIClient) initPortalForChat(ctx context.Context, opts PortalInitOpts) 
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to bootstrap portal: %w", err)
 	}
-	portal.RoomType = database.RoomTypeDM
-	setPortalResolvedTarget(portal, pmeta, modelUserID(modelID))
-	portal.Name = strings.TrimSpace(title)
-	portal.NameSet = portal.Name != ""
-	portal.Topic = ""
-	portal.TopicSet = false
-	portal.Metadata = pmeta
-	defaultAvatar := strings.TrimSpace(agents.DefaultAgentAvatarMXC)
-	if defaultAvatar != "" {
-		portal.AvatarID = networkid.AvatarID(defaultAvatar)
-		portal.AvatarMXC = id.ContentURIString(defaultAvatar)
-	}
-	if err := portal.Save(ctx); err != nil {
+	if err := bridgeutil.ConfigureAndPersistDMPortal(ctx, bridgeutil.ConfigureAndPersistDMPortalParams{
+		Portal:      portal,
+		Title:       title,
+		OtherUserID: modelUserID(modelID),
+		MutatePortal: func(portal *bridgev2.Portal) {
+			portal.Metadata = pmeta
+			setPortalResolvedTarget(portal, pmeta, modelUserID(modelID))
+			defaultAvatar := strings.TrimSpace(agents.DefaultAgentAvatarMXC)
+			if defaultAvatar != "" {
+				portal.AvatarID = networkid.AvatarID(defaultAvatar)
+				portal.AvatarMXC = id.ContentURIString(defaultAvatar)
+			}
+		},
+		Persist: func(ctx context.Context, portal *bridgev2.Portal) error {
+			return oc.savePortal(ctx, portal, "chat bootstrap")
+		},
+	}); err != nil {
 		return nil, nil, fmt.Errorf("failed to bootstrap portal: %w", err)
 	}
 	if portal.MXID != "" {
@@ -806,7 +810,10 @@ func (oc *AIClient) handleNewChat(
 		return
 	}
 
-	newPortal, err := oc.prepareCreatedChatPortal(runCtx, chatResp, "", nil, portalRoomMaterializeOptions{})
+	newPortal, err := oc.bootstrapPortalRoom(runCtx, portalRoomBootstrapParams{
+		Portal:   chatResp.Portal,
+		ChatInfo: chatResp.PortalInfo,
+	})
 	if err != nil {
 		oc.sendSystemNotice(runCtx, portal, "Couldn't create the room: "+err.Error())
 		return
@@ -948,31 +955,6 @@ func (oc *AIClient) configureAgentChatPortal(
 		oc.applyAgentChatInfo(ctx, chatInfo, agent.ID, agentName, modelID)
 	}
 	return agentName
-}
-
-func (oc *AIClient) prepareCreatedChatPortal(
-	ctx context.Context,
-	chatResp *bridgev2.CreateChatResponse,
-	saveReason string,
-	mutate func(portal *bridgev2.Portal, chatInfo *bridgev2.ChatInfo),
-	opts portalRoomMaterializeOptions,
-) (*bridgev2.Portal, error) {
-	if chatResp == nil || chatResp.Portal == nil {
-		return nil, fmt.Errorf("missing created portal")
-	}
-	portal := chatResp.Portal
-	if mutate != nil {
-		mutate(portal, chatResp.PortalInfo)
-	}
-	if saveReason != "" {
-		if err := oc.savePortal(ctx, portal, saveReason); err != nil {
-			return nil, err
-		}
-	}
-	if err := oc.materializePortalRoom(ctx, portal, chatResp.PortalInfo, opts); err != nil {
-		return nil, err
-	}
-	return portal, nil
 }
 
 // chatInfoFromPortal builds ChatInfo from an existing portal
@@ -1147,14 +1129,32 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 		return err
 	}
 	if portal != nil {
-		return oc.ensureChatPortalReady(ctx, portal, "Existing default chat already has MXID", "Default chat missing MXID; creating Matrix room", "Failed to create Matrix room for default chat")
+		if portal.MXID != "" {
+			oc.loggerForContext(ctx).Debug().Stringer("portal", portal.PortalKey).Msg("Existing default chat already has MXID")
+			return nil
+		}
+		oc.loggerForContext(ctx).Info().Stringer("portal", portal.PortalKey).Msg("Default chat missing MXID; creating Matrix room")
+		if _, err := oc.bootstrapPortalRoom(ctx, portalRoomBootstrapParams{Portal: portal}); err != nil {
+			oc.loggerForContext(ctx).Err(err).Msg("Failed to create Matrix room for default chat")
+			return err
+		}
+		return nil
 	}
 
 	portals, err := oc.listAllChatPortals(ctx)
 	if err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to list AI chat portals while ensuring default chat")
 	} else if existing := chooseDefaultChatPortal(portals); existing != nil {
-		return oc.ensureChatPortalReady(ctx, existing, "Existing AI chat already has MXID", "Existing AI chat missing MXID; creating Matrix room", "Failed to create Matrix room for existing AI chat")
+		if existing.MXID != "" {
+			oc.loggerForContext(ctx).Debug().Stringer("portal", existing.PortalKey).Msg("Existing AI chat already has MXID")
+			return nil
+		}
+		oc.loggerForContext(ctx).Info().Stringer("portal", existing.PortalKey).Msg("Existing AI chat missing MXID; creating Matrix room")
+		if _, err := oc.bootstrapPortalRoom(ctx, portalRoomBootstrapParams{Portal: existing}); err != nil {
+			oc.loggerForContext(ctx).Err(err).Msg("Failed to create Matrix room for existing AI chat")
+			return err
+		}
+		return nil
 	}
 
 	// Create default chat with Beep agent
@@ -1180,29 +1180,15 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 		return err
 	}
 
-	portal, err = oc.prepareCreatedChatPortal(ctx, chatResp, "", nil, portalRoomMaterializeOptions{})
+	portal, err = oc.bootstrapPortalRoom(ctx, portalRoomBootstrapParams{
+		Portal:   chatResp.Portal,
+		ChatInfo: chatResp.PortalInfo,
+	})
 	if err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg("Failed to create Matrix room for default chat")
 		return err
 	}
 	oc.loggerForContext(ctx).Info().Stringer("portal", portal.PortalKey).Msg("New AI Chat room created")
-	return nil
-}
-
-func (oc *AIClient) ensureChatPortalReady(ctx context.Context, portal *bridgev2.Portal, readyMsg, createMsg, errMsg string) error {
-	if portal == nil {
-		return nil
-	}
-	if portal.MXID != "" {
-		oc.loggerForContext(ctx).Debug().Stringer("portal", portal.PortalKey).Msg(readyMsg)
-		return nil
-	}
-	info := oc.portalRoomInfo(ctx, portal)
-	oc.loggerForContext(ctx).Info().Stringer("portal", portal.PortalKey).Msg(createMsg)
-	if err := oc.materializePortalRoom(ctx, portal, info, portalRoomMaterializeOptions{}); err != nil {
-		oc.loggerForContext(ctx).Err(err).Msg(errMsg)
-		return err
-	}
 	return nil
 }
 
