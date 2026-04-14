@@ -11,9 +11,7 @@ import (
 
 const moduleName = "cron"
 
-// cronSchedulerHost stays local to avoid importing cron job types into the
-// generic runtime package, which would create a package cycle.
-type cronSchedulerHost interface {
+type Scheduler interface {
 	CronStatus(ctx context.Context) (enabled bool, backend string, jobCount int, nextRun *int64, err error)
 	CronList(ctx context.Context, includeDisabled bool) ([]Job, error)
 	CronAdd(ctx context.Context, input JobCreate) (Job, error)
@@ -23,12 +21,17 @@ type cronSchedulerHost interface {
 }
 
 type Integration struct {
-	host iruntime.Host
+	host      iruntime.Host
+	scheduler Scheduler
 }
 
 func New(host iruntime.Host) iruntime.ModuleHooks {
+	return NewWithScheduler(host, nil)
+}
+
+func NewWithScheduler(host iruntime.Host, scheduler Scheduler) iruntime.ModuleHooks {
 	return iruntime.ModuleOrNil(host, func(host iruntime.Host) *Integration {
-		return &Integration{host: host}
+		return &Integration{host: host, scheduler: scheduler}
 	})
 }
 
@@ -54,16 +57,11 @@ func (i *Integration) ExecuteTool(ctx context.Context, call iruntime.ToolCall) (
 	return true, result, err
 }
 
-func (i *Integration) scheduler() cronSchedulerHost {
-	scheduler, _ := i.host.(cronSchedulerHost)
-	return scheduler
-}
-
 func (i *Integration) ToolAvailability(_ context.Context, _ iruntime.ToolScope, toolName string) (bool, bool, iruntime.SettingSource, string) {
 	if !iruntime.MatchesName(toolName, toolspec.CronName) {
 		return false, false, iruntime.SourceGlobalDefault, ""
 	}
-	if i.scheduler() == nil {
+	if i.scheduler == nil {
 		return true, false, iruntime.SourceProviderLimit, "Scheduler not available"
 	}
 	return true, true, iruntime.SourceGlobalDefault, ""
@@ -91,8 +89,7 @@ func (i *Integration) executeCronCommand(ctx context.Context, call iruntime.Comm
 	if reply == nil {
 		reply = func(string, ...any) {}
 	}
-	scheduler := i.scheduler()
-	if scheduler == nil {
+	if i.scheduler == nil {
 		reply("Scheduler not available.")
 		return nil
 	}
@@ -102,7 +99,7 @@ func (i *Integration) executeCronCommand(ctx context.Context, call iruntime.Comm
 	}
 	switch action {
 	case "status":
-		enabled, backend, jobCount, nextRun, err := scheduler.CronStatus(ctx)
+		enabled, backend, jobCount, nextRun, err := i.scheduler.CronStatus(ctx)
 		if err != nil {
 			reply("Cron status failed: %s", err.Error())
 			return nil
@@ -113,7 +110,7 @@ func (i *Integration) executeCronCommand(ctx context.Context, call iruntime.Comm
 		if len(call.Args) > 1 && (strings.EqualFold(call.Args[1], "all") || strings.EqualFold(call.Args[1], "--all")) {
 			includeDisabled = true
 		}
-		jobs, err := scheduler.CronList(ctx, includeDisabled)
+		jobs, err := i.scheduler.CronList(ctx, includeDisabled)
 		if err != nil {
 			reply("Cron list failed: %s", err.Error())
 			return nil
@@ -146,7 +143,7 @@ func (i *Integration) executeCronCommand(ctx context.Context, call iruntime.Comm
 				return nil
 			}
 		}
-		job, err := scheduler.CronAdd(ctx, input)
+		job, err := i.scheduler.CronAdd(ctx, input)
 		if err != nil {
 			reply("Cron add failed: %s", err.Error())
 			return nil
@@ -176,7 +173,7 @@ func (i *Integration) executeCronCommand(ctx context.Context, call iruntime.Comm
 				return nil
 			}
 		}
-		job, err := scheduler.CronUpdate(ctx, jobID, patch)
+		job, err := i.scheduler.CronUpdate(ctx, jobID, patch)
 		if err != nil {
 			reply("Cron update failed: %s", err.Error())
 			return nil
@@ -187,7 +184,7 @@ func (i *Integration) executeCronCommand(ctx context.Context, call iruntime.Comm
 			reply("Usage: `!ai cron remove <jobId>`")
 			return nil
 		}
-		removed, err := scheduler.CronRemove(ctx, strings.TrimSpace(call.Args[1]))
+		removed, err := i.scheduler.CronRemove(ctx, strings.TrimSpace(call.Args[1]))
 		if err != nil {
 			reply("Cron remove failed: %s", err.Error())
 			return nil
@@ -202,7 +199,7 @@ func (i *Integration) executeCronCommand(ctx context.Context, call iruntime.Comm
 			reply("Usage: `!ai cron run <jobId>`")
 			return nil
 		}
-		ran, reason, err := scheduler.CronRun(ctx, strings.TrimSpace(call.Args[1]))
+		ran, reason, err := i.scheduler.CronRun(ctx, strings.TrimSpace(call.Args[1]))
 		if err != nil {
 			reply("Cron run failed: %s", err.Error())
 			return nil
@@ -222,7 +219,6 @@ func (i *Integration) executeCronCommand(ctx context.Context, call iruntime.Comm
 }
 
 func (i *Integration) buildToolExecDeps(ctx context.Context, scope iruntime.ToolScope) ToolExecDeps {
-	scheduler := i.scheduler()
 	deps := ToolExecDeps{
 		NowMs: func() int64 { return i.host.Now().UnixMilli() },
 		ResolveCreateContext: func() ToolCreateContext {
@@ -255,26 +251,26 @@ func (i *Integration) buildToolExecDeps(ctx context.Context, scope iruntime.Tool
 		},
 		ValidateDeliveryTo: ValidateDeliveryTo,
 	}
-	if scheduler == nil {
+	if i.scheduler == nil {
 		return deps
 	}
 	deps.Status = func() (bool, string, int, *int64, error) {
-		return scheduler.CronStatus(ctx)
+		return i.scheduler.CronStatus(ctx)
 	}
 	deps.List = func(includeDisabled bool) ([]Job, error) {
-		return scheduler.CronList(ctx, includeDisabled)
+		return i.scheduler.CronList(ctx, includeDisabled)
 	}
 	deps.Add = func(input JobCreate) (Job, error) {
-		return scheduler.CronAdd(ctx, input)
+		return i.scheduler.CronAdd(ctx, input)
 	}
 	deps.Update = func(jobID string, patch JobPatch) (Job, error) {
-		return scheduler.CronUpdate(ctx, jobID, patch)
+		return i.scheduler.CronUpdate(ctx, jobID, patch)
 	}
 	deps.Remove = func(jobID string) (bool, error) {
-		return scheduler.CronRemove(ctx, jobID)
+		return i.scheduler.CronRemove(ctx, jobID)
 	}
 	deps.Run = func(jobID string) (bool, string, error) {
-		return scheduler.CronRun(ctx, jobID)
+		return i.scheduler.CronRun(ctx, jobID)
 	}
 	return deps
 }

@@ -268,8 +268,11 @@ Files:
 
 Why this still violates the goal:
 
-- it bundles portal access, session routing, cron, memory DB access,
+- it still bundles portal access, session routing, memory DB access,
   workspace resolution, provider/runtime helpers, and integration-facing APIs
+- cron now wires directly to the scheduler instead of proxying through the host,
+  so the remaining problem is the broader god-object surface, not the scheduler
+  forwarding chain
 - it can become a second hidden framework under `bridges/ai`
 
 Desired owner:

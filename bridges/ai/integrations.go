@@ -11,7 +11,8 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	integrationmodules "github.com/beeper/agentremote/pkg/integrations/modules"
+	integrationcron "github.com/beeper/agentremote/pkg/integrations/cron"
+	integrationmemory "github.com/beeper/agentremote/pkg/integrations/memory"
 	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 	"github.com/beeper/agentremote/sdk"
 )
@@ -240,11 +241,18 @@ func (oc *AIClient) initIntegrations() {
 	oc.integrationOrder = nil
 
 	host := newRuntimeIntegrationHost(oc)
-	for _, module := range integrationmodules.BuiltinModules(host) {
+	modules := []integrationruntime.ModuleHooks{
+		integrationcron.NewWithScheduler(host, oc.scheduler),
+		integrationmemory.New(host),
+	}
+	for _, module := range modules {
 		if module == nil {
 			continue
 		}
 		name := module.Name()
+		if !host.ModuleEnabled(name) {
+			continue
+		}
 		oc.registerIntegrationModule(name, module)
 
 		if toolIntegration, ok := module.(integrationruntime.ToolIntegration); ok {

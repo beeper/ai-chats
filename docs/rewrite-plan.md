@@ -197,6 +197,10 @@ Recent progress also collapsed heartbeat session routing into one owner:
 selection, and heartbeat main-key alias handling now uses the same canonical
 session rules as the session store.
 
+Recent progress also removed the cron forwarding chain from
+`runtimeIntegrationHost`: cron now wires directly to the scheduler, and the
+old builtin-module registry layer is gone.
+
 ## Execution Order
 
 ### Phase 1: Streaming Terminalizer
