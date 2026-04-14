@@ -30,7 +30,12 @@ func (oc *AIClient) sdkAgentForDefinition(ctx context.Context, agent *agents.Age
 		displayName = agent.ID
 	}
 	modelID := oc.agentDefaultModel(agent)
-	if responder, err := oc.ResolveResponderForAgent(ctx, agent.ID, ResponderResolveOptions{}); err == nil && responder != nil && responder.ModelID != "" {
+	if responder, err := oc.resolveResponder(ctx, &PortalMetadata{
+		ResolvedTarget: &ResolvedTarget{
+			Kind:    ResolvedTargetAgent,
+			AgentID: agent.ID,
+		},
+	}, ResponderResolveOptions{}); err == nil && responder != nil && responder.ModelID != "" {
 		modelID = responder.ModelID
 	}
 	return &sdk.Agent{

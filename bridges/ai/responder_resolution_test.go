@@ -18,9 +18,14 @@ func TestResolveResponderForModelUsesModelCatalog(t *testing.T) {
 		}}},
 	})
 
-	responder, err := client.ResolveResponderForModel(context.Background(), "openai/gpt-5.2")
+	responder, err := client.resolveResponder(context.Background(), &PortalMetadata{
+		ResolvedTarget: &ResolvedTarget{
+			Kind:    ResolvedTargetModel,
+			ModelID: "openai/gpt-5.2",
+		},
+	}, ResponderResolveOptions{})
 	if err != nil {
-		t.Fatalf("ResolveResponderForModel returned error: %v", err)
+		t.Fatalf("resolveResponder returned error: %v", err)
 	}
 	if responder == nil {
 		t.Fatal("expected responder")
@@ -54,9 +59,14 @@ func TestResolveResponderForAgentUsesAgentModelAndOverride(t *testing.T) {
 		Model: "openai/gpt-5.2",
 	})
 
-	responder, err := client.ResolveResponderForAgent(context.Background(), "agent-1", ResponderResolveOptions{})
+	responder, err := client.resolveResponder(context.Background(), &PortalMetadata{
+		ResolvedTarget: &ResolvedTarget{
+			Kind:    ResolvedTargetAgent,
+			AgentID: "agent-1",
+		},
+	}, ResponderResolveOptions{})
 	if err != nil {
-		t.Fatalf("ResolveResponderForAgent returned error: %v", err)
+		t.Fatalf("resolveResponder returned error: %v", err)
 	}
 	if responder == nil {
 		t.Fatal("expected responder")
@@ -74,11 +84,16 @@ func TestResolveResponderForAgentUsesAgentModelAndOverride(t *testing.T) {
 		t.Fatalf("expected primary model context limit, got %d", responder.ContextLimit)
 	}
 
-	overridden, err := client.ResolveResponderForAgent(context.Background(), "agent-1", ResponderResolveOptions{
+	overridden, err := client.resolveResponder(context.Background(), &PortalMetadata{
+		ResolvedTarget: &ResolvedTarget{
+			Kind:    ResolvedTargetAgent,
+			AgentID: "agent-1",
+		},
+	}, ResponderResolveOptions{
 		RuntimeModelOverride: "openai/gpt-4.1",
 	})
 	if err != nil {
-		t.Fatalf("ResolveResponderForAgent override returned error: %v", err)
+		t.Fatalf("resolveResponder override returned error: %v", err)
 	}
 	if overridden.ModelID != "openai/gpt-4.1" {
 		t.Fatalf("expected override model, got %q", overridden.ModelID)

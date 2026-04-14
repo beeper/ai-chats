@@ -40,7 +40,11 @@ type ResponderResolveOptions struct {
 }
 
 func (oc *AIClient) responderForMeta(ctx context.Context, meta *PortalMetadata) *ResponderInfo {
-	responder, err := oc.ResolveResponderForMeta(ctx, meta)
+	opts := ResponderResolveOptions{}
+	if meta != nil {
+		opts.RuntimeModelOverride = strings.TrimSpace(meta.RuntimeModelOverride)
+	}
+	responder, err := oc.resolveResponder(ctx, meta, opts)
 	if err == nil && responder != nil {
 		return responder
 	}
@@ -79,50 +83,6 @@ func (oc *AIClient) responderProvider(responder *ResponderInfo) string {
 		return strings.TrimSpace(loginMeta.Provider)
 	}
 	return ""
-}
-
-func (oc *AIClient) ResolveResponderForMeta(ctx context.Context, meta *PortalMetadata) (*ResponderInfo, error) {
-	opts := ResponderResolveOptions{}
-	if meta != nil {
-		opts.RuntimeModelOverride = strings.TrimSpace(meta.RuntimeModelOverride)
-	}
-	return oc.resolveResponder(ctx, meta, opts)
-}
-
-func (oc *AIClient) ResolveResponderForGhost(ctx context.Context, ghostID networkid.UserID) (*ResponderInfo, error) {
-	target := resolveTargetFromGhostID(ghostID)
-	if target == nil {
-		return nil, fmt.Errorf("unsupported ghost target: %s", ghostID)
-	}
-	return oc.resolveResponder(ctx, &PortalMetadata{ResolvedTarget: target}, ResponderResolveOptions{})
-}
-
-func (oc *AIClient) ResolveResponderForAgent(ctx context.Context, agentID string, opts ResponderResolveOptions) (*ResponderInfo, error) {
-	agentID = normalizeAgentID(agentID)
-	if agentID == "" {
-		return nil, fmt.Errorf("agent id is required")
-	}
-	return oc.resolveResponder(ctx, &PortalMetadata{
-		ResolvedTarget: &ResolvedTarget{
-			Kind:    ResolvedTargetAgent,
-			GhostID: agentUserID(agentID),
-			AgentID: agentID,
-		},
-	}, opts)
-}
-
-func (oc *AIClient) ResolveResponderForModel(ctx context.Context, modelID string) (*ResponderInfo, error) {
-	modelID = strings.TrimSpace(ResolveAlias(modelID))
-	if modelID == "" {
-		return nil, fmt.Errorf("model id is required")
-	}
-	return oc.resolveResponder(ctx, &PortalMetadata{
-		ResolvedTarget: &ResolvedTarget{
-			Kind:    ResolvedTargetModel,
-			GhostID: modelUserID(modelID),
-			ModelID: modelID,
-		},
-	}, ResponderResolveOptions{})
 }
 
 func (oc *AIClient) resolveResponder(ctx context.Context, meta *PortalMetadata, opts ResponderResolveOptions) (*ResponderInfo, error) {

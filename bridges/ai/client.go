@@ -722,7 +722,8 @@ func (oc *AIClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*br
 
 	// Parse agent from ghost ID (format: "agent-{id}")
 	if agentID, ok := parseAgentFromGhostID(ghostID); ok {
-		responder, _ := oc.ResolveResponderForGhost(ctx, ghost.ID)
+		target := resolveTargetFromGhostID(ghost.ID)
+		responder, _ := oc.resolveResponder(ctx, &PortalMetadata{ResolvedTarget: target}, ResponderResolveOptions{})
 		store := &AgentStoreAdapter{client: oc}
 		agent, agentErr := store.GetAgentByID(ctx, agentID)
 		if agentErr == nil && agent != nil {
@@ -750,7 +751,8 @@ func (oc *AIClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*br
 
 	// Parse model from ghost ID (format: "model-{escaped-model-id}")
 	if modelID := parseModelFromGhostID(ghostID); modelID != "" {
-		if responder, err := oc.ResolveResponderForGhost(ctx, ghost.ID); err == nil && responder != nil {
+		target := resolveTargetFromGhostID(ghost.ID)
+		if responder, err := oc.resolveResponder(ctx, &PortalMetadata{ResolvedTarget: target}, ResponderResolveOptions{}); err == nil && responder != nil {
 			userInfo := responderUserInfo(responder, modelContactIdentifiers(modelID), false)
 			userInfo.ExtraUpdates = updateGhostLastSync
 			return userInfo, nil

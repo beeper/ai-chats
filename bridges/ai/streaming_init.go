@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"strings"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
@@ -114,7 +115,11 @@ func (oc *AIClient) prepareStreamingRun(
 		roomID = portal.MXID
 	}
 	state := newStreamingState(ctx, meta, roomID)
-	if responder, err := oc.ResolveResponderForMeta(ctx, meta); err == nil && responder != nil {
+	opts := ResponderResolveOptions{}
+	if meta != nil {
+		opts.RuntimeModelOverride = strings.TrimSpace(meta.RuntimeModelOverride)
+	}
+	if responder, err := oc.resolveResponder(ctx, meta, opts); err == nil && responder != nil {
 		state.respondingGhostID = string(responder.GhostID)
 		state.respondingAgentID = responder.AgentID
 		state.respondingModelID = responder.ModelID

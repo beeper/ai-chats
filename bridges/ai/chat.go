@@ -310,7 +310,12 @@ func (oc *AIClient) collectContactResponses(ctx context.Context, query string) (
 			resp.UserInfo = agentInfo
 		}
 		if agentID := catalogAgentID(agent); agentID != "" {
-			responder, err := oc.ResolveResponderForAgent(ctx, agentID, ResponderResolveOptions{})
+			responder, err := oc.resolveResponder(ctx, &PortalMetadata{
+				ResolvedTarget: &ResolvedTarget{
+					Kind:    ResolvedTargetAgent,
+					AgentID: agentID,
+				},
+			}, ResponderResolveOptions{})
 			if err != nil {
 				oc.loggerForContext(ctx).Warn().Err(err).Str("agent", agentID).Msg("Failed to resolve responder for agent contact")
 			} else if resp.UserInfo == nil {
@@ -338,7 +343,12 @@ func (oc *AIClient) collectContactResponses(ctx context.Context, query string) (
 		if query != "" && !modelMatchesQuery(query, model) {
 			continue
 		}
-		responder, err := oc.ResolveResponderForModel(ctx, model.ID)
+		responder, err := oc.resolveResponder(ctx, &PortalMetadata{
+			ResolvedTarget: &ResolvedTarget{
+				Kind:    ResolvedTargetModel,
+				ModelID: model.ID,
+			},
+		}, ResponderResolveOptions{})
 		if err != nil {
 			oc.loggerForContext(ctx).Warn().Err(err).Str("model", model.ID).Msg("Failed to resolve responder for model contact")
 		}
@@ -502,7 +512,12 @@ func (oc *AIClient) resolveChatTargetResponse(ctx context.Context, target *chatR
 			agentName = agent.ID
 		}
 		oc.ensureAgentGhostDisplayName(ctx, agent.ID, modelID, agentName)
-		responder, err := oc.ResolveResponderForAgent(ctx, agent.ID, ResponderResolveOptions{
+		responder, err := oc.resolveResponder(ctx, &PortalMetadata{
+			ResolvedTarget: &ResolvedTarget{
+				Kind:    ResolvedTargetAgent,
+				AgentID: agent.ID,
+			},
+		}, ResponderResolveOptions{
 			RuntimeModelOverride: modelID,
 		})
 		if err != nil {
@@ -546,7 +561,12 @@ func (oc *AIClient) resolveChatTargetResponse(ctx context.Context, target *chatR
 			}
 		}
 
-		responder, err := oc.ResolveResponderForModel(ctx, modelID)
+		responder, err := oc.resolveResponder(ctx, &PortalMetadata{
+			ResolvedTarget: &ResolvedTarget{
+				Kind:    ResolvedTargetModel,
+				ModelID: modelID,
+			},
+		}, ResponderResolveOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve model responder: %w", err)
 		}
@@ -599,7 +619,12 @@ func (oc *AIClient) CreateChatWithGhost(ctx context.Context, ghost *bridgev2.Gho
 }
 
 func (oc *AIClient) modelJoinMember(ctx context.Context, loginID networkid.UserLoginID, modelID, modelName string, info *ModelInfo) bridgev2.ChatMember {
-	responder, err := oc.ResolveResponderForModel(ctx, modelID)
+	responder, err := oc.resolveResponder(ctx, &PortalMetadata{
+		ResolvedTarget: &ResolvedTarget{
+			Kind:    ResolvedTargetModel,
+			ModelID: modelID,
+		},
+	}, ResponderResolveOptions{})
 	if err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Str("model", modelID).Msg("Failed to resolve responder for model join member")
 	}
@@ -1068,7 +1093,12 @@ func (oc *AIClient) applyAgentChatInfo(ctx context.Context, chatInfo *bridgev2.C
 		Sender:      agentGhostID,
 		SenderLogin: oc.UserLogin.ID,
 	}
-	responder, err := oc.ResolveResponderForAgent(ctx, agentID, ResponderResolveOptions{
+	responder, err := oc.resolveResponder(ctx, &PortalMetadata{
+		ResolvedTarget: &ResolvedTarget{
+			Kind:    ResolvedTargetAgent,
+			AgentID: agentID,
+		},
+	}, ResponderResolveOptions{
 		RuntimeModelOverride: modelID,
 	})
 	if err != nil {
