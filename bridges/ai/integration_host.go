@@ -341,12 +341,7 @@ func (h *runtimeIntegrationHost) ResolveLastTarget(agentID string) (channel stri
 	if h == nil || h.client == nil {
 		return "", "", false
 	}
-	storeRef, mainKey := h.client.resolveHeartbeatMainSessionRef(agentID)
-	entry, found := h.client.getSessionEntry(context.Background(), storeRef, mainKey)
-	if !found {
-		return "", "", false
-	}
-	return entry.LastChannel, entry.LastTo, true
+	return h.client.lastRoute(agentID)
 }
 
 // ---- Host methods: agent helpers ----

@@ -130,7 +130,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 
 	mc := oc.resolveMentionContext(ctx, portal, meta, msg.Event, msg.Content.Mentions, rawBody)
 
-	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
+	queueSettings := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
 
 	commandBody := rawBody
 	if isGroup {
@@ -482,7 +482,7 @@ func (oc *AIClient) regenerateFromEdit(
 		oc.notifySessionMutation(ctx, portal, meta, true)
 	}
 
-	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
+	queueSettings := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
 	isGroup := oc.isGroupChat(ctx, portal)
 	pendingEvent := snapshotPendingEvent(evt)
 	pending := pendingMessage{
@@ -628,7 +628,7 @@ func (oc *AIClient) handleMediaMessage(
 	if isPDF {
 		supportsMedia = true
 	}
-	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
+	queueSettings := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
 
 	// Get caption (body is usually the filename or caption)
 	rawCaption := strings.TrimSpace(msg.Content.Body)
@@ -872,7 +872,7 @@ func (oc *AIClient) handleTextFileMessage(
 	if msg == nil {
 		return nil, errors.New("missing matrix event for text file message")
 	}
-	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
+	queueSettings := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
 
 	rawCaption := strings.TrimSpace(msg.Content.Body)
 	fileName := strings.TrimSpace(msg.Content.FileName)

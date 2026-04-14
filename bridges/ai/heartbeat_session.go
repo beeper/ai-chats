@@ -10,7 +10,7 @@ import (
 type heartbeatSessionResolution struct {
 	StoreRef   sessionStoreRef
 	SessionKey string
-	Entry      *sessionEntry
+	UpdatedAt  int64
 }
 
 // heartbeatSessionPreamble computes the store ref, main session key, resolved agent,
@@ -44,15 +44,10 @@ func (oc *AIClient) heartbeatSessionPreamble(agentID string) (cfg *Config, resol
 
 func (oc *AIClient) resolveHeartbeatSession(agentID string, heartbeat *HeartbeatConfig) heartbeatSessionResolution {
 	cfg, resolvedAgent, storeRef, mainSessionKey, scope := oc.heartbeatSessionPreamble(agentID)
-	mainEntry, hasMain := oc.getSessionEntry(context.Background(), storeRef, mainSessionKey)
 	lookup := func(key string) (sessionEntry, bool) {
 		return oc.getSessionEntry(context.Background(), storeRef, key)
 	}
 	if scope == sessionScopeGlobal {
-		if hasMain {
-			entry := mainEntry
-			return heartbeatSessionResolution{StoreRef: storeRef, SessionKey: mainSessionKey, Entry: &entry}
-		}
 		return heartbeatSessionResolution{StoreRef: storeRef, SessionKey: mainSessionKey}
 	}
 
@@ -61,17 +56,12 @@ func (oc *AIClient) resolveHeartbeatSession(agentID string, heartbeat *Heartbeat
 		trimmed = strings.TrimSpace(*heartbeat.Session)
 	}
 	if trimmed == "" || strings.EqualFold(trimmed, "main") || strings.EqualFold(trimmed, "global") {
-		if hasMain {
-			entry := mainEntry
-			return heartbeatSessionResolution{StoreRef: storeRef, SessionKey: mainSessionKey, Entry: &entry}
-		}
 		return heartbeatSessionResolution{StoreRef: storeRef, SessionKey: mainSessionKey}
 	}
 
 	if strings.HasPrefix(trimmed, "!") {
 		if entry, ok := lookup(trimmed); ok {
-			copyEntry := entry
-			return heartbeatSessionResolution{StoreRef: storeRef, SessionKey: trimmed, Entry: &copyEntry}
+			return heartbeatSessionResolution{StoreRef: storeRef, SessionKey: trimmed, UpdatedAt: entry.UpdatedAt}
 		}
 		return heartbeatSessionResolution{StoreRef: storeRef, SessionKey: trimmed}
 	}
@@ -85,21 +75,11 @@ func (oc *AIClient) resolveHeartbeatSession(agentID string, heartbeat *Heartbeat
 		sessionAgent := resolveAgentIdFromSessionKey(canonical)
 		if sessionAgent == resolvedAgent {
 			if entry, ok := lookup(canonical); ok {
-				copyEntry := entry
-				return heartbeatSessionResolution{StoreRef: storeRef, SessionKey: canonical, Entry: &copyEntry}
+				return heartbeatSessionResolution{StoreRef: storeRef, SessionKey: canonical, UpdatedAt: entry.UpdatedAt}
 			}
 			return heartbeatSessionResolution{StoreRef: storeRef, SessionKey: canonical}
 		}
 	}
 
-	if hasMain {
-		entry := mainEntry
-		return heartbeatSessionResolution{StoreRef: storeRef, SessionKey: mainSessionKey, Entry: &entry}
-	}
 	return heartbeatSessionResolution{StoreRef: storeRef, SessionKey: mainSessionKey}
-}
-
-func (oc *AIClient) resolveHeartbeatMainSessionRef(agentID string) (sessionStoreRef, string) {
-	_, _, storeRef, mainSessionKey, _ := oc.heartbeatSessionPreamble(agentID)
-	return storeRef, mainSessionKey
 }

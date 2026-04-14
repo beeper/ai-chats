@@ -7,7 +7,7 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-func (oc *AIClient) resolveHeartbeatDeliveryTarget(agentID string, heartbeat *HeartbeatConfig, entry *sessionEntry) deliveryTarget {
+func (oc *AIClient) resolveHeartbeatDeliveryTarget(agentID string, heartbeat *HeartbeatConfig, sessionKey string) deliveryTarget {
 	if oc == nil || oc.UserLogin == nil {
 		return deliveryTarget{Reason: "no-target"}
 	}
@@ -36,19 +36,13 @@ func (oc *AIClient) resolveHeartbeatDeliveryTarget(agentID string, heartbeat *He
 	// Resolve from session entry's last route (channel-match validation: only use
 	// lastTo when lastChannel is empty or "matrix", matching clawdbot's
 	// resolveSessionDeliveryTarget channel===lastChannel guard).
-	if entry != nil {
-		lastChannel := strings.TrimSpace(entry.LastChannel)
-		lastTo := strings.TrimSpace(entry.LastTo)
-		if lastTo != "" && (lastChannel == "" || strings.EqualFold(lastChannel, "matrix")) {
-			target := oc.resolveHeartbeatDeliveryRoom(lastTo)
-			if target.Portal != nil && target.RoomID != "" {
-				// Stale agent routing guard: skip if portal is now assigned to a
-				// different agent (matches resolveHeartbeatSessionPortal behavior).
-				if meta := portalMeta(target.Portal); meta != nil && normalizeAgentID(resolveAgentID(meta)) != normalizeAgentID(agentID) {
-					// Fall through to lastActivePortal / defaultChatPortal.
-				} else {
-					return target
-				}
+	if strings.HasPrefix(strings.TrimSpace(sessionKey), "!") {
+		target := oc.resolveHeartbeatDeliveryRoom(strings.TrimSpace(sessionKey))
+		if target.Portal != nil && target.RoomID != "" {
+			if meta := portalMeta(target.Portal); meta != nil && normalizeAgentID(resolveAgentID(meta)) != normalizeAgentID(agentID) {
+				// Fall through to lastActivePortal / defaultChatPortal.
+			} else {
+				return target
 			}
 		}
 	}

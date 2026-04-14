@@ -14,17 +14,7 @@ func (oc *AIClient) resolveQueueSettingsForPortal(
 	meta *PortalMetadata,
 	inlineMode airuntime.QueueMode,
 	inlineOpts airuntime.QueueInlineOptions,
-) (airuntime.QueueSettings, *sessionEntry, sessionStoreRef, string) {
-	agentID := normalizeAgentID(resolveAgentID(meta))
-	storeRef := oc.resolveSessionStoreRef(agentID)
-	sessionKey := ""
-	var entry *sessionEntry
-	if portal != nil && portal.MXID != "" {
-		sessionKey = portal.MXID.String()
-		if stored, ok := oc.getSessionEntry(ctx, storeRef, sessionKey); ok {
-			entry = &stored
-		}
-	}
+) airuntime.QueueSettings {
 	var cfg *Config
 	if oc != nil && oc.connector != nil {
 		cfg = &oc.connector.Config
@@ -32,9 +22,8 @@ func (oc *AIClient) resolveQueueSettingsForPortal(
 	settings := resolveQueueSettings(queueResolveParams{
 		cfg:        cfg,
 		channel:    "matrix",
-		session:    entry,
 		inlineMode: inlineMode,
 		inlineOpts: inlineOpts,
 	})
-	return settings, entry, storeRef, sessionKey
+	return settings
 }

@@ -73,9 +73,9 @@ func (oc *AIClient) buildStatusText(
 
 	sessionKey := portal.MXID.String()
 	agentID := resolveAgentID(meta)
-	entry := oc.getSessionEntryMaybe(ctx, agentID, sessionKey)
-	if entry != nil && entry.UpdatedAt > 0 {
-		sb.WriteString(fmt.Sprintf("Session: %s (updated %s)\n", sessionKey, formatAge(time.Now().UnixMilli()-entry.UpdatedAt)))
+	updatedAt := oc.getSessionUpdatedAt(ctx, agentID, sessionKey)
+	if updatedAt > 0 {
+		sb.WriteString(fmt.Sprintf("Session: %s (updated %s)\n", sessionKey, formatAge(time.Now().UnixMilli()-updatedAt)))
 	} else if sessionKey != "" {
 		sb.WriteString(fmt.Sprintf("Session: %s\n", sessionKey))
 	}
@@ -232,15 +232,15 @@ func (oc *AIClient) estimatePromptTokens(ctx context.Context, portal *bridgev2.P
 	return estimatePromptContextTokensForModel(promptContext, modelID)
 }
 
-func (oc *AIClient) getSessionEntryMaybe(ctx context.Context, agentID, sessionKey string) *sessionEntry {
+func (oc *AIClient) getSessionUpdatedAt(ctx context.Context, agentID, sessionKey string) int64 {
 	if oc == nil || sessionKey == "" {
-		return nil
+		return 0
 	}
 	ref := oc.resolveSessionStoreRef(agentID)
 	if entry, ok := oc.getSessionEntry(ctx, ref, sessionKey); ok {
-		return &entry
+		return entry.UpdatedAt
 	}
-	return nil
+	return 0
 }
 
 func formatCompactTokens(value int64) string {

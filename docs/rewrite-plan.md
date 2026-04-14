@@ -160,6 +160,9 @@ Current status:
 - complete: AI managed heartbeat scheduling no longer open-codes config/due/run-result transitions across runtime helpers; `managedHeartbeatState` now owns those transition rules directly
 - complete: AI heartbeat dedupe/scheduling ownership no longer straddles `aichats_sessions` and `aichats_managed_heartbeats`; managed heartbeat state now persists the last sent session/text/timestamp itself, and session rows are back to route/queue ownership only
 - complete: AI session rows no longer carry dead `last_account_id` / `last_thread_id` baggage; route recovery and queue settings are the only remaining live session-store concerns
+- complete: AI no longer mirrors Matrix route recovery into the main session row; real room sessions now own their own route state, and agent-level “last route” is derived from the latest real session instead of a shadow cache
+- complete: AI session rows no longer carry dead route/queue override payloads; `aichats_sessions` is now just session identity plus timestamp, with route recovery derived from real room session keys and queue behavior owned only by config/inline inputs
+- complete: AI session timestamp persistence no longer carries dead opaque `session_id` state or fake entry objects through heartbeat resolution; session lookup now resolves to a key plus timestamp only
 - complete: AI scheduler/internal rooms no longer route durable portal updates through redundant save callbacks and post-save fixups; scheduler room materialization now uses one pre-save mutation path
 - complete: AI room override/title/internal-room materialization paths no longer use `BeforeSave` just to persist portal mutations that `SaveBefore` already handles; the remaining callback cases are narrower and behavior-specific
 - complete: AI subagent spawn and generated-title sync no longer route portal mutation through `MutatePortal`/`BeforeSave`; they now perform explicit metadata/save work before room materialization

@@ -107,10 +107,5 @@ func (oc *AIClient) restoreHeartbeatUpdatedAt(ref sessionStoreRef, sessionKey st
 	if entry.UpdatedAt >= updatedAt {
 		return
 	}
-	oc.updateSessionEntry(context.Background(), ref, sessionKey, func(entry sessionEntry) sessionEntry {
-		if entry.UpdatedAt < updatedAt {
-			entry.UpdatedAt = updatedAt
-		}
-		return entry
-	})
+	oc.updateSessionTimestamp(context.Background(), ref, sessionKey, updatedAt)
 }

@@ -234,14 +234,7 @@ CREATE TABLE IF NOT EXISTS aichats_sessions (
   login_id TEXT NOT NULL,
   store_agent_id TEXT NOT NULL,
   session_key TEXT NOT NULL,
-  session_id TEXT NOT NULL DEFAULT '',
   updated_at_ms INTEGER NOT NULL DEFAULT 0,
-  last_channel TEXT NOT NULL DEFAULT '',
-  last_to TEXT NOT NULL DEFAULT '',
-  queue_mode TEXT NOT NULL DEFAULT '',
-  queue_debounce_ms INTEGER,
-  queue_cap INTEGER,
-  queue_drop TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (bridge_id, login_id, store_agent_id, session_key)
 );
 

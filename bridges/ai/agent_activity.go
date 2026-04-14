@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -26,43 +27,55 @@ func (oc *AIClient) recordAgentActivity(ctx context.Context, portal *bridgev2.Po
 		return
 	}
 
-	storeRef, mainKey := oc.resolveHeartbeatMainSessionRef(agentID)
-	if mainKey != "" {
-		oc.updateSessionEntry(ctx, storeRef, mainKey, func(entry sessionEntry) sessionEntry {
-			patch := sessionEntry{
-				LastChannel: "matrix",
-				LastTo:      portal.MXID.String(),
-			}
-			return mergeSessionEntry(entry, patch)
-		})
+	storeRef := oc.resolveSessionStoreRef(agentID)
+	oc.updateSessionTimestamp(ctx, storeRef, portal.MXID.String(), 0)
+}
+
+func (oc *AIClient) lastRoute(agentID string) (channel string, target string, ok bool) {
+	if oc == nil {
+		return "", "", false
 	}
-	if portal.MXID.String() != mainKey {
-		oc.updateSessionEntry(ctx, storeRef, portal.MXID.String(), func(entry sessionEntry) sessionEntry {
-			patch := sessionEntry{
-				LastChannel: "matrix",
-				LastTo:      portal.MXID.String(),
-			}
-			return mergeSessionEntry(entry, patch)
-		})
+	scope := oc.sessionDBScope()
+	if scope == nil {
+		return "", "", false
 	}
+	_, _, storeRef, mainKey, _ := oc.heartbeatSessionPreamble(agentID)
+	var sessionKey string
+	err := scope.db.QueryRow(context.Background(), `
+		SELECT session_key
+		FROM `+aiSessionsTable+`
+		WHERE bridge_id=$1 AND login_id=$2 AND store_agent_id=$3 AND session_key<>$4 AND session_key LIKE '!%'
+		ORDER BY updated_at_ms DESC
+		LIMIT 1
+	`, scope.bridgeID, scope.loginID, normalizeAgentID(storeRef.AgentID), strings.TrimSpace(mainKey)).Scan(&sessionKey)
+	if err == sql.ErrNoRows {
+		return "", "", false
+	}
+	if err != nil {
+		oc.Log().Warn().Err(err).Str("agent_id", agentID).Msg("session store: latest route lookup failed")
+		return "", "", false
+	}
+	return "matrix", sessionKey, true
+}
+
+func (oc *AIClient) lastActiveRoomID(agentID string) string {
+	channel, room, ok := oc.lastRoute(agentID)
+	if !ok {
+		return ""
+	}
+	channel = strings.TrimSpace(channel)
+	room = strings.TrimSpace(room)
+	if room == "" || (!strings.EqualFold(channel, "matrix") && channel != "") {
+		return ""
+	}
+	return room
 }
 
 func (oc *AIClient) lastActivePortal(agentID string) *bridgev2.Portal {
 	if oc == nil || oc.UserLogin == nil {
 		return nil
 	}
-	storeRef, mainKey := oc.resolveHeartbeatMainSessionRef(agentID)
-	if mainKey == "" {
-		return nil
-	}
-	entry, ok := oc.getSessionEntry(context.Background(), storeRef, mainKey)
-	if !ok {
-		return nil
-	}
-	if !strings.EqualFold(strings.TrimSpace(entry.LastChannel), "matrix") && strings.TrimSpace(entry.LastChannel) != "" {
-		return nil
-	}
-	room := strings.TrimSpace(entry.LastTo)
+	room := oc.lastActiveRoomID(agentID)
 	if room == "" {
 		return nil
 	}

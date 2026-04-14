@@ -98,13 +98,12 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 		return heartbeatRunResult{Status: "skipped", Reason: "empty-heartbeat-file"}
 	}
 
-	entry := sessionResolution.Entry
 	prevUpdatedAt := int64(0)
-	if entry != nil {
-		prevUpdatedAt = entry.UpdatedAt
+	if sessionResolution.UpdatedAt > 0 {
+		prevUpdatedAt = sessionResolution.UpdatedAt
 	}
 
-	delivery := oc.resolveHeartbeatDeliveryTarget(agentID, heartbeat, entry)
+	delivery := oc.resolveHeartbeatDeliveryTarget(agentID, heartbeat, sessionResolution.SessionKey)
 	deliveryPortal := delivery.Portal
 	deliveryRoom := delivery.RoomID
 	deliveryReason := delivery.Reason
@@ -314,12 +313,8 @@ func (oc *AIClient) resolveHeartbeatSessionPortal(agentID string, heartbeat *Hea
 }
 
 func (oc *AIClient) heartbeatSessionPortalCandidate(agentID string, session heartbeatSessionResolution) *bridgev2.Portal {
-	if session.Entry == nil {
-		return nil
-	}
-	lastChannel := strings.TrimSpace(session.Entry.LastChannel)
-	lastTo := strings.TrimSpace(session.Entry.LastTo)
-	if lastTo == "" || !strings.HasPrefix(lastTo, "!") || (lastChannel != "" && !strings.EqualFold(lastChannel, "matrix")) {
+	lastTo := strings.TrimSpace(session.SessionKey)
+	if lastTo == "" || !strings.HasPrefix(lastTo, "!") {
 		return nil
 	}
 	portal := oc.portalByRoomID(context.Background(), id.RoomID(lastTo))

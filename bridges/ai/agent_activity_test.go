@@ -1,0 +1,110 @@
+package ai
+
+import (
+	"context"
+	"testing"
+
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/agentremote/pkg/agents"
+)
+
+func TestRecordAgentActivityOnlyWritesRoomSession(t *testing.T) {
+	client := newDBBackedTestAIClient(t, "")
+	agentID := normalizeAgentID(agents.DefaultAgentID)
+	storeRef := client.resolveSessionStoreRef(agentID)
+	_, _, _, mainKey, _ := client.heartbeatSessionPreamble(agentID)
+
+	portal := &bridgev2.Portal{
+		Portal: &database.Portal{
+			MXID: id.RoomID("!chat:example.com"),
+		},
+	}
+	meta := &PortalMetadata{
+		ResolvedTarget: &ResolvedTarget{AgentID: agentID},
+	}
+
+	client.recordAgentActivity(context.Background(), portal, meta)
+
+	entry, ok := client.getSessionEntry(context.Background(), storeRef, portal.MXID.String())
+	if !ok {
+		t.Fatalf("expected room session entry to be written")
+	}
+	if entry.UpdatedAt <= 0 {
+		t.Fatalf("expected room session entry to have an updated timestamp")
+	}
+	if _, ok := client.getSessionEntry(context.Background(), storeRef, mainKey); ok {
+		t.Fatalf("expected main session row not to be created for route mirroring")
+	}
+}
+
+func TestLastRouteIgnoresMainSessionRow(t *testing.T) {
+	client := newDBBackedTestAIClient(t, "")
+	agentID := normalizeAgentID(agents.DefaultAgentID)
+	storeRef := client.resolveSessionStoreRef(agentID)
+	_, _, _, mainKey, _ := client.heartbeatSessionPreamble(agentID)
+
+	if err := client.upsertSessionEntry(context.Background(), storeRef, mainKey, sessionEntry{
+		UpdatedAt: 3_000,
+	}); err != nil {
+		t.Fatalf("upsert main session entry: %v", err)
+	}
+	if err := client.upsertSessionEntry(context.Background(), storeRef, "!chat:example.com", sessionEntry{
+		UpdatedAt: 2_000,
+	}); err != nil {
+		t.Fatalf("upsert room session entry: %v", err)
+	}
+
+	channel, target, ok := client.lastRoute(agentID)
+	if !ok {
+		t.Fatalf("expected last route to resolve")
+	}
+	if channel != "matrix" || target != "!chat:example.com" {
+		t.Fatalf("expected last route to ignore main session row, got channel=%q target=%q", channel, target)
+	}
+}
+
+func TestResolveHeartbeatSessionDefaultDoesNotLoadMainSessionRoute(t *testing.T) {
+	client := newDBBackedTestAIClient(t, "")
+	agentID := normalizeAgentID(agents.DefaultAgentID)
+	storeRef := client.resolveSessionStoreRef(agentID)
+	_, _, _, mainKey, _ := client.heartbeatSessionPreamble(agentID)
+
+	if err := client.upsertSessionEntry(context.Background(), storeRef, mainKey, sessionEntry{
+		UpdatedAt: 1_000,
+	}); err != nil {
+		t.Fatalf("upsert main session entry: %v", err)
+	}
+
+	resolution := client.resolveHeartbeatSession(agentID, nil)
+	if resolution.SessionKey != mainKey {
+		t.Fatalf("expected main session key %q, got %q", mainKey, resolution.SessionKey)
+	}
+	if resolution.UpdatedAt != 0 {
+		t.Fatalf("expected default heartbeat session resolution not to carry main session timestamp")
+	}
+}
+
+func TestRecordAgentActivitySkipsInternalRooms(t *testing.T) {
+	client := newDBBackedTestAIClient(t, "")
+	agentID := normalizeAgentID(agents.DefaultAgentID)
+	storeRef := client.resolveSessionStoreRef(agentID)
+
+	portal := &bridgev2.Portal{
+		Portal: &database.Portal{
+			MXID: id.RoomID("!internal:example.com"),
+		},
+	}
+	meta := &PortalMetadata{
+		InternalRoomKind: "heartbeat",
+		ResolvedTarget:   &ResolvedTarget{AgentID: agentID},
+	}
+
+	client.recordAgentActivity(context.Background(), portal, meta)
+
+	if _, ok := client.getSessionEntry(context.Background(), storeRef, portal.MXID.String()); ok {
+		t.Fatalf("expected internal rooms not to write route state")
+	}
+}

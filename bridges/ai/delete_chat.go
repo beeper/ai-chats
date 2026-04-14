@@ -3,7 +3,6 @@ package ai
 import (
 	"context"
 	"strings"
-	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
@@ -75,21 +74,6 @@ func (oc *AIClient) deletePersistedSessionArtifacts(ctx context.Context, portal 
 			`DELETE FROM `+aiSessionsTable+` WHERE bridge_id=$1 AND login_id=$2 AND session_key=$3`,
 			scope.bridgeID, scope.loginID, sessionKey,
 		)
-		if ctx == nil {
-			ctx = context.Background()
-		}
-		if _, err := scope.db.Exec(ctx, `
-			UPDATE `+aiSessionsTable+`
-			SET
-				last_channel='',
-				last_to='',
-				updated_at_ms=$4
-			WHERE bridge_id=$1 AND login_id=$2 AND last_to=$3
-		`, scope.bridgeID, scope.loginID, sessionKey, time.Now().UnixMilli()); err != nil {
-			if logger := oc.Log(); logger != nil {
-				logger.Warn().Err(err).Str("room_id", sessionKey).Msg("failed to clear stale AI session routing for deleted room")
-			}
-		}
 		execDelete(ctx, scope.db, oc.Log(),
 			`DELETE FROM `+aiSystemEventsTable+` WHERE bridge_id=$1 AND login_id=$2 AND session_key=$3`,
 			scope.bridgeID, scope.loginID, sessionKey,

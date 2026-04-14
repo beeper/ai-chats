@@ -9,7 +9,6 @@ import (
 type queueResolveParams struct {
 	cfg        *Config
 	channel    string
-	session    *sessionEntry
 	inlineMode airuntime.QueueMode
 	inlineOpts airuntime.QueueInlineOptions
 }
@@ -23,11 +22,6 @@ func resolveQueueSettings(params queueResolveParams) airuntime.QueueSettings {
 	}
 
 	resolvedMode := params.inlineMode
-	if resolvedMode == "" && params.session != nil {
-		if mode, ok := airuntime.NormalizeQueueMode(params.session.QueueMode); ok {
-			resolvedMode = mode
-		}
-	}
 	if resolvedMode == "" && queueCfg != nil {
 		if channel != "" && queueCfg.ByChannel != nil {
 			if raw, ok := queueCfg.ByChannel[channel]; ok {
@@ -49,8 +43,6 @@ func resolveQueueSettings(params queueResolveParams) airuntime.QueueSettings {
 	debounce := (*int)(nil)
 	if params.inlineOpts.DebounceMs != nil {
 		debounce = params.inlineOpts.DebounceMs
-	} else if params.session != nil && params.session.QueueDebounceMs != nil {
-		debounce = params.session.QueueDebounceMs
 	} else if queueCfg != nil {
 		if channel != "" && queueCfg.DebounceMsByChannel != nil {
 			if v, ok := queueCfg.DebounceMsByChannel[channel]; ok {
@@ -73,8 +65,6 @@ func resolveQueueSettings(params queueResolveParams) airuntime.QueueSettings {
 	capValue := (*int)(nil)
 	if params.inlineOpts.Cap != nil {
 		capValue = params.inlineOpts.Cap
-	} else if params.session != nil && params.session.QueueCap != nil {
-		capValue = params.session.QueueCap
 	} else if queueCfg != nil && queueCfg.Cap != nil {
 		capValue = queueCfg.Cap
 	}
@@ -88,10 +78,6 @@ func resolveQueueSettings(params queueResolveParams) airuntime.QueueSettings {
 	dropPolicy := airuntime.QueueDropPolicy("")
 	if params.inlineOpts.DropPolicy != nil {
 		dropPolicy = *params.inlineOpts.DropPolicy
-	} else if params.session != nil {
-		if policy, ok := airuntime.NormalizeQueueDropPolicy(params.session.QueueDrop); ok {
-			dropPolicy = policy
-		}
 	} else if queueCfg != nil {
 		if policy, ok := airuntime.NormalizeQueueDropPolicy(queueCfg.Drop); ok {
 			dropPolicy = policy

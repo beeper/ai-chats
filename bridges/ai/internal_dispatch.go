@@ -70,7 +70,7 @@ func (oc *AIClient) dispatchInternalMessage(
 		summaryLine: trimmed,
 		enqueuedAt:  time.Now().UnixMilli(),
 	}
-	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
+	queueSettings := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
 	_, isPending := oc.dispatchOrQueue(promptCtx, nil, portal, meta, nil, queueItem, queueSettings, promptContext)
 	oc.notifySessionMutation(ctx, portal, meta, false)
 	return eventID, isPending, nil
