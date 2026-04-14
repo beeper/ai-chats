@@ -270,6 +270,11 @@ prompt input: `buildPromptContextForPendingMessage(...)` now rebuilds
 text/media/regenerate prompts from that one shape, and the duplicate
 `pendingQueueItem.rawEventContent` field is gone.
 
+Recent progress also flattened queue acceptance inside
+`dispatchOrQueueCore(...)`: direct-run, steer-only, and queued acceptance now
+share one post-accept tail for persistence/session mutation instead of three
+separate return shapes.
+
 Recent progress also removed the one-callsite
 `resolveOpenRouterMediaConfig(...)` wrapper: `generateWithOpenRouter(...)` now
 owns its auth/header/base-URL/pdf-engine shaping directly, and tests assert

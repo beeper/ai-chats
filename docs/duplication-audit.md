@@ -107,6 +107,9 @@ Recent cleanup kept pushing in that direction:
   `buildPromptContextForPendingMessage(...)` rebuilds text/media/regenerate
   prompts from `pendingMessage`, and the duplicate queue-only
   `pendingQueueItem.rawEventContent` copy is gone
+- Queue admission now has one flatter accepted tail inside
+  `dispatchOrQueueCore(...)`: direct-run, steer-only, and queue branches no
+  longer each carry their own save/notify return path
 
 ## Highest-Value Remaining Problems
 

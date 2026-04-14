@@ -206,82 +206,72 @@ func (oc *AIClient) dispatchOrQueueCore(
 		oc.clearPendingQueue(ctx, roomID)
 		roomBusy = false
 	}
-	if !roomBusy && oc.acquireRoom(roomID) {
+	sendPendingStatus := func() {
+		if evt == nil || queueItem.pending.PendingSent {
+			return
+		}
+		bridgeutil.SendMessageStatus(ctx, portal, evt, bridgev2.MessageStatus{
+			Status:    event.MessageStatusPending,
+			Message:   "Processing...",
+			IsCertain: true,
+		})
+		queueItem.pending.PendingSent = true
+	}
+
+	directRun := !roomBusy && oc.acquireRoom(roomID)
+	messageSaved := false
+	if directRun {
 		oc.stopQueueTyping(roomID)
 		if hasDBMessage {
 			oc.saveUserMessage(ctx, evt, userMessage)
+			messageSaved = true
 		}
-		if evt != nil && !queueItem.pending.PendingSent {
-			bridgeutil.SendMessageStatus(ctx, portal, evt, bridgev2.MessageStatus{
-				Status:    event.MessageStatusPending,
-				Message:   "Processing...",
-				IsCertain: true,
-			})
-			queueItem.pending.PendingSent = true
-		}
+		sendPendingStatus()
 		queuedItem := queueItem
 		queuedItem.pending.Portal = portal
 		queuedItem.pending.Meta = meta
 		queuedItem.pending.Event = evt
 		oc.dispatchPromptRun(ctx, roomID, queuedItem, promptContext, false)
-		if hasDBMessage {
-			oc.notifySessionMutation(ctx, portal, meta, false)
-		}
-		return true
 	}
 
-	messageSaved := false
-	if shouldSteer && queueItem.pending.Type == pendingTypeText {
+	steered := false
+	if !directRun && shouldSteer && queueItem.pending.Type == pendingTypeText {
 		queueItem.prompt = queueItem.pending.MessageBody
-		steered := oc.enqueueSteerQueue(roomID, queueItem)
-		if steered {
-			if hasDBMessage {
-				oc.saveUserMessage(ctx, evt, userMessage)
-				messageSaved = true
-			}
-			if !shouldFollowup {
-				if evt != nil && !queueItem.pending.PendingSent {
-					bridgeutil.SendMessageStatus(ctx, portal, evt, bridgev2.MessageStatus{
-						Status:    event.MessageStatusPending,
-						Message:   "Processing...",
-						IsCertain: true,
-					})
-					queueItem.pending.PendingSent = true
-				}
-				if hasDBMessage {
-					oc.notifySessionMutation(ctx, portal, meta, false)
-				}
-				return true
-			}
-		}
+		steered = oc.enqueueSteerQueue(roomID, queueItem)
 	}
 
-	if behavior.BacklogAfter {
-		queueItem.backlogAfter = true
-	}
-	enqueued := oc.queuePendingMessage(roomID, queueItem, queueSettings)
-	if !enqueued {
-		if portal != nil && portal.Bridge != nil {
-			message := "Couldn't queue the message. Try again."
-			err := fmt.Errorf("%s", message)
-			msgStatus := bridgev2.WrapErrorInStatus(err).
-				WithStatus(event.MessageStatusRetriable).
-				WithErrorReason(event.MessageStatusGenericError).
-				WithMessage(message).
-				WithIsCertain(true).
-				WithSendNotice(false)
-			for _, statusEvt := range queueStatusEvents(evt, queueItem.pending.StatusEvents) {
-				bridgeutil.SendMessageStatus(ctx, portal, statusEvt, msgStatus)
-			}
+	queueNeeded := !directRun && (!steered || shouldFollowup)
+	if queueNeeded {
+		if behavior.BacklogAfter {
+			queueItem.backlogAfter = true
 		}
-		return false
+		enqueued := oc.queuePendingMessage(roomID, queueItem, queueSettings)
+		if !enqueued {
+			if portal != nil && portal.Bridge != nil {
+				message := "Couldn't queue the message. Try again."
+				err := fmt.Errorf("%s", message)
+				msgStatus := bridgev2.WrapErrorInStatus(err).
+					WithStatus(event.MessageStatusRetriable).
+					WithErrorReason(event.MessageStatusGenericError).
+					WithMessage(message).
+					WithIsCertain(true).
+					WithSendNotice(false)
+				for _, statusEvt := range queueStatusEvents(evt, queueItem.pending.StatusEvents) {
+					bridgeutil.SendMessageStatus(ctx, portal, statusEvt, msgStatus)
+				}
+			}
+			return false
+		}
+		for _, statusEvt := range queueStatusEvents(evt, queueItem.pending.StatusEvents) {
+			bridgeutil.SendMessageStatus(ctx, portal, statusEvt, bridgev2.MessageStatus{
+				Status:    event.MessageStatusSuccess,
+				IsCertain: true,
+			})
+		}
+	} else if steered {
+		sendPendingStatus()
 	}
-	for _, statusEvt := range queueStatusEvents(evt, queueItem.pending.StatusEvents) {
-		bridgeutil.SendMessageStatus(ctx, portal, statusEvt, bridgev2.MessageStatus{
-			Status:    event.MessageStatusSuccess,
-			IsCertain: true,
-		})
-	}
+
 	if hasDBMessage && !messageSaved {
 		oc.saveUserMessage(ctx, evt, userMessage)
 	}
