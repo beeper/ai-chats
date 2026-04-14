@@ -20,10 +20,6 @@ import (
 	"github.com/beeper/agentremote/sdk"
 )
 
-func messageSendStatusError(err error, message string, reason event.MessageStatusReason) error {
-	return sdk.MessageSendStatusError(err, message, reason, messageStatusForError, messageStatusReasonForError)
-}
-
 // HandleMatrixMessage processes incoming Matrix messages and dispatches them to the AI
 func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
 	if msg.Content == nil {
@@ -287,7 +283,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 
 	promptContext, err := oc.buildCurrentTurnWithLinks(runCtx, portal, runMeta, body, rawEventContent, eventID)
 	if err != nil {
-		return nil, messageSendStatusError(err, "Couldn't prepare the message. Try again.", "")
+		return nil, sdk.MessageSendStatusError(err, "Couldn't prepare the message. Try again.", "", messageStatusForError, messageStatusReasonForError)
 	}
 	logCtx.Debug().Int("prompt_messages", len(promptContext.Messages)).Msg("Built prompt for inbound message")
 	userMessage := &database.Message{
@@ -679,7 +675,7 @@ func (oc *AIClient) handleMediaMessage(
 		body := oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, rawBody, senderName, roomName, isGroup)
 		promptContext, err := oc.buildCurrentTurnWithLinks(promptCtx, portal, meta, body, nil, eventID)
 		if err != nil {
-			return nil, messageSendStatusError(err, "Couldn't prepare the message. Try again.", "")
+			return nil, sdk.MessageSendStatusError(err, "Couldn't prepare the message. Try again.", "", messageStatusForError, messageStatusReasonForError)
 		}
 		userMessage := &database.Message{
 			ID:       sdk.MatrixMessageID(eventID),
@@ -789,7 +785,7 @@ func (oc *AIClient) handleMediaMessage(
 	promptCtx := withInboundContext(ctx, captionInboundCtx)
 	promptContext, err := oc.buildMediaTurnContext(promptCtx, portal, meta, captionForPrompt, string(mediaURL), mimeType, encryptedFile, config.msgType, eventID)
 	if err != nil {
-		return nil, messageSendStatusError(err, "Couldn't prepare the media message. Try again.", "")
+		return nil, sdk.MessageSendStatusError(err, "Couldn't prepare the media message. Try again.", "", messageStatusForError, messageStatusReasonForError)
 	}
 
 	userMeta := &MessageMetadata{
@@ -871,15 +867,15 @@ func (oc *AIClient) dispatchMediaUnderstandingFallback(
 	description, err := analyze(ctx, model, mediaURL, mimeType, encryptedFile, analysisPrompt)
 	if err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg(failureLog)
-		return nil, messageSendStatusError(err, userError, "")
+		return nil, sdk.MessageSendStatusError(err, userError, "", messageStatusForError, messageStatusReasonForError)
 	}
 	if description == "" {
-		return nil, messageSendStatusError(errors.New(emptyResult), userError, "")
+		return nil, sdk.MessageSendStatusError(errors.New(emptyResult), userError, "", messageStatusForError, messageStatusReasonForError)
 	}
 
 	combined := buildMessage(caption, hasUserCaption, description)
 	if combined == "" {
-		return nil, messageSendStatusError(errors.New(emptyResult), userError, "")
+		return nil, sdk.MessageSendStatusError(errors.New(emptyResult), userError, "", messageStatusForError, messageStatusReasonForError)
 	}
 	return dispatchTextOnly(combined)
 }
@@ -934,12 +930,12 @@ func (oc *AIClient) handleTextFileMessage(
 	content, truncated, err := oc.downloadTextFile(ctx, mediaURL, encryptedFile, mimeType)
 	if err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Text file understanding failed")
-		return nil, messageSendStatusError(err, "Couldn't read the text file. Upload a UTF-8 text file under 5 MB.", "")
+		return nil, sdk.MessageSendStatusError(err, "Couldn't read the text file. Upload a UTF-8 text file under 5 MB.", "", messageStatusForError, messageStatusReasonForError)
 	}
 
 	combined := buildTextFileMessage(caption, hasUserCaption, fileName, mimeType, content, truncated)
 	if combined == "" {
-		return nil, messageSendStatusError(errors.New("text file understanding produced empty result"), "Couldn't read the text file. Upload a UTF-8 text file under 5 MB.", "")
+		return nil, sdk.MessageSendStatusError(errors.New("text file understanding produced empty result"), "Couldn't read the text file. Upload a UTF-8 text file under 5 MB.", "", messageStatusForError, messageStatusReasonForError)
 	}
 
 	eventID := id.EventID("")
@@ -951,7 +947,7 @@ func (oc *AIClient) handleTextFileMessage(
 	promptCtx := withInboundContext(ctx, inboundCtx)
 	promptContext, err := oc.buildCurrentTurnWithLinks(promptCtx, portal, meta, combined, nil, eventID)
 	if err != nil {
-		return nil, messageSendStatusError(err, "Couldn't prepare the message. Try again.", "")
+		return nil, sdk.MessageSendStatusError(err, "Couldn't prepare the message. Try again.", "", messageStatusForError, messageStatusReasonForError)
 	}
 
 	userMessage := &database.Message{

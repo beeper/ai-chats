@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -65,10 +66,6 @@ func messageStatusForError(_ error) event.MessageStatus {
 
 func messageStatusReasonForError(_ error) event.MessageStatusReason {
 	return event.MessageStatusGenericError
-}
-
-func messageSendStatusError(err error, message string, reason event.MessageStatusReason) error {
-	return sdk.MessageSendStatusError(err, message, reason, messageStatusForError, messageStatusReasonForError)
 }
 
 type codexNotif struct {
@@ -421,7 +418,14 @@ func isManagedCodexTempDirPath(path string) bool {
 func (cc *CodexClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	meta := portalMeta(portal)
 	if meta == nil || !meta.IsCodexRoom {
-		return bridgeutil.BuildChatInfoWithFallback("", portal.Name, "Codex", portal.Topic), nil
+		name := strings.TrimSpace(portal.Name)
+		if name == "" {
+			name = "Codex"
+		}
+		return &bridgev2.ChatInfo{
+			Name:  ptr.Ptr(name),
+			Topic: ptr.NonZero(strings.TrimSpace(portal.Topic)),
+		}, nil
 	}
 	state, err := loadCodexPortalState(ctx, portal)
 	if err != nil {
@@ -537,15 +541,15 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 	}
 
 	if err := cc.ensureRPC(cc.backgroundContext(ctx)); err != nil {
-		return nil, messageSendStatusError(err, "Codex isn't available. Sign in again.", "")
+		return nil, sdk.MessageSendStatusError(err, "Codex isn't available. Sign in again.", "", messageStatusForError, messageStatusReasonForError)
 	}
 	if strings.TrimSpace(state.CodexThreadID) == "" || strings.TrimSpace(state.CodexCwd) == "" {
 		if err := cc.ensureCodexThread(ctx, portal, state); err != nil {
-			return nil, messageSendStatusError(err, "Codex thread unavailable. Try !ai reset.", "")
+			return nil, sdk.MessageSendStatusError(err, "Codex thread unavailable. Try !ai reset.", "", messageStatusForError, messageStatusReasonForError)
 		}
 	}
 	if err := cc.ensureCodexThreadLoaded(ctx, portal, state); err != nil {
-		return nil, messageSendStatusError(err, "Codex thread unavailable. Try !ai reset.", "")
+		return nil, sdk.MessageSendStatusError(err, "Codex thread unavailable. Try !ai reset.", "", messageStatusForError, messageStatusReasonForError)
 	}
 
 	roomID := portal.MXID

@@ -298,7 +298,7 @@ func (cc *CodexClient) handleCodexCommand(ctx context.Context, portal *bridgev2.
 		cc.sendSystemNotice(ctx, portal, codexCommandHelpText())
 	case "new":
 		if _, err := cc.createWelcomeCodexChat(ctx); err != nil {
-			return nil, true, messageSendStatusError(err, "Failed to create a new welcome room.", "")
+			return nil, true, sdk.MessageSendStatusError(err, "Failed to create a new welcome room.", "", messageStatusForError, messageStatusReasonForError)
 		}
 		cc.sendSystemNotice(ctx, portal, "Created a new welcome room.")
 	case "dirs":
@@ -321,11 +321,11 @@ func (cc *CodexClient) handleCodexCommand(ctx context.Context, portal *bridgev2.
 		}
 		addManagedCodexPath(loginMeta, path)
 		if err := cc.UserLogin.Save(ctx); err != nil {
-			return nil, true, messageSendStatusError(err, "Failed to save tracked directories.", "")
+			return nil, true, sdk.MessageSendStatusError(err, "Failed to save tracked directories.", "", messageStatusForError, messageStatusReasonForError)
 		}
 		total, created, err := cc.syncStoredCodexThreadsForPath(cc.backgroundContext(ctx), path)
 		if err != nil {
-			return nil, true, messageSendStatusError(err, "Failed to import stored Codex threads.", "")
+			return nil, true, sdk.MessageSendStatusError(err, "Failed to import stored Codex threads.", "", messageStatusForError, messageStatusReasonForError)
 		}
 		if total == 0 {
 			cc.sendSystemNotice(ctx, portal, fmt.Sprintf("Tracked %s. No stored Codex threads matched yet.", path))
@@ -343,11 +343,11 @@ func (cc *CodexClient) handleCodexCommand(ctx context.Context, portal *bridgev2.
 			break
 		}
 		if err := cc.UserLogin.Save(ctx); err != nil {
-			return nil, true, messageSendStatusError(err, "Failed to update tracked directories.", "")
+			return nil, true, sdk.MessageSendStatusError(err, "Failed to update tracked directories.", "", messageStatusForError, messageStatusReasonForError)
 		}
 		removed, err := cc.forgetManagedDirectory(ctx, path)
 		if err != nil {
-			return nil, true, messageSendStatusError(err, "Failed to forget Codex directory.", "")
+			return nil, true, sdk.MessageSendStatusError(err, "Failed to forget Codex directory.", "", messageStatusForError, messageStatusReasonForError)
 		}
 		cc.sendSystemNotice(ctx, portal, fmt.Sprintf("Forgot %s and unbridged %d imported room(s).", path, removed))
 	default:
@@ -373,7 +373,7 @@ func (cc *CodexClient) handleWelcomeCodexMessage(ctx context.Context, portal *br
 
 	addManagedCodexPath(loginMetadata(cc.UserLogin), path)
 	if err := cc.UserLogin.Save(ctx); err != nil {
-		return nil, messageSendStatusError(err, "Failed to save Codex directory.", "")
+		return nil, sdk.MessageSendStatusError(err, "Failed to save Codex directory.", "", messageStatusForError, messageStatusReasonForError)
 	}
 
 	nextState := *state
@@ -384,7 +384,7 @@ func (cc *CodexClient) handleWelcomeCodexMessage(ctx context.Context, portal *br
 	nextState.Title = codexTitleForPath(path)
 	nextState.Slug = strings.ToLower(strings.ReplaceAll(nextState.Title, " ", "-"))
 	if err := cc.ensureCodexThread(ctx, portal, &nextState); err != nil {
-		return nil, messageSendStatusError(err, "Failed to start Codex thread.", "")
+		return nil, sdk.MessageSendStatusError(err, "Failed to start Codex thread.", "", messageStatusForError, messageStatusReasonForError)
 	}
 	*state = nextState
 	cc.sendSystemNotice(ctx, portal, fmt.Sprintf("Started a new Codex session in %s", path))
