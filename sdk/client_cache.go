@@ -21,34 +21,6 @@ func EnsureClientMap(mu *sync.Mutex, clients *map[networkid.UserLoginID]bridgev2
 	mu.Unlock()
 }
 
-// LoadOrCreateClient returns a cached client if reusable, otherwise creates and caches a new one.
-func LoadOrCreateClient(
-	mu *sync.Mutex,
-	clients map[networkid.UserLoginID]bridgev2.NetworkAPI,
-	loginID networkid.UserLoginID,
-	reuse func(existing bridgev2.NetworkAPI) bool,
-	create func() (bridgev2.NetworkAPI, error),
-) (bridgev2.NetworkAPI, error) {
-	if mu == nil {
-		return create()
-	}
-
-	mu.Lock()
-	defer mu.Unlock()
-	if existing := clients[loginID]; existing != nil {
-		if reuse != nil && reuse(existing) {
-			return existing, nil
-		}
-		delete(clients, loginID)
-	}
-	client, err := create()
-	if err != nil {
-		return nil, err
-	}
-	clients[loginID] = client
-	return client, nil
-}
-
 // RemoveClientFromCache removes a client from the cache by login ID.
 func RemoveClientFromCache(
 	mu *sync.Mutex,

@@ -59,36 +59,47 @@ func LoadUserLogin[C bridgev2.NetworkAPI](login *bridgev2.UserLogin, cfg LoadUse
 	if login == nil {
 		return fmt.Errorf("login is nil")
 	}
-	clientAPI, err := LoadOrCreateClient(
-		cfg.Mu,
-		clients,
-		login.ID,
-		func(existingAPI bridgev2.NetworkAPI) bool {
-			existing, ok := existingAPI.(C)
-			if !ok {
-				return false
-			}
-			if cfg.Update != nil {
-				cfg.Update(existing, login)
-			}
-			login.Client = existing
-			return true
-		},
-		func() (bridgev2.NetworkAPI, error) {
-			client, err := cfg.Create(login)
-			if err != nil {
-				return nil, err
-			}
-			login.Client = client
-			return client, nil
-		},
-	)
-	if err != nil {
-		login.Client = makeBroken(login, fmt.Sprintf("Couldn't initialize %s for this login.", cfg.BridgeName))
-		return nil
+	createClient := func() (C, error) {
+		client, err := cfg.Create(login)
+		if err != nil {
+			var zero C
+			return zero, err
+		}
+		login.Client = client
+		return client, nil
 	}
-	client, ok := clientAPI.(C)
-	if !ok {
+
+	var (
+		client C
+		err    error
+		reused bool
+	)
+	if cfg.Mu == nil {
+		client, err = createClient()
+	} else {
+		cfg.Mu.Lock()
+		if existingAPI := clients[login.ID]; existingAPI != nil {
+			existing, ok := existingAPI.(C)
+			if ok {
+				if cfg.Update != nil {
+					cfg.Update(existing, login)
+				}
+				login.Client = existing
+				client = existing
+				reused = true
+			} else {
+				delete(clients, login.ID)
+			}
+		}
+		if !reused {
+			client, err = createClient()
+			if err == nil {
+				clients[login.ID] = client
+			}
+		}
+		cfg.Mu.Unlock()
+	}
+	if err != nil {
 		login.Client = makeBroken(login, fmt.Sprintf("Couldn't initialize %s for this login.", cfg.BridgeName))
 		return nil
 	}
