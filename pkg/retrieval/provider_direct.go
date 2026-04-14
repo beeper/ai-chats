@@ -11,22 +11,10 @@ import (
 	"net/url"
 	"strings"
 	"time"
-
-	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 type directFetchProvider struct {
 	cfg DirectConfig
-}
-
-func newDirectFetchProvider(cfg *FetchConfig) FetchProvider {
-	if cfg == nil {
-		return nil
-	}
-	if !stringutil.BoolPtrOr(cfg.Direct.Enabled, true) {
-		return nil
-	}
-	return &directFetchProvider{cfg: cfg.Direct}
 }
 
 func (p *directFetchProvider) Name() string {

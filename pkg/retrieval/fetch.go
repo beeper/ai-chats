@@ -7,6 +7,7 @@ import (
 
 	"github.com/beeper/agentremote/pkg/shared/providerresource"
 	"github.com/beeper/agentremote/pkg/shared/registry"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 // Fetch executes a fetch using the configured provider chain.
@@ -22,11 +23,11 @@ func Fetch(ctx context.Context, req FetchRequest, cfg *FetchConfig) (*FetchRespo
 		cfg.Fallbacks,
 		DefaultFetchFallbackOrder,
 		func(reg *registry.Registry[FetchProvider]) {
-			if p := newExaFetchProvider(cfg); p != nil {
-				reg.Register(p)
+			if cfg != nil && stringutil.BoolPtrOr(cfg.Exa.Enabled, true) && strings.TrimSpace(cfg.Exa.APIKey) != "" {
+				reg.Register(&exaFetchProvider{cfg: cfg.Exa})
 			}
-			if p := newDirectFetchProvider(cfg); p != nil {
-				reg.Register(p)
+			if cfg != nil && stringutil.BoolPtrOr(cfg.Direct.Enabled, true) {
+				reg.Register(&directFetchProvider{cfg: cfg.Direct})
 			}
 		},
 		func(provider FetchProvider) (*FetchResponse, error) {

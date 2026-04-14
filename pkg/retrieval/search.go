@@ -7,6 +7,7 @@ import (
 
 	"github.com/beeper/agentremote/pkg/shared/providerresource"
 	"github.com/beeper/agentremote/pkg/shared/registry"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 // Search executes a search using the configured provider chain.
@@ -15,15 +16,20 @@ func Search(ctx context.Context, req SearchRequest, cfg *SearchConfig) (*SearchR
 		return nil, errors.New("missing query")
 	}
 	cfg = cfg.WithDefaults()
-	req = normalizeSearchRequest(req)
+	if req.Count <= 0 {
+		req.Count = DefaultSearchCount
+	}
+	if req.Count > MaxSearchCount {
+		req.Count = MaxSearchCount
+	}
 
 	return providerresource.Run(
 		cfg.Provider,
 		cfg.Fallbacks,
 		DefaultSearchFallbackOrder,
 		func(reg *registry.Registry[SearchProvider]) {
-			if p := newExaSearchProvider(cfg); p != nil {
-				reg.Register(p)
+			if cfg != nil && stringutil.BoolPtrOr(cfg.Exa.Enabled, true) && strings.TrimSpace(cfg.Exa.APIKey) != "" {
+				reg.Register(&exaSearchProvider{cfg: cfg.Exa})
 			}
 		},
 		func(provider SearchProvider) (*SearchResponse, error) {
@@ -42,14 +48,4 @@ func Search(ctx context.Context, req SearchRequest, cfg *SearchConfig) (*SearchR
 		},
 		errors.New("no search providers available"),
 	)
-}
-
-func normalizeSearchRequest(req SearchRequest) SearchRequest {
-	if req.Count <= 0 {
-		req.Count = DefaultSearchCount
-	}
-	if req.Count > MaxSearchCount {
-		req.Count = MaxSearchCount
-	}
-	return req
 }

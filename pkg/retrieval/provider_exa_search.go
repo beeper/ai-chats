@@ -7,21 +7,10 @@ import (
 	"time"
 
 	"github.com/beeper/agentremote/pkg/shared/exa"
-	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 type exaSearchProvider struct {
 	cfg ExaConfig
-}
-
-func newExaSearchProvider(cfg *SearchConfig) SearchProvider {
-	if cfg == nil {
-		return nil
-	}
-	if !stringutil.BoolPtrOr(cfg.Exa.Enabled, true) || strings.TrimSpace(cfg.Exa.APIKey) == "" {
-		return nil
-	}
-	return &exaSearchProvider{cfg: cfg.Exa}
 }
 
 func (p *exaSearchProvider) Name() string {
