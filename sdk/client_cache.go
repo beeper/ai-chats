@@ -2,25 +2,9 @@ package sdk
 
 import (
 	"context"
-	"sync"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/networkid"
 )
-
-// RemoveClientFromCache removes a client from the cache by login ID.
-func RemoveClientFromCache(
-	mu *sync.Mutex,
-	clients map[networkid.UserLoginID]bridgev2.NetworkAPI,
-	loginID networkid.UserLoginID,
-) {
-	if mu == nil {
-		return
-	}
-	mu.Lock()
-	delete(clients, loginID)
-	mu.Unlock()
-}
 
 // PrimeUserLoginCache preloads all logins into bridgev2's in-memory user/login caches.
 func PrimeUserLoginCache(ctx context.Context, br *bridgev2.Bridge) {

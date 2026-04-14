@@ -167,7 +167,9 @@ func newBrokenLoginClient(login *bridgev2.UserLogin, connector *CodexConnector, 
 		tmp.purgeCodexHomeBestEffort(ctx)
 		tmp.purgeCodexCwdsBestEffort(ctx)
 		if connector != nil && login != nil {
-			sdk.RemoveClientFromCache(&connector.clientsMu, connector.clients, login.ID)
+			connector.clientsMu.Lock()
+			delete(connector.clients, login.ID)
+			connector.clientsMu.Unlock()
 		}
 	}
 	return c
