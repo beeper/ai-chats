@@ -381,8 +381,8 @@ func (s *schedulerRuntime) wakeableHeartbeatAgents(candidates []heartbeatAgent) 
 	}
 	out := make([]heartbeatAgent, 0, len(candidates))
 	for _, candidate := range candidates {
-		portal, _, err := s.client.resolveHeartbeatSessionPortal(candidate.agentID, candidate.heartbeat)
-		if err != nil || portal == nil || portal.MXID == "" {
+		route, err := s.client.resolveHeartbeatRoute(candidate.agentID, candidate.heartbeat)
+		if err != nil || route.SessionPortal == nil || route.SessionPortal.MXID == "" {
 			continue
 		}
 		out = append(out, candidate)

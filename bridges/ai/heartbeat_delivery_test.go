@@ -44,19 +44,22 @@ func TestResolveHeartbeatDeliveryTargetFallsBackFromMismatchedSessionRoom(t *tes
 
 	client.recordAgentActivity(context.Background(), lastPortal, portalMeta(lastPortal))
 
-	target := client.resolveHeartbeatDeliveryTarget(agentID, nil, otherPortal.MXID.String())
-	if target.Portal != lastPortal {
-		t.Fatalf("expected last active portal fallback, got %#v", target.Portal)
+	route, err := client.resolveHeartbeatRoute(agentID, nil, heartbeatSessionResolution{SessionKey: otherPortal.MXID.String()})
+	if err != nil {
+		t.Fatalf("expected heartbeat route, got error: %v", err)
 	}
-	if target.RoomID != lastPortal.MXID {
-		t.Fatalf("expected last active room %q, got %q", lastPortal.MXID, target.RoomID)
+	if route.Delivery.Portal != lastPortal {
+		t.Fatalf("expected last active portal fallback, got %#v", route.Delivery.Portal)
 	}
-	if target.Reason != "last-active" {
-		t.Fatalf("expected last-active reason, got %q", target.Reason)
+	if route.Delivery.RoomID != lastPortal.MXID {
+		t.Fatalf("expected last active room %q, got %q", lastPortal.MXID, route.Delivery.RoomID)
+	}
+	if route.Delivery.Reason != "last-active" {
+		t.Fatalf("expected last-active reason, got %q", route.Delivery.Reason)
 	}
 }
 
-func TestResolveHeartbeatSessionPortalFallsBackFromMismatchedExplicitRoom(t *testing.T) {
+func TestResolveHeartbeatRouteFallsBackFromMismatchedExplicitSessionRoom(t *testing.T) {
 	client := newDBBackedTestAIClient(t, "")
 
 	agentID := normalizeAgentID(agents.DefaultAgentID)
@@ -71,17 +74,15 @@ func TestResolveHeartbeatSessionPortalFallsBackFromMismatchedExplicitRoom(t *tes
 	client.recordAgentActivity(context.Background(), lastPortal, portalMeta(lastPortal))
 	session := otherPortal.MXID.String()
 
-	portal, roomID, err := client.resolveHeartbeatSessionPortal(agentID, &HeartbeatConfig{
-		Session: &session,
-	})
+	route, err := client.resolveHeartbeatRoute(agentID, &HeartbeatConfig{Session: &session})
 	if err != nil {
 		t.Fatalf("expected fallback session portal, got error: %v", err)
 	}
-	if portal != lastPortal {
-		t.Fatalf("expected last active portal fallback, got %#v", portal)
+	if route.SessionPortal != lastPortal {
+		t.Fatalf("expected last active portal fallback, got %#v", route.SessionPortal)
 	}
-	if roomID != lastPortal.MXID.String() {
-		t.Fatalf("expected last active room %q, got %q", lastPortal.MXID, roomID)
+	if route.SessionKey != lastPortal.MXID.String() {
+		t.Fatalf("expected last active room %q, got %q", lastPortal.MXID, route.SessionKey)
 	}
 }
 
@@ -98,11 +99,14 @@ func TestResolveHeartbeatDeliveryTargetFallsBackToDefaultChat(t *testing.T) {
 		defaultChatPortalKey(client.UserLogin.ID): defaultPortal,
 	})
 
-	target := client.resolveHeartbeatDeliveryTarget(agentID, nil, "")
-	if target.Portal != defaultPortal {
-		t.Fatalf("expected default chat portal fallback, got %#v", target.Portal)
+	route, err := client.resolveHeartbeatRoute(agentID, nil, heartbeatSessionResolution{})
+	if err != nil {
+		t.Fatalf("expected heartbeat route, got error: %v", err)
 	}
-	if target.Reason != "default-chat" {
-		t.Fatalf("expected default-chat reason, got %q", target.Reason)
+	if route.Delivery.Portal != defaultPortal {
+		t.Fatalf("expected default chat portal fallback, got %#v", route.Delivery.Portal)
+	}
+	if route.Delivery.Reason != "default-chat" {
+		t.Fatalf("expected default-chat reason, got %q", route.Delivery.Reason)
 	}
 }

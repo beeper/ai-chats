@@ -11,3 +11,10 @@ type deliveryTarget struct {
 	Channel string
 	Reason  string
 }
+
+type heartbeatRoute struct {
+	Session       heartbeatSessionResolution
+	SessionPortal *bridgev2.Portal
+	SessionKey    string
+	Delivery      deliveryTarget
+}

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/pkg/agents"
 	"github.com/beeper/agentremote/pkg/textfs"
@@ -76,13 +77,14 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 	}
 
 	sessionResolution := oc.resolveHeartbeatSession(agentID, heartbeat)
-	storeKey := strings.TrimSpace(sessionResolution.SessionKey)
-
-	sessionPortal, sessionKey, err := oc.resolveHeartbeatSessionPortal(agentID, heartbeat, sessionResolution)
-	if err != nil || sessionPortal == nil || sessionPortal.MXID == "" {
+	route, err := oc.resolveHeartbeatRoute(agentID, heartbeat, sessionResolution)
+	if err != nil || route.SessionPortal == nil || route.SessionPortal.MXID == "" {
 		oc.log.Warn().Str("agent_id", agentID).Err(err).Msg("Heartbeat skipped: no session portal")
 		return heartbeatRunResult{Status: "skipped", Reason: "no-session"}
 	}
+	storeKey := strings.TrimSpace(route.Session.SessionKey)
+	sessionPortal := route.SessionPortal
+	sessionKey := route.SessionKey
 
 	ownerKey := systemEventsOwnerKey(oc)
 	pendingEvents := hasSystemEvents(ownerKey, sessionKey) || (storeKey != "" && !strings.EqualFold(storeKey, sessionKey) && hasSystemEvents(ownerKey, storeKey))
@@ -102,7 +104,7 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 		prevUpdatedAt = sessionResolution.UpdatedAt
 	}
 
-	delivery := oc.resolveHeartbeatDeliveryTarget(agentID, heartbeat, sessionResolution.SessionKey)
+	delivery := route.Delivery
 	deliveryPortal := delivery.Portal
 	deliveryRoom := delivery.RoomID
 	deliveryReason := delivery.Reason
@@ -265,13 +267,60 @@ func systemEventsOwnerKey(oc *AIClient) string {
 	return bridgeID + "|" + loginID
 }
 
-func (oc *AIClient) resolveHeartbeatSessionPortal(agentID string, heartbeat *HeartbeatConfig, preResolved ...heartbeatSessionResolution) (*bridgev2.Portal, string, error) {
+func (oc *AIClient) resolveHeartbeatRoute(agentID string, heartbeat *HeartbeatConfig, preResolved ...heartbeatSessionResolution) (heartbeatRoute, error) {
+	route := heartbeatRoute{}
 	var hbSession heartbeatSessionResolution
 	if len(preResolved) > 0 && preResolved[0].SessionKey != "" {
 		hbSession = preResolved[0]
 	} else {
 		hbSession = oc.resolveHeartbeatSession(agentID, heartbeat)
 	}
+	route.Session = hbSession
+	if oc == nil || oc.UserLogin == nil {
+		return route, errors.New("no session")
+	}
+
+	portalByRoom := func(raw string) *bridgev2.Portal {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" || !strings.HasPrefix(trimmed, "!") {
+			return nil
+		}
+		portal := oc.portalByRoomID(context.Background(), id.RoomID(trimmed))
+		if portal == nil || portal.MXID == "" {
+			return nil
+		}
+		if meta := portalMeta(portal); meta != nil && normalizeAgentID(resolveAgentID(meta)) != normalizeAgentID(agentID) {
+			return nil
+		}
+		return portal
+	}
+	fallbackPortal := func() (*bridgev2.Portal, string) {
+		if portal := oc.lastActivePortal(agentID); portal != nil && portal.MXID != "" {
+			return portal, "last-active"
+		}
+		if portal := oc.defaultChatPortal(); portal != nil && portal.MXID != "" {
+			return portal, "default-chat"
+		}
+		return nil, ""
+	}
+	deliveryForPortal := func(portal *bridgev2.Portal, reason string) deliveryTarget {
+		if portal == nil || portal.MXID == "" {
+			return deliveryTarget{Reason: "no-target"}
+		}
+		if !oc.IsLoggedIn() {
+			return deliveryTarget{Channel: "matrix", Reason: "channel-not-ready"}
+		}
+		target := deliveryTarget{
+			Portal:  portal,
+			RoomID:  portal.MXID,
+			Channel: "matrix",
+		}
+		if reason != "" {
+			target.Reason = reason
+		}
+		return target
+	}
+
 	session := ""
 	if heartbeat != nil && heartbeat.Session != nil {
 		session = strings.TrimSpace(*heartbeat.Session)
@@ -281,24 +330,55 @@ func (oc *AIClient) resolveHeartbeatSessionPortal(agentID string, heartbeat *Hea
 		mainKey = strings.TrimSpace(oc.connector.Config.Session.MainKey)
 	}
 	if session == "" || strings.EqualFold(session, "main") || strings.EqualFold(session, "global") || (mainKey != "" && strings.EqualFold(session, mainKey)) {
-		if portal := oc.heartbeatPortalByRoom(agentID, hbSession.SessionKey); portal != nil {
-			return portal, portal.MXID.String(), nil
+		if portal := portalByRoom(hbSession.SessionKey); portal != nil {
+			route.SessionPortal = portal
+			route.SessionKey = portal.MXID.String()
+		} else if portal, _ := fallbackPortal(); portal != nil {
+			route.SessionPortal = portal
+			route.SessionKey = portal.MXID.String()
+		} else {
+			return route, errors.New("no session")
 		}
-		if portal, _ := oc.resolveHeartbeatFallbackPortal(agentID); portal != nil {
-			return portal, portal.MXID.String(), nil
+	} else if portal := portalByRoom(session); portal != nil {
+		route.SessionPortal = portal
+		route.SessionKey = portal.MXID.String()
+	} else if portal := portalByRoom(hbSession.SessionKey); portal != nil {
+		route.SessionPortal = portal
+		route.SessionKey = portal.MXID.String()
+	} else if portal, _ := fallbackPortal(); portal != nil {
+		route.SessionPortal = portal
+		route.SessionKey = portal.MXID.String()
+	} else {
+		return route, errors.New("no session")
+	}
+
+	if heartbeat != nil && heartbeat.Target != nil {
+		if strings.EqualFold(strings.TrimSpace(*heartbeat.Target), "none") {
+			route.Delivery = deliveryTarget{Reason: "target-none"}
+			return route, nil
 		}
-		return nil, "", errors.New("no session")
 	}
-	if portal := oc.heartbeatPortalByRoom(agentID, session); portal != nil {
-		return portal, portal.MXID.String(), nil
+	if heartbeat != nil && heartbeat.To != nil && strings.TrimSpace(*heartbeat.To) != "" {
+		route.Delivery = deliveryForPortal(portalByRoom(strings.TrimSpace(*heartbeat.To)), "")
+		return route, nil
 	}
-	if portal := oc.heartbeatPortalByRoom(agentID, hbSession.SessionKey); portal != nil {
-		return portal, portal.MXID.String(), nil
+	if heartbeat != nil && heartbeat.Target != nil {
+		trimmed := strings.TrimSpace(*heartbeat.Target)
+		if trimmed != "" && !strings.EqualFold(trimmed, "last") {
+			route.Delivery = deliveryForPortal(portalByRoom(trimmed), "")
+			return route, nil
+		}
 	}
-	if portal, _ := oc.resolveHeartbeatFallbackPortal(agentID); portal != nil {
-		return portal, portal.MXID.String(), nil
+	if portal := portalByRoom(hbSession.SessionKey); portal != nil {
+		route.Delivery = deliveryForPortal(portal, "")
+		return route, nil
 	}
-	return nil, "", errors.New("no session")
+	if portal, reason := fallbackPortal(); portal != nil {
+		route.Delivery = deliveryForPortal(portal, reason)
+		return route, nil
+	}
+	route.Delivery = deliveryTarget{Reason: "no-target"}
+	return route, nil
 }
 
 func (oc *AIClient) shouldRunHeartbeatForFile(agentID string, reason string) bool {

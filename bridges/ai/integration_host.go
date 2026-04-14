@@ -284,15 +284,6 @@ func (h *runtimeIntegrationHost) RunHeartbeatOnce(ctx context.Context, reason st
 	return h.client.scheduler.RunHeartbeatSweep(ctx, reason)
 }
 
-func (h *runtimeIntegrationHost) ResolveHeartbeatSessionPortal(agentID string) (portal *bridgev2.Portal, sessionKey string, err error) {
-	if h == nil || h.client == nil {
-		return nil, "", fmt.Errorf("missing client")
-	}
-	hb := resolveHeartbeatConfig(&h.client.connector.Config, agentID)
-	p, sk, e := h.client.resolveHeartbeatSessionPortal(agentID, hb)
-	return p, sk, e
-}
-
 func (h *runtimeIntegrationHost) ResolveHeartbeatSessionKey(agentID string) string {
 	if h == nil || h.client == nil {
 		return ""
