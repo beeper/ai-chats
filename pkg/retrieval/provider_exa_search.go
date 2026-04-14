@@ -84,14 +84,23 @@ func (p *exaSearchProvider) Search(ctx context.Context, req SearchRequest) (*Sea
 
 	results := make([]SearchResult, 0, len(resp.Results))
 	for _, entry := range resp.Results {
-		desc := descriptionFromEntry(entry.Highlights, entry.Text)
+		desc := strings.TrimSpace(entry.Text)
+		if len(entry.Highlights) > 0 {
+			desc = strings.TrimSpace(entry.Highlights[0])
+		} else if len(desc) > 240 {
+			desc = desc[:240] + "..."
+		}
+		siteName := ""
+		if parsed, err := url.Parse(strings.TrimSpace(entry.URL)); err == nil {
+			siteName = parsed.Hostname()
+		}
 		results = append(results, SearchResult{
 			ID:          strings.TrimSpace(entry.ID),
 			Title:       strings.TrimSpace(entry.Title),
 			URL:         entry.URL,
 			Description: desc,
 			Published:   entry.PublishedDate,
-			SiteName:    resolveSiteName(entry.URL),
+			SiteName:    siteName,
 			Author:      strings.TrimSpace(entry.Author),
 			Image:       strings.TrimSpace(entry.Image),
 			Favicon:     strings.TrimSpace(entry.Favicon),
@@ -109,23 +118,4 @@ func (p *exaSearchProvider) Search(ctx context.Context, req SearchRequest) (*Sea
 		},
 		NoResults: len(results) == 0,
 	}, nil
-}
-
-func descriptionFromEntry(highlights []string, text string) string {
-	if len(highlights) > 0 {
-		return strings.TrimSpace(highlights[0])
-	}
-	trimmed := strings.TrimSpace(text)
-	if len(trimmed) > 240 {
-		return trimmed[:240] + "..."
-	}
-	return trimmed
-}
-
-func resolveSiteName(raw string) string {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil {
-		return ""
-	}
-	return parsed.Hostname()
 }
