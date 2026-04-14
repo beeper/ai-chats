@@ -265,6 +265,11 @@ and `bridges/ai` no longer launches queued/heartbeat runs or queue rejection
 statuses through `dispatchCompletionInternal(...)` /
 `sendQueueRejectedStatus(...)`.
 
+Recent progress also made `pendingMessage` the canonical queued/immediate
+prompt input: `buildPromptContextForPendingMessage(...)` now rebuilds
+text/media/regenerate prompts from that one shape, and the duplicate
+`pendingQueueItem.rawEventContent` field is gone.
+
 Recent progress also removed the one-callsite
 `resolveOpenRouterMediaConfig(...)` wrapper: `generateWithOpenRouter(...)` now
 owns its auth/header/base-URL/pdf-engine shaping directly, and tests assert
@@ -283,10 +288,10 @@ routing through `sessionUsesMainKey(...)`, `resolveAgentPortal(...)`,
 `resolveFallbackPortal(...)`, and `deliveryTargetForPortal(...)`.
 
 Recent progress also removed one more split execution entrypoint: heartbeat now
-enters `dispatchCompletionInternal(...)` instead of calling
-`runAgentLoopWithRetry(...)` directly, so queued, immediate, and heartbeat runs
-share the same launch boundary even though the surrounding pipeline is still
-not fully unified.
+uses the same low-level run launch primitive as queued/immediate execution
+(`withAgentLoopInactivityTimeout(...)` + `runAgentLoopWithRetry(...)`) even
+though the surrounding queue/runtime/heartbeat pipeline is still not fully
+unified.
 
 Recent progress also removed the local session-tool helper layer:
 `executeSessionsList(...)`, `executeSessionsHistory(...)`, and

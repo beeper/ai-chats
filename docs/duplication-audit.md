@@ -103,6 +103,10 @@ Recent cleanup kept pushing in that direction:
   `sendQueueRejectedStatus(...)` and `dispatchCompletionInternal(...)` are
   gone, so queue-stop / queue-overflow rejection and queued / heartbeat run
   launch now happen directly at the real callsites
+- Pending prompt assembly now has one queue/runtime owner:
+  `buildPromptContextForPendingMessage(...)` rebuilds text/media/regenerate
+  prompts from `pendingMessage`, and the duplicate queue-only
+  `pendingQueueItem.rawEventContent` copy is gone
 
 ## Highest-Value Remaining Problems
 
@@ -304,14 +308,13 @@ Files:
 
 Why this still violates the goal:
 
-- heartbeat no longer launches `runAgentLoopWithRetry(...)` from its own direct
-  path; it now enters the same `dispatchCompletionInternal(...)` launch
-  boundary as queued/immediate runs
-- immediate and queued prompts now share one dispatch launcher; the remaining
-  duplication is above and below that boundary, not a second queued-only run
-  starter
-- queueing, execution, streaming, heartbeat delivery, and terminal state still
-  form multiple partial runtimes instead of one run pipeline
+- heartbeat and queued runs now share the same low-level launch primitive
+  (`withAgentLoopInactivityTimeout(...)` + `runAgentLoopWithRetry(...)`), and
+  queued/immediate Matrix inputs now rebuild prompts from the same
+  `pendingMessage` owner instead of carrying a second queue-only raw-event copy
+- the remaining duplication is in run admission and accepted-path branching:
+  immediate run, steer-accepted, queued, and heartbeat preflight still form
+  adjacent partial runtimes instead of one obvious execution pipeline
 
 Desired owner:
 

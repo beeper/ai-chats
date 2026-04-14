@@ -281,12 +281,22 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		eventID = msg.Event.ID
 	}
 
-	promptContext, err := oc.buildPromptContextForTurn(runCtx, portal, runMeta, body, eventID, currentTurnPromptOptions{
-		currentTurnTextOptions: currentTurnTextOptions{
-			rawEventContent:  rawEventContent,
-			includeLinkScope: true,
+	pending := pendingMessage{
+		Event:           pendingEvent,
+		Portal:          portal,
+		Meta:            runMeta,
+		InboundContext:  &inboundCtx,
+		Type:            pendingTypeText,
+		MessageBody:     body,
+		RawEventContent: rawEventContent,
+		AckEventIDs:     []id.EventID{msg.Event.ID},
+		PendingSent:     pendingSent,
+		Typing: &TypingContext{
+			IsGroup:      isGroup,
+			WasMentioned: wasMentioned,
 		},
-	})
+	}
+	promptContext, err := oc.buildPromptContextForPendingMessage(runCtx, pending, body)
 	if err != nil {
 		return nil, sdk.MessageSendStatusError(err, "Couldn't prepare the message. Try again.", "", messageStatusForError, messageStatusReasonForError)
 	}
@@ -309,28 +319,11 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	if msg.InputTransactionID != "" {
 		userMessage.SendTxnID = networkid.RawTransactionID(msg.InputTransactionID)
 	}
-
-	pending := pendingMessage{
-		Event:           pendingEvent,
-		Portal:          portal,
-		Meta:            runMeta,
-		InboundContext:  &inboundCtx,
-		Type:            pendingTypeText,
-		MessageBody:     body,
-		RawEventContent: rawEventContent,
-		AckEventIDs:     []id.EventID{msg.Event.ID},
-		PendingSent:     pendingSent,
-		Typing: &TypingContext{
-			IsGroup:      isGroup,
-			WasMentioned: wasMentioned,
-		},
-	}
 	queueItem := pendingQueueItem{
-		pending:         pending,
-		messageID:       string(eventID),
-		summaryLine:     rawBodyOriginal,
-		enqueuedAt:      time.Now().UnixMilli(),
-		rawEventContent: rawEventContent,
+		pending:     pending,
+		messageID:   string(eventID),
+		summaryLine: rawBodyOriginal,
+		enqueuedAt:  time.Now().UnixMilli(),
 	}
 	dbMsg := userMessage
 	isPending := oc.dispatchOrQueueCore(runCtx, pendingEvent, portal, runMeta, userMessage, queueItem, queueSettings, promptContext)
@@ -495,9 +488,20 @@ func (oc *AIClient) regenerateFromEdit(
 		}
 	}
 
-	// Build the prompt with the edited message included
-	// We need to rebuild from scratch up to the edited message
-	promptContext, err := oc.buildContextUpToMessage(ctx, portal, meta, editedMessage.ID, newBody)
+	pending := pendingMessage{
+		Event:       snapshotPendingEvent(evt),
+		Portal:      portal,
+		Meta:        meta,
+		Type:        pendingTypeEditRegenerate,
+		MessageBody: newBody,
+		TargetMsgID: editedMessage.ID,
+		Typing: &TypingContext{
+			IsGroup:      oc.isGroupChat(ctx, portal),
+			WasMentioned: true,
+		},
+	}
+	// Build the prompt with the edited message included.
+	promptContext, err := oc.buildPromptContextForPendingMessage(ctx, pending, "")
 	if err != nil {
 		return fmt.Errorf("failed to build prompt: %w", err)
 	}
@@ -516,27 +520,13 @@ func (oc *AIClient) regenerateFromEdit(
 		cfg = &oc.connector.Config
 	}
 	queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, channel: "matrix", inlineOpts: airuntime.QueueInlineOptions{}})
-	isGroup := oc.isGroupChat(ctx, portal)
-	pendingEvent := snapshotPendingEvent(evt)
-	pending := pendingMessage{
-		Event:       pendingEvent,
-		Portal:      portal,
-		Meta:        meta,
-		Type:        pendingTypeEditRegenerate,
-		MessageBody: newBody,
-		TargetMsgID: editedMessage.ID,
-		Typing: &TypingContext{
-			IsGroup:      isGroup,
-			WasMentioned: true,
-		},
-	}
 	queueItem := pendingQueueItem{
 		pending:     pending,
 		messageID:   string(evt.ID),
 		summaryLine: newBody,
 		enqueuedAt:  time.Now().UnixMilli(),
 	}
-	oc.dispatchOrQueueCore(ctx, pendingEvent, portal, meta, nil, queueItem, queueSettings, promptContext)
+	oc.dispatchOrQueueCore(ctx, pending.Event, portal, meta, nil, queueItem, queueSettings, promptContext)
 
 	return nil
 }
@@ -692,9 +682,17 @@ func (oc *AIClient) handleMediaMessage(
 		inboundCtx := oc.buildMatrixInboundContext(portal, msg.Event, rawBody, senderName, roomName, isGroup)
 		promptCtx := withInboundContext(ctx, inboundCtx)
 		body := oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, rawBody, senderName, roomName, isGroup)
-		promptContext, err := oc.buildPromptContextForTurn(promptCtx, portal, meta, body, eventID, currentTurnPromptOptions{
-			currentTurnTextOptions: currentTurnTextOptions{includeLinkScope: true},
-		})
+		pending := pendingMessage{
+			Event:          pendingEvent,
+			Portal:         portal,
+			Meta:           meta,
+			InboundContext: &inboundCtx,
+			Type:           pendingTypeText,
+			MessageBody:    body,
+			PendingSent:    pendingSent,
+			Typing:         typingCtx,
+		}
+		promptContext, err := oc.buildPromptContextForPendingMessage(promptCtx, pending, body)
 		if err != nil {
 			return nil, sdk.MessageSendStatusError(err, "Couldn't prepare the message. Try again.", "", messageStatusForError, messageStatusReasonForError)
 		}
@@ -715,16 +713,6 @@ func (oc *AIClient) handleMediaMessage(
 		}
 		if msg.InputTransactionID != "" {
 			userMessage.SendTxnID = networkid.RawTransactionID(msg.InputTransactionID)
-		}
-		pending := pendingMessage{
-			Event:          pendingEvent,
-			Portal:         portal,
-			Meta:           meta,
-			InboundContext: &inboundCtx,
-			Type:           pendingTypeText,
-			MessageBody:    body,
-			PendingSent:    pendingSent,
-			Typing:         typingCtx,
 		}
 		queueItem := pendingQueueItem{
 			pending:     pending,
@@ -808,15 +796,20 @@ func (oc *AIClient) handleMediaMessage(
 	captionForPrompt := oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, caption, senderName, roomName, isGroup)
 	captionInboundCtx := oc.buildMatrixInboundContext(portal, msg.Event, caption, senderName, roomName, isGroup)
 	promptCtx := withInboundContext(ctx, captionInboundCtx)
-	promptContext, err := oc.buildPromptContextForTurn(promptCtx, portal, meta, captionForPrompt, eventID, currentTurnPromptOptions{
-		currentTurnTextOptions: currentTurnTextOptions{includeLinkScope: true},
-		attachment: &turnAttachmentOptions{
-			mediaURL:      string(mediaURL),
-			mimeType:      mimeType,
-			encryptedFile: encryptedFile,
-			mediaType:     config.msgType,
-		},
-	})
+	pending := pendingMessage{
+		Event:          snapshotPendingEvent(msg.Event),
+		Portal:         portal,
+		Meta:           meta,
+		InboundContext: &captionInboundCtx,
+		Type:           config.msgType,
+		MessageBody:    captionForPrompt,
+		MediaURL:       string(mediaURL),
+		MimeType:       mimeType,
+		EncryptedFile:  encryptedFile,
+		PendingSent:    pendingSent,
+		Typing:         typingCtx,
+	}
+	promptContext, err := oc.buildPromptContextForPendingMessage(promptCtx, pending, "")
 	if err != nil {
 		return nil, sdk.MessageSendStatusError(err, "Couldn't prepare the media message. Try again.", "", messageStatusForError, messageStatusReasonForError)
 	}
@@ -850,20 +843,6 @@ func (oc *AIClient) handleMediaMessage(
 	}
 	if msg.InputTransactionID != "" {
 		userMessage.SendTxnID = networkid.RawTransactionID(msg.InputTransactionID)
-	}
-
-	pending := pendingMessage{
-		Event:          snapshotPendingEvent(msg.Event),
-		Portal:         portal,
-		Meta:           meta,
-		InboundContext: &captionInboundCtx,
-		Type:           config.msgType,
-		MessageBody:    captionForPrompt,
-		MediaURL:       string(mediaURL),
-		MimeType:       mimeType,
-		EncryptedFile:  encryptedFile,
-		PendingSent:    pendingSent,
-		Typing:         typingCtx,
 	}
 	queueItem := pendingQueueItem{
 		pending:     pending,
@@ -982,9 +961,17 @@ func (oc *AIClient) handleTextFileMessage(
 
 	inboundCtx := oc.buildMatrixInboundContext(portal, msg.Event, combined, senderName, roomName, isGroup)
 	promptCtx := withInboundContext(ctx, inboundCtx)
-	promptContext, err := oc.buildPromptContextForTurn(promptCtx, portal, meta, combined, eventID, currentTurnPromptOptions{
-		currentTurnTextOptions: currentTurnTextOptions{includeLinkScope: true},
-	})
+	pending := pendingMessage{
+		Event:          snapshotPendingEvent(msg.Event),
+		Portal:         portal,
+		Meta:           meta,
+		InboundContext: &inboundCtx,
+		Type:           pendingTypeText,
+		MessageBody:    combined,
+		PendingSent:    pendingSent,
+		Typing:         typingCtx,
+	}
+	promptContext, err := oc.buildPromptContextForPendingMessage(promptCtx, pending, combined)
 	if err != nil {
 		return nil, sdk.MessageSendStatusError(err, "Couldn't prepare the message. Try again.", "", messageStatusForError, messageStatusReasonForError)
 	}
@@ -1006,17 +993,6 @@ func (oc *AIClient) handleTextFileMessage(
 	}
 	if msg.InputTransactionID != "" {
 		userMessage.SendTxnID = networkid.RawTransactionID(msg.InputTransactionID)
-	}
-
-	pending := pendingMessage{
-		Event:          snapshotPendingEvent(msg.Event),
-		Portal:         portal,
-		Meta:           meta,
-		InboundContext: &inboundCtx,
-		Type:           pendingTypeText,
-		MessageBody:    combined,
-		PendingSent:    pendingSent,
-		Typing:         typingCtx,
 	}
 	queueItem := pendingQueueItem{
 		pending:     pending,

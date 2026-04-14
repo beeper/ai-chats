@@ -1802,14 +1802,30 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 	if len(extraStatusEvents) > 0 {
 		statusCtx = context.WithValue(ctx, statusEventsKey{}, extraStatusEvents)
 	}
+	ackRemoveIDs := make([]id.EventID, 0, len(entries))
+	for _, entry := range entries {
+		if entry.Event != nil {
+			ackRemoveIDs = append(ackRemoveIDs, entry.Event.ID)
+		}
+	}
 
-	// Build prompt with combined body
-	promptContext, err := oc.buildPromptContextForTurn(statusCtx, last.Portal, last.Meta, combinedBody, last.Event.ID, currentTurnPromptOptions{
-		currentTurnTextOptions: currentTurnTextOptions{
-			rawEventContent:  rawEventContent,
-			includeLinkScope: true,
+	pending := pendingMessage{
+		Event:           pendingEvent,
+		Portal:          last.Portal,
+		Meta:            last.Meta,
+		InboundContext:  &inboundCtx,
+		Type:            pendingTypeText,
+		MessageBody:     combinedBody,
+		StatusEvents:    extraStatusEvents,
+		PendingSent:     last.PendingSent,
+		RawEventContent: rawEventContent,
+		AckEventIDs:     ackRemoveIDs,
+		Typing: &TypingContext{
+			IsGroup:      last.IsGroup,
+			WasMentioned: last.WasMentioned,
 		},
-	})
+	}
+	promptContext, err := oc.buildPromptContextForPendingMessage(statusCtx, pending, combinedBody)
 	if err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg("Failed to build prompt for debounced messages")
 		oc.notifyMatrixSendFailure(statusCtx, last.Portal, last.Event, err)
@@ -1842,38 +1858,11 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure user ghost before saving debounced message")
 	}
 	oc.saveUserMessage(ctx, last.Event, userMessage)
-
-	// Dispatch using existing flow (handles room lock + status)
-	// Pass nil for userMessage since we already saved it above
-	ackRemoveIDs := make([]id.EventID, 0, len(entries))
-	for _, entry := range entries {
-		if entry.Event != nil {
-			ackRemoveIDs = append(ackRemoveIDs, entry.Event.ID)
-		}
-	}
-
-	pending := pendingMessage{
-		Event:           pendingEvent,
-		Portal:          last.Portal,
-		Meta:            last.Meta,
-		InboundContext:  &inboundCtx,
-		Type:            pendingTypeText,
-		MessageBody:     combinedBody,
-		StatusEvents:    extraStatusEvents,
-		PendingSent:     last.PendingSent,
-		RawEventContent: rawEventContent,
-		AckEventIDs:     ackRemoveIDs,
-		Typing: &TypingContext{
-			IsGroup:      last.IsGroup,
-			WasMentioned: last.WasMentioned,
-		},
-	}
 	queueItem := pendingQueueItem{
-		pending:         pending,
-		messageID:       string(pendingEvent.ID),
-		summaryLine:     combinedRaw,
-		enqueuedAt:      time.Now().UnixMilli(),
-		rawEventContent: rawEventContent,
+		pending:     pending,
+		messageID:   string(pendingEvent.ID),
+		summaryLine: combinedRaw,
+		enqueuedAt:  time.Now().UnixMilli(),
 	}
 	var cfg *Config
 	if oc != nil && oc.connector != nil {

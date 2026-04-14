@@ -93,6 +93,49 @@ func queueStatusEvents(primary *event.Event, extras []*event.Event) []*event.Eve
 	return events
 }
 
+func (oc *AIClient) buildPromptContextForPendingMessage(
+	ctx context.Context,
+	pending pendingMessage,
+	promptText string,
+) (PromptContext, error) {
+	if pending.InboundContext != nil {
+		ctx = withInboundContext(ctx, *pending.InboundContext)
+	}
+	metaSnapshot := clonePortalMetadata(pending.Meta)
+	eventID := id.EventID("")
+	if pending.Event != nil {
+		eventID = pending.Event.ID
+	}
+	switch pending.Type {
+	case pendingTypeText:
+		if promptText == "" {
+			promptText = pending.MessageBody
+		}
+		return oc.buildPromptContextForTurn(ctx, pending.Portal, metaSnapshot, promptText, eventID, currentTurnPromptOptions{
+			currentTurnTextOptions: currentTurnTextOptions{
+				rawEventContent:  pending.RawEventContent,
+				includeLinkScope: true,
+			},
+		})
+	case pendingTypeImage, pendingTypePDF, pendingTypeAudio, pendingTypeVideo:
+		return oc.buildPromptContextForTurn(ctx, pending.Portal, metaSnapshot, pending.MessageBody, eventID, currentTurnPromptOptions{
+			currentTurnTextOptions: currentTurnTextOptions{includeLinkScope: true},
+			attachment: &turnAttachmentOptions{
+				mediaURL:      pending.MediaURL,
+				mimeType:      pending.MimeType,
+				encryptedFile: pending.EncryptedFile,
+				mediaType:     pending.Type,
+			},
+		})
+	case pendingTypeRegenerate:
+		return oc.buildContextForRegenerate(ctx, pending.Portal, metaSnapshot, pending.MessageBody, pending.SourceEventID)
+	case pendingTypeEditRegenerate:
+		return oc.buildContextUpToMessage(ctx, pending.Portal, metaSnapshot, pending.TargetMsgID, pending.MessageBody)
+	default:
+		return PromptContext{}, fmt.Errorf("unknown pending message type: %s", pending.Type)
+	}
+}
+
 func (oc *AIClient) dispatchPromptRun(
 	ctx context.Context,
 	roomID id.RoomID,
@@ -298,44 +341,7 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 			return
 		}
 
-		var promptContext PromptContext
-		var err error
-
-		metaSnapshot := clonePortalMetadata(item.pending.Meta)
-		var eventID id.EventID
-		if item.pending.Event != nil {
-			eventID = item.pending.Event.ID
-		}
-		promptCtx := ctx
-		if item.pending.InboundContext != nil {
-			promptCtx = withInboundContext(promptCtx, *item.pending.InboundContext)
-		}
-		switch item.pending.Type {
-		case pendingTypeText:
-			promptContext, err = oc.buildPromptContextForTurn(promptCtx, item.pending.Portal, metaSnapshot, prompt, eventID, currentTurnPromptOptions{
-				currentTurnTextOptions: currentTurnTextOptions{
-					rawEventContent:  item.rawEventContent,
-					includeLinkScope: true,
-				},
-			})
-		case pendingTypeImage, pendingTypePDF, pendingTypeAudio, pendingTypeVideo:
-			promptContext, err = oc.buildPromptContextForTurn(promptCtx, item.pending.Portal, metaSnapshot, item.pending.MessageBody, eventID, currentTurnPromptOptions{
-				currentTurnTextOptions: currentTurnTextOptions{includeLinkScope: true},
-				attachment: &turnAttachmentOptions{
-					mediaURL:      item.pending.MediaURL,
-					mimeType:      item.pending.MimeType,
-					encryptedFile: item.pending.EncryptedFile,
-					mediaType:     item.pending.Type,
-				},
-			})
-		case pendingTypeRegenerate:
-			promptContext, err = oc.buildContextForRegenerate(promptCtx, item.pending.Portal, metaSnapshot, item.pending.MessageBody, item.pending.SourceEventID)
-		case pendingTypeEditRegenerate:
-			promptContext, err = oc.buildContextUpToMessage(promptCtx, item.pending.Portal, metaSnapshot, item.pending.TargetMsgID, item.pending.MessageBody)
-		default:
-			err = fmt.Errorf("unknown pending message type: %s", item.pending.Type)
-		}
-
+		promptContext, err := oc.buildPromptContextForPendingMessage(ctx, item.pending, prompt)
 		if err != nil {
 			oc.loggerForContext(ctx).Err(err).Msg("Failed to build prompt for pending queue item")
 			oc.notifyMatrixSendFailure(ctx, item.pending.Portal, item.pending.Event, err)

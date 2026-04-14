@@ -15,14 +15,13 @@ import (
 )
 
 type pendingQueueItem struct {
-	pending         pendingMessage
-	messageID       string
-	summaryLine     string
-	enqueuedAt      int64
-	rawEventContent map[string]any
-	prompt          string
-	backlogAfter    bool
-	allowDuplicate  bool
+	pending        pendingMessage
+	messageID      string
+	summaryLine    string
+	enqueuedAt     int64
+	prompt         string
+	backlogAfter   bool
+	allowDuplicate bool
 }
 
 type pendingQueue struct {
