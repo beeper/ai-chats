@@ -59,7 +59,7 @@ func TestBuildStreamingMessageMetadataHandlesNilTurn(t *testing.T) {
 	}
 }
 
-func TestHandleResponseLifecycleEventEmitsMetadataForCompleted(t *testing.T) {
+func TestProcessResponseStreamEventEmitsMetadataForCompleted(t *testing.T) {
 	state := newTestStreamingStateWithTurn()
 	oc := &AIClient{}
 
@@ -67,11 +67,24 @@ func TestHandleResponseLifecycleEventEmitsMetadataForCompleted(t *testing.T) {
 		"turn_id": state.turn.ID(),
 	})
 
-	oc.handleResponseLifecycleEvent(context.Background(), nil, state, nil, "response.completed", responses.Response{
-		ID:     "resp_123",
-		Status: "completed",
-		Model:  "gpt-4.1",
-	})
+	rsc := &responseStreamContext{
+		base: &agentLoopProviderBase{
+			oc:    oc,
+			log:   zerolog.Nop(),
+			state: state,
+		},
+	}
+	_, _, err := oc.processResponseStreamEvent(context.Background(), rsc, responses.ResponseStreamEventUnion{
+		Type: "response.completed",
+		Response: responses.Response{
+			ID:     "resp_123",
+			Status: "completed",
+			Model:  "gpt-4.1",
+		},
+	}, false)
+	if err != nil {
+		t.Fatalf("unexpected completed error: %v", err)
+	}
 
 	message := streamui.SnapshotUIMessage(state.turn.UIState())
 	if message == nil {
@@ -97,10 +110,8 @@ func TestBuildStreamUIMessageCanonicalizesTerminalResponseStatus(t *testing.T) {
 		"turn_id": state.turn.ID(),
 	})
 
-	oc.handleResponseLifecycleEvent(context.Background(), nil, state, nil, "response.in_progress", responses.Response{
-		ID:     "resp_123",
-		Status: "in_progress",
-	})
+	state.responseID = "resp_123"
+	state.responseStatus = "in_progress"
 	state.completedAtMs = 123
 	state.finishReason = "stop"
 

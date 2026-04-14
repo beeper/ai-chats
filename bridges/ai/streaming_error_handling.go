@@ -3,8 +3,6 @@ package ai
 import (
 	"context"
 	"errors"
-
-	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 )
 
@@ -26,22 +24,6 @@ func streamFailureError(state *streamingState, err error) error {
 		return &NonFallbackError{Err: err}
 	}
 	return &PreDeltaError{Err: err}
-}
-
-func (oc *AIClient) finishStreamingWithFailure(
-	ctx context.Context,
-	log zerolog.Logger,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	meta *PortalMetadata,
-	reason string,
-	err error,
-) error {
-	_ = log
-	return oc.finalizeStreamingTurn(ctx, portal, state, meta, streamingFinalizeParams{
-		reason: reason,
-		err:    err,
-	})
 }
 
 func resolveStreamingTerminalError(
@@ -74,11 +56,17 @@ func (oc *AIClient) handleResponsesStreamErr(
 ) (*ContextLengthError, error) {
 	finalizeCtx, reason, cle, finalErr := resolveStreamingTerminalError(ctx, includeContextLength, context.Background(), err)
 	if reason != "" {
-		return nil, oc.finishStreamingWithFailure(finalizeCtx, *oc.loggerForContext(ctx), portal, state, meta, reason, finalErr)
+		return nil, oc.finalizeStreamingTurn(finalizeCtx, portal, state, meta, streamingFinalizeParams{
+			reason: reason,
+			err:    finalErr,
+		})
 	}
 	if cle != nil {
 		return cle, nil
 	}
 
-	return nil, oc.finishStreamingWithFailure(ctx, *oc.loggerForContext(ctx), portal, state, meta, "error", err)
+	return nil, oc.finalizeStreamingTurn(ctx, portal, state, meta, streamingFinalizeParams{
+		reason: "error",
+		err:    err,
+	})
 }

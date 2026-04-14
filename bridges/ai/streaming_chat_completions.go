@@ -27,13 +27,22 @@ func (a *chatCompletionsTurnAdapter) handleStreamStepError(
 ) (*ContextLengthError, error) {
 	finalizeCtx, reason, cle, finalErr := resolveStreamingTerminalError(ctx, true, ctx, stepErr)
 	if reason != "" && cle != nil {
-		return cle, a.oc.finishStreamingWithFailure(finalizeCtx, a.log, a.portal, a.state, a.meta, reason, finalErr)
+		return cle, a.oc.finalizeStreamingTurn(finalizeCtx, a.portal, a.state, a.meta, streamingFinalizeParams{
+			reason: reason,
+			err:    finalErr,
+		})
 	}
 	if reason != "" {
-		return nil, a.oc.finishStreamingWithFailure(finalizeCtx, a.log, a.portal, a.state, a.meta, reason, finalErr)
+		return nil, a.oc.finalizeStreamingTurn(finalizeCtx, a.portal, a.state, a.meta, streamingFinalizeParams{
+			reason: reason,
+			err:    finalErr,
+		})
 	}
 	logChatCompletionsFailure(a.log, stepErr, params, a.meta, a.prompt, "stream_err")
-	return nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, a.state, a.meta, "error", stepErr)
+	return nil, a.oc.finalizeStreamingTurn(ctx, a.portal, a.state, a.meta, streamingFinalizeParams{
+		reason: "error",
+		err:    stepErr,
+	})
 }
 
 func (a *chatCompletionsTurnAdapter) RunAgentTurn(
@@ -57,7 +66,10 @@ func (a *chatCompletionsTurnAdapter) RunAgentTurn(
 	if stream == nil {
 		initErr := errors.New("chat completions streaming not available")
 		logChatCompletionsFailure(log, initErr, params, meta, a.prompt, "stream_init")
-		return false, nil, oc.finishStreamingWithFailure(ctx, log, portal, state, meta, "error", initErr)
+		return false, nil, oc.finalizeStreamingTurn(ctx, portal, state, meta, streamingFinalizeParams{
+			reason: "error",
+			err:    initErr,
+		})
 	}
 
 	activeTools := newStreamToolRegistry()

@@ -115,7 +115,10 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 		if round > maxAgentLoopToolTurns {
 			err = fmt.Errorf("max responses tool call rounds reached (%d)", maxAgentLoopToolTurns)
 			a.log.Warn().Err(err).Int("pending_outputs", len(state.pendingFunctionOutputs)).Msg("Stopping responses continuation loop")
-			return false, nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, state, a.meta, "error", err)
+			return false, nil, a.oc.finalizeStreamingTurn(ctx, a.portal, state, a.meta, streamingFinalizeParams{
+				reason: "error",
+				err:    err,
+			})
 		}
 		a.log.Debug().
 			Int("pending_outputs", len(state.pendingFunctionOutputs)).
@@ -126,12 +129,21 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				if timeoutErr := agentLoopInactivityCause(ctx); timeoutErr != nil {
-					return false, nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, state, a.meta, "timeout", timeoutErr)
+					return false, nil, a.oc.finalizeStreamingTurn(ctx, a.portal, state, a.meta, streamingFinalizeParams{
+						reason: "timeout",
+						err:    timeoutErr,
+					})
 				}
-				return false, nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, state, a.meta, "cancelled", err)
+				return false, nil, a.oc.finalizeStreamingTurn(ctx, a.portal, state, a.meta, streamingFinalizeParams{
+					reason: "cancelled",
+					err:    err,
+				})
 			}
 			logResponsesFailure(a.log, err, params, a.meta, a.prompt, "continuation_init")
-			return false, nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, state, a.meta, "error", err)
+			return false, nil, a.oc.finalizeStreamingTurn(ctx, a.portal, state, a.meta, streamingFinalizeParams{
+				reason: "error",
+				err:    err,
+			})
 		}
 	}
 
@@ -209,22 +221,69 @@ func (oc *AIClient) processResponseStreamEvent(
 		isContinuation,
 		!isContinuation,
 	)
+	applyResponseLifecycle := func(eventType string, response responses.Response) {
+		if state == nil {
+			return
+		}
+		if strings.TrimSpace(response.ID) != "" {
+			state.responseID = response.ID
+		}
+		if status := strings.TrimSpace(string(response.Status)); status != "" {
+			state.responseStatus = status
+		}
+
+		switch eventType {
+		case "response.completed":
+			if state.responseStatus == "completed" {
+				state.finishReason = "stop"
+			} else {
+				state.finishReason = state.responseStatus
+			}
+		case "response.failed":
+			state.finishReason = "error"
+		case "response.incomplete":
+			state.finishReason = strings.TrimSpace(string(response.IncompleteDetails.Reason))
+			if state.finishReason == "" {
+				state.finishReason = "other"
+			}
+		case "response.created", "response.queued", "response.in_progress":
+			// No terminal state changes needed.
+		default:
+			return
+		}
+
+		base := oc.buildUIMessageMetadata(state, meta, false)
+		extra := responseMetadataDeltaFromResponse(response)
+		if len(extra) > 0 {
+			base = mergeMaps(base, extra)
+		}
+		state.writer().MessageMetadata(ctx, base)
+
+		if eventType == "response.failed" {
+			if msg := strings.TrimSpace(response.Error.Message); msg != "" {
+				state.writer().Error(ctx, msg)
+			}
+		}
+	}
 
 	switch streamEvent.Type {
 	case "response.created", "response.queued", "response.in_progress":
-		oc.handleResponseLifecycleEvent(ctx, portal, state, meta, streamEvent.Type, streamEvent.Response)
+		applyResponseLifecycle(streamEvent.Type, streamEvent.Response)
 
 	case "response.failed":
-		oc.handleResponseLifecycleEvent(ctx, portal, state, meta, streamEvent.Type, streamEvent.Response)
+		applyResponseLifecycle(streamEvent.Type, streamEvent.Response)
 		state.completedAtMs = time.Now().UnixMilli()
 		errText := strings.TrimSpace(streamEvent.Response.Error.Message)
 		if errText == "" {
 			errText = "response failed"
 		}
-		return true, nil, oc.finishStreamingWithFailure(ctx, log, portal, state, meta, "error", errors.New(errText))
+		return true, nil, oc.finalizeStreamingTurn(ctx, portal, state, meta, streamingFinalizeParams{
+			reason: "error",
+			err:    errors.New(errText),
+		})
 
 	case "response.incomplete":
-		oc.handleResponseLifecycleEvent(ctx, portal, state, meta, streamEvent.Type, streamEvent.Response)
+		applyResponseLifecycle(streamEvent.Type, streamEvent.Response)
 		state.completedAtMs = time.Now().UnixMilli()
 		actions.finalizeMetadata()
 		log.Debug().
@@ -349,7 +408,7 @@ func (oc *AIClient) processResponseStreamEvent(
 		actions.annotationAdded(streamEvent.Annotation, streamEvent.AnnotationIndex)
 
 	case "response.completed":
-		oc.handleResponseLifecycleEvent(ctx, portal, state, meta, streamEvent.Type, streamEvent.Response)
+		applyResponseLifecycle(streamEvent.Type, streamEvent.Response)
 		state.completedAtMs = time.Now().UnixMilli()
 		if streamEvent.Response.Usage.TotalTokens > 0 || streamEvent.Response.Usage.InputTokens > 0 || streamEvent.Response.Usage.OutputTokens > 0 {
 			actions.updateUsage(
@@ -395,7 +454,10 @@ func (oc *AIClient) processResponseStreamEvent(
 				}, nil
 			}
 		}
-		return true, nil, oc.finishStreamingWithFailure(ctx, log, portal, state, meta, "error", apiErr)
+		return true, nil, oc.finalizeStreamingTurn(ctx, portal, state, meta, streamingFinalizeParams{
+			reason: "error",
+			err:    apiErr,
+		})
 
 	default:
 		// Ignore unknown events
