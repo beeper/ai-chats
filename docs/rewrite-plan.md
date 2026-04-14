@@ -205,6 +205,10 @@ Recent progress also removed the SDK command-path runtime downcast: commands now
 build a plain `Conversation` snapshot instead of reaching through `login.Client`
 for SDK-private runtime state.
 
+Recent progress also removed the one-message `promptTail(...)` wrapper from
+prompt canonicalization: callers now slice the final prompt message directly at
+the persistence boundary.
+
 ## Execution Order
 
 ### Phase 1: Streaming Terminalizer
@@ -255,6 +259,7 @@ Deliverable:
 - no production helper layer around canonical turn-data persistence
 - no continuation-only steering serialization helper
 - base context history replay calls the canonical history replayer directly
+- no one-message prompt-tail wrapper around latest-user persistence
 - one-way projection from persisted/runtime state
 - no separate local-context/projection/continuation helper stacks
 

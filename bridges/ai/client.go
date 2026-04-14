@@ -1838,8 +1838,10 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 		},
 		Timestamp: sdk.MatrixEventTimestamp(last.Event),
 	}
-	if turnData, ok := turnDataFromUserPromptMessages(promptTail(promptContext, 1)); ok {
-		userMessage.Metadata.(*MessageMetadata).CanonicalTurnData = turnData.ToMap()
+	if len(promptContext.Messages) > 0 {
+		if turnData, ok := turnDataFromUserPromptMessages(promptContext.Messages[len(promptContext.Messages)-1:]); ok {
+			userMessage.Metadata.(*MessageMetadata).CanonicalTurnData = turnData.ToMap()
+		}
 	}
 
 	// Save user message to database - we must do this ourselves since we already

@@ -54,18 +54,6 @@ func filterPromptBlocksForHistory(blocks []PromptBlock, injectImages bool) []Pro
 	return filtered
 }
 
-func promptTail(ctx PromptContext, count int) []PromptMessage {
-	if count <= 0 || len(ctx.Messages) == 0 {
-		return nil
-	}
-	if count > len(ctx.Messages) {
-		count = len(ctx.Messages)
-	}
-	out := make([]PromptMessage, count)
-	copy(out, ctx.Messages[len(ctx.Messages)-count:])
-	return out
-}
-
 func promptMessagesFromTurnData(td sdk.TurnData) []PromptMessage {
 	if td.Role == "" {
 		return nil
@@ -157,7 +145,7 @@ func promptMessagesFromTurnData(td sdk.TurnData) []PromptMessage {
 }
 
 // turnDataFromUserPromptMessages intentionally projects only the latest user
-// message because callers pass a single-message tail via promptTail(..., 1).
+// message because callers pass the final user-message slice directly.
 func turnDataFromUserPromptMessages(messages []PromptMessage) (sdk.TurnData, bool) {
 	if len(messages) == 0 {
 		return sdk.TurnData{}, false

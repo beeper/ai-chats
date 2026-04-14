@@ -301,8 +301,10 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		},
 		Timestamp: sdk.MatrixEventTimestamp(msg.Event),
 	}
-	if turnData, ok := turnDataFromUserPromptMessages(promptTail(promptContext, 1)); ok {
-		userMessage.Metadata.(*MessageMetadata).CanonicalTurnData = turnData.ToMap()
+	if len(promptContext.Messages) > 0 {
+		if turnData, ok := turnDataFromUserPromptMessages(promptContext.Messages[len(promptContext.Messages)-1:]); ok {
+			userMessage.Metadata.(*MessageMetadata).CanonicalTurnData = turnData.ToMap()
+		}
 	}
 	if msg.InputTransactionID != "" {
 		userMessage.SendTxnID = networkid.RawTransactionID(msg.InputTransactionID)
@@ -700,8 +702,10 @@ func (oc *AIClient) handleMediaMessage(
 			},
 			Timestamp: sdk.MatrixEventTimestamp(msg.Event),
 		}
-		if turnData, ok := turnDataFromUserPromptMessages(promptTail(promptContext, 1)); ok {
-			userMessage.Metadata.(*MessageMetadata).CanonicalTurnData = turnData.ToMap()
+		if len(promptContext.Messages) > 0 {
+			if turnData, ok := turnDataFromUserPromptMessages(promptContext.Messages[len(promptContext.Messages)-1:]); ok {
+				userMessage.Metadata.(*MessageMetadata).CanonicalTurnData = turnData.ToMap()
+			}
 		}
 		if msg.InputTransactionID != "" {
 			userMessage.SendTxnID = networkid.RawTransactionID(msg.InputTransactionID)
@@ -816,8 +820,10 @@ func (oc *AIClient) handleMediaMessage(
 		userMeta.MediaUnderstandingDecisions = understanding.Decisions
 		userMeta.Transcript = understanding.Transcript
 	}
-	if turnData, ok := turnDataFromUserPromptMessages(promptTail(promptContext, 1)); ok {
-		userMeta.CanonicalTurnData = turnData.ToMap()
+	if len(promptContext.Messages) > 0 {
+		if turnData, ok := turnDataFromUserPromptMessages(promptContext.Messages[len(promptContext.Messages)-1:]); ok {
+			userMeta.CanonicalTurnData = turnData.ToMap()
+		}
 	}
 
 	userMessage := &database.Message{
@@ -979,8 +985,10 @@ func (oc *AIClient) handleTextFileMessage(
 		},
 		Timestamp: sdk.MatrixEventTimestamp(msg.Event),
 	}
-	if turnData, ok := turnDataFromUserPromptMessages(promptTail(promptContext, 1)); ok {
-		userMessage.Metadata.(*MessageMetadata).CanonicalTurnData = turnData.ToMap()
+	if len(promptContext.Messages) > 0 {
+		if turnData, ok := turnDataFromUserPromptMessages(promptContext.Messages[len(promptContext.Messages)-1:]); ok {
+			userMessage.Metadata.(*MessageMetadata).CanonicalTurnData = turnData.ToMap()
+		}
 	}
 	if msg.InputTransactionID != "" {
 		userMessage.SendTxnID = networkid.RawTransactionID(msg.InputTransactionID)
