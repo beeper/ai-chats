@@ -225,6 +225,10 @@ Why this still violates the goal:
 - status/session readers and heartbeat routing now enter through one route
   selection path; the remaining fragmentation is in write-side ownership and
   how different features touch session state
+- routed heartbeat session selection and the canonical stored-session
+  read/write operations now live in `session_store.go`; the remaining debt is
+  mostly which callers still speak in store-agent/session primitives instead of
+  one higher-level session API
 - last-routed-room lookup now also lives in `session_store.go`; remaining
   fragmentation is not consumer-side DB querying, but how different features
   choose and touch sessions

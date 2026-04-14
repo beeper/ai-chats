@@ -29,14 +29,14 @@ func TestRecordAgentActivityOnlyWritesRoomSession(t *testing.T) {
 
 	client.recordAgentActivity(context.Background(), portal, meta)
 
-	updatedAt, ok := client.loadStoredSessionUpdatedAt(context.Background(), storeAgentID, portal.MXID.String())
+	updatedAt, ok := client.storedSessionUpdatedAt(context.Background(), storeAgentID, portal.MXID.String())
 	if !ok {
 		t.Fatalf("expected room session entry to be written")
 	}
 	if updatedAt <= 0 {
 		t.Fatalf("expected room session entry to have an updated timestamp")
 	}
-	if _, ok := client.loadStoredSessionUpdatedAt(context.Background(), storeAgentID, mainKey); ok {
+	if _, ok := client.storedSessionUpdatedAt(context.Background(), storeAgentID, mainKey); ok {
 		t.Fatalf("expected main session row not to be created for route mirroring")
 	}
 }
@@ -47,14 +47,14 @@ func TestLoadLastRoutedSessionKeyIgnoresMainSessionRow(t *testing.T) {
 	storeAgentID := client.resolveSessionRouting(agentID).StoreAgentID
 	mainKey := client.resolveSessionRouting(agentID).MainKey
 
-	if err := client.storeSessionUpdatedAt(context.Background(), storeAgentID, mainKey, 3_000); err != nil {
+	if err := client.saveStoredSessionUpdatedAt(context.Background(), storeAgentID, mainKey, 3_000); err != nil {
 		t.Fatalf("upsert main session entry: %v", err)
 	}
-	if err := client.storeSessionUpdatedAt(context.Background(), storeAgentID, "!chat:example.com", 2_000); err != nil {
+	if err := client.saveStoredSessionUpdatedAt(context.Background(), storeAgentID, "!chat:example.com", 2_000); err != nil {
 		t.Fatalf("upsert room session entry: %v", err)
 	}
 
-	target, ok := client.loadLastRoutedSessionKey(context.Background(), agentID)
+	target, ok := client.lastRoutedSessionKey(context.Background(), agentID)
 	if !ok {
 		t.Fatalf("expected last route to resolve")
 	}
@@ -69,7 +69,7 @@ func TestResolveHeartbeatRouteDefaultDoesNotLoadMainSessionRoute(t *testing.T) {
 	storeAgentID := client.resolveSessionRouting(agentID).StoreAgentID
 	mainKey := client.resolveSessionRouting(agentID).MainKey
 
-	if err := client.storeSessionUpdatedAt(context.Background(), storeAgentID, mainKey, 1_000); err != nil {
+	if err := client.saveStoredSessionUpdatedAt(context.Background(), storeAgentID, mainKey, 1_000); err != nil {
 		t.Fatalf("upsert main session entry: %v", err)
 	}
 	defaultPortal := testAgentPortal("default", "!default:example.com", agentID, &PortalMetadata{
@@ -109,7 +109,7 @@ func TestRecordAgentActivitySkipsInternalRooms(t *testing.T) {
 
 	client.recordAgentActivity(context.Background(), portal, meta)
 
-	if _, ok := client.loadStoredSessionUpdatedAt(context.Background(), storeAgentID, portal.MXID.String()); ok {
+	if _, ok := client.storedSessionUpdatedAt(context.Background(), storeAgentID, portal.MXID.String()); ok {
 		t.Fatalf("expected internal rooms not to write route state")
 	}
 }
@@ -130,7 +130,7 @@ func TestLoadLastRoutedSessionKeyUsesGlobalSessionStoreForNonDefaultAgent(t *tes
 
 	client.recordAgentActivity(context.Background(), portal, meta)
 
-	target, ok := client.loadLastRoutedSessionKey(context.Background(), agentID)
+	target, ok := client.lastRoutedSessionKey(context.Background(), agentID)
 	if !ok {
 		t.Fatalf("expected last route to resolve from shared global session store")
 	}

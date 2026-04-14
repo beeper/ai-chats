@@ -197,6 +197,11 @@ Recent progress also collapsed heartbeat session routing into one owner:
 selection, and heartbeat main-key alias handling now uses the same canonical
 session rules as the session store.
 
+Recent progress also moved routed heartbeat session selection and canonical
+session read/write operations into `session_store.go`: heartbeat no longer
+replays key-selection logic inline, and the write-side API is now the shared
+stored-session touch/read surface.
+
 Recent progress also removed the cron forwarding chain from
 `runtimeIntegrationHost`: cron now wires directly to the scheduler, and the
 old builtin-module registry layer is gone.

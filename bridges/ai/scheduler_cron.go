@@ -366,7 +366,7 @@ func (s *schedulerRuntime) executeCronJob(ctx context.Context, record *scheduled
 func (s *schedulerRuntime) resolveCronDeliveryTarget(agentID string, delivery *integrationcron.Delivery) integrationcron.DeliveryTarget {
 	return integrationcron.ResolveCronDeliveryTarget(agentID, delivery, integrationcron.DeliveryResolverDeps{
 		ResolveLastTarget: func(agentID string) (channel string, target string, ok bool) {
-			target, ok = s.client.loadLastRoutedSessionKey(context.Background(), agentID)
+			target, ok = s.client.lastRoutedSessionKey(context.Background(), agentID)
 			if !ok {
 				return "", "", false
 			}

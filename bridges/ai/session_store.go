@@ -102,11 +102,41 @@ func (oc *AIClient) resolveSessionRouting(agentID string) sessionRouting {
 	}
 }
 
-func (oc *AIClient) loadSessionUpdatedAt(ctx context.Context, agentID string, sessionKey string) (int64, bool) {
-	return oc.loadStoredSessionUpdatedAt(ctx, oc.resolveSessionRouting(agentID).StoreAgentID, sessionKey)
+func (oc *AIClient) resolveHeartbeatSession(agentID string, requestedSession string) heartbeatSessionResolution {
+	routing := oc.resolveSessionRouting(agentID)
+	session := heartbeatSessionResolution{
+		StoreAgentID: routing.StoreAgentID,
+		SessionKey:   routing.MainKey,
+	}
+	if routing.Scope == sessionScopeGlobal {
+		return session
+	}
+	requestedSession = strings.TrimSpace(requestedSession)
+	if sessionUsesMainKey(routing, requestedSession) {
+		return session
+	}
+	if strings.HasPrefix(requestedSession, "!") {
+		session.SessionKey = requestedSession
+	} else {
+		candidate := strings.ToLower(requestedSession)
+		if candidate == "" || strings.EqualFold(candidate, defaultSessionMainKey) {
+			candidate = routing.MainKey
+		} else if !strings.HasPrefix(candidate, "agent:") {
+			candidate = "agent:" + routing.AgentID + ":" + candidate
+		}
+		if strings.HasPrefix(candidate, "agent:"+routing.AgentID+":") && !sessionUsesMainKey(routing, candidate) {
+			session.SessionKey = candidate
+		}
+	}
+	if session.SessionKey != routing.MainKey {
+		if updatedAt, ok := oc.storedSessionUpdatedAt(context.Background(), routing.StoreAgentID, session.SessionKey); ok {
+			session.UpdatedAt = updatedAt
+		}
+	}
+	return session
 }
 
-func (oc *AIClient) loadLastRoutedSessionKey(ctx context.Context, agentID string) (string, bool) {
+func (oc *AIClient) lastRoutedSessionKey(ctx context.Context, agentID string) (string, bool) {
 	if oc == nil {
 		return "", false
 	}
@@ -136,7 +166,7 @@ func (oc *AIClient) loadLastRoutedSessionKey(ctx context.Context, agentID string
 	return sessionKey, true
 }
 
-func (oc *AIClient) loadStoredSessionUpdatedAt(ctx context.Context, storeAgentID string, sessionKey string) (int64, bool) {
+func (oc *AIClient) storedSessionUpdatedAt(ctx context.Context, storeAgentID string, sessionKey string) (int64, bool) {
 	if oc == nil || strings.TrimSpace(sessionKey) == "" {
 		return 0, false
 	}
@@ -166,7 +196,7 @@ func (oc *AIClient) loadStoredSessionUpdatedAt(ctx context.Context, storeAgentID
 	return updatedAt, true
 }
 
-func (oc *AIClient) storeSessionUpdatedAt(ctx context.Context, storeAgentID string, sessionKey string, updatedAt int64) error {
+func (oc *AIClient) saveStoredSessionUpdatedAt(ctx context.Context, storeAgentID string, sessionKey string, updatedAt int64) error {
 	scope := loginScopeForClient(oc)
 	if scope == nil {
 		return nil
@@ -194,7 +224,7 @@ func (oc *AIClient) storeSessionUpdatedAt(ctx context.Context, storeAgentID stri
 	return err
 }
 
-func (oc *AIClient) updateSessionTimestamp(ctx context.Context, storeAgentID string, sessionKey string, minUpdatedAt int64) {
+func (oc *AIClient) touchStoredSession(ctx context.Context, storeAgentID string, sessionKey string, minUpdatedAt int64) {
 	if oc == nil || strings.TrimSpace(sessionKey) == "" {
 		return
 	}
@@ -207,13 +237,13 @@ func (oc *AIClient) updateSessionTimestamp(ctx context.Context, storeAgentID str
 	defer lock.Unlock()
 
 	updatedAt := time.Now().UnixMilli()
-	if existingUpdatedAt, ok := oc.loadStoredSessionUpdatedAt(ctx, storeAgentID, sessionKey); ok && existingUpdatedAt > updatedAt {
+	if existingUpdatedAt, ok := oc.storedSessionUpdatedAt(ctx, storeAgentID, sessionKey); ok && existingUpdatedAt > updatedAt {
 		updatedAt = existingUpdatedAt
 	}
 	if minUpdatedAt > updatedAt {
 		updatedAt = minUpdatedAt
 	}
-	if err := oc.storeSessionUpdatedAt(ctx, storeAgentID, sessionKey, updatedAt); err != nil {
+	if err := oc.saveStoredSessionUpdatedAt(ctx, storeAgentID, sessionKey, updatedAt); err != nil {
 		oc.log.Warn().Err(err).Str("session_key", sessionKey).Msg("session store: upsert failed")
 	}
 }

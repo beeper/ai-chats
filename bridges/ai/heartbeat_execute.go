@@ -269,43 +269,14 @@ func systemEventsOwnerKey(oc *AIClient) string {
 func (oc *AIClient) resolveHeartbeatRoute(agentID string, heartbeat *HeartbeatConfig) (heartbeatRoute, error) {
 	route := heartbeatRoute{}
 	routing := oc.resolveSessionRouting(agentID)
-	hbSession := heartbeatSessionResolution{
-		StoreAgentID: routing.StoreAgentID,
-		SessionKey:   routing.MainKey,
-	}
-	if routing.Scope != sessionScopeGlobal {
-		session := ""
-		if heartbeat != nil && heartbeat.Session != nil {
-			session = strings.TrimSpace(*heartbeat.Session)
-		}
-		if !sessionUsesMainKey(routing, session) {
-			if strings.HasPrefix(session, "!") {
-				hbSession.SessionKey = session
-			} else {
-				candidate := strings.ToLower(session)
-				if candidate == "" || strings.EqualFold(candidate, defaultSessionMainKey) {
-					candidate = routing.MainKey
-				} else if !strings.HasPrefix(candidate, "agent:") {
-					candidate = "agent:" + routing.AgentID + ":" + candidate
-				}
-				if strings.HasPrefix(candidate, "agent:"+routing.AgentID+":") && !sessionUsesMainKey(routing, candidate) {
-					hbSession.SessionKey = candidate
-				}
-			}
-		}
-		if hbSession.SessionKey != routing.MainKey {
-			if updatedAt, ok := oc.loadStoredSessionUpdatedAt(context.Background(), routing.StoreAgentID, hbSession.SessionKey); ok {
-				hbSession.UpdatedAt = updatedAt
-			}
-		}
-	}
-	route.Session = hbSession
-	if oc == nil || oc.UserLogin == nil {
-		return route, errors.New("no session")
-	}
 	session := ""
 	if heartbeat != nil && heartbeat.Session != nil {
 		session = strings.TrimSpace(*heartbeat.Session)
+	}
+	hbSession := oc.resolveHeartbeatSession(agentID, session)
+	route.Session = hbSession
+	if oc == nil || oc.UserLogin == nil {
+		return route, errors.New("no session")
 	}
 	sessionPortal := (*bridgev2.Portal)(nil)
 	if session != "" && !sessionUsesMainKey(routing, session) {

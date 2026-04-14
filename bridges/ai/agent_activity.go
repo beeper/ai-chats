@@ -27,14 +27,14 @@ func (oc *AIClient) recordAgentActivity(ctx context.Context, portal *bridgev2.Po
 	}
 
 	storeAgentID := oc.resolveSessionRouting(agentID).StoreAgentID
-	oc.updateSessionTimestamp(ctx, storeAgentID, portal.MXID.String(), 0)
+	oc.touchStoredSession(ctx, storeAgentID, portal.MXID.String(), 0)
 }
 
 func (oc *AIClient) lastActivePortal(agentID string) *bridgev2.Portal {
 	if oc == nil || oc.UserLogin == nil {
 		return nil
 	}
-	room, ok := oc.loadLastRoutedSessionKey(context.Background(), agentID)
+	room, ok := oc.lastRoutedSessionKey(context.Background(), agentID)
 	if !ok {
 		return nil
 	}

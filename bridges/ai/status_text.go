@@ -75,7 +75,8 @@ func (oc *AIClient) buildStatusText(
 	agentID := resolveAgentID(meta)
 	updatedAt := int64(0)
 	if sessionKey != "" {
-		if value, ok := oc.loadSessionUpdatedAt(ctx, agentID, sessionKey); ok {
+		routing := oc.resolveSessionRouting(agentID)
+		if value, ok := oc.storedSessionUpdatedAt(ctx, routing.StoreAgentID, sessionKey); ok {
 			updatedAt = value
 		}
 	}
