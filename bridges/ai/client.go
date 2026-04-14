@@ -714,7 +714,7 @@ func (oc *AIClient) agentUserID(agentID string) networkid.UserID {
 }
 
 func (oc *AIClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
-	return oc.portalRoomInfo(ctx, portal), nil
+	return oc.chatInfoFromPortal(ctx, portal), nil
 }
 
 func (oc *AIClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {

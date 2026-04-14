@@ -64,7 +64,7 @@ func (oc *AIClient) bootstrapPortalRoom(
 	}
 	chatInfo := params.ChatInfo
 	if chatInfo == nil {
-		chatInfo = oc.portalRoomInfo(ctx, params.Portal)
+		chatInfo = oc.chatInfoFromPortal(ctx, params.Portal)
 	}
 	if err := oc.materializePortalRoom(ctx, params.Portal, chatInfo, portalRoomMaterializeOptions{
 		CleanupOnCreateError: params.CleanupOnCreateError,

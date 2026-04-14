@@ -459,7 +459,7 @@ func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Por
 			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist generated room title")
 			return
 		}
-		if err := oc.materializePortalRoom(bgCtx, portal, oc.portalRoomInfo(bgCtx, portal), portalRoomMaterializeOptions{}); err != nil {
+		if err := oc.materializePortalRoom(bgCtx, portal, oc.chatInfoFromPortal(bgCtx, portal), portalRoomMaterializeOptions{}); err != nil {
 			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to sync generated room title to Matrix")
 		}
 	}()

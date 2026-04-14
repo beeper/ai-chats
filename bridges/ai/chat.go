@@ -960,6 +960,13 @@ func (oc *AIClient) configureAgentChatPortal(
 // chatInfoFromPortal builds ChatInfo from an existing portal
 func (oc *AIClient) chatInfoFromPortal(ctx context.Context, portal *bridgev2.Portal) *bridgev2.ChatInfo {
 	meta := portalMeta(portal)
+	if meta != nil && meta.InternalRoom() {
+		fallbackName := strings.TrimSpace(meta.Slug)
+		if fallbackName == "" {
+			fallbackName = "AI Chat"
+		}
+		return bridgeutil.BuildPortalFallbackChatInfo(portal, fallbackName)
+	}
 	modelID := oc.effectiveModel(meta)
 	title := strings.TrimSpace(portal.Name)
 	if title == "" {
