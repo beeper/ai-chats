@@ -31,6 +31,23 @@ type heartbeatSessionResolution struct {
 	UpdatedAt    int64
 }
 
+func sessionUsesMainKey(routing sessionRouting, raw string) bool {
+	candidate := strings.TrimSpace(raw)
+	if candidate == "" {
+		return false
+	}
+	normalizedMain := strings.ToLower(strings.TrimSpace(routing.MainKey))
+	if normalizedMain == "" {
+		normalizedMain = defaultSessionMainKey
+	}
+	agentMainAlias := "agent:" + routing.AgentID + ":" + defaultSessionMainKey
+	return strings.EqualFold(candidate, defaultSessionMainKey) ||
+		strings.EqualFold(candidate, sessionScopeGlobal) ||
+		strings.EqualFold(candidate, normalizedMain) ||
+		strings.EqualFold(candidate, routing.MainKey) ||
+		strings.EqualFold(candidate, agentMainAlias)
+}
+
 func sessionStoreLockKey(ownerKey string, storeAgentID string, sessionKey string) string {
 	agent := normalizeAgentID(storeAgentID)
 	key := strings.TrimSpace(sessionKey)
@@ -83,60 +100,6 @@ func (oc *AIClient) resolveSessionRouting(agentID string) sessionRouting {
 		MainKey:      mainSessionKey,
 		Scope:        scope,
 	}
-}
-
-func (oc *AIClient) resolveHeartbeatSession(agentID string, heartbeat *HeartbeatConfig) heartbeatSessionResolution {
-	routing := oc.resolveSessionRouting(agentID)
-	lookup := func(key string) (int64, bool) {
-		return oc.loadStoredSessionUpdatedAt(context.Background(), routing.StoreAgentID, key)
-	}
-	if routing.Scope == sessionScopeGlobal {
-		return heartbeatSessionResolution{StoreAgentID: routing.StoreAgentID, SessionKey: routing.MainKey}
-	}
-
-	trimmed := ""
-	if heartbeat != nil && heartbeat.Session != nil {
-		trimmed = strings.TrimSpace(*heartbeat.Session)
-	}
-	isMainAlias := func(raw string) bool {
-		candidate := strings.TrimSpace(raw)
-		if candidate == "" {
-			return false
-		}
-		normalizedMain := strings.ToLower(strings.TrimSpace(routing.MainKey))
-		if normalizedMain == "" {
-			normalizedMain = defaultSessionMainKey
-		}
-		agentMainAlias := "agent:" + routing.AgentID + ":" + defaultSessionMainKey
-		return strings.EqualFold(candidate, defaultSessionMainKey) ||
-			strings.EqualFold(candidate, sessionScopeGlobal) ||
-			strings.EqualFold(candidate, normalizedMain) ||
-			strings.EqualFold(candidate, routing.MainKey) ||
-			strings.EqualFold(candidate, agentMainAlias)
-	}
-	sessionKey := routing.MainKey
-	if routing.Scope != sessionScopeGlobal && !isMainAlias(trimmed) {
-		if strings.HasPrefix(trimmed, "!") {
-			sessionKey = trimmed
-		} else {
-			candidate := strings.ToLower(trimmed)
-			if candidate == "" || strings.EqualFold(candidate, defaultSessionMainKey) {
-				candidate = routing.MainKey
-			} else if !strings.HasPrefix(candidate, "agent:") {
-				candidate = "agent:" + routing.AgentID + ":" + candidate
-			}
-			if strings.HasPrefix(candidate, "agent:"+routing.AgentID+":") && !isMainAlias(candidate) {
-				sessionKey = candidate
-			}
-		}
-	}
-	if sessionKey == routing.MainKey {
-		return heartbeatSessionResolution{StoreAgentID: routing.StoreAgentID, SessionKey: sessionKey}
-	}
-	if updatedAt, ok := lookup(sessionKey); ok {
-		return heartbeatSessionResolution{StoreAgentID: routing.StoreAgentID, SessionKey: sessionKey, UpdatedAt: updatedAt}
-	}
-	return heartbeatSessionResolution{StoreAgentID: routing.StoreAgentID, SessionKey: sessionKey}
 }
 
 func (oc *AIClient) loadSessionUpdatedAt(ctx context.Context, agentID string, sessionKey string) (int64, bool) {

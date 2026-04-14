@@ -192,6 +192,11 @@ The highest-value remaining work is now:
 Recent progress also removed one more SDK runtime wrapper: provider identity
 normalization now calls the shared primitive directly.
 
+Recent progress also collapsed heartbeat session routing into one owner:
+`resolveHeartbeatRoute(...)` now owns both session selection and delivery
+selection, and heartbeat main-key alias handling now uses the same canonical
+session rules as the session store.
+
 ## Execution Order
 
 ### Phase 1: Streaming Terminalizer
@@ -301,29 +306,6 @@ Deliverable:
 Why fourth:
 
 - provider behavior is still scattered across chat/media/image subsystems
-
-### Phase 4: Session Subsystem
-
-Target files:
-
-- `bridges/ai/session_store.go`
-- `bridges/ai/session_keys.go`
-- `bridges/ai/heartbeat_session.go`
-- `bridges/ai/sessions_tools.go`
-- `bridges/ai/login_state_db.go`
-- `bridges/ai/login_config_db.go`
-
-Deliverable:
-
-- one canonical session subsystem
-- one keying/routing model
-- one persistence surface
-- heartbeat and tool-session lookup reuse that exact surface
-
-Why fourth:
-
-- fixes a large amount of behavior duplication without changing user-visible
-  semantics
 
 ### Phase 5: Queue/Runtime/Heartbeat Collapse
 

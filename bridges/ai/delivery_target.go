@@ -15,6 +15,5 @@ type deliveryTarget struct {
 type heartbeatRoute struct {
 	Session       heartbeatSessionResolution
 	SessionPortal *bridgev2.Portal
-	SessionKey    string
 	Delivery      deliveryTarget
 }

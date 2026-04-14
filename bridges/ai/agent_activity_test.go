@@ -6,6 +6,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/pkg/agents"
@@ -62,7 +63,7 @@ func TestLoadLastRoutedSessionKeyIgnoresMainSessionRow(t *testing.T) {
 	}
 }
 
-func TestResolveHeartbeatSessionDefaultDoesNotLoadMainSessionRoute(t *testing.T) {
+func TestResolveHeartbeatRouteDefaultDoesNotLoadMainSessionRoute(t *testing.T) {
 	client := newDBBackedTestAIClient(t, "")
 	agentID := normalizeAgentID(agents.DefaultAgentID)
 	storeAgentID := client.resolveSessionRouting(agentID).StoreAgentID
@@ -71,12 +72,22 @@ func TestResolveHeartbeatSessionDefaultDoesNotLoadMainSessionRoute(t *testing.T)
 	if err := client.storeSessionUpdatedAt(context.Background(), storeAgentID, mainKey, 1_000); err != nil {
 		t.Fatalf("upsert main session entry: %v", err)
 	}
+	defaultPortal := testAgentPortal("default", "!default:example.com", agentID, &PortalMetadata{
+		ResolvedTarget: &ResolvedTarget{AgentID: agentID},
+	})
+	cacheHeartbeatTestPortals(t, client, defaultPortal)
+	setUnexportedField(client.UserLogin.Bridge, "portalsByKey", map[networkid.PortalKey]*bridgev2.Portal{
+		defaultChatPortalKey(client.UserLogin.ID): defaultPortal,
+	})
 
-	resolution := client.resolveHeartbeatSession(agentID, nil)
-	if resolution.SessionKey != mainKey {
-		t.Fatalf("expected main session key %q, got %q", mainKey, resolution.SessionKey)
+	route, err := client.resolveHeartbeatRoute(agentID, nil)
+	if err != nil {
+		t.Fatalf("expected heartbeat route, got error: %v", err)
 	}
-	if resolution.UpdatedAt != 0 {
+	if route.Session.SessionKey != mainKey {
+		t.Fatalf("expected main session key %q, got %q", mainKey, route.Session.SessionKey)
+	}
+	if route.Session.UpdatedAt != 0 {
 		t.Fatalf("expected default heartbeat session resolution not to carry main session timestamp")
 	}
 }

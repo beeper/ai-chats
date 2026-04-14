@@ -44,7 +44,8 @@ func TestResolveHeartbeatDeliveryTargetFallsBackFromMismatchedSessionRoom(t *tes
 
 	client.recordAgentActivity(context.Background(), lastPortal, portalMeta(lastPortal))
 
-	route, err := client.resolveHeartbeatRoute(agentID, nil, heartbeatSessionResolution{SessionKey: otherPortal.MXID.String()})
+	session := "other-session"
+	route, err := client.resolveHeartbeatRoute(agentID, &HeartbeatConfig{Session: &session})
 	if err != nil {
 		t.Fatalf("expected heartbeat route, got error: %v", err)
 	}
@@ -81,8 +82,8 @@ func TestResolveHeartbeatRouteFallsBackFromMismatchedExplicitSessionRoom(t *test
 	if route.SessionPortal != lastPortal {
 		t.Fatalf("expected last active portal fallback, got %#v", route.SessionPortal)
 	}
-	if route.SessionKey != lastPortal.MXID.String() {
-		t.Fatalf("expected last active room %q, got %q", lastPortal.MXID, route.SessionKey)
+	if route.SessionPortal.MXID != lastPortal.MXID {
+		t.Fatalf("expected last active room %q, got %q", lastPortal.MXID, route.SessionPortal.MXID)
 	}
 }
 
@@ -99,7 +100,7 @@ func TestResolveHeartbeatDeliveryTargetFallsBackToDefaultChat(t *testing.T) {
 		defaultChatPortalKey(client.UserLogin.ID): defaultPortal,
 	})
 
-	route, err := client.resolveHeartbeatRoute(agentID, nil, heartbeatSessionResolution{})
+	route, err := client.resolveHeartbeatRoute(agentID, nil)
 	if err != nil {
 		t.Fatalf("expected heartbeat route, got error: %v", err)
 	}
