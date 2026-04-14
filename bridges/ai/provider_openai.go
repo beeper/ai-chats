@@ -20,7 +20,7 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/httputil"
 )
 
-// OpenAIProvider implements AIProvider for OpenAI's API
+// OpenAIProvider wraps the OpenAI client and provider-specific request helpers.
 type OpenAIProvider struct {
 	client  openai.Client
 	log     zerolog.Logger
@@ -184,10 +184,6 @@ func NewOpenAIProviderWithPDFPlugin(apiKey, baseURL, userID, pdfEngine string, h
 		log:     log.With().Str("provider", "openai").Str("pdf_engine", pdfEngine).Logger(),
 		baseURL: baseURL,
 	}, nil
-}
-
-func (o *OpenAIProvider) Name() string {
-	return "openai"
 }
 
 // Client returns the underlying OpenAI client for direct access
