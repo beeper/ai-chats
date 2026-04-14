@@ -38,7 +38,29 @@ func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev
 		oc.loggerForContext(ctx).Warn().Err(err).Int("body_len", len(body)).Msg("Failed to prepare continuation sender")
 		return
 	}
-	msg := sdk.BuildContinuationMessage(portal.PortalKey, body, sender, "ai", "ai_msg_id", timing.Timestamp, timing.StreamOrder)
+	rendered := format.RenderMarkdown(body, true, true)
+	msg := sdk.BuildPreConvertedRemoteMessage(sdk.PreConvertedRemoteMessageParams{
+		PortalKey:   portal.PortalKey,
+		Sender:      sender,
+		IDPrefix:    "ai",
+		LogKey:      "ai_msg_id",
+		Timestamp:   timing.Timestamp,
+		StreamOrder: timing.StreamOrder,
+		Converted: &bridgev2.ConvertedMessage{
+			Parts: []*bridgev2.ConvertedMessagePart{{
+				ID:   networkid.PartID("0"),
+				Type: event.EventMessage,
+				Content: &event.MessageEventContent{
+					MsgType:       event.MsgText,
+					Body:          rendered.Body,
+					Format:        rendered.Format,
+					FormattedBody: rendered.FormattedBody,
+					Mentions:      &event.Mentions{},
+				},
+				Extra: map[string]any{"com.beeper.continuation": true},
+			}},
+		},
+	})
 	if relatesTo := buildReplyRelatesTo(replyTarget); relatesTo != nil && msg != nil && msg.Data != nil && len(msg.Data.Parts) > 0 {
 		msg.Data.Parts[0].Content.RelatesTo = relatesTo
 	}

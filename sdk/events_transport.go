@@ -11,7 +11,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
 )
 
@@ -183,41 +182,4 @@ func SendSystemMessage(
 	}
 	_, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, content, nil)
 	return err
-}
-
-// BuildContinuationMessage constructs a ConvertedMessage for overflow
-// continuation text, flagged with "com.beeper.continuation".
-func BuildContinuationMessage(
-	portal networkid.PortalKey,
-	body string,
-	sender bridgev2.EventSender,
-	idPrefix,
-	logKey string,
-	timestamp time.Time,
-	streamOrder int64,
-) *simplevent.PreConvertedMessage {
-	rendered := format.RenderMarkdown(body, true, true)
-	content := &event.MessageEventContent{
-		MsgType:       event.MsgText,
-		Body:          rendered.Body,
-		Format:        rendered.Format,
-		FormattedBody: rendered.FormattedBody,
-		Mentions:      &event.Mentions{},
-	}
-	return BuildPreConvertedRemoteMessage(PreConvertedRemoteMessageParams{
-		PortalKey:   portal,
-		Sender:      sender,
-		IDPrefix:    idPrefix,
-		LogKey:      logKey,
-		Timestamp:   timestamp,
-		StreamOrder: streamOrder,
-		Converted: &bridgev2.ConvertedMessage{
-			Parts: []*bridgev2.ConvertedMessagePart{{
-				ID:      networkid.PartID("0"),
-				Type:    event.EventMessage,
-				Content: content,
-				Extra:   map[string]any{"com.beeper.continuation": true},
-			}},
-		},
-	})
 }
