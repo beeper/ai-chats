@@ -14,6 +14,7 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/toolspec"
 	"github.com/beeper/agentremote/sdk"
 
+	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -971,7 +972,14 @@ func (oc *AIClient) chatInfoFromPortal(ctx context.Context, portal *bridgev2.Por
 		if portal == nil {
 			return nil
 		}
-		return bridgeutil.BuildChatInfoWithFallback("", portal.Name, fallbackName, portal.Topic)
+		name := strings.TrimSpace(portal.Name)
+		if name == "" {
+			name = fallbackName
+		}
+		return &bridgev2.ChatInfo{
+			Name:  ptr.Ptr(name),
+			Topic: ptr.NonZero(strings.TrimSpace(portal.Topic)),
+		}
 	}
 	modelID := oc.effectiveModel(meta)
 	title := strings.TrimSpace(portal.Name)

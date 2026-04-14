@@ -179,7 +179,7 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 		}
 	}
 
-	promptContext, err := oc.buildHeartbeatTurnContext(context.Background(), sessionPortal, promptMeta, prompt)
+	promptContext, err := oc.buildPromptContextForTurn(context.Background(), sessionPortal, promptMeta, prompt, "", currentTurnPromptOptions{})
 	if err != nil {
 		oc.log.Warn().Str("agent_id", agentID).Str("reason", reason).Err(err).Msg("Heartbeat failed to build prompt")
 		oc.emitHeartbeatFailure(hbCfg, startedAtMs, err.Error())

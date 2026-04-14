@@ -196,20 +196,6 @@ func MaterializePortalRoom(ctx context.Context, p MaterializePortalRoomParams) (
 	return created, nil
 }
 
-func BuildChatInfoWithFallback(metaTitle, portalName, fallbackTitle, portalTopic string) *bridgev2.ChatInfo {
-	name := strings.TrimSpace(metaTitle)
-	if name == "" {
-		name = strings.TrimSpace(portalName)
-	}
-	if name == "" {
-		name = strings.TrimSpace(fallbackTitle)
-	}
-	return &bridgev2.ChatInfo{
-		Name:  ptr.Ptr(name),
-		Topic: ptr.NonZero(strings.TrimSpace(portalTopic)),
-	}
-}
-
 func SendMessageStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, status bridgev2.MessageStatus) {
 	if portal == nil || portal.Bridge == nil {
 		return

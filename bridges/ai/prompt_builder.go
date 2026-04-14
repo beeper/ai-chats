@@ -207,12 +207,31 @@ func (oc *AIClient) buildPromptContextForTurn(
 	leadingBlocks := slices.Clone(opts.leadingBlocks)
 
 	if opts.attachment != nil {
-		attachmentBlocks, attachmentAppend, err := oc.normalizeTurnAttachment(ctx, *opts.attachment)
-		if err != nil {
-			return PromptContext{}, err
+		switch opts.attachment.mediaType {
+		case pendingTypeImage:
+			b64Data, actualMimeType, err := oc.downloadMediaBase64(ctx, opts.attachment.mediaURL, opts.attachment.encryptedFile, 20, opts.attachment.mimeType)
+			if err != nil {
+				return PromptContext{}, fmt.Errorf("failed to download image: %w", err)
+			}
+			leadingBlocks = append(leadingBlocks, PromptBlock{
+				Type:     PromptBlockImage,
+				ImageB64: b64Data,
+				MimeType: actualMimeType,
+			})
+		case pendingTypePDF:
+			content, truncated, err := oc.downloadPDFFile(ctx, opts.attachment.mediaURL, opts.attachment.encryptedFile, opts.attachment.mimeType)
+			if err != nil {
+				return PromptContext{}, fmt.Errorf("failed to download PDF: %w", err)
+			}
+			filename := resolveMediaFileName("document.pdf", "pdf", opts.attachment.mediaURL)
+			appendFragments = append(appendFragments, buildTextFileMessage("", false, filename, "application/pdf", content, truncated))
+		case pendingTypeAudio:
+			return PromptContext{}, fmt.Errorf("audio attachments must be preprocessed into text before prompt assembly")
+		case pendingTypeVideo:
+			return PromptContext{}, fmt.Errorf("video attachments must be preprocessed into text before prompt assembly")
+		default:
+			return PromptContext{}, fmt.Errorf("unsupported media type: %s", opts.attachment.mediaType)
 		}
-		leadingBlocks = append(leadingBlocks, attachmentBlocks...)
-		appendFragments = append(appendFragments, attachmentAppend...)
 	}
 
 	textOpts := opts.currentTurnTextOptions
@@ -234,34 +253,6 @@ func (oc *AIClient) buildPromptContextForTurn(
 	return base, nil
 }
 
-func (oc *AIClient) normalizeTurnAttachment(ctx context.Context, opts turnAttachmentOptions) ([]PromptBlock, []string, error) {
-	switch opts.mediaType {
-	case pendingTypeImage:
-		b64Data, actualMimeType, err := oc.downloadMediaBase64(ctx, opts.mediaURL, opts.encryptedFile, 20, opts.mimeType)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to download image: %w", err)
-		}
-		return []PromptBlock{{
-			Type:     PromptBlockImage,
-			ImageB64: b64Data,
-			MimeType: actualMimeType,
-		}}, nil, nil
-	case pendingTypePDF:
-		content, truncated, err := oc.downloadPDFFile(ctx, opts.mediaURL, opts.encryptedFile, opts.mimeType)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to download PDF: %w", err)
-		}
-		filename := resolveMediaFileName("document.pdf", "pdf", opts.mediaURL)
-		return nil, []string{buildTextFileMessage("", false, filename, "application/pdf", content, truncated)}, nil
-	case pendingTypeAudio:
-		return nil, nil, fmt.Errorf("audio attachments must be preprocessed into text before prompt assembly")
-	case pendingTypeVideo:
-		return nil, nil, fmt.Errorf("video attachments must be preprocessed into text before prompt assembly")
-	default:
-		return nil, nil, fmt.Errorf("unsupported media type: %s", opts.mediaType)
-	}
-}
-
 func (oc *AIClient) buildCurrentTurnWithLinks(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -276,13 +267,4 @@ func (oc *AIClient) buildCurrentTurnWithLinks(
 			includeLinkScope: true,
 		},
 	})
-}
-
-func (oc *AIClient) buildHeartbeatTurnContext(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	prompt string,
-) (PromptContext, error) {
-	return oc.buildPromptContextForTurn(ctx, portal, meta, prompt, "", currentTurnPromptOptions{})
 }

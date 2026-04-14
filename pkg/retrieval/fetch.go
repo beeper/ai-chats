@@ -16,7 +16,12 @@ func Fetch(ctx context.Context, req FetchRequest, cfg *FetchConfig) (*FetchRespo
 		return nil, errors.New("missing url")
 	}
 	cfg = cfg.WithDefaults()
-	req = normalizeFetchRequest(req)
+	if req.ExtractMode == "" {
+		req.ExtractMode = "markdown"
+	}
+	if req.MaxChars < 0 {
+		req.MaxChars = 0
+	}
 
 	return providerresource.Run(
 		cfg.Provider,
@@ -40,14 +45,4 @@ func Fetch(ctx context.Context, req FetchRequest, cfg *FetchConfig) (*FetchRespo
 		},
 		errors.New("no fetch providers available"),
 	)
-}
-
-func normalizeFetchRequest(req FetchRequest) FetchRequest {
-	if req.ExtractMode == "" {
-		req.ExtractMode = "markdown"
-	}
-	if req.MaxChars < 0 {
-		req.MaxChars = 0
-	}
-	return req
 }

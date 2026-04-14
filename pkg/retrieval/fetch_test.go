@@ -144,9 +144,35 @@ func TestExaFetchProviderReturnsStatusErrors(t *testing.T) {
 	}
 }
 
-func TestNormalizeFetchRequestLeavesMaxCharsUnsetByDefault(t *testing.T) {
-	got := normalizeFetchRequest(FetchRequest{URL: "https://example.com", ExtractMode: "markdown"})
-	if got.MaxChars != 0 {
-		t.Fatalf("expected maxChars to remain unset (0), got %d", got.MaxChars)
+func TestFetchLeavesMaxCharsUnsetByDefault(t *testing.T) {
+	var gotBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"results":[{"url":"https://example.com","text":"ok"}],"statuses":[{"id":"https://example.com","status":"success"}]}`))
+	}))
+	defer server.Close()
+
+	_, err := Fetch(context.Background(), FetchRequest{URL: "https://example.com"}, &FetchConfig{
+		Provider: "exa",
+		Exa: ExaConfig{
+			BaseURL:           server.URL,
+			APIKey:            "test-key",
+			IncludeText:       true,
+			TextMaxCharacters: 456,
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	text, ok := gotBody["text"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected text object in payload, got %#v", gotBody["text"])
+	}
+	if int(text["maxCharacters"].(float64)) != 456 {
+		t.Fatalf("expected maxCharacters=456, got %#v", text["maxCharacters"])
 	}
 }
