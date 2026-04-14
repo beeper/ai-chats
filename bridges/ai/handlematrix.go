@@ -281,7 +281,12 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		eventID = msg.Event.ID
 	}
 
-	promptContext, err := oc.buildCurrentTurnWithLinks(runCtx, portal, runMeta, body, rawEventContent, eventID)
+	promptContext, err := oc.buildPromptContextForTurn(runCtx, portal, runMeta, body, eventID, currentTurnPromptOptions{
+		currentTurnTextOptions: currentTurnTextOptions{
+			rawEventContent:  rawEventContent,
+			includeLinkScope: true,
+		},
+	})
 	if err != nil {
 		return nil, sdk.MessageSendStatusError(err, "Couldn't prepare the message. Try again.", "", messageStatusForError, messageStatusReasonForError)
 	}
@@ -673,7 +678,9 @@ func (oc *AIClient) handleMediaMessage(
 		inboundCtx := oc.buildMatrixInboundContext(portal, msg.Event, rawBody, senderName, roomName, isGroup)
 		promptCtx := withInboundContext(ctx, inboundCtx)
 		body := oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, rawBody, senderName, roomName, isGroup)
-		promptContext, err := oc.buildCurrentTurnWithLinks(promptCtx, portal, meta, body, nil, eventID)
+		promptContext, err := oc.buildPromptContextForTurn(promptCtx, portal, meta, body, eventID, currentTurnPromptOptions{
+			currentTurnTextOptions: currentTurnTextOptions{includeLinkScope: true},
+		})
 		if err != nil {
 			return nil, sdk.MessageSendStatusError(err, "Couldn't prepare the message. Try again.", "", messageStatusForError, messageStatusReasonForError)
 		}
@@ -945,7 +952,9 @@ func (oc *AIClient) handleTextFileMessage(
 
 	inboundCtx := oc.buildMatrixInboundContext(portal, msg.Event, combined, senderName, roomName, isGroup)
 	promptCtx := withInboundContext(ctx, inboundCtx)
-	promptContext, err := oc.buildCurrentTurnWithLinks(promptCtx, portal, meta, combined, nil, eventID)
+	promptContext, err := oc.buildPromptContextForTurn(promptCtx, portal, meta, combined, eventID, currentTurnPromptOptions{
+		currentTurnTextOptions: currentTurnTextOptions{includeLinkScope: true},
+	})
 	if err != nil {
 		return nil, sdk.MessageSendStatusError(err, "Couldn't prepare the message. Try again.", "", messageStatusForError, messageStatusReasonForError)
 	}

@@ -132,6 +132,9 @@ Files:
 
 Why this still violates the goal:
 
+- The `buildCurrentTurnWithLinks` and `fetchHistoryRowsWithExtra` prompt
+  wrappers are gone; remaining duplication is now in representation and
+  projection ownership rather than trivial call-through helpers.
 - prompt assembly, provider serialization, replay projection, and turn-data
   projection still overlap
 - new prompt block behavior still requires changes in multiple places

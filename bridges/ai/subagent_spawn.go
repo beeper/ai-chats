@@ -322,7 +322,9 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 	childMeta := portalMeta(childPortal)
 
 	eventID := sdk.NewEventID("subagent")
-	promptContext, err := oc.buildCurrentTurnWithLinks(ctx, childPortal, childMeta, task, nil, eventID)
+	promptContext, err := oc.buildPromptContextForTurn(ctx, childPortal, childMeta, task, eventID, currentTurnPromptOptions{
+		currentTurnTextOptions: currentTurnTextOptions{includeLinkScope: true},
+	})
 	if err != nil {
 		return tools.JSONResult(map[string]any{
 			"status": "error",

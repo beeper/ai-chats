@@ -58,12 +58,16 @@ func joinPromptFragments(parts ...string) string {
 	return strings.TrimSpace(strings.Join(filtered, "\n\n"))
 }
 
-func (oc *AIClient) fetchHistoryRowsWithExtra(
+func (oc *AIClient) replayHistoryMessages(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
-	extra int,
-) (*historyLoadResult, error) {
+	opts historyReplayOptions,
+) ([]PromptMessage, error) {
+	extra := 0
+	if opts.mode == historyReplayRegen {
+		extra = 2
+	}
 	historyLimit := oc.historyLimit(ctx, portal, meta)
 	if historyLimit <= 0 {
 		return nil, nil
@@ -75,29 +79,10 @@ func (oc *AIClient) fetchHistoryRowsWithExtra(
 	if err != nil {
 		return nil, err
 	}
-	return &historyLoadResult{
+	hr := historyLoadResult{
 		rows:      history,
 		hasVision: oc.getModelCapabilitiesForMeta(ctx, meta).SupportsVision,
 		limit:     historyLimit,
-	}, nil
-}
-
-func (oc *AIClient) replayHistoryMessages(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	opts historyReplayOptions,
-) ([]PromptMessage, error) {
-	extra := 0
-	if opts.mode == historyReplayRegen {
-		extra = 2
-	}
-	hr, err := oc.fetchHistoryRowsWithExtra(ctx, portal, meta, extra)
-	if err != nil {
-		return nil, err
-	}
-	if hr == nil {
-		return nil, nil
 	}
 	type replayCandidate struct {
 		row  *database.Message
@@ -235,20 +220,4 @@ func (oc *AIClient) buildPromptContextForTurn(
 		Blocks: blocks,
 	})
 	return base, nil
-}
-
-func (oc *AIClient) buildCurrentTurnWithLinks(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	userText string,
-	rawEventContent map[string]any,
-	eventID id.EventID,
-) (PromptContext, error) {
-	return oc.buildPromptContextForTurn(ctx, portal, meta, userText, eventID, currentTurnPromptOptions{
-		currentTurnTextOptions: currentTurnTextOptions{
-			rawEventContent:  rawEventContent,
-			includeLinkScope: true,
-		},
-	})
 }

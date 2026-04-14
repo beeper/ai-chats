@@ -230,6 +230,8 @@ Deliverable:
 
 - one canonical prompt representation
 - one-way serialization to provider formats
+- no current-turn option shims or single-use history loaders around the prompt
+  builder
 - one-way projection from persisted/runtime state
 - no separate local-context/projection/continuation helper stacks
 

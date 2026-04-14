@@ -1827,7 +1827,12 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 	}
 
 	// Build prompt with combined body
-	promptContext, err := oc.buildCurrentTurnWithLinks(statusCtx, last.Portal, last.Meta, combinedBody, rawEventContent, last.Event.ID)
+	promptContext, err := oc.buildPromptContextForTurn(statusCtx, last.Portal, last.Meta, combinedBody, last.Event.ID, currentTurnPromptOptions{
+		currentTurnTextOptions: currentTurnTextOptions{
+			rawEventContent:  rawEventContent,
+			includeLinkScope: true,
+		},
+	})
 	if err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg("Failed to build prompt for debounced messages")
 		oc.notifyMatrixSendFailure(statusCtx, last.Portal, last.Event, err)
