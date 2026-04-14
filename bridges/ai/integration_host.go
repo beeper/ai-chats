@@ -727,44 +727,6 @@ func (h *runtimeIntegrationHost) ResolvePortalByRoomID(ctx context.Context, room
 	return h.client.portalByRoomID(ctx, portalRoomIDFromString(roomID))
 }
 
-func (h *runtimeIntegrationHost) ResolveDefaultPortal(ctx context.Context) *bridgev2.Portal {
-	if h == nil || h.client == nil {
-		return nil
-	}
-	return h.client.defaultChatPortal()
-}
-
-func (h *runtimeIntegrationHost) ResolveLastActivePortal(ctx context.Context, agentID string) *bridgev2.Portal {
-	if h == nil || h.client == nil {
-		return nil
-	}
-	return h.client.lastActivePortal(agentID)
-}
-
-func (h *runtimeIntegrationHost) DispatchInternalMessage(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, message string, source string) error {
-	if h == nil || h.client == nil {
-		return fmt.Errorf("missing client")
-	}
-	if portal == nil {
-		return fmt.Errorf("missing portal")
-	}
-	if meta == nil {
-		meta = &PortalMetadata{}
-	}
-	_, _, err := h.client.dispatchInternalMessage(ctx, portal, meta, message, source, false)
-	return err
-}
-
-func (h *runtimeIntegrationHost) SendAssistantMessage(ctx context.Context, portal *bridgev2.Portal, body string) error {
-	if h == nil || h.client == nil {
-		return fmt.Errorf("missing client")
-	}
-	if portal == nil {
-		return fmt.Errorf("missing portal")
-	}
-	return h.client.sendPlainAssistantMessage(ctx, portal, body)
-}
-
 func (h *runtimeIntegrationHost) RequestNow(ctx context.Context, reason string) {
 	if h == nil || h.client == nil || h.client.scheduler == nil {
 		return
