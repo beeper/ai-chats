@@ -1852,7 +1852,9 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 		},
 		Timestamp: sdk.MatrixEventTimestamp(last.Event),
 	}
-	setCanonicalTurnDataFromPromptMessages(userMessage.Metadata.(*MessageMetadata), promptTail(promptContext, 1))
+	if turnData, ok := turnDataFromUserPromptMessages(promptTail(promptContext, 1)); ok {
+		userMessage.Metadata.(*MessageMetadata).CanonicalTurnData = turnData.ToMap()
+	}
 
 	// Save user message to database - we must do this ourselves since we already
 	// returned Pending: true to the bridge framework when debouncing started

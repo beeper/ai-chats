@@ -135,6 +135,9 @@ Why this still violates the goal:
 - The `buildCurrentTurnWithLinks` and `fetchHistoryRowsWithExtra` prompt
   wrappers are gone; remaining duplication is now in representation and
   projection ownership rather than trivial call-through helpers.
+- Canonical turn-data persistence now calls `turnDataFromUserPromptMessages`
+  directly; the remaining spread is the number of representations, not another
+  persistence adapter.
 - prompt assembly, provider serialization, replay projection, and turn-data
   projection still overlap
 - new prompt block behavior still requires changes in multiple places

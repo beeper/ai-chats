@@ -66,17 +66,6 @@ func promptTail(ctx PromptContext, count int) []PromptMessage {
 	return out
 }
 
-func setCanonicalTurnDataFromPromptMessages(meta *MessageMetadata, messages []PromptMessage) {
-	if meta == nil || len(messages) == 0 {
-		return
-	}
-	if turnData, ok := turnDataFromUserPromptMessages(messages); ok {
-		meta.CanonicalTurnData = turnData.ToMap()
-	} else {
-		meta.CanonicalTurnData = nil
-	}
-}
-
 func promptMessagesFromTurnData(td sdk.TurnData) []PromptMessage {
 	if td.Role == "" {
 		return nil

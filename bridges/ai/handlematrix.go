@@ -301,7 +301,9 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		},
 		Timestamp: sdk.MatrixEventTimestamp(msg.Event),
 	}
-	setCanonicalTurnDataFromPromptMessages(userMessage.Metadata.(*MessageMetadata), promptTail(promptContext, 1))
+	if turnData, ok := turnDataFromUserPromptMessages(promptTail(promptContext, 1)); ok {
+		userMessage.Metadata.(*MessageMetadata).CanonicalTurnData = turnData.ToMap()
+	}
 	if msg.InputTransactionID != "" {
 		userMessage.SendTxnID = networkid.RawTransactionID(msg.InputTransactionID)
 	}
@@ -402,7 +404,11 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 		role = strings.TrimSpace(msgMeta.Role)
 	}
 	if role == "user" {
-		setCanonicalTurnDataFromPromptMessages(transcriptMeta, []PromptMessage{newUserTextPromptMessage(newBody)})
+		if turnData, ok := turnDataFromUserPromptMessages([]PromptMessage{newUserTextPromptMessage(newBody)}); ok {
+			transcriptMeta.CanonicalTurnData = turnData.ToMap()
+		} else {
+			transcriptMeta.CanonicalTurnData = nil
+		}
 		transcriptMeta.CanonicalTurnData = cloneCanonicalTurnData(transcriptMeta.CanonicalTurnData)
 	} else {
 		transcriptMeta.CanonicalTurnData = nil
@@ -694,7 +700,9 @@ func (oc *AIClient) handleMediaMessage(
 			},
 			Timestamp: sdk.MatrixEventTimestamp(msg.Event),
 		}
-		setCanonicalTurnDataFromPromptMessages(userMessage.Metadata.(*MessageMetadata), promptTail(promptContext, 1))
+		if turnData, ok := turnDataFromUserPromptMessages(promptTail(promptContext, 1)); ok {
+			userMessage.Metadata.(*MessageMetadata).CanonicalTurnData = turnData.ToMap()
+		}
 		if msg.InputTransactionID != "" {
 			userMessage.SendTxnID = networkid.RawTransactionID(msg.InputTransactionID)
 		}
@@ -808,7 +816,9 @@ func (oc *AIClient) handleMediaMessage(
 		userMeta.MediaUnderstandingDecisions = understanding.Decisions
 		userMeta.Transcript = understanding.Transcript
 	}
-	setCanonicalTurnDataFromPromptMessages(userMeta, promptTail(promptContext, 1))
+	if turnData, ok := turnDataFromUserPromptMessages(promptTail(promptContext, 1)); ok {
+		userMeta.CanonicalTurnData = turnData.ToMap()
+	}
 
 	userMessage := &database.Message{
 		ID:        sdk.MatrixMessageID(eventID),
@@ -969,7 +979,9 @@ func (oc *AIClient) handleTextFileMessage(
 		},
 		Timestamp: sdk.MatrixEventTimestamp(msg.Event),
 	}
-	setCanonicalTurnDataFromPromptMessages(userMessage.Metadata.(*MessageMetadata), promptTail(promptContext, 1))
+	if turnData, ok := turnDataFromUserPromptMessages(promptTail(promptContext, 1)); ok {
+		userMessage.Metadata.(*MessageMetadata).CanonicalTurnData = turnData.ToMap()
+	}
 	if msg.InputTransactionID != "" {
 		userMessage.SendTxnID = networkid.RawTransactionID(msg.InputTransactionID)
 	}

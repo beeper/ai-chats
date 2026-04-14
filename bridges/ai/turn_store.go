@@ -447,7 +447,9 @@ func internalPromptTurnUpsert(
 		return aiTurnUpsert{}, false
 	}
 	meta := &MessageMetadata{}
-	setCanonicalTurnDataFromPromptMessages(meta, promptTail(promptContext, 1))
+	if turnData, ok := turnDataFromUserPromptMessages(promptTail(promptContext, 1)); ok {
+		meta.CanonicalTurnData = turnData.ToMap()
+	}
 	turnData, ok := canonicalTurnData(meta)
 	if !ok {
 		return aiTurnUpsert{}, false
