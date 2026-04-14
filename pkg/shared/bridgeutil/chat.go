@@ -197,42 +197,32 @@ func MaterializePortalRoom(ctx context.Context, p MaterializePortalRoomParams) (
 }
 
 func BuildChatInfoWithFallback(metaTitle, portalName, fallbackTitle, portalTopic string) *bridgev2.ChatInfo {
+	name := strings.TrimSpace(metaTitle)
+	if name == "" {
+		name = strings.TrimSpace(portalName)
+	}
+	if name == "" {
+		name = strings.TrimSpace(fallbackTitle)
+	}
 	return &bridgev2.ChatInfo{
-		Name:  ptr.Ptr(firstNonEmpty(metaTitle, portalName, fallbackTitle)),
+		Name:  ptr.Ptr(name),
 		Topic: ptr.NonZero(strings.TrimSpace(portalTopic)),
 	}
-}
-
-func MessageStatusEventInfo(portal *bridgev2.Portal, evt *event.Event) *bridgev2.MessageStatusEventInfo {
-	if portal == nil || evt == nil {
-		return nil
-	}
-	info := bridgev2.StatusEventInfoFromEvent(evt)
-	if info == nil {
-		return nil
-	}
-	if info.RoomID == "" && portal.MXID != "" {
-		info.RoomID = portal.MXID
-	}
-	return info
 }
 
 func SendMessageStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, status bridgev2.MessageStatus) {
 	if portal == nil || portal.Bridge == nil {
 		return
 	}
-	info := MessageStatusEventInfo(portal, evt)
+	if evt == nil {
+		return
+	}
+	info := bridgev2.StatusEventInfoFromEvent(evt)
 	if info == nil {
 		return
 	}
-	portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return strings.TrimSpace(v)
-		}
+	if info.RoomID == "" && portal.MXID != "" {
+		info.RoomID = portal.MXID
 	}
-	return ""
+	portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
 }

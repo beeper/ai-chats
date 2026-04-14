@@ -7,8 +7,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
 
+	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
-	"github.com/beeper/agentremote/sdk"
 )
 
 func TestCodex_StreamChunks_BasicOrderingAndSeq(t *testing.T) {
@@ -25,7 +25,20 @@ func TestCodex_StreamChunks_BasicOrderingAndSeq(t *testing.T) {
 		t.Fatalf("expected turn UI state to be started and finished, got %#v", uiState)
 	}
 	uiMessage := streamui.SnapshotUIMessage(uiState)
-	gotParts := sdk.NormalizeUIParts(uiMessage["parts"])
+	var gotParts []map[string]any
+	switch typed := uiMessage["parts"].(type) {
+	case []map[string]any:
+		gotParts = typed
+	case []any:
+		gotParts = make([]map[string]any, 0, len(typed))
+		for _, item := range typed {
+			part := jsonutil.ToMap(item)
+			if len(part) == 0 {
+				continue
+			}
+			gotParts = append(gotParts, part)
+		}
+	}
 	if len(gotParts) == 0 {
 		t.Fatal("expected UI message parts")
 	}

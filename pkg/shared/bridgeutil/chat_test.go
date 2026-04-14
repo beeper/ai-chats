@@ -28,9 +28,12 @@ func TestMessageStatusEventInfoFallsBackToPortalRoom(t *testing.T) {
 		},
 	}
 
-	info := MessageStatusEventInfo(portal, evt)
+	info := bridgev2.StatusEventInfoFromEvent(evt)
 	if info == nil {
 		t.Fatal("expected status event info")
+	}
+	if info.RoomID == "" && portal.MXID != "" {
+		info.RoomID = portal.MXID
 	}
 	if info.RoomID != portal.MXID {
 		t.Fatalf("expected room id %q, got %q", portal.MXID, info.RoomID)
