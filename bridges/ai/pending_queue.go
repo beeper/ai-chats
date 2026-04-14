@@ -39,6 +39,18 @@ type pendingQueue struct {
 	lastItem       *pendingQueueItem
 }
 
+type queueSummaryState struct {
+	DropPolicy   airuntime.QueueDropPolicy
+	DroppedCount int
+	SummaryLines []string
+}
+
+type queueState[T any] struct {
+	queueSummaryState
+	Items []T
+	Cap   int
+}
+
 func (pm pendingMessage) sourceEventID() id.EventID {
 	if pm.SourceEventID != "" {
 		return pm.SourceEventID
@@ -177,19 +189,32 @@ func (oc *AIClient) enqueuePendingItem(roomID id.RoomID, item pendingQueueItem, 
 		Items: queue.items,
 		Cap:   queue.cap,
 	}
-	shouldEnqueue := applyQueueDropPolicy[pendingQueueItem](struct {
-		Queue        *queueState[pendingQueueItem]
-		Summarize    func(item pendingQueueItem) string
-		SummaryLimit int
-	}{
-		Queue: &state,
-		Summarize: func(entry pendingQueueItem) string {
-			if entry.summaryLine != "" {
-				return entry.summaryLine
+	shouldEnqueue := true
+	if state.Cap > 0 && len(state.Items) >= state.Cap {
+		overflow := airuntime.ResolveQueueOverflow(state.Cap, len(state.Items), state.DropPolicy)
+		if !overflow.KeepNew {
+			shouldEnqueue = false
+		} else if dropCount := overflow.ItemsToDrop; dropCount >= 1 {
+			dropped := state.Items[:dropCount]
+			state.Items = state.Items[dropCount:]
+			if overflow.ShouldSummarize {
+				for _, entry := range dropped {
+					state.DroppedCount++
+					summary := entry.summaryLine
+					if summary == "" {
+						summary = strings.TrimSpace(entry.pending.MessageBody)
+					}
+					summary = strings.TrimSpace(summary)
+					if summary != "" {
+						state.SummaryLines = append(state.SummaryLines, airuntime.BuildQueueSummaryLine(summary, 160))
+					}
+				}
+				if len(state.SummaryLines) > state.Cap {
+					state.SummaryLines = state.SummaryLines[len(state.SummaryLines)-state.Cap:]
+				}
 			}
-			return strings.TrimSpace(entry.pending.MessageBody)
-		},
-	})
+		}
+	}
 	queue.items = state.Items
 	queue.droppedCount = state.DroppedCount
 	queue.summaryLines = state.SummaryLines
