@@ -136,7 +136,10 @@ func (c *sdkClient[SessionT, ConfigDataT]) IsThisUser(_ context.Context, userID 
 
 func (c *sdkClient[SessionT, ConfigDataT]) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	if c.cfg != nil && c.cfg.GetChatInfo != nil {
-		return c.cfg.GetChatInfo(newConversation(ctx, portal, c.userLogin, bridgev2.EventSender{}, newConversationRuntimeState(c.cfg, c.getSession(), c.conversationState, c.approvalFlow)))
+		return c.cfg.GetChatInfo(NewConversation(ctx, c.userLogin, portal, bridgev2.EventSender{}, c.cfg, c.getSession(), NewConversationOptions{
+			ApprovalFlow: c.approvalFlow,
+			StateStore:   c.conversationState,
+		}))
 	}
 	return nil, nil
 }
@@ -149,7 +152,10 @@ func (c *sdkClient[SessionT, ConfigDataT]) GetUserInfo(_ context.Context, ghost 
 }
 
 func (c *sdkClient[SessionT, ConfigDataT]) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
-	conv := newConversation(ctx, portal, c.userLogin, bridgev2.EventSender{}, newConversationRuntimeState(c.cfg, c.getSession(), c.conversationState, c.approvalFlow))
+	conv := NewConversation(ctx, c.userLogin, portal, bridgev2.EventSender{}, c.cfg, c.getSession(), NewConversationOptions{
+		ApprovalFlow: c.approvalFlow,
+		StateStore:   c.conversationState,
+	})
 	features := conv.currentRoomFeatures(ctx)
 	if features == nil {
 		features = defaultSDKFeatureConfig()
@@ -232,7 +238,10 @@ func (c *sdkClient[SessionT, ConfigDataT]) HandleMatrixMessage(ctx context.Conte
 			sdkMsg.ReplyTo = content.RelatesTo.InReplyTo.EventID.String()
 		}
 	}
-	conv := newConversation(runCtx, msg.Portal, c.userLogin, bridgev2.EventSender{}, newConversationRuntimeState(c.cfg, c.getSession(), c.conversationState, c.approvalFlow))
+	conv := NewConversation(runCtx, c.userLogin, msg.Portal, bridgev2.EventSender{}, c.cfg, c.getSession(), NewConversationOptions{
+		ApprovalFlow: c.approvalFlow,
+		StateStore:   c.conversationState,
+	})
 	session := c.getSession()
 	var source *SourceRef
 	if msg.Event != nil {

@@ -75,11 +75,10 @@ func (h *sdkApprovalHandle) Wait(ctx context.Context) (ToolApprovalResponse, err
 		ApprovalID: h.approvalID,
 		ToolCallID: h.toolCallID,
 	}, func(ctx context.Context) (ToolApprovalResponse, error) {
-		runtime := h.turn.conv.runtime
-		if runtime == nil || runtime.approvalFlow == nil {
+		if h.turn.conv.approvalFlow == nil {
 			return ToolApprovalResponse{}, nil
 		}
-		approvalFlow := runtime.approvalFlow
+		approvalFlow := h.turn.conv.approvalFlow
 		decision, _, ok := approvalFlow.WaitAndFinalizeApproval(ctx, h.approvalID, WaitApprovalParams[*pendingSDKApprovalData]{
 			BuildNoDecision: func(reason string, _ *pendingSDKApprovalData) *ApprovalDecisionPayload {
 				return &ApprovalDecisionPayload{
@@ -182,8 +181,8 @@ func newTurn(ctx context.Context, conv *Conversation, agent *Agent, source *Sour
 }
 
 func (t *Turn) providerIdentity() ProviderIdentity {
-	if t.conv != nil && t.conv.runtime != nil {
-		return t.conv.runtime.providerIdentity
+	if t.conv != nil {
+		return t.conv.providerIdentity
 	}
 	return normalizedProviderIdentity(ProviderIdentity{})
 }
@@ -444,10 +443,10 @@ func (t *Turn) requestApproval(req ApprovalRequest) ApprovalHandle {
 	if t.approvalRequester != nil {
 		return t.approvalRequester(t.turnCtx, t, req)
 	}
-	if t.conv == nil || t.conv.portal == nil || t.conv.runtime == nil || t.conv.runtime.approvalFlow == nil {
+	if t.conv == nil || t.conv.portal == nil || t.conv.approvalFlow == nil {
 		return &sdkApprovalHandle{turn: t, toolCallID: req.ToolCallID}
 	}
-	approvalFlow := t.conv.runtime.approvalFlow
+	approvalFlow := t.conv.approvalFlow
 	started := approvalFlow.StartApprovalRequest(t.turnCtx, StartApprovalRequestParams[*pendingSDKApprovalData]{
 		Portal:             t.conv.portal,
 		OwnerMXID:          t.conv.login.UserMXID,
@@ -965,10 +964,10 @@ func (t *Turn) ensureDefaultFinalEditPayload(finishReason, fallbackBody string) 
 
 func (t *Turn) resolvedIdleTimeout() time.Duration {
 	const defaultIdleTimeout = time.Minute
-	if t == nil || t.conv == nil || t.conv.runtime == nil || t.conv.runtime.turnConfig == nil {
+	if t == nil || t.conv == nil || t.conv.turnConfig == nil {
 		return defaultIdleTimeout
 	}
-	timeoutMs := t.conv.runtime.turnConfig.IdleTimeoutMs
+	timeoutMs := t.conv.turnConfig.IdleTimeoutMs
 	switch {
 	case timeoutMs < 0:
 		return 0

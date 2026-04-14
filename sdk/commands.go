@@ -49,7 +49,7 @@ func registerCommands[SessionT SessionValue, ConfigDataT ConfigValue](br *bridge
 					ce.Reply("%s", message)
 					return
 				}
-				conv := newConversation(ce.Ctx, ce.Portal, login, bridgev2.EventSender{}, nil)
+				conv := newConversation(ce.Ctx, ce.Portal, login, bridgev2.EventSender{})
 				if err := cmd.Handler(conv, ce.RawArgs); err != nil {
 					if ce.MessageStatus != nil {
 						ce.MessageStatus.Status = event.MessageStatusFail

@@ -43,8 +43,13 @@ func newTestConversation(t *testing.T, cfg *Config[struct{}, *struct{}], state s
 		portal,
 		nil,
 		bridgev2.EventSender{},
-		newConversationRuntimeState(cfg, struct{}{}, store, nil),
 	)
+	conv.store = store
+	if cfg != nil {
+		conv.agent = cfg.Agent
+		conv.agentCatalog = cfg.AgentCatalog
+		conv.roomFeatures = cfg.RoomFeatures
+	}
 	if err := conv.saveState(context.Background(), &state); err != nil {
 		t.Fatalf("saveState failed: %v", err)
 	}

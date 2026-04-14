@@ -205,6 +205,11 @@ Recent progress also removed the SDK command-path runtime downcast: commands now
 build a plain `Conversation` snapshot instead of reaching through `login.Client`
 for SDK-private runtime state.
 
+Recent progress also removed the `conversationRuntimeState` bag entirely:
+runtime-owned agent/catalog/feature/approval/provider fields now live directly
+on `Conversation`, `sdk/runtime.go` is gone, and SDK entrypoints construct the
+conversation shape directly instead of rebuilding a separate runtime layer.
+
 Recent progress also removed the one-message `promptTail(...)` wrapper from
 prompt canonicalization: callers now slice the final prompt message directly at
 the persistence boundary.
@@ -364,8 +369,8 @@ Deliverable:
 
 Target files:
 
-- `sdk/runtime.go`
 - `sdk/client.go`
+- `sdk/conversation.go`
 - `sdk/client_base.go`
 - `sdk/client_cache.go`
 - `sdk/load_user_login.go`
@@ -376,7 +381,8 @@ Target files:
 
 Deliverable:
 
-- one runtime adapter shape
+- no separate runtime bag between the SDK client, conversation, and turn
+- one direct conversation/runtime owner shape
 - one client-loading path
 - one stream host/state boundary
 

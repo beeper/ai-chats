@@ -294,7 +294,7 @@ Desired owner:
 
 Files:
 
-- `sdk/runtime.go`
+- `sdk/conversation.go`
 - `sdk/client.go`
 - `sdk/client_base.go`
 - `sdk/client_cache.go`
@@ -304,16 +304,19 @@ Files:
 
 Why this still violates the goal:
 
-- the runtime surface is still split between `sdkClient`,
-  stream host/state helpers, and client-cache/login helpers
+- the separate `conversationRuntimeState` layer is gone; the remaining SDK
+  runtime debt is the broader client-loading split and the stream-host/state
+  surface around it
 - commands no longer downcast `login.Client` to recover SDK-private runtime
-  state; the remaining SDK runtime debt is the actual builder/loading split
+  state, and entrypoints now build `Conversation` directly instead of routing
+  through a second runtime bag
 - the SDK still reads like a local bridge framework rather than a thin runtime
   layer
 
 Desired owner:
 
-- one runtime adapter shape
+- no separate runtime bag between client, conversation, and turn
+- one direct conversation/runtime owner shape
 - one client-loading path
 - one stream host/state model
 

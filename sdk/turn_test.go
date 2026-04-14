@@ -175,7 +175,7 @@ func TestTurnPersistFinalMessageUsesFinalMetadataProvider(t *testing.T) {
 	portal := &bridgev2.Portal{
 		Portal: &database.Portal{MXID: "!room:test"},
 	}
-	turn := newTurn(context.Background(), newConversation(context.Background(), portal, login, bridgev2.EventSender{}, nil), &Agent{ID: "agent"}, nil)
+	turn := newTurn(context.Background(), newConversation(context.Background(), portal, login, bridgev2.EventSender{}), &Agent{ID: "agent"}, nil)
 	turn.SetFinalMetadataProvider(FinalMetadataProviderFunc(func(_ *Turn, finishReason string) any {
 		return map[string]any{"finish_reason": finishReason, "custom": true}
 	}))
@@ -194,14 +194,15 @@ func TestTurnRequestApprovalWaitsForResolvedDecision(t *testing.T) {
 	approval := NewApprovalFlow(ApprovalFlowConfig[*pendingSDKApprovalData]{
 		Login: func() *bridgev2.UserLogin { return nil },
 	})
-	runtime := &conversationRuntimeState{approvalFlow: approval}
 	t.Cleanup(approval.Close)
 	portal := &bridgev2.Portal{
 		Portal: &database.Portal{
 			MXID: "!room:test",
 		},
 	}
-	turn := newTurn(context.Background(), newConversation(context.Background(), portal, login, bridgev2.EventSender{}, runtime), nil, nil)
+	conv := newConversation(context.Background(), portal, login, bridgev2.EventSender{})
+	conv.approvalFlow = approval
+	turn := newTurn(context.Background(), conv, nil, nil)
 
 	handle := turn.Approvals().Request(ApprovalRequest{
 		ToolCallID: "tool-call-1",
@@ -248,14 +249,15 @@ func TestTurnRequestApprovalUsesProvidedApprovalID(t *testing.T) {
 	approval := NewApprovalFlow(ApprovalFlowConfig[*pendingSDKApprovalData]{
 		Login: func() *bridgev2.UserLogin { return nil },
 	})
-	runtime := &conversationRuntimeState{approvalFlow: approval}
 	t.Cleanup(approval.Close)
 	portal := &bridgev2.Portal{
 		Portal: &database.Portal{
 			MXID: "!room:test",
 		},
 	}
-	turn := newTurn(context.Background(), newConversation(context.Background(), portal, login, bridgev2.EventSender{}, runtime), nil, nil)
+	conv := newConversation(context.Background(), portal, login, bridgev2.EventSender{})
+	conv.approvalFlow = approval
+	turn := newTurn(context.Background(), conv, nil, nil)
 
 	handle := turn.Approvals().Request(ApprovalRequest{
 		ApprovalID: "provider-approval-123",
@@ -782,7 +784,7 @@ func TestTurnFinalizationContextFallsBackToBridgeBackground(t *testing.T) {
 		UserLogin: &database.UserLogin{ID: "login-1"},
 		Bridge:    &bridgev2.Bridge{BackgroundCtx: bridgeCtx},
 	}
-	conv := newConversation(parent, &bridgev2.Portal{Portal: &database.Portal{}}, login, bridgev2.EventSender{}, nil)
+	conv := newConversation(parent, &bridgev2.Portal{Portal: &database.Portal{}}, login, bridgev2.EventSender{})
 	turn := newTurn(parent, conv, nil, nil)
 
 	cancel()
@@ -968,7 +970,7 @@ func TestTurnWriterStartEnsuresSenderJoinedBeforePlaceholderSend(t *testing.T) {
 	login := &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: "login-1"}}
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: "!room:test"}}
 	intent := &sdkTestMatrixAPI{}
-	conv := newConversation(context.Background(), portal, login, bridgev2.EventSender{Sender: "agent-test", SenderLogin: login.ID}, nil)
+	conv := newConversation(context.Background(), portal, login, bridgev2.EventSender{Sender: "agent-test", SenderLogin: login.ID})
 	conv.intentOverride = func(context.Context) (bridgev2.MatrixAPI, error) { return intent, nil }
 	turn := newTurn(context.Background(), conv, nil, nil)
 
@@ -992,7 +994,7 @@ func TestConversationSendNoticeUsesConversationIntent(t *testing.T) {
 	login := &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: "login-1"}}
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: "!room:test"}}
 	intent := &sdkTestMatrixAPI{}
-	conv := newConversation(context.Background(), portal, login, bridgev2.EventSender{Sender: "agent-test", SenderLogin: login.ID}, nil)
+	conv := newConversation(context.Background(), portal, login, bridgev2.EventSender{Sender: "agent-test", SenderLogin: login.ID})
 	conv.intentOverride = func(context.Context) (bridgev2.MatrixAPI, error) { return intent, nil }
 
 	if err := conv.SendNotice(context.Background(), " hello "); err != nil {

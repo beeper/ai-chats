@@ -20,26 +20,82 @@ type Conversation struct {
 	ID    string
 	Title string
 
-	ctx     context.Context
-	portal  *bridgev2.Portal
-	login   *bridgev2.UserLogin
-	sender  bridgev2.EventSender
-	runtime *conversationRuntimeState
+	ctx    context.Context
+	portal *bridgev2.Portal
+	login  *bridgev2.UserLogin
+	sender bridgev2.EventSender
+
+	agent                *Agent
+	agentCatalog         AgentCatalog
+	roomFeatures         *RoomFeatures
+	roomFeaturesOverride func(*Conversation) *RoomFeatures
+	turnConfig           *TurnConfig
+	store                *conversationStateStore
+	approvalFlow         *ApprovalFlow[*pendingSDKApprovalData]
+	providerIdentity     ProviderIdentity
 
 	intentOverride func(context.Context) (bridgev2.MatrixAPI, error)
 }
 
-func newConversation(ctx context.Context, portal *bridgev2.Portal, login *bridgev2.UserLogin, sender bridgev2.EventSender, runtime *conversationRuntimeState) *Conversation {
+func newConversation(ctx context.Context, portal *bridgev2.Portal, login *bridgev2.UserLogin, sender bridgev2.EventSender) *Conversation {
 	conv := &Conversation{
-		ctx:     ctx,
-		portal:  portal,
-		login:   login,
-		sender:  sender,
-		runtime: runtime,
+		ctx:              ctx,
+		portal:           portal,
+		login:            login,
+		sender:           sender,
+		providerIdentity: normalizedProviderIdentity(ProviderIdentity{}),
 	}
 	if portal != nil {
 		conv.ID = string(portal.ID)
 		conv.Title = portal.Name
+	}
+	return conv
+}
+
+func normalizedProviderIdentity(identity ProviderIdentity) ProviderIdentity {
+	if identity.IDPrefix == "" {
+		identity.IDPrefix = "sdk"
+	}
+	if identity.LogKey == "" {
+		identity.LogKey = identity.IDPrefix + "_msg_id"
+	}
+	if identity.StatusNetwork == "" {
+		identity.StatusNetwork = identity.IDPrefix
+	}
+	return identity
+}
+
+// NewConversationOptions configures optional parameters for NewConversation.
+type NewConversationOptions struct {
+	ApprovalFlow *ApprovalFlow[*pendingSDKApprovalData]
+	StateStore   *conversationStateStore
+}
+
+// NewConversation creates an SDK conversation wrapper for provider bridges that
+// want to drive SDK turns without using the default sdkClient implementation.
+func NewConversation[SessionT SessionValue, ConfigDataT ConfigValue](ctx context.Context, login *bridgev2.UserLogin, portal *bridgev2.Portal, sender bridgev2.EventSender, cfg *Config[SessionT, ConfigDataT], session SessionT, opts ...NewConversationOptions) *Conversation {
+	conv := newConversation(ctx, portal, login, sender)
+	var options NewConversationOptions
+	if len(opts) > 0 {
+		options = opts[0]
+	}
+	conv.store = options.StateStore
+	if conv.store == nil {
+		conv.store = newConversationStateStore()
+	}
+	conv.approvalFlow = options.ApprovalFlow
+	if cfg == nil {
+		return conv
+	}
+	conv.providerIdentity = normalizedProviderIdentity(cfg.ProviderIdentity)
+	conv.agent = cfg.Agent
+	conv.agentCatalog = cfg.AgentCatalog
+	conv.roomFeatures = cfg.RoomFeatures
+	conv.turnConfig = cfg.TurnManagement
+	if cfg.GetCapabilities != nil {
+		conv.roomFeaturesOverride = func(conv *Conversation) *RoomFeatures {
+			return cfg.GetCapabilities(session, conv)
+		}
 	}
 	return conv
 }
@@ -62,10 +118,10 @@ func (c *Conversation) getIntent(ctx context.Context) (bridgev2.MatrixAPI, error
 }
 
 func (c *Conversation) stateStore() *conversationStateStore {
-	if c == nil || c.runtime == nil {
+	if c == nil {
 		return nil
 	}
-	return c.runtime.store
+	return c.store
 }
 
 func (c *Conversation) state() *sdkConversationState {
@@ -91,13 +147,10 @@ func (c *Conversation) resolveDefaultAgent(ctx context.Context) (*Agent, error) 
 			return agent, nil
 		}
 	}
-	if c.runtime == nil {
-		return nil, nil
-	}
-	if agent := c.runtime.agent; agent != nil {
+	if agent := c.agent; agent != nil {
 		return agent, nil
 	}
-	if catalog := c.runtime.agentCatalog; catalog != nil {
+	if catalog := c.agentCatalog; catalog != nil {
 		return catalog.DefaultAgent(ctx, c.login)
 	}
 	return nil, nil
@@ -107,13 +160,10 @@ func (c *Conversation) resolveAgentByIdentifier(ctx context.Context, identifier 
 	if c == nil || strings.TrimSpace(identifier) == "" {
 		return nil, nil
 	}
-	if c.runtime == nil {
-		return nil, nil
-	}
-	if agent := c.runtime.agent; agent != nil && agent.ID == identifier {
+	if agent := c.agent; agent != nil && agent.ID == identifier {
 		return agent, nil
 	}
-	if catalog := c.runtime.agentCatalog; catalog != nil {
+	if catalog := c.agentCatalog; catalog != nil {
 		return catalog.ResolveAgent(ctx, c.login, identifier)
 	}
 	return nil, nil
@@ -123,15 +173,13 @@ func (c *Conversation) currentRoomFeatures(ctx context.Context) *RoomFeatures {
 	if c == nil {
 		return nil
 	}
-	if c.runtime != nil {
-		if c.runtime.roomFeaturesOverride != nil {
-			if rf := c.runtime.roomFeaturesOverride(c); rf != nil {
-				return rf
-			}
+	if c.roomFeaturesOverride != nil {
+		if rf := c.roomFeaturesOverride(c); rf != nil {
+			return rf
 		}
-		if c.runtime.roomFeatures != nil {
-			return c.runtime.roomFeatures
-		}
+	}
+	if c.roomFeatures != nil {
+		return c.roomFeatures
 	}
 	state := c.state()
 	agents := make([]*Agent, 0, len(state.RoomAgents.AgentIDs))
