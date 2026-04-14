@@ -3,7 +3,9 @@ package codex
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"slices"
+	"strings"
 
 	"go.mau.fi/util/configupgrade"
 	"go.mau.fi/util/dbutil"
@@ -67,7 +69,10 @@ func NewConnector() *CodexConnector {
 		BeeperBridgeType: "codex",
 		DefaultPort:      29346,
 		DefaultCommandPrefix: func() string {
-			return sdk.ResolveCommandPrefix(cc.Config.Bridge.CommandPrefix, "!ai")
+			if trimmed := strings.TrimSpace(cc.Config.Bridge.CommandPrefix); trimmed != "" {
+				return trimmed
+			}
+			return "!ai"
 		},
 		FillBridgeInfo: func(portal *bridgev2.Portal, content *event.BridgeEventContent) {
 			if portal == nil {
@@ -94,9 +99,13 @@ func NewConnector() *CodexConnector {
 			}
 		},
 		AcceptLogin: func(login *bridgev2.UserLogin) (bool, string) {
-			return sdk.AcceptProviderLogin(login, ProviderCodex, "This bridge only supports Codex logins.", cc.codexEnabled, "Codex integration is disabled in the configuration.", func(login *bridgev2.UserLogin) string {
-				return loginMetadata(login).Provider
-			})
+			if !strings.EqualFold(strings.TrimSpace(loginMetadata(login).Provider), ProviderCodex) {
+				return false, "This bridge only supports Codex logins."
+			}
+			if !cc.codexEnabled() {
+				return false, "Codex integration is disabled in the configuration."
+			}
+			return true, ""
 		},
 		MakeBrokenLogin: func(l *bridgev2.UserLogin, reason string) *sdk.BrokenLoginClient {
 			return newBrokenLoginClient(l, cc, reason)
@@ -116,10 +125,11 @@ func NewConnector() *CodexConnector {
 		},
 		LoginFlows: loginFlows,
 		CreateLogin: func(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
-			if err := sdk.ValidateLoginFlow(flowID, cc.codexEnabled(), "Codex login is disabled in the configuration.", "CODEX", "LOGIN_DISABLED", func(flowID string) bool {
-				return slices.ContainsFunc(loginFlows, func(f bridgev2.LoginFlow) bool { return f.ID == flowID })
-			}); err != nil {
-				return nil, err
+			if !cc.codexEnabled() {
+				return nil, sdk.NewLoginRespError(http.StatusForbidden, "Codex login is disabled in the configuration.", "CODEX", "LOGIN_DISABLED")
+			}
+			if !slices.ContainsFunc(loginFlows, func(f bridgev2.LoginFlow) bool { return f.ID == flowID }) {
+				return nil, bridgev2.ErrInvalidLoginFlowID
 			}
 			return &CodexLogin{User: user, Connector: cc, FlowID: flowID}, nil
 		},

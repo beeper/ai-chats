@@ -408,7 +408,7 @@ func (oc *AIClient) resolveAgentChatTarget(ctx context.Context, agentID string) 
 	if agentID == "" {
 		return nil, nil
 	}
-	agent, err := NewAgentStoreAdapter(oc).GetAgentByID(ctx, agentID)
+	agent, err := (&AgentStoreAdapter{client: oc}).GetAgentByID(ctx, agentID)
 	if err != nil || agent == nil {
 		return nil, bridgev2.WrapRespErr(fmt.Errorf("agent '%s' not found", agentID), mautrix.MNotFound)
 	}
@@ -873,7 +873,7 @@ func (oc *AIClient) resolveNewChatTarget(
 		if !oc.agentsEnabledForLogin() {
 			return nil, agentChatsDisabledError()
 		}
-		store := NewAgentStoreAdapter(oc)
+		store := &AgentStoreAdapter{client: oc}
 		agent, err := store.GetAgentByID(ctx, agentID)
 		if err != nil || agent == nil {
 			return nil, fmt.Errorf("agent not found: %s", agentID)
@@ -982,7 +982,7 @@ func (oc *AIClient) chatInfoFromPortal(ctx context.Context, portal *bridgev2.Por
 		agentName = oc.resolveAgentDisplayName(ctx, preset)
 	} else if ctx != nil {
 		// Custom agent - need Matrix state lookup
-		store := NewAgentStoreAdapter(oc)
+		store := &AgentStoreAdapter{client: oc}
 		if agent, err := store.GetAgentByID(ctx, agentID); err == nil && agent != nil {
 			agentName = oc.resolveAgentDisplayName(ctx, agent)
 		}

@@ -50,7 +50,7 @@ func TestOpenAILoginStartWithOverrideRejectsInvalidTarget(t *testing.T) {
 	}
 }
 
-func TestOpenAILoginFinishLoginRejectsProviderMismatch(t *testing.T) {
+func TestOpenAILoginCompleteLoginRejectsProviderMismatch(t *testing.T) {
 	mxid := id.UserID("@alice:example.com")
 	login := &OpenAILogin{
 		User: &bridgev2.User{User: &database.User{MXID: mxid}},
@@ -62,7 +62,10 @@ func TestOpenAILoginFinishLoginRejectsProviderMismatch(t *testing.T) {
 			},
 		},
 	}
-	_, err := login.finishLogin(context.Background(), ProviderOpenAI, "key", "", nil)
+	_, err := login.completeLogin(context.Background(), loginCompletionInput{
+		Provider: ProviderOpenAI,
+		APIKey:   "key",
+	})
 	var respErr bridgev2.RespError
 	if !errors.As(err, &respErr) {
 		t.Fatalf("expected RespError, got %T", err)
@@ -72,7 +75,7 @@ func TestOpenAILoginFinishLoginRejectsProviderMismatch(t *testing.T) {
 	}
 }
 
-func TestOpenAILoginFinishLoginBuildsClientBeforePersistedConfigExists(t *testing.T) {
+func TestOpenAILoginCompleteLoginBuildsClientBeforePersistedConfigExists(t *testing.T) {
 	connector, _, user := newDBBackedLoginHarness(t)
 	login := &OpenAILogin{
 		User:      user,
@@ -80,9 +83,13 @@ func TestOpenAILoginFinishLoginBuildsClientBeforePersistedConfigExists(t *testin
 		FlowID:    ProviderMagicProxy,
 	}
 
-	step, err := login.finishLogin(context.Background(), ProviderMagicProxy, "proxy-token", "https://temporary-ai-proxy.beeper-tools.com", nil)
+	step, err := login.completeLogin(context.Background(), loginCompletionInput{
+		Provider: ProviderMagicProxy,
+		APIKey:   "proxy-token",
+		BaseURL:  "https://temporary-ai-proxy.beeper-tools.com",
+	})
 	if err != nil {
-		t.Fatalf("finishLogin returned error: %v", err)
+		t.Fatalf("completeLogin returned error: %v", err)
 	}
 	if step == nil || step.CompleteParams == nil || step.CompleteParams.UserLogin == nil {
 		t.Fatalf("expected completed login step with user login, got %#v", step)
@@ -94,7 +101,7 @@ func TestOpenAILoginFinishLoginBuildsClientBeforePersistedConfigExists(t *testin
 	}
 	typed, ok := created.Client.(*AIClient)
 	if !ok {
-		t.Fatalf("expected AIClient after finishLogin, got %T", created.Client)
+		t.Fatalf("expected AIClient after completeLogin, got %T", created.Client)
 	}
 	if typed.apiKey != "proxy-token" {
 		t.Fatalf("unexpected api key on created client: %q", typed.apiKey)
@@ -112,6 +119,6 @@ func TestOpenAILoginFinishLoginBuildsClientBeforePersistedConfigExists(t *testin
 		t.Fatalf("expected cached AIClient for created login, got %T", connector.clients[created.ID])
 	}
 	if cached != typed {
-		t.Fatal("expected finishLogin to keep the initially constructed client cached without rebuilding it")
+		t.Fatal("expected completeLogin to keep the initially constructed client cached without rebuilding it")
 	}
 }

@@ -27,7 +27,7 @@ func (oc *AIClient) resolveSubagentAllowlist(ctx context.Context, requesterAgent
 
 	var allowList []string
 	if requesterAgentID != "" {
-		store := NewAgentStoreAdapter(oc)
+		store := &AgentStoreAdapter{client: oc}
 		if agent, _ := store.GetAgentByID(ctx, requesterAgentID); agent != nil && agent.Subagents != nil {
 			allowList = agent.Subagents.AllowAgents
 		}
@@ -233,7 +233,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 		}
 	}
 
-	store := NewAgentStoreAdapter(oc)
+	store := &AgentStoreAdapter{client: oc}
 	targetAgent, err := store.GetAgentByID(ctx, targetAgentID)
 	if err != nil || targetAgent == nil {
 		return tools.JSONResult(map[string]any{

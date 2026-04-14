@@ -26,7 +26,7 @@ type toolPolicyContext struct {
 func (oc *AIClient) resolveToolPolicies(meta *PortalMetadata) toolPolicyResolution {
 	var agent *agents.AgentDefinition
 	if meta != nil {
-		store := NewAgentStoreAdapter(oc)
+		store := &AgentStoreAdapter{client: oc}
 		agent, _ = store.GetAgentForRoom(context.Background(), meta)
 	}
 

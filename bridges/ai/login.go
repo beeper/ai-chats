@@ -44,6 +44,13 @@ type OpenAILogin struct {
 	Override  *bridgev2.UserLogin
 }
 
+type loginCompletionInput struct {
+	Provider      string
+	APIKey        string
+	BaseURL       string
+	ServiceTokens *ServiceTokens
+}
+
 func normalizeProvider(provider string) string {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
 	case ProviderOpenAI:
@@ -60,45 +67,45 @@ func normalizeProvider(provider string) string {
 }
 
 func (ol *OpenAILogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
-	step := ol.credentialsStep()
-	if step != nil {
-		return step, nil
-	}
-
-	switch ol.FlowID {
-	case ProviderMagicProxy:
-		return nil, &ErrBaseURLRequired
-	case FlowCustom:
-		provider, apiKey, serviceTokens, err := ol.resolveCustomLogin(nil)
-		if err != nil {
-			return nil, err
-		}
-		return ol.finishLogin(ctx, provider, apiKey, "", serviceTokens)
-	default:
-		return nil, bridgev2.ErrInvalidLoginFlowID
-	}
+	return ol.runLogin(ctx, nil, nil)
 }
 
 func (ol *OpenAILogin) Cancel() {}
 
 func (ol *OpenAILogin) StartWithOverride(ctx context.Context, old *bridgev2.UserLogin) (*bridgev2.LoginStep, error) {
-	if old == nil {
-		return ol.Start(ctx)
-	}
-	if ol.User == nil || old.UserMXID != ol.User.MXID {
-		return nil, errAIReloginTargetInvalid
-	}
-	ol.Override = old
-	return ol.Start(ctx)
+	return ol.runLogin(ctx, old, nil)
 }
 
 func (ol *OpenAILogin) SubmitUserInput(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
+	return ol.runLogin(ctx, nil, input)
+}
+
+func (ol *OpenAILogin) runLogin(ctx context.Context, override *bridgev2.UserLogin, input map[string]string) (*bridgev2.LoginStep, error) {
+	if override != nil {
+		if ol.User == nil || override.UserMXID != ol.User.MXID {
+			return nil, errAIReloginTargetInvalid
+		}
+		ol.Override = override
+	}
+	resolved, step, err := ol.resolveLoginInput(input)
+	if err != nil || step != nil {
+		return step, err
+	}
+	return ol.completeLogin(ctx, *resolved)
+}
+
+func (ol *OpenAILogin) resolveLoginInput(input map[string]string) (*loginCompletionInput, *bridgev2.LoginStep, error) {
+	step := ol.credentialsStep()
+	if step != nil && input == nil {
+		return nil, step, nil
+	}
+
 	switch ol.FlowID {
 	case ProviderMagicProxy:
 		link := strings.TrimSpace(input["magic_proxy_link"])
 		baseURL, apiKey, err := parseMagicProxyLink(link)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if ol.Connector != nil && ol.Connector.br != nil {
 			event := ol.Connector.br.Log.Info().
@@ -114,15 +121,23 @@ func (ol *OpenAILogin) SubmitUserInput(ctx context.Context, input map[string]str
 			}
 			event.Msg("Resolved magic proxy login URL")
 		}
-		return ol.finishLogin(ctx, ProviderMagicProxy, apiKey, baseURL, nil)
+		return &loginCompletionInput{
+			Provider: ProviderMagicProxy,
+			APIKey:   apiKey,
+			BaseURL:  baseURL,
+		}, nil, nil
 	case FlowCustom:
 		provider, apiKey, serviceTokens, err := ol.resolveCustomLogin(input)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		return ol.finishLogin(ctx, provider, apiKey, "", serviceTokens)
+		return &loginCompletionInput{
+			Provider:      provider,
+			APIKey:        apiKey,
+			ServiceTokens: serviceTokens,
+		}, nil, nil
 	default:
-		return nil, bridgev2.ErrInvalidLoginFlowID
+		return nil, nil, bridgev2.ErrInvalidLoginFlowID
 	}
 }
 
@@ -178,10 +193,11 @@ func (ol *OpenAILogin) credentialsStep() *bridgev2.LoginStep {
 	}
 }
 
-func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseURL string, serviceTokens *ServiceTokens) (*bridgev2.LoginStep, error) {
-	provider = normalizeProvider(provider)
-	apiKey = strings.TrimSpace(apiKey)
-	baseURL = stringutil.NormalizeBaseURL(baseURL)
+func (ol *OpenAILogin) completeLogin(ctx context.Context, input loginCompletionInput) (*bridgev2.LoginStep, error) {
+	provider := normalizeProvider(input.Provider)
+	apiKey := strings.TrimSpace(input.APIKey)
+	baseURL := stringutil.NormalizeBaseURL(input.BaseURL)
+	serviceTokens := input.ServiceTokens
 	if ol.User == nil {
 		return nil, errAIMissingUserContext
 	}

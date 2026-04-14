@@ -362,7 +362,7 @@ func (api *ProvisioningAPI) handleListAgents(w http.ResponseWriter, r *http.Requ
 	if client == nil {
 		return
 	}
-	items, err := listAgentsForResponse(r.Context(), NewAgentStoreAdapter(client))
+	items, err := listAgentsForResponse(r.Context(), &AgentStoreAdapter{client: client})
 	if err != nil {
 		mautrix.MUnknown.WithMessage("Couldn't list agents: %v.", err).Write(w)
 		return
@@ -376,7 +376,7 @@ func (api *ProvisioningAPI) handleGetAgent(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	agentID := strings.TrimSpace(r.PathValue("agent_id"))
-	agent, err := NewAgentStoreAdapter(client).GetAgentByID(r.Context(), agentID)
+	agent, err := (&AgentStoreAdapter{client: client}).GetAgentByID(r.Context(), agentID)
 	if err != nil {
 		writeAgentError(w, err)
 		return
@@ -400,7 +400,7 @@ func (api *ProvisioningAPI) handleCreateAgent(w http.ResponseWriter, r *http.Req
 		mautrix.MInvalidParam.WithMessage("%v.", err).Write(w)
 		return
 	}
-	store := NewAgentStoreAdapter(client)
+	store := &AgentStoreAdapter{client: client}
 	if existing, err := store.GetAgentByID(r.Context(), agent.ID); err == nil && existing != nil {
 		mautrix.MInvalidParam.WithMessage("Agent %s already exists.", agent.ID).Write(w)
 		return
@@ -429,7 +429,7 @@ func (api *ProvisioningAPI) handleUpdateAgent(w http.ResponseWriter, r *http.Req
 		mautrix.MInvalidParam.WithMessage("%v.", err).Write(w)
 		return
 	}
-	store := NewAgentStoreAdapter(client)
+	store := &AgentStoreAdapter{client: client}
 	existing, err := store.GetAgentByID(r.Context(), agentID)
 	if err != nil {
 		writeAgentError(w, err)
@@ -452,7 +452,7 @@ func (api *ProvisioningAPI) handleDeleteAgent(w http.ResponseWriter, r *http.Req
 		return
 	}
 	agentID := strings.TrimSpace(r.PathValue("agent_id"))
-	if err := NewAgentStoreAdapter(client).DeleteAgent(r.Context(), agentID); err != nil {
+	if err := (&AgentStoreAdapter{client: client}).DeleteAgent(r.Context(), agentID); err != nil {
 		writeAgentError(w, err)
 		return
 	}

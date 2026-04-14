@@ -337,7 +337,7 @@ func (s *schedulerRuntime) schedulableHeartbeatAgents(ctx context.Context) ([]he
 	if len(candidates) == 0 || !s.client.agentsEnabledForLogin() {
 		return nil, nil
 	}
-	agentsMap, err := NewAgentStoreAdapter(s.client).LoadAgents(ctx)
+	agentsMap, err := (&AgentStoreAdapter{client: s.client}).LoadAgents(ctx)
 	if err != nil {
 		return nil, err
 	}

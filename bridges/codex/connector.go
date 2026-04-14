@@ -54,18 +54,26 @@ func (cc *CodexConnector) applyRuntimeDefaults() {
 	if cc.Config.ModelCacheDuration == 0 {
 		cc.Config.ModelCacheDuration = 6 * time.Hour
 	}
-	sdk.ApplyDefaultCommandPrefix(&cc.Config.Bridge.CommandPrefix, "!ai")
+	if cc.Config.Bridge.CommandPrefix == "" {
+		cc.Config.Bridge.CommandPrefix = "!ai"
+	}
 	if cc.Config.Codex == nil {
 		cc.Config.Codex = &CodexConfig{}
 	}
-	sdk.ApplyBoolDefault(&cc.Config.Codex.Enabled, true)
+	if cc.Config.Codex.Enabled == nil {
+		enabled := true
+		cc.Config.Codex.Enabled = &enabled
+	}
 	if strings.TrimSpace(cc.Config.Codex.Command) == "" {
 		cc.Config.Codex.Command = "codex"
 	}
 	if strings.TrimSpace(cc.Config.Codex.DefaultModel) == "" {
 		cc.Config.Codex.DefaultModel = "gpt-5.1-codex"
 	}
-	sdk.ApplyBoolDefault(&cc.Config.Codex.NetworkAccess, true)
+	if cc.Config.Codex.NetworkAccess == nil {
+		networkAccess := true
+		cc.Config.Codex.NetworkAccess = &networkAccess
+	}
 	if cc.Config.Codex.ClientInfo == nil {
 		cc.Config.Codex.ClientInfo = &CodexClientInfo{}
 	}

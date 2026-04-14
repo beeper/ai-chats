@@ -82,14 +82,6 @@ func (c *ClientBase) HumanUserID() networkid.UserID {
 	return HumanUserID(c.HumanUserIDPrefix, login.ID)
 }
 
-func (c *ClientBase) SendViaPortal(
-	portal *bridgev2.Portal,
-	sender bridgev2.EventSender,
-	converted *bridgev2.ConvertedMessage,
-) (id.EventID, networkid.MessageID, error) {
-	return c.SendViaPortalWithOptions(portal, sender, "", time.Time{}, 0, converted)
-}
-
 func (c *ClientBase) SendViaPortalWithOptions(
 	portal *bridgev2.Portal,
 	sender bridgev2.EventSender,

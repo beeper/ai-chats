@@ -87,12 +87,18 @@ The repo has already shed a large amount of duplicate ownership. The important c
 - AI room materialization now uses the shared `bridgeutil.MaterializePortalRoom` owner instead of a bridge-local reimplementation.
 - AI room bootstrap now has one shared owner for created-chat rooms, existing default-chat rooms, named internal rooms, boss-created rooms, and subagent rooms; the `prepareCreatedChatPortal` / `ensureChatPortalReady` split is gone.
 - AI DM portal initialization now uses the shared `bridgeutil.ConfigureAndPersistDMPortal` helper instead of hand-writing the same room-field bootstrap logic in bridge code.
+- AI login now has one normalized execution path for start, relogin, and user-input completion; the entrypoints only feed one resolver/completion owner instead of branching through separate start/submit code.
+- AI store adapters no longer hide plain struct construction behind `NewAgentStoreAdapter` / `NewBossStoreAdapter`; call sites now instantiate the concrete adapter directly.
+- AI connector login creation no longer routes through a bridge-local `createLogin` shell; the constructor owns the small flow check and process creation directly.
+- AI login loaders no longer bounce through `reuseAIClient` or a bridge-local `SetUserLogin` shell for plain field wiring; login/client linkage is written directly where cache reuse and activation happen.
 - SDK default approval-option wrapper is gone; callers use `ApprovalPromptOptions(true)` directly.
 - SDK one-off path-expansion wrapper is gone; absolute-path normalization owns its only `~` expansion behavior directly.
 - SDK `LoginHandle` façade is gone; the unused login-scoped conversation shell was deleted outright.
 - SDK room-features helper wrappers are gone; the only remaining call site now uses `event.RoomFeatures` directly.
 - SDK metadata-builder wrappers are gone; connectors and tests now use `database.MetaTypes` directly instead of `BuildStandardMetaTypes` / `BuildMetaTypes`.
 - SDK login-completion convenience wrappers are gone; bridge login flows now call `PersistAndCompleteLoginWithOptions` directly and build the completion step there.
+- SDK constructor-policy helpers are gone; command-prefix defaults, bool defaults, provider-acceptance checks, and single-use login-flow validation now live in the bridge constructors that actually own those decisions.
+- SDK conversation room mutations now talk to `bridgev2.Portal` directly; the extra `SetRoomName` / `SetRoomTopic` / `BroadcastCapabilities` function layer and the unused `ClientBase.SendViaPortal` trampoline are gone.
 - `aichats_portal_state` now stores turn/reset ownership only; the leftover reset timestamp sidecar field is gone.
 - AI internal-room setup no longer hides durable portal writes behind `MutatePortal` / `SaveBefore`; scheduler and integration host now mutate and save portals explicitly before materialization.
 - Shared DM portal bootstrap/materialization moved down to `pkg/shared/bridgeutil` where it was truly generic.

@@ -2,6 +2,9 @@ package ai
 
 import (
 	"context"
+	"fmt"
+	"slices"
+	"strings"
 
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
@@ -57,7 +60,10 @@ func NewAIConnector() *OpenAIConnector {
 		BeeperBridgeType: "ai",
 		DefaultPort:      29345,
 		DefaultCommandPrefix: func() string {
-			return sdk.ResolveCommandPrefix(oc.Config.Bridge.CommandPrefix, "!ai")
+			if trimmed := strings.TrimSpace(oc.Config.Bridge.CommandPrefix); trimmed != "" {
+				return trimmed
+			}
+			return "!ai"
 		},
 		ExampleConfig: exampleNetworkConfig,
 		ConfigData:    &oc.Config,
@@ -85,7 +91,11 @@ func NewAIConnector() *OpenAIConnector {
 		},
 		GetLoginFlows: oc.getLoginFlows,
 		CreateLogin: func(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
-			return oc.createLogin(ctx, user, flowID)
+			flows := oc.getLoginFlows()
+			if !slices.ContainsFunc(flows, func(f bridgev2.LoginFlow) bool { return f.ID == flowID }) {
+				return nil, fmt.Errorf("login flow %s is not available", flowID)
+			}
+			return &OpenAILogin{User: user, Connector: oc, FlowID: flowID}, nil
 		},
 	})
 	oc.ConnectorBase = sdk.NewConnectorBase(oc.sdkConfig)

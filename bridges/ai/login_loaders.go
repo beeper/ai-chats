@@ -15,16 +15,12 @@ const (
 	initLoginClientError = "Couldn't initialize this login. Remove and re-add the account."
 )
 
-func reuseAIClient(login *bridgev2.UserLogin, client *AIClient) {
-	if login == nil || client == nil {
-		return
-	}
-	client.SetUserLogin(login)
-	login.Client = client
-}
-
 func activateLoadedAIClient(login *bridgev2.UserLogin, client *AIClient) {
-	reuseAIClient(login, client)
+	if login != nil && client != nil {
+		client.UserLogin = login
+		client.ClientBase.SetUserLogin(login)
+		login.Client = client
+	}
 	if client != nil {
 		client.scheduleBootstrap()
 	}
@@ -75,7 +71,9 @@ func (oc *OpenAIConnector) publishOrReuseClient(login *bridgev2.UserLogin, creat
 	}
 	oc.clientsMu.Lock()
 	if cached, ok := oc.clients[login.ID].(*AIClient); ok && cached != nil && cached != replace {
-		reuseAIClient(login, cached)
+		cached.UserLogin = login
+		cached.ClientBase.SetUserLogin(login)
+		login.Client = cached
 		oc.clientsMu.Unlock()
 		created.Disconnect()
 		return cached
@@ -85,7 +83,9 @@ func (oc *OpenAIConnector) publishOrReuseClient(login *bridgev2.UserLogin, creat
 		disconnectReplace = replace
 	}
 	oc.clients[login.ID] = created
-	reuseAIClient(login, created)
+	created.UserLogin = login
+	created.ClientBase.SetUserLogin(login)
+	login.Client = created
 	oc.clientsMu.Unlock()
 	if disconnectReplace != nil {
 		disconnectReplace.Disconnect()

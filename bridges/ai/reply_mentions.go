@@ -35,7 +35,7 @@ func (oc *AIClient) resolveMentionContext(
 ) mentionContext {
 	var agentDef *agents.AgentDefinition
 	if agentID := resolveAgentID(meta); agentID != "" {
-		store := NewAgentStoreAdapter(oc)
+		store := &AgentStoreAdapter{client: oc}
 		if agent, err := store.GetAgentByID(ctx, agentID); err == nil {
 			agentDef = agent
 		}

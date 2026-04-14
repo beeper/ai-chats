@@ -2,7 +2,6 @@ package sdk
 
 import (
 	"context"
-	"strings"
 	"sync"
 
 	"go.mau.fi/util/configupgrade"
@@ -12,49 +11,6 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
-
-// ApplyDefaultCommandPrefix sets the command prefix when it is empty.
-func ApplyDefaultCommandPrefix(prefix *string, value string) {
-	if prefix != nil && *prefix == "" {
-		*prefix = value
-	}
-}
-
-// ResolveCommandPrefix returns the configured prefix when present, otherwise the
-// bridge's declared default prefix without mutating configuration state.
-func ResolveCommandPrefix(prefix string, fallback string) string {
-	trimmed := strings.TrimSpace(prefix)
-	if trimmed != "" {
-		return trimmed
-	}
-	return fallback
-}
-
-// ApplyBoolDefault initializes a nil bool pointer to the provided value.
-func ApplyBoolDefault(target **bool, value bool) {
-	if target == nil || *target != nil {
-		return
-	}
-	v := value
-	*target = &v
-}
-
-func AcceptProviderLogin(
-	login *bridgev2.UserLogin,
-	provider string,
-	unsupportedReason string,
-	enabled func() bool,
-	disabledReason string,
-	metadataProvider func(*bridgev2.UserLogin) string,
-) (bool, string) {
-	if metadataProvider != nil && !strings.EqualFold(strings.TrimSpace(metadataProvider(login)), provider) {
-		return false, unsupportedReason
-	}
-	if enabled != nil && !enabled() {
-		return false, disabledReason
-	}
-	return true, ""
-}
 
 type loginAwareClient interface {
 	SetUserLogin(*bridgev2.UserLogin)

@@ -457,11 +457,6 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 	return oc, nil
 }
 
-func (oc *AIClient) SetUserLogin(login *bridgev2.UserLogin) {
-	oc.UserLogin = login
-	oc.ClientBase.SetUserLogin(login)
-}
-
 func (oc *AIClient) GetApprovalHandler() sdk.ApprovalReactionHandler {
 	return oc.approvalFlow
 }
@@ -729,7 +724,7 @@ func (oc *AIClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*br
 	// Parse agent from ghost ID (format: "agent-{id}")
 	if agentID, ok := parseAgentFromGhostID(ghostID); ok {
 		responder, _ := oc.ResolveResponderForGhost(ctx, ghost.ID)
-		store := NewAgentStoreAdapter(oc)
+		store := &AgentStoreAdapter{client: oc}
 		agent, agentErr := store.GetAgentByID(ctx, agentID)
 		if agentErr == nil && agent != nil {
 			if sdkAgent := oc.sdkAgentForDefinition(ctx, agent); sdkAgent != nil {
@@ -1063,7 +1058,7 @@ func (oc *AIClient) effectiveAgentPrompt(ctx context.Context, portal *bridgev2.P
 	}
 
 	// Load the agent
-	store := NewAgentStoreAdapter(oc)
+	store := &AgentStoreAdapter{client: oc}
 	agent, err := store.GetAgentByID(ctx, agentID)
 	if err != nil || agent == nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Str("agent", agentID).Msg("Failed to load agent for prompt")
@@ -1171,7 +1166,7 @@ func (oc *AIClient) effectiveAgentPrompt(ctx context.Context, portal *bridgev2.P
 
 func (oc *AIClient) effectiveTemperature(meta *PortalMetadata) *float64 {
 	if meta != nil && meta.ResolvedTarget != nil && meta.ResolvedTarget.Kind == ResolvedTargetAgent {
-		store := NewAgentStoreAdapter(oc)
+		store := &AgentStoreAdapter{client: oc}
 		agent, err := store.GetAgentByID(context.Background(), meta.ResolvedTarget.AgentID)
 		if err == nil && agent != nil {
 			return ptr.Clone(agent.Temperature)
@@ -1725,7 +1720,7 @@ func (oc *AIClient) ensureAgentGhostDisplayName(ctx context.Context, agentID, mo
 	displayName := agentName
 	var avatar *bridgev2.Avatar
 	if agentID != "" {
-		store := NewAgentStoreAdapter(oc)
+		store := &AgentStoreAdapter{client: oc}
 		if agent, err := store.GetAgentByID(ctx, agentID); err == nil && agent != nil {
 			avatarURL := strings.TrimSpace(agent.AvatarURL)
 			if avatarURL != "" {

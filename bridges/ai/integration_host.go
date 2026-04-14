@@ -103,7 +103,7 @@ func (h *runtimeIntegrationHost) AgentModuleConfig(agentID string, module string
 	if h == nil || h.client == nil || h.client.connector == nil {
 		return nil
 	}
-	store := NewAgentStoreAdapter(h.client)
+	store := &AgentStoreAdapter{client: h.client}
 	agent, err := store.GetAgentByID(h.client.backgroundContext(context.TODO()), agentID)
 	if err != nil || agent == nil {
 		return nil

@@ -31,7 +31,7 @@ func maybeRefreshAgentIdentity(ctx context.Context, rawPath string) {
 	if agentID == "" {
 		return
 	}
-	store := NewAgentStoreAdapter(btc.Client)
+	store := &AgentStoreAdapter{client: btc.Client}
 	agent, err := store.GetAgentByID(ctx, agentID)
 	if err != nil || agent == nil {
 		return

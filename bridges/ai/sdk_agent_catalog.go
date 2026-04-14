@@ -24,7 +24,7 @@ func (c aiAgentCatalog) DefaultAgent(ctx context.Context, login *bridgev2.UserLo
 	if !client.agentsEnabledForLogin() {
 		return nil, nil
 	}
-	agent, err := NewAgentStoreAdapter(client).GetAgentByID(ctx, agents.DefaultAgentID)
+	agent, err := (&AgentStoreAdapter{client: client}).GetAgentByID(ctx, agents.DefaultAgentID)
 	if err != nil || agent == nil {
 		return nil, err
 	}
@@ -39,7 +39,7 @@ func (c aiAgentCatalog) ListAgents(ctx context.Context, login *bridgev2.UserLogi
 	if !client.agentsEnabledForLogin() {
 		return nil, nil
 	}
-	agentsMap, err := NewAgentStoreAdapter(client).LoadAgents(ctx)
+	agentsMap, err := (&AgentStoreAdapter{client: client}).LoadAgents(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +72,7 @@ func (c aiAgentCatalog) ResolveAgent(ctx context.Context, login *bridgev2.UserLo
 	if agentID == "" {
 		return nil, nil
 	}
-	agent, err := NewAgentStoreAdapter(client).GetAgentByID(ctx, agentID)
+	agent, err := (&AgentStoreAdapter{client: client}).GetAgentByID(ctx, agentID)
 	if err != nil || agent == nil {
 		return nil, err
 	}

@@ -162,7 +162,7 @@ func (oc *AIClient) executeBossTool(ctx context.Context, portal *bridgev2.Portal
 	}
 
 	// Boss executor tools share a common pattern.
-	store := NewBossStoreAdapter(oc)
+	store := &BossStoreAdapter{AgentStoreAdapter: &AgentStoreAdapter{client: oc}}
 	executor := tools.NewBossToolExecutor(store)
 
 	// Default room_id for run_internal_command if not provided.

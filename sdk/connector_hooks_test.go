@@ -196,13 +196,4 @@ func TestApprovalControllerUsesCustomHandler(t *testing.T) {
 	}
 }
 
-func TestResolveCommandPrefixTrimsConfiguredValue(t *testing.T) {
-	if got := ResolveCommandPrefix(" /ai ", "!fallback"); got != "/ai" {
-		t.Fatalf("expected trimmed configured prefix, got %q", got)
-	}
-	if got := ResolveCommandPrefix("   ", "!fallback"); got != "!fallback" {
-		t.Fatalf("expected fallback prefix, got %q", got)
-	}
-}
-
 var _ bridgev2.NetworkAPI = (*testSDKClient)(nil)

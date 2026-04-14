@@ -27,10 +27,6 @@ type AgentStoreAdapter struct {
 	mu     sync.RWMutex
 }
 
-func NewAgentStoreAdapter(client *AIClient) *AgentStoreAdapter {
-	return &AgentStoreAdapter{client: client}
-}
-
 // LoadAgents implements agents.AgentStore.
 // It loads agents from presets and login-owned custom agent tables.
 func (s *AgentStoreAdapter) LoadAgents(ctx context.Context) (map[string]*agents.AgentDefinition, error) {
@@ -310,12 +306,6 @@ func FromAgentDefinitionContent(content *AgentDefinitionContent) *agents.AgentDe
 // This adapter converts between our agent types and the tools package types.
 type BossStoreAdapter struct {
 	*AgentStoreAdapter
-}
-
-func NewBossStoreAdapter(client *AIClient) *BossStoreAdapter {
-	return &BossStoreAdapter{
-		AgentStoreAdapter: NewAgentStoreAdapter(client),
-	}
 }
 
 // LoadAgents implements tools.AgentStoreInterface.

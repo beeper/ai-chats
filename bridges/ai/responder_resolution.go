@@ -148,7 +148,7 @@ func (oc *AIClient) resolveResponder(ctx context.Context, meta *PortalMetadata, 
 		if agentID == "" {
 			return nil, fmt.Errorf("agent target missing agent id")
 		}
-		agent, err := NewAgentStoreAdapter(oc).GetAgentByID(ctx, agentID)
+		agent, err := (&AgentStoreAdapter{client: oc}).GetAgentByID(ctx, agentID)
 		if err != nil {
 			return nil, fmt.Errorf("resolve agent %s: %w", agentID, err)
 		}

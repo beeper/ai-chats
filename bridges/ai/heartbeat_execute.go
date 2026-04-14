@@ -124,7 +124,7 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 		return heartbeatRunResult{Status: "skipped", Reason: "alerts-disabled"}
 	}
 	var agentDef *agents.AgentDefinition
-	store := NewAgentStoreAdapter(oc)
+	store := &AgentStoreAdapter{client: oc}
 	if agent, err := store.GetAgentByID(context.Background(), agentID); err == nil {
 		agentDef = agent
 	}

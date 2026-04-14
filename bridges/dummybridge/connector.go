@@ -3,6 +3,7 @@ package dummybridge
 import (
 	"context"
 	"net/http"
+	"strings"
 	"sync"
 
 	"go.mau.fi/util/configupgrade"
@@ -42,8 +43,13 @@ func NewConnector() *DummyBridgeConnector {
 			dc.br = bridge
 		},
 		StartConnector: func(_ context.Context, _ *bridgev2.Bridge) error {
-			sdk.ApplyDefaultCommandPrefix(&dc.Config.Bridge.CommandPrefix, "!dummybridge")
-			sdk.ApplyBoolDefault(&dc.Config.DummyBridge.Enabled, true)
+			if dc.Config.Bridge.CommandPrefix == "" {
+				dc.Config.Bridge.CommandPrefix = "!dummybridge"
+			}
+			if dc.Config.DummyBridge.Enabled == nil {
+				enabled := true
+				dc.Config.DummyBridge.Enabled = &enabled
+			}
 			return nil
 		},
 		DisplayName:      "DummyBridge",
@@ -52,7 +58,10 @@ func NewConnector() *DummyBridgeConnector {
 		BeeperBridgeType: "dummybridge",
 		DefaultPort:      29349,
 		DefaultCommandPrefix: func() string {
-			return sdk.ResolveCommandPrefix(dc.Config.Bridge.CommandPrefix, "!dummybridge")
+			if trimmed := strings.TrimSpace(dc.Config.Bridge.CommandPrefix); trimmed != "" {
+				return trimmed
+			}
+			return "!dummybridge"
 		},
 		ExampleConfig:  exampleNetworkConfig,
 		ConfigData:     &dc.Config,
@@ -62,9 +71,13 @@ func NewConnector() *DummyBridgeConnector {
 		NewLogin:       func() *UserLoginMetadata { return &UserLoginMetadata{} },
 		NewGhost:       func() *GhostMetadata { return &GhostMetadata{} },
 		AcceptLogin: func(login *bridgev2.UserLogin) (bool, string) {
-			return sdk.AcceptProviderLogin(login, ProviderDummyBridge, "This bridge only supports DummyBridge logins.", dc.enabled, "DummyBridge integration is disabled in the configuration.", func(login *bridgev2.UserLogin) string {
-				return loginMetadata(login).Provider
-			})
+			if !strings.EqualFold(strings.TrimSpace(loginMetadata(login).Provider), ProviderDummyBridge) {
+				return false, "This bridge only supports DummyBridge logins."
+			}
+			if !dc.enabled() {
+				return false, "DummyBridge integration is disabled in the configuration."
+			}
+			return true, ""
 		},
 		LoginFlows: func() []bridgev2.LoginFlow {
 			if !dc.enabled() {

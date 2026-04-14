@@ -2,8 +2,6 @@ package ai
 
 import (
 	"context"
-	"fmt"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -53,7 +51,9 @@ func (oc *OpenAIConnector) applyRuntimeDefaults() {
 	if oc.Config.ModelCacheDuration == 0 {
 		oc.Config.ModelCacheDuration = 6 * time.Hour
 	}
-	sdk.ApplyDefaultCommandPrefix(&oc.Config.Bridge.CommandPrefix, "!ai")
+	if oc.Config.Bridge.CommandPrefix == "" {
+		oc.Config.Bridge.CommandPrefix = "!ai"
+	}
 	if oc.Config.Agents == nil {
 		oc.Config.Agents = &AgentsConfig{}
 	}
@@ -83,12 +83,4 @@ func (oc *OpenAIConnector) getLoginFlows() []bridgev2.LoginFlow {
 		{ID: ProviderMagicProxy, Name: "Magic Proxy"},
 		{ID: FlowCustom, Name: "Manual"},
 	}
-}
-
-func (oc *OpenAIConnector) createLogin(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
-	flows := oc.getLoginFlows()
-	if !slices.ContainsFunc(flows, func(f bridgev2.LoginFlow) bool { return f.ID == flowID }) {
-		return nil, fmt.Errorf("login flow %s is not available", flowID)
-	}
-	return &OpenAILogin{User: user, Connector: oc, FlowID: flowID}, nil
 }

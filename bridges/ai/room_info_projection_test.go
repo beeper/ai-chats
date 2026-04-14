@@ -10,7 +10,7 @@ import (
 func TestGetChatInfoUsesRichProjectionForAgentChats(t *testing.T) {
 	ctx := context.Background()
 	client := newResponderMetadataTestClient(t)
-	store := NewAgentStoreAdapter(client)
+	store := &AgentStoreAdapter{client: client}
 	agent, err := store.GetAgentByID(ctx, "custom-agent")
 	if err != nil {
 		t.Fatalf("GetAgentByID returned error: %v", err)

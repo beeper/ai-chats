@@ -51,7 +51,14 @@ func (c *Conversation) getIntent(ctx context.Context) (bridgev2.MatrixAPI, error
 	if c.intentOverride != nil {
 		return c.intentOverride(ctx)
 	}
-	return resolveMatrixIntent(ctx, c.login, c.portal, c.sender, bridgev2.RemoteEventMessage)
+	if c.portal == nil || c.login == nil {
+		return nil, fmt.Errorf("no portal or login")
+	}
+	intent, ok := c.portal.GetIntentFor(ctx, c.sender, c.login, bridgev2.RemoteEventMessage)
+	if !ok || intent == nil {
+		return nil, fmt.Errorf("failed to get intent")
+	}
+	return intent, nil
 }
 
 func (c *Conversation) stateStore() *conversationStateStore {
@@ -296,18 +303,38 @@ func (c *Conversation) SetTyping(ctx context.Context, typing bool) error {
 
 // SetRoomName sets the room name.
 func (c *Conversation) SetRoomName(ctx context.Context, name string) error {
-	return SetRoomName(ctx, c.login, c.portal, c.sender, name)
+	if c == nil || c.portal == nil || c.login == nil {
+		return fmt.Errorf("no portal or login")
+	}
+	c.portal.UpdateInfo(ctx, &bridgev2.ChatInfo{
+		Name:                       &name,
+		ExcludeChangesFromTimeline: true,
+	}, c.login, nil, time.Time{})
+	return nil
 }
 
 // SetRoomTopic sets the room topic.
 func (c *Conversation) SetRoomTopic(ctx context.Context, topic string) error {
-	return SetRoomTopic(ctx, c.login, c.portal, c.sender, topic)
+	if c == nil || c.portal == nil || c.login == nil {
+		return fmt.Errorf("no portal or login")
+	}
+	c.portal.UpdateInfo(ctx, &bridgev2.ChatInfo{
+		Topic:                      &topic,
+		ExcludeChangesFromTimeline: true,
+	}, c.login, nil, time.Time{})
+	return nil
 }
 
 // BroadcastCapabilities computes and sends room capability state events.
 func (c *Conversation) BroadcastCapabilities(ctx context.Context) error {
-	features := c.currentRoomFeatures(ctx)
-	return BroadcastCapabilities(ctx, c.login, c.portal, c.sender, features)
+	if c == nil || c.portal == nil || c.login == nil {
+		return fmt.Errorf("no portal or login")
+	}
+	if c.portal.MXID == "" {
+		return nil
+	}
+	c.portal.UpdateCapabilities(ctx, c.login, true)
+	return nil
 }
 
 // Portal returns the underlying bridgev2.Portal.
