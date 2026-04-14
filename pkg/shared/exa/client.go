@@ -5,16 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"strings"
 
 	"github.com/beeper/agentremote/pkg/shared/httputil"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
-
-// Enabled returns true when the Exa provider is enabled and has credentials.
-func Enabled(enabled *bool, apiKey string) bool {
-	return stringutil.BoolPtrOr(enabled, true) && strings.TrimSpace(apiKey) != ""
-}
 
 // Endpoint resolves an Exa API endpoint path against the configured base URL.
 func Endpoint(baseURL, path string) (string, error) {
@@ -51,5 +45,14 @@ func ApplyEnv(apiKey, baseURL *string) {
 	}
 	if baseURL != nil {
 		*baseURL = stringutil.EnvOr(*baseURL, os.Getenv("EXA_BASE_URL"))
+	}
+}
+
+func ApplyConfigDefaults(baseURL *string, textMaxChars *int, defaultTextMaxChars int) {
+	if baseURL != nil && *baseURL == "" {
+		*baseURL = DefaultBaseURL
+	}
+	if textMaxChars != nil && *textMaxChars <= 0 {
+		*textMaxChars = defaultTextMaxChars
 	}
 }

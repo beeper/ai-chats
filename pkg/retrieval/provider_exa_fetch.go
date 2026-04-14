@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/beeper/agentremote/pkg/shared/exa"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 type exaFetchProvider struct {
@@ -18,9 +19,10 @@ func newExaFetchProvider(cfg *FetchConfig) FetchProvider {
 	if cfg == nil {
 		return nil
 	}
-	return exa.NewProvider(cfg.Exa.Enabled, cfg.Exa.APIKey, func() FetchProvider {
-		return &exaFetchProvider{cfg: cfg.Exa}
-	})
+	if !stringutil.BoolPtrOr(cfg.Exa.Enabled, true) || strings.TrimSpace(cfg.Exa.APIKey) == "" {
+		return nil
+	}
+	return &exaFetchProvider{cfg: cfg.Exa}
 }
 
 func (p *exaFetchProvider) Name() string {
