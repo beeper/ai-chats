@@ -2,9 +2,11 @@ package ai
 
 import (
 	"context"
+	"os"
 	"strings"
 
 	"github.com/beeper/agentremote/pkg/retrieval"
+	"github.com/beeper/agentremote/pkg/shared/exa"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
@@ -24,7 +26,34 @@ func (oc *AIClient) effectiveSearchConfig(ctx context.Context) *retrieval.Search
 		},
 		applyLoginTokensToSearchConfig,
 		func(cfg *retrieval.SearchConfig) *retrieval.SearchConfig {
-			return retrieval.SearchApplyEnvDefaults(cfg).WithDefaults()
+			envCfg := &retrieval.SearchConfig{}
+			envCfg.Provider = stringutil.EnvOr(envCfg.Provider, os.Getenv("SEARCH_PROVIDER"))
+			if len(envCfg.Fallbacks) == 0 {
+				if raw := strings.TrimSpace(os.Getenv("SEARCH_FALLBACKS")); raw != "" {
+					envCfg.Fallbacks = stringutil.SplitCSV(raw)
+				}
+			}
+			exa.ApplyEnv(&envCfg.Exa.APIKey, &envCfg.Exa.BaseURL)
+			envCfg = envCfg.WithDefaults()
+			if cfg == nil {
+				return envCfg
+			}
+			hasProvider := cfg.Provider != ""
+			hasFallbacks := len(cfg.Fallbacks) > 0
+			current := cfg.WithDefaults()
+			if !hasProvider {
+				current.Provider = envCfg.Provider
+			}
+			if !hasFallbacks {
+				current.Fallbacks = envCfg.Fallbacks
+			}
+			if current.Exa.APIKey == "" {
+				current.Exa.APIKey = envCfg.Exa.APIKey
+			}
+			if current.Exa.BaseURL == "" {
+				current.Exa.BaseURL = envCfg.Exa.BaseURL
+			}
+			return current
 		},
 	)
 }
@@ -41,7 +70,34 @@ func (oc *AIClient) effectiveFetchConfig(ctx context.Context) *retrieval.FetchCo
 		},
 		applyLoginTokensToFetchConfig,
 		func(cfg *retrieval.FetchConfig) *retrieval.FetchConfig {
-			return retrieval.FetchApplyEnvDefaults(cfg).WithDefaults()
+			envCfg := &retrieval.FetchConfig{}
+			envCfg.Provider = stringutil.EnvOr(envCfg.Provider, os.Getenv("FETCH_PROVIDER"))
+			if len(envCfg.Fallbacks) == 0 {
+				if raw := strings.TrimSpace(os.Getenv("FETCH_FALLBACKS")); raw != "" {
+					envCfg.Fallbacks = stringutil.SplitCSV(raw)
+				}
+			}
+			exa.ApplyEnv(&envCfg.Exa.APIKey, &envCfg.Exa.BaseURL)
+			envCfg = envCfg.WithDefaults()
+			if cfg == nil {
+				return envCfg
+			}
+			hasProvider := cfg.Provider != ""
+			hasFallbacks := len(cfg.Fallbacks) > 0
+			current := cfg.WithDefaults()
+			if !hasProvider {
+				current.Provider = envCfg.Provider
+			}
+			if !hasFallbacks {
+				current.Fallbacks = envCfg.Fallbacks
+			}
+			if current.Exa.APIKey == "" {
+				current.Exa.APIKey = envCfg.Exa.APIKey
+			}
+			if current.Exa.BaseURL == "" {
+				current.Exa.BaseURL = envCfg.Exa.BaseURL
+			}
+			return current
 		},
 	)
 }

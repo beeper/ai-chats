@@ -69,7 +69,19 @@ func (c *SearchConfig) WithDefaults() *SearchConfig {
 	if len(c.Fallbacks) == 0 {
 		c.Fallbacks = append([]string(nil), DefaultSearchFallbackOrder...)
 	}
-	c.Exa = c.Exa.withSearchDefaults()
+	if c.Exa.BaseURL == "" {
+		c.Exa.BaseURL = exa.DefaultBaseURL
+	}
+	if c.Exa.TextMaxCharacters <= 0 {
+		c.Exa.TextMaxCharacters = 500
+	}
+	if c.Exa.Type == "" {
+		c.Exa.Type = "auto"
+	}
+	if c.Exa.NumResults <= 0 {
+		c.Exa.NumResults = DefaultSearchCount
+	}
+	c.Exa.Highlights = true
 	return c
 }
 
@@ -83,7 +95,12 @@ func (c *FetchConfig) WithDefaults() *FetchConfig {
 	if len(c.Fallbacks) == 0 {
 		c.Fallbacks = append([]string(nil), DefaultFetchFallbackOrder...)
 	}
-	c.Exa = c.Exa.withFetchDefaults()
+	if c.Exa.BaseURL == "" {
+		c.Exa.BaseURL = exa.DefaultBaseURL
+	}
+	if c.Exa.TextMaxCharacters <= 0 {
+		c.Exa.TextMaxCharacters = 5_000
+	}
 	if c.Direct.TimeoutSecs <= 0 {
 		c.Direct.TimeoutSecs = DefaultTimeoutSecs
 	}
@@ -95,33 +112,6 @@ func (c *FetchConfig) WithDefaults() *FetchConfig {
 	}
 	if c.Direct.MaxRedirects <= 0 {
 		c.Direct.MaxRedirects = 3
-	}
-	return c
-}
-
-func (c ExaConfig) withSearchDefaults() ExaConfig {
-	if c.BaseURL == "" {
-		c.BaseURL = exa.DefaultBaseURL
-	}
-	if c.TextMaxCharacters <= 0 {
-		c.TextMaxCharacters = 500
-	}
-	if c.Type == "" {
-		c.Type = "auto"
-	}
-	if c.NumResults <= 0 {
-		c.NumResults = DefaultSearchCount
-	}
-	c.Highlights = true
-	return c
-}
-
-func (c ExaConfig) withFetchDefaults() ExaConfig {
-	if c.BaseURL == "" {
-		c.BaseURL = exa.DefaultBaseURL
-	}
-	if c.TextMaxCharacters <= 0 {
-		c.TextMaxCharacters = 5_000
 	}
 	return c
 }

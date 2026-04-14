@@ -3,8 +3,12 @@ package tools
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/beeper/agentremote/pkg/retrieval"
+	"github.com/beeper/agentremote/pkg/shared/exa"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	"github.com/beeper/agentremote/pkg/shared/toolspec"
 	"github.com/beeper/agentremote/pkg/shared/websearch"
 )
@@ -26,7 +30,15 @@ func executeWebSearch(ctx context.Context, args map[string]any) (*Result, error)
 		return ErrorResult("web_search", err.Error()), nil
 	}
 
-	cfg := retrieval.SearchApplyEnvDefaults(nil)
+	cfg := &retrieval.SearchConfig{}
+	cfg.Provider = stringutil.EnvOr(cfg.Provider, os.Getenv("SEARCH_PROVIDER"))
+	if len(cfg.Fallbacks) == 0 {
+		if raw := strings.TrimSpace(os.Getenv("SEARCH_FALLBACKS")); raw != "" {
+			cfg.Fallbacks = stringutil.SplitCSV(raw)
+		}
+	}
+	exa.ApplyEnv(&cfg.Exa.APIKey, &cfg.Exa.BaseURL)
+	cfg = cfg.WithDefaults()
 	searchReq := retrieval.SearchRequest(req)
 	resp, err := retrieval.Search(ctx, searchReq, cfg)
 	if err != nil {
