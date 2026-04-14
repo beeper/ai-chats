@@ -22,7 +22,9 @@ func Search(ctx context.Context, req SearchRequest, cfg *SearchConfig) (*SearchR
 		cfg.Fallbacks,
 		DefaultSearchFallbackOrder,
 		func(reg *registry.Registry[SearchProvider]) {
-			registerSearchProviders(reg, cfg)
+			if p := newExaSearchProvider(cfg); p != nil {
+				reg.Register(p)
+			}
 		},
 		func(provider SearchProvider) (*SearchResponse, error) {
 			return provider.Search(ctx, req)
@@ -50,10 +52,4 @@ func normalizeSearchRequest(req SearchRequest) SearchRequest {
 		req.Count = MaxSearchCount
 	}
 	return req
-}
-
-func registerSearchProviders(reg *registry.Registry[SearchProvider], cfg *SearchConfig) {
-	if p := newExaSearchProvider(cfg); p != nil {
-		reg.Register(p)
-	}
 }

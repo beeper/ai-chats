@@ -22,7 +22,12 @@ func Fetch(ctx context.Context, req FetchRequest, cfg *FetchConfig) (*FetchRespo
 		cfg.Fallbacks,
 		DefaultFetchFallbackOrder,
 		func(reg *registry.Registry[FetchProvider]) {
-			registerFetchProviders(reg, cfg)
+			if p := newExaFetchProvider(cfg); p != nil {
+				reg.Register(p)
+			}
+			if p := newDirectFetchProvider(cfg); p != nil {
+				reg.Register(p)
+			}
 		},
 		func(provider FetchProvider) (*FetchResponse, error) {
 			return provider.Fetch(ctx, req)
@@ -44,13 +49,4 @@ func normalizeFetchRequest(req FetchRequest) FetchRequest {
 		req.MaxChars = 0
 	}
 	return req
-}
-
-func registerFetchProviders(reg *registry.Registry[FetchProvider], cfg *FetchConfig) {
-	if p := newExaFetchProvider(cfg); p != nil {
-		reg.Register(p)
-	}
-	if p := newDirectFetchProvider(cfg); p != nil {
-		reg.Register(p)
-	}
 }
